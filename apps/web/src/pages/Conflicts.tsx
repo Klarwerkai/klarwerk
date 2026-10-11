@@ -109,6 +109,7 @@ import { fallHref, leseFall } from "../lib/fallAbsprung";
 import { conflictFinding, groupFindingsByBeitrag, resolveKo } from "../lib/findingGroups";
 import { clusterReihenfolge, konfliktCluster } from "../lib/konfliktCluster";
 import { REVIEW_HELP_TOPICS } from "../lib/reviewHelp";
+import { statusSchluessel } from "../lib/wissensstatus";
 
 const PATH: ConflictStatus[] = ["eskaliert", "zweitmeinung", "geloest"];
 
@@ -128,7 +129,7 @@ function metaVon(ko: KnowledgeObject | null, t: (k: string) => string): string {
   }
   const jahr = new Date(ko.createdAt);
   return [
-    t(`status.${ko.status}`),
+    t(statusSchluessel(ko.status)),
     ko.category,
     Number.isNaN(jahr.getTime()) ? null : String(jahr.getFullYear()),
   ]

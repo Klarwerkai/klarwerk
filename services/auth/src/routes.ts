@@ -1773,6 +1773,9 @@ export function authRoutes(
         // R-0582: der Admin berichtigt Name und E-Mail eines Kontos (ohne dessen Passwort).
         name?: unknown;
         email?: unknown;
+        // Aufnahme gesamt-peer-validierung (Antwort 18): die fachliche Weisungsbefugnis — eine
+        // Liste von Bereichen, oder `null` zum Entziehen.
+        weisungsbefugnis?: unknown;
       };
     }>("/api/users/:id", async (request, reply) => {
       const admin = await requireAdmin(request, reply);
@@ -1780,7 +1783,8 @@ export function authRoutes(
         return;
       }
       const { id } = request.params;
-      const { role, approve, password, accessExpiresAt, freigabe } = request.body;
+      const { role, approve, password, accessExpiresAt, freigabe, weisungsbefugnis } =
+        request.body;
       // R-0582: auch die Kontodaten gehören zur Formwache VOR jedem Schreiben.
       const kontodaten = kontodatenForm(request, reply);
       if (kontodaten === null) {
@@ -1833,6 +1837,18 @@ export function authRoutes(
         if (freigabe !== undefined && freigabe !== null && !istFreigabestufe(freigabe)) {
           throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
         }
+        // Antwort 18: dieselbe Formwache — `null` entzieht, sonst eine Liste von Bereichsnamen.
+        if (
+          weisungsbefugnis !== undefined &&
+          weisungsbefugnis !== null &&
+          !(
+            Array.isArray(weisungsbefugnis) &&
+            weisungsbefugnis.length <= 100 &&
+            weisungsbefugnis.every((b) => typeof b === "string" && b.length <= 200)
+          )
+        ) {
+          throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+        }
         let user: PublicUser | undefined;
         // R-0582: die Berichtigung ZUERST — ihre einzige inhaltliche Ablehnung (Adresse vergeben,
         // 409) fällt damit, bevor Freigabe, Rolle oder Passwort geschrieben sind.
@@ -1863,6 +1879,15 @@ export function authRoutes(
         }
         if (freigabe !== undefined) {
           user = await service.setFreigabe(id, freigabe === null ? undefined : freigabe, admin.id);
+        }
+        // Antwort 18: die Weisungsbefugnis — vergeben nur über diesen Verwaltungsweg (Vermerk
+        // `user.weisungsbefugnis-set`); die Rolle allein verleiht sie nicht.
+        if (weisungsbefugnis !== undefined) {
+          user = await service.setWeisungsbefugnis(
+            id,
+            weisungsbefugnis === null ? undefined : (weisungsbefugnis as string[]),
+            admin.id,
+          );
         }
         if (user) {
           reply.code(200).send(user);

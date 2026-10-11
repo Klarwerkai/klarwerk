@@ -228,8 +228,8 @@ describe("KA7 · die Konfliktkarte (Lieferung 1, 3, 5)", () => {
     expect(quelle).toContain("Homeoffice-Regelung");
     expect(quelle).toContain("Version 3");
     // Der Prüfstand ist derselbe Wortlaut wie in der Bestandsliste (JOB 3093, `askStatusValidiert`)
-    // — kein zweiter Wortlaut für dieselbe Aussage über ein Objekt.
-    expect(quelle).toContain("Validiert");
+    // — kein zweiter Wortlaut für dieselbe Aussage über ein Objekt. Antwort 54: „Fachlich bestätigt".
+    expect(quelle).toContain("Fachlich bestätigt");
     expect(panel.text("#ka7-liste .ka7-eigen")).toContain(STELLE_EIGEN);
     expect(panel.text("#ka7-liste .ka7-regel")).toContain(STELLE_QUELLE);
     expect(panel.text("#ka7-liste .ka7-grund")).toContain("A erlaubt drei Tage, B zwei.");
@@ -1231,7 +1231,7 @@ describe("KA7 · JOB 3174 — Doppelung und Konflikt sind zwei Aussagen", () => 
     const zeile = panel.q('#ka7-doppelung-liste li[data-quelle="regel-9"]');
     expect(zeile?.textContent).toContain("Urlaubsregelung");
     expect(zeile?.textContent).toContain("Version 2");
-    expect(zeile?.textContent).toContain("Validiert");
+    expect(zeile?.textContent).toContain("Fachlich bestätigt");
     // Die Beziehung im Wortlaut der Erfassen-Fläche (W6_RELATION_KEYS) — kein zweiter Wortlaut.
     expect(zeile?.textContent).toContain(panel.t("captureDubIdentisch"));
     expect(panel.q("#ka7-doppelung-liste li a")?.href).toContain("regel-9");

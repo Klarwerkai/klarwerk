@@ -9,7 +9,13 @@ import type {
   UserRepo,
 } from "./repo";
 import { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./service";
-import { type Role, type Session, type User, istFreigabestufe } from "./types";
+import {
+  type Role,
+  type Session,
+  type User,
+  type Weisungsbefugnis,
+  istFreigabestufe,
+} from "./types";
 
 // Postgres-Adapter für auth. Das Modul besitzt seine Tabellen (keine geteilten Tabellen).
 export const AUTH_SCHEMA = `
@@ -57,6 +63,10 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS freigabe text;
 -- R-0556 / R-0571: die vom Unternehmensverzeichnis gemeldeten Gruppen (JSON-Liste). NULL-bar und
 -- ohne Vorgabe: ein Konto, das das Verzeichnis nie gesehen hat, trägt keine.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS verzeichnis_gruppen text;
+-- Aufnahme gesamt-peer-validierung (Antwort 18): die fachliche Weisungsbefugnis des Kontos mit
+-- Zuständigkeitsbereich (JSON). NULL-bar und ohne Vorgabe: kein Bestandskonto bekommt eine
+-- Befugnis, die niemand vergeben hat.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS weisungsbefugnis text;
 -- Ein Subjekt gehoert zu genau EINEM Konto. Ohne diese Zusage koennte ein zweites Konto dieselbe
 -- Identitaet tragen, und welches der beiden die Anmeldung bekommt, entschiede die Zeilenreihenfolge.
 -- PARTIELL, weil unverknuepfte Bestandskonten (beide Spalten NULL) sich nicht gegenseitig
@@ -178,6 +188,31 @@ interface UserRow {
   // Nacharbeit 19: optional getypt aus demselben Grund — vor der Migration fehlt die Spalte.
   freigabe?: string | null;
   verzeichnis_gruppen?: string | null;
+  weisungsbefugnis?: string | null;
+}
+
+/** Antwort 18: eine unlesbare Spalte ist „keine Befugnis" — sie darf niemandem Weisungsrecht geben. */
+function weisungsbefugnisAus(roh: string | null | undefined): Weisungsbefugnis | undefined {
+  if (!roh) {
+    return undefined;
+  }
+  try {
+    const wert = JSON.parse(roh) as Partial<Weisungsbefugnis> | null;
+    if (
+      !wert ||
+      !Array.isArray(wert.bereiche) ||
+      typeof wert.erteiltVon !== "string" ||
+      typeof wert.erteiltAm !== "string"
+    ) {
+      return undefined;
+    }
+    const bereiche = wert.bereiche.filter((b): b is string => typeof b === "string");
+    return bereiche.length > 0
+      ? { bereiche, erteiltVon: wert.erteiltVon, erteiltAm: wert.erteiltAm }
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** R-0556: eine unlesbare Spalte ist „keine Gruppen" — sie darf niemandem Zuständigkeit geben. */
@@ -195,6 +230,7 @@ function gruppenAus(roh: string | null | undefined): string[] | undefined {
 
 function toUser(row: UserRow): User {
   const verzeichnisGruppen = gruppenAus(row.verzeichnis_gruppen);
+  const weisungsbefugnis = weisungsbefugnisAus(row.weisungsbefugnis);
   return {
     id: row.id,
     name: row.name,
@@ -230,6 +266,7 @@ function toUser(row: UserRow): User {
     // heißt „nicht gesetzt" — und damit Übergangsregel, nie eine höhere Freigabe.
     ...(istFreigabestufe(row.freigabe) ? { freigabe: row.freigabe } : {}),
     ...(verzeichnisGruppen ? { verzeichnisGruppen } : {}),
+    ...(weisungsbefugnis ? { weisungsbefugnis } : {}),
   };
 }
 
@@ -312,6 +349,19 @@ export class PgUserRepo implements UserRepo {
     await ziel.query("UPDATE users SET verzeichnis_gruppen=$2 WHERE id=$1", [
       id,
       JSON.stringify(gruppen),
+    ]);
+  }
+
+  // Aufnahme gesamt-peer-validierung (Antwort 18): die eigene Spalte, s. UserRepo.
+  async setzeWeisungsbefugnis(
+    id: string,
+    befugnis: Weisungsbefugnis | undefined,
+    tx?: TxContext,
+  ): Promise<void> {
+    const ziel = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    await ziel.query("UPDATE users SET weisungsbefugnis=$2 WHERE id=$1", [
+      id,
+      befugnis ? JSON.stringify(befugnis) : null,
     ]);
   }
 

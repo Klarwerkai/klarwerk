@@ -116,7 +116,8 @@ describe("JOB 3092 · S6 — Herkunft und Ungeprueft-Satz an der Antwort (gemoun
     expect(feld.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(herkunftZeilen()).toEqual([
       {
-        text: "Quelle: Design Guide · Validiert · Version 3",
+        // Antwort 54 (11.10.2026): der validierte Prüfstand heisst „Fachlich bestätigt".
+        text: "Quelle: Design Guide · Fachlich bestätigt · Version 3",
         quelle: "ka",
         href: `${window.location.origin}/wissen/ka`,
       },
@@ -233,7 +234,9 @@ describe("JOB 3092 · S6 — Herkunft und Ungeprueft-Satz an der Antwort (gemoun
       "Quelle: ka · konnte nicht geladen werden",
       "Quelle: kb · konnte nicht geladen werden",
     ]);
-    expect(sichtbarerText(el("ask-herkunft"))).not.toMatch(/Version|Validiert|Offen|keinen Beleg/);
+    expect(sichtbarerText(el("ask-herkunft"))).not.toMatch(
+      /Version|Validiert|Fachlich bestätigt|Offen|keinen Beleg/,
+    );
   });
 
   it("H7 · waehrend die Quellen laden, steht „Quellen werden geladen …“ — danach die Zeilen; die Ladezeile bleibt nie stehen", async () => {
@@ -252,7 +255,7 @@ describe("JOB 3092 · S6 — Herkunft und Ungeprueft-Satz an der Antwort (gemoun
     });
     await ruhe();
     expect(herkunftZeilen().map((z) => z.text)).toEqual([
-      "Quelle: Design Guide · Validiert · Version 3",
+      "Quelle: Design Guide · Fachlich bestätigt · Version 3",
     ]);
     expect(sichtbarerText(el("ask-herkunft"))).not.toContain("geladen …");
   });
@@ -388,7 +391,7 @@ describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tr
     await ruhe();
     await fragen();
     expect(herkunftZeilen().map((z) => z.text)).toEqual([
-      "Quelle: Design Guide · Validiert · Version 3 · Stand 02.03.2026",
+      "Quelle: Design Guide · Fachlich bestätigt · Version 3 · Stand 02.03.2026",
       "Quelle: HD Handbook · Offen · Version 1 · Stand 05.01.2026",
     ]);
   });
@@ -419,7 +422,7 @@ describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tr
     expect(text.startsWith("Offene Profile sind zu bevorzugen.\n\n")).toBe(true);
     // Jede Quelle traegt ihr eigenes Datum; keines wird durch das einer anderen ersetzt.
     expect(QUELLENZEILE.exec(text)?.[1]).toBe(
-      "Design Guide (Validiert, Version 3, Stand 02.03.2026), HD Handbook (Offen, Version 1, Stand 05.01.2026)",
+      "Design Guide (Fachlich bestätigt, Version 3, Stand 02.03.2026), HD Handbook (Offen, Version 1, Stand 05.01.2026)",
     );
     // Die nur herangezogene dritte Quelle reist nicht mit — weder ihr Titel noch ihr juengeres Datum.
     expect(text).not.toContain("Randnotiz");
@@ -492,7 +495,7 @@ describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tr
     await fragen();
     const text = await einfuegen();
     expect(QUELLENZEILE.exec(text)?.[1]).toBe("ka");
-    expect(text).not.toMatch(/Validiert|Version/);
+    expect(text).not.toMatch(/Validiert|Fachlich bestätigt|Version/);
   });
 
   // ----------------------------------------------------------------------------------------------
@@ -530,7 +533,7 @@ describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tr
     expect(box?.getAttribute("data-quelle")).toBe("ka");
     expect(box?.querySelector("h3")?.textContent).toBe("Design Guide");
     expect(box?.querySelector(".einschub-stand")?.textContent).toBe(
-      "Validiert · Version 3 · Stand 02.03.2026",
+      "Fachlich bestätigt · Version 3 · Stand 02.03.2026",
     );
     expect(box?.querySelector(".einschub-passage mark")?.textContent).toBe(
       "Offene Profile sind zu bevorzugen.",

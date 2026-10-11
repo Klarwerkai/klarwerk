@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { statusSchluessel } from "../../lib/wissensstatus";
 import type { DisplayStatus } from "./types";
 
 // Status-Pill (BRIEF §5). Farben fest je Status — bewusst inline, da einige
@@ -28,7 +29,7 @@ export function StatusPill({
       className="inline-flex items-center rounded-pill px-2 py-0.5 font-mono text-[11px] font-semibold"
       style={STYLE[status]}
     >
-      {label ?? t(`status.${status}`)}
+      {label ?? t(statusSchluessel(status))}
     </span>
   );
 }
