@@ -5199,6 +5199,9 @@ export function buildApp(
     // Ein Traeger FRISCH — `KoService.get` liefert fuer den Papierkorb `undefined`, zeichengleich
     // mit dem Trim in `list`.
     ko: (koId) => services.ko.get(koId),
+    // BPA-17 (G05): die Quelle IM PAPIERKORB, nur für private Folgeprodukte — eine gewöhnliche
+    // Löschung hebt die berechtigt erzeugte Kopie nicht auf; Rechte gelten an ihren Fakten weiter.
+    papierkorb: (koId) => services.ko.papierkorbFassungVon(koId),
     // Der Schreibstand aus der ABLAGE (Pg: Zeile `ko_schreibstand`; Speicher: geteiltes Objekt des
     // Bestands) — der Kandidaten-Speicher verwirft damit jeden Eintrag, sobald irgendwo, auch in
     // einem anderen Prozess, ein Traeger entstanden oder verschwunden sein kann. Ohne diese Quelle
