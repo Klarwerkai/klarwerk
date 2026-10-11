@@ -15,14 +15,16 @@ import { expect, it } from "vitest";
 import type { AuditEntry } from "../../services/audit";
 import type { KoRepo, KoService } from "../../services/knowledge-object";
 
+// Ausdrücklich `| undefined` statt `?:` — das Projekt prüft mit `exactOptionalPropertyTypes`, und
+// ein verbrauchter Halt wird auf `undefined` zurückgesetzt (ohne `delete`, das Biome hier rügt).
 export interface Halt {
-  vorDelete?: () => Promise<void>;
-  vorUpdate?: () => Promise<void>;
+  vorDelete: (() => Promise<void>) | undefined;
+  vorUpdate: (() => Promise<void>) | undefined;
 }
 
 /** Hüllt eine Ablage; ein gesetzter Halt greift genau EINMAL vor dem nächsten delete/update. */
 export function gesteuert<R extends KoRepo>(inner: R): { repo: R; halt: Halt } {
-  const halt: Halt = {};
+  const halt: Halt = { vorDelete: undefined, vorUpdate: undefined };
   const repo = new Proxy(inner, {
     get(ziel, name) {
       if (name === "delete" || name === "update") {
