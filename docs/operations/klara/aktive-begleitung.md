@@ -64,10 +64,15 @@ Nie gelesen werden außerdem: Passwortfelder, versteckte Felder und alles außer
 
 ## Abgrenzung zum Quellenänderungsdienst
 
-Dateiänderungen über längere Zeit erkennt weiter der vorhandene, getrennte Dienst: der
-Confluence-Abgleich und die Änderungsprüfung der Arbeitsanleitungen. Die Begleitung ruft ihn nicht
+Dateiänderungen über längere Zeit erkennt weiter der vorhandene, getrennte Dienst: die
+Änderungsprüfung der Arbeitsanleitungen und der Confluence-Abgleich. Die Begleitung ruft ihn nicht
 und ersetzt ihn nicht. Grenze: Eine zeitgesteuerte Dauerüberwachung ist dort nicht eingerichtet
 (`ueberwachung: "nicht_eingerichtet"`). Geprüft wird beim Abgleich oder beim Öffnen.
+
+Fremder Basisbefund: Am Kandidaten `f2144738` sind in `tests/confluence-quellabgleich/abgleich.test.ts`
+die drei R-0162-Fälle zum Löschabgleich rot. Sie betreffen `services/app/src/confluence-import.ts`,
+den diese Lieferung nicht ändert. Der Test bleibt unverändert und wird hier nicht als Beleg
+herangezogen.
 
 ## Schnittstelle für Host-Adapter (BPA-01 Browser, BPA-04 Nativ)
 

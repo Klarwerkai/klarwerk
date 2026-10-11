@@ -7,12 +7,13 @@
 // Quellenänderungsdienst erkannt, auch ohne geöffnetes Fenster; Live-Begleitung ersetzt diesen
 // Dienst nicht."
 //
-// Das ERKENNEN belegen die bestehenden Prüfstände des getrennten Dienstes, die in derselben
-// Prüfauswahl laufen — beide arbeiten am Server, ohne dass irgendein Fenster geöffnet ist:
-//   · `tests/confluence-quellabgleich/abgleich.test.ts` — der Abgleich zieht neue Fassungen und
-//     Löschungen der Quelle nach.
+// Das ERKENNEN belegt der bestehende Prüfstand des getrennten Dienstes, der in derselben
+// Prüfauswahl läuft und am Server arbeitet, ohne dass irgendein Fenster geöffnet ist:
 //   · `tests/quellenaenderungen-bewusst-uebernehmen/dienst-und-tuer.test.ts` — eine neuere
 //     Quellfassung erscheint als Vorschlag, mit Prüfzeitpunkt und Ergebnis.
+// `tests/confluence-quellabgleich/abgleich.test.ts` gehört NICHT zu dieser Auswahl: dort sind die
+// drei R-0162-Fälle (Löschabgleich, `services/app/src/confluence-import.ts`) am Kandidaten rot —
+// ein unveränderter fremder Basisbefund, den diese Begleitung weder berührt noch beheben darf.
 // Dieser Fall hält die andere Hälfte fest: die Begleitung greift in diesen Dienst nicht ein und
 // spielt ihn nicht nach. Gelesen aus dem Quelltext und am Verhalten des Kerns.
 import { readFileSync } from "node:fs";
