@@ -71,10 +71,11 @@ test("PV-01 · Bibliothek → Export → Wissenspaket lädt ein lesbares ZIP her
   await expect(page.getByTestId("page-bibliothek")).toBeVisible({ timeout: 15_000 });
 
   await page.getByTestId("bib-liste-menue").click();
+  // Das Untermenü ist ein `<summary>` mit vorangestelltem, aria-verborgenem Pfeil „›“ — sein
+  // Textinhalt beginnt deshalb NICHT mit „Export“. Gesucht wird die Beschriftung selbst, exakt.
   await page
     .locator('[role="menu"] summary')
-    .filter({ hasText: /^Export/ })
-    .first()
+    .filter({ has: page.getByText("Export", { exact: true }) })
     .click();
   const link = page.getByTestId("bib-export-paket");
   await expect(link).toBeVisible();
