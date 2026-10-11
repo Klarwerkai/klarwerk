@@ -76,7 +76,7 @@ SSH :22 ──► nur Key-Auth, kein Root, fail2ban, möglichst IP-/Tunnel-besch
 
 ## 5. Bezug zu Backup / Monitoring / Secrets
 
-- **Backup/DR:** `backup-disaster-recovery.md` (Snapshots + `pg_dump`, RTO ≤ 4 h).
+- **Backup/DR:** `backup-disaster-recovery.md` (Snapshots + `pg_dump`); RPO/RTO nur als Vorschläge in drei Varianten, keine SLA (`wiederanlauf-rpo-rto.md`).
 - **Monitoring/Logging:** `monitoring-logging.md` (`/health`, ModelRun-Metadaten; **keine** Prompt-/Antworttexte).
 - **Secrets:** `secrets-management.md` (Coolify-Env + Passwort-Manager; nie im Repo/Client).
 
