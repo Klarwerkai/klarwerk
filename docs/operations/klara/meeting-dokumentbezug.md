@@ -73,7 +73,12 @@ jeder Anfrage:
 
 ## Grenzen dieses Stands
 
-- Es gibt keine Weboberfläche für diese Routen. Der Bedienweg ist die HTTP-Schnittstelle der App.
+- Die Weboberfläche ist `/besprechungen` (`apps/web/src/pages/Besprechungen.tsx`), erreichbar vom
+  Dokumentweg (`/fragen/dokument`) und von der Fragen-Seite. Dort werden Dateien verbunden, Folien
+  an Gesprächsstellen von Hand zugeordnet, Rückmeldungen erfasst und aus Folie und Gesprächsstelle
+  geöffnet, jeweils mit Verweis auf die tatsächliche Quellfassung (`/api/objects/:id/raw`). Belegt
+  ist das gemountet gegen die echte App (`tests/meeting-dokumentbezug/oberflaeche-mounted.test.tsx`),
+  nicht in einem echten Browser.
 - Geprüfte Dateien sind synthetisch erzeugtes OOXML und `tests/fixtures/d3-referenz.pptx`, nicht
   mit einer PowerPoint-Installation gespeichert. Eine Hostprobe steht aus (O11).
 - Der Leser erwartet die üblichen Präfixe `p:`/`a:`/`r:`. Titel kommen aus `title`/`ctrTitle`.
