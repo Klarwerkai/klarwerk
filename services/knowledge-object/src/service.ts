@@ -161,6 +161,7 @@ import {
   type KoVeroeffentlichung,
   type Kontoregel,
   type TrashedKo,
+  type WeisungsSichtung,
 } from "./types";
 
 /**
@@ -5745,6 +5746,8 @@ export class KoService {
     const istAnnahme =
       beleg?.action === "ko.admin-validated" ||
       beleg?.action === "ko.owner-validated" ||
+      // Antworten 18/19: die unmittelbar gültige Weisung ist ebenfalls eine Annahme.
+      beleg?.action === "ko.weisung-validated" ||
       (beleg?.action === "ko.rated" && p.verdict === "up");
     if (!beleg || !istAnnahme || p.koVersion !== ko.version) {
       return undefined;
@@ -7145,6 +7148,12 @@ export class KoService {
       // Dann wird er zusätzlich als `annahmeRef` festgehalten. Sonst bleibt ein vorhandener
       // Annahmeverweis unberührt — eine Rückgabe verdrängt ihn nicht.
       annahme?: boolean;
+      // Antwort 19: ist der Beleg die unmittelbar gültige WEISUNG? Dann wird ihre Sichtung
+      // (verantwortliche Person, Frist) an genau diesen Beleg gebunden festgehalten.
+      weisung?: Pick<WeisungsSichtung, "erteiltVon" | "bereich" | "verantwortlich" | "frist">;
+      // Antwort 19: das Ergebnis der Sichtung, gebunden an den Beleg DIESES Vorgangs. `widerrufen`
+      // nimmt zugleich den Annahmeverweis der Fassung zurück — die Annahme gilt nicht mehr.
+      sichtung?: { art: "bestaetigt" | "widerrufen"; von: string; am: string };
     }>,
     opts: { expectedVersion: number; beiVersionswechsel: "nichts" | "nurBeleg" },
     beleg: (tx?: TxContext) => Promise<{ auditSeq: number; auditHash: string } | null>,
@@ -7183,12 +7192,14 @@ export class KoService {
         // AW06-K02 (Ben, Nacharbeit 8): BESTAND ohne `annahmeRef`. Zeigt der bisherige
         // Entscheidungsverweis belegt auf die Annahme DIESER Fassung, wird er übernommen, BEVOR der
         // Beleg dieses Vorgangs (etwa die Rückgabe einer gelben Stimme) ihn ersetzt.
-        const bisherigeAnnahme = state.annahme
-          ? undefined
-          : await this.belegteAnnahmeAusVerweis(ko);
-        const { vertrauensGrundlage: _bisher, ...ohneGrundlage } = ko;
+        // Antwort 19: ein Widerruf nimmt die Annahme zurück — dann wird auch keine übernommen.
+        const widerruf = state.sichtung?.art === "widerrufen";
+        const bisherigeAnnahme =
+          state.annahme || widerruf ? undefined : await this.belegteAnnahmeAusVerweis(ko);
+        const { vertrauensGrundlage: _bisher, annahmeRef: _annahme, ...ohneGrundlage } = ko;
         const updated: KnowledgeObject = {
           ...ohneGrundlage,
+          ...(ko.annahmeRef && !widerruf ? { annahmeRef: ko.annahmeRef } : {}),
           trust: state.trust,
           status: state.status,
           ...(state.grundlage
@@ -7213,6 +7224,24 @@ export class KoService {
                     auditSeq: ref.auditSeq,
                     auditHash: ref.auditHash,
                     koVersion: updated.version,
+                  },
+                }
+              : {}),
+            ...(state.weisung
+              ? {
+                  weisungsSichtung: {
+                    auditSeq: ref.auditSeq,
+                    auditHash: ref.auditHash,
+                    koVersion: updated.version,
+                    ...state.weisung,
+                  },
+                }
+              : {}),
+            ...(state.sichtung && updated.weisungsSichtung
+              ? {
+                  weisungsSichtung: {
+                    ...updated.weisungsSichtung,
+                    ergebnis: { ...state.sichtung, auditSeq: ref.auditSeq },
                   },
                 }
               : {}),

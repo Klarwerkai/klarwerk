@@ -1,3 +1,5 @@
+import { WISSENSSTATUS_BESTAETIGT } from "./wissensstatus";
+
 export type KnowledgeGuidanceSurface = "start" | "library" | "ask";
 export type KnowledgeGuidanceTone = "pos" | "warn" | "neutral";
 export type KnowledgeGuidanceItemId = "secured" | "review" | "sourceBound";
@@ -19,7 +21,8 @@ export interface KnowledgeGuidance {
 const ITEMS: Record<KnowledgeGuidanceItemId, KnowledgeGuidanceItem> = {
   secured: {
     id: "secured",
-    labelKey: "kg.secured.label",
+    // Nutzerentscheid Antwort 54: „Fachlich bestätigt" statt „Gesichert" (lib/wissensstatus.ts).
+    labelKey: WISSENSSTATUS_BESTAETIGT,
     bodyKey: "kg.secured.body",
     to: "/bibliothek",
     tone: "pos",

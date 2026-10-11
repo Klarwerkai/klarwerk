@@ -507,4 +507,6 @@ export type {
   // produkt:20261007:veroeffentlichungsoptionen: der Vermerk einer Veröffentlichung samt Meldungswahl.
   KoVeroeffentlichung,
   VeroeffentlichungsMeldung,
+  // Antwort 19 (gesamt-peer-validierung): die Sichtung einer unmittelbar gültigen Weisung.
+  WeisungsSichtung,
 } from "./src/types";

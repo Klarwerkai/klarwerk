@@ -53,6 +53,42 @@ export interface User {
   // gemeldet hat. Aus ihnen folgen Rolle und Prüfzuständigkeiten — gepflegt vom Verzeichnis, nicht
   // von Hand. Optional: ein Konto, das das Verzeichnis nie gesehen hat, trägt keine.
   verzeichnisGruppen?: string[];
+  // Aufnahme gesamt-peer-validierung · Nutzerentscheid Antwort 18 (11.10.2026): die ausdrückliche
+  // fachliche WEISUNGSBEFUGNIS dieses Kontos mit ihrem Zuständigkeitsbereich. Sie wird am Konto
+  // vergeben (Geschäftsführung und weisungsberechtigte Personen) — die Rolle `admin` verleiht sie
+  // NICHT: technische Verwaltung ist keine fachliche Weisungsbefugnis. Optional: ein Konto ohne
+  // Vermerk hat keine.
+  weisungsbefugnis?: Weisungsbefugnis;
+}
+
+/**
+ * Antwort 18: wofür ein Konto eigene Weisungen unmittelbar gültig einstellen darf. `bereiche` sind
+ * die Bereiche (Kategorie eines Wissensobjekts), für die das Konto zuständig ist;
+ * `WEISUNG_GANZES_UNTERNEHMEN` steht für die Zuständigkeit über alle Bereiche (Geschäftsführung).
+ * `erteiltVon`/`erteiltAm` nennen, wer die Befugnis wann vergeben hat.
+ */
+export interface Weisungsbefugnis {
+  bereiche: string[];
+  erteiltVon: string;
+  erteiltAm: string;
+}
+
+/** Der Zuständigkeitsbereich „ganzes Unternehmen" (Antwort 18: Geschäftsführung). */
+export const WEISUNG_GANZES_UNTERNEHMEN = "*";
+
+/** Deckt die Befugnis diesen Bereich? Ohne Bereich am Objekt nur bei „ganzes Unternehmen". */
+export function weisungsbefugnisDeckt(
+  befugnis: { bereiche: readonly string[] } | undefined,
+  bereich: string | null | undefined,
+): boolean {
+  if (!befugnis) {
+    return false;
+  }
+  if (befugnis.bereiche.includes(WEISUNG_GANZES_UNTERNEHMEN)) {
+    return true;
+  }
+  const ziel = (bereich ?? "").trim().toLowerCase();
+  return ziel.length > 0 && befugnis.bereiche.some((b) => b.trim().toLowerCase() === ziel);
 }
 
 export interface Session {

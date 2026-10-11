@@ -102,7 +102,8 @@ describe("JOB 3092 · S6 — Dublettenpruefung vor dem Einreichen (gemountet)", 
       /^Dazu gibt es schon Vergleichbares \(geprüft \d{2}:\d{2}\):$/,
     );
     expect(zeilen(p)).toEqual([
-      "Ventilwartung · teilweise gleich · Wartung · Validiert",
+      // Antwort 54 (11.10.2026): der validierte Zustand heisst „Fachlich bestätigt".
+      "Ventilwartung · teilweise gleich · Wartung · Fachlich bestätigt",
       "Druckentlastung · verwandt · Offen",
     ]);
     const link = p.q("#capture-dubletten-liste a");

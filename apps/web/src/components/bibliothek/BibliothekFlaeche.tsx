@@ -118,6 +118,7 @@ import { useAuthorName } from "../../lib/useAuthorName";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../../lib/useDebouncedValue";
 import { usePersistentEnum } from "../../lib/usePersistentValue";
 import { useReadiness } from "../../lib/useReadiness";
+import { statusSchluessel } from "../../lib/wissensstatus";
 import { TABLET_LESE_QUERY, useMediaQuery } from "../../shell/useMediaQuery";
 import { AnlagenMatrix } from "../Anlagen";
 import { DemoBanner } from "../DemoBanner";
@@ -827,7 +828,7 @@ export function BibliothekFlaeche({
       case "language":
         return t(`lib.facet.lang.${value}`);
       case "status":
-        return t(`status.${value}`);
+        return t(statusSchluessel(value));
       case "author":
         return nameOf(value);
       case "age":
@@ -1219,7 +1220,7 @@ export function BibliothekFlaeche({
       id: ko.id,
       titel: ko.title,
       bereich: ko.category,
-      zustandWort: t(`status.${zustand}`),
+      zustandWort: t(statusSchluessel(zustand)),
       ton: zustandsTon(zustand),
       stufe: { labelKey: auskunft.labelKey, tone: auskunft.tone },
       // ============================================================================================
@@ -1714,7 +1715,7 @@ export function BibliothekFlaeche({
       : [
           {
             schluessel: "zustand",
-            text: `${t("lib.segment.label")}: ${t(`status.${segment}`)}`,
+            text: `${t("lib.segment.label")}: ${t(statusSchluessel(segment))}`,
           },
         ]),
   ];

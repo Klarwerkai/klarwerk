@@ -191,7 +191,7 @@ import {
 } from "../../object-store";
 import { type AuditLeser, LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
 // SCRUM-443: echte Rollenwechsel-Regel (FR-RBAC-03) in den AuthService injizieren.
-import { canChangeRole, canManageUsers } from "../../rbac";
+import { can, canChangeRole, canManageUsers } from "../../rbac";
 import {
   type AssistPresetRepo,
   Ausgangspruefung,
@@ -3999,6 +3999,21 @@ export function buildApp(
         freigabeberechtigt: async (userId) => {
           const person = (await services.auth.listUsers()).find((u) => u.id === userId);
           return Boolean(person?.approved) && canManageUsers(person?.role ?? "viewer");
+        },
+        // Aufnahme gesamt-peer-validierung (Antworten 18/19): die am Konto vergebene
+        // Weisungsbefugnis — ausdrücklich NICHT aus der Rolle abgeleitet. `freigabeberechtigt`
+        // ist hier das Prüfrecht `ko.validate` (Antwort 21: Entscheidungen brauchen eigene Rechte);
+        // es entscheidet nur, wer die SICHTUNG übernehmen darf, nicht wer Weisungen erteilt.
+        weisungskonto: async (userId) => {
+          const person = (await services.auth.listUsers()).find((u) => u.id === userId);
+          if (!person) {
+            return undefined;
+          }
+          return {
+            aktiv: Boolean(person.approved),
+            weisungsbefugnis: person.weisungsbefugnis,
+            freigabeberechtigt: can(person.role, "ko.validate"),
+          };
         },
         draftPromotion: {
           load: async (draftId, user) => {

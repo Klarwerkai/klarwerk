@@ -208,6 +208,15 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // R-0507: die Eigentümerfreigabe — ob der Anfragende Eigentümer ist, entscheidet der Dienst.
     case "owner-validate":
       return { action };
+    // Aufnahme gesamt-peer-validierung (Antworten 18/19): die Weisung und ihre Sichtung. Ob der
+    // Anfragende Weisungsbefugnis hat bzw. die benannte Person ist, entscheidet der Zweig/Dienst.
+    case "weisung-validate":
+      return {
+        action,
+        sichtung: { verantwortlich: "verantwortliche-person", frist: "2099-12-31" },
+      };
+    case "weisung-sichten":
+      return { action, sichtung: { ergebnis: "bestaetigt" } };
     case "conflict":
       return {
         action,

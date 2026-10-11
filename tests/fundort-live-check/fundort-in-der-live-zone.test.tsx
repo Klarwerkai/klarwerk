@@ -164,7 +164,8 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
     await render(createElement(LiveReactionZone, { verdict }));
     expect(fundortZeile()).not.toBeNull();
     expect(text()).toContain("Arbeitssicherheit");
-    expect(text()).toContain("Validiert");
+    // Nutzerentscheid Antwort 54 (11.10.2026): der validierte Zustand heisst „Fachlich bestätigt".
+    expect(text()).toContain("Fachlich bestätigt");
     // Der bestehende Titel-/Linkvertrag bleibt unangetastet.
     expect(text()).toContain("Not-Aus vor Wartung");
     expect(container.querySelector('a[href="/wissen/k1"]')).not.toBeNull();
@@ -188,6 +189,7 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
     expect(text()).not.toContain("Offen");
     expect(text()).not.toContain("noch nicht geprüft");
     expect(text()).not.toContain("Validiert");
+    expect(text()).not.toContain("Fachlich bestätigt");
   });
 
   it("C · beides null: die Fundortzeile entsteht gar nicht — kein Platzhalter", async () => {
@@ -208,6 +210,7 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
     expect(text()).not.toContain("Offen");
     expect(text()).not.toContain("noch nicht geprüft");
     expect(text()).not.toContain("Validiert");
+    expect(text()).not.toContain("Fachlich bestätigt");
     // Der Treffer selbst bleibt vollständig sichtbar: nur der ORT fehlt, nicht der Fund.
     expect(text()).toContain("Not-Aus vor Wartung");
     expect(container.querySelector('a[href="/wissen/k1"]')).not.toBeNull();
@@ -249,7 +252,7 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
     expect(draht.aufrufe).toBe(1);
     expect(fundortZeile()).not.toBeNull();
     expect(text()).toContain("Verwaltung");
-    expect(text()).toContain("Validiert");
+    expect(text()).toContain("Fachlich bestätigt");
   });
 
   it("E2 · tippt der Mensch weiter, verschwindet der Fundort mit dem Treffer", async () => {
@@ -304,13 +307,13 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
     await render(createElement(LiveReactionZone, { verdict }));
     expect(text()).toContain("Sits in:");
     expect(text()).toContain("Validated");
-    expect(text()).not.toContain("Validiert");
+    expect(text()).not.toContain("Fachlich bestätigt");
 
     await spracheSetzen("nl");
     await render(createElement(LiveReactionZone, { verdict }));
     expect(text()).toContain("Staat in:");
     expect(text()).toContain("Gevalideerd");
-    expect(text()).not.toContain("Validiert");
+    expect(text()).not.toContain("Fachlich bestätigt");
   });
 
   // ── DER FALL, DEN RUNDE 2 ÜBERSEHEN HAT (BEN, Korrekturpflicht 1+2) ──────────────────────────
@@ -358,7 +361,7 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
         name: "beides belegt",
         kategorie: "Arbeitssicherheit",
         zustand: "validiert",
-        zeile: "Liegt in:ArbeitssicherheitValidiert",
+        zeile: "Liegt in:ArbeitssicherheitFachlich bestätigt",
       },
       {
         name: "nur Kategorie",

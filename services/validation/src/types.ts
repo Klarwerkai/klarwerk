@@ -34,7 +34,14 @@ export interface Assignment {
 
 // SCRUM-395: INVALID_DEFAULT = ungültige Standard-Prüferanzahl (Admin-Einstellung).
 // R-0507: NOT_OWNER = die Eigentümerfreigabe verlangt den benannten Eigentümer (an der Route 403).
-export type ValidationErrorCode = "NOT_FOUND" | "INVALID_DEFAULT" | "NOT_OWNER";
+// Antworten 18/19 (Weisung): FORBIDDEN = keine Weisungsbefugnis für den Bereich bzw. nicht die
+// benannte Sichtungsperson (403); INVALID = keine offene Sichtung, Sichtung durch sich selbst (400).
+export type ValidationErrorCode =
+  | "NOT_FOUND"
+  | "INVALID_DEFAULT"
+  | "NOT_OWNER"
+  | "FORBIDDEN"
+  | "INVALID";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;

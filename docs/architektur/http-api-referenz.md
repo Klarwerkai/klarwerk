@@ -129,7 +129,7 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `DELETE` | `/api/auth/users/:id` | `requireAdmin` | — | 204 | 401; 403; Dienstfehler |
 | `GET` | `/api/users` | `requireAdmin` | — | 200 Kontenliste (`listUsers`) | 401; 403 |
 | `POST` | `/api/users` | `requireAdmin` | Rumpf `{ name, email, password, role?, accessExpiresAt? }` | 201 Konto | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` (Befristung unlesbar oder Rollenwechsel unzulässig); 409 `EMAIL_TAKEN` |
-| `PUT` | `/api/users/:id` | `requireAdmin` | Rumpf `{ role?, approve?, password?, accessExpiresAt? }` | 200 Konto bzw. 204 | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` |
+| `PUT` | `/api/users/:id` | `requireAdmin` | Rumpf `{ role?, approve?, password?, accessExpiresAt?, weisungsbefugnis? }` (`weisungsbefugnis`: Liste von Bereichen, `*` = ganzes Unternehmen, `null` entzieht) | 200 Konto bzw. 204 | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` |
 | `DELETE` | `/api/users/:id` | `requireAdmin` | — | 204 | 401; 403; Dienstfehler |
 | `DELETE` | `/api/users/:id/second-factor` | `requireAdmin` | — | 204 (zweiter Faktor entfernt, z. B. bei verlorenem Gerät) | 401; 403 `FORBIDDEN` (nicht eingerichtet); 404 |
 | `GET` | `/api/directory` | `requireUser` (Modul) | — | 200 `[{ id, name }]` — ohne E-Mail | 401 |
@@ -213,6 +213,8 @@ herabgestuft werden (409 `mutability`).
 | `confidentiality` | `ko.create` | Stufe |
 | `ownership` | `ko.validate` | `ownership` |
 | `owner-validate` | `ko.validate`; nur der benannte Eigentümer (sonst 403 `NOT_OWNER`); Dublettentor wie `rate` | `duplicateAcknowledged?` (Status „validiert“, Vertrauen unverändert; Audit `ko.owner-validated`; Eigentümer in `ownership.validators`) |
+| `weisung-validate` | `ko.read` **und** Weisungsbefugnis am Konto für den Bereich des Objekts (sonst 403; die Rolle allein genügt nicht); nur das eigene Objekt (sonst 403 `NOT_OWNER`); Dublettentor wie `rate` | `sichtung: { verantwortlich, frist: JJJJ-MM-TT }` — andere, freigegebene Person mit `ko.validate` oder Weisungsbefugnis im Bereich, Frist ab heute (sonst 400); `duplicateAcknowledged?` (Status „validiert“, Vertrauen unverändert; Audit `ko.weisung-validated`, Kontoregel `weisung`; `weisungsSichtung` am Objekt) |
+| `weisung-sichten` | `ko.read`; nur die benannte verantwortliche Person (sonst 403), nur die offene Sichtung der gültigen Fassung (sonst 400) | `sichtung: { ergebnis: bestaetigt \| widerrufen }` (`widerrufen` → Status offen, Annahme entfällt; Audit `ko.weisung-gesichtet`) |
 | `ownership-release` | `ko.read`; nur der benannte Eigentümer selbst (sonst 403 `NOT_OWNER`) | — (Spur `reviewers`/`validators` bleibt; Audit `ko.ownership-released`) |
 | `conflict` | `ko.validate` | `conflict` (antwortet 201) |
 | `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |

@@ -383,13 +383,45 @@ export interface KoProposal {
  *                                   dürfen und die fremde Prüfung gewählt hat.
  *   · `eigentuemerfreigabe`       — R-0507: der benannte Eigentümer mit Freigaberecht gibt frei
  *                                   (`ValidationService.ownerValidate`, Beleg `ko.owner-validated`).
+ *   · `weisung`                   — Antworten 18/19: ein Konto mit fachlicher Weisungsbefugnis für
+ *                                   den Bereich stellt die eigene Weisung unmittelbar gültig ein
+ *                                   (`ValidationService.weisungValidate`, Beleg
+ *                                   `ko.weisung-validated`); eine benannte Person sichtet nach.
  */
 export type Kontoregel =
   | "peer-pruefung"
   | "direktannahme"
   | "pflichtpruefung"
   | "freiwillige-zweitpruefung"
-  | "eigentuemerfreigabe";
+  | "eigentuemerfreigabe"
+  | "weisung";
+
+/**
+ * Antwort 19 — DIE NACHFOLGENDE SICHTUNG EINER UNMITTELBAR GÜLTIGEN WEISUNG.
+ *
+ * Die Weisung gilt ab ihrer Einstellung; die benannte verantwortliche Person (nie die
+ * Weisungsgeberin selbst) sichtet sie bis zur Frist. `auditSeq`/`auditHash`/`koVersion` binden die
+ * Sichtung an den Beleg `ko.weisung-validated` und an genau die gültig gesetzte Fassung. `ergebnis`
+ * fehlt, solange nicht gesichtet ist: `bestaetigt` lässt die Weisung stehen, `widerrufen` nimmt sie
+ * zurück (Status offen). Ein Wahrheitskonflikt öffnet das Objekt unabhängig davon
+ * (`wahrheitskonfliktFolge`).
+ */
+export interface WeisungsSichtung {
+  auditSeq: number;
+  auditHash: string;
+  koVersion: number;
+  erteiltVon: string;
+  bereich: string;
+  verantwortlich: string;
+  /** Kalendertag (JJJJ-MM-TT), bis zu dem gesichtet sein soll. */
+  frist: string;
+  ergebnis?: {
+    art: "bestaetigt" | "widerrufen";
+    von: string;
+    am: string;
+    auditSeq: number;
+  };
+}
 
 export interface KoProposalRueckfrage {
   von: string;
@@ -797,6 +829,9 @@ export interface KnowledgeObject {
   // Rückgabe; die Annahme bleibt hier stehen. `koVersion` bindet ihn an die angenommene Fassung.
   // Gesetzt nur beim Übergang nach „validiert" (erste Annahme der Fassung). Additiv, JSON-persistiert.
   annahmeRef?: { auditSeq: number; auditHash: string; koVersion: number };
+  // Antwort 19 (Aufnahme gesamt-peer-validierung): die Sichtung der zuletzt unmittelbar gültig
+  // gesetzten Weisung (s. `WeisungsSichtung`). Additiv, JSON-persistiert.
+  weisungsSichtung?: WeisungsSichtung;
   // ============================================================================================
   // JOB 557 (Pedi 13.08.2026) — WEM DAS OBJEKT GEHÖRT, WER ES GEPRÜFT UND WER ES VALIDIERT HAT.
   // ============================================================================================

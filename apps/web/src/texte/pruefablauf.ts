@@ -30,6 +30,8 @@ export default {
     "pruefablauf.status.abgelehnt": "Abgelehnt",
     "pruefablauf.entschieden": "Entschieden von {{name}} · {{zeit}}",
     "pruefablauf.begruendung": "Begründung: {{text}}",
+    // Nutzerentscheid Antwort 54: der sichtbare Name des freigegebenen Wissensstatus.
+    "pruefablauf.wissensstatus.validiert": "Fachlich bestätigt",
     "pruefablauf.befugnis.keineAnnahme":
       "Über offene Änderungsvorschläge entscheidet nur ein Konto mit Freigaberecht – deines hat es nicht. Auch die KI-Prüfung nimmt nichts an und gibt nichts frei.",
     "pruefablauf.annahme.zeile": "Angenommen: Fassung {{fassung}} · {{person}} · {{zeit}}",
@@ -46,6 +48,36 @@ export default {
       "Kontoregel: Freigabe durch den benannten Eigentümer mit Freigaberecht",
     "pruefablauf.annahme.regel.unbekannt":
       "Kontoregel: im Beleg nicht festgehalten (älterer Beleg)",
+    // Antworten 18/19: die unmittelbar gültige Weisung und ihre nachfolgende Sichtung.
+    "pruefablauf.annahme.regel.weisung":
+      "Kontoregel: unmittelbar gültige Weisung eines Kontos mit Weisungsbefugnis für den Bereich",
+    "pruefablauf.weisung.titel": "Als Weisung gültig einstellen",
+    "pruefablauf.weisung.hinweis":
+      "Deine Weisungsbefugnis deckt den Bereich „{{bereich}}“. Die Weisung gilt sofort; eine andere Person sichtet sie bis zur Frist.",
+    "pruefablauf.weisung.verantwortlich": "Sichtung durch",
+    "pruefablauf.weisung.verantwortlichWaehlen": "Person wählen",
+    "pruefablauf.weisung.frist": "Sichtung bis",
+    "pruefablauf.weisung.knopf": "Weisung gültig einstellen",
+    "pruefablauf.weisung.gesetzt": "Die Weisung gilt jetzt. Die Sichtung ist angelegt.",
+    "pruefablauf.sichtung.offen": "Sichtung durch {{name}} bis {{frist}}",
+    "pruefablauf.sichtung.ueberfaellig": "Sichtung durch {{name}} überfällig seit {{frist}}",
+    "pruefablauf.sichtung.bestaetigt": "Gesichtet und bestätigt von {{name}} · {{zeit}}",
+    "pruefablauf.sichtung.zurueckgenommen":
+      "Widerrufen von {{name}} · {{zeit}} – die Weisung gilt nicht mehr",
+    "pruefablauf.sichtung.bestaetigen": "Weisung bestätigen",
+    "pruefablauf.sichtung.widerrufen": "Weisung widerrufen",
+    "pruefablauf.sichtung.gespeichert": "Sichtung gespeichert.",
+    "pruefablauf.befugnis.titel": "Weisungsbefugnis",
+    "pruefablauf.befugnis.keine":
+      "Keine – dieses Konto stellt keine Weisung unmittelbar gültig ein.",
+    "pruefablauf.befugnis.bereiche": "Für die Bereiche: {{bereiche}}",
+    "pruefablauf.befugnis.alle": "ganzes Unternehmen",
+    "pruefablauf.befugnis.hinweis":
+      "Wer weisungsbefugt ist, stellt eigene Weisungen im Bereich sofort gültig ein; eine andere Person sichtet sie danach. Die Rolle allein – auch Admin – verleiht diese Befugnis nicht. * steht für das ganze Unternehmen.",
+    "pruefablauf.befugnis.eingabe": "Bereiche (durch Komma getrennt)",
+    "pruefablauf.befugnis.speichern": "Befugnis speichern",
+    "pruefablauf.befugnis.entziehen": "Befugnis entziehen",
+    "pruefablauf.befugnis.gespeichert": "Weisungsbefugnis gespeichert.",
   },
   en: {
     "pruefablauf.pruefer.label": "Reviewer (optional)",
@@ -65,6 +97,7 @@ export default {
     "pruefablauf.status.abgelehnt": "Rejected",
     "pruefablauf.entschieden": "Decided by {{name}} · {{zeit}}",
     "pruefablauf.begruendung": "Reason: {{text}}",
+    "pruefablauf.wissensstatus.validiert": "Validated",
     "pruefablauf.befugnis.keineAnnahme":
       "Only an account with approval rights decides on open change proposals – yours does not have them. The AI check does not accept or approve anything either.",
     "pruefablauf.annahme.zeile": "Accepted: version {{fassung}} · {{person}} · {{zeit}}",
@@ -81,6 +114,34 @@ export default {
       "Account rule: approval by the named owner with approval rights",
     "pruefablauf.annahme.regel.unbekannt":
       "Account rule: not recorded in the record (older record)",
+    "pruefablauf.annahme.regel.weisung":
+      "Account rule: directive made valid immediately by an account with directive authority for the area",
+    "pruefablauf.weisung.titel": "Make valid as a directive",
+    "pruefablauf.weisung.hinweis":
+      "Your directive authority covers the area “{{bereich}}”. The directive applies immediately; another person reviews it by the deadline.",
+    "pruefablauf.weisung.verantwortlich": "Reviewed by",
+    "pruefablauf.weisung.verantwortlichWaehlen": "Choose a person",
+    "pruefablauf.weisung.frist": "Review by",
+    "pruefablauf.weisung.knopf": "Make directive valid",
+    "pruefablauf.weisung.gesetzt": "The directive now applies. The review has been set up.",
+    "pruefablauf.sichtung.offen": "Review by {{name}} due {{frist}}",
+    "pruefablauf.sichtung.ueberfaellig": "Review by {{name}} overdue since {{frist}}",
+    "pruefablauf.sichtung.bestaetigt": "Reviewed and confirmed by {{name}} · {{zeit}}",
+    "pruefablauf.sichtung.zurueckgenommen":
+      "Revoked by {{name}} · {{zeit}} – the directive no longer applies",
+    "pruefablauf.sichtung.bestaetigen": "Confirm directive",
+    "pruefablauf.sichtung.widerrufen": "Revoke directive",
+    "pruefablauf.sichtung.gespeichert": "Review saved.",
+    "pruefablauf.befugnis.titel": "Directive authority",
+    "pruefablauf.befugnis.keine": "None – this account cannot make a directive valid immediately.",
+    "pruefablauf.befugnis.bereiche": "For the areas: {{bereiche}}",
+    "pruefablauf.befugnis.alle": "whole company",
+    "pruefablauf.befugnis.hinweis":
+      "An account with directive authority makes its own directives in the area valid immediately; another person reviews them afterwards. The role alone – admin included – does not grant this authority. * stands for the whole company.",
+    "pruefablauf.befugnis.eingabe": "Areas (comma-separated)",
+    "pruefablauf.befugnis.speichern": "Save authority",
+    "pruefablauf.befugnis.entziehen": "Withdraw authority",
+    "pruefablauf.befugnis.gespeichert": "Directive authority saved.",
   },
   nl: {
     "pruefablauf.pruefer.label": "Beoordelaar (optioneel)",
@@ -100,6 +161,7 @@ export default {
     "pruefablauf.status.abgelehnt": "Afgewezen",
     "pruefablauf.entschieden": "Besloten door {{name}} · {{zeit}}",
     "pruefablauf.begruendung": "Reden: {{text}}",
+    "pruefablauf.wissensstatus.validiert": "Gevalideerd",
     "pruefablauf.befugnis.keineAnnahme":
       "Over open wijzigingsvoorstellen beslist alleen een account met goedkeuringsrecht – het jouwe heeft dat niet. Ook de AI-controle neemt niets aan en keurt niets goed.",
     "pruefablauf.annahme.zeile": "Aangenomen: versie {{fassung}} · {{person}} · {{zeit}}",
@@ -116,5 +178,33 @@ export default {
       "Accountregel: goedkeuring door de aangewezen eigenaar met goedkeuringsrecht",
     "pruefablauf.annahme.regel.unbekannt":
       "Accountregel: niet vastgelegd in het bewijsstuk (ouder bewijsstuk)",
+    "pruefablauf.annahme.regel.weisung":
+      "Accountregel: direct geldige instructie van een account met instructiebevoegdheid voor het gebied",
+    "pruefablauf.weisung.titel": "Als instructie direct geldig maken",
+    "pruefablauf.weisung.hinweis":
+      "Je instructiebevoegdheid dekt het gebied „{{bereich}}”. De instructie geldt direct; een andere persoon beoordeelt haar vóór de termijn.",
+    "pruefablauf.weisung.verantwortlich": "Beoordeling door",
+    "pruefablauf.weisung.verantwortlichWaehlen": "Persoon kiezen",
+    "pruefablauf.weisung.frist": "Beoordeling vóór",
+    "pruefablauf.weisung.knopf": "Instructie geldig maken",
+    "pruefablauf.weisung.gesetzt": "De instructie geldt nu. De beoordeling is aangemaakt.",
+    "pruefablauf.sichtung.offen": "Beoordeling door {{name}} vóór {{frist}}",
+    "pruefablauf.sichtung.ueberfaellig": "Beoordeling door {{name}} te laat sinds {{frist}}",
+    "pruefablauf.sichtung.bestaetigt": "Beoordeeld en bevestigd door {{name}} · {{zeit}}",
+    "pruefablauf.sichtung.zurueckgenommen":
+      "Ingetrokken door {{name}} · {{zeit}} – de instructie geldt niet meer",
+    "pruefablauf.sichtung.bestaetigen": "Instructie bevestigen",
+    "pruefablauf.sichtung.widerrufen": "Instructie intrekken",
+    "pruefablauf.sichtung.gespeichert": "Beoordeling opgeslagen.",
+    "pruefablauf.befugnis.titel": "Instructiebevoegdheid",
+    "pruefablauf.befugnis.keine": "Geen – dit account maakt geen instructie direct geldig.",
+    "pruefablauf.befugnis.bereiche": "Voor de gebieden: {{bereiche}}",
+    "pruefablauf.befugnis.alle": "hele bedrijf",
+    "pruefablauf.befugnis.hinweis":
+      "Wie instructiebevoegd is, maakt eigen instructies in het gebied direct geldig; een andere persoon beoordeelt ze daarna. De rol alleen – ook beheerder – geeft deze bevoegdheid niet. * staat voor het hele bedrijf.",
+    "pruefablauf.befugnis.eingabe": "Gebieden (gescheiden door komma's)",
+    "pruefablauf.befugnis.speichern": "Bevoegdheid opslaan",
+    "pruefablauf.befugnis.entziehen": "Bevoegdheid intrekken",
+    "pruefablauf.befugnis.gespeichert": "Instructiebevoegdheid opgeslagen.",
   },
 } satisfies Textmodul;

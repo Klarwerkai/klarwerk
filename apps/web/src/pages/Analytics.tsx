@@ -34,6 +34,7 @@ import { executiveKpis } from "../lib/executiveKpis";
 import { type HealthBand, knowledgeHealth } from "../lib/knowledgeHealth";
 import { formatKoTimestamp } from "../lib/koDates";
 import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
+import { WISSENSSTATUS_BESTAETIGT } from "../lib/wissensstatus";
 
 const BAND_TONE: Record<HealthBand, string> = {
   gut: "bg-trust-pos-bg text-trust-pos-text",
@@ -315,7 +316,7 @@ export function Analytics(): JSX.Element {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <Kpi label={t("ana.total")} value={a.total} />
                 <Kpi label={t("status.offen")} value={a.byStatus.offen ?? 0} />
-                <Kpi label={t("status.validiert")} value={a.byStatus.validiert ?? 0} />
+                <Kpi label={t(WISSENSSTATUS_BESTAETIGT)} value={a.byStatus.validiert ?? 0} />
                 <Kpi label={t("ana.categories")} value={Object.keys(a.byCategory).length} />
               </div>
 

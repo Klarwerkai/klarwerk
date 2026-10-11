@@ -13,7 +13,14 @@ import {
   type UserRepo,
 } from "./repo";
 import { neuesTotpGeheimnis, otpauthAdresse, pruefeTotp } from "./totp";
-import { AuthError, type PublicUser, type Role, type Session, type User } from "./types";
+import {
+  AuthError,
+  type PublicUser,
+  type Role,
+  type Session,
+  type User,
+  type Weisungsbefugnis,
+} from "./types";
 
 const MIN_PASSWORD_LENGTH = 8;
 // R-0562: Zwischen Passwort und Bestätigungscode liegt eine kurze, einmalige Anmeldeanfrage. Fünf
@@ -1370,6 +1377,44 @@ export class AuthService {
       return;
     }
     await fn();
+  }
+
+  /**
+   * Aufnahme gesamt-peer-validierung · Nutzerentscheid Antwort 18 (11.10.2026): die fachliche
+   * Weisungsbefugnis eines Kontos vergeben, ändern oder (`undefined`/leer) entziehen.
+   *
+   * Die Befugnis steht AM KONTO und nennt ihren Zuständigkeitsbereich. Sie ist ausdrücklich NICHT
+   * an die Rolle gebunden: ein Admin hat sie nur, wenn sie ihm wie jedem anderen vergeben wurde.
+   * Die Bereiche werden getrimmt und ohne Dubletten übernommen. Vermerk und Schreiben laufen
+   * gemeinsam (wo die Wurzel eine Transaktion hergibt), der Vermerk zuerst — wie `setAccessExpiry`.
+   */
+  async setWeisungsbefugnis(
+    userId: string,
+    bereiche: readonly string[] | undefined,
+    actorId: string,
+  ): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    const sauber = [...new Set((bereiche ?? []).map((b) => b.trim()).filter((b) => b.length > 0))];
+    const { weisungsbefugnis: _bisher, ...ohneBefugnis } = user;
+    const befugnis: Weisungsbefugnis | undefined =
+      sauber.length > 0
+        ? { bereiche: sauber, erteiltVon: actorId, erteiltAm: new Date(this.now()).toISOString() }
+        : undefined;
+    const aktualisiert: User = befugnis
+      ? { ...ohneBefugnis, weisungsbefugnis: befugnis }
+      : ohneBefugnis;
+    await this.gemeinsamSchreiben(async (tx) => {
+      await this.record(
+        actorId,
+        "user.weisungsbefugnis-set",
+        userId,
+        befugnis ? { bereiche: befugnis.bereiche } : { entfernt: true },
+        tx,
+      );
+      await this.users.update(aktualisiert, tx);
+      await this.users.setzeWeisungsbefugnis?.(userId, befugnis, tx);
+    });
+    return toPublic(aktualisiert);
   }
 
   // FR-RBAC-02 / FR-RBAC-03 + SCRUM-443: Rolle ändern — jetzt serverseitig geprüft.

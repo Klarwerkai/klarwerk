@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
-import { meldung, sprache } from "../../../auth";
+import { meldung, sprache, weisungsbefugnisDeckt } from "../../../auth";
 import {
   type ConflictInput,
   type ConflictService,
@@ -158,6 +158,19 @@ export interface KoRoutesDeps {
   // Nutzerverzeichnis. Fehlt die Verdrahtung, wird eine benannte Prüfperson abgewiesen (400),
   // statt ungeprüft gespeichert.
   freigabeberechtigt?: ((userId: string) => Promise<boolean>) | undefined;
+  // Aufnahme gesamt-peer-validierung (Antworten 18/19): das Konto einer Person, soweit Weisung und
+  // Sichtung es brauchen — freigegeben?, die am Konto vergebene Weisungsbefugnis (nicht die Rolle)
+  // und ob es Freigaberecht hat. Fehlt die Verdrahtung, gibt es keine unmittelbar gültige Weisung.
+  weisungskonto?:
+    | ((userId: string) => Promise<
+        | {
+            aktiv: boolean;
+            weisungsbefugnis: { bereiche: readonly string[] } | undefined;
+            freigabeberechtigt: boolean;
+          }
+        | undefined
+      >)
+    | undefined;
 }
 
 /**
@@ -450,6 +463,10 @@ type KoAktion =
   | "ownership-release"
   // R-0507: der benannte Eigentümer gibt das Objekt inhaltlich frei (Recht `ko.validate`).
   | "owner-validate"
+  // Antworten 18/19: die eigene Weisung unmittelbar gültig einstellen (Weisungsbefugnis am Konto)
+  // und ihre nachfolgende Sichtung durch die benannte verantwortliche Person.
+  | "weisung-validate"
+  | "weisung-sichten"
   | "conflict"
   | "resolve-conflict"
   | "transfer-author"
@@ -503,6 +520,21 @@ type Torurteil = "tor" | "kein-zielobjekt";
 /** R-0431 (K2): die Höchstlänge eines Fachgebiets (`action: "domain"`). */
 const DOMAIN_MAX_LENGTH = 120;
 
+/**
+ * Antwort 19: die Sichtungsfrist ist ein echter Kalendertag (JJJJ-MM-TT), frühestens heute (UTC).
+ * `2026-02-30` fällt durch: der Tag wird zurückgelesen, nicht nur dem Muster nach geprüft.
+ */
+function istKalendertagAbHeute(wert: string, jetzt: Date = new Date()): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(wert)) {
+    return false;
+  }
+  const tag = new Date(`${wert}T00:00:00Z`);
+  if (Number.isNaN(tag.getTime()) || tag.toISOString().slice(0, 10) !== wert) {
+    return false;
+  }
+  return wert >= jetzt.toISOString().slice(0, 10);
+}
+
 const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   rate: "tor",
   assign: "tor",
@@ -529,6 +561,9 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   "ownership-release": "tor",
   // R-0507: die Eigentümerfreigabe arbeitet AM Objekt unter `:id` — wie `admin-validate`.
   "owner-validate": "tor",
+  // Antworten 18/19: beide arbeiten AM Objekt unter `:id` — wie `owner-validate`.
+  "weisung-validate": "tor",
+  "weisung-sichten": "tor",
   conflict: "kein-zielobjekt",
   "resolve-conflict": "kein-zielobjekt",
   "transfer-author": "tor",
@@ -563,6 +598,12 @@ interface PutBody {
    * (`dublettenTor` in validation-routes.ts).
    */
   duplicateAcknowledged?: unknown;
+  /**
+   * Antworten 18/19: an `weisung-validate` die nachfolgende Sichtung
+   * (`{ verantwortlich, frist: "JJJJ-MM-TT" }`), an `weisung-sichten` ihr Ergebnis
+   * (`{ ergebnis: "bestaetigt" | "widerrufen" }`). `unknown`, weil es aus dem Netz kommt.
+   */
+  sichtung?: unknown;
   userIds?: string[];
   changes?: ReviseKoInput;
   /**
@@ -1063,6 +1104,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       beleg?.action === "ko.admin-validated" ||
       // R-0507 (aus main): die Eigentümerfreigabe ist ebenfalls eine Annahme.
       beleg?.action === "ko.owner-validated" ||
+      // Antworten 18/19: die unmittelbar gültige Weisung eines befugten Kontos.
+      beleg?.action === "ko.weisung-validated" ||
       (beleg?.action === "ko.rated" && p.verdict === "up");
     if (!beleg || !istAnnahme || p.koVersion !== item.version) {
       return undefined;
@@ -3839,6 +3882,87 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             reply.code(200).send(await validation.ownerValidate(id, user.id));
+            return;
+          }
+          // ======================================================================================
+          // Antworten 18/19 (Nutzerentscheid 11.10.2026) — DIE UNMITTELBAR GÜLTIGE WEISUNG.
+          // ======================================================================================
+          // Das Recht kommt NICHT aus der Rolle (`ko.read` genügt als Lesetor), sondern aus der am
+          // Konto vergebenen Weisungsbefugnis — technische Administration allein genügt nicht.
+          // Sie muss den Bereich des Objekts decken; dass es die EIGENE Weisung ist, prüft der Dienst
+          // unter dem KO-Lock. Die Sichtung braucht eine andere, freigegebene Person, die selbst
+          // Freigaberecht oder Weisungsbefugnis für den Bereich hat, und eine Frist ab heute.
+          case "weisung-validate": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            const konto = await deps.weisungskonto?.(user.id);
+            if (!konto?.aktiv || !konto.weisungsbefugnis) {
+              reply.code(403).send({
+                error: "FORBIDDEN",
+                message:
+                  "An Ihrem Konto ist keine Weisungsbefugnis eingetragen. Sie vergibt die Verwaltung ausdrücklich je Zuständigkeitsbereich; die Administratorrolle allein genügt nicht.",
+              });
+              return;
+            }
+            const befugnis = konto.weisungsbefugnis;
+            const roh = body.sichtung as { verantwortlich?: unknown; frist?: unknown } | undefined;
+            const verantwortlich =
+              typeof roh?.verantwortlich === "string" ? roh.verantwortlich.trim() : "";
+            const frist = typeof roh?.frist === "string" ? roh.frist.trim() : "";
+            if (!verantwortlich || !istKalendertagAbHeute(frist)) {
+              return badRequest(
+                "sichtung muss { verantwortlich, frist: JJJJ-MM-TT } nennen; die Frist liegt frühestens heute.",
+              );
+            }
+            const objekt = await ko.get(id);
+            const sichtende = await deps.weisungskonto?.(verantwortlich);
+            if (
+              verantwortlich === user.id ||
+              !sichtende?.aktiv ||
+              !(
+                sichtende.freigabeberechtigt ||
+                weisungsbefugnisDeckt(sichtende.weisungsbefugnis, objekt?.category)
+              )
+            ) {
+              return badRequest(
+                "Die Sichtung übernimmt eine andere, freigegebene Person mit Freigaberecht oder Weisungsbefugnis für diesen Bereich.",
+              );
+            }
+            if (
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "weisung-validate",
+                reply,
+              ))
+            ) {
+              return;
+            }
+            reply.code(200).send(
+              await validation.weisungValidate(id, user.id, {
+                deckt: (bereich) => weisungsbefugnisDeckt(befugnis, bereich),
+                verantwortlich,
+                frist,
+              }),
+            );
+            return;
+          }
+          // Antwort 19: die Sichtung. Wer sichten darf, steht an der Weisung selbst (die benannte
+          // verantwortliche Person) und wird im Dienst geprüft; hier nur Lesetor und Form.
+          case "weisung-sichten": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            const ergebnis = (body.sichtung as { ergebnis?: unknown } | undefined)?.ergebnis;
+            if (ergebnis !== "bestaetigt" && ergebnis !== "widerrufen") {
+              return badRequest("sichtung.ergebnis muss bestaetigt oder widerrufen sein.");
+            }
+            reply.code(200).send(await validation.weisungSichten(id, user.id, ergebnis));
             return;
           }
           case "conflict": {

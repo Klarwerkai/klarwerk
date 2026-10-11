@@ -94,6 +94,7 @@ import {
 import { trustExplainer } from "../../lib/trustExplainer";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { useReadiness } from "../../lib/useReadiness";
+import { statusSchluessel } from "../../lib/wissensstatus";
 import {
   ZEICHNUNG_ACCEPT,
   anhangStelle,
@@ -2880,7 +2881,7 @@ export function MehrAbschnitte({
                     >
                       <div className="font-mono text-[11px] text-muted-2">
                         v{v.version} · {new Date(v.at).toLocaleDateString(i18n.language)} ·{" "}
-                        {nameOf(v.author)} · {t(`status.${v.status}`)}
+                        {nameOf(v.author)} · {t(statusSchluessel(v.status))}
                       </div>
                       <div className="mt-1 text-[13px] font-semibold text-text">{v.title}</div>
                       <p className="mt-1 text-[12.5px] text-muted">{v.excerpt}</p>

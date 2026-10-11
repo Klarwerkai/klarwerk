@@ -96,6 +96,7 @@ import {
   latestValidationFeedback,
 } from "../../lib/validationFeedback";
 import { isReturnedForRework } from "../../lib/validationStatus";
+import { statusSchluessel } from "../../lib/wissensstatus";
 import { AiAssistBox } from "../AiAssistBox";
 import { BodyExtractPanel } from "../BodyExtractPanel";
 import { BodyImageGallery } from "../BodyImageGallery";
@@ -129,7 +130,13 @@ import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis
 import { FassungsvergleichImEditor } from "./Fassungsvergleich";
 import { MehrAbschnitte, type Sprungziel } from "./MehrAbschnitte";
 import { Menue, MenuePunkt, MenueTrenner } from "./Menue";
-import { AnnahmeZeile, EigeneVorschlaege, PrueferWahl, VorschlagRueckfragen } from "./Pruefablauf";
+import {
+  AnnahmeZeile,
+  EigeneVorschlaege,
+  PrueferWahl,
+  VorschlagRueckfragen,
+  Weisung,
+} from "./Pruefablauf";
 import { Wissensempfehlung } from "./Wissensempfehlung";
 import { fragenHref } from "./fragen";
 import { type ZustandsTon, zustandsTon } from "./zustand";
@@ -2690,7 +2697,7 @@ export function BibliothekLesen({
               PILLEN_TON[ton],
             )}
           >
-            {t(`status.${status}`)}
+            {t(statusSchluessel(status))}
           </span>
           <span
             data-testid="ko-vertraulichkeitsstufe"
@@ -3004,6 +3011,9 @@ export function BibliothekLesen({
         ) : null}
         {/* AW06-K02: die Annahme dieser Fassung samt Kontoregel — aus ihrem Beleg, vom Server. */}
         <AnnahmeZeile annahme={ko.annahme} nameOf={nameOf} />
+        {/* Antworten 18/19: die eigene Weisung unmittelbar gültig einstellen (Weisungsbefugnis
+            am KONTO, nicht aus der Rolle) und ihre Sichtung durch die benannte Person. */}
+        <Weisung ko={ko} angemeldet={user?.id} befugnis={user?.weisungsbefugnis} nameOf={nameOf} />
 
         {/* WIKI-BEARBEITUNGSRESERVIERUNG: wer gerade (sonst noch) bearbeitet — im Lesen wie im
             Bearbeiten an derselben Stelle, direkt über dem Inhalt. Endet eine fremde Bearbeitung,
@@ -3674,8 +3684,9 @@ export function BibliothekLesen({
                 stilles Verschwinden. */}
             {/* AW06-K04 (Ben, Nacharbeit 7): wer nicht entscheiden darf, bekommt die
                 Entscheidungsfläche weiter nicht (E17) — aber jetzt den Grund, statt sie wortlos zu
-                verlieren. Der Satz nennt auch die KI: sie nimmt nichts an. Eine Weisungsbefugnis
-                gibt es im Produkt nicht (R-1863 offen); dieser Satz erfindet keine. */}
+                verlieren. Der Satz nennt auch die KI: sie nimmt nichts an. Die Weisungsbefugnis
+                (Antworten 18/19) ist ein eigener Weg am Konto — `Weisung` (Pruefablauf.tsx) zeigt
+                ihn nur dem befugten Autor; über fremde Vorschläge entscheidet sie nicht. */}
             {!darfFreigeben && offeneVorschlaege.length > 0 ? (
               <p
                 data-testid="bib-annahme-befugnis"

@@ -755,6 +755,21 @@ export interface KnowledgeObject {
     kontoregel: string | null;
     benoetigt?: number;
   };
+  /**
+   * Antwort 19 (gesamt-peer-validierung): die Sichtung der unmittelbar gültig gesetzten Weisung —
+   * verantwortliche Person, Frist (JJJJ-MM-TT), gebunden an `koVersion`; `ergebnis` fehlt, solange
+   * nicht gesichtet ist.
+   */
+  weisungsSichtung?: {
+    auditSeq: number;
+    auditHash: string;
+    koVersion: number;
+    erteiltVon: string;
+    bereich: string;
+    verantwortlich: string;
+    frist: string;
+    ergebnis?: { art: "bestaetigt" | "widerrufen"; von: string; am: string; auditSeq: number };
+  };
   // R-0082: ab zwei Anlagen trägt `assets` die Liste und `asset` spiegelt die erste; eine einzelne
   // Anlage (und Altbestand) steht nur in `asset`. Gelesen wird beides über `anlagenVon`.
   asset: string | null;
@@ -1886,6 +1901,10 @@ export interface PublicUser {
   // regulären Kontos (`services/auth/src/types.ts:42-45`). Das fehlende Feld bedeutet
   // „unbefristet" — es ist keine fehlende Auskunft, sondern eine.
   accessExpiresAt?: string;
+  // Aufnahme gesamt-peer-validierung (Antwort 18): die am Konto vergebene fachliche
+  // Weisungsbefugnis mit Zuständigkeitsbereichen (`*` = ganzes Unternehmen). Fehlt das Feld, hat
+  // das Konto keine — unabhängig von seiner Rolle.
+  weisungsbefugnis?: { bereiche: string[]; erteiltVon: string; erteiltAm: string };
 }
 
 // SCRUM-116/108: Import-/Source-Review-Kandidaten (JSON-Re-Import).

@@ -72,6 +72,7 @@ import {
   relationLabelKey,
 } from "../lib/duplicateBoard";
 import { groupFindingsByBeitrag, overlapFinding, resolveKo } from "../lib/findingGroups";
+import { statusSchluessel } from "../lib/wissensstatus";
 
 /**
  * JOB 3061 · H2: die drei Abschlussgründe, die ein MENSCH wählen darf — dieselbe Teilmenge, die der
@@ -97,7 +98,7 @@ function metaVon(ko: KnowledgeObject | null, t: (k: string) => string): string {
   }
   const datum = new Date(ko.createdAt);
   return [
-    t(`status.${ko.status}`),
+    t(statusSchluessel(ko.status)),
     ko.category,
     Number.isNaN(datum.getTime()) ? null : String(datum.getFullYear()),
   ]

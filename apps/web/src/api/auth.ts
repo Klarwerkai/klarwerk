@@ -9,6 +9,8 @@ export interface SessionUser {
   role: Role;
   // R-0582: verknüpfte SSO-Identität — dann bietet die Kontodatenkarte die SSO-Bestätigung an.
   oidcSubject?: string;
+  // Aufnahme gesamt-peer-validierung (Antwort 18): die am Konto vergebene Weisungsbefugnis.
+  weisungsbefugnis?: { bereiche: string[]; erteiltVon: string; erteiltAm: string };
 }
 
 export interface AuthStatus {

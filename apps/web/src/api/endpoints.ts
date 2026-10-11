@@ -400,6 +400,14 @@ export type KoAction =
   | { action: "ownership-release" }
   // R-0507: der benannte Eigentümer gibt inhaltlich frei (Recht `ko.validate`, sonst 403).
   | { action: "owner-validate"; duplicateAcknowledged?: true }
+  // Antworten 18/19: die eigene Weisung unmittelbar gültig einstellen (Weisungsbefugnis am Konto)
+  // samt Sichtung, und die Sichtung durch die benannte verantwortliche Person.
+  | {
+      action: "weisung-validate";
+      sichtung: { verantwortlich: string; frist: string };
+      duplicateAcknowledged?: true;
+    }
+  | { action: "weisung-sichten"; sichtung: { ergebnis: "bestaetigt" | "widerrufen" } }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
   // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet
@@ -1580,6 +1588,10 @@ export const endpoints = {
     // R-0582: der Admin berichtigt Name und E-Mail — dieselbe Route, die Antwort ist der neue Stand.
     correct: (id: string, name: string, email: string) =>
       api.put<PublicUser>(`/users/${id}`, { name, email }),
+    // Aufnahme gesamt-peer-validierung (Antwort 18): die fachliche Weisungsbefugnis vergeben
+    // (Bereiche) oder entziehen (`null`) — dieselbe Route, die Antwort ist der neue Stand.
+    setWeisungsbefugnis: (id: string, bereiche: string[] | null) =>
+      api.put<PublicUser>(`/users/${id}`, { weisungsbefugnis: bereiche }),
   },
   // ==============================================================================================
   // JOB 4154 · WIKI-GESAMTANWEISUNG — NEUN ADRESSEN, UND JEDE SCHREIBENDE TRÄGT DEN GELESENEN STAND.

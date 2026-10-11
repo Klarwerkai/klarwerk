@@ -634,6 +634,190 @@ export class ValidationService {
     };
   }
 
+  // ==============================================================================================
+  // ANTWORTEN 18/19 (Nutzerentscheid 11.10.2026) — DIE UNMITTELBAR GÜLTIGE WEISUNG.
+  // ==============================================================================================
+  //
+  // Wer eine fachliche Weisungsbefugnis für den Bereich trägt, stellt eine EIGENE Weisung
+  // unmittelbar gültig ein. Die Befugnis steht am Konto, nicht in der Rolle; `deckt` ist ihre Regel
+  // (`weisungsbefugnisDeckt` in services/auth), von der Route übergeben — validation hängt nicht von
+  // auth ab. Derselbe Schreibweg wie `ownerValidate`: Compare-and-Set gegen die gelesene Fassung,
+  // Zustand und Beleg in einer Klammer, Vertrauen aus den Stimmen (eine Weisung ist eine
+  // Entscheidung, keine zusätzliche Evidenz). Dazu bindet die Klammer die nachfolgende Sichtung —
+  // verantwortliche Person und Frist — an genau diesen Beleg.
+  //
+  // UNTER DEM KO-LOCK geprüft (frisch gelesen): die Weisung ist die eigene (`author`) und der
+  // Bereich des Objekts liegt in der Befugnis. Eine Kategorieänderung zwischen Vorab-Lesen und
+  // Schreiben erhöht die Inhaltsfassung nicht — der Compare-and-Set sähe sie nicht.
+  async weisungValidate(
+    koId: string,
+    actorId: string,
+    weisung: { deckt: (bereich: string) => boolean; verantwortlich: string; frist: string },
+  ): Promise<ValidationDecision> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const pruefe = (frisch: KnowledgeObject): string => {
+      if (frisch.author !== actorId) {
+        throw new ValidationError(
+          "NOT_OWNER",
+          "Unmittelbar gültig einstellen lässt sich nur die eigene Weisung.",
+        );
+      }
+      const bereich = (frisch.category ?? "").trim();
+      if (!weisung.deckt(bereich)) {
+        throw new ValidationError(
+          "FORBIDDEN",
+          "Für diesen Bereich ist an Ihrem Konto keine Weisungsbefugnis eingetragen.",
+        );
+      }
+      return bereich;
+    };
+    pruefe(ko);
+    if (weisung.verantwortlich === actorId) {
+      throw new ValidationError(
+        "INVALID",
+        "Die Sichtung übernimmt eine andere Person als die Weisungsgeberin.",
+      );
+    }
+    const geleseneFassung = ko.version;
+    let bereich = "";
+    const {
+      ko: gespeichert,
+      geschrieben,
+      ref,
+    } = await this.koService.setValidationStateMitBeleg(
+      koId,
+      async (frisch) => {
+        bereich = pruefe(frisch);
+        const g = frisch.vertrauensGrundlage;
+        return {
+          trust: frisch.trust,
+          status: "validiert",
+          annahme: true,
+          weisung: {
+            erteiltVon: actorId,
+            bereich,
+            verantwortlich: weisung.verantwortlich,
+            frist: weisung.frist,
+          },
+          ...(g && g.trust === frisch.trust
+            ? { grundlage: { ohneKonflikte: g.ohneKonflikte, konflikte: g.konflikte } }
+            : {}),
+        };
+      },
+      { expectedVersion: geleseneFassung, beiVersionswechsel: "nichts" },
+      async (tx) =>
+        refAus(
+          await this.audit?.record(
+            {
+              actor: actorId,
+              action: "ko.weisung-validated",
+              target: koId,
+              payload: {
+                koVersion: geleseneFassung,
+                kontoregel: "weisung" satisfies Kontoregel,
+                bereich,
+                sichtung: { verantwortlich: weisung.verantwortlich, frist: weisung.frist },
+              },
+            },
+            tx,
+          ),
+        ),
+    );
+    const { votes } = stimmenAus(await this.ratings.listByKo(koId), gespeichert.version);
+    if (!geschrieben) {
+      return {
+        ...votes,
+        trust: gespeichert.trust,
+        status: gespeichert.status,
+        validationDecisionRef: null,
+      };
+    }
+    await this.koService.recordOwnershipRole(koId, "validators", [actorId], actorId);
+    return {
+      ...votes,
+      trust: gespeichert.trust,
+      status: gespeichert.status,
+      validationDecisionRef: ref,
+    };
+  }
+
+  /**
+   * Antwort 19 — DIE NACHFOLGENDE SICHTUNG. Nur die benannte verantwortliche Person sichtet, und nur
+   * die offene Sichtung der gültig gesetzten Fassung. `bestaetigt` lässt die Weisung stehen;
+   * `widerrufen` nimmt sie zurück: Status offen, die Annahme der Fassung entfällt, das Vertrauen
+   * bleibt, wie es die Stimmen ergeben. Beleg `ko.weisung-gesichtet` (mit `ergebnis`).
+   */
+  async weisungSichten(
+    koId: string,
+    actorId: string,
+    ergebnis: "bestaetigt" | "widerrufen",
+  ): Promise<ValidationDecision> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const pruefe = (frisch: KnowledgeObject): void => {
+      const s = frisch.weisungsSichtung;
+      if (!s || s.koVersion !== frisch.version || s.ergebnis || frisch.status !== "validiert") {
+        throw new ValidationError(
+          "INVALID",
+          "Zu dieser Fassung ist keine Weisung offen zu sichten.",
+        );
+      }
+      if (s.verantwortlich !== actorId) {
+        throw new ValidationError(
+          "FORBIDDEN",
+          "Sichten kann nur die für diese Weisung benannte verantwortliche Person.",
+        );
+      }
+    };
+    pruefe(ko);
+    const geleseneFassung = ko.version;
+    const am = new Date().toISOString();
+    const {
+      ko: gespeichert,
+      geschrieben,
+      ref,
+    } = await this.koService.setValidationStateMitBeleg(
+      koId,
+      async (frisch) => {
+        pruefe(frisch);
+        const g = frisch.vertrauensGrundlage;
+        return {
+          trust: frisch.trust,
+          status: ergebnis === "widerrufen" ? "offen" : "validiert",
+          sichtung: { art: ergebnis, von: actorId, am },
+          ...(g && g.trust === frisch.trust
+            ? { grundlage: { ohneKonflikte: g.ohneKonflikte, konflikte: g.konflikte } }
+            : {}),
+        };
+      },
+      { expectedVersion: geleseneFassung, beiVersionswechsel: "nichts" },
+      async (tx) =>
+        refAus(
+          await this.audit?.record(
+            {
+              actor: actorId,
+              action: "ko.weisung-gesichtet",
+              target: koId,
+              payload: { koVersion: geleseneFassung, ergebnis },
+            },
+            tx,
+          ),
+        ),
+    );
+    const { votes } = stimmenAus(await this.ratings.listByKo(koId), gespeichert.version);
+    return {
+      ...votes,
+      trust: gespeichert.trust,
+      status: gespeichert.status,
+      validationDecisionRef: geschrieben ? ref : null,
+    };
+  }
+
   // SCRUM-124: dedupliziert eine offene Zuweisung an den VERANTWORTLICHEN + Audit-Event.
   //
   // ==============================================================================================

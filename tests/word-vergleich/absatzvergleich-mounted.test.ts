@@ -310,7 +310,8 @@ describe("JOB 3281 · (a) vier Absaetze, vier Farben, richtig zugeordnet", () =>
     expect(liste).toContain("BAADER Betriebsanweisung Presse P2");
     expect(liste).toContain("noch nicht geprüft");
     expect(liste).toContain("Wartungsregel Presse P2");
-    expect(liste).toContain("Validiert");
+    // Antwort 54 (11.10.2026): der validierte Wissensstatus heisst „Fachlich bestätigt".
+    expect(liste).toContain("Fachlich bestätigt");
     expect(liste).toContain("Kein Fund im durchsuchten Bestand");
     expect(liste).toContain("Widerspruch zu einem Eintrag");
     expect(liste).toContain("Sicherheitsregel Schutzhaube");
