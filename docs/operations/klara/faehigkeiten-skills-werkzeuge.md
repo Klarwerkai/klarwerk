@@ -72,13 +72,19 @@ weiter zu de.wikipedia.org. Danach prüft die Probe:
 - die Wiederholung: Derselbe Auftrag wird nicht doppelt ausgeführt,
 - den Negativfall: Ist die externe Abfrage gesperrt, findet kein Aufruf statt.
 
-Die Probe gibt einen JSON-Beleg aus. Sie sendet nur, wenn `KLARWERK_FAEHIGKEIT_ECHTPROBE=freigegeben`
-gesetzt ist und `EXTERNAL_SEARCH` nicht `off` ist. Vitest und das Smoke-Tor sind bewusst hermetisch
-(`EXTERNAL_SEARCH=off`); dort meldet sie die fehlende Voraussetzung ohne Netzanfrage.
+Die Probe gibt einen JSON-Beleg aus (Zeile `AC10-ECHTBELEG`).
+
+Im regulären Lieferweg läuft sie als Integrationstest
+`tests/assistenz-faehigkeiten/echtaufruf-wikipedia.integration.test.ts`. Er setzt den vorhandenen
+Wikipedia-Provider in die normale Produktkomposition ein (`services.externalSearch` → `buildApp`).
+Die hermetische Vorgabe `EXTERNAL_SEARCH=off` der übrigen Tests bleibt unberührt. Ist
+de.wikipedia.org nicht erreichbar, wird der Fall rot und nennt die Produktmeldung. Er wird nicht
+übersprungen.
+
+Direkt (mit der Zusammensetzung aus der Umgebung):
 
 ```
-KLARWERK_FAEHIGKEIT_ECHTPROBE=freigegeben KLARWERK_KANDIDAT=<commit> KLARWERK_SKIP_KEYCHAIN=1 \
-  npx tsx tests/assistenz-faehigkeiten/echtprobe-wikipedia.ts
+KLARWERK_KANDIDAT=<commit> KLARWERK_SKIP_KEYCHAIN=1 npx tsx tests/assistenz-faehigkeiten/echtprobe-wikipedia.ts
 ```
 
 Exitcodes: 0 heißt durchgeführt, 2 heißt Voraussetzung fehlt, 1 heißt fehlgeschlagen.
@@ -88,7 +94,6 @@ Exitcodes: 0 heißt durchgeführt, 2 heißt Voraussetzung fehlt, 1 heißt fehlge
 - **O09:** Für Perplexity fehlen Anbieterfreigabe, belegte Kosten je Aufruf und Budgetzuordnung.
   Außerdem fehlt ein sicherer Betreiberweg für den Zugang. Bis dahin liefert
   `KEINE_ZUGAENGE` keinen Wert.
-- **Realer Aufruf:** Ein Aufruf mit Transport `echt` an Kandidat und Host ist nicht belegt.
+- **Realer Aufruf:** Er gilt erst als belegt, wenn der Integrationsfall
+  `echtaufruf-wikipedia.integration.test.ts` an einem Kandidaten grün gelaufen ist.
   Ersatztransport, Registrierung und Installation zählen nicht als Funktionsnachweis.
-- **Postgres-Pfad:** Der Pfad der Profilablage (`PgAssistenzProfilRepo.schreibeFaehigkeitsauftraege`)
-  ist nicht integrationsgeprüft.

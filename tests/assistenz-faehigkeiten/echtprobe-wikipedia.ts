@@ -14,21 +14,21 @@
 // freigegeben, kostenfrei und braucht keinen Zugang. Der Suchbegriff ist synthetisch und öffentlich.
 // Perplexity ist NICHT Gegenstand (O09 offen).
 //
-// WARUM KEIN gewöhnlicher Testfall: Vitest (`tests/setup-env.ts`) und das Smoke-Tor
-// (`playwright.smoke.config.ts`, mega25) schalten die externe Suche bewusst ab — „hermetisch heisst
-// kein Netz". Diese Probe ändert daran nichts. Sie läuft nur, wenn sie AUSDRÜCKLICH freigegeben ist
-// (`KLARWERK_FAEHIGKEIT_ECHTPROBE=freigegeben`) und die externe Suche nicht abgeschaltet ist. Fehlt
-// eins davon, sendet sie nichts und meldet die konkrete Voraussetzung.
+// IM LIEFERWEG: `echtaufruf-wikipedia.integration.test.ts` führt diese Probe im regulären
+// Integrationslauf aus. Dort steckt sie den VORHANDENEN Wikipedia-Provider (`createWikipediaProvider`,
+// echter Netzweg) in die normale Produktkomposition (`services.externalSearch` → `buildApp` →
+// Fähigkeitsregistry). Die hermetische Vorgabe der übrigen Tests (`EXTERNAL_SEARCH=off` in
+// `tests/setup-env.ts`) bleibt unberührt — sie gilt für die Zusammensetzung aus der Umgebung, nicht
+// für diesen ausdrücklich beauftragten Aufruf.
 //
-// Aufruf (Betrieb, auf dem freigegebenen Prüfhost):
-//   KLARWERK_FAEHIGKEIT_ECHTPROBE=freigegeben KLARWERK_KANDIDAT=<commit> KLARWERK_SKIP_KEYCHAIN=1 \
-//     npx tsx tests/assistenz-faehigkeiten/echtprobe-wikipedia.ts
+// Direkter Aufruf (ohne Test, mit der Zusammensetzung aus der Umgebung):
+//   KLARWERK_KANDIDAT=<commit> KLARWERK_SKIP_KEYCHAIN=1 npx tsx tests/assistenz-faehigkeiten/echtprobe-wikipedia.ts
 // Ausgabe: ein JSON-Beleg auf stdout (Kandidat, Plattform, Adapter-/Providerstand, Rolle, Kennungen,
 // Ergebnis, Rücklink, überprüfte Wirkung, Negativfall). Keine Zugangswerte, keine Personendaten.
 import { randomUUID } from "node:crypto";
 import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
+import type { ExternalSearchService } from "../../services/external-search";
 
-export const FREIGABE_ENV = "KLARWERK_FAEHIGKEIT_ECHTPROBE";
 export const SUCHBEGRIFF = "Kreiselpumpe";
 
 type Antwort = { status: number; body: unknown };
@@ -61,6 +61,12 @@ export interface EchtprobeBeleg {
 
 export interface EchtprobeOptionen {
   readonly env?: Record<string, string | undefined>;
+  /**
+   * Der Suchweg, den die Produktkomposition als Adapter für `wikipedia-suche` installiert. Ohne
+   * Angabe der aus der Umgebung (`createExternalSearchFromEnv`) — der bei `EXTERNAL_SEARCH=off`
+   * fehlt.
+   */
+  readonly externeSuche?: ExternalSearchService;
   /** Für die Wirkungsprüfung (Abruf der zurückgegebenen Originalquelle). */
   readonly abruf?: (url: string) => Promise<{ status: number; text: () => Promise<string> }>;
 }
@@ -95,22 +101,23 @@ function leer(
 export async function fuehreEchtprobeAus(opt: EchtprobeOptionen = {}): Promise<EchtprobeBeleg> {
   const env = opt.env ?? process.env;
   const kandidat = env.KLARWERK_KANDIDAT ?? "unbekannt";
-  const fehlt: string[] = [];
-  if (env[FREIGABE_ENV] !== "freigegeben") {
-    fehlt.push(
-      `${FREIGABE_ENV}=freigegeben fehlt: die reale Probe ist nicht ausdrücklich freigegeben.`,
+  if (!opt.externeSuche && env.EXTERNAL_SEARCH === "off") {
+    return leer(
+      "voraussetzung_fehlt",
+      [
+        "EXTERNAL_SEARCH=off: die Zusammensetzung aus der Umgebung baut keinen Suchweg (hermetischer Lauf).",
+      ],
+      "Keine Netzanfrage gesendet.",
+      kandidat,
     );
-  }
-  if (env.EXTERNAL_SEARCH === "off") {
-    fehlt.push(
-      "EXTERNAL_SEARCH=off: die externe Suche ist in dieser Umgebung abgeschaltet (hermetischer Lauf).",
-    );
-  }
-  if (fehlt.length > 0) {
-    return leer("voraussetzung_fehlt", fehlt, "Keine Netzanfrage gesendet.", kandidat);
   }
 
   const services = assembleServices(inMemoryRepos());
+  if (opt.externeSuche) {
+    // Derselbe Platz, den `assembleServices` mit `createExternalSearchFromEnv()` belegt — buildApp
+    // installiert daraus den Adapter von `wikipedia-suche` (Transport `echt`).
+    services.externalSearch = opt.externeSuche;
+  }
   const app = buildApp(services);
   try {
     await app.ready();
