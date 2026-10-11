@@ -99,6 +99,8 @@ import { UNTERNEHMEN_SCHEMA } from "./unternehmensprofil";
 import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
 // produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer Veröffentlichung.
 import { VEROEFFENTLICHUNG_SCHEMA } from "./veroeffentlichung";
+// aufnahme:20260922:gesamt-lernwege: Fragensatzversionen und Versuche der Verständnisfragen.
+import { VERSTAENDNISFRAGEN_SCHEMA } from "./verstaendnisfragen";
 // produkt:20261007:templates-default: Vorlagen, persönliche Standards, Space-Vorgaben, Nutzung und
 // Begriffspflege als unveränderliche Fassungen.
 import { VORLAGEN_SCHEMA } from "./vorlagen";
@@ -369,6 +371,10 @@ export const schemas = [
   // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung
   // ist.
   KOMMUNIKATION_SCHEMA,
+  // aufnahme:20260922:gesamt-lernwege: Fragensatzversionen und Versuche der Verständnisfragen.
+  // Additiv und wiederholbar (zwei CREATE TABLE IF NOT EXISTS samt Indizes), ohne Fremdschlüssel,
+  // ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  VERSTAENDNISFRAGEN_SCHEMA,
 ];
 
 // ================================================================================================

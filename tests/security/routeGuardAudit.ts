@@ -477,6 +477,34 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.read",
     zeilenrecht: ["darfSehen"],
   },
+  // aufnahme:20260922:gesamt-lernwege — Verständnisfragen: Lesen, Beantworten und eigene Ergebnisse
+  // mit `ko.read`, Anlegen/Ändern/Vorlegen mit `ko.create` (der Dienst verlangt zusätzlich die
+  // Verantwortung am Eintrag oder das Freigaberecht), Entscheiden mit `ko.validate`. Jede Tür hält
+  // den Eintrag vor der Antwort gegen `darfSehen` (sonst 404 wie am Detailabruf).
+  "GET /api/kos/:id/verstaendnisfragen": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/kos/:id/verstaendnisfragen": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "PUT /api/verstaendnisfragen/:id": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "POST /api/verstaendnisfragen/:id/vorlegen": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/verstaendnisfragen/:id/entscheiden": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/verstaendnisfragen/:id/versuche": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  "GET /api/verstaendnisfragen/versuche/:versuchId": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  "GET /api/verstaendnisfragen/meine": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "GET /api/verstaendnisfragen/:id/ergebnisse": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
   // Veröffentlichung mit Meldungswahl: der Stand mit `ko.read`, das Veröffentlichen mit dem
   // vorhandenen Freigaberecht `ko.validate`. Beide Türen halten den Eintrag vor der Antwort gegen
   // `darfSehen` (sonst 404 wie am Detailabruf).

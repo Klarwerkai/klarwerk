@@ -485,6 +485,25 @@ export const DATENINVENTAR: readonly Datenart[] = [
     selbstauskunft: { enthalten: true },
   },
   {
+    id: "verstaendnisfragen",
+    name: "Verständnisfragen und Ergebnisse",
+    inhalt:
+      "Fragensätze zu einer Wissensfassung (Fragen, Antwortmöglichkeiten, richtige Antworten, Erläuterung, Belegstelle, Bestehensregel, Rollenzuordnung) mit ändernder, vorlegender und entscheidender Kennung; je Versuch Person, Eintrag, Fassung, Fragensatzversion, Zeitpunkt, gewählte Antworten und Ergebnis.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Jeder Versuch ist einer Person zugeordnet; Fragensätze nennen die Kennungen der Bearbeitenden.",
+    ablage: {
+      ort: DATENBANK,
+      tabellen: ["verstaendnis_fragensaetze", "verstaendnis_versuche"],
+    },
+    taetigkeit: "lernpfade",
+    loeschung: "Kein Löschweg.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: { enthalten: true },
+    befund:
+      "Ergebnisse sehen die Person selbst und die für den Fragensatz Zuständigen; keine Rangliste, kein Eintrag im Prüfprotokoll je Versuch.",
+  },
+  {
     id: "management",
     name: "Bereichsverantwortung und Ruhestandshorizonte",
     inhalt:
@@ -944,7 +963,8 @@ const TAETIGKEITEN: readonly TaetigkeitStamm[] = [
   {
     id: "lernpfade",
     name: "Lernpfade",
-    zweck: "Einarbeitung je Rolle und Nachprüfung gekoppelter Arbeitsmittel.",
+    zweck:
+      "Einarbeitung je Rolle, Verständnisfragen zu gültigen Wissensfassungen und Nachprüfung gekoppelter Arbeitsmittel.",
   },
   {
     id: "betroffenenrechte",

@@ -350,6 +350,45 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Kenntnisnahme — nur die eigene Anforderung und nur bei darfSehen, sonst 404.",
   },
+  // --- Verständnisfragen zu einer gültigen Fassung (aufnahme:20260922:gesamt-lernwege) -----------
+  // Fragensätze tragen Titel und Belegstellen des Eintrags; jede Tür hält den Eintrag vor jeder
+  // Antwort gegen darfSehen (lokale Helfer `sichtbaresKo`/`sichtbarerSatz`), sonst 404.
+  "GET /api/kos/:id/verstaendnisfragen": {
+    urteil: "PRAEDIKAT",
+    grund: "Verständnisfragen — nur zu einem Eintrag, den der Leser sehen darf.",
+  },
+  "POST /api/kos/:id/verstaendnisfragen": {
+    urteil: "PRAEDIKAT",
+    grund: "Verständnisfragen — darfSehen vor dem Anlegen, sonst 404.",
+  },
+  "PUT /api/verstaendnisfragen/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "Verständnisfragen — darfSehen am Eintrag des Fragensatzes vor dem Ändern.",
+  },
+  "POST /api/verstaendnisfragen/:id/vorlegen": {
+    urteil: "PRAEDIKAT",
+    grund: "Verständnisfragen — darfSehen am Eintrag des Fragensatzes vor dem Vorlegen.",
+  },
+  "POST /api/verstaendnisfragen/:id/entscheiden": {
+    urteil: "PRAEDIKAT",
+    grund: "Verständnisfragen — darfSehen am Eintrag des Fragensatzes vor der Entscheidung.",
+  },
+  "POST /api/verstaendnisfragen/:id/versuche": {
+    urteil: "PRAEDIKAT",
+    grund: "Verständnisfragen — eigener Versuch nur bei darfSehen; Rückmeldung mit Belegstelle.",
+  },
+  "GET /api/verstaendnisfragen/versuche/:versuchId": {
+    urteil: "PRAEDIKAT",
+    grund: "Verständnisfragen — eigener oder zuständiger Abruf nur bei darfSehen, sonst 404.",
+  },
+  "GET /api/verstaendnisfragen/meine": {
+    urteil: "PRAEDIKAT",
+    grund: "Verständnisfragen — eigene Ergebnisse und Zuordnung, je Eintrag über darfSehen.",
+  },
+  "GET /api/verstaendnisfragen/:id/ergebnisse": {
+    urteil: "PRAEDIKAT",
+    grund: "Verständnisfragen — Übersicht nur für Zuständige und nur bei darfSehen.",
+  },
   "GET /api/kos/:id/veroeffentlichung": {
     urteil: "PRAEDIKAT",
     grund: "Veröffentlichung — Stand und Vorschau nur zu einem Eintrag, den der Leser sehen darf.",

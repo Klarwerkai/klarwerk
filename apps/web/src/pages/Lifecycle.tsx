@@ -58,6 +58,7 @@ import {
 } from "../components/pruefen/PruefenZustand";
 import { abhaengigeQuelle, flaechenZustand } from "../components/pruefen/zaehler";
 import { Button, cx } from "../components/ui";
+import { LernpfadVerstaendnis } from "../components/verstaendnisfragen/LernpfadVerstaendnis";
 import { leseFall } from "../lib/fallAbsprung";
 import { aeltesteVorlage, faelligeKennungen } from "../lib/frische";
 import { completedCount, isStepDone, progressPercent } from "../lib/learningPath";
@@ -291,6 +292,9 @@ export function Lifecycle(): JSX.Element {
             {leerzustandsZeile(t, "lernpfad")}
           </>
         )}
+        {/* aufnahme:20260922:gesamt-lernwege: die der Rolle zugeordneten Verständnisfragen —
+            unter den unveränderten Leseschritten, getrennt von Lesen und praktischer Befähigung. */}
+        <LernpfadVerstaendnis />
       </PruefenHilfeBlock>
       <PruefenMenueTrenner />
       <PruefenHilfeBlock titel={t("lcy.assetTitle")}>

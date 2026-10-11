@@ -464,6 +464,7 @@ import { unternehmenRoutes } from "./routes/unternehmen-routes";
 import { validationRoutes } from "./routes/validation-routes";
 import { kontoendeSperre, verantwortungRoutes } from "./routes/verantwortung-routes";
 import { veroeffentlichungRoutes } from "./routes/veroeffentlichung-routes";
+import { verstaendnisfragenRoutes } from "./routes/verstaendnisfragen-routes";
 import {
   lesePruefzustaendigkeit,
   scimSchluessel,
@@ -523,6 +524,14 @@ import {
   VeroeffentlichungDienst,
   type VeroeffentlichungsZustellungRepo,
 } from "./veroeffentlichung";
+// aufnahme:20260922:gesamt-lernwege — Verständnisfragen zu einer gültigen Wissensfassung: haltbar
+// im Postgres-Betrieb, im Speicher ohne Datenbank.
+import {
+  InMemoryVerstaendnisfragenRepo,
+  PgVerstaendnisfragenRepo,
+  VerstaendnisfragenDienst,
+  type VerstaendnisfragenRepo,
+} from "./verstaendnisfragen";
 import {
   InMemoryVorlagenAblage,
   PgVorlagenAblage,
@@ -769,6 +778,12 @@ export interface AppServices {
    * Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt sie beim Neustart zu verlieren.
    */
   unternehmen: UnternehmenRepo;
+  /**
+   * aufnahme:20260922:gesamt-lernwege — Fragensatzversionen und Versuche der Verständnisfragen.
+   * Bauform wie `kenntnisnahmen`: Postgres im Betrieb, sonst die Speicherfassung, die im
+   * Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt Ergebnisse beim Neustart zu verlieren.
+   */
+  verstaendnisfragen: VerstaendnisfragenRepo;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -1302,6 +1317,8 @@ export function assembleServices(
     datenschutzUhr?: () => number;
     // ADMIN-15: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
     unternehmen?: UnternehmenRepo;
+    // Verständnisfragen: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    verstaendnisfragen?: VerstaendnisfragenRepo;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -1742,6 +1759,10 @@ export function assembleServices(
     // die Kenntnisnahme.
     unternehmen:
       opts.unternehmen ?? new InMemoryUnternehmenRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+    // Verständnisfragen: dieselbe Haltbarkeitsregel wie die Kenntnisnahme.
+    verstaendnisfragen:
+      opts.verstaendnisfragen ??
+      new InMemoryVerstaendnisfragenRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -2256,6 +2277,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // ADMIN-15: Profil- und Richtlinienfassungen samt Handlungsprotokoll überleben Neuladen,
       // Neustart und Deploy (`UNTERNEHMEN_SCHEMA`, angelegt von `migrate()`).
       unternehmen: new PgUnternehmenRepo(pool),
+      // Verständnisfragen: Fragensatzversionen und Ergebnisse überleben Neuladen, Neustart und
+      // Deploy (`VERSTAENDNISFRAGEN_SCHEMA`, angelegt von `migrate()`).
+      verstaendnisfragen: new PgVerstaendnisfragenRepo(pool),
     },
   );
 }
@@ -4447,6 +4471,19 @@ export function buildApp(
     kennung: () => randomUUID(),
   });
   app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
+  // aufnahme:20260922:gesamt-lernwege — Verständnisfragen zu einer gültigen Wissensfassung. Liest
+  // Einträge und Fassungen über `services.ko`, Namen über die vorhandene Kontenliste; Entscheidungen
+  // stehen im Prüfprotokoll, Versuche bewusst NICHT (keine Leistungs- oder Verhaltenskontrolle).
+  // Nicht geschaltet: ohne angelegten Fragensatz erscheint nichts.
+  const verstaendnisDienst = new VerstaendnisfragenDienst({
+    repo: services.verstaendnisfragen,
+    ko: services.ko,
+    konten: () => services.auth.listUsers(),
+    jetzt: services.kenntnisnahmeUhr,
+    kennung: () => randomUUID(),
+    audit: services.audit,
+  });
+  app.register(verstaendnisfragenRoutes({ dienst: verstaendnisDienst, kos: services.ko }, guards));
   // produkt:20261007:veroeffentlichungsoptionen — Veröffentlichung mit Meldungswahl. Der Leserkreis
   // ist derselbe wie der Empfängerkreis einer Kenntnisnahme (eine Regel, eine Stelle); der Vermerk
   // liegt am Eintrag, der Beleg im Prüfprotokoll. Dieselbe Instanz speist die Glocke unten.
@@ -5063,6 +5100,8 @@ export function buildApp(
           klara: services.klaraSessions,
           // R-0663/R-1645: die Nachfolge bei Befristung, in der die Person vorkommt.
           nachfolge: services.verantwortungNachfolge,
+          // Verständnisfragen: die eigenen Versuche samt Ergebnis.
+          verstaendnisfragen: services.verstaendnisfragen,
         },
         loeschantraege: services.loeschantraege,
         auth: services.auth,

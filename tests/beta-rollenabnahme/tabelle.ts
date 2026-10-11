@@ -1062,6 +1062,91 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // aufnahme:20260922:gesamt-lernwege — Verständnisfragen. Lesen, Beantworten und eigene Ergebnisse
+  // am Leserecht, Anlegen/Ändern/Vorlegen am Anlagerecht `ko.create` (der Dienst verlangt danach
+  // die Verantwortung am Eintrag oder das Freigaberecht), Entscheiden am Freigaberecht
+  // `ko.validate`. Zustandsfreie URLs: hinter dem Tor endet jede Tür im 404 bzw. 400 (fehlende
+  // Version), die eigene Liste im 200 — „durchgelassen", nichts wird angelegt.
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/verstaendnisfragen",
+    route: "/api/kos/:id/verstaendnisfragen",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:146",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/verstaendnisfragen",
+    route: "/api/kos/:id/verstaendnisfragen",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:188",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "PUT",
+    pfad: "/api/verstaendnisfragen/gibt-es-nicht",
+    route: "/api/verstaendnisfragen/:id",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:207",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "POST",
+    pfad: "/api/verstaendnisfragen/gibt-es-nicht/vorlegen",
+    route: "/api/verstaendnisfragen/:id/vorlegen",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:233",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "POST",
+    pfad: "/api/verstaendnisfragen/gibt-es-nicht/entscheiden",
+    route: "/api/verstaendnisfragen/:id/entscheiden",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:258",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "POST",
+    pfad: "/api/verstaendnisfragen/gibt-es-nicht/versuche",
+    route: "/api/verstaendnisfragen/:id/versuche",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:303",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "GET",
+    pfad: "/api/verstaendnisfragen/versuche/gibt-es-nicht",
+    route: "/api/verstaendnisfragen/versuche/:versuchId",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:330",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "GET",
+    pfad: "/api/verstaendnisfragen/meine",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:357",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "GET",
+    pfad: "/api/verstaendnisfragen/gibt-es-nicht/ergebnisse",
+    route: "/api/verstaendnisfragen/:id/ergebnisse",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:402",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   // produkt:20261007:veroeffentlichungsoptionen. Der Stand hängt am Leserecht, das Veröffentlichen
   // am vorhandenen Freigaberecht `ko.validate` (Controller/Admin). Zustandsfreie URLs: hinter dem
   // Tor endet der Stand im 404, das Veröffentlichen ohne Rumpf im 400 — „durchgelassen", nichts

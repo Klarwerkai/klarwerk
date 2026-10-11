@@ -235,6 +235,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // drei `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "KOMMUNIKATION_SCHEMA", risiko: "ADDITIV" },
+  // aufnahme:20260922:gesamt-lernwege: Fragensatzversionen und Versuche der Verständnisfragen.
+  // ADDITIV, nachgezählt: zwei `CREATE TABLE IF NOT EXISTS` und drei `CREATE INDEX IF NOT EXISTS`,
+  // kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "VERSTAENDNISFRAGEN_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

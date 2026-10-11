@@ -125,6 +125,7 @@ import { NegativwissenAnzeige } from "../ko/NegativwissenAnzeige";
 import { KNOWLEDGE_TYPES } from "../trust";
 import { Button, Field, SectionLabel, TextInput, cx } from "../ui";
 import { VeroeffentlichungBereich } from "../veroeffentlichung/VeroeffentlichungBereich";
+import { VerstaendnisfragenBereich } from "../verstaendnisfragen/VerstaendnisfragenBereich";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis";
 import { FassungsvergleichImEditor } from "./Fassungsvergleich";
@@ -4203,6 +4204,9 @@ export function BibliothekLesen({
                 Beziehungen, vor „Mehr". Ohne eigene Anforderung nur eine zugeklappte Zeile. */}
             {kenntnisnahmeFlaeche}
             {veroeffentlichung}
+            {/* aufnahme:20260922:gesamt-lernwege: Verständnisfragen zu dieser Fassung — ebenfalls
+                nachgeordnet; ohne Fragensatz und ohne Bearbeitungsrecht erscheint nichts. */}
+            <VerstaendnisfragenBereich koId={koId} />
 
             {/* LESEN-INHALT-ZUERST (Ben, nacharbeit-6): Seitenmetadaten wie „Space und
                 Verantwortung" — nach dem Inhalt, vor „Mehr". */}

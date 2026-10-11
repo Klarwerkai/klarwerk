@@ -537,6 +537,8 @@ PFLICHTTABELLEN=(
   kommunikationsregel_fassungen
   meldungsregel_persoenlich
   meldung_zustellstatus
+  verstaendnis_fragensaetze
+  verstaendnis_versuche
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do
