@@ -106,6 +106,24 @@ function loeschen(b: Buehne) {
   });
 }
 
+/**
+ * gesamt-leserechte (Nacharbeit 32): einen Space mit leerem sichtbarem Bestand löscht nur, wer
+ * ausdrückliches Existenzrecht hat (`KLARWERK_EXISTENZRECHT`). V und Z erteilen es dem Admin.
+ */
+async function mitExistenzrecht<T>(arbeit: () => Promise<T>): Promise<T> {
+  const vorher = process.env.KLARWERK_EXISTENZRECHT;
+  process.env.KLARWERK_EXISTENZRECHT = "admin@vorlagenrace.test";
+  try {
+    return await arbeit();
+  } finally {
+    if (vorher === undefined) {
+      delete process.env.KLARWERK_EXISTENZRECHT;
+    } else {
+      process.env.KLARWERK_EXISTENZRECHT = vorher;
+    }
+  }
+}
+
 /** Was ein Nichtmitglied und der Firmenfilter vom Ergebnis sehen — gleich für alle Fälle. */
 async function lage(b: Buehne) {
   const ko = (await b.services.ko.listEinschliesslichPapierkorb()).find((x) => x.title === TITEL);
@@ -209,11 +227,8 @@ it("K · Löschkonflikt: kein Firmenkontext-Rückfall und kein fremder Lesezugri
 
 it("V · Löschung vor der Einreichung: 409 SPACE_GELOESCHT, es entsteht nichts", async () => {
   const b = await buehne();
-  // gesamt-leserechte (Nacharbeit 32): leeren Space löscht nur, wer ausdrückliches Existenzrecht hat.
-  const vorher = process.env.KLARWERK_EXISTENZRECHT;
-  process.env.KLARWERK_EXISTENZRECHT = "admin@vorlagenrace.test";
   try {
-    expect((await loeschen(b)).statusCode).toBe(200);
+    expect((await mitExistenzrecht(() => loeschen(b))).statusCode).toBe(200);
     const res = await anlegen(b);
     expect(res.statusCode, res.body).toBe(409);
     expect(res.json().error).toBe("SPACE_GELOESCHT");
@@ -221,11 +236,6 @@ it("V · Löschung vor der Einreichung: 409 SPACE_GELOESCHT, es entsteht nichts"
     expect(l.ko).toBeUndefined();
     expect(l.imFirmenfilter).toBe(false);
   } finally {
-    if (vorher === undefined) {
-      delete process.env.KLARWERK_EXISTENZRECHT;
-    } else {
-      process.env.KLARWERK_EXISTENZRECHT = vorher;
-    }
     await b.app.close();
   }
 });
@@ -246,7 +256,7 @@ it("Z · scheitert die Zuordnung, ist die Anlage zurückgenommen: 409, kein Rest
     expect(l.nutzung).toBeUndefined();
     // Der Space bleibt, wie er war — und lässt sich löschen, weil nichts in ihm liegt.
     b.services.ko.setLeadingSpace = original;
-    expect((await loeschen(b)).statusCode).toBe(200);
+    expect((await mitExistenzrecht(() => loeschen(b))).statusCode).toBe(200);
   } finally {
     b.services.ko.setLeadingSpace = original;
     await b.app.close();
