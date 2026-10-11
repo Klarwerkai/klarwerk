@@ -294,7 +294,20 @@ function istUnregistriert(status: number, body: string): boolean {
  * nicht. Die Ausnahme ist deshalb GESCHLOSSEN geführt: sie gilt nur für diese zwei Schlüssel, nur bei
  * genau 501 und nur mit `OIDC_DISABLED` im Rumpf. Ein 500/502/503/504 ist IMMER rot, auch hier.
  */
-const AUSGESCHALTET_501: readonly string[] = ["GET /api/auth/oidc/start", "POST /api/auth/oidc"];
+//
+// R-0560 (Aufnahme gesamt-sso): der SAML-Weg bringt vier weitere Türen derselben Art mit — sie
+// antworten ohne Konfiguration ebenso bewusst 501, mit `SAML_DISABLED` (`routes.ts`, `if
+// (!options.saml)`). Die Ausnahme bleibt GESCHLOSSEN: jede Tür steht namentlich mit GENAU ihrem
+// Schlüssel da, nicht „irgendein *_DISABLED".
+const AUSGESCHALTET_501_SCHLUESSEL: Readonly<Record<string, string>> = {
+  "GET /api/auth/oidc/start": "OIDC_DISABLED",
+  "POST /api/auth/oidc": "OIDC_DISABLED",
+  "GET /api/auth/saml/start": "SAML_DISABLED",
+  "GET /api/auth/saml/metadata": "SAML_DISABLED",
+  "POST /api/auth/saml/acs": "SAML_DISABLED",
+  "GET /api/auth/saml/abschluss": "SAML_DISABLED",
+};
+const AUSGESCHALTET_501: readonly string[] = Object.keys(AUSGESCHALTET_501_SCHLUESSEL);
 
 /**
  * Ein Serverfehler ist kein bestandener Lecknachweis: der Aufruf hat den Handler nicht durchlaufen,
@@ -305,11 +318,8 @@ function istServerfehler(e: Klopfergebnis): boolean {
   if (e.status < 500) {
     return false;
   }
-  return !(
-    e.status === 501 &&
-    AUSGESCHALTET_501.includes(`${e.method} ${e.url}`) &&
-    e.body.includes('"OIDC_DISABLED"')
-  );
+  const schluessel = AUSGESCHALTET_501_SCHLUESSEL[`${e.method} ${e.url}`];
+  return !(e.status === 501 && schluessel !== undefined && e.body.includes(`"${schluessel}"`));
 }
 
 /** Die Meldung, die Codex bestellt hat: Methode, URL, Datei, gemessener Status, Anfang des Rumpfes. */
@@ -409,6 +419,9 @@ const NUTZLAST_JE_WEG: Record<string, Record<string, unknown>> = {
   // geraten; der Wert ist bewusst KEIN echter Code, denn geprüft wird der Leckweg, nicht das
   // Einlösen.
   "POST /api/auth/office-handover/redeem": { code: "kein-echter-uebergabecode" },
+  // R-0560: der SAML-Rücksprung, abgelesen aus `Body: { SAMLResponse?: unknown }`. Der Wert ist
+  // bewusst keine echte Antwort — geprüft wird der Leckweg, nicht die Anmeldung.
+  "POST /api/auth/saml/acs": { SAMLResponse: "keine-echte-saml-antwort" },
 };
 
 /** Der positive Kontrollaufruf je Weg: der Status, mit dem sein Handler wirklich antwortet. */
@@ -455,6 +468,8 @@ const HANDLERKONTAKT: Record<string, Handlerkontakt> = {
   // `tests/office-web-anmeldung/uebergabe-keine-auskunft.test.ts` S3/S3b und
   // `uebergabe-vertrag.test.ts` S1e, beides am echten Fastify-Draht.
   "POST /api/auth/office-handover/redeem": { status: 401, schluessel: "INVALID_CREDENTIALS" },
+  // R-0560: die Testinstanz konfiguriert SAML nicht — dieselbe bewusste 501 wie beim OIDC-Rücksprung.
+  "POST /api/auth/saml/acs": { status: 501, schluessel: "SAML_DISABLED" },
 };
 
 /**
@@ -823,7 +838,7 @@ describe("JOB 3852 · D2f · jeder öffentliche Weg JEDER Methode, unangemeldet,
     ).toEqual([]);
   });
 
-  it("D2f-6 · KALIBRIERUNG: die 501-Ausnahme deckt genau die zwei abgeschalteten SSO-Wege, keinen weiteren", () => {
+  it("D2f-6 · KALIBRIERUNG: die 501-Ausnahme deckt genau die abgeschalteten SSO-Wege (OIDC und SAML), keinen weiteren", () => {
     expect(
       ergebnisse
         .filter((e) => e.status === 501)
@@ -913,7 +928,11 @@ describe("JOB 3852 · D2f · jeder öffentliche Weg JEDER Methode, unangemeldet,
   it("D2f-10 · KALIBRIERUNG: die 501-Ausnahme hängt am Feld `error`, nicht an einem Textfund im Rumpf", () => {
     const unbelegt = ergebnisse
       .filter((e) => AUSGESCHALTET_501.includes(`${e.method} ${e.url}`))
-      .filter((e) => e.status !== 501 || !schluesselStimmt(e.body, "OIDC_DISABLED"))
+      .filter(
+        (e) =>
+          e.status !== 501 ||
+          !schluesselStimmt(e.body, AUSGESCHALTET_501_SCHLUESSEL[`${e.method} ${e.url}`] ?? ""),
+      )
       .map(
         (e) =>
           `${e.method} ${e.aufgerufen} (${e.datei}) antwortete unangemeldet mit Status ${e.status} und ${schluesselText(fehlerschluessel(e.body))} — ${e.body.slice(0, 160)}`,

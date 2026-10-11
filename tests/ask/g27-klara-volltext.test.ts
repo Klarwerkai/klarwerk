@@ -190,6 +190,9 @@ describe("G27 · die benannte Grenze dieser Scheibe", () => {
       author: "anna",
       bodyHtml: langerBody(ZIELWORT),
     });
+    // R-0278 (Nacharbeit 3): die Web-Ansicht zieht nur noch Geprüftes heran. Gemessen wird hier
+    // der Fließtext-Treffer, nicht der Prüfstand — das Objekt ist deshalb freigegeben.
+    await services.ko.setValidationState(ko.id, { trust: 90, status: "validiert" });
     expect(await askKandidaten(services, FRAGE)).toEqual([ko.id]);
     expect((await services.validation.rate(ko.id, "pruefer-g27", "up")).status).toBe("validiert");
 

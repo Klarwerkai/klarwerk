@@ -78,6 +78,10 @@ const SCHALTER: Record<string, string> = {
   // die Zeile misst dann die Abwesenheit der Route, nicht die Wirkung des Tors. Mit dem Schalter
   // misst sie das einzige Recht (`ko.assign`), das sonst in keiner Zeile der Tabelle vorkäme.
   KLARWERK_EXPERT_MATCHING: "1",
+  // R-0556: die Verzeichnispflege (SCIM) entsteht nur mit einem Verzeichnisschlüssel. Er ist KEIN
+  // Rollenrecht — gemessen wird hier, dass keine der fünf Sitzungen ihn ersetzt (alle 401). Der
+  // Wert ist ein Prüfwert dieser Bühne, kein Geheimnis.
+  KLARWERK_SCIM_TOKEN: "rollenabnahme-verzeichnisschluessel-nur-fuer-die-buehne",
 };
 
 export interface Buehne {

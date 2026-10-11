@@ -1,5 +1,6 @@
 import type { ReasonerLocale } from "../../reasoner";
-import type { Gap, GapPriority } from "./types";
+import { istFragender, rueckfragePersoenlichFuer } from "./gap-vorgang";
+import type { Gap, GapBelegbedarf, GapPriority } from "./types";
 
 // FUNKE-FIX2 P0 (bens Blocker Gap-Freitext): adressatengerechte Sichtbarkeit des Wissenslücken-
 // FREITEXTES (gap.question). Der Fragetext ist Nutzer-Freitext OHNE Vertraulichkeitsstufe und kann
@@ -24,8 +25,27 @@ export interface GapView {
   // GAP-SPRACHHERKUNFT: Sprache, in der die Lücke entstand. Bewusst AUCH in der redigierten Sicht
   // (siehe unten) — eine Sprachangabe ist kein Fragetext und verrät nichts über den Inhalt.
   locale?: ReasonerLocale;
+  // JOB 1111 / D-032 · R-0333: wie oft dieselbe Frage zu dieser Lücke führte. Stand bis zur
+  // Aufnahme gesamt-wissensluecken NICHT in dieser Projektion — die Häufigkeit wurde gezählt und
+  // gespeichert, erreichte die Oberfläche aber nie. In BEIDEN Zweigen: eine Zahl ist kein Fragetext.
+  askCount?: number;
+  // R-0291: welcher Beleg für eine tragfähige Antwort fehlen würde. NUR in der berechtigten Sicht —
+  // der Befund gehört zur Frage und wird mit ihr zurückgehalten.
+  belegbedarf?: GapBelegbedarf[];
   // true → der Fragetext wurde für diesen Betrachter zurückgehalten (fail-closed Redaktion).
   redacted?: boolean;
+  // produkt:20261010:wissenskreislauf-schliessen: WIE eine geschlossene Lücke geschlossen wurde —
+  // fachlich gelöst oder administrativ zurückgenommen. In BEIDEN Zweigen: die Art verrät keinen
+  // Inhalt, und ohne sie stünde eine Rücknahme in der Liste wie eine Lösung. Fehlt bei offenen
+  // Lücken und bei Altbestand ohne festgehaltenen Abschluss.
+  abschlussArt?: "fachlich" | "administrativ" | "zurueckgewiesen";
+  // produkt:20261010:antwort-beanstandung-korrektur: die Lücke ist eine beanstandete Antwortaussage.
+  // In BEIDEN Zweigen — die Art ist kein Inhalt; die Aussage selbst steht nie in dieser Sicht.
+  beanstandung?: true;
+  // Nur in der berechtigten Sicht: eine Rückfrage an die Fragenden ist unbeantwortet.
+  rueckfrageOffen?: true;
+  // Nur in der berechtigten Sicht: der Betrachter ist einer der Fragenden (Ersteller oder Wiederholer).
+  eigeneFrage?: true;
 }
 
 // R-0585 (DS6, Auftrag gesamt-datenschutz-voreinstellung): „Was jemand gefragt hat, sieht nur er
@@ -43,10 +63,13 @@ export interface GapViewerContext {
 // jeder Fall ohne ermittelbare Berechtigung erhalten eine redigierte Sicht (Kategorie/
 // Neutralbezeichnung über die vorhandenen Felder — Priorität/Status/Zeitpunkt bleiben, der
 // Fragetext NICHT).
+//
+// produkt:20261010:wissenskreislauf-schliessen: „der Fragende" ist seit der Dublettenzählung nicht
+// mehr nur der Ersteller — wer DIESELBE offene Frage später stellte, steht in `weitereFragende` und
+// sieht seinen eigenen Fragetext genauso (`istFragender`). Niemand sonst kommt dazu.
 export function redactGapForViewer(gap: Gap, viewer: GapViewerContext): GapView {
-  const authorized =
-    (gap.assignee !== null && gap.assignee === viewer.viewerId) ||
-    (gap.createdBy !== undefined && gap.createdBy === viewer.viewerId);
+  const fragend = istFragender(gap, viewer.viewerId);
+  const authorized = (gap.assignee !== null && gap.assignee === viewer.viewerId) || fragend;
   const base: GapView = {
     id: gap.id,
     question: "",
@@ -59,9 +82,23 @@ export function redactGapForViewer(gap: Gap, viewer: GapViewerContext): GapView 
     // sieht nur eine Neutralbezeichnung — ohne die Sprachangabe stünde bei ihm ein unerklärter
     // fremdsprachiger Eintrag. Die Sprache ist datensparsam: sie sagt nichts über den Inhalt.
     ...(gap.locale ? { locale: gap.locale } : {}),
+    ...(typeof gap.askCount === "number" ? { askCount: gap.askCount } : {}),
+    ...(gap.status === "geschlossen" && gap.abschluss ? { abschlussArt: gap.abschluss.art } : {}),
+    ...(gap.beanstandung ? { beanstandung: true as const } : {}),
   };
   if (authorized) {
-    return { ...base, question: gap.question };
+    return {
+      ...base,
+      question: gap.question,
+      ...(gap.belegbedarf?.length ? { belegbedarf: [...gap.belegbedarf] } : {}),
+      // Bei einer Beanstandung nur für die zuständige Person und den Adressaten der Rückfrage.
+      ...((gap.rueckfragen ?? []).some(
+        (r) => r.antwort === undefined && rueckfragePersoenlichFuer(gap, r, viewer.viewerId),
+      )
+        ? { rueckfrageOffen: true as const }
+        : {}),
+      ...(fragend ? { eigeneFrage: true as const } : {}),
+    };
   }
   return { ...base, redacted: true };
 }

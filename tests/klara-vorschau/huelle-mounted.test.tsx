@@ -36,6 +36,7 @@ import {
   tippe,
   warte,
 } from "../fe003-tutorial-fragen/huelle";
+import { hilfeknopfLabel } from "../support/hilfeknopf";
 
 let m: Montiert | null = null;
 
@@ -44,6 +45,10 @@ beforeEach(async () => {
   sessionStorage.clear();
   zuruecksetzenGanz();
   setzeKlaraVorschauAktiv(true);
+  // Klara 01 (produkt:20261008:klara-basis): der echte Betrieb ist jetzt der Anfang. Diese Datei
+  // belegt die gelieferte Vorschau mit ihren vorgefertigten Antworten — also den Demo-Betrieb, den
+  // die Person ausdrücklich wählt. Den echten Betrieb misst `tests/klara-basis/`.
+  aendere((z) => ({ ...z, betrieb: "demo" }));
   netz.anfragen = [];
   netz.lage = { kiAktiv: true, rolle: "experte" };
   medienStub();
@@ -145,14 +150,20 @@ describe("K1/K3 · Klara ersetzt bei eingeschalteter Vorschau den Hilfeknopf", (
     m = await montiere("/fragen");
     const f = await figur();
     expect(f.querySelector("img")?.getAttribute("src")).toBe("/klara/klara-avatar-v1.png");
-    expect(document.querySelector(`[aria-label="${i18n.t("klara.open")}"]`)).toBeNull();
+    expect(document.querySelector(`[aria-label="${hilfeknopfLabel()}"]`)).toBeNull();
   });
 
-  it("ohne Schalter bleibt alles wie bisher", async () => {
+  // produkt:20261010:assistenz-produkteinstieg: ohne Schalter steht dieselbe Figur im
+  // Produktbetrieb da — neben dem Hilfeknopf, ohne Demo-Betrieb. Den Produktweg misst
+  // `tests/klara-produkt/produkteinstieg-am-server.test.tsx`.
+  it("ohne Schalter: Produktbetrieb neben dem Hilfeknopf, kein Demo", async () => {
     setzeKlaraVorschauAktiv(false);
     m = await montiere("/fragen");
-    expect(q(document, "klara-figur")).toBeNull();
-    expect(document.querySelector(`[aria-label="${i18n.t("klara.open")}"]`)).not.toBeNull();
+    const f = await figur();
+    expect(f.dataset.betriebsart).toBe("produkt");
+    expect(f.dataset.betrieb).toBe("echt");
+    expect(q(document, "klara-figur-demo")).toBeNull();
+    expect(document.querySelector(`[aria-label="${hilfeknopfLabel()}"]`)).not.toBeNull();
   });
 });
 
@@ -174,7 +185,8 @@ describe("K2/K3 · Tastatur, Öffnen, Schliessen, Verkleinern, Fokus", () => {
     expect(Number.parseFloat(huelle().style.left)).toBe(Number.parseFloat(start.left) - 80);
     await taste(f, "Home");
     expect({ left: huelle().style.left, top: huelle().style.top }).toEqual(start);
-    expect(q(document, "klara-ansage")?.textContent).toBe("Klara ist zurück an ihrem Startplatz.");
+    // produkt:20261010:assistenz-name-avatar: ohne gespeichertes Profil die neutrale Bezeichnung.
+    expect(q(document, "klara-ansage")?.textContent).toBe("Assistenz ist zurück am Startplatz.");
   });
 
   it("Klick öffnet, Escape schliesst, Verkleinern und Wiederöffnen — der Fokus kehrt zurück", async () => {
@@ -182,7 +194,8 @@ describe("K2/K3 · Tastatur, Öffnen, Schliessen, Verkleinern, Fokus", () => {
     await oeffnen();
     const f = await figur();
     expect(f.getAttribute("aria-expanded")).toBe("true");
-    expect(document.activeElement?.textContent).toBe("Klara");
+    // produkt:20261010:assistenz-name-avatar: der Gesprächskopf heisst ohne Profil „Deine Assistenz".
+    expect(document.activeElement?.textContent).toBe("Deine Assistenz");
 
     await taste(q(document, "klara-gespraech") as HTMLElement, "Escape");
     expect(q(document, "klara-gespraech")).toBeNull();

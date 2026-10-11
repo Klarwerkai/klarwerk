@@ -696,6 +696,29 @@ describe("JOB 3796 A · /analytics — der Erklärsatz gegen das Verhalten von `
       gezeichneteVorgaenge(),
       "/analytics leer: es stehen Protokollzeilen da, obwohl der Abruf leer war",
     ).toEqual([]);
+    // R-0956 (Ben, Nacharbeit 4): der leere Bestand ordnet in den Wissenskreis ein und nennt den
+    // nächsten Schritt — und zwar OHNE Rollenzweig: diese Vorrichtung hat keinen `RoleProvider`.
+    const bereich = (protokollbereich().textContent ?? "").replace(/\s+/g, " ");
+    expect(bereich).toContain(de("story.surface.audit.lead"));
+    expect(bereich).toContain(de("cycle.maintain.label"));
+    expect(protokollbereich().querySelector('a[href="/erfassen"]')?.textContent).toBe(
+      de("empty.cta.capture"),
+    );
+    expect(protokollbereich().querySelector('a[href="/validierung"]')?.textContent).toBe(
+      de("empty.cta.validation"),
+    );
+  });
+
+  it("A2a-FILTER: der eingegrenzte Bestand bleibt getrennt — „keine Treffer“, keine Leer-Einordnung", async () => {
+    await analyticsMontieren();
+    await tippe(
+      container.querySelector(`input[placeholder="${de("ana.filterTarget")}"]`),
+      "kein-solches-ziel",
+    );
+    const bereich = (protokollbereich().textContent ?? "").replace(/\s+/g, " ");
+    expect(bereich).toContain(de("ana.auditNoMatch"));
+    expect(bereich).not.toContain(de("story.surface.audit.lead"));
+    expect(bereich).not.toContain(de("ana.auditEmpty"));
   });
 
   it("A2b: das Protokoll lässt sich nach ART DES VORGANGS filtern — vorher und nachher am selben gezeichneten DOM", async () => {

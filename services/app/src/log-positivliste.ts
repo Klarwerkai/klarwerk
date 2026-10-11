@@ -79,6 +79,57 @@ export function inhaltsfreieFehlerkennung(err: unknown): string {
   return fest ? err.message : err.name;
 }
 
+/** Höchstzahl der Stapelrahmen einer Logzeile — Node selbst liefert ohne Umstellung zehn. */
+const STAPEL_MAX = 20;
+
+/** Ein Stapelrahmen: absoluter Pfad (oder `node:`) mit `:zeile:spalte` am Zeilenende. */
+const STAPEL_RAHMEN = /(?:^|[( ])((?:\/|[A-Za-z]:\\|node:)[^():\s]{1,200}):(\d{1,6}):(\d{1,6})\)?$/;
+
+/**
+ * Die Rahmen eines Fehlerstapels als `datei:zeile:spalte`, oberster zuerst — OHNE seinen Text.
+ *
+ * Die erste Stapelzeile ist die MELDUNG selbst und wird nie betrachtet; aus jeder weiteren wird
+ * ausschließlich der Ort übernommen, und nur, wenn er dem strengen Muster entspricht (ein Stapel
+ * aus dynamisch erzeugtem Code kann beliebigen Text als „Dateinamen" tragen). Pfade im Baum werden
+ * ab `services/`, `apps/`, `tools/`, `tests/` bzw. `node_modules/` gekürzt.
+ *
+ * Eine Quelle für beide Leser: `herkunftAusStack` (build-app.ts) nimmt den obersten Rahmen, der
+ * Auffangzweig von `sendError` (http.ts) die ganze Folge.
+ */
+export function stapelRahmen(stack: unknown): string[] {
+  if (typeof stack !== "string") {
+    return [];
+  }
+  const rahmen: string[] = [];
+  for (const zeile of stack.split("\n").slice(1)) {
+    const treffer = STAPEL_RAHMEN.exec(zeile.trimEnd());
+    if (!treffer?.[1]) {
+      continue;
+    }
+    const kurz = treffer[1].replace(/^.*?\/(services|apps|tools|tests|node_modules)\//, "$1/");
+    rahmen.push(`${kurz}:${treffer[2]}:${treffer[3]}`);
+    if (rahmen.length >= STAPEL_MAX) {
+      break;
+    }
+  }
+  return rahmen;
+}
+
+/**
+ * Ist das eine Liste von Rahmen GENAU in der Form, die `stapelRahmen` ausgibt (`pfad:zeile:spalte`,
+ * kein Leerzeichen, keine Klammer)? Nur dann darf die Senke (`senkeUeberWert`, build-app.ts) unter dem
+ * Feld `stapel` ihre Token-Regel aussetzen — ein Repo-Pfad wie
+ * `services/knowledge-object/src/search-projection-repo-pg.ts` hat mehr als 24 Zeichen aus dem
+ * Base64-Alphabet und würde sonst zu `[redacted]`, der Stapel wäre wertlos.
+ */
+const STAPEL_RAHMEN_FORM = /^(?:node:|[A-Za-z]:)?[^\s():]{1,200}:\d{1,6}:\d{1,6}$/;
+export function istStapelRahmenListe(wert: unknown): wert is string[] {
+  return (
+    Array.isArray(wert) &&
+    wert.every((rahmen) => typeof rahmen === "string" && STAPEL_RAHMEN_FORM.test(rahmen))
+  );
+}
+
 const KA4: Logregel = {
   felder: { nutzlast: "wert", entscheidung: "wert", grund: "wert" },
 };
@@ -109,8 +160,12 @@ export const LOGFELDER: Readonly<Record<string, Logregel>> = {
   // Kalibrierkennung, mit der eine Prüfung belegt, dass ihr Logmitschnitt die Zeilen wirklich hört
   // (tests/office-web-anmeldung/uebergabe-keine-auskunft.test.ts) — nur eine Kennung.
   probe: "wert",
-  // Domänen-Fehlercode (http.ts, confluence-import-routes.ts).
+  // Domänen-Fehlercode (http.ts, confluence-import-routes.ts); im Auffangzweig von `sendError` der
+  // technische Code (SQLSTATE) bzw. `OHNE_CODE`/`UNBEKANNT`.
   code: "wert",
+  // http.ts (Auffangzweig von `sendError`): die Rahmen des Fehlerstapels, je nur `datei:zeile:spalte`
+  // (`stapelRahmen` unten) — der Ort im Quelltext, nie die Meldung.
+  stapel: { liste: "wert" },
   // Importwege: Stelle und inhaltsfreie Fehlerkennung (confluence-/jira-/sharepoint-import-routes).
   stelle: "bezeichnung",
   fehler: "satz",
@@ -121,6 +176,8 @@ export const LOGFELDER: Readonly<Record<string, Logregel>> = {
   reason: "fehlertyp",
   // Kennungen (ko-routes.ts, ask-routes.ts, auth/routes.ts).
   koId: "wert",
+  // server.ts — Endlöschlauf des Entwurfs-Papierkorbs (Aufnahme gesamt-papierkorb).
+  entwurfId: "wert",
   konto: "wert",
   restVorhanden: "wert",
   restFreigegeben: "wert",
@@ -300,6 +357,7 @@ export const MELDUNGEN: readonly string[] = [
   'KLARWERK_KI_PREISLISTE: Preis für „{wert}" unvollständig oder negativ.',
   // http.ts, csrf.ts, support-routes.ts, external-routes.ts, ko-routes.ts
   "Interner Betriebsfehler maskiert (HTTP 500 INTERNAL).",
+  "Unerwarteter Fehler ohne Domänencode (HTTP 500 INTERNAL).",
   "Schreibender Sitzungsaufruf fremder Herkunft abgelehnt",
   "Supportkontakt gesetzt, aber nicht auslieferbar — die Hilfe zeigt ihn als ungültig an.",
   "external-search: Anfrage an den Anbieter fehlgeschlagen",
@@ -344,10 +402,29 @@ export const MELDUNGEN: readonly string[] = [
   "Papierkorb-Endlöschung beim Start übersprungen",
   "Papierkorb-Endlöschung (periodisch): {zahl} abgelaufene KO(s) entfernt.",
   "Periodischer Papierkorb-Sweep übersprungen",
+  "Papierkorb-Endlöschung eines Entwurfs fehlgeschlagen",
+  "Papierkorb-Endlöschung beim Start: {zahl} abgelaufene Entwürfe entfernt.",
+  "Papierkorb-Endlöschung der Entwürfe beim Start übersprungen",
+  "Papierkorb-Endlöschung (periodisch): {zahl} abgelaufene Entwürfe entfernt.",
+  "Periodischer Papierkorb-Sweep der Entwürfe übersprungen",
   "Papierkorb-Sweep aktiv — Intervall {zahl} min.",
   "Klara-Aufräumlauf aktiv — Intervall {zahl} min.",
   "Gedächtnis aufgeräumt ({wert}): {zahl} abgelaufene Einträge gelöscht.",
   "Gedächtnis-Aufräumlauf übersprungen",
+  // server.ts — über „Hauptstand integriert" hinzugekommen (Lückenerkennung R-1657,
+  // Wissensereignisse R-0710); die Sätze stehen dort und in wissensereignisse.ts.
+  "Lückenerkennung übersprungen",
+  "Lückenerkennung über den Reasoner aktiv — Takt {zahl} min.",
+  "Wissensereignis-Abgleich übersprungen",
+  "Wissensereignis-Meldungen aktiv — {zahl} Ziel(e), Takt {zahl} s.",
+  "Webhook-Ziel verworfen: KLARWERK_WEBHOOKS ist kein gültiges JSON.",
+  "Webhook-Ziel verworfen: KLARWERK_WEBHOOKS muss eine JSON-Liste sein.",
+  "Webhook-Ziel verworfen: Eintrag {zahl}: Kennung fehlt oder ist ungültig (a-z, 0-9, Bindestrich).",
+  "Webhook-Ziel verworfen: {wert}: Kennung doppelt.",
+  "Webhook-Ziel verworfen: {wert}: Adresse fehlt oder ist nicht erlaubt (nur https, http nur für die eigene Maschine, keine Zugangsdaten in der Adresse).",
+  "Webhook-Ziel verworfen: {wert}: Ereignisse fehlen oder sind unbekannt ({liste}).",
+  "Webhook-Ziel verworfen: {wert}: Geheimnis fehlt oder ist kürzer als {zahl} Zeichen.",
+  "Wissensereignis {wert} an {wert} nach {zahl} Versuchen nicht zugestellt (zuletzt {bezeichnung}).",
   // klara-aufraeumen.ts
   "Klara-Sitzungen aufgeräumt ({wert}): {zahl} entfernt.",
   "Klara-Aufräumlauf ({wert}) übersprungen",

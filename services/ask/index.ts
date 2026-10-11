@@ -1,8 +1,52 @@
 // Öffentliche API des Moduls ask.
 export { AskService, GESPRAECHSFADEN_MAX_FRAGEN } from "./src/service";
-export type { AskServiceDeps, AskResult, UngeprueftHinweis } from "./src/service";
+export type {
+  AskAntwortZuschnitt,
+  AskServiceDeps,
+  AskPruefrahmen,
+  AskResult,
+  UngeprueftHinweis,
+} from "./src/service";
+// AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): der Zuschnitt der Antwort selbst.
+export { schneideAntwortZu } from "./src/antwort-zuschnitt";
+export type {
+  BegriffHerkunft,
+  ZuschnittAbschnitt,
+  ZuschnittBegriff,
+  ZuschnittDerAntwort,
+  ZuschnittErgaenzung,
+} from "./src/antwort-zuschnitt";
 export { InMemoryGapRepo, type GapRepo } from "./src/repo";
+// R-1089: der Meldeweg „Antwort falsch / Quelle passt nicht" — die Glocke liest dieselbe Aktion.
+export {
+  ANTWORT_MELDE_GRUENDE,
+  ANTWORT_MELDUNG_ACTION,
+  isAntwortMeldeGrund,
+  type AntwortMeldeGrund,
+  type AntwortMeldungQuittung,
+} from "./src/antwort-meldung";
+// produkt:20261010:antwort-beanstandung-korrektur: die Beanstandung einer konkreten Aussage —
+// Regeln in `src/antwort-beanstandung.ts`, Schreibwege am `AskService`.
+export {
+  BEANSTANDUNG_BEGRUENDUNG_MAX,
+  BEANSTANDUNG_FRAGE,
+  beanstandungSicht,
+  istKorrektur,
+  leseBeanstandung,
+  type BeanstandungEingabe,
+  type BeanstandungSicht,
+} from "./src/antwort-beanstandung";
 export { PgGapRepo, ASK_SCHEMA } from "./src/repo-pg";
+// R-0773: erfolglose Suchen je Person (Begründung und Grenzen in `src/nulltreffer.ts`).
+export {
+  InMemoryNulltrefferRepo,
+  NULLTREFFER_DECKEL,
+  nulltrefferBegriff,
+  nulltrefferEingrenzung,
+  type NulltrefferRepo,
+  type NulltrefferSuche,
+} from "./src/nulltreffer";
+export { PgNulltrefferRepo } from "./src/repo-pg";
 // W3-A (KW-W3-18): der Repo-Kern der Antwortbelege. Die Fassade wird MITGESCHRIEBEN und nicht
 // nachgereicht — die W2-A-Lehre (Preflight 39 F1): eine exportierte Konstante, die die
 // Modulfassade nicht weiterreicht, ist fuer `services/app` unerreichbar, und der Fehler faellt
@@ -54,12 +98,52 @@ export {
   ANSWER_RECEIPT_TTL_MS,
   MIN_RECEIPT_SECRET_BYTES,
   ReceiptSecretError,
+  aussageFingerabdruck,
   parseConfiguredReceiptSecret,
   signAnswerReceipt,
   verifyAnswerReceipt,
 } from "./src/receipt";
-export { AskError, GAP_PRIORITIES, isGapPriority } from "./src/types";
-export type { Gap, GapPriority, AskErrorCode } from "./src/types";
+export {
+  AskError,
+  GAP_RUECKNAHME_GRUENDE,
+  isGapPriority,
+  isGapRuecknahmeGrund,
+} from "./src/types";
+export type {
+  Gap,
+  GapAbschluss,
+  GapBeanstandung,
+  GapBeanstandungMeldung,
+  GapBelegbedarf,
+  GapPriority,
+  GapRueckfrage,
+  GapRuecknahmeGrund,
+  GapZuordnung,
+  AskErrorCode,
+} from "./src/types";
+// produkt:20261010:wissenskreislauf-schliessen: der gemeinsame Vorgang an der einen Lücke — Regeln
+// in `src/gap-vorgang.ts`, Schreibwege und Sicht am `AskService`.
+export {
+  GapAbschlussVerweigert,
+  RUECKFRAGE_MAX_ZEICHEN,
+  abschlussMeldungId,
+  benoetigteBewertungen,
+  pruefeFachlicheNutzbarkeit,
+  rueckfrageMeldungId,
+  vorgangsphase,
+  naechsterSchritt,
+} from "./src/gap-vorgang";
+export type {
+  FachlicheNutzbarkeit,
+  GapNaechsterSchritt,
+  GapPruefstand,
+  GapVorgangEintrag,
+  GapVorgangSicht,
+  GapVorgangsphase,
+  GapVorgangsrolle,
+  NutzbarkeitsGrund,
+} from "./src/gap-vorgang";
+export type { GapBeteiligter, GapMeldung } from "./src/service";
 // AUFTRAG-mega34 B1: der kanonische, quellengebundene Evidenzzustand — die EINE Auslegung der
 // Antwort-Einstufung für alle Verbraucher, die sie nicht selbst bilden können (Word/Klara).
 export { answerCheckState, answerEvidence } from "./src/answer-evidence";
@@ -70,5 +154,75 @@ export type {
   AnswerEvidenceInput,
   AnswerGrade,
 } from "./src/answer-evidence";
+// AUFNAHME 20260922 · Antwort-Erklärung: Belastbarkeit, Zustandsfamilie und Konfliktseiten an der
+// Antwort — gelesen aus der fertigen Einstufung, nicht neu eingestuft.
+export {
+  antwortBelastbarkeit,
+  antwortZuschnitt,
+  konfliktGegenseiten,
+} from "./src/answer-belastbarkeit";
+export type {
+  AntwortBelastbarkeit,
+  AntwortBelastbarkeitInput,
+  AntwortKonflikt,
+  AntwortLage,
+  AntwortZuschnitt,
+  ArgumentStufe,
+  BelegteBeziehung,
+  BelegteBeziehungsArt,
+  FrageAnlass,
+  FragendenRolle,
+  BelastbarkeitsGrund,
+  KonfliktSeite,
+  QuellenBelastbarkeit,
+  WoerterbuchErgaenzung,
+} from "./src/answer-belastbarkeit";
+// produkt:20261009:referenzki-quellenbelege (REF-01): Aussage → Quellenversion → Passage, die
+// Auflösung mit aktuellen Rechten und die Eingabe der Referenz-Prüfung.
+export {
+  AUSSAGEN_BELEG_SCHEMA,
+  FUNDSTELLEN_AUFLOESEN_MAX,
+  FUNDSTELLEN_HINWEIS,
+  aufKernaussagenBeschraenkt,
+  bestaetigungGilt,
+  bindeAntworttext,
+  bindeAussagen,
+  bindungsQuelleAus,
+  fingerabdruck,
+  leseFundstellenAnfrage,
+  leseFundstellenVerweis,
+  loeseFundstelleAuf,
+  pruefPaket,
+  quellenLink,
+  belegstellenLink,
+  volltextDerFassung,
+} from "./src/aussage-fundstellen";
+export type {
+  Aussage,
+  AussagenBeleg,
+  BindungsQuelle,
+  ExterneFundstelle,
+  Fundstelle,
+  FundstellenAufloesung,
+  FundstellenLeser,
+  FundstellenVerweis,
+  FundstellenZustand,
+  InterneFundstelle,
+  ModellAngabe,
+  PrueferAngabe,
+  PruefPaket,
+  PruefPosten,
+  Teilaussage,
+  ZweitmeinungAussagen,
+  AusgelieferteAntwort,
+} from "./src/aussage-fundstellen";
 export { redactGapForViewer, summarizeGaps } from "./src/gap-visibility";
+// R-1630 / R-2176: der Stichtag des Antwortvergleichs — die Route liest ihn mit derselben Regel.
+export { stichtagAus } from "./src/wissensstand-vergleich";
+// R-1663 / R-2178: begründete Ansprechpartner-Vorschläge zu einer Wissenslücke.
+export type {
+  AnsprechpartnerAuskunft,
+  AnsprechpartnerSpuren,
+  AnsprechpartnerVorschlag,
+} from "./src/ansprechpartner";
 export type { GapView, GapViewerContext, GapSummary } from "./src/gap-visibility";

@@ -110,6 +110,7 @@ describe("Re-Validierung: Fassung und beide Belege committen/rollbacken gemeinsa
       "audit",
       "lifecycle_couplings",
       "lifecycle_pending",
+      "lifecycle_verlauf",
       "lifecycle_paths",
       "lifecycle_progress",
     ]) {
@@ -187,7 +188,8 @@ describe("Re-Validierung: Fassung und beide Belege committen/rollbacken gemeinsa
     const vorher = await belege(p, w.ko.id);
     w.scharf.an = true;
 
-    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla")).rejects.toThrow(
+    // produkt:20261010:aenderungsfolgen-sichtbar (Nacharbeit 4): Abschluss nur mit Stand.
+    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla", 1)).rejects.toThrow(
       "AUDIT_UNAVAILABLE",
     );
 
@@ -205,7 +207,7 @@ describe("Re-Validierung: Fassung und beide Belege committen/rollbacken gemeinsa
     const w = await welt(p);
     const vorher = await belege(p, w.ko.id);
     w.merkerAus.an = true;
-    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla")).rejects.toThrow(
+    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla", 1)).rejects.toThrow(
       "CLEAR_UNAVAILABLE",
     );
     expect((await w.koService.get(w.ko.id))?.version).toBe(1);
@@ -223,7 +225,7 @@ describe("Re-Validierung: Fassung und beide Belege committen/rollbacken gemeinsa
     const w = await welt(p);
     const vorher = await belege(p, w.ko.id);
     w.merkerAus.nachher = true;
-    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla")).rejects.toThrow(
+    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla", 1)).rejects.toThrow(
       "CLEAR_REPLY_LOST",
     );
     const merker = await p.query("SELECT ko_id FROM lifecycle_pending WHERE ko_id=$1", [w.ko.id]);
@@ -238,7 +240,7 @@ describe("Re-Validierung: Fassung und beide Belege committen/rollbacken gemeinsa
     await reset(p);
     const w = await welt(p);
     w.scharf.an = true;
-    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla")).rejects.toThrow(
+    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla", 1)).rejects.toThrow(
       "AUDIT_UNAVAILABLE",
     );
     const merker = await p.query("SELECT ko_id FROM lifecycle_pending WHERE ko_id=$1", [w.ko.id]);
@@ -249,13 +251,15 @@ describe("Re-Validierung: Fassung und beide Belege committen/rollbacken gemeinsa
     const p = requirePool(ctx);
     await reset(p);
     const w = await welt(p);
-    const bestaetigt = await w.lifecycle.confirmStillValid(w.ko.id, "carla");
+    const bestaetigt = await w.lifecycle.confirmStillValid(w.ko.id, "carla", 1);
     expect(bestaetigt.version).toBe(2);
     const liste = await belege(p, w.ko.id);
     expect(liste.slice(-2)).toEqual(["ko.revised", "ko.revalidated"]);
     expect(await w.lifecycle.pendingRevalidation()).not.toContain(w.ko.id);
     const reval = await w.audit.list({ action: "ko.revalidated" });
-    expect(reval.map((e) => e.payload)).toEqual([{ pendingCleared: true, version: 2 }]);
+    expect(reval.map((e) => e.payload)).toEqual([
+      { pendingCleared: true, geprueftStand: 1, version: 2 },
+    ]);
     expect((await w.audit.verifyReport()).ok).toBe(true);
   });
 });

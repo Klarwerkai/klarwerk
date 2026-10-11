@@ -99,8 +99,8 @@ export function klaraAnswerExplanationRoutes(
         const leser: AnswerExplanationLeser = {
           userId: user.id,
           darfVertraulich: user.role === "admin" || user.role === "controller",
-          // Antwortbeleg-Nacharbeit 5: die zentrale Sichtbarkeit von heute, samt Space-Recht
-          // (`spaceLesbar` am Sitzungsnutzer, erhoben in `makeGuards`).
+          // Antwortbeleg-Nacharbeit 5 / R-1175: die EINE Sichtbarkeitsentscheidung von heute, samt
+          // Space-Recht (`spaceLesbar` am Sitzungsnutzer, erhoben in `makeGuards`) und Autorschaft.
           darfSehen: sichtbarkeitsfilterFuer(user),
         };
         const ergebnis = await deps.explanations.erklaere(request.params.answerId, leser);

@@ -607,7 +607,7 @@ export async function fahreDurchgang(a: {
       seite,
       {
         art: "pruefkarte",
-        titel: t("evFresh.title"),
+        titel: t("fachwort.belegFrische.titel"),
         koId: bestand.fehlt.koId,
         text: t(SCHLUESSEL.belegFehlt),
       },
@@ -620,7 +620,7 @@ export async function fahreDurchgang(a: {
     // Die Prüfkarte führt diesen Zustand nur als Zähler; er muss den Zustand beim Namen nennen.
     const neutral = await lies(
       seite,
-      { art: "neutralZaehler", titel: t("evFresh.title") },
+      { art: "neutralZaehler", titel: t("fachwort.belegFrische.titel") },
       "der Neutral-Zähler der Prüfkarte",
     );
     expect(

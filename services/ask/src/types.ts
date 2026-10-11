@@ -7,9 +7,28 @@ export type GapPriority = "hoch" | "mittel" | "niedrig";
 
 export const GAP_PRIORITIES: readonly GapPriority[] = ["hoch", "mittel", "niedrig"];
 
+// R-1349 (Aufnahme gesamt-aufruferwaechter): die Prüfung liest die EINE Liste oben, statt die drei
+// Werte ein zweites Mal auszuschreiben — bis hierher hatte `GAP_PRIORITIES` keinen Leser.
 export function isGapPriority(value: unknown): value is GapPriority {
-  return value === "hoch" || value === "mittel" || value === "niedrig";
+  return (GAP_PRIORITIES as readonly unknown[]).includes(value);
 }
+
+/**
+ * R-0291 — WELCHER BELEG FÜR EINE TRAGFÄHIGE ANTWORT FEHLEN WÜRDE.
+ *
+ * Erhoben beim Entstehen der Lücke, aus DERSELBEN Vorauswahl, die die Antwort gespeist hat
+ * (`dropConfidential` + Betrachterfilter des Fragenden) — keine zweite Suche, keine Aussage über
+ * den Bestand jenseits dieser Vorauswahl. Die drei Torbegriffe sind dieselben wie die der
+ * Torlage (`VerschlossenHinweis`), damit Lücke, Antwortfläche und Validierung gleich sprechen.
+ *   · `wissensobjekt` — in der Vorauswahl lag kein verwendbares Objekt; es fehlt eines, das die
+ *     Frage beantwortet.
+ *   · `freigabe` / `stufe` / `volltext` — Objekte lagen vor, aber an mindestens einem war dieses
+ *     Tor zu (nicht freigegeben, keine Vertraulichkeitsstufe, kein durchsuchbarer Text).
+ *   · `unbestimmt` — Objekte lagen vor, alle Tore offen, und sie trugen trotzdem nicht: welcher
+ *     Beleg fehlt, lässt sich daraus NICHT herleiten. Es wird nichts geraten.
+ * Es sind nur Kategorien — keine Objektkennung, kein Titel.
+ */
+export type GapBelegbedarf = "wissensobjekt" | "freigabe" | "stufe" | "volltext" | "unbestimmt";
 
 export interface Gap {
   id: string;
@@ -55,11 +74,150 @@ export interface Gap {
   askCount?: number;
   // R-0846 / L6 — DER OBJEKTBEZUG. Das Wissensobjekt, das diese Lücke geschlossen hat. Pflicht beim
   // Schliessen (`closeGap(id, koId)`, PUT /api/gaps/:id mit `koId`): der Dienst prüft, dass das
-  // Objekt existiert und nicht im Papierkorb liegt, sonst bleibt die Lücke offen. Fehlen kann er nur
+  // Objekt existiert und nicht im Papierkorb liegt, sonst bleibt die Lücke offen. Seit
+  // produkt:20261010:wissenskreislauf-schliessen prüft er außerdem die Fachfreigabe der AKTUELLEN
+  // Fassung, Gültigkeit und Zugriff (`gap-vorgang.ts`). Bei einer OFFENEN Lücke ist der Bezug der
+  // verknüpfte Antwortentwurf in der Fachprüfung — kein Abschluss. Fehlen kann er nur
   // noch bei Altbeständen — der Integritätsbericht (services/app/src/datenintegritaet.ts) zählt sie
   // als Befund und meldet einen Bezug, dessen Objekt inzwischen endgelöscht ist.
   koId?: string;
+  // R-0291: der Belegbedarf (Typ oben). Gesetzt beim Anlegen; beim Zusammenführen derselben Frage
+  // bleibt der erste Befund stehen (`insertOrIncrement` zählt nur hoch), beim Bearbeiten
+  // (zuweisen, priorisieren, schliessen) reist er unverändert mit. Fehlt bei Altbeständen — die
+  // Oberfläche zeigt dann „unbestimmt" statt eines erfundenen Bedarfs.
+  belegbedarf?: GapBelegbedarf[];
+  // ============================================================================================
+  // produkt:20261010:wissenskreislauf-schliessen — DER GEMEINSAME VORGANG AN DIESER EINEN LÜCKE.
+  // ============================================================================================
+  //
+  // Kein zweites Lückenmodell und keine Aufgabenkopie: Fragende, Zuständigkeit, Rückfrage und
+  // Abschluss stehen an derselben Lücke, die Dublettenzählung (`insertOrIncrement`) und Zuordnung
+  // schon führen. Regeln und Ableitungen in `gap-vorgang.ts`. Alle Felder optional, keine Migration
+  // (Voll-JSONB); Altbestand hat sie schlicht nicht.
+  //
+  // `weitereFragende`: wer DIESELBE offene Frage später ebenfalls gestellt hat (nicht `createdBy`,
+  // ohne Doppelte). Sie sehen den Vorgang wie der Ersteller — dieselbe Sichtbarkeitsregel.
+  weitereFragende?: string[];
+  // Jede Zuordnung mit Zeitpunkt und Handelndem — die nachvollziehbare Neuzuordnung.
+  zuordnungen?: GapZuordnung[];
+  // Rückfragen der zuständigen Person an die Fragenden, samt Antwort.
+  rueckfragen?: GapRueckfrage[];
+  // Wie die Lücke geschlossen wurde. FACHLICH nur mit nutzbarem, freigegebenem Wissenseintrag in
+  // der geprüften Fassung; ADMINISTRATIV ist eine Rücknahme mit geschlossenem Grund — nie „gelöst".
+  // Fehlt bei einer geschlossenen Lücke: Altbestand von vor dieser Regel.
+  abschluss?: GapAbschluss;
+  // produkt:20261010:antwort-beanstandung-korrektur — DIESE LÜCKE IST EINE BEANSTANDETE AUSSAGE.
+  // Kein zweites Feedbackmodell: die Beanstandung läuft über genau diesen Vorgang (Zuständigkeit,
+  // Rückfrage, fachlicher Abschluss, Rückmeldung). Der Melder ist Fragender (`createdBy` bzw.
+  // `weitereFragende`), dieselbe Aussage aus weiteren Meldungen zählt hoch (`compareKey`). Regeln in
+  // `antwort-beanstandung.ts`. Fehlt bei jeder gewöhnlichen Lücke.
+  beanstandung?: GapBeanstandung;
 }
+
+/**
+ * Die beanstandete Aussage und jede Meldung dazu — mit dem Versionsbezug, den der Antwortbeleg
+ * damals signiert hat. Wird nie auf einen späteren Stand umgeschrieben.
+ */
+export interface GapBeanstandung {
+  /** Die Quelle, an der die Aussage beanstandet ist; fehlt, wenn eine Quelle gänzlich fehlt. */
+  koId: string | null;
+  /** Der Wortlaut der Aussage, wie die Antwort ihn auslieferte (Fingerabdruck im Beleg geprüft). */
+  aussageText: string;
+  aussageFingerabdruck: string;
+  /**
+   * Alle Objekte, aus denen die Aussage in IRGENDEINER zugeführten Meldung Fundstellen hatte — die
+   * Vereinigung über alle Meldungen, Grundlage der Kontextfreigabe (Ben, Nacharbeit 2).
+   */
+  aussageKoIds: string[];
+  meldungen: GapBeanstandungMeldung[];
+}
+
+export interface GapBeanstandungMeldung {
+  /** Die bestehende Meldekennung (`answer.reported`, `antwortMeldungId`). */
+  meldungId: string;
+  von: string;
+  at: string;
+  answerId: string | null;
+  aussageId: string;
+  /** Die Fassung der Quelle in DIESER Antwort; `null` ohne Quelle oder ohne gebundene Fassung. */
+  koVersion: number | null;
+  fundstelleId: string | null;
+  quelleFehlt: boolean;
+  /** Die kurze Begründung des Melders. Steht nur hier, nie im Prüfprotokoll. */
+  begruendung: string;
+  /**
+   * Die Objekte, aus denen die Aussage in DIESER Antwort Fundstellen hatte. Fehlt nur bei Meldungen
+   * von vor dieser Angabe — dann gilt die Menge am Vorgang (`GapBeanstandung.aussageKoIds`).
+   */
+  aussageKoIds?: string[];
+}
+
+/** Eine Zuordnung der Lücke: wer zuständig wurde, durch wen, wann und auf welchem Weg. */
+export interface GapZuordnung {
+  an: string;
+  von: string;
+  at: string;
+  /** `uebergabe`: ein Fragender hat übergeben; `neuzuordnung`: es war schon jemand zuständig. */
+  art: "zuordnung" | "uebergabe" | "neuzuordnung";
+}
+
+/** Eine Rückfrage der zuständigen Person an die Fragenden — und ihre Antwort. */
+export interface GapRueckfrage {
+  id: string;
+  frage: string;
+  von: string;
+  at: string;
+  /**
+   * produkt:20261010:antwort-beanstandung-korrektur: bei einer Beanstandung ist eine Rückfrage an
+   * GENAU EINEN Melder gerichtet (den der gewählten Meldung). Nur er und die zuständige Person sehen
+   * und beantworten sie. Fehlt bei gewöhnlichen Lücken (Rückfrage an alle Fragenden).
+   */
+  an?: string;
+  /** Die Meldung, zu der die Rückfrage gestellt wurde (nur bei Beanstandungen). */
+  meldungId?: string;
+  antwort?: string;
+  beantwortetVon?: string;
+  beantwortetAm?: string;
+}
+
+/**
+ * Warum eine Lücke OHNE fachliche Antwort geschlossen wurde — ein geschlossener Wertebereich, kein
+ * Freitext (dieselbe Begründung wie bei `ANTWORT_MELDE_GRUENDE`: keine personenbezogenen Angaben in
+ * einem Feld, das jeder Berechtigte der Lücke liest).
+ */
+export const GAP_RUECKNAHME_GRUENDE = [
+  "dublette",
+  "nicht_beantwortbar",
+  "ausser_zustaendigkeit",
+  "zurueckgezogen",
+] as const;
+export type GapRuecknahmeGrund = (typeof GAP_RUECKNAHME_GRUENDE)[number];
+
+export function isGapRuecknahmeGrund(value: unknown): value is GapRuecknahmeGrund {
+  return typeof value === "string" && (GAP_RUECKNAHME_GRUENDE as readonly string[]).includes(value);
+}
+
+export type GapAbschluss =
+  | {
+      art: "fachlich";
+      koId: string;
+      /** Die Fassung, deren Fachprüfung beim Abschluss bestanden war. */
+      koVersion: number;
+      von: string;
+      at: string;
+    }
+  | { art: "administrativ"; grund: GapRuecknahmeGrund; von: string; at: string }
+  // produkt:20261010:antwort-beanstandung-korrektur: die fachlich BEGRÜNDETE Zurückweisung einer
+  // Beanstandung — die Aussage bleibt, wie sie ist. Keine Erfolgsmeldung „gelöst", aber eine
+  // Rückmeldung mit der Begründung. `koVersion` ist die Fassung, auf die sich die Zurückweisung stützt.
+  | {
+      art: "zurueckgewiesen";
+      begruendung: string;
+      koId: string | null;
+      koVersion: number | null;
+      von: string;
+      at: string;
+    };
 
 // FUNKE-FIX P0 (bens ROT-1): FORBIDDEN — ein „Danke" ohne gültigen, dieses KO belegenden
 // Antwort-Receipt (unbelegte/fremd gewählte KO-ID) → 403 (sendError-Mapping).
@@ -70,7 +228,10 @@ export type AskErrorCode =
   | "CONFIRM_REQUIRED"
   | "BAD_REQUEST"
   | "FORBIDDEN"
-  | "KI_ABGESCHALTET";
+  | "KI_ABGESCHALTET"
+  // produkt:20261010:wissenskreislauf-schliessen: eine Lücke wurde während eines Schritts so oft
+  // gleichzeitig geändert, dass er am frischen Stand nicht gelang — nichts geschrieben (409).
+  | "CONFLICT";
 
 export class AskError extends Error {
   readonly code: AskErrorCode;

@@ -6,13 +6,30 @@ import type { OidcClaims } from "./oidc";
 import { hashPassword, verifyPassword } from "./password";
 import {
   InMemoryPasswordResetRepo,
+  InMemorySecondFactorRepo,
   type PasswordResetRepo,
+  type SecondFactorRepo,
   type SessionRepo,
   type UserRepo,
 } from "./repo";
+import { neuesTotpGeheimnis, otpauthAdresse, pruefeTotp } from "./totp";
 import { AuthError, type PublicUser, type Role, type Session, type User } from "./types";
 
 const MIN_PASSWORD_LENGTH = 8;
+// R-0562: Zwischen Passwort und Bestätigungscode liegt eine kurze, einmalige Anmeldeanfrage. Fünf
+// Minuten reichen, um das zweite Gerät zu holen; fünf falsche Codes beenden sie — danach braucht es
+// wieder das Passwort, und dessen Weg ist gedrosselt (`routes.ts`, Login-Limiter).
+const SECOND_FACTOR_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const SECOND_FACTOR_MAX_TRIES = 5;
+// Eine begonnene Einrichtung (Geheimnis gezeigt, noch nicht bestätigt) gilt zehn Minuten.
+const SECOND_FACTOR_SETUP_TTL_MS = 10 * 60 * 1000;
+// Der Aussteller, unter dem das Konto in der Authenticator-App erscheint.
+const SECOND_FACTOR_ISSUER = "KLARWERK";
+
+/** R-0562: Ergebnis des ersten Anmeldeschritts — fertige Sitzung oder Bitte um den zweiten Faktor. */
+export type LoginResult =
+  | { token: string; user: PublicUser }
+  | { secondFactor: { challenge: string; expiresInMs: number } };
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 Tage
 const RESET_TTL_MS = 60 * 60 * 1000; // FR-AUTH-08: Reset-Token 1 Stunde gültig
 
@@ -159,6 +176,8 @@ export interface AuthServiceDeps {
   users: UserRepo;
   sessions: SessionRepo;
   resetTokens?: PasswordResetRepo;
+  // R-0562: der eigene zweite Faktor je Konto (Vorgabe: Speicher, wie `resetTokens`).
+  secondFactors?: SecondFactorRepo;
   audit?: AuditService;
   // AUFTRAG-mega62 Block B: optionale echte DB-Transaktion für die Kenntnisnahme des Hinweises
   // (Konto-Vermerk + Prüfprotokoll-Eintrag committen/rollbacken gemeinsam).
@@ -197,6 +216,16 @@ export class AuthService {
   private readonly canChangeRolePolicy: RoleChangePolicy;
   // AUFTRAG-mega62 Block B: nur gesetzt, wenn die Kompositionswurzel einen echten Pg-Pool hat.
   private readonly withTx: WithTx | undefined;
+  private readonly secondFactors: SecondFactorRepo;
+  // R-0562: offene Anmeldeanfragen (Passwort geprüft, Code ausstehend) und begonnene
+  // Einrichtungen. Bewusst im Arbeitsspeicher, wie die Übergabecodes in `routes.ts`: beide leben
+  // Minuten, ein Neustart verwirft sie, und der Mensch beginnt den Schritt neu. Schlüssel der
+  // Anfragen ist der Hash — der Klartext existiert nur beim Client.
+  private readonly offeneAnfragen = new Map<
+    string,
+    { userId: string; expiresAt: number; versuche: number }
+  >();
+  private readonly offeneEinrichtungen = new Map<string, { secret: string; expiresAt: number }>();
 
   constructor(deps: AuthServiceDeps) {
     this.users = deps.users;
@@ -206,6 +235,7 @@ export class AuthService {
     this.genId = deps.genId ?? (() => randomUUID());
     this.genToken = deps.genToken ?? (() => randomBytes(32).toString("hex"));
     this.resetTokens = deps.resetTokens ?? new InMemoryPasswordResetRepo();
+    this.secondFactors = deps.secondFactors ?? new InMemorySecondFactorRepo();
     this.canChangeRolePolicy = deps.canChangeRole ?? defaultCanChangeRole;
     this.withTx = deps.withTx;
   }
@@ -264,7 +294,7 @@ export class AuthService {
 
   private async belegeKontoanlage(
     user: User,
-    via: "bootstrap" | "self" | "admin",
+    via: "bootstrap" | "self" | "admin" | "verzeichnis",
     actorId: string | undefined,
   ): Promise<void> {
     try {
@@ -280,7 +310,254 @@ export class AuthService {
   }
 
   // FR-AUTH-03: Login nur mit korrekten, freigegebenen Daten; FR-AUTH-05: Hash-Prüfung.
+  //
+  // R-0562: Dieser Weg liefert NUR für Konten OHNE eigenen zweiten Faktor eine Sitzung. Hat das
+  // Konto einen, endet er mit `SECOND_FACTOR_REQUIRED` — er ist kein Weg am zweiten Faktor vorbei.
+  // Die Anmeldemaske geht über `anmelden` + `anmeldenMitZweitemFaktor`.
   async login(input: LoginInput): Promise<{ token: string; user: PublicUser }> {
+    const user = await this.pruefePasswortanmeldung(input);
+    if (await this.secondFactors.find(user.id)) {
+      throw new AuthError(
+        "INVALID_CREDENTIALS",
+        "SECOND_FACTOR_REQUIRED" satisfies Meldungsschluessel,
+      );
+    }
+    return this.sitzungFuer(user);
+  }
+
+  /**
+   * R-0562: der erste Anmeldeschritt. Ohne zweiten Faktor entsteht sofort die Sitzung (das
+   * bisherige Verhalten); mit zweitem Faktor entsteht KEINE Sitzung, sondern eine kurzlebige,
+   * einmalige Anmeldeanfrage, die nur zusammen mit dem Code vom zweiten Gerät eingelöst wird.
+   */
+  async anmelden(input: LoginInput): Promise<LoginResult> {
+    const user = await this.pruefePasswortanmeldung(input);
+    if (!(await this.secondFactors.find(user.id))) {
+      return this.sitzungFuer(user);
+    }
+    this.raeumeAbgelaufeneAuf();
+    const challenge = this.genToken();
+    this.offeneAnfragen.set(hashTokenAtRest(challenge), {
+      userId: user.id,
+      expiresAt: this.now() + SECOND_FACTOR_CHALLENGE_TTL_MS,
+      versuche: 0,
+    });
+    return { secondFactor: { challenge, expiresInMs: SECOND_FACTOR_CHALLENGE_TTL_MS } };
+  }
+
+  /**
+   * R-0562: der zweite Anmeldeschritt — Anmeldeanfrage + Code vom zweiten Gerät ⇒ Sitzung.
+   *
+   * Freigabe und Befristung werden HIER ERNEUT geprüft: zwischen beiden Schritten liegen bis zu
+   * fünf Minuten, und ein in dieser Zeit gesperrtes Konto darf nicht mit dem Code hereinkommen.
+   * Jeder Code trägt höchstens EINE Anmeldung (`claimStep`).
+   */
+  async anmeldenMitZweitemFaktor(
+    challenge: string,
+    code: string,
+  ): Promise<{ token: string; user: PublicUser }> {
+    const schluessel = hashTokenAtRest(challenge);
+    const anfrage = this.offeneAnfragen.get(schluessel);
+    if (!anfrage || anfrage.expiresAt <= this.now()) {
+      this.offeneAnfragen.delete(schluessel);
+      throw new AuthError(
+        "INVALID_CREDENTIALS",
+        "SECOND_FACTOR_CHALLENGE_INVALID" satisfies Meldungsschluessel,
+      );
+    }
+    const faktor = await this.secondFactors.find(anfrage.userId);
+    const schritt = faktor ? pruefeTotp(faktor.secret, code, this.now()) : undefined;
+    if (
+      !faktor ||
+      schritt === undefined ||
+      !(await this.secondFactors.claimStep(anfrage.userId, schritt))
+    ) {
+      anfrage.versuche += 1;
+      if (anfrage.versuche >= SECOND_FACTOR_MAX_TRIES) {
+        this.offeneAnfragen.delete(schluessel);
+      }
+      // Kein Code und kein Geheimnis in der Nutzlast — nur DASS es scheiterte.
+      await this.record(anfrage.userId, "auth.second-factor-failed", anfrage.userId, {
+        versuch: anfrage.versuche,
+      });
+      throw new AuthError(
+        "INVALID_CREDENTIALS",
+        "SECOND_FACTOR_INVALID" satisfies Meldungsschluessel,
+      );
+    }
+    this.offeneAnfragen.delete(schluessel);
+    const user = await this.users.findById(anfrage.userId);
+    if (!user) {
+      throw new AuthError(
+        "INVALID_CREDENTIALS",
+        "SECOND_FACTOR_CHALLENGE_INVALID" satisfies Meldungsschluessel,
+      );
+    }
+    if (!user.approved) {
+      throw new AuthError("NOT_APPROVED", "NOT_APPROVED" satisfies Meldungsschluessel);
+    }
+    if (await this.zugangAbgelaufen(user)) {
+      throw new AuthError("NOT_APPROVED", "ACCESS_EXPIRED" satisfies Meldungsschluessel);
+    }
+    return this.sitzungFuer(user, { method: "password+totp" });
+  }
+
+  // ==============================================================================================
+  // R-0562 — EINRICHTEN, ABSCHALTEN, ZURÜCKSETZEN DES EIGENEN ZWEITEN FAKTORS.
+  // ==============================================================================================
+
+  /** Ist für dieses Konto ein eigener zweiter Faktor eingerichtet? */
+  async secondFactorStatus(userId: string): Promise<{ active: boolean }> {
+    return { active: (await this.secondFactors.find(userId)) !== undefined };
+  }
+
+  /**
+   * Beginnt die Einrichtung: erzeugt ein neues Geheimnis und gibt es EINMAL heraus (als Text und
+   * als `otpauth://`-Adresse für die Authenticator-App). Wirksam wird es erst mit `…Bestaetigen`
+   * — ein Geheimnis, das nie auf einem Gerät angekommen ist, darf niemanden aussperren.
+   *
+   * Das Passwort wird verlangt, weil eine fremd übernommene, offene Sitzung sonst ihren eigenen
+   * zweiten Faktor setzen und den Menschen damit aus seinem Konto sperren könnte. SSO-Konten haben
+   * kein Passwort — ihr zweiter Faktor kommt aus dem Firmen-Anmeldedienst.
+   */
+  async secondFactorSetupStart(
+    userId: string,
+    password: string,
+  ): Promise<{ secret: string; otpauthUri: string }> {
+    const user = await this.requireUser(userId);
+    if (!user.passwordHash) {
+      throw new AuthError(
+        "FORBIDDEN",
+        "SECOND_FACTOR_PASSWORD_ACCOUNT_ONLY" satisfies Meldungsschluessel,
+      );
+    }
+    if (!(await verifyPassword(password, user.passwordSalt, user.passwordHash))) {
+      throw new AuthError(
+        "INVALID_CREDENTIALS",
+        "CURRENT_PASSWORD_INCORRECT" satisfies Meldungsschluessel,
+      );
+    }
+    if (await this.secondFactors.find(userId)) {
+      throw new AuthError("FORBIDDEN", "SECOND_FACTOR_ALREADY_ACTIVE" satisfies Meldungsschluessel);
+    }
+    this.raeumeAbgelaufeneAuf();
+    const secret = neuesTotpGeheimnis();
+    this.offeneEinrichtungen.set(userId, {
+      secret,
+      expiresAt: this.now() + SECOND_FACTOR_SETUP_TTL_MS,
+    });
+    return { secret, otpauthUri: otpauthAdresse(SECOND_FACTOR_ISSUER, user.email, secret) };
+  }
+
+  /**
+   * Schliesst die Einrichtung ab: erst ein richtiger Code vom zweiten Gerät beweist, dass das
+   * Geheimnis dort angekommen ist. Der Schritt dieses Codes gilt sofort als verbraucht.
+   */
+  async secondFactorSetupConfirm(userId: string, code: string): Promise<{ active: true }> {
+    const offen = this.offeneEinrichtungen.get(userId);
+    if (!offen || offen.expiresAt <= this.now()) {
+      this.offeneEinrichtungen.delete(userId);
+      throw new AuthError("FORBIDDEN", "SECOND_FACTOR_SETUP_MISSING" satisfies Meldungsschluessel);
+    }
+    const schritt = pruefeTotp(offen.secret, code, this.now());
+    if (schritt === undefined) {
+      throw new AuthError(
+        "INVALID_CREDENTIALS",
+        "SECOND_FACTOR_INVALID" satisfies Meldungsschluessel,
+      );
+    }
+    if (await this.secondFactors.find(userId)) {
+      this.offeneEinrichtungen.delete(userId);
+      throw new AuthError("FORBIDDEN", "SECOND_FACTOR_ALREADY_ACTIVE" satisfies Meldungsschluessel);
+    }
+    // Vermerk VOR dem Schreiben — dieselbe Reihenfolge wie `approveUser`: kein wirksamer zweiter
+    // Faktor ohne Eintrag im Prüfprotokoll. Das Geheimnis steht NICHT in der Nutzlast.
+    await this.record(userId, "user.second-factor-enabled", userId, { method: "totp" });
+    await this.secondFactors.set({
+      userId,
+      secret: offen.secret,
+      createdAt: new Date(this.now()).toISOString(),
+      lastStep: schritt,
+    });
+    this.offeneEinrichtungen.delete(userId);
+    return { active: true };
+  }
+
+  /** Abschalten durch das Konto selbst: Passwort UND aktueller Code vom zweiten Gerät. */
+  async secondFactorDisable(
+    userId: string,
+    password: string,
+    code: string,
+  ): Promise<{ active: false }> {
+    const user = await this.requireUser(userId);
+    if (!(await verifyPassword(password, user.passwordSalt, user.passwordHash))) {
+      throw new AuthError(
+        "INVALID_CREDENTIALS",
+        "CURRENT_PASSWORD_INCORRECT" satisfies Meldungsschluessel,
+      );
+    }
+    const faktor = await this.secondFactors.find(userId);
+    if (!faktor) {
+      throw new AuthError("FORBIDDEN", "SECOND_FACTOR_NOT_ACTIVE" satisfies Meldungsschluessel);
+    }
+    const schritt = pruefeTotp(faktor.secret, code, this.now());
+    if (schritt === undefined || !(await this.secondFactors.claimStep(userId, schritt))) {
+      throw new AuthError(
+        "INVALID_CREDENTIALS",
+        "SECOND_FACTOR_INVALID" satisfies Meldungsschluessel,
+      );
+    }
+    await this.record(userId, "user.second-factor-disabled", userId, { via: "self" });
+    await this.secondFactors.delete(userId);
+    return { active: false };
+  }
+
+  /**
+   * Der Weg zurück bei verlorenem zweiten Gerät: ein Admin nimmt den zweiten Faktor des Kontos
+   * weg. Danach meldet sich der Mensch wieder nur mit dem Passwort an und richtet neu ein.
+   */
+  async secondFactorReset(userId: string, actorId: string): Promise<void> {
+    await this.requireUser(userId);
+    if (!(await this.secondFactors.find(userId))) {
+      throw new AuthError("FORBIDDEN", "SECOND_FACTOR_NOT_ACTIVE" satisfies Meldungsschluessel);
+    }
+    await this.record(actorId, "user.second-factor-disabled", userId, { via: "admin" });
+    await this.secondFactors.delete(userId);
+  }
+
+  // R-0562: abgelaufene Anfragen und Einrichtungen fallen beim nächsten Anlegen — wie die
+  // Übergabecodes in `routes.ts`, ohne eigenen Zeitgeber.
+  private raeumeAbgelaufeneAuf(): void {
+    const jetzt = this.now();
+    for (const [schluessel, anfrage] of this.offeneAnfragen) {
+      if (anfrage.expiresAt <= jetzt) {
+        this.offeneAnfragen.delete(schluessel);
+      }
+    }
+    for (const [userId, offen] of this.offeneEinrichtungen) {
+      if (offen.expiresAt <= jetzt) {
+        this.offeneEinrichtungen.delete(userId);
+      }
+    }
+  }
+
+  private async sitzungFuer(
+    user: User,
+    payload?: Record<string, unknown>,
+  ): Promise<{ token: string; user: PublicUser }> {
+    const token = this.genToken();
+    // Token-at-Rest: nur der Hash wird persistiert; der Klartext geht ausschliesslich an den Client.
+    await this.sessions.create({
+      token: hashTokenAtRest(token),
+      userId: user.id,
+      expiresAt: this.now() + SESSION_TTL_MS,
+    });
+    await this.record(user.id, "auth.login", user.id, payload);
+    return { token, user: toPublic(user) };
+  }
+
+  // Passwort, Freigabe und Befristung — der gemeinsame erste Teil beider Anmeldewege.
+  private async pruefePasswortanmeldung(input: LoginInput): Promise<User> {
     const user = await this.users.findByEmail(input.email);
     if (!user || !(await verifyPassword(input.password, user.passwordSalt, user.passwordHash))) {
       throw new AuthError(
@@ -304,15 +581,7 @@ export class AuthService {
     if (await this.zugangAbgelaufen(user)) {
       throw new AuthError("NOT_APPROVED", "ACCESS_EXPIRED" satisfies Meldungsschluessel);
     }
-    const token = this.genToken();
-    // Token-at-Rest: nur der Hash wird persistiert; der Klartext geht ausschliesslich an den Client.
-    await this.sessions.create({
-      token: hashTokenAtRest(token),
-      userId: user.id,
-      expiresAt: this.now() + SESSION_TTL_MS,
-    });
-    await this.record(user.id, "auth.login", user.id);
-    return { token, user: toPublic(user) };
+    return user;
   }
 
   // ==============================================================================================
@@ -846,7 +1115,158 @@ export class AuthService {
     if (await this.zugangAbgelaufen(user)) {
       return undefined;
     }
+    // R-0556 (Ben, Nacharbeit 2): EINE SPERRE WIRKT SOFORT. Bis hierher prüfte diese Methode die
+    // Freigabe nicht — ein Konto, das das Verzeichnis beim Austritt sperrt, hätte mit seiner
+    // laufenden Sitzung bis zu 14 Tage weiterarbeiten können. Die Sitzungen werden beim Sperren
+    // gelöscht (`verzeichnisAendern`); diese Zeile ist die zweite Tür für jede, die das Löschen
+    // überlebt hätte.
+    if (!user.approved) {
+      return undefined;
+    }
     return toPublic(user);
+  }
+
+  // ==============================================================================================
+  // R-0556 / R-0571 — DIE PFLEGE AUS DEM UNTERNEHMENSVERZEICHNIS (SCIM, `verzeichnis-routes.ts`).
+  // ==============================================================================================
+  //
+  // Eintritt legt an, Austritt SPERRT, Wechsel passt Rolle und Gruppen an — ohne Handgriff. Der
+  // Handelnde ist das Verzeichnis (`system`, Nutzlast `quelle: verzeichnis`); kein Konto spricht.
+  //
+  // AUSTRITT LÖSCHT NICHT. Das Konto bleibt bestehen und gesperrt: seine Wissensobjekte, seine
+  // Prüfvermerke und die Spuren im Prüfprotokoll behalten ihren Urheber. Die Quelle nennt die
+  // Eigentumsübergabe als Voraussetzung der Verzeichnispflege — an WEN Eigentum und offene
+  // Prüfaufträge eines Ausgetretenen gehen, ist eine Produktentscheidung, die hier nicht getroffen
+  // wird. Das Sperren hält dafür alles unverändert an seinem Platz und gibt nichts frei.
+  //
+  // DER LETZTE ADMIN BLEIBT, derselbe Schutz wie bei Rollenwechsel und Löschen: das Verzeichnis kann
+  // die Instanz nicht aussperren.
+
+  async kontoLesen(userId: string): Promise<PublicUser | undefined> {
+    const user = await this.users.findById(userId);
+    return user ? toPublic(user) : undefined;
+  }
+
+  async kontoPerAdresse(email: string): Promise<PublicUser | undefined> {
+    const user = await this.users.findByEmail(email);
+    return user ? toPublic(user) : undefined;
+  }
+
+  async verzeichnisAnlegen(eingabe: {
+    email: string;
+    name: string;
+    aktiv: boolean;
+    rolle?: Role | undefined;
+    gruppen?: readonly string[] | undefined;
+  }): Promise<PublicUser> {
+    if (await this.users.findByEmail(eingabe.email)) {
+      throw new AuthError("EMAIL_TAKEN", "EMAIL_TAKEN" satisfies Meldungsschluessel);
+    }
+    const user: User = {
+      id: this.genId(),
+      name: eingabe.name,
+      email: eingabe.email,
+      passwordSalt: "", // Verzeichniskonto: angemeldet wird über den Firmen-Login.
+      passwordHash: "",
+      role: eingabe.rolle ?? "viewer",
+      approved: eingabe.aktiv,
+      createdAt: new Date(this.now()).toISOString(),
+      ...(eingabe.gruppen ? { verzeichnisGruppen: [...eingabe.gruppen] } : {}),
+    };
+    await this.users.insert(user);
+    if (user.verzeichnisGruppen) {
+      await this.users.setzeVerzeichnisGruppen?.(user.id, user.verzeichnisGruppen);
+    }
+    await this.belegeKontoanlage(user, "verzeichnis", "system");
+    return toPublic(user);
+  }
+
+  async verzeichnisAendern(
+    userId: string,
+    aenderung: {
+      email?: string | undefined;
+      name?: string | undefined;
+      aktiv?: boolean | undefined;
+      rolle?: Role | undefined;
+      gruppen?: readonly string[] | undefined;
+    },
+  ): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    if (aenderung.email !== undefined && aenderung.email !== user.email) {
+      const vergeben = await this.users.findByEmail(aenderung.email);
+      if (vergeben && vergeben.id !== userId) {
+        throw new AuthError("EMAIL_TAKEN", "EMAIL_TAKEN" satisfies Meldungsschluessel);
+      }
+    }
+    const neu: User = {
+      ...user,
+      ...(aenderung.email !== undefined ? { email: aenderung.email } : {}),
+      ...(aenderung.name !== undefined ? { name: aenderung.name } : {}),
+      ...(aenderung.aktiv !== undefined ? { approved: aenderung.aktiv } : {}),
+      ...(aenderung.rolle !== undefined ? { role: aenderung.rolle } : {}),
+      ...(aenderung.gruppen !== undefined ? { verzeichnisGruppen: [...aenderung.gruppen] } : {}),
+    };
+    const felder = (["email", "name", "approved", "role", "verzeichnisGruppen"] as const).filter(
+      (feld) => JSON.stringify(neu[feld]) !== JSON.stringify(user[feld]),
+    );
+    if (felder.length === 0) {
+      return toPublic(user);
+    }
+    const gesperrt = user.approved && !neu.approved;
+    await this.users.withAdminGuard(async (tx) => {
+      const verliertAdmin = user.role === "admin" && (neu.role !== "admin" || !neu.approved);
+      if (user.approved && verliertAdmin && (await this.isLastApprovedAdmin(userId, tx))) {
+        throw new AuthError("FORBIDDEN", "LAST_ADMIN_DEMOTION" satisfies Meldungsschluessel);
+      }
+      // Keine Adresse, kein Name, keine Gruppennamen in der Nutzlast: das Prüfprotokoll belegt, DASS
+      // und WAS sich geändert hat, und wird kein zweites Verzeichnis.
+      await this.record(
+        "system",
+        "user.directory-sync",
+        userId,
+        {
+          quelle: "verzeichnis",
+          felder,
+          ...(neu.role !== user.role ? { previousRole: user.role, role: neu.role } : {}),
+          ...(gesperrt ? { gesperrt: true } : {}),
+          ...(!user.approved && neu.approved ? { entsperrt: true } : {}),
+        },
+        tx,
+      );
+      await this.users.update(neu, tx);
+      if (felder.includes("verzeichnisGruppen")) {
+        await this.users.setzeVerzeichnisGruppen?.(userId, neu.verzeichnisGruppen ?? [], tx);
+      }
+    });
+    if (gesperrt) {
+      await this.sessions.deleteByUser(userId);
+    }
+    return toPublic(neu);
+  }
+
+  /**
+   * R-0571: wer laut Verzeichnis für die Prüfung von Wissen in diesem Space zuständig ist.
+   * `zuordnung` bildet Verzeichnisgruppen auf Space-Kennungen ab (`KLARWERK_PRUEFZUSTAENDIGKEIT`).
+   * Gesperrte und abgelaufene Konten sind nie zuständig.
+   */
+  async pruefzustaendigeFuer(
+    spaceId: string,
+    zuordnung: ReadonlyMap<string, readonly string[]>,
+  ): Promise<string[]> {
+    const gruppen = [...zuordnung].filter(([, spaces]) => spaces.includes(spaceId)).map(([g]) => g);
+    if (gruppen.length === 0) {
+      return [];
+    }
+    const nun = this.now();
+    return (await this.users.list())
+      .filter(
+        (u) =>
+          u.approved &&
+          (u.accessExpiresAt === undefined ||
+            (ablaufZeitpunkt(u.accessExpiresAt) ?? Number.POSITIVE_INFINITY) > nun) &&
+          (u.verzeichnisGruppen ?? []).some((g) => gruppen.includes(g)),
+      )
+      .map((u) => u.id);
   }
 
   // SCRUM-450: reine Passwort-Prüfung eines Nutzers (Re-Authentifizierung vor kritischen,
@@ -858,6 +1278,13 @@ export class AuthService {
       return false;
     }
     return verifyPassword(password, user.passwordSalt, user.passwordHash);
+  }
+
+  // R-0582: Hat das Konto überhaupt ein lokales Passwort? Reine SSO-Konten nicht (`loginWithOidc`
+  // legt sie mit leerem Hash an) — für sie ist die Identitätsbestätigung die erneute SSO-Anmeldung.
+  async hatLokalesPasswort(userId: string): Promise<boolean> {
+    const user = await this.users.findById(userId);
+    return Boolean(user?.passwordHash);
   }
 
   /**
@@ -1044,6 +1471,65 @@ export class AuthService {
     await this.record(userId, "user.password-changed", userId);
   }
 
+  /**
+   * R-0582 (DS13, DSGVO Art. 16): KONTODATEN BERICHTIGEN — Name und E-Mail, selbst oder durch einen
+   * Admin. EIN Weg für beide; ob es die eigene Berichtigung war, sagt `actorId === userId`.
+   *
+   * Die FORM (Zeichenkette, nicht leer, Adressgestalt) prüft die Route, wie beim Anlegen. Hier
+   * urteilt die BEDEUTUNG: ist die Adresse an einem ANDEREN Konto vergeben (gleiche Schreibweise
+   * ohne Gross/Klein, wie `findByEmail` in beiden Ablagen), wird nichts geschrieben.
+   *
+   * DER VERLAUF BLEIBT ERHALTEN: jede wirksame Berichtigung steht als `user.account-corrected` im
+   * Prüfprotokoll — mit den geänderten Feldern, dem Namen von vorher und dem neuen. Die ADRESSEN
+   * selbst stehen dort nicht (dieselbe Grenze wie bei `user.created`: das Protokoll ist
+   * anhängend und keine zweite Ablage für Anschriften); dass die Adresse geändert wurde, steht da.
+   * Vermerk vor Schreiben in EINEM Rahmen, wie `approveUser`. Ohne Änderung kein Eintrag.
+   */
+  async correctAccountData(
+    userId: string,
+    input: { name?: string; email?: string },
+    actorId: string,
+  ): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    const name = input.name === undefined ? user.name : input.name.trim();
+    const email = input.email === undefined ? user.email : input.email.trim();
+    const felder: ("name" | "email")[] = [];
+    if (name !== user.name) {
+      felder.push("name");
+    }
+    if (email !== user.email) {
+      felder.push("email");
+    }
+    if (felder.length === 0) {
+      return toPublic(user);
+    }
+    if (felder.includes("email")) {
+      const vergeben = await this.users.findByEmail(email);
+      if (vergeben && vergeben.id !== userId) {
+        throw new AuthError("EMAIL_TAKEN", "EMAIL_TAKEN" satisfies Meldungsschluessel);
+      }
+    }
+    const actor = actorId === userId ? user : await this.users.findById(actorId);
+    const aktualisiert: User = { ...user, name, email };
+    await this.gemeinsamSchreiben(async (tx) => {
+      await this.record(
+        actorId,
+        "user.account-corrected",
+        userId,
+        {
+          fields: felder,
+          via: actorId === userId ? "self" : "admin",
+          previousName: user.name,
+          targetName: name,
+          ...(actor ? { actorName: actorId === userId ? name : actor.name } : {}),
+        },
+        tx,
+      );
+      await this.users.update(aktualisiert, tx);
+    });
+    return toPublic(aktualisiert);
+  }
+
   // FR-AUTH-08: Reset anfordern — erzeugt einen kurzlebigen Token. Unbekannte E-Mail → undefined
   // (Existenz wird nicht verraten). Der Versand der E-Mail erfolgt in der Route über den Mailer.
   async requestPasswordReset(
@@ -1118,6 +1604,8 @@ export class AuthService {
       await this.users.delete(userId, tx);
     });
     await this.sessions.deleteByUser(userId);
+    // R-0562: kein verwaistes TOTP-Geheimnis eines gelöschten Kontos in der Ablage.
+    await this.secondFactors.delete(userId);
     await this.record(actorId, "user.delete", userId, {
       targetName: user.name,
       ...(actor ? { actorName: actor.name } : {}),

@@ -23,9 +23,15 @@ export const START_PANEL_IDS = [
 ] as const;
 export type StartPanelId = (typeof START_PANEL_IDS)[number];
 
-/** Menü-Beschriftung je Punkt. */
+/**
+ * Menü-Beschriftung je Punkt.
+ *
+ * N-0042: „Klara in Word" ist auf dem Webweg eine Vorschau (die Fläche sagt „Demnächst" und
+ * „Verfügbar ist das noch nicht.") — der Menüpunkt trägt das schon im Namen
+ * (`texte/wordvorschau.ts`).
+ */
 export function startPanelLabelKey(id: StartPanelId): string {
-  return `start.menu.${id}`;
+  return id === "klara" ? "wordvorschau.menu" : `start.menu.${id}`;
 }
 
 /**

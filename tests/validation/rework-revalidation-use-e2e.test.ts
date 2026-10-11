@@ -158,18 +158,24 @@ describe("SCRUM-349: Review → Rework → Revalidation → Use E2E (HTTP + Sani
     const board = await app.inject({ method: "GET", url: "/api/validation/board", headers: admin });
     expect((board.json() as KnowledgeObject[]).some((k) => k.id === id)).toBe(true);
 
-    // 9) USE VOR erneuter Validierung — R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der
-    //    normale Frageweg antwortet nur aus geprüftem Wissen. Die revidierte, wieder offene Fassung
-    //    trägt KEINE Antwort, sie wird dem berechtigten Fragenden als ungeprüfter Treffer gemeldet
-    //    (JOB 1591 W5) — die Gegenprobe, dass die Frage sie trifft.
+    // 9) USE VOR erneuter Validierung — R-0278 (Nacharbeit 3) und R-0584 (Auftrag
+    //    gesamt-datenschutz-voreinstellung): der normale Frageweg antwortet nur aus geprüftem
+    //    Wissen. Die revidierte, wieder offene Fassung trägt KEINE Antwort; Klara legt die
+    //    Wissenslücke an, meldet sie dem berechtigten Fragenden als ungeprüften Treffer (JOB 1591 W5)
+    //    und nennt in der Torlage, dass die Freigabe fehlt.
     const askBefore = await ask(app, admin, "Wie wird die Spezialpresse SPX9 entlüftet?");
     const beforeBody = askBefore.json() as {
       result: AnswerResult;
+      gap: unknown;
       ungeprueft?: Array<{ id: string }>;
+      verschlossen?: Array<{ id: string; freigabeFehlt: boolean }>;
     };
     expect(beforeBody.result.answered).toBe(false);
     expect(beforeBody.result.sources).not.toContain(id);
+    expect(beforeBody.result.knowledgeClass).not.toBe("gesichert");
+    expect(beforeBody.gap).not.toBeNull();
     expect(beforeBody.ungeprueft?.map((h) => h.id)).toContain(id);
+    expect(beforeBody.verschlossen?.find((h) => h.id === id)?.freigabeFehlt).toBe(true);
     expect(koOverview(revisedKo).usability).not.toBe("ready");
 
     // 10) Erneute Validierung (needed=1 → ein Up genügt) → validiert/Trust 100.

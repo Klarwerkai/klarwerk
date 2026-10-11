@@ -1,4 +1,11 @@
-import { type AnswerEvidenceSnapshot, type AnswerRecord, AskError, type Gap } from "./types";
+import { mitWeiteremFragenden } from "./gap-vorgang";
+import {
+  type AnswerEvidenceSnapshot,
+  type AnswerRecord,
+  AskError,
+  type Gap,
+  gehoertNutzer,
+} from "./types";
 
 export interface GapRepo {
   insert(gap: Gap): Promise<void>;
@@ -40,10 +47,33 @@ export interface GapRepo {
   // Die Ablage ruft sie vor JEDEM ihrer eigenen Zugriffe — in PostgreSQL liegen zwischen Einfügen
   // und Hochzählen Wartepunkte, an denen der Administrator abschalten kann. Wirft sie, findet der
   // Zugriff nicht statt. Ohne sie unverändert.
+  //
+  // produkt:20261010:wissenskreislauf-schliessen: beim Hochzählen wird der Fragende der übergebenen
+  // Lücke (`gap.createdBy`) der offenen Lücke als weiterer Fragender zugeordnet — in DERSELBEN
+  // unteilbaren Anweisung (`mitWeiteremFragenden`), ohne Doppelte und ohne den Ersteller zweimal.
   insertOrIncrement?(
     gap: Gap,
     vorInhaltsabruf?: () => void,
   ): Promise<{ gap: Gap; created: boolean }>;
+  /**
+   * produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 3) — VERGLEICHEN UND SETZEN.
+   *
+   * Schreibt `neu` NUR, wenn die gespeicherte Lücke noch genau `erwartet` ist (der Stand, aus dem
+   * der Schritt gerechnet wurde). Jeder Vorgangsschritt — Zuordnung, Rückfrage, Antwort, Entwurf,
+   * Priorität, Abschluss, Rücknahme — läuft hierüber (`AskService.aendereLuecke`): hat sich die
+   * Lücke inzwischen geändert (weitere Fragende, Zähler, Abschluss), wird nichts geschrieben, und
+   * der Dienst rechnet den Schritt am frischen Stand neu. Eine alte Momentaufnahme kann damit weder
+   * zwischenzeitliche Fragende verlieren noch einen Abschluss zurücknehmen.
+   *
+   * Optional aus demselben Grund wie `insertOrIncrement` (speicherlose Testattrappen); ohne die
+   * Methode vergleicht der Dienst den Stand selbst unmittelbar vor dem Schreiben.
+   */
+  ersetzeWenn?(erwartet: Gap, neu: Gap): Promise<boolean>;
+}
+
+/** Inhaltsgleichheit zweier Lückenstände — dieselbe Aussage wie `data = $3::jsonb` in PostgreSQL. */
+export function gleicherLueckenstand(a: Gap | undefined, b: Gap | undefined): boolean {
+  return a !== undefined && b !== undefined && JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** Der Zähler einer Lücke; Altbestände ohne Feld gelten als einmal gefragt. */
@@ -73,7 +103,10 @@ export class InMemoryGapRepo implements GapRepo {
     if (gap.compareKey) {
       for (const vorhanden of this.gaps.values()) {
         if (vorhanden.status === "offen" && vorhanden.compareKey === gap.compareKey) {
-          const erhoeht: Gap = { ...vorhanden, askCount: haeufigkeit(vorhanden) + 1 };
+          const erhoeht: Gap = mitWeiteremFragenden(
+            { ...vorhanden, askCount: haeufigkeit(vorhanden) + 1 },
+            gap.createdBy,
+          );
           this.gaps.set(erhoeht.id, erhoeht);
           return Promise.resolve({ gap: erhoeht, created: false });
         }
@@ -90,6 +123,15 @@ export class InMemoryGapRepo implements GapRepo {
   update(gap: Gap): Promise<void> {
     this.gaps.set(gap.id, gap);
     return Promise.resolve();
+  }
+
+  // Ohne `await` zwischen Prüfen und Setzen — dieselbe Unteilbarkeit wie `insertOrIncrement`.
+  ersetzeWenn(erwartet: Gap, neu: Gap): Promise<boolean> {
+    if (!gleicherLueckenstand(this.gaps.get(neu.id), erwartet)) {
+      return Promise.resolve(false);
+    }
+    this.gaps.set(neu.id, neu);
+    return Promise.resolve(true);
   }
 
   delete(id: string): Promise<void> {
@@ -142,6 +184,14 @@ export interface AnswerSnapshotRepo {
   /** Alle Revisionen EINER Antwort, aufsteigend. */
   listSnapshots(answerId: string): Promise<AnswerEvidenceSnapshot[]>;
   latestSnapshot(answerId: string): Promise<AnswerEvidenceSnapshot | undefined>;
+  /**
+   * Betroffenenrechte (R-0663): alle Antworten, die einem Konto GEHÖREN (`gehoertNutzer`), nach
+   * Zeitpunkt aufsteigend. Nur lesend — die Unveränderlichkeit oben bleibt unberührt.
+   *
+   * OPTIONAL, damit handgeschriebene Test-Doubles und Hüllen ohne diese Methode gültig bleiben. Fehlt
+   * sie, meldet die Selbstauskunft den Bereich ausdrücklich als „nicht abrufbar" statt als leer.
+   */
+  listRecordsByOwner?(userId: string): Promise<AnswerRecord[]>;
 }
 
 /**
@@ -213,6 +263,15 @@ export class InMemoryAnswerSnapshotRepo implements AnswerSnapshotRepo {
   findRecord(answerId: string): Promise<AnswerRecord | undefined> {
     const treffer = this.records.get(answerId);
     return Promise.resolve(treffer === undefined ? undefined : schnappschuss(treffer));
+  }
+
+  listRecordsByOwner(userId: string): Promise<AnswerRecord[]> {
+    return Promise.resolve(
+      [...this.records.values()]
+        .filter((r) => gehoertNutzer(r, userId))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .map(schnappschuss),
+    );
   }
 
   async appendSnapshot(

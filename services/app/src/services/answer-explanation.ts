@@ -56,6 +56,10 @@ export interface AnswerExplanationLeser {
    * FAIL-CLOSED: Fehlt sie (ein Aufrufer ohne Sichtbarkeitsauskunft), gilt jedes Objekt mit
    * fuehrendem Space als gesperrt — dieselbe Richtung wie `spaceErlaubt` ohne `spaceLesbar` — und
    * Vertrauliches nur bei `darfVertraulich`.
+   *
+   * Integration mit R-1175 (aufnahme:20260922:gesamt-rechte-inventar, Feld `sichtbar`): beide
+   * Auftraege haben dieselbe Entscheidung an dieselbe Stelle gebracht. Es gibt sie hier EINMAL —
+   * mit Bens Vorgabe aus Nacharbeit 6, dass keine zweite Stufenregel sie ueberstimmt.
    */
   readonly darfSehen?: (ko: KnowledgeObject) => boolean;
 }

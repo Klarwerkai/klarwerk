@@ -18,12 +18,9 @@ import type { ObjectStore } from "../../object-store";
 export const EXAMPLE_PROVIDER = "Beispielpaket";
 export const EXAMPLE_TITLE_PREFIX = "[Beispiel] ";
 
+// R-1349: die Kennungsliste `EXAMPLE_PACKAGE_IDS` las niemand; die Pakete tragen ihre Kennung in
+// `EXAMPLE_PACKAGES`, und `examplePackage()` sucht dort. Sie ist entfernt.
 export type ExamplePackageId = "konflikte" | "bilder" | "qualitaet";
-export const EXAMPLE_PACKAGE_IDS: readonly ExamplePackageId[] = [
-  "konflikte",
-  "bilder",
-  "qualitaet",
-];
 
 export interface ExampleImageDef {
   caption: string;

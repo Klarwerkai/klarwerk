@@ -13,6 +13,32 @@ export {
   InMemoryConflictMemoryRepo,
   PgConflictMemoryRepo,
 } from "./src/pair-memory";
+// Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): jede ungeordnete Aussage-Paarprüfung als
+// gespeicherte, wiederaufnehmbare Pflicht (Vertrag: docs/entscheidungen/paarpflichten-dauerhaft.md).
+export {
+  type Paarpflicht,
+  type PaarpflichtAussage,
+  type PaarpflichtBilanz,
+  type PaarpflichtErgebnis,
+  type PaarpflichtKontext,
+  type PaarpflichtLauf,
+  type PaarpflichtPlanung,
+  type PaarpflichtPruefer,
+  type PaarpflichtRepo,
+  type PaarpflichtSchritt,
+  type PaarpflichtZustand,
+  InMemoryPaarpflichtRepo,
+  PAARPFLICHT_FRIST_MS,
+  PAARPFLICHT_MAX_FEHLVERSUCHE,
+  PaarpflichtFehler,
+  PaarpflichtService,
+  PgPaarpflichtRepo,
+  ergebnisAusKonfliktUrteil,
+  gleicheLaufbindung,
+  paarpflichtBilanz,
+  paarpflichtLaufkopf,
+  paarpflichtenPlanen,
+} from "./src/paarpflichten";
 export { ConflictError } from "./src/types";
 // R-0252: die Arbeitsart (Regel/Sache/Version) — das Prädikat prüft den Drahtwert der Anlage-Route.
 export { isConflictWorkKind } from "./src/types";
@@ -111,12 +137,11 @@ export {
 // standen zur Wahl, wie viele wurden geprüft, wurde gedeckelt/übersprungen/abgebrochen. Der App-Root
 // stellt das Protokoll, die Läufe schreiben es fort, die Oberfläche liest es.
 // AUFTRAG-mega32 A1/B: `isCompleteRun` ist die KANONISCHE positive Vollständigkeits-Invariante (die
-// beiden Spiegel diesseits der Modulgrenzen leiten nichts eigenständig ab); `singleRunBalances`
-// prüft die Buchhaltungs-Gleichung eines EINZELLAUFS, die bis mega31 nur ein Kommentar behauptete.
+// beiden Spiegel diesseits der Modulgrenzen leiten nichts eigenständig ab). R-1349: das Prüforakel
+// `singleRunBalances` liegt bei den Tests (`tests/support/abdeckung-buchhaltung.ts`).
 export {
   type DetectionCoverage,
   emptyCoverage,
   mergeCoverage,
   isCompleteRun,
-  singleRunBalances,
 } from "./src/coverage";
