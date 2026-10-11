@@ -244,7 +244,10 @@ describe("AC05 · HTML-Seite und Datenblatt bleiben getrennte Belege; Empfehlung
 
   it("zu knapper Abstand → keine Empfehlung", () => {
     const zwei = uebernahmeAufbauen(
-      [HTML_SEITE, { ...geaendert(HTML_SEITE, 0, 2, "18 bar"), url: `${HTML_SEITE.url}?v=2` }],
+      [
+        HTML_SEITE,
+        { ...geaendert(HTML_SEITE, 0, 2, "18 bar"), url: `${HTML_SEITE.url}?ausgabe=2` },
+      ],
       { objekt: "V-17" },
     );
     const a = zwei.abweichungen.find((x) => x.merkmal === "Betriebsdruck");
