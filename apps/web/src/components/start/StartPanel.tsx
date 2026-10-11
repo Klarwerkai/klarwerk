@@ -22,16 +22,19 @@ import {
 import { knowledgeCapital } from "../../lib/funke";
 import { KNOWLEDGE_CYCLE } from "../../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../../lib/knowledgeGuidance";
+import { formatKoTimestamp } from "../../lib/koDates";
 import { useNetzOnline } from "../../lib/netzzustand";
 import { PROOF_CHAIN } from "../../lib/proofChain";
 import { START_HELP_TOPICS } from "../../lib/startHelp";
 import { START_ORIENTATION_TEXT } from "../../lib/startOrientation";
 import { stufe2FeatureLabelKeys } from "../../lib/stufe2Hint";
 import { AdminFirstRunCard } from "../AdminFirstRunCard";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { KnowledgeCapitalNumbers, OpenGapsSummary } from "../FunkeCards";
 import { KlaraPathTeaser } from "../KlaraPathTeaser";
 import { RoleLink } from "../RoleLink";
 import { StatusPill } from "../trust";
+import { LiveWallValidiert } from "./LiveWallValidiert";
 import type { StartPanelId } from "./startPunkte";
 
 // ================================================================================================
@@ -371,7 +374,10 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                 {t("start.livewall.saved")}
               </div>
               {daten.saved.length === 0 ? (
-                <p className="text-[12.5px] text-muted">{t("start.livewall.savedEmpty")}</p>
+                <>
+                  <p className="text-[12.5px] text-muted">{t("start.livewall.savedEmpty")}</p>
+                  {leerzustandsZeile(t, "start")}
+                </>
               ) : (
                 <ul className="space-y-1">
                   {daten.saved.map((s) => (
@@ -388,10 +394,7 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                         <StatusPill status={s.status} />
                       </span>
                       <span className="shrink-0 font-mono text-[10.5px] text-muted-2">
-                        {new Date(s.at).toLocaleString(
-                          i18n.language.startsWith("en") ? "en-GB" : "de-DE",
-                          { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" },
-                        )}
+                        {formatKoTimestamp(s.at, i18n.language)}
                       </span>
                     </li>
                   ))}
@@ -403,7 +406,10 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                 {t("start.livewall.helped")}
               </div>
               {daten.helped.length === 0 ? (
-                <p className="text-[12.5px] text-muted">{t("start.livewall.helpedEmpty")}</p>
+                <>
+                  <p className="text-[12.5px] text-muted">{t("start.livewall.helpedEmpty")}</p>
+                  {leerzustandsZeile(t, "start")}
+                </>
               ) : (
                 <ul className="space-y-1">
                   {daten.helped.map((h) => (
@@ -416,16 +422,26 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                         {() => h.title}
                       </RoleLink>
                       <span className="shrink-0 font-mono text-[10.5px] text-muted-2">
-                        {new Date(h.at).toLocaleString(
-                          i18n.language.startsWith("en") ? "en-GB" : "de-DE",
-                          { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" },
-                        )}
+                        {formatKoTimestamp(h.at, i18n.language)}
                       </span>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
+            {/* PMO-FEA-0003: neues validiertes Wissen, Name/Foto nur mit Zustimmung — und die
+                eigene Erklärung dazu. Eigene Teilkomponente, damit ihr Abruf nur in DIESEM Blatt
+                läuft. */}
+            <LiveWallValidiert daten={daten} aktualisiertAm={liveWall.dataUpdatedAt} />
+            {/* R-0740: dieselbe Wand als Projektion (Beamer) — eigene Seite, gleicher Abruf. */}
+            <RoleLink
+              to="/livewall"
+              testId="livewall-beamer-link"
+              className="inline-flex text-[12.5px] text-muted underline underline-offset-2"
+              hoverClassName="hover:text-ink"
+            >
+              {() => t("start.livewall.beamerOpen")}
+            </RoleLink>
           </>
         ) : null}
       </div>
@@ -503,7 +519,9 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
       <div>
         <h3 className="text-[14px] font-semibold text-ink">{t("start.stufe2.title")}</h3>
         <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-          {t("start.stufe2.body", { features: stufe2Features, toggle: t("role.stage2") })}
+          {/* R-0923: der Satz nennt den heutigen Ort des Schalters (System), nicht die entfernte
+              Seitenleiste — `texte/zweitestufe.ts`. */}
+          {t("zweitestufe.start.body", { features: stufe2Features, toggle: t("role.stage2") })}
         </p>
       </div>
     );

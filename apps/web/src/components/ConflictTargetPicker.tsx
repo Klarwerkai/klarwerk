@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import type { KnowledgeObject } from "../api/types";
+import { leerzustandsZeile } from "./EmptyStateCtas";
 import { KoView } from "./KoView";
 import { Modal } from "./Modal";
 import { Button } from "./ui";
@@ -44,7 +45,12 @@ export function ConflictTargetPicker({
         className="mb-3 h-10 w-full rounded-input border border-hairline bg-surface px-3 text-sm text-text outline-none focus:border-ink/30"
       />
       {filtered.length === 0 ? (
-        <p className="py-6 text-center text-[13px] text-muted">{t("ko.conflictTargetEmpty")}</p>
+        <>
+          <p className="py-6 text-center text-[13px] text-muted">{t("ko.conflictTargetEmpty")}</p>
+          {/* R-0956 (Nacharbeit 7): nur der WIRKLICH leere Bestand wird eingeordnet; mit Suchwort
+              ist die Auswahl nur eingegrenzt. */}
+          {q === "" ? leerzustandsZeile(t, "library") : null}
+        </>
       ) : (
         <ul className="space-y-2">
           {filtered.map((k) => (

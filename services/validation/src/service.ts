@@ -3,7 +3,7 @@ import type { TxContext } from "../../db-tx";
 import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-object";
 // JOB 557 (Pedi 13.08.2026): „der Erzeuger ist nicht der Verantwortliche." Beide Helfer kommen über
 // die MODULFASSADE — keine Kante in die Innereien von knowledge-object.
-import { responsibleKindOf, responsibleOf } from "../../knowledge-object";
+import { ownershipOf, responsibleKindOf, responsibleOf } from "../../knowledge-object";
 import type { AssignmentRepo, RatingRepo } from "./repo";
 import {
   FALLBACK_NEEDED_VALIDATIONS,
@@ -20,6 +20,21 @@ export type BoardFilter = Omit<KoFilter, "status">;
 // Version 1 (häufigster Fall: nie revidiert; auf revidierten KOs sind sie damit stale — fail-safe).
 function ratingVersion(r: { koVersion?: number }): number {
   return r.koVersion ?? 1;
+}
+
+/**
+ * ADMIN-09: die Fassung, die die entscheidende Person gelesen hat, gegen die aktuelle. Weicht sie
+ * ab, wird nichts entschieden (KO_STALE) — eine Entscheidung zur alten Fassung gibt die neue nicht
+ * frei. Ohne Angabe gilt wie bisher die beim Lesen aktuelle Fassung; den Schreibweg schützt danach
+ * der Compare-and-Set in `setValidationStateMitBeleg`.
+ */
+function pruefeErwarteteFassung(aktuell: number, erwartet: number | undefined): void {
+  if (erwartet !== undefined && erwartet !== aktuell) {
+    throw new ValidationError(
+      "KO_STALE",
+      `Das Wissensobjekt wurde inzwischen überarbeitet (jetzt Fassung ${aktuell}, geprüft wurde Fassung ${erwartet}). Es wurde nichts entschieden.`,
+    );
+  }
 }
 
 export interface AssignmentSummary {
@@ -137,7 +152,15 @@ export interface AssignmentNotice {
   koId: string;
   title: string;
   at: string;
+  // R-0894: die offene Zuweisung ist eine RÜCKGABE zur Nacharbeit (`ko.returned-to-*`) an die
+  // verantwortliche Person — dann ist `at` der Zeitpunkt der Rückgabe, nicht die Erstellzeit.
+  rueckgabe?: true;
 }
+
+// Dieselbe Lesart wie `isReturnedForRework` (apps/web/src/lib/validationStatus.ts): eine Rückgabe gilt,
+// solange danach weder überarbeitet noch neu bewertet wurde.
+const RUECKGABE_AKTIONEN = new Set(["ko.returned-to-author", "ko.returned-to-owner"]);
+const RUECKGABE_ENDE_AKTIONEN = new Set(["ko.revised", "ko.rated"]);
 
 // ================================================================================================
 // W3-B (KW-W3-19) — DIE VALIDIERUNGSREFERENZ AM RUECKGABEWERT
@@ -223,11 +246,21 @@ export class ValidationService {
   }
 
   // FR-VAL-01/02: Bewertung verbuchen, Trust/Status neu berechnen, am KO setzen.
-  async rate(koId: string, userId: string, verdict: Verdict): Promise<ValidationDecision> {
+  //
+  // ADMIN-09: `erwarteteFassung` ist die Fassung, die die prüfende Person gelesen hat. Ist das Objekt
+  // inzwischen überarbeitet, wird nichts bewertet (KO_STALE) — eine Entscheidung zur alten Fassung
+  // gibt die neue nicht frei. Ohne Angabe gilt wie bisher die beim Lesen aktuelle Fassung.
+  async rate(
+    koId: string,
+    userId: string,
+    verdict: Verdict,
+    opts: { erwarteteFassung?: number } = {},
+  ): Promise<ValidationDecision> {
     const ko = await this.koService.get(koId);
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
+    pruefeErwarteteFassung(ko.version, opts.erwarteteFassung);
     // SCRUM-507 R2: die Bewertung wird an die bewertete KO-VERSION gebunden. Ein nebenläufiges Revise
     // (Version+1) macht sie damit implizit stale — keine separate Invalidierung, kein Desync.
     const ratedVersion = ko.version;
@@ -372,11 +405,16 @@ export class ValidationService {
   // Bewusst nur Admin (Route-Guard users.manage); der Vorgang ist als eigene Aktion im Audit
   // nachvollziehbar. Trust wird auf den Deckel (99) gesetzt — kein Wahrheitsversprechen (PI-K2),
   // aber die höchste Evidenzstufe, die das System vergibt.
-  async adminValidate(koId: string, actorId: string): Promise<ValidationDecision> {
+  async adminValidate(
+    koId: string,
+    actorId: string,
+    opts: { erwarteteFassung?: number } = {},
+  ): Promise<ValidationDecision> {
     const ko = await this.koService.get(koId);
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
+    pruefeErwarteteFassung(ko.version, opts.erwarteteFassung);
     // JOB 3789: DIE GELESENE FASSUNG BEKOMMT EINEN NAMEN — dieselbe Form wie `ratedVersion` in
     // `rate` (:232). Der Admin entscheidet über den Text, den er gelesen hat; jeder folgende
     // Schritt (Schreibvorgang, Beleg, Verweis) bindet sich an genau diese Zahl. Kein zweites
@@ -448,6 +486,92 @@ export class ValidationService {
       trust: TRUST_MAX,
       status: "validiert",
       validationDecisionRef: referenz,
+    };
+  }
+
+  // ==============================================================================================
+  // R-0507 — „DER EIGENTÜMER KANN ES FREIGEBEN."
+  // ==============================================================================================
+  //
+  // Die Freigabe durch den benannten Eigentümer ist eine abgeschlossene Validierung mit genau EINER
+  // tragenden Identität — derselbe Weg wie `adminValidate` (Compare-and-Set gegen die gelesene
+  // Fassung, Zustand und Beleg in einer Klammer, Fortschreibung von `validators`). Zwei
+  // Unterschiede, beide gewollt:
+  //   · WER: nur der benannte Eigentümer (`ownership.owner`), geprüft HIER gegen den gelesenen
+  //     Stand. Das Freigaberecht selbst (`ko.validate`) prüft die Route — der Eigentum allein
+  //     verleiht keine Freigabebefugnis (ownership.ts: „keine Rechtevergabe"), es BENENNT nur,
+  //     wer unter den Freigabeberechtigten das letzte Wort am eigenen Objekt hat.
+  //   · WIE VIEL: das Vertrauen bleibt, wie es die Stimmen ergeben. Die Eigentümerfreigabe ist eine
+  //     Entscheidung, keine zusätzliche Evidenz — anders als der Admin-Deckel (TRUST_MAX).
+  // Der Beleg heisst `ko.owner-validated`; die Rückgabe der Verantwortung
+  // (`KoService.releaseOwnership`) bleibt ein eigener, davon getrennter Weg.
+  //
+  // BEN (Nacharbeit 3): Eigentum und Vertrauen werden NICHT aus dem Vorab-Lesen übernommen. Eine
+  // Eigentumsänderung (`setOwnership`, `releaseOwnership`, Wissensübergabe) erhöht die Inhaltsfassung
+  // nicht — der Compare-and-Set auf `version` sähe sie nicht. Deshalb prüft der `zustand`-Rückruf,
+  // der unter dem KO-Lock den FRISCH gelesenen Stand bekommt, den Eigentümer erneut und übernimmt
+  // dessen aktuelles Vertrauen. Die frühe Prüfung bleibt als schnelle Abweisung ohne Schreibversuch.
+  async ownerValidate(
+    koId: string,
+    actorId: string,
+    opts: { erwarteteFassung?: number } = {},
+  ): Promise<ValidationDecision> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    pruefeErwarteteFassung(ko.version, opts.erwarteteFassung);
+    const nichtEigentuemer = (): ValidationError =>
+      new ValidationError(
+        "NOT_OWNER",
+        "Nur der benannte Eigentümer kann dieses Wissensobjekt als Eigentümer freigeben.",
+      );
+    if (ownershipOf(ko)?.owner !== actorId) {
+      throw nichtEigentuemer();
+    }
+    const geleseneFassung = ko.version;
+    const {
+      ko: gespeichert,
+      geschrieben,
+      ref,
+    } = await this.koService.setValidationStateMitBeleg(
+      koId,
+      async (frisch) => {
+        if (ownershipOf(frisch)?.owner !== actorId) {
+          throw nichtEigentuemer();
+        }
+        return { trust: frisch.trust, status: "validiert" };
+      },
+      { expectedVersion: geleseneFassung, beiVersionswechsel: "nichts" },
+      async (tx) =>
+        refAus(
+          await this.audit?.record(
+            {
+              actor: actorId,
+              action: "ko.owner-validated",
+              target: koId,
+              payload: { koVersion: geleseneFassung },
+            },
+            tx,
+          ),
+        ),
+    );
+    const { votes } = stimmenAus(await this.ratings.listByKo(koId), gespeichert.version);
+    if (!geschrieben) {
+      return {
+        ...votes,
+        trust: gespeichert.trust,
+        status: gespeichert.status,
+        validationDecisionRef: null,
+      };
+    }
+    await this.koService.recordOwnershipRole(koId, "validators", [actorId], actorId);
+    // Die Antwort aus dem TATSÄCHLICH gespeicherten Stand — nicht aus dem Vorab-Lesen.
+    return {
+      ...votes,
+      trust: gespeichert.trust,
+      status: gespeichert.status,
+      validationDecisionRef: ref,
     };
   }
 
@@ -612,6 +736,121 @@ export class ValidationService {
     return eigene ? { verdict: eigene.verdict, koVersion: ratingVersion(eigene) } : null;
   }
 
+  /**
+   * ADMIN-09: eine Vertretungsaufgabe aus der Freigaberegel — `durch` prüft an Stelle von `fuer`.
+   *
+   *   · `neu`        — es gab für `durch` noch keine Zuweisung; sie entsteht als Vertretungsaufgabe.
+   *   · `uebergeben` — `durch` hatte schon eine OFFENE gewöhnliche Aufgabe an diesem Objekt; sie wird
+   *                    zur Vertretungsaufgabe (Herkunft, vertretene Person, Beginn, neue Meldung) —
+   *                    sonst bliebe die Vertretung am Entscheidungstor gesperrt.
+   *   · `bestehend`  — schon Vertretungsaufgabe, schon erledigt, oder ein gleichzeitiger Lauf war
+   *                    schneller: nichts geschieht, kein Beleg, keine Meldung.
+   *
+   * GLEICHZEITIGKEIT: Anlage (`createIfAbsent`) und Übergabe (`replaceIf`) sind je EIN Schritt der
+   * Ablage; nur der Aufrufer, dessen Schritt gegriffen hat, schreibt den Beleg. Die Meldung holt der
+   * Aufrufer über `benachrichtigungUebernehmen`.
+   */
+  async vertretungZuweisen(
+    koId: string,
+    durch: string,
+    fuer: string,
+    actor: string,
+  ): Promise<"neu" | "uebergeben" | "bestehend"> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const seit = new Date(this.now()).toISOString();
+    const vertretung: Assignment = {
+      koId,
+      userId: durch,
+      status: "open",
+      benachrichtigung: "ausstehend",
+      quelle: "vertretung",
+      vertretungFuer: fuer,
+      seit,
+    };
+    if (await this.legeAnWennFrei(vertretung)) {
+      await this.audit?.record({
+        actor,
+        action: "ko.assigned",
+        target: koId,
+        payload: { userIds: [durch], quelle: "vertretung", fuer },
+      });
+      await this.koService.recordOwnershipRole(koId, "reviewers", [durch], actor);
+      return "neu";
+    }
+    const bisher = await this.assignments.find(koId, durch);
+    if (!bisher || bisher.status !== "open" || bisher.quelle === "vertretung") {
+      return "bestehend";
+    }
+    const uebergeben: Assignment = {
+      ...bisher,
+      quelle: "vertretung",
+      vertretungFuer: fuer,
+      seit,
+      benachrichtigung: "ausstehend",
+    };
+    if (!(await this.ersetzeWenn(bisher, uebergeben))) {
+      return "bestehend";
+    }
+    await this.audit?.record({
+      actor,
+      action: "ko.assigned",
+      target: koId,
+      payload: { userIds: [durch], quelle: "vertretung", fuer, uebergeben: true },
+    });
+    return "uebergeben";
+  }
+
+  /**
+   * ADMIN-09: übernimmt den ausstehenden Versand der Meldung über diese Zuweisung — in einem
+   * Schritt („ausstehend" → „erledigt"). Nur wer `true` bekommt, versendet; scheitert der Versand,
+   * gibt `benachrichtigungZuruecknehmen` ihn wieder frei. Zwei gleichzeitige Läufe melden so nie
+   * doppelt.
+   */
+  async benachrichtigungUebernehmen(koId: string, userId: string): Promise<boolean> {
+    const zuweisung = await this.assignments.find(koId, userId);
+    if (!zuweisung || zuweisung.benachrichtigung !== "ausstehend") {
+      return false;
+    }
+    return this.ersetzeWenn(zuweisung, { ...zuweisung, benachrichtigung: "erledigt" });
+  }
+
+  /** ADMIN-09: ein übernommener, aber gescheiterter Versand steht wieder aus. */
+  async benachrichtigungZuruecknehmen(koId: string, userId: string): Promise<void> {
+    const zuweisung = await this.assignments.find(koId, userId);
+    if (zuweisung && zuweisung.benachrichtigung === "erledigt") {
+      await this.ersetzeWenn(zuweisung, { ...zuweisung, benachrichtigung: "ausstehend" });
+    }
+  }
+
+  /** Anlegen nur, wenn frei — atomar, wo die Ablage es kann (beide Produktablagen können es). */
+  private async legeAnWennFrei(a: Assignment): Promise<boolean> {
+    if (this.assignments.createIfAbsent) {
+      return this.assignments.createIfAbsent(a);
+    }
+    if (await this.assignments.find(a.koId, a.userId)) {
+      return false;
+    }
+    await this.assignments.create(a);
+    return true;
+  }
+
+  /** Compare-and-Set, wo die Ablage es kann; ein Test-Double ohne ihn ersetzt unbedingt. */
+  private async ersetzeWenn(alt: Assignment, neu: Assignment): Promise<boolean> {
+    if (this.assignments.replaceIf) {
+      return this.assignments.replaceIf(alt, neu);
+    }
+    await this.assignments.update(neu);
+    return true;
+  }
+
+  /** ADMIN-09: alle Zuweisungen dieser Objekte, offen wie erledigt — nur lesend. */
+  async zuweisungenZu(koIds: readonly string[]): Promise<Assignment[]> {
+    return this.assignments.listByKos(koIds);
+  }
+
   async pruefstandFuer(koId: string, koVersion: number): Promise<KoPruefstand> {
     const [zuweisungen, bewertungen] = await Promise.all([
       this.assignments.listByKos([koId]),
@@ -717,6 +956,82 @@ export class ValidationService {
     await this.koService.recordOwnershipRole(koId, "reviewers", [...userIds], actor);
   }
 
+  // ==============================================================================================
+  // R-0571 — ZUSTÄNDIGKEIT AUS DEM VERZEICHNIS, ABGEGLICHEN STATT NUR ERGÄNZT.
+  // ==============================================================================================
+  //
+  // `soll` sind die Personen, die laut aktuellem Gruppenstand für dieses Objekt zuständig sind.
+  //   · Fehlt einer davon eine Zuweisung, entsteht sie — markiert als `quelle: "verzeichnis"`,
+  //     Benachrichtigung „ausstehend" (der Aufrufer verschickt sie, s. `nochZuBenachrichtigen`).
+  //   · Eine OFFENE Verzeichnis-Zuweisung an jemanden, der nicht mehr zuständig ist (Gruppe
+  //     verlassen, Austritt, Objekt in einen anderen Space gewechselt), wird zurückgezogen.
+  //   · Unberührt bleiben: jede Zuweisung ohne diese Herkunft (von Hand, beim Einreichen) und jede
+  //     erledigte — eine abgeschlossene Prüfspur verschwindet nicht, weil sich eine Gruppe ändert.
+  //     Ebenso bleibt `reviewers` im Aggregat stehen: es ist die Spur, wer je zugewiesen war.
+  // Idempotent: ein zweiter Lauf mit demselben Stand ändert nichts.
+  async verzeichnisAbgleichen(
+    koId: string,
+    soll: readonly string[],
+    actor = "system",
+  ): Promise<{ neu: string[]; entzogen: string[] }> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      return { neu: [], entzogen: [] };
+    }
+    const vorhanden = await this.assignments.listByKos([koId]);
+    const entzogen: string[] = [];
+    for (const a of vorhanden) {
+      if (a.quelle === "verzeichnis" && a.status === "open" && !soll.includes(a.userId)) {
+        if (!this.assignments.remove) {
+          // Beide Ablagen (Speicher, PostgreSQL) können es; eine ohne darf nicht still nur ergänzen.
+          throw new Error("AssignmentRepo.remove fehlt — Verzeichnisabgleich nicht möglich.");
+        }
+        await this.assignments.remove(koId, a.userId);
+        entzogen.push(a.userId);
+      }
+    }
+    const neu: string[] = [];
+    for (const userId of soll) {
+      if (!vorhanden.some((a) => a.userId === userId)) {
+        await this.assignments.create({
+          koId,
+          userId,
+          status: "open",
+          benachrichtigung: "ausstehend",
+          quelle: "verzeichnis",
+        });
+        neu.push(userId);
+      }
+    }
+    if (neu.length > 0) {
+      await this.audit?.record({
+        actor,
+        action: "ko.assigned",
+        target: koId,
+        payload: { userIds: neu, quelle: "verzeichnis" },
+      });
+      await this.koService.recordOwnershipRole(koId, "reviewers", neu, actor);
+    }
+    if (entzogen.length > 0) {
+      await this.audit?.record({
+        actor,
+        action: "ko.assignment-withdrawn",
+        target: koId,
+        payload: { userIds: entzogen, quelle: "verzeichnis" },
+      });
+    }
+    return { neu, entzogen };
+  }
+
+  // R-0571: die Objekte, an denen noch eine OFFENE Verzeichnis-Zuweisung hängt — auch solche, deren
+  // Space inzwischen keiner Gruppe mehr zugeordnet ist. Nur für den Gesamtabgleich nach einer
+  // Verzeichnisänderung.
+  async koMitVerzeichnisZuweisung(): Promise<string[]> {
+    const alle = await this.assignments.all();
+    const offen = alle.filter((a) => a.quelle === "verzeichnis" && a.status === "open");
+    return [...new Set(offen.map((a) => a.koId))];
+  }
+
   // Wer von diesen Personen hat für das KO eine Zuweisung, deren Benachrichtigung noch AUSSTEHT?
   // Reine Lesefrage an die eigene Ablage.
   //
@@ -786,11 +1101,51 @@ export class ValidationService {
     const notices: AssignmentNotice[] = [];
     for (const a of mine) {
       const ko = await this.koService.get(a.koId);
-      if (ko) {
-        notices.push({ koId: ko.id, title: ko.title, at: ko.createdAt });
+      if (!ko) {
+        continue;
       }
+      // R-0894: eine offene Zuweisung an die VERANTWORTLICHE Person entsteht durch eine Rückgabe
+      // (`returnToResponsible`) — kann aber auch eine gewöhnliche Zuweisung sein. Entschieden wird
+      // am Protokoll dieses einen Objekts (gefilterter Leseweg, kein Vollscan — R-0726).
+      const rueckgabeAm =
+        a.userId === responsibleOf(ko) ? await this.offeneRueckgabeAm(ko.id) : undefined;
+      notices.push(
+        rueckgabeAm
+          ? { koId: ko.id, title: ko.title, at: rueckgabeAm, rueckgabe: true }
+          : { koId: ko.id, title: ko.title, at: ko.createdAt },
+      );
     }
     return notices;
+  }
+
+  // Betroffenenrechte (R-0663): ALLE Bewertungen und Zuweisungen GENAU dieser Person — für die
+  // Selbstauskunft. Nur lesend. Die Bewertungen kommen über `listByKos` in EINER Abfrage für die
+  // übergebenen Objekte (der Aufrufer kennt den Bestand); die Zuweisungen über `all()`, gefiltert —
+  // dieselbe Grundmenge wie `openAssignmentsFor`, hier aber auch die erledigten.
+  async datenVon(
+    userId: string,
+    koIds: readonly string[],
+  ): Promise<{ bewertungen: Rating[]; zuweisungen: Assignment[] }> {
+    const [bewertungen, zuweisungen] = await Promise.all([
+      this.ratings.listByKos(koIds),
+      this.assignments.all(),
+    ]);
+    return {
+      bewertungen: bewertungen.filter((r) => r.userId === userId),
+      zuweisungen: zuweisungen.filter((a) => a.userId === userId),
+    };
+  }
+
+  // Zeitpunkt der noch offenen Rückgabe dieses Objekts, sonst undefined (auch ohne Protokoll).
+  private async offeneRueckgabeAm(koId: string): Promise<string | undefined> {
+    if (!this.audit) {
+      return undefined;
+    }
+    const relevant = (await this.audit.list({ target: koId })).filter(
+      (e) => RUECKGABE_AKTIONEN.has(e.action) || RUECKGABE_ENDE_AKTIONEN.has(e.action),
+    );
+    const letzte = relevant.sort((x, y) => x.seq - y.seq).at(-1);
+    return letzte && RUECKGABE_AKTIONEN.has(letzte.action) ? letzte.at : undefined;
   }
 
   // FR-VAL-06: Übersicht offen/erledigt pro Person.

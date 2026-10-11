@@ -5,7 +5,10 @@
 // BESTEHENDE Demo-Purge (demoSeed), NICHT das Import-Aufräumen (eigene Provenienz).
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { EXAMPLE_PACKAGES_ALL_KEYS } from "../../apps/web/src/lib/examplePackages";
+import {
+  EXAMPLE_PACKAGES_TEXT,
+  EXAMPLE_PACKAGE_CARDS,
+} from "../../apps/web/src/lib/examplePackages";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import {
   EXAMPLE_PACKAGES,
@@ -273,7 +276,13 @@ describe("WP-B6: POST /api/admin/examples/load", () => {
 
   it("die Beispielpaket-Copy existiert in DE, EN und NL", () => {
     const i18n = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
-    for (const key of EXAMPLE_PACKAGES_ALL_KEYS) {
+    // R-1349: die Schlüsselliste steht hier und nicht mehr als Export im Produkt (Prüfzeug) — Basis
+    // und Karten, genau die Tabellen, die `components/ExamplePackages.tsx` rendert.
+    const alleSchluessel = [
+      ...Object.values(EXAMPLE_PACKAGES_TEXT),
+      ...EXAMPLE_PACKAGE_CARDS.flatMap((card) => [card.titleKey, card.descKey]),
+    ];
+    for (const key of alleSchluessel) {
       expect(`${key}:${i18n.split(`"${key}":`).length - 1}`).toBe(`${key}:3`);
     }
   });

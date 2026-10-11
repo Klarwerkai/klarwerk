@@ -65,6 +65,21 @@ export class ModelRunService {
     };
   }
 
+  // Betroffenenrechte (R-0663): alle Läufe, die diese Person angefragt hat — ohne Kappung, denn
+  // eine Auskunft, die nach 200 Läufen abbricht, wäre unvollständig, ohne es zu sagen.
+  vonAkteur(actor: string): Promise<ModelRunRecord[]> {
+    if (this.repo.vonAkteur) {
+      return this.repo.vonAkteur(actor);
+    }
+    return this.repo
+      .recent(Number.MAX_SAFE_INTEGER)
+      .then((alle) =>
+        alle
+          .filter((r) => actor.length > 0 && r.actor === actor)
+          .sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
+      );
+  }
+
   // Jüngste ModelRuns (nur Metadaten). Limit defensiv: Default 50, Max 200, ungültig → Default.
   recent(limit?: number): Promise<ModelRunRecord[]> {
     return this.repo.recent(normalizeModelRunLimit(limit));

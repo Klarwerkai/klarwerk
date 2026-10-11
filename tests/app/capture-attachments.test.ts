@@ -5,13 +5,24 @@ import {
   type AttachmentUploadApi,
   type AttachmentUploadItem,
   classifyUploadError,
-  uploadAttachments,
+  finalizeCaptureSubmit,
 } from "../../apps/web/src/lib/captureAttachments";
 
 // SCRUM-374 / AG-02-SESSION: robuster Anhang-Upload — Teilfehler kippen den Save nicht, werden ehrlich
 // gesammelt; kein Attach ohne erfolgreichen Upload (kein Fake-objectId). DOM-frei/testbar über eine
 // injizierte API.
-describe("SCRUM-374: uploadAttachments", () => {
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Diese Zusagen hingen bis hierher an
+// `uploadAttachments`, einer Einzelschleife ohne Produktaufrufer. Das Einreichen nutzt den
+// Zweiphasenweg `finalizeCaptureSubmit` (R-0991 Nr. 11). Die Schleife ist entfernt; dieselben fünf
+// Zusagen werden jetzt an genau diesem Weg gemessen.
+const hochladen = (
+  items: readonly AttachmentUploadItem[],
+  api: AttachmentUploadApi,
+): ReturnType<typeof finalizeCaptureSubmit> =>
+  finalizeCaptureSubmit({ koId: "ko-1", attachments: items, api });
+
+describe("SCRUM-374: Anhänge beim Einreichen (finalizeCaptureSubmit)", () => {
   const img: AttachmentUploadItem = {
     name: "skizze.png",
     mime: "image/png",
@@ -35,16 +46,16 @@ describe("SCRUM-374: uploadAttachments", () => {
 
   it("alle erfolgreich → attached=N, keine Fehler; Upload UND Attach je Datei aufgerufen", async () => {
     const api = okApi();
-    const res = await uploadAttachments("ko-1", [img, doc], api);
-    expect(res).toEqual({ attached: 2, failed: [], hasFailures: false });
+    const res = await hochladen([img, doc], api);
+    expect(res).toEqual({ attached: 2, failed: [] });
     expect(api.upload).toHaveBeenCalledTimes(2);
     expect(api.attach).toHaveBeenCalledTimes(2);
   });
 
   it("leere Liste → nichts hochgeladen, keine Fehler", async () => {
     const api = okApi();
-    const res = await uploadAttachments("ko-1", [], api);
-    expect(res).toEqual({ attached: 0, failed: [], hasFailures: false });
+    const res = await hochladen([], api);
+    expect(res).toEqual({ attached: 0, failed: [] });
     expect(api.upload).not.toHaveBeenCalled();
   });
 
@@ -59,10 +70,9 @@ describe("SCRUM-374: uploadAttachments", () => {
       }),
       attach,
     };
-    const res = await uploadAttachments("ko-1", [img, doc], api);
+    const res = await hochladen([img, doc], api);
     expect(res.attached).toBe(1);
     expect(res.failed).toEqual([{ name: "handbuch.pdf", reason: "upload" }]);
-    expect(res.hasFailures).toBe(true);
     // Attach nur für das erfolgreich hochgeladene Bild — NICHT für die fehlgeschlagene Datei.
     expect(attach).toHaveBeenCalledTimes(1);
     expect(attach).toHaveBeenCalledWith(
@@ -81,7 +91,7 @@ describe("SCRUM-374: uploadAttachments", () => {
         return {};
       }),
     };
-    const res = await uploadAttachments("ko-1", [img, doc], api);
+    const res = await hochladen([img, doc], api);
     expect(res.attached).toBe(1);
     expect(res.failed).toEqual([{ name: "skizze.png", reason: "attach" }]);
   });
@@ -93,9 +103,12 @@ describe("SCRUM-374: uploadAttachments", () => {
       }),
       attach: vi.fn(async () => ({})),
     };
-    await expect(uploadAttachments("ko-1", [img, doc], api)).resolves.toMatchObject({
+    await expect(hochladen([img, doc], api)).resolves.toEqual({
       attached: 0,
-      hasFailures: true,
+      failed: [
+        { name: "skizze.png", reason: "upload" },
+        { name: "handbuch.pdf", reason: "upload" },
+      ],
     });
   });
 

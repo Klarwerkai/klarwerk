@@ -88,5 +88,56 @@ export function mediaRoutes(
         throw err;
       }
     });
+
+    // Aufnahme gesamt-sprachassistent · R-0104: eine Sprachaufnahme aus Erfassen oder Fragen wird
+    // mit DERSELBEN Transkription verschriftlicht (`media.transcribeRecording`, dort begründet).
+    // Kein Objektbezug, also kein Existenzorakel und kein Zeilenrecht; die Aufnahme wird nicht
+    // gespeichert. `ko.read` wie `analyze`: auch wer nur fragt, darf seine Frage sprechen. Der
+    // Anmelderiegel läuft VOR dem Einlesen des Rumpfs, wie an `POST /api/objects`.
+    const anmeldungVorDemEinlesen = async (
+      request: Parameters<Guards["requireUser"]>[0],
+      reply: Parameters<Guards["requireUser"]>[1],
+    ): Promise<void> => {
+      await guards.requireUser(request, reply);
+    };
+    app.post<{
+      Body: { data?: string; locale?: "de" | "en"; confidentiality?: string };
+    }>(
+      "/api/media/transcribe",
+      { bodyLimit: SPRACHAUFNAHME_BODY_LIMIT, onRequest: anmeldungVorDemEinlesen },
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const data = typeof request.body?.data === "string" ? request.body.data : "";
+        if (!data) {
+          reply.code(400).send({ error: "BAD_REQUEST", message: "Keine Aufnahme übermittelt." });
+          return;
+        }
+        const locale = request.body?.locale === "en" ? "en" : "de";
+        const roh = request.body?.confidentiality;
+        const stufe = typeof roh === "string" ? roh : undefined;
+        try {
+          const ergebnis = await media.transcribeRecording(data, locale, stufe);
+          reply.code(200).send(ergebnis);
+        } catch (err) {
+          if (err instanceof MediaAnalysisError) {
+            const status = err.code === "UNSUPPORTED_KIND" ? 400 : 502;
+            reply.code(status).send({ error: err.code, message: err.message });
+            return;
+          }
+          throw err;
+        }
+      },
+    );
   };
 }
+
+/**
+ * Rumpfgrenze der Sprachaufnahme: Base64 trägt ein Drittel mehr als die 20 MiB, die der Dienst
+ * annimmt (`SPRACHAUFNAHME_MAX_BYTES` in `services/media/src/service.ts`), dazu Luft für den Rumpf.
+ * Dass beide zusammenpassen, hält `tests/admin-ki-freigabe/sprachaufnahme-transkription.test.ts`
+ * fest (T5).
+ */
+export const SPRACHAUFNAHME_BODY_LIMIT = 28 * 1024 * 1024;

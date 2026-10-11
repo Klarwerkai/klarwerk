@@ -114,31 +114,28 @@ describe("SCRUM-348: Fresh Capture → Studio → Review → Use E2E (HTTP + San
     expect(board.statusCode).toBe(200);
     expect((board.json() as KnowledgeObject[]).some((k) => k.id === koId)).toBe(true);
 
-    // 8) USE VOR Validierung: Frage wird beantwortet (Keyword-Treffer), aber EHRLICH ungeprüft —
-    //    keine „gesicherte" Antwort, Quelle als nicht validiert / needs-work markiert.
+    // 8) USE VOR Validierung — R-0278 (Nacharbeit 3) und R-0584 (Auftrag
+    //    gesamt-datenschutz-voreinstellung): der normale Frageweg antwortet NUR aus geprüftem Wissen.
+    //    Bis dahin trug das offene KO hier die Antwort (als „ungeprüft" markiert); jetzt ist es KEINE
+    //    Grundlage. Klara legt die Wissenslücke an, meldet den ungeprüften Treffer (JOB 1591 W5) und
+    //    nennt in der Torlage, dass die Freigabe fehlt.
     const askBefore = await ask(app, admin, "Wie wird der Hydraulikzylinder HZ7 entlüftet?");
     expect(askBefore.statusCode).toBe(200);
-    const beforeResult = askBefore.json().result as AnswerResult;
-    expect(beforeResult.answered).toBe(true);
-    expect(beforeResult.sources).toContain(koId);
-    expect(beforeResult.knowledgeClass).not.toBe("gesichert"); // offen → ungeprueft
-    expect(
-      answerStatus(
-        answerGrade({
-          answered: true,
-          knowledgeClass: beforeResult.knowledgeClass,
-          sourcesConflicted: false,
-          // AUFTRAG-mega33 A3: die Abdeckungsbedingung ist Pflicht. Dieser Lauf prueft den
-          // Validierungs-Lebenszyklus, nicht die Erkennungsabdeckung — deshalb steht die
-          // Annahme hier AUSDRUECKLICH da, statt stillschweigend wegzufallen.
-          sourcesCheckUnproven: false,
-          conflictsUnproven: false,
-        }),
-      ).key,
-    ).toBe("unverified");
-    const refBefore = sourceRefs(beforeResult.sources, [ko])[0];
-    expect(refBefore?.validated).toBe(false);
-    expect(refBefore?.usability).not.toBe("ready");
+    const beforeBody = askBefore.json() as {
+      result: AnswerResult;
+      gap: unknown;
+      ungeprueft?: Array<{ id: string; status: string }>;
+      verschlossen?: Array<{ id: string; freigabeFehlt: boolean }>;
+    };
+    expect(beforeBody.result.answered).toBe(false);
+    expect(beforeBody.result.sources).not.toContain(koId);
+    expect(beforeBody.result.knowledgeClass).not.toBe("gesichert");
+    expect(beforeBody.gap).not.toBeNull();
+    // Gegenprobe: die Frage TRIFFT das offene KO — es fehlt in den Quellen wegen seines
+    // Prüfstands, nicht weil die Suche danebengreift.
+    expect(beforeBody.ungeprueft?.map((h) => h.id)).toContain(koId);
+    expect(beforeBody.ungeprueft?.find((h) => h.id === koId)?.status).toBe("offen");
+    expect(beforeBody.verschlossen?.find((h) => h.id === koId)?.freigabeFehlt).toBe(true);
 
     // 9) Validierung über die echte HTTP-Bewertung (needed=1 → ein Admin-Up genügt) → validiert/Trust 100.
     const rate = await app.inject({

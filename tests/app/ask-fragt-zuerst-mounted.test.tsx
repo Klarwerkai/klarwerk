@@ -226,7 +226,7 @@ function eingabefeld(container: HTMLElement): HTMLInputElement {
     "die Fragen-Seite hat gar kein Eingabefeld — alles Weitere misst ins Leere",
   ).not.toBeNull();
   expect((feld as HTMLInputElement).placeholder, "das gefundene Feld ist nicht das Fragefeld").toBe(
-    i18n.t("ask.placeholder"),
+    i18n.t("beispielfragen.platzhalter"),
   );
   return feld as HTMLInputElement;
 }

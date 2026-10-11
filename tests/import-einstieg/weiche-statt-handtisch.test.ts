@@ -22,6 +22,7 @@
 // VORHER (gemessen, 07.09.2026): rot — `docx: im Erfassen einlesbar, auf /import aber "soon"`.
 import { describe, expect, it } from "vitest";
 import {
+  JSON_SOURCE_IDS,
   type SourceState,
   fileSourcesForSurface,
 } from "../../apps/web/src/lib/importSourceGallery";
@@ -31,6 +32,11 @@ const EHRLICH_VORHANDEN: readonly SourceState[] = ["active", "elsewhere"];
 
 const ERFASSEN = fileSourcesForSurface("capture");
 const IMPORT = new Map(fileSourcesForSurface("import").map((s) => [s.id, s.state]));
+
+/** Dateikacheln, die der Importkasten selbst liest und die das Erfassen nicht kennt. */
+const EIGENER_IMPORTWEG: readonly string[] = (JSON_SOURCE_IDS as readonly string[]).filter((id) =>
+  ERFASSEN.some((s) => s.id === id && s.state !== "active"),
+);
 
 describe("JOB 3190 · R2 — die Fläche ist nie pessimistischer als die Weiche", () => {
   it("beide Oberflächen führen dieselben Kacheln (sonst prüfte die Obermenge nur einen Teil)", () => {
@@ -63,9 +69,21 @@ describe("JOB 3190 · R2 — die Fläche ist nie pessimistischer als die Weiche"
     expect(einlesbar.length, einlesbar.join(",")).toBeGreaterThanOrEqual(4);
   });
 
+  // R-0179 (Aufnahme import-gesamtvertrag, Nacharbeit 3): NACHGEFÜHRT. Excel liest seither der
+  // Importkasten auf `/import` SELBST (`apps/web/src/lib/xlsxImport.ts`), nicht das Erfassen. Die
+  // Kachel ist dort `active`, obwohl die Weiche des Erfassens sie nicht misst — genau wie JSON eine
+  // Zusage dieser Fläche. Ausgenommen ist deshalb nur, was nachweislich an den Importkasten
+  // verdrahtet ist (`JSON_SOURCE_IDS`); für alles Übrige gilt die Regel unverändert.
+  it("die Ausnahme ist an den Importkasten verdrahtet und auf /import aktiv", () => {
+    expect(EIGENER_IMPORTWEG).toEqual(["xlsx"]);
+    for (const id of EIGENER_IMPORTWEG) {
+      expect(IMPORT.get(id), id).toBe("active");
+    }
+  });
+
   it("umgekehrt wird nichts optimistischer: was die Weiche NICHT misst, bleibt `planned`/`unconfigured`", () => {
     for (const quelle of ERFASSEN) {
-      if (quelle.state === "active") {
+      if (quelle.state === "active" || EIGENER_IMPORTWEG.includes(quelle.id)) {
         continue;
       }
       const importZustand = IMPORT.get(quelle.id);

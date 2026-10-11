@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { HOME_ROUTE, NAV_GROUPS } from "../../apps/web/src/app/navigation";
+import i18n from "../../apps/web/src/i18n";
 
 const logoSource = readFileSync("apps/web/src/shell/Logo.tsx", "utf8");
 
@@ -23,6 +24,10 @@ describe("KW-LOGO-HOME-01: logo home route", () => {
     expect(logoSource).toContain("<GuardedLink");
     expect(logoSource).not.toContain('import { Link } from "react-router-dom";');
     expect(logoSource).toContain("to={HOME_ROUTE}");
-    expect(logoSource).toContain('aria-label="Klarwerk - zur Startseite"');
+    // R-1169: die Ansage kommt seit der Aufnahme gesamt-sprache-begriffe aus dem Katalog; der
+    // deutsche Wortlaut ist zeichengleich geblieben (Chromium-Selektoren lesen ihn).
+    expect(logoSource).toContain('aria-label={t("beschriftung.logo.start")}');
+    expect(i18n.getFixedT("de")("beschriftung.logo.start")).toBe("Klarwerk - zur Startseite");
+    expect(i18n.getFixedT("en")("beschriftung.logo.start")).not.toBe("Klarwerk - zur Startseite");
   });
 });

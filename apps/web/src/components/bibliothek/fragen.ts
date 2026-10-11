@@ -36,6 +36,11 @@ import { isKnownNonConfidential } from "../../lib/confidentiality";
 // `tests/app/h4-ko-marker-vertrag-mounted.test.tsx`; jener Fall wird rot, sobald jemand die
 // stärkere Aussage behauptet, ohne sie zu bauen.
 //
+// ARBEITSWEGE AM SELBEN ARTIKEL (produkt:20261007:arbeitswege-objekt): `/fragen` LIEST den Marker
+// jetzt — samt `fassung` — aber nur für die Anzeige „Frage zum Beitrag …" und den Rückweg dorthin
+// (`lib/objektbezug.ts`). Der Anfragevertrag bleibt unverändert `[frage, sprache]`; die Kennung
+// schränkt die Antwort weiterhin NICHT ein.
+//
 // EINE ECHTE BINDUNG wäre eine Änderung an `pages/Ask.tsx` und an seinem Anfragevertrag. Diese
 // Datei liegt ausserhalb der Zielpfade dieses Auftrags (§4); die Bindung gehört deshalb in einen
 // eigenen Auftrag und nicht als Nebenwirkung in eine Umbau-Runde der Bibliothek.
