@@ -765,7 +765,7 @@ describe("E10 · K4/K5 — Einwilligung in einem anderen Tab widerrufen (Bens Be
     expect(askAufrufe(), "die Frage ging trotz Widerruf an den Frageweg").toBe(askVorher);
     expect(draht.lage.generierungen).toBe(0);
     expect(n.dataset.modus).toBe("fehler");
-    expect(n.textContent).toContain("Ohne Einwilligung schickt Klara keine Frage los");
+    expect(n.textContent).toContain("Ohne Einwilligung schickt Assistenz keine Frage los");
     expect(n.dataset.gespeichert).toBe("ja");
     const frage = nachrichten().find((x) => x.dataset.von === "du");
     expect(frage?.dataset.gespeichert).toBe("nein");

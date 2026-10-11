@@ -233,7 +233,8 @@ test("Klara 03 · Artikel: Kontext, Markierung über Fokus- und Seitenwechsel, B
     vorUebersetzung + 1,
     { timeout: 15_000 },
   );
-  await expect(klara).toContainText("Klara übersetzt nicht frei");
+  // produkt:20261010:assistenz-name-avatar: ohne persönlichen Namen heisst es neutral „Assistenz".
+  await expect(klara).toContainText("Assistenz übersetzt nicht frei");
 
   // --- K6 · jetzt vertraulich: die Markierung geht nicht mehr an den Frageweg --------------------
   const gestuft = await page.request.put(`/api/kos/${koId}`, {

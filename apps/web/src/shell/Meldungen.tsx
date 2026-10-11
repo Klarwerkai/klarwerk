@@ -413,7 +413,18 @@ export function MeldungenListe({
                   ) : null}
                   {/* Veröffentlichung: neu oder aktualisiert; „hervorgehoben" trägt die Markierung
                       „Wichtig" und steht oben, bis sie gelesen ist (Reihenfolge vom Server). */}
-                  {n.kind === "veroeffentlichung" ? (
+                  {/* ADMIN-12: die tägliche Zusammenfassung — Tag und Anzahl vorn, die Titel der
+                      (beim Abruf sichtbaren) Einträge dahinter. */}
+                  {n.kind === "veroeffentlichung" && n.zusammenfassung ? (
+                    <span className="font-semibold text-ai" data-zusammenfassung="ja">
+                      {t("kommunikation.glocke.zusammenfassung", {
+                        datum: new Date(`${n.zusammenfassung.tag}T12:00:00Z`).toLocaleDateString(),
+                        anzahl: n.zusammenfassung.anzahl,
+                      })}
+                      :{" "}
+                    </span>
+                  ) : null}
+                  {n.kind === "veroeffentlichung" && !n.zusammenfassung ? (
                     <span
                       className={`font-semibold ${
                         n.hervorgehoben ? "text-trust-crit-text" : "text-ai"

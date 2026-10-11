@@ -9,7 +9,8 @@
 // Seite (dasselbe `data-tutorial-ziel`, das die echten Bausteine tragen), sonst in der Demo. Fehlt es
 // an beiden Orten, sagt Klara das in Worten (Fehlziel) — der Zeiger zeigt nie ins Leere.
 import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+// produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
+import { useAssistenzT } from "../../lib/assistenzProfil";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
 import { ZIEL_ATTRIBUT } from "../fragen/ziele";
 
@@ -42,7 +43,7 @@ export function findeZiel(zielName: string | null, doc: Document = document): Zi
 
 /** Der Rahmen um das gezeigte Element — folgt ihm beim Scrollen und bei Grössenänderung. */
 export function KlaraZeiger({ treffer }: { treffer: ZielTreffer | null }): JSX.Element | null {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const [rahmen, setRahmen] = useState<DOMRect | null>(null);
   useEffect(() => {
     if (!treffer) {
@@ -100,7 +101,7 @@ export function KlaraTutorialKarte({
   onFortsetzen: () => void;
   onBeenden: () => void;
 }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const teil = lage.teilText ?? t("klaravorschau.tutorial.flaeche");
   const zielName = lage.zielName ?? t("klaravorschau.tutorial.flaeche");
   return (

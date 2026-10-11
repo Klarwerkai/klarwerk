@@ -18,6 +18,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { KlaraAssistant } from "../../apps/web/src/components/KlaraAssistant";
 import i18n from "../../apps/web/src/i18n";
+import { hilfeknopfLabel } from "../support/hilfeknopf";
 
 vi.mock("../../apps/web/src/components/AiModelInfo", () => ({ AiModelInfo: () => null }));
 
@@ -114,7 +115,7 @@ async function kiSucheAusloesen(): Promise<HTMLDivElement> {
   });
   await durchatmen();
   const oeffnen = neuerHost.querySelector<HTMLButtonElement>(
-    `button[aria-label="${i18n.t("klara.open")}"]`,
+    `button[aria-label="${hilfeknopfLabel()}"]`,
   );
   expect(oeffnen, "der Öffnen-Knopf des Klara-Panels fehlt").not.toBeNull();
   await act(async () => oeffnen?.click());
