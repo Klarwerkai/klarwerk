@@ -1329,6 +1329,17 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   }
 
   return async (app) => {
+    // R-0676: der Rechte-Riegel VOR dem Parsen für `POST /api/kos/from-document`. Er hängt hier am
+    // Plugin und nicht als Routenoption, weil die Kopfzeile dieser Route sonst umbricht und Biome
+    // den ganzen Handler eine Stufe tiefer einrückt (Nacharbeit 5). Die Wirkung ist dieselbe: ein
+    // `onRequest`-Hook, der vor dem Body-Parsing läuft und den Lebenszyklus mit gesendeter Absage
+    // beendet. `POST /api/kos` trägt denselben Helfer als Routenoption (unten).
+    app.addHook("onRequest", async (request, reply) => {
+      if (request.method === "POST" && request.routeOptions.url === "/api/kos/from-document") {
+        await requireKoCreateBeforeParse(request, reply);
+      }
+    });
+
     // ============================================================================================
     // JOB 2009 · D2 — H3 BEKOMMT SEINEN LESER. Datei und Zeile dieses Aufrufs sind der Beleg.
     // ============================================================================================
@@ -1820,7 +1831,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     //   (I)  EXTERNE STUFENREGEL — hier unten, `decideExternalAttach` je Belegstelle.
     //   (II) INTERNE BELEGPFLICHT — im Service (`requireDocumentEvidence`), stufenblind.
     // An services/external-search/src/attach-policy.ts ändert sich KEIN Zeichen.
-    app.post<{ Body: FromDocumentBody }>("/api/kos/from-document", { onRequest: requireKoCreateBeforeParse }, async (request, reply) => {
+    app.post<{ Body: FromDocumentBody }>("/api/kos/from-document", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
         return;

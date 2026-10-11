@@ -102,8 +102,7 @@ export default {
     "anmeldefehler.LOGIN_RATE_LIMITED": "Te veel aanmeldpogingen. Probeer het later opnieuw.",
     "anmeldefehler.RESET_RATE_LIMITED": "Te veel pogingen. Probeer het later opnieuw.",
     "anmeldefehler.ALREADY_SETUP": "Deze instantie is al ingesteld.",
-    "anmeldefehler.SECOND_FACTOR_REQUIRED":
-      "Voer de bevestigingscode uit je authenticator-app in.",
+    "anmeldefehler.SECOND_FACTOR_REQUIRED": "Voer de bevestigingscode uit je authenticator-app in.",
     "anmeldefehler.SECOND_FACTOR_INVALID": "De bevestigingscode is onjuist of verlopen.",
     "anmeldefehler.SECOND_FACTOR_CHALLENGE_INVALID":
       "De aanmelding is verlopen. Meld je opnieuw aan met e-mailadres en wachtwoord.",

@@ -40,6 +40,8 @@ let app: FastifyInstance;
 let fetchVorher: typeof fetch;
 let schalterVorher: string | undefined;
 let aufgerufen: string[] = [];
+/** Jede Antwort der Brücke mit Status — Grundlage zum Warten und Klartext in jeder Fehlermeldung. */
+let beantwortet: string[] = [];
 
 function brueckeAufbauen(): void {
   globalThis.fetch = (async (eingabe: unknown, init: RequestInit = {}) => {
@@ -50,6 +52,7 @@ function brueckeAufbauen(): void {
     });
     aufgerufen.push(url);
     const res = await app.inject({ method: "GET", url, headers: kopf });
+    beantwortet.push(`${url} → ${res.statusCode}`);
     return {
       ok: res.statusCode < 400,
       status: res.statusCode,
@@ -91,9 +94,27 @@ const alle = (testId: string): Element[] => [
   ...(container?.querySelectorAll(`[data-testid="${testId}"]`) ?? []),
 ];
 
+/**
+ * Wartet, bis die Bedingung gilt — höchstens `ms`. Eine feste Zahl leerer Takte reichte nicht mehr,
+ * seit `buildApp` mit dem Hauptstand gewachsen ist: die erste Antwort kam erst danach, und die
+ * Fläche wurde vor ihr gelesen (Nacharbeit 5). Die Zusicherungen danach bleiben unverändert.
+ */
+async function bis(bedingung: () => boolean, ms = 5000): Promise<void> {
+  const ende = Date.now() + ms;
+  while (!bedingung() && Date.now() < ende) {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+  }
+}
+
+const antwortDa = (pfad: string) => (): boolean =>
+  beantwortet.some((b) => b.startsWith(`${pfad} `) || b.startsWith(`${pfad}?`));
+
 beforeEach(async () => {
   schalterVorher = process.env[SCHALTER];
   aufgerufen = [];
+  beantwortet = [];
   fetchVorher = globalThis.fetch;
   await i18n.changeLanguage("de");
 });
@@ -125,6 +146,8 @@ async function starte(schalter: boolean): Promise<void> {
     delete process.env[SCHALTER];
   }
   app = buildApp(buildServices());
+  // Der Server ist fertig aufgebaut, BEVOR die Fläche ihre erste Anfrage stellt.
+  await app.ready();
   brueckeAufbauen();
 }
 
@@ -132,8 +155,9 @@ describe("R-0570 · die anonyme Vorführung auf der Oberfläche", () => {
   it("F1 · ohne Anmeldung: Kennzeichnung und alle erfundenen Einträge stehen da", async () => {
     await starte(true);
     await mounten(createElement(VorfuehrungScreen));
+    await bis(() => alle("vorfuehrung-eintrag").length > 0);
     const kennzeichnung = alle("vorfuehrung-kennzeichnung");
-    expect(kennzeichnung).toHaveLength(1);
+    expect(kennzeichnung, beantwortet.join(" · ")).toHaveLength(1);
     expect(kennzeichnung[0]?.textContent).toBe(KENNZEICHNUNG.de);
     const eintraege = alle("vorfuehrung-eintrag").map((e) => e.textContent ?? "");
     expect(eintraege).toHaveLength(INHALTE.de.length);
@@ -160,14 +184,21 @@ describe("R-0570 · die anonyme Vorführung auf der Oberfläche", () => {
       form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
       await flush();
     });
+    await bis(() => alle("vorfuehrung-treffer").length > 0);
     const treffer = alle("vorfuehrung-treffer").map((e) => e.textContent ?? "");
-    expect(treffer.length).toBeGreaterThan(0);
+    expect(treffer.length, beantwortet.join(" · ")).toBeGreaterThan(0);
     expect(treffer[0]).toContain(INHALTE.de[0]?.titel ?? "—");
   });
 
   it("F3 · die Anmeldemaske verweist auf die Vorführung — nur wenn sie eingeschaltet ist", async () => {
     await starte(false);
     await mounten(createElement(AuthScreens, { needsSetup: false } as never));
+    // Erst wenn die Schalterauskunft beantwortet ist, sagt „kein Verweis" etwas.
+    await bis(antwortDa("/api/features"));
+    await act(async () => {
+      await flush();
+    });
+    expect(beantwortet.some((b) => b.startsWith("/api/features "))).toBe(true);
     const ohne = alle("auth-zur-vorfuehrung");
     expect(ohne, "Verweis trotz ausgeschalteter Vorführung").toHaveLength(0);
     act(() => {
@@ -177,10 +208,12 @@ describe("R-0570 · die anonyme Vorführung auf der Oberfläche", () => {
     container?.remove();
     await app.close();
 
+    beantwortet = [];
     await starte(true);
     await mounten(createElement(AuthScreens, { needsSetup: false } as never));
+    await bis(() => alle("auth-zur-vorfuehrung").length > 0);
     const verweis = alle("auth-zur-vorfuehrung");
-    expect(verweis).toHaveLength(1);
+    expect(verweis, beantwortet.join(" · ")).toHaveLength(1);
     expect(verweis[0]?.getAttribute("href")).toBe("/vorfuehrung");
   });
 
