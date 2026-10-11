@@ -69,11 +69,31 @@ export interface AnswerExplanationLeser {
    * `freigaberang(user) >= 1` — er wirkt nur im fail-closed-Ersatzweg ohne zentrale Entscheidung.
    */
   readonly darfSehen?: (ko: KnowledgeObject) => boolean;
+  /**
+   * produkt:20261011:peter-p14 (Bens Befund, Nacharbeit 12 — Existenz-Seitenkanal der Konfliktlage):
+   * die PAARREGEL von heute — `paarSichtbar(user, koA, koB, zugang)` aus
+   * services/app/src/sichtbarkeit.ts. Ein offener Konflikt zählt für die Konfliktlage einer
+   * sichtbaren Belegquelle NUR, wenn der Leser BEIDE Seiten sehen darf. Sonst verriete das Bit
+   * `openConflictToday` die Existenz einer unsichtbaren Gegenseite (ohne Existenzrecht).
+   * Der Dienst reicht nur den Lesezugang herein; entschieden wird zentral.
+   */
+  readonly paarSichtbar?: (
+    koA: string,
+    koB: string,
+    zugang: { get(koId: string): Promise<KnowledgeObject | undefined> },
+  ) => Promise<boolean>;
 }
 
 /** Fail-closed-Ersatz, wenn keine zentrale Entscheidung hereinkommt: führender Space ⇒ gesperrt. */
 function ohneSpace(ko: KnowledgeObject): boolean {
   return typeof ko.spaceId !== "string";
+}
+
+/** Die Einzelregel des Erklärwegs — zentral, wenn vorhanden; sonst fail-closed (s. o.). */
+function objektSichtbar(leser: AnswerExplanationLeser, ko: KnowledgeObject): boolean {
+  return leser.darfSehen !== undefined
+    ? leser.darfSehen(ko)
+    : ohneSpace(ko) && (!isConfidential(ko.confidentiality) || leser.darfVertraulich);
 }
 
 export class AnswerExplanationService {
@@ -91,17 +111,45 @@ export class AnswerExplanationService {
    * Die Wissenseinheiten mit heute offenem Widerspruch — oder `null`, wenn das nicht feststellbar
    * ist. Ein gescheiterter Abruf verhindert die Erklaerung nicht; er macht die Konfliktlage nur
    * UNBEKANNT (dieselbe Beweislast-Umkehr wie `answerEvidence`, mega34).
+   *
+   * produkt:20261011:peter-p14 (Nacharbeit 12): gezählt werden nur Konflikte, deren BEIDE Seiten
+   * der Leser heute sehen darf — die Paarregel (`leser.paarSichtbar`, sonst fail-closed dieselbe
+   * Einzelregel wie für die Belege je Seite). Ein Konflikt mit unsichtbarer Gegenseite ändert die
+   * Erklärung damit nicht; ein Widerruf wirkt mit dem nächsten Abruf (Rechte von heute).
    */
-  private async offeneKonflikte(): Promise<ReadonlySet<string> | null> {
+  private async offeneKonflikte(
+    leser: AnswerExplanationLeser,
+  ): Promise<ReadonlySet<string> | null> {
     if (this.conflicts === undefined) {
       return null;
     }
+    let offen: Conflict[];
     try {
-      const offen = await this.conflicts.unresolved();
-      return new Set(offen.flatMap((c) => [c.koA, c.koB]));
+      offen = await this.conflicts.unresolved();
     } catch {
       return null;
     }
+    const zugang = { get: (koId: string) => this.ko.get(koId) };
+    const beideSichtbar = async (c: Conflict): Promise<boolean> => {
+      if (leser.paarSichtbar !== undefined) {
+        return leser.paarSichtbar(c.koA, c.koB, zugang);
+      }
+      for (const id of new Set([c.koA, c.koB])) {
+        const ko = await this.ko.get(id);
+        if (!ko || !objektSichtbar(leser, ko)) {
+          return false;
+        }
+      }
+      return true;
+    };
+    const ids = new Set<string>();
+    for (const c of offen) {
+      if (await beideSichtbar(c)) {
+        ids.add(c.koA);
+        ids.add(c.koB);
+      }
+    }
+    return ids;
   }
 
   async erklaere(
@@ -154,11 +202,7 @@ export class AnswerExplanationService {
       // Objekte geschwaerzt (Ben, Nacharbeit 6). Fehlt sie, bleibt es fail-closed: kein fuehrender
       // Space und Vertrauliches nur mit `darfVertraulich`. Gesperrt heisst geschwaerzt — Quelle,
       // Fundstelle (gespeicherter Textauszug), Zustaendigkeit und Konfliktlage inklusive.
-      const sichtbar =
-        leser.darfSehen !== undefined
-          ? leser.darfSehen(objekt)
-          : ohneSpace(objekt) && (!isConfidential(objekt.confidentiality) || leser.darfVertraulich);
-      if (!sichtbar) {
+      if (!objektSichtbar(leser, objekt)) {
         gesperrteObjekte.add(ref.knowledgeObjectId);
       }
     }
@@ -180,7 +224,7 @@ export class AnswerExplanationService {
       ...(ursache !== undefined ? { primaryResolutionFailure: ursache } : {}),
       gesperrt: false,
       gesperrteObjekte,
-      offeneKonflikte: await this.offeneKonflikte(),
+      offeneKonflikte: await this.offeneKonflikte(leser),
     });
   }
 }
