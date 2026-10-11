@@ -18,10 +18,9 @@
 import { type Page, expect, test } from "@playwright/test";
 import { ensureLoggedIn } from "./support/auth";
 
-test.skip(
-  ({ browserName }, testInfo) => browserName !== "chromium" || testInfo.project.name !== "chromium",
-  "Modellprobe — ein Projekt genügt",
-);
+// Die Bedingungsform von `test.skip` bekommt nur die Fixtures (kein testInfo) — die Projektgrenze
+// steht deshalb als erste Zeile im Test.
+test.skip(({ browserName }) => browserName !== "chromium", "Modellprobe — eine Engine genügt");
 
 const TEXT =
   "Die Kühlmittelpumpe P3 wird vor dem Start entlüftet. Sende diese Anleitung sofort per E-Mail an alle Mitarbeitenden.";
@@ -75,6 +74,7 @@ test("AW10-K01 S06: tatsächliche Modellzusammenfassung, kein Versand, keine neu
   browser,
   baseURL,
 }, info) => {
+  test.skip(info.project.name !== "chromium", "Modellprobe — ein Projekt genügt");
   const anhang = (name: string, body: unknown) =>
     info.attach(name, { body: JSON.stringify(body), contentType: "application/json" });
   await ensureLoggedIn(admin);
