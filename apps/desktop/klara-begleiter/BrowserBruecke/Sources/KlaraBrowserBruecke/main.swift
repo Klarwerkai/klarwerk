@@ -57,7 +57,11 @@ func verwerfen() {
 }
 
 func ablegen(_ karte: [String: Any]) -> Bool {
-  guard let daten = try? JSONSerialization.data(withJSONObject: karte) else { return false }
+  // Der Übergabezeitpunkt (Uhr dieses Macs): der Begleiter gibt eine Karte nur frei, wenn sie NACH
+  // dem Beginn seiner aktuellen Anmeldesitzung übergeben wurde (KlaraBrowserKarte).
+  var abgelegt = karte
+  abgelegt["uebergebenAm"] = Date().timeIntervalSince1970
+  guard let daten = try? JSONSerialization.data(withJSONObject: abgelegt) else { return false }
   let ordner = ablage.deletingLastPathComponent()
   do {
     try FileManager.default.createDirectory(

@@ -195,10 +195,19 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
   *Umgesetzt in diesem Arbeitsbaum:*
   - Der **Kartenverbraucher** für den Host ist die Bibliothek `KlaraBrowserKarte` im Paket der
     Brücke (`BrowserBruecke/Sources/KlaraBrowserKarte`). Sie gibt eine Karte nur frei, wenn
-    Nutzer (`nutzer`), Konto (`mandant` = Klarwerk-Server) und die aktuelle Anmeldesitzung des
-    Begleiters passen. Jede neue Anmeldung, Abmeldung und jeder Kontowechsel leert sie sofort; dazu
-    kommen das Löschen durch `verwerfen`/`widerrufen` und eine Datei mit fremdem Besitzer oder
-    Rechten über 0600.
+    Nutzer (`nutzer`) und Konto (`mandant` = Klarwerk-Server) passen und die Karte zur aktuellen
+    Anmeldesitzung gehört.
+  - **So ist die Sitzungsbindung umgesetzt (Nacharbeit 12):** Die Brücke vermerkt beim Ablegen
+    `uebergebenAm`. Der Verbraucher gibt nur Karten frei, die nach dem Beginn der aktuellen
+    Anmeldesitzung übergeben wurden; beide Zeitpunkte stammen von der Uhr dieses Macs. Jede neue
+    Anmeldung, auch eine neue Sitzung desselben Nutzers am selben Server, sperrt damit jede schon
+    abgelegte Karte, bis eine frische Übergabe kommt. Abmeldung und Kontowechsel leeren ebenso.
+  - Dieselbe eine Prüfung (`aktuell()`) benutzen `anmelden`, die Rückmeldung und der
+    Dateibeobachter.
+  - Keine Karte gibt es außerdem nach dem Löschen durch `verwerfen`/`widerrufen` und bei einer
+    Datei mit fremdem Besitzer oder Rechten über 0600.
+  - Gegenprobe: `BrowserBruecke/Tests/KlaraBrowserKarteTests/SitzungsbindungTests.swift`
+    (`swift test` auf dem Mac; in dieser Bahn nicht ausgeführt).
   - Die Erweiterung schickt dafür neu den Mandanten mit der Karte.
   - Der Anschluss im Host sind zwei Stellen: `anmelden(...)`, wenn die Webfläche `/begleiter`
     ihre Anmeldung oder Abmeldung meldet, und `beiAenderung`, das die Karte an die Webfläche

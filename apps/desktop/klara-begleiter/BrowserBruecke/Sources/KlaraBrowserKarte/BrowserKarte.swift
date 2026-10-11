@@ -8,8 +8,11 @@
 //
 //   · Nutzer:  `nutzer` der Karte == angemeldeter Klarwerk-Nutzer des Begleiters;
 //   · Konto:   `mandant` der Karte == Klarwerk-Server, an dem der Begleiter angemeldet ist;
-//   · Sitzung: eine Karte gilt nur innerhalb der Anmeldesitzung, in der sie erschien — jede neue
-//              Anmeldung, jede Abmeldung und jeder Kontowechsel leert sie sofort;
+//   · Sitzung: eine Karte gilt nur, wenn die Brücke sie NACH dem Beginn der aktuellen
+//              Anmeldesitzung übergeben hat (`uebergebenAm` > Sitzungsbeginn, beides die Uhr dieses
+//              Macs). Jede neue Anmeldung — auch eine neue Sitzung desselben Nutzers am selben
+//              Server —, jede Abmeldung und jeder Kontowechsel leert sie sofort und SPERRT jede
+//              schon abgelegte Karte, bis eine frische Übergabe kommt (nacharbeit-12);
 //   · Fassung: Folge und Fassung müssen vorhanden sein; was nicht passt, ist keine Karte.
 //
 // Gelöscht oder unlesbar heisst: KEINE Karte (nie die zuletzt gesehene). Die Datei muss diesem
@@ -32,6 +35,8 @@ public struct BrowserKarte: Equatable {
   public let titel: String
   public let auswahl: String
   public let erfasstAm: String
+  /// Wann die Brücke die Karte abgelegt hat (Sekunden seit 1970, Uhr dieses Macs).
+  public let uebergebenAm: Double
 }
 
 /// Die Anmeldung des Begleiters, gegen die jede Karte geprüft wird.
@@ -58,6 +63,9 @@ public final class BrowserKartenQuelle {
   private var beobachter: DispatchSourceFileSystemObject?
   private var ordnerKennung: Int32 = -1
   private var zuletzt: BrowserKarte?
+  /// Beginn der aktuellen Anmeldesitzung; `nil` = abgemeldet. Nur danach übergebene Karten gelten.
+  private var sitzungsBeginn: Double?
+  private let uhr: () -> Double
 
   public static var standardAblage: URL {
     FileManager.default.homeDirectoryForCurrentUser
@@ -65,27 +73,33 @@ public final class BrowserKartenQuelle {
       .appendingPathComponent("browserkontext.json")
   }
 
-  public init(ablage: URL = BrowserKartenQuelle.standardAblage) {
+  public init(
+    ablage: URL = BrowserKartenQuelle.standardAblage,
+    uhr: @escaping () -> Double = { Date().timeIntervalSince1970 }
+  ) {
     self.ablage = ablage
+    self.uhr = uhr
   }
 
   deinit { anhalten() }
 
-  /// Neue Anmeldung, Abmeldung (`nil`) oder Kontowechsel: die bisherige Karte gilt nicht mehr.
+  /// Neue Anmeldung, neue Sitzung, Abmeldung (`nil`) oder Kontowechsel: die bisherige Karte gilt
+  /// nicht mehr. Eine schon abgelegte Karte bleibt GESPERRT, bis die Brücke eine frische übergibt —
+  /// auch wenn Nutzer und Server gleich bleiben.
   public func anmelden(_ neu: BegleiterAnmeldung?) {
-    let gewechselt = neu != anmeldung
-    anmeldung = neu
-    if gewechselt {
-      // Eine Karte, die vor dieser Anmeldung erschien, gehört nicht zu ihr: zuerst leeren …
-      melde(nil)
+    if neu != anmeldung {
+      anmeldung = neu
+      sitzungsBeginn = neu == nil ? nil : uhr()
     }
-    // … dann neu prüfen; nur eine Karte, die zu DIESER Anmeldung passt, erscheint wieder.
+    // Dieselbe Prüfung wie überall: vor dem Sitzungsbeginn übergebene Karten bleiben gesperrt.
     melde(aktuell())
   }
 
-  /// Die freigegebene Karte — oder `nil`, wenn keine da ist oder sie nicht zur Anmeldung passt.
+  /// Die freigegebene Karte — oder `nil`, wenn keine da ist oder sie nicht zur Anmeldung UND zur
+  /// Sitzung passt. Diese eine Prüfung benutzen `anmelden`, `beobachten` und der Dateibeobachter.
   public func aktuell() -> BrowserKarte? {
-    guard let anmeldung, sicherAbgelegt(), let daten = try? Data(contentsOf: ablage),
+    guard let anmeldung, let beginn = sitzungsBeginn, sicherAbgelegt(),
+      let daten = try? Data(contentsOf: ablage),
       daten.count <= 1_048_576,
       let roh = (try? JSONSerialization.jsonObject(with: daten)) as? [String: Any],
       roh["typ"] as? String == "karte",
@@ -94,7 +108,10 @@ public final class BrowserKartenQuelle {
       let nutzer = roh["nutzer"] as? String, nutzer == anmeldung.nutzer,
       let mandant = roh["mandant"] as? String, mandant == anmeldung.mandant,
       let url = roh["url"] as? String,
-      let auswahl = roh["auswahl"] as? String
+      let auswahl = roh["auswahl"] as? String,
+      // Sitzungsbindung: nur eine Übergabe NACH dem Beginn dieser Anmeldesitzung.
+      let uebergebenAm = (roh["uebergebenAm"] as? NSNumber)?.doubleValue,
+      uebergebenAm > beginn
     else { return nil }
     return BrowserKarte(
       folge: folge,
@@ -104,7 +121,8 @@ public final class BrowserKartenQuelle {
       url: url,
       titel: (roh["titel"] as? String) ?? "",
       auswahl: auswahl,
-      erfasstAm: (roh["erfasstAm"] as? String) ?? "")
+      erfasstAm: (roh["erfasstAm"] as? String) ?? "",
+      uebergebenAm: uebergebenAm)
   }
 
   /// Beobachtet den Ablageordner; jede Änderung (auch das Löschen) wird sofort gemeldet.

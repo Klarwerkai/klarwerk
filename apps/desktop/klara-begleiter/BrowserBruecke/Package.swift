@@ -13,5 +13,9 @@ let package = Package(
   targets: [
     .executableTarget(name: "KlaraBrowserBruecke", path: "Sources/KlaraBrowserBruecke"),
     .target(name: "KlaraBrowserKarte", path: "Sources/KlaraBrowserKarte"),
+    .testTarget(
+      name: "KlaraBrowserKarteTests",
+      dependencies: ["KlaraBrowserKarte"],
+      path: "Tests/KlaraBrowserKarteTests"),
   ]
 )
