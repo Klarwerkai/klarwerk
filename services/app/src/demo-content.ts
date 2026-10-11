@@ -69,7 +69,50 @@ export interface DemoTexts {
   gapQuestion: string;
   warmConflict: ConflictText;
   carConflict: ConflictText;
+  // produkt:20261010:branchen-poc-arbeitswege — die fiktive Musterorganisation und ihre drei
+  // Arbeitsgeschichten (Ablauf und Rollen: docs/poc/branchen-poc-arbeitswege.md).
+  poc: PocTexts;
 }
+
+/**
+ * Die drei Arbeitsgeschichten des Branchen-PoC auf dem bestehenden Demo-Weg.
+ *
+ *   Geschichte 1 (Quellenantwort): `quellenFrage` trifft `koQuelle` — validiert, mit Quelle.
+ *   Geschichte 2 (Lückenabschluss): die vorhandene `gapQuestion` ist der Start; `lueckenAntwort`
+ *     wird NICHT geseedet, sondern im Durchlauf von der Fachzuständigkeit erfasst.
+ *   Geschichte 3 (Quellenänderung): `koAnlageA`/`koAnlageB` hängen an `POC_ANLAGE` und tragen
+ *     Fassung 1 der Betriebsanleitung; `anlageAenderung` ist die im Durchlauf gemeldete Fassung 2.
+ *     `koUnbeteiligt` hängt an einer anderen Anlage und darf nicht betroffen werden.
+ *
+ * WORTWAHL: kein Text teilt ein Inhaltswort mit `gapQuestion` derselben Sprache (auch keine
+ * Wortteile wie „Schicht“/„Wechsel“, „line“/„change“/„every“, „lijn“/„elke“/„wissel“). Sonst fände
+ * die Antwortsuche eine Scheinantwort, die Demo-Lücke entstünde nicht, und die Wiederholungsfrage
+ * aus Geschichte 2 würde von der Suche statt vom Lückenabschluss beantwortet.
+ */
+export interface PocTexts {
+  organisation: string;
+  fiktionshinweis: string;
+  quellenFrage: string;
+  koQuelle: KoText;
+  quelleLabel: string;
+  rueckfrage: string;
+  rueckfrageAntwort: string;
+  lueckenAntwort: KoText;
+  koAnlageA: KoText;
+  koAnlageB: KoText;
+  /** Die in Geschichte 3 nachgezogene Fassung von koAnlageB (Überarbeitung nach Fassung 2). */
+  koAnlageBNeu: string;
+  koUnbeteiligt: KoText;
+  anlageQuelleLabel: string;
+  anlageAenderung: string;
+}
+
+/** Herkunftsmerker der PoC-Einträge — zusätzlich zu `DEMO_TAG` und `demoSeed`. */
+export const POC_TAG = "poc-musterwerk";
+/** Sprachneutrale Anlagenkennungen (wie „ANL-01“ im übrigen Bestand). */
+export const POC_ANLAGE = "AF-2";
+export const POC_ANLAGE_UNBETEILIGT = "KOMP-K1";
+export const POC_KATEGORIE = "Musterwerk Nordtal (fiktiv)";
 
 const de: DemoTexts = {
   koValid: {
@@ -227,6 +270,44 @@ const de: DemoTexts = {
     aWert: "blau",
     bKern: "Firmenwagen ausschließlich in Rot bestellen.",
     bWert: "Rot",
+  },
+  poc: {
+    organisation: "Musterwerk Nordtal GmbH (fiktiv)",
+    fiktionshinweis:
+      "Frei erfundene Musterorganisation für den PoC — keine echten Kunden-, Personal- oder Organisationsdaten.",
+    quellenFrage: "Wie oft muss der Kühlschmierstoff an der Fräse M12 erneuert werden?",
+    koQuelle: {
+      title: "Kühlschmierstoff der Fräse M12 alle sechs Wochen erneuern",
+      statement:
+        "Der Kühlschmierstoff der Fräse M12 wird alle sechs Wochen vollständig erneuert. Vorher die Konzentration mit dem Refraktometer messen und im Maschinenbuch eintragen.",
+    },
+    quelleLabel: "Betriebsanweisung Fräse M12, Abschnitt 3 (fiktiv)",
+    rueckfrage: "Tritt die Abweichung bei allen Rezepturen auf oder nur bei einer?",
+    rueckfrageAntwort: "Bei allen Rezepturen, jeweils in der ersten halben Stunde.",
+    lueckenAntwort: {
+      title: "Mengenregler des Mischers M4 bei der Übergabe neu nullen",
+      statement:
+        "Beim Übergeben der Anlage an die nächste Besetzung den Mengenregler des Mischers M4 neu nullen; die Waage driftet sonst um bis zu drei Prozent.",
+    },
+    koAnlageA: {
+      title: "Abfüllanlage AF-2: Füllventile vor dem Anfahren auf Tropfdichtheit prüfen",
+      statement:
+        "Vor dem Anfahren der Abfüllanlage AF-2 alle Füllventile auf Tropfdichtheit prüfen; ein tropfendes Füllventil verfälscht die Füllmenge.",
+    },
+    koAnlageB: {
+      title: "Abfüllanlage AF-2: Etikettierer bei neuem Flaschenformat justieren",
+      statement:
+        "Bei einem neuen Flaschenformat den Etikettierer der Abfüllanlage AF-2 neu justieren und ein Probeetikett gegen das Muster legen.",
+    },
+    koAnlageBNeu:
+      "Bei einem neuen Flaschenformat den Etikettierer der Abfüllanlage AF-2 über das Formatmenü justieren (Fassung 2 der Betriebsanleitung) und ein Probeetikett gegen das Muster legen.",
+    koUnbeteiligt: {
+      title: "Druckluftkompressor K1: Kondensat täglich ablassen",
+      statement:
+        "Am Druckluftkompressor K1 das Kondensat täglich ablassen; sonst gelangt Wasser in die Leitungen.",
+    },
+    anlageQuelleLabel: "Betriebsanleitung Abfüllanlage AF-2, Fassung 1 (fiktiv)",
+    anlageAenderung: "Betriebsanleitung AF-2, Fassung 2",
   },
 };
 
@@ -388,6 +469,44 @@ const en: DemoTexts = {
     bKern: "Order company cars exclusively in red.",
     bWert: "red",
   },
+  poc: {
+    organisation: "Musterwerk Nordtal Ltd. (fictitious)",
+    fiktionshinweis:
+      "Entirely invented sample organisation for the PoC — no real customer, personnel or organisational data.",
+    quellenFrage: "How often must the cooling lubricant of milling machine M12 be renewed?",
+    koQuelle: {
+      title: "Renew the cooling lubricant of milling machine M12 at six-week intervals",
+      statement:
+        "The cooling lubricant of milling machine M12 is fully renewed at six-week intervals. Beforehand, measure the concentration with the refractometer and record it in the machine log.",
+    },
+    quelleLabel: "Operating instruction milling machine M12, section 3 (fictitious)",
+    rueckfrage: "Does the deviation occur with all recipes or only with one?",
+    rueckfrageAntwort: "With all recipes, always in the first half hour.",
+    lueckenAntwort: {
+      title: "Zero the quantity controller of mixer M4 at handover",
+      statement:
+        "When handing the plant over to the next crew, zero the quantity controller of mixer M4 again; otherwise the scale drifts by up to three percent.",
+    },
+    koAnlageA: {
+      title: "Filling plant AF-2: check the filling valves for drip-tightness before start-up",
+      statement:
+        "Before starting up filling plant AF-2, check all filling valves for drip-tightness; a dripping filling valve distorts the fill quantity.",
+    },
+    koAnlageB: {
+      title: "Filling plant AF-2: adjust the labeller for a new bottle format",
+      statement:
+        "For a new bottle format, readjust the labeller of filling plant AF-2 and hold a sample label against the master.",
+    },
+    koAnlageBNeu:
+      "For a new bottle format, readjust the labeller of filling plant AF-2 via the format menu (version 2 of the operating manual) and hold a sample label against the master.",
+    koUnbeteiligt: {
+      title: "Compressor K1: drain the condensate daily",
+      statement:
+        "Drain the condensate of compressor K1 daily; otherwise water gets into the compressed-air pipes.",
+    },
+    anlageQuelleLabel: "Operating manual filling plant AF-2, version 1 (fictitious)",
+    anlageAenderung: "Operating manual AF-2, version 2",
+  },
 };
 const nl: DemoTexts = {
   koValid: {
@@ -544,6 +663,44 @@ const nl: DemoTexts = {
     aWert: "blauw",
     bKern: "Bedrijfsauto's uitsluitend in het rood bestellen.",
     bWert: "rood",
+  },
+  poc: {
+    organisation: "Musterwerk Nordtal B.V. (fictief)",
+    fiktionshinweis:
+      "Volledig verzonnen voorbeeldorganisatie voor de PoC — geen echte klant-, personeels- of organisatiegegevens.",
+    quellenFrage: "Hoe vaak moet het koelsmeermiddel van freesmachine M12 worden vernieuwd?",
+    koQuelle: {
+      title: "Koelsmeermiddel van freesmachine M12 om de zes weken vernieuwen",
+      statement:
+        "Het koelsmeermiddel van freesmachine M12 wordt om de zes weken volledig vernieuwd. Meet vooraf de concentratie met de refractometer en noteer die in het machineboek.",
+    },
+    quelleLabel: "Bedieningsvoorschrift freesmachine M12, paragraaf 3 (fictief)",
+    rueckfrage: "Treedt de afwijking op bij alle recepturen of maar bij één?",
+    rueckfrageAntwort: "Bij alle recepturen, steeds in het eerste halfuur.",
+    lueckenAntwort: {
+      title: "Hoeveelheidsregelaar van menger M4 bij overdracht opnieuw nullen",
+      statement:
+        "Zet bij het overdragen van de installatie aan de volgende bezetting de hoeveelheidsregelaar van menger M4 opnieuw op nul; anders verloopt de weegschaal tot drie procent.",
+    },
+    koAnlageA: {
+      title: "Afvulinstallatie AF-2: vulkleppen vóór het opstarten op druppeldichtheid controleren",
+      statement:
+        "Controleer vóór het opstarten van afvulinstallatie AF-2 alle vulkleppen op druppeldichtheid; een druppelende vulklep vervalst de vulhoeveelheid.",
+    },
+    koAnlageB: {
+      title: "Afvulinstallatie AF-2: etiketteerder bij een nieuw flesformaat afstellen",
+      statement:
+        "Stel bij een nieuw flesformaat de etiketteerder van afvulinstallatie AF-2 opnieuw af en leg een proefetiket tegen het model.",
+    },
+    koAnlageBNeu:
+      "Stel bij een nieuw flesformaat de etiketteerder van afvulinstallatie AF-2 via het formaatmenu opnieuw af (versie 2 van de bedieningshandleiding) en leg een proefetiket tegen het model.",
+    koUnbeteiligt: {
+      title: "Compressor K1: condensaat dagelijks aftappen",
+      statement:
+        "Tap het condensaat van compressor K1 dagelijks af; anders komt er water in de persluchtleidingen.",
+    },
+    anlageQuelleLabel: "Bedieningshandleiding afvulinstallatie AF-2, versie 1 (fictief)",
+    anlageAenderung: "Bedieningshandleiding AF-2, versie 2",
   },
 };
 
