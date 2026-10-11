@@ -412,12 +412,43 @@ describe("Branchen-PoC · die drei Arbeitsgeschichten mit getrennten Rollen", ()
     expect(bestaetigt.statusCode, bestaetigt.body).toBe(200);
 
     // Folgeprüfung B: an Fassung 2 angepasst → neue Fassung, dann für sie bestätigt.
+    // B ist freigegeben, Erik hat kein Freigaberecht: eine direkte Überarbeitung weist das Produkt ab
+    // und nennt den Weg — Änderungsvorschlag, über den jemand ANDERES entscheidet (Vier Augen).
     const fallB = faelle.find((f) => f.koId === poc.b.id) as Fall;
-    const ueberarbeitet = await put(app, erik, `/api/kos/${poc.b.id}`, {
+    const direkt = await put(app, erik, `/api/kos/${poc.b.id}`, {
       action: "revise",
       changes: { statement: p.koAnlageBNeu },
     });
-    expect(ueberarbeitet.statusCode, ueberarbeitet.body).toBe(200);
+    expect(direkt.statusCode, direkt.body).toBe(403);
+    expect(direkt.json().error).toBe("PROPOSAL_REQUIRED");
+    const vorgeschlagen = await put(app, erik, `/api/kos/${poc.b.id}`, {
+      action: "propose",
+      proposal: { statement: p.koAnlageBNeu, baseVersion: fallB.version },
+    });
+    expect(vorgeschlagen.statusCode, vorgeschlagen.body).toBe(200);
+    const vorschlag = (
+      vorgeschlagen.json() as { proposals?: { id: string; status: string }[] }
+    ).proposals?.find((v) => v.status === "offen");
+    expect(vorschlag, vorgeschlagen.body).toBeDefined();
+    // Den eigenen Vorschlag gibt niemand selbst frei.
+    const selbst = await put(app, erik, `/api/kos/${poc.b.id}`, {
+      action: "decide-proposal",
+      proposalId: vorschlag?.id,
+      decision: "uebernehmen",
+    });
+    expect(selbst.statusCode, selbst.body).not.toBe(200);
+    const uebernommen = await put(app, ada, `/api/kos/${poc.b.id}`, {
+      action: "decide-proposal",
+      proposalId: vorschlag?.id,
+      decision: "uebernehmen",
+      expectedVersion: fallB.version,
+    });
+    expect(uebernommen.statusCode, uebernommen.body).toBe(200);
+    const bUebernommen = (await lies(app, erik, `/api/kos/${poc.b.id}`)).json() as Ko & {
+      statement: string;
+    };
+    expect(bUebernommen.statement).toBe(p.koAnlageBNeu);
+    expect(bUebernommen.version).toBe(fallB.version + 1);
     const alteFassung = await put(app, erik, `/api/kos/${poc.b.id}`, {
       action: "revalidate",
       stand: fallB.stand,
@@ -435,7 +466,7 @@ describe("Branchen-PoC · die drei Arbeitsgeschichten mit getrennten Rollen", ()
     const nachher = (await folgefaelle(app, erik)).map((f) => f.koId);
     expect(nachher).not.toContain(poc.a.id);
     expect(nachher).not.toContain(poc.b.id);
-    // Die überarbeitete Fassung braucht erneut die Fachprüfung — keine abgeschwächte Prüfung.
+    // „Noch gültig" legt eine neue, ungeprüfte Fassung an — sie braucht erneut die Fachprüfung.
     for (const pruefer of [carla, ada]) {
       const bewertet = await put(app, pruefer, `/api/kos/${poc.b.id}`, {
         action: "rate",

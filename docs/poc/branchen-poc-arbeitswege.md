@@ -78,7 +78,8 @@ festgelegt.
 ### Geschichte 3 · Geänderte Quelle mit gezielter Folgeprüfung
 
 - **Start:** drei validierte Einträge, keine offene Folgeprüfung. **Rollen:** Meldung = Carla
-  (braucht `ko.validate`); Folgeprüfung = Erik (zuständig, braucht `ko.create`).
+  (braucht `ko.validate`); Folgeprüfung = Erik (zuständig, braucht `ko.create`); Übernahme des
+  Änderungsvorschlags = ladende Person (braucht `users.manage`).
 - **Schritte:**
   1. Carla: `/lebenszyklus` → „Anlage geändert …“: Anlage `AF-2`, Änderung „Betriebsanleitung AF-2,
      Fassung 2“.
@@ -86,9 +87,12 @@ festgelegt.
      zuständiger Person. Der Kompressor-Eintrag und die Antwortquelle aus Geschichte 1 fehlen.
   3. Erik: Füllventile → „Noch gültig“ (bestätigt genau den gesehenen Stand und legt eine neue
      Fassung an; keine fachliche Freigabe des Inhalts).
-  4. Erik: Etikettierer auf Fassung 2 anpassen (Aussage aus `poc.koAnlageBNeu`) → „Noch gültig“
-     für die **neue** Fassung. Eine Bestätigung der alten Fassung wird abgewiesen.
-  5. Carla und die ladende Person prüfen die überarbeitete Fassung erneut.
+  4. Erik: Etikettierer auf Fassung 2 anpassen (Aussage aus `poc.koAnlageBNeu`). Der Eintrag ist
+     freigegeben und Erik hat kein Freigaberecht: das Produkt nimmt die Änderung nur als
+     **Änderungsvorschlag** an. Die ladende Person (Verwaltung) übernimmt den Vorschlag; den eigenen
+     Vorschlag gibt niemand selbst frei.
+  5. Erik: „Noch gültig“ für die **neue** Fassung. Eine Bestätigung der alten Fassung wird abgewiesen.
+  6. Carla und die ladende Person prüfen die dabei entstandene Fassung erneut.
 - **Ergebnis:** beide Folgefälle geschlossen; der unbeteiligte Eintrag war nie betroffen.
 - **Abschluss:** Liste „Erneut“ ohne `AF-2`-Einträge; Etikettierer wieder validiert.
 
