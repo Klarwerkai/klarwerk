@@ -574,6 +574,106 @@ describe("BPA-01 · der Browserweg der Kontextkarte (Worker, Leiste, Klara-Kern)
     }
   });
 
+  it("AC02 · Tabwechsel WÄHREND des Neulesens beim Verbinden: nichts geht an den Kern", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      const los = h.halteLesen();
+      const laufend = h.frage("kontextVerbinden");
+      // Das Neulesen der Seite hängt — noch vor jedem Kernabruf.
+      await vi.waitFor(() => expect(h.lesungen()).toBe(2), { timeout: 2000 });
+      await h.listeners.activated?.({ tabId: 8 });
+      los();
+      const sicht = await laufend;
+      expect(sicht.status).toBe("kontext_gewechselt");
+      expect(sicht.sperre).toBe("kontext_gewechselt");
+      expect(h.kernAngefragt()).toBe(0);
+      expect(h.data.kern ?? null).toBeNull();
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("AC03 · Ab- und Anmeldung eines anderen Kontos WÄHREND des Neulesens beim Erklären: keine Frage unter der alten Anmeldung, der neue Zustand bleibt unberührt", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      expect((await h.frage("kontextVerbinden")).verbunden).toBe(true);
+      const vorher = h.kernAngefragt();
+      const los = h.halteLesen();
+      const laufend = h.frage("kontextErklaeren");
+      await vi.waitFor(() => expect(h.lesungen()).toBe(3), { timeout: 2000 });
+      await h.send({ type: "logout" });
+      expect((await h.anmelden("kontext-b@example.test")).status).toBe("no_selection");
+      const nachAnmeldung = structuredClone(h.data);
+      los();
+      const sicht = await laufend;
+      expect(sicht.status).toBe("kontext_gewechselt");
+      expect(sicht.karte).toBeNull();
+      expect(h.kernAngefragt()).toBe(vorher);
+      expect(h.aufrufe.some((a) => a.pfad.endsWith("/execute"))).toBe(false);
+      // Nichts wurde in den Zustand des neuen Kontos geschrieben.
+      expect(h.data).toEqual(nachAnmeldung);
+      expect(JSON.stringify(h.data)).not.toContain("16 bar");
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("BPA-S01 · die Erklärung trägt Quellen, Aussagezuordnung und Belastbarkeit bis in die Leiste — mit Öffnungsweg zum Originalbeleg", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      // Ein geprüfter Wissenseintrag zu genau diesen Angaben (synthetisch, BPA-S01).
+      const kopf = { authorization: `Bearer ${(h.data.auth as { token: string }).token}` };
+      const angelegt = await h.app.inject({
+        method: "POST",
+        url: "/api/kos",
+        headers: kopf,
+        payload: {
+          confidentiality: "intern",
+          title: "Angaben Ventil V-17",
+          statement: "Die Angaben zum Ventil V-17: Nenndruck 16 bar, höchstens 120 °C.",
+          type: "best_practice",
+          category: "Ask",
+          neededValidations: 1,
+        },
+      });
+      const koId = angelegt.json().id as string;
+      await h.app.inject({
+        method: "PUT",
+        url: `/api/kos/${koId}`,
+        headers: kopf,
+        payload: { action: "rate", verdict: "up" },
+      });
+
+      expect((await h.frage("kontextVerbinden")).verbunden).toBe(true);
+      const sicht = await h.frage("kontextErklaeren");
+      expect(sicht.status).toBe("erklaert");
+      expect(sicht.antwort?.beantwortet).toBe(true);
+      expect(sicht.antwort?.lage).not.toBeNull();
+      expect(sicht.antwort?.quellen.map((q) => q.koId)).toContain(koId);
+      // Berechtigtes Öffnen: dieselbe Anmeldung bekommt den Originalbeleg vom Server.
+      const offen = await h.app.inject({ method: "GET", url: `/api/kos/${koId}`, headers: kopf });
+      expect(offen.statusCode).toBe(200);
+
+      // Die Leiste zeigt Lage, Quelle und den Öffnungsweg.
+      const view = await mount({ an: h, auswahl: false });
+      expect(view.el("kontext-antwort-box").hidden).toBe(false);
+      expect(view.el("kontext-lage").hidden).toBe(false);
+      expect(view.el("kontext-quellen-box").hidden).toBe(false);
+      const link = view.el("kontext-quellen").querySelector("a");
+      expect(link?.getAttribute("href")).toBe(`https://app.klarwerk.ai/wissen/${koId}`);
+      expect(link?.getAttribute("target")).toBe("_blank");
+      expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
+    } finally {
+      await h.app.close();
+    }
+  });
+
   it("die Leiste zeigt Karte, fehlende Anmeldung und Verbindung sichtbar", async () => {
     const h = await bahn();
     try {

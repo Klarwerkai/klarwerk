@@ -130,6 +130,22 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
   - Die Antwort wird nur gebunden und angezeigt, solange Folge, Tab, Konto und Fassung der Karte
     übereinstimmen.
   - In den Prüfungen lief kein Modell: ohne Einwilligung bleibt der Weg in der Enge.
+- **Belege der Antwort (Nacharbeit 4).** Der gemeinsame Quellen- und Belegvertrag des
+  Ausführungswegs bleibt bis in die Leiste erhalten. Die Leiste zeigt:
+  - Lage und Gründe der Belastbarkeit;
+  - Einschränkungen (Prüfvorbehalt, offener oder unbekannter Konflikt);
+  - jeden Absatz mit den Quellen, die ihn tragen;
+  - die Quellen mit Fassung, Prüfstand und Rolle (tragend oder nur herangezogen).
+
+  Jede Quelle hat einen Öffnungsweg zur Wissensseite in Klarwerk (`/wissen/{id}`). Der Link trägt
+  keine Berechtigung; geöffnet wird mit der eigenen Anmeldung, und der Server prüft die Rechte.
+- **Gültigkeit vor jeder Übermittlung (Nacharbeit 4).** Unmittelbar vor jedem Kernabruf (Verbinden,
+  einschließlich Rebind und Neuanlage) und vor der Frage wird der aktuelle Zustand gegen den
+  Beginn des Vorgangs geprüft: Widerruf, Anmeldung (Kennung und Sitzungsschlüssel), Konto,
+  Kernsitzung, Karte (Folge, Tab, Fassung) und tragende Freigabe.
+  - Bei einem Wechsel geht nichts hinaus, und es wird nichts geschrieben.
+  - Kommt eine Bestätigung erst nach einem Konto- oder Anmeldewechsel an, wird die Sitzung
+    geschlossen, ohne den neuen Zustand anzufassen.
 - **Stopp (Nacharbeit 3).** „Verbindung widerrufen" wartet auf keinen laufenden Schritt und bleibt
   auch ohne sichtbare Karte erreichbar, etwa nach einem Tabwechsel.
   - Er entwertet sofort jede Freigabe und Karte und verwirft eine gestellte Antwort.

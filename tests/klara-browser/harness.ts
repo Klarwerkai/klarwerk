@@ -66,6 +66,7 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
   // JOB 3278 · CHR-02: die Leiste wird nicht mehr als Tab geöffnet, sondern über die Side-Panel-
   // API. `spuren` hält die REIHENFOLGE der Chrome-Aufrufe fest — daran hängt die Zusicherung, dass
   // `sidePanel.open` VOR dem ersten Speicherzugriff läuft und die Klickgeste damit nicht verwirkt.
+  let leseSperre: Promise<void> | null = null;
   const panelOpens: number[] = [];
   const behaviors: unknown[] = [];
   const spuren: string[] = [];
@@ -137,6 +138,9 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
       executeScript: async (options: unknown) => {
         spuren.push("scripting.executeScript");
         expect(options).toEqual({ target: { tabId: 7 }, files: ["selection.js"] });
+        // BPA-01 (nacharbeit-4): das Lesen der Seite dauert im Browser — ein Fall kann es hier
+        // anhalten und WÄHREND des Lesens Tab, Konto oder Anmeldung wechseln.
+        if (leseSperre) await leseSperre;
         return [
           {
             result: structuredClone({
@@ -199,6 +203,19 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
     setSelected: (next: Selected) => {
       selected = next;
     },
+    /** Hält das nächste Lesen der Seite an; der Rückgabewert lässt es weiterlaufen. */
+    halteLesen: () => {
+      let los = () => {};
+      leseSperre = new Promise<void>((frei) => {
+        los = frei;
+      });
+      return () => {
+        leseSperre = null;
+        los();
+      };
+    },
+    /** Wie oft die Seite bisher gelesen wurde (auch angehaltene Lesungen). */
+    lesungen: () => spuren.filter((s) => s === "scripting.executeScript").length,
     /** Der Zuhörer der Leiste an DIESEM Speicher — so meldet der Worker ihr seine Schreibvorgänge. */
     subscribe: (fn: (changes: Aenderungen, area: string) => void) => {
       hoerer.push(fn);

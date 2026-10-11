@@ -1524,7 +1524,19 @@
       gestellt.folge === karte.folge &&
       gestellt.fassung === karte.fassung &&
       gestellt.tabId === karte.tabId
-        ? { text: gestellt.text, answerId: gestellt.answerId, fassung: gestellt.fassung }
+        ? {
+            text: gestellt.text,
+            answerId: gestellt.answerId,
+            beantwortet: gestellt.beantwortet,
+            lage: gestellt.lage,
+            gruende: gestellt.gruende,
+            vorbehalt: gestellt.vorbehalt,
+            konflikt: gestellt.konflikt,
+            konfliktUnbekannt: gestellt.konfliktUnbekannt,
+            quellen: gestellt.quellen,
+            absaetze: gestellt.absaetze,
+            fassung: gestellt.fassung,
+          }
         : null;
     // Zu stoppen gibt es etwas, solange eine Karte, eine Freigabe, eine Kernsitzung oder ein
     // laufender Schritt besteht — sichtbar oder nicht.
@@ -1621,20 +1633,78 @@
     return { zustand: abgleich.zustand, grund: abgleich.aktuell ? "" : "quelle_geaendert" };
   }
 
+  /** Ein Vorgang, der vor einer Übermittlung seine Grundlage verloren hat. */
+  class VorgangUngueltig extends Error {
+    /** @param {string} grund */
+    constructor(grund) {
+      super(grund);
+      this.grund = grund;
+    }
+  }
+
+  /**
+   * GILT DER BEGONNENE VORGANG NOCH? Unmittelbar vor JEDER Übermittlung wird der aktuelle Zustand
+   * gegen den Zustand beim Beginn geprüft: Widerruf (Epoche), dieselbe Anmeldung (Kennung UND
+   * Sitzungsschlüssel), dasselbe Konto, dieselbe Kernsitzung, dieselbe Karte (Folge, Tab, Fassung,
+   * nicht veraltet) und eine noch tragende Freigabe. Ein Tab-, Konto- oder Kontextwechsel während
+   * des Neulesens führt so nie dazu, dass die alte Auswahl unter der alten Anmeldung hinausgeht.
+   * @param {Zustand} start @param {import("./types").Karte} karte @param {Zustand} jetzt
+   * @returns {string} `""`, wenn der Vorgang weiterlaufen darf; sonst der Sperrgrund.
+   */
+  function vorgangGilt(start, karte, jetzt) {
+    if (!K) return "kontext_fehlt";
+    if (epocheVon(jetzt) !== epocheVon(start)) return "verbindung_widerrufen";
+    const anmeldung =
+      Boolean(start.auth) &&
+      jetzt.auth?.id === start.auth?.id &&
+      jetzt.auth?.token === start.auth?.token;
+    if (!anmeldung) return "kontext_gewechselt";
+    if ((jetzt.kern?.sessionId ?? "") !== (start.kern?.sessionId ?? ""))
+      return "kontext_gewechselt";
+    const zustand = kontextVon(jetzt);
+    const aktuell = zustand?.karte ?? null;
+    const kontoStart = kontoVon(start);
+    const gleicheKarte =
+      zustand !== null &&
+      aktuell !== null &&
+      !aktuell.veraltet &&
+      aktuell.folge === karte.folge &&
+      aktuell.tabId === karte.tabId &&
+      aktuell.fassung === karte.fassung &&
+      zustand.konto.nutzer === kontoStart.nutzer &&
+      zustand.konto.mandant === kontoStart.mandant;
+    if (!zustand || !gleicheKarte) return "kontext_gewechselt";
+    if (!K.uebermittlung(zustand).erlaubt) return "kontext_gewechselt";
+    return "";
+  }
+
+  /**
+   * Abbruch OHNE Schreiben: der neuere Zustand (anderer Tab, anderes Konto, Widerruf) bleibt
+   * unangetastet. Der Grund reist nur in der Antwort an die Leiste.
+   * @param {string} grund
+   */
+  async function kontextAbbruch(grund) {
+    const sicht = kontextSicht(/** @type {Zustand} */ (await read()), grund);
+    return { ...sicht, sperre: grund };
+  }
+
   /**
    * Der eine Abruf an den Klara-Kern. Feste Pfade, keine Adresse aus Nachricht oder Seite. Gibt
    * es schon eine Sitzung, wird ihr Dokumentkontext neu gebunden; scheitert das (abgelaufen,
-   * geschlossen), entsteht eine neue Sitzung.
+   * geschlossen), entsteht eine neue Sitzung. Vor JEDEM einzelnen Abruf fragt `pruefe`, ob der
+   * Vorgang noch gilt; sonst geht nichts hinaus (Fehler mit dem Sperrgrund).
    * @param {import("./types").Auth} auth @param {string} url @param {string} instanz
-   * @param {import("./types").Kern | null} kern
+   * @param {import("./types").Kern | null} kern @param {() => Promise<string>} pruefe
    * @returns {Promise<{sessionId?: unknown, documentContextId?: unknown}>}
    */
-  async function kernBinden(auth, url, instanz, kern) {
+  async function kernBinden(auth, url, instanz, kern, pruefe) {
     const documentDescriptor = { kind: "saved", canonicalUrl: url };
     const alt =
       kern && KERN_ID.test(kern.sessionId) && KERN_ID.test(kern.documentContextId) ? kern : null;
     /** @param {string} pfad @param {object} body @param {Record<string, string>} kopf */
-    function senden(pfad, body, kopf) {
+    async function senden(pfad, body, kopf) {
+      const grund = await pruefe();
+      if (grund) throw new VorgangUngueltig(grund);
       return fetch(HOST + pfad, {
         method: "POST",
         credentials: "omit",
@@ -1693,11 +1763,20 @@
       fassung: karte.fassung,
     };
     const instanz = state.kern?.instanz || `klara-browser-${crypto.randomUUID()}`;
+    // Unmittelbar vor jedem Kernabruf: gilt der Vorgang noch? (Befund nacharbeit-4)
+    const pruefe = async () => vorgangGilt(state, karte, /** @type {Zustand} */ (await read()));
     /** @type {{sessionId?: unknown, documentContextId?: unknown}} */
     let bestaetigt;
     try {
-      bestaetigt = await kernBinden(state.auth, ausgang.daten.url, instanz, state.kern ?? null);
+      bestaetigt = await kernBinden(
+        state.auth,
+        ausgang.daten.url,
+        instanz,
+        state.kern ?? null,
+        pruefe,
+      );
     } catch (error) {
+      if (error instanceof VorgangUngueltig) return kontextAbbruch(error.grund);
       if (error instanceof Error && error.message === "expired")
         await chrome.storage.session.set({ auth: null });
       return kontextSperren(state, zustand, "kern_nicht_erreichbar");
@@ -1707,11 +1786,14 @@
       typeof bestaetigt?.documentContextId === "string" ? bestaetigt.documentContextId : "";
     if (!KERN_ID.test(sessionId) || !KERN_ID.test(documentContextId))
       return kontextSperren(state, zustand, "kern_nicht_erreichbar");
-    // 4 · Inzwischen widerrufen? Dann wird die eben bestätigte Sitzung geschlossen, nicht gebunden.
+    // 4 · Inzwischen widerrufen oder abgemeldet/umgemeldet? Dann wird die eben bestätigte Sitzung
+    // geschlossen und NICHTS geschrieben — der neuere Zustand gehört womöglich einem anderen Konto.
     const nachher = /** @type {Zustand} */ (await read());
-    if (epocheVon(nachher) !== epoche) {
+    const gleicheAnmeldung =
+      nachher.auth?.id === state.auth.id && nachher.auth?.token === state.auth.token;
+    if (epocheVon(nachher) !== epoche || !gleicheAnmeldung) {
       await kernSchliessen(state.auth, { instanz, sessionId, documentContextId });
-      return kontextSicht(await read(), "widerrufen");
+      return kontextAbbruch(gleicheAnmeldung ? "verbindung_widerrufen" : "kontext_gewechselt");
     }
     // 5 · Gehört die Bestätigung noch zu DIESER Karte? Erst jetzt wird gebunden.
     const aktuell = kontextVon(nachher);
@@ -1783,7 +1865,11 @@
       fassung: karte.fassung,
     };
     const locale = sprache === "en" ? "en" : "de";
-    /** @type {{result?: {answer?: unknown}, answerId?: unknown} | null} */
+    // Unmittelbar vor der Übermittlung: gilt der Vorgang noch? Sonst geht nichts hinaus, und der
+    // neuere Zustand bleibt unangetastet (Befund nacharbeit-4).
+    const grund = vorgangGilt(state, karte, /** @type {Zustand} */ (await read()));
+    if (grund) return kontextAbbruch(grund);
+    /** @type {unknown} */
     let roh = null;
     try {
       const response = await fetch(
@@ -1816,24 +1902,27 @@
     } catch {
       return kontextSperren(state, zustand, "erklaerung_fehlgeschlagen");
     }
-    // Erst jetzt, mit der Antwort in der Hand: gilt sie noch?
+    // Erst jetzt, mit der Antwort in der Hand: gilt sie noch? Widerruf oder eine andere Anmeldung
+    // ⇒ verwerfen, NICHTS schreiben (der neuere Zustand gehört womöglich einem anderen Konto).
     const nachher = /** @type {Zustand} */ (await read());
-    if (epocheVon(nachher) !== epoche) return kontextSicht(nachher, "widerrufen");
+    const gleicheAnmeldung =
+      nachher.auth?.id === state.auth.id && nachher.auth?.token === state.auth.token;
+    if (epocheVon(nachher) !== epoche) return kontextAbbruch("verbindung_widerrufen");
+    if (!gleicheAnmeldung) return kontextAbbruch("kontext_gewechselt");
     const aktuell = kontextVon(nachher);
     if (!aktuell || !K.antwortPruefen(aktuell, antwort).zustellen) {
       await merke({ kontextSperre: sperreAus("antwort_veraltet") });
       return kontextSicht(await read(), "antwort_veraltet");
     }
-    const text = typeof roh?.result?.answer === "string" ? roh.result.answer : null;
-    const answerId = typeof roh?.answerId === "string" ? roh.answerId : null;
+    // Der gemeinsame Quellen-/Belegvertrag bleibt erhalten: Quellen, Aussagezuordnung, Lage,
+    // Gründe und Einschränkungen reisen bis in die Leiste.
     await merke({
       kontextAntwort: {
         folge: karte.folge,
         fassung: karte.fassung,
         tabId: karte.tabId,
         url: karte.url,
-        text,
-        answerId,
+        ...K.erklaerungAus(roh),
       },
       kontextSperre: null,
     });

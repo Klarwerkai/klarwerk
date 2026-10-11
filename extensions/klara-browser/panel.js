@@ -1087,9 +1087,91 @@
     $("kontext-widerrufen").disabled = !kontextLaeuft && stand?.widerrufbar !== true;
     const antwort = stand?.antwort ?? null;
     $("kontext-antwort-box").hidden = !antwort;
-    $("kontext-antwort").hidden = !antwort?.text;
     $("kontext-antwort").textContent = antwort?.text ?? "";
     $("kontext-antwort-leer").hidden = !antwort || Boolean(antwort.text);
+    kontextBelegeZeigen(antwort);
+  }
+  /** @param {string} schluessel */
+  function belegText(schluessel) {
+    return globalThis.KlaraKontext?.erklaerungsText(schluessel, language) ?? "";
+  }
+  /**
+   * Die Belege der Antwort: Lage und Einschränkungen, jeder Absatz mit den Quellen, die ihn
+   * tragen, und die Quellen selbst mit dem Öffnungsweg zum Originalbeleg in Klarwerk. Alles als
+   * Text und mit `createElement` — nichts aus der Antwort wird als Markup gedeutet.
+   * @param {import("./types").KontextSicht["antwort"]} antwort
+   */
+  function kontextBelegeZeigen(antwort) {
+    const lage = antwort?.lage ? belegText(`lage_${antwort.lage}`) : "";
+    $("kontext-lage").hidden = !lage;
+    $("kontext-lage").textContent = lage;
+
+    const punkte = antwort
+      ? [
+          ...antwort.gruende
+            .filter((g) => g !== "alle_tragenden_quellen_validiert")
+            .map((g) => belegText(`grund_${g}`)),
+          antwort.vorbehalt ? belegText("vorbehalt") : "",
+          antwort.konflikt ? belegText("konflikt") : "",
+          antwort.konfliktUnbekannt ? belegText("konfliktUnbekannt") : "",
+        ].filter((p) => p.length > 0)
+      : [];
+    const einschraenkungen = $("kontext-einschraenkungen");
+    clear(einschraenkungen);
+    for (const punkt of punkte) {
+      const li = document.createElement("li");
+      li.textContent = punkt;
+      einschraenkungen.appendChild(li);
+    }
+    einschraenkungen.hidden = punkte.length === 0;
+
+    const quellen = antwort?.quellen ?? [];
+    /** @param {string} koId */
+    const titelVon = (koId) =>
+      quellen.find((q) => q.koId === koId)?.titel ?? belegText("unbenannt");
+    const absaetze = $("kontext-absaetze");
+    clear(absaetze);
+    for (const absatz of antwort?.absaetze ?? []) {
+      const text = document.createElement("p");
+      text.textContent = absatz.text;
+      const beleg = document.createElement("p");
+      beleg.className = "hint";
+      beleg.textContent =
+        absatz.quellen.length > 0
+          ? `${belegText("belegtDurch")} ${absatz.quellen.map(titelVon).join(", ")}`
+          : belegText("ohneBeleg");
+      absaetze.append(text, beleg);
+    }
+    absaetze.hidden = (antwort?.absaetze.length ?? 0) === 0;
+    // Mit Absatzzuordnung steht der Text dort; ohne sie als ein Block.
+    $("kontext-antwort").hidden = !antwort?.text || !absaetze.hidden;
+
+    const liste = $("kontext-quellen");
+    clear(liste);
+    for (const quelle of quellen) {
+      const li = document.createElement("li");
+      const titel = quelle.titel ?? belegText("unbenannt");
+      const adresse = globalThis.KlaraKontext?.quellenAdresse(quelle.koId) ?? null;
+      if (adresse) {
+        const link = document.createElement("a");
+        link.href = adresse;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = titel;
+        li.appendChild(link);
+      } else {
+        li.textContent = titel;
+      }
+      const angaben = [
+        quelle.version !== null ? `${belegText("fassung")} ${quelle.version}` : "",
+        quelle.validiert === true ? belegText("geprueft") : "",
+        quelle.validiert === false ? belegText("ungeprueft") : "",
+        quelle.tragend ? "" : belegText("herangezogen"),
+      ].filter((a) => a.length > 0);
+      if (angaben.length > 0) li.append(` · ${angaben.join(" · ")}`);
+      liste.appendChild(li);
+    }
+    $("kontext-quellen-box").hidden = quellen.length === 0;
   }
   /** @param {"kontext" | "kontextVerbinden" | "kontextErklaeren" | "kontextWiderrufen"} art */
   async function kontextFragen(art) {

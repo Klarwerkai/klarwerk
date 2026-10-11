@@ -488,6 +488,57 @@ describe("BPA-01 · Kontextkarte im Browser (Adaptervertrag, kein Hostnachweis)"
     expect(K.auswahlFuerFrage({ text: "x".repeat(8000), tabelle: null })).toHaveLength(8000);
   });
 
+  it("der Quellen-/Belegvertrag des Ausführungswegs bleibt erhalten: Quellen, Absatzzuordnung, Lage, Einschränkungen", () => {
+    // Gestalt wie `POST /api/klara/sessions/{id}/execute` (ask-routes.ts `antwortLauf`).
+    const roh = {
+      answerId: "antwort-1",
+      result: {
+        answered: true,
+        answer: "Das Ventil V-17 hat 16 bar Nenndruck [1].\n\nDie Temperatur ist offen.",
+        sources: ["ko-v17", "ko-v18", "kein gültiger/Pfad"],
+        evidence: { checkCaveat: "unvalidated", sourcesConflicted: true, conflictsUnproven: false },
+        belastbarkeit: {
+          lage: "belegt_mit_konflikt",
+          gruende: ["offener_konflikt", 7],
+          quellen: [{ koId: "ko-v17", titel: "Datenblatt V-17", version: 3, validiert: true }],
+        },
+      },
+      absaetze: [
+        { text: "Das Ventil V-17 hat 16 bar Nenndruck [1].", quellen: ["ko-v17", "../x"] },
+        { text: "Die Temperatur ist offen.", quellen: [] },
+        { text: "   ", quellen: ["ko-v17"] },
+      ],
+    };
+    const inhalt = K.erklaerungAus(roh);
+    expect(inhalt).toEqual({
+      text: "Das Ventil V-17 hat 16 bar Nenndruck [1].\n\nDie Temperatur ist offen.",
+      answerId: "antwort-1",
+      beantwortet: true,
+      lage: "belegt_mit_konflikt",
+      gruende: ["offener_konflikt"],
+      vorbehalt: true,
+      konflikt: true,
+      konfliktUnbekannt: false,
+      quellen: [
+        { koId: "ko-v17", titel: "Datenblatt V-17", version: 3, validiert: true, tragend: true },
+        { koId: "ko-v18", titel: null, version: null, validiert: null, tragend: false },
+      ],
+      absaetze: [
+        { text: "Das Ventil V-17 hat 16 bar Nenndruck [1].", quellen: ["ko-v17"] },
+        { text: "Die Temperatur ist offen.", quellen: [] },
+      ],
+    });
+    // Fremddatum ohne Form ergibt eine leere, ehrliche Erklärung — keine erfundene Quelle.
+    expect(K.erklaerungAus("kaputt")).toMatchObject({ text: null, quellen: [], absaetze: [] });
+    // Öffnungsweg: nur gültige Kennungen, nur der eigene Server, kein Token im Link.
+    expect(K.quellenAdresse("ko-v17")).toBe("https://app.klarwerk.ai/wissen/ko-v17");
+    expect(K.quellenAdresse("../admin")).toBeNull();
+    // Lage und Einschränkungen sind in beiden Sprachen benannt.
+    expect(K.erklaerungsText("lage_belegt_mit_konflikt", "de")).toContain("Konflikt");
+    expect(K.erklaerungsText("grund_offener_konflikt", "en")).toBe("There is an open conflict.");
+    expect(K.erklaerungsText("unbekannt", "de")).toBe("");
+  });
+
   it("der Vertrag bleibt rein: kein Chrome-Aufruf, kein Netz, kein neues Recht im Manifest", () => {
     const quelle = read("kontext.js");
     const browserzugriff = /chrome\.(runtime|tabs|scripting|storage|sidePanel)|fetch\(|XMLHttp/;

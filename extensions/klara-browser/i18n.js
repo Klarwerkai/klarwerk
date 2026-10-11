@@ -225,6 +225,7 @@ globalThis.KLARA_TEXT = {
     kontextAntwortTitel: "Klaras Antwort",
     kontextAntwortLeer: "Klara hat dazu keine Antwort geliefert.",
     kontextAntwortHinweis: "Gilt für genau diese Markierung und Fassung.",
+    kontextQuellenTitel: "Quellen",
   },
   en: {
     language: "Language",
@@ -410,5 +411,6 @@ globalThis.KLARA_TEXT = {
     kontextAntwortTitel: "Klara's answer",
     kontextAntwortLeer: "Klara did not return an answer for this.",
     kontextAntwortHinweis: "Applies to exactly this selection and version.",
+    kontextQuellenTitel: "Sources",
   },
 };

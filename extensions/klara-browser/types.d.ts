@@ -207,6 +207,9 @@ export type KontextApi = {
     } | null;
   };
   auswahlFuerFrage(auswahl: { text: string; tabelle: Tabelle | null }): string | null;
+  erklaerungAus(roh: unknown): Erklaerungsinhalt;
+  quellenAdresse(koId: string): string | null;
+  erklaerungsText(schluessel: string, sprache: string): string;
   anzeige(karte: Karte): KontextAnzeige;
   importMerken(zustand: KontextZustand, draftId: string): KontextZustand;
   widerrufen(zustand: KontextZustand, domain: string): KontextZustand;
@@ -233,8 +236,31 @@ export type KontextErklaerung = {
   fassung: string;
   tabId: number;
   url: string;
+} & Erklaerungsinhalt;
+/** Eine Quelle der Antwort — tragend (mit Titel, Fassung, Prüfstand) oder nur herangezogen. */
+export type ErklaerungsQuelle = {
+  koId: string;
+  titel: string | null;
+  version: number | null;
+  validiert: boolean | null;
+  tragend: boolean;
+};
+/**
+ * Der gemeinsame Quellen- und Belegvertrag des Ausführungswegs, so wie die Leiste ihn zeigt:
+ * Antwort, Lage und Gründe der Belastbarkeit, Einschränkungen, Quellen und die Zuordnung der
+ * Absätze zu ihren Quellen.
+ */
+export type Erklaerungsinhalt = {
   text: string | null;
   answerId: string | null;
+  beantwortet: boolean;
+  lage: string | null;
+  gruende: string[];
+  vorbehalt: boolean;
+  konflikt: boolean;
+  konfliktUnbekannt: boolean;
+  quellen: ErklaerungsQuelle[];
+  absaetze: { text: string; quellen: string[] }[];
 };
 /** Die Antwort des Workers an die Leiste zum Kontext — nie eine `View` der Übernahme. */
 export type KontextSicht = {
@@ -251,7 +277,7 @@ export type KontextSicht = {
   /** Läuft gerade Verbinden oder Erklären? */
   laeuft: boolean;
   /** Nur die Antwort, die zur AKTUELLEN Karte und Fassung gehört. */
-  antwort: { text: string | null; answerId: string | null; fassung: string } | null;
+  antwort: (Erklaerungsinhalt & { fassung: string }) | null;
 };
 export type State = {
   auth?: Auth | null;

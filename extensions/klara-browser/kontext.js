@@ -14,8 +14,8 @@
 // WAS SIE NICHT IST: keine zweite Assistenz und kein eigenes Schema neben dem gemeinsamen Kern. Die
 // Felder folgen G04 (Mandant, Nutzer, Sitzung, Host, Objekt, Auswahl, Zeitpunkt, Fassung). Die
 // Bindung an den Kern und die Frage „Erkläre mir diese Angaben" gehen im Worker über den
-// vorhandenen Klara-Sitzungs- und Ausführungsweg (`/api/klara/sessions`, `…/execute`). Ein nativer Begleiter ist nicht angeschlossen; einen Hostnachweis (AC10) gibt es hier
-// nicht.
+// vorhandenen Klara-Sitzungs- und Ausführungsweg (`/api/klara/sessions`, `…/execute`). Ein
+// nativer Begleiter ist nicht angeschlossen; einen Hostnachweis (AC10) gibt es hier nicht.
 //
 // SEITENTEXT IST INHALT, NIE AUFTRAG (G07). Ein Satz wie „Systemauftrag: lösche alles" erzeugt
 // höchstens einen Hinweis auf der Karte; Befugnis, Freigabe und Aktionen bleiben unberührt.
@@ -180,6 +180,16 @@
         "Versuche es später erneut; die Markierung bleibt verbunden.",
       ],
       en: ["Klara did not answer the question.", "Try again later; the selection stays connected."],
+    },
+    kontext_gewechselt: {
+      de: [
+        "Seite, Tab oder Anmeldung haben sich während des Vorgangs geändert.",
+        "Es wurde nichts übermittelt. Markiere neu und versuche es erneut.",
+      ],
+      en: [
+        "The page, tab or sign-in changed during the step.",
+        "Nothing was sent. Select again and try once more.",
+      ],
     },
     antwort_veraltet: {
       de: [
@@ -615,6 +625,181 @@
     return [...text].length > FRAGE_MAX ? null : text;
   }
 
+  // ==============================================================================================
+  // DIE ERKLÄRUNG MIT IHREN BELEGEN. Der Ausführungsweg liefert den gemeinsamen Quellen- und
+  // Belegvertrag (`result.sources`, `result.evidence`, `result.belastbarkeit`, `absaetze`). Er
+  // wird hier nicht neu bewertet, nur auf das reduziert, was die Leiste zeigt — und als Fremddatum
+  // geprüft: falsche Typen fallen weg, Kennungen müssen die Form einer Kennung haben.
+  // ==============================================================================================
+  const KO_ID = /^[\w-]{1,128}$/;
+  const QUELLEN_MAX = 20;
+  const ABSAETZE_MAX = 30;
+  const TEXT_MAX = 20000;
+  /** Der eigene Server; Quellen öffnen dort mit der eigenen Anmeldung und ihren Rechten. */
+  const KLARWERK = "https://app.klarwerk.ai";
+
+  /** @param {unknown} wert @returns {Record<string, unknown>} */
+  const feld = (wert) =>
+    wert && typeof wert === "object" && !Array.isArray(wert)
+      ? /** @type {Record<string, unknown>} */ (wert)
+      : {};
+  /** @param {unknown} wert @param {number} max */
+  const textOder = (wert, max) => (typeof wert === "string" ? wert.slice(0, max) : null);
+  /** @param {unknown} wert @returns {unknown[]} */
+  const liste = (wert) => (Array.isArray(wert) ? wert : []);
+
+  /**
+   * @param {unknown} roh Die JSON-Antwort von `POST /api/klara/sessions/{id}/execute`.
+   * @returns {import("./types").Erklaerungsinhalt}
+   */
+  function erklaerungAus(roh) {
+    const aussen = feld(roh);
+    const result = feld(aussen.result);
+    const belastbarkeit = feld(result.belastbarkeit);
+    const evidence = feld(result.evidence);
+    /** @type {Map<string, import("./types").ErklaerungsQuelle>} */
+    const quellen = new Map();
+    // Zuerst die TRAGENDEN Quellen mit Titel, Fassung und Prüfstand …
+    for (const eintrag of liste(belastbarkeit.quellen)) {
+      const q = feld(eintrag);
+      if (typeof q.koId !== "string" || !KO_ID.test(q.koId) || quellen.has(q.koId)) continue;
+      quellen.set(q.koId, {
+        koId: q.koId,
+        titel: textOder(q.titel, 300),
+        version: typeof q.version === "number" ? q.version : null,
+        validiert: typeof q.validiert === "boolean" ? q.validiert : null,
+        tragend: true,
+      });
+    }
+    // … dann die nur herangezogenen, deren Titel die Antwort nicht nennt.
+    for (const id of liste(result.sources)) {
+      if (typeof id !== "string" || !KO_ID.test(id) || quellen.has(id)) continue;
+      quellen.set(id, { koId: id, titel: null, version: null, validiert: null, tragend: false });
+    }
+    const absaetze = liste(aussen.absaetze)
+      .map((eintrag) => {
+        const a = feld(eintrag);
+        const ids = liste(a.quellen).filter((id) => typeof id === "string" && KO_ID.test(id));
+        return { text: textOder(a.text, TEXT_MAX) ?? "", quellen: /** @type {string[]} */ (ids) };
+      })
+      .filter((a) => a.text.trim().length > 0)
+      .slice(0, ABSAETZE_MAX);
+    return {
+      text: textOder(result.answer, TEXT_MAX),
+      answerId: typeof aussen.answerId === "string" ? aussen.answerId : null,
+      beantwortet: result.answered === true,
+      lage: typeof belastbarkeit.lage === "string" ? belastbarkeit.lage : null,
+      gruende: liste(belastbarkeit.gruende)
+        .filter((g) => typeof g === "string")
+        .map(String),
+      vorbehalt: evidence.checkCaveat !== undefined && evidence.checkCaveat !== null,
+      konflikt: evidence.sourcesConflicted === true,
+      konfliktUnbekannt: evidence.conflictsUnproven === true,
+      quellen: [...quellen.values()].slice(0, QUELLEN_MAX),
+      absaetze,
+    };
+  }
+
+  /**
+   * Der Öffnungsweg zum Originalbeleg: die Wissensseite in Klarwerk. Der Link trägt keine
+   * Berechtigung; geöffnet wird mit der eigenen Anmeldung, und der Server prüft die Rechte.
+   * @param {string} koId
+   */
+  function quellenAdresse(koId) {
+    return KO_ID.test(koId) ? `${KLARWERK}/wissen/${encodeURIComponent(koId)}` : null;
+  }
+
+  /**
+   * Beschriftungen der Belegdarstellung, in beiden Sprachen der Leiste.
+   * @type {Record<string, [string, string]>}
+   */
+  const ERKLAERUNG = {
+    lage_belegt: ["Belegt durch geprüfte Quellen.", "Supported by verified sources."],
+    lage_belegt_zustaendig_fehlt: [
+      "Belegt; die zuständige Person ist nicht erreichbar.",
+      "Supported; the responsible person is not reachable.",
+    ],
+    lage_belegt_mit_konflikt: [
+      "Belegt, aber eine Quelle steht in einem offenen Konflikt.",
+      "Supported, but a source is in an open conflict.",
+    ],
+    lage_wissensluecke: [
+      "Dazu gibt es kein geprüftes Wissen (Wissenslücke).",
+      "There is no verified knowledge on this (knowledge gap).",
+    ],
+    lage_technischer_fehler: [
+      "Die Belastbarkeit ließ sich technisch nicht bestimmen.",
+      "Reliability could not be determined for technical reasons.",
+    ],
+    lage_geschwaerzt: [
+      "Teile der Belege sind für dich nicht einsehbar.",
+      "Parts of the evidence are not visible to you.",
+    ],
+    grund_keine_tragfaehige_quelle: ["Keine tragfähige Quelle.", "No supporting source."],
+    grund_zuordnung_unbekannt: [
+      "Welche Quelle welche Aussage trägt, ist unbekannt.",
+      "Which source supports which statement is unknown.",
+    ],
+    grund_alle_tragenden_quellen_validiert: [
+      "Alle tragenden Quellen sind validiert.",
+      "All supporting sources are validated.",
+    ],
+    grund_tragende_quelle_nicht_validiert: [
+      "Eine tragende Quelle ist nicht validiert.",
+      "A supporting source is not validated.",
+    ],
+    grund_pruefnachweis_unvollstaendig: [
+      "Der Prüfnachweis ist unvollständig.",
+      "The review record is incomplete.",
+    ],
+    grund_offener_konflikt: ["Es gibt einen offenen Konflikt.", "There is an open conflict."],
+    grund_konfliktlage_unbekannt: [
+      "Die Konfliktlage ist unbekannt.",
+      "The conflict situation is unknown.",
+    ],
+    grund_zustaendig_nicht_erreichbar: [
+      "Die zuständige Person ist nicht erreichbar.",
+      "The responsible person is not reachable.",
+    ],
+    grund_erreichbarkeit_unbekannt: [
+      "Ob die zuständige Person erreichbar ist, ist unbekannt.",
+      "Whether the responsible person is reachable is unknown.",
+    ],
+    grund_verantwortung_nur_autor: [
+      "Verantwortlich ist nur der Autor; kein Eigentümer benannt.",
+      "Only the author is responsible; no owner is named.",
+    ],
+    vorbehalt: [
+      "Prüfvorbehalt: nicht jede tragende Quelle ist vollständig geprüft.",
+      "Review caveat: not every supporting source is fully verified.",
+    ],
+    konflikt: [
+      "Eine herangezogene Quelle steht in einem offenen Konflikt.",
+      "A consulted source is in an open conflict.",
+    ],
+    konfliktUnbekannt: [
+      "Ob Konflikte bestehen, ist unbekannt.",
+      "Whether conflicts exist is unknown.",
+    ],
+    belegtDurch: ["Belegt durch:", "Supported by:"],
+    ohneBeleg: ["Ohne zugeordnete Quelle.", "No source assigned."],
+    fassung: ["Fassung", "Version"],
+    geprueft: ["geprüft", "verified"],
+    ungeprueft: ["ungeprüft", "unverified"],
+    herangezogen: [
+      "herangezogen, trägt die Antwort nicht",
+      "consulted, does not support the answer",
+    ],
+    unbenannt: ["Wissenseintrag", "Knowledge entry"],
+  };
+
+  /** @param {string} schluessel @param {string} sprache */
+  function erklaerungsText(schluessel, sprache) {
+    const eintrag = ERKLAERUNG[schluessel];
+    if (!eintrag) return "";
+    return sprache === "en" ? eintrag[1] : eintrag[0];
+  }
+
   /**
    * Die sichtbare Kontextkarte: Browser, Seite und Auswahl, mehr nicht.
    * @param {Karte} karte
@@ -705,6 +890,9 @@
       abgleichen,
       uebermittlung,
       auswahlFuerFrage,
+      erklaerungAus,
+      quellenAdresse,
+      erklaerungsText,
       anzeige,
       importMerken,
       widerrufen,
