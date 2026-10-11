@@ -227,7 +227,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     synthetisch: true,
     titel: "Verpackungsvorgabe V2 für Faltschachteln (fiktiv)",
     aussage:
-      "Beispielregel V2: Faltschachteln aus Recyclingkarton mit mindestens 80 % Altpapier, ohne Kunststofffenster. Fiktive Beispielregel ohne Rechtswirkung.",
+      "Beispielregel V2: Faltschachteln aus Recyclingkarton mit mindestens 80 % Altpapier, ohne Kunststofffenster. Beispielregel ohne Rechtswirkung (fiktiv).",
     sollurteil: "verwendbar_nach_fachpruefung",
     annahme: "accept",
     begruendung: "Heute gültige, veröffentlichte Fassung der fiktiven Confluence-Seite.",

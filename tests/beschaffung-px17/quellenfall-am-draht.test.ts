@@ -363,7 +363,7 @@ describe("BES-01 · der Sollbestand selbst (vorab festgelegt, versioniert, fikti
   it("K08: Beispielregel und Testpreise sind ausdrücklich fiktiv", () => {
     expect(HINWEIS_FIKTION).toContain("keine Unternehmens- oder Rechtsaussage");
     for (const q of QUELLEN.filter((x) => /Testpreis|Beispielregel/.test(x.aussage))) {
-      expect(q.aussage, q.quellId).toContain("fiktiv");
+      expect(q.aussage, q.quellId).toMatch(/fiktiv/i);
     }
     expect(quelle("BES-PX17-V2").aussage).toContain("ohne Rechtswirkung");
   });
