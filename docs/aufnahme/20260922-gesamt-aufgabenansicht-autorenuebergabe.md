@@ -342,6 +342,16 @@ Grenzen:
   - `KnowledgeDetail.owner-chain` scheitert in mains `VerstaendnisfragenBereich.tsx`.
   - Die Einträge dieses Auftrags in diesen Inventaren bleiben bestehen.
 
+## Nacharbeit 8 (Kandidat `c1eb0ecd`): gemountete Admin-Fälle
+
+- Rot waren nur die gemounteten Admin-Fälle: `uebergabe-frischt-rueckgaben-auf` R1/R2/U1–U3 und
+  `h1-gesamtinventar` „admin · geladen“. Die Quelle der Verwaltung startet erst nach der Kette
+  Status → `/auth/me` → Rolle → Abruf. Bis sie geladen ist, zeigen Kopfband und Liste ehrlich
+  „lädt“ statt einer Teilsumme.
+- Die beiden Testaufbauten haben zu wenige `act`-Runden abgewartet. Der grüne Admin-Fall
+  `nav-badges-sidebar-mounted` (f) wartet sie ab. Jetzt warten auch die beiden Testaufbauten diese
+  Runden ab. Produktcode und Sollwerte sind unverändert.
+
 ## Unverändert (K3, K4)
 
 - `setAuthor`, `transferAuthor`, die Route `transfer-author` und das Audit `ko.author-transferred`

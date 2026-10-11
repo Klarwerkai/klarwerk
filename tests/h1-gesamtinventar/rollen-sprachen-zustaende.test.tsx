@@ -232,6 +232,11 @@ async function mount(): Promise<void> {
   });
   await act(flush);
   await act(flush);
+  // R-0961: Beim Admin kommt die Zählquelle der Autorenübergaben erst nach der Sitzung dazu
+  // (Status → `/auth/me` → Rolle → Abruf). Jede Stufe braucht eine eigene `act`-Runde. Bis dahin
+  // steht ehrlich keine Zahl.
+  await act(flush);
+  await act(flush);
 }
 
 async function zustandHerstellen(zustand: Zustand): Promise<void> {

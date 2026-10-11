@@ -274,6 +274,11 @@ async function mount(start = "/aufgaben?art=returned"): Promise<void> {
   });
   await act(flush);
   await act(flush);
+  // R-0961: Die Quelle der Verwaltung startet erst, wenn die Sitzung die Rolle geliefert hat
+  // (Status → `/auth/me` → Rolle → Abruf). Jede Stufe braucht eine eigene `act`-Runde. Bis sie
+  // geladen ist, zeigen Liste und Kopfband ehrlich „lädt“ statt einer Teilsumme.
+  await act(flush);
+  await act(flush);
 }
 
 const text = (e: Element | null): string => (e?.textContent ?? "").replace(/\s+/g, " ").trim();
