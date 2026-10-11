@@ -73,6 +73,7 @@ import {
   mitFlaeche,
   profil,
   tastaturAusloesen,
+  tastaturAusloesenAn,
   tippeMitTastatur,
   warte,
 } from "../gast-nutzerweg/browserweg";
@@ -1256,7 +1257,7 @@ async function fahreDieZustaende(
   // ── A. Erfolgreich leer. ──────────────────────────────────────────────────────────────────
   doppel.leer = true;
   await bereitZumNeuLaden(seite);
-  tastatur.neuLaden_leer = await tastaturAusloesen(seite, t("imp.sharepoint.neuLaden"));
+  tastatur.neuLaden_leer = await neuLadenPerTastatur(seite, t);
   await warteAufSichtbarenSatz(
     seite,
     testid("sharepoint-leer"),
@@ -1279,7 +1280,7 @@ async function fahreDieZustaende(
   // ── Zurück zum Bestand, damit Zustand B eine ALTE Liste hat. ──────────────────────────────
   doppel.leer = false;
   await bereitZumNeuLaden(seite);
-  tastatur.neuLaden_zurueckVonLeer = await tastaturAusloesen(seite, t("imp.sharepoint.neuLaden"));
+  tastatur.neuLaden_zurueckVonLeer = await neuLadenPerTastatur(seite, t);
   await warteAufSichtbar(
     seite,
     testid(`sharepoint-datei-${NOTIZ.id}`),
@@ -1295,7 +1296,7 @@ async function fahreDieZustaende(
   let alteListeBleibtSichtbar = false;
   try {
     await bereitZumNeuLaden(seite);
-    tastatur.neuLaden_angehalten = await tastaturAusloesen(seite, t("imp.sharepoint.neuLaden"));
+    tastatur.neuLaden_angehalten = await neuLadenPerTastatur(seite, t);
     await warteAufSichtbarenSatz(
       seite,
       testid("sharepoint-nicht-frisch"),
@@ -1717,6 +1718,19 @@ async function liesDenStandInDenAnderenSprachen(a: {
  * ohne diese Vorbedingung scheiterte der Tastaturweg an einer laufenden Auffrischung und die
  * Meldung zeigte auf den falschen Schuldigen.
  */
+/**
+ * „Liste neu laden" DES SHAREPOINT-BEREICHS per Tastatur — Ziel ist der Knopf, nicht die Beschriftung.
+ *
+ * gesamt-nutzerverwaltung · Nacharbeit 13: Dieselbe Beschriftung trägt auf `/import` seit dem
+ * 09.10. auch die Importliste (`ImportLaufListe`). Der Weg über die Beschriftung konnte deshalb den
+ * falschen Knopf auslösen; die Diagnose aus Nacharbeit 12 zeigte genau diese Spur (kein
+ * SharePoint-Abruf nach dem Auslösen, Fokus auf `body`, kein Fehlersatz). Gemessen wird weiter per
+ * Tab mit sichtbarem Fokus und Enter — nur an genau diesem Element.
+ */
+function neuLadenPerTastatur(seite: Seite, t: Uebersetzer): Promise<number> {
+  return tastaturAusloesenAn(seite, testid("sharepoint-neu-laden"), t("imp.sharepoint.neuLaden"));
+}
+
 function bereitZumNeuLaden(seite: Seite): Promise<void> {
   return warte(
     seite,
@@ -1753,7 +1767,7 @@ async function fahreDieFehlerlagen(
   for (const { lage, schluessel } of lagen) {
     doppel.lage = lage;
     await bereitZumNeuLaden(seite);
-    tastatur[`neuLaden_${lage}`] = await tastaturAusloesen(seite, t("imp.sharepoint.neuLaden"));
+    tastatur[`neuLaden_${lage}`] = await neuLadenPerTastatur(seite, t);
     // KALIBRIERT (BENs Korrekturpflicht 1): Ein Fehlersatz, der nur im Baum steht, ist für den
     // Menschen kein Fehlersatz. Gewartet wird auf Sichtbarkeit UND Wortlaut zugleich.
     await warteAufSichtbarenSatz(
@@ -1784,7 +1798,7 @@ async function fahreDieFehlerlagen(
   // dann nichts über den Inhalt und lässt auch nichts übernehmen.
   doppel.lage = "normal";
   await bereitZumNeuLaden(seite);
-  tastatur.neuLaden_zurueck = await tastaturAusloesen(seite, t("imp.sharepoint.neuLaden"));
+  tastatur.neuLaden_zurueck = await neuLadenPerTastatur(seite, t);
   await warteAufSichtbar(
     seite,
     testid(`sharepoint-datei-${NOTIZ.id}`),
