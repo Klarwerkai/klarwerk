@@ -115,13 +115,49 @@ describe("gesamt-papierkorb · Entwürfe im Papierkorb werden nach der Frist end
     expect(await dienst.getDraft("d-1")).toBeDefined();
   });
 
+  it("F4b · Liste → Zurückholen → erneut Löschen → Lauf: der frische Papierkorbeintrag behält seine neue Frist", async () => {
+    // Bens Befund (Nacharbeit 2): die Frist war am ALTEN Listeneintrag geprüft, `purge(id)` prüfte
+    // nur „liegt im Papierkorb" — und das tat der neu gelöschte Entwurf. Er wäre vor Ablauf seiner
+    // eigenen 30 Tage endgültig fort gewesen.
+    const uhr = { jetzt: GELOESCHT_UM };
+    class ZurueckUndWiederGeloescht extends InMemoryDraftRepo {
+      override async listTrashed(fuerAutor?: string) {
+        const liste = await super.listTrashed(fuerAutor);
+        await super.restore("d-1");
+        await dienst?.deleteDraft("d-1", "anna");
+        return liste;
+      }
+    }
+    const repo = new ZurueckUndWiederGeloescht();
+    const dienst = new CaptureService({ repo, now: () => uhr.jetzt });
+    await repo.insert(entwurf("d-1"));
+    await dienst.deleteDraft("d-1", "anna");
+
+    uhr.jetzt = GELOESCHT_UM + (TRASH_RETENTION_DAYS + 1) * TAG_MS;
+    expect(await dienst.runDraftTrashSweep()).toBe(0);
+    const frisch = await dienst.findTrashedDraft("d-1");
+    expect(frisch?.deletedAt).toBe(new Date(uhr.jetzt).toISOString());
+    // Und er bleibt wiederherstellbar.
+    expect((await dienst.restoreDraft("d-1")).id).toBe("d-1");
+  });
+
+  it("F4c · Die Ablage selbst: `purge` mit Löschzeitpunkt trifft nur genau diesen Stand", async () => {
+    const repo = new InMemoryDraftRepo();
+    await repo.insert(entwurf("d-1"));
+    await repo.delete("d-1", "anna", "2026-09-12T07:00:00.000Z");
+    expect(await repo.purge("d-1", false, "2026-09-01T00:00:00.000Z")).toBe(false);
+    expect(await repo.findTrashed("d-1")).toBeDefined();
+    expect(await repo.purge("d-1", false, "2026-09-12T07:00:00.000Z")).toBe(true);
+    expect(await repo.list()).toEqual([]);
+  });
+
   it("F5 · Ein Fehler an einem Entwurf bricht den Lauf nicht ab und wird gemeldet; Unlesbares bleibt liegen", async () => {
     class EinerKlemmt extends InMemoryDraftRepo {
-      override purge(id: string, auchLebende?: boolean) {
+      override purge(id: string, auchLebende?: boolean, geloeschtAm?: string) {
         if (id === "d-klemmt") {
           return Promise.reject(new Error("Ablage nicht erreichbar"));
         }
-        return super.purge(id, auchLebende);
+        return super.purge(id, auchLebende, geloeschtAm);
       }
     }
     const { repo, dienst, uhr } = aufbau(new EinerKlemmt());

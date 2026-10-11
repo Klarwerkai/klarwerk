@@ -309,4 +309,37 @@ describe("JOB 3668 · Entwurfs-Papierkorb gegen echtes PostgreSQL", () => {
     // Ein zweiter Lauf findet nichts mehr — idempotent wie beim Wissensobjekt.
     expect(await dienst.runDraftTrashSweep()).toBe(0);
   });
+
+  // Bens Befund (Nacharbeit 2): Liste → Zurückholen → erneut Löschen → Endlöschung des Laufs. Die
+  // Frist war am alten Listeneintrag geprüft; der frisch gelöschte Entwurf muss stehen bleiben.
+  it("P10 · Zurückgeholt und neu gelöscht während des Laufs: die neue Frist gilt, nichts wird entfernt", async (ctx) => {
+    if (!verfuegbar) {
+      ctx.skip();
+      return;
+    }
+    await leeren();
+    const geloeschtUm = Date.parse("2026-09-12T07:00:00.000Z");
+    const uhr = { jetzt: geloeschtUm };
+    class ZurueckUndWiederGeloescht extends PgDraftRepo {
+      override async listTrashed(fuerAutor?: string) {
+        const liste = await super.listTrashed(fuerAutor);
+        await super.restore("d-1");
+        await dienst?.deleteDraft("d-1", "anna");
+        return liste;
+      }
+    }
+    const r = new ZurueckUndWiederGeloescht(pool as Pool);
+    const dienst = new CaptureService({ repo: r, now: () => uhr.jetzt });
+    await r.insert(entwurf("d-1"));
+    await dienst.deleteDraft("d-1", "anna");
+
+    uhr.jetzt = geloeschtUm + (TRASH_RETENTION_DAYS + 1) * 86_400_000;
+    expect(await dienst.runDraftTrashSweep()).toBe(0);
+    expect((await repo().findTrashed("d-1"))?.deletedAt).toBe(new Date(uhr.jetzt).toISOString());
+
+    // Gegenprobe an derselben Anweisung: mit dem richtigen Zeitpunkt trifft sie, mit dem alten nicht.
+    expect(await repo().purge("d-1", false, "2026-09-12T07:00:00.000Z")).toBe(false);
+    expect(await repo().purge("d-1", false, new Date(uhr.jetzt).toISOString())).toBe(true);
+    expect(await repo().list()).toEqual([]);
+  });
 });

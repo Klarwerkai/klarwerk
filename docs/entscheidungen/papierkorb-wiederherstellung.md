@@ -30,6 +30,31 @@ Veröffentlichung fest; dieses Dokument nennt deshalb nur Basis und Kandidat, ke
 - Tests: `tests/entwurfs-papierkorb/frist-endloeschung.test.ts` (neu),
   `tests/entwurfs-papierkorb/papierkorb-pg.integration.test.ts` (Fall P9, echtes PostgreSQL).
 
+### Nacharbeit 2 (Bens Befunde)
+
+- **Entwurf: Frist nach Restore und erneutem Löschen.** Der Lauf prüfte die Frist am alten
+  Listeneintrag, `purge(id)` nur den Papierkorbstatus. `DraftRepo.purge(id, auchLebende,
+  geloeschtAm)` bindet die Löschung jetzt an den gelesenen Löschzeitpunkt — in derselben Anweisung
+  (`data->>'deletedAt' = $2`). Belege: `frist-endloeschung.test.ts` F4b/F4c, PostgreSQL P10.
+- **Wissensobjekt: Restore gegen Endlöschung.** Jede Endlöschung aus dem Papierkorb (manuell und
+  Fristlauf) trägt `KoPapierkorbBedingung` (gelesene `rowVersion`); `PgKoRepo.delete` löscht nur,
+  wenn das Objekt noch im Papierkorb liegt und die `rowVersion` stimmt. Das Wiederherstellen
+  entscheidet über den vorhandenen CAS in `update` (ein UPDATE legt nie an; der Speicher spiegelt
+  das jetzt). Verliert die Endlöschung, rollt `withPgTx` Aufräumbeitrag und Beleg zurück, und der
+  Vektor des lebenden Objekts wird über `meldeAenderung` neu abgeleitet. `delete({hard})` und
+  Demodaten unverändert sofort endgültig. Belege: `tests/ko/restore-purge-faelle.ts`, ausgeführt
+  in `restore-purge-reihenfolge.test.ts` (Speicher) und
+  `restore-purge-reihenfolge-pg.integration.test.ts` (echtes PostgreSQL): W1 Restore zuerst,
+  W2 Endlöschung zuerst, W3 Fristlauf gegen Restore und erneutes Löschen, W4 Demodaten.
+- **Mehrrollenweg, befüllte Verknüpfungen, Rechteentzug.** Zugeordnet:
+  `tests/security/g26-matrix-laufzeit.test.ts` R2/R3 (Betrachter: restore/trash-delete abgelehnt,
+  Objekt unverändert) und `tests/ko/trash-e2e.test.ts` (Experte 403, Version/Historie). Neu
+  `tests/ko/papierkorb-restore-befuellt-rollen.test.ts`: M1 Anhang, Quelle und Beziehung mit
+  Kennung, Inhalt, Version Feld für Feld nach dem Restore; Experte löscht, Leser und Autor
+  scheitern am Restore, ein zurückgestufter Admin scheitert an Restore und Endlöschung, der Admin
+  stellt her. M2 eine vor dem Löschen entzogene Lesesicht (Hochstufung) gilt nach dem Restore für
+  Objekt und Anhang weiter.
+
 ## Abgrenzung
 
 - **Abgeschlossen, nicht neu gebaut:** R-0002/R-0806 (Abnahme 05.09.2026, nur benannter Umfang),
@@ -59,13 +84,16 @@ Veröffentlichung fest; dieses Dokument nennt deshalb nur Basis und Kandidat, ke
 - **Kein Prüfprotokoll für Entwurfs-Endlöschungen.** Weder die manuelle Endlöschung (JOB 3668)
   noch der neue Lauf schreiben einen Audit-Eintrag; `capture` kennt den Audit-Dienst nicht. Nur
   Serverlog.
-- **Wissensobjekt: Restore gegen Endlöschung.** `KoService.purgeTrashed` und `runTrashSweep`
-  prüfen den Papierkorbstatus vor `purgeKo`; `repo.delete` löscht danach unbedingt. Ein Zurückholen
-  genau dazwischen könnte als erfolgreich gemeldet und trotzdem gelöscht werden. Für Entwürfe ist
-  dieses Fenster geschlossen (JOB 3668 R2, Tests N/P7); für Wissensobjekte nicht. Kein Umbau des
-  `KoRepo`-Vertrags in diesem Auftrag.
-- **package:papierkorb, nicht belegt:** vollständiger Mehrrollenweg, Wiederherstellung befüllter
-  Anhänge/Quellen, Rechteentzug vor Restore, beide Reihenfolgen Restore/Purge am Wissensobjekt.
+- **Ohne Datenbank (Speicher, Dev-Journal) keine Atomarität der Endlöschung.** Der Weg ohne
+  `withTx` prüft die Papierkorbbedingung vor Beleg und Löschung und noch einmal an
+  `repo.delete`; zwischen Beleg und Löschung bleibt dort, wie schon dokumentiert, kein
+  Atomaritätsversprechen. Die Zusage gilt für PostgreSQL.
+- **Rechteentzug, Umfang:** belegt sind Rückstufung des Handelnden und Hochstufung der
+  Vertraulichkeit. Das Löschen bleibt bewusst autorgebunden (`ko-routes.ts`, Autor oder
+  `ko.validate`) — ein zurückgestufter Autor darf sein eigenes Objekt weiter löschen; das ist
+  bestehende Regel, kein wiederbelebtes Recht.
+- **Echter Browserweg mit mehreren Rollen** für die neuen Fälle nicht gelaufen; belegt am Draht
+  (`app.inject`) bzw. am Dienst.
 - **Kommentar `apps/web/src/woerterbuch/de.ts`** an `capture.discardDraftQ` und am eingefrorenen
   Schlüssel `seitenhilfe.entwuerfe.body` sagt noch „keine Frist". Die Datei wird gegen eine
   Referenzkopie verglichen (`tests/i18n-woerterbuch/`); der angezeigte Text (`entwurfspool.*`) ist

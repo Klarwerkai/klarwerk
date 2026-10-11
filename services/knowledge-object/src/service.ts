@@ -89,13 +89,15 @@ import {
   mitPruefstand,
   pruefbasisVon,
 } from "./pruefbasis";
-import type {
-  EvidenceRepo,
-  KoCandidateQuery,
-  KoFilter,
-  KoRepo,
-  KoSichtbarkeitstrim,
-  KoVersionRepo,
+import {
+  type EvidenceRepo,
+  type KoCandidateQuery,
+  type KoFilter,
+  type KoPapierkorbBedingung,
+  type KoRepo,
+  type KoSichtbarkeitstrim,
+  type KoVersionRepo,
+  NICHT_IM_PAPIERKORB,
 } from "./repo";
 // R-0658: Schutzdaten erkennen, bevor ein Objekt durchsuchbar wird (Begründung in der Datei).
 import { inSchutzdatenQuarantaene, mitSchutzdatenBefund } from "./schutzdaten";
@@ -5193,11 +5195,58 @@ export class KoService {
     }
   }
 
+  // ==============================================================================================
+  // Aufnahme gesamt-papierkorb (Bens Befund, Nacharbeit 2) — WIEDERHERSTELLEN GEGEN ENDLÖSCHUNG.
+  // ==============================================================================================
+  //
+  // Bis hierher prüften `purgeTrashed` und `runTrashSweep` den Papierkorbstatus VOR diesem Weg, und
+  // `repo.delete` löschte danach unbedingt. Ein dazwischen committetes Wiederherstellen wurde als
+  // gelungen gemeldet — und das Objekt war trotzdem fort. Jetzt trägt jede Endlöschung AUS DEM
+  // PAPIERKORB `papierkorb` (gelesene `rowVersion`), und die Entscheidung fällt in der löschenden
+  // Anweisung (`KoRepo.delete`):
+  //
+  //   Wiederherstellen zuerst   die rowVersion ist gestiegen → DELETE trifft nichts → NOT_FOUND;
+  //                             die Transaktion rollt Aufräumbeitrag (`onPurgeTx`) und Beleg zurück.
+  //   Endlöschung zuerst        der CAS des Wiederherstellens (`repo.update`) trifft keine Zeile
+  //                             → `restore` antwortet NOT_FOUND und legt nichts neu an.
+  //
+  // Der vorgeschaltete Haken `onPurge` (nur Embedding-Vorfilter und Vektorspeicher, idempotent und
+  // aus dem Objekt ableitbar, s. build-app.ts `setPurgeCleanup`) läuft weiter VOR der Entscheidung
+  // — so bleibt seine Selbstheilung bei einem Fehler erhalten. Verliert die Endlöschung, folgt das
+  // Aufräumen der Entscheidung: `meldeAenderung` stößt die Neuableitung für das lebende Objekt an.
+  //
+  // delete({hard}) und Demodaten tragen KEINE Bedingung: sie löschen sofort und endgültig wie bisher.
   private async purgeKo(
     id: string,
     actor: string,
     reason: "trash-expired" | "manual" | "hard",
     extraPayload: Record<string, unknown> = {},
+    papierkorb?: KoPapierkorbBedingung,
+  ): Promise<void> {
+    if (!papierkorb) {
+      await this.purgeKoVollzug(id, actor, reason, extraPayload);
+      return;
+    }
+    try {
+      await this.purgeKoVollzug(id, actor, reason, extraPayload, papierkorb);
+    } catch (err) {
+      if (err instanceof KoError && err.code === "NOT_FOUND") {
+        const jetzt = await this.repo.findById(id);
+        if (jetzt && !jetzt.deletedAt) {
+          this.meldeAenderung(id, jetzt);
+        }
+        throw new KoError("NOT_FOUND", NICHT_IM_PAPIERKORB);
+      }
+      throw err;
+    }
+  }
+
+  private async purgeKoVollzug(
+    id: string,
+    actor: string,
+    reason: "trash-expired" | "manual" | "hard",
+    extraPayload: Record<string, unknown>,
+    papierkorb?: KoPapierkorbBedingung,
   ): Promise<void> {
     // 1) Cleanup ZUERST — schlägt es fehl, bleibt das KO bestehen (kein Delete, kein Audit). S. (A) oben.
     await this.onPurge?.(id, actor);
@@ -5249,7 +5298,7 @@ export class KoService {
     if (this.withTx && audit) {
       await this.withTx(async (tx) => {
         const beitrag = await beitragAus(tx);
-        await this.repo.delete(id, tx);
+        await (papierkorb ? this.repo.delete(id, tx, papierkorb) : this.repo.delete(id, tx));
         await audit.record({ ...auditInput, payload: { ...auditInput.payload, ...beitrag } }, tx);
       });
       // G27: der abgeleitete Suchindex folgt der Endlöschung. NACH dem Commit und bewusst
@@ -5263,9 +5312,18 @@ export class KoService {
     // Kompositionen ohne echte Datenbank erreichbar (InMemory, Dev-Journal); wo es keine
     // Transaktionsgrenze gibt, behauptet dieser Vertrag auch keine. Der Haken läuft trotzdem —
     // sonst bliebe in genau diesen Kompositionen ein verwaistes Folgeartefakt stehen.
+    // Aufnahme gesamt-papierkorb: ohne Transaktion wird die Papierkorbbedingung VOR Aufräumbeitrag
+    // und Beleg geprüft, damit ein verlorenes Wettrennen weder aufräumt noch belegt. Die
+    // Bedingung steht trotzdem auch an `repo.delete` — ohne Atomaritätszusage, wie oben gesagt.
+    if (papierkorb) {
+      const jetzt = await this.repo.findById(id);
+      if (!jetzt?.deletedAt || (jetzt.rowVersion ?? 0) !== papierkorb.rowVersion) {
+        throw new KoError("NOT_FOUND", NICHT_IM_PAPIERKORB);
+      }
+    }
     const beitragOhneTx = await beitragAus(undefined);
     await audit?.record({ ...auditInput, payload: { ...auditInput.payload, ...beitragOhneTx } });
-    await this.repo.delete(id);
+    await (papierkorb ? this.repo.delete(id, undefined, papierkorb) : this.repo.delete(id));
     await this.searchProjections.removeByKo(id).catch(() => undefined);
   }
 
@@ -5286,10 +5344,21 @@ export class KoService {
     for (const ko of await this.repo.list({})) {
       if (ko.deletedAt && this.trashExpiry(ko.deletedAt) <= nowMs) {
         try {
-          await this.purgeKo(ko.id, actor, "trash-expired", { deletedAt: ko.deletedAt });
+          // Aufnahme gesamt-papierkorb: die Frist ist am GELESENEN Stand geprüft; gelöscht wird nur
+          // dieser Stand. Wiederhergestellt (und ggf. neu gelöscht, mit frischer Frist) → kein Treffer.
+          await this.purgeKo(
+            ko.id,
+            actor,
+            "trash-expired",
+            { deletedAt: ko.deletedAt },
+            { rowVersion: ko.rowVersion ?? 0 },
+          );
           purged++;
         } catch (err) {
-          onSweepError?.(ko.id, err);
+          // Ein verlorenes Wettrennen gegen das Wiederherstellen ist kein Fehler des Laufs.
+          if (!(err instanceof KoError && err.code === "NOT_FOUND")) {
+            onSweepError?.(ko.id, err);
+          }
         }
       }
     }
@@ -5344,7 +5413,7 @@ export class KoService {
   async restore(id: string, actor = "system"): Promise<KnowledgeObject> {
     const ko = await this.repo.findById(id);
     if (!ko?.deletedAt) {
-      throw new KoError("NOT_FOUND", "Wissensobjekt nicht im Papierkorb.");
+      throw new KoError("NOT_FOUND", NICHT_IM_PAPIERKORB);
     }
     const { deletedAt: _at, deletedBy: _by, ...restored } = ko;
     // Auftrag gesamt-dubletten-rueckzug: das Zurückholen läuft über denselben benannten Weg wie
@@ -5352,13 +5421,27 @@ export class KoService {
     // Entscheidung Pedi (entscheidung:43017d60): das Wiederherstellen stellt NUR den eigenen Beitrag
     // wieder her. Es trägt deshalb keinen Aufräumbeitrag: ein durch den Rückzug geschlossener
     // Dublettenbefund bleibt geschlossen (keine Wiederöffnung), die Gegenseite bleibt unangetastet.
-    await this.imRuecknahmeVorgang(restored as KnowledgeObject, {
-      actor,
-      action: "ko.restored",
-      payload: {},
-      beitrag: undefined,
-      vorher: ko,
-    });
+    // Aufnahme gesamt-papierkorb: `restored` trägt die GELESENE rowVersion, der CAS in
+    // `repo.update` entscheidet also atomar. Hat eine Endlöschung inzwischen committet, findet er
+    // keine Zeile (Pg: UPDATE legt nie an) — oder einen anderen Stand. Beides heisst für den
+    // Menschen dasselbe: nicht (mehr) im Papierkorb. Ein Beleg `ko.restored` entsteht dann nicht.
+    try {
+      await this.imRuecknahmeVorgang(restored as KnowledgeObject, {
+        actor,
+        action: "ko.restored",
+        payload: {},
+        beitrag: undefined,
+        vorher: ko,
+      });
+    } catch (err) {
+      if (err instanceof KoError && err.code === "STALE_WRITE") {
+        const jetzt = await this.repo.findById(id);
+        if (!jetzt?.deletedAt) {
+          throw new KoError("NOT_FOUND", NICHT_IM_PAPIERKORB);
+        }
+      }
+      throw err;
+    }
     return this.lesefassung(restored as KnowledgeObject);
   }
 
@@ -5368,9 +5451,11 @@ export class KoService {
   async purgeTrashed(id: string, actor = "system"): Promise<void> {
     const ko = await this.repo.findById(id);
     if (!ko?.deletedAt) {
-      throw new KoError("NOT_FOUND", "Wissensobjekt nicht im Papierkorb.");
+      throw new KoError("NOT_FOUND", NICHT_IM_PAPIERKORB);
     }
-    await this.purgeKo(id, actor, "manual", { manual: true });
+    // Aufnahme gesamt-papierkorb: die Prüfung oben ist nur die schnelle Antwort; entschieden wird
+    // in der löschenden Anweisung am gelesenen Stand (s. `purgeKo`).
+    await this.purgeKo(id, actor, "manual", { manual: true }, { rowVersion: ko.rowVersion ?? 0 });
   }
 
   // SCRUM-161: read-only Zugriff auf die in SCRUM-159 persistierten Voll-Snapshots.

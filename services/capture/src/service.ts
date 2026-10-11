@@ -1425,9 +1425,11 @@ export class CaptureService {
    *
    * EINE FRIST, EINE QUELLE: `TRASH_RETENTION_DAYS`, keine zweite Konstante für Entwürfe.
    *
-   * KEIN NEUES FENSTER: gelöscht wird über `repo.purge(id)` OHNE `auchLebende` — Bedingung und
-   * Löschung sind unteilbar (s. `purgeTrashedDraft`). Holt jemand den Entwurf zwischen Liste und
-   * Löschung zurück, liefert `purge` `false`, der Entwurf lebt und wird nicht mitgezählt.
+   * KEIN NEUES FENSTER: gelöscht wird über `repo.purge(id, false, deletedAt)` — Papierkorbstatus
+   * UND der gelesene Löschzeitpunkt stehen in derselben Anweisung wie das Löschen. Holt jemand den
+   * Entwurf zwischen Liste und Löschung zurück, liefert `purge` `false`, der Entwurf lebt. Löscht
+   * er ihn danach erneut, trägt er einen neuen Zeitpunkt mit neuer Frist — auch er bleibt stehen
+   * (Bens Befund, Nacharbeit 2).
    *
    * Ein Fehler an EINEM Entwurf bricht den Lauf nicht ab (dieselbe Regel wie beim Wissensobjekt);
    * er geht an `onSweepError`. Rückgabe: Zahl der wirklich endgültig gelöschten Entwürfe.
@@ -1442,7 +1444,9 @@ export class CaptureService {
         continue;
       }
       try {
-        if (await this.repo.purge(entwurf.id)) {
+        // Nacharbeit 2 (Bens Befund): gelöscht wird nur der Stand mit GENAU diesem Löschzeitpunkt.
+        // Zurückgeholt und erneut gelöscht → neuer Zeitpunkt, neue Frist, kein Treffer.
+        if (await this.repo.purge(entwurf.id, false, entwurf.deletedAt)) {
           purged++;
         }
       } catch (err) {

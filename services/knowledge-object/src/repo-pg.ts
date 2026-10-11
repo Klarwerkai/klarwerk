@@ -5,9 +5,11 @@ import {
   type FassungsSuche,
   type KoCandidateQuery,
   type KoFilter,
+  type KoPapierkorbBedingung,
   type KoRepo,
   type KoSichtbarkeitstrim,
   type KoVersionRepo,
+  NICHT_IM_PAPIERKORB,
   ordneFassungstreffer,
   zaehleFassungstreffer,
 } from "./repo";
@@ -539,11 +541,26 @@ export class PgKoRepo implements KoRepo {
   // JOB 2706 D1: der Schreibstand steigt auf DEMSELBEN Client wie das Loeschen — mit uebergebener
   // `tx` in der Transaktion des Aufrufers (Commit dort), sonst in einer eigenen. Nie ueber den Pool
   // nebenher: das waere wieder ein Fenster.
-  async delete(id: string, tx?: TxContext): Promise<void> {
+  //
+  // Aufnahme gesamt-papierkorb (Bens Befund, Nacharbeit 2): mit `papierkorb` stehen Papierkorbstatus
+  // und gelesene `rowVersion` IN DERSELBEN Anweisung wie das Löschen — dieselbe Bauart wie der CAS
+  // in `update`. Hat ein Wiederherstellen vorher committet, trifft das DELETE nichts (NOT_FOUND, die
+  // Transaktion von purgeKo rollt Aufräumbeitrag und Beleg zurück). Committet die Endlöschung zuerst,
+  // findet der CAS des Wiederherstellens keine Zeile mehr (STALE_WRITE) — ein UPDATE legt nie an.
+  async delete(id: string, tx?: TxContext, papierkorb?: KoPapierkorbBedingung): Promise<void> {
     const lauf = async (queryable: Queryable): Promise<void> => {
-      const res = await queryable.query("DELETE FROM kos WHERE id=$1", [id]);
+      const res = papierkorb
+        ? await queryable.query(
+            `DELETE FROM kos WHERE id=$1 AND data ? 'deletedAt'
+               AND COALESCE((data->>'rowVersion')::int,0)=$2`,
+            [id, papierkorb.rowVersion],
+          )
+        : await queryable.query("DELETE FROM kos WHERE id=$1", [id]);
       if (res.rowCount === 0) {
-        throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+        throw new KoError(
+          "NOT_FOUND",
+          papierkorb ? NICHT_IM_PAPIERKORB : "Wissensobjekt nicht gefunden.",
+        );
       }
       await queryable.query(KO_SCHREIBSTAND_ERHOEHEN_SQL);
     };
