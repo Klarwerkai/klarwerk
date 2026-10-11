@@ -22,12 +22,15 @@
 // kleinen Baum unten; `tests/wiki-stellenbezug/zuordnung.test.tsx` hält beide Zerlegungen gleich.
 import { decodeHtmlEntities } from "../../structure";
 import { stellenFingerabdruck } from "./stellen-fingerabdruck";
-import type { KoCommentStelle } from "./types";
+import type { KoCommentStelle, KoStellenPunkt } from "./types";
 
 /** Höchstlänge der gespeicherten Textstelle und der Abschnittskennung (Zeichen). */
 export const STELLE_TEXT_MAX = 300;
 
-const STELLEN_ARTEN: readonly KoCommentStelle["art"][] = ["absatz", "tabelle", "bild"];
+const STELLEN_ARTEN: readonly KoCommentStelle["art"][] = ["absatz", "tabelle", "bild", "anhang"];
+
+/** PLAN-SPRACHANMERKUNG — höchste annehmbare Seitenzahl eines Anhangs (Formgrenze, kein Seitenzähler). */
+export const STELLE_SEITE_MAX = 10_000;
 
 const FINGERABDRUCK_FORM = /^sha256:[0-9a-f]{64}$/;
 
@@ -296,7 +299,8 @@ export function leseStelle(roh: unknown): KoCommentStelle | "unlesbar" | undefin
   if (!roh || typeof roh !== "object") {
     return "unlesbar";
   }
-  const { koVersion, art, abschnitt, text, fingerabdruck } = roh as Record<string, unknown>;
+  const felder = roh as Record<string, unknown>;
+  const { koVersion, art, abschnitt, text, fingerabdruck, punkt, seite } = felder;
   if (typeof koVersion !== "number" || !Number.isInteger(koVersion) || koVersion < 1) {
     return "unlesbar";
   }
@@ -318,6 +322,28 @@ export function leseStelle(roh: unknown): KoCommentStelle | "unlesbar" | undefin
   ) {
     return "unlesbar";
   }
+  const punktForm = lesePunkt(punkt);
+  // Eine Position gibt es nur in einer Zeichnung (Bild im Text oder Anhang); an Absatz oder Tabelle
+  // wäre sie eine Angabe ohne Ort.
+  const zeichnung = art === "bild" || art === "anhang";
+  if (punktForm === "unlesbar" || (punktForm !== undefined && !zeichnung)) {
+    return "unlesbar";
+  }
+  // PLAN-SPRACHANMERKUNG: eine Seite nur an einem Anhang, ganzzahlig ab 1. Ein Anhang hat keinen
+  // Abschnitt — ein mitgeschickter wäre eine Ortsangabe, die niemand prüfen kann.
+  if (
+    seite !== undefined &&
+    (art !== "anhang" ||
+      typeof seite !== "number" ||
+      !Number.isInteger(seite) ||
+      seite < 1 ||
+      seite > STELLE_SEITE_MAX)
+  ) {
+    return "unlesbar";
+  }
+  if (art === "anhang" && abschnittNorm.length > 0) {
+    return "unlesbar";
+  }
   // Feste Schlüsselreihenfolge: der Dienst vergleicht Stellen beim Wiederholungsschutz.
   return {
     koVersion,
@@ -325,6 +351,54 @@ export function leseStelle(roh: unknown): KoCommentStelle | "unlesbar" | undefin
     abschnitt: abschnittNorm,
     text: textNorm,
     fingerabdruck,
+    ...(typeof seite === "number" ? { seite } : {}),
+    ...(punktForm ? { punkt: punktForm } : {}),
+  };
+}
+
+/**
+ * PLAN-SPRACHANMERKUNG — trägt das Objekt GENAU EINEN Anhang mit dieser Kennung, und passt der
+ * Abdruck? Dieselbe Strenge wie `stelleImInhalt`: kein Treffer (erfunden, entfernt) und mehrere
+ * Treffer sind keine gültige Stelle. Die Seitenzahl prüft der Dienst nur der Form nach — er öffnet
+ * das Dokument nicht; die Fläche bietet nur Seiten an, die das Dokument hat.
+ */
+export function stelleAmAnhang(
+  anhaenge: readonly { objectId?: string }[] | undefined,
+  stelle: KoCommentStelle,
+): boolean {
+  if (stelle.art !== "anhang" || stelle.abschnitt.length > 0) {
+    return false;
+  }
+  if (stelle.fingerabdruck !== stellenFingerabdruck("anhang", "", stelle.text)) {
+    return false;
+  }
+  return (anhaenge ?? []).filter((a) => a.objectId === stelle.text).length === 1;
+}
+
+/** Nachkommastellen der gespeicherten Position — ein Zehntausendstel der Bildkante genügt. */
+const PUNKT_STELLEN = 10_000;
+
+/**
+ * PLAN-SPRACHANMERKUNG — die Form einer mitgeschickten Position in einer Zeichnung. Beide Werte
+ * relativ zum Bild, je 0..1 (Ränder eingeschlossen). Alles andere ist kein Ort im Bild und wird
+ * abgelehnt, statt es still auf den Rand zu ziehen. Gespeichert wird auf vier Nachkommastellen.
+ */
+function lesePunkt(roh: unknown): KoStellenPunkt | "unlesbar" | undefined {
+  if (roh === undefined) {
+    return undefined;
+  }
+  if (!roh || typeof roh !== "object") {
+    return "unlesbar";
+  }
+  const { x, y } = roh as Record<string, unknown>;
+  const imBild = (w: unknown): w is number =>
+    typeof w === "number" && Number.isFinite(w) && w >= 0 && w <= 1;
+  if (!imBild(x) || !imBild(y)) {
+    return "unlesbar";
+  }
+  return {
+    x: Math.round(x * PUNKT_STELLEN) / PUNKT_STELLEN,
+    y: Math.round(y * PUNKT_STELLEN) / PUNKT_STELLEN,
   };
 }
 
@@ -360,6 +434,9 @@ export function gleicheStelle(
     a.art === b.art &&
     a.abschnitt === b.abschnitt &&
     a.text === b.text &&
-    a.fingerabdruck === b.fingerabdruck
+    a.fingerabdruck === b.fingerabdruck &&
+    a.seite === b.seite &&
+    a.punkt?.x === b.punkt?.x &&
+    a.punkt?.y === b.punkt?.y
   );
 }

@@ -47,7 +47,7 @@ describe("Pedi 04.07.: aiTaskInfo — welche KI je Aufgabe (Modus + Modellname)"
     expect(info.mode).toBe("cloud");
     expect(info.modeLabelKey).toBe(AI_TASK_INFO_TEXT.cloud);
     expect(info.modelName).toBe("anthropic:claude-sonnet-4-6");
-    expect(info.dsgvo).toBe("external");
+    expect(info.datenfluss).toBe("extern");
   });
 
   it("Lokale Aufgabe zeigt Lokal-Modus + lokalen Modellnamen (nicht das Cloud-Modell)", () => {
@@ -55,7 +55,10 @@ describe("Pedi 04.07.: aiTaskInfo — welche KI je Aufgabe (Modus + Modellname)"
     expect(info.mode).toBe("local");
     expect(info.modeLabelKey).toBe(AI_TASK_INFO_TEXT.local);
     expect(info.modelName).toBe("ollama:qwen3-32b");
-    expect(info.dsgvo).toBe("inhouse");
+    // R-0600: der Betreiber-Server ist ein Versand an eine KI — keine „bleibt hier"-Zusage, und
+    // der Erklärsatz ist der neue, nicht der gesperrte mit „eigener Hardware".
+    expect(info.datenfluss).toBe("server");
+    expect(info.bodyKey).toBe("kilage.aktion.serverText");
   });
 
   it("Regelbasierte Aufgabe zeigt Regel-Modus OHNE Modellnamen (nichts erfinden)", () => {
@@ -63,21 +66,21 @@ describe("Pedi 04.07.: aiTaskInfo — welche KI je Aufgabe (Modus + Modellname)"
     expect(info.mode).toBe("rule");
     expect(info.modeLabelKey).toBe(AI_TASK_INFO_TEXT.rule);
     expect(info.modelName).toBeUndefined();
-    expect(info.dsgvo).toBe("inhouse");
+    expect(info.datenfluss).toBe("keiner");
   });
 
   it("Ohne geladene Konfiguration ehrlich unbekannt (kein Fake-Modell)", () => {
     const info = aiTaskInfo(undefined, "structure");
     expect(info.mode).toBe("unknown");
     expect(info.bodyKey).toBe(AI_TASK_INFO_TEXT.bodyUnknown);
-    expect(info.dsgvo).toBe("unknown");
+    expect(info.datenfluss).toBe("unknown");
   });
 
   it("Nicht zugeordnete Aufgabe ist unbekannt statt Fake-Modell", () => {
     const info = aiTaskInfo(config(), "gibtsnicht");
     expect(info.mode).toBe("unknown");
     expect(info.modelName).toBeUndefined();
-    expect(info.dsgvo).toBe("unknown");
+    expect(info.datenfluss).toBe("unknown");
   });
 
   it("Lokal ohne localProvider fällt ehrlich auf das konfigurierte Modell zurück", () => {
@@ -91,20 +94,20 @@ describe("Pedi 04.07.: aiTaskInfo — welche KI je Aufgabe (Modus + Modellname)"
 // WP-VIP2-GATE-2 (bens Fix 3): KI-Knopf-Info fuer Nicht-Admins aus dem oeffentlichen Status —
 // ehrliche GLOBALE Stufe, ohne Modellname (Admin-Detail) und ohne per-Task-Aufloesung.
 describe("WP-VIP2-GATE-2 Fix 3: aiTaskInfoPublic", () => {
-  it("cloud → external/amber, local → inhouse, deterministic → rule/inhouse — nie ein Modellname", () => {
+  it("cloud → extern, local → server, deterministic → rule/keiner — nie ein Modellname", () => {
     const cloud = aiTaskInfoPublic({ active: true, mode: "cloud" });
     expect(cloud.mode).toBe("cloud");
-    expect(cloud.dsgvo).toBe("external");
+    expect(cloud.datenfluss).toBe("extern");
     expect(cloud.modelName).toBeUndefined();
-    expect(aiTaskInfoPublic({ active: true, mode: "local" }).dsgvo).toBe("inhouse");
+    expect(aiTaskInfoPublic({ active: true, mode: "local" }).datenfluss).toBe("server");
     const rule = aiTaskInfoPublic({ active: false, mode: "deterministic" });
     expect(rule.mode).toBe("rule");
-    expect(rule.dsgvo).toBe("inhouse");
+    expect(rule.datenfluss).toBe("keiner");
   });
 
   it("ohne geladenen Status ehrlich unbekannt (keine Aussage, kein Fake)", () => {
     const info = aiTaskInfoPublic(undefined);
     expect(info.mode).toBe("unknown");
-    expect(info.dsgvo).toBe("unknown");
+    expect(info.datenfluss).toBe("unknown");
   });
 });

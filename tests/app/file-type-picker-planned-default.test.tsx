@@ -28,12 +28,18 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { FileTypePicker } from "../../apps/web/src/components/FileTypePicker";
 import i18n from "../../apps/web/src/i18n";
-import { FILE_SOURCES } from "../../apps/web/src/lib/importSourceGallery";
+import { fileSourcesForSurface } from "../../apps/web/src/lib/importSourceGallery";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const SPRACHEN = ["de", "en", "nl"] as const;
 type Sprache = (typeof SPRACHEN)[number];
+
+// R-0179 (Aufnahme import-gesamtvertrag, Nacharbeit 3): NACHGEFÜHRT. Auf `/import` ist keine
+// Dateikachel mehr geplant — Excel, die letzte, liest der Importkasten seither selbst. Dieser Fall
+// misst das Aufklappverhalten des Bauteils und braucht dafür geplante Kacheln; er nimmt deshalb die
+// Dateikacheln des ERFASSENS, wo Excel weiterhin geplant ist (dasselbe Bauteil, dieselbe Kachel).
+const FILE_SOURCES = fileSourcesForSurface("capture");
 
 const GEPLANT = FILE_SOURCES.filter((s) => s.state === "planned");
 

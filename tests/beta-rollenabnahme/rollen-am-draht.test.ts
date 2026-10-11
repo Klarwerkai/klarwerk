@@ -69,7 +69,7 @@ function naechsteMarke(art: string): string {
 async function messe(
   zeile: Zeile,
   akteur: (typeof AKTEURE)[number],
-  methode: "GET" | "POST" | "PUT" | "DELETE" | "HEAD" = zeile.methode,
+  methode: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" = zeile.methode,
 ) {
   const marke = naechsteMarke("messung");
   const antwort = await buehne.app.inject({

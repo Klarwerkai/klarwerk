@@ -64,6 +64,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+import { aktuellePlattform, kuerzelText } from "../../apps/web/src/lib/tastenkuerzel";
 import { CommandPalette } from "../../apps/web/src/shell/CommandPalette";
 import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 
@@ -227,7 +228,7 @@ afterEach(() => {
 });
 
 describe("JOB 3503 · 3b-A · der Knopf steht sichtbar im Kopfband", () => {
-  it("er trägt den vorhandenen Namen „Gehe zu …“ UND die Tastenkombination ⌘K", async () => {
+  it("er trägt den vorhandenen Namen „Gehe zu …“ UND die Tastenkombination seiner Plattform", async () => {
     await montiere();
     const k = knopf();
     // Der Name kommt aus derselben Quelle wie die Zeile unter „Arbeitsbereiche" (FE-002).
@@ -235,17 +236,20 @@ describe("JOB 3503 · 3b-A · der Knopf steht sichtbar im Kopfband", () => {
     // FE-002 (26.09.2026): der Name sagt jetzt, WAS gefunden wird — Seiten, nicht Wissen.
     expect(i18n.t("fe002.seiteFinden")).toBe("Seite finden");
     // Und die Kombination ist am Knopf ERKENNBAR (Auftrag §3b), nicht bloss im Hintergrund aktiv.
-    expect(k.textContent, "die Tastenkombination steht nicht am Knopf").toContain("⌘K");
+    // R-0987: die Kombination der eigenen Plattform („⌘K" auf Apple, sonst „Strg+K").
+    expect(k.textContent, "die Tastenkombination steht nicht am Knopf").toContain(
+      kuerzelText("K", "de", aktuellePlattform()),
+    );
     // Ein Knopf, kein Verweis: er navigiert nicht, er öffnet eine Fläche.
     expect(k.tagName).toBe("BUTTON");
     expect(k.getAttribute("type")).toBe("button");
   });
 
-  it("auf Englisch trägt derselbe Knopf den englischen Namen — und dasselbe Zeichen", async () => {
+  it("auf Englisch trägt derselbe Knopf den englischen Namen — und das Kürzel seiner Plattform", async () => {
     await i18n.changeLanguage("en");
     await montiere();
     expect(knopf().textContent).toContain("Find page");
-    expect(knopf().textContent).toContain("⌘K");
+    expect(knopf().textContent).toContain(kuerzelText("K", "en", aktuellePlattform()));
     await i18n.changeLanguage("de");
   });
 });

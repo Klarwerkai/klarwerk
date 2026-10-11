@@ -179,4 +179,22 @@ describe("Block E: geführtes Interview startet Cloud-KI erst nach bewusster Akt
     await click(buttonByText(i18n.t("capture.ivStart")));
     expect(interviewMock).toHaveBeenCalledTimes(1);
   });
+
+  // R-0957 / R-1926 (Aufnahme gesamt-sprache-begriffe): der Interviewweg trägt den Lehrlingsrahmen
+  // über dem Startknopf — an der echten Fläche, nicht nur im Onboarding-Dokument. Der Satz ist an
+  // belegtes Verhalten gebunden (Rückfragen, Einreichen, Teamprüfung) und sagt ausdrücklich, dass
+  // Korrekturen nicht in ein Modell zurückfließen; die Lernzusage bewacht
+  // `tests/app/learning-claim-guard.test.ts` über alle drei Sprachbestände.
+  it("der Lehrlingsrahmen steht über dem Startknopf — vor jedem Lauf", async () => {
+    await mount();
+    await waehleModus("interview");
+    const rahmen = container.querySelector('[data-testid="interview-lehrling"]');
+    expect(rahmen, "der Lehrlingsrahmen fehlt im Interviewweg").not.toBeNull();
+    expect(rahmen?.textContent).toBe(i18n.t("lehrling.interview.rahmen"));
+    expect(rahmen?.textContent).toContain("Lehrling");
+    expect(rahmen?.textContent).toContain("nicht in ein Modell zurück");
+    // Der Rahmen ist Text, kein Auslöser: angezeigt wird er, ohne dass ein Lauf startet.
+    expect(interviewMock).not.toHaveBeenCalled();
+    expect(() => buttonByText(i18n.t("capture.ivStart"))).not.toThrow();
+  });
 });

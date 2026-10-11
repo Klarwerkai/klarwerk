@@ -30,7 +30,7 @@ import { resolve } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ADDON_ACTOR_ID, ASK_CAPABILITY } from "../../services/app/src/addon-principal";
-import { askRoutes } from "../../services/app/src/routes/ask-routes";
+import { askRoutes, klaraAusfuehrungRoutes } from "../../services/app/src/routes/ask-routes";
 import {
   KLARA_SESSION_INACTIVITY_MS,
   KlaraSessionService,
@@ -175,18 +175,27 @@ async function aufbauen(opt: AufbauOptionen = {}): Promise<Aufbau> {
       };
     });
   }
+  const guards = {
+    requireUser: async () => ({ id: akteur, role: "admin" }),
+    requirePermission: async () => ({ id: akteur, role: "admin" }),
+  } as never;
+  const basis = {
+    ask: ask as never,
+    ko: { get: async () => undefined } as never,
+    conflicts: { unresolved: async () => [] } as never,
+  };
+  // R-0700: der allgemeine Frageweg (Konsole, F7) und Klaras EIGENER Zugang stehen nebeneinander.
+  // `ohnePruefer`: Klaras Zugang behält seine Bindungsprüfung, bekommt aber KEIN Einwilligungstor.
+  app.register(askRoutes(basis, guards));
   app.register(
-    askRoutes(
+    klaraAusfuehrungRoutes(
       {
-        ask: ask as never,
-        ko: { get: async () => undefined } as never,
-        conflicts: { unresolved: async () => [] } as never,
-        ...(opt.ohnePruefer ? {} : { klaraSessions: dienst as never }),
+        ...basis,
+        klaraSessions: (opt.ohnePruefer
+          ? { pruefeBindung: dienst.pruefeBindung.bind(dienst) }
+          : dienst) as never,
       },
-      {
-        requireUser: async () => ({ id: akteur, role: "admin" }),
-        requirePermission: async () => ({ id: akteur, role: "admin" }),
-      } as never,
+      guards,
     ),
   );
   await app.ready();
@@ -222,10 +231,22 @@ async function einwilligen(a: Aufbau, akteur = "nutzer-1"): Promise<string> {
   return sicht.consentState;
 }
 
-const fragen = (app: FastifyInstance, kopf: Record<string, string>, mode = "retrieval-only") =>
-  app.inject({
+// R-0700: MIT Klara-Bindung fragt Klara über ihren EIGENEN Zugang (die Sitzung steht im Pfad); OHNE
+// Bindung (Konsole) über den allgemeinen Frageweg — dort ohne das Klara-Feld `questionSource`.
+const fragen = (app: FastifyInstance, kopf: Record<string, string>, mode = "retrieval-only") => {
+  const sitzung = kopf["x-klara-session"];
+  if (!sitzung) {
+    return app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { ...kopf, "content-type": "application/json" },
+      payload:
+        mode === "" ? { question: FRAGE, locale: "de" } : { question: FRAGE, locale: "de", mode },
+    });
+  }
+  return app.inject({
     method: "POST",
-    url: "/api/ask",
+    url: `/api/klara/sessions/${sitzung}/execute`,
     headers: { ...kopf, "content-type": "application/json" },
     payload:
       // R-0639 Runde 3 (Bens Befund B1): das Fenster meldet eine getippte Frage als `manual`;
@@ -234,14 +255,16 @@ const fragen = (app: FastifyInstance, kopf: Record<string, string>, mode = "retr
         ? { question: FRAGE, locale: "de", questionSource: "manual" }
         : { question: FRAGE, locale: "de", mode, questionSource: "manual" },
   });
+};
 
 /**
  * Der Optionssatz, den der Session-Weg MIT deckender Einwilligung übergeben muss.
  *
  * Bei gesperrtem Schalter ist das die unveränderte Enge (die Einwilligung kann nicht tragen), bei
- * freigeschaltetem Schalter GAR KEINE Optionen — kein leeres Objekt (`ask-routes.ts:405`).
+ * freigeschaltetem Schalter genau `validatedOnly`: die Einwilligung öffnet das Modell
+ * (`retrievalOnly` fällt), nicht den Prüfstand (R-0278, Nacharbeit 3).
  */
-const MIT_EINWILLIGUNG = KLARA_EXTERNAL_EXECUTION_MIGRATED ? null : ENGE;
+const MIT_EINWILLIGUNG = KLARA_EXTERNAL_EXECUTION_MIGRATED ? { validatedOnly: true } : ENGE;
 
 describe("JOB 3033 · KA4 · die Einwilligung hebt die Enge — und nur sie", () => {
   it("KA4-F0 · DIE VORBEDINGUNG, protokolliert: welchen Zustand diese Datei misst", async () => {
@@ -275,28 +298,30 @@ describe("JOB 3033 · KA4 · die Einwilligung hebt die Enge — und nur sie", ()
     await a.app.close();
   });
 
-  it("KA4-F2 · MIT Einwilligung: freigeschaltet fallen BEIDE Schlüssel, gesperrt bleibt die Enge", async () => {
+  it("KA4-F2 · MIT Einwilligung: freigeschaltet fällt `retrievalOnly`, `validatedOnly` bleibt", async () => {
     const a = await aufbauen();
     expect(await einwilligen(a)).toBe("granted");
     const res = await fragen(a.app, a.bindung);
     expect(res.statusCode).toBe(200);
     expect(a.gesehen[0]).toEqual(MIT_EINWILLIGUNG);
-    // Und ausdrücklich benannt, damit die Aussage auch dann trägt, wenn der Freigabezweig eines
-    // Tages andere, unschädliche Optionen mitgäbe: DIESE beiden Schlüssel sind dann weg.
+    // Und ausdrücklich benannt: die Einwilligung hebt die Modellsperre auf, nie den Prüfstand
+    // (R-0278, Nacharbeit 3) — `validatedOnly` steht in BEIDEN Zuständen des Schalters.
     const opts = (a.gesehen[0] ?? {}) as Record<string, unknown>;
-    expect(Object.hasOwn(opts, "validatedOnly")).toBe(!KLARA_EXTERNAL_EXECUTION_MIGRATED);
+    expect(opts.validatedOnly).toBe(true);
     expect(Object.hasOwn(opts, "retrievalOnly")).toBe(!KLARA_EXTERNAL_EXECUTION_MIGRATED);
     await a.app.close();
   });
 
-  it("KA4-F3 · GEGENFALL fremdes Dokument: die Enge bleibt, trotz erteilter Einwilligung", async () => {
+  // R-0700: an Klaras eigenem, sitzungsgebundenen Zugang ist ein fremdes Dokument keine Enge mehr,
+  // sondern GAR KEINE Antwort — der Fragedienst wird nicht gefragt.
+  it("KA4-F3 · GEGENFALL fremdes Dokument: keine Antwort, trotz erteilter Einwilligung", async () => {
     // NICHT VAKUOS: im selben Aufbau entscheidet F2 anders. Der Unterschied hängt wirklich an der
     // Dokumentbindung und nicht daran, dass ohnehin alles eng bliebe.
     const a = await aufbauen();
     expect(await einwilligen(a)).toBe("granted");
     const res = await fragen(a.app, { ...a.bindung, "x-klara-document": "doc-fremd" });
-    expect(res.statusCode).toBe(200);
-    expect(a.gesehen[0]).toEqual(ENGE);
+    expect(res.statusCode).toBe(404);
+    expect(a.gesehen).toEqual([]);
     await a.app.close();
   });
 
@@ -311,28 +336,33 @@ describe("JOB 3033 · KA4 · die Einwilligung hebt die Enge — und nur sie", ()
     await a.app.close();
   });
 
-  it("KA4-F6 · DER ADD-ON-ZWEIG: dieselbe Weiche, ohne Sitzungsnutzer", async () => {
-    // Er hat keinen `SessionUser` und bekommt deshalb die beiden Betrachterfilter NICHT — die
-    // Asymmetrie ist die Zusicherung aus mega77, nicht der Fehler. `gapPolicy` bleibt in BEIDEN
-    // Zweigen: die Wissenslücken-Nebenwirkung war nie Gegenstand der Einwilligung.
+  // R-0700: der frühere Add-on-Zweig mit KA4-Weiche ist fort. Klaras Zugang verlangt einen
+  // angemeldeten Sitzungsnutzer; ein Add-on-Schlüssel bekommt 403 — ohne und MIT Einwilligung, und
+  // der Fragedienst wird in keinem Fall gefragt. Der allgemeine Weg behandelt den Add-on-Schlüssel
+  // wie zuvor in der Enge (`ENGE_ADDON`), aber ohne jede Klara-Bindung.
+  it("KA4-F6 · DER ADD-ON-SCHLÜSSEL erreicht Klaras Zugang nicht — auch nicht mit Einwilligung", async () => {
     const ohne = await aufbauen({ addon: true });
-    await fragen(ohne.app, ohne.bindung);
-    expect(ohne.gesehen[0]).toEqual(ENGE_ADDON);
+    expect((await fragen(ohne.app, ohne.bindung)).statusCode).toBe(403);
+    expect(ohne.gesehen).toEqual([]);
     await ohne.app.close();
 
     const mit = await aufbauen({ addon: true });
     expect(await einwilligen(mit, ADDON_ACTOR_ID)).toBe("granted");
-    await fragen(mit.app, mit.bindung);
-    expect(mit.gesehen[0]).toEqual(
-      KLARA_EXTERNAL_EXECUTION_MIGRATED ? { gapPolicy: "count_only" } : ENGE_ADDON,
-    );
+    expect((await fragen(mit.app, mit.bindung)).statusCode).toBe(403);
+    expect(mit.gesehen).toEqual([]);
+    // Ohne Bindung bleibt dem Add-on-Schlüssel der allgemeine Weg — in der unveränderten Enge.
+    // (main R-0278 hielt den früheren Add-on-Freigabezweig in `validatedOnly`; dieser Zweig ist seit
+    // R-0700 fort, die Enge unten trägt `validatedOnly` ohnehin.)
+    await fragen(mit.app, {});
+    expect(mit.gesehen[0]).toEqual(ENGE_ADDON);
     await mit.app.close();
   });
 
   it("KA4-F7 · DER KONSOLEN-ASK ohne `mode` und OHNE Bindung ist von KA4 gar nicht berührt", async () => {
     // Er kennt die Weiche nicht und darf sich durch eine Einwilligung nicht verändern.
-    // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Konsolenweg antwortet standardmäßig
-    // nur aus geprüftem Wissen — und bleibt von der Einwilligung unberührt (beide Male derselbe Satz).
+    // R-0278 (Nacharbeit 3) und R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Konsolenweg
+    // antwortet nur aus geprüftem Wissen — und bleibt von der Einwilligung unberührt (beide Male
+    // derselbe Satz).
     const KONSOLE = {
       validatedOnly: true,
       ungeprueftSichtbarFuer: expect.any(Function),
@@ -409,10 +439,13 @@ describe("JOB 3033 · KA4 · die vier Sperrgründe der Freischaltung", () => {
       "SPERRGRUND 1: die Auflösungsfrist wird serverseitig nicht erzwungen",
     ).toEqual(ENGE);
 
-    // Und die Sitzungsfrist bleibt die äussere Grenze — sie war nie das Problem.
+    // Und die Sitzungsfrist bleibt die äussere Grenze — sie war nie das Problem. R-0700: an Klaras
+    // eigenem Zugang beantwortet eine abgelaufene Sitzung GAR NICHTS mehr (409), statt eng zu
+    // antworten; der Fragedienst wird nicht gefragt.
     a.vorstellen(KLARA_SESSION_INACTIVITY_MS + 1);
-    await fragen(a.app, a.bindung);
-    expect(a.gesehen[2]).toEqual(ENGE);
+    const abgelaufen = await fragen(a.app, a.bindung);
+    expect(abgelaufen.statusCode).toBe(409);
+    expect(a.gesehen).toHaveLength(2);
     await a.app.close();
   });
 
@@ -593,6 +626,11 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
       category: "Betrieb",
       author: "anna",
     });
+    // R-0278 (Nacharbeit 3/4): auch mit Einwilligung reist nur Freigegebenes in den Modellkontext.
+    // BEIDE Objekte sind deshalb freigegeben — so beweist F8b weiterhin, dass die VERTRAULICHKEIT
+    // das geheime Objekt ausschließt, nicht bloß sein Prüfstand.
+    await koService.setValidationState(offen.id, { trust: 90, status: "validiert" });
+    await koService.setValidationState(geheim.id, { trust: 90, status: "validiert" });
 
     const reasoner = new Reasoner(provider);
     // JOB 3588: NUR die GRUNDFREIGABE. KA4-S3 und KA4-F8a messen, dass der Anbieter über diesen Weg
@@ -612,8 +650,9 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
     const dienst = new KlaraSessionService({ repo, policy: () => CLOUD_LAGE });
 
     const app = Fastify();
+    // R-0700: Klaras eigener, sitzungsgebundener Zugang mit dem echten Sitzungsdienst.
     app.register(
-      askRoutes(
+      klaraAusfuehrungRoutes(
         {
           ask,
           ko: koService,
@@ -769,7 +808,8 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
 // dessen, was der Server ausliefert und nebenbei schreibt.
 //
 // DESHALB ZWEI AUFBAUTEN, DIE SICH NUR IN EINEM PUNKT UNTERSCHEIDEN:
-//   A · `askRoutes` OHNE `klaraSessions` — der Weg ohne KA4 (`ka4Freigabe` kehrt sofort um),
+//   A · Klaras Zugang (`klaraAusfuehrungRoutes`, R-0700) nur mit der Bindungsprüfung, OHNE
+//       Einwilligungstor — der Weg ohne KA4 (`ka4Freigabe` kehrt sofort um),
 //   B · derselbe Aufbau MIT dem echten `KlaraSessionService`, echter Sitzung, KEINER Zustimmung.
 // Echt sind `AskService`, `KoService`, `Reasoner` und `AuditService`. Damit die Bytes vergleichbar
 // sind, ist alles Zufällige festgelegt: eine feste Uhr, je Dienst ein eigener Kennungszähler (so
@@ -894,13 +934,17 @@ describe("KA4 · ohne Einwilligung antwortet der Server bytegleich wie ohne KA4-
         };
       }
     });
+    // R-0700: beide Aufbauten fahren Klaras EIGENEN Zugang. A hat dort nur die Bindungsprüfung —
+    // KEIN Einwilligungstor (`ka4Freigabe` kehrt sofort um); B den vollen echten Sitzungsdienst.
     app.register(
-      askRoutes(
+      klaraAusfuehrungRoutes(
         {
           ask,
           ko: koService,
           conflicts: { unresolved: async () => [] } as never,
-          ...(mitPruefer ? { klaraSessions: dienst as never } : {}),
+          klaraSessions: (mitPruefer
+            ? dienst
+            : { pruefeBindung: dienst.pruefeBindung.bind(dienst) }) as never,
         },
         {
           requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
@@ -942,7 +986,7 @@ describe("KA4 · ohne Einwilligung antwortet der Server bytegleich wie ohne KA4-
   const senden = (v: Vergleich, anfrage: (typeof ANFRAGEN)[number]) =>
     v.app.inject({
       method: "POST",
-      url: "/api/ask",
+      url: `/api/klara/sessions/${v.sitzung}/execute`,
       headers: {
         ...v.bindung,
         ...(anfrage.addon ? { [ZUGANG]: "addon" } : {}),
@@ -976,11 +1020,14 @@ describe("KA4 · ohne Einwilligung antwortet der Server bytegleich wie ohne KA4-
       JSON.stringify(await ohne.auditRepo.all()),
     );
 
+    // R-0700: ein Add-on-Schlüssel erreicht Klaras Zugang nicht — in A und B gleich 403, und
+    // dieselben Bytes. Nur die Sitzungsanfragen erreichen den Fragedienst und das Tor.
+    const sitzungsAnfragen = ANFRAGEN.filter((anfrage) => !anfrage.addon);
     const ausgeliefert = new Map<string, Record<string, unknown>>();
     for (const anfrage of ANFRAGEN) {
       const a = await senden(ohne, anfrage);
       const b = await senden(mit, anfrage);
-      expect([anfrage.name, a.statusCode]).toEqual([anfrage.name, 200]);
+      expect([anfrage.name, a.statusCode]).toEqual([anfrage.name, anfrage.addon ? 403 : 200]);
       expect([anfrage.name, b.statusCode]).toEqual([anfrage.name, a.statusCode]);
       // DIE AUSSAGE: das vollständige Ergebnis, Byte für Byte.
       expect([anfrage.name, b.payload]).toEqual([anfrage.name, a.payload]);
@@ -988,7 +1035,7 @@ describe("KA4 · ohne Einwilligung antwortet der Server bytegleich wie ohne KA4-
     }
 
     // NICHT VAKUOS: der Treffer trägt die validierte Quelle, die Lücke legt im Sitzungszweig eine
-    // Wissenslücke an und im Add-on-Zweig (`count_only`) keine.
+    // Wissenslücke an; die Add-on-Anfragen sind abgewiesen und legen keine an.
     const treffer = ausgeliefert.get("Sitzungszweig · Treffer") as {
       result: { answered: boolean; sources: string[] };
     };
@@ -1000,26 +1047,26 @@ describe("KA4 · ohne Einwilligung antwortet der Server bytegleich wie ohne KA4-
     };
     expect(luecke.result.answered).toBe(false);
     expect(luecke.gap).not.toBeNull();
-    const addonLuecke = ausgeliefert.get("Add-on-Zweig · Wissensluecke") as { gap: unknown };
-    expect(addonLuecke.gap).toBeNull();
+    const addonLuecke = ausgeliefert.get("Add-on-Zweig · Wissensluecke") as { error?: unknown };
+    expect(addonLuecke.error).toBe("FORBIDDEN");
 
     // DIE NEBENWIRKUNGEN: Lücken- und Auditbestand nach allen vier Anfragen, vollständig.
     const lueckenOhne = await ohne.gaps.all();
     expect(lueckenOhne).toHaveLength(1);
     expect(JSON.stringify(await mit.gaps.all())).toBe(JSON.stringify(lueckenOhne));
     const auditOhne = await ohne.auditRepo.all();
-    expect(auditOhne.length).toBeGreaterThanOrEqual(ANFRAGEN.length);
+    expect(auditOhne.length).toBeGreaterThanOrEqual(sitzungsAnfragen.length);
     expect(JSON.stringify(await mit.auditRepo.all())).toBe(JSON.stringify(auditOhne));
 
     // Kein Modellaufruf in keinem der beiden Aufbauten.
     expect(ohne.anbieterAufrufe).toEqual([]);
     expect(mit.anbieterAufrufe).toEqual([]);
 
-    // GETRENNT: das Protokoll des Tors. A schreibt keine Zeile (kein Prüfer), B je Anfrage genau
-    // eine Absage — und keine Dokumenttext-Entscheidung, weil keine Freigabe bestätigt wurde.
+    // GETRENNT: das Protokoll des Tors. A schreibt keine Zeile (kein Prüfer), B je Sitzungsanfrage
+    // genau eine Absage — und keine Dokumenttext-Entscheidung, weil keine Freigabe bestätigt wurde.
     expect(ka4Entscheidungen(ohne.zeilen)).toEqual([]);
     const entscheidungen = ka4Entscheidungen(mit.zeilen);
-    expect(entscheidungen).toHaveLength(ANFRAGEN.length);
+    expect(entscheidungen).toHaveLength(sitzungsAnfragen.length);
     for (const e of entscheidungen) {
       expect(e.entscheidung).toBe("blockiert");
     }

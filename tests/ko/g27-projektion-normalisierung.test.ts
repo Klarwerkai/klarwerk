@@ -13,7 +13,6 @@ import { describe, expect, it } from "vitest";
 import {
   type KnowledgeObject,
   MAX_SEARCH_TEXT_LENGTH,
-  SEARCH_PROJECTION_FIELDS,
   SEARCH_PROJECTION_LANGUAGE,
   SEARCH_PROJECTION_VERSION,
   buildSearchProjection,
@@ -21,6 +20,7 @@ import {
   searchProjectionContentHash,
   visibleTextFromBodyHtml,
 } from "../../services/knowledge-object";
+import { SEARCH_PROJECTION_FIELDS } from "../support/projektion-feldvertrag";
 
 const AT = "2026-08-01T10:00:00.000Z";
 

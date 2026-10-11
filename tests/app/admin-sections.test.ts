@@ -21,14 +21,16 @@ describe("SCRUM-394: Admin-Bereiche", () => {
     // (`gespraech/advisor-freitag/navigation/ADMIN-NAVIGATION-AUFTRAG.md`, Tabelle „Innerhalb der
     // Verwaltung") geworden. „daten" ist ersatzlos weg — es trug Demodaten, Werkseinstellungen,
     // Papierkorb UND das Audit-Log, also vier Dinge aus vier Welten; jedes hat jetzt sein Thema.
+    // ADMIN-16 (produkt:20261009:admin-demo-diagnose): „Vorführdaten" steht ZULETZT — die tägliche
+    // Verwaltung beginnt nicht mit Vorführwerkzeugen.
     expect(ids).toEqual([
       "konten",
       "ki",
       "quellen",
-      "vorfuehrdaten",
       "sicherheit",
       "berichte",
       "system",
+      "vorfuehrdaten",
     ]);
     expect(new Set(ids).size).toBe(7);
     expect(isAdminSectionId(DEFAULT_ADMIN_SECTION)).toBe(true);

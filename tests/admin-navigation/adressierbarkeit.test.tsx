@@ -116,16 +116,29 @@ describe("JOB 3337 · D · der Reiter- und Detailzustand ist adressierbar", () =
     }
   });
 
-  it("D4 · ein unerlaubter Bereichswert fällt auf das erste Thema zurück", async () => {
+  // ADMIN-01 (produkt:20261009:admin-verwaltung-uebersicht, K1): „Der Einstieg Verwaltung öffnet
+  // die Übersicht." Bis hierher fiel `/admin` ohne gültiges Thema auf „Benutzer und Rollen"; jetzt
+  // steht dort die Startseite — kein Thema ist ausgezeichnet, der Einstieg „Übersicht" schon. Die
+  // Kontenliste hat ihre eigene Adresse und ist von der Übersicht aus einen Klick entfernt.
+  it("D4 · ein unerlaubter Bereichswert fällt auf die Übersicht der Verwaltung zurück", async () => {
     const s = await admin("/admin?bereich=geheim");
-    expect(aktivesThema(s)).toBe(t("adm.sec.konten"));
+    expect(aktivesThema(s), "ein unerlaubter Wert hat ein Thema ausgezeichnet").toBe("");
+    expect(s.container.querySelector('[data-testid="verwaltung-uebersicht"]')).not.toBeNull();
     expect(detailOffen(s)).toBe(false);
   });
 
-  it("D5 · der alte Weg `/admin` ohne Query bleibt wortgleich gültig", async () => {
+  it("D5 · der alte Weg `/admin` ohne Query bleibt gültig und öffnet die Übersicht", async () => {
     const s = await admin("/admin");
-    expect(aktivesThema(s)).toBe(t("adm.sec.konten"));
     expect(s.container.querySelector('[data-testid="page-admin"]')).not.toBeNull();
+    expect(s.container.querySelector('[data-testid="verwaltung-uebersicht"]')).not.toBeNull();
+    expect(
+      s.container.querySelector('[data-testid="reiter-uebersicht"]')?.getAttribute("aria-pressed"),
+    ).toBe("true");
+    // Die Nutzerliste steht NICHT mehr als Einstieg da — sie ist ein Thema unter mehreren.
+    expect(s.container.querySelector('[data-testid="flaeche-nutzer"]')).toBeNull();
+    await klicke(s.container.querySelector('[data-testid="ziel-konten"]'));
+    expect(ort(s)).toBe(adminHref("konten"));
+    expect(aktivesThema(s)).toBe(t("adm.sec.konten"));
   });
 
   it("D6 · Browser-Zurück und -Vorwärts bleiben am richtigen Ort (Abnahmeliste der Vorlage)", async () => {
@@ -241,32 +254,24 @@ describe("JOB 3337 · E · Modul aus ist nicht fehlende Rolle", () => {
     expect(zeile?.querySelector('input[type="checkbox"]')).not.toBeNull();
   });
 
-  it("E4 · auch der Verweis auf die Beispielpakete bietet kein gesperrtes Ziel an", async () => {
-    // JOB 3337 R2 (Codex, Befund 7): dieser Verweis stand als UNBEDINGT aktiver Kurzlink da,
-    // obwohl er nach `/import` führt — und `/import` ist ein Stufe-2-Bereich. Bei ausgeschaltetem
-    // Modul wurde also ein gesperrtes Ziel angeboten, während dieselbe Fläche einen Zeilenabstand
-    // weiter oben denselben Fall korrekt als „Modul aus" erklärte. Beide gehen jetzt durch dieselbe
-    // Regel.
-    const s = await admin(adminHref("vorfuehrdaten"));
-    const zeile = s.container.querySelector('[data-testid="zeile-demopakete"]');
-    expect(zeile, "der Verweis auf die Beispielpakete fehlt ganz").not.toBeNull();
-    expect(zeile?.textContent).toContain(t("einst.modul.aus"));
-    expect(zeile?.tagName, "das gesperrte Ziel wird trotzdem als Link angeboten").toBe("DIV");
-    expect(s.container.querySelector('[data-testid="zeile-demopakete"] a')).toBeNull();
-    // Der bestehende Aktivierungsweg steht auch hier — keine stille Aktivierung, kein Sackgassen-
-    // Hinweis „geht nicht" ohne Ausweg.
-    expect(s.container.textContent).toContain(t("einst.modul.weg"));
-  });
-
-  it("E5 · mit eingeschaltetem Modul führt derselbe Verweis auf den Anker im Import", async () => {
-    setzeStufe2(true);
-    const s = await admin(adminHref("vorfuehrdaten"));
-    const zeile = s.container.querySelector('[data-testid="zeile-demopakete"]');
-    expect(zeile?.tagName).toBe("A");
-    // Der Anker ist der, den `components/ExamplePackages.tsx` wirklich setzt (`id="demopakete"`).
-    expect(zeile?.getAttribute("href")).toBe("/import#demopakete");
-    expect(zeile?.textContent).not.toContain(t("einst.modul.aus"));
-  });
+  // ADMIN-16 (produkt:20261009:admin-demo-diagnose): bis hierher war „Demopakete" ein Kurzlink auf
+  // den Kasten `/import#demopakete` und hing deshalb am Stufe-2-Schalter des Imports (JOB 3337 R2,
+  // Codex Befund 7). Die Pakete haben jetzt ihre eigene Karte unter „Vorführdaten" — dieselbe Zeile
+  // öffnet sie unabhängig vom Schalter, weil der Import nicht mehr ihr Bedienort ist.
+  for (const an of [false, true]) {
+    it(`E4/E5 · „Beispiel- und Demopakete“ öffnet die eigene Karte (Erweiterte Module ${an ? "an" : "aus"})`, async () => {
+      setzeStufe2(an);
+      const s = await admin(adminHref("vorfuehrdaten"));
+      const zeile = s.container.querySelector('[data-testid="zeile-demopakete"]');
+      expect(zeile, "die Zeile der Pakete fehlt ganz").not.toBeNull();
+      expect(zeile?.textContent).not.toContain(t("einst.modul.aus"));
+      expect(s.container.querySelector('[data-testid="zeile-demopakete"] a')).toBeNull();
+      expect(s.container.textContent).not.toContain(t("einst.modul.weg"));
+      await klicke(zeile);
+      expect(ort(s)).toBe(adminHref("vorfuehrdaten", "pakete"));
+      expect(s.container.querySelector('[data-testid="detail-pakete"]')).not.toBeNull();
+    });
+  }
 });
 
 // ------------------------------------------------------------------------------------------------

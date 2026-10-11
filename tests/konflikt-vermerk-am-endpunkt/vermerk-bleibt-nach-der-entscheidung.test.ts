@@ -170,6 +170,15 @@ describe("JOB 3888: der entschiedene Konflikt fällt aus der Liste und bleibt im
     const konflikt = await neuerKonflikt(app, headers, "H4");
     expect((await liste(app, headers)).map((c) => c.id)).toContain(konflikt.id);
 
+    // R-0215 (Aufnahme gesamt-konfliktklassifikation): ein Wahrheitskonflikt wird verbindlich
+    // zuerst eskaliert; erst danach nimmt `resolve-conflict` die Entscheidung an.
+    const eskaliert = await app.inject({
+      method: "POST",
+      url: `/api/conflicts/${konflikt.id}/escalate`,
+      headers,
+    });
+    expect(eskaliert.statusCode).toBe(200);
+
     const entschieden = await app.inject({
       method: "PUT",
       url: `/api/kos/${konflikt.koA}`,

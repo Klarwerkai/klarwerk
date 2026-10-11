@@ -39,6 +39,12 @@ export interface AnswerExplanationDeps {
 export interface AnswerExplanationLeser {
   readonly userId: string;
   readonly darfVertraulich: boolean;
+  /**
+   * R-1175 (aufnahme:20260922:gesamt-rechte-inventar): die EINE Sichtbarkeitsentscheidung des
+   * Lesers (`sichtbarkeitsfilterFuer`, von der Route). Ein Beleg, den er heute nicht sehen darf
+   * (fremder Space, fremdes Vertrauliches), wird geschwärzt — die Stufenregel darüber bleibt.
+   */
+  readonly sichtbar?: (ko: KnowledgeObject) => boolean;
 }
 
 export class AnswerExplanationService {
@@ -87,7 +93,8 @@ export class AnswerExplanationService {
         verschwunden.add(ref.knowledgeObjectId);
         continue;
       }
-      if (isConfidential(objekt.confidentiality) && !leser.darfVertraulich) {
+      const heuteSichtbar = leser.sichtbar?.(objekt) ?? true;
+      if ((isConfidential(objekt.confidentiality) && !leser.darfVertraulich) || !heuteSichtbar) {
         gesperrteObjekte.add(ref.knowledgeObjectId);
       }
     }
