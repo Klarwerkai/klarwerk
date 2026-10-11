@@ -935,6 +935,15 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "nur das eigene zuletzt geführte Klara-Gespräch (klara-gespraech-routes.ts, user.id).",
   },
+  "GET /api/me/assistenz": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur das eigene Assistenzprofil (assistenz-profil-routes.ts, user.id); fremde Kennung 403.",
+  },
+  "PUT /api/me/assistenz": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ändert nur das eigene Assistenzprofil (user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
   "POST /api/me/klara/gespraeche": {
     urteil: "EIGENER_BESTAND",
     grund: "legt nur ein eigenes Gespräch an; der Objektbezug kommt vom Bildschirm der Person.",

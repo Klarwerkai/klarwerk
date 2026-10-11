@@ -42,18 +42,24 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { setzeKlaraEntwurf } from "../../api/chat";
 import type { KlaraObjektbezug } from "../../api/klaraGespraech";
 import { useSession } from "../../app/AuthContext";
 import { HOME_ROUTE } from "../../app/navigation";
+// produkt:20261010:assistenz-name-avatar: Name, Motiv und Bewegung aus dem persönlichen Profil.
+import { animationsStil } from "../../lib/assistenzAvatare";
+import { useAssistenzAnzeige, useAssistenzT } from "../../lib/assistenzProfil";
 import { internerPfad } from "../../lib/internerPfad";
 import { leseobjektJetzt, useLeseobjekt } from "../../lib/leseobjekt";
 import { leserHref } from "../../lib/objektbezug";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { useTutorialFuerKlara } from "../../tutorial/TutorialRahmen";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
+import { AvatarBild } from "../assistenz/AvatarBild";
+import { AvatarMimik } from "../assistenz/AvatarMimik";
+// produkt:20261010:assistenz-name-avatar: die neun Zustände der Figur aus echten Ereignissen.
+import { ermittleZustand, meldeErgebnis, useLetztesErgebnis } from "../assistenz/ausdruck";
 import {
   meldeFlaeche,
   useAndereFlaecheOffen,
@@ -73,7 +79,6 @@ import { KlaraTutorialKarte, KlaraZeiger, type ZielTreffer, findeZiel } from "./
 import { setzeKlaraVorschauAktiv } from "./aktiv";
 import { antwortAufAuswahl, antwortAufFrage, entwurfsInhalt, kuerze } from "./antworten";
 import { VORSCHAU_PFAD, artikelPfad, demoArtikel } from "./artikel";
-import { klaraAvatarUrl } from "./avatar";
 import {
   type KontextAktion,
   ZIELSPRACHEN,
@@ -110,7 +115,12 @@ import {
   seitenErklaerung,
 } from "./kontext";
 import { auftrittAus, useAssistenzProfil } from "./profil";
-import { leseVorlesen, stoppeVorlesen, vorlesen as vorlesenStarten } from "./vorlesen";
+import {
+  leseVorlesen,
+  stoppeVorlesen,
+  useKlaraVorlesen,
+  vorlesen as vorlesenStarten,
+} from "./vorlesen";
 import { formuliere, liesNach, setzeVorschlag, uebernehme } from "./vorschlag";
 import {
   type Aktion,
@@ -270,12 +280,16 @@ export function KlaraVorschau({
 }: {
   betriebsart?: "vorschau" | "produkt";
 } = {}): JSX.Element {
-  const { t, i18n } = useTranslation();
+  // produkt:20261010:assistenz-name-avatar: `t` trägt den persönlichen Namen als `{{assistenz}}`;
+  // Name, Motiv und Bewegung kommen aus dem kontobezogenen Profil (`lib/assistenzProfil.ts`).
+  const { t, i18n } = useAssistenzT();
+  const assistenz = useAssistenzAnzeige();
   const produkt = betriebsart === "produkt";
-  // Name und Avatar: im Produkt aus dem persönlichen Profil, ohne Profil neutral (`profil.ts`).
+  // produkt:20261010:assistenz-produkteinstieg: der Leseeinstieg `profil.ts` bleibt angeschlossen.
+  // Der am Konto gespeicherte Name (dieser Auftrag) hat Vorrang; ohne ihn gilt ein über
+  // `setzeAssistenzProfil` gesetzter Name, sonst die neutrale Bezeichnung.
   const auftritt = auftrittAus(useAssistenzProfil());
-  const anzeigeName = auftritt.name ?? t("klaraprodukt.name.neutral");
-  const avatarUrl = produkt ? auftritt.avatarUrl : klaraAvatarUrl();
+  const anzeigeName = assistenz.name ?? auftritt.name ?? t("klaraprodukt.name.neutral");
   const figurLabel = produkt
     ? t("klaraprodukt.figur.label", { name: anzeigeName })
     : t("klaravorschau.figur.label");
@@ -284,7 +298,8 @@ export function KlaraVorschau({
   const navigate = useNavigate();
   const tutorial = useTutorialFuerKlara();
   const schmal = useMedien(SCHMAL);
-  const reduziert = useMedien(REDUZIERT);
+  // Reduzierte Bewegung: Systemeinstellung ODER die eigene Wahl unter „Meine Assistenz".
+  const reduziert = useMedien(REDUZIERT) || assistenz.bewegungReduziert;
   const fenster = useFenster();
   const vollbildEl = useVollbild();
   const hinweisId = useId();
@@ -1151,6 +1166,8 @@ export function KlaraVorschau({
     if (lageRef.current) {
       pausieren();
     }
+    // Eine neue Aktion beendet Fehler-, Pause- und Freudezustand der Figur.
+    meldeErgebnis(null);
     aendere((alt) => ({ ...alt, status: "laeuft" }));
     const sprache = toReasonerLocale(i18n.language);
     const z0 = leseZustand();
@@ -1195,6 +1212,11 @@ export function KlaraVorschau({
           return { stand: "nicht_gesendet", antwort: null };
         }
         aendere((alt) => ({ ...alt, status: "antwort" }));
+        // Das tatsächliche Ergebnis für den Ausdruck der Figur: beantwortet = Freude (kurz),
+        // gestoppt = Pause, fehlgeschlagen = Fehler (bis zur nächsten Aktion).
+        meldeErgebnis(
+          stand === "beantwortet" ? "freude" : stand === "abgebrochen" ? "pause" : "fehler",
+        );
         setAnsage(t(`klaragespraech.ansage.${stand}`));
         const letzte = [...leseEcht().nachrichten].reverse().find((n) => n.von === "klara");
         const antwort = letzte?.text ?? null;
@@ -1401,6 +1423,27 @@ export function KlaraVorschau({
   }, [panelSichtbar, aufnahmeAbbrechen]);
 
   // ---------------------------------------------------------------------------------------------
+  // produkt:20261010:assistenz-name-avatar — der Zustand der Figur (ANIMATIONSZUSTAENDE.json), nur
+  // aus echten Ereignissen: Mikrofon aktiv, Sprachausgabe spielt, Anfrage läuft, Entscheidung nötig,
+  // Ergebnis des letzten Vorgangs, verkleinert. „Nachdenken" bleibt aus — der Frageweg meldet keine
+  // eigene Verarbeitungsphase (`ausdruck.ts`).
+  // ---------------------------------------------------------------------------------------------
+  const vorleseLage = useKlaraVorlesen();
+  const letztesErgebnis = useLetztesErgebnis();
+  const figurZustand = ermittleZustand({
+    minimiert: z.minimiert,
+    // Bestätigte Aktivität, nicht die Anforderung: `hoert` ab `audiostart`, `spielt` ab `start`.
+    hoertZu: sprechen.hoert,
+    spricht: vorleseLage.spielt !== null,
+    laeuft: z.status === "laeuft",
+    verarbeitet: false,
+    rueckfrage: z.status === "entscheidung",
+    ergebnis: letztesErgebnis,
+    jetzt: Date.now(),
+  });
+  const figurStil = animationsStil(assistenz.motiv);
+
+  // ---------------------------------------------------------------------------------------------
   // Vollbild, Ende der Vorschau.
   // ---------------------------------------------------------------------------------------------
   const vollbildUmschalten = (): void => {
@@ -1500,6 +1543,9 @@ export function KlaraVorschau({
           data-angedockt={z.angedockt ?? ""}
           data-geparkt={z.geparkt ? String(z.geparkt.absatz) : ""}
           data-ablage={ablage ? "true" : "false"}
+          data-bewegung={assistenz.bewegungReduziert ? "reduziert" : "standard"}
+          data-zustand={figurZustand}
+          data-stil={figurStil}
           aria-label={figurLabel}
           aria-expanded={panelSichtbar}
           aria-describedby={hinweisId}
@@ -1513,19 +1559,28 @@ export function KlaraVorschau({
           onDragLeave={() => setAblage(false)}
           onDrop={beiAblegen}
           title={ablage ? t("klaravorschau.figur.ablegen") : figurLabel}
-          className={`klara-figur grid place-items-center overflow-hidden rounded-full border-2 border-brand bg-surface shadow-popover focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink ${
+          className={`klara-figur relative grid place-items-center overflow-hidden rounded-full border-2 border-brand bg-surface shadow-popover focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink ${
             ziehPos ? "cursor-grabbing" : "cursor-grab"
           }`}
           style={{ width: groesse, height: groesse }}
         >
-          <img
-            src={avatarUrl}
+          <AvatarBild
+            motiv={assistenz.motiv}
             alt=""
-            draggable={false}
+            ersatzBeschriftung=""
             width={groesse}
             height={groesse}
-            data-testid="klara-avatar"
-            className="pointer-events-none h-full w-full object-cover"
+            testId="klara-avatar"
+            className="klara-motiv pointer-events-none h-full w-full"
+            // Die Mimik der Motive mit Gesicht (Lidschlag, Mund/Schnabel), deckungsgleich über dem
+            // unveränderten Bild; sachliche Objekte und die Ersatzgrafik bekommen keine.
+            ueberlagerung={
+              <AvatarMimik
+                motivId={assistenz.motiv?.id}
+                zustand={figurZustand}
+                bewegungReduziert={assistenz.bewegungReduziert}
+              />
+            }
           />
         </button>
         {/* Produktbetrieb: der Name steht SICHTBAR an der Figur — der Einstieg ist ohne Vorwissen
@@ -1553,6 +1608,26 @@ export function KlaraVorschau({
             {t(STATUS_TEXT[z.status])}
           </span>
         ) : null}
+        {/* produkt:20261010:assistenz-name-avatar: jeder Zustand der Figur steht auch als Text da —
+            unabhängig von Bewegung, Licht und Farbe. Warten und Rückfrage nennt schon der Status
+            oben; verkleinert bleibt die Figur ohne zusätzliche Pille (der Text steht vorgelesen). */}
+        {!z.minimiert &&
+        figurZustand !== "bereit" &&
+        figurZustand !== "warten" &&
+        figurZustand !== "ratlos" &&
+        !(figurZustand === "freude" && z.status === "antwort") ? (
+          <span
+            data-testid="klara-figur-zustand"
+            data-zustand={figurZustand}
+            className={`mt-1 whitespace-nowrap rounded-pill px-2 py-0.5 text-[10.5px] font-semibold shadow-tile ${
+              figurZustand === "fehler"
+                ? "bg-trust-crit-bg text-trust-crit-text"
+                : "bg-surface text-text"
+            }`}
+          >
+            {t(`assistenz.zustand.${figurZustand}`)}
+          </span>
+        ) : null}
         {/* Klara 01: der Demo-Betrieb ist auch an der geschlossenen Figur zu erkennen. */}
         {!istEcht ? (
           <span
@@ -1572,6 +1647,7 @@ export function KlaraVorschau({
         ) : null}
         <span id={hinweisId} className="sr-only">
           {t("klaravorschau.figur.tastatur")} {t(STATUS_TEXT[z.status])}{" "}
+          {t(`assistenz.zustand.${figurZustand}`)}{" "}
           {istEcht ? t("klaragespraech.betrieb.echtKurz") : t("klaragespraech.betrieb.demoKurz")}
         </span>
       </div>
@@ -1593,7 +1669,12 @@ export function KlaraVorschau({
             top: Math.max(8, Math.min(auswahlKnopf.y, fenster.hoehe - 48)),
           }}
         >
-          <img src={avatarUrl} alt="" className="h-5 w-5 rounded-full" />
+          <AvatarBild
+            motiv={assistenz.motiv}
+            alt=""
+            ersatzBeschriftung=""
+            className="h-5 w-5 rounded-full bg-surface"
+          />
           {produkt
             ? t("klaraprodukt.auswahl.knopf", { name: anzeigeName })
             : t("klaravorschau.auswahl.knopf")}
@@ -1619,20 +1700,34 @@ export function KlaraVorschau({
           className={`fixed z-[59] flex flex-col overflow-hidden border border-hairline bg-surface shadow-popover ${panelForm}`}
           style={panelStil}
         >
-          {/* Kopf */}
-          <div className="flex items-start justify-between gap-2 border-b border-hairline px-3 py-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <img src={avatarUrl} alt="" className="h-8 w-8 shrink-0 rounded-full" />
-              <div className="min-w-0">
+          {/* Kopf. produkt:20261010:assistenz-name-avatar: der Name der Assistenz muss im Kopf
+              sichtbar bleiben. Vorher hatte die Knopfleiste `shrink-0` und drückte den Titel im
+              360 px breiten Gespräch auf Breite 0; jetzt hat der Titel eine Mindestbreite und die
+              Knöpfe brechen bei Platzmangel in eine eigene Zeile um. */}
+          <div className="flex flex-wrap items-start justify-between gap-2 border-b border-hairline px-3 py-2">
+            <div className="flex min-w-[10rem] flex-1 items-center gap-2">
+              <AvatarBild
+                motiv={assistenz.motiv}
+                alt=""
+                ersatzBeschriftung=""
+                testId="klara-gespraech-avatar"
+                className="h-8 w-8 shrink-0 rounded-full"
+              />
+              <div className="min-w-0 flex-1">
                 <h2
                   id={`${hinweisId}-titel`}
                   ref={panelTitelRef}
                   tabIndex={-1}
                   data-testid="klara-panel-titel"
-                  className="text-[14px] font-semibold text-ink outline-none focus-visible:underline"
+                  className="break-words text-[14px] font-semibold text-ink outline-none focus-visible:underline"
                 >
                   {produkt ? anzeigeName : t("klaravorschau.panel.titel")}
                 </h2>
+                {assistenz.avatarFehlt ? (
+                  <p data-testid="klara-avatar-fehlt" className="text-[11.5px] text-text">
+                    {t("assistenz.avatar.fehlt")}
+                  </p>
+                ) : null}
                 <p className={KLEINTITEL}>
                   {produkt
                     ? t("klaraprodukt.untertitel")
@@ -1650,7 +1745,7 @@ export function KlaraVorschau({
                 </p>
               </div>
             </div>
-            <div className="flex shrink-0 flex-wrap justify-end gap-1">
+            <div className="ml-auto flex flex-wrap justify-end gap-1">
               <button
                 type="button"
                 data-testid="klara-ansicht"
@@ -2350,7 +2445,7 @@ export function KlaraVorschau({
 // Der Verlauf des Demo-Betriebs — unverändert aus der Vorschau, jede Klara-Antwort als Demo markiert.
 // -------------------------------------------------------------------------------------------------
 function DemoVerlauf({ verlauf }: { verlauf: readonly Nachricht[] }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   return (
     <section data-testid="klara-verlauf" aria-label={t("klaravorschau.verlauf.titel")}>
       <p className={KLEINTITEL}>{t("klaravorschau.verlauf.titel")}</p>
@@ -2413,7 +2508,7 @@ function VorschlagKarte({
   nachrichtId: string;
   vorschlag: Vorschlag;
 }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const uebernehmbar = Boolean(vorschlag.artikelId && vorschlag.absatz);
   return (
     <div
@@ -2497,7 +2592,8 @@ function TextvorschlagKarte({
   v: Textvorschlag;
   onUebernehmen: (wahl?: { nr: number; stand: string }) => void;
 }): JSX.Element {
-  const { t } = useTranslation();
+  // produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
+  const { t } = useAssistenzT();
   const h = v.herkunft;
   const titel = h.titel ?? h.objekt;
   const ende = VORSCHLAG_ENDE.includes(v.stand);
@@ -2660,7 +2756,7 @@ function TextvorschlagKarte({
 // Notiz- oder Aufgabenentwurf mit Rücklink — Erinnerung, Termin und Speichern sind Demo.
 // -------------------------------------------------------------------------------------------------
 function EntwurfKarte({ entwurf }: { entwurf: Entwurf }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const id = useId();
   const artikel = entwurf.herkunft.artikelId ? demoArtikel(entwurf.herkunft.artikelId) : null;
   const setze = (teil: Partial<Entwurf>): void =>

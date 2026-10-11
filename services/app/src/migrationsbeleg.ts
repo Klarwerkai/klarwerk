@@ -223,6 +223,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "INSTANZBINDUNG_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil. ADDITIV, nachgezählt:
+  // ein `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "ASSISTENZ_PROFIL_SCHEMA", risiko: "ADDITIV" },
   // ADMIN-12: Kommunikationsregeln, persönliche Abwahlen und Zustellstatus. ADDITIV, nachgezählt:
   // drei `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.

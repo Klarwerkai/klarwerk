@@ -43,6 +43,7 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider, useToast } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { AppShell } from "../../apps/web/src/shell/AppShell";
+import { hilfeknopfLabel } from "../support/hilfeknopf";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -168,7 +169,7 @@ describe("Block C: offener Drawer ist ECHT modal — Klara, Toast, Command Palet
 
     // (1) Klara-Schalter: im inerten Hintergrund, NICHT im Drawer → programmatischer/assistiver Fokus
     // ist im echten Browser wirkungslos.
-    const klara = byAria(i18n.t("klara.open"));
+    const klara = byAria(hilfeknopfLabel());
     expect(klara).not.toBeNull();
     expect(klara?.closest("[inert]")).not.toBeNull();
     expect(panel?.contains(klara ?? null)).toBe(false);
@@ -225,6 +226,6 @@ describe("Block C: offener Drawer ist ECHT modal — Klara, Toast, Command Palet
       await click(closeMenu);
     }
     expect(container.querySelector("[inert]")).toBeNull();
-    expect(byAria(i18n.t("klara.open"))?.closest("[inert]")).toBeNull();
+    expect(byAria(hilfeknopfLabel())?.closest("[inert]")).toBeNull();
   });
 });

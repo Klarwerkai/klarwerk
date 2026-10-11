@@ -47,6 +47,7 @@ import {
   eintragMitOriginal,
   neuesKonto,
 } from "../klara-quellen-nutzerweg/kette";
+import { hilfePanelLabel, hilfeknopfLabel } from "../support/hilfeknopf";
 
 adapterUmgebungSetzen();
 
@@ -179,13 +180,13 @@ async function gespraechOeffnen(): Promise<void> {
 
 function hilfeKnopf(): HTMLButtonElement | null {
   return document.querySelector<HTMLButtonElement>(
-    `button[data-klara="1"][aria-label="${i18n.t("klara.open")}"]`,
+    `button[data-klara="1"][aria-label="${hilfeknopfLabel()}"]`,
   );
 }
 
 function hilfeFlaeche(): HTMLElement | null {
   return document.querySelector<HTMLElement>(
-    `section[data-klara="1"][aria-label="${i18n.t("klara.title")}"]`,
+    `section[data-klara="1"][aria-label="${hilfePanelLabel()}"]`,
   );
 }
 

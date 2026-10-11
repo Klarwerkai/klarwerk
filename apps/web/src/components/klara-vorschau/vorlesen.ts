@@ -22,6 +22,12 @@ const RATE: Record<Tempo, number> = { langsam: 0.8, normal: 1, schnell: 1.25 };
 export interface VorleseZustand {
   /** Kennung dessen, was gerade gelesen wird — oder `null`. */
   liest: string | null;
+  /**
+   * produkt:20261010:assistenz-name-avatar: Kennung dessen, was TATSÄCHLICH abgespielt wird — erst ab
+   * dem `start`-Ereignis der Sprachausgabe, unterbrochen bei `pause`, wieder ab `resume`, beendet bei
+   * `end`, `error` und Stopp. `liest` ist nur die Anforderung (der Stoppknopf gilt schon dafür).
+   */
+  spielt: string | null;
   auto: boolean;
   tempo: Tempo;
 }
@@ -43,7 +49,7 @@ function leseEinstellung(): Pick<VorleseZustand, "auto" | "tempo"> {
   }
 }
 
-let zustand: VorleseZustand = { liest: null, ...leseEinstellung() };
+let zustand: VorleseZustand = { liest: null, spielt: null, ...leseEinstellung() };
 const hoerer = new Set<() => void>();
 /** Jede Ausgabe bekommt eine Nummer: das späte `end` einer abgebrochenen räumt keine neue ab. */
 let lauf = 0;
@@ -83,8 +89,8 @@ export function stoppeVorlesen(): void {
   if (vorlesenMoeglich()) {
     window.speechSynthesis.cancel();
   }
-  if (zustand.liest !== null) {
-    setze({ liest: null });
+  if (zustand.liest !== null || zustand.spielt !== null) {
+    setze({ liest: null, spielt: null });
   }
 }
 
@@ -103,11 +109,21 @@ export function vorlesen(id: string, text: string, sprache: string): boolean {
   if (stimme) {
     u.voice = stimme;
   }
+  // Nur Ereignisse DIESER Ausgabe zählen: ein spätes `start`/`end` einer abgelösten bleibt wirkungslos.
+  const aktuell = (): boolean => lauf === meiner && zustand.liest === id;
   const ende = (): void => {
-    if (lauf === meiner && zustand.liest === id) {
-      setze({ liest: null });
+    if (aktuell()) {
+      setze({ liest: null, spielt: null });
     }
   };
+  const spielt = (an: boolean): void => {
+    if (aktuell()) {
+      setze({ spielt: an ? id : null });
+    }
+  };
+  u.onstart = () => spielt(true);
+  u.onresume = () => spielt(true);
+  u.onpause = () => spielt(false);
   u.onend = ende;
   u.onerror = ende;
   window.speechSynthesis.speak(u);

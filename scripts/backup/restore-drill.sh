@@ -523,6 +523,7 @@ PFLICHTTABELLEN=(
   chat_nachrichten
   vorlagen_fassungen
   instanz_bindung
+  assistenz_profile
   kommunikationsregel_fassungen
   meldungsregel_persoenlich
   meldung_zustellstatus

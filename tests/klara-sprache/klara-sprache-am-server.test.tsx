@@ -448,7 +448,7 @@ describe("S1 · K1/K4/K5 — gesprochene Frage über den Frageweg, Antwort vorle
     expect(q(document, "klara-ergebnis-gehoert")?.textContent).toBe(GESPROCHEN);
     expect(q(document, "klara-ergebnis-gesendet")?.textContent).toBe(GESPROCHEN);
     expect(q(document, "klara-ergebnis-ziel")?.textContent).toBe(zielDerSeite());
-    expect(q(document, "klara-ergebnis-stand")?.textContent).toContain("Klara hat geantwortet");
+    expect(q(document, "klara-ergebnis-stand")?.textContent).toContain("Assistenz hat geantwortet");
 
     // Vorlesen nur auf Klick: bis hierher wurde nichts gesprochen.
     expect(ausgabe.gesprochen).toHaveLength(0);
@@ -539,7 +539,7 @@ describe("S2 · K2 — dasselbe Gesprochene: Diktat füllt nur das Feld, „Auft
     await sprichAuftrag(GESPROCHEN);
     expect(q<HTMLTextAreaElement>(document, "klara-auftrag-text")?.value).toBe(GESPROCHEN);
     expect(q(document, "klara-auftrag-ziel")?.textContent).toBe(zielDerSeite());
-    expect(q(document, "klara-auftrag-art")?.textContent).toBe("Frage an Klara");
+    expect(q(document, "klara-auftrag-art")?.textContent).toBe("Frage an Assistenz");
     expect(q<HTMLInputElement>(document, "klara-eingabe")?.value, "Auftrag ≠ Diktat").toBe("");
     await klick(q(document, "klara-auftrag-verwerfen"));
     expect(q(document, "klara-auftrag")).toBeNull();

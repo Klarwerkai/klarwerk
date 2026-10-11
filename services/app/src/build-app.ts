@@ -246,6 +246,14 @@ import {
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
 import { Anfragebremse, bremsSatz } from "./anfragebremse";
+// produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil je Konto — haltbar im
+// Postgres-Betrieb, im Speicher ohne Datenbank.
+import {
+  AssistenzProfilDienst,
+  type AssistenzProfilRepo,
+  InMemoryAssistenzProfilRepo,
+  PgAssistenzProfilRepo,
+} from "./assistenz-profil";
 import {
   type BearbeitungsRepo,
   InMemoryBearbeitungsRepo,
@@ -376,6 +384,8 @@ import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
+// produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil (Name, Avatar, Ersteinrichtung).
+import { assistenzProfilRoutes } from "./routes/assistenz-profil-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
@@ -674,6 +684,12 @@ export interface AppServices {
    * (`PgKlaraGespraechRepo`), sonst die In-Memory-Ablage.
    */
   klaraGespraeche: KlaraGespraechRepo;
+  /**
+   * produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil (`assistenz-profil.ts`)
+   * je Konto. Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
+   * (`PgAssistenzProfilRepo`), sonst die In-Memory-Ablage.
+   */
+  assistenzProfile: AssistenzProfilRepo;
   /**
    * R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters (`PgEmbeddingStore`), gesetzt
    * von `buildPgServices`. Fehlt er (Speicherbetrieb), legt `buildApp` den In-Memory-Speicher an —
@@ -1240,6 +1256,8 @@ export function assembleServices(
     mitgelesen?: MitgelesenRepo;
     // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     klaraGespraeche?: KlaraGespraechRepo;
+    // produkt:20261010:assistenz-name-avatar: gesetzt von `buildPgServices`; sonst im Speicher.
+    assistenzProfile?: AssistenzProfilRepo;
     // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
     // In-Memory-Speicher an.
     vektorSpeicher?: EmbeddingStore;
@@ -1667,6 +1685,8 @@ export function assembleServices(
     mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
     // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
     klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
+    // produkt:20261010:assistenz-name-avatar: die Assistenzprofile — Postgres, wenn injiziert.
+    assistenzProfile: opts.assistenzProfile ?? new InMemoryAssistenzProfilRepo(),
     // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
     ...(opts.vektorSpeicher ? { vektorSpeicher: opts.vektorSpeicher } : {}),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
@@ -2183,6 +2203,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
       // Neustart und Deploy (`KLARA_GESPRAECH_SCHEMA`, angelegt von `migrate()`).
       klaraGespraeche: new PgKlaraGespraechRepo(pool),
+      // produkt:20261010:assistenz-name-avatar: Name, Avatar und Ersteinrichtung überleben Neuladen,
+      // erneute Anmeldung, zweites Gerät und Deploy (`ASSISTENZ_PROFIL_SCHEMA`, von `migrate()`).
+      assistenzProfile: new PgAssistenzProfilRepo(pool),
       // R-0470: die Vektoren des Textprüfungs-Vorfilters überleben Neustart und Deploy
       // (`EMBEDDING_SCHEMA`, angelegt von `migrate()`); die Endlöschung entfernt die Zeile.
       vektorSpeicher: new PgEmbeddingStore(pool),
@@ -4819,6 +4842,16 @@ export function buildApp(
           repo: services.klaraGespraeche,
           antworten: services.answerSnapshots,
         }),
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil — nur das Konto der Sitzung.
+  app.register(
+    assistenzProfilRoutes(
+      {
+        dienst: new AssistenzProfilDienst({ repo: services.assistenzProfile }),
         audit: services.audit,
       },
       guards,
