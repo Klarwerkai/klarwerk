@@ -37,6 +37,14 @@ wiederholt.
 | `answer.helpful` | `koTitle`, `koAuthor`, `koOriginalAuthor`, `via` (nur `"wissensobjekt"` beim Klick am Objekt) | M, K |
 | `gap.created` | — | — (gemessen: leer; Fragetext steht nur in der Lücke selbst) |
 | `gap.priority-changed` | — | — |
+| `gap.assigned` (produkt:20261010:wissenskreislauf-schliessen) | `an` (Nutzer-Id der Fachzuständigkeit), `art` (`zuordnung`/`uebergabe`/`neuzuordnung`) | K, Z |
+| `gap.followup-asked`, `gap.followup-answered` | `rueckfrageId` | K — **kein Rückfrage- oder Antworttext**; der Text steht nur an der Lücke (Fragende und zuständige Person) |
+| `gap.draft-linked` | `koId` | K |
+| `gap.closed` (fachlicher Abschluss) | `koId`, `koVersion` | K, M |
+| `gap.withdrawn` (administrative Rücknahme) | `grund` (geschlossene Auswahl `GAP_RUECKNAHME_GRUENDE`) | Z — **kein Freitext** |
+| `answer.reported` (R-1089; einfache Meldung) | `meldungId`, `grund` (geschlossene Auswahl), `koTitle`, `responsible`, `responsibleKind` | K, M, Z |
+| `answer.reported` als Beanstandung einer Aussage (produkt:20261010:antwort-beanstandung-korrektur) | wie oben (ohne Quelle entfallen `koTitle`, `responsible`, `responsibleKind`), zusätzlich `aussageId`, `aussageFingerabdruck`, ggf. `answerId`, `koVersion`, `fundstelleId`, `quelleFehlt` | K, M, Z — **kein Aussagetext, keine Begründung, keine Frage** (gemessen: `tests/antwort-beanstandung/beanstandung-dienst.test.ts` B1); Aussage und Begründung stehen nur am Vorgang |
+| `gap.beanstandung-zurueckgewiesen` | ggf. `koId`, `koVersion` | K, M — **keine Begründung** (gemessen: dieselbe Datei, B8); die Begründung steht nur am Vorgang |
 | `ask.zweitmeinung` (R-0305/R-1099, nur auf Anforderung) | `status`, und entweder `abweichend`, `abweichungen` (Merkmalsnamen, kommagetrennt), `ersteStufe`, `zweiteStufe` (`cloud`/`local`/`deterministic`) oder `grund` | Z — **kein Frage- oder Antworttext, kein Anbieter- oder Modellname**; `target` ist die tragende Quelle (gemessen: `tests/zweitmeinung/fragedienst.test.ts`, `route-und-protokoll.test.ts`) |
 
 ### Wissensobjekte (`services/knowledge-object`, `services/validation`, `services/lifecycle`)
@@ -67,7 +75,8 @@ wiederholt.
 | `ko.geltung-changed` | `vorher`, `nachher` (Geltung: Ebene, Werk, Schicht, Rolle — je ≤ 80 Zeichen; nachgetragen mit `gesamt-standortwissen`) | M |
 | `ko.freshness-confirmed` | `version`, `verantwortlich` (ob der Verantwortliche bestätigt hat; nachgetragen mit `gesamt-wissen-frische`) | Z |
 | `ko.oeffentlich-changed` | `vorher`, `nachher` (Schutzbedarf „öffentlich"; `gesamt-wissen-frische`) | Z |
-| `lifecycle.revalidation-requested` | `grund` (anlage/nachbar/bibliothek), ggf. `assetRef` (Anlagenkennung) und `ausgeloestVon` (auslösendes Objekt); Ziel ist das markierte Objekt (`gesamt-wissen-frische`, R-1635) | Z, M |
+| `lifecycle.revalidation-requested` | `grund` (anlage/nachbar/bibliothek/rueckmeldung), ggf. `assetRef` (Anlagenkennung), `ausgeloestVon` (auslösendes Objekt) und `meldungId` (nur bei `rueckmeldung`, ADMIN-10); Ziel ist das markierte Objekt (`gesamt-wissen-frische`, R-1635) | Z, M, K |
+| `qualitaet.rueckmeldung-uebernommen` (ADMIN-10, je Meldung höchstens einmal) | `meldungId`, `vorgang` (`revalidierung:<Objekt>`); Ziel ist das Objekt der Meldung — **kein Meldegrund-Text, kein Fragetext, kein Meldender** | K, Z |
 | `ko.conflict-review` | `previousStatus`, `previousTrust`, `trust`, `reason` | Z |
 | `ko.author-transferred` | `author` | K |
 | `verantwortung.uebergabe` (Ziel: bisherige Person; `services/app/src/routes/verantwortung-routes.ts`) | `uebertragen`, `bereitsErledigt`, `abgelehnt`, `fehlgeschlagen`, `verbleibt`, `nachfolger` (je `an` + `anzahl`) | Z, K — keine Titel; je Beitrag steht zusätzlich `ko.ownership` |
@@ -123,6 +132,8 @@ am Konflikt, **nicht** im Protokoll.
 | `unternehmensprofil.geaendert` | `vorherVersion`, `version`, `akzent`, `nameGeaendert`, `logoGeaendert`, `uebernommenAus` | Z — weder Name noch Logodatei stehen im Protokoll |
 | `richtlinie.veroeffentlicht` | `fassung`, `anforderung`, `rollen`, `gueltigAb`, `betroffen`, ggf. `erneut`, `bisherigeHandlungen` | Z, M — der Richtlinientext steht **nicht** im Protokoll |
 | `richtlinie.handlung` | `fassung`, `handlung` (Akteur = die handelnde Person) | Z — dieselbe Angabe steht im Handlungsprotokoll der Richtlinie |
+| `kommunikationsregeln.geaendert` (ADMIN-12) | `vorherVersion`, `version`, `aenderungen` (je Ereignis, Feld, vorher, nachher — Werte aus geschlossenen Mengen) | Z — keine Inhalte, keine Empfänger |
+| `meldungsregel.persoenlich` (ADMIN-12) | `ereignis`, `abgewaehlt` (Akteur und Ziel = die Person selbst) | Z |
 | `external.policy.set` | `stage` | Z |
 | `reasoner.ki-freigabe` | `vorher`, `nachher` (Freigabestand) | Z |
 | `reasoner.zweitmeinung`, `reasoner.zweitmeinung-nicht-wirksam` (R-0305/R-1099) | `vorher`, `nachher` (`openai`/`anthropic`/`local`/`aus`) | Z |

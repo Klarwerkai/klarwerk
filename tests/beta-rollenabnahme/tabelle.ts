@@ -715,6 +715,30 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // REF-01: die Fundstellenauflösung ist ein LESENDER POST (Kennungen im Rumpf, kein Schreiben).
+  // Eine erfundene Kennung ergibt nach dem Tor für jede Rolle dieselbe inhaltslose Auskunft
+  // „nicht zugänglich" — die Tür ist registriert und gemessen, ohne Bestand vorauszusetzen.
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/ask/fundstellen",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1356",
+    tor: "ko.read",
+    payload: {
+      fundstellen: [
+        {
+          art: "intern",
+          koId: "gibt-es-nicht",
+          koVersion: 1,
+          feld: "statement",
+          start: 0,
+          ende: 1,
+          fingerabdruck: `sha256:${"0".repeat(64)}`,
+        },
+      ],
+    },
+    erwartet: NUR_LESEN,
+  },
   // R-1663 / R-2178: hinter demselben Schalter wie `GET /api/analytics/expertise` (an dieser Bühne
   // gesetzt). Eine erfundene Kennung ergibt nach dem Tor die fachliche 404 — die Tür ist registriert.
   {
@@ -725,6 +749,69 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/ask-routes.ts:867",
     tor: "ko.assign",
     erwartet: AB_CONTROLLER,
+  },
+  // produkt:20261010:wissenskreislauf-schliessen: die Türen des gemeinsamen Vorgangs. Gemessen wird
+  // das ROUTENrecht; eine erfundene Kennung ergibt nach dem Tor die fachliche 404 (bzw. 400 für ein
+  // unberechtigtes Übergabeziel). Beteiligung, Fachfreigabe und Doppelaktion misst
+  // `tests/wissenskreislauf/vorgang-am-draht.test.ts` am echten Vorgang.
+  {
+    gruppe: "askRoutes",
+    methode: "GET",
+    pfad: "/api/gaps/gibt-es-nicht/vorgang",
+    route: "/api/gaps/:id/vorgang",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1624",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/gaps/gibt-es-nicht/uebergeben",
+    route: "/api/gaps/:id/uebergeben",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1637",
+    tor: "ko.read",
+    payload: { expertId: "gibt-es-nicht" },
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/gaps/gibt-es-nicht/rueckfrage",
+    route: "/api/gaps/:id/rueckfrage",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1663",
+    tor: "ko.read",
+    payload: { frage: "Rollenprobe" },
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/gaps/gibt-es-nicht/rueckfrage/gibt-es-nicht/antwort",
+    route: "/api/gaps/:id/rueckfrage/:rueckfrageId/antwort",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1682",
+    tor: "ko.read",
+    payload: { antwort: "Rollenprobe" },
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/gaps/gibt-es-nicht/entwurf",
+    route: "/api/gaps/:id/entwurf",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1703",
+    tor: "ko.create",
+    payload: { koId: "gibt-es-nicht" },
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/gaps/gibt-es-nicht/abschliessen",
+    route: "/api/gaps/:id/abschliessen",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1724",
+    tor: "ko.create",
+    payload: {},
+    erwartet: AB_EXPERTE,
   },
   {
     gruppe: "auditRoutes",
@@ -786,6 +873,54 @@ export const TABELLE: Zeile[] = [
     pfad: "/api/kos/gibt-es-nicht/bearbeitungen/abnahme-sitzung-1",
     route: "/api/kos/:id/bearbeitungen/:sitzung",
     belegstelle: "services/app/src/routes/bearbeitung-routes.ts:139",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  // produkt:20261007:artikel-gemeinsam · der gemeinsame Artikelentwurf. Jede Tür hängt an
+  // `ko.create` — demselben Recht wie Bearbeiten; kein neues Recht. Die URLs sind zustandsfrei
+  // (erfundene Kennung): hinter dem Tor endet jede Tür im 404 und legt nichts an.
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam",
+    route: "/api/kos/:id/gemeinsam",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:178",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam",
+    route: "/api/kos/:id/gemeinsam",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:190",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "PUT",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam",
+    route: "/api/kos/:id/gemeinsam",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:213",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam/angleichen",
+    route: "/api/kos/:id/gemeinsam/angleichen",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:258",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam/abschluss",
+    route: "/api/kos/:id/gemeinsam/abschluss",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:296",
     tor: "ko.create",
     erwartet: AB_EXPERTE,
   },
@@ -927,6 +1062,91 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // aufnahme:20260922:gesamt-lernwege — Verständnisfragen. Lesen, Beantworten und eigene Ergebnisse
+  // am Leserecht, Anlegen/Ändern/Vorlegen am Anlagerecht `ko.create` (der Dienst verlangt danach
+  // die Verantwortung am Eintrag oder das Freigaberecht), Entscheiden am Freigaberecht
+  // `ko.validate`. Zustandsfreie URLs: hinter dem Tor endet jede Tür im 404 bzw. 400 (fehlende
+  // Version), die eigene Liste im 200 — „durchgelassen", nichts wird angelegt.
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/verstaendnisfragen",
+    route: "/api/kos/:id/verstaendnisfragen",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:146",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/verstaendnisfragen",
+    route: "/api/kos/:id/verstaendnisfragen",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:188",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "PUT",
+    pfad: "/api/verstaendnisfragen/gibt-es-nicht",
+    route: "/api/verstaendnisfragen/:id",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:207",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "POST",
+    pfad: "/api/verstaendnisfragen/gibt-es-nicht/vorlegen",
+    route: "/api/verstaendnisfragen/:id/vorlegen",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:233",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "POST",
+    pfad: "/api/verstaendnisfragen/gibt-es-nicht/entscheiden",
+    route: "/api/verstaendnisfragen/:id/entscheiden",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:258",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "POST",
+    pfad: "/api/verstaendnisfragen/gibt-es-nicht/versuche",
+    route: "/api/verstaendnisfragen/:id/versuche",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:303",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "GET",
+    pfad: "/api/verstaendnisfragen/versuche/gibt-es-nicht",
+    route: "/api/verstaendnisfragen/versuche/:versuchId",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:330",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "GET",
+    pfad: "/api/verstaendnisfragen/meine",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:357",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "verstaendnisfragenRoutes",
+    methode: "GET",
+    pfad: "/api/verstaendnisfragen/gibt-es-nicht/ergebnisse",
+    route: "/api/verstaendnisfragen/:id/ergebnisse",
+    belegstelle: "services/app/src/routes/verstaendnisfragen-routes.ts:402",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   // produkt:20261007:veroeffentlichungsoptionen. Der Stand hängt am Leserecht, das Veröffentlichen
   // am vorhandenen Freigaberecht `ko.validate` (Controller/Admin). Zustandsfreie URLs: hinter dem
   // Tor endet der Stand im 404, das Veröffentlichen ohne Rumpf im 400 — „durchgelassen", nichts
@@ -936,7 +1156,7 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/kos/gibt-es-nicht/veroeffentlichung",
     route: "/api/kos/:id/veroeffentlichung",
-    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:79",
+    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:82",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
@@ -945,7 +1165,27 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/kos/gibt-es-nicht/veroeffentlichung",
     route: "/api/kos/:id/veroeffentlichung",
-    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:107",
+    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:110",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  // ADMIN-12: Zustellstatus und Wiederaufnahme — dasselbe Freigaberecht wie das Veröffentlichen.
+  // Erfundene Kennungen: hinter dem Tor endet beides im 404, nichts wird verschickt.
+  {
+    gruppe: "veroeffentlichungRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/veroeffentlichung/zustellung/gibt-es-nicht",
+    route: "/api/kos/:id/veroeffentlichung/zustellung/:vermerkId",
+    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:148",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "veroeffentlichungRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/veroeffentlichung/zustellung/gibt-es-nicht/fortsetzen",
+    route: "/api/kos/:id/veroeffentlichung/zustellung/:vermerkId/fortsetzen",
+    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:170",
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,
   },
@@ -1091,6 +1331,51 @@ export const TABELLE: Zeile[] = [
     tor: "users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
+  },
+  // ADMIN-12 · Kommunikationsregeln. Übersicht und eigene Einstellungen: jedes angemeldete Konto;
+  // Unternehmensvorgabe ändern und Fassungen lesen: `users.manage`. Leere Nutzlasten — hinter dem
+  // Tor endet jede schreibende Tür im 400 und ändert nichts.
+  {
+    gruppe: "kommunikationRoutes",
+    methode: "GET",
+    pfad: "/api/kommunikation/regeln",
+    belegstelle: "services/app/src/routes/kommunikation-routes.ts:41",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kommunikationRoutes",
+    methode: "PUT",
+    pfad: "/api/admin/kommunikation/regeln",
+    belegstelle: "services/app/src/routes/kommunikation-routes.ts:53",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "kommunikationRoutes",
+    methode: "GET",
+    pfad: "/api/admin/kommunikation/fassungen",
+    belegstelle: "services/app/src/routes/kommunikation-routes.ts:75",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "kommunikationRoutes",
+    methode: "GET",
+    pfad: "/api/meldungsregeln/meine",
+    belegstelle: "services/app/src/routes/kommunikation-routes.ts:84",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kommunikationRoutes",
+    methode: "PUT",
+    pfad: "/api/meldungsregeln/meine",
+    belegstelle: "services/app/src/routes/kommunikation-routes.ts:93",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
   },
   {
     gruppe: "captureRoutes",
@@ -1412,6 +1697,28 @@ export const TABELLE: Zeile[] = [
     route: "/api/me/klara/gespraeche/:id",
     belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:199",
     tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261010:assistenz-name-avatar — das eigene Assistenzprofil. Beide Türen prüfen nur die
+  // Anmeldung; das Konto kommt aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Lesetür liefert das
+  // eigene (leere) Profil; die Schreibtür trägt ein unbekanntes Motiv und endet in 400, BEVOR etwas
+  // geschrieben wird. Die Wirkung (Schreiben, Fremdkonto 403) misst
+  // `tests/assistenz-profil/profil-am-server.test.ts`.
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "GET",
+    pfad: "/api/me/assistenz",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:81",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "PUT",
+    pfad: "/api/me/assistenz",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:98",
+    tor: "requireUser",
+    payload: { avatar: "gibt-es-nicht" },
     erwartet: ANGEMELDET,
   },
   // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite
@@ -1850,6 +2157,17 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // produkt:20261010:aenderungsfolgen-sichtbar: die Folgeprüfungsübersicht — dasselbe Tor wie
+  // `pending`; die Zeilen filtert `sichtbareEintraege` (gemessen in
+  // `tests/aenderungsfolgen/folgepruefung-route.test.ts`).
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "GET",
+    pfad: "/api/lifecycle/folgepruefung",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:243",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Gemessen wird das Rechtetor mit einem
   // LEEREN Rumpf: der Admin kommt durch und bekommt 400 (`INVALID`, kein Paar) — vor jedem Lesen
   // und Schreiben, also ohne Wirkung auf die Bühne. Vorschau und Zug mit echten Konten misst
@@ -1965,6 +2283,35 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/notifications-routes.ts:116",
     tor: "requireUser",
     erwartet: ANGEMELDET,
+  },
+  {
+    // ADMIN-10: die gemeinsame Übersicht der Qualitätsaufgaben — Verwaltung.
+    gruppe: "qualitaetsaufgabenRoutes",
+    methode: "GET",
+    pfad: "/api/qualitaetsaufgaben",
+    belegstelle: "services/app/src/routes/qualitaetsaufgaben-routes.ts:23",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    // ADMIN-10: Rückmeldung als Aufgabe übernehmen. Die Kennung ist erfunden — der Berechtigte
+    // bekommt die fachliche 404 (registriert, Tor durchgelassen), und es wird nichts geschrieben.
+    gruppe: "qualitaetsaufgabenRoutes",
+    methode: "POST",
+    pfad: "/api/qualitaetsaufgaben/rueckmeldungen/M-ABNAHME0000/uebernehmen",
+    route: "/api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen",
+    belegstelle: "services/app/src/routes/qualitaetsaufgaben-routes.ts:36",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    // ADMIN-11: Wissenskennzahlen auf denselben Quellen wie die Qualitätsaufgaben — Verwaltung.
+    gruppe: "wissenskennzahlenRoutes",
+    methode: "GET",
+    pfad: "/api/wissenskennzahlen",
+    belegstelle: "services/app/src/routes/wissenskennzahlen-routes.ts:22",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
   },
   {
     gruppe: "objectRoutes",

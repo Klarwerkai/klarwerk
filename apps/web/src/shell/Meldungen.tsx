@@ -318,7 +318,8 @@ export function MeldungenListe({
                               n.kind === "return" ||
                               n.kind === "loeschantrag"
                             ? "bg-ai"
-                            : n.kind === "impact"
+                            : n.kind === "impact" ||
+                                (n.kind === "luecke" && n.lueckenArt === "geloest")
                               ? "bg-trust-pos-fill"
                               : "bg-trust-info-text"
                   }`}
@@ -412,7 +413,18 @@ export function MeldungenListe({
                   ) : null}
                   {/* Veröffentlichung: neu oder aktualisiert; „hervorgehoben" trägt die Markierung
                       „Wichtig" und steht oben, bis sie gelesen ist (Reihenfolge vom Server). */}
-                  {n.kind === "veroeffentlichung" ? (
+                  {/* ADMIN-12: die tägliche Zusammenfassung — Tag und Anzahl vorn, die Titel der
+                      (beim Abruf sichtbaren) Einträge dahinter. */}
+                  {n.kind === "veroeffentlichung" && n.zusammenfassung ? (
+                    <span className="font-semibold text-ai" data-zusammenfassung="ja">
+                      {t("kommunikation.glocke.zusammenfassung", {
+                        datum: new Date(`${n.zusammenfassung.tag}T12:00:00Z`).toLocaleDateString(),
+                        anzahl: n.zusammenfassung.anzahl,
+                      })}
+                      :{" "}
+                    </span>
+                  ) : null}
+                  {n.kind === "veroeffentlichung" && !n.zusammenfassung ? (
                     <span
                       className={`font-semibold ${
                         n.hervorgehoben ? "text-trust-crit-text" : "text-ai"
@@ -426,6 +438,28 @@ export function MeldungenListe({
                           : "veroeffentlichung.meldungNeu",
                       )}
                       {n.fassung ? ` (V${n.fassung})` : ""}:{" "}
+                    </span>
+                  ) : null}
+                  {/* produkt:20261010:wissenskreislauf-schliessen: der Vorgang der eigenen Frage —
+                      gelöst (Titel = der nutzbare Wissenseintrag), Rückfrage an die Fragenden oder
+                      beantwortete Rückfrage an die zuständige Person (Titel = die eigene Frage). */}
+                  {n.kind === "luecke" ? (
+                    <span
+                      className={`font-semibold ${
+                        n.lueckenArt === "geloest" ? "text-trust-pos-text" : "text-ai"
+                      }`}
+                      data-luecken-art={n.lueckenArt}
+                    >
+                      {t(
+                        n.lueckenArt === "geloest"
+                          ? "lueckenvorgang.meldung.geloest"
+                          : n.lueckenArt === "rueckfrage_beantwortet"
+                            ? "lueckenvorgang.meldung.rueckfrageBeantwortet"
+                            : n.lueckenArt === "zurueckgewiesen"
+                              ? "lueckenvorgang.meldung.zurueckgewiesen"
+                              : "lueckenvorgang.meldung.rueckfrage",
+                      )}
+                      :{" "}
                     </span>
                   ) : null}
                   {/* Pedi 04.07.: Duplikat-Fund klar als solcher gekennzeichnet. */}

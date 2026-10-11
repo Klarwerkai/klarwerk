@@ -4,6 +4,7 @@ import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 // JOB 3549 R5: `KnowledgeRef`, `ReasonerLocale`, `ReasonerProvider` und `StructureResult` wurden
 // nur vom mitschreibenden Provider des Falls FR-I18N-01 gebraucht; der ist umgezogen (s. u.).
 import { type AnswerResult, Reasoner } from "../../reasoner";
+import { InMemoryAssignmentRepo, InMemoryRatingRepo, ValidationService } from "../../validation";
 import { InMemoryGapRepo } from "./repo";
 import { AskService } from "./service";
 import type { Gap } from "./types";
@@ -11,6 +12,13 @@ import type { Gap } from "./types";
 async function setup() {
   const koRepo = new InMemoryKoRepo();
   const koService = new KoService({ repo: koRepo });
+  // produkt:20261010:wissenskreislauf-schliessen: der fachliche Abschluss liest den Prüfstand der
+  // vorhandenen Validierung — derselbe Anschluss wie in der Kompositionswurzel.
+  const validation = new ValidationService({
+    koService,
+    ratings: new InMemoryRatingRepo(),
+    assignments: new InMemoryAssignmentRepo(),
+  });
   // G27 R1 / Entscheidung 06 §4: mechanische Initialisierung über den PRODUKTPFAD. Die Suche ist
   // seit R1 fail-closed; ein direkter Testaufbau ist eine nicht in Betrieb genommene Instanz.
   // In der echten App tut das die Startorchestrierung in build-app.ts.
@@ -29,8 +37,17 @@ async function setup() {
     koService,
     gaps,
     audit,
+    pruefstand: (koId, koVersion) => validation.pruefstandFuer(koId, koVersion),
   });
-  return { ask, koService, audit, gaps };
+  // Die vorgeschriebene Fachfreigabe über den ECHTEN Bewertungsweg: so viele grüne Stimmen der
+  // aktuellen Fassung, wie das Objekt verlangt.
+  const freigeben = async (koId: string): Promise<void> => {
+    const ko = await koService.get(koId);
+    for (let i = 0; i < (ko?.neededValidations ?? 0); i++) {
+      await validation.rate(koId, `pruefer-${i}`, "up");
+    }
+  };
+  return { ask, koService, audit, gaps, freigeben };
 }
 
 describe("AskService", () => {
@@ -209,6 +226,11 @@ describe("AskService", () => {
       throw new Error("KO fehlt.");
     }
     // R-0846 / L6: geschlossen wird mit dem Wissensobjekt, das die Lücke beantwortet.
+    // produkt:20261010:wissenskreislauf-schliessen: und nur, wenn es fachlich freigegeben ist —
+    // ein bloss vorhandenes, ungeprüftes Objekt schliesst nicht mehr.
+    await expect(ctx.ask.closeGap(gap.id, ko.id)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect((await ctx.gaps.findById(gap.id))?.status).toBe("offen");
+    await ctx.freigeben(ko.id);
     const closed = await ctx.ask.closeGap(gap.id, ko.id);
     expect(closed.status).toBe("geschlossen");
     expect(closed.koId).toBe(ko.id);
@@ -257,6 +279,8 @@ describe("AskService", () => {
       koId: ko.id,
     };
     await ctx.gaps.insert(basis);
+    // produkt:20261010:wissenskreislauf-schliessen: der stehende Bezug trägt erst nach der Fachfreigabe.
+    await ctx.freigeben(ko.id);
     const geschlossen = await ctx.ask.closeGap(basis.id);
     expect(geschlossen.status).toBe("geschlossen");
     expect(geschlossen.koId).toBe(ko.id);

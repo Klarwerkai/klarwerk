@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from "react";
 import { type SessionUser, authApi } from "../api/auth";
 import { ApiError } from "../api/client";
+import { vergissEinrichtungSpaeter } from "../lib/assistenzProfil";
 import {
   SESSION_REFRESH_MS,
   type Sitzungslage,
@@ -392,6 +393,7 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
         abmeldeschuldLoeschen();
         setSignOutFailed(false);
         queryClient.clear();
+        vergissEinrichtungSpaeter();
         window.location.assign("/");
         return;
       }
@@ -399,6 +401,8 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
         await authApi.logout();
       } finally {
         queryClient.clear();
+        // produkt:20261010:assistenz-name-avatar: „Später" der Ersteinrichtung gilt nur bis hier.
+        vergissEinrichtungSpaeter();
         window.location.assign("/");
       }
     },

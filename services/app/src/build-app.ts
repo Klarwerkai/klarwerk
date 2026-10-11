@@ -213,6 +213,7 @@ import {
   ausgangspruefungAusEnv,
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
+  createLocalEmbeddingClientFromEnv,
   setzeAusgangspruefung,
 } from "../../reasoner";
 import {
@@ -246,6 +247,14 @@ import {
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
 import { Anfragebremse, bremsSatz } from "./anfragebremse";
+// produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil je Konto — haltbar im
+// Postgres-Betrieb, im Speicher ohne Datenbank.
+import {
+  AssistenzProfilDienst,
+  type AssistenzProfilRepo,
+  InMemoryAssistenzProfilRepo,
+  PgAssistenzProfilRepo,
+} from "./assistenz-profil";
 import {
   type BearbeitungsRepo,
   InMemoryBearbeitungsRepo,
@@ -258,6 +267,8 @@ import {
   InMemoryBrandingSettingsRepo,
   PgBrandingSettingsRepo,
 } from "./branding-settings";
+// produkt:20261007:interner-chat — Gespräche und Nachrichten; im Postgres-Betrieb haltbar.
+import { type ChatRepo, InMemoryChatRepo, PgChatRepo } from "./chat";
 import { confluenceAnhangsUebernahme } from "./confluence-anhaenge";
 // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — dieselbe Bauform wie die
 // Markenwahl (haltbar im Postgres-Betrieb, im Speicher ohne Datenbank).
@@ -267,6 +278,7 @@ import {
   PgConfluenceImportSchalterRepo,
 } from "./confluence-import-schalter";
 import { registerHerkunftspruefung } from "./csrf";
+import { schemas } from "./db";
 import { ladeDienstSchluessel, matchDienstRoute } from "./dienst-schluessel";
 import {
   type SemanticPrefilter,
@@ -283,7 +295,14 @@ import { schalterAn } from "./feature-flags";
 // Firmenwörterbuch: der versionierte Begriffskatalog der Instanz — im Postgres-Betrieb haltbar
 // (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
+import { FreigabeRegelDienst } from "./freigaberegel-dienst";
 import { frischeMeldungen } from "./frische-meldungen";
+import {
+  GemeinsamerEntwurfDienst,
+  type GemeinsamerEntwurfRepo,
+  InMemoryGemeinsamerEntwurfRepo,
+  PgGemeinsamerEntwurfRepo,
+} from "./gemeinsamer-entwurf";
 import { kiLaeufeAuskunft } from "./health-ki-laeufe";
 import { type HintergrundlaufBericht, createHintergrundpruefung } from "./hintergrundpruefung";
 import {
@@ -319,6 +338,15 @@ import {
   type KlaraGespraechRepo,
   PgKlaraGespraechRepo,
 } from "./klara-gespraech";
+// ADMIN-12: Kommunikationsregeln, persönliche Abwahl und Zustellstatus — haltbar im Postgres-
+// Betrieb, im Speicher ohne Datenbank.
+import {
+  InMemoryKommunikationRepo,
+  KommunikationDienst,
+  type KommunikationRepo,
+  PgKommunikationRepo,
+  mailsVersenden,
+} from "./kommunikationsregeln";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import {
   InMemoryLesevariantenRepo,
@@ -364,6 +392,8 @@ import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
+// produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil (Name, Avatar, Ersteinrichtung).
+import { assistenzProfilRoutes } from "./routes/assistenz-profil-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
@@ -371,13 +401,16 @@ import { begriffeRoutes } from "./routes/begriffe-routes";
 import { brandingRoutes } from "./routes/branding-routes";
 import { canManageDraft, captureRoutes } from "./routes/capture-routes";
 import { categoryRoutes } from "./routes/category-routes";
+import { chatRoutes } from "./routes/chat-routes";
 import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
 import { datenschutzRoutes } from "./routes/datenschutz-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { featuresRoutes } from "./routes/features-routes";
+import { freigaberegelnRoutes } from "./routes/freigaberegeln-routes";
 import { gedaechtnisRoutes } from "./routes/gedaechtnis-routes";
+import { gemeinsamRoutes } from "./routes/gemeinsam-routes";
 // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): das seit JOB 4154 fertige, aber an keiner App
 // angemeldete Routen-Plugin der Gesamtanweisung. Hier — und nur hier — bekommt es seinen Aufrufer.
 import { gesamtanweisungRoutes } from "./routes/gesamtanweisung-routes";
@@ -400,6 +433,7 @@ import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
 import { type ZurufModell, klaraZurufRoutes } from "./routes/klara-session-routes";
 import { knowledgeCheckRoutes } from "./routes/knowledge-check-routes";
 import { koRoutes } from "./routes/ko-routes";
+import { kommunikationRoutes } from "./routes/kommunikation-routes";
 import { lesevariantenRoutes } from "./routes/lesevarianten-routes";
 import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
@@ -416,6 +450,8 @@ import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
+// ADMIN-10: gemeinsame Ansicht auf Prüfung, Revalidierung, Konflikt, Duplikat, Lücke, Rückmeldung.
+import { qualitaetsaufgabenRoutes } from "./routes/qualitaetsaufgaben-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
 // JOB 4086: Adapter #2 des quellneutralen Import-Vertrags — SharePoint/OneDrive.
 import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
@@ -428,13 +464,18 @@ import { unternehmenRoutes } from "./routes/unternehmen-routes";
 import { validationRoutes } from "./routes/validation-routes";
 import { kontoendeSperre, verantwortungRoutes } from "./routes/verantwortung-routes";
 import { veroeffentlichungRoutes } from "./routes/veroeffentlichung-routes";
+import { verstaendnisfragenRoutes } from "./routes/verstaendnisfragen-routes";
 import {
   lesePruefzustaendigkeit,
   scimSchluessel,
   verzeichnisRoutes,
 } from "./routes/verzeichnis-routes";
+// produkt:20261007:templates-default — Vorlagen, Standards, Space-Vorgaben, Nutzung, Begriffe.
+import { vorlagenRoutes } from "./routes/vorlagen-routes";
 import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
 import { wissensempfehlungRoutes } from "./routes/wissensempfehlung-routes";
+// ADMIN-11: Wissenskennzahlen mit Grundmenge, Datenstand und Weg in die Arbeitsliste.
+import { wissenskennzahlenRoutes } from "./routes/wissenskennzahlen-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -443,6 +484,7 @@ import { AnswerExplanationService } from "./services/answer-explanation";
 // Policyentscheidung liegt im Reasoner-Modul, die Orchestrierung im Sitzungsdienst.
 import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
+import { tabellenDerStufen } from "./sicherungsumfang";
 import { type AnhangQuellen, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 // produkt:20261007:spaces — die versionierten Arbeitsräume; im Postgres-Betrieb haltbar.
@@ -482,6 +524,21 @@ import {
   VeroeffentlichungDienst,
   type VeroeffentlichungsZustellungRepo,
 } from "./veroeffentlichung";
+// aufnahme:20260922:gesamt-lernwege — Verständnisfragen zu einer gültigen Wissensfassung: haltbar
+// im Postgres-Betrieb, im Speicher ohne Datenbank.
+import {
+  InMemoryVerstaendnisfragenRepo,
+  PgVerstaendnisfragenRepo,
+  VerstaendnisfragenDienst,
+  type VerstaendnisfragenRepo,
+} from "./verstaendnisfragen";
+import {
+  InMemoryVorlagenAblage,
+  PgVorlagenAblage,
+  type VorlagenAblage,
+  type VorlagenEinreichungPort,
+  vorlagenEinreichung,
+} from "./vorlagen";
 // R-1656: „Du solltest auch wissen…" — der Co-Reading-Zähler ist im Postgres-Betrieb haltbar.
 import {
   InMemoryMitgelesenRepo,
@@ -489,6 +546,7 @@ import {
   PgMitgelesenRepo,
   WissensempfehlungDienst,
 } from "./wissensempfehlung";
+import type { WissenspaketQuellen } from "./wissenspaket";
 // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden (Kompositionswurzel, vier Module).
 import { Wissensuebergabe } from "./wissensuebergabe";
 
@@ -595,10 +653,26 @@ export interface AppServices {
    */
   spaces: SpacesRepo;
   /**
+   * produkt:20261007:interner-chat — Gespräche und Nachrichten (`chat.ts`). Wie `spaces` NICHT in
+   * `AppRepos`; im Postgres-Betrieb haltbar (`PgChatRepo`), sonst die In-Memory-Ablage.
+   */
+  chat: ChatRepo;
+  /**
+   * produkt:20261007:artikel-gemeinsam — die gemeinsamen Entwürfe der Artikel
+   * (`gemeinsamer-entwurf.ts`). Wie `chat` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
+   * (`PgGemeinsamerEntwurfRepo`), sonst die In-Memory-Ablage.
+   */
+  gemeinsameEntwuerfe: GemeinsamerEntwurfRepo;
+  /**
    * produkt:20261009:admin-teams — die Fassungen der Teams (`teams.ts`). `spaces` liest sie mit
    * (`TeamAufloesendeSpaces`): Teammitglieder gebundener Spaces sind dort abgeleitete Mitglieder.
    */
   teams: TeamsRepo;
+  /**
+   * produkt:20261007:templates-default — die Fassungen der Vorlagen, Standards, Space-Vorgaben,
+   * Nutzung und Begriffe (`vorlagen.ts`). Im Postgres-Betrieb haltbar (`PgVorlagenAblage`).
+   */
+  vorlagen: VorlagenAblage;
   /**
    * produkt:20261007:ownership-uebergabe (Nacharbeit 4) — die Nachfolge für neue Beiträge eines
    * befristeten Kontos (`verantwortung-nachfolge.ts`). Im Postgres-Betrieb haltbar.
@@ -636,6 +710,12 @@ export interface AppServices {
    * (`PgKlaraGespraechRepo`), sonst die In-Memory-Ablage.
    */
   klaraGespraeche: KlaraGespraechRepo;
+  /**
+   * produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil (`assistenz-profil.ts`)
+   * je Konto. Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
+   * (`PgAssistenzProfilRepo`), sonst die In-Memory-Ablage.
+   */
+  assistenzProfile: AssistenzProfilRepo;
   /**
    * R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters (`PgEmbeddingStore`), gesetzt
    * von `buildPgServices`. Fehlt er (Speicherbetrieb), legt `buildApp` den In-Memory-Speicher an —
@@ -679,6 +759,11 @@ export interface AppServices {
    */
   veroeffentlichungsZustellungen: VeroeffentlichungsZustellungRepo;
   /**
+   * ADMIN-12 — Fassungen der Kommunikationsregeln, persönliche Abwahlen und der Zustellstatus je
+   * Veröffentlichung, Empfänger und Kanal. Bauform wie `veroeffentlichungsZustellungen`.
+   */
+  kommunikation: KommunikationRepo;
+  /**
    * Betroffenenrechte (R-0661): die Löschanträge der Mitarbeiter. Aus demselben Grund wie
    * `kenntnisnahmen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgLoeschantragRepo`; ohne Datenbank
    * die Speicherfassung, die im Desktop-Journal-Betrieb Schreibvorgänge ablehnt.
@@ -693,6 +778,12 @@ export interface AppServices {
    * Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt sie beim Neustart zu verlieren.
    */
   unternehmen: UnternehmenRepo;
+  /**
+   * aufnahme:20260922:gesamt-lernwege — Fragensatzversionen und Versuche der Verständnisfragen.
+   * Bauform wie `kenntnisnahmen`: Postgres im Betrieb, sonst die Speicherfassung, die im
+   * Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt Ergebnisse beim Neustart zu verlieren.
+   */
+  verstaendnisfragen: VerstaendnisfragenRepo;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -1179,8 +1270,14 @@ export function assembleServices(
     begriffe?: BegriffeRepo;
     // produkt:20261007:spaces: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     spaces?: SpacesRepo;
+    // produkt:20261007:interner-chat: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
+    chat?: ChatRepo;
+    // produkt:20261007:artikel-gemeinsam: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
+    gemeinsameEntwuerfe?: GemeinsamerEntwurfRepo;
     // produkt:20261009:admin-teams: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
     teams?: TeamsRepo;
+    // produkt:20261007:templates-default: gesetzt von `buildPgServices`; sonst im Speicher.
+    vorlagen?: VorlagenAblage;
     // produkt:20261007:ownership-uebergabe: gesetzt von `buildPgServices`; sonst im Speicher.
     verantwortungNachfolge?: NachfolgeRepo;
     // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
@@ -1193,6 +1290,8 @@ export function assembleServices(
     mitgelesen?: MitgelesenRepo;
     // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     klaraGespraeche?: KlaraGespraechRepo;
+    // produkt:20261010:assistenz-name-avatar: gesetzt von `buildPgServices`; sonst im Speicher.
+    assistenzProfile?: AssistenzProfilRepo;
     // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
     // In-Memory-Speicher an.
     vektorSpeicher?: EmbeddingStore;
@@ -1210,12 +1309,16 @@ export function assembleServices(
     kenntnisnahmeUhr?: () => number;
     // Veröffentlichung: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
     veroeffentlichungsZustellungen?: VeroeffentlichungsZustellungRepo;
+    // ADMIN-12: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    kommunikation?: KommunikationRepo;
     // Betroffenenrechte: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     loeschantraege?: LoeschantragRepo;
     // Betroffenenrechte: die Uhr für Antragsfrist und Überfälligkeit — ohne Injektion `Date.now`.
     datenschutzUhr?: () => number;
     // ADMIN-15: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
     unternehmen?: UnternehmenRepo;
+    // Verständnisfragen: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    verstaendnisfragen?: VerstaendnisfragenRepo;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -1357,10 +1460,31 @@ export function assembleServices(
         }
       : undefined;
 
+  // produkt:20261010:wissenskreislauf-schliessen: die EINE Validierungsinstanz entsteht jetzt vor dem
+  // Ask-Dienst, weil der fachliche Abschluss einer Wissenslücke ihren Prüfstand liest. Dieselben
+  // Abhängigkeiten wie bisher an `services.validation` (unten), keine zweite Instanz.
+  const validation = new ValidationService({
+    koService: ko,
+    ratings: repos.ratings,
+    assignments: repos.assignments,
+    audit,
+    // SCRUM-395: persistierte Standard-Prüferanzahl (Admin pflegt sie über die Route).
+    settings: repos.validationSettings,
+    // R-0256 (gesamt-peer-validierung): dieselbe Lesart von „offen" wie Board und Badge
+    // (`unresolved`, versionsgebunden). `conflicts` entsteht weiter unten; gelesen wird erst beim
+    // Bewerten, nach dem Aufbau.
+    offeneKonfliktArten: async (koId) =>
+      (await conflicts.unresolved())
+        .filter((c) => c.koA === koId || c.koB === koId)
+        .map((c) => c.type),
+  });
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
   // FUNKE-FIX P0 (bens ROT-1): optionales Answer-Receipt-Secret aus ENV — gesetzt für
   // Mehr-Instanz-/reproduzierbare Deployments, sonst prozess-lokal zufällig (Belege sind kurzlebig).
   const ask = new AskService({
+    // produkt:20261010:wissenskreislauf-schliessen: der Fachprüfstand der AKTUELLEN Fassung —
+    // dieselbe Zählung wie Prüfboard und Detailabruf.
+    pruefstand: (koId, koVersion) => validation.pruefstandFuer(koId, koVersion),
     reasoner,
     koService: ko,
     gaps: repos.gaps,
@@ -1471,6 +1595,18 @@ export function assembleServices(
     // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
     // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
     kanten: kantenBestand,
+    // AUFNAHME 20260922 · confluence-import-rechte (R-0549): Quellleser → Klara-Konten über die
+    // Mailadresse, dasselbe Verzeichnis wie die Anmeldung. Nicht gefunden = kein Leserecht.
+    quellLeserAufloesen: async (emails) => {
+      const ids: string[] = [];
+      for (const email of emails) {
+        const konto = await repos.users.findByEmail(email);
+        if (konto) {
+          ids.push(konto.id);
+        }
+      }
+      return ids;
+    },
     // R-0142 (Lauf 5): eine Entscheidung über einen laufgebundenen Kandidaten schreibt ihre
     // Elementreferenz in DIESELBE Laufdomäne, die `importRunRoutes` liest. Die Quellrevisionen
     // (`externalSources`) reichen R-0169 und R-0142 gemeinsam — EIN Eintrag oben.
@@ -1576,7 +1712,13 @@ export function assembleServices(
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
     spaces,
+    // produkt:20261007:interner-chat — Postgres, wenn injiziert, sonst im Speicher.
+    chat: opts.chat ?? new InMemoryChatRepo(),
+    // produkt:20261007:artikel-gemeinsam — Postgres, wenn injiziert, sonst im Speicher.
+    gemeinsameEntwuerfe: opts.gemeinsameEntwuerfe ?? new InMemoryGemeinsamerEntwurfRepo(),
     teams,
+    // produkt:20261007:templates-default — Postgres, wenn injiziert, sonst im Speicher.
+    vorlagen: opts.vorlagen ?? new InMemoryVorlagenAblage(),
     verantwortungNachfolge,
     // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
@@ -1588,6 +1730,8 @@ export function assembleServices(
     mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
     // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
     klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
+    // produkt:20261010:assistenz-name-avatar: die Assistenzprofile — Postgres, wenn injiziert.
+    assistenzProfile: opts.assistenzProfile ?? new InMemoryAssistenzProfilRepo(),
     // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
     ...(opts.vektorSpeicher ? { vektorSpeicher: opts.vektorSpeicher } : {}),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
@@ -1609,6 +1753,9 @@ export function assembleServices(
     veroeffentlichungsZustellungen:
       opts.veroeffentlichungsZustellungen ??
       new InMemoryVeroeffentlichungsZustellungRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+    // ADMIN-12: dieselbe Haltbarkeitsregel wie die Zustellungen der Veröffentlichung.
+    kommunikation:
+      opts.kommunikation ?? new InMemoryKommunikationRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     // Betroffenenrechte: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit
     // zu (Desktop-Journal), lehnt die Speicherfassung Anträge ab — ein angenommener und beim
     // Neustart verlorener Löschantrag wäre schlimmer als ein abgelehnter.
@@ -1619,6 +1766,10 @@ export function assembleServices(
     // die Kenntnisnahme.
     unternehmen:
       opts.unternehmen ?? new InMemoryUnternehmenRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+    // Verständnisfragen: dieselbe Haltbarkeitsregel wie die Kenntnisnahme.
+    verstaendnisfragen:
+      opts.verstaendnisfragen ??
+      new InMemoryVerstaendnisfragenRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -1728,19 +1879,9 @@ export function assembleServices(
     // braucht. Er ist DASSELBE Repo, das der Schreibweg oben benutzt — ein zweites waere ein
     // zweiter Bestand und damit ein zweiter Wahrheitsort ueber denselben Beleg.
     answerSnapshots: repos.answerSnapshots,
-    validation: new ValidationService({
-      koService: ko,
-      ratings: repos.ratings,
-      assignments: repos.assignments,
-      audit,
-      // SCRUM-395: persistierte Standard-Prüferanzahl (Admin pflegt sie über die Route).
-      settings: repos.validationSettings,
-      // R-0256: dieselbe Lesart von „offen" wie Board und Badge (`unresolved`, versionsgebunden).
-      offeneKonfliktArten: async (koId) =>
-        (await conflicts.unresolved())
-          .filter((c) => c.koA === koId || c.koB === koId)
-          .map((c) => c.type),
-    }),
+    // produkt:20261010:wissenskreislauf-schliessen: dieselbe Instanz, die der Ask-Dienst liest (oben).
+    // Sie trägt seit der Integration auch die Konfliktlesart von R-0256 (`offeneKonfliktArten`).
+    validation,
     conflicts,
     overlaps,
     // Pedi 04.07.: Schwellen-Repo direkt durchreichen (Routen + Duplikat-Erkennung nutzen es).
@@ -2086,9 +2227,18 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261007:spaces: Spaces und ihre Fassungen liegen in derselben Datenbank wie der
       // Bestand und überleben Neuladen, Neustart und Deploy.
       spaces: new PgSpacesRepo(pool),
+      // produkt:20261007:interner-chat: Gespräche und Nachrichten überleben Neuladen, Neustart und
+      // Deploy (`CHAT_SCHEMA`, angelegt von `migrate()`).
+      chat: new PgChatRepo(pool),
+      // produkt:20261007:artikel-gemeinsam: gemeinsame Entwürfe überleben Neuladen, Neustart und
+      // Deploy, und mehrere App-Prozesse sehen denselben (`GEMEINSAMER_ENTWURF_SCHEMA`).
+      gemeinsameEntwuerfe: new PgGemeinsamerEntwurfRepo(pool),
       // produkt:20261009:admin-teams: Teamfassungen überleben Neuladen, Neustart und Deploy
       // (`TEAMS_SCHEMA`, angelegt von `migrate()`).
       teams: new PgTeamsRepo(pool),
+      // produkt:20261007:templates-default: Vorlagen, Standards, Space-Vorgaben, Nutzung und
+      // Begriffe überleben Neuladen, Neustart und Deploy (`VORLAGEN_SCHEMA`, angelegt von `migrate()`).
+      vorlagen: new PgVorlagenAblage(pool),
       // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung überlebt Neustart und
       // Deploy (`VERANTWORTUNG_NACHFOLGE_SCHEMA`, angelegt von `migrate()`).
       verantwortungNachfolge: new PgNachfolgeRepo(pool),
@@ -2106,6 +2256,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
       // Neustart und Deploy (`KLARA_GESPRAECH_SCHEMA`, angelegt von `migrate()`).
       klaraGespraeche: new PgKlaraGespraechRepo(pool),
+      // produkt:20261010:assistenz-name-avatar: Name, Avatar und Ersteinrichtung überleben Neuladen,
+      // erneute Anmeldung, zweites Gerät und Deploy (`ASSISTENZ_PROFIL_SCHEMA`, von `migrate()`).
+      assistenzProfile: new PgAssistenzProfilRepo(pool),
       // R-0470: die Vektoren des Textprüfungs-Vorfilters überleben Neustart und Deploy
       // (`EMBEDDING_SCHEMA`, angelegt von `migrate()`); die Endlöschung entfernt die Zeile.
       vektorSpeicher: new PgEmbeddingStore(pool),
@@ -2123,12 +2276,18 @@ export function buildPgServices(rohPool: Pool): AppServices {
       kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
       // Veröffentlichung: die Zustellungen überleben Neuladen, Neuanmeldung und Neustart.
       veroeffentlichungsZustellungen: new PgVeroeffentlichungsZustellungRepo(pool),
+      // ADMIN-12: Regelfassungen, persönliche Abwahlen und Zustellstatus überleben Neuladen,
+      // Neustart und Deploy (`KOMMUNIKATION_SCHEMA`, angelegt von `migrate()`).
+      kommunikation: new PgKommunikationRepo(pool),
       // Betroffenenrechte: Löschanträge überleben Neuladen, Neustart und die Löschung des Kontos,
       // das sie betreffen — sie sind der Nachweis über die Bearbeitung.
       loeschantraege: new PgLoeschantragRepo(pool),
       // ADMIN-15: Profil- und Richtlinienfassungen samt Handlungsprotokoll überleben Neuladen,
       // Neustart und Deploy (`UNTERNEHMEN_SCHEMA`, angelegt von `migrate()`).
       unternehmen: new PgUnternehmenRepo(pool),
+      // Verständnisfragen: Fragensatzversionen und Ergebnisse überleben Neuladen, Neustart und
+      // Deploy (`VERSTAENDNISFRAGEN_SCHEMA`, angelegt von `migrate()`).
+      verstaendnisfragen: new PgVerstaendnisfragenRepo(pool),
     },
   );
 }
@@ -2152,7 +2311,11 @@ function createSemanticPrefilterFromEnv(
   if (flag !== "1" && flag !== "true") {
     return undefined;
   }
-  const embedder = createEmbeddingProviderFromEnv(process.env);
+  // AW-12: `KLARWERK_EMBEDDING_PROVIDER=local` nimmt den internen Weg — er entsteht nur für eine
+  // bestätigte On-Prem-Adresse (`createLocalEmbeddingClientFromEnv`), sonst gibt es keinen Embedder.
+  const embedder = createEmbeddingProviderFromEnv(process.env, {
+    lokal: createLocalEmbeddingClientFromEnv(process.env),
+  });
   if (!embedder) {
     return undefined;
   }
@@ -2246,6 +2409,29 @@ const COMMIT_RE = /^[0-9a-f]{7,40}$/i;
 export function buildCommit(env: NodeJS.ProcessEnv = process.env): string {
   const roh = (env[BUILD_COMMIT_ENV] ?? "").trim();
   return COMMIT_RE.test(roh) ? roh : BUILD_UNBEKANNT;
+}
+
+/**
+ * R-0851 (aufnahme:20260922:gesamt-kundenbetrieb): die Identität dieser Instanz — die öffentliche
+ * Adresse, unter der sie sich selbst kennt (`APP_BASE_URL`, nur Schema, Host und Port).
+ *
+ * Jede Kundeninstanz MUSS diese Adresse setzen (`docker-compose.prod.yml`), und sie ist je Instanz
+ * eine andere. Der Instanzabgleich (`scripts/betrieb/instanzabgleich.mjs`) vergleicht sie mit der
+ * Adresse, unter der er die Instanz erreicht hat: antwortet dort eine Instanz, die sich anders kennt,
+ * ist das eine Abweichung und kein „gleich". Fehlt der Wert oder ist er keine http(s)-Adresse, steht
+ * hier ehrlich `unbekannt` — Pfad, Abfrage und Zugangsdaten der Adresse werden nie ausgegeben.
+ */
+export function instanzAdresse(env: NodeJS.ProcessEnv = process.env): string {
+  const roh = (env.APP_BASE_URL ?? "").trim();
+  if (!roh) return BUILD_UNBEKANNT;
+  try {
+    const adresse = new URL(roh);
+    return adresse.protocol === "http:" || adresse.protocol === "https:"
+      ? adresse.origin
+      : BUILD_UNBEKANNT;
+  } catch {
+    return BUILD_UNBEKANNT;
+  }
 }
 
 // Einmal gelesen, dann gemerkt: die Datei ändert sich zur Laufzeit nicht, und /health soll keine
@@ -2409,6 +2595,13 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "DraftStaleError",
   "ExternalSearchError",
   "FencingVeraltetError",
+  // Instanztrennung (R-0597/R-0860): die beiden Startabbrüche der Instanzbindung
+  // (`services/app/src/instanzbindung.ts`). ENTSCHEIDUNG: die Namen dürfen ins Protokoll — sie sind
+  // die Betriebsauskunft „diese Datenbank gehört einer anderen Anlage“ bzw. „APP_BASE_URL fehlt
+  // oder ist unlesbar“. Ohne sie stünde der Abbruch als `UNBEKANNT` in der Startfehlerzeile und wäre
+  // von einem Absturz nicht zu unterscheiden. Die Meldung (mit den Hostnamen) bleibt unterdrückt.
+  "InstanzadresseError",
+  "InstanzbindungError",
   // R-0170: der EINE Fehlertyp des Jira-Moduls (`services/jira/src/rest-client.ts`). ENTSCHEIDUNG:
   // der Name darf ins Protokoll — dieselbe Klasse Betriebsauskunft wie `SharePointRequestError`
   // weiter unten: die Lage steckt im Feld `lage`, die Meldung ist ein fester Satz ohne Host,
@@ -2531,6 +2724,10 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "EXTERNAL_ATTACH_BLOCKED",
   "EXTERNAL_SEARCH_FAILED",
   "FORBIDDEN",
+  // ADMIN-09 (produkt:20261009:admin-freigaberegeln): eine Freigaberegel mit unzulässiger Einstellung
+  // (`pruefeFreigabeRegel`, freigaberegeln.ts). Darf ins Protokoll: er nennt den Zweig, keine Kennung
+  // und keinen Nutzertext, und er geht als 400 ohnehin an den Client.
+  "FREIGABEREGEL_UNGUELTIG",
   "IDEMPOTENCY_PAYLOAD_MISMATCH",
   "IMPORT_ANCHOR_TAKEN",
   "INCOMPLETE",
@@ -3321,6 +3518,7 @@ export function buildApp(
     status: "ok",
     version: buildVersion(),
     commit: buildCommit(),
+    instanz: instanzAdresse(),
     ai: services.reasoner.publicStatus(),
     aiRuns: await kiLaeufe(),
   }));
@@ -3474,6 +3672,8 @@ export function buildApp(
         ko: services.ko,
         lesevarianten: services.lesevarianten,
         kandidaten: services.candidates,
+        // confluence-import-rechte (Nacharbeit 6, F1): dieselbe Grenze wie die Warteschlange.
+        kandidatenRechte: services.library,
         ...(services.audit ? { audit: services.audit } : {}),
       },
       guards,
@@ -3551,6 +3751,17 @@ export function buildApp(
   );
   // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
   const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
+  // ADMIN-09 (produkt:20261009:admin-freigaberegeln): die Freigaberegel je Space — Prüfpunkt an den
+  // Entscheidungswegen, Prüfbrett-Auskunft, Spacewechsel und die Verwaltungsrouten teilen EINEN Dienst.
+  const freigaberegeln = new FreigabeRegelDienst({
+    spaces: services.spaces,
+    teams: services.teams,
+    auth: services.auth,
+    ko: services.ko,
+    validation: services.validation,
+    audit: services.audit,
+    notifyAssignment,
+  });
   // R-0571: wer laut Verzeichnis für die Prüfung in einem Space zuständig ist. Ohne Zuordnung bleibt
   // das Einreichen, wie es war (nur die genannten Prüfenden).
   const pruefzustaendigkeit = lesePruefzustaendigkeit(process.env.KLARWERK_PRUEFZUSTAENDIGKEIT);
@@ -3934,6 +4145,22 @@ export function buildApp(
       audit: services.audit,
     }),
   );
+  // produkt:20261007:templates-default — EINE Einreichprüfung für alle drei Anlagewege
+  // (`POST /api/kos`, `/api/kos/from-document`, Promote): Pflichtfelder der Vorlage, Space-Vorgaben,
+  // gepflegte Begriffe. Nach der Anlage vermerkt sie Vorlage und Fassung und legt den Beitrag in den
+  // gewählten Space — über denselben Wechselweg wie die Spaceseite (`setLeadingSpace`).
+  const vorlagenPort: VorlagenEinreichungPort = vorlagenEinreichung({
+    ablage: services.vorlagen,
+    spaces: services.spaces,
+    audit: services.audit,
+    inSpaceLegen: async (koId, spaceId, akteur) => {
+      const ko = await services.ko.get(koId);
+      if (!ko || ko.spaceId === spaceId) {
+        return;
+      }
+      await services.ko.setLeadingSpace(koId, spaceId, akteur, null);
+    },
+  });
   app.register(
     koRoutes(
       {
@@ -4015,6 +4242,10 @@ export function buildApp(
             freigabeberechtigt: can(person.role, "ko.validate"),
           };
         },
+        // produkt:20261007:templates-default: Pflichtangaben beim Einreichen, Vorlagennutzung danach.
+        vorlagen: vorlagenPort,
+        // ADMIN-09: der Prüfpunkt der Freigaberegel eines Space vor jeder Entscheidung.
+        freigabeTor: (user, koId, weg, eingabe) => freigaberegeln.tor(user, koId, weg, eingabe),
         draftPromotion: {
           load: async (draftId, user) => {
             const draft = await services.capture.getDraft(draftId);
@@ -4175,11 +4406,17 @@ export function buildApp(
     ),
   );
   app.register(
-    validationRoutes(services.validation, guards, {
-      ko: services.ko,
-      worker: aiCheckWorker,
-      conflicts: services.conflicts,
-    }),
+    validationRoutes(
+      services.validation,
+      guards,
+      {
+        ko: services.ko,
+        worker: aiCheckWorker,
+        conflicts: services.conflicts,
+      },
+      // ADMIN-09: die Freigaberegel des führenden Space je Brettzeile.
+      (kos) => freigaberegeln.auskunftFuer(kos),
+    ),
   );
   // AUFTRAG-mega74 BLOCK D (G5): der EINE Zugang, über den die Nebenwege die Sichtbarkeit ihrer
   // beteiligten Wissensobjekte erfragen. Hier gebaut, damit alle drei dieselbe Quelle benutzen.
@@ -4264,9 +4501,35 @@ export function buildApp(
     kennung: () => randomUUID(),
   });
   app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
+  // aufnahme:20260922:gesamt-lernwege — Verständnisfragen zu einer gültigen Wissensfassung. Liest
+  // Einträge und Fassungen über `services.ko`, Namen über die vorhandene Kontenliste; Entscheidungen
+  // stehen im Prüfprotokoll, Versuche bewusst NICHT (keine Leistungs- oder Verhaltenskontrolle).
+  // Nicht geschaltet: ohne angelegten Fragensatz erscheint nichts.
+  const verstaendnisDienst = new VerstaendnisfragenDienst({
+    repo: services.verstaendnisfragen,
+    ko: services.ko,
+    konten: () => services.auth.listUsers(),
+    jetzt: services.kenntnisnahmeUhr,
+    kennung: () => randomUUID(),
+    audit: services.audit,
+    // Nacharbeit 3 (Ben): die Annahme folgt der Freigaberegel des führenden Space (ADMIN-09) —
+    // derselbe Dienst wie am Prüfpunkt der Wissenseinträge, keine zweite Regel.
+    freigabe: freigaberegeln,
+  });
+  app.register(verstaendnisfragenRoutes({ dienst: verstaendnisDienst, kos: services.ko }, guards));
   // produkt:20261007:veroeffentlichungsoptionen — Veröffentlichung mit Meldungswahl. Der Leserkreis
   // ist derselbe wie der Empfängerkreis einer Kenntnisnahme (eine Regel, eine Stelle); der Vermerk
   // liegt am Eintrag, der Beleg im Prüfprotokoll. Dieselbe Instanz speist die Glocke unten.
+  // ADMIN-12: die Kommunikationsregeln. Mail gilt als eingerichtet, wenn ein echter Versandweg
+  // verdrahtet ist — dieselbe Auskunft wie `mailVersand` im Verarbeitungsverzeichnis, je Aufruf
+  // frisch gelesen. Push hat dieses Produkt nicht.
+  const kommunikationDienst = new KommunikationDienst({
+    repo: services.kommunikation,
+    mailEingerichtet: () => !(services.mailer instanceof ConsoleMailer),
+    kontoNamen: () => kenntnisnahmeDienst.kontoNamen(),
+    jetzt: services.kenntnisnahmeUhr,
+  });
+  app.register(kommunikationRoutes({ dienst: kommunikationDienst, audit: services.audit }, guards));
   const veroeffentlichungDienst = new VeroeffentlichungDienst({
     ko: services.ko,
     leser: (ko) => kenntnisnahmeDienst.moeglicheEmpfaenger(ko),
@@ -4275,6 +4538,35 @@ export function buildApp(
     zustellungen: services.veroeffentlichungsZustellungen,
     jetzt: services.kenntnisnahmeUhr,
     kennung: () => randomUUID(),
+    kommunikation: {
+      dienst: kommunikationDienst,
+      repo: services.kommunikation,
+      // Die Rechte gelten zum Versandzeitpunkt: derselbe Leserkreis wie beim Veröffentlichen,
+      // aber JETZT gelesen.
+      versenden: (vermerk) =>
+        mailsVersenden(
+          {
+            repo: services.kommunikation,
+            mailer: services.mailer,
+            // Dieselbe Auskunft wie `mailEingerichtet` oben — je Versand frisch gelesen.
+            eingerichtet: () => !(services.mailer instanceof ConsoleMailer),
+            adressen: async () =>
+              new Map((await services.auth.listUsers()).map((u) => [u.id, u.email])),
+            darfLesen: async (kontoId, koId) => {
+              const ko = await services.ko.get(koId);
+              return (
+                ko !== undefined &&
+                (await kenntnisnahmeDienst.moeglicheEmpfaenger(ko)).some((k) => k.id === kontoId)
+              );
+            },
+            abgewaehlt: (kontoId) =>
+              kommunikationDienst.hatAbgewaehlt("veroeffentlichung", kontoId),
+            jetzt: services.kenntnisnahmeUhr,
+          },
+          vermerk,
+        ),
+      gelesen: async (kontoId) => new Set(await services.notificationSeen.seenFor(kontoId)),
+    },
   });
   app.register(
     veroeffentlichungRoutes({ dienst: veroeffentlichungDienst, kos: services.ko }, guards),
@@ -4363,7 +4655,17 @@ export function buildApp(
     ),
   );
   app.register(
-    captureRoutes({ ...services, notifyAssignment, semanticPrefilter, aiCheckWorker }, guards),
+    captureRoutes(
+      {
+        ...services,
+        notifyAssignment,
+        semanticPrefilter,
+        aiCheckWorker,
+        // produkt:20261007:templates-default: dieselbe Einreichprüfung am Promote.
+        vorlagenEinreichung: vorlagenPort,
+      },
+      guards,
+    ),
   );
   // WP-D11: PPTX-Folien-Konvertierung (eigene Route mit großem bodyLimit + Auth vor dem Parse).
   app.register(slidesRoutes(services.slideConverter, guards));
@@ -4411,6 +4713,19 @@ export function buildApp(
         // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
         // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
         alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
+        // produkt:20261010:wissenskreislauf-schliessen: berechtigte Fachzuständigkeit heisst HEUTE
+        // ein freigegebenes, nicht abgelaufenes Konto mit Erfassungsrecht (`ko.create`) — aus
+        // demselben Nutzerverzeichnis wie die Erreichbarkeit oben. Unbekannte Kennung: nein.
+        fachzustaendigkeit: async (personId: string) => {
+          const konto = (await services.auth.listUsers()).find((u) => u.id === personId);
+          if (!konto) {
+            return false;
+          }
+          const abgelaufen =
+            typeof konto.accessExpiresAt === "string" &&
+            Date.parse(konto.accessExpiresAt) <= Date.now();
+          return konto.approved === true && !abgelaufen && can(konto.role, "ko.create");
+        },
       },
       guards,
     ),
@@ -4481,6 +4796,25 @@ export function buildApp(
       mcpRoutes({ weiterleiten: (anfrage) => app.inject(anfrage), version: buildVersion() }),
     );
   }
+  // produkt:20261010:poc-wiederherstellung-export: das Wissenspaket (Format `paket`) — dieselben
+  // Bestände wie die Einzelwege: Fassungen und Objektablage des KO-Dienstes, der Leseweg der
+  // Beziehungen mit der Sichtregel des Betrachters, Namen der Konten (ohne Adresse) und Spaces.
+  const kantenLesen = new KantenLeseService({ repo: services.kanten, kos: services.ko });
+  const wissenspaketQuellen: WissenspaketQuellen = {
+    beitrag: (id) => services.ko.get(id),
+    fassungen: (id) => services.ko.versionsOf(id),
+    objekt: (objectId) => services.objects.read(objectId),
+    beziehungen: (id, sichtbar) => kantenLesen.kantenFuer(id, { sichtbar }),
+    personen: async () => {
+      const konten = await services.auth.listUsers();
+      return new Map(konten.map((u): [string, string] => [u.id, u.name]));
+    },
+    spaces: async () => {
+      const spaces = await services.spaces.aktuelle();
+      return new Map(spaces.map((s): [string, string] => [s.id, s.name]));
+    },
+    produkt: { version: buildVersion(), commit: buildCommit() },
+  };
   // SCRUM-470 (S6): Erkennung nach Import-Accept — dasselbe Deps-Bündel wie der Promote-Pfad.
   // Greift nur bei KLARWERK_CONFLUENCE_IMPORT=1 (Default AUS → heutiges Verhalten).
   app.register(
@@ -4497,6 +4831,7 @@ export function buildApp(
       },
       // R-0773: erfolglose Suchen je Person.
       services.nulltreffer,
+      wissenspaketQuellen,
     ),
   );
   app.register(categoryRoutes(services.ko, guards));
@@ -4520,6 +4855,8 @@ export function buildApp(
   // AUFTRAG-JOB2017 (G7): derselbe Zugang wie bei conflictRoutes/overlapRoutes/notificationsRoutes
   // — eine Instanz, keine zweite Aufloesung. Pflichtparameter, s. lifecycle-routes.ts.
   // R-1662: frühere Revalidierungen (`ko.revalidated`) lesen dieselben Belege aus dem Prüfprotokoll.
+  // produkt:20261010:aenderungsfolgen-sichtbar: die Folgeprüfungsübersicht liest Objekt und
+  // Personennamen über dieselben Dienste — kein zweiter Bestand.
   app.register(
     lifecycleRoutes(
       services.lifecycle,
@@ -4527,6 +4864,7 @@ export function buildApp(
       koSichtbarkeit,
       services.wissensuebergabe,
       services.audit,
+      { ko: services.ko, personen: services.auth },
     ),
   );
   app.register(
@@ -4562,6 +4900,48 @@ export function buildApp(
         }),
         // Veröffentlichung: Meldungen bei „normal" und „hervorgehoben" — nie bei „still".
         veroeffentlichungen: veroeffentlichungDienst,
+        // ADMIN-12: persönliche Abwahl und tägliche Zusammenfassung; hält die Zustellung fest.
+        kommunikation: kommunikationDienst,
+      },
+      guards,
+    ),
+  );
+  // ADMIN-10 (produkt:20261009:admin-qualitaetsaufgaben): eine Leseansicht auf die vorhandenen
+  // Vorgänge, keine zweite Aufgabenablage. Übernehmen einer Rückmeldung nutzt die vorhandene
+  // Prüfanforderung des Lebenszyklus.
+  app.register(
+    qualitaetsaufgabenRoutes(
+      {
+        ko: services.ko,
+        validation: services.validation,
+        lifecycle: services.lifecycle,
+        conflicts: services.conflicts,
+        overlaps: services.overlaps,
+        ask: services.ask,
+        audit: services.audit,
+        konten: () => services.auth.listUsers(),
+        spaces: services.spaces,
+      },
+      guards,
+    ),
+  );
+  // ADMIN-11 (produkt:20261009:admin-wissenskennzahlen): Kennzahlen auf denselben Quellen wie
+  // ADMIN-10 plus Frageprotokoll und Lücken — keine neue Erhebung, keine zweite Ablage.
+  app.register(
+    wissenskennzahlenRoutes(
+      {
+        ko: services.ko,
+        validation: services.validation,
+        lifecycle: services.lifecycle,
+        conflicts: services.conflicts,
+        overlaps: services.overlaps,
+        ask: services.ask,
+        audit: services.audit,
+        konten: () => services.auth.listUsers(),
+        spaces: services.spaces,
+        teams: services.teams,
+        // Nacharbeit 3: der vorhandene Leseweg der EIGENEN erfolglosen Suchen.
+        nulltreffer: services.nulltreffer,
       },
       guards,
     ),
@@ -4604,6 +4984,16 @@ export function buildApp(
           repo: services.klaraGespraeche,
           antworten: services.answerSnapshots,
         }),
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil — nur das Konto der Sitzung.
+  app.register(
+    assistenzProfilRoutes(
+      {
+        dienst: new AssistenzProfilDienst({ repo: services.assistenzProfile }),
         audit: services.audit,
       },
       guards,
@@ -4743,6 +5133,8 @@ export function buildApp(
           klara: services.klaraSessions,
           // R-0663/R-1645: die Nachfolge bei Befristung, in der die Person vorkommt.
           nachfolge: services.verantwortungNachfolge,
+          // Verständnisfragen: die eigenen Versuche samt Ergebnis.
+          verstaendnisfragen: services.verstaendnisfragen,
         },
         loeschantraege: services.loeschantraege,
         auth: services.auth,
@@ -4787,6 +5179,21 @@ export function buildApp(
   app.register(
     ausgangspruefungRoutes({ pruefung: ausgangspruefung, audit: services.audit }, guards),
   );
+  // produkt:20261007:templates-default: Vorlagen, persönlicher Standard, Space-Vorgaben, Nutzung,
+  // Begriffspflege (ADMIN-08).
+  app.register(
+    vorlagenRoutes(
+      {
+        ablage: services.vorlagen,
+        spaces: services.spaces,
+        ko: services.ko,
+        auth: services.auth,
+        audit: services.audit,
+        einreichung: vorlagenPort,
+      },
+      guards,
+    ),
+  );
   // produkt:20261007:spaces: Arbeitsräume, Inhalte je Space und Ansicht, Rechtevorschau, Wechsel.
   app.register(
     spacesRoutes(
@@ -4797,6 +5204,8 @@ export function buildApp(
         audit: services.audit,
         // produkt:20261009:admin-teams: Teams als bindbarer Mitgliedschaftsweg eines Space.
         teams: services.teams,
+        // ADMIN-09: kommt ein Objekt in einen Space mit Freigaberegel, gilt deren Mindestzahl sofort.
+        freigaberegelAnwenden: (koId, akteur) => freigaberegeln.anwenden(koId, akteur),
         // R-0571: wechselt ein Objekt den Space, folgen ihm die laut Verzeichnis Zuständigen —
         // neue werden zugewiesen und benachrichtigt, die des alten Space verlieren die offene
         // Verzeichnis-Zuweisung.
@@ -4816,6 +5225,14 @@ export function buildApp(
             }
           : {}),
       },
+      guards,
+    ),
+  );
+  // ADMIN-09 (produkt:20261009:admin-freigaberegeln): Freigaberegel je Space lesen, mit
+  // Wirkungsvorschau ändern, Fristlauf mit Vertretung.
+  app.register(
+    freigaberegelnRoutes(
+      { dienst: freigaberegeln, auth: services.auth, teams: services.teams },
       guards,
     ),
   );
@@ -4850,6 +5267,36 @@ export function buildApp(
       guards,
     ),
   );
+  // produkt:20261007:interner-chat: Direkt-, Gruppen-, Space- und Artikelgespräche. Rechte aus Space
+  // und Artikel (`darfSehen`); die Wissensübernahme legt über den bestehenden Entwurfsweg an.
+  app.register(
+    chatRoutes(
+      {
+        chat: services.chat,
+        ko: services.ko,
+        auth: services.auth,
+        spaces: services.spaces,
+        entwuerfe: services.capture,
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261007:artikel-gemeinsam: der gemeinsame Entwurf eines Artikels, erreichbar aus dem
+  // Artikelgespräch. Rechte wie `revise` (`ko.create` + `darfSehen`); die Übernahme läuft über den
+  // bestehenden Schreibweg `PUT /api/kos/:id`, nicht über diese Routen.
+  app.register(
+    gemeinsamRoutes(
+      {
+        entwuerfe: new GemeinsamerEntwurfDienst(services.gemeinsameEntwuerfe),
+        kos: services.ko,
+        nutzerName: async (nutzerId) =>
+          (await services.auth.listUsers()).find((u) => u.id === nutzerId)?.name,
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
   // AUFTRAG-mega67 Block C/D: der ZUGANGS-ZUSTAND des Confluence-Imports, rein lesend. BEWUSST
   // ausserhalb des `confluenceImport`-Schalters registriert (anders als die Import-Routen unten):
   // eine Auskunft, die selbst hinter dem Schalter laege, koennte den Zustand „ausgeschaltet" nicht
@@ -4868,7 +5315,14 @@ export function buildApp(
       }),
     ),
   );
-  app.register(adminRoutes(services, guards, opts.factoryReset)); // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset
+  // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset. produkt:20261010:poc-wiederherstellung-export: der
+  // Sicherungsumfang unter „System → Sicherung" ist an diese Fassung und ihre Migration gebunden.
+  app.register(
+    adminRoutes(services, guards, opts.factoryReset, {
+      produkt: { version: buildVersion(), commit: buildCommit() },
+      tabellenImDump: tabellenDerStufen(schemas).length,
+    }),
+  );
   // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
   // (Flag OFF → Route existiert nicht). Echte Admin-Auth; alles landet nur als Review-Kandidat.
   // AUFTRAG-mega46 Block F: Die Prüfung stand hier als dritte Kopie derselben Regel und kommt jetzt
@@ -4917,6 +5371,10 @@ export function buildApp(
         koService: services.ko,
         // R-0142 (Lauf 5 R3, Bens B7): die offenen Lücken je Objekt.
         luecken: services.ask,
+        // confluence-import-rechte (Nacharbeit 16): Quellrevisionen nur für Quellberechtigte —
+        // dieselbe Grenze wie die Warteschlange.
+        kandidaten: services.candidates,
+        kandidatenRechte: services.library,
         guards,
       }),
     );

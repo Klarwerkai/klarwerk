@@ -123,6 +123,14 @@ export interface DraftPayload {
    * `null` leert ausdrücklich (Merge-Vertrag); ins Wissensobjekt reist nur der daraus erzeugte Rumpf.
    */
   ablauf?: DraftAblauf | null;
+  /**
+   * produkt:20261007:templates-default — die Vorlage (Kennung + Fassung), mit der dieser Entwurf
+   * geschrieben wird, und der Space, für den er gedacht ist. `null` = freie Eingabe (Merge-Vertrag:
+   * leert ausdrücklich). Die Gestalt prüft `validateDraftPayloadShape`; ob die Vorlage existiert und
+   * ihre Pflichtfelder erfüllt sind, erst das Einreichen (`services/app/src/vorlagen.ts`) — Sichern
+   * bleibt frei. Reines Payload-Metadatum, reist NICHT ins Wissensobjekt (`toKoInput`).
+   */
+  vorlage?: { id: string; version: number; spaceId?: string | null } | null;
 }
 
 /**

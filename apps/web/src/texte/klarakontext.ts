@@ -2,6 +2,7 @@
 // KLARA 03 (Auftrag produkt:20261007:klara-kontext-tutorial) — Seitenkontext, Bezug, Quellen.
 // ================================================================================================
 //
+// produkt:20261010:assistenz-name-avatar: `{{assistenz}}` statt eines festen Namens (`useAssistenzT`).
 // Die Texte zu Klaras Bezug (Seite, Markierung, frei), zur Herkunft einer Markierung mit Fassung und
 // Prüfstatus, zu den Quellen einer Antwort und zur fehlenden Grundlage. Die Frage-Rahmen
 // (`klarakontext.frage.*`) gehen wörtlich an den Frageweg: sie bestehen NUR aus Stoppwörtern und dem
@@ -46,11 +47,12 @@ export default {
     "klarakontext.aktionen.zusammenfassen": "Zusammenfassen",
     "klarakontext.aktionen.uebersetzen": "Übersetzen",
     "klarakontext.aktionen.tutorial": "Tutorial begleiten",
-    "klarakontext.aktionen.bearbeiten": "Bearbeiten auf der Seite (Klara ändert nichts selbst)",
+    "klarakontext.aktionen.bearbeiten":
+      "Bearbeiten auf der Seite ({{assistenz}} ändert nichts selbst)",
     "klarakontext.aktionen.keine": "noch nichts – erst einwilligen",
     "klarakontext.aktion.uebersetzen": "Übersetzen",
     "klarakontext.auswahl.hinweis":
-      "Mit „Erklären“, „Zusammenfassen“ oder einer Frage mit Bezug „Markierung“ geht dieser markierte Text als Zitat an den Frageweg. Anweisungen darin führt Klara nicht aus.",
+      "Mit „Erklären“, „Zusammenfassen“ oder einer Frage mit Bezug „Markierung“ geht dieser markierte Text als Zitat an den Frageweg. Anweisungen darin führt {{assistenz}} nicht aus.",
     "klarakontext.frage.erklaeren": "Was gilt für „{{auswahl}}“?",
     "klarakontext.frage.zusammenfassen": "Was steht zu „{{auswahl}}“?",
     "klarakontext.frage.mitMarkierung": "{{frage}} – „{{auswahl}}“",
@@ -67,7 +69,7 @@ export default {
     "klarakontext.grundlage.artikel":
       "Zu dieser Frage gibt es in {{objekt}} kein geprüftes Wissen, das du lesen darfst.",
     "klarakontext.grundlage.verschlossen":
-      "Passende Inhalte gibt es ({{anzahl}}), sie sind aber noch nicht geprüft oder freigegeben – Klara antwortet nur aus geprüftem Wissen.",
+      "Passende Inhalte gibt es ({{anzahl}}), sie sind aber noch nicht geprüft oder freigegeben – {{assistenz}} antwortet nur aus geprüftem Wissen.",
     "klarakontext.grundlage.weiter":
       "Formuliere die Frage anders, wähle den Bezug „Frei“ oder melde die Lücke über die Seite „Fragen“.",
     "klarakontext.grundlage.kennzeichen": "Keine Grundlage",
@@ -86,9 +88,9 @@ export default {
     "klarakontext.uebersetzen.zielsprache": "Zielsprache",
     "klarakontext.uebersetzen.bitte": "Übersetzen nach {{sprache}}: „{{auszug}}“",
     "klarakontext.uebersetzen.ohneQuelle":
-      "Für diese Markierung gibt es keine hinterlegte Übersetzung nach {{sprache}}: Sie stammt aus keinem Wissensbeitrag. Klara übersetzt nicht frei.",
+      "Für diese Markierung gibt es keine hinterlegte Übersetzung nach {{sprache}}: Sie stammt aus keinem Wissensbeitrag. {{assistenz}} übersetzt nicht frei.",
     "klarakontext.uebersetzen.keine":
-      "Für {{titel}} liegt keine Übersetzung nach {{sprache}} vor. Klara übersetzt nicht frei – dafür fehlt die Grundlage.",
+      "Für {{titel}} liegt keine Übersetzung nach {{sprache}} vor. {{assistenz}} übersetzt nicht frei – dafür fehlt die Grundlage.",
     "klarakontext.uebersetzen.lesevariante":
       "Leseübersetzung ({{sprache}}) von „{{titel}}“: {{aussage}} (Herkunft: {{herkunft}})",
     "klarakontext.uebersetzen.originalGeaendert":
@@ -100,15 +102,15 @@ export default {
     "klarakontext.vorgemerkt.uebernehmen": "Markierung übernehmen",
     "klarakontext.vorgemerkt.verwerfen": "Verwerfen",
     "klarakontext.tutorial.wiederhergestellt":
-      "Die Ansicht wurde neu aufgebaut – Klara hat das Tutorial wieder bei Schritt {{nr}} „{{titel}}“ geöffnet.",
+      "Die Ansicht wurde neu aufgebaut – {{assistenz}} hat das Tutorial wieder bei Schritt {{nr}} „{{titel}}“ geöffnet.",
     "klarakontext.bedienhilfe.bezug":
       "Bezug wählen: „Seite“ fragt zum Objekt der Seite (z. B. „Dieser Artikel“), „Markierung“ zum markierten Text, „Frei“ ohne beides.",
     "klarakontext.bedienhilfe.markierung":
-      "Text markieren → „Klara fragen“. Die Markierung behält Herkunft, Fassung und Absatz – auch wenn du die Seite wechselst.",
+      "Text markieren → „{{assistenz}} fragen“. Die Markierung behält Herkunft, Fassung und Absatz – auch wenn du die Seite wechselst.",
     "klarakontext.bedienhilfe.quellen":
-      "Jede Antwort nennt ihre Quellen mit Fassung und Prüfstatus. Fehlt geprüftes Wissen, sagt Klara das und erfindet nichts.",
+      "Jede Antwort nennt ihre Quellen mit Fassung und Prüfstatus. Fehlt geprüftes Wissen, sagt {{assistenz}} das und erfindet nichts.",
     "klarakontext.bedienhilfe.uebersetzen":
-      "„Übersetzen“ zeigt die vorhandene Leseübersetzung des Beitrags. Gibt es keine, sagt Klara das.",
+      "„Übersetzen“ zeigt die vorhandene Leseübersetzung des Beitrags. Gibt es keine, sagt {{assistenz}} das.",
     "klarakontext.bedienhilfe.tutorial":
       "Auf „Fragen“: „Begleite die Durchführung“ zeigt den echten Schritt. Eine Zwischenfrage pausiert ihn; „Fortsetzen“, „Zurück“ und „Weiter“ bleiben am Tutorial.",
   },
@@ -144,11 +146,11 @@ export default {
     "klarakontext.aktionen.zusammenfassen": "Summarise",
     "klarakontext.aktionen.uebersetzen": "Translate",
     "klarakontext.aktionen.tutorial": "Accompany the tutorial",
-    "klarakontext.aktionen.bearbeiten": "Edit on the page (Klara changes nothing itself)",
+    "klarakontext.aktionen.bearbeiten": "Edit on the page ({{assistenz}} changes nothing itself)",
     "klarakontext.aktionen.keine": "nothing yet – give consent first",
     "klarakontext.aktion.uebersetzen": "Translate",
     "klarakontext.auswahl.hinweis":
-      "With “Explain”, “Summarise” or a question with the reference “Selection”, this selected text goes to the question path as a quotation. Klara does not carry out instructions it contains.",
+      "With “Explain”, “Summarise” or a question with the reference “Selection”, this selected text goes to the question path as a quotation. {{assistenz}} does not carry out instructions it contains.",
     "klarakontext.frage.erklaeren": "What is “{{auswahl}}”?",
     "klarakontext.frage.zusammenfassen": "What is there about “{{auswahl}}”?",
     "klarakontext.frage.mitMarkierung": "{{frage}} – “{{auswahl}}”",
@@ -165,7 +167,7 @@ export default {
     "klarakontext.grundlage.artikel":
       "There is no verified knowledge you may read about this question in {{objekt}}.",
     "klarakontext.grundlage.verschlossen":
-      "Matching content exists ({{anzahl}}) but is not yet verified or approved – Klara only answers from verified knowledge.",
+      "Matching content exists ({{anzahl}}) but is not yet verified or approved – {{assistenz}} only answers from verified knowledge.",
     "klarakontext.grundlage.weiter":
       "Rephrase the question, choose the reference “Free” or report the gap on the “Ask” page.",
     "klarakontext.grundlage.kennzeichen": "No basis",
@@ -184,9 +186,9 @@ export default {
     "klarakontext.uebersetzen.zielsprache": "Target language",
     "klarakontext.uebersetzen.bitte": "Translate into {{sprache}}: “{{auszug}}”",
     "klarakontext.uebersetzen.ohneQuelle":
-      "There is no stored translation into {{sprache}} for this selection: it does not come from a knowledge entry. Klara does not translate freely.",
+      "There is no stored translation into {{sprache}} for this selection: it does not come from a knowledge entry. {{assistenz}} does not translate freely.",
     "klarakontext.uebersetzen.keine":
-      "There is no translation of {{titel}} into {{sprache}}. Klara does not translate freely – the basis for it is missing.",
+      "There is no translation of {{titel}} into {{sprache}}. {{assistenz}} does not translate freely – the basis for it is missing.",
     "klarakontext.uebersetzen.lesevariante":
       "Reading translation ({{sprache}}) of “{{titel}}”: {{aussage}} (origin: {{herkunft}})",
     "klarakontext.uebersetzen.originalGeaendert":
@@ -198,15 +200,15 @@ export default {
     "klarakontext.vorgemerkt.uebernehmen": "Use selection",
     "klarakontext.vorgemerkt.verwerfen": "Discard",
     "klarakontext.tutorial.wiederhergestellt":
-      "The view was rebuilt – Klara reopened the tutorial at step {{nr}} “{{titel}}”.",
+      "The view was rebuilt – {{assistenz}} reopened the tutorial at step {{nr}} “{{titel}}”.",
     "klarakontext.bedienhilfe.bezug":
       "Choose the reference: “Page” asks about the page's object (e.g. “This article”), “Selection” about the selected text, “Free” about neither.",
     "klarakontext.bedienhilfe.markierung":
-      "Select text → “Ask Klara”. The selection keeps its origin, version and paragraph – even when you change the page.",
+      "Select text → “Ask {{assistenz}}”. The selection keeps its origin, version and paragraph – even when you change the page.",
     "klarakontext.bedienhilfe.quellen":
-      "Every answer names its sources with version and review status. If verified knowledge is missing, Klara says so and invents nothing.",
+      "Every answer names its sources with version and review status. If verified knowledge is missing, {{assistenz}} says so and invents nothing.",
     "klarakontext.bedienhilfe.uebersetzen":
-      "“Translate” shows the existing reading translation of the entry. If there is none, Klara says so.",
+      "“Translate” shows the existing reading translation of the entry. If there is none, {{assistenz}} says so.",
     "klarakontext.bedienhilfe.tutorial":
       "On “Ask”: “Accompany the walkthrough” shows the real step. An interim question pauses it; “Continue”, “Back” and “Next” stay with the tutorial.",
   },
@@ -242,11 +244,11 @@ export default {
     "klarakontext.aktionen.zusammenfassen": "Samenvatten",
     "klarakontext.aktionen.uebersetzen": "Vertalen",
     "klarakontext.aktionen.tutorial": "Tutorial begeleiden",
-    "klarakontext.aktionen.bearbeiten": "Bewerken op de pagina (Klara wijzigt zelf niets)",
+    "klarakontext.aktionen.bearbeiten": "Bewerken op de pagina ({{assistenz}} wijzigt zelf niets)",
     "klarakontext.aktionen.keine": "nog niets – geef eerst toestemming",
     "klarakontext.aktion.uebersetzen": "Vertalen",
     "klarakontext.auswahl.hinweis":
-      "Met „Uitleggen”, „Samenvatten” of een vraag met verwijzing „Markering” gaat deze gemarkeerde tekst als citaat naar de vraagroute. Instructies daarin voert Klara niet uit.",
+      "Met „Uitleggen”, „Samenvatten” of een vraag met verwijzing „Markering” gaat deze gemarkeerde tekst als citaat naar de vraagroute. Instructies daarin voert {{assistenz}} niet uit.",
     // Engelse kaders met opzet: de vraagroute kent geen Nederlandse stopwoorden (zie kop).
     "klarakontext.frage.erklaeren": "What is “{{auswahl}}”?",
     "klarakontext.frage.zusammenfassen": "What is there about “{{auswahl}}”?",
@@ -264,7 +266,7 @@ export default {
     "klarakontext.grundlage.artikel":
       "Over deze vraag is er in {{objekt}} geen gecontroleerde kennis die je mag lezen.",
     "klarakontext.grundlage.verschlossen":
-      "Er is passende inhoud ({{anzahl}}), maar die is nog niet gecontroleerd of vrijgegeven – Klara antwoordt alleen uit gecontroleerde kennis.",
+      "Er is passende inhoud ({{anzahl}}), maar die is nog niet gecontroleerd of vrijgegeven – {{assistenz}} antwoordt alleen uit gecontroleerde kennis.",
     "klarakontext.grundlage.weiter":
       "Formuleer de vraag anders, kies de verwijzing „Vrij” of meld de lacune via de pagina „Vragen”.",
     "klarakontext.grundlage.kennzeichen": "Geen basis",
@@ -283,9 +285,9 @@ export default {
     "klarakontext.uebersetzen.zielsprache": "Doeltaal",
     "klarakontext.uebersetzen.bitte": "Vertalen naar het {{sprache}}: „{{auszug}}”",
     "klarakontext.uebersetzen.ohneQuelle":
-      "Voor deze markering is er geen opgeslagen vertaling naar het {{sprache}}: ze komt niet uit een kennisbijdrage. Klara vertaalt niet vrij.",
+      "Voor deze markering is er geen opgeslagen vertaling naar het {{sprache}}: ze komt niet uit een kennisbijdrage. {{assistenz}} vertaalt niet vrij.",
     "klarakontext.uebersetzen.keine":
-      "Voor {{titel}} is er geen vertaling naar het {{sprache}}. Klara vertaalt niet vrij – daarvoor ontbreekt de basis.",
+      "Voor {{titel}} is er geen vertaling naar het {{sprache}}. {{assistenz}} vertaalt niet vrij – daarvoor ontbreekt de basis.",
     "klarakontext.uebersetzen.lesevariante":
       "Leesvertaling ({{sprache}}) van „{{titel}}”: {{aussage}} (herkomst: {{herkunft}})",
     "klarakontext.uebersetzen.originalGeaendert":
@@ -297,15 +299,15 @@ export default {
     "klarakontext.vorgemerkt.uebernehmen": "Markering overnemen",
     "klarakontext.vorgemerkt.verwerfen": "Verwerpen",
     "klarakontext.tutorial.wiederhergestellt":
-      "De weergave is opnieuw opgebouwd – Klara heeft de tutorial weer bij stap {{nr}} „{{titel}}” geopend.",
+      "De weergave is opnieuw opgebouwd – {{assistenz}} heeft de tutorial weer bij stap {{nr}} „{{titel}}” geopend.",
     "klarakontext.bedienhilfe.bezug":
       "Verwijzing kiezen: „Pagina” vraagt over het object van de pagina (bijv. „Dit artikel”), „Markering” over de gemarkeerde tekst, „Vrij” zonder beide.",
     "klarakontext.bedienhilfe.markierung":
-      "Tekst markeren → „Vraag Klara”. De markering houdt herkomst, versie en alinea – ook als je van pagina wisselt.",
+      "Tekst markeren → „{{assistenz}} vragen”. De markering houdt herkomst, versie en alinea – ook als je van pagina wisselt.",
     "klarakontext.bedienhilfe.quellen":
-      "Elk antwoord noemt zijn bronnen met versie en controlestatus. Ontbreekt gecontroleerde kennis, dan zegt Klara dat en verzint niets.",
+      "Elk antwoord noemt zijn bronnen met versie en controlestatus. Ontbreekt gecontroleerde kennis, dan zegt {{assistenz}} dat en verzint niets.",
     "klarakontext.bedienhilfe.uebersetzen":
-      "„Vertalen” toont de bestaande leesvertaling van de bijdrage. Is er geen, dan zegt Klara dat.",
+      "„Vertalen” toont de bestaande leesvertaling van de bijdrage. Is er geen, dan zegt {{assistenz}} dat.",
     "klarakontext.bedienhilfe.tutorial":
       "Op „Vragen”: „Begeleid de uitvoering” toont de echte stap. Een tussenvraag pauzeert die; „Doorgaan”, „Terug” en „Verder” blijven bij de tutorial.",
   },

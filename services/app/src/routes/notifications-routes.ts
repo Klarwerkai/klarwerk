@@ -21,7 +21,12 @@ import {
   type VeroeffentlichungNotice,
   buildNotifications,
 } from "../notification-feed";
-import { type KoSichtbarkeitsZugang, sichtbareEintraege, sichtbarePaare } from "../sichtbarkeit";
+import {
+  type KoSichtbarkeitsZugang,
+  sichtbareEintraege,
+  sichtbarePaare,
+  sichtbarkeitsfilterFuer,
+} from "../sichtbarkeit";
 
 // In-App-Benachrichtigungen (U-3): aggregiert aus vorhandenen Signalen. Für jeden
 // angemeldeten Nutzer lesbar; keine eigene Persistenz nötig.
@@ -57,6 +62,12 @@ export interface NotificationRoutesDeps {
   // Veröffentlichung: Meldungen bei „normal"/„hervorgehoben" an den festgehaltenen Empfängerkreis.
   // Die Sichtbarkeit wird unten trotzdem neu geprüft — ein späterer Entzug wirkt sofort.
   veroeffentlichungen?: { meldungenFuer(nutzerId: string): Promise<VeroeffentlichungNotice[]> };
+  // ADMIN-12 (`kommunikationsregeln.ts`): persönliche Abwahl und tägliche Zusammenfassung — auf den
+  // BEREITS über die Sichtbarkeit gefilterten Feed angewandt; hält fest, was zugestellt wurde.
+  // Kenntnisnahmen und hervorgehobene Veröffentlichungen bleiben davon unberührt.
+  kommunikation?: {
+    glocke(nutzerId: string, feed: readonly Notification[]): Promise<Notification[]>;
+  };
 }
 
 // PMO-FEA-0002: „Hat geholfen"-Ereignisse für den Originalautor. Bewusst ehrlich:
@@ -200,7 +211,17 @@ async function loadFeed(
     veroeffentlichungen,
     deps.kos,
   );
-  const feed = buildNotifications({
+  // produkt:20261010:wissenskreislauf-schliessen: Abschluss- und Rückfragemeldungen aus dem
+  // Lückenstand. Die Erfolgsmeldung prüft ihren Eintrag HEUTE gegen die Sichtbarkeit und den
+  // Fachprüfstand dieses Betrachters (`AskService.gapMeldungenFuer`) — ein entzogenes Recht oder
+  // eine nicht mehr nutzbare Fassung erzeugt keine. Scheitert die Ableitung, fehlen nur diese
+  // Meldungen: kein Erfolg ohne Beleg, und die übrige Glocke bleibt stehen.
+  const lueckenSicht = sichtbarkeitsfilterFuer(user);
+  const lueckenMeldungen = await Promise.resolve()
+    .then(() => deps.ask.gapMeldungenFuer(user.id, lueckenSicht))
+    .catch(() => []);
+  const gesamt = buildNotifications({
+    luecken: lueckenMeldungen,
     conflicts: sichtbareKonflikte,
     overlaps: sichtbareUeberschneidungen,
     gaps: gapViews,
@@ -211,7 +232,11 @@ async function loadFeed(
     reklamationen: sichtbareReklamationen,
     frische: sichtbareFrische,
     veroeffentlichungen: sichtbareVeroeffentlichungen,
-  }).map((n) => ({
+  });
+  // ADMIN-12: die Regeln wirken NACH der Sichtbarkeit — eine Zusammenfassung enthält nur, was die
+  // Person beim Abruf (dem Versandzeitpunkt der Glocke) sehen darf und nicht abgewählt hat.
+  const geregelt = deps.kommunikation ? await deps.kommunikation.glocke(user.id, gesamt) : gesamt;
+  const feed = geregelt.map((n) => ({
     ...n,
     seen: seen.has(n.id),
   }));

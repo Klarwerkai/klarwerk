@@ -3558,6 +3558,7 @@ const en: typeof de = {
   "lib.format.markdown": "Text (Markdown)",
   "lib.format.mediawiki": "MediaWiki",
   "lib.format.html": "HTML (print/PDF)",
+  "lib.format.paket": "Knowledge package (ZIP with versions and attachments)",
   // JOB 1119 (D-002) — see the German entry for the finding and the measured search space.
   "lib.searchLabel": "Search the library",
   "lib.ownScope.label": "Scope",
@@ -3935,6 +3936,24 @@ const en: typeof de = {
   "imp.groups.regroup": "Group again",
   "imp.groups.refreshGrouping": "Refresh grouping",
   // JOB 3357: the run identifier of this import, plus its outcome from the server's run record.
+  // R-0920: the own result address of an import run (`pages/ImportLauf.tsx`).
+  "imp.lauf.oeffnen": "Open the result page of this run",
+  "imp.lauf.titel": "Result of an import run",
+  "imp.lauf.lead":
+    "This page shows exactly one run, as recorded by the server. Its address can be reloaded and shared.",
+  "imp.lauf.kennung": "Run ID",
+  "imp.lauf.ausgang": "Outcome",
+  "imp.lauf.nichtGefunden":
+    "The server knows no run with this ID. Nothing is therefore said about its state or counts.",
+  "imp.lauf.zaehler.gesamt": "Items in total",
+  "imp.lauf.zaehler.angelegt": "Newly created",
+  "imp.lauf.zaehler.gebunden": "Bound to existing",
+  "imp.lauf.zaehler.uebersprungen": "Skipped",
+  "imp.lauf.zaehler.gescheitert": "Failed",
+  "imp.lauf.gestartet": "Started",
+  "imp.lauf.beendet": "Finished",
+  "imp.lauf.nochNichtBeendet": "Not finished yet",
+  "imp.lauf.zurueck": "Back to import",
   "imp.groups.runHeading": "Run of this import",
   "imp.groups.runIdLabel": "Run ID",
   "imp.groups.runCall": "Call {{n}}",
@@ -6146,6 +6165,28 @@ const en: typeof de = {
     "You came from version {{genannt}}; this entry is now at version {{aktuell}}.",
   "arbeitsweg.klara.label": "Entry",
   "arbeitsweg.klara.chat": "Continue in “Ask” about this entry",
+  // produkt:20261010:fragen-pruefen-einstieg — see de.ts.
+  "fragenEinstieg.erklaerung":
+    "Ask your checked knowledge here. Every answer shows its sources and their check status – if there is no basis, the gap is named openly.",
+  "fragenEinstieg.ersterSchritt":
+    "First step: type your question in the field below (or dictate it) and send it with the arrow.",
+  "fragenEinstieg.beispieleZeigen": "Show fictional examples",
+  "fragenEinstieg.beispieleVerbergen": "Hide examples",
+  "fragenEinstieg.fiktiv": "fictional",
+  "fragenEinstieg.fiktivTitel": "Fictional example – made-up situation, no real data.",
+  "fragenEinstieg.optionalTitel": "Optional – only if needed",
+  "pruefgrund.label.warum": "Why you",
+  "pruefgrund.label.was": "What to check",
+  "pruefgrund.label.wirkung": "Effect",
+  "pruefgrund.label.sichtbar": "Visibility",
+  "pruefgrund.anlass.new": "Newly submitted.",
+  "pruefgrund.anlass.revision": "Revised (version {{version}}).",
+  "pruefgrund.warum.mir": "Assigned to you.",
+  "pruefgrund.warum.andere":
+    "Assigned to others ({{anzahl}}) – in the open check list for your role.",
+  "pruefgrund.warum.offen": "Not assigned – in the open check list for your role.",
+  "pruefgrund.wirkung":
+    "Approving is one of {{need}} required votes ({{have}} so far). Query and reject need a reason and lead to rework; nothing is approved automatically.",
 };
 
 export { en };

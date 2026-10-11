@@ -1,6 +1,7 @@
 import type { AuditEntry } from "../../audit";
 import type { KnowledgeObject, KoVersionSnapshot } from "../../knowledge-object";
 import type { AnswerResult } from "../../reasoner";
+import type { AussagenBeleg } from "./aussage-fundstellen";
 
 // ================================================================================================
 // R-1630 / R-2176 — „DIESE FRAGE HÄTTE VOR EINEM JAHR EINE ANDERE ANTWORT GEHABT."
@@ -203,6 +204,13 @@ export interface WissensstandVergleich {
   readonly stichtag: string;
   readonly heute: AnswerResult;
   readonly damals: AnswerResult;
+  /**
+   * REF-01 (Ben nacharbeit-7, K1): die EIGENEN Aussagebindungen beider ausgegebenen Antworten — je
+   * mit ihren Quellen in GENAU der Fassung, aus der sie entstanden (heute: aktuelle, damals: die
+   * Fassung zum Stichtag). `null` ohne beantworteten Text. Keine Bindung wird übertragen.
+   */
+  readonly heuteAussagen: AussagenBeleg | null;
+  readonly damalsAussagen: AussagenBeleg | null;
   /** Unterscheiden sich Antworttext oder tragende Grundlage? */
   readonly antwortGeaendert: boolean;
   readonly quellen: readonly VergleichsQuelle[];

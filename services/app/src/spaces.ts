@@ -82,8 +82,42 @@ export interface SpaceEingabe {
   regeln?: string;
 }
 
-/** ADMIN-07: was eine Fassung gegenüber der vorigen getan hat — für den Verlauf nach Reload. */
-export type SpaceVorgang = "angelegt" | "geaendert" | "archiviert" | "wiederaufgenommen";
+/**
+ * ADMIN-09 (produkt:20261009:admin-freigaberegeln): eine Vertretung — `durch` prüft an Stelle von
+ * `fuer`, wenn dessen Prüfaufgabe überfällig oder das Konto nicht aktiv ist.
+ */
+export interface FreigabeVertretung {
+  fuer: string;
+  durch: string;
+}
+
+/**
+ * ADMIN-09: die Freigaberegel eines Space. Die Regeln dazu (zulässige Werte, Prüferkreis,
+ * Selbstprüfung, Frist) stehen in `freigaberegeln.ts`; hier steht nur die gespeicherte Form.
+ */
+export interface FreigabeRegel {
+  /** Mindestzahl grüner Zustimmungen der aktuellen Fassung (1–5). */
+  zustimmungen: number;
+  /** Prüfergruppe: einzelne Konten. Leer zusammen mit `prueferTeams`: alle mit Prüfrecht. */
+  pruefer: string[];
+  /** Prüfergruppe: Teams (ihre aktiven Mitglieder). */
+  prueferTeams: string[];
+  /** Frist einer Prüfaufgabe in Tagen ab Zuweisung — `null`: keine Frist. */
+  fristTage: number | null;
+  vertretungen: FreigabeVertretung[];
+}
+
+/**
+ * ADMIN-07: was eine Fassung gegenüber der vorigen getan hat — für den Verlauf nach Reload.
+ * ADMIN-09 (produkt:20261009:admin-freigaberegeln): `freigaberegel` — nur die Freigaberegel hat sich
+ * geändert (`freigaberegeln-routes.ts`); Mitglieder, Zugang und Spaceregeln sind unverändert.
+ */
+export type SpaceVorgang =
+  | "angelegt"
+  | "geaendert"
+  | "archiviert"
+  | "wiederaufgenommen"
+  | "freigaberegel";
 
 /** Eine gespeicherte, unveränderliche Fassung eines Space. */
 export interface SpaceFassung extends SpaceEingabe {
@@ -103,6 +137,13 @@ export interface SpaceFassung extends SpaceEingabe {
   vorgang?: SpaceVorgang;
   /** Pflicht beim Archivieren und Wiederaufnehmen: warum — damit nichts still verschwindet. */
   begruendung?: string;
+  /**
+   * ADMIN-09: die Freigaberegel dieses Space — Prüfergruppe, erforderliche Zustimmungen, Frist und
+   * Vertretung. Fehlt sie, gilt die bestehende Regel ohne Space-Zusatz (jede Person mit
+   * `ko.validate`, Standard-Prüferanzahl). Gepflegt nur über `freigaberegeln-routes.ts`; die
+   * übrigen Pflegewege übernehmen sie unverändert in die nächste Fassung.
+   */
+  freigabe?: FreigabeRegel;
 }
 
 export const SPACE_GRENZEN = {

@@ -22,6 +22,7 @@ import { type FactoryReset, factoryResetUnavailable } from "../factory-reset";
 import { schalterAn } from "../feature-flags";
 import type { Guards } from "../http";
 import { type DemoSeedServices, purgeDemoSeed, seedDemoForAdmin } from "../seed-demo";
+import { type Produktfassung, type UmfangAuskunft, umfangAuskunft } from "../sicherungsumfang";
 // SCRUM-501 (nacht24): Demo-/Simulationskorpus DE/EN/NL — NICHT automatisch, nur über diesen
 // Admin-Weg (bzw. tools/seed-sim-corpus); Entfernen über den bestehenden Demo-Purge (demoSeed).
 import { loadSimCorpus } from "../sim-corpus";
@@ -275,6 +276,14 @@ interface DrillBefund {
     anhaenge: VergleichKategorie & { belegeOhneAnhang: number | null };
     beziehungen: VergleichKategorie;
     rechte: VergleichKategorie & { rollenDump: string | null; rollenDatenbank: string | null };
+    /**
+     * produkt:20261010:poc-wiederherstellung-export — die privaten Assistenzspeicher als eigene
+     * Kategorie. Ein Protokoll ohne sie (ältere Fassung des Drills) ergibt `nicht_gemessen`; das ist
+     * Absicht: ein früherer Lauf belegt keine später gelieferten Assistenzdaten. Sie zählt NICHT zu
+     * den vier ADMIN-13-Kategorien, die über `erfolg`/`teilweise` entscheiden — eine Abweichung ist
+     * aber ein Widerspruch.
+     */
+    assistenz: VergleichKategorie;
   };
   wissensnachweis: string | null;
 }
@@ -477,6 +486,7 @@ async function restoreBefund(verzeichnis: string): Promise<DrillBefund | Unbekan
       rollenDump: textOderNull(rechte.rollenDump),
       rollenDatenbank: textOderNull(rechte.rollenDatenbank),
     },
+    assistenz: kategorieAus(v.assistenz),
   };
   const sicherung = textOderNull(w.sicherung);
   const ziel = textOderNull(w.ziel);
@@ -538,6 +548,11 @@ async function restoreBefund(verzeichnis: string): Promise<DrillBefund | Unbekan
       } else if (k.zustand === "nicht_gemessen") {
         luecken.push(name);
       }
+    }
+    // Assistenzspeicher: nicht gemessen ist KEINE Lücke der ADMIN-13-Probe (sie steht am Bereich
+    // als „nicht gemessen"), eine gemessene Abweichung aber ein Widerspruch zum behaupteten Erfolg.
+    if (vergleich.assistenz.zustand === "abweichend") {
+      widersprueche.push("assistenz");
     }
     if (waisen === null) {
       luecken.push("belege_ohne_anhang");
@@ -667,6 +682,32 @@ async function schutzwegeFuer(
   };
 }
 
+/**
+ * produkt:20261010:poc-wiederherstellung-export — woran der Sicherungsumfang gebunden ist: die
+ * laufende Produktfassung und die Zahl der Tabellen, die ihre Migration anlegt. Gesetzt von
+ * `build-app.ts`; Teilaufbauten ohne diese Angabe senden kein `umfang`.
+ */
+export interface UmfangLage {
+  produkt: Produktfassung;
+  tabellenImDump: number;
+}
+
+/** Der Umfang je Bereich, mit dem Beleg aus DERSELBEN Lesung des Drillprotokolls. */
+function umfangFuer(lage: UmfangLage, wege: Schutzwege): UmfangAuskunft {
+  const r = wege.restore;
+  const gemessen =
+    r.zustand === "unbekannt"
+      ? null
+      : [
+          ...r.vergleich.beitraege.tabellen,
+          ...r.vergleich.anhaenge.tabellen,
+          ...r.vergleich.beziehungen.tabellen,
+          ...r.vergleich.rechte.tabellen,
+          ...r.vergleich.assistenz.tabellen,
+        ];
+  return umfangAuskunft(lage.produkt, lage.tabellenImDump, gemessen, r.zustand === "erfolg");
+}
+
 // SCRUM-181: admin-geschützte Aktion, um eine LEERE Instanz mit Demodaten sichtbar zu machen.
 // Kein Auto-Seed, kein anonymer Zugriff. Idempotent über den Empty-Guard im Seed selbst.
 // Pedi 05.07.: zusätzlich der Werksreset (Factory-Settings) — nur im Desktop/Dev-Modus verfügbar.
@@ -676,6 +717,7 @@ export function adminRoutes(
   services: DemoSeedServices & { audit?: AuditService },
   guards: Guards,
   factoryReset: FactoryReset = factoryResetUnavailable,
+  umfangLage?: UmfangLage,
 ): FastifyPluginAsync {
   return async (app) => {
     // ==========================================================================================
@@ -1012,20 +1054,24 @@ export function adminRoutes(
       } catch (fehler) {
         const code = (fehler as NodeJS.ErrnoException).code;
         if (code === "ENOENT") {
+          const wege = await schutzwegeFuer(services, verzeichnis, "kein_verzeichnis");
           reply.code(200).send({
             zustand: "kein_verzeichnis",
             verzeichnis,
             gelesenUtc,
-            schutzwege: await schutzwegeFuer(services, verzeichnis, "kein_verzeichnis"),
+            schutzwege: wege,
+            ...(umfangLage ? { umfang: umfangFuer(umfangLage, wege) } : {}),
           });
           return;
         }
+        const wege = await schutzwegeFuer(services, verzeichnis, "unlesbar");
         reply.code(200).send({
           zustand: "unlesbar",
           verzeichnis,
           gelesenUtc,
           grund: code ?? "UNBEKANNT",
-          schutzwege: await schutzwegeFuer(services, verzeichnis, "unlesbar"),
+          schutzwege: wege,
+          ...(umfangLage ? { umfang: umfangFuer(umfangLage, wege) } : {}),
         });
         return;
       }
@@ -1062,12 +1108,14 @@ export function adminRoutes(
         const fb = b.folgeNummer ?? 0;
         return fa === fb ? b.datei.localeCompare(a.datei) : fb - fa;
       });
+      const wege = await schutzwegeFuer(services, verzeichnis, "gelesen");
       reply.code(200).send({
         zustand: "gelesen",
         verzeichnis,
         gelesenUtc,
         sicherungen,
-        schutzwege: await schutzwegeFuer(services, verzeichnis, "gelesen"),
+        schutzwege: wege,
+        ...(umfangLage ? { umfang: umfangFuer(umfangLage, wege) } : {}),
       });
     });
   };

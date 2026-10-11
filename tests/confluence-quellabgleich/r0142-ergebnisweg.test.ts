@@ -53,8 +53,27 @@ function seite(id: string, version: number, titel = "Wartung"): Seite {
   };
 }
 
+// confluence-import-rechte (Nacharbeit 16, Ben K1): die Quelle trägt die Rechte, die Confluence
+// tatsächlich liefert — der Space ist für das Quellkonto des Admins lesbar (mit seiner
+// Klara-Adresse), und der referenzierte Vorfahr „Betrieb" ist eine offene Seite desselben Bereichs.
+// Ohne beides ist ein Objekt nach R-0549 für niemanden lesbar. Der Vorfahr steht am ENDE der
+// Bereichsliste; er wird nie entschieden und ist keine der Seiten, die die Fälle prüfen.
+const ADMIN_EMAIL = "a@r0142.test";
+const ELTERN: Seite = {
+  id: "parent",
+  title: "Betrieb",
+  version: { number: 1 },
+  body: { storage: { value: "<p>Betrieb.</p>" } },
+  _links: { webui: "/spaces/K/pages/parent" },
+  ancestors: [],
+};
+
 async function aufbau() {
   const bereich = new Map<string, Seite>();
+  // Die Quellkonten mit Space-Leserecht; ein Fall kann sie erweitern (Nacharbeit 17, E14).
+  const spaceLeser: { accountId: string; email: string }[] = [
+    { accountId: "acc-admin", email: ADMIN_EMAIL },
+  ];
   const antwort = (status: number, body: unknown) =>
     ({ ok: status < 300, status, json: async () => body }) as Response;
   const fetchFn = (async (u: string) => {
@@ -62,13 +81,30 @@ async function aufbau() {
     if (/\/child\/attachment$/.test(url.pathname)) {
       return antwort(200, { results: [] });
     }
+    if (url.pathname.endsWith("/rest/api/space/K")) {
+      return antwort(200, {
+        id: 655363,
+        key: "K",
+        permissions: [
+          {
+            operation: { operation: "read", targetType: "space" },
+            anonymousAccess: false,
+            subjects: {
+              user: { results: [...spaceLeser] },
+              group: { results: [] },
+            },
+          },
+        ],
+      });
+    }
     // Einzelabruf einer Seite (Selektivimport lädt je Id frisch, Löschabgleich fragt nach).
     const id = /\/rest\/api\/content\/([^/?]+)$/.exec(url.pathname)?.[1];
     if (id) {
-      const s = bereich.get(decodeURIComponent(id));
+      const gesucht = decodeURIComponent(id);
+      const s = gesucht === ELTERN.id ? ELTERN : bereich.get(gesucht);
       return s ? antwort(200, s) : antwort(404, {});
     }
-    return antwort(200, { results: [...bereich.values()] });
+    return antwort(200, { results: [...bereich.values(), ELTERN] });
   }) as unknown as typeof fetch;
   const adapter = adapterFromConfig({
     baseUrl: "https://fixture.example/wiki",
@@ -101,24 +137,42 @@ async function aufbau() {
       koService: services.ko,
       // R-0142 (Lauf 5 R3): genau die Verdrahtung der Kompositionswurzel (build-app.ts).
       luecken: services.ask,
+      kandidaten: services.candidates,
+      kandidatenRechte: services.library,
       guards,
     }),
   );
   await app.inject({
     method: "POST",
     url: "/api/auth/register",
-    payload: { name: "Admin", email: "a@r0142.test", password: "secret123" },
+    payload: { name: "Admin", email: ADMIN_EMAIL, password: "secret123" },
   });
   const login = await app.inject({
     method: "POST",
     url: "/api/auth/login",
-    payload: { email: "a@r0142.test", password: "secret123" },
+    payload: { email: ADMIN_EMAIL, password: "secret123" },
   });
   const headers = { authorization: `Bearer ${login.json().token}` };
   // R-0585 (Auftrag gesamt-datenschutz-voreinstellung): den Fragetext einer Lücke sehen nur der
   // Fragende und der Zuständige — kein Rollenrecht mehr. Wer im Test fragt und danach das Ergebnis
   // liest, muss deshalb DASSELBE Konto sein.
   const adminId = login.json().user.id as string;
+  // Nacharbeit 16 (Ben K1): eine zweite Administratorin mit denselben Routenrechten
+  // (`users.manage`), die in der Quelle NICHT lesen darf.
+  const fremdeMail = "fremd@r0142.test";
+  const angelegt = await app.inject({
+    method: "POST",
+    url: "/api/users",
+    headers,
+    payload: { name: "Fremd", email: fremdeMail, password: "geheim12345", role: "admin" },
+  });
+  expect(angelegt.statusCode, angelegt.body).toBe(201);
+  const fremdLogin = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: fremdeMail, password: "geheim12345" },
+  });
+  const fremdHeaders = { authorization: `Bearer ${fremdLogin.json().token}` };
 
   const lauf = async (): Promise<string> => {
     const start = await app.inject({
@@ -151,9 +205,24 @@ async function aufbau() {
       }[];
     };
   };
+  // Der Vorfahr der Fixture wird nie entschieden — die Fälle sehen nur ihre eigenen Seiten.
   const offene = async () =>
-    (await services.library.listImportCandidates()).filter((k) => k.status === "neu");
-  return { app, services, headers, adminId, bereich, lauf, ergebnis, offene };
+    (await services.library.listImportCandidates()).filter(
+      (k) => k.status === "neu" && k.item.externalId !== ELTERN.id,
+    );
+  return {
+    app,
+    services,
+    headers,
+    adminId,
+    fremdHeaders,
+    fremdeMail,
+    spaceLeser,
+    bereich,
+    lauf,
+    ergebnis,
+    offene,
+  };
 }
 
 describe("R-0142 · der Ergebnisweg des Confluence-Imports", () => {
@@ -363,14 +432,17 @@ describe("R-0142 · der Ergebnisweg des Confluence-Imports", () => {
       expect(geschlossen.gap?.id).toBeTruthy();
       // R-0846 / L6: eine Lücke schliesst nur mit dem Wissensobjekt, das sie beantwortet. Dafür
       // steht hier ein eigenes Objekt, damit der Import unten unberührt bleibt.
-      const antwort = await t.services.ko.create({
+      // produkt:20261010:wissenskreislauf-schliessen: ein ungeprüfter „Abschlussvermerk" schliesst
+      // FACHLICH nicht mehr (keine Fachfreigabe). Was dieser Fall braucht, ist eine geschlossene
+      // Lücke — „anderweitig beantwortet" ist die administrative Rücknahme mit eigenem Grund.
+      await t.services.ko.create({
         title: "Abschlussvermerk Wartungsfrage",
         statement: "Die Frage ist anderweitig beantwortet.",
         type: "best_practice",
         category: "Vermerk",
         author: "admin",
       });
-      await t.services.ask.closeGap(geschlossen.gap?.id ?? "", antwort.id);
+      await t.services.ask.withdrawGap(geschlossen.gap?.id ?? "", "dublette", "admin");
 
       t.bereich.set("P-1", seite("P-1", 1));
       const importId = await t.lauf();
@@ -603,6 +675,120 @@ describe("R-0142 · der Ergebnisweg des Confluence-Imports", () => {
         ],
         knowledgeGapUnavailableReason: "KI_ABGESCHALTET",
       });
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  // confluence-import-rechte (Nacharbeit 16, Ben K1): dieselben Wege für eine Administratorin mit
+  // denselben Routenrechten, die in der QUELLE nicht lesen darf. Die Quellberechtigte (E1/E5) liest
+  // weiter alles; die andere bekommt weder Objekt- noch Herkunftsinhalt.
+  it("E13 · nicht quellberechtigt trotz Routenrecht: Objekt-Ergebnis 404, keine Herkunftsinhalte", async () => {
+    const t = await aufbau();
+    try {
+      t.bereich.set("P-1", seite("P-1", 1));
+      const importId = await t.lauf();
+      const [kandidat] = await t.offene();
+      const a = await t.services.library.reviewImportCandidate(
+        kandidat?.id ?? "",
+        "accept",
+        "admin",
+      );
+      const koId = a.koId ?? "";
+      const sourceRecordId = (await t.ergebnis(importId)).items[0]?.sourceRecordId ?? "";
+      expect(sourceRecordId).not.toBe("");
+
+      // Gegenprobe: die Quellberechtigte liest Objekt-Ergebnis und Herkunft.
+      const eigenObjekt = await t.app.inject({
+        method: "GET",
+        url: `/api/admin/import/knowledge/${koId}`,
+        headers: t.headers,
+      });
+      expect(eigenObjekt.statusCode, eigenObjekt.body).toBe(200);
+      const eigenQuelle = await t.app.inject({
+        method: "GET",
+        url: `/api/admin/import/source-records/${sourceRecordId}`,
+        headers: t.headers,
+      });
+      expect(eigenQuelle.statusCode, eigenQuelle.body).toBe(200);
+      expect(eigenQuelle.json()).toMatchObject({ title: "Wartung" });
+
+      const fremd = (url: string) => t.app.inject({ method: "GET", url, headers: t.fremdHeaders });
+      const objekt = await fremd(`/api/admin/import/knowledge/${koId}`);
+      expect(objekt.statusCode).toBe(404);
+      expect(objekt.json()).toEqual({ error: "NOT_FOUND", message: "Nicht gefunden." });
+      const quelle = await fremd(`/api/admin/import/source-records/${sourceRecordId}`);
+      expect(quelle.statusCode).toBe(404);
+      expect(quelle.body).not.toContain("Wartung");
+      expect(quelle.body).not.toContain("/spaces/K/pages/P-1");
+      expect((await fremd(`/api/kos/${koId}`)).statusCode).toBe(404);
+      // Der Lauf selbst bleibt für das Routenrecht lesbar — ohne Titel, Adresse oder Lückenbezug.
+      const ergebnis = await fremd(`/api/admin/import/runs/${importId}/result`);
+      expect(ergebnis.statusCode, ergebnis.body).toBe(200);
+      expect(ergebnis.body).not.toContain("Wartung");
+      expect(ergebnis.body).not.toContain("/spaces/K/pages/P-1");
+      expect(ergebnis.json().items[0]).toMatchObject({
+        knowledgeGapRelationState: "RELATION_NOT_AVAILABLE",
+        knowledgeGapIds: null,
+      });
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  // confluence-import-rechte (Nacharbeit 17, Ben K1): ein älterer, abgelehnter Kandidat mit damals
+  // offenen Quellrechten darf die heutige Sperre am Wissensobjekt nicht überstimmen.
+  it("E14 · Ablehnung v1 → Wiederimport und Annahme v1 → Beschränkung v2: die alte Quellrevision bleibt für Ausgeschlossene verschlossen", async () => {
+    const t = await aufbau();
+    try {
+      // Beide Administratorinnen dürfen den Space in der Quelle zunächst lesen.
+      t.spaceLeser.push({ accountId: "acc-fremd", email: t.fremdeMail });
+      t.bereich.set("P-1", seite("P-1", 1));
+      await t.lauf();
+      const [abgelehnt] = await t.offene();
+      await t.services.library.reviewImportCandidate(abgelehnt?.id ?? "", "reject", "admin");
+      const zweiter = await t.lauf();
+      const [k1] = await t.offene();
+      const a1 = await t.services.library.reviewImportCandidate(k1?.id ?? "", "accept", "admin");
+      const altRevision = (await t.ergebnis(zweiter)).items[0]?.sourceRecordId ?? "";
+      expect(altRevision).not.toBe("");
+      const fremd = (url: string) => t.app.inject({ method: "GET", url, headers: t.fremdHeaders });
+      const eigen = (url: string) => t.app.inject({ method: "GET", url, headers: t.headers });
+      const quelleUrl = `/api/admin/import/source-records/${altRevision}`;
+      // Gegenprobe: solange beide quellberechtigt sind, liest auch die zweite die Revision.
+      expect((await fremd(quelleUrl)).statusCode).toBe(200);
+
+      // Fassung 2: die Seite ist an der Quelle nur noch für die erste Administratorin lesbar.
+      t.bereich.set("P-1", {
+        ...seite("P-1", 2),
+        restrictions: {
+          read: {
+            restrictions: {
+              user: { results: [{ accountId: "acc-admin", email: ADMIN_EMAIL }] },
+              group: { results: [] },
+            },
+          },
+        },
+      });
+      await t.lauf();
+      const [k2] = await t.offene();
+      const a2 = await t.services.library.reviewImportCandidate(k2?.id ?? "", "accept", "admin");
+      expect(a2.koId).toBe(a1.koId);
+
+      const alt = await fremd(quelleUrl);
+      expect(alt.statusCode).toBe(404);
+      expect(alt.body).not.toContain("Wartung");
+      expect(alt.body).not.toContain("/spaces/K/pages/P-1");
+      const laufErgebnis = await fremd(`/api/admin/import/runs/${zweiter}/result`);
+      expect(laufErgebnis.statusCode, laufErgebnis.body).toBe(200);
+      expect(laufErgebnis.body).not.toContain("Wartung");
+      expect(laufErgebnis.body).not.toContain("/spaces/K/pages/P-1");
+      expect((await fremd(`/api/admin/import/knowledge/${a1.koId}`)).statusCode).toBe(404);
+
+      // Die weiterhin Berechtigte liest die alte Revision unverändert.
+      const berechtigt = await eigen(quelleUrl);
+      expect(berechtigt.statusCode, berechtigt.body).toBe(200);
+      expect(berechtigt.json()).toMatchObject({ externalId: "P-1", sourceVersion: 1 });
     } finally {
       await t.app.close();
     }

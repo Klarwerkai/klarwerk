@@ -116,7 +116,8 @@ describe("R-1635 · Autor bzw. Nachfolger erfährt von der Anlagenänderung", ()
     expect(fuerAnna.map((m) => m.koId)).toEqual([id]);
     expect((await meldungen.meldungenFuer("carla")).filter((m) => m.art === "anlage")).toEqual([]);
 
-    await lifecycle.confirmStillValid(id, "anna");
+    // produkt:20261010:aenderungsfolgen-sichtbar (Nacharbeit 4): Abschluss nur mit Stand.
+    await lifecycle.confirmStillValid(id, "anna", 1);
     expect((await meldungen.meldungenFuer("anna")).filter((m) => m.art === "anlage")).toEqual([]);
   });
 

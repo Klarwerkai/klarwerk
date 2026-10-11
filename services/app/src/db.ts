@@ -46,6 +46,8 @@ import {
   REASONER_POLICY_SCHEMA,
 } from "../../reasoner";
 import { VALIDATION_SCHEMA, VALIDATION_SETTINGS_SCHEMA } from "../../validation";
+// produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil (eine Zeile je Konto).
+import { ASSISTENZ_PROFIL_SCHEMA } from "./assistenz-profil";
 // JOB 3578: die instanzweite Markenwahl (Demo-Firmen-CI). Sie wohnt wie die Lesevarianten im
 // App-Wurzelverzeichnis, weil sie zu keinem Fachmodul gehört: drei Oberflächen lesen sie, und
 // keine davon besitzt sie.
@@ -53,11 +55,17 @@ import { VALIDATION_SCHEMA, VALIDATION_SETTINGS_SCHEMA } from "../../validation"
 // die Lesevarianten: ein danebenliegender, flüchtiger Datenraum, der das KO-Modell nicht berührt.
 import { KO_BEARBEITUNG_SCHEMA } from "./bearbeitungshinweis";
 import { BRANDING_SETTINGS_SCHEMA } from "./branding-settings";
+// produkt:20261007:interner-chat: Gespräche und Nachrichten des internen Chats. Im App-Wurzel-
+// verzeichnis wie die Spaces: die Sichtbarkeitsregel entscheidet über sie, kein Fachmodul besitzt sie.
+import { CHAT_SCHEMA } from "./chat";
 // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports (umlegbar über die Oberfläche).
 import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter";
 // Firmenwörterbuch: die Fassungen des Begriffskatalogs. Im App-Wurzelverzeichnis wie die
 // Markenwahl: Editor und Word-Panel lesen ihn, kein Fachmodul besitzt ihn.
 import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
+import { GEMEINSAMER_ENTWURF_SCHEMA } from "./gemeinsamer-entwurf";
+// Instanztrennung: die eine Zeile, die diese Datenbank an genau eine Anlage bindet.
+import { INSTANZBINDUNG_SCHEMA } from "./instanzbindung";
 // R-0466: das Interaktionsgedächtnis (frühere Fragen, Antworten, Vorlieben je Konto). Im
 // App-Wurzelverzeichnis wie die Live-Wand-Fotos: ein eigener Datenraum, den kein Fachmodul besitzt.
 import { GEDAECHTNIS_SCHEMA } from "./interaktionsgedaechtnis";
@@ -65,6 +73,8 @@ import { GEDAECHTNIS_SCHEMA } from "./interaktionsgedaechtnis";
 import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (eine Zeile je Gespräch und Konto).
 import { KLARA_GESPRAECH_SCHEMA } from "./klara-gespraech";
+// ADMIN-12: Fassungen der Kommunikationsregeln, persönliche Abwahlen und Zustellstatus.
+import { KOMMUNIKATION_SCHEMA } from "./kommunikationsregeln";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
@@ -89,6 +99,11 @@ import { UNTERNEHMEN_SCHEMA } from "./unternehmensprofil";
 import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
 // produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer Veröffentlichung.
 import { VEROEFFENTLICHUNG_SCHEMA } from "./veroeffentlichung";
+// aufnahme:20260922:gesamt-lernwege: Fragensatzversionen und Versuche der Verständnisfragen.
+import { VERSTAENDNISFRAGEN_SCHEMA } from "./verstaendnisfragen";
+// produkt:20261007:templates-default: Vorlagen, persönliche Standards, Space-Vorgaben, Nutzung und
+// Begriffspflege als unveränderliche Fassungen.
+import { VORLAGEN_SCHEMA } from "./vorlagen";
 // R-1656: der Co-Reading-Zähler der Empfehlung „Du solltest auch wissen…" — je Paar nur eine Zahl.
 import { MITGELESEN_SCHEMA } from "./wissensempfehlung";
 
@@ -330,11 +345,74 @@ export const schemas = [
   // Veröffentlichung. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne
   // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   VEROEFFENTLICHUNG_SCHEMA,
+  // produkt:20261007:interner-chat: Gespräche und Nachrichten. Additiv und wiederholbar (CREATE
+  // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die
+  // lesbare Ordnung ist.
+  CHAT_SCHEMA,
+  // produkt:20261007:templates-default: die Fassungen der Vorlagen samt Standards, Space-Vorgaben,
+  // Nutzung und Begriffspflege. Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne
+  // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  VORLAGEN_SCHEMA,
+  // produkt:20261007:artikel-gemeinsam: die gemeinsamen Entwürfe der Artikel. Additiv und
+  // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed;
+  // am Ende, weil das die lesbare Ordnung ist.
+  GEMEINSAMER_ENTWURF_SCHEMA,
+  // Instanztrennung (R-0597/R-0790/R-0860): die eine Bindungszeile Datenbank → Anlage. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed — die
+  // Zeile schreibt erst der Start (`bindeInstanzVorMigration` in server.ts, VOR dieser Liste); hier
+  // ist die Stufe danach ein No-op und hält Migrationsbeleg und Restore-Drill vollständig.
+  INSTANZBINDUNG_SCHEMA,
+  // produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil je Konto. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am
+  // Ende, weil das die lesbare Ordnung ist.
+  ASSISTENZ_PROFIL_SCHEMA,
+  // ADMIN-12: Fassungen der Kommunikationsregeln, persönliche Abwahlen und Zustellstatus je
+  // Veröffentlichung, Empfänger und Kanal. Additiv und wiederholbar (drei CREATE TABLE IF NOT
+  // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung
+  // ist.
+  KOMMUNIKATION_SCHEMA,
+  // aufnahme:20260922:gesamt-lernwege: Fragensatzversionen und Versuche der Verständnisfragen.
+  // Additiv und wiederholbar (zwei CREATE TABLE IF NOT EXISTS samt Indizes), ohne Fremdschlüssel,
+  // ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  VERSTAENDNISFRAGEN_SCHEMA,
 ];
+
+// ================================================================================================
+// R-0800 — DER SCHEMAAUFBAU LÄUFT KOORDINIERT: EINE INSTANZ NACH DER ANDEREN.
+// ================================================================================================
+//
+// DER GEMESSENE BEFUND (`tests/pg-erstaufbau-konkurrenz/erstaufbau-konkurrenz.integration.test.ts`,
+// Fall E2, Testserver-Lauf pa-1790428493-d9a9274b): `migrate()` lief ohne Sperre. Starteten zwei
+// Instanzen — oder Server und `seed:demo` — gleichzeitig gegen eine frische Datenbank, fiel die
+// zweite mit einer Eindeutigkeitsverletzung im Katalog aus (`23505`, `pg_type_typname_nsp_index`).
+// `IF NOT EXISTS` schützt nur gegen das, was schon FESTGESCHRIEBEN ist, nicht gegen eine Anlage,
+// die eine andere Sitzung gerade vornimmt.
+//
+// DIE SPERRE IST DATENBANKWEIT UND SITZUNGSGEBUNDEN (`pg_advisory_lock`), und alle Stufen laufen auf
+// DERSELBEN Sitzung, die sie hält. Eine Transaktion um den ganzen Aufbau ist bewusst NICHT gewählt:
+// sie änderte, was eine einzelne Stufe darf (`CONCURRENTLY`, s. `overlap-repo-pg.ts`), und machte
+// aus der Koordination eine zweite Änderung. Wer wartet, wartet an der Sperre und findet danach
+// das fertige Schema vor — seine Stufen laufen dann als das, was sie sind: wiederholbar und folgenlos.
+//
+// DER SCHLÜSSEL folgt dem Muster der übrigen Sperren im Haus (`596000001` Bestandsreset,
+// `613000001` Prüfprotokoll, `3087000001` Importannahme) und ist mit keiner davon gleich.
+export const MIGRATIONSSPERRE = 800000001;
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).
 export async function migrate(pool: Pool): Promise<void> {
-  for (const ddl of schemas) {
-    await pool.query(ddl);
+  const sitzung = await pool.connect();
+  let sauber = false;
+  try {
+    await sitzung.query("SELECT pg_advisory_lock($1)", [MIGRATIONSSPERRE]);
+    for (const ddl of schemas) {
+      await sitzung.query(ddl);
+    }
+    await sitzung.query("SELECT pg_advisory_unlock($1)", [MIGRATIONSSPERRE]);
+    sauber = true;
+  } finally {
+    // Bricht eine Stufe ab, geht die Sitzung NICHT in den Pool zurück: `release(true)` schließt sie,
+    // und mit ihr endet die Sperre — ohne einen Freigabeaufruf, der auf einer gestörten Verbindung
+    // selbst scheitern und die Sperre bis zum Neustart des Pools festhalten könnte.
+    sitzung.release(!sauber);
   }
 }

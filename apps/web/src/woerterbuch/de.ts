@@ -4618,6 +4618,7 @@ const de = {
   "lib.format.markdown": "Text (Markdown)",
   "lib.format.mediawiki": "MediaWiki",
   "lib.format.html": "HTML (Druck/PDF)",
+  "lib.format.paket": "Wissenspaket (ZIP mit Fassungen und Anhängen)",
   // ==============================================================================================
   // JOB 1119 (D-002) — DAS SUCHFELD SAGT OHNE TIPPEN, WORIN ES SUCHT.
   // ==============================================================================================
@@ -5127,6 +5128,24 @@ const de = {
   // sichtbar angeboten." Der Server führt den Lauf und schickt seine Kennung mit; die Bilanz nennt
   // sie ab jetzt, samt Ausgang aus der Laufakte. Der Ausgang selbst spricht das Vokabular der
   // Lauf-Kachel (`w2.run.*`) — dieselbe Sache, dieselben Worte.
+  // R-0920: die eigene Ergebnisadresse eines Importlaufs (`pages/ImportLauf.tsx`).
+  "imp.lauf.oeffnen": "Ergebnisseite dieses Laufs öffnen",
+  "imp.lauf.titel": "Ergebnis eines Importlaufs",
+  "imp.lauf.lead":
+    "Diese Seite zeigt genau einen Lauf, so wie der Server ihn festhält. Ihre Adresse lässt sich neu laden und weitergeben.",
+  "imp.lauf.kennung": "Lauf-Kennung",
+  "imp.lauf.ausgang": "Ausgang",
+  "imp.lauf.nichtGefunden":
+    "Zu dieser Kennung kennt der Server keinen Lauf. Über Zustand und Zähler wird deshalb nichts gesagt.",
+  "imp.lauf.zaehler.gesamt": "Elemente insgesamt",
+  "imp.lauf.zaehler.angelegt": "Neu angelegt",
+  "imp.lauf.zaehler.gebunden": "An Bestehendes gebunden",
+  "imp.lauf.zaehler.uebersprungen": "Übersprungen",
+  "imp.lauf.zaehler.gescheitert": "Gescheitert",
+  "imp.lauf.gestartet": "Gestartet",
+  "imp.lauf.beendet": "Beendet",
+  "imp.lauf.nochNichtBeendet": "Noch nicht beendet",
+  "imp.lauf.zurueck": "Zurück zum Import",
   "imp.groups.runHeading": "Lauf dieser Übernahme",
   "imp.groups.runIdLabel": "Lauf-Kennung",
   "imp.groups.runCall": "Aufruf {{n}}",
@@ -7972,6 +7991,31 @@ const de = {
     "Du kommst aus Fassung {{genannt}}; dieser Beitrag steht inzwischen in Fassung {{aktuell}}.",
   "arbeitsweg.klara.label": "Beitrag",
   "arbeitsweg.klara.chat": "In „Fragen“ zu diesem Beitrag weiterfragen",
+  // produkt:20261010:fragen-pruefen-einstieg — der Einstieg der leeren Fragenfläche
+  // (`components/fragen/FragenEinstieg.tsx`). Der erste Schritt beginnt bewusst NICHT mit „Nächster
+  // Schritt:" — dieser Satzanfang gehört auf /fragen allein dem Antwortvertrag (mega54-Sammler).
+  "fragenEinstieg.erklaerung":
+    "Hier fragst du euer geprüftes Wissen. Jede Antwort zeigt ihre Quellen und deren Prüfstand – fehlt eine Grundlage, wird die Lücke offen benannt.",
+  "fragenEinstieg.ersterSchritt":
+    "Erster Schritt: Frage ins Feld darunter schreiben (oder diktieren) und mit dem Pfeil senden.",
+  "fragenEinstieg.beispieleZeigen": "Fiktive Beispiele zeigen",
+  "fragenEinstieg.beispieleVerbergen": "Beispiele ausblenden",
+  "fragenEinstieg.fiktiv": "fiktiv",
+  "fragenEinstieg.fiktivTitel": "Fiktives Beispiel – erfundene Lage, keine echten Daten.",
+  "fragenEinstieg.optionalTitel": "Optional – nur bei Bedarf",
+  // produkt:20261010:fragen-pruefen-einstieg — der Prüfanlass an der Prüfkarte (`lib/pruefGrund.ts`).
+  "pruefgrund.label.warum": "Warum bei dir",
+  "pruefgrund.label.was": "Was prüfen",
+  "pruefgrund.label.wirkung": "Wirkung",
+  "pruefgrund.label.sichtbar": "Sichtbarkeit",
+  "pruefgrund.anlass.new": "Neu eingereicht.",
+  "pruefgrund.anlass.revision": "Überarbeitet (Fassung {{version}}).",
+  "pruefgrund.warum.mir": "Dir zugewiesen.",
+  "pruefgrund.warum.andere":
+    "Anderen zugewiesen ({{anzahl}}) – steht in der offenen Prüfliste deiner Rolle.",
+  "pruefgrund.warum.offen": "Niemandem zugewiesen – steht in der offenen Prüfliste deiner Rolle.",
+  "pruefgrund.wirkung":
+    "Freigeben ist eine von {{need}} nötigen Stimmen ({{have}} vorhanden). Rückfrage und Ablehnen brauchen eine Begründung und führen in die Nacharbeit; nichts wird automatisch freigegeben.",
 };
 
 export { de };

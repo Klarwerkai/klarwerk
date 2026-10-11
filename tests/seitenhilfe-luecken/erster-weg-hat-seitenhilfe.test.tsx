@@ -1050,10 +1050,18 @@ describe("JOB 3768 · E · die Zusage der Entwurfs-Hilfe und die Fläche im selb
           zitiert(sprache, schluessel),
         );
       }
-      // KEINE AUFBEWAHRUNGSFRIST: es gibt keine (JOB 3668, Rückgabe R1) — also steht auch keine da.
-      expect(zusage, `${sprache}: die Hilfe erfindet eine Frist`).not.toMatch(
-        /\d+\s*(Tag|day|dag)/,
-      );
+      // AUFBEWAHRUNGSFRIST: bis Aufnahme gesamt-papierkorb gab es keine (JOB 3668, Rückgabe R1).
+      // Seit Pedis Festlegung B5 (17.09.2026) und `CaptureService.runDraftTrashSweep` gilt auch für
+      // Entwürfe `TRASH_RETENTION_DAYS` — die Hilfe nennt genau diese Frist und keine andere. Die
+      // Zahl kommt aus `adm.trash.help`, das `tests/app/zusagen-zahlenbindung.test.ts` an die
+      // Konstante bindet; dieser Oberflächentest lädt den Serverdienst nicht.
+      const frist = /(\d+)\s*(Tag|day|dag)/;
+      const papierkorbFrist = Number(frist.exec(ressource(sprache, "adm.trash.help"))?.[1]);
+      expect(papierkorbFrist, `${sprache}: adm.trash.help nennt keine Frist`).toBeGreaterThan(0);
+      const fristen = [...zusage.matchAll(new RegExp(frist, "g"))].map((t) => Number(t[1]));
+      expect(fristen, `${sprache}: die Hilfe nennt nicht genau die Papierkorbfrist`).toEqual([
+        papierkorbFrist,
+      ]);
     }
   });
 });

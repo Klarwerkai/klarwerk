@@ -89,6 +89,9 @@ const ERLAUBTE_AUSNAHMEN = [
 ] as const;
 
 /** Das npm-Skript, dessen Aufrufzeile das Tor in `tools/check` fährt. */
+// Aufnahme 20260922: das Tor fährt zusätzlich je einen Firefox- und WebKit-Lauf über die
+// Kern-Rauchproben. Beide filtern `@modell` identisch (gepinnt in `job1094-engine-kette.test.ts`
+// K7); die vollständige Fallmenge zählt nur der Chromium-Lauf — deshalb steht der Pin hier.
 const GATE_SCRIPT = "smoke:ui:gate";
 
 interface ListedSpec {

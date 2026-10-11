@@ -45,13 +45,14 @@ export default {
     "verwaltung.zweck.ki":
       "KI-Anbieter, Zugänge, Grenzen und externe Recherche einstellen; Importe verbinden.",
     "verwaltung.zweck.kommunikation":
-      "Hinweise und Benachrichtigungen an Teams — dafür gibt es hier noch keine Funktion.",
+      "Welche Meldung wen über welchen Kanal wie oft erreicht; Vorgaben und Zustellstatus.",
     "verwaltung.zweck.berichte":
       "Auswertungen, Prüfprotokoll, Benutzeränderungen und Datenschutzauskunft.",
     "verwaltung.zweck.betrieb":
       "Bereitschaft, Sicherung, Erweiterte Module, Vorführdaten und Werkseinstellungen.",
     "verwaltung.ziel.uebergabe": "Beiträge und Verantwortung übergeben",
     "verwaltung.ziel.spaces": "Spaces",
+    "verwaltung.ziel.qualitaetsaufgaben": "Alle Qualitätsaufgaben und Rückmeldungen",
     "verwaltung.nichtVerfuegbar": "In der Verwaltung noch nicht verfügbar",
     "verwaltung.persoenlich.titel": "Persönliche Einstellungen — getrennt von der Verwaltung",
     "verwaltung.filter.wartet": "Gefiltert: wartet auf Freigabe",
@@ -89,12 +90,13 @@ export default {
     "verwaltung.zweck.ki":
       "Set AI providers, access, limits and external research; connect imports.",
     "verwaltung.zweck.kommunikation":
-      "Notices and notifications to teams — there is no function for this here yet.",
+      "Which notification reaches whom, through which channel and how often; rules and delivery.",
     "verwaltung.zweck.berichte":
       "Analytics, audit trail, user changes and data protection details.",
     "verwaltung.zweck.betrieb": "Readiness, backup, advanced modules, demo data and factory reset.",
     "verwaltung.ziel.uebergabe": "Hand over contributions and responsibility",
     "verwaltung.ziel.spaces": "Spaces",
+    "verwaltung.ziel.qualitaetsaufgaben": "All quality tasks and feedback",
     "verwaltung.nichtVerfuegbar": "Not yet available in administration",
     "verwaltung.persoenlich.titel": "Personal settings — kept apart from administration",
     "verwaltung.filter.wartet": "Filtered: awaiting approval",
@@ -134,13 +136,14 @@ export default {
     "verwaltung.zweck.ki":
       "AI-aanbieders, toegangen, grenzen en extern onderzoek instellen; imports koppelen.",
     "verwaltung.zweck.kommunikation":
-      "Meldingen en berichten aan teams — hiervoor is hier nog geen functie.",
+      "Welke melding wie via welk kanaal hoe vaak bereikt; regels en bezorgstatus.",
     "verwaltung.zweck.berichte":
       "Analyses, controleprotocol, gebruikerswijzigingen en privacy-informatie.",
     "verwaltung.zweck.betrieb":
       "Gereedheid, back-up, uitgebreide modules, demodata en fabrieksinstellingen.",
     "verwaltung.ziel.uebergabe": "Bijdragen en verantwoordelijkheid overdragen",
     "verwaltung.ziel.spaces": "Spaces",
+    "verwaltung.ziel.qualitaetsaufgaben": "Alle kwaliteitstaken en feedback",
     "verwaltung.nichtVerfuegbar": "Nog niet beschikbaar in het beheer",
     "verwaltung.persoenlich.titel": "Persoonlijke instellingen — los van het beheer",
     "verwaltung.filter.wartet": "Gefilterd: wacht op vrijgave",

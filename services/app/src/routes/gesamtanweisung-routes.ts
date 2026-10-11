@@ -51,6 +51,9 @@ import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 export interface AnweisungSichtbarkeitsFakten {
   readonly confidentiality?: Confidentiality | null | undefined;
   readonly author?: string | null | undefined;
+  // confluence-import-rechte: die Quellleser — ohne sie fiele ein quellbeschränkter Eintrag auf die
+  // Stufenregel zurück, und ein ausgeschlossener Controller läse ihn über die Anweisung.
+  readonly quellrechte?: { readonly leser?: readonly string[] | undefined } | null | undefined;
 }
 
 export type AnweisungSichtbar = (fakten: AnweisungSichtbarkeitsFakten) => boolean;
@@ -267,6 +270,8 @@ function kopfAus(body: Record<string, unknown>): AnweisungKopfEingabe {
  * unverändert (Stufe und Autor), also ändert sich die Entscheidung nicht.
  */
 function sichtbarFuer(user: SessionUser): AnweisungSichtbar {
+  // Zusammenführung (Nacharbeit 23): mains Fabrik reicht die Fakten UNVERÄNDERT an `darfSehen` —
+  // damit auch `quellrechte` (confluence-import-rechte, R-0549), die der Dienst je Baustein mitgibt.
   return sichtbarkeitsfilterFuer(user);
 }
 
