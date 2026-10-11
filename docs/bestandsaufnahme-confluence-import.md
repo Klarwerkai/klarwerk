@@ -372,7 +372,11 @@ Lizenzgrenze laufen über ihre eigenen Wege (Hochstufung/Löschweg mit eigenem A
 genannten Fälle (`runde3.test.ts` N2/N4, der erste Löschfall in `abgleich.test.ts`) gelten damit
 wieder. Offen und NICHT Teil von P05: zwei weitere Fälle in `abgleich.test.ts` verwenden
 Adapter-Attrappen ohne `isGoneAtSource` (unvollständig gelesener Bereich, gescheiterte
-Einzelnachfrage) und erwarten einen Quellabgleich, den ein solcher Adapter nicht trägt.
+Einzelnachfrage) und erwarten einen Quellabgleich, den ein solcher Adapter nicht trägt. Ebenso
+`runde3.test.ts` N1 (Zeile 119): er erwartet, dass `adapter.fetchItem` bei einer 2xx-Antwort ohne
+Seiten-Id wirft; seit der Zusammenführung mit main liefert `getPageById`/`fetchItem` dort bewusst
+`undefined` (der Löschabgleich fragt über `getPageStateById`). Rot gemessen am P05-Kandidaten
+80d110b0, ohne dass P05 Client, Adapter oder diesen Test berührt hat.
 
 **Nacharbeit 5 (Integration mit main `52b0f80e`):** sieben Konfliktdateien, beide Seiten erhalten.
 main bringt die Lieferung des ausgegliederten Anhangs-Auftrags (R-0163): Anhangsliste je Seite
