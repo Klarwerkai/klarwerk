@@ -73,6 +73,10 @@
             <button type="button" id="pending-keep" data-i18n="pendingKeep"></button>
           </div>
         </div>
+        <!-- Nacharbeit 2 (Ben): gleichzeitig ausgelöste Erfassungen, die der Worker verdrängen musste,
+             ohne sie zu lesen. Sie werden GEZÄHLT und hier genannt, bis der Mensch die Lage
+             beantwortet (behalten, ersetzen, verwerfen) — nie still verworfen. -->
+        <p id="skipped-captures" class="hint warn" hidden><span data-i18n="skippedCaptures"></span> <span id="skipped-count"></span></p>
         <!-- JOB 3606 R2: Der Konto-Block klappt zu — das ist die Kompaktheit, die `<details>` OHNE
              eine einzige CSS-Zeile mitbringt.
              R4: und er trägt seine Überschrift wieder, wie in der gemessenen 0.4.1. Sie steht
