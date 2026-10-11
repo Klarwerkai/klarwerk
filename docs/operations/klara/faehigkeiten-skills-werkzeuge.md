@@ -61,6 +61,28 @@ Auftrag `produkt:20261011:assistenz-skills-werkzeuge`
 | `wikipedia-suche` 1.0.0 | Wikimedia | Vorhandener `external-search`-Weg, wenn er nicht mit `EXTERNAL_SEARCH=off` abgeschaltet ist |
 | `perplexity-suche` 1.0.0 | Perplexity Search API | Nicht installiert |
 
+## Reale Probe (AC10)
+
+`tests/assistenz-faehigkeiten/echtprobe-wikipedia.ts` führt einen tatsächlichen Aufruf über den
+integrierten Produktweg aus. Der Weg führt über die echte App, Anmeldung, Vorschau und die
+bestätigte Ausführung von `wikipedia-suche` zum Adapter `external-search` mit Transport `echt` und
+weiter zu de.wikipedia.org. Danach prüft die Probe:
+
+- die Wirkung: Die zurückgegebene Originalquelle ist abrufbar und trägt ihren Titel,
+- die Wiederholung: Derselbe Auftrag wird nicht doppelt ausgeführt,
+- den Negativfall: Ist die externe Abfrage gesperrt, findet kein Aufruf statt.
+
+Die Probe gibt einen JSON-Beleg aus. Sie sendet nur, wenn `KLARWERK_FAEHIGKEIT_ECHTPROBE=freigegeben`
+gesetzt ist und `EXTERNAL_SEARCH` nicht `off` ist. Vitest und das Smoke-Tor sind bewusst hermetisch
+(`EXTERNAL_SEARCH=off`); dort meldet sie die fehlende Voraussetzung ohne Netzanfrage.
+
+```
+KLARWERK_FAEHIGKEIT_ECHTPROBE=freigegeben KLARWERK_KANDIDAT=<commit> KLARWERK_SKIP_KEYCHAIN=1 \
+  npx tsx tests/assistenz-faehigkeiten/echtprobe-wikipedia.ts
+```
+
+Exitcodes: 0 heißt durchgeführt, 2 heißt Voraussetzung fehlt, 1 heißt fehlgeschlagen.
+
 ## Offene Voraussetzungen (nicht durch Code ersetzbar)
 
 - **O09:** Für Perplexity fehlen Anbieterfreigabe, belegte Kosten je Aufruf und Budgetzuordnung.
