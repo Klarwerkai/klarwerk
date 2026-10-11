@@ -692,6 +692,13 @@ export class MeetingDokumentbezug {
   /**
    * Verbindet die tatsächlich präsentierte Fassung. `original` ist die berechtigt zugängliche
    * Originalfassung — gleiche oder eigene Dateikennung — oder null, wenn sie nicht zugänglich ist.
+   *
+   * Nacharbeit 5 (Bens Befund 1) — WIEDERIMPORT IST IDEMPOTENT. Ist für das Original schon ein
+   * Stand geführt, setzt ein erneutes Verbinden ihn nie zurück:
+   *   · dieselbe Fassung wie aktuell, oder eine bereits bekannte (abgelöste) Fassung → der
+   *     abgeglichene Stand bleibt, offene Vorschläge bleiben an ihm;
+   *   · eine noch unbekannte Fassung → ein echter Fassungswechsel; er läuft über DENSELBEN
+   *     Abgleich wie `fassungsabgleich`, samt Neubindung oder Prüfstellung offener Vorschläge.
    */
   verbinden(
     nutzerId: string,
@@ -710,12 +717,25 @@ export class MeetingDokumentbezug {
         "Diese Kopie ist bereits einem anderen Original zugeordnet.",
       );
     }
+    const aktuell = original ? this.originale.get(original.dateiId) : undefined;
+    const wechsel =
+      original !== null &&
+      aktuell !== undefined &&
+      !this.fassungen.has(this.schluessel(original.dateiId, original.fassung));
+    if (wechsel && aktuell) {
+      // Ein Fassungswechsel verlangt — wie `fassungsabgleich` — Recht am aktuellen Quellobjekt.
+      this.dokumentRecht(nutzerId, aktuell.quelleId);
+    }
     const schluessel = this.schluessel(praesentiert.dateiId, praesentiert.fassung);
     this.saetze.set(schluessel, kopie(praesentiert));
     if (original) {
       this.originalVon.set(praesentiert.dateiId, original.dateiId);
-      this.originale.set(original.dateiId, kopie(original));
-      this.fassungen.set(this.schluessel(original.dateiId, original.fassung), kopie(original));
+      if (!aktuell) {
+        this.originale.set(original.dateiId, kopie(original));
+        this.fassungen.set(this.schluessel(original.dateiId, original.fassung), kopie(original));
+      } else if (wechsel) {
+        this.abgleichAnwenden(nutzerId, original);
+      }
     }
     return this.kopieAbgleich(nutzerId, praesentiert.dateiId, praesentiert.fassung);
   }
@@ -1072,6 +1092,14 @@ export class MeetingDokumentbezug {
     }
     this.dokumentRecht(nutzerId, this.aktuelleQuelle(neu.dateiId));
     this.dokumentRecht(nutzerId, neu.quelleId);
+    return this.abgleichAnwenden(nutzerId, neu);
+  }
+
+  /**
+   * Der gemeinsame Kern jedes Fassungswechsels (`fassungsabgleich` und Wiederimport mit neuer
+   * Originalfassung). Rechte sind vorher geprüft.
+   */
+  private abgleichAnwenden(nutzerId: string, neu: Foliensatz): FassungsAbgleichEintrag[] {
     this.originale.set(neu.dateiId, kopie(neu));
     this.fassungen.set(this.schluessel(neu.dateiId, neu.fassung), kopie(neu));
     const ergebnis: FassungsAbgleichEintrag[] = [];

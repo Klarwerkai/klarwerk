@@ -865,3 +865,59 @@ describe("Nacharbeit 4 · Befund 3: vertauschte Relationship-Ziele sind eine Än
     expect(m.aenderung("eigner", r.id)).toMatchObject({ status: "fassung_pruefen", ziel: null });
   });
 });
+
+describe("Nacharbeit 5 · Befund 1: Wiederimport setzt den abgeglichenen Stand nicht zurück (K8/K9)", () => {
+  it("nach A→B lässt ein erneutes Verbinden mit A Original und Änderungsziele bei B", async () => {
+    const m = meeting(l);
+    const gleich = melde(m, "r3", "vorschlag", "Überblick kürzen");
+    const b = await foliensatzLesen("nord", await pptx(NORD, "zweite-fassung"), "nord-v2");
+    m.fassungsabgleich("eigner", b);
+    const zielB = { dateiId: "nord", fassung: b.fassung, sldId: "256" };
+    expect(m.aenderung("eigner", gleich.id)).toMatchObject({ status: "offen", ziel: zielB });
+
+    // Derselbe Präsentationsimport noch einmal — mit dem alten Original A.
+    const anzahl = m.aenderungenAnzahl();
+    m.verbinden("eigner", l.nord, l.nord);
+    const pruefe = (bezug: MeetingDokumentbezug): void => {
+      expect(bezug.aenderung("eigner", gleich.id)).toMatchObject({
+        status: "offen",
+        ziel: zielB,
+        zielQuelleId: "nord-v2",
+      });
+      expect(bezug.kopieAbgleich("eigner", "nord", l.nord.fassung)).toMatchObject({
+        originalFassung: b.fassung,
+        originalQuelleId: "nord-v2",
+      });
+    };
+    pruefe(m);
+    expect(m.aenderungenAnzahl()).toBe(anzahl);
+    // Und nach erneutem Laden aus dem gespeicherten Zustand ebenso.
+    const json = JSON.parse(JSON.stringify(m.zustand()));
+    pruefe(MeetingDokumentbezug.ausZustand(json, l.pruefung));
+  });
+
+  it("ein Wiederimport mit einer NEUEN Originalfassung läuft über den Fassungsabgleich", async () => {
+    const m = meeting(l);
+    const geaendert = melde(m, "r2", "vorschlag", "Zahlenquelle ergänzen");
+    const gleich = melde(m, "r3", "vorschlag", "Überblick kürzen");
+    const c = await foliensatzLesen(
+      "nord",
+      await pptx([NORD[0]!, { ...NORD[1]!, inhalt: "Grafik C" }, NORD[2]!]),
+      "nord-v2",
+    );
+    const abgleich = m.verbinden("eigner", l.nord, c);
+    expect(abgleich).toMatchObject({ originalFassung: c.fassung, originalQuelleId: "nord-v2" });
+    expect(m.aenderung("eigner", geaendert.id)).toMatchObject({
+      status: "fassung_pruefen",
+      ziel: null,
+    });
+    expect(m.aenderung("eigner", gleich.id)).toMatchObject({
+      status: "offen",
+      ziel: { dateiId: "nord", fassung: c.fassung, sldId: "256" },
+    });
+    // Ohne Recht am aktuellen Quellobjekt kein stiller Fassungswechsel über den Wiederimport.
+    const d = await foliensatzLesen("nord", await pptx(NORD, "vierte-fassung"), "nord-v2");
+    l.rechte.eigner?.delete("dok:nord-v2");
+    expect(() => m.verbinden("eigner", l.nord, { ...d, quelleId: "nord" })).toThrow(BindungsFehler);
+  });
+});

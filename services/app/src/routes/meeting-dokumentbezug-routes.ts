@@ -562,7 +562,7 @@ export function meetingDokumentbezugRoutes(
         ungueltig(reply, "originalObjectId und neueFassungObjectId angeben.");
         return;
       }
-      const z = await zugang(user, request.params.id, reply, [originalId, neuId]);
+      const z = await zugang(user, request.params.id, reply, [neuId]);
       if (!z) {
         return;
       }
@@ -570,8 +570,11 @@ export function meetingDokumentbezugRoutes(
         // Die neue Fassung liegt als eigenes Dateiobjekt vor (ein Upload ist unveränderlich). Sie
         // wird unter der LOGISCHEN Kennung des Originals abgeglichen, behält aber ihr tatsächliches
         // Quellobjekt (Nacharbeit 4, Befund 2): Öffnen und spätere Rechteprüfung gehen dorthin.
+        // Nacharbeit 5 (Befund 2): `originalObjectId` ist nur die logische Kennung. Gelesen wird
+        // allein das neue Objekt; das Recht am AKTUELLEN Quellobjekt prüft die Bindungsschicht
+        // (`aktuelleQuelle`). Ein abgelöstes Objekt hinter der logischen Kennung zählt nicht mehr.
         const bytes = await dateiLesen(user, neuId);
-        if (!bytes || !(await dateiLesen(user, originalId))) {
+        if (!bytes) {
           reply.code(404).send({ error: "NOT_FOUND", message: "Datei nicht gefunden." });
           return;
         }

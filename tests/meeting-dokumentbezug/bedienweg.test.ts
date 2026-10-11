@@ -398,3 +398,61 @@ describe("Nacharbeit 4 · Befund 1: eine Mitschrift ohne Leserecht sperrt ihre R
     expect(eigen.json.rueckmeldungen.map((s: { id: string }) => s.id)).toEqual([id]);
   });
 });
+
+describe("Nacharbeit 5 · B→C ohne Recht am abgelösten A; Wiederimport hält den Stand (K6/K8)", () => {
+  it("der Fassungsabgleich prüft das aktuelle und das neue Quellobjekt, nicht das abgelöste", async () => {
+    // Eigene Lage: Original A ist streng vertraulich (nur die Vortragende), B und C sind intern.
+    const datei = (name: string, bytes: Uint8Array, stufe: "intern" | "streng_vertraulich") =>
+      hochladen(a.app, vortragende, name, PPTX_MIME, bytes, stufe);
+    const kopieId = await datei("n5-kopie.pptx", await pptx(NORD, "n5-kopie"), "intern");
+    const aId = await datei("n5-a.pptx", await pptx(NORD), "streng_vertraulich");
+    const bId = await datei("n5-b.pptx", await pptx(NORD, "n5-b"), "intern");
+    const cId = await datei(
+      "n5-c.pptx",
+      await pptx([NORD[0]!, { ...NORD[1]!, inhalt: "Grafik C" }, NORD[2]!]),
+      "intern",
+    );
+    const angelegt = await anfrage(a.app, vortragende, "POST", "/api/meetings", {
+      titel: "Nacharbeit 5",
+      zeitbasis: ZEITBASIS,
+      teilnehmer: [await kontoId(a.app, teilnehmer)],
+    });
+    expect(angelegt.status, angelegt.body).toBe(201);
+    const pfad = `/api/meetings/${angelegt.json.meetingId}`;
+    const verbunden = await anfrage(a.app, vortragende, "POST", `${pfad}/praesentationen`, {
+      objectId: kopieId,
+      originalObjectId: aId,
+    });
+    expect(verbunden.status, verbunden.body).toBe(200);
+    const abgleich = (konto: Konto, neueFassungObjectId: string) =>
+      anfrage(a.app, konto, "POST", `${pfad}/fassungsabgleich`, {
+        originalObjectId: aId,
+        neueFassungObjectId,
+      });
+
+    // Solange A aktuell ist, darf der Teilnehmer (ohne Recht an A) nicht abgleichen.
+    expect((await abgleich(teilnehmer, bId)).status).toBe(404);
+    // Die Vortragende führt A→B; danach ist B das aktuelle Quellobjekt.
+    const ab = await abgleich(vortragende, bId);
+    expect(ab.status, ab.body).toBe(200);
+    // B→C durch den Teilnehmer: Rechte an B und C genügen; A wird nicht mehr gelesen.
+    const bc = await abgleich(teilnehmer, cId);
+    expect(bc.status, bc.body).toBe(200);
+    expect(bc.json).toMatchObject({ dateiId: aId, quelleId: cId });
+    const ueberblick = await anfrage(a.app, teilnehmer, "GET", pfad);
+    expect(ueberblick.json.praesentationen[0].abgleich).toMatchObject({
+      originalDateiId: aId,
+      originalQuelleId: cId,
+    });
+
+    // Wiederimport derselben Präsentation mit dem alten Original A setzt nichts zurück.
+    const wieder = await anfrage(a.app, vortragende, "POST", `${pfad}/praesentationen`, {
+      objectId: kopieId,
+      originalObjectId: aId,
+    });
+    expect(wieder.status, wieder.body).toBe(200);
+    expect(wieder.json.abgleich).toMatchObject({ originalQuelleId: cId });
+    const danach = await anfrage(a.app, teilnehmer, "GET", pfad);
+    expect(danach.json.praesentationen[0].abgleich).toMatchObject({ originalQuelleId: cId });
+  });
+});
