@@ -87,6 +87,7 @@ import { ListEditor, TagEditor } from "../components/editors";
 import { Blatt } from "../components/erfassen/Blatt";
 import { NegativwissenFuehrung } from "../components/erfassen/NegativwissenFuehrung";
 import { ExterneQuelleKennung } from "../components/ko/ExterneQuelleKennung";
+import { SharePointImportBereich } from "../components/sharepoint-import/SharePointImportBereich";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, SectionLabel, TextInput } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
@@ -6825,6 +6826,11 @@ export function CaptureArbeitsraum({
                     importMeldung={fileImportMeldung?.text ?? null}
                     importMeldungNr={fileImportMeldung?.nr}
                   />
+                  {/* gesamt-nutzerverwaltung · Frage 6: der SharePoint-Import des Fachkontos aus
+                    seiner EIGENEN Testbibliothek. Er erscheint nur, wenn der Server diesem Konto
+                    eine Bibliothek zuordnet; sonst rendert er nichts. Die Verwaltungsfläche
+                    (`/import`) bleibt Admin und Stufe 2 vorbehalten. */}
+                  <SharePointImportBereich nurTestbibliothek />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       variant="ghost"

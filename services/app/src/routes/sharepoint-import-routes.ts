@@ -548,6 +548,29 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
 
   return async (app) => {
     // ------------------------------------------------------------------------------------------
+    // Frage 6 · DIE AUSKUNFT FÜR DAS FACHKONTO: hat dieses Konto eine eigene Testbibliothek?
+    // ------------------------------------------------------------------------------------------
+    // Die Erfassungsseite fragt damit, ob sie den Import aus der Testbibliothek anbieten soll —
+    // OHNE einen Abruf an Microsoft Graph und ohne 403-Rauschen für jedes Fachkonto ohne
+    // Zuordnung. Die Antwort trägt zwei Ja/Nein und sonst nichts: keine Laufwerkskennung, keinen
+    // Dateinamen, keinen Inhalt. Ein Admin bekommt `zugeordnet: false` — sein Weg ist die
+    // Verwaltungsfläche gegen die Instanzbibliothek, nicht diese.
+    app.get("/api/import/sharepoint/testbibliothek", async (request, reply) => {
+      const fachkonto = await deps.guards.requirePermission("ko.create", request, reply);
+      if (!fachkonto) {
+        return reply;
+      }
+      const zuordnung = can(fachkonto.role, "users.manage") ? undefined : testbibliotheken();
+      const bibliothek = zuordnung?.get(fachkonto.id);
+      const adapter = bibliothek === undefined ? undefined : makeAdapter(bibliothek);
+      reply.code(200).send({
+        zugeordnet: bibliothek !== undefined,
+        benutzbar: adapter !== undefined && adapter.driveId === bibliothek,
+      });
+      return reply;
+    });
+
+    // ------------------------------------------------------------------------------------------
     // TÜR 1: die berechtigte Dateiliste einer Bibliothek oder eines Ordners. READ-ONLY.
     // ------------------------------------------------------------------------------------------
     // Sie schreibt NICHTS: keinen Kandidaten, kein Objekt, keinen Lauf. Ein Blick in die Quelle ist

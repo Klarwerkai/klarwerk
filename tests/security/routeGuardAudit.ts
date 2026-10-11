@@ -1370,6 +1370,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // jedes andere Konto NUR, wenn ihm `KLARWERK_SHAREPOINT_TESTBIBLIOTHEKEN` eine eigene Bibliothek
   // zuordnet — und dann ausschliesslich gegen diese. Ohne Zuordnung bleibt es beim 403 wie vorher
   // (gemessen in tests/demo-testbibliothek/fachkonto-import-und-word-am-draht.test.ts).
+  // Frage 6: die Auskunft der Erfassungsseite, ob DIESES Konto eine eigene Testbibliothek hat —
+  // zwei Ja/Nein, kein Graph-Abruf, keine Laufwerkskennung. Dasselbe Routenrecht wie die Türen.
+  "GET /api/import/sharepoint/testbibliothek": { protection: "ko.create" },
   "POST /api/admin/import/sharepoint/files": { protection: "ko.create" },
   "POST /api/admin/import/sharepoint/apply": { protection: "ko.create" },
   // R-0145/R-0190: die dritte Tür — einen ganzen Ordner in Losen übernehmen, ein Los je Aufruf.

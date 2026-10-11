@@ -1782,6 +1782,17 @@ export const TABELLE: Zeile[] = [
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
+  // Frage 6 · die Auskunft der Erfassungsseite über die EIGENE Testbibliothek. Ab `ko.create`; die
+  // Bühne setzt keine Zuordnung, also antwortet sie jedem berechtigten Konto 200 mit
+  // `zugeordnet: false` — ohne Abruf an eine Gegenstelle.
+  {
+    gruppe: "sharepointImportRoutes",
+    methode: "GET",
+    pfad: "/api/import/sharepoint/testbibliothek",
+    belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:558",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
   // JOB 4086 · die zwei Türen des SharePoint-Imports. Sie stehen hier VOLLSTÄNDIG in der Abnahme
   // und nicht in der Restliste, und das geht, weil beide OHNE hinterlegte Zugangsdaten gar nichts
   // anrichten: der Adapter kommt nicht zustande, die Antwort ist ein 503 vor jedem Effekt. Die

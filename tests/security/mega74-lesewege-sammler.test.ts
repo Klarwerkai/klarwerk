@@ -775,6 +775,12 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Zugangszustand, Admin.",
   },
+  // Frage 6: nur `{ zugeordnet, benutzbar }` des EIGENEN Kontos — keine Laufwerkskennung, kein
+  // Dateiname, kein Inhalt eines Wissensobjekts.
+  "GET /api/import/sharepoint/testbibliothek": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Zwei Ja/Nein über die eigene Testbibliothek (sharepoint-import-routes.ts).",
+  },
   // ADMIN-02: der Verbindungstest. Antwortet mit Zeitpunkt, Umfang, Ergebniswort und Dauer — keine
   // Dateinamen, kein Inhalt, kein Wissensobjekt.
   "POST /api/import/sharepoint/verbindungstest": {
