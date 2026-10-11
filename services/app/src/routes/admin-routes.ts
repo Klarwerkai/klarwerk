@@ -27,8 +27,9 @@ import { type FactoryReset, FirmenresetFehler, factoryResetUnavailable } from ".
 // AUFTRAG-mega64 Block A: der Betriebsschalter für das Demodaten-Laden — dieselbe eine Wahrheit,
 // aus der auch GET /api/features antwortet (mega46 F).
 import { schalterAn } from "../feature-flags";
+import { FirmenresetSso, FirmenresetSsoFehler, sitzungsSchluessel } from "../firmenreset-sso";
 import type { BegriffeRepo } from "../firmenwoerterbuch";
-import type { Guards } from "../http";
+import { type Guards, tokenFromRequest } from "../http";
 import { type DemoSeedServices, purgeDemoSeed, seedDemoForAdmin } from "../seed-demo";
 import { type Produktfassung, type UmfangAuskunft, umfangAuskunft } from "../sicherungsumfang";
 // SCRUM-501 (nacht24): Demo-/Simulationskorpus DE/EN/NL — NICHT automatisch, nur über diesen
@@ -779,6 +780,8 @@ export function adminRoutes(
   guards: Guards,
   factoryReset: FactoryReset = factoryResetUnavailable,
   umfangLage?: UmfangLage,
+  // P08-AC05: die zweimalige SSO-Wiederanmeldung des Firmenresets. Ohne Angabe ohne Anbieter.
+  firmenresetSso: FirmenresetSso = new FirmenresetSso(undefined),
 ): FastifyPluginAsync {
   return async (app) => {
     // ==========================================================================================
@@ -1038,24 +1041,72 @@ export function adminRoutes(
         reply.code(200).send({ available: false });
         return;
       }
-      reply
-        .code(200)
-        .send({ available: true, vorschau: await firmenresetVorschau(services, factoryReset) });
+      // P08-AC05: wie sich DIESES Konto bestätigt — Passwort oder zweimalige SSO-Wiederanmeldung —
+      // und wie viele SSO-Schritte in dieser Sitzung schon gültig bestätigt sind.
+      const sitzung = sitzungsSchluessel(tokenFromRequest(request) ?? "");
+      const ssoErforderlich = !(await services.auth.hatLokalesPasswort(user.id));
+      reply.code(200).send({
+        available: true,
+        vorschau: await firmenresetVorschau(services, factoryReset),
+        sso: {
+          erforderlich: ssoErforderlich,
+          eingerichtet: firmenresetSso.eingerichtet,
+          bestaetigt: ssoErforderlich ? firmenresetSso.bestaetigt(user.id, sitzung) : 0,
+        },
+      });
     });
 
-    // Pedi 05.07. (Beta): Werksreset ausführen und das Programm beenden. Nur im Desktop/Dev-Modus
-    // möglich (sonst 403), damit produktive Daten nie betroffen sind.
-    //
-    // PETER-20261011-P08 (Firmenreset): Konten und Firmenwörterbuch bleiben erhalten. Die Ausführung
-    // verlangt, in dieser Reihenfolge, und bricht beim ersten Fehlen OHNE jede Löschung ab:
-    //   AC01  das administrative Resetrecht (`users.manage` = Rolle admin) und den Desktopbetrieb;
-    //   AC05  ein Konto mit lokalem Passwort — ein reines SSO-Konto bräuchte zwei passende
-    //         SSO-Wiederanmeldungen, und die gibt es auf diesem Weg nicht: abgewiesen, nichts gelöscht;
-    //   AC02  die Kennung der Vorschau, die der Admin gesehen hat;
-    //   AC04  die bewusst gesetzte Checkbox (`bestaetigt: true`, nichts anderes zählt);
-    //   AC05  zwei Passwortbestätigungen, JEDE einzeln geprüft;
-    //   AC07  einen unveränderten Bestand seit der Vorschau und keinen zweiten laufenden Reset.
-    app.post("/api/admin/factory-reset", async (request, reply) => {
+    // P08-AC05: Schritt 1 bzw. 2 der SSO-Wiederanmeldung beginnen (Seitennavigation zum Anbieter).
+    // Nur für Konten OHNE lokales Passwort, nur im Desktopbetrieb, nur in der eigenen Sitzung.
+    app.get<{ Querystring: { schritt?: string } }>(
+      "/api/admin/factory-reset/sso/start",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        if (!factoryReset.available) {
+          reply.code(403).send({
+            error: "FORBIDDEN",
+            message:
+              "Werksreset ist nur in der lokalen Desktop-Version möglich (nicht im Server-/Produktivbetrieb).",
+          });
+          return;
+        }
+        if (await services.auth.hatLokalesPasswort(user.id)) {
+          reply.code(409).send({
+            error: "SSO_NICHT_VORGESEHEN",
+            message: "Dieses Konto bestätigt den Firmenreset mit seinem Passwort.",
+          });
+          return;
+        }
+        const schritt = request.query.schritt === "2" ? 2 : request.query.schritt === "1" ? 1 : 0;
+        if (schritt === 0) {
+          reply.code(400).send({ error: "SSO_SCHRITT_UNGUELTIG", message: "Unbekannter Schritt." });
+          return;
+        }
+        try {
+          const ziel = firmenresetSso.starte(
+            user.id,
+            sitzungsSchluessel(tokenFromRequest(request) ?? ""),
+            schritt,
+          );
+          reply.header("cache-control", "no-store");
+          reply.redirect(ziel);
+        } catch (fehler) {
+          if (fehler instanceof FirmenresetSsoFehler) {
+            reply.code(409).send({ error: fehler.code, message: fehler.message });
+            return;
+          }
+          throw fehler;
+        }
+      },
+    );
+
+    // P08-AC05/AC06: der Rückruf eines Schritts (die SPA-Rückrufseite reicht ihn mit code+state
+    // hierher) — oder der Abbruch (`verwerfen: true`). Setzt nur die Bestätigung; keine Sitzung,
+    // keine Löschung.
+    app.post("/api/admin/factory-reset/sso", async (request, reply) => {
       const user = await guards.requirePermission("users.manage", request, reply);
       if (!user) {
         return;
@@ -1068,11 +1119,64 @@ export function adminRoutes(
         });
         return;
       }
-      if (!(await services.auth.hatLokalesPasswort(user.id))) {
+      const sitzung = sitzungsSchluessel(tokenFromRequest(request) ?? "");
+      const body = (request.body ?? {}) as { code?: unknown; state?: unknown; verwerfen?: unknown };
+      if (body.verwerfen === true) {
+        firmenresetSso.verwerfen(sitzung);
+        reply.code(200).send({ bestaetigt: 0 });
+        return;
+      }
+      if (typeof body.code !== "string" || typeof body.state !== "string") {
+        reply.code(400).send({
+          error: "SSO_VORGANG_UNBEKANNT",
+          message: "Der Rückruf ist unvollständig. Es wurde nichts bestätigt.",
+        });
+        return;
+      }
+      const konto = (await services.auth.listUsers()).find((u) => u.id === user.id);
+      try {
+        const bestaetigt = await firmenresetSso.rueckruf(
+          user.id,
+          sitzung,
+          { oidcIssuer: konto?.oidcIssuer, oidcSubject: konto?.oidcSubject },
+          body.code,
+          body.state,
+        );
+        reply.code(200).send({ bestaetigt });
+      } catch (fehler) {
+        if (fehler instanceof FirmenresetSsoFehler) {
+          // Fehlgeschlagene oder unpassende Anmeldung: 401; Vorgang/Reihenfolge: 409.
+          const abgewiesen = ["SSO_ANMELDUNG_FEHLGESCHLAGEN", "SSO_KONTO_PASST_NICHT"];
+          const status = abgewiesen.includes(fehler.code) ? 401 : 409;
+          reply.code(status).send({ error: fehler.code, message: fehler.message });
+          return;
+        }
+        throw fehler;
+      }
+    });
+
+    // Pedi 05.07. (Beta): Werksreset ausführen und das Programm beenden. Nur im Desktop/Dev-Modus
+    // möglich (sonst 403), damit produktive Daten nie betroffen sind.
+    //
+    // PETER-20261011-P08 (Firmenreset): Konten und Firmenwörterbuch bleiben erhalten. Die Ausführung
+    // verlangt, in dieser Reihenfolge, und bricht beim ersten Fehlen OHNE jede Löschung ab:
+    //   AC01  das administrative Resetrecht (`users.manage` = Rolle admin) und den Desktopbetrieb;
+    //   AC02  die Kennung der Vorschau, die der Admin gesehen hat;
+    //   AC04  die bewusst gesetzte Checkbox (`bestaetigt: true`, nichts anderes zählt);
+    //   AC05  zwei Passwortbestätigungen, JEDE einzeln geprüft — oder, für ein Konto OHNE lokales
+    //         Passwort, zwei gültige, passende SSO-Wiederanmeldungen dieser Sitzung (eingelöst und
+    //         damit verbraucht);
+    //   AC07  einen unveränderten Bestand seit der Vorschau und keinen zweiten laufenden Reset.
+    app.post("/api/admin/factory-reset", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      if (!factoryReset.available) {
         reply.code(403).send({
-          error: "SSO_WIEDERANMELDUNG_ERFORDERLICH",
+          error: "FORBIDDEN",
           message:
-            "Dieses Konto meldet sich über SSO an. Der Firmenreset verlangt dafür zwei passende SSO-Wiederanmeldungen; dieser Weg ist hier nicht eingerichtet. Es wurde nichts gelöscht.",
+            "Werksreset ist nur in der lokalen Desktop-Version möglich (nicht im Server-/Produktivbetrieb).",
         });
         return;
       }
@@ -1098,14 +1202,27 @@ export function adminRoutes(
       }
       // SCRUM-450 / P08-AC05: Re-Authentifizierung, zweimal. „Angemeldet als Admin" allein reicht
       // nicht — ein offener oder übernommener Admin-Tab kann den Reset so nicht auslösen.
-      for (const eingabe of [body.passwort1, body.passwort2]) {
-        const passwort = typeof eingabe === "string" ? eingabe : "";
-        if (!passwort || !(await services.auth.verifyUserPassword(user.id, passwort))) {
-          reply.code(401).send({
-            error: "INVALID_PASSWORD",
-            message: "Falsches Passwort. Der Werksreset wurde nicht ausgeführt.",
+      if (!(await services.auth.hatLokalesPasswort(user.id))) {
+        // Reines SSO-Konto: statt der Passwörter die zwei Wiederanmeldungen DIESER Sitzung.
+        const sitzung = sitzungsSchluessel(tokenFromRequest(request) ?? "");
+        if (!firmenresetSso.einloesen(user.id, sitzung)) {
+          reply.code(403).send({
+            error: "SSO_WIEDERANMELDUNG_ERFORDERLICH",
+            message:
+              "Dieses Konto meldet sich über SSO an. Der Firmenreset verlangt zwei passende SSO-Wiederanmeldungen in dieser Sitzung. Es wurde nichts gelöscht.",
           });
           return;
+        }
+      } else {
+        for (const eingabe of [body.passwort1, body.passwort2]) {
+          const passwort = typeof eingabe === "string" ? eingabe : "";
+          if (!passwort || !(await services.auth.verifyUserPassword(user.id, passwort))) {
+            reply.code(401).send({
+              error: "INVALID_PASSWORD",
+              message: "Falsches Passwort. Der Werksreset wurde nicht ausgeführt.",
+            });
+            return;
+          }
         }
       }
       try {

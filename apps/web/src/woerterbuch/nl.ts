@@ -824,6 +824,14 @@ const nl: typeof de = {
   "adm.factory.warnBody":
     "De inhoud uit het overzicht wordt verwijderd en het programma wordt afgesloten. Gebruikersaccounts, het bedrijfswoordenboek en het auditlog blijven. Dit kan niet ongedaan worden gemaakt.",
   "adm.factory.wrongPassword": "Onjuist wachtwoord — de fabrieksreset is niet uitgevoerd.",
+  "adm.factory.sso.stand":
+    "Je account meldt zich aan via SSO: bevestig twee keer met een nieuwe SSO-aanmelding ({{anzahl}} van 2 bevestigd).",
+  "adm.factory.sso.schritt1": "1. Opnieuw aanmelden via SSO",
+  "adm.factory.sso.schritt2": "2. Een tweede keer aanmelden via SSO",
+  "adm.factory.sso.nichtEingerichtet":
+    "In deze installatie is geen SSO-aanmelding ingericht — de bedrijfsreset is voor dit account niet mogelijk.",
+  "adm.factory.sso.fehler":
+    "De SSO-heraanmelding is afgebroken of mislukt — niets bevestigd, niets verwijderd.",
   "adm.factory.cancel": "Annuleren",
   "adm.factory.continue": "Verder",
   "adm.factory.execute": "Terugzetten & afsluiten",

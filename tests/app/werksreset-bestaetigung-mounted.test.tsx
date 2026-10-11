@@ -42,8 +42,11 @@ const VORSCHAU: FirmenresetVorschau = {
 const d = vi.hoisted(() => ({
   available: true,
   vorschau: undefined as unknown,
+  // P08-AC05 (Nacharbeit 4): der SSO-Stand des angemeldeten Kontos; `undefined` = Passwortkonto.
+  sso: undefined as unknown,
   status: vi.fn(),
   factoryReset: vi.fn(async (_a: unknown): Promise<{ ok: boolean }> => ({ ok: true })),
+  verwerfen: vi.fn(async () => ({ bestaetigt: 0 })),
 }));
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
@@ -51,6 +54,9 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     admin: {
       factoryResetStatus: d.status,
       factoryReset: d.factoryReset,
+      factoryResetSsoStartUrl: (schritt: 1 | 2) =>
+        `/api/admin/factory-reset/sso/start?schritt=${schritt}`,
+      factoryResetSsoVerwerfen: d.verwerfen,
       // Seit der Integration mit main (gesamt-bestandsreset) wohnt in derselben Karte der
       // Postgres-Bestandsreset. Im Desktopbetrieb dieses Prüfstands ist er nicht verfügbar — so
       // beantwortet, rendert er weder Passwortfelder noch Knöpfe neben dem Werksreset.
@@ -95,7 +101,7 @@ function Meldungen() {
   );
 }
 
-async function karte(): Promise<void> {
+async function karte(adresse = "/admin?bereich=system&detail=werk"): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -112,7 +118,7 @@ async function karte(): Promise<void> {
           null,
           createElement(
             MemoryRouter,
-            null,
+            { initialEntries: [adresse] },
             createElement(WerkseinstellungenDetail, { onZurueck: () => {} }),
             createElement(Meldungen),
           ),
@@ -203,10 +209,14 @@ beforeEach(async () => {
   await i18n.changeLanguage("de");
   d.available = true;
   d.vorschau = VORSCHAU;
+  d.sso = undefined;
   d.status.mockReset();
   d.status.mockImplementation(async () =>
-    d.available ? { available: true, vorschau: d.vorschau } : { available: false },
+    d.available
+      ? { available: true, vorschau: d.vorschau, ...(d.sso ? { sso: d.sso } : {}) }
+      : { available: false },
   );
+  d.verwerfen.mockClear();
   d.factoryReset.mockReset();
   d.factoryReset.mockImplementation(async () => ({ ok: true }));
 });
@@ -378,5 +388,86 @@ describe("R-0537 / R-1154 · Werksreset nur mit Passwort und zweiter, großer Wa
     await klick(AUSFUEHREN());
     const aufrufe = d.factoryReset.mock.calls;
     expect((aufrufe[aufrufe.length - 1]?.[0] as FirmenresetAuftrag).kennung).toBe("kennung-2");
+  });
+});
+
+// ================================================================================================
+// P08-AC05 (Nacharbeit 4) — DAS SSO-KONTO: zwei Wiederanmeldungen statt zweier Passwörter.
+// ================================================================================================
+//   S1  keine Passwortfelder; der Link führt zu Schritt 1, nach einer Bestätigung zu Schritt 2.
+//   S2  „Weiter" erst mit Haken UND zwei Bestätigungen; Ausführung ohne Passwörter.
+//   S3  Rückkehr nach Bestätigung öffnet Stufe 1 wieder (die Seitennavigation verlor den Zustand).
+//   S4  Abbrechen verwirft die Bestätigungen am Server.
+//   S5  Rückkehr mit Abbruch/Fehlschlag beim Anbieter nennt ihn; nichts bestätigt.
+//   S6  ohne eingerichteten Anbieter: kein Link, ehrlicher Satz, „Weiter" bleibt gesperrt.
+describe("P08-AC05 · Werksreset für ein reines SSO-Konto", () => {
+  const ssoLink = (): HTMLAnchorElement | null =>
+    container.querySelector('[data-testid="firmenreset-sso-start"]');
+
+  it("S1 keine Passwortfelder; der Link führt zum jeweils nächsten Schritt", async () => {
+    d.sso = { erforderlich: true, eingerichtet: true, bestaetigt: 0 };
+    await karte();
+    await klick(AUSLOESER());
+    expect(passwortfelder()).toHaveLength(0);
+    expect(inhalt()).toContain(i18n.t("adm.factory.sso.stand", { anzahl: 0 }));
+    expect(ssoLink()?.getAttribute("href")).toBe("/api/admin/factory-reset/sso/start?schritt=1");
+    expect(text(ssoLink() as Element)).toBe(i18n.t("adm.factory.sso.schritt1"));
+    act(() => root.unmount());
+    container.remove();
+    d.sso = { erforderlich: true, eingerichtet: true, bestaetigt: 1 };
+    await karte();
+    // S3: mit einer gültigen Bestätigung öffnet die Karte Stufe 1 von selbst.
+    expect(ssoLink()?.getAttribute("href")).toBe("/api/admin/factory-reset/sso/start?schritt=2");
+    expect(text(ssoLink() as Element)).toBe(i18n.t("adm.factory.sso.schritt2"));
+  });
+
+  it("S2 Weiter erst mit Haken und zwei Bestätigungen; Ausführung ohne Passwörter", async () => {
+    d.sso = { erforderlich: true, eingerichtet: true, bestaetigt: 1 };
+    await karte();
+    await hakenSetzen();
+    expect(knopf(WEITER())?.disabled).toBe(true);
+    act(() => root.unmount());
+    container.remove();
+    d.sso = { erforderlich: true, eingerichtet: true, bestaetigt: 2 };
+    await karte();
+    expect(ssoLink()).toBeNull();
+    expect(knopf(WEITER())?.disabled).toBe(true);
+    await hakenSetzen();
+    expect(knopf(WEITER())?.disabled).toBe(false);
+    await klick(WEITER());
+    await klick(AUSFUEHREN());
+    expect(d.factoryReset.mock.calls[0]?.[0]).toEqual({
+      kennung: "kennung-1",
+      bestaetigt: true,
+      passwort1: "",
+      passwort2: "",
+    });
+  });
+
+  it("S4 Abbrechen verwirft die SSO-Bestätigungen am Server", async () => {
+    d.sso = { erforderlich: true, eingerichtet: true, bestaetigt: 2 };
+    await karte();
+    await klick(ABBRECHEN());
+    expect(d.verwerfen).toHaveBeenCalledTimes(1);
+    expect(d.factoryReset).not.toHaveBeenCalled();
+  });
+
+  it("S5 Rückkehr nach Abbruch beim Anbieter nennt ihn und bestätigt nichts", async () => {
+    d.sso = { erforderlich: true, eingerichtet: true, bestaetigt: 0 };
+    await karte("/admin?bereich=system&detail=werk&sso=fehler");
+    await act(flush);
+    expect(meldungen()).toContain(i18n.t("adm.factory.sso.fehler"));
+    expect(inhalt()).toContain(i18n.t("adm.factory.sso.stand", { anzahl: 0 }));
+    expect(d.factoryReset).not.toHaveBeenCalled();
+  });
+
+  it("S6 ohne eingerichteten Anbieter: kein Link, ehrlicher Satz, Weiter gesperrt", async () => {
+    d.sso = { erforderlich: true, eingerichtet: false, bestaetigt: 0 };
+    await karte();
+    await klick(AUSLOESER());
+    expect(ssoLink()).toBeNull();
+    expect(inhalt()).toContain(i18n.t("adm.factory.sso.nichtEingerichtet"));
+    await hakenSetzen();
+    expect(knopf(WEITER())?.disabled).toBe(true);
   });
 });

@@ -839,6 +839,14 @@ const en: typeof de = {
   "adm.factory.warnBody":
     "The content shown in the preview will be deleted and the program will quit. User accounts, the company dictionary and the audit trail are kept. This cannot be undone.",
   "adm.factory.wrongPassword": "Wrong password — the factory reset was not performed.",
+  "adm.factory.sso.stand":
+    "Your account signs in via SSO: confirm twice with a fresh SSO sign-in ({{anzahl}} of 2 confirmed).",
+  "adm.factory.sso.schritt1": "1. Sign in again via SSO",
+  "adm.factory.sso.schritt2": "2. Sign in via SSO a second time",
+  "adm.factory.sso.nichtEingerichtet":
+    "No SSO sign-in is configured in this installation — the company reset is not possible for this account.",
+  "adm.factory.sso.fehler":
+    "The SSO re-sign-in was cancelled or failed — nothing confirmed, nothing deleted.",
   "adm.factory.cancel": "Cancel",
   "adm.factory.continue": "Continue",
   "adm.factory.execute": "Reset & quit",

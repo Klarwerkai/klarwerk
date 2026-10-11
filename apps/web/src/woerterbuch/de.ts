@@ -1124,6 +1124,14 @@ const de = {
   "adm.factory.warnBody":
     "Der Bestand aus der Vorschau wird gelöscht und das Programm beendet. Benutzerkonten, Firmenwörterbuch und Prüfprotokoll bleiben. Das lässt sich nicht rückgängig machen.",
   "adm.factory.wrongPassword": "Falsches Passwort — der Werksreset wurde nicht ausgeführt.",
+  "adm.factory.sso.stand":
+    "Dein Konto meldet sich über SSO an: bestätige zweimal mit einer erneuten SSO-Anmeldung ({{anzahl}} von 2 bestätigt).",
+  "adm.factory.sso.schritt1": "1. Erneut per SSO anmelden",
+  "adm.factory.sso.schritt2": "2. Ein zweites Mal per SSO anmelden",
+  "adm.factory.sso.nichtEingerichtet":
+    "In dieser Installation ist keine SSO-Anmeldung eingerichtet — der Firmenreset ist für dieses Konto nicht möglich.",
+  "adm.factory.sso.fehler":
+    "Die SSO-Wiederanmeldung wurde abgebrochen oder ist fehlgeschlagen — nichts bestätigt, nichts gelöscht.",
   "adm.factory.cancel": "Abbrechen",
   "adm.factory.continue": "Weiter",
   "adm.factory.execute": "Zurücksetzen & beenden",

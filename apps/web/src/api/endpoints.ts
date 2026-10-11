@@ -1463,6 +1463,14 @@ export const endpoints = {
     // Bestätigung und zwei Passworteingaben des Admins.
     factoryReset: (auftrag: FirmenresetAuftrag) =>
       api.post<{ ok: boolean }>("/admin/factory-reset", auftrag),
+    // P08-AC05: zweimalige SSO-Wiederanmeldung für Konten ohne Passwort. Der Start ist eine
+    // Seitennavigation zum Anbieter; den Rückruf reicht `SsoCallback` mit code+state hierher.
+    factoryResetSsoStartUrl: (schritt: 1 | 2): string =>
+      `/api/admin/factory-reset/sso/start?schritt=${schritt}`,
+    factoryResetSso: (code: string, state: string) =>
+      api.post<{ bestaetigt: number }>("/admin/factory-reset/sso", { code, state }),
+    factoryResetSsoVerwerfen: () =>
+      api.post<{ bestaetigt: number }>("/admin/factory-reset/sso", { verwerfen: true }),
     // Aufnahme gesamt-bestandsreset (Peters Entscheidung vom 11.10.): Wissensbestand samt
     // Papierkorb zurücksetzen, Konten und Firmenwörterbuch bleiben. Erst die Folgenvorschau (GET),
     // dann die Ausführung mit ihrer Kennung, zweimal Passwort und Häkchen (POST).

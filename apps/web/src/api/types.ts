@@ -4128,13 +4128,25 @@ export interface FirmenresetVorschau {
   erhalten: { benutzerkonten: number; woerterbuch: number; protokolleintraege: number };
 }
 
+/**
+ * P08-AC05: wie sich das angemeldete Konto bestätigt. `erforderlich` = Konto ohne lokales Passwort
+ * (reines SSO): statt zweier Passwörter zwei passende SSO-Wiederanmeldungen; `bestaetigt` zählt die
+ * in dieser Sitzung gültig bestätigten Schritte (0–2). Optional, damit ältere Prüfstände gelten.
+ */
+export interface FirmenresetSsoStand {
+  erforderlich: boolean;
+  eingerichtet: boolean;
+  bestaetigt: number;
+}
+
 export type FirmenresetStatus =
   | { available: false }
-  | { available: true; vorschau: FirmenresetVorschau };
+  | { available: true; vorschau: FirmenresetVorschau; sso?: FirmenresetSsoStand };
 
 export interface FirmenresetAuftrag {
   kennung: string;
   bestaetigt: true;
+  /** Leer bei einem SSO-Konto — dort zählen die zwei Wiederanmeldungen dieser Sitzung. */
   passwort1: string;
   passwort2: string;
 }

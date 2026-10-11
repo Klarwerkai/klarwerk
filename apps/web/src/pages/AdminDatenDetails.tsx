@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useAuditSeite, useDirectory, useFeatures, useUsers } from "../api/hooks";
@@ -807,6 +807,28 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
   const [bestaetigt, setBestaetigt] = useState(false);
   const [geseheneKennung, setGeseheneKennung] = useState("");
   const [factoryDone, setFactoryDone] = useState(false);
+  // P08-AC05: ein Konto ohne lokales Passwort bestätigt mit zwei SSO-Wiederanmeldungen. Jede ist
+  // eine Seitennavigation zum Anbieter und zurück; die Karte öffnet danach wieder Stufe 1.
+  const ssoStand =
+    factoryResetStatus.data?.available === true ? factoryResetStatus.data.sso : undefined;
+  const ssoKonto = ssoStand?.erforderlich === true;
+  const ssoBestaetigt = ssoStand?.bestaetigt ?? 0;
+  const [params, setParams] = useSearchParams();
+  const ssoFehler = params.get("sso") === "fehler";
+  useEffect(() => {
+    if (ssoFehler) {
+      push("error", t("adm.factory.sso.fehler"));
+      const ohne = new URLSearchParams(params);
+      ohne.delete("sso");
+      setParams(ohne, { replace: true });
+      setFactoryStep("armed");
+    }
+  }, [ssoFehler, params, setParams, push, t]);
+  useEffect(() => {
+    if (ssoKonto && ssoBestaetigt > 0) {
+      setFactoryStep((schritt) => (schritt === "" ? "armed" : schritt));
+    }
+  }, [ssoKonto, ssoBestaetigt]);
   const leeren = (): void => {
     setFactoryPw("");
     setFactoryPw2("");
@@ -816,6 +838,12 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
   const cancelFactory = (): void => {
     setFactoryStep("");
     leeren();
+    // P08-AC06: der Abbruch verwirft auch bereits bestätigte SSO-Wiederanmeldungen.
+    if (ssoKonto) {
+      void endpoints.admin
+        .factoryResetSsoVerwerfen()
+        .finally(() => void factoryResetStatus.refetch());
+    }
   };
   const factoryReset = useMutation({
     mutationFn: (auftrag: FirmenresetAuftrag) => endpoints.admin.factoryReset(auftrag),
@@ -833,7 +861,8 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
     onError: (e) => {
       setFactoryStep("armed");
       leeren();
-      if (e instanceof ApiError && e.code === "VORSCHAU_VERALTET") {
+      // Die SSO-Bestätigung wird bei jedem Ausführungsversuch eingelöst — danach neu laden.
+      if ((e instanceof ApiError && e.code === "VORSCHAU_VERALTET") || ssoKonto) {
         void factoryResetStatus.refetch();
       }
       if (e instanceof ApiError && e.code === "INVALID_PASSWORD") {
@@ -867,12 +896,16 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
             {stand.available !== true ? (
               <p className="text-[12.5px] text-muted-2">{t("adm.factory.unavailable")}</p>
             ) : factoryDone ? (
-              <p className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+              <p
+                data-testid="firmenreset-neustart"
+                className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text"
+              >
                 {t("adm.factory.restartHint")}
               </p>
             ) : factoryStep === "" ? (
               <button
                 type="button"
+                data-testid="firmenreset-start"
                 onClick={() => {
                   setFactoryStep("armed");
                   // Die Vorschau zeigt den Stand JETZT, nicht den beim Öffnen der Karte.
@@ -950,25 +983,55 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
                   />
                   {t("adm.factory.checkbox")}
                 </label>
-                <Field label={t("adm.factory.passwordLabel")}>
-                  <TextInput
-                    type="password"
-                    value={factoryPw}
-                    autoComplete="current-password"
-                    onChange={(e) => setFactoryPw(e.target.value)}
-                  />
-                </Field>
-                <Field label={t("adm.factory.password2Label")}>
-                  <TextInput
-                    type="password"
-                    value={factoryPw2}
-                    autoComplete="current-password"
-                    onChange={(e) => setFactoryPw2(e.target.value)}
-                  />
-                </Field>
+                {ssoKonto ? (
+                  // P08-AC05: zwei SSO-Wiederanmeldungen statt zweier Passwörter.
+                  <div data-testid="firmenreset-sso" className="space-y-1.5">
+                    <p className="text-[12.5px] text-text">
+                      {t("adm.factory.sso.stand", { anzahl: ssoBestaetigt })}
+                    </p>
+                    {ssoStand?.eingerichtet !== true ? (
+                      <p className="text-[12.5px] text-muted-2">
+                        {t("adm.factory.sso.nichtEingerichtet")}
+                      </p>
+                    ) : ssoBestaetigt < 2 ? (
+                      // Eine Seitennavigation zum Anbieter — deshalb ein Link, kein Abruf.
+                      <a
+                        data-testid="firmenreset-sso-start"
+                        className="inline-block text-[12px] font-semibold text-text underline"
+                        href={endpoints.admin.factoryResetSsoStartUrl(ssoBestaetigt === 0 ? 1 : 2)}
+                      >
+                        {t(
+                          ssoBestaetigt === 0
+                            ? "adm.factory.sso.schritt1"
+                            : "adm.factory.sso.schritt2",
+                        )}
+                      </a>
+                    ) : null}
+                  </div>
+                ) : (
+                  <>
+                    <Field label={t("adm.factory.passwordLabel")}>
+                      <TextInput
+                        type="password"
+                        value={factoryPw}
+                        autoComplete="current-password"
+                        onChange={(e) => setFactoryPw(e.target.value)}
+                      />
+                    </Field>
+                    <Field label={t("adm.factory.password2Label")}>
+                      <TextInput
+                        type="password"
+                        value={factoryPw2}
+                        autoComplete="current-password"
+                        onChange={(e) => setFactoryPw2(e.target.value)}
+                      />
+                    </Field>
+                  </>
+                )}
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
+                    data-testid="firmenreset-abbrechen"
                     className="text-[12px] font-semibold text-muted hover:text-text"
                     onClick={cancelFactory}
                   >
@@ -976,8 +1039,12 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
                   </button>
                   <button
                     type="button"
+                    data-testid="firmenreset-weiter"
                     disabled={
-                      !bestaetigt || factoryPw.trim().length === 0 || factoryPw2.trim().length === 0
+                      !bestaetigt ||
+                      (ssoKonto
+                        ? ssoBestaetigt < 2
+                        : factoryPw.trim().length === 0 || factoryPw2.trim().length === 0)
                     }
                     className="text-[12px] font-semibold text-trust-crit-text disabled:opacity-40"
                     onClick={() => {
@@ -1006,6 +1073,7 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
                 <div className="flex items-center gap-3 pt-0.5">
                   <button
                     type="button"
+                    data-testid="firmenreset-warnung-abbrechen"
                     className="text-[12px] font-semibold text-muted hover:text-text"
                     onClick={cancelFactory}
                   >
@@ -1013,6 +1081,7 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
                   </button>
                   <button
                     type="button"
+                    data-testid="firmenreset-ausfuehren"
                     disabled={factoryReset.isPending}
                     className="inline-flex items-center gap-1 rounded-btn bg-trust-crit-text px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
                     onClick={() =>
