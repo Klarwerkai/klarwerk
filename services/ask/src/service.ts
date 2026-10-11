@@ -39,8 +39,8 @@ import {
   waehleKandidaten,
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
-import { answerCheckState } from "./answer-evidence";
 import { type AnsprechpartnerAuskunft, leiteAnsprechpartnerAb } from "./ansprechpartner";
+import { answerCheckState } from "./answer-evidence";
 import {
   BEANSTANDUNG_FRAGE,
   type BeanstandungEingabe,
