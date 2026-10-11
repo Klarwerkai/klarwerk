@@ -514,11 +514,16 @@ describe("Protokoll nach Endlöschung und für indirekte Befundbezüge", () => {
     // Befunde des SICHTBAREN Objekts: der Konflikt mit dem geschützten erscheint nicht.
     expect(ada.befunde.ids).not.toContain(konfliktId);
 
-    // GEGENPROBE: das Mitglied (liest jeden Space) sieht beide Belege und den Befund.
+    // GEGENPROBE: das Mitglied (liest jeden Space) sieht den zuordenbaren Beleg und den Befund.
     const mia = await auditAbruf(mit.app, mit.k.mia, mit.offenId);
     expect(mia.liste.some((e) => e.target === konfliktId && e.actor === "alt")).toBe(true);
-    expect(mia.liste.some((e) => e.target === unbekannt)).toBe(true);
     expect(mia.befunde.ids).toContain(konfliktId);
+    // Nacharbeit 24 (Ben): ein NICHT zuzuordnender Befund trägt keine Schutzinformation — und
+    // fehlende Schutzinformation gibt nichts frei, auch nicht für volles Leserecht. Er bleibt
+    // verborgen, und Mias Export ist deshalb eine Leseransicht, keine Kette.
+    expect(mia.liste.some((e) => e.target === unbekannt)).toBe(false);
+    expect(mia.dateiRoh).not.toContain(unbekannt);
+    expect(mia.datei.format).toBe("klarwerk-audit-ansicht");
     await mit.app.close();
   });
 });

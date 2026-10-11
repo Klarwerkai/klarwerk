@@ -1783,8 +1783,7 @@ export function authRoutes(
         return;
       }
       const { id } = request.params;
-      const { role, approve, password, accessExpiresAt, freigabe, weisungsbefugnis } =
-        request.body;
+      const { role, approve, password, accessExpiresAt, freigabe, weisungsbefugnis } = request.body;
       // R-0582: auch die Kontodaten gehören zur Formwache VOR jedem Schreiben.
       const kontodaten = kontodatenForm(request, reply);
       if (kontodaten === null) {

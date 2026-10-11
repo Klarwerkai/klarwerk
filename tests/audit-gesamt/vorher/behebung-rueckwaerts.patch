@@ -68198,7 +68198,7 @@ index 885d14045..febcb738c 100644
    private readonly users = new Map<string, User>();
    // SCRUM-504: Spiegel des partiellen Unique-Index — die ids der aktuell als Bootstrap-Admin markierten
 diff --git b/services/auth/src/routes.ts a/services/auth/src/routes.ts
-index d81f9014c..390d34d10 100644
+index 3149ba8dc..390d34d10 100644
 --- b/services/auth/src/routes.ts
 +++ a/services/auth/src/routes.ts
 @@ -1,19 +1,12 @@
@@ -69015,12 +69015,11 @@ index d81f9014c..390d34d10 100644
        };
      }>("/api/users/:id", async (request, reply) => {
        const admin = await requireAdmin(request, reply);
-@@ -1783,13 +1169,7 @@ export function authRoutes(
+@@ -1783,12 +1169,7 @@ export function authRoutes(
          return;
        }
        const { id } = request.params;
--      const { role, approve, password, accessExpiresAt, freigabe, weisungsbefugnis } =
--        request.body;
+-      const { role, approve, password, accessExpiresAt, freigabe, weisungsbefugnis } = request.body;
 -      // R-0582: auch die Kontodaten gehören zur Formwache VOR jedem Schreiben.
 -      const kontodaten = kontodatenForm(request, reply);
 -      if (kontodaten === null) {
@@ -69030,7 +69029,7 @@ index d81f9014c..390d34d10 100644
        try {
          // ────────────────────────────────────────────────────────────────────────────────────────
          // DIE FORMWACHE — SIE STEHT VOR JEDEM SCHREIBVORGANG, ALLE VIER FELDER IN EINEM BLOCK.
-@@ -1833,28 +1213,7 @@ export function authRoutes(
+@@ -1832,28 +1213,7 @@ export function authRoutes(
          ) {
            throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
          }
@@ -69059,7 +69058,7 @@ index d81f9014c..390d34d10 100644
          if (approve === true) {
            user = await service.approveUser(id, admin.id);
          }
-@@ -1877,18 +1236,6 @@ export function authRoutes(
+@@ -1876,18 +1236,6 @@ export function authRoutes(
              admin.id,
            );
          }
@@ -69078,7 +69077,7 @@ index d81f9014c..390d34d10 100644
          if (user) {
            reply.code(200).send(user);
          } else {
-@@ -1899,72 +1246,12 @@ export function authRoutes(
+@@ -1898,72 +1246,12 @@ export function authRoutes(
        }
      });
  
