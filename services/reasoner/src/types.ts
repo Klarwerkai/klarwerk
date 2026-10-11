@@ -414,6 +414,42 @@ export interface ReasonerKiFreigabe {
   vertraulicheInhalte?: boolean;
 }
 
+// KI-WAHL-BETRIEBSABNAHME · Antwort 29 (BEN, Nacharbeit 7): die Vertraulichkeitsstufen, für die der
+// Administrator eine EIGENE Anbieterwahl treffen kann — dieselben drei Werte wie
+// `knowledge-object`s `Confidentiality` (hier gespiegelt, weil der Reasoner über seine Modulgrenze
+// nicht in `knowledge-object` greift).
+export const REASONER_SCHUTZSTUFEN = ["intern", "vertraulich", "streng_vertraulich"] as const;
+export type ReasonerSchutzstufe = (typeof REASONER_SCHUTZSTUFEN)[number];
+
+// Die Wahl JE SCHUTZSTUFE. Sie geht der Aufgabenwahl vor, sobald ein Lauf eine Stufe trägt.
+// „Keine KI" ist der Wert `deterministic`: in der Kette steht dann kein Modell — auch nicht für
+// Hintergrundwege dieser Stufe (Konflikt-/Dublettenurteil, Anreicherung).
+export type ReasonerSchutzstufenWahl = Partial<Record<ReasonerSchutzstufe, ReasonerAktiveWahl>>;
+
+// KI-WAHL-BETRIEBSABNAHME · Antwort 13 (BEN, Nacharbeit 7): was ein ANGEMELDETER Nutzer über den
+// Ausführer EINER Aufgabe erfährt — den tatsächlich arbeitenden Dienst, seine Verfügbarkeit und seine
+// Einschränkungen. Geheimnisfrei: Anbieterkennung, nie Schlüssel, Adresse oder Modellkennung.
+export type ReasonerAusfuehrer = ReasonerCloudAnbieter | "local" | "deterministic";
+export type ReasonerAusfuehrungsEinschraenkung =
+  // Ein Cloud-Anbieter ist gewählt, die Grundfreigabe für öffentliche KI fehlt — es arbeitet keine KI.
+  | "freigabe_fehlt"
+  // Es arbeitet ein Cloud-Anbieter; vertraulich eingestufte Texte gehen ohne zweite Freigabe NICHT dorthin.
+  | "vertraulich_ohne_cloud"
+  // Der Administrator hat die KI abgeschaltet.
+  | "ki_abgeschaltet"
+  // Der Ausführer war zuletzt nicht erreichbar.
+  | "nicht_erreichbar";
+export interface ReasonerAusfuehrung {
+  // Wer bei einem nicht vertraulichen Text TATSÄCHLICH arbeitet (die gegatete Kette DIESER Aufgabe).
+  ausfuehrer: ReasonerAusfuehrer;
+  // Was für DIESE Aufgabe gewählt ist (ohne Freigaberiegel) — weicht ab, wenn die Freigabe fehlt.
+  gewaehlt: ReasonerAusfuehrer;
+  verfuegbar: boolean;
+  einschraenkungen: ReasonerAusfuehrungsEinschraenkung[];
+  // Antwort 29: Schutzstufen, für die der Administrator „Keine KI" gewählt hat.
+  keineKiFuer: ReasonerSchutzstufe[];
+}
+
 // Die WIRKSAME Zuordnung: nach der Normalisierung stehen hier nur noch aktive Werte — kein
 // `cloud`, kein `model` (JOB 3134, s. ReasonerLegacyChoice).
 export interface ReasonerTaskConfig {
@@ -423,6 +459,8 @@ export interface ReasonerTaskConfig {
   // Normalisierung nur da, wenn wenigstens ein Schalter `true` ist (kein `{}`, kein `false`-Rest).
   // Ein fehlendes Feld ist damit dasselbe wie „gesperrt" und kein „noch nicht gefragt".
   kiFreigabe?: ReasonerKiFreigabe;
+  // Antwort 29: die Wahl je Schutzstufe. Steht nur da, wenn wenigstens eine Stufe belegt ist.
+  proSchutzstufe?: ReasonerSchutzstufenWahl;
 }
 
 // Die EINGABE einer Zuordnung (Schreibweg, Datenbankbestand, Deploy-ENV): darf noch die abgelösten
@@ -435,6 +473,9 @@ export interface ReasonerTaskConfigEingabe {
   // der ZUORDNUNG darf eine erteilte Freigabe nicht beiläufig löschen — und eine fehlende nicht
   // beiläufig erteilen. Wer die Freigabe ändern will, nennt sie.
   kiFreigabe?: ReasonerKiFreigabe;
+  // Antwort 29: wie `kiFreigabe` — WEGLASSEN lässt die Wahl je Schutzstufe unverändert, `null` oder
+  // `{}` löscht sie. Unbekannte Stufen oder Werte werfen (nichts wird still verworfen).
+  proSchutzstufe?: Partial<Record<string, unknown>> | null;
 }
 
 export interface ReasonerConfigStatus {

@@ -1,50 +1,75 @@
 // KI-WAHL-BETRIEBSABNAHME · N-0070 — WER FÜHRT DAS AUS? DOM-frei und testbar (Muster
 // `reasonerTaskInfo.ts`); die Anzeige-Komponente (`AiAusfuehrerZeile`) rendert nur das Ergebnis.
 //
-// QUELLE IST NUR EINE AUFGABENBEZOGENE AUSKUNFT. Die Adminsicht (`/reasoner/config`, users.manage)
-// trägt je Aufgabe die wirksame Stufe (`effectiveProvider`) und den Anbieter (`effectiveAnbieter`)
-// — daraus `aiTaskInfo`. Für alle anderen gibt es KEINE solche Auskunft: der öffentliche Status
-// (`/reasoner/status`) trägt je Aufgabe nur Nutzbarkeit und Kostenpflicht als Booleans, und sein
-// `mode` ist ausdrücklich die HAUSWEITE Stufe (`services/reasoner/src/service.ts`, Kommentar an
-// `taskBillable`: „Eine Installation kann Cloud verdrahtet haben und `structure` trotzdem
-// ausdrücklich lokal stellen"). Die erste Fassung gab für Nicht-Admins diesen hausweiten `mode`
-// als Ausführer JEDER Aufgabe aus — bei globaler Cloud und lokal gestellter Aufgabe also „Cloud-KI",
-// obwohl lokal gerechnet wird (BEN, Nacharbeit 5). Deshalb sagt die Zeile jetzt für Nicht-Admins
-// ausdrücklich, dass die konkrete Ausführung hier nicht bekannt ist.
-//
-// WAS DAMIT NICHT ENTSCHIEDEN IST: ob Nicht-Admins Stufe oder Anbieter je Aufgabe sehen sollen. Die
-// öffentliche Sicht nennt die Stufe je Aufgabe bewusst nicht (vip2-gate, mega67); sie hier
-// einzuführen wäre eine Produktentscheidung und bleibt offen (README N-0070).
-import type { ReasonerConfigStatus, ReasonerTask } from "../api/types";
-import { anbieterUndModell } from "./aiOverview";
+// QUELLE IST IMMER EINE AUFGABENBEZOGENE AUSKUNFT, nie die globale Wahl als Ersatz:
+//   · Adminsicht: `/reasoner/config` (users.manage) — Stufe und Anbieter/Modell je Aufgabe
+//     (`aiTaskInfo`).
+//   · Alle anderen Angemeldeten: `/reasoner/ausfuehrung` (ko.read) — seit Antwort 13 (BEN,
+//     Nacharbeit 7) der TATSÄCHLICH arbeitende Dienst je Aufgabe, seine Verfügbarkeit und seine
+//     Einschränkungen. Bis dahin stand hier für Nicht-Admins „hier nicht bekannt": eine
+//     aufgabenbezogene Auskunft gab es für sie nicht, und der öffentliche Status nennt nur die
+//     HAUSWEITE Stufe (Nacharbeit 5 hatte deshalb ausdrücklich nichts geraten).
+// Fehlt die jeweilige Auskunft (noch nicht geladen, Fehler), steht weiterhin „hier nicht bekannt"
+// bzw. für Admins „wird ermittelt" — nie die hausweite Stufe.
+import type {
+  ReasonerAusfuehrung,
+  ReasonerAusfuehrungAntwort,
+  ReasonerConfigStatus,
+  ReasonerTask,
+} from "../api/types";
+import { anbieterName, anbieterUndModell } from "./aiOverview";
 import { aiTaskInfo } from "./reasonerTaskInfo";
 
 /** „Hier nicht bekannt" — der Platzhalter für `wer`, wenn keine Aufgabenauskunft vorliegt. */
 export const AUSFUEHRER_UNBEKANNT_KEY = "erfassen.ki.ausfuehrerUnbekannt";
 
+/** Der Name des tatsächlich arbeitenden Dienstes, wie ein Anwender ihn liest. */
+function dienstName(a: ReasonerAusfuehrung, t: (schluessel: string) => string): string {
+  if (a.ausfuehrer === "openai" || a.ausfuehrer === "anthropic") {
+    return anbieterName(a.ausfuehrer);
+  }
+  return t(a.ausfuehrer === "local" ? "reasoner.taskInfo.local" : "reasoner.taskInfo.rule");
+}
+
+/** Dienst, Verfügbarkeit und Einschränkungen EINER Aufgabe — für Nicht-Admins. */
+function auskunftFuer(a: ReasonerAusfuehrung, t: (schluessel: string) => string): string {
+  const teile = [dienstName(a, t)];
+  if (a.ausfuehrer !== "deterministic") {
+    teile.push(t(a.verfuegbar ? "erfassen.ki.verfuegbar" : "erfassen.ki.nichtVerfuegbar"));
+  }
+  for (const e of a.einschraenkungen) {
+    teile.push(t(`erfassen.ki.einschraenkung.${e}`));
+  }
+  if (a.keineKiFuer.length > 0) {
+    const stufen = a.keineKiFuer.map((s) => t(`conf.level.${s}`)).join(", ");
+    teile.push(`${t("erfassen.ki.keineKiFuer")} ${stufen}`);
+  }
+  return teile.join(" · ");
+}
+
 /**
  * Der `wer`-Teil des Satzes „Führt aus: {{wer}}" für die Aufgaben einer Fläche.
  *
- * Adminsicht: Stufe und Anbieter/Modell JE AUFGABE; führen alle Aufgaben denselben Ausführer aus,
- * steht er einmal da, sonst jede Aufgabe mit ihrem eigenen. Ohne Adminsicht: „hier nicht bekannt"
- * — nie die hausweite Stufe. `t` übersetzt Stufen-, Aufgaben- und Platzhalternamen.
+ * Je Aufgabe ein Ausführer; führen alle Aufgaben denselben aus, steht er einmal da, sonst jede
+ * Aufgabe mit ihrem eigenen. `t` übersetzt Stufen-, Aufgaben-, Einschränkungs- und Platzhalternamen.
  */
 export function ausfuehrerWer(opts: {
   tasks: readonly ReasonerTask[];
   istAdmin: boolean;
   config: ReasonerConfigStatus | undefined;
+  ausfuehrung: ReasonerAusfuehrungAntwort | undefined;
   t: (schluessel: string) => string;
 }): string {
-  const { tasks, istAdmin, config, t } = opts;
-  if (!istAdmin) {
-    return t(AUSFUEHRER_UNBEKANNT_KEY);
-  }
+  const { tasks, istAdmin, config, ausfuehrung, t } = opts;
   const werFuer = (task: ReasonerTask): string => {
-    // Ohne geladene Adminauskunft ist `aiTaskInfo` ehrlich „wird ermittelt" — kein Rückgriff auf
-    // den hausweiten Status.
-    const info = aiTaskInfo(config, task);
-    const stufe = t(info.modeLabelKey);
-    return info.modelName ? `${stufe} · ${anbieterUndModell(info.modelName)}` : stufe;
+    if (istAdmin) {
+      // Ohne geladene Adminauskunft ist `aiTaskInfo` ehrlich „wird ermittelt".
+      const info = aiTaskInfo(config, task);
+      const stufe = t(info.modeLabelKey);
+      return info.modelName ? `${stufe} · ${anbieterUndModell(info.modelName)}` : stufe;
+    }
+    const a = ausfuehrung?.aufgaben[task];
+    return a ? auskunftFuer(a, t) : t(AUSFUEHRER_UNBEKANNT_KEY);
   };
   const je = tasks.map((task) => ({ task, wer: werFuer(task) }));
   const alleGleich = je.every((e) => e.wer === je[0]?.wer);

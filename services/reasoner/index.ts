@@ -176,7 +176,13 @@ export type {
   ReasonerTask,
   // SCRUM-525 P.5 (WP-C): Herkunft der aktiven Policy (env|db|default) — Teil von ReasonerConfigStatus.
   ReasonerPolicySource,
+  // KI-WAHL-BETRIEBSABNAHME · Antwort 29/13: Schutzstufen und die Ausführungsauskunft je Aufgabe.
+  ReasonerSchutzstufe,
+  ReasonerAusfuehrung,
 } from "./src/types";
+// KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Route setzt die serverseitig bestimmte Schutzstufe eines
+// Laufs; der Reasoner liest sie direkt vor der Kettenbildung (`schutzstufe-kontext.ts`).
+export { imSchutzstufenRahmen, setzeSchutzstufe } from "./src/schutzstufe-kontext";
 // mega26 Block A: der Laufkontext ist Teil der ÖFFENTLICHEN Reasoner-Fläche — ein gebundener
 // Aufrufer (heute die extract-Route) muss ihn bilden können, ohne model-runs direkt zu kennen.
 export type { ModelRunContext, ModelRunSubject } from "../model-runs";

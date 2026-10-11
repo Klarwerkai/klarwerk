@@ -1019,7 +1019,13 @@ export function assembleServices(
     cappedCloud.openai || cappedCloud.anthropic
       ? {
           complete(system, user, confidential, maxTokens) {
-            const anbieter = reasoner.configStatus().effectiveAnbieter.answer;
+            // KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Wahl DES LAUFS, mit der Regel je
+            // Schutzstufe. Ohne Stufenregel ist das dieselbe Auflösung wie bisher: ein benannter
+            // Anbieter bleibt er selbst, „auto" folgt der wirksamen Aufgabenauflösung, und „lokal"
+            // bzw. „Keine KI" (deterministic) haben hier keinen Client — dann geht nichts hinaus.
+            const laufWahl = reasoner.laufWahlFuer("answer", confidential);
+            const anbieter =
+              laufWahl === "auto" ? reasoner.configStatus().effectiveAnbieter.answer : laufWahl;
             const client =
               anbieter === "openai"
                 ? cappedCloud.openai

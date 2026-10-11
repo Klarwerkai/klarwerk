@@ -6758,6 +6758,14 @@ const de = {
   "erfassen.ki.ausfuehrer": "Führt aus: {{wer}}",
   // Ohne Adminsicht gibt es keine aufgabenbezogene Auskunft — dann nicht die hausweite Stufe raten.
   "erfassen.ki.ausfuehrerUnbekannt": "hier nicht bekannt (einsehbar in der KI-Verwaltung)",
+  // Antwort 13: Verfügbarkeit und Einschränkungen des tatsächlich arbeitenden Dienstes.
+  "erfassen.ki.verfuegbar": "verfügbar",
+  "erfassen.ki.nichtVerfuegbar": "derzeit nicht verfügbar",
+  "erfassen.ki.einschraenkung.freigabe_fehlt": "öffentliche KI nicht freigegeben",
+  "erfassen.ki.einschraenkung.vertraulich_ohne_cloud": "vertrauliche Texte ohne Cloud-KI",
+  "erfassen.ki.einschraenkung.ki_abgeschaltet": "KI vom Administrator abgeschaltet",
+  "erfassen.ki.einschraenkung.nicht_erreichbar": "zuletzt nicht erreichbar",
+  "erfassen.ki.keineKiFuer": "keine KI für",
   "erfassen.ki.pille": "KI",
   "erfassen.mehr.entwuerfe": "Entwürfe",
   "erfassen.mehr.anhaenge": "Anhänge",

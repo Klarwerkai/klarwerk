@@ -341,6 +341,18 @@ export const useReasonerStatus = () =>
 // abstrahierten Status (/api/reasoner/status: active+mode) zurueck — kein 403-Rauschen.
 export const useReasonerConfig = (enabled = true) =>
   useQuery({ queryKey: ["reasoner", "config"], queryFn: endpoints.reasoner.config, enabled });
+// KI-WAHL-BETRIEBSABNAHME · Antwort 13: wer je Aufgabe tatsächlich arbeitet — für jeden
+// Angemeldeten (ko.read), geheimnisfrei. `enabled` erlaubt der Fläche, die Abfrage zu sparen, wo
+// die Adminsicht ohnehin mehr weiss.
+export const useReasonerAusfuehrung = (enabled = true) =>
+  useQuery({
+    queryKey: ["reasoner", "ausfuehrung"],
+    // Zur Laufzeit gerufen, nicht beim Rendern gegriffen: eine Fläche ohne diesen Endpunkt landet
+    // im Fehlerzustand (dann steht „hier nicht bekannt"), statt an einer fehlenden Funktion.
+    queryFn: () => endpoints.reasoner.ausfuehrung(),
+    enabled,
+    retry: false,
+  });
 // SCRUM-386: kundeneigene KI-Assist-Presets für die Palette (lesen: alle Rollen).
 export const useAssistPresets = () =>
   useQuery({ queryKey: ["reasoner", "assistPresets"], queryFn: endpoints.reasoner.assistPresets });

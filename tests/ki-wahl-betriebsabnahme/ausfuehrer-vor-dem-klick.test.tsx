@@ -5,29 +5,29 @@
 //
 // ORIGINALPUNKT (wörtlich): „Einen gut benannten Zugang zu KI, freier Anweisung und Vorlagen direkt
 // an der Editorleiste anbieten; den jeweiligen Anbieter dort vor Ausführen anzeigen."
+// ENTSCHEIDUNG Antwort 13 (über BEN, Nacharbeit 7): normale Anwender sollen den tatsächlich
+// arbeitenden Dienst, seine Verfügbarkeit und Einschränkungen erkennen können.
 //
 // GELIEFERT VOR DIESEM AUFTRAG (nicht wiederholt): der Zugang selbst — das Menü „KI" im Blatt mit
 // Strukturieren, Werksaktionen, freier Anweisung und Vorlagen (JOB 3062/3584/3769; Chromium-Belege
 // `tests/ki-freie-anweisung/ki-palette-390px-chromium.test.ts`, `tests/ki-palette-320/…`,
-// `tests/ki-palette-fingertipp/…`). FEHLTE: die Anbieterangabe dort — jede andere KI-Fläche trägt
-// sie über `AiModelInfo`, die Palette des Blattes nicht.
+// `tests/ki-palette-fingertipp/…`).
 //
-//   A1–A2 · die Ableitung `ausfuehrerWer`: Adminsicht nennt Stufe UND Anbieter/Modell je Aufgabe,
-//           bei abweichender Zuordnung je Aufgabe getrennt.
-//   A3    · Nacharbeit 5 (BEN): ohne Adminsicht gibt es keine aufgabenbezogene Auskunft — die Zeile
-//           sagt „hier nicht bekannt" und gibt NIE die hausweite Stufe als Ausführer aus.
-//   A3b   · GEGENPROBE zu BENs Fall: hausweit Cloud, `structure` lokal und `assist` regelbasiert
-//           gestellt. Nicht-Admin: kein „Cloud-KI" im Satz. Admin: je Aufgabe die WAHRE Stufe.
+//   A1–A2 · Adminsicht: Stufe UND Anbieter/Modell je Aufgabe, bei abweichender Zuordnung getrennt.
+//   A3    · Nicht-Admin OHNE geladene Ausführungsauskunft: „hier nicht bekannt" — nie die hausweite
+//           Stufe als Ausführer (Nacharbeit 5).
+//   A3b   · Admin, hausweit Cloud, `structure` lokal und `assist` regelbasiert: je Aufgabe die WAHRE
+//           Stufe; eine Adminauskunft im Speicher wird für Nicht-Admins NICHT benutzt.
 //   A3c   · Admin, Auskunft noch nicht geladen: „wird ermittelt", nicht die hausweite Stufe.
+//   A6    · Antwort 13 · Nicht-Admin, GLOBAL Claude gewählt, aber `structure` LOKAL und `assist`
+//           REGELBASIERT: der Satz nennt je Aufgabe IHREN Dienst — kein „Claude", kein „Cloud".
+//   A7    · Antwort 13 · Nicht-Admin, Aufgabe läuft bei Claude: Dienstname, Verfügbarkeit und
+//           Einschränkungen (vertrauliche Texte ohne Cloud-KI, Keine KI für Streng vertraulich).
+//   A8    · Antwort 13 · Nicht-Admin, Claude gewählt, Freigabe fehlt: der TATSÄCHLICHE Ausführer
+//           (regelbasiert) und der Grund — nicht der gewählte Anbieter.
 //   A4    · der Satz rendert auch OHNE `RoleProvider` (das Blatt in seinen Einzeltests) — als
-//           Nicht-Admin, ohne zu werfen, mit „hier nicht bekannt" trotz hausweit „cloud".
-//   A5    · im Blatt steht er im Menü „KI", in der Fläche der freien Anweisung UNTER Eingabe und
-//           Knopf (Nacharbeit 4: eine Zeile darüber schob die freie Eingabe am 390-px-Telefon
-//           31,3 px unter den Rand, `ki-palette-390px-chromium.test.ts` B5a), für `structure` und
-//           `assist`. Beim Öffnen der Palette steht er da — also vor jedem Ausführen.
-//
-// NACHARBEIT 4: als `.tsx`, damit die DOM-/JSX-Testkonfiguration (`tsconfig.tests-tsx.json`) gilt —
-// als `.ts` lief die Datei unter der Node-reinen Wurzelkonfiguration ohne DOM und ohne JSX.
+//           Nicht-Admin, aus der Ausführungsauskunft, trotz hausweit „cloud".
+//   A5    · im Blatt steht er im Menü „KI", UNTER Eingabe und Knopf (Nacharbeit 4, B5a).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -37,7 +37,11 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { type Root, createRoot } from "../../apps/web/node_modules/react-dom/client";
-import type { ReasonerConfigStatus } from "../../apps/web/src/api/types";
+import type {
+  ReasonerAusfuehrung,
+  ReasonerAusfuehrungAntwort,
+  ReasonerConfigStatus,
+} from "../../apps/web/src/api/types";
 import {
   AI_AUSFUEHRER_KEY,
   AiAusfuehrerZeile,
@@ -69,8 +73,7 @@ function konfig(perTask: Partial<Record<"structure" | "assist", "openai">> = {})
 
 /**
  * BENs Fall (Nacharbeit 5): hausweit ist Cloud eingerichtet und global gewählt, aber `structure`
- * ist ausdrücklich LOKAL und `assist` REGELBASIERT gestellt. Der öffentliche Status sagt dazu nur
- * `mode: "cloud"` — für keine der beiden Aufgaben die Wahrheit.
+ * ist ausdrücklich LOKAL und `assist` REGELBASIERT gestellt.
  */
 function konfigLokalUndRegel(): ReasonerConfigStatus {
   return {
@@ -87,12 +90,38 @@ function konfigLokalUndRegel(): ReasonerConfigStatus {
   } as unknown as ReasonerConfigStatus;
 }
 
+/** Die Auskunft für Nicht-Admins, wie `GET /api/reasoner/ausfuehrung` sie liefert. */
+function auskunft(
+  aufgaben: Partial<Record<"structure" | "assist", Partial<ReasonerAusfuehrung>>>,
+): ReasonerAusfuehrungAntwort {
+  const voll = (a: Partial<ReasonerAusfuehrung>): ReasonerAusfuehrung => ({
+    ausfuehrer: "deterministic",
+    gewaehlt: "deterministic",
+    verfuegbar: false,
+    einschraenkungen: [],
+    keineKiFuer: [],
+    ...a,
+  });
+  return {
+    aufgaben: Object.fromEntries(
+      Object.entries(aufgaben).map(([task, a]) => [task, voll(a ?? {})]),
+    ),
+  };
+}
+
+/** Antwort 13, BENs Gegenfall: global Claude, die Aufgaben aber lokal bzw. regelbasiert. */
+const GLOBAL_CLAUDE_AUFGABEN_ANDERS = auskunft({
+  structure: { ausfuehrer: "local", gewaehlt: "local", verfuegbar: true },
+  assist: { ausfuehrer: "deterministic", gewaehlt: "deterministic" },
+});
+
 describe("N-0070 · wer führt die Palette aus — die Ableitung", () => {
   it("A1 · Admin, eine Wahl für beide Aufgaben: EINMAL Stufe und Anbieter mit Modell", () => {
     const wer = ausfuehrerWer({
       tasks: ["structure", "assist"],
       istAdmin: true,
       config: konfig(),
+      ausfuehrung: undefined,
       t: DE,
     });
     expect(wer).toBe(`${DE("reasoner.taskInfo.cloud")} · ${anbieterUndModell(ANTHROPIC)}`);
@@ -104,6 +133,7 @@ describe("N-0070 · wer führt die Palette aus — die Ableitung", () => {
       tasks: ["structure", "assist"],
       istAdmin: true,
       config: konfig({ assist: "openai" }),
+      ausfuehrung: undefined,
       t: DE,
     });
     expect(wer).toContain(`${DE("adm.ai.task.structure")}: `);
@@ -112,38 +142,34 @@ describe("N-0070 · wer führt die Palette aus — die Ableitung", () => {
     expect(wer).toContain(anbieterUndModell(OPENAI));
   });
 
-  it("A3 · ohne Adminsicht: „hier nicht bekannt“ — weder Stufe noch Anbieter- oder Modellname", () => {
+  it("A3 · Nicht-Admin ohne geladene Auskunft: „hier nicht bekannt“ — weder Stufe noch Name", () => {
     const wer = ausfuehrerWer({
       tasks: ["structure", "assist"],
       istAdmin: false,
       config: undefined,
+      ausfuehrung: undefined,
       t: DE,
     });
     expect(wer).toBe(DE(AUSFUEHRER_UNBEKANNT_KEY));
     expect(wer).not.toContain(DE("reasoner.taskInfo.cloud"));
     expect(wer).not.toContain("Claude");
-    expect(wer).not.toContain("claude-sonnet");
   });
 
-  it("A3b · GEGENPROBE: hausweit Cloud, Aufgaben lokal/regelbasiert — Nicht-Admin sieht kein „Cloud-KI“, Admin die wahre Stufe je Aufgabe", () => {
+  it("A3b · Admin: hausweit Cloud, Aufgaben lokal/regelbasiert — je Aufgabe die wahre Stufe; Nicht-Admin benutzt die Adminauskunft nicht", () => {
     const cloud = DE("reasoner.taskInfo.cloud");
-    // Nicht-Admin: auch wenn eine Adminauskunft im Speicher läge, wird sie nicht benutzt — und die
-    // hausweite Cloud wird nicht als Ausführer behauptet.
     const nichtAdmin = ausfuehrerWer({
       tasks: ["structure", "assist"],
       istAdmin: false,
       config: konfigLokalUndRegel(),
+      ausfuehrung: undefined,
       t: DE,
     });
-    expect(nichtAdmin, "die hausweite Cloud wird als Aufgabenausführer ausgegeben").not.toContain(
-      cloud,
-    );
     expect(nichtAdmin).toBe(DE(AUSFUEHRER_UNBEKANNT_KEY));
-    // Admin: je Aufgabe die WAHRE Stufe, getrennt, ohne Cloud.
     const admin = ausfuehrerWer({
       tasks: ["structure", "assist"],
       istAdmin: true,
       config: konfigLokalUndRegel(),
+      ausfuehrung: undefined,
       t: DE,
     });
     expect(admin).not.toContain(cloud);
@@ -156,10 +182,75 @@ describe("N-0070 · wer führt die Palette aus — die Ableitung", () => {
       tasks: ["structure", "assist"],
       istAdmin: true,
       config: undefined,
+      ausfuehrung: undefined,
       t: DE,
     });
     expect(wer).toBe(DE("reasoner.taskInfo.unknown"));
+  });
+
+  it("A6 · Antwort 13 · Nicht-Admin, global Claude, Aufgaben lokal bzw. regelbasiert: je Aufgabe IHR Dienst, kein Rückfall auf den globalen Anbieter", () => {
+    const wer = ausfuehrerWer({
+      tasks: ["structure", "assist"],
+      istAdmin: false,
+      config: undefined,
+      ausfuehrung: GLOBAL_CLAUDE_AUFGABEN_ANDERS,
+      t: DE,
+    });
+    expect(wer).toContain(
+      `${DE("adm.ai.task.structure")}: ${DE("reasoner.taskInfo.local")} · ${DE("erfassen.ki.verfuegbar")}`,
+    );
+    expect(wer).toContain(`${DE("adm.ai.task.assist")}: ${DE("reasoner.taskInfo.rule")}`);
+    expect(wer, "der globale Anbieter wird als Aufgabenausführer genannt").not.toContain("Claude");
     expect(wer).not.toContain(DE("reasoner.taskInfo.cloud"));
+    expect(wer).not.toContain(DE(AUSFUEHRER_UNBEKANNT_KEY));
+  });
+
+  it("A7 · Antwort 13 · Nicht-Admin, Aufgaben laufen bei Claude: Dienst, Verfügbarkeit und Einschränkungen — ohne Modellkennung", () => {
+    const claude: Partial<ReasonerAusfuehrung> = {
+      ausfuehrer: "anthropic",
+      gewaehlt: "anthropic",
+      verfuegbar: true,
+      einschraenkungen: ["vertraulich_ohne_cloud"],
+      keineKiFuer: ["streng_vertraulich"],
+    };
+    const wer = ausfuehrerWer({
+      tasks: ["structure", "assist"],
+      istAdmin: false,
+      config: undefined,
+      ausfuehrung: auskunft({ structure: claude, assist: claude }),
+      t: DE,
+    });
+    expect(wer).toBe(
+      [
+        "Claude (Anthropic)",
+        DE("erfassen.ki.verfuegbar"),
+        DE("erfassen.ki.einschraenkung.vertraulich_ohne_cloud"),
+        `${DE("erfassen.ki.keineKiFuer")} ${DE("conf.level.streng_vertraulich")}`,
+      ].join(" · "),
+    );
+    expect(wer).not.toContain("claude-sonnet");
+  });
+
+  it("A8 · Antwort 13 · Nicht-Admin, Claude gewählt, Freigabe fehlt: der TATSÄCHLICHE Ausführer und der Grund", () => {
+    const ohneFreigabe: Partial<ReasonerAusfuehrung> = {
+      ausfuehrer: "deterministic",
+      gewaehlt: "anthropic",
+      verfuegbar: false,
+      einschraenkungen: ["freigabe_fehlt"],
+    };
+    const wer = ausfuehrerWer({
+      tasks: ["structure", "assist"],
+      istAdmin: false,
+      config: undefined,
+      ausfuehrung: auskunft({ structure: ohneFreigabe, assist: ohneFreigabe }),
+      t: DE,
+    });
+    expect(wer).toBe(
+      `${DE("reasoner.taskInfo.rule")} · ${DE("erfassen.ki.einschraenkung.freigabe_fehlt")}`,
+    );
+    expect(wer, "der nur gewählte, nicht arbeitende Anbieter steht als Ausführer da").not.toContain(
+      "Claude",
+    );
   });
 });
 
@@ -174,7 +265,7 @@ describe("N-0070 · der Satz in der Fläche", () => {
     behaelter = null;
   });
 
-  it("A4 · ohne RoleProvider: keine Ausnahme, und trotz hausweit „cloud“ steht „hier nicht bekannt“", async () => {
+  it("A4 · ohne RoleProvider: keine Ausnahme; der Satz kommt aus der Ausführungsauskunft, nicht aus dem hausweiten „cloud“", async () => {
     await act(async () => {
       await i18n.changeLanguage("de");
     });
@@ -182,6 +273,7 @@ describe("N-0070 · der Satz in der Fläche", () => {
       defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
     });
     abfragen.setQueryData(["reasoner", "status"], { active: true, mode: "cloud" });
+    abfragen.setQueryData(["reasoner", "ausfuehrung"], GLOBAL_CLAUDE_AUFGABEN_ANDERS);
     const ziel = document.createElement("div");
     behaelter = ziel;
     document.body.appendChild(ziel);
@@ -198,9 +290,15 @@ describe("N-0070 · der Satz in der Fläche", () => {
     });
     const zeile = ziel.querySelector('[data-testid="ki-ausfuehrer"]');
     expect(zeile, "der Satz wurde nicht gerendert").not.toBeNull();
-    expect(zeile?.textContent).toBe(
-      i18n.t(AI_AUSFUEHRER_KEY, { lng: "de", wer: DE(AUSFUEHRER_UNBEKANNT_KEY) }),
-    );
+    const erwartet = ausfuehrerWer({
+      tasks: ["structure", "assist"],
+      istAdmin: false,
+      config: undefined,
+      ausfuehrung: GLOBAL_CLAUDE_AUFGABEN_ANDERS,
+      t: DE,
+    });
+    expect(zeile?.textContent).toBe(i18n.t(AI_AUSFUEHRER_KEY, { lng: "de", wer: erwartet }));
+    expect(zeile?.textContent).toContain(DE("reasoner.taskInfo.local"));
     expect(zeile?.textContent, "die hausweite Stufe steht als Ausführer da").not.toContain(
       DE("reasoner.taskInfo.cloud"),
     );

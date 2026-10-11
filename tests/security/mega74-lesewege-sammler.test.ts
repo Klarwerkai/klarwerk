@@ -644,6 +644,10 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/external/search": { urteil: "KEIN_KO_INHALT", grund: "externe Treffer, kein Bestand." },
   "GET /api/media/status": { urteil: "KEIN_KO_INHALT", grund: "Dienstzustand." },
   "GET /api/reasoner/assist-presets": { urteil: "KEIN_KO_INHALT", grund: "Textbausteine." },
+  "GET /api/reasoner/ausfuehrung": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Ausführer je KI-Aufgabe (Anbieterkennung, Verfügbarkeit), Antwort 13.",
+  },
   "GET /api/capture/slides/availability": { urteil: "KEIN_KO_INHALT", grund: "Verfügbarkeit." },
   "GET /api/lifecycle/pending": {
     urteil: "KEIN_KO_INHALT",

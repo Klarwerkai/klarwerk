@@ -22,6 +22,9 @@ function clone(config: ReasonerTaskConfig): ReasonerTaskConfig {
     global: config.global,
     perTask: { ...config.perTask },
     ...(config.kiFreigabe ? { kiFreigabe: { ...config.kiFreigabe } } : {}),
+    // KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Wahl je Schutzstufe reist ebenso in die Zeile und
+    // zurück — sonst wäre sie nach jedem Neustart fort.
+    ...(config.proSchutzstufe ? { proSchutzstufe: { ...config.proSchutzstufe } } : {}),
   };
 }
 

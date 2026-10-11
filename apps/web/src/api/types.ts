@@ -2641,6 +2641,27 @@ export interface ReasonerConfigStatus {
   policySource?: "env" | "db" | "default";
 }
 
+// KI-WAHL-BETRIEBSABNAHME · Antwort 13: wer je Aufgabe tatsächlich arbeitet — die Antwort von
+// `GET /api/reasoner/ausfuehrung` (jeder Angemeldete mit Leserecht). Wortgleich zu
+// `ReasonerAusfuehrung` in `services/reasoner/src/types.ts`; geheimnisfrei.
+export type ReasonerSchutzstufe = "intern" | "vertraulich" | "streng_vertraulich";
+export type ReasonerAusfuehrer = ReasonerCloudAnbieter | "local" | "deterministic";
+export type ReasonerAusfuehrungsEinschraenkung =
+  | "freigabe_fehlt"
+  | "vertraulich_ohne_cloud"
+  | "ki_abgeschaltet"
+  | "nicht_erreichbar";
+export interface ReasonerAusfuehrung {
+  ausfuehrer: ReasonerAusfuehrer;
+  gewaehlt: ReasonerAusfuehrer;
+  verfuegbar: boolean;
+  einschraenkungen: ReasonerAusfuehrungsEinschraenkung[];
+  keineKiFuer: ReasonerSchutzstufe[];
+}
+export interface ReasonerAusfuehrungAntwort {
+  aufgaben: Partial<Record<ReasonerTask, ReasonerAusfuehrung>>;
+}
+
 // JOB 3420 (UX-10b): die Fehlerklassen, die der Server misst — WORTGLEICH zu `ModelFailureClass` in
 // `services/reasoner/src/model-errors.ts`. Hier ausgeschrieben und nicht importiert, aus demselben
 // Grund wie `REASONER_TASKS` oben: `apps/web/src` darf nicht aus `services/` importieren.

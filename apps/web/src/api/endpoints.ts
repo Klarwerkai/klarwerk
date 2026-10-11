@@ -95,6 +95,7 @@ import type {
   OverlapEntry,
   OverlapSettings,
   PublicUser,
+  ReasonerAusfuehrungAntwort,
   ReasonerConfigStatus,
   ReasonerProbeResult,
   ReasonerStatus,
@@ -936,6 +937,8 @@ export const endpoints = {
     status: () => api.get<ReasonerStatus>("/reasoner/status"),
     // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten).
     config: () => api.get<ReasonerConfigStatus>("/reasoner/config"),
+    // KI-WAHL-BETRIEBSABNAHME · Antwort 13: wer je Aufgabe tatsächlich arbeitet (alle Angemeldeten).
+    ausfuehrung: () => api.get<ReasonerAusfuehrungAntwort>("/reasoner/ausfuehrung"),
     // KI-Verwaltung v1: Zuordnung setzen (nur Admin; Antwort = frischer configStatus).
     updateConfig: (cfg: { global: string; perTask: Record<string, string> }) =>
       api.put<ReasonerConfigStatus>("/reasoner/config", cfg),

@@ -17,7 +17,10 @@ import {
   type Reasoner,
   type ReasonerLocale,
   ReasonerPolicyLockedError,
+  type ReasonerSchutzstufe,
   imBindungsrahmen,
+  imSchutzstufenRahmen,
+  setzeSchutzstufe,
   validateDescribeImageDataUrl,
 } from "../../../reasoner";
 import { runConflictSelfTest } from "../conflict-self-test";
@@ -328,6 +331,15 @@ const FREIGABE_NICHT_PROTOKOLLIERBAR_MELDUNG =
 // Das Ziel der Auditzeilen — eine Einstellung, kein Datensatz; deshalb ein fester, sprechender Name.
 const FREIGABE_ZIEL = "reasoner.kiFreigabe";
 
+// KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Felder, die `PUT /api/reasoner/config` versteht. Jedes
+// andere ist ein 400 — ein still verworfenes Feld mit Antwort 200 wäre eine falsche Erfolgsmeldung.
+const CONFIG_FELDER: ReadonlySet<string> = new Set([
+  "global",
+  "perTask",
+  "kiFreigabe",
+  "proSchutzstufe",
+]);
+
 // Der WIRKSAME Schalterstand einer Freigabe: zwei Booleans, keine Zwischentöne.
 //
 // Das ist KEINE zweite Entscheidung darüber, ob etwas hinausdarf — die fällt allein in
@@ -478,6 +490,23 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         : nurAnbieter
           ? "provider_mismatch"
           : "declared";
+    // KI-WAHL-BETRIEBSABNAHME · Antwort 29: die STUFE dieses Laufs — aus denselben Fakten, die
+    // oben entschieden haben, nichts zweitgerechnet. Nicht vertraulich heisst „intern" (auch, wenn
+    // eine Dokumentzustimmung den Text dazu gemacht hat). Vertraulich mit benennbarer Stufe (aus
+    // Deklaration oder gespeichertem Stand, die höhere gewinnt) trägt genau diese. Vertraulich OHNE
+    // benennbare Stufe (fehlender Anker, Klara-Riegel) bleibt offen — dann entscheidet im Reasoner
+    // das Bit, fail-safe mit der strengeren vertraulichen Regel.
+    const deklariert: Confidentiality | null =
+      declared === "intern" || declared === "vertraulich" || declared === "streng_vertraulich"
+        ? declared
+        : null;
+    const hoechste = hoehereStufe(deklariert, backstop.level ?? null);
+    const stufe: ReasonerSchutzstufe | null = !confidential
+      ? "intern"
+      : hoechste === "vertraulich" || hoechste === "streng_vertraulich"
+        ? hoechste
+        : null;
+    setzeSchutzstufe(stufe);
     return {
       confidential,
       ...(subject ? { subject } : {}),
@@ -499,7 +528,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     // (`services/reasoner/src/anbieterbindung.ts`) — das Tor hält sein Ergebnis darin fest, der
     // Reasoner liest es beim Kettenbau. `run(…, done)` ist das Muster von `@fastify/request-context`.
     app.addHook("onRequest", (_request, _reply, done) => {
-      imBindungsrahmen(() => done());
+      // KI-WAHL-BETRIEBSABNAHME · Antwort 29: im selben Atemzug der Rahmen für die Schutzstufe —
+      // `resolveProvenance` trägt sie ein, der Reasoner liest sie vor jeder Kettenbildung.
+      imBindungsrahmen(() => imSchutzstufenRahmen(() => done()));
     });
     // WP-BILD-1f (bens P2): der Text-Dispatcher behält die KLEINE Parsergrenze (globaler
     // 1-MiB-Fastify-Default) — NUR der Bild-Task (eigene Route /api/reasoner/describe unten)
@@ -851,6 +882,19 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       reply.code(200).send(reasoner.configStatus());
     });
 
+    // KI-WAHL-BETRIEBSABNAHME · Antwort 13 (BEN, Nacharbeit 7): wer für JEDE Aufgabe tatsächlich
+    // arbeitet, ob er verfügbar ist und welche Einschränkungen gelten — für jeden Angemeldeten mit
+    // Leserecht, nicht nur für Admins. Geheimnisfrei (`Reasoner.ausfuehrung`: Anbieterkennung,
+    // Booleans, Codes — kein Schlüssel, keine Adresse, keine Modellkennung). Die Admin-Sicht mit
+    // Modellnamen bleibt `GET /api/reasoner/config`; der öffentliche Status bleibt abstrakt.
+    app.get("/api/reasoner/ausfuehrung", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send({ aufgaben: reasoner.ausfuehrung() });
+    });
+
     // KI-Verwaltung v1 (02.07.2026, Teil-Slice): Zuordnung global + je Aufgabe setzen.
     // Nur Admin; keine Schlüssel — die leben weiter ausschließlich serverseitig.
     //
@@ -866,10 +910,25 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // JOB 3549: WEGLASSEN LÄSST DIE FREIGABE UNVERÄNDERT (Vertrag §3) — die Bestands-Oberfläche
         // speichert nur `global`/`perTask` und darf eine erteilte Freigabe dabei nicht löschen.
         kiFreigabe?: { oeffentlicheKi?: boolean; vertraulicheInhalte?: boolean };
+        // KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Wahl je Schutzstufe — wie `kiFreigabe`:
+        // weglassen lässt sie unverändert, `null`/`{}` löscht sie.
+        proSchutzstufe?: Record<string, unknown> | null;
       };
     }>("/api/reasoner/config", async (request, reply) => {
       const user = await guards.requirePermission("users.manage", request, reply);
       if (!user) {
+        return;
+      }
+      // KI-WAHL-BETRIEBSABNAHME · Antwort 29 (BEN, Nacharbeit 7): NICHTS WIRD STILL VERWORFEN. Bis
+      // hierher übernahm dieser Weg nur `global`, `perTask` und `kiFreigabe`; jedes weitere Feld —
+      // auch eine Wahl je Schutzstufe — verschwand, und die Antwort 200 sah wie ein Erfolg aus. Ein
+      // unbekanntes Feld ist jetzt ein 400, BEVOR irgendetwas protokolliert oder geschrieben wird.
+      const unbekannt = Object.keys(request.body ?? {}).filter((feld) => !CONFIG_FELDER.has(feld));
+      if (unbekannt.length > 0) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: `Nicht unterstützte Angaben in der KI-Zuordnung: ${unbekannt.join(", ")}.`,
+        });
         return;
       }
       // Der VORHER-Stand, gelesen bevor irgendetwas passiert — er ist die eine Hälfte des
@@ -917,6 +976,10 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           global: request.body.global ?? "auto",
           perTask: request.body.perTask ?? {},
           ...(request.body.kiFreigabe === undefined ? {} : { kiFreigabe: request.body.kiFreigabe }),
+          // Antwort 29: ungültige Stufen oder Werte wirft `setTaskConfig` (→ 400 unten).
+          ...(request.body.proSchutzstufe === undefined
+            ? {}
+            : { proSchutzstufe: request.body.proSchutzstufe }),
         } as Parameters<typeof reasoner.setTaskConfig>[0]);
       } catch (error) {
         // JOB 3549: der Beleg steht schon in der Kette, die Freigabe ist aber NICHT wirksam

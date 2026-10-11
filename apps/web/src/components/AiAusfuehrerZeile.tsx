@@ -18,14 +18,14 @@
 // — beim Öffnen da, also vor dem Ausführen — und bricht um statt abzuschneiden (`break-words`),
 // damit der Anbietername nie hinter einer Auslassung verschwindet.
 //
-// NUR AUS EINER AUFGABENBEZOGENEN AUSKUNFT (Nacharbeit 5, BEN): die Adminsicht nennt je Aufgabe
-// Stufe und Anbieter/Modell (`aiTaskInfo`). Für alle anderen gibt es keine aufgabenbezogene Auskunft
-// — der öffentliche `mode` ist hausweit und wäre bei lokal gestellter Aufgabe falsch. Dann sagt der
-// Satz „hier nicht bekannt" (Begründung in `lib/aiAusfuehrer.ts`). Namen bleiben wie bisher der
-// Adminsicht vorbehalten (WP-VIP2-GATE-2); ob Nicht-Admins Stufe oder Anbieter je Aufgabe sehen
-// sollen, ist eine offene Produktentscheidung und wird hier NICHT getroffen.
+// NUR AUS EINER AUFGABENBEZOGENEN AUSKUNFT: die Adminsicht nennt je Aufgabe Stufe und
+// Anbieter/Modell (`aiTaskInfo`, `/reasoner/config`). Alle anderen Angemeldeten bekommen seit
+// Antwort 13 (BEN, Nacharbeit 7) den tatsächlich arbeitenden Dienst je Aufgabe, seine Verfügbarkeit
+// und seine Einschränkungen (`/reasoner/ausfuehrung`, geheimnisfrei, ohne Modellkennung). Der
+// öffentliche, hausweite `mode` ist nie die Quelle (Nacharbeit 5). Begründung in
+// `lib/aiAusfuehrer.ts`.
 import { useTranslation } from "react-i18next";
-import { useReasonerConfig } from "../api/hooks";
+import { useReasonerAusfuehrung, useReasonerConfig } from "../api/hooks";
 import type { ReasonerTask } from "../api/types";
 import { useRoleOptional } from "../app/RoleContext";
 import { ausfuehrerWer } from "../lib/aiAusfuehrer";
@@ -38,10 +38,13 @@ export function AiAusfuehrerZeile({ tasks }: { tasks: readonly ReasonerTask[] })
   const { t } = useTranslation();
   const istAdmin = useRoleOptional()?.role === "admin";
   const config = useReasonerConfig(istAdmin);
+  // Die Ausführungsauskunft braucht nur, wer die Adminsicht nicht hat.
+  const ausfuehrung = useReasonerAusfuehrung(!istAdmin);
   const wer = ausfuehrerWer({
     tasks,
     istAdmin,
     config: config.data,
+    ausfuehrung: ausfuehrung.data,
     t: (schluessel) => t(schluessel),
   });
   const satz = t(AI_AUSFUEHRER_KEY, { wer });
