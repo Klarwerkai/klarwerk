@@ -16,6 +16,13 @@ import {
   leseDiscovery,
 } from "../office-artikel";
 import {
+  type NachbearbeitungsErgebnis,
+  NachbearbeitungsFehler,
+  type Nachbearbeitungsauftrag,
+  fuehreNachbearbeitungAus,
+  leseAuftrag,
+} from "../office-nachbearbeitung";
+import {
   type OfficeRechte,
   type OfficeSchreibweg,
   officeFormatFuer,
@@ -700,5 +707,164 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
         fassungsfehler(fehler, reply);
       }
     });
+
+    // ============================================================================================
+    // BPA-17 · PRÄSENTATION NACH DER BESPRECHUNG NACHBEARBEITEN
+    // (Auftrag produkt:20261011:assistenz-dokumentnachbearbeitung; Logik in office-nachbearbeitung.ts)
+    // ============================================================================================
+    //
+    //   POST /api/kos/:id/office/:anhangId/nachbearbeitung                 begrenzter Auftrag → Fassung
+    //   POST /api/kos/:id/office/:anhangId/nachbearbeitung/:laufId/stopp   vor der nächsten Wirkung halten
+    //
+    // DIESELBEN TORE WIE `zurueckholen` (`vorFassungsschritt`): `ko.create`, sichtbar, Schreibweg
+    // `direkt` — ein freigegebener Artikel ohne Freigaberecht bleibt beim Vorschlagsweg, und während
+    // einer laufenden Editor-Sitzung wird nichts geschrieben. Lesen allein (z. B. als
+    // Besprechungsteilnehmer mit `ko.read`) ändert das Original nie.
+    //
+    // LÄUFE: je `laufId` höchstens eine Ausführung. Eine Wiederholung derselben Kennung liefert das
+    // gespeicherte Ergebnis (`wiederholt: true`) und schreibt nichts. Das Gedächtnis dafür hält DIESER
+    // Prozess (wie die Reihenfolge `nacheinander`); nach einem Neustart zeigt der Verlauf des Anhangs,
+    // was gespeichert wurde.
+    type Lauf = { nutzerId: string; stopp: boolean; ergebnis?: NachbearbeitungsErgebnis };
+    const laeufe = new Map<string, Lauf>();
+    const LAEUFE_HOECHSTENS = 500;
+    const laufSchluessel = (koId: string, anhangId: string, laufId: string) =>
+      `${koId}\u0000${anhangId}\u0000${laufId}`;
+
+    app.post<{ Params: { id: string; anhangId: string } }>(
+      "/api/kos/:id/office/:anhangId/nachbearbeitung",
+      async (request, reply) => {
+        const vorher = await vorFassungsschritt(request, reply);
+        if (!vorher) {
+          return;
+        }
+        const { user, lage } = vorher;
+        if (lage.format.endung !== "pptx") {
+          reply.code(400).send({
+            error: "NACHBEARBEITUNG_FORMAT",
+            message:
+              "Die Nachbearbeitung ist zuerst für PowerPoint-Dateien (.pptx) gebaut. Dieses Dokument wurde nicht geändert.",
+          });
+          return;
+        }
+        let auftrag: Nachbearbeitungsauftrag;
+        try {
+          auftrag = leseAuftrag(request.body);
+        } catch (fehler) {
+          if (fehler instanceof NachbearbeitungsFehler) {
+            reply.code(400).send({ error: fehler.code, message: fehler.message });
+            return;
+          }
+          throw fehler;
+        }
+        const schluessel = laufSchluessel(lage.artikel.id, lage.anhang.id, auftrag.laufId);
+        const bekannt = laeufe.get(schluessel);
+        if (bekannt) {
+          if (bekannt.nutzerId !== user.id) {
+            reply.code(409).send({
+              error: "LAUF_KENNUNG_BELEGT",
+              message: "Diese Laufkennung gehört zu einem anderen Auftrag.",
+            });
+            return;
+          }
+          if (!bekannt.ergebnis) {
+            reply.code(409).send({
+              error: "LAUF_LAEUFT",
+              message: "Dieser Auftrag läuft bereits.",
+            });
+            return;
+          }
+          reply
+            .code(bekannt.ergebnis.zustand === "konflikt" ? 409 : 200)
+            .send({ ...bekannt.ergebnis, wiederholt: true });
+          return;
+        }
+        const eintrag: Lauf = { nutzerId: user.id, stopp: false };
+        laeufe.set(schluessel, eintrag);
+        let ergebnis: NachbearbeitungsErgebnis;
+        try {
+          ergebnis = await nacheinander(lage.anhang.id, () =>
+            fuehreNachbearbeitungAus(
+              {
+                ko: deps.ko,
+                objekte: deps.objekte,
+                verlauf: verlaufVon,
+                jetzt,
+              },
+              {
+                artikel: lage.artikel,
+                anhang: lage.anhang,
+                nutzerId: user.id,
+                gestoppt: () => eintrag.stopp,
+              },
+              auftrag,
+            ),
+          );
+        } catch (fehler) {
+          laeufe.delete(schluessel);
+          if (fehler instanceof NachbearbeitungsFehler) {
+            reply.code(400).send({ error: fehler.code, message: fehler.message });
+            return;
+          }
+          throw fehler;
+        }
+        eintrag.ergebnis = ergebnis;
+        // Ältestes abgeschlossenes Gedächtnis zuerst vergessen; laufende bleiben.
+        for (const [k, v] of laeufe) {
+          if (laeufe.size <= LAEUFE_HOECHSTENS) {
+            break;
+          }
+          if (v.ergebnis) {
+            laeufe.delete(k);
+          }
+        }
+        if (ergebnis.zustand === "konflikt") {
+          reply.code(409).send({
+            error: "KO_STALE",
+            message:
+              "Das Dokument wurde seit der besprochenen Fassung geändert. Es wurde nichts überschrieben; der Bericht zeigt je Änderung, ob sie auf den heutigen Stand passt.",
+            ...ergebnis,
+          });
+          return;
+        }
+        reply.code(200).send(ergebnis);
+      },
+    );
+
+    app.post<{ Params: { id: string; anhangId: string; laufId: string } }>(
+      "/api/kos/:id/office/:anhangId/nachbearbeitung/:laufId/stopp",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        const lage = await artikelOder404(user, request.params.id, request.params.anhangId, reply);
+        if (!lage) {
+          return;
+        }
+        const eintrag = laeufe.get(
+          laufSchluessel(lage.artikel.id, lage.anhang.id, request.params.laufId),
+        );
+        // Ein fremder Lauf sieht aus wie kein Lauf.
+        if (!eintrag || eintrag.nutzerId !== user.id) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Kein solcher Auftrag." });
+          return;
+        }
+        if (eintrag.ergebnis) {
+          reply.code(409).send({
+            error: "LAUF_BEENDET",
+            message: "Der Auftrag ist bereits abgeschlossen; Stopp ändert nichts mehr.",
+            zustand: eintrag.ergebnis.zustand,
+          });
+          return;
+        }
+        eintrag.stopp = true;
+        reply.code(202).send({
+          gestoppt: true,
+          message:
+            "Vor der nächsten Wirkung wird angehalten. Bereits Gespeichertes bleibt und steht im Ergebnis.",
+        });
+      },
+    );
   };
 }
