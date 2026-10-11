@@ -45,12 +45,16 @@ beforeEach(async () => {
   await services.auth.approveUser(leser.id, admin.id);
   adminId = admin.id;
   leserId = leser.id;
+  // Nacharbeit 10: die Stufe steht AUSDRÜCKLICH da. Seit main „Leserechte in Suche … durchsetzen"
+  // (beta.1.924) gilt ein Objekt ohne Stufe fail-closed wie Rang 1 — ein Leser ohne Prüfrecht sähe
+  // es nicht, und die Vorrichtung mäße dann eine Wissenslücke statt des Antwortwegs.
   const ko = await services.ko.create({
     title: TITEL,
     statement: AUSSAGE,
     type: "best_practice",
     category: "Instandhaltung",
     author: admin.id,
+    confidentiality: "intern",
   });
   koId = ko.id;
   for (let i = 0; i < ko.neededValidations; i++) {
@@ -192,6 +196,7 @@ describe("P05-AC03 · Leserechtsentzug während einer laufenden Antwort", () => 
       type: "best_practice",
       category: "Allgemein",
       author: adminId,
+      confidentiality: "intern",
     });
     const headers = await anmelden();
     const original = services.ask.ask.bind(services.ask);
@@ -239,6 +244,7 @@ describe("P05 · Löschung der Wissenskopie während einer laufenden Antwort", (
       type: "best_practice",
       category: "Instandhaltung",
       author: adminId,
+      confidentiality: "intern",
       sources: [
         {
           id: "anker-p05",
