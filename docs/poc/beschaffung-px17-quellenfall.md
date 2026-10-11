@@ -82,8 +82,12 @@ Dokumentanweisung.
 
 Der Fall nutzt nur vorhandene Wege. Neue Dienste, Datenbestände oder Oberflächen entstehen nicht:
 
-1. **Einlesen** über `POST /api/library/import/candidates` mit Herkunftsangaben. Jede Quelle wird ein
-   Prüfkandidat. Es entsteht **kein** Wissen.
+1. **Einlesen** über den vorhandenen Confluence-Bereichsimport (`runConfluenceImport`, der Weg hinter
+   „Bereich importieren“). Alle fiktiven Quellen liegen als Seiten im fiktiven Bereich `PX17`
+   (Sollbestand `BES-01-SOLL-v2`). Vorgaben sind Vorgabeseiten, Dateien sind Dateiseiten. Die Leser
+   je Bereich stehen als Seitenrestriktion **an der Quelle** (`BEREICHSLESER`). Der Server löst sie
+   über die Mailadressen auf Konten auf; der Client kann keine Quellrechte setzen. Jede Quelle wird
+   ein Prüfkandidat. Es entsteht **kein** Wissen.
 2. **Quellenpflege** (Rolle mit `ko.validate`) entscheidet je Kandidat nach dem vorab benannten
    Sollurteil: annehmen, Rückfrage (`info`, mit der Klärfrage) oder ablehnen. Die Annahme legt
    **ungeprüftes** Importwissen an (`status offen`, `trust 0`, `origin import`). Herkunft und
@@ -96,25 +100,33 @@ Der Fall nutzt nur vorhandene Wege. Neue Dienste, Datenbestände oder Oberfläch
 Rollen (fiktiv): Verwaltung (admin, ohne Inhaltszugang zu den Bereichen), Quellenpflege (controller,
 führt beide Bereiche), drei Fachprüfende (controller, lesen beide Bereiche), Einkauf (experte, liest
 nur Lieferanten), Design (experte, liest nur Design). Die Verwaltungsrolle ersetzt keine fachliche
-Freigabe: Am Designbereich bekommt sie 404.
+Freigabe: Sowohl beim Designkandidaten als auch beim Designwissen bekommt sie 404.
+
+Die Rechtetrennung (K06) gilt durchgehend, also in der Prüfwarteschlange und ihren Befunden vor und
+nach den Entscheidungen sowie im Wissen (Liste, Detail, Suche, Bereichsliste). Jede Rolle sieht
+genau die offenen Quellen und die ihres Bereichs, ohne fremde Titel, Inhalte oder Zahlen.
 
 ## Nachweisstand
 
 | Nachweis | Art | Stand |
 | --- | --- | --- |
 | `tests/beschaffung-px17/sollbestand.ts` | Versionierter fiktiver Sollbestand mit Sollurteilen | Quelltext |
-| `tests/beschaffung-px17/quellenfall-am-draht.test.ts` | Agentenprobe über die echten Routen (In-Memory, ohne Modell, ohne Netz): Sollbestand-Vertrag, Einlesen, Entscheidung, Bereich, Fachprüfung, Rechtetrennung (Liste, Detail, Suche, Bereichsliste), Gegenproben | Ergebnis im Bericht des Prüflaufs, nicht in dieser Datei |
-| Echter Confluence- oder Dateiablage-Adapterlauf | — | **nicht Teil** dieses Falls. Die Quellen kommen über den generischen Dateiweg mit Herkunftsangaben. Der Confluence-Weg gehört zu `aufnahme:20260922:gesamt-confluence-import` |
+| `tests/beschaffung-px17/quellenfall-am-draht.test.ts` | Agentenprobe über die echten Dienste und Routen (In-Memory, ohne Modell, ohne Netz; nur die Antworten der fiktiven Confluence-Instanz sind ersetzt): Sollbestand-Vertrag, Bereichsimport mit Quellrechten, Entscheidung, Bereich, Fachprüfung, Rechtetrennung (Warteschlange und Befunde vor und nach den Entscheidungen, Liste, Detail, Suche, Bereichsliste), Gegenproben | Ergebnis im Bericht des Prüflaufs, nicht in dieser Datei |
+| Ergebnisprotokoll BES-S01/S02 | Tatsächliche Kandidaten- und Wissensobjektkennungen, Quellenfassungen, Rollen und Konten, Instanzart, Freigabeschritte, Negativergebnisse und Warteschlangensicht je Rolle | Im nativen Vitest-Bericht des Prüflaufs unter `meta.besErgebnisprotokoll` des Tests „BES-S01/S02 · Ergebnisprotokoll …“. Den Bericht sichert der Prüfadapter kandidatgebunden |
+| Echte Confluence-Instanz oder echter Dateispeicher | — | **nicht Teil** dieses Falls. Der Adapter ist echt, die Antworten der Quelle sind fiktiv. Ein Lauf gegen eine echte Instanz gehört zu `aufnahme:20260922:gesamt-confluence-import` |
 | Postgres, Browser, menschliche Bedienung | — | **offen** |
 | Veröffentlichte Fassung, Live-Einstieg | — | **offen**. Folgt dem regulären Lieferweg nach Bens Prüfung |
 
 ## Befunde und Grenzen
 
-- **Prüfwarteschlange im Dateiweg:** Ein Kandidat ohne Quellrechte steht vor seiner Annahme für
-  jedes Konto mit `ko.read` in der Warteschlange (`darfKandidatSehen`, `services/app/src/sichtbarkeit.ts`).
-  Die Rechtetrennung von K06 gilt deshalb ab der Annahme und Einordnung in den Bereich. Für die noch
-  offene Warteschlange gilt sie nicht. Die Einstufung beim Import ist laut Entscheidung 16 ein eigener
-  Auftrag. Hier wird sie weder entschieden noch gebaut.
+- **Quellrechte nur über einen Quell-Adapter:** Der generische Dateiweg
+  (`POST /api/library/import/candidates`) verwirft Quellrechte aus dem Client, und Kandidaten ohne
+  Quellrechte sieht jedes Konto mit `ko.read`. Deshalb nutzt der Fall den Confluence-Bereichsimport,
+  den einzigen vorhandenen Weg, der Quellrechte serverseitig setzt. Die Einstufung von Dateiweg-
+  Importen ist laut Entscheidung 16 ein eigener Auftrag und wird hier weder entschieden noch gebaut.
+- **Korrigiert (BES-01-K06):** `GET /api/library/import/candidates/befunde` lieferte Kennung und
+  Anzahl aller Kandidaten an jedes Konto mit `ko.read`, auch die quellbeschränkten. Das war eine
+  verdeckte Trefferzahl. Die Route zählt jetzt dieselbe sichtbare Menge wie die Liste.
 - **Eingebettete Anweisung:** Dieser Fall belegt nur den Import- und Wissensweg. Dort bleibt die
   Anweisung Datum und wirkt nicht. Anfrageversand, Postfach und Lieferantenantworten sind spätere
   BES-Pakete und hier nicht vorhanden.

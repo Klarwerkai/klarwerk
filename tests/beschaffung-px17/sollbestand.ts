@@ -17,8 +17,17 @@
 // Testpreise sind erfunden. Echte Firmenquellen, Postfächer und Lieferantenkontakte gibt es hier
 // nicht; der Ablauf am Draht steht in `quellenfall-am-draht.test.ts`, die Beschreibung in
 // `docs/poc/beschaffung-px17-quellenfall.md`.
+//
+// FASSUNGEN. v1 (Kandidat 104148fc/889dc901) reichte die Quellen über den generischen Dateiweg ein;
+// dort tragen Kandidaten keine Quellrechte und standen vor der Annahme jedem `ko.read`-Konto offen
+// (Bens Befund nacharbeit-2). v2 legt ALLE fiktiven Quellen als Seiten eines fiktiven
+// Confluence-Bereichs ab — Dateien (Produktblatt, Designs, Listen, Lieferantenunterlagen) als
+// Dateiseiten. Damit gilt der VORHANDENE serverseitige Quellrechteweg: die Seitenrestriktion nennt
+// die Leser je Bereich (`BEREICHSLESER`), der Adapter löst sie über die Mailadressen auf Konten
+// auf, und Warteschlange, Annahme und Wissen lesen danach. Inhalte, Sollurteile und Fälle sind
+// gegenüber v1 unverändert; geändert sind nur Herkunft und Leser.
 
-export const SOLLBESTAND_FASSUNG = "BES-01-SOLL-v1";
+export const SOLLBESTAND_FASSUNG = "BES-01-SOLL-v2";
 export const SOLLBESTAND_STAND = "2026-10-11";
 /** Der Tag, für den „heute gültig" beurteilt wird. Ein späterer Zeitstempel ändert ihn nicht. */
 export const STICHTAG = "2026-10-11";
@@ -89,12 +98,30 @@ export type Annahme = "accept" | "info" | "reject";
 /** Welcher vorhandene Bereich (Space) den Inhalt nach der Annahme führt. */
 export type Bereich = "offen" | "design" | "lieferanten";
 
+/** Der fiktive Confluence-Bereich — kein angebundenes System, nur über die Testantworten erreichbar. */
+export const CONFLUENCE_BASIS = "https://confluence.example.test/wiki";
+export const CONFLUENCE_SPACE = "PX17";
+
 export interface Herkunft {
-  /** Fiktiver Quellort — ausdrücklich kein angebundenes System. */
-  provider: "fiktiv-confluence" | "fiktiv-dateiablage";
+  /** Der Anbietername, den der vorhandene Confluence-Mapper an Kandidat und Quellenanker setzt. */
+  provider: "Confluence";
+  /** Was die Seite fachlich ist: eine Vorgabeseite oder eine abgelegte (fiktive) Datei. */
+  ablage: "vorgabeseite" | "dateiseite";
+  /** Die Seitenkennung im fiktiven Bereich — der stabile Herkunftsanker. */
   externalId: string;
+  /** Die Seitenfassung der Quelle. */
   sourceVersion: number;
   url: string;
+}
+
+function seite(id: string, ablage: Herkunft["ablage"], sourceVersion: number): Herkunft {
+  return {
+    provider: "Confluence",
+    ablage,
+    externalId: id,
+    sourceVersion,
+    url: `${CONFLUENCE_BASIS}/spaces/${CONFLUENCE_SPACE}/pages/${id}`,
+  };
 }
 
 export interface SollQuelle {
@@ -118,20 +145,12 @@ export interface SollQuelle {
   klaerfrage?: string;
 }
 
-const CONF = "https://confluence.example.test/display/FIKTIV";
-const DATEI = "https://dateiablage.example.test/fiktiv/px17";
-
 export const QUELLEN: readonly SollQuelle[] = [
   {
     quellId: "BES-PX17-PB",
     art: "produktblatt",
     fassung: "PB-1",
-    herkunft: {
-      provider: "fiktiv-dateiablage",
-      externalId: "fiktiv-px17-produktblatt",
-      sourceVersion: 1,
-      url: `${DATEI}/produktblatt-pb1.pdf`,
-    },
+    herkunft: seite("1701", "dateiseite", 1),
     stand: "2026-09-01T08:00:00.000Z",
     giltAb: "2026-09-01",
     freigabestand: "freigegeben",
@@ -148,12 +167,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     quellId: "BES-PX17-D3",
     art: "design",
     fassung: "D3",
-    herkunft: {
-      provider: "fiktiv-dateiablage",
-      externalId: "fiktiv-px17-design-d3",
-      sourceVersion: 3,
-      url: `${DATEI}/design-d3.pdf`,
-    },
+    herkunft: seite("1702", "dateiseite", 3),
     stand: "2026-08-20T10:00:00.000Z",
     giltAb: "2026-08-20",
     freigabestand: "freigegeben",
@@ -170,12 +184,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     quellId: "BES-PX17-D4",
     art: "design",
     fassung: "D4",
-    herkunft: {
-      provider: "fiktiv-dateiablage",
-      externalId: "fiktiv-px17-design-d4",
-      sourceVersion: 4,
-      url: `${DATEI}/design-d4-entwurf.pdf`,
-    },
+    herkunft: seite("1703", "dateiseite", 4),
     stand: "2026-10-05T14:00:00.000Z",
     giltAb: null,
     freigabestand: "entwurf",
@@ -193,12 +202,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     quellId: "BES-PX17-D2",
     art: "design",
     fassung: "D2",
-    herkunft: {
-      provider: "fiktiv-dateiablage",
-      externalId: "fiktiv-px17-design-d2",
-      sourceVersion: 2,
-      url: `${DATEI}/design-d2-alt.pdf`,
-    },
+    herkunft: seite("1704", "dateiseite", 2),
     stand: "2025-11-03T09:00:00.000Z",
     giltAb: "2025-11-03",
     freigabestand: "abgeloest",
@@ -214,12 +218,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     quellId: "BES-PX17-V2",
     art: "vorgabe",
     fassung: "V2",
-    herkunft: {
-      provider: "fiktiv-confluence",
-      externalId: "fiktiv-conf-4711-v2",
-      sourceVersion: 2,
-      url: `${CONF}/Verpackungsvorgabe+Faltschachteln?version=2`,
-    },
+    herkunft: seite("1705", "vorgabeseite", 2),
     stand: "2026-07-01T07:00:00.000Z",
     giltAb: "2026-07-01",
     freigabestand: "freigegeben",
@@ -236,12 +235,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     quellId: "BES-PX17-V3",
     art: "vorgabe",
     fassung: "V3",
-    herkunft: {
-      provider: "fiktiv-confluence",
-      externalId: "fiktiv-conf-4711-v3",
-      sourceVersion: 3,
-      url: `${CONF}/Verpackungsvorgabe+Faltschachteln?version=3`,
-    },
+    herkunft: seite("1706", "vorgabeseite", 3),
     stand: "2026-10-08T07:00:00.000Z",
     giltAb: "2027-03-01",
     freigabestand: "zukuenftig",
@@ -259,12 +253,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     quellId: "BES-PX17-LL",
     art: "lieferantenliste",
     fassung: "LL-1",
-    herkunft: {
-      provider: "fiktiv-dateiablage",
-      externalId: "fiktiv-px17-lieferantenliste",
-      sourceVersion: 1,
-      url: `${DATEI}/lieferantenliste-ll1.xlsx`,
-    },
+    herkunft: seite("1707", "dateiseite", 1),
     stand: "2026-09-15T12:00:00.000Z",
     giltAb: "2026-09-15",
     freigabestand: "freigegeben",
@@ -280,12 +269,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     quellId: "BES-PX17-L-ALPHA",
     art: "lieferant",
     fassung: "LA-1",
-    herkunft: {
-      provider: "fiktiv-dateiablage",
-      externalId: "fiktiv-lieferant-alpha",
-      sourceVersion: 1,
-      url: `${DATEI}/lieferanten/alpha.pdf`,
-    },
+    herkunft: seite("1708", "dateiseite", 1),
     stand: "2026-09-15T12:05:00.000Z",
     giltAb: "2026-09-15",
     freigabestand: "freigegeben",
@@ -301,12 +285,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     quellId: "BES-PX17-L-BETA",
     art: "lieferant",
     fassung: "LB-1",
-    herkunft: {
-      provider: "fiktiv-dateiablage",
-      externalId: "fiktiv-lieferant-beta",
-      sourceVersion: 1,
-      url: `${DATEI}/lieferanten/beta.pdf`,
-    },
+    herkunft: seite("1709", "dateiseite", 1),
     stand: "2026-09-15T12:10:00.000Z",
     giltAb: "2026-09-15",
     freigabestand: "freigegeben",
@@ -322,12 +301,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     quellId: "BES-PX17-L-GAMMA",
     art: "lieferant",
     fassung: "LG-1",
-    herkunft: {
-      provider: "fiktiv-dateiablage",
-      externalId: "fiktiv-lieferant-gamma",
-      sourceVersion: 1,
-      url: `${DATEI}/lieferanten/gamma.pdf`,
-    },
+    herkunft: seite("1710", "dateiseite", 1),
     stand: "2026-09-15T12:15:00.000Z",
     giltAb: "2026-09-15",
     freigabestand: "freigegeben",
@@ -343,12 +317,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     quellId: "BES-PX17-L-DELTA",
     art: "lieferant",
     fassung: "LD-1",
-    herkunft: {
-      provider: "fiktiv-dateiablage",
-      externalId: "fiktiv-lieferant-delta",
-      sourceVersion: 1,
-      url: `${DATEI}/lieferanten/delta.pdf`,
-    },
+    herkunft: seite("1711", "dateiseite", 1),
     stand: "2026-10-02T08:00:00.000Z",
     giltAb: null,
     freigabestand: "ungeprueft",
@@ -364,12 +333,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     quellId: "BES-PX17-MB-BETA",
     art: "massblatt",
     fassung: "MB-1",
-    herkunft: {
-      provider: "fiktiv-dateiablage",
-      externalId: "fiktiv-massblatt-beta",
-      sourceVersion: 1,
-      url: `${DATEI}/lieferanten/beta-massblatt.pdf`,
-    },
+    herkunft: seite("1712", "dateiseite", 1),
     stand: "2026-09-28T09:30:00.000Z",
     giltAb: null,
     freigabestand: "ungeprueft",
@@ -386,12 +350,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     quellId: "BES-PX17-ALT-2025",
     art: "altdaten",
     fassung: "Bestellung 2025",
-    herkunft: {
-      provider: "fiktiv-dateiablage",
-      externalId: "fiktiv-px17-altbestellung-2025",
-      sourceVersion: 1,
-      url: `${DATEI}/altdaten/bestellung-2025.csv`,
-    },
+    herkunft: seite("1713", "dateiseite", 1),
     stand: "2025-03-10T08:00:00.000Z",
     giltAb: null,
     freigabestand: "abgeloest",
@@ -408,12 +367,7 @@ export const QUELLEN: readonly SollQuelle[] = [
     quellId: "BES-PX17-ANW",
     art: "lieferantenantwort",
     fassung: "Antwort 1",
-    herkunft: {
-      provider: "fiktiv-dateiablage",
-      externalId: "fiktiv-antwort-mit-anweisung",
-      sourceVersion: 1,
-      url: `${DATEI}/eingang/antwort-mit-anweisung.txt`,
-    },
+    herkunft: seite("1714", "dateiseite", 1),
     stand: "2026-10-09T16:00:00.000Z",
     giltAb: null,
     freigabestand: "ungeprueft",
@@ -503,18 +457,53 @@ export const FAELLE: readonly SollFall[] = [
   },
 ];
 
-/** Die Rollen des Falls (fiktiv). Die Verwaltung erhält bewusst keinen Inhaltszugang. */
+/**
+ * Die Rollen des Falls (fiktiv, Adressen unter `.test`). Die Verwaltung erhält bewusst keinen
+ * Inhaltszugang: sie steht in keiner Seitenrestriktion und in keinem Bereich.
+ */
 export const ROLLEN = {
-  quellenpflege: { name: "Carla Quellenpflege (fiktiv)", rolle: "controller" },
-  einkauf: { name: "Elena Einkauf (fiktiv)", rolle: "experte", liest: ["lieferanten"] },
-  design: { name: "Dora Design (fiktiv)", rolle: "experte", liest: ["design"] },
+  quellenpflege: {
+    name: "Carla Quellenpflege (fiktiv)",
+    email: "carla@px17.test",
+    rolle: "controller",
+  },
+  einkauf: {
+    name: "Elena Einkauf (fiktiv)",
+    email: "elena@px17.test",
+    rolle: "experte",
+    liest: ["lieferanten"],
+  },
+  design: {
+    name: "Dora Design (fiktiv)",
+    email: "dora@px17.test",
+    rolle: "experte",
+    liest: ["design"],
+  },
   fachpruefung: [
-    { name: "Theo Fachprüfung (fiktiv)", rolle: "controller" },
-    { name: "Uwe Fachprüfung (fiktiv)", rolle: "controller" },
-    { name: "Vera Fachprüfung (fiktiv)", rolle: "controller" },
+    { name: "Theo Fachprüfung (fiktiv)", email: "theo@px17.test", rolle: "controller" },
+    { name: "Uwe Fachprüfung (fiktiv)", email: "uwe@px17.test", rolle: "controller" },
+    { name: "Vera Fachprüfung (fiktiv)", email: "vera@px17.test", rolle: "controller" },
   ],
-  verwaltung: { name: "Ada Verwaltung (fiktiv)", rolle: "admin" },
+  verwaltung: { name: "Ada Verwaltung (fiktiv)", email: "ada@px17.test", rolle: "admin" },
 } as const;
+
+/**
+ * Wer eine Seite an der QUELLE lesen darf (Seitenrestriktion im fiktiven Confluence-Bereich).
+ * `null` = offene Seite: der Bereich ist für alle lesbar, die Seite selbst nicht beschränkt.
+ */
+export const BEREICHSLESER: Readonly<Record<Bereich, readonly string[] | null>> = {
+  offen: null,
+  design: [
+    ROLLEN.quellenpflege.email,
+    ...ROLLEN.fachpruefung.map((r) => r.email),
+    ROLLEN.design.email,
+  ],
+  lieferanten: [
+    ROLLEN.quellenpflege.email,
+    ...ROLLEN.fachpruefung.map((r) => r.email),
+    ROLLEN.einkauf.email,
+  ],
+};
 
 export function quelle(quellId: string): SollQuelle {
   const q = QUELLEN.find((x) => x.quellId === quellId);
