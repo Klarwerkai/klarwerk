@@ -733,10 +733,18 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Admin; Titel zugeordneter Paketobjekte.",
   },
+  // P08: im Desktopbetrieb trägt die Auskunft die Firmenreset-Vorschau — nur Mengen und
+  // Ablagenamen, kein Inhalt eines Wissensobjekts.
   "GET /api/admin/factory-reset": {
     urteil: "KURATORENTOR",
     recht: "users.manage",
-    grund: "Admin.",
+    grund: "Admin; Mengen der Firmenreset-Vorschau.",
+  },
+  // P08-AC05 (Nacharbeit 4): leitet nur zum SSO-Anbieter um — kein Inhalt eines Wissensobjekts.
+  "GET /api/admin/factory-reset/sso/start": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Admin; Umleitung zum SSO-Anbieter.",
   },
   // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Folgenvorschau. Sie gibt ZAHLEN heraus
   // (Zeilen je Tabelle, Wissensobjekte, Papierkorb, Konten, Begriffe), eine Kennung und den Befund
@@ -1773,6 +1781,8 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/admin/demo-packages/:id/reset": "users.manage.",
     "DELETE /api/admin/demo-packages/:id": "users.manage.",
     "POST /api/admin/factory-reset": "users.manage.",
+    // P08-AC05: Antwort nur `{ bestaetigt }` bzw. Fehlercode, kein KO-Inhalt.
+    "POST /api/admin/factory-reset/sso": "users.manage.",
     // Aufnahme gesamt-bestandsreset: Antwort trägt Laufkennung und Befund, keinen KO-Inhalt.
     "POST /api/admin/bestandsreset": "users.manage.",
     "POST /api/admin/import/confluence": "users.manage.",
