@@ -879,6 +879,8 @@
       folge: karte.folge,
       fassung: karte.fassung,
       nutzer: karte.konto.nutzer,
+      // Der Mandant (Klarwerk-Server) — der Begleiter zeigt die Karte nur unter demselben.
+      mandant: karte.konto.mandant,
       url: karte.url,
       titel: karte.titel,
       auswahl: karte.auswahl.text,

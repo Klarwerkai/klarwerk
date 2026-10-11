@@ -566,7 +566,9 @@ describe("BPA-01 · Kontextkarte im Browser (Adaptervertrag, kein Hostnachweis)"
       grund: "begleiter_nicht_erreichbar",
     });
     // Die Karte: Seite, Markierung, Fassung, Folge, Nutzer — sonst nichts.
-    const felder = ["auswahl", "erfasstAm", "fassung", "folge", "nutzer", "tabelle", "titel"];
+    // Seite, Markierung, Fassung, Folge, Nutzer und Mandant — sonst nichts (kein Schlüssel).
+    const felder = ["auswahl", "erfasstAm", "fassung", "folge", "mandant", "nutzer", "tabelle"];
+    felder.push("titel");
     expect(Object.keys(K.begleiterKarte(karte)).sort()).toEqual([...felder, "typ", "url"].sort());
     const quittung = { typ: "angenommen", folge: karte.folge, fassung: karte.fassung };
     expect(K.begleiterQuittung(quittung, karte)).toBe(true);

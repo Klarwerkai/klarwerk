@@ -23,10 +23,13 @@ spricht mit ihr nur über stdin/stdout. Es gibt keinen offenen Port und keinen l
 
 ## Verhältnis zu den Begleiter-Kandidaten
 
-Die Brücke ist ein eigenes Ziel in diesem Ordner und berührt keine Datei der beiden
-Begleiter-Kandidaten (BPA-04, Maskottchen). Der Begleiter zeigt die übergebene Karte, indem er
-`browserkontext.json` liest. Das Lesen in der Begleiter-Oberfläche gehört zu dessen Integration;
-die Zuordnung steht in `docs/operations/klara/browser-kontextkarten.md`.
+Die Brücke ist ein eigenes Ziel in diesem Ordner und berührt keine Datei der Begleiter-Kandidaten.
+Gemeinsamer Begleiter ist laut O06 der Host `klara-office-mac-maskottchen` (ff96149e). Er liest die
+Karte über die Bibliothek **`KlaraBrowserKarte`** aus diesem Paket. `BrowserKartenQuelle` gibt eine
+Karte nur frei, wenn Nutzer, Mandant und die aktuelle Anmeldesitzung des Begleiters passen. Bei
+Anmeldewechsel, Abmeldung, `verwerfen` und `widerrufen` leert sie die Karte sofort. Der Anschluss
+im Host (zwei Stellen) und was davor über den regulären Lieferweg geschehen muss, steht in
+`docs/operations/klara/browser-kontextkarten.md`.
 
 ## Stand
 

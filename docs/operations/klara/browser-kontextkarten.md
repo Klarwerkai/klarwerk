@@ -186,6 +186,39 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
      Danach folgen die Schritte 1–3 (Übersetzen und Einrichten, Neuladen, realer Lauf) mit dem
      integrierten gemeinsamen Begleiter.
 
+  **Nachtrag Nacharbeit 11 — O06 ist entschieden** (`QUELLEN-HOSTZUORDNUNG-O06-20261011T211410Z`):
+  - Gemeinsamer Host ist `produkt:20261010:klara-office-mac-maskottchen`, Kandidat `ff96149e`
+    (`codex/auftrag-153f1494a069ace21aa7`, installiert als „Klara Begleiter.app" 0.1.0).
+  - Aus BPA-04 werden aus `345b4467` die Anmeldung, die Finder-/Word-Lesewege und die Bindungs-
+    und Widerrufsregeln wiederverwendet.
+
+  *Umgesetzt in diesem Arbeitsbaum:*
+  - Der **Kartenverbraucher** für den Host ist die Bibliothek `KlaraBrowserKarte` im Paket der
+    Brücke (`BrowserBruecke/Sources/KlaraBrowserKarte`). Sie gibt eine Karte nur frei, wenn
+    Nutzer (`nutzer`), Konto (`mandant` = Klarwerk-Server) und die aktuelle Anmeldesitzung des
+    Begleiters passen. Jede neue Anmeldung, Abmeldung und jeder Kontowechsel leert sie sofort; dazu
+    kommen das Löschen durch `verwerfen`/`widerrufen` und eine Datei mit fremdem Besitzer oder
+    Rechten über 0600.
+  - Die Erweiterung schickt dafür neu den Mandanten mit der Karte.
+  - Der Anschluss im Host sind zwei Stellen: `anmelden(...)`, wenn die Webfläche `/begleiter`
+    ihre Anmeldung oder Abmeldung meldet, und `beiAenderung`, das die Karte an die Webfläche
+    weiterreicht.
+
+  *Nicht in diesem Arbeitsbaum möglich, mit Begründung:*
+  - Der Host gehört nicht allein zu `apps/desktop`. Er besteht aus 28 zusammengehörigen Dateien
+    (App, Webfläche `/begleiter` mit `Begleiter.tsx`/`begleiterBruecke.ts`, Serverwege
+    `klara-begleiter*.ts`, Bauskripte, Tests, rund 7.800 Zeilen). Sie stehen auf einem Zweig, der
+    `main` um rund 3.000 Dateien vorausläuft (`git diff --stat main...ff96149e`).
+  - Eine reguläre Integration ist ein Merge dieses Kandidaten. Diese Bahn darf keine Commits und
+    damit keine Merges erzeugen. Einzelne Dateien herauszukopieren wäre keine reguläre Integration
+    und bräche den Bau, weil Routenregistrierung und Abhängigkeiten auf demselben Zweig liegen.
+  - Die BPA-04-Funktionen benutzen Serverwege (`/api/auth/office-handover/redeem`,
+    `/api/klara/programme/*`), die in `main` nicht vorhanden sind.
+  - Nötig ist deshalb: Der Host-Kandidat `ff96149e` und die BPA-04-Teile aus `345b4467` kommen
+    über den regulären Lieferweg nach `main` (Merge durch die Liefersteuerung). Danach werden die
+    zwei Anschlussstellen eingesetzt, dann folgen Bau, Einrichtung und der reale AC10-Rundweg
+    durch die Führung.
+
   Der Server-Sitzungsweg bleibt daneben angeschlossen. Er trägt Erklärung und Belege; der
   Begleiter bekommt die gebundene Karte.
 - **„Erkläre mir diese Angaben" (Nacharbeit 3).** Nach dem Verbinden stellt die Leiste die Frage
