@@ -60,6 +60,7 @@ import { EDITOR_BLOCKS } from "../../lib/editorBlocks";
 import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
 import { meldeUebergabe, pruefeUebergabe, useKlaraUebergabe } from "../../lib/klaraUebernahme";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { darfWissensobjektLoeschen } from "../../lib/koLoeschrecht";
 import { koOverview } from "../../lib/koOverview";
 import { type KoRevisionItemId, koRevisionSummary } from "../../lib/koRevisionSummary";
 import {
@@ -2658,7 +2659,8 @@ export function BibliothekLesen({
       setSprungZiel(null);
     }
   };
-  const darfLoeschen = role === "admin" || role === "controller" || ko.author === user?.id;
+  // R-0959: dieselbe Regel wie am Papierkorb der Trefferzeile — eine Quelle (`lib/koLoeschrecht.ts`).
+  const darfLoeschen = darfWissensobjektLoeschen(role, ko.author, user?.id);
   // Nur am eigenen Eintrag und nur bei einer offenen Dublette (auch neben einem Konflikt) — dort,
   // wo der Hinweis steht, um den es geht.
   const rueckzugMoeglich =
