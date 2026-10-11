@@ -102,8 +102,9 @@ export function klaraAnswerExplanationRoutes(
         const leser: AnswerExplanationLeser = {
           userId: user.id,
           darfVertraulich: freigaberang(user) >= 1,
-          // R-1175: daneben die EINE Sichtbarkeitsentscheidung (Space, Autorschaft, Freigaberang).
-          sichtbar: sichtbarkeitsfilterFuer(user),
+          // Antwortbeleg-Nacharbeit 5 / R-1175 / Variante B: die EINE Sichtbarkeitsentscheidung von
+          // heute — Space-Recht (`spaceLesbar`), Freigaberang und Autorschaft. Sie entscheidet allein.
+          darfSehen: sichtbarkeitsfilterFuer(user),
         };
         const ergebnis = await deps.explanations.erklaere(request.params.answerId, leser);
         if (ergebnis.kind === "NOT_FOUND") {

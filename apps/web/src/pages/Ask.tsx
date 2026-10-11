@@ -28,6 +28,7 @@ import { useToast } from "../app/ToastContext";
 // `billable` der Aufgabe „answer", nicht mehr als unbedingter eigener Wortlaut.
 import { AiCostHint } from "../components/AiCostHint";
 import { AiGeneratedNotice, AiSurfaceNotice } from "../components/AiGeneratedNotice";
+import { AnswerExplanation } from "../components/AnswerExplanation";
 import { Bedingungswechsel } from "../components/Bedingungswechsel";
 import { DemoBanner } from "../components/DemoBanner";
 import { FragekontextWahl, GeltungsAuskunft, fragekontextZumSenden } from "../components/Geltung";
@@ -752,6 +753,12 @@ export function Ask(): JSX.Element {
   // FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt DIESES Antwortvorgangs — das „Danke" je Quelle
   // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
   const [receipt, setReceipt] = useState(anfang?.antwort?.receipt ?? "");
+  // R-0293: die Kennung des dauerhaften Antwortbelegs DIESER Antwort — der Schlüssel zur Erklärung
+  // „Wie kam diese Antwort zustande?". Sie reist MIT der Antwort im kontogebundenen Arbeitsstand
+  // (lib/fragenArbeitsstand.ts), damit der Erklärweg Neuladen und Wiederaufnahme übersteht.
+  // `undefined` heißt ALTBESTAND (ein Stand von vor dieser Regel, nie eine Kennung gemerkt) und
+  // wird auch so zurückgeschrieben; `null` heißt: der Server hat keinen Beleg geschrieben.
+  const [answerId, setAnswerId] = useState<string | null | undefined>(anfang?.antwort?.answerId);
   // produkt:20261010:antwort-beanstandung-korrektur: die Aussagen DIESER Antwort (REF-01), an die
   // eine Beanstandung gebunden wird. Nicht im Arbeitsstand: nach dem Neuladen bleibt nur die
   // einfache Meldung — der Server prüft die Aussage ohnehin gegen den signierten Beleg.
@@ -991,6 +998,7 @@ export function Ask(): JSX.Element {
       antwortFrage.current = "";
       setResult(null);
       setReceipt("");
+      setAnswerId(null);
       setGapId(null);
       setGeloesteLuecke(null);
       setThankedSources(new Set());
@@ -1028,6 +1036,7 @@ export function Ask(): JSX.Element {
       setQuellenStand(quellenStandAus(angekommen.sources, r.quellenStand));
       setBeobachtet(beobachtungAus(angekommen.sources, kos.data));
       setReceipt(r.receipt);
+      setAnswerId(r.answerId ?? null);
       setAussagen(r.aussagen?.aussagen ?? []);
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
@@ -1118,6 +1127,8 @@ export function Ask(): JSX.Element {
               verschlossen,
               gapId,
               angezeigtAm: antwortAm ?? new Date().toISOString(),
+              // Altbestand bleibt ohne Feld — er bekommt keine erfundene Kennung und kein `null`.
+              ...(answerId !== undefined ? { answerId } : {}),
               ...(quellenStand ? { serverQuellenStand: quellenStand } : {}),
               ...(beobachtet ? { beobachtet } : {}),
               // R-0305/R-1099 (Ben, Nacharbeit 10): der Kontext der Antwort reist mit; ein
@@ -1137,6 +1148,7 @@ export function Ask(): JSX.Element {
     q,
     result,
     receipt,
+    answerId,
     verschlossen,
     gapId,
     antwortAm,
@@ -1214,6 +1226,8 @@ export function Ask(): JSX.Element {
       aufgenommeneAntwort.current = antwort?.result ?? null;
       setResult(antwort?.result ?? null);
       setReceipt(antwort?.receipt ?? "");
+      // R-0293: die Kennung gehört zur aufgenommenen Antwort desselben Kontos (Altbestand: undefined).
+      setAnswerId(antwort === null ? null : antwort.answerId);
       setAussagen([]);
       setVerschlossen(antwort?.verschlossen ?? []);
       setPruefrahmen(null);
@@ -2983,6 +2997,8 @@ export function Ask(): JSX.Element {
                       {t("ask.rueckmeldungAbgelaufen")}
                     </p>
                   )}
+                  {/* R-0293: ein Klick öffnet den gespeicherten Weg zur Antwort — ohne Neusuche. */}
+                  <AnswerExplanation answerId={answerId ?? null} nameVon={authorNameOf} />
                   {/* R-1630 / R-2176: dieselbe Frage aus dem Wissensstand vor einem Jahr — auf
                       Wunsch, zur Frage, zu der diese Antwort gehört (`asked`). */}
                   <WissensstandVergleichBereich
