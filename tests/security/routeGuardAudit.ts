@@ -484,6 +484,51 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.create",
     zeilenrecht: ["darfSehen"],
   },
+  // BPA-16: Gesprächsaussagen mit Folien verbinden. Lesen `ko.read`, Wirkungen `ko.create`; jede
+  // Tür mit Meetingkennung urteilt je Datei mit `beurteileAnhang` (wie `GET /api/objects/:id`).
+  "GET /api/meetings": { protection: "ko.read" },
+  "POST /api/meetings": { protection: "ko.create" },
+  "GET /api/meetings/:id": { protection: "ko.read", zeilenrecht: ["beurteileAnhang"] },
+  "POST /api/meetings/:id/praesentationen": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/mitschriften": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/folienwechsel": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/rueckmeldungen": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "GET /api/meetings/:id/rueckmeldungen/:rid": {
+    protection: "ko.read",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/rueckmeldungen/:rid/klaerung": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/rueckmeldungen/:rid/verwerfen": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "GET /api/meetings/:id/folien/:dateiId/:sldId": {
+    protection: "ko.read",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "GET /api/meetings/:id/zeitstellen/:zeitMs": {
+    protection: "ko.read",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/fassungsabgleich": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
   // Kenntnisnahme einer gültigen Fassung: Anfordern, Übersicht und Erinnern mit dem vorhandenen
   // Zuweisungsrecht (`ko.assign`), die eigenen Anforderungen und das Bestätigen mit `ko.read`. Jede
   // Tür hält den Eintrag vor der Antwort gegen `darfSehen` (sonst 404 wie am Detailabruf).
