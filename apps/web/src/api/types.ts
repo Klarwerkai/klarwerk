@@ -575,6 +575,79 @@ export interface KoFrische {
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
+/**
+ * Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 — Spiegel von `KoWeisung`
+ * (services/knowledge-object/src/types.ts): wer das Objekt als Weisung gültig gesetzt hat, für
+ * welchen Bereich und welche Fassung, welche betroffenen Punkte ausdrücklich bestehen blieben, und
+ * die nachfolgende Sichtung (Verantwortliche, Frist, ggf. erledigt).
+ */
+export interface KoWeisung {
+  von: string;
+  am: string;
+  bereich: string;
+  fassung: number;
+  bestehenGelassen: string[];
+  /** R-0573 · Nacharbeit 11: ausdrücklich überstimmte Punkte (Konfliktkennungen). */
+  ueberstimmt?: string[];
+  /** Nacharbeit 14: der Beleg dieser Weisung — bindet die Sichtung an genau sie. */
+  beleg?: { auditSeq: number; auditHash: string };
+  sichtung: {
+    verantwortlich: string;
+    frist: string;
+    gesichtetVon?: string;
+    gesichtetAm?: string;
+    vermerk?: string;
+  };
+}
+
+/** Entscheidung 27 — Spiegel von `KoExterneFreigabe` (services/knowledge-object/src/types.ts). */
+export interface KoExterneFreigabe {
+  art: "wissen" | "referenz";
+  herausgeber: string;
+  freigabeKennung?: string;
+  freigegebenAm: string;
+  freigegebenVon?: string;
+  nachweis?: string;
+  geltung: string;
+  zustaendig: string;
+  bestaetigtVon: string;
+  bestaetigtAm: string;
+  fassung: number;
+}
+
+/**
+ * Entscheidung 18 / Antwort 18 — die Weisungsbefugnis am Konto (Spiegel von
+ * services/auth/src/types.ts). `bereiche` sind Kategorien; `*` steht für das ganze Unternehmen.
+ */
+export interface Weisungsbefugnis {
+  bereiche: string[];
+  erteiltVon: string;
+  erteiltAm: string;
+}
+
+/** R-0228: Spiegel von `Verifizierung` in services/app/src/verifizierungsmarke.ts. */
+export interface KoVerifizierung {
+  mensch:
+    | { stand: "nicht_belegt" }
+    | { stand: "nicht_auffindbar" }
+    | { stand: "nicht_abrufbar" }
+    | {
+        stand: "belegt";
+        art:
+          | "bewertung"
+          | "verwalter"
+          | "rueckgabe"
+          | "weisung"
+          | "externe_freigabe"
+          | "weisung_sichtung";
+        pruefer: string;
+        zeitpunkt: string;
+        fassung: number | null;
+        aktuell: boolean;
+      };
+  validiertVon: string[];
+}
+
 /** R-1631: Bauteile, Materialien und Geltungskontext — Spiegel von `AnlagenKontext` im Dienst. */
 export interface AnlagenKontext {
   bauteile?: string[];
@@ -759,6 +832,22 @@ export interface KnowledgeObject {
   // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
   // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
+  // Aufnahme gesamt-wissen-herkunft (R-0228): die Verifizierungsmarke — Spiegel von
+  // `services/app/src/verifizierungsmarke.ts`. Nur `GET /api/kos/:id` liefert sie; fehlt das Feld,
+  // ist sie in dieser Antwort NICHT ERHOBEN (Liste, Suche, Prüfbrett) — nicht „ungeprüft".
+  verifizierung?: KoVerifizierung;
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27 — fehlen sie, ist das Objekt
+  // weder als Weisung gesetzt noch aus einer externen Freigabe übernommen.
+  weisung?: KoWeisung;
+  externeFreigabe?: KoExterneFreigabe;
+  // Nacharbeit 11 (Ben B1): nur an `GET /api/kos/:id` und nur für weisungsbefugte Lesende — die
+  // Konten, die diesen Eintrag mit ihrem eigenen Zugang lesen und deshalb sichten können.
+  sichtungsKandidaten?: string[];
+  // Nacharbeit 14 (Ben B2): nur an `GET /api/kos/:id` — überstimmte Punkte (Konfliktkennungen),
+  // deren Abschluss noch nicht vollständig ist. Fehlt das Feld, ist nichts offen.
+  weisungAbschlussOffen?: string[];
+  // Nacharbeit 11 (Ben B2): durch eine Weisung überstimmt und geschlossen (nicht gelöscht).
+  geschlossen?: { durchKoId: string; conflictId: string; von: string; am: string; fassung: number };
   /**
    * AW06-K02: die Annahme DIESER Fassung, vom Server aus genau dem referenzierten Beleg gelesen —
    * Fassung, Person, Zeitpunkt und die Kontoregel, die im Beleg steht (`null`: dort nicht
@@ -2098,8 +2187,9 @@ export interface PublicUser {
   accessExpiresAt?: string;
   // Aufnahme gesamt-peer-validierung (Antwort 18): die am Konto vergebene fachliche
   // Weisungsbefugnis mit Zuständigkeitsbereichen (`*` = ganzes Unternehmen). Fehlt das Feld, hat
-  // das Konto keine — unabhängig von seiner Rolle.
-  weisungsbefugnis?: { bereiche: string[]; erteiltVon: string; erteiltAm: string };
+  // das Konto keine — unabhängig von seiner Rolle. Seit der Integration (gesamt-wissen-herkunft,
+  // Nacharbeit 12) die EINE Befugnis auch für die Weisung mit punktweiser Entscheidung.
+  weisungsbefugnis?: Weisungsbefugnis;
 }
 
 // SCRUM-116/108: Import-/Source-Review-Kandidaten (JSON-Re-Import).

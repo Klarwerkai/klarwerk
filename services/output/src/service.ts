@@ -12,6 +12,7 @@ import {
   toSource,
 } from "./render";
 import {
+  type AutorenNamen,
   type GenerateOutputInput,
   OUTPUT_KINDS,
   type OutputDocument,
@@ -32,6 +33,10 @@ export const OHNE_BETRACHTER: Sichtbarkeitsentscheidung = () => true;
 export interface OutputServiceDeps {
   koService: KoService;
   now?: () => number;
+  // Aufnahme gesamt-wissen-herkunft (R-0298 / FR-LIF-04): löst Autorenkennungen zu sichtbaren
+  // Namen auf (Leseregel des Verzeichnisses, s. services/app/src/autorennamen.ts). Ohne Angabe
+  // bleibt es bei den Kennungen — so wie vor diesem Auftrag.
+  autorenNamen?: AutorenNamen;
   /**
    * aufnahme:20260922:gesamt-dokumenterzeugung (R-0337, Nacharbeit 5): der Leseweg zum
    * Validierungsnachweis. `findBySeq` adressiert den Eintrag, `all` liefert die Kette für die
@@ -44,11 +49,13 @@ export interface OutputServiceDeps {
 export class OutputService {
   private readonly koService: KoService;
   private readonly now: () => number;
+  private readonly autorenNamen: AutorenNamen | undefined;
   private readonly audit: AuditLeser | undefined;
 
   constructor(deps: OutputServiceDeps) {
     this.koService = deps.koService;
     this.now = deps.now ?? (() => Date.now());
+    this.autorenNamen = deps.autorenNamen;
     this.audit = deps.audit;
   }
 
@@ -105,11 +112,16 @@ export class OutputService {
     const anlass =
       typeof input.anlass === "string" && input.anlass.trim() ? input.anlass.trim() : null;
     const generatedAt = new Date(this.now()).toISOString();
+    const namen = await this.namenFuer(selected);
     const pruefungen = await this.pruefnachweise(selected);
     const provenance = selected.map((ko, i) =>
       // `pruefnachweise` liefert je Quelle genau einen Eintrag; der Rückfall bedient nur den
       // indizierten Zugriff (exactOptionalPropertyTypes) und heißt „kein Nachweis", nie „belegt".
-      toProvenance(ko, { marke: `Q${i + 1}`, pruefung: pruefungen[i] ?? { zustand: "MISSING" } }),
+      toProvenance(ko, {
+        marke: `Q${i + 1}`,
+        pruefung: pruefungen[i] ?? { zustand: "MISSING" },
+        ...(namen ? { namen } : {}),
+      }),
     );
     const marken = selected.map((ko, i) => quellenMarke(i, ko));
     const title = KIND_TITLE[input.kind];
@@ -131,12 +143,29 @@ export class OutputService {
       "",
       OUTPUT_NO_CHECK_NOTE,
       "",
-      renderBody(input.kind, selected, { marken, anlass, audienceRole, provenance }),
+      renderBody(input.kind, selected, {
+        marken,
+        anlass,
+        audienceRole,
+        provenance,
+        ...(namen ? { namen } : {}),
+      }),
       "",
       renderProvenance(provenance),
     ].join("\n");
 
     return { kind: input.kind, title, audienceRole, generatedAt, markdown, provenance };
+  }
+
+  // Eine Auflösung je Dokument über alle Autoren- und Originalautorenkennungen der Quellen.
+  private async namenFuer(
+    kos: readonly KnowledgeObject[],
+  ): Promise<((id: string) => string) | undefined> {
+    if (!this.autorenNamen) {
+      return undefined;
+    }
+    const texte = await this.autorenNamen(kos.flatMap((ko) => [ko.author, ko.originalAuthor]));
+    return (id) => texte.get(id) ?? id;
   }
 
   // RECHERCHE:pmo-fea-0004: das Wissensupdate fürs Teamgespräch — dieselbe Quelle, dieselbe Uhr.
