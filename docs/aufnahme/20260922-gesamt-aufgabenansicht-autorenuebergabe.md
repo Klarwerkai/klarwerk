@@ -71,7 +71,7 @@ und Oberfläche):
 | Punkt | Umsetzung | Grund der Abbildung |
 |---|---|---|
 | **Auslöser „gelöscht“** | Der Autor des Objekts hat kein Konto mehr (`konto-geloescht`). | `deleteUser` lässt `author` stehen; ein fehlendes Konto ist genau „gelöscht“. |
-| **Auslöser „dauerhaft ausgeschieden“** | Das Konto besteht, aber sein Zugang ist abgelaufen (`accessExpiresAt` in der Vergangenheit, `zugang-beendet`). | Einen anderen Zustand „ausgeschieden“ kennt das System nicht. Ein abgelaufener Zugang heißt: kein erreichbarer Verantwortlicher (Frage 23). Der Ruhestandshorizont (24/36 Monate) ist eine Vorausschau und löst nichts aus. |
+| **Auslöser „dauerhaft ausgeschieden“** | **Offen, nicht gebaut** (seit Nacharbeit 9). Frage an Pedi: siehe „Offene Frage: Was gilt als dauerhaft ausgeschieden?“. Bis zur Antwort entsteht die Aufgabe für einen ausgeschiedenen Autor mit bestehendem Konto nur über den ausdrücklichen Antrag. | Frage 24 nennt den Fall, legt aber keinen Systemzustand fest. Die frühere Gleichsetzung mit dem abgelaufenen Zugang (`accessExpiresAt`) war nicht belegt (Ben, Nacharbeit 9): Eine Befristung ist aufhebbar und kein Personalaustritt. Sie ist aus Regel und Tests entfernt. |
 | **Auslöser „ausdrückliche Anforderung“** | Neue Aktion `request-author-transfer` an `PUT /api/kos/:id`. Sie schreibt nur den Protokolleintrag `ko.author-transfer-requested`. Die Aufgabe steht an, solange danach kein `ko.author-transferred` folgt (`angefordert`). | Kein neues Datenfeld; dieselbe Bauart wie die Rückgaben (Zustand aus dem Protokoll). |
 | **Wer darf verlangen** | Der Autor des Objekts und wer `users.manage` trägt (Admin); sonst 403. | „Zuständige Verwaltungsrolle“ = die Rolle, die Konten und die Übergabe verwaltet. |
 | **Wem angezeigt** | Admins (`users.manage`): `GET /api/me/author-transfers` und `/summary`. Andere Rollen bekommen 403, und die Oberfläche fragt für sie gar nicht erst ab. | Nur Admins dürfen übergeben (`transfer-author`). |
@@ -81,8 +81,42 @@ und Oberfläche):
 ## Frage an Pedi (vor dem Bau, K2) — **beantwortet am 11.10.2026 (siehe „Entscheidung“)**
 
 Die Frage bleibt hier im Wortlaut stehen. Peters Antwort übernimmt die Empfehlung aus Frage 24.
-Sie verbindet A und C und deckt mit „dauerhaft ausgeschieden“ den Kern von B ab. Sie schließt D aus
-und legt zusätzlich die Priorität fest.
+Sie verbindet A und C, nennt zusätzlich „dauerhaft ausgeschieden“, schließt D aus und legt die
+Priorität fest. Ob und wie „dauerhaft ausgeschieden“ einem Systemzustand entspricht, beantwortet sie
+nicht. Das ist die offene Frage unten (Nacharbeit 9). Die alte Option B dieser Frage (abgelaufen oder
+gesperrt) ist damit nicht beschlossen.
+
+## Offene Frage an Pedi (K2, Nacharbeit 9): Was gilt als „dauerhaft ausgeschieden“?
+
+Peters Entscheidung 24 verlangt eine wartende Autorenübergabe auch bei **dauerhaft ausgeschiedenen**
+Autoren. Ein Zustand, der genau das bedeutet, ist im Produkt nicht festgelegt. Vorhanden sind:
+
+- die Zugangsbefristung `accessExpiresAt`: aufhebbar, auch für zeitweise Befristungen;
+- die Sperre `approved: false`: das Verzeichnis setzt sie beim Austritt (`verzeichnis-routes.ts`),
+  sie dient aber auch anderen Sperren. `services/auth/src/service.ts` nennt die Eigentumsfrage bei
+  Ausgetretenen ausdrücklich eine offene Produktentscheidung.
+- die Ausscheidensübergabe der Verantwortung (`verantwortung-routes.ts`, Umfang `ausscheiden`):
+  ein ausgeführter Vorgang, kein wartender Zustand.
+
+**Woran soll das Produkt erkennen, dass ein Autor dauerhaft ausgeschieden ist?**
+
+- **A · Gesonderte Austrittsmarkierung.** Die Verwaltung (oder das Verzeichnis beim Austritt) setzt
+  am Konto ausdrücklich „ausgeschieden“. Nur das löst die Aufgabe aus; Befristung und Sperre nicht.
+  - Eindeutig und fachlich sauber.
+  - Neues gespeichertes Merkmal am Konto mit Bedienung und Audit.
+- **B · Austritt aus dem Unternehmensverzeichnis.** Eine Sperre, die das Verzeichnis beim Austritt
+  setzt (Protokoll mit `quelle: verzeichnis`), gilt als Ausscheiden. Eine manuelle Sperre gilt nicht.
+  - Kein neues Feld, aber nur mit angebundenem Verzeichnis wirksam.
+- **C · Abgelaufener Zugang gilt ausdrücklich als Ausscheiden.** Das ist die frühere Abbildung, jetzt
+  als bewusste Festlegung.
+  - Kein neues Feld.
+  - Auch zeitweise Befristungen erzeugen dann Aufgaben, bis die Befristung aufgehoben ist.
+- **D · Kein eigener Auslöser.** Ausscheiden läuft über die vorhandene Ausscheidensübergabe oder
+  über den ausdrücklichen Antrag. Es gibt keine automatische Aufgabe.
+
+Bis zur Antwort gilt: Ein gelöschtes Konto und der befugte Antrag lösen die Aufgabe aus. Ein
+abgelaufener Zugang allein löst nichts aus; das belegt `autorenuebergabe-aufgabe.test.ts` A2 als
+Gegenfall. Den Gegenfall „dauerhaft ausgeschieden ⇒ Aufgabe“ gibt es erst mit der Antwort.
 
 **Wann soll auf der Fläche „Offene Aufgaben“ eine Autorenübergabe als wartende Aufgabe für Admins
 erscheinen?**
@@ -316,8 +350,8 @@ Gegenproben:
 
 Grenzen:
 
-- „Dauerhaft ausgeschieden“ ist auf den abgelaufenen Zugang abgebildet. Ein Ausscheiden ohne
-  Löschung und ohne Befristung kennt das System nicht; dafür steht der ausdrückliche Antrag offen.
+- ~~„Dauerhaft ausgeschieden“ ist auf den abgelaufenen Zugang abgebildet.~~ Diese Abbildung war
+  nicht belegt und ist seit Nacharbeit 9 entfernt. Siehe „Offene Frage an Pedi“.
 - „Kritisches Wissen“ ist die gepflegte Kritikalität „hoch“ des Bereichs. Ohne Pflege gilt „Heute“.
 - Den Antrag gibt es nur über den Knopf am Objekt und die API. Eine Aufgabe für die Person, die den
   Antrag stellt, entsteht nicht; angezeigt wird sie der Verwaltung.
@@ -351,6 +385,19 @@ Grenzen:
 - Die beiden Testaufbauten haben zu wenige `act`-Runden abgewartet. Der grüne Admin-Fall
   `nav-badges-sidebar-mounted` (f) wartet sie ab. Jetzt warten auch die beiden Testaufbauten diese
   Runden ab. Produktcode und Sollwerte sind unverändert.
+
+## Nacharbeit 9 (Kandidat `b6b6acb6`): „dauerhaft ausgeschieden“ ist nicht der Zugangsablauf
+
+- Ben: Die Regel setzte „dauerhaft ausgeschieden“ mit `accessExpiresAt` in der Vergangenheit
+  gleich. Frage 24 belegt das nicht. Eine Befristung ist aufhebbar und kein Personalaustritt.
+- Korrigiert:
+  - Der Grund `zugang-beendet` ist aus `lib/autorenuebergabe.ts` entfernt, ebenso aus der
+    Serverabfrage (`jetzt` entfällt) und aus den Texten DE/EN/NL.
+  - Gelöschtes Konto und befugter Antrag bleiben unverändert.
+  - Die Abbildung von „dauerhaft ausgeschieden“ steht als offene Frage mit Optionen an Pedi
+    (siehe oben).
+- Test A2 ist jetzt der Gegenfall: Eine abgelaufene Befristung allein erzeugt keine Aufgabe, der
+  befugte Antrag bleibt möglich. Der positive Fall „ausgeschieden ⇒ Aufgabe“ folgt mit der Antwort.
 
 ## Unverändert (K3, K4)
 

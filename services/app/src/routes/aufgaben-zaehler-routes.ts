@@ -58,7 +58,7 @@ async function grundlage(
 // Nichts davon verlässt den Server außer Kennung, Grund und Dringlichkeit; Titel und Autor holt die
 // Seite über `GET /api/kos`.
 export interface UebergabeQuellen {
-  /** Die Konten (vorhanden, mit Zugangsablauf) — `AuthService.listUsers`. */
+  /** Die vorhandenen Konten — `AuthService.listUsers`. */
   konten: () => Promise<readonly UebergabeKonto[]>;
   /** Die gepflegten Bereichsprofile (Kritikalität) — `ManagementService.listCategoryProfiles`. */
   bereiche: () => Promise<readonly UebergabeBereich[]>;
@@ -79,7 +79,6 @@ async function uebergaben(
     konten,
     protokoll: protokoll.flat(),
     bereiche,
-    jetzt: Date.now(),
   });
 }
 

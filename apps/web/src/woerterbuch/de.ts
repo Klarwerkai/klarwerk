@@ -980,7 +980,6 @@ const de = {
   "task.filter.authorTransfer": "Autorenübergabe",
   "task.authorTransfer": "Autorenübergabe",
   "task.authorTransfer.grund.konto-geloescht": "Autorenkonto gelöscht",
-  "task.authorTransfer.grund.zugang-beendet": "Zugang des Autors beendet",
   "task.authorTransfer.grund.angefordert": "Übergabe angefordert",
   "task.action.authorTransfer": "Neuen Autor bestimmen",
   "task.explain.authorTransfer":

@@ -712,7 +712,6 @@ const en: typeof de = {
   "task.filter.authorTransfer": "Author handover",
   "task.authorTransfer": "Author handover",
   "task.authorTransfer.grund.konto-geloescht": "Author account deleted",
-  "task.authorTransfer.grund.zugang-beendet": "Author's access ended",
   "task.authorTransfer.grund.angefordert": "Handover requested",
   "task.action.authorTransfer": "Choose new author",
   "task.explain.authorTransfer":

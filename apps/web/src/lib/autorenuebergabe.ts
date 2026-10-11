@@ -17,17 +17,20 @@
 // WIE DIE ENTSCHEIDUNG AUF DEN BESTAND ABGEBILDET IST (je Grund EIN vorhandener Systemzustand):
 //   · `konto-geloescht`: Der Autor des Objekts hat kein Konto mehr (`AuthService.deleteUser`
 //     lässt `author` unverändert stehen).
-//   · `zugang-beendet`: Das Konto besteht, aber sein Zugang ist abgelaufen (`accessExpiresAt` in
-//     der Vergangenheit). Ein anderes Merkmal für „ausgeschieden" kennt das System nicht. Ein
-//     abgelaufener Zugang ist genau der Fall „kein erreichbarer Verantwortlicher" aus Frage 23.
-//     Der Ruhestandshorizont (`management/src/profiles.ts`) ist dagegen eine Vorausschau
-//     („in den nächsten 24/36 Monaten"), kein Ausscheiden, und löst deshalb nichts aus.
 //   · `angefordert`: Autor oder Admin haben die Übergabe ausdrücklich verlangt (Protokoll
 //     `ko.author-transfer-requested`), und seitdem gab es keine Übergabe (`ko.author-transferred`).
 //
+// NICHT ABGEBILDET: „dauerhaft ausgeschieden" (Ben, Nacharbeit 9). Ein abgelaufener Zugang
+// (`accessExpiresAt`) ist eine aufhebbare Befristung und kein belegtes Ausscheiden. Frage 24
+// setzt beides nicht gleich, deshalb löst er hier NICHTS aus. Welcher Zustand als Ausscheiden
+// gilt, ist als offene Frage an Pedi festgehalten
+// (`docs/aufnahme/20260922-gesamt-aufgabenansicht-autorenuebergabe.md`).
+// Bis zur Antwort entsteht für einen ausgeschiedenen Autor mit bestehendem Konto die Aufgabe nur
+// über den ausdrücklichen Antrag.
+//
 // ERLEDIGT ist die Aufgabe durch die vorhandene Admin-Handlung `setAuthor` (FR-LIF-02):
-//   · Danach zeigt `author` auf ein erreichbares Konto, sodass die ersten beiden Gründe entfallen.
-//   · `ko.author-transferred` steht nach dem Antrag, sodass der dritte Grund entfällt.
+//   · Danach zeigt `author` auf ein bestehendes Konto, sodass der erste Grund entfällt.
+//   · `ko.author-transferred` steht nach dem Antrag, sodass der zweite Grund entfällt.
 //
 // PRIORITÄT: „Heute". „Kritisch", wenn der Wissensbereich (Kategorie) des Objekts im gepflegten
 // Bereichsprofil die Kritikalität „hoch" trägt (`management/src/profiles.ts`, Faktor
@@ -46,7 +49,7 @@ export const UEBERGABE_REGEL_AKTIONEN: readonly string[] = [
   UEBERGABE_AUSGEFUEHRT,
 ];
 
-export type UebergabeGrund = "konto-geloescht" | "zugang-beendet" | "angefordert";
+export type UebergabeGrund = "konto-geloescht" | "angefordert";
 
 export interface AnstehendeUebergabe {
   koId: string;
@@ -57,7 +60,6 @@ export interface AnstehendeUebergabe {
 /** Was die Regel über ein Konto wissen muss. */
 export interface UebergabeKonto {
   id: string;
-  accessExpiresAt?: string | undefined;
 }
 
 /** Was die Regel über einen Wissensbereich wissen muss (gepflegtes Bereichsprofil). */
@@ -85,23 +87,18 @@ export function anstehendeUebergaben(eingabe: {
   konten: readonly UebergabeKonto[];
   protokoll: readonly Pick<AuditEntry, "seq" | "action" | "target">[];
   bereiche: readonly UebergabeBereich[];
-  jetzt: number;
 }): AnstehendeUebergabe[] {
-  const konten = new Map(eingabe.konten.map((k) => [k.id, k]));
+  const konten = new Set(eingabe.konten.map((k) => k.id));
   const kritischeBereiche = new Set(
     eingabe.bereiche.filter((b) => b.criticality === "hoch").map((b) => b.category),
   );
   const out: AnstehendeUebergabe[] = [];
   for (const ko of eingabe.kos) {
-    const konto = konten.get(ko.author);
-    const ablauf = konto?.accessExpiresAt ? Date.parse(konto.accessExpiresAt) : Number.NaN;
-    const grund: UebergabeGrund | null = !konto
+    const grund: UebergabeGrund | null = !konten.has(ko.author)
       ? "konto-geloescht"
-      : !Number.isNaN(ablauf) && ablauf <= eingabe.jetzt
-        ? "zugang-beendet"
-        : angefordert(eingabe.protokoll, ko.id)
-          ? "angefordert"
-          : null;
+      : angefordert(eingabe.protokoll, ko.id)
+        ? "angefordert"
+        : null;
     if (grund) {
       out.push({ koId: ko.id, grund, kritisch: kritischeBereiche.has(ko.category) });
     }

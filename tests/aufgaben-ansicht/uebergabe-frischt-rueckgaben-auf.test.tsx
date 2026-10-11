@@ -468,7 +468,7 @@ describe("R-0961: die wartende Autorenübergabe auf der Aufgabenfläche", () => 
 
   it("U3 · Übergabe scheitert: die Aufgabe bleibt, das Kopfband zählt sie weiter", async () => {
     netz.rueckgaben = [];
-    netz.uebergaben = [{ koId: "ko-1", grund: "zugang-beendet", kritisch: false }];
+    netz.uebergaben = [{ koId: "ko-1", grund: "konto-geloescht", kritisch: false }];
     netz.uebergabeScheitert = true;
     await mount("/aufgaben?art=authorTransfer");
     expect(uebergabeZeile()).not.toBeNull();

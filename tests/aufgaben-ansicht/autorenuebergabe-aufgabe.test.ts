@@ -10,7 +10,8 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 // der Person, für die der Schritt gilt. Dienstaufrufe legen nur Wissensobjekte an.
 //
 //   A1  Auslöser „Konto gelöscht": Der Autor wird gelöscht, und die Übergabe steht an.
-//   A2  Auslöser „Zugang beendet": Die Befristung des Autors ist abgelaufen, und die Übergabe steht an.
+//   A2  Gegenfall: Eine abgelaufene Zugangsbefristung allein löst nichts aus (kein belegtes
+//       Ausscheiden, Ben Nacharbeit 9). Der befugte Antrag bleibt möglich.
 //   A3  Auslöser „angefordert": Der Autor verlangt die Übergabe, und sie steht an.
 //   A4  Wer verlangen darf: Autor und Admin ja, ein fremder Experte 403.
 //   A5  Wem sie angezeigt wird: nur Admins (Liste und Zahl 403 für Experten).
@@ -90,9 +91,8 @@ describe("R-0961: wartende Autorenübergabe — Auslöser, Berechtigung, Priorit
   // Seit `produkt:20261007:ownership-uebergabe` (verantwortung-routes.ts, `kontoendeSperre`) lässt
   // die Kontoverwaltung ein Konto nicht mehr löschen oder befristen, solange es noch Beiträge
   // verantwortet (409 `BESTAND_OFFEN`). Der Auslöser bleibt trotzdem nötig: für Beiträge, deren
-  // Konto schon fehlte, als sie entstanden (Altbestand, Import), und für Befristungen, die vor dem
-  // Beitrag gesetzt wurden. Genau in dieser Reihenfolge stellen A1 und A2 den Zustand her, über
-  // die echten Kontowege und ohne den Schutz zu umgehen.
+  // Konto schon fehlte, als sie entstanden (Altbestand, Import). In dieser Reihenfolge stellen A1
+  // und A2 den Zustand her, über die echten Kontowege und ohne den Schutz zu umgehen.
   it("A1 · Konto des Autors gelöscht ⇒ Übergabe steht an; A7 · Übergabe ⇒ verschwindet", async () => {
     const { app, services, ada, anna, bert, eintrag, anstehend, aktion } = await setup();
     const geloescht = await app.inject({
@@ -118,25 +118,28 @@ describe("R-0961: wartende Autorenübergabe — Auslöser, Berechtigung, Priorit
     expect(await anstehend(), "die erledigte Übergabe steht noch an").toEqual([]);
   });
 
-  it("A2 · Zugang des Autors abgelaufen ⇒ Übergabe steht an; Befristung entfernt ⇒ nicht mehr", async () => {
-    const { app, ada, anna, eintrag, anstehend } = await setup();
-    const befristen = (accessExpiresAt: string | null) =>
-      app.inject({
-        method: "PUT",
-        url: `/api/users/${anna.id}`,
-        headers: ada.headers,
-        payload: { accessExpiresAt },
-      });
+  // Ben, Nacharbeit 9: Ein abgelaufener Zugang ist eine aufhebbare Befristung und kein belegtes
+  // „dauerhaft ausgeschieden" (Frage 24). Allein löst er deshalb nichts aus. Welcher Zustand als
+  // Ausscheiden gilt, ist an Pedi gefragt; der Gegenfall dazu entsteht erst mit der Antwort.
+  it("A2 · Gegenfall: bloße Zugangsbefristung (abgelaufen) ⇒ keine Übergabe; Antrag bleibt möglich", async () => {
+    const { app, ada, anna, eintrag, anstehend, aktion } = await setup();
     // Die Befristung steht VOR dem Beitrag (s. Kommentar über A1) und ist inzwischen abgelaufen.
-    const abgelaufen = await befristen("2026-01-01T00:00:00.000Z");
+    const abgelaufen = await app.inject({
+      method: "PUT",
+      url: `/api/users/${anna.id}`,
+      headers: ada.headers,
+      payload: { accessExpiresAt: "2026-01-01T00:00:00.000Z" },
+    });
     expect(abgelaufen.statusCode, abgelaufen.body).toBeLessThan(300);
     const k = await eintrag(anna.id, "Instandhaltung");
-    expect(await anstehend()).toEqual([{ koId: k, grund: "zugang-beendet", kritisch: false }]);
+    expect(await anstehend(), "eine bloße Zugangsbefristung hat eine Übergabe ausgelöst").toEqual(
+      [],
+    );
 
-    // Die Befristung zu NEHMEN ist auch mit Bestand erlaubt — danach ist der Zugang offen.
-    const entfernt = await befristen(null);
-    expect(entfernt.statusCode, entfernt.body).toBeLessThan(300);
-    expect(await anstehend()).toEqual([]);
+    // Der befugte Antrag bleibt der Weg für diesen Autor.
+    const antrag = await aktion(k, ada.headers, { action: "request-author-transfer" });
+    expect(antrag.statusCode, antrag.body).toBe(200);
+    expect(await anstehend()).toEqual([{ koId: k, grund: "angefordert", kritisch: false }]);
   });
 
   it("A3 · der Autor verlangt die Übergabe ⇒ sie steht an; A7 · Übergabe ⇒ erledigt", async () => {
