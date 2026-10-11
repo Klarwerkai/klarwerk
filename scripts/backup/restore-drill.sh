@@ -524,6 +524,10 @@ PFLICHTTABELLEN=(
   vorlagen_fassungen
   gemeinsame_entwuerfe
   instanz_bindung
+  ask_nulltreffer
+  management_category_profiles
+  management_retirement_horizons
+  verantwortung_nachfolge
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do
