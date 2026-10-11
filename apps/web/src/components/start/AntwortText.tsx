@@ -44,7 +44,7 @@ function Marke({ ziffer }: { ziffer: number }): JSX.Element {
   return (
     <sup
       data-fussnote={String(ziffer)}
-      className="mx-px align-super text-[10px] font-bold text-[#9C5009]"
+      className="mx-px align-super text-fussnote font-bold text-[#9C5009]"
     >
       {ziffer}
     </sup>

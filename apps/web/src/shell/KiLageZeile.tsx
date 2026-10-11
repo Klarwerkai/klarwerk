@@ -42,7 +42,7 @@ export function KiLageZeile(): JSX.Element {
       data-testid="kopfband-ki-lage"
       aria-label={hinweis}
       title={hinweis}
-      className="kw-kopfband-ki-lage absolute bottom-px right-8 flex max-w-[45%] items-center gap-1 overflow-hidden whitespace-nowrap text-[9.5px] leading-[10px] text-hairline"
+      className="kw-kopfband-ki-lage absolute bottom-px right-8 flex max-w-[45%] items-center gap-1 overflow-hidden whitespace-nowrap text-klein leading-[10px] text-hairline"
     >
       <span
         aria-hidden="true"

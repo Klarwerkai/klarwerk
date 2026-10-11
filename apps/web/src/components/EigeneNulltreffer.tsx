@@ -60,7 +60,7 @@ export function EigeneNulltreffer(): JSX.Element | null {
                     </span>
                   ) : null}
                 </span>
-                <span className="shrink-0 font-mono text-[10.5px] text-muted-2">
+                <span className="shrink-0 font-mono text-klein text-muted-2">
                   {t("nulltreffer.anzahl", { count: e.anzahl })}
                 </span>
                 <Link

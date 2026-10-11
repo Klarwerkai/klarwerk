@@ -87,6 +87,7 @@ import {
 import {
   bestandsStempelVon,
   brauchtPruefstand,
+  gleichePruefbasis,
   istWissensobjekt,
   mitPruefstand,
   pruefbasisVon,
@@ -4619,23 +4620,33 @@ export class KoService {
     return pruefbasisVon(ko, await this.pruefbestandStempel());
   }
 
-  private async lesefassung(
-    ko: KnowledgeObject,
-    vorInhaltsabruf?: () => void,
-  ): Promise<KnowledgeObject> {
-    return brauchtPruefstand(ko)
-      ? mitPruefstand(ko, await this.pruefbestandStempel(vorInhaltsabruf))
-      : ko;
+  // produkt:20261011:peter-p14 · B-07: die LESEFASSUNG leitet `aiCheck.ueberholt` allein aus Quelle
+  // und Kontext des Objekts ab (pruefbasis.ts, Abschnitt B-07) — ohne Bestandsstempel. Jeder Weg,
+  // der ein Objekt an einen Leser gibt (Routen, Zählungen, Antwortbewertung, Board-Nachreihung),
+  // liest diese Fassung; eine unsichtbare Änderung irgendwo im Bestand ändert sie nicht.
+  private async lesefassung(ko: KnowledgeObject): Promise<KnowledgeObject> {
+    return brauchtPruefstand(ko) ? mitPruefstand(ko) : ko;
   }
 
-  private async lesefassungen(
-    kos: KnowledgeObject[],
-    vorInhaltsabruf?: () => void,
-  ): Promise<KnowledgeObject[]> {
+  private async lesefassungen(kos: KnowledgeObject[]): Promise<KnowledgeObject[]> {
     if (!kos.some(brauchtPruefstand)) {
       return kos;
     }
-    const stempel = await this.pruefbestandStempel(vorInhaltsabruf);
+    return kos.map((ko) => mitPruefstand(ko));
+  }
+
+  /**
+   * B-07 · der INTERNE Abgleich: der aktive Bestand mit dem vollen, bestandsgebundenen Prüfstand
+   * (Quelle, Kontext UND Bestandsstempel). Einziger Leser ist die Hintergrundprüfung, die
+   * Nachweise nach einer Bestandsänderung neu abgleicht. Das Ergebnis verlässt den Server nicht —
+   * keine Route gibt es aus.
+   */
+  async listMitBestandsabgleich(): Promise<KnowledgeObject[]> {
+    const kos = (await this.repo.list({})).filter((k) => !k.deletedAt);
+    if (!kos.some(brauchtPruefstand)) {
+      return kos;
+    }
+    const stempel = await this.pruefbestandStempel();
     return kos.map((ko) => mitPruefstand(ko, stempel));
   }
 
@@ -4664,7 +4675,7 @@ export class KoService {
   async get(id: string, vorInhaltsabruf?: () => void): Promise<KnowledgeObject | undefined> {
     vorInhaltsabruf?.();
     const ko = await this.repo.findById(id);
-    return ko && !ko.deletedAt ? this.lesefassung(ko, vorInhaltsabruf) : undefined;
+    return ko && !ko.deletedAt ? this.lesefassung(ko) : undefined;
   }
 
   // D5 (KI aus): die aktuelle Fassung eines (nicht getrashten) Objekts — die Versions-Autorität der
@@ -4968,6 +4979,29 @@ export class KoService {
     });
   }
 
+  // produkt:20261011:peter-p14 · B-07 (Nacharbeit 5) — DER STILLE BESTANDSABGLEICH.
+  // Erneuert NUR den Bestandsteil der gespeicherten Bindung eines abgeschlossenen Nachweises; Status,
+  // Zeitpunkte, Abdeckung und Ursache bleiben, wie sie ausgegeben wurden. Geschrieben wird nur, wenn
+  // (a) Quelle und Kontext der gespeicherten Bindung noch der Startbindung entsprechen und (b) der
+  // jetzige Stand genau die Startbindung ist — hat sich während des Laufs etwas bewegt, bleibt der
+  // Nachweis intern überholt und der nächste Abgleich nimmt ihn wieder auf. Ein wartender Vermerk
+  // (öffentlicher Lauf) wird nie überschrieben.
+  async vermerkeBestandsabgleich(id: string, startBasis: AiCheckBasis): Promise<boolean> {
+    const ko = await this.repo.findById(id);
+    const check = ko?.aiCheck;
+    if (!ko || ko.deletedAt || !check || check.status === "pending") {
+      return false;
+    }
+    if (check.basis?.quelle !== startBasis.quelle || check.basis?.kontext !== startBasis.kontext) {
+      return false;
+    }
+    if (!gleichePruefbasis(await this.aktuellePruefbasis(ko), startBasis)) {
+      return false;
+    }
+    const { ueberholt: _abgeleitet, ...gespeichert } = check;
+    return this.repo.setAiCheck(id, { ...gespeichert, basis: startBasis });
+  }
+
   // AUFTRAG-mega28 A2: die Abdeckung des Laufs (gedeckelt/übersprungen/abgebrochen) reist mit dem
   // Abschluss mit — additiv, der bedingte Feld-Patch bleibt unverändert schmal.
   // AUFNAHME 20260922: `basis` ist die Basis, unter der der Lauf GESTARTET ist (der Worker liest sie
@@ -5075,14 +5109,14 @@ export class KoService {
     query.vorInhaltsabruf?.();
     const kos = await this.repo.listByIds(hits.map((hit) => hit.koId));
     // AUFNAHME 20260922: auch der Suchkandidat trägt die Lesefassung des Prüfnachweises.
-    // D5: deren Stempel liest nach `listByIds` weiter — die Sperre reist mit (s. `pruefbestandStempel`).
+    // P14 · B-07: sie liest nach `listByIds` nichts mehr (kein Bestandsstempel) — D5 braucht hier
+    // deshalb keinen weiteren Sperrpunkt.
     return this.lesefassungen(
       kos
         // R-0658: ein Objekt in Quarantäne ist kein Suchkandidat (Ask/Klara) — auch nicht über
         // Kategorie oder Schlagwort, die in der Metadatenprojektion weiter stehen.
         .filter((ko) => !ko.deletedAt && !inSchutzdatenQuarantaene(ko))
         .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)),
-      query.vorInhaltsabruf,
     );
   }
 
@@ -7247,6 +7281,11 @@ export class KoService {
   // Erfassungszeitpunkt), und erst danach zählen sie. Eine Beobachtung, die nicht festgehalten
   // werden konnte, zählt nicht — sonst hinge eine Frist an einem Stand, der nach dem nächsten
   // Löschen eines anderen Objekts nicht mehr rekonstruierbar wäre.
+  //
+  // produkt:20261011:peter-p14 · B-07 (Nacharbeit 5, Bens Befund): „über den ganzen Bestand" hieß,
+  // dass Änderungen an einem für den Leser UNSICHTBAREN Eintrag die Frische seiner sichtbaren
+  // Einträge verschoben. Jetzt zählen nur Beobachtungen, die beim Erfassen für jedes Konto lesbar
+  // waren (`oeffentlich`, frische.ts) — weiterhin unabhängig vom Betrachter, aber ohne Seitenkanal.
   async gelernteHalbwertszeiten(): Promise<GelernteHalbwertszeiten> {
     const jetzt = this.now();
     if (this.halbwertszeitSpeicher && this.halbwertszeitSpeicher.bis > jetzt) {

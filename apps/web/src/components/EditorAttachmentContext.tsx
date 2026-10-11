@@ -57,7 +57,7 @@ export function EditorAttachmentContext({
         ) : null}
         {guide.hasEvidenceFiles ? (
           <div className="flex items-start gap-1.5">
-            <FileText size={13} className="mt-0.5 shrink-0 text-muted" />
+            <FileText size={13} strokeWidth={1.8} className="mt-0.5 shrink-0 text-muted" />
             <span className="text-[11.5px] leading-relaxed text-muted">
               <span className="font-semibold text-text">
                 {guide.evidenceFiles} {t(MEDIA_EVIDENCE_KEY)}

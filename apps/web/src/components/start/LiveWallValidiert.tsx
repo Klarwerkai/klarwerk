@@ -41,7 +41,8 @@ export function LiveWallValidiert({
   return (
     <>
       <div data-testid="livewall-validiert">
-        <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-2">
+        {/* R-0918: Leseschrift-Untergrenze 11 px — `text-klein` statt frei gesetzter 10 px. */}
+        <div className="mb-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
           {t("start.livewall.validated")}
         </div>
         <ValidiertListe
@@ -68,7 +69,7 @@ export function ValidiertListe({
   if (eintraege.length === 0) {
     return (
       <>
-        <p className={gross ? "text-[22px] text-muted" : "text-[12.5px] text-muted"}>
+        <p className={gross ? "text-projektion text-muted" : "text-[12.5px] text-muted"}>
           {t("start.livewall.validatedEmpty")}
         </p>
         {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
@@ -104,7 +105,7 @@ export function ValidiertListe({
             <span
               data-testid="livewall-validiert-name"
               className={
-                gross ? "shrink-0 text-[22px] text-muted" : "shrink-0 text-[12px] text-muted"
+                gross ? "shrink-0 text-projektion text-muted" : "shrink-0 text-[12px] text-muted"
               }
             >
               {v.name}
@@ -113,8 +114,8 @@ export function ValidiertListe({
           <span
             className={
               gross
-                ? "shrink-0 font-mono text-[18px] text-muted-2"
-                : "shrink-0 font-mono text-[10.5px] text-muted-2"
+                ? "shrink-0 font-mono text-projektion-klein text-muted-2"
+                : "shrink-0 font-mono text-klein text-muted-2"
             }
           >
             {formatKoTimestamp(v.at, i18n.language)}
