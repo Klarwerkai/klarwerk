@@ -332,6 +332,62 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Bearbeitungshinweis — darfSehen vor dem Beenden, sonst 404.",
   },
+  // --- BPA-16: Gesprächsaussagen mit Folien verbinden ----------------------------------------
+  // Folientitel, Notizen und Änderungsziele stammen aus Dateiobjekten (Anhängen). Jede Tür mit
+  // Meetingkennung erhebt VOR jeder Antwort je Datei dasselbe Urteil wie GET /api/objects/:id
+  // (`beurteileAnhang`, Helfer `zugang`/`dateiLesen`); ohne Meetingrecht 404.
+  "GET /api/meetings": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Kennung, Titel und Version der eigenen bzw. als Teilnehmer geführten Meetingbezüge.",
+  },
+  "POST /api/meetings": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Anlage — Antwort trägt nur Kennung, Titel und Version des neuen eigenen Bezugs.",
+  },
+  "GET /api/meetings/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "Meetingbezug — beurteileAnhang je Datei vor der Ausgabe der Folien.",
+  },
+  "POST /api/meetings/:id/praesentationen": {
+    urteil: "PRAEDIKAT",
+    grund: "beurteileAnhang an präsentierter Datei und Original vor dem Einlesen.",
+  },
+  "POST /api/meetings/:id/mitschriften": {
+    urteil: "PRAEDIKAT",
+    grund: "beurteileAnhang an der Mitschriftdatei vor dem Einlesen.",
+  },
+  "POST /api/meetings/:id/folienwechsel": {
+    urteil: "PRAEDIKAT",
+    grund: "beurteileAnhang je verbundener Datei; Hostwechsel nur mit Leserecht.",
+  },
+  "POST /api/meetings/:id/rueckmeldungen": {
+    urteil: "PRAEDIKAT",
+    grund: "Antwort ist die nach beurteileAnhang gefilterte Sicht der Rückmeldung.",
+  },
+  "GET /api/meetings/:id/rueckmeldungen/:rid": {
+    urteil: "PRAEDIKAT",
+    grund: "Sicht und Historie nach beurteileAnhang je Datei gefiltert.",
+  },
+  "POST /api/meetings/:id/rueckmeldungen/:rid/klaerung": {
+    urteil: "PRAEDIKAT",
+    grund: "Klärung nur mit Leserecht an der Zieldatei (beurteileAnhang).",
+  },
+  "POST /api/meetings/:id/rueckmeldungen/:rid/verwerfen": {
+    urteil: "PRAEDIKAT",
+    grund: "Antwort ist die nach beurteileAnhang gefilterte Sicht.",
+  },
+  "GET /api/meetings/:id/folien/:dateiId/:sldId": {
+    urteil: "PRAEDIKAT",
+    grund: "Nur mit Leserecht an der angefragten Datei (beurteileAnhang).",
+  },
+  "GET /api/meetings/:id/zeitstellen/:zeitMs": {
+    urteil: "PRAEDIKAT",
+    grund: "Rückmeldungen nach beurteileAnhang je Datei gefiltert.",
+  },
+  "POST /api/meetings/:id/fassungsabgleich": {
+    urteil: "PRAEDIKAT",
+    grund: "beurteileAnhang an Original und neuer Fassung vor dem Einlesen.",
+  },
   // --- Kenntnisnahme einer gültigen Fassung ------------------------------------------------------
   // Übersicht und eigene Anforderungen tragen den Titel des Eintrags; alle fünf Türen halten den
   // Eintrag vor jeder Antwort gegen dasselbe Prädikat wie der Detailabruf. Ein entzogener Zugriff
