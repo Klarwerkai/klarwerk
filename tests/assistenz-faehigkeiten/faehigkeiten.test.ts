@@ -588,13 +588,36 @@ describe("K6 · persönlicher Perplexity-Skill nur über kontrollierten Adapter"
     expect(v.art === "offen" && v.voraussetzungen.map((o) => o.art)).toEqual(["adapterfassung"]);
   });
 
-  it("der neue Verbindungsweg steht in der deklarierten Zielliste", () => {
+  // Eigener Anteil an R-0586 (Z1–Z3) — mit denselben Mustern wie
+  // `tests/ki-freigaberegeln/ausgehende-ziele.test.ts`, aber nur für die Datei dieses Auftrags. Der
+  // globale Wächter bleibt unverändert; er ist auf Kandidat 7d913e08 an zwei fremden, gegenüber der
+  // Basis unveränderten Dateien rot (`routes/office-routes.ts`, `transport-tls.ts`).
+  it("der neue Verbindungsweg steht vollständig und nur so in der deklarierten Zielliste", () => {
+    const DATEI = "services/app/src/assistenz-faehigkeiten.ts";
     const liste = JSON.parse(
       readFileSync(join(WURZEL, "services/app/src/ausgehende-ziele.json"), "utf8"),
-    ) as { ziele: { kennung: string; dateien: string[]; hosts: string[] }[] };
+    ) as { ziele: { kennung: string; dateien: string[]; hosts: string[]; freigabe: string }[] };
     const ziel = liste.ziele.find((z) => z.kennung === "faehigkeit-perplexity-suche");
-    expect(ziel?.dateien).toEqual(["services/app/src/assistenz-faehigkeiten.ts"]);
+    expect(ziel?.dateien).toEqual([DATEI]);
     expect(ziel?.hosts).toEqual(["api.perplexity.ai"]);
+    expect((ziel?.freigabe ?? "").length).toBeGreaterThan(0);
+    // Kein anderer Eintrag beansprucht diese Datei.
+    expect(liste.ziele.filter((z) => z.dateien.includes(DATEI)).map((z) => z.kennung)).toEqual([
+      "faehigkeit-perplexity-suche",
+    ]);
+
+    const nurCode = (text: string): string =>
+      text
+        .replace(/(^|\s)\/\*[\s\S]*?\*\//g, "$1")
+        .split("\n")
+        .map((zeile) => zeile.replace(/(^|\s)\/\/.*$/, "$1"))
+        .join("\n");
+    const code = nurCode(readFileSync(join(WURZEL, DATEI), "utf8"));
+    // Z1: die Datei baut wirklich eine Verbindung auf (sonst wäre der Eintrag tot).
+    expect(/\bglobalThis\.fetch\b/.test(code)).toBe(true);
+    // Z2: genau dieser feste Host steht im Code — kein weiterer.
+    const hosts = [...code.matchAll(/https?:\/\/([a-z0-9-]+(?:\.[a-z0-9-]+)+)/g)].map((m) => m[1]);
+    expect([...new Set(hosts)]).toEqual(["api.perplexity.ai"]);
   });
 });
 
