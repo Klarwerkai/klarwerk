@@ -884,6 +884,18 @@ export interface KnowledgeObject {
   // gesetzten Weisung (s. `WeisungsSichtung`). Additiv, JSON-persistiert.
   weisungsSichtung?: WeisungsSichtung;
   // ============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27 (Peter, 11.10.2026).
+  // ============================================================================================
+  //
+  // Zwei Wege, auf denen ein Objekt OHNE Vier-Augen-Prüfung gültig wird — und deshalb seine
+  // befugte bzw. externe Herkunft sichtbar mitträgt. Beide sind optional und ohne Migration (JSONB);
+  // die öffentlichen Schreibwege setzen sie nicht (`CreateKoInput`/`ReviseKoInput` kennen sie
+  // nicht), nur `ValidationService.weisungSetzen` / `externeFreigabeUebernehmen` über die
+  // Validierungsklammer. Eine spätere Revision schreibt sie NICHT um: sie bleiben mit ihrer
+  // `fassung` stehen, und die Marke sagt dann, dass sie einer früheren Fassung galten.
+  weisung?: KoWeisung;
+  externeFreigabe?: KoExterneFreigabe;
+  // ============================================================================================
   // JOB 557 (Pedi 13.08.2026) — WEM DAS OBJEKT GEHÖRT, WER ES GEPRÜFT UND WER ES VALIDIERT HAT.
   // ============================================================================================
   //
@@ -1069,6 +1081,88 @@ export interface KnowledgeObject {
   // Kommentare und Historie mit): es bleibt dauerhaft lesbar und nennt den verbleibenden Artikel.
   // Additiv im JSONB, keine Migration; fehlt das Feld, ist das Objekt in nichts aufgegangen.
   mergedInto?: KoMergedInto;
+  // ============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · R-0573 (Nacharbeit 11, Ben B2) — DURCH WEISUNG ÜBERSTIMMT.
+  // ============================================================================================
+  //
+  // „Überstimmte Punkte werden geschlossen, nicht gelöscht." Gesetzt ausschließlich über
+  // `KoService.schliesseDurchWeisung`, wenn eine befugte Weisung diesen Punkt ausdrücklich
+  // überstimmt hat. Inhalt, Fassung, Historie, Autor, Originalautor und Herkunft bleiben
+  // unverändert; das Objekt bleibt lesbar, ist aber — wie ein aufgegangener Artikel — kein
+  // Suchtreffer und kein Antwortkandidat mehr. Additiv im JSONB; fehlt das Feld, ist nichts
+  // geschlossen.
+  geschlossen?: KoGeschlossen;
+}
+
+/**
+ * Entscheidungen 18/19 (R-0573, R-0114, W10): eine befugte Person hat dieses Objekt als Weisung
+ * unmittelbar gültig gesetzt — ohne Vier-Augen-Prüfung, aber mit Herkunft „Weisung von wem, wann,
+ * in welchem Bereich" und mit einer nachfolgenden zuständigen Sichtung.
+ */
+export interface KoWeisung {
+  /** Die weisende Person (Kennung). Ihre Befugnis war beim Setzen am Konto vermerkt. */
+  von: string;
+  am: string;
+  /** Der fachliche Geltungsbereich, für den die Befugnis galt (Kategorie des Objekts). */
+  bereich: string;
+  /** Die Fassung, die als Weisung gesetzt wurde. */
+  fassung: number;
+  /**
+   * R-0573: die betroffenen bestehenden Punkte (offene Konflikte), die die weisende Person einzeln
+   * gesehen und ausdrücklich BESTEHEN gelassen hat. Sie bleiben unverändert.
+   */
+  bestehenGelassen: string[];
+  /**
+   * R-0573 · Nacharbeit 11: die Punkte (Konfliktkennungen), die die weisende Person ausdrücklich
+   * ÜBERSTIMMT hat. Je Punkt wird der Konflikt zugunsten dieser Weisung entschieden und der
+   * überstimmte Wissenspunkt geschlossen (`KnowledgeObject.geschlossen`) — nicht gelöscht.
+   * Fehlt das Feld (Weisungen vor Nacharbeit 11), wurde nichts überstimmt.
+   */
+  ueberstimmt?: string[];
+  /**
+   * Nacharbeit 14 (Ben B1): der Beleg `ko.weisung`, mit dem DIESE Weisung gesetzt wurde. Bindet die
+   * Sichtung an genau diese Entscheidung (gegenüber einer früheren `weisungsSichtung`). Fehlt bei
+   * Weisungen vor Nacharbeit 14.
+   */
+  beleg?: { auditSeq: number; auditHash: string };
+  /** Entscheidung 19: die nachfolgende Sichtung — wer zuständig ist und bis wann. */
+  sichtung: {
+    verantwortlich: string;
+    frist: string;
+    gesichtetVon?: string;
+    gesichtetAm?: string;
+    vermerk?: string;
+  };
+}
+
+/**
+ * Entscheidung 27 (R-0164, R-0178): eine extern bereits erteilte fachliche Freigabe wird mit ihrer
+ * Herkunft übernommen; intern werden Geltung und Zuständigkeit bestätigt — keine zweite,
+ * pauschale Inhaltsprüfung. `art` trennt die beiden Wege:
+ *   · `wissen`   — das Wissen aus dem freigegebenen Dokument wird übernommen (R-0164);
+ *   · `referenz` — das ganze Dokument steht als externe Referenz im Bestand (R-0178), mit dem
+ *                  Etikett „externe Referenz" und der Bestätigung der Herkunft.
+ */
+export interface KoExterneFreigabe {
+  art: "wissen" | "referenz";
+  /** Wer extern freigegeben hat (Herausgeber, Organisation). */
+  herausgeber: string;
+  /** Die externe Freigabe- bzw. Dokumentkennung, falls vorhanden. */
+  freigabeKennung?: string;
+  /** Wann extern freigegeben wurde (Datum, ISO). */
+  freigegebenAm: string;
+  /** Name der extern freigebenden Person, falls bekannt — kein Konto dieses Systems. */
+  freigegebenVon?: string;
+  /** Der Nachweis der externen Freigabe (Adresse), falls vorhanden. */
+  nachweis?: string;
+  /** Die bestätigte interne Geltung: der fachliche Bereich (Kategorie des Objekts). */
+  geltung: string;
+  /** Die intern zuständige Person (Kennung). */
+  zustaendig: string;
+  bestaetigtVon: string;
+  bestaetigtAm: string;
+  /** Die Fassung, für die die Übernahme bestätigt wurde. */
+  fassung: number;
 }
 
 /** R-1107: wohin ein aufgegangener Artikel zusammengeführt wurde (s. `KnowledgeObject.mergedInto`). */
@@ -1081,6 +1175,19 @@ export interface KoMergedInto {
   overlapId: string;
   at: string;
   by: string;
+}
+
+/** R-0573: wodurch ein Wissenspunkt geschlossen wurde (s. `KnowledgeObject.geschlossen`). */
+export interface KoGeschlossen {
+  /** Das Wissensobjekt, dessen Weisung diesen Punkt überstimmt hat. */
+  durchKoId: string;
+  /** Der entschiedene Konflikt zwischen beiden. */
+  conflictId: string;
+  /** Die weisende Person (Kennung). */
+  von: string;
+  am: string;
+  /** Die Fassung DIESES Objekts, die geschlossen wurde. */
+  fassung: number;
 }
 
 // SCRUM-422: Papierkorb-Zeile für den Admin — nur Metadaten, keine Inhalte.

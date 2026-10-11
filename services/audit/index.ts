@@ -6,9 +6,17 @@ export {
   auditSeitengroesse,
 } from "./src/service";
 export type { AuditServiceDeps, AuditChainExport } from "./src/service";
-// aufnahme:20260922:gesamt-leserechte (Nacharbeit 20): `namensbelegeAus` auch für den Seitenweg
-// der Leseransicht (services/app/src/routes/audit-routes.ts) — dieselbe Regel, kein Nachbau.
-export { InMemoryAuditRepo, type AuditRepo, auditSeiteTrifft, namensbelegeAus } from "./src/repo";
+export {
+  InMemoryAuditRepo,
+  type AuditRepo,
+  auditSeiteTrifft,
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 20): `namensbelegeAus` auch für den Seitenweg
+  // der Leseransicht (services/app/src/routes/audit-routes.ts) — dieselbe Regel, kein Nachbau.
+  namensbelegeAus,
+  // Aufnahme gesamt-wissen-herkunft (R-0228): die benannten Entscheidungsereignisse für die
+  // Verifizierungsmarke (services/app/src/verifizierungsmarke.ts).
+  VALIDATION_DECISION_ACTIONS,
+} from "./src/repo";
 // aufnahme:20260922:gesamt-dokumenterzeugung (R-0337): die Output Factory liest das Prüfdatum über
 // denselben geprüften Leseweg wie jeder andere Verbraucher eines Validierungsnachweises.
 export {
