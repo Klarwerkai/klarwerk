@@ -348,6 +348,13 @@ describe("JOB 4061 · jede registrierte Route ist abgenommen", () => {
       // ZWEI NACHBARN BLEIBEN STEHEN, mit Namen und Grund: `POST /api/admin/sim-corpus` (nie
       // automatisch zu fahren) und `POST /api/admin/factory-reset` (löscht die Instanz samt der
       // vier Prüfkonten, mit denen diese Abnahme misst). Das ist eine Entscheidung, kein Vergessen.
-    ).toBeLessThanOrEqual(39);
+      //
+      // AUFNAHME gesamt-bestandsreset (Nacharbeit 2): von 39 auf 40, mit Namen und Grund —
+      // `POST /api/admin/bestandsreset`, der administrative Bestandsreset nach Peters Entscheidung
+      // vom 11.10. Er ist NEU, nicht aus der Messung genommen: auf der Speicherbühne gibt es ihn
+      // absichtlich nicht (409), und gelänge er, löschte er den gemessenen Bestand — dieselbe Lage
+      // wie beim Werksreset. Tor und Gelingen misst `tests/db-tx/bestandsreset-e9-pg.integration
+      // .test.ts` (P4) gegen echtes Postgres, die Rollen `admin-bestandsreset.test.ts`.
+    ).toBeLessThanOrEqual(40);
   });
 });
