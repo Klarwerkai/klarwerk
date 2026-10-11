@@ -253,6 +253,7 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/objects` | `ko.create` (vor dem Einlesen) | Rumpf `{ name, mime, data, kind?, confidentiality?, purpose?, draftId? }` | 201 Objektbeschreibung | Dienstfehler |
 | `GET` | `/api/objects/:id` | `ko.read`, nur Anhänge sichtbarer Träger | — | 200 Objekt (`Cache-Control` nach Trägerurteil: vertraulich `no-store`, sonst `private, no-cache, must-revalidate`; `Vary: Cookie, Authorization`) | 404 `NOT_FOUND` (`no-store`) |
 | `GET` | `/api/objects/:id/raw` | `ko.read`, wie oben | — | 200 Rohbytes mit Inhaltstyp (Cachevertrag wie oben) | 404; 415 `UNSUPPORTED` (beide `no-store`) |
+| `GET` | `/api/objects/:id/traeger` | `ko.read`, wie oben; je Träger zusätzlich dessen Lesbarkeit | — | 200 `{ traeger: [{ id, title }] }` — die lesbaren Wissensobjekte, die den Anhang tragen (R-0095); `no-store`, `Vary: Cookie, Authorization` | 404 `NOT_FOUND` (`no-store`) |
 | `GET` | `/api/media/status` | `requireUser` | — | 200 Engine-Auskunft | — |
 | `POST` | `/api/media/analyze` | `ko.read` | Rumpf `{ objectId, locale?, confidentiality? }` | 200 Analyse | 404 `NOT_FOUND` |
 | `POST` | `/api/media/transcribe` | `ko.read` (Anmeldung vor dem Einlesen) | Rumpf `{ data, locale?, confidentiality? }` (Data-URL einer Audio-/Videoaufnahme, wird nicht gespeichert) | 200 `{ transcript, engineActive, engine, note }` | 400 `BAD_REQUEST`, `UNSUPPORTED_KIND`; 413 (über der Rumpfgrenze); 429 KI-Bremse; 502 `ENGINE_FAILED` |
