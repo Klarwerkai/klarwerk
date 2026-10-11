@@ -971,6 +971,53 @@ describe("BPA-01 · der Browserweg der Kontextkarte (Worker, Leiste, Klara-Kern)
     }
   });
 
+  it("AC02/AC10 · Tabwechsel, während die Karte zum Begleiter unterwegs ist: sofort `verwerfen`, die spätere Quittung zählt nicht", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      // Der Host antwortet auf `hallo`, quittiert die Karte aber zunächst NICHT.
+      const host = begleiterAttrappe((n) => (n.typ === "hallo" ? echterHost(n) : null));
+      h.setzeBegleiter(host.verbinde);
+      const folge = h.zustand().karte?.folge;
+      const fassung = h.zustand().karte?.fassung;
+      const laufend = h.frage("kontextBegleiter");
+      await vi.waitFor(() => expect(host.empfangen.map((n) => n.typ)).toContain("karte"), {
+        timeout: 2000,
+      });
+      await h.listeners.activated?.({ tabId: 8 });
+      // Die unquittierte Karte wird SOFORT verworfen — nicht erst nach der Quittung.
+      expect(host.empfangen.at(-1)).toEqual({ typ: "verwerfen", folge });
+      // Jetzt kommt die (an sich gültige) Quittung — sie zählt nicht mehr.
+      host.sende({ typ: "angenommen", folge, fassung });
+      const sicht = await laufend;
+      expect(sicht.begleiter?.uebergeben).toBe(false);
+      expect((h.data.begleiter as { folge: number }).folge).toBe(-1);
+      expect(host.empfangen.filter((n) => n.typ === "verwerfen")).toHaveLength(1);
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("AC10 · eine abgelehnte oder fehlende Quittung lässt keine Karte beim Begleiter stehen", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      const host = begleiterAttrappe((n) =>
+        n.typ === "hallo" ? echterHost(n) : n.typ === "karte" ? { typ: "abgelehnt" } : null,
+      );
+      h.setzeBegleiter(host.verbinde);
+      const folge = h.zustand().karte?.folge;
+      const sicht = await h.frage("kontextBegleiter");
+      expect(sicht.begleiter).toMatchObject({ verbunden: true, uebergeben: false });
+      expect(host.empfangen.map((n) => n.typ)).toEqual(["hallo", "karte", "verwerfen"]);
+      expect(host.empfangen.at(-1)).toEqual({ typ: "verwerfen", folge });
+    } finally {
+      await h.app.close();
+    }
+  });
+
   it("die Leiste zeigt Karte, fehlende Anmeldung und Verbindung sichtbar", async () => {
     const h = await bahn();
     try {

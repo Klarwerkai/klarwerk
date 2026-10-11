@@ -2109,6 +2109,13 @@
   let begleiterAusstehend = null;
   /** Jeder Aufbau und jedes Trennen zählt hoch; ein älterer Aufbau wirkt danach nicht mehr. */
   let begleiterGeneration = 0;
+  /**
+   * Die Karte, die GERADE zum Begleiter unterwegs ist und noch nicht quittiert wurde
+   * (nacharbeit-10) — gebunden an Port, Folge und Fassung, BEVOR sie gesendet wird. Ein
+   * Kontextwechsel währenddessen verwirft sie sofort; die spätere Quittung zählt dann nicht.
+   * @type {{port: import("./types").NativePort, folge: number, fassung: string} | null}
+   */
+  let begleiterUnterwegs = null;
 
   /** @param {import("./types").NativePort} port @param {boolean} melden */
   function portSchliessen(port, melden) {
@@ -2130,6 +2137,7 @@
     const ports = [begleiterPort, begleiterAusstehend];
     begleiterPort = null;
     begleiterAusstehend = null;
+    begleiterUnterwegs = null;
     for (const port of ports) if (port) portSchliessen(port, melden);
   }
 
@@ -2139,8 +2147,28 @@
    * der Zustand vermerkt „keine Karte übergeben". Der Kanal selbst bleibt offen.
    */
   async function begleiterNachziehen() {
+    if (!K) return;
+    // Zuerst die UNQUITTIERTE Karte: sie kann beim Begleiter schon abgelegt sein, obwohl der
+    // Zustand der Erweiterung noch nichts von ihr weiss. Passt sie nicht mehr, sofort `verwerfen`.
+    const unterwegs = begleiterUnterwegs;
+    if (unterwegs) {
+      const aktuell = kontextVon(/** @type {Zustand} */ (await read()))?.karte ?? null;
+      const passt =
+        aktuell !== null &&
+        !aktuell.veraltet &&
+        aktuell.folge === unterwegs.folge &&
+        aktuell.fassung === unterwegs.fassung;
+      if (!passt && begleiterUnterwegs === unterwegs) {
+        begleiterUnterwegs = null;
+        try {
+          unterwegs.port.postMessage({ typ: "verwerfen", folge: unterwegs.folge });
+        } catch {
+          // Ein schon getrennter Kanal hat die Karte ohnehin verworfen.
+        }
+      }
+    }
     const port = begleiterPort;
-    if (!port || !K) return;
+    if (!port) return;
     const state = /** @type {Zustand} */ (await read());
     const stand = state.begleiter ?? null;
     if (!stand || stand.folge === -1) return;
@@ -2256,17 +2284,24 @@
       } else {
         const grund = vorgangGilt(jetzt, karte, /** @type {Zustand} */ (await read()));
         if (!grund && begleiterPort === port) {
+          // VOR dem Senden binden: ab jetzt kann ein Kontextwechsel die Karte verwerfen lassen.
+          const unterwegs = { port, folge: karte.folge, fassung: karte.fassung };
+          begleiterUnterwegs = unterwegs;
           const quittung = naechsteNachricht(port, 5000);
           port.postMessage(K.begleiterKarte(karte));
           const angenommen = K.begleiterQuittung(await quittung, karte);
+          // Noch dieselbe Übertragung? Hat ein Wechsel sie inzwischen verworfen, zählt die Quittung
+          // nicht — auch eine gültige nicht.
+          const nochUnterwegs = begleiterUnterwegs === unterwegs;
+          if (nochUnterwegs) begleiterUnterwegs = null;
           const nachher = /** @type {Zustand} */ (await read());
           if (!giltNoch(nachher) || begleiterPort !== port) return ueberholt();
-          // Gilt die Karte nach der Quittung noch? Sonst zählt die Übergabe nicht — und der
-          // Begleiter verwirft sie sofort.
-          if (angenommen && vorgangGilt(jetzt, karte, nachher) === "") {
+          if (angenommen && nochUnterwegs && vorgangGilt(jetzt, karte, nachher) === "") {
             folge = karte.folge;
             fassung = karte.fassung;
-          } else if (angenommen) {
+          } else if (nochUnterwegs) {
+            // Keine, eine ungültige oder eine überholte Quittung: die Karte kann trotzdem schon
+            // abgelegt sein — der Begleiter verwirft sie sofort.
             port.postMessage({ typ: "verwerfen", folge: karte.folge });
           }
         }
@@ -2285,6 +2320,9 @@
         fehler: "",
       },
     });
+    // Ein Wechsel zwischen letzter Prüfung und diesem Schreiben darf die übergebene Karte nicht
+    // gültig stehen lassen: einmal nachziehen.
+    await begleiterNachziehen();
     return kontextSicht(/** @type {Zustand} */ (await read()), "begleiter_verbunden");
   }
   // KW-KONTEXT-END

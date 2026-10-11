@@ -149,6 +149,9 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
     - Wird die Karte in der Erweiterung ungültig (Tabwechsel, Navigation, neue Erfassung,
       Quelländerung), schickt der Worker `verwerfen`, und die Brücke löscht die Karte sofort. Der
       Kanal bleibt dabei offen.
+    - Nacharbeit 10: Das gilt auch für eine Karte, die noch unterwegs und unquittiert ist. Sie ist
+      vor dem Senden an Port, Folge und Fassung gebunden. Bei einer fehlenden, abgelehnten oder
+      überholten Quittung wird sie ebenfalls verworfen; eine spätere Quittung zählt nicht.
     - Ein noch wartender Verbindungsaufbau ist von Anfang an registriert. Widerruf und Abmelden
       schließen ihn. Eine Generation verhindert, dass ein verspätetes `hallo` oder eine verspätete
       Quittung noch einen Port oder einen Zustand setzt.
@@ -164,16 +167,24 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
   3. **Der reale Lauf mit Protokoll:** Kandidat, Chrome-Fassung, Erweiterung 0.4.1,
      Brücken-Fassung, macOS-Fassung, Ergebnis-ID der Karte, Widerruf. Dafür sind die Schritte 1
      und 2 die Voraussetzung.
-  4. **Die Anzeige der übergebenen Karte in der Begleiter-Oberfläche** (Lesen von
-     `browserkontext.json`) gehört in den gemeinsamen Begleiter. Stand 11.10.2026 (nachgeprüft):
-     Weder `main` noch dieser Arbeitsbaum enthalten einen Begleiter (`git log main --
-     apps/desktop` ist leer). Beide Kandidaten liegen nur auf fremden, nicht integrierten
-     Auftragszweigen. Ihre Oberfläche zu ändern hieße, fremden Auftragscode außerhalb dieses
-     Arbeitsbaums zu ändern oder einen zweiten Begleiter zu bauen; beides ist hier ausgeschlossen.
-     Konkret nötig ist, dass die Führung bzw. Hostentwicklung den gemeinsamen Begleiter wählt und
-     nach `main` bringt (O06). Danach ist der Anschluss eine Leseansicht auf `browserkontext.json`
-     in dessen Oberfläche. Die Brücke legt die Karte dafür bereits ab, verwirft sie bei
-     Ungültigkeit und hält sie nur für das eigene macOS-Konto lesbar.
+  4. **Begleiterverbraucher — bestellter technischer Restumfang dieses Auftrags (berichtigt in
+     Nacharbeit 10).** Die frühere Formulierung „beides ist hier ausgeschlossen" war falsch: Der
+     Anschluss an den vorhandenen Begleiter ist bestellt (BPA-01, AC10) und bleibt Aufgabe dieses
+     Auftrags. Er besteht aus zwei Schritten:
+     - **4a · Zuordnung (offen, nicht ersetzbar):** Die Führung bzw. Hostentwicklung legt fest,
+       welcher vorhandene Kandidat der gemeinsame Begleiter ist (O06): BPA-04 auf
+       `codex/auftrag-b4b52732c85570289b3d` oder das Maskottchen auf
+       `codex/auftrag-153f1494a069ace21aa7`. Diese Auswahl trifft dieser Auftrag nicht. Stand
+       11.10.2026, nachgeprüft: Es liegt keine Zuordnung vor, und weder `main` noch dieser
+       Arbeitsbaum enthalten einen Begleiter (`git log main -- apps/desktop` ist leer).
+     - **4b · Integration und Verbraucher (technisch, folgt 4a):** Sobald die Zuordnung vorliegt,
+       wird der zugeordnete Begleiter über den regulären Lieferweg in diesen Stand integriert, ohne
+       einen zweiten Begleiter zu bauen. In seiner Oberfläche wird dann die gebundene Karte nutzbar
+       gemacht: als Leseansicht auf `browserkontext.json`, die die Karte nur für den angemeldeten
+       Nutzer aus `nutzer` zeigt und nach `verwerfen`/`widerrufen` sofort leert. Die Brücke liefert
+       dafür bereits die Ablage (0600), das Verwerfen bei Ungültigkeit und das Widerrufen.
+     Danach folgen die Schritte 1–3 (Übersetzen und Einrichten, Neuladen, realer Lauf) mit dem
+     integrierten gemeinsamen Begleiter.
 
   Der Server-Sitzungsweg bleibt daneben angeschlossen. Er trägt Erklärung und Belege; der
   Begleiter bekommt die gebundene Karte.
