@@ -197,7 +197,8 @@ describe("R-0336 · eine markierte Behauptung — gedeckt, im Widerspruch oder k
     expect(liste).toContain("Markierte Stelle");
     expect(liste).toContain("Wörtlich im Bestand belegt");
     expect(liste).toContain("BAADER Betriebsanweisung Presse P2");
-    expect(liste).toContain("Validiert");
+    // Antwort 54 (11.10.2026): der validierte Wissensstatus heisst „Fachlich bestätigt".
+    expect(liste).toContain("Fachlich bestätigt");
     expect(liste).toContain(`Die Quelle sagt: „${FUNDSTELLE}“`);
     expect(p.text("#wv-stand")).toContain("Markierung abgeglichen · ");
     expect(p.text("#wv-stand")).toContain("Klara hat nichts im Dokument verändert.");

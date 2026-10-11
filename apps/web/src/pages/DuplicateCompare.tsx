@@ -41,6 +41,7 @@ import {
   overallFromOverlap,
   overlapLeadBridge,
 } from "../lib/duplicateCompare";
+import { statusSchluessel } from "../lib/wissensstatus";
 
 // SCRUM-488: Punktfarbe je Ampel für die Legende (gleiche Semantik wie die Score-Balken-Segmente).
 const TONE_DOT: Record<CompareSection["tone"], string> = {
@@ -168,7 +169,7 @@ function metaVon(ko: KnowledgeObject | null, t: (k: string) => string): string {
   }
   const datum = new Date(ko.createdAt);
   return [
-    t(`status.${ko.status}`),
+    t(statusSchluessel(ko.status)),
     ko.category,
     Number.isNaN(datum.getTime()) ? null : String(datum.getFullYear()),
   ]

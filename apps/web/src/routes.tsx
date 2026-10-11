@@ -132,6 +132,10 @@ const GesamtanweisungBereich = lazy(() =>
   })),
 );
 const Help = lazy(() => import("./pages/Help").then((m) => ({ default: m.Help })));
+// R-0920: die Ergebnisadresse eines Importlaufs — nachgeladen wie jede andere Seite.
+const ImportLauf = lazy(() =>
+  import("./pages/ImportLauf").then((m) => ({ default: m.ImportLauf })),
+);
 // KLARA-VORSCHAU (produkt:20261007:klara-vorschau): der dokumentierte Einstieg `/klara-vorschau`.
 const KlaraVorschauSeite = lazy(() =>
   import("./pages/KlaraVorschau").then((m) => ({ default: m.KlaraVorschauSeite })),
@@ -249,6 +253,8 @@ const PAGES: Record<string, ComponentType> = {
   admin: Admin,
   output: Output,
   import: ImportReview,
+  // R-0920: `/import/lauf/:importId` (bewachter Eintrag `importLauf` in `app/navigation.ts`).
+  importLauf: ImportLauf,
   graph: GraphView,
   // JOB 2600 D1: die Themenkarte auf der bestehenden Oberflaeche.
   wissensnetz: Wissensnetz,

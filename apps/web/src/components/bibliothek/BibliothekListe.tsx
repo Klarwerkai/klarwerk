@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { CONF_TONE_CLASS, type ConfidentialityTone } from "../../lib/confidentiality";
 import type { KoPreviewSource } from "../../lib/koPreview";
 import { useLesevariante } from "../../lib/lesevariante";
+import { statusSchluessel } from "../../lib/wissensstatus";
 import { leerzustandsRahmen } from "../EmptyStateCtas";
 import { KoSummaryDisclosure } from "../KoSummaryDisclosure";
 import { Button, cx } from "../ui";
@@ -235,6 +236,7 @@ export function BibliothekListe({
   lage,
   ansicht = "liste",
   markierung = null,
+  antwort = null,
   loeschen = null,
 }: {
   q: string;
@@ -292,6 +294,9 @@ export function BibliothekListe({
   // Mehrfachauswahl. Beide optional: ohne sie zeichnet die Liste exakt wie bisher.
   ansicht?: BibAnsicht;
   markierung?: BibMarkierung | null;
+  // R-0429 Slice 2: der Antwortbereich „Von der KI verdichtet" (`BibliothekAntwort.tsx`). Er steht
+  // ÜBER den Treffern und getrennt von ihnen; der Aufrufer setzt ihn nur, solange gesucht wird.
+  antwort?: ReactNode;
   // R-0959: der Papierkorb je Treffer samt ruhiger Rückfrage. Ohne ihn zeichnet die Liste keinen.
   loeschen?: BibZeilenLoeschen | null;
 }): JSX.Element {
@@ -407,7 +412,7 @@ export function BibliothekListe({
                       : "text-muted",
                   )}
                 >
-                  {s === "alle" ? t("lib.segment.alle") : t(`status.${s}`)}
+                  {s === "alle" ? t("lib.segment.alle") : t(statusSchluessel(s))}
                 </button>
               );
             })}
@@ -418,6 +423,8 @@ export function BibliothekListe({
           </div>
         </div>
       </div>
+
+      {antwort}
 
       {/* JOB 3063 R6: der Hinweis „Stand von <Zeit> · Auffrischung fehlgeschlagen" — die zweite
           Hälfte der Zusage aus REGELN §7 und Auftrag §9. Die Zeilen bleiben stehen (dafür sorgt

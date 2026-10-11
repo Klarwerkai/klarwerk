@@ -964,7 +964,8 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
     await bibliothekSuchen("Profile", [profilId]);
     await trefferOeffnen(profilId, PROFIL_TITEL);
     const pille = await s.evaluate<string | null>(fn(TEXTINHALT), '[data-testid="bib-pille"]');
-    expect(pille).toBe(t("status.validiert"));
+    // Nutzerentscheid Antwort 54: der validierte Zustand heisst sichtbar „Fachlich bestätigt".
+    expect(pille).toBe(t("pruefablauf.wissensstatus.validiert"));
     const lesetext = await s.evaluate<string>(fn(SICHTBAR), '[data-testid="bib-text"]');
     expect(lesetext).toContain("Spritzzonen zu vermeiden");
     expect((await koVomDienst(profilId)).title).toBe(PROFIL_TITEL);
@@ -1269,7 +1270,7 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
     const lesetext = await s.evaluate<string>(fn(SICHTBAR), '[data-testid="bib-text"]');
     expect(lesetext.replace(/\s+/g, " ")).toContain(SCHLEIFE_TEXT);
     const pille = await s.evaluate<string | null>(fn(TEXTINHALT), '[data-testid="bib-pille"]');
-    expect(pille).toBe(t("status.validiert"));
+    expect(pille).toBe(t("pruefablauf.wissensstatus.validiert"));
     // Der Pruefstand an der Flaeche ist der des Dienstes, nicht eine Behauptung der Oberflaeche.
     expect((await koVomDienst(neuId)).status).toBe("validiert");
   }, 180_000);

@@ -69,6 +69,7 @@ import {
   revalidationView,
 } from "../lib/revalidation";
 import { phaseLabelKey } from "../lib/taskAction";
+import { statusSchluessel } from "../lib/wissensstatus";
 
 const QUITTUNG_MS = 3000;
 
@@ -564,7 +565,8 @@ export function Lifecycle(): JSX.Element {
           <dt className="text-muted">{t("folgepruefung.statusLabel")}</dt>
           <dd data-testid="folgepruefung-status" className="text-text">
             {[
-              t(`status.${fall.status}`, { defaultValue: fall.status }),
+              // Nutzerentscheid Antwort 54: „Fachlich bestätigt" (lib/wissensstatus.ts).
+              t(statusSchluessel(fall.status), { defaultValue: fall.status }),
               t("folgepruefung.statusOffen", { stand: fall.stand }),
             ].join(" · ")}
           </dd>

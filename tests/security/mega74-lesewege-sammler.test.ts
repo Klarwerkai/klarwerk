@@ -452,6 +452,10 @@ const REGISTER: Record<string, Eintrag> = {
   // --- Die Anhänge (Block C) ---------------------------------------------------------------
   "GET /api/objects/:id": { urteil: "PRAEDIKAT", grund: "Block C — G2, Anhang erbt seine Stufe." },
   "GET /api/objects/:id/raw": { urteil: "PRAEDIKAT", grund: "Block C — G2 + G4 (no-store)." },
+  "GET /api/objects/:id/traeger": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0095 — Anhang wie /raw, die Träger zusätzlich über sichtbareFuer.",
+  },
   // --- Die Nebenwege (Block D) -------------------------------------------------------------
   // JOB 1546 D2 (A28): das dauerhafte Signal am EIGENEN Objekt. Die Route ruft `sichtbareFuer`
   // über `eigeneKoIds` (conflicts-routes.ts) und filtert danach auf die Autorschaft selbst — sie
@@ -733,6 +737,15 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KURATORENTOR",
     recht: "users.manage",
     grund: "Admin.",
+  },
+  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Folgenvorschau. Sie gibt ZAHLEN heraus
+  // (Zeilen je Tabelle, Wissensobjekte, Papierkorb, Konten, Begriffe), eine Kennung und den Befund
+  // des letzten Laufs — keinen Inhalt eines Wissensobjekts. Das Urteil ist trotzdem das stärkere
+  // `KURATORENTOR`, weil die Route `users.manage` fordert und der Sammler das nachmisst.
+  "GET /api/admin/bestandsreset": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Admin; Zählungen des Bestands, kein KO-Inhalt.",
   },
   // JOB 4025 (KUNDENBETRIEB-BACKUP): die Sicherungsauskunft. Sie gibt Dateinamen, Zeitstempel,
   // Größen und Prüfsummen aus dem Sicherungsverzeichnis heraus — KEINEN Inhalt eines
@@ -1754,6 +1767,8 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/admin/demo-packages/:id/reset": "users.manage.",
     "DELETE /api/admin/demo-packages/:id": "users.manage.",
     "POST /api/admin/factory-reset": "users.manage.",
+    // Aufnahme gesamt-bestandsreset: Antwort trägt Laufkennung und Befund, keinen KO-Inhalt.
+    "POST /api/admin/bestandsreset": "users.manage.",
     "POST /api/admin/import/confluence": "users.manage.",
     "POST /api/admin/import/confluence/explore": "users.manage.",
     "POST /api/admin/import/confluence/select": "users.manage.",

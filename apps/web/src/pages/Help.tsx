@@ -278,6 +278,30 @@ export function Help(): JSX.Element {
           </p>
         ) : null}
       </Card>
+      {/* Aufnahme 20260922 · gesamt-demo-erklaermodus: der Einstieg in den geführten Vorführweg.
+          Die Seite ist eine statische Datei (`public/demonstration/vorfuehrweg.html`), keine
+          App-Route — sie öffnet deshalb in einem eigenen Fenster, damit sie auf dem zweiten
+          Bildschirm stehen bleiben kann. Nicht durchsuchbar (fester Orientierungspunkt wie die
+          Karten daneben); eine Klassenkette, ein Link, keine Liste. */}
+      <Card data-testid="hilfe-vorfuehrweg" className="mb-5 border-dashed">
+        <h2 className="text-[14px] font-semibold text-ink">{t("vorfuehrweg.hilfe.titel")}</h2>
+        <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+          {t("vorfuehrweg.hilfe.text")}
+        </p>
+        <a
+          href="/demonstration/vorfuehrweg.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="hilfe-vorfuehrweg-link"
+          className="mt-1.5 inline-flex flex-wrap items-baseline gap-1 text-[13px] font-semibold text-ai hover:underline"
+        >
+          <ExternalLink size={12} aria-hidden="true" className="self-center" />
+          <span>{t("vorfuehrweg.hilfe.link")}</span>
+          <span className="font-mono text-[10px] font-normal text-muted-2">
+            ({t("help.support.newTab")})
+          </span>
+        </a>
+      </Card>
       {/* R-0443 (Aufnahme gesamt-hilfen): der Einstieg in die eigene Seite „So arbeitet Klarwerk“
           (`pages/Arbeitsweise.tsx`). Nicht durchsuchbar — ein fester Orientierungspunkt wie die
           Karten darunter. */}
