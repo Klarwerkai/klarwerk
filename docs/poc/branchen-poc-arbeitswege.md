@@ -39,7 +39,8 @@ entstünde keine Lücke, oder die Wiederholungsfrage würde von der Suche statt 
 
 | Rolle in der Geschichte | Konto | Produktrolle |
 | --- | --- | --- |
-| Verwaltung: Fragende (Geschichte 2), Übernahme des Änderungsvorschlags, Fachprüfung | ladende Person | admin |
+| Verwaltung: stellt beim Laden die Lückenfrage, Übernahme des Änderungsvorschlags, Fachprüfung | ladende Person | admin |
+| Fragende Fachkraft (Geschichte 2) | ein Experte-Konto, z. B. „Frida Fertigung“ (von der Verwaltung regulär angelegt) | experte |
 | Fragende (Geschichte 1), Fachprüfung, meldet die Änderung (Geschichte 3) | Carla Controller `carla@demo.klarwerk` | controller |
 | Fachzuständigkeit (Geschichte 2), Anpassung als Vorschlag (Geschichte 3) | Erik Experte `erik@demo.klarwerk` | experte |
 | Folgeprüfung im Reiter „Erneut“ (Geschichte 3) | ein zweites Controllerkonto, z. B. „Theo Teamleitung“ (von der Verwaltung regulär angelegt) | controller |
@@ -69,17 +70,21 @@ festgelegt.
 
 ### Geschichte 2 · Fehlendes Wissen bis zur Rückmeldung
 
-- **Start:** offene Demo-Lücke. **Rollen:** Fragende = ladende Person; Fachzuständigkeit = Erik;
-  Fachprüfung = Carla und die ladende Person (zwei Bewertungen).
+- **Start:** offene Demo-Lücke. **Rollen:** Fragende = Fachkraft (Experte); Fachzuständigkeit = Erik;
+  Fachprüfung = Carla und die ladende Person (zwei Bewertungen). Verwaltung und Controller tragen
+  das Zuordnungsrecht (`ko.assign`) und sind am Vorgang „verwaltend“: ihr nächster Schritt heißt
+  „Eine Fachzuständigkeit zuordnen“, die Übergabe-Auswahl auf der Vorgangsseite erscheint nur für
+  rein Fragende. Deshalb fragt in der Oberfläche eine Fachkraft.
 - **Schritte:**
-  1. Fragende: Lücke öffnen (`/luecke/<id>`, auch über die Glocke) → an „Erik Experte“ übergeben.
+  1. Fragende: dieselbe Frage in der Assistenz stellen (dieselbe offene Lücke) → Lücke öffnen
+     (`/luecke/<id>`) → an „Erik Experte“ übergeben.
   2. Erik: Rückfrage „Schwankt der Dosierwert an Linie L4 bei allen Rezepturen oder nur bei einer?“.
   3. Fragende: Glocke → Rückfrage → Antwort „Bei allen Rezepturen, jeweils in der ersten halben
      Stunde nach dem Schichtwechsel.“
   4. Erik: Eintrag erfassen „Linie L4: Dosierwaage bei jedem Schichtwechsel neu tarieren“ (Aussage aus
      `poc.lueckenAntwort`: die nicht neu tarierte Dosierwaage derselben Linie ist die Ursache) und in
      der Lücke als Antwortentwurf verknüpfen. „Abschließen“ bleibt gesperrt.
-  5. Carla und die Fragende bewerten den Eintrag in `/validierung` positiv.
+  5. Carla und die Verwaltung bewerten den Eintrag in `/validierung` positiv.
   6. Erik: „Abschließen“ → „Fachlich gelöst“.
 - **Ergebnis:** genau eine Erfolgsmeldung an die Fragende mit dem nutzbaren Eintrag; dieselbe Frage
   erneut zeigt den abgeschlossenen Stand statt einer neuen Lücke — als direkte Antwort mit genau

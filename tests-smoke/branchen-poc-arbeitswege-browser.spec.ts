@@ -258,14 +258,25 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
       data: { name: "Theo Teamleitung", email: theoMail, password: KENNWORT, role: "controller" },
     });
     expect(theoKonto.status(), await theoKonto.text()).toBe(201);
+    // Die fragende Fachkraft in Geschichte 2. Verwaltung und Controller tragen `ko.assign` und sind
+    // am Vorgang „verwaltend“ — ihr nächster Schritt ist „zuordnen“, die Übergabe auf der
+    // Vorgangsseite bedienen nur rein Fragende (LueckenVorgang.tsx, gap-vorgang.ts).
+    const fridaMail = `frida-${marke}@poc.test`;
+    const fridaKonto = await page.request.post("/api/users", {
+      data: { name: "Frida Fertigung", email: fridaMail, password: KENNWORT, role: "experte" },
+    });
+    expect(fridaKonto.status(), await fridaKonto.text()).toBe(201);
 
     const carla = await anmelden(browser, carlaMail, carlaKennwort);
     const erik = await anmelden(browser, erikMail, erikKennwort);
     const theo = await anmelden(browser, theoMail, KENNWORT);
+    const frida = await anmelden(browser, fridaMail, KENNWORT);
     kopf.rollen = {
-      verwaltung: "Smoke Tester (admin) — fragt in Geschichte 2, übernimmt den Vorschlag, prüft",
+      verwaltung:
+        "Smoke Tester (admin) — Lückenfrage im Ausgangsbestand, Übernahme des Vorschlags, Prüfung",
       carla: `Carla Controller (controller, ${carlaMail})`,
       erik: `Erik Experte (experte, ${erikMail}) — Fachzuständigkeit`,
+      frida: `Frida Fertigung (experte, ${fridaMail}) — Fragende in Geschichte 2`,
       theo: `Theo Teamleitung (controller, ${theoMail}) — Folgeprüfung`,
     };
 
@@ -416,22 +427,32 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
     await schritt(
       protokoll,
       "2 Lückenabschluss",
-      "Fragende (Verwaltung): Übergabe",
-      page,
+      "Fragende (Frida): Frage und Übergabe",
+      frida,
       [],
       async (hilfe) => {
-        await vorgangOeffnen(page, gapId);
-        await expect(page.getByTestId("luecke-vorgang-stand")).toContainText(
+        // Frida stellt dieselbe Frage in ihrer Assistenz — dieselbe offene Lücke, sie ist jetzt
+        // Fragende.
+        await frida.goto("/start");
+        hilfe.push("Assistenz: Frage gestellt");
+        const gefragt = await assistenzFragen(frida, LUECKENFRAGE);
+        expect(gefragt.result?.answered ?? false).toBe(false);
+        expect(gefragt.gap?.id).toBe(gapId);
+        await vorgangOeffnen(frida, gapId);
+        await expect(frida.getByTestId("luecke-vorgang-stand")).toContainText(
           "Keine Fachzuständigkeit",
         );
+        await expect(frida.getByTestId("luecke-vorgang-naechster")).toContainText(
+          "An eine berechtigte Fachzuständigkeit übergeben",
+        );
         hilfe.push("Assistenz erklärt den Vorgang (luecke-klara)");
-        await expect(page.getByTestId("luecke-klara")).toBeVisible();
-        await page.getByTestId("luecke-uebergeben").selectOption({ label: "Erik Experte" });
-        await expect(page.getByTestId("luecke-vorgang-stand")).toContainText(
+        await expect(frida.getByTestId("luecke-klara")).toBeVisible();
+        await frida.getByTestId("luecke-uebergeben").selectOption({ label: "Erik Experte" });
+        await expect(frida.getByTestId("luecke-vorgang-stand")).toContainText(
           "In Bearbeitung durch die zuständige Person",
           { timeout: 15_000 },
         );
-        await bild(page, info, "G2 · Übergabe an die Fachzuständigkeit");
+        await bild(frida, info, "G2 · Übergabe an die Fachzuständigkeit");
       },
     );
 
@@ -458,14 +479,14 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
     await schritt(
       protokoll,
       "2 Lückenabschluss",
-      "Fragende (Verwaltung): Antwort",
-      page,
+      "Fragende (Frida): Antwort auf die Rückfrage",
+      frida,
       [],
       async () => {
-        await vorgangOeffnen(page, gapId);
-        await page.getByTestId("luecke-rueckfrage-antwort").fill(p.rueckfrageAntwort);
-        await page.getByRole("button", { name: "Antwort senden" }).click();
-        await expect(page.getByTestId("luecke-vorgang-stand")).toContainText(
+        await vorgangOeffnen(frida, gapId);
+        await frida.getByTestId("luecke-rueckfrage-antwort").fill(p.rueckfrageAntwort);
+        await frida.getByRole("button", { name: "Antwort senden" }).click();
+        await expect(frida.getByTestId("luecke-vorgang-stand")).toContainText(
           "In Bearbeitung durch die zuständige Person",
           { timeout: 15_000 },
         );
@@ -546,34 +567,34 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
     await schritt(
       protokoll,
       "2 Lückenabschluss",
-      "Fragende (Verwaltung): Meldung und Wiederholung",
-      page,
+      "Fragende (Frida): Meldung und Wiederholung",
+      frida,
       [],
-      async () => {
-        await page.goto("/start");
-        await page.getByTestId("kopfband-meldungen").click();
-        const geloest = page
+      async (hilfe) => {
+        await frida.goto("/start");
+        await frida.getByTestId("kopfband-meldungen").click();
+        const geloest = frida
           .locator(
             '[data-testid="meldung-oeffnen"][data-art="luecke"]:has([data-luecken-art="geloest"])',
           )
           .filter({ hasText: p.lueckenAntwort.title });
         await expect(geloest).toHaveCount(1, { timeout: 15_000 });
-        await bild(page, info, "G2 · genau eine Erfolgsmeldung in der Glocke");
+        await bild(frida, info, "G2 · genau eine Erfolgsmeldung in der Glocke");
         await geloest.click();
-        await expect(page).toHaveURL(new RegExp(`/luecke/${gapId}`), { timeout: 15_000 });
-        await expect(page.getByTestId("luecke-eintrag")).toHaveAttribute("data-nutzbar", "ja");
-        await page.getByTestId("luecke-ergebnis-oeffnen").click();
-        await expect(page).toHaveURL(new RegExp(`/wissen/${antwortId}`), { timeout: 15_000 });
-        await bild(page, info, "G2 · Ergebnis geöffnet");
-        // Wiederholung: der abgeschlossene Wissensstand statt einer neuen Lücke.
-        const wieder = await page.request.post("/api/ask", { data: { question: LUECKENFRAGE } });
-        expect(wieder.status(), await wieder.text()).toBe(200);
-        const w = (await wieder.json()) as AskKoerper;
+        await expect(frida).toHaveURL(new RegExp(`/luecke/${gapId}`), { timeout: 15_000 });
+        await expect(frida.getByTestId("luecke-eintrag")).toHaveAttribute("data-nutzbar", "ja");
+        await frida.getByTestId("luecke-ergebnis-oeffnen").click();
+        await expect(frida).toHaveURL(new RegExp(`/wissen/${antwortId}`), { timeout: 15_000 });
+        await bild(frida, info, "G2 · Ergebnis geöffnet");
+        // Wiederholung in der Assistenz: der abgeschlossene Wissensstand statt einer neuen Lücke.
+        hilfe.push("Assistenz: Wiederholungsfrage");
+        const w = await assistenzFragen(frida, LUECKENFRAGE);
         expect(w.gap).toBeNull();
         const zeigtEintrag =
           w.geloesteLuecke?.koId === antwortId ||
           (w.result?.answered === true && (w.result.citedSources ?? []).includes(antwortId));
         expect(zeigtEintrag, JSON.stringify(w)).toBe(true);
+        await bild(frida, info, "G2 · Wiederholungsfrage zeigt den abgeschlossenen Stand");
       },
     );
 
@@ -709,7 +730,7 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
     };
     expect(bJetzt.statement).toBe(p.koAnlageBNeu);
 
-    for (const seite of [carla, erik, theo]) {
+    for (const seite of [carla, erik, theo, frida]) {
       await seite.context().close();
     }
   } finally {
