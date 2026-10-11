@@ -209,7 +209,7 @@ export interface GraphDriveItem {
   parentReference?: { driveId?: string; path?: string };
   /**
    * JOB 4232 — die VORAUTORISIERTE Downloadadresse von Graph, kurzlebig und bereits mit Berechtigung
-   * versehen. Sie kommt NUR beim gezielten Abruf mit (`SELECT_INHALT`), nie in der Liste: eine
+   * versehen. Sie kommt NUR beim gezielten Abruf ohne `$select` mit, nie in der Liste: eine
    * Auswahlliste voller Zeitschlüssel wäre eine Halde, und keine einzige davon würde gebraucht.
    */
   "@microsoft.graph.downloadUrl"?: string;
@@ -229,7 +229,14 @@ const SELECT =
 // JOB 4232: NUR der gezielte Abruf einer Datei, die wirklich übernommen werden soll, holt die
 // vorautorisierte Downloadadresse mit. Die Liste bekommt sie NICHT — sie ist ein Schlüssel auf Zeit,
 // und eine Liste voller Schlüssel wäre eine Halde, von der keiner gebraucht würde.
-const SELECT_INHALT = `${SELECT},@microsoft.graph.downloadUrl`;
+//
+// gesamt-nutzerverwaltung · Nacharbeit 9 (bens Befund, Diagnose HILFE/0edc5c4a…): Dieser gezielte
+// Abruf läuft OHNE `$select`. `@microsoft.graph.downloadUrl` ist eine Instanz-Annotation, kein
+// Feld des DriveItems; mit einem `$select` (auch einem, das sie nennt) liefert Graph sie nicht mit.
+// Bis hierher stand hier `${SELECT},@microsoft.graph.downloadUrl` — die Adresse fehlte, und jede
+// Textdatei endete als `unlesbar`. Die übrigen Abrufe (Merkmale einer Datei, Listen, Ordnerseiten)
+// bleiben auf `SELECT` begrenzt; die Antwortkante und die Origin-Bindung gelten unverändert auch
+// für diesen einen Abruf (`holeJson`), ebenso jede Schutzprüfung der Downloadadresse (`holeBytes`).
 
 /**
  * Erlaubt genau dann, wenn die URL https ist UND ihre Origin exakt der gepinnten entspricht.
@@ -967,10 +974,11 @@ export class SharePointGraphClient {
    */
   async holeDatei(itemId: string, mitInhaltsadresse = false): Promise<GraphDriveItem> {
     const erlaubteOrigin = this.erlaubteOrigin();
-    const params = new URLSearchParams({
-      $select: mitInhaltsadresse ? SELECT_INHALT : SELECT,
-    });
-    const url = `${this.baseUrl}/drives/${encodeURIComponent(this.driveId)}/items/${encodeURIComponent(itemId)}?${params.toString()}`;
+    const eintrag = `${this.baseUrl}/drives/${encodeURIComponent(this.driveId)}/items/${encodeURIComponent(itemId)}`;
+    // Mit Inhaltsadresse OHNE `$select` — sonst fehlt die Annotation (Begründung bei `SELECT`).
+    const url = mitInhaltsadresse
+      ? eintrag
+      : `${eintrag}?${new URLSearchParams({ $select: SELECT }).toString()}`;
     const daten = await this.holeJson(url, erlaubteOrigin);
     if (!daten || typeof daten !== "object" || typeof (daten as { id?: unknown }).id !== "string") {
       throw new SharePointRequestError("nicht-gefunden");
