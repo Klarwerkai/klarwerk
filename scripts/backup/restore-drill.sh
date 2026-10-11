@@ -527,7 +527,12 @@ PFLICHTTABELLEN=(
   chat_gespraeche
   chat_nachrichten
   vorlagen_fassungen
+  gemeinsame_entwuerfe
   instanz_bindung
+  ask_nulltreffer
+  management_category_profiles
+  management_retirement_horizons
+  verantwortung_nachfolge
   assistenz_profile
   kommunikationsregel_fassungen
   meldungsregel_persoenlich

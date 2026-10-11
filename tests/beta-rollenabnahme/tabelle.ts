@@ -876,6 +876,54 @@ export const TABELLE: Zeile[] = [
     tor: "ko.create",
     erwartet: AB_EXPERTE,
   },
+  // produkt:20261007:artikel-gemeinsam · der gemeinsame Artikelentwurf. Jede Tür hängt an
+  // `ko.create` — demselben Recht wie Bearbeiten; kein neues Recht. Die URLs sind zustandsfrei
+  // (erfundene Kennung): hinter dem Tor endet jede Tür im 404 und legt nichts an.
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam",
+    route: "/api/kos/:id/gemeinsam",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:178",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam",
+    route: "/api/kos/:id/gemeinsam",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:190",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "PUT",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam",
+    route: "/api/kos/:id/gemeinsam",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:213",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam/angleichen",
+    route: "/api/kos/:id/gemeinsam/angleichen",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:258",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam/abschluss",
+    route: "/api/kos/:id/gemeinsam/abschluss",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:296",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
   // produkt:20261007:office-artikel-editor · Office im Artikel. Die Artikelseite fragt Lage und
   // Sitzung mit `ko.read` an (Ansehen ist Lesen), Übernehmen, Zurückholen und gesicherte Stände mit
   // `ko.create` — dieselben Rechte wie `revise`; kein neues Recht. Die URLs sind zustandsfrei

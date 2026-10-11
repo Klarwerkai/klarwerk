@@ -63,6 +63,7 @@ import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter"
 // Firmenwörterbuch: die Fassungen des Begriffskatalogs. Im App-Wurzelverzeichnis wie die
 // Markenwahl: Editor und Word-Panel lesen ihn, kein Fachmodul besitzt ihn.
 import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
+import { GEMEINSAMER_ENTWURF_SCHEMA } from "./gemeinsamer-entwurf";
 // Instanztrennung: die eine Zeile, die diese Datenbank an genau eine Anlage bindet.
 import { INSTANZBINDUNG_SCHEMA } from "./instanzbindung";
 // R-0466: das Interaktionsgedächtnis (frühere Fragen, Antworten, Vorlieben je Konto). Im
@@ -350,6 +351,10 @@ export const schemas = [
   // Nutzung und Begriffspflege. Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne
   // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   VORLAGEN_SCHEMA,
+  // produkt:20261007:artikel-gemeinsam: die gemeinsamen Entwürfe der Artikel. Additiv und
+  // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed;
+  // am Ende, weil das die lesbare Ordnung ist.
+  GEMEINSAMER_ENTWURF_SCHEMA,
   // Instanztrennung (R-0597/R-0790/R-0860): die eine Bindungszeile Datenbank → Anlage. Additiv und
   // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed — die
   // Zeile schreibt erst der Start (`bindeInstanzVorMigration` in server.ts, VOR dieser Liste); hier

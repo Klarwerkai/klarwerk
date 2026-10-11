@@ -185,6 +185,10 @@ const Risk = lazy(() => import("./pages/Risk").then((m) => ({ default: m.Risk })
 const Spaces = lazy(() => import("./pages/Spaces").then((m) => ({ default: m.Spaces })));
 // produkt:20261007:interner-chat: nachgeladen wie jede andere Seite.
 const Chat = lazy(() => import("./pages/Chat").then((m) => ({ default: m.Chat })));
+// produkt:20261007:artikel-gemeinsam: der gemeinsame Entwurf eines Artikels.
+const GemeinsamerEntwurf = lazy(() =>
+  import("./pages/GemeinsamerEntwurf").then((m) => ({ default: m.GemeinsamerEntwurfSeite })),
+);
 // produkt:20261007:templates-default: Vorlagen, Standard, Space-Vorgaben, Begriffspflege.
 const Vorlagen = lazy(() => import("./pages/Vorlagen").then((m) => ({ default: m.Vorlagen })));
 const Start = lazy(() => import("./pages/Start").then((m) => ({ default: m.Start })));
@@ -319,6 +323,10 @@ export function AppRoutes(): JSX.Element {
           <Route key={item.id} path={item.path} element={<Guarded item={item} />} />
         ))}
         <Route path="/wissen/:id" element={<KnowledgeDetail />} />
+        {/* produkt:20261007:artikel-gemeinsam: derselbe Entwurf für alle Bearbeitenden, erreichbar
+            aus dem Artikelgespräch und dem Artikel. Ohne `Guarded`, wie `/wissen/:id`: die Türen
+            dahinter fordern `ko.create` und Sichtbarkeit am Server (`gemeinsam-routes.ts`). */}
+        <Route path="/wissen/:id/gemeinsam" element={<GemeinsamerEntwurf />} />
         {/* produkt:20261010:wissenskreislauf-schliessen: der Vorgang einer Wissenslücke für
             Fragende und Fachzuständige. Ohne `Guarded`, wie `/wissen/:id`: die Beteiligung prüft
             der Server (`GET /api/gaps/:id/vorgang`, 404 für Unbeteiligte). Erreichbar aus der
