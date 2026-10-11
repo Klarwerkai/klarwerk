@@ -113,11 +113,30 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
 - **Prüfstand, kein Host.** Chrome selbst (Tabs, Skripteinsatz, Sitzungsspeicher) ist in den Tests
   gestellt; Worker, Leiste, Vertrag und Server laufen echt. Das ist Agentenprüfung, kein
   Hostnachweis (G13).
-- **Kein Begleiter, kein separates Kern-Schema im Baum.** `apps/desktop/klara-begleiter/` und ein
-  Core-/Native-Kandidat aus `produkt:20261010:klara-office-gemeinsamer-kern` existieren in diesem
-  Arbeitsbaum nicht (auch kein Zweig dafür). Angeschlossen ist deshalb der vorhandene,
-  authentifizierte Klara-Sitzungsweg des Servers — kein zweiter Kern. Native Messaging ist im
-  Manifest bewusst **nicht** angefordert.
+- **Begleiter (AC10) — Zuordnung, Nacharbeit 6.** Die frühere Aussage „auch kein Zweig dafür“
+  war falsch und ist hiermit berichtigt. Im gemeinsamen Repository liegen zwei
+  Begleiter-Kandidaten, beide auf **fremden, nicht in `main` integrierten Auftragszweigen**:
+
+  | Kandidat | Zweig / Stand | Was er ist | Browseranschluss |
+  |---|---|---|---|
+  | BPA-04 „In anderen Programmen lesen und helfen" | `codex/auftrag-b4b52732c85570289b3d`, zuletzt `2f07b72b5` (1.0.0-beta.1.926, 11.10.2026); Begleiter seit `0babc7fd6` | Swift-Paket `apps/desktop/klara-begleiter` (macOS 13): Anmeldung über `office-handover/redeem`, Finder-Aufnahme, Markierung per Bedienungshilfe (nur Word), Frage über `/api/ask` | **keiner** — keine Native-Messaging-Schnittstelle, kein Kanal zur Erweiterung. Laut eigenem README nicht auf einem Mac übersetzt oder ausgeführt. |
+  | „Bewegliches Maskottchen auf Peters Mac" (`klara-office-mac-maskottchen`) | `codex/auftrag-153f1494a069ace21aa7`, Begleiter seit `60f24bc22` (10.10.2026) | Swift-Fenster (Figur, Lage, Steuerung) unter demselben Pfad | **keiner** |
+
+  Beide Kandidaten belegen denselben Pfad mit unterschiedlichem Aufbau. Welcher der gemeinsame
+  Begleiter ist, entscheidet die zuständige Hostentwicklung bzw. Führung (O06). Diese Entscheidung
+  wird hier nicht getroffen.
+
+  Für AC10 fehlen daher drei Dinge, die nicht in diesem Arbeitsbaum entstehen können, ohne einen
+  zweiten Begleiter zu bauen:
+  1. die Integration des gewählten Kandidaten nach `main`;
+  2. dessen Native-Messaging-Host (Manifest für Chrome und authentifizierter
+     stdin/stdout-Anschluss) — Produktarbeit am Begleiter in dessen Auftrag; auf der
+     Erweiterungsseite kommt danach das Recht `nativeMessaging` hinzu, ein neues Recht mit
+     Neuladen durch Peter;
+  3. ein realer Lauf auf diesem Mac mit Chrome- und Begleiterfassung und Ergebnisprotokoll (Mensch).
+
+  Bis dahin ist der vorhandene, authentifizierte Klara-Sitzungsweg des Servers angeschlossen —
+  kein zweiter Kern. Native Messaging ist im Manifest weiterhin **nicht** angefordert.
 - **„Erkläre mir diese Angaben" (Nacharbeit 3).** Nach dem Verbinden stellt die Leiste die Frage
   über den vorhandenen Ausführungsweg `POST /api/klara/sessions/{id}/execute`. Dort gelten
   unverändert Anmeldung (`ko.read`), Sitzungsbindung, Einwilligung je Dokument (KA4) und

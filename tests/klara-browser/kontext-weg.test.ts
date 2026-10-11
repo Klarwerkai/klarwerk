@@ -676,6 +676,77 @@ describe("BPA-01 · der Browserweg der Kontextkarte (Worker, Leiste, Klara-Kern)
     }
   });
 
+  it("AC03 · ein verspätetes 401 beim Verbinden löscht eine inzwischen neue Anmeldung derselben Person nicht", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      const los = h.halteKern((pfad) => pfad === "/api/klara/sessions");
+      const laufend = h.frage("kontextVerbinden");
+      await vi.waitFor(() => expect(h.kernAngefragt()).toBe(1), { timeout: 2000 });
+      // Abmelden widerruft die alte Sitzung am Server; dann meldet sich dieselbe Person neu an.
+      await h.send({ type: "logout" });
+      await h.anmelden();
+      const neu = structuredClone(h.data.auth);
+      expect(neu).toBeTruthy();
+      los();
+      const sicht = await laufend;
+      // Der gehaltene Abruf trug den alten Schlüssel und wurde abgewiesen …
+      expect(h.kern()[0]?.status).toBe(401);
+      // … die neue Anmeldung bleibt trotzdem stehen.
+      expect(sicht.status).toBe("kontext_gewechselt");
+      expect(h.data.auth).toEqual(neu);
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("AC03 · ein verspätetes 401 beim Erklären löscht eine inzwischen neue Anmeldung nicht", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      expect((await h.frage("kontextVerbinden")).verbunden).toBe(true);
+      const los = h.halteKern((pfad) => pfad.endsWith("/execute"));
+      const laufend = h.frage("kontextErklaeren");
+      await vi.waitFor(() => expect(h.kernAngefragt()).toBe(2), { timeout: 2000 });
+      await h.send({ type: "logout" });
+      await h.anmelden();
+      const neu = structuredClone(h.data.auth);
+      expect(neu).toBeTruthy();
+      los();
+      const sicht = await laufend;
+      expect(h.kern().find((a) => a.pfad.endsWith("/execute"))?.status).toBe(401);
+      expect(sicht.status).toBe("kontext_gewechselt");
+      expect(h.data.auth).toEqual(neu);
+      expect(h.data.kontextAntwort ?? null).toBeNull();
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("AC03 · eine wirklich abgelaufene Anmeldung wird beim Verbinden weiterhin gelöscht", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      // Die Sitzung der Erweiterung endet am Server, ohne dass die Erweiterung es weiss.
+      const token = (h.data.auth as { token: string }).token;
+      const ende = await h.app.inject({
+        method: "POST",
+        url: "/api/auth/logout",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        payload: "{}",
+      });
+      expect(ende.statusCode).toBeLessThan(300);
+      const sicht = await h.frage("kontextVerbinden");
+      expect(sicht.sperre).toBe("kern_nicht_erreichbar");
+      expect(h.data.auth ?? null).toBeNull();
+    } finally {
+      await h.app.close();
+    }
+  });
+
   it("die Leiste zeigt Karte, fehlende Anmeldung und Verbindung sichtbar", async () => {
     const h = await bahn();
     try {

@@ -1625,6 +1625,20 @@
     return { zustand: abgleich.zustand, grund: abgleich.aktuell ? "" : "quelle_geaendert" };
   }
 
+  /**
+   * Eine abgelaufene Anmeldung löschen — aber NUR, wenn noch genau die Anmeldung besteht, unter der
+   * der Abruf begann (Nutzerkennung UND Sitzungsschlüssel). Ein verspätetes 401 darf eine
+   * inzwischen erfolgte neue Anmeldung nicht löschen, auch nicht eine neue Sitzung derselben
+   * Person (nacharbeit-6).
+   * @param {import("./types").Auth} start @returns {Promise<boolean>} `true`, wenn gelöscht wurde.
+   */
+  async function abgelaufeneAnmeldungLoeschen(start) {
+    const jetzt = /** @type {Zustand} */ (await read());
+    if (jetzt.auth?.id !== start.id || jetzt.auth?.token !== start.token) return false;
+    await chrome.storage.session.set({ auth: null });
+    return true;
+  }
+
   /** Ein Vorgang, der vor einer Übermittlung seine Grundlage verloren hat. */
   class VorgangUngueltig extends Error {
     /** @param {string} grund */
@@ -1772,8 +1786,11 @@
       );
     } catch (error) {
       if (error instanceof VorgangUngueltig) return kontextAbbruch(error.grund);
-      if (error instanceof Error && error.message === "expired")
-        await chrome.storage.session.set({ auth: null });
+      // Ein 401 löscht nur die Anmeldung, unter der dieser Abruf begann. Ist inzwischen eine andere
+      // (oder eine neue derselben Person) da, wird abgebrochen, ohne irgendetwas zu ändern.
+      const abgelaufen = error instanceof Error && error.message === "expired";
+      if (abgelaufen && !(await abgelaufeneAnmeldungLoeschen(state.auth)))
+        return kontextAbbruch("kontext_gewechselt");
       return kontextSperren(state, zustand, "kern_nicht_erreichbar");
     }
     const sessionId = typeof bestaetigt?.sessionId === "string" ? bestaetigt.sessionId : "";
@@ -1898,7 +1915,9 @@
           signal: AbortSignal.timeout(60000),
         },
       );
-      if (response.status === 401) await chrome.storage.session.set({ auth: null });
+      // Ein 401 löscht nur die Anmeldung, unter der diese Frage begann (s. o.).
+      if (response.status === 401 && !(await abgelaufeneAnmeldungLoeschen(state.auth)))
+        return kontextAbbruch("kontext_gewechselt");
       if (!response.ok) return kontextSperren(state, zustand, "erklaerung_fehlgeschlagen");
       roh = await response.json();
     } catch {
