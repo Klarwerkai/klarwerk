@@ -8,6 +8,33 @@
 // aktivem `KLARWERK_SHAREPOINT_IMPORT` — Schalter aus, Route existiert nicht.
 //
 // ================================================================================================
+// gesamt-nutzerverwaltung · FRAGE 6 (Peter, 11.10.2026) — DIE EIGENE TESTBIBLIOTHEK EINES FACHKONTOS.
+// ================================================================================================
+//
+// Entscheidung: „Normale Fachrolle mit begrenzten Importrechten auf eigene Testbibliothek." Das
+// Demokonto bekommt KEIN `users.manage` und keine Adminrolle. Stattdessen genau eine Ausnahme von der
+// Admin-Bindung oben, serverseitig und eng:
+//
+//   WER     ein Konto mit `ko.create` (Fachrolle), dem der Betreiber in
+//           `KLARWERK_SHAREPOINT_TESTBIBLIOTHEKEN` ausdrücklich eine Bibliothek zugeordnet hat
+//           (`<Kontokennung>=<driveId>`, mehrere durch Komma). Ohne Eintrag bleibt alles wie bisher:
+//           403 mit demselben Wortlaut wie vorher.
+//   WAS     dieselben drei Türen (Liste, Übernahme, Ordner in Losen). Der Weg endet wie immer bei
+//           `library.createImportCandidates` — ein Kandidat, nie ein Objekt; angenommen wird erst ab
+//           `ko.validate`, also nicht vom Demokonto selbst.
+//   WOHIN   AUSSCHLIESSLICH in die zugeordnete Bibliothek: der Adapter wird für dieses Konto auf
+//           genau dieses Laufwerk gebaut (`KLARWERK_SHAREPOINT_DRIVE` wird für den Aufruf ersetzt).
+//           Jeder Graph-Abruf geht damit an `/drives/<Testbibliothek>/…`; eine Kennung aus einer
+//           anderen Bibliothek ist dort schlicht nicht vorhanden (`notFound`), und es gibt keinen
+//           Parameter, mit dem das Konto ein anderes Laufwerk wählen könnte.
+//   LOSE    eine Losfolge gehört dem Konto, das sie begonnen hat; ein anderes Konto bekommt für
+//           dieselbe Kennung dieselbe Antwort wie für eine unbekannte (409).
+//
+// Ein Admin behält seinen bisherigen Weg (Instanzbibliothek), auch wenn er in der Liste stünde.
+// Eine Kontokennung, die mit zwei verschiedenen Bibliotheken eingetragen ist, gilt als NICHT
+// zugeordnet — im Zweifel nein.
+//
+// ================================================================================================
 // EIN FEHLERCODE JE ZUSTAND — UND KEINE ZWEITE VOKABEL FÜR EINEN, DEN ES SCHON GIBT.
 // ================================================================================================
 //
@@ -65,7 +92,8 @@
 // und Tatsachen stehen in der Antwort, nicht im Statuscode.
 
 import { randomUUID } from "node:crypto";
-import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply } from "fastify";
+import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+import { meldung, sprache } from "../../../auth";
 import type {
   ImportRun,
   ImportRunRepo,
@@ -77,6 +105,7 @@ import {
   isOpenReviewStatus,
   sanitizeImportFailureReason,
 } from "../../../library-analytics";
+import { can } from "../../../rbac";
 import {
   type SharePointFehlerlage,
   type SharePointInhaltsbefund,
@@ -87,14 +116,56 @@ import {
   neueInventur,
   sharepointFehlerlage,
 } from "../../../sharepoint";
-import type { Guards } from "../http";
+import type { Guards, SessionUser } from "../http";
 import { sanitizeLogText } from "../log-sanitize";
+
+/** Die Zuordnung Fachkonto → eigene Testbibliothek (Frage 6), gelesen je Anfrage. */
+export const SHAREPOINT_TESTBIBLIOTHEKEN_ENV = "KLARWERK_SHAREPOINT_TESTBIBLIOTHEKEN";
+
+/**
+ * `<Kontokennung>=<driveId>[,<Kontokennung>=<driveId>…]` → Kontokennung → driveId.
+ *
+ * Fail-closed: unlesbare Paare fallen weg, und eine Kennung mit ZWEI verschiedenen Bibliotheken
+ * wird ganz gestrichen — welche gemeint war, lässt sich nicht entscheiden.
+ */
+export function leseTestbibliotheken(
+  env: Record<string, string | undefined> = process.env,
+): ReadonlyMap<string, string> {
+  const zuordnung = new Map<string, string>();
+  const strittig = new Set<string>();
+  for (const paar of (env[SHAREPOINT_TESTBIBLIOTHEKEN_ENV] ?? "").split(",")) {
+    const trenner = paar.indexOf("=");
+    if (trenner < 0) {
+      continue;
+    }
+    const konto = paar.slice(0, trenner).trim();
+    const bibliothek = paar.slice(trenner + 1).trim();
+    if (konto === "" || bibliothek === "") {
+      continue;
+    }
+    const bisher = zuordnung.get(konto);
+    if (bisher !== undefined && bisher !== bibliothek) {
+      strittig.add(konto);
+    }
+    zuordnung.set(konto, bibliothek);
+  }
+  for (const konto of strittig) {
+    zuordnung.delete(konto);
+  }
+  return zuordnung;
+}
 
 export interface SharePointImportRouteDeps {
   library: LibraryService;
   guards: Guards;
-  /** Injizierbar für Tests; Standard = die gecappte Adapter-Factory aus der Umgebung. */
-  makeAdapter?: () => SharePointSourceAdapter | undefined;
+  /**
+   * Injizierbar für Tests; Standard = die gecappte Adapter-Factory aus der Umgebung. `driveId`
+   * ist gesetzt, wenn ein Fachkonto in seiner eigenen Testbibliothek arbeitet (Frage 6) — dann
+   * MUSS der Adapter auf genau dieses Laufwerk zeigen.
+   */
+  makeAdapter?: (driveId?: string) => SharePointSourceAdapter | undefined;
+  /** Injizierbar für Tests; Standard = `leseTestbibliotheken()` aus der Umgebung, je Anfrage. */
+  testbibliotheken?: () => ReadonlyMap<string, string>;
   /**
    * Die Laufablage. OPTIONAL, damit ein Test diese Routen ohne sie bauen kann; die
    * Kompositionswurzel reicht sie IMMER durch. Ohne sie bekommt die Übernahme keine Kennung —
@@ -414,10 +485,65 @@ function volumengrund(
   };
 }
 
+/**
+ * Der Standardadapter aus der Umgebung. Mit `driveId` (Frage 6) zeigt er auf genau diese Bibliothek
+ * statt auf `KLARWERK_SHAREPOINT_DRIVE` — Zugang und Basisadresse bleiben die der Instanz.
+ */
+function adapterAusUmgebung(driveId?: string): SharePointSourceAdapter | undefined {
+  if (driveId === undefined) {
+    return createSharePointAdapterFromEnv();
+  }
+  return createSharePointAdapterFromEnv({ ...process.env, KLARWERK_SHAREPOINT_DRIVE: driveId });
+}
+
 export function sharepointImportRoutes(deps: SharePointImportRouteDeps): FastifyPluginAsync {
-  const makeAdapter = deps.makeAdapter ?? (() => createSharePointAdapterFromEnv());
+  const makeAdapter = deps.makeAdapter ?? adapterAusUmgebung;
+  const testbibliotheken = deps.testbibliotheken ?? (() => leseTestbibliotheken());
   // R-0145/R-0190: die laufenden Losfolgen von Tür 3 — je Routen-Instanz, im Speicher (s. Tür 3).
   const losfolgen = new Map<string, Losfolge>();
+
+  /**
+   * Frage 6: gegen WELCHE Bibliothek arbeitet dieses Konto — und darf es überhaupt?
+   *
+   * Das ROUTENRECHT ist `ko.create` und steht sichtbar in jedem Routenblock (`requirePermission`),
+   * damit der Routenscanner (`tests/security/routeGuardAudit.ts`) die Tür richtig einordnet. Diese
+   * Funktion ist die zweite, engere Schranke dahinter:
+   *
+   *   `users.manage`            → wie bisher, Instanzbibliothek (`driveId` bleibt leer).
+   *   Zuordnung vorhanden       → nur die eigene Testbibliothek des Kontos.
+   *   alles andere              → 403 mit demselben Fehlercode wie vorher (`users.manage` fehlt).
+   *
+   * Der Adapter entsteht HIER und nirgends sonst für den Aufruf — damit kann keine Tür den
+   * Bibliotheksbezug vergessen.
+   */
+  const bibliothekFuer = (
+    user: SessionUser,
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): { user: SessionUser; adapter: SharePointSourceAdapter | undefined } | undefined => {
+    if (can(user.role, "users.manage")) {
+      return { user, adapter: makeAdapter() };
+    }
+    const eigeneBibliothek = testbibliotheken().get(user.id);
+    if (eigeneBibliothek === undefined) {
+      reply.code(403).send({
+        error: "FORBIDDEN",
+        message: meldung("PERMISSION_MISSING", sprache(request), ["users.manage"]),
+      });
+      return undefined;
+    }
+    const adapter = makeAdapter(eigeneBibliothek);
+    if (adapter && adapter.driveId !== eigeneBibliothek) {
+      // Ein Adapter, der auf eine ANDERE Bibliothek zeigt als die zugeordnete, darf für dieses
+      // Konto nie benutzt werden — lieber gar kein Zugang als ein falscher.
+      reply.code(403).send({
+        error: "FORBIDDEN",
+        message: meldung("PERMISSION_MISSING", sprache(request), ["users.manage"]),
+      });
+      return undefined;
+    }
+    return { user, adapter };
+  };
 
   return async (app) => {
     // ------------------------------------------------------------------------------------------
@@ -445,11 +571,15 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
     app.post<{ Body: { folderId?: unknown; ids?: unknown } }>(
       "/api/admin/import/sharepoint/files",
       async (request, reply) => {
-        const user = await deps.guards.requirePermission("users.manage", request, reply);
-        if (!user) {
+        const fachkonto = await deps.guards.requirePermission("ko.create", request, reply);
+        if (!fachkonto) {
           return reply;
         }
-        const adapter = makeAdapter();
+        const berechtigt = bibliothekFuer(fachkonto, request, reply);
+        if (!berechtigt) {
+          return reply;
+        }
+        const { adapter } = berechtigt;
         if (!adapter) {
           reply
             .code(503)
@@ -497,11 +627,15 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
     app.post<{ Body: { ids?: unknown } }>(
       "/api/admin/import/sharepoint/apply",
       async (request, reply) => {
-        const user = await deps.guards.requirePermission("users.manage", request, reply);
-        if (!user) {
+        const fachkonto = await deps.guards.requirePermission("ko.create", request, reply);
+        if (!fachkonto) {
           return reply;
         }
-        const adapter = makeAdapter();
+        const berechtigt = bibliothekFuer(fachkonto, request, reply);
+        if (!berechtigt) {
+          return reply;
+        }
+        const { user, adapter } = berechtigt;
         if (!adapter) {
           reply
             .code(503)
@@ -583,11 +717,15 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
     app.post<{ Body: { folderId?: unknown; fortsetzung?: unknown } }>(
       "/api/admin/import/sharepoint/folder-apply",
       async (request, reply) => {
-        const user = await deps.guards.requirePermission("users.manage", request, reply);
-        if (!user) {
+        const fachkonto = await deps.guards.requirePermission("ko.create", request, reply);
+        if (!fachkonto) {
           return reply;
         }
-        const adapter = makeAdapter();
+        const berechtigt = bibliothekFuer(fachkonto, request, reply);
+        if (!berechtigt) {
+          return reply;
+        }
+        const { user, adapter } = berechtigt;
         if (!adapter) {
           reply
             .code(503)
@@ -610,6 +748,7 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
           machePlatzFuerLosfolge(losfolgen);
           folge = {
             id: randomUUID(),
+            kontoId: user.id,
             driveId: adapter.driveId,
             ordnerId,
             zuletztBenutzt: jetzt,
@@ -620,7 +759,9 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
           losfolgen.set(folge.id, folge);
         } else {
           const bekannt = losfolgen.get(fortsetzung);
-          if (!bekannt || bekannt.driveId !== adapter.driveId) {
+          // Frage 6: eine Losfolge gehört dem Konto, das sie begonnen hat — für jedes andere ist sie
+          // so unbekannt wie eine abgelaufene.
+          if (!bekannt || bekannt.driveId !== adapter.driveId || bekannt.kontoId !== user.id) {
             reply.code(409).send({
               error: "FORTSETZUNG_UNBEKANNT",
               message:
@@ -745,6 +886,8 @@ const MAX_LOSFOLGEN = 20;
  */
 interface Losfolge {
   readonly id: string;
+  /** Das Konto, das die Losfolge begonnen hat (Frage 6) — nur dieses darf sie fortsetzen. */
+  readonly kontoId: string;
   readonly driveId: string;
   readonly ordnerId: string | undefined;
   zuletztBenutzt: number;

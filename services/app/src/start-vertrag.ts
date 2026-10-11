@@ -338,6 +338,19 @@ const SHAREPOINT_WERTE: readonly Startwert[] = SHAREPOINT_CREDENTIAL_VARS.map((n
     "Kein SharePoint-Client. Der Import meldet den Zustand ehrlich (sharepointCredentialState) statt zu starten.",
 }));
 
+// gesamt-nutzerverwaltung · Frage 6 (Peter, 11.10.2026): die eigene Testbibliothek eines Fachkontos.
+// Gelesen in `routes/sharepoint-import-routes.ts` (`SHAREPOINT_TESTBIBLIOTHEKEN_ENV`), je Anfrage.
+const SHAREPOINT_TESTBIBLIOTHEK_WERT: Startwert = {
+  name: "KLARWERK_SHAREPOINT_TESTBIBLIOTHEKEN",
+  bereich: "SharePoint-Import",
+  pflicht: { art: "nie" },
+  geheim: false,
+  wofuer:
+    "Ordnet einem Fachkonto (ko.create, ohne Adminrecht) seine eigene SharePoint-Testbibliothek zu: <Kontokennung>=<driveId>, mehrere durch Komma. Nur gegen diese Bibliothek darf das Konto Dateien listen und übernehmen.",
+  ohneIhn:
+    "Nur Konten mit users.manage dürfen aus SharePoint importieren; ein Fachkonto bekommt 403.",
+};
+
 // ================================================================================================
 // R-0170 · DER JIRA-ZUGANG — AUS DEM MODUL, NICHT DANEBEN
 // ================================================================================================
@@ -1194,6 +1207,7 @@ export const STARTVERTRAG: readonly Startwert[] = [
   ...GRUNDWERTE,
   ...CONFLUENCE_WERTE,
   ...SHAREPOINT_WERTE,
+  SHAREPOINT_TESTBIBLIOTHEK_WERT,
   ...JIRA_WERTE,
   ...SCHALTER_WERTE,
 ];

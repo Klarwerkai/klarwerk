@@ -844,11 +844,16 @@ const REGISTER: Record<string, Eintrag> = {
     // POST-Wege mit `users.manage`; `files` liest dabei nur (Dateiliste der Bibliothek), `apply`
     // stellt Kandidaten in die Prüf-Warteschlange. Beide geben keinen Inhalt eines
     // Wissensobjekts aus — sie geben Namen, Adressen und Stände von QUELLDATEIEN aus.
-    "POST /api/admin/import/sharepoint/files": "users.manage.",
-    "POST /api/admin/import/sharepoint/apply": "users.manage.",
+    // Frage 6 (11.10.2026): dazu ein Fachkonto mit `ko.create`, aber NUR gegen seine eigene,
+    // vom Betreiber zugeordnete Testbibliothek; die Ausgabe bleibt dieselbe Art Quelldatei-Angabe.
+    "POST /api/admin/import/sharepoint/files":
+      "users.manage, oder ko.create mit eigener Testbibliothek.",
+    "POST /api/admin/import/sharepoint/apply":
+      "users.manage, oder ko.create mit eigener Testbibliothek.",
     // R-0145/R-0190: `folder-apply` ist derselbe Übernahmeweg für ein Los eines Ordners — er gibt
     // dieselben Quelldatei-Angaben aus wie `apply`, dazu die Kennungen des Loses.
-    "POST /api/admin/import/sharepoint/folder-apply": "users.manage.",
+    "POST /api/admin/import/sharepoint/folder-apply":
+      "users.manage, oder ko.create mit eigener Testbibliothek.",
     // R-0170: die drei Türen des Jira-Imports, dieselbe Bauform wie SharePoint. `issues` liest nur
     // (Vorgangsliste des Projekts); `apply` und `project-apply` stellen Kandidaten in die
     // Prüf-Warteschlange. Keine gibt den Inhalt eines Wissensobjekts aus — sie geben Schlüssel,

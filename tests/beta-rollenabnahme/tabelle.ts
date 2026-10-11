@@ -957,12 +957,17 @@ export const TABELLE: Zeile[] = [
   // und nicht in der Restliste, und das geht, weil beide OHNE hinterlegte Zugangsdaten gar nichts
   // anrichten: der Adapter kommt nicht zustande, die Antwort ist ein 503 vor jedem Effekt. Die
   // Bühne misst damit genau das, was sie messen soll — das Rechtetor.
+  //
+  // Frage 6 (11.10.2026): das Routenrecht ist jetzt `ko.create`, dahinter die eigene Testbibliothek
+  // des Kontos. Diese Bühne setzt KEINE Zuordnung (`KLARWERK_SHAREPOINT_TESTBIBLIOTHEKEN`), also
+  // bleibt das Soll unverändert NUR_ADMIN — ein Fachkonto ohne zugeordnete Bibliothek kommt nicht
+  // hinein. Der Weg MIT Zuordnung steht in `tests/demo-testbibliothek/`.
   {
     gruppe: "sharepointImportRoutes",
     methode: "POST",
     pfad: "/api/admin/import/sharepoint/files",
     belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:190",
-    tor: "users.manage",
+    tor: "ko.create + eigene Testbibliothek, sonst users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
   },
@@ -971,7 +976,7 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/admin/import/sharepoint/apply",
     belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:229",
-    tor: "users.manage",
+    tor: "ko.create + eigene Testbibliothek, sonst users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
   },
@@ -981,7 +986,7 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/admin/import/sharepoint/folder-apply",
     belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:554",
-    tor: "users.manage",
+    tor: "ko.create + eigene Testbibliothek, sonst users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
   },
