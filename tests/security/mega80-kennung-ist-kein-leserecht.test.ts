@@ -210,13 +210,15 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
       return { action };
     // Aufnahme gesamt-peer-validierung (Antworten 18/19): die Weisung und ihre Sichtung. Ob der
     // Anfragende Weisungsbefugnis hat bzw. die benannte Person ist, entscheidet der Zweig/Dienst.
+    // Ben, Nacharbeit 11: beide tragen PFLICHT die gelesene Fassung (`expectedVersion`).
     case "weisung-validate":
       return {
         action,
         sichtung: { verantwortlich: "verantwortliche-person", frist: "2099-12-31" },
+        expectedVersion: 1,
       };
     case "weisung-sichten":
-      return { action, sichtung: { ergebnis: "bestaetigt" } };
+      return { action, sichtung: { ergebnis: "bestaetigt" }, expectedVersion: 1 };
     case "conflict":
       return {
         action,

@@ -410,12 +410,19 @@ export type KoAction =
   | { action: "owner-validate"; duplicateAcknowledged?: true; expectedVersion?: number }
   // Antworten 18/19: die eigene Weisung unmittelbar gültig einstellen (Weisungsbefugnis am Konto)
   // samt Sichtung, und die Sichtung durch die benannte verantwortliche Person.
+  // Beide tragen PFLICHT die gelesene Fassung (`expectedVersion`, sonst 400; weicht sie ab, 409
+  // `KO_STALE` mit `currentVersion` — es wird nichts entschieden).
   | {
       action: "weisung-validate";
       sichtung: { verantwortlich: string; frist: string };
+      expectedVersion: number;
       duplicateAcknowledged?: true;
     }
-  | { action: "weisung-sichten"; sichtung: { ergebnis: "bestaetigt" | "widerrufen" } }
+  | {
+      action: "weisung-sichten";
+      sichtung: { ergebnis: "bestaetigt" | "widerrufen" };
+      expectedVersion: number;
+    }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
   // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet

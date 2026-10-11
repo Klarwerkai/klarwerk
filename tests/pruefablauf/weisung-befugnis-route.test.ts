@@ -17,6 +17,11 @@
 //   B6 · Bestätigen lässt die Weisung gelten; eine zweite Sichtung gibt es nicht.
 //   B7 · Entzug der Befugnis wirkt sofort; ungültige Form wird abgewiesen.
 //   B8 · `*` (ganzes Unternehmen) deckt jeden Bereich.
+//   B10 · (Ben, Nacharbeit 11) Weisung und Sichtung nur mit der gelesenen Fassung: ohne → 400,
+//         veraltet → 409 KO_STALE samt neuer Fassung, nichts entschieden.
+//   B11 · Entzogenes Prüfrecht verhindert die Sichtung trotz Benennung (403); Gegenprobe mit
+//         Weisungsbefugnis für den Bereich.
+//   B12 · Ein offener Wahrheitskonflikt verhindert die Weisung (409); der Konflikt bleibt offen.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
@@ -108,6 +113,15 @@ function put(app: App, kopf: Kopf, id: string, payload: Record<string, unknown>)
   return app.inject({ method: "PUT", url: `/api/kos/${id}`, headers: kopf, payload });
 }
 
+/**
+ * Ben, Nacharbeit 11 (AW06-K02): Weisung und Sichtung tragen PFLICHT die Fassung, die der Handelnde
+ * gerade gelesen hat — wie die Oberfläche. Gelesen wird sie hier unmittelbar davor mit DESSEN Konto.
+ */
+async function weisung(app: App, kopf: Kopf, id: string, payload: Record<string, unknown>) {
+  const gelesen = (await stand(app, kopf, id)).version;
+  return put(app, kopf, id, { expectedVersion: gelesen, ...payload });
+}
+
 function befugnis(app: App, admin: Kopf, userId: string, bereiche: unknown) {
   return app.inject({
     method: "PUT",
@@ -127,7 +141,7 @@ describe("R-1863 · Antworten 18/19 — Weisungsbefugnis am Konto", () => {
   it("B1 · die Admin-Rolle allein ist keine Weisungsbefugnis", async () => {
     const b = await buehne();
     const id = await anlegen(b.app, b.admin.kopf);
-    const res = await put(b.app, b.admin.kopf, id, {
+    const res = await weisung(b.app, b.admin.kopf, id, {
       action: "weisung-validate",
       sichtung: { verantwortlich: b.controller.id, frist: HEUTE },
     });
@@ -153,7 +167,7 @@ describe("R-1863 · Antworten 18/19 — Weisungsbefugnis am Konto", () => {
     expect(vermerk?.payload).toEqual({ bereiche: ["Anlage 1"] });
 
     const id = await anlegen(b.app, b.leitung.kopf);
-    const res = await put(b.app, b.leitung.kopf, id, {
+    const res = await weisung(b.app, b.leitung.kopf, id, {
       action: "weisung-validate",
       sichtung: { verantwortlich: b.controller.id, frist: HEUTE },
     });
@@ -188,7 +202,7 @@ describe("R-1863 · Antworten 18/19 — Weisungsbefugnis am Konto", () => {
     const b = await buehne();
     await befugnis(b.app, b.admin.kopf, b.leitung.id, ["Anlage 1"]);
     const anderer = await anlegen(b.app, b.leitung.kopf, "Personal");
-    const r1 = await put(b.app, b.leitung.kopf, anderer, {
+    const r1 = await weisung(b.app, b.leitung.kopf, anderer, {
       action: "weisung-validate",
       sichtung: { verantwortlich: b.controller.id, frist: HEUTE },
     });
@@ -196,7 +210,7 @@ describe("R-1863 · Antworten 18/19 — Weisungsbefugnis am Konto", () => {
     expect((await stand(b.app, b.leitung.kopf, anderer)).status).toBe("offen");
 
     const fremd = await anlegen(b.app, b.controller.kopf);
-    const r2 = await put(b.app, b.leitung.kopf, fremd, {
+    const r2 = await weisung(b.app, b.leitung.kopf, fremd, {
       action: "weisung-validate",
       sichtung: { verantwortlich: b.controller.id, frist: HEUTE },
     });
@@ -216,7 +230,10 @@ describe("R-1863 · Antworten 18/19 — Weisungsbefugnis am Konto", () => {
       { verantwortlich: b.leser.id, frist: HEUTE },
       { verantwortlich: "gibt-es-nicht", frist: HEUTE },
     ]) {
-      const res = await put(b.app, b.leitung.kopf, id, { action: "weisung-validate", sichtung });
+      const res = await weisung(b.app, b.leitung.kopf, id, {
+        action: "weisung-validate",
+        sichtung,
+      });
       expect(res.statusCode, `${JSON.stringify(sichtung)} · ${res.body}`).toBe(400);
     }
     expect((await stand(b.app, b.leitung.kopf, id)).status).toBe("offen");
@@ -226,13 +243,13 @@ describe("R-1863 · Antworten 18/19 — Weisungsbefugnis am Konto", () => {
     const b = await buehne();
     await befugnis(b.app, b.admin.kopf, b.leitung.id, ["Anlage 1"]);
     const id = await anlegen(b.app, b.leitung.kopf);
-    await put(b.app, b.leitung.kopf, id, {
+    await weisung(b.app, b.leitung.kopf, id, {
       action: "weisung-validate",
       sichtung: { verantwortlich: b.controller.id, frist: HEUTE },
     });
     // Weder die Weisungsgeberin noch der Admin sichten an Stelle der benannten Person.
     for (const kopf of [b.leitung.kopf, b.admin.kopf]) {
-      const res = await put(b.app, kopf, id, {
+      const res = await weisung(b.app, kopf, id, {
         action: "weisung-sichten",
         sichtung: { ergebnis: "widerrufen" },
       });
@@ -240,7 +257,7 @@ describe("R-1863 · Antworten 18/19 — Weisungsbefugnis am Konto", () => {
     }
     expect((await stand(b.app, b.controller.kopf, id)).status).toBe("validiert");
 
-    const res = await put(b.app, b.controller.kopf, id, {
+    const res = await weisung(b.app, b.controller.kopf, id, {
       action: "weisung-sichten",
       sichtung: { ergebnis: "widerrufen" },
     });
@@ -259,12 +276,12 @@ describe("R-1863 · Antworten 18/19 — Weisungsbefugnis am Konto", () => {
     const b = await buehne();
     await befugnis(b.app, b.admin.kopf, b.leitung.id, ["Anlage 1"]);
     const id = await anlegen(b.app, b.leitung.kopf);
-    await put(b.app, b.leitung.kopf, id, {
+    await weisung(b.app, b.leitung.kopf, id, {
       action: "weisung-validate",
       sichtung: { verantwortlich: b.controller.id, frist: HEUTE },
     });
     const vorher = await stand(b.app, b.controller.kopf, id);
-    const ok = await put(b.app, b.controller.kopf, id, {
+    const ok = await weisung(b.app, b.controller.kopf, id, {
       action: "weisung-sichten",
       sichtung: { ergebnis: "bestaetigt" },
     });
@@ -274,7 +291,7 @@ describe("R-1863 · Antworten 18/19 — Weisungsbefugnis am Konto", () => {
     // Die Annahme bleibt die der Weisung — die Sichtung ist keine zweite Annahme.
     expect(s.annahme).toEqual(vorher.annahme);
     expect(s.weisungsSichtung?.ergebnis).toMatchObject({ art: "bestaetigt" });
-    const nochmal = await put(b.app, b.controller.kopf, id, {
+    const nochmal = await weisung(b.app, b.controller.kopf, id, {
       action: "weisung-sichten",
       sichtung: { ergebnis: "widerrufen" },
     });
@@ -294,7 +311,7 @@ describe("R-1863 · Antworten 18/19 — Weisungsbefugnis am Konto", () => {
     expect(entzug.statusCode, entzug.body).toBe(200);
     expect((entzug.json() as { weisungsbefugnis?: unknown }).weisungsbefugnis).toBeUndefined();
     const id = await anlegen(b.app, b.leitung.kopf);
-    const res = await put(b.app, b.leitung.kopf, id, {
+    const res = await weisung(b.app, b.leitung.kopf, id, {
       action: "weisung-validate",
       sichtung: { verantwortlich: b.controller.id, frist: HEUTE },
     });
@@ -305,7 +322,7 @@ describe("R-1863 · Antworten 18/19 — Weisungsbefugnis am Konto", () => {
     const b = await buehne();
     await befugnis(b.app, b.admin.kopf, b.leitung.id, ["Anlage 1"]);
     const id = await anlegen(b.app, b.leitung.kopf);
-    await put(b.app, b.leitung.kopf, id, {
+    await weisung(b.app, b.leitung.kopf, id, {
       action: "weisung-validate",
       sichtung: { verantwortlich: b.controller.id, frist: HEUTE },
     });
@@ -321,18 +338,144 @@ describe("R-1863 · Antworten 18/19 — Weisungsbefugnis am Konto", () => {
     expect(nachher.version).toBe(vorher.version + 1);
     expect(nachher.status).toBe("offen");
     expect(nachher.annahme).toBeUndefined();
-    const res = await put(b.app, b.controller.kopf, id, {
+    const res = await weisung(b.app, b.controller.kopf, id, {
       action: "weisung-sichten",
       sichtung: { ergebnis: "bestaetigt" },
     });
     expect(res.statusCode, res.body).toBe(400);
   });
 
+  // ----------------------------------------------------------------------------------------------
+  // Ben, Nacharbeit 11
+  // ----------------------------------------------------------------------------------------------
+  it("B10 · Weisung und Sichtung entscheiden nur die gelesene Fassung — ohne oder mit alter: nichts", async () => {
+    const b = await buehne();
+    await befugnis(b.app, b.admin.kopf, b.leitung.id, ["Anlage 1"]);
+    const id = await anlegen(b.app, b.leitung.kopf);
+    const gelesen = (await stand(b.app, b.leitung.kopf, id)).version;
+    const sichtung = { verantwortlich: b.controller.id, frist: HEUTE };
+    // Ohne Fassung: 400.
+    const ohne = await put(b.app, b.leitung.kopf, id, { action: "weisung-validate", sichtung });
+    expect(ohne.statusCode, ohne.body).toBe(400);
+    // Zwischen Anzeige und Klick wird eine neue Fassung gespeichert.
+    const revidiert = await put(b.app, b.admin.kopf, id, {
+      action: "revise",
+      changes: { statement: "Urlaub wird spätestens fünf Wochen vorher beantragt." },
+      expectedVersion: gelesen,
+    });
+    expect(revidiert.statusCode, revidiert.body).toBe(200);
+    const alt = await put(b.app, b.leitung.kopf, id, {
+      action: "weisung-validate",
+      sichtung,
+      expectedVersion: gelesen,
+    });
+    expect(alt.statusCode, alt.body).toBe(409);
+    expect(alt.json()).toMatchObject({ error: "KO_STALE", currentVersion: gelesen + 1 });
+    const s = await stand(b.app, b.controller.kopf, id);
+    expect(s.status).toBe("offen");
+    expect(s.weisungsSichtung).toBeUndefined();
+    const belege = await b.services.audit.list({ target: id });
+    expect(belege.some((e) => e.action === "ko.weisung-validated")).toBe(false);
+
+    // Dieselbe Bindung an der Sichtung: die neue Fassung gültig setzen, dann mit der alten sichten.
+    const gesetzt = await weisung(b.app, b.leitung.kopf, id, {
+      action: "weisung-validate",
+      sichtung,
+    });
+    expect(gesetzt.statusCode, gesetzt.body).toBe(200);
+    const veraltet = await put(b.app, b.controller.kopf, id, {
+      action: "weisung-sichten",
+      sichtung: { ergebnis: "widerrufen" },
+      expectedVersion: gelesen,
+    });
+    expect(veraltet.statusCode, veraltet.body).toBe(409);
+    expect((veraltet.json() as { error: string }).error).toBe("KO_STALE");
+    const ohneSichtung = await put(b.app, b.controller.kopf, id, {
+      action: "weisung-sichten",
+      sichtung: { ergebnis: "widerrufen" },
+    });
+    expect(ohneSichtung.statusCode, ohneSichtung.body).toBe(400);
+    const danach = await stand(b.app, b.controller.kopf, id);
+    expect(danach.status).toBe("validiert");
+    expect(danach.weisungsSichtung?.ergebnis).toBeUndefined();
+  });
+
+  it("B11 · entzogenes Prüfrecht verhindert die Sichtung, auch wenn die Person benannt ist", async () => {
+    const b = await buehne();
+    await befugnis(b.app, b.admin.kopf, b.leitung.id, ["Anlage 1"]);
+    const id = await anlegen(b.app, b.leitung.kopf);
+    const gesetzt = await weisung(b.app, b.leitung.kopf, id, {
+      action: "weisung-validate",
+      sichtung: { verantwortlich: b.controller.id, frist: HEUTE },
+    });
+    expect(gesetzt.statusCode, gesetzt.body).toBe(200);
+    // Nach der Benennung verliert die Person ihr Prüfrecht (Rolle viewer, keine Weisungsbefugnis).
+    const herab = await b.app.inject({
+      method: "PUT",
+      url: `/api/users/${b.controller.id}`,
+      headers: b.admin.kopf,
+      payload: { role: "viewer" },
+    });
+    expect(herab.statusCode, herab.body).toBe(200);
+    // Die gelesene Fassung über das Konto der Weisungsgeberin — die Bindung ist hier nicht die Frage.
+    const fassung = (await stand(b.app, b.leitung.kopf, id)).version;
+    for (const ergebnis of ["bestaetigt", "widerrufen"]) {
+      const res = await put(b.app, b.controller.kopf, id, {
+        action: "weisung-sichten",
+        sichtung: { ergebnis },
+        expectedVersion: fassung,
+      });
+      expect(res.statusCode, res.body).toBe(403);
+    }
+    const s = await stand(b.app, b.leitung.kopf, id);
+    expect(s.status).toBe("validiert");
+    expect(s.weisungsSichtung?.ergebnis).toBeUndefined();
+    // Gegenprobe: bekommt dieselbe Person eine Weisungsbefugnis für den Bereich, darf sie sichten.
+    await befugnis(b.app, b.admin.kopf, b.controller.id, ["Anlage 1"]);
+    const ok = await put(b.app, b.controller.kopf, id, {
+      action: "weisung-sichten",
+      sichtung: { ergebnis: "bestaetigt" },
+      expectedVersion: fassung,
+    });
+    expect(ok.statusCode, ok.body).toBe(200);
+  });
+
+  it("B12 · ein offener Wahrheitskonflikt verhindert die Weisung; der Konflikt bleibt offen", async () => {
+    const b = await buehne();
+    await befugnis(b.app, b.admin.kopf, b.leitung.id, ["Anlage 1"]);
+    const id = await anlegen(b.app, b.leitung.kopf);
+    const gegenueber = await anlegen(b.app, b.controller.kopf);
+    const konflikt = await put(b.app, b.controller.kopf, id, {
+      action: "conflict",
+      conflict: {
+        koA: id,
+        koB: gegenueber,
+        type: "truth",
+        description: "Drei oder zwei Wochen Vorlauf?",
+      },
+    });
+    expect(konflikt.statusCode, konflikt.body).toBe(201);
+    const res = await weisung(b.app, b.leitung.kopf, id, {
+      action: "weisung-validate",
+      sichtung: { verantwortlich: b.controller.id, frist: HEUTE },
+    });
+    expect(res.statusCode, res.body).toBe(409);
+    expect((res.json() as { error: string }).error).toBe("CONFLICT");
+    const s = await stand(b.app, b.controller.kopf, id);
+    expect(s.status).toBe("offen");
+    expect(s.weisungsSichtung).toBeUndefined();
+    // Die Konfliktauflösung bleibt dem Konfliktweg: der Konflikt steht unverändert offen.
+    const offen = (await b.services.conflicts.unresolved()).filter(
+      (c) => c.koA === id || c.koB === id,
+    );
+    expect(offen.map((c) => c.type)).toContain("truth");
+  });
+
   it("B8 · `*` (ganzes Unternehmen) deckt jeden Bereich", async () => {
     const b = await buehne();
     await befugnis(b.app, b.admin.kopf, b.leitung.id, ["*"]);
     const id = await anlegen(b.app, b.leitung.kopf, "Personal");
-    const res = await put(b.app, b.leitung.kopf, id, {
+    const res = await weisung(b.app, b.leitung.kopf, id, {
       action: "weisung-validate",
       sichtung: { verantwortlich: b.controller.id, frist: HEUTE },
     });

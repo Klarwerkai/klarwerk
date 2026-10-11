@@ -2937,10 +2937,13 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           body.action !== "category" &&
           body.action !== "rate" &&
           body.action !== "owner-validate" &&
-          body.action !== "admin-validate"
+          body.action !== "admin-validate" &&
+          // Ben, Nacharbeit 11 (AW06-K02): Weisung und Sichtung entscheiden die GELESENE Fassung.
+          body.action !== "weisung-validate" &&
+          body.action !== "weisung-sichten"
         ) {
           return badRequest(
-            'expectedVersion gilt nur für die Aktionen "revise", "revise-release", "decide-proposal", "tags", "category", "rate", "owner-validate" und "admin-validate".',
+            'expectedVersion gilt nur für die Aktionen "revise", "revise-release", "decide-proposal", "tags", "category", "rate", "owner-validate", "admin-validate", "weisung-validate" und "weisung-sichten".',
           );
         }
         // JOB 4251: der Stempel der EINORDNUNG greift nur dort, wo eine Einordnung geschrieben wird.
@@ -4120,6 +4123,13 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             const befugnis = konto.weisungsbefugnis;
+            // Ben, Nacharbeit 11 (AW06-K02): PFLICHT — die Fassung, die der Mensch gelesen hat.
+            const gelesen = erwarteteKoVersion(body.expectedVersion);
+            if (gelesen === undefined || gelesen === "unlesbar") {
+              return badRequest(
+                "expectedVersion muss die Ganzzahl der gelesenen Fassung sein; eine Weisung entscheidet nur die Fassung, die zu sehen war.",
+              );
+            }
             const roh = body.sichtung as { verantwortlich?: unknown; frist?: unknown } | undefined;
             const verantwortlich =
               typeof roh?.verantwortlich === "string" ? roh.verantwortlich.trim() : "";
@@ -4155,17 +4165,27 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ) {
               return;
             }
-            reply.code(200).send(
-              await validation.weisungValidate(id, user.id, {
+            // Weicht die Fassung ab, antwortet `fassungsgebunden` mit 409 KO_STALE samt der jetzt
+            // gültigen Fassung — es wird nichts entschieden.
+            const gesetzt = await fassungsgebunden(
+              validation.weisungValidate(id, user.id, {
                 deckt: (bereich) => weisungsbefugnisDeckt(befugnis, bereich),
                 verantwortlich,
                 frist,
+                erwarteteFassung: gelesen,
               }),
             );
+            if (!gesetzt) {
+              return;
+            }
+            reply.code(200).send(gesetzt);
             return;
           }
           // Antwort 19: die Sichtung. Wer sichten darf, steht an der Weisung selbst (die benannte
-          // verantwortliche Person) und wird im Dienst geprüft; hier nur Lesetor und Form.
+          // verantwortliche Person). Ben, Nacharbeit 11: dazu die AKTUELLE fachliche Befugnis — das
+          // Konto muss jetzt noch freigegeben sein und Prüfrecht oder Weisungsbefugnis für den Bereich
+          // tragen (dieselbe Regel wie beim Einrichten der Sichtung); geprüft im Dienst gegen den
+          // frisch gelesenen Bereich. Und die gelesene Fassung ist Pflicht (AW06-K02).
           case "weisung-sichten": {
             const user = await guards.requirePermission("ko.read", request, reply);
             if (!user) {
@@ -4175,7 +4195,26 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (ergebnis !== "bestaetigt" && ergebnis !== "widerrufen") {
               return badRequest("sichtung.ergebnis muss bestaetigt oder widerrufen sein.");
             }
-            reply.code(200).send(await validation.weisungSichten(id, user.id, ergebnis));
+            const gelesen = erwarteteKoVersion(body.expectedVersion);
+            if (gelesen === undefined || gelesen === "unlesbar") {
+              return badRequest(
+                "expectedVersion muss die Ganzzahl der gelesenen Fassung sein; eine Sichtung entscheidet nur die Fassung, die zu sehen war.",
+              );
+            }
+            const konto = await deps.weisungskonto?.(user.id);
+            const gesichtet = await fassungsgebunden(
+              validation.weisungSichten(id, user.id, ergebnis, {
+                erwarteteFassung: gelesen,
+                darf: (bereich) =>
+                  Boolean(konto?.aktiv) &&
+                  (Boolean(konto?.freigabeberechtigt) ||
+                    weisungsbefugnisDeckt(konto?.weisungsbefugnis, bereich)),
+              }),
+            );
+            if (!gesichtet) {
+              return;
+            }
+            reply.code(200).send(gesichtet);
             return;
           }
           case "conflict": {

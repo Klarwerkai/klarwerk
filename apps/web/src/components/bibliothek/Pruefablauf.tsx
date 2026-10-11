@@ -302,14 +302,20 @@ export function Weisung({
   const { t, i18n } = useTranslation();
   const { push } = useToast();
   const qc = useQueryClient();
+  // Ben, Nacharbeit 11: gesendet wird die ANGEZEIGTE Fassung. Ist inzwischen eine neue gespeichert,
+  // entscheidet der Server nichts (409 KO_STALE); die Fläche lädt dann die neue Fassung nach.
   const sichten = useMutation({
     mutationFn: (ergebnis: "bestaetigt" | "widerrufen") =>
-      endpoints.ko.act(ko.id, { action: "weisung-sichten", sichtung: { ergebnis } }),
+      endpoints.ko.act(ko.id, {
+        action: "weisung-sichten",
+        sichtung: { ergebnis },
+        expectedVersion: ko.version,
+      }),
     onSuccess: () => {
       auffrischeWeisung(qc, ko.id);
       push("success", t("pruefablauf.sichtung.gespeichert"));
     },
-    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+    onError: (e) => weisungsFehler(e, qc, ko.id, push, t("state.error")),
   });
 
   const s = ko.weisungsSichtung?.koVersion === ko.version ? ko.weisungsSichtung : undefined;
@@ -377,6 +383,7 @@ export function Weisung({
       {darfEinstellen ? (
         <WeisungEinstellen
           koId={ko.id}
+          fassung={ko.version}
           bereich={ko.category}
           angemeldet={angemeldet}
           heute={heute}
@@ -393,16 +400,37 @@ function auffrischeWeisung(qc: ReturnType<typeof useQueryClient>, koId: string):
 }
 
 /**
+ * Der Fehlerweg beider Weisungsaktionen. `KO_STALE`: die gelesene Fassung ist nicht mehr die
+ * aktuelle — die Meldung des Servers nennt die neue, und die Fläche lädt sie nach, damit der Mensch
+ * über das entscheidet, was er sieht.
+ */
+function weisungsFehler(
+  e: unknown,
+  qc: ReturnType<typeof useQueryClient>,
+  koId: string,
+  push: (art: "error", text: string) => void,
+  ersatz: string,
+): void {
+  if (e instanceof ApiError && e.code === "KO_STALE") {
+    auffrischeWeisung(qc, koId);
+  }
+  push("error", e instanceof ApiError ? e.message : ersatz);
+}
+
+/**
  * Das Formular zum Einstellen — ein eigener Baustein, damit das Personenverzeichnis nur geladen wird,
  * wenn das Formular wirklich dasteht (nicht bei jedem Öffnen eines Eintrags).
  */
 function WeisungEinstellen({
   koId,
+  fassung,
   bereich,
   angemeldet,
   heute,
 }: {
   koId: string;
+  /** Die angezeigte Fassung — sie und nur sie wird gültig gesetzt (sonst 409 KO_STALE). */
+  fassung: number;
   bereich: string;
   angemeldet: string | undefined;
   heute: string;
@@ -419,6 +447,7 @@ function WeisungEinstellen({
       endpoints.ko.act(koId, {
         action: "weisung-validate",
         sichtung: { verantwortlich, frist },
+        expectedVersion: fassung,
         ...(dubletteGesehen ? { duplicateAcknowledged: true as const } : {}),
       }),
     onSuccess: () => {
@@ -430,7 +459,7 @@ function WeisungEinstellen({
       if (e instanceof ApiError && e.code === "DUPLICATE_ACK_REQUIRED") {
         setDubletteOffen(true);
       }
-      push("error", e instanceof ApiError ? e.message : t("state.error"));
+      weisungsFehler(e, qc, koId, push, t("state.error"));
     },
   });
   const personen = (Array.isArray(directory.data) ? directory.data : []).filter(

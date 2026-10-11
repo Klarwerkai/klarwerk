@@ -39,11 +39,15 @@ function ratingVersion(r: { koVersion?: number }): number {
  */
 function pruefeErwarteteFassung(aktuell: number, erwartet: number | undefined): void {
   if (erwartet !== undefined && erwartet !== aktuell) {
-    throw new ValidationError(
-      "KO_STALE",
-      `Das Wissensobjekt wurde inzwischen überarbeitet (jetzt Fassung ${aktuell}, geprüft wurde Fassung ${erwartet}). Es wurde nichts entschieden.`,
-    );
+    throw veralteteFassung(aktuell, erwartet);
   }
+}
+
+function veralteteFassung(aktuell: number, erwartet: number): ValidationError {
+  return new ValidationError(
+    "KO_STALE",
+    `Das Wissensobjekt wurde inzwischen überarbeitet (jetzt Fassung ${aktuell}, geprüft wurde Fassung ${erwartet}). Es wurde nichts entschieden.`,
+  );
 }
 
 export interface AssignmentSummary {
@@ -684,15 +688,28 @@ export class ValidationService {
   // UNTER DEM KO-LOCK geprüft (frisch gelesen): die Weisung ist die eigene (`author`) und der
   // Bereich des Objekts liegt in der Befugnis. Eine Kategorieänderung zwischen Vorab-Lesen und
   // Schreiben erhöht die Inhaltsfassung nicht — der Compare-and-Set sähe sie nicht.
+  //
+  // Ben, Nacharbeit 11:
+  //   · FASSUNGSBINDUNG (AW06-K02): `erwarteteFassung` ist die Fassung, die der Mensch gelesen hat.
+  //     Weicht sie ab — beim Lesen oder bis zum Schreiben —, wird nichts entschieden (KO_STALE).
+  //   · KONFLIKT (Antwort 19: gültig, „solange kein … Konflikt vorliegt"): ein offener
+  //     Wahrheitskonflikt am Objekt verhindert die Weisung (CONFLICT). Er wird über den bestehenden
+  //     Konfliktweg entschieden; danach ist die Weisung wieder möglich.
   async weisungValidate(
     koId: string,
     actorId: string,
-    weisung: { deckt: (bereich: string) => boolean; verantwortlich: string; frist: string },
+    weisung: {
+      deckt: (bereich: string) => boolean;
+      verantwortlich: string;
+      frist: string;
+      erwarteteFassung: number;
+    },
   ): Promise<ValidationDecision> {
     const ko = await this.koService.get(koId);
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
+    pruefeErwarteteFassung(ko.version, weisung.erwarteteFassung);
     const pruefe = (frisch: KnowledgeObject): string => {
       if (frisch.author !== actorId) {
         throw new ValidationError(
@@ -726,6 +743,13 @@ export class ValidationService {
       koId,
       async (frisch) => {
         bereich = pruefe(frisch);
+        const offen = (await this.offeneKonfliktArten?.(koId)) ?? [];
+        if (offen.includes("truth")) {
+          throw new ValidationError(
+            "CONFLICT",
+            "Zu diesem Wissensobjekt ist ein Wahrheitskonflikt offen. Die Weisung gilt erst, wenn er entschieden ist. Es wurde nichts entschieden.",
+          );
+        }
         const g = frisch.vertrauensGrundlage;
         return {
           trust: frisch.trust,
@@ -761,15 +785,11 @@ export class ValidationService {
           ),
         ),
     );
-    const { votes } = stimmenAus(await this.ratings.listByKo(koId), gespeichert.version);
     if (!geschrieben) {
-      return {
-        ...votes,
-        trust: gespeichert.trust,
-        status: gespeichert.status,
-        validationDecisionRef: null,
-      };
+      // Die Fassung hat sich zwischen Lesen und Schreiben bewegt: keine Entscheidung.
+      throw veralteteFassung(gespeichert.version, geleseneFassung);
     }
+    const { votes } = stimmenAus(await this.ratings.listByKo(koId), gespeichert.version);
     await this.koService.recordOwnershipRole(koId, "validators", [actorId], actorId);
     return {
       ...votes,
@@ -784,16 +804,23 @@ export class ValidationService {
    * die offene Sichtung der gültig gesetzten Fassung. `bestaetigt` lässt die Weisung stehen;
    * `widerrufen` nimmt sie zurück: Status offen, die Annahme der Fassung entfällt, das Vertrauen
    * bleibt, wie es die Stimmen ergeben. Beleg `ko.weisung-gesichtet` (mit `ergebnis`).
+   *
+   * Ben, Nacharbeit 11: die Sichtung ist an die gelesene Fassung gebunden (`erwarteteFassung`,
+   * sonst KO_STALE), und die benannte Person muss die Befugnis JETZT noch haben — `darf` ist das
+   * aktuelle Kontourteil (freigegeben, Prüfrecht oder Weisungsbefugnis für den Bereich), geprüft
+   * gegen den frisch gelesenen Bereich. Ist sie entzogen, wird nichts entschieden (FORBIDDEN).
    */
   async weisungSichten(
     koId: string,
     actorId: string,
     ergebnis: "bestaetigt" | "widerrufen",
+    opts: { erwarteteFassung: number; darf: (bereich: string) => boolean },
   ): Promise<ValidationDecision> {
     const ko = await this.koService.get(koId);
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
+    pruefeErwarteteFassung(ko.version, opts.erwarteteFassung);
     const pruefe = (frisch: KnowledgeObject): void => {
       const s = frisch.weisungsSichtung;
       if (!s || s.koVersion !== frisch.version || s.ergebnis || frisch.status !== "validiert") {
@@ -806,6 +833,12 @@ export class ValidationService {
         throw new ValidationError(
           "FORBIDDEN",
           "Sichten kann nur die für diese Weisung benannte verantwortliche Person.",
+        );
+      }
+      if (!opts.darf((frisch.category ?? "").trim())) {
+        throw new ValidationError(
+          "FORBIDDEN",
+          "Ihrem Konto fehlt inzwischen das Prüfrecht oder die Weisungsbefugnis für diesen Bereich. Es wurde nichts entschieden.",
         );
       }
     };
@@ -844,12 +877,15 @@ export class ValidationService {
           ),
         ),
     );
+    if (!geschrieben) {
+      throw veralteteFassung(gespeichert.version, geleseneFassung);
+    }
     const { votes } = stimmenAus(await this.ratings.listByKo(koId), gespeichert.version);
     return {
       ...votes,
       trust: gespeichert.trust,
       status: gespeichert.status,
-      validationDecisionRef: geschrieben ? ref : null,
+      validationDecisionRef: ref,
     };
   }
 

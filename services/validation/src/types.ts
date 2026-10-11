@@ -43,14 +43,16 @@ export interface Assignment {
 // R-0507: NOT_OWNER = die Eigentümerfreigabe verlangt den benannten Eigentümer (an der Route 403).
 // ADMIN-09: KO_STALE = die Entscheidung nennt eine Fassung, die nicht mehr die aktuelle ist.
 // Antworten 18/19 (Weisung): FORBIDDEN = keine Weisungsbefugnis für den Bereich bzw. nicht die
-// benannte Sichtungsperson (403); INVALID = keine offene Sichtung, Sichtung durch sich selbst (400).
+// benannte Sichtungsperson (403); INVALID = keine offene Sichtung, Sichtung durch sich selbst (400);
+// CONFLICT = ein offener Wahrheitskonflikt steht der Weisung entgegen (409).
 export type ValidationErrorCode =
   | "NOT_FOUND"
   | "INVALID_DEFAULT"
   | "NOT_OWNER"
   | "KO_STALE"
   | "FORBIDDEN"
-  | "INVALID";
+  | "INVALID"
+  | "CONFLICT";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;

@@ -19,6 +19,9 @@ const box = vi.hoisted(() => ({
   ichId: "u-experte",
   befugnis: undefined as { bereiche: string[]; erteiltVon: string; erteiltAm: string } | undefined,
   aufrufe: [] as { id: string; body: Record<string, unknown> }[],
+  // Ben, Nacharbeit 11: die Antwort des Servers auf die nächste Weisungsaktion (sonst Erfolg).
+  fehler: null as { status: number; code: string; message: string } | null,
+  gelesen: 0,
 }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -36,11 +39,15 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 }));
 
 vi.mock("../../apps/web/src/api/endpoints", async () => {
+  const { ApiError } = await import("../../apps/web/src/api/client");
   const leer = vi.fn(async () => []);
   return {
     endpoints: {
       ko: {
-        get: vi.fn(async () => globalThis.__weisungKo),
+        get: vi.fn(async () => {
+          box.gelesen += 1;
+          return globalThis.__weisungKo;
+        }),
         list: vi.fn(async () => [globalThis.__weisungKo]),
         versions: leer,
         evidence: leer,
@@ -52,6 +59,9 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
         })),
         act: vi.fn(async (id: string, body: Record<string, unknown>) => {
           box.aufrufe.push({ id, body });
+          if (box.fehler) {
+            throw new ApiError(box.fehler.status, box.fehler.code, box.fehler.message);
+          }
           return globalThis.__weisungKo;
         }),
         remove: vi.fn(async () => undefined),
@@ -274,6 +284,8 @@ beforeEach(async () => {
   box.ichId = "u-experte";
   box.befugnis = undefined;
   box.aufrufe = [];
+  box.fehler = null;
+  box.gelesen = 0;
   globalThis.__weisungKo = ko();
   await i18n.changeLanguage("de");
   qc = new QueryClient({
@@ -307,8 +319,13 @@ describe("R-1863 · Antworten 18/19 — die Weisung in der Lesefläche", () => {
     await setzeWert(wahl, "u-ctrl", "change");
     await setzeWert(muss("bib-weisung-frist-eingabe") as HTMLInputElement, HEUTE, "input");
     await klick(muss("bib-weisung-knopf"));
+    // Ben, Nacharbeit 11: die ANGEZEIGTE Fassung reist mit (AW06-K02).
     expect(aufrufe("weisung-validate")).toEqual([
-      { action: "weisung-validate", sichtung: { verantwortlich: "u-ctrl", frist: HEUTE } },
+      {
+        action: "weisung-validate",
+        sichtung: { verantwortlich: "u-ctrl", frist: HEUTE },
+        expectedVersion: 2,
+      },
     ]);
   });
 
@@ -329,7 +346,7 @@ describe("R-1863 · Antworten 18/19 — die Weisung in der Lesefläche", () => {
     expect(frist.textContent).toContain("Carl Controller");
     await klick(muss("bib-weisung-widerrufen"));
     expect(aufrufe("weisung-sichten")).toEqual([
-      { action: "weisung-sichten", sichtung: { ergebnis: "widerrufen" } },
+      { action: "weisung-sichten", sichtung: { ergebnis: "widerrufen" }, expectedVersion: 2 },
     ]);
   });
 
@@ -347,6 +364,26 @@ describe("R-1863 · Antworten 18/19 — die Weisung in der Lesefläche", () => {
     expect(da("bib-weisung-widerrufen")).toBeNull();
     // Das Objekt ist schon fachlich bestätigt: kein zweites Einstellen.
     expect(da("bib-weisung-einstellen")).toBeNull();
+  });
+
+  it("M7 · ist inzwischen eine neue Fassung gespeichert, nennt die Fläche das und lädt sie nach", async () => {
+    box.rolle = "controller";
+    box.ichId = "u-ctrl";
+    globalThis.__weisungKo = ko({ status: "validiert", weisungsSichtung: SICHTUNG });
+    box.fehler = {
+      status: 409,
+      code: "KO_STALE",
+      message:
+        "Das Wissensobjekt wurde inzwischen überarbeitet (jetzt Fassung 3, geprüft wurde Fassung 2). Es wurde nichts entschieden.",
+    };
+    await mount();
+    const vorher = box.gelesen;
+    await klick(muss("bib-weisung-bestaetigen"));
+    expect(aufrufe("weisung-sichten")).toHaveLength(1);
+    // Die Meldung des Servers steht da …
+    expect(document.body.textContent).toContain("jetzt Fassung 3");
+    // … und das Objekt wird neu gelesen, damit über die neue Fassung entschieden werden kann.
+    expect(box.gelesen).toBeGreaterThan(vorher);
   });
 
   it("M6 · die Annahmezeile nennt die Kontoregel „Weisung“", async () => {

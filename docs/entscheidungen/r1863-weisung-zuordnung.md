@@ -19,7 +19,7 @@ Geltungsbereich-Modell · S6".
 | --- | --- | --- | --- |
 | **A · Weisungsbefugnis am Konto mit Zuständigkeitsbereich** | Antwort 18: ausdrücklich im Benutzerkonto, mit Zuständigkeitsbereich; Geschäftsführung und weisungsberechtigte Personen; technische Administration genügt nicht | **gesamt-peer-validierung** (Freigaberegel: wer darf ohne Vier-Augen-Prüfung annehmen) | **umgesetzt**: `User.weisungsbefugnis` (`services/auth/src/types.ts`), eigene Spalte `users.weisungsbefugnis` (`repo-pg.ts`), Vergabe/Entzug nur über `PUT /api/users/:id` durch die Verwaltung mit Vermerk `user.weisungsbefugnis-set`, Karte in der Kontoverwaltung (`components/einstellungen/Weisungsbefugnis.tsx`). Die Rolle `admin` verleiht sie nicht. `*` = ganzes Unternehmen. |
 | **B · Unmittelbar gültige eigene Weisung** | Antwort 19: befugte Weisung gilt sofort | **gesamt-peer-validierung** (neue Kontoregel neben Peer-Prüfung, Direktannahme, Eigentümerfreigabe) | **umgesetzt**: Aktion `weisung-validate`, Kontoregel `weisung`, Beleg `ko.weisung-validated` (Fassung, Bereich, Sichtung), Annahmeverweis wie bei den übrigen Annahmen. Nur eigene Objekte (`author`), nur im befugten Bereich (Kategorie), unter dem KO-Lock geprüft. |
-| **C · Nachgelagerte Sichtung mit Verantwortlichem und Frist** | Antwort 19: „Verantwortlichen und Sichtungsfrist festlegen; gültig, solange kein berechtigter Widerruf oder Konflikt" | **gesamt-peer-validierung** | **umgesetzt**: `KnowledgeObject.weisungsSichtung` (verantwortlich ≠ Weisungsgeber, freigegebenes Konto mit Freigaberecht oder Weisungsbefugnis im Bereich; Frist frühestens heute), Aktion `weisung-sichten` (`bestaetigt` / `widerrufen` → Status offen, Annahme entfällt), Beleg `ko.weisung-gesichtet`, Anzeige „überfällig" an der Lesefläche. Ein Wahrheitskonflikt öffnet das Objekt wie bisher (`wahrheitskonfliktFolge`). |
+| **C · Nachgelagerte Sichtung mit Verantwortlichem und Frist** | Antwort 19: „Verantwortlichen und Sichtungsfrist festlegen; gültig, solange kein berechtigter Widerruf oder Konflikt" | **gesamt-peer-validierung** | **umgesetzt**: `KnowledgeObject.weisungsSichtung` (verantwortlich ≠ Weisungsgeber, freigegebenes Konto mit Freigaberecht oder Weisungsbefugnis im Bereich; Frist frühestens heute), Aktion `weisung-sichten` (`bestaetigt` / `widerrufen` → Status offen, Annahme entfällt), Beleg `ko.weisung-gesichtet`, Anzeige „überfällig" an der Lesefläche. Ein Wahrheitskonflikt öffnet das Objekt wie bisher (`wahrheitskonfliktFolge`); solange er offen ist, lässt sich die Weisung nicht erneut gültig setzen (409). Weisung und Sichtung entscheiden nur die gelesene Fassung (`expectedVersion`, sonst 409 `KO_STALE`); sichten darf die benannte Person nur, solange sie Prüfrecht oder Weisungsbefugnis für den Bereich noch hat. |
 | **D · Herkunft „Weisung von [Person] am [Datum]"** | Antwort 27 (Übernahme externer Freigaben mit Provenienz) als Nachbarentscheid; Kriterium von gesamt-wissen-herkunft: „Weisungswissen trägt seine befugte Herkunft und geltende Einordnung" | **gesamt-wissen-herkunft** | Hier nur die Daten, die dafür ohnehin entstehen: Beleg `ko.weisung-validated` nennt Person, Zeit, Fassung und Bereich; die Annahmezeile zeigt die Kontoregel. **Keine** eigene Herkunftsanzeige/-kennzeichnung in diesem Auftrag — die gehört dem Herkunftsauftrag und baut auf diesem Beleg auf. |
 | **E · Überstimmen je Punkt mit Hinweis (`superseded`)** | Konzept Abschnitt 2/3; kein jüngerer Entscheid | Bestand (Konfliktsystem, R-0263 `vorrang` `ueberstimmt`) | **vorhanden, nicht neu gebaut**: Vorrangwahl am Konfliktentscheid (`services/conflicts/src/service.ts`, `vorrang.art = ueberstimmt`). Eine automatische Überstimmungsfolge aus `weisung-validate` gibt es **nicht** — sie wäre eine Vorrangentscheidung (Teil F). |
 | **F · Geltungsbereich und Vorrang „spezieller vor allgemeiner"** | Antwort 20: Vorrang nach Geltungsbereich, Zeitraum und Befugnis; **Detailfälle ausdrücklich später** | geteilt; Grundregel im Bestand (R-0263 `schraenkt_ein` mit `geltungsbereich`) | **zurückgestellt** (s. Abschnitt 2). Nicht in diesem Kandidaten. |
@@ -71,9 +71,30 @@ Nicht entschieden und deshalb **nicht gebaut**:
 - **„Wer darf" — Konzept: „eigenes Recht, Kontoeigenschaft oder an Controller/Admin gebunden?"**:
   entschieden durch Antwort 18 = Kontoeigenschaft mit Bereich, ausdrücklich nicht an die Rolle.
 
-## 4. Was diese Datei nicht belegt
+## 4. Abschließende Zuordnung (Ben, Nacharbeit 11)
 
-Ob gesamt-wissen-herkunft Teil D in seinem eigenen Umfang erfüllt, belegt diese Datei nicht; sie nennt
-nur, welche Daten dafür hier entstehen. Die Zuordnung selbst ist ein Vorschlag aus den Quellen und
-Entscheiden; die verbindliche Aufteilung zwischen den beiden Registeraufträgen bleibt eine
-Koordinationsfrage außerhalb dieses Kandidaten.
+Die Aufteilung ist anhand der beiden **bestehenden** Originalaufträge abgeschlossen. Maßgeblich sind
+deren Originalkriterien, nicht ein neuer Zuschnitt:
+
+- `aufnahme:20260922:gesamt-peer-validierung` (dieser Auftrag): „Befugte menschliche Prüfung … keine
+  neue Expertenfreigabe" und R-1863 als Kriterium — also **wer** annehmen darf, **wie** eine Annahme
+  entsteht und wie sie gesichtet oder zurückgenommen wird.
+- `aufnahme:20260922:gesamt-wissen-herkunft`: Kriterium „Weisungswissen trägt seine befugte Herkunft
+  und geltende Einordnung" (zitiert in `QUELLEN-HILFE-R1863-b2ff599ddfee.json`,
+  `bereits_quellenbelegte_abgrenzung`) — also, wie die Herkunft eines solchen Wissens **angezeigt und
+  eingeordnet** wird.
+
+| Teil | Verbindlich bei | Ergebnis, Fassung und Beleg | Rest |
+| --- | --- | --- | --- |
+| A · Befugnis am Konto | gesamt-peer-validierung | geliefert: Kandidat `2bc8169c` (Nacharbeit 11); Prüfbelege `HISTORIE/nacharbeit-11/PRUEFUNG` — Suite `integration-ko-routen-und-weisung` 47/47 grün (u. a. `weisung-befugnis-route` B1/B2/B7/B8), Build Exit 0 | PostgreSQL-Rundlauf `weisungsbefugnis-pg.integration.test.ts` (P1–P3) liegt vor, wurde aber in keinem archivierten Lauf ausgeführt — kein Beleg. |
+| B · Unmittelbar gültige Weisung | gesamt-peer-validierung | geliefert wie A (B2/B3, Fläche M2/M6). Nacharbeit 12 ergänzt die Bindung an die gelesene Fassung (B10) und die Sperre bei offenem Wahrheitskonflikt (B12); deren Ausführung steht mit dem neuen Kandidaten aus. | — |
+| C · Sichtung mit Verantwortlichem und Frist | gesamt-peer-validierung | geliefert wie A (B4–B6, B9, Fläche M4/M5). Nacharbeit 12: Sichtung fassungsgebunden (B10, M7) und nur mit **aktueller** Befugnis (B11); Ausführung mit dem neuen Kandidaten. | Benachrichtigung/Aufgabenliste der Sichtenden: kein Original- oder Entscheidungsumfang (Abschnitt 3), nicht gebaut. |
+| D · Herkunftsanzeige „Weisung von [Person] am [Datum]" | **gesamt-wissen-herkunft** | Von hier geliefert sind nur die Daten, auf die D aufbaut: Beleg `ko.weisung-validated` (Person, Zeit, Fassung, Bereich, Kontoregel), Annahmezeile mit Kontoregel „Weisung" (M6). | **Offen im Herkunftsauftrag**: Anzeige und Einordnung der Weisungsherkunft an Wissen und Antworten. Registerstand beim letzten belegten Lesen (08.10.2026, `QUELLEN-HILFE-R1863`): `status offen`, `completion_evidence null` — ein Erfüllungsbeleg liegt nicht vor und wird hier nicht behauptet. Keine Doppelimplementierung in diesem Auftrag. |
+| E · Überstimmen je Punkt | Bestand (R-0263) | vorhanden, nicht Teil dieser Lieferung | — |
+| F · Vorrang spezieller/allgemeiner | zurückgestellt (Antwort 20) | — | die fünf Punkte aus Abschnitt 2, erst nach Vertiefung durch den Nutzer |
+| G · Copilot/S6 | keiner der beiden Aufträge | — | eigenes Register-Thema S6 |
+| H · Fakt ohne Prüfschleife | gesamt-peer-validierung über B | Freigabeweg = B | keine eigene Fakt-Erfassung (kein Entscheid) |
+
+Diese Zuordnung führt **keine** zusätzliche Freigabepflicht ein und verschiebt keinen Teil in einen
+neuen Auftrag. Der einzige Teil von R-1863, der außerhalb dieses Auftrags offen bleibt, ist D — beim
+bereits bestehenden Auftrag gesamt-wissen-herkunft, dem er durch dessen eigenes Kriterium gehört.
