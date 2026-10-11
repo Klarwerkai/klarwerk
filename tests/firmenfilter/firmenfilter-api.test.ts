@@ -123,7 +123,10 @@ async function mitNeutralemModell(services: ReturnType<typeof buildServices>) {
     },
   };
   services.reasoner = new Reasoner(new ModelProvider(client));
-  await erteileKiFreigabe(services.reasoner);
+  // Nacharbeit 7: ausdrücklich AUCH für vertrauliche Inhalte freigegeben (wie es ein Administrator
+  // setzt). Ohne diese Freigabe bleibt jeder Vergleich mit dem vertraulichen Nachbarn E2 aus, und
+  // der stille Abgleich von Leas Einträgen kann nicht gelingen (Prüflauf: fehlgeschlagen je Takt).
+  await erteileKiFreigabe(services.reasoner, { oeffentlicheKi: true, vertraulicheInhalte: true });
 }
 
 /** Firma A mit vollständigem Bestand. Vorbereitung über HTTP; Space/Prüfstand über den Dienst. */

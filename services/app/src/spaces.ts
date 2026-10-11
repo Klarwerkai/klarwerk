@@ -449,7 +449,8 @@ export function pruefeSpaceEingabe(
     ...(gebunden.length > 0 ? { teams: gebunden } : {}),
     ...(gruppe ? { gruppe } : {}),
     ...(regeln ? { regeln } : {}),
-    kontext: kontext as SpaceKontext,
+    // Nur ein GENANNTER Kontext wird Teil der Fassung; ohne Angabe gilt `firma` (`kontextVon`).
+    ...(r.kontext !== undefined ? { kontext: kontext as SpaceKontext } : {}),
     ...(kontext === "partner" ? { partner } : {}),
     ...(existenz.length > 0 ? { existenz } : {}),
   };

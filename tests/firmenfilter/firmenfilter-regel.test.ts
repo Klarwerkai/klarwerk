@@ -19,7 +19,7 @@ import {
 } from "../../services/app/src/firmenbereich";
 import type { SessionUser } from "../../services/app/src/http";
 import { sqlSichtbarkeitFuer } from "../../services/app/src/sichtbarkeit";
-import { partnerbereiche, pruefeSpaceEingabe } from "../../services/app/src/spaces";
+import { kontextVon, partnerbereiche, pruefeSpaceEingabe } from "../../services/app/src/spaces";
 
 const PARTNER = new Set(["s-alpha"]);
 
@@ -58,7 +58,8 @@ describe("K1 · drei unterscheidbare Bereiche, abgeleitet aus dem Bestand", () =
     // `partner` samt Namen; ein Name ohne diesen Kontext ist ungültig, und er ist nie für alle offen.
     const partner = { kontext: "partner" };
     expect(pruefe({}).partner).toBeUndefined();
-    expect(pruefe({}).kontext).toBe("firma");
+    expect(kontextVon(pruefe({}))).toBe("firma");
+    expect(pruefe({ kontext: "firma" }).kontext).toBe("firma");
     expect(pruefe({ ...partner, partner: "  Alpha GmbH " }).partner).toBe("Alpha GmbH");
     expect(pruefe({ partner: null }).partner).toBeUndefined();
     expect(pruefe({ partner: "" }).partner).toBeUndefined();

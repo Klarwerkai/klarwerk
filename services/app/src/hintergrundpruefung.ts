@@ -268,6 +268,23 @@ export function createHintergrundpruefung(
   // Konflikt/Überschneidung im Bestand — dort entscheidet die Paarsichtbarkeit, wer sie sieht.
   // Hat sich das Objekt selbst geändert, ist der Anlass sichtbar: dann der bisherige Weg über den
   // Vermerk (markAiCheckPending + Worker).
+  //
+  // Nacharbeit 7 (Prüflauf, Fehlschlag in jedem Takt): ein stiller Abgleich, der aus einem NICHT
+  // vorübergehenden Grund ohne Erfolg bleibt (etwa ein vertraulicher Nachbar ohne Freigabe für
+  // vertrauliche Inhalte), schreibt — anders als der Vermerkweg — keinen `failed`-Vermerk, der ihn
+  // aus der Arbeit nähme. Ohne Merkzettel stünde er als ältester Eintrag in JEDEM Takt vorn und
+  // verbrauchte das Laufbudget, bevor andere Einträge drankommen. Er wird deshalb für GENAU den
+  // Bestandsstand zurückgestellt, unter dem er scheiterte; ändert sich der Bestand (oder startet der
+  // Prozess neu), kommt er wieder dran. Vorübergehende Ausfälle (`NICHT_ERREICHBAR`) beenden den
+  // Takt wie bisher und werden nicht gemerkt.
+  const stillOhneErfolg = new Map<string, string>();
+  const stillZurueckgestellt = async (ko: KnowledgeObject): Promise<boolean> => {
+    const gemerkt = stillOhneErfolg.get(ko.id);
+    if (gemerkt === undefined || !nurBestandAbweichend(ko)) {
+      return false;
+    }
+    return (await deps.ko.aktuellePruefbasis(ko)).bestand === gemerkt;
+  };
   const stillerAbgleich = async (koId: string): Promise<AiCheckRunOutcome> => {
     const start = await deps.ko.get(koId);
     if (!start) {
@@ -281,7 +298,13 @@ export function createHintergrundpruefung(
       ergebnis = { ok: false };
     }
     if (ergebnis.ok) {
+      stillOhneErfolg.delete(koId);
       await deps.ko.vermerkeBestandsabgleich(koId, startBasis);
+    } else if (
+      !(ergebnis.fallbackReason && NICHT_ERREICHBAR.has(ergebnis.fallbackReason)) &&
+      typeof startBasis.bestand === "string"
+    ) {
+      stillOhneErfolg.set(koId, startBasis.bestand);
     }
     return ergebnis;
   };
@@ -344,12 +367,19 @@ export function createHintergrundpruefung(
       }
       bericht.vergleicheHeute = heute;
     }
-    const arbeit = (await deps.ko.listMitBestandsabgleich())
+    const kandidaten = (await deps.ko.listMitBestandsabgleich())
       .map((ko) => ({ ko, art: hintergrundArt(ko, nowMs) }))
       .filter((e): e is { ko: KnowledgeObject; art: Art } => e.art !== null)
-      .filter((e) => !deps.hauptWorker.has(e.ko.id) && !worker.has(e.ko.id))
-      // Nachholen vor Abgleich, innerhalb jeweils der älteste Vermerk zuerst.
-      .sort((a, b) => rang(a.art) - rang(b.art) || zeitpunkt(a.ko) - zeitpunkt(b.ko));
+      .filter((e) => !deps.hauptWorker.has(e.ko.id) && !worker.has(e.ko.id));
+    // P14 · Nacharbeit 7: ein still gescheiterter Abgleich wartet auf einen neuen Bestandsstand.
+    const arbeit: typeof kandidaten = [];
+    for (const e of kandidaten) {
+      if (!(e.art === "abgleich" && (await stillZurueckgestellt(e.ko)))) {
+        arbeit.push(e);
+      }
+    }
+    // Nachholen vor Abgleich, innerhalb jeweils der älteste Vermerk zuerst.
+    arbeit.sort((a, b) => rang(a.art) - rang(b.art) || zeitpunkt(a.ko) - zeitpunkt(b.ko));
     bericht.offen = arbeit.length;
     if (arbeit.length === 0) {
       return bericht;

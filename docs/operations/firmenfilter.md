@@ -65,6 +65,8 @@ Der Wechsel wird mit der nächsten Antwort erkannt. Bei offener Seite kommt sie 
 
 Weicht nur der Bestandsteil ab, gleicht die Hintergrundprüfung **still** ab (`hintergrundpruefung.ts`, `stillerAbgleich`): Sie setzt keinen Vermerk auf `pending`, vergleicht mit demselben Runner und Budget und erneuert danach nur den Bestandsteil der gespeicherten Bindung (`KoService.vermerkeBestandsabgleich`). Status, Zeitpunkte und Abdeckung des öffentlichen Vermerks bleiben unverändert. Eine Änderung an einem für den Leser unsichtbaren Eintrag ändert seine Antworten deshalb weder sofort noch nach dem Hintergrundabgleich.
 
+Bleibt ein stiller Abgleich aus einem nicht vorübergehenden Grund ohne Erfolg, wird er für genau diesen Bestandsstand zurückgestellt. Ein Beispiel ist ein vertraulicher Nachbar ohne Freigabe für vertrauliche Inhalte. Er belegt dann nicht in jedem Takt das Laufbudget. Ein neuer Bestandsstand oder ein Neustart nimmt ihn wieder auf. Vorübergehende Ausfälle des Modellwegs beenden den Takt wie bisher. Bis zum erfolgreichen Abgleich ist der Eintrag intern überholt; Leser sehen davon nichts.
+
 ## Gelernte Halbwertszeiten (Prüfnachtrag B-07)
 
 Die Frische-Auskunft lernt Halbwertszeiten je Kategorie aus dem festgehaltenen Lernverlauf (R-1636/R-0248). Gezählt werden nur Beobachtungen an Einträgen, die beim Erfassen **für jedes Konto lesbar** waren: interne Stufe, kein führender Space, keine Quellleserliste (`frische.ts`, Feld `oeffentlich` am Verlaufseintrag; in PostgreSQL die Spalte `ko_halbwertszeit_beobachtungen.oeffentlich`, additiv angelegt). Fassungen vertraulicher oder spacegebundener Einträge verschieben die Frist sichtbarer Einträge damit nicht, auch nicht nach Ablauf des 10-Minuten-Zwischenspeichers.
