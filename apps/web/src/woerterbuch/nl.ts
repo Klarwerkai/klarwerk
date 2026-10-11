@@ -3411,6 +3411,15 @@ const nl: typeof de = {
   "lib.liste.erfassen": "Vastleggen",
   "lib.liste.offline": "Zonder verbinding kan er nu niet worden gezocht.",
   "lib.liste.offlineWeiter": "Zodra de verbinding er weer is, gaat het zoeken vanzelf verder.",
+  // R-0429 Slice 2 — zie de Duitse regel.
+  "lib.antwort.titel": "Door AI samengevat",
+  "lib.antwort.anfordern": "Antwoord uit de bronnen",
+  "lib.antwort.laeuft": "De AI leest de bronnen …",
+  "lib.antwort.ausblenden": "Verbergen",
+  "lib.antwort.einblenden": "Tonen",
+  "lib.antwort.quellen": "Bronnen",
+  "lib.antwort.quelleN": "Bron {{n}}",
+  "lib.antwort.gefunden": "Gevonden",
   // JOB 3335 · UX-21 — zie de Duitse regel.
   "lib.lesemodus.listeEinblenden": "Resultatenlijst tonen",
   "lib.lesemodus.listeAusblenden": "Resultatenlijst verbergen",

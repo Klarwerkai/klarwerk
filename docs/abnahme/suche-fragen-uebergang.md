@@ -6,6 +6,10 @@ Codeänderung**. Der Zielzustand aus R-0436 ist im Bestand gebaut und durch vorh
 der Rest aus R-0429 (Slice 2) ist eine offene Produktrichtungs-Entscheidung und wird hier nicht
 eigenmächtig gebaut.
 
+**Nachtrag 11.10.2026:** Die offene Entscheidung zu Slice 2 hat Peter getroffen (Frage 52, s.
+Abschnitt „Slice 2 — Entscheidung und Umsetzung" unten). Slice 2 ist auf Kandidatenbasis `9b5accba`
+gebaut. Der Abschnitt zum Stand vom 08.10.2026 bleibt als historischer Stand unverändert stehen.
+
 ## R-0436 — „Fragen" direkt am Bibliothekstreffer
 
 Zielzustand (Originalwortlaut): „Aus der Bibliothek heraus laesst sich zu einem Treffer sofort eine
@@ -59,7 +63,8 @@ Grenzen, ausdrücklich benannt:
   ‚Fragen' auf der Lesefläche"). Ihre Funktion — Suchtext als Frage, ein Klick zur Antwort — lebt im
   Knopf „Fragen" weiter. Die Sichtung im Erstnutzerlauf vom 27.07.2026 bezieht sich auf die
   abgelöste Karte und ist kein Beleg für die heutige Fläche.
-- **Slice 2 (offen, nicht gebaut):** verdichtete Antwort inline in der Bibliothek, sichtbar getrennt
+- **Slice 2, Stand 08.10.2026 (historisch, überholt durch den Nachtrag unten): offen, nicht
+  gebaut.** Verdichtete Antwort inline in der Bibliothek, sichtbar getrennt
   von der wörtlichen Trefferliste. Der Zwischenbericht führt sie unter „Offene
   Produktrichtungs-Entscheidungen (warten auf Boss)" (`PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md:72-75`);
   das Originalkriterium (R-0429) übernimmt das wörtlich: „offene Produktrichtungs-Entscheidung,
@@ -78,6 +83,63 @@ Grenzen, ausdrücklich benannt:
   das Interview widerspricht ihr selbst zweimal (Zeilen 29, 53), und Paul nennt dort Produktrichtung
   ausdrücklich „außerhalb Mandat" (Zeile 17). Maßgeblich bleiben der Zwischenbericht und das
   Originalkriterium. Beide führen das Design als offene Entscheidung bei Boss/Pedi.
+
+### Slice 2 — Entscheidung und Umsetzung (Nachtrag 11.10.2026)
+
+**Entscheidung.** `QUELLEN-FACHHILFE-PETER-ENTSCHEIDUNGEN-20261011.json` in den
+Auftragsunterlagen, `human_decisions[0]`, Frage 52: „Wo erscheint die verdichtete Antwort innerhalb
+der Bibliothekssuche?" Empfehlung: „In einem klar erkennbaren Antwortbereich oberhalb der Treffer,
+mit anklickbaren Quellen. Die ursprünglichen Suchtreffer bleiben erreichbar." Peters Antwort im
+Original: „deine empfehlung". Damit ist die bis 08.10.2026 offene Designentscheidung geklärt. Die
+Quelle vermerkt selbst: „Beschluss dokumentiert; Umsetzung separat prüfen".
+
+**Umsetzung.**
+
+- `apps/web/src/components/bibliothek/BibliothekAntwort.tsx` (neu): Sobald der Suchbegriff
+  mindestens drei Zeichen hat, steht über den Treffern ein abgesetzter Bereich „Von der KI
+  verdichtet" mit dem Knopf „Antwort aus den Quellen". Darunter beginnt die Liste mit der Zeile
+  „Gefunden". Das ist die vom Berater verlangte sichtbare Trennung.
+- Ein Klick schickt den Suchbegriff genau einmal über denselben Anfragevertrag wie die Fragenseite
+  (`endpoints.ask.ask`). Gezeigt werden:
+  - die Antwort mit Fußnoten (`AntwortText`),
+  - die KI-Kennzeichnung (`AiGeneratedNotice`), Modellangabe und Kostenhinweis (`AiModelInfo`),
+  - die Einstufung aus `effectiveAnswer`,
+  - dieselben Vorbehaltstexte wie auf `/fragen`.
+
+  Die Quellen sind Knöpfe; ein Klick öffnet die Quelle rechts in der Lesefläche. Liste und Suche
+  bleiben stehen.
+- Tippen allein schickt nichts an ein Modell. Ohne nutzbares Modell wird nicht gesendet, und der
+  Sperrhinweis steht da. Ohne belegte Antwort steht „Wissenslücke" mit dem Satz, dass nichts
+  erfunden wurde.
+- „Ausblenden" klappt den Bereich zu, ohne die Antwort zu verwerfen. Ein neuer Suchbegriff
+  beginnt wieder beim Angebot.
+- Eingebaut über den neuen, optionalen Steckplatz `antwort` in
+  `apps/web/src/components/bibliothek/BibliothekListe.tsx`, gesetzt in `BibliothekFlaeche.tsx`.
+  Ohne Suchbegriff ist die Bibliothek unverändert.
+- Texte in DE/EN/NL: `lib.antwort.*` in `apps/web/src/woerterbuch/{de,en,nl}.ts`.
+
+**Gegenprobe.** `tests/library/bibliothek-antwort-slice2-mounted.test.tsx` misst an der gemounteten
+Seite `Library`:
+
+- S1 Lage über den Treffern, Trennung „Gefunden", keine Anfrage durch Tippen;
+- S2 genau eine Anfrage, Antwort, Kennzeichnung und anklickbare Quellen, die die Lesefläche öffnen;
+- S3 ohne Modell keine Anfrage;
+- S4 Lücke statt Erfindung;
+- S5 ohne Suchbegriff kein Bereich;
+- S6 Ausblenden ohne zweite Anfrage.
+
+**Grenzen von Slice 2.**
+
+- Die Antwort beruht auf dem ganzen Bestand, den die Person lesen darf. Sie ist nicht auf die
+  sichtbaren Treffer beschränkt; der Anfragevertrag kennt keine solche Bindung.
+- Modellangabe und Kostenhinweis stehen im Bereich erst nach dem Klick, zusammen mit der laufenden
+  Anfrage. Das ist dasselbe wie beim bestehenden Weg „Fragen" → `/fragen?ask=1`. Grund: Vor dem
+  Klick liest das Angebot bewusst keinen Modellstand.
+- Die Vorbehalte erscheinen als Text ohne die Weiterleitungsknöpfe der Fragenseite (Validierung,
+  Konflikte); diese Wege bleiben über „Fragen" erreichbar.
+- Ob die Darstellung Peters Vorstellung trifft, ist nicht durch eine menschliche Bedienung belegt.
+  Ebenso fehlt ein Lauf mit echtem Modell und echtem Bestand.
+- Die ausgelieferte Fassung steht erst nach der Veröffentlichung fest.
 
 ## Fehlende Belege
 

@@ -207,6 +207,7 @@ export function BibliothekListe({
   lage,
   ansicht = "liste",
   markierung = null,
+  antwort = null,
 }: {
   q: string;
   onQ: (wert: string) => void;
@@ -263,6 +264,9 @@ export function BibliothekListe({
   // Mehrfachauswahl. Beide optional: ohne sie zeichnet die Liste exakt wie bisher.
   ansicht?: BibAnsicht;
   markierung?: BibMarkierung | null;
+  // R-0429 Slice 2: der Antwortbereich „Von der KI verdichtet" (`BibliothekAntwort.tsx`). Er steht
+  // ÜBER den Treffern und getrennt von ihnen; der Aufrufer setzt ihn nur, solange gesucht wird.
+  antwort?: ReactNode;
 }): JSX.Element {
   const { t } = useTranslation();
   const spur = useRef<HTMLDivElement | null>(null);
@@ -355,6 +359,8 @@ export function BibliothekListe({
           </div>
         </div>
       </div>
+
+      {antwort}
 
       {/* JOB 3063 R6: der Hinweis „Stand von <Zeit> · Auffrischung fehlgeschlagen" — die zweite
           Hälfte der Zusage aus REGELN §7 und Auftrag §9. Die Zeilen bleiben stehen (dafür sorgt

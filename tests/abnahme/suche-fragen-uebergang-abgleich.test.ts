@@ -4,7 +4,7 @@
 // mit Zeilenangaben. Dieser Fall prüft, dass die zitierten Zeilen wirklich sagen, was das Dokument
 // ihnen zuschreibt — verschiebt jemand die Quelle, wird der Abgleich rot, statt still falsch zu
 // zitieren. Und er hält fest, dass die „nicht-Boss-abhängig"-Aussage NICHT als Freigabe gilt.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -46,7 +46,29 @@ describe("Suche→Fragen-Abgleich · zitierte Fundstellen tragen die Aussage", (
     expect(doc).toContain("Zeile 53");
     expect(doc).toContain(`${ZWISCHENBERICHT}:72-75`);
     expect(doc).toContain("**keine Freigabe**");
-    // Slice 2 bleibt im Abgleich offen — keine Erfüllungsbehauptung.
-    expect(doc).toContain("Slice 2 (offen, nicht gebaut)");
+    // Der Stand vom 08.10.2026 bleibt als historischer Stand stehen — er wird nicht umgeschrieben.
+    expect(doc).toContain("Slice 2, Stand 08.10.2026 (historisch, überholt durch den Nachtrag");
+  });
+
+  it("Nachtrag 11.10.: Entscheidung zu Frage 52 mit Quelle, Umsetzung mit existierenden Dateien", () => {
+    const doc = read(ABGLEICH).replace(/\s+/g, " ");
+    expect(doc).toContain("QUELLEN-FACHHILFE-PETER-ENTSCHEIDUNGEN-20261011.json");
+    expect(doc).toContain("`human_decisions[0]`, Frage 52");
+    expect(doc).toContain('„deine empfehlung"');
+    expect(doc).toContain("Slice 2 — Entscheidung und Umsetzung (Nachtrag 11.10.2026)");
+    // Jede Datei, die der Nachtrag als Umsetzung oder Gegenprobe nennt, gibt es wirklich.
+    for (const datei of [
+      "apps/web/src/components/bibliothek/BibliothekAntwort.tsx",
+      "apps/web/src/components/bibliothek/BibliothekListe.tsx",
+      "tests/library/bibliothek-antwort-slice2-mounted.test.tsx",
+    ]) {
+      expect(doc).toContain(datei);
+      expect(existsSync(resolve(process.cwd(), datei)), datei).toBe(true);
+    }
+    // Und die Liste hat den Steckplatz, die Fläche setzt ihn.
+    expect(read("apps/web/src/components/bibliothek/BibliothekListe.tsx")).toContain("{antwort}");
+    expect(read("apps/web/src/components/bibliothek/BibliothekFlaeche.tsx")).toContain(
+      "<BibliothekAntwort",
+    );
   });
 });
