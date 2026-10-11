@@ -3150,7 +3150,14 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Manifeständerung, kein Sideload. Im Prüflauf zu Kandidat 09f84e0e GEMESSEN („Received",
     // HISTORIE/nacharbeit-27/PRUEFUNG/entscheidungen-53-55-texte-und-panel.log) und unverändert
     // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
-    const PIN = "ea46e0c0c313b5dbb881065accc3f7bd9f786fb20203a73401f2c2cef3a5f7d0";
+    // AUFNAHME gesamt-design-abgleich (Peters Entscheidung 54, 11.10.2026): PIN BEWUSST AKTUALISIERT
+    // (ea46e0c0… -> 8d82fac4…). Auslieferungsfolgen, jede geprüft: nur der deutsche Wert von
+    // `askEvidenceVerified` lautet jetzt „Einstufung: Fachlich bestätigt — …“ statt „gesichert“;
+    // Schlüssel, Ausgabewege, Abrufziele, Nutzlast, CSP, Rechte und Manifest unverändert, kein
+    // Sideload. Im Prüflauf zu Kandidat 7854cbde GEMESSEN („Received",
+    // HISTORIE/nacharbeit-30/PRUEFUNG/entscheidung-54-statuswort.log) und unverändert übernommen;
+    // die Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "8d82fac4d51c50a996c72c4733f7ffde7a91fe5e2d5e2c1e6660625514ad0eee";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

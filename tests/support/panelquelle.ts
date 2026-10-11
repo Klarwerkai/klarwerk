@@ -457,8 +457,12 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * Kandidat 09f84e0e (`df3a2076…`, „Received" von E2,
  * HISTORIE/nacharbeit-27/PRUEFUNG/entscheidungen-53-55-texte-und-panel.log; vorher `1e57e17c…`)
  * und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+ * AUFNAHME gesamt-design-abgleich (Peters Entscheidung 54, 11.10.2026): deutscher Einstufungshinweis
+ * „Fachlich bestätigt“ statt „gesichert“. GEMESSEN im Prüflauf zu Kandidat 7854cbde (`957753ba…`,
+ * „Received" von E2, HISTORIE/nacharbeit-30/PRUEFUNG/entscheidung-54-statuswort.log; vorher
+ * `df3a2076…`) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "df3a2076291907c5ed286204b457d21864269ded";
+export const PANEL_VOR_SCHNITT_BLOB = "957753bae21653dc9383968b87d99df962c17368";
 
 export interface PanelTeile {
   html: string;
