@@ -4,28 +4,57 @@
 // „Sachlich"). Jede Option ist ein echter Radioknopf: Tab erreicht die Gruppe, Pfeiltasten wechseln
 // die Wahl, der Fokus ist als dicker Rahmen sichtbar, die gewählte Option trägt Rahmen, Haken und
 // „Ausgewählt" — nicht nur eine Farbe. Die Vorschau zeigt das ganze Motiv (nichts abgeschnitten).
+//
+// produkt:20261010:assistenz-avatarzustaende: unter jeder Option startet „Zustände ansehen“ bewusst
+// eine kurze Vorschau der neun Zustände dieses Motivs (`AvatarZustandsVorschau`). Der Knopf liegt
+// AUSSERHALB der Beschriftung des Radioknopfs — die Vorschau wählt kein Motiv und speichert nichts.
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ASSISTENZ_AVATAR_KATALOG,
   AVATAR_GRUPPEN,
   type AssistenzAvatarMotiv,
+  avatarMotiv,
 } from "../../lib/assistenzAvatare";
 import { AvatarBild } from "./AvatarBild";
+import { AvatarZustandsVorschau } from "./AvatarZustandsVorschau";
 
 export function AvatarAuswahl({
   idBasis,
   wert,
   onWahl,
   fehler,
+  bewegungReduziert = false,
 }: {
   idBasis: string;
   wert: string | null;
   onWahl: (id: string) => void;
   /** Feldfehler (z. B. „Bitte wähle ein Motiv."), direkt an der Gruppe erklärt. */
   fehler: string | null;
+  /** Die Wahl „Bewegung reduzieren“ im Formular — gilt auch für die Vorschau. */
+  bewegungReduziert?: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
   const fehlerId = `${idBasis}-fehler`;
+  const [vorschauId, setVorschauId] = useState<string | null>(null);
+  const [vorschauFertig, setVorschauFertig] = useState(false);
+  const vorschauMotiv = avatarMotiv(vorschauId);
+  const startId = useCallback((id: string): string => `${idBasis}-vorschau-${id}`, [idBasis]);
+  const vorschauEnde = useCallback(
+    (bewusst: boolean): void => {
+      const id = vorschauId;
+      const fokusInVorschau =
+        document.activeElement?.closest('[data-testid="assistenz-zustandsvorschau"]') != null;
+      setVorschauId(null);
+      setVorschauFertig(true);
+      // Per Knopf oder Escape beendet — oder von selbst, während der Fokus in ihr stand: der Fokus
+      // kehrt zum Startknopf des Motivs zurück und geht nicht verloren.
+      if ((bewusst || fokusInVorschau) && id) {
+        document.getElementById(startId(id))?.focus();
+      }
+    },
+    [vorschauId, startId],
+  );
   return (
     <fieldset
       data-testid="assistenz-avatar-auswahl"
@@ -55,17 +84,49 @@ export function AvatarAuswahl({
           </legend>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-7">
             {ASSISTENZ_AVATAR_KATALOG.filter((m) => m.gruppe === gruppe).map((m) => (
-              <AvatarOption
-                key={m.id}
-                motiv={m}
-                name={`${idBasis}-avatar`}
-                gewaehlt={wert === m.id}
-                onWahl={onWahl}
-              />
+              <div key={m.id} className="flex min-w-0 flex-col gap-1">
+                <AvatarOption
+                  motiv={m}
+                  name={`${idBasis}-avatar`}
+                  gewaehlt={wert === m.id}
+                  onWahl={onWahl}
+                />
+                <button
+                  id={startId(m.id)}
+                  type="button"
+                  data-testid={`assistenz-vorschau-start-${m.id}`}
+                  aria-label={t("assistenz.vorschau.startenLabel", {
+                    motiv: t(`assistenz.avatar.name.${m.id}`),
+                  })}
+                  aria-pressed={vorschauId === m.id}
+                  onClick={() => {
+                    setVorschauFertig(false);
+                    setVorschauId(m.id);
+                  }}
+                  className="rounded-btn border border-hairline bg-surface px-1 py-0.5 text-[11px] font-semibold leading-tight text-text hover:border-ink/40 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink"
+                >
+                  {t("assistenz.vorschau.starten")}
+                </button>
+              </div>
             ))}
           </div>
         </fieldset>
       ))}
+      {vorschauMotiv ? (
+        <AvatarZustandsVorschau
+          key={vorschauMotiv.id}
+          motiv={vorschauMotiv}
+          bewegungReduziert={bewegungReduziert}
+          onEnde={vorschauEnde}
+        />
+      ) : vorschauFertig ? (
+        <output
+          data-testid="assistenz-zustandsvorschau-fertig"
+          className="block text-[12px] text-muted"
+        >
+          {t("assistenz.vorschau.fertig")}
+        </output>
+      ) : null}
     </fieldset>
   );
 }
