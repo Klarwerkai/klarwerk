@@ -1707,9 +1707,13 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       "Kommentar und Barrel-Re-Export duerfen NICHT als Aufrufer zaehlen",
     ).toBe(false);
     // Und ein bekannter Fall ohne Aufrufer steht wirklich in der Fundliste — an dieser Stelle stand
-    // bis zur Nacharbeit 2 `fuehreBestandsresetAus`. `pruefeValidationDecisionRef` ist derselbe Fall
-    // (`OFFENER_REST`, gebaut und ohne Aufrufer; `PgWriteFence` ist auf main inzwischen entfernt).
-    expect(finde("pruefeValidationDecisionRef").datei).toBe("services/audit/src/repo.ts");
+    // bis zur Nacharbeit 2 `fuehreBestandsresetAus`. Die Probe nimmt jetzt einen Export, der BAUART-
+    // BEDINGT ohne Produktaufrufer bleibt (`BEWUSST`, eine reine Testhilfe): Altfälle aus
+    // `OFFENER_REST` taugen dafür nicht, weil sie verdrahtet oder entfernt werden sollen
+    // (`PgWriteFence` ist auf main entfernt, `pruefeValidationDecisionRef` inzwischen angeschlossen).
+    expect(finde("resetEmbedSemaphoreForTests").datei).toBe(
+      "services/app/src/embed-concurrency.ts",
+    );
 
     // POSITIV: ein Aufruf, dessen Import über den BARREL läuft, zählt — der Sammler löst ihn bis
     // zur definierenden Datei auf. `bestandsreset-dienst.ts` importiert aus `../../db-tx`.

@@ -69,9 +69,12 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
     Number((await pool.query("SELECT stand FROM ko_schreibstand WHERE id = 1")).rows[0].stand);
 
   beforeEach(async () => {
+    // CASCADE seit der Integration mit main: `ko_versions_ko_fk`/`ko_evidence_ko_fk` zeigen auf
+    // `kos` (KO_FREMDSCHLUESSEL_SCHEMA), und ein TRUNCATE auf eine referenzierte Tabelle verlangt
+    // es. Nur die Vorbereitung räumt so ab; der Reset selbst löscht weiter per DELETE, Kinder zuerst.
     await pool.query(
       `TRUNCATE users, sessions, bestandsreset_laeufe, kos, dokument_fassungen,
-                kenntnisnahme_empfaenger, kenntnisnahme_anforderungen`,
+                kenntnisnahme_empfaenger, kenntnisnahme_anforderungen CASCADE`,
     );
     await pool.query(
       `INSERT INTO users(id, name, email, password_salt, password_hash, role, approved, created_at)
@@ -172,7 +175,7 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
 
   it("P4 · der administrative Weg: Vorschau, zweimal Passwort, Häkchen — sonst bleibt alles stehen", async () => {
     // Eine leere Kontenablage, damit das erste Konto Admin wird (FR-AUTH-01) — wie im echten Erststart.
-    await pool.query("TRUNCATE users, sessions, kos, begriffe_fassungen");
+    await pool.query("TRUNCATE users, sessions, kos, begriffe_fassungen CASCADE");
     const app = buildApp(buildPgServices(pool));
     const PASSWORT = "Bestand-zurueck-2026!";
     const reg = await app.inject({
