@@ -3157,7 +3157,14 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Sideload. Im Prüflauf zu Kandidat 7854cbde GEMESSEN („Received",
     // HISTORIE/nacharbeit-30/PRUEFUNG/entscheidung-54-statuswort.log) und unverändert übernommen;
     // die Panel-Dateien sind seit dieser Messung unberührt.
-    const PIN = "8d82fac4d51c50a996c72c4733f7ffde7a91fe5e2d5e2c1e6660625514ad0eee";
+    // INTEGRATION Hauptstand (a55bab3b, Auftrag „Menschliche Bewertungen und nachvollziehbare
+    // Freigaberegeln“, ebenfalls Antwort 54): PIN BEWUSST AKTUALISIERT (8d82fac4… -> 13a4708e…).
+    // Auslieferungsfolgen, jede geprüft: nur der deutsche Wert von `askStatusValidiert` lautet
+    // „Fachlich bestätigt“ statt „Validiert“ (plus zwei Kommentarzeilen); Schlüssel, Abrufziele,
+    // Nutzlast, CSP, Rechte und Manifest unverändert, kein Sideload. Im Prüflauf zu Kandidat
+    // 82db4e0a GEMESSEN („Received", HISTORIE/nacharbeit-31/PRUEFUNG/panel-pins-entscheidung-54.log)
+    // und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "13a4708e0d85d80ded0ff5b86f1abdfdfe0314211c9f8ff8412da35df403a41e";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

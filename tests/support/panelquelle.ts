@@ -461,8 +461,12 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * „Fachlich bestätigt“ statt „gesichert“. GEMESSEN im Prüflauf zu Kandidat 7854cbde (`957753ba…`,
  * „Received" von E2, HISTORIE/nacharbeit-30/PRUEFUNG/entscheidung-54-statuswort.log; vorher
  * `df3a2076…`) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+ * INTEGRATION Hauptstand (a55bab3b): `askStatusValidiert` DE „Fachlich bestätigt“ (Antwort 54, Auftrag
+ * „Menschliche Bewertungen und nachvollziehbare Freigaberegeln“). GEMESSEN im Prüflauf zu Kandidat
+ * 82db4e0a (`cd5def0d…`, „Received" von E2, HISTORIE/nacharbeit-31/PRUEFUNG/
+ * panel-pins-entscheidung-54.log; vorher `957753ba…`) und unverändert übernommen.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "957753bae21653dc9383968b87d99df962c17368";
+export const PANEL_VOR_SCHNITT_BLOB = "cd5def0d7ba5db5da48dcce8c99d77d8bb2d6fea";
 
 export interface PanelTeile {
   html: string;
