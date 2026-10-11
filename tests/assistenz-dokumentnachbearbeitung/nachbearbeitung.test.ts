@@ -149,6 +149,10 @@ async function baueWelt(): Promise<Welt> {
     objectRoutes(objekte, guards, {
       kos: async () => ko.list(),
       ko: (koId) => ko.get(koId),
+      versionen: async (koId) =>
+        (await ko.versionsOf(koId)).map((v) => ({ author: v.author, stand: v.snapshot })),
+      belege: (koId) => ko.evidenceOf(koId),
+      entwuerfe: async () => [],
     }),
   );
   await app.ready();
@@ -175,6 +179,9 @@ async function artikelMitPraesentation(w: Welt, autor = "anna") {
     type: "best_practice",
     category: "Testanlage",
     author: autor,
+    // Ausdrücklich eingestuft: ein Objekt OHNE Stufe zählt als vertraulich (Entscheidung 16) und
+    // wäre für andere Experten unsichtbar. Die Proben fremder Leser brauchen ein internes Objekt.
+    confidentiality: "intern",
   });
   const mitAnhang = await w.ko.addAttachment(ko.id, autor, {
     name: "Besprechung.pptx",

@@ -131,16 +131,38 @@ async function warteAuf(bedingung: () => Promise<boolean>, ms: number, was: stri
   }
 }
 
-/** Der Text aller Teile unter einem Pfadpräfix (Tags entfernt) — gleich wie der Host sie benennt. */
+/**
+ * Der sichtbare Text eines XML-Teils, Absatz für Absatz: nur der Inhalt der Textläufe `<a:t>`,
+ * je `<a:p>` aneinandergefügt. Nacharbeit 4: Collabora schreibt die Datei mit Einrückungen ZWISCHEN
+ * den Tags; ein bloßes Entfernen der Tags ließ diesen Leerraum mitten in den Sätzen stehen.
+ */
+function absatzText(xml: string): string {
+  const entitaeten = (t: string) =>
+    t
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, "&");
+  return [...xml.matchAll(/<a:p(?:\s[^>]*)?>([\s\S]*?)<\/a:p>/g)]
+    .map((p) =>
+      [...(p[1] ?? "").matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)]
+        .map((t) => entitaeten(t[1] ?? ""))
+        .join(""),
+    )
+    .join("\n");
+}
+
+/** Der Text aller Teile unter einem Pfadpräfix — gleich, wie der Host die Teile benennt. */
 async function textUnter(bytes: Buffer, praefix: string): Promise<string> {
   const zip = await JSZip.loadAsync(bytes);
   const teile: string[] = [];
   for (const name of Object.keys(zip.files).sort()) {
     if (name.startsWith(praefix) && name.endsWith(".xml")) {
-      teile.push(((await zip.file(name)?.async("string")) ?? "").replace(/<[^>]+>/g, ""));
+      teile.push(absatzText((await zip.file(name)?.async("string")) ?? ""));
     }
   }
-  return teile.join(" ");
+  return teile.join("\n");
 }
 
 /** Ist die Folie mit diesem Text ausgeblendet (`show="0"`)? */
@@ -149,7 +171,7 @@ async function ausgeblendet(bytes: Buffer, text: string): Promise<boolean | unde
   for (const name of Object.keys(zip.files)) {
     if (/^ppt\/slides\/slide\d+\.xml$/.test(name)) {
       const xml = (await zip.file(name)?.async("string")) ?? "";
-      if (xml.replace(/<[^>]+>/g, "").includes(text)) {
+      if (absatzText(xml).includes(text)) {
         return /<p:sld\s[^>]*\sshow="(0|false)"/.test(xml);
       }
     }
@@ -321,6 +343,7 @@ describe("BPA-17 · Hostweg Collabora CODE", { timeout: 900_000 }, () => {
       type: "best_practice",
       category: "Testanlage",
       author: "anna",
+      confidentiality: "intern",
     });
     const mitAnhang = await ko.addAttachment(artikel.id, "anna", {
       name: "Besprechung.pptx",
