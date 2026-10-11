@@ -330,6 +330,15 @@ import {
   type KlaraGespraechRepo,
   PgKlaraGespraechRepo,
 } from "./klara-gespraech";
+// ADMIN-12: Kommunikationsregeln, persönliche Abwahl und Zustellstatus — haltbar im Postgres-
+// Betrieb, im Speicher ohne Datenbank.
+import {
+  InMemoryKommunikationRepo,
+  KommunikationDienst,
+  type KommunikationRepo,
+  PgKommunikationRepo,
+  mailsVersenden,
+} from "./kommunikationsregeln";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import {
   InMemoryLesevariantenRepo,
@@ -415,6 +424,7 @@ import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
 import { type ZurufModell, klaraZurufRoutes } from "./routes/klara-session-routes";
 import { knowledgeCheckRoutes } from "./routes/knowledge-check-routes";
 import { koRoutes } from "./routes/ko-routes";
+import { kommunikationRoutes } from "./routes/kommunikation-routes";
 import { lesevariantenRoutes } from "./routes/lesevarianten-routes";
 import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
@@ -722,6 +732,11 @@ export interface AppServices {
    * Speicherfassung, die im Desktop-Journal-Betrieb das Anlegen ablehnt.
    */
   veroeffentlichungsZustellungen: VeroeffentlichungsZustellungRepo;
+  /**
+   * ADMIN-12 — Fassungen der Kommunikationsregeln, persönliche Abwahlen und der Zustellstatus je
+   * Veröffentlichung, Empfänger und Kanal. Bauform wie `veroeffentlichungsZustellungen`.
+   */
+  kommunikation: KommunikationRepo;
   /**
    * Betroffenenrechte (R-0661): die Löschanträge der Mitarbeiter. Aus demselben Grund wie
    * `kenntnisnahmen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgLoeschantragRepo`; ohne Datenbank
@@ -1260,6 +1275,8 @@ export function assembleServices(
     kenntnisnahmeUhr?: () => number;
     // Veröffentlichung: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
     veroeffentlichungsZustellungen?: VeroeffentlichungsZustellungRepo;
+    // ADMIN-12: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    kommunikation?: KommunikationRepo;
     // Betroffenenrechte: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     loeschantraege?: LoeschantragRepo;
     // Betroffenenrechte: die Uhr für Antragsfrist und Überfälligkeit — ohne Injektion `Date.now`.
@@ -1691,6 +1708,9 @@ export function assembleServices(
     veroeffentlichungsZustellungen:
       opts.veroeffentlichungsZustellungen ??
       new InMemoryVeroeffentlichungsZustellungRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+    // ADMIN-12: dieselbe Haltbarkeitsregel wie die Zustellungen der Veröffentlichung.
+    kommunikation:
+      opts.kommunikation ?? new InMemoryKommunikationRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     // Betroffenenrechte: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit
     // zu (Desktop-Journal), lehnt die Speicherfassung Anträge ab — ein angenommener und beim
     // Neustart verlorener Löschantrag wäre schlimmer als ein abgelehnter.
@@ -2203,6 +2223,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
       // Veröffentlichung: die Zustellungen überleben Neuladen, Neuanmeldung und Neustart.
       veroeffentlichungsZustellungen: new PgVeroeffentlichungsZustellungRepo(pool),
+      // ADMIN-12: Regelfassungen, persönliche Abwahlen und Zustellstatus überleben Neuladen,
+      // Neustart und Deploy (`KOMMUNIKATION_SCHEMA`, angelegt von `migrate()`).
+      kommunikation: new PgKommunikationRepo(pool),
       // Betroffenenrechte: Löschanträge überleben Neuladen, Neustart und die Löschung des Kontos,
       // das sie betreffen — sie sind der Nachweis über die Bearbeitung.
       loeschantraege: new PgLoeschantragRepo(pool),
@@ -4375,6 +4398,16 @@ export function buildApp(
   // produkt:20261007:veroeffentlichungsoptionen — Veröffentlichung mit Meldungswahl. Der Leserkreis
   // ist derselbe wie der Empfängerkreis einer Kenntnisnahme (eine Regel, eine Stelle); der Vermerk
   // liegt am Eintrag, der Beleg im Prüfprotokoll. Dieselbe Instanz speist die Glocke unten.
+  // ADMIN-12: die Kommunikationsregeln. Mail gilt als eingerichtet, wenn ein echter Versandweg
+  // verdrahtet ist — dieselbe Auskunft wie `mailVersand` im Verarbeitungsverzeichnis, je Aufruf
+  // frisch gelesen. Push hat dieses Produkt nicht.
+  const kommunikationDienst = new KommunikationDienst({
+    repo: services.kommunikation,
+    mailEingerichtet: () => !(services.mailer instanceof ConsoleMailer),
+    kontoNamen: () => kenntnisnahmeDienst.kontoNamen(),
+    jetzt: services.kenntnisnahmeUhr,
+  });
+  app.register(kommunikationRoutes({ dienst: kommunikationDienst, audit: services.audit }, guards));
   const veroeffentlichungDienst = new VeroeffentlichungDienst({
     ko: services.ko,
     leser: (ko) => kenntnisnahmeDienst.moeglicheEmpfaenger(ko),
@@ -4383,6 +4416,35 @@ export function buildApp(
     zustellungen: services.veroeffentlichungsZustellungen,
     jetzt: services.kenntnisnahmeUhr,
     kennung: () => randomUUID(),
+    kommunikation: {
+      dienst: kommunikationDienst,
+      repo: services.kommunikation,
+      // Die Rechte gelten zum Versandzeitpunkt: derselbe Leserkreis wie beim Veröffentlichen,
+      // aber JETZT gelesen.
+      versenden: (vermerk) =>
+        mailsVersenden(
+          {
+            repo: services.kommunikation,
+            mailer: services.mailer,
+            // Dieselbe Auskunft wie `mailEingerichtet` oben — je Versand frisch gelesen.
+            eingerichtet: () => !(services.mailer instanceof ConsoleMailer),
+            adressen: async () =>
+              new Map((await services.auth.listUsers()).map((u) => [u.id, u.email])),
+            darfLesen: async (kontoId, koId) => {
+              const ko = await services.ko.get(koId);
+              return (
+                ko !== undefined &&
+                (await kenntnisnahmeDienst.moeglicheEmpfaenger(ko)).some((k) => k.id === kontoId)
+              );
+            },
+            abgewaehlt: (kontoId) =>
+              kommunikationDienst.hatAbgewaehlt("veroeffentlichung", kontoId),
+            jetzt: services.kenntnisnahmeUhr,
+          },
+          vermerk,
+        ),
+      gelesen: async (kontoId) => new Set(await services.notificationSeen.seenFor(kontoId)),
+    },
   });
   app.register(
     veroeffentlichungRoutes({ dienst: veroeffentlichungDienst, kos: services.ko }, guards),
@@ -4696,6 +4758,8 @@ export function buildApp(
         }),
         // Veröffentlichung: Meldungen bei „normal" und „hervorgehoben" — nie bei „still".
         veroeffentlichungen: veroeffentlichungDienst,
+        // ADMIN-12: persönliche Abwahl und tägliche Zusammenfassung; hält die Zustellung fest.
+        kommunikation: kommunikationDienst,
       },
       guards,
     ),
