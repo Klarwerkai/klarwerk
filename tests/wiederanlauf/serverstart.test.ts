@@ -21,7 +21,10 @@ const WURZEL = join(__dirname, "..", "..");
 const GESTOPPT =
   "Außenaktionen gestoppt (wissensereignisse, hintergrundpruefung, lueckenerkennung)";
 const LUECKEN_AKTIV = "Lückenerkennung über den Reasoner aktiv";
-const MELDUNGEN_AKTIV = "Wissensereignis-Meldungen aktiv";
+// Die Startmeldung lautet „Wissensereignis-Meldungen aktiv — 1 Ziel(e), Takt 60 s." — die bestehende
+// Log-Schwärzung ersetzt das erste Wort im Prozessprotokoll durch „[redacted]" (gemessen im Lauf
+// am Kandidaten 73279363). Verankert wird deshalb der ungeschwärzte Rest, der nur hier vorkommt.
+const MELDUNGEN_AKTIV = "aktiv — 1 Ziel(e), Takt 60 s.";
 // Ein gültiges Ziel auf der eigenen Maschine; im Prüflauf wird nichts zugestellt (Grundstand).
 const WEBHOOKS = JSON.stringify([
   {
