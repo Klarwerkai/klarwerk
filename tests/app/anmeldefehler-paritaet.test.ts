@@ -36,6 +36,14 @@ const OEFFENTLICH_ERREICHBAR = [
   "LOGIN_RATE_LIMITED",
   "RESET_RATE_LIMITED",
   "ALREADY_SETUP",
+  // Integration mit main (R-0562 zweiter Faktor, R-0541 nur Firmen-Login): diese Sätze erreichen die
+  // Anmeldemaske seither ebenfalls und müssen beim Sprachwechsel übersetzbar sein.
+  "SECOND_FACTOR_REQUIRED",
+  "SECOND_FACTOR_INVALID",
+  "SECOND_FACTOR_CHALLENGE_INVALID",
+  "SECOND_FACTOR_RATE_LIMITED",
+  "PASSWORD_LOGIN_DISABLED",
+  "SSO_ONLY_NOT_CONFIGURED",
 ] as const;
 
 describe("R-0531 · Anmeldefehler: Web-Kopie und Server-Katalog", () => {

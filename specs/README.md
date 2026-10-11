@@ -3,6 +3,7 @@
 > Übernommen aus dem KLARWERK-Pflichtenheft v1.0 (14.06.2026). Kanonische Quelle:
 > `specs/reference/Pflichtenheft.md` (+ Funktionsbeschreibung, Technischer Anhang).
 > Jede Anforderung ist test-fähig (Abnahmekriterium → Test). Modulschnitt = modularer Monolith.
+> Nachweisquote je Anforderung (Code + Testfall zum Abnahmekriterium): `specs/ERFUELLUNGSSTAND.md`.
 
 ## Lesart
 - **FR** = funktionale Anforderung, **NFR** = nichtfunktionale (Constraints, siehe unten).

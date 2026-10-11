@@ -39,6 +39,17 @@ export default {
     "anmeldefehler.LOGIN_RATE_LIMITED": "Zu viele Anmeldeversuche. Bitte später erneut versuchen.",
     "anmeldefehler.RESET_RATE_LIMITED": "Zu viele Versuche. Bitte später erneut versuchen.",
     "anmeldefehler.ALREADY_SETUP": "Instanz ist bereits eingerichtet.",
+    "anmeldefehler.SECOND_FACTOR_REQUIRED":
+      "Bitte den Bestätigungscode aus der Authenticator-App eingeben.",
+    "anmeldefehler.SECOND_FACTOR_INVALID": "Bestätigungscode falsch oder abgelaufen.",
+    "anmeldefehler.SECOND_FACTOR_CHALLENGE_INVALID":
+      "Die Anmeldung ist abgelaufen. Bitte erneut mit E-Mail und Passwort anmelden.",
+    "anmeldefehler.SECOND_FACTOR_RATE_LIMITED":
+      "Zu viele falsche Bestätigungscodes. Bitte später erneut versuchen.",
+    "anmeldefehler.PASSWORD_LOGIN_DISABLED":
+      "Die Anmeldung mit Passwort ist auf dieser Instanz abgeschaltet. Bitte über den Firmen-Login (SSO) anmelden.",
+    "anmeldefehler.SSO_ONLY_NOT_CONFIGURED":
+      "Die Anmeldung mit Passwort ist abgeschaltet, der Firmen-Login ist aber noch nicht eingerichtet. Bitte die IT bitten, die Anbieterwerte zu ergänzen.",
     "anmeldefehler.unbekannt":
       "Der Vorgang wurde abgelehnt. Die genaue Meldung liegt nur in der zuvor gewählten Sprache vor — bitte erneut absenden.",
   },
@@ -59,6 +70,17 @@ export default {
     "anmeldefehler.LOGIN_RATE_LIMITED": "Too many sign-in attempts. Please try again later.",
     "anmeldefehler.RESET_RATE_LIMITED": "Too many attempts. Please try again later.",
     "anmeldefehler.ALREADY_SETUP": "This instance has already been set up.",
+    "anmeldefehler.SECOND_FACTOR_REQUIRED":
+      "Please enter the confirmation code from your authenticator app.",
+    "anmeldefehler.SECOND_FACTOR_INVALID": "The confirmation code is incorrect or has expired.",
+    "anmeldefehler.SECOND_FACTOR_CHALLENGE_INVALID":
+      "The sign-in has expired. Please sign in again with email and password.",
+    "anmeldefehler.SECOND_FACTOR_RATE_LIMITED":
+      "Too many incorrect confirmation codes. Please try again later.",
+    "anmeldefehler.PASSWORD_LOGIN_DISABLED":
+      "Password sign-in is switched off on this instance. Please sign in with your company login (SSO).",
+    "anmeldefehler.SSO_ONLY_NOT_CONFIGURED":
+      "Password sign-in is switched off, but the company login has not been set up yet. Please ask your IT team to add the provider settings.",
     "anmeldefehler.unbekannt":
       "The request was declined. The exact message is only available in the previously selected language — please submit again.",
   },
@@ -80,6 +102,17 @@ export default {
     "anmeldefehler.LOGIN_RATE_LIMITED": "Te veel aanmeldpogingen. Probeer het later opnieuw.",
     "anmeldefehler.RESET_RATE_LIMITED": "Te veel pogingen. Probeer het later opnieuw.",
     "anmeldefehler.ALREADY_SETUP": "Deze instantie is al ingesteld.",
+    "anmeldefehler.SECOND_FACTOR_REQUIRED":
+      "Voer de bevestigingscode uit je authenticator-app in.",
+    "anmeldefehler.SECOND_FACTOR_INVALID": "De bevestigingscode is onjuist of verlopen.",
+    "anmeldefehler.SECOND_FACTOR_CHALLENGE_INVALID":
+      "De aanmelding is verlopen. Meld je opnieuw aan met e-mailadres en wachtwoord.",
+    "anmeldefehler.SECOND_FACTOR_RATE_LIMITED":
+      "Te veel onjuiste bevestigingscodes. Probeer het later opnieuw.",
+    "anmeldefehler.PASSWORD_LOGIN_DISABLED":
+      "Aanmelden met een wachtwoord is op deze instantie uitgeschakeld. Meld je aan via de bedrijfslogin (SSO).",
+    "anmeldefehler.SSO_ONLY_NOT_CONFIGURED":
+      "Aanmelden met een wachtwoord is uitgeschakeld, maar de bedrijfslogin is nog niet ingericht. Vraag je IT-afdeling de gegevens van de aanbieder aan te vullen.",
     "anmeldefehler.unbekannt":
       "Het verzoek is afgewezen. De precieze melding is alleen beschikbaar in de eerder gekozen taal — verstuur het opnieuw.",
   },

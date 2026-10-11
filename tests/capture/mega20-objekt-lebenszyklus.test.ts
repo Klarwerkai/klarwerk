@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
-import { findObjectReferences, isObjectReferenced } from "../../services/app/src/object-references";
 import {
   InMemoryObjectRepo,
   OBJECT_RETENTION_DAYS,
@@ -22,24 +21,20 @@ import {
 //
 // WAS HIER BELEGT WIRD: die positive Lebenszyklus-Zuordnung am Objekt, die konservative
 // Aufbewahrung (laufender Upload gilt NICHT als Waise), die Unterscheidbarkeit transienter Medien,
-// die neuen Repo-Fähigkeiten — und die modulübergreifende Referenzprüfung in `services/app`,
-// inklusive der beiden Fundorte, die man am leichtesten übersieht: Snapshot und Evidence.
+// die neuen Repo-Fähigkeiten.
 //
 // WAS HIER AUSDRÜCKLICH NICHT GEBAUT IST: der Waisen-Sweep. Erst der Datenvertrag, dann getrennt
 // der Lauf. Bis dahin sind Speicherreste der sichere Preis.
+//
+// R-1349: Der dritte Block dieser Datei prüfte die modulübergreifende Referenzprüfung
+// `object-references.ts`. Kein Produktweg hat sie je gerufen; der getrennte Lauf kam mit R-0846 als
+// `datenintegritaet.ts::ermittleWaisen` (eine Obermenge derselben Fundorte, im Betrieb über
+// `tools/datenintegritaet.ts`). Die Referenzprüfung und ihr Block sind deshalb entfernt.
 
 const PDF_DATA_URL = `data:application/pdf;base64,${Buffer.from("%PDF-1.4 Pruefbericht").toString("base64")}`;
 const PNG_DATA_URL = `data:image/png;base64,${Buffer.from("PNG").toString("base64")}`;
 
 type App = ReturnType<typeof buildApp>;
-
-const INHALT = {
-  title: "Dichtungswechsel L4",
-  statement: "Dichtung vor jedem Anlauf prüfen.",
-  type: "best_practice",
-  category: "Instandhaltung",
-  bodyHtml: "<p>Dichtung nach 500 h tauschen.</p>",
-};
 
 async function login(app: App, email: string, password: string) {
   const res = await app.inject({
@@ -216,161 +211,5 @@ describe("mega20 C: die Schutzfrist deckt das Fenster zwischen Upload und erster
     expect(await s.delete(ref.id)).toBe(false); // schon weg ist kein Fehler
     expect(await s.list()).toHaveLength(0);
     expect(await s.read(ref.id)).toBeUndefined();
-  });
-});
-
-// ----------------------------------------------------------------------------------------------
-// 3. DIE REFERENZPRÜFUNG — und zwar über ALLE Fundorte.
-// ----------------------------------------------------------------------------------------------
-describe("mega20 C: die modulübergreifende Referenzprüfung in services/app", () => {
-  it("findet ein gebundenes Objekt über den ANHANG des Wissensobjekts", async () => {
-    const { app, headers, services } = await setup();
-    const ref = await hochladen(app, headers, {
-      name: "P.pdf",
-      mime: "application/pdf",
-      data: PDF_DATA_URL,
-      purpose: "anchor",
-    });
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/kos/from-document",
-      headers,
-      payload: {
-        operationId: "lebenszyklus-anhang-1",
-        // JOB 3569: die Stufe ist am Dokumentweg jetzt Pflicht — dieselbe Nachführung, die
-        // JOB 3429 in dieser Datei schon für `POST /api/kos` gemacht hat (unten, `confidentiality:
-        // "intern"`). Gemessen wird hier unverändert die Referenzprüfung, nicht die Einstufung.
-        create: { ...INHALT, confidentiality: "intern" },
-        documents: [
-          {
-            anchor: { objectId: ref.id, name: "P.pdf", mime: "application/pdf" },
-            points: [{ label: "P.pdf", excerpt: "eins" }],
-          },
-        ],
-      },
-    });
-    expect(res.statusCode).toBe(201);
-    const treffer = await findObjectReferences(ref.id, services.objectReferences);
-    expect(treffer.map((t) => t.kind)).toContain("ko-attachment");
-    // UND über die Belegkette — die append-only Evidence ist die letzte Schutzinstanz.
-    expect(treffer.map((t) => t.kind)).toContain("ko-evidence");
-  });
-
-  it("findet ein Objekt, das NUR im Fließtext verlinkt ist (kein Anhangs-Eintrag)", async () => {
-    // Der am leichtesten übersehene Fall: Bilder und Dateilinks im Body zeigen als
-    // `/api/objects/<id>/raw` auf den Store, ohne dass ein attachments-Eintrag existieren muss.
-    // Wer nur `attachments` prüft, hält jedes eingebettete Bild für eine Waise.
-    const { app, headers, services } = await setup();
-    const bild = await hochladen(app, headers, {
-      name: "bild.png",
-      mime: "image/png",
-      data: PNG_DATA_URL,
-      purpose: "attachment",
-    });
-    const ko = await app.inject({
-      method: "POST",
-      url: "/api/kos",
-      headers,
-      payload: {
-        confidentiality: "intern",
-        ...INHALT,
-        bodyHtml: `<p>Siehe <img src="/api/objects/${bild.id}/raw" alt="x"></p>`,
-      },
-    });
-    expect(ko.statusCode).toBe(201);
-    const treffer = await findObjectReferences(bild.id, services.objectReferences);
-    expect(treffer.map((t) => t.kind)).toContain("ko-body");
-  });
-
-  it("findet ein Objekt AUCH ÜBER DEN SNAPSHOT, wenn es aus der aktuellen Fassung verschwunden ist", async () => {
-    // Der zweite leicht übersehene Fall: eine Revision entfernt das Bild aus dem Body. Die
-    // AKTUELLE Fassung kennt es nicht mehr — die frühere schon, und sie ist über die
-    // Versionshistorie sichtbar. Ohne diese Quelle bekäme die Historie stillschweigend Löcher.
-    const { app, headers, services } = await setup();
-    const bild = await hochladen(app, headers, {
-      name: "bild.png",
-      mime: "image/png",
-      data: PNG_DATA_URL,
-      purpose: "attachment",
-    });
-    const ko = await app.inject({
-      method: "POST",
-      url: "/api/kos",
-      headers,
-      payload: {
-        confidentiality: "intern",
-        ...INHALT,
-        bodyHtml: `<p><img src="/api/objects/${bild.id}/raw" alt="x"></p>`,
-      },
-    });
-    const id = ko.json().id as string;
-    const revidiert = await app.inject({
-      method: "PUT",
-      url: `/api/kos/${id}`,
-      headers,
-      payload: {
-        action: "revise",
-        changes: { ...INHALT, bodyHtml: "<p>Ohne Bild.</p>" },
-      },
-    });
-    expect(revidiert.statusCode).toBe(200);
-
-    // Gegenprobe zuerst: die AKTUELLE Fassung erwähnt es nicht mehr.
-    const aktuell = await app.inject({ method: "GET", url: `/api/kos/${id}`, headers });
-    expect(aktuell.json().bodyHtml ?? "").not.toContain(bild.id);
-
-    // Und trotzdem ist es referenziert — über den Snapshot der Vorversion.
-    const treffer = await findObjectReferences(bild.id, services.objectReferences);
-    expect(treffer.map((t) => t.kind)).toContain("ko-version");
-  });
-
-  it("ein nie gebundenes Objekt ist ehrlich unreferenziert — kein Dauer-Ja", async () => {
-    const { app, headers, services } = await setup();
-    const ref = await hochladen(app, headers, {
-      name: "verwaist.pdf",
-      mime: "application/pdf",
-      data: PDF_DATA_URL,
-      purpose: "attachment",
-    });
-    expect(await isObjectReferenced(ref.id, services.objectReferences)).toBe(false);
-    // Es ist aber trotzdem GESCHÜTZT — Referenzprüfung und Schutzfrist sind zwei getrennte
-    // Urteile, und ein Lauf müsste beide fällen.
-    const gespeichert = await services.objects.metadata(ref.id);
-    expect(gespeichert && isWithinRetention(gespeichert, Date.now())).toBe(true);
-  });
-
-  it("ein GETRASHTES Wissensobjekt hält seine Anhänge weiter — sonst würde aus `gelöscht` `unwiederbringlich`", async () => {
-    const { app, headers, services } = await setup();
-    const ref = await hochladen(app, headers, {
-      name: "P.pdf",
-      mime: "application/pdf",
-      data: PDF_DATA_URL,
-      purpose: "anchor",
-    });
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/kos/from-document",
-      headers,
-      payload: {
-        operationId: "lebenszyklus-papierkorb-1",
-        // JOB 3569: siehe oben — nachgeführte Vorbedingung, damit die Anlage überhaupt zustande
-        // kommt. Geprüft bleibt, dass ein GETRASHTES Objekt seine Anhänge weiter hält.
-        create: { ...INHALT, confidentiality: "intern" },
-        documents: [
-          {
-            anchor: { objectId: ref.id, name: "P.pdf", mime: "application/pdf" },
-            points: [{ label: "P.pdf", excerpt: "eins" }],
-          },
-        ],
-      },
-    });
-    const id = res.json().id as string;
-    const geloescht = await app.inject({ method: "DELETE", url: `/api/kos/${id}`, headers });
-    expect(geloescht.statusCode).toBeLessThan(300);
-    // Aus den normalen Lesepfaden verschwunden …
-    const liste = await app.inject({ method: "GET", url: "/api/kos", headers });
-    expect(liste.json()).toHaveLength(0);
-    // … und trotzdem hält es sein Original fest.
-    expect(await isObjectReferenced(ref.id, services.objectReferences)).toBe(true);
   });
 });

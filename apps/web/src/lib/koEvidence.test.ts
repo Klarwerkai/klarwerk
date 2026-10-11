@@ -12,7 +12,7 @@
 // Angaben (`v<n>`, Anbieter, MIME, Adresse) müssen dabei unverändert bleiben.
 import { describe, expect, it } from "vitest";
 import type { EvidenceRecord, KoAttachment } from "../api/types";
-import { belegOriginal, evidenceKindLabel, evidenceRows } from "./koEvidence";
+import { belegOriginal, evidenceRows } from "./koEvidence";
 
 function rec(overrides: Partial<EvidenceRecord>): EvidenceRecord {
   return {
@@ -91,10 +91,8 @@ describe("koEvidence · Zeilenbildung", () => {
     expect(row?.objectId).toBe("obj-1");
   });
 
-  it("liefert stabile Kind-Labels", () => {
-    expect(evidenceKindLabel("source")).toBe("source");
-    expect(evidenceKindLabel("attachment")).toBe("attachment");
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zu `evidenceKindLabel` ist mit der Funktion
+  // entfallen — sie hatte keinen Produktleser; die Zeilen tragen ihre Art selbst (`row.kind`).
 });
 
 describe("koEvidence · belegOriginal — die eine Zuordnungsregel", () => {

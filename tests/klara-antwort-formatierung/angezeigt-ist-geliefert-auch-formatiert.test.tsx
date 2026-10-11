@@ -146,14 +146,15 @@ import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { KlaraAssistant } from "../../apps/web/src/components/KlaraAssistant";
 import i18n from "../../apps/web/src/i18n";
-// DER MASSSTAB. `stripAnswerMarkdown` (`answerMarkdown.ts:375-388`) erzeugt aus demselben Rohtext
-// genau den Klartext, den der Renderer anzeigt — ueber DIESELBE `parseAnswerMarkdown`-Zerlegung.
-// Kein zweiter, nachgebauter Markdown-Parser in dieser Datei; das waere ein zweiter Weg.
-import { stripAnswerMarkdown } from "../../apps/web/src/lib/answerMarkdown";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 // Die Satzzerlegung des Reasoners — dieselbe, an der seine Zitatdeckung misst. Die Modellattrappe
 // baut ihren Text daraus, damit er die Deckung besteht, statt an einer eigenen Zerlegung zu raten.
 import { saetze } from "../../services/reasoner/src/provider-model";
+// DER MASSSTAB. `stripAnswerMarkdown` erzeugt aus demselben Rohtext genau den Klartext, den der
+// Renderer anzeigt — ueber DIESELBE `parseAnswerMarkdown`-Zerlegung. Kein zweiter, nachgebauter
+// Markdown-Parser in dieser Datei; das waere ein zweiter Weg. R-1349: er stand bis hierher in
+// `apps/web/src/lib/answerMarkdown.ts` ohne Produktleser und steht jetzt bei den Tests.
+import { stripAnswerMarkdown } from "../support/antwort-klartext";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

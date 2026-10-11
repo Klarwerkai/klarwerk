@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import {
   BODY_READ_BLOCKS_KEY,
-  BODY_READ_NOTE_KEY,
   BODY_READ_TITLE_KEY,
   bodyReadMode,
   hasBody,
@@ -42,18 +41,14 @@ describe("SCRUM-318: bodyReadMode", () => {
 
   it("liefert stabile i18n-Keys, alle DE+EN vorhanden", () => {
     expect(BODY_READ_TITLE_KEY).toBe("ko.body.readTitle");
-    expect(BODY_READ_NOTE_KEY).toBe("ko.body.readNote");
     expect(BODY_READ_BLOCKS_KEY).toBe("ko.body.readBlocksChip");
-    for (const key of [BODY_READ_TITLE_KEY, BODY_READ_NOTE_KEY, BODY_READ_BLOCKS_KEY]) {
+    for (const key of [BODY_READ_TITLE_KEY, BODY_READ_BLOCKS_KEY]) {
       for (const lng of ["de", "en"]) {
         expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
       }
     }
   });
 
-  it("bleibt ehrlich: Hinweis nennt Status/Trust/Quellen als maßgeblich (DE)", () => {
-    const note = String(i18n.getResource("de", "translation", BODY_READ_NOTE_KEY) ?? "");
-    expect(note).toMatch(/Status/i);
-    expect(note).toMatch(/Quellen/i);
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zum Hinweis `BODY_READ_NOTE_KEY` ist mit dem
+  // Schlüssel entfallen — sein einziger Leser war die entfernte Leseansicht `components/ko/KoRead.tsx`.
 });

@@ -5,7 +5,7 @@
 // (sanitizeHtml ist bei Entities nicht idempotent → keine Doppel-Maskierung). Kein Auto-Speichern,
 // keine Validierung — der Mensch übernimmt den Vorschlag bewusst.
 
-import type { StructureResult } from "../api/types";
+import type { DraftPayload, KnowledgeType, StructureResult } from "../api/types";
 import { frontDoorStructuredBodyHtml } from "./captureFrontDoor";
 import { EDITOR_BLOCKS, type EditorBlock, editorBlockClass } from "./editorBlocks";
 import { FLAT_BODY_TAGS, htmlToPlainText, isEmptyHtml, sanitizeHtml } from "./richText";
@@ -96,6 +96,28 @@ export function applyStructureProposal(input: StructureProposalInput): Structure
   // Stelle, an der frontDoorStructuredBodyHtml den Body ersetzt (Source-Pin im Test).
   const bodyHtml = preserved ? input.currentBodyHtml : frontDoorStructuredBodyHtml(input.proposal);
   return { title, bodyHtml, preserved, titleAdopted };
+}
+
+// FR-STR-01 (R-0315) im Ordnen-Weg des Blatts: womit die Wissensart-Auswahl der Vorschlagskarte
+// startet. Eine bereits ENTSCHIEDENE Wissensart (vom Menschen bestätigt oder aus dem Entwurf geladen)
+// geht immer vor — der KI-Vorschlag wird daneben nur genannt. Erst wenn nichts entschieden ist, steht
+// der Vorschlag vorbelegt in der Auswahl. Übernommen wird ausschließlich, was beim Klick auf
+// „Übernehmen" in der Auswahl steht — der Mensch korrigiert vorher frei. `undefined` = keine Auswahl.
+export function structureCardKnowledgeType(
+  decided: KnowledgeType | undefined,
+  proposal: Pick<StructureResult, "knowledgeType">,
+): KnowledgeType | undefined {
+  return decided ?? proposal.knowledgeType;
+}
+
+// FR-STR-01: die entschiedene Wissensart reist in JEDEN Schreibweg des Blatts (Anlegen, Aktualisieren,
+// Einreichen) — dieselbe Bauform wie der Bereich (`mitBereich`). Ohne Entscheidung bleibt der Rumpf
+// unverändert: kein mitgeschickter Wert, also auch keine Überschreibung einer gespeicherten Wissensart.
+export function withDecidedKnowledgeType(
+  rumpf: DraftPayload,
+  decided: KnowledgeType | undefined,
+): DraftPayload {
+  return decided ? { ...rumpf, type: decided } : rumpf;
 }
 
 // Plaintext-Vorschlag → strukturiertes, sicheres Body-HTML: Doppel-Zeilenumbruch = Absatz, einfacher
@@ -231,6 +253,18 @@ export function applySpellingAssistPreservingHtml(
     .join("");
 
   return { html: sanitizeHtml(mapped), applied: true };
+}
+
+// R-0103: dieselbe formaterhaltende Rechtschreib-Uebernahme fuer jede Flaeche, die die AiAssistBox
+// am Rumpf traegt (alter Arbeitsraum, Studio, Bibliothek-Bearbeiten) — bisher galt sie nur im Blatt,
+// ueberall sonst ersetzte „Rechtschreibung → Ersetzen" Fett und Aufzaehlungen durch Klartext.
+// `null` heisst: das Wort-Mapping passt nicht; die Uebernahme wird blockiert statt zerstoert.
+export function spellingAssistHtmlOrNull(
+  currentHtml: string | null | undefined,
+  suggestionText: string | null | undefined,
+): string | null {
+  const result = applySpellingAssistPreservingHtml(currentHtml, suggestionText);
+  return result.applied ? result.html : null;
 }
 
 // SCRUM-316: Vorschlag bewusst als Body-Block ANHÄNGEN (Info/Hinweis/Warnung/Erfolg). Bestehender

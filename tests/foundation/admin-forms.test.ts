@@ -1,20 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
   MIN_PASSWORD,
-  isNewUserValid,
   isPasswordResetValid,
   isUserAuditAction,
+  newUserIssues,
   passwordRepeatMismatch,
 } from "../../apps/web/src/lib/adminForms";
 
+// R-1349: gemessen an `newUserIssues`, dem Weg, den die Nutzeranlage wirklich fragt — das frühere
+// Ja/Nein `isNewUserValid` hatte keinen Produktleser und ist entfernt.
 describe("SCRUM-147: Nutzer-anlegen-Validierung", () => {
   it("verlangt Name, plausible E-Mail und Passwort ≥ 8", () => {
-    expect(isNewUserValid({ name: "Pedi", email: "p@x.de", password: "secret123" })).toBe(true);
-    expect(isNewUserValid({ name: "", email: "p@x.de", password: "secret123" })).toBe(false);
-    expect(isNewUserValid({ name: "Pedi", email: "keine-mail", password: "secret123" })).toBe(
-      false,
-    );
-    expect(isNewUserValid({ name: "Pedi", email: "p@x.de", password: "kurz" })).toBe(false);
+    expect(newUserIssues({ name: "Pedi", email: "p@x.de", password: "secret123" })).toEqual([]);
+    expect(newUserIssues({ name: "", email: "p@x.de", password: "secret123" })).toEqual(["name"]);
+    expect(newUserIssues({ name: "Pedi", email: "keine-mail", password: "secret123" })).toEqual([
+      "email",
+    ]);
+    expect(newUserIssues({ name: "Pedi", email: "p@x.de", password: "kurz" })).toEqual([
+      "password",
+    ]);
   });
 });
 

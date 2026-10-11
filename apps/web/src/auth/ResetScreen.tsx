@@ -3,7 +3,9 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
+import { useToastOptional } from "../app/ToastContext";
 import { Button, Field, TextInput } from "../components/ui";
+import { ToastViewport } from "../shell/ToastViewport";
 // JOB 1097 / D-028 + D-027: dieselbe Markenfläche und dieselbe Sprachwahl wie die Anmeldemaske —
 // aus EINER Quelle. Der Markenblock stand hier vorher zeichengleich ein zweites Mal.
 import { BrandCompact, BrandPanel, PublicLangSwitch } from "./BrandPanel";
@@ -13,6 +15,7 @@ import { type Maskenfehler, maskenfehlerAus, maskenfehlerText } from "./maskenfe
 // https://klarwerk.ai/reset?token=… — ohne Anmeldung erreichbar.
 export function ResetScreen(): JSX.Element {
   const { t, i18n } = useTranslation();
+  const einblendungen = useToastOptional();
   const token = new URLSearchParams(window.location.search).get("token") ?? "";
   const [pw, setPw] = useState("");
   // R-0531: derselbe Vertrag wie in `AuthScreens.tsx` — im Zustand liegt der Schlüssel des Fehlers,
@@ -34,6 +37,8 @@ export function ResetScreen(): JSX.Element {
 
   return (
     <div className="flex h-full">
+      {/* R-0953 (Nacharbeit 7): wie die Anmeldemaske — ohne App-Hülle die eigene Anzeige. */}
+      {einblendungen ? <ToastViewport /> : null}
       <BrandPanel />
 
       <div className="flex flex-1 items-center justify-center p-6">

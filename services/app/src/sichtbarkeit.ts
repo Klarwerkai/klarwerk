@@ -51,6 +51,33 @@ import type { SessionUser } from "./http";
 export interface SichtbarkeitsFakten {
   confidentiality?: Confidentiality | null | undefined;
   author?: string | null | undefined;
+  // AUFNAHME 20260922 · confluence-import-rechte (R-0549): die Leser aus der Quelle. Optional in
+  // der Mindestform — eine Projektion ohne das Feld fällt auf die Stufenregel zurück (s. Grenze
+  // an `darfSehen`).
+  quellrechte?: { leser?: readonly string[] | undefined } | null | undefined;
+  /** produkt:20261007:spaces — der führende Space; fehlt er, gilt allein Stufe + Autor. */
+  spaceId?: unknown;
+}
+
+// ================================================================================================
+// produkt:20261007:spaces — DER FÜHRENDE SPACE IST EINE ZWEITE, UNABHÄNGIGE BEDINGUNG (UND).
+// ================================================================================================
+//
+// Trägt ein Objekt eine `spaceId` (Zeichenkette), sieht es nur, wessen `spaceLesbar` diese Kennung
+// enthält. Die Bedingung tritt NEBEN die Stufenregel, nie an ihre Stelle: ein vertrauliches Objekt
+// in einem offenen Space bleibt vertraulich, ein internes Objekt in einem geschlossenen Space bleibt
+// geschlossen. Kein Rollen-Durchgriff (auch `ko.validate` öffnet keinen fremden Space) und keine
+// Autor-Ausnahme: der führende Space bestimmt die Rechte — wer ihn wechselt, sieht die Folge vorher
+// in der Rechtevorschau (`routes/spaces-routes.ts`).
+//
+// FAIL-CLOSED: fehlt `spaceLesbar` am Betrachter (ein Aufbau ohne Spaces) oder ist die Kennung
+// unbekannt, bleibt das Objekt verborgen. Ein Objekt ohne `spaceId` — der gesamte Bestand vor
+// diesem Auftrag — ist von dieser Bedingung nicht berührt.
+function spaceErlaubt(user: SessionUser, spaceId: unknown): boolean {
+  if (typeof spaceId !== "string") {
+    return true;
+  }
+  return user.spaceLesbar?.has(spaceId) === true;
 }
 
 /**
@@ -63,17 +90,38 @@ export interface SichtbarkeitsFakten {
  * Die Autor-Ausnahme ist keine Erfindung dieses Auftrags: dieselbe Zeile trägt bereits das Löschen
  * (`ko-routes.ts:1019`). Ohne sie könnte ein Experte ein vertrauliches Objekt erfassen und es
  * danach nicht mehr öffnen — der Alltagsweg „ich schreibe etwas Sensibles auf" ginge zu.
+ *
+ * AUFNAHME 20260922 · confluence-import-rechte (R-0549) — QUELLLESER VOR STUFE. Trägt das Objekt
+ * eine Leserliste aus der Quelle, entscheidet NUR sie: wer in Confluence lesen darf, liest in Klara,
+ * sonst niemand — kein `ko.validate`-Inhaber und auch NICHT der annehmende Autor (Ben, Nacharbeit 3:
+ * ein Import über das Dienstkonto verschafft dem Reviewer sonst Zugriff, den die Quelle ihm
+ * verweigert). Eine leere Liste heisst „kein Klara-Konto zuordenbar", nicht „offen". Ohne Liste gilt
+ * die Regel oben unverändert.
+ *
+ * PFLICHT FÜR JEDE PROJEKTION: wer Sichtbarkeitsfakten verkürzt weiterreicht, muss `quellrechte`
+ * mitnehmen (Gesamtanweisung, Papierkorb). Ohne sie fiele das Objekt auf die Stufenregel zurück.
  */
 export function darfSehen(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
+  // Zusammenführung (Nacharbeit 23): der führende Space ist eine UNABHÄNGIGE UND-Bedingung — er gilt
+  // vor jeder weiteren Regel, auch vor den Quelllesern (ein Quellleser ohne Space-Leserecht liest
+  // nicht; die Quellleser öffnen keinen fremden Space).
+  if (!spaceErlaubt(user, ko.spaceId)) {
+    return false;
+  }
+  const leser = ko.quellrechte?.leser;
+  if (Array.isArray(leser)) {
+    return user.id.length > 0 && leser.includes(user.id);
+  }
+  // Leerer/fehlender Autor ist KEINE Autorschaft — sonst wäre ein Altobjekt ohne Autorfeld für
+  // jeden sichtbar, dessen Kennung ebenfalls leer ist.
+  const istAutor = typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
   if (!isConfidential(ko.confidentiality)) {
     return true;
   }
   if (can(user.role, "ko.validate")) {
     return true;
   }
-  // Leerer/fehlender Autor ist KEINE Autorschaft — sonst wäre ein Altobjekt ohne Autorfeld für
-  // jeden sichtbar, dessen Kennung ebenfalls leer ist.
-  return typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
+  return istAutor;
 }
 
 /**
@@ -107,6 +155,59 @@ export type Sichtbarkeitsfilter = (ko: SichtbarkeitsFakten) => boolean;
 
 export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter {
   return (ko) => darfSehen(user, ko);
+}
+
+/**
+ * R-1175 (aufnahme:20260922:gesamt-rechte-inventar) — DER BETRACHTER EINES SCHLÜSSELS.
+ *
+ * Ein Add-in- oder Dienst-Schlüssel ist kein Konto. Bis hierher entschied `/api/ask` für ihn mit
+ * einer eigenen Zeile („ohne Space oder offener Space"), also NICHT mit der einen Entscheidung.
+ * Jetzt fragt auch dieser Weg `darfSehen` — mit einem Betrachter, der so wenig darf wie möglich:
+ * Rolle `viewer` (kein `ko.validate`, also nichts Vertrauliches), KEINE Kennung (leer ist nach
+ * `darfSehen` nie Autorschaft) und als lesbare Spaces genau die offenen. Das Ergebnis ist dieselbe
+ * Menge wie die alte Zeile, enger nur um Vertrauliches, das der Zweig ohnehin verwirft.
+ */
+export function schluesselBetrachter(offeneSpaces: ReadonlySet<string>): SessionUser {
+  return { id: "", role: "viewer", spaceLesbar: offeneSpaces };
+}
+
+// ================================================================================================
+// AUFNAHME 20260922 · confluence-import-rechte (Ben, Nacharbeit 6, Befund F1) — DIE WARTESCHLANGE.
+// ================================================================================================
+//
+// Ein Importkandidat trägt Titel und Volltext seiner Quellseite. Die Warteschlange verlangt nur
+// `ko.read` — ohne diese Grenze las jeder Leser eine in Confluence auf Lea beschränkte Seite dort,
+// bevor (und nachdem) sie in Klara angenommen war. DIESELBE Regel wie am Objekt, keine Ausnahme für
+// `ko.validate`:
+//   · ANGENOMMEN (`koId`) und das Objekt lebt → `darfSehen` am Objekt: seine Quellrechte sind die
+//     aktuellen (ein späterer Abgleich hat sie womöglich schon nachgezogen).
+//   · sonst die Quellrechte des Eintrags selbst, auf Klara-Konten abgebildet — dieselbe Abbildung
+//     wie beim Annehmen.
+//   · ein Eintrag OHNE Quellrechte (Dateiweg, andere Quellen) bleibt, wie er war: die Warteschlange
+//     ist für ihn eine Prüffläche für jeden mit `ko.read`.
+export interface KandidatenRechtequelle {
+  /** Die Quellrechte eines Eintrags als Objektrechte — `undefined` = der Eintrag trägt keine. */
+  quellrechteFuerKandidat(item: unknown): Promise<{ leser?: readonly string[] } | undefined>;
+  /** Das lebende Objekt hinter einer Kennung (Papierkorb ausgeblendet). */
+  wissensobjektFuerSicht(koId: string): Promise<SichtbarkeitsFakten | undefined>;
+}
+
+export async function darfKandidatSehen(
+  user: SessionUser,
+  kandidat: { item: unknown; koId: string | null },
+  quelle: KandidatenRechtequelle,
+): Promise<boolean> {
+  const rechte = await quelle.quellrechteFuerKandidat(kandidat.item);
+  if (rechte === undefined) {
+    return true;
+  }
+  if (kandidat.koId) {
+    const ko = await quelle.wissensobjektFuerSicht(kandidat.koId);
+    if (ko) {
+      return darfSehen(user, ko);
+    }
+  }
+  return darfSehen(user, { quellrechte: rechte });
 }
 
 // ================================================================================================
@@ -178,11 +279,20 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
   // neu auslegte, wäre genau das Leck, das BASIC 379 §3.3 mit der Betrachterbindung schließt.
   const darfVertraulich = can(user.role, "ko.validate");
   const betrachter = user.id;
+  // produkt:20261007:spaces — die lesbaren Spaces reisen als DRITTER Parameter, aber nur, wenn der
+  // Betrachter sie trägt. Ohne sie bleibt die Parameterliste die bisherige, und das Prädikat lässt
+  // jedes Objekt mit führendem Space weg (dieselbe fail-closed-Richtung wie `spaceErlaubt`).
+  const spaces = user.spaceLesbar ? [...user.spaceLesbar] : undefined;
 
   return {
     sql(spaltenTraeger: string, abPlatzhalter: number): string {
       const rolle = `$${abPlatzhalter}`;
       const autor = `$${abPlatzhalter + 1}`;
+      // Zeichengleich `spaceErlaubt`: nur eine Zeichenkette in `spaceId` ist ein führender Space.
+      const ohneSpace = `jsonb_typeof(${spaltenTraeger}.data->'spaceId') IS DISTINCT FROM 'string'`;
+      const spaceBedingung = spaces
+        ? ` AND (${ohneSpace} OR ${spaltenTraeger}.data->>'spaceId' = ANY($${abPlatzhalter + 2}::text[]))`
+        : ` AND ${ohneSpace}`;
       // Zeile für Zeile dieselbe Regel wie `darfSehen`, plus der Papierkorb davor:
       //   · nicht getrasht,
       //   · 'intern'                                  ⇒ jeder mit `ko.read` (die Route prüft es),
@@ -190,16 +300,27 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
       //   · oder der Autor selbst — und ein LEERER Autor ist keine Autorschaft, ebenso wenig einer,
       //     der im JSON keine Zeichenfolge ist (`typeof ko.author === "string"`; `->>` macht aus
       //     der Zahl 4359 den Text '4359' — BEN 4359 Befund B1).
+      //   · AUFNAHME 20260922 (R-0549): trägt die Zeile eine Leserliste aus der Quelle, gilt NUR
+      //     sie — wörtlich der erste Zweig von `darfSehen`, OHNE Autorausnahme (Nacharbeit 3).
+      //     Dieselbe Kennung `autor` ist auch der Betrachter; ein leerer Betrachter steht in keiner
+      //     Liste (normalisiert).
+      const istAutor =
+        `(COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
+        ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
+        ` AND ${spaltenTraeger}.author_key = ${autor})`;
+      const leser = `${spaltenTraeger}.data->'quellrechte'->'leser'`;
       return (
         `((${spaltenTraeger}.deleted_at_key IS NULL OR ${sqlDeletedAtLeer(spaltenTraeger)})` +
-        ` AND (${spaltenTraeger}.confidentiality_key = 'intern'` +
+        ` AND (CASE WHEN jsonb_typeof(${leser}) = 'array'` +
+        ` THEN (${autor}::text <> '' AND ${leser} @> jsonb_build_array(${autor}::text))` +
+        ` ELSE (${spaltenTraeger}.confidentiality_key = 'intern'` +
         ` OR ${rolle}::boolean` +
-        ` OR (COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
-        ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
-        ` AND ${spaltenTraeger}.author_key = ${autor})))`
+        // Zusammenführung (Nacharbeit 23): die Space-Bedingung (main) als UND hinter Quellleser-/
+        // Stufenregel — Zeile für Zeile wie `darfSehen`.
+        ` OR ${istAutor}) END)${spaceBedingung})`
       );
     },
-    params: [darfVertraulich, betrachter],
+    params: spaces ? [darfVertraulich, betrachter, spaces] : [darfVertraulich, betrachter],
     // KEIN Nachbau der Regel: derselbe `darfSehen`-Aufruf wie überall sonst, nur um den
     // Papierkorb ergänzt — der in der SQL-Form ebenfalls Teil des Prädikats ist.
     trifftZu(ko): boolean {
@@ -492,7 +613,14 @@ export interface KonfliktFelder {
   koA: string;
   koB: string;
   description: string;
-  detector?: { rationale?: string; quotes?: { a: string; b: string } } | undefined;
+  detector?:
+    | {
+        rationale?: string;
+        quotes?: { a: string; b: string };
+        // R-0263: Klaras vorgeschlagener Geltungsbereich ist Modelltext über den Inhalt.
+        vorschlag?: { geltungsbereich?: string } | undefined;
+      }
+    | undefined;
 }
 
 export type KonfliktSicht<T extends KonfliktFelder> = T & { redacted?: true };
@@ -514,10 +642,20 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
     return konflikt;
   }
   const detector = konflikt.detector;
+  // R-0263 (Aufnahme gesamt-konfliktklassifikation): Klaras vorgeschlagener Geltungsbereich ist
+  // Modelltext über den Inhalt beider Seiten — er geht den Weg von `rationale`. Art und Seite des
+  // Vorschlags bleiben stehen: sie sagen nicht mehr als die Existenz des Konflikts selbst.
+  const vorschlag = detector?.vorschlag;
+  const vorschlagSicht =
+    vorschlag?.geltungsbereich !== undefined
+      ? { vorschlag: { ...vorschlag, geltungsbereich: "" } }
+      : {};
   return {
     ...konflikt,
     description: "",
-    ...(detector ? { detector: { ...detector, rationale: "", quotes: { a: "", b: "" } } } : {}),
+    ...(detector
+      ? { detector: { ...detector, rationale: "", quotes: { a: "", b: "" }, ...vorschlagSicht } }
+      : {}),
     redacted: true,
   };
 }
@@ -565,7 +703,8 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
 // ZWEI ÄNDERUNGEN, und die zweite ist die wichtigere:
 //
 //   1. Die Trägersuche kennt jetzt alle fünf Orte, an denen eine Referenz stehen kann — dieselbe
-//      Aufzählung wie in object-references.ts, dort für den Datenverlust, hier für den Schutz.
+//      Aufzählung wie im Waisenlauf (`datenintegritaet.ts`), dort für den Datenverlust, hier für
+//      den Schutz.
 //   2. Der TRÄGERLOSE Fall ist fail-closed: eine FEHLENDE Stufe ist keine Aussage „intern",
 //      sondern „unbekannt" — und Unbekanntes wird nicht ausgeliefert. Sichtbar bleibt es nur für
 //      die, die auch ein vertrauliches Objekt sehen dürften: den Hochladenden selbst (das
@@ -698,8 +837,7 @@ export interface AnhangEntwurf {
 
 /**
  * Die Quellen, die die Trägersuche befragt. BEWUSST als Funktionen injiziert und nicht als Module
- * importiert — dasselbe Muster und dieselbe Begründung wie `ObjectReferenceSources`: der
- * Object-Store weiß, WAS er gespeichert hat, und darf nicht wissen, WER es benutzt.
+ * importiert: der Object-Store weiß, WAS er gespeichert hat, und darf nicht wissen, WER es benutzt.
  */
 export interface AnhangQuellen {
   /**
@@ -892,7 +1030,7 @@ function zuordnungInFassung(
  * Darf dieser Mensch diesen Anhang sehen? (G2 — der Anhang erbt die Stufe seines Objekts.)
  *
  * `traeger` ist der AKTUELLE Bestand der Wissensobjekte; der Aufrufer liefert ihn, damit diese
- * Entscheidung ohne eigene Persistenzkenntnis testbar bleibt (Muster `ObjectReferenceSources`).
+ * Entscheidung ohne eigene Persistenzkenntnis testbar bleibt (injizierte Quellen, s. oben).
  */
 export interface AnhangUrteil {
   /** Darf dieser Mensch die Bytes bekommen? */

@@ -26,6 +26,8 @@ export interface MetricsInput {
   // Kritikalität, Prozessnähe, Wiederholhäufigkeit, Schadenspotenzial. Ohne Profil oder ohne Stufe
   // bleibt der jeweilige Faktor „keine Eingangsdaten".
   categoryProfiles?: readonly CategoryProfile[] | null;
+  // R-1657 (Nacharbeit 2): die gespeicherten Reasoner-Urteile dieser Sicht je Bereich.
+  gapVerdicts?: ReadonlyMap<string, GapVerdictEntry> | null;
 }
 
 export type Band = "gut" | "mittel" | "kritisch";
@@ -122,11 +124,101 @@ export interface Recommendation {
   count: number;
 }
 
-export interface HouseFloor {
+// R-1657 (ROADMAP 9.3): die Gründe, aus denen ein Bereich einen Wissens-Sprint braucht — offene
+// Konflikte, fällige Re-Validierung, geringes Vertrauen, dünner validierter Bestand.
+export type SprintReasonKey = "conflicts" | "revalidation" | "lowTrust" | "thinKnowledge";
+
+export interface SprintReason {
+  key: SprintReasonKey;
+  count: number;
+}
+
+export interface KnowledgeSprint {
   category: string;
+  reasons: SprintReason[]; // mindestens einer, in der Reihenfolge von SprintReasonKey
+  workItems: number; // verschiedene Objekte mit Konflikt, Re-Validierung oder geringem Vertrauen
+  days: number; // 1–5
+  // Nacharbeit 2: wer den Vorschlag trägt — das Urteil des Reasoners über genau diese Kennzahlen
+  // oder die benannte Regel (kein passendes Reasoner-Urteil).
+  source: "reasoner" | "rule";
+}
+
+// Nacharbeit 2 (Ben: „über Reasoner"): die Kennzahlen EINES Bereichs, die an den Reasoner gehen —
+// Name und Zähler, keine Inhalte. Feldgleich mit `LueckenBereich` in services/reasoner/src/types.ts;
+// das Modul kennt den Reasoner nicht, die App verdrahtet beide (build-app.ts).
+export interface GapSignal {
+  bereich: string;
+  objekte: number;
+  validiert: number;
+  mittleresVertrauen: number;
+  imKonflikt: number | null;
+  revalidierung: number;
+  geringesVertrauen: number;
+}
+
+/** Das Reasoner-Urteil zu einem Bereich (feldgleich mit `LueckenBereichsUrteil`). */
+export interface GapVerdict {
+  bereich: string;
+  sprint: boolean;
+  tage: number;
+  schwerpunkte: readonly SprintReasonKey[];
+}
+
+export interface GapJudgeOutcome {
+  urteile: readonly GapVerdict[] | null;
+  failure?: string | null;
+  provider?: string | null;
+}
+
+/** Der Weg zum Reasoner. `confidential` = mindestens ein Bereich trägt ein vertrauliches Objekt. */
+export type GapJudge = (
+  bereiche: readonly GapSignal[],
+  confidential: boolean,
+) => Promise<GapJudgeOutcome>;
+
+/**
+ * Ein gespeichertes Urteil: gilt nur, solange die Kennzahlen dieselben sind. Gespeichert wird nur
+ * ein tatsächlich geliefertes Bereichsurteil; ein fehlendes bleibt offen (Nacharbeit 4).
+ */
+export interface GapVerdictEntry {
+  signatur: string;
+  urteil: GapVerdict; // sprint: false = ausdrücklicher negativer Abschluss
+}
+
+/** Stand der regelmäßigen Reasoner-Analyse für DIESE Betrachtersicht. */
+export interface SprintAnalysis {
+  regular: boolean; // läuft die regelmäßige Analyse in diesem Prozess?
+  intervalMs: number | null;
+  analyzedAt: string | null; // letzter Lauf für diese Sicht; null = noch keiner
+  provider: string | null; // wer geurteilt hat
+  failure: string | null; // warum kein Reasoner-Urteil (no-model, confidential, model-error …)
+}
+
+// R-0768 / FR-EXT-05 (FE-MGMT-08): ein Stockwerk je FACHGEBIET (`KnowledgeObject.domain`), nicht je
+// Kategorie. `domain: null` sammelt die Objekte ohne angegebenes Fachgebiet — es wird nicht aus der
+// Kategorie abgeleitet (dieselbe Regel wie am Feld selbst).
+export interface HouseFloor {
+  domain: string | null;
   koCount: number;
-  validatedRatio: number; // %
-  fragile: boolean;
+  validated: number;
+  validatedRatio: number; // % = Füllgrad (Anteil gesicherten, d. h. validierten Wissens)
+  authorCount: number;
+  singleSource: boolean; // nur ein Urheber (dieselbe Regel wie der Bus-Faktor)
+  fragile: boolean; // Füllgrad < 50 % oder nur ein Urheber
+  imported: number;
+}
+
+// R-0768 / FR-EXT-05: die Kennzahlen des Durchlaufs Import → Haus → Ausgabe.
+export interface HouseFlow {
+  imported: number; // über einen Importweg entstanden (importedVia / origin „import")
+  importedValidated: number; // davon validiert
+  inHouse: number; // Bestand im Haus
+  secured: number; // davon validiert = gesichert
+  floors: number;
+  fragileFloors: number;
+  // Validierte Objekte sind die zulässige Output-Quelle (services/output). Gezählt wird die
+  // AUSGABEFÄHIGKEIT; erzeugte Ausgaben legt der Output-Dienst nicht ab.
+  outputReady: number;
 }
 
 export interface PilotWindow {
@@ -144,6 +236,9 @@ export interface ManagementSnapshot {
   maturity: Maturity;
   priorities: CategoryPriority[];
   recommendations: Recommendation[];
+  sprints: KnowledgeSprint[];
+  sprintAnalysis: SprintAnalysis;
   house: HouseFloor[];
+  houseFlow: HouseFlow;
   pilot: PilotWindow[];
 }

@@ -262,8 +262,10 @@ describe("M6 · Galerie-Einstieg", () => {
         expect(tile("jira")?.dataset.state).toBe("soon");
         act(() => tile("jira")?.click());
         expect(activate).not.toHaveBeenCalled();
+        // ADMIN-02 Nacharbeit 2: Confluence ist ohne Zugangsauskunft „verfügbar" statt „aktiv" —
+        // der vorhandene Fluss startet trotzdem (FileTypePicker, `available`).
         for (const id of ["confluence", "json", "json-file"]) {
-          expect(tile(id)?.dataset.state).toBe("active");
+          expect(tile(id)?.dataset.state).toBe(id === "confluence" ? "available" : "active");
           act(() => tile(id)?.click());
           expect(activate).toHaveBeenLastCalledWith(id);
         }

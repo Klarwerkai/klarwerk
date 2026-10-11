@@ -19,13 +19,15 @@
 // beide Auswahlwege, mit einer Zusicherung auf dem Bestwert selbst.
 import { describe, expect, it } from "vitest";
 import type { KnowledgeRef } from "../../services/reasoner";
-import { MIN_ANSWER_SUBSTANCE, keywordSelect, rankCandidates } from "../../services/reasoner";
+import { MIN_ANSWER_SUBSTANCE, rankCandidates } from "../../services/reasoner";
 // BLOCK I: beide Regeln sind INNERE Regeln und stehen nicht mehr in der öffentlichen Modulfläche.
 import {
   meetsAnswerSubstance,
   meetsRelevanceThreshold,
   refMatchText,
 } from "../../services/reasoner/src/provider";
+// R-1349: der zweite Auswahlweg ist entfernt; `keywordSelect` misst die Menge am Produktweg.
+import { keywordSelect } from "../support/auswahlweg";
 
 function ref(id: string, title: string, statement: string): KnowledgeRef {
   return { id, title, statement, status: "validiert", trust: 70 };

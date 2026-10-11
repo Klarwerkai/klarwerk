@@ -54,6 +54,27 @@ export KLARWERK_SHIP_SMOKE_API_KEY
 echo "✓ 0/5  Zugangsdatum fuer den Ship-Smoke liegt vor (KLARWERK_SHIP_SMOKE_API_KEY, Wert wird nirgends ausgegeben)."
 echo ""
 
+# 0b) R-1398 — BEKANNTE SCHWACHSTELLEN DER FREMDBIBLIOTHEKEN, VOR DER AUSLIEFERUNG.
+#
+# `npm audit --omit=dev` fuer beide ausgelieferten Bestaende (Laufzeit-Image und gebuendelte SPA),
+# jede Meldung gegen ihre Bewertung an der gebundenen Version
+# (tools/abhaengigkeiten-bewertet.json). Dieselbe Pruefung laeuft noch einmal im Image-Bau (Dockerfile,
+# Stufe `abhaengigkeiten`) fuer jeden Lieferweg; hier ist sie die fruehere Sperre VOR dem Push.
+# Hier und in Dockerfile, nicht in tools/check, weil
+# das Tor hermetisch ist und die Pruefung die Registry braucht. Vor dem Runner, weil sie Sekunden
+# kostet und der Runner Minuten. Exit 1 (unbewertet/veraltet) UND Exit 2 (nicht geprueft) brechen
+# ab: ohne Pruefung wird nichts hochgezaehlt, committet, gepusht oder deployt.
+echo "▶ 0b/5 Abhaengigkeitspruefung (bekannte Schwachstellen, R-1398) …"
+AUDIT_CODE=0
+bash "$REPO/tools/abhaengigkeiten-audit.sh" || AUDIT_CODE=$?
+if [ "${AUDIT_CODE}" -ne 0 ]; then
+  echo ""
+  echo "✗ Abhaengigkeitspruefung nicht gruen (Exit ${AUDIT_CODE}) — nichts wird hochgezaehlt, committet, gepusht oder deployt."
+  exit 1
+fi
+echo "✓ 0b/5 Jede gemeldete Advisory ist an der gebundenen Version bewertet."
+echo ""
+
 # 1) Runner-Gate — das harte Tor. WICHTIG: paul-runner.sh beendet sich mit Exit 0, AUCH wenn Gates
 # ROT sind (er druckt nur „Mindestens ein Gate ROT"). Deshalb NICHT am Exit-Code prüfen, sondern am
 # eindeutigen Erfolgs-Marker „ALLE GATES GRÜN" in der Runner-Ausgabe. (Fix 06.07.: vorher lief das

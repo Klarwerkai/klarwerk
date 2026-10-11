@@ -3,14 +3,19 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import { endpoints } from "./api/endpoints";
 import { SplashFlaeche } from "./components/Splash";
 import i18n, { sprachBereit } from "./i18n";
 import "./index.css";
 import { initBrandTheme } from "./lib/brandTheme";
 import { initDesignTheme } from "./lib/designTheme";
+import { einblendungsMutationCache } from "./lib/einblendungen";
 import { bindHtmlLang } from "./lib/htmlLang";
+import { gleicheAngelegteSprachenAb } from "./lib/instanzSprachen";
 import { ZAEHLER_FRISCHE_MS } from "./lib/loadingState";
-import { bindSpracheSpeichern } from "./lib/sprachwahl";
+import { bindeSchmuckSymbole } from "./lib/schmuckSymbole";
+import { STANDARD_SPRACHE, bindSpracheSpeichern } from "./lib/sprachwahl";
+import { bindTextpflege } from "./lib/textpflege";
 
 // AUFTRAG-mega40 B: gespeicherte Design-Wahl VOR dem ersten Render anwenden (kein Aufblitzen des
 // falschen Themes; gilt auch für Routen ohne Topbar wie /mobile). Standard bleibt Klassisch.
@@ -44,7 +49,10 @@ bindHtmlLang(i18n);
 // hier der `staleTime` — der Zeitpunkt, ab dem react-query die Antwort nicht mehr für frisch hält —
 // und dort die Frist, nach der die Navigation eine ungedeckte Zahl nicht mehr zeigt. Zwei Ausdrücke
 // derselben Zahl wären ein zweites Gehirn; der WERT bleibt unverändert 30 000 ms.
+// R-0953 / R-1015 (Nacharbeit 7): der EINE Ort, an dem jede Speicheraktion ihren Erfolg und ihren
+// Fehler als Einblendung meldet (`lib/einblendungen.ts`).
 const queryClient = new QueryClient({
+  mutationCache: einblendungsMutationCache(),
   defaultOptions: { queries: { staleTime: ZAEHLER_FRISCHE_MS, retry: 1 } },
 });
 
@@ -52,6 +60,11 @@ const root = document.getElementById("root");
 if (!root) {
   throw new Error("Root-Element fehlt.");
 }
+
+// WCAG 1.1.1 / 4.1.2 (Audit nacharbeit-8): namenlose Lucide-Symbole sind Schmuck und werden für
+// Hilfstechnik verborgen — an der Wurzel, damit keine Verwendungsstelle es vergessen kann. Am
+// `body`, nicht an `#root`: Menüs und Dialoge hängen sich teils als Portal daneben.
+bindeSchmuckSymbole(document.body);
 
 // R-0801: die ANWENDUNG wartet, bis die Startsprache vollständig vorliegt. Für Deutsch ist das
 // sofort der Fall (das Wörterbuch liegt im Eintritt). Für eine gespeicherte Wahl en/nl oder einen
@@ -71,6 +84,13 @@ wurzel.render(<SplashFlaeche text={i18n.t("state.loading")} />);
 
 void sprachBereit.finally(() => {
   bindSpracheSpeichern(i18n);
+  // R-1034: die im Betrieb gepflegten Texte über die aktive Sprache legen — erst JETZT, wenn ihr
+  // Paket da ist (Begründung im Kopf von `lib/textpflege.ts`). Ein Ausfall lässt die mitgelieferten
+  // Texte stehen und hält den Start nicht auf.
+  bindTextpflege(i18n, (sprache) => endpoints.i18n.texte(sprache).then((a) => a.texte));
+  // FR-I18N-02: die im Betrieb angelegten Sprachen in Kontomenü und Profil wählbar machen und für
+  // den nächsten Start merken (`lib/instanzSprachen.ts`). Hält den Start nicht auf.
+  void gleicheAngelegteSprachenAb(i18n, endpoints.i18n.sprachen, STANDARD_SPRACHE);
   wurzel.render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>

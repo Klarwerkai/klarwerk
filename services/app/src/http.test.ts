@@ -37,7 +37,7 @@ const STATUS_ERWARTUNG: Record<string, number> = {
 };
 
 // Die neun tatsächlichen Meldungen am Quelltext (2 aus `search-projection-repo.ts`
-// § `freigegebeneProjektionsfassung`, 7 aus `service.ts` § Lebenszyklus). Alle tragen einen
+// § `freigegebeneProjektion`, 7 aus `service.ts` § Lebenszyklus). Alle tragen einen
 // Control-State im Klartext; keine davon darf nach außen gelangen.
 const ECHTE_MELDUNGEN = [
   "Suchprojektion nicht freigegeben (Zustand V2_BUILDING).",

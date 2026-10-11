@@ -178,6 +178,10 @@ describe("G27 · die benannte Grenze dieser Scheibe", () => {
     // Ab hier pinnt der Fall die NEUE Zusage: ein Treffer, der AUSSCHLIESSLICH im Fliesstext
     // steht, wird beantwortet und mit der Quelle belegt — nicht mehr als Wissenslücke abgetan.
     const { app, services, admin } = await aufbauen();
+    // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Frageweg antwortet nur aus geprüftem
+    // Wissen. Gemessen wird hier der Dokumenttext-Treffer, nicht der Prüfstand — deshalb wird das
+    // Objekt validiert, bevor gefragt wird.
+    await services.validation.setDefaultNeededValidations(1, "admin");
     const ko = await services.ko.create({
       title: "Flanschmontage an der Presse",
       statement: "Kurzfassung ohne das Zielwort.",
@@ -186,7 +190,11 @@ describe("G27 · die benannte Grenze dieser Scheibe", () => {
       author: "anna",
       bodyHtml: langerBody(ZIELWORT),
     });
+    // R-0278 (Nacharbeit 3): die Web-Ansicht zieht nur noch Geprüftes heran. Gemessen wird hier
+    // der Fließtext-Treffer, nicht der Prüfstand — das Objekt ist deshalb freigegeben.
+    await services.ko.setValidationState(ko.id, { trust: 90, status: "validiert" });
     expect(await askKandidaten(services, FRAGE)).toEqual([ko.id]);
+    expect((await services.validation.rate(ko.id, "pruefer-g27", "up")).status).toBe("validiert");
 
     const res = await app.inject({
       method: "POST",

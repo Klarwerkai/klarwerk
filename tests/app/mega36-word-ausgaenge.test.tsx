@@ -83,6 +83,8 @@ function taskpaneStarten(evidence: unknown, optionen: LaufOptionen = {}): Laufze
             answer: ANTWORT,
             trust: 90,
             sources: ["k1"],
+            // Wie der retrieval-only-Server: die eine Quelle trägt (R-0325, sonst „keine tragende").
+            citedSources: ["k1"],
             steps: [],
             demo: false,
             evidence,
