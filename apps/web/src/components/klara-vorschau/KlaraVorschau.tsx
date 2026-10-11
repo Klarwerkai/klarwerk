@@ -59,7 +59,14 @@ import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
 import { AvatarBild } from "../assistenz/AvatarBild";
 import { AvatarMimik } from "../assistenz/AvatarMimik";
 // produkt:20261010:assistenz-name-avatar: die neun Zustände der Figur aus echten Ereignissen.
-import { ermittleZustand, meldeErgebnis, useLetztesErgebnis } from "../assistenz/ausdruck";
+import {
+  ausdruckNachFrage,
+  beginneAktion,
+  ermittleZustand,
+  meldeErgebnis,
+  useLetztesErgebnis,
+  zustandsTextSchluessel,
+} from "../assistenz/ausdruck";
 import {
   meldeFlaeche,
   useAndereFlaecheOffen,
@@ -1166,8 +1173,9 @@ export function KlaraVorschau({
     if (lageRef.current) {
       pausieren();
     }
-    // Eine neue Aktion beendet Fehler-, Pause- und Freudezustand der Figur.
-    meldeErgebnis(null);
+    // Eine neue Aktion beendet Fehler-, Pause- und Freudezustand der Figur; ihr Ergebnis zählt nur,
+    // solange keine neuere Aktion begann (assistenz-avatarzustaende).
+    const aktion = beginneAktion();
     aendere((alt) => ({ ...alt, status: "laeuft" }));
     const sprache = toReasonerLocale(i18n.language);
     const z0 = leseZustand();
@@ -1212,13 +1220,16 @@ export function KlaraVorschau({
           return { stand: "nicht_gesendet", antwort: null };
         }
         aendere((alt) => ({ ...alt, status: "antwort" }));
-        // Das tatsächliche Ergebnis für den Ausdruck der Figur: beantwortet = Freude (kurz),
-        // gestoppt = Pause, fehlgeschlagen = Fehler (bis zur nächsten Aktion).
-        meldeErgebnis(
-          stand === "beantwortet" ? "freude" : stand === "abgebrochen" ? "pause" : "fehler",
-        );
-        setAnsage(t(`klaragespraech.ansage.${stand}`));
         const letzte = [...leseEcht().nachrichten].reverse().find((n) => n.von === "klara");
+        // Das tatsächliche Ergebnis für den Ausdruck der Figur: belegte Antwort = Freude (kurz),
+        // Antwort ohne geprüfte Quelle = Fehler „quelle", gestoppt = Pause, fehlgeschlagen = Fehler
+        // (technisch oder fehlende Angabe) — bis zur nächsten Aktion.
+        const ausdruck = ausdruckNachFrage(stand, letzte ?? null);
+        meldeErgebnis(ausdruck?.art ?? null, {
+          aktion,
+          ...(ausdruck?.fehlerArt ? { fehlerArt: ausdruck.fehlerArt } : {}),
+        });
+        setAnsage(t(`klaragespraech.ansage.${stand}`));
         const antwort = letzte?.text ?? null;
         if (letzte) {
           autoVorlesen(letzte.id, antwort);
@@ -1442,6 +1453,11 @@ export function KlaraVorschau({
     jetzt: Date.now(),
   });
   const figurStil = animationsStil(assistenz.motiv);
+  // assistenz-avatarzustaende: technischer Fehler, fehlende Quelle und fehlende Angabe unterscheiden
+  // sich in Text und ruhiger Darstellung.
+  const figurFehlerArt =
+    figurZustand === "fehler" ? (letztesErgebnis?.fehlerArt ?? "technisch") : undefined;
+  const figurZustandText = t(zustandsTextSchluessel(figurZustand, figurFehlerArt));
 
   // ---------------------------------------------------------------------------------------------
   // Vollbild, Ende der Vorschau.
@@ -1545,6 +1561,7 @@ export function KlaraVorschau({
           data-ablage={ablage ? "true" : "false"}
           data-bewegung={assistenz.bewegungReduziert ? "reduziert" : "standard"}
           data-zustand={figurZustand}
+          data-fehlerart={figurFehlerArt}
           data-stil={figurStil}
           aria-label={figurLabel}
           aria-expanded={panelSichtbar}
@@ -1619,13 +1636,14 @@ export function KlaraVorschau({
           <span
             data-testid="klara-figur-zustand"
             data-zustand={figurZustand}
+            data-fehlerart={figurFehlerArt}
             className={`mt-1 whitespace-nowrap rounded-pill px-2 py-0.5 text-[10.5px] font-semibold shadow-tile ${
-              figurZustand === "fehler"
+              figurFehlerArt === "technisch"
                 ? "bg-trust-crit-bg text-trust-crit-text"
                 : "bg-surface text-text"
             }`}
           >
-            {t(`assistenz.zustand.${figurZustand}`)}
+            {figurZustandText}
           </span>
         ) : null}
         {/* Klara 01: der Demo-Betrieb ist auch an der geschlossenen Figur zu erkennen. */}
@@ -1646,8 +1664,7 @@ export function KlaraVorschau({
           </span>
         ) : null}
         <span id={hinweisId} className="sr-only">
-          {t("klaravorschau.figur.tastatur")} {t(STATUS_TEXT[z.status])}{" "}
-          {t(`assistenz.zustand.${figurZustand}`)}{" "}
+          {t("klaravorschau.figur.tastatur")} {t(STATUS_TEXT[z.status])} {figurZustandText}{" "}
           {istEcht ? t("klaragespraech.betrieb.echtKurz") : t("klaragespraech.betrieb.demoKurz")}
         </span>
       </div>

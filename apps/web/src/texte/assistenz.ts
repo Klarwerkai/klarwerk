@@ -60,7 +60,7 @@ export default {
     "assistenz.avatar.name.leuchtkreis": "Leuchtkreis",
     "assistenz.bewegung.label": "Bewegung der Figur reduzieren",
     "assistenz.bewegung.hilfe":
-      "Ohne Wipp- und Hinweisanimation. Ist im System reduzierte Bewegung eingestellt, gilt sie ohnehin.",
+      "Schaltet die Animationen der Figur ab: Jeder Zustand bleibt als ruhiger Ausdruck und als Text sichtbar. Ist im System reduzierte Bewegung eingestellt, gilt sie ohnehin.",
     "assistenz.speichern.laeuft": "Wird gespeichert …",
     "assistenz.speichern.fehler":
       "Nicht gespeichert: {{grund}} Deine Eingabe bleibt stehen; gespeichert bleibt der bisherige Stand.",
@@ -87,6 +87,20 @@ export default {
     "assistenz.zustand.freude": "Erledigt",
     "assistenz.zustand.fehler": "Fehlgeschlagen – Grund und nächster Schritt im Gespräch",
     "assistenz.zustand.pause": "Pausiert",
+    "assistenz.zustand.fehler_quelle":
+      "Keine geprüfte Quelle gefunden – die Antwort hat keine belastbare Grundlage",
+    "assistenz.zustand.fehler_eingabe": "Eine Angabe fehlt noch – der Hinweis steht daneben",
+    "assistenz.vorschau.starten": "Zustände ansehen",
+    "assistenz.vorschau.startenLabel": "Vorschau der Zustände von „{{motiv}}“ starten",
+    "assistenz.vorschau.titel": "Vorschau: {{motiv}}",
+    "assistenz.vorschau.hinweis":
+      "Nur eine Vorschau – sie ändert weder deine Auswahl noch Gespräche, Aufgaben oder KI-Zustände.",
+    "assistenz.vorschau.schritt": "Vorschau {{nr}} von {{gesamt}}: {{zustand}}",
+    "assistenz.vorschau.nurVorschau":
+      "Im Produkt noch ohne eigenen Auslöser – nur in dieser Vorschau zu sehen.",
+    "assistenz.vorschau.ruhig": "Bewegung reduziert – jeder Zustand wird still gezeigt.",
+    "assistenz.vorschau.beenden": "Vorschau beenden",
+    "assistenz.vorschau.fertig": "Vorschau beendet – nichts wurde geändert.",
   },
   en: {
     "assistenz.neutral.name": "Assistant",
@@ -138,7 +152,7 @@ export default {
     "assistenz.avatar.name.leuchtkreis": "Circle of light",
     "assistenz.bewegung.label": "Reduce the figure's motion",
     "assistenz.bewegung.hilfe":
-      "No bobbing or attention animation. If reduced motion is set in your system, it applies anyway.",
+      "Turns off the figure's animations: every state stays visible as a calm expression and as text. If reduced motion is set in your system, it applies anyway.",
     "assistenz.speichern.laeuft": "Saving …",
     "assistenz.speichern.fehler":
       "Not saved: {{grund}} Your input stays in place; the previously saved state is kept.",
@@ -165,6 +179,20 @@ export default {
     "assistenz.zustand.freude": "Done",
     "assistenz.zustand.fehler": "Failed – reason and next step in the conversation",
     "assistenz.zustand.pause": "Paused",
+    "assistenz.zustand.fehler_quelle": "No checked source found – the answer has no reliable basis",
+    "assistenz.zustand.fehler_eingabe":
+      "Some information is still missing – see the note next to it",
+    "assistenz.vorschau.starten": "View states",
+    "assistenz.vorschau.startenLabel": "Start the state preview for “{{motiv}}”",
+    "assistenz.vorschau.titel": "Preview: {{motiv}}",
+    "assistenz.vorschau.hinweis":
+      "Only a preview – it changes neither your choice nor conversations, tasks or AI states.",
+    "assistenz.vorschau.schritt": "Preview {{nr}} of {{gesamt}}: {{zustand}}",
+    "assistenz.vorschau.nurVorschau":
+      "No trigger of its own in the product yet – only visible in this preview.",
+    "assistenz.vorschau.ruhig": "Reduced motion – each state is shown still.",
+    "assistenz.vorschau.beenden": "End preview",
+    "assistenz.vorschau.fertig": "Preview ended – nothing was changed.",
   },
   nl: {
     "assistenz.neutral.name": "Assistent",
@@ -215,7 +243,7 @@ export default {
     "assistenz.avatar.name.leuchtkreis": "Lichtcirkel",
     "assistenz.bewegung.label": "Beweging van de figuur beperken",
     "assistenz.bewegung.hilfe":
-      "Zonder wip- en attentieanimatie. Is beperkte beweging in je systeem ingesteld, dan geldt die sowieso.",
+      "Zet de animaties van de figuur uit: elke toestand blijft zichtbaar als rustige uitdrukking en als tekst. Is beperkte beweging in je systeem ingesteld, dan geldt die sowieso.",
     "assistenz.speichern.laeuft": "Wordt opgeslagen …",
     "assistenz.speichern.fehler":
       "Niet opgeslagen: {{grund}} Je invoer blijft staan; de eerder opgeslagen stand blijft behouden.",
@@ -242,5 +270,19 @@ export default {
     "assistenz.zustand.freude": "Gelukt",
     "assistenz.zustand.fehler": "Mislukt – reden en volgende stap in het gesprek",
     "assistenz.zustand.pause": "Gepauzeerd",
+    "assistenz.zustand.fehler_quelle":
+      "Geen gecontroleerde bron gevonden – het antwoord heeft geen betrouwbare basis",
+    "assistenz.zustand.fehler_eingabe": "Er ontbreekt nog een gegeven – zie de aanwijzing ernaast",
+    "assistenz.vorschau.starten": "Toestanden bekijken",
+    "assistenz.vorschau.startenLabel": "Voorbeeld van de toestanden van ‘{{motiv}}’ starten",
+    "assistenz.vorschau.titel": "Voorbeeld: {{motiv}}",
+    "assistenz.vorschau.hinweis":
+      "Alleen een voorbeeld – het wijzigt je keuze, gesprekken, taken of AI-toestanden niet.",
+    "assistenz.vorschau.schritt": "Voorbeeld {{nr}} van {{gesamt}}: {{zustand}}",
+    "assistenz.vorschau.nurVorschau":
+      "In het product nog zonder eigen aanleiding – alleen in dit voorbeeld te zien.",
+    "assistenz.vorschau.ruhig": "Beperkte beweging – elke toestand wordt stil getoond.",
+    "assistenz.vorschau.beenden": "Voorbeeld beëindigen",
+    "assistenz.vorschau.fertig": "Voorbeeld beëindigd – er is niets gewijzigd.",
   },
 } satisfies Textmodul;

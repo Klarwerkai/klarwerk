@@ -29,7 +29,7 @@ import {
 import { Button, TextInput } from "../ui";
 import { AvatarAuswahl } from "./AvatarAuswahl";
 import { AvatarBild } from "./AvatarBild";
-import { meldeErgebnis } from "./ausdruck";
+import { beginneAktion, letztesErgebnis, meldeErgebnis } from "./ausdruck";
 
 interface Eingabe {
   name: string;
@@ -100,6 +100,10 @@ export function AssistenzFormular({
     setBeruehrt(true);
     setMeldung(null);
     setEingabe((alt) => ({ ...alt, ...teil }));
+    // Die Person ergänzt ihre Angabe: der Hinweis „Angabe fehlt“ an der Figur endet.
+    if (letztesErgebnis()?.fehlerArt === "eingabe") {
+      meldeErgebnis(null);
+    }
   };
 
   const aenderung = (): AssistenzProfilAenderung | null => {
@@ -131,11 +135,15 @@ export function AssistenzFormular({
     setGeprueft(true);
     setMeldung(null);
     const avatarPflicht = modus === "einrichtung" || !bestaetigt;
+    // produkt:20261010:assistenz-avatarzustaende: eine fehlende Angabe ist ein Nutzerfehler — die
+    // Figur zeigt ihn ruhig und mit eigenem Text, nicht als technischen Fehlschlag.
     if (namensFehler !== null) {
+      meldeErgebnis("fehler", { aktion: beginneAktion(), fehlerArt: "eingabe" });
       document.getElementById(`${idBasis}-name`)?.focus();
       return;
     }
     if (avatarPflicht && avatarFehlt) {
+      meldeErgebnis("fehler", { aktion: beginneAktion(), fehlerArt: "eingabe" });
       auswahlRef.current?.querySelector<HTMLInputElement>('input[type="radio"]')?.focus();
       return;
     }
@@ -149,15 +157,16 @@ export function AssistenzFormular({
     }
     setLaeuft(true);
     setSpeicherFehler(null);
-    // Neue Aktion: ein früherer Fehler- oder Freudezustand der Figur endet hier.
-    meldeErgebnis(null);
+    // Neue Aktion: ein früherer Fehler- oder Freudezustand der Figur endet hier. Beginnt währenddessen
+    // eine neuere Aktion, zählt das Ergebnis dieses Speicherns für die Figur nicht mehr.
+    const aktion = beginneAktion();
     try {
       const antwort = await assistenzProfilApi.speichern(teil);
       // Erst der Aufrufer (er zeigt das Ergebnis), dann der bestätigte Stand für alle Flächen.
       onGespeichert?.(antwort);
       bestaetigeAssistenzProfil(user.id, antwort);
       // Bestätigter Erfolg einer bewusst angestossenen Aktion: kurze Freude der Figur.
-      meldeErgebnis("freude");
+      meldeErgebnis("freude", { aktion });
       setBeruehrt(false);
       setGeprueft(false);
       const p = antwort.profil;
@@ -176,7 +185,7 @@ export function AssistenzFormular({
           : t("assistenz.speichern.netz");
       setSpeicherFehler(t("assistenz.speichern.fehler", { grund }));
       // Tatsächlich fehlgeschlagen: die Figur zeigt den Fehlerzustand bis Wiederholen/Abbrechen.
-      meldeErgebnis("fehler");
+      meldeErgebnis("fehler", { aktion, fehlerArt: "technisch" });
       // Ein Konflikt heisst: der bestätigte Stand ist veraltet — neu lesen, Eingabe behalten.
       if (fehler instanceof ApiError && fehler.status === 409) {
         void ladeAssistenzProfil(user.id);
@@ -261,6 +270,7 @@ export function AssistenzFormular({
           wert={eingabe.avatar}
           onWahl={(id) => aendern({ avatar: id })}
           fehler={zeigeAvatarFehler ? t("assistenz.fehler.avatarLeer") : null}
+          bewegungReduziert={eingabe.bewegung === "reduziert"}
         />
       </div>
 
