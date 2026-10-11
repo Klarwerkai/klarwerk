@@ -21,7 +21,7 @@ export function NegativwissenAnzeige({
       data-testid="negativwissen-anzeige"
       className="space-y-2 rounded-card border border-hairline bg-page px-3 py-2.5"
     >
-      <h3 className="font-mono text-[10.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <h3 className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("negativwissen.anzeigeTitel")}
       </h3>
       <dl className="space-y-1.5">

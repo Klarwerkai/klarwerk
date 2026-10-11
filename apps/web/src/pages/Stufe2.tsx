@@ -322,7 +322,7 @@ export function Output(): JSX.Element {
                       onChange={() => toggle(s.id)}
                     />
                     <span className="min-w-0 flex-1 truncate text-[13px] text-text">{s.title}</span>
-                    <span className="shrink-0 font-mono text-[10px] text-muted-2">
+                    <span className="shrink-0 font-mono text-klein text-muted-2">
                       {s.type} · {s.category} · T{s.trust} · v{s.version}
                     </span>
                   </label>
@@ -351,12 +351,12 @@ export function Output(): JSX.Element {
                 <span className="min-w-0 flex-1 truncate text-[13px] text-text">
                   {it.title}
                   {it.uncertain ? (
-                    <span className="ml-1.5 font-mono text-[10px] text-trust-warn-text">
+                    <span className="ml-1.5 font-mono text-klein text-trust-warn-text">
                       {t("out.uncertain")}
                     </span>
                   ) : null}
                 </span>
-                <span className="shrink-0 font-mono text-[10px] text-muted-2">
+                <span className="shrink-0 font-mono text-klein text-muted-2">
                   T{it.trust} · v{it.version}
                 </span>
                 <div className="flex shrink-0 items-center gap-1">
@@ -415,7 +415,7 @@ export function Output(): JSX.Element {
               disabled={preview.items.length === 0 || generate.isPending}
               onClick={() => generate.mutate()}
             >
-              <FileText size={15} />
+              <FileText size={15} strokeWidth={1.8} />
               {t("out.generate")}
             </Button>
           </div>
@@ -741,7 +741,7 @@ function ImportVolltextAufklapper({ item }: { item: unknown }): JSX.Element {
           data-testid="imp-volltext"
           className="mt-1 rounded-card border border-hairline bg-page px-3 py-2"
         >
-          <span className="mb-0.5 block font-mono text-[9.5px] font-semibold uppercase tracking-wide text-muted-2">
+          <span className="mb-0.5 block font-mono text-klein font-semibold uppercase tracking-wide text-muted-2">
             {t("imp.fullText.label")}
           </span>
           <SanitizedHtml
@@ -1098,7 +1098,7 @@ function ImportKandidatKarte({
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <span
-          className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${importCandidateStatusTone(
+          className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${importCandidateStatusTone(
             c.status,
           )}`}
         >
@@ -1110,22 +1110,22 @@ function ImportKandidatKarte({
           return (
             <>
               {f.duplicate ? (
-                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                   {t("ext.finding.duplicate")}
                 </span>
               ) : null}
               {f.missingInfo ? (
-                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                   {t("ext.finding.missingInfo")}
                 </span>
               ) : null}
               {f.infoRequested ? (
-                <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
+                <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                   {t("ext.finding.infoRequested")}
                 </span>
               ) : null}
               {f.acceptedKo ? (
-                <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-pos-text">
+                <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-pos-text">
                   {t("fachwort.fund.angelegt")}
                 </span>
               ) : null}
@@ -1136,17 +1136,17 @@ function ImportKandidatKarte({
                   kein zweiter Weg entsteht, der dieselbe Sache anders benennt. Sie
                   stehen nur da, wenn der Befund die Kennung wirklich trägt. */}
               {f.imPapierkorb ? (
-                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                   {t("ext.finding.inTrash", { id: f.imPapierkorb.koId })}
                 </span>
               ) : null}
               {f.wiederverwendet ? (
-                <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
+                <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                   {t("ext.finding.reusedKo", { id: f.wiederverwendet.koId })}
                 </span>
               ) : null}
               {f.rejected ? (
-                <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-crit-text">
+                <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-crit-text">
                   {t("ext.finding.rejected")}
                 </span>
               ) : null}
@@ -1422,7 +1422,7 @@ export function ImportReview(): JSX.Element {
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {IMPORT_PIPELINE_STEPS.map((step, i) => (
               <span key={step} className="flex items-center gap-1.5">
-                <span className="rounded-pill border border-hairline bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
+                <span className="rounded-pill border border-hairline bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                   {t(`ext.pipeline.${step}`)}
                 </span>
                 {i < IMPORT_PIPELINE_STEPS.length - 1 ? (
@@ -1525,7 +1525,7 @@ const BAND_TEXT: Record<string, string> = {
 function MgmtKpi({ label, value }: { label: string; value: string | number }): JSX.Element {
   return (
     <div className="rounded-card bg-page p-3">
-      <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">{label}</div>
+      <div className="font-mono text-klein uppercase tracking-wider text-muted-2">{label}</div>
       <div className="mt-1 text-xl font-semibold text-ink">{value}</div>
     </div>
   );
@@ -1736,7 +1736,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
             {snap.recommendations.map((r) => (
               <li key={r.key} className="flex items-center gap-2 text-[13px]">
                 <span
-                  className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${
+                  className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${
                     r.severity === "hoch"
                       ? "bg-trust-crit-bg text-trust-crit-text"
                       : "bg-trust-warn-bg text-trust-warn-text"
@@ -1783,7 +1783,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         <div className="mt-1 text-[11px] text-muted-2">{t("mgmt.pilotNote")}</div>
         <table className="mt-2 w-full text-[13px]">
           <thead>
-            <tr className="text-left font-mono text-[10px] uppercase text-muted-2">
+            <tr className="text-left font-mono text-klein uppercase text-muted-2">
               <th className="py-1">{t("mgmt.window")}</th>
               <th className="py-1">{t("mgmt.created")}</th>
               <th className="py-1">{t("mgmt.validatedCol")}</th>
@@ -1815,7 +1815,7 @@ function WindowNote({
   const { t } = useTranslation();
   const w = evaluateDataWindow({ loaded, limit, source });
   return (
-    <p className="mb-2 font-mono text-[10px] text-muted-2">
+    <p className="mb-2 font-mono text-klein text-muted-2">
       {t(`qmWindow.${source}`, { n: w.limit })} ·{" "}
       {t(w.status === "potentiallyLimited" ? "qmWindow.limited" : "qmWindow.within")}
     </p>
@@ -1965,19 +1965,19 @@ function ReasonerRunsCard(): JSX.Element {
                     es war, bleibt dem Protokoll und der API vorbehalten; die Fläche behauptet nichts,
                     was sie nicht übersetzen kann. */}
                     {istBekannteAufgabenart(r.task) ? (
-                      <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                      <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                         {t(`mrun.task.${r.task}`)}
                       </span>
                     ) : (
                       <span
-                        className="rounded-pill border border-dashed border-hairline px-2 py-0.5 font-mono text-[10px] text-muted-2"
+                        className="rounded-pill border border-dashed border-hairline px-2 py-0.5 font-mono text-klein text-muted-2"
                         data-testid="mrun-task-unbekannt"
                       >
                         {t("mrun.taskUnknown")}
                       </span>
                     )}
                     <span
-                      className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
+                      className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${
                         modelRunStatusTone(r) === "crit"
                           ? "bg-trust-crit-bg text-trust-crit-text"
                           : "bg-trust-pos-bg text-trust-pos-text"
@@ -2001,19 +2001,19 @@ function ReasonerRunsCard(): JSX.Element {
                       ) : null}
                     </span>
                     {r.fallback ? (
-                      <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
+                      <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                         {t("mrun.fallback")}
                       </span>
                     ) : null}
                     {r.demo ? (
-                      <span className="rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-ai">
+                      <span className="rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
                         {t("mrun.demoTag")}
                       </span>
                     ) : null}
                     {/* JOB 3044: die Dauer nur, wenn sie sich aus den zwei Zeitstempeln ableiten
                     lässt. `null` heißt: hier steht nichts — kein „—", kein „0 ms". */}
                     {dauerMs !== null ? (
-                      <span className="font-mono text-[10px] text-muted-2" data-testid="mrun-dauer">
+                      <span className="font-mono text-klein text-muted-2" data-testid="mrun-dauer">
                         {t("mrun.duration", { d: formatiereDauer(dauerMs) })}
                       </span>
                     ) : null}
@@ -2025,7 +2025,7 @@ function ReasonerRunsCard(): JSX.Element {
                     Preis daneben: dafür bräuchte es eine Preisliste je Modell, und die gibt es
                     nicht — also wird auch nichts gerechnet. */}
                     {verbrauch !== null ? (
-                      <span className="font-mono text-[10px] text-muted-2" data-testid="mrun-token">
+                      <span className="font-mono text-klein text-muted-2" data-testid="mrun-token">
                         {t("mrun.tokens", {
                           ein: formatiereTokenzahl(verbrauch.eingabeToken),
                           aus: formatiereTokenzahl(verbrauch.ausgabeToken),
@@ -2037,7 +2037,7 @@ function ReasonerRunsCard(): JSX.Element {
                     Preisstand. Ohne Preisliste oder ohne Preis für das Modell steht hier nichts. */}
                     {kosten !== null ? (
                       <span
-                        className="font-mono text-[10px] text-muted-2"
+                        className="font-mono text-klein text-muted-2"
                         data-testid="mrun-kosten"
                         title={t("mrun.costStand", { s: kosten.preisstand })}
                       >
@@ -2046,7 +2046,7 @@ function ReasonerRunsCard(): JSX.Element {
                     ) : null}
                     {erzeugt !== null ? (
                       <span
-                        className="font-mono text-[10px] text-muted-2"
+                        className="font-mono text-klein text-muted-2"
                         data-testid="mrun-erzeugt"
                       >
                         {t("mrun.produced", {
@@ -2055,7 +2055,7 @@ function ReasonerRunsCard(): JSX.Element {
                         })}
                       </span>
                     ) : null}
-                    <span className="font-mono text-[10px] text-muted-2">
+                    <span className="font-mono text-klein text-muted-2">
                       {formatKoTimestamp(r.startedAt, i18n.language)}
                     </span>
                   </li>
@@ -2250,7 +2250,7 @@ function ReasonerConfigCard(): JSX.Element {
               <div className="flex items-center justify-between gap-2">
                 <span className="text-muted">{t("rcfg.mode")}</span>
                 <span
-                  className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
+                  className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${
                     warn
                       ? "bg-trust-warn-bg text-trust-warn-text"
                       : "bg-trust-pos-bg text-trust-pos-text"
@@ -2323,7 +2323,7 @@ function EvidenceIndexCard(): JSX.Element {
             {records.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-2 py-2">
                 <span
-                  className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
+                  className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${
                     evidenceKindTone(r) === "source"
                       ? "bg-ai-surface-1 text-ai"
                       : "bg-trust-info-bg text-trust-info-text"
@@ -2332,27 +2332,27 @@ function EvidenceIndexCard(): JSX.Element {
                   {t(`evx.kind.${r.kind}`)}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[12px] text-text">{r.label}</span>
-                <span className="font-mono text-[10px] text-muted-2">
+                <span className="font-mono text-klein text-muted-2">
                   {t("fachwort.belegIndex.objekt", { id: r.koId })}
                 </span>
                 {r.provider ? (
-                  <span className="rounded-pill bg-surface px-1.5 py-0.5 font-mono text-[9.5px] text-muted-2 ring-1 ring-hairline">
+                  <span className="rounded-pill bg-surface px-1.5 py-0.5 font-mono text-klein text-muted-2 ring-1 ring-hairline">
                     {t("evx.providerPill", { v: r.provider })}
                   </span>
                 ) : null}
                 {r.mime ? (
-                  <span className="rounded-pill bg-surface px-1.5 py-0.5 font-mono text-[9.5px] text-muted-2 ring-1 ring-hairline">
+                  <span className="rounded-pill bg-surface px-1.5 py-0.5 font-mono text-klein text-muted-2 ring-1 ring-hairline">
                     {r.mime}
                   </span>
                 ) : null}
                 {r.objectId ? (
-                  <span className="rounded-pill bg-surface px-1.5 py-0.5 font-mono text-[9.5px] text-muted-2 ring-1 ring-hairline">
+                  <span className="rounded-pill bg-surface px-1.5 py-0.5 font-mono text-klein text-muted-2 ring-1 ring-hairline">
                     {t("evx.objectPill", { v: r.objectId })}
                   </span>
                 ) : null}
                 {r.url ? (
                   // URL bewusst nur als Text (nicht klickbar) — fremde Links werden nicht verlinkt.
-                  <span className="max-w-[40%] truncate rounded-pill bg-surface px-1.5 py-0.5 font-mono text-[9.5px] text-muted-2 ring-1 ring-hairline">
+                  <span className="max-w-[40%] truncate rounded-pill bg-surface px-1.5 py-0.5 font-mono text-klein text-muted-2 ring-1 ring-hairline">
                     {r.url}
                   </span>
                 ) : null}
@@ -2416,10 +2416,10 @@ function ProvenanceIndexCard(): JSX.Element {
                 >
                   {r.title}
                 </Link>
-                <span className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-muted-2">
+                <span className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-klein text-muted-2">
                   {t("prov.version", { n: String(r.version) })}
                 </span>
-                <span className="font-mono text-[10px] text-muted-2">
+                <span className="font-mono text-klein text-muted-2">
                   {t("fachwort.herkunft.zaehler", {
                     sources: String(r.sourceCount),
                     attachments: String(r.attachmentCount),
@@ -2429,7 +2429,7 @@ function ProvenanceIndexCard(): JSX.Element {
                 {r.warningKinds.map((w) => (
                   <span
                     key={w}
-                    className={`rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${
+                    className={`rounded-pill px-1.5 py-0.5 font-mono text-klein font-semibold uppercase ${
                       w === "no-evidence"
                         ? "bg-trust-warn-bg text-trust-warn-text"
                         : "bg-ai-surface-1 text-ai"
@@ -2537,7 +2537,7 @@ function KnowledgeOsHintsCard(): JSX.Element {
         <SectionLabel>{t("fachwort.bereitschaft.titel")}</SectionLabel>
         <HelpTip title={t("fachwort.bereitschaft.titel")} body={t("shelp.readiness.title")} />
         <span
-          className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
+          className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${
             READINESS_TONE_CLASS[readiness.readiness] ?? "bg-hairline-soft text-muted-2"
           }`}
         >
@@ -2574,7 +2574,7 @@ function KnowledgeOsHintsCard(): JSX.Element {
               {top.map((h) => (
                 <li key={h.id} className="flex items-start gap-2 text-[12px] text-muted">
                   <span
-                    className={`mt-0.5 shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${
+                    className={`mt-0.5 shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-klein font-semibold uppercase ${
                       HINT_SEVERITY_CLASS[h.severity] ?? "bg-surface text-muted-2"
                     }`}
                   >
@@ -2658,17 +2658,17 @@ function EvidenceFreshnessCard(): JSX.Element {
                   >
                     {r.title}
                   </Link>
-                  <span className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-muted-2">
+                  <span className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-klein text-muted-2">
                     {t("evFresh.version", { n: String(r.version) })}
                   </span>
                   <span
-                    className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${
+                    className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${
                       FRESH_TONE_CLASS[evidenceFreshnessTone(r.status)] ?? "bg-surface text-muted-2"
                     }`}
                   >
                     {t(evidenceFreshnessLabelKey(r.status))}
                   </span>
-                  <span className="font-mono text-[10px] text-muted-2">
+                  <span className="font-mono text-klein text-muted-2">
                     {t("evFresh.counts", {
                       current: String(r.currentCount),
                       older: String(r.olderCount),

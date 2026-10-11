@@ -6,9 +6,9 @@ import {
   Check,
   CloudOff,
   FilePlus2,
+  FolderOpen,
   ImagePlus,
   RefreshCw,
-  RotateCcw,
   Search,
   Trash2,
   WifiOff,
@@ -873,7 +873,8 @@ export function Mobile(): JSX.Element {
     mutationFn: (id: string) => endpoints.drafts.remove(id),
     onSuccess: (_d, id) => {
       invalidateDrafts();
-      push("success", t("mob.discarded"));
+      // K33 / JOB 3426 §4b.4: `DELETE` heisst „Löschen" — dieselbe Quittung wie die Entwurfsliste.
+      push("success", t("capture.draftDiscarded"));
       setConfirm(clearConfirm());
       if (editingId === id) {
         resetForm();
@@ -1155,7 +1156,7 @@ export function Mobile(): JSX.Element {
               ) : null}
               {interviewAktiv ? (
                 <div data-testid="mob-interview" className="space-y-1.5">
-                  <div className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                  <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                     {t("mob.iv.fortschritt", {
                       nummer: ivSchritt + 1,
                       gesamt: MOBIL_INTERVIEW_FRAGEN.length,
@@ -1416,7 +1417,7 @@ export function Mobile(): JSX.Element {
                           data-testid="mob-stand-offline"
                           className="rounded-input border border-hairline bg-surface p-2"
                         >
-                          <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                             {t("mob.stand.offlineFassung")}
                           </div>
                           <div className="break-words text-[12px] text-text">
@@ -1430,7 +1431,7 @@ export function Mobile(): JSX.Element {
                           data-testid="mob-stand-server"
                           className="rounded-input border border-hairline bg-surface p-2"
                         >
-                          <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                             {t("mob.stand.serverFassung")}
                           </div>
                           <div className="break-words text-[12px] text-text">
@@ -1470,7 +1471,7 @@ export function Mobile(): JSX.Element {
                 data-testid="mob-stand-meine-fassung"
                 className="mt-3 rounded-card border border-dashed border-hairline p-2.5"
               >
-                <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                   {t("mob.stand.meineFassung")}
                 </div>
                 <div className="break-words text-[12px] text-text">{beiseite.titel}</div>
@@ -1538,7 +1539,7 @@ export function Mobile(): JSX.Element {
                       <div className="mb-1.5 flex items-center justify-between">
                         <span
                           data-testid="mob-queue-zaehler"
-                          className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2"
+                          className="font-mono text-klein uppercase tracking-wider text-muted-2"
                         >
                           {t("mob.queue")} · {vorgaengeAmGeraet}
                         </span>
@@ -1559,7 +1560,7 @@ export function Mobile(): JSX.Element {
                           Lage, in der es ihn gibt. */}
                       <span
                         data-testid="mob-queue-zaehler"
-                        className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2"
+                        className="font-mono text-klein uppercase tracking-wider text-muted-2"
                       >
                         {t("mob.queue")} · {queue.pending}
                       </span>
@@ -1613,7 +1614,7 @@ export function Mobile(): JSX.Element {
                               {op.title}
                             </span>
                             <span
-                              className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${QUEUE_TONE[op.status]}`}
+                              className={`rounded-pill px-1.5 py-0.5 font-mono text-klein font-semibold uppercase ${QUEUE_TONE[op.status]}`}
                             >
                               {t(`mob.status.${op.status}`)}
                             </span>
@@ -1702,7 +1703,7 @@ export function Mobile(): JSX.Element {
             ) : null}
 
             <div className="mt-4">
-              <div className="mb-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+              <div className="mb-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                 {t("mob.drafts")}
               </div>
               {/* D-036: „keine Entwürfe" ist eine AUSSAGE ÜBER DEN BESTAND — sie darf erst
@@ -1742,23 +1743,32 @@ export function Mobile(): JSX.Element {
                         {draftTitle(d, t("capture.draftFallbackTitle"))}
                       </span>
                       {/* SCRUM-412 (CI): Hinweis in Textfarbe — Rot nur am destruktiven Knopf. */}
+                      {/* K33 (gleiche Aktion, gleiches Wort, gleiches Symbol): der Knopf stösst
+                          `DELETE /api/drafts/:id` an — er heisst wie in der Entwurfsliste
+                          „Löschen" (JOB 3426 §4b.4: „Verwerfen" ist nur das Zurücksetzen
+                          ungespeicherter Eingabe), fragt mit derselben Rückfrage, bestätigt mit
+                          demselben Papierkorb-Symbol und bietet „Behalten" an. */}
                       {isPending(confirm, d.id) ? (
                         <>
                           <span className="text-[11px] text-text">
-                            {t("mob.discardConfirmHint")}
+                            {t("capture.discardDraftQ")}
                           </span>
                           <button
                             type="button"
-                            title={t("mob.confirmDiscard")}
+                            data-testid="mobil-entwurf-loeschen-ja"
+                            title={t("capture.discardDraftYes")}
+                            aria-label={t("capture.discardDraftYes")}
                             disabled={discard.isPending}
                             onClick={() => discard.mutate(d.id)}
                             className="grid h-7 w-7 place-items-center rounded-btn bg-trust-crit-bg text-trust-crit-text hover:opacity-80"
                           >
-                            <Check size={14} />
+                            <Trash2 size={14} />
                           </button>
                           <button
                             type="button"
-                            title={t("mob.cancelDiscard")}
+                            data-testid="mobil-entwurf-loeschen-nein"
+                            title={t("capture.discardDraftKeep")}
+                            aria-label={t("capture.discardDraftKeep")}
                             onClick={() => setConfirm(clearConfirm())}
                             className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
                           >
@@ -1769,15 +1779,19 @@ export function Mobile(): JSX.Element {
                         <>
                           <button
                             type="button"
+                            data-testid="mobil-entwurf-fortsetzen"
                             title={t("mob.resume")}
+                            aria-label={t("mob.resume")}
                             onClick={() => resume(d.id)}
                             className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
                           >
-                            <RotateCcw size={14} />
+                            <FolderOpen size={14} />
                           </button>
                           <button
                             type="button"
-                            title={t("mob.discard")}
+                            data-testid="mobil-entwurf-loeschen"
+                            title={t("capture.discardDraftYes")}
+                            aria-label={t("capture.discardDraftYes")}
                             onClick={() => setConfirm(requestConfirm(d.id))}
                             className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
                           >
@@ -1872,7 +1886,7 @@ export function Mobile(): JSX.Element {
                             {/* AUFTRAG-mega33 A2: die EFFEKTIVE Evidenz — dieselbe Einstufung wie
                                 auf dem Desktop, nicht mehr die rohe Klasse. */}
                             <span
-                              className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${EVIDENCE_TONE[s.evidence.tone]}`}
+                              className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${EVIDENCE_TONE[s.evidence.tone]}`}
                             >
                               {t("ask.evidence")}: {t(s.evidence.labelKey)}
                             </span>
@@ -1921,7 +1935,7 @@ export function Mobile(): JSX.Element {
                           />
                           {s.sources.length > 0 ? (
                             <div className="mt-2 flex flex-wrap items-center gap-2">
-                              <span className="font-mono text-[10px] uppercase text-muted-2">
+                              <span className="font-mono text-klein uppercase text-muted-2">
                                 {t("ask.sources")}
                               </span>
                               {/* WP-SHIP9-S2 Paket 4 (W4): KO-Titel statt roher UUID (Titel aus dem
@@ -2007,7 +2021,7 @@ export function Mobile(): JSX.Element {
             ) : (
               <>
                 <div className="flex items-center gap-2 rounded-input border border-hairline bg-page px-3">
-                  <Search size={15} className="text-muted-2" />
+                  <Search size={15} strokeWidth={1.8} className="text-muted-2" />
                   <input
                     value={sq}
                     onChange={(e) => setSq(e.target.value)}
@@ -2047,7 +2061,7 @@ export function Mobile(): JSX.Element {
                                 <StatusPill status={trefferStatus(k).status} />
                               </span>
                               <KnowledgeTypeTag type={k.type} />
-                              <span className="ml-auto font-mono text-[10px] text-muted-2">
+                              <span className="ml-auto font-mono text-klein text-muted-2">
                                 T{k.trust}
                               </span>
                             </div>

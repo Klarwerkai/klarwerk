@@ -173,7 +173,7 @@ function VorgangInhalt({ vorgang }: { vorgang: GapVorgang }): JSX.Element {
         {vorgang.rollen.map((r) => (
           <span
             key={r}
-            className="rounded-pill bg-surface px-1.5 py-0.5 font-mono text-[9.5px] uppercase text-muted-2"
+            className="rounded-pill bg-surface px-1.5 py-0.5 font-mono text-klein uppercase text-muted-2"
           >
             {t(`lueckenvorgang.rolle.${r}`)}
           </span>
@@ -183,13 +183,13 @@ function VorgangInhalt({ vorgang }: { vorgang: GapVorgang }): JSX.Element {
         </span>
       </div>
       <p data-testid="luecke-vorgang-stand">
-        <span className="font-mono text-[10px] uppercase text-muted-2">
+        <span className="font-mono text-klein uppercase text-muted-2">
           {t("lueckenvorgang.stand")}:
         </span>{" "}
         {phaseText}
       </p>
       <p data-testid="luecke-vorgang-naechster">
-        <span className="font-mono text-[10px] uppercase text-muted-2">
+        <span className="font-mono text-klein uppercase text-muted-2">
           {t("lueckenvorgang.naechster")}:
         </span>{" "}
         {schrittText}

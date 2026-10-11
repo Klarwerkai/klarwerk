@@ -19,7 +19,7 @@ import { RoleLink } from "./RoleLink";
 function NumberTile({ value, label }: { value: number; label: string }): JSX.Element {
   return (
     <div className="rounded-card bg-page px-3 py-2.5 text-center">
-      <div className="font-mono text-[22px] font-semibold leading-tight text-ink">{value}</div>
+      <div className="font-mono text-[20px] font-semibold leading-tight text-ink">{value}</div>
       <div className="mt-0.5 text-[11px] leading-snug text-muted">{label}</div>
     </div>
   );

@@ -78,10 +78,22 @@ const OBJEKTAUSSAGEN = [
 // nie in der Quellenzeile. Jeder weitere Schlüssel mit dem Wort bleibt rot.
 const OBJEKTSTAND = ["bestandNochNichtGeprueft"];
 
+// Antwort 54 (11.10.2026) hat „Fachlich bestätigt“ zum Namen des WISSENSSTATUS gemacht. Derselbe
+// Wortlaut steht deshalb zweimal und genau zweimal im Panel: als Einstufung der Antwort
+// (`askEvidenceVerified`) und als Statusangabe des Wissensobjekts in der Quellenliste
+// (`askStatusValidiert`, mit dem Hauptstand a55bab3b gekommen; vorher „Validiert“). Die Statusangabe
+// ist eine Aussage ÜBER EIN OBJEKT — die Klasse, die der Kopf dieser Datei ausdrücklich zulässt.
+// Die Ausnahme gilt NUR für dieses eine Muster; „gesichert“/„geprüft“ bleiben dort verboten.
+const STATUSWORT_MUSTER = /fachlich best(ä|ae)tigt/i;
+const STATUSWORT_TRAEGER = ["askStatusValidiert"];
+
 // Wortformen, nicht Wortstämme: „In Prüfung" (Objektstatus) bleibt zulässig, „geprüft" nicht.
 const VERBOTEN: { sprache: string; muster: RegExp }[] = [
   { sprache: "de", muster: /gepr(ue|ü)ft/i },
   { sprache: "de", muster: /gesichert/i },
+  // Entscheidung 54 (Peter, 11.10.2026): die deutsche Einstufung heisst „Fachlich bestätigt“ statt
+  // „gesichert“ — dieselbe Zusage, also dieselbe Regel: nur im Einstufungshinweis.
+  { sprache: "de", muster: STATUSWORT_MUSTER },
   { sprache: "en", muster: /verified/i },
   { sprache: "en", muster: /assured/i },
   { sprache: "nl", muster: /gecontroleerd/i },
@@ -140,6 +152,9 @@ describe("mega35 B · die Wortliste der Word-Fläche", () => {
         continue;
       }
       for (const { sprache, muster } of VERBOTEN) {
+        if (muster === STATUSWORT_MUSTER && STATUSWORT_TRAEGER.includes(key)) {
+          continue;
+        }
         if (muster.test(text)) {
           verstoesse.push(`${key} [${sprache}/${muster.source}]: ${text}`);
         }
@@ -155,10 +170,11 @@ describe("mega35 B · die Wortliste der Word-Fläche", () => {
     for (const { key, text } of noten) {
       expect(text.length, key).toBeGreaterThan(20);
     }
-    // Und die Worte, die überall sonst verboten sind, kommen hier tatsächlich vor.
+    // Und die Worte, die überall sonst verboten sind, kommen hier tatsächlich vor — ausser dem
+    // abgelösten „gesichert“: nach Entscheidung 54 steht es auch hier nicht mehr.
     const zusammen = noten.map((n) => n.text).join(" | ");
     for (const { muster } of VERBOTEN) {
-      expect(muster.test(zusammen), muster.source).toBe(true);
+      expect(muster.test(zusammen), muster.source).toBe(muster.source !== "gesichert");
     }
   });
 

@@ -29,7 +29,9 @@
 //
 // DIE GEGENPROBE IST TEIL DER MESSUNG (Fall K): dieselbe Seite mit einem im Speicher wieder
 // eingefuegten Hinweissatz — der Messer MUSS ihn melden. Sonst misst er nichts.
+import { mkdirSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { repoPfad } from "../support/repoPfad";
 import {
   type Buehne,
   HTML,
@@ -43,6 +45,8 @@ import {
 
 const MARKIERUNG = `${zielTextZeile(30)}\n${zielTextZeile(31)}`;
 const GRENZE = 40;
+/** Derselbe Ablageort wie `tests/design-bildnachweis/bildnachweis-chromium.test.ts` (R-1399). */
+const BILDORDNER = repoPfad("test-results/bildnachweis");
 
 interface Traeger {
   sel: string;
@@ -167,8 +171,23 @@ describe.runIf(zielbildDa)(
           "knopf:#capture-dokument-link",
           // JOB 3506 K2b: `knopf:#capture-mehr-btn` stand hier, solange das „?“ in der Flaeche
           // sass. Es ist weg — nicht verborgen; T4 misst den Nachweis.
+          // Peters Entscheidung 55 (11.10.2026) praezisiert die Ein-Knopf-Vorlage: EINE primaere
+          // Einreichaktion, die Vertraulichkeit als OPTIONALE Auswahl mit verstaendlichem Standard.
+          // Dazu gehoeren die Gruppenbeschriftung, drei neutrale Wahlknoepfe (R-0632) und der
+          // Standardsatz — beide Beschriftungen halten die 40-Zeichen-Regel (oben `verstoesse`).
+          "beschriftung:#capture-stufe-titel",
+          "beschriftung:#capture-stufe-standard",
+          "knopf:#capture-stufe-intern",
+          "knopf:#capture-stufe-vertraulich",
+          "knopf:#capture-stufe-streng_vertraulich",
         ].sort(),
       );
+      // Entscheidung 55: genau EINE primaere Aktion in der Flaeche — „Senden". Die gewaehlte oder
+      // nicht gewaehlte Stufe ist nie primaer betont.
+      const primaer = await lies<string[]>(
+        "() => Array.from(document.querySelectorAll('#section-capture button.primary')).map((b) => b.id)",
+      );
+      expect(primaer).toEqual(["send-btn"]);
       const beschriftungen = traeger.filter((t) => t.rolle === "beschriftung").map((t) => t.text);
       // In Dokumentordnung: der KA7-Pruefstand steht an der Markierungskarte (nach
       // #capture-ergebnis), die Feldbeschriftung „Titel" darunter. Der KA7-Wortlaut steht hier
@@ -179,7 +198,13 @@ describe.runIf(zielbildDa)(
         "Keine frische Prüfung",
         wort("de", "captureTitleLabel"),
         wort("de", "captureBereichLabel"),
+        wort("de", "captureStufeLabel"),
+        // Ohne Wahl nennt der Satz den geltenden Standard (N11) — kein Knopf ist dafuer gedrueckt.
+        wort("de", "captureStufeStandard"),
       ]);
+      for (const sprache of ["de", "en", "nl"] as const) {
+        expect(wort(sprache, "captureStufeStandard").length).toBeLessThanOrEqual(GRENZE);
+      }
       // JOB 3555 K2b: die vier Lagensaetze der Bereich-Zeile sind Feldwerte, keine Erklaersaetze —
       // und bleiben in allen drei Sprachen unter der Grenze dieses Auftrags.
       for (const sprache of ["de", "en", "nl"] as const) {
@@ -213,9 +238,17 @@ describe.runIf(zielbildDa)(
       expect(saetze(status[0]?.text ?? "")).toBe(1);
       expect(status[0]?.text).toBe(wort("de", "sendTooLarge"));
       const knoepfe = traeger.filter((t) => t.rolle === "knopf").map((t) => t.sel);
-      // JOB 3506 K2b: ohne das „?“ sind es drei — Senden, Textlink, „Erneut senden“.
+      // JOB 3506 K2b: ohne das „?“ sind es drei — Senden, Textlink, „Erneut senden“. Dazu seit
+      // Entscheidung 55 die drei optionalen Wahlknoepfe der Vertraulichkeit (keine Aktion).
       expect(knoepfe.sort()).toEqual(
-        ["#send-btn", "#capture-dokument-link", "#send-status-btn"].sort(),
+        [
+          "#send-btn",
+          "#capture-dokument-link",
+          "#send-status-btn",
+          "#capture-stufe-intern",
+          "#capture-stufe-vertraulich",
+          "#capture-stufe-streng_vertraulich",
+        ].sort(),
       );
       // Der Fehlersatz ist zustandsgebunden: die 40-Zeichen-Regel gilt fuer Beschriftungen; er ist
       // als EIN Satz + EIN Knopf begrenzt (§5.6) und geht mit dem naechsten Senden wieder weg.
@@ -290,6 +323,43 @@ describe.runIf(zielbildDa)(
         expect(wort(sprache, "captureEmpty").length).toBeLessThanOrEqual(GRENZE);
         expect(wort(sprache, "captureTitleLabel").length).toBeLessThanOrEqual(GRENZE);
       }
+    });
+
+    // R-1399 · Bildnachweis zu Entscheidung 55 (Ben, Nacharbeit 29): die Erfassen-Flaeche im Bild,
+    // einmal OHNE Wahl (Standardsatz sichtbar, kein Knopf gedrueckt) und einmal MIT gewaehlter
+    // optionaler Stufe (Knopf gedrueckt, Standardsatz weg). Je Bild wird der Zustand gemessen, damit
+    // das Bild nicht etwas anderes zeigt als behauptet.
+    it("T6 · Bildnachweis: Standard ohne Wahl und gewaehlte optionale Stufe — Senden bleibt die einzige Primaeraktion", async () => {
+      const bu = buehne();
+      bu.plan.markierung = MARKIERUNG;
+      await bu.oeffnen();
+      mkdirSync(BILDORDNER, { recursive: true });
+      const lage = () =>
+        lies<{ gedrueckt: string[]; standardSichtbar: boolean; primaer: string[] }>(`() => ({
+          gedrueckt: Array.from(document.querySelectorAll('#capture-stufe button[aria-pressed="true"]')).map((k) => k.id),
+          standardSichtbar: (${SICHTBAR})('#capture-stufe-standard'),
+          primaer: Array.from(document.querySelectorAll('#section-capture button.primary')).map((k) => k.id),
+        })`);
+      const ohne = await lage();
+      console.info(`R-1399 · K2 T6 ohne Wahl: ${JSON.stringify(ohne)}`);
+      expect(ohne).toEqual({ gedrueckt: [], standardSichtbar: true, primaer: ["send-btn"] });
+      await bu.seite.screenshot({
+        path: `${BILDORDNER}/b17-word-erfassen-standard.png`,
+        fullPage: true,
+      });
+      await lies<boolean>(KLICK, "#capture-stufe-vertraulich");
+      const mit = await lage();
+      console.info(`R-1399 · K2 T6 mit Wahl: ${JSON.stringify(mit)}`);
+      expect(mit).toEqual({
+        gedrueckt: ["capture-stufe-vertraulich"],
+        standardSichtbar: false,
+        primaer: ["send-btn"],
+      });
+      await bu.seite.screenshot({
+        path: `${BILDORDNER}/b17-word-erfassen-stufe-gewaehlt.png`,
+        fullPage: true,
+      });
+      console.info(`R-1399 · Bilder ${BILDORDNER}/b17-word-erfassen-{standard,stufe-gewaehlt}.png`);
     });
 
     it("K · KALIBRIERUNG: derselbe Messer meldet einen wieder eingefuegten Hinweissatz", async () => {

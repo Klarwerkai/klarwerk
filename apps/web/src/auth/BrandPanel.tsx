@@ -118,8 +118,9 @@ export function DemoKennzeichen({ form }: { form: "marke" | "band" }): JSX.Eleme
 // der Installation widersprochen hat, und ausgerechnet die, die bei der Vorführung zuerst dasteht.
 //
 // NEBEN, NICHT ANSTELLE: Pedis Auflage „die Produktidentität bleibt erkennbar" gilt hier genauso wie
-// im Kopfband (`shell/Logo.tsx:17`). Das Wort KLARWERK und der Untertitel „Reasoning System" bleiben
-// in JEDEM Zustand stehen; das Firmenlogo tritt daneben.
+// im Kopfband (`shell/Logo.tsx:17`). Das Wort KLARWERK und der Untertitel „Knowledge OS" bleiben
+// in JEDEM Zustand stehen; das Firmenlogo tritt daneben. (R-0882: bis 11.10.2026 hiess der
+// Untertitel „Reasoning System"; Peters Entscheidung 53 legt „Knowledge OS" fest.)
 //
 // WOHER DER STAND KOMMT — dieselbe EINE Quelle wie an der Wurzel (`shell/Logo.tsx:36`): das Modul
 // `lib/brandTheme.ts`, das `/api/branding` auf einen Abruf je Minute gedrosselt abfragt. Diese Datei
@@ -169,11 +170,12 @@ function Wortmarke({ hell }: { hell: boolean }): JSX.Element {
           KLARWERK
         </span>
         <span
-          className={`block font-mono text-[10px] uppercase tracking-[1.5px] ${
+          className={`block font-mono text-klein uppercase tracking-[1.5px] ${
             hell ? "text-white/50" : "text-muted-2"
           }`}
         >
-          {/* R-1169: der Markenuntertitel kommt aus dem Katalog (`app.subtitle`). */}
+          {/* R-1169: der Markenuntertitel kommt aus dem Katalog (`app.subtitle`, seit Entscheidung 53
+              „Knowledge OS"). */}
           {t("app.subtitle")}
         </span>
       </span>

@@ -63,7 +63,7 @@ function Seite({ seite, nummer }: { seite: KonfliktSeite; nummer: 1 | 2 }): JSX.
       data-testid="ask-belastbarkeit-konfliktseite"
       className="min-w-0 flex-1 rounded-btn border border-hairline bg-surface p-2"
     >
-      <div className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("ask.belastbarkeit.konflikt.seite", { nummer })}
         {seite.traegtAntwort ? ` · ${t("ask.belastbarkeit.konflikt.traegt")}` : ""}
       </div>
@@ -222,7 +222,7 @@ function Argumentation({
   );
   return (
     <div data-testid="ask-argumentation" className="mt-2">
-      <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+      <p className="font-mono text-klein uppercase tracking-wider text-muted-2">
         {t("ask.belastbarkeit.argumentation.titel")}
       </p>
       <ol className="mt-1 space-y-1">
@@ -260,7 +260,7 @@ export function Belastbarkeit({ b }: { b: AntwortBelastbarkeit }): JSX.Element {
       className="rounded-card border border-hairline bg-page px-3 py-2"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+        <span className="font-mono text-klein uppercase tracking-wider text-muted-2">
           {t("ask.belastbarkeit.titel")}
         </span>
         <span
