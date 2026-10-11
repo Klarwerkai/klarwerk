@@ -158,6 +158,8 @@ export interface Seite {
   goto(url: string, opts?: Record<string, unknown>): Promise<unknown>;
   waitForFunction(fn: BrowserFn, arg?: unknown, opts?: Record<string, unknown>): Promise<unknown>;
   evaluate<T>(fn: BrowserFn, arg?: unknown): Promise<T>;
+  /** R-1399: Bildnachweis der Erfassen-Fläche (zielbild-k2-kein-erklaertext T6). */
+  screenshot(opts: { path: string; fullPage?: boolean }): Promise<unknown>;
   close(): Promise<void>;
 }
 export interface Browser {

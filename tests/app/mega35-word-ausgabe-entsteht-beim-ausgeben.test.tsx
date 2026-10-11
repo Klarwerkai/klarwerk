@@ -223,7 +223,9 @@ describe("mega35 A · Kuerzen waehrend der Quellenaufloesung", () => {
     el("ask-copy-btn").click();
     await ruhe();
 
-    expect(lauf.kopiert[0]).toContain("Einstufung: gesichert");
+    // Entscheidung 54 (Peter, 11.10.2026): „Fachlich bestätigt“ statt „gesichert“.
+    expect(lauf.kopiert[0]).toContain("Einstufung: Fachlich bestätigt");
+    expect(lauf.kopiert[0]).not.toContain("gesichert");
     expect(lauf.kopiert[0]).not.toContain("ungeprüft");
   });
 

@@ -6,6 +6,9 @@
 // Kopplung, Reiter „Erneut"). Die Werte erklären, was der Server in `frische` ableitet
 // (`services/knowledge-object/src/frische.ts`).
 //
+// Entscheidung 54 (Peter, 11.10.2026): der Wissensstatus heisst im Deutschen „Fachlich bestätigt“;
+// Haltbarkeit und abgelaufene Frist sprechen deshalb davon und nicht mehr von „gesichert“.
+//
 // `audit.action.ko_freshness_confirmed` ist ein ALTNAME: `lib/auditAction.ts` leitet ihn aus dem
 // Protokollvorgang `ko.freshness-confirmed` ab, den `KoService.bestaetigeFrische` schreibt.
 import type { Textmodul } from "./intern/pruefung";
@@ -26,7 +29,7 @@ export default {
     "frische.stufe.altert": "altert",
     "frische.stufe.faellig": "fällig",
     "frische.stufe.veraltet": "veraltet",
-    "frische.haltbarBis": "Gesichert bis",
+    "frische.haltbarBis": "Fachlich bestätigt bis",
     "frische.haltbarUnbekannt": "unbekannt",
     "frische.verantwortlich": "Verantwortlich",
     "frische.verantwortlichErsatz": "(Autor, kein Verantwortlicher benannt)",
@@ -49,7 +52,7 @@ export default {
     "frische.naechster.bald_bestaetigen": "Bald bestätigen — die Frist läuft ab",
     "frische.naechster.keiner": "nichts zu tun",
     "frische.nichtGesichert":
-      "Die Haltbarkeit ist abgelaufen: in Antworten gilt dieses Wissen nicht mehr als gesichert, bis die verantwortliche Person es bestätigt.",
+      "Die Haltbarkeit ist abgelaufen: in Antworten gilt dieses Wissen nicht mehr als fachlich bestätigt, bis die verantwortliche Person es bestätigt.",
     "frische.letztesSignal": "Zuletzt bestätigt von {{name}} am {{datum}}",
     "frische.stimmtWeiterhin": "Stimmt weiterhin",
     "frische.stimmtWeiterhinHinweis":
@@ -74,7 +77,7 @@ export default {
     "frische.halbwertszeitVorgabe": "{{tage}} Tage (Vorgabe der Wissensart)",
     "frische.meldungArt": "Aktualität",
     "frische.meldungFrist": "Bitte bestätigen, Frist läuft ab",
-    "frische.meldungFristAbgelaufen": "Frist abgelaufen — nicht mehr gesichert",
+    "frische.meldungFristAbgelaufen": "Frist abgelaufen — nicht mehr fachlich bestätigt",
     "frische.meldungVorlage": "Wochenvorlage: stimmt das noch?",
     "frische.meldungAnlage": "Erneut prüfen: Anlage geändert",
   },

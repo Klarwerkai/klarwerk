@@ -82,6 +82,9 @@ const OBJEKTSTAND = ["bestandNochNichtGeprueft"];
 const VERBOTEN: { sprache: string; muster: RegExp }[] = [
   { sprache: "de", muster: /gepr(ue|ü)ft/i },
   { sprache: "de", muster: /gesichert/i },
+  // Entscheidung 54 (Peter, 11.10.2026): die deutsche Einstufung heisst „Fachlich bestätigt“ statt
+  // „gesichert“ — dieselbe Zusage, also dieselbe Regel: nur im Einstufungshinweis.
+  { sprache: "de", muster: /fachlich best(ä|ae)tigt/i },
   { sprache: "en", muster: /verified/i },
   { sprache: "en", muster: /assured/i },
   { sprache: "nl", muster: /gecontroleerd/i },
@@ -155,10 +158,11 @@ describe("mega35 B · die Wortliste der Word-Fläche", () => {
     for (const { key, text } of noten) {
       expect(text.length, key).toBeGreaterThan(20);
     }
-    // Und die Worte, die überall sonst verboten sind, kommen hier tatsächlich vor.
+    // Und die Worte, die überall sonst verboten sind, kommen hier tatsächlich vor — ausser dem
+    // abgelösten „gesichert“: nach Entscheidung 54 steht es auch hier nicht mehr.
     const zusammen = noten.map((n) => n.text).join(" | ");
     for (const { muster } of VERBOTEN) {
-      expect(muster.test(zusammen), muster.source).toBe(true);
+      expect(muster.test(zusammen), muster.source).toBe(muster.source !== "gesichert");
     }
   });
 

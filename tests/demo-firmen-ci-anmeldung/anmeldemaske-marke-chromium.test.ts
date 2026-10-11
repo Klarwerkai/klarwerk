@@ -75,9 +75,11 @@
 // DER MARKENSTAND KOMMT ÜBER DIE GANZE KETTE: `PUT /api/admin/branding` mit dem Admin-Bearer →
 // Ablage → `GET /api/branding` (öffentlich) → `lib/brandTheme.ts` → `BrandPanel`. Kein Zugriff in
 // die Seite hinein (s. `gast-buehne.ts`, `setzeMarke`).
+import { mkdirSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { beende, fn as h6Fn, starte } from "../design/h6-chromium";
 import baueFrisch from "../review26-pruefen-schmal/bau";
+import { repoPfad } from "../support/repoPfad";
 import {
   type GastSeite,
   type GastStand,
@@ -91,6 +93,8 @@ import {
 const PANEL = '[data-testid="auth-brand-panel"]';
 const COMPACT = '[data-testid="auth-brand-compact"]';
 const FIRMENLOGO = '[data-testid="auth-firmenlogo"]';
+/** Derselbe Ablageort wie `tests/design-bildnachweis/bildnachweis-chromium.test.ts` (R-1399). */
+const BILDORDNER = repoPfad("test-results/bildnachweis");
 
 /** Das Seitenverhältnis der Originaldatei — `viewBox="0 0 173.1 39.19"`, sonst nichts. */
 const LOGO_SEITENVERHAELTNIS = 173.1 / 39.19;
@@ -605,6 +609,33 @@ describe("JOB 3591 B · die Anmeldemaske in Chromium, an zwei Breiten und an der
     zeichenplatte(m, "B1/390");
     imFenster(m, "B1/390");
   });
+
+  // ----------------------------------------------------------------------------------------------
+  // R-1399 · Bildnachweis zu Entscheidung 53 (Ben, Nacharbeit 29): die Wortmarke mit dem Untertitel
+  // „Knowledge OS" im Bild — Markenspalte bei 1280 px und schmaler Anker bei 390 px, Marke AUS
+  // (der Grundstand jedes Gasts). Vor jedem Bild hält dieselbe Zusage wie in B1: das Wort steht da
+  // und ist an seinem Ort getroffen; „Reasoning System" steht nicht mehr da.
+  // ----------------------------------------------------------------------------------------------
+  for (const [breite, hoehe] of [
+    [1280, 900],
+    [390, 844],
+  ] as const) {
+    it(`B4 · Bildnachweis Wortmarke bei ${breite} px`, async () => {
+      const m = await miss(breite, hoehe, "AUS");
+      produktidentitaet(m, `B4/${breite}`);
+      const alt = await seite().evaluate<boolean>(
+        fn(
+          `(sel) => (document.querySelector(sel)?.textContent ?? "").includes("Reasoning System")`,
+        ),
+        bauform(breite),
+      );
+      expect(alt, `B4/${breite}: der alte Untertitel steht noch da`).toBe(false);
+      mkdirSync(BILDORDNER, { recursive: true });
+      const pfad = `${BILDORDNER}/b18-wortmarke-${breite}.png`;
+      await seite().screenshot({ path: pfad });
+      console.log(`R-1399 · Bild ${pfad}`);
+    });
+  }
 
   // ----------------------------------------------------------------------------------------------
   // B2 — dieselben zwei Breiten MIT Marke. Erst hier wird die Vorführung wirklich abgenommen.

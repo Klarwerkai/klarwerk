@@ -1778,7 +1778,7 @@
         // AUFTRAG-mega34 B2: die Einstufung — im Panel UND im eingefuegten Text. Bis hierher
         // versprach diese Flaeche unbedingt "geprueftes Wissen", auch bei gedeckelter Abdeckung
         // oder unbekanntem Konfliktstand. Jetzt sagt sie, was belegt ist und was nicht.
-        askEvidenceVerified: "Einstufung: gesichert — Quellen belegt, keine offenen Widersprüche bekannt.",
+        askEvidenceVerified: "Einstufung: Fachlich bestätigt — Quellen belegt, keine offenen Widersprüche bekannt.",
         askEvidenceUnverified: "Einstufung: ungeprüft — nicht als konfliktfrei belegt. Vor Verwendung prüfen.",
         askSourcesTitle: "Quellen",
         askTrust: "Vertrauen {n}",

@@ -29,7 +29,9 @@
 //
 // DIE GEGENPROBE IST TEIL DER MESSUNG (Fall K): dieselbe Seite mit einem im Speicher wieder
 // eingefuegten Hinweissatz — der Messer MUSS ihn melden. Sonst misst er nichts.
+import { mkdirSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { repoPfad } from "../support/repoPfad";
 import {
   type Buehne,
   HTML,
@@ -43,6 +45,8 @@ import {
 
 const MARKIERUNG = `${zielTextZeile(30)}\n${zielTextZeile(31)}`;
 const GRENZE = 40;
+/** Derselbe Ablageort wie `tests/design-bildnachweis/bildnachweis-chromium.test.ts` (R-1399). */
+const BILDORDNER = repoPfad("test-results/bildnachweis");
 
 interface Traeger {
   sel: string;
@@ -319,6 +323,43 @@ describe.runIf(zielbildDa)(
         expect(wort(sprache, "captureEmpty").length).toBeLessThanOrEqual(GRENZE);
         expect(wort(sprache, "captureTitleLabel").length).toBeLessThanOrEqual(GRENZE);
       }
+    });
+
+    // R-1399 · Bildnachweis zu Entscheidung 55 (Ben, Nacharbeit 29): die Erfassen-Flaeche im Bild,
+    // einmal OHNE Wahl (Standardsatz sichtbar, kein Knopf gedrueckt) und einmal MIT gewaehlter
+    // optionaler Stufe (Knopf gedrueckt, Standardsatz weg). Je Bild wird der Zustand gemessen, damit
+    // das Bild nicht etwas anderes zeigt als behauptet.
+    it("T6 · Bildnachweis: Standard ohne Wahl und gewaehlte optionale Stufe — Senden bleibt die einzige Primaeraktion", async () => {
+      const bu = buehne();
+      bu.plan.markierung = MARKIERUNG;
+      await bu.oeffnen();
+      mkdirSync(BILDORDNER, { recursive: true });
+      const lage = () =>
+        lies<{ gedrueckt: string[]; standardSichtbar: boolean; primaer: string[] }>(`() => ({
+          gedrueckt: Array.from(document.querySelectorAll('#capture-stufe button[aria-pressed="true"]')).map((k) => k.id),
+          standardSichtbar: (${SICHTBAR})('#capture-stufe-standard'),
+          primaer: Array.from(document.querySelectorAll('#section-capture button.primary')).map((k) => k.id),
+        })`);
+      const ohne = await lage();
+      console.info(`R-1399 · K2 T6 ohne Wahl: ${JSON.stringify(ohne)}`);
+      expect(ohne).toEqual({ gedrueckt: [], standardSichtbar: true, primaer: ["send-btn"] });
+      await bu.seite.screenshot({
+        path: `${BILDORDNER}/b17-word-erfassen-standard.png`,
+        fullPage: true,
+      });
+      await lies<boolean>(KLICK, "#capture-stufe-vertraulich");
+      const mit = await lage();
+      console.info(`R-1399 · K2 T6 mit Wahl: ${JSON.stringify(mit)}`);
+      expect(mit).toEqual({
+        gedrueckt: ["capture-stufe-vertraulich"],
+        standardSichtbar: false,
+        primaer: ["send-btn"],
+      });
+      await bu.seite.screenshot({
+        path: `${BILDORDNER}/b17-word-erfassen-stufe-gewaehlt.png`,
+        fullPage: true,
+      });
+      console.info(`R-1399 · Bilder ${BILDORDNER}/b17-word-erfassen-{standard,stufe-gewaehlt}.png`);
     });
 
     it("K · KALIBRIERUNG: derselbe Messer meldet einen wieder eingefuegten Hinweissatz", async () => {
