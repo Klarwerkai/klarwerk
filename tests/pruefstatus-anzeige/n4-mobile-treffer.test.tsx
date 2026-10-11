@@ -197,7 +197,8 @@ describe("N4 · mobiler Suchtreffer: Serverstatus statt Raten", () => {
     lage.konflikte = [];
     await mount();
     const zustand = await trefferZustand();
-    expect((zustand.textContent ?? "").trim()).toBe(i18n.t("status.validiert"));
+    // Nutzerentscheid Antwort 54 (11.10.2026): der Zustand heisst sichtbar „Fachlich bestätigt".
+    expect((zustand.textContent ?? "").trim()).toBe(i18n.t("pruefablauf.wissensstatus.validiert"));
     expect(zustand.getAttribute("data-anzeigestatus-herkunft")).toBe("bestand");
   });
 

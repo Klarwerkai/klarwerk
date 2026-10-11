@@ -212,8 +212,9 @@ describe("mega35 B · die Wortliste der Word-Fläche", () => {
   it("die Statusangaben des Wissensobjekts bleiben unangetastet", () => {
     // Sie sagen etwas über ein OBJEKT, nicht über die Antwort — und die Quellenliste braucht sie.
     const eintraege = i18nEintraege();
+    // Nutzerentscheid Antwort 54 (11.10.2026): DE „Fachlich bestätigt"; EN/NL unverändert.
     expect(eintraege.filter((e) => e.key === "askStatusValidiert").map((e) => e.text)).toEqual([
-      "Validiert",
+      "Fachlich bestätigt",
       "Validated",
       "Gevalideerd",
     ]);
