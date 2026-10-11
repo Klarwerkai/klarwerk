@@ -470,14 +470,15 @@ describe("BPA-01 · der Browserweg der Kontextkarte (Worker, Leiste, Klara-Kern)
         "x-klara-instance": sitzung.instanz,
         "x-klara-document": sitzung.documentContextId,
       });
-      // Genau die gebundene Auswahl samt Tabellenzeilen; Schutzklasse unbekannt ⇒ nicht `intern`;
-      // die Frage stammt vom Produkt, nicht aus der Seite.
+      // Genau die gebundene Auswahl samt Tabellenzeilen; Schutzklasse unbekannt ⇒ nicht `intern`.
+      // Die Frage sind die markierten Angaben selbst — als Dokumenttext gemeldet (`selection`),
+      // damit der Kern seine Dokumenttext-Regeln anwendet (nacharbeit-5).
       expect(frage?.body).toEqual({
-        question: "Erkläre mir diese Angaben.",
+        question: TEXT,
         locale: "de",
         selection: `${TEXT}\n\nTabelle:\nTyp | Nenndruck\nV-17 | 16 bar`,
         selectionConfidentiality: "unbekannt",
-        questionSource: "manual",
+        questionSource: "selection",
       });
       // Die Antwort ist an Karte und Fassung gebunden.
       expect(sicht.antwort).not.toBeNull();
@@ -635,8 +636,9 @@ describe("BPA-01 · der Browserweg der Kontextkarte (Worker, Leiste, Klara-Kern)
         headers: kopf,
         payload: {
           confidentiality: "intern",
-          title: "Angaben Ventil V-17",
-          statement: "Die Angaben zum Ventil V-17: Nenndruck 16 bar, höchstens 120 °C.",
+          // Ein Datenblatt-Eintrag, der die markierten Angaben führt (Typ, Nenndruck, Einheit).
+          title: "Ventil V-17 Typ und Nenndruck",
+          statement: "Typ V-17: Nenndruck 16 bar, höchstens 120 °C.",
           type: "best_practice",
           category: "Ask",
           neededValidations: 1,

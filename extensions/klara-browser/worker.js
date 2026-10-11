@@ -1356,14 +1356,6 @@
     "kontextErklaeren",
     "kontextWiderrufen",
   ];
-  /**
-   * Die Frage des bestellten Arbeitsfalls — vom Produkt gestellt, nicht aus der Seite gelesen.
-   * @type {Record<string, string>}
-   */
-  const FRAGE = {
-    de: "Erkläre mir diese Angaben.",
-    en: "Explain these details to me.",
-  };
   /** @type {import("./types").KontextSicht} */
   const KONTEXT_FEHLER = {
     kontext: true,
@@ -1684,7 +1676,10 @@
    * @param {string} grund
    */
   async function kontextAbbruch(grund) {
-    const sicht = kontextSicht(/** @type {Zustand} */ (await read()), grund);
+    // Der Stopp meldet sich überall mit demselben Status `widerrufen` (wie `kontextWiderrufen` und
+    // `kontextSperren`); der Grund steht in `sperre`.
+    const status = grund === "verbindung_widerrufen" ? "widerrufen" : grund;
+    const sicht = kontextSicht(/** @type {Zustand} */ (await read()), status);
     return { ...sicht, sperre: grund };
   }
 
@@ -1886,12 +1881,19 @@
             "x-klara-session": kern.sessionId,
             "x-klara-document": kern.documentContextId,
           },
+          // DIE FRAGE SIND DIE MARKIERTEN ANGABEN SELBST (nacharbeit-5). Der Kern bindet jeden
+          // Sachbegriff der Frage an jede Quelle (R-0473, `decktAlleFragebegriffe`) und verlangt
+          // zwei gemeinsame Begriffe (`MIN_ANSWER_SUBSTANCE`). Eine vom Produkt formulierte
+          // Anweisung („Erkläre …") bände Wörter, die keine Quelle führt — der Weg fände nie
+          // geprüftes Wissen. Weil die Frage damit Dokumenttext IST, wird sie als solcher gemeldet
+          // (`questionSource: "selection"`): mit Einwilligung gilt dann zusätzlich die
+          // Dokumenttext-Freigabe des Kerns, ohne sie bleibt der Weg in der Enge.
           body: JSON.stringify({
-            question: FRAGE[locale],
+            question: ausgang.daten.auswahl.text.trim(),
             locale,
             selection,
             selectionConfidentiality: "unbekannt",
-            questionSource: "manual",
+            questionSource: "selection",
           }),
           signal: AbortSignal.timeout(60000),
         },

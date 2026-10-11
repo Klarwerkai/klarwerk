@@ -125,6 +125,15 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
   - Gesendet wird genau die gebundene Auswahl samt Tabellenzeilen, vorher frisch gegen die
     Quellfassung abgeglichen. Die Schutzklasse ist der Erweiterung unbekannt und geht deshalb als
     nicht `intern` hinaus (G05).
+  - **Die Frage sind die markierten Angaben selbst (Nacharbeit 5).** Der Kern bindet jeden
+    Sachbegriff der Frage an jede Quelle (R-0473) und verlangt zwei gemeinsame Begriffe. Eine
+    vom Produkt formulierte Anweisung wie „Erkläre mir diese Angaben" bände Wörter, die keine
+    Quelle führt — der Weg fände nie geprüftes Wissen. Die Frage wird deshalb als Dokumenttext
+    gemeldet (`questionSource: "selection"`). „Erkläre mir diese Angaben" bleibt die Beschriftung
+    der Handlung in der Leiste.
+  - Folge: Gefunden wird geprüftes Wissen, das die markierten Sachbegriffe führt. Eine Quelle, die
+    nur einen Teil davon nennt, trägt die Antwort nicht. Das ist die bestehende Regel des Kerns,
+    hier nicht verändert.
   - Ohne Einwilligung antwortet der Kern nur aus geprüftem Wissen ohne Modell. Eine Einwilligung
     erteilt die Leiste nicht; das bleibt der bestehende Einwilligungsweg.
   - Die Antwort wird nur gebunden und angezeigt, solange Folge, Tab, Konto und Fassung der Karte
