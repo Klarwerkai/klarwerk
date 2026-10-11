@@ -84,6 +84,8 @@ export default {
       "Pausiert, weil die erlaubte Sperrbildschirmerkennung nicht gestartet werden konnte.",
     "begleitung.fehler.sperrmelder":
       "Die Sperrbildschirmerkennung ließ sich nicht starten. Die Begleitung bleibt pausiert; „Fortsetzen“ versucht es erneut.",
+    "begleitung.fehler.gesperrtBeimStart":
+      "Der Bildschirm wurde gesperrt, während die Begleitung eingerichtet wurde. Es wird nichts beobachtet; bitte bewusst erneut starten bzw. fortsetzen.",
     "begleitung.einstieg.titel": "Aktive Begleitung ausprobieren",
     "begleitung.einstieg.text":
       "Ein synthetisches Prüfformular ist für die Begleitung freigegeben. Dort kann {{assistenz}} auf fehlende Einheiten hinweisen – ohne etwas einzutragen.",
@@ -181,6 +183,8 @@ export default {
       "Paused because the permitted locked-screen detection could not be started.",
     "begleitung.fehler.sperrmelder":
       "Locked-screen detection could not be started. The session stays paused; “Resume” tries again.",
+    "begleitung.fehler.gesperrtBeimStart":
+      "The screen was locked while accompanying was being set up. Nothing is observed; please start or resume again deliberately.",
     "begleitung.einstieg.titel": "Try active accompanying",
     "begleitung.einstieg.text":
       "A synthetic test form is permitted for accompanying. There {{assistenz}} can point out missing units – without filling anything in.",
@@ -278,6 +282,8 @@ export default {
       "Gepauzeerd omdat de toegestane herkenning van een vergrendeld scherm niet kon starten.",
     "begleitung.fehler.sperrmelder":
       "De herkenning van een vergrendeld scherm kon niet starten. De begeleiding blijft gepauzeerd; „Hervatten” probeert het opnieuw.",
+    "begleitung.fehler.gesperrtBeimStart":
+      "Het scherm werd vergrendeld terwijl de begeleiding werd ingericht. Er wordt niets waargenomen; start of hervat opnieuw bewust.",
     "begleitung.einstieg.titel": "Actieve begeleiding uitproberen",
     "begleitung.einstieg.text":
       "Een synthetisch testformulier is vrijgegeven voor begeleiding. Daar kan {{assistenz}} wijzen op ontbrekende eenheden – zonder iets in te vullen.",

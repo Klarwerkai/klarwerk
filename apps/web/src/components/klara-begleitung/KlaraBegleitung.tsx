@@ -273,8 +273,20 @@ export function KlaraBegleitung({
         return;
       }
       const versuch = melderVersuch.current;
+      let entschieden = false;
       setMelder("startet");
-      const beiSperre = (): void => setB((alt) => systemereignis(alt, "sperrbildschirm", jetzt()));
+      const beiSperre = (): void => {
+        if (!entschieden && versuch === melderVersuch.current) {
+          // Nacharbeit 4 (Ben AC07): Sperre WÄHREND der Einrichtung. Der Versuch wird entwertet —
+          // seine spätere Antwort aktiviert nichts mehr, der Melder wird freigegeben. Beim
+          // Fortsetzen wird aus der Pause eine Sperrbildschirmpause; beim Erststart bleibt es bei
+          // „aus". In beiden Fällen braucht es danach eine neue, bewusste Handlung.
+          beendeMelder();
+          setMelder("nur_fenster");
+          setMeldung(t("begleitung.fehler.gesperrtBeimStart"));
+        }
+        setB((alt) => systemereignis(alt, "sperrbildschirm", jetzt()));
+      };
       void starteSperrmelder(beiSperre).then((r) => {
         if (versuch !== melderVersuch.current) {
           if (r.zustand === "laeuft") {
@@ -282,6 +294,7 @@ export function KlaraBegleitung({
           }
           return;
         }
+        entschieden = true;
         if (r.zustand === "laeuft") {
           melderBeenden.current = r.beenden;
         }
@@ -289,7 +302,7 @@ export function KlaraBegleitung({
         weiter(r.zustand);
       });
     },
-    [beendeMelder, jetzt],
+    [beendeMelder, jetzt, t],
   );
 
   // Außerhalb von „aktiv" läuft kein Melder: Pause, Stopp, Ablauf und Abbau geben ihn frei.

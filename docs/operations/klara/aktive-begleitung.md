@@ -59,7 +59,10 @@ Der Sperrbildschirmmelder läuft nur, solange die Begleitung aktiv ist. Beim Sta
 Fortsetzen, auch nach dem Neuladen, wird er aus der Geste heraus neu eingerichtet. Aktiviert wird
 erst, wenn sein tatsächlicher Zustand feststeht (läuft, nur Fenstersignal oder ausgefallen).
 Danach werden Ablauf, Stopp, Konto und Rechte ein zweites Mal geprüft. Ein Melder, der inzwischen
-überholt ist, wird sofort wieder freigegeben. Die Leiste sagt „Sperrbildschirm wird erkannt“ erst,
+überholt ist, wird sofort wieder freigegeben. Meldet der Melder schon während seiner Einrichtung
+einen gesperrten Bildschirm, wird der Versuch entwertet: Seine spätere Antwort aktiviert nichts,
+beim Fortsetzen wird daraus eine Sperrbildschirmpause, und es braucht einen neuen, bewussten
+Start bzw. ein neues Fortsetzen. Die Leiste sagt „Sperrbildschirm wird erkannt“ erst,
 wenn der Melder läuft; vorher steht „wird eingerichtet“, während einer Pause „ruht“.
 
 | Ereignis | Wirkung | Fortsetzen |

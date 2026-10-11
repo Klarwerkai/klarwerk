@@ -700,6 +700,70 @@ describe("K7 · Sperrbildschirmmelder: tatsächlicher Zustand, Ausfall, Wiederau
     expect(probe.signale[1]?.aborted).toBe(true);
   });
 
+  it("Sperre während des Erststarts: die verspätete Startantwort aktiviert nicht", async () => {
+    const probe = idleAttrappe("haelt");
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    await flush();
+    expect(probe.melder.length).toBe(1);
+    sperreBildschirm(probe);
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain(
+      "während die Begleitung eingerichtet wurde",
+    );
+
+    act(() => probe.freigeben[0]?.());
+    await flush();
+    // Die verspätete Antwort des entwerteten Versuchs gibt ihren Melder sofort frei.
+    expect(probe.signale[0]?.aborted).toBe(true);
+    expect(q("begleitung-zustand")).toBeNull();
+    expect(q("begleitung-status")).toBeNull();
+    expect(q("begleitung-angebot")).not.toBeNull();
+    expect(wurzel.textContent).not.toContain(ERKANNT);
+
+    // Erst ein neuer, bewusster Start aktiviert.
+    probe.art = "ok";
+    starte("Produktrecherche, 30 Minuten");
+    await flush();
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+    expect(q("begleitung-sperrerkennung")?.textContent).toBe(ERKANNT);
+  });
+
+  it("Sperre während des Fortsetzens: Sperrbildschirmpause bleibt, die Startantwort hebt sie nicht auf", async () => {
+    const probe = idleAttrappe("ok");
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    await flush();
+    act(() => knopf("Pause").click());
+    probe.art = "haelt";
+    act(() => knopf("Fortsetzen").click());
+    await flush();
+    expect(probe.melder.length).toBe(2);
+    sperreBildschirm(probe);
+    expect(q("begleitung-grund")?.textContent).toBe(
+      "Pausiert, weil der Bildschirm gesperrt wurde.",
+    );
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain(
+      "während die Begleitung eingerichtet wurde",
+    );
+
+    act(() => probe.freigeben[0]?.());
+    await flush();
+    expect(probe.signale[1]?.aborted).toBe(true);
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    expect(q("begleitung-grund")?.textContent).toBe(
+      "Pausiert, weil der Bildschirm gesperrt wurde.",
+    );
+    expect(wurzel.textContent).not.toContain(ERKANNT);
+
+    // Erst ein erneutes, bewusstes Fortsetzen aktiviert — mit neu eingerichtetem Melder.
+    probe.art = "ok";
+    act(() => knopf("Fortsetzen").click());
+    await flush();
+    expect(probe.melder.length).toBe(3);
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+    expect(q("begleitung-sperrerkennung")?.textContent).toBe(ERKANNT);
+  });
+
   it("ohne Idle Detection bleibt es ehrlich beim Fenstersignal", () => {
     montiere();
     starte("Produktrecherche, 30 Minuten");
