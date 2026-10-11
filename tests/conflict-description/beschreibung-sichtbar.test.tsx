@@ -260,6 +260,8 @@ const umriss = (): string => {
  *   · R-0252 (Nacharbeit 5): die Vorlage ist nicht eingeordnet — hinter „Eskalieren" stehen die drei
  *     Einordnungsknöpfe, und `p#konflikt-einordnung-zuerst` nennt den Grund, warum die Entscheidungen
  *     bis dahin gesperrt sind. Der Arbeitsart-Satz sagt „noch nicht eingeordnet".
+ *   · Antwort 54 (Aufnahme gesamt-peer-validierung, 11.10.2026): der validierte Zustand in der
+ *     Kartenunterzeile heisst „Fachlich bestätigt" statt „Validiert" — nur das Wort, keine Zeile.
  * Keine Zeile ging weg, nichts wurde vertauscht, die Beschreibung steht nirgends.
  */
 const AUTOMATIK_UMRISS_BASIS = `div#pruefen-flaeche
@@ -273,7 +275,7 @@ const AUTOMATIK_UMRISS_BASIS = `div#pruefen-flaeche
       div
         div
           div "Beitrag A"
-          div "Validiert · Technik · 2026"
+          div "Fachlich bestätigt · Technik · 2026"
         span
           button#pruefen-menue-konflikt-a
             svg
@@ -318,7 +320,7 @@ const AUTOMATIK_UMRISS_BASIS = `div#pruefen-flaeche
       div
         div
           div "Beitrag B"
-          div "Validiert · Technik · 2026"
+          div "Fachlich bestätigt · Technik · 2026"
         span
           button#pruefen-menue-konflikt-b
             svg

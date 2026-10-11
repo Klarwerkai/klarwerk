@@ -89,6 +89,10 @@ export interface KoProposal {
   resultVersion?: number;
   /** Begründung der Entscheidung — bei einer Ablehnung die Auskunft, warum. */
   note?: string;
+  /** package:pruefablauf: die benannte Prüfperson (Kennung). */
+  pruefer?: string;
+  /** package:pruefablauf: Rückfragen an den Einreicher; der Vorschlag bleibt dabei offen. */
+  rueckfragen?: { von: string; at: string; text: string }[];
 }
 
 // SCRUM-129 / FR-KO-07: echte externe Quelle am Objekt (Stufe 2, nie peer-validiert).
@@ -755,6 +759,33 @@ export interface KnowledgeObject {
   // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
   // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
+  /**
+   * AW06-K02: die Annahme DIESER Fassung, vom Server aus genau dem referenzierten Beleg gelesen —
+   * Fassung, Person, Zeitpunkt und die Kontoregel, die im Beleg steht (`null`: dort nicht
+   * festgehalten). Fehlt das Feld, gibt es für diese Fassung keine belegte Annahme.
+   */
+  annahme?: {
+    fassung: number;
+    person: string;
+    zeitpunkt: string;
+    kontoregel: string | null;
+    benoetigt?: number;
+  };
+  /**
+   * Antwort 19 (gesamt-peer-validierung): die Sichtung der unmittelbar gültig gesetzten Weisung —
+   * verantwortliche Person, Frist (JJJJ-MM-TT), gebunden an `koVersion`; `ergebnis` fehlt, solange
+   * nicht gesichtet ist.
+   */
+  weisungsSichtung?: {
+    auditSeq: number;
+    auditHash: string;
+    koVersion: number;
+    erteiltVon: string;
+    bereich: string;
+    verantwortlich: string;
+    frist: string;
+    ergebnis?: { art: "bestaetigt" | "widerrufen"; von: string; am: string; auditSeq: number };
+  };
   // R-0082: ab zwei Anlagen trägt `assets` die Liste und `asset` spiegelt die erste; eine einzelne
   // Anlage (und Altbestand) steht nur in `asset`. Gelesen wird beides über `anlagenVon`.
   asset: string | null;
@@ -2059,6 +2090,10 @@ export interface PublicUser {
   // regulären Kontos (`services/auth/src/types.ts:42-45`). Das fehlende Feld bedeutet
   // „unbefristet" — es ist keine fehlende Auskunft, sondern eine.
   accessExpiresAt?: string;
+  // Aufnahme gesamt-peer-validierung (Antwort 18): die am Konto vergebene fachliche
+  // Weisungsbefugnis mit Zuständigkeitsbereichen (`*` = ganzes Unternehmen). Fehlt das Feld, hat
+  // das Konto keine — unabhängig von seiner Rolle.
+  weisungsbefugnis?: { bereiche: string[]; erteiltVon: string; erteiltAm: string };
 }
 
 // SCRUM-116/108: Import-/Source-Review-Kandidaten (JSON-Re-Import).

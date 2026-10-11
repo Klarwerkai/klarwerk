@@ -351,6 +351,82 @@ export interface KoProposal {
   resultVersion?: number;
   /** Begründung der Entscheidung — bei einer Ablehnung die Auskunft, warum. */
   note?: string;
+  /**
+   * Aufnahme gesamt-peer-validierung (package:pruefablauf, Ben Nacharbeit 3): die BENANNTE
+   * Prüfperson, der der Einreicher die Änderung gibt (Kennung). Beim Einreichen geprüft: nicht der
+   * Einreicher selbst, und mit Freigaberecht. Sie ist eine Zuordnung, kein exklusives Recht —
+   * entscheiden darf weiterhin jede freigabeberechtigte Person ausser dem Einreicher.
+   */
+  pruefer?: string;
+  /**
+   * Rückfragen an den Einreicher — mit wem, wann und welchem Inhalt. Eine Rückfrage entscheidet
+   * nichts: der Vorschlag bleibt `offen`, und der geprüfte Bestand bleibt unverändert.
+   */
+  rueckfragen?: KoProposalRueckfrage[];
+  /**
+   * AW06-K02 (Ben, Nacharbeit 4): unter welcher Kontoregel dieser Vorschlag entstand — beim
+   * Einreichen aus dem Recht des Einreichers festgehalten. `pflichtpruefung`: er durfte nicht
+   * direkt freigeben; `freiwillige-zweitpruefung`: er hätte gedurft und hat die fremde Prüfung
+   * gewählt. Fehlt bei Vorschlägen von vor dieser Regel.
+   */
+  kontoregel?: Extract<Kontoregel, "pflichtpruefung" | "freiwillige-zweitpruefung">;
+}
+
+/**
+ * AW06-K02 — DIE KONTOREGEL EINER ANNAHME, wie sie im Entscheidungsbeleg steht.
+ *   · `peer-pruefung`             — Bewertungsweg; der Beleg nennt die erforderliche Freigabezahl.
+ *   · `direktannahme`             — ein Konto mit Freigaberecht nimmt direkt an (Admin-Freigabe,
+ *                                   Überarbeiten-und-Freigeben).
+ *   · `pflichtpruefung`           — Übernahme eines Vorschlags, dessen Einreicher nicht direkt
+ *                                   freigeben durfte.
+ *   · `freiwillige-zweitpruefung` — Übernahme eines Vorschlags, dessen Einreicher hätte freigeben
+ *                                   dürfen und die fremde Prüfung gewählt hat.
+ *   · `eigentuemerfreigabe`       — R-0507: der benannte Eigentümer mit Freigaberecht gibt frei
+ *                                   (`ValidationService.ownerValidate`, Beleg `ko.owner-validated`).
+ *   · `weisung`                   — Antworten 18/19: ein Konto mit fachlicher Weisungsbefugnis für
+ *                                   den Bereich stellt die eigene Weisung unmittelbar gültig ein
+ *                                   (`ValidationService.weisungValidate`, Beleg
+ *                                   `ko.weisung-validated`); eine benannte Person sichtet nach.
+ */
+export type Kontoregel =
+  | "peer-pruefung"
+  | "direktannahme"
+  | "pflichtpruefung"
+  | "freiwillige-zweitpruefung"
+  | "eigentuemerfreigabe"
+  | "weisung";
+
+/**
+ * Antwort 19 — DIE NACHFOLGENDE SICHTUNG EINER UNMITTELBAR GÜLTIGEN WEISUNG.
+ *
+ * Die Weisung gilt ab ihrer Einstellung; die benannte verantwortliche Person (nie die
+ * Weisungsgeberin selbst) sichtet sie bis zur Frist. `auditSeq`/`auditHash`/`koVersion` binden die
+ * Sichtung an den Beleg `ko.weisung-validated` und an genau die gültig gesetzte Fassung. `ergebnis`
+ * fehlt, solange nicht gesichtet ist: `bestaetigt` lässt die Weisung stehen, `widerrufen` nimmt sie
+ * zurück (Status offen). Ein Wahrheitskonflikt öffnet das Objekt unabhängig davon
+ * (`wahrheitskonfliktFolge`).
+ */
+export interface WeisungsSichtung {
+  auditSeq: number;
+  auditHash: string;
+  koVersion: number;
+  erteiltVon: string;
+  bereich: string;
+  verantwortlich: string;
+  /** Kalendertag (JJJJ-MM-TT), bis zu dem gesichtet sein soll. */
+  frist: string;
+  ergebnis?: {
+    art: "bestaetigt" | "widerrufen";
+    von: string;
+    am: string;
+    auditSeq: number;
+  };
+}
+
+export interface KoProposalRueckfrage {
+  von: string;
+  at: string;
+  text: string;
 }
 
 // FR-CAP-05: Anhang/Foto am Objekt. Pilot: client-seitig verkleinertes Thumbnail
@@ -790,6 +866,23 @@ export interface KnowledgeObject {
   // der schlechte Kompromiss, den die Entscheidung ausschließt. Nach einer Revision bleibt der
   // Verweis stehen und wird folgerichtig `WRONG_SUBJECT`.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
+  // Aufnahme gesamt-peer-validierung (R-0256, Ben Nacharbeit 3): WORAUS der gespeicherte
+  // Vertrauenswert entstand. `trust` ist der Wert, für den diese Angabe gilt; `ohneKonflikte` der
+  // Wert der gemeinsamen Formel VOR der Konfliktwirkung; `konflikte` die Arten, die bereits
+  // eingerechnet sind. Die Wahrheitskonflikt-Folge rechnet damit aus derselben Grundlage neu, statt
+  // eine schon eingerechnete Strafe ein zweites Mal abzuziehen. Weicht `trust` vom gespeicherten
+  // `KnowledgeObject.trust` ab, hat ein anderer Weg den Wert seither gesetzt (Admin-Freigabe,
+  // Übernahme, „Hat geholfen") — dann gilt die Angabe nicht mehr. Additiv, JSON-persistiert.
+  vertrauensGrundlage?: { trust: number; ohneKonflikte: number; konflikte: string[] };
+  // AW06-K02 (Ben, Nacharbeit 7): der Verweis auf den Beleg, der DIESE Fassung angenommen hat —
+  // getrennt von `validationDecisionRef`, das immer die NEUESTE Prüfentscheidung nennt. Eine spätere
+  // gelbe Rückfrage an derselben, weiter validierten Fassung ersetzt dort den Verweis durch ihre
+  // Rückgabe; die Annahme bleibt hier stehen. `koVersion` bindet ihn an die angenommene Fassung.
+  // Gesetzt nur beim Übergang nach „validiert" (erste Annahme der Fassung). Additiv, JSON-persistiert.
+  annahmeRef?: { auditSeq: number; auditHash: string; koVersion: number };
+  // Antwort 19 (Aufnahme gesamt-peer-validierung): die Sichtung der zuletzt unmittelbar gültig
+  // gesetzten Weisung (s. `WeisungsSichtung`). Additiv, JSON-persistiert.
+  weisungsSichtung?: WeisungsSichtung;
   // ============================================================================================
   // JOB 557 (Pedi 13.08.2026) — WEM DAS OBJEKT GEHÖRT, WER ES GEPRÜFT UND WER ES VALIDIERT HAT.
   // ============================================================================================

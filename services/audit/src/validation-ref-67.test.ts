@@ -133,12 +133,16 @@ describe("W3-B/67 · die sechs Zustaende der Referenzpruefung (KW-W3-19)", () =>
   // Owner-Rueckgabe sonst als `WRONG_EVENT_TYPE` gaelte und die festgehaltene Entscheidung
   // ungueltig waere; der alte, weil jedes vor D8 geschriebene Ereignis ihn traegt und ein
   // Entfernen saemtliche Altbelege rueckwirkend entwerten wuerde.
-  it("die erlaubte Action-Menge ist BENANNT und traegt genau die vier Entscheidungen", () => {
+  // Aufnahme gesamt-peer-validierung (Antworten 18/19): dazu die unmittelbar gültige Weisung und
+  // ihre Sichtung — sechs Namen.
+  it("die erlaubte Action-Menge ist BENANNT und traegt genau die sechs Entscheidungen", () => {
     expect([...VALIDATION_DECISION_ACTIONS].sort()).toEqual([
       "ko.admin-validated",
       "ko.rated",
       "ko.returned-to-author",
       "ko.returned-to-owner",
+      "ko.weisung-gesichtet",
+      "ko.weisung-validated",
     ]);
     for (const action of VALIDATION_DECISION_ACTIONS) {
       const e = eintrag({ action });

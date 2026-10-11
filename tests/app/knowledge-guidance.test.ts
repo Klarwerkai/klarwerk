@@ -3,6 +3,7 @@ import {
   type KnowledgeGuidanceSurface,
   knowledgeGuidance,
 } from "../../apps/web/src/lib/knowledgeGuidance";
+import { WISSENSSTATUS_BESTAETIGT } from "../../apps/web/src/lib/wissensstatus";
 
 describe("SCRUM-289: knowledgeGuidance", () => {
   it("liefert pro Oberfläche einen Titel, Body und mindestens zwei Führungspunkte", () => {
@@ -42,7 +43,14 @@ describe("SCRUM-289: knowledgeGuidance", () => {
       for (const item of knowledgeGuidance(surface).items) {
         expect(allowedRoutes.has(item.to)).toBe(true);
         expect(allowedTones.has(item.tone)).toBe(true);
-        expect(item.labelKey).toMatch(/^kg\./);
+        // Nutzerentscheid Antwort 54 (11.10.2026): der Punkt „secured" trägt den Namen des
+        // validierten Wissensstatus („Fachlich bestätigt") aus lib/wissensstatus.ts — genau diesen
+        // einen Schlüssel; alle übrigen Beschriftungen bleiben im kg.-Bestand.
+        if (item.id === "secured") {
+          expect(item.labelKey).toBe(WISSENSSTATUS_BESTAETIGT);
+        } else {
+          expect(item.labelKey).toMatch(/^kg\./);
+        }
         expect(item.bodyKey).toMatch(/^kg\./);
       }
     }

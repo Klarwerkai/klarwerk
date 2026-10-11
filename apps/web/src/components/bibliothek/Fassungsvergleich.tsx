@@ -20,6 +20,7 @@ import { type ChangeEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useKoVersions } from "../../api/hooks";
 import { type KoVersionPaarDiff, paarDiff } from "../../lib/koVersionDiff";
+import { statusSchluessel } from "../../lib/wissensstatus";
 import { SanitizedHtml } from "../SanitizedHtml";
 
 /** Die geänderten Felder zweier Fassungen, ältere links, jüngere rechts. */
@@ -37,7 +38,7 @@ export function FassungsGegenueberstellung({
     ) : feld === "type" ? (
       <>{t(`ktype.${wert}`)}</>
     ) : feld === "status" ? (
-      <>{t(`status.${wert}`)}</>
+      <>{t(statusSchluessel(wert))}</>
     ) : feld === "bodyHtml" ? (
       // Derselbe eine Zeichenweg wie am geöffneten Bericht: kein `dangerouslySetInnerHTML`.
       <SanitizedHtml html={wert} className="prose-kw text-[12.5px]" />

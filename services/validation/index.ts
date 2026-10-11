@@ -13,7 +13,30 @@ export type {
   KoPruefstand,
 } from "./src/service";
 export { computeOutcome, TRUST_WEIGHTS, TRUST_MAX } from "./src/trust";
-export type { ValidationOutcome } from "./src/trust";
+// R-0256: abgestufte Konfliktwirkung je Art (Technischer Anhang §3.3) in derselben Formel.
+export {
+  applyConflictImpact,
+  CONFLICT_TRUST_IMPACT,
+  CONFLICT_TRUST_FLOOR,
+} from "./src/trust";
+// R-0254 / R-0256: Gewichte nach Prüfererfahrung und je Quellenart (Begründung in trust.ts).
+export {
+  PRUEFER_ERFAHRUNG_AB,
+  PRUEFER_GEWICHT,
+  prueferStufe,
+  QUELLEN_TRUST_WIRKUNG,
+  quellenArtVon,
+  quellenAufschlag,
+  vertrauenNachWahrheitskonflikt,
+} from "./src/trust";
+export type {
+  ValidationOutcome,
+  KonfliktArt,
+  PrueferStufe,
+  QuellenArt,
+  GewichteteStimme,
+  FormelEingaben,
+} from "./src/trust";
 export {
   InMemoryRatingRepo,
   InMemoryAssignmentRepo,

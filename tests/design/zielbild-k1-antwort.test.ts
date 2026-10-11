@@ -292,7 +292,8 @@ describe("JOB 3056 · K1 · Antwort — die echte taskpane.html aus dist, in Chr
     expect(await l.text("#antwortkarte-herkunft-zeile")).toBe("Aus freigegebenem Firmenwissen");
     const detail = await l.text("#ask-quellen-detail li");
     expect(detail).toContain(`1 · ${TITEL}`);
-    expect(detail).toMatch(/Validiert|In Prüfung|Offen|Status unbekannt/);
+    // Antwort 54 (11.10.2026): der validierte Zustand heisst im Panel „Fachlich bestätigt".
+    expect(detail).toMatch(/Fachlich bestätigt|In Prüfung|Offen|Status unbekannt/);
     await l.seite().click(sel?.mehr ?? "");
     expect(await l.sichtbar("#ask-mehr-block")).toBe(false);
   });

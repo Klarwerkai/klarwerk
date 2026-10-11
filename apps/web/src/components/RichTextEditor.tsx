@@ -110,6 +110,7 @@ import {
 // JOB 2489 D1 (TV1 Rang 1): die Rangfolge der Titelquellen. Sie liegt hier und nicht im Dienst,
 // weil nur diese Flaeche BEIDE Quellen kennt — den Rumpf im Editor und die Antwort vom Dienst.
 import { objekttextAusRumpf, titelNachRangfolge } from "../lib/titelRangfolge";
+import { statusSchluessel } from "../lib/wissensstatus";
 import { AiCostHint } from "./AiCostHint";
 import { AiGeneratedNotice, AiSurfaceNotice } from "./AiGeneratedNotice";
 import { AiUnavailableHint } from "./AiUnavailableHint";
@@ -2128,7 +2129,7 @@ export function RichTextEditor({
       herkunft: t("editor.imageSearch.herkunft", {
         quelle: hit.koTitel,
         version: hit.version,
-        pruefstand: t(`status.${hit.pruefstand}`),
+        pruefstand: t(statusSchluessel(hit.pruefstand)),
       }),
       // Runde 2: der alt-Text trägt die Benennung weiter (so bleibt das Bild auch im neuen
       // Eintrag über seinen Namen auffindbar); ohne Benennung die Beschreibung, sonst leer.
@@ -2928,7 +2929,7 @@ export function RichTextEditor({
                             {t("editor.imageSearch.herkunft", {
                               quelle: hit.koTitel,
                               version: hit.version,
-                              pruefstand: t(`status.${hit.pruefstand}`),
+                              pruefstand: t(statusSchluessel(hit.pruefstand)),
                             })}
                           </p>
                           <button
