@@ -234,13 +234,8 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
     „In anderen Programmen …“; es gibt also keine zweite App.
   - **`Package.swift`** ist neu und baut genau diese App mit `KlaraBrowserKarte` aus
     `BrowserBruecke`. Die beiden Quell-Layouts sind nicht blind überschrieben.
-  - **Anmeldung:** Der Host stellt seine Anmeldung selbst beim Server fest (`/api/auth/me` in
-    einer eigenen WebKit-Skriptwelt).
-    - Er prüft nach jedem Laden, bei jeder Navigation, auf die Meldung `anmeldung` der Webfläche,
-      beim Öffnen des Menüs und alle 30 Sekunden. Nur die jüngste Abfrage zählt.
-    - `HostAnmeldungsFolge` macht daraus `anmelden(...)`. Jeder Übergang ist eine neue Sitzung
-      mit neuer Sitzungsmarke: abgemeldet → angemeldet oder Nutzerwechsel.
-    - Abgemeldet, offline oder nicht feststellbar führt zu `anmelden(nil)`.
+  - **Anmeldung (Stand Nacharbeit 19):** siehe unten. Der Weg über `/api/auth/me` und eine nur
+    aus der Nutzerkennung abgeleitete Sitzung aus Nacharbeit 18 ist ersetzt.
   - **Anzeige und Leerung:** `beiAenderung` setzt den Tooltip der Menüleiste und schickt die
     Karte bzw. `null` als Ereignis `klara-begleiter-browserkarte` an die Webfläche, aber nur auf
     dem eigenen Server.
@@ -255,16 +250,97 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
     der Erweiterung und den Fall ab, dass Abmelden und Neuanmelden desselben Nutzers die alte und
     eine verspätete Karte sperrt.
 
+  **Nachtrag Nacharbeit 19 — gemeinsamer Hostweg vollständig übernommen, Sitzung serverseitig
+  gebunden.**
+
+  *Sitzungsbindung (Befund 1):*
+  - Neu ist die Tür `GET /api/me/klara/begleiter/sitzung` (`klara-begleiter-routes.ts`). Sie
+    liefert `{ nutzer, sitzung }`; `sitzung` ist der SHA-256-Fingerabdruck des
+    Sitzungsmerkmals mit eigenem Zweckpräfix. Er ist nicht umkehrbar, kein Anmeldenachweis und
+    nie das Merkmal selbst.
+    - Ab- und Neuanmelden desselben Nutzers ergibt einen anderen Fingerabdruck, auch wenn der
+      Host die Abmeldung nie gesehen hat.
+  - Der Host fragt diese Tür in einer eigenen WebKit-Skriptwelt ab.
+    - `HostAnmeldungsFolge.bestaetigt(nutzer:sitzung:)` bindet Nutzer **und** Serversitzung.
+    - Jeder Sitzungswechsel ergibt eine neue Sitzungsmarke; alte Karten und verspätete
+      Übergaben bleiben gesperrt.
+  - **Sofort entwerten:** Ein gemeldeter Wechsel entwertet die Freigabe, *bevor* nachgefragt
+    wird (`anmeldungGewechselt`). Gemeldet wird er auf vier Wegen:
+    - die Meldung `anmeldung` der Webfläche (`Begleiter.tsx` sendet sie bei jedem Kontowechsel);
+    - eine Navigation;
+    - Neuladen;
+    - Verbindungsverlust.
+  - Was bei einem gemeldeten Wechsel geschieht:
+    - Die Marke ist sofort weg, die Anzeige leer, und laufende Nachfragen zählen nicht mehr
+      (`anmeldeAbfrage`).
+    - Das Menü liest danach keine Karte.
+    - Erst die Antwort des Servers gibt unter einer **neuen** Marke wieder frei, auch bei
+      derselben Serversitzung. Die alte Karte gilt also nie für die neue Sitzung.
+  - Takt (30 s) und Menüöffnung fragen nur nach. Erkennt der Server eine andere Sitzung, sperrt
+    das ebenso.
+  - **Gegenproben:**
+    - `tests/klara-browser/begleiter-sitzung.test.ts` (Server, S1–S3);
+    - `SitzungsbindungTests.swift`: Sitzungswechsel desselben Nutzers ohne Abmeldung; sofortige
+      Entwertung vor der Nachfrage.
+
+  *Gemeinsamer Hostweg (Befund 2):*
+  - **Aus `ff96149e` übernommen (KLARA-OFFICE-02):**
+    - die Webfläche `/begleiter` (`pages/Begleiter.tsx`, `lib/begleiter.ts`,
+      `lib/begleiterBruecke.ts`, `texte/begleiter.ts`; Route ohne Hülle in `routes.tsx` und
+      `AppShell.tsx`);
+    - der Kontextkanal (`klara-begleiter.ts`, `klara-begleiter-routes.ts`, registriert in
+      `build-app.ts`);
+    - der Word-Adapter `word-addin/begleiter.js` (eingebunden in `taskpane.html`);
+    - die Bauskripte `scripts/klara-office/begleiter-*.sh`;
+    - die Betriebsdoku `docs/operations/klara-office/begleitapp-mac.md`;
+    - die Tests `tests/klara-office/*`;
+    - die zugehörigen Wächtereinträge (Rollenabnahme, Route-Guard-Matrix, Lesewege-Register,
+      API-Referenz, Schnitt-, CSP- und Zielbild-Tests, Sprachparität).
+  - **Aus `345b4467` übernommen (BPA-04):**
+    - `programmadapter.ts` und `programmadapter-routes.ts`, registriert in `build-app.ts`;
+    - im Profil die Übersicht „In anderen Programmen“ mit dem Begleiter-Code
+      (`ProgrammeUebersicht.tsx`, `api/programme.ts`, `texte/programme.ts`);
+    - die Tests `tests/programmadapter/{programmadapter,hostwege}.test.ts` und E7 in
+      `assistenz-mounted.test.tsx`;
+    - die Betriebsdoku `docs/operations/klara/programmadapter.md`;
+    - die Wächtereinträge.
+  - **Berichtigung einer früheren Aussage:** `/api/auth/office-handover` und `…/redeem` gab es
+    bereits in `services/auth`. Die Aussage „fehlt in main“ war falsch.
+  - **Layout:** Der Host steht wieder flach unter `Sources/`, wie in `ff96149e`.
+    - Das Bauskript übersetzt `Sources/*.swift` zusammen mit `KlaraBrowserKarte` in **ein** Modul.
+    - `Package.swift` dient `swift build`.
+
+  *Nicht übernommen, mit Grund:*
+  - **Office-Kontext-Kern KLARA-OFFICE-01** (`office-kontext*.ts`, `word-addin/begleitung.*`,
+    `558f9e132`): Er gehört zum gesonderten Auftrag `klara-office-gemeinsamer-kern` und wird
+    weder von `/begleiter` noch von der Browserkarte gebraucht. `texte/begleiter.ts` steht
+    deshalb auf dem Stand vor diesem Block.
+  - **BPA-04-Erweiterungen im Aufgabenfenster** (`taskpane.js`: Zielprüfung vor dem Einfügen):
+    Sie sind ein eigener BPA-04-Teil und berühren den Host nicht.
+
+  *Zur Bestätigung durch die Führung offen (Produktentscheidung, nicht von dieser Bahn
+  gewählt):*
+  - Die Host-Zusage KO-02-06 („keine Bedienungshilfe als Ersatz für den Office-Kontext“) steht
+    gegen die O06-Zuordnung, die BPA-04-Word-Lesewege in denselben Begleiter zu integrieren.
+  - Umgesetzt ist die O06-Zuordnung, und zwar eng begrenzt:
+    - Die Bedienungshilfe steht nur in `Bedienungshilfe.swift`.
+    - Sie liest nur, nur Word für Mac, und fragt die Freigabe nur auf Klick an.
+    - Figur, Webfläche und Browserkarte nutzen sie nicht.
+  - Der Host-Test Q3 ist entsprechend geteilt: Q3 prüft den Host weiterhin ohne Bedienungshilfe,
+    Q3b grenzt den BPA-04-Weg ab.
+  - Bestätigt die Führung KO-02-06 für die gesamte App, ist `Bedienungshilfe.swift` samt Knopf
+    wieder herauszunehmen.
+
   *Getrennt offen:*
-  - **Native Prüfung:** Host, Brücke und Tests sind in dieser Bahn weder übersetzt noch
-    ausgeführt, weil Swift und XCTest fehlen. `swift build` bzw. `swift test` auf dem Mac stehen
-    aus.
+  - **Native Prüfung:** Host, Brücke und Swift-Tests sind in dieser Bahn weder übersetzt noch
+    ausgeführt, weil Swift und XCTest fehlen. `scripts/klara-office/begleiter-bauen.sh` bzw.
+    `swift build`/`swift test` auf dem Mac stehen aus.
+  - **Skriptrechte:** Die Bahn konnte die Skripte nicht als ausführbar markieren (`chmod`
+    abgelehnt). Bis dahin startet man sie mit `bash scripts/klara-office/…`.
+  - **Pins der Auslieferung:** `taskpane.html` hat einen Verweis mehr. Die Pins in
+    `mega69-klara-waechter.test.ts` und `PANEL_VOR_SCHNITT_BLOB` sind nach der Repo-Regel
+    Platzhalter, bis der Prüflauf den Ist-Wert als „Received“ misst.
   - **Realer AC10-Rundweg** auf diesem Mac mit Chrome-, Brücken-, Begleiter- und macOS-Fassung.
-  - **Weitere Teile der Kandidaten:** Die Webfläche `/begleiter`, die Serverwege der
-    BPA-04-Funktionen (`/api/auth/office-handover/redeem`, `/api/klara/programme/*`) und das
-    Bauskript `scripts/klara-office/begleiter-bauen.sh` gehören zu `ff96149e` bzw. `345b4467`.
-    Sie liegen nicht in diesem Arbeitsbaum; bis dahin antworten diese BPA-04-Wege mit dem Fehler
-    des Servers. Die Browserkarte braucht sie nicht.
   - **Git-Integration:** Kandidatenbildung und spätere Git-Zusammenführung übernimmt der
     reguläre Adapter.
 

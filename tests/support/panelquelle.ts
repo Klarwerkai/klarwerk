@@ -465,6 +465,15 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * „Menschliche Bewertungen und nachvollziehbare Freigaberegeln“). GEMESSEN im Prüflauf zu Kandidat
  * 82db4e0a (`cd5def0d…`, „Received" von E2, HISTORIE/nacharbeit-31/PRUEFUNG/
  * panel-pins-entscheidung-54.log; vorher `957753ba…`) und unverändert übernommen.
+ *
+ * AUFTRAG gesamt-browser-kontextkarten (BPA-01 nacharbeit-19), Übernahme des Hosts
+ * klara-office-mac-maskottchen (ff96149e, KLARA-OFFICE-02): `taskpane.html` trägt im Kopf GENAU
+ * einen Verweis mehr — `begleiter.js` hinter `anleitung.js`, in derselben Zeile (Zeilenzahl
+ * unverändert). `taskpane.js`, `taskpane.css`, `wortvergleich.js` und `marke.js` bleiben unberührt;
+ * `begleiter.js` selbst ist wie `anleitung.js` kein Teil des zusammengefügten Dokuments. Der
+ * Bezugspunkt MUSS deshalb wandern; ohne zugelassenes Hash-Werkzeug (in dieser Bahn gesperrt) ist er
+ * hier nicht berechenbar. Der Wert unten ist der bisherige und damit ein PLATZHALTER — E2 meldet den
+ * Ist-Wert im Prüflauf als „Received"; er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
  */
 export const PANEL_VOR_SCHNITT_BLOB = "cd5def0d7ba5db5da48dcce8c99d77d8bb2d6fea";
 

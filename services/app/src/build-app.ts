@@ -343,6 +343,8 @@ import {
   PgKenntnisnahmeRepo,
 } from "./kenntnisnahme";
 import { kiGrenzeAusEnv, registriereKiAnfragebremse } from "./ki-anfragebremse";
+// produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal der Begleitapp (nur Arbeitsspeicher).
+import { BegleiterKanal } from "./klara-begleiter";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche — haltbar im Postgres-Betrieb, im
 // Speicher ohne Datenbank.
 import {
@@ -401,6 +403,8 @@ import {
   createPaarpflichtAusfuehrung,
   paarpflichtPrueferFuer,
 } from "./paarpflicht-ausfuehrung";
+// produkt:20261011:assistenz-programmadapter (BPA-04): das Siegel der Hostbindungen.
+import { BindungsSiegel } from "./programmadapter";
 import {
   InMemoryQuellabgleichRepo,
   PgQuellabgleichRepo,
@@ -447,6 +451,8 @@ import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
+// produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal zwischen Word und Begleitapp.
+import { klaraBegleiterRoutes } from "./routes/klara-begleiter-routes";
 // produkt:20261008:klara-basis: die eigenen, serverseitig gespeicherten Klara-Gespräche.
 import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
 // JOB 3110 (M2b): der Memo-Weg des Word-Panels. Die Route ist seit JOB 3091 gebaut und gemessen;
@@ -471,6 +477,7 @@ import { officeRoutes } from "./routes/office-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
+import { programmadapterRoutes } from "./routes/programmadapter-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
 // ADMIN-10: gemeinsame Ansicht auf Prüfung, Revalidierung, Konflikt, Duplikat, Lücke, Rückmeldung.
 import { qualitaetsaufgabenRoutes } from "./routes/qualitaetsaufgaben-routes";
@@ -5182,6 +5189,25 @@ export function buildApp(
         hintergrund: () => {
           void faehigkeiten.ausfuehrung.arbeiteWarteschlangeAb().catch(() => undefined);
         },
+      },
+      guards,
+    ),
+  );
+  // produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal zwischen dem Word-Fenster und
+  // der Begleitapp — je Konto, nur im Arbeitsspeicher dieses Prozesses (`klara-begleiter.ts`).
+  // BPA-01 AC10 (nacharbeit-19): gezielt aus dem Host-Kandidaten ff96149e übernommen.
+  app.register(klaraBegleiterRoutes({ kanal: new BegleiterKanal() }, guards));
+  // produkt:20261011:assistenz-programmadapter: was Klara in welchem Programm kann — Name und Avatar
+  // aus DEMSELBEN Assistenzprofil, Dateiaufnahme in DIESELBE Objektablage, keine zweite Anmeldung
+  // oder Ablage je Programm. Das Siegel der Hostbindungen lebt je Instanz im Arbeitsspeicher.
+  // BPA-01 AC10 (nacharbeit-19): gezielt aus dem BPA-04-Kandidaten 345b4467 übernommen.
+  app.register(
+    programmadapterRoutes(
+      {
+        assistenzProfil: new AssistenzProfilDienst({ repo: services.assistenzProfile }),
+        objekte: services.objects,
+        audit: services.audit,
+        siegel: new BindungsSiegel(),
       },
       guards,
     ),

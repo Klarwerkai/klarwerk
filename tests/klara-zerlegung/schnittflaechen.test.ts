@@ -166,6 +166,10 @@ describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       `begriffe.js?v=${FASSUNG}`,
       `anleitung.js?v=${FASSUNG}`,
+      // AUFTRAG klara-office-mac-maskottchen (KLARA-OFFICE-02): der Block KW-BEGLEITER (dieses
+      // Fenster als Office-Adapter der Begleitapp) wohnt in `begleiter.js`, im Kopf direkt hinter
+      // `anleitung.js` — nach der Regel von `anleitung.js` (relativ, gleichherkünftig).
+      `begleiter.js?v=${FASSUNG}`,
       `${RUECKWEG_DATEI}?v=${FASSUNG}`,
       `${JS_DATEI}?v=${FASSUNG}`,
       `${WV_DATEI}?v=${FASSUNG}`,

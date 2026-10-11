@@ -1927,6 +1927,129 @@ export const TABELLE: Zeile[] = [
     payload: { avatar: "gibt-es-nicht" },
     erwartet: ANGEMELDET,
   },
+  // produkt:20261010:klara-office-mac-maskottchen — der Kontextkanal zwischen Word-Fenster und
+  // Begleitapp. Jede Tür prüft nur die Anmeldung; das Konto kommt aus der Sitzung. DIE GEFAHRENEN
+  // URLs SIND ZUSTANDSFREI: die Lesetür liefert ohne angemeldetes Fenster eine leere Liste; alle
+  // schreibenden Türen scheitern mit leerer Nutzlast bzw. erfundener Kennung an der Prüfung (400),
+  // BEVOR etwas angelegt wird. (BPA-01 nacharbeit-19: aus ff96149e übernommen.)
+  {
+    gruppe: "klaraBegleiterRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/begleiter/adapter",
+    belegstelle: "services/app/src/routes/klara-begleiter-routes.ts:59",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraBegleiterRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/begleiter/adapter/gibt-es-nicht",
+    route: "/api/me/klara/begleiter/adapter/:instanz",
+    belegstelle: "services/app/src/routes/klara-begleiter-routes.ts:71",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraBegleiterRoutes",
+    methode: "DELETE",
+    pfad: "/api/me/klara/begleiter/adapter/gibt-es-nicht",
+    route: "/api/me/klara/begleiter/adapter/:instanz",
+    belegstelle: "services/app/src/routes/klara-begleiter-routes.ts:86",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraBegleiterRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/begleiter/kontext",
+    belegstelle: "services/app/src/routes/klara-begleiter-routes.ts:101",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // BPA-01 AC10 (gesamt-browser-kontextkarten, nacharbeit-19): Nutzer und Sitzungsfingerabdruck
+  // der eigenen Anmeldung — rein lesend, nur die Anmeldung, kein Inhalt.
+  {
+    gruppe: "klaraBegleiterRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/begleiter/sitzung",
+    belegstelle: "services/app/src/routes/klara-begleiter-routes.ts:135",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraBegleiterRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/begleiter/adapter/gibt-es-nicht/aktionen",
+    route: "/api/me/klara/begleiter/adapter/:instanz/aktionen",
+    belegstelle: "services/app/src/routes/klara-begleiter-routes.ts:114",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261011:assistenz-programmadapter — die Fähigkeitsübersicht je Programm. Rein lesend,
+  // nur die Anmeldung; Name/Avatar aus dem eigenen Profil. Inhalt und Grenzen misst
+  // `tests/programmadapter/programmadapter.test.ts`. (BPA-01 nacharbeit-19: aus 345b4467.)
+  {
+    gruppe: "programmadapterRoutes",
+    methode: "GET",
+    pfad: "/api/klara/programme",
+    belegstelle: "services/app/src/routes/programmadapter-routes.ts:137",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // Die vier Hostwege: ZUSTANDSFREI GEFAHREN mit leerem Rumpf — jede Tür endet nach dem Tor in 400,
+  // BEVOR eine Bindung ausgestellt, ein Ziel geprüft oder eine Datei abgelegt wird. Die Wirkung
+  // (Siegel, Zielprüfung, Ablage, Kontextfilter) misst `tests/programmadapter/hostwege.test.ts`.
+  {
+    gruppe: "programmadapterRoutes",
+    methode: "POST",
+    pfad: "/api/klara/programme/verbinden",
+    belegstelle: "services/app/src/routes/programmadapter-routes.ts:155",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "programmadapterRoutes",
+    methode: "POST",
+    pfad: "/api/klara/programme/wirkung",
+    belegstelle: "services/app/src/routes/programmadapter-routes.ts:173",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  // Die Dateiaufnahme legt ein Objekt an — dasselbe Recht wie `POST /api/objects` (`ko.create`).
+  {
+    gruppe: "programmadapterRoutes",
+    methode: "POST",
+    pfad: "/api/klara/programme/finder",
+    belegstelle: "services/app/src/routes/programmadapter-routes.ts:197",
+    tor: "ko.create",
+    payload: {},
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "programmadapterRoutes",
+    methode: "POST",
+    pfad: "/api/klara/programme/bedienungshilfe",
+    belegstelle: "services/app/src/routes/programmadapter-routes.ts:331",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  // Die Herkunft einer Finder-Aufnahme — nur für ihren Eigentümer. Gefahren mit einer erfundenen
+  // Kennung: nach dem Tor 404 ohne Existenzauskunft. Die Wirkung misst `hostwege.test.ts` H3.
+  {
+    gruppe: "programmadapterRoutes",
+    methode: "GET",
+    pfad: "/api/klara/programme/finder/gibt-es-nicht",
+    route: "/api/klara/programme/finder/:objektId",
+    belegstelle: "services/app/src/routes/programmadapter-routes.ts:291",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
   // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz. Übersicht,
   // Vormerkungen und eigene Aufträge prüfen die Anmeldung, Vorschau und Ausführung `ko.read`.
   // ZUSTANDSFREI GEFAHREN: die schreibenden Türen tragen einen unvollständigen Rumpf und enden in

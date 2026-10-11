@@ -16,8 +16,10 @@
 // markierten Stellen. Die App liest weiterhin nichts aus Chrome: die Karte legt die Browserbrücke ab
 // (`BrowserBruecke`), `BrowserKartenQuelle` gibt sie nur unter der aktuellen Anmeldung frei.
 //   · Anmeldung: die Anmeldung der Webfläche (Sitzung am Klarwerk-Server). Der Host fragt sie
-//     selbst ab (`/api/auth/me`, in einer eigenen Skriptwelt) — nach jedem Laden, auf Meldung der
-//     Webfläche, beim Öffnen des Menüs und alle 30 Sekunden. Abgemeldet, offline oder nicht
+//     selbst ab (`/api/me/klara/begleiter/sitzung` in einer eigenen Skriptwelt: Nutzer UND
+//     Sitzungsfingerabdruck) — beim Öffnen des Menüs, alle 30 Sekunden und nach jedem gemeldeten
+//     Wechsel. Ein gemeldeter Wechsel (Meldung `anmeldung` der Webfläche, Navigation, Neuladen,
+//     offline) entwertet SOFORT, vor der Nachfrage (nacharbeit-19). Abgemeldet, offline oder nicht
 //     feststellbar heisst `anmelden(nil)`: Marke weg, keine Karte.
 //   · Anzeige: im Menü (immer frisch über `aktuell()`) und als Ereignis an die Webfläche;
 //     `nil` leert beides sofort.
@@ -25,8 +27,13 @@
 // Dazu die BPA-04-Funktionen (Finder, Markierung in Word) im Fenster „In anderen Programmen …".
 import AppKit
 import Carbon.HIToolbox
-import KlaraBrowserKarte
 import WebKit
+
+// `swift build`: eigenes Modul aus `BrowserBruecke`. `begleiter-bauen.sh` übersetzt dieselben
+// Quellen in EIN Modul mit der App — dann gibt es nichts zu importieren.
+#if canImport(KlaraBrowserKarte)
+    import KlaraBrowserKarte
+#endif
 
 struct Einstellungen {
     let server: URL
@@ -276,6 +283,11 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
     // MARK: Webfläche
 
     private func laden() {
+        // BPA-01: Neuladen kann die Sitzung wechseln — die Browserkarte gilt bis zur neuen
+        // Bestätigung nicht (`anmeldungGewechselt` fragt nach dem Laden selbst nach).
+        if kartenQuelle.anmeldung != nil {
+            anmeldungSetzen(nutzer: nil, sitzung: nil)
+        }
         offline = nil
         verbunden = false
         webView.load(URLRequest(url: begleiterURL, cachePolicy: .reloadRevalidatingCacheData, timeoutInterval: 20))
@@ -328,9 +340,9 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         case "reduziert":
             reduziert = (n["an"] as? Bool) ?? false
         case "anmeldung":
-            // BPA-01: Die Webfläche meldet An-/Abmeldung. Ihr Inhalt zählt nicht — der Host prüft
-            // selbst beim Server nach.
-            anmeldungPruefen()
+            // BPA-01: Die Webfläche meldet einen An-/Abmelde- oder Kontowechsel. Ihr Inhalt zählt
+            // nicht: SOFORT entwerten, dann selbst beim Server nachfragen.
+            anmeldungGewechselt()
         default:
             break
         }
@@ -338,8 +350,9 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
 
     /// Ein Link aus dem Gespräch öffnet im Browser; nach einer Anmeldung geht es zurück zur Fläche.
     private func urlGeaendert(_ url: URL?) {
-        // BPA-01: Jede Navigation (Anmeldung, Abmeldung, Rückkehr) prüft die Anmeldung neu.
-        anmeldungPruefen()
+        // BPA-01: Jede Navigation (Anmeldung, Abmeldung, Rückkehr) kann die Sitzung wechseln:
+        // sofort entwerten, dann neu bestätigen lassen.
+        anmeldungGewechselt()
         guard let url, url.host == einst.server.host else { return }
         let pfad = url.path
         if pfad == "/begleiter" {
@@ -362,7 +375,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         offline = grund
         verbunden = false
         // BPA-01: Ohne Verbindung ist die Anmeldung nicht feststellbar — keine Karte (fail-closed).
-        anmeldungSetzen(nil)
+        anmeldungSetzen(nutzer: nil, sitzung: nil)
         setzeModus("gespraech")
         let host = einst.server.host ?? ""
         let text = grund.replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;")
@@ -496,16 +509,18 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
 
     // MARK: BPA-01 · Browserkarte
 
-    /// Fragt den Server in einer eigenen Skriptwelt, wer an der Webfläche angemeldet ist. Nur die
-    /// Nutzerkennung kommt zurück; Sitzungsmerkmale bleiben in WebKit.
+    /// Fragt den Server in einer eigenen Skriptwelt, wer an der Webfläche angemeldet ist und unter
+    /// WELCHER Sitzung (`/api/me/klara/begleiter/sitzung`: Nutzerkennung und Fingerabdruck des
+    /// Sitzungsmerkmals — nie das Merkmal selbst; es bleibt in WebKit). Nichts sonst kommt zurück.
     private static let anmeldeSkript = """
     try {
-      const antwort = await fetch("/api/auth/me", {
+      const antwort = await fetch("/api/me/klara/begleiter/sitzung", {
         credentials: "same-origin", cache: "no-store", headers: { accept: "application/json" }
       });
       if (antwort.status !== 200) return "";
-      const nutzer = await antwort.json();
-      return nutzer && typeof nutzer.id === "string" ? nutzer.id : "";
+      const s = await antwort.json();
+      if (!s || typeof s.nutzer !== "string" || typeof s.sitzung !== "string") return "";
+      return s.nutzer + "\\n" + s.sitzung;
     } catch (fehler) {
       return "";
     }
@@ -528,33 +543,59 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         return herkunft == klarwerkHerkunft(einst.server)
     }
 
+    /// Ein MÖGLICHER Anmelde-/Sitzungswechsel ist gemeldet (Meldung `anmeldung` der Webfläche,
+    /// Navigation, Neuladen, Verbindungsverlust): die bisherige Freigabe gilt SOFORT nicht mehr —
+    /// Marke weg, Anzeige leer, laufende Nachfragen entwertet — und erst die anschliessende,
+    /// gebundene Bestätigung des Servers gibt wieder frei. Eine Karte der alten Sitzung trägt die
+    /// alte Marke und bleibt gesperrt.
+    private func anmeldungGewechselt() {
+        anmeldungSetzen(nutzer: nil, sitzung: nil)
+        anmeldungPruefen()
+    }
+
+    /// Fragt beim Server nach (Takt, Menü, nach einem Wechsel). Ohne Antwort, mit Fehler, offline
+    /// oder auf fremder Herkunft: keine Anmeldung.
     private func anmeldungPruefen() {
         anmeldeAbfrage += 1
         let abfrage = anmeldeAbfrage
         guard offline == nil, aufServer(webView?.url) else {
-            anmeldungSetzen(nil)
+            anmeldungSetzen(nutzer: nil, sitzung: nil)
             return
         }
         webView.callAsyncJavaScript(Self.anmeldeSkript, arguments: [:], in: nil, in: .defaultClient) {
             [weak self] ergebnis in
             Task { @MainActor in
-                // Nur die jüngste Abfrage zählt; eine verspätete Antwort ändert nichts mehr.
+                // Nur die jüngste Abfrage zählt; eine verspätete Antwort — auch eine, die vor einem
+                // gemeldeten Wechsel losging — ändert nichts mehr.
                 guard let self, abfrage == self.anmeldeAbfrage else { return }
                 guard self.offline == nil, self.aufServer(self.webView.url),
-                      case .success(let wert) = ergebnis, let nutzer = wert as? String
+                      case .success(let wert) = ergebnis, let text = wert as? String
                 else {
-                    self.anmeldungSetzen(nil)
+                    self.anmeldungSetzen(nutzer: nil, sitzung: nil)
                     return
                 }
-                self.anmeldungSetzen(nutzer)
+                let teile = text.split(separator: "\n", omittingEmptySubsequences: false)
+                guard teile.count == 2 else {
+                    self.anmeldungSetzen(nutzer: nil, sitzung: nil)
+                    return
+                }
+                self.anmeldungSetzen(nutzer: String(teile[0]), sitzung: String(teile[1]))
             }
         }
     }
 
-    /// Abmelden, Nutzerwechsel oder erneutes Anmelden: neue Sitzung, neue Marke, alte Karten
-    /// und verspätete Übergaben gesperrt (`HostAnmeldungsFolge`, `BrowserKartenQuelle`).
-    private func anmeldungSetzen(_ nutzer: String?) {
-        kartenQuelle.anmelden(anmeldeFolge.gemeldet(nutzer: nutzer))
+    /// Nutzer UND Serversitzung binden (`HostAnmeldungsFolge`): Abmelden, Nutzerwechsel und jeder
+    /// Sitzungswechsel — auch desselben Nutzers — ergeben eine neue Marke; alte Karten und
+    /// verspätete Übergaben bleiben gesperrt (`BrowserKartenQuelle`).
+    private func anmeldungSetzen(nutzer: String?, sitzung: String?) {
+        if nutzer == nil {
+            // Entwerten macht jede noch laufende Nachfrage ungültig.
+            anmeldeAbfrage += 1
+            anmeldeFolge.entwerten()
+            kartenQuelle.anmelden(nil)
+            return
+        }
+        kartenQuelle.anmelden(anmeldeFolge.bestaetigt(nutzer: nutzer, sitzung: sitzung))
     }
 
     private func karteAnzeigen(_ karte: BrowserKarte?) {

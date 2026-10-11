@@ -1,0 +1,100 @@
+// ================================================================================================
+// produkt:20261011:assistenz-programmadapter (BPA-04) — DIE TEXTE DER FÄHIGKEITSÜBERSICHT.
+// ================================================================================================
+//
+// „Meine Assistenz" zeigt, was die Assistenz in welchem Programm kann — Lesen, Auswahl, Schreiben,
+// Ergebnisprüfung, Rücknahme je Programm, die macOS-Fassung und die Grenzen. Die Grenzsätze selbst
+// kommen vom Server (`GET /api/klara/programme`); hier stehen nur Beschriftungen und Stände.
+import type { Textmodul } from "./intern/pruefung";
+
+export default {
+  praefix: "programme.",
+  legacySchluessel: [],
+  de: {
+    "programme.titel": "In anderen Programmen",
+    "programme.intro":
+      "Was {{assistenz}} in welchem Programm kann – Stand dieser Installation. Programme, die hier nicht stehen, werden nicht unterstützt.",
+    "programme.laden": "Wird geladen …",
+    "programme.fehler": "Die Übersicht konnte gerade nicht gelesen werden.",
+    "programme.wiederholen": "Erneut laden",
+    "programme.status.geliefert": "Real geprüft",
+    "programme.status.gebaut": "Gebaut – noch nicht real geprüft",
+    "programme.status.nichtGeliefert": "Nicht geliefert",
+    "programme.os": "macOS: ab {{fassung}} · real geprüft: {{geprueft}}",
+    "programme.os.offen": "offen",
+    "programme.faehigkeit.lesen": "Lesen",
+    "programme.faehigkeit.auswahl": "Auswahl",
+    "programme.faehigkeit.schreiben": "Schreiben",
+    "programme.faehigkeit.ergebnispruefung": "Ergebnisprüfung",
+    "programme.faehigkeit.ruecknahme": "Rücknahme",
+    "programme.stand.real-belegt": "real geprüft",
+    "programme.stand.gebaut-ohne-hostbeleg": "gebaut, ohne realen Lauf",
+    "programme.stand.nicht-geliefert": "nicht geliefert",
+    "programme.stand.ausgeschlossen": "bewusst ausgeschlossen",
+    "programme.bedienungshilfe": "Bedienungshilfe nur zum Lesen der Markierung: {{stand}}",
+    "programme.begleiter.titel": "Mac-Begleiter verbinden",
+    "programme.begleiter.text":
+      "Der Begleiter nimmt eine im Finder gewählte Datei auf und liest auf Wunsch die Markierung in Word. Er nutzt deine bestehende Anmeldung – über einen Code, der zwei Minuten gilt und nur einmal eingelöst werden kann.",
+    "programme.begleiter.knopf": "Code für den Begleiter erzeugen",
+    "programme.begleiter.code": "Code für den Begleiter: {{code}}",
+    "programme.begleiter.fehler": "Es konnte gerade kein Code erzeugt werden.",
+  },
+  en: {
+    "programme.titel": "In other programs",
+    "programme.intro":
+      "What {{assistenz}} can do in which program – as installed here. Programs not listed here are not supported.",
+    "programme.laden": "Loading …",
+    "programme.fehler": "The overview could not be read right now.",
+    "programme.wiederholen": "Reload",
+    "programme.status.geliefert": "Verified on a real host",
+    "programme.status.gebaut": "Built – not yet verified on a real host",
+    "programme.status.nichtGeliefert": "Not delivered",
+    "programme.os": "macOS: {{fassung}} or later · verified: {{geprueft}}",
+    "programme.os.offen": "open",
+    "programme.faehigkeit.lesen": "Read",
+    "programme.faehigkeit.auswahl": "Selection",
+    "programme.faehigkeit.schreiben": "Write",
+    "programme.faehigkeit.ergebnispruefung": "Result check",
+    "programme.faehigkeit.ruecknahme": "Undo",
+    "programme.stand.real-belegt": "verified",
+    "programme.stand.gebaut-ohne-hostbeleg": "built, no real run",
+    "programme.stand.nicht-geliefert": "not delivered",
+    "programme.stand.ausgeschlossen": "deliberately excluded",
+    "programme.bedienungshilfe": "Accessibility only for reading the selection: {{stand}}",
+    "programme.begleiter.titel": "Connect the Mac companion",
+    "programme.begleiter.text":
+      "The companion takes in a file you choose in Finder and, on request, reads the selection in Word. It uses your existing sign-in – via a code that is valid for two minutes and can be redeemed only once.",
+    "programme.begleiter.knopf": "Create a code for the companion",
+    "programme.begleiter.code": "Code for the companion: {{code}}",
+    "programme.begleiter.fehler": "No code could be created right now.",
+  },
+  nl: {
+    "programme.titel": "In andere programma's",
+    "programme.intro":
+      "Wat {{assistenz}} in welk programma kan – stand van deze installatie. Programma's die hier niet staan, worden niet ondersteund.",
+    "programme.laden": "Wordt geladen …",
+    "programme.fehler": "Het overzicht kon nu niet worden gelezen.",
+    "programme.wiederholen": "Opnieuw laden",
+    "programme.status.geliefert": "Echt gecontroleerd",
+    "programme.status.gebaut": "Gebouwd – nog niet echt gecontroleerd",
+    "programme.status.nichtGeliefert": "Niet geleverd",
+    "programme.os": "macOS: vanaf {{fassung}} · echt gecontroleerd: {{geprueft}}",
+    "programme.os.offen": "open",
+    "programme.faehigkeit.lesen": "Lezen",
+    "programme.faehigkeit.auswahl": "Selectie",
+    "programme.faehigkeit.schreiben": "Schrijven",
+    "programme.faehigkeit.ergebnispruefung": "Resultaatcontrole",
+    "programme.faehigkeit.ruecknahme": "Ongedaan maken",
+    "programme.stand.real-belegt": "echt gecontroleerd",
+    "programme.stand.gebaut-ohne-hostbeleg": "gebouwd, zonder echte run",
+    "programme.stand.nicht-geliefert": "niet geleverd",
+    "programme.stand.ausgeschlossen": "bewust uitgesloten",
+    "programme.bedienungshilfe": "Toegankelijkheid alleen om de selectie te lezen: {{stand}}",
+    "programme.begleiter.titel": "Mac-begeleider verbinden",
+    "programme.begleiter.text":
+      "De begeleider neemt een in Finder gekozen bestand op en leest op verzoek de selectie in Word. Hij gebruikt je bestaande aanmelding – via een code die twee minuten geldig is en maar één keer kan worden ingewisseld.",
+    "programme.begleiter.knopf": "Code voor de begeleider maken",
+    "programme.begleiter.code": "Code voor de begeleider: {{code}}",
+    "programme.begleiter.fehler": "Er kon nu geen code worden gemaakt.",
+  },
+} satisfies Textmodul;

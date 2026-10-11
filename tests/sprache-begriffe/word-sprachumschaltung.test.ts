@@ -194,6 +194,13 @@ const QUELLEN: ReadonlyArray<{ datei: string; text: string; erwartet: readonly s
     text: lies(`${ADDIN}/begriffe.js`),
     erwartet: ["BEGRIFFE_TEXTE"],
   },
+  // AUFTRAG klara-office-mac-maskottchen: der Block KW-BEGLEITER (Schalter „Mit Begleitapp
+  // verbinden") trägt sein eigenes Wörterbuch — dieselbe Parität gilt dort.
+  {
+    datei: `${ADDIN}/begleiter.js`,
+    text: lies(`${ADDIN}/begleiter.js`),
+    erwartet: ["BEGLEITER_TEXTE"],
+  },
   {
     datei: `${ADDIN}/anmeldung.html`,
     text: inlineSkript(lies(`${ADDIN}/anmeldung.html`)),

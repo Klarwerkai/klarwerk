@@ -20,10 +20,11 @@
 // Gelöscht oder unlesbar heisst: KEINE Karte (nie die zuletzt gesehene). Die Datei muss diesem
 // macOS-Konto gehören und darf nur für es lesbar sein (0600), sonst wird sie ignoriert.
 //
-// ANSCHLUSS IM HOST (nacharbeit-18): `apps/desktop/klara-begleiter/Sources/KlaraBegleiter/
-// Steuerung.swift`. Der Host meldet seine geprüfte Anmeldung über `HostAnmeldungsFolge` an
-// `anmelden(...)`/`anmelden(nil)`; `beiAenderung` zeigt die Karte bzw. leert die Anzeige;
-// `beobachten()` beim Start, `anmelden(nil)` und `anhalten()` beim Beenden.
+// ANSCHLUSS IM HOST (nacharbeit-18/19): `apps/desktop/klara-begleiter/Sources/Steuerung.swift`.
+// Der Host meldet die vom Server bestätigte Anmeldung (Nutzer + Sitzungsfingerabdruck) über
+// `HostAnmeldungsFolge` an `anmelden(...)`; bei jedem gemeldeten Wechsel zuerst `anmelden(nil)`.
+// `beiAenderung` zeigt die Karte bzw. leert die Anzeige; `beobachten()` beim Start, `anmelden(nil)`
+// und `anhalten()` beim Beenden.
 import Foundation
 
 /// Die Karte, wie die Erweiterung sie übergeben hat — nur die angezeigten Felder.
@@ -64,31 +65,35 @@ public func klarwerkHerkunft(_ server: URL) -> String? {
   return "\(schema)://\(host)"
 }
 
-/// Was der Host über seine Anmeldung weiss, wird hier zu `BegleiterAnmeldung`: JEDER Übergang
-/// (abgemeldet → angemeldet, Nutzerwechsel) ist eine NEUE Sitzung; dieselbe Anmeldung bleibt
-/// dieselbe. Damit erzeugt auch Abmelden und erneutes Anmelden desselben Nutzers eine neue
-/// Sitzungsmarke in `BrowserKartenQuelle`.
+/// Was der Server über die Anmeldung des Hosts bestätigt, wird hier zu `BegleiterAnmeldung`
+/// (nacharbeit-19): Nutzer UND Sitzung kommen vom Server (`GET /api/me/klara/begleiter/sitzung`,
+/// Fingerabdruck des Sitzungsmerkmals). Ein Ab- und Neuanmelden desselben Nutzers — auch ohne dass
+/// der Host die Abmeldung je gesehen hat — ist damit eine ANDERE Sitzung und erzeugt eine neue
+/// Sitzungsmarke in `BrowserKartenQuelle`. Was der Host nicht bestätigt bekommt, ist keine
+/// Anmeldung (fail-closed).
 public struct HostAnmeldungsFolge {
   public let mandant: String
   public private(set) var aktuell: BegleiterAnmeldung?
-  private let neueSitzung: () -> String
 
-  public init(mandant: String, neueSitzung: @escaping () -> String = { UUID().uuidString }) {
+  public init(mandant: String) {
     self.mandant = mandant
-    self.neueSitzung = neueSitzung
   }
 
-  /// `nutzer` ist die vom Server bestätigte Nutzerkennung — `nil` oder leer heisst abgemeldet
-  /// bzw. nicht feststellbar (fail-closed).
-  public mutating func gemeldet(nutzer: String?) -> BegleiterAnmeldung? {
-    guard let nutzer, !nutzer.isEmpty else {
+  /// Sofort entwerten — bei jedem gemeldeten Anmelde-/Sitzungswechsel, BEVOR nachgeprüft wird.
+  public mutating func entwerten() {
+    aktuell = nil
+  }
+
+  /// Die vom Server bestätigte Anmeldung — `nil` oder leer heisst abgemeldet bzw. nicht
+  /// feststellbar.
+  public mutating func bestaetigt(nutzer: String?, sitzung: String?) -> BegleiterAnmeldung? {
+    guard let nutzer, !nutzer.isEmpty, let sitzung, !sitzung.isEmpty else {
       aktuell = nil
       return nil
     }
-    if aktuell?.nutzer != nutzer {
-      aktuell = BegleiterAnmeldung(nutzer: nutzer, mandant: mandant, sitzung: neueSitzung())
-    }
-    return aktuell
+    let neu = BegleiterAnmeldung(nutzer: nutzer, mandant: mandant, sitzung: sitzung)
+    aktuell = neu
+    return neu
   }
 }
 

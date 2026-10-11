@@ -27,16 +27,18 @@ spricht mit ihr nur über stdin/stdout. Es gibt keinen offenen Port und keinen l
 ## Verhältnis zu den Begleiter-Kandidaten
 
 Die Brücke ist ein eigenes Programm in diesem Paket. Gemeinsamer Begleiter ist laut O06 der Host
-`klara-office-mac-maskottchen` (ff96149e). Er ist übernommen nach `../Sources/KlaraBegleiter` (Paket
-`../Package.swift`) und liest die Karte über die Bibliothek **`KlaraBrowserKarte`** aus diesem
-Paket.
+`klara-office-mac-maskottchen` (ff96149e). Er ist übernommen nach `../Sources` (Paket
+`../Package.swift`, Bündel `scripts/klara-office/begleiter-bauen.sh`) und liest die Karte über die
+Bibliothek **`KlaraBrowserKarte`** aus diesem Paket.
 
 `BrowserKartenQuelle` gibt eine Karte nur frei, wenn Nutzer, Mandant und die aktuelle
 Anmeldesitzung des Begleiters passen. Bei Anmeldewechsel, Abmeldung, `verwerfen` und `widerrufen`
 leert sie die Karte sofort.
 
-Angeschlossen ist sie in `../Sources/KlaraBegleiter/Steuerung.swift`:
-- `HostAnmeldungsFolge` meldet die Anmeldung an `anmelden(...)` bzw. `anmelden(nil)`.
+Angeschlossen ist sie in `../Sources/Steuerung.swift`:
+- `HostAnmeldungsFolge` meldet die vom Server bestätigte Anmeldung (Nutzer und
+  Sitzungsfingerabdruck) an `anmelden(...)`. Bei jedem gemeldeten Wechsel gilt zuerst
+  `anmelden(nil)`.
 - `beiAenderung` zeigt die Karte an oder leert die Anzeige.
 - `beobachten()` läuft beim Start; `anmelden(nil)` und `anhalten()` laufen beim Beenden.
 

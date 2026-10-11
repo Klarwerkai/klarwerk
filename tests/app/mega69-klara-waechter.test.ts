@@ -3164,6 +3164,18 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Nutzlast, CSP, Rechte und Manifest unverändert, kein Sideload. Im Prüflauf zu Kandidat
     // 82db4e0a GEMESSEN („Received", HISTORIE/nacharbeit-31/PRUEFUNG/panel-pins-entscheidung-54.log)
     // und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // AUFTRAG gesamt-browser-kontextkarten (BPA-01 nacharbeit-19), Übernahme des Hosts
+    // klara-office-mac-maskottchen (ff96149e, KLARA-OFFICE-02) — DER PIN MUSS WANDERN. `taskpane.html`
+    // ändert sich um GENAU einen Verweis im Kopf hinter `anleitung.js`:
+    // `<script src="begleiter.js?v=__KW_FASSUNG__"></script>` (Block KW-BEGLEITER, eigene Datei wie
+    // KW-ANLEITUNG; `taskpane.js`, `taskpane.css` und `marke.js` bleiben unberührt, Zeilenzahl der
+    // Seite unverändert). Auslieferungsfolgen: neue Abrufziele NUR in `begleiter.js` und nur nach dem
+    // bewussten Einschalten von „Mit Begleitapp verbinden" — `POST/PUT/DELETE
+    // /api/me/klara/begleiter/adapter…`, gleichherkünftig (`connect-src 'self'`), Recht: Anmeldung
+    // (eigenes Konto). Keine CSP-, Rechte- oder Manifeständerung, kein Sideload. Ohne zugelassenes
+    // Hash-Werkzeug ist der neue Wert hier nicht berechenbar — der Wert unten ist der bisherige und
+    // damit ein PLATZHALTER; der Prüflauf meldet den Ist-Wert als „Received", er wird danach
+    // gemessen übernommen.
     const PIN = "13a4708e0d85d80ded0ff5b86f1abdfdfe0314211c9f8ff8412da35df403a41e";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

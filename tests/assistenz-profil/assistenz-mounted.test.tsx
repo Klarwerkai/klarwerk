@@ -15,6 +15,7 @@
 //   E3  Speicherfehler: Eingabe bleibt, bestätigter Stand bleibt; „Erneut speichern" und „Abbrechen".
 //   E4  Nicht mehr angebotenes Motiv: neutrale Ersatzgrafik mit Hinweis, der Name bleibt.
 //   E5  Kontowechsel im selben Browser: kein fremder Name, das zweite Konto bekommt seine Einrichtung.
+//   E7  BPA-04: „Meine Assistenz" zeigt die Fähigkeitsübersicht je Programm und den Begleiter-Code.
 //
 // Echtes Layout, Breiten, Fokusbild und Tastatur im Browser misst
 // `tests-smoke/assistenz-name-avatar-browser.spec.ts`.
@@ -490,5 +491,42 @@ describe("E5 · Kontowechsel im selben Browser: getrennte Profile", () => {
     expect(document.body.textContent).not.toContain("Mia");
     expect(await profil(wandaCookie)).toBeNull();
     expect(await profil(adaCookie)).toMatchObject({ name: "Mia" });
+  });
+});
+
+// produkt:20261011:assistenz-programmadapter (BPA-04): die Fähigkeitsübersicht steht im bestehenden
+// Assistenzfenster — gelesen vom echten Server, nicht gestellt. (BPA-01 nacharbeit-19: aus 345b4467
+// übernommen; der Begleiter-Code ist die Anmeldung des BPA-04-Fensters im gemeinsamen Host.)
+describe("E7 · Meine Assistenz zeigt, was die Assistenz in welchem Programm kann", () => {
+  it("Word und Finder gebaut, Excel/Outlook/PowerPoint nicht geliefert, macOS-Fassung genannt; der Begleiter-Code kommt aus der bestehenden Anmeldung", async () => {
+    await montiere("/profil?bereich=assistenz", createElement(Profile));
+    await bis(() => Boolean(q(document, "programm-excel")), 160);
+    const eintrag = (id: string) => q(document, `programm-${id}`);
+    const status = (id: string) => q(eintrag(id) ?? document, "programm-status")?.textContent;
+
+    expect(status("word-mac")).toBe("Gebaut – noch nicht real geprüft");
+    expect(status("finder")).toBe("Gebaut – noch nicht real geprüft");
+    for (const id of ["excel", "outlook", "powerpoint"]) {
+      expect(status(id), id).toBe("Nicht geliefert");
+      expect(eintrag(id)?.getAttribute("data-geliefert"), id).toBe("nein");
+      expect(q(eintrag(id) ?? document, "faehigkeit-lesen")?.textContent, id).toBe(
+        "nicht geliefert",
+      );
+    }
+    expect(q(eintrag("word-mac") ?? document, "programm-os")?.textContent).toBe(
+      "macOS: ab macOS 13 (Ventura) · real geprüft: offen",
+    );
+    expect(q(eintrag("finder") ?? document, "faehigkeit-schreiben")?.textContent).toBe(
+      "bewusst ausgeschlossen",
+    );
+
+    await klick(q(document, "begleiter-code"));
+    await bis(() => Boolean(q(document, "begleiter-code-wert")));
+    expect(q(document, "begleiter-code-wert")?.textContent).toMatch(
+      /^Code für den Begleiter: \S{20,}$/,
+    );
+    expect(
+      anfragen.some((a) => a.methode === "POST" && a.pfad === "/api/auth/office-handover"),
+    ).toBe(true);
   });
 });

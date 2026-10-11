@@ -78,21 +78,63 @@ final class SitzungsbindungTests: XCTestCase {
     XCTAssertNotNil(q.aktuell())
   }
 
-  /// nacharbeit-18: So meldet der Host seine Anmeldung (`Steuerung.anmeldungSetzen`).
-  func testHostAnmeldungsfolgeNeueSitzungBeiJedemUebergang() {
-    var zaehler = 0
-    var folge = HostAnmeldungsFolge(mandant: "https://app.klarwerk.ai") {
-      zaehler += 1
-      return "s-\(zaehler)"
-    }
-    let a1 = folge.gemeldet(nutzer: "nutzer-a")
-    XCTAssertEqual(a1?.sitzung, "s-1")
+  /// nacharbeit-19: Nutzer UND Sitzung kommen vom Server (`/api/me/klara/begleiter/sitzung`).
+  func testHostAnmeldungsfolgeBindetAnServerSitzung() {
+    var folge = HostAnmeldungsFolge(mandant: "https://app.klarwerk.ai")
+    let a1 = folge.bestaetigt(nutzer: "nutzer-a", sitzung: "srv-1")
+    XCTAssertEqual(a1?.sitzung, "srv-1")
     XCTAssertEqual(a1?.mandant, "https://app.klarwerk.ai")
-    XCTAssertEqual(folge.gemeldet(nutzer: "nutzer-a"), a1)  // dieselbe Anmeldung bleibt
-    XCTAssertNil(folge.gemeldet(nutzer: nil))  // abgemeldet / offline
-    XCTAssertEqual(folge.gemeldet(nutzer: "nutzer-a")?.sitzung, "s-2")  // erneut angemeldet
-    XCTAssertEqual(folge.gemeldet(nutzer: "nutzer-b")?.sitzung, "s-3")  // Nutzerwechsel
-    XCTAssertNil(folge.gemeldet(nutzer: ""))
+    XCTAssertEqual(folge.bestaetigt(nutzer: "nutzer-a", sitzung: "srv-1"), a1)  // dieselbe bleibt
+    // Sitzungswechsel DESSELBEN Nutzers, ohne dass je eine Abmeldung gemeldet wurde:
+    let a2 = folge.bestaetigt(nutzer: "nutzer-a", sitzung: "srv-2")
+    XCTAssertNotEqual(a2, a1)
+    XCTAssertEqual(folge.bestaetigt(nutzer: "nutzer-b", sitzung: "srv-3")?.nutzer, "nutzer-b")
+    XCTAssertNil(folge.bestaetigt(nutzer: nil, sitzung: "srv-3"))
+    XCTAssertNil(folge.bestaetigt(nutzer: "nutzer-a", sitzung: nil))
+    XCTAssertNil(folge.bestaetigt(nutzer: "", sitzung: ""))
+    _ = folge.bestaetigt(nutzer: "nutzer-a", sitzung: "srv-4")
+    folge.entwerten()
+    XCTAssertNil(folge.aktuell)
+  }
+
+  /// nacharbeit-19, Befund 1: Sitzungswechsel desselben Nutzers OHNE gemeldete Abmeldung sperrt
+  /// die alte Karte und eine verspätete Übergabe der alten Sitzung.
+  func testSitzungswechselGleicherNutzerOhneAbmeldungSperrtAlteKarte() throws {
+    let q = BrowserKartenQuelle(ablage: ablage)
+    var folge = HostAnmeldungsFolge(mandant: "https://app.klarwerk.ai")
+    q.anmelden(folge.bestaetigt(nutzer: "nutzer-a", sitzung: "srv-1"))
+    let alt = try XCTUnwrap(q.sitzungsmarke)
+    try ablegen(marke: alt)
+    XCTAssertNotNil(q.aktuell())
+    q.anmelden(folge.bestaetigt(nutzer: "nutzer-a", sitzung: "srv-2"))
+    XCTAssertNotEqual(q.sitzungsmarke, alt)
+    XCTAssertNil(q.aktuell())
+    try ablegen(marke: alt)  // verspätete Übergabe aus der alten Sitzung
+    XCTAssertNil(q.aktuell())
+  }
+
+  /// nacharbeit-19, Befund 1: Bei einem gemeldeten Wechsel entwertet der Host SOFORT — vor der
+  /// Nachfrage. Während die Nachfrage läuft, gibt es keine Karte; die Antwort gibt nur unter der
+  /// bestätigten neuen Sitzung frei, nie die alte Karte.
+  func testGemeldeterWechselEntwertetSofortVorDerNachfrage() throws {
+    let q = BrowserKartenQuelle(ablage: ablage)
+    var folge = HostAnmeldungsFolge(mandant: "https://app.klarwerk.ai")
+    var gemeldet: [BrowserKarte?] = []
+    q.beiAenderung = { gemeldet.append($0) }
+    q.anmelden(folge.bestaetigt(nutzer: "nutzer-a", sitzung: "srv-1"))
+    let alt = try XCTUnwrap(q.sitzungsmarke)
+    try ablegen(marke: alt)
+    q.anmelden(folge.aktuell)
+    XCTAssertNotNil(q.aktuell())
+    // Meldung „anmeldung" (Steuerung.anmeldungGewechselt): entwerten, dann erst nachfragen.
+    folge.entwerten()
+    q.anmelden(folge.aktuell)
+    XCTAssertNil(q.aktuell())  // das Menü liest jetzt: keine Karte
+    XCTAssertNil(gemeldet.last ?? nil)
+    // Die Nachfrage bestätigt DIESELBE Serversitzung: trotzdem neue Marke, die alte Karte bleibt weg.
+    q.anmelden(folge.bestaetigt(nutzer: "nutzer-a", sitzung: "srv-1"))
+    XCTAssertNotEqual(q.sitzungsmarke, alt)
+    XCTAssertNil(q.aktuell())
   }
 
   func testKlarwerkHerkunftWieDieErweiterung() {
@@ -107,13 +149,13 @@ final class SitzungsbindungTests: XCTestCase {
   func testHostAbmeldungUndNeuanmeldungSperrtAlteKarte() throws {
     let q = BrowserKartenQuelle(ablage: ablage)
     var folge = HostAnmeldungsFolge(mandant: "https://app.klarwerk.ai")
-    q.anmelden(folge.gemeldet(nutzer: "nutzer-a"))
+    q.anmelden(folge.bestaetigt(nutzer: "nutzer-a", sitzung: "srv-1"))
     let alt = try XCTUnwrap(q.sitzungsmarke)
     try ablegen(marke: alt)
     XCTAssertNotNil(q.aktuell())
-    q.anmelden(folge.gemeldet(nutzer: nil))
+    q.anmelden(folge.bestaetigt(nutzer: nil, sitzung: nil))
     XCTAssertNil(q.aktuell())
-    q.anmelden(folge.gemeldet(nutzer: "nutzer-a"))
+    q.anmelden(folge.bestaetigt(nutzer: "nutzer-a", sitzung: "srv-2"))
     XCTAssertNotEqual(q.sitzungsmarke, alt)
     try ablegen(marke: alt)  // verspätete Übergabe aus der alten Sitzung
     XCTAssertNil(q.aktuell())

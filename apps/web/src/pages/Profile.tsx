@@ -19,6 +19,7 @@ import { istAktiv } from "../components/SprachSchalter";
 import { AssistenzFormular } from "../components/assistenz/AssistenzFormular";
 import { AvatarBild } from "../components/assistenz/AvatarBild";
 import { FaehigkeitenBereich } from "../components/assistenz/FaehigkeitenBereich";
+import { ProgrammeUebersicht } from "../components/assistenz/ProgrammeUebersicht";
 // Betroffenenrechte (R-0663, R-0661): „Meine Daten" und der eigene Löschantrag.
 import { LoeschantragDetail, MeineDatenDetail } from "../components/datenschutz/MeineDaten";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
@@ -576,6 +577,9 @@ function MeineAssistenzDetail({ onZurueck }: { onZurueck: () => void }): JSX.Ele
       {stand.status === "bereit" ? <AssistenzFormular modus="aendern" /> : null}
       {/* produkt:20261011:assistenz-skills-werkzeuge: Favoriten, Routinen und Aufrufe. */}
       <FaehigkeitenBereich />
+      {/* produkt:20261011:assistenz-programmadapter: was die Assistenz in welchem Programm kann —
+          samt Code für den Mac-Begleiter (BPA-01 nacharbeit-19: aus 345b4467 übernommen). */}
+      <ProgrammeUebersicht />
     </Detailkarte>
   );
 }
