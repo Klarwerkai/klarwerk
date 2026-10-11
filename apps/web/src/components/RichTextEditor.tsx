@@ -2560,7 +2560,7 @@ export function RichTextEditor({
                     </>
                   ) : (
                     <div className="border-hairline border-t pt-1">
-                      <p className="px-2 pb-0.5 text-[10.5px] text-muted-2">
+                      <p className="px-2 pb-0.5 text-klein text-muted-2">
                         {t("editor.imageFromAttachment")}
                       </p>
                       {images.map((img) => (
@@ -2675,7 +2675,7 @@ export function RichTextEditor({
             ) : null}
           </>
         ) : (
-          <span className="rounded-pill border border-ai/30 bg-ai-surface-1 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-ai">
+          <span className="rounded-pill border border-ai/30 bg-ai-surface-1 px-2.5 py-1 font-mono text-klein font-semibold uppercase tracking-wider text-ai">
             {t("editor.previewBadge")}
           </span>
         )}
@@ -3042,7 +3042,7 @@ export function RichTextEditor({
                           {ohneVorschau ? (
                             <span
                               data-testid="caption-form-assign-preview-missing"
-                              className="flex h-16 w-full items-center justify-center rounded-input border border-dashed border-hairline px-1 text-center text-[10.5px] font-normal leading-snug text-muted-2"
+                              className="flex h-16 w-full items-center justify-center rounded-input border border-dashed border-hairline px-1 text-center text-klein font-normal leading-snug text-muted-2"
                             >
                               {t("editor.assignPreviewMissing")}
                             </span>
@@ -3235,12 +3235,12 @@ export function RichTextEditor({
                   // R-1020: ein Vorschlag entsteht nur aus einem Modelltext — also Entwurfsfläche.
                   className={`mt-2 rounded-card p-2 ${REASONER_ENTWURF_FLAECHE}`}
                 >
-                  <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
+                  <p className="font-mono text-klein font-semibold uppercase tracking-wider text-ai">
                     {t(CAPTION_AI_TEXT.panelTitle)} · {t(CAPTION_AI_TEXT.aiBadge)}
                   </p>
                   <ErgebnisStufeMarke stufe="entwurf" className="mt-1" />
                   {captionFormAi.withContext ? (
-                    <p className="mt-0.5 text-[10.5px] leading-snug text-muted">
+                    <p className="mt-0.5 text-klein leading-snug text-muted">
                       {t(CAPTION_AI_TEXT.withContext)}
                     </p>
                   ) : null}
@@ -3381,7 +3381,7 @@ export function RichTextEditor({
             </p>
           ) : (
             <div data-testid="caption-form-title-suggestion">
-              <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
+              <p className="font-mono text-klein font-semibold uppercase tracking-wider text-ai">
                 {t(CAPTION_AI_TEXT.titleLabel)}
               </p>
               {/* JOB 2440 D1: eigener Anker für den VORGESCHLAGENEN TITEL allein. Der Block darüber
@@ -3537,12 +3537,12 @@ export function RichTextEditor({
               onDragOver={onDragOver}
               onDragLeave={onDragLeave}
               onPaste={onPaste}
-              className="prose-kw min-h-[260px] p-4 text-[14.5px] leading-relaxed text-text outline-none md:p-6"
+              className="prose-kw min-h-[260px] p-4 text-[15px] leading-relaxed text-text outline-none md:p-6"
             />
             {/* SCRUM-474 P1: Placeholder als aktive Einladung im leeren Editor — pointer-events-none, damit
                 der Klick den Editor fokussiert; verschwindet, sobald Inhalt vorhanden ist. */}
             {placeholder && !bodyReadMode(value).hasBody ? (
-              <div className="pointer-events-none absolute inset-0 p-4 text-[14.5px] leading-relaxed text-muted-2 md:p-6">
+              <div className="pointer-events-none absolute inset-0 p-4 text-[15px] leading-relaxed text-muted-2 md:p-6">
                 {placeholder}
               </div>
             ) : null}
@@ -3592,7 +3592,7 @@ export function RichTextEditor({
       bodyReadMode(value).hasBody ? (
         <SanitizedHtml
           html={value}
-          className="prose-kw min-h-[260px] p-4 text-[14.5px] leading-relaxed text-text md:p-6"
+          className="prose-kw min-h-[260px] p-4 text-[15px] leading-relaxed text-text md:p-6"
         />
       ) : (
         <p className="grid min-h-[260px] place-items-center p-4 text-[12.5px] text-muted md:p-6">

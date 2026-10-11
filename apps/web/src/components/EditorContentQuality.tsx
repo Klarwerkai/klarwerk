@@ -39,7 +39,7 @@ export function EditorContentQuality({
           {positives.map((label) => (
             <span
               key={label}
-              className="inline-flex items-center gap-1 rounded-pill bg-trust-pos-bg px-2 py-0.5 text-[10.5px] font-semibold text-trust-pos-text"
+              className="inline-flex items-center gap-1 rounded-pill bg-trust-pos-bg px-2 py-0.5 text-klein font-semibold text-trust-pos-text"
             >
               <Check size={11} />
               {label}

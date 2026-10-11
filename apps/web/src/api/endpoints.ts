@@ -12,6 +12,7 @@ import type {
   Analytics,
   AnlagenKontext,
   AnsprechpartnerAuskunft,
+  AnswerExplanationResponse,
   AnswerResult,
   AntwortBeanstandung,
   AntwortMeldeGrund,
@@ -168,7 +169,18 @@ function qs(params?: Record<string, string | undefined>): string {
   return `?${entries.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&")}`;
 }
 
-export type KoFilter = { type?: string; status?: string; category?: string; tag?: string };
+export type KoFilter = {
+  type?: string;
+  status?: string;
+  category?: string;
+  tag?: string;
+  // produkt:20261011:peter-p14 — der serverseitige Firmenfilter (`eigen`, `partner`, `oeffentlich`,
+  // kommagetrennt; optional `partner` = Bereichskennung). Als Teil der Parameter steht er auch im
+  // Abfrageschlüssel (`useKos`, `useLibrarySearch`): ein Wechsel des Bereichs holt neu, statt eine
+  // Antwort des vorigen Bereichs stehen zu lassen.
+  firmenbereich?: string;
+  partner?: string;
+};
 
 // ================================================================================================
 // JOB 4357 (WIKI-ZUSAMMENARBEIT) — DER DRAHTVERTRAG DER BESTANDSLISTE DER GESAMTANWEISUNGEN.
@@ -1073,6 +1085,11 @@ export const endpoints = {
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
+    // R-0293: der Weg zur Antwort aus dem gespeicherten Beleg — liest, sucht nicht neu.
+    explanation: (answerId: string) =>
+      api.get<AnswerExplanationResponse>(
+        `/klara/answers/${encodeURIComponent(answerId)}/explanation`,
+      ),
     // R-1630 / R-2176: dieselbe Frage aus dem Wissensstand zum Stichtag (`JJJJ-MM-TT`; ohne
     // Angabe vor einem Jahr) — ohne Wissenslücke, ohne Beleg, ohne „Danke".
     vergleich: (question: string, locale?: ReasonerLocale, stichtag?: string) =>

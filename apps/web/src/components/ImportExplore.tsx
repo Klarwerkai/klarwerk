@@ -318,11 +318,11 @@ function FilterChip({
     >
       {label}
       {extra !== undefined ? (
-        <span className={`text-[10px] italic ${active ? "text-white/70" : "text-muted-2"}`}>
+        <span className={`text-klein italic ${active ? "text-white/70" : "text-muted-2"}`}>
           {extra}
         </span>
       ) : null}
-      <span className={`font-mono text-[10.5px] ${active ? "text-white/80" : "text-muted-2"}`}>
+      <span className={`font-mono text-klein ${active ? "text-white/80" : "text-muted-2"}`}>
         {count}
       </span>
     </button>
@@ -444,7 +444,7 @@ function ExploreMap({
                   className="inline-flex items-center gap-1 rounded-pill border border-hairline bg-page px-2.5 py-1 text-[12.5px] text-muted-2"
                 >
                   {localizeName(a.name, t, view.textDecoded)}
-                  <span className="font-mono text-[10.5px]">{a.count}</span>
+                  <span className="font-mono text-klein">{a.count}</span>
                 </span>
               ) : (
                 <FilterChip
@@ -485,7 +485,7 @@ function ExploreMap({
                   className="inline-flex items-center gap-1 rounded-pill border border-hairline bg-page px-2.5 py-1 text-[12.5px] text-muted-2"
                 >
                   {localizeName(th.label, t, view.textDecoded)}
-                  <span className="font-mono text-[10.5px]">{th.count}</span>
+                  <span className="font-mono text-klein">{th.count}</span>
                 </span>
               ) : (
                 <FilterChip
@@ -607,7 +607,7 @@ function Stat({
 }): JSX.Element {
   return (
     <div className="rounded-card border border-hairline bg-page px-3 py-2">
-      <div className="text-[18px] font-semibold leading-tight text-text">{value}</div>
+      <div className="text-[20px] font-semibold leading-tight text-text">{value}</div>
       <div className="mt-0.5 text-[11px] uppercase tracking-wide text-muted-2">{label}</div>
       {note !== undefined ? <div className="mt-0.5 text-[11px] text-muted-2">{note}</div> : null}
     </div>
@@ -816,7 +816,7 @@ export function ImportExplore(): JSX.Element {
               {explore.isPending ? (
                 <Loader2 size={15} className="animate-spin" />
               ) : (
-                <Search size={15} />
+                <Search size={15} strokeWidth={1.8} />
               )}
               {explore.isPending
                 ? t("imp.explore.exploring")

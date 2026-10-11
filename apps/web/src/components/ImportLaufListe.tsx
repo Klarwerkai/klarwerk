@@ -58,7 +58,7 @@ function LaufZeile({ run }: { run: ImportRunRecord }): JSX.Element {
         </span>
         <span
           data-testid={`import-lauf-status-${run.importId}`}
-          className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold text-muted"
+          className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-klein font-semibold text-muted"
         >
           {t(laufStatusKey(run.status))}
         </span>

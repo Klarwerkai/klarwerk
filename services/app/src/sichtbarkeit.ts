@@ -196,7 +196,16 @@ export function sichtbareFuer<T extends SichtbarkeitsFakten>(
  */
 export type Sichtbarkeitsfilter = (ko: SichtbarkeitsFakten) => boolean;
 
-export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter {
+// produkt:20261011:peter-p14 — `eingrenzung` (der Firmenfilter, `firmenbereich.ts`) tritt als UND
+// HINTER `darfSehen`: sie kann die Menge nur verkleinern, nie erweitern. Sie steht hier und nicht an
+// jeder Route, damit jede Übergabe ein Aufruf DIESER Entscheidung bleibt.
+export function sichtbarkeitsfilterFuer(
+  user: SessionUser,
+  eingrenzung?: Sichtbarkeitsfilter,
+): Sichtbarkeitsfilter {
+  if (eingrenzung) {
+    return (ko) => darfSehen(user, ko) && eingrenzung(ko);
+  }
   return (ko) => darfSehen(user, ko);
 }
 

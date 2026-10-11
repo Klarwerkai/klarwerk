@@ -207,4 +207,28 @@ describe("Ergänzung 1 · Arbeitsstand der Fragenseite — Regeln", () => {
     expect(belegNochGueltig("beleg", null, t0)).toBe(false);
     expect(belegNochGueltig("beleg", "kaputt", t0)).toBe(false);
   });
+
+  it("R9 · R-0293: die Belegkennung reist kontogebunden mit der Antwort — Altbestand bleibt Altbestand", () => {
+    const s = speicher();
+    const basis = STAND.antwort;
+    if (basis === null) {
+      throw new Error("STAND ohne Antwort");
+    }
+    // Mit Kennung: sie kommt für DIESES Konto zurück, für ein anderes nicht.
+    arbeitsstandSchreiben(s, "u1", { ...STAND, antwort: { ...basis, answerId: "beleg-a-1" } });
+    expect(arbeitsstandLesen(s, "u1")?.antwort?.answerId).toBe("beleg-a-1");
+    expect(arbeitsstandLesen(s, "u2")).toBeNull();
+    // Ohne Beleg vom Server: `null` bleibt `null`.
+    arbeitsstandSchreiben(s, "u1", { ...STAND, antwort: { ...basis, answerId: null } });
+    expect(arbeitsstandLesen(s, "u1")?.antwort?.answerId).toBeNull();
+    // Altbestand (Eintrag ohne Feld): KEIN Feld wird erfunden — weder Kennung noch `null`.
+    arbeitsstandSchreiben(s, "u1", STAND);
+    const alt = arbeitsstandLesen(s, "u1")?.antwort;
+    expect(alt).not.toBeNull();
+    expect(alt !== null && alt !== undefined && "answerId" in alt).toBe(false);
+    // Ein beschädigter Kennungswert macht den Eintrag unbrauchbar, statt eine Kennung zu raten.
+    const schluessel = [...s.inhalt.keys()][0] ?? "";
+    s.inhalt.set(schluessel, JSON.stringify({ ...STAND, antwort: { ...basis, answerId: 42 } }));
+    expect(arbeitsstandLesen(s, "u1")?.antwort ?? null).toBeNull();
+  });
 });

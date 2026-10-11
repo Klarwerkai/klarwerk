@@ -32,7 +32,7 @@ import type {
   AnswerExplanationLeser,
   AnswerExplanationService,
 } from "../services/answer-explanation";
-import { freigaberang, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
+import { freigaberang, paarSichtbar, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 export interface KlaraAnswerExplanationDeps {
   readonly explanations: AnswerExplanationService;
@@ -102,8 +102,12 @@ export function klaraAnswerExplanationRoutes(
         const leser: AnswerExplanationLeser = {
           userId: user.id,
           darfVertraulich: freigaberang(user) >= 1,
-          // R-1175: daneben die EINE Sichtbarkeitsentscheidung (Space, Autorschaft, Freigaberang).
-          sichtbar: sichtbarkeitsfilterFuer(user),
+          // Antwortbeleg-Nacharbeit 5 / R-1175 / Variante B: die EINE Sichtbarkeitsentscheidung von
+          // heute — Space-Recht (`spaceLesbar`), Freigaberang und Autorschaft. Sie entscheidet allein.
+          darfSehen: sichtbarkeitsfilterFuer(user),
+          // produkt:20261011:peter-p14 (Nacharbeit 12): die Paarregel für die Konfliktlage — ein
+          // offener Konflikt zählt nur, wenn der Leser BEIDE Seiten sehen darf.
+          paarSichtbar: (koA, koB, zugang) => paarSichtbar(user, koA, koB, zugang),
         };
         const ergebnis = await deps.explanations.erklaere(request.params.answerId, leser);
         if (ergebnis.kind === "NOT_FOUND") {

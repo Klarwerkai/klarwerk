@@ -4150,7 +4150,7 @@ export function BibliothekLesen({
                 onClick={() => springeZu("quellen")}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-surface px-2.5 py-[5px] text-[12px] font-semibold text-text hover:bg-hairline-soft"
               >
-                <FileText size={13} aria-hidden className="text-muted" />
+                <FileText size={13} strokeWidth={1.8} aria-hidden className="text-muted" />
                 {quellen.length > 0
                   ? t("lib.lesen.sprung.quellen", { count: quellen.length })
                   : t("lib.lesen.sprung.quellenLeer")}
@@ -4178,7 +4178,7 @@ export function BibliothekLesen({
                     : {})}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-surface px-2.5 py-[5px] text-[12px] font-semibold text-text hover:bg-hairline-soft"
                 >
-                  <FileText size={13} aria-hidden className="text-muted" />
+                  <FileText size={13} strokeWidth={1.8} aria-hidden className="text-muted" />
                   {originalDateien.length > 1
                     ? t("lib.lesen.sprung.originaldateien", { count: originalDateien.length })
                     : t("lib.lesen.sprung.originaldatei", { name: originalDateien[0]?.name ?? "" })}
@@ -4329,7 +4329,7 @@ export function BibliothekLesen({
                   {aussageZeigen ? (
                     <div data-testid="bib-feld-aussage">
                       <SectionLabel>{t("ko.statement")}</SectionLabel>
-                      <p className="text-[14.5px] leading-relaxed text-text">{aussage}</p>
+                      <p className="text-[15px] leading-relaxed text-text">{aussage}</p>
                     </div>
                   ) : null}
                   {anlage.length > 0 ? (
@@ -4386,7 +4386,7 @@ export function BibliothekLesen({
                   data-bib-text="quellenchip"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-page px-2.5 py-[5px]"
                 >
-                  <FileText size={13} aria-hidden className="text-muted" />
+                  <FileText size={13} strokeWidth={1.8} aria-hidden className="text-muted" />
                   <span className="text-[12px] font-semibold text-text">{`${i + 1} · ${s.label}`}</span>
                 </span>
               ))}

@@ -616,7 +616,7 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
             data-testid="demo-einmalkennwoerter"
             className="mt-2 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3 text-trust-warn-text"
           >
-            <div className="font-mono text-[10px] uppercase tracking-wider">
+            <div className="font-mono text-klein uppercase tracking-wider">
               {t("adm.seedCredsTitle")}
             </div>
             <p className="mt-0.5 text-[12.5px] leading-relaxed">{t("adm.seedCredsHint")}</p>
@@ -631,7 +631,7 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
         ) : null}
         {demoSeed.isSuccess && !demoSeed.data?.skipped ? (
           <div className="mt-2 rounded-card border border-hairline bg-surface p-3">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+            <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
               {t("pilot.next.title")}
             </div>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
@@ -1059,17 +1059,21 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
                 </div>
               </div>
             ) : (
-              // SCRUM-450: Stufe 2 — große, unübersehbare Warnung vor dem unwiderruflichen Schritt.
-              <div className="space-y-2.5 rounded-card border border-trust-crit-text/40 bg-trust-crit-bg px-4 py-3.5">
+              // SCRUM-450: Stufe 2 — unübersehbare Warnung vor dem unwiderruflichen Schritt.
+              // R-0896 (Markenregel): die Rückfrage liegt auf NEUTRALER Fläche wie Stufe 1; Rot
+              // steht allein am gefährlichen Knopf „Ausführen". Unübersehbar bleibt sie durch
+              // Größe, Gewicht und Symbol, nicht durch eine Ampelfläche (Ampelfarben = Status).
+              <div
+                data-testid="adm-factory-rueckfrage"
+                className="space-y-2.5 rounded-card border border-hairline bg-page px-4 py-3.5"
+              >
                 <div className="flex items-center gap-2">
-                  <AlertTriangle size={18} className="shrink-0 text-trust-crit-text" />
-                  <span className="text-[14px] font-bold text-trust-crit-text">
+                  <AlertTriangle size={18} className="shrink-0 text-text" />
+                  <span className="text-[14px] font-bold text-text">
                     {t("adm.factory.confirm2")}
                   </span>
                 </div>
-                <p className="text-[12.5px] leading-snug text-trust-crit-text/90">
-                  {t("adm.factory.warnBody")}
-                </p>
+                <p className="text-[12.5px] leading-snug text-muted">{t("adm.factory.warnBody")}</p>
                 <div className="flex items-center gap-3 pt-0.5">
                   <button
                     type="button"

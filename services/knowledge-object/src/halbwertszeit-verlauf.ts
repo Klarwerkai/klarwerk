@@ -53,21 +53,27 @@ export class PgHalbwertszeitVerlauf implements HalbwertszeitVerlaufRepo {
       kategorie: string;
       tage: number;
       erfasst: string;
-    }>("SELECT ko_id, ende, kategorie, tage, erfasst FROM ko_halbwertszeit_beobachtungen");
+      oeffentlich: boolean | null;
+    }>(
+      "SELECT ko_id, ende, kategorie, tage, erfasst, oeffentlich FROM ko_halbwertszeit_beobachtungen",
+    );
+    // P14 · B-07: NULL (Verlauf von vor der Lesbarkeitsangabe) bleibt „nicht angegeben" und zählt
+    // beim Lernen nicht — die damalige Lesbarkeit lässt sich nicht nachträglich belegen.
     return res.rows.map((r) => ({
       koId: r.ko_id,
       ende: r.ende,
       kategorie: r.kategorie,
       tage: Number(r.tage),
       erfasst: r.erfasst,
+      ...(typeof r.oeffentlich === "boolean" ? { oeffentlich: r.oeffentlich } : {}),
     }));
   }
 
   async ergaenze(eintraege: readonly HalbwertszeitEintrag[]): Promise<void> {
     for (const e of eintraege) {
       await this.pool.query(
-        "INSERT INTO ko_halbwertszeit_beobachtungen(ko_id, ende, kategorie, tage, erfasst) VALUES($1,$2,$3,$4,$5) ON CONFLICT (ko_id, ende) DO NOTHING",
-        [e.koId, e.ende, e.kategorie, e.tage, e.erfasst],
+        "INSERT INTO ko_halbwertszeit_beobachtungen(ko_id, ende, kategorie, tage, erfasst, oeffentlich) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT (ko_id, ende) DO NOTHING",
+        [e.koId, e.ende, e.kategorie, e.tage, e.erfasst, e.oeffentlich ?? null],
       );
     }
   }
