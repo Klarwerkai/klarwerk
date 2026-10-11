@@ -552,11 +552,12 @@ export class MeetingDokumentbezug {
   }
 
   private aenderungAnlegen(meldung: Rueckmeldung): void {
-    const verworfen = meldung.art === "verworfener_vorschlag";
-    const art = verworfen ? "vorschlag" : meldung.art;
-    if (art === "offene_frage") {
+    if (meldung.art === "offene_frage") {
       return;
     }
+    const verworfen = meldung.art === "verworfener_vorschlag";
+    const art: Aenderungsobjekt["art"] =
+      meldung.art === "verworfener_vorschlag" ? "vorschlag" : meldung.art;
     const ziel = verworfen ? null : this.aenderungsziel(meldung.bindung);
     this.aenderungen.set(`ae-${meldung.id}`, {
       id: `ae-${meldung.id}`,
