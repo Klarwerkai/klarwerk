@@ -13,6 +13,7 @@ import type {
 } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
+import { useAssistenzAnzeige } from "../lib/assistenzProfil";
 import { captureGapHref } from "../lib/captureFromGap";
 import { useAuthorName } from "../lib/useAuthorName";
 import { auftrittAus, useAssistenzProfil } from "./klara-vorschau/profil";
@@ -108,7 +109,13 @@ function VorgangInhalt({ vorgang }: { vorgang: GapVorgang }): JSX.Element {
   const eintraege = (bestand.data ?? []).map((k) => ({ id: k.id, title: k.title }));
   const klara = useKlaraZustand();
   // produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 3): die persönliche Assistenzwahl.
-  const assistenzName = auftrittAus(useAssistenzProfil()).name ?? t("klaraprodukt.name.neutral");
+  // produkt:20261010:branchen-poc-arbeitswege: dieselbe Rangfolge wie die Figur (KlaraVorschau.tsx)
+  // — zuerst der am Konto gespeicherte Name (`lib/assistenzProfil.ts`), dann der Leseeinstieg
+  // `profil.ts`, sonst neutral. Vorher las diese Fläche nur den Leseeinstieg, den im Produkt niemand
+  // setzt: die Figur hieß „Nora“, die Erklärung am Vorgang „Deine Assistenz“.
+  const kontoAssistenz = useAssistenzAnzeige();
+  const leseeinstieg = auftrittAus(useAssistenzProfil());
+  const assistenzName = kontoAssistenz.name ?? leseeinstieg.name ?? t("klaraprodukt.name.neutral");
   const qc = useQueryClient();
   const { push } = useToast();
   const [rueckfrage, setRueckfrage] = useState("");
