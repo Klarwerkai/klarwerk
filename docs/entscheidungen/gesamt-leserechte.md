@@ -87,6 +87,13 @@ Beide fachlichen Stände sind erhalten; wo sie sich widersprachen, gilt die enge
   liest weiterhin nicht, auch nicht als Autor. Dieselbe Regel steht im SQL-Prädikat. Belege:
   `confluence-leserechte-quellgetreu` S1/S1b, `quellleser-trim-paritaet` P1 (Parität über alle Niveaus)
   und P2 (gelistet mit Niveau „intern“ → verborgen).
+- **Prüfprotokoll: Form unabhängig vom Bestand (Nacharbeit 28, Ben):** der Wechsel von Kette zu
+  Leseansicht verriet, dass es ein verborgenes Objekt gibt. Jetzt bekommt jedes Konto IMMER die
+  Leseansicht — außer einem Konto mit ausdrücklich erteilter Ketteneinsicht
+  (`KLARWERK_AUDIT_KETTENEINSICHT`, Kontokennungen), das IMMER die vollständige, nachrechenbare Kette
+  erhält (R-0613). **Offen (Betreiber-/Produktentscheidung):** wer die Ketteneinsicht bekommt; ohne
+  Eintrag hat sie niemand, und die vollständige Kette gibt es dann über die Oberfläche nicht. Beleg:
+  `seitenweg-und-rechte` „gleicher sichtbarer Bestand ⇒ gleiche Antworten“.
 - **Prüfprotokoll × Quellrechte (Nacharbeit 24):** die Sichtbarkeitsfakten tragen die Leserliste; die
   Objektprüfung läuft für jeden Leser, uneingeschränkt ist nur, wem danach nichts verborgen bleibt.
   Der Löschbeleg `ko.purged` hält fest, ob eine Leserliste bestand (`quellbeschraenkt`, ohne

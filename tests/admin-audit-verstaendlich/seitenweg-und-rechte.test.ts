@@ -166,14 +166,21 @@ function testTuer(): Guards {
 
 const CONTROLLER = { "x-test-rolle": "controller", "x-test-konto": "u-ctrl" };
 const CONTROLLER_MIT_SPACE = { ...CONTROLLER, "x-test-spaces": "space-z" };
-/** Uneingeschränkt: jeder bekannte Space lesbar und persönliches Niveau „streng vertraulich". */
+/** Volles Leserecht: jeder bekannte Space lesbar und persönliches Niveau „streng vertraulich". */
 const VOLL = { ...CONTROLLER_MIT_SPACE, "x-test-freigabe": "streng_vertraulich" };
+/**
+ * Nacharbeit 28 (Ben): die vollständige Kette gibt es nur mit AUSDRÜCKLICH erteilter
+ * Ketteneinsicht — hier dem Konto `u-revision`. Ohne sie bekommt auch volles Leserecht die
+ * Leseansicht (die Form hängt nie am Bestand).
+ */
+const KETTENEINSICHT = { ...VOLL, "x-test-konto": "u-revision" };
 
 /** Die Lesequelle der Route — dieselben drei erfundenen Beiträge, ein Space, keine Befunde. */
 const QUELLE: AuditLeseQuelle = {
   sichtbarkeitsfaktenAller: async () => Object.entries(OBJEKTE).map(([id, f]) => ({ id, ...f })),
   spaceKennungen: async () => ["space-z"],
   befundZuordnungen: async () => [],
+  ketteneinsicht: (kontoId) => kontoId === "u-revision",
 };
 
 interface Buehne {
@@ -384,9 +391,13 @@ describe("K5 · Rechte — Audit, Seite, Export und Rücklinks", () => {
     expect(ansicht.count).toBe(KETTE.length - 1);
   });
 
-  it("uneingeschränkt: der Export ist die vollständige Kette — Kopf und Prüfbericht wie gespeichert", async () => {
+  it("mit Ketteneinsicht: der Export ist die vollständige Kette — Kopf und Prüfbericht wie gespeichert", async () => {
     const b = await buehne();
-    const exp = await b.app.inject({ method: "GET", url: "/api/audit/export", headers: VOLL });
+    const exp = await b.app.inject({
+      method: "GET",
+      url: "/api/audit/export",
+      headers: KETTENEINSICHT,
+    });
     expect(exp.statusCode).toBe(200);
     const datei = exp.json() as {
       count: number;
@@ -402,6 +413,9 @@ describe("K5 · Rechte — Audit, Seite, Export und Rücklinks", () => {
     expect(datei.entries.find((e) => e.seq === 5)?.payload.koTitle).toBe(GEHEIM);
     const original = (await b.repo.all()).find((e) => e.seq === KETTE.length);
     expect(datei.head).toEqual({ seq: original?.seq, hash: original?.hash });
+    // Gegenprobe (Nacharbeit 28): volles Leserecht OHNE Ketteneinsicht bekommt die Leseansicht.
+    const ansicht = await b.app.inject({ method: "GET", url: "/api/audit/export", headers: VOLL });
+    expect((ansicht.json() as { format: string }).format).toBe("klarwerk-audit-ansicht");
   });
 
   // Bens Befund Nacharbeit 35: der Anlagenkontext eines Beitrags (Bauteil, Material, Version,
@@ -530,10 +544,11 @@ describe("K6 · die Integritätsprüfung nennt ihren Zeitpunkt", () => {
   it("GET /api/audit/verify: ok mit Prüfzeitpunkt; nach einer Manipulation nicht ok", async () => {
     const b = await buehne();
     const vorher = Date.now();
+    // Die Kettenprüfung mit Ketteneinsicht (Nacharbeit 28: die einzige Form der ganzen Kette).
     const res = await b.app.inject({
       method: "GET",
       url: "/api/audit/verify",
-      headers: VOLL,
+      headers: KETTENEINSICHT,
     });
     expect(res.statusCode).toBe(200);
     const bericht = res.json() as { ok: boolean; count: number; checkedAt: string };
@@ -569,7 +584,11 @@ describe("K6 · die Integritätsprüfung nennt ihren Zeitpunkt", () => {
     );
     await app.ready();
     offen.push(app);
-    const rot = await app.inject({ method: "GET", url: "/api/audit/verify", headers: VOLL });
+    const rot = await app.inject({
+      method: "GET",
+      url: "/api/audit/verify",
+      headers: KETTENEINSICHT,
+    });
     expect((rot.json() as { ok: boolean }).ok).toBe(false);
   });
 });
@@ -588,14 +607,19 @@ describe("Nacharbeit 24 · Quellrechte und unbelegter Schutz im Prüfprotokoll",
   const GELOESCHT_ALT = "ko-geloescht-alt";
   const GELOESCHT_NEU = "ko-geloescht-neu";
 
-  async function quellbuehne() {
+  async function quellbuehne(mitQuellobjekt = true) {
     const repo = new InMemoryAuditRepo();
     let uhr = Date.parse("2026-10-01T08:00:00.000Z");
     const audit = new AuditService({ repo, now: () => uhr });
+    const quellvorgaenge: AuditInput[] = mitQuellobjekt
+      ? [
+          { actor: "u-anna", action: "ko.created", target: QUELLOBJEKT },
+          { actor: "u-anna", action: "ko.revised", target: QUELLOBJEKT, payload: { version: 2 } },
+        ]
+      : [];
     const eintraege: AuditInput[] = [
       { actor: "u-anna", action: "ko.created", target: "ko-offen" },
-      { actor: "u-anna", action: "ko.created", target: QUELLOBJEKT },
-      { actor: "u-anna", action: "ko.revised", target: QUELLOBJEKT, payload: { version: 2 } },
+      ...quellvorgaenge,
       { actor: "u-anna", action: "ko.created", target: GELOESCHT_ALT },
       // Altbeleg: die Endlöschung sagt nichts über Quellrechte.
       { actor: "u-admin", action: "ko.purged", target: GELOESCHT_ALT, payload: { reason: "x" } },
@@ -608,17 +632,25 @@ describe("Nacharbeit 24 · Quellrechte und unbelegter Schutz im Prüfprotokoll",
       },
     ];
     for (const e of eintraege) {
-      uhr += 60_000;
+      // Gleiche Zeitstempel in beiden Varianten: die Uhr läuft nur bei Einträgen außerhalb des
+      // Quellobjekts weiter — so ist der Antwortvergleich unten Feld für Feld möglich.
+      if (e.target !== QUELLOBJEKT) {
+        uhr += 60_000;
+      }
       await audit.record(e);
     }
     const objekte: Record<string, AuditObjektFakten> = {
       "ko-offen": { title: OFFEN, author: "u-anna", confidentiality: "intern" },
-      [QUELLOBJEKT]: {
-        title: "Quellseite nur für Lea (fiktiv)",
-        author: "u-anna",
-        confidentiality: "intern",
-        quellrechte: { leser: ["u-lea"] },
-      },
+      ...(mitQuellobjekt
+        ? {
+            [QUELLOBJEKT]: {
+              title: "Quellseite nur für Lea (fiktiv)",
+              author: "u-anna",
+              confidentiality: "intern" as const,
+              quellrechte: { leser: ["u-lea"] },
+            },
+          }
+        : {}),
     };
     const quelle: AuditLeseQuelle = {
       sichtbarkeitsfaktenAller: async () =>
@@ -672,8 +704,34 @@ describe("Nacharbeit 24 · Quellrechte und unbelegter Schutz im Prüfprotokoll",
     expect(liste.body).not.toContain(GELOESCHT_ALT);
     // Gegenprobe: „keine Quellleser“ ist belegt — das gelöschte Objekt bleibt nachvollziehbar.
     expect(liste.body).toContain(GELOESCHT_NEU);
-    // Und weil etwas verborgen ist, ist auch ihr Export eine Ansicht, keine Kette.
+    // Ohne Ketteneinsicht ist ihr Export eine Ansicht, keine Kette.
     const exp = await app.inject({ method: "GET", url: "/api/audit/export", headers: LEA_STRENG });
     expect((exp.json() as { format: string }).format).toBe("klarwerk-audit-ansicht");
+  });
+
+  // Nacharbeit 28 (Ben): die FORM darf die Existenz des verborgenen Objekts nicht verraten. Derselbe
+  // Leser (Rang 2, ohne Quellrecht, ohne Ketteneinsicht) bekommt mit und ohne das ihn ausschließende
+  // Quellobjekt Feld für Feld dieselben Antworten — Liste, Seite, Prüfbericht und Export.
+  it("gleicher sichtbarer Bestand ⇒ gleiche Antworten, ob ein verborgenes Quellobjekt existiert oder nicht", async () => {
+    const mit = await quellbuehne(true);
+    const ohne = await quellbuehne(false);
+    // Nur Zeitpunkte des Abrufs selbst sind frei; alles andere muss übereinstimmen.
+    const ohneAbrufzeit = (roh: string): unknown =>
+      JSON.parse(roh, (schluessel, wert) =>
+        schluessel === "checkedAt" || schluessel === "exportedAt" ? "<abrufzeit>" : wert,
+      );
+    const wege = ["/api/audit", "/api/audit/seite", "/api/audit/verify", "/api/audit/export"];
+    for (const url of wege) {
+      const a = await mit.inject({ method: "GET", url, headers: STRENG });
+      const b = await ohne.inject({ method: "GET", url, headers: STRENG });
+      expect(a.statusCode, url).toBe(200);
+      expect(ohneAbrufzeit(a.body), url).toEqual(ohneAbrufzeit(b.body));
+    }
+    // Kalibrierung: das Quellobjekt existiert in der einen Bühne wirklich — Lea (gelistet) sieht es
+    // nur dort. Sonst wäre die Gleichheit oben trivial.
+    const leaMit = await mit.inject({ method: "GET", url: "/api/audit", headers: LEA_STRENG });
+    const leaOhne = await ohne.inject({ method: "GET", url: "/api/audit", headers: LEA_STRENG });
+    expect(leaMit.body).toContain(QUELLOBJEKT);
+    expect(leaOhne.body).not.toContain(QUELLOBJEKT);
   });
 });

@@ -18,7 +18,7 @@ import {
 } from "../audit-sicht";
 import type { Guards, SessionUser } from "../http";
 import { LESEVARIANTEN_LADE_AKTION, LESEVARIANTEN_LADE_PROTOKOLLFELDER } from "../lesevarianten";
-import { type SichtbarkeitsFakten, darfSehen, freigaberang } from "../sichtbarkeit";
+import { type SichtbarkeitsFakten, darfSehen } from "../sichtbarkeit";
 
 /** Wer die Befunde (Konflikte, Überschneidungen) eines Objekts kennt — nur deren Kennungen. */
 export interface BefundKennungen {
@@ -40,20 +40,27 @@ export interface AuditLeseQuelle {
    * `vorherVersion`) — keine Bestandsbilanz. Fehlt die Angabe, bleibt die Regel unverändert eng.
    */
   weitereZiele?(): Promise<readonly string[]>;
+  /**
+   * Nacharbeit 28 (Ben): die AUSDRÜCKLICH erteilte Ketteneinsicht eines Kontos — die einzige
+   * bestandsunabhängige Berechtigung zur vollständigen, nachrechenbaren Kette (R-0613). Fehlt die
+   * Angabe oder sagt sie nein, bekommt das Konto immer die Leseransicht.
+   */
+  ketteneinsicht?(kontoId: string): boolean;
 }
 
 // ================================================================================================
 // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 13–15) — DAS PROTOKOLL NACH LESERECHT.
 // ================================================================================================
 //
-// WER IST EINGESCHRÄNKT. Seit Variante B (Nacharbeit 19) öffnet `ko.validate` nicht mehr jede
-// Stufe: was `darfSehen` vorenthält, liegt an Spaces UND am persönlichen Freigabeniveau.
-// Eingeschränkt ist deshalb, wer mindestens einen bekannten Space nicht lesen darf (Space-Bestand
-// und jeder Space, den die Kette je genannt hat) ODER keinen Freigaberang 2 („streng vertraulich",
-// `freigaberang`) hat ODER (Ben, Nacharbeit 24) dem nach der Objektprüfung irgendein Objekt oder
-// Befund verborgen bleibt — etwa durch eine Leserliste aus der Quelle (`quellrechte.leser`) oder
-// ein endgelöschtes Objekt, dessen Quellschutz nicht belegt ist. Nur wer tatsächlich alles lesen
-// darf, bekommt das Protokoll unverändert: Liste, Prüfbericht und die nachrechenbare Kette (R-0613).
+// WER IST EINGESCHRÄNKT (Ben, Nacharbeit 28). Die FORM der Ausgabe darf nicht davon abhängen, ob
+// es gerade verborgene Objekte gibt — sonst verrät der Wechsel von Kette zu Ansicht ihre Existenz,
+// auch wenn sie selbst herausgefiltert sind. Eine bestandsunabhängige VOLLSTÄNDIGE Leseberechtigung
+// gibt es aus Rang und Spaces nicht: eine Leserliste aus der Quelle (`quellrechte.leser`) kann jeden
+// ausschließen. Deshalb: jeder Leser bekommt IMMER die Leseansicht — außer einem Konto mit
+// ausdrücklich erteilter Ketteneinsicht (`AuditLeseQuelle.ketteneinsicht`, im Betrieb
+// `KLARWERK_AUDIT_KETTENEINSICHT`); es bekommt IMMER die unveränderte, nachrechenbare Kette
+// (R-0613). Beides hängt nur am Konto, nie am Bestand. Wer die Ketteneinsicht erhält, ist eine
+// Betreiberentscheidung; ohne Eintrag hat sie niemand.
 //
 // WAS EIN EINGESCHRÄNKTER LESER BEKOMMT — eine Leseransicht, die nichts von verborgenen Vorgängen
 // abhängen lässt:
@@ -81,6 +88,19 @@ export interface AuditLeseQuelle {
 //     Ausgenommen sind nur die Exportbelege, deren Zahlen ohnehin entfernt werden (s. o.).
 // Ohne Lesequelle ist nichts entscheidbar: dann gilt jeder Leser als eingeschränkt und jeder
 // Eintrag als verborgen.
+
+/**
+ * Nacharbeit 28: die Konten mit Ketteneinsicht aus der Betriebseinstellung
+ * (`KLARWERK_AUDIT_KETTENEINSICHT`, Kontokennungen durch Komma getrennt). Leer oder fehlend: keines.
+ */
+export function ketteneinsichtKonten(roh: string | undefined): ReadonlySet<string> {
+  return new Set(
+    (roh ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
+  );
+}
 
 interface Leselage {
   eingeschraenkt: boolean;
@@ -116,6 +136,10 @@ async function leselage(
 ): Promise<Leselage> {
   if (!quelle) {
     return { eingeschraenkt: true, verborgen: new Set(), ziele: new Set(), alles: true };
+  }
+  // Nacharbeit 28 (Ben): die Form entscheidet allein das Konto — VOR jeder Bestandsprüfung.
+  if (user.id.length > 0 && quelle.ketteneinsicht?.(user.id) === true) {
+    return UNEINGESCHRAENKT;
   }
   // Die Geschichte jedes Objekts aus der Kette: letzter Space, Autor, letzte Stufe — und ob die
   // Endlöschung festhielt, dass KEINE Leserliste aus der Quelle bestand (`quellfrei`, Nacharbeit 24).
@@ -204,11 +228,6 @@ async function leselage(
     if (!zuzuordnen || [...kos].some((k) => verborgen.has(k))) {
       verborgen.add(befund);
     }
-  }
-  const lesbar = user.spaceLesbar;
-  const spaceFehlt = [...spaces].some((s) => lesbar?.has(s) !== true);
-  if (freigaberang(user) >= 2 && !spaceFehlt && verborgen.size === 0) {
-    return UNEINGESCHRAENKT;
   }
   const ziele = new Set<string>([
     ...aktuell.keys(),

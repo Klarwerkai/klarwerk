@@ -1367,6 +1367,238 @@ index 03179a0a1..000000000
 -    }
 -  ]
 -}
+diff --git b/services/app/src/bestandsreset-dienst.ts a/services/app/src/bestandsreset-dienst.ts
+deleted file mode 100644
+index dffd88e6e..000000000
+--- b/services/app/src/bestandsreset-dienst.ts
++++ /dev/null
+@@ -1,226 +0,0 @@
+-import { createHash } from "node:crypto";
+-import type { Pool } from "pg";
+-import {
+-  BESTANDSRESET_LOESCHGRAPH,
+-  type BestandsresetBefund,
+-  type Queryable,
+-  SQL_SPERRE_WIRD_GEHALTEN,
+-  bestandsresetBefund,
+-  fuehreBestandsresetAus,
+-  poolQueryable,
+-} from "../../db-tx";
+-import { sqlDeletedAtLeer } from "../../knowledge-object";
+-
+-// ================================================================================================
+-// AUFNAHME 20260922 · GESAMT-BESTANDSRESET — DER ADMINISTRATIVE AUFRUF (Nacharbeit 2).
+-// ================================================================================================
+-//
+-// Peters Entscheidung vom 11.10. (Fachhilfe, Frage 59), wörtlich: „deine empfehlung, zweifache
+-// passworteingabe und checkbox zum klicken." Die Empfehlung lautete: „Konten und Firmenwörterbuch
+-// standardmäßig erhalten. Einen administrativen Aufruf mit verständlicher Folgenvorschau und
+-// zusätzlicher Bestätigung für irreversible Löschungen vorsehen."
+-//
+-// Dieses Modul ist die Brücke zwischen der Admin-Route und dem vorhandenen Reset aus JOB 596
+-// (`services/db-tx/src/bestandsreset.ts`). Es baut KEINEN zweiten Reset: gelöscht wird über
+-// `fuehreBestandsresetAus` mit dem Standard-Löschgraphen, der Konten und Firmenwörterbuch bereits
+-// stehen lässt.
+-//
+-// DIE FOLGENVORSCHAU IST WIRKSAM, NICHT DEKORATIV. Ihre `kennung` ist ein Hash über das, was sie
+-// zusagt: WELCHE Wissensobjekte gelöscht werden (Kennung und Papierkorbstand jedes einzelnen) und
+-// wie viele Konten und Begriffe bleiben. Der Reset verlangt diese Kennung zurück und rechnet sie vor
+-// dem Löschen neu; hat sich daran inzwischen etwas geändert, läuft nichts (`VORSCHAU_VERALTET`).
+-// Wer löscht, hat damit nachweislich die Folgen gesehen, die eintreten.
+-//
+-// BEWUSST NICHT im Hash: die Zeilenzahlen der abgeleiteten Tabellen (Suchprojektion, Modellläufe,
+-// Gelesen-Marken …). Sie stehen in der Vorschau, ändern sich im Betrieb aber laufend im Hintergrund
+-// — eine Kennung über sie wiese fast jeden Reset als „veraltet" ab, ohne dass sich an seinen Folgen
+-// für einen Menschen etwas geändert hätte.
+-
+-export interface BestandsresetVorschau {
+-  /** Was gelöscht wird: Zeilen je Tabelle des Löschgraphen, in seiner Reihenfolge. */
+-  geloescht: { tabelle: string; zeilen: number }[];
+-  /** Wissensobjekte insgesamt (lebend und im Papierkorb) — beide gehen mit. */
+-  wissensobjekte: number;
+-  /** Davon im Papierkorb. */
+-  papierkorb: number;
+-  /** Was ausdrücklich bleibt. */
+-  erhalten: { konten: number; begriffe: number };
+-  /** Kennung GENAU DIESER Vorschau. Der Reset verlangt sie zurück. */
+-  kennung: string;
+-}
+-
+-export interface BestandsresetStand {
+-  vorschau: BestandsresetVorschau;
+-  /** Der Befund des jüngsten Laufs aus der Laufakte — `null`, wenn es nie einen gab. */
+-  letzterLauf: BestandsresetBefund | null;
+-}
+-
+-export interface BestandsresetDienst {
+-  stand(): Promise<BestandsresetStand>;
+-  /**
+-   * Nacharbeit 7 (BEN): `vorschauKennung` ist die BESTÄTIGTE Kennung. Der Dienst rechnet sie IN der
+-   * Löschtransaktion nach dem Erwerb der exklusiven Sperre neu; weicht sie ab, wirft er
+-   * `BestandsresetVorschauVeraltetError`, und es ist nichts gelöscht. Die Prüfung in der Route davor
+-   * bleibt als frühe Antwort mit neuer Vorschau — sie allein schloss das Fenster bis zur Sperre nicht.
+-   */
+-  ausfuehren(laufId: string, vorschauKennung: string): Promise<BestandsresetBefund>;
+-}
+-
+-/** Der Bestand ist nicht mehr der bestätigte — der Reset hat nichts gelöscht. */
+-export class BestandsresetVorschauVeraltetError extends Error {
+-  readonly code = "VORSCHAU_VERALTET";
+-
+-  constructor() {
+-    super(
+-      "Der Bestand hat sich seit der Vorschau verändert. Prüfe die neue Vorschau und bestätige erneut.",
+-    );
+-    this.name = "BestandsresetVorschauVeraltetError";
+-  }
+-}
+-
+-/**
+- * Die Kennung einer Vorschau. `koFingerabdruck` fasst Kennung und Papierkorbstand JEDES
+- * Wissensobjekts zusammen — dieselben Objekte ergeben dieselbe Kennung, ein neues, ein gelöschtes
+- * oder ein in den Papierkorb verschobenes eine andere.
+- */
+-export function vorschauKennung(
+-  koFingerabdruck: string,
+-  v: Pick<BestandsresetVorschau, "wissensobjekte" | "papierkorb" | "erhalten">,
+-): string {
+-  const kanonisch = JSON.stringify([
+-    koFingerabdruck,
+-    v.wissensobjekte,
+-    v.papierkorb,
+-    v.erhalten.konten,
+-    v.erhalten.begriffe,
+-  ]);
+-  return createHash("sha256").update(kanonisch).digest("hex");
+-}
+-
+-// Die Tabellennamen stammen aus der Konstante des Löschgraphen, nie aus einer Eingabe (wie in
+-// `fuehreBestandsresetAus`); ein Bezeichner kann ohnehin nicht als Parameter gebunden werden.
+-async function zaehleLoeschgraph(db: Queryable): Promise<{ tabelle: string; zeilen: number }[]> {
+-  const sql = BESTANDSRESET_LOESCHGRAPH.map(
+-    (tabelle, i) => `SELECT ${i} AS pos, count(*)::text AS n FROM ${tabelle}`,
+-  ).join(" UNION ALL ");
+-  const res = await db.query<{ pos: number; n: string }>(sql);
+-  const zeilen = new Map(res.rows.map((r) => [Number(r.pos), Number(r.n)]));
+-  return BESTANDSRESET_LOESCHGRAPH.map((tabelle, i) => ({ tabelle, zeilen: zeilen.get(i) ?? 0 }));
+-}
+-
+-// Der Papierkorb in SQL wie `!ko.deletedAt` (s. `sqlDeletedAtLeer`): ein Objekt liegt nur dann
+-// darin, wenn `deletedAt` einen wahren Wert trägt.
+-const DELETED_AT_LEER = sqlDeletedAtLeer("k");
+-const IM_PAPIERKORB = `coalesce(k.deleted_at_key IS NOT NULL AND NOT ${DELETED_AT_LEER}, false)`;
+-interface KoZeile {
+-  gesamt: string;
+-  papierkorb: string;
+-  fingerabdruck: string;
+-}
+-const SQL_WISSENSOBJEKTE = `
+-SELECT count(*)::text AS gesamt,
+-       (count(*) FILTER (WHERE ${IM_PAPIERKORB}))::text AS papierkorb,
+-       md5(coalesce(string_agg(k.id || ':' || (${IM_PAPIERKORB})::text, ',' ORDER BY k.id), ''))
+-         AS fingerabdruck
+-  FROM kos k`;
+-
+-// Was bleibt: die Konten und das Firmenwörterbuch (Anzahl Begriffe, nicht Fassungen).
+-const SQL_ERHALTEN = `
+-SELECT (SELECT count(*) FROM users)::text AS konten,
+-       (SELECT count(DISTINCT begriff_id) FROM begriffe_fassungen)::text AS begriffe`;
+-
+-async function vorschauAus(db: Queryable): Promise<BestandsresetVorschau> {
+-  const geloescht = await zaehleLoeschgraph(db);
+-  const ko = (await db.query<KoZeile>(SQL_WISSENSOBJEKTE)).rows[0];
+-  const bleibt = (await db.query<{ konten: string; begriffe: string }>(SQL_ERHALTEN)).rows[0];
+-  const ohneKennung = {
+-    geloescht,
+-    wissensobjekte: Number(ko?.gesamt ?? 0),
+-    papierkorb: Number(ko?.papierkorb ?? 0),
+-    erhalten: { konten: Number(bleibt?.konten ?? 0), begriffe: Number(bleibt?.begriffe ?? 0) },
+-  };
+-  return { ...ohneKennung, kennung: vorschauKennung(ko?.fingerabdruck ?? "", ohneKennung) };
+-}
+-
+-/**
+- * Der Dienst über dem ROHEN Pool. Roh, weil der Reset selbst die exklusive Sperre nimmt und sich mit
+- * der geteilten seiner eigenen Kapselung im Weg stünde (s. `bestandsreset.ts`), und weil der Befund
+- * auch WÄHREND eines laufenden Resets antworten muss (s. `bestandsresetBefund`).
+- */
+-export function pgBestandsresetDienst(rohPool: Pool): BestandsresetDienst {
+-  const db = poolQueryable(rohPool);
+-  const sperreGehalten = async (q: Queryable): Promise<boolean> =>
+-    (await q.query<{ gehalten: boolean }>(SQL_SPERRE_WIRD_GEHALTEN)).rows[0]?.gehalten === true;
+-  return {
+-    stand: async () => ({
+-      vorschau: await vorschauAus(db),
+-      letzterLauf: (await bestandsresetBefund(db, sperreGehalten)) ?? null,
+-    }),
+-    ausfuehren: (laufId, erwartet) =>
+-      fuehreBestandsresetAus(rohPool, laufId, BESTANDSRESET_LOESCHGRAPH, {
+-        // Dieselbe Vorschau wie im GET, aber auf dem Client der Löschtransaktion: unter der
+-        // exklusiven Sperre kann kein Schreiber mehr dazwischen.
+-        vorDemLoeschen: async (client) => {
+-          const jetzt = await vorschauAus(client as unknown as Queryable);
+-          if (jetzt.kennung !== erwartet) {
+-            throw new BestandsresetVorschauVeraltetError();
+-          }
+-        },
+-      }),
+-  };
+-}
+-
+-// ================================================================================================
+-// DIE FREIGABE — reine Prüfung des Rumpfs, vor jeder Datenbankfrage.
+-// ================================================================================================
+-
+-export type FreigabeFehler =
+-  | "BESTAETIGUNG_FEHLT"
+-  | "VORSCHAU_FEHLT"
+-  | "PASSWORT_FEHLT"
+-  | "PASSWORT_UNGLEICH";
+-
+-export type Freigabe =
+-  | { ok: true; passwort: string; vorschauKennung: string }
+-  | { ok: false; fehler: FreigabeFehler; meldung: string };
+-
+-/**
+- * Prüft, ob der Rumpf alle drei verlangten Bestätigungen trägt: die gesehene Vorschau (ihre
+- * Kennung), das zweimal gleich eingegebene Passwort und das gesetzte Häkchen. Ob das Passwort
+- * STIMMT, entscheidet danach der Aufrufer gegen das Konto — hier wird nur die Form geprüft.
+- */
+-export function pruefeFreigabe(body: unknown): Freigabe {
+-  const b = (body ?? {}) as Record<string, unknown>;
+-  if (b.folgenBestaetigt !== true) {
+-    return {
+-      ok: false,
+-      fehler: "BESTAETIGUNG_FEHLT",
+-      meldung: "Bitte bestätige mit dem Häkchen, dass du die Folgen gelesen hast.",
+-    };
+-  }
+-  const kennung = typeof b.vorschauKennung === "string" ? b.vorschauKennung : "";
+-  if (!/^[0-9a-f]{64}$/.test(kennung)) {
+-    return {
+-      ok: false,
+-      fehler: "VORSCHAU_FEHLT",
+-      meldung: "Die Folgenvorschau fehlt. Lade sie, bevor du zurücksetzt.",
+-    };
+-  }
+-  const passwort = typeof b.passwort === "string" ? b.passwort : "";
+-  const wiederholung = typeof b.passwortWiederholung === "string" ? b.passwortWiederholung : "";
+-  if (passwort === "" || wiederholung === "") {
+-    return {
+-      ok: false,
+-      fehler: "PASSWORT_FEHLT",
+-      meldung: "Bitte gib dein Passwort zweimal ein.",
+-    };
+-  }
+-  if (passwort !== wiederholung) {
+-    return {
+-      ok: false,
+-      fehler: "PASSWORT_UNGLEICH",
+-      meldung: "Die beiden Passworteingaben stimmen nicht überein.",
+-    };
+-  }
+-  return { ok: true, passwort, vorschauKennung: kennung };
+-}
 diff --git b/services/app/src/branding-settings.ts a/services/app/src/branding-settings.ts
 index 4917d8c99..2856ea6ff 100644
 --- b/services/app/src/branding-settings.ts
@@ -1381,7 +1613,7 @@ index 4917d8c99..2856ea6ff 100644
   *
   * UND AUSDRÜCKLICH KEIN SEED. Eine vorbelegte Zeile hätte eine Versionszahl, und damit wäre
 diff --git b/services/app/src/build-app.ts a/services/app/src/build-app.ts
-index 5f87ee03a..2a5dcb570 100644
+index 9429f5d36..2a5dcb570 100644
 --- b/services/app/src/build-app.ts
 +++ a/services/app/src/build-app.ts
 @@ -16,32 +16,24 @@ import {
@@ -1535,7 +1767,7 @@ index 5f87ee03a..2a5dcb570 100644
  } from "../../reasoner";
  import {
    type AssignmentRepo,
-@@ -241,20 +207,10 @@ import {
+@@ -241,26 +207,15 @@ import {
    AddonAuthAttemptThrottle,
    addonAuthThrottleConfigFromEnv,
    isAddonEndpointPath,
@@ -1556,7 +1788,13 @@ index 5f87ee03a..2a5dcb570 100644
  import {
    type BearbeitungsRepo,
    InMemoryBearbeitungsRepo,
-@@ -267,8 +223,6 @@ import {
+   PgBearbeitungsRepo,
+ } from "./bearbeitungshinweis";
+-import { type BestandsresetDienst, pgBestandsresetDienst } from "./bestandsreset-dienst";
+ // JOB 3510/3578: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — im Postgres-Betrieb haltbar
+ // (`PgBrandingSettingsRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
+ import {
+@@ -268,8 +223,6 @@ import {
    InMemoryBrandingSettingsRepo,
    PgBrandingSettingsRepo,
  } from "./branding-settings";
@@ -1565,7 +1803,7 @@ index 5f87ee03a..2a5dcb570 100644
  import { confluenceAnhangsUebernahme } from "./confluence-anhaenge";
  // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — dieselbe Bauform wie die
  // Markenwahl (haltbar im Postgres-Betrieb, im Speicher ohne Datenbank).
-@@ -277,34 +231,11 @@ import {
+@@ -278,34 +231,11 @@ import {
    InMemoryConfluenceImportSchalterRepo,
    PgConfluenceImportSchalterRepo,
  } from "./confluence-import-schalter";
@@ -1601,7 +1839,7 @@ index 5f87ee03a..2a5dcb570 100644
  import {
    type SessionUser,
    isInternalOnlyError,
-@@ -313,104 +244,30 @@ import {
+@@ -314,104 +244,30 @@ import {
    tokenFromRequest,
  } from "./http";
  import { impactReport } from "./impact";
@@ -1688,9 +1926,10 @@ index 5f87ee03a..2a5dcb570 100644
 -import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
 -// produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil (Name, Avatar, Ersteinrichtung).
 -import { assistenzProfilRoutes } from "./routes/assistenz-profil-routes";
-+import { askRoutes } from "./routes/ask-routes";
- import { auditRoutes } from "./routes/audit-routes";
+-import { auditRoutes, ketteneinsichtKonten } from "./routes/audit-routes";
 -import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
++import { askRoutes } from "./routes/ask-routes";
++import { auditRoutes } from "./routes/audit-routes";
  import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 -import { begriffeRoutes } from "./routes/begriffe-routes";
  import { brandingRoutes } from "./routes/branding-routes";
@@ -1710,7 +1949,7 @@ index 5f87ee03a..2a5dcb570 100644
  // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): das seit JOB 4154 fertige, aber an keiner App
  // angemeldete Routen-Plugin der Gesamtanweisung. Hier — und nur hier — bekommt es seinen Aufrufer.
  import { gesamtanweisungRoutes } from "./routes/gesamtanweisung-routes";
-@@ -418,64 +275,34 @@ import { helpRoutes } from "./routes/help-routes";
+@@ -419,65 +275,34 @@ import { helpRoutes } from "./routes/help-routes";
  import { i18nRoutes } from "./routes/i18n-routes";
  import { impactRoutes } from "./routes/impact-routes";
  import { importAccessRoutes } from "./routes/import-access-routes";
@@ -1767,6 +2006,7 @@ index 5f87ee03a..2a5dcb570 100644
 -  scimSchluessel,
 -  verzeichnisRoutes,
 -} from "./routes/verzeichnis-routes";
+-import { vorfuehrungRoutes } from "./routes/vorfuehrung-routes";
 -// produkt:20261007:templates-default — Vorlagen, Standards, Space-Vorgaben, Nutzung, Begriffe.
 -import { vorlagenRoutes } from "./routes/vorlagen-routes";
 -import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
@@ -1776,7 +2016,7 @@ index 5f87ee03a..2a5dcb570 100644
  // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
  // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
  import { stelleSuchprojektionBereit } from "./search-projection-startup";
-@@ -484,71 +311,13 @@ import { AnswerExplanationService } from "./services/answer-explanation";
+@@ -486,71 +311,13 @@ import { AnswerExplanationService } from "./services/answer-explanation";
  // Policyentscheidung liegt im Reasoner-Modul, die Orchestrierung im Sitzungsdienst.
  import { ImportAccessService } from "./services/import-access-service";
  import { KlaraSessionService } from "./services/klara-session-service";
@@ -1849,7 +2089,7 @@ index 5f87ee03a..2a5dcb570 100644
  
  // ================================================================================================
  // JOB 3776 — WO DER STARTVERTRAG GERUFEN WIRD: AM EINSTIEGSPUNKT. HIER NICHT MEHR.
-@@ -641,87 +410,6 @@ export interface AppServices {
+@@ -643,87 +410,6 @@ export interface AppServices {
     * In-Memory-Ablage, genau wie bei `lesevarianten` und `klaraSessions`.
     */
    brandingSettings: BrandingSettingsRepo;
@@ -1937,7 +2177,7 @@ index 5f87ee03a..2a5dcb570 100644
    /**
     * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
     * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
-@@ -737,53 +425,6 @@ export interface AppServices {
+@@ -739,60 +425,6 @@ export interface AppServices {
     * denselben Hinweis an derselben Datenbankuhr sehen.
     */
    bearbeitungen: BearbeitungsRepo;
@@ -1988,10 +2228,17 @@ index 5f87ee03a..2a5dcb570 100644
 -   * Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt Ergebnisse beim Neustart zu verlieren.
 -   */
 -  verstaendnisfragen: VerstaendnisfragenRepo;
+-  /**
+-   * Aufnahme gesamt-bestandsreset (Nacharbeit 2): der administrative Bestandsreset (Folgenvorschau
+-   * und Ausführung über `fuehreBestandsresetAus`). NUR im Postgres-Betrieb gesetzt. Ohne Datenbank
+-   * fehlt er absichtlich: ein Reset, der nur den Speicher leerte, wäre im Desktop-Journal beim
+-   * nächsten Neustart wieder da — die Route sagt dann ehrlich „nicht verfügbar".
+-   */
+-  bestandsreset?: BestandsresetDienst;
    /**
     * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
     * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
-@@ -812,35 +453,24 @@ export interface AppServices {
+@@ -821,35 +453,24 @@ export interface AppServices {
    answerSnapshots: AnswerSnapshotRepo;
    validation: ValidationService;
    conflicts: ConflictService;
@@ -2033,7 +2280,7 @@ index 5f87ee03a..2a5dcb570 100644
    media: MediaAnalysisService;
    // SCRUM-165: read-only Einsicht in das ModelRun-Protokoll.
    modelRuns: ModelRunService;
-@@ -853,9 +483,6 @@ export interface AppServices {
+@@ -862,9 +483,6 @@ export interface AppServices {
    // Route fernhalten. `ImportAccessService` bekommt diese Ablage; die Route bekommt nur ihn.
    importRuns: ImportRunRepo;
    externalSources: ExternalSourceRepo;
@@ -2043,7 +2290,7 @@ index 5f87ee03a..2a5dcb570 100644
    // R-0169 (Nacharbeit 5): die interne Dokumentakte — Word-Weg und JSON ohne externalId.
    dokumente: DokumentaktenService;
    mailer: Mailer;
-@@ -866,8 +493,6 @@ export interface AppServices {
+@@ -875,8 +493,6 @@ export interface AppServices {
    externalKnowledge: ExternalKnowledgePolicyRepo;
    // SCRUM-421: einstellbare Upload-Grenzen (persistiert), direkt für die KO-Routen.
    uploadLimits: UploadLimitsRepo;
@@ -2052,7 +2299,7 @@ index 5f87ee03a..2a5dcb570 100644
    // WP-D11: PPTX-Folien-Konverter (injizierbar — Tests nutzen einen Fake, keine soffice-Pflicht).
    slideConverter: SlideConverter;
    // WP-SUBMIT-ASYNC (Pedis R3): In-Process-Worker der Hintergrund-KI-Prüfung. Von buildApp
-@@ -894,24 +519,15 @@ export interface AppRepos {
+@@ -903,24 +519,15 @@ export interface AppRepos {
    auditRepo: AuditRepo;
    koRepo: KoRepo;
    koVersions: KoVersionRepo;
@@ -2077,7 +2324,7 @@ index 5f87ee03a..2a5dcb570 100644
    // Berater-Konzept Duplikate 04.07. (Stufe D3b): Persistenz der Überschneidungs-Einträge.
    overlapRepo: OverlapRepo;
    // Pedi 04.07.: persistierte Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung).
-@@ -925,7 +541,6 @@ export interface AppRepos {
+@@ -934,7 +541,6 @@ export interface AppRepos {
    // Lauf angelegt werden — die Tabelle wurde migriert und blieb leer.
    importRuns: ImportRunRepo;
    externalSources: ExternalSourceRepo;
@@ -2085,7 +2332,7 @@ index 5f87ee03a..2a5dcb570 100644
    // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (eigene Tabelle).
    dokumente: DokumentaktenRepo;
    modelRuns: ModelRunRepo;
-@@ -941,8 +556,6 @@ export interface AppRepos {
+@@ -950,8 +556,6 @@ export interface AppRepos {
    externalKnowledge: ExternalKnowledgePolicyRepo;
    // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
    uploadLimits: UploadLimitsRepo;
@@ -2094,7 +2341,7 @@ index 5f87ee03a..2a5dcb570 100644
    /**
     * W1 Weg A: der Answer-Beleg-Schreibweg — und zwar HIER, nicht mehr als Option.
     *
-@@ -1266,59 +879,11 @@ export function assembleServices(
+@@ -1275,62 +879,11 @@ export function assembleServices(
      // `buildPgServices` (echter Pool); ohne Injektion die In-Memory-Ablage — derselbe Vertrag,
      // andere Haltbarkeit, beide werden getrennt geprüft.
      brandingSettings?: BrandingSettingsRepo;
@@ -2151,10 +2398,13 @@ index 5f87ee03a..2a5dcb570 100644
 -    unternehmen?: UnternehmenRepo;
 -    // Verständnisfragen: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
 -    verstaendnisfragen?: VerstaendnisfragenRepo;
+-    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): gesetzt nur von `buildPgServices` (roher Pool).
+-    // Eine Speicherfassung gibt es bewusst nicht — s. `bestandsreset` in `AppServices`.
+-    bestandsreset?: BestandsresetDienst;
      // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
      // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
      // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
-@@ -1336,27 +901,10 @@ export function assembleServices(
+@@ -1348,27 +901,10 @@ export function assembleServices(
      // unter derselben Sperre wie der Vorgang selbst (speicher-vorgang.ts).
      ...(speicher ? { kettenSperre: speicher.kettenSperre } : {}),
    });
@@ -2182,7 +2432,7 @@ index 5f87ee03a..2a5dcb570 100644
      evidence: repos.evidence,
      // SCRUM-395: Standard-Prüferanzahl aus der Admin-Einstellung — als injizierte
      // Funktion (keine Modulgrenzen-Verletzung); null → Modul-Default 3.
-@@ -1366,8 +914,6 @@ export function assembleServices(
+@@ -1378,8 +914,6 @@ export function assembleServices(
      ...(opts.withTx ? { withTx: opts.withTx } : {}),
      ...(speicher ? { ruecknahmeKlammer: speicher.klammer } : {}),
      ...(opts.searchProjections ? { searchProjections: opts.searchProjections } : {}),
@@ -2191,7 +2441,7 @@ index 5f87ee03a..2a5dcb570 100644
    });
    // FR-RSN-02/06 + SCRUM-502 R8: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist
    // — GECAPPT aus der Factory (Egress-Wächter rejectsConfidential=true + globaler In-Flight-Cap sind
-@@ -1443,54 +989,18 @@ export function assembleServices(
+@@ -1455,54 +989,18 @@ export function assembleServices(
                  ),
                );
              }
@@ -2246,7 +2496,7 @@ index 5f87ee03a..2a5dcb570 100644
      // W3-C1 (Auftrag 76): ab hier schreibt der Antwortweg wirklich einen Beleg.
      // W1 Weg A (Auftrag 143): das Repo kommt aus `repos.` — derselbe Satz, den die Dev-Persistenz
      // journaliert. Kein bedingter Key mehr: es ist immer da, und damit läuft der Beleg in JEDER
-@@ -1523,12 +1033,7 @@ export function assembleServices(
+@@ -1535,12 +1033,7 @@ export function assembleServices(
      repo: repos.conflictsRepo,
      audit,
      currentVersion: koVersion,
@@ -2259,7 +2509,7 @@ index 5f87ee03a..2a5dcb570 100644
    // JOB 3071: die papierkorbfähige Auskunft „hat der Autor seinen eigenen Beitrag zurückgezogen?".
    // Genau wie `koVersion` ein Funktions-Port und keine Modulkante: `services/conflicts` darf
    // `services/knowledge-object` nicht kennen (dependency-cruiser). Die Regel selbst wohnt im
-@@ -1555,16 +1060,14 @@ export function assembleServices(
+@@ -1567,16 +1060,14 @@ export function assembleServices(
    //
    // Hier stand „künftig: || jiraEnabled || …". Der Satz beschrieb einen Plan und ist mit
    // SharePoint/OneDrive eingelöst; als Kommentar STEHEN ZU BLEIBEN hiesse, dass die Zeile weiter
@@ -2281,7 +2531,7 @@ index 5f87ee03a..2a5dcb570 100644
    // JOB 4155 (WG-LUECKEN): DER KANTENBESTAND ENTSTEHT JETZT HIER, EINE STUFE FRÜHER — und zwar
    // GENAU EINMAL. Er stand bis hierher erst im `return`-Objekt weiter unten (`kanten:` dort), und
    // damit konnte ihn der `LibraryService` nicht bekommen, der davor gebaut wird. Ihn dort ein
-@@ -1595,22 +1098,6 @@ export function assembleServices(
+@@ -1607,22 +1098,6 @@ export function assembleServices(
      // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
      // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
      kanten: kantenBestand,
@@ -2304,7 +2554,7 @@ index 5f87ee03a..2a5dcb570 100644
      // R-0163: Anhänge und Bilder einer angenommenen Confluence-Seite — nur hinter demselben
      // Schalter wie der Import selbst; der Adapter entsteht je Annahme aus derselben Factory wie in
      // den Importrouten (Token bleibt in der Client-Closure).
-@@ -1625,9 +1112,7 @@ export function assembleServices(
+@@ -1637,9 +1112,7 @@ export function assembleServices(
          }
        : {}),
    });
@@ -2315,7 +2565,7 @@ index 5f87ee03a..2a5dcb570 100644
  
    // ==============================================================================================
    // JOB 2009 · D2 — HIER WIRD DIE SICHTBARKEITSNAHT DES WISSENSNETZES GESCHLOSSEN (H3, Weg D).
-@@ -1649,41 +1134,9 @@ export function assembleServices(
+@@ -1661,41 +1134,9 @@ export function assembleServices(
    // SCRUM-506.
    policyNahtSchliessen((betrachter) => sichtbarkeitsfilterFuer(betrachter as never) as never);
  
@@ -2357,7 +2607,7 @@ index 5f87ee03a..2a5dcb570 100644
      klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
      // JOB 3326: die Lesevarianten-Ablage — Postgres, wenn injiziert, sonst im Speicher.
      lesevarianten: opts.lesevarianten ?? new InMemoryLesevariantenRepo(),
-@@ -1708,74 +1161,17 @@ export function assembleServices(
+@@ -1720,76 +1161,17 @@ export function assembleServices(
        opts.anweisungen ?? new FluechtigeAnweisungsablage(process.env.KLARWERK_DEV_PERSIST === "1"),
      // JOB 3510/3578: die Markenwahl — Postgres, wenn injiziert, sonst im Speicher.
      brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
@@ -2423,6 +2673,8 @@ index 5f87ee03a..2a5dcb570 100644
 -    verstaendnisfragen:
 -      opts.verstaendnisfragen ??
 -      new InMemoryVerstaendnisfragenRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+-    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): nur mit Datenbank — ohne Injektion fehlt er.
+-    ...(opts.bestandsreset ? { bestandsreset: opts.bestandsreset } : {}),
      // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
      // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
      zurufModell,
@@ -2432,7 +2684,7 @@ index 5f87ee03a..2a5dcb570 100644
      // R-0169 (Nacharbeit 5): DIESELBE Instanz, die oben in den `LibraryService` gereicht wurde.
      dokumente,
      ko,
-@@ -1783,7 +1179,6 @@ export function assembleServices(
+@@ -1797,7 +1179,6 @@ export function assembleServices(
        users: repos.users,
        sessions: repos.sessions,
        resetTokens: repos.resetTokens,
@@ -2440,7 +2692,7 @@ index 5f87ee03a..2a5dcb570 100644
        audit,
        // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
        canChangeRole,
-@@ -1879,9 +1274,14 @@ export function assembleServices(
+@@ -1893,9 +1274,14 @@ export function assembleServices(
      // braucht. Er ist DASSELBE Repo, das der Schreibweg oben benutzt — ein zweites waere ein
      // zweiter Bestand und damit ein zweiter Wahrheitsort ueber denselben Beleg.
      answerSnapshots: repos.answerSnapshots,
@@ -2458,7 +2710,7 @@ index 5f87ee03a..2a5dcb570 100644
      conflicts,
      overlaps,
      // Pedi 04.07.: Schwellen-Repo direkt durchreichen (Routen + Duplikat-Erkennung nutzen es).
-@@ -1890,33 +1290,7 @@ export function assembleServices(
+@@ -1904,33 +1290,7 @@ export function assembleServices(
      // JOB 3363: dieselbe Kandidaten-Ablage, die `library` oben bekommen hat — kein zweiter Bestand.
      candidates: repos.candidates,
      // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
@@ -2493,7 +2745,7 @@ index 5f87ee03a..2a5dcb570 100644
      // SCRUM-120: Management/Kapital — stateless, aggregiert echte Live-Daten.
      management: new ManagementService({
        koService: ko,
-@@ -1953,21 +1327,6 @@ export function assembleServices(
+@@ -1967,21 +1327,6 @@ export function assembleServices(
        busFactor: (opts) => library.busFactor(opts),
        // R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte.
        profiles: repos.managementProfiles,
@@ -2515,7 +2767,7 @@ index 5f87ee03a..2a5dcb570 100644
      }),
      // SCRUM-118: externer Such-Proxy (Wikipedia) — optional via Env abschaltbar.
      externalSearch: createExternalSearchFromEnv(),
-@@ -1975,6 +1334,16 @@ export function assembleServices(
+@@ -1989,6 +1334,16 @@ export function assembleServices(
      i18n: new I18nService(),
      // SCRUM-121: interner Objekt-/Attachment-Speicher (In-Memory; Pg/Disk = Folge-Ticket).
      objects,
@@ -2532,7 +2784,7 @@ index 5f87ee03a..2a5dcb570 100644
      // JOB 2706 D1 (R2-30): nur, wenn das Repo die Traegersuche an der Datenquelle kann. Die
      // Methoden sind am `KoRepo` optional (Begruendung dort); hier werden sie durchgereicht, nicht
      // geraten. Ebenso der Schreibstand aus der Ablage.
-@@ -1993,11 +1362,7 @@ export function assembleServices(
+@@ -2007,11 +1362,7 @@ export function assembleServices(
        // vertrauliche Medien per Konstruktion (rejectsConfidential), analog cappedCloud beim Reasoner.
        // SCRUM-502 R8: gecappter Cloud-Transkriber aus der Factory (Egress-Wächter zwingend; roher
        // Client + Credential modul-intern, hier nicht erreichbar). Ohne Schlüssel → undefined (inaktiv).
@@ -2545,7 +2797,7 @@ index 5f87ee03a..2a5dcb570 100644
        // SCRUM-521 (WP2, nacht24): KO-Kontext für die Egress-Entscheidung — die Stufen ALLER KOs,
        // die das Objekt als Anhang tragen (restriktivste gewinnt im Service; ein „intern"
        // hochgeladenes Medium an einem vertraulichen KO bleibt vertraulich). Injizierte Auflösung,
-@@ -2010,13 +1375,6 @@ export function assembleServices(
+@@ -2024,13 +1375,6 @@ export function assembleServices(
          (await ko.list({}))
            .filter((k) => (k.attachments ?? []).some((a) => a.objectId === objectId))
            .map((k) => k.confidentiality ?? "intern"),
@@ -2559,7 +2811,7 @@ index 5f87ee03a..2a5dcb570 100644
      }),
      // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
      modelRuns: new ModelRunService({
-@@ -2033,8 +1391,6 @@ export function assembleServices(
+@@ -2047,8 +1391,6 @@ export function assembleServices(
      externalKnowledge: repos.externalKnowledge,
      // SCRUM-421: Upload-Grenzen-Repo direkt durchreichen (KO-Routen nutzen es + Audit).
      uploadLimits: repos.uploadLimits,
@@ -2568,7 +2820,7 @@ index 5f87ee03a..2a5dcb570 100644
      // WP-D11: PPTX-Folien → PNG (LibreOffice headless). In Tests/Dev ohne soffice meldet
      // available() ehrlich false (Route → 503); Tests injizieren einen Fake VOR buildApp.
      slideConverter: createSofficeSlideConverter(),
-@@ -2052,30 +1408,23 @@ export function inMemoryRepos(): AppRepos {
+@@ -2066,30 +1408,23 @@ export function inMemoryRepos(): AppRepos {
      auditRepo: new InMemoryAuditRepo(),
      koRepo: new InMemoryKoRepo(schreibstand),
      koVersions: new InMemoryKoVersionRepo(schreibstand),
@@ -2600,7 +2852,7 @@ index 5f87ee03a..2a5dcb570 100644
      dokumente: new InMemoryDokumentaktenRepo(),
      modelRuns: new InMemoryModelRunRepo(),
      notificationSeen: new InMemoryNotificationSeenRepo(),
-@@ -2084,7 +1433,6 @@ export function inMemoryRepos(): AppRepos {
+@@ -2098,7 +1433,6 @@ export function inMemoryRepos(): AppRepos {
      validationSettings: new InMemoryValidationSettingsRepo(),
      externalKnowledge: new InMemoryExternalKnowledgePolicyRepo(),
      uploadLimits: new InMemoryUploadLimitsRepo(),
@@ -2608,7 +2860,7 @@ index 5f87ee03a..2a5dcb570 100644
      // W1 Weg A (Auftrag 143): der Answer-Beleg gehört in denselben Repo-Satz wie alles andere —
      // nur so umhüllt ihn die Dev-Persistenz und spielt ihn beim Start aus dem Journal zurück.
      answerSnapshots: new InMemoryAnswerSnapshotRepo(),
-@@ -2133,21 +1481,15 @@ export function buildPgServices(rohPool: Pool): AppServices {
+@@ -2147,21 +1481,15 @@ export function buildPgServices(rohPool: Pool): AppServices {
        auditRepo: new PgAuditRepo(pool),
        koRepo: new PgKoRepo(pool),
        koVersions: new PgKoVersionRepo(pool),
@@ -2630,7 +2882,7 @@ index 5f87ee03a..2a5dcb570 100644
        // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge persistent.
        overlapRepo: new PgOverlapRepo(pool),
        // Pedi 04.07.: Anzeige-Schwelle persistent.
-@@ -2160,10 +1502,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
+@@ -2174,10 +1502,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
        candidates: new PgCandidateRepo(pool),
        // W2-A/148: Laufdomaene persistent — ein Lauf muss einen Neustart ueberleben, sonst waere
        // „haengend in QUEUED" nach jedem Neustart ununterscheidbar von „nie gestartet".
@@ -2642,7 +2894,7 @@ index 5f87ee03a..2a5dcb570 100644
        // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (DOKUMENTAKTE_SCHEMA).
        dokumente: new PgDokumentaktenRepo(pool),
        // SCRUM-164: ModelRun-Protokoll persistent (KI-Aufrufe nachvollziehbar).
-@@ -2180,8 +1520,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
+@@ -2194,8 +1520,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
        externalKnowledge: new PgExternalKnowledgePolicyRepo(pool),
        // SCRUM-421: Upload-Grenzen persistent.
        uploadLimits: new PgUploadLimitsRepo(pool),
@@ -2651,7 +2903,7 @@ index 5f87ee03a..2a5dcb570 100644
        // W3-C1 (Auftrag 76): der Answer-Beleg gegen die echte Datenbank. Die Tabellen
        // `answer_records` und `answer_snapshots` stehen seit Freeze 61 im Migrationsweg.
        // W1 Weg A (Auftrag 143): er steht jetzt bei den übrigen Repos statt in den Optionen —
-@@ -2221,47 +1559,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
+@@ -2235,47 +1559,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
        // überlebt die vom Administrator gesetzte Firmen-CI Neustart und Deploy; ohne sie fiele
        // `assembleServices` auch im Postgres-Betrieb auf die flüchtige In-Memory-Ablage zurück.
        brandingSettings: new PgBrandingSettingsRepo(pool),
@@ -2699,7 +2951,7 @@ index 5f87ee03a..2a5dcb570 100644
        // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
        // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
        confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
-@@ -2269,25 +1566,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
+@@ -2283,28 +1566,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
        // so sehen mehrere App-Prozesse derselben Instanz denselben Hinweis — und die Uhr, die über
        // Ablauf und Erneuerung entscheidet, ist die der Datenbank, nicht die eines Prozesses.
        bearbeitungen: new PgBearbeitungsRepo(pool),
@@ -2722,10 +2974,13 @@ index 5f87ee03a..2a5dcb570 100644
 -      // Verständnisfragen: Fragensatzversionen und Ergebnisse überleben Neuladen, Neustart und
 -      // Deploy (`VERSTAENDNISFRAGEN_SCHEMA`, angelegt von `migrate()`).
 -      verstaendnisfragen: new PgVerstaendnisfragenRepo(pool),
+-      // Aufnahme gesamt-bestandsreset (Nacharbeit 2): der administrative Aufruf des Resets. Er
+-      // bekommt den ROHEN Pool — die zweite benannte Ausnahme aus dem Kopf dieser Funktion.
+-      bestandsreset: pgBestandsresetDienst(rohPool),
      },
    );
  }
-@@ -2295,27 +1573,15 @@ export function buildPgServices(rohPool: Pool): AppServices {
+@@ -2312,27 +1573,15 @@ export function buildPgServices(rohPool: Pool): AppServices {
  // Weg 3: baut den semantischen Vorfilter NUR, wenn KLARWERK_DUP_PREFILTER=1|true gesetzt ist —
  // Standard AUS (heutiges „jeder gegen jeden" bleibt Default). Ohne einsatzbereiten Provider (z. B.
  // Modus cloud/local noch nicht verdrahtet) → ehrlich undefined statt Fake. topK aus
@@ -2758,7 +3013,7 @@ index 5f87ee03a..2a5dcb570 100644
    if (!embedder) {
      return undefined;
    }
-@@ -2323,11 +1589,7 @@ function createSemanticPrefilterFromEnv(
+@@ -2340,11 +1589,7 @@ function createSemanticPrefilterFromEnv(
    const topK = Number.isInteger(rawTopK) && rawTopK > 0 ? rawTopK : 25;
    // SCRUM-498 B2 (Fix): embed() durch den prozess-globalen Embed-Cap führen, damit der Prefilter den
    // Cap nicht umgeht. Bei Normallast (und mit dem Stub) ein No-Op → Prefilter-Verhalten bit-gleich.
@@ -2771,7 +3026,7 @@ index 5f87ee03a..2a5dcb570 100644
  }
  
  // SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-/Embed-Cap-Überlauf (ModelCapacityError)
-@@ -2357,18 +1619,6 @@ export function modelBusyErrorHandler(
+@@ -2374,18 +1619,6 @@ export function modelBusyErrorHandler(
      });
      return;
    }
@@ -2790,7 +3045,7 @@ index 5f87ee03a..2a5dcb570 100644
    if (isInternalOnlyError(error)) {
      sendError(reply, error);
      return;
-@@ -2411,29 +1661,6 @@ export function buildCommit(env: NodeJS.ProcessEnv = process.env): string {
+@@ -2428,29 +1661,6 @@ export function buildCommit(env: NodeJS.ProcessEnv = process.env): string {
    return COMMIT_RE.test(roh) ? roh : BUILD_UNBEKANNT;
  }
  
@@ -2820,7 +3075,7 @@ index 5f87ee03a..2a5dcb570 100644
  // Einmal gelesen, dann gemerkt: die Datei ändert sich zur Laufzeit nicht, und /health soll keine
  // Plattenzugriffe pro Anfrage machen.
  let versionGemerkt: string | null = null;
-@@ -2580,10 +1807,6 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
+@@ -2597,10 +1807,6 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
    // Entscheidung: sein Name sagt nur „Confluence antwortete mit einem Fehlerstatus" — keine
    // Kennung, kein Host; die Meldung enthält allein die Statuszahl.
    "ConfluenceStatusError",
@@ -2831,7 +3086,7 @@ index 5f87ee03a..2a5dcb570 100644
    "DevPersistJournalReplayError",
    // R-0163 / K3 (Ben, Nacharbeit 15): der Fachfehler der Dokumentakte
    // (`services/knowledge-object/src/dokumentakte.ts`, R-0169). ENTSCHEIDUNG: der Name darf ins
-@@ -2595,18 +1818,6 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
+@@ -2612,18 +1818,6 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
    "DraftStaleError",
    "ExternalSearchError",
    "FencingVeraltetError",
@@ -2850,7 +3105,7 @@ index 5f87ee03a..2a5dcb570 100644
    "KlaraError",
    // JOB 4151: aus `services/knowledge-object/src/kanten-types.ts` — der Fachfehler der kuratierten
    // Beziehungen. ENTSCHEIDUNG: der Name darf ins Protokoll. Er trägt, wie jeder Nachbar hier,
-@@ -2616,7 +1827,7 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
+@@ -2633,7 +1827,7 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
    "KantenError",
    "KoError",
    "LibraryError",
@@ -2859,7 +3114,7 @@ index 5f87ee03a..2a5dcb570 100644
    // R-0163 / K3 (Ben, Nacharbeit 15): der Fehler eines ungültigen Management-Profils
    // (`services/management/src/profiles.ts`). ENTSCHEIDUNG: der Name darf ins Protokoll — nur der
    // Klassenname, keine Profilwerte.
-@@ -2694,8 +1905,6 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
+@@ -2711,8 +1905,6 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
    // rest-client.ts:87–88), die der Waechter unten nicht erhebt (ternaer zugewiesen) — gemeldet in
    // der Rueckgabe 2702, nicht eingetragen: Entscheidung beim Eigentuemer von 2661.
    "CONFLUENCE_TIMEOUT",
@@ -2868,7 +3123,7 @@ index 5f87ee03a..2a5dcb570 100644
    "CONSENT_MISSING",
    "CREATE_ANCHOR_TAKEN",
    "CREATE_REPAIR_REQUIRED",
-@@ -2724,10 +1933,6 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
+@@ -2741,10 +1933,6 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
    "EXTERNAL_ATTACH_BLOCKED",
    "EXTERNAL_SEARCH_FAILED",
    "FORBIDDEN",
@@ -2879,7 +3134,7 @@ index 5f87ee03a..2a5dcb570 100644
    "IDEMPOTENCY_PAYLOAD_MISMATCH",
    "IMPORT_ANCHOR_TAKEN",
    "INCOMPLETE",
-@@ -2802,10 +2007,6 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
+@@ -2819,10 +2007,6 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
    // trägt keine Nutzerdaten — er sagt, welcher Zweig lief, und genau dafür ist die Liste da.
    "REASONER_POLICY_ENV_LOCKED",
    "SEARCH_PROJECTION_NOT_READY",
@@ -2890,7 +3145,7 @@ index 5f87ee03a..2a5dcb570 100644
    // R-0163 (Bens Befund 3, beleg:2def0ac2): der Laufcode eines unvollständigen Anhangsabgleichs
    // (`routes/confluence-import-routes.ts`, `SOURCE_SYNC_INCOMPLETE`) — am gespeicherten Lauf als
    // `failureCode` und in der Warnzeile des Laufs. ENTSCHEIDUNG: darf ins Protokoll. Er trägt keine
-@@ -2909,12 +2110,23 @@ export function pfadOhneAbfrage(url: string): string {
+@@ -2926,12 +2110,23 @@ export function pfadOhneAbfrage(url: string): string {
   * FAIL-CLOSED: Nur ein Rahmen, der dem strengen Muster entspricht, wird übernommen; alles andere
   * ergibt `unbekannt`. Ein Stack aus dynamisch erzeugtem Code kann beliebigen Text als „Dateinamen"
   * tragen. Die erste Stackzeile ist die MELDUNG selbst und wird nie betrachtet.
@@ -2918,7 +3173,7 @@ index 5f87ee03a..2a5dcb570 100644
  }
  
  /** Tiefer wird nicht abgestiegen — ein zyklisches Objekt darf den Logger nicht festfahren. */
-@@ -2969,26 +2181,13 @@ export function senkeUeberWert(
+@@ -2986,26 +2181,13 @@ export function senkeUeberWert(
    for (const [schluessel, inhalt] of Object.entries(wert)) {
      // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
      // secret-benannten Env-Variablen wird auch unter einem Trace-Feldnamen entfernt.
@@ -2948,7 +3203,7 @@ index 5f87ee03a..2a5dcb570 100644
  // Aufnahme gesamt-ki-laufprotokoll (Ben R2 B5, Tracing): Regel 4 von `sanitizeLogText` liest jedes
  // Wort ab 24 Zeichen als Token — eine W3C-Trace-Kennung (32 Hexzeichen) wurde damit zu `[redacted]`,
  // und die Logzeile ließ sich ihrem Trace nicht mehr zuordnen. Die Ausnahme ist so eng wie möglich:
-@@ -3003,44 +2202,6 @@ function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string
+@@ -3020,44 +2202,6 @@ function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string
    return TRACE_FELDER.has(schluessel) && typeof inhalt === "string" && TRACE_KENNUNG.test(inhalt);
  }
  
@@ -2993,7 +3248,7 @@ index 5f87ee03a..2a5dcb570 100644
  /**
   * Die Logkonfiguration — eine geschlossene Erlaubnisliste in drei Serializern.
   *
-@@ -3109,16 +2270,11 @@ export function baueLoggerOptionen(vorgabe?: {
+@@ -3126,16 +2270,11 @@ export function baueLoggerOptionen(vorgabe?: {
      // ÜBERNOMMEN AUS EXTS PARALLELBAU (`app-logger.ts:184-192`): jeder Logaufruf läuft hier durch,
      // Meldungstext und Feldobjekt gleichermassen. Die einzige Stelle, an der ein selbstgebauter
      // Freitext noch abgefangen werden kann — die Serializer sehen ihn nie.
@@ -3011,7 +3266,7 @@ index 5f87ee03a..2a5dcb570 100644
          );
        },
      },
-@@ -3132,23 +2288,7 @@ export function buildApp(
+@@ -3149,23 +2288,7 @@ export function buildApp(
    //
    // JOB 2661: `log` ist der Prüfeinstieg für die Logsenke — ohne ihn ist der Logger derselbe,
    // er schreibt nur auf die Standardausgabe statt in einen lesbaren Puffer.
@@ -3036,7 +3291,7 @@ index 5f87ee03a..2a5dcb570 100644
  ): FastifyInstance {
    // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
    // Client-IP hinter dem bekannten Proxy-Hop; Default (unset) = false = Socket-Peer (heutiges Verhalten).
-@@ -3168,15 +2308,7 @@ export function buildApp(
+@@ -3185,15 +2308,7 @@ export function buildApp(
    const app = Fastify({
      trustProxy: resolveTrustProxy(),
      logger: baueLoggerOptionen(opts.log),
@@ -3052,7 +3307,7 @@ index 5f87ee03a..2a5dcb570 100644
    // SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-Cap-Überlauf (ModelCapacityError) wird
    // von der Reasoner-Kette bis hierher durchgereicht → 503 + Retry-After (kein 500/Crash). Jeder andere
    // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.
-@@ -3218,26 +2350,8 @@ export function buildApp(
+@@ -3235,26 +2350,8 @@ export function buildApp(
    // zweiter Weg, keine zweite Zustandsmaschine: `stelleSuchprojektionBereit` ist der EINE Einstieg
    // für App-Ready und `runSeed()`. Er wirft, wenn die Instanz nicht `V2_ACTIVE` erreicht — die App
    // wird dann nie ready und die Suche bleibt fail-closed.
@@ -3079,7 +3334,7 @@ index 5f87ee03a..2a5dcb570 100644
      // JOB 3655 — DER STARTBERICHT. Er ist BEWUSST erst hier angesiedelt und BEWUSST nicht
      // start-entscheidend: ein Bericht ist kein Betriebsmittel. Scheitert der Bestandsbefund, sagt
      // er „unbekannt" (nie „leer") und der Start geht weiter. Die start-entscheidende Prüfung ist
-@@ -3269,35 +2383,21 @@ export function buildApp(
+@@ -3286,35 +2383,21 @@ export function buildApp(
      // wird dagegen zu `[redacted]`).
      app.log.info({ startvertrag: startbericht(process.env, bestand) }, "KLARWERK Startbericht");
    });
@@ -3117,7 +3372,7 @@ index 5f87ee03a..2a5dcb570 100644
    // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag, NUR für die eine
    // validierte Add-in-Origin und NUR für POST /api/ask UND POST /api/check-text (SCRUM-491 Slice 5).
    // Flag AUS → gar nicht registriert → keine CORS-Header (exakt heutiges Verhalten). Kein
-@@ -3306,18 +2406,7 @@ export function buildApp(
+@@ -3323,18 +2406,7 @@ export function buildApp(
    // ben-Review SCRUM-490 (P2): (1) Origin fail-closed validieren — "*"/leer/malformed → gar kein CORS
    // (resolveAddonOrigin === null). (2) Scope über einen Delegator strikt auf die Add-on-Pfade begrenzen;
    // alle anderen Routen bekommen { origin: false } → keinerlei CORS-Header (nicht mehr app-weit).
@@ -3137,7 +3392,7 @@ index 5f87ee03a..2a5dcb570 100644
      // SCRUM-490 D2: request-lokaler Auth-Kontext. Der Add-on-Key wird hier GENAU EINMAL pro Request
      // validiert und der Principal (Capabilities ask.validated + checktext.validated) am Request
      // getragen; Rate-Limiter, allowList und
-@@ -3335,7 +2424,7 @@ export function buildApp(
+@@ -3352,7 +2424,7 @@ export function buildApp(
      // ausgenommen (Session-Pfad ungedrosselt).
      const authAttemptThrottle = new AddonAuthAttemptThrottle(addonAuthThrottleConfigFromEnv());
      app.addHook("onRequest", async (request, reply) => {
@@ -3146,7 +3401,7 @@ index 5f87ee03a..2a5dcb570 100644
        // SCRUM-490 R3/R4 (B2): Throttle für fehlgeschlagene Add-on-Auth-Versuche — VOR dem 401/Principal.
        //  Fix 3: ein UNGÜLTIGER Key zählt auf JEDER Route (kein 401/403-Gültigkeitsorakel, keine
        //         ungedrosselte Fremdroute); fehlende Auth zählt gegen die NORMALISIERTEN Add-on-Endpunkte
-@@ -3377,40 +2466,9 @@ export function buildApp(
+@@ -3394,40 +2466,9 @@ export function buildApp(
          }
        }
        if (auth.kind === "invalid") {
@@ -3188,7 +3443,7 @@ index 5f87ee03a..2a5dcb570 100644
        if (auth.kind === "valid") {
          request.authContext = { authKind: "addon", principal: auth.principal };
          // ben-Review: der kanonische routeOptions.url-Check allein reicht nicht — Fastify normalisiert
-@@ -3436,7 +2494,7 @@ export function buildApp(
+@@ -3453,7 +2494,7 @@ export function buildApp(
      // Enge (nur addon-Principal, gekeyt auf den Actor; Session-Requests exempt) steckt in
      // addonRateLimit(). Flag AUS → hier gar nicht registriert → /api/ask exakt wie heute.
      app.register(rateLimit, { global: false });
@@ -3197,7 +3452,7 @@ index 5f87ee03a..2a5dcb570 100644
      if (addonOrigin !== null) {
        app.register(
          cors,
-@@ -3459,41 +2517,9 @@ export function buildApp(
+@@ -3476,41 +2517,9 @@ export function buildApp(
      // SCRUM-490 H: das statische Klara-Add-in-Bundle unter /addin/* — NUR bei aktivem Flag. Traversal-
      // sicher (explizite Datei-Map), kein Directory-Listing, öffentlich lesbar (kein Key), berührt den
      // Add-on-Auth/Throttle-Pfad nicht und öffnet keinen neuen API-Weg. Flag AUS → nicht registriert → 404.
@@ -3240,7 +3495,7 @@ index 5f87ee03a..2a5dcb570 100644
    // JOB 1113 (JOB-947-B3): /health nennt jetzt zusätzlich VERSION und DEPLOY-COMMIT.
    //
    // JOB 947 nannte den Zustand davor K-VAKUUM: ein `/health`, das nur `{"status":"ok"}` liefert,
-@@ -3518,7 +2544,6 @@ export function buildApp(
+@@ -3535,7 +2544,6 @@ export function buildApp(
      status: "ok",
      version: buildVersion(),
      commit: buildCommit(),
@@ -3248,7 +3503,7 @@ index 5f87ee03a..2a5dcb570 100644
      ai: services.reasoner.publicStatus(),
      aiRuns: await kiLaeufe(),
    }));
-@@ -3544,18 +2569,6 @@ export function buildApp(
+@@ -3561,18 +2569,6 @@ export function buildApp(
      services.reasoner.refreshReachabilityIfStale();
      return { ai: services.reasoner.publicStatus() }; // §2.1: ist die KI verfügbar?
    });
@@ -3267,7 +3522,7 @@ index 5f87ee03a..2a5dcb570 100644
  
    // ============================================================================================
    // W1 S4 — KLARA-STATUS, SITZUNG UND ZUSTIMMUNG (KW-S4-04 §13-100)
-@@ -3577,9 +2590,6 @@ export function buildApp(
+@@ -3594,9 +2590,6 @@ export function buildApp(
    // vorhandene gehoben und weitergereicht, nicht kopiert. Keine neue Ablage, keine neue Route.
    const klaraSessions = new KlaraSessionService({
      repo: services.klaraSessions,
@@ -3277,7 +3532,7 @@ index 5f87ee03a..2a5dcb570 100644
      policy: () => {
        const config = services.reasoner.configStatus();
        const antwortWahl = config.taskConfig.perTask.answer ?? config.taskConfig.global;
-@@ -3627,17 +2637,14 @@ export function buildApp(
+@@ -3644,17 +2637,14 @@ export function buildApp(
          // „fehlt" sperren gleich (Pedi 10.09. 21:25: „Im Zweifel gilt: gesperrt"). Hier wird sie
          // nicht ENTSCHIEDEN, sondern DURCHGEREICHT — die Entscheidungsstelle bleibt im Kern, und
          // eine zweite Sperre gibt es auch nach diesem Auftrag nicht. Der zweite Schalter der
@@ -3298,7 +3553,7 @@ index 5f87ee03a..2a5dcb570 100644
          effectiveAnswerProvider: config.effectiveProvider.answer ?? "deterministic",
          cloudConfigured: gewaehlterAnbieter
            ? config.cloudProviders[gewaehlterAnbieter].configured
-@@ -3646,19 +2653,9 @@ export function buildApp(
+@@ -3663,19 +2653,9 @@ export function buildApp(
          providerLabel: antwortCloud?.name ?? config.provider,
          modelLabel: antwortCloud ? antwortCloud.name : config.model,
          localProviderLabel: config.localProvider,
@@ -3318,7 +3573,7 @@ index 5f87ee03a..2a5dcb570 100644
    app.register(klaraAiRoutes({ sessions: klaraSessions }, guards));
    // JOB 3326: die Lesevarianten — Übersicht, Einzelabruf und die Admin-Ladeaktion. Sie bekommen
    // DIESELBE Ablage-Instanz, die auch `koRoutes` oben durchgereicht wird; eine zweite wäre ein
-@@ -3672,8 +2669,6 @@ export function buildApp(
+@@ -3689,8 +2669,6 @@ export function buildApp(
          ko: services.ko,
          lesevarianten: services.lesevarianten,
          kandidaten: services.candidates,
@@ -3327,7 +3582,7 @@ index 5f87ee03a..2a5dcb570 100644
          ...(services.audit ? { audit: services.audit } : {}),
        },
        guards,
-@@ -3690,12 +2685,7 @@ export function buildApp(
+@@ -3707,12 +2685,7 @@ export function buildApp(
    // (`services.zurufModell`); fehlt es, antwortet die Route ehrlich 503 `NO_FORMULIERER`.
    app.register(
      klaraZurufRoutes(
@@ -3341,7 +3596,7 @@ index 5f87ee03a..2a5dcb570 100644
        guards,
      ),
    );
-@@ -3703,239 +2693,18 @@ export function buildApp(
+@@ -3720,239 +2693,18 @@ export function buildApp(
    // HTTP-Oberfläche der Module. Auth bringt seine eigenen Routen mit; die übrigen
    // Module werden über App-Routen verdrahtet, die den gemeinsamen Guard nutzen.
    const resetBaseUrl = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/reset` : undefined;
@@ -3583,7 +3838,7 @@ index 5f87ee03a..2a5dcb570 100644
    // ==============================================================================================
    // JOB 3066 — DAS AUFRÄUMEN DER BEFUNDE FÄHRT IN DER LÖSCHTRANSAKTION MIT.
    // ==============================================================================================
-@@ -4036,82 +2805,7 @@ export function buildApp(
+@@ -4053,82 +2805,7 @@ export function buildApp(
    // (duplicate-detection.ts:182-183). Was hier steht, ist idempotent und selbstheilend.
    services.ko.setPurgeCleanup(async (koId) => {
      await removeKoFromDuplicatePrefilter(koId, semanticPrefilter);
@@ -3666,7 +3921,7 @@ index 5f87ee03a..2a5dcb570 100644
    // WP-SUBMIT-ASYNC (Pedis R3): der Prüf-Worker kapselt die früher synchron im Submit-Pfad
    // laufende Erkennung (detectConflicts/detectDuplicates) — Concurrency 1, In-Process, PII-freies
    // Log. Ein von Tests vorab gesetzter services.aiCheckWorker (Spy) hat Vorrang.
-@@ -4129,45 +2823,6 @@ export function buildApp(
+@@ -4146,45 +2823,6 @@ export function buildApp(
        }),
      });
    services.aiCheckWorker = aiCheckWorker;
@@ -3712,7 +3967,7 @@ index 5f87ee03a..2a5dcb570 100644
    app.register(
      koRoutes(
        {
-@@ -4223,52 +2878,13 @@ export function buildApp(
+@@ -4240,52 +2878,13 @@ export function buildApp(
          // Lesemodell hereingereicht, das es aus der Policy-Naht holt (`lesemodell.ts:254`,
          // `policyNahtSchliessen` weiter unten). Hier reist nur der Bestand.
          kanten: new KantenLeseService({ repo: services.kanten, kos: services.ko }),
@@ -3767,7 +4022,7 @@ index 5f87ee03a..2a5dcb570 100644
                return { ok: false, reason: "forbidden" as const };
              }
              const input = await services.capture.toKoInput(draftId);
-@@ -4298,13 +2914,10 @@ export function buildApp(
+@@ -4315,13 +2914,10 @@ export function buildApp(
            // Formprüfung; deren Fehler wird als `invalid` durchgereicht statt als 500 verschluckt.
            applyAndLoad: async (draftId, payload, user, expectedUpdatedAt) => {
              const draft = await services.capture.getDraft(draftId);
@@ -3783,7 +4038,7 @@ index 5f87ee03a..2a5dcb570 100644
                return { ok: false, reason: "forbidden" as const };
              }
              // JOB 2684 D4 (R2-17, BEN: „der Fall ohne Stand bleibt absichtlich gruen"): DER WEG
-@@ -4420,17 +3033,11 @@ export function buildApp(
+@@ -4437,17 +3033,11 @@ export function buildApp(
      ),
    );
    app.register(
@@ -3806,7 +4061,7 @@ index 5f87ee03a..2a5dcb570 100644
    );
    // AUFTRAG-mega74 BLOCK D (G5): der EINE Zugang, über den die Nebenwege die Sichtbarkeit ihrer
    // beteiligten Wissensobjekte erfragen. Hier gebaut, damit alle drei dieselbe Quelle benutzen.
-@@ -4445,28 +3052,6 @@ export function buildApp(
+@@ -4462,28 +3052,6 @@ export function buildApp(
    // AUFTRAG-mega29 C2: die schmale Abdeckungs-Zusammenfassung, die die LEEREN Konflikt-/Duplikat-
    // Boards brauchen, um nicht als „geprüft und frei" gelesen zu werden.
    app.register(aiCheckCoverageRoutes(services.ko, guards));
@@ -3835,7 +4090,7 @@ index 5f87ee03a..2a5dcb570 100644
    // JOB 4151 (WG-PERSISTENZ): die kuratierten Beziehungen. Der Bestand kommt aus `services`
    // (Postgres oder Speicher, s. dort); `services.ko` erfüllt den SCHMALEN Port `KantenKoLeser`
    // (`kanten-service.ts:178-180`) — die Route kennt den KO-Dienst deshalb nicht als Ganzes. Die
-@@ -4486,139 +3071,6 @@ export function buildApp(
+@@ -4503,139 +3071,6 @@ export function buildApp(
        guards,
      ),
    );
@@ -3975,7 +4230,7 @@ index 5f87ee03a..2a5dcb570 100644
    // ==============================================================================================
    // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
    // ==============================================================================================
-@@ -4657,97 +3109,26 @@ export function buildApp(
+@@ -4674,97 +3109,26 @@ export function buildApp(
          audit: services.audit,
          kos: koSichtbarkeit,
          papierkorb: { get: (id: string) => services.ko.papierkorbFakten(id) },
@@ -4077,7 +4332,7 @@ index 5f87ee03a..2a5dcb570 100644
    // W3-C (KW-W3-18, JOB 541 D3): die EINE Erklaerroute. Sie bekommt denselben Belegspeicher wie
    // der Schreibweg und denselben Wissensbestand wie der Antwortweg — kein eigener Zugang, keine
    // zweite Aufloesung.
-@@ -4784,9 +3165,7 @@ export function buildApp(
+@@ -4801,9 +3165,7 @@ export function buildApp(
    // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
    // Stufe-1-Dry-Run-Prüfung (kein Modell, keine Persistenz; nur Validiertes gilt allein für den
    // Add-in-Pfad, der Session-Pfad prüft seit JOB 3020 auch Ungeprüftes — check-text-routes.ts).
@@ -4088,7 +4343,7 @@ index 5f87ee03a..2a5dcb570 100644
      app.register(
        checkTextRoutes(
          {
-@@ -4802,51 +3181,17 @@ export function buildApp(
+@@ -4819,51 +3181,17 @@ export function buildApp(
        ),
      );
    }
@@ -4148,7 +4403,7 @@ index 5f87ee03a..2a5dcb570 100644
    );
    app.register(categoryRoutes(services.ko, guards));
    app.register(outputRoutes(services.output, guards));
-@@ -4867,19 +3212,7 @@ export function buildApp(
+@@ -4884,19 +3212,7 @@ export function buildApp(
    );
    // AUFTRAG-JOB2017 (G7): derselbe Zugang wie bei conflictRoutes/overlapRoutes/notificationsRoutes
    // — eine Instanz, keine zweite Aufloesung. Pflichtparameter, s. lifecycle-routes.ts.
@@ -4169,7 +4424,7 @@ index 5f87ee03a..2a5dcb570 100644
    app.register(
      notificationsRoutes(
        {
-@@ -4893,141 +3226,15 @@ export function buildApp(
+@@ -4910,145 +3226,15 @@ export function buildApp(
          seen: services.notificationSeen,
          // AUFTRAG-mega74 BLOCK D (G5): dieselbe Quelle wie Konflikte und Überschneidungen.
          kos: koSichtbarkeit,
@@ -4307,13 +4562,17 @@ index 5f87ee03a..2a5dcb570 100644
 -        ...(await services.overlaps.koZuordnungen()),
 -      ],
 -      weitereZiele: async () => (await services.teams.aktuelle()).map((t) => t.id),
+-      // Nacharbeit 28 (Ben): die vollständige Kette nur mit ausdrücklich erteilter Ketteneinsicht —
+-      // vom Betrieb je Konto vergeben, bei jedem Abruf frisch gelesen (Entzug wirkt sofort).
+-      ketteneinsicht: (kontoId) =>
+-        ketteneinsichtKonten(process.env.KLARWERK_AUDIT_KETTENEINSICHT).has(kontoId),
 -    }),
 -  );
 +  app.register(auditRoutes(services.audit, guards));
    // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
    // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
    // (Entwurfs-Backstop: die gespeicherte Stufe eines Entwurfs hebt, senkt nie).
-@@ -5040,11 +3247,11 @@ export function buildApp(
+@@ -5061,11 +3247,11 @@ export function buildApp(
    app.register(supportRoutes({ kontakt: supportKontaktAusUmgebung(process.env) }, guards));
    // AUFTRAG-mega74 BLOCK C (G2): der Anhang-Lesepfad erfährt hier — und nur hier —, welche
    // Wissensobjekte einen Anhang tragen. `services/object-store` darf das nicht selbst wissen
@@ -4328,7 +4587,7 @@ index 5f87ee03a..2a5dcb570 100644
    //
    // JOB 2021 (G8): EINE Aufzählung für BEIDE Wege in den Objektspeicher. `POST /api/media/analyze`
    // liest über media/src/service.ts:92 denselben Bestand wie `GET /api/objects/:id` — es bekommt
-@@ -5083,11 +3290,6 @@ export function buildApp(
+@@ -5104,11 +3290,6 @@ export function buildApp(
        (await services.capture.listDrafts()).map((draft) => ({
          originalAuthor: draft.originalAuthor,
          lastEditor: draft.lastEditor,
@@ -4340,7 +4599,7 @@ index 5f87ee03a..2a5dcb570 100644
          bodyHtml: draft.payload.bodyHtml,
          objectIds: [
            ...(draft.payload.pendingSources ?? []).map((src) => src.objectId),
-@@ -5097,19 +3299,7 @@ export function buildApp(
+@@ -5118,27 +3299,11 @@ export function buildApp(
    };
    app.register(objectRoutes(services.objects, guards, anhangQuellen));
    app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
@@ -4361,7 +4620,15 @@ index 5f87ee03a..2a5dcb570 100644
    // AUFTRAG-mega46 Block F: die EINE Auskunft „welche Schalter stehen" — Ja/Nein je Schalter, sonst
    // nichts. Sie ist selbst NICHT geschaltet: Eine Auskunft, die man erst freischalten muss, könnte
    // die Oberfläche nie fragen. Angemeldete Nutzung genügt (Begründung in features-routes.ts).
-@@ -5121,211 +3311,6 @@ export function buildApp(
+   app.register(featuresRoutes(guards));
+-  // R-0570 / Entscheidung zu Frage 14: die anonyme Vorführung — erfundene Inhalte, ohne Anmeldung,
+-  // ohne jeden Zugriff auf den Wissensspeicher. Immer registriert; der Schalter entscheidet über den
+-  // Inhalt (Vorgabe aus → 404), Begründung im Kopf von vorfuehrung-routes.ts.
+-  app.register(vorfuehrungRoutes());
+   // JOB 3510: die EINE Auskunft über das Erscheinungsbild dieser Instanz — und der Adminweg, der es
+   // umschaltet. Sie ist wie die Schalterauskunft darüber SELBST nicht geschaltet: Eine Marke, die
+   // man erst freischalten müsste, ließe die Vorführinstanz beim ersten Laden ungefärbt. Die
+@@ -5146,211 +3311,6 @@ export function buildApp(
    app.register(
      brandingRoutes({ branding: services.brandingSettings, audit: services.audit }, guards),
    );
@@ -4573,7 +4840,7 @@ index 5f87ee03a..2a5dcb570 100644
    // AUFTRAG-mega67 Block C/D: der ZUGANGS-ZUSTAND des Confluence-Imports, rein lesend. BEWUSST
    // ausserhalb des `confluenceImport`-Schalters registriert (anders als die Import-Routen unten):
    // eine Auskunft, die selbst hinter dem Schalter laege, koennte den Zustand „ausgeschaltet" nicht
-@@ -5344,14 +3329,7 @@ export function buildApp(
+@@ -5369,14 +3329,7 @@ export function buildApp(
        }),
      ),
    );
@@ -4589,7 +4856,7 @@ index 5f87ee03a..2a5dcb570 100644
    // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
    // (Flag OFF → Route existiert nicht). Echte Admin-Auth; alles landet nur als Review-Kandidat.
    // AUFTRAG-mega46 Block F: Die Prüfung stand hier als dritte Kopie derselben Regel und kommt jetzt
-@@ -5366,8 +3344,6 @@ export function buildApp(
+@@ -5391,8 +3344,6 @@ export function buildApp(
          reasoner: services.reasoner,
          // W2-A/148: der echte Lauf bekommt seine Identität VOR dem ersten Effekt.
          importRuns: services.importRuns,
@@ -4598,7 +4865,7 @@ index 5f87ee03a..2a5dcb570 100644
          // R-0134 / R-1005: der Betreiberschalter, je Anfrage durchgesetzt.
          betreiberSchalter: services.confluenceImportSchalter,
        }),
-@@ -5378,32 +3354,11 @@ export function buildApp(
+@@ -5403,32 +3354,11 @@ export function buildApp(
    // Importweg, der Läufe schreibt — nicht nur hinter Confluence. Bis R-0145 hing er allein am
    // Confluence-Schalter: eine Instanz nur mit SharePoint gab eine `importId` heraus, hinter der eine
    // 404 stand. Sind alle Importwege aus, gibt es keine Läufe und damit auch keinen Leseweg.
@@ -4632,7 +4899,7 @@ index 5f87ee03a..2a5dcb570 100644
          guards,
        }),
      );
-@@ -5424,19 +3379,6 @@ export function buildApp(
+@@ -5449,19 +3379,6 @@ export function buildApp(
      );
    }
  
@@ -7914,7 +8181,7 @@ index 9421e9c40..000000000
 -  return z.join("\n");
 -}
 diff --git b/services/app/src/db.ts a/services/app/src/db.ts
-index 45f1b428c..c06f45e01 100644
+index 25960224f..c06f45e01 100644
 --- b/services/app/src/db.ts
 +++ a/services/app/src/db.ts
 @@ -2,14 +2,8 @@ import { Pool } from "pg";
@@ -7928,7 +8195,7 @@ index 45f1b428c..c06f45e01 100644
 -} from "../../capture";
 +import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
  import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
--import { vorratsKonfiguration } from "../../db-tx";
+-import { BESTANDSRESET_SCHEMA, vorratsKonfiguration } from "../../db-tx";
 -import { EMBEDDING_SCHEMA } from "../../embedding";
  import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
  import {
@@ -8048,7 +8315,7 @@ index 45f1b428c..c06f45e01 100644
    // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (`dokument_fassungen`). Additiv
    // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; am
    // Ende, weil das die lesbare Ordnung ist.
-@@ -292,127 +224,11 @@ export const schemas = [
+@@ -292,133 +224,11 @@ export const schemas = [
    // Prioritätsfaktoren) und Ruhestandshorizonte (24/36 Monate). Additiv und wiederholbar (CREATE
    // TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
    MANAGEMENT_PROFILE_SCHEMA,
@@ -8059,6 +8326,12 @@ index 45f1b428c..c06f45e01 100644
 -  // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS); der einzige Fremdschlüssel zeigt auf den
 -  // eigenen Kopf, keine Extension, kein Seed.
 -  KENNTNISNAHME_SCHEMA,
+-  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Laufakte des Bestandsresets
+-  // (`bestandsreset_laeufe`). Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne
+-  // Fremdschlüssel, ohne Extension, ohne Seed. Ohne sie könnte der administrative Reset auf einer
+-  // frisch migrierten Instanz seinen ersten Schritt nicht schreiben. Ihre Stelle hat keine
+-  // Abhängigkeit zu den Nachbarstufen; die Sollliste in `migrationsbeleg.ts` folgt derselben Ordnung.
+-  BESTANDSRESET_SCHEMA,
 -  // R-0162 (Confluence-Gesamtimport): das dauerhafte Quellabgleichsergebnis je Importlauf. Additiv
 -  // und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel auf `import_runs` und ohne
 -  // Extension; sie steht am Ende, weil das die lesbare Ordnung ist (keine Abhängigkeit zu den
@@ -10029,7 +10302,7 @@ index 0a374b945..125d59b31 100644
 -  };
 -}
 diff --git b/services/app/src/feature-flags.ts a/services/app/src/feature-flags.ts
-index 36a908163..df8f95298 100644
+index ad7de0775..df8f95298 100644
 --- b/services/app/src/feature-flags.ts
 +++ a/services/app/src/feature-flags.ts
 @@ -44,14 +44,6 @@ export const SCHALTER_REGISTRY = {
@@ -10047,7 +10320,46 @@ index 36a908163..df8f95298 100644
    /** Consultant-System: Thema→Personen-Matching, vor BR/DSB-Freigabe unsichtbar. */
    expertMatching: "KLARWERK_EXPERT_MATCHING",
    /** AUFTRAG-mega61 Block A: die beiden Rechtsseiten /impressum und /datenschutz. */
-@@ -227,9 +219,7 @@ const SCHALTER_VOR_ANMELDUNG = new Set<SchalterName>(["rechtsseiten", "hinweisba
+@@ -85,21 +77,6 @@ export const SCHALTER_REGISTRY = {
+    * hat, geht einen Unangemeldeten nichts an, und diese Fläche liegt ohnehin hinter `users.manage`.
+    */
+   demodaten: "KLARWERK_DEMO_SEED",
+-  /**
+-   * R-0570 · die anonyme Vorführung (`routes/vorfuehrung-routes.ts`): Lesen und Fragen OHNE
+-   * Anmeldung, ausschließlich an erfundenen Beispielinhalten (Entscheidung zu Frage 14, 11.10.2026:
+-   * „Firmenwissen authentifiziert; anonyme Demo nur öffentlich/fiktiv").
+-   *
+-   * NICHT DASSELBE WIE `demodaten`: jener lädt Vorführdaten in den ECHTEN Wissensspeicher, und die
+-   * bleiben wie jedes Unternehmenswissen hinter der Anmeldung. Diese Fläche berührt den Speicher
+-   * nicht. Und nicht dasselbe wie `demoInstanz` (die Kennzeichnung am Hostnamen).
+-   *
+-   * VORGABE AUS: Ob eine Installation Unangemeldeten überhaupt etwas zeigt, ist eine
+-   * Betriebsentscheidung, die nicht dadurch fällt, dass niemand widersprochen hat. Er steht in
+-   * `SCHALTER_VOR_ANMELDUNG`, weil die Anmeldemaske nur dann auf die Vorführung verweisen darf, wenn
+-   * es sie gibt — und das muss sie wissen, bevor jemand angemeldet ist.
+-   */
+-  vorfuehrung: "KLARWERK_VORFUEHRUNG_ANONYM",
+ } as const;
+ 
+ // ================================================================================================
+@@ -226,15 +203,7 @@ export function vorgabeAn(name: SchalterName): boolean {
+ // Sie steht seit JOB 4365 NICHT mehr in dieser Menge, weil sie kein Registry-Schalter mehr ist —
+ // beide Auskunftsfunktionen unten setzen sie AUSDRÜCKLICH aus dem Host der Anfrage. Über den Draht
+ // ändert sich dadurch nichts.
+-//
+-// R-0570: `vorfuehrung` steht ebenfalls hier. Die Fläche richtet sich AUSSCHLIESSLICH an
+-// Unangemeldete; die Anmeldemaske verweist nur dann auf sie, wenn sie eingeschaltet ist. Verraten
+-// wird damit ein Ja/Nein über eine öffentliche Fläche, keine Fähigkeit des Betriebs.
+-const SCHALTER_VOR_ANMELDUNG = new Set<SchalterName>([
+-  "rechtsseiten",
+-  "hinweisbanner",
+-  "vorfuehrung",
+-]);
++const SCHALTER_VOR_ANMELDUNG = new Set<SchalterName>(["rechtsseiten", "hinweisbanner"]);
+ 
+ /**
+  * DIE EINE AUSWERTUNGSREGEL. Zwei Richtungen, je nach Art des Schalters, und beide fail-safe in die
+@@ -250,9 +219,7 @@ const SCHALTER_VOR_ANMELDUNG = new Set<SchalterName>([
   */
  export function schalterAn(name: SchalterName): boolean {
    const wert = process.env[SCHALTER_REGISTRY[name]];
@@ -20091,7 +20403,7 @@ index 5cb500651..000000000
 -  return MELDUNGSMUSTER.some((muster) => muster.test(meldung)) ? meldung : MELDUNG_NICHT_GELISTET;
 -}
 diff --git b/services/app/src/migrationsbeleg.ts a/services/app/src/migrationsbeleg.ts
-index 6fa86c3bc..fc499fe3d 100644
+index 80d6cf97d..fc499fe3d 100644
 --- b/services/app/src/migrationsbeleg.ts
 +++ a/services/app/src/migrationsbeleg.ts
 @@ -1,3 +1,5 @@
@@ -20272,7 +20584,7 @@ index 6fa86c3bc..fc499fe3d 100644
    // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte. ADDITIV, nachgezählt: ein
    // `CREATE TABLE IF NOT EXISTS` (mit Unique-Schlüssel) und ein `CREATE INDEX IF NOT EXISTS`, kein
    // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
-@@ -150,95 +251,6 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
+@@ -150,100 +251,6 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
    // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
    // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
    { stufe: "MANAGEMENT_PROFILE_SCHEMA", risiko: "ADDITIV" },
@@ -20284,6 +20596,11 @@ index 6fa86c3bc..fc499fe3d 100644
 -  // und zwei `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, keine Extension; der
 -  // einzige Fremdschlüssel zeigt auf den eigenen Kopf. Ein zweiter Lauf ist folgenlos.
 -  { stufe: "KENNTNISNAHME_SCHEMA", risiko: "ADDITIV" },
+-  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Laufakte des Bestandsresets. ADDITIV,
+-  // nachgezählt: ein einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
+-  // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos. Die Löschungen des Resets
+-  // stehen NICHT in dieser Stufe, sondern im aufrufbaren Vorgang (`db-tx/src/bestandsreset.ts`).
+-  { stufe: "BESTANDSRESET_SCHEMA", risiko: "ADDITIV" },
 -  // R-0162 (Confluence-Gesamtimport): die Tabelle der Quellabgleichsergebnisse je Importlauf.
 -  // ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
 -  // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
@@ -23562,20 +23879,29 @@ index f775b3e51..a0b618fde 100644
  export interface ReindexQueueDeps {
    /** Was mit EINEM Eintrag geschieht. Bringt der Aufrufer mit; die Schlange kennt den Inhalt nicht. */
 diff --git b/services/app/src/routes/admin-routes.ts a/services/app/src/routes/admin-routes.ts
-index 72334ab00..8bbc5fd4a 100644
+index c6425978e..8bbc5fd4a 100644
 --- b/services/app/src/routes/admin-routes.ts
 +++ a/services/app/src/routes/admin-routes.ts
-@@ -3,8 +3,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
+@@ -1,17 +1,9 @@
+-import { randomUUID } from "node:crypto";
+ import type { Dirent } from "node:fs";
+ import { readFile, readdir, stat } from "node:fs/promises";
  import { dirname, join, resolve } from "node:path";
  import { fileURLToPath } from "node:url";
  import type { FastifyPluginAsync } from "fastify";
 -import type { AuditEntry, AuditService } from "../../../audit";
+-import { BestandsresetGesperrtError } from "../../../db-tx";
 -import { TRASH_RETENTION_DAYS } from "../../../knowledge-object";
+-import {
+-  type BestandsresetDienst,
+-  BestandsresetVorschauVeraltetError,
+-  pruefeFreigabe,
+-} from "../bestandsreset-dienst";
 +import type { AuditService } from "../../../audit";
  import { type ExampleLoadServices, examplePackage, loadExamplePackage } from "../example-packages";
  // JOB 3277: der paketbezogene Weg (wählen · laden · zurücksetzen · entfernen) — additiv neben
  // WP-B6, siehe Kopf von example-packages/demo-pakete.ts.
-@@ -22,7 +21,6 @@ import { type FactoryReset, factoryResetUnavailable } from "../factory-reset";
+@@ -29,7 +21,6 @@ import { type FactoryReset, factoryResetUnavailable } from "../factory-reset";
  import { schalterAn } from "../feature-flags";
  import type { Guards } from "../http";
  import { type DemoSeedServices, purgeDemoSeed, seedDemoForAdmin } from "../seed-demo";
@@ -23583,7 +23909,7 @@ index 72334ab00..8bbc5fd4a 100644
  // SCRUM-501 (nacht24): Demo-/Simulationskorpus DE/EN/NL — NICHT automatisch, nur über diesen
  // Admin-Weg (bzw. tools/seed-sim-corpus); Entfernen über den bestehenden Demo-Purge (demoSeed).
  import { loadSimCorpus } from "../sim-corpus";
-@@ -98,21 +96,10 @@ const REPO_WURZEL = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".
+@@ -105,21 +96,10 @@ const REPO_WURZEL = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".
  
  /** Dieselbe Auflösung wie `backup.sh:34-36`; eine leere Variable gilt wie eine ungesetzte (`${VAR:-…}`). */
  function sicherungsVerzeichnis(): string {
@@ -23608,7 +23934,7 @@ index 72334ab00..8bbc5fd4a 100644
  }
  
  /**
-@@ -199,515 +186,6 @@ async function befundFuer(ort: string, datei: string): Promise<SicherungsEintrag
+@@ -206,526 +186,15 @@ async function befundFuer(ort: string, datei: string): Promise<SicherungsEintrag
    };
  }
  
@@ -24124,15 +24450,146 @@ index 72334ab00..8bbc5fd4a 100644
  // SCRUM-181: admin-geschützte Aktion, um eine LEERE Instanz mit Demodaten sichtbar zu machen.
  // Kein Auto-Seed, kein anonymer Zugriff. Idempotent über den Empty-Guard im Seed selbst.
  // Pedi 05.07.: zusätzlich der Werksreset (Factory-Settings) — nur im Desktop/Dev-Modus verfügbar.
-@@ -717,7 +195,6 @@ export function adminRoutes(
-   services: DemoSeedServices & { audit?: AuditService },
+ export function adminRoutes(
+   // WP-B6: die Beispielpaket-Route braucht zusätzlich das (optionale) Audit — build-app reicht die
+   // vollen AppServices, die das strukturell erfüllen; direkte Test-Aufrufer bleiben kompatibel.
+-  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): `bestandsreset` setzt nur `buildPgServices`.
+-  services: DemoSeedServices & { audit?: AuditService; bestandsreset?: BestandsresetDienst },
++  services: DemoSeedServices & { audit?: AuditService },
    guards: Guards,
    factoryReset: FactoryReset = factoryResetUnavailable,
 -  umfangLage?: UmfangLage,
  ): FastifyPluginAsync {
    return async (app) => {
      // ==========================================================================================
-@@ -1031,21 +508,6 @@ export function adminRoutes(
+@@ -1015,126 +484,6 @@ export function adminRoutes(
+       void factoryReset.run();
+     });
+ 
+-    // ==========================================================================================
+-    // AUFNAHME 20260922 · GESAMT-BESTANDSRESET — DER ADMINISTRATIVE AUFRUF (Nacharbeit 2).
+-    // ==========================================================================================
+-    //
+-    // Peters Entscheidung vom 11.10.: Konten und Firmenwörterbuch bleiben; Folgenvorschau,
+-    // zweimalige Passworteingabe und ein Häkchen. Anders als der Werksreset darüber löscht dieser
+-    // Weg NUR den Wissensbestand samt Papierkorb, läuft im Server-/Postgres-Betrieb und beendet
+-    // nichts. Ohne Datenbank (Speicher, Desktop-Journal) gibt es ihn nicht: `verfuegbar: false`
+-    // bzw. 409 — ein Reset, der nur den Speicher leerte, wäre beim nächsten Neustart wieder da.
+-    //
+-    // GET liefert die Folgenvorschau samt ihrer Kennung und den Befund des letzten Laufs.
+-    app.get("/api/admin/bestandsreset", async (request, reply) => {
+-      const user = await guards.requirePermission("users.manage", request, reply);
+-      if (!user) {
+-        return;
+-      }
+-      const dienst = services.bestandsreset;
+-      if (!dienst) {
+-        reply.code(200).send({ verfuegbar: false });
+-        return;
+-      }
+-      reply.code(200).send({ verfuegbar: true, ...(await dienst.stand()) });
+-    });
+-
+-    // POST führt aus — erst, wenn alle drei Bestätigungen tragen und die Vorschau noch stimmt.
+-    // Reihenfolge: Tor → Verfügbarkeit → Form (Häkchen, Vorschaukennung, zweimal dasselbe
+-    // Passwort) → Passwort gegen das Konto → Vorschau gegen den Bestand JETZT → Reset.
+-    app.post("/api/admin/bestandsreset", async (request, reply) => {
+-      const user = await guards.requirePermission("users.manage", request, reply);
+-      if (!user) {
+-        return;
+-      }
+-      const dienst = services.bestandsreset;
+-      if (!dienst) {
+-        reply.code(409).send({
+-          error: "BESTANDSRESET_NICHT_VERFUEGBAR",
+-          message:
+-            "Der Bestandsreset ist nur im Serverbetrieb mit Datenbank verfügbar. Es wurde nichts gelöscht.",
+-        });
+-        return;
+-      }
+-      const freigabe = pruefeFreigabe(request.body);
+-      if (!freigabe.ok) {
+-        reply.code(400).send({ error: freigabe.fehler, message: freigabe.meldung });
+-        return;
+-      }
+-      // Wie beim Werksreset (SCRUM-450): ein offener Admin-Tab allein genügt nicht. Ein Konto ohne
+-      // eigenes Passwort (nur SSO) besteht diese Prüfung nicht — `verifyUserPassword` ist dort false.
+-      if (!(await services.auth.verifyUserPassword(user.id, freigabe.passwort))) {
+-        reply.code(401).send({
+-          error: "INVALID_PASSWORD",
+-          message: "Falsches Passwort. Der Bestandsreset wurde nicht ausgeführt.",
+-        });
+-        return;
+-      }
+-      const jetzt = await dienst.stand();
+-      if (jetzt.vorschau.kennung !== freigabe.vorschauKennung) {
+-        reply.code(409).send({
+-          error: "VORSCHAU_VERALTET",
+-          message:
+-            "Der Bestand hat sich seit der Vorschau verändert. Prüfe die neue Vorschau und bestätige erneut.",
+-          vorschau: jetzt.vorschau,
+-        });
+-        return;
+-      }
+-      const laufId = `bestandsreset-${new Date().toISOString()}-${randomUUID()}`;
+-      const protokolliere = async (
+-        action: string,
+-        payload: Record<string, unknown>,
+-      ): Promise<boolean> => {
+-        if (!services.audit) {
+-          return false;
+-        }
+-        try {
+-          await services.audit.record({ actor: user.id, action, target: laufId, payload });
+-          return true;
+-        } catch (fehler) {
+-          request.log.error({ err: fehler, laufId }, "Bestandsreset: Auditeintrag fehlgeschlagen");
+-          return false;
+-        }
+-      };
+-      try {
+-        // Nacharbeit 7 (BEN): die bestätigte Kennung geht mit und wird IN der Löschtransaktion unter
+-        // der exklusiven Sperre erneut geprüft — die Prüfung oben schliesst das Fenster bis zur
+-        // Sperre nicht, sie liefert nur früh die neue Vorschau.
+-        const befund = await dienst.ausfuehren(laufId, freigabe.vorschauKennung);
+-        const protokolliert = await protokolliere("bestandsreset.ausgefuehrt", {
+-          zustand: befund.zustand,
+-          geloescht: jetzt.vorschau.geloescht,
+-          erhalten: jetzt.vorschau.erhalten,
+-        });
+-        reply.code(200).send({ ok: true, laufId, befund, protokolliert });
+-      } catch (fehler) {
+-        if (fehler instanceof BestandsresetGesperrtError) {
+-          reply.code(409).send({ error: fehler.code, message: fehler.message });
+-          return;
+-        }
+-        if (fehler instanceof BestandsresetVorschauVeraltetError) {
+-          // Zurückgerollt, der Lauf steht als ROLLED_BACK in der Laufakte — es ist nichts gelöscht.
+-          const neu = await dienst.stand().catch(() => undefined);
+-          reply.code(409).send({
+-            error: fehler.code,
+-            message: fehler.message,
+-            ...(neu ? { vorschau: neu.vorschau } : {}),
+-          });
+-          return;
+-        }
+-        request.log.error({ err: fehler, laufId }, "Bestandsreset fehlgeschlagen");
+-        await protokolliere("bestandsreset.fehlgeschlagen", {});
+-        const nachher = await dienst.stand().catch(() => undefined);
+-        reply.code(500).send({
+-          error: "BESTANDSRESET_FEHLGESCHLAGEN",
+-          message:
+-            "Der Bestandsreset ist fehlgeschlagen. Der Befund des Laufs sagt, ob der Bestand noch steht.",
+-          laufId,
+-          befund: nachher?.letzterLauf ?? null,
+-        });
+-      }
+-    });
+-
+     // ==========================================================================================
+     // JOB 4025 — GET /api/admin/sicherungen: liegt hier eine Sicherung, und trägt sie ihr Zeugnis?
+     // ==========================================================================================
+@@ -1159,21 +508,6 @@ export function adminRoutes(
        const verzeichnis = sicherungsVerzeichnis();
        const gelesenUtc = new Date().toISOString();
  
@@ -24154,7 +24611,7 @@ index 72334ab00..8bbc5fd4a 100644
        // `Dirent<string>`, nicht `Awaited<ReturnType<typeof readdir>>`: `readdir` ist überladen, und
        // die Ableitung greift dort die Puffer-Überladung — `e.name` wäre dann ein `Buffer`.
        let eintraege: Dirent<string>[];
-@@ -1054,24 +516,14 @@ export function adminRoutes(
+@@ -1182,24 +516,14 @@ export function adminRoutes(
        } catch (fehler) {
          const code = (fehler as NodeJS.ErrnoException).code;
          if (code === "ENOENT") {
@@ -24180,7 +24637,7 @@ index 72334ab00..8bbc5fd4a 100644
          });
          return;
        }
-@@ -1108,15 +560,7 @@ export function adminRoutes(
+@@ -1236,15 +560,7 @@ export function adminRoutes(
          const fb = b.folgeNummer ?? 0;
          return fa === fb ? b.datei.localeCompare(a.datei) : fb - fa;
        });
@@ -26359,10 +26816,10 @@ index 14a149f88..000000000
 -  };
 -}
 diff --git b/services/app/src/routes/audit-routes.ts a/services/app/src/routes/audit-routes.ts
-index 5e58d179a..f23c51e1c 100644
+index 4aea03f1e..f23c51e1c 100644
 --- b/services/app/src/routes/audit-routes.ts
 +++ a/services/app/src/routes/audit-routes.ts
-@@ -1,695 +1,26 @@
+@@ -1,714 +1,26 @@
  import type { FastifyPluginAsync } from "fastify";
 -import {
 -  type AuditEntry,
@@ -26383,7 +26840,7 @@ index 5e58d179a..f23c51e1c 100644
 -} from "../audit-sicht";
 -import type { Guards, SessionUser } from "../http";
 -import { LESEVARIANTEN_LADE_AKTION, LESEVARIANTEN_LADE_PROTOKOLLFELDER } from "../lesevarianten";
--import { type SichtbarkeitsFakten, darfSehen, freigaberang } from "../sichtbarkeit";
+-import { type SichtbarkeitsFakten, darfSehen } from "../sichtbarkeit";
 -
 -/** Wer die Befunde (Konflikte, Überschneidungen) eines Objekts kennt — nur deren Kennungen. */
 -export interface BefundKennungen {
@@ -26405,20 +26862,27 @@ index 5e58d179a..f23c51e1c 100644
 -   * `vorherVersion`) — keine Bestandsbilanz. Fehlt die Angabe, bleibt die Regel unverändert eng.
 -   */
 -  weitereZiele?(): Promise<readonly string[]>;
+-  /**
+-   * Nacharbeit 28 (Ben): die AUSDRÜCKLICH erteilte Ketteneinsicht eines Kontos — die einzige
+-   * bestandsunabhängige Berechtigung zur vollständigen, nachrechenbaren Kette (R-0613). Fehlt die
+-   * Angabe oder sagt sie nein, bekommt das Konto immer die Leseransicht.
+-   */
+-  ketteneinsicht?(kontoId: string): boolean;
 -}
 -
 -// ================================================================================================
 -// aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 13–15) — DAS PROTOKOLL NACH LESERECHT.
 -// ================================================================================================
 -//
--// WER IST EINGESCHRÄNKT. Seit Variante B (Nacharbeit 19) öffnet `ko.validate` nicht mehr jede
--// Stufe: was `darfSehen` vorenthält, liegt an Spaces UND am persönlichen Freigabeniveau.
--// Eingeschränkt ist deshalb, wer mindestens einen bekannten Space nicht lesen darf (Space-Bestand
--// und jeder Space, den die Kette je genannt hat) ODER keinen Freigaberang 2 („streng vertraulich",
--// `freigaberang`) hat ODER (Ben, Nacharbeit 24) dem nach der Objektprüfung irgendein Objekt oder
--// Befund verborgen bleibt — etwa durch eine Leserliste aus der Quelle (`quellrechte.leser`) oder
--// ein endgelöschtes Objekt, dessen Quellschutz nicht belegt ist. Nur wer tatsächlich alles lesen
--// darf, bekommt das Protokoll unverändert: Liste, Prüfbericht und die nachrechenbare Kette (R-0613).
+-// WER IST EINGESCHRÄNKT (Ben, Nacharbeit 28). Die FORM der Ausgabe darf nicht davon abhängen, ob
+-// es gerade verborgene Objekte gibt — sonst verrät der Wechsel von Kette zu Ansicht ihre Existenz,
+-// auch wenn sie selbst herausgefiltert sind. Eine bestandsunabhängige VOLLSTÄNDIGE Leseberechtigung
+-// gibt es aus Rang und Spaces nicht: eine Leserliste aus der Quelle (`quellrechte.leser`) kann jeden
+-// ausschließen. Deshalb: jeder Leser bekommt IMMER die Leseansicht — außer einem Konto mit
+-// ausdrücklich erteilter Ketteneinsicht (`AuditLeseQuelle.ketteneinsicht`, im Betrieb
+-// `KLARWERK_AUDIT_KETTENEINSICHT`); es bekommt IMMER die unveränderte, nachrechenbare Kette
+-// (R-0613). Beides hängt nur am Konto, nie am Bestand. Wer die Ketteneinsicht erhält, ist eine
+-// Betreiberentscheidung; ohne Eintrag hat sie niemand.
 -//
 -// WAS EIN EINGESCHRÄNKTER LESER BEKOMMT — eine Leseransicht, die nichts von verborgenen Vorgängen
 -// abhängen lässt:
@@ -26446,6 +26910,19 @@ index 5e58d179a..f23c51e1c 100644
 -//     Ausgenommen sind nur die Exportbelege, deren Zahlen ohnehin entfernt werden (s. o.).
 -// Ohne Lesequelle ist nichts entscheidbar: dann gilt jeder Leser als eingeschränkt und jeder
 -// Eintrag als verborgen.
+-
+-/**
+- * Nacharbeit 28: die Konten mit Ketteneinsicht aus der Betriebseinstellung
+- * (`KLARWERK_AUDIT_KETTENEINSICHT`, Kontokennungen durch Komma getrennt). Leer oder fehlend: keines.
+- */
+-export function ketteneinsichtKonten(roh: string | undefined): ReadonlySet<string> {
+-  return new Set(
+-    (roh ?? "")
+-      .split(",")
+-      .map((s) => s.trim())
+-      .filter((s) => s.length > 0),
+-  );
+-}
 -
 -interface Leselage {
 -  eingeschraenkt: boolean;
@@ -26481,6 +26958,10 @@ index 5e58d179a..f23c51e1c 100644
 -): Promise<Leselage> {
 -  if (!quelle) {
 -    return { eingeschraenkt: true, verborgen: new Set(), ziele: new Set(), alles: true };
+-  }
+-  // Nacharbeit 28 (Ben): die Form entscheidet allein das Konto — VOR jeder Bestandsprüfung.
+-  if (user.id.length > 0 && quelle.ketteneinsicht?.(user.id) === true) {
+-    return UNEINGESCHRAENKT;
 -  }
 -  // Die Geschichte jedes Objekts aus der Kette: letzter Space, Autor, letzte Stufe — und ob die
 -  // Endlöschung festhielt, dass KEINE Leserliste aus der Quelle bestand (`quellfrei`, Nacharbeit 24).
@@ -26569,11 +27050,6 @@ index 5e58d179a..f23c51e1c 100644
 -    if (!zuzuordnen || [...kos].some((k) => verborgen.has(k))) {
 -      verborgen.add(befund);
 -    }
--  }
--  const lesbar = user.spaceLesbar;
--  const spaceFehlt = [...spaces].some((s) => lesbar?.has(s) !== true);
--  if (freigaberang(user) >= 2 && !spaceFehlt && verborgen.size === 0) {
--    return UNEINGESCHRAENKT;
 -  }
 -  const ziele = new Set<string>([
 -    ...aktuell.keys(),
@@ -33119,7 +33595,7 @@ index 481fda074..ee8daf45e 100644
        reply.code(200).send(result);
      });
 diff --git b/services/app/src/routes/ko-routes.ts a/services/app/src/routes/ko-routes.ts
-index a3c4cfb3d..2205bd13b 100644
+index b761815c4..2205bd13b 100644
 --- b/services/app/src/routes/ko-routes.ts
 +++ a/services/app/src/routes/ko-routes.ts
 @@ -1,14 +1,11 @@
@@ -33491,7 +33967,38 @@ index a3c4cfb3d..2205bd13b 100644
    sourceId?: string;
    // SCRUM-415: Vertraulichkeitsstufe setzen/ändern.
    level?: string;
-@@ -1133,64 +956,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1092,30 +915,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+     await guards.requireUser(request, reply);
+   };
+ 
+-  // ============================================================================================
+-  // R-0676 · DIE ANLEGEWEGE: ERST DAS RECHT, DANN DER KÖRPER.
+-  // ============================================================================================
+-  //
+-  // `POST /api/kos` und `POST /api/kos/from-document` prüften `ko.create` erst im Handler — also
+-  // nachdem Fastify den Körper (Vorgabe 1 MiB) gelesen und geparst hatte. Ein Anonymer oder ein
+-  // Konto ohne Anlegerecht bekam damit eine Formkritik seines JSON (400), bevor jemand fragte, ob
+-  // er überhaupt anlegen darf. Hier steht dasselbe Recht, das der Handler verlangt, VOR dem Parsen.
+-  //
+-  // WARUM DAS RECHT UND NICHT NUR DIE ANMELDUNG (anders als `requireAuthedBeforeParse` oben): beide
+-  // Routen kennen genau EIN Recht, unabhängig vom Körper. Es gibt hier keine Aktion, deren Recht
+-  // erst aus dem Körper folgte — also nichts, was ein früheres Urteil verfälschen könnte.
+-  //
+-  // WARUM ALS BENANNTER HELFER UND NICHT INLINE: der Routenscanner (`tests/security/routeGuardAudit.ts`)
+-  // zählt `requirePermission("…")`-Literale im Routenblock. Ein zweites Literal dort machte aus
+-  // `ko.create` scheinbar eine `action-dispatched`-Route. Der Handler behält seine eigene Prüfung
+-  // (Defense-in-Depth, und er braucht ohnehin den Nutzer).
+-  const requireKoCreateBeforeParse = async (
+-    request: Parameters<Guards["requirePermission"]>[1],
+-    reply: Parameters<Guards["requirePermission"]>[2],
+-  ): Promise<void> => {
+-    await guards.requirePermission("ko.create", request, reply);
+-  };
+-
+   // R-0247: das Dublettentor der zwei Freigabewege — derselbe Sichtbarkeitszugang wie an
+   // `/api/duplicates` (build-app.ts, `koSichtbarkeit`).
+   const dublettenTorDeps = { overlaps, audit, kos: { get: (koId: string) => ko.get(koId) } };
+@@ -1157,64 +956,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
      userId: string,
    ) {
      if (konflikt.type === "truth") {
@@ -33558,7 +34065,25 @@ index a3c4cfb3d..2205bd13b 100644
    async function sichtbaresKoOder404(user: SessionUser, id: string, reply: FastifyReply) {
      const item = await ko.get(id);
      if (!item || !darfSehen(user, item)) {
-@@ -1444,10 +1214,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1430,17 +1176,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+   }
+ 
+   return async (app) => {
+-    // R-0676: der Rechte-Riegel VOR dem Parsen für `POST /api/kos/from-document`. Er hängt hier am
+-    // Plugin und nicht als Routenoption, weil die Kopfzeile dieser Route sonst umbricht und Biome
+-    // den ganzen Handler eine Stufe tiefer einrückt (Nacharbeit 5). Die Wirkung ist dieselbe: ein
+-    // `onRequest`-Hook, der vor dem Body-Parsing läuft und den Lebenszyklus mit gesendeter Absage
+-    // beendet. `POST /api/kos` trägt denselben Helfer als Routenoption (unten).
+-    app.addHook("onRequest", async (request, reply) => {
+-      if (request.method === "POST" && request.routeOptions.url === "/api/kos/from-document") {
+-        await requireKoCreateBeforeParse(request, reply);
+-      }
+-    });
+-
+     // ============================================================================================
+     // JOB 2009 · D2 — H3 BEKOMMT SEINEN LESER. Datei und Zeile dieses Aufrufs sind der Beleg.
+     // ============================================================================================
+@@ -1479,10 +1214,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
          }
          const roh = request.query.deckel;
          try {
@@ -33570,7 +34095,7 @@ index a3c4cfb3d..2205bd13b 100644
              {
                kos: { alle: () => ko.list({}) },
                // JOB 4155 (Lieferung 1): die Kantenauskunft. Der Schluessel wird WEGGELASSEN, wenn
-@@ -1520,18 +1288,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1555,18 +1288,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
        // Pruefstandsabfrage. Ein Prueflauf ueber ein unsichtbares Objekt waere eine Existenzauskunft
        // ueber den Umweg der Kosten (gepinnt in L6).
        const eingaengeFuer = await anzeigestatusEingaengeJeEintrag(user, sichtbare);
@@ -33593,7 +34118,7 @@ index a3c4cfb3d..2205bd13b 100644
        );
      });
  
-@@ -1612,15 +1373,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1647,15 +1373,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
        // Einordnungsfelder sind nach KW-ARCH-G27 ausdrücklich keine Sicherheitsmerkmale.
        const einordnung = await ko.einordnungsstandVon(item.id);
        const varianten = (await lesevarianten?.forKo(item.id)) ?? [];
@@ -33610,7 +34135,15 @@ index a3c4cfb3d..2205bd13b 100644
          ...(einordnung
            ? {
                category: einordnung.category,
-@@ -1732,9 +1488,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1740,7 +1461,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+ 
+     app.post<{ Body: Omit<CreateKoInput, "author"> & { reviewerIds?: string[] } }>(
+       "/api/kos",
+-      { onRequest: requireKoCreateBeforeParse },
+       async (request, reply) => {
+         const user = await guards.requirePermission("ko.create", request, reply);
+         if (!user) {
+@@ -1768,9 +1488,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
            // „aus Word" oder „importiert" ausgeben können. Kein Client dieser Route sendet sie
            // (Capture.tsx `createPayload`).
            // R-0180/R-2108: die Herkunft `import` ebenfalls verwerfen — sie gehört allein der
@@ -33623,7 +34156,7 @@ index a3c4cfb3d..2205bd13b 100644
            const {
              reviewerIds,
              sources: _ignoredSources,
-@@ -1744,13 +1500,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1780,13 +1500,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              importedVia: _ignoredImportedVia,
              // R-0169 (Nacharbeit 5): der Fassungsbezug der Dokumentakte entsteht nur serverseitig.
              dokumentHerkunft: _ignoredDokumentHerkunft,
@@ -33638,7 +34171,7 @@ index a3c4cfb3d..2205bd13b 100644
            // ==========================================================================================
            // JOB 3429 (Q3 c) — OHNE EINSTUFUNG ENTSTEHT HIER KEIN WISSENSOBJEKT.
            // ==========================================================================================
-@@ -1790,54 +1541,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1826,54 +1541,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              sendMissingConfidentiality(reply);
              return;
            }
@@ -33694,7 +34227,7 @@ index a3c4cfb3d..2205bd13b 100644
            // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
            // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).
            // Läuft über validation.assign + Benachrichtigung (FR-VAL-07) wie die Board-Zuweisung.
-@@ -1854,24 +1558,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1890,24 +1558,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
            // Die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending) — das Nachlesen
            // passiert VOR dem enqueue, damit die Antwort deterministisch den Job-Start zeigt.
            let submitted = created;
@@ -33722,7 +34255,7 @@ index a3c4cfb3d..2205bd13b 100644
          } catch (error) {
            sendError(reply, error);
          }
-@@ -2012,14 +1710,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -2048,14 +1710,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
          }
          // ---- DIE INHALTSEINGABE: ENTWURF ODER FRISCH ------------------------------------------
          let input: CreateKoInput;
@@ -33737,7 +34270,7 @@ index a3c4cfb3d..2205bd13b 100644
            if (!draftPromotion) {
              // Ehrlich statt halb: ohne verdrahteten Entwurfs-Zugang gibt es diesen Weg nicht.
              return badRequest("Entwurfs-Übernahme ist in dieser Konfiguration nicht verfügbar.");
-@@ -2078,20 +1769,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -2114,20 +1769,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              if (loaded.reason === "invalid") {
                return badRequest(loaded.message ?? "Entwurfsinhalt ungueltig.");
              }
@@ -33762,7 +34295,7 @@ index a3c4cfb3d..2205bd13b 100644
              });
              return;
            }
-@@ -2101,19 +1784,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -2137,19 +1784,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
            // Anker kommen NIE vom Client. Was an Quellen entsteht, entsteht unten aus den geprüften
            // Dokumenten — nicht aus diesem Feld.
            // R-0139 / FR-EXT-02: `origin` und `importedVia` aus demselben Grund wie an POST /api/kos.
@@ -33784,7 +34317,7 @@ index a3c4cfb3d..2205bd13b 100644
            input = { ...rest, author: user.id } as CreateKoInput;
          }
          // ==========================================================================================
-@@ -2159,17 +1838,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -2195,17 +1838,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
            sendMissingConfidentiality(reply);
            return;
          }
@@ -33802,7 +34335,7 @@ index a3c4cfb3d..2205bd13b 100644
          // ---- KAPAZITÄT: derselbe Anhangs-Vertrag wie `attach` und `append-document` -------------
          const limits = (await uploadLimits.get()) ?? DEFAULT_UPLOAD_LIMITS;
          if (entries.length > limits.maxAttachments) {
-@@ -2336,14 +2004,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -2372,14 +2004,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
          if (draftId && draftPromotion) {
            await followUp("draft-discard", () => draftPromotion.discard(draftId));
          }
@@ -33817,7 +34350,7 @@ index a3c4cfb3d..2205bd13b 100644
          const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
          if (reviewers.length > 0) {
            // Zuweisung und Benachrichtigung sind GETRENNTE Nacharbeiten: gelingt die Zuweisung und
-@@ -2444,27 +2104,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -2480,27 +2104,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
      // WP-SUBMIT-ASYNC (Teil 3, Retry): reiht einen FEHLGESCHLAGENEN (oder festhängenden pending-)
      // Prüf-Job neu ein. Recht ko.validate — der Knopf lebt auf den Validierungs-Karten der Prüfer.
      // done/ohne Feld ist nicht wiederholbar (ehrlicher 409 statt stillem Doppel-Lauf).
@@ -33845,7 +34378,7 @@ index a3c4cfb3d..2205bd13b 100644
          const subject = await ko.get(request.params.id);
          if (!subject) {
            reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
-@@ -2478,38 +2123,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -2514,38 +2123,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
            return;
          }
          const status = subject.aiCheck?.status;
@@ -33884,7 +34417,7 @@ index a3c4cfb3d..2205bd13b 100644
          // AUFNAHME 20260922: ein ÜBERHOLTER abgeschlossener Nachweis ist wiederholbar — er gilt für
          // eine frühere Basis. Läuft für das Objekt schon ein Job, reiht der Worker nicht doppelt ein.
          if (status !== "failed" && status !== "pending" && !subject.aiCheck?.ueberholt) {
-@@ -2901,12 +2514,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -2937,12 +2514,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
          // Eine unbekannte Aktion wird hier abgewiesen, bevor das Tor greift: sie fasst kein Objekt
          // an und verrät deshalb auch keine Existenz — ein 400 ist die ehrlichere Antwort als ein
          // 404, das ein „gibt es nicht" über ein Objekt behauptet, nach dem gar nicht gefragt wurde.
@@ -33898,7 +34431,7 @@ index a3c4cfb3d..2205bd13b 100644
          if (!torurteil) {
            return badRequest(`Unbekannte Aktion: ${body.action}`);
          }
-@@ -2931,24 +2539,16 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -2967,24 +2539,16 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
          // dort — und genau das, und nur das, ist der Grund für die zwei neuen Namen in dieser
          // Liste. An allen übrigen Aktionen bleibt es beim 400
          // (`tests/word-rueckweg/route-bedingter-schreibzugriff.test.ts`, F5).
@@ -33925,7 +34458,7 @@ index a3c4cfb3d..2205bd13b 100644
            );
          }
          // JOB 4251: der Stempel der EINORDNUNG greift nur dort, wo eine Einordnung geschrieben wird.
-@@ -2964,46 +2564,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3000,46 +2564,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              'expectedMetadataRevision gilt nur für die Aktionen "tags" und "category".',
            );
          }
@@ -33972,7 +34505,7 @@ index a3c4cfb3d..2205bd13b 100644
          switch (body.action) {
            case "rate": {
              const user = await guards.requirePermission("ko.validate", request, reply);
-@@ -3013,11 +2573,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3049,11 +2573,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              if (!body.verdict) {
                return badRequest("verdict fehlt.");
              }
@@ -33984,7 +34517,7 @@ index a3c4cfb3d..2205bd13b 100644
              // R-0238: ein Widerspruch gehört NUR zur Ablehnung, und er wird VOR der Bewertung
              // vollständig geprüft (Form, Gegenüber sichtbar) — sonst stünde eine Bewertung, deren
              // angekündigter Konfliktvorschlag nie entstehen konnte.
-@@ -3131,12 +2686,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3167,12 +2686,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              // GENAU diese Fassung gebunden ist. Gelesen vor der Bewertung: überarbeitet jemand in
              // der Lücke, passt sie nicht mehr, und die Fortsetzung lehnt ab (409) statt zu raten.
              const bewerteteFassung = (await ko.get(id))?.version ?? null;
@@ -33998,7 +34531,7 @@ index a3c4cfb3d..2205bd13b 100644
              if (!widerspruch) {
                reply.code(200).send(entscheidung);
                return;
-@@ -3161,11 +2711,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3197,11 +2711,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              if (!user) {
                return;
              }
@@ -34010,7 +34543,7 @@ index a3c4cfb3d..2205bd13b 100644
              if (
                !(await dublettenTor(
                  dublettenTorDeps,
-@@ -3178,14 +2723,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3214,14 +2723,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              ) {
                return;
              }
@@ -34026,7 +34559,7 @@ index a3c4cfb3d..2205bd13b 100644
              return;
            }
            case "revise": {
-@@ -3314,23 +2852,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3350,23 +2852,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                  "proposal.baseVersion muss die Ganzzahl der Version sein, auf der der Vorschlag beruht.",
                );
              }
@@ -34050,7 +34583,7 @@ index a3c4cfb3d..2205bd13b 100644
              const angelegt = await ko.addProposal(id, user.id, {
                statement: vorschlag.statement,
                ...(typeof vorschlag.bodyHtml === "string" ? { bodyHtml: vorschlag.bodyHtml } : {}),
-@@ -3339,12 +2860,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3375,12 +2860,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                ...(vorschlag.clearBody === true ? { clearBody: true } : {}),
                baseVersion: basis,
                ...(typeof vorschlag.origin === "string" ? { origin: vorschlag.origin } : {}),
@@ -34063,7 +34596,7 @@ index a3c4cfb3d..2205bd13b 100644
              });
              reply.code(200).send(angelegt.ko);
              return;
-@@ -3366,19 +2881,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3402,19 +2881,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                return;
              }
              const entscheidung = body.decision;
@@ -34085,7 +34618,7 @@ index a3c4cfb3d..2205bd13b 100644
              }
              if (typeof body.proposalId !== "string" || body.proposalId.trim().length === 0) {
                return badRequest("proposalId fehlt.");
-@@ -3449,21 +2953,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3485,21 +2953,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                  );
                }
              }
@@ -34107,7 +34640,7 @@ index a3c4cfb3d..2205bd13b 100644
                }),
              );
              return;
-@@ -3657,12 +3152,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3693,12 +3152,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                  // dieser Zeile — der Server hatte die Zugehörigkeit vierzehn Zeilen weiter oben
                  // geprüft und vergaß sie beim Speichern.
                  objectId: body.source.objectId ?? null,
@@ -34120,7 +34653,7 @@ index a3c4cfb3d..2205bd13b 100644
                }),
              );
              return;
-@@ -3964,34 +3453,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -4000,34 +3453,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              reply.code(200).send(await ko.setDomain(id, body.domain, user.id));
              return;
            }
@@ -34155,7 +34688,7 @@ index a3c4cfb3d..2205bd13b 100644
            case "tags": {
              const user = await guards.requirePermission("ko.create", request, reply);
              if (!user) {
-@@ -4058,170 +3519,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -4094,170 +3519,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              reply.code(200).send(await ko.setOwnership(id, body.ownership, user.id));
              return;
            }
@@ -34326,7 +34859,7 @@ index a3c4cfb3d..2205bd13b 100644
            case "conflict": {
              const user = await guards.requirePermission("ko.validate", request, reply);
              if (!user) {
-@@ -4230,14 +3527,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -4266,14 +3527,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              if (!body.conflict) {
                return badRequest("conflict fehlt.");
              }
@@ -34341,7 +34874,7 @@ index a3c4cfb3d..2205bd13b 100644
              reply.code(201).send(await konfliktAnlegen(body.conflict, user.id));
              return;
            }
-@@ -4249,18 +3538,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -4285,18 +3538,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              if (!body.conflictId || !body.decision) {
                return badRequest("conflictId/decision fehlt.");
              }
@@ -34361,7 +34894,7 @@ index a3c4cfb3d..2205bd13b 100644
              return;
            }
            case "transfer-author": {
-@@ -4279,115 +3557,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -4315,115 +3557,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              if (!user) {
                return;
              }
@@ -43284,6 +43817,74 @@ index bb80cf08f..000000000
 -    });
 -  };
 -}
+diff --git b/services/app/src/routes/vorfuehrung-routes.ts a/services/app/src/routes/vorfuehrung-routes.ts
+deleted file mode 100644
+index 9115b7a53..000000000
+--- b/services/app/src/routes/vorfuehrung-routes.ts
++++ /dev/null
+@@ -1,62 +0,0 @@
+-// ================================================================================================
+-// R-0570 · DIE ANONYME VORFÜHRUNG: LESEN UND FRAGEN OHNE ANMELDUNG — NUR AN ERFUNDENEM INHALT.
+-// ================================================================================================
+-//
+-// Entscheidung zu Frage 14 (Peter, 11.10.2026): „Firmenwissen authentifiziert; anonyme Demo nur
+-// öffentlich/fiktiv." Der Originalpunkt R-0570 („Wissen ohne Anmeldung lesen oder Fragen stellen")
+-// war in der Registerquelle als VERWORFEN geführt (kein öffentlicher Zugang). Beides gilt jetzt
+-// zusammen und ohne Widerspruch:
+-//
+-//   · UNTERNEHMENSWISSEN bleibt hinter der Anmeldung. Diese Datei berührt es nicht: sie importiert
+-//     weder den Wissensspeicher noch die Suche noch den Frageweg (`/api/ask`). Was sie ausliefert,
+-//     steht vollständig und unveränderlich in `../vorfuehrung/inhalte.ts`.
+-//   · DIE VORFÜHRUNG ist ohne Anmeldung lesbar und befragbar — erfundene Beispielinhalte, jede
+-//     Antwort mit `fiktiv: true` und der Kennzeichnung in der Sprache der Anfrage.
+-//
+-// BEIDE WEGE SIND `GET`. Sie verändern nichts, legen nichts an und rufen kein Modell; eine Frage ist
+-// hier eine Suche im festen Bestand. Damit bleibt die Zusage des Routen-Audits unberührt, dass keine
+-// schreibende Route öffentlich ist (`tests/security/route-guard-audit.test.ts`).
+-//
+-// VORGABE AUS (`KLARWERK_VORFUEHRUNG_ANONYM`, `feature-flags.ts`). Ob eine Installation die
+-// Vorführung zeigt, ist eine Betriebsentscheidung; ohne sie antworten beide Wege 404 und liefern
+-// nichts. Die Wege sind trotzdem immer registriert, damit das Routen-Inventar nicht vom Schalter
+-// abhängt — der Schalter entscheidet über den Inhalt, nicht über die Tür.
+-import type { FastifyPluginAsync } from "fastify";
+-import { sprache } from "../../../auth";
+-import { schalterAn } from "../feature-flags";
+-import { INHALTE, KENNZEICHNUNG, beantworte } from "../vorfuehrung/inhalte";
+-
+-/** Der Fehlercode, solange die Vorführung in dieser Installation nicht eingeschaltet ist. */
+-export const VORFUEHRUNG_AUS = "VORFUEHRUNG_AUS";
+-
+-interface FrageAnfrage {
+-  Querystring: { q?: unknown };
+-}
+-
+-export function vorfuehrungRoutes(): FastifyPluginAsync {
+-  return async (app) => {
+-    app.get("/api/vorfuehrung", async (request, reply) => {
+-      if (!schalterAn("vorfuehrung")) {
+-        reply.code(404).send({ error: VORFUEHRUNG_AUS });
+-        return;
+-      }
+-      const l = sprache(request);
+-      const antwort = { fiktiv: true, kennzeichnung: KENNZEICHNUNG[l], eintraege: INHALTE[l] };
+-      reply.code(200).send(antwort);
+-    });
+-
+-    app.get<FrageAnfrage>("/api/vorfuehrung/frage", async (request, reply) => {
+-      if (!schalterAn("vorfuehrung")) {
+-        reply.code(404).send({ error: VORFUEHRUNG_AUS });
+-        return;
+-      }
+-      const l = sprache(request);
+-      // Eine fehlende oder fremdartige Frage ist keine Formkritik wert: sie hat schlicht keine
+-      // Treffer. Die Länge begrenzt `beantworte` selbst.
+-      const frage = typeof request.query.q === "string" ? request.query.q : "";
+-      const { treffer } = beantworte(frage, l);
+-      const antwort = { fiktiv: true, kennzeichnung: KENNZEICHNUNG[l], treffer };
+-      reply.code(200).send(antwort);
+-    });
+-  };
+-}
 diff --git b/services/app/src/routes/vorlagen-routes.ts a/services/app/src/routes/vorlagen-routes.ts
 deleted file mode 100644
 index 81058e2aa..000000000
@@ -48875,7 +49476,7 @@ index 7ca613d1a..cbc91af41 100644
        if (typeof wert !== "function" || typeof prop !== "string") {
          return wert;
 diff --git b/services/app/src/start-vertrag.ts a/services/app/src/start-vertrag.ts
-index c0cc5443c..7a8995fd3 100644
+index fabf5260b..7a8995fd3 100644
 --- b/services/app/src/start-vertrag.ts
 +++ a/services/app/src/start-vertrag.ts
 @@ -80,13 +80,11 @@
@@ -48905,7 +49506,22 @@ index c0cc5443c..7a8995fd3 100644
    expertMatching: {
      wofuer: "Thema-zu-Personen-Zuordnung (Consultant-System).",
      ohneIhn: "Die Zuordnung bleibt unsichtbar. Vorgabe: aus.",
-@@ -275,16 +267,8 @@ const CONFLUENCE_ERKLAERUNG: Record<
+@@ -191,14 +183,6 @@ const SCHALTER_ERKLAERUNG: Record<SchalterName, { wofuer: string; ohneIhn: strin
+     wofuer: "Das Laden der Demodaten (POST /api/admin/demo-seed) — legt Konten an.",
+     ohneIhn: "Die Route ist nicht registriert. Vorgabe: aus, ohne Ausnahme.",
+   },
+-  // R-0570 / Entscheidung zu Frage 14: anonym nur erfundene Inhalte, Unternehmenswissen bleibt
+-  // hinter der Anmeldung.
+-  vorfuehrung: {
+-    wofuer:
+-      "Die anonyme Vorführung (/vorfuehrung): Lesen und Fragen ohne Anmeldung, nur an erfundenen Beispielinhalten.",
+-    ohneIhn:
+-      "Beide Vorführungswege antworten 404, die Anmeldemaske verweist nicht darauf. Unternehmenswissen ist in keinem Fall ohne Anmeldung erreichbar. Vorgabe: aus.",
+-  },
+ };
+ 
+ // ================================================================================================
+@@ -283,16 +267,8 @@ const CONFLUENCE_ERKLAERUNG: Record<
      wofuer:
        "Basisadresse der Confluence-Instanz. MUSS https sein, sonst kommt kein Client zustande.",
    },
@@ -48924,7 +49540,7 @@ index c0cc5443c..7a8995fd3 100644
    KLARWERK_CONFLUENCE_SPACE: { geheim: false, wofuer: "Der Space, aus dem importiert wird." },
  };
  
-@@ -339,60 +323,6 @@ const SHAREPOINT_WERTE: readonly Startwert[] = SHAREPOINT_CREDENTIAL_VARS.map((n
+@@ -347,60 +323,6 @@ const SHAREPOINT_WERTE: readonly Startwert[] = SHAREPOINT_CREDENTIAL_VARS.map((n
      "Kein SharePoint-Client. Der Import meldet den Zustand ehrlich (sharepointCredentialState) statt zu starten.",
  }));
  
@@ -48985,7 +49601,7 @@ index c0cc5443c..7a8995fd3 100644
  // ================================================================================================
  // DER KATALOG
  // ================================================================================================
-@@ -459,61 +389,6 @@ const GRUNDWERTE: readonly Startwert[] = [
+@@ -467,61 +389,6 @@ const GRUNDWERTE: readonly Startwert[] = [
      ohneIhn:
        "Alle Drosseln zählen gegen die Proxy-IP statt gegen den Anfragenden — hinter einem Proxy teilen sich damit alle Nutzer ein Kontingent.",
    },
@@ -49047,7 +49663,7 @@ index c0cc5443c..7a8995fd3 100644
    {
      name: "KLARWERK_LOG_LEVEL",
      bereich: "Betrieb",
-@@ -550,37 +425,6 @@ const GRUNDWERTE: readonly Startwert[] = [
+@@ -558,37 +425,6 @@ const GRUNDWERTE: readonly Startwert[] = [
      wofuer: "Abstand der periodischen Papierkorb-Endlöschung.",
      ohneIhn: "Es gilt der Abstand von sechs Stunden.",
    },
@@ -49085,7 +49701,7 @@ index c0cc5443c..7a8995fd3 100644
    {
      name: "KLARWERK_SKIP_KEYCHAIN",
      bereich: "Betrieb",
-@@ -760,35 +604,6 @@ const GRUNDWERTE: readonly Startwert[] = [
+@@ -768,35 +604,6 @@ const GRUNDWERTE: readonly Startwert[] = [
      wofuer: "Wartezeit auf einen freien Platz am Modelldeckel.",
      ohneIhn: "Es gilt die eingebaute Wartezeit.",
    },
@@ -49121,7 +49737,7 @@ index c0cc5443c..7a8995fd3 100644
    {
      name: "KLARWERK_LOCAL_LLM_URL",
      bereich: "KI",
-@@ -855,31 +670,16 @@ const GRUNDWERTE: readonly Startwert[] = [
+@@ -863,31 +670,16 @@ const GRUNDWERTE: readonly Startwert[] = [
      bereich: "Einbettung",
      pflicht: { art: "nie" },
      geheim: false,
@@ -49157,7 +49773,7 @@ index c0cc5443c..7a8995fd3 100644
    },
    {
      name: "KLARWERK_EMBED_MAX_INFLIGHT",
-@@ -1077,114 +877,6 @@ const GRUNDWERTE: readonly Startwert[] = [
+@@ -1085,125 +877,6 @@ const GRUNDWERTE: readonly Startwert[] = [
      wofuer: "Selbstregistrierung neuer Konten.",
      ohneIhn: "Konten legt nur ein Administrator an (nach der Ersteinrichtung).",
    },
@@ -49269,10 +49885,21 @@ index c0cc5443c..7a8995fd3 100644
 -      "Welche Verzeichnisgruppe für die Prüfung in welchem Space zuständig ist: Gruppe=space-a,space-b;Gruppe2=space-c.",
 -    ohneIhn: "Prüfende werden wie bisher von Hand benannt.",
 -  },
+-  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 28): die ausdrücklich erteilte Ketteneinsicht.
+-  {
+-    name: "KLARWERK_AUDIT_KETTENEINSICHT",
+-    bereich: "Betrieb",
+-    pflicht: { art: "nie" },
+-    geheim: false,
+-    wofuer:
+-      "Kontokennungen (durch Komma getrennt), die im Prüfprotokoll die vollständige, nachrechenbare Kette samt Export erhalten — auch Einträge zu Objekten, die sie sonst nicht lesen dürfen.",
+-    ohneIhn:
+-      "Jedes Konto bekommt das Prüfprotokoll als Leseansicht nach seinem Leserecht; eine vollständige Kette gibt es über die Oberfläche nicht.",
+-  },
    // ------------------------------------------------------------------------------- Externe Quellen
    {
      name: "EXTERNAL_SEARCH",
-@@ -1212,15 +904,6 @@ const GRUNDWERTE: readonly Startwert[] = [
+@@ -1231,15 +904,6 @@ const GRUNDWERTE: readonly Startwert[] = [
      wofuer: "Adressen, die trotz externer Herkunft als INTERN gelten.",
      ohneIhn: "Keine Adresse gilt als intern.",
    },
@@ -49288,7 +49915,7 @@ index c0cc5443c..7a8995fd3 100644
    // ------------------------------------------------------------------------------------ Add-in API
    {
      name: "KLARWERK_ADDON_API",
-@@ -1320,17 +1003,6 @@ const GRUNDWERTE: readonly Startwert[] = [
+@@ -1339,17 +1003,6 @@ const GRUNDWERTE: readonly Startwert[] = [
        "Die Hilfeseite benennt den Supportweg mit dem eingebauten Text der gewählten Sprache.",
    },
    // ------------------------------------------------------------------------------------- Sonstiges
@@ -49306,7 +49933,7 @@ index c0cc5443c..7a8995fd3 100644
    {
      name: "KLARWERK_CONFLUENCE_BUDGET_MS",
      bereich: "Confluence-Import",
-@@ -1404,7 +1076,6 @@ export const STARTVERTRAG: readonly Startwert[] = [
+@@ -1423,7 +1076,6 @@ export const STARTVERTRAG: readonly Startwert[] = [
    ...GRUNDWERTE,
    ...CONFLUENCE_WERTE,
    ...SHAREPOINT_WERTE,
@@ -49314,7 +49941,7 @@ index c0cc5443c..7a8995fd3 100644
    ...SCHALTER_WERTE,
  ];
  
-@@ -1682,48 +1353,6 @@ export function startbericht(
+@@ -1701,48 +1353,6 @@ export function startbericht(
        betrifft: oidcFehlt,
      });
    }
@@ -49363,7 +49990,7 @@ index c0cc5443c..7a8995fd3 100644
    if (istAn(env.KLARWERK_ADDON_API) && !gesetzt(env.KLARWERK_ADDON_API_KEY)) {
      maengel.push({
        befund:
-@@ -1733,9 +1362,6 @@ export function startbericht(
+@@ -1752,9 +1362,6 @@ export function startbericht(
    }
    if (schalterAn("confluenceImport") && !confluence.usable) {
      const fehlend = confluence.vars.filter((v) => !v.present).map((v) => v.name);
@@ -54131,6 +54758,203 @@ index 56f174c55..000000000
 -    mindestRichtig: versuch.bewertung.mindestRichtig,
 -    bestanden: versuch.bewertung.bestanden,
 -  };
+-}
+diff --git b/services/app/src/vorfuehrung/inhalte.ts a/services/app/src/vorfuehrung/inhalte.ts
+deleted file mode 100644
+index c285a7254..000000000
+--- b/services/app/src/vorfuehrung/inhalte.ts
++++ /dev/null
+@@ -1,191 +0,0 @@
+-// ================================================================================================
+-// R-0570 · DIE INHALTE DER ANONYMEN VORFÜHRUNG — AUSSCHLIESSLICH ERFUNDEN.
+-// ================================================================================================
+-//
+-// Entscheidung zu Frage 14 (Peter, 11.10.2026, QUELLEN-FACHHILFE-PETER-ENTSCHEIDUNGEN-20261011):
+-// „Firmenwissen authentifiziert; anonyme Demo nur öffentlich/fiktiv."
+-//
+-// DIESE DATEI IST EIN BLATT UND MUSS ES BLEIBEN. Sie importiert nichts — keinen Wissensspeicher,
+-// keine Suche, keinen KI-Weg. Was ein Unangemeldeter lesen oder fragen kann, steht vollständig in
+-// den Zeilen unten; einen Weg zum Unternehmenswissen gibt es von hier aus nicht, auch nicht durch
+-// einen Fehler in einer Abfrage. Gehalten von `tests/vorfuehrung-anonym/abgrenzung.test.ts` (I1).
+-//
+-// ERFUNDEN HEISST: der Betrieb („Musterwerk“), die Abläufe und die Zahlen sind ausgedacht und als
+-// Beispiel gekennzeichnet. Jeder Titel trägt die Kennzeichnung selbst, damit sie auch dann nicht
+-// verloren geht, wenn jemand einen einzelnen Eintrag weitergibt.
+-
+-export type VorfuehrungsSprache = "de" | "en" | "nl";
+-
+-export interface VorfuehrungsEintrag {
+-  readonly id: string;
+-  readonly titel: string;
+-  readonly aussage: string;
+-}
+-
+-/** Die Kennzeichnung, die jede Antwort dieser Fläche trägt. */
+-export const KENNZEICHNUNG: Readonly<Record<VorfuehrungsSprache, string>> = {
+-  de: "Vorführung mit erfundenen Beispielinhalten des fiktiven Betriebs „Musterwerk“. Kein Unternehmenswissen.",
+-  en: "Demonstration with invented sample content from the fictitious company “Musterwerk”. No company knowledge.",
+-  nl: "Demonstratie met verzonnen voorbeeldinhoud van het fictieve bedrijf „Musterwerk”. Geen bedrijfskennis.",
+-};
+-
+-export const INHALTE: Readonly<Record<VorfuehrungsSprache, readonly VorfuehrungsEintrag[]>> = {
+-  de: [
+-    {
+-      id: "v1",
+-      titel: "Druckluftanlage vor der Wartung drucklos machen (Beispiel, fiktiv)",
+-      aussage:
+-        "Vor jeder Wartung an der Druckluftanlage im Musterwerk wird der Hauptschieber geschlossen, der Restdruck über das Ablassventil abgebaut und am Manometer null bar abgelesen. Erst dann wird geöffnet.",
+-    },
+-    {
+-      id: "v2",
+-      titel: "Erste-Hilfe-Kasten monatlich prüfen (Beispiel, fiktiv)",
+-      aussage:
+-        "Im Musterwerk prüft die Schichtleitung am ersten Werktag jedes Monats Vollständigkeit und Ablaufdaten des Erste-Hilfe-Kastens und trägt die Prüfung ins Kastenblatt ein.",
+-    },
+-    {
+-      id: "v3",
+-      titel: "Werkzeugausgabe dokumentieren (Beispiel, fiktiv)",
+-      aussage:
+-        "Ausgegebenes Spezialwerkzeug wird im Musterwerk mit Name, Datum und Rückgabetermin im Ausgabebuch vermerkt; bei Rückgabe zeichnet die Ausgabe gegen.",
+-    },
+-    {
+-      id: "v4",
+-      titel: "Urlaub beantragen (Beispiel, fiktiv)",
+-      aussage:
+-        "Urlaub wird im Musterwerk spätestens zwei Wochen vorher bei der direkten Vorgesetzten beantragt; die Bestätigung kommt schriftlich.",
+-    },
+-  ],
+-  en: [
+-    {
+-      id: "v1",
+-      titel: "Depressurise the compressed-air system before maintenance (sample, fictitious)",
+-      aussage:
+-        "Before any maintenance on the compressed-air system at Musterwerk, the main valve is closed, residual pressure is released through the drain valve and zero bar is read on the pressure gauge. Only then is the system opened.",
+-    },
+-    {
+-      id: "v2",
+-      titel: "Check the first-aid kit monthly (sample, fictitious)",
+-      aussage:
+-        "At Musterwerk, the shift lead checks the first-aid kit for completeness and expiry dates on the first working day of each month and records the check on the kit sheet.",
+-    },
+-    {
+-      id: "v3",
+-      titel: "Record tool issue (sample, fictitious)",
+-      aussage:
+-        "Special tools issued at Musterwerk are recorded in the issue book with name, date and return date; the tool desk countersigns on return.",
+-    },
+-    {
+-      id: "v4",
+-      titel: "Request leave (sample, fictitious)",
+-      aussage:
+-        "At Musterwerk, leave is requested from the direct manager at least two weeks in advance; confirmation is given in writing.",
+-    },
+-  ],
+-  nl: [
+-    {
+-      id: "v1",
+-      titel: "Persluchtinstallatie vóór onderhoud drukloos maken (voorbeeld, fictief)",
+-      aussage:
+-        "Vóór elk onderhoud aan de persluchtinstallatie in het Musterwerk wordt de hoofdafsluiter gesloten, de restdruk via de aftapkraan afgelaten en nul bar op de manometer afgelezen. Pas dan wordt geopend.",
+-    },
+-    {
+-      id: "v2",
+-      titel: "EHBO-koffer maandelijks controleren (voorbeeld, fictief)",
+-      aussage:
+-        "In het Musterwerk controleert de ploegleiding op de eerste werkdag van elke maand of de EHBO-koffer volledig is en niets over datum is, en noteert de controle op het kofferblad.",
+-    },
+-    {
+-      id: "v3",
+-      titel: "Uitgifte van gereedschap vastleggen (voorbeeld, fictief)",
+-      aussage:
+-        "Uitgegeven speciaal gereedschap wordt in het Musterwerk met naam, datum en retourdatum in het uitgifteboek genoteerd; bij retour tekent de uitgifte af.",
+-    },
+-    {
+-      id: "v4",
+-      titel: "Verlof aanvragen (voorbeeld, fictief)",
+-      aussage:
+-        "Verlof wordt in het Musterwerk uiterlijk twee weken vooraf bij de directe leidinggevende aangevraagd; de bevestiging volgt schriftelijk.",
+-    },
+-  ],
+-};
+-
+-/** Die längste Frage, die gelesen wird — der Rest wird abgeschnitten, nicht abgewiesen. */
+-export const FRAGE_MAX_ZEICHEN = 300;
+-
+-const WORT = /[\p{L}\p{N}]+/gu;
+-
+-/** Füllwörter ab vier Zeichen, die sonst jeden Eintrag träfen. Kürzere Wörter zählen ohnehin nicht. */
+-const FUELLWOERTER = new Set([
+-  "wird",
+-  "werden",
+-  "eine",
+-  "einen",
+-  "einem",
+-  "einer",
+-  "dann",
+-  "oder",
+-  "nach",
+-  "auch",
+-  "wann",
+-  "muss",
+-  "with",
+-  "from",
+-  "this",
+-  "that",
+-  "what",
+-  "when",
+-  "should",
+-  "must",
+-  "wordt",
+-  "worden",
+-  "voor",
+-  "naar",
+-  "moet",
+-  "wanneer",
+-]);
+-
+-function woerter(text: string): string[] {
+-  return (text.toLowerCase().match(WORT) ?? []).filter(
+-    (w) => w.length >= 4 && !FUELLWOERTER.has(w),
+-  );
+-}
+-
+-/** Gleiches Wort, oder bei Wörtern ab fünf Zeichen dieselbe Wortwurzel („Wartung“ ~ „Wartungen“). */
+-function passt(a: string, b: string): boolean {
+-  if (a === b) {
+-    return true;
+-  }
+-  return Math.min(a.length, b.length) >= 5 && (a.startsWith(b) || b.startsWith(a));
+-}
+-
+-/**
+- * Die Antwort auf eine Frage: die passenden erfundenen Einträge, bestbewertet zuerst.
+- *
+- * BEWUSST OHNE KI. Ein Sprachmodell für Unangemeldete wäre ein offener Kostenweg und eine
+- * Übermittlung an einen Dritten ohne jede Kenntnisnahme; darüber ist nicht entschieden. Gesucht wird
+- * deshalb nur im festen Bestand oben — die Antwort IST der passende Eintrag.
+- */
+-export function beantworte(
+-  frage: string,
+-  sprache: VorfuehrungsSprache,
+-): { treffer: VorfuehrungsEintrag[] } {
+-  const gesucht = new Set(woerter(frage.slice(0, FRAGE_MAX_ZEICHEN)));
+-  if (gesucht.size === 0) {
+-    return { treffer: [] };
+-  }
+-  const bewertet = INHALTE[sprache]
+-    .map((eintrag) => {
+-      const vorhanden = woerter(`${eintrag.titel} ${eintrag.aussage}`);
+-      let punkte = 0;
+-      for (const wort of gesucht) {
+-        if (vorhanden.some((v) => passt(v, wort))) {
+-          punkte += 1;
+-        }
+-      }
+-      return { eintrag, punkte };
+-    })
+-    .filter((b) => b.punkte > 0)
+-    .sort((a, b) => b.punkte - a.punkte);
+-  return { treffer: bewertet.slice(0, 3).map((b) => b.eintrag) };
 -}
 diff --git b/services/app/src/vorlagen.ts a/services/app/src/vorlagen.ts
 deleted file mode 100644
@@ -76647,7 +77471,7 @@ index f0c276a12..9d786c8a0 100644
      spaceKey,
      ...(Number.isInteger(limit) && limit > 0 ? { pageLimit: limit } : {}),
 diff --git b/services/db-tx/index.ts a/services/db-tx/index.ts
-index 51e33482a..1903f78ff 100644
+index f5cf24f4b..1903f78ff 100644
 --- b/services/db-tx/index.ts
 +++ a/services/db-tx/index.ts
 @@ -1,25 +1,7 @@
@@ -76691,6 +77515,22 @@ index 51e33482a..1903f78ff 100644
  export {
    BestandsresetLaeuftError,
    SPERRSCHLUESSEL_BESTANDSRESET,
+@@ -66,7 +40,6 @@ export {
+   pruefbefehl,
+ } from "./src/idle-in-transaction";
+ export {
+-  BESTANDSRESET_SCHEMA,
+   type BestandsresetBefund,
+   type BestandsresetLauf,
+   type BestandsresetStatus,
+@@ -75,6 +48,7 @@ export {
+   SQL_COMMITMERKMAL_SETZEN,
+   SQL_LAUF_ANLEGEN,
+   SQL_LETZTER_LAUF,
++  SQL_SCHEMA_BESTANDSRESET,
+   bestandsresetBefund,
+   letzterBestandsresetLauf,
+   loeseBestandsresetAuf,
 diff --git b/services/db-tx/src/begrenzte-pruefung.ts a/services/db-tx/src/begrenzte-pruefung.ts
 deleted file mode 100644
 index b4ba2cde6..000000000
@@ -76833,13 +77673,97 @@ index b4ba2cde6..000000000
 -    ausleihe.zurueckgeben();
 -  }
 -}
+diff --git b/services/db-tx/src/bestandsreset-audit.ts a/services/db-tx/src/bestandsreset-audit.ts
+index 39bfa3ba1..fd28a569e 100644
+--- b/services/db-tx/src/bestandsreset-audit.ts
++++ a/services/db-tx/src/bestandsreset-audit.ts
+@@ -151,12 +151,7 @@ export function loeseBestandsresetAuf(
+ // DIE ANWEISUNGEN.
+ // ================================================================================================
+ 
+-// AUFNAHME 20260922 (gesamt-bestandsreset, Nacharbeit 2): Die Laufakte ist jetzt eine reguläre
+-// Migrationsstufe (`services/app/src/db.ts`, `schemas`). Bis hierher hieß sie
+-// `SQL_SCHEMA_BESTANDSRESET` und lief in keinem `migrate()` — der Reset konnte auf einer frisch
+-// migrierten Instanz nicht einmal seinen ersten Schritt schreiben. Der Name endet jetzt auf
+-// `_SCHEMA`, damit der Wächter in `db.migrate.test.ts` sie sieht.
+-export const BESTANDSRESET_SCHEMA = `
++export const SQL_SCHEMA_BESTANDSRESET = `
+ CREATE TABLE IF NOT EXISTS bestandsreset_laeufe (
+   id                  text PRIMARY KEY,
+   status              text NOT NULL CHECK (status IN ('RUNNING','OK','ROLLED_BACK')),
 diff --git b/services/db-tx/src/bestandsreset.ts a/services/db-tx/src/bestandsreset.ts
-index e2f0f5dcf..dfc21654d 100644
+index e7afac4dd..dfc21654d 100644
 --- b/services/db-tx/src/bestandsreset.ts
 +++ a/services/db-tx/src/bestandsreset.ts
-@@ -92,16 +92,8 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
-   "ko_projection_control",
+@@ -1,4 +1,4 @@
+-import type { Pool, PoolClient } from "pg";
++import type { Pool } from "pg";
+ import {
+   type BestandsresetBefund,
+   SQL_ABSCHLUSS_SETZEN,
+@@ -80,74 +80,20 @@ export class BestandsresetGesperrtError extends Error {
+ // Bestandsreset zugleich eine Werksrückstellung, die niemand bestellt hat; (c) das Audit,
+ // einschließlich der Laufakte des Resets selbst — ein Vorgang, der seine eigene Spur mitlöscht,
+ // ist nicht nachweisbar, und die Nachweisbarkeit ist der ganze Zweck von JOB 596.
+-//
+-// AUFNAHME 20260922 (gesamt-bestandsreset, E9): Seit `60b951b8` sind wissensgebundene Tabellen
+-// dazugekommen, die die Liste nicht kannte — Gesamtanweisungen samt gebundener KO-Fassungen,
+-// Dokumentfassungen, Kenntnisnahmen, Bearbeitungshinweise und der Quellabgleich je Importlauf.
+-// Blieben sie stehen, sähe die Testerin nach dem Reset Anweisungen und Kenntnisnahmen über Objekte,
+-// die es nicht mehr gibt — genau der Schutt, den E9 wegräumen soll. Mit ihnen gibt es zwei weitere
+-// Ordnungszwänge (`kenntnisnahme_empfaenger → kenntnisnahme_anforderungen`; die Gesamtanweisung
+-// kaskadiert ohnehin). BEWUSST NICHT in der Liste: `ko_schreibstand` (Ein-Zeilen-Zähler, s. unten)
+-// und `begriffe_fassungen` — das Firmenwörterbuch bleibt, so entschieden von Peter am 11.10.
+-// (Fachhilfe, Frage 59: „Konten und Firmenwörterbuch standardmäßig erhalten").
+ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
+-  // Die Ordnungszwänge: das Kind vor dem Elternteil.
++  // Der eine echte Ordnungszwang: das Kind vor dem Elternteil.
+   "import_run_item_refs",
+-  "import_run_source_sync",
+   "import_runs",
+-  "kenntnisnahme_empfaenger",
+-  "kenntnisnahme_anforderungen",
+-  "gesamtanweisung_staende",
+-  "gesamtanweisung_bausteine",
+-  "gesamtanweisungen",
+-  "dokument_fassungen",
+-  "ko_bearbeitungen",
+   "import_candidates",
+   "external_source_records",
+   // Projektionen und Ableitungen vor ihren Quellen — nicht erzwungen, aber die ehrliche Reihenfolge.
+   "ko_search_projections",
+   "ko_metadata_projections",
+-  // `ko_projection_control` steht hier BEWUSST NICHT mehr (Nacharbeit 2). Sie ist keine Ableitung,
+-  // sondern die EINE Steuerzeile der Suche (`key='singleton'`): Zustand, aktive Generation,
+-  // Integritätsmarker. Jeder spätere Zustandswechsel ist ein `UPDATE … WHERE key=…` — ohne die
+-  // Zeile träfe er nichts, und die Suche bliebe bis zu einem Neustart samt neuer Freigabe
+-  // abgeschaltet. Sie bleibt stehen wie die Einstellungen; Projektionen und Wissensobjekte gehen
+-  // in derselben Transaktion, ihr Gleichstand (beide leer) bleibt damit erhalten.
++  "ko_projection_control",
    "ko_overlaps",
+-  // Nacharbeit 7 (BEN): Abgleich mit dem Schema nach der Integration mit main. Diese Tabellen hängen
+-  // über `ko_id` (bzw. Objektpaar, Anhang oder Fragensatz) an Wissensobjekten, OHNE Fremdschlüssel-
+-  // kaskade auf `kos` — ein Reset ohne sie ließe Ableitungen, Beziehungen und Arbeitsstände
+-  // gelöschter Objekte zurück. Welche Tabelle bewusst bleibt und warum, hält der PostgreSQL-Beleg
+-  // (`tests/db-tx/bestandsreset-e9-pg.integration.test.ts`, P1) gegen das tatsächlich migrierte
+-  // Schema fest: eine neue Tabelle ist dort rot, bis sie einer der beiden Seiten zugeordnet ist.
+-  //   Ableitungen des Texts und des Lesens:
+-  "ko_embeddings",
+-  "ko_mitgelesen",
+-  "lesevarianten",
+-  //   kuratierte Beziehungen (Wiederholschlüssel vor dem Aggregat):
+-  "ko_kanten_beitrag",
+-  "ko_kanten",
+-  //   Arbeitsstände an Objekt und Anhang:
+-  "gemeinsame_entwuerfe",
+-  "office_gesichert",
+-  "office_sitzungen",
+-  //   Zustellungen einer Veröffentlichung:
+-  "veroeffentlichung_zustellungen",
+-  "meldung_zustellstatus",
+-  //   Verständnisfragen zu einer Wissensfassung (Versuche vor ihren Fragensätzen):
+-  "verstaendnis_versuche",
+-  "verstaendnis_fragensaetze",
    "ko_evidence",
 -  // aufnahme:20260922:gesamt-wissen-frische: der aus den Fassungen gelernte Halbwertszeit-Verlauf —
 -  // abgeleitet aus dem Wissen, fällt mit ihm (dieselbe Begründung wie `conflict_pair_memory`).
@@ -76854,7 +77778,7 @@ index e2f0f5dcf..dfc21654d 100644
    "answer_snapshots",
    "answer_records",
    "gaps",
-@@ -109,9 +101,6 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
+@@ -155,9 +101,6 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
    "assignments",
    "lifecycle_progress",
    "lifecycle_pending",
@@ -76864,6 +77788,55 @@ index e2f0f5dcf..dfc21654d 100644
    "lifecycle_paths",
    "lifecycle_couplings",
    "klara_session_consents",
+@@ -169,25 +112,6 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
+   "kos",
+ ];
+ 
+-// DER SCHREIBSTAND ZÄHLT AUCH DEN RESET. `ko_schreibstand` ist der instanzweite Zähler, an dem
+-// gecachte Lesebilder (Anhangträger, `anhangStand`) erkennen, dass sich der Bestand geändert hat
+-// (s. KO_SCHREIBSTAND_TABELLE_DDL in knowledge-object/src/repo-pg.ts). Löschte der Reset die KOs,
+-// ohne ihn zu erhöhen, bliebe ein Bild über gelöschtem Wissen gültig. Die Zeile wird deshalb nicht
+-// gelöscht, sondern in DERSELBEN Transaktion erhöht wie die Löschungen — wörtlich dieselbe Anweisung
+-// wie beim fachlichen Schreiben.
+-export const SQL_SCHREIBSTAND_ERHOEHEN =
+-  "UPDATE ko_schreibstand SET stand = stand + 1 WHERE id = 1";
+-
+-/**
+- * Nacharbeit 7 (BEN): eine Prüfung, die IN der Nutzdatentransaktion läuft — nach dem Erwerb der
+- * exklusiven Sperre und vor der ersten Löschung. Ab diesem Punkt weist die Kapselung (`gatedPool`)
+- * jeden Schreiber ab; was die Prüfung sieht, ist also genau der Bestand, den die Löschungen treffen.
+- * Wirft sie, wird zurückgerollt und der Lauf als `ROLLED_BACK` abgeschlossen — es ist nichts gelöscht.
+- */
+-export interface BestandsresetOptionen {
+-  readonly vorDemLoeschen?: (client: PoolClient) => Promise<void>;
+-}
+-
+ /**
+  * Führt einen Bestandsreset aus und gibt den belastbaren Abschlusszustand zurück.
+  *
+@@ -200,7 +124,6 @@ export async function fuehreBestandsresetAus(
+   rohPool: Pool,
+   laufId: string,
+   loeschgraph: readonly string[] = BESTANDSRESET_LOESCHGRAPH,
+-  optionen: BestandsresetOptionen = {},
+ ): Promise<BestandsresetBefund> {
+   const client = await rohPool.connect();
+   try {
+@@ -216,14 +139,12 @@ export async function fuehreBestandsresetAus(
+       if (!sperre.rows[0]?.erworben) {
+         throw new BestandsresetGesperrtError();
+       }
+-      await optionen.vorDemLoeschen?.(client);
+       for (const tabelle of loeschgraph) {
+         // Die Tabellennamen stammen aus einer Konstante dieses Moduls, nie aus einer Eingabe —
+         // deshalb ist die Interpolation hier zulässig. Ein Bezeichner kann ohnehin nicht als
+         // Parameter gebunden werden.
+         await client.query(`DELETE FROM ${tabelle}`);
+       }
+-      await client.query(SQL_SCHREIBSTAND_ERHOEHEN);
+       // DIE LETZTE ANWEISUNG. Ihre Stellung ist der Auditvertrag.
+       await client.query(SQL_COMMITMERKMAL_SETZEN, [laufId]);
+       await client.query("COMMIT");
 diff --git b/services/db-tx/src/gated-pool.ts a/services/db-tx/src/gated-pool.ts
 index 5cd9fb65e..1a9a4a5be 100644
 --- b/services/db-tx/src/gated-pool.ts

@@ -19,7 +19,7 @@
 //   · Die Zuordnung selbst bleibt bestandsweit: auch dieser Lauf legt die Variante des geschützten
 //     Objekts an — der Mitglieds-Admin liest sie danach.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
 import { lokalisierungsPaket } from "../../services/app/src/lesevarianten";
 import { type AuditEntry, hashEntryFuerVersion, verifyChain } from "../../services/audit";
@@ -29,6 +29,11 @@ type App = ReturnType<typeof buildApp>;
 type Kopf = Record<string, string>;
 
 const KENNWORT = "geheim12345";
+
+// Die Ketteneinsicht setzt jede Bühne für ihre Mia (s. `buehne`); danach bleibt nichts zurück.
+afterAll(() => {
+  delete process.env.KLARWERK_AUDIT_KETTENEINSICHT;
+});
 const PAKET = "advisor-ict-en-v1";
 
 const LIEFERUNG = (() => {
@@ -148,6 +153,10 @@ async function buehne(opts: { mitGeschuetztem: boolean }) {
     payload: { freigabe: "streng_vertraulich" },
   });
   expect(freigabe.statusCode, freigabe.body).toBe(200);
+  // Nacharbeit 28 (Ben): die vollständige, nachrechenbare Kette hängt nicht mehr am Bestand, sondern
+  // allein an der ausdrücklich erteilten Ketteneinsicht (Betriebseinstellung, bei jedem Abruf
+  // gelesen). Mia ist die berechtigte Prüferin und bekommt sie; Ada nicht.
+  process.env.KLARWERK_AUDIT_KETTENEINSICHT = ids.mia;
 
   // Das offene Objekt steht in jedem Aufbau.
   const offenId = await objektMitAnker(
@@ -518,12 +527,18 @@ describe("Protokoll nach Endlöschung und für indirekte Befundbezüge", () => {
     const mia = await auditAbruf(mit.app, mit.k.mia, mit.offenId);
     expect(mia.liste.some((e) => e.target === konfliktId && e.actor === "alt")).toBe(true);
     expect(mia.befunde.ids).toContain(konfliktId);
-    // Nacharbeit 24 (Ben): ein NICHT zuzuordnender Befund trägt keine Schutzinformation — und
-    // fehlende Schutzinformation gibt nichts frei, auch nicht für volles Leserecht. Er bleibt
-    // verborgen, und Mias Export ist deshalb eine Leseransicht, keine Kette.
-    expect(mia.liste.some((e) => e.target === unbekannt)).toBe(false);
-    expect(mia.dateiRoh).not.toContain(unbekannt);
-    expect(mia.datei.format).toBe("klarwerk-audit-ansicht");
+    // Nacharbeit 28 (Ben): Mia hat die ausdrücklich erteilte Ketteneinsicht — sie bekommt die ganze,
+    // nachrechenbare Kette, also auch den nicht zuzuordnenden Beleg.
+    expect(mia.liste.some((e) => e.target === unbekannt)).toBe(true);
+    expect(mia.datei.format).toBe("klarwerk-audit-export");
+    // Ohne Ketteneinsicht gibt fehlende Schutzinformation nichts frei (Nacharbeit 24): mit vollem
+    // Leserecht, aber ohne Einsicht, bleibt der nicht zuzuordnende Beleg verborgen.
+    process.env.KLARWERK_AUDIT_KETTENEINSICHT = "";
+    const ohneEinsicht = await auditAbruf(mit.app, mit.k.mia, mit.offenId);
+    expect(ohneEinsicht.liste.some((e) => e.target === unbekannt)).toBe(false);
+    expect(ohneEinsicht.dateiRoh).not.toContain(unbekannt);
+    expect(ohneEinsicht.datei.format).toBe("klarwerk-audit-ansicht");
+    expect(ohneEinsicht.liste.some((e) => e.target === konfliktId && e.actor === "alt")).toBe(true);
     await mit.app.close();
   });
 });

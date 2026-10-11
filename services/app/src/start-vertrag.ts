@@ -1193,6 +1193,17 @@ const GRUNDWERTE: readonly Startwert[] = [
       "Welche Verzeichnisgruppe für die Prüfung in welchem Space zuständig ist: Gruppe=space-a,space-b;Gruppe2=space-c.",
     ohneIhn: "Prüfende werden wie bisher von Hand benannt.",
   },
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 28): die ausdrücklich erteilte Ketteneinsicht.
+  {
+    name: "KLARWERK_AUDIT_KETTENEINSICHT",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Kontokennungen (durch Komma getrennt), die im Prüfprotokoll die vollständige, nachrechenbare Kette samt Export erhalten — auch Einträge zu Objekten, die sie sonst nicht lesen dürfen.",
+    ohneIhn:
+      "Jedes Konto bekommt das Prüfprotokoll als Leseansicht nach seinem Leserecht; eine vollständige Kette gibt es über die Oberfläche nicht.",
+  },
   // ------------------------------------------------------------------------------- Externe Quellen
   {
     name: "EXTERNAL_SEARCH",

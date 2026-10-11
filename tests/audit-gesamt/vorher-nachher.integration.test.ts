@@ -209,6 +209,11 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit
       payload: { freigabe: "streng_vertraulich" },
     });
     expect([200, 204], freigabe.body).toContain(freigabe.statusCode);
+    // Nacharbeit 28 (Ben): die unveränderte Kette gibt es nur noch mit ausdrücklich erteilter
+    // Ketteneinsicht (Betriebseinstellung). Mehrere Bühnen laufen nebeneinander — deshalb wird das
+    // Konto ERGÄNZT, nicht ersetzt. Die Vorher-Fassungen lesen die Einstellung nicht.
+    const bisher = process.env.KLARWERK_AUDIT_KETTENEINSICHT;
+    process.env.KLARWERK_AUDIT_KETTENEINSICHT = bisher ? `${bisher},${kontoId}` : String(kontoId);
     return { name, db, pa, a, b, headers };
   }
 
