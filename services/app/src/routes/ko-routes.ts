@@ -1242,18 +1242,37 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       punkt: gegen?.geschlossen ? "geschlossen" : "offen",
       konflikt: konflikt && !offen ? "entschieden" : "offen",
     };
-    return { stand, konflikt: offen };
+    return { stand, konflikt: offen, gegen };
   }
 
+  /**
+   * `berechtigung` (Nacharbeit 16, Ben): wird gefragt, BEVOR an einem Punkt noch etwas geändert
+   * wird — liefert sie einen Grund, bleibt der Punkt unverändert (weder Gegenpunkt noch Konflikt)
+   * und der Abschluss sichtbar unvollständig. Bereits erledigte Schritte bleiben erhalten; ein
+   * vollständig abgeschlossener Punkt wird gar nicht erst befragt.
+   */
   async function punktAbschliessen(
     weisungsKoId: string,
     fassung: number,
     conflictId: string,
     actorId: string,
+    berechtigung?: (
+      gegen: KnowledgeObject | undefined,
+    ) => { fehler: string; verborgen: boolean } | null,
   ): Promise<UeberstimmterPunktStand> {
-    const { stand, konflikt } = await punktStand(weisungsKoId, conflictId);
+    const { stand, konflikt, gegen } = await punktStand(weisungsKoId, conflictId);
     if (!stand.koId) {
       return { ...stand, fehler: "Der überstimmte Punkt ist nicht mehr auffindbar." };
+    }
+    const ausstehend = stand.punkt === "offen" || stand.konflikt === "offen";
+    const verweigert = ausstehend && berechtigung ? berechtigung(gegen) : null;
+    if (verweigert) {
+      // Ein nicht (mehr) sichtbarer Gegenpunkt wird auch nicht über seine Kennung genannt.
+      return {
+        ...stand,
+        ...(verweigert.verborgen ? { koId: null } : {}),
+        fehler: verweigert.fehler,
+      };
     }
     if (stand.punkt === "offen") {
       try {
@@ -3624,16 +3643,39 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               });
               return;
             }
-            if (!weisungsbefugnisDeckt(await konten?.befugnisVon(user.id), objekt.category)) {
+            const befugnis = await konten?.befugnisVon(user.id);
+            if (!weisungsbefugnisDeckt(befugnis, objekt.category)) {
               reply.code(403).send({
                 error: "WEISUNGSBEFUGNIS_FEHLT",
                 message: `Für den Bereich „${objekt.category}“ ist an Ihrem Konto keine Weisungsbefugnis (mehr) vermerkt.`,
               });
               return;
             }
+            // Nacharbeit 16 (Ben): dieselben Prüfungen wie beim ursprünglichen Überstimmen, und zwar
+            // JETZT — je Gegenpunkt seine aktuelle Sichtbarkeit für die weisende Person und ihre
+            // Weisungsbefugnis für SEINEN Bereich. Fehlt eines davon, bleibt der Punkt unverändert
+            // (weder Gegenpunkt noch Konflikt) und der Abschluss sichtbar unvollständig.
+            const berechtigung = (gegen: KnowledgeObject | undefined) => {
+              if (!gegen || !darfSehen(user, gegen)) {
+                return {
+                  fehler:
+                    "Der überstimmte Punkt ist für Sie nicht (mehr) sichtbar; er wurde nicht verändert.",
+                  verborgen: true,
+                };
+              }
+              if (!weisungsbefugnisDeckt(befugnis, gegen.category)) {
+                return {
+                  fehler: `Für den Bereich „${gegen.category}“ des überstimmten Punkts ist an Ihrem Konto keine Weisungsbefugnis (mehr) vermerkt; er wurde nicht verändert.`,
+                  verborgen: false,
+                };
+              }
+              return null;
+            };
             const punkte: UeberstimmterPunktStand[] = [];
             for (const conflictId of weisung.ueberstimmt ?? []) {
-              punkte.push(await punktAbschliessen(id, weisung.fassung, conflictId, user.id));
+              punkte.push(
+                await punktAbschliessen(id, weisung.fassung, conflictId, user.id, berechtigung),
+              );
             }
             await abschlussMelden(reply, id, user.id, { koId: id }, punkte);
             return;

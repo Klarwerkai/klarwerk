@@ -822,4 +822,75 @@ describe("R-0573 · Abschluss überstimmter Punkte: sichtbarer, wiederaufnehmbar
     expect((await b.services.conflicts.unresolved()).map((c) => c.id)).not.toContain(k.id);
     expect(await b.lesen(b.koepfe.anna, ko.id)).not.toHaveProperty("weisungAbschlussOffen");
   });
+
+  // Nacharbeit 16 (Ben): das Nachholen prüft je Gegenpunkt JETZT Sichtbarkeit und Befugnis.
+  it("AB3 · ist die Befugnis für den Bereich des Gegenpunkts inzwischen entzogen, bleibt er unverändert und der Abschluss sichtbar offen", async () => {
+    const b = await buehne();
+    await b.befugnis(b.anna.id, ["Technik", "Recht"]);
+    const ko = await b.objekt("Bolzen S: 18 Nm");
+    const alt = await b.objekt("Haftung Bolzen S", "Recht", b.carla.id);
+    const k = await b.services.conflicts.create(
+      { koA: ko.id, koB: alt.id, type: "truth", description: "Technik gegen Recht" },
+      b.admin.id,
+    );
+    const schliessen = vi
+      .spyOn(b.services.ko, "schliesseDurchWeisung")
+      .mockRejectedValueOnce(new Error("Speicher kurz nicht erreichbar"));
+    const antwort = await b.put(b.koepfe.anna, ko.id, weisung(b.bob.id, { ueberstimmen: [k.id] }));
+    expect(antwort.statusCode, antwort.body).toBe(409);
+    schliessen.mockRestore();
+
+    // Die Befugnis für „Recht“ wird entzogen; „Technik“ (Ausgangsobjekt) bleibt.
+    expect((await b.befugnis(b.anna.id, ["Technik"])).statusCode).toBe(200);
+    const schliessenDanach = vi.spyOn(b.services.ko, "schliesseDurchWeisung");
+    const entscheiden = vi.spyOn(b.services.conflicts, "resolve");
+    const nachgeholt = await b.put(b.koepfe.anna, ko.id, { action: "weisung-abschluss" });
+    expect(nachgeholt.statusCode, nachgeholt.body).toBe(409);
+    expect(nachgeholt.json()).toMatchObject({
+      error: "WEISUNG_ABSCHLUSS_UNVOLLSTAENDIG",
+      ueberstimmt: [{ conflictId: k.id, punkt: "offen", konflikt: "offen" }],
+    });
+    expect(nachgeholt.json().ueberstimmt[0].fehler).toContain("Recht");
+    // Weder Gegenpunkt noch Konflikt verändert.
+    expect(schliessenDanach).not.toHaveBeenCalled();
+    expect(entscheiden).not.toHaveBeenCalled();
+    schliessenDanach.mockRestore();
+    entscheiden.mockRestore();
+    expect(await b.services.ko.get(alt.id)).not.toHaveProperty("geschlossen");
+    expect((await b.services.conflicts.unresolved()).map((c) => c.id)).toContain(k.id);
+    expect((await b.lesen(b.koepfe.anna, ko.id)).weisungAbschlussOffen).toEqual([k.id]);
+  });
+
+  it("AB4 · ist der Gegenpunkt nicht mehr sichtbar, wird auch der noch offene Konflikt nicht entschieden — der geschlossene Schritt bleibt", async () => {
+    const { b, ko, alt, k } = await einPunkt();
+    const entscheiden = vi
+      .spyOn(b.services.conflicts, "resolve")
+      .mockRejectedValueOnce(new Error("Konfliktablage kurz nicht erreichbar"));
+    const antwort = await b.put(b.koepfe.anna, ko.id, weisung(b.bob.id, { ueberstimmen: [k.id] }));
+    expect(antwort.statusCode, antwort.body).toBe(409);
+    entscheiden.mockRestore();
+    expect(await b.services.ko.get(alt.id)).toHaveProperty("geschlossen.conflictId", k.id);
+
+    // Der Gegenpunkt (Autorin Carla) wird vertraulich — Anna (Expertin) sieht ihn nicht mehr.
+    await b.services.ko.setConfidentiality(alt.id, "vertraulich", b.carla.id);
+    const entscheidenDanach = vi.spyOn(b.services.conflicts, "resolve");
+    const nachgeholt = await b.put(b.koepfe.anna, ko.id, { action: "weisung-abschluss" });
+    expect(nachgeholt.statusCode, nachgeholt.body).toBe(409);
+    expect(nachgeholt.json().ueberstimmt).toEqual([
+      expect.objectContaining({
+        conflictId: k.id,
+        koId: null,
+        punkt: "geschlossen",
+        konflikt: "offen",
+      }),
+    ]);
+    expect(nachgeholt.body).not.toContain("Bolzen R handfest");
+    // Der nicht mehr sichtbare Gegenpunkt wird auch nicht über seine Kennung genannt.
+    expect(nachgeholt.body).not.toContain(alt.id);
+    expect(entscheidenDanach).not.toHaveBeenCalled();
+    entscheidenDanach.mockRestore();
+    // Der bereits erledigte Schritt bleibt erhalten, der Konflikt offen.
+    expect(await b.services.ko.get(alt.id)).toHaveProperty("geschlossen.conflictId", k.id);
+    expect((await b.services.conflicts.unresolved()).map((c) => c.id)).toContain(k.id);
+  });
 });
