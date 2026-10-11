@@ -184,11 +184,54 @@ export function Analytics(): JSX.Element {
       <PageHeader kicker={t("ana.kicker")} title={t("nav.analytics")} pageKey="analytics" />
 
       {/* ADMIN-11 (produkt:20261009:admin-wissenskennzahlen): der Handlungsbedarf steht ZUERST —
-          mit Zeitraum, Space- und Teamfilter, Datenstand und dem Weg in die Arbeitslisten.
-          R-0723 (Integration mit main): Fragen, ohne Lücke beantwortet und Antwortquote stehen hier
-          für den gewählten Zeitraum samt Vorperiode; die Gesamtzahlen samt validiertem Wissen und
-          ihr Wochenverlauf stehen unter den Bestandszahlen („Fragen und validiertes Wissen gesamt"). */}
+          mit Zeitraum, Space- und Teamfilter, Datenstand und dem Weg in die Arbeitslisten. */}
       <Wissenskennzahlen />
+
+      {/* R-0723 (Ben, Nacharbeit 10): ADMIN-11 hebt „vier Kernzahlen oben" nicht auf. Die vier
+          Kernzahlen für Entscheider — geprüftes Wissen, gestellte Fragen, ohne Lücke beantwortet,
+          Antwortquote — stehen deshalb im OBEREN Überblick: direkt nach dem Handlungsbedarf, vor
+          Qualitätswert, Bestandszahlen und Personenübersicht. Genau EINE Reihe; ihr Wochenverlauf
+          steht weiter unten. Überschrift und Hilfe aus ADMIN-11 („Fragen und validiertes Wissen
+          gesamt": Nutzung, keine gemessene Zeit- oder Geldersparnis) gehen mit. */}
+      <div data-testid="analytics-kernzahlen-abschnitt">
+        <div className="mb-2 flex items-center gap-1.5">
+          <SectionLabel>{t("wkz.bestand.fragenTitel")}</SectionLabel>
+          <HelpTip title={t("wkz.bestand.fragenTitel")} body={t("wkz.bestand.fragenHilfe")} />
+        </div>
+        <QueryState query={impact}>
+          {(bericht) => (
+            <div
+              className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+              data-testid="analytics-kernzahlen"
+            >
+              <Kpi
+                label={t("ana.impactValidated")}
+                value={bericht.validatedTotal}
+                hint={t("wkz.bestand.impactValidated")}
+              />
+              <Kpi
+                label={t("ana.impactAsk")}
+                value={bericht.askTotal}
+                hint={t("wkz.bestand.impactAsk")}
+              />
+              <Kpi
+                label={t("ana.impactAnswered")}
+                value={bericht.answeredWithoutGap}
+                hint={t("wkz.bestand.impactAnswered")}
+              />
+              <Kpi
+                label={t("ana.impactRate")}
+                value={bericht.askTotal > 0 ? formatRate(bericht.answerRate) : OHNE_GRUNDMENGE}
+                hint={
+                  bericht.askTotal > 0
+                    ? t("wkz.bestand.impactRate")
+                    : t("wkz.bestand.keineGrundmenge")
+                }
+              />
+            </div>
+          )}
+        </QueryState>
+      </div>
 
       {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar. R-0908: die Überschrift kommt aus
           `texte/fachwort.ts` („Zustand der Wissensbasis“), `health.title` sagte „Knowledge Health“. */}
@@ -504,18 +547,15 @@ export function Analytics(): JSX.Element {
         </QueryState>
       </div>
 
-      {/* SCRUM-140: Fragen und validiertes Wissen gesamt aus GET /api/analytics/impact.
-          ADMIN-11: Überschrift und Hilfe sagen, was die Zahlen sind — Nutzung, keine gemessene
-          Zeit- oder Geldersparnis.
-          R-0723: die vier Kernzahlen gesamt (geprüftes Wissen, gestellte Fragen, ohne Lücke
-          beantwortet, Antwortquote) stehen hier EINMAL; ihr Wochenverlauf darunter (R-0750/R-1741).
-          main hatte den Wochenbalken entfernt, weil er HEUTE validierte Objekte nach ihrer
-          Erstellungswoche gruppierte. Seit diesem Auftrag zählt er nach dem belegten Prüfzeitpunkt
-          `validatedAt`; Objekte ohne belegten Zeitpunkt stehen gesondert als zeitlich unbekannt. */}
-      <div>
+      {/* R-0750/R-1741: der Wochenverlauf der Kernzahlen oben — Antwortquote je Woche und validiertes
+          Wissen je Woche. main hatte den Wochenbalken entfernt, weil er HEUTE validierte Objekte
+          nach ihrer Erstellungswoche gruppierte. Seit diesem Auftrag zählt er nach dem belegten
+          Prüfzeitpunkt `validatedAt`; Objekte ohne belegten Zeitpunkt stehen gesondert als
+          zeitlich unbekannt. Die vier Zahlen selbst stehen NICHT ein zweites Mal hier. */}
+      <div data-testid="analytics-wochenverlauf">
         <div className="mb-2 flex items-center gap-1.5">
-          <SectionLabel>{t("wkz.bestand.fragenTitel")}</SectionLabel>
-          <HelpTip title={t("wkz.bestand.fragenTitel")} body={t("wkz.bestand.fragenHilfe")} />
+          <SectionLabel>{t("kennzahlen.wochen.titel")}</SectionLabel>
+          <HelpTip title={t("kennzahlen.wochen.titel")} body={t("kennzahlen.help.wirkung")} />
         </div>
         <QueryState query={impact}>
           {(bericht) => {
@@ -525,35 +565,6 @@ export function Analytics(): JSX.Element {
             const ohnePruefzeitpunkt = bericht.validatedUnknownWeek ?? 0;
             return (
               <div className="space-y-4">
-                <div
-                  className="grid grid-cols-2 gap-3 sm:grid-cols-4"
-                  data-testid="analytics-kernzahlen"
-                >
-                  <Kpi
-                    label={t("ana.impactValidated")}
-                    value={bericht.validatedTotal}
-                    hint={t("wkz.bestand.impactValidated")}
-                  />
-                  <Kpi
-                    label={t("ana.impactAsk")}
-                    value={bericht.askTotal}
-                    hint={t("wkz.bestand.impactAsk")}
-                  />
-                  <Kpi
-                    label={t("ana.impactAnswered")}
-                    value={bericht.answeredWithoutGap}
-                    hint={t("wkz.bestand.impactAnswered")}
-                  />
-                  <Kpi
-                    label={t("ana.impactRate")}
-                    value={bericht.askTotal > 0 ? formatRate(bericht.answerRate) : OHNE_GRUNDMENGE}
-                    hint={
-                      bericht.askTotal > 0
-                        ? t("wkz.bestand.impactRate")
-                        : t("wkz.bestand.keineGrundmenge")
-                    }
-                  />
-                </div>
                 <Card data-testid="analytics-quote-woche">
                   <SectionLabel>{t("kennzahlen.wochen.quote")}</SectionLabel>
                   {rates.length === 0 ? (

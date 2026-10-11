@@ -5,12 +5,11 @@
 //
 // Gefahren wird die echte Analytics-Seite; die Endpointgrenze ist die einzige Attrappe.
 //
-//   K1  R-0723   die vier Kernzahlen für Entscheider gesamt — geprüftes Wissen, gestellte Fragen,
-//                ohne Lücke beantwortet, Antwortquote — stehen zusammen im Abschnitt „Fragen und
-//                validiertes Wissen gesamt", VOR ihrem Wochenverlauf. Seit der Integration mit main
-//                (ADMIN-11, produkt:20261009) steht ganz oben der Handlungsbedarf (`Wissenskennzahlen`,
-//                eigener Test); die Reihenfolge „Kernzahlen ganz oben" ist dort eine offene
-//                Produktfrage, kein Sollwert dieses Tests mehr.
+//   K1  R-0723   die vier Kernzahlen für Entscheider — geprüftes Wissen, gestellte Fragen, ohne Lücke
+//                beantwortet, Antwortquote — stehen OBEN: direkt nach dem Handlungsbedarf aus ADMIN-11
+//                (`Wissenskennzahlen`, der zuerst bleibt) und VOR Qualitätswert, Bestandszahlen,
+//                Kategorien, Personenübersicht und Wochenverlauf. Ben, Nacharbeit 10: ADMIN-11 hebt
+//                R-0723 nicht auf; beide gelten zusammen.
 //   K2  R-0750   der Wochenverlauf: Antwortquote je Woche UND validiertes Wissen je Woche, und die
 //                vier Zahlen stehen nicht ein zweites Mal als eigene Reihe darunter
 //   K3  FR-VAL-06 / FR-ANA-01  offen/erledigt je Person, mit Namen statt Kennung
@@ -205,7 +204,7 @@ afterEach(async () => {
 });
 
 describe("Gesamt-Kennzahlen · die Auswertungsseite gegen ihre Originalkriterien", () => {
-  it("K1 · R-0723: die vier Kernzahlen gesamt stehen zusammen, mit den Werten der Live-Quellen", async () => {
+  it("K1 · R-0723: die vier Kernzahlen stehen oben, mit den Werten der Live-Quellen", async () => {
     await mount();
     const reihe = element("analytics-kernzahlen");
     expect(kacheln(reihe)).toEqual([
@@ -214,11 +213,22 @@ describe("Gesamt-Kennzahlen · die Auswertungsseite gegen ihre Originalkriterien
       [i18n.t("ana.impactAnswered"), "5"],
       [i18n.t("ana.impactRate"), "71%"],
     ]);
-    // Die Zahlen stehen VOR ihrem Wochenverlauf (Antwortquote je Woche, validiert je Woche).
-    const quoteVerlauf = element("analytics-quote-woche");
-    const validiertVerlauf = element("analytics-validiert-woche");
-    expect(vor(reihe, quoteVerlauf), "Kernzahlen nach dem Quotenverlauf").toBe(true);
-    expect(vor(reihe, validiertVerlauf), "Kernzahlen nach dem Freigabeverlauf").toBe(true);
+    // ADMIN-11 bleibt zuerst: der Handlungsbedarf steht VOR den Kernzahlen.
+    expect(vor(element("wkz"), reihe), "Handlungsbedarf steht nicht vor den Kernzahlen").toBe(true);
+    // „oben": die Kernzahlen stehen VOR allen ausführlichen Abschnitten.
+    const gesundheit = blatt(i18n.t("fachwort.gesundheit.titel"));
+    expect(gesundheit, "Qualitätswert fehlt").toBeDefined();
+    const spaeter: [string, Element][] = [
+      ["Qualitätswert", gesundheit as Element],
+      ["Bestandszahlen", element("bestand-kopf")],
+      ["Kategorien", element("analytics-kategorien")],
+      ["Personenübersicht", element("analytics-personen")],
+      ["Quotenverlauf", element("analytics-quote-woche")],
+      ["Freigabeverlauf", element("analytics-validiert-woche")],
+    ];
+    for (const [name, ziel] of spaeter) {
+      expect(vor(reihe, ziel), `Kernzahlen stehen nicht vor: ${name}`).toBe(true);
+    }
   });
 
   it("K1 · Gegenprobe: ohne Fragen ist die Antwortquote nicht berechenbar, keine 0 %", async () => {
