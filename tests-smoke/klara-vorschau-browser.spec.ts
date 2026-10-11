@@ -157,6 +157,14 @@ test("Klara-Vorschau · Bedienbeleg Desktop: verschieben → Artikel → Markier
   await expect(page.getByTestId("klara-ort-seite")).toHaveText("Artikel");
   await expect(page.getByTestId("klara-ort-objekt")).toContainText(ARTIKEL_TITEL);
 
+  // Klara 01 (produkt:20261008:klara-basis): der echte Betrieb ist jetzt der Anfang; im echten
+  // Betrieb gibt es die vorgefertigten Ausschnitt-Aktionen nicht. Dieser Bedienbeleg gilt der
+  // gelieferten Vorschau — die Person wählt dafür sichtbar „Demo“. Den echten Betrieb misst
+  // `tests-smoke/klara-basis-browser.spec.ts`.
+  await expect(page.getByTestId("klara-aktion-nur-demo")).toBeVisible();
+  await page.getByTestId("klara-betrieb-demo").click();
+  await expect(page.getByTestId("klara-betrieb")).toHaveAttribute("data-betrieb", "demo");
+
   // --- K5/K9 · erklären: Anfrage läuft (mit sparsamer Bewegung) → Antwort bereit ----------------
   await page.getByTestId("klara-aktion-erklaeren").click();
   await expect(figur).toHaveAttribute("data-status", "laeuft");
@@ -414,6 +422,9 @@ test("Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger"
   await page.keyboard.press("Enter");
   const gespraech = page.getByTestId("klara-gespraech");
   await expect(gespraech).toBeVisible();
+  // Klara 01: diese Sonde misst die Vorschau mit vorgefertigten Antworten — „Demo“ wählen.
+  await page.getByTestId("klara-betrieb-demo").click();
+  await expect(page.getByTestId("klara-betrieb")).toHaveAttribute("data-betrieb", "demo");
   const blatt = await box(gespraech);
   expect(Math.round(blatt.width)).toBe(390);
   expect(Math.round(blatt.y + blatt.height)).toBeGreaterThanOrEqual(843);

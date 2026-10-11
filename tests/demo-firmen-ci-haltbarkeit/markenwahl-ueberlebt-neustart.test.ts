@@ -21,7 +21,8 @@ import {
   PgBrandingSettingsRepo,
 } from "../../services/app/src/branding-settings";
 import { buildPgServices } from "../../services/app/src/build-app";
-import { MIGRATIONS_SOLLLISTE, klassifiziereStufe } from "../../services/app/src/migrationsbeleg";
+import { MIGRATIONS_SOLLLISTE } from "../../services/app/src/migrationsbeleg";
+import { klassifiziereStufe } from "../support/migrationsmodell";
 import { StellvertreterPool, type Tabellenzeile, leererSpeicher } from "./stellvertreter-pool";
 
 /**

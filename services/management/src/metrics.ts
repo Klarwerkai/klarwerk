@@ -7,7 +7,11 @@ import type {
   Band,
   CapitalScore,
   CategoryPriority,
+  GapSignal,
+  GapVerdict,
   HouseFloor,
+  HouseFlow,
+  KnowledgeSprint,
   KnowledgeStatement,
   ManagementSnapshot,
   Maturity,
@@ -17,6 +21,8 @@ import type {
   PriorityFactorKey,
   PriorityFlag,
   Recommendation,
+  SprintReason,
+  SprintReasonKey,
   ValuationFacts,
 } from "./types";
 
@@ -283,24 +289,225 @@ export function recommendations(input: MetricsInput): Recommendation[] {
   return out;
 }
 
-// FE-MGMT-08: Knowledge House — Domänen als Stockwerke (gesichert vs. fragil).
-export function house(input: MetricsInput): HouseFloor[] {
-  const cats = categories(input.kos);
-  const busByCat = new Map(input.busFactor.map((b) => [b.category, b]));
-  const rows: HouseFloor[] = [];
-  for (const [category, list] of cats) {
-    const validated = list.filter((k) => k.status === "validiert").length;
-    const validatedRatio = pct(validated, list.length);
-    const singleSource = busByCat.get(category)?.singleSource ?? false;
-    rows.push({
-      category,
-      koCount: list.length,
-      validatedRatio,
-      fragile: validatedRatio < 50 || singleSource,
+// ================================================================================================
+// R-1657 (ROADMAP 9.3) — LÜCKENERKENNUNG: WISSENS-SPRINTS JE BEREICH.
+// ================================================================================================
+//
+// Quelle: „KLARWERK analysiert regelmäßig, in welchen Themenbereichen wenig Wissen, geringer Trust
+// oder hohe Konflikt-Dichte herrscht — und schlägt der Organisation Wissens-Sprints vor: ‚Bereich
+// Schweißtechnik: 4 offene Konflikte, 12 Objekte zur Re-Validierung. 2-Tage-Sprint vorschlagen?'"
+//
+// ZWEI URTEILENDE, EINE GRUNDLAGE (Nacharbeit 2, Ben: „über Reasoner", „regelmäßig"):
+//   · Die KENNZAHLEN je Bereich (`bereichsSignale`) entstehen hier, über demselben sichtbaren
+//     Bestand wie der übrige Snapshot. Nur sie — Bereichsname und Zähler — gehen an den Reasoner.
+//   · Der REASONER urteilt regelmäßig je Betrachtersicht darüber (service.ts → wissenssprintLauf,
+//     services/reasoner → judgeKnowledgeGapsOutcome). Sein Urteil gilt für einen Bereich nur,
+//     solange die Kennzahlen, über die er geurteilt hat, unverändert sind (`signalSignatur`).
+//   · Fehlt ein passendes Reasoner-Urteil (kein Modell, Vertraulichkeit, noch kein Lauf, Bestand
+//     seither geändert), gilt die benannte REGEL und der Vorschlag trägt `source: "rule"`:
+//       conflicts      Objekte an einem offenen sichtbaren Konflikt (ohne Konflikt-Eingang: kein Grund)
+//       revalidation   Objekte auf der Revalidierungsliste
+//       lowTrust       Objekte mit Vertrauen unter TRUST_NIEDRIG
+//       thinKnowledge  weniger als WENIG_VALIDIERT validierte Objekte (count = Zahl der validierten)
+//     Sprintlänge: verschiedene betroffene Objekte / OBJEKTE_PRO_TAG, aufgerundet, 1 bis 5 Tage.
+// Offene Lücken (unbeantwortete Fragen) tragen keine Kategorie und bleiben deshalb in der globalen
+// Empfehlung „closeGaps" — sie werden keinem Bereich zugeraten.
+const TRUST_NIEDRIG = 50;
+const WENIG_VALIDIERT = 3;
+const OBJEKTE_PRO_TAG = 8;
+const SPRINT_MAX_TAGE = 5;
+
+/** Die Kennzahlen je Bereich plus der Arbeitsumfang (verschiedene betroffene Objekte). */
+export interface BereichsSignal extends GapSignal {
+  workItems: number;
+  /** Trägt der Bereich (für diese Sicht) ein vertrauliches Objekt? Entscheidet den Egress. */
+  confidential: boolean;
+}
+
+export function bereichsSignale(input: MetricsInput): BereichsSignal[] {
+  const pendingSet = new Set(input.pendingRevalidation);
+  const konflikte = input.openConflictKoIds ? new Set(input.openConflictKoIds) : null;
+  const out: BereichsSignal[] = [];
+  for (const [category, list] of categories(input.kos)) {
+    const imKonflikt = konflikte ? list.filter((k) => konflikte.has(k.id)) : [];
+    const faellig = list.filter((k) => pendingSet.has(k.id));
+    const schwach = list.filter((k) => (k.trust ?? 0) < TRUST_NIEDRIG);
+    out.push({
+      bereich: category,
+      objekte: list.length,
+      validiert: list.filter((k) => k.status === "validiert").length,
+      mittleresVertrauen: avgTrustOf(list),
+      imKonflikt: konflikte ? imKonflikt.length : null,
+      revalidierung: faellig.length,
+      geringesVertrauen: schwach.length,
+      workItems: new Set([...imKonflikt, ...faellig, ...schwach].map((k) => k.id)).size,
+      confidential: list.some((k) => (k.confidentiality ?? "intern") !== "intern"),
     });
   }
-  rows.sort((a, b) => b.koCount - a.koCount || a.category.localeCompare(b.category));
+  return out;
+}
+
+/** Was der Reasoner gesehen hat — genau die Kennzahlen, nichts sonst. */
+export function gapSignal(s: BereichsSignal): GapSignal {
+  return {
+    bereich: s.bereich,
+    objekte: s.objekte,
+    validiert: s.validiert,
+    mittleresVertrauen: s.mittleresVertrauen,
+    imKonflikt: s.imKonflikt,
+    revalidierung: s.revalidierung,
+    geringesVertrauen: s.geringesVertrauen,
+  };
+}
+
+/** Ein Urteil gilt nur für genau diese Kennzahlen. */
+export function signalSignatur(s: BereichsSignal): string {
+  return JSON.stringify(gapSignal(s));
+}
+
+function zahlZu(key: SprintReasonKey, s: BereichsSignal): number {
+  switch (key) {
+    case "conflicts":
+      return s.imKonflikt ?? 0;
+    case "revalidation":
+      return s.revalidierung;
+    case "lowTrust":
+      return s.geringesVertrauen;
+    case "thinKnowledge":
+      return s.validiert;
+  }
+}
+
+function regelSprint(s: BereichsSignal): KnowledgeSprint | null {
+  const keys: SprintReasonKey[] = [];
+  if ((s.imKonflikt ?? 0) > 0) {
+    keys.push("conflicts");
+  }
+  if (s.revalidierung > 0) {
+    keys.push("revalidation");
+  }
+  if (s.geringesVertrauen > 0) {
+    keys.push("lowTrust");
+  }
+  if (s.validiert < WENIG_VALIDIERT) {
+    keys.push("thinKnowledge");
+  }
+  if (keys.length === 0) {
+    return null;
+  }
+  return {
+    category: s.bereich,
+    reasons: keys.map((key) => ({ key, count: zahlZu(key, s) })),
+    workItems: s.workItems,
+    days: Math.min(SPRINT_MAX_TAGE, Math.max(1, Math.ceil(s.workItems / OBJEKTE_PRO_TAG))),
+    source: "rule",
+  };
+}
+
+const GRUND_REIHENFOLGE: readonly SprintReasonKey[] = [
+  "conflicts",
+  "revalidation",
+  "lowTrust",
+  "thinKnowledge",
+];
+
+// Nacharbeit 4 (Ben): nur ein ausdrückliches `sprint: false` schliesst einen Bereich negativ ab.
+// Ein positives Urteil ohne verwertbaren Grund ist kein Urteil — dann gilt die Regel weiter.
+function reasonerSprint(s: BereichsSignal, urteil: GapVerdict): KnowledgeSprint | null {
+  if (!urteil.sprint) {
+    return null;
+  }
+  const keys = GRUND_REIHENFOLGE.filter((k) => urteil.schwerpunkte.includes(k));
+  const reasons: SprintReason[] = keys.map((key) => ({ key, count: zahlZu(key, s) }));
+  if (reasons.length === 0) {
+    return regelSprint(s);
+  }
+  return {
+    category: s.bereich,
+    reasons,
+    workItems: s.workItems,
+    days: Math.min(SPRINT_MAX_TAGE, Math.max(1, Math.round(urteil.tage))),
+    source: "reasoner",
+  };
+}
+
+export function sprints(input: MetricsInput): KnowledgeSprint[] {
+  const out: KnowledgeSprint[] = [];
+  for (const s of bereichsSignale(input)) {
+    const analyse = input.gapVerdicts?.get(s.bereich);
+    const vorschlag =
+      analyse?.signatur === signalSignatur(s) ? reasonerSprint(s, analyse.urteil) : regelSprint(s);
+    if (vorschlag) {
+      out.push(vorschlag);
+    }
+  }
+  out.sort(
+    (a, b) =>
+      b.workItems - a.workItems ||
+      b.reasons.length - a.reasons.length ||
+      a.category.localeCompare(b.category),
+  );
+  return out;
+}
+
+// R-0139: importiert ist, was einer der Importwege als solches markiert hat. Altbestand ohne Marke
+// zählt nicht als importiert — nichts wird nachträglich geraten.
+function isImported(ko: KnowledgeObject): boolean {
+  return ko.importedVia !== undefined || ko.origin === "import";
+}
+
+// FE-MGMT-08 / R-0768 / FR-EXT-05: Knowledge House — je FACHGEBIET ein Stockwerk, gesichert vs.
+// fragil. Der Bus-Faktor wird je Stockwerk aus denselben (sichtbaren) Objekten gerechnet, nach der
+// Regel aus library-analytics (Einzelquelle = höchstens ein Urheber); die Kategoriezeilen aus
+// `input.busFactor` passen nicht auf Fachgebiete.
+export function house(input: MetricsInput): HouseFloor[] {
+  const floors = new Map<string | null, KnowledgeObject[]>();
+  for (const ko of input.kos) {
+    const domain = ko.domain?.trim() || null;
+    const list = floors.get(domain) ?? [];
+    list.push(ko);
+    floors.set(domain, list);
+  }
+  const rows: HouseFloor[] = [];
+  for (const [domain, list] of floors) {
+    const validated = list.filter((k) => k.status === "validiert").length;
+    const validatedRatio = pct(validated, list.length);
+    const authorCount = new Set(list.map((k) => k.originalAuthor)).size;
+    const singleSource = authorCount <= 1;
+    rows.push({
+      domain,
+      koCount: list.length,
+      validated,
+      validatedRatio,
+      authorCount,
+      singleSource,
+      fragile: validatedRatio < 50 || singleSource,
+      imported: list.filter(isImported).length,
+    });
+  }
+  // Das Stockwerk ohne Fachgebiet steht immer zuletzt; sonst die vollsten zuerst.
+  rows.sort(
+    (a, b) =>
+      Number(a.domain === null) - Number(b.domain === null) ||
+      b.koCount - a.koCount ||
+      (a.domain ?? "").localeCompare(b.domain ?? ""),
+  );
   return rows;
+}
+
+// R-0768 / FR-EXT-05: Import → Haus → Ausgabe als Zähler über demselben Bestand wie die Stockwerke.
+export function houseFlow(input: MetricsInput, floors: readonly HouseFloor[]): HouseFlow {
+  const imported = input.kos.filter(isImported);
+  const secured = input.kos.filter((k) => k.status === "validiert").length;
+  return {
+    imported: imported.length,
+    importedValidated: imported.filter((k) => k.status === "validiert").length,
+    inHouse: input.kos.length,
+    secured,
+    floors: floors.length,
+    fragileFloors: floors.filter((f) => f.fragile).length,
+    outputReady: secured,
+  };
 }
 
 // FE-MGMT-02: Pilot 30/60/90 — echte Zähler je Fenster aus createdAt.
@@ -316,8 +523,11 @@ export function pilot(input: MetricsInput): PilotWindow[] {
   });
 }
 
-export function computeSnapshot(input: MetricsInput): Omit<ManagementSnapshot, "generatedAt"> {
+export function computeSnapshot(
+  input: MetricsInput,
+): Omit<ManagementSnapshot, "generatedAt" | "sprintAnalysis"> {
   const capital = capitalScore(input);
+  const floors = house(input);
   return {
     overview: overview(input, capital.score),
     capital,
@@ -326,7 +536,9 @@ export function computeSnapshot(input: MetricsInput): Omit<ManagementSnapshot, "
     maturity: maturity(input, capital.score),
     priorities: priorities(input),
     recommendations: recommendations(input),
-    house: house(input),
+    sprints: sprints(input),
+    house: floors,
+    houseFlow: houseFlow(input, floors),
     pilot: pilot(input),
   };
 }

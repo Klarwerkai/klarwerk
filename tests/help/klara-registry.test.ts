@@ -8,10 +8,11 @@ import {
   klaraEntryById,
   pageEntryFor,
   pageTitleKeyForRoute,
-  rankKlara,
   resolveKlaraEntries,
   searchKlara,
 } from "../../apps/web/src/lib/klaraRegistry";
+// R-1349: die Rangliste wird am Produktweg `klaraGrundlage` gemessen (Kopf der Prüfhilfe).
+import { rankKlara } from "../support/klara-rangfolge";
 
 // Klara v1 (Pedi 05.07.): EINE Registry über alle Hilfe-Quellen — Seiten, chelp.*, vhelp.*,
 // Hilfeseiten-Kapitel. Getestet: Vollständigkeit, DE+EN-Auflösung, Kontext-Zuordnung, Suche.

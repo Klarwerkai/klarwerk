@@ -471,18 +471,19 @@ export function folderTree(rows: readonly PreviewRow[]): PreviewTreeGroup[] {
 // Segment kann danach keinen Schrägstrich mehr enthalten — die Verkettung in der Anzeige ist damit
 // eindeutig zerlegbar und kollisionsfrei. Der Schlüssel ist reine Anzeige-Identität (Auf/Zu); er
 // wird nie angezeigt, nie gespeichert und nie zurückgelesen.
-function encodeTreeSegment(segment: string): string {
-  return encodeURIComponent(segment);
-}
-
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Bis hierher bildete der Baum den Schlüssel über eine
+// private `encodeTreeSegment`, und dieser Export war ein Durchreicher daneben, den nur der Test las.
+// Jetzt ruft der Baum DIESE Funktion selbst — der Kollisionstest
+// (`tests/app/import-folder-key-collision.test.tsx`) misst damit den Weg, den die Anzeige nimmt.
 export function folderTreeSegmentKey(segment: string): string {
-  return encodeTreeSegment(segment);
+  return encodeURIComponent(segment);
 }
 
 function folderTreeRoots(roots: Map<string, FolderBuild>): PreviewTreeGroup[] {
   return [...roots.values()]
     .sort((a, b) => a.segment.localeCompare(b.segment))
-    .map((root) => toTreeGroup(root, `folder:${encodeTreeSegment(root.segment)}`));
+    .map((root) => toTreeGroup(root, `folder:${folderTreeSegmentKey(root.segment)}`));
 }
 
 function toTreeGroup(node: FolderBuild, key: string): PreviewTreeGroup {
@@ -491,7 +492,7 @@ function toTreeGroup(node: FolderBuild, key: string): PreviewTreeGroup {
     // Der Schlüssel eines Unterordners ist NUR sein (kodiertes) Segment; die Anzeige setzt den
     // vollen Pfad-Schlüssel aus Eltern- und Kind-Schlüssel zusammen (dieselbe Regel wie im
     // Sprach-/Themen-Baum). mega28 B: kodiert, damit „A/B" und „A"→„B" auseinanderfallen.
-    .map((child) => toTreeGroup(child, encodeTreeSegment(child.segment)));
+    .map((child) => toTreeGroup(child, folderTreeSegmentKey(child.segment)));
   return {
     key,
     kind: "folder",

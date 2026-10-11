@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReasonerConfigStatus } from "../../apps/web/src/api/types";
-import {
-  isModelConfigured,
-  reasonerModeTone,
-  reasonerStatusSummary,
-} from "../../apps/web/src/lib/reasonerStatus";
+import { isModelConfigured, reasonerModeTone } from "../../apps/web/src/lib/reasonerStatus";
 
 const configured: ReasonerConfigStatus = {
   provider: "anthropic:claude-sonnet-4-6",
@@ -73,19 +69,6 @@ describe("SCRUM-166: reasonerStatus helpers", () => {
     expect(reasonerModeTone({ mode: "fallback" })).toBe("warn");
   });
 
-  it("reasonerStatusSummary leitet ehrlich ab (model null bei Demo)", () => {
-    expect(reasonerStatusSummary(configured)).toEqual({
-      configured: true,
-      mode: "model",
-      provider: "anthropic:claude-sonnet-4-6",
-      model: "anthropic:claude-sonnet-4-6",
-      fallbackAvailable: true,
-      localeCount: 2,
-      taskCount: 5,
-    });
-    const s = reasonerStatusSummary(demo);
-    expect(s.configured).toBe(false);
-    expect(s.model).toBeNull();
-    expect(s.provider).toBe("deterministic");
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zu `reasonerStatusSummary` ist mit der
+  // Zusammenfassung entfallen — sie hatte keinen Produktleser; die Karte zeigt die Felder einzeln.
 });

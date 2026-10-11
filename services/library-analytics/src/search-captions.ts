@@ -4,11 +4,8 @@
 // für die Suche nicht mehr geladen; Legacy-KOs ohne Feld werden beim ersten Treffer-Kandidaten
 // einmalig backgefüllt — s. LibraryService.search). Dieses Modul re-exportiert den Scanner für
 // bestehende Aufrufer über die öffentliche library-analytics-API.
-import { imageCaptionTexts } from "../../structure";
-
 export { imageCaptionTexts, LEGACY_IMAGE_CAPTION_PLACEHOLDERS } from "../../structure";
 
-// Suchvertrag der Fußnoten: case-insensitiver Substring-Match (identisch zur title/statement-Suche).
-export function captionsMatchQuery(bodyHtml: string | null | undefined, q: string): boolean {
-  return imageCaptionTexts(bodyHtml).some((caption) => caption.toLowerCase().includes(q));
-}
+// R-1349: Hier stand `captionsMatchQuery` (Fußnoten-Treffer über den Body). Die Suche matcht seit
+// G27 auf der Suchprojektion (persistiertes Fußnotenfeld); die Hilfe rief kein Produktweg mehr und
+// ist entfernt.

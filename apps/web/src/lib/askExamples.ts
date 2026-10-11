@@ -15,6 +15,11 @@ export interface AskExample {
   seedTokens: readonly string[];
 }
 
+// R-1001 (Aufnahme gesamt-sprache-begriffe): Klara richtet sich an jede Organisation. Bis hierher
+// handelten alle drei Beispiele von Ventil, Filter und Dosierung an einer Fertigungslinie. Jetzt
+// steht EIN Industriebeispiel da (es trifft den deutschen Demo-Bestand), daneben eine Frage aus der
+// Pflege und eine aus einem Verein (`texte/beispielfragen.ts`). Die Pflegefrage ist die bewusste
+// Lücken-Frage, die `askExampleChips.ts` neben Antworten aus dem echten Bestand zeigt.
 export const ASK_EXAMPLES: readonly AskExample[] = [
   // Treffer auf validiertes Demo-Wissen (Ventil X / Überdruck) → quellengebundene Antwort.
   {
@@ -23,19 +28,19 @@ export const ASK_EXAMPLES: readonly AskExample[] = [
     kind: "answerable",
     seedTokens: ["Ventil X", "Überdruck"],
   },
-  // Treffer auf validiertes Demo-Wissen (Filter F3) → quellengebundene Antwort.
+  // Pflege — im Demo-Bestand bewusst nicht vorhanden → ehrliche Wissenslücke → Erfassen.
   {
-    id: "filter",
-    questionKey: "ask.example.filter",
-    kind: "answerable",
-    seedTokens: ["Filter F3"],
-  },
-  // Bewusst offen (Linie L4 / Dosierwert / Schichtwechsel) → ehrliche Wissenslücke → Capture.
-  {
-    id: "dosing",
-    questionKey: "ask.example.dosing",
+    id: "pflege",
+    questionKey: "beispielfragen.pflege",
     kind: "gap",
-    seedTokens: ["Dosierwert", "Linie L4", "Schichtwechsel"],
+    seedTokens: ["B2"],
+  },
+  // Verein — ebenfalls bewusst offen.
+  {
+    id: "verein",
+    questionKey: "beispielfragen.verein",
+    kind: "gap",
+    seedTokens: ["500"],
   },
 ];
 

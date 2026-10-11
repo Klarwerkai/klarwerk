@@ -1,4 +1,5 @@
 export { ConfidenceBar } from "./ConfidenceBar";
+export { ErgebnisStufeMarke } from "./ErgebnisStufeMarke";
 export { KoAuthorLine } from "./KoAuthorLine";
 export { KnowledgeTypeTag } from "./KnowledgeTypeTag";
 export { type Provenance, ProvenanceLine } from "./ProvenanceLine";

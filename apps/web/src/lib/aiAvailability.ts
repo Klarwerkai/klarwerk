@@ -82,6 +82,16 @@ export function deriveAiBillable(
   return tasks.some((t) => status.billable?.[t] === true);
 }
 
+// R-0305/R-1099 (Ben, Nacharbeit 2): DER KOSTENHINWEIS AM ZWEITMEINUNGSKNOPF. Der Klick fragt ZWEI
+// Modellwege — den Antwortweg (`billable.answer`) und das separat gewählte Zweitmodell
+// (`zweitmeinungBillable`). Kostet EINER davon, muss der Satz stehen; insbesondere auch bei lokaler
+// Erstantwort mit externem Zweitmodell. Dieselbe Strenge wie oben: ohne Auskunft schweigt er.
+export function deriveZweitmeinungBillable(
+  status: Pick<ReasonerStatus, "billable" | "zweitmeinungBillable"> | undefined,
+): boolean {
+  return deriveAiBillable(status, "answer") || status?.zweitmeinungBillable === true;
+}
+
 // PAKET 3.4 (D-AISTATE, bens V4): ist ECHT ein Modell nutzbar (aktiv UND nicht zuletzt unerreichbar)?
 // Basis für den „(mit KI)"-Namen — NICHT bloß „konfiguriert" (active). `unverified` zählt als nutzbar
 // (kein Fake-Grau beim Start). Ohne Status: nein.

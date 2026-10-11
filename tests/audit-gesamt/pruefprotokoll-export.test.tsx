@@ -26,7 +26,14 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   return {
     endpoints: {
       audit: {
-        list: vi.fn(async () => [eintrag]),
+        // produkt:20261009:admin-audit-verstaendlich: die Karte liest seitenweise.
+        seite: vi.fn(async () => ({
+          entries: [eintrag],
+          nextBefore: null,
+          limit: 25,
+          objekte: {},
+          namensbelege: [],
+        })),
         verify: vi.fn(async () => ({ ok: true, count: 1 })),
         exportChain: vi.fn(async () => ({
           format: "klarwerk-audit-export",
@@ -49,6 +56,7 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
+import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
@@ -80,7 +88,11 @@ async function mount(): Promise<void> {
         createElement(
           ToastProvider,
           null,
-          createElement(PruefprotokollDetail, { onZurueck: () => undefined }),
+          createElement(
+            MemoryRouter,
+            null,
+            createElement(PruefprotokollDetail, { onZurueck: () => undefined }),
+          ),
         ),
       ),
     );
@@ -111,13 +123,21 @@ afterEach(() => {
 });
 
 describe("Prüfprotokoll · Export der Kette mit Kopf", () => {
-  it("Zählung, Prüfknopf und Exportknopf stehen da; der neue Aktionsname ist lesbar", async () => {
+  // produkt:20261009:admin-audit-verstaendlich: die grüne Zählmarke über der geladenen
+  // Gesamtliste ist entfallen (seitenweises Lesen, K4/K6); der Seitentitel nennt die Seite. Der
+  // Rohcode steht nur noch in den technischen Angaben (K2).
+  it("Seitentitel, Prüfknopf und Exportknopf stehen da; der neue Aktionsname ist lesbar", async () => {
     await mount();
-    expect(text(container)).toContain(i18n.t("adm.sich.auditCount", { count: 1 }));
+    expect(text(container)).toContain(i18n.t("auditprotokoll.tabelle.seite", { shown: 1 }));
     knopf(i18n.t("adm.sich.verify.button"));
     knopf(i18n.t("adm.sich.export.button"));
     expect(text(container)).toContain("Neu validiert (stimmt noch)");
-    expect(text(container)).not.toContain("ko.revalidated");
+    const spalten = container.querySelector("tbody")?.cloneNode(true) as HTMLElement;
+    for (const technik of spalten.querySelectorAll("[data-audit-technik]")) {
+      technik.remove();
+    }
+    expect(text(spalten)).not.toContain("ko.revalidated");
+    expect(text(container.querySelector('[data-audit-kennung="action"]'))).toBe("ko.revalidated");
   });
 
   it("der Export ruft die Kette ab, lädt sie herunter und zeigt den Kopf", async () => {
@@ -137,7 +157,7 @@ describe("Prüfprotokoll · Export der Kette mit Kopf", () => {
     expect(text(kopf)).toContain("Nr. 7");
     // Nach dem Export frisch gelesen: der Abruf hat selbst einen Eintrag angehängt.
     expect(
-      (endpoints.audit.list as unknown as ReturnType<typeof vi.fn>).mock.calls.length,
+      (endpoints.audit.seite as unknown as ReturnType<typeof vi.fn>).mock.calls.length,
     ).toBeGreaterThanOrEqual(2);
     klick.mockRestore();
   });

@@ -276,7 +276,7 @@ describe("JOB 4352 · der sichtbare Speicherknopf und die geladene Datei", () =>
   // ==============================================================================================
   it("S3 · ohne geladene Datei bleibt der Knopf wie bisher: Formularstand, dieselbe Quittung", async () => {
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-    await tippe(feld(String(i18n.t("capture.fTitle"))), "Zahlungsziel neu");
+    await tippe(feld(String(i18n.t("capture.wizard.titleLabel"))), "Zahlungsziel neu");
 
     expect(speicherKnopf().disabled).toBe(false);
     await klick(speicherKnopf());
