@@ -97,7 +97,7 @@ Anzeige der Zuordnung und lässt ihn unverändert.
 | Verdrahtung, Migration, Inventar | `services/app/src/build-app.ts`, `db.ts`, `dateninventar.ts`, `selbstauskunft.ts`, `scripts/backup/restore-drill.sh` |
 | Wissensansicht | `apps/web/src/components/verstaendnisfragen/VerstaendnisfragenBereich.tsx` (in `BibliothekLesen.tsx` nach Kenntnisnahme/Veröffentlichung) |
 | Lernpfad | `apps/web/src/components/verstaendnisfragen/LernpfadVerstaendnis.tsx` (im Lernpfad-Block von `Lifecycle.tsx`, unter den unveränderten Schritten) |
-| Texte DE/EN/NL | `apps/web/src/texte/verstaendnisfragen.ts` |
+| Texte DE/EN/NL | `apps/web/src/texte/verstaendnis.ts` (Dateiname = Präfix `verstaendnis.`) |
 
 ### B2. Kurzer Bedienweg
 

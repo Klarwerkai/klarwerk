@@ -789,11 +789,13 @@ export class PgVerstaendnisfragenRepo implements VerstaendnisfragenRepo {
         return { art: "neu", versuch };
       }
     } catch (fehler) {
-      // 23505: die Nummer dieser Person an dieser Version ist inzwischen belegt.
-      if ((fehler as { code?: string }).code === "23505") {
-        return { art: "nummer_belegt" };
+      // 23505: ein eindeutiger Schlüssel ist belegt. Bei zwei GLEICHZEITIGEN Abgaben derselben
+      // Kennung meldet Postgres das am Nummernschlüssel, nicht am Kennungsschlüssel (gemessen in
+      // Nacharbeit 2, P2) — deshalb entscheidet die abgelegte Kennung: steht sie schon da, ist es
+      // derselbe Versuch; sonst hat ein ANDERER Versuch diese Nummer belegt.
+      if ((fehler as { code?: string }).code !== "23505") {
+        throw fehler;
       }
-      throw fehler;
     }
     const vorhanden = await this.versuch(versuch.id);
     return vorhanden ? { art: "vorhanden", versuch: vorhanden } : { art: "nummer_belegt" };
