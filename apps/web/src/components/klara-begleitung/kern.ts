@@ -56,6 +56,8 @@ export type Phase = "aus" | "aktiv" | "pausiert" | "beendet";
  *   nutzer          → Fortsetzen jederzeit, solange die Freigabe läuft
  *   sperrbildschirm → Fortsetzen nur durch den Nutzer, nie von selbst
  *   verborgen       → Fenster/Tab verborgen (anderes Fenster, Bildschirm aus): wie Sperrbildschirm
+ *   sperrmelder     → der erlaubte Sperrbildschirmmelder ließ sich nicht starten: Fortsetzen nur
+ *                     durch den Nutzer, der Melder wird dabei neu eingerichtet und geprüft
  *   kontowechsel    → Fortsetzen nur, wenn wieder DASSELBE Konto angemeldet ist
  *   rechteentzug    → Fortsetzen nur mit einer NACH dem Entzug vom Server bestätigten Berechtigung
  *   neustart        → nach Neuladen: Fortsetzen nur durch den Nutzer, Endpunkt unverändert
@@ -66,6 +68,7 @@ export type Grund =
   | "nutzer"
   | "sperrbildschirm"
   | "verborgen"
+  | "sperrmelder"
   | "kontowechsel"
   | "rechteentzug"
   | "neustart"

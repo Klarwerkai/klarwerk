@@ -72,6 +72,67 @@ function montiere(
   });
 }
 
+/** Lässt ausstehende Versprechen (Erlaubnis, Melderstart) innerhalb von `act` durchlaufen. */
+async function flush(): Promise<void> {
+  await act(async () => {
+    for (let i = 0; i < 30; i += 1) {
+      await Promise.resolve();
+    }
+  });
+}
+
+type MelderArt = "ok" | "startFehler" | "konstruktorFehler" | "haelt";
+
+interface Melderprobe {
+  art: MelderArt;
+  melder: (EventTarget & { screenState: string })[];
+  signale: AbortSignal[];
+  freigeben: (() => void)[];
+  erlaubnis: { mock: { calls: unknown[][] } };
+}
+
+/**
+ * Eine Idle-Detection-Attrappe, deren Verhalten der Fall steuert: Start gelingt, scheitert, der
+ * Konstruktor wirft, oder der Start hält an, bis der Fall ihn freigibt.
+ */
+function idleAttrappe(art: MelderArt): Melderprobe {
+  const erlaubnis = vi.fn(async () => "granted");
+  const probe: Melderprobe = { art, melder: [], signale: [], freigeben: [], erlaubnis };
+  class Attrappe extends EventTarget {
+    screenState = "unlocked";
+    static requestPermission = erlaubnis;
+    constructor() {
+      super();
+      if (probe.art === "konstruktorFehler") {
+        throw new Error("IdleDetector nicht verfügbar");
+      }
+      probe.melder.push(this);
+    }
+    start(optionen: { signal: AbortSignal }): Promise<void> {
+      probe.signale.push(optionen.signal);
+      if (probe.art === "startFehler") {
+        return Promise.reject(new Error("NotAllowedError"));
+      }
+      if (probe.art === "haelt") {
+        return new Promise((weiter) => probe.freigeben.push(() => weiter()));
+      }
+      return Promise.resolve();
+    }
+  }
+  vi.stubGlobal("IdleDetector", Attrappe);
+  return probe;
+}
+
+function sperreBildschirm(probe: Melderprobe): void {
+  act(() => {
+    const melder = probe.melder[probe.melder.length - 1];
+    if (melder) {
+      melder.screenState = "locked";
+      melder.dispatchEvent(new Event("change"));
+    }
+  });
+}
+
 /** Hat jemand den eingerichteten Vorgang im Dokument gesucht — also zu lesen begonnen? */
 function vorgangAbgefragt(aufrufe: readonly unknown[][]): boolean {
   return aufrufe.some(([selektor]) => String(selektor).includes("begleitbereich"));
@@ -434,11 +495,7 @@ describe("K7 · Sperrbildschirm, Kontowechsel, Rechteentzug pausieren; Neuladen 
     vi.stubGlobal("IdleDetector", IdleDetectorAttrappe);
     montiere();
     starte("Produktrecherche, 30 Minuten");
-    await act(async () => {
-      for (let i = 0; i < 10; i += 1) {
-        await Promise.resolve();
-      }
-    });
+    await flush();
     expect(box.melder).not.toBeNull();
     expect(IdleDetectorAttrappe.requestPermission).toHaveBeenCalledTimes(1);
     expect(q("begleitung-sperrerkennung")?.textContent).toBe(
@@ -503,5 +560,151 @@ describe("K8 · bewusst übernommene Notiz getrennt, Gespeichertes einsehbar, L�
     const rest = Object.keys(eintraege(sessionStorage));
     expect(rest.filter((k) => k.startsWith("klarwerk.begleitung"))).toEqual([]);
     ohneLeck();
+  });
+});
+
+// ================================================================================================
+// NACHARBEIT 3 (Ben AC07/G10, AC07-Wiederaufnahme): der Sperrbildschirmmelder sagt nur zu, was er
+// tatsächlich tut, und wird bei jeder bewussten Wiederaufnahme neu hergestellt und geprüft.
+// ================================================================================================
+describe("K7 · Sperrbildschirmmelder: tatsächlicher Zustand, Ausfall, Wiederaufnahme", () => {
+  const ERKANNT = "Sperrbildschirm wird erkannt und pausiert.";
+
+  it("die Zusage steht erst nach erfolgreichem Start; vorher ist nichts aktiv", async () => {
+    const probe = idleAttrappe("haelt");
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    await flush();
+    expect(q("begleitung-zustand")).toBeNull();
+    expect(q("begleitung-sperrerkennung")?.textContent).toBe(
+      "Sperrbildschirmerkennung wird eingerichtet …",
+    );
+    expect(wurzel.textContent).not.toContain(ERKANNT);
+
+    act(() => probe.freigeben[0]?.());
+    await flush();
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+    expect(q("begleitung-sperrerkennung")?.textContent).toBe(ERKANNT);
+  });
+
+  it("scheitert start(): pausiert, Fehler sichtbar, keine Zusage — Fortsetzen versucht es neu", async () => {
+    const probe = idleAttrappe("startFehler");
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    await flush();
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    expect(q("begleitung-grund")?.textContent).toBe(
+      "Pausiert, weil die erlaubte Sperrbildschirmerkennung nicht gestartet werden konnte.",
+    );
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain(
+      "ließ sich nicht starten",
+    );
+    expect(wurzel.textContent).not.toContain(ERKANNT);
+    expect(probe.signale[0]?.aborted).toBe(true);
+
+    probe.art = "ok";
+    act(() => knopf("Fortsetzen").click());
+    await flush();
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+    expect(q("begleitung-sperrerkennung")?.textContent).toBe(ERKANNT);
+  });
+
+  it("wirft der Konstruktor: ebenso pausiert und sichtbar, nichts verschluckt", async () => {
+    idleAttrappe("konstruktorFehler");
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    await flush();
+    expect(q("begleitung-grund")?.textContent).toContain("nicht gestartet werden konnte");
+    expect(wurzel.textContent).not.toContain(ERKANNT);
+  });
+
+  it("nach Neuladen stellt Fortsetzen den Melder wieder her und prüft ihn, bevor beobachtet wird", async () => {
+    const probe = idleAttrappe("ok");
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    await flush();
+    expect(q("begleitung-sperrerkennung")?.textContent).toBe(ERKANNT);
+    abbauen();
+    expect(probe.signale[0]?.aborted).toBe(true);
+
+    montiere();
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    expect(wurzel.textContent).not.toContain(ERKANNT);
+    act(() => knopf("Fortsetzen").click());
+    await flush();
+    expect(probe.erlaubnis.mock.calls.length).toBe(2);
+    expect(probe.melder.length).toBe(2);
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+    expect(q("begleitung-sperrerkennung")?.textContent).toBe(ERKANNT);
+
+    sperreBildschirm(probe);
+    expect(q("begleitung-grund")?.textContent).toBe(
+      "Pausiert, weil der Bildschirm gesperrt wurde.",
+    );
+    expect(probe.signale[1]?.aborted).toBe(true);
+  });
+
+  it("Stopp während des asynchronen Starts: bleibt gestoppt, der späte Melder wird freigegeben", async () => {
+    const probe = idleAttrappe("ok");
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    await flush();
+    act(() => knopf("Pause").click());
+    expect(probe.signale[0]?.aborted).toBe(true);
+
+    probe.art = "haelt";
+    act(() => knopf("Fortsetzen").click());
+    await flush();
+    expect(q("begleitung-sperrerkennung")?.textContent).toBe(
+      "Sperrbildschirmerkennung wird eingerichtet …",
+    );
+    act(() => knopf("Stopp").click());
+    act(() => probe.freigeben[0]?.());
+    await flush();
+    expect(q("begleitung-beendet")).not.toBeNull();
+    expect(q("begleitung-status")).toBeNull();
+    expect(probe.signale[1]?.aborted).toBe(true);
+  });
+
+  it("Ablauf während des asynchronen Starts: keine Aktivierung über den Endpunkt hinaus", async () => {
+    const probe = idleAttrappe("ok");
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    await flush();
+    act(() => knopf("Pause").click());
+    probe.art = "haelt";
+    act(() => knopf("Fortsetzen").click());
+    await flush();
+    uhr = T0 + 31 * MIN;
+    act(() => probe.freigeben[0]?.());
+    await flush();
+    expect(q("begleitung-beendet")?.textContent).toContain("am Endpunkt abgelaufen");
+    expect(probe.signale[1]?.aborted).toBe(true);
+  });
+
+  it("Rechteentzug während des asynchronen Starts: bleibt pausiert, der Melder wird freigegeben", async () => {
+    const probe = idleAttrappe("ok");
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    await flush();
+    act(() => knopf("Pause").click());
+    probe.art = "haelt";
+    act(() => knopf("Fortsetzen").click());
+    await flush();
+    montiere("u-pia", "viewer");
+    act(() => probe.freigeben[0]?.());
+    await flush();
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    expect(q("begleitung-grund")?.textContent).toBe("Pausiert, weil der Zugriff entzogen wurde.");
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain("gerade nicht erlaubt");
+    expect(probe.signale[1]?.aborted).toBe(true);
+  });
+
+  it("ohne Idle Detection bleibt es ehrlich beim Fenstersignal", () => {
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    expect(q("begleitung-sperrerkennung")?.textContent).toBe(
+      "Sperrbildschirm wird hier nur über das verborgene Fenster erkannt.",
+    );
   });
 });

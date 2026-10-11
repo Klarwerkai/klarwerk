@@ -9,15 +9,25 @@
 //     liest VORHER nichts mehr (`KlaraBegleitung.tsx`, `abtasten`).
 //   · `IdleDetector` (Idle Detection API, Chrome): `screenState === "locked"` heißt Sperrbildschirm.
 //     Die API braucht eine Erlaubnis, die nur aus einer Nutzergeste heraus erfragt werden darf —
-//     deshalb fragt `sperrErkennungErlauben` beim Klick auf „Begleitung starten". Wird sie
-//     verweigert oder fehlt die API (Firefox, Safari), bleibt allein das Fenstersignal, und die
-//     Leiste sagt das.
+//     deshalb wird der Melder beim Klick auf „Begleitung starten" und bei JEDEM „Fortsetzen"
+//     (auch nach Neuladen) neu eingerichtet.
+//
+// DER TATSÄCHLICHE ZUSTAND (Nacharbeit 3, Ben AC07/G10): `starteSperrmelder` antwortet erst, wenn
+// feststeht, was gilt:
+//   laeuft       — Erlaubnis erteilt UND `start()` erfolgreich; erst dann darf die Leiste die
+//                  Sperrerkennung zusagen
+//   nur_fenster  — API fehlt oder Erlaubnis verweigert; die Leiste sagt das so
+//   ausgefallen  — Erlaubnis da, aber Konstruktor oder `start()` scheitern; die Begleitung wird
+//                  pausiert und der Fehler sichtbar gemacht — nichts wird verschluckt
 //
 // Ein privates Fenster kann eine Webseite nicht verlässlich erkennen. Der Vorgangsadapter liest
 // aber ausschließlich das eigene Dokument — ein anderes (privates) Fenster ist für ihn unsichtbar,
 // und das Wechseln dorthin verbirgt dieses Fenster und pausiert.
 
-export type SperrErkennung = "bildschirm" | "nur_fenster";
+export type MelderErgebnis =
+  | { readonly zustand: "laeuft"; readonly beenden: () => void }
+  | { readonly zustand: "nur_fenster" }
+  | { readonly zustand: "ausgefallen" };
 
 interface IdleDetectorArtig extends EventTarget {
   readonly screenState: "locked" | "unlocked" | null;
@@ -37,26 +47,30 @@ function klasse(): IdleDetectorKlasse | null {
   return typeof k === "function" ? (k as IdleDetectorKlasse) : null;
 }
 
-/** Aus der Startgeste heraus rufen. Ergebnis: ob ein echter Sperrbildschirm gemeldet werden kann. */
-export async function sperrErkennungErlauben(): Promise<SperrErkennung> {
-  const k = klasse();
-  if (!k) {
-    return "nur_fenster";
-  }
-  try {
-    return (await k.requestPermission()) === "granted" ? "bildschirm" : "nur_fenster";
-  } catch {
-    return "nur_fenster";
-  }
+/** Ohne API gibt es nichts einzurichten — dann bleibt der Ablauf synchron und meldet `nur_fenster`. */
+export function sperrmelderVerfuegbar(): boolean {
+  return klasse() !== null;
 }
 
-/** Ruft `beiSperre`, sobald der Bildschirm gesperrt wird. Rückgabe: beendet die Beobachtung. */
-export function beobachteSperre(beiSperre: () => void): () => void {
+/**
+ * Richtet den Sperrbildschirmmelder ein. MUSS synchron aus einer Nutzergeste gerufen werden: die
+ * Erlaubnisanfrage geschieht vor dem ersten `await`. Antwortet erst mit dem tatsächlichen Zustand.
+ */
+export async function starteSperrmelder(beiSperre: () => void): Promise<MelderErgebnis> {
   const k = klasse();
-  const abbruch = new AbortController();
   if (!k) {
-    return () => abbruch.abort();
+    return { zustand: "nur_fenster" };
   }
+  let erlaubnis: string;
+  try {
+    erlaubnis = await k.requestPermission();
+  } catch {
+    return { zustand: "nur_fenster" };
+  }
+  if (erlaubnis !== "granted") {
+    return { zustand: "nur_fenster" };
+  }
+  const abbruch = new AbortController();
   try {
     const melder = new k();
     melder.addEventListener("change", () => {
@@ -64,11 +78,10 @@ export function beobachteSperre(beiSperre: () => void): () => void {
         beiSperre();
       }
     });
-    melder.start({ threshold: SCHWELLE_MS, signal: abbruch.signal }).catch(() => {
-      // Erlaubnis entzogen oder Melder nicht startbar: es bleibt das Fenstersignal.
-    });
+    await melder.start({ threshold: SCHWELLE_MS, signal: abbruch.signal });
   } catch {
-    // dasselbe — kein Melder, kein Sperrsignal, keine Ausnahme in der Oberfläche
+    abbruch.abort();
+    return { zustand: "ausgefallen" };
   }
-  return () => abbruch.abort();
+  return { zustand: "laeuft", beenden: () => abbruch.abort() };
 }

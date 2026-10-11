@@ -55,11 +55,19 @@ Vor jedem Lesen, auch vor dem Taktlesen im Hintergrund, wird geprüft: aktiv, ni
 dasselbe Konto, aktuelle Berechtigung, Fenster sichtbar. Fällt eine Bedingung weg, wird pausiert,
 ohne das Formular anzufassen.
 
+Der Sperrbildschirmmelder läuft nur, solange die Begleitung aktiv ist. Beim Start und bei jedem
+Fortsetzen, auch nach dem Neuladen, wird er aus der Geste heraus neu eingerichtet. Aktiviert wird
+erst, wenn sein tatsächlicher Zustand feststeht (läuft, nur Fenstersignal oder ausgefallen).
+Danach werden Ablauf, Stopp, Konto und Rechte ein zweites Mal geprüft. Ein Melder, der inzwischen
+überholt ist, wird sofort wieder freigegeben. Die Leiste sagt „Sperrbildschirm wird erkannt“ erst,
+wenn der Melder läuft; vorher steht „wird eingerichtet“, während einer Pause „ruht“.
+
 | Ereignis | Wirkung | Fortsetzen |
 |---|---|---|
 | Pause durch Nutzer | Kontext wird verworfen | jederzeit bis zum Endpunkt |
 | Fenster verborgen (anderes Fenster, Tab, Bildschirm aus) | Pause „verborgen“ | nur durch den Nutzer |
-| Sperrbildschirm (Idle Detection, Chrome, nach Erlaubnis) | Pause | nur durch den Nutzer |
+| Sperrbildschirm (Idle Detection, Chrome, nach Erlaubnis) | Pause | nur durch den Nutzer; der Melder wird dabei neu eingerichtet |
+| Sperrbildschirmmelder startet nicht (Konstruktor oder `start()` scheitert) | Pause „sperrmelder“, Fehler sichtbar, keine Zusage | nur durch den Nutzer; „Fortsetzen“ versucht den Melder erneut |
 | Kontowechsel | Pause; anderes Konto sieht nichts | nur mit demselben Konto |
 | Rechteentzug (Rolle passt nicht mehr, Konto bleibt angemeldet) | Pause, Zeitpunkt gemerkt | erst mit einer Serverbestätigung (`/auth/me`), die jünger ist als der Entzug; „Fortsetzen“ fordert sie an |
 | Neuladen | Pause; Endpunkt bleibt gleich | durch den Nutzer, frischer Kontext |

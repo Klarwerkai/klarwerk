@@ -77,6 +77,13 @@ export default {
     "begleitung.status.sperreBildschirm": "Sperrbildschirm wird erkannt und pausiert.",
     "begleitung.status.sperreFenster":
       "Sperrbildschirm wird hier nur über das verborgene Fenster erkannt.",
+    "begleitung.status.sperreStartet": "Sperrbildschirmerkennung wird eingerichtet …",
+    "begleitung.status.sperreRuht":
+      "Sperrbildschirmerkennung ruht während der Pause und wird beim Fortsetzen neu eingerichtet.",
+    "begleitung.grund.sperrmelder":
+      "Pausiert, weil die erlaubte Sperrbildschirmerkennung nicht gestartet werden konnte.",
+    "begleitung.fehler.sperrmelder":
+      "Die Sperrbildschirmerkennung ließ sich nicht starten. Die Begleitung bleibt pausiert; „Fortsetzen“ versucht es erneut.",
     "begleitung.einstieg.titel": "Aktive Begleitung ausprobieren",
     "begleitung.einstieg.text":
       "Ein synthetisches Prüfformular ist für die Begleitung freigegeben. Dort kann {{assistenz}} auf fehlende Einheiten hinweisen – ohne etwas einzutragen.",
@@ -167,6 +174,13 @@ export default {
     "begleitung.status.sperreBildschirm": "A locked screen is detected and pauses.",
     "begleitung.status.sperreFenster":
       "A locked screen is only detected via the hidden window here.",
+    "begleitung.status.sperreStartet": "Setting up locked-screen detection …",
+    "begleitung.status.sperreRuht":
+      "Locked-screen detection rests during the pause and is set up again on resume.",
+    "begleitung.grund.sperrmelder":
+      "Paused because the permitted locked-screen detection could not be started.",
+    "begleitung.fehler.sperrmelder":
+      "Locked-screen detection could not be started. The session stays paused; “Resume” tries again.",
     "begleitung.einstieg.titel": "Try active accompanying",
     "begleitung.einstieg.text":
       "A synthetic test form is permitted for accompanying. There {{assistenz}} can point out missing units – without filling anything in.",
@@ -257,6 +271,13 @@ export default {
     "begleitung.status.sperreBildschirm": "Een vergrendeld scherm wordt herkend en pauzeert.",
     "begleitung.status.sperreFenster":
       "Een vergrendeld scherm wordt hier alleen via het verborgen venster herkend.",
+    "begleitung.status.sperreStartet": "Herkenning van een vergrendeld scherm wordt ingericht …",
+    "begleitung.status.sperreRuht":
+      "Herkenning van een vergrendeld scherm rust tijdens de pauze en wordt bij hervatten opnieuw ingericht.",
+    "begleitung.grund.sperrmelder":
+      "Gepauzeerd omdat de toegestane herkenning van een vergrendeld scherm niet kon starten.",
+    "begleitung.fehler.sperrmelder":
+      "De herkenning van een vergrendeld scherm kon niet starten. De begeleiding blijft gepauzeerd; „Hervatten” probeert het opnieuw.",
     "begleitung.einstieg.titel": "Actieve begeleiding uitproberen",
     "begleitung.einstieg.text":
       "Een synthetisch testformulier is vrijgegeven voor begeleiding. Daar kan {{assistenz}} wijzen op ontbrekende eenheden – zonder iets in te vullen.",

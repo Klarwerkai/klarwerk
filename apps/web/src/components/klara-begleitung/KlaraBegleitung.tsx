@@ -25,7 +25,14 @@
 //
 // HOSTZUSTAND (K2, K7): verborgenes Fenster → Pause „verborgen" ohne vorheriges Lesen; gesperrter
 // Bildschirm → Pause „Sperrbildschirm" über die Idle Detection API, wenn der Browser sie hat und
-// der Nutzer sie beim Start erlaubt (`hostzustand.ts`). Beides nur durch den Nutzer fortsetzbar.
+// der Nutzer sie erlaubt (`hostzustand.ts`). Beides nur durch den Nutzer fortsetzbar.
+//
+// DER MELDER (Nacharbeit 3, Ben AC07/G10 und AC07-Wiederaufnahme): Er wird beim Start UND bei jedem
+// Fortsetzen — auch nach Neuladen — aus der Geste heraus neu eingerichtet. Aktiviert wird erst,
+// wenn sein tatsächlicher Zustand feststeht; danach werden Ablauf, Stopp, Konto und Rechte ein
+// zweites Mal geprüft, weil sie sich während des asynchronen Starts geändert haben können. Die
+// Leiste sagt die Sperrerkennung erst zu, wenn der Melder läuft; scheitert er, bleibt bzw. wird
+// die Begleitung pausiert und der Fehler steht da. Während einer Pause läuft kein Melder.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "../../app/AuthContext";
 import { useAssistenzT } from "../../lib/assistenzProfil";
@@ -36,7 +43,7 @@ import {
   istSystemereignis,
   liesVorgang,
 } from "./adapter";
-import { type SperrErkennung, beobachteSperre, sperrErkennungErlauben } from "./hostzustand";
+import { type MelderErgebnis, sperrmelderVerfuegbar, starteSperrmelder } from "./hostzustand";
 import {
   AUS,
   type Begleitung,
@@ -101,6 +108,22 @@ function ladeNotizen(konto: string | null): Notiz[] {
   return konto ? (lies<Notiz[]>(`${NOTIZ_PRAEFIX}${konto}`) ?? []) : [];
 }
 
+/** Anzeige des Sperrbildschirmmelders: noch nicht entschieden, läuft, oder nur Fenstersignal. */
+type MelderAnzeige = "startet" | "laeuft" | "nur_fenster";
+
+/** Die Zusage „wird erkannt" steht NUR, wenn die Begleitung aktiv ist UND der Melder läuft. */
+function sperreSchluessel(phase: Begleitung["phase"], melder: MelderAnzeige): string {
+  if (melder === "startet") {
+    return "begleitung.status.sperreStartet";
+  }
+  if (phase !== "aktiv") {
+    return "begleitung.status.sperreRuht";
+  }
+  return melder === "laeuft"
+    ? "begleitung.status.sperreBildschirm"
+    : "begleitung.status.sperreFenster";
+}
+
 function neueId(): string {
   const c = globalThis.crypto as Crypto | undefined;
   return typeof c?.randomUUID === "function"
@@ -157,14 +180,20 @@ export function KlaraBegleitung({
   const [bereiche, setBereiche] = useState<Bereich[]>(() => eingerichteteBereiche(document));
   const [satz, setSatz] = useState("");
   const [meldung, setMeldung] = useState<string | null>(null);
-  const [sperrErkennung, setSperrErkennung] = useState<SperrErkennung>("nur_fenster");
+  // Was der Sperrbildschirmmelder TATSÄCHLICH tut: „laeuft" erst nach erfolgreichem Start.
+  const [melder, setMelder] = useState<MelderAnzeige>("nur_fenster");
   // Die aktuelle Berechtigung gilt für den Bereich DIESER Begleitung, nicht für „irgendeinen".
   const darfBegleiten = b.freigabe ? darf(b.freigabe.bereich, rolle) : false;
   const lage = useRef({ konto: konto ?? "", darfBegleiten, rechteGeprueftAm });
   lage.current = { konto: konto ?? "", darfBegleiten, rechteGeprueftAm };
+  const rolleJetzt = useRef(rolle);
+  rolleJetzt.current = rolle;
   const aktuell = useRef(b);
   aktuell.current = b;
   const zeitgeber = useRef<number | null>(null);
+  const melderBeenden = useRef<(() => void) | null>(null);
+  /** Jeder Einrichtungsversuch bekommt eine Nummer; ein überholter Versuch wirkt nicht mehr. */
+  const melderVersuch = useRef(0);
 
   // Nur die Freigabe wird gesichert — nie Kontext, Hinweis oder Feldwerte.
   const freigabe = sicherung(b);
@@ -223,15 +252,55 @@ export function KlaraBegleitung({
     });
   }, [konto, darfBegleiten, jetzt]);
 
-  const laeuft = b.phase === "aktiv" || b.phase === "pausiert";
+  /** Beendet einen laufenden Melder und entwertet jeden noch ausstehenden Einrichtungsversuch. */
+  const beendeMelder = useCallback(() => {
+    melderVersuch.current += 1;
+    melderBeenden.current?.();
+    melderBeenden.current = null;
+  }, []);
 
-  // Gesperrter Bildschirm (Idle Detection API, nur nach Erlaubnis beim Start).
+  /**
+   * Richtet den Melder neu ein — synchron aus der Geste (Erlaubnisanfrage vor dem ersten `await`).
+   * `weiter` bekommt den tatsächlichen Zustand; ein überholter Versuch ruft `weiter` nie und gibt
+   * einen dennoch gestarteten Melder sofort wieder frei. Ohne API bleibt alles synchron.
+   */
+  const richteMelderEin = useCallback(
+    (weiter: (zustand: MelderErgebnis["zustand"]) => void) => {
+      beendeMelder();
+      if (!sperrmelderVerfuegbar()) {
+        setMelder("nur_fenster");
+        weiter("nur_fenster");
+        return;
+      }
+      const versuch = melderVersuch.current;
+      setMelder("startet");
+      const beiSperre = (): void => setB((alt) => systemereignis(alt, "sperrbildschirm", jetzt()));
+      void starteSperrmelder(beiSperre).then((r) => {
+        if (versuch !== melderVersuch.current) {
+          if (r.zustand === "laeuft") {
+            r.beenden();
+          }
+          return;
+        }
+        if (r.zustand === "laeuft") {
+          melderBeenden.current = r.beenden;
+        }
+        setMelder(r.zustand === "laeuft" ? "laeuft" : "nur_fenster");
+        weiter(r.zustand);
+      });
+    },
+    [beendeMelder, jetzt],
+  );
+
+  // Außerhalb von „aktiv" läuft kein Melder: Pause, Stopp, Ablauf und Abbau geben ihn frei.
+  // Fortsetzen richtet ihn neu ein und prüft ihn, bevor wieder beobachtet wird.
   useEffect(() => {
-    if (!laeuft || sperrErkennung !== "bildschirm") {
-      return;
+    if (b.phase !== "aktiv") {
+      beendeMelder();
+      setMelder("nur_fenster");
     }
-    return beobachteSperre(() => setB((alt) => systemereignis(alt, "sperrbildschirm", jetzt())));
-  }, [laeuft, sperrErkennung, jetzt]);
+  }, [b.phase, beendeMelder]);
+  useEffect(() => beendeMelder, [beendeMelder]);
 
   const aktiv = b.phase === "aktiv";
 
@@ -315,14 +384,39 @@ export function KlaraBegleitung({
     if (alt.phase !== "pausiert") {
       return;
     }
-    const r = fortsetzen(alt, { ...lage.current, jetzt: jetzt() });
-    setMeldung(r.ok ? null : t(`begleitung.fehler.${r.fehler}`));
-    if (!r.ok && r.fehler === "rechte_unbestaetigt") {
-      // Eine frische Serverantwort holen; Fortsetzen bleibt eine bewusste zweite Handlung.
-      pruefeRechte?.();
+    const abgelehnt = (r: Extract<ReturnType<typeof fortsetzen>, { ok: false }>): void => {
+      // Inzwischen gestoppt: kein Fehlersatz — der Stopp spricht für sich.
+      setMeldung(r.fehler === "nicht_pausiert" ? null : t(`begleitung.fehler.${r.fehler}`));
+      if (r.fehler === "rechte_unbestaetigt") {
+        // Eine frische Serverantwort holen; Fortsetzen bleibt eine bewusste zweite Handlung.
+        pruefeRechte?.();
+      }
+      setB(r.begleitung);
+    };
+    const vorab = fortsetzen(alt, { ...lage.current, jetzt: jetzt() });
+    if (!vorab.ok) {
+      abgelehnt(vorab);
+      return;
     }
-    setB(r.begleitung);
-  }, [jetzt, t, pruefeRechte]);
+    setMeldung(null);
+    // Die Hostüberwachung neu herstellen und ihren Zustand prüfen, BEVOR wieder beobachtet wird.
+    richteMelderEin((zustand) => {
+      const jetztStand = aktuell.current;
+      // Zweite Prüfung am aktuellen Stand: Ablauf, Stopp, Konto und Rechte während des Starts.
+      const r = fortsetzen(jetztStand, { ...lage.current, jetzt: jetzt() });
+      if (!r.ok) {
+        beendeMelder();
+        abgelehnt(r);
+        return;
+      }
+      if (zustand === "ausgefallen") {
+        setB(pausiere(jetztStand, "sperrmelder", jetzt()));
+        setMeldung(t("begleitung.fehler.sperrmelder"));
+        return;
+      }
+      setB(r.begleitung);
+    });
+  }, [jetzt, t, pruefeRechte, richteMelderEin, beendeMelder]);
 
   const stopp = useCallback(() => {
     setMeldung(null);
@@ -372,10 +466,35 @@ export function KlaraBegleitung({
       return;
     }
     setMeldung(null);
-    setSatz("");
-    setB(r.begleitung);
-    // Aus der Startgeste heraus: darf der Browser einen gesperrten Bildschirm melden?
-    void sperrErkennungErlauben().then(setSperrErkennung);
+    const gewaehlt = bereich;
+    const freigabeKonto = konto;
+    // Aus der Startgeste heraus den Melder einrichten; aktiviert wird erst danach.
+    richteMelderEin((zustand) => {
+      const zeit = jetzt();
+      const neu = r.begleitung;
+      // Während des Starts kann sich die Lage geändert haben: Konto, Rolle, ein anderer Start.
+      if (aktuell.current.phase !== "aus") {
+        beendeMelder();
+        return;
+      }
+      if (lage.current.konto !== freigabeKonto) {
+        beendeMelder();
+        setMeldung(t("begleitung.fehler.anderes_konto"));
+        return;
+      }
+      if (!darf(gewaehlt, rolleJetzt.current)) {
+        beendeMelder();
+        setMeldung(t("begleitung.fehler.keine_rechte"));
+        return;
+      }
+      setSatz("");
+      if (zustand === "ausgefallen") {
+        setB(pausiere(neu, "sperrmelder", zeit));
+        setMeldung(t("begleitung.fehler.sperrmelder"));
+        return;
+      }
+      setB(neu);
+    });
   };
 
   const notizUebernehmen = (): void => {
@@ -456,6 +575,11 @@ export function KlaraBegleitung({
             {t("begleitung.angebot.starten")}
           </button>
         </form>
+        {melder === "startet" ? (
+          <p className="mt-1 text-xs" data-testid="begleitung-sperrerkennung">
+            {t("begleitung.status.sperreStartet")}
+          </p>
+        ) : null}
         {meldung ? (
           <p role="alert" className="mt-1 text-xs">
             {meldung}
@@ -500,11 +624,7 @@ export function KlaraBegleitung({
         {t("begleitung.status.medien")}
       </p>
       <p className="text-xs" data-testid="begleitung-sperrerkennung">
-        {t(
-          sperrErkennung === "bildschirm"
-            ? "begleitung.status.sperreBildschirm"
-            : "begleitung.status.sperreFenster",
-        )}
+        {t(sperreSchluessel(b.phase, melder))}
       </p>
       {b.phase === "pausiert" && b.grund ? (
         <p className="text-xs" data-testid="begleitung-grund">
