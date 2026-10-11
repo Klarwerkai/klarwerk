@@ -28,6 +28,9 @@
 //   A9    · BEN Nacharbeit 10 · Nicht-Admin, die Schutzstufen haben verschiedene Ausführer: jede Stufe
 //           mit ihrem — kein einzelner behaupteter Dienst; Gegenprobe ohne Abweichung: ein Dienst.
 //   A10   · BEN Nacharbeit 10 · Admin: Aufgabenwahl plus die abweichende Verteilung je Stufe.
+//   A10b  · BEN Nacharbeit 11 · Admin: alle Stufen gleich, aber anders als die Aufgabenwahl — der
+//           wirksame Dienst steht dabei; Gegenprobe wirksam = gewählt ohne Zusatz.
+//   A9b   · BEN Nacharbeit 11 · Nicht-Admin: Verfügbarkeit je Stufe statt einmal gesamt.
 //   A4    · der Satz rendert auch OHNE `RoleProvider` (das Blatt in seinen Einzeltests) — als
 //           Nicht-Admin, aus der Ausführungsauskunft, trotz hausweit „cloud".
 //   A5    · im Blatt steht er im Menü „KI", UNTER Eingabe und Knopf (Nacharbeit 4, B5a).
@@ -309,6 +312,67 @@ describe("N-0070 · wer führt die Palette aus — die Ableitung", () => {
     });
     expect(wer).toBe(
       `${DE("reasoner.taskInfo.cloud")} · ${anbieterUndModell(OPENAI)} · ${DE("erfassen.ki.jeStufe")} ${VERTEILUNG}`,
+    );
+  });
+
+  it("A10b · BEN Nacharbeit 11 · Admin: Aufgabenwahl ChatGPT, ALLE Stufen lokal — der wirksame Dienst steht dabei, obwohl die Stufen untereinander gleich sind", () => {
+    const alleLokal: Partial<ReasonerAusfuehrung> = {
+      ausfuehrer: "local",
+      gewaehlt: "openai",
+      verfuegbar: true,
+      jeStufe: { intern: "local", vertraulich: "local", streng_vertraulich: "local" },
+      verfuegbarJeStufe: { intern: true, vertraulich: true, streng_vertraulich: true },
+      stufenAbweichend: false,
+    };
+    const wer = ausfuehrerWer({
+      tasks: ["structure"],
+      istAdmin: true,
+      config: konfig({ structure: "openai" }),
+      ausfuehrung: auskunft({ structure: alleLokal }),
+      t: DE,
+    });
+    expect(wer).toBe(
+      `${DE("reasoner.taskInfo.cloud")} · ${anbieterUndModell(OPENAI)} · ${DE("erfassen.ki.wirksam")} ${DE("reasoner.taskInfo.local")}`,
+    );
+    // Gegenprobe: wirksam = gewählt → nur die Aufgabenwahl, kein Zusatz.
+    const gleich = ausfuehrerWer({
+      tasks: ["structure"],
+      istAdmin: true,
+      config: konfig({ structure: "openai" }),
+      ausfuehrung: auskunft({
+        structure: {
+          ...alleLokal,
+          ausfuehrer: "openai",
+          jeStufe: { intern: "openai", vertraulich: "openai", streng_vertraulich: "openai" },
+        },
+      }),
+      t: DE,
+    });
+    expect(gleich).toBe(`${DE("reasoner.taskInfo.cloud")} · ${anbieterUndModell(OPENAI)}`);
+  });
+
+  it("A9b · BEN Nacharbeit 11 · Nicht-Admin, Stufen verschieden: die Verfügbarkeit steht an JEDER Stufe, nicht einmal gesamt", () => {
+    const verteilt: Partial<ReasonerAusfuehrung> = {
+      ausfuehrer: "local",
+      gewaehlt: "deterministic",
+      verfuegbar: true,
+      jeStufe: { intern: "local", vertraulich: "anthropic", streng_vertraulich: "deterministic" },
+      verfuegbarJeStufe: { intern: true, vertraulich: false, streng_vertraulich: false },
+      stufenAbweichend: true,
+    };
+    const wer = ausfuehrerWer({
+      tasks: ["structure"],
+      istAdmin: false,
+      config: undefined,
+      ausfuehrung: auskunft({ structure: verteilt }),
+      t: DE,
+    });
+    expect(wer).toBe(
+      [
+        `${DE("conf.level.intern")}: ${DE("reasoner.taskInfo.local")} (${DE("erfassen.ki.verfuegbar")})`,
+        `${DE("conf.level.vertraulich")}: Claude (Anthropic) (${DE("erfassen.ki.nichtVerfuegbar")})`,
+        `${DE("conf.level.streng_vertraulich")}: ${DE("reasoner.taskInfo.rule")}`,
+      ].join(", "),
     );
   });
 });

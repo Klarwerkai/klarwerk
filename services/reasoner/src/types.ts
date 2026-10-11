@@ -639,6 +639,9 @@ export interface ReasonerAusfuehrung {
   // BEN, Nacharbeit 10: wer bei einem Text JEDER Stufe tatsächlich arbeitet — dieselbe Auflösung
   // wie der Lauf (Stufenregel, Freigabe, Vertraulichkeit). `ausfuehrer` ist `jeStufe.intern`.
   jeStufe: Record<ReasonerSchutzstufe, ReasonerAusfuehrer>;
+  // BEN, Nacharbeit 11: die Verfügbarkeit JE STUFE aus derselben Stufenkette; `verfuegbar` ist
+  // `verfuegbarJeStufe.intern`.
+  verfuegbarJeStufe: Record<ReasonerSchutzstufe, boolean>;
   // `true`, wenn mindestens eine Stufe einen anderen Ausführer hat als „intern".
   stufenAbweichend: boolean;
 }

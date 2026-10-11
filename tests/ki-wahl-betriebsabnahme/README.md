@@ -140,6 +140,13 @@ Stufen auseinander, zeigt die Palettenzeile jede Stufe mit ihrem Ausführer (Nic
 Verteilung neben der Aufgabenwahl (Admins). Belege: `keine-ki-je-schutzstufe.test.ts` S8 (Auskunft je
 Stufe = gezählte Modellaufrufe am Lauf), `ausfuehrer-vor-dem-klick.test.tsx` A9/A10.
 
+**Nacharbeit 11 (BEN):** (1) Die Adminzeile nennt den wirksamen Dienst auch, wenn alle Stufen
+gleich, aber anders als die Aufgabenwahl arbeiten („arbeitet tatsächlich: …“; A10b). (2) Verfügbarkeit
+und „nicht erreichbar“ kommen aus derselben Stufenkette wie der Ausführer (`ketteModellNutzbar`,
+`verfuegbarJeStufe`); bei verschiedenen Stufen steht die Verfügbarkeit an jeder Stufe (A9b). Beleg am
+Server: S8 mit `assist` regelbasiert und „intern“ lokal (verfügbar, nicht „nicht erreichbar“, 1/0
+Modellaufrufe).
+
 **Integration mit main (Nacharbeit 8):** main brachte parallel die Zweitmeinung (R-0305/R-1099) mit
 eigenem Konfigurationsfeld `zweitmeinung` und gelenkter Kette (`lenkung.kette`), den Wissens-Fragebaum
 im Interview (`imageContext`, `options`, R-0604-Kennzeichnung) und die KI-Bremse im Blatt. Aufgelöst

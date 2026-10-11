@@ -2190,7 +2190,13 @@ export class Reasoner {
   // false (die Kette dieser Task enthält NUR die Cloud). Bewusst nur ein Boolean — kein Provider-/
   // Modellname (Sicherheitsvertrag vip2-gate).
   private taskModelUsable(task: ReasonerTask): boolean {
-    const chainModels = this.providerChain(task).filter((p) => p !== this.fallback);
+    return this.ketteModellNutzbar(this.providerChain(task));
+  }
+
+  // Steht in DIESER Kette ein Modell, das nicht als unerreichbar bekannt ist? Gemeinsamer Kern von
+  // `taskModelUsable` (Aufgabenkette) und der Ausführungsauskunft (Stufenkette, Nacharbeit 11).
+  private ketteModellNutzbar(kette: readonly ReasonerProvider[]): boolean {
+    const chainModels = kette.filter((p) => p !== this.fallback);
     if (chainModels.length === 0) {
       return false; // Aufgabe bewusst deterministisch gestellt bzw. kein Modell verdrahtet
     }
@@ -2441,12 +2447,21 @@ export class Reasoner {
     for (const task of REASONER_TASKS) {
       const gewaehlt = this.effectiveAnbieterFor(task);
       const jeStufe = {} as Record<ReasonerSchutzstufe, ReasonerAusfuehrer>;
+      // BEN, Nacharbeit 11: die Verfügbarkeit kommt aus DERSELBEN Stufenkette wie der Ausführer —
+      // nicht aus `taskModelUsable`, das die Aufgabenkette ohne Stufenregel liest (bei
+      // assist=deterministic und intern=lokal hieß es dort „kein Modell", obwohl lokal arbeitet).
+      const verfuegbarJeStufe = {} as Record<ReasonerSchutzstufe, boolean>;
+      const nutzbarJeStufe = {} as Record<ReasonerSchutzstufe, boolean>;
       for (const stufe of REASONER_SCHUTZSTUFEN) {
-        jeStufe[stufe] = alsAusfuehrer(this.laufKetteFuerStufe(task, stufe)[0]);
+        const kette = this.laufKetteFuerStufe(task, stufe);
+        jeStufe[stufe] = alsAusfuehrer(kette[0]);
+        nutzbarJeStufe[stufe] = this.ketteModellNutzbar(kette);
+        verfuegbarJeStufe[stufe] =
+          jeStufe[stufe] !== "deterministic" && nutzbarJeStufe[stufe] && !abgeschaltet;
       }
       const ausfuehrer = jeStufe.intern;
       const stufenAbweichend = REASONER_SCHUTZSTUFEN.some((s) => jeStufe[s] !== ausfuehrer);
-      const nutzbar = this.taskModelUsable(task);
+      const nutzbar = nutzbarJeStufe.intern;
       const einschraenkungen: ReasonerAusfuehrungsEinschraenkung[] = [];
       if (abgeschaltet) {
         einschraenkungen.push("ki_abgeschaltet");
@@ -2463,10 +2478,11 @@ export class Reasoner {
       ergebnis[task] = {
         ausfuehrer,
         gewaehlt,
-        verfuegbar: ausfuehrer !== "deterministic" && nutzbar && !abgeschaltet,
+        verfuegbar: verfuegbarJeStufe.intern,
         einschraenkungen,
         keineKiFuer: [...keineKiFuer],
         jeStufe,
+        verfuegbarJeStufe,
         stufenAbweichend,
       };
     }

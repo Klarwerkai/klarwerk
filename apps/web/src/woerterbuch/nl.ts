@@ -5646,6 +5646,7 @@ const nl: typeof de = {
   "erfassen.ki.einschraenkung.nicht_erreichbar": "recent niet bereikbaar",
   "erfassen.ki.keineKiFuer": "geen AI voor",
   "erfassen.ki.jeStufe": "per vertrouwelijkheidsniveau:",
+  "erfassen.ki.wirksam": "voert feitelijk uit:",
   "erfassen.ki.pille": "AI",
   "erfassen.mehr.entwuerfe": "Concepten",
   "erfassen.mehr.anhaenge": "Bijlagen",

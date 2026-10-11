@@ -3688,6 +3688,8 @@ export interface ReasonerAusfuehrung {
   // BEN, Nacharbeit 10: der tatsächliche Ausführer je Stufe (dieselbe Auflösung wie der Lauf).
   // Optional nur für Antworten älterer Server; fehlt es, bleibt die Anzeige bei `ausfuehrer`.
   jeStufe?: Record<ReasonerSchutzstufe, ReasonerAusfuehrer>;
+  // BEN, Nacharbeit 11: Verfügbarkeit je Stufe aus derselben Stufenkette.
+  verfuegbarJeStufe?: Record<ReasonerSchutzstufe, boolean>;
   stufenAbweichend?: boolean;
 }
 export interface ReasonerAusfuehrungAntwort {

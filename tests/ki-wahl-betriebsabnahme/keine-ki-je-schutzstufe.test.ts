@@ -377,5 +377,55 @@ describe("Antwort 13 · wer je Aufgabe arbeitet — für jeden Angemeldeten", ()
     expect((await korrigieren("intern")).rufe, "Auskunft „Keine KI“, Lauf rief doch").toBe(0);
     expect((await korrigieren("vertraulich")).rufe, "Auskunft lokal, Lauf rief nicht").toBe(1);
     expect((await korrigieren("streng_vertraulich")).rufe).toBe(1);
+
+    // BEN, Nacharbeit 11: VERFÜGBARKEIT aus derselben Stufenkette. assist ist als Aufgabe
+    // regelbasiert, die Stufenregel lenkt „intern" auf das eingerichtete lokale Modell. Bis hierher
+    // las die Verfügbarkeit die Aufgabenkette (kein Modell) und meldete „nicht verfügbar“ bzw.
+    // „nicht erreichbar“, obwohl der Lauf lokal rechnet.
+    const umgestellt = await zuordnen({
+      global: "local",
+      perTask: { assist: "deterministic" },
+      proSchutzstufe: { intern: "local" },
+    });
+    expect(umgestellt.statusCode, umgestellt.body).toBe(200);
+    const zweite = await app.inject({
+      method: "GET",
+      url: "/api/reasoner/ausfuehrung",
+      headers: admin,
+    });
+    expect(zweite.statusCode, zweite.body).toBe(200);
+    const assist = (
+      zweite.json() as {
+        aufgaben: Record<
+          string,
+          {
+            ausfuehrer: string;
+            gewaehlt: string;
+            verfuegbar: boolean;
+            einschraenkungen: string[];
+            jeStufe: Record<string, string>;
+            verfuegbarJeStufe: Record<string, boolean>;
+          }
+        >;
+      }
+    ).aufgaben.assist;
+    expect(assist?.gewaehlt).toBe("deterministic");
+    expect(assist?.jeStufe).toEqual({
+      intern: "local",
+      vertraulich: "deterministic",
+      streng_vertraulich: "deterministic",
+    });
+    expect(assist?.verfuegbar, "der lokale Stufenausführer steht als nicht verfügbar da").toBe(
+      true,
+    );
+    expect(assist?.verfuegbarJeStufe).toEqual({
+      intern: true,
+      vertraulich: false,
+      streng_vertraulich: false,
+    });
+    expect(assist?.einschraenkungen).not.toContain("nicht_erreichbar");
+    // Und der Lauf: intern ruft das lokale Modell, vertraulich keins — wie die Auskunft sagt.
+    expect((await korrigieren("intern")).rufe).toBe(1);
+    expect((await korrigieren("vertraulich")).rufe).toBe(0);
   });
 });

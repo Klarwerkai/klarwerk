@@ -45,13 +45,39 @@ function werArbeitet(a: ReasonerAusfuehrung, t: (schluessel: string) => string):
     return dienstName(a.ausfuehrer, t);
   }
   const jeStufe = a.jeStufe;
-  return STUFEN.map((s) => `${t(`conf.level.${s}`)}: ${dienstName(jeStufe[s], t)}`).join(", ");
+  const verfuegbar = a.verfuegbarJeStufe;
+  // BEN, Nacharbeit 11: gehen die Stufen auseinander, gehört die Verfügbarkeit an JEDE Stufe —
+  // sonst läse man die Verfügbarkeit von „intern" als die der übrigen.
+  return STUFEN.map((s) => {
+    const name = `${t(`conf.level.${s}`)}: ${dienstName(jeStufe[s], t)}`;
+    if (!verfuegbar || jeStufe[s] === "deterministic") {
+      return name;
+    }
+    const lage = verfuegbar[s] ? "erfassen.ki.verfuegbar" : "erfassen.ki.nichtVerfuegbar";
+    return `${name} (${t(lage)})`;
+  }).join(", ");
+}
+
+/** Steht die Verfügbarkeit schon je Stufe in `werArbeitet`? Dann nicht noch einmal gesamt. */
+function verfuegbarkeitJeStufe(a: ReasonerAusfuehrung): boolean {
+  return (
+    a.jeStufe !== undefined && a.stufenAbweichend === true && a.verfuegbarJeStufe !== undefined
+  );
+}
+
+/**
+ * BEN, Nacharbeit 11: arbeitet in JEDER Stufe derselbe Dienst, aber ein anderer als die Aufgabenwahl
+ * (Stufenregel für alle Stufen), ist `stufenAbweichend` falsch — die Adminsicht nennt dann die
+ * Aufgabenwahl UND den wirksamen Dienst.
+ */
+function wirksamWeichtAb(a: ReasonerAusfuehrung): boolean {
+  return a.jeStufe !== undefined && !a.stufenAbweichend && a.ausfuehrer !== a.gewaehlt;
 }
 
 /** Dienst, Verfügbarkeit und Einschränkungen EINER Aufgabe — für Nicht-Admins. */
 function auskunftFuer(a: ReasonerAusfuehrung, t: (schluessel: string) => string): string {
   const teile = [werArbeitet(a, t)];
-  if (a.ausfuehrer !== "deterministic") {
+  if (a.ausfuehrer !== "deterministic" && !verfuegbarkeitJeStufe(a)) {
     teile.push(t(a.verfuegbar ? "erfassen.ki.verfuegbar" : "erfassen.ki.nichtVerfuegbar"));
   }
   for (const e of a.einschraenkungen) {
@@ -87,8 +113,12 @@ export function ausfuehrerWer(opts: {
       const basis = info.modelName ? `${stufe} · ${anbieterUndModell(info.modelName)}` : stufe;
       // BEN, Nacharbeit 10: die Adminsicht nennt die Aufgabenwahl; weicht eine Schutzstufe davon
       // ab (Stufenregel, Vertraulichkeitsriegel), steht die Verteilung je Stufe ausdrücklich dabei.
-      return a?.jeStufe && a.stufenAbweichend
-        ? `${basis} · ${t("erfassen.ki.jeStufe")} ${werArbeitet(a, t)}`
+      if (a?.jeStufe && a.stufenAbweichend) {
+        return `${basis} · ${t("erfassen.ki.jeStufe")} ${werArbeitet(a, t)}`;
+      }
+      // BEN, Nacharbeit 11: alle Stufen gleich, aber anders als die Aufgabenwahl.
+      return a && wirksamWeichtAb(a)
+        ? `${basis} · ${t("erfassen.ki.wirksam")} ${dienstName(a.ausfuehrer, t)}`
         : basis;
     }
     return a ? auskunftFuer(a, t) : t(AUSFUEHRER_UNBEKANNT_KEY);

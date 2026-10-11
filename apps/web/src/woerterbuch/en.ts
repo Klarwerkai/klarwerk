@@ -5646,6 +5646,7 @@ const en: typeof de = {
   "erfassen.ki.einschraenkung.nicht_erreichbar": "recently unreachable",
   "erfassen.ki.keineKiFuer": "no AI for",
   "erfassen.ki.jeStufe": "per confidentiality level:",
+  "erfassen.ki.wirksam": "actually runs:",
   "erfassen.ki.pille": "AI",
   "erfassen.mehr.entwuerfe": "Drafts",
   "erfassen.mehr.anhaenge": "Attachments",

@@ -7132,6 +7132,7 @@ const de = {
   "erfassen.ki.einschraenkung.nicht_erreichbar": "zuletzt nicht erreichbar",
   "erfassen.ki.keineKiFuer": "keine KI für",
   "erfassen.ki.jeStufe": "je Schutzstufe:",
+  "erfassen.ki.wirksam": "arbeitet tatsächlich:",
   "erfassen.ki.pille": "KI",
   "erfassen.mehr.entwuerfe": "Entwürfe",
   "erfassen.mehr.anhaenge": "Anhänge",
