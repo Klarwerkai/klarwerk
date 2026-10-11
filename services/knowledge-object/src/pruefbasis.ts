@@ -111,15 +111,21 @@ export function brauchtPruefstand(ko: { aiCheck?: AiCheck | undefined }): boolea
 // ein Leser nicht sehen darf. Stand er in der gelesenen Fassung (`aiCheck.ueberholt`), kippte das
 // Bit an einem sichtbaren Objekt, sobald sich irgendwo ein unsichtbares änderte (Prüfnachtrag
 // CLAUDE-20261011-B-07: A=true/B=false/C=true bei sichtbaren Mengen 1/1/2). Peters Existenzregel
-// (Entscheidung 25): Existenzhinweise nur mit ausdrücklichem Recht. Ein solches Recht gibt es im
-// Produkt nicht — der Bestandsteil gehört deshalb in KEINE Lesefassung.
+// (Entscheidung 25): Existenzhinweise nur mit ausdrücklichem Recht. Dieses Recht ist bereichs-
+// gebunden und hat seinen EIGENEN Weg (Space-Feld `existenz`, `GET /api/library/existenzhinweise`,
+// services/app/src/existenzhinweis.ts); der Prüfstand ist kein Existenzhinweis und trägt den
+// Bestandsteil deshalb für NIEMANDEN aus.
 //
 // WAS BLEIBT: Die gespeicherte Basis ist unverändert dreiteilig (quelle, kontext, bestand); jeder
 // Lauf bindet sich weiter an alle drei (`pruefbasisVon`, `gleichePruefbasis` beim Eintragen). Der
 // INTERNE Abgleich (`KoService.listMitBestandsabgleich`, Hintergrundprüfung) liest den Bestandsteil
-// weiter mit und gleicht Nachweise nach Bestandsänderungen neu ab. Nur die Lesefassung, die jede
-// Route, jede Zählung und jede Antwortbewertung erreicht, leitet `ueberholt` allein aus dem Objekt
-// selbst ab: aus Dingen, die jeder Leser dieses Objekts ohnehin sieht.
+// weiter mit und gleicht Nachweise nach Bestandsänderungen STILL ab (`vermerkeBestandsabgleich`:
+// nur der Bestandsteil der Bindung wird erneuert, Status, Zeitpunkte und Abdeckung des
+// ausgegebenen Nachweises bleiben). Nur die Lesefassung, die jede Route, jede Zählung und jede
+// Antwortbewertung erreicht, leitet `ueberholt` allein aus dem Objekt selbst ab: aus Dingen, die
+// jeder Leser dieses Objekts ohnehin sieht. Und an der HTTP-Grenze fällt auch der gespeicherte
+// Bestandsstempel selbst weg (`ohneBestandsstempel`) — ein Fingerabdruck über unsichtbare Einträge
+// ist dieselbe Auskunft in anderer Form.
 
 /**
  * Ist dieser abgeschlossene Nachweis gegenüber dem jetzigen Objekt (und, nur intern, dem jetzigen
@@ -168,4 +174,63 @@ export function mitPruefstand<T extends BasisQuelle & { aiCheck?: AiCheck | unde
     return ko;
   }
   return { ...ko, aiCheck: ueberholt ? { ...gespeichert, ueberholt: true } : gespeichert };
+}
+
+/**
+ * Ist die VOLLSTÄNDIGE Bindung bis auf den Bestandsteil dieselbe? (stiller Bestandsabgleich) Eine
+ * unvollständige Altbindung zählt nicht dazu — ihr Anlass liegt am Objekt selbst.
+ */
+export function nurBestandAbweichend(ko: BasisQuelle & { aiCheck?: AiCheck | undefined }): boolean {
+  const basis = ko.aiCheck?.basis;
+  return (
+    !!basis?.quelle &&
+    !!basis.kontext &&
+    !!basis.bestand &&
+    basis.quelle === quelleVon(ko) &&
+    basis.kontext === kontextVon(ko)
+  );
+}
+
+function istObjekt(wert: unknown): wert is Record<string, unknown> {
+  return wert !== null && typeof wert === "object" && !Array.isArray(wert);
+}
+
+/**
+ * B-07 · die HTTP-Grenze: entfernt den gespeicherten Bestandsstempel (`aiCheck.basis.bestand`) aus
+ * jeder ausgehenden Antwort — in Listen, Einzelobjekten und Hüllen wie `{ ko }`/`{ treffer }` bis zur
+ * Tiefe 4. Rein: das Eingabeobjekt wird nie verändert; nur Pfade, die etwas enthalten, werden kopiert.
+ */
+export function ohneBestandsstempel<T>(wert: T, tiefe = 0): T {
+  if (tiefe > 4) {
+    return wert;
+  }
+  if (Array.isArray(wert)) {
+    let geaendert = false;
+    const aus = wert.map((x) => {
+      const y = ohneBestandsstempel(x, tiefe + 1);
+      geaendert ||= y !== x;
+      return y;
+    });
+    return (geaendert ? aus : wert) as T;
+  }
+  if (!istObjekt(wert)) {
+    return wert;
+  }
+  let kopie: Record<string, unknown> | undefined;
+  for (const [schluessel, inhalt] of Object.entries(wert)) {
+    let neu: unknown = inhalt;
+    if (schluessel === "aiCheck" && istObjekt(inhalt) && istObjekt(inhalt.basis)) {
+      if ("bestand" in inhalt.basis) {
+        const { bestand: _intern, ...oeffentlich } = inhalt.basis;
+        neu = { ...inhalt, basis: oeffentlich };
+      }
+    } else if (inhalt !== null && typeof inhalt === "object") {
+      neu = ohneBestandsstempel(inhalt, tiefe + 1);
+    }
+    if (neu !== inhalt) {
+      kopie ??= { ...wert };
+      kopie[schluessel] = neu;
+    }
+  }
+  return (kopie ?? wert) as T;
 }

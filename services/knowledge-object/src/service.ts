@@ -85,6 +85,7 @@ import {
 import {
   bestandsStempelVon,
   brauchtPruefstand,
+  gleichePruefbasis,
   istWissensobjekt,
   mitPruefstand,
   pruefbasisVon,
@@ -4978,6 +4979,29 @@ export class KoService {
     });
   }
 
+  // produkt:20261011:peter-p14 · B-07 (Nacharbeit 5) — DER STILLE BESTANDSABGLEICH.
+  // Erneuert NUR den Bestandsteil der gespeicherten Bindung eines abgeschlossenen Nachweises; Status,
+  // Zeitpunkte, Abdeckung und Ursache bleiben, wie sie ausgegeben wurden. Geschrieben wird nur, wenn
+  // (a) Quelle und Kontext der gespeicherten Bindung noch der Startbindung entsprechen und (b) der
+  // jetzige Stand genau die Startbindung ist — hat sich während des Laufs etwas bewegt, bleibt der
+  // Nachweis intern überholt und der nächste Abgleich nimmt ihn wieder auf. Ein wartender Vermerk
+  // (öffentlicher Lauf) wird nie überschrieben.
+  async vermerkeBestandsabgleich(id: string, startBasis: AiCheckBasis): Promise<boolean> {
+    const ko = await this.repo.findById(id);
+    const check = ko?.aiCheck;
+    if (!ko || ko.deletedAt || !check || check.status === "pending") {
+      return false;
+    }
+    if (check.basis?.quelle !== startBasis.quelle || check.basis?.kontext !== startBasis.kontext) {
+      return false;
+    }
+    if (!gleichePruefbasis(await this.aktuellePruefbasis(ko), startBasis)) {
+      return false;
+    }
+    const { ueberholt: _abgeleitet, ...gespeichert } = check;
+    return this.repo.setAiCheck(id, { ...gespeichert, basis: startBasis });
+  }
+
   // AUFTRAG-mega28 A2: die Abdeckung des Laufs (gedeckelt/übersprungen/abgebrochen) reist mit dem
   // Abschluss mit — additiv, der bedingte Feld-Patch bleibt unverändert schmal.
   // AUFNAHME 20260922: `basis` ist die Basis, unter der der Lauf GESTARTET ist (der Worker liest sie
@@ -7221,6 +7245,11 @@ export class KoService {
   // Erfassungszeitpunkt), und erst danach zählen sie. Eine Beobachtung, die nicht festgehalten
   // werden konnte, zählt nicht — sonst hinge eine Frist an einem Stand, der nach dem nächsten
   // Löschen eines anderen Objekts nicht mehr rekonstruierbar wäre.
+  //
+  // produkt:20261011:peter-p14 · B-07 (Nacharbeit 5, Bens Befund): „über den ganzen Bestand" hieß,
+  // dass Änderungen an einem für den Leser UNSICHTBAREN Eintrag die Frische seiner sichtbaren
+  // Einträge verschoben. Jetzt zählen nur Beobachtungen, die beim Erfassen für jedes Konto lesbar
+  // waren (`oeffentlich`, frische.ts) — weiterhin unabhängig vom Betrachter, aber ohne Seitenkanal.
   async gelernteHalbwertszeiten(): Promise<GelernteHalbwertszeiten> {
     const jetzt = this.now();
     if (this.halbwertszeitSpeicher && this.halbwertszeitSpeicher.bis > jetzt) {

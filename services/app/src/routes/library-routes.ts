@@ -38,6 +38,13 @@ import {
   runWithTimeout,
 } from "../ai-check-worker";
 import type { SemanticPrefilter } from "../duplicate-detection";
+import {
+  EXISTENZ_BEGRIFF,
+  type ExistenzbereichQuelle,
+  type Existenzhinweis,
+  bereichsTrim,
+  bereichsblick,
+} from "../existenzhinweis";
 import { schalterAn } from "../feature-flags";
 import {
   type Firmenfilter,
@@ -792,6 +799,8 @@ export function libraryRoutes(
   paket?: WissenspaketQuellen,
   // produkt:20261011:peter-p14: optional — ohne Quelle gibt es keinen Partnerbereich (verengt nur).
   partnerbereiche?: PartnerbereichQuelle,
+  // P14 · Existenzrecht: optional — ohne Quelle hat niemand ein Existenzrecht (Antwort leer).
+  existenzbereiche?: ExistenzbereichQuelle,
 ): FastifyPluginAsync {
   /**
    * P14: der Firmenfilter einer Anfrage samt der aktuellen Partnerbereiche — oder `null`, wenn die
@@ -904,6 +913,40 @@ export function libraryRoutes(
           ? treffer.map((ko) => ({ ...ko, firmenbereich: firmenbereichVon(ko, firma.partner) }))
           : treffer;
         reply.code(200).send(antwort);
+      },
+    );
+
+    // P14 · Bens Befund 3 — DIE EXISTENZHINWEISE (Regel und Grenzen: `existenzhinweis.ts`). Die Form
+    // der Anfrage wird VOR jedem Lesen geprüft, gleich für jedes Konto. Ohne Existenzrecht ist die
+    // Antwort `{hinweise: []}` — dieselbe wie ohne passenden Treffer.
+    app.get<{ Querystring: { q?: string } }>(
+      "/api/library/existenzhinweise",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const q = typeof request.query.q === "string" ? request.query.q.trim() : "";
+        if (q.length < EXISTENZ_BEGRIFF.min || q.length > EXISTENZ_BEGRIFF.max) {
+          reply.code(400).send({
+            error: "BEGRIFF_UNGUELTIG",
+            message: "Der Suchbegriff hat 3 bis 200 Zeichen.",
+          });
+          return;
+        }
+        const hinweise: Existenzhinweis[] = [];
+        for (const bereich of (await existenzbereiche?.(user.id)) ?? []) {
+          // Derselbe Mensch, als läse er GENAU diesen Space: Stufe und Quellleser gelten weiter.
+          const blick = bereichsblick(user, bereich.id);
+          const trim = bereichsTrim(sqlSichtbarkeitFuer(blick), bereich.id);
+          const treffer = (await library.search(q, {}, { trim })).some(
+            (ko) => ko.spaceId === bereich.id && darfSehen(blick, ko),
+          );
+          if (treffer) {
+            hinweise.push({ spaceId: bereich.id, spaceName: bereich.name });
+          }
+        }
+        reply.code(200).send({ hinweise });
       },
     );
 

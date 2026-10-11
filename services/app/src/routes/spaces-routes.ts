@@ -518,6 +518,7 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           mitglieder: fassung.mitglieder.length,
           teams: (fassung.teams ?? []).map((b) => b.team),
           partner: fassung.partner ?? null,
+          existenz: fassung.existenz ?? [],
         },
       });
       const angelegt = (await dienste.spaces.fassungen(fassung.id)).at(-1) ?? fassung;
@@ -589,6 +590,13 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         ) {
           fassung.partner = aktuell.partner;
         }
+        // P14 · Existenzrecht: dieselbe Regel — ungenannt bleibt es, `[]`/`null` widerruft es.
+        if (
+          (request.body as { existenz?: unknown }).existenz === undefined &&
+          aktuell.existenz !== undefined
+        ) {
+          fassung.existenz = aktuell.existenz;
+        }
         const gelegt = gesehen === aktuell.version && (await dienste.spaces.lege(fassung));
         if (!gelegt) {
           reply.code(409).send({
@@ -614,6 +622,8 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
             regelnGeaendert: (fassung.regeln ?? "") !== (aktuell.regeln ?? ""),
             partner: fassung.partner ?? null,
             vorherPartner: aktuell.partner ?? null,
+            existenz: fassung.existenz ?? [],
+            vorherExistenz: aktuell.existenz ?? [],
           },
         });
         const gelesen = (await dienste.spaces.fassungen(fassung.id)).at(-1) ?? fassung;

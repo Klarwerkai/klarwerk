@@ -61,6 +61,8 @@ async function buehne(budget: Budget = {}) {
           run: createAiCheckRunner({ ...services, vorVergleich }),
           log: () => undefined,
         }),
+      // P14 · B-07: derselbe Runner für den stillen Bestandsabgleich (wie build-app.ts).
+      baueLauf: (vorVergleich) => createAiCheckRunner({ ...services, vorVergleich }),
       modellAktiv: () => services.reasoner.status().active,
       audit: services.audit,
       now: () => uhr.jetzt,
@@ -216,17 +218,23 @@ describe("R-1111 · laufender Abgleich: später entstandene Nachbarn, Tagesbudge
     const intern = (await b.services.ko.listMitBestandsabgleich()).find((k) => k.id === id);
     expect(intern?.aiCheck?.ueberholt).toBe(true);
     expect((await b.vermerk(id))?.ueberholt).toBeFalsy();
+    const ausgegebenVorher = await b.vermerk(id);
     const aufrufeVorher = b.modell.aufrufe;
 
     const bericht = await b.lauf();
 
     expect(bericht).toMatchObject({ abgeglichen: 1, nachgeholt: 0, fehlgeschlagen: 0 });
     expect(b.modell.aufrufe).toBeGreaterThan(aufrufeVorher);
-    const nachher = await b.vermerk(id);
-    expect(nachher?.status).toBe("done");
-    expect(nachher?.ueberholt).toBeFalsy();
-    // Der später hinzugekommene Nachbar ist jetzt Teil des geprüften Bestands.
-    expect(nachher?.coverage?.available).toBe(2);
+    // P14 · B-07 (Nacharbeit 5): der Abgleich war STILL — der ausgegebene Vermerk (Status,
+    // Zeitpunkte, Abdeckung) ist Zeichen für Zeichen derselbe wie vor dem Lauf.
+    expect(await b.vermerk(id)).toEqual(ausgegebenVorher);
+    // Intern ist der Nachweis an den jetzigen Bestand gebunden: der später hinzugekommene Nachbar
+    // ist Teil des geprüften Bestands, der Abgleich hat nichts mehr zu tun.
+    const internNachher = (await b.services.ko.listMitBestandsabgleich()).find((k) => k.id === id);
+    expect(internNachher?.aiCheck?.ueberholt).toBeUndefined();
+    const ko = (await b.services.ko.get(id)) as KnowledgeObject;
+    expect(ko.aiCheck?.basis).toEqual(await b.services.ko.aktuellePruefbasis(ko));
+    expect(await b.lauf()).toMatchObject({ abgeglichen: 0, offen: 0 });
     // Ohne Prüfvermerk (Import ohne angeforderte Prüfung) startet der Lauf keinen Modellaufruf.
     expect((await b.services.ko.get(spaeter.id))?.aiCheck).toBeUndefined();
     expect((await b.protokoll())[0]?.payload).toMatchObject({ abgeglichen: 1 });

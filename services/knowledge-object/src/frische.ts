@@ -37,6 +37,7 @@
 // FEHLT EINE GRUNDLAGE, WIRD NICHTS GERATEN: ohne lesbares Datum gilt das Objekt als fällig und
 // nicht gesichert; ein nicht erhobener Merker oder Konfliktstand steht als Grund in `ungeprueft`
 // und sperrt die Freigabe in Dokumente (dieselbe Form wie `discloseDisplayStatus`).
+import { isConfidential } from "./confidentiality";
 import type { Erhoben } from "./display-status";
 import { responsibleKindOf, responsibleOf } from "./ownership";
 import type { Confidentiality, KnowledgeObject, KnowledgeType, KoFrischeSignal } from "./types";
@@ -121,6 +122,24 @@ export interface HalbwertszeitEintrag {
   tage: number;
   /** Ab wann die Beobachtung dem Lernen bekannt war (ISO). */
   erfasst: string;
+  /**
+   * produkt:20261011:peter-p14 · B-07 (Nacharbeit 5): war das Objekt beim Erfassen für JEDES Konto
+   * lesbar (intern, ohne führenden Space, ohne Quellleserliste)? Nur solche Beobachtungen zählen —
+   * sonst verschöbe eine Änderung an einem Eintrag, den ein Leser nicht sehen darf, die Frische
+   * seiner sichtbaren Einträge. Fehlt die Angabe (Verlauf von vor dieser Regel), zählt sie nicht.
+   */
+  oeffentlich?: boolean;
+}
+
+/** P14 · B-07: für JEDES Konto lesbar — dieselbe Lesart wie die Sichtregel ohne Rollenvorteil. */
+function fuerJedenLesbar(
+  ko: Partial<Pick<KnowledgeObject, "confidentiality" | "spaceId" | "quellrechte">>,
+): boolean {
+  return (
+    !isConfidential(ko.confidentiality) &&
+    typeof ko.spaceId !== "string" &&
+    !Array.isArray(ko.quellrechte?.leser)
+  );
 }
 
 /**
@@ -260,7 +279,8 @@ export function kategorieSchluessel(kategorie: string | undefined): string {
  * Gelöschte Objekte liefern keine NEUEN Beobachtungen; Objekte ohne Kategorie auch nicht.
  */
 export function beobachtungenAus(
-  kos: readonly Pick<KnowledgeObject, "id" | "category" | "history" | "deletedAt">[],
+  kos: readonly (Pick<KnowledgeObject, "id" | "category" | "history" | "deletedAt"> &
+    Partial<Pick<KnowledgeObject, "confidentiality" | "spaceId" | "quellrechte">>)[],
 ): Omit<HalbwertszeitEintrag, "erfasst">[] {
   const aus: Omit<HalbwertszeitEintrag, "erfasst">[] = [];
   for (const ko of kos) {
@@ -268,6 +288,7 @@ export function beobachtungenAus(
     if (ko.deletedAt || kategorie === "") {
       continue;
     }
+    const oeffentlich = fuerJedenLesbar(ko);
     const zeiten = (ko.history ?? [])
       .map((h) => zeit(h.at))
       .filter((ms) => Number.isFinite(ms))
@@ -278,7 +299,7 @@ export function beobachtungenAus(
       // Fassungen am selben Tag (Tippfehler, Freigabe direkt nach Anlage) sagen nichts darüber,
       // wie lange ein Stand trägt — erst ein Abstand ab einem Tag ist eine Beobachtung.
       if (tage >= HALBWERTSZEIT_MINDESTABSTAND_TAGE) {
-        aus.push({ koId: ko.id, ende: new Date(ende).toISOString(), kategorie, tage });
+        aus.push({ koId: ko.id, ende: new Date(ende).toISOString(), kategorie, tage, oeffentlich });
       }
     }
   }
@@ -296,7 +317,8 @@ export function halbwertszeitenAusVerlauf(
   const verlauf = new Map<string, Beobachtung[]>();
   for (const e of eintraege) {
     const erfasst = Date.parse(e.erfasst);
-    if (!Number.isFinite(erfasst) || e.kategorie === "") {
+    // P14 · B-07: nur Beobachtungen an Einträgen, die beim Erfassen jedes Konto lesen durfte.
+    if (!Number.isFinite(erfasst) || e.kategorie === "" || e.oeffentlich !== true) {
       continue;
     }
     const liste = verlauf.get(e.kategorie) ?? [];

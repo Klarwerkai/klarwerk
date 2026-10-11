@@ -55,11 +55,20 @@
 // im Abgleich die Vorführdaten (K0-3).
 import { randomUUID } from "node:crypto";
 import type { AuditEntry, AuditFilter, AuditInput } from "../../audit";
-import { type KnowledgeObject, inSchutzdatenQuarantaene } from "../../knowledge-object";
+import {
+  type AiCheckBasis,
+  type KnowledgeObject,
+  inSchutzdatenQuarantaene,
+  nurBestandAbweichend,
+} from "../../knowledge-object";
 import { ModelCapacityError } from "../../reasoner";
 import {
+  AI_CHECK_JOB_TIMEOUT_MS,
   type AiCheckFailureReason,
+  type AiCheckRunOutcome,
+  type AiCheckRunner,
   type AiCheckWorker,
+  runWithTimeout,
   shouldReEnqueueAiCheck,
 } from "./ai-check-worker";
 import { DETECTION_CANDIDATE_CAP } from "./detection-cap";
@@ -119,11 +128,20 @@ export interface HintergrundpruefungDeps {
     listMitBestandsabgleich(): Promise<KnowledgeObject[]>;
     get(id: string): Promise<KnowledgeObject | undefined>;
     markAiCheckPending(id: string): Promise<boolean>;
+    /** P14 · B-07: die Bindung, unter der ein stiller Abgleich startet (Quelle, Kontext, Bestand). */
+    aktuellePruefbasis(ko: KnowledgeObject): Promise<AiCheckBasis>;
+    /** P14 · B-07: erneuert NUR den Bestandsteil der gespeicherten Bindung (still). */
+    vermerkeBestandsabgleich(id: string, startBasis: AiCheckBasis): Promise<boolean>;
   };
   /** Der Worker der Einreichungen: Vorrang und Doppelauftrags-Schutz. */
   hauptWorker: Pick<AiCheckWorker, "has" | "idle">;
   /** Baut den eigenen Worker; `vorVergleich` geht an den Runner (AiCheckRunnerDeps.vorVergleich). */
   baueWorker: (vorVergleich: (weg: Vergleichsweg) => void) => PruefWorker;
+  /**
+   * P14 · B-07: derselbe Runner wie im Worker (mit demselben Zählhaken), für den stillen
+   * Bestandsabgleich ohne Worker-Vermerk.
+   */
+  baueLauf: (vorVergleich: (weg: Vergleichsweg) => void) => AiCheckRunner;
   modellAktiv: () => boolean;
   audit: {
     record(input: AuditInput): Promise<unknown>;
@@ -226,12 +244,47 @@ export function createHintergrundpruefung(
   // abgelaufenen Jobs bekommt dann keinen Platz.
   let freigegeben = 0;
   const verbraucht: Record<Vergleichsweg, number> = { konflikt: 0, dublette: 0 };
-  const worker = deps.baueWorker((weg) => {
+  const vorVergleich = (weg: Vergleichsweg): void => {
     if (verbraucht.konflikt + verbraucht.dublette >= freigegeben) {
       throw new ModelCapacityError("Budget der Hintergrundprüfung erschöpft");
     }
     verbraucht[weg] += 1;
-  });
+  };
+  const worker = deps.baueWorker(vorVergleich);
+  // P14 · B-07: derselbe Runner mit demselben Zählhaken, aber OHNE den Worker-Vermerk — für den
+  // stillen Bestandsabgleich (s. `stillerAbgleich`).
+  const stillerLauf = deps.baueLauf(vorVergleich);
+
+  // ==============================================================================================
+  // produkt:20261011:peter-p14 · B-07 (Bens Befund, Nacharbeit 5) — DER STILLE BESTANDSABGLEICH.
+  // ==============================================================================================
+  //
+  // Ist ein Nachweis NUR wegen einer Bestandsänderung überholt (Quelle und Kontext des Objekts
+  // selbst unverändert, `nurBestandAbweichend`), kann die Ursache ein Eintrag sein, den Leser dieses
+  // Objekts nicht sehen dürfen. Würde der Abgleich den ausgegebenen Vermerk anfassen (pending,
+  // finishedAt, Abdeckung), verriete sich die unsichtbare Änderung zeitversetzt am sichtbaren Objekt.
+  // Deshalb läuft die Erkennung hier ohne Worker-Vermerk; danach wird NUR der Bestandsteil der
+  // gespeicherten Bindung erneuert (`vermerkeBestandsabgleich`). Neue Funde stehen wie jeder Fund als
+  // Konflikt/Überschneidung im Bestand — dort entscheidet die Paarsichtbarkeit, wer sie sieht.
+  // Hat sich das Objekt selbst geändert, ist der Anlass sichtbar: dann der bisherige Weg über den
+  // Vermerk (markAiCheckPending + Worker).
+  const stillerAbgleich = async (koId: string): Promise<AiCheckRunOutcome> => {
+    const start = await deps.ko.get(koId);
+    if (!start) {
+      return { ok: false };
+    }
+    const startBasis = await deps.ko.aktuellePruefbasis(start);
+    let ergebnis: AiCheckRunOutcome;
+    try {
+      ergebnis = await runWithTimeout(stillerLauf(koId), AI_CHECK_JOB_TIMEOUT_MS);
+    } catch {
+      ergebnis = { ok: false };
+    }
+    if (ergebnis.ok) {
+      await deps.ko.vermerkeBestandsabgleich(koId, startBasis);
+    }
+    return ergebnis;
+  };
 
   // Abrechnung einer Reservierung mit dem tatsächlichen Verbrauch. false = nicht geschrieben.
   const rechneAb = async (
@@ -334,20 +387,27 @@ export function createHintergrundpruefung(
       }
       // Ab hier gilt die Reservierung, bis eine Abrechnung sie ersetzt.
       heute += maxJeObjekt;
-      if (!(await deps.ko.markAiCheckPending(ko.id))) {
+      // P14 · B-07: nur Bestandsdrift → still (kein Vermerk, s. `stillerAbgleich`).
+      const still = art === "abgleich" && nurBestandAbweichend(ko);
+      let stillesErgebnis: AiCheckRunOutcome | undefined;
+      if (!still && !(await deps.ko.markAiCheckPending(ko.id))) {
         bericht.offen -= 1; // gelöscht oder verschwunden — nichts mehr nachzuholen
         if (await rechneAb(reservierung, 0, 0)) {
           heute -= maxJeObjekt;
         }
         continue;
       }
-      const vermerkt = await deps.ko.get(ko.id);
+      const vermerkt = still ? undefined : await deps.ko.get(ko.id);
       verbraucht.konflikt = 0;
       verbraucht.dublette = 0;
       freigegeben = maxJeObjekt;
       try {
-        worker.enqueue(ko.id, vermerkt?.aiCheck?.koVersion);
-        await worker.idle();
+        if (still) {
+          stillesErgebnis = await stillerAbgleich(ko.id);
+        } else {
+          worker.enqueue(ko.id, vermerkt?.aiCheck?.koVersion);
+          await worker.idle();
+        }
       } finally {
         freigegeben = 0;
       }
@@ -363,7 +423,9 @@ export function createHintergrundpruefung(
         // Der Lauf endet, statt mit einem unsicheren Protokoll weiterzuarbeiten.
         bericht.abbruch = "verbrauch-unbelegt";
       }
-      const nachher = (await deps.ko.get(ko.id))?.aiCheck;
+      const nachher = stillesErgebnis
+        ? { status: stillesErgebnis.ok ? "done" : "failed", ...stillesErgebnis }
+        : (await deps.ko.get(ko.id))?.aiCheck;
       if (nachher?.status === "done") {
         bericht[art === "nachholen" ? "nachgeholt" : "abgeglichen"] += 1;
       } else {

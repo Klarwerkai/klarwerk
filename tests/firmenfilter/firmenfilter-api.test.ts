@@ -31,7 +31,16 @@
 //   K8 · Zwei Firmen und mehrere Rollen mit positiven/negativen Fällen
 import { describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import type { HintergrundlaufBericht } from "../../services/app/src/hintergrundpruefung";
+import { fingerabdruck } from "../../services/ask";
 import type { KnowledgeObject } from "../../services/knowledge-object";
+import {
+  beobachtungenAus,
+  halbwertszeitenAusVerlauf,
+} from "../../services/knowledge-object/src/frische";
+import { type ModelClient, ModelProvider, Reasoner } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
+import { GOOD_CONFLICT, GOOD_DUPLICATE } from "../review26-teilpruefung-ursache/fixture";
 
 type App = ReturnType<typeof buildApp>;
 type Kopf = { authorization: string };
@@ -40,6 +49,8 @@ const KENNWORT = "geheim12345";
 // Das Wort steht in JEDEM Testeintrag — so trifft die Suche jeden, und nur der Filter grenzt ein.
 const WORT = "Messkettenabgleich";
 const ALLE = "firmenbereich=eigen,partner,oeffentlich";
+const MINUTE = 60_000;
+const TAG = 24 * 60 * MINUTE;
 
 async function anmelden(app: App, email: string): Promise<Kopf> {
   const res = await app.inject({
@@ -97,10 +108,37 @@ async function eintrag(app: App, kopf: Kopf, titel: string): Promise<string> {
   return res.json().id as string;
 }
 
+/**
+ * P14 · B-07 (Nacharbeit 5): eine neutrale Modellattrappe — jeder Vergleich antwortet „kein
+ * Konflikt"/„verschieden". Kein echtes Modell; sie macht nur den Hintergrundabgleich ausführbar.
+ * Wie ein lokaler Anbieter beurteilt sie auch Paare mit vertraulichem Nachbarn — sonst bliebe jeder
+ * Vergleich mit E2 übersprungen und kein Abgleich vollständig.
+ */
+async function mitNeutralemModell(services: ReturnType<typeof buildServices>) {
+  const client: ModelClient = {
+    name: "test-provider",
+    rejectsConfidential: false,
+    async complete(system) {
+      return system.includes('"relation"') ? GOOD_CONFLICT : GOOD_DUPLICATE;
+    },
+  };
+  services.reasoner = new Reasoner(new ModelProvider(client));
+  await erteileKiFreigabe(services.reasoner);
+}
+
 /** Firma A mit vollständigem Bestand. Vorbereitung über HTTP; Space/Prüfstand über den Dienst. */
-async function firmaA() {
+async function firmaA(optionen: { modell?: boolean } = {}) {
   const services = buildServices();
-  const app = buildApp(services);
+  if (optionen.modell) {
+    await mitNeutralemModell(services);
+  }
+  // Der Hintergrundlauf DIESER App (build-app.ts) — `server.ts` taktet ihn, hier ruft ihn der Test.
+  let hintergrundlauf: (() => Promise<HintergrundlaufBericht | null>) | undefined;
+  const app = buildApp(services, {
+    hintergrundpruefung: (lauf) => {
+      hintergrundlauf = lauf;
+    },
+  });
   await app.inject({
     method: "POST",
     url: "/api/auth/register",
@@ -184,7 +222,22 @@ async function firmaA() {
   for (const id of Object.values(ko)) {
     await services.ko.setValidationState(id, { trust: 90, status: "validiert" });
   }
-  return { app, services, k, ids, ko, spaces: { alpha, beta, werkstatt }, alphaEingabe };
+  const hintergrund = async () => {
+    if (!hintergrundlauf) {
+      throw new Error("Aufbau: der Hintergrundlauf der App ist nicht verdrahtet.");
+    }
+    return hintergrundlauf();
+  };
+  return {
+    app,
+    services,
+    k,
+    ids,
+    ko,
+    spaces: { alpha, beta, werkstatt },
+    alphaEingabe,
+    hintergrund,
+  };
 }
 
 /** Firma B — eine zweite Anlage mit eigenem Partnerbereich und eigenem Eintrag. */
@@ -551,13 +604,16 @@ describe("K6 · Rechtekontext und Widerruf wirken mit der nächsten Anfrage", ()
   // still (`Date`), weil die Frische-Auskunft an der Uhrzeit hängt — das ist der einzige begründet
   // veränderliche Anteil, und er wird angehalten statt herausgerechnet.
   //
-  // BENANNTE GRENZE: die stehende Uhr hält auch den Zwischenspeicher der gelernten Halbwertszeiten
-  // (R-1636, `KoService.gelernteHalbwertszeiten`, bewusst über den GANZEN Bestand gerechnet) fest.
-  // Ob eine unsichtbare neue Fassung nach dessen Frist die Frische sichtbarer Einträge verschiebt,
-  // misst dieser Fall deshalb NICHT; das ist eine eigene, dort entschiedene Regel.
+  // Nacharbeit 5 (Bens Befunde 1 und 2): der Vergleich schliesst jetzt den TATSÄCHLICH AUSGEFÜHRTEN
+  // Hintergrundabgleich der App ein (derselbe Lauf, den `server.ts` taktet; neutrale Modellattrappe)
+  // und die ERNEUERUNG des Zwischenspeichers der gelernten Halbwertszeiten (Frist 10 Minuten). Damit
+  // die zeitabhängige Frische-Auskunft vergleichbar bleibt, wird nach der Erneuerung die Uhr auf den
+  // Vergleichszeitpunkt zurückgestellt; der erneuerte Zwischenspeicher bleibt dabei wirksam (seine
+  // Frist liegt danach). Ob unsichtbare Fassungen eine sichtbare Frist verschieben, misst — mit einem
+  // neuen sichtbaren Stand NACH dem Lernen — der eigene Fall „Halbwertszeiten" unten.
   // ==============================================================================================
   it("B-07: eine für Lea unsichtbare Änderung ändert keine ihrer vollständigen Antworten — Gegenprobe, Existenz, Widerruf", async () => {
-    const a = await firmaA();
+    const a = await firmaA({ modell: true });
     await a.services.aiCheckWorker?.idle();
     // KALIBRIERUNG 1: jeder Eintrag trägt einen abgeschlossenen Nachweis mit vollständiger Basis.
     for (const id of Object.values(a.ko)) {
@@ -568,10 +624,15 @@ describe("K6 · Rechtekontext und Widerruf wirken mit der nächsten Anfrage", ()
       expect(await a.services.ko.resolveAiCheck(id, { ok: true }, fassung, basis), id).toBe(true);
     }
     const sichtbar = [a.ko.E1, a.ko.W1, a.ko.P1, a.ko.O1];
+    const intern0 = await a.services.ko.listMitBestandsabgleich();
     for (const id of sichtbar) {
+      // Intern ist die Bindung vollständig (samt Bestandsteil) …
+      expect(intern0.find((k) => k.id === id)?.aiCheck?.basis?.bestand, id).toBeTruthy();
+      // … am Draht trägt kein Eintrag den Bestandsteil (er hängt am ganzen Bestand).
       const ko = (await lies(a.app, a.k.lea, `/api/kos/${id}`)).json() as KnowledgeObject;
       expect(ko.aiCheck?.status, id).toBe("done");
-      expect(ko.aiCheck?.basis?.bestand, id).toBeTruthy();
+      expect(ko.aiCheck?.basis?.quelle, id).toBeTruthy();
+      expect(ko.aiCheck?.basis?.bestand, id).toBeUndefined();
       expect(ko.aiCheck?.ueberholt, id).toBeUndefined();
     }
     const unbekannt = "00000000-0000-4000-8000-0000000000b7";
@@ -598,7 +659,8 @@ describe("K6 · Rechtekontext und Widerruf wirken mit der nächsten Anfrage", ()
     };
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
-      vi.setSystemTime(Date.now());
+      const vergleichszeit = Date.now();
+      vi.setSystemTime(vergleichszeit);
       const vorher = await antworten(a.k.lea);
 
       // Für Lea unsichtbar: ein neuer Eintrag im Beta-Bereich, eine neue Fassung und eine
@@ -622,6 +684,41 @@ describe("K6 · Rechtekontext und Widerruf wirken mit der nächsten Anfrage", ()
       const intern = await a.services.ko.listMitBestandsabgleich();
       expect(intern.find((k) => k.id === a.ko.E1)?.aiCheck?.ueberholt).toBe(true);
 
+      expect(await antworten(a.k.lea)).toEqual(vorher);
+
+      // DER HINTERGRUNDABGLEICH LÄUFT TATSÄCHLICH — nach Ablauf des Halbwertszeit-Zwischenspeichers.
+      vi.setSystemTime(vergleichszeit + 11 * MINUTE);
+      await a.services.ko.gelernteHalbwertszeiten(); // erneuert (Frist 10 Minuten abgelaufen)
+      // Je Takt passt nach dem Laufbudget etwa ein Objekt; getaktet wird, bis Leas sichtbare
+      // Einträge intern nicht mehr überholt sind (höchstens 20 Takte).
+      const sichtbarUeberholt = async () =>
+        (await a.services.ko.listMitBestandsabgleich()).filter(
+          (k) => sichtbar.includes(k.id) && k.aiCheck?.ueberholt,
+        ).length;
+      const berichte: HintergrundlaufBericht[] = [];
+      for (let takt = 0; takt < 20 && (await sichtbarUeberholt()) > 0; takt++) {
+        const bericht = await a.hintergrund();
+        expect(bericht, "der Lauf überlappt nicht").not.toBeNull();
+        if (!bericht) {
+          break;
+        }
+        berichte.push(bericht);
+        expect(bericht.abbruch, JSON.stringify(bericht)).not.toBe("kein-modell");
+      }
+      // KALIBRIERUNG 3: der Lauf hat Leas sichtbare Einträge wirklich neu verglichen (still) —
+      // intern ist keiner mehr überholt, der Bericht zählt sie, und das Modell wurde gerufen.
+      expect(await sichtbarUeberholt(), JSON.stringify(berichte)).toBe(0);
+      const abgeglichen = berichte.reduce((s, b) => s + b.abgeglichen, 0);
+      expect(abgeglichen, JSON.stringify(berichte)).toBeGreaterThanOrEqual(sichtbar.length);
+      expect(berichte.reduce((s, b) => s + b.vergleiche, 0)).toBeGreaterThan(0);
+      const nachAbgleich = await a.services.ko.listMitBestandsabgleich();
+      for (const id of sichtbar) {
+        expect(nachAbgleich.find((k) => k.id === id)?.aiCheck?.status, id).toBe("done");
+      }
+
+      // Zurück auf den Vergleichszeitpunkt: Abgleich und erneuerter Lernstand sind in Kraft — und
+      // Leas vollständige Antworten (Metadaten, Prüfvermerk, Frische, Kopf) sind unverändert.
+      vi.setSystemTime(vergleichszeit);
       expect(await antworten(a.k.lea)).toEqual(vorher);
 
       // GEGENPROBE (erlaubt): eine Änderung, die Lea sehen darf, kommt bei ihr an — samt Bit.
@@ -664,6 +761,82 @@ describe("K6 · Rechtekontext und Widerruf wirken mit der nächsten Anfrage", ()
     expect(await liste(a, a.k.lea, ALLE)).not.toContain("P1");
     expect(await ausfuhr(a, a.k.lea, ALLE)).not.toContain("P1");
     expect((await lies(a.app, a.k.lea, `/api/kos/${a.ko.E1}`)).body).toBe(e1Vorher);
+  });
+
+  // ==============================================================================================
+  // B-07 · Nacharbeit 5, Bens Befund 2 — GELERNTE HALBWERTSZEITEN NACH ABLAUF DES ZWISCHENSPEICHERS.
+  //
+  // Synthetischer Verlauf (erfundene Fassungen im Abstand von zwei Tagen, Kategorie „Messtechnik"):
+  // zuerst an P2 (Partnerbereich Beta) und E2 (vertraulich) — für Lea unsichtbar —, danach als
+  // erlaubte Gegenprobe an O1 (öffentlich). Nach jedem Verlauf läuft die 10-Minuten-Frist ab, der
+  // Lernstand wird erneuert, und erst DANACH beginnt Leas sichtbarer W1 einen neuen Stand (Bestätigung
+  // durch den Verantwortlichen) — nur so kann ein neuer Lernstand seine Frist überhaupt erreichen.
+  // ==============================================================================================
+  it("B-07 · Halbwertszeiten: nach Ablauf des Zwischenspeichers lernt Leas Frist nichts aus unsichtbaren Fassungen — Gegenprobe öffentlich", async () => {
+    const a = await firmaA();
+    const frist = async () => {
+      const res = await lies(a.app, a.k.lea, `/api/kos/${a.ko.W1}`);
+      expect(res.statusCode, res.body).toBe(200);
+      const f = (res.json() as { frische: Record<string, unknown> }).frische;
+      return {
+        herkunft: f.halbwertszeitHerkunft,
+        beobachtungen: f.halbwertszeitBeobachtungen,
+        tage: f.halbwertszeitTage,
+        bezugAm: f.bezugAm,
+      };
+    };
+    const verlauf = async (id: string, actor: string, ab: number) => {
+      for (const schritt of [0, 2, 4]) {
+        vi.setSystemTime(ab + schritt * TAG);
+        await a.services.ko.revise(id, { statement: `${WORT} Stand ${schritt}.` }, actor);
+      }
+    };
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const start = Date.now() + TAG;
+      const vorgabe = await frist();
+      expect(vorgabe).toMatchObject({ herkunft: "vorgabe", beobachtungen: 0 });
+
+      // 1 · UNSICHTBARER VERLAUF an P2 und E2.
+      await verlauf(a.ko.P2, a.ids.carla, start);
+      await verlauf(a.ko.E2, a.ids.erik, start);
+      vi.setSystemTime(start + 4 * TAG + 11 * MINUTE); // Frist des Zwischenspeichers abgelaufen
+      expect((await a.services.ko.gelernteHalbwertszeiten()).get("messtechnik")).toBeUndefined();
+      // KALIBRIERUNG: der Verlauf hätte gereicht — nach der früheren Regel (alle Beobachtungen des
+      // Bestands, ohne Rücksicht auf Lesbarkeit) wäre „Messtechnik" mit sechs Beobachtungen gelernt.
+      const roh = [
+        (await a.services.ko.get(a.ko.P2)) as KnowledgeObject,
+        (await a.services.ko.get(a.ko.E2)) as KnowledgeObject,
+      ];
+      const beobachtet = beobachtungenAus(roh);
+      expect(beobachtet).toHaveLength(6);
+      expect(beobachtet.every((b) => b.oeffentlich === false)).toBe(true);
+      const frueher = halbwertszeitenAusVerlauf(
+        beobachtet.map((b) => ({ ...b, oeffentlich: true, erfasst: b.ende })),
+      );
+      expect(frueher.get("messtechnik")).toEqual({ tage: 30, beobachtungen: 6 });
+
+      // Leas W1 beginnt NACH dem Lernen einen neuen Stand — die Frist bleibt bei der Vorgabe.
+      vi.setSystemTime(start + 4 * TAG + 12 * MINUTE);
+      await a.services.ko.bestaetigeFrische(a.ko.W1, a.ids.erik);
+      const nachUnsichtbar = await frist();
+      expect(nachUnsichtbar.bezugAm).toBe(new Date(start + 4 * TAG + 12 * MINUTE).toISOString());
+      expect({ ...nachUnsichtbar, bezugAm: vorgabe.bezugAm }).toEqual(vorgabe);
+
+      // 2 · ERLAUBTE GEGENPROBE: derselbe Verlauf an O1, das jedes Konto lesen darf, wirkt.
+      const gegen = start + 5 * TAG;
+      await verlauf(a.ko.O1, a.ids.carla, gegen);
+      vi.setSystemTime(gegen + 4 * TAG + 11 * MINUTE);
+      expect((await a.services.ko.gelernteHalbwertszeiten()).get("messtechnik")).toEqual({
+        tage: 30,
+        beobachtungen: 3,
+      });
+      vi.setSystemTime(gegen + 4 * TAG + 12 * MINUTE);
+      await a.services.ko.bestaetigeFrische(a.ko.W1, a.ids.erik);
+      expect(await frist()).toMatchObject({ herkunft: "gelernt", beobachtungen: 3, tage: 30 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -717,6 +890,262 @@ describe("K6/K7 · der Rechtekontext jeder Antwort folgt Rolle, Mitgliedschaft u
     const anonym = await a.app.inject({ method: "GET", url: "/api/kos" });
     expect(anonym.statusCode).toBe(401);
     expect(kontext(anonym)).toBeUndefined();
+  });
+});
+
+// ================================================================================================
+// RF08/RF16 · Bens Befund 3 (Nacharbeit 5) — DAS BEREICHSGEBUNDENE EXISTENZRECHT.
+//
+// Vergeben am Space (`existenz`), gelesen über `GET /api/library/existenzhinweise?q=…`. Der Hinweis
+// nennt nur den Bereich. Geprüft: positiv ohne Inhaltsfreigabe, kein Recht, falscher Bereich, die
+// Stufe bleibt wirksam, wer lesen darf bekommt keinen Hinweis, Pflege ohne Feld, Widerruf.
+// ================================================================================================
+describe("K2/K3/K6 · das bereichsgebundene Existenzrecht", () => {
+  const betaEingabe = (a: FirmaA, version: number, extra: Record<string, unknown> = {}) => ({
+    name: "Partner Beta",
+    zweck: "Freigegebener Austausch mit der Beta AG.",
+    verantwortlich: a.ids.carla,
+    zugang: "mitglieder",
+    mitglieder: [],
+    ansichten: [],
+    partner: "Beta AG",
+    version,
+    ...extra,
+  });
+  const pflege = async (a: FirmaA, space: string, payload: Record<string, unknown>) => {
+    const res = await a.app.inject({
+      method: "PUT",
+      url: `/api/spaces/${space}`,
+      headers: a.k.carla,
+      payload,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    return res;
+  };
+  const hinweise = async (a: FirmaA, kopf: Kopf, q: string) => {
+    const res = await lies(a.app, kopf, `/api/library/existenzhinweise?q=${encodeURIComponent(q)}`);
+    return { status: res.statusCode, body: res.body };
+  };
+  const LEER = { status: 200, body: JSON.stringify({ hinweise: [] }) };
+  const OHNE_TREFFER = "Zahnradpumpenlager";
+
+  it("positiv: mit Existenzrecht an Beta erfährt Lea den Bereich — keinen Titel, keine Kennung, keinen Inhalt", async () => {
+    const a = await firmaA();
+    // VORHER: ohne Recht konstant leer — mit und ohne passenden verborgenen Treffer.
+    expect(await hinweise(a, a.k.lea, WORT)).toEqual(LEER);
+    expect(await hinweise(a, a.k.lea, OHNE_TREFFER)).toEqual(LEER);
+
+    await pflege(a, a.spaces.beta, betaEingabe(a, 1, { existenz: [a.ids.lea] }));
+    const mit = await hinweise(a, a.k.lea, WORT);
+    expect(mit.status).toBe(200);
+    expect(JSON.parse(mit.body)).toEqual({
+      hinweise: [{ spaceId: a.spaces.beta, spaceName: "Partner Beta" }],
+    });
+    // Kein Inhaltsdetail: weder Kennung noch Titelwort des verborgenen Eintrags.
+    expect(mit.body).not.toContain(a.ko.P2);
+    expect(mit.body).not.toContain("PartnerBeta");
+    // Ohne passenden Treffer: dieselbe leere Antwort wie ohne Recht.
+    expect(await hinweise(a, a.k.lea, OHNE_TREFFER)).toEqual(LEER);
+
+    // KEINE INHALTSFREIGABE: P2 bleibt auf jedem Leseweg verborgen.
+    const nichtDa = await lies(a.app, a.k.lea, "/api/kos/00000000-0000-4000-8000-0000000000e1");
+    const p2 = await lies(a.app, a.k.lea, `/api/kos/${a.ko.P2}`);
+    expect([p2.statusCode, p2.body]).toEqual([404, nichtDa.body]);
+    expect(await liste(a, a.k.lea, ALLE)).not.toContain("P2");
+    expect(await suche(a, a.k.lea, ALLE)).not.toContain("P2");
+    expect(await ausfuhr(a, a.k.lea, ALLE)).not.toContain("P2");
+    const antwort = await frage(a, a.k.lea, {});
+    expect(antwort.statusCode, antwort.body).toBe(200);
+    expect(genannt(a, antwort.body)).not.toContain("P2");
+    // Der Space selbst bleibt für Lea verborgen (kein Durchgriff auf Mitglieder oder Zweck).
+    expect((await lies(a.app, a.k.lea, `/api/spaces/${a.spaces.beta}`)).statusCode).toBe(404);
+  });
+
+  it("negativ: kein Recht, falscher Bereich — Vera erfährt nur von Beta, nicht von Werkstatt oder Alpha", async () => {
+    const a = await firmaA();
+    const vera = (await kontoIds(a.app, a.k.carla)).get("Vera Viewer") ?? "";
+    // Ohne Recht: leer, obwohl W1 (Werkstatt), P1 (Alpha) und P2 (Beta) passen.
+    expect(await hinweise(a, a.k.vera, WORT)).toEqual(LEER);
+    // Recht NUR an Beta.
+    await pflege(a, a.spaces.beta, betaEingabe(a, 1, { existenz: [vera] }));
+    expect(JSON.parse((await hinweise(a, a.k.vera, WORT)).body)).toEqual({
+      hinweise: [{ spaceId: a.spaces.beta, spaceName: "Partner Beta" }],
+    });
+    // Das Recht anderer bleibt leer: Ada (Admin, kein Mitglied) und Lea haben es nicht.
+    expect(await hinweise(a, a.k.ada, WORT)).toEqual(LEER);
+    expect(await hinweise(a, a.k.lea, WORT)).toEqual(LEER);
+    // Eine ungültige Anfrage wird für jedes Konto gleich abgewiesen — vor jedem Lesen.
+    const kurzVera = await hinweise(a, a.k.vera, "ab");
+    const kurzLea = await hinweise(a, a.k.lea, "ab");
+    expect(kurzVera.status).toBe(400);
+    expect(kurzLea).toEqual(kurzVera);
+    // Ohne Anmeldung entscheidet die Anmeldung.
+    const anonym = await a.app.inject({
+      method: "GET",
+      url: `/api/library/existenzhinweise?q=${WORT}`,
+    });
+    expect(anonym.statusCode).toBe(401);
+  });
+
+  it("die Stufe bleibt wirksam, und wer lesen darf, bekommt keinen Hinweis", async () => {
+    const a = await firmaA();
+    await pflege(a, a.spaces.beta, betaEingabe(a, 1, { existenz: [a.ids.lea, a.ids.erik] }));
+    expect(JSON.parse((await hinweise(a, a.k.lea, WORT)).body).hinweise).toHaveLength(1);
+    // P2 wird vertraulich: auch ein Mitglied mit Lea's Rolle sähe es nicht — kein Hinweis mehr.
+    const hoch = await a.app.inject({
+      method: "PUT",
+      url: `/api/kos/${a.ko.P2}`,
+      headers: a.k.carla,
+      payload: { action: "confidentiality", level: "vertraulich" },
+    });
+    expect(hoch.statusCode, hoch.body).toBe(200);
+    expect(await hinweise(a, a.k.lea, WORT)).toEqual(LEER);
+    // Erik (Autor von P2) dürfte es als Mitglied sehen — er bekommt den Hinweis weiterhin.
+    expect(JSON.parse((await hinweise(a, a.k.erik, WORT)).body).hinweise).toEqual([
+      { spaceId: a.spaces.beta, spaceName: "Partner Beta" },
+    ]);
+    // Ein Existenzrecht an Alpha, das Erik ohnehin liest, ergibt keinen zweiten Weg.
+    await pflege(a, a.spaces.alpha, {
+      ...a.alphaEingabe,
+      version: 1,
+      existenz: [a.ids.erik],
+    });
+    expect(JSON.parse((await hinweise(a, a.k.erik, WORT)).body).hinweise).toEqual([
+      { spaceId: a.spaces.beta, spaceName: "Partner Beta" },
+    ]);
+  });
+
+  it("Widerruf: eine Pflege ohne Feld lässt das Recht stehen, eine leere Liste nimmt es sofort", async () => {
+    const a = await firmaA();
+    await pflege(a, a.spaces.beta, betaEingabe(a, 1, { existenz: [a.ids.lea] }));
+    expect(JSON.parse((await hinweise(a, a.k.lea, WORT)).body).hinweise).toHaveLength(1);
+    // Pflege des Zwecks, ohne `existenz` zu nennen: das Recht bleibt.
+    const zweck = await pflege(a, a.spaces.beta, {
+      ...betaEingabe(a, 2),
+      zweck: "Austausch mit der Beta AG (neu gefasst).",
+    });
+    expect(zweck.json().existenz).toEqual([a.ids.lea]);
+    expect(JSON.parse((await hinweise(a, a.k.lea, WORT)).body).hinweise).toHaveLength(1);
+    // WIDERRUF: mit der nächsten Anfrage wieder die allgemeine leere Antwort.
+    const entzug = await pflege(a, a.spaces.beta, betaEingabe(a, 3, { existenz: [] }));
+    expect(entzug.json().existenz).toBeUndefined();
+    expect(await hinweise(a, a.k.lea, WORT)).toEqual(LEER);
+    // Ein Konto, das es nicht gibt, kann kein Existenzrecht erhalten.
+    const fremd = await a.app.inject({
+      method: "PUT",
+      url: `/api/spaces/${a.spaces.beta}`,
+      headers: a.k.carla,
+      payload: betaEingabe(a, 4, { existenz: ["00000000-0000-4000-8000-00000000dead"] }),
+    });
+    expect(fremd.statusCode).toBe(400);
+  });
+});
+
+// ================================================================================================
+// B-07 Prüfnachtrag · Bens Befund 4 (Nacharbeit 5) — ERFOLGREICHE FUNDSTELLENAUFLÖSUNG.
+//
+// Der alte 400er war kein Funktionsnachweis. Hier legt der Test GÜLTIGE Verweise vor — Objekt,
+// Fassung, Feld, Bereich und Fingerabdruck aus der synthetischen Quellfassung berechnet — und misst
+// die Auflösung über `POST /api/ask/fundstellen` mit den aktuellen Rechten.
+// ================================================================================================
+describe("K3/K4/K6 · Fundstellen lösen mit aktuellen Rechten auf — positiv und negativ", () => {
+  const verweis = async (a: FirmaA, koId: string) => {
+    const ko = (await a.services.ko.get(koId)) as KnowledgeObject;
+    const start = ko.statement.indexOf(WORT);
+    expect(start, koId).toBeGreaterThanOrEqual(0);
+    const ende = start + WORT.length;
+    return {
+      art: "intern",
+      koId,
+      koVersion: ko.version,
+      feld: "statement",
+      start,
+      ende,
+      fingerabdruck: fingerabdruck(ko.statement.slice(start, ende)),
+    };
+  };
+  const loese = async (app: App, kopf: Kopf, verweise: unknown[]) => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask/fundstellen",
+      headers: kopf,
+      payload: { fundstellen: verweise },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    return res.json().fundstellen as Record<string, unknown>[];
+  };
+  const ohneKennung = (r: Record<string, unknown> | undefined) => ({ ...r, koId: "—" });
+
+  it("sichtbar: eigener und Partnereintrag lösen auf — Auszug, Fassung, Autor, Link", async () => {
+    const a = await firmaA();
+    const [e1, p1] = await loese(a.app, a.k.lea, [
+      await verweis(a, a.ko.E1),
+      await verweis(a, a.ko.P1),
+    ]);
+    for (const [r, id] of [
+      [e1, a.ko.E1],
+      [p1, a.ko.P1],
+    ] as const) {
+      expect(r).toMatchObject({
+        zustand: "aktuell",
+        koId: id,
+        auszug: WORT,
+        link: `/wissen/${id}`,
+      });
+      expect(r?.koVersion).toBe(((await a.services.ko.get(id)) as KnowledgeObject).version);
+    }
+    // Eine neue Fassung: der damals verwendete Stand bleibt unterscheidbar („geaendert").
+    const alt = await verweis(a, a.ko.E1);
+    await a.services.ko.revise(a.ko.E1, { statement: "Ganz neu formuliert." }, a.ids.erik);
+    const [geaendert] = await loese(a.app, a.k.lea, [alt]);
+    expect(geaendert).toMatchObject({
+      zustand: "geaendert",
+      gebunden: { version: alt.koVersion, auszug: WORT },
+      aktuell: { passageUnveraendert: false },
+    });
+  });
+
+  it("negativ: verfälschter Fingerabdruck, unsichtbarer Bereich, unbekannte Kennung, Widerruf, zweite Firma", async () => {
+    const a = await firmaA();
+    const e1 = await verweis(a, a.ko.E1);
+    const [verfaelscht] = await loese(a.app, a.k.lea, [
+      { ...e1, fingerabdruck: fingerabdruck("etwas anderes") },
+    ]);
+    expect(verfaelscht).toMatchObject({ zustand: "beschaedigt", koId: a.ko.E1 });
+    expect(verfaelscht).not.toHaveProperty("auszug");
+
+    // P2 (Beta) mit KORREKTEM Fingerabdruck: für Lea wie eine Kennung, die es nicht gibt.
+    const p2 = await verweis(a, a.ko.P2);
+    const unbekannt = { ...p2, koId: "00000000-0000-4000-8000-0000000000f5" };
+    const [fremd, nichtDa] = await loese(a.app, a.k.lea, [p2, unbekannt]);
+    expect(fremd).toMatchObject({ zustand: "nicht_zugaenglich", koId: a.ko.P2 });
+    expect(ohneKennung(fremd)).toEqual(ohneKennung(nichtDa));
+    expect(JSON.stringify(fremd)).not.toContain("PartnerBeta");
+    // Gegenprobe: Carla (zuständig für Beta) löst denselben Verweis auf.
+    const [carla] = await loese(a.app, a.k.carla, [p2]);
+    expect(carla).toMatchObject({ zustand: "aktuell", auszug: WORT });
+
+    // WIDERRUF: nach dem Entzug der Alpha-Mitgliedschaft ist P1 für Lea nicht mehr zugänglich.
+    const p1 = await verweis(a, a.ko.P1);
+    expect((await loese(a.app, a.k.lea, [p1]))[0]).toMatchObject({ zustand: "aktuell" });
+    const entzug = await a.app.inject({
+      method: "PUT",
+      url: `/api/spaces/${a.spaces.alpha}`,
+      headers: a.k.carla,
+      payload: {
+        ...a.alphaEingabe,
+        version: 1,
+        mitglieder: [{ nutzer: a.ids.erik, recht: "schreiben" }],
+      },
+    });
+    expect(entzug.statusCode, entzug.body).toBe(200);
+    const [nachEntzug] = await loese(a.app, a.k.lea, [p1]);
+    expect(ohneKennung(nachEntzug)).toEqual(ohneKennung(nichtDa));
+
+    // ZWEITE FIRMA: Firma B kennt Firma A's Kennung nicht — dieselbe Antwort wie „gibt es nicht".
+    const b = await firmaB();
+    const [fremdeFirma] = await loese(b.app, b.bodo, [e1]);
+    expect(ohneKennung(fremdeFirma)).toEqual(ohneKennung(nichtDa));
   });
 });
 

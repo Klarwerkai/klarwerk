@@ -87,6 +87,15 @@ export interface SpaceEingabe {
    * Fehlt das Feld, gehört der Space zur eigenen Firma.
    */
   partner?: string;
+  /**
+   * produkt:20261011:peter-p14 (Bens Befund 3, Nacharbeit 5) — das ausdrücklich vergebene,
+   * BEREICHSGEBUNDENE EXISTENZRECHT (Peters Antwort 25: „Existenzhinweise nur mit ausdrücklichem
+   * Recht; sonst allgemeine Meldung unabhängig von geheimen Treffern"). Konto-Kennungen, die
+   * erfahren dürfen, DASS es in diesem Space zu ihrer Suche passendes Wissen gibt — ohne Titel,
+   * Inhalt, Zahl oder Kennung (`existenzhinweis.ts`). Es ist KEIN Leserecht und öffnet nichts;
+   * wer die Inhalte lesen darf, entscheiden weiter Zugang und Mitglieder. Fehlt das Feld: niemand.
+   */
+  existenz?: string[];
 }
 
 /**
@@ -165,6 +174,7 @@ export const SPACE_GRENZEN = {
   regeln: 2_000,
   begruendung: 1_000,
   partner: 80,
+  existenz: 200,
 } as const;
 
 /** Der Vorgang einer Fassung — auch für Fassungen, die das Feld noch nicht tragen. */
@@ -351,6 +361,21 @@ export function pruefeSpaceEingabe(
   if (partner.length > SPACE_GRENZEN.partner) {
     throw new SpaceFehler("SPACE_UNGUELTIG", "Der Name der Partnerfirma ist zu lang.");
   }
+  // P14 · Existenzrecht: wie Mitglieder nur echte Konten; doppelte Nennung wird zusammengefasst.
+  const rohExistenz = r.existenz ?? [];
+  if (!Array.isArray(rohExistenz) || rohExistenz.length > SPACE_GRENZEN.existenz) {
+    throw new SpaceFehler("SPACE_UNGUELTIG", "Das Existenzrecht ist keine gültige Kontoliste.");
+  }
+  const existenz: string[] = [];
+  for (const eintrag of rohExistenz) {
+    const nutzer = text(eintrag);
+    if (!nutzer || !konten.has(nutzer)) {
+      throw new SpaceFehler("SPACE_UNGUELTIG", "Das Existenzrecht nennt kein bestehendes Konto.");
+    }
+    if (!existenz.includes(nutzer)) {
+      existenz.push(nutzer);
+    }
+  }
   return {
     name,
     zweck,
@@ -362,12 +387,32 @@ export function pruefeSpaceEingabe(
     ...(gruppe ? { gruppe } : {}),
     ...(regeln ? { regeln } : {}),
     ...(partner ? { partner } : {}),
+    ...(existenz.length > 0 ? { existenz } : {}),
   };
 }
 
 /** produkt:20261011:peter-p14 — die Kennungen der als Partnerbereich markierten Spaces. */
 export function partnerbereiche(spaces: readonly SpaceFassung[]): Set<string> {
   return new Set(spaces.filter((s) => typeof s.partner === "string").map((s) => s.id));
+}
+
+/**
+ * P14 · Existenzrecht — die Spaces, für die dieser Mensch AUSDRÜCKLICH das Existenzrecht hat, deren
+ * Inhalte er aber NICHT lesen darf. Wer lesen darf, findet die Treffer in der Suche selbst; ein
+ * Hinweis wäre dort nur eine zweite Ausgabe derselben Sache.
+ */
+export function existenzbereiche(
+  spaces: readonly SpaceFassung[],
+  nutzerId: string,
+): Pick<SpaceFassung, "id" | "name">[] {
+  return spaces
+    .filter(
+      (s) =>
+        nutzerId.length > 0 &&
+        (s.existenz ?? []).includes(nutzerId) &&
+        !darfSpaceInhalteLesen(s, nutzerId),
+    )
+    .map((s) => ({ id: s.id, name: s.name }));
 }
 
 /** Eine Begründung für Archivieren/Wiederaufnehmen — bereinigt, oder `SpaceFehler`. */

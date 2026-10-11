@@ -139,6 +139,7 @@ import {
   type UploadLimitsRepo,
   type WithTx,
   anweisungFehler,
+  ohneBestandsstempel,
   responsibleOf,
 } from "../../knowledge-object";
 import {
@@ -494,6 +495,7 @@ import {
   InMemorySpacesRepo,
   PgSpacesRepo,
   type SpacesRepo,
+  existenzbereiche,
   lesbareSpaces,
   partnerbereiche,
 } from "./spaces";
@@ -3298,6 +3300,14 @@ export function buildApp(
     spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
   });
 
+  // produkt:20261011:peter-p14 · B-07 (Nacharbeit 5): der gespeicherte Bestandsstempel ist ein
+  // Fingerabdruck über ALLE aktiven Einträge — auch über unsichtbare. Er verlässt den Server in KEINER
+  // JSON-Antwort (Regel und Grenzen: knowledge-object/src/pruefbasis.ts, `ohneBestandsstempel`).
+  // Als Hook der Wurzel, VOR den Routenregistrierungen: er gilt damit für jede Route dieser App.
+  app.addHook("preSerialization", async (_request, _reply, payload) =>
+    ohneBestandsstempel(payload),
+  );
+
   // D5 (KI aus, Lauf 5 Runde 3 — Bens B2): die Abschalt-Epoche einer Klara-Frage wird beim EINGANG
   // festgehalten, als ERSTER onRequest-Hook dieser App — vor dem asynchronen Anmelde-Hook der Add-on-API
   // darunter, der bei `KLARWERK_ADDON_API=1` auch Sitzungsanfragen an `/api/ask` authentifiziert. Wer
@@ -4164,6 +4174,17 @@ export function buildApp(
             vorVergleich,
           }),
         }),
+      // produkt:20261011:peter-p14 · B-07: derselbe Runner für den stillen Bestandsabgleich.
+      baueLauf: (vorVergleich) =>
+        createAiCheckRunner({
+          ko: services.ko,
+          conflicts: services.conflicts,
+          overlaps: services.overlaps,
+          overlapSettings: services.overlapSettings,
+          reasoner: services.reasoner,
+          semanticPrefilter,
+          vorVergleich,
+        }),
       modellAktiv: () => services.reasoner.status().active,
       audit: services.audit,
     }),
@@ -4862,6 +4883,8 @@ export function buildApp(
       services.nulltreffer,
       wissenspaketQuellen,
       partnerbereicheJetzt,
+      // P14 · Existenzrecht: je Anfrage frisch aus derselben Ablage — ein Widerruf wirkt sofort.
+      async (nutzerId) => existenzbereiche(await services.spaces.aktuelle(), nutzerId),
     ),
   );
   app.register(categoryRoutes(services.ko, guards));
