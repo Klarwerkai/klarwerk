@@ -737,10 +737,13 @@
       // QUELLENPFLEGE (AC08/AC09, Nacharbeit 5 + 7): die GEBUNDENE Quelle dieser Übernahme wird für
       // jeden Abgleich NEU gelesen — derselbe Tab, dieselbe Adresse, derselbe Abschnitt. Gepflegt
       // wird ausschliesslich mit dieser frischen Lesung, nie mit der gespeicherten Tabelle.
-      //   · anderer Tabinhalt (Navigation, geschlossen, nicht lesbar) → nichts gesendet;
+      //   · Tab zeigt eine andere Adresse (Navigation) → Kontextwechsel, nichts gesendet;
       //   · Abschnitt gefunden → Abgleich „vorhanden" mit der aktuellen Fassung;
-      //   · Abschnitt fehlt → nichts gesendet, die Leiste fragt: gelöscht, verschoben oder Zugriff
-      //     entzogen? Nur „gelöscht" kennzeichnet die Übernahmen als nicht mehr erreichbar; „Zugriff
+      //   · Abschnitt fehlt ODER die Quelle ist gar nicht lesbar (Nacharbeit 8: Tab geschlossen,
+      //     Seite verschwunden, kein Zugriff) → nichts gesendet, die Leiste fragt: gelöscht,
+      //     verschoben oder Zugriff entzogen? Nur „gelöscht" kennzeichnet die Übernahmen als nicht
+      //     mehr erreichbar — dafür genügt die GESPEICHERTE Identität der Quelle (Adresse +
+      //     Abschnitt), eine erfolgreiche Inhaltslesung ist dann gerade nicht möglich. „Zugriff
       //     entzogen" geht an den Rechteweg (nur die Fachprüfung); „verschoben" ändert nichts.
       // ==========================================================================================
       if (
@@ -749,16 +752,20 @@
         message.type === "technik_quelle_entzogen"
       ) {
         const gelesen = await neuLesen(w.selection.tabId, w.selection.url, t.tabelle.abschnitt);
-        if (gelesen === "kontext") return view(state, "source_changed");
+        if (gelesen === "navigiert") return view(state, "source_changed");
         const am = new Date().toISOString();
         const ort = aktuelleQuelle(w, t, message.art);
-        if (gelesen !== "fehlt") {
+        if (gelesen !== "fehlt" && gelesen !== "unlesbar") {
           // Der Abschnitt ist (wieder) da — gepflegt wird mit genau dieser Lesung.
           return abgleichen(state, t, { ...ort, tabelle: gelesen, erfasstAm: am }, "vorhanden");
         }
+        const unlesbar = gelesen === "unlesbar";
         if (message.type === "technik_abgleich" || !t.klaerung) {
-          await merke({ technik: { ...t, abgleich: null, klaerung: { am } } });
-          return view(/** @type {Zustand} */ (await read()), "technik_abschnitt_fehlt");
+          await merke({ technik: { ...t, abgleich: null, klaerung: { am, unlesbar } } });
+          return view(
+            /** @type {Zustand} */ (await read()),
+            unlesbar ? "technik_quelle_unlesbar" : "technik_abschnitt_fehlt",
+          );
         }
         if (message.type === "technik_quelle_geloescht")
           return abgleichen(state, t, { ...ort, erfasstAm: am }, "geloescht");
@@ -894,9 +901,14 @@
   }
   /**
    * Die gebundene Quelle neu lesen: derselbe Tab, dieselbe Adresse, derselbe Abschnitt.
-   * `"kontext"` heisst: der Tab zeigt etwas anderes oder ist nicht lesbar — dann wird nichts gesendet.
+   *
+   * Nacharbeit 8 (Ben): ZWEI verschiedene Lagen, nicht eine.
+   *   · `"navigiert"` — der Tab ist lesbar, zeigt aber eine ANDERE Adresse: ein Kontextwechsel.
+   *     Darüber lässt sich zu dieser Quelle nichts sagen; es wird nichts gesendet.
+   *   · `"unlesbar"` — der Tab liefert gar nichts (geschlossen, Seite verschwunden, Zugriff weg):
+   *     Die Quelle selbst ist nicht erreichbar. Das wird geklärt, nicht verschwiegen.
    * @param {number} tabId @param {string} url @param {string} abschnitt
-   * @returns {Promise<import("./types").Tabelle | "kontext" | "fehlt">}
+   * @returns {Promise<import("./types").Tabelle | "navigiert" | "unlesbar" | "fehlt">}
    */
   async function neuLesen(tabId, url, abschnitt) {
     try {
@@ -905,10 +917,11 @@
         files: ["selection.js"],
       });
       const s = results[0]?.result;
-      if (!s || s.url !== url) return "kontext";
+      if (!s || typeof s.url !== "string") return "unlesbar";
+      if (s.url !== url) return "navigiert";
       return wiedergefunden(s, abschnitt) ?? "fehlt";
     } catch {
-      return "kontext";
+      return "unlesbar";
     }
   }
   /**
@@ -1087,7 +1100,7 @@
       ...(tk.ergebnis ? { ergebnis: tk.ergebnis } : {}),
       ...(tk.abgleich ? { abgleich: tk.abgleich } : {}),
       // Der Abschnitt fehlte bei der letzten frischen Lesung — die Leiste fragt nach dem Grund.
-      ...(tk.klaerung ? { klaerung: true } : {}),
+      ...(tk.klaerung ? { klaerung: true, klaerungUnlesbar: tk.klaerung.unlesbar === true } : {}),
       ...(tk.entwurfId
         ? { link: `${HOST}/capture/frontdoor?draft=${encodeURIComponent(tk.entwurfId)}` }
         : {}),

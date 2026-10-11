@@ -69,6 +69,8 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
   const panelOpens: number[] = [];
   /** BPA-02 (Nacharbeit 5): ausdrücklich gestellte weitere Tabs — sonst keiner. */
   const weitereTabs = new Map<number, Selected>();
+  /** BPA-02 (Nacharbeit 8): ausdrücklich unlesbar gestellte Tabs — sonst keiner. */
+  const unlesbareTabs = new Set<number>();
   const behaviors: unknown[] = [];
   const spuren: string[] = [];
   const menus: unknown[] = [];
@@ -140,6 +142,11 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
         // verlinktes Datenblatt. Für jeden anderen Tab gilt der strikte Vergleich darunter
         // unverändert: ohne gestellten Tab ist Tab 7 der einzige, den der Worker lesen darf.
         const ziel = (options as { target?: { tabId?: unknown } }).target?.tabId;
+        // BPA-02 (Nacharbeit 8): ein AUSDRÜCKLICH als unlesbar gestellter Tab verhält sich wie
+        // Chrome bei geschlossenem Tab oder entzogenem Zugriff — der Aufruf wirft.
+        if (typeof ziel === "number" && unlesbareTabs.has(ziel)) {
+          throw new Error(`No tab with id: ${ziel}.`);
+        }
         const weiterer = typeof ziel === "number" ? weitereTabs.get(ziel) : undefined;
         if (weiterer) {
           expect(options).toEqual({ target: { tabId: ziel }, files: ["selection.js"] });
@@ -212,6 +219,11 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
     /** BPA-02 (Nacharbeit 5): einen weiteren Tab mit seiner Seite stellen (z. B. ein Datenblatt). */
     setTab: (tabId: number, seite: Selected) => {
       weitereTabs.set(tabId, seite);
+    },
+    /** BPA-02 (Nacharbeit 8): einen Tab unlesbar stellen (geschlossen, Seite weg) oder zurück. */
+    setUnlesbar: (tabId: number, unlesbar: boolean) => {
+      if (unlesbar) unlesbareTabs.add(tabId);
+      else unlesbareTabs.delete(tabId);
     },
     /** Der Zuhörer der Leiste an DIESEM Speicher — so meldet der Worker ihr seine Schreibvorgänge. */
     subscribe: (fn: (changes: Aenderungen, area: string) => void) => {

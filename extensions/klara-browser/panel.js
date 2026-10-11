@@ -142,6 +142,7 @@
       "technik_changed",
       // Nacharbeit 7: Abschnitt fehlt (Nachfrage) und Rechteentzug nur für die Fachprüfung.
       "technik_abschnitt_fehlt",
+      "technik_quelle_unlesbar",
       "technik_rechte_nur_pruefung",
     ],
     "": [
@@ -476,6 +477,8 @@
     zeilenSetzen($("technik-abgleich"), tk.abgleich ?? []);
     $("technik-abgleich-box").hidden = !tk.abgleich;
     $("technik-klaerung-box").hidden = tk.klaerung !== true;
+    $("technik-klaerung-frage").hidden = tk.klaerungUnlesbar === true;
+    $("technik-unlesbar-frage").hidden = tk.klaerungUnlesbar !== true;
     const href = tk.link ? oeffnenLink(tk.link, language) : null;
     $("technik-open").removeAttribute("href");
     if (href) $("technik-open").setAttribute("href", href);

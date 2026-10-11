@@ -440,6 +440,84 @@ describe("BPA-02 · Browseradapter", () => {
     }
   });
 
+  it("A8 · vollständig unlesbare Quelle: Klärung statt Kontextwechsel, bestätigte Löschung kennzeichnet ohne Inhaltslesung", async () => {
+    const { app, h, kopf, pfade, seite } = await bahn();
+    try {
+      await h.capture();
+      await h.send({ type: "login", email: EMAIL, password: KENNWORT });
+      await h.send({ type: "technik_vorschau", ziel: { objekt: "V-17" } });
+      await h.send({
+        type: "technik_uebernahme",
+        ziel: { objekt: "V-17" },
+        schutzklasse: "intern",
+      });
+      const entwurf = (
+        (await app.inject({ method: "GET", url: "/api/drafts", headers: kopf })).json() as {
+          id: string;
+        }[]
+      )[0];
+      const ko = (
+        await app.inject({
+          method: "POST",
+          url: `/api/drafts/${entwurf?.id}/promote`,
+          headers: kopf,
+          payload: { draftPayload: { category: "Wartung" } },
+        })
+      ).json() as { id: string };
+      const abgleiche = () => pfade.filter((p) => p === "/api/technische-daten/quellenabgleich");
+
+      // 1. Navigation bleibt ein Kontextwechsel: lesbar, aber andere Adresse — keine Klärung.
+      h.setSelected({ ...seite, url: "https://ventile.example.test/andere-seite" });
+      const navigiert = await h.send({ type: "technik_abgleich" });
+      expect(navigiert.status).toBe("source_changed");
+      expect(navigiert.technik?.klaerung).toBeUndefined();
+
+      // 2. Die Quelle ist gar nicht mehr lesbar (Tab geschlossen, Seite weg): Klärung, nichts gesendet.
+      h.setSelected(seite);
+      h.setUnlesbar(7, true);
+      const unlesbar = await h.send({ type: "technik_abgleich" });
+      expect(unlesbar.status).toBe("technik_quelle_unlesbar");
+      expect(unlesbar.technik?.klaerung).toBe(true);
+      expect(unlesbar.technik?.klaerungUnlesbar).toBe(true);
+      expect(abgleiche()).toHaveLength(0);
+
+      // Die Leiste stellt die passende Frage und die drei Antworten.
+      const view = await mount({ an: h });
+      expect(view.el("technik-klaerung-box").hidden).toBe(false);
+      expect(view.el("technik-unlesbar-frage").hidden).toBe(false);
+      expect(view.el("technik-klaerung-frage").hidden).toBe(true);
+      expect(view.el("technik-geloescht").hidden).toBe(false);
+
+      // 3. „Gelöscht" bestätigt: wieder unlesbar → Kennzeichnung über die gespeicherte Identität.
+      const geloescht = await h.send({ type: "technik_quelle_geloescht" });
+      expect(geloescht.status).toBe("technik_abgeglichen");
+      expect(geloescht.technik?.abgleich?.join("\n")).toContain(
+        "Quelle nicht mehr erreichbar / Source no longer reachable",
+      );
+      expect(abgleiche()).toHaveLength(1);
+      const quellen = (
+        await app.inject({ method: "GET", url: `/api/kos/${ko.id}`, headers: kopf })
+      ).json().sources as { sourceRemovedAt?: string }[];
+      expect(quellen[0]?.sourceRemovedAt, "Vermerk am Quellenbeleg").toBeTruthy();
+      const lesbar = await app.inject({
+        method: "GET",
+        url: `/api/kos/${ko.id}`,
+        headers: kopf,
+      });
+      expect(lesbar.statusCode, "gewöhnliche Löschung sperrt nicht").toBe(200);
+
+      // 4. Ist die Quelle wieder lesbar und der Abschnitt da, fällt der Vermerk.
+      h.setUnlesbar(7, false);
+      await h.send({ type: "technik_abgleich" });
+      const wieder = (
+        await app.inject({ method: "GET", url: `/api/kos/${ko.id}`, headers: kopf })
+      ).json().sources as { sourceRemovedAt?: string }[];
+      expect(wieder[0]?.sourceRemovedAt).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
   it("A6 · ein ausdrücklich gewähltes Datenblatt in einem zweiten Tab wird als eigener Beleg derselben Übernahme geführt", async () => {
     const { app, h, kopf, entwuerfe, seite } = await bahn();
     try {

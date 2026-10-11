@@ -48,7 +48,9 @@ Ein ausdrücklich gewähltes Datenblatt (oder eine zweite Seite) wird in seinem 
 **Datenblatt** gewählt und mit **Als weiteren Beleg merken** vorgemerkt; die nächste Prüfung führt
 beide als getrennte Belege samt Abweichung und Empfehlung. **Mit vorhandenem Wissen abgleichen**
 nennt eigene Entwürfe und sichtbares Wissen aus demselben Abschnitt und vermerkt Änderungen dort;
-die Leiste liest dafür jedes Mal denselben Tab neu. Fehlt der Abschnitt, fragt sie: gelöscht
+die Leiste liest dafür jedes Mal denselben Tab neu. Zeigt der Tab eine andere Adresse, ist das ein
+Kontextwechsel und es wird nichts gesendet. Fehlt der Abschnitt oder ist die Quelle gar nicht mehr
+lesbar (Tab geschlossen, Seite weg, kein Zugriff), fragt sie: gelöscht
 (Kennzeichnung „nicht mehr erreichbar"), verschoben (keine Kennzeichnung) oder Zugriff entzogen
 (Rechteweg, nur mit Prüfrecht).
 Ist dieselbe Fassung schon als Wissen eingereicht, legt die Übernahme nichts Neues an und bietet

@@ -261,6 +261,11 @@ globalThis.KLARA_TEXT = {
       "Der Abschnitt wurde auf der Seite nicht mehr gefunden. Es wurde nichts gesendet; bitte den Grund wählen.",
     technik_verschoben:
       "Nichts gekennzeichnet. Bitte die Tabelle an ihrer neuen Stelle markieren und übernehmen.",
+    // Nacharbeit 8: die gebundene Quelle ist gar nicht lesbar — etwas anderes als eine Navigation.
+    technikUnlesbarFrage:
+      "Die Quelle lässt sich nicht mehr lesen — der Tab ist geschlossen, die Seite fehlt oder der Zugriff ist weg. Was ist mit der Quelle passiert?",
+    technik_quelle_unlesbar:
+      "Die Quelle konnte nicht gelesen werden. Es wurde nichts gesendet; bitte den Grund wählen.",
     technik_rechte_entzogen: "Leserecht der Quelle entzogen. Quelle und Ableitungen sind gesperrt.",
     technik_rechte_nur_pruefung:
       "Nur die Fachprüfung kann das Leserecht einer Quelle entziehen. Bitte dort melden; es wurde nichts geändert.",
@@ -481,6 +486,10 @@ globalThis.KLARA_TEXT = {
     technik_abschnitt_fehlt:
       "The section was no longer found on the page. Nothing was sent; please choose the reason.",
     technik_verschoben: "Nothing marked. Select the table at its new location and capture it.",
+    technikUnlesbarFrage:
+      "The source can no longer be read — the tab is closed, the page is gone or access was lost. What happened to the source?",
+    technik_quelle_unlesbar:
+      "The source could not be read. Nothing was sent; please choose the reason.",
     technik_rechte_entzogen:
       "Read access to the source revoked. Source and derivatives are locked.",
     technik_rechte_nur_pruefung:
