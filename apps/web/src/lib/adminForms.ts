@@ -77,4 +77,6 @@ export const KONTO_AUDIT_AKTIONEN: readonly string[] = [
   "user.directory-sync",
   // Mit dem Basisstand hinzugekommen (R-0582): Berichtigung von Name/E-Mail.
   "user.account-corrected",
+  // aufnahme:20260922:gesamt-leserechte (Variante B): persönliches Freigabeniveau gesetzt/entzogen.
+  "user.freigabe-set",
 ];

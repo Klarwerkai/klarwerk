@@ -58,6 +58,9 @@ function ko(overrides: Partial<KnowledgeObject> = {}): KnowledgeObject {
     comments: [],
     attachments: [],
     sources: [],
+    // aufnahme:20260922:gesamt-leserechte (Entscheidung 16): ausdrücklich eingestuft — eine
+    // fehlende Stufe ist „ungeklärt“ und zählt wie vertraulich; die „intern“-Fälle hier sind intern.
+    confidentiality: "intern",
     ...overrides,
   } as KnowledgeObject;
 }
@@ -85,9 +88,12 @@ describe("BASIC 380 · sqlSichtbarkeitFuer — dieselbe Regel wie darfSehen, als
   it("das Prädikat liest die LEBENDE kos-Zeile und NIE den classification_snapshot (G-TRIM-LIVE)", () => {
     const trim = sqlSichtbarkeitFuer(FREMDER);
     const sql = trim.sql("kos", 1);
-    // Die drei Schlüsselspalten der lebenden Zeile — und nichts aus der Projektion.
+    // Die Schlüsselspalten der lebenden Zeile — und nichts aus der Projektion. Die Stufe liest das
+    // Prädikat seit Variante B (Entscheidung 16) ROH aus `data` derselben Zeile: die generierte
+    // Spalte `confidentiality_key` legt eine unbekannte Stufe als „intern“ aus.
     expect(sql).toContain("deleted_at_key");
-    expect(sql).toContain("confidentiality_key");
+    expect(sql).toContain("kos.data->>'confidentiality'");
+    expect(sql).not.toContain("confidentiality_key");
     expect(sql).toContain("author_key");
     expect(sql).not.toContain("classification_snapshot");
     expect(sql).not.toContain("ko_search_projection");
@@ -107,9 +113,13 @@ describe("BASIC 380 · sqlSichtbarkeitFuer — dieselbe Regel wie darfSehen, als
     expect(trim.params).toHaveLength(2);
   });
 
-  it("der Rollenanteil ist can(role,'ko.validate'), der Autoranteil user.id — mehr nicht", () => {
-    expect(sqlSichtbarkeitFuer(CONTROLLER).params).toEqual([true, "u-cara"]);
-    expect(sqlSichtbarkeitFuer(FREMDER).params).toEqual([false, "u-bert"]);
+  // aufnahme:20260922:gesamt-leserechte (Variante B): der Betrachteranteil ist der Freigaberang
+  // (`freigaberang`: persönliches Niveau, sonst Übergangsregel ko.validate → 1, sonst 0).
+  it("der Betrachteranteil ist der Freigaberang, der Autoranteil user.id — mehr nicht", () => {
+    expect(sqlSichtbarkeitFuer(CONTROLLER).params).toEqual([1, "u-cara"]);
+    expect(sqlSichtbarkeitFuer(FREMDER).params).toEqual([0, "u-bert"]);
+    const mitNiveau = sqlSichtbarkeitFuer({ ...CONTROLLER, freigabe: "streng_vertraulich" });
+    expect(mitNiveau.params).toEqual([2, "u-cara"]);
   });
 
   it("`trifftZu` ist DIESELBE Entscheidung für Adapter ohne SQL — Papierkorb UND darfSehen", () => {
@@ -155,8 +165,8 @@ describe("BASIC 380 · der Trim steht im SQL des Suchwegs, vor dem Deckel", () =
     expect(abfrage).toBeDefined();
     expect(abfrage?.text).toMatch(/\bWHERE\b/i);
     expect(abfrage?.text).toContain("deleted_at_key");
-    expect(abfrage?.text).toContain("confidentiality_key");
-    expect(abfrage?.params).toEqual([false, "u-bert"]);
+    expect(abfrage?.text).toContain("data->>'confidentiality'");
+    expect(abfrage?.params).toEqual([0, "u-bert"]);
   });
 
   it("der Trim reiht sich HINTER die Fachfilter ein, ohne deren Platzhalter zu verschieben", async () => {
@@ -172,7 +182,7 @@ describe("BASIC 380 · der Trim steht im SQL des Suchwegs, vor dem Deckel", () =
     expect(abfrage?.text).toContain("status=$2");
     expect(abfrage?.text).toContain("$3");
     expect(abfrage?.text).toContain("$4");
-    expect(abfrage?.params).toEqual(["best_practice", "validiert", true, "u-cara"]);
+    expect(abfrage?.params).toEqual(["best_practice", "validiert", 1, "u-cara"]);
   });
 
   it("OHNE Trim bleibt die Abfrage zeichengleich zum heutigen Bestand (Altvertrag)", async () => {
@@ -249,7 +259,7 @@ describe("BASIC 380 · LibraryService.search trimmt die GRUNDMENGE, nicht das Er
     expect(treffer.map((k) => k.id)).toEqual(["a-intern", "e-intern-zwei"]);
   });
 
-  it("der Autor sieht sein eigenes vertrauliches Wissen, der Fremde nicht (Variante A, unverändert)", async () => {
+  it("der Autor sieht sein eigenes vertrauliches Wissen, der Fremde nicht (Autor-Ausnahme, Variante B)", async () => {
     const { library } = await suchdienst();
     const fuerAutor = await library.search("", {}, { trim: sqlSichtbarkeitFuer(AUTOR) });
     expect(fuerAutor.map((k) => k.id)).toEqual([
@@ -260,11 +270,23 @@ describe("BASIC 380 · LibraryService.search trimmt die GRUNDMENGE, nicht das Er
     ]);
   });
 
-  it("ko.validate sieht alles Lebende — und den Papierkorb trotzdem nicht", async () => {
+  // aufnahme:20260922:gesamt-leserechte (Variante B, Entscheidung 15): ko.validate allein öffnet
+  // „streng vertraulich“ nicht mehr; erst das persönliche Niveau. Den Papierkorb öffnet beides nicht.
+  it("Rang 1 sieht bis vertraulich, Rang 2 alles Lebende — und den Papierkorb trotzdem nicht", async () => {
     const { library } = await suchdienst();
     const fuerController = await library.search("", {}, { trim: sqlSichtbarkeitFuer(CONTROLLER) });
-    expect(fuerController.map((k) => k.id)).not.toContain("b-getrasht");
-    expect(fuerController).toHaveLength(4);
+    expect(fuerController.map((k) => k.id)).toEqual([
+      "a-intern",
+      "c-fremd-vertraulich",
+      "e-intern-zwei",
+    ]);
+    const mitNiveau = await library.search(
+      "",
+      {},
+      { trim: sqlSichtbarkeitFuer({ ...CONTROLLER, freigabe: "streng_vertraulich" }) },
+    );
+    expect(mitNiveau.map((k) => k.id)).not.toContain("b-getrasht");
+    expect(mitNiveau).toHaveLength(4);
   });
 
   it("OHNE Trim bleibt das heutige Verhalten unverändert (Altvertrag, G-SHADOW)", async () => {

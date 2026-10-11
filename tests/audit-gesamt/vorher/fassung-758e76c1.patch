@@ -28459,10 +28459,10 @@ index 14a149f88..000000000
 -  };
 -}
 diff --git b/services/app/src/routes/audit-routes.ts a/services/app/src/routes/audit-routes.ts
-index f59ef0a7d..44ca0c287 100644
+index 6e37c3b98..44ca0c287 100644
 --- b/services/app/src/routes/audit-routes.ts
 +++ a/services/app/src/routes/audit-routes.ts
-@@ -1,473 +1,17 @@
+@@ -1,512 +1,17 @@
  import type { FastifyPluginAsync } from "fastify";
 -import {
 -  type AuditEntry,
@@ -28680,8 +28680,41 @@ index f59ef0a7d..44ca0c287 100644
 -}
 -
 -/** Eine Zahlenbilanz über einen Bestand statt über ein bekanntes Bezugsziel (s. Kopf). */
+-function zahlenIn(wert: unknown, zahlen: number[]): number[] {
+-  if (typeof wert === "number") {
+-    zahlen.push(wert);
+-  } else if (Array.isArray(wert)) {
+-    for (const w of wert) {
+-      zahlenIn(w, zahlen);
+-    }
+-  } else if (wert !== null && typeof wert === "object") {
+-    for (const w of Object.values(wert as Record<string, unknown>)) {
+-      zahlenIn(w, zahlen);
+-    }
+-  }
+-  return zahlen;
+-}
+-
+-/**
+- * Nacharbeit 22: jede Zahl der Nutzlast ist die Länge ihrer EIGENEN Kennungsliste `koIds` (etwa
+- * `library.export`: `count` = `koIds.length`). Solche Zahlen zählen nur Aufgezähltes — und jede
+- * aufgezählte Kennung prüft `lesbar` einzeln (`nenntEine`). Sie sind keine Bestandsbilanz.
+- */
+-function zaehltNurAufgezaehltes(payload: Record<string, unknown>): boolean {
+-  const ids = payload.koIds;
+-  if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) {
+-    return false;
+-  }
+-  return zahlenIn(payload, []).every((z) => z === ids.length);
+-}
+-
 -function istBestandsbilanz(e: AuditEntry, lage: Leselage): boolean {
--  return !EXPORTBELEGE.has(e.action) && !lage.ziele.has(e.target) && traegtZahl(e.payload);
+-  return (
+-    !EXPORTBELEGE.has(e.action) &&
+-    !lage.ziele.has(e.target) &&
+-    traegtZahl(e.payload) &&
+-    !zaehltNurAufgezaehltes(e.payload)
+-  );
 -}
 -
 -// Eine Kennung kann auch EINGEBETTET stehen — `eventId` „ko.created:<id>", ein Pfad „/kos/<id>".
@@ -28901,13 +28934,19 @@ index f59ef0a7d..44ca0c287 100644
 -  const { before } = anfrage;
 -  const trifft = (p: { original: AuditEntry; ansicht: Ansichtseintrag }): boolean =>
 -    (before === undefined || p.ansicht.seq < before) && auditSeiteTrifft(p.original, anfrage);
--  const gelesen = paare.filter(trifft).reverse().slice(0, limit + 1);
+-  const gelesen = paare
+-    .filter(trifft)
+-    .reverse()
+-    .slice(0, limit + 1);
 -  const seite = gelesen.slice(0, limit).map((p) => p.ansicht);
 -  const nextBefore = gelesen.length > limit ? (seite.at(-1)?.seq ?? null) : null;
 -  const nummer = new Map(paare.map((p) => [p.original.seq, p.ansicht.seq]));
 -  const kennungen = new Set(seite.flatMap((e) => [e.actor, e.target]));
 -  const gesucht = [...kennungen].filter((id) => id !== "");
--  const belege = namensbelegeAus(paare.map((p) => p.original), gesucht);
+-  const belege = namensbelegeAus(
+-    paare.map((p) => p.original),
+-    gesucht,
+-  );
 -  const namensbelege = belege.map((e) => namensbeleg({ ...e, seq: nummer.get(e.seq) ?? 0 }));
 -  return {
 -    entries: await Promise.all(seite.map((e) => sicht.eintrag(e))),
@@ -28938,7 +28977,7 @@ index f59ef0a7d..44ca0c287 100644
  ): FastifyPluginAsync {
    return async (app) => {
      app.get<{ Querystring: AuditFilter }>("/api/audit", async (request, reply) => {
-@@ -475,84 +19,23 @@ export function auditRoutes(
+@@ -514,84 +19,23 @@ export function auditRoutes(
        if (!user) {
          return;
        }
@@ -29025,7 +29064,7 @@ index f59ef0a7d..44ca0c287 100644
      app.get<{ Params: { koId: string } }>(
        "/api/audit/ko/:koId/findings",
        async (request, reply) => {
-@@ -560,17 +43,10 @@ export function auditRoutes(
+@@ -599,17 +43,10 @@ export function auditRoutes(
          if (!user) {
            return;
          }
@@ -29046,7 +29085,7 @@ index f59ef0a7d..44ca0c287 100644
            }
          }
          reply.code(200).send({ ids: [...ids] });
-@@ -578,58 +54,22 @@ export function auditRoutes(
+@@ -617,58 +54,22 @@ export function auditRoutes(
      );
  
      // R-0613: die Kette als Datei — Einträge, Prüfbericht und Kopf (letzte Sequenz + Hash) für die
@@ -35041,14 +35080,14 @@ index 4cce7569d..000000000
 -  };
 -}
 diff --git b/services/app/src/routes/klara-answer-explanation-routes.ts a/services/app/src/routes/klara-answer-explanation-routes.ts
-index 57432a35d..c9c5634d3 100644
+index 1ee07f807..c9c5634d3 100644
 --- b/services/app/src/routes/klara-answer-explanation-routes.ts
 +++ a/services/app/src/routes/klara-answer-explanation-routes.ts
 @@ -32,7 +32,6 @@ import type {
    AnswerExplanationLeser,
    AnswerExplanationService,
  } from "../services/answer-explanation";
--import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
+-import { freigaberang, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
  
  export interface KlaraAnswerExplanationDeps {
    readonly explanations: AnswerExplanationService;
@@ -35056,14 +35095,15 @@ index 57432a35d..c9c5634d3 100644
          }
          // Die Vertraulichkeitsstufe wird an EINER Stelle ausgelegt — hier, aus der Rolle. Der
          // Dienst wendet sie an, statt sie ein zweites Mal zu bilden.
--        // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): die Rolle allein öffnet keine Stufe
--        // mehr — es entscheidet die Lesepolicy (persönliches Freigabeniveau, ungeklärte Stufen).
+-        // aufnahme:20260922:gesamt-leserechte (Variante B): die Rolle allein öffnet keine Stufe
+-        // mehr — die Stufensperre folgt dem Freigaberang (persönliches Niveau, sonst
+-        // Übergangsregel: ko.validate → 1). Für Controller und Admin ohne Niveau bleibt es dabei.
          const leser: AnswerExplanationLeser = {
            userId: user.id,
-           darfVertraulich: user.role === "admin" || user.role === "controller",
--          // R-1175 / gesamt-leserechte (Variante B): die EINE Sichtbarkeitsentscheidung (Space,
--          // Autorschaft, Freigaberang) — sie entscheidet allein, `darfVertraulich` ist Rückfall.
+-          darfVertraulich: freigaberang(user) >= 1,
+-          // R-1175: daneben die EINE Sichtbarkeitsentscheidung (Space, Autorschaft, Freigaberang).
 -          sichtbar: sichtbarkeitsfilterFuer(user),
++          darfVertraulich: user.role === "admin" || user.role === "controller",
          };
          const ergebnis = await deps.explanations.erklaere(request.params.answerId, leser);
          if (ergebnis.kind === "NOT_FOUND") {
@@ -40586,7 +40626,7 @@ index 05f1106b2..359476e54 100644
    };
  }
 diff --git b/services/app/src/routes/overlap-routes.ts a/services/app/src/routes/overlap-routes.ts
-index e7c877027..ba3ca4243 100644
+index 6ec4d45fd..ba3ca4243 100644
 --- b/services/app/src/routes/overlap-routes.ts
 +++ a/services/app/src/routes/overlap-routes.ts
 @@ -8,17 +8,11 @@ import {
@@ -40598,7 +40638,8 @@ index e7c877027..ba3ca4243 100644
 -  fuehreZusammen,
 -  leseZusammenfuehrungsAuftrag,
 -} from "../dubletten-zusammenfuehrung";
- import { type Guards, sendError } from "../http";
+-import { type Guards, type SessionUser, sendError } from "../http";
++import { type Guards, sendError } from "../http";
  import {
    type KoSichtbarkeitsZugang,
    feldFreigabe,
@@ -40607,7 +40648,7 @@ index e7c877027..ba3ca4243 100644
    redigiereUeberschneidung,
    sichtbarePaare,
  } from "../sichtbarkeit";
-@@ -40,20 +34,10 @@ export interface OverlapRoutesDeps {
+@@ -40,34 +34,10 @@ export interface OverlapRoutesDeps {
    // was NUR in je einem der beiden Objekte steht. Pflichtparameter ohne Umbau möglich: einziger
    // Aufrufer ist die Kompositionswurzel (build-app.ts:944).
    kos: KoSichtbarkeitsZugang;
@@ -40625,11 +40666,25 @@ index e7c877027..ba3ca4243 100644
  
  export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyPluginAsync {
 -  const { overlaps, settings, audit, kos, papierkorb, zusammenfuehrung } = deps;
+-
+-  // aufnahme:20260922:gesamt-leserechte (Variante B, Entscheidung 15): `ko.validate` öffnet nicht
+-  // mehr jede Stufe — eine Controllerin ohne persönliches Freigabeniveau darf die Aktionen unten
+-  // ausführen, sieht aber ein streng vertrauliches Paar nicht. Damit gäbe es genau den Akteur, „der
+-  // handeln darf, ohne sehen zu dürfen“ (JOB 972 D3). Ein Paar, das sie nicht sieht, antwortet
+-  // deshalb auf jede Aktion wie ein unbekanntes (derselbe Fehler wie `requireOpen` im Dienst) —
+-  // bevor irgendetwas geschrieben wird.
+-  async function sichtbaresPaarOderUnbekannt(user: SessionUser, id: string): Promise<void> {
+-    const entry = await overlaps.get(id);
+-    if (entry && !(await paarSichtbar(user, entry.koA, entry.koB, kos))) {
+-      throw new OverlapError("NOT_FOUND", "Überschneidung nicht gefunden.");
+-    }
+-  }
+-
 +  const { overlaps, settings, audit, kos } = deps;
    return async (app) => {
      app.get("/api/duplicates", async (request, reply) => {
        const user = await guards.requirePermission("ko.read", request, reply);
-@@ -142,22 +126,8 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
+@@ -156,22 +126,8 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
            // Q7: Nur der Abschließende darf seinen gespeicherten Abschluss auch dann nachweisen,
            // wenn das Paar nicht mehr sichtbar ist. Ausschließlich Abschlussmetadaten ausgeben:
            // auch Objektkennungen, Freitextnotiz und Modellbegründung gehören nicht in den Nachweis.
@@ -40653,7 +40708,45 @@ index e7c877027..ba3ca4243 100644
              reply.code(200).send({
                id: entry.id,
                status: entry.status,
-@@ -277,42 +247,6 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
+@@ -202,7 +158,6 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
+           return;
+         }
+         try {
+-          await sichtbaresPaarOderUnbekannt(user, request.params.id);
+           reply
+             .code(200)
+             .send(await overlaps.dismiss(request.params.id, user.id, request.body?.note));
+@@ -221,7 +176,6 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
+           return;
+         }
+         try {
+-          await sichtbaresPaarOderUnbekannt(user, request.params.id);
+           reply
+             .code(200)
+             .send(await overlaps.keepSeparate(request.params.id, user.id, request.body?.note));
+@@ -255,10 +209,9 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
+     //  · Ein fehlender/unbekannter Zielzustand ist ein 400 (INVALID_STATUS ist in `http.ts`
+     //    absichtlich nicht auf einen Sonderstatus abgebildet), kein stiller 200.
+     //
+-    // Existenz-Leck (JOB 972 D3, Prüflücke 6): dieselbe Lage wie bei den Aktionen darüber. Bis
+-    // Variante B war `ko.validate` zugleich ein Sichtweg der Paaransicht; seither öffnet es
+-    // „streng vertraulich“ nur mit persönlichem Niveau — deshalb wie dort `paarSichtbar` vorab
+-    // (`sichtbaresPaarOderUnbekannt`, aufnahme:20260922:gesamt-leserechte).
++    // Existenz-Leck (JOB 972 D3, Prüflücke 6): dieselbe Lage wie bei den drei Aktionen darüber —
++    // `ko.validate` ist zugleich einer der beiden Sichtwege der Paaransicht, ein Akteur, der
++    // handeln darf ohne sehen zu dürfen, existiert nicht. Darum wie dort ohne `paarSichtbar`.
+     app.post<{
+       Params: { id: string };
+       Body: { status?: string; reason?: string; note?: string } | null;
+@@ -268,7 +221,6 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
+         return;
+       }
+       try {
+-        await sichtbaresPaarOderUnbekannt(user, request.params.id);
+         const { status, reason, note } = request.body ?? {};
+         // Leerer/nur-weisser Vermerk ist KEIN Vermerk — sonst stünde im Protokoll ein Grund,
+         // der aus einem versehentlich fokussierten Feld stammt.
+@@ -295,42 +247,6 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
        }
      });
  
@@ -40696,6 +40789,14 @@ index e7c877027..ba3ca4243 100644
      // „Als verwandt verlinken" — kein Duplikat, aber sachlich verbunden.
      app.post<{ Params: { id: string }; Body: { note?: string } | null }>(
        "/api/duplicates/:id/link-related",
+@@ -340,7 +256,6 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
+           return;
+         }
+         try {
+-          await sichtbaresPaarOderUnbekannt(user, request.params.id);
+           reply
+             .code(200)
+             .send(await overlaps.linkRelated(request.params.id, user.id, request.body?.note));
 diff --git b/services/app/src/routes/paarpflichten-routes.ts a/services/app/src/routes/paarpflichten-routes.ts
 deleted file mode 100644
 index f2fff0472..000000000
@@ -50040,10 +50141,10 @@ index 7814dc807..a3ea7060e 100644
    process.exit(1);
  });
 diff --git b/services/app/src/services/answer-explanation.ts a/services/app/src/services/answer-explanation.ts
-index 1b158ec74..6f3a0735a 100644
+index 3612d3a55..6f3a0735a 100644
 --- b/services/app/src/services/answer-explanation.ts
 +++ a/services/app/src/services/answer-explanation.ts
-@@ -39,17 +39,6 @@ export interface AnswerExplanationDeps {
+@@ -39,18 +39,6 @@ export interface AnswerExplanationDeps {
  export interface AnswerExplanationLeser {
    readonly userId: string;
    readonly darfVertraulich: boolean;
@@ -50052,23 +50153,22 @@ index 1b158ec74..6f3a0735a 100644
 -   * Lesers (`sichtbarkeitsfilterFuer`, von der Route). Ein Beleg, den er heute nicht sehen darf
 -   * (fremder Space, fremdes Vertrauliches), wird geschwärzt.
 -   *
--   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19/20, Variante B): Ist sie da, entscheidet
--   * SIE allein über die Sperre — persönliches Freigabeniveau, ungeklärte Stufen, Spaces;
--   * `darfVertraulich` (Rolle) gilt dann nicht mehr, sonst bliebe einem Konto mit persönlichem
--   * Niveau „vertraulich“ ohne Controllerrolle sein Beleg gesperrt.
+-   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19–22, Variante B): sie tritt NEBEN die
+-   * Stufensperre (`darfVertraulich`), nie an ihre Stelle — wie in R-1175. Die Route bildet
+-   * `darfVertraulich` seither aus dem Freigaberang (≥ 1), nicht aus der Rolle: so behält ein Konto
+-   * mit persönlichem Niveau „vertraulich“ ohne Controllerrolle seinen Beleg, und die Autorschaft
+-   * allein öffnet in der Erklärung keine vertrauliche Quelle (JOB 541 D5/D6, REDACTED).
 -   */
 -  readonly sichtbar?: (ko: KnowledgeObject) => boolean;
  }
  
  export class AnswerExplanationService {
-@@ -98,10 +87,7 @@ export class AnswerExplanationService {
+@@ -99,8 +87,7 @@ export class AnswerExplanationService {
          verschwunden.add(ref.knowledgeObjectId);
          continue;
        }
--      const gesperrt = leser.sichtbar
--        ? !leser.sichtbar(objekt)
--        : isConfidential(objekt.confidentiality) && !leser.darfVertraulich;
--      if (gesperrt) {
+-      const heuteSichtbar = leser.sichtbar?.(objekt) ?? true;
+-      if ((isConfidential(objekt.confidentiality) && !leser.darfVertraulich) || !heuteSichtbar) {
 +      if (isConfidential(objekt.confidentiality) && !leser.darfVertraulich) {
          gesperrteObjekte.add(ref.knowledgeObjectId);
        }
@@ -51606,7 +51706,7 @@ index 87aa76cbc..000000000
 -  };
 -}
 diff --git b/services/app/src/sichtbarkeit.ts a/services/app/src/sichtbarkeit.ts
-index 1a4792ef7..53f8ec0d8 100644
+index c6d668430..53f8ec0d8 100644
 --- b/services/app/src/sichtbarkeit.ts
 +++ a/services/app/src/sichtbarkeit.ts
 @@ -24,29 +24,24 @@
@@ -51774,7 +51874,7 @@ index 1a4792ef7..53f8ec0d8 100644
  }
  
  /**
-@@ -196,63 +109,6 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter
+@@ -196,72 +109,6 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter
    return (ko) => darfSehen(user, ko);
  }
  
@@ -51832,13 +51932,22 @@ index 1a4792ef7..53f8ec0d8 100644
 -      return darfSehen(user, ko);
 -    }
 -  }
+-  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 22): ein Kandidat ist (noch) kein
+-  // Wissensobjekt und trägt keine Stufe. Ohne Leserliste (in der Quelle offen) bleibt er, wie ein
+-  // Eintrag ohne Quellrechte, Prüffläche für jeden mit `ko.read` — die fehlende Stufe darf hier
+-  // nicht als „ungeklärt“ (Entscheidung 16) gelesen werden, sonst sperrte Variante B jede offene
+-  // Seite. Mit Liste entscheidet allein sie (R-0549). Die Einstufung beim Import selbst ist laut
+-  // Entscheidung 16 ein eigener Arbeitsauftrag.
+-  if (!Array.isArray(rechte.leser)) {
+-    return true;
+-  }
 -  return darfSehen(user, { quellrechte: rechte });
 -}
 -
  // ================================================================================================
  // AUFTRAG-BASIC-380 — DIESELBE ENTSCHEIDUNG, EINE EBENE TIEFER: ALS SQL, VOR DEM `LIMIT`.
  // ================================================================================================
-@@ -278,10 +134,10 @@ export async function darfKandidatSehen(
+@@ -287,10 +134,10 @@ export async function darfKandidatSehen(
  // Prädikat entsteht deshalb HIER, neben `darfSehen`, und wird INJIZIERT — an genau derselben Naht,
  // an der heute schon `sichtbar: sichtbarkeitsfilterFuer(user)` in die Analytics reist.
  //
@@ -51853,7 +51962,7 @@ index 1a4792ef7..53f8ec0d8 100644
  //
  // ================================================================================================
  // DIE BENANNTEN GRENZEN DIESER ÜBERSETZUNG — BITTE NICHT ÜBERLESEN.
-@@ -293,21 +149,21 @@ export async function darfKandidatSehen(
+@@ -302,21 +149,21 @@ export async function darfKandidatSehen(
  //     er ist historischer Beleg und veraltet naturgemäß, sobald eine Stufe erhöht wird. Eine
  //     Höherstufung muss SOFORT wirken, nicht nach dem nächsten Projektionsbau.
  //
@@ -51888,7 +51997,7 @@ index 1a4792ef7..53f8ec0d8 100644
  //     (tests/security/380-trim-paritaet.integration.test.ts) fährt beide Formen über alle
  //     Kombinationen aus Stufe × Autorschaft × Rolle gegen ein echtes Postgres — Mengengleichheit,
  //     nicht Stichprobe.
-@@ -321,55 +177,27 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
+@@ -330,55 +177,27 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
    // Die beiden EINZIGEN Fakten, die `darfSehen` über den Betrachter braucht. Sie werden hier
    // EINMAL erhoben und danach nicht mehr befragt — ein Cursor oder eine Folgeseite, die sie später
    // neu auslegte, wäre genau das Leck, das BASIC 379 §3.3 mit der Betrachterbindung schließt.
@@ -51955,7 +52064,7 @@ index 1a4792ef7..53f8ec0d8 100644
      // KEIN Nachbau der Regel: derselbe `darfSehen`-Aufruf wie überall sonst, nur um den
      // Papierkorb ergänzt — der in der SQL-Form ebenfalls Teil des Prädikats ist.
      trifftZu(ko): boolean {
-@@ -436,37 +264,6 @@ export async function paarSichtbar(
+@@ -445,37 +264,6 @@ export async function paarSichtbar(
    return true;
  }
  
@@ -51993,7 +52102,7 @@ index 1a4792ef7..53f8ec0d8 100644
  /** Dieselbe Regel auf eine Liste von Paar-Funden (Konflikte, Überschneidungen). */
  export async function sichtbarePaare<T extends { koA: string; koB: string }>(
    user: SessionUser,
-@@ -602,12 +399,11 @@ export async function feldFreigabe(
+@@ -611,12 +399,11 @@ export async function feldFreigabe(
      if (!ko || !darfSehen(user, ko)) {
        return false;
      }
@@ -52009,7 +52118,7 @@ index 1a4792ef7..53f8ec0d8 100644
    };
    return { a: await erlaubt(koA), b: await erlaubt(koB) };
  }
-@@ -663,14 +459,7 @@ export interface KonfliktFelder {
+@@ -672,14 +459,7 @@ export interface KonfliktFelder {
    koA: string;
    koB: string;
    description: string;
@@ -52025,7 +52134,7 @@ index 1a4792ef7..53f8ec0d8 100644
  }
  
  export type KonfliktSicht<T extends KonfliktFelder> = T & { redacted?: true };
-@@ -692,20 +481,10 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
+@@ -701,20 +481,10 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
      return konflikt;
    }
    const detector = konflikt.detector;
@@ -52047,7 +52156,7 @@ index 1a4792ef7..53f8ec0d8 100644
      redacted: true,
    };
  }
-@@ -753,8 +532,7 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
+@@ -762,8 +532,7 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
  // ZWEI ÄNDERUNGEN, und die zweite ist die wichtigere:
  //
  //   1. Die Trägersuche kennt jetzt alle fünf Orte, an denen eine Referenz stehen kann — dieselbe
@@ -52057,7 +52166,7 @@ index 1a4792ef7..53f8ec0d8 100644
  //   2. Der TRÄGERLOSE Fall ist fail-closed: eine FEHLENDE Stufe ist keine Aussage „intern",
  //      sondern „unbekannt" — und Unbekanntes wird nicht ausgeliefert. Sichtbar bleibt es nur für
  //      die, die auch ein vertrauliches Objekt sehen dürften: den Hochladenden selbst (das
-@@ -878,16 +656,12 @@ export interface AnhangEntwurf {
+@@ -887,16 +656,12 @@ export interface AnhangEntwurf {
    bodyHtml?: string | null | undefined;
    /** Belegstellen-Originale und Ankerdokumente (`pendingSources`, `anchorDocuments`). */
    objectIds?: readonly (string | null | undefined)[] | undefined;
@@ -52076,7 +52185,7 @@ index 1a4792ef7..53f8ec0d8 100644
   */
  export interface AnhangQuellen {
    /**
-@@ -1080,7 +854,7 @@ function zuordnungInFassung(
+@@ -1089,7 +854,7 @@ function zuordnungInFassung(
   * Darf dieser Mensch diesen Anhang sehen? (G2 — der Anhang erbt die Stufe seines Objekts.)
   *
   * `traeger` ist der AKTUELLE Bestand der Wissensobjekte; der Aufrufer liefert ihn, damit diese
@@ -52085,7 +52194,7 @@ index 1a4792ef7..53f8ec0d8 100644
   */
  export interface AnhangUrteil {
    /** Darf dieser Mensch die Bytes bekommen? */
-@@ -1103,55 +877,9 @@ function entwurfNenntObjekt(entwurf: AnhangEntwurf, objectId: string): boolean {
+@@ -1112,55 +877,9 @@ function entwurfNenntObjekt(entwurf: AnhangEntwurf, objectId: string): boolean {
    return typeof entwurf.bodyHtml === "string" && entwurf.bodyHtml.includes(objectId);
  }
  
@@ -52144,7 +52253,7 @@ index 1a4792ef7..53f8ec0d8 100644
  function entwurfGehoert(entwurf: AnhangEntwurf, wer: string | null | undefined): boolean {
    return (
      typeof wer === "string" &&
-@@ -1296,7 +1024,7 @@ async function beurteileAnhangKern(
+@@ -1305,7 +1024,7 @@ async function beurteileAnhangKern(
      // sein `objectIds` nur ein frei geliefertes Feld — die reinste Form der Behauptung.
      funde.push({
        nachgewiesen: entwurfGehoert(entwurf, hochladender),

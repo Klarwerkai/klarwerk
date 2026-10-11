@@ -583,6 +583,7 @@ const de = {
   "audit.action.user_role_change": "Rolle geändert",
   "audit.action.user_approve": "Konto freigegeben",
   "audit.action.user_account_corrected": "Kontodaten berichtigt",
+  "audit.action.user_freigabe_set": "Freigabeniveau geändert",
   "audit.action.auth_login": "Angemeldet",
   "audit.action.auth_logout": "Abgemeldet",
   "audit.action.notice_acknowledged": "Hinweis zur Kenntnis genommen",

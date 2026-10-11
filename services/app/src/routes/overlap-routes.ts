@@ -13,7 +13,7 @@ import {
   fuehreZusammen,
   leseZusammenfuehrungsAuftrag,
 } from "../dubletten-zusammenfuehrung";
-import { type Guards, sendError } from "../http";
+import { type Guards, type SessionUser, sendError } from "../http";
 import {
   type KoSichtbarkeitsZugang,
   feldFreigabe,
@@ -54,6 +54,20 @@ export interface OverlapRoutesDeps {
 
 export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyPluginAsync {
   const { overlaps, settings, audit, kos, papierkorb, zusammenfuehrung } = deps;
+
+  // aufnahme:20260922:gesamt-leserechte (Variante B, Entscheidung 15): `ko.validate` öffnet nicht
+  // mehr jede Stufe — eine Controllerin ohne persönliches Freigabeniveau darf die Aktionen unten
+  // ausführen, sieht aber ein streng vertrauliches Paar nicht. Damit gäbe es genau den Akteur, „der
+  // handeln darf, ohne sehen zu dürfen“ (JOB 972 D3). Ein Paar, das sie nicht sieht, antwortet
+  // deshalb auf jede Aktion wie ein unbekanntes (derselbe Fehler wie `requireOpen` im Dienst) —
+  // bevor irgendetwas geschrieben wird.
+  async function sichtbaresPaarOderUnbekannt(user: SessionUser, id: string): Promise<void> {
+    const entry = await overlaps.get(id);
+    if (entry && !(await paarSichtbar(user, entry.koA, entry.koB, kos))) {
+      throw new OverlapError("NOT_FOUND", "Überschneidung nicht gefunden.");
+    }
+  }
+
   return async (app) => {
     app.get("/api/duplicates", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
@@ -188,6 +202,7 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
           return;
         }
         try {
+          await sichtbaresPaarOderUnbekannt(user, request.params.id);
           reply
             .code(200)
             .send(await overlaps.dismiss(request.params.id, user.id, request.body?.note));
@@ -206,6 +221,7 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
           return;
         }
         try {
+          await sichtbaresPaarOderUnbekannt(user, request.params.id);
           reply
             .code(200)
             .send(await overlaps.keepSeparate(request.params.id, user.id, request.body?.note));
@@ -239,9 +255,10 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
     //  · Ein fehlender/unbekannter Zielzustand ist ein 400 (INVALID_STATUS ist in `http.ts`
     //    absichtlich nicht auf einen Sonderstatus abgebildet), kein stiller 200.
     //
-    // Existenz-Leck (JOB 972 D3, Prüflücke 6): dieselbe Lage wie bei den drei Aktionen darüber —
-    // `ko.validate` ist zugleich einer der beiden Sichtwege der Paaransicht, ein Akteur, der
-    // handeln darf ohne sehen zu dürfen, existiert nicht. Darum wie dort ohne `paarSichtbar`.
+    // Existenz-Leck (JOB 972 D3, Prüflücke 6): dieselbe Lage wie bei den Aktionen darüber. Bis
+    // Variante B war `ko.validate` zugleich ein Sichtweg der Paaransicht; seither öffnet es
+    // „streng vertraulich“ nur mit persönlichem Niveau — deshalb wie dort `paarSichtbar` vorab
+    // (`sichtbaresPaarOderUnbekannt`, aufnahme:20260922:gesamt-leserechte).
     app.post<{
       Params: { id: string };
       Body: { status?: string; reason?: string; note?: string } | null;
@@ -251,6 +268,7 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
         return;
       }
       try {
+        await sichtbaresPaarOderUnbekannt(user, request.params.id);
         const { status, reason, note } = request.body ?? {};
         // Leerer/nur-weisser Vermerk ist KEIN Vermerk — sonst stünde im Protokoll ein Grund,
         // der aus einem versehentlich fokussierten Feld stammt.
@@ -322,6 +340,7 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
           return;
         }
         try {
+          await sichtbaresPaarOderUnbekannt(user, request.params.id);
           reply
             .code(200)
             .send(await overlaps.linkRelated(request.params.id, user.id, request.body?.note));

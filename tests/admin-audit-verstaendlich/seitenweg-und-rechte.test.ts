@@ -564,7 +564,9 @@ describe("K6 · die Integritätsprüfung nennt ihren Zeitpunkt", () => {
       await kaputt.append(e.seq === 3 ? { ...e, prevHash: "x".repeat(64) } : e);
     }
     const app = Fastify();
-    app.register(auditRoutes(new AuditService({ repo: kaputt }), testTuer(), [], undefined, QUELLE));
+    app.register(
+      auditRoutes(new AuditService({ repo: kaputt }), testTuer(), [], undefined, QUELLE),
+    );
     await app.ready();
     offen.push(app);
     const rot = await app.inject({ method: "GET", url: "/api/audit/verify", headers: VOLL });

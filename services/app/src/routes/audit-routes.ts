@@ -213,8 +213,41 @@ function traegtZahl(wert: unknown): boolean {
 }
 
 /** Eine Zahlenbilanz über einen Bestand statt über ein bekanntes Bezugsziel (s. Kopf). */
+function zahlenIn(wert: unknown, zahlen: number[]): number[] {
+  if (typeof wert === "number") {
+    zahlen.push(wert);
+  } else if (Array.isArray(wert)) {
+    for (const w of wert) {
+      zahlenIn(w, zahlen);
+    }
+  } else if (wert !== null && typeof wert === "object") {
+    for (const w of Object.values(wert as Record<string, unknown>)) {
+      zahlenIn(w, zahlen);
+    }
+  }
+  return zahlen;
+}
+
+/**
+ * Nacharbeit 22: jede Zahl der Nutzlast ist die Länge ihrer EIGENEN Kennungsliste `koIds` (etwa
+ * `library.export`: `count` = `koIds.length`). Solche Zahlen zählen nur Aufgezähltes — und jede
+ * aufgezählte Kennung prüft `lesbar` einzeln (`nenntEine`). Sie sind keine Bestandsbilanz.
+ */
+function zaehltNurAufgezaehltes(payload: Record<string, unknown>): boolean {
+  const ids = payload.koIds;
+  if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) {
+    return false;
+  }
+  return zahlenIn(payload, []).every((z) => z === ids.length);
+}
+
 function istBestandsbilanz(e: AuditEntry, lage: Leselage): boolean {
-  return !EXPORTBELEGE.has(e.action) && !lage.ziele.has(e.target) && traegtZahl(e.payload);
+  return (
+    !EXPORTBELEGE.has(e.action) &&
+    !lage.ziele.has(e.target) &&
+    traegtZahl(e.payload) &&
+    !zaehltNurAufgezaehltes(e.payload)
+  );
 }
 
 // Eine Kennung kann auch EINGEBETTET stehen — `eventId` „ko.created:<id>", ein Pfad „/kos/<id>".
@@ -434,13 +467,19 @@ async function ansichtsseite(
   const { before } = anfrage;
   const trifft = (p: { original: AuditEntry; ansicht: Ansichtseintrag }): boolean =>
     (before === undefined || p.ansicht.seq < before) && auditSeiteTrifft(p.original, anfrage);
-  const gelesen = paare.filter(trifft).reverse().slice(0, limit + 1);
+  const gelesen = paare
+    .filter(trifft)
+    .reverse()
+    .slice(0, limit + 1);
   const seite = gelesen.slice(0, limit).map((p) => p.ansicht);
   const nextBefore = gelesen.length > limit ? (seite.at(-1)?.seq ?? null) : null;
   const nummer = new Map(paare.map((p) => [p.original.seq, p.ansicht.seq]));
   const kennungen = new Set(seite.flatMap((e) => [e.actor, e.target]));
   const gesucht = [...kennungen].filter((id) => id !== "");
-  const belege = namensbelegeAus(paare.map((p) => p.original), gesucht);
+  const belege = namensbelegeAus(
+    paare.map((p) => p.original),
+    gesucht,
+  );
   const namensbelege = belege.map((e) => namensbeleg({ ...e, seq: nummer.get(e.seq) ?? 0 }));
   return {
     entries: await Promise.all(seite.map((e) => sicht.eintrag(e))),

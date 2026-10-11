@@ -186,11 +186,16 @@ describe("JOB 2065 G3b · der GELADENE Bestand steht unter derselben Vertraulich
     // Diese Zeile traegt den Fall: ohne sie waere V2 auch dann gruen, wenn die Route gar nichts mehr
     // herausgibt. Und weil Carla an `koGeheim` NICHT Autorin ist (Autor ist der Admin,
     // seed-demo.ts:605), haengt das Gruen hier allein an `ko.validate` — nicht an der Autorschaft.
-    const { app, carla, strengVertraulich } = await geladenerBestand();
+    //
+    // aufnahme:20260922:gesamt-leserechte (Variante B, Entscheidung 15): ko.validate ohne
+    // persönliches Niveau ist Freigaberang 1 — es öffnet „vertraulich“, nicht mehr „streng
+    // vertraulich“. Die Gegenprobe läuft deshalb am vertraulichen Objekt; das strenge bleibt Carla
+    // ohne Niveau verschlossen (wie unbekannt, 404).
+    const { app, carla, vertraulich, strengVertraulich } = await geladenerBestand();
 
     const res = await app.inject({
       method: "GET",
-      url: `/api/kos/${strengVertraulich.id}`,
+      url: `/api/kos/${vertraulich.id}`,
       headers: carla,
     });
 
@@ -198,7 +203,15 @@ describe("JOB 2065 G3b · der GELADENE Bestand steht unter derselben Vertraulich
       res.statusCode,
       `Wer ko.validate traegt, MUSS das vertrauliche Objekt sehen: ${res.body}`,
     ).toBe(200);
-    expect((res.json() as KoZeile).id).toBe(strengVertraulich.id);
+    expect((res.json() as KoZeile).id).toBe(vertraulich.id);
+
+    const streng = await app.inject({
+      method: "GET",
+      url: `/api/kos/${strengVertraulich.id}`,
+      headers: carla,
+    });
+    expect(streng.statusCode, `Antwort war: ${streng.statusCode} ${streng.body}`).toBe(404);
+    expect(streng.body).not.toContain(strengVertraulich.statement);
   });
 
   it("V4 — KALIBRIERUNG: das INTERNE Objekt aus demselben Ladeweg bleibt fuer Erik voll sichtbar", async () => {

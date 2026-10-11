@@ -198,6 +198,7 @@ async function buehne(opts: { mitGeschuetztem: boolean }) {
   const vor = v.json() as {
     quelle: { id: string; version: number } | null;
     ziel: { id: string; version: number } | null;
+    grundlage: string;
   };
   const verschoben = await app.inject({
     method: "POST",
@@ -206,11 +207,13 @@ async function buehne(opts: { mitGeschuetztem: boolean }) {
     payload: {
       koId: geschuetztId,
       zielSpaceId: spaceId,
+      // ADMIN-07 (main): die bestätigte Vorschau ist auch an die wirksame Rechtelage gebunden.
       basis: {
         quelleId: vor.quelle?.id ?? null,
         quelleVersion: vor.quelle?.version ?? null,
         zielId: vor.ziel?.id ?? null,
         zielVersion: vor.ziel?.version ?? null,
+        grundlage: vor.grundlage,
       },
     },
   });

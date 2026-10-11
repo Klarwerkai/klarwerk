@@ -236,12 +236,16 @@ describe("über die Routen — Niveau setzen, Folgeabruf, Entzug, ungeklärte Al
   it("ungeklärte Stufe (Altobjekt ohne Einstufung): Leser verborgen, Kuratorin sichtbar, nach Einstufung frei", async () => {
     const b = await buehne();
     // Ein Objekt ohne Stufe — die Form des Altbestands und jedes Imports ohne Einstufung.
+    const autorin = b.ids.controller;
+    if (!autorin) {
+      throw new Error("Vorbedingung: das Controller-Konto fehlt.");
+    }
     const alt = await b.services.ko.create({
       title: "Altbestand Kühlkreislauf",
       statement: "Der Kühlkreislauf wird quartalsweise gespült.",
       type: "best_practice",
       category: "Instandhaltung",
-      author: b.ids.controller,
+      author: autorin,
     });
     expect(alt.confidentiality).toBeUndefined();
 

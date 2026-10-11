@@ -105,3 +105,23 @@ Beide fachlichen Stände sind erhalten; wo sie sich widersprachen, gilt die enge
   Niveau ohne Controllerrolle gesperrt.
 - **Entfernter Endpunkt:** `naechster-schritt-entwurf.ts` (nie registriert) hat main als ungenutzten
   Code gelöscht; die 404-Änderung dort entfällt mit ihm.
+
+### Nacharbeit 22 (Prüflauf zu Kandidat 5a2a5ec4)
+
+- **Dubletten-Aktionen (Existenzleck durch Variante B):** JOB 972 D3 setzte voraus, dass jeder, der
+  handeln darf (`ko.validate`), das Paar auch sieht. Seit Variante B stimmt das für „streng
+  vertraulich“ nicht mehr. `dismiss`, `keep-separate`, `link-related` und `status` prüfen das Paar
+  jetzt vorab (`paarSichtbar`) und antworten für ein unsichtbares Paar exakt wie für ein unbekanntes.
+- **Antwort-Erklärung:** wieder Stufensperre UND Sichtbarkeit (wie R-1175); die Stufensperre folgt dem
+  Freigaberang statt der Rolle. Die Autorschaft allein öffnet in der Erklärung keine vertrauliche
+  Quelle (JOB 541 D6).
+- **Import-Warteschlange:** ein Kandidat aus einer in der Quelle offenen Seite (keine Leserliste)
+  bleibt Prüffläche für `ko.read`; er ist kein Objekt, seine fehlende Stufe wird nicht als „ungeklärt“
+  gelesen. Die Einstufung beim Import bleibt eigener Auftrag (Entscheidung 16).
+- **Prüfprotokoll:** Einträge, deren Zahlen nur die Länge ihrer eigenen Kennungsliste `koIds` sind
+  (`library.export`, auch durch Dienstschlüssel), sind keine Bestandsbilanz; ihre Kennungen prüft die
+  Ansicht einzeln.
+- **Tests nach Entscheidung 15/16 nachgeführt** (Stufen-SQL liest die Rohstufe, Rang statt
+  Rollen-Boolean, Rang 1 öffnet „streng“ nicht, ungeklärte Stufe geschützt): 380/385-Trim,
+  380-Parität, Suchdeckel-Parität, Altbestands-Parität, JOB 2065 V3, JOB 972 P6c — jeweils mit
+  Gegenprobe für das persönliche Niveau.

@@ -1,6 +1,6 @@
 {
   "zweck": "Produktstand VOR der Behebung für tests/audit-gesamt/vorher-nachher.integration.test.ts",
-  "kandidat_beim_erzeugen": "a9543197951518834c44cb3e678cd37b71f4a46a zusammengeführt mit main e344d72dd5d04a52582c43097fce3543a62b0a85 (aufnahme:20260922:gesamt-leserechte Nacharbeit 20: Konfliktauflösung in services/app, services/auth, services/audit/index.ts, services/conflicts, services/library-analytics, services/output; in Formatiererform geschrieben), erzeugt aus dem Arbeitsbaum vor der Kandidatbildung",
+  "kandidat_beim_erzeugen": "5a2a5ec44abf96daecd55689dc312a02942d4094 (enthält main 8cdeff87b) + Arbeitsstand aufnahme:20260922:gesamt-leserechte Nacharbeit 22 (services/app: audit-routes.ts, overlap-routes.ts, klara-answer-explanation-routes.ts, services/answer-explanation.ts, sichtbarkeit.ts; in Formatiererform geschrieben), erzeugt aus dem Arbeitsbaum vor der Kandidatbildung",
   "erzeugungshinweis": "Nacharbeit 15 hatte vor der Formatierung erzeugt; die Kandidatbildung formatierte audit-routes.ts (Aufrufketten zusammengezogen), der Patch passte nicht mehr. Patch nur vom formatierten Stand erzeugen.",
   "vorher_hauptstand": "6c576c7014302bc85b86af85c50794e0aefe7d64",
   "vorher_beschreibung": "integrierter Hauptstand ohne die Behebung dieses Auftrags (erster Elternteil des Integrations-Merges 46f89d12 ist die Arbeitssicherung, zweiter 6c576c70 der Hauptstand)",
@@ -12,7 +12,7 @@
     "zweck": "die Fassung, an der Ben beleg:6818bd52 meldete (gleichzeitige GET /api/audit/export)",
     "fassung": "758e76c118482f11a3f322403d71d188e3fda277",
     "fassung_beschreibung": "ship: 1.0.0-beta.1.622 (lauf:b3:aufnahme:20260922:gesamt-auditprotokoll:2 Runde 1); Elternteil 222abf959b57928d64196b8500e52513088e1ed0; von keinem Branch erreichbar, nur als Git-Objekt vorhanden",
-    "kandidat_beim_erzeugen": "a9543197951518834c44cb3e678cd37b71f4a46a + main e344d72dd5d04a52582c43097fce3543a62b0a85, Arbeitsstand Nacharbeit 20 (wie oben)",
+    "kandidat_beim_erzeugen": "5a2a5ec44abf96daecd55689dc312a02942d4094 + Arbeitsstand Nacharbeit 22 (wie oben)",
     "patch": "fassung-758e76c1.patch",
     "umfang": "services/** ohne *.test.ts — 342 Dateien; Importverträglichkeit mit apps/web und Abhängigkeiten erst im regulären PG-Lauf prüfen",
     "befehl": "git diff -R --binary --output=tests/audit-gesamt/vorher/fassung-758e76c1.patch 758e76c118482f11a3f322403d71d188e3fda277 -- services ':(exclude)services/**/*.test.ts'"

@@ -23,7 +23,8 @@ git diff -R --binary --output=tests/audit-gesamt/vorher/behebung-rueckwaerts.pat
 Zuletzt so erzeugt in aufnahme:20260922:gesamt-leserechte, Nacharbeit 20 (Zusammenführung mit main
 `e344d72d`: `audit-routes.ts` mit Seitenweg und Schwärzung, Registrierung in `build-app.ts`, Output,
 Auth); beide Patches neu. Seit dieser Integration umfasst der Rückwärts-Patch 321 Dateien, weil der
-Vorher-Stand weiterhin der alte Hauptstand `6c576c70` ist.
+Vorher-Stand weiterhin der alte Hauptstand `6c576c70` ist. In Nacharbeit 22 (Kandidat `5a2a5ec4`)
+nach den Änderungen an `audit-routes.ts`, `overlap-routes.ts` und der Antwort-Erklärung erneut erzeugt.
 
 Achtung: die Kandidatbildung formatiert `services/` (Biome). Ein Patch, der aus einem noch
 unformatierten Arbeitsbaum erzeugt wurde, passt danach nicht mehr (Nacharbeit 15). Erst erzeugen,

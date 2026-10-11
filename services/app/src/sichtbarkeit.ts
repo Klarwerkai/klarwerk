@@ -250,6 +250,15 @@ export async function darfKandidatSehen(
       return darfSehen(user, ko);
     }
   }
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 22): ein Kandidat ist (noch) kein
+  // Wissensobjekt und trägt keine Stufe. Ohne Leserliste (in der Quelle offen) bleibt er, wie ein
+  // Eintrag ohne Quellrechte, Prüffläche für jeden mit `ko.read` — die fehlende Stufe darf hier
+  // nicht als „ungeklärt“ (Entscheidung 16) gelesen werden, sonst sperrte Variante B jede offene
+  // Seite. Mit Liste entscheidet allein sie (R-0549). Die Einstufung beim Import selbst ist laut
+  // Entscheidung 16 ein eigener Arbeitsauftrag.
+  if (!Array.isArray(rechte.leser)) {
+    return true;
+  }
   return darfSehen(user, { quellrechte: rechte });
 }
 

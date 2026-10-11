@@ -628,13 +628,21 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/duplicates/settings": { protection: "ko.read" },
   "PUT /api/duplicates/settings": { protection: "users.manage" },
   "GET /api/duplicates/:id": { protection: "ko.read", zeilenrecht: ["paarSichtbar"] },
-  "POST /api/duplicates/:id/dismiss": { protection: "ko.validate" },
-  "POST /api/duplicates/:id/keep-separate": { protection: "ko.validate" },
-  "POST /api/duplicates/:id/link-related": { protection: "ko.validate" },
+  // aufnahme:20260922:gesamt-leserechte (Variante B): ko.validate öffnet „streng vertraulich“ nur
+  // mit persönlichem Niveau — die Aktionen prüfen das Paar deshalb vorab (unsichtbar = unbekannt).
+  "POST /api/duplicates/:id/dismiss": { protection: "ko.validate", zeilenrecht: ["paarSichtbar"] },
+  "POST /api/duplicates/:id/keep-separate": {
+    protection: "ko.validate",
+    zeilenrecht: ["paarSichtbar"],
+  },
+  "POST /api/duplicates/:id/link-related": {
+    protection: "ko.validate",
+    zeilenrecht: ["paarSichtbar"],
+  },
   // JOB 3061 · H2: „Status setzen" (In Bearbeitung / Geschlossen mit Abschlussgrund). Dieselbe
   // kuratorische Schutzart wie die drei Aktionen darüber — es ist derselbe Vorgang, nur mit
   // ausdrücklich gewähltem Grund statt mit einem Grund je Knopf.
-  "POST /api/duplicates/:id/status": { protection: "ko.validate" },
+  "POST /api/duplicates/:id/status": { protection: "ko.validate", zeilenrecht: ["paarSichtbar"] },
   // R-1107 / R-0565 (Aufnahme gesamt-dublettenvergleich): Zusammenführen — dieselbe kuratorische
   // Schutzart; dass kein Autor einer der beiden Seiten zusammenführt, prüft der Dienst dahinter.
   "POST /api/duplicates/:id/merge": { protection: "ko.validate" },
