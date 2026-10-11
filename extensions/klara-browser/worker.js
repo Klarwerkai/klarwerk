@@ -624,7 +624,8 @@
    * Feste Wege zum Server, ohne Adresse aus Nachricht oder Seite. Antwortet auch bei 4xx mit dem
    * Rumpf: die Abweisungen dieses Weges (geänderte Quelle, gesperrte Quelle) tragen den nächsten
    * Schritt in sich.
-   * @param {"vorschau" | "uebernahme" | "abgleich"} kind @param {import("./types").Auth} auth
+   * @param {"vorschau" | "uebernahme" | "abgleich" | "rechte"} kind
+   * @param {import("./types").Auth} auth
    * @param {object} body
    * @returns {Promise<{ status: number, body: Record<string, unknown> }>}
    */
@@ -633,6 +634,7 @@
       vorschau: "/api/technische-daten/vorschau",
       uebernahme: "/api/technische-daten/uebernahme",
       abgleich: "/api/technische-daten/quellenabgleich",
+      rechte: "/api/technische-daten/quellenrechte",
     };
     if (!Object.hasOwn(paths, kind)) throw new Error("invalid_message");
     const response = await fetch(HOST + paths[kind], {
@@ -732,27 +734,51 @@
         return view(/** @type {Zustand} */ (await read()), "technik_geleert");
       }
       // ==========================================================================================
-      // QUELLENPFLEGE (AC08/AC09, Nacharbeit 5): die gerade gelesene Tabelle mit dem vorhandenen
-      // Wissen abgleichen — eigene Entwürfe und sichtbare Wissensobjekte aus diesem Abschnitt.
+      // QUELLENPFLEGE (AC08/AC09, Nacharbeit 5 + 7): die GEBUNDENE Quelle dieser Übernahme wird für
+      // jeden Abgleich NEU gelesen — derselbe Tab, dieselbe Adresse, derselbe Abschnitt. Gepflegt
+      // wird ausschliesslich mit dieser frischen Lesung, nie mit der gespeicherten Tabelle.
+      //   · anderer Tabinhalt (Navigation, geschlossen, nicht lesbar) → nichts gesendet;
+      //   · Abschnitt gefunden → Abgleich „vorhanden" mit der aktuellen Fassung;
+      //   · Abschnitt fehlt → nichts gesendet, die Leiste fragt: gelöscht, verschoben oder Zugriff
+      //     entzogen? Nur „gelöscht" kennzeichnet die Übernahmen als nicht mehr erreichbar; „Zugriff
+      //     entzogen" geht an den Rechteweg (nur die Fachprüfung); „verschoben" ändert nichts.
       // ==========================================================================================
-      if (message.type === "technik_abgleich") {
-        const jetzt = beleg(aktuelleQuelle(w, t, message.art), w.selection.capturedAt);
-        const antwort = await technikApi("abgleich", auth, { beleg: jetzt, zustand: "vorhanden" });
+      if (
+        message.type === "technik_abgleich" ||
+        message.type === "technik_quelle_geloescht" ||
+        message.type === "technik_quelle_entzogen"
+      ) {
+        const gelesen = await neuLesen(w.selection.tabId, w.selection.url, t.tabelle.abschnitt);
+        if (gelesen === "kontext") return view(state, "source_changed");
+        const am = new Date().toISOString();
+        const ort = aktuelleQuelle(w, t, message.art);
+        if (gelesen !== "fehlt") {
+          // Der Abschnitt ist (wieder) da — gepflegt wird mit genau dieser Lesung.
+          return abgleichen(state, t, { ...ort, tabelle: gelesen, erfasstAm: am }, "vorhanden");
+        }
+        if (message.type === "technik_abgleich" || !t.klaerung) {
+          await merke({ technik: { ...t, abgleich: null, klaerung: { am } } });
+          return view(/** @type {Zustand} */ (await read()), "technik_abschnitt_fehlt");
+        }
+        if (message.type === "technik_quelle_geloescht")
+          return abgleichen(state, t, { ...ort, erfasstAm: am }, "geloescht");
+        // Zugriff entzogen: der bestehende Rechteweg — der Server lässt nur die Fachprüfung zu.
+        const antwort = await technikApi("rechte", auth, {
+          url: w.selection.url,
+          abschnitt: t.tabelle.abschnitt,
+          ...(t.tabelle.anker ? { anker: t.tabelle.anker } : {}),
+          zustand: "entzogen",
+        });
         if (antwort.status === 401) return failure(state, new Error("expired"));
+        if (antwort.status === 403) return view(state, "technik_rechte_nur_pruefung");
         if (antwort.status !== 200) return view(state, "technik_failed", textAus(antwort.body));
-        /** @param {unknown} x @returns {Record<string, unknown>[]} */
-        const liste = (x) => (Array.isArray(x) ? x.filter((e) => e && typeof e === "object") : []);
-        const zeile = (/** @type {Record<string, unknown>} */ e) => {
-          const art = e.art === "wissensobjekt" ? "Wissen / Knowledge" : "Entwurf / Draft";
-          const fassung = typeof e.fassung === "number" ? ` · Fassung ${e.fassung}` : "";
-          const lage = LAGE_TEXT[String(e.lage)] ?? String(e.lage ?? "");
-          return `${art} „${String(e.titel ?? "").slice(0, 200)}“${fassung} · ${lage}`;
-        };
-        const abgleich = [...liste(antwort.body.betroffen), ...liste(antwort.body.unveraendert)]
-          .slice(0, 50)
-          .map(zeile);
-        await merke({ technik: { ...t, abgleich } });
-        return view(/** @type {Zustand} */ (await read()), "technik_abgeglichen");
+        await merke({ technik: { ...t, klaerung: null } });
+        return view(/** @type {Zustand} */ (await read()), "technik_rechte_entzogen");
+      }
+      if (message.type === "technik_quelle_verschoben") {
+        // Verschoben ist keine Löschung: nichts wird gekennzeichnet; die neue Stelle wird erfasst.
+        await merke({ technik: { ...t, klaerung: null } });
+        return view(/** @type {Zustand} */ (await read()), "technik_verschoben");
       }
       if (message.type === "technik_vorschau") {
         const aktuell = aktuelleQuelle(w, t, message.art);
@@ -865,6 +891,52 @@
     } catch {
       return view(state, "technik_failed");
     }
+  }
+  /**
+   * Die gebundene Quelle neu lesen: derselbe Tab, dieselbe Adresse, derselbe Abschnitt.
+   * `"kontext"` heisst: der Tab zeigt etwas anderes oder ist nicht lesbar — dann wird nichts gesendet.
+   * @param {number} tabId @param {string} url @param {string} abschnitt
+   * @returns {Promise<import("./types").Tabelle | "kontext" | "fehlt">}
+   */
+  async function neuLesen(tabId, url, abschnitt) {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["selection.js"],
+      });
+      const s = results[0]?.result;
+      if (!s || s.url !== url) return "kontext";
+      return wiedergefunden(s, abschnitt) ?? "fehlt";
+    } catch {
+      return "kontext";
+    }
+  }
+  /**
+   * Der Abgleich mit dem vorhandenen Wissen — ausschliesslich mit einer FRISCHEN Lesung.
+   * @param {Zustand} state @param {import("./types").Technik} t
+   * @param {import("./types").TechnikQuelle} quelle @param {"vorhanden" | "geloescht"} zustand
+   */
+  async function abgleichen(state, t, quelle, zustand) {
+    if (!state.auth) return view(state, "expired");
+    const antwort = await technikApi("abgleich", state.auth, {
+      beleg: beleg(quelle, quelle.erfasstAm),
+      zustand,
+    });
+    if (antwort.status === 401) return failure(state, new Error("expired"));
+    if (antwort.status !== 200) return view(state, "technik_failed", textAus(antwort.body));
+    /** @param {unknown} x @returns {Record<string, unknown>[]} */
+    const liste = (x) => (Array.isArray(x) ? x.filter((e) => e && typeof e === "object") : []);
+    const zeile = (/** @type {Record<string, unknown>} */ e) => {
+      const art = e.art === "wissensobjekt" ? "Wissen / Knowledge" : "Entwurf / Draft";
+      const fassung = typeof e.fassung === "number" ? ` · Fassung ${e.fassung}` : "";
+      const lage = LAGE_TEXT[String(e.lage)] ?? String(e.lage ?? "");
+      return `${art} „${String(e.titel ?? "").slice(0, 200)}“${fassung} · ${lage}`;
+    };
+    const abgleich = [...liste(antwort.body.betroffen), ...liste(antwort.body.unveraendert)]
+      .slice(0, 50)
+      .map(zeile);
+    await merke({ technik: { ...t, abgleich, klaerung: null } });
+    return view(/** @type {Zustand} */ (await read()), "technik_abgeglichen");
   }
   /**
    * Die Meldung einer Abweisung als eine Zeile — Fremdtext, nie Zustand.
@@ -1014,6 +1086,8 @@
       sammlung: sammlung.map(quellZeile),
       ...(tk.ergebnis ? { ergebnis: tk.ergebnis } : {}),
       ...(tk.abgleich ? { abgleich: tk.abgleich } : {}),
+      // Der Abschnitt fehlte bei der letzten frischen Lesung — die Leiste fragt nach dem Grund.
+      ...(tk.klaerung ? { klaerung: true } : {}),
       ...(tk.entwurfId
         ? { link: `${HOST}/capture/frontdoor?draft=${encodeURIComponent(tk.entwurfId)}` }
         : {}),
@@ -1248,6 +1322,10 @@
         "technik_merken",
         "technik_leeren",
         "technik_abgleich",
+        // Nacharbeit 7: die Klärung eines fehlenden Abschnitts — gelöscht, verschoben, entzogen.
+        "technik_quelle_geloescht",
+        "technik_quelle_verschoben",
+        "technik_quelle_entzogen",
       ].includes(message.type)
     )
       return { status: "invalid_message" };
@@ -1893,6 +1971,7 @@
                       vorschaubeleg: null,
                       ergebnis: null,
                       abgleich: null,
+                      klaerung: null,
                       entwurfId: null,
                       wissensobjektId: null,
                       imWissenFreigegeben: false,

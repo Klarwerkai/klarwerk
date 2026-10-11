@@ -47,7 +47,10 @@ und die neue Fassung erscheint zur Prüfung. Der gespeicherte Entwurf öffnet si
 Ein ausdrücklich gewähltes Datenblatt (oder eine zweite Seite) wird in seinem Tab erfasst, als
 **Datenblatt** gewählt und mit **Als weiteren Beleg merken** vorgemerkt; die nächste Prüfung führt
 beide als getrennte Belege samt Abweichung und Empfehlung. **Mit vorhandenem Wissen abgleichen**
-nennt eigene Entwürfe und sichtbares Wissen aus demselben Abschnitt und vermerkt Änderungen dort.
+nennt eigene Entwürfe und sichtbares Wissen aus demselben Abschnitt und vermerkt Änderungen dort;
+die Leiste liest dafür jedes Mal denselben Tab neu. Fehlt der Abschnitt, fragt sie: gelöscht
+(Kennzeichnung „nicht mehr erreichbar"), verschoben (keine Kennzeichnung) oder Zugriff entzogen
+(Rechteweg, nur mit Prüfrecht).
 Ist dieselbe Fassung schon als Wissen eingereicht, legt die Übernahme nichts Neues an und bietet
 **Vorhandenes Wissen öffnen** an.
 

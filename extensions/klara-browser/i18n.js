@@ -249,6 +249,21 @@ globalThis.KLARA_TEXT = {
       "Diese Fassung ist bereits als Wissen übernommen, aber noch nicht fachlich freigegeben. Es wurde kein neuer Entwurf angelegt.",
     technik_im_wissen_freigegeben:
       "Diese Fassung ist bereits als fachlich freigegebenes Wissen übernommen. Es wurde kein neuer Entwurf angelegt.",
+    // Nacharbeit 7: Klärung, wenn der Abschnitt bei der frischen Lesung fehlt.
+    technikKlaerungFrage:
+      "Der Abschnitt steht nicht mehr auf der Seite. Was ist mit der Quelle passiert?",
+    technikGeloescht: "Abschnitt wurde gelöscht",
+    technikVerschoben: "Abschnitt steht an anderer Stelle",
+    technikEntzogen: "Zugriff auf die Quelle wurde entzogen",
+    technikKlaerungHinweis:
+      "Gelöscht: Übernahmen bleiben mit Herkunft erhalten und werden als nicht mehr erreichbar gekennzeichnet. Verschoben: nichts wird gekennzeichnet; bitte die neue Stelle markieren und übernehmen. Entzogen: sperrt Quelle und Ableitungen; das darf nur die Fachprüfung.",
+    technik_abschnitt_fehlt:
+      "Der Abschnitt wurde auf der Seite nicht mehr gefunden. Es wurde nichts gesendet; bitte den Grund wählen.",
+    technik_verschoben:
+      "Nichts gekennzeichnet. Bitte die Tabelle an ihrer neuen Stelle markieren und übernehmen.",
+    technik_rechte_entzogen: "Leserecht der Quelle entzogen. Quelle und Ableitungen sind gesperrt.",
+    technik_rechte_nur_pruefung:
+      "Nur die Fachprüfung kann das Leserecht einer Quelle entziehen. Bitte dort melden; es wurde nichts geändert.",
   },
   en: {
     language: "Language",
@@ -457,5 +472,18 @@ globalThis.KLARA_TEXT = {
       "This version is already in knowledge but not yet reviewed. No new draft was created.",
     technik_im_wissen_freigegeben:
       "This version is already in reviewed knowledge. No new draft was created.",
+    technikKlaerungFrage: "The section is no longer on the page. What happened to the source?",
+    technikGeloescht: "Section was deleted",
+    technikVerschoben: "Section is somewhere else",
+    technikEntzogen: "Access to the source was revoked",
+    technikKlaerungHinweis:
+      "Deleted: captures keep their origin and are marked as no longer reachable. Moved: nothing is marked; select and capture the new location. Revoked: locks the source and its derivatives; only reviewers may do this.",
+    technik_abschnitt_fehlt:
+      "The section was no longer found on the page. Nothing was sent; please choose the reason.",
+    technik_verschoben: "Nothing marked. Select the table at its new location and capture it.",
+    technik_rechte_entzogen:
+      "Read access to the source revoked. Source and derivatives are locked.",
+    technik_rechte_nur_pruefung:
+      "Only reviewers can revoke read access to a source. Please report it there; nothing was changed.",
   },
 };

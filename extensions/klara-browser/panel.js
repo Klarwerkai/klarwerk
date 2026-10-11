@@ -78,6 +78,8 @@
       // Nacharbeit 5: dieselbe Fassung steht schon im Wissen — ein Erfolg, kein Fehler.
       "technik_im_wissen",
       "technik_im_wissen_freigegeben",
+      // Nacharbeit 7: ausdrücklich gewählter Rechteentzug ist wirksam geworden.
+      "technik_rechte_entzogen",
     ],
     crit: [
       // BPA-02: gesperrte Quelle und gescheiterte Übernahme der technischen Daten.
@@ -138,12 +140,16 @@
       // einen klaren nächsten Schritt, gesendet bzw. gespeichert wurde nichts.
       "technik_none",
       "technik_changed",
+      // Nacharbeit 7: Abschnitt fehlt (Nachfrage) und Rechteentzug nur für die Fachprüfung.
+      "technik_abschnitt_fehlt",
+      "technik_rechte_nur_pruefung",
     ],
     "": [
       "technik_preview",
       "technik_gemerkt",
       "technik_geleert",
       "technik_abgeglichen",
+      "technik_verschoben",
       "no_selection",
       "preview",
       "previewState",
@@ -237,7 +243,15 @@
     // und niemand die Zwischenablage freigibt, deren Inhalt danach abgewiesen würde.
     // BPA-02: Prüfen braucht Anmeldung und markierte Tabelle, Übernehmen zusätzlich eine Prüfung.
     $("technik-pruefen").disabled = busy || !next.user || !next.technik;
-    for (const id of ["technik-merken", "technik-abgleichen", "technik-leeren", "technik-art"])
+    for (const id of [
+      "technik-merken",
+      "technik-abgleichen",
+      "technik-leeren",
+      "technik-art",
+      "technik-geloescht",
+      "technik-verschoben",
+      "technik-entzogen",
+    ])
       $(id).disabled = busy || !next.user || !next.technik;
     $("technik-uebernehmen").disabled = busy || !next.user || next.technik?.geprueft !== true;
     for (const id of ["technik-objekt", "technik-variante", "technik-schutz"])
@@ -461,6 +475,7 @@
     $("technik-sammlung-box").hidden = tk.sammlung.length === 0;
     zeilenSetzen($("technik-abgleich"), tk.abgleich ?? []);
     $("technik-abgleich-box").hidden = !tk.abgleich;
+    $("technik-klaerung-box").hidden = tk.klaerung !== true;
     const href = tk.link ? oeffnenLink(tk.link, language) : null;
     $("technik-open").removeAttribute("href");
     if (href) $("technik-open").setAttribute("href", href);
@@ -795,6 +810,10 @@
     ["technik-merken", "technik_merken"],
     ["technik-leeren", "technik_leeren"],
     ["technik-abgleichen", "technik_abgleich"],
+    // Nacharbeit 7: die drei Antworten auf „Abschnitt fehlt".
+    ["technik-geloescht", "technik_quelle_geloescht"],
+    ["technik-verschoben", "technik_quelle_verschoben"],
+    ["technik-entzogen", "technik_quelle_entzogen"],
   ])
     $(id).addEventListener("click", () => {
       if (busy || $(id).disabled) return;

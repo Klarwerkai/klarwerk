@@ -131,7 +131,7 @@ async function bahn() {
         payload: { title?: string };
       }[]
     ).filter((d) => d.payload.title?.startsWith("Technische Daten"));
-  return { app, h, kopf, pfade, entwuerfe, seite };
+  return { app, h, kopf, pfade, entwuerfe, seite, fetcher };
 }
 
 describe("BPA-02 · Browseradapter", () => {
@@ -311,6 +311,130 @@ describe("BPA-02 · Browseradapter", () => {
       expect(view.el("technik-wissen").getAttribute("href")).toBe(
         `https://app.klarwerk.ai/wissen/${koId}`,
       );
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("A7 · Quellenpflege liest die gebundene Quelle neu; ein fehlender Abschnitt wird geklärt — gelöscht, verschoben oder entzogen", async () => {
+    const { app, h, kopf, pfade, seite, fetcher } = await bahn();
+    try {
+      await h.capture();
+      await h.send({ type: "login", email: EMAIL, password: KENNWORT });
+      await h.send({ type: "technik_vorschau", ziel: { objekt: "V-17" } });
+      await h.send({
+        type: "technik_uebernahme",
+        ziel: { objekt: "V-17" },
+        schutzklasse: "intern",
+      });
+      const entwurf = (
+        (await app.inject({ method: "GET", url: "/api/drafts", headers: kopf })).json() as {
+          id: string;
+        }[]
+      )[0];
+      const ko = (
+        await app.inject({
+          method: "POST",
+          url: `/api/drafts/${entwurf?.id}/promote`,
+          headers: kopf,
+          payload: { draftPayload: { category: "Wartung" } },
+        })
+      ).json() as { id: string };
+      const abgleiche = () => pfade.filter((p) => p === "/api/technische-daten/quellenabgleich");
+      const lesungen = () => h.spuren.filter((s) => s === "scripting.executeScript").length;
+
+      // 1. Die Seite hat sich geändert: der Abgleich liest NEU und meldet die Änderung.
+      const geaenderteSeite = {
+        ...seite,
+        tabellen: [{ ...TABELLE, zeilen: geaendert(HTML_SEITE, 0, 2, "20 bar").zeilen }],
+      };
+      h.setSelected(geaenderteSeite);
+      const vorher = lesungen();
+      const geaendertAbgleich = await h.send({ type: "technik_abgleich" });
+      expect(lesungen(), "die gebundene Quelle wird neu gelesen").toBe(vorher + 1);
+      expect(geaendertAbgleich.status).toBe("technik_abgeglichen");
+      expect(geaendertAbgleich.technik?.abgleich?.join("\n")).toContain(
+        "Quelle geändert / Source changed",
+      );
+
+      // 2. Anderer Tabinhalt: nichts wird gesendet.
+      const anzahl = abgleiche().length;
+      h.setSelected({ ...seite, url: "https://ventile.example.test/andere-seite" });
+      expect((await h.send({ type: "technik_abgleich" })).status).toBe("source_changed");
+      expect(abgleiche()).toHaveLength(anzahl);
+
+      // 3. Gleiche Seite, Abschnitt fehlt: nichts gesendet, die Leiste fragt nach dem Grund.
+      const ohneTabelle = { ...seite, tabellen: [], tabelleGewaehlt: -1 };
+      h.setSelected(ohneTabelle);
+      const fehlt = await h.send({ type: "technik_abgleich" });
+      expect(fehlt.status).toBe("technik_abschnitt_fehlt");
+      expect(fehlt.technik?.klaerung).toBe(true);
+      expect(abgleiche()).toHaveLength(anzahl);
+      // „Verschoben" kennzeichnet nichts.
+      const verschoben = await h.send({ type: "technik_quelle_verschoben" });
+      expect(verschoben.status).toBe("technik_verschoben");
+      expect(verschoben.technik?.klaerung).toBeUndefined();
+      expect(abgleiche()).toHaveLength(anzahl);
+
+      // 4. „Gelöscht" — erneut frisch gelesen, dann gekennzeichnet; am Wissensobjekt sichtbar.
+      await h.send({ type: "technik_abgleich" });
+      const geloescht = await h.send({ type: "technik_quelle_geloescht" });
+      expect(geloescht.status).toBe("technik_abgeglichen");
+      expect(geloescht.technik?.abgleich?.join("\n")).toContain(
+        "Quelle nicht mehr erreichbar / Source no longer reachable",
+      );
+      expect(abgleiche()).toHaveLength(anzahl + 1);
+      const quellen = (
+        await app.inject({ method: "GET", url: `/api/kos/${ko.id}`, headers: kopf })
+      ).json().sources as { sourceRemovedAt?: string }[];
+      expect(quellen[0]?.sourceRemovedAt, "Vermerk am Quellenbeleg").toBeTruthy();
+
+      // 5. Ist der Abschnitt wieder da, hebt der frische Abgleich den Vermerk auf.
+      h.setSelected(seite);
+      await h.send({ type: "technik_abgleich" });
+      const wieder = (
+        await app.inject({ method: "GET", url: `/api/kos/${ko.id}`, headers: kopf })
+      ).json().sources as { sourceRemovedAt?: string }[];
+      expect(wieder[0]?.sourceRemovedAt).toBeUndefined();
+
+      // 6. „Zugriff entzogen" geht an den Rechteweg: eine Expertin darf das nicht …
+      const bert = await app.inject({
+        method: "POST",
+        url: "/api/users",
+        headers: kopf,
+        payload: {
+          name: "Bert",
+          email: "bert@example.test",
+          password: KENNWORT,
+          role: "experte",
+        },
+      });
+      expect(bert.statusCode, bert.body).toBe(201);
+      const h2 = harness(fetcher);
+      h2.setSelected(seite);
+      await h2.capture();
+      await h2.send({ type: "login", email: "bert@example.test", password: KENNWORT });
+      h2.setSelected(ohneTabelle);
+      await h2.send({ type: "technik_abgleich" });
+      const nurPruefung = await h2.send({ type: "technik_quelle_entzogen" });
+      expect(nurPruefung.status).toBe("technik_rechte_nur_pruefung");
+      const nochLesbar = await app.inject({
+        method: "GET",
+        url: `/api/kos/${ko.id}`,
+        headers: kopf,
+      });
+      expect(nochLesbar.statusCode).toBe(200);
+      // … die Verwaltung mit Prüfrecht schon: Quelle und Ableitung sind danach gesperrt.
+      h.setSelected(ohneTabelle);
+      await h.send({ type: "technik_abgleich" });
+      const entzogen = await h.send({ type: "technik_quelle_entzogen" });
+      expect(entzogen.status).toBe("technik_rechte_entzogen");
+      const gesperrt = await app.inject({
+        method: "GET",
+        url: `/api/kos/${ko.id}`,
+        headers: kopf,
+      });
+      expect([403, 404]).toContain(gesperrt.statusCode);
     } finally {
       await app.close();
     }

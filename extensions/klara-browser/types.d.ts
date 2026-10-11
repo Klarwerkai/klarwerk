@@ -115,6 +115,8 @@ export type Technik = {
   ergebnis: TechnikErgebnis | null;
   /** Ergebnis des letzten Quellenabgleichs, als Textzeilen. */
   abgleich: string[] | null;
+  /** Nacharbeit 7: der Abschnitt fehlte bei der letzten frischen Lesung (Zeitpunkt). */
+  klaerung?: { am: string } | null;
   entwurfId: string | null;
   /** Die erneute Übernahme fand dieselbe Fassung schon als Wissensobjekt. */
   wissensobjektId: string | null;
@@ -130,6 +132,7 @@ export type TechnikSicht = {
   sammlung: string[];
   ergebnis?: TechnikErgebnis;
   abgleich?: string[];
+  klaerung?: boolean;
   link?: string;
   wissenLink?: string;
   imWissenFreigegeben?: boolean;

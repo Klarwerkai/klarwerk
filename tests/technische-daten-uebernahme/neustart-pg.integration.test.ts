@@ -240,4 +240,59 @@ describe("BPA-02 · Übernahme technischer Daten gegen echtes PostgreSQL", () =>
     expect(gelesen.json().payload.pendingSources[0].excerpt).toContain("Lage: Quelle geändert");
     await beenden(dritte);
   }, 120_000);
+
+  it("N3 · eingereichtes Wissen: Nichterreichbarkeit und betroffene Wissensfassung überstehen den Neustart", async () => {
+    expect(entwurfId, "N1 muss vorher gelaufen sein").not.toBe("");
+    const app = await neu();
+    const anna = await anmelden(app);
+    // Öffentliche Belegadressen dürfen beim Einreichen nur auf dieser Stufe ans Wissensobjekt.
+    const stufe = await app.inject({
+      method: "PUT",
+      url: "/api/external/policy",
+      headers: anna,
+      payload: { stage: "search_attach" },
+    });
+    expect(stufe.statusCode, stufe.body).toBe(200);
+    const eingereicht = await app.inject({
+      method: "POST",
+      url: `/api/drafts/${entwurfId}/promote`,
+      headers: anna,
+      payload: { draftPayload: { category: "Wartung" } },
+    });
+    expect(eingereicht.statusCode, eingereicht.body).toBe(201);
+    const koId = eingereicht.json().id as string;
+    const fassung = eingereicht.json().version as number;
+    const weg = await app.inject({
+      method: "POST",
+      url: "/api/technische-daten/quellenabgleich",
+      headers: anna,
+      payload: { beleg: HTML_SEITE, zustand: "geloescht" },
+    });
+    expect(weg.statusCode, weg.body).toBe(200);
+    expect(weg.json().betroffen).toEqual([
+      expect.objectContaining({ art: "wissensobjekt", id: koId, fassung }),
+    ]);
+    await beenden(app);
+
+    // Neustart: Vermerk am Quellenbeleg und betroffene Wissensfassung kommen aus PostgreSQL.
+    const zweite = await neu();
+    const wieder = await anmelden(zweite);
+    const ko = await zweite.inject({ method: "GET", url: `/api/kos/${koId}`, headers: wieder });
+    expect(ko.statusCode, ko.body).toBe(200);
+    const quellen = ko.json().sources as { url: string; sourceRemovedAt?: string }[];
+    const html = quellen.find((s) => s.url === `${HTML_SEITE.url}#technische-daten`);
+    const blatt = quellen.find((s) => s.url === DATENBLATT.url);
+    expect(html?.sourceRemovedAt, "Vermerk am betroffenen Beleg").toBeTruthy();
+    expect(blatt?.sourceRemovedAt, "der andere Beleg bleibt unberührt").toBeUndefined();
+    const protokoll = await zweite.inject({
+      method: "POST",
+      url: "/api/technische-daten/quellenabgleich",
+      headers: wieder,
+      payload: { beleg: HTML_SEITE, zustand: "geloescht" },
+    });
+    expect(protokoll.json().betroffen).toEqual([
+      expect.objectContaining({ id: koId, fassung, lage: "quelle_nicht_mehr_erreichbar" }),
+    ]);
+    await beenden(zweite);
+  }, 120_000);
 });
