@@ -42,6 +42,7 @@ import {
   type ScormBeschriftung,
   type ScormSprache,
 } from "./scorm-laufzeit";
+import type { OutputSichtbarkeit } from "./types";
 
 export const SCORM_FORMAT = {
   standard: "SCORM 1.2",
@@ -471,6 +472,33 @@ interface Vorbereitung {
   dateien: Map<string, Uint8Array | string>;
 }
 
+/**
+ * aufnahme:20260922:gesamt-leserechte — WER EXPORTIERT, UND WAS ER SEHEN DARF.
+ *
+ * Bis hierher fragte der Export nur die Stufe am Objekt bzw. am Medium. Der Mensch davor kam nicht
+ * vor: ein Objekt in einem fremden Space ging ins Paket, und die Prüfung nannte bei einem fremden
+ * vertraulichen Objekt dessen TITEL. Bei den Medien genügte es, dass ein validiertes Objekt eine
+ * Objektkennung im Fließtext nennt — eine Behauptung, die der Bildabruf (`GET /api/objects/:id`)
+ * seit mega78 ausdrücklich nicht als Berechtigung gelten lässt.
+ *
+ * Beide Fragen beantwortet die Route mit den Regeln aus services/app/src/sichtbarkeit.ts
+ * (`sichtbarkeitsfilterFuer`, `beurteileAnhang`); hier wird nur angewendet. BEIDE sind Pflicht:
+ * fehlt eine oder ist sie keine Funktion, ist nichts sichtbar (mega76 Block A).
+ */
+export interface ScormBetrachter {
+  /** Darf der Betrachter dieses Wissensobjekt sehen? */
+  ko: OutputSichtbarkeit;
+  /** Darf der Betrachter dieses Medium (Objektkennung im Objektspeicher) sehen? */
+  medium: (objectId: string) => Promise<boolean>;
+}
+
+async function mediumSichtbar(
+  betrachter: ScormBetrachter | undefined,
+  objectId: string,
+): Promise<boolean> {
+  return typeof betrachter?.medium === "function" && (await betrachter.medium(objectId)) === true;
+}
+
 export class LmsExportService {
   private readonly deps: LmsExportServiceDeps;
 
@@ -480,22 +508,22 @@ export class LmsExportService {
 
   /** Prüfung vor dem Export: sagt, was blockiert und was nicht mitgeht — erzeugt kein Paket. */
   //
-  // R-1175: `sichtbar` ist die EINE Sichtbarkeitsentscheidung des Betrachters (von der Route aus
-  // `sichtbarkeitsfilterFuer`). Ein Objekt, das er nicht sehen darf, blockiert wie ein unbekanntes
-  // (`UNKNOWN_KO`) — ohne Titel im Befund. Die Vertraulichkeitssperre bleibt daneben bestehen.
-  async pruefe(
-    eingabe: ScormExportEingabe,
-    sichtbar: (ko: KnowledgeObject) => boolean = () => true,
-  ): Promise<ScormPruefung> {
-    return (await this.bereite(eingabe, sichtbar)).pruefung;
+  // aufnahme:20260922:gesamt-leserechte / R-1175: Ein Objekt oder Medium, das der Betrachter nicht
+  // sehen darf, wird wie ein fehlendes befundet (UNKNOWN_KO bzw. MEDIA_MISSING) — kein Titel, keine
+  // Stufe, kein Status eines Objekts, dessen Existenz er nicht erfahren darf. `betrachter.ko` ist
+  // die EINE Sichtbarkeitsentscheidung (`sichtbarkeitsfilterFuer`); die Vertraulichkeitssperre
+  // bleibt daneben bestehen. Nacharbeit 20 (Integration main): kein Rückfall „alles sichtbar“ —
+  // ohne Betrachter ist nichts sichtbar.
+  async pruefe(eingabe: ScormExportEingabe, betrachter: ScormBetrachter): Promise<ScormPruefung> {
+    return (await this.bereite(eingabe, betrachter)).pruefung;
   }
 
   /** Paket erzeugen. Bei blockierenden Befunden kein Paket, sondern die Prüfung als Antwort. */
   async exportiere(
     eingabe: ScormExportEingabe,
-    sichtbar: (ko: KnowledgeObject) => boolean = () => true,
+    betrachter: ScormBetrachter,
   ): Promise<ScormPaket | { pruefung: ScormPruefung }> {
-    const { pruefung, dateien } = await this.bereite(eingabe, sichtbar);
+    const { pruefung, dateien } = await this.bereite(eingabe, betrachter);
     if (!pruefung.exportierbar || !pruefung.fassung) {
       return { pruefung };
     }
@@ -518,10 +546,12 @@ export class LmsExportService {
   private async lade(
     id: string,
     befunde: ScormBefund[],
-    sichtbar: (ko: KnowledgeObject) => boolean,
+    betrachter: ScormBetrachter | undefined,
   ): Promise<Einheit | null> {
     const aktuell = await this.deps.koService.get(id);
-    if (!aktuell || !sichtbar(aktuell)) {
+    // Fail-closed (mega76 Block A): nur ein `true` eines tauglichen `betrachter.ko` macht sichtbar.
+    // Gerufen wird der übergebene Filter hier selbst — nachprüfbar für den Lesewege-Sammler.
+    if (!aktuell || typeof betrachter?.ko !== "function" || betrachter.ko(aktuell) !== true) {
       befunde.push(blockiert("UNKNOWN_KO", "inhalt", id, id));
       return null;
     }
@@ -556,7 +586,7 @@ export class LmsExportService {
 
   private async bereite(
     eingabe: ScormExportEingabe,
-    sichtbar: (ko: KnowledgeObject) => boolean,
+    betrachter: ScormBetrachter,
   ): Promise<Vorbereitung> {
     const befunde: ScormBefund[] = [];
     const sprache = eingabe.sprache;
@@ -597,7 +627,7 @@ export class LmsExportService {
     let inhaltVollstaendig = ids.length > 0 && ids.length <= MAX_SCORM_EINHEITEN;
     if (inhaltVollstaendig) {
       for (const id of ids) {
-        const e = await this.lade(id, befunde, sichtbar);
+        const e = await this.lade(id, befunde, betrachter);
         if (e) {
           einheiten.push(e);
         } else {
@@ -661,8 +691,12 @@ export class LmsExportService {
         });
         continue;
       }
-      const medium = await this.deps.medien(objectId);
       const name = anhang?.name ?? objectId;
+      // aufnahme:20260922:gesamt-leserechte: erst das Recht, dann die Bytes — und ein nicht
+      // sichtbares Medium antwortet wie ein fehlendes.
+      const medium = (await mediumSichtbar(betrachter, objectId))
+        ? await this.deps.medien(objectId)
+        : undefined;
       if (!medium) {
         befunde.push(blockiert("MEDIA_MISSING", "medien", koId, name));
         continue;

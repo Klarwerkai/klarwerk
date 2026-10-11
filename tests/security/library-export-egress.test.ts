@@ -38,6 +38,8 @@ describe("SCRUM-506: /api/library/export — Policy am HTTP-Rand (Rollen-Bindung
 
     // Bestand: A = validiert + intern, B = validiert + VERTRAULICH, C = offen (nicht validiert).
     const koService = services.ko;
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Entscheidung 16): „intern" muss
+    // ausdrücklich gesetzt sein — ein Objekt ohne Stufe ist ungeklärt und für den Leser verborgen.
     const a = await koService.create({
       title: "Ventil entlasten",
       statement: "Vor Wartung Druck ablassen.",
@@ -45,6 +47,7 @@ describe("SCRUM-506: /api/library/export — Policy am HTTP-Rand (Rollen-Bindung
       category: "Anlage 1",
       author: "admin",
       tags: [],
+      confidentiality: "intern",
     });
     await koService.setValidationState(a.id, { trust: 80, status: "validiert" });
     const b = await koService.create({

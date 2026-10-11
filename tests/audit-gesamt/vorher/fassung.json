@@ -1,18 +1,22 @@
 {
   "zweck": "Produktstand VOR der Behebung für tests/audit-gesamt/vorher-nachher.integration.test.ts",
-  "kandidat_beim_erzeugen": "3886091d5d4289ce99a72ce03a025cf33f860b38",
+  "zuletzt_neu_erzeugt": "Nacharbeit 33 auf 7b8b2096d0816eced3a0ad0b20d54a7640ccabb2 zusammengeführt mit main 35f98a8ac (Konflikt services/audit/index.ts aufgelöst: namensbelegeAus und VALIDATION_DECISION_ACTIONS beide exportiert), erzeugt aus dem Arbeitsbaum vor der Kandidatbildung; vorher Nacharbeit 32 (Löschweg ohne Existenzrecht)",
+  "kandidat_beim_erzeugen": "97e6d9c9ccbeab73b7984d15312c9b65e9bdc748 zusammengeführt mit main 401c9349e (Nacharbeit 26: Konflikte in services/auth aufgelöst — Freigabestufe und Weisungsbefugnis nebeneinander) auf dem Stand von 587318d7 + Arbeitsstand aufnahme:20260922:gesamt-leserechte Nacharbeit 24 (sichtbarkeit.ts: Quellleser UND Freigaberang, auch im SQL; audit-routes.ts: Objektprüfung samt Quellrechten für jeden Leser; knowledge-object/src/service.ts: Quellrechte in den Sichtbarkeitsfakten, `quellbeschraenkt` im Löschbeleg), erzeugt aus dem Arbeitsbaum vor der Kandidatbildung",
+  "erzeugungshinweis": "Nacharbeit 15 hatte vor der Formatierung erzeugt; die Kandidatbildung formatierte audit-routes.ts (Aufrufketten zusammengezogen), der Patch passte nicht mehr. Patch nur vom formatierten Stand erzeugen.",
   "vorher_hauptstand": "6c576c7014302bc85b86af85c50794e0aefe7d64",
   "vorher_beschreibung": "integrierter Hauptstand ohne die Behebung dieses Auftrags (erster Elternteil des Integrations-Merges 46f89d12 ist die Arbeitssicherung, zweiter 6c576c70 der Hauptstand)",
   "patch": "behebung-rueckwaerts.patch",
-  "umfang": "services/** ohne *.test.ts — 21 Dateien",
-  "befehl": "git diff --binary --output=tests/audit-gesamt/vorher/behebung-rueckwaerts.patch 3886091d 6c576c70 -- services ':(exclude)services/**/*.test.ts'",
+  "umfang": "services/** ohne *.test.ts — 321 Dateien (seit der Integration von main e344d72 deutlich mehr: der Vorher-Stand bleibt der alte Hauptstand 6c576c70; Importverträglichkeit mit dem heutigen Prüfbaum erst im regulären PG-Lauf prüfbar)",
+  "befehl": "git diff -R --binary --output=tests/audit-gesamt/vorher/behebung-rueckwaerts.patch 6c576c7014302bc85b86af85c50794e0aefe7d64 -- services ':(exclude)services/**/*.test.ts'",
+  "befehl_hinweis": "-R gegen den Arbeitsbaum ist gleichbedeutend mit `git diff <Kandidat> <Ziel>`, sobald der Arbeitsstand der Kandidat ist; so passt der Patch auf die services/ des daraus gebildeten Kandidaten.",
   "lauf2": {
     "zweck": "die Fassung, an der Ben beleg:6818bd52 meldete (gleichzeitige GET /api/audit/export)",
     "fassung": "758e76c118482f11a3f322403d71d188e3fda277",
     "fassung_beschreibung": "ship: 1.0.0-beta.1.622 (lauf:b3:aufnahme:20260922:gesamt-auditprotokoll:2 Runde 1); Elternteil 222abf959b57928d64196b8500e52513088e1ed0; von keinem Branch erreichbar, nur als Git-Objekt vorhanden",
-    "kandidat_beim_erzeugen": "2fee131e2efbd67f3e2d082ec94aea09200d7c5f",
+    "kandidat_beim_erzeugen": "5a2a5ec44abf96daecd55689dc312a02942d4094 + Arbeitsstand Nacharbeit 22 (in Nacharbeit 23 NICHT neu erzeugt)",
+    "stand_nacharbeit_23": "Nicht neu erzeugbar: das Git-Objekt 758e76c118482f11a3f322403d71d188e3fda277 ist in diesem Repository nicht mehr vorhanden (git: bad object). Der Patch berührt services/app/src/seed-demo.ts und demo-content.ts, die main 343d4b241 seither geändert hat — er passt deshalb auf den neuen Kandidaten voraussichtlich nicht mehr (der Test meldet dann „Vorher-Fassung veraltet“). Neu erzeugen, sobald das Objekt wieder vorliegt.",
     "patch": "fassung-758e76c1.patch",
-    "umfang": "services/** ohne *.test.ts — 105 Dateien; apps/web/src/lib/docx.ts (einziger Import aus apps/) ist in beiden Fassungen gleich, package.json unterscheidet sich nur in der Versionsnummer",
-    "befehl": "git diff --binary --output=tests/audit-gesamt/vorher/fassung-758e76c1.patch 2fee131e 758e76c1 -- services ':(exclude)services/**/*.test.ts'"
+    "umfang": "services/** ohne *.test.ts — 342 Dateien; Importverträglichkeit mit apps/web und Abhängigkeiten erst im regulären PG-Lauf prüfen",
+    "befehl": "git diff -R --binary --output=tests/audit-gesamt/vorher/fassung-758e76c1.patch 758e76c118482f11a3f322403d71d188e3fda277 -- services ':(exclude)services/**/*.test.ts'"
   }
 }

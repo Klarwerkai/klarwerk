@@ -107,6 +107,9 @@ async function buehne() {
   const adminId =
     (reg.json() as { id?: string; user?: { id: string } }).user?.id ??
     (reg.json() as { id: string }).id;
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 28, Ben): den Kettenexport (`audit.exported`)
+  // gibt es nur mit ausdrücklich erteilter Ketteneinsicht (Betriebseinstellung, je Abruf gelesen).
+  process.env.KLARWERK_AUDIT_KETTENEINSICHT = adminId;
   return { app, services, repos, headers, adminId, probe, auditInner, koInner };
 }
 

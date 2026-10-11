@@ -73,8 +73,10 @@ export {
 export { MELDUNGEN, meldung } from "./src/meldungen";
 export type { Meldungsschluessel, Sprache } from "./src/meldungen";
 export { sprache } from "./src/routes";
-export { AuthError } from "./src/types";
+export { AuthError, istFreigabestufe } from "./src/types";
 // Aufnahme gesamt-peer-validierung (Antwort 18): die kontogebundene fachliche Weisungsbefugnis.
+// Seit der Integration (gesamt-wissen-herkunft, Nacharbeit 12) die EINE Befugnisregel auch für die
+// Weisung mit punktweiser Überstimmung — kein zweiter Vermerk, keine zweite Regel.
 export { WEISUNG_GANZES_UNTERNEHMEN, weisungsbefugnisDeckt } from "./src/types";
 export type {
   Role,
@@ -82,5 +84,6 @@ export type {
   PublicUser,
   Session,
   AuthErrorCode,
+  Freigabestufe,
   Weisungsbefugnis,
 } from "./src/types";
