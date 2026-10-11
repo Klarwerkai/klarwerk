@@ -101,8 +101,11 @@ aus `KLARWERK_BUILD_COMMIT`, Zahl der Tabellen aus `migrate()`).
 | Speicher im Browser | ausgeschlossen | Gerät der Person | neu anmelden; Geräteeinstellungen bleiben im Browser |
 
 **Getrennt erfasst und kein rückwirkender Beleg.** Der Drill schreibt die privaten Assistenzspeicher
-als eigene Kategorie `vergleich.assistenz` ins Protokoll. Belegt heißt ein Bereich nur, wenn die
-letzte Probe grün war UND jede seiner Tabellen mit beiden Zahlen gleich im Protokoll steht. Ein
+als eigene Kategorie `vergleich.assistenz` ins Protokoll. Für Kernbereiche heißt ein Bereich
+„belegt“, wenn die letzte Probe grün war UND jede seiner Tabellen mit beiden Zahlen gleich im
+Protokoll steht. Für die privaten Assistenzbereiche zählt der Drill nur Zeilen; die Verwaltung zeigt
+dort deshalb „nur Tabellenvergleich“ (`zeilen_gleich`) und nie „belegt“ — Inhalt, Kontozuordnung
+und Fremdzugriffsschutz belegt allein die Abnahmeprobe, die die Inhalte je Konto zurückliest. Ein
 Protokoll aus einer älteren Drillfassung ohne diese Kategorie lässt die Assistenzbereiche bei
 „nicht gemessen". Die persönlichen Klara-Gespräche stehen seit diesem Auftrag auch im Dateninventar
 (`klaragespraeche`).
@@ -124,7 +127,10 @@ Quelle, Verantwortung, Freigabe, Beziehungen, Assistenzprofile, Gespräch) das u
 `backup.sh` und `restore-drill.sh` in eine leere Datenbank, vergleicht Quelle und Ziel, die
 Privatdaten je Konto und das Wissenspaket jeder Rolle, misst die Dauer des Drills und legt
 Vergleichsbericht, Drillprotokoll und lesbare Exportstichproben unter
-`test-results/poc-wiederherstellung-export/` ab. Beschädigte (Exit 11) und unvollständige
+`test-results/poc-wiederherstellung-export/` ab. Weil der Prüfserver danach samt Speicher abgebaut
+wird, steht jedes dieser Artefakte zusätzlich vollständig als Zeile `[PV-01 ARTEFAKT]` (Text
+wörtlich, ZIP und Anhang als Base64, je mit SHA-256) im archivierten Protokoll des Laufs — dazu die
+Exportmanifeste aller fünf Rollen und die Protokolle der beiden Fehlproben. Beschädigte (Exit 11) und unvollständige
 (Exit 22) Sicherungen enden dort mit Protokoll; die Quelle bleibt unverändert.
 
 ## Was ausdrücklich NICHT erfüllt ist — Restarbeit und externe Voraussetzungen
@@ -171,5 +177,6 @@ Diese Punkte sind **offen** und werden von keiner Anzeige als erfüllt ausgegebe
     der nativen PostgreSQL selbst (Punkte 4–5), die reale fachliche PoC-Verantwortung, Vertretung
     und Schlussabnahme (keine Person benannt), eine Öffnungsprobe des Wissenspakets durch einen
     Menschen auf einem Kundenrechner sowie ein eigener Export der persönlichen Assistenzdaten für
-    das Konto selbst (das Wissenspaket enthält sie bewusst nicht). Die Interaktionsgedächtnis- und
-    Sitzungstabellen werden in der Probe mitgezählt, aber ohne eigene Einträge angelegt.
+    das Konto selbst (das Wissenspaket enthält sie bewusst nicht). Die Zustimmung zur externen KI
+    legt die Probe über den Übergang der Produktablage an, nicht über `POST …/consent`: dieser Weg
+    verlangt eine konfigurierte externe KI mit zentraler Freigabe, die der Prüfserver nicht hat.

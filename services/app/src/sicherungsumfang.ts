@@ -104,12 +104,23 @@ export interface GemesseneTabelle {
  *   belegt         — die Probe war insgesamt grün UND jede Tabelle des Bereichs steht mit beiden
  *                    Zahlen gleich im Protokoll. Gleiche Zahlen in einer gescheiterten Probe belegen
  *                    nichts (z. B. Exit 73: Zeilen gleich, Anhangsinhalt weg).
+ *   zeilen_gleich  — Nachweis 3 (Ben): für die PRIVATEN ASSISTENZBEREICHE zählt der Drill nur Zeilen.
+ *                    Gleiche Zahlen in einer grünen Probe sagen dort nichts über Inhalt,
+ *                    Kontozuordnung oder Fremdzugriffsschutz — die Anzeige nennt deshalb ausdrücklich
+ *                    „Tabellenvergleich“ und nie „belegt“. Eine inhaltliche Wiederherstellung belegt
+ *                    nur eine Probe, die die Inhalte je Konto zurückliest (Abnahmeprobe
+ *                    `tests/wiederherstellung-export/zusammenhang.integration.test.ts`).
  *   abweichend     — eine Tabelle steht mit zwei verschiedenen Zahlen darin.
  *   nicht_gemessen — eine Tabelle fehlt im Protokoll (auch: älteres Protokoll) oder die Probe war
  *                    nicht grün.
  *   kein_beleg     — der Bereich liegt nicht in der Datenbank; eine Probe kann ihn nicht belegen.
  */
-export type UmfangBeleg = "belegt" | "abweichend" | "nicht_gemessen" | "kein_beleg";
+export type UmfangBeleg =
+  | "belegt"
+  | "zeilen_gleich"
+  | "abweichend"
+  | "nicht_gemessen"
+  | "kein_beleg";
 
 export function belegFuer(
   bereich: UmfangBereich,
@@ -133,7 +144,11 @@ export function belegFuer(
   if (zeilen.some((z) => !z || z.dump === null || z.datenbank === null)) {
     return "nicht_gemessen";
   }
-  return restoreErfolg ? "belegt" : "nicht_gemessen";
+  if (!restoreErfolg) {
+    return "nicht_gemessen";
+  }
+  // Anhangsbytes liest der Drill in Glied 7b inhaltlich zurück; private Assistenzinhalte nicht.
+  return bereich.art === "assistenz" ? "zeilen_gleich" : "belegt";
 }
 
 /**

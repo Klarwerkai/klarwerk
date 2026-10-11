@@ -94,7 +94,7 @@ describe("U1–U4 · der Umfang je Bereich, gebunden an Migration und Drill", ()
       for (const z of ["im_dump", "ausgeschlossen", "nicht_vorhanden"]) {
         expect(block[`sicherungsnachweise.bereiche.zustand.${z}`], `${sprache} ${z}`).toBeTruthy();
       }
-      for (const z of ["belegt", "abweichend", "nicht_gemessen", "kein_beleg"]) {
+      for (const z of ["belegt", "zeilen_gleich", "abweichend", "nicht_gemessen", "kein_beleg"]) {
         expect(block[`sicherungsnachweise.bereiche.beleg.${z}`], `${sprache} ${z}`).toBeTruthy();
       }
     }
@@ -245,12 +245,16 @@ describe("U5 · kein rückwirkender Sicherungsbeleg für später gelieferte Assi
     }
   });
 
-  it("ein Protokoll mit beiden Zahlen je Assistenztabelle belegt die Bereiche", async () => {
+  // Nacharbeit 3 (Ben, PV-01-03): gleiche Zeilenzahlen sind für private Inhalte nur ein
+  // Tabellenvergleich — nie „belegt“. Inhalt, Kontozuordnung und Fremdzugriff prüft der Drill nicht.
+  it("ein Protokoll mit beiden Zahlen je Assistenztabelle ist nur ein Tabellenvergleich", async () => {
     const a = await auskunftMit(mitAssistenz());
     expect(a.schutzwege?.restore.zustand).toBe("erfolg");
     for (const id of ["assistenzprofil", "gespraeche", "gedaechtnis", "sitzungen"]) {
-      expect(belegVon(a, id), id).toBe("belegt");
+      expect(belegVon(a, id), id).toBe("zeilen_gleich");
     }
+    // Kernbereiche, deren Inhalt der Drill zurückliest, bleiben belegt.
+    expect(belegVon(a, "anhangsbytes")).toBe("belegt");
     expect(belegVon(a, "eigeneavatare")).toBe("kein_beleg");
   });
 

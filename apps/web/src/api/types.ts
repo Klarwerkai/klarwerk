@@ -4104,7 +4104,12 @@ export type SicherungenAuskunft = (
 // Spiegel von `services/app/src/sicherungsumfang.ts`; Titel, Grund und Folge übersetzt die Fläche.
 // ================================================================================================
 export type UmfangZustand = "im_dump" | "ausgeschlossen" | "nicht_vorhanden";
-export type UmfangBeleg = "belegt" | "abweichend" | "nicht_gemessen" | "kein_beleg";
+export type UmfangBeleg =
+  | "belegt"
+  | "zeilen_gleich"
+  | "abweichend"
+  | "nicht_gemessen"
+  | "kein_beleg";
 export interface SicherungsUmfangBereich {
   id: string;
   art: "kern" | "assistenz";

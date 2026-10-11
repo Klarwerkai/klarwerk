@@ -159,10 +159,12 @@ const AUSKUNFT: SicherungenAuskunft = {
 
 let stand: Stand | null = null;
 let fragen: string[] = [];
+let antwort: SicherungenAuskunft = AUSKUNFT;
 
 beforeEach(() => {
   setzeStufe2(true);
   fragen = [];
+  antwort = AUSKUNFT;
   Object.defineProperty(globalThis, "fetch", {
     configurable: true,
     writable: true,
@@ -176,7 +178,7 @@ beforeEach(() => {
         status: 200,
         ok: true,
         statusText: "OK",
-        text: async () => JSON.stringify(AUSKUNFT),
+        text: async () => JSON.stringify(antwort),
       };
     },
   });
@@ -243,6 +245,33 @@ describe("S1/S2 · der Umfang je Bereich, ohne rückwirkenden Beleg", () => {
       expect(el.textContent, id).toContain(t(`sicherungsnachweise.bereiche.${id}.text`));
     }
     expect(bereich(s, "anhangsbytes").getAttribute("data-beleg")).toBe("belegt");
+  });
+
+  // Nacharbeit 3 (Ben, PV-01-03): gleiche Zeilenzahlen privater Bereiche heißen „nur
+  // Tabellenvergleich“ — die Karte darf sie nicht wie einen inhaltlichen Wiederherstellungsbeleg zeigen.
+  it("S2b · ein reiner Tabellenvergleich steht als solcher da, nicht als belegt", async () => {
+    const umfang = AUSKUNFT.umfang as NonNullable<SicherungenAuskunft["umfang"]>;
+    antwort = {
+      ...AUSKUNFT,
+      umfang: {
+        ...umfang,
+        bereiche: umfang.bereiche.map((b) =>
+          b.art === "assistenz" && b.zustand === "im_dump"
+            ? { ...b, beleg: "zeilen_gleich" as const }
+            : b,
+        ),
+      },
+    };
+    const s = await karte();
+    for (const id of ["assistenzprofil", "gespraeche", "gedaechtnis", "sitzungen"]) {
+      const el = bereich(s, id);
+      expect(el.getAttribute("data-beleg"), id).toBe("zeilen_gleich");
+      expect(el.textContent, id).toContain(t("sicherungsnachweise.bereiche.beleg.zeilen_gleich"));
+      expect(el.textContent, id).not.toContain(t("sicherungsnachweise.bereiche.beleg.belegt"));
+    }
+    expect(t("sicherungsnachweise.bereiche.beleg.zeilen_gleich")).not.toBe(
+      t("sicherungsnachweise.bereiche.beleg.belegt"),
+    );
   });
 
   it("S3 · der Restore-Nachweis führt die Assistenzspeicher als eigene, ungemessene Zeile", async () => {

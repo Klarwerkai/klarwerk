@@ -169,6 +169,8 @@ export default {
       "in dieser Fassung nicht vorhanden — nichts gesichert",
     "sicherungsnachweise.bereiche.beleg.belegt":
       "Letzte Wiederherstellungsprobe: zurückgekommen, Zeilen wie in der Sicherung.",
+    "sicherungsnachweise.bereiche.beleg.zeilen_gleich":
+      "Letzte Wiederherstellungsprobe: nur Tabellenvergleich — Zeilenzahl wie in der Sicherung. Inhalt, Kontozuordnung und Schutz vor fremdem Zugriff prüft diese Probe nicht.",
     "sicherungsnachweise.bereiche.beleg.abweichend": "Letzte Wiederherstellungsprobe: weicht ab.",
     "sicherungsnachweise.bereiche.beleg.nicht_gemessen":
       "Letzte Wiederherstellungsprobe: für diesen Bereich nicht gemessen — kein Wiederherstellungsbeleg.",
@@ -346,6 +348,8 @@ export default {
       "does not exist in this version — nothing backed up",
     "sicherungsnachweise.bereiche.beleg.belegt":
       "Last restore test: came back, rows as in the backup.",
+    "sicherungsnachweise.bereiche.beleg.zeilen_gleich":
+      "Last restore test: table comparison only — row count as in the backup. This test does not check content, account assignment or protection against access by others.",
     "sicherungsnachweise.bereiche.beleg.abweichend": "Last restore test: differs.",
     "sicherungsnachweise.bereiche.beleg.nicht_gemessen":
       "Last restore test: not measured for this area — no restore evidence.",
@@ -524,6 +528,8 @@ export default {
       "bestaat niet in deze versie — niets geback-upt",
     "sicherungsnachweise.bereiche.beleg.belegt":
       "Laatste herstelproef: teruggekomen, rijen zoals in de back-up.",
+    "sicherungsnachweise.bereiche.beleg.zeilen_gleich":
+      "Laatste herstelproef: alleen tabelvergelijking — aantal rijen zoals in de back-up. Inhoud, accountkoppeling en bescherming tegen toegang door anderen controleert deze proef niet.",
     "sicherungsnachweise.bereiche.beleg.abweichend": "Laatste herstelproef: wijkt af.",
     "sicherungsnachweise.bereiche.beleg.nicht_gemessen":
       "Laatste herstelproef: voor dit onderdeel niet gemeten — geen herstelbewijs.",

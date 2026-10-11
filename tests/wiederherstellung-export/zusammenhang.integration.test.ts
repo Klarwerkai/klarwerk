@@ -1,14 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  copyFileSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Pool } from "pg";
@@ -17,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { type KlaraConsent, PgKlaraSessionRepo } from "../../services/reasoner";
 import {
   ANHANG,
   type Bestand,
@@ -71,6 +64,43 @@ const PROFIL = {
 } as const;
 const BEZUG = { pfad: "/bibliothek", seitenName: "Bibliothek", objekt: NORD_TITEL };
 const HILFEFRAGE = "Fiktive Hilfefrage: Wo liegt das Prüfprotokoll N-12?";
+// Nacharbeit 3 (Ben, PV-01-03): nicht leere, nicht abgelaufene Einträge JEDES privaten Bereichs.
+const GEDAECHTNIS = {
+  anna: { inhalt: "Fiktiv: Wie oft wird N-12 geprüft?", antwort: "Fiktiv: vor jedem Anfahren." },
+  bert: { inhalt: "Fiktiv: Wer entlüftet Süd?", antwort: "Fiktiv: die Frühschicht." },
+} as const;
+interface GedaechtnisListe {
+  eintraege: { id: string; inhalt: string; antwort: string | null }[];
+}
+const SITZUNG = {
+  anna: { instanz: "pv01-inst-anna", dokument: "pv01-doc-anna" },
+  bert: { instanz: "pv01-inst-bert", dokument: "pv01-doc-bert" },
+} as const;
+
+/**
+ * DAUERHAFTE ARTEFAKTE (Nacharbeit 3, PV-01-07). Der Prüfserver wird nach dem Lauf samt Speicher
+ * abgebaut; erhalten bleiben sein Protokoll und der Suite-Bericht. Jedes Abnahmeartefakt geht
+ * deshalb ZUSÄTZLICH zur Datei unter `test-results/` vollständig und unverändert als eine Zeile
+ * `[PV-01 ARTEFAKT]` in die Testausgabe — Text wörtlich, Binärdateien (ZIP, Anhang) als Base64,
+ * jeweils mit SHA-256 und Byteanzahl der Originalbytes. Wiederherstellbar mit
+ * `Buffer.from(inhalt, kodierung)`.
+ */
+function artefakt(datei: string, inhalt: Buffer | string): { datei: string; sha256: string } {
+  const bytes = typeof inhalt === "string" ? Buffer.from(inhalt, "utf8") : inhalt;
+  const ziel = join(BERICHT, datei);
+  mkdirSync(ziel.slice(0, ziel.lastIndexOf("/")), { recursive: true });
+  writeFileSync(ziel, bytes);
+  const text = typeof inhalt === "string";
+  const zeile = {
+    datei,
+    sha256: sha256(bytes),
+    bytes: bytes.length,
+    kodierung: text ? "utf8" : "base64",
+    inhalt: text ? inhalt : bytes.toString("base64"),
+  };
+  process.stdout.write(`[PV-01 ARTEFAKT] ${JSON.stringify(zeile)}\n`);
+  return { datei, sha256: zeile.sha256 };
+}
 
 function werkzeugFehlt(name: string): boolean {
   return spawnSync("/bin/sh", ["-c", `command -v ${name} >/dev/null 2>&1`]).status !== 0;
@@ -173,6 +203,21 @@ async function fakten(pool: Pool): Promise<Record<string, unknown[]>> {
     gespraeche: await q(
       `SELECT id, konto_id, fassung, jsonb_array_length(data->'nachrichten') AS nachrichten
          FROM klara_gespraeche ORDER BY id`,
+    ),
+    // Nacharbeit 3: Inhalt UND Kontozuordnung der übrigen privaten Bereiche, nicht nur ihre Zahl.
+    gedaechtnis: await q(
+      `SELECT id, konto_id, art, inhalt, antwort, vertraulichkeit, aufbewahrung_tage, verfall_am
+         FROM interaktions_gedaechtnis ORDER BY id`,
+    ),
+    klaraSitzungen: await q(
+      `SELECT session_id, actor_id, addin_instance_id, document_context_id, consent_state,
+              expires_at, closed_at
+         FROM klara_sessions ORDER BY session_id`,
+    ),
+    klaraZustimmungen: await q(
+      `SELECT consent_id, session_id, actor_id, document_context_id, status, provider_class,
+              provider_reference, model_reference, allowed_payload_classes, expires_at
+         FROM klara_session_consents ORDER BY consent_id`,
     ),
   };
 }
@@ -353,6 +398,79 @@ describe("PV-01 · zusammenhängende Restore- und Exportprobe an echter PostgreS
     });
     expect(n.statusCode, n.body).toBe(201);
 
+    // Nacharbeit 3 (Ben, PV-01-03): Interaktionsgedächtnis, Klara-Sitzung und Zustimmung je Konto —
+    // nicht leer, nicht abgelaufen, damit der Vergleich Inhalt und Kontozuordnung trägt statt 0 = 0.
+    const gedaechtnisId = {} as Record<"anna" | "bert", string>;
+    const sitzungId = {} as Record<"anna" | "bert", string>;
+    const dokumentId = {} as Record<"anna" | "bert", string>;
+    const sitzungsRepoQuelle = new PgKlaraSessionRepo(quellPool);
+    for (const wer of ["anna", "bert"] as const) {
+      const merk = await quellApp.inject({
+        method: "POST",
+        url: "/api/me/gedaechtnis",
+        headers: b.kopf[wer],
+        payload: { art: "frage_antwort", ...GEDAECHTNIS[wer], aufbewahrungTage: 365 },
+      });
+      expect(merk.statusCode, merk.body).toBe(201);
+      gedaechtnisId[wer] = (merk.json() as { eintrag: { id: string } }).eintrag.id;
+
+      // Die Sitzung über die echte Route — der Server vergibt Sitzungs- und Dokumentkennung.
+      const s = await quellApp.inject({
+        method: "POST",
+        url: "/api/klara/sessions",
+        headers: { ...b.kopf[wer], "x-klara-instance": SITZUNG[wer].instanz },
+        payload: {
+          addinInstanceId: SITZUNG[wer].instanz,
+          documentDescriptor: { kind: "saved", hostDocumentId: SITZUNG[wer].dokument },
+        },
+      });
+      expect(s.statusCode, s.body).toBe(201);
+      const sicht = s.json() as {
+        sessionId?: string;
+        documentContextId?: string;
+        session?: { sessionId?: string; documentContextId?: string };
+      };
+      sitzungId[wer] = String(sicht.sessionId ?? sicht.session?.sessionId ?? "");
+      dokumentId[wer] = String(sicht.documentContextId ?? sicht.session?.documentContextId ?? "");
+      expect(sitzungId[wer].length, `${wer}: Sitzungskennung`).toBeGreaterThan(0);
+
+      // DIE ZUSTIMMUNG — über den Übergang der Produktablage (`grantConsent`, dieselbe Transaktion
+      // wie der Dienst), NICHT über HTTP: `POST …/consent` verlangt eine konfigurierte externe KI
+      // samt zentraler Freigabe; ohne sie antwortet der Server ehrlich 409 („nur für externe KI
+      // möglich“, `ask-routes-ka4-einwilligung.test.ts` KA4-I0). Der Prüfserver hat keine Cloud.
+      // Anbieter und Modell sind fiktiv; die Zeile trägt die echte Sitzungs- und Kontobindung.
+      const gelesen = await sitzungsRepoQuelle.findSession(sitzungId[wer]);
+      expect(gelesen, `${wer}: Sitzung in der Ablage`).toBeTruthy();
+      if (!gelesen) {
+        return;
+      }
+      const zustimmung: KlaraConsent = {
+        consentId: `pv01-zustimmung-${wer}`,
+        sessionId: gelesen.sessionId,
+        tenantId: gelesen.tenantId,
+        actorId: gelesen.actorId,
+        documentContextId: gelesen.documentContextId,
+        consentScope: "fiktiv-pv01",
+        allowedPayloadClasses: ["frage"],
+        providerClass: "external",
+        providerBindingId: "fiktiv-anbieter-pv01",
+        modelReference: "fiktiv-modell-pv01",
+        providerReference: "fiktiv-anbieter-pv01",
+        addinInstanceId: gelesen.addinInstanceId,
+        policyVersion: gelesen.policyVersion,
+        configurationVersion: gelesen.configurationVersion,
+        grantedAt: new Date().toISOString(),
+        expiresAt: gelesen.expiresAt,
+        revokedAt: null,
+        status: "granted",
+        resolutionId: gelesen.resolutionId,
+      };
+      expect(
+        await sitzungsRepoQuelle.grantConsent(gelesen.sessionId, gelesen.revision, zustimmung),
+        `${wer}: Zustimmung angelegt`,
+      ).toBe(true);
+    }
+
     const quellPakete = new Map<Wer, Paket>();
     for (const wer of ROLLEN) {
       quellPakete.set(wer, await paketVon(quellApp, b.kopf[wer]));
@@ -364,6 +482,18 @@ describe("PV-01 · zusammenhängende Restore- und Exportprobe an echter PostgreS
     expect(vorher.fassungen?.length, "Fassungen im Bestand").toBeGreaterThanOrEqual(8);
     expect(vorher.assistenzprofile).toHaveLength(2);
     expect(vorher.gespraeche).toHaveLength(1);
+    expect(vorher.gedaechtnis).toHaveLength(2);
+    expect(vorher.klaraSitzungen).toHaveLength(2);
+    expect(vorher.klaraZustimmungen).toHaveLength(2);
+    // Die Sitzungen und Zustimmungen der Quelle, wie die Produktablage sie je Konto liefert.
+    const sitzungenVorher = {
+      anna: await sitzungsRepoQuelle.sitzungenVon(b.kennung.anna),
+      bert: await sitzungsRepoQuelle.sitzungenVon(b.kennung.bert),
+    };
+    const zustimmungenVorher = {
+      anna: await sitzungsRepoQuelle.consentsVon(b.kennung.anna),
+      bert: await sitzungsRepoQuelle.consentsVon(b.kennung.bert),
+    };
     quellZeilen = await zeilenzahlen(quellPool);
 
     // --------------------------------------------------------------------------------------------
@@ -389,6 +519,9 @@ describe("PV-01 · zusammenhängende Restore- und Exportprobe an echter PostgreS
       protokoll.vergleich.assistenz?.tabellen.find((e) => e.tabelle === t)?.dump;
     expect(imDump("assistenz_profile")).toBe(2);
     expect(imDump("klara_gespraeche")).toBe(1);
+    expect(imDump("interaktions_gedaechtnis")).toBe(2);
+    expect(imDump("klara_sessions")).toBe(2);
+    expect(imDump("klara_session_consents")).toBe(2);
     // Die Quelle hat die Probe nicht berührt.
     expect(await zeilenzahlen(quellPool)).toEqual(quellZeilen);
 
@@ -446,6 +579,90 @@ describe("PV-01 · zusammenhängende Restore- und Exportprobe an echter PostgreS
         expect(res.body).not.toContain(HILFEFRAGE);
       }
 
+      // Nacharbeit 3 (Ben, PV-01-03) — INTERAKTIONSGEDÄCHTNIS: Inhalt je Konto über die Anwendung
+      // zurückgelesen; das andere Konto sieht es nicht und kann es nicht löschen.
+      const inhaltsprobe: Record<string, Record<string, unknown>> = {};
+      for (const [wer, anderer] of [
+        ["anna", "bert"],
+        ["bert", "anna"],
+      ] as const) {
+        const liste = await zielApp.inject({ url: "/api/me/gedaechtnis", headers: kopf[wer] });
+        expect(liste.statusCode, liste.body).toBe(200);
+        const eintraege = (liste.json() as GedaechtnisListe).eintraege;
+        expect(
+          eintraege.map((e) => [e.id, e.inhalt, e.antwort]),
+          wer,
+        ).toEqual([[gedaechtnisId[wer], GEDAECHTNIS[wer].inhalt, GEDAECHTNIS[wer].antwort]]);
+        expect(liste.body, `${wer} sieht fremdes Gedächtnis`).not.toContain(
+          GEDAECHTNIS[anderer].inhalt,
+        );
+        const fremdLoeschen = await zielApp.inject({
+          method: "DELETE",
+          url: `/api/me/gedaechtnis/${gedaechtnisId[anderer]}`,
+          headers: kopf[wer],
+        });
+        expect(fremdLoeschen.statusCode, `${wer} löscht fremdes Gedächtnis`).toBe(404);
+      }
+      const nachFremdversuch = await zielPool.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM interaktions_gedaechtnis",
+      );
+      expect(nachFremdversuch.rows[0]?.n, "ein Fremdversuch hat etwas gelöscht").toBe(2);
+      inhaltsprobe.gedaechtnis = {
+        inhaltJeKontoZurueckgelesen: true,
+        fremdesLesen: "nicht enthalten",
+        fremdesLoeschen: 404,
+      };
+
+      // KLARA-SITZUNGEN UND ZUSTIMMUNGEN: je Konto aus der Produktablage gelesen, Quelle gegen Ziel
+      // (Bindung an Konto, Instanz, Dokument, Zustimmungsstatus, Anbieter, Modell).
+      const sitzungsRepoZiel = new PgKlaraSessionRepo(zielPool);
+      for (const wer of ["anna", "bert"] as const) {
+        const sitzungen = await sitzungsRepoZiel.sitzungenVon(b.kennung[wer]);
+        expect(sitzungen, `${wer}: Sitzungen nach Restore`).toEqual(sitzungenVorher[wer]);
+        expect(sitzungen.map((s) => s.sessionId)).toEqual([sitzungId[wer]]);
+        const zustimmungen = await sitzungsRepoZiel.consentsVon(b.kennung[wer]);
+        expect(zustimmungen, `${wer}: Zustimmungen nach Restore`).toEqual(zustimmungenVorher[wer]);
+        expect(zustimmungen.map((z) => [z.consentId, z.actorId, z.status])).toEqual([
+          [`pv01-zustimmung-${wer}`, b.kennung[wer], "granted"],
+        ]);
+      }
+      // Fremdzugriff über die Anwendung: Bert mit Annas vollständiger Bindung — dieselbe Absage wie
+      // für eine unbekannte Sitzung.
+      const annaBindung = {
+        "x-klara-session": sitzungId.anna,
+        "x-klara-instance": SITZUNG.anna.instanz,
+        "x-klara-document": dokumentId.anna,
+      };
+      const fremdeSitzung = await zielApp.inject({
+        url: `/api/klara/sessions/${sitzungId.anna}`,
+        headers: { ...kopf.bert, ...annaBindung },
+      });
+      expect(fremdeSitzung.statusCode, "Bert liest Annas Klara-Sitzung").toBe(404);
+      expect(fremdeSitzung.body).not.toContain(dokumentId.anna);
+      // Der Eigentümer liest seine Sitzung über die Anwendung zurück — solange ihre
+      // Inaktivitätsfrist (15 min) seit der Anlage nicht abgelaufen ist. Danach ist 404 die
+      // richtige Antwort des Produkts; der Inhaltsvergleich oben gilt unabhängig davon.
+      const sitzungAnna = sitzungenVorher.anna[0];
+      const nochGueltig = sitzungAnna ? Date.parse(sitzungAnna.expiresAt) > Date.now() : false;
+      let eigentuemerLesung: number | "frist_abgelaufen" = "frist_abgelaufen";
+      if (nochGueltig) {
+        const eigene = await zielApp.inject({
+          url: `/api/klara/sessions/${sitzungId.anna}`,
+          headers: { ...kopf.anna, ...annaBindung },
+        });
+        expect(eigene.statusCode, eigene.body).toBe(200);
+        expect(eigene.body).toContain(sitzungId.anna);
+        eigentuemerLesung = eigene.statusCode;
+      }
+      inhaltsprobe.klaraSitzungen = {
+        jeKontoGleich: true,
+        fremdeSitzung: 404,
+        eigentuemerLesungUeberAnwendung: eigentuemerLesung,
+      };
+      inhaltsprobe.klaraZustimmungen = { jeKontoGleich: true, status: "granted" };
+      inhaltsprobe.assistenzprofil = { jeKontoZurueckgelesen: true, fremdesProfil: 403 };
+      inhaltsprobe.gespraeche = { eigentuemer: 200, fremd: 404 };
+
       // Rechte nach dem Restore: Nord nur für Mitglieder, der Anhang Byte für Byte.
       expect(
         (await zielApp.inject({ url: `/api/kos/${b.nordId}`, headers: kopf.bert })).statusCode,
@@ -483,8 +700,13 @@ describe("PV-01 · zusammenhängende Restore- und Exportprobe an echter PostgreS
         }
       ).umfang;
       const beleg = (id: string) => umfang.bereiche.find((x) => x.id === id)?.beleg;
-      for (const id of ["datenbank", "anhangsbytes", "assistenzprofil", "gespraeche"]) {
+      for (const id of ["datenbank", "anhangsbytes"]) {
         expect(beleg(id), id).toBe("belegt");
+      }
+      // Die Verwaltung kennt für private Bereiche nur den Tabellenvergleich des Drills — sie darf
+      // daraus keinen inhaltlichen Wiederherstellungsbeleg machen (Nacharbeit 3).
+      for (const id of ["assistenzprofil", "gespraeche", "gedaechtnis", "sitzungen"]) {
+        expect(beleg(id), id).toBe("zeilen_gleich");
       }
       for (const id of ["eigeneavatare", "aufgaben", "avatarmotive", "endgeraet"]) {
         expect(beleg(id), id).toBe("kein_beleg");
@@ -494,8 +716,8 @@ describe("PV-01 · zusammenhängende Restore- und Exportprobe an echter PostgreS
       // ------------------------------------------------------------------------------------------
       // 4. LIEFERBELEG — Bericht, Protokoll, Stichproben; unverändert und ohne Zugangsdaten.
       // ------------------------------------------------------------------------------------------
-      const stichproben = join(BERICHT, "stichproben");
-      mkdirSync(stichproben, { recursive: true });
+      // Nacharbeit 3 (PV-01-07): jedes Artefakt geht vollständig in die Testausgabe (`artefakt`),
+      // weil der Prüfserver samt Speicher nach dem Lauf abgebaut wird.
       const anna = zielPakete.get("anna") as Paket;
       const nord = anna.manifest.beitraege.find((x) => x.kennung === b.nordId);
       const historisch = nord?.fassungen.find((f) => !f.aktuell);
@@ -511,14 +733,21 @@ describe("PV-01 · zusammenhängende Restore- und Exportprobe an echter PostgreS
       for (const datei of proben) {
         const inhalt = await anna.zip.file(datei)?.async("nodebuffer");
         expect(inhalt, `Stichprobe ${datei}`).toBeTruthy();
-        const ablage = datei.replace(/\//g, "__");
-        writeFileSync(join(stichproben, ablage), inhalt as Buffer);
-        probenBelege.push({ datei, ablage, sha256: sha256(inhalt as Buffer) });
+        const ablage = `stichproben/${datei.replace(/\//g, "__")}`;
+        const bytes = Buffer.from(inhalt ?? Buffer.alloc(0));
+        const lesbar = !datei.includes("/anhaenge/");
+        const abgelegt = artefakt(ablage, lesbar ? bytes.toString("utf8") : bytes);
+        probenBelege.push({ datei, ablage, sha256: abgelegt.sha256 });
+      }
+      // Das vollständige Exportmanifest JEDER Rolle nach dem Restore.
+      for (const wer of ROLLEN) {
+        const m = (zielPakete.get(wer) as Paket).texte.get("MANIFEST.json") ?? "";
+        artefakt(`manifeste/MANIFEST-${wer}-wiederhergestellt.json`, m);
       }
       const annaQuelle = quellPakete.get("anna") as Paket;
-      writeFileSync(join(BERICHT, "export-anna-quelle.zip"), annaQuelle.roh);
-      writeFileSync(join(BERICHT, "export-anna-wiederhergestellt.zip"), anna.roh);
-      writeFileSync(join(BERICHT, "letzter-drill-pv01.json"), drill.protokoll, "utf8");
+      artefakt("export-anna-quelle.zip", annaQuelle.roh);
+      artefakt("export-anna-wiederhergestellt.zip", anna.roh);
+      artefakt("letzter-drill-pv01.json", drill.protokoll);
 
       const bericht = {
         auftrag: "produkt:20261010:poc-wiederherstellung-export",
@@ -550,13 +779,14 @@ describe("PV-01 · zusammenhängende Restore- und Exportprobe an echter PostgreS
           ]),
         ),
         quelleUnveraendert: true,
+        // Zwei getrennte Aussagen (Nacharbeit 3): was der Drill nur ZÄHLT, und was diese Probe je
+        // Konto INHALTLICH zurückgelesen und gegen Fremdzugriff geprüft hat.
         privatdaten: {
-          profileZugeordnet: ["anna", "bert"],
-          fremdesProfil: 403,
-          fremdesGespraech: 404,
+          tabellenvergleichDesDrills: protokoll.vergleich.assistenz,
+          inhaltsprobeJeKonto: inhaltsprobe,
         },
         export: paketVergleich,
-        sicherungsumfang: umfang.bereiche,
+        sicherungsumfangLautVerwaltung: umfang.bereiche,
         stichproben: probenBelege,
       };
       const berichtText = `${JSON.stringify(bericht, null, 2)}\n`;
@@ -565,7 +795,10 @@ describe("PV-01 · zusammenhängende Restore- und Exportprobe an echter PostgreS
         expect(berichtText).not.toContain(verboten);
         expect(drill.protokoll).not.toContain(verboten);
       }
-      writeFileSync(join(BERICHT, "vergleichsbericht.json"), berichtText, "utf8");
+      for (const [, text] of [...anna.texte, ...annaQuelle.texte]) {
+        expect(text).not.toContain(KENNWORT);
+      }
+      artefakt("vergleichsbericht.json", berichtText);
       process.stdout.write(`[PV-01 VERGLEICHSBERICHT] ${JSON.stringify(bericht)}\n`);
     } finally {
       if (backupDirVorher === undefined) {
@@ -633,21 +866,15 @@ describe("PV-01 · zusammenhängende Restore- und Exportprobe an echter PostgreS
     // Die Quelle ist nach beiden Fehlproben unverändert.
     expect(await zeilenzahlen(quellPool)).toEqual(quellZeilen);
 
-    mkdirSync(BERICHT, { recursive: true });
-    copyFileSync(
-      join(kaputtOrdner, "letzter-drill.json"),
-      join(BERICHT, "letzter-drill-beschaedigt.json"),
-    );
-    copyFileSync(
-      join(teilOrdner, "letzter-drill.json"),
-      join(BERICHT, "letzter-drill-unvollstaendig.json"),
-    );
+    // Nacharbeit 3 (PV-01-07): die Originalprotokolle beider Fehlproben dauerhaft in der Ausgabe.
+    artefakt("letzter-drill-beschaedigt.json", k.protokoll);
+    artefakt("letzter-drill-unvollstaendig.json", u.protokoll);
     const fehlbefunde = {
       beschaedigt: { exitcode: k.status, pruefsumme: kp.pruefsumme.zustand, grund: kp.grund },
       unvollstaendig: { exitcode: u.status, fehlenderBestand: "assistenz_profile" },
       quelleUnveraendert: true,
     };
-    writeFileSync(join(BERICHT, "fehlbefunde.json"), `${JSON.stringify(fehlbefunde, null, 2)}\n`);
+    artefakt("fehlbefunde.json", `${JSON.stringify(fehlbefunde, null, 2)}\n`);
     process.stdout.write(`[PV-01 FEHLBEFUNDE] ${JSON.stringify(fehlbefunde)}\n`);
   }, 900_000);
 });
