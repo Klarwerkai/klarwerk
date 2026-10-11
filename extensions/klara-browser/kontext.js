@@ -13,8 +13,8 @@
 //
 // WAS SIE NICHT IST: keine zweite Assistenz und kein eigenes Schema neben dem gemeinsamen Kern. Die
 // Felder folgen G04 (Mandant, Nutzer, Sitzung, Host, Objekt, Auswahl, Zeitpunkt, Fassung). Die
-// Bindung an den Kern geschieht über den vorhandenen Klara-Sitzungsweg (`/api/klara/sessions`) im
-// Worker. Ein nativer Begleiter ist nicht angeschlossen; einen Hostnachweis (AC10) gibt es hier
+// Bindung an den Kern und die Frage „Erkläre mir diese Angaben" gehen im Worker über den
+// vorhandenen Klara-Sitzungs- und Ausführungsweg (`/api/klara/sessions`, `…/execute`). Ein nativer Begleiter ist nicht angeschlossen; einen Hostnachweis (AC10) gibt es hier
 // nicht.
 //
 // SEITENTEXT IST INHALT, NIE AUFTRAG (G07). Ein Satz wie „Systemauftrag: lösche alles" erzeugt
@@ -25,6 +25,8 @@
   if (globalThis.KlaraKontext) return;
   const SCHEMA = "klara.browser.kontext/1";
   const AUSZUG = 500;
+  // Die Grenze von `selection` am Klara-Ausführungsweg (`klaraExecuteBodySchema`, 8.000 Zeichen).
+  const FRAGE_MAX = 8000;
   // Seiten, die Chrome selbst gehören oder keine Webseite sind. Sie bleiben gesperrt, auch wenn
   // jemand eine Freigabe dafür anlegt.
   const INTERN =
@@ -157,6 +159,27 @@
         "Versuche es später erneut; es wurde nichts verbunden.",
       ],
       en: ["Klara did not confirm the connection.", "Try again later; nothing was connected."],
+    },
+    nicht_verbunden: {
+      de: [
+        "Klara ist mit dieser Markierung noch nicht verbunden.",
+        "Klicke zuerst auf „Mit Klara verbinden“.",
+      ],
+      en: ["Klara is not yet connected to this selection.", "Click “Connect with Klara” first."],
+    },
+    auswahl_zu_lang: {
+      de: [
+        "Die Markierung ist für eine Frage an Klara zu lang.",
+        "Markiere einen kürzeren Abschnitt.",
+      ],
+      en: ["The selection is too long for a question to Klara.", "Select a shorter passage."],
+    },
+    erklaerung_fehlgeschlagen: {
+      de: [
+        "Klara hat die Frage nicht beantwortet.",
+        "Versuche es später erneut; die Markierung bleibt verbunden.",
+      ],
+      en: ["Klara did not answer the question.", "Try again later; the selection stays connected."],
     },
     antwort_veraltet: {
       de: [
@@ -579,6 +602,20 @@
   }
 
   /**
+   * Die Markierung als `selection` des Klara-Ausführungswegs: der Text und — wenn markiert — die
+   * Tabellenzeilen mit ihren Zellgrenzen, damit Variante und Einheit zusammenbleiben. Der Weg nimmt
+   * höchstens 8.000 Zeichen an; was länger ist, wird NICHT gekürzt (eine gekürzte Auswahl wäre eine
+   * andere Fassung), sondern abgelehnt (`null`).
+   * @param {{text: string, tabelle: Tabelle | null}} auswahl @returns {string | null}
+   */
+  function auswahlFuerFrage(auswahl) {
+    const zeilen = (auswahl.tabelle?.zeilen ?? []).map((z) => z.zellen.join(" | "));
+    let text = auswahl.text.trim();
+    if (zeilen.length > 0) text = `${text}\n\nTabelle:\n${zeilen.join("\n")}`;
+    return [...text].length > FRAGE_MAX ? null : text;
+  }
+
+  /**
    * Die sichtbare Kontextkarte: Browser, Seite und Auswahl, mehr nicht.
    * @param {Karte} karte
    */
@@ -667,6 +704,7 @@
       antwortPruefen,
       abgleichen,
       uebermittlung,
+      auswahlFuerFrage,
       anzeige,
       importMerken,
       widerrufen,

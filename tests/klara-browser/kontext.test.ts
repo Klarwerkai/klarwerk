@@ -473,6 +473,21 @@ describe("BPA-01 · Kontextkarte im Browser (Adaptervertrag, kein Hostnachweis)"
     expect(K.abgleichen(zustand, { tabId: 11, url: PRODUKT, text }).aktuell).toBe(false);
   });
 
+  it("die Frage an Klara trägt genau die Markierung samt Tabellenzeilen — zu lang wird abgelehnt, nicht gekürzt", () => {
+    const seite = markiere("#kopf", "#v17");
+    const { zustand } = gebunden(
+      offen(),
+      erfassung({ text: seite.text, nodes: seite.variants.selection.nodes }),
+    );
+    const daten = K.uebermittlung(zustand).daten;
+    const frage = daten ? K.auswahlFuerFrage(daten.auswahl) : null;
+    expect(frage).toContain("Typ | Nenndruck | Max. Temperatur");
+    expect(frage).toContain("V-17 | 16 bar | 120 °C");
+    expect(frage).not.toContain("V-18");
+    expect(K.auswahlFuerFrage({ text: "x".repeat(8001), tabelle: null })).toBeNull();
+    expect(K.auswahlFuerFrage({ text: "x".repeat(8000), tabelle: null })).toHaveLength(8000);
+  });
+
   it("der Vertrag bleibt rein: kein Chrome-Aufruf, kein Netz, kein neues Recht im Manifest", () => {
     const quelle = read("kontext.js");
     const browserzugriff = /chrome\.(runtime|tabs|scripting|storage|sidePanel)|fetch\(|XMLHttp/;

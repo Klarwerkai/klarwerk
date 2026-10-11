@@ -1350,7 +1350,20 @@
   // SPÄTE ANTWORT (AC02): die Bestätigung des Kerns gilt nur, wenn sie beim Eintreffen noch zu
   // derselben Karte (Folge, Tab, Konto, Fassung) gehört; sonst wird sie nicht gebunden.
   const KERN_ID = /^[\w-]{1,128}$/;
-  const KONTEXT_NACHRICHTEN = ["kontext", "kontextVerbinden", "kontextWiderrufen"];
+  const KONTEXT_NACHRICHTEN = [
+    "kontext",
+    "kontextVerbinden",
+    "kontextErklaeren",
+    "kontextWiderrufen",
+  ];
+  /**
+   * Die Frage des bestellten Arbeitsfalls — vom Produkt gestellt, nicht aus der Seite gelesen.
+   * @type {Record<string, string>}
+   */
+  const FRAGE = {
+    de: "Erkläre mir diese Angaben.",
+    en: "Explain these details to me.",
+  };
   /** @type {import("./types").KontextSicht} */
   const KONTEXT_FEHLER = {
     kontext: true,
@@ -1361,8 +1374,25 @@
     verbunden: false,
     beobachtung: false,
     importe: [],
+    // Auch ohne lesbaren Zustand bleibt der Stopp erreichbar.
+    widerrufbar: true,
+    laeuft: false,
+    antwort: null,
   };
   let kontextBusy = false;
+
+  // ================================================================================================
+  // DER STOPP (BPA-01 · AC08, G10/G12). Ein Widerruf wartet auf nichts: er läuft auch, während
+  // Verbinden oder Erklären unterwegs sind, und auch ohne sichtbare Karte. Jeder Widerruf erhöht die
+  // Epoche; ein Schritt, der unter einer älteren Epoche begann, wirkt danach nicht mehr — eine
+  // verspätet bestätigte Kernsitzung wird geschlossen, eine verspätete Antwort verworfen.
+  // ================================================================================================
+  /** @param {Zustand} state */
+  const epocheVon = (state) => state.kontextEpoche ?? 0;
+  /** @param {number} epoche */
+  async function widerrufenSeit(epoche) {
+    return epocheVon(/** @type {Zustand} */ (await read())) !== epoche;
+  }
 
   /** @param {Zustand} state @returns {import("./types").Konto} */
   const kontoVon = (state) => ({
@@ -1484,6 +1514,25 @@
       kern.sessionId !== "" &&
       kern.folge === karte.folge &&
       kern.fassung === karte.fassung;
+    // Die Antwort gilt nur für die Karte, zu der sie gestellt wurde — derselben Folge, derselben
+    // Fassung, demselben Tab. Nach Tabwechsel, Navigation oder Quelländerung steht sie nicht mehr da.
+    const gestellt = state.kontextAntwort ?? null;
+    const antwort =
+      karte !== null &&
+      gestellt !== null &&
+      !karte.veraltet &&
+      gestellt.folge === karte.folge &&
+      gestellt.fassung === karte.fassung &&
+      gestellt.tabId === karte.tabId
+        ? { text: gestellt.text, answerId: gestellt.answerId, fassung: gestellt.fassung }
+        : null;
+    // Zu stoppen gibt es etwas, solange eine Karte, eine Freigabe, eine Kernsitzung oder ein
+    // laufender Schritt besteht — sichtbar oder nicht.
+    const widerrufbar =
+      kontextBusy ||
+      karte !== null ||
+      (zustand?.freigaben.length ?? 0) > 0 ||
+      Boolean(kern?.sessionId);
     return {
       kontext: true,
       status,
@@ -1496,19 +1545,80 @@
         herkunft: i.herkunft,
         verbindung: i.verbindung,
       })),
+      widerrufbar,
+      laeuft: kontextBusy,
+      antwort,
     };
   }
 
   /**
-   * Zustand und Sperre schreiben — aber nur, wenn seit dem Lesen keine neue Karte entstanden ist.
-   * Sonst gewänne ein langsamer Vorgang gegen eine frischere Erfassung.
+   * Zustand und Sperre schreiben — aber nur, wenn seit dem Lesen weder eine neue Karte entstanden
+   * noch widerrufen worden ist. Sonst gewänne ein langsamer Vorgang gegen eine frischere Erfassung
+   * oder gegen den Stopp.
    * @param {Zustand} vorher @param {import("./types").KontextZustand} zustand @param {string} grund
    */
   async function kontextSperren(vorher, zustand, grund) {
     const jetzt = /** @type {Zustand} */ (await read());
-    if ((jetzt.kontext?.folge ?? -1) === (vorher.kontext?.folge ?? -1))
-      await merke({ kontext: zustand, kontextSperre: sperreAus(grund) });
-    return kontextSicht(await read(), grund);
+    const unveraendert =
+      (jetzt.kontext?.folge ?? -1) === (vorher.kontext?.folge ?? -1) &&
+      epocheVon(jetzt) === epocheVon(vorher);
+    if (unveraendert) await merke({ kontext: zustand, kontextSperre: sperreAus(grund) });
+    return kontextSicht(await read(), unveraendert ? grund : "widerrufen");
+  }
+
+  /**
+   * Eine Kernsitzung schliessen — bestmöglich. Ein Fehlschlag ändert nichts am örtlichen Zustand:
+   * ohne gespeicherte Kennung benutzt die Erweiterung diese Sitzung ohnehin nicht mehr.
+   * @param {import("./types").Auth} auth
+   * @param {{instanz: string, sessionId: string, documentContextId: string}} kern
+   */
+  async function kernSchliessen(auth, kern) {
+    if (!KERN_ID.test(kern.sessionId) || !KERN_ID.test(kern.documentContextId)) return;
+    try {
+      await fetch(`${HOST}/api/klara/sessions/${encodeURIComponent(kern.sessionId)}/close`, {
+        method: "POST",
+        credentials: "omit",
+        redirect: "error",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${auth.token}`,
+          "x-klara-instance": kern.instanz,
+          "x-klara-session": kern.sessionId,
+          "x-klara-document": kern.documentContextId,
+        },
+        body: "{}",
+        signal: AbortSignal.timeout(20000),
+      });
+    } catch {
+      // s. o.
+    }
+  }
+
+  /**
+   * Die Seite der Karte FRISCH lesen und die Fassung abgleichen — Text UND Tabellenstruktur (AC09).
+   * Chrome entscheidet dabei selbst, ob die Freigabe noch trägt.
+   * @param {import("./types").KontextZustand} zustand @param {import("./types").Karte} karte
+   * @returns {Promise<{zustand: import("./types").KontextZustand, grund: string}>}
+   */
+  async function frischAbgleichen(zustand, karte) {
+    if (!K) return { zustand, grund: "kontext_fehlt" };
+    /** @type {import("./types").CaptureResult | undefined} */
+    let frisch;
+    try {
+      frisch = await leseSeite(karte.tabId);
+    } catch {
+      frisch = undefined;
+    }
+    if (!frisch || typeof frisch.text !== "string" || typeof frisch.url !== "string")
+      return { zustand, grund: "zugriff_beendet" };
+    const abgleich = K.abgleichen(zustand, {
+      tabId: karte.tabId,
+      url: frisch.url,
+      text: frisch.text,
+      nodes: cleanVariants(frisch.variants).selection.nodes,
+    });
+    return { zustand: abgleich.zustand, grund: abgleich.aktuell ? "" : "quelle_geaendert" };
   }
 
   /**
@@ -1561,30 +1671,17 @@
 
   async function kontextVerbinden() {
     const state = /** @type {Zustand} */ (await read());
+    const epoche = epocheVon(state);
     let zustand = kontextVon(state);
     if (!K || !zustand) return kontextSicht(state, "kontext_fehlt");
     const karte = zustand.karte;
     if (!karte) return kontextSperren(state, zustand, "kein_kontext");
     if (!state.auth) return kontextSperren(state, zustand, "anmeldung_fehlt");
-    // 1 · Die Seite FRISCH lesen. Chrome entscheidet hier selbst, ob die Freigabe noch trägt.
-    /** @type {import("./types").CaptureResult | undefined} */
-    let frisch;
-    try {
-      frisch = await leseSeite(karte.tabId);
-    } catch {
-      frisch = undefined;
-    }
-    if (!frisch || typeof frisch.text !== "string" || typeof frisch.url !== "string")
-      return kontextSperren(state, zustand, "zugriff_beendet");
-    // 2 · Fassung abgleichen — Text UND Tabellenstruktur (AC09).
-    const abgleich = K.abgleichen(zustand, {
-      tabId: karte.tabId,
-      url: frisch.url,
-      text: frisch.text,
-      nodes: cleanVariants(frisch.variants).selection.nodes,
-    });
+    // 1/2 · Die Seite FRISCH lesen und die Fassung abgleichen.
+    const abgleich = await frischAbgleichen(zustand, karte);
     zustand = abgleich.zustand;
-    if (!abgleich.aktuell) return kontextSperren(state, zustand, "quelle_geaendert");
+    if (abgleich.grund) return kontextSperren(state, zustand, abgleich.grund);
+    if (await widerrufenSeit(epoche)) return kontextSicht(await read(), "widerrufen");
     // 3 · Nur was die Freigabe deckt.
     const ausgang = K.uebermittlung(zustand);
     if (!ausgang.erlaubt || !ausgang.daten)
@@ -1610,8 +1707,13 @@
       typeof bestaetigt?.documentContextId === "string" ? bestaetigt.documentContextId : "";
     if (!KERN_ID.test(sessionId) || !KERN_ID.test(documentContextId))
       return kontextSperren(state, zustand, "kern_nicht_erreichbar");
-    // 4 · Gehört die Bestätigung noch zu DIESER Karte? Erst jetzt wird gebunden.
+    // 4 · Inzwischen widerrufen? Dann wird die eben bestätigte Sitzung geschlossen, nicht gebunden.
     const nachher = /** @type {Zustand} */ (await read());
+    if (epocheVon(nachher) !== epoche) {
+      await kernSchliessen(state.auth, { instanz, sessionId, documentContextId });
+      return kontextSicht(await read(), "widerrufen");
+    }
+    // 5 · Gehört die Bestätigung noch zu DIESER Karte? Erst jetzt wird gebunden.
     const aktuell = kontextVon(nachher);
     if (!aktuell || !K.antwortPruefen(aktuell, antwort).zustellen) {
       await merke({
@@ -1635,34 +1737,58 @@
     return kontextSicht(await read(), "verbunden");
   }
 
-  async function kontextWiderrufen() {
+  /**
+   * „Erkläre mir diese Angaben" — der bestellte Arbeitsfall, über den VORHANDENEN Ausführungsweg
+   * des Klara-Kerns (`POST /api/klara/sessions/{id}/execute`). Dort gelten unverändert:
+   * Anmeldung und `ko.read`, die Bindung an Sitzung/Instanz/Dokumentkontext, die Einwilligung je
+   * Dokument (KA4) und die Dokumenttext-Freigabe. Ohne Einwilligung antwortet der Kern aus
+   * geprüftem Wissen ohne Modell; die Markierung schärft dann nur die Suche.
+   *
+   * Gesendet wird genau die gebundene Auswahl (Text und Tabellenzeilen). Ihre Schutzklasse kennt
+   * die Erweiterung nicht — sie geht deshalb als NICHT `intern` hinaus (G05: unbekannt bleibt
+   * geschützt), sodass der Kern sie nur mit der zweiten zentralen Freigabe ans Modell gibt.
+   * Die Antwort wird nur gebunden, wenn sie beim Eintreffen noch zu derselben Folge, demselben Tab,
+   * demselben Konto und derselben Fassung gehört und nicht widerrufen wurde.
+   * @param {string} sprache
+   */
+  async function kontextErklaeren(sprache) {
     const state = /** @type {Zustand} */ (await read());
+    const epoche = epocheVon(state);
     let zustand = kontextVon(state);
     if (!K || !zustand) return kontextSicht(state, "kontext_fehlt");
-    const ziel = zustand.karte?.url ?? state.kern?.url ?? "";
-    if (!ziel) return kontextSperren(state, zustand, "kein_kontext");
-    // Ein bereits bewusst gespeicherter Entwurf von dieser Seite bleibt auf dem Server unberührt;
-    // er wird mit Herkunft als widerrufen geführt (G05) — gelöscht wird nichts.
-    const work = state.work;
-    if (zustand.karte && work?.draftId && work.selection.url === zustand.karte.url)
-      zustand = K.importMerken(zustand, work.draftId);
-    zustand = K.widerrufen(zustand, ziel);
+    const karte = zustand.karte;
+    if (!karte) return kontextSperren(state, zustand, "kein_kontext");
+    if (!state.auth) return kontextSperren(state, zustand, "anmeldung_fehlt");
     const kern = state.kern ?? null;
-    /** @type {import("./types").Kern | null} */
-    let ohneSitzung = null;
-    if (kern) ohneSitzung = { ...kern, sessionId: "", documentContextId: "", folge: -1, url: "" };
-    await merke({
-      kontext: zustand,
-      kontextSperre: sperreAus("verbindung_widerrufen"),
-      kern: ohneSitzung,
-    });
-    // Die Kernsitzung wird geschlossen — bestmöglich. Ein Fehlschlag hebt den örtlichen Widerruf
-    // nicht auf: ohne Kennung kann die Erweiterung diese Sitzung ohnehin nicht mehr benutzen.
-    const schliessen =
-      kern !== null && KERN_ID.test(kern.sessionId) && KERN_ID.test(kern.documentContextId);
-    if (kern && state.auth && schliessen) {
-      try {
-        await fetch(`${HOST}/api/klara/sessions/${encodeURIComponent(kern.sessionId)}/close`, {
+    const gebunden =
+      kern !== null &&
+      KERN_ID.test(kern.sessionId) &&
+      KERN_ID.test(kern.documentContextId) &&
+      kern.folge === karte.folge &&
+      kern.fassung === karte.fassung;
+    if (!kern || !gebunden) return kontextSperren(state, zustand, "nicht_verbunden");
+    const abgleich = await frischAbgleichen(zustand, karte);
+    zustand = abgleich.zustand;
+    if (abgleich.grund) return kontextSperren(state, zustand, abgleich.grund);
+    if (await widerrufenSeit(epoche)) return kontextSicht(await read(), "widerrufen");
+    const ausgang = K.uebermittlung(zustand);
+    if (!ausgang.erlaubt || !ausgang.daten)
+      return kontextSperren(state, zustand, ausgang.sperre?.grund ?? "kein_kontext");
+    const selection = K.auswahlFuerFrage(ausgang.daten.auswahl);
+    if (selection === null) return kontextSperren(state, zustand, "auswahl_zu_lang");
+    const antwort = {
+      folge: karte.folge,
+      tabId: karte.tabId,
+      konto: zustand.konto,
+      fassung: karte.fassung,
+    };
+    const locale = sprache === "en" ? "en" : "de";
+    /** @type {{result?: {answer?: unknown}, answerId?: unknown} | null} */
+    let roh = null;
+    try {
+      const response = await fetch(
+        `${HOST}/api/klara/sessions/${encodeURIComponent(kern.sessionId)}/execute`,
+        {
           method: "POST",
           credentials: "omit",
           redirect: "error",
@@ -1674,23 +1800,95 @@
             "x-klara-session": kern.sessionId,
             "x-klara-document": kern.documentContextId,
           },
-          body: "{}",
-          signal: AbortSignal.timeout(20000),
-        });
-      } catch {
-        // s. o.
-      }
+          body: JSON.stringify({
+            question: FRAGE[locale],
+            locale,
+            selection,
+            selectionConfidentiality: "unbekannt",
+            questionSource: "manual",
+          }),
+          signal: AbortSignal.timeout(60000),
+        },
+      );
+      if (response.status === 401) await chrome.storage.session.set({ auth: null });
+      if (!response.ok) return kontextSperren(state, zustand, "erklaerung_fehlgeschlagen");
+      roh = await response.json();
+    } catch {
+      return kontextSperren(state, zustand, "erklaerung_fehlgeschlagen");
     }
+    // Erst jetzt, mit der Antwort in der Hand: gilt sie noch?
+    const nachher = /** @type {Zustand} */ (await read());
+    if (epocheVon(nachher) !== epoche) return kontextSicht(nachher, "widerrufen");
+    const aktuell = kontextVon(nachher);
+    if (!aktuell || !K.antwortPruefen(aktuell, antwort).zustellen) {
+      await merke({ kontextSperre: sperreAus("antwort_veraltet") });
+      return kontextSicht(await read(), "antwort_veraltet");
+    }
+    const text = typeof roh?.result?.answer === "string" ? roh.result.answer : null;
+    const answerId = typeof roh?.answerId === "string" ? roh.answerId : null;
+    await merke({
+      kontextAntwort: {
+        folge: karte.folge,
+        fassung: karte.fassung,
+        tabId: karte.tabId,
+        url: karte.url,
+        text,
+        answerId,
+      },
+      kontextSperre: null,
+    });
+    return kontextSicht(await read(), "erklaert");
+  }
+
+  /**
+   * Der Stopp. Er entwertet SOFORT jede Freigabe und Karte, die besteht — auch ohne sichtbare Karte
+   * (etwa nach einem Tabwechsel) —, erhöht die Epoche (laufende Schritte wirken danach nicht mehr),
+   * verwirft eine gestellte Antwort und schliesst die Kernsitzung.
+   */
+  async function kontextWiderrufen() {
+    const state = /** @type {Zustand} */ (await read());
+    let zustand = kontextVon(state);
+    if (!K || !zustand) return kontextSicht(state, "kontext_fehlt");
+    const kern = state.kern ?? null;
+    /** @type {Set<string>} */
+    const ziele = new Set();
+    if (zustand.karte) ziele.add(zustand.karte.url);
+    if (kern?.url) ziele.add(kern.url);
+    for (const f of zustand.freigaben) ziele.add(f.art === "bereich" ? f.herkunft : f.url);
+    // Ein bereits bewusst gespeicherter Entwurf von dieser Seite bleibt auf dem Server unberührt;
+    // er wird mit Herkunft als widerrufen geführt (G05) — gelöscht wird nichts.
+    const work = state.work;
+    if (zustand.karte && work?.draftId && work.selection.url === zustand.karte.url)
+      zustand = K.importMerken(zustand, work.draftId);
+    for (const ziel of ziele) zustand = K.widerrufen(zustand, ziel);
+    /** @type {import("./types").Kern | null} */
+    let ohneSitzung = null;
+    if (kern) ohneSitzung = { ...kern, sessionId: "", documentContextId: "", folge: -1, url: "" };
+    await merke({
+      kontext: zustand,
+      kontextSperre: sperreAus("verbindung_widerrufen"),
+      kern: ohneSitzung,
+      kontextAntwort: null,
+      kontextEpoche: epocheVon(state) + 1,
+    });
+    if (kern && state.auth) await kernSchliessen(state.auth, kern);
     return kontextSicht(await read(), "widerrufen");
   }
 
-  /** @param {string} art @returns {Promise<import("./types").KontextSicht>} */
-  async function kontextNachricht(art) {
+  /**
+   * @param {string} art @param {string} sprache
+   * @returns {Promise<import("./types").KontextSicht>}
+   */
+  async function kontextNachricht(art, sprache) {
     if (art === "kontext") return kontextSicht(/** @type {Zustand} */ (await read()), "bereit");
+    // Der Stopp wartet auf nichts und ist nie „busy".
+    if (art === "kontextWiderrufen") return kontextWiderrufen();
     if (kontextBusy) return kontextSicht(/** @type {Zustand} */ (await read()), "busy");
     kontextBusy = true;
     try {
-      return art === "kontextVerbinden" ? await kontextVerbinden() : await kontextWiderrufen();
+      return art === "kontextVerbinden"
+        ? await kontextVerbinden()
+        : await kontextErklaeren(sprache);
     } finally {
       kontextBusy = false;
     }
@@ -1720,7 +1918,8 @@
       const antworte = /** @type {(antwort: import("./types").KontextSicht) => void} */ (
         /** @type {unknown} */ (respond)
       );
-      kontextNachricht(message.type).then(antworte, () => antworte(KONTEXT_FEHLER));
+      const sprache = message.sprache ?? "de";
+      kontextNachricht(message.type, sprache).then(antworte, () => antworte(KONTEXT_FEHLER));
       return true;
     }
     dispatch(message).then(respond, () => respond({ status: "storage_error" }));

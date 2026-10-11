@@ -68,6 +68,8 @@ type Aufruf = {
   body: Record<string, unknown> | undefined;
   kopf: Record<string, string>;
   status: number;
+  /** Der Antwortkörper des Servers, soweit JSON. */
+  antwort: unknown;
 };
 
 const EMAIL = "kontext@example.test";
@@ -107,6 +109,7 @@ async function bahn() {
   }
   const aufrufe: Aufruf[] = [];
   let kernGehalten: Promise<void> | null = null;
+  let haltePfad: (pfad: string) => boolean = () => true;
   let kernAngefragt = 0;
   const fetcher: typeof fetch = async (input, options) => {
     const url = new URL(String(input));
@@ -116,14 +119,22 @@ async function bahn() {
     const kopf = (options?.headers ?? {}) as Record<string, string>;
     const body = options?.body ? JSON.parse(String(options.body)) : undefined;
     if (url.pathname.startsWith("/api/klara/")) kernAngefragt += 1;
-    if (kernGehalten && url.pathname.startsWith("/api/klara/")) await kernGehalten;
+    const gehalten = kernGehalten;
+    if (gehalten && url.pathname.startsWith("/api/klara/") && haltePfad(url.pathname))
+      await gehalten;
     const antwort = await app.inject({
       method: verfahren(options),
       url: url.pathname,
       headers: kopf,
       ...(options?.body !== undefined ? { payload: String(options.body) } : {}),
     });
-    aufrufe.push({ pfad: url.pathname, body, kopf, status: antwort.statusCode });
+    let gelesen: unknown = null;
+    try {
+      gelesen = antwort.statusCode === 204 ? null : JSON.parse(antwort.body);
+    } catch {
+      gelesen = null;
+    }
+    aufrufe.push({ pfad: url.pathname, body, kopf, status: antwort.statusCode, antwort: gelesen });
     return new Response(antwort.statusCode === 204 ? null : antwort.body, {
       status: antwort.statusCode,
     });
@@ -138,9 +149,13 @@ async function bahn() {
     kern: () => aufrufe.filter((a) => a.pfad.startsWith("/api/klara/")),
     /** Wie viele Abrufe den Kern erreicht haben — auch die, deren Antwort noch angehalten ist. */
     kernAngefragt: () => kernAngefragt,
-    /** Hält die nächste Kernantwort an; der Rückgabewert lässt sie los. */
-    halteKern: () => {
+    /**
+     * Hält Kernabrufe an (wahlweise nur die Pfade, die `nur` trifft); der Rückgabewert lässt sie
+     * los. Andere Kernabrufe — etwa das Schliessen beim Widerruf — laufen dann ungehindert.
+     */
+    halteKern: (nur: (pfad: string) => boolean = () => true) => {
       let los = () => {};
+      haltePfad = nur;
       kernGehalten = new Promise<void>((frei) => {
         los = frei;
       });
@@ -432,6 +447,133 @@ describe("BPA-01 · der Browserweg der Kontextkarte (Worker, Leiste, Klara-Kern)
     }
   });
 
+  it("„Erkläre mir diese Angaben“ · Auswahl, Tabelle und Bindung gehen über den Ausführungsweg; die Antwort gilt nur für diese Karte", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      // Ohne Verbindung keine Frage — und kein Abruf.
+      expect((await h.frage("kontextErklaeren")).sperre).toBe("nicht_verbunden");
+      expect(h.kern()).toEqual([]);
+      expect((await h.frage("kontextVerbinden")).verbunden).toBe(true);
+      const sitzung = h.data.kern as Kern;
+
+      const sicht = await h.frage("kontextErklaeren");
+      expect(sicht.status).toBe("erklaert");
+      const frage = h.kern().find((a) => a.pfad.endsWith("/execute"));
+      expect(frage?.pfad).toBe(`/api/klara/sessions/${sitzung.sessionId}/execute`);
+      expect(frage?.status).toBe(200);
+      // Angemeldet und an genau diese Sitzung, Instanz und diesen Dokumentkontext gebunden.
+      expect(frage?.kopf).toMatchObject({
+        Authorization: `Bearer ${(h.data.auth as { token: string }).token}`,
+        "x-klara-session": sitzung.sessionId,
+        "x-klara-instance": sitzung.instanz,
+        "x-klara-document": sitzung.documentContextId,
+      });
+      // Genau die gebundene Auswahl samt Tabellenzeilen; Schutzklasse unbekannt ⇒ nicht `intern`;
+      // die Frage stammt vom Produkt, nicht aus der Seite.
+      expect(frage?.body).toEqual({
+        question: "Erkläre mir diese Angaben.",
+        locale: "de",
+        selection: `${TEXT}\n\nTabelle:\nTyp | Nenndruck\nV-17 | 16 bar`,
+        selectionConfidentiality: "unbekannt",
+        questionSource: "manual",
+      });
+      // Die Antwort ist an Karte und Fassung gebunden.
+      expect(sicht.antwort).not.toBeNull();
+      expect(sicht.antwort?.fassung).toBe(sicht.karte?.fassung);
+      expect((h.data.kontextAntwort as { folge: number }).folge).toBe(h.zustand().karte?.folge);
+
+      // Quelländerung: keine weitere Frage an den Kern, die alte Antwort steht nicht mehr da.
+      const vorher = h.kern().length;
+      h.setSelected({ text: TEXT, url: SEITE, title: TITEL, variants: mit(UMGEBAUT) });
+      const geaendert = await h.frage("kontextErklaeren");
+      expect(geaendert.status).toBe("quelle_geaendert");
+      expect(geaendert.antwort).toBeNull();
+      expect(h.kern()).toHaveLength(vorher);
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("AC02 · eine verspätete Erklärung nach Tabwechsel wird verworfen", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      expect((await h.frage("kontextVerbinden")).verbunden).toBe(true);
+      const los = h.halteKern((pfad) => pfad.endsWith("/execute"));
+      const laufend = h.frage("kontextErklaeren");
+      await vi.waitFor(() => expect(h.kernAngefragt()).toBe(2), { timeout: 2000 });
+      await h.listeners.activated?.({ tabId: 8 });
+      los();
+      const sicht = await laufend;
+      expect(sicht.status).toBe("antwort_veraltet");
+      expect(sicht.antwort).toBeNull();
+      expect(h.data.kontextAntwort ?? null).toBeNull();
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("AC08 · der Widerruf wartet nicht auf ein laufendes Verbinden; die verspätete Sitzung wird geschlossen", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      const los = h.halteKern((pfad) => pfad === "/api/klara/sessions");
+      const laufend = h.frage("kontextVerbinden");
+      await vi.waitFor(() => expect(h.kernAngefragt()).toBe(1), { timeout: 2000 });
+      // Der Stopp antwortet, OBWOHL das Verbinden noch am Kern hängt.
+      const stopp = await h.frage("kontextWiderrufen");
+      expect(stopp.status).toBe("widerrufen");
+      expect(stopp.karte).toBeNull();
+      expect(h.zustand().freigaben).toEqual([]);
+      los();
+      const spaet = await laufend;
+      expect(spaet.status).toBe("widerrufen");
+      expect(spaet.verbunden).toBe(false);
+      // Die erst NACH dem Widerruf bestätigte Sitzung wird geschlossen, nicht gebunden.
+      const [anlage, schliessen] = h.kern();
+      expect(anlage?.status).toBe(201);
+      const angelegt = (anlage?.antwort as { sessionId: string }).sessionId;
+      expect(schliessen?.pfad).toBe(`/api/klara/sessions/${angelegt}/close`);
+      expect(schliessen?.status).toBe(200);
+      expect((h.data.kern as Kern | null)?.sessionId ?? "").toBe("");
+      // Weitere Schritte sind gesperrt: kein Kontext, kein neuer Kernabruf.
+      expect((await h.frage("kontextErklaeren")).sperre).toBe("kein_kontext");
+      expect(h.kern()).toHaveLength(2);
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("AC08 · nach einem Tabwechsel bleibt der Widerruf erreichbar und schliesst die Kernsitzung", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      expect((await h.frage("kontextVerbinden")).verbunden).toBe(true);
+      const sitzung = (h.data.kern as Kern).sessionId;
+      await h.listeners.activated?.({ tabId: 8 });
+      const ohneKarte = await h.frage();
+      expect(ohneKarte.karte).toBeNull();
+      expect(ohneKarte.widerrufbar).toBe(true);
+
+      const weg = await h.frage("kontextWiderrufen");
+      expect(weg.status).toBe("widerrufen");
+      expect(weg.widerrufbar).toBe(false);
+      expect(h.zustand().freigaben).toEqual([]);
+      expect(h.kern().map((a) => [a.pfad, a.status])).toContainEqual([
+        `/api/klara/sessions/${sitzung}/close`,
+        200,
+      ]);
+      expect((h.data.kern as Kern).sessionId).toBe("");
+    } finally {
+      await h.app.close();
+    }
+  });
+
   it("die Leiste zeigt Karte, fehlende Anmeldung und Verbindung sichtbar", async () => {
     const h = await bahn();
     try {
@@ -457,6 +599,21 @@ describe("BPA-01 · der Browserweg der Kontextkarte (Worker, Leiste, Klara-Kern)
       expect(view.el("kontext-verbunden").hidden).toBe(false);
       expect(view.el("kontext-sperre").hidden).toBe(true);
       expect(view.el("kontext-verbinden").disabled).toBe(true);
+
+      // „Erkläre mir diese Angaben": Klaras Antwort steht zu genau dieser Karte da.
+      expect(view.el("kontext-erklaeren").disabled).toBe(false);
+      view.el("kontext-erklaeren").click();
+      await view.settle();
+      expect(view.el("kontext-antwort-box").hidden).toBe(false);
+
+      // Tabwechsel: Karte und Antwort sind weg — der Stopp bleibt erreichbar.
+      await h.listeners.activated?.({ tabId: 8 });
+      await view.settle();
+      expect(view.el("kontext-karte").hidden).toBe(true);
+      expect(view.el("kontext-antwort-box").hidden).toBe(true);
+      expect(view.el("kontext-erklaeren").disabled).toBe(true);
+      expect(view.el("kontext").hidden).toBe(false);
+      expect(view.el("kontext-widerrufen").disabled).toBe(false);
 
       view.el("kontext-widerrufen").click();
       await view.settle();

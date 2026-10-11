@@ -104,7 +104,7 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
 | AC05 Domain, privates Fenster, Frame, interne Seiten | Vertrag + Browserweg inkl. sichtbarem Grund/nächstem Schritt in der Leiste |
 | AC06 DOM-Tabelle / laufende Seite / PDF getrennt ausgewiesen | Tabelle unterstützt, laufende Seite nur Momentaufnahme, PDF **nicht geliefert** |
 | AC07 Systemauftrag im Seitentext | Vertrag + Browserweg (kein weiterer Abruf, keine Aktion) |
-| AC08 Widerruf | Vertrag + Browserweg (Kernsitzung geschlossen, Entwurf bleibt) |
+| AC08 Widerruf | Vertrag + Browserweg (Kernsitzung geschlossen, Entwurf bleibt; Stopp auch während Verbinden und nach Tabwechsel) |
 | AC09 Quelländerung | Vertrag + Browserweg (Text und Tabellenstruktur) |
 | AC10 Reale Erweiterung mit installiertem Begleiter auf diesem Mac | **offen** — siehe 4 |
 
@@ -118,9 +118,25 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
   Arbeitsbaum nicht (auch kein Zweig dafür). Angeschlossen ist deshalb der vorhandene,
   authentifizierte Klara-Sitzungsweg des Servers — kein zweiter Kern. Native Messaging ist im
   Manifest bewusst **nicht** angefordert.
-- **Keine Frage an das Modell.** Das Verbinden registriert Kontext und Sitzung; eine Erklärung der
-  Markierung durch Klara (Ausführungsweg mit Zustimmung/Dokumenttext-Riegel) ist in diesem
-  Auftrag nicht verdrahtet und wurde nicht ausgelöst.
+- **„Erkläre mir diese Angaben" (Nacharbeit 3).** Nach dem Verbinden stellt die Leiste die Frage
+  über den vorhandenen Ausführungsweg `POST /api/klara/sessions/{id}/execute`. Dort gelten
+  unverändert Anmeldung (`ko.read`), Sitzungsbindung, Einwilligung je Dokument (KA4) und
+  Dokumenttext-Freigabe.
+  - Gesendet wird genau die gebundene Auswahl samt Tabellenzeilen, vorher frisch gegen die
+    Quellfassung abgeglichen. Die Schutzklasse ist der Erweiterung unbekannt und geht deshalb als
+    nicht `intern` hinaus (G05).
+  - Ohne Einwilligung antwortet der Kern nur aus geprüftem Wissen ohne Modell. Eine Einwilligung
+    erteilt die Leiste nicht; das bleibt der bestehende Einwilligungsweg.
+  - Die Antwort wird nur gebunden und angezeigt, solange Folge, Tab, Konto und Fassung der Karte
+    übereinstimmen.
+  - In den Prüfungen lief kein Modell: ohne Einwilligung bleibt der Weg in der Enge.
+- **Stopp (Nacharbeit 3).** „Verbindung widerrufen" wartet auf keinen laufenden Schritt und bleibt
+  auch ohne sichtbare Karte erreichbar, etwa nach einem Tabwechsel.
+  - Er entwertet sofort jede Freigabe und Karte und verwirft eine gestellte Antwort.
+  - Er erhöht eine Widerrufs-Epoche: Ein Schritt, der davor begann, wirkt danach nicht mehr. Eine
+    verspätet bestätigte Kernsitzung wird geschlossen, eine verspätete Antwort verworfen.
+  - Ein bereits abgeschickter Abruf wird nicht technisch abgebrochen; er läuft zu Ende und bleibt
+    dann wirkungslos.
 - **AC10 offen.** Benötigt: installierter Begleiter, reale Chrome-Version auf diesem Mac, geladene
   Erweiterung, menschliche Bedienung und Protokoll. Ein DOM-Test oder eine Figur auf dem
   Bildschirm zählt ausdrücklich nicht.

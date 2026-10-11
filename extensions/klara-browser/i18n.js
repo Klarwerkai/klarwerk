@@ -221,6 +221,10 @@ globalThis.KLARA_TEXT = {
     kontextImportBleibt: "Gespeicherte Entwürfe bleiben mit Herkunft erhalten.",
     kontextVerbinden: "Mit Klara verbinden",
     kontextWiderrufen: "Verbindung widerrufen",
+    kontextErklaeren: "Erkläre mir diese Angaben",
+    kontextAntwortTitel: "Klaras Antwort",
+    kontextAntwortLeer: "Klara hat dazu keine Antwort geliefert.",
+    kontextAntwortHinweis: "Gilt für genau diese Markierung und Fassung.",
   },
   en: {
     language: "Language",
@@ -402,5 +406,9 @@ globalThis.KLARA_TEXT = {
     kontextImportBleibt: "Saved drafts stay, with their origin.",
     kontextVerbinden: "Connect with Klara",
     kontextWiderrufen: "Revoke connection",
+    kontextErklaeren: "Explain these details to me",
+    kontextAntwortTitel: "Klara's answer",
+    kontextAntwortLeer: "Klara did not return an answer for this.",
+    kontextAntwortHinweis: "Applies to exactly this selection and version.",
   },
 };

@@ -1062,7 +1062,8 @@
     const stand = kontextStand;
     const karte = stand?.karte ?? null;
     const grund = stand?.sperre ?? null;
-    $("kontext").hidden = !karte && !grund;
+    // Der Stopp bleibt erreichbar, solange etwas besteht — auch ohne sichtbare Karte.
+    $("kontext").hidden = !karte && !grund && !stand?.widerrufbar && !kontextLaeuft;
     $("kontext-karte").hidden = !karte;
     $("kontext-browser").textContent = karte?.browser ?? "";
     $("kontext-seite").textContent = karte ? `${karte.seite} · ${karte.domain}` : "";
@@ -1081,17 +1082,26 @@
     $("kontext-schritt").textContent = text?.naechsterSchritt ?? "";
     $("kontext-verbinden").disabled =
       kontextLaeuft || !karte || karte.veraltet || stand?.verbunden === true;
-    $("kontext-widerrufen").disabled = kontextLaeuft || (!karte && !stand?.verbunden);
+    $("kontext-erklaeren").disabled = kontextLaeuft || stand?.verbunden !== true;
+    // Der Widerruf wartet NICHT auf einen laufenden Schritt: er ist gerade dann der Stopp.
+    $("kontext-widerrufen").disabled = !kontextLaeuft && stand?.widerrufbar !== true;
+    const antwort = stand?.antwort ?? null;
+    $("kontext-antwort-box").hidden = !antwort;
+    $("kontext-antwort").hidden = !antwort?.text;
+    $("kontext-antwort").textContent = antwort?.text ?? "";
+    $("kontext-antwort-leer").hidden = !antwort || Boolean(antwort.text);
   }
-  /** @param {"kontext" | "kontextVerbinden" | "kontextWiderrufen"} art */
+  /** @param {"kontext" | "kontextVerbinden" | "kontextErklaeren" | "kontextWiderrufen"} art */
   async function kontextFragen(art) {
-    const handlung = art !== "kontext";
+    // Verbinden und Erklären laufen; Widerruf und Lesen setzen keinen Laufzustand — der Stopp darf
+    // einen laufenden Schritt nicht als „fertig" ausgeben.
+    const handlung = art === "kontextVerbinden" || art === "kontextErklaeren";
     if (handlung) {
       kontextLaeuft = true;
       kontextZeigen();
     }
     try {
-      const antwort = await chrome.runtime.sendMessage({ type: art });
+      const antwort = await chrome.runtime.sendMessage({ type: art, sprache: language });
       if (istKontext(antwort)) kontextStand = antwort;
     } catch {
       // Ohne Antwort bleibt die letzte Karte stehen; der nächste Anlass fragt erneut.
@@ -1101,6 +1111,7 @@
     }
   }
   $("kontext-verbinden").addEventListener("click", () => void kontextFragen("kontextVerbinden"));
+  $("kontext-erklaeren").addEventListener("click", () => void kontextFragen("kontextErklaeren"));
   $("kontext-widerrufen").addEventListener("click", () => void kontextFragen("kontextWiderrufen"));
   $("language").addEventListener("change", kontextZeigen);
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -1109,6 +1120,7 @@
       "kontext" in changes ||
       "kontextSperre" in changes ||
       "kern" in changes ||
+      "kontextAntwort" in changes ||
       "auth" in changes
     )
       void kontextFragen("kontext");

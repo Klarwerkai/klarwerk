@@ -206,6 +206,7 @@ export type KontextApi = {
       auswahl: { text: string; tabelle: Tabelle | null };
     } | null;
   };
+  auswahlFuerFrage(auswahl: { text: string; tabelle: Tabelle | null }): string | null;
   anzeige(karte: Karte): KontextAnzeige;
   importMerken(zustand: KontextZustand, draftId: string): KontextZustand;
   widerrufen(zustand: KontextZustand, domain: string): KontextZustand;
@@ -223,6 +224,18 @@ export type Kern = {
   fassung: string;
   url: string;
 };
+/**
+ * Klaras Antwort auf „Erkläre mir diese Angaben" — gebunden an Folge, Fassung und Tab der Karte,
+ * zu der sie gestellt wurde. `text: null` heisst: der Kern hat keine Antwort geliefert.
+ */
+export type KontextErklaerung = {
+  folge: number;
+  fassung: string;
+  tabId: number;
+  url: string;
+  text: string | null;
+  answerId: string | null;
+};
 /** Die Antwort des Workers an die Leiste zum Kontext — nie eine `View` der Übernahme. */
 export type KontextSicht = {
   kontext: true;
@@ -233,6 +246,12 @@ export type KontextSicht = {
   verbunden: boolean;
   beobachtung: boolean;
   importe: { herkunft: string; verbindung: string }[];
+  /** Gibt es etwas zu stoppen (Karte, Freigabe, Kernsitzung, laufender Schritt)? */
+  widerrufbar: boolean;
+  /** Läuft gerade Verbinden oder Erklären? */
+  laeuft: boolean;
+  /** Nur die Antwort, die zur AKTUELLEN Karte und Fassung gehört. */
+  antwort: { text: string | null; answerId: string | null; fassung: string } | null;
 };
 export type State = {
   auth?: Auth | null;
@@ -243,6 +262,9 @@ export type State = {
   kontext?: KontextZustand | null;
   kontextSperre?: Sperre | null;
   kern?: Kern | null;
+  /** Steigt mit jedem Widerruf; ein Schritt, der unter einer älteren Epoche begann, wirkt nicht. */
+  kontextEpoche?: number;
+  kontextAntwort?: KontextErklaerung | null;
 };
 export type View = {
   status: string;
@@ -273,6 +295,8 @@ export type Message = {
   text?: string;
   email?: string;
   password?: string;
+  /** BPA-01: die Sprache der Leiste für Klaras Antwort (`de`/`en`). */
+  sprache?: string;
 };
 export type Payload = {
   title: string;
@@ -360,6 +384,7 @@ declare global {
             kontext?: { newValue?: unknown };
             kontextSperre?: { newValue?: unknown };
             kern?: { newValue?: unknown };
+            kontextAntwort?: { newValue?: unknown };
           },
           area: string,
         ) => void
