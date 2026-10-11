@@ -7,10 +7,14 @@
 // Quellenänderungsdienst erkannt, auch ohne geöffnetes Fenster; Live-Begleitung ersetzt diesen
 // Dienst nicht."
 //
-// Das ERKENNEN belegt der bestehende Prüfstand des getrennten Dienstes, der in derselben
-// Prüfauswahl läuft und am Server arbeitet, ohne dass irgendein Fenster geöffnet ist:
+// Das ERKENNEN belegen bestehende Prüfstände der getrennten Dienste, die in derselben Prüfauswahl
+// laufen und am Server arbeiten, ohne dass irgendein Fenster geöffnet ist:
+//   · `tests/sharepoint-onedrive-import/wiederholimport-am-draht.test.ts` (W2) — eine freigegebene
+//     SharePoint-/OneDrive-DATEI ändert sich an der Quelle (`lastModifiedDateTime` im Graph-Vertrag);
+//     der echte Dateiquellenadapter samt Übernahmetür erkennt den neuen Stand und reiht ihn als
+//     Vorgang ein, ohne geprüftes Wissen still zu überschreiben.
 //   · `tests/quellenaenderungen-bewusst-uebernehmen/dienst-und-tuer.test.ts` — eine neuere
-//     Quellfassung erscheint als Vorschlag, mit Prüfzeitpunkt und Ergebnis.
+//     Quellfassung erscheint an der Anleitung als Vorschlag, mit Prüfzeitpunkt und Ergebnis.
 // `tests/confluence-quellabgleich/abgleich.test.ts` gehört NICHT zu dieser Auswahl: dort sind die
 // drei R-0162-Fälle (Löschabgleich, `services/app/src/confluence-import.ts`) am Kandidaten rot —
 // ein unveränderter fremder Basisbefund, den diese Begleitung weder berührt noch beheben darf.
@@ -28,7 +32,9 @@ import {
 const DATEIEN = [
   "apps/web/src/components/klara-begleitung/kern.ts",
   "apps/web/src/components/klara-begleitung/adapter.ts",
+  "apps/web/src/components/klara-begleitung/hostzustand.ts",
   "apps/web/src/components/klara-begleitung/KlaraBegleitung.tsx",
+  "apps/web/src/pages/BegleitungPruefformular.tsx",
 ];
 
 /** Der Quelltext ohne Kommentare — eine Erwähnung im Kommentar ist kein Aufruf. */

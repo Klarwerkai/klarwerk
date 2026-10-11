@@ -12,6 +12,7 @@
 import { useEffect } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { RoleLink } from "../components/RoleLink";
+import { PRUEFFORMULAR_PFAD } from "../components/klara-begleitung/pfad";
 import { setzeKlaraVorschauAktiv } from "../components/klara-vorschau/aktiv";
 import {
   DEMO_ARTIKEL,
@@ -177,6 +178,19 @@ function Uebersicht(): JSX.Element {
         ))}
       </ul>
       <p className="mt-5 text-[12.5px] text-muted">{t("klaravorschau.vorschauseite.gesten")}</p>
+      {/* BPA-05: der freigegebene Testvorgang für die aktive Begleitung — echter Produktbetrieb,
+          keine vorgefertigte Antwort. */}
+      <h2 className="mt-6 text-[15px] font-semibold text-ink">{t("begleitung.einstieg.titel")}</h2>
+      <p className="mt-1 text-[13.5px] leading-relaxed text-text">
+        {t("begleitung.einstieg.text")}
+      </p>
+      <Link
+        to={PRUEFFORMULAR_PFAD}
+        data-testid="klara-vorschau-zur-begleitung"
+        className={`${LINK} mt-2`}
+      >
+        {t("begleitung.einstieg.link")}
+      </Link>
       <WeiterLinks />
     </div>
   );

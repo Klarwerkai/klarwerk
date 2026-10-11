@@ -16,6 +16,8 @@ import {
   auskunft,
   befunde,
   beschaeftigt,
+  darf,
+  darfLesen,
   fortsetzen,
   leseAuftrag,
   naechsterHinweis,
@@ -185,7 +187,7 @@ describe("K3 · nach Stopp und während der Pause wird kein Kontext übernommen"
 
   it("Pause verwirft den Kontext; Ereignisse während der Pause bleiben draußen", () => {
     const mit = nimmKontext(gestartet(), im(), lage(T0 + MIN)).begleitung;
-    const pause = pausiere(mit, "nutzer");
+    const pause = pausiere(mit, "nutzer", T0 + MIN);
     expect(pause.kontext).toBeNull();
     expect(nimmKontext(pause, im(), lage(T0 + 2 * MIN)).ergebnis).toBe("nicht_aktiv");
   });
@@ -289,7 +291,7 @@ describe("K6 · fehlende technische Einheit erkannt; nächster Schritt statt Dat
 describe("K7 · Sperrbildschirm, Kontowechsel, Rechteentzug pausieren; Neustart verlängert nichts", () => {
   it("Sperrbildschirm pausiert; Fortsetzen nur durch den Nutzer, danach frischer Kontext", () => {
     let b = nimmKontext(gestartet(), im(), lage(T0 + MIN)).begleitung;
-    b = systemereignis(b, "sperrbildschirm");
+    b = systemereignis(b, "sperrbildschirm", T0 + MIN);
     expect(b).toMatchObject({ phase: "pausiert", grund: "sperrbildschirm", kontext: null });
     expect(nimmKontext(b, im(), lage(T0 + 2 * MIN)).ergebnis).toBe("nicht_aktiv");
     const r = fortsetzen(b, lage(T0 + 3 * MIN));
@@ -314,11 +316,56 @@ describe("K7 · Sperrbildschirm, Kontowechsel, Rechteentzug pausieren; Neustart 
     const r = nimmKontext(b, im(), lage(T0 + 2 * MIN, PIA, false));
     expect(r.ergebnis).toBe("rechteentzug");
     expect(r.begleitung.kontext).toBeNull();
+    expect(r.begleitung.rechteentzugAm).toBe(T0 + 2 * MIN);
     expect(fortsetzen(r.begleitung, lage(T0 + 3 * MIN, PIA, false))).toMatchObject({
       ok: false,
       fehler: "keine_rechte",
     });
-    expect(fortsetzen(r.begleitung, lage(T0 + 3 * MIN)).ok).toBe(true);
+    // Ein positiver Wert OHNE Serverbestätigung nach dem Entzug hebt die Sperre nicht auf …
+    expect(fortsetzen(r.begleitung, lage(T0 + 3 * MIN))).toMatchObject({
+      ok: false,
+      fehler: "rechte_unbestaetigt",
+    });
+    // … ebenso wenig eine Bestätigung, die älter ist als der Entzug (zwischengespeicherter Stand).
+    const alt = { ...lage(T0 + 3 * MIN), rechteGeprueftAm: T0 + MIN };
+    expect(fortsetzen(r.begleitung, alt)).toMatchObject({
+      ok: false,
+      fehler: "rechte_unbestaetigt",
+    });
+    // Erst eine nach dem Entzug bestätigte Berechtigung erlaubt das Fortsetzen — und löscht die Sperre.
+    const neu = { ...lage(T0 + 3 * MIN), rechteGeprueftAm: T0 + 2 * MIN + 1 };
+    const ok = fortsetzen(r.begleitung, neu);
+    expect(ok.ok).toBe(true);
+    expect(ok.begleitung.rechteentzugAm).toBeNull();
+  });
+
+  it("ein Rechteentzug bleibt gesperrt, auch wenn danach ein anderer Pausengrund kommt", () => {
+    let b = nimmKontext(gestartet(), im(), lage(T0 + MIN)).begleitung;
+    b = systemereignis(b, "rechteentzug", T0 + 2 * MIN);
+    b = systemereignis(b, "sperrbildschirm", T0 + 3 * MIN);
+    expect(b.grund).toBe("sperrbildschirm");
+    expect(fortsetzen(b, lage(T0 + 4 * MIN))).toMatchObject({
+      ok: false,
+      fehler: "rechte_unbestaetigt",
+    });
+  });
+
+  it("vor dem Lesen wird geprüft: ohne Berechtigung, fremdes Konto oder nach Ablauf kein Lesen", () => {
+    const b = gestartet();
+    expect(darfLesen(b, lage(T0 + MIN))).toBe(true);
+    expect(darfLesen(b, lage(T0 + MIN, PIA, false))).toBe(false);
+    expect(darfLesen(b, lage(T0 + MIN, "u-ben"))).toBe(false);
+    expect(darfLesen(b, lage(T0 + 30 * MIN))).toBe(false);
+    expect(darfLesen(pausiere(b, "nutzer", T0 + MIN), lage(T0 + MIN))).toBe(false);
+  });
+
+  it("die Berechtigung hängt an den Rollen des Vorgangs — Verwaltung allein genügt nicht", () => {
+    const vorgang: Bereich = { ...BEREICH, rollen: ["experte", "controller"] };
+    expect(darf(vorgang, "experte")).toBe(true);
+    expect(darf(vorgang, "admin")).toBe(false);
+    expect(darf(vorgang, "viewer")).toBe(false);
+    expect(darf(vorgang, null)).toBe(false);
+    expect(darf(BEREICH, "viewer")).toBe(true);
   });
 
   it("am Endpunkt ist Schluss — auch durch Pause, Fortsetzen oder Neustart nicht verlängert", () => {
@@ -328,7 +375,7 @@ describe("K7 · Sperrbildschirm, Kontowechsel, Rechteentzug pausieren; Neustart 
     expect(r.ergebnis).toBe("abgelaufen");
     expect(r.begleitung).toMatchObject({ phase: "beendet", grund: "abgelaufen", kontext: null });
 
-    const pause = pausiere(b, "nutzer");
+    const pause = pausiere(b, "nutzer", T0 + MIN);
     expect(fortsetzen(pause, lage(ende + 1))).toMatchObject({ ok: false, fehler: "abgelaufen" });
 
     const gesichert = sicherung(b);
@@ -365,6 +412,7 @@ describe("K8 · keine Arbeitsplatzhistorie; Gespeichertes und Löschwirkung sind
         "kontext",
         "letzterHinweisAm",
         "phase",
+        "rechteentzugAm",
         "verworfen",
       ].sort(),
     );

@@ -17,6 +17,15 @@
 // Dauerhaft liegt nur die FREIGABE (Zweck, Bereich, Endpunkt) im Sitzungsspeicher dieses Tabs —
 // damit ein Neuladen sie nicht verlängert, sondern pausiert wiederfindet (K7). Bewusst übernommene
 // Notizen liegen getrennt daneben und überleben den Stopp; gelesene Feldwerte liegen nirgends (K8).
+//
+// RECHTE (K7, G04): Die Berechtigung ist NICHT „angemeldet". Sie ist die Rolle aus der vom Server
+// bestätigten Sitzung, gemessen an den Rollen, die der Vorgang selbst zulässt (`darf`). Sie wird
+// vor JEDEM Lesen geprüft (`darfLesen`); fällt sie weg, wird pausiert, ohne zu lesen. Fortsetzen
+// nach einem Entzug verlangt eine Serverbestätigung, die jünger ist als der Entzug.
+//
+// HOSTZUSTAND (K2, K7): verborgenes Fenster → Pause „verborgen" ohne vorheriges Lesen; gesperrter
+// Bildschirm → Pause „Sperrbildschirm" über die Idle Detection API, wenn der Browser sie hat und
+// der Nutzer sie beim Start erlaubt (`hostzustand.ts`). Beides nur durch den Nutzer fortsetzbar.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "../../app/AuthContext";
 import { useAssistenzT } from "../../lib/assistenzProfil";
@@ -27,6 +36,7 @@ import {
   istSystemereignis,
   liesVorgang,
 } from "./adapter";
+import { type SperrErkennung, beobachteSperre, sperrErkennungErlauben } from "./hostzustand";
 import {
   AUS,
   type Begleitung,
@@ -36,6 +46,8 @@ import {
   type Notiz,
   auskunft,
   beschaeftigt,
+  darf,
+  darfLesen,
   fortsetzen,
   leseAuftrag,
   naechsterHinweis,
@@ -99,20 +111,33 @@ function neueId(): string {
 export interface KlaraBegleitungProps {
   /** Das angemeldete Konto; `null` heißt abgemeldet. */
   readonly konto: string | null;
-  /** Ergebnis der aktuellen Rechteprüfung. Ohne Anmeldung nie erlaubt. */
-  readonly darfBegleiten: boolean;
+  /** Die Rolle aus der vom Server bestätigten Sitzung; `null` heißt keine Berechtigung. */
+  readonly rolle: string | null;
+  /** Zeitpunkt der letzten Serverbestätigung dieser Sitzung (`/auth/me`). */
+  readonly rechteGeprueftAm?: number;
+  /** Fordert eine frische Serverbestätigung an (nach einem Entzug). */
+  readonly pruefeRechte?: () => void;
   readonly jetzt?: () => number;
 }
 
-/** Die Begleitung in der Hülle — Konto und Rechte aus der echten Sitzung. */
+/** Die Begleitung in der Hülle — Konto, Rolle und Bestätigungszeitpunkt aus der echten Sitzung. */
 export function KlaraBegleitungImProdukt(): JSX.Element | null {
-  const { user } = useSession();
-  return <KlaraBegleitung konto={user?.id ?? null} darfBegleiten={user !== null} />;
+  const { user, sitzungGeprueftAm, refresh } = useSession();
+  return (
+    <KlaraBegleitung
+      konto={user?.id ?? null}
+      rolle={user?.role ?? null}
+      rechteGeprueftAm={sitzungGeprueftAm ?? 0}
+      pruefeRechte={refresh}
+    />
+  );
 }
 
 export function KlaraBegleitung({
   konto,
-  darfBegleiten,
+  rolle,
+  rechteGeprueftAm = 0,
+  pruefeRechte,
   jetzt = Date.now,
 }: KlaraBegleitungProps): JSX.Element | null {
   const { t, i18n } = useAssistenzT();
@@ -132,8 +157,11 @@ export function KlaraBegleitung({
   const [bereiche, setBereiche] = useState<Bereich[]>(() => eingerichteteBereiche(document));
   const [satz, setSatz] = useState("");
   const [meldung, setMeldung] = useState<string | null>(null);
-  const lage = useRef({ konto: konto ?? "", darfBegleiten });
-  lage.current = { konto: konto ?? "", darfBegleiten };
+  const [sperrErkennung, setSperrErkennung] = useState<SperrErkennung>("nur_fenster");
+  // Die aktuelle Berechtigung gilt für den Bereich DIESER Begleitung, nicht für „irgendeinen".
+  const darfBegleiten = b.freigabe ? darf(b.freigabe.bereich, rolle) : false;
+  const lage = useRef({ konto: konto ?? "", darfBegleiten, rechteGeprueftAm });
+  lage.current = { konto: konto ?? "", darfBegleiten, rechteGeprueftAm };
   const aktuell = useRef(b);
   aktuell.current = b;
   const zeitgeber = useRef<number | null>(null);
@@ -159,12 +187,19 @@ export function KlaraBegleitung({
         const lageJetzt = { ...lage.current, jetzt: zeit };
         let neu = pruefeAblauf(alt, zeit);
         if (neu.phase === "aktiv" && neu.freigabe) {
-          const e =
-            ereignis ??
-            (document.hidden
-              ? nirgends(lageJetzt.konto)
-              : liesVorgang(document, neu.freigabe.bereich.kennung, lageJetzt.konto));
-          neu = nimmKontext(neu, e, lageJetzt).begleitung;
+          if (!ereignis && document.hidden) {
+            // Verborgenes Fenster: pausieren, OHNE vorher zu lesen.
+            neu = systemereignis(neu, "verborgen", zeit);
+          } else {
+            // Erst prüfen, dann lesen: ohne aktuelle Berechtigung wird das Dokument nicht angefasst,
+            // und `nimmKontext` pausiert mit dem passenden Grund.
+            const e =
+              ereignis ??
+              (darfLesen(neu, lageJetzt)
+                ? liesVorgang(document, neu.freigabe.bereich.kennung, lageJetzt.konto)
+                : nirgends(lageJetzt.konto));
+            neu = nimmKontext(neu, e, lageJetzt).begleitung;
+          }
         }
         return naechsterHinweis(neu, zeit);
       });
@@ -179,14 +214,24 @@ export function KlaraBegleitung({
         return alt;
       }
       if ((konto ?? "") !== alt.freigabe.konto) {
-        return alt.grund === "kontowechsel" ? alt : systemereignis(alt, "kontowechsel");
+        return alt.grund === "kontowechsel" ? alt : systemereignis(alt, "kontowechsel", jetzt());
       }
-      if (!darfBegleiten && alt.phase === "aktiv") {
-        return systemereignis(alt, "rechteentzug");
+      if (!darfBegleiten && alt.rechteentzugAm === null) {
+        return systemereignis(alt, "rechteentzug", jetzt());
       }
       return alt;
     });
-  }, [konto, darfBegleiten]);
+  }, [konto, darfBegleiten, jetzt]);
+
+  const laeuft = b.phase === "aktiv" || b.phase === "pausiert";
+
+  // Gesperrter Bildschirm (Idle Detection API, nur nach Erlaubnis beim Start).
+  useEffect(() => {
+    if (!laeuft || sperrErkennung !== "bildschirm") {
+      return;
+    }
+    return beobachteSperre(() => setB((alt) => systemereignis(alt, "sperrbildschirm", jetzt())));
+  }, [laeuft, sperrErkennung, jetzt]);
 
   const aktiv = b.phase === "aktiv";
 
@@ -232,7 +277,7 @@ export function KlaraBegleitung({
     const system = (e: Event): void => {
       const art = (e as CustomEvent<{ ereignis?: unknown }>).detail?.ereignis;
       if (istSystemereignis(art)) {
-        setB((alt) => systemereignis(alt, art));
+        setB((alt) => systemereignis(alt, art, jetzt()));
       }
     };
     window.addEventListener(KONTEXT_EREIGNIS, kontext);
@@ -241,7 +286,7 @@ export function KlaraBegleitung({
       window.removeEventListener(KONTEXT_EREIGNIS, kontext);
       window.removeEventListener(SYSTEM_EREIGNIS, system);
     };
-  }, [abtasten]);
+  }, [abtasten, jetzt]);
 
   // Solange nichts läuft: eingerichtete Vorgänge auf der Seite finden (Seitenwechsel, Nachladen).
   useEffect(() => {
@@ -264,7 +309,7 @@ export function KlaraBegleitung({
     const alt = aktuell.current;
     if (alt.phase === "aktiv") {
       setMeldung(null);
-      setB(pausiere(alt, "nutzer"));
+      setB(pausiere(alt, "nutzer", jetzt()));
       return;
     }
     if (alt.phase !== "pausiert") {
@@ -272,8 +317,12 @@ export function KlaraBegleitung({
     }
     const r = fortsetzen(alt, { ...lage.current, jetzt: jetzt() });
     setMeldung(r.ok ? null : t(`begleitung.fehler.${r.fehler}`));
+    if (!r.ok && r.fehler === "rechte_unbestaetigt") {
+      // Eine frische Serverantwort holen; Fortsetzen bleibt eine bewusste zweite Handlung.
+      pruefeRechte?.();
+    }
     setB(r.begleitung);
-  }, [jetzt, t]);
+  }, [jetzt, t, pruefeRechte]);
 
   const stopp = useCallback(() => {
     setMeldung(null);
@@ -311,9 +360,10 @@ export function KlaraBegleitung({
     [b.freigabe, i18n.language],
   );
 
-  const bereich = bereiche[0];
+  // Angeboten wird nur ein Vorgang, den diese Rolle begleiten lassen darf.
+  const bereich = bereiche.find((x) => darf(x, rolle));
   const starten = (): void => {
-    if (!bereich || !konto || !darfBegleiten) {
+    if (!bereich || !konto) {
       return;
     }
     const r = starte(leseAuftrag(satz), bereich, { konto, jetzt: jetzt(), id: neueId() });
@@ -324,6 +374,8 @@ export function KlaraBegleitung({
     setMeldung(null);
     setSatz("");
     setB(r.begleitung);
+    // Aus der Startgeste heraus: darf der Browser einen gesperrten Bildschirm melden?
+    void sperrErkennungErlauben().then(setSperrErkennung);
   };
 
   const notizUebernehmen = (): void => {
@@ -368,7 +420,7 @@ export function KlaraBegleitung({
     ) : null;
 
   if (b.phase === "aus") {
-    if (!bereich || !darfBegleiten) {
+    if (!bereich) {
       return null;
     }
     return (
@@ -446,6 +498,13 @@ export function KlaraBegleitung({
       <p className="text-xs">{t("begleitung.status.zweck", { zweck: f.zweck })}</p>
       <p className="text-xs" data-testid="begleitung-medien">
         {t("begleitung.status.medien")}
+      </p>
+      <p className="text-xs" data-testid="begleitung-sperrerkennung">
+        {t(
+          sperrErkennung === "bildschirm"
+            ? "begleitung.status.sperreBildschirm"
+            : "begleitung.status.sperreFenster",
+        )}
       </p>
       {b.phase === "pausiert" && b.grund ? (
         <p className="text-xs" data-testid="begleitung-grund">

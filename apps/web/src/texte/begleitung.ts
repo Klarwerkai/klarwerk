@@ -70,6 +70,35 @@ export default {
       "Kein Verlauf, keine Aufnahme, keine Auswertung über Personen. Dateiänderungen meldet der getrennte Quellenänderungsdienst.",
     "begleitung.ja": "ja",
     "begleitung.nein": "nein",
+    "begleitung.grund.verborgen":
+      "Pausiert, weil das Fenster verborgen wurde (anderes Fenster, Tab oder Bildschirm aus).",
+    "begleitung.fehler.rechte_unbestaetigt":
+      "Der Zugriff wird gerade neu bestätigt. Bitte danach erneut „Fortsetzen“ wählen.",
+    "begleitung.status.sperreBildschirm": "Sperrbildschirm wird erkannt und pausiert.",
+    "begleitung.status.sperreFenster":
+      "Sperrbildschirm wird hier nur über das verborgene Fenster erkannt.",
+    "begleitung.einstieg.titel": "Aktive Begleitung ausprobieren",
+    "begleitung.einstieg.text":
+      "Ein synthetisches Prüfformular ist für die Begleitung freigegeben. Dort kann {{assistenz}} auf fehlende Einheiten hinweisen – ohne etwas einzutragen.",
+    "begleitung.einstieg.link": "Prüfformular öffnen",
+    "begleitung.formular.kennzeichen": "Synthetischer Testvorgang",
+    "begleitung.formular.titel": "Prüfformular Netzteil",
+    "begleitung.formular.intro":
+      "Dieser Vorgang ist für die aktive Begleitung freigegeben. Nichts auf dieser Seite wird gespeichert oder gesendet.",
+    "begleitung.formular.feld.hersteller": "Hersteller",
+    "begleitung.formular.feld.leistung": "Leistung",
+    "begleitung.formular.feld.spannung": "Spannung",
+    "begleitung.formular.feld.strom": "Ausgangsstrom",
+    "begleitung.formular.feld.wirkungsgrad": "Wirkungsgrad",
+    "begleitung.formular.feld.anschluesse": "Anschlüsse",
+    "begleitung.formular.feld.kundennummer": "Kundennummer",
+    "begleitung.formular.ausgeschlossen": "Dieses Feld wird bei der Begleitung nie gelesen.",
+    "begleitung.formular.pruefen": "Angaben prüfen",
+    "begleitung.formular.vollstaendig": "Alle technischen Angaben tragen eine Einheit.",
+    "begleitung.formular.befunde": "Bei diesen Angaben fehlt die Einheit:",
+    "begleitung.formular.privatTitel": "Persönliche Notiz (nicht freigegeben)",
+    "begleitung.formular.privatHinweis":
+      "Liegt außerhalb des freigegebenen Vorgangs und wird nie gelesen.",
   },
   en: {
     "begleitung.region": "{{assistenz}} accompanying you",
@@ -131,6 +160,34 @@ export default {
       "No history, no recording, no evaluation of people. File changes are reported by the separate source change service.",
     "begleitung.ja": "yes",
     "begleitung.nein": "no",
+    "begleitung.grund.verborgen":
+      "Paused because the window was hidden (other window, tab or screen off).",
+    "begleitung.fehler.rechte_unbestaetigt":
+      "Access is being confirmed again. Please choose “Resume” once more afterwards.",
+    "begleitung.status.sperreBildschirm": "A locked screen is detected and pauses.",
+    "begleitung.status.sperreFenster":
+      "A locked screen is only detected via the hidden window here.",
+    "begleitung.einstieg.titel": "Try active accompanying",
+    "begleitung.einstieg.text":
+      "A synthetic test form is permitted for accompanying. There {{assistenz}} can point out missing units – without filling anything in.",
+    "begleitung.einstieg.link": "Open test form",
+    "begleitung.formular.kennzeichen": "Synthetic test task",
+    "begleitung.formular.titel": "Power supply test form",
+    "begleitung.formular.intro":
+      "This task is permitted for active accompanying. Nothing on this page is saved or sent.",
+    "begleitung.formular.feld.hersteller": "Manufacturer",
+    "begleitung.formular.feld.leistung": "Power",
+    "begleitung.formular.feld.spannung": "Voltage",
+    "begleitung.formular.feld.strom": "Output current",
+    "begleitung.formular.feld.wirkungsgrad": "Efficiency",
+    "begleitung.formular.feld.anschluesse": "Connectors",
+    "begleitung.formular.feld.kundennummer": "Customer number",
+    "begleitung.formular.ausgeschlossen": "This field is never read while accompanying.",
+    "begleitung.formular.pruefen": "Check entries",
+    "begleitung.formular.vollstaendig": "All technical entries carry a unit.",
+    "begleitung.formular.befunde": "These entries are missing a unit:",
+    "begleitung.formular.privatTitel": "Personal note (not permitted)",
+    "begleitung.formular.privatHinweis": "Lies outside the permitted task and is never read.",
   },
   nl: {
     "begleitung.region": "Begeleiding door {{assistenz}}",
@@ -193,5 +250,33 @@ export default {
       "Geen geschiedenis, geen opname, geen beoordeling van personen. Bestandswijzigingen meldt de aparte bronwijzigingsdienst.",
     "begleitung.ja": "ja",
     "begleitung.nein": "nee",
+    "begleitung.grund.verborgen":
+      "Gepauzeerd omdat het venster verborgen werd (ander venster, tabblad of scherm uit).",
+    "begleitung.fehler.rechte_unbestaetigt":
+      "De toegang wordt opnieuw bevestigd. Kies daarna nogmaals „Hervatten”.",
+    "begleitung.status.sperreBildschirm": "Een vergrendeld scherm wordt herkend en pauzeert.",
+    "begleitung.status.sperreFenster":
+      "Een vergrendeld scherm wordt hier alleen via het verborgen venster herkend.",
+    "begleitung.einstieg.titel": "Actieve begeleiding uitproberen",
+    "begleitung.einstieg.text":
+      "Een synthetisch testformulier is vrijgegeven voor begeleiding. Daar kan {{assistenz}} wijzen op ontbrekende eenheden – zonder iets in te vullen.",
+    "begleitung.einstieg.link": "Testformulier openen",
+    "begleitung.formular.kennzeichen": "Synthetische testtaak",
+    "begleitung.formular.titel": "Testformulier voeding",
+    "begleitung.formular.intro":
+      "Deze taak is vrijgegeven voor actieve begeleiding. Niets op deze pagina wordt opgeslagen of verzonden.",
+    "begleitung.formular.feld.hersteller": "Fabrikant",
+    "begleitung.formular.feld.leistung": "Vermogen",
+    "begleitung.formular.feld.spannung": "Spanning",
+    "begleitung.formular.feld.strom": "Uitgangsstroom",
+    "begleitung.formular.feld.wirkungsgrad": "Rendement",
+    "begleitung.formular.feld.anschluesse": "Aansluitingen",
+    "begleitung.formular.feld.kundennummer": "Klantnummer",
+    "begleitung.formular.ausgeschlossen": "Dit veld wordt tijdens begeleiding nooit gelezen.",
+    "begleitung.formular.pruefen": "Gegevens controleren",
+    "begleitung.formular.vollstaendig": "Alle technische gegevens hebben een eenheid.",
+    "begleitung.formular.befunde": "Bij deze gegevens ontbreekt de eenheid:",
+    "begleitung.formular.privatTitel": "Persoonlijke notitie (niet vrijgegeven)",
+    "begleitung.formular.privatHinweis": "Ligt buiten de vrijgegeven taak en wordt nooit gelezen.",
   },
 } satisfies Textmodul;

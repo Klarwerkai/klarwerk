@@ -34,7 +34,8 @@ const mikrofonSpion = vi.fn();
 
 const FORMULAR = `
   <form data-klara-begleitbereich="pruefformular-netzteil"
-        data-klara-begleitbereich-name="Prüfformular Netzteil">
+        data-klara-begleitbereich-name="Prüfformular Netzteil"
+        data-klara-begleitbereich-rollen="experte,controller">
     <label for="leistung">Leistung</label>
     <input id="leistung" name="leistung" data-klara-einheit="W,kW" value="">
     <label for="spannung">Spannung</label>
@@ -47,13 +48,33 @@ const FORMULAR = `
   <section id="nicht-freigegeben"><textarea name="privat">${GEHEIM[2]}</textarea></section>
 `;
 
-function montiere(konto: string | null = "u-pia", darfBegleiten = true): void {
+const pruefSpion = vi.fn();
+
+/** `rolle` und `geprueftAm` stehen für die vom Server bestätigte Sitzung (`/auth/me`). */
+function montiere(
+  konto: string | null = "u-pia",
+  rolle: string | null = "experte",
+  geprueftAm = 0,
+): void {
   act(() => {
     if (!root) {
       root = createRoot(wurzel);
     }
-    root.render(createElement(KlaraBegleitung, { konto, darfBegleiten, jetzt: () => uhr }));
+    root.render(
+      createElement(KlaraBegleitung, {
+        konto,
+        rolle,
+        rechteGeprueftAm: geprueftAm,
+        pruefeRechte: pruefSpion,
+        jetzt: () => uhr,
+      }),
+    );
   });
+}
+
+/** Hat jemand den eingerichteten Vorgang im Dokument gesucht — also zu lesen begonnen? */
+function vorgangAbgefragt(aufrufe: readonly unknown[][]): boolean {
+  return aufrufe.some(([selektor]) => String(selektor).includes("begleitbereich"));
 }
 
 function abbauen(): void {
@@ -140,6 +161,7 @@ beforeEach(async () => {
   localStorage.clear();
   fetchSpion.mockReset();
   mikrofonSpion.mockReset();
+  pruefSpion.mockReset();
   vi.stubGlobal("fetch", fetchSpion);
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
@@ -339,12 +361,99 @@ describe("K7 · Sperrbildschirm, Kontowechsel, Rechteentzug pausieren; Neuladen 
     montiere("u-pia");
     expect(q("begleitung-grund")?.textContent).toBe("Pausiert, weil das Konto gewechselt hat.");
 
-    montiere("u-pia", false);
+    // Weiter angemeldet, aber die Rolle ist für diesen Vorgang nicht (mehr) zugelassen: auch
+    // Verwaltung allein genügt nicht.
+    uhr = T0 + 2 * MIN;
+    montiere("u-pia", "admin");
+    expect(q("begleitung-grund")?.textContent).toBe("Pausiert, weil der Zugriff entzogen wurde.");
     act(() => knopf("Fortsetzen").click());
     expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain("gerade nicht erlaubt");
-    montiere("u-pia", true);
+
+    // Die Rolle passt wieder, aber die Serverbestätigung stammt von VOR dem Entzug: gesperrt, und
+    // eine frische Bestätigung wird angefordert.
+    uhr = T0 + 3 * MIN;
+    montiere("u-pia", "experte", T0 + MIN);
+    act(() => knopf("Fortsetzen").click());
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain("neu bestätigt");
+    expect(pruefSpion).toHaveBeenCalledTimes(1);
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+
+    // Erst die nach dem Entzug bestätigte Berechtigung erlaubt das bewusste Fortsetzen.
+    montiere("u-pia", "experte", T0 + 3 * MIN);
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
     act(() => knopf("Fortsetzen").click());
     expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+  });
+
+  it("Rechteentzug bei weiter angemeldetem Nutzer: sofort pausiert, ohne das Formular zu lesen", () => {
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    vergeht(5000);
+    expect(q("begleitung-auskunft")?.textContent).toContain(": 2 gelesene Felder");
+    const lesen = vi.spyOn(document, "querySelectorAll");
+    montiere("u-pia", "viewer");
+    vergeht(10_000);
+    expect(q("begleitung-grund")?.textContent).toBe("Pausiert, weil der Zugriff entzogen wurde.");
+    expect(q("begleitung-auskunft")?.textContent).toContain(": 0 gelesene Felder");
+    expect(vorgangAbgefragt(lesen.mock.calls)).toBe(false);
+    lesen.mockRestore();
+  });
+
+  it("verborgenes Fenster pausiert ohne vorheriges Lesen; Fortsetzen nur bewusst", () => {
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    const lesen = vi.spyOn(document, "querySelectorAll");
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(q("begleitung-grund")?.textContent).toContain("Fenster verborgen");
+    expect(vorgangAbgefragt(lesen.mock.calls)).toBe(false);
+    lesen.mockRestore();
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    vergeht(10_000);
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    act(() => knopf("Fortsetzen").click());
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+  });
+
+  it("mit Idle Detection: ein gesperrter Bildschirm pausiert — gemeldet vom Browser, nicht gestellt", async () => {
+    const box: { melder: (EventTarget & { screenState: string }) | null } = { melder: null };
+    class IdleDetectorAttrappe extends EventTarget {
+      screenState = "unlocked";
+      static requestPermission = vi.fn(async () => "granted");
+      constructor() {
+        super();
+        box.melder = this;
+      }
+      async start(): Promise<void> {}
+    }
+    vi.stubGlobal("IdleDetector", IdleDetectorAttrappe);
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    await act(async () => {
+      for (let i = 0; i < 10; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    expect(box.melder).not.toBeNull();
+    expect(IdleDetectorAttrappe.requestPermission).toHaveBeenCalledTimes(1);
+    expect(q("begleitung-sperrerkennung")?.textContent).toBe(
+      "Sperrbildschirm wird erkannt und pausiert.",
+    );
+    act(() => {
+      const melder = box.melder;
+      if (melder) {
+        melder.screenState = "locked";
+        melder.dispatchEvent(new Event("change"));
+      }
+    });
+    expect(q("begleitung-grund")?.textContent).toBe(
+      "Pausiert, weil der Bildschirm gesperrt wurde.",
+    );
   });
 
   it("Neuladen findet die Freigabe pausiert und mit demselben Endpunkt; nach dem Endpunkt ist Schluss", () => {

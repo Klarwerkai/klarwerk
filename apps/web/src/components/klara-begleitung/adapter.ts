@@ -19,6 +19,8 @@ import type { Bereich, Feld, KontextEreignis, Systemereignis } from "./kern";
 
 export const BEREICH_ATTRIBUT = "data-klara-begleitbereich";
 const NAME_ATTRIBUT = "data-klara-begleitbereich-name";
+/** Kommagetrennte Rollen, die den Vorgang begleiten lassen dürfen (fehlt: jede bestätigte Anmeldung). */
+const ROLLEN_ATTRIBUT = "data-klara-begleitbereich-rollen";
 const AUSSCHLUSS_ATTRIBUT = "data-klara-ausgeschlossen";
 const EINHEIT_ATTRIBUT = "data-klara-einheit";
 const MAX_FELDER = 50;
@@ -32,7 +34,12 @@ export const SYSTEM_EREIGNIS = "klarwerk:begleitung-system";
 type Eingabe = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
 export function istSystemereignis(wert: unknown): wert is Systemereignis {
-  return wert === "sperrbildschirm" || wert === "kontowechsel" || wert === "rechteentzug";
+  return (
+    wert === "sperrbildschirm" ||
+    wert === "verborgen" ||
+    wert === "kontowechsel" ||
+    wert === "rechteentzug"
+  );
 }
 
 function flaechen(doc: Document): HTMLElement[] {
@@ -46,7 +53,16 @@ export function eingerichteteBereiche(doc: Document): Bereich[] {
     const kennung = (el.getAttribute(BEREICH_ATTRIBUT) ?? "").trim();
     if (kennung) {
       const bezeichnung = (el.getAttribute(NAME_ATTRIBUT) ?? "").trim() || kennung;
-      bereiche.push({ art: "vorgang", kennung, bezeichnung });
+      const rollen = (el.getAttribute(ROLLEN_ATTRIBUT) ?? "")
+        .split(",")
+        .map((r) => r.trim())
+        .filter((r) => r.length > 0);
+      bereiche.push({
+        art: "vorgang",
+        kennung,
+        bezeichnung,
+        ...(rollen.length > 0 ? { rollen } : {}),
+      });
     }
   }
   return bereiche;

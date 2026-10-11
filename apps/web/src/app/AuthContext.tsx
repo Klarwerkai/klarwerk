@@ -70,6 +70,12 @@ interface AuthState {
    * `selfRegistrationEnabled` darüber.
    */
   sitzungslage: Sitzungslage;
+  /**
+   * BPA-05 (aktive Begleitung): Zeitpunkt der letzten ERFOLGREICHEN Serverantwort auf `/auth/me`
+   * (0 = noch keine). Eine Rechteprüfung, die einen Entzug wieder aufheben soll, muss NACH dem
+   * Entzug vom Server bestätigt sein — ein zwischengespeicherter alter Stand zählt nicht.
+   */
+  sitzungGeprueftAm?: number;
   refresh: () => void;
   /**
    * Abmelden: Session serverseitig beenden und den gesamten Query-Cache leeren.
@@ -355,6 +361,7 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     isLoading: status.isLoading || (status.isSuccess && !needsSetup && me.isLoading),
     error: status.isError,
     sitzungslage,
+    sitzungGeprueftAm: me.dataUpdatedAt,
     refresh: () => {
       void queryClient.invalidateQueries({ queryKey: ["auth"] });
       // AUFTRAG-mega61 Block A: die Schalter-Auskunft hängt seit mega61 an der Sitzung — ein

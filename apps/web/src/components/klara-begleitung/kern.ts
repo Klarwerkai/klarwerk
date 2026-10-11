@@ -33,6 +33,20 @@ export interface Bereich {
   readonly art: BereichsArt;
   readonly kennung: string;
   readonly bezeichnung: string;
+  /**
+   * Die Rollen, die diesen Bereich begleiten lassen dürfen (am Vorgang festgelegt). Fehlt die
+   * Angabe, genügt eine bestätigte Anmeldung. Eine Rolle außerhalb der Liste — auch Verwaltung —
+   * erhält dadurch keine Freigabe (G04).
+   */
+  readonly rollen?: readonly string[];
+}
+
+/** Die aktuelle Berechtigung für Bereich und Zweck: angemeldet UND Rolle am Vorgang zugelassen. */
+export function darf(bereich: Bereich, rolle: string | null): boolean {
+  if (rolle === null) {
+    return false;
+  }
+  return !bereich.rollen || bereich.rollen.length === 0 || bereich.rollen.includes(rolle);
 }
 
 export type Phase = "aus" | "aktiv" | "pausiert" | "beendet";
@@ -41,8 +55,9 @@ export type Phase = "aus" | "aktiv" | "pausiert" | "beendet";
  * Warum die Begleitung pausiert oder endete. Die Regel je Grund steht in `fortsetzen`:
  *   nutzer          → Fortsetzen jederzeit, solange die Freigabe läuft
  *   sperrbildschirm → Fortsetzen nur durch den Nutzer, nie von selbst
+ *   verborgen       → Fenster/Tab verborgen (anderes Fenster, Bildschirm aus): wie Sperrbildschirm
  *   kontowechsel    → Fortsetzen nur, wenn wieder DASSELBE Konto angemeldet ist
- *   rechteentzug    → Fortsetzen nur, wenn die Rechteprüfung wieder positiv ist
+ *   rechteentzug    → Fortsetzen nur mit einer NACH dem Entzug vom Server bestätigten Berechtigung
  *   neustart        → nach Neuladen: Fortsetzen nur durch den Nutzer, Endpunkt unverändert
  *   stopp           → beendet; neue Begleitung braucht einen neuen Auftrag
  *   abgelaufen      → beendet; die Freigabe wird durch nichts verlängert
@@ -50,6 +65,7 @@ export type Phase = "aus" | "aktiv" | "pausiert" | "beendet";
 export type Grund =
   | "nutzer"
   | "sperrbildschirm"
+  | "verborgen"
   | "kontowechsel"
   | "rechteentzug"
   | "neustart"
@@ -133,6 +149,11 @@ export interface Begleitung {
   readonly letzterHinweisAm: number | null;
   /** Bis wann der Nutzer gerade tippt/klickt — solange wird nicht unterbrochen. */
   readonly beschaeftigtBis: number;
+  /**
+   * Zeitpunkt des letzten Rechteentzugs, solange er nicht durch eine spätere bestätigte
+   * Berechtigung aufgehoben ist. Er bleibt stehen, auch wenn danach ein anderer Pausengrund kommt.
+   */
+  readonly rechteentzugAm: number | null;
 }
 
 export const AUS: Begleitung = {
@@ -145,6 +166,7 @@ export const AUS: Begleitung = {
   verworfen: [],
   letzterHinweisAm: null,
   beschaeftigtBis: 0,
+  rechteentzugAm: null,
 };
 
 export const STANDARD_DAUER_MIN = 30;
@@ -234,12 +256,23 @@ export function starte(
 // ZUSTANDSWECHSEL
 // ------------------------------------------------------------------------------------------------
 
-/** Pause: der flüchtige Kontext und ein offener Hinweis fallen weg — nach der Pause zählt frischer Kontext. */
-export function pausiere(b: Begleitung, grund: Grund): Begleitung {
+/**
+ * Pause: der flüchtige Kontext und ein offener Hinweis fallen weg — nach der Pause zählt frischer
+ * Kontext. Ein Rechteentzug merkt sich seinen Zeitpunkt; ihn hebt nur eine spätere Bestätigung auf.
+ */
+export function pausiere(b: Begleitung, grund: Grund, jetzt: number): Begleitung {
   if (b.phase !== "aktiv" && b.phase !== "pausiert") {
     return b;
   }
-  return { ...b, phase: "pausiert", grund, kontext: null, hinweis: null, ausserhalb: false };
+  return {
+    ...b,
+    phase: "pausiert",
+    grund,
+    kontext: null,
+    hinweis: null,
+    ausserhalb: false,
+    rechteentzugAm: grund === "rechteentzug" ? jetzt : b.rechteentzugAm,
+  };
 }
 
 /** Stopp: alles Flüchtige ist weg, auch die verworfenen Signaturen. Die Freigabe bleibt nur zur Anzeige. */
@@ -272,9 +305,31 @@ export interface Lage {
   /** Ergebnis der aktuellen Rechteprüfung für Bereich und Zweck. */
   readonly darfBegleiten: boolean;
   readonly jetzt: number;
+  /** Wann der Server diese Berechtigung zuletzt bestätigt hat (z. B. `/auth/me`). */
+  readonly rechteGeprueftAm?: number;
 }
 
-export type FortsetzenFehler = "abgelaufen" | "anderes_konto" | "keine_rechte" | "nicht_pausiert";
+export type FortsetzenFehler =
+  | "abgelaufen"
+  | "anderes_konto"
+  | "keine_rechte"
+  | "rechte_unbestaetigt"
+  | "nicht_pausiert";
+
+/**
+ * Darf JETZT gelesen werden? Vor jedem Lesen — auch vor einer Hintergrundaktualisierung — geprüft:
+ * aktiv, nicht abgelaufen, dasselbe Konto, aktuelle Berechtigung. Fällt die Antwort „nein", wird
+ * gar nicht erst gelesen.
+ */
+export function darfLesen(b: Begleitung, lage: Lage): boolean {
+  return (
+    b.phase === "aktiv" &&
+    b.freigabe !== null &&
+    lage.jetzt < b.freigabe.endetAm &&
+    lage.konto === b.freigabe.konto &&
+    lage.darfBegleiten
+  );
+}
 
 export type FortsetzenErgebnis =
   | { ok: true; begleitung: Begleitung }
@@ -294,13 +349,24 @@ export function fortsetzen(b: Begleitung, lage: Lage): FortsetzenErgebnis {
   if (!lage.darfBegleiten) {
     return { ok: false, fehler: "keine_rechte", begleitung: geprueft };
   }
-  return { ok: true, begleitung: { ...geprueft, phase: "aktiv", grund: null } };
+  // Nach einem Entzug genügt ein positiver Wert allein nicht: er muss NACH dem Entzug vom Server
+  // bestätigt sein. Ein zwischengespeicherter Stand von vorher hebt die Sperre nicht auf.
+  if (
+    geprueft.rechteentzugAm !== null &&
+    !((lage.rechteGeprueftAm ?? Number.NEGATIVE_INFINITY) > geprueft.rechteentzugAm)
+  ) {
+    return { ok: false, fehler: "rechte_unbestaetigt", begleitung: geprueft };
+  }
+  return {
+    ok: true,
+    begleitung: { ...geprueft, phase: "aktiv", grund: null, rechteentzugAm: null },
+  };
 }
 
-export type Systemereignis = "sperrbildschirm" | "kontowechsel" | "rechteentzug";
+export type Systemereignis = "sperrbildschirm" | "verborgen" | "kontowechsel" | "rechteentzug";
 
-export function systemereignis(b: Begleitung, ereignis: Systemereignis): Begleitung {
-  return b.phase === "aktiv" || b.phase === "pausiert" ? pausiere(b, ereignis) : b;
+export function systemereignis(b: Begleitung, ereignis: Systemereignis, jetzt: number): Begleitung {
+  return b.phase === "aktiv" || b.phase === "pausiert" ? pausiere(b, ereignis, jetzt) : b;
 }
 
 /** Der Nutzer tippt oder klickt gerade — Hinweise warten bis dahin. */
@@ -348,10 +414,12 @@ export function nimmKontext(
   }
   const f = geprueft.freigabe;
   if (e.konto !== f.konto || lage.konto !== f.konto) {
-    return { begleitung: pausiere(geprueft, "kontowechsel"), ergebnis: "kontowechsel" };
+    const begleitung = pausiere(geprueft, "kontowechsel", lage.jetzt);
+    return { begleitung, ergebnis: "kontowechsel" };
   }
   if (!lage.darfBegleiten) {
-    return { begleitung: pausiere(geprueft, "rechteentzug"), ergebnis: "rechteentzug" };
+    const begleitung = pausiere(geprueft, "rechteentzug", lage.jetzt);
+    return { begleitung, ergebnis: "rechteentzug" };
   }
   if (e.quelle.privat === true) {
     return {
@@ -392,10 +460,15 @@ export function nimmKontext(
 
 const NUR_ZAHL = /^\s*[+-]?\d+(?:[.,]\d+)?\s*$/;
 
+/** Eine Zahl ohne Einheit. Dieselbe Regel nutzt die spätere Prüfung des Testformulars. */
+export function ohneEinheit(wert: string): boolean {
+  return NUR_ZAHL.test(wert);
+}
+
 /** Die regelbasierte Prüfung: ein technisches Feld mit Zahl, aber ohne Einheit. Kein Modell. */
 export function befunde(kontext: KontextStand): Hinweis[] {
   return kontext.felder
-    .filter((feld) => feld.einheitErwartet === true && NUR_ZAHL.test(feld.wert))
+    .filter((feld) => feld.einheitErwartet === true && ohneEinheit(feld.wert))
     .map((feld) => ({
       signatur: `einheit_fehlt:${feld.name}:${feld.wert.trim()}`,
       art: "einheit_fehlt" as const,
