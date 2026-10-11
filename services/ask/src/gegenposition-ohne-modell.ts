@@ -32,12 +32,7 @@
 //    `ungeprueft`); eine einzelne bestätigte Quelle antwortet unverändert.
 //  · NUR DER MODELLFREIE WEG (`demo`) DES KONSOLENWEGS. Der wörtliche Add-in-Weg (`retrievalOnly`)
 //    und der Modellweg (dort `rueckfallStand`) bleiben unberührt.
-import {
-  type AnswerResult,
-  type KnowledgeRef,
-  type ReasonerLocale,
-  queryTokens,
-} from "../../reasoner";
+import type { AnswerResult, KnowledgeRef, ReasonerLocale } from "../../reasoner";
 
 const OHNE_PRUEFUNG: Record<ReasonerLocale, string> = {
   de: "Mehrere bestätigte Quellen sagen dazu Verschiedenes. Ohne KI-Modell fand keine Widerspruchsprüfung statt, und eine fachliche Bestätigung ersetzt sie nicht — die Frage ist damit nicht geklärt. Hier steht, was jede Quelle im Wortlaut sagt:",
@@ -58,9 +53,20 @@ function quellLabel(title: string, locale: ReasonerLocale): string {
   return locale === "nl" ? `Bron: ${title}` : `Quelle: ${title}`;
 }
 
-/** Derselbe Wortlaut, unabhängig von Schreibung, Leerraum und Füllwörtern. */
-function wortlautSchluessel(text: string): string {
-  return queryTokens(text).join(" ");
+/**
+ * Derselbe Wortlaut, unabhängig NUR von Schreibung, Satzzeichen und Leerraum.
+ *
+ * Ben, Nacharbeit 3: bewusst NICHT über `queryTokens`. Die Suchtokenisierung wirft Stoppwörter weg —
+ * darunter „nicht" —, und „Der Hubtisch ist sicher" und „Der Hubtisch ist nicht sicher" wären dann
+ * derselbe Wortlaut: die Gegenposition fiele weg und die Antwort bliebe „gesichert". Jedes Wort,
+ * das im Text steht, trägt hier Bedeutung; verglichen wird Wort für Wort, ohne Stammformen.
+ */
+export function wortlautSchluessel(text: string): string {
+  return text
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
 }
 
 /**

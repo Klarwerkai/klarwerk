@@ -172,6 +172,32 @@ describe("P05-AC08 · B-05 — widersprüchliche VT-1-Revisionen (RF-02)", () =>
   });
 });
 
+describe("P05-AC08 · Negation ist ein bedeutungstragender Unterschied (Ben, Nacharbeit 3)", () => {
+  // Bis Kandidat 779f02cf lief der Wortlautvergleich über die Suchtokenisierung; „nicht" fiel als
+  // Stoppwort heraus, beide Aussagen galten als gleich, und die Antwort blieb „gesichert".
+  const MIT_NEGATION = "Bei abgeschaltetem Motor ist der Hubtisch nicht sicher.";
+  const OHNE_NEGATION = "Bei abgeschaltetem Motor ist der Hubtisch sicher.";
+
+  it("G6 sonst gleiche bestätigte Aussagen mit und ohne „nicht“: beide sichtbar, Rückfrage, nicht gesichert", async () => {
+    const a = await aufbau();
+    const nein = await a.anlegen("Hubtisch Motor abgeschaltet (Notiz A)", MIT_NEGATION);
+    const ja = await a.anlegen("Hubtisch Motor abgeschaltet (Notiz B)", OHNE_NEGATION);
+    await a.bestaetigen(nein);
+    await a.bestaetigen(ja);
+
+    const { result, gap } = await a.ask.ask(FRAGE_RF01, "viewer");
+    expect(result.answered).toBe(true);
+    expect(gap).toBeNull();
+    const text = result.answer ?? "";
+    expect(text).toContain(`: ${MIT_NEGATION}`);
+    expect(text).toContain(`: ${OHNE_NEGATION}`);
+    expect(text).toContain("Ohne KI-Modell fand keine Widerspruchsprüfung statt");
+    expect(text).toContain("Rückfrage: Welche dieser Quellen gilt für Ihren Fall?");
+    expect(result.knowledgeClass).not.toBe("gesichert");
+    expect([...result.citedSources].sort()).toEqual([nein, ja].sort());
+  });
+});
+
 describe("P05-AC08 · Gegenfälle", () => {
   it("G4 zwei bestätigte Quellen mit gleichem Wortlaut: keine Gegenüberstellung", async () => {
     const a = await aufbau();
