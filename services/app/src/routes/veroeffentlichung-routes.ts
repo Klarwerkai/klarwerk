@@ -16,6 +16,9 @@ import {
 //   GET  /api/kos/:id/veroeffentlichung — Stand für jeden Leser; mit `ko.validate` dazu die
 //                                         Vorschau (Zustand, Sichtbarkeit, Empfänger, Kenntnisnahmen)
 //   POST /api/kos/:id/veroeffentlichung — gültige Fassung veröffentlichen         ko.validate
+//   GET  /api/kos/:id/veroeffentlichung/zustellung/:vermerkId — Zustellstatus    ko.validate
+//   POST /api/kos/:id/veroeffentlichung/zustellung/:vermerkId/fortsetzen          ko.validate
+//                                         (ADMIN-12: Wiederaufnahme, nur nie versuchte Mails)
 //
 // KEINE NEUE ROLLE: Veröffentlichen hängt am vorhandenen Freigaberecht (`ko.validate`,
 // Controller/Admin). Jede Tür hält den Eintrag VOR jeder Antwort gegen `darfSehen` — ein
@@ -134,6 +137,50 @@ export function veroeffentlichungRoutes(
           }
           const ergebnis = await dienst.veroeffentlichen(ko, { fassung, meldung }, user.id);
           reply.code(201).send(ergebnis);
+        } catch (fehler) {
+          antworteMitFehler(reply, fehler);
+        }
+      },
+    );
+
+    // ADMIN-12: der Zustellstatus einer Veröffentlichung je Empfänger. Namen und Status sieht nur,
+    // wer veröffentlichen darf — dieselbe Schranke wie die Empfängerliste der Vorschau.
+    app.get<{ Params: { id: string; vermerkId: string } }>(
+      "/api/kos/:id/veroeffentlichung/zustellung/:vermerkId",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.validate", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const ko = await sichtbaresKo(user, request.params.id);
+          if (!ko) {
+            nichtGefunden(reply);
+            return;
+          }
+          reply.code(200).send(await dienst.zustellstatus(ko, request.params.vermerkId));
+        } catch (fehler) {
+          antworteMitFehler(reply, fehler);
+        }
+      },
+    );
+
+    // ADMIN-12: Wiederaufnahme eines unterbrochenen Versands — verschickt nur, was noch nie
+    // versucht wurde; eine Wiederholung erzeugt keine zweite Meldung.
+    app.post<{ Params: { id: string; vermerkId: string } }>(
+      "/api/kos/:id/veroeffentlichung/zustellung/:vermerkId/fortsetzen",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.validate", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const ko = await sichtbaresKo(user, request.params.id);
+          if (!ko) {
+            nichtGefunden(reply);
+            return;
+          }
+          reply.code(200).send(await dienst.zustellungFortsetzen(ko, request.params.vermerkId));
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }

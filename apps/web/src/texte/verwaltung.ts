@@ -45,7 +45,7 @@ export default {
     "verwaltung.zweck.ki":
       "KI-Anbieter, Zugänge, Grenzen und externe Recherche einstellen; Importe verbinden.",
     "verwaltung.zweck.kommunikation":
-      "Hinweise und Benachrichtigungen an Teams — dafür gibt es hier noch keine Funktion.",
+      "Welche Meldung wen über welchen Kanal wie oft erreicht; Vorgaben und Zustellstatus.",
     "verwaltung.zweck.berichte":
       "Auswertungen, Prüfprotokoll, Benutzeränderungen und Datenschutzauskunft.",
     "verwaltung.zweck.betrieb":
@@ -90,7 +90,7 @@ export default {
     "verwaltung.zweck.ki":
       "Set AI providers, access, limits and external research; connect imports.",
     "verwaltung.zweck.kommunikation":
-      "Notices and notifications to teams — there is no function for this here yet.",
+      "Which notification reaches whom, through which channel and how often; rules and delivery.",
     "verwaltung.zweck.berichte":
       "Analytics, audit trail, user changes and data protection details.",
     "verwaltung.zweck.betrieb": "Readiness, backup, advanced modules, demo data and factory reset.",
@@ -136,7 +136,7 @@ export default {
     "verwaltung.zweck.ki":
       "AI-aanbieders, toegangen, grenzen en extern onderzoek instellen; imports koppelen.",
     "verwaltung.zweck.kommunikation":
-      "Meldingen en berichten aan teams — hiervoor is hier nog geen functie.",
+      "Welke melding wie via welk kanaal hoe vaak bereikt; regels en bezorgstatus.",
     "verwaltung.zweck.berichte":
       "Analyses, controleprotocol, gebruikerswijzigingen en privacy-informatie.",
     "verwaltung.zweck.betrieb":

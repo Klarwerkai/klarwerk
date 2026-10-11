@@ -320,6 +320,60 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    // ADMIN-12 — die Fassungen der unternehmensweiten Kommunikationsregeln
+    // (`services/app/src/kommunikationsregeln.ts`).
+    id: "kommunikationsregeln",
+    name: "Kommunikationsregeln (Unternehmensvorgabe)",
+    inhalt:
+      "Je Fassung: Abwählbarkeit, Häufigkeit und Mailversand je Meldungsereignis, Kennung der ändernden Person, Zeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung der Person, die die Fassung gespeichert hat.",
+    ablage: { ort: DATENBANK, tabellen: ["kommunikationsregel_fassungen"] },
+    taetigkeit: "betrieb",
+    loeschung: "Kein Löschweg; korrigiert wird durch eine neue Fassung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Unternehmensvorgabe, keine Angabe über die Person; ihre Änderung steht im Prüfprotokoll.",
+    },
+  },
+  {
+    // ADMIN-12 — die persönliche Abwahl einer abwählbaren Meldung.
+    id: "meldungseinstellungen",
+    name: "Persönliche Meldungseinstellungen",
+    inhalt: "Je Konto und Meldungsereignis: abgewählt ja/nein und Zeitpunkt der letzten Änderung.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung des Kontos, dessen Einstellung gespeichert ist.",
+    ablage: { ort: DATENBANK, tabellen: ["meldungsregel_persoenlich"] },
+    taetigkeit: "konten",
+    loeschung: "Die Person setzt ihre Wahl selbst zurück; kein Löschweg mit der Kontolöschung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Die eigenen Einstellungen stehen für die Person auf der Seite „Meldungen und Kanäle“ und sind dort änderbar; ein eigener Abschnitt der Selbstauskunft ist noch nicht gebaut.",
+    },
+  },
+  {
+    // ADMIN-12 — der Zustellstatus je Veröffentlichung, Empfänger und Kanal.
+    id: "meldungszustellstatus",
+    name: "Zustellstatus von Veröffentlichungsmeldungen",
+    inhalt:
+      "Je Veröffentlichung, Empfänger und Kanal (Glocke, Mail): Status (angelegt, zugestellt, fehlgeschlagen, entfallen), feste Ursache, Zeitpunkte. Keine Mailadresse, kein Inhalt, keine Servermeldung.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung des Kontos, an das die Meldung ging.",
+    ablage: { ort: DATENBANK, tabellen: ["meldung_zustellstatus"] },
+    taetigkeit: "wissen",
+    loeschung: "Kein Löschweg, auch nicht mit der Kontolöschung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Der Status beschreibt die Zustellung der Meldungen der eigenen Glocke; ein eigener Abschnitt der Selbstauskunft ist noch nicht gebaut.",
+    },
+  },
+  {
     id: "protokoll",
     name: "Prüfprotokoll (Audit)",
     inhalt: "Wer (Kennung), wann, welche Aktion, welches Ziel und Nutzdaten der Aktion.",

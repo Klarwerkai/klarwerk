@@ -58,13 +58,28 @@ export PORT
 VERSION="$(sed -n 's/.*APP_VERSION *= *"\([^"]*\)".*/\1/p' apps/web/src/version.ts | head -1)"
 echo ""
 echo "Starte lokale Instanz … (dieses Fenster offen lassen; schließen = stoppen)"
+# R-0779: bestätigt wird die Version, die der GESTARTETE Server über /health meldet — nicht die
+# Nummer aus dem Quellordner (`scripts/local/laufende-version.mjs`). Weicht sie ab, sagt das
+# Fenster es ausdrücklich, statt „aktualisiert" zu melden.
 ( for _ in $(seq 1 40); do
     if curl -s "http://localhost:${PORT}/health" | grep -q '"status":"ok"'; then
+      RC=0
+      LAUFEND="$(node scripts/local/laufende-version.mjs "http://localhost:${PORT}/health" "${VERSION:-}")" || RC=$?
       open "http://localhost:${PORT}"
       echo ""
       echo "════════════════════════════════════════════════════════"
-      echo "✓ LOKALER SERVER OK & AKTUALISIERT"
-      echo "  → http://localhost:${PORT}  (Version ${VERSION:-?})"
+      if [ "$RC" = "0" ]; then
+        echo "✓ LOKALER SERVER OK & AKTUALISIERT"
+        echo "  → http://localhost:${PORT}  (laufende Version ${LAUFEND}, vom Server bestätigt)"
+      elif [ "$RC" = "3" ]; then
+        echo "⚠ LOKALER SERVER LÄUFT — ABER MIT EINER ANDEREN VERSION"
+        echo "  → http://localhost:${PORT}  läuft ${LAUFEND}, erwartet ${VERSION:-?}"
+        echo "  Fenster schließen und den Starter erneut öffnen; bleibt die Abweichung, ist der"
+        echo "  Port von einem anderen Prozess belegt."
+      else
+        echo "⚠ LOKALER SERVER ANTWORTET, NENNT ABER KEINE VERSION"
+        echo "  → http://localhost:${PORT}  (erwartet ${VERSION:-?}, nicht bestätigt)"
+      fi
       echo "  Nur lokal — der Hetzner (app.klarwerk.ai) ist NICHT betroffen."
       echo "  Fenster offen lassen; schließen = stoppen."
       echo "════════════════════════════════════════════════════════"

@@ -142,6 +142,10 @@ const KnowledgeDetail = lazy(() =>
 const KnowledgeIntake = lazy(() =>
   import("./pages/KnowledgeIntake").then((m) => ({ default: m.KnowledgeIntake })),
 );
+// ADMIN-12: Meldungen und Kanäle — nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
+const Kommunikation = lazy(() =>
+  import("./pages/Kommunikation").then((m) => ({ default: m.Kommunikation })),
+);
 const Library = lazy(() => import("./pages/Library").then((m) => ({ default: m.Library })));
 // produkt:20261010:wissenskreislauf-schliessen: der Vorgang einer Wissenslücke — nachgeladen wie
 // jede andere Seite (Regel oben, JOB 3503).
@@ -421,6 +425,12 @@ export function AppRoutes(): JSX.Element {
             (`/richtlinien`) und die Verwaltung unter „System" (`/unternehmen`). */}
         <Route path="/richtlinien" element={<Richtlinien />} />
         <Route path="/unternehmen" element={<Unternehmen />} />
+        {/* ADMIN-12: Meldungen und Kanäle. Ohne `Guarded`, wie `/richtlinien`: die Türen dahinter
+            fordern ihr Recht am Server (`requireUser` für Übersicht und eigene Einstellungen,
+            `users.manage` für die Unternehmensvorgaben, `services/app/src/routes/
+            kommunikation-routes.ts`). Erreichbar über das Profil und die Verwaltung
+            („Kommunikation"). */}
+        <Route path="/kommunikation" element={<Kommunikation />} />
         {/* ADMIN-10: Qualitätsaufgaben und Rückmeldungen. Ohne `Guarded`, wie `/unternehmen`: die
             Türen dahinter fordern `users.manage` am Server und filtern jede Zeile über den
             Sichtbarkeitsfilter (`services/app/src/routes/qualitaetsaufgaben-routes.ts`). Ohne
