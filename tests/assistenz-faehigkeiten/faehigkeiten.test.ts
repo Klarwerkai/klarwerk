@@ -409,7 +409,7 @@ describe("K5 · Keine KI und vertrauliche Kontextregeln in jedem Schritt", () =>
     const f = fakeAdapter(TEST_KI, { status: "ok", eintraege: [] });
     registry.installiereAdapter(f.adapter);
     const b = await binde(auftrag({ zweck: "ki_entwurf", eingabe: { titel: "x" } }));
-    expect(ausfuehrung.starteImHintergrund(b).stand).toBe("laeuft");
+    expect((await ausfuehrung.starteImHintergrund(b)).stand).toBe("wartet");
     lage = { ...OFFENE_LAGE, keineKi: true };
     const [r] = await ausfuehrung.arbeiteWarteschlangeAb();
     expect(r?.stand).toBe("gesperrt");
@@ -719,7 +719,8 @@ describe("K8 · Fehler, Teilergebnis, Abbruch und Wiederholung", () => {
     const b = await binde(auftrag({}));
     const lauf = ausfuehrung.fuehreAus(b);
     await new Promise((r) => setTimeout(r, 5));
-    expect(ausfuehrung.brecheAb(b.auftragId)).toBe(true);
+    expect(ausfuehrung.brecheAb("konto-erik", b.auftragId)).toBe(false);
+    expect(ausfuehrung.brecheAb(b.nutzer, b.auftragId)).toBe(true);
     const r = await lauf;
     expect(r.stand).toBe("abgebrochen");
     await new Promise((r2) => setTimeout(r2, 40));

@@ -248,6 +248,13 @@ import {
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
 import { Anfragebremse, bremsSatz } from "./anfragebremse";
+// produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der Assistenz über die vorhandenen Dienste.
+import type { FaehigkeitsAusfuehrung } from "./assistenz-faehigkeiten";
+import {
+  FAEHIGKEITEN_MANDANT,
+  baueFaehigkeiten,
+  ladeKontext,
+} from "./assistenz-faehigkeiten-anbindung";
 // produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil je Konto — haltbar im
 // Postgres-Betrieb, im Speicher ohne Datenbank.
 import {
@@ -396,6 +403,8 @@ import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
+// produkt:20261011:assistenz-skills-werkzeuge: Übersicht, Vormerkungen und Aufträge der Fähigkeiten.
+import { assistenzFaehigkeitenRoutes } from "./routes/assistenz-faehigkeiten-routes";
 // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil (Name, Avatar, Ersteinrichtung).
 import { assistenzProfilRoutes } from "./routes/assistenz-profil-routes";
 import { auditRoutes } from "./routes/audit-routes";
@@ -829,6 +838,9 @@ export interface AppServices {
   // buildApp — wie `aiCheckWorker`; ein vorab gesetzter Wert hat Vorrang.
   paarpflichten: PaarpflichtService;
   paarpflichtAusfuehrung?: PaarpflichtAusfuehrung;
+  // produkt:20261011:assistenz-skills-werkzeuge: die Fähigkeitsausführung. Erstellt von buildApp;
+  // `server.ts` nimmt wartende und unterbrochene Aufträge nach dem Start wieder auf.
+  faehigkeiten?: FaehigkeitsAusfuehrung;
   // Berater-Konzept Duplikate 04.07. (Stufe D3): Überschneidungs-/Duplikat-Erkennung (eigene Entität).
   overlaps: OverlapService;
   // Pedi 04.07.: einstellbare Anzeige-Schwelle der Duplikat-Erkennung (Admin) — schmale Repo-Schnittstelle.
@@ -5063,6 +5075,40 @@ export function buildApp(
       {
         dienst: new AssistenzProfilDienst({ repo: services.assistenzProfile }),
         audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261011:assistenz-skills-werkzeuge (BPA-11): Fähigkeiten der eigenen Assistenz. Jede
+  // Entscheidung kommt frisch aus dem Dienst, der sie schon trifft — KI-Abschaltung und Freigaben
+  // aus dem Reasoner, die Stufe der externen Wissensabfrage, Konto- und Kontextrechte über
+  // `darfSehen`; die Aufträge liegen im Assistenzprofil. Nichts davon hat hier eine zweite Regel.
+  const faehigkeitenWissen = {
+    get: (id: string) => services.ko.get(id),
+  };
+  const faehigkeitenLesbareSpaces = async (nutzerId: string) =>
+    lesbareSpaces(await services.spaces.aktuelle(), nutzerId);
+  const faehigkeiten = baueFaehigkeiten({
+    reasoner: services.reasoner,
+    externeWissensabfrage: services.externalKnowledge,
+    externeSuche: services.externalSearch,
+    profile: services.assistenzProfile,
+    konten: () => services.auth.listUsers(),
+    wissen: faehigkeitenWissen,
+    lesbareSpaces: faehigkeitenLesbareSpaces,
+  });
+  services.faehigkeiten = faehigkeiten.ausfuehrung;
+  app.register(
+    assistenzFaehigkeitenRoutes(
+      {
+        ausfuehrung: faehigkeiten.ausfuehrung,
+        vormerkungen: faehigkeiten.vormerkungen,
+        kontext: (user, kennungen) => ladeKontext({ wissen: faehigkeitenWissen }, user, kennungen),
+        audit: services.audit,
+        mandant: FAEHIGKEITEN_MANDANT,
+        hintergrund: () => {
+          void faehigkeiten.ausfuehrung.arbeiteWarteschlangeAb().catch(() => undefined);
+        },
       },
       guards,
     ),

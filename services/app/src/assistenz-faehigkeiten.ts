@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { ExternalKnowledgeStage, SearchProvider } from "../../external-search";
 import type { Confidentiality } from "../../knowledge-object";
 import type { AssistenzProfil, AssistenzProfilRepo } from "./assistenz-profil";
@@ -196,6 +196,14 @@ function kanonisch(wert: unknown): string {
 
 function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
+}
+
+/**
+ * Fingerabdruck einer Bindung ohne ihren Zeitstempel: dieselbe Auftragskennung mit demselben Inhalt
+ * ist derselbe Auftrag, auch wenn er neu vorbereitet wurde.
+ */
+export function bindungsFingerabdruck(b: Faehigkeitsbindung): string {
+  return sha256(kanonisch({ ...b, gebundenAm: undefined }));
 }
 
 /** Fingerabdruck des ganzen Vertrags — jede Änderung (auch ohne Fassungssprung) ändert ihn. */
@@ -402,8 +410,10 @@ export type VoraussetzungArt =
   | "eingabe"
   | "routine"
   | "fassung_geaendert"
+  | "kontext_geaendert"
   | "keine_ki"
-  | "vertraulich";
+  | "vertraulich"
+  | "kontextrecht";
 
 export interface Voraussetzung {
   readonly art: VoraussetzungArt;
@@ -411,7 +421,21 @@ export interface Voraussetzung {
 }
 
 /** Diese Arten sind Sperren der Datenregeln — alles andere ist eine offene Voraussetzung. */
-const SPERR_ARTEN: readonly VoraussetzungArt[] = ["keine_ki", "vertraulich"];
+const SPERR_ARTEN: readonly VoraussetzungArt[] = ["keine_ki", "vertraulich", "kontextrecht"];
+
+/**
+ * G04/G05: die AKTUELLEN Rechte des Kontos an Konto und gebundenem Arbeitsbereichskontext — vor
+ * jeder Ausführung (auch im Hintergrund) und vor jeder Rückgabe eines gespeicherten Ergebnisses.
+ * `ausfuehrung` prüft zusätzlich, dass jedes Kontextobjekt noch die gebundene Fassung trägt.
+ * Ergebnis `null` heisst: erlaubt. Die Antwort nennt nie Titel oder Inhalt eines Objekts.
+ */
+export interface KontextPruefung {
+  pruefe(
+    nutzer: string,
+    kontext: Faehigkeitsbindung["kontext"],
+    anlass: "ausfuehrung" | "rueckgabe",
+  ): Promise<Voraussetzung | null>;
+}
 
 function woerter(t: string): string[] {
   return t
@@ -605,15 +629,60 @@ export type Vorbereitung =
 // ------------------------------------------------------------------------------------------------
 
 export type Anspruch =
-  | { readonly art: "neu"; readonly versuch: number }
+  | { readonly art: "neu"; readonly versuch: number; readonly wiederaufnahme: boolean }
   | { readonly art: "laeuft" }
-  | { readonly art: "vorhanden"; readonly ergebnis: Faehigkeitsergebnis }
+  | {
+      readonly art: "vorhanden";
+      readonly ergebnis: Faehigkeitsergebnis;
+      readonly bindung: Faehigkeitsbindung;
+    }
   | { readonly art: "anderer_auftrag" };
 
+export type AuftragsZustand = "wartet" | "laeuft" | "fertig";
+
+/**
+ * Ein Auftrag in der dauerhaften Ablage: Bindung, Zustand, Versuch und Ergebnis. Die Kennung ist je
+ * Konto die Auftrags- UND Wirkungsidentität — ein Wiederanlauf nach Neustart läuft unter derselben
+ * Kennung, und ein schreibender Adapter erhält sie als Idempotenzschlüssel (`kontext.auftragId`).
+ */
+export interface AuftragsEintrag {
+  readonly auftragId: string;
+  readonly fingerabdruck: string;
+  readonly bindung: Faehigkeitsbindung;
+  readonly zustand: AuftragsZustand;
+  readonly versuch: number;
+  /** Der Prozess, der gerade ausführt (`laeuft`); sonst `null`. */
+  readonly instanz: string | null;
+  readonly seit: string;
+  readonly ergebnis: Faehigkeitsergebnis | null;
+}
+
+/**
+ * Die dauerhafte Ablage der Aufträge eines Kontos. Schreiben nur als Vergleich-und-Tausch auf die
+ * ganze Liste — zwei Prozesse oder zwei Anfragen können denselben Auftrag nicht beide beanspruchen.
+ */
 export interface FaehigkeitsAblage {
-  beanspruche(auftragId: string, bindungsFingerabdruck: string): Promise<Anspruch>;
-  schreibe(ergebnis: Faehigkeitsergebnis): Promise<void>;
-  hole(auftragId: string): Promise<Faehigkeitsergebnis | null>;
+  liste(nutzer: string): Promise<readonly AuftragsEintrag[]>;
+  ersetze(
+    nutzer: string,
+    alt: readonly AuftragsEintrag[],
+    neu: readonly AuftragsEintrag[],
+  ): Promise<boolean>;
+  kontenMitOffenenAuftraegen(): Promise<readonly string[]>;
+}
+
+/** Abgeschlossene Aufträge, die je Konto aufbewahrt werden (die ältesten fallen heraus). */
+export const AUFBEWAHRTE_ABGESCHLOSSENE_AUFTRAEGE = 30;
+
+/** Ein `laeuft` eines ANDEREN Prozesses gilt nach dieser Frist als unterbrochen (Neustart, Absturz). */
+export const LAUF_FRIST_MS = 15 * 60_000;
+
+function kuerze(liste: readonly AuftragsEintrag[]): AuftragsEintrag[] {
+  const fertig = liste
+    .filter((e) => e.zustand === "fertig")
+    .sort((a, b) => b.seit.localeCompare(a.seit))
+    .slice(0, AUFBEWAHRTE_ABGESCHLOSSENE_AUFTRAEGE);
+  return liste.filter((e) => e.zustand !== "fertig" || fertig.includes(e));
 }
 
 /** Ohne Wirkung gescheiterte Läufe dürfen unter derselben Kennung erneut versucht werden. */
@@ -627,53 +696,57 @@ function wiederholbar(e: Faehigkeitsergebnis): boolean {
   );
 }
 
+/** Für Tests und den Speicherbetrieb; im Produkt `ProfilFaehigkeitsAblage`. */
 export class InMemoryFaehigkeitsAblage implements FaehigkeitsAblage {
-  private readonly stand = new Map<
-    string,
-    {
-      fingerabdruck: string;
-      laeuft: boolean;
-      versuch: number;
-      ergebnis: Faehigkeitsergebnis | null;
-    }
-  >();
+  private readonly listen = new Map<string, AuftragsEintrag[]>();
 
-  beanspruche(auftragId: string, bindungsFingerabdruck: string): Promise<Anspruch> {
-    const s = this.stand.get(auftragId);
-    if (!s) {
-      this.stand.set(auftragId, {
-        fingerabdruck: bindungsFingerabdruck,
-        laeuft: true,
-        versuch: 1,
-        ergebnis: null,
-      });
-      return Promise.resolve({ art: "neu", versuch: 1 });
-    }
-    if (s.fingerabdruck !== bindungsFingerabdruck) {
-      return Promise.resolve({ art: "anderer_auftrag" });
-    }
-    if (s.laeuft) {
-      return Promise.resolve({ art: "laeuft" });
-    }
-    if (s.ergebnis && !wiederholbar(s.ergebnis)) {
-      return Promise.resolve({ art: "vorhanden", ergebnis: s.ergebnis });
-    }
-    s.laeuft = true;
-    s.versuch += 1;
-    return Promise.resolve({ art: "neu", versuch: s.versuch });
+  liste(nutzer: string): Promise<readonly AuftragsEintrag[]> {
+    return Promise.resolve(structuredClone(this.listen.get(nutzer) ?? []));
   }
 
-  schreibe(ergebnis: Faehigkeitsergebnis): Promise<void> {
-    const s = this.stand.get(ergebnis.auftragId);
-    if (s) {
-      s.laeuft = false;
-      s.ergebnis = ergebnis;
+  ersetze(
+    nutzer: string,
+    alt: readonly AuftragsEintrag[],
+    neu: readonly AuftragsEintrag[],
+  ): Promise<boolean> {
+    if (kanonisch(this.listen.get(nutzer) ?? []) !== kanonisch(alt)) {
+      return Promise.resolve(false);
     }
-    return Promise.resolve();
+    this.listen.set(nutzer, structuredClone([...neu]));
+    return Promise.resolve(true);
   }
 
-  hole(auftragId: string): Promise<Faehigkeitsergebnis | null> {
-    return Promise.resolve(this.stand.get(auftragId)?.ergebnis ?? null);
+  kontenMitOffenenAuftraegen(): Promise<readonly string[]> {
+    return Promise.resolve(
+      [...this.listen.entries()]
+        .filter(([, l]) => l.some((e) => e.zustand !== "fertig"))
+        .map(([n]) => n),
+    );
+  }
+}
+
+/**
+ * Die Produktablage: die Aufträge liegen im vorhandenen persönlichen Assistenzprofil des Kontos
+ * (`assistenz_profile`, Postgres im Betrieb) — kein zweiter Auftragsspeicher (G03). Sie sind damit
+ * dort gesichert, wiederhergestellt und gelöscht, wo das Profil es ist.
+ */
+export class ProfilFaehigkeitsAblage implements FaehigkeitsAblage {
+  constructor(private readonly repo: AssistenzProfilRepo) {}
+
+  async liste(nutzer: string): Promise<readonly AuftragsEintrag[]> {
+    return (await this.repo.hole(nutzer))?.faehigkeitsAuftraege ?? [];
+  }
+
+  ersetze(
+    nutzer: string,
+    alt: readonly AuftragsEintrag[],
+    neu: readonly AuftragsEintrag[],
+  ): Promise<boolean> {
+    return this.repo.schreibeFaehigkeitsauftraege(nutzer, alt, neu);
+  }
+
+  kontenMitOffenenAuftraegen(): Promise<readonly string[]> {
+    return this.repo.kontenMitOffenenFaehigkeitsauftraegen();
   }
 }
 
@@ -709,9 +782,44 @@ export interface FaehigkeitsAusfuehrungDeps {
   readonly ablage: FaehigkeitsAblage;
   readonly kostenbuch?: Kostenbuch;
   readonly vormerkungen?: FaehigkeitsVormerkungen;
+  /** Aktuelle Konto- und Kontextrechte (G04/G05). Fehlt sie, gilt kein Kontext als geprüft. */
+  readonly kontext?: KontextPruefung;
   /** Standardlog; jede Zeile ist bereinigt und trägt keine Eingabe. */
   readonly protokoll?: (zeile: string) => void;
   readonly jetzt?: () => number;
+  /** Kennung dieses Prozesses; ein neuer Prozess erkennt daran unterbrochene Läufe. */
+  readonly instanz?: string;
+}
+
+/** Ein Auftrag in der Sicht des Kontos — Ergebnis nur, wenn die aktuellen Rechte es erlauben. */
+export interface AuftragsSicht {
+  readonly auftragId: string;
+  readonly zustand: AuftragsZustand;
+  readonly faehigkeitId: string;
+  readonly fassung: string;
+  readonly zweck: string;
+  readonly arbeitsbereich: string | null;
+  readonly versuch: number;
+  readonly seit: string;
+  readonly ergebnis: Faehigkeitsergebnis | null;
+}
+
+/** Eine Fähigkeit in der Übersicht des Kontos — Zugangsname ja, Zugangswert nie. */
+export interface FaehigkeitsSicht {
+  readonly id: string;
+  readonly name: string;
+  readonly beschreibung: string;
+  readonly fassung: string;
+  readonly zwecke: readonly string[];
+  readonly datenempfaenger: Datenempfaenger;
+  readonly wirkung: FaehigkeitsWirkung;
+  readonly modell: boolean;
+  readonly eingaben: readonly Eingabefeld[];
+  readonly grenzen: Faehigkeitsvertrag["grenzen"];
+  readonly zugang: string | null;
+  readonly ruecknahme: Faehigkeitsvertrag["ruecknahme"];
+  readonly verfuegbar: boolean;
+  readonly voraussetzungen: readonly Voraussetzung[];
 }
 
 function datenwegText(v: Faehigkeitsvertrag): string {
@@ -728,11 +836,202 @@ function datenwegText(v: Faehigkeitsvertrag): string {
 
 export class FaehigkeitsAusfuehrung {
   private readonly jetzt: () => number;
+  private readonly instanz: string;
+  /** Laufende Ausführungen dieses Prozesses, Schlüssel `nutzer␀auftragId`. */
   private readonly laufend = new Map<string, AbortController>();
-  private readonly warteschlange: Faehigkeitsbindung[] = [];
+  private abarbeitung: Promise<readonly Faehigkeitsergebnis[]> | null = null;
 
   constructor(private readonly deps: FaehigkeitsAusfuehrungDeps) {
     this.jetzt = deps.jetzt ?? Date.now;
+    this.instanz = deps.instanz ?? randomUUID();
+  }
+
+  /** Die Registry dieser Ausführung — für die administrative Registrierung und Adapterinstallation. */
+  get registry(): Faehigkeitsregistry {
+    return this.deps.registry;
+  }
+
+  private static schluessel(nutzer: string, auftragId: string): string {
+    return `${nutzer}\u0000${auftragId}`;
+  }
+
+  /** `true`, solange ein `laeuft` wirklich läuft: hier im Prozess oder anderswo innerhalb der Frist. */
+  private lebt(e: AuftragsEintrag): boolean {
+    if (e.zustand !== "laeuft") {
+      return false;
+    }
+    if (
+      e.instanz === this.instanz &&
+      this.laufend.has(FaehigkeitsAusfuehrung.schluessel(e.bindung.nutzer, e.auftragId))
+    ) {
+      return true;
+    }
+    return this.jetzt() - Date.parse(e.seit) < LAUF_FRIST_MS;
+  }
+
+  /** Vergleich-und-Tausch auf die Auftragsliste eines Kontos, mit begrenzter Wiederholung. */
+  private async aendereAuftraege<T>(
+    nutzer: string,
+    f: (liste: readonly AuftragsEintrag[]) => { neu: AuftragsEintrag[] | null; wert: T },
+  ): Promise<T> {
+    for (let versuch = 0; versuch < 8; versuch++) {
+      const alt = await this.deps.ablage.liste(nutzer);
+      const { neu, wert } = f(alt);
+      if (neu === null || (await this.deps.ablage.ersetze(nutzer, alt, kuerze(neu)))) {
+        return wert;
+      }
+    }
+    throw new Error("Die Auftragsablage ist gerade belegt; bitte erneut versuchen.");
+  }
+
+  private beanspruche(bindung: Faehigkeitsbindung, fingerabdruck: string): Promise<Anspruch> {
+    const stempel = this.stempel();
+    return this.aendereAuftraege<Anspruch>(bindung.nutzer, (liste) => {
+      const e = liste.find((x) => x.auftragId === bindung.auftragId);
+      if (!e) {
+        const neu: AuftragsEintrag = {
+          auftragId: bindung.auftragId,
+          fingerabdruck,
+          bindung,
+          zustand: "laeuft",
+          versuch: 1,
+          instanz: this.instanz,
+          seit: stempel,
+          ergebnis: null,
+        };
+        return { neu: [...liste, neu], wert: { art: "neu", versuch: 1, wiederaufnahme: false } };
+      }
+      if (e.fingerabdruck !== fingerabdruck) {
+        return { neu: null, wert: { art: "anderer_auftrag" } };
+      }
+      if (this.lebt(e)) {
+        return { neu: null, wert: { art: "laeuft" } };
+      }
+      if (e.zustand === "fertig" && e.ergebnis && !wiederholbar(e.ergebnis)) {
+        return {
+          neu: null,
+          wert: { art: "vorhanden", ergebnis: e.ergebnis, bindung: e.bindung },
+        };
+      }
+      const versuch = e.versuch + 1;
+      const geaendert: AuftragsEintrag = {
+        ...e,
+        zustand: "laeuft",
+        versuch,
+        instanz: this.instanz,
+        seit: stempel,
+      };
+      return {
+        neu: liste.map((x) => (x.auftragId === e.auftragId ? geaendert : x)),
+        // Ein `laeuft` ohne lebenden Lauf ist ein unterbrochener Lauf (Neustart): Wiederaufnahme
+        // unter derselben Auftrags- und Wirkungsidentität.
+        wert: { art: "neu", versuch, wiederaufnahme: e.zustand === "laeuft" },
+      };
+    });
+  }
+
+  private schreibeErgebnis(nutzer: string, ergebnis: Faehigkeitsergebnis): Promise<void> {
+    const stempel = this.stempel();
+    return this.aendereAuftraege<undefined>(nutzer, (liste) => ({
+      neu: liste.map((x) =>
+        x.auftragId === ergebnis.auftragId
+          ? { ...x, zustand: "fertig" as const, instanz: null, seit: stempel, ergebnis }
+          : x,
+      ),
+      wert: undefined,
+    }));
+  }
+
+  /** G04/G05: aktuelle Rechte vor der Rückgabe eines gespeicherten Ergebnisses. */
+  private async rueckgabeSperre(b: Faehigkeitsbindung): Promise<Voraussetzung | null> {
+    if (!this.deps.kontext) {
+      return null;
+    }
+    return this.deps.kontext.pruefe(b.nutzer, b.kontext, "rueckgabe");
+  }
+
+  /** Das gespeicherte Ergebnis ohne Inhalt — die ursprüngliche Wirkung wird nicht wiederholt. */
+  private gesperrteRueckgabe(
+    ergebnis: Faehigkeitsergebnis,
+    sperre: Voraussetzung,
+  ): Faehigkeitsergebnis {
+    return {
+      ...ergebnis,
+      stand: "gesperrt",
+      eintraege: [],
+      verworfen: 0,
+      fremdeAnweisungen: 0,
+      wirkungKennung: null,
+      meldung: sperre.text,
+      voraussetzungen: [sperre],
+      wiederholt: true,
+    };
+  }
+
+  /** Die eigenen Aufträge, neueste zuerst — jedes Ergebnis erst nach aktueller Rechteprüfung. */
+  async auftraege(nutzer: string): Promise<readonly AuftragsSicht[]> {
+    const liste = [...(await this.deps.ablage.liste(nutzer))].sort((a, b) =>
+      b.seit.localeCompare(a.seit),
+    );
+    const out: AuftragsSicht[] = [];
+    for (const e of liste) {
+      out.push(await this.sicht(e));
+    }
+    return out;
+  }
+
+  /** Ein eigener Auftrag — oder `null`, wenn es ihn für dieses Konto nicht gibt. */
+  async auftrag(nutzer: string, auftragId: string): Promise<AuftragsSicht | null> {
+    const e = (await this.deps.ablage.liste(nutzer)).find((x) => x.auftragId === auftragId);
+    return e ? this.sicht(e) : null;
+  }
+
+  private async sicht(e: AuftragsEintrag): Promise<AuftragsSicht> {
+    let ergebnis = e.ergebnis;
+    if (ergebnis) {
+      const sperre = await this.rueckgabeSperre(e.bindung);
+      if (sperre) {
+        ergebnis = { ...this.gesperrteRueckgabe(ergebnis, sperre), wiederholt: false };
+      }
+    }
+    return {
+      auftragId: e.auftragId,
+      zustand: e.zustand === "laeuft" && !this.lebt(e) ? "wartet" : e.zustand,
+      faehigkeitId: e.bindung.faehigkeitId,
+      fassung: e.bindung.fassung,
+      zweck: e.bindung.zweck,
+      arbeitsbereich: e.bindung.arbeitsbereich,
+      versuch: e.versuch,
+      seit: e.seit,
+      ergebnis,
+    };
+  }
+
+  /** Alle registrierten Fähigkeiten mit ihrem JETZIGEN Stand für dieses Konto. */
+  async uebersicht(wer: { mandant: string; nutzer: string }): Promise<readonly FaehigkeitsSicht[]> {
+    const lage = await this.deps.lage(wer);
+    const out: FaehigkeitsSicht[] = [];
+    for (const e of this.deps.registry.liste()) {
+      const v = e.vertrag;
+      const offen = await this.voraussetzungen(e, lage);
+      out.push({
+        id: v.id,
+        name: v.name,
+        beschreibung: v.beschreibung,
+        fassung: v.fassung,
+        zwecke: v.zwecke,
+        datenempfaenger: v.datenempfaenger,
+        wirkung: v.wirkung,
+        modell: v.modell,
+        eingaben: v.eingaben,
+        grenzen: v.grenzen,
+        zugang: v.credential,
+        ruecknahme: v.ruecknahme,
+        verfuegbar: offen.length === 0,
+        voraussetzungen: offen,
+      });
+    }
+    return out;
   }
 
   private stempel(): string {
@@ -1045,9 +1344,9 @@ export class FaehigkeitsAusfuehrung {
     };
   }
 
-  /** Bricht einen laufenden Auftrag ab; abhängige Unterschritte starten danach nicht mehr. */
-  brecheAb(auftragId: string): boolean {
-    const c = this.laufend.get(auftragId);
+  /** Bricht einen eigenen laufenden Auftrag ab; abhängige Unterschritte starten danach nicht mehr. */
+  brecheAb(nutzer: string, auftragId: string): boolean {
+    const c = this.laufend.get(FaehigkeitsAusfuehrung.schluessel(nutzer, auftragId));
     if (!c) {
       return false;
     }
@@ -1055,18 +1354,61 @@ export class FaehigkeitsAusfuehrung {
     return true;
   }
 
-  /** Hintergrundjob: dieselbe Bindung, ausgeführt später — mit der DANN gültigen Lage. */
-  starteImHintergrund(bindung: Faehigkeitsbindung): { auftragId: string; stand: "laeuft" } {
-    this.warteschlange.push(bindung);
-    return { auftragId: bindung.auftragId, stand: "laeuft" };
+  /**
+   * Hintergrundjob: die Bindung wird DAUERHAFT als `wartet` abgelegt und später — auch nach einem
+   * Neustart — mit der DANN gültigen Lage und den DANN gültigen Rechten ausgeführt.
+   */
+  async starteImHintergrund(
+    bindung: Faehigkeitsbindung,
+  ): Promise<{ auftragId: string; stand: AuftragsZustand | "anderer_auftrag" }> {
+    const fingerabdruck = bindungsFingerabdruck(bindung);
+    const stempel = this.stempel();
+    const stand = await this.aendereAuftraege<AuftragsZustand | "anderer_auftrag">(
+      bindung.nutzer,
+      (liste) => {
+        const e = liste.find((x) => x.auftragId === bindung.auftragId);
+        if (e) {
+          return {
+            neu: null,
+            wert: e.fingerabdruck === fingerabdruck ? e.zustand : "anderer_auftrag",
+          };
+        }
+        const neu: AuftragsEintrag = {
+          auftragId: bindung.auftragId,
+          fingerabdruck,
+          bindung,
+          zustand: "wartet",
+          versuch: 0,
+          instanz: null,
+          seit: stempel,
+          ergebnis: null,
+        };
+        return { neu: [...liste, neu], wert: "wartet" };
+      },
+    );
+    return { auftragId: bindung.auftragId, stand };
   }
 
-  async arbeiteWarteschlangeAb(): Promise<readonly Faehigkeitsergebnis[]> {
+  /**
+   * Arbeitet wartende und unterbrochene Aufträge ALLER Konten aus der dauerhaften Ablage ab — beim
+   * Start und im Takt (`server.ts`). Läuft schon eine Abarbeitung, wird auf sie gewartet.
+   */
+  arbeiteWarteschlangeAb(): Promise<readonly Faehigkeitsergebnis[]> {
+    if (!this.abarbeitung) {
+      this.abarbeitung = this.arbeiteAb().finally(() => {
+        this.abarbeitung = null;
+      });
+    }
+    return this.abarbeitung;
+  }
+
+  private async arbeiteAb(): Promise<readonly Faehigkeitsergebnis[]> {
     const out: Faehigkeitsergebnis[] = [];
-    while (this.warteschlange.length > 0) {
-      const b = this.warteschlange.shift();
-      if (b) {
-        out.push(await this.fuehreAus(b));
+    for (const konto of await this.deps.ablage.kontenMitOffenenAuftraegen()) {
+      for (const e of await this.deps.ablage.liste(konto)) {
+        if (e.zustand === "wartet" || (e.zustand === "laeuft" && !this.lebt(e))) {
+          out.push(await this.fuehreAus(e.bindung));
+        }
       }
     }
     return out;
@@ -1107,10 +1449,7 @@ export class FaehigkeitsAusfuehrung {
       });
     }
 
-    const anspruch = await this.deps.ablage.beanspruche(
-      bindung.auftragId,
-      sha256(kanonisch({ ...bindung, gebundenAm: undefined })),
-    );
+    const anspruch = await this.beanspruche(bindung, bindungsFingerabdruck(bindung));
     if (anspruch.art === "anderer_auftrag") {
       return this.ergebnis(bindung, {
         stand: "gesperrt",
@@ -1125,9 +1464,17 @@ export class FaehigkeitsAusfuehrung {
       });
     }
     if (anspruch.art === "vorhanden") {
+      // G04/G05: eine Wiederholung liefert das gespeicherte Ergebnis nur nach AKTUELLER
+      // Rechteprüfung; ist ein Recht entzogen, bleibt der Inhalt gesperrt — ohne die Wirkung neu
+      // auszulösen und ohne den gespeicherten Stand zu verändern.
+      const sperre = await this.rueckgabeSperre(anspruch.bindung);
+      if (sperre) {
+        return this.gesperrteRueckgabe(anspruch.ergebnis, sperre);
+      }
       return { ...anspruch.ergebnis, wiederholt: true };
     }
     const versuch = anspruch.versuch;
+    const wiederaufnahme = anspruch.wiederaufnahme;
 
     const geheimnis = v.credential !== null ? this.deps.geheimnisse.hole(v.credential) : null;
     const verdeckt = geheimnis ? [geheimnis] : [];
@@ -1137,9 +1484,9 @@ export class FaehigkeitsAusfuehrung {
         meldung: this.ohneGeheimnis(teil.meldung, verdeckt),
         versuch,
       });
-      await this.deps.ablage.schreibe(r);
+      await this.schreibeErgebnis(bindung.nutzer, r);
       this.protokolliere(
-        `faehigkeit ${v.id}@${v.fassung} auftrag ${bindung.auftragId} versuch ${versuch} stand ${r.stand}`,
+        `faehigkeit ${v.id}@${v.fassung} auftrag ${bindung.auftragId} versuch ${versuch}${wiederaufnahme ? " wiederaufnahme" : ""} stand ${r.stand}`,
         verdeckt,
       );
       return r;
@@ -1148,7 +1495,14 @@ export class FaehigkeitsAusfuehrung {
     const lage = await this.deps.lage({ mandant: bindung.mandant, nutzer: bindung.nutzer });
     const offen = await this.voraussetzungen(e, lage);
     // Die Kontexttexte liegen nicht in der Bindung; die Inhaltsprüfung lief in `bereiteVor`. Hier
-    // gelten erneut alle eingabeunabhängigen Sperren und Voraussetzungen.
+    // gelten erneut alle eingabeunabhängigen Sperren und Voraussetzungen — und die AKTUELLEN Rechte
+    // an Konto und Kontext samt gebundener Kontextfassung (G04), auch im Hintergrund.
+    if (this.deps.kontext) {
+      const k = await this.deps.kontext.pruefe(bindung.nutzer, bindung.kontext, "ausfuehrung");
+      if (k) {
+        offen.push(k);
+      }
+    }
     if (bindung.ausloeser === "routine") {
       const r = await this.routineOffen(bindung.nutzer, e, bindung.zweck);
       if (r) {
@@ -1169,7 +1523,8 @@ export class FaehigkeitsAusfuehrung {
       return abschluss({ stand: "voraussetzung_fehlt", meldung: "Kein Adapter installiert." });
     }
     const steuerung = new AbortController();
-    this.laufend.set(bindung.auftragId, steuerung);
+    const laufSchluessel = FaehigkeitsAusfuehrung.schluessel(bindung.nutzer, bindung.auftragId);
+    this.laufend.set(laufSchluessel, steuerung);
     const kontext: AdapterKontext = {
       auftragId: bindung.auftragId,
       signal: steuerung.signal,
@@ -1248,7 +1603,7 @@ export class FaehigkeitsAusfuehrung {
       if (timer !== undefined) {
         clearTimeout(timer);
       }
-      this.laufend.delete(bindung.auftragId);
+      this.laufend.delete(laufSchluessel);
     }
 
     // Werkzeugantwort = Daten. Nur deklarierte Felder als Text, Quellenpflicht, Trefferkappe.
