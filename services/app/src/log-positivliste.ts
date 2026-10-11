@@ -176,6 +176,8 @@ export const LOGFELDER: Readonly<Record<string, Logregel>> = {
   reason: "fehlertyp",
   // Kennungen (ko-routes.ts, ask-routes.ts, auth/routes.ts).
   koId: "wert",
+  // server.ts — Endlöschlauf des Entwurfs-Papierkorbs (Aufnahme gesamt-papierkorb).
+  entwurfId: "wert",
   konto: "wert",
   restVorhanden: "wert",
   restFreigegeben: "wert",
@@ -400,6 +402,11 @@ export const MELDUNGEN: readonly string[] = [
   "Papierkorb-Endlöschung beim Start übersprungen",
   "Papierkorb-Endlöschung (periodisch): {zahl} abgelaufene KO(s) entfernt.",
   "Periodischer Papierkorb-Sweep übersprungen",
+  "Papierkorb-Endlöschung eines Entwurfs fehlgeschlagen",
+  "Papierkorb-Endlöschung beim Start: {zahl} abgelaufene Entwürfe entfernt.",
+  "Papierkorb-Endlöschung der Entwürfe beim Start übersprungen",
+  "Papierkorb-Endlöschung (periodisch): {zahl} abgelaufene Entwürfe entfernt.",
+  "Periodischer Papierkorb-Sweep der Entwürfe übersprungen",
   "Papierkorb-Sweep aktiv — Intervall {zahl} min.",
   "Klara-Aufräumlauf aktiv — Intervall {zahl} min.",
   "Gedächtnis aufgeräumt ({wert}): {zahl} abgelaufene Einträge gelöscht.",

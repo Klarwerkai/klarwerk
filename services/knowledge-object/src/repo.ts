@@ -91,6 +91,17 @@ export interface KoCandidateQuery {
   vorInhaltsabruf?: () => void;
 }
 
+/**
+ * Aufnahme gesamt-papierkorb: die Bedingung einer Endlöschung aus dem Papierkorb (s. `KoRepo.delete`).
+ * `rowVersion` ist der Stand, den der Löschende gelesen hat (fehlend = 0, wie im CAS von `update`).
+ */
+export interface KoPapierkorbBedingung {
+  rowVersion: number;
+}
+
+/** Die eine Meldung, wenn die Bedingung nicht (mehr) gilt — derselbe Wortlaut wie `restore`. */
+export const NICHT_IM_PAPIERKORB = "Wissensobjekt nicht im Papierkorb.";
+
 export interface KoRepo {
   /**
    * JOB 2706 D1 (Review R2-30, Neubau nach 2685 D5): der SCHREIBSTAND des Bestands — eine
@@ -172,7 +183,14 @@ export interface KoRepo {
   // Zweck: der Purge-Chokepoint (KoService.purgeKo) kann delete() UND audit.record() in DERSELBEN
   // echten DB-Transaktion laufen lassen (beide committen oder beide rollbacken). InMemoryKoRepo
   // ignoriert den Parameter (dort ist Atomarität trivial, kein I/O-Fenster).
-  delete(id: string, tx?: TxContext): Promise<void>;
+  //
+  // Aufnahme gesamt-papierkorb (Bens Befund, Nacharbeit 2): `papierkorb` macht die Endlöschung AUS
+  // DEM PAPIERKORB zu einer Entscheidung IN DER LÖSCHENDEN ANWEISUNG — gelöscht wird nur, wenn das
+  // Objekt noch im Papierkorb liegt UND seine `rowVersion` die gelesene ist. Ein zwischenzeitliches
+  // Wiederherstellen (oder Wiederherstellen und erneutes Löschen) erhöht die `rowVersion` über den
+  // CAS in `update`; die Löschung trifft dann 0 Zeilen und wirft NOT_FOUND. Ohne Bedingung
+  // (delete({hard}), Demodaten) unverändert.
+  delete(id: string, tx?: TxContext, papierkorb?: KoPapierkorbBedingung): Promise<void>;
   // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): ATOMARER Trust-Inkrement für das „Danke". Erhöht den Trust
   // um `step`, gedeckelt bei `maxTrust` (LEAST) — OHNE Read-modify-write eines vorab gelesenen
   // Absolutwerts, damit zwei gleichzeitige Danke verschiedener Nutzer BEIDE zählen (kein Lost-Update).
@@ -471,7 +489,10 @@ export class InMemoryKoRepo implements KoRepo {
   update(ko: KnowledgeObject, _tx?: TxContext): Promise<void> {
     const cur = this.items.get(ko.id);
     const expected = ko.rowVersion ?? 0;
-    if (cur && (cur.rowVersion ?? 0) !== expected) {
+    // Aufnahme gesamt-papierkorb: Spiegel von Pg — ein UPDATE legt nie an. Ein Objekt, das schon
+    // geschrieben war (rowVersion > 0) und inzwischen endgelöscht ist, kommt über diesen Weg nicht
+    // zurück (verlorenes Wiederherstellen gegen die Endlöschung).
+    if ((!cur && expected > 0) || (cur && (cur.rowVersion ?? 0) !== expected)) {
       return Promise.reject(
         new KoError("STALE_WRITE", "Nebenläufige Änderung — bitte erneut lesen und anwenden."),
       );
@@ -498,7 +519,15 @@ export class InMemoryKoRepo implements KoRepo {
 
   // SCRUM-523 P.3 (WP-A3): konsistent zu PgKoRepo.delete — 0 gelöschte Zeilen (KO bereits weg,
   // wiederholter/konkurrierender Purge) wirft NOT_FOUND statt still zu no-op'en.
-  delete(id: string, _tx?: TxContext): Promise<void> {
+  // Aufnahme gesamt-papierkorb: Spiegel der Pg-Bedingung — synchron geprüft und gelöscht, kein
+  // await dazwischen.
+  delete(id: string, _tx?: TxContext, papierkorb?: KoPapierkorbBedingung): Promise<void> {
+    if (papierkorb) {
+      const cur = this.items.get(id);
+      if (!cur?.deletedAt || (cur.rowVersion ?? 0) !== papierkorb.rowVersion) {
+        return Promise.reject(new KoError("NOT_FOUND", NICHT_IM_PAPIERKORB));
+      }
+    }
     if (!this.items.delete(id)) {
       return Promise.reject(new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden."));
     }

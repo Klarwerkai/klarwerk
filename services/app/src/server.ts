@@ -273,6 +273,32 @@ async function start(): Promise<void> {
       app.log.info(`Papierkorb-Endlöschung (periodisch): ${purged} abgelaufene KO(s) entfernt.`),
     onError: (error) => app.log.warn({ err: error }, "Periodischer Papierkorb-Sweep übersprungen"),
   });
+  // Aufnahme gesamt-papierkorb (Pedi 17.09.2026, B5: „Papierkorb mit Frist von 30 Tagen, danach
+  // endgültig" — für Wissensobjekte UND Entwürfe): dieselbe Frist, derselbe Takt für den
+  // Entwurfs-Papierkorb. Beim Start und danach periodisch, wie oben beim Wissensobjekt.
+  const entwurfSweepFehler = (id: string, error: unknown) =>
+    app.log.warn(
+      { err: error, entwurfId: id },
+      "Papierkorb-Endlöschung eines Entwurfs fehlgeschlagen",
+    );
+  const entwuerfeEntfernt = (anlass: "beim Start" | "(periodisch)") => (purged: number) => {
+    if (purged > 0) {
+      app.log.info(`Papierkorb-Endlöschung ${anlass}: ${purged} abgelaufene Entwürfe entfernt.`);
+    }
+  };
+  services.capture
+    .runDraftTrashSweep(entwurfSweepFehler)
+    .then(entwuerfeEntfernt("beim Start"))
+    .catch((error) => {
+      app.log.warn({ err: error }, "Papierkorb-Endlöschung der Entwürfe beim Start übersprungen");
+    });
+  startTrashSweepScheduler({
+    intervalMs: sweepInterval,
+    runSweep: () => services.capture.runDraftTrashSweep(entwurfSweepFehler),
+    onSwept: entwuerfeEntfernt("(periodisch)"),
+    onError: (error) =>
+      app.log.warn({ err: error }, "Periodischer Papierkorb-Sweep der Entwürfe übersprungen"),
+  });
   app.log.info(`Papierkorb-Sweep aktiv — Intervall ${Math.round(sweepInterval / 60000)} min.`);
   if (klaraAufraeumLauf) {
     const klaraInterval = resolveKlaraAufraeumIntervalMs(
