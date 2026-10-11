@@ -264,7 +264,7 @@ describe("Auswertungskarte: Zeitraum, Kosten, Preisgrundlage", () => {
         expect(text, `${sprache}: roher Schlüssel`).not.toMatch(/mrun\./);
         expect(text, `${sprache}: offener Platzhalter`).not.toMatch(/\{\{|\}\}/);
       }
-      for (const art of ["enrich", "conflict", "duplicate", "probe"]) {
+      for (const art of ["enrich", "conflict", "duplicate", "probe", "gaps"]) {
         expect(i18n.exists(`mrun.task.${art}`, { lng: sprache }), `${sprache}: ${art}`).toBe(true);
       }
     }

@@ -57,6 +57,8 @@ const RADIEN = [
 ] as const;
 
 // `kennung` macht jeden Abschnitt im Bildnachweis (R-1399) einzeln auffindbar.
+// R-1169 / R-0908: die Überschriften der Vertrauensbausteine kommen aus `texte/beschriftung.ts` —
+// sie standen hart im Code, nur auf Deutsch und mit dem Fachwort „Reasoner-Entwurf".
 function Section({
   title,
   kennung,
@@ -78,7 +80,7 @@ export function UiKit(): JSX.Element {
   const { t } = useTranslation();
   return (
     <div className="mx-auto max-w-3xl space-y-8">
-      <h1 className="text-2xl font-semibold text-ink">Vertrauens-System · UI-Kit</h1>
+      <h1 className="text-2xl font-semibold text-ink">{t("beschriftung.uikit.titel")}</h1>
 
       <Section title={t("bausteine.farben.titel")} kennung="farben">
         <ul className="grid gap-2 sm:grid-cols-2">
@@ -149,7 +151,7 @@ export function UiKit(): JSX.Element {
         </div>
       </Section>
 
-      <Section title="Status-Pills" kennung="status">
+      <Section title={t("beschriftung.uikit.status")} kennung="status">
         <div className="flex flex-wrap gap-2">
           {DISPLAY_STATUSES.map((s) => (
             <StatusPill key={s} status={s} />
@@ -161,7 +163,7 @@ export function UiKit(): JSX.Element {
           KEIN prozentbasiertes Qualitätswort. Bis hierher hing diese Seite am alten Vorgabewert und
           zeigte bei 91 weiterhin „Gesichert", obwohl das Wort überall sonst entfernt ist; /ui-kit
           ist ohne Nav erreichbar und damit sichtbar. */}
-      <Section title="Konfidenz / Reifegrad" kennung="konfidenz">
+      <Section title={t("beschriftung.uikit.konfidenz")} kennung="konfidenz">
         <div className="space-y-3">
           <ConfidenceBar value={42} showLabel={false} />
           <ConfidenceBar value={73} showLabel={false} />
@@ -169,7 +171,7 @@ export function UiKit(): JSX.Element {
         </div>
       </Section>
 
-      <Section title="Wissensarten" kennung="wissensarten">
+      <Section title={t("beschriftung.uikit.wissensarten")} kennung="wissensarten">
         <div className="flex flex-wrap gap-2">
           {KNOWLEDGE_TYPES.map((k) => (
             <KnowledgeTypeTag key={k} type={k} />
@@ -177,13 +179,13 @@ export function UiKit(): JSX.Element {
         </div>
       </Section>
 
-      <Section title="KI-Kennung (Reasoner-Entwurf)" kennung="ki">
+      <Section title={t("beschriftung.uikit.kiKennung")} kennung="ki">
         <ReasonerDraft>
           <p className="text-sm text-text">{t("uikit.sampleStatement")}</p>
         </ReasonerDraft>
       </Section>
 
-      <Section title="Herkunftszeile" kennung="herkunft">
+      <Section title={t("beschriftung.uikit.herkunft")} kennung="herkunft">
         <ProvenanceLine
           author="M. Brandt"
           originalAuthor="D. Roth"

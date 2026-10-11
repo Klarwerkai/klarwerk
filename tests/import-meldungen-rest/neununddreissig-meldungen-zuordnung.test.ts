@@ -51,7 +51,6 @@ const B = {
   warteschlange: "tests/capture/navguard-unsavable-mounted.test.tsx",
   bildbudget: "tests/capture/wp-d9b-image-budget.test.ts",
   pptxEhrlich: "tests/app/pptx-notes-honesty.test.ts",
-  folienbilder: "tests/capture/slide-images.test.ts",
   ship4: "tests/capture/wp-d9c-ship4.test.ts",
   bildnotiz: "tests/app/import-image-notice.test.ts",
   docxStruktur: "tests/structure/docx-rich-import.test.ts",
@@ -96,14 +95,18 @@ const ZUORDNUNG: Readonly<Partial<Record<Schluessel, Zuordnung>>> = {
   },
   pptxImagesFormat: { stand: "unbewiesen", beleg: [B.pptxEhrlich, B.bildbudget], rest: NUR_LOGIK },
   pptxImagesBudget: { stand: "unbewiesen", beleg: [B.pptxEhrlich, B.bildbudget], rest: NUR_LOGIK },
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): hier stand zusätzlich `B.folienbilder`
+  // (`tests/capture/slide-images.test.ts`). Es nannte beide Schlüssel nur über die alte
+  // Meldungswahl `imagesOnlyNoticeKey`, die keinen Produktaufrufer hatte und entfernt ist. Die
+  // Auswahl des Arbeitsraums belegen die beiden übrigen Dateien unverändert.
   imagesOnlyNoText: {
     stand: "unbewiesen",
-    beleg: [B.folienbilder, B.ship4, B.bildbudget],
+    beleg: [B.ship4, B.bildbudget],
     rest: NUR_LOGIK,
   },
   imagesAllDropped: {
     stand: "unbewiesen",
-    beleg: [B.folienbilder, B.ship4, B.bildbudget],
+    beleg: [B.ship4, B.bildbudget],
     rest: NUR_LOGIK,
   },
   imagesAllDroppedNoOriginal: {

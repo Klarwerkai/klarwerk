@@ -73,8 +73,9 @@ const HILFE_KENNUNGEN_BASIS: readonly (readonly [string, string])[] = [
   ...CHELP_IDS_BASIS.map(
     (id) => [`chelp.${id}.title`, `chelp.${id}.body`] as readonly [string, string],
   ),
-  // CaptureFrontDoor.tsx:1138
-  ["conf.field", "conf.help"],
+  // CaptureFrontDoor.tsx:1138 — der Körper heißt seit R-0908 `fachwort.vertraulichkeit.hilfe`
+  // (`texte/fachwort.ts`): derselbe Hilfetext ohne „Output Factory". Das Thema bleibt dasselbe.
+  ["conf.field", "fachwort.vertraulichkeit.hilfe"],
   // Capture.tsx:5018 — die Kennung, deren Verlust ben in Chromium gemessen hat.
   ["capture.help.category.title", "capture.help.category.body"],
   // Capture.tsx:5031

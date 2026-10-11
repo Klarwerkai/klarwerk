@@ -52,23 +52,8 @@ export interface EffectiveSearchDocument {
   metadataRevision: number;
 }
 
-export const EFFECTIVE_SEARCH_DOCUMENT_FIELDS = [
-  "koId",
-  "koVersion",
-  "projectionVersion",
-  "searchText",
-  "titleText",
-  "statementText",
-  "captionText",
-  "bodyText",
-  "language",
-  "contentHash",
-  "status",
-  "classificationSnapshot",
-  "categoryText",
-  "tagText",
-  "metadataRevision",
-] as const;
+// R-1349: Die Feldliste `EFFECTIVE_SEARCH_DOCUMENT_FIELDS` las kein Produktweg; den Vertrag trägt der
+// Typ oben. Sie liegt als Testerwartung in `tests/support/projektion-feldvertrag.ts`.
 
 /**
  * Die Zusammensetzung. Reine Funktion — keine Datenbank, kein Fallback, keine dritte Quelle.

@@ -28,12 +28,11 @@ export function canSearchExternal(stage: ExternalKnowledgeStage | null | undefin
   return stage !== "blocked";
 }
 
-// Der i18n-Schlüssel der Begründung, oder undefined, wenn Anhängen erlaubt ist.
-export function externalAttachBlockedKey(
-  stage: ExternalKnowledgeStage | null | undefined,
-): string | undefined {
-  return canAttachExternalResult(stage) ? undefined : "ext.attachBlocked";
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `externalAttachBlockedKey(stage)` (der
+// Schlüssel `ext.attachBlocked` oder nichts). Beide Flächen setzen den Grund an Banner und Knopf
+// selbst über `canAttachExternalResult` (`pages/Capture.tsx`, `components/bibliothek/
+// MehrAbschnitte.tsx`; Gleichlauf in `tests/app/ext-attach-gate-gleichlauf.test.ts`). Die Hülle rief
+// niemand und ist entfernt.
 
 // ---------------------------------------------------------------------------------------------
 // AUFTRAG-mega16 Block A (bens SB-4, DRITTER Durchgang) — DIE STUFE IST EINE GRENZE, FAIL-CLOSED.

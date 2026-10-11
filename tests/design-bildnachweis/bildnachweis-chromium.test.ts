@@ -131,9 +131,12 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
         d.scrollIntoView({ block: 'center' });
       }`),
     );
+    // Nacharbeit 26 (Integration mit main): der Export hat jetzt einen wählbaren Umfang (N-0082);
+    // der Umfangssatz `bib-export-umfang-satz` steht vor den Formaten — in der Grundwahl
+    // „Validierter Gesamtbestand" sagt er dasselbe, was REVIEW26 „Exportumfang" verlangt.
     const m = await s.evaluate<{ sichtbar: boolean; text: string; vorLink: boolean }>(
       fn(`() => {
-        const u = document.querySelector('[data-testid="bib-export-umfang"]');
+        const u = document.querySelector('[data-testid="bib-export-umfang-satz"]');
         const l = document.querySelector('[data-testid="bib-export-json"]');
         const r = u.getBoundingClientRect();
         return {
@@ -146,7 +149,8 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
     console.info(`R-1399 · B1 · ${JSON.stringify(m)}`);
     expect(m.sichtbar).toBe(true);
     expect(m.text).toContain("alle validierten Einträge");
-    expect(m.text).toContain("Suche und Filter gelten für den Export nicht");
+    expect(m.text).toContain("unabhängig von Suche und Filter");
+    expect(m.text).toContain("vertrauliche nur mit Prüfrecht");
     expect(m.vorLink, "der Umfang steht nicht über den Formaten").toBe(true);
     await ausschnitt('[role="menu"]', "b1-bibliothek-exportumfang");
     await s.keyboard.press("Escape");
@@ -155,23 +159,32 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
   it("B2 · Lesefläche: Kenntnisnahme steht zu da — nur die Beschriftung; geöffnet die Verneinung", async () => {
     expect(fehler).toBeNull();
     const s = (stand as H4Stand).seite;
-    await warte('[data-testid="kenntnisnahme-aufklapper"]');
-    const zu = await s.evaluate<{ offen: boolean; text: string }>(
+    // Nacharbeit 26 (Integration mit main): ohne eigene Anforderung steht die Kenntnisnahme als
+    // zugeklappte Zeile „Kenntnisnahme: anfordern und Übersicht" (`kenntnisnahme-verwalten`) da —
+    // dieselbe Zusage (Erklärung hinter einem Klick), jetzt in der Bauform der Lesereihenfolge.
+    await warte('[data-testid="kenntnisnahme-verwalten"]');
+    const zu = await s.evaluate<{ offen: boolean; text: string; karte: boolean }>(
       fn(`() => {
-        const d = document.querySelector('[data-testid="kenntnisnahme-aufklapper"]');
+        const d = document.querySelector('[data-testid="kenntnisnahme-verwalten"]');
+        const b = document.querySelector('[data-testid="kenntnisnahme-bereich"]');
         d.scrollIntoView({ block: 'center' });
-        return { offen: d.open, text: (document.querySelector('[data-testid="kenntnisnahme-bereich"]').innerText || '').trim() };
+        return {
+          offen: d.open,
+          text: (b.innerText || '').trim(),
+          karte: b.className.indexOf('rounded-card') >= 0,
+        };
       }`),
     );
     console.info(`R-1399 · B2 zu · ${JSON.stringify(zu)}`);
     expect(zu.offen).toBe(false);
-    expect(zu.text.toLowerCase()).toBe("kenntnisnahme");
+    expect(zu.text.replace(/\s*▾\s*$/, "")).toBe("Kenntnisnahme: anfordern und Übersicht");
+    expect(zu.karte, "die Kenntnisnahme ist wieder eine eigene Karte (H4 D1)").toBe(false);
     await ausschnitt('[data-testid="kenntnisnahme-bereich"]', "b2-kenntnisnahme-zu");
 
-    await s.click('[data-testid="kenntnisnahme-aufklapper"] > summary');
+    await s.click('[data-testid="kenntnisnahme-verwalten"] > summary');
     const auf = await s.evaluate<{ offen: boolean; text: string }>(
       fn(`() => {
-        const d = document.querySelector('[data-testid="kenntnisnahme-aufklapper"]');
+        const d = document.querySelector('[data-testid="kenntnisnahme-verwalten"]');
         return { offen: d.open, text: (d.innerText || '').trim() };
       }`),
     );

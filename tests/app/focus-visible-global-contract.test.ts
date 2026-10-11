@@ -85,6 +85,16 @@ describe("JOB 1098 · der Ring ist sichtbar und aus Markentokens gebaut (Lieferu
     expect(regel).not.toMatch(/#[0-9a-fA-F]{3,8}|rgb\(|ring-(red|blue|green|yellow|indigo)-/);
   });
 
+  it("der Ring ist deckend und aus dem Marken-TEXT-Token — WCAG 1.4.11 verlangt ≥ 3:1", () => {
+    // Audit nacharbeit-5: `ring-brand/60` maß auf der Seitenfläche ~1,85:1, die volle Marke auf
+    // Weiß ~2,8:1. `brand-text` (#9c5009) erreicht dort ~5,3–5,9:1; gemessen wird das im echten
+    // Browser in tests-smoke/wcag21-aa-audit.spec.ts (1.4.11). Eine Deckkraftstufe am Ring würde
+    // den Kontrast wieder unter 3:1 drücken.
+    const regel = globaleRegel();
+    expect(regel).toMatch(/\bring-brand-text\b/);
+    expect(regel).not.toMatch(/\bring-brand(-text)?\/\d+/);
+  });
+
   it("sie setzt einen Abstand zum Element", () => {
     // `ring-offset` ist der Grund, warum der Ring aussen liegt und nichts verdeckt.
     expect(globaleRegel()).toMatch(/ring-offset-2|ring-offset-\[/);

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  answeredTurns,
   appendAnswer,
   interviewSourceKey,
   isInterviewDone,
@@ -23,8 +22,6 @@ describe("SCRUM-132: Interview-Flow (FE-Helfer)", () => {
     expect(interviewSourceKey({ demo: false })).toBe("capture.ivModel");
   });
 
-  it("answeredTurns zählt Antworten", () => {
-    expect(answeredTurns([])).toBe(0);
-    expect(answeredTurns(["a", "b"])).toBe(2);
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zu `answeredTurns` ist mit dem Zähler
+  // entfallen — er hatte keinen Produktleser; das Interview zählt über die Antwortliste selbst.
 });

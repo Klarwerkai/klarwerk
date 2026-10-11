@@ -10,7 +10,6 @@
 // Herkunft einer Markierung und den Absatz, an dem sie parkt. Übernimmt jemand einen
 // Umformulierungsvorschlag, zeigt der Absatz den neuen Text und sagt das dazu.
 import { useEffect } from "react";
-import { useTranslation } from "react-i18next";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { RoleLink } from "../components/RoleLink";
 import { setzeKlaraVorschauAktiv } from "../components/klara-vorschau/aktiv";
@@ -21,12 +20,14 @@ import {
   demoArtikel,
 } from "../components/klara-vorschau/artikel";
 import { artikelSchluessel, useKlaraZustand } from "../components/klara-vorschau/zustand";
+// produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
+import { useAssistenzT } from "../lib/assistenzProfil";
 
 const LINK =
   "inline-flex h-9 items-center rounded-btn border border-hairline bg-surface px-3 text-[13px] font-semibold text-text hover:border-ink/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 
 function Kennzeichen(): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   return (
     <span
       data-testid="klara-vorschau-kennzeichen"
@@ -38,7 +39,7 @@ function Kennzeichen(): JSX.Element {
 }
 
 function WeiterLinks(): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   return (
     <nav aria-label={t("klaravorschau.vorschauseite.weiter")} className="mt-6">
       <p className="text-[12px] font-semibold text-muted-2">
@@ -61,7 +62,7 @@ function WeiterLinks(): JSX.Element {
 }
 
 function Artikel({ id }: { id: string }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const { hash } = useLocation();
   const { artikelText } = useKlaraZustand();
   const artikel = demoArtikel(id);
@@ -133,7 +134,7 @@ function Artikel({ id }: { id: string }): JSX.Element {
 }
 
 function Uebersicht(): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   return (
     <div className="mx-auto max-w-3xl pt-6">
       <Kennzeichen />

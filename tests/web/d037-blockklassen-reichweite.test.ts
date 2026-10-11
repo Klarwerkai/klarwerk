@@ -105,8 +105,9 @@ describe("B · Client- und Server-Sanitizer lassen dasselbe durch", () => {
 
 describe("C · der Blöcke-Chip erkennt die Panel-Typen, die er erkennen soll", () => {
   it("die fünf Panel-Klassen lösen den Chip aus", () => {
-    // `KoRead.tsx:62` zeigt den Chip über `bodyReadMode(...).hasBlocks`. Bricht diese Erkennung,
-    // verschwindet die Orientierung im Lesekopf, ohne dass der Body sich ändert.
+    // Die Vorschau des Studios zeigt den Chip über `bodyReadMode(...).hasBlocks` (bis R-1349 auch die
+    // entfernte Leseansicht `KoRead.tsx`). Bricht diese Erkennung, verschwindet die Orientierung,
+    // ohne dass der Body sich ändert.
     for (const klasse of ["panel", "panel-info", "panel-note", "panel-warning", "panel-success"]) {
       expect(hasBodyBlocks(`<div class="${klasse}"><p>Text</p></div>`), klasse).toBe(true);
     }

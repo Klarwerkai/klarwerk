@@ -262,11 +262,12 @@ export async function ladeStand(quellen: WissensereignisQuellen): Promise<Stand>
   return { sichtbar, faellig, widersprueche };
 }
 
-/** Der gespeicherte Zustand als Menge meldbarer Befunde — reine Ableitung, kein Schreibweg. */
-export async function erhebeBefunde(quellen: WissensereignisQuellen): Promise<Befund[]> {
-  return befundeAus(await ladeStand(quellen));
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 7): hier stand `erhebeBefunde(quellen)`,
+// eine Hülle um `befundeAus(await ladeStand(quellen))`. Weder der Melder noch ein Test rief sie —
+// der Melder lädt den Stand in `lauf` selbst und leitet die Befunde daraus ab (`ladeBekannt`,
+// `erkenne`).
 
+/** Der gespeicherte Zustand als Menge meldbarer Befunde — reine Ableitung, kein Schreibweg. */
 function befundeAus({ sichtbar, faellig, widersprueche }: Stand): Befund[] {
   const befunde: Befund[] = [];
   for (const ko of sichtbar.values()) {

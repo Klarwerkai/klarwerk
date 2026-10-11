@@ -25,6 +25,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { IMPORT_JSON_FORMAT } from "../lib/importReview";
 import { JSON_UPLOAD_INPUT_ID } from "../lib/importSourceGallery";
+import { XLSX_MIME } from "../lib/xlsxImport";
 import { HelpTip } from "./HelpTip";
 import { useFilePickRequest, useImportSource } from "./ImportStepper";
 import { Card, SectionLabel } from "./ui";
@@ -32,6 +33,9 @@ import { Card, SectionLabel } from "./ui";
 // Anker des Kastens — damit ein Test „steht er da oder nicht?" fragen kann, ohne sich an Text zu
 // klammern. Rein additiv, keine Verhaltensänderung.
 export const IMPORT_JSON_CARD_ID = "import-json-card";
+
+// R-0179 (Nacharbeit 3): derselbe Eingang nimmt JSON und Excel (.xlsx) — genau diese beiden.
+export const IMPORT_UPLOAD_ACCEPT = `.json,application/json,.xlsx,${XLSX_MIME}`;
 
 export function ImportJsonUpload({
   dragOver,
@@ -71,14 +75,17 @@ export function ImportJsonUpload({
       <SectionLabel>{t("imp.uploadTitle")}</SectionLabel>
       {/* R-0888 (gesamt-hilfen, Nacharbeit 13): Abschnittserklärung in der Seitenhilfe. */}
       <HelpTip title={t("imp.uploadTitle")} body={t("shelp.imp.uploadTitle")} />
-      <p className="mb-3 text-[13px] text-muted">{t("imp.uploadHint")}</p>
-      {/* E2E-010 (KEIN Bug — nur UI): ehrlich WARUM hier nur JSON geht, mit Verweis auf den Weg für
-          Office-Dateien. Kein Capability-Umbau. */}
+      <p className="mb-3 text-[13px] text-muted">{t("importtabelle.hinweis")}</p>
+      {/* E2E-010: ehrlich, WELCHE Formate hier gehen, mit Verweis auf den Weg für Office-Dokumente.
+          R-0179 (Nacharbeit 3): seit Excel hier gelesen wird, wäre „nur JSON" falsch. */}
       <p className="mb-3 rounded-btn bg-page px-3 py-2 text-[12.5px] text-muted">
-        {t("imp.jsonOnlyReason")}
+        {t("importtabelle.grund")}
       </p>
       <div className="mb-3 space-y-2 text-[12.5px] text-muted">
         <p>{t("imp.json.format", { fields: IMPORT_JSON_FORMAT.requiredFields.join(", ") })}</p>
+        <p data-testid="import-xlsx-format">
+          {t("importtabelle.format", { fields: IMPORT_JSON_FORMAT.requiredFields.join(", ") })}
+        </p>
         <p>{t("imp.json.types", { types: IMPORT_JSON_FORMAT.types.join(", ") })}</p>
         <label htmlFor="import-json-example" className="block font-semibold text-text">
           {t("imp.json.example")}
@@ -93,7 +100,9 @@ export function ImportJsonUpload({
           className="block w-full rounded-input border border-hairline bg-page p-2 font-mono text-text"
         />
         <p id="import-json-example-hint">{t("imp.json.exampleHint")}</p>
-        <Link to="/bibliothek" className="inline-block text-brand underline">
+        {/* WCAG 1.4.3 (Audit nacharbeit-8): `text-brand` maß als Linktext 2,78:1 (klassisch) bzw.
+            3,38:1 (modern). Das Marken-TEXT-Token ist genau für Schrift da (≥ 4,5:1). */}
+        <Link to="/bibliothek" className="inline-block text-brand-text underline">
           {t("imp.json.exportPath")}
         </Link>
       </div>
@@ -110,7 +119,7 @@ export function ImportJsonUpload({
           dragOver ? "border-brand bg-brand/5 text-text" : "border-hairline text-muted"
         }`}
       >
-        {dragOver ? t("imp.dropActive") : t("imp.dropHint")}
+        {dragOver ? t("importtabelle.dropActive") : t("importtabelle.dropHint")}
       </div>
       <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-2 text-[13px] font-semibold text-text hover:bg-hairline-soft">
         <Upload size={15} />
@@ -121,7 +130,7 @@ export function ImportJsonUpload({
           id={JSON_UPLOAD_INPUT_ID}
           ref={inputRef}
           type="file"
-          accept=".json,application/json"
+          accept={IMPORT_UPLOAD_ACCEPT}
           className="hidden"
           disabled={disabled}
           onChange={(e) => void onFile(e)}

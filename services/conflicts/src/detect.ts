@@ -147,12 +147,11 @@ export function trigramSimilarity(a: string, b: string): number {
   return union === 0 ? 0 : intersection / union;
 }
 
-// Dedup-Schlüssel (2.3): type + sortierte Beteiligten-Referenzen. Invariante: höchstens EIN
-// offener Konflikt je pairKey (in der Anlegestelle erzwungen, nicht hier).
-export function pairKey(type: ConflictType, refA: string, refB: string): string {
-  const [x, y] = [refA, refB].sort();
-  return `${type}|ko:${x}|ko:${y}`;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `pairKey(type, refA, refB)`, ein
+// Dedup-Schlüssel aus Typ und sortierten Beteiligten. Kein Produktweg rief ihn. Die Anlegestelle
+// (`service.ts`, `hasOpenPair`) entdoppelt über die beiden KO-Kennungen und die Fassungen,
+// TYPUNABHÄNGIG; das Prüfgedächtnis nutzt `memoryKey` (`pair-memory.ts`). Der Schlüssel beschrieb
+// damit eine Regel, die das Produkt nicht anwendet, und ist entfernt.
 
 interface CandidateScore {
   subject: DetectSubject;

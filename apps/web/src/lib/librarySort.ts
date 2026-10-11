@@ -48,9 +48,10 @@ export function riskRankOf(status: DisplayStatus): number {
   return RISK_RANK[status];
 }
 
-export function isLibrarySortKey(value: unknown): value is LibrarySortKey {
-  return typeof value === "string" && (LIBRARY_SORT_KEYS as readonly string[]).includes(value);
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `isLibrarySortKey`. Die Bibliothek prüft den
+// gespeicherten Wert im Speicherhaken gegen `LIBRARY_SORT_KEYS`
+// (`components/bibliothek/BibliothekFlaeche.tsx`, R-0991 Nr. 44); der Typwächter rief niemand und ist
+// entfernt.
 
 // Ehrliches „zuletzt geändert" (ms): jüngster History-Eintrag, sonst das Erstell-Datum. Kein neues
 // Backend-Feld — beide Werte liegen bereits im KO. Unbekannte/kaputte Daten sinken ans Ende (0).

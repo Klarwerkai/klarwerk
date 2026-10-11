@@ -292,7 +292,7 @@ describe("JOB 3770 · abgewählte Funde bleiben beim Verlassen abgewählt", () =
     await mount(`/erfassen?draft=${kennung}`, "formular");
     expect(feld(i18n.t("capture.fStatement")).value).toContain(P1.sourceExcerpt);
     expect(feld(i18n.t("capture.fStatement")).value).toContain(P3.sourceExcerpt);
-    expect(feld(i18n.t("capture.fTitle")).value).toBe(String(traeger.title));
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe(String(traeger.title));
   });
 
   // ==============================================================================================

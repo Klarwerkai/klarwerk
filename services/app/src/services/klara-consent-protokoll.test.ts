@@ -636,12 +636,14 @@ describe("Bens B6 · `giltNoch` endet mit Sitzung und Zustimmung", () => {
   it("absolute Acht-Stunden-Grenze: Tor 1 ms davor erlaubt, 2 ms später trägt die Freigabe nicht mehr", async () => {
     const { dienst, vorspulen } = aufbau();
     const { sicht, bindung } = await sitzung(dienst);
-    // Durch reguläre Statusaufrufe bis kurz vor die absolute Grenze aktiv gehalten.
+    // Durch reguläre Aktivität bis kurz vor die absolute Grenze aktiv gehalten. R-0777: seit der
+    // Statusabruf nicht mehr berührt, hält nur der Aktivitätsweg die gleitende Frist am Leben —
+    // über `getSession` liefe die Sitzung hier nach 15 min ab, bevor die Grenze erreicht ist.
     let vergangen = 0;
     while (vergangen + 10 * MINUTE < KLARA_SESSION_ABSOLUTE_MS - MINUTE) {
       vorspulen(10 * MINUTE);
       vergangen += 10 * MINUTE;
-      await dienst.getSession(sicht.sessionId, bindung);
+      await dienst.meldeAktivitaet(sicht.sessionId, bindung);
     }
     vorspulen(KLARA_SESSION_ABSOLUTE_MS - 1 - vergangen);
     await dienst.grantConsent(sicht.sessionId, bindung);

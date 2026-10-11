@@ -224,7 +224,7 @@ export function AnswerSourceDetails({
           </button>
           {excerptOpen ? (
             <div className="mt-1.5 rounded-card border border-hairline bg-surface p-3">
-              {/* Dieselbe sichere Kette wie die KO-Leseansicht (KoRead): SanitizedHtml + prose-kw. */}
+              {/* Dieselbe sichere Kette wie die KO-Leseansicht (BibliothekLesen): SanitizedHtml + prose-kw. */}
               <SanitizedHtml
                 html={body}
                 className="prose-kw text-[13.5px] leading-relaxed text-text"

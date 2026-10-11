@@ -249,18 +249,21 @@ function matrixAdmin(): Quelle[] {
       behaelter: "detail-papierkorb",
       inhalt: t("adm.trash.empty"),
     },
+    // produkt:20261009:admin-audit-verstaendlich: beide Karten lesen die Kette seitenweise über
+    // `/api/audit/seite` (statt der Gesamtliste `/api/audit`), und die Auth-Ansicht nennt den
+    // Vorgang beim Namen („Angemeldet“) statt beim Rohcode `auth.login`.
     {
-      id: "Audit-Liste · /api/audit",
-      pfad: "/api/audit",
+      id: "Audit-Liste · /api/audit/seite",
+      pfad: "/api/audit/seite",
       // JOB 3337: Benutzeränderungen unter „Sicherheit und Nachweise".
       reiter: t("adm.sec.sicherheit"),
       zeile: '[data-testid="zeile-audit"]',
       behaelter: "detail-audit",
-      inhalt: "auth.",
+      inhalt: t("audit.action.auth_login"),
     },
     {
-      id: "Prüfprotokoll · /api/audit",
-      pfad: "/api/audit",
+      id: "Prüfprotokoll · /api/audit/seite",
+      pfad: "/api/audit/seite",
       reiter: t("adm.sec.sicherheit"),
       zeile: '[data-testid="zeile-pruefprotokoll"]',
       behaelter: "detail-pruefprotokoll",
@@ -383,6 +386,15 @@ function matrixProfil(): Quelle[] {
       zeile: '[data-testid="zeile-wirkung"]',
       behaelter: "detail-wirkung",
       inhalt: t("funke.impact.contributions"),
+    },
+    {
+      // R-0562: ohne eingerichteten zweiten Faktor steht nach der Erholung der Einrichtungsknopf.
+      id: "Profil · Zwei-Faktor-Anmeldung · /api/auth/second-factor",
+      pfad: "/api/auth/second-factor",
+      reiter: "",
+      zeile: '[data-testid="zeile-zweifaktor"]',
+      behaelter: "detail-zweifaktor",
+      inhalt: t("zweifaktor.profil.starten"),
     },
   ];
 }
@@ -1237,7 +1249,11 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
   it("K2 · KALIBRIERUNG: auch die Kontenfläche selbst trägt ohne Störung keinen Fehlerzustand", async () => {
     const s = stand as Stand;
     s.stoerung = null;
-    await neuLaden("/admin", '[data-testid="flaeche-nutzer"] button[data-einst="zeile"]');
+    // ADMIN-01: die Kontenfläche hat ihre eigene Adresse; `/admin` ist die Startseite.
+    await neuLaden(
+      "/admin?bereich=konten",
+      '[data-testid="flaeche-nutzer"] button[data-einst="zeile"]',
+    );
     const lage = await (s.seite as NonNullable<Stand["seite"]>).evaluate<{
       boxen: number;
       nutzer: number;
@@ -1595,8 +1611,17 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
       );
 
       // 5 — Frist erneut, Störung, Browserfokus: Fehler mit erhaltenem Cache.
-      await seite.waitForTimeout(ZAEHLER_FRISCHE_MS + 2_000);
+      //
+      // ADMIN-01 Nacharbeit 2: Die Störung steht AB JETZT, nicht erst nach der Frist. Grund ist der
+      // `GeteilterStandNachlader` (`app/GeteilterStandNachlader.tsx`, Basisstand 1322621a): er lädt
+      // aktive `["kos"]`- und `["audit"]`-Abfragen im Takt `GETEILTE_LISTEN_TAKT_MS` (60 s) nach.
+      // Fiel ein Takt in die Wartezeit, war der Stand beim Fokus wieder frisch — der Fokus rief
+      // nichts ab, und die erst danach gesetzte Störung traf keinen Abruf mehr (rot nur für Papierkorb
+      // und beide /api/audit-Karten, genau die Quellen dieser Präfixe). Mit früher Störung scheitert
+      // jeder Abruf dieses Pfades — der des Takts wie der des Fokus —, der letzte Erfolg bleibt der aus
+      // Schritt 4, und nach der Frist ist er sicher abgelaufen. Erwartet wird unverändert dasselbe.
       s.stoerung = q.pfad;
+      await seite.waitForTimeout(ZAEHLER_FRISCHE_MS + 2_000);
       const vorFehler = s.abrufe.get(q.pfad) ?? 0;
       await seite.evaluate(fn(FOKUS));
       const gescheitert = await warteAufLage(
@@ -1669,6 +1694,19 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
    */
   function zusatzOrte(): InhaltsOrt[] {
     return [
+      // ADMIN-16: die beiden früheren Kästen der Importseite, jetzt Karten unter „Vorführdaten".
+      {
+        reiter: t("adm.sec.vorfuehrdaten"),
+        zeile: '[data-testid="zeile-demopakete"]',
+        behaelter: "detail-pakete",
+        seitenPfad: "/admin",
+      },
+      {
+        reiter: t("adm.sec.vorfuehrdaten"),
+        zeile: '[data-testid="zeile-testimporte"]',
+        behaelter: "detail-testimporte",
+        seitenPfad: "/admin",
+      },
       {
         reiter: t("adm.sec.konten"),
         zeile: '[data-testid="flaeche-nutzer"] button[data-einst="zeile"]',
@@ -1680,6 +1718,14 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
         reiter: t("adm.sec.konten"),
         zeile: '[data-testid="knopf-nutzer-hinzufuegen"]',
         behaelter: "detail-nutzer-neu",
+        seitenPfad: "/admin",
+      },
+      // ADMIN-06 (produkt:20261009:admin-teams): die Karte „Teams" — Liste, Anlegen und, mit
+      // gewähltem Team, dessen Karte im selben Behälter.
+      {
+        reiter: t("adm.sec.konten"),
+        zeile: '[data-testid="zeile-teams"]',
+        behaelter: "detail-teams",
         seitenPfad: "/admin",
       },
       {
@@ -1704,6 +1750,13 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
         reiter: "",
         zeile: '[data-testid="zeile-passwort"]',
         behaelter: "detail-passwort",
+        seitenPfad: "/profil",
+      },
+      // R-0582: die Berichtigung der eigenen Kontodaten — eine Detailkarte ohne eigene Abfrage.
+      {
+        reiter: "",
+        zeile: '[data-testid="zeile-kontodaten"]',
+        behaelter: "detail-kontodaten",
         seitenPfad: "/profil",
       },
     ];
@@ -1863,7 +1916,9 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     "endpoints.admin.sicherungen": "/api/admin/sicherungen",
     "endpoints.ko.trash": "/api/kos/trash",
     useUsers: "/api/users",
-    useAudit: "/api/audit",
+    // produkt:20261009:admin-audit-verstaendlich: Prüfprotokoll, Auth-Ansicht und ihre zwei Zeilen
+    // lesen die Kette seitenweise — die Gesamtliste `/api/audit` ruft keine dieser Seiten mehr ab.
+    useAuditSeite: "/api/audit/seite",
     // JOB 3140 (UX-11): die NACHRANGIGE Quelle des Prüfprotokolls — die Namen zu den Kennungen.
     // Bewusst `/api/directory` (jeder Angemeldete) und nicht `/api/users` (Admin): das Protokoll
     // steht auch einem Controller offen, und die Fläche darf ihm nicht wegbrechen. Ihr Fall in
@@ -1873,6 +1928,9 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     useAnalytics: "/api/analytics",
     useValidationBoard: "/api/validation/board",
     useMyImpact: "/api/me/impact",
+    // R-0562: der Stand der eigenen Zwei-Faktor-Anmeldung — Zeile und Karte auf `/profil` teilen
+    // denselben Abfrageschlüssel, gestört wird also genau ein Pfad.
+    "authApi.secondFactorStatus": "/api/auth/second-factor",
     // R-0913: die Betriebsschalter der Demodatenkarte — Fall `SCH · Demodaten · /api/features`.
     useFeatures: "/api/features",
   };

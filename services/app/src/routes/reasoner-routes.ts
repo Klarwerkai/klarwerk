@@ -5,8 +5,14 @@ import type { CaptureService } from "../../../capture";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
   type ExternalKnowledgePolicyRepo,
+  type ExternalResult,
+  type ExternalSearchService,
+  externalSearchAllowed,
   publicAiEnrichmentAllowed,
 } from "../../../external-search";
+
+// R-0088: die Suchanfrage der Interview-Recherche ist das Thema — begrenzt wie das Thema selbst.
+const MAX_INTERVIEW_QUELLEN_ANFRAGE = 200;
 import { type Confidentiality, type KoService, isConfidential } from "../../../knowledge-object";
 import {
   // JOB 3353 B: der EINE Fehlertyp, den der Reasoner wirft, wenn er GEMESSEN hat, dass die
@@ -14,6 +20,7 @@ import {
   ConfidentialCloudBlockedError,
   MAX_DESCRIBE_IMAGE_DATAURL_CHARS,
   type ModelRunSubject,
+  REASONER_ZWEITMEINUNG_WAHLEN,
   type Reasoner,
   type ReasonerLocale,
   ReasonerPolicyLockedError,
@@ -28,6 +35,7 @@ import {
   KLARA_AUFGABE_ANDERER_ANBIETER,
   type KlaraAufgabe,
 } from "../services/klara-session-service";
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 import {
   type Ka4Freigabepruefer,
   ka4Entscheidung,
@@ -94,6 +102,9 @@ export interface ReasonerRoutesDeps {
   ask: AskService;
   // SCRUM-426: Freigabe-Gate der Public-KI-Anreicherung (Admin-Regler SCRUM-414).
   externalKnowledge: ExternalKnowledgePolicyRepo;
+  // R-0088: die Quellensuche für die Recherche im geführten Interview (dieselbe wie die der
+  // Oberfläche, `createExternalSearchFromEnv`). OPTIONAL: fehlt sie, recherchiert das Interview nicht.
+  externalSearch?: ExternalSearchService | undefined;
   // SCRUM-502 Schicht 2: für den autoritativen koId-Load der gespeicherten Vertraulichkeitsstufe.
   ko: KoService;
   // JOB 2692 D1 (Review-Befund 17): der autoritative draftId-Load — die im ENTWURF gespeicherte
@@ -341,8 +352,67 @@ function gleicherStand(a: Schalterstand, b: Schalterstand): boolean {
   return a.oeffentlicheKi === b.oeffentlicheKi && a.vertraulicheInhalte === b.vertraulicheInhalte;
 }
 
+// ================================================================================================
+// AUFNAHME 20260922 (R-0305, R-1099) · DIE WAHL DER ZWEITMEINUNG — PROTOKOLLIERT WIE DIE FREIGABE.
+// ================================================================================================
+//
+// Ein Modell für die Zweitmeinung zu wählen, gibt Frage und Grundlage an einen ZWEITEN Empfänger.
+// Das ist dieselbe Art Entscheidung wie die Freigabe oben und folgt derselben Regel: ein neuer
+// Empfänger wird nur wirksam, wenn er belegt ist (fail-closed, 503); das Ausschalten führt in die
+// sichere Richtung und wird protokolliert, ohne daran zu scheitern.
+const ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR = "REASONER_ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR";
+const ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR_MELDUNG =
+  "Die Wahl des Zweitmodells konnte nicht protokolliert werden und wurde deshalb NICHT gesetzt. " +
+  "Bitte später erneut versuchen.";
+const ZWEITMEINUNG_ZIEL = "reasoner.zweitmeinung";
+
+// Der Stand im Protokoll: das gewählte Modell oder „aus" — nie ein leerer Wert.
+function zweitmeinungsStand(wahl: string | null | undefined): string {
+  return typeof wahl === "string" ? wahl : "aus";
+}
+
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { reasoner, ask, externalKnowledge, ko, capture, ka4, audit } = deps;
+  const { reasoner, ask, externalKnowledge, ko, capture, ka4, audit, externalSearch } = deps;
+
+  // R-0088 (Bens Befund nacharbeit-6): die Quellenrecherche des geführten Interviews. Gibt die
+  // abgerufenen Quellen zurück oder — ehrlich — keine: außerhalb des Fragebaums, beim Foto-Interview,
+  // wenn die Recherche schon vorliegt, ohne Thema, bei vertraulichem Inhalt, wenn die Admin-Stufe
+  // keine externe Suche erlaubt, ohne eingerichtete Quellensuche oder wenn der Abruf scheitert.
+  //
+  // AUSGELÖST NUR AUF AUSDRÜCKLICHEN WUNSCH (`recherchieren: true`, Knopf „Zum Thema recherchieren"):
+  // die Standardstufe der externen Wissensabfrage heißt „Suche nur auf Klick" (SCRUM-414) — eine
+  // still bei jedem Turn ausgelöste Suche wäre genau das, was diese Stufe ausschließt.
+  const interviewQuellen = async (lage: {
+    gewuenscht: boolean;
+    baum: boolean;
+    bildbefund: string | undefined;
+    research: readonly unknown[];
+    confidential: boolean;
+    subject: string;
+    log: { warn: (obj: unknown, msg: string) => void };
+  }): Promise<ExternalResult[]> => {
+    if (
+      !lage.gewuenscht ||
+      !lage.baum ||
+      lage.bildbefund?.trim() ||
+      lage.research.length > 0 ||
+      !lage.subject ||
+      lage.confidential ||
+      !externalSearch
+    ) {
+      return [];
+    }
+    const stage = (await externalKnowledge.getStage()) ?? DEFAULT_EXTERNAL_KNOWLEDGE_STAGE;
+    if (!externalSearchAllowed(stage)) {
+      return [];
+    }
+    try {
+      return await externalSearch.search(lage.subject.slice(0, MAX_INTERVIEW_QUELLEN_ANFRAGE));
+    } catch (error) {
+      lage.log.warn({ err: error }, "interview: Quellenrecherche fehlgeschlagen");
+      return [];
+    }
+  };
 
   // Ein Load je Anker liefert die hebende Stufe und den echten Subjektbezug. Keine frei
   // gelieferte Kennung wird als gefundenes Subjekt ausgegeben. Ohne Klara-Bindung bleibt der
@@ -505,6 +575,12 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         task: "structure" | "ask" | "assist" | "interview" | "extract";
         text?: string;
         answers?: string[];
+        // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum und Lücken-Thema für 'interview'.
+        tree?: unknown;
+        topic?: unknown;
+        research?: unknown;
+        // R-0088: der ausdrückliche Wunsch nach Quellenrecherche zu diesem Turn.
+        recherchieren?: unknown;
         locale?: "de" | "en";
         // SCRUM-312: optionale Bearbeitungs-Anweisung für 'assist' (klarer/strukturieren/… oder frei).
         instruction?: string;
@@ -593,12 +669,20 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         const kiBeginn = kiEingang;
         try {
           ask.kiSperreVorFrage(kiBeginn);
+          // R-1175: dieselbe Grundlage wie `/api/ask` — nur, was DIESER Fragende sehen darf. Bis
+          // hierher lief dieser Weg ohne sie und sah damit fremde Spaces, die `/api/ask` verbirgt.
+          // R-0278 (Nacharbeit 3, ben): derselbe Prüfstand wie `/api/ask` — Ungeprüftes wird auch
+          // über diesen Task nie Antwortgrundlage („für alle Wege gleich").
+          const grundlage = sichtbarkeitsfilterFuer(user);
           const antwort = gebundenOhneFreigabe
-            ? await ask.ask(text ?? "", user.id, locale, {
-                validatedOnly: true,
-                retrievalOnly: true,
-              })
-            : await ask.ask(text ?? "", user.id, locale);
+            ? await ask.ask(
+                text ?? "",
+                user.id,
+                locale,
+                { validatedOnly: true, retrievalOnly: true },
+                grundlage,
+              )
+            : await ask.ask(text ?? "", user.id, locale, { validatedOnly: true }, grundlage);
           ask.kiSperreVorAuslieferung(kiBeginn);
           reply.code(200).send(antwort);
         } catch (fehler) {
@@ -657,16 +741,37 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // Foto-Interview" statt eines Fehlers. Gesäubert und gekappt wird autoritativ im Provider
         // (`normalizeInterviewImageContext`), egal, was der Client schickt.
         const imageContext = request.body.imageContext;
-        reply
-          .code(200)
-          .send(
-            await reasoner.interview(
-              request.body.answers ?? [],
-              locale,
-              confidential,
-              typeof imageContext === "string" ? imageContext : undefined,
-            ),
-          );
+        // AUFNAHME 20260922 · WISSEN-INTERVIEW: `tree` schaltet den Fragebaum mit Restlückenwert zu,
+        // `topic` das Lücken-Interview. Nur Typ-geprüfte Werte reisen weiter; das Thema begrenzt der
+        // Reasoner selbst (`normalizeInterviewTopic`).
+        const topic = typeof request.body.topic === "string" ? request.body.topic : undefined;
+        const answers = request.body.answers ?? [];
+        const research = Array.isArray(request.body.research) ? request.body.research : [];
+        const bildbefund = typeof imageContext === "string" ? imageContext : undefined;
+        // R-0088 (Bens Befund nacharbeit-6): die ECHTE Quellenrecherche zum Thema — über die
+        // vorhandene Quellensuche (`services/external-search`), unter denselben Bedingungen wie
+        // die Suche in der Oberfläche: Admin-Stufe `externalSearchAllowed`, und NIE für vertrauliche
+        // Inhalte (das Thema verließe sonst das Haus). Nur im Fragebaum, ohne Bildbefund und nur,
+        // solange der Client noch keine Recherche zurückreicht (einmal je Interview).
+        const sources = await interviewQuellen({
+          gewuenscht: request.body.recherchieren === true,
+          baum: request.body.tree === true || Boolean(topic?.trim()),
+          bildbefund,
+          research,
+          confidential,
+          subject: (topic ?? (typeof answers[0] === "string" ? answers[0] : "")).trim(),
+          log: request.log,
+        });
+        reply.code(200).send(
+          await reasoner.interview(answers, locale, confidential, bildbefund, {
+            tree: request.body.tree === true,
+            ...(topic ? { topic } : {}),
+            // R-0088: die Recherche eines früheren Turns — roh durchgereicht, geprüft und gekappt
+            // wird sie im Reasoner (`normalizeInterviewResearch`).
+            ...(research.length > 0 ? { research } : {}),
+            ...(sources.length > 0 ? { sources } : {}),
+          }),
+        );
         return;
       }
       if (task === "extract") {
@@ -876,12 +981,31 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // JOB 3549: WEGLASSEN LÄSST DIE FREIGABE UNVERÄNDERT (Vertrag §3) — die Bestands-Oberfläche
         // speichert nur `global`/`perTask` und darf eine erteilte Freigabe dabei nicht löschen.
         kiFreigabe?: { oeffentlicheKi?: boolean; vertraulicheInhalte?: boolean };
+        // R-0305/R-1099: das Modell der Zweitmeinung. Weglassen lässt es unverändert, `null` = aus.
+        zweitmeinung?: string | null;
       };
     }>("/api/reasoner/config", async (request, reply) => {
       const user = await guards.requirePermission("users.manage", request, reply);
       if (!user) {
         return;
       }
+      // R-0305/R-1099: ein unbekannter Wert ist ein Eingabefehler — abgewiesen, BEVOR irgendetwas
+      // protokolliert oder geschrieben wird.
+      const zweitEingabe = request.body.zweitmeinung;
+      if (
+        zweitEingabe !== undefined &&
+        zweitEingabe !== null &&
+        !(REASONER_ZWEITMEINUNG_WAHLEN as readonly unknown[]).includes(zweitEingabe)
+      ) {
+        const meldung = "Ungültige Wahl für die Zweitmeinung.";
+        reply.code(400).send({ error: "BAD_REQUEST", message: meldung });
+        return;
+      }
+      const zweitVorher = zweitmeinungsStand(reasoner.configStatus().taskConfig.zweitmeinung);
+      const zweitNachher =
+        zweitEingabe === undefined ? zweitVorher : zweitmeinungsStand(zweitEingabe);
+      // Ein NEUER Empfänger (aus → Modell oder Modell → anderes Modell) ist belegpflichtig.
+      const zweitNeu = zweitNachher !== "aus" && zweitNachher !== zweitVorher;
       // Der VORHER-Stand, gelesen bevor irgendetwas passiert — er ist die eine Hälfte des
       // Protokolleintrags und zugleich der Vergleichspunkt für „ist das eine Erweiterung?".
       const vorher = schalterstand(reasoner.configStatus().taskConfig.kiFreigabe);
@@ -920,6 +1044,45 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         }
       }
 
+      if (zweitNeu) {
+        let belegt = false;
+        if (audit) {
+          try {
+            await audit.record({
+              actor: user.id,
+              action: "reasoner.zweitmeinung",
+              target: ZWEITMEINUNG_ZIEL,
+              payload: { vorher: zweitVorher, nachher: zweitNachher },
+            });
+            belegt = true;
+          } catch (fehler) {
+            request.log.error(
+              { err: fehler instanceof Error ? fehler.name : "unknown" },
+              "reasoner.zweitmeinung konnte nicht protokolliert werden — Wahl abgelehnt",
+            );
+          }
+        }
+        if (!belegt) {
+          // Die schon belegte Freigabe-Erweiterung wird nun doch nicht wirksam — dieselbe
+          // Korrektur wie beim Schreibfehler unten, best-effort.
+          if (erweiterung) {
+            await audit
+              ?.record({
+                actor: user.id,
+                action: "reasoner.ki-freigabe-nicht-wirksam",
+                target: FREIGABE_ZIEL,
+                payload: { vorher, nachher },
+              })
+              .catch(() => undefined);
+          }
+          reply.code(503).send({
+            error: ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR,
+            message: ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR_MELDUNG,
+          });
+          return;
+        }
+      }
+
       try {
         // Laufzeit-Validierung übernimmt setTaskConfig (wirft bei ungültigen Werten).
         // SCRUM-525 P.5 (WP6): setTaskConfig persistiert jetzt → die Zuordnung überlebt Neustart/Deploy.
@@ -927,8 +1090,21 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           global: request.body.global ?? "auto",
           perTask: request.body.perTask ?? {},
           ...(request.body.kiFreigabe === undefined ? {} : { kiFreigabe: request.body.kiFreigabe }),
+          ...(zweitEingabe === undefined ? {} : { zweitmeinung: zweitEingabe }),
         } as Parameters<typeof reasoner.setTaskConfig>[0]);
       } catch (error) {
+        // R-0305/R-1099: der Beleg des neuen Empfängers steht schon in der Kette, die Wahl ist aber
+        // nicht wirksam geworden — ein zweiter Eintrag korrigiert, best-effort (sichere Richtung).
+        if (zweitNeu) {
+          await audit
+            ?.record({
+              actor: user.id,
+              action: "reasoner.zweitmeinung-nicht-wirksam",
+              target: ZWEITMEINUNG_ZIEL,
+              payload: { vorher: zweitVorher, nachher: zweitNachher },
+            })
+            .catch(() => undefined);
+        }
         // JOB 3549: der Beleg steht schon in der Kette, die Freigabe ist aber NICHT wirksam
         // geworden (ENV-Sperre, Persistenzfehler, ungültige Zuordnung). Das Audit ist append-only —
         // die Korrektur ist deshalb ein ZWEITER Eintrag, kein Zurücknehmen des ersten. Er ist
@@ -985,6 +1161,33 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             request.log.error(
               { err: fehler instanceof Error ? fehler.name : "unknown" },
               "reasoner.ki-freigabe (Rücknahme) konnte nicht protokolliert werden — sie gilt trotzdem",
+            );
+          });
+      }
+      // R-0305/R-1099: dieselben zwei Nachläufe für die Wahl der Zweitmeinung.
+      const zweitWirksam = zweitmeinungsStand(status.taskConfig.zweitmeinung);
+      if (zweitNeu && zweitWirksam !== zweitNachher) {
+        await audit
+          ?.record({
+            actor: user.id,
+            action: "reasoner.zweitmeinung-nicht-wirksam",
+            target: ZWEITMEINUNG_ZIEL,
+            payload: { vorher: zweitVorher, nachher: zweitNachher },
+          })
+          .catch(() => undefined);
+      } else if (!zweitNeu && zweitVorher !== zweitNachher) {
+        // Das Ausschalten gilt bereits — protokolliert, aber nie daran gescheitert.
+        await audit
+          ?.record({
+            actor: user.id,
+            action: "reasoner.zweitmeinung",
+            target: ZWEITMEINUNG_ZIEL,
+            payload: { vorher: zweitVorher, nachher: zweitNachher },
+          })
+          .catch((fehler: unknown) => {
+            request.log.error(
+              { err: fehler instanceof Error ? fehler.name : "unknown" },
+              "reasoner.zweitmeinung (Ausschalten) konnte nicht protokolliert werden — es gilt trotzdem",
             );
           });
       }

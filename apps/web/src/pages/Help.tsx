@@ -176,6 +176,19 @@ export function Help(): JSX.Element {
     treffer.flatMap((eintrag) => (eintrag.funktion === undefined ? [] : [eintrag.funktion])),
   );
   const suchAktiv = q.trim().length > 0;
+  // ================================================================================================
+  // AUFNAHME 20260922 · GESAMT-NAVIGATION · R-1023 (b) — ENTLASTUNG DER HILFE-SEITE.
+  // ================================================================================================
+  // Gemessen (`tests/gesamt-navigation/flaechenlast-chromium.test.ts`, Lauf nacharbeit-6, 1280 × 800):
+  // die Hilfe war mit 525 gleichzeitig sichtbaren Bedienelementen und Zustandsangaben die
+  // schwerste Fläche der App; der grösste Teil davon waren die Merkmalspillen („Suchbegriffe")
+  // unter jedem Kapitel. Sie stehen jetzt eingeklappt hinter EINEM Schalter
+  // (`hilfe-suchbegriffe-schalter`). Gelöscht wird nichts: aufgeklappt steht jede Pille wie
+  // vorher, und bei laufender Suche stehen sie von selbst offen — dann zeigen sie, WO die Suche
+  // traf (dieselbe Regel wie beim Artikel „Ausführlich erklärt"). Die Suche selbst liest die
+  // Merkmale aus den Daten (`filterHelpTopics`), nicht von der Seite.
+  const [suchbegriffeOffen, setSuchbegriffeOffen] = useState(false);
+  const suchbegriffeZeigen = suchAktiv || suchbegriffeOffen;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -399,6 +412,22 @@ export function Help(): JSX.Element {
           )}
         </Card>
       ) : null}
+      {visible.length > 0 && !suchAktiv ? (
+        <button
+          type="button"
+          data-testid="hilfe-suchbegriffe-schalter"
+          data-entlastung-schalter=""
+          aria-expanded={suchbegriffeOffen}
+          onClick={() => setSuchbegriffeOffen((offen) => !offen)}
+          className="mb-3 inline-flex items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+        >
+          {t(
+            suchbegriffeOffen
+              ? "navigation.suchbegriffeAusblenden"
+              : "navigation.suchbegriffeZeigen",
+          )}
+        </button>
+      ) : null}
       {visible.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {visible.map((topic) => {
@@ -477,7 +506,8 @@ export function Help(): JSX.Element {
                 {topic.uploadLimits ? (
                   <UploadLimitsHint className="mt-2 text-[11px] text-muted-2" />
                 ) : null}
-                {istIso ? (
+                {/* R-1023 (b): die Merkmalsleiste steht nur aufgeklappt oder bei laufender Suche. */}
+                {!suchbegriffeZeigen ? null : istIso ? (
                   // `2701` ist ein SUCHALIAS, keine Normbezeichnung. Bei den ISO-Kapiteln bekommt
                   // die Merkmalsleiste deshalb eine Überschrift, die genau das sagt.
                   <div className="mt-2.5" data-testid={`hilfe-suchbegriffe-${topic.id}`}>

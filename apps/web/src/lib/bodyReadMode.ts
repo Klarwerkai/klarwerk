@@ -6,9 +6,12 @@
 
 import { isEmptyHtml } from "./richText";
 
-// i18n-Keys für die Lese-Orientierung (Titel/Hinweis/Blöcke-Chip).
+// i18n-Keys für die Lese-Orientierung (Titel/Blöcke-Chip).
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand zusätzlich `BODY_READ_NOTE_KEY`, der Hinweis
+// unter dem Lese-Body der früheren Leseansicht `components/ko/KoRead.tsx`. Mit ihr (seit JOB 3063
+// ohne Produktaufrufer, mit R-1349 entfernt) hat er seinen einzigen Leser verloren und ist entfernt.
+// Titel und Blöcke-Chip liest die Vorschau des Studios (`components/KnowledgeInputStudio.tsx`).
 export const BODY_READ_TITLE_KEY = "ko.body.readTitle";
-export const BODY_READ_NOTE_KEY = "ko.body.readNote";
 export const BODY_READ_BLOCKS_KEY = "ko.body.readBlocksChip";
 
 // Statische, sichere Block-Klassen aus SCRUM-314/316 (Basis + vier Typen).

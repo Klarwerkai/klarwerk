@@ -57,6 +57,12 @@ const BODY_KEY_ABWEICHEND: Partial<Record<ReviewHelpId, string>> = {
   // Nacharbeit 15 (Ben): das Formular verlangt zusätzlich die Art der Arbeit; die berichtigte
   // Fassung steht in `texte/abschnittshilfe.ts` und gilt an der Fläche wie in Klara.
   conflictForm: "abschnittshilfe.conflictForm.body",
+  // R-1176 (gesamt-sprache-begriffe): Diese Texte zitierten den Knopf englisch klein geschrieben
+  // („report conflict“ statt „Report conflict“). Der Grundbestand steht unter Prüfsumme; die
+  // berichtigte Fassung liegt in `texte/knopfzitat.ts`, der deutsche Wortlaut ist zeichengleich.
+  reject: "knopfzitat.vhelp.reject",
+  assign: "knopfzitat.vhelp.assign",
+  contribution: "knopfzitat.vhelp.contribution",
 };
 
 // Wo die Handlung zu einem Thema heute lebt — für Klaras „Zum Bereich“ (`lib/klaraRegistry.ts`).
