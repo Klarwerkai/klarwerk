@@ -235,6 +235,7 @@ export function BibliothekListe({
   lage,
   ansicht = "liste",
   markierung = null,
+  antwort = null,
   loeschen = null,
 }: {
   q: string;
@@ -292,6 +293,9 @@ export function BibliothekListe({
   // Mehrfachauswahl. Beide optional: ohne sie zeichnet die Liste exakt wie bisher.
   ansicht?: BibAnsicht;
   markierung?: BibMarkierung | null;
+  // R-0429 Slice 2: der Antwortbereich „Von der KI verdichtet" (`BibliothekAntwort.tsx`). Er steht
+  // ÜBER den Treffern und getrennt von ihnen; der Aufrufer setzt ihn nur, solange gesucht wird.
+  antwort?: ReactNode;
   // R-0959: der Papierkorb je Treffer samt ruhiger Rückfrage. Ohne ihn zeichnet die Liste keinen.
   loeschen?: BibZeilenLoeschen | null;
 }): JSX.Element {
@@ -418,6 +422,8 @@ export function BibliothekListe({
           </div>
         </div>
       </div>
+
+      {antwort}
 
       {/* JOB 3063 R6: der Hinweis „Stand von <Zeit> · Auffrischung fehlgeschlagen" — die zweite
           Hälfte der Zusage aus REGELN §7 und Auftrag §9. Die Zeilen bleiben stehen (dafür sorgt
