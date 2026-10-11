@@ -29,8 +29,9 @@
 //
 // EINE EHRLICHE GRENZE, BENANNT: der Werksreset ist auf dieser Bühne nicht verfügbar (kein Journal,
 // `factoryResetUnavailable`). Damit Stufe 2 überhaupt erscheint, wird NUR die Antwort des Statusabrufs
-// `GET /api/admin/factory-reset` auf `{ available: true }` gestellt (`antworten.vorAuslieferung` der
-// Bühne). „Zurücksetzen & beenden" wird NICHT gedrückt — es wird nichts ausgeführt.
+// `GET /api/admin/factory-reset` auf `{ available: true, vorschau, sso }` mit festen Prüfwerten
+// gestellt (`antworten.vorAuslieferung` der Bühne; Vertrag `FirmenresetStatus`). „Ausführen" wird
+// NICHT gedrückt — es wird nichts ausgeführt.
 import { mkdirSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type H4Stand, ORIGIN, fn, h4Stand } from "../design/h4-harness";
@@ -199,16 +200,49 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
     const st = stand as H4Stand;
     const s = st.seite;
     // NUR der Statusabruf wird verstellt (s. Kopf) — sonst bliebe die Karte bei „nicht verfügbar".
+    // Ben, Nacharbeit 36: seit dem integrierten Firmenreset-Auftrag trägt die Antwort eine
+    // Folgenvorschau (`FirmenresetStatus` in api/types.ts: kennung, entfernt, erhalten; sso optional),
+    // auf die Stufe 1 zugreift. Die Zahlen sind feste Prüfwerte dieser Bühne, keine Messung; ein
+    // Passwortkonto (sso.erforderlich=false) bestätigt mit zwei Passwörtern. „Ausführen" wird nie
+    // gedrückt — gemessen wird nur die Rückfrage davor.
+    const vorbereitet = {
+      available: true,
+      vorschau: {
+        kennung: "b3-bildnachweis",
+        entfernt: {
+          wissensobjekte: 3,
+          offeneFragen: 1,
+          weitereEintraege: 2,
+          ablagen: ["uploads"],
+        },
+        erhalten: { benutzerkonten: 2, woerterbuch: 5, protokolleintraege: 7 },
+      },
+      sso: { erforderlich: false, eingerichtet: false, bestaetigt: 0 },
+    };
     st.antworten.vorAuslieferung = async (url, body) =>
-      url.pathname === "/api/admin/factory-reset" ? JSON.stringify({ available: true }) : body;
+      url.pathname === "/api/admin/factory-reset" ? JSON.stringify(vorbereitet) : body;
     try {
       await s.goto(`${ORIGIN}/admin?detail=werk`, { waitUntil: "load", timeout: 60_000 });
       const karte = '[data-testid="detail-werkseinstellungen"]';
-      await warte(`${karte} button`);
-      await s.click(`${karte} button:has-text("Auf Werkseinstellungen zurücksetzen")`);
-      await s.click(`${karte} input[type="password"]`);
+      await warte('[data-testid="firmenreset-start"]');
+      await s.click('[data-testid="firmenreset-start"]');
+      // Stufe 1: Vorschau, bewusstes Häkchen, zweimal das Passwort — jeweils über den Bedienweg.
+      await warte('[data-testid="firmenreset-vorschau"]');
+      await s.click('[data-testid="firmenreset-bestaetigt"]');
+      await s.click(`${karte} input[type="password"] >> nth=0`);
       await s.keyboard.type("geheim12345");
-      await s.click(`${karte} button:has-text("Weiter")`);
+      await s.click(`${karte} input[type="password"] >> nth=1`);
+      await s.keyboard.type("geheim12345");
+      const stufe1 = await s.evaluate<{ haken: boolean; felder: number; weiterFrei: boolean }>(
+        fn(`() => ({
+          haken: document.querySelector('[data-testid="firmenreset-bestaetigt"]').checked,
+          felder: [...document.querySelectorAll('[data-testid="detail-werkseinstellungen"] input[type="password"]')]
+            .filter((f) => f.value.length > 0).length,
+          weiterFrei: !document.querySelector('[data-testid="firmenreset-weiter"]').disabled,
+        })`),
+      );
+      expect(stufe1).toEqual({ haken: true, felder: 2, weiterFrei: true });
+      await s.click('[data-testid="firmenreset-weiter"]');
       await warte('[data-testid="adm-factory-rueckfrage"]');
       const f = await s.evaluate<{ flaeche: string; knopf: string; titel: string }>(
         fn(`() => {
