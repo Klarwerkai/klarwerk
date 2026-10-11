@@ -3592,6 +3592,15 @@ const en: typeof de = {
   "lib.liste.erfassen": "Capture",
   "lib.liste.offline": "Searching is not possible without a connection.",
   "lib.liste.offlineWeiter": "The search continues on its own as soon as the connection is back.",
+  // R-0429 Slice 2 — see the German entry.
+  "lib.antwort.titel": "Condensed by AI",
+  "lib.antwort.anfordern": "Answer from the sources",
+  "lib.antwort.laeuft": "The AI is reading the sources …",
+  "lib.antwort.ausblenden": "Hide",
+  "lib.antwort.einblenden": "Show",
+  "lib.antwort.quellen": "Sources",
+  "lib.antwort.quelleN": "Source {{n}}",
+  "lib.antwort.gefunden": "Found",
   // JOB 3335 · UX-21 — see the German entry.
   "lib.lesemodus.listeEinblenden": "Show result list",
   "lib.lesemodus.listeAusblenden": "Hide result list",
