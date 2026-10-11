@@ -894,10 +894,12 @@ const ALTBESTAND: readonly string[] = [
   "services/conflicts/src/duplicate-detect.ts::overlapCandidacy",
   "services/conflicts/src/duplicate-detect.ts::overlapScorePercent",
   "services/confluence/src/adapter.ts::adapterFromConfig",
-  "services/db-tx/src/bestandsreset-audit.ts::SQL_SCHEMA_BESTANDSRESET",
-  "services/db-tx/src/bestandsreset-audit.ts::bestandsresetBefund",
-  "services/db-tx/src/bestandsreset.ts::fuehreBestandsresetAus",
-  "services/db-tx/src/reset-lock.ts::SQL_SPERRE_WIRD_GEHALTEN",
+  // AUFNAHME 20260922 (gesamt-bestandsreset, Nacharbeit 2) · GESTRICHEN, WEIL BEHOBEN: der
+  // Bestandsreset aus JOB 596 stand hier mit vier Einträgen — gebaut, getestet, ohne Aufrufer.
+  // Seit Peters Entscheidung vom 11.10. ruft ihn der administrative Weg:
+  // `services/app/src/bestandsreset-dienst.ts` ruft `fuehreBestandsresetAus`, `bestandsresetBefund`
+  // und `SQL_SPERRE_WIRD_GEHALTEN`; die Laufakte heißt jetzt `BESTANDSRESET_SCHEMA` und steht in
+  // `services/app/src/db.ts` (`schemas`). Genau dafür ist dieses Register da: es soll schrumpfen.
   "services/db-tx/src/write-fence.ts::PgWriteFence",
   "services/db-tx/src/write-fence.ts::fenceKey",
   // JOB 3024 · GESTRICHEN, WEIL BEHOBEN: `displayStatus` stand hier seit dem 27.08.2026 — die
@@ -1615,13 +1617,29 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
     ).toBe(true);
 
     // NEGATIV: eine blosse NENNUNG ist kein Aufruf.
-    // `fuehreBestandsresetAus` steht in `build-app.ts:684` in einem KOMMENTAR und in
-    // `db-tx/index.ts:26` als Barrel-Re-Export — beides darf nicht zaehlen.
+    //
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): Bis hierher stand an dieser Stelle
+    // `fuehreBestandsresetAus` — Kommentar in `build-app.ts` und Barrel-Re-Export in
+    // `db-tx/index.ts`. Seit dem administrativen Aufruf hat er einen ECHTEN Aufrufer (unten,
+    // POSITIV über den Barrel). Die Probe nimmt deshalb einen Export derselben Lage:
+    // `wissensnetzLuecken` steht in `services/app/src/routes/ko-routes.ts` nur in einem KOMMENTAR
+    // und in `services/wissensnetz/index.ts` als Barrel-Re-Export; gerufen wird er nur in seiner
+    // eigenen Datei (`luecken-einstieg.ts`). Beides darf nicht als fremder Aufrufer zaehlen.
     expect(
-      fremdGenutzt(benannt("services/db-tx/src/bestandsreset.ts", "fuehreBestandsresetAus")),
+      fremdGenutzt(benannt("services/wissensnetz/src/luecken-einstieg.ts", "wissensnetzLuecken")),
       "Kommentar und Barrel-Re-Export duerfen NICHT als Aufrufer zaehlen",
     ).toBe(false);
-    expect(finde("fuehreBestandsresetAus").datei).toBe("services/db-tx/src/bestandsreset.ts");
+    // Und ein bekannter Altfall ohne Aufrufer steht wirklich in der Fundliste — an dieser Stelle
+    // stand bis zur Nacharbeit 2 `fuehreBestandsresetAus`; `PgWriteFence` ist derselbe Fall
+    // (`ALTBESTAND`, gebaut und ohne Aufrufer).
+    expect(finde("PgWriteFence").datei).toBe("services/db-tx/src/write-fence.ts");
+
+    // POSITIV: ein Aufruf, dessen Import über den BARREL läuft, zählt — der Sammler löst ihn bis
+    // zur definierenden Datei auf. `bestandsreset-dienst.ts` importiert aus `../../db-tx`.
+    expect(
+      fremdGenutzt(benannt("services/db-tx/src/bestandsreset.ts", "fuehreBestandsresetAus")),
+      "`fuehreBestandsresetAus` wird in bestandsreset-dienst.ts gerufen — der Sammler muss das sehen",
+    ).toBe(true);
   });
 
   it("A3 · KEINE LEICHEN: jeder Registereintrag trifft heute noch zu", () => {

@@ -1,9 +1,12 @@
+import { randomUUID } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyPluginAsync } from "fastify";
 import type { AuditService } from "../../../audit";
+import { BestandsresetGesperrtError } from "../../../db-tx";
+import { type BestandsresetDienst, pruefeFreigabe } from "../bestandsreset-dienst";
 import { type ExampleLoadServices, examplePackage, loadExamplePackage } from "../example-packages";
 // JOB 3277: der paketbezogene Weg (wählen · laden · zurücksetzen · entfernen) — additiv neben
 // WP-B6, siehe Kopf von example-packages/demo-pakete.ts.
@@ -192,7 +195,8 @@ async function befundFuer(ort: string, datei: string): Promise<SicherungsEintrag
 export function adminRoutes(
   // WP-B6: die Beispielpaket-Route braucht zusätzlich das (optionale) Audit — build-app reicht die
   // vollen AppServices, die das strukturell erfüllen; direkte Test-Aufrufer bleiben kompatibel.
-  services: DemoSeedServices & { audit?: AuditService },
+  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): `bestandsreset` setzt nur `buildPgServices`.
+  services: DemoSeedServices & { audit?: AuditService; bestandsreset?: BestandsresetDienst },
   guards: Guards,
   factoryReset: FactoryReset = factoryResetUnavailable,
 ): FastifyPluginAsync {
@@ -482,6 +486,113 @@ export function adminRoutes(
       // den Prozess beenden. Der Reset läuft bewusst NACH dem Flush der Antwort.
       reply.code(200).send({ ok: true });
       void factoryReset.run();
+    });
+
+    // ==========================================================================================
+    // AUFNAHME 20260922 · GESAMT-BESTANDSRESET — DER ADMINISTRATIVE AUFRUF (Nacharbeit 2).
+    // ==========================================================================================
+    //
+    // Peters Entscheidung vom 11.10.: Konten und Firmenwörterbuch bleiben; Folgenvorschau,
+    // zweimalige Passworteingabe und ein Häkchen. Anders als der Werksreset darüber löscht dieser
+    // Weg NUR den Wissensbestand samt Papierkorb, läuft im Server-/Postgres-Betrieb und beendet
+    // nichts. Ohne Datenbank (Speicher, Desktop-Journal) gibt es ihn nicht: `verfuegbar: false`
+    // bzw. 409 — ein Reset, der nur den Speicher leerte, wäre beim nächsten Neustart wieder da.
+    //
+    // GET liefert die Folgenvorschau samt ihrer Kennung und den Befund des letzten Laufs.
+    app.get("/api/admin/bestandsreset", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      const dienst = services.bestandsreset;
+      if (!dienst) {
+        reply.code(200).send({ verfuegbar: false });
+        return;
+      }
+      reply.code(200).send({ verfuegbar: true, ...(await dienst.stand()) });
+    });
+
+    // POST führt aus — erst, wenn alle drei Bestätigungen tragen und die Vorschau noch stimmt.
+    // Reihenfolge: Tor → Verfügbarkeit → Form (Häkchen, Vorschaukennung, zweimal dasselbe
+    // Passwort) → Passwort gegen das Konto → Vorschau gegen den Bestand JETZT → Reset.
+    app.post("/api/admin/bestandsreset", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      const dienst = services.bestandsreset;
+      if (!dienst) {
+        reply.code(409).send({
+          error: "BESTANDSRESET_NICHT_VERFUEGBAR",
+          message:
+            "Der Bestandsreset ist nur im Serverbetrieb mit Datenbank verfügbar. Es wurde nichts gelöscht.",
+        });
+        return;
+      }
+      const freigabe = pruefeFreigabe(request.body);
+      if (!freigabe.ok) {
+        reply.code(400).send({ error: freigabe.fehler, message: freigabe.meldung });
+        return;
+      }
+      // Wie beim Werksreset (SCRUM-450): ein offener Admin-Tab allein genügt nicht. Ein Konto ohne
+      // eigenes Passwort (nur SSO) besteht diese Prüfung nicht — `verifyUserPassword` ist dort false.
+      if (!(await services.auth.verifyUserPassword(user.id, freigabe.passwort))) {
+        reply.code(401).send({
+          error: "INVALID_PASSWORD",
+          message: "Falsches Passwort. Der Bestandsreset wurde nicht ausgeführt.",
+        });
+        return;
+      }
+      const jetzt = await dienst.stand();
+      if (jetzt.vorschau.kennung !== freigabe.vorschauKennung) {
+        reply.code(409).send({
+          error: "VORSCHAU_VERALTET",
+          message:
+            "Der Bestand hat sich seit der Vorschau verändert. Prüfe die neue Vorschau und bestätige erneut.",
+          vorschau: jetzt.vorschau,
+        });
+        return;
+      }
+      const laufId = `bestandsreset-${new Date().toISOString()}-${randomUUID()}`;
+      const protokolliere = async (
+        action: string,
+        payload: Record<string, unknown>,
+      ): Promise<boolean> => {
+        if (!services.audit) {
+          return false;
+        }
+        try {
+          await services.audit.record({ actor: user.id, action, target: laufId, payload });
+          return true;
+        } catch (fehler) {
+          request.log.error({ err: fehler, laufId }, "Bestandsreset: Auditeintrag fehlgeschlagen");
+          return false;
+        }
+      };
+      try {
+        const befund = await dienst.ausfuehren(laufId);
+        const protokolliert = await protokolliere("bestandsreset.ausgefuehrt", {
+          zustand: befund.zustand,
+          geloescht: jetzt.vorschau.geloescht,
+          erhalten: jetzt.vorschau.erhalten,
+        });
+        reply.code(200).send({ ok: true, laufId, befund, protokolliert });
+      } catch (fehler) {
+        if (fehler instanceof BestandsresetGesperrtError) {
+          reply.code(409).send({ error: fehler.code, message: fehler.message });
+          return;
+        }
+        request.log.error({ err: fehler, laufId }, "Bestandsreset fehlgeschlagen");
+        await protokolliere("bestandsreset.fehlgeschlagen", {});
+        const nachher = await dienst.stand().catch(() => undefined);
+        reply.code(500).send({
+          error: "BESTANDSRESET_FEHLGESCHLAGEN",
+          message:
+            "Der Bestandsreset ist fehlgeschlagen. Der Befund des Laufs sagt, ob der Bestand noch steht.",
+          laufId,
+          befund: nachher?.letzterLauf ?? null,
+        });
+      }
     });
 
     // ==========================================================================================

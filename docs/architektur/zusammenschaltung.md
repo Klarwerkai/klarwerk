@@ -137,12 +137,15 @@ im Postgres-Betrieb schon.
 | `brandingSettings` | Speicherablage | `PgBrandingSettingsRepo` |
 | `confluenceImportSchalter` | `InMemoryConfluenceImportSchalterRepo` (Betreiberschalter des Confluence-Imports) | `PgConfluenceImportSchalterRepo` |
 | `bearbeitungen` | Speicherfassung mit Prozessuhr | `PgBearbeitungsRepo` |
+| `bestandsreset` | keiner — ohne Datenbank gibt es den Bestandsreset absichtlich nicht (Route: „nicht verfügbar") | `pgBestandsresetDienst(rohPool)` (Folgenvorschau + `fuehreBestandsresetAus`) |
 
 ## 5 Gemeinsame Klammern
 
 1. **Ein Pool für alles (Postgres).** `buildPgServices` umhüllt den rohen Pool EINMAL mit
    `gatedPool` (Resetsperre) und gibt jeder Ablage dieselbe Hülle. Den rohen Pool nehmen nur die
    Migration beim Start und der Bestandsreset — beide im Kommentar über `buildPgServices` benannt.
+   Den Bestandsreset ruft seit der Aufnahme gesamt-bestandsreset (Nacharbeit 2) der administrative
+   Weg `GET|POST /api/admin/bestandsreset` über `pgBestandsresetDienst(rohPool)`.
 2. **Eine Transaktion über Module (Postgres).** `withTx` geht an `KoService` und `AskService`:
    Bestandsänderung und Protokolleintrag (beim „Danke" auch der Vertrauenszähler) werden zusammen
    festgeschrieben oder zusammen zurückgerollt. Das Aufräumen der Konflikt- und

@@ -227,6 +227,10 @@ describe("E1 — Erfolg: vom Aufruf bis zum belastbaren OK", () => {
     expect(BESTANDSRESET_LOESCHGRAPH).not.toContain("password_resets");
     // Die Zählerzeile wird erhöht, nicht gelöscht — ohne sie schlüge jedes spätere Schreiben fehl.
     expect(BESTANDSRESET_LOESCHGRAPH).not.toContain("ko_schreibstand");
+    // Nacharbeit 2: die Steuerzeile der Suche bleibt — ohne sie träfe kein Zustandswechsel mehr.
+    expect(BESTANDSRESET_LOESCHGRAPH).not.toContain("ko_projection_control");
+    // Peters Entscheidung vom 11.10.: das Firmenwörterbuch bleibt.
+    expect(BESTANDSRESET_LOESCHGRAPH).not.toContain("begriffe_fassungen");
     // Die Fremdschlüssel: das Kind vor dem Elternteil.
     const vor = (kind: string, eltern: string) =>
       expect(BESTANDSRESET_LOESCHGRAPH.indexOf(kind)).toBeLessThan(

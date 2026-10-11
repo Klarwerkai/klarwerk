@@ -519,6 +519,19 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
       "Der Werksreset. Er löscht die gesamte Instanz — an einer Bühne, die vier angemeldete Prüfkonten trägt, wäre jede folgende Zeile danach bedeutungslos.",
   },
   {
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2). Dieselbe Lage wie der Werksreset darüber, aus
+    // zwei Gründen: die Bühne läuft im Speicher, wo es diesen Weg absichtlich nicht gibt (409) —
+    // ein Gelingen ist hier also gar nicht herstellbar —, und gelänge er, löschte er den Bestand,
+    // gegen den die Lesezeilen messen. Tor und Gelingen sind gegen echtes Postgres gemessen:
+    // `tests/db-tx/bestandsreset-e9-pg.integration.test.ts` (P4) und
+    // `services/app/src/routes/admin-bestandsreset.test.ts` (Rollen).
+    methode: "POST",
+    pfad: "/api/admin/bestandsreset",
+    art: "zurueckgestellt",
+    grund:
+      "Der Bestandsreset. Auf der Speicherbühne gibt es ihn absichtlich nicht (409), und gelänge er, löschte er den Bestand, gegen den die übrigen Zeilen messen.",
+  },
+  {
     methode: "POST",
     pfad: "/api/admin/lesevarianten/laden",
     art: "zurueckgestellt",
@@ -656,6 +669,16 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/admin/factory-reset",
     belegstelle: "services/app/src/routes/admin-routes.ts:280",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Folgenvorschau. Eine reine Lesetür; auf der
+    // Speicherbühne antwortet der Admin 200 `{ verfuegbar: false }` — gemessen wird die TÜR.
+    gruppe: "adminRoutes",
+    methode: "GET",
+    pfad: "/api/admin/bestandsreset",
+    belegstelle: "services/app/src/routes/admin-routes.ts:502",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },

@@ -88,8 +88,8 @@ export class BestandsresetGesperrtError extends Error {
 // die es nicht mehr gibt — genau der Schutt, den E9 wegräumen soll. Mit ihnen gibt es zwei weitere
 // Ordnungszwänge (`kenntnisnahme_empfaenger → kenntnisnahme_anforderungen`; die Gesamtanweisung
 // kaskadiert ohnehin). BEWUSST NICHT in der Liste: `ko_schreibstand` (Ein-Zeilen-Zähler, s. unten)
-// und `begriffe_fassungen` (Firmenwörterbuch: ob es Bestand oder Einstellung ist, entscheidet der
-// Owner — OV-2 —, nicht dieser Vorgabewert).
+// und `begriffe_fassungen` — das Firmenwörterbuch bleibt, so entschieden von Peter am 11.10.
+// (Fachhilfe, Frage 59: „Konten und Firmenwörterbuch standardmäßig erhalten").
 export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   // Die Ordnungszwänge: das Kind vor dem Elternteil.
   "import_run_item_refs",
@@ -107,7 +107,12 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   // Projektionen und Ableitungen vor ihren Quellen — nicht erzwungen, aber die ehrliche Reihenfolge.
   "ko_search_projections",
   "ko_metadata_projections",
-  "ko_projection_control",
+  // `ko_projection_control` steht hier BEWUSST NICHT mehr (Nacharbeit 2). Sie ist keine Ableitung,
+  // sondern die EINE Steuerzeile der Suche (`key='singleton'`): Zustand, aktive Generation,
+  // Integritätsmarker. Jeder spätere Zustandswechsel ist ein `UPDATE … WHERE key=…` — ohne die
+  // Zeile träfe er nichts, und die Suche bliebe bis zu einem Neustart samt neuer Freigabe
+  // abgeschaltet. Sie bleibt stehen wie die Einstellungen; Projektionen und Wissensobjekte gehen
+  // in derselben Transaktion, ihr Gleichstand (beide leer) bleibt damit erhalten.
   "ko_overlaps",
   "ko_evidence",
   "ko_versions",

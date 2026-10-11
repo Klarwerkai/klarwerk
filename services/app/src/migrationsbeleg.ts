@@ -259,6 +259,11 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // und zwei `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, keine Extension; der
   // einzige Fremdschlüssel zeigt auf den eigenen Kopf. Ein zweiter Lauf ist folgenlos.
   { stufe: "KENNTNISNAHME_SCHEMA", risiko: "ADDITIV" },
+  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Laufakte des Bestandsresets. ADDITIV,
+  // nachgezählt: ein einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
+  // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos. Die Löschungen des Resets
+  // stehen NICHT in dieser Stufe, sondern im aufrufbaren Vorgang (`db-tx/src/bestandsreset.ts`).
+  { stufe: "BESTANDSRESET_SCHEMA", risiko: "ADDITIV" },
   // R-0162 (Confluence-Gesamtimport): die Tabelle der Quellabgleichsergebnisse je Importlauf.
   // ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
   // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.

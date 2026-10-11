@@ -422,6 +422,15 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Admin.",
   },
+  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Folgenvorschau. Sie gibt ZAHLEN heraus
+  // (Zeilen je Tabelle, Wissensobjekte, Papierkorb, Konten, Begriffe), eine Kennung und den Befund
+  // des letzten Laufs — keinen Inhalt eines Wissensobjekts. Das Urteil ist trotzdem das stärkere
+  // `KURATORENTOR`, weil die Route `users.manage` fordert und der Sammler das nachmisst.
+  "GET /api/admin/bestandsreset": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Admin; Zählungen des Bestands, kein KO-Inhalt.",
+  },
   // JOB 4025 (KUNDENBETRIEB-BACKUP): die Sicherungsauskunft. Sie gibt Dateinamen, Zeitstempel,
   // Größen und Prüfsummen aus dem Sicherungsverzeichnis heraus — KEINEN Inhalt eines
   // Wissensobjekts: der Dump wird nie geöffnet, nur `readdir` und `stat` laufen darüber
@@ -743,6 +752,8 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/admin/demo-packages/:id/reset": "users.manage.",
     "DELETE /api/admin/demo-packages/:id": "users.manage.",
     "POST /api/admin/factory-reset": "users.manage.",
+    // Aufnahme gesamt-bestandsreset: Antwort trägt Laufkennung und Befund, keinen KO-Inhalt.
+    "POST /api/admin/bestandsreset": "users.manage.",
     "POST /api/admin/import/confluence": "users.manage.",
     "POST /api/admin/import/confluence/explore": "users.manage.",
     "POST /api/admin/import/confluence/select": "users.manage.",

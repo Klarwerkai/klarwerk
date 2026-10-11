@@ -225,6 +225,7 @@ import {
   InMemoryBearbeitungsRepo,
   PgBearbeitungsRepo,
 } from "./bearbeitungshinweis";
+import { type BestandsresetDienst, pgBestandsresetDienst } from "./bestandsreset-dienst";
 // JOB 3510/3578: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — im Postgres-Betrieb haltbar
 // (`PgBrandingSettingsRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import {
@@ -467,6 +468,13 @@ export interface AppServices {
   kenntnisnahmen: KenntnisnahmeRepo;
   /** Die Uhr des Kenntnisnahmedienstes (Millisekunden) — in Tests stellbar für Frist und Erinnerung. */
   kenntnisnahmeUhr: () => number;
+  /**
+   * Aufnahme gesamt-bestandsreset (Nacharbeit 2): der administrative Bestandsreset (Folgenvorschau
+   * und Ausführung über `fuehreBestandsresetAus`). NUR im Postgres-Betrieb gesetzt. Ohne Datenbank
+   * fehlt er absichtlich: ein Reset, der nur den Speicher leerte, wäre im Desktop-Journal beim
+   * nächsten Neustart wieder da — die Route sagt dann ehrlich „nicht verfügbar".
+   */
+  bestandsreset?: BestandsresetDienst;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -938,6 +946,9 @@ export function assembleServices(
     kenntnisnahmen?: KenntnisnahmeRepo;
     // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
     kenntnisnahmeUhr?: () => number;
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): gesetzt nur von `buildPgServices` (roher Pool).
+    // Eine Speicherfassung gibt es bewusst nicht — s. `bestandsreset` in `AppServices`.
+    bestandsreset?: BestandsresetDienst;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -1248,6 +1259,8 @@ export function assembleServices(
       opts.kenntnisnahmen ??
       new InMemoryKenntnisnahmeRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     kenntnisnahmeUhr: opts.kenntnisnahmeUhr ?? Date.now,
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): nur mit Datenbank — ohne Injektion fehlt er.
+    ...(opts.bestandsreset ? { bestandsreset: opts.bestandsreset } : {}),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -1678,6 +1691,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       bearbeitungen: new PgBearbeitungsRepo(pool),
       // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
       kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
+      // Aufnahme gesamt-bestandsreset (Nacharbeit 2): der administrative Aufruf des Resets. Er
+      // bekommt den ROHEN Pool — die zweite benannte Ausnahme aus dem Kopf dieser Funktion.
+      bestandsreset: pgBestandsresetDienst(rohPool),
     },
   );
 }

@@ -764,6 +764,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit lesen + ausführen, beides nur Nutzerverwaltung.
   "GET /api/admin/factory-reset": { protection: "users.manage" },
   "POST /api/admin/factory-reset": { protection: "users.manage" },
+  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): Folgenvorschau lesen + Bestandsreset ausführen.
+  // Dieselbe Schranke wie der Werksreset; die Ausführung verlangt zusätzlich zweimal das Passwort,
+  // das Häkchen und die unveränderte Vorschaukennung (`admin-routes.ts`).
+  "GET /api/admin/bestandsreset": { protection: "users.manage" },
+  "POST /api/admin/bestandsreset": { protection: "users.manage" },
   // JOB 4025 (KUNDENBETRIEB-BACKUP): die LESENDE Sicherungsauskunft. Dieselbe Schranke wie jeder
   // andere Weg in `admin-routes.ts`, und das ist hier keine Formsache: die Antwort nennt den
   // ABSOLUTEN Pfad des Sicherungsverzeichnisses, die Namen der Dumps samt Zeitstempel und ihre

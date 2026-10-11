@@ -2919,6 +2919,56 @@ export type SicherungenAuskunft =
   | { zustand: "unlesbar"; verzeichnis: string; gelesenUtc: string; grund: string };
 
 // ==================================================================================================
+// AUFNAHME 20260922 · GESAMT-BESTANDSRESET — der Drahtvertrag des administrativen Aufrufs.
+// ==================================================================================================
+//
+// Gegenstück: `services/app/src/bestandsreset-dienst.ts` (Vorschau, Befund) und
+// `services/app/src/routes/admin-routes.ts` (`GET|POST /api/admin/bestandsreset`).
+
+export type BestandsresetZustand =
+  | "RUNNING"
+  | "OK"
+  | "ROLLED_BACK"
+  | "ROLLED_BACK_BY_CRASH"
+  | "COMMITTED_AUDIT_MISSING"
+  | "INCONSISTENT";
+
+export interface BestandsresetBefund {
+  zustand: BestandsresetZustand;
+  /** Steht der Bestand noch auf seinem Stand vor dem Reset? `undefined` = nicht aussagbar. */
+  bestandIstP0?: boolean;
+  erfolgMeldbar: boolean;
+  begruendung: string;
+}
+
+export interface BestandsresetVorschau {
+  geloescht: { tabelle: string; zeilen: number }[];
+  wissensobjekte: number;
+  papierkorb: number;
+  erhalten: { konten: number; begriffe: number };
+  /** Muss beim Ausführen unverändert zurückgegeben werden — sonst läuft nichts. */
+  kennung: string;
+}
+
+export type BestandsresetAuskunft =
+  | { verfuegbar: false }
+  | { verfuegbar: true; vorschau: BestandsresetVorschau; letzterLauf: BestandsresetBefund | null };
+
+export interface BestandsresetAuftrag {
+  passwort: string;
+  passwortWiederholung: string;
+  folgenBestaetigt: boolean;
+  vorschauKennung: string;
+}
+
+export interface BestandsresetErgebnis {
+  ok: true;
+  laufId: string;
+  befund: BestandsresetBefund;
+  protokolliert: boolean;
+}
+
+// ==================================================================================================
 // JOB 4154 · WIKI-GESAMTANWEISUNG — DER DRAHTVERTRAG DER ANWEISUNG.
 // ==================================================================================================
 //

@@ -14,18 +14,25 @@
 //   P3  Hält jemand die exklusive Sperre, beginnt ein zweiter Reset nicht — gegen echte
 //       Advisory-Sperren, nicht gegen ein Doppel (die in `bestandsreset.test.ts` offen benannte
 //       Hypothese).
+//   P4  (Nacharbeit 2, Peters Entscheidung vom 11.10.) Der ADMINISTRATIVE WEG, vollständig über die
+//       App der Postgres-Komposition (`buildApp(buildPgServices(pool))`): Folgenvorschau mit
+//       Zahlen und Kennung; jede fehlende Bestätigung (Häkchen, zweite Passworteingabe, richtiges
+//       Passwort, aktuelle Vorschau) lässt den Bestand stehen; erst mit allen dreien läuft der
+//       Reset, löscht Wissen und Papierkorb, lässt Konto, Anmeldung und Firmenwörterbuch stehen
+//       und schreibt einen Auditeintrag.
 //
-// GRENZE: `SQL_SCHEMA_BESTANDSRESET` steht nicht in `migrate()` (der Aufrufer-Wächter führt den
-// Reset bewusst ohne Produktaufrufer). Dieser Test legt die Lauftabelle deshalb selbst an.
+// Die Laufakte (`bestandsreset_laeufe`) legt seit Nacharbeit 2 `migrate()` selbst an
+// (`BESTANDSRESET_SCHEMA` in `services/app/src/db.ts`); bis dahin musste dieser Test sie von Hand
+// anlegen. P1 misst das mit.
 import type { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { PgKenntnisnahmeRepo } from "../../services/app/src/kenntnisnahme";
 import {
   BESTANDSRESET_LOESCHGRAPH,
   BestandsresetGesperrtError,
-  SQL_SCHEMA_BESTANDSRESET,
   SQL_SPERRE_EXKLUSIV,
   fuehreBestandsresetAus,
 } from "../../services/db-tx";
@@ -43,9 +50,8 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
     pool = createPool(
       `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`,
     );
-    pool.options.max = 4;
+    pool.options.max = 8;
     await migrate(pool);
-    await pool.query(SQL_SCHEMA_BESTANDSRESET);
   });
 
   afterAll(async () => {
@@ -100,9 +106,9 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
     );
   });
 
-  it("P1 · jede Tabelle des Standard-Löschgraphen legt die produktive Migration an", async () => {
+  it("P1 · jede Tabelle des Standard-Löschgraphen UND die Laufakte legt die produktive Migration an", async () => {
     const fehlend: string[] = [];
-    for (const tabelle of BESTANDSRESET_LOESCHGRAPH) {
+    for (const tabelle of [...BESTANDSRESET_LOESCHGRAPH, "bestandsreset_laeufe"]) {
       const res = await pool.query("SELECT to_regclass($1) AS r", [tabelle]);
       if (res.rows[0].r === null) {
         fehlend.push(tabelle);
@@ -132,6 +138,8 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
     ]);
     expect(await anzahl("sessions")).toBe(1);
     expect(await schreibstand()).toBeGreaterThan(standVorher);
+    // Nacharbeit 2: die Steuerzeile der Suche bleibt stehen — ohne sie träfe kein Zustandswechsel.
+    expect(await anzahl("ko_projection_control")).toBe(1);
     const lauf = await pool.query(
       "SELECT status, payload_committed_at FROM bestandsreset_laeufe WHERE id = 'lauf-e9'",
     );
@@ -160,5 +168,136 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
       "SELECT status, payload_committed_at FROM bestandsreset_laeufe WHERE id = 'lauf-zweiter'",
     );
     expect(lauf.rows[0]).toEqual({ status: "ROLLED_BACK", payload_committed_at: null });
+  });
+
+  it("P4 · der administrative Weg: Vorschau, zweimal Passwort, Häkchen — sonst bleibt alles stehen", async () => {
+    // Eine leere Kontenablage, damit das erste Konto Admin wird (FR-AUTH-01) — wie im echten Erststart.
+    await pool.query("TRUNCATE users, sessions, kos, begriffe_fassungen");
+    const app = buildApp(buildPgServices(pool));
+    const PASSWORT = "Bestand-zurueck-2026!";
+    const reg = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "admin@example.invalid", password: PASSWORT },
+    });
+    expect(reg.statusCode).toBe(201);
+    expect(reg.json().role).toBe("admin");
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@example.invalid", password: PASSWORT },
+    });
+    expect(login.statusCode).toBe(200);
+    const headers = { authorization: `Bearer ${login.json().token}` };
+
+    const legeKoAn = async (titel: string): Promise<string> => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/kos",
+        headers,
+        payload: {
+          confidentiality: "intern",
+          title: titel,
+          statement: `${titel} — Entwicklungsschutt.`,
+          type: "best_practice",
+          category: "Anlage 1",
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      return res.json().id as string;
+    };
+    await legeKoAn("Testtitel lebend");
+    const getrasht = await legeKoAn("Testtitel Papierkorb");
+    const trash = await app.inject({ method: "DELETE", url: `/api/kos/${getrasht}`, headers });
+    expect(trash.statusCode).toBeLessThan(300);
+    // Das Firmenwörterbuch bleibt (Peters Entscheidung). Eine Fassung, roh gesetzt — gemessen wird
+    // hier nicht der Wörterbuchweg, sondern dass der Reset ihn nicht anfasst.
+    await pool.query(
+      `INSERT INTO begriffe_fassungen(begriff_id, version, data, geaendert_von, geaendert_am)
+       VALUES ('begriff-1', 1, '{"begriff":"Ventil"}'::jsonb, 'admin', now())`,
+    );
+
+    // --- Die Folgenvorschau ---------------------------------------------------------------------
+    const vorschau = await app.inject({ method: "GET", url: "/api/admin/bestandsreset", headers });
+    expect(vorschau.statusCode).toBe(200);
+    const stand = vorschau.json();
+    expect(stand.verfuegbar).toBe(true);
+    expect(stand.vorschau).toMatchObject({
+      wissensobjekte: 2,
+      papierkorb: 1,
+      erhalten: { konten: 1, begriffe: 1 },
+    });
+    expect(stand.vorschau.kennung).toMatch(/^[0-9a-f]{64}$/);
+    const kennung = stand.vorschau.kennung as string;
+
+    const versuch = (payload: Record<string, unknown>) =>
+      app.inject({ method: "POST", url: "/api/admin/bestandsreset", headers, payload });
+    const voll = {
+      passwort: PASSWORT,
+      passwortWiederholung: PASSWORT,
+      folgenBestaetigt: true,
+      vorschauKennung: kennung,
+    };
+
+    // --- Jede fehlende Bestätigung lässt den Bestand stehen -------------------------------------
+    const abgewiesen: [Record<string, unknown>, number, string][] = [
+      [{ ...voll, folgenBestaetigt: false }, 400, "BESTAETIGUNG_FEHLT"],
+      [{ ...voll, vorschauKennung: undefined }, 400, "VORSCHAU_FEHLT"],
+      [{ ...voll, passwortWiederholung: "" }, 400, "PASSWORT_FEHLT"],
+      [{ ...voll, passwortWiederholung: `${PASSWORT}x` }, 400, "PASSWORT_UNGLEICH"],
+      [
+        { ...voll, passwort: "falsch-falsch", passwortWiederholung: "falsch-falsch" },
+        401,
+        "INVALID_PASSWORD",
+      ],
+    ];
+    for (const [payload, status, code] of abgewiesen) {
+      const res = await versuch(payload);
+      expect(res.statusCode, code).toBe(status);
+      expect(res.json().error).toBe(code);
+      expect(await anzahl("kos"), `${code}: der Bestand muss stehen`).toBe(2);
+    }
+
+    // Die Vorschau ist verbindlich: ändert sich der Bestand danach, läuft nichts.
+    await legeKoAn("Nach der Vorschau angelegt");
+    const veraltet = await versuch(voll);
+    expect(veraltet.statusCode).toBe(409);
+    expect(veraltet.json().error).toBe("VORSCHAU_VERALTET");
+    expect(veraltet.json().vorschau.wissensobjekte).toBe(3);
+    expect(await anzahl("kos")).toBe(3);
+
+    // --- Mit allen drei Bestätigungen und der aktuellen Vorschau läuft der Reset -----------------
+    const neu = await app.inject({ method: "GET", url: "/api/admin/bestandsreset", headers });
+    const ok = await versuch({ ...voll, vorschauKennung: neu.json().vorschau.kennung });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({
+      ok: true,
+      befund: { zustand: "OK", erfolgMeldbar: true },
+      protokolliert: true,
+    });
+
+    expect(await anzahl("kos")).toBe(0);
+    expect(await anzahl("users")).toBe(1);
+    expect(await anzahl("begriffe_fassungen")).toBe(1);
+    // Die Anmeldung trägt weiter — dieselbe Sitzung, und ein neues Login.
+    const nachher = await app.inject({ method: "GET", url: "/api/admin/bestandsreset", headers });
+    expect(nachher.statusCode).toBe(200);
+    expect(nachher.json().vorschau).toMatchObject({ wissensobjekte: 0, papierkorb: 0 });
+    expect(nachher.json().letzterLauf).toMatchObject({ zustand: "OK", erfolgMeldbar: true });
+    const wiederAn = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@example.invalid", password: PASSWORT },
+    });
+    expect(wiederAn.statusCode).toBe(200);
+    // Der Papierkorb ist leer — über die Produktroute, nicht über SQL.
+    const papierkorb = await app.inject({ method: "GET", url: "/api/kos/trash", headers });
+    expect(papierkorb.statusCode).toBe(200);
+    expect(papierkorb.json()).toEqual([]);
+    // Wer, was, wann: der Eintrag in der Auditkette, die der Reset stehen lässt.
+    const audit = await pool.query<{ actor: string; target: string }>(
+      "SELECT actor, target FROM audit WHERE action = 'bestandsreset.ausgefuehrt'",
+    );
+    expect(audit.rows).toEqual([{ actor: reg.json().id, target: ok.json().laufId }]);
   });
 });

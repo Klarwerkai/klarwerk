@@ -218,6 +218,22 @@ function matrixAdmin(): Quelle[] {
       zeile: '[data-testid="zeile-werkseinstellungen"]',
       behaelter: "detail-werkseinstellungen",
       inhalt: t("adm.factory.unavailable"),
+      // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Karte trägt seither ZWEI Quellen —
+      // gemessen wird deshalb in der Hülle genau dieser.
+      huelle: "huelle-werksreset",
+    },
+    {
+      // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Folgenvorschau des Bestandsresets in
+      // derselben Karte. Fällt sie aus, darf die Karte NICHT „0 Wissensobjekte" zeigen — das wäre
+      // die falsche Beruhigung vor einer Löschung. `inhalt` ist der Erhaltungssatz, der in BEIDEN
+      // Lagen (verfügbar oder nicht) ausschließlich im Erfolgszweig der Hülle steht.
+      id: "Bestandsreset · /api/admin/bestandsreset",
+      pfad: "/api/admin/bestandsreset",
+      reiter: t("adm.sec.system"),
+      zeile: '[data-testid="zeile-werkseinstellungen"]',
+      behaelter: "detail-werkseinstellungen",
+      inhalt: t("bestandsreset.erhaltenHinweis"),
+      huelle: "huelle-bestandsreset",
     },
     {
       // JOB 4025 (KUNDENBETRIEB-BACKUP): die Sicherungsauskunft unter „System", neben der
@@ -1857,6 +1873,8 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     // damit dieser Matrix-Fall seinen Fehlerzustand samt „Erneut versuchen" behält.
     holeMarkeFuerFlaeche: "/api/branding",
     "endpoints.admin.factoryResetStatus": "/api/admin/factory-reset",
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): Folgenvorschau und letzter Lauf.
+    "endpoints.admin.bestandsreset.status": "/api/admin/bestandsreset",
     // JOB 4025 (KUNDENBETRIEB-BACKUP): die Sicherungsauskunft. Die Zeile im Reiter „System" und die
     // Karte dahinter fahren DENSELBEN Abfrageschlüssel (`SICHERUNGEN_KEY`) — ein Abruf, eine
     // Wahrheit. Gestört wird deshalb genau ein Pfad, und er trägt beide.
