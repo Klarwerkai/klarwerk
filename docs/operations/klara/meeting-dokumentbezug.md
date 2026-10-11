@@ -30,9 +30,10 @@ Auftrag: `produkt:20261011:assistenz-meeting-dokumentbezug` r1 (Nacharbeit 2).
 | Datei | Objektkennung | `dateiId` |
 | Fassung | Dateibytes | SHA-256 der `.pptx` |
 | Folie | `ppt/presentation.xml` → `p:sldId/@id` | `dateiId` + `fassung` + `sldId` |
-| Folieninhalt | Folien-XML und rekursiv alle eingebundenen Teile ohne Notizfolie (Bilder, Diagramme mit Daten, SmartArt, Medien, Layout, Master, Design) | SHA-256 über die Inhalte der Teile, pfadunabhängig |
+| Folieninhalt | Folien-XML und rekursiv alle eingebundenen Teile ohne Notizfolie (Bilder, Diagramme mit Daten, SmartArt, Medien, Layout, Master, Design) | Hashbaum: je Teil Bytes plus je Beziehung `Relationship-ID → Art → Zielhash`. Vertauschte Bildziele ändern den Hash; Teilpfade zählen nicht |
 | Kopie → Original | ausdrücklich beim Verbinden | gespeicherte Zuordnung |
-| Gesprächsstelle | WebVTT-Abschnitt (Kennung, Start/Ende, `<v Sprecher>`) | Mitschrift + Abschnittskennung + Zeitbasis |
+| Quellobjekt einer Fassung | Objekt, aus dem die Bytes stammen (`quelleId`) | eigene Kennung je Fassung. Eine neue Originalfassung behält ihr Objekt; Rechte und Öffnen hängen daran |
+| Gesprächsstelle | WebVTT-Abschnitt (Kennung, Start/Ende, `<v Sprecher>`) | Mitschrift (Objektkennung, dauerhaft an der Rückmeldung) + Abschnittskennung + Zeitbasis |
 
 Die Foliennummer ist nur Anzeige. Ein extern verknüpfter oder fehlender Bestandteil macht eine
 Folie **nicht vergleichbar**: Sie gilt nie als gleich, und Änderungen an ihr gehen zur Prüfung.
@@ -60,9 +61,13 @@ jeder Anfrage:
 
 - **Meetingrecht** (Eigner oder eingetragener Teilnehmer). Ohne es antwortet jede Route mit 404
   ohne Existenzauskunft, auch bei Klärung, Historie, Änderungsobjekt und Abgleich.
-- **Dokumentrecht je Datei:** dasselbe Urteil wie an `GET /api/objects/:id` (`beurteileAnhang`).
-  Ohne es gibt es keine Folie, kein Original, kein Änderungsziel (`zielVerborgen`) und keine
-  Klärung auf diese Datei.
+- **Dokumentrecht je Fassung:** dasselbe Urteil wie an `GET /api/objects/:id` (`beurteileAnhang`),
+  erhoben am Quellobjekt genau dieser Fassung. Ohne es gibt es keine Folie, kein Original, kein
+  Änderungsziel (`zielVerborgen`) und keine Klärung auf diese Fassung. Ein Entzug am alten
+  Original berührt die neue Fassung nicht; ein Entzug am neuen Objekt sperrt sie.
+- **Mitschriftrecht:** Jede Rückmeldung trägt ihre Mitschrift als Quelle. Ohne aktuelles
+  Leserecht an der Mitschriftdatei sind Rückmeldung, kopierte Stelle, Änderungsobjekt, Historie
+  und Zeitstellentreffer gesperrt; Verbinden und Melden ebenso.
 - **Versteckte Folien und Sprechernotizen** hängen am Leserecht der Datei selbst. Ein feineres
   Recht nur für Notizen gibt es im Produkt nicht; Meetingteilnahme allein öffnet keins von beiden.
 

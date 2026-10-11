@@ -24,6 +24,11 @@ export interface Folie {
   bild?: string;
   /** Adresse eines extern verknüpften Bildes (TargetMode="External"). */
   externesBild?: string;
+  /**
+   * Mehrere eingebundene Bilder: Bild i hängt an `rId(10+i)` und liegt in
+   * `ppt/media/bild<sldId>-<i>.png`. Vertauschte Inhalte bei gleichem Folien-XML = vertauschte Ziele.
+   */
+  bilder?: string[];
 }
 
 function form(typ: string, text: string): string {
@@ -86,6 +91,12 @@ export async function pptx(folien: Folie[], kennzeichen?: string): Promise<Uint8
         `<Relationship Id="rId2" Type="${REL}/image" Target="../media/bild${f.sldId}.png"/>`,
       );
       zip.file(`ppt/media/bild${f.sldId}.png`, f.bild, { date: datum });
+    }
+    for (const [i, inhalt] of (f.bilder ?? []).entries()) {
+      beziehungen.push(
+        `<Relationship Id="rId${10 + i}" Type="${REL}/image" Target="../media/bild${f.sldId}-${i}.png"/>`,
+      );
+      zip.file(`ppt/media/bild${f.sldId}-${i}.png`, inhalt, { date: datum });
     }
     if (f.externesBild !== undefined) {
       beziehungen.push(

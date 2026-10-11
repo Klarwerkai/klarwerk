@@ -53,14 +53,15 @@ function rechtepruefung(rechte: Record<string, Set<string>>): Rechtepruefung {
 }
 
 async function lage(): Promise<Lage> {
-  const dateien = ["nord", "sued", "sued-kopie"];
+  // Die Mitschriften `vtt-1`/`vtt-2` sind Dateien wie die Decks: ihr Leserecht ist `dok:<id>`.
+  const dateien = ["nord", "sued", "sued-kopie", "nord-v2", "tausch", "vtt-1", "vtt-2"];
   const rechte: Record<string, Set<string>> = {
     eigner: new Set([
       "meeting:m1",
       ...dateien.flatMap((d) => [`dok:${d}`, `versteckt:${d}`, `notizen:${d}`]),
     ]),
-    leser: new Set(["meeting:m1", "dok:nord", "dok:sued", "dok:sued-kopie"]),
-    nurMeeting: new Set(["meeting:m1"]),
+    leser: new Set(["meeting:m1", "dok:nord", "dok:sued", "dok:sued-kopie", "dok:vtt-1"]),
+    nurMeeting: new Set(["meeting:m1", "dok:vtt-1"]),
     fremd: new Set(["dok:nord", "dok:sued", "versteckt:nord", "notizen:nord"]),
   };
   return {
@@ -721,5 +722,146 @@ describe("K10 · reales Format, Zuordnungsgrenze und dauerhafter Zustand", () =>
     // Der Zustand ist eine Kopie: Änderungen daran wirken nicht zurück.
     json.meldungen[0].text = "verändert";
     expect(m.sicht("leser", r.id)?.text).toBe("Berechnungsgrundlage ergänzen");
+  });
+});
+
+describe("Nacharbeit 4 · Befund 1: die Mitschrift ist Quelle — ihr Rechteentzug sperrt alles (K6)", () => {
+  it("ohne Leserecht an der Mitschrift keine Rückmeldung, Stelle, Ableitung oder Wirkung", () => {
+    const m = meeting(l);
+    const r = melde(m, "r2", "vorschlag", "Zahlenquelle ergänzen");
+    expect(m.sicht("leser", r.id)).not.toBeNull();
+
+    l.rechte.leser?.delete("dok:vtt-1");
+    expect(m.sicht("leser", r.id)).toBeNull();
+    expect(m.alle("leser")).toEqual([]);
+    expect(m.ausZeitstelle("leser", 127_000)).toEqual([]);
+    expect(m.ausFolie("leser", "nord", "257")).toEqual([]);
+    expect(m.aenderung("leser", r.id)).toBeNull();
+    expect(m.historie("leser", r.id)).toEqual([]);
+    expect(m.mitschriftenSicht("leser")).toEqual([]);
+    expect(JSON.stringify(m.mitschriftenSicht("leser"))).not.toContain("Quelle der Zahlen");
+    const ziel = { dateiId: "nord", fassung: l.nord.fassung, sldId: "256" };
+    expect(() => m.klaeren("leser", r.id, ziel)).toThrow(BindungsFehler);
+    expect(() => m.verwerfen("leser", r.id)).toThrow(BindungsFehler);
+    expect(() => melde(m, "r3", "vorschlag", "x", "leser")).toThrow(BindungsFehler);
+    expect(() =>
+      m.mitschriftVerbinden("leser", { id: "vtt-1", zeitbasis: ZEITBASIS, stellen: [] }),
+    ).toThrow(BindungsFehler);
+
+    // Aktuelle Rechte: wieder erteilt, wieder sichtbar — der Bestand selbst ist unverändert.
+    l.rechte.leser?.add("dok:vtt-1");
+    expect(m.sicht("leser", r.id)?.stelle.text).toBe("Hier fehlt die Quelle der Zahlen.");
+  });
+
+  it("der Fassungsabgleich nennt Rückmeldungen aus unlesbaren Mitschriften nicht", async () => {
+    const m = meeting(l);
+    const r = melde(m, "r2", "vorschlag", "Zahlenquelle ergänzen");
+    l.rechte.eigner?.delete("dok:vtt-1");
+    const geaendert = await pptx([NORD[0]!, { ...NORD[1]!, inhalt: "neu" }]);
+    const neu = await foliensatzLesen("nord", geaendert);
+    expect(m.fassungsabgleich("eigner", neu)).toEqual([]);
+    l.rechte.eigner?.add("dok:vtt-1");
+    expect(m.aenderung("eigner", r.id)).toMatchObject({ status: "fassung_pruefen" });
+  });
+});
+
+describe("Nacharbeit 4 · Befund 2: jede Fassung behält ihr tatsächliches Quellobjekt (K3/K6/K8)", () => {
+  it("neue Originalfassung: Ziel und Öffnen am neuen Objekt, Rechte am neuen Objekt", async () => {
+    const m = meeting(l);
+    const gleich = melde(m, "r3", "vorschlag", "Überblick kürzen");
+    const bytes = await pptx(NORD, "zweite-fassung");
+    const neu = await foliensatzLesen("nord", bytes, "nord-v2");
+    expect(neu).toMatchObject({ dateiId: "nord", quelleId: "nord-v2" });
+
+    // Ohne Leserecht am neuen Quellobjekt kein Abgleich — auch mit Recht am alten Original.
+    expect(() => m.fassungsabgleich("leser", neu)).toThrow(BindungsFehler);
+    expect(m.fassungsabgleich("eigner", neu)).toContainEqual({
+      rueckmeldungId: gleich.id,
+      sldId: "256",
+      stand: "unveraendert",
+    });
+    expect(m.aenderung("eigner", gleich.id)).toMatchObject({
+      status: "offen",
+      ziel: { dateiId: "nord", fassung: neu.fassung, sldId: "256" },
+      zielQuelleId: "nord-v2",
+    });
+    // Der Leser darf das alte Original lesen, das neue Objekt nicht: das Ziel bleibt verborgen.
+    expect(m.aenderung("leser", gleich.id)).toMatchObject({
+      ziel: null,
+      zielQuelleId: null,
+      zielVerborgen: true,
+    });
+    expect(m.kopieAbgleich("leser", "nord", l.nord.fassung)).toEqual({
+      status: "ungeklaert",
+      originalZugriff: false,
+    });
+    // Recht am neuen Objekt erteilt → sichtbar, und zwar mit DIESEM Quellobjekt.
+    l.rechte.leser?.add("dok:nord-v2");
+    expect(m.aenderung("leser", gleich.id)).toMatchObject({ zielQuelleId: "nord-v2" });
+    expect(m.kopieAbgleich("leser", "nord", l.nord.fassung)).toMatchObject({
+      originalFassung: neu.fassung,
+      originalQuelleId: "nord-v2",
+    });
+    // Entzug am alten Objekt berührt die neue Fassung nicht; Entzug am neuen sperrt sie.
+    l.rechte.eigner?.delete("dok:nord");
+    l.rechte.eigner?.delete("versteckt:nord");
+    expect(m.aenderung("eigner", gleich.id)).toMatchObject({ zielQuelleId: "nord-v2" });
+    l.rechte.leser?.delete("dok:nord-v2");
+    expect(m.aenderung("leser", gleich.id)).toMatchObject({ zielVerborgen: true });
+  });
+
+  it("der gespeicherte Zustand behält Quellobjekt und abgelöste Fassungen", async () => {
+    const m = meeting(l);
+    const gleich = melde(m, "r3", "vorschlag", "Überblick kürzen");
+    const neu = await foliensatzLesen("nord", await pptx(NORD, "zweite-fassung"), "nord-v2");
+    m.fassungsabgleich("eigner", neu);
+    const wieder = MeetingDokumentbezug.ausZustand(
+      JSON.parse(JSON.stringify(m.zustand())),
+      l.pruefung,
+    );
+    expect(wieder.dateiKennungen()).toEqual(expect.arrayContaining(["nord-v2", "vtt-1"]));
+    expect(wieder.aenderung("eigner", gleich.id)).toMatchObject({ zielQuelleId: "nord-v2" });
+    expect(wieder.sicht("eigner", gleich.id)?.folie).toMatchObject({
+      fassung: l.nord.fassung,
+      quelleId: "nord",
+    });
+  });
+});
+
+describe("Nacharbeit 4 · Befund 3: vertauschte Relationship-Ziele sind eine Änderung (K3/K8)", () => {
+  const folie = { sldId: 257, titel: "Umsatzentwicklung", inhalt: "Zwei Grafiken" };
+
+  it("gleiches Folien-XML, gleiche Bildmenge, vertauschte Ziele → anderer Inhalt", async () => {
+    const vorher = await foliensatzLesen("tausch", await pptx([{ ...folie, bilder: ["A", "B"] }]));
+    const getauscht = await foliensatzLesen(
+      "tausch",
+      await pptx([{ ...folie, bilder: ["B", "A"] }]),
+    );
+    const gleich = await foliensatzLesen(
+      "tausch",
+      await pptx([{ ...folie, bilder: ["A", "B"] }], "neu-gespeichert"),
+    );
+    expect(getauscht.folien[0]?.vergleichbar).toBe(true);
+    expect(getauscht.folien[0]?.inhaltHash).not.toBe(vorher.folien[0]?.inhaltHash);
+    // Gegenprobe: dieselbe Zuordnung in einer neu gespeicherten Datei bleibt gleich.
+    expect(gleich.fassung).not.toBe(vorher.fassung);
+    expect(gleich.folien[0]?.inhaltHash).toBe(vorher.folien[0]?.inhaltHash);
+  });
+
+  it("der Fassungsabgleich meldet den Tausch als geändert und adressiert nicht neu", async () => {
+    const vorher = await foliensatzLesen("tausch", await pptx([{ ...folie, bilder: ["A", "B"] }]));
+    const m = leeresMeeting(l, false);
+    m.verbinden("eigner", vorher, vorher);
+    m.folienwechsel("eigner", host(vorher, "257", 60_000));
+    const r = melde(m, "r1", "vorschlag", "Grundlage ergänzen");
+    expect(r.aenderung).toMatchObject({ status: "offen" });
+    const getauscht = await foliensatzLesen(
+      "tausch",
+      await pptx([{ ...folie, bilder: ["B", "A"] }]),
+    );
+    expect(m.fassungsabgleich("eigner", getauscht)).toEqual([
+      { rueckmeldungId: r.id, sldId: "257", stand: "geaendert" },
+    ]);
+    expect(m.aenderung("eigner", r.id)).toMatchObject({ status: "fassung_pruefen", ziel: null });
   });
 });

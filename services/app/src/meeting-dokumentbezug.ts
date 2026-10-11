@@ -62,7 +62,13 @@ export interface FolienAnker {
 
 /** Eine bestimmte Fassung einer Präsentationsdatei. */
 export interface Foliensatz {
+  /** Logische Identität der Datei (bei einer neuen Originalfassung: die des Originals). */
   dateiId: string;
+  /**
+   * Das tatsächliche Quellobjekt DIESER Fassung (Nacharbeit 4, Bens Befund 2). Öffnen und
+   * Rechteprüfung gehen immer hierüber — nie über die logische Kennung einer anderen Fassung.
+   */
+  quelleId: string;
   /** SHA-256 der Dateibytes. */
   fassung: string;
   folien: FolienAnker[];
@@ -161,67 +167,79 @@ function relsPfad(teil: string): string {
 const NICHT_INHALT = ["/notesSlide", "/slide"];
 
 /**
- * Inhalt einer Folie: ihr XML und — rekursiv über die Beziehungen — jeder eingebundene Teil.
- * Gehasht wird der Inhalt der Teile mit ihrer Beziehungsart, sortiert; Teilpfade zählen nicht
- * (eine Kopie darf `image1.png` als `image3.png` ablegen). Externe Verweise gehen als Zieladresse
- * in den Hash ein; außer bei Hyperlinks machen sie die Folie nicht vergleichbar, ebenso ein im
- * Paket fehlender Teil.
+ * Inhalt eines Teils als Baum (Nacharbeit 4, Bens Befund 3): der Hash eines Teils umfasst seine
+ * Bytes UND je Beziehung die Zuordnung Relationship-ID → Beziehungsart → Inhaltshash des Ziels,
+ * rekursiv. Das referenzierende Element nennt im XML die Relationship-ID (`r:embed="rId2"`); damit
+ * ist die ganze Kette Element → ID → Zielinhalt gebunden. Vertauschte Bildziele ändern den Hash,
+ * obwohl Folien-XML und die Menge der Bildinhalte gleich bleiben. Teilpfade zählen nicht (eine
+ * Kopie darf `image1.png` als `image3.png` ablegen). Externe Verweise gehen als Zieladresse ein;
+ * außer bei Hyperlinks machen sie den Teil nicht vergleichbar, ebenso ein fehlender Teil. Ein
+ * Rückverweis auf einen Teil, der gerade berechnet wird (Layout ↔ Master), steht als Zyklusmarke.
  */
-async function folienInhalt(
+async function teilInhalt(
+  zip: JSZip,
+  pfad: string,
+  bytes: Uint8Array | string,
+  stapel: Set<string>,
+): Promise<{ inhaltHash: string; vergleichbar: boolean }> {
+  let vergleichbar = true;
+  const zeilen: string[] = [];
+  const rels = await zip.file(relsPfad(pfad))?.async("string");
+  const liste = rels ? [...beziehungen(rels).entries()] : [];
+  liste.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  stapel.add(pfad);
+  for (const [rId, rel] of liste) {
+    const art = rel.typ.slice(rel.typ.lastIndexOf("/"));
+    if (NICHT_INHALT.includes(art)) {
+      continue;
+    }
+    if (rel.extern) {
+      zeilen.push(`${rId}|${art}|extern:${rel.ziel}`);
+      if (art !== "/hyperlink") {
+        vergleichbar = false;
+      }
+      continue;
+    }
+    const ziel = teilPfad(pfad, rel.ziel);
+    if (stapel.has(ziel)) {
+      zeilen.push(`${rId}|${art}|zyklus`);
+      continue;
+    }
+    const zielBytes = await zip.file(ziel)?.async("uint8array");
+    if (!zielBytes) {
+      zeilen.push(`${rId}|${art}|fehlt`);
+      vergleichbar = false;
+      continue;
+    }
+    const unter = await teilInhalt(zip, ziel, zielBytes, stapel);
+    vergleichbar = vergleichbar && unter.vergleichbar;
+    zeilen.push(`${rId}|${art}|${unter.inhaltHash}`);
+  }
+  stapel.delete(pfad);
+  return { inhaltHash: sha256([sha256(bytes), ...zeilen].join("\n")), vergleichbar };
+}
+
+/** Inhalt einer Folie: ihr XML und — rekursiv über die Beziehungen — jeder eingebundene Teil. */
+function folienInhalt(
   zip: JSZip,
   pfad: string,
   xml: string,
 ): Promise<{ inhaltHash: string; vergleichbar: boolean }> {
-  const merkmale: string[] = [];
-  let vergleichbar = true;
-  const besucht = new Set<string>([pfad]);
-  const offen = [pfad];
-  while (offen.length > 0) {
-    const teil = offen.pop() as string;
-    const rels = await zip.file(relsPfad(teil))?.async("string");
-    if (!rels) {
-      continue;
-    }
-    for (const rel of beziehungen(rels).values()) {
-      const art = rel.typ.slice(rel.typ.lastIndexOf("/"));
-      if (NICHT_INHALT.includes(art)) {
-        continue;
-      }
-      if (rel.extern) {
-        merkmale.push(`extern${art}:${rel.ziel}`);
-        if (art !== "/hyperlink") {
-          vergleichbar = false;
-        }
-        continue;
-      }
-      const ziel = teilPfad(teil, rel.ziel);
-      if (besucht.has(ziel)) {
-        continue;
-      }
-      besucht.add(ziel);
-      const bytes = await zip.file(ziel)?.async("uint8array");
-      if (!bytes) {
-        merkmale.push(`fehlt${art}`);
-        vergleichbar = false;
-        continue;
-      }
-      merkmale.push(`${art}:${sha256(bytes)}`);
-      offen.push(ziel);
-    }
-  }
-  return {
-    inhaltHash: sha256([sha256(xml), ...merkmale.sort()].join("\n")),
-    vergleichbar,
-  };
+  return teilInhalt(zip, pfad, xml, new Set<string>());
 }
 
 /**
  * Liest die Folienanker einer echten `.pptx` (OOXML PresentationML). Gelesen werden
  * `ppt/presentation.xml` (Reihenfolge und `p:sldId`), die Beziehungen zu den Folienteilen und
  * allen eingebundenen Bestandteilen, das `show`-Attribut und die verknüpfte Notizfolie. Es wird
- * nichts geschrieben.
+ * nichts geschrieben. `quelleId` ist das Objekt, aus dem die Bytes stammen; ohne Angabe ist es
+ * die Datei selbst.
  */
-export async function foliensatzLesen(dateiId: string, bytes: Uint8Array): Promise<Foliensatz> {
+export async function foliensatzLesen(
+  dateiId: string,
+  bytes: Uint8Array,
+  quelleId: string = dateiId,
+): Promise<Foliensatz> {
   let zip: JSZip;
   try {
     zip = await JSZip.loadAsync(bytes);
@@ -270,7 +288,7 @@ export async function foliensatzLesen(dateiId: string, bytes: Uint8Array): Promi
       notizen,
     });
   }
-  return { dateiId, fassung: sha256(bytes), folien };
+  return { dateiId, quelleId, fassung: sha256(bytes), folien };
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -394,6 +412,12 @@ export interface Bindung {
 export interface Rueckmeldung {
   id: string;
   meetingId: string;
+  /**
+   * Die Mitschrift (Objektkennung), aus der die Stelle stammt — dauerhaft gebunden (Nacharbeit 4,
+   * Bens Befund 1). Ohne aktuelles Leserecht an ihr ist die Rückmeldung samt kopierter Stelle
+   * und aller Ableitungen gesperrt.
+   */
+  mitschriftId: string;
   stelle: Gespraechsstelle;
   art: RueckmeldungsArt;
   herkunft: "gespraech" | "ki";
@@ -423,7 +447,10 @@ export interface Mitschrift {
 export interface MeetingZustand {
   meeting: MeetingVerbindung;
   saetze: Foliensatz[];
+  /** Die jeweils aktuelle Fassung je Original (logische Kennung). */
   originale: Foliensatz[];
+  /** Jede je bekannte Originalfassung mit ihrem Quellobjekt — auch die abgelösten. */
+  fassungen: Foliensatz[];
   /** Kopie-Dateikennung → Original-Dateikennung. */
   originalVon: [string, string][];
   wechsel: Folienwechsel[];
@@ -440,6 +467,8 @@ export type KopieAbgleich =
       originalZugriff: true;
       originalDateiId: string;
       originalFassung: string;
+      /** Das Objekt, das diese Originalfassung tatsächlich trägt — dorthin führt das Öffnen. */
+      originalQuelleId: string;
       abweichendeFolien: string[];
       unvergleichbareFolien: string[];
     };
@@ -455,6 +484,8 @@ export type FolienSicht =
       lesbar: true;
       dateiId: string;
       fassung: string;
+      /** Das Objekt dieser Fassung — dorthin führt das Öffnen. */
+      quelleId: string;
       sldId: string;
       titel: string;
       position: number;
@@ -470,6 +501,8 @@ export interface AenderungsSicht {
   bindungVersion: number;
   /** Nur mit Leserecht am Zieldokument; sonst null und `zielVerborgen`. */
   ziel: Folienziel | null;
+  /** Das Quellobjekt der Zielfassung (nur mit Leserecht daran). */
+  zielQuelleId: string | null;
   zielVerborgen: boolean;
 }
 
@@ -535,6 +568,7 @@ function kopie<T>(wert: T): T {
 export class MeetingDokumentbezug {
   private readonly saetze = new Map<string, Foliensatz>();
   private readonly originale = new Map<string, Foliensatz>();
+  private readonly fassungen = new Map<string, Foliensatz>();
   private readonly originalVon = new Map<string, string>();
   private readonly wechsel: Folienwechsel[] = [];
   private readonly mitschriften = new Map<string, Mitschrift>();
@@ -550,11 +584,18 @@ export class MeetingDokumentbezug {
   static ausZustand(zustand: MeetingZustand, rechte: Rechtepruefung): MeetingDokumentbezug {
     const z = kopie(zustand);
     const bezug = new MeetingDokumentbezug(z.meeting, rechte);
-    for (const satz of z.saetze) {
+    // Stände ohne Quellobjekt (vor Nacharbeit 4) tragen die Datei selbst als Quelle; Rückmeldungen
+    // ohne Mitschriftkennung bleiben gesperrt (leere Kennung — kein Leserecht, fail-closed).
+    const mitQuelle = (s: Foliensatz): Foliensatz => ({ ...s, quelleId: s.quelleId ?? s.dateiId });
+    for (const satz of z.saetze.map(mitQuelle)) {
       bezug.saetze.set(bezug.schluessel(satz.dateiId, satz.fassung), satz);
     }
-    for (const satz of z.originale) {
+    for (const satz of z.originale.map(mitQuelle)) {
       bezug.originale.set(satz.dateiId, satz);
+      bezug.fassungen.set(bezug.schluessel(satz.dateiId, satz.fassung), satz);
+    }
+    for (const satz of (z.fassungen ?? []).map(mitQuelle)) {
+      bezug.fassungen.set(bezug.schluessel(satz.dateiId, satz.fassung), satz);
     }
     for (const [von, nach] of z.originalVon) {
       bezug.originalVon.set(von, nach);
@@ -564,7 +605,7 @@ export class MeetingDokumentbezug {
       bezug.mitschriften.set(m.id, m);
     }
     for (const m of z.meldungen) {
-      bezug.meldungen.set(m.id, m);
+      bezug.meldungen.set(m.id, { ...m, mitschriftId: m.mitschriftId ?? "" });
     }
     for (const a of z.aenderungen) {
       bezug.aenderungen.set(a.id, a);
@@ -578,6 +619,7 @@ export class MeetingDokumentbezug {
       meeting: this.meeting,
       saetze: [...this.saetze.values()],
       originale: [...this.originale.values()],
+      fassungen: [...this.fassungen.values()],
       originalVon: [...this.originalVon.entries()],
       wechsel: this.wechsel,
       mitschriften: [...this.mitschriften.values()],
@@ -586,19 +628,49 @@ export class MeetingDokumentbezug {
     });
   }
 
-  /** Alle Dateikennungen, über die dieser Bezug etwas weiß (für die Rechteerhebung am Zugriff). */
+  /**
+   * Alle Objektkennungen, an denen dieser Bezug Rechte braucht (für die Rechteerhebung am Zugriff):
+   * Quellobjekte jeder Fassung, logische Dateikennungen und — Befund 1 — jede Mitschrift.
+   */
   dateiKennungen(): string[] {
+    const saetze = [...this.saetze.values(), ...this.fassungen.values()];
     return [
       ...new Set([
-        ...[...this.saetze.values()].map((s) => s.dateiId),
+        ...saetze.flatMap((s) => [s.dateiId, s.quelleId]),
         ...this.originale.keys(),
         ...this.originalVon.values(),
+        ...this.mitschriften.keys(),
       ]),
     ];
   }
 
   private schluessel(dateiId: string, fassung: string): string {
     return `${dateiId}@${fassung}`;
+  }
+
+  /** Eine bekannte Fassung — präsentiert oder Original, aktuell oder abgelöst. */
+  private satzVon(dateiId: string, fassung: string): Foliensatz | undefined {
+    const schluessel = this.schluessel(dateiId, fassung);
+    return this.saetze.get(schluessel) ?? this.fassungen.get(schluessel);
+  }
+
+  /** Das Quellobjekt einer bestimmten Fassung — Rechte und Öffnen hängen daran. */
+  private quelleVon(dateiId: string, fassung: string): string {
+    return this.satzVon(dateiId, fassung)?.quelleId ?? dateiId;
+  }
+
+  /** Das Quellobjekt der aktuellen Fassung einer logischen Datei. */
+  private aktuelleQuelle(dateiId: string): string {
+    const original = this.originale.get(dateiId);
+    if (original) {
+      return original.quelleId;
+    }
+    return [...this.saetze.values()].find((s) => s.dateiId === dateiId)?.quelleId ?? dateiId;
+  }
+
+  /** Befund 1: die Mitschrift ist Quelle jeder Rückmeldung — ohne Leserecht an ihr nichts. */
+  private mitschriftLesbar(nutzerId: string, mitschriftId: string): boolean {
+    return mitschriftId !== "" && this.rechte.dokumentLesen(nutzerId, mitschriftId);
   }
 
   private meetingRecht(nutzerId: string): void {
@@ -627,9 +699,9 @@ export class MeetingDokumentbezug {
     original: Foliensatz | null = null,
   ): KopieAbgleich {
     this.meetingRecht(nutzerId);
-    this.dokumentRecht(nutzerId, praesentiert.dateiId);
+    this.dokumentRecht(nutzerId, praesentiert.quelleId);
     if (original) {
-      this.dokumentRecht(nutzerId, original.dateiId);
+      this.dokumentRecht(nutzerId, original.quelleId);
     }
     const bekannt = this.originalVon.get(praesentiert.dateiId);
     if (original && bekannt !== undefined && bekannt !== original.dateiId) {
@@ -643,6 +715,7 @@ export class MeetingDokumentbezug {
     if (original) {
       this.originalVon.set(praesentiert.dateiId, original.dateiId);
       this.originale.set(original.dateiId, kopie(original));
+      this.fassungen.set(this.schluessel(original.dateiId, original.fassung), kopie(original));
     }
     return this.kopieAbgleich(nutzerId, praesentiert.dateiId, praesentiert.fassung);
   }
@@ -653,22 +726,23 @@ export class MeetingDokumentbezug {
    */
   kopieAbgleich(nutzerId: string, dateiId: string, fassung: string): KopieAbgleich {
     this.meetingRecht(nutzerId);
-    this.dokumentRecht(nutzerId, dateiId);
     const kopieSatz = this.saetze.get(this.schluessel(dateiId, fassung));
     if (!kopieSatz) {
       throw new BindungsFehler("kein_zugriff", "Fassung ist mit dem Meeting nicht verbunden.");
     }
+    this.dokumentRecht(nutzerId, kopieSatz.quelleId);
     const original = this.originale.get(this.originalKennung(dateiId));
-    if (!original || !this.rechte.dokumentLesen(nutzerId, original.dateiId)) {
+    if (!original || !this.rechte.dokumentLesen(nutzerId, original.quelleId)) {
       return { status: "ungeklaert", originalZugriff: false };
     }
     const sichtbar = kopieSatz.folien.filter(
-      (f) => !f.versteckt || this.rechte.versteckteFolienLesen(nutzerId, dateiId),
+      (f) => !f.versteckt || this.rechte.versteckteFolienLesen(nutzerId, kopieSatz.quelleId),
     );
     const basis = {
       originalZugriff: true as const,
       originalDateiId: original.dateiId,
       originalFassung: original.fassung,
+      originalQuelleId: original.quelleId,
     };
     if (original.fassung === kopieSatz.fassung) {
       return { status: "identisch", ...basis, abweichendeFolien: [], unvergleichbareFolien: [] };
@@ -698,9 +772,13 @@ export class MeetingDokumentbezug {
     };
   }
 
-  /** Verbindet eine Mitschrift. Dieselbe Kennung mit demselben Inhalt ist wirkungslos. */
+  /**
+   * Verbindet eine Mitschrift (Kennung = Objektkennung ihrer Datei) — nur mit Leserecht an ihr.
+   * Dieselbe Kennung mit demselben Inhalt ist wirkungslos.
+   */
   mitschriftVerbinden(nutzerId: string, mitschrift: Mitschrift): void {
     this.meetingRecht(nutzerId);
+    this.dokumentRecht(nutzerId, mitschrift.id);
     const vorhanden = this.mitschriften.get(mitschrift.id);
     if (vorhanden && JSON.stringify(vorhanden) !== JSON.stringify(mitschrift)) {
       throw new BindungsFehler("ungueltig", "Diese Mitschrift ist bereits anders verbunden.");
@@ -717,8 +795,8 @@ export class MeetingDokumentbezug {
       );
     }
     if (ereignis.quelle === "host") {
-      this.dokumentRecht(nutzerId, ereignis.dateiId);
       const satz = this.saetze.get(this.schluessel(ereignis.dateiId, ereignis.fassung));
+      this.dokumentRecht(nutzerId, satz?.quelleId ?? ereignis.dateiId);
       if (!satz?.folien.some((f) => f.sldId === ereignis.sldId)) {
         throw new BindungsFehler(
           "ungueltig",
@@ -842,6 +920,7 @@ export class MeetingDokumentbezug {
     },
   ): RueckmeldungsSicht {
     this.meetingRecht(nutzerId);
+    this.dokumentRecht(nutzerId, eingabe.mitschriftId);
     const mitschrift = this.mitschriften.get(eingabe.mitschriftId);
     const stelle = this.stelleAus(eingabe.mitschriftId, eingabe.stelleId);
     const merkmal = [
@@ -856,6 +935,7 @@ export class MeetingDokumentbezug {
       const meldung: Rueckmeldung = {
         id,
         meetingId: this.meeting.meetingId,
+        mitschriftId: eingabe.mitschriftId,
         stelle: kopie(stelle),
         art: eingabe.art,
         herkunft: eingabe.art === "ki_empfehlung" ? "ki" : "gespraech",
@@ -890,7 +970,7 @@ export class MeetingDokumentbezug {
   private meldung(nutzerId: string, rueckmeldungId: string): Rueckmeldung {
     this.meetingRecht(nutzerId);
     const meldung = this.meldungen.get(rueckmeldungId);
-    if (!meldung) {
+    if (!meldung || !this.mitschriftLesbar(nutzerId, meldung.mitschriftId)) {
       throw new BindungsFehler("kein_zugriff", "Rückmeldung nicht gefunden.");
     }
     return meldung;
@@ -921,7 +1001,8 @@ export class MeetingDokumentbezug {
     if (!aenderung || aenderung.status !== "offen" || !aenderung.ziel) {
       throw new BindungsFehler("ungueltig", "Nur ein offenes Objekt mit Ziel ist ausführbar.");
     }
-    this.dokumentRecht(nutzerId, aenderung.ziel.dateiId);
+    this.meldung(nutzerId, aenderung.rueckmeldungId);
+    this.dokumentRecht(nutzerId, this.quelleVon(aenderung.ziel.dateiId, aenderung.ziel.fassung));
     aenderung.status = "ausgefuehrt";
   }
 
@@ -937,8 +1018,9 @@ export class MeetingDokumentbezug {
     if (!anker) {
       throw new BindungsFehler("ungueltig", "Ziel ist keine Folie einer verbundenen Fassung.");
     }
-    this.dokumentRecht(nutzerId, ziel.dateiId);
-    if (anker.versteckt && !this.rechte.versteckteFolienLesen(nutzerId, ziel.dateiId)) {
+    const quelle = this.quelleVon(ziel.dateiId, ziel.fassung);
+    this.dokumentRecht(nutzerId, quelle);
+    if (anker.versteckt && !this.rechte.versteckteFolienLesen(nutzerId, quelle)) {
       throw new BindungsFehler("kein_zugriff", "Dokument nicht gefunden.");
     }
     const alt = meldung.bindung;
@@ -974,17 +1056,24 @@ export class MeetingDokumentbezug {
    * UND an jede präsentierte Kopie, deren gespeichertes Original sie ist. Die Bindung bleibt an
    * der präsentierten Fassung. Offene Änderungsobjekte an geänderten, entfernten oder nicht
    * vergleichbaren Folien werden zur Prüfung gestellt, nicht still auf den neuen Inhalt übertragen.
+   *
+   * Befund 2: `neu.dateiId` ist die logische Identität (das Original), `neu.quelleId` das Objekt,
+   * das die neue Fassung tatsächlich trägt. Verlangt wird Leserecht an BEIDEN; gespeichert wird die
+   * Fassung mit ihrem Quellobjekt — Öffnen und spätere Rechteprüfung gehen dorthin. Die
+   * Rückgabe nennt nur Rückmeldungen, deren Mitschrift der Handelnde lesen darf.
    */
   fassungsabgleich(nutzerId: string, neu: Foliensatz): FassungsAbgleichEintrag[] {
     this.meetingRecht(nutzerId);
-    this.dokumentRecht(nutzerId, neu.dateiId);
     const bekannt =
       this.originale.has(neu.dateiId) ||
       [...this.saetze.values()].some((s) => s.dateiId === neu.dateiId);
     if (!bekannt) {
       throw new BindungsFehler("ungueltig", "Diese Datei ist mit dem Meeting nicht verbunden.");
     }
+    this.dokumentRecht(nutzerId, this.aktuelleQuelle(neu.dateiId));
+    this.dokumentRecht(nutzerId, neu.quelleId);
     this.originale.set(neu.dateiId, kopie(neu));
+    this.fassungen.set(this.schluessel(neu.dateiId, neu.fassung), kopie(neu));
     const ergebnis: FassungsAbgleichEintrag[] = [];
     for (const meldung of this.meldungen.values()) {
       const { ziel, praesentiert } = meldung.bindung;
@@ -1002,7 +1091,9 @@ export class MeetingDokumentbezug {
         stand =
           v === "gleich" ? "unveraendert" : v === "anders" ? "geaendert" : "nicht_vergleichbar";
       }
-      ergebnis.push({ rueckmeldungId: meldung.id, sldId: ziel.sldId, stand });
+      if (this.mitschriftLesbar(nutzerId, meldung.mitschriftId)) {
+        ergebnis.push({ rueckmeldungId: meldung.id, sldId: ziel.sldId, stand });
+      }
       const aenderung = this.aenderungen.get(`ae-${meldung.id}`);
       if (nochOffen(aenderung)) {
         if (stand === "unveraendert") {
@@ -1022,22 +1113,23 @@ export class MeetingDokumentbezug {
     return this.aenderungen.size;
   }
 
+  /** Die Folie einer Fassung — nur mit Leserecht am Quellobjekt GENAU DIESER Fassung. */
   private folieSichtbar(nutzerId: string, ziel: Folienziel): FolienAnker | null {
     const anker = this.anker(ziel) ?? this.originalAnker(ziel);
-    if (!anker || !this.rechte.dokumentLesen(nutzerId, ziel.dateiId)) {
+    const quelle = this.quelleVon(ziel.dateiId, ziel.fassung);
+    if (!anker || !this.rechte.dokumentLesen(nutzerId, quelle)) {
       return null;
     }
-    if (anker.versteckt && !this.rechte.versteckteFolienLesen(nutzerId, ziel.dateiId)) {
+    if (anker.versteckt && !this.rechte.versteckteFolienLesen(nutzerId, quelle)) {
       return null;
     }
     return anker;
   }
 
   private originalAnker(ziel: Folienziel): FolienAnker | undefined {
-    const original = this.originale.get(ziel.dateiId);
-    return original?.fassung === ziel.fassung
-      ? original.folien.find((f) => f.sldId === ziel.sldId)
-      : undefined;
+    return this.fassungen
+      .get(this.schluessel(ziel.dateiId, ziel.fassung))
+      ?.folien.find((f) => f.sldId === ziel.sldId);
   }
 
   private aenderungSicht(nutzerId: string, rueckmeldungId: string): AenderungsSicht | null {
@@ -1052,6 +1144,7 @@ export class MeetingDokumentbezug {
       status: a.status,
       bindungVersion: a.bindungVersion,
       ziel: zielLesbar && a.ziel ? { ...a.ziel } : null,
+      zielQuelleId: zielLesbar && a.ziel ? this.quelleVon(a.ziel.dateiId, a.ziel.fassung) : null,
       zielVerborgen: a.ziel !== null && !zielLesbar,
     };
   }
@@ -1060,13 +1153,15 @@ export class MeetingDokumentbezug {
     let folie: FolienSicht | null = null;
     if (b.ziel) {
       const anker = this.folieSichtbar(nutzerId, b.ziel);
+      const quelleId = this.quelleVon(b.ziel.dateiId, b.ziel.fassung);
       folie = anker
         ? {
             lesbar: true,
             ...b.ziel,
+            quelleId,
             titel: b.praesentiert?.titel ?? anker.titel,
             position: b.praesentiert?.position ?? anker.position,
-            notizen: this.rechte.notizenLesen(nutzerId, b.ziel.dateiId) ? anker.notizen : null,
+            notizen: this.rechte.notizenLesen(nutzerId, quelleId) ? anker.notizen : null,
           }
         : { lesbar: false };
     }
@@ -1086,12 +1181,17 @@ export class MeetingDokumentbezug {
 
   /**
    * Die Sicht eines Nutzers auf eine Rückmeldung. Ohne Meetingrecht gibt es sie nicht (null —
-   * auch keine Existenzauskunft). Die Folie erscheint nur mit eigenem Dokumentrecht; versteckte
-   * Folien und Sprechernotizen nur mit eigenem Recht darauf.
+   * auch keine Existenzauskunft), ebenso ohne aktuelles Leserecht an ihrer Mitschrift: Stelle,
+   * Text und alle Ableitungen stammen aus ihr (Befund 1). Die Folie erscheint nur mit eigenem
+   * Dokumentrecht; versteckte Folien und Sprechernotizen nur mit eigenem Recht darauf.
    */
   sicht(nutzerId: string, rueckmeldungId: string): RueckmeldungsSicht | null {
     const m = this.meldungen.get(rueckmeldungId);
-    if (!m || !this.rechte.meetingLesen(nutzerId, m.meetingId)) {
+    if (
+      !m ||
+      !this.rechte.meetingLesen(nutzerId, m.meetingId) ||
+      !this.mitschriftLesbar(nutzerId, m.mitschriftId)
+    ) {
       return null;
     }
     return {
@@ -1111,17 +1211,17 @@ export class MeetingDokumentbezug {
     };
   }
 
-  /** Das Änderungsobjekt einer Rückmeldung, wie der Nutzer es sehen darf. */
+  /** Das Änderungsobjekt einer Rückmeldung, wie der Nutzer es sehen darf (Rechte wie `sicht`). */
   aenderung(nutzerId: string, rueckmeldungId: string): AenderungsSicht | null {
-    if (!this.rechte.meetingLesen(nutzerId, this.meeting.meetingId)) {
+    if (!this.sicht(nutzerId, rueckmeldungId)) {
       return null;
     }
     return this.aenderungSicht(nutzerId, rueckmeldungId);
   }
 
-  /** Frühere Bindungen einer Rückmeldung — nur mit Meetingrecht, Folien nur mit Dokumentrecht. */
+  /** Frühere Bindungen — Rechte wie `sicht`, Folien nur mit Dokumentrecht. */
   historie(nutzerId: string, rueckmeldungId: string): BindungsSicht[] {
-    if (!this.rechte.meetingLesen(nutzerId, this.meeting.meetingId)) {
+    if (!this.sicht(nutzerId, rueckmeldungId)) {
       return [];
     }
     return (this.meldungen.get(rueckmeldungId)?.historie ?? []).map((b) =>
@@ -1142,7 +1242,7 @@ export class MeetingDokumentbezug {
    * über die präsentierte Datei oder ihr Original.
    */
   ausFolie(nutzerId: string, dateiId: string, sldId: string): RueckmeldungsSicht[] {
-    if (!this.rechte.dokumentLesen(nutzerId, dateiId)) {
+    if (!this.rechte.dokumentLesen(nutzerId, this.aktuelleQuelle(dateiId))) {
       return [];
     }
     return [...this.meldungen.values()]
@@ -1174,19 +1274,21 @@ export class MeetingDokumentbezug {
    */
   praesentationen(nutzerId: string): {
     dateiId: string;
+    quelleId: string;
     fassung: string;
     abgleich: KopieAbgleich;
     folien: { sldId: string; position: number; titel: string; versteckt: boolean }[];
   }[] {
     this.meetingRecht(nutzerId);
     return [...this.saetze.values()]
-      .filter((s) => this.rechte.dokumentLesen(nutzerId, s.dateiId))
+      .filter((s) => this.rechte.dokumentLesen(nutzerId, s.quelleId))
       .map((s) => ({
         dateiId: s.dateiId,
+        quelleId: s.quelleId,
         fassung: s.fassung,
         abgleich: this.kopieAbgleich(nutzerId, s.dateiId, s.fassung),
         folien: s.folien
-          .filter((f) => !f.versteckt || this.rechte.versteckteFolienLesen(nutzerId, s.dateiId))
+          .filter((f) => !f.versteckt || this.rechte.versteckteFolienLesen(nutzerId, s.quelleId))
           .map((f) => ({
             sldId: f.sldId,
             position: f.position,
@@ -1196,9 +1298,14 @@ export class MeetingDokumentbezug {
       }));
   }
 
-  /** Die verbundenen Mitschriften (Kennung, Zeitbasis, Stellen) — nur mit Meetingrecht. */
+  /**
+   * Die verbundenen Mitschriften (Kennung, Zeitbasis, Stellen) — mit Meetingrecht und nur die,
+   * deren Datei der Nutzer aktuell lesen darf (Befund 1).
+   */
   mitschriftenSicht(nutzerId: string): Mitschrift[] {
     this.meetingRecht(nutzerId);
-    return kopie([...this.mitschriften.values()]);
+    return kopie(
+      [...this.mitschriften.values()].filter((m) => this.mitschriftLesbar(nutzerId, m.id)),
+    );
   }
 }

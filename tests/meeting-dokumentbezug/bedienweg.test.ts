@@ -23,12 +23,13 @@ import {
 import {
   type Meetinglage,
   PPTX_MIME,
+  ZEITBASIS,
   anfrage,
   hochladen,
   kontoId,
   meetingAufbauen,
 } from "./app-helfer";
-import { NORD, pptx } from "./vorrichtung";
+import { NORD, VTT, pptx } from "./vorrichtung";
 
 adapterUmgebungSetzen();
 
@@ -290,5 +291,110 @@ describe("K8 · neue Originalfassung: Abgleich, keine Inhaltsvererbung", () => {
       folie: { dateiId: lage.nordKopie, fassung: lage.fassungKopie },
       aenderung: { status: "fassung_pruefen", ziel: null },
     });
+    // Nacharbeit 4, Befund 2: die neue Fassung behält ihr tatsächliches Quellobjekt.
+    expect(abgleich.json).toMatchObject({ dateiId: lage.nordOriginal, quelleId: neu });
+    const ueberblick = await anfrage(a.app, teilnehmer, "GET", basis);
+    const kopie = ueberblick.json.praesentationen.find(
+      (p: { dateiId: string }) => p.dateiId === lage.nordKopie,
+    );
+    expect(kopie.abgleich).toMatchObject({
+      originalDateiId: lage.nordOriginal,
+      originalQuelleId: neu,
+    });
+  });
+
+  it("Befund 2: Rechte hängen am Quellobjekt der neuen Fassung, nicht am alten Original", async () => {
+    const geheim = await hochladen(
+      a.app,
+      vortragende,
+      "nord-v3.pptx",
+      PPTX_MIME,
+      await pptx(NORD, "geheime-fassung"),
+      "streng_vertraulich",
+    );
+    const ohneRecht = await anfrage(a.app, teilnehmer, "POST", `${basis}/fassungsabgleich`, {
+      originalObjectId: lage.nordOriginal,
+      neueFassungObjectId: geheim,
+    });
+    expect(ohneRecht.status).toBe(404);
+    const abgleich = await anfrage(a.app, vortragende, "POST", `${basis}/fassungsabgleich`, {
+      originalObjectId: lage.nordOriginal,
+      neueFassungObjectId: geheim,
+    });
+    expect(abgleich.status, abgleich.body).toBe(200);
+    expect(abgleich.json.quelleId).toBe(geheim);
+
+    // Die Vortragende sieht das Ziel im neuen Objekt; der Teilnehmer darf das alte Original
+    // lesen, das neue nicht — für ihn ist der Abgleich ungeklärt und das Ziel verborgen.
+    const eignerin = await anfrage(a.app, vortragende, "GET", `${basis}/rueckmeldungen/${r2}`);
+    expect(eignerin.json.rueckmeldung.aenderung).toMatchObject({
+      status: "offen",
+      ziel: { dateiId: lage.nordOriginal, sldId: "257" },
+      zielQuelleId: geheim,
+    });
+    const gast = await anfrage(a.app, teilnehmer, "GET", `${basis}/rueckmeldungen/${r2}`);
+    expect(gast.json.rueckmeldung.aenderung).toMatchObject({
+      ziel: null,
+      zielQuelleId: null,
+      zielVerborgen: true,
+    });
+    const ueberblick = await anfrage(a.app, teilnehmer, "GET", basis);
+    expect(ueberblick.body).not.toContain(geheim);
+    const kopie = ueberblick.json.praesentationen.find(
+      (p: { dateiId: string }) => p.dateiId === lage.nordKopie,
+    );
+    expect(kopie.abgleich).toEqual({ status: "ungeklaert", originalZugriff: false });
+  });
+});
+
+describe("Nacharbeit 4 · Befund 1: eine Mitschrift ohne Leserecht sperrt ihre Rückmeldungen (K6)", () => {
+  it("weder Verbinden noch Einzelabruf, Übersicht oder Zeitstelle ohne Recht an der Mitschrift", async () => {
+    const geheim = await hochladen(
+      a.app,
+      vortragende,
+      "vertraulich.vtt",
+      "text/vtt",
+      new TextEncoder().encode(VTT),
+      "streng_vertraulich",
+    );
+    const fremd = await anfrage(a.app, teilnehmer, "POST", `${basis}/mitschriften`, {
+      objectId: geheim,
+      zeitbasis: ZEITBASIS,
+    });
+    expect(fremd.status).toBe(404);
+    const verbunden = await anfrage(a.app, vortragende, "POST", `${basis}/mitschriften`, {
+      objectId: geheim,
+      zeitbasis: ZEITBASIS,
+    });
+    expect(verbunden.status, verbunden.body).toBe(200);
+    const meldung = await anfrage(a.app, vortragende, "POST", `${basis}/rueckmeldungen`, {
+      mitschriftId: geheim,
+      stelleId: "r3",
+      art: "offene_frage",
+      text: "Vertraulich gefragt",
+    });
+    expect(meldung.status, meldung.body).toBe(201);
+    const id = meldung.json.id as string;
+
+    const einzeln = await anfrage(a.app, teilnehmer, "GET", `${basis}/rueckmeldungen/${id}`);
+    expect(einzeln.status).toBe(404);
+    const ueberblick = await anfrage(a.app, teilnehmer, "GET", basis);
+    expect(ueberblick.body).not.toContain(geheim);
+    expect(ueberblick.body).not.toContain("Vertraulich gefragt");
+    expect(ueberblick.json.mitschriften.map((m: { id: string }) => m.id)).toEqual([
+      lage.mitschrift,
+    ]);
+    const zeit = await anfrage(a.app, teilnehmer, "GET", `${basis}/zeitstellen/136000`);
+    expect(zeit.json.rueckmeldungen).toEqual([]);
+    const fremdeAntwort = await anfrage(a.app, teilnehmer, "POST", `${basis}/rueckmeldungen`, {
+      mitschriftId: geheim,
+      stelleId: "r3",
+      art: "vorschlag",
+      text: "x",
+    });
+    expect(fremdeAntwort.status).toBe(404);
+    // Gegenprobe: die Vortragende mit Leserecht findet dieselbe Rückmeldung an der Zeitstelle.
+    const eigen = await anfrage(a.app, vortragende, "GET", `${basis}/zeitstellen/136000`);
+    expect(eigen.json.rueckmeldungen.map((s: { id: string }) => s.id)).toEqual([id]);
   });
 });

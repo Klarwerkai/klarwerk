@@ -481,7 +481,9 @@ unangemeldet; die Rollenabnahme (`tests/beta-rollenabnahme/tabelle.ts`) misst da
 
 Ausser bei Liste und Anlage gilt zusätzlich das Meetingrecht (Eigner oder eingetragener
 Teilnehmer, sonst 404 ohne Existenzauskunft). Für jede Datei gilt das aktuelle Urteil
-`beurteileAnhang` wie an `GET /api/objects/:id`, erhoben bei jeder Anfrage. Dateien
+`beurteileAnhang` wie an `GET /api/objects/:id`, erhoben bei jeder Anfrage — für jede Fassung am
+Objekt, das sie tatsächlich trägt (`quelleId`), und für jede Rückmeldung zusätzlich an ihrer
+Mitschrift: ohne Leserecht an der Mitschrift gibt es die Rückmeldung nicht (404). Dateien
 (PPTX, WebVTT) kommen als Objekte über `POST /api/objects`. Wirkungen schreiben bedingt gegen
 die gelesene Version.
 
@@ -499,7 +501,7 @@ die gelesene Version.
 | `POST` | `/api/meetings/:id/rueckmeldungen/:rid/verwerfen` | `ko.create`, Meetingrecht | — | 200 Rückmeldung als `verworfener_vorschlag` | 400 `VALIDATION` (kein Vorschlag); 404; 409 `STAND_VERALTET` |
 | `GET` | `/api/meetings/:id/folien/:dateiId/:sldId` | `ko.read`, Meetingrecht, Leserecht an der Datei | — | 200 `{ rueckmeldungen }` — über präsentierte Datei oder Original | 404 `NOT_FOUND` |
 | `GET` | `/api/meetings/:id/zeitstellen/:zeitMs` | `ko.read`, Meetingrecht | — | 200 `{ rueckmeldungen }` | 400 `VALIDATION`; 404 `NOT_FOUND` |
-| `POST` | `/api/meetings/:id/fassungsabgleich` | `ko.create`, Meetingrecht, Leserecht an Original und neuer Fassung | Rumpf `{ originalObjectId, neueFassungObjectId }` | 200 `{ dateiId, fassung, eintraege: [{ rueckmeldungId, sldId, stand }] }` | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
+| `POST` | `/api/meetings/:id/fassungsabgleich` | `ko.create`, Meetingrecht, Leserecht an Original und neuer Fassung | Rumpf `{ originalObjectId, neueFassungObjectId }` | 200 `{ dateiId, quelleId, fassung, eintraege: [{ rueckmeldungId, sldId, stand }] }` — `dateiId` logisches Original, `quelleId` das Objekt der neuen Fassung (Rechte und Öffnen dort); Einträge nur aus lesbaren Mitschriften | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
 
 ## 4 Testabdeckung und Abdeckungsziel
 

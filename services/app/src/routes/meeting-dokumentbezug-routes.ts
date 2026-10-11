@@ -337,7 +337,7 @@ export function meetingDokumentbezugRoutes(
           ungueltig(reply, "objectId und zeitbasis angeben.");
           return;
         }
-        const z = await zugang(user, request.params.id, reply);
+        const z = await zugang(user, request.params.id, reply, [objectId]);
         if (!z) {
           return;
         }
@@ -567,17 +567,23 @@ export function meetingDokumentbezugRoutes(
         return;
       }
       try {
-        // Die neue Fassung liegt als eigenes Dateiobjekt vor (ein Upload ist unveränderlich); sie
-        // wird UNTER DER KENNUNG DES ORIGINALS abgeglichen. Leserecht an beiden ist Pflicht.
+        // Die neue Fassung liegt als eigenes Dateiobjekt vor (ein Upload ist unveränderlich). Sie
+        // wird unter der LOGISCHEN Kennung des Originals abgeglichen, behält aber ihr tatsächliches
+        // Quellobjekt (Nacharbeit 4, Befund 2): Öffnen und spätere Rechteprüfung gehen dorthin.
         const bytes = await dateiLesen(user, neuId);
         if (!bytes || !(await dateiLesen(user, originalId))) {
           reply.code(404).send({ error: "NOT_FOUND", message: "Datei nicht gefunden." });
           return;
         }
-        const neu = await foliensatzLesen(originalId, bytes);
+        const neu = await foliensatzLesen(originalId, bytes, neuId);
         const eintraege = z.bezug.fassungsabgleich(user.id, neu);
         if (await speichern(z, reply)) {
-          reply.code(200).send({ dateiId: originalId, fassung: neu.fassung, eintraege });
+          reply.code(200).send({
+            dateiId: originalId,
+            quelleId: neuId,
+            fassung: neu.fassung,
+            eintraege,
+          });
         }
       } catch (fehler) {
         fehlerAntwort(reply, fehler);

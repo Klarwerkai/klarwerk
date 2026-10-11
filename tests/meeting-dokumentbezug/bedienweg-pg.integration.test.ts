@@ -108,6 +108,7 @@ describe("BPA-16 · Meetingbezug in PostgreSQL", () => {
       meeting: { meetingId: "mt-pg-p2", zeitbasis: "z", ocrErlaubt: false },
       saetze: [],
       originale: [],
+      fassungen: [],
       originalVon: [],
       wechsel: [],
       mitschriften: [],
