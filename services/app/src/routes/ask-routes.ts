@@ -1037,6 +1037,14 @@ async function antwortLauf(
     // Anfrage an ein Word-Dokument gebunden ist — Klaras Zugang immer; sonst `frage`. Bewusst NICHT
     // die bloße Markierung (KA5-R2).
     readonly anlass: FrageAnlass;
+    /**
+     * P05 (B-10, RF-10): die Anmeldung des Fragenden UNMITTELBAR vor der Auslieferung erneut
+     * prüfen — mit demselben Guard wie am Eingang. Wurde das Konto während der Verarbeitung lokal
+     * gesperrt (Befristung abgelaufen, Verzeichnis-Austritt) oder hat es das Leserecht verloren,
+     * hat der Guard bereits 401/403 gesendet, und die fertige Antwort verlässt den Server nicht.
+     * Nur auf Sitzungswegen gesetzt; der Schlüsselweg hat keine Sitzung.
+     */
+    readonly nachpruefung?: () => Promise<boolean>;
   },
 ): Promise<void> {
   const ask = deps.ask;
@@ -1123,6 +1131,10 @@ async function antwortLauf(
     out.aussagen && request.authContext?.authKind === "addon"
       ? { aussagen: aufKernaussagenBeschraenkt(out.aussagen) }
       : {};
+  // P05 (B-10): nach dem letzten Warten, vor der Auslieferung — kein `await` mehr dazwischen.
+  if (lauf.nachpruefung && !(await lauf.nachpruefung())) {
+    return;
+  }
   // AUFNAHME 20260922: `belastbarkeit` steht NEBEN `evidence`, nicht darin — die Einstufung
   // bleibt der unveränderte Vertrag, den Word und die Paritätstafel lesen.
   reply.code(200).send({
@@ -1287,6 +1299,13 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             // R-0346: hier kommt eine Klara-Bindung nur noch mit einem Dienst-Schlüssel an (R-0688,
             // Abweisung oben); dann gilt wie bisher der Anlass `dokument`.
             anlass: klaraBindungVorhanden(request.headers) ? "dokument" : "frage",
+            // P05 (B-10): nur der Sitzungsweg — der Schlüsselweg hat keine Sitzung zum Nachprüfen.
+            ...(request.authContext?.authKind === "addon"
+              ? {}
+              : {
+                  nachpruefung: async () =>
+                    (await guards.requirePermission("ko.read", request, reply)) !== undefined,
+                }),
           });
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
@@ -2146,6 +2165,9 @@ export function klaraAusfuehrungRoutes(
             ...(zusatz ? { zusatz } : {}),
             // R-0346: Klaras Zugang ist immer an ein Word-Dokument gebunden.
             anlass: "dokument",
+            // P05 (B-10): Klaras Zugang ist immer ein Sitzungsweg.
+            nachpruefung: async () =>
+              (await guards.requirePermission("ko.read", request, reply)) !== undefined,
           });
         };
         if (freigegeben) {

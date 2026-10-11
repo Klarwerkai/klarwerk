@@ -100,6 +100,7 @@ import {
   vorgangsphase,
   zurueckweisungMeldungId,
 } from "./gap-vorgang";
+import { gegenpositionOhneModell } from "./gegenposition-ohne-modell";
 import { aussageFingerabdruck, signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
 import { type AnswerSnapshotRepo, type GapRepo, gleicherLueckenstand } from "./repo";
 import {
@@ -1409,7 +1410,7 @@ export class AskService {
       zweitmeinungFeld.zweitmeinung = beide.zweitmeinung;
       return beide.erste;
     };
-    const rawResult = await this.mitUebertragungssperre(() =>
+    const antwortwegErgebnis = await this.mitUebertragungssperre(() =>
       opts?.retrievalOnly
         ? // JOB 3049: TOR 2, Weg des Add-ins — derselbe Relevanztext wie an Tor 1. Ohne ihn hier
           // wäre genau der Klara-Weg der eine, der die Zusage nicht einlöst.
@@ -1431,6 +1432,15 @@ export class AskService {
             dokumenttext,
           ),
     );
+    // P05-AC08 (B-02/B-05): ohne Modell keine Widerspruchsprüfung — trägt eine weitere bestätigte
+    // Quelle derselben Auswahl einen anderen Wortlaut, wird nicht still gewählt, sondern beide
+    // genannt und gezielt nach dem Geltungsfall gefragt (Regel und Grenzen im Modul). Der wörtliche
+    // Add-in-Weg bleibt unberührt.
+    const gegenposition =
+      opts?.retrievalOnly === true
+        ? null
+        : gegenpositionOhneModell(antwortwegErgebnis, candidates, locale);
+    const rawResult = gegenposition ?? antwortwegErgebnis;
     // D5: danach werden Beleg, Wissenslücke und (in der Route) die Quellobjekte der Einstufung
     // geschrieben bzw. gelesen. Ist inzwischen abgeschaltet, wird nichts davon mehr ausgeliefert.
     this.pruefeKiSperre("ergebnis", kiBeginn);
