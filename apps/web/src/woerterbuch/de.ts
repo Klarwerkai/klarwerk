@@ -4675,6 +4675,16 @@ const de = {
   "lib.liste.offline": "Ohne Verbindung kann gerade nicht gesucht werden.",
   "lib.liste.offlineWeiter":
     "Sobald die Verbindung wieder steht, wird die Suche von selbst fortgesetzt.",
+  // R-0429 Slice 2 (Peter, Frage 52): der KI-Antwortbereich über den Treffern. „Von der KI
+  // verdichtet" und „Gefunden" sind die zwei Seiten der Trennung, die der Berater verlangt.
+  "lib.antwort.titel": "Von der KI verdichtet",
+  "lib.antwort.anfordern": "Antwort aus den Quellen",
+  "lib.antwort.laeuft": "Die KI liest die Quellen …",
+  "lib.antwort.ausblenden": "Ausblenden",
+  "lib.antwort.einblenden": "Einblenden",
+  "lib.antwort.quellen": "Quellen",
+  "lib.antwort.quelleN": "Quelle {{n}}",
+  "lib.antwort.gefunden": "Gefunden",
   // JOB 3335 · UX-21: der Schalter „Trefferliste" des Lese-Tablets (760–899 px). Die Beschriftung
   // nennt den ZUSTAND, den ein Klick herstellt — kein Symbol allein, kein Erklärsatz (H4).
   "lib.lesemodus.listeEinblenden": "Trefferliste einblenden",
