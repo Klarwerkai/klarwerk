@@ -162,7 +162,18 @@ function qs(params?: Record<string, string | undefined>): string {
   return `?${entries.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&")}`;
 }
 
-export type KoFilter = { type?: string; status?: string; category?: string; tag?: string };
+export type KoFilter = {
+  type?: string;
+  status?: string;
+  category?: string;
+  tag?: string;
+  // produkt:20261011:peter-p14 — der serverseitige Firmenfilter (`eigen`, `partner`, `oeffentlich`,
+  // kommagetrennt; optional `partner` = Bereichskennung). Als Teil der Parameter steht er auch im
+  // Abfrageschlüssel (`useKos`, `useLibrarySearch`): ein Wechsel des Bereichs holt neu, statt eine
+  // Antwort des vorigen Bereichs stehen zu lassen.
+  firmenbereich?: string;
+  partner?: string;
+};
 
 // ================================================================================================
 // JOB 4357 (WIKI-ZUSAMMENARBEIT) — DER DRAHTVERTRAG DER BESTANDSLISTE DER GESAMTANWEISUNGEN.

@@ -80,6 +80,13 @@ export interface SpaceEingabe {
   gruppe?: string;
   /** Die Spaceregeln in Worten: was hineingehört, wie gepflegt wird. Rechte stehen NICHT hier. */
   regeln?: string;
+  /**
+   * produkt:20261011:peter-p14 — der Name der Partnerfirma, wenn dieser Space ausdrücklich als
+   * freigegebener PARTNERBEREICH geführt wird (Firmenfilter, `firmenbereich.ts`). Eine Marke für den
+   * Filter, KEIN Recht: wer die Inhalte lesen darf, entscheiden weiter Zugang und Mitglieder.
+   * Fehlt das Feld, gehört der Space zur eigenen Firma.
+   */
+  partner?: string;
 }
 
 /**
@@ -157,6 +164,7 @@ export const SPACE_GRENZEN = {
   gruppe: 60,
   regeln: 2_000,
   begruendung: 1_000,
+  partner: 80,
 } as const;
 
 /** Der Vorgang einer Fassung — auch für Fassungen, die das Feld noch nicht tragen. */
@@ -332,6 +340,17 @@ export function pruefeSpaceEingabe(
   if (regeln.length > SPACE_GRENZEN.regeln) {
     throw new SpaceFehler("SPACE_UNGUELTIG", "Die Spaceregeln sind zu lang.");
   }
+  // produkt:20261011:peter-p14: leer oder `null` heisst „eigene Firma"; anderes als Text ist ungültig.
+  if (r.partner !== undefined && r.partner !== null && typeof r.partner !== "string") {
+    throw new SpaceFehler(
+      "SPACE_UNGUELTIG",
+      "Der Partnerbereich nennt den Namen der Partnerfirma.",
+    );
+  }
+  const partner = text(r.partner);
+  if (partner.length > SPACE_GRENZEN.partner) {
+    throw new SpaceFehler("SPACE_UNGUELTIG", "Der Name der Partnerfirma ist zu lang.");
+  }
   return {
     name,
     zweck,
@@ -342,7 +361,13 @@ export function pruefeSpaceEingabe(
     ...(gebunden.length > 0 ? { teams: gebunden } : {}),
     ...(gruppe ? { gruppe } : {}),
     ...(regeln ? { regeln } : {}),
+    ...(partner ? { partner } : {}),
   };
+}
+
+/** produkt:20261011:peter-p14 — die Kennungen der als Partnerbereich markierten Spaces. */
+export function partnerbereiche(spaces: readonly SpaceFassung[]): Set<string> {
+  return new Set(spaces.filter((s) => typeof s.partner === "string").map((s) => s.id));
 }
 
 /** Eine Begründung für Archivieren/Wiederaufnehmen — bereinigt, oder `SpaceFehler`. */

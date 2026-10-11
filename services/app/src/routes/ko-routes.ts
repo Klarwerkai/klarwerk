@@ -78,6 +78,15 @@ import { wissensnetzMetrikFuer } from "../../../wissensnetz";
 import type { AiCheckWorker } from "../ai-check-worker";
 import type { PruefUmfang } from "../detection-cap";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
+import {
+  FirmenfilterFehler,
+  type PartnerbereichQuelle,
+  firmenTrim,
+  firmenbereichVon,
+  imFirmenfilter,
+  leseFirmenfilter,
+  ohneFirmenfilter,
+} from "../firmenbereich";
 import type { FreigabeWeg, TorUrteil } from "../freigaberegel-dienst";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
@@ -187,6 +196,12 @@ export interface KoRoutesDeps {
         eingabe: { verdict?: Verdict | undefined; expectedVersion?: unknown },
       ) => Promise<TorUrteil>)
     | undefined;
+  /**
+   * produkt:20261011:peter-p14 — die als Partnerbereich markierten Spaces (Firmenfilter). Fehlt die
+   * Quelle (direkt konstruierte Routentests), gibt es keinen Partnerbereich: `firmenbereich=partner`
+   * liefert dann nichts, nie mehr.
+   */
+  partnerbereiche?: PartnerbereichQuelle | undefined;
 }
 
 /**
@@ -438,6 +453,9 @@ interface KoQuery {
   status?: KoStatus;
   category?: string;
   tag?: string;
+  // produkt:20261011:peter-p14 — der Firmenfilter (`firmenbereich.ts`); verengt nur.
+  firmenbereich?: string | string[];
+  partner?: string;
 }
 
 // ================================================================================================
@@ -1374,6 +1392,21 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       if (!user) {
         return;
       }
+      // produkt:20261011:peter-p14 — der Firmenfilter: geprüft VOR jedem Lesen (ungültig → 400,
+      // unabhängig vom Bestand), dann als UND in denselben Trim und noch einmal vor der Ausgabe.
+      let firmenfilter: ReturnType<typeof leseFirmenfilter>;
+      try {
+        firmenfilter = leseFirmenfilter(request.query);
+      } catch (fehler) {
+        if (fehler instanceof FirmenfilterFehler) {
+          reply.code(400).send({ error: fehler.code, message: fehler.message });
+          return;
+        }
+        throw fehler;
+      }
+      const firma = firmenfilter
+        ? { filter: firmenfilter, partner: (await deps.partnerbereiche?.()) ?? new Set<string>() }
+        : undefined;
       // mega74 B: ein unsichtbares Objekt fehlt in der Liste — es erscheint nicht als gesperrter
       // Platzhalter. Ein Platzhalter wäre wieder eine Existenzauskunft.
       //
@@ -1398,10 +1431,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // newAllowed`). Eine neue Regel darf Sichtbarkeit nie erweitern; ein Aufbau ohne Trim findet
       // hier weiterhin das Tor vor, das seit mega74 steht. Die Zusage dieser Route ändert sich
       // damit nicht — sie wird nur zählbar und paginierbar.
+      const trim = sqlSichtbarkeitFuer(user);
       const sichtbare = sichtbareFuer(
         user,
-        await ko.list(request.query, sqlSichtbarkeitFuer(user)),
-      );
+        await ko.list(
+          ohneFirmenfilter(request.query),
+          firma ? firmenTrim(trim, firma.filter, firma.partner) : trim,
+        ),
+      ).filter((item) => !firma || imFirmenfilter(item, firma.filter, firma.partner));
       // ==========================================================================================
       // JOB 3043 · DER ZWEITE LESEPFAD SAGT JETZT DASSELBE WIE DER ERSTE.
       // ==========================================================================================
@@ -1429,6 +1466,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ...item,
             ...discloseDisplayStatus(item, eingaenge),
             ...discloseFrische(item, jetzt, eingaenge, gelernt),
+            // P14: der Bereich nur in gefilterten Antworten — ungefiltert bleibt der Draht wie er war.
+            ...(firma ? { firmenbereich: firmenbereichVon(item, firma.partner) } : {}),
           };
         }),
       );

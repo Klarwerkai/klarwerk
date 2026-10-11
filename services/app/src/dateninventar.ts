@@ -693,7 +693,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "spaces",
     name: "Arbeitsräume (Spaces)",
     inhalt:
-      "Fassungen der Arbeitsräume mit Name, Zweck, zuständiger Person, Mitgliedern samt Recht, Ansichten, anlegender und ändernder Kennung.",
+      "Fassungen der Arbeitsräume mit Name, Zweck, zuständiger Person, Mitgliedern samt Recht, Ansichten, optionalem Namen der Partnerfirma (Partnerbereich), anlegender und ändernder Kennung.",
     personenbezug: "ja",
     personenbezugGrund: "Kennungen der zuständigen Person, der Mitglieder und der Bearbeiter.",
     ablage: { ort: DATENBANK, tabellen: ["spaces_fassungen"] },

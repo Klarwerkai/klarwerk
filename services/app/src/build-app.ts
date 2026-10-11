@@ -488,7 +488,13 @@ import { tabellenDerStufen } from "./sicherungsumfang";
 import { type AnhangQuellen, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 // produkt:20261007:spaces — die versionierten Arbeitsräume; im Postgres-Betrieb haltbar.
-import { InMemorySpacesRepo, PgSpacesRepo, type SpacesRepo, lesbareSpaces } from "./spaces";
+import {
+  InMemorySpacesRepo,
+  PgSpacesRepo,
+  type SpacesRepo,
+  lesbareSpaces,
+  partnerbereiche,
+} from "./spaces";
 import { speicherVorgang } from "./speicher-vorgang";
 // JOB 3655: der Startvertrag — die EINE Stelle, die alle Umgebungswerte namentlich führt, den
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
@@ -4153,9 +4159,14 @@ export function buildApp(
       await services.ko.setLeadingSpace(koId, spaceId, akteur, null);
     },
   });
+  // produkt:20261011:peter-p14 — die als Partnerbereich markierten Spaces, je Anfrage frisch aus
+  // derselben Ablage wie `spaceLesbar` (kein Zwischenspeicher: eine Marke wirkt sofort).
+  const partnerbereicheJetzt = async (): Promise<ReadonlySet<string>> =>
+    partnerbereiche(await services.spaces.aktuelle());
   app.register(
     koRoutes(
       {
+        partnerbereiche: partnerbereicheJetzt,
         ko: services.ko,
         validation: services.validation,
         conflicts: services.conflicts,
@@ -4652,6 +4663,7 @@ export function buildApp(
     ko: services.ko,
     conflicts: services.conflicts,
     offeneSpaces,
+    partnerbereiche: partnerbereicheJetzt,
     // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
     kanten: services.kanten,
     // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
@@ -4802,6 +4814,7 @@ export function buildApp(
       // R-0773: erfolglose Suchen je Person.
       services.nulltreffer,
       wissenspaketQuellen,
+      partnerbereicheJetzt,
     ),
   );
   app.register(categoryRoutes(services.ko, guards));

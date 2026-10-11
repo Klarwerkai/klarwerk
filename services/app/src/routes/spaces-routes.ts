@@ -517,6 +517,7 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           zugang: fassung.zugang,
           mitglieder: fassung.mitglieder.length,
           teams: (fassung.teams ?? []).map((b) => b.team),
+          partner: fassung.partner ?? null,
         },
       });
       const angelegt = (await dienste.spaces.fassungen(fassung.id)).at(-1) ?? fassung;
@@ -580,6 +581,14 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           // (`freigaberegeln-routes.ts`); die Spacepflege reicht sie unverändert weiter.
           ...(aktuell.freigabe ? { freigabe: aktuell.freigabe } : {}),
         };
+        // produkt:20261011:peter-p14: eine Pflege, die `partner` gar nicht nennt, lässt die Marke
+        // stehen; nur ein ausdrückliches `null`/"" nimmt sie weg (Rückkehr zur eigenen Firma).
+        if (
+          (request.body as { partner?: unknown }).partner === undefined &&
+          aktuell.partner !== undefined
+        ) {
+          fassung.partner = aktuell.partner;
+        }
         const gelegt = gesehen === aktuell.version && (await dienste.spaces.lege(fassung));
         if (!gelegt) {
           reply.code(409).send({
@@ -603,6 +612,8 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
             teams: (fassung.teams ?? []).map((b) => b.team),
             vorherTeams: (aktuell.teams ?? []).map((b) => b.team),
             regelnGeaendert: (fassung.regeln ?? "") !== (aktuell.regeln ?? ""),
+            partner: fassung.partner ?? null,
+            vorherPartner: aktuell.partner ?? null,
           },
         });
         const gelesen = (await dienste.spaces.fassungen(fassung.id)).at(-1) ?? fassung;
