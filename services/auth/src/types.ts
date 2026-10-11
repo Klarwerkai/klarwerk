@@ -1,5 +1,17 @@
 export type Role = "viewer" | "experte" | "controller" | "admin";
 
+/**
+ * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19) — DAS PERSÖNLICHE FREIGABENIVEAU (Variante B,
+ * Entscheidung 15 vom 11.10.2026: „persönliches Freigabeniveau plus Objekt-/Gruppenrechte").
+ * Bis zu welcher Vertraulichkeitsstufe dieser Mensch Wissensobjekte lesen darf. Dieselben drei
+ * Werte wie die Stufe am Objekt; eigener Typ, weil `auth` das Datenmodell nicht importiert.
+ */
+export type Freigabestufe = "intern" | "vertraulich" | "streng_vertraulich";
+
+export function istFreigabestufe(wert: unknown): wert is Freigabestufe {
+  return wert === "intern" || wert === "vertraulich" || wert === "streng_vertraulich";
+}
+
 export interface User {
   id: string;
   name: string;
@@ -49,10 +61,51 @@ export interface User {
   // Ablauf einer Sitzung: `Session.expiresAt` hat seine eigene, unberuehrte Bedeutung — zwei
   // Ablaufbegriffe, die sich vermischen, waeren der eigentliche Fehler.
   accessExpiresAt?: string;
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): das persönliche Freigabeniveau, gesetzt von
+  // der Verwaltung (`PUT /api/users/:id`, Feld `freigabe`). OPTIONAL: fehlt es, gilt die
+  // Übergangsregel in `services/app/src/sichtbarkeit.ts` (`freigaberang`) — sie öffnet NIE
+  // „streng vertraulich"; das braucht immer ein ausdrücklich gesetztes Niveau.
+  freigabe?: Freigabestufe;
   // R-0556 / R-0571: die Gruppen, die das Unternehmensverzeichnis (SCIM) für dieses Konto zuletzt
   // gemeldet hat. Aus ihnen folgen Rolle und Prüfzuständigkeiten — gepflegt vom Verzeichnis, nicht
   // von Hand. Optional: ein Konto, das das Verzeichnis nie gesehen hat, trägt keine.
   verzeichnisGruppen?: string[];
+  // Aufnahme gesamt-peer-validierung · Nutzerentscheid Antwort 18 (11.10.2026): die ausdrückliche
+  // fachliche WEISUNGSBEFUGNIS dieses Kontos mit ihrem Zuständigkeitsbereich. Sie wird am Konto
+  // vergeben (Geschäftsführung und weisungsberechtigte Personen) — die Rolle `admin` verleiht sie
+  // NICHT: technische Verwaltung ist keine fachliche Weisungsbefugnis. Optional: ein Konto ohne
+  // Vermerk hat keine.
+  weisungsbefugnis?: Weisungsbefugnis;
+}
+
+/**
+ * Antwort 18: wofür ein Konto eigene Weisungen unmittelbar gültig einstellen darf. `bereiche` sind
+ * die Bereiche (Kategorie eines Wissensobjekts), für die das Konto zuständig ist;
+ * `WEISUNG_GANZES_UNTERNEHMEN` steht für die Zuständigkeit über alle Bereiche (Geschäftsführung).
+ * `erteiltVon`/`erteiltAm` nennen, wer die Befugnis wann vergeben hat.
+ */
+export interface Weisungsbefugnis {
+  bereiche: string[];
+  erteiltVon: string;
+  erteiltAm: string;
+}
+
+/** Der Zuständigkeitsbereich „ganzes Unternehmen" (Antwort 18: Geschäftsführung). */
+export const WEISUNG_GANZES_UNTERNEHMEN = "*";
+
+/** Deckt die Befugnis diesen Bereich? Ohne Bereich am Objekt nur bei „ganzes Unternehmen". */
+export function weisungsbefugnisDeckt(
+  befugnis: { bereiche: readonly string[] } | undefined,
+  bereich: string | null | undefined,
+): boolean {
+  if (!befugnis) {
+    return false;
+  }
+  if (befugnis.bereiche.includes(WEISUNG_GANZES_UNTERNEHMEN)) {
+    return true;
+  }
+  const ziel = (bereich ?? "").trim().toLowerCase();
+  return ziel.length > 0 && befugnis.bereiche.some((b) => b.trim().toLowerCase() === ziel);
 }
 
 export interface Session {

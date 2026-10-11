@@ -125,7 +125,8 @@ describe("SCRUM-287: reviewWorkView", () => {
   it("validiert bleibt als validiert erkennbar", () => {
     expect(reviewWorkView(ko({ status: "validiert", trust: 100 }))).toMatchObject({
       state: "validated",
-      labelKey: "val.reviewState.validated",
+      // Nutzerentscheid Antwort 54 (11.10.2026): der sichtbare Name heisst „Fachlich bestätigt".
+      labelKey: "pruefablauf.wissensstatus.validiert",
       tone: "pos",
     });
   });

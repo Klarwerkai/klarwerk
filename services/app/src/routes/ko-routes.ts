@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
-import { meldung, sprache } from "../../../auth";
+import { meldung, sprache, weisungsbefugnisDeckt } from "../../../auth";
 import {
   type ConflictInput,
   type ConflictService,
@@ -78,13 +78,71 @@ import { wissensnetzMetrikFuer } from "../../../wissensnetz";
 import type { AiCheckWorker } from "../ai-check-worker";
 import type { PruefUmfang } from "../detection-cap";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
+import {
+  type BereichsmarkenQuelle,
+  FirmenfilterFehler,
+  KEINE_BEREICHSMARKEN,
+  firmenTrim,
+  firmenbereichVon,
+  imFirmenfilter,
+  leseFirmenfilter,
+  ohneFirmenfilter,
+} from "../firmenbereich";
 import type { FreigabeWeg, TorUrteil } from "../freigaberegel-dienst";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
 import { darfSehen, sichtbareFuer, sichtbarePaare, sqlSichtbarkeitFuer } from "../sichtbarkeit";
-import type { EinreichEntscheid, VorlagenEinreichungPort } from "../vorlagen";
+import { verifizierungFuer } from "../verifizierungsmarke";
+import {
+  type EinreichEntscheid,
+  VORLAGE_SPACE_KONFLIKT_TEXT,
+  type VorlagenEinreichungPort,
+  VorlagenSpaceFehler,
+} from "../vorlagen";
+import {
+  type BetroffenerPunkt,
+  type Lesekontext,
+  SICHTUNGS_HINDERNIS_TEXT,
+  type SichtungsHindernis,
+  aktuelleWeisung,
+  externeFreigabeEingabe,
+  offenePunkte,
+  sichtungsHindernis,
+  sichtungsVermerk,
+  weisungEingabe,
+} from "../weisung-und-freigabe";
 import { dublettenTor } from "./validation-routes";
+
+/** Nacharbeit 11 (Ben B1): ein Konto mit seinem tatsächlichen Lesekontext. */
+export interface KontoLesekontext {
+  id: string;
+  zugang: Lesekontext["zugang"];
+  zugangEndet?: string;
+  sitzung: SessionUser;
+}
+
+/**
+ * Entscheidung 19 · Ben B1: kann dieses Konto DIESES Objekt sichten? Gelesen wird mit DERSELBEN
+ * Regel wie am Sichtbarkeitstor (`darfSehen`) und der Sitzungssicht des Kontos selbst — nicht mit
+ * der der weisenden Person. Das Tor wird nicht gelockert.
+ */
+function sichtungsHindernisFuer(
+  konto: KontoLesekontext | undefined,
+  objekt: KnowledgeObject,
+  frist: string,
+): SichtungsHindernis | null {
+  return sichtungsHindernis(
+    konto
+      ? {
+          zugang: konto.zugang,
+          ...(konto.zugangEndet ? { zugangEndet: konto.zugangEndet } : {}),
+          darfLesen: darfSehen(konto.sitzung, objekt),
+        }
+      : undefined,
+    frist,
+  );
+}
 
 /** produkt:20261007:templates-default — die Absage der Einreichprüfung, wörtlich weitergegeben. */
 function sendeVorlagenAbsage(
@@ -96,6 +154,14 @@ function sendeVorlagenAbsage(
     message: e.message,
     ...(e.befunde ? { befunde: e.befunde } : {}),
   });
+}
+
+/**
+ * aufnahme:20260922:gesamt-wissensprojekte: der gewählte Space ließ sich nicht zuordnen — die
+ * Anlage ist zurückgenommen (`VorlagenSpaceFehler`). Ein Konflikt, kein stilles 201 ohne Space.
+ */
+function sendeVorlagenSpaceKonflikt(reply: FastifyReply, e: VorlagenSpaceFehler): void {
+  reply.code(409).send({ error: e.code, message: VORLAGE_SPACE_KONFLIKT_TEXT });
 }
 
 // Knowledge-Object-API (§2.3). Mutationen laufen über EINEN Endpunkt
@@ -133,6 +199,20 @@ export interface KoRoutesDeps {
   // GELESEN und ausschliesslich als eigenes Feld NEBEN das Objekt gesetzt; kein KO-Feld wird
   // ersetzt, überschrieben oder umgeschrieben.
   lesevarianten?: LesevariantenRepo | undefined;
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27: was die Route über Konten wissen
+  // muss — die Weisungsbefugnis am Konto und ob eine benannte Person ein Konto ist. OPTIONAL wie
+  // `lesevarianten`: ohne Verdrahtung gibt es keine Befugnis, und jede Weisung wird abgelehnt
+  // (fail-closed), statt aus der Rolle eine zu unterstellen.
+  konten?: {
+    befugnisVon(userId: string): Promise<{ bereiche: string[] } | undefined>;
+    kontoBesteht(userId: string): Promise<boolean>;
+    /**
+     * Nacharbeit 11 (Ben B1): der TATSÄCHLICHE Lesekontext eines Kontos — Zugangsstand und die
+     * Sitzungssicht, die `makeGuards` für dessen eigene Anfrage bilden würde (Rolle, lesbare
+     * Spaces). Ohne Verdrahtung ist niemand als Sichtende benennbar (fail-closed).
+     */
+    lesekontexte(): Promise<KontoLesekontext[]>;
+  };
   // Weg 3 (Feature-Flag): semantischer Vorfilter der Duplikat-Erkennung. Nur gesetzt, wenn aktiviert.
   semanticPrefilter?: SemanticPrefilter | undefined;
   // WP-SUBMIT-ASYNC (Pedis R3): In-Process-Worker der Hintergrund-KI-Prüfung. Optional (direkt
@@ -169,6 +249,24 @@ export interface KoRoutesDeps {
   // Composition-Root verdrahtet `AskService.markKoHelpful`. Fehlt sie, antwortet die Aktion ehrlich
   // mit 400 statt halb zu laufen.
   hilfreich?: ((koId: string, actor: string) => Promise<void>) | undefined;
+  // Aufnahme gesamt-peer-validierung (package:pruefablauf): darf diese Person einen Vorschlag
+  // entscheiden (freigegebenes Konto mit `users.manage`)? Die Composition-Root fragt das
+  // Nutzerverzeichnis. Fehlt die Verdrahtung, wird eine benannte Prüfperson abgewiesen (400),
+  // statt ungeprüft gespeichert.
+  freigabeberechtigt?: ((userId: string) => Promise<boolean>) | undefined;
+  // Aufnahme gesamt-peer-validierung (Antworten 18/19): das Konto einer Person, soweit Weisung und
+  // Sichtung es brauchen — freigegeben?, die am Konto vergebene Weisungsbefugnis (nicht die Rolle)
+  // und ob es Freigaberecht hat. Fehlt die Verdrahtung, gibt es keine unmittelbar gültige Weisung.
+  weisungskonto?:
+    | ((userId: string) => Promise<
+        | {
+            aktiv: boolean;
+            weisungsbefugnis: { bereiche: readonly string[] } | undefined;
+            freigabeberechtigt: boolean;
+          }
+        | undefined
+      >)
+    | undefined;
   // produkt:20261007:templates-default: die Einreichprüfung der Vorlagen (Pflichtfelder, Space-
   // Vorgaben, gepflegte Begriffe) und danach der Vermerk von Vorlage und Fassung. Fehlt sie (direkt
   // konstruierte Routentests), wird ein mitgeschickter Vorlagenbezug verworfen und nichts geprüft.
@@ -187,6 +285,12 @@ export interface KoRoutesDeps {
         eingabe: { verdict?: Verdict | undefined; expectedVersion?: unknown },
       ) => Promise<TorUrteil>)
     | undefined;
+  /**
+   * produkt:20261011:peter-p14 — die Partner- und öffentlichen Spaces (Firmenfilter, eine Ableitung
+   * mit dem Space-Artikelfilter). Fehlt die Quelle (direkt konstruierte Routentests), gibt es keine
+   * Bereichsmarke: `firmenbereich=partner` liefert dann nichts, nie mehr.
+   */
+  bereichsmarken?: BereichsmarkenQuelle | undefined;
 }
 
 /**
@@ -438,6 +542,9 @@ interface KoQuery {
   status?: KoStatus;
   category?: string;
   tag?: string;
+  // produkt:20261011:peter-p14 — der Firmenfilter (`firmenbereich.ts`); verengt nur.
+  firmenbereich?: string | string[];
+  partner?: string;
 }
 
 // ================================================================================================
@@ -500,6 +607,10 @@ type KoAktion =
   | "ownership-release"
   // R-0507: der benannte Eigentümer gibt das Objekt inhaltlich frei (Recht `ko.validate`).
   | "owner-validate"
+  // Antworten 18/19: die eigene Weisung unmittelbar gültig einstellen (Weisungsbefugnis am Konto)
+  // und ihre nachfolgende Sichtung durch die benannte verantwortliche Person.
+  | "weisung-validate"
+  | "weisung-sichten"
   | "conflict"
   | "resolve-conflict"
   | "transfer-author"
@@ -524,7 +635,15 @@ type KoAktion =
   | "schutz-oeffentlich"
   // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt — Bewährung, ausdrücklich keine
   // Prüfstimme. Arbeitet AM Objekt unter `:id` und passiert deshalb das Tor.
-  | "helpful";
+  | "helpful"
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19: die befugte Weisung mit punktweiser
+  // Entscheidung über betroffene Punkte (Sichtung über dieselbe Aktion `weisung-sichten` wie oben).
+  // Entscheidung 27: die Übernahme einer externen Freigabe. Beide arbeiten AM Objekt unter `:id`
+  // und passieren das Tor.
+  | "weisung"
+  // Nacharbeit 14 (Ben B2): den unvollständigen Abschluss überstimmter Punkte nachholen.
+  | "weisung-abschluss"
+  | "externe-freigabe";
 
 /**
  * `tor` — die Aktion arbeitet AM Objekt unter `:id`. Sie passiert das Sichtbarkeitstor.
@@ -553,6 +672,21 @@ type Torurteil = "tor" | "kein-zielobjekt";
 /** R-0431 (K2): die Höchstlänge eines Fachgebiets (`action: "domain"`). */
 const DOMAIN_MAX_LENGTH = 120;
 
+/**
+ * Antwort 19: die Sichtungsfrist ist ein echter Kalendertag (JJJJ-MM-TT), frühestens heute (UTC).
+ * `2026-02-30` fällt durch: der Tag wird zurückgelesen, nicht nur dem Muster nach geprüft.
+ */
+function istKalendertagAbHeute(wert: string, jetzt: Date = new Date()): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(wert)) {
+    return false;
+  }
+  const tag = new Date(`${wert}T00:00:00Z`);
+  if (Number.isNaN(tag.getTime()) || tag.toISOString().slice(0, 10) !== wert) {
+    return false;
+  }
+  return wert >= jetzt.toISOString().slice(0, 10);
+}
+
 const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   rate: "tor",
   assign: "tor",
@@ -579,6 +713,9 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   "ownership-release": "tor",
   // R-0507: die Eigentümerfreigabe arbeitet AM Objekt unter `:id` — wie `admin-validate`.
   "owner-validate": "tor",
+  // Antworten 18/19: beide arbeiten AM Objekt unter `:id` — wie `owner-validate`.
+  "weisung-validate": "tor",
+  "weisung-sichten": "tor",
   conflict: "kein-zielobjekt",
   "resolve-conflict": "kein-zielobjekt",
   "transfer-author": "tor",
@@ -599,6 +736,11 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   "schutz-oeffentlich": "tor",
   // R-0235 / R-0749: nur wer das Objekt sehen darf, kann melden, dass es geholfen hat.
   helpful: "tor",
+  // Aufnahme gesamt-wissen-herkunft: wer ein Objekt nicht sehen darf, kann es weder anweisen
+  // noch eine externe Freigabe daran übernehmen (Sichten: `weisung-sichten` oben).
+  weisung: "tor",
+  "weisung-abschluss": "tor",
+  "externe-freigabe": "tor",
 };
 
 /** Die Grundmenge als Datum — der Wächter liest sie, statt sie noch einmal abzuschreiben. */
@@ -613,6 +755,12 @@ interface PutBody {
    * (`dublettenTor` in validation-routes.ts).
    */
   duplicateAcknowledged?: unknown;
+  /**
+   * Antworten 18/19: an `weisung-validate` die nachfolgende Sichtung
+   * (`{ verantwortlich, frist: "JJJJ-MM-TT" }`), an `weisung-sichten` ihr Ergebnis
+   * (`{ ergebnis: "bestaetigt" | "widerrufen" }`). `unknown`, weil es aus dem Netz kommt.
+   */
+  sichtung?: unknown;
   userIds?: string[];
   changes?: ReviseKoInput;
   /**
@@ -672,6 +820,8 @@ interface PutBody {
     clearBody?: unknown;
     baseVersion?: unknown;
     origin?: unknown;
+    /** package:pruefablauf: die Kennung der benannten Prüfperson (optional). */
+    pruefer?: unknown;
   };
   /** JOB 3667 R2: welcher Vorschlag entschieden wird (`action: "decide-proposal"`). */
   proposalId?: string;
@@ -703,6 +853,22 @@ interface PutBody {
   /** R-0263: die Vorrang-Wahl an `resolve-conflict`. `unknown`, geprüft an der `case`. */
   vorrang?: unknown;
   newAuthor?: string;
+  /**
+   * Aufnahme gesamt-wissen-herkunft. Alles `unknown`, gelesen in `weisung-und-freigabe.ts`:
+   *   `sichtung`        — (Feld oben, geteilt) an `weisung`: `{ verantwortlich, frist }`
+   *                       (Entscheidung 19, Pflicht);
+   *   `bestehenLassen`  — an `weisung`: Konfliktkennungen, die ausdrücklich bestehen bleiben (R-0573);
+   *   `ueberstimmen`    — an `weisung`: Konfliktkennungen, die ausdrücklich überstimmt werden; der
+   *                       überstimmte Punkt wird geschlossen, nicht gelöscht (R-0573, Nacharbeit 11);
+   *   `vermerk`         — an `weisung-sichten` (Weisung mit punktweiser Entscheidung): ein freier
+   *                       Satz zur Sichtung;
+   *   `externeFreigabe` — an `externe-freigabe`: Herkunft der externen Freigabe und die Bestätigung
+   *                       der internen Anwendbarkeit (Entscheidung 27).
+   */
+  bestehenLassen?: unknown;
+  ueberstimmen?: unknown;
+  vermerk?: unknown;
+  externeFreigabe?: unknown;
   /**
    * produkt:20261010:aenderungsfolgen-sichtbar: an `revalidate` der Stand der Folgeprüfung, den der
    * Prüfende gesehen hat; an `neighbors-changed` der optionale Änderungsbeleg. Beide `unknown`,
@@ -1001,6 +1167,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     semanticPrefilter,
     aiCheckWorker,
     draftPromotion,
+    konten,
   } = deps;
   // JOB 4155: NICHT mitdestrukturiert, sondern unten als `deps.kanten` gelesen — so steht an der
   // Uebergabestelle, aus welchem Bündel der Port kommt, und ein fehlender Port ist dort sichtbar.
@@ -1044,9 +1211,172 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     await guards.requireUser(request, reply);
   };
 
+  // ============================================================================================
+  // R-0676 · DIE ANLEGEWEGE: ERST DAS RECHT, DANN DER KÖRPER.
+  // ============================================================================================
+  //
+  // `POST /api/kos` und `POST /api/kos/from-document` prüften `ko.create` erst im Handler — also
+  // nachdem Fastify den Körper (Vorgabe 1 MiB) gelesen und geparst hatte. Ein Anonymer oder ein
+  // Konto ohne Anlegerecht bekam damit eine Formkritik seines JSON (400), bevor jemand fragte, ob
+  // er überhaupt anlegen darf. Hier steht dasselbe Recht, das der Handler verlangt, VOR dem Parsen.
+  //
+  // WARUM DAS RECHT UND NICHT NUR DIE ANMELDUNG (anders als `requireAuthedBeforeParse` oben): beide
+  // Routen kennen genau EIN Recht, unabhängig vom Körper. Es gibt hier keine Aktion, deren Recht
+  // erst aus dem Körper folgte — also nichts, was ein früheres Urteil verfälschen könnte.
+  //
+  // WARUM ALS BENANNTER HELFER UND NICHT INLINE: der Routenscanner (`tests/security/routeGuardAudit.ts`)
+  // zählt `requirePermission("…")`-Literale im Routenblock. Ein zweites Literal dort machte aus
+  // `ko.create` scheinbar eine `action-dispatched`-Route. Der Handler behält seine eigene Prüfung
+  // (Defense-in-Depth, und er braucht ohnehin den Nutzer).
+  const requireKoCreateBeforeParse = async (
+    request: Parameters<Guards["requirePermission"]>[1],
+    reply: Parameters<Guards["requirePermission"]>[2],
+  ): Promise<void> => {
+    await guards.requirePermission("ko.create", request, reply);
+  };
+
   // R-0247: das Dublettentor der zwei Freigabewege — derselbe Sichtbarkeitszugang wie an
   // `/api/duplicates` (build-app.ts, `koSichtbarkeit`).
   const dublettenTorDeps = { overlaps, audit, kos: { get: (koId: string) => ko.get(koId) } };
+
+  // ==============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · R-0573 · Nacharbeit 14 (Ben B2) — DER ABSCHLUSS ÜBERSTIMMTER
+  // PUNKTE IST WIEDERAUFNEHMBAR UND WIRD NIE STILL ALS ERFOLG GEMELDET.
+  // ==============================================================================================
+  //
+  // Die Weisung selbst ist mit ihrem Beleg geschrieben, bevor die Punkte abgeschlossen werden; ihre
+  // Liste `weisung.ueberstimmt` ist der DAUERHAFTE Auftrag. Je Punkt zwei Schritte, in dieser
+  // Reihenfolge: (1) den überstimmten Wissenspunkt schließen, (2) den Konflikt zugunsten der
+  // Weisung entscheiden. Scheitert (1), bleibt der Konflikt offen und der Punkt damit sichtbar;
+  // scheitert (2), ist der Punkt geschlossen und der Konflikt weiter offen. In jedem Fall lässt sich
+  // der Stand aus Objekt und Konflikt ablesen (`punktStand`), und `weisung-abschluss` holt genau die
+  // fehlenden Schritte nach — bereits erledigte werden nicht wiederholt.
+  interface UeberstimmterPunktStand {
+    conflictId: string;
+    koId: string | null;
+    punkt: "geschlossen" | "offen";
+    konflikt: "entschieden" | "offen";
+    fehler?: string;
+  }
+
+  async function punktStand(weisungsKoId: string, conflictId: string) {
+    const offen = (await conflicts.unresolved()).find((c) => c.id === conflictId);
+    const konflikt =
+      offen ?? (await conflicts.geloesteFuer([weisungsKoId])).find((c) => c.id === conflictId);
+    let gegenId: string | null = null;
+    if (konflikt) {
+      gegenId = konflikt.koA === weisungsKoId ? konflikt.koB : konflikt.koA;
+    }
+    const gegen = gegenId ? await ko.get(gegenId) : undefined;
+    const stand: UeberstimmterPunktStand = {
+      conflictId,
+      koId: gegenId,
+      punkt: gegen?.geschlossen ? "geschlossen" : "offen",
+      konflikt: konflikt && !offen ? "entschieden" : "offen",
+    };
+    return { stand, konflikt: offen, gegen };
+  }
+
+  /**
+   * `berechtigung` (Nacharbeit 16, Ben): wird gefragt, BEVOR an einem Punkt noch etwas geändert
+   * wird — liefert sie einen Grund, bleibt der Punkt unverändert (weder Gegenpunkt noch Konflikt)
+   * und der Abschluss sichtbar unvollständig. Bereits erledigte Schritte bleiben erhalten; ein
+   * vollständig abgeschlossener Punkt wird gar nicht erst befragt.
+   */
+  async function punktAbschliessen(
+    weisungsKoId: string,
+    fassung: number,
+    conflictId: string,
+    actorId: string,
+    berechtigung?: (
+      gegen: KnowledgeObject | undefined,
+    ) => { fehler: string; verborgen: boolean } | null,
+  ): Promise<UeberstimmterPunktStand> {
+    const { stand, konflikt, gegen } = await punktStand(weisungsKoId, conflictId);
+    if (!stand.koId) {
+      return { ...stand, fehler: "Der überstimmte Punkt ist nicht mehr auffindbar." };
+    }
+    const ausstehend = stand.punkt === "offen" || stand.konflikt === "offen";
+    const verweigert = ausstehend && berechtigung ? berechtigung(gegen) : null;
+    if (verweigert) {
+      // Ein nicht (mehr) sichtbarer Gegenpunkt wird auch nicht über seine Kennung genannt.
+      return {
+        ...stand,
+        ...(verweigert.verborgen ? { koId: null } : {}),
+        fehler: verweigert.fehler,
+      };
+    }
+    if (stand.punkt === "offen") {
+      try {
+        await ko.schliesseDurchWeisung(
+          stand.koId,
+          { durchKoId: weisungsKoId, conflictId },
+          actorId,
+        );
+        stand.punkt = "geschlossen";
+      } catch (err) {
+        // Ohne geschlossenen Punkt wird der Konflikt NICHT entschieden: er bleibt als offener,
+        // sichtbarer Punkt stehen, bis der Abschluss nachgeholt ist.
+        return { ...stand, fehler: err instanceof Error ? err.message : String(err) };
+      }
+    }
+    if (stand.konflikt === "offen" && konflikt) {
+      try {
+        if (konflikt.type === "truth" && konflikt.status === "offen") {
+          await conflicts.escalate(conflictId, actorId);
+        }
+        await conflicts.resolve(
+          conflictId,
+          actorId,
+          `Durch Weisung überstimmt (Wissensobjekt ${weisungsKoId}, Fassung ${fassung}).`,
+          { art: "ueberstimmt", gilt: weisungsKoId },
+        );
+        stand.konflikt = "entschieden";
+      } catch (err) {
+        return { ...stand, fehler: err instanceof Error ? err.message : String(err) };
+      }
+    }
+    return stand;
+  }
+
+  /**
+   * Antwort nach dem (Nach-)Abschluss: vollständig → 200; sonst 409
+   * `WEISUNG_ABSCHLUSS_UNVOLLSTAENDIG` samt Stand je Punkt und ein dauerhafter Protokollvermerk
+   * (`ko.weisung-abschluss-unvollstaendig`). Die Weisung selbst bleibt gesetzt; nachgeholt wird über
+   * `action: "weisung-abschluss"`.
+   */
+  async function abschlussMelden(
+    reply: FastifyReply,
+    weisungsKoId: string,
+    actorId: string,
+    ergebnis: Record<string, unknown>,
+    punkte: readonly UeberstimmterPunktStand[],
+  ): Promise<void> {
+    const offen = punkte.filter((p) => p.punkt !== "geschlossen" || p.konflikt !== "entschieden");
+    if (offen.length === 0) {
+      reply.code(200).send({ ...ergebnis, ueberstimmt: punkte });
+      return;
+    }
+    await audit?.record({
+      actor: actorId,
+      action: "ko.weisung-abschluss-unvollstaendig",
+      target: weisungsKoId,
+      payload: {
+        offen: offen.map((p) => ({
+          conflictId: p.conflictId,
+          punkt: p.punkt,
+          konflikt: p.konflikt,
+        })),
+      },
+    });
+    reply.code(409).send({
+      ...ergebnis,
+      error: "WEISUNG_ABSCHLUSS_UNVOLLSTAENDIG",
+      message:
+        "Die Weisung ist gesetzt, aber mindestens ein überstimmter Punkt ist noch nicht abgeschlossen. Holen Sie den Abschluss nach („Abschluss nachholen“); bereits erledigte Schritte werden nicht wiederholt.",
+      ueberstimmt: punkte,
+    });
+  }
 
   /**
    * Der EINE manuelle Anlageweg eines Konflikts — für `action: "conflict"` und für die
@@ -1085,9 +1415,62 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     userId: string,
   ) {
     if (konflikt.type === "truth") {
-      await ko.markTruthConflictReview(konflikt.koA, userId);
-      await ko.markTruthConflictReview(konflikt.koB, userId);
+      // Ben, Nacharbeit 3: über die Validierung — sie rechnet aus derselben Grundlage wie die
+      // Bewertung, damit derselbe Konflikt genau einmal in den Vertrauenswert eingeht.
+      await validation.wahrheitskonfliktFolge(konflikt.koA, userId);
+      await validation.wahrheitskonfliktFolge(konflikt.koB, userId);
     }
+  }
+
+  /**
+   * AW06-K02 (Ben, Nacharbeit 4) — DIE ANNAHME DIESER FASSUNG, AUS IHREM BELEG GELESEN.
+   *
+   * Gelesen wird GENAU der Eintrag, auf den `validationDecisionRef` zeigt — Nummer UND Hash müssen
+   * stimmen, er muss eine Annahme sein (`ko.admin-validated` oder eine grüne `ko.rated`) und für
+   * DIESE Fassung gelten. Dann nennt die Antwort Fassung, Person, Zeitpunkt und die Kontoregel,
+   * die IM BELEG steht — nicht die heutige Einstellung. Ältere Belege ohne Regel liefern
+   * `kontoregel: null` (nicht festgehalten), statt sie zu raten. Passt etwas nicht, fehlt das Feld.
+   *
+   * GRENZE: die Kettenprüfung (`/api/audit/verify`) läuft hier nicht mit; die Bindung ist der
+   * Hash des einen Eintrags.
+   *
+   * Ben, Nacharbeit 7: gelesen wird zuerst `annahmeRef` — der Verweis auf die ANNAHME dieser
+   * Fassung. `validationDecisionRef` nennt die NEUESTE Entscheidung und zeigt nach einer gelben
+   * Rückfrage an der weiter validierten Fassung auf deren Rückgabe; daraus wird keine Annahme, und
+   * die Annahme darf darüber nicht verschwinden. Nur Altbestand ohne `annahmeRef` fällt auf
+   * `validationDecisionRef` zurück. Nacharbeit 8: bevor ein neuer Beleg diesen Verweis ersetzt,
+   * übernimmt die Schreibklammer einen belegten Annahmebezug derselben Fassung als `annahmeRef`
+   * (`KoService.belegteAnnahmeAusVerweis`) — die Annahme bleibt also auch im Bestand stehen.
+   */
+  async function annahmeVon(item: KnowledgeObject) {
+    if (item.annahmeRef && item.annahmeRef.koVersion !== item.version) {
+      return undefined;
+    }
+    const ref = item.annahmeRef ?? item.validationDecisionRef;
+    if (!audit || !ref || item.status !== "validiert") {
+      return undefined;
+    }
+    const beleg = (await audit.list({ target: item.id })).find(
+      (e) => e.seq === ref.auditSeq && e.hash === ref.auditHash,
+    );
+    const p = beleg?.payload ?? {};
+    const istAnnahme =
+      beleg?.action === "ko.admin-validated" ||
+      // R-0507 (aus main): die Eigentümerfreigabe ist ebenfalls eine Annahme.
+      beleg?.action === "ko.owner-validated" ||
+      // Antworten 18/19: die unmittelbar gültige Weisung eines befugten Kontos.
+      beleg?.action === "ko.weisung-validated" ||
+      (beleg?.action === "ko.rated" && p.verdict === "up");
+    if (!beleg || !istAnnahme || p.koVersion !== item.version) {
+      return undefined;
+    }
+    return {
+      fassung: item.version,
+      person: beleg.actor,
+      zeitpunkt: beleg.at,
+      kontoregel: typeof p.kontoregel === "string" ? p.kontoregel : null,
+      ...(typeof p.benoetigt === "number" ? { benoetigt: p.benoetigt } : {}),
+    };
   }
 
   async function sichtbaresKoOder404(user: SessionUser, id: string, reply: FastifyReply) {
@@ -1305,6 +1688,17 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   }
 
   return async (app) => {
+    // R-0676: der Rechte-Riegel VOR dem Parsen für `POST /api/kos/from-document`. Er hängt hier am
+    // Plugin und nicht als Routenoption, weil die Kopfzeile dieser Route sonst umbricht und Biome
+    // den ganzen Handler eine Stufe tiefer einrückt (Nacharbeit 5). Die Wirkung ist dieselbe: ein
+    // `onRequest`-Hook, der vor dem Body-Parsing läuft und den Lebenszyklus mit gesendeter Absage
+    // beendet. `POST /api/kos` trägt denselben Helfer als Routenoption (unten).
+    app.addHook("onRequest", async (request, reply) => {
+      if (request.method === "POST" && request.routeOptions.url === "/api/kos/from-document") {
+        await requireKoCreateBeforeParse(request, reply);
+      }
+    });
+
     // ============================================================================================
     // JOB 2009 · D2 — H3 BEKOMMT SEINEN LESER. Datei und Zeile dieses Aufrufs sind der Beleg.
     // ============================================================================================
@@ -1374,6 +1768,21 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       if (!user) {
         return;
       }
+      // produkt:20261011:peter-p14 — der Firmenfilter: geprüft VOR jedem Lesen (ungültig → 400,
+      // unabhängig vom Bestand), dann als UND in denselben Trim und noch einmal vor der Ausgabe.
+      let firmenfilter: ReturnType<typeof leseFirmenfilter>;
+      try {
+        firmenfilter = leseFirmenfilter(request.query);
+      } catch (fehler) {
+        if (fehler instanceof FirmenfilterFehler) {
+          reply.code(400).send({ error: fehler.code, message: fehler.message });
+          return;
+        }
+        throw fehler;
+      }
+      const firma = firmenfilter
+        ? { filter: firmenfilter, marken: (await deps.bereichsmarken?.()) ?? KEINE_BEREICHSMARKEN }
+        : undefined;
       // mega74 B: ein unsichtbares Objekt fehlt in der Liste — es erscheint nicht als gesperrter
       // Platzhalter. Ein Platzhalter wäre wieder eine Existenzauskunft.
       //
@@ -1398,10 +1807,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // newAllowed`). Eine neue Regel darf Sichtbarkeit nie erweitern; ein Aufbau ohne Trim findet
       // hier weiterhin das Tor vor, das seit mega74 steht. Die Zusage dieser Route ändert sich
       // damit nicht — sie wird nur zählbar und paginierbar.
+      const trim = sqlSichtbarkeitFuer(user);
       const sichtbare = sichtbareFuer(
         user,
-        await ko.list(request.query, sqlSichtbarkeitFuer(user)),
-      );
+        await ko.list(
+          ohneFirmenfilter(request.query),
+          firma ? firmenTrim(trim, firma.filter, firma.marken) : trim,
+        ),
+      ).filter((item) => !firma || imFirmenfilter(item, firma.filter, firma.marken));
       // ==========================================================================================
       // JOB 3043 · DER ZWEITE LESEPFAD SAGT JETZT DASSELBE WIE DER ERSTE.
       // ==========================================================================================
@@ -1429,6 +1842,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ...item,
             ...discloseDisplayStatus(item, eingaenge),
             ...discloseFrische(item, jetzt, eingaenge, gelernt),
+            // P14: der Bereich nur in gefilterten Antworten — ungefiltert bleibt der Draht wie er war.
+            ...(firma ? { firmenbereich: firmenbereichVon(item, firma.marken) } : {}),
           };
         }),
       );
@@ -1511,9 +1926,40 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // Einordnungsfelder sind nach KW-ARCH-G27 ausdrücklich keine Sicherheitsmerkmale.
       const einordnung = await ko.einordnungsstandVon(item.id);
       const varianten = (await lesevarianten?.forKo(item.id)) ?? [];
+      // Aufnahme gesamt-wissen-herkunft (R-0228): die Verifizierungsmarke — menschliche Prüfung
+      // aus dem verwiesenen Protokolleintrag, NACH dem Sichtbarkeitstor oben. Begründung und
+      // Grenzen in ../verifizierungsmarke.ts.
+      const verifizierung = await verifizierungFuer(item, audit);
+      // AW06-K02: die Annahme dieser Fassung samt Kontoregel — nur aus ihrem Beleg, sonst fehlt sie.
+      const annahme = await annahmeVon(item);
       const eingaenge = await anzeigestatusEingaengeFuer(user, item);
+      // Entscheidung 19 · Nacharbeit 11 (Ben B1): wer hier eine Weisung setzen darf, bekommt die
+      // Konten, die DIESES Objekt mit ihrem eigenen Lesekontext lesen und deshalb sichten können —
+      // nur Kennungen (Namen löst das Verzeichnis), ohne die weisende Person. Für alle anderen
+      // fehlt das Feld; die Route der Weisung prüft unabhängig davon noch einmal.
+      const sichtungsKandidaten = weisungsbefugnisDeckt(
+        await konten?.befugnisVon(user.id),
+        item.category,
+      )
+        ? ((await konten?.lesekontexte()) ?? [])
+            .filter((k) => k.id !== user.id && sichtungsHindernisFuer(k, item, "") === null)
+            .map((k) => k.id)
+        : undefined;
+      // Nacharbeit 14 (Ben B2): ein unvollständiger Abschluss überstimmter Punkte bleibt am Objekt
+      // ablesbar — abgeleitet aus Weisung, Konflikten und Gegenpunkten, ohne Zwischenspeicher.
+      const weisungAbschlussOffen: string[] = [];
+      for (const conflictId of item.weisung?.ueberstimmt ?? []) {
+        const { stand } = await punktStand(item.id, conflictId);
+        if (stand.punkt !== "geschlossen" || stand.konflikt !== "entschieden") {
+          weisungAbschlussOffen.push(conflictId);
+        }
+      }
       reply.code(200).send({
         ...item,
+        verifizierung,
+        ...(sichtungsKandidaten ? { sichtungsKandidaten } : {}),
+        ...(weisungAbschlussOffen.length > 0 ? { weisungAbschlussOffen } : {}),
+        ...(annahme ? { annahme } : {}),
         ...discloseConfidentiality(item.confidentiality),
         ...discloseDisplayStatus(item, eingaenge),
         ...discloseFrische(item, Date.now(), eingaenge, await ko.gelernteHalbwertszeiten()),
@@ -1601,6 +2047,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
 
     app.post<{ Body: Omit<CreateKoInput, "author"> & { reviewerIds?: string[] } }>(
       "/api/kos",
+      { onRequest: requireKoCreateBeforeParse },
       async (request, reply) => {
         const user = await guards.requirePermission("ko.create", request, reply);
         if (!user) {
@@ -1710,30 +2157,53 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           }
           // produkt:20261007:templates-default: Pflichtfelder der Vorlage, Space-Vorgaben und
           // gepflegte Begriffe — serverseitig, VOR der Anlage. Ein Entwurf bleibt davon unberührt.
-          const vorlagenEntscheid = await deps.vorlagen?.pruefe(
-            vorlagenBezug,
-            { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
-            user,
-          );
-          if (vorlagenEntscheid && !vorlagenEntscheid.ok) {
-            sendeVorlagenAbsage(reply, vorlagenEntscheid);
+          // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8, Bens Befund): mit gewähltem
+          // Space laufen Prüfung, Anlage und Zuordnung unter derselben Sperre wie die
+          // Spacelöschung (`sperre`). Gewinnt die Löschung vorher, antwortet die Prüfung 409
+          // `SPACE_GELOESCHT`; misslingt die Zuordnung, ist die Anlage zurückgenommen (409).
+          const anlage = async () => {
+            const entscheid = await deps.vorlagen?.pruefe(
+              vorlagenBezug,
+              { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
+              user,
+            );
+            if (entscheid && !entscheid.ok) {
+              return { absage: entscheid } as const;
+            }
+            let neu = await ko.create({ ...input, author: user.id });
+            // Der Vermerk ist eine Nacharbeit: das Objekt steht schon. Scheitert er, wird das
+            // gesagt (`vorlagenVermerk`), nicht als gescheiterte Anlage ausgegeben — AUSSER die
+            // Space-Zuordnung scheitert: dann ist die Anlage zurückgenommen.
+            let vermerk: "fehlgeschlagen" | undefined;
+            if (entscheid?.ok && entscheid.bezug) {
+              try {
+                await deps.vorlagen?.vermerke(neu.id, entscheid.bezug, user);
+                if (entscheid.bezug.spaceId) {
+                  neu = (await ko.get(neu.id)) ?? neu;
+                }
+              } catch (fehlerWert) {
+                if (fehlerWert instanceof VorlagenSpaceFehler) {
+                  return { spaceFehler: fehlerWert } as const;
+                }
+                request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
+                vermerk = "fehlgeschlagen";
+              }
+            }
+            return { created: neu, vorlagenVermerk: vermerk } as const;
+          };
+          const ergebnis = deps.vorlagen
+            ? await deps.vorlagen.sperre(vorlagenBezug, anlage)
+            : await anlage();
+          if ("absage" in ergebnis) {
+            sendeVorlagenAbsage(reply, ergebnis.absage);
             return;
           }
-          let created = await ko.create({ ...input, author: user.id });
-          // Der Vermerk ist eine Nacharbeit: das Objekt steht schon. Scheitert er, wird das gesagt
-          // (`vorlagenVermerk`), nicht als gescheiterte Anlage ausgegeben.
-          let vorlagenVermerk: "fehlgeschlagen" | undefined;
-          if (vorlagenEntscheid?.ok && vorlagenEntscheid.bezug) {
-            try {
-              await deps.vorlagen?.vermerke(created.id, vorlagenEntscheid.bezug, user);
-              if (vorlagenEntscheid.bezug.spaceId) {
-                created = (await ko.get(created.id)) ?? created;
-              }
-            } catch (fehlerWert) {
-              request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
-              vorlagenVermerk = "fehlgeschlagen";
-            }
+          if ("spaceFehler" in ergebnis) {
+            sendeVorlagenSpaceKonflikt(reply, ergebnis.spaceFehler);
+            return;
           }
+          const created = ergebnis.created;
+          const vorlagenVermerk = ergebnis.vorlagenVermerk;
           // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
           // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).
           // Läuft über validation.assign + Benachrichtigung (FR-VAL-07) wie die Board-Zuweisung.
@@ -1803,8 +2273,17 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       const badRequest = (message: string): void => {
         reply.code(400).send({ error: "BAD_REQUEST", message });
       };
+      // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): mit gewähltem Space hält dieser
+      // Vorgang von der Vorlagenprüfung bis zur Zuordnung dieselbe Sperre wie die Spacelöschung.
+      let spaceSperreFrei: (() => void) | undefined;
       try {
         const body = request.body ?? {};
+        const rohBezug = body.draftId
+          ? typeof body.draftPayload === "object" && body.draftPayload !== null
+            ? (body.draftPayload as { vorlage?: unknown }).vorlage
+            : undefined
+          : (body.create as { vorlage?: unknown } | undefined)?.vorlage;
+        spaceSperreFrei = await deps.vorlagen?.halte(rohBezug);
         const entries = body.documents ?? [];
         // ---- UNVERÄNDERLICHE FORMPRÜFUNGEN ----------------------------------------------------
         if (entries.length === 0) {
@@ -1977,10 +2456,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             // Aufnahme gesamt-fehlermeldungen (P-Q9): dieselben zwei Katalogsätze wie die
             // Entwurfsrouten (`capture-routes.ts`, JOB 3956) — bis hierher sprach dieser Weg in
             // einer EN/NL-Sitzung als einziger noch Deutsch. Status und Code bleiben unverändert.
+            //
+            // aufnahme:20260922:gesamt-leserechte (R-0239, J24 „404"): ein NICHT SICHTBARER
+            // Entwurf kommt als `not-found` an (build-app.ts, `draftPromotion`) und antwortet wie
+            // ein unbekannter. `forbidden` bleibt allein dem SICHTBAREN Pool-Entwurf, an dem das
+            // Einreichrecht fehlt — derselbe Rechtesatz wie an `requireVisibleDraft` (`nurAutor`).
             reply.code(loaded.reason === "not-found" ? 404 : 403).send({
               error: loaded.reason === "not-found" ? "NOT_FOUND" : "FORBIDDEN",
               message: meldung(
-                loaded.reason === "not-found" ? "DRAFT_NOT_FOUND" : "DRAFT_NOT_VISIBLE",
+                loaded.reason === "not-found" ? "DRAFT_NOT_FOUND" : "PERMISSION_DENIED",
                 sprache(request),
               ),
             });
@@ -2223,17 +2707,35 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // sein Autor sieht und löschen kann — unschön, aber kein Verlust und vor allem kein
         // Wissensobjekt ohne Herkunft. Die umgekehrte Reihenfolge hätte den Entwurf vernichten
         // können, während die Anlage scheitert.
+        // produkt:20261007:templates-default: Vorlage und Fassung vermerken, ggf. in den gewählten
+        // Space legen — eine Nacharbeit wie die übrigen, nachholbar und ehrlich gemeldet.
+        // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): AUSNAHME ist die Space-
+        // Zuordnung. Misslingt sie, hat der Port die Anlage zurückgenommen — dann 409, und der
+        // Entwurf bleibt erhalten (deshalb steht dieser Schritt VOR dem Verwerfen des Entwurfs).
+        const bezug = vorlagenEntscheid?.ok ? vorlagenEntscheid.bezug : null;
+        const spaceKonflikt: { fehler?: VorlagenSpaceFehler } = {};
+        if (bezug) {
+          await followUp("vorlage", async () => {
+            try {
+              await (deps.vorlagen as VorlagenEinreichungPort).vermerke(created.id, bezug, user);
+            } catch (fehlerWert) {
+              if (fehlerWert instanceof VorlagenSpaceFehler) {
+                spaceKonflikt.fehler = fehlerWert;
+                return;
+              }
+              throw fehlerWert;
+            }
+          });
+        }
+        if (spaceKonflikt.fehler) {
+          sendeVorlagenSpaceKonflikt(reply, spaceKonflikt.fehler);
+          return;
+        }
+        // Der Beitrag trägt seinen Space — die übrigen Nacharbeiten brauchen die Sperre nicht.
+        spaceSperreFrei?.();
         const draftId = body.draftId;
         if (draftId && draftPromotion) {
           await followUp("draft-discard", () => draftPromotion.discard(draftId));
-        }
-        // produkt:20261007:templates-default: Vorlage und Fassung vermerken, ggf. in den gewählten
-        // Space legen — eine Nacharbeit wie die übrigen, nachholbar und ehrlich gemeldet.
-        const bezug = vorlagenEntscheid?.ok ? vorlagenEntscheid.bezug : null;
-        if (bezug) {
-          await followUp("vorlage", () =>
-            (deps.vorlagen as VorlagenEinreichungPort).vermerke(created.id, bezug, user),
-          );
         }
         const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
         if (reviewers.length > 0) {
@@ -2329,6 +2831,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         await indexKoForDuplicatePrefilter(created, semanticPrefilter);
       } catch (error) {
         sendError(reply, error);
+      } finally {
+        spaceSperreFrei?.();
       }
     });
 
@@ -2833,10 +3337,13 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           body.action !== "category" &&
           body.action !== "rate" &&
           body.action !== "owner-validate" &&
-          body.action !== "admin-validate"
+          body.action !== "admin-validate" &&
+          // Ben, Nacharbeit 11 (AW06-K02): Weisung und Sichtung entscheiden die GELESENE Fassung.
+          body.action !== "weisung-validate" &&
+          body.action !== "weisung-sichten"
         ) {
           return badRequest(
-            'expectedVersion gilt nur für die Aktionen "revise", "revise-release", "decide-proposal", "tags", "category", "rate", "owner-validate" und "admin-validate".',
+            'expectedVersion gilt nur für die Aktionen "revise", "revise-release", "decide-proposal", "tags", "category", "rate", "owner-validate", "admin-validate", "weisung-validate" und "weisung-sichten".',
           );
         }
         // JOB 4251: der Stempel der EINORDNUNG greift nur dort, wo eine Einordnung geschrieben wird.
@@ -3076,6 +3583,264 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             reply.code(200).send(ergebnis);
             return;
           }
+          // ======================================================================================
+          // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 (R-0573, W10) — DIE WEISUNG.
+          // ======================================================================================
+          //
+          // Reihenfolge, und sie ist die Aussage: (1) die Befugnis kommt AUSSCHLIESSLICH vom
+          // Konto und muss den fachlichen Bereich (Kategorie) des Objekts decken — keine Rolle,
+          // auch `admin` nicht, ersetzt sie; (2) Verantwortliche und Frist der nachfolgenden
+          // Sichtung sind Pflicht; (3) jeder betroffene bestehende Punkt (offener Konflikt) muss
+          // einzeln entschieden oder ausdrücklich als „bleibt bestehen" benannt sein — sonst legt
+          // die Antwort die noch offenen Punkte einzeln vor; (4) dieselbe Dublettenbestätigung wie
+          // an den übrigen Freigabewegen. Erst dann schreibt der Validierungsdienst — Zustand,
+          // Herkunft, Beleg `ko.weisung` und Verweis in einer Klammer.
+          case "weisung": {
+            const user = await guards.requireUser(request, reply);
+            if (!user) {
+              return;
+            }
+            const objekt = await ko.get(id);
+            if (!objekt) {
+              reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
+              return;
+            }
+            const befugnis = await konten?.befugnisVon(user.id);
+            if (!weisungsbefugnisDeckt(befugnis, objekt.category)) {
+              reply.code(403).send({
+                error: "WEISUNGSBEFUGNIS_FEHLT",
+                message: `Für den Bereich „${objekt.category}“ ist an Ihrem Konto keine Weisungsbefugnis vermerkt. Eine Rolle allein verleiht sie nicht.`,
+              });
+              return;
+            }
+            const eingabe = weisungEingabe(body, user.id, Date.now());
+            if (!eingabe.ok) {
+              return badRequest(eingabe.fehler);
+            }
+            // Nacharbeit 11 (Ben B1): nicht nur „gibt es das Konto", sondern „kann es sichten" —
+            // mit seinem EIGENEN Lesekontext gegen dieselbe Regel wie das Sichtbarkeitstor.
+            const sichtende = (await konten?.lesekontexte())?.find(
+              (k) => k.id === eingabe.wert.sichtung.verantwortlich,
+            );
+            const hindernis = sichtungsHindernisFuer(sichtende, objekt, eingabe.wert.sichtung.frist);
+            if (hindernis) {
+              reply.code(400).send({
+                error: "SICHTUNG_NICHT_MOEGLICH",
+                grund: hindernis,
+                message: SICHTUNGS_HINDERNIS_TEXT[hindernis],
+              });
+              return;
+            }
+            type Punkt = BetroffenerPunkt & { sichtbar: boolean; gegen?: KnowledgeObject };
+            const betroffen: Punkt[] = [];
+            for (const konflikt of await conflicts.unresolved()) {
+              if (konflikt.koA !== id && konflikt.koB !== id) {
+                continue;
+              }
+              const gegenId = konflikt.koA === id ? konflikt.koB : konflikt.koA;
+              const gegen = await ko.get(gegenId);
+              const sichtbar = gegen !== undefined && darfSehen(user, gegen);
+              betroffen.push({
+                conflictId: konflikt.id,
+                koId: sichtbar ? gegenId : "",
+                titel: sichtbar && gegen ? gegen.title : "",
+                sichtbar,
+                ...(sichtbar && gegen ? { gegen } : {}),
+              });
+            }
+            // R-0573 · Nacharbeit 11 (Ben B2): überstimmt werden kann nur ein betroffener, für die
+            // weisende Person sichtbarer Punkt — und nur in ihrem fachlichen Bereich: Überstimmen
+            // schließt den Punkt, und das ist eine Weisung über DIESEN Punkt.
+            const zuUeberstimmen: { conflictId: string; gegen: KnowledgeObject }[] = [];
+            for (const kennung of eingabe.wert.ueberstimmen) {
+              const punkt = betroffen.find((p) => p.conflictId === kennung);
+              if (!punkt?.sichtbar || !punkt.gegen) {
+                return badRequest(
+                  "Ein zu überstimmender Punkt ist kein offener, für Sie sichtbarer Punkt dieses Wissensobjekts.",
+                );
+              }
+              if (!weisungsbefugnisDeckt(befugnis, punkt.gegen.category)) {
+                reply.code(403).send({
+                  error: "WEISUNGSBEFUGNIS_FEHLT",
+                  message: `Den Punkt „${punkt.gegen.title}“ (Bereich „${punkt.gegen.category}“) können Sie nicht überstimmen: für diesen Bereich ist an Ihrem Konto keine Weisungsbefugnis vermerkt.`,
+                });
+                return;
+              }
+              zuUeberstimmen.push({ conflictId: kennung, gegen: punkt.gegen });
+            }
+            const lage = offenePunkte(
+              betroffen,
+              eingabe.wert.bestehenLassen,
+              eingabe.wert.ueberstimmen,
+            );
+            if (lage.verborgen > 0) {
+              reply.code(409).send({
+                error: "WEISUNG_PUNKT_VERBORGEN",
+                message:
+                  "Mindestens ein betroffener Punkt ist für Sie nicht sichtbar. Über ihn können Sie nicht entscheiden — die Weisung wurde nicht gesetzt.",
+              });
+              return;
+            }
+            if (lage.offen.length > 0) {
+              reply.code(409).send({
+                error: "WEISUNG_PUNKTE_OFFEN",
+                message:
+                  "Zu diesem Wissensobjekt bestehen offene Punkte. Entscheiden Sie jeden einzeln — überstimmen oder ausdrücklich bestehen lassen. Die Weisung wurde nicht gesetzt.",
+                punkte: lage.offen,
+              });
+              return;
+            }
+            if (
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "weisung",
+                reply,
+              ))
+            ) {
+              return;
+            }
+            const betroffeneKennungen = new Set(betroffen.map((p) => p.conflictId));
+            const entscheidung = await validation.weisungSetzen(id, user.id, {
+              bereich: objekt.category,
+              sichtung: eingabe.wert.sichtung,
+              bestehenGelassen: eingabe.wert.bestehenLassen.filter((k) =>
+                betroffeneKennungen.has(k),
+              ),
+              ueberstimmt: zuUeberstimmen.map((p) => p.conflictId),
+            });
+            // Verfehlter Compare-and-Set: die Weisung wurde NICHT geschrieben — dann wird auch
+            // nichts überstimmt und nichts geschlossen.
+            if (entscheidung.validationDecisionRef === null) {
+              reply.code(200).send({ ...entscheidung, ueberstimmt: [] });
+              return;
+            }
+            // Je überstimmtem Punkt: (1) der überstimmte Wissenspunkt wird geschlossen — nicht
+            // gelöscht; (2) der Konflikt wird zugunsten dieser Weisung entschieden — über den
+            // UNVERÄNDERTEN allgemeinen Konfliktweg; ein Wahrheitskonflikt durchläuft dabei seinen
+            // verbindlichen Eskalationsschritt (R-0215) durch die weisende Person. Nacharbeit 14
+            // (Ben B2): ein Fehler wird gemeldet, nicht verschluckt, und ist nachholbar.
+            const ueberstimmt: UeberstimmterPunktStand[] = [];
+            for (const punkt of zuUeberstimmen) {
+              ueberstimmt.push(
+                await punktAbschliessen(id, objekt.version, punkt.conflictId, user.id),
+              );
+            }
+            await abschlussMelden(reply, id, user.id, { ...entscheidung }, ueberstimmt);
+            return;
+          }
+          // R-0573 · Nacharbeit 14 (Ben B2): den unvollständigen Abschluss überstimmter Punkte
+          // nachholen. Nur die weisende Person, solange ihre Befugnis den Bereich noch deckt;
+          // bearbeitet wird ausschließlich, was in `weisung.ueberstimmt` steht und noch offen ist.
+          case "weisung-abschluss": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            const objekt = await ko.get(id);
+            const weisung = objekt?.weisung;
+            if (!objekt || !weisung || (weisung.ueberstimmt ?? []).length === 0) {
+              return badRequest(
+                "An diesem Wissensobjekt ist kein Abschluss überstimmter Punkte offen.",
+              );
+            }
+            if (weisung.von !== user.id) {
+              reply.code(403).send({
+                error: "WEISUNG_NICHT_EIGENE",
+                message: "Den Abschluss holt die Person nach, die die Weisung erteilt hat.",
+              });
+              return;
+            }
+            const befugnis = await konten?.befugnisVon(user.id);
+            if (!weisungsbefugnisDeckt(befugnis, objekt.category)) {
+              reply.code(403).send({
+                error: "WEISUNGSBEFUGNIS_FEHLT",
+                message: `Für den Bereich „${objekt.category}“ ist an Ihrem Konto keine Weisungsbefugnis (mehr) vermerkt.`,
+              });
+              return;
+            }
+            // Nacharbeit 16 (Ben): dieselben Prüfungen wie beim ursprünglichen Überstimmen, und zwar
+            // JETZT — je Gegenpunkt seine aktuelle Sichtbarkeit für die weisende Person und ihre
+            // Weisungsbefugnis für SEINEN Bereich. Fehlt eines davon, bleibt der Punkt unverändert
+            // (weder Gegenpunkt noch Konflikt) und der Abschluss sichtbar unvollständig.
+            const berechtigung = (gegen: KnowledgeObject | undefined) => {
+              if (!gegen || !darfSehen(user, gegen)) {
+                return {
+                  fehler:
+                    "Der überstimmte Punkt ist für Sie nicht (mehr) sichtbar; er wurde nicht verändert.",
+                  verborgen: true,
+                };
+              }
+              if (!weisungsbefugnisDeckt(befugnis, gegen.category)) {
+                return {
+                  fehler: `Für den Bereich „${gegen.category}“ des überstimmten Punkts ist an Ihrem Konto keine Weisungsbefugnis (mehr) vermerkt; er wurde nicht verändert.`,
+                  verborgen: false,
+                };
+              }
+              return null;
+            };
+            const punkte: UeberstimmterPunktStand[] = [];
+            for (const conflictId of weisung.ueberstimmt ?? []) {
+              punkte.push(
+                await punktAbschliessen(id, weisung.fassung, conflictId, user.id, berechtigung),
+              );
+            }
+            await abschlussMelden(reply, id, user.id, { koId: id }, punkte);
+            return;
+          }
+          // ======================================================================================
+          // Aufnahme gesamt-wissen-herkunft · Entscheidung 27 (R-0164, R-0178) — EXTERNE FREIGABE.
+          // ======================================================================================
+          //
+          // Wer prüfen darf (`ko.validate`), bestätigt die INTERNE Anwendbarkeit — Geltung (der
+          // Bereich des Objekts) und Zuständigkeit (ein Konto) — und übernimmt die externe Freigabe
+          // samt Herkunft. Das ist die Entscheidung; eine zweite, pauschale Inhaltsprüfung durch
+          // Kolleginnen entfällt ausdrücklich. Als externe Referenz (das ganze Dokument, R-0178)
+          // muss das Dokument selbst am Objekt hängen.
+          case "externe-freigabe": {
+            const user = await guards.requirePermission("ko.validate", request, reply);
+            if (!user) {
+              return;
+            }
+            const objekt = await ko.get(id);
+            if (!objekt) {
+              reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
+              return;
+            }
+            const eingabe = externeFreigabeEingabe(body.externeFreigabe, Date.now());
+            if (!eingabe.ok) {
+              return badRequest(eingabe.fehler);
+            }
+            if (!(await konten?.kontoBesteht(eingabe.wert.zustaendig))) {
+              return badRequest("Die intern zuständige Person ist kein Konto dieses Systems.");
+            }
+            if (eingabe.wert.art === "referenz" && (objekt.attachments ?? []).length === 0) {
+              return badRequest(
+                "Ein ganzes Dokument als externe Referenz braucht das Dokument selbst als Anhang.",
+              );
+            }
+            if (
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "externe-freigabe",
+                reply,
+              ))
+            ) {
+              return;
+            }
+            reply.code(200).send(
+              await validation.externeFreigabeUebernehmen(id, user.id, {
+                ...eingabe.wert,
+                geltung: objekt.category,
+              }),
+            );
+            return;
+          }
           case "revise": {
             const user = await guards.requirePermission("ko.create", request, reply);
             if (!user) {
@@ -3202,6 +3967,23 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                 "proposal.baseVersion muss die Ganzzahl der Version sein, auf der der Vorschlag beruht.",
               );
             }
+            // package:pruefablauf: die benannte Prüfperson. Nur jemand, der den Vorschlag auch
+            // entscheiden darf — sonst wartete die Änderung bei einer Person, die nicht freigeben
+            // kann. Dass es nicht der Einreicher selbst ist, prüft der Dienst (`PROPOSAL_OWN`).
+            const pruefer = vorschlag.pruefer;
+            if (pruefer !== undefined) {
+              if (typeof pruefer !== "string" || pruefer.trim().length === 0) {
+                return badRequest("proposal.pruefer muss die Kennung einer Person sein.");
+              }
+              if (
+                pruefer.trim() !== user.id &&
+                !(await deps.freigabeberechtigt?.(pruefer.trim()))
+              ) {
+                return badRequest(
+                  "Die benannte Prüfperson kann diesen Vorschlag nicht entscheiden — bitte eine Person mit Freigaberecht wählen.",
+                );
+              }
+            }
             const angelegt = await ko.addProposal(id, user.id, {
               statement: vorschlag.statement,
               ...(typeof vorschlag.bodyHtml === "string" ? { bodyHtml: vorschlag.bodyHtml } : {}),
@@ -3210,6 +3992,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               ...(vorschlag.clearBody === true ? { clearBody: true } : {}),
               baseVersion: basis,
               ...(typeof vorschlag.origin === "string" ? { origin: vorschlag.origin } : {}),
+              ...(typeof pruefer === "string" ? { pruefer: pruefer.trim() } : {}),
+              // AW06-K02: die Kontoregel, unter der dieser Vorschlag entsteht — aus demselben
+              // Recht, das an `revise` den direkten Weg öffnet oder sperrt (`users.manage`).
+              kontoregel: can(user.role, "users.manage")
+                ? "freiwillige-zweitpruefung"
+                : "pflichtpruefung",
             });
             reply.code(200).send(angelegt.ko);
             return;
@@ -3231,8 +4019,19 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             const entscheidung = body.decision;
-            if (entscheidung !== "uebernehmen" && entscheidung !== "ablehnen") {
-              return badRequest('decision muss "uebernehmen" oder "ablehnen" sein.');
+            if (
+              entscheidung !== "uebernehmen" &&
+              entscheidung !== "ablehnen" &&
+              entscheidung !== "rueckfrage"
+            ) {
+              return badRequest('decision muss "uebernehmen", "ablehnen" oder "rueckfrage" sein.');
+            }
+            // package:pruefablauf: eine Rückfrage ohne Inhalt ist keine nachvollziehbare Rückfrage.
+            if (
+              entscheidung === "rueckfrage" &&
+              (typeof body.note !== "string" || body.note.trim().length === 0)
+            ) {
+              return badRequest("Eine Rückfrage braucht einen Text (note).");
             }
             if (typeof body.proposalId !== "string" || body.proposalId.trim().length === 0) {
               return badRequest("proposalId fehlt.");
@@ -3957,6 +4756,164 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             }
             await freigabe.nachEntscheidung?.(ergebnis);
             reply.code(200).send(ergebnis);
+            return;
+          }
+          // ======================================================================================
+          // Antworten 18/19 (Nutzerentscheid 11.10.2026) — DIE UNMITTELBAR GÜLTIGE WEISUNG.
+          // ======================================================================================
+          // Das Recht kommt NICHT aus der Rolle (`ko.read` genügt als Lesetor), sondern aus der am
+          // Konto vergebenen Weisungsbefugnis — technische Administration allein genügt nicht.
+          // Sie muss den Bereich des Objekts decken; dass es die EIGENE Weisung ist, prüft der Dienst
+          // unter dem KO-Lock. Die Sichtung braucht eine andere, freigegebene Person, die selbst
+          // Freigaberecht oder Weisungsbefugnis für den Bereich hat, und eine Frist ab heute.
+          case "weisung-validate": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            const konto = await deps.weisungskonto?.(user.id);
+            if (!konto?.aktiv || !konto.weisungsbefugnis) {
+              reply.code(403).send({
+                error: "FORBIDDEN",
+                message:
+                  "An Ihrem Konto ist keine Weisungsbefugnis eingetragen. Sie vergibt die Verwaltung ausdrücklich je Zuständigkeitsbereich; die Administratorrolle allein genügt nicht.",
+              });
+              return;
+            }
+            const befugnis = konto.weisungsbefugnis;
+            // Ben, Nacharbeit 11 (AW06-K02): PFLICHT — die Fassung, die der Mensch gelesen hat.
+            const gelesen = erwarteteKoVersion(body.expectedVersion);
+            if (gelesen === undefined || gelesen === "unlesbar") {
+              return badRequest(
+                "expectedVersion muss die Ganzzahl der gelesenen Fassung sein; eine Weisung entscheidet nur die Fassung, die zu sehen war.",
+              );
+            }
+            const roh = body.sichtung as { verantwortlich?: unknown; frist?: unknown } | undefined;
+            const verantwortlich =
+              typeof roh?.verantwortlich === "string" ? roh.verantwortlich.trim() : "";
+            const frist = typeof roh?.frist === "string" ? roh.frist.trim() : "";
+            if (!verantwortlich || !istKalendertagAbHeute(frist)) {
+              return badRequest(
+                "sichtung muss { verantwortlich, frist: JJJJ-MM-TT } nennen; die Frist liegt frühestens heute.",
+              );
+            }
+            const objekt = await ko.get(id);
+            const sichtende = await deps.weisungskonto?.(verantwortlich);
+            if (
+              verantwortlich === user.id ||
+              !sichtende?.aktiv ||
+              !(
+                sichtende.freigabeberechtigt ||
+                weisungsbefugnisDeckt(sichtende.weisungsbefugnis, objekt?.category)
+              )
+            ) {
+              return badRequest(
+                "Die Sichtung übernimmt eine andere, freigegebene Person mit Freigaberecht oder Weisungsbefugnis für diesen Bereich.",
+              );
+            }
+            if (
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "weisung-validate",
+                reply,
+              ))
+            ) {
+              return;
+            }
+            // Weicht die Fassung ab, antwortet `fassungsgebunden` mit 409 KO_STALE samt der jetzt
+            // gültigen Fassung — es wird nichts entschieden.
+            const gesetzt = await fassungsgebunden(
+              validation.weisungValidate(id, user.id, {
+                deckt: (bereich) => weisungsbefugnisDeckt(befugnis, bereich),
+                verantwortlich,
+                frist,
+                erwarteteFassung: gelesen,
+              }),
+            );
+            if (!gesetzt) {
+              return;
+            }
+            reply.code(200).send(gesetzt);
+            return;
+          }
+          // Antwort 19: die Sichtung. Wer sichten darf, steht an der Weisung selbst (die benannte
+          // verantwortliche Person). Ben, Nacharbeit 11: dazu die AKTUELLE fachliche Befugnis — das
+          // Konto muss jetzt noch freigegeben sein und Prüfrecht oder Weisungsbefugnis für den Bereich
+          // tragen (dieselbe Regel wie beim Einrichten der Sichtung); geprüft im Dienst gegen den
+          // frisch gelesenen Bereich. Und die gelesene Fassung ist Pflicht (AW06-K02).
+          case "weisung-sichten": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            // Integration Nacharbeit 12 (gesamt-wissen-herkunft, Entscheidung 19): EINE Aktion für
+            // beide Weisungswege. Nacharbeit 14 (Ben B1): gesichtet wird die AKTUELLE Weisung — die
+            // mit dem jüngeren Beleg (`aktuelleWeisung`); eine frühere `weisungsSichtung` blockiert
+            // eine spätere punktweise Weisung nicht mehr. Ist die punktweise die aktuelle, sichtet
+            // die dort benannte Person einmal mit optionalem Vermerk; sonst gilt unverändert der
+            // Weg darunter.
+            const vorher = await ko.get(id);
+            if (vorher?.weisung && aktuelleWeisung(vorher) === "punktweise") {
+              const weisung = vorher.weisung;
+              // Eine Sichtung MIT Ergebnis gilt der früheren eigenen Weisung — die ist nicht mehr
+              // die aktuelle. Abgelehnt statt still als Vermerk an der neuen verbucht.
+              if ((body.sichtung as { ergebnis?: unknown } | undefined)?.ergebnis !== undefined) {
+                reply.code(409).send({
+                  error: "WEISUNG_NICHT_AKTUELL",
+                  message:
+                    "Die zu sichtende Weisung ist inzwischen eine neuere Weisung mit punktweiser Entscheidung; sie wird ohne Ergebnis gesichtet.",
+                });
+                return;
+              }
+              if (weisung.sichtung.verantwortlich !== user.id) {
+                reply.code(403).send({
+                  error: "SICHTUNG_NICHT_ZUSTAENDIG",
+                  message:
+                    "Diese Weisung sichtet die Person, die beim Setzen als verantwortlich benannt wurde.",
+                });
+                return;
+              }
+              if (weisung.sichtung.gesichtetAm) {
+                reply.code(409).send({
+                  error: "WEISUNG_BEREITS_GESICHTET",
+                  message: "Diese Weisung ist bereits gesichtet.",
+                });
+                return;
+              }
+              const vermerk = sichtungsVermerk(body.vermerk);
+              if (!vermerk.ok) {
+                return badRequest(vermerk.fehler);
+              }
+              reply.code(200).send(await ko.weisungSichten(id, user.id, vermerk.wert));
+              return;
+            }
+            const ergebnis = (body.sichtung as { ergebnis?: unknown } | undefined)?.ergebnis;
+            if (ergebnis !== "bestaetigt" && ergebnis !== "widerrufen") {
+              return badRequest("sichtung.ergebnis muss bestaetigt oder widerrufen sein.");
+            }
+            const gelesen = erwarteteKoVersion(body.expectedVersion);
+            if (gelesen === undefined || gelesen === "unlesbar") {
+              return badRequest(
+                "expectedVersion muss die Ganzzahl der gelesenen Fassung sein; eine Sichtung entscheidet nur die Fassung, die zu sehen war.",
+              );
+            }
+            const konto = await deps.weisungskonto?.(user.id);
+            const gesichtet = await fassungsgebunden(
+              validation.weisungSichten(id, user.id, ergebnis, {
+                erwarteteFassung: gelesen,
+                darf: (bereich) =>
+                  Boolean(konto?.aktiv) &&
+                  (Boolean(konto?.freigabeberechtigt) ||
+                    weisungsbefugnisDeckt(konto?.weisungsbefugnis, bereich)),
+              }),
+            );
+            if (!gesichtet) {
+              return;
+            }
+            reply.code(200).send(gesichtet);
             return;
           }
           case "conflict": {

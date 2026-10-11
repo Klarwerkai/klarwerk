@@ -129,10 +129,10 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `DELETE` | `/api/auth/users/:id` | `requireAdmin` | — | 204 | 401; 403; Dienstfehler |
 | `GET` | `/api/users` | `requireAdmin` | — | 200 Kontenliste (`listUsers`) | 401; 403 |
 | `POST` | `/api/users` | `requireAdmin` | Rumpf `{ name, email, password, role?, accessExpiresAt? }` | 201 Konto | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` (Befristung unlesbar oder Rollenwechsel unzulässig); 409 `EMAIL_TAKEN` |
-| `PUT` | `/api/users/:id` | `requireAdmin` | Rumpf `{ role?, approve?, password?, accessExpiresAt? }` | 200 Konto bzw. 204 | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` |
+| `PUT` | `/api/users/:id` | `requireAdmin` | Rumpf `{ role?, approve?, password?, accessExpiresAt?, weisungsbefugnis? }` (`weisungsbefugnis`: Liste von Bereichen, `*` = ganzes Unternehmen, `null` entzieht) | 200 Konto bzw. 204 | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` |
 | `DELETE` | `/api/users/:id` | `requireAdmin` | — | 204 | 401; 403; Dienstfehler |
 | `DELETE` | `/api/users/:id/second-factor` | `requireAdmin` | — | 204 (zweiter Faktor entfernt, z. B. bei verlorenem Gerät) | 401; 403 `FORBIDDEN` (nicht eingerichtet); 404 |
-| `GET` | `/api/directory` | `requireUser` (Modul) | — | 200 `[{ id, name }]` — ohne E-Mail | 401 |
+| `GET` | `/api/directory` | `requireUser` (Modul) | — | 200 `[{ id, name }]` — ohne E-Mail; dahinter gelöschte Konten als `{ id, geloescht: true }` ohne Namen (Beleg: Prüfprotokoll `user.delete`) | 401 |
 | `GET` | `/api/verantwortung/person/:id/vermaechtnis` | `users.manage` (`verantwortungRoutes`) | — | 200 Wissens-Vermächtnis-Buch `{ person, titel, erzeugtAm, dateiname, aufgenommen, zeitraum, themen, ausgelassen, markdown, provenance }` — nur einsehbare, validierte, nicht vertrauliche Beiträge; schreibt kein Wissen; Auditeintrag `vermaechtnis.erzeugt` | 401; 403 `FORBIDDEN`; 404 `NOT_FOUND` (weder Konto noch Beitrag) |
 
 Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anmeldung mit
@@ -218,6 +218,10 @@ herabgestuft werden (409 `mutability`).
 | `confidentiality` | `ko.create` | Stufe |
 | `ownership` | `ko.validate` | `ownership` |
 | `owner-validate` | `ko.validate`; nur der benannte Eigentümer (sonst 403 `NOT_OWNER`); Dublettentor wie `rate` | `duplicateAcknowledged?` (Status „validiert“, Vertrauen unverändert; Audit `ko.owner-validated`; Eigentümer in `ownership.validators`) |
+| `weisung-validate` | `ko.read` **und** Weisungsbefugnis am Konto für den Bereich des Objekts (sonst 403; die Rolle allein genügt nicht); nur das eigene Objekt (sonst 403 `NOT_OWNER`); Dublettentor wie `rate` | `expectedVersion` (Pflicht; gelesene Fassung, sonst 400, abweichend 409 `KO_STALE` mit `currentVersion`); offener Wahrheitskonflikt → 409 `CONFLICT`; `sichtung: { verantwortlich, frist: JJJJ-MM-TT }` — andere, freigegebene Person mit `ko.validate` oder Weisungsbefugnis im Bereich, Frist ab heute (sonst 400); `duplicateAcknowledged?` (Status „validiert“, Vertrauen unverändert; Audit `ko.weisung-validated`, Kontoregel `weisung`; `weisungsSichtung` am Objekt) |
+| `weisung-sichten` | `ko.read`; nur die benannte verantwortliche Person, die JETZT noch `ko.validate` oder Weisungsbefugnis für den Bereich hat (sonst 403), nur die offene Sichtung der gültigen Fassung (sonst 400) | `expectedVersion` (Pflicht, wie oben); `sichtung: { ergebnis: bestaetigt \| widerrufen }` (`widerrufen` → Status offen, Annahme entfällt; Audit `ko.weisung-gesichtet`). **Ist stattdessen eine Weisung mit punktweiser Entscheidung (`weisung`, s. nächste Zeile) die AKTUELLE — ihr Beleg (`weisung.beleg`) steht später in der Kette als der einer früheren `weisungsSichtung`, oder es gibt keine:** eine Sichtung mit `sichtung.ergebnis` wird mit 409 `WEISUNG_NICHT_AKTUELL` abgelehnt; sonst nur die dort benannte Person (sonst 403 `SICHTUNG_NICHT_ZUSTAENDIG`), einmal (sonst 409 `WEISUNG_BEREITS_GESICHTET`), `vermerk?`; Audit `ko.weisung-sichtung-vermerkt`, Status unverändert |
+| `weisung` | `ko.read` **und** Weisungsbefugnis am Konto (dieselbe wie oben) für den Bereich des Objekts (sonst 403 `WEISUNGSBEFUGNIS_FEHLT`); Dublettentor wie `rate` | `sichtung: { verantwortlich, frist }` — die Person muss das Objekt mit ihrem eigenen Zugang lesen können und aktiv sein (sonst 400 `SICHTUNG_NICHT_MOEGLICH`); jeder offene Konflikt des Objekts einzeln in `bestehenLassen` oder `ueberstimmen` (sonst 409 `WEISUNG_PUNKTE_OFFEN` bzw. `WEISUNG_PUNKT_VERBORGEN`); überstimmen nur im eigenen Bereich (sonst 403). Wirkung: Status „validiert“, Herkunft `weisung`, Audit `ko.weisung`; je überstimmtem Punkt zuerst `geschlossen` am Gegenpunkt (Audit `ko.durch-weisung-geschlossen`), dann die Konfliktentscheidung mit Vorrang. Scheitert ein Schritt: 409 `WEISUNG_ABSCHLUSS_UNVOLLSTAENDIG` mit Stand je Punkt (`punkt`, `konflikt`), Audit `ko.weisung-abschluss-unvollstaendig`, und `GET /api/kos/:id` führt `weisungAbschlussOffen`; die Weisung selbst bleibt gesetzt |
+| `weisung-abschluss` | `ko.read`; nur die weisende Person (sonst 403 `WEISUNG_NICHT_EIGENE`) mit weiterhin deckender Weisungsbefugnis (sonst 403) | — ; holt für jeden Punkt aus `weisung.ueberstimmt` genau die fehlenden Schritte nach (bereits Erledigtes wird nicht wiederholt); vor jedem noch ausstehenden Schritt wird JETZT geprüft, dass der Gegenpunkt für die Person sichtbar ist und ihre Weisungsbefugnis seinen Bereich deckt — sonst bleibt der Punkt unverändert (weder Gegenpunkt noch Konflikt) mit `fehler`, bei fehlender Sichtbarkeit ohne Kennung des Gegenpunkts (`koId: null`); Antwort wie oben (200 vollständig, sonst 409) |
 | `ownership-release` | `ko.read`; nur der benannte Eigentümer selbst (sonst 403 `NOT_OWNER`) | — (Spur `reviewers`/`validators` bleibt; Audit `ko.ownership-released`) |
 | `conflict` | `ko.validate` | `conflict` (antwortet 201) |
 | `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |
@@ -251,6 +255,7 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/objects` | `ko.create` (vor dem Einlesen) | Rumpf `{ name, mime, data, kind?, confidentiality?, purpose?, draftId? }` | 201 Objektbeschreibung | Dienstfehler |
 | `GET` | `/api/objects/:id` | `ko.read`, nur Anhänge sichtbarer Träger | — | 200 Objekt (`Cache-Control` nach Trägerurteil: vertraulich `no-store`, sonst `private, no-cache, must-revalidate`; `Vary: Cookie, Authorization`) | 404 `NOT_FOUND` (`no-store`) |
 | `GET` | `/api/objects/:id/raw` | `ko.read`, wie oben | — | 200 Rohbytes mit Inhaltstyp (Cachevertrag wie oben) | 404; 415 `UNSUPPORTED` (beide `no-store`) |
+| `GET` | `/api/objects/:id/traeger` | `ko.read`, wie oben; je Träger zusätzlich dessen Lesbarkeit | — | 200 `{ traeger: [{ id, title }] }` — die lesbaren Wissensobjekte, die den Anhang tragen (R-0095); `no-store`, `Vary: Cookie, Authorization` | 404 `NOT_FOUND` (`no-store`) |
 | `GET` | `/api/media/status` | `requireUser` | — | 200 Engine-Auskunft | — |
 | `POST` | `/api/media/analyze` | `ko.read` | Rumpf `{ objectId, locale?, confidentiality? }` | 200 Analyse | 404 `NOT_FOUND` |
 | `POST` | `/api/media/transcribe` | `ko.read` (Anmeldung vor dem Einlesen) | Rumpf `{ data, locale?, confidentiality? }` (Data-URL einer Audio-/Videoaufnahme, wird nicht gespeichert) | 200 `{ transcript, engineActive, engine, note }` | 400 `BAD_REQUEST`, `UNSUPPORTED_KIND`; 413 (über der Rumpfgrenze); 429 KI-Bremse; 502 `ENGINE_FAILED` |
@@ -384,6 +389,15 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/learning-paths/:role` | `ko.read` | — | 200 Lernpfad | 404 `NOT_FOUND` |
 | `POST` | `/api/learning-paths/:pathId/complete` | `ko.read` | Rumpf `{ stepId }` | 200 Fortschritt | Dienstfehler |
 | `GET` | `/api/learning-paths/:pathId/progress` | `ko.read` | — | 200 Fortschritt | — |
+| `GET` | `/api/kos/:id/verstaendnisfragen` | `ko.read`, sichtbar | — | 200 `{ koId, aktuelleFassung, gueltig, darfBearbeiten, darfEntscheiden, fragensaetze: [{ id, titel, rollen, gueltig, quellenlage, verbleibend, eigeneErgebnisse, bearbeitung }] }` — `gueltig` ohne richtige Antworten, Erläuterung und Beleg; `bearbeitung` (jüngste Version samt Befunden) nur für Verantwortliche/Freigabeberechtigte | 404 `NOT_FOUND` |
+| `POST` | `/api/kos/:id/verstaendnisfragen` | `ko.create`, sichtbar, Verantwortung oder `ko.validate` | Rumpf `{ koVersion, titel, rollen, regel: { mindestRichtig, hoechstVersuche }, fragen: [{ text, optionen, richtig, erlaeuterung, beleg }] }` | 201 Fragensatz Version 1 im Entwurf | 400 `VALIDATION`; 403 `NICHT_ZUSTAENDIG`; 404; 409 `CONFLICT` (`quelle_*`: Fassung nicht gültig oder nicht aktuell) |
+| `PUT` | `/api/verstaendnisfragen/:id` | `ko.create`, sichtbar, Verantwortung oder `ko.validate` | Rumpf `{ version, inhalt }` (`inhalt` wie beim Anlegen) | 200 neue Version im Entwurf; frühere Versionen und Ergebnisse bleiben | 400; 403; 404; 409 (`stand_veraltet`, `quelle_*`) |
+| `POST` | `/api/verstaendnisfragen/:id/vorlegen` | `ko.create`, sichtbar, Verantwortung oder `ko.validate` | Rumpf `{ version }` | 200 Version „vorgelegt“ (freiwillige Zweitprüfung) | 400; 403; 404; 409 (`befunde`, `status`, `stand_veraltet`) |
+| `POST` | `/api/verstaendnisfragen/:id/entscheiden` | `ko.validate`, sichtbar | Rumpf `{ version, entscheidung: annehmen \| zurueckweisen, begruendung? }` | 200 Version „angenommen“ bzw. „zurückgewiesen“; unter einer Space-Freigaberegel bis zur Mindestzahl „vorgelegt“ mit gesammelten `zustimmungen`; Protokoll `verstaendnisfragen.zugestimmt`/`.angenommen`/`.zurueckgewiesen` | 400 (`begruendung_fehlt`); 403 (`selbstpruefung`, `nicht_berechtigt`, `vertretung_ruht`); 404; 409 (`befunde`, `status`, `stand_veraltet`, `bereits_zugestimmt`) |
+| `POST` | `/api/verstaendnisfragen/:id/versuche` | `ko.read`, sichtbar | Rumpf `{ versuchId, version, antworten: [{ frageId, gewaehlt }] }` | 201 Rückmeldung (je Frage Urteil, richtige Antwort, Erläuterung, Beleg); 200 mit `bereits: true` bei derselben `versuchId` | 400; 404; 409 (`quelle_*` ohne Bewertung, `versuche_erschoepft`, `stand_veraltet`, `nicht_angenommen`) |
+| `GET` | `/api/verstaendnisfragen/versuche/:versuchId` | `ko.read`, sichtbar, eigener Versuch oder zuständig | — | 200 Rückmeldung des gespeicherten Versuchs | 404 |
+| `GET` | `/api/verstaendnisfragen/meine` | `ko.read`, sichtbar | — | 200 `{ fragensaetze: [{ fragensatzId, titel, koId, koTitel, zugeordnet, gueltigeVersion, quellenlage, regel, ergebnisse }] }` — der eigenen Rolle zugeordnete und selbst bearbeitete Fragensätze | — |
+| `GET` | `/api/verstaendnisfragen/:id/ergebnisse` | `ko.read`, sichtbar, Verantwortung oder `ko.validate` | — | 200 `{ fragensatzId, koId, versuche: [{ person, fragensatzVersion, koVersion, nummer, abgegebenAm, richtig, fragen, bestanden }] }` — nach Name, nicht nach Ergebnis | 403 `NICHT_ZUSTAENDIG`; 404 |
 | `GET` | `/api/notifications` | `requireUser` | — | 200 Glockenliste | — |
 | `POST` | `/api/notifications/seen` | `requireUser` | Rumpf `{ ids }` | 200 `{ unseenCount }` | 400 (`ids` fehlt) |
 | `GET` | `/api/qualitaetsaufgaben` | `users.manage` | — | 200 `{ stand, vorgaenge, quellen, spaces }` — je Vorgang Typ, Zustand, Ursprung, Arbeitsweg, Zuständigkeit, Frist, Beginn, Einstiege (ADMIN-10); Zeilen nur über den Sichtbarkeitsfilter | — |
@@ -452,6 +466,16 @@ herabgestuft werden (409 `mutability`).
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/addin` | keines | — | — (immer 404, kein Verzeichnislisting) | 404 `NOT_FOUND` |
 | `GET` | `/addin/*` | keines | Dateipfad im Bündel | 200 Datei aus der festen Dateiliste | 404 `NOT_FOUND` |
+
+### 3.10 MCP-Zugang für fremde KI-Programme (`mcpRoutes`, nur mit `KLARWERK_SERVICE_KEYS`)
+
+Registriert nur, wenn ein Dienst-Schlüssel konfiguriert ist. Eine Sitzung jeder Rolle ist hier
+unangemeldet; die Rollenabnahme (`tests/beta-rollenabnahme/tabelle.ts`) misst das mit fünf Akteuren.
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/mcp` | Dienst-Schlüssel mit `mcp.werkzeug` (Kopf `x-klarwerk-service-key`), keine Sitzung | — | — (405 `METHOD_NOT_ALLOWED`, kein Ereignisstrom) | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN` bei Browseraufruf (`Origin`) |
+| `POST` | `/mcp` | Dienst-Schlüssel mit `mcp.werkzeug` (Kopf `x-klarwerk-service-key`), keine Sitzung | JSON-RPC-2.0-Nachricht | 200 JSON-RPC-Antwort; Werkzeugaufrufe laufen intern über die Route ihres Rechts | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN` bei Browseraufruf; JSON-RPC-Fehler im Rumpf |
 
 ## 4 Testabdeckung und Abdeckungsziel
 

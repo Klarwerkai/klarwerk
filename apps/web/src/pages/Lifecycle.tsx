@@ -58,6 +58,7 @@ import {
 } from "../components/pruefen/PruefenZustand";
 import { abhaengigeQuelle, flaechenZustand } from "../components/pruefen/zaehler";
 import { Button, cx } from "../components/ui";
+import { LernpfadVerstaendnis } from "../components/verstaendnisfragen/LernpfadVerstaendnis";
 import { leseFall } from "../lib/fallAbsprung";
 import { aeltesteVorlage, faelligeKennungen } from "../lib/frische";
 import { completedCount, isStepDone, progressPercent } from "../lib/learningPath";
@@ -68,6 +69,7 @@ import {
   revalidationView,
 } from "../lib/revalidation";
 import { phaseLabelKey } from "../lib/taskAction";
+import { statusSchluessel } from "../lib/wissensstatus";
 
 const QUITTUNG_MS = 3000;
 
@@ -274,7 +276,7 @@ export function Lifecycle(): JSX.Element {
                       {stepDone ? (
                         <Check size={12} aria-hidden="true" />
                       ) : (
-                        <span className="text-[10px]">{i + 1}</span>
+                        <span className="text-klein">{i + 1}</span>
                       )}
                     </button>
                     <span className={stepDone ? "text-muted line-through" : "text-text"}>
@@ -291,6 +293,9 @@ export function Lifecycle(): JSX.Element {
             {leerzustandsZeile(t, "lernpfad")}
           </>
         )}
+        {/* aufnahme:20260922:gesamt-lernwege: die der Rolle zugeordneten Verständnisfragen —
+            unter den unveränderten Leseschritten, getrennt von Lesen und praktischer Befähigung. */}
+        <LernpfadVerstaendnis />
       </PruefenHilfeBlock>
       <PruefenMenueTrenner />
       <PruefenHilfeBlock titel={t("lcy.assetTitle")}>
@@ -560,7 +565,8 @@ export function Lifecycle(): JSX.Element {
           <dt className="text-muted">{t("folgepruefung.statusLabel")}</dt>
           <dd data-testid="folgepruefung-status" className="text-text">
             {[
-              t(`status.${fall.status}`, { defaultValue: fall.status }),
+              // Nutzerentscheid Antwort 54: „Fachlich bestätigt" (lib/wissensstatus.ts).
+              t(statusSchluessel(fall.status), { defaultValue: fall.status }),
               t("folgepruefung.statusOffen", { stand: fall.stand }),
             ].join(" · ")}
           </dd>

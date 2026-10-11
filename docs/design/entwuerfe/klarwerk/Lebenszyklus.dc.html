@@ -1,0 +1,53 @@
+<!doctype html>
+<!--
+  ENTWURF · NICHT FREIGEGEBEN — R-1033 „Weiterentwurf der nächsten Zielbild-Flächen", Fläche
+  „Lebenszyklus" (Web-App /lebenszyklus, heute pages/Lifecycle.tsx). Gehört nach Pedis Freigabe in
+  den Freigabe-Canvas; bis dahin ist es ein Vorschlag, gegen den NICHTS gemessen wird.
+
+  SELBER STIL: Farben, Schriftgrößen, Radien und Knopfmaße stehen wörtlich in einer freigegebenen
+  Vorlage; einzelne Abstände (Lücke zwischen Spalten, Reiter-Polster) sind an den Vorlagen orientierte
+  Entwurfswerte und mit der Freigabe zu bestätigen (Anker aus tests/design/zielbild-h2-pruefen.test.ts, zielbild-h4-bibliothek.test.ts,
+  tools/design-vergleich/werte.ts): Titel 26px/650 (Prüfen), Reiter 13px, Warteschlange 260px wie
+  Prüfen, Eintrag 13.5px, Kartentitel 20px/650, Kartentext 15px/1.65, Pille 11px/700/0.3px auf
+  #FDF1D7/#8A5A00, Haarlinie #E9E5DE, Fläche #FAF8F5, Knöpfe 14px · Radius 10px · Polster 10px 20px,
+  primär #C2500A. Texte sind die heutigen Produkttexte (woerterbuch/de.ts, lcy.*).
+
+  ORDNUNG (R-1025): zuerst was ich tun kann (Fußband mit der Entscheidung), dann was ist (Eintrag,
+  Anlagenbezug), Erklärungen hinter „Mehr". Kein Banner-Satz im Sichtfeld — „Stimmt das noch?" ist
+  der Titel der Karte, nicht ein zusätzlicher Absatz.
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Lebenszyklus · Entwurf</title>
+</head>
+<body style="margin: 0; background: #FAF8F5; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1A2233;">
+  <div style="padding: 28px 36px;">
+    <h1 style="font-size: 26px; font-weight: 650; margin: 0 0 14px;">Lebenszyklus</h1>
+    <div style="display: inline-flex; background: #EEEAE3; border-radius: 9px; padding: 2px;">
+      <span style="background: #FFFFFF; font-size: 13px; font-weight: 600; border-radius: 9px; padding: 6px 12px;">Zur Re-Validierung · 3</span>
+      <span style="font-size: 13px; color: #525B6B; padding: 6px 12px;">Anlagenänderung melden</span>
+    </div>
+    <div style="display: flex; gap: 24px; margin-top: 22px;">
+      <div style="width: 260px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="font-size: 13.5px; font-weight: 600; background: #FFFFFF; border: 1px solid #E9E5DE; border-radius: 9px; padding: 10px 12px;">Dosierwert Linie L4 nach Pumpentausch</div>
+        <div style="font-size: 13.5px; color: #525B6B; border-radius: 9px; padding: 10px 12px;">Reinigung Spritzzone Linie 3</div>
+        <div style="font-size: 13.5px; color: #525B6B; border-radius: 9px; padding: 10px 12px;">Anfahrrampe Extruder E2</div>
+      </div>
+      <div style="flex: 1; max-width: 720px; background: #FFFFFF; border: 1px solid #E9E5DE; border-radius: 14px;">
+        <div style="padding: 18px 22px 8px;">
+          <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.3px; border-radius: 999px; padding: 3px 10px; background: #FDF1D7; color: #8A5A00;">Re-Validierung</span>
+          <h2 style="font-size: 20px; font-weight: 650; letter-spacing: -0.2px; margin: 10px 0 4px;">Stimmt das noch? — Dosierwert Linie L4</h2>
+          <div style="font-size: 12.5px; color: #525B6B;">Anlagenbezug: Pumpe P-412 getauscht · Nächster Schritt: Wert am neuen Aggregat bestätigen</div>
+        </div>
+        <p style="font-size: 15px; line-height: 1.65; padding: 8px 22px 22px; margin: 0;">Nach dem Schichtwechsel wird der Dosierwert der Linie L4 auf 2,4 l/min gesetzt und nach zehn Minuten am Durchflussmesser geprüft.</p>
+        <div style="display: flex; align-items: center; gap: 10px; border-top: 1px solid #E9E5DE; padding: 16px 28px;">
+          <button style="font-size: 14px; font-weight: 600; border: 0; border-radius: 10px; padding: 10px 20px; background: #C2500A; color: #FFFFFF;">Noch gültig → neue Version</button>
+          <button style="font-size: 14px; border: 1px solid #E9E5DE; border-radius: 10px; padding: 10px 20px; background: #FFFFFF; color: #1A2233;">Rückfrage</button>
+          <span style="margin-left: auto; font-size: 11.5px; color: #525B6B;">Mehr ›</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

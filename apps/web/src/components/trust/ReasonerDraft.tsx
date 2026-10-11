@@ -10,7 +10,7 @@ export function ReasonerDraft({ children }: { children: ReactNode }): JSX.Elemen
   const { t } = useTranslation();
   return (
     <div className={`rounded-card p-4 ${REASONER_ENTWURF_FLAECHE}`}>
-      <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] font-semibold uppercase tracking-wider text-ai">
+      <div className="mb-2 flex items-center gap-1.5 font-mono text-klein font-semibold uppercase tracking-wider text-ai">
         <span aria-hidden>✦</span>
         {t(ERGEBNIS_STUFE_TEXT.entwurf)}
       </div>

@@ -177,7 +177,7 @@ function AvatarOption({
         </span>
         <span className="text-[11.5px] font-semibold leading-tight text-text">{titel}</span>
         {motiv.id === "original" ? (
-          <span aria-hidden="true" className="text-[10.5px] leading-tight text-muted">
+          <span aria-hidden="true" className="text-klein leading-tight text-muted">
             {t("assistenz.avatar.originalHinweis")}
           </span>
         ) : null}

@@ -13,7 +13,15 @@ import {
   type UserRepo,
 } from "./repo";
 import { neuesTotpGeheimnis, otpauthAdresse, pruefeTotp } from "./totp";
-import { AuthError, type PublicUser, type Role, type Session, type User } from "./types";
+import {
+  AuthError,
+  type Freigabestufe,
+  type PublicUser,
+  type Role,
+  type Session,
+  type User,
+  type Weisungsbefugnis,
+} from "./types";
 
 const MIN_PASSWORD_LENGTH = 8;
 // R-0562: Zwischen Passwort und Bestätigungscode liegt eine kurze, einmalige Anmeldeanfrage. Fünf
@@ -249,6 +257,45 @@ export class AuthService {
   async listUsers(): Promise<PublicUser[]> {
     const users = await this.users.list();
     return users.map(toPublic);
+  }
+
+  // Aufnahme gesamt-wissen-herkunft (K3): WELCHE KENNUNGEN GEHÖRTEN EINEM GELÖSCHTEN KONTO?
+  //
+  // Nach `deleteUser` fehlt das Konto im Verzeichnis, und jede Autorenzeile, die darauf zeigt, sagte
+  // „Unbekannte Person" — dieselbe Auskunft wie für eine Kennung, die nie ein Konto war. Der Beleg,
+  // dass es ein Konto WAR, steht im Prüfprotokoll (`user.delete`, Ziel = Kennung). Geliefert werden
+  // NUR Kennungen, nie der Name von damals: den sieht weiter nur die Verwalteransicht (N-0027).
+  // Eine Kennung, die heute (wieder) ein Konto ist, gilt nicht als gelöscht. Ohne verdrahtetes
+  // Protokoll gibt es keinen Beleg und damit keine gelöschten Kennungen.
+  async listDeletedUserIds(): Promise<string[]> {
+    if (!this.audit) {
+      return [];
+    }
+    const vermerke = await this.audit.list({ action: "user.delete" });
+    if (vermerke.length === 0) {
+      return [];
+    }
+    const bestehend = new Set((await this.users.list()).map((u) => u.id));
+    const geloescht = new Set<string>();
+    for (const vermerk of vermerke) {
+      if (vermerk.target && !bestehend.has(vermerk.target)) {
+        geloescht.add(vermerk.target);
+      }
+    }
+    return [...geloescht];
+  }
+
+  /** Gibt es dieses Konto (heute)? Für Zuständigkeiten, die auf ein Konto zeigen müssen. */
+  async kontoBesteht(userId: string): Promise<boolean> {
+    return (await this.users.findById(userId)) !== undefined;
+  }
+
+  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18 (Integration Nacharbeit 12): die
+  // Weisungsbefugnis steht am Konto (`User.weisungsbefugnis`, vergeben über `setWeisungsbefugnis`,
+  // Aufnahme gesamt-peer-validierung). Lesen für Wege, die nur die Kennung kennen — fehlt der
+  // Vermerk oder das Konto, ist niemand weisungsbefugt, gleich welche Rolle.
+  async weisungsbefugnisVon(userId: string): Promise<Weisungsbefugnis | undefined> {
+    return (await this.users.findById(userId))?.weisungsbefugnis;
   }
 
   // FR-AUTH-01 (erstes Konto = Admin) + FR-AUTH-02 (Selbstregistrierung, gesperrt bis Freigabe).
@@ -729,6 +776,27 @@ export class AuthService {
    * bedeutet. Was der Mensch sieht, ist an BEIDEN Wegen dasselbe (G6); der zu grobe Code darunter
    * bleibt als offener Punkt benannt, statt still zu einer zweiten Auslegung zu werden.
    */
+  /**
+   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): das persönliche Freigabeniveau
+   * setzen oder (`undefined`) entziehen. Wirkt beim nächsten Abruf: die Sitzung liest das Konto je
+   * Anfrage neu (`makeGuards`). Vor dem Schreiben steht der Vermerk mit altem und neuem Niveau.
+   */
+  async setFreigabe(
+    userId: string,
+    freigabe: Freigabestufe | undefined,
+    actorId: string,
+  ): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    const { freigabe: vorher, ...ohneFreigabe } = user;
+    const aktualisiert: User = freigabe === undefined ? ohneFreigabe : { ...user, freigabe };
+    await this.gemeinsamSchreiben(async (tx) => {
+      const vermerk = { vorher: vorher ?? null, nachher: freigabe ?? null };
+      await this.record(actorId, "user.freigabe-set", userId, vermerk, tx);
+      await this.users.update(aktualisiert, tx);
+    });
+    return toPublic(aktualisiert);
+  }
+
   async setAccessExpiry(
     userId: string,
     expiresAt: string | undefined,
@@ -1370,6 +1438,44 @@ export class AuthService {
       return;
     }
     await fn();
+  }
+
+  /**
+   * Aufnahme gesamt-peer-validierung · Nutzerentscheid Antwort 18 (11.10.2026): die fachliche
+   * Weisungsbefugnis eines Kontos vergeben, ändern oder (`undefined`/leer) entziehen.
+   *
+   * Die Befugnis steht AM KONTO und nennt ihren Zuständigkeitsbereich. Sie ist ausdrücklich NICHT
+   * an die Rolle gebunden: ein Admin hat sie nur, wenn sie ihm wie jedem anderen vergeben wurde.
+   * Die Bereiche werden getrimmt und ohne Dubletten übernommen. Vermerk und Schreiben laufen
+   * gemeinsam (wo die Wurzel eine Transaktion hergibt), der Vermerk zuerst — wie `setAccessExpiry`.
+   */
+  async setWeisungsbefugnis(
+    userId: string,
+    bereiche: readonly string[] | undefined,
+    actorId: string,
+  ): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    const sauber = [...new Set((bereiche ?? []).map((b) => b.trim()).filter((b) => b.length > 0))];
+    const { weisungsbefugnis: _bisher, ...ohneBefugnis } = user;
+    const befugnis: Weisungsbefugnis | undefined =
+      sauber.length > 0
+        ? { bereiche: sauber, erteiltVon: actorId, erteiltAm: new Date(this.now()).toISOString() }
+        : undefined;
+    const aktualisiert: User = befugnis
+      ? { ...ohneBefugnis, weisungsbefugnis: befugnis }
+      : ohneBefugnis;
+    await this.gemeinsamSchreiben(async (tx) => {
+      await this.record(
+        actorId,
+        "user.weisungsbefugnis-set",
+        userId,
+        befugnis ? { bereiche: befugnis.bereiche } : { entfernt: true },
+        tx,
+      );
+      await this.users.update(aktualisiert, tx);
+      await this.users.setzeWeisungsbefugnis?.(userId, befugnis, tx);
+    });
+    return toPublic(aktualisiert);
   }
 
   // FR-RBAC-02 / FR-RBAC-03 + SCRUM-443: Rolle ändern — jetzt serverseitig geprüft.

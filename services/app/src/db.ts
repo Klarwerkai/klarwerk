@@ -8,7 +8,7 @@ import {
   CAPTURE_SCHEMA,
 } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
-import { vorratsKonfiguration } from "../../db-tx";
+import { BESTANDSRESET_SCHEMA, vorratsKonfiguration } from "../../db-tx";
 import { EMBEDDING_SCHEMA } from "../../embedding";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
@@ -99,6 +99,8 @@ import { UNTERNEHMEN_SCHEMA } from "./unternehmensprofil";
 import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
 // produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer Veröffentlichung.
 import { VEROEFFENTLICHUNG_SCHEMA } from "./veroeffentlichung";
+// aufnahme:20260922:gesamt-lernwege: Fragensatzversionen und Versuche der Verständnisfragen.
+import { VERSTAENDNISFRAGEN_SCHEMA } from "./verstaendnisfragen";
 // produkt:20261007:templates-default: Vorlagen, persönliche Standards, Space-Vorgaben, Nutzung und
 // Begriffspflege als unveränderliche Fassungen.
 import { VORLAGEN_SCHEMA } from "./vorlagen";
@@ -297,6 +299,12 @@ export const schemas = [
   // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS); der einzige Fremdschlüssel zeigt auf den
   // eigenen Kopf, keine Extension, kein Seed.
   KENNTNISNAHME_SCHEMA,
+  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Laufakte des Bestandsresets
+  // (`bestandsreset_laeufe`). Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne
+  // Fremdschlüssel, ohne Extension, ohne Seed. Ohne sie könnte der administrative Reset auf einer
+  // frisch migrierten Instanz seinen ersten Schritt nicht schreiben. Ihre Stelle hat keine
+  // Abhängigkeit zu den Nachbarstufen; die Sollliste in `migrationsbeleg.ts` folgt derselben Ordnung.
+  BESTANDSRESET_SCHEMA,
   // R-0162 (Confluence-Gesamtimport): das dauerhafte Quellabgleichsergebnis je Importlauf. Additiv
   // und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel auf `import_runs` und ohne
   // Extension; sie steht am Ende, weil das die lesbare Ordnung ist (keine Abhängigkeit zu den
@@ -369,6 +377,10 @@ export const schemas = [
   // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung
   // ist.
   KOMMUNIKATION_SCHEMA,
+  // aufnahme:20260922:gesamt-lernwege: Fragensatzversionen und Versuche der Verständnisfragen.
+  // Additiv und wiederholbar (zwei CREATE TABLE IF NOT EXISTS samt Indizes), ohne Fremdschlüssel,
+  // ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  VERSTAENDNISFRAGEN_SCHEMA,
 ];
 
 // ================================================================================================

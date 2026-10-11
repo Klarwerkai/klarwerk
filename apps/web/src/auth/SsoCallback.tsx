@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
+import { endpoints } from "../api/endpoints";
 import { Button } from "../components/ui";
+import { firmenresetRueckweg, istFirmenresetRueckruf } from "../lib/firmenresetSso";
 import { parseOidcCallback } from "../lib/oidcCallback";
 import { ssoWeiterziel } from "../lib/ssoWeiterziel";
 
@@ -20,6 +22,20 @@ export function SsoCallback(): JSX.Element {
     }
     started.current = true;
     const cb = parseOidcCallback(window.location.search);
+    // P08-AC05: ein Rückruf der Firmenreset-Wiederanmeldung bestätigt nur einen Schritt und führt
+    // zurück in die Karte. Abbruch beim Anbieter (`error`) oder ein abgewiesener Rückruf: ebenfalls
+    // zurück, mit Hinweis — bestätigt und gelöscht ist dann nichts.
+    if (istFirmenresetRueckruf(cb.state)) {
+      if (cb.error || !cb.code || !cb.state) {
+        window.location.assign(firmenresetRueckweg(true));
+        return;
+      }
+      endpoints.admin
+        .factoryResetSso(cb.code, cb.state)
+        .then(() => window.location.assign(firmenresetRueckweg(false)))
+        .catch(() => window.location.assign(firmenresetRueckweg(true)));
+      return;
+    }
     if (cb.error) {
       setError(cb.error);
       return;
@@ -48,7 +64,7 @@ export function SsoCallback(): JSX.Element {
           </span>
           <span className="leading-tight">
             <span className="block text-[15px] font-bold tracking-[2px]">KLARWERK</span>
-            <span className="block font-mono text-[10px] uppercase tracking-[1.5px] text-white/50">
+            <span className="block font-mono text-klein uppercase tracking-[1.5px] text-white/50">
               {t("app.subtitle")}
             </span>
           </span>

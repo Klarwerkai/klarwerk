@@ -511,6 +511,7 @@ PFLICHTTABELLEN=(
   kenntnisnahme_anforderungen
   kenntnisnahme_empfaenger
   veroeffentlichung_zustellungen
+  bestandsreset_laeufe
   spaces_fassungen
   livewall_fotos
   interaktions_gedaechtnis
@@ -537,6 +538,8 @@ PFLICHTTABELLEN=(
   kommunikationsregel_fassungen
   meldungsregel_persoenlich
   meldung_zustellstatus
+  verstaendnis_fragensaetze
+  verstaendnis_versuche
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do
@@ -715,12 +718,19 @@ rm -f "$PID_FILE" "$JOBS_DATEI" "$ANHANG_DATEI" "$BELEG_DATEI"
 # genau daran erkennt der Drill unten seine eigene Nachkommenschaft, ohne eine PID zu glauben.
 # `set +m` direkt danach haelt Jobmeldungen aus dem Drillprotokoll heraus; Gruppe und Jobeintrag
 # bleiben davon unberuehrt.
+#
+# produkt:20261011:peter-p09 (P09-AC06): die Probe loest KEINE Aussenaktion aus. Der Server erbt sonst
+# die Umgebung des Aufrufers — mit eingetragenen Webhook-Zielen schickte schon der Drill die
+# Meldungen des wiederhergestellten Bestands ein zweites Mal hinaus, mit hinterlegten Modell-
+# schluesseln fuehre die Hintergrundpruefung Modellvergleiche. Beides bleibt hier aus.
 set -m
 (
   cd "$WURZEL"
   exec env \
     DATABASE_URL="postgres:///${RESTORE_DB}" \
     KLARWERK_PID_FILE="$PID_FILE" \
+    KLARWERK_WEBHOOKS= \
+    KLARWERK_REASONER_POLICY=deterministic \
     PORT="$DRILL_PORT" \
     npm_config_offline=true \
     npx tsx services/app/src/server.ts

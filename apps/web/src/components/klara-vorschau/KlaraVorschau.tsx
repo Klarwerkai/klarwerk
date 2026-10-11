@@ -195,9 +195,9 @@ const KNOPF =
   "inline-flex h-8 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-text hover:border-ink/30 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 const KNOPF_KI =
   "inline-flex h-8 items-center rounded-btn border border-ai bg-ai-surface-2 px-2.5 text-[12px] font-semibold text-ai hover:bg-ai-surface-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
-const KLEINTITEL = "font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2";
+const KLEINTITEL = "font-mono text-klein font-semibold uppercase tracking-wider text-muted-2";
 const DEMO_SCHILD =
-  "rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text";
+  "rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text";
 
 interface Fenster {
   breite: number;
@@ -1696,7 +1696,7 @@ export function KlaraVorschau({
         {z.status !== "ruhe" ? (
           <span
             data-testid="klara-figur-status"
-            className={`mt-1 whitespace-nowrap rounded-pill px-2 py-0.5 text-[10.5px] font-semibold shadow-tile ${
+            className={`mt-1 whitespace-nowrap rounded-pill px-2 py-0.5 text-klein font-semibold shadow-tile ${
               z.status === "entscheidung"
                 ? "bg-brand text-ink"
                 : z.status === "laeuft"
@@ -1719,7 +1719,7 @@ export function KlaraVorschau({
             data-testid="klara-figur-zustand"
             data-zustand={figurZustand}
             data-fehlerart={figurFehlerArt}
-            className={`mt-1 whitespace-nowrap rounded-pill px-2 py-0.5 text-[10.5px] font-semibold shadow-tile ${
+            className={`mt-1 whitespace-nowrap rounded-pill px-2 py-0.5 text-klein font-semibold shadow-tile ${
               figurFehlerArt === "technisch"
                 ? "bg-trust-crit-bg text-trust-crit-text"
                 : "bg-surface text-text"
@@ -1740,7 +1740,7 @@ export function KlaraVorschau({
         {z.geparkt && parkAbsatz ? (
           <span
             data-testid="klara-geparkt"
-            className="mt-1 whitespace-nowrap rounded-pill bg-surface px-2 py-0.5 text-[10.5px] text-muted shadow-tile"
+            className="mt-1 whitespace-nowrap rounded-pill bg-surface px-2 py-0.5 text-klein text-muted shadow-tile"
           >
             {t("klaravorschau.figur.geparkt", { nr: z.geparkt.absatz })}
           </span>
@@ -1888,7 +1888,7 @@ export function KlaraVorschau({
                 data-betrieb={istEcht ? "echt" : "demo"}
                 className={
                   istEcht
-                    ? "rounded-pill border border-ai bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-ai"
+                    ? "rounded-pill border border-ai bg-ai-surface-1 px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-ai"
                     : DEMO_SCHILD
                 }
               >
@@ -2598,7 +2598,7 @@ function DemoVerlauf({ verlauf }: { verlauf: readonly Nachricht[] }): JSX.Elemen
                   : "mr-2 border border-ai/30 bg-ai-surface-2 text-text"
               }`}
             >
-              <div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] text-muted-2">
+              <div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-klein text-muted-2">
                 <span className="font-semibold text-text">
                   {n.von === "du"
                     ? t("klaravorschau.verlauf.du")
@@ -2747,8 +2747,8 @@ function TextvorschlagKarte({
           data-ki={v.ki}
           className={
             v.ki === "ki"
-              ? "rounded-pill border border-ai bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-ai"
-              : "rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted"
+              ? "rounded-pill border border-ai bg-ai-surface-1 px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-ai"
+              : "rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted"
           }
         >
           {v.ki === "ki" ? t("klaravorschlag.ki.ki") : t("klaravorschlag.ki.ohneKi")}
@@ -2910,7 +2910,7 @@ function EntwurfKarte({ entwurf }: { entwurf: Entwurf }): JSX.Element {
           </h3>
           <span
             data-testid="klara-entwurf-sitzung"
-            className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted"
+            className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted"
           >
             {t("klaravorschlag.notiz.kennzeichen")}
           </span>

@@ -41,6 +41,7 @@ const BEREICHE = [
   "kenntnisnahmen",
   "anhaenge",
   "lernpfade",
+  "verstaendnisfragen",
   "loeschantraege",
   "nachfolge",
   "kiLaeufe",

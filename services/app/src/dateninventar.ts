@@ -193,8 +193,9 @@ export const DATENINVENTAR: readonly Datenart[] = [
     personenbezugGrund: "Kennungen von Autor und Bearbeiter; Freitext.",
     ablage: { ort: DATENBANK, tabellen: ["drafts"] },
     taetigkeit: "wissen",
-    loeschung: "Durch den Autor löschbar (Entwurfs-Papierkorb); mit dem Einreichen verbraucht.",
-    frist: BETREIBERFRIST,
+    loeschung:
+      "Durch den Autor löschbar: Löschen legt in den Entwurfs-Papierkorb; Endlöschung nach 30 Tagen (TRASH_RETENTION_DAYS, `CaptureService.runDraftTrashSweep`) oder vorher durch den Autor. Mit dem Einreichen verbraucht.",
+    frist: "Bis zum Löschen oder Einreichen; im Papierkorb 30 Tage.",
     selbstauskunft: { enthalten: true },
   },
   {
@@ -485,6 +486,25 @@ export const DATENINVENTAR: readonly Datenart[] = [
     selbstauskunft: { enthalten: true },
   },
   {
+    id: "verstaendnisfragen",
+    name: "Verständnisfragen und Ergebnisse",
+    inhalt:
+      "Fragensätze zu einer Wissensfassung (Fragen, Antwortmöglichkeiten, richtige Antworten, Erläuterung, Belegstelle, Bestehensregel, Rollenzuordnung) mit ändernder, vorlegender und entscheidender Kennung; je Versuch Person, Eintrag, Fassung, Fragensatzversion, Zeitpunkt, gewählte Antworten und Ergebnis.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Jeder Versuch ist einer Person zugeordnet; Fragensätze nennen die Kennungen der Bearbeitenden.",
+    ablage: {
+      ort: DATENBANK,
+      tabellen: ["verstaendnis_fragensaetze", "verstaendnis_versuche"],
+    },
+    taetigkeit: "lernpfade",
+    loeschung: "Kein Löschweg.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: { enthalten: true },
+    befund:
+      "Ergebnisse sehen die Person selbst und die für den Fragensatz Zuständigen; keine Rangliste, kein Eintrag im Prüfprotokoll je Versuch.",
+  },
+  {
     id: "management",
     name: "Bereichsverantwortung und Ruhestandshorizonte",
     inhalt:
@@ -673,9 +693,10 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "spaces",
     name: "Arbeitsräume (Spaces)",
     inhalt:
-      "Fassungen der Arbeitsräume mit Name, Zweck, zuständiger Person, Mitgliedern samt Recht, Ansichten, anlegender und ändernder Kennung.",
+      "Fassungen der Arbeitsräume mit Name, Zweck, zuständiger Person, Mitgliedern samt Recht, Ansichten, Firmenkontext (eigene Firma, Partner, öffentlich) samt Namen des Partners, Konten mit Existenzrecht, anlegender und ändernder Kennung.",
     personenbezug: "ja",
-    personenbezugGrund: "Kennungen der zuständigen Person, der Mitglieder und der Bearbeiter.",
+    personenbezugGrund:
+      "Kennungen der zuständigen Person, der Mitglieder, der Konten mit Existenzrecht und der Bearbeiter.",
     ablage: { ort: DATENBANK, tabellen: ["spaces_fassungen"] },
     taetigkeit: "wissen",
     loeschung: "Kein Löschweg — jede Fassung bleibt zuordenbar.",
@@ -944,7 +965,8 @@ const TAETIGKEITEN: readonly TaetigkeitStamm[] = [
   {
     id: "lernpfade",
     name: "Lernpfade",
-    zweck: "Einarbeitung je Rolle und Nachprüfung gekoppelter Arbeitsmittel.",
+    zweck:
+      "Einarbeitung je Rolle, Verständnisfragen zu gültigen Wissensfassungen und Nachprüfung gekoppelter Arbeitsmittel.",
   },
   {
     id: "betroffenenrechte",

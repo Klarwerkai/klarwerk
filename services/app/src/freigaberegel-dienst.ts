@@ -26,7 +26,13 @@ import {
 import type { SessionUser } from "./http";
 import type { AssignmentNotifier } from "./notify";
 import { darfSehen } from "./sichtbarkeit";
-import { type SpaceFassung, type SpacesRepo, istArchiviert, lesbareSpaces } from "./spaces";
+import {
+  type SpaceFassung,
+  type SpacesRepo,
+  istArchiviert,
+  istGeloescht,
+  lesbareSpaces,
+} from "./spaces";
 import type { TeamsRepo } from "./teams";
 
 // ================================================================================================
@@ -221,8 +227,10 @@ export class FreigabeRegelDienst {
     }));
   }
 
+  /** `undefined` auch für einen gelöschten Space (aufnahme:20260922:gesamt-wissensprojekte). */
   async aktuellerSpace(id: string): Promise<SpaceFassung | undefined> {
-    return (await this.deps.spaces.fassungen(id)).at(-1);
+    const letzte = (await this.deps.spaces.fassungen(id)).at(-1);
+    return istGeloescht(letzte) ? undefined : letzte;
   }
 
   /** Space und Regel eines Objekts — `undefined`, wenn sein führender Space keine Regel trägt. */
@@ -234,6 +242,34 @@ export class FreigabeRegelDienst {
     }
     const space = await this.aktuellerSpace(ko.spaceId);
     return space?.freigabe ? { space, regel: space.freigabe } : undefined;
+  }
+
+  /**
+   * aufnahme:20260922:gesamt-lernwege — Regel UND Prüferkreis des führenden Space eines Objekts, für
+   * Vorgänge, die nicht über die Peer-Bewertung laufen (Annahme von Verständnisfragen). Dieselbe
+   * Kreisbildung wie am Prüfpunkt (`prueferkreis`, Konten und Teams von jetzt); keine zweite Regel.
+   * `undefined`, wenn der Space keine Regel trägt.
+   */
+  async kreisFuer(ko: Pick<KnowledgeObject, "spaceId">): Promise<
+    | {
+        space: SpaceFassung;
+        regel: FreigabeRegel;
+        kreis: PrueferEintrag[];
+      }
+    | undefined
+  > {
+    const lage = await this.regelFuer(ko);
+    if (!lage) {
+      return undefined;
+    }
+    const kreis = prueferkreis(
+      lage.space,
+      lage.regel,
+      await this.konten(),
+      await this.teamStaende(),
+      this.jetzt().getTime(),
+    );
+    return { ...lage, kreis };
   }
 
   /**

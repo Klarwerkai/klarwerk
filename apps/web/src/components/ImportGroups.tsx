@@ -41,6 +41,7 @@ import { AiCostHint } from "./AiCostHint";
 import { AiSurfaceNotice } from "./AiGeneratedNotice";
 // WP-COCKPIT-LINIE: Schritt-Überschriften (4 Gruppen freigeben · 5 Übernehmen & Bilanz) +
 // Meilenstein-Meldungen an die Schritt-Leiste.
+import { ImportLaufLink } from "./ImportLaufLink";
 import { ImportStepHeading, useReportImportStage, useRewindImportStage } from "./ImportStepper";
 // JOB 3357: der vorhandene Zustandsrenderer des Laufs — benutzt, nicht nachgebaut (Auftrag §7).
 import { RunStateBanner } from "./confluence-import/RunStateBanner";
@@ -78,13 +79,13 @@ export function GroupApprovalPanel({
           {t(IMPORT_GROUPS_TEXT.selectedCount, { x: counts.selected, y: counts.total })}
         </span>
         {demo ? (
-          <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+          <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
             {reasonKey
               ? t(IMPORT_GROUPS_TEXT.noAiReason, { reason: t(reasonKey) })
               : t(IMPORT_GROUPS_TEXT.noAi)}
           </span>
         ) : (
-          <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+          <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
             {t(IMPORT_GROUPS_TEXT.aiGrouped)}
           </span>
         )}
@@ -161,14 +162,14 @@ export function GroupApprovalPanel({
                           zur Prüfung vorgemerkt", bewusst in anderer Farbe und anderem Text als
                           der neutrale „bereits importiert"-Hinweis (ehrliche Trennung). */}
                       {candidate.alreadyQueued === true ? (
-                        <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+                        <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                           {t(IMPORT_GROUPS_TEXT.hintQueued)}
                         </span>
                       ) : null}
                       {/* WP-IC-6b: nüchternes Badge — Quelle wurde seit dem Import aktualisiert;
                           der Kandidat ist als Aktualisierung wählbar (neue KO-Version im Review). */}
                       {candidate.sourceNewer ? (
-                        <span className="shrink-0 rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+                        <span className="shrink-0 rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
                           {t(IMPORT_GROUPS_TEXT.hintSourceNewer)}
                         </span>
                       ) : null}
@@ -177,7 +178,7 @@ export function GroupApprovalPanel({
                         return key ? (
                           <span
                             key={hint}
-                            className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+                            className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2"
                           >
                             {t(key)}
                           </span>
@@ -235,8 +236,14 @@ const IMPORT_GROUPS_RUN_TEXT = {
   outcomeOffline: "imp.groups.runOutcomeOffline",
 } as const;
 
-/** Der Ausgang GENAU EINES Laufs. Wird nur gerendert, wenn eine Kennung vorliegt. */
-function LaufAusgang({ importId }: { importId: string }): JSX.Element {
+/**
+ * Der Ausgang GENAU EINES Laufs. Wird nur gerendert, wenn eine Kennung vorliegt.
+ *
+ * R-0920: exportiert, weil die eigene Ergebnisadresse eines Laufs (`pages/ImportLauf.tsx`) GENAU
+ * diesen Ausgang zeigt — dieselben Lagen (lädt, gelesen, nicht abrufbar, ausgesetzt, alter Stand),
+ * dieselben Sätze. Ein Nachbau dort wäre die zweite Wahrheit über denselben Lauf.
+ */
+export function LaufAusgang({ importId }: { importId: string }): JSX.Element {
   const { t } = useTranslation();
   const lauf = useImportRun(importId);
   const akte = lauf.data;
@@ -387,6 +394,8 @@ function LaufKennungen({
       </ul>
       {/* Der Ausgang gehört zum ZULETZT gelaufenen — das ist der, nach dem gerade gefragt wird. */}
       {letzte !== null ? <LaufAusgang importId={letzte} /> : null}
+      {/* R-0920: der Weg auf die eigene Ergebnisadresse dieses Laufs. */}
+      {letzte !== null ? <ImportLaufLink importId={letzte} /> : null}
     </div>
   );
 }

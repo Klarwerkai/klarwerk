@@ -64,11 +64,11 @@ const FILE_ICONS: Record<string, ReactNode> = {
   json: <FileJson size={16} />,
   docx: <FileType size={16} />,
   "word-sys": <FileType size={16} />,
-  pdf: <FileText size={16} />,
-  "pdf-sys": <FileText size={16} />,
+  pdf: <FileText size={16} strokeWidth={1.8} />,
+  "pdf-sys": <FileText size={16} strokeWidth={1.8} />,
   xlsx: <FileSpreadsheet size={16} />,
   pptx: <Presentation size={16} />,
-  csv: <FileText size={16} />,
+  csv: <FileText size={16} strokeWidth={1.8} />,
   ocr: <ScanLine size={16} />,
   avtranscript: <FileAudio size={16} />,
 };
@@ -127,7 +127,7 @@ function TileInhalt({ source, icon }: { source: GallerySource; icon: ReactNode }
         {/* Zustand als TEXT im Badge (nicht nur Farbe) — barrierearm. */}
         <span
           data-tile-badge
-          className={`shrink-0 rounded-pill px-1.5 py-0.5 text-[10px] font-medium ${BADGE_CLASS[source.state]}`}
+          className={`shrink-0 rounded-pill px-1.5 py-0.5 text-klein font-medium ${BADGE_CLASS[source.state]}`}
         >
           {/* ADMIN-02: trägt die Kachel den Zustand dieser Installation, sagt das Abzeichen ihn. */}
           {t(source.badgeKey ?? STATE_BADGE_KEY[source.state])}

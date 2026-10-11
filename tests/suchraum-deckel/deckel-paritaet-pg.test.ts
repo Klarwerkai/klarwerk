@@ -98,8 +98,9 @@ async function suchanweisung(query: KoSearchQuery, rows = []) {
 // Einzige Abweichung vom Basisstand, bewusst: die Papierkorbbedingung im JOIN wertet seit
 // AUFNAHME 20260922 (BEN 4359 Befund B2) `deletedAt: null/""/false/0` wie `!ko.deletedAt` als
 // lebend. Zweite Abweichung, ebenso bewusst: seit Aufnahme gesamt-suchindex-aktualitaet (R-0483)
-// schliesst derselbe JOIN in einem Führungsartikel aufgegangene Artikel aus (`mergedInto`).
-// Auswahl, Ordnung und Parameter sind unverändert.
+// schliesst derselbe JOIN in einem Führungsartikel aufgegangene Artikel aus (`mergedInto`), und
+// seit Aufnahme gesamt-wissen-herkunft (R-0573, Nacharbeit 11) ebenso durch Weisung überstimmte,
+// geschlossene Punkte (`geschlossen`). Auswahl, Ordnung und Parameter sind unverändert.
 //
 // Dritte bewusste Abweichung (Suchprojektion, R-1134): vor der unveränderten Trefferbedingung steht
 // die indexgestützte Vorauswahl `(p.ko_id, p.ko_version) IN (… UNION …)` als weiteres UND-Glied. Sie
@@ -110,7 +111,7 @@ const SQL_VORGABE = `
              (p.title_text ILIKE $3 ESCAPE '\\') AS m_title_text, (p.statement_text ILIKE $3 ESCAPE '\\') AS m_statement_text, (COALESCE(md.category_text, '') ILIKE $3 ESCAPE '\\') AS m_category_text,
              (COALESCE(md.tag_text, '') ILIKE $3 ESCAPE '\\') AS m_tag_text, (p.caption_text ILIKE $3 ESCAPE '\\') AS m_caption_text
         FROM ko_search_projections p
-        JOIN kos k ON k.id = p.ko_id AND COALESCE((k.data->>'version')::int, 1) = p.ko_version AND (NOT (k.data ? 'deletedAt') OR k.data->'deletedAt' IN ('null'::jsonb, '""'::jsonb, 'false'::jsonb, '0'::jsonb)) AND COALESCE(jsonb_typeof(k.data->'mergedInto'), 'null') = 'null'
+        JOIN kos k ON k.id = p.ko_id AND COALESCE((k.data->>'version')::int, 1) = p.ko_version AND (NOT (k.data ? 'deletedAt') OR k.data->'deletedAt' IN ('null'::jsonb, '""'::jsonb, 'false'::jsonb, '0'::jsonb)) AND COALESCE(jsonb_typeof(k.data->'mergedInto'), 'null') = 'null' AND COALESCE(jsonb_typeof(k.data->'geschlossen'), 'null') = 'null'
         LEFT JOIN ko_metadata_projections md ON md.ko_id = p.ko_id
        WHERE p.projection_version = $1 AND p.generation = $2 AND (p.ko_id, p.ko_version) IN (
            SELECT s.ko_id, s.ko_version FROM ko_search_projections s
