@@ -206,6 +206,7 @@ describe("Spaces gegen echtes PostgreSQL", () => {
           quelleVersion: null,
           zielId: space.id,
           zielVersion: v.json().ziel.version,
+          grundlage: v.json().grundlage,
         },
       },
     });

@@ -399,6 +399,10 @@ describe("R-0149 · Suchtreffer im Quellen-Panel werden nie automatisch angehän
     const eintrag = eintraege[0]?.closest("li");
     expect(eintrag?.textContent ?? "").toContain("Sicherheitsventil");
     expect(eintrag?.textContent ?? "").toContain(i18n.t("ko.sourceUnvalidated"));
+    // R-0205 (aufnahme:20260922:gesamt-externe-quellen-kennzeichnung): auch in der Warteliste
+    // tragen externe Quellen das Etikett „Stufe 2" und den Herkunfts-Hinweis „Extern · ungeprüft".
+    expect(eintrag?.textContent ?? "").toContain(i18n.t("externequelle.stufe"));
+    expect(eintrag?.textContent ?? "").toContain(i18n.t("ko.sourceExternUnchecked"));
     expect(eintrag?.textContent ?? "").not.toContain("Überdruckventil");
   });
 });

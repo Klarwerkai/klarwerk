@@ -41,12 +41,18 @@ import {
 } from "../app/useOfflineQueue";
 // WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
 import { AnswerMarkdown } from "../components/AnswerMarkdown";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 // JOB 3786: die Seitenhilfe dieser Fläche. `HelpTip` ZEICHNET NICHTS — er meldet Titel und Text
 // beim Sammler an (`shell/SeitenhilfeContext.tsx`), und das Zahnrad-Menü listet sie unter
 // „Seitenhilfe". Pedi (04.09.): „Erklärung gehört hinter Zahnrad/Profil, nicht ins Sichtfeld."
 import { HelpTip } from "../components/HelpTip";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
-import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust";
+import {
+  ConfidenceBar,
+  ErgebnisStufeMarke,
+  KnowledgeTypeTag,
+  StatusPill,
+} from "../components/trust";
 import { selectAnswer } from "../lib/askResponse";
 import { conflictImpact } from "../lib/conflictImpact";
 import { anzeigestatusAnker, anzeigestatusAus } from "../lib/displayStatus";
@@ -65,6 +71,12 @@ import {
 } from "../lib/draftForm";
 import { conflictKnowledge } from "../lib/effectiveAnswer";
 import { fileToThumbDataUrl } from "../lib/files";
+import { internerPfad } from "../lib/internerPfad";
+import {
+  REASONER_ENTWURF_FLAECHE,
+  ergebnisStufeFuerAntwort,
+  kiHerkunftAus,
+} from "../lib/kiHerkunft";
 import type { EvidenceTone } from "../lib/knowledgeClass";
 // D-036 (JOB 1118): derselbe Dreiphasenvertrag, den Start und Analytics schon fahren —
 // `loading | loaded | error`. Er ist der Grund, warum unten keine Leerbehauptung mehr aus
@@ -183,7 +195,10 @@ export function Mobile(): JSX.Element {
   // WP-SAMMEL20-FIX (bens Fix 4, B1b): der Rückweg führt zur VORHERIGEN Route zurück (die der
   // Topbar-Hinweg als state.from mitgibt) — nur bei Direkteinstieg (Deep-Link/Reload ohne State)
   // fällt er auf die Startseite zurück.
-  const backTo = (location.state as { from?: string } | null)?.from ?? HOME_ROUTE;
+  const vorherigeRoute = (location.state as { from?: string } | null)?.from ?? HOME_ROUTE;
+  // R-1398: der Wert stammt aus `location.pathname` (History-State) — nur ein interner Pfad wird
+  // Navigationsziel (lib/internerPfad.ts, GHSA-wrjc/GHSA-jjmj).
+  const backTo = internerPfad(vorherigeRoute, HOME_ROUTE);
   const { setGuard, guard } = useNavGuard();
   const [tab, setTab] = useState<MobileTab>("capture");
 
@@ -1047,7 +1062,12 @@ export function Mobile(): JSX.Element {
         <ArrowLeft size={15} />
         {t("topbar.toDesktop")}
       </button>
-      <div className="w-[340px] overflow-hidden rounded-[34px] border-4 border-ink bg-surface p-5">
+      {/* R-1026 (Aufnahme 20260922 · antwort-quellenanzeige): der Telefonrahmen ist 340 px breit,
+          die Hülle hält je 24 px Rand — zusammen 388 px. Auf einem 320-px-Telefon lief die Seite
+          deshalb seitlich über (gemessen: 10 px, tests/r1026-quellentitel-telefon/
+          telefon-fragen-chromium.test.ts T2). `max-w-full` lässt ihn dort auf die verfügbare
+          Breite schrumpfen; ab der vollen Breite bleibt er unverändert 340 px. */}
+      <div className="w-[340px] max-w-full overflow-hidden rounded-[34px] border-4 border-ink bg-surface p-5">
         <div className="mb-3 flex items-center justify-between">
           <span className="font-sans text-[15px] font-bold tracking-[2px] text-ink">KLARWERK</span>
           {queue.online ? (
@@ -1649,9 +1669,13 @@ export function Mobile(): JSX.Element {
                       ))}
                     </ul>
                     {queue.queue.length === 0 ? (
-                      <p data-testid="mob-eigene-leer" className="text-[11.5px] text-muted">
-                        {t("mob.konto.eigeneLeer")}
-                      </p>
+                      <>
+                        <p data-testid="mob-eigene-leer" className="text-[11.5px] text-muted">
+                          {t("mob.konto.eigeneLeer")}
+                        </p>
+                        {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Kreis ein. */}
+                        {leerzustandsZeile(t, "entwuerfe")}
+                      </>
                     ) : null}
                     {/* KEINE TITEL, NUR ZAHLEN. Was ein anderes Konto offline erfasst hat, ist
                         seine Sache — hier steht nur, DASS etwas liegt und was damit geschieht
@@ -1701,7 +1725,10 @@ export function Mobile(): JSX.Element {
               ) : isGroupError([drafts]) ? (
                 <p className="text-[12.5px] text-trust-crit-text">{t("state.error")}</p>
               ) : serverEntwuerfe.length === 0 ? (
-                <p className="text-[12.5px] text-muted">{t("mob.draftsEmpty")}</p>
+                <>
+                  <p className="text-[12.5px] text-muted">{t("mob.draftsEmpty")}</p>
+                  {leerzustandsZeile(t, "entwuerfe")}
+                </>
               ) : (
                 <ul className="space-y-1.5">
                   {serverEntwuerfe.map((d) => (
@@ -1805,7 +1832,7 @@ export function Mobile(): JSX.Element {
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder={t("ask.placeholder")}
+                    placeholder={t("beispielfragen.platzhalter")}
                     className="h-10 flex-1 rounded-input border border-hairline bg-page px-3 text-sm outline-none focus:border-ink/30"
                   />
                   <button
@@ -1829,8 +1856,18 @@ export function Mobile(): JSX.Element {
                         kos.data ?? [],
                         conflictKnowledge(conflicts),
                       );
+                      // R-1020 / R-1695: dieselbe Stufe wie auf dem Desktop — aus belegter Herkunft
+                      // und belegter Einstufung. Ein Modelltext steht als Reasoner-Entwurf da.
+                      const stufe = ergebnisStufeFuerAntwort(
+                        kiHerkunftAus(answer),
+                        s.grade === "verified",
+                      );
                       return s.answered ? (
-                        <div className="mt-3 rounded-card border border-hairline p-3">
+                        <div
+                          data-testid="mob-antwort"
+                          className={`mt-3 rounded-card p-3 ${stufe === "entwurf" ? REASONER_ENTWURF_FLAECHE : "border border-hairline"}`}
+                        >
+                          <ErgebnisStufeMarke stufe={stufe} className="mb-2" />
                           <div className="mb-2 flex items-center justify-between gap-2">
                             {/* AUFTRAG-mega33 A2: die EFFEKTIVE Evidenz — dieselbe Einstufung wie
                                 auf dem Desktop, nicht mehr die rohe Klasse. */}
@@ -1888,8 +1925,12 @@ export function Mobile(): JSX.Element {
                                 {t("ask.sources")}
                               </span>
                               {/* WP-SHIP9-S2 Paket 4 (W4): KO-Titel statt roher UUID (Titel aus dem
-                                  vorhandenen Bestand — nie eine ID zeigen, wenn ein KO bekannt ist);
-                                  line-clamp gegen Überlauf, Volltitel im Tooltip. */}
+                                  vorhandenen Bestand — nie eine ID zeigen, wenn ein KO bekannt ist).
+                                  Aufnahme 20260922 · antwort-quellenanzeige (R-1026): auf dem
+                                  Telefon bleibt der Titel LESBAR — er bricht um (auch lange
+                                  Dateinamen, `[overflow-wrap:anywhere]`, `min-w-0` als Flex-Kind)
+                                  statt auf eine Zeile mit „…" gekappt zu werden; ein Tooltip gibt
+                                  es auf Touch nicht. Der Tooltip bleibt für die Maus. */}
                               {s.sources.map((ref) => (
                                 // AUFTRAG-mega12 Block C (echter Treffer, gefunden beim Bauen der
                                 // Architekturprüfung): Mobile MELDET einen Wächter an
@@ -1902,7 +1943,7 @@ export function Mobile(): JSX.Element {
                                   key={ref.id}
                                   to={`/wissen/${ref.id}`}
                                   title={ref.label}
-                                  className="line-clamp-1 max-w-[220px] text-[12px] font-semibold text-brand-text hover:underline"
+                                  className="min-w-0 max-w-full whitespace-normal text-[12px] font-semibold text-brand-text hover:underline [overflow-wrap:anywhere]"
                                 >
                                   {ref.label}
                                 </GuardedLink>

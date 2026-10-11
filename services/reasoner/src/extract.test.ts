@@ -42,6 +42,55 @@ describe("PMO-FEA-0006: excerptFoundInDocument (G-2-Gate)", () => {
   });
 });
 
+// R-0157/R-1070 · Nacharbeit 1 (Befund HILFE-89dd18fb): Vorzeichen und Vergleichszeichen tragen
+// Bedeutung, und der Punkt trägt die ORIGINALSTELLE, nicht die Fassung des Modells.
+describe("R-1070: Bedeutung und Originalstelle", () => {
+  const rawPoint = (sourceExcerpt: string) =>
+    JSON.stringify({ points: [{ title: "Probe", sourceExcerpt }] });
+
+  it.each([
+    ["Temperatur unter +20 Grad halten", "Temperatur unter -20 Grad halten"],
+    ["Temperatur unter -20 Grad halten", "Temperatur unter +20 Grad halten"],
+    ["Druck muss > 20 bar bleiben", "Druck muss < 20 bar bleiben"],
+    ["Druck muss <= 20 bar bleiben", "Druck muss < 20 bar bleiben"],
+  ])("weist Zeichenveränderung ab: %s => %s", (doc, quote) => {
+    expect.soft(excerptFoundInDocument(quote, doc)).toBe(false);
+    expect.soft(parseExtractResponse(rawPoint(quote), doc)).toEqual([]);
+  });
+
+  it.each([
+    ["Temperatur unter -20 Grad halten", "20 Grad halten"],
+    ["Druck muss <= 20 bar bleiben", "= 20 bar bleiben"],
+    ["Spalt maximal 1,5 mm", "5 mm"],
+    ["Spalt maximal 15 mm", "5 mm"],
+    ["Spalt maximal 1,5 mm", "Spalt maximal 1"],
+  ])("weist angeschnittene Zahl/Vorzeichen ab: %s => %s", (doc, quote) => {
+    expect(excerptFoundInDocument(quote, doc)).toBe(false);
+  });
+
+  it.each([
+    [
+      "Protokoll: Die Dosier-\npumpe P2 warten.",
+      "Dosierpumpe P2 warten",
+      "Dosier-\npumpe P2 warten",
+    ],
+    [
+      "Protokoll: Ventil X   sofort schliessen.",
+      "ventil x sofort schliessen",
+      "Ventil X   sofort schliessen",
+    ],
+  ])("gibt die Originalstelle zurück: %s", (doc, quote, original) => {
+    const points = parseExtractResponse(rawPoint(quote), doc);
+    expect(points).toHaveLength(1);
+    expect(points[0]?.sourceExcerpt).toBe(original);
+  });
+
+  it("Kontrolle: unverändertes Vorzeichen wird akzeptiert", () => {
+    const doc = "Temperatur unter -20 Grad halten";
+    expect(parseExtractResponse(rawPoint(doc), doc)[0]?.sourceExcerpt).toBe(doc);
+  });
+});
+
 describe("PMO-FEA-0006: parseExtractResponse", () => {
   it("übernimmt nur Punkte mit echter Belegstelle im Dokument", () => {
     const raw = pointJson([

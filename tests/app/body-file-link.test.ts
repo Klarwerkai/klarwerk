@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyBodyFileLink,
   editorFilesFromAttachments,
   fileLinkHtml,
   objectRawHref,
@@ -31,15 +30,8 @@ describe("SCRUM-355: bodyFileLink — sichere Datei-Referenz", () => {
     expect(fileLinkHtml({ objectId: "../evil", name: "x" })).toBe("");
   });
 
-  it("applyBodyFileLink: leerer Body setzt, vorhandener hängt an, ohne objectId = No-Op", () => {
-    expect(applyBodyFileLink("", { objectId: "obj-1", name: "a.pdf" })).toContain(
-      'class="attachment"',
-    );
-    expect(applyBodyFileLink("<p>alt</p>", { objectId: "obj-1", name: "a.pdf" })).toBe(
-      '<p>alt</p><div class="attachment"><a href="/api/objects/obj-1/raw" title="a.pdf">a.pdf</a></div>',
-    );
-    expect(applyBodyFileLink("<p>alt</p>", { objectId: "", name: "a.pdf" })).toBe("<p>alt</p>");
-  });
+  // R-1349: Der Fall zu `applyBodyFileLink` ist mit dem Helfer entfallen — er hatte keinen
+  // Produktleser; Erfassen und Editor setzen `fileLinkHtml` an ihrer Einfügestelle ein.
 
   it("editorFilesFromAttachments: nur Nicht-Bild MIT gültiger objectId", () => {
     const files = editorFilesFromAttachments([
@@ -92,8 +84,9 @@ describe("SCRUM-355: KO-Detail-kompatibler Flow (Attachments → Datei-Link → 
       throw new Error("erwartete verlinkbare Datei fehlt");
     }
 
-    // Datei in einen bestehenden Body einfügen (wie der Paperclip-Insert im Editor).
-    const body = applyBodyFileLink("<h2>Norm-Hinweis</h2>", file);
+    // Datei in einen bestehenden Body einfügen (wie der Paperclip-Insert im Editor, der den Link
+    // über `fileLinkHtml` an die Einfügestelle setzt).
+    const body = `<h2>Norm-Hinweis</h2>${fileLinkHtml(file)}`;
     // Server-autoritativer Sanitizer (vor Persistenz) hält den sicheren Link.
     const stored = serverSanitizeHtml(body);
     expect(stored).toContain("<h2>Norm-Hinweis</h2>");

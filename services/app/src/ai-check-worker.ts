@@ -603,6 +603,11 @@ export interface AiCheckRunnerDeps {
   overlapSettings: OverlapSettingsRepo;
   reasoner: Reasoner;
   semanticPrefilter?: SemanticPrefilter | undefined;
+  // AUFNAHME 20260922 · gesamt-pruefung-hintergrund (R-1111): wird VOR jedem einzelnen
+  // Modellvergleich gerufen, getrennt nach Weg. Der Hintergrundlauf zählt damit seinen tatsächlichen
+  // Verbrauch und setzt sein Restbudget durch (Wurf → der Vergleich findet nicht statt). Ohne Haken
+  // unverändert.
+  vorVergleich?: ((weg: "konflikt" | "dublette") => void) | undefined;
 }
 
 // Der eine Prüf-Lauf: DIESELBEN Erkennungs-Funktionen, die vorher synchron im Submit-Pfad liefen
@@ -644,6 +649,7 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
         confidential = false,
       ) => {
         try {
+          deps.vorVergleich?.("konflikt");
           return await deps.reasoner.judgeConflictOutcome(a, b, locale, confidential);
         } catch (err) {
           failure = failure ?? err;
@@ -657,6 +663,7 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
         confidential = false,
       ) => {
         try {
+          deps.vorVergleich?.("dublette");
           return await deps.reasoner.judgeDuplicateOutcome(a, b, locale, confidential);
         } catch (err) {
           failure = failure ?? err;

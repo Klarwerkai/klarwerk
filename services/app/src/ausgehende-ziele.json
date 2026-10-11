@@ -22,7 +22,7 @@
     },
     {
       "kennung": "ki-lokal",
-      "zweck": "Lokales Modell des Betreibers (OpenAI-kompatibel)",
+      "zweck": "Lokales Modell des Betreibers (OpenAI-kompatibel): Sprachmodell und internes Embedding-Modell (KLARWERK_LOCAL_EMBEDDING_MODEL, nur fuer eine bestaetigte interne Adresse)",
       "dateien": ["services/reasoner/src/model-client.ts"],
       "hosts": [],
       "umgebung": ["KLARWERK_LOCAL_LLM_URL", "KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS"],
@@ -86,6 +86,14 @@
       "hosts": [],
       "umgebung": ["SMTP_HOST"],
       "freigabe": "Nur wenn SMTP_HOST gesetzt ist"
+    },
+    {
+      "kennung": "wissensereignisse-webhooks",
+      "zweck": "Meldungen an Fremdwerkzeuge: Wissensobjekt validiert, Revalidierung faellig, Widerspruch offen (R-0710)",
+      "dateien": ["services/app/src/wissensereignisse.ts"],
+      "hosts": [],
+      "umgebung": ["KLARWERK_WEBHOOKS"],
+      "freigabe": "Nur die in KLARWERK_WEBHOOKS eingetragenen Ziele (ladeWebhookZiele): nur https, http nur fuer die eigene Maschine, keine Zugangsdaten in der Adresse, redirect: manual, signiert; gemeldet werden nur Kennungen von Objekten, die auch der Dienst-Schluessel-Export zeigen darf"
     },
     {
       "kennung": "word-addin-officejs",

@@ -117,7 +117,7 @@ import {
   sharepointFehlerlage,
 } from "../../../sharepoint";
 import type { Guards, SessionUser } from "../http";
-import { sanitizeLogText } from "../log-sanitize";
+import { inhaltsfreieFehlerkennung } from "../log-positivliste";
 
 /** Die Zuordnung Fachkonto → eigene Testbibliothek (Frage 6), gelesen je Anfrage. */
 export const SHAREPOINT_TESTBIBLIOTHEKEN_ENV = "KLARWERK_SHAREPOINT_TESTBIBLIOTHEKEN";
@@ -223,7 +223,8 @@ const MELDUNG: Record<string, string> = {
 
 function warne(log: FastifyBaseLogger, stelle: string, err: unknown): void {
   log.warn(
-    { stelle, fehler: sanitizeLogText(err instanceof Error ? err.message : String(err)) },
+    // R-0623: statt des freien Fehlertexts die inhaltsfreie Fehlerkennung.
+    { stelle, fehler: inhaltsfreieFehlerkennung(err) },
     `sharepoint-import: ${stelle} fehlgeschlagen`,
   );
 }

@@ -1,4 +1,5 @@
 import type { Notification } from "../api/types";
+import { adminHref } from "./adminSections";
 import { validationMineHref } from "./validationFilters";
 
 // SCRUM-220: DOM-freie Ableitung des Sprungziels einer Benachrichtigung aus vorhandenen Daten.
@@ -6,7 +7,15 @@ import { validationMineHref } from "./validationFilters";
 // Ziele; alles andere liefert null (dann kein Link, nur Anzeige/mark-read — kein Fake-Ziel).
 // SCRUM-364 / AG-15 follow-up: Review-Zuweisung → fokussierte „Mir zugewiesen"-Linse der Validierung
 // (`/validierung?mine=1`), nicht mehr nur die allgemeine Liste — direkt in die persönliche Review-Arbeit.
-export function notificationTarget(n: Pick<Notification, "kind" | "koId">): string | null {
+export function notificationTarget(
+  n: Pick<Notification, "kind" | "koId"> & Partial<Pick<Notification, "gapId">>,
+): string | null {
+  // produkt:20261010:wissenskreislauf-schliessen: jede Lückenmeldung führt in DEN Vorgang dieser
+  // Lücke (`/luecke/:id`, für alle Beteiligten erreichbar — „Risiko & Lücken" erst ab Controller).
+  // Dort stehen Ergebnis, Rückfrage und der nächste Schritt, frisch gegen die heutigen Rechte.
+  if (n.kind === "luecke") {
+    return n.gapId ? `/luecke/${encodeURIComponent(n.gapId)}` : null;
+  }
   // PMO-FEA-0002: Wirkungs-Rückmeldung führt direkt zum eigenen Wissensobjekt.
   if (n.kind === "impact") {
     return n.koId ? `/wissen/${n.koId}` : null;
@@ -32,6 +41,23 @@ export function notificationTarget(n: Pick<Notification, "kind" | "koId">): stri
   }
   // Kenntnisnahme: der Eintrag selbst — dort steht die Anforderung samt Bestätigen-Knopf.
   if (n.kind === "kenntnisnahme") {
+    return n.koId ? `/wissen/${n.koId}` : null;
+  }
+  // Löschantrag (R-0661): die Datenschutzkarte der Verwaltung — dort stehen Frist und Entscheidung.
+  if (n.kind === "loeschantrag") {
+    return adminHref("sicherheit", "datenschutz");
+  }
+  // R-1089: gemeldete Antwort → das zitierte Wissensobjekt, dort wird korrigiert.
+  if (n.kind === "reklamation") {
+    return n.koId ? `/wissen/${n.koId}` : null;
+  }
+  // aufnahme:20260922:gesamt-wissen-frische: das eigene Wissensobjekt — dort stehen „Stimmt
+  // weiterhin" und die Frist.
+  if (n.kind === "frische") {
+    return n.koId ? `/wissen/${n.koId}` : null;
+  }
+  // Veröffentlichung: der Eintrag selbst — dort steht, welche Fassung veröffentlicht ist.
+  if (n.kind === "veroeffentlichung") {
     return n.koId ? `/wissen/${n.koId}` : null;
   }
   return null;

@@ -303,8 +303,10 @@ describe("JOB 3065 H6 · kein Erklärtext im Sichtfeld — gemessen in Chromium"
   //
   //   SOLL      die zwölf `HelpTip`-Körper (D-hilfe) ∪ die Hilfetexte der §5a-Tabelle
   //             (`tests/design/h6-funktionsinventar.test.ts`, Feld `hilfeText`).
-  //   BEDINGT   `adm.seedHint` steht nur bei bestätigt eingeschalteter Vorführhilfe im Menü
-  //             (R-0913, `AdminDatenDetails.tsx`) — die Erwartung folgt dem ECHTEN Schalter.
+  //   BEDINGT   der Demodaten-Hinweis steht nur bei bestätigt eingeschalteter Vorführhilfe im Menü
+  //             (R-0913, `AdminDatenDetails.tsx`) — die Erwartung folgt dem ECHTEN Schalter. Seit
+  //             R-0908 heißt er `fachwort.demodaten.hinweis` (vorher `adm.seedHint`, mit „KOs"
+  //             und „KI-Reasoner"); es ist derselbe Hilfekörper derselben Karte.
   //   ZUGÄNGE   was heute zusätzlich im Menü steht und in keiner Sollzeile — namentlich, damit eine
   //             weitere stille Ergänzung (oder ein stiller Verlust) diesen Fall rot macht.
   const SOLL_HILFE = [
@@ -323,10 +325,10 @@ describe("JOB 3065 H6 · kein Erklärtext im Sichtfeld — gemessen in Chromium"
     "adm.ready.intro",
     "adm.createHint",
     "adm.ai.internExtern",
-    "adm.seedHint",
+    "fachwort.demodaten.hinweis",
   ];
   /** Steht nur bei bestätigt eingeschaltetem Betriebsschalter im Menü. */
-  const NUR_MIT_SCHALTER: Record<string, string> = { "adm.seedHint": "demodaten" };
+  const NUR_MIT_SCHALTER: Record<string, string> = { "fachwort.demodaten.hinweis": "demodaten" };
   /**
    * Heute im „?"-Menü, aber in keiner Sollzeile. Herkunft je Zeile laut Quelltext der Karte: die
    * Hinweis-/Einleitungsabsätze, die JOB 3065 aus dem Sichtfeld in das Menü derselben Karte verlegt

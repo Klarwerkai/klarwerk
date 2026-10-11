@@ -25,12 +25,13 @@ import type { KnowledgeRef } from "../../services/reasoner";
 import {
   DeterministicProvider,
   MIN_ANSWER_SUBSTANCE,
-  keywordSelect,
   queryTokens,
   rankCandidates,
   selectCandidates,
 } from "../../services/reasoner";
 import { refMatchText } from "../../services/reasoner/src/provider";
+// R-1349: der zweite Auswahlweg ist entfernt; `keywordSelect` misst die Menge am Produktweg.
+import { keywordSelect } from "../support/auswahlweg";
 
 function ref(id: string, title: string, statement: string): KnowledgeRef {
   return { id, title, statement, status: "validiert", trust: 70 };

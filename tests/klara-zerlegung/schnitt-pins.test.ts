@@ -153,6 +153,9 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // „fixture" allein meldete A2 `der Griff hat sich geaendert`.
   "tests/word-vergleich/zwei-laeufe-und-spaete-antworten.test.ts": "pfad,fixture",
   "tests/word-vergleich/word-buehne.ts": "pfad,fixture",
+  // R-0336/R-0708 („Markierung prüfen", Zustimmung zum noch nicht validierten Bestand): hängt wie
+  // die Fälle darüber an `createKlaraPanel` (`fixture`) und nennt den ausgelieferten Pfad nicht.
+  "tests/word-vergleich/behauptung-und-zustimmung.test.ts": "fixture",
   // N11b: Versandmessung liest das Word-Fenster und führt den W6-Block entlang seiner Marke aus.
   "tests/n11b-zustimmung-macht-intern/einstiege.test.ts": "pfad,marken,panelquelle",
   "tests/app/csp-upgrade-insecure-requests.test.ts": "pfad",
@@ -592,6 +595,11 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // das Taskpane-Pfadliteral als Gegenpfad — Griff `pfad`. GEMESSEN, NICHT GESETZT: der Prüflauf
   // am Kandidaten 26e86268 meldete A2 `neu im Baum, aber nicht gepinnt` mit genau diesem Pfad.
   "tests/office-web-anmeldung/dialog-opener-kopf.test.ts": "pfad",
+  // AUFNAHME 20260922 · GESAMT-DOKUMENTERZEUGUNG (Pedi 28.09., Anleitung in Word): der Prüfstand
+  // des Blocks KW-ANLEITUNG (`anleitung.js`). Er schneidet `#begriffe-block` aus `taskpane.html`
+  // (Pfadliteral, Griff `pfad`) und fährt im Teil R den Rückweg über `createKlaraPanel` (Griff
+  // `fixture`). Die Griffe sind aus den Mustern oben abgelesen, nicht gemessen — kein Lauf hier.
+  "tests/anleitung-word/anleitung-word.test.tsx": "pfad,fixture",
 };
 
 // ------------------------------------------------------------------------------------------------

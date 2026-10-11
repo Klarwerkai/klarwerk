@@ -46,15 +46,14 @@ import {
 } from "../lib/draftListView";
 import { formatKoTimestamp } from "../lib/koDates";
 import { usePersistentEnum, usePersistentString } from "../lib/usePersistentValue";
+import { HelpTip } from "./HelpTip";
 import { Button, Card, SectionLabel } from "./ui";
 
-// Ehrlicher, lokalisierbarer Zeitstempel (dieselbe Darstellung wie zuvor inline in Capture).
-function formatDraftTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value || "unbekannt";
-  }
-  return new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(date);
+// Ehrlicher, lokalisierter Zeitstempel. R-1010: dieselbe Zeitregel wie das Datum neben dem Titel
+// (`formatKoTimestamp`) statt fest „de-DE" — zwei Schreibweisen desselben Werts in einer Zeile wären
+// genau die Uneinheitlichkeit, die der Auftrag abschafft. Der Ausweichwert bleibt unverändert.
+function formatDraftTimestamp(value: string, locale: string): string {
+  return formatKoTimestamp(value, locale) ?? (value || "unbekannt");
 }
 
 // Ersteller-Name über das Directory (Fallback = Id, nie ein erfundener Name).
@@ -566,7 +565,7 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                   </span>
                   <span>
                     {t("capture.draftSavedMeta", {
-                      date: formatDraftTimestamp(d.updatedAt || d.createdAt),
+                      date: formatDraftTimestamp(d.updatedAt || d.createdAt, i18n.language),
                     })}
                   </span>
                   <span>{t("capture.draftStatusMeta")}</span>
@@ -663,6 +662,12 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <SectionLabel>{t("capture.resumeTitle")}</SectionLabel>
+          {/* R-0888 (gesamt-hilfen, Nacharbeit 13): die Abschnittserklärung in der Seitenhilfe —
+              berichtigt um den gemeinsamen Pool (Begründung in `texte/abschnittshilfe.ts`). */}
+          <HelpTip
+            title={t("capture.resumeTitle")}
+            body={t("abschnittshilfe.capture.resumeTitle")}
+          />
           {/* AUFTRAG-mega38 BLOCK J4: die Reichweiten-Plakette ist eine ADMIN-Auskunft. Für alle
               anderen stand dort „Meine Entwürfe" neben einer Überschrift, die schon „Entwürfe
               fortsetzen" heisst — doppelt gesagt und im Admin-Fall („ADMIN-ANSICHT: ALLE

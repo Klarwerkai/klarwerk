@@ -306,13 +306,86 @@ describe("SCRUM-120: house + pilot", () => {
     const rows = house(
       input({
         kos: [
-          ko({ id: "A1", category: "Anlage 1", status: "offen" }),
-          ko({ id: "B1", category: "Anlage 2" }),
+          ko({ id: "A1", domain: "Instandhaltung", status: "offen", originalAuthor: "a" }),
+          ko({ id: "A2", domain: "Instandhaltung", status: "offen", originalAuthor: "b" }),
+          ko({ id: "B1", domain: "Qualität", originalAuthor: "a" }),
+          ko({ id: "B2", domain: "Qualität", originalAuthor: "b" }),
         ],
-        busFactor: [bus("Anlage 1", false), bus("Anlage 2", false)],
       }),
     );
-    expect(rows.find((r) => r.category === "Anlage 1")?.fragile).toBe(true);
+    expect(rows.find((r) => r.domain === "Instandhaltung")?.fragile).toBe(true);
+    expect(rows.find((r) => r.domain === "Qualität")?.fragile).toBe(false);
+  });
+
+  it("R-0768 · je Fachgebiet ein Stockwerk mit Füllgrad, Urhebern und Importzahl", () => {
+    const rows = house(
+      input({
+        kos: [
+          // Gleiche Kategorie, verschiedene Fachgebiete: das Fachgebiet bestimmt das Stockwerk.
+          ko({ id: "M1", domain: "Montage", category: "Anlage 1", originalAuthor: "a" }),
+          ko({ id: "M2", domain: "Montage", category: "Anlage 1", originalAuthor: "b" }),
+          ko({
+            id: "M3",
+            domain: "Montage",
+            category: "Anlage 2",
+            status: "offen",
+            originalAuthor: "b",
+            importedVia: "library_import",
+          }),
+          ko({ id: "E1", domain: "Einkauf", category: "Anlage 1", originalAuthor: "c" }),
+          // Ohne Fachgebiet: nicht aus der Kategorie abgeleitet, eigenes Stockwerk, immer zuletzt.
+          ko({ id: "X1", category: "Anlage 1", originalAuthor: "a", origin: "import" }),
+          ko({ id: "X2", category: "Anlage 1", domain: "  ", originalAuthor: "b" }),
+          ko({ id: "X3", category: "Anlage 1", originalAuthor: "c" }),
+        ],
+      }),
+    );
+    expect(rows.map((r) => r.domain)).toEqual(["Montage", "Einkauf", null]);
+    expect(rows[0]).toEqual({
+      domain: "Montage",
+      koCount: 3,
+      validated: 2,
+      validatedRatio: 67,
+      authorCount: 2,
+      singleSource: false,
+      fragile: false,
+      imported: 1,
+    });
+    // Ein Urheber allein macht das Stockwerk fragil, auch wenn alles validiert ist.
+    expect(rows[1]).toMatchObject({ validatedRatio: 100, singleSource: true, fragile: true });
+    expect(rows[2]).toMatchObject({ koCount: 3, imported: 1, fragile: false });
+  });
+
+  it("R-0768 · Import → Haus → Ausgabe zählt über demselben Bestand", () => {
+    const snap = computeSnapshot(
+      input({
+        kos: [
+          ko({ id: "I1", domain: "Montage", importedVia: "import_candidate" }),
+          ko({ id: "I2", domain: "Montage", origin: "import", status: "offen" }),
+          ko({ id: "F1", domain: "Montage", originalAuthor: "b" }),
+          ko({ id: "F2", domain: "Einkauf", status: "offen" }),
+        ],
+      }),
+    );
+    expect(snap.houseFlow).toEqual({
+      imported: 2,
+      importedValidated: 1,
+      inHouse: 4,
+      secured: 2,
+      floors: 2,
+      fragileFloors: 1,
+      outputReady: 2,
+    });
+    // Gegenprobe: leerer Bestand → alles 0, kein NaN.
+    expect(computeSnapshot(input()).houseFlow).toEqual({
+      imported: 0,
+      importedValidated: 0,
+      inHouse: 0,
+      secured: 0,
+      floors: 0,
+      fragileFloors: 0,
+      outputReady: 0,
+    });
   });
 
   it("pilot zählt nur Objekte innerhalb des Fensters", () => {

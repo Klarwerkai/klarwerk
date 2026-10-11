@@ -1,41 +1,16 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
-import {
-  CAPTURE_FLOW_STEPS,
-  CAPTURE_FLOW_TEXT,
-  type CaptureFlowStepId,
-  captureFlowStepLabelKey,
-  captureFlowSteps,
-  recommendedFlowStep,
-} from "../../apps/web/src/lib/captureFlowGuide";
+import { CAPTURE_FLOW_TEXT } from "../../apps/web/src/lib/captureFlowGuide";
 
 // SCRUM-370 / AG-12 / AG-13 / AG-P2-4: geführter Capture-Weg — Rohwissen → im Studio strukturieren
 // (empfohlen) → prüfen & einreichen. DOM-freie Beschreibung, eine Quelle für die Rail + Studio-Lead +
 // Beitragswert am Submit.
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Die Schritt-Tabelle `CAPTURE_FLOW_STEPS` und ihre drei
+// Zugriffe sind entfernt — keiner hatte einen Produktleser (die Erfassung führt über
+// `lib/captureWizard.ts`, R-0991 Nr. 12). Mit ihnen sind die drei Fälle zu Reihenfolge, Empfehlung und
+// Schlüsselschema entfallen. Gemessen bleibt, was `pages/Capture.tsx` liest: die Texte.
 describe("SCRUM-370: captureFlowGuide", () => {
-  it("liefert den geführten Weg in fester Reihenfolge (rohwissen → studio → prüfen)", () => {
-    expect(captureFlowSteps()).toBe(CAPTURE_FLOW_STEPS);
-    expect(CAPTURE_FLOW_STEPS.map((s) => s.id)).toEqual<CaptureFlowStepId[]>([
-      "raw",
-      "studio",
-      "review",
-    ]);
-  });
-
-  it("markiert genau EINEN empfohlenen Hauptweg-Schritt — das Studio", () => {
-    const recommended = CAPTURE_FLOW_STEPS.filter((s) => s.recommended);
-    expect(recommended.map((s) => s.id)).toEqual(["studio"]);
-    expect(recommendedFlowStep().id).toBe("studio");
-  });
-
-  it("label/hint folgen dem stabilen Schema capture.flow.step.<id>.{label,hint}", () => {
-    for (const step of CAPTURE_FLOW_STEPS) {
-      expect(step.labelKey).toBe(`capture.flow.step.${step.id}.label`);
-      expect(step.hintKey).toBe(`capture.flow.step.${step.id}.hint`);
-      expect(captureFlowStepLabelKey(step.id)).toBe(step.labelKey);
-    }
-  });
-
   it("CAPTURE_FLOW_TEXT zeigt auf die flachen capture.flow.*-Copy-Keys", () => {
     expect(CAPTURE_FLOW_TEXT).toEqual({
       railKicker: "capture.flow.railKicker",
@@ -47,12 +22,7 @@ describe("SCRUM-370: captureFlowGuide", () => {
   });
 
   it("alle Weg-/Studio-/Beitrags-Texte sind DE und EN vorhanden (keine leeren Keys)", () => {
-    const keys = [
-      ...Object.values(CAPTURE_FLOW_TEXT),
-      "capture.flow.railKickerHint",
-      ...CAPTURE_FLOW_STEPS.flatMap((s) => [s.labelKey, s.hintKey]),
-    ];
-    for (const key of keys) {
+    for (const key of Object.values(CAPTURE_FLOW_TEXT)) {
       for (const lng of ["de", "en"]) {
         expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
       }
