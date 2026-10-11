@@ -101,7 +101,9 @@ export function klaraAnswerExplanationRoutes(
         const leser: AnswerExplanationLeser = {
           userId: user.id,
           darfVertraulich: user.role === "admin" || user.role === "controller",
-          darfSehen: sichtbarkeitsfilterFuer(user),
+          // R-1175 / gesamt-leserechte (Variante B): die EINE Sichtbarkeitsentscheidung (Space,
+          // Autorschaft, Freigaberang) — sie entscheidet allein, `darfVertraulich` ist Rückfall.
+          sichtbar: sichtbarkeitsfilterFuer(user),
         };
         const ergebnis = await deps.explanations.erklaere(request.params.answerId, leser);
         if (ergebnis.kind === "NOT_FOUND") {

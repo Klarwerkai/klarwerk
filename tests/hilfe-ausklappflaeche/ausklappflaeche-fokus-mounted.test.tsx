@@ -27,6 +27,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { KlaraAssistant } from "../../apps/web/src/components/KlaraAssistant";
 import i18n from "../../apps/web/src/i18n";
+import { hilfeknopfLabel } from "../support/hilfeknopf";
 
 vi.mock("../../apps/web/src/lib/useAiAvailable", () => ({
   useAiAvailable: () => ({ available: false, isLoading: false }),
@@ -78,9 +79,7 @@ afterEach(async () => {
 });
 
 function ausloeser(): HTMLButtonElement {
-  const knopf = host.querySelector<HTMLButtonElement>(
-    `button[aria-label="${i18n.t("klara.open")}"]`,
-  );
+  const knopf = host.querySelector<HTMLButtonElement>(`button[aria-label="${hilfeknopfLabel()}"]`);
   if (!knopf) {
     throw new Error("Der Klara-Auslöser fehlt.");
   }

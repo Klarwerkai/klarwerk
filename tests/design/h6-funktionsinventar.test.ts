@@ -279,7 +279,9 @@ function inventarAdmin(): Posten[] {
       klick: '[data-testid="zeile-demodaten"]',
       detail: "detail-demodaten",
       erwartet: [{ text: t("adm.seedButton") }, { text: t("adm.purgeButton") }],
-      hilfeText: t("adm.seedHint"),
+      // R-0908: derselbe Hilfekörper, seit der Aufnahme gesamt-sprache-begriffe ohne „KOs" und
+      // „KI-Reasoner" (`texte/fachwort.ts`).
+      hilfeText: t("fachwort.demodaten.hinweis"),
     },
     {
       zeile5a: 17,
@@ -310,7 +312,9 @@ function inventarAdmin(): Posten[] {
       reiter: t("adm.sec.sicherheit"),
       klick: '[data-testid="zeile-audit"]',
       detail: "detail-audit",
-      erwartet: [{ einesVon: ["auth.", "user.", t("adm.auditEmpty")] }],
+      // produkt:20261009:admin-audit-verstaendlich: der Vorgang steht beim Namen da; der Rohcode
+      // (`auth.login`) nur noch eingeklappt in den technischen Angaben.
+      erwartet: [{ einesVon: [t("audit.action.auth_login"), t("adm.auditEmpty")] }],
     },
     // ---- Sicherheit (§5a 20–22) ----------------------------------------------------------------------
     {

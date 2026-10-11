@@ -24,10 +24,10 @@ import {
   emptyCoverage,
   selectChecksumCandidates,
   similarityChecksum,
-  singleRunBalances,
 } from "../../services/conflicts";
 import { selectOverlapCandidates } from "../../services/conflicts/src/duplicate-detect";
 import type { KnowledgeObject } from "../../services/knowledge-object";
+import { singleRunBalances } from "../support/abdeckung-buchhaltung";
 
 function subject(
   refId: string,

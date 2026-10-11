@@ -263,13 +263,9 @@ export function draftTitle(draft: Pick<Draft, "payload">, fallback: string): str
   return s ? s.slice(0, 60) : fallback;
 }
 
-// FR-CAP-07: Promote setzt ein KO voraus — Pflichtfelder vollständig?
-// type/category sind im schlanken Formular nicht erfasst → fehlen i. d. R. (ehrlich gemeldet).
-export function isPromotable(payload: DraftPayload): boolean {
-  return Boolean(
-    payload.title?.trim() && payload.statement?.trim() && payload.type && payload.category,
-  );
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `isPromotable` (FR-CAP-07, Ja/Nein über die
+// KO-Pflichtfelder). Erfassen prüft die Pflichtangaben über `captureReadiness` und nennt die
+// fehlenden einzeln (R-0991 Nr. 18); das Ja/Nein rief niemand und ist entfernt.
 
 export const KNOWLEDGE_TYPES_DRAFT: readonly KnowledgeType[] = [
   "bauchgefuehl",

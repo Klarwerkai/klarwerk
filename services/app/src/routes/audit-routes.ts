@@ -2,10 +2,20 @@ import type { FastifyPluginAsync } from "fastify";
 import {
   type AuditEntry,
   type AuditFilter,
+  type AuditSeitenAnfrage,
   type AuditService,
   type ChainInspection,
+  auditSeiteTrifft,
+  auditSeitengroesse,
   hashEntryFuerVersion,
+  namensbelegeAus,
 } from "../../../audit";
+import {
+  type AuditObjektSicht,
+  type AuditObjektZugang,
+  type AuditSicht,
+  auditSichtFuer,
+} from "../audit-sicht";
 import type { Guards, SessionUser } from "../http";
 import { LESEVARIANTEN_LADE_AKTION, LESEVARIANTEN_LADE_PROTOKOLLFELDER } from "../lesevarianten";
 import { type SichtbarkeitsFakten, darfSehen, freigaberang } from "../sichtbarkeit";
@@ -24,6 +34,12 @@ export interface AuditLeseQuelle {
   sichtbarkeitsfaktenAller(): Promise<readonly ({ id: string } & SichtbarkeitsFakten)[]>;
   spaceKennungen(): Promise<readonly string[]>;
   befundZuordnungen(): Promise<readonly { id: string; koIds: readonly string[] }[]>;
+  /**
+   * Nacharbeit 20 (Integration main): Kennungen weiterer bekannter Bezugsziele, deren Einträge
+   * Zahlen über GENAU dieses Ziel tragen (Teams aus produkt:20261009:admin-teams: `version`,
+   * `vorherVersion`) — keine Bestandsbilanz. Fehlt die Angabe, bleibt die Regel unverändert eng.
+   */
+  weitereZiele?(): Promise<readonly string[]>;
 }
 
 // ================================================================================================
@@ -56,7 +72,8 @@ export interface AuditLeseQuelle {
 //     Zahl; die Verkettung ist in einer Ansicht nicht prüfbar und wird nicht behauptet.
 //   · Der Export ist `klarwerk-audit-ansicht`, ausdrücklich keine Kette.
 //   · BESTANDSBILANZEN (Nacharbeit 16, Ben): ein Eintrag, dessen Ziel KEIN bekanntes Objekt, kein
-//     Befund und kein Space ist und dessen Nutzlast Zahlen trägt, fasst einen Bestand zusammen
+//     Befund, kein Space und (seit Nacharbeit 20) kein Team ist und dessen Nutzlast Zahlen trägt,
+//     fasst einen Bestand zusammen
 //     (`import.cleanup` → „library" mit `trashedKos`/`claimedKos`, …). Seine Zahlen können
 //     verborgene Objekte mitzählen, ohne sie zu nennen; nachweisbar auf den Leser begrenzen lassen
 //     sie sich nicht. Er geht an einen eingeschränkten Leser nicht hinaus — auch historisch.
@@ -177,6 +194,7 @@ async function leselage(
     ...ausKette.keys(),
     ...befundKos.keys(),
     ...spaces,
+    ...((await quelle.weitereZiele?.()) ?? []),
   ]);
   return { eingeschraenkt: true, verborgen, ziele, alles: false };
 }
@@ -240,14 +258,25 @@ function lesbar(e: AuditEntry, lage: Leselage): boolean {
 /** Ein Eintrag der Leseransicht: laufende Nummer statt Kettennummer, ohne Kettenfelder. */
 type Ansichtseintrag = Omit<AuditEntry, "hash" | "prevHash" | "hashVersion">;
 
-function leseansicht(kette: readonly AuditEntry[], lage: Leselage): Ansichtseintrag[] {
+function alsAnsicht(
+  { hash: _h, prevHash: _p, hashVersion: _v, ...rest }: AuditEntry,
+  seq: number,
+): Ansichtseintrag {
+  return { ...rest, seq, ...(EXPORTBELEGE.has(rest.action) ? { payload: {} } : {}) };
+}
+
+/** Je lesbarer Eintrag das Original (für Filter- und Namensregeln) und sein Ansichtseintrag. */
+function lesepaare(
+  kette: readonly AuditEntry[],
+  lage: Leselage,
+): { original: AuditEntry; ansicht: Ansichtseintrag }[] {
   return kette
     .filter((e) => lesbar(e, lage))
-    .map(({ hash: _h, prevHash: _p, hashVersion: _v, ...rest }, i) => ({
-      ...rest,
-      seq: i + 1,
-      ...(EXPORTBELEGE.has(rest.action) ? { payload: {} } : {}),
-    }));
+    .map((original, i) => ({ original, ansicht: alsAnsicht(original, i + 1) }));
+}
+
+function leseansicht(kette: readonly AuditEntry[], lage: Leselage): Ansichtseintrag[] {
+  return lesepaare(kette, lage).map((p) => p.ansicht);
 }
 
 function filterTrifft(e: { actor: string; action: string; target: string }, f: AuditFilter) {
@@ -279,12 +308,165 @@ function ansichtsbericht(kette: readonly AuditEntry[], lage: Leselage) {
   return bericht;
 }
 
+/** Die Abfrage des Seitenwegs, wie sie über die Adresse ankommt — alles Zeichenketten. */
+interface SeitenQuery {
+  actor?: string;
+  action?: string;
+  actions?: string;
+  target?: string;
+  from?: string;
+  to?: string;
+  before?: string;
+  limit?: string;
+}
+
+/** Ein Zeitpunkt aus der Adresse als ISO-Zeichenkette in UTC — `null` heißt „unlesbar". */
+function isoZeitpunkt(wert: string): string | null {
+  const ms = Date.parse(wert);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+/** Eine positive ganze Zahl aus der Adresse — `null` heißt „unlesbar". */
+function ganzzahl(wert: string): number | null {
+  return /^\d{1,9}$/.test(wert) && Number(wert) > 0 ? Number(wert) : null;
+}
+
+/**
+ * Die Abfrage des Seitenwegs, geprüft. Ein unlesbarer Wert wird NICHT still verworfen — sonst
+ * zeigte die Fläche eine ungefilterte Liste unter einem gesetzten Filter. Er ist ein 400.
+ */
+function leseSeitenAnfrage(q: SeitenQuery): AuditSeitenAnfrage | string {
+  const anfrage: AuditSeitenAnfrage = {};
+  const text = (wert: string | undefined): string | undefined =>
+    typeof wert === "string" && wert.trim() !== "" ? wert.trim() : undefined;
+  const actor = text(q.actor);
+  const action = text(q.action);
+  const target = text(q.target);
+  if (actor) {
+    anfrage.actor = actor;
+  }
+  if (action) {
+    anfrage.action = action;
+  }
+  if (target) {
+    anfrage.target = target;
+  }
+  const actions = text(q.actions)
+    ?.split(",")
+    .map((a) => a.trim())
+    .filter((a) => a !== "");
+  if (actions && actions.length > 0) {
+    anfrage.actions = actions;
+  }
+  for (const feld of ["from", "to"] as const) {
+    const roh = text(q[feld]);
+    if (roh !== undefined) {
+      const iso = isoZeitpunkt(roh);
+      if (iso === null) {
+        return `Zeitpunkt „${feld}" ist nicht lesbar.`;
+      }
+      anfrage[feld] = iso;
+    }
+  }
+  if (anfrage.from && anfrage.to && anfrage.from >= anfrage.to) {
+    return "Der Zeitraum endet nicht nach seinem Beginn.";
+  }
+  for (const feld of ["before", "limit"] as const) {
+    const roh = text(q[feld]);
+    if (roh !== undefined) {
+      const zahl = ganzzahl(roh);
+      if (zahl === null) {
+        return `„${feld}" ist keine positive ganze Zahl.`;
+      }
+      anfrage[feld] = zahl;
+    }
+  }
+  return anfrage;
+}
+
+type Namensbeleg = Pick<AuditEntry, "seq" | "actor" | "action" | "target" | "payload">;
+
+/**
+ * Die Namensbelege auf das Nötige verkürzt: wer, welche Aktion, welches Ziel und NUR die
+ * gespeicherten Namen. Die übrige Nutzlast eines fremden Eintrags gehört nicht zu dieser Seite.
+ */
+function namensbeleg(e: AuditEntry): Namensbeleg {
+  const payload: Record<string, unknown> = {};
+  if (typeof e.payload.actorName === "string") {
+    payload.actorName = e.payload.actorName;
+  }
+  if (typeof e.payload.targetName === "string") {
+    payload.targetName = e.payload.targetName;
+  }
+  return { seq: e.seq, actor: e.actor, action: e.action, target: e.target, payload };
+}
+
+/** Titel der Ziele einer Seite — nur für Objekte, die der Betrachter jetzt öffnen darf. */
+async function objekteFuer(
+  sicht: AuditSicht,
+  eintraege: readonly { target: string }[],
+): Promise<Record<string, AuditObjektSicht>> {
+  const objekte: Record<string, AuditObjektSicht> = {};
+  for (const ziel of new Set(eintraege.map((e) => e.target))) {
+    const o = await sicht.objekt(ziel);
+    if (o !== undefined) {
+      objekte[ziel] = o;
+    }
+  }
+  return objekte;
+}
+
+/**
+ * aufnahme:20260922:gesamt-leserechte (Nacharbeit 20, Integration main): der Seitenweg für einen
+ * eingeschränkten Leser. Dieselben Filter (`auditSeiteTrifft`), dieselbe Seitengröße
+ * (`auditSeitengroesse`) und dieselbe Namensregel (`namensbelegeAus`) wie `AuditService.page` und
+ * `namensbelege` — aber über SEINER Leseansicht: `before`, `nextBefore` und jede `seq` sind
+ * laufende Nummern der Ansicht, und Namensbelege kommen nur aus Einträgen, die er lesen darf.
+ */
+async function ansichtsseite(
+  kette: readonly AuditEntry[],
+  lage: Leselage,
+  anfrage: AuditSeitenAnfrage,
+  sicht: AuditSicht,
+) {
+  const paare = lesepaare(kette, lage);
+  const limit = auditSeitengroesse(anfrage.limit);
+  const { before } = anfrage;
+  const trifft = (p: { original: AuditEntry; ansicht: Ansichtseintrag }): boolean =>
+    (before === undefined || p.ansicht.seq < before) && auditSeiteTrifft(p.original, anfrage);
+  const gelesen = paare.filter(trifft).reverse().slice(0, limit + 1);
+  const seite = gelesen.slice(0, limit).map((p) => p.ansicht);
+  const nextBefore = gelesen.length > limit ? (seite.at(-1)?.seq ?? null) : null;
+  const nummer = new Map(paare.map((p) => [p.original.seq, p.ansicht.seq]));
+  const kennungen = new Set(seite.flatMap((e) => [e.actor, e.target]));
+  const gesucht = [...kennungen].filter((id) => id !== "");
+  const belege = namensbelegeAus(paare.map((p) => p.original), gesucht);
+  const namensbelege = belege.map((e) => namensbeleg({ ...e, seq: nummer.get(e.seq) ?? 0 }));
+  return {
+    entries: await Promise.all(seite.map((e) => sicht.eintrag(e))),
+    nextBefore,
+    limit,
+    objekte: await objekteFuer(sicht, seite),
+    namensbelege,
+  };
+}
+
 // Audit-Log (§2.4 / FR-AUD). Governance-Einsicht: Controller/Admin (ko.validate-Recht).
-// `quelle`: Fakten, gegen die die Lesepolicy je Leser entschieden wird (s. o.).
+//
+// produkt:20261009:admin-audit-verstaendlich: `kos` ist der Objektzugang, über den die Ausgabe
+// Titel und Rücklinks nur für Objekte nennt, die der Betrachter JETZT öffnen darf, und Inhaltsfelder
+// fremder Objekte schwärzt (`../audit-sicht.ts`). Fehlt er, ist nichts sichtbar — enger, nie weiter.
+//
+// aufnahme:20260922:gesamt-leserechte (Nacharbeit 20, Integration main): `quelle` trägt die Fakten,
+// gegen die die Lesepolicy je Leser entschieden wird (s. o.). Beide Schichten gelten zugleich: für
+// einen eingeschränkten Leser zuerst die Leseransicht (Einträge zu Verborgenem fehlen ganz, laufende
+// Nummern der Ansicht), darauf die Schwärzung aus `../audit-sicht.ts`. Ohne `quelle` ist für jeden
+// Leser alles verborgen — enger, nie weiter.
 export function auditRoutes(
   audit: AuditService,
   guards: Guards,
   befunde: readonly BefundKennungen[] = [],
+  kos?: AuditObjektZugang,
   quelle?: AuditLeseQuelle,
 ): FastifyPluginAsync {
   return async (app) => {
@@ -293,19 +475,66 @@ export function auditRoutes(
       if (!user) {
         return;
       }
+      const sicht = auditSichtFuer(user, kos);
       const kette = await audit.list({});
       const lage = await leselage(user, quelle, kette);
       if (!lage.eingeschraenkt) {
-        reply.code(200).send(await audit.list(request.query));
+        const eintraege = await audit.list(request.query);
+        reply.code(200).send(await Promise.all(eintraege.map((e) => sicht.eintrag(e))));
         return;
       }
       const filter = request.query ?? {};
-      reply.code(200).send(leseansicht(kette, lage).filter((e) => filterTrifft(e, filter)));
+      const ansicht = leseansicht(kette, lage).filter((e) => filterTrifft(e, filter));
+      reply.code(200).send(await Promise.all(ansicht.map((e) => sicht.eintrag(e))));
+    });
+
+    // produkt:20261009:admin-audit-verstaendlich (ADMIN-03) — DER SEITENWEG DER VERWALTERANSICHT.
+    //
+    // Dieselbe Tür wie `/api/audit`. Statt der Gesamtliste eine Seite (jüngste zuerst, höchstens
+    // `AUDIT_SEITE_MAX`), kombinierbar gefiltert nach Person (`actor`), Aktion (`action` oder
+    // mehrere über `actions`), Ziel (`target`) und Zeitraum (`from`/`to`). Dazu, was die Fläche zum
+    // Lesen braucht, ohne die Kette ein zweites Mal zu laden:
+    //   · `objekte`       Titel der betroffenen Objekte — NUR die, die der Betrachter öffnen darf;
+    //   · `namensbelege`  die Einträge, in denen die Kette Namen zu Kennungen dieser Seite gespeichert
+    //                     hat (für gelöschte Konten), auf Kennungen und Namen verkürzt.
+    app.get<{ Querystring: SeitenQuery }>("/api/audit/seite", async (request, reply) => {
+      const user = await guards.requirePermission("ko.validate", request, reply);
+      if (!user) {
+        return;
+      }
+      const anfrage = leseSeitenAnfrage(request.query ?? {});
+      if (typeof anfrage === "string") {
+        reply.code(400).send({ error: "BAD_REQUEST", message: anfrage });
+        return;
+      }
+      const sicht = auditSichtFuer(user, kos);
+      const kette = await audit.list({});
+      const lage = await leselage(user, quelle, kette);
+      if (lage.eingeschraenkt) {
+        reply.code(200).send(await ansichtsseite(kette, lage, anfrage, sicht));
+        return;
+      }
+      const seite = await audit.page(anfrage);
+      const entries = await Promise.all(seite.entries.map((e) => sicht.eintrag(e)));
+      const objekte = await objekteFuer(sicht, seite.entries);
+      const kennungen = seite.entries.flatMap((e) => [e.actor, e.target]);
+      const namensbelege = (await audit.namensbelege(kennungen)).map(namensbeleg);
+      reply.code(200).send({
+        entries,
+        nextBefore: seite.nextBefore,
+        limit: seite.limit,
+        objekte,
+        namensbelege,
+      });
     });
 
     // SCRUM-439: aktive Integritätsprüfung der Audit-Kette (verify statt nur Aussage). Governance-
     // Einsicht wie /api/audit (ko.validate). Antwort: { ok, count } — Grundlage des Admin-Knopfs.
     // Für einen eingeschränkten Leser der Bericht SEINER Ansicht (s. Kopf dieser Datei).
+    //
+    // produkt:20261009:admin-audit-verstaendlich: die Antwort trägt den ZEITPUNKT der Prüfung
+    // (`checkedAt`). Die Fläche nennt einen erfolgreichen Nachweis nur mit diesem Zeitpunkt — ein
+    // Ergebnis ohne Zeit ist für sie kein Nachweis.
     app.get("/api/audit/verify", async (request, reply) => {
       const user = await guards.requirePermission("ko.validate", request, reply);
       if (!user) {
@@ -313,11 +542,10 @@ export function auditRoutes(
       }
       const kette = await audit.list({});
       const lage = await leselage(user, quelle, kette);
-      if (!lage.eingeschraenkt) {
-        reply.code(200).send(await audit.verifyReport());
-        return;
-      }
-      reply.code(200).send(ansichtsbericht(kette, lage));
+      const bericht = lage.eingeschraenkt
+        ? ansichtsbericht(kette, lage)
+        : await audit.verifyReport();
+      reply.code(200).send({ ...bericht, checkedAt: new Date().toISOString() });
     });
 
     // R-0766 (Aufnahme gesamt-auditprotokoll, Lauf 2): die Kennungen der Konflikte und
@@ -356,21 +584,33 @@ export function auditRoutes(
     //
     // FR-AUD-02: unter `/api/audit` gibt es ausschließlich GET-Wege. Ein POST/PUT/PATCH/
     // DELETE ist nirgends registriert — `tests/audit-gesamt/append-only-http.test.ts` misst das.
+    //
+    // produkt:20261009:admin-audit-verstaendlich: auch die Datei schwärzt Inhaltsfelder zu Objekten,
+    // die der Exportierende nicht öffnen darf (`geschwaerzt` je Eintrag, Anzahl im Kopf). Kopf und
+    // `inspection` beschreiben weiter die VOLLSTÄNDIGE Kette; ein geschwärzter Eintrag lässt sich in
+    // der Datei deshalb nicht nachrechnen, und genau das sagt sein `geschwaerzt`.
     app.get("/api/audit/export", async (request, reply) => {
       const user = await guards.requirePermission("ko.validate", request, reply);
       if (!user) {
         return;
       }
+      const sicht = auditSichtFuer(user, kos);
       const vorher = await audit.list({});
       const lage = await leselage(user, quelle, vorher);
       if (!lage.eingeschraenkt) {
-        const kette = await audit.exportChain(user.id);
-        const name = `klarwerk-audit-${kette.exportedAt.replace(/[:.]/g, "-")}.json`;
-        reply.header("content-disposition", `attachment; filename="${name}"`).code(200).send(kette);
+        const datei = await audit.exportChain(user.id);
+        const entries = await Promise.all(datei.entries.map((e) => sicht.eintrag(e)));
+        const geschwaerzt = entries.filter((e) => e.geschwaerzt !== undefined).length;
+        const stempel = datei.exportedAt.replace(/[:.]/g, "-");
+        reply
+          .header("content-disposition", `attachment; filename="klarwerk-audit-${stempel}.json"`)
+          .code(200)
+          .send({ ...datei, entries, geschwaerzt });
         return;
       }
       // Die Ansicht entsteht aus der Kette VOR ihrem eigenen Beleg — wie beim Kettenexport.
-      const eintraege = leseansicht(vorher, lage);
+      const eintraege = await Promise.all(leseansicht(vorher, lage).map((e) => sicht.eintrag(e)));
+      const geschwaerzt = eintraege.filter((e) => e.geschwaerzt !== undefined).length;
       const exportedAt = new Date().toISOString();
       await audit.record({
         actor: user.id,
@@ -387,6 +627,7 @@ export function auditRoutes(
         hinweis:
           "Leseansicht nach Leserecht: Einträge zu nicht sichtbaren Objekten fehlen; laufende Nummern der Ansicht, ohne Kettenfelder, nicht als Kette prüfbar.",
         count: eintraege.length,
+        geschwaerzt,
         entries: eintraege,
       });
     });

@@ -66,6 +66,10 @@ export interface User {
   // Übergangsregel in `services/app/src/sichtbarkeit.ts` (`freigaberang`) — sie öffnet NIE
   // „streng vertraulich"; das braucht immer ein ausdrücklich gesetztes Niveau.
   freigabe?: Freigabestufe;
+  // R-0556 / R-0571: die Gruppen, die das Unternehmensverzeichnis (SCIM) für dieses Konto zuletzt
+  // gemeldet hat. Aus ihnen folgen Rolle und Prüfzuständigkeiten — gepflegt vom Verzeichnis, nicht
+  // von Hand. Optional: ein Konto, das das Verzeichnis nie gesehen hat, trägt keine.
+  verzeichnisGruppen?: string[];
 }
 
 export interface Session {

@@ -6,9 +6,9 @@ import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 // FR-EXT-03 / SCRUM-117: Output Factory. Quellen + Generierung sind read-only
 // (kein Schreibzugriff, keine Persistenz). Zugriff wie Bibliothek: ko.read.
 //
-// aufnahme:20260922:gesamt-leserechte: Quellenliste und Erzeugung tragen die Lesepolicy DIESES
-// Betrachters (Stufe, Autor, führender Space) — die eine Regel aus `../sichtbarkeit`. Ein nicht
-// sichtbares Objekt antwortet wie eine unbekannte Kennung.
+// aufnahme:20260922:gesamt-leserechte / R-1175: Quellenliste und Erzeugung tragen die Lesepolicy
+// DIESES Betrachters (Stufe, Autor, führender Space) — die EINE Regel aus `../sichtbarkeit`. Ein
+// unsichtbares Objekt fehlt in der Quellenliste und antwortet beim Erzeugen wie ein unbekanntes.
 export function outputRoutes(output: OutputService, guards: Guards): FastifyPluginAsync {
   return async (app) => {
     app.get("/api/output/sources", async (request, reply) => {
@@ -30,5 +30,27 @@ export function outputRoutes(output: OutputService, guards: Guards): FastifyPlug
         sendError(reply, error);
       }
     });
+
+    // RECHERCHE:pmo-fea-0004: Wissensupdate fürs Teamgespräch — auf Abruf, read-only, kein Versand.
+    // `?bis=JJJJ-MM-TT` wählt den letzten Tag des Zeitraums (sieben Tage); ohne Angabe heute.
+    app.get<{ Querystring: { bis?: string } }>(
+      "/api/output/wochenupdate",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          // R-1175: dieselbe Sichtbarkeitsentscheidung wie die Quellenliste darüber.
+          const update = await output.wochenupdate(
+            { bis: request.query.bis },
+            sichtbarkeitsfilterFuer(user),
+          );
+          reply.code(200).send(update);
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
   };
 }

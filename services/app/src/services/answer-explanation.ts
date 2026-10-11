@@ -40,11 +40,16 @@ export interface AnswerExplanationLeser {
   readonly userId: string;
   readonly darfVertraulich: boolean;
   /**
-   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): die Lesepolicy des Lesers
-   * (`sichtbarkeitsfilterFuer`). Ist sie da, entscheidet SIE über die Sperre — persönliches
-   * Freigabeniveau, ungeklärte Stufen, Spaces; `darfVertraulich` gilt dann nicht mehr.
+   * R-1175 (aufnahme:20260922:gesamt-rechte-inventar): die EINE Sichtbarkeitsentscheidung des
+   * Lesers (`sichtbarkeitsfilterFuer`, von der Route). Ein Beleg, den er heute nicht sehen darf
+   * (fremder Space, fremdes Vertrauliches), wird geschwärzt.
+   *
+   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19/20, Variante B): Ist sie da, entscheidet
+   * SIE allein über die Sperre — persönliches Freigabeniveau, ungeklärte Stufen, Spaces;
+   * `darfVertraulich` (Rolle) gilt dann nicht mehr, sonst bliebe einem Konto mit persönlichem
+   * Niveau „vertraulich“ ohne Controllerrolle sein Beleg gesperrt.
    */
-  readonly darfSehen?: (objekt: KnowledgeObject) => boolean;
+  readonly sichtbar?: (ko: KnowledgeObject) => boolean;
 }
 
 export class AnswerExplanationService {
@@ -93,8 +98,8 @@ export class AnswerExplanationService {
         verschwunden.add(ref.knowledgeObjectId);
         continue;
       }
-      const gesperrt = leser.darfSehen
-        ? !leser.darfSehen(objekt)
+      const gesperrt = leser.sichtbar
+        ? !leser.sichtbar(objekt)
         : isConfidential(objekt.confidentiality) && !leser.darfVertraulich;
       if (gesperrt) {
         gesperrteObjekte.add(ref.knowledgeObjectId);

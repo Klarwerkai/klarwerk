@@ -42,7 +42,7 @@ import {
   type ScormBeschriftung,
   type ScormSprache,
 } from "./scorm-laufzeit";
-import { type OutputSichtbarkeit, fuerBetrachterSichtbar } from "./types";
+import type { OutputSichtbarkeit } from "./types";
 
 export const SCORM_FORMAT = {
   standard: "SCORM 1.2",
@@ -508,9 +508,12 @@ export class LmsExportService {
 
   /** Prüfung vor dem Export: sagt, was blockiert und was nicht mitgeht — erzeugt kein Paket. */
   //
-  // aufnahme:20260922:gesamt-leserechte: Ein Objekt oder Medium, das der Betrachter nicht sehen
-  // darf, wird wie ein fehlendes befundet (UNKNOWN_KO bzw. MEDIA_MISSING) — kein Titel, keine Stufe,
-  // kein Status eines Objekts, dessen Existenz er nicht erfahren darf.
+  // aufnahme:20260922:gesamt-leserechte / R-1175: Ein Objekt oder Medium, das der Betrachter nicht
+  // sehen darf, wird wie ein fehlendes befundet (UNKNOWN_KO bzw. MEDIA_MISSING) — kein Titel, keine
+  // Stufe, kein Status eines Objekts, dessen Existenz er nicht erfahren darf. `betrachter.ko` ist
+  // die EINE Sichtbarkeitsentscheidung (`sichtbarkeitsfilterFuer`); die Vertraulichkeitssperre
+  // bleibt daneben bestehen. Nacharbeit 20 (Integration main): kein Rückfall „alles sichtbar“ —
+  // ohne Betrachter ist nichts sichtbar.
   async pruefe(eingabe: ScormExportEingabe, betrachter: ScormBetrachter): Promise<ScormPruefung> {
     return (await this.bereite(eingabe, betrachter)).pruefung;
   }
@@ -543,10 +546,12 @@ export class LmsExportService {
   private async lade(
     id: string,
     befunde: ScormBefund[],
-    sichtbar: OutputSichtbarkeit | undefined,
+    betrachter: ScormBetrachter | undefined,
   ): Promise<Einheit | null> {
     const aktuell = await this.deps.koService.get(id);
-    if (!aktuell || !fuerBetrachterSichtbar(sichtbar, aktuell)) {
+    // Fail-closed (mega76 Block A): nur ein `true` eines tauglichen `betrachter.ko` macht sichtbar.
+    // Gerufen wird der übergebene Filter hier selbst — nachprüfbar für den Lesewege-Sammler.
+    if (!aktuell || typeof betrachter?.ko !== "function" || betrachter.ko(aktuell) !== true) {
       befunde.push(blockiert("UNKNOWN_KO", "inhalt", id, id));
       return null;
     }
@@ -622,7 +627,7 @@ export class LmsExportService {
     let inhaltVollstaendig = ids.length > 0 && ids.length <= MAX_SCORM_EINHEITEN;
     if (inhaltVollstaendig) {
       for (const id of ids) {
-        const e = await this.lade(id, befunde, betrachter?.ko);
+        const e = await this.lade(id, befunde, betrachter);
         if (e) {
           einheiten.push(e);
         } else {

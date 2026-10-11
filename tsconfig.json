@@ -23,5 +23,14 @@
   // AUFTRAG-mega50: die Grenze verläuft an `.tsx`, nicht mehr an `.test.tsx`. Auch ein HELFER dieser
   // Tests braucht jsx (er montiert React-Bauteile) — vorher fiel er in den Node-reinen Check und war
   // dort nicht typisierbar.
-  "exclude": ["node_modules", "dist", "tests/**/*.tsx", "tests/types"]
+  // Klara 04 (produkt:20261008:klara-vorschlaege): `uebernahme-logik.test.ts` prüft
+  // `apps/web/src/lib/klaraUebernahme.ts`, das DOMParser/TreeWalker benutzt — Typcheck daher mit
+  // DOM-lib in `tsconfig.tests-tsx.json`, nicht hier.
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests/**/*.tsx",
+    "tests/types",
+    "tests/klara-vorschlaege/uebernahme-logik.test.ts"
+  ]
 }

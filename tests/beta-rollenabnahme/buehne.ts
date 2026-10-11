@@ -92,6 +92,10 @@ const SCHALTER: Record<string, string> = {
       rechte: ["mcp.werkzeug"],
     },
   ]),
+  // R-0556: die Verzeichnispflege (SCIM) entsteht nur mit einem Verzeichnisschlüssel. Er ist KEIN
+  // Rollenrecht — gemessen wird hier, dass keine der fünf Sitzungen ihn ersetzt (alle 401). Der
+  // Wert ist ein Prüfwert dieser Bühne, kein Geheimnis.
+  KLARWERK_SCIM_TOKEN: "rollenabnahme-verzeichnisschluessel-nur-fuer-die-buehne",
 };
 
 export interface Buehne {

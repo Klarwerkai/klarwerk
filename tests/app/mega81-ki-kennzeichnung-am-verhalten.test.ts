@@ -29,10 +29,13 @@
 // Zelle 2 ist zugleich die Kalibrierung: ohne sie waere „zeigt nichts" nicht von „zeigt nie etwas"
 // zu unterscheiden — genau die Blindheit, gegen die mega79 den Gegenlauf eingezogen hat.
 //
-// BENANNTE GRENZE: dieser Test bindet die Behauptung an das SERVERSEITIGE Signal. Ob dieses Signal
-// selbst richtig gesetzt ist (`aiGeneratedMark` markiert auch den deterministischen Rueckfall des
-// `answer`-Wegs als KI-erzeugt), ist eine Frage an services/reasoner und NICHT Gegenstand dieser
-// Scheibe — sie ist im Bericht benannt.
+// R-0604 (G22, mega83 A) — DIE BENANNTE GRENZE IST GESCHLOSSEN. Hier stand: ob das Signal selbst
+// richtig gesetzt ist (`aiGeneratedMark` markierte auch den deterministischen Rueckfall des
+// `answer`-Wegs als KI-erzeugt), sei nicht Gegenstand dieser Scheibe. Seit R-0604 setzt der Dienst
+// die Marke nur noch, wenn ein Modell geantwortet hat. Die frueher „Zelle 2" genannte Route ohne
+// `mode` lief in dieser Testumgebung (kein Modell) GENAU durch diesen Rueckfall — sie ist jetzt
+// Zelle 3 und zeigt die Behauptung NICHT mehr. Die Kalibrierung (Zelle 2) kommt seither aus dem
+// echten `Reasoner.answer` mit einem wirklich antwortenden Testanbieter (`demo: false`).
 import { describe, expect, it } from "vitest";
 import {
   type AskFetchFn,
@@ -42,6 +45,8 @@ import {
   performAsk,
 } from "../../apps/web/src/lib/wordAddin";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { type AnswerResult, Reasoner, type ReasonerProvider } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
@@ -232,9 +237,38 @@ async function anzeigeAusAufgabenfenster(outcome: AskOutcome): Promise<boolean> 
   return (factory() as (o: AskOutcome) => boolean)(outcome);
 }
 
-let gemerkt: { retrievalOnly: Zelle; modellweg: Zelle } | undefined;
+/** R-0604: ein Anbieter, der WIRKLICH antwortet — Bauform wie tests/klara-freigabe/v2-…. */
+async function modellKoerper(koId: string): Promise<unknown> {
+  const anbieter = {
+    name: "mitschreiber",
+    isAvailable: () => true,
+    answer: async (): Promise<AnswerResult> => ({
+      answered: true,
+      answer: VALIDIERTE_AUSSAGE,
+      knowledgeClass: "gesichert",
+      trust: 60,
+      sources: [koId],
+      citedSources: [koId],
+      steps: [],
+      demo: false,
+    }),
+  } as unknown as ReasonerProvider;
+  const reasoner = new Reasoner(anbieter);
+  await erteileKiFreigabe(reasoner);
+  const result = await reasoner.answer("Ventil Wartung Druck entlasten", [], "de");
+  expect(result.demo, "der Testanbieter hat nicht geantwortet — Zelle 2 waere blind").toBe(false);
+  return { result };
+}
 
-async function beideZellen(): Promise<{ retrievalOnly: Zelle; modellweg: Zelle }> {
+interface Zellen {
+  retrievalOnly: Zelle;
+  modellweg: Zelle;
+  rueckfall: Zelle;
+}
+
+let gemerkt: Zellen | undefined;
+
+async function beideZellen(): Promise<Zellen> {
   if (gemerkt) {
     return gemerkt;
   }
@@ -255,18 +289,21 @@ async function beideZellen(): Promise<{ retrievalOnly: Zelle; modellweg: Zelle }
     "Ohne beantwortete Frage waere die Messung wertlos",
   ).toContain(koId);
 
-  // ZELLE 2 — derselbe Frageweg OHNE `mode`: der allgemeine Modellweg.
-  const zwei = await app.inject({
+  // ZELLE 3 (R-0604) — derselbe Frageweg OHNE `mode`. In dieser Umgebung ist kein Modell
+  // verdrahtet: die Antwort kommt aus dem deterministischen Rueckfall.
+  const drei = await app.inject({
     method: "POST",
     url: "/api/ask",
     headers,
     payload: { question: "Ventil Wartung Druck entlasten" },
   });
-  expect(zwei.statusCode).toBe(200);
+  expect(drei.statusCode).toBe(200);
 
   gemerkt = {
     retrievalOnly: await durchDenClient(koerperEins),
-    modellweg: await durchDenClient(zwei.json()),
+    // ZELLE 2 — der Modellweg: Antwortkoerper aus dem echten Dienst mit antwortendem Anbieter.
+    modellweg: await durchDenClient(await modellKoerper(koId)),
+    rueckfall: await durchDenClient(drei.json()),
   };
   return gemerkt;
 }
@@ -323,7 +360,7 @@ describe("AUFTRAG-mega81: die KI-Kennzeichnung haengt am serverseitigen Signal",
     const { modellweg } = await beideZellen();
     expect(
       modellweg.serverKennzeichnet,
-      "Der allgemeine Antwortweg traegt keine Kennzeichnung — dann ist die Null in Zelle 1 blind",
+      "Der Modellweg traegt keine Kennzeichnung — dann sind die Nullen in Zelle 1 und 3 blind",
     ).toBe(true);
     expect(modellweg.outcome.kind, "Ohne belegte Antwort waere die Messung wertlos").toBe(
       "answered",
@@ -332,6 +369,19 @@ describe("AUFTRAG-mega81: die KI-Kennzeichnung haengt am serverseitigen Signal",
       modellweg.zeigtBehauptung,
       "Die Kennzeichnung wurde nicht gebunden, sondern abgeschaltet — das ist NICHT der Auftrag",
     ).toBe(true);
+  }, 30000);
+
+  it("ZELLE 3 (R-0604): der deterministische Rueckfall traegt KEINE Marke und zeigt KEINE Behauptung", async () => {
+    const { rueckfall } = await beideZellen();
+    expect(
+      rueckfall.outcome.kind,
+      "Ohne belegte Antwort waere die Messung wertlos — der Rueckfall muss wirklich antworten",
+    ).toBe("answered");
+    expect(
+      rueckfall.serverKennzeichnet,
+      "Der Dienst kennzeichnet den regelbasierten Rueckfall als KI-erzeugt — genau der Befund G22",
+    ).toBe(false);
+    expect(rueckfall.zeigtBehauptung).toBe(false);
   }, 30000);
 
   it("SAMMLER: jedes Element mit Erzeugungsbehauptung ist zustandsgebunden (nie dauerhaft sichtbar)", () => {

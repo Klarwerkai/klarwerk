@@ -53,13 +53,6 @@ export function lmsExportRoutes(
     return urteil.sichtbar;
   }
 
-  function betrachterFuer(user: SessionUser): ScormBetrachter {
-    return {
-      ko: sichtbarkeitsfilterFuer(user),
-      medium: (objectId) => mediumSichtbar(user, objectId),
-    };
-  }
-
   return async (app) => {
     app.post("/api/output/scorm/pruefen", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
@@ -67,8 +60,15 @@ export function lmsExportRoutes(
         return;
       }
       try {
+        // R-1175: die EINE Sichtbarkeitsentscheidung dieses Betrachters reist in den Dienst —
+        // als `betrachter.ko`, daneben die Anhangsregel für die Medien. Hier im Rumpf gebildet,
+        // damit der Lesewege-Sammler die Übergabe nachprüfen kann.
+        const betrachter: ScormBetrachter = {
+          ko: sichtbarkeitsfilterFuer(user),
+          medium: (objectId) => mediumSichtbar(user, objectId),
+        };
         const eingabe = leseScormEingabe(request.body);
-        reply.code(200).send(await lmsExport.pruefe(eingabe, betrachterFuer(user)));
+        reply.code(200).send(await lmsExport.pruefe(eingabe, betrachter));
       } catch (error) {
         sendError(reply, error);
       }
@@ -80,8 +80,12 @@ export function lmsExportRoutes(
         return;
       }
       try {
+        const betrachter: ScormBetrachter = {
+          ko: sichtbarkeitsfilterFuer(user),
+          medium: (objectId) => mediumSichtbar(user, objectId),
+        };
         const eingabe = leseScormEingabe(request.body);
-        const ergebnis = await lmsExport.exportiere(eingabe, betrachterFuer(user));
+        const ergebnis = await lmsExport.exportiere(eingabe, betrachter);
         if (!("daten" in ergebnis)) {
           reply.code(422).send({ error: "EXPORT_BLOCKED", pruefung: ergebnis.pruefung });
           return;

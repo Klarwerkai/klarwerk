@@ -121,7 +121,12 @@ const DETAILSEITE_DATEIEN = ["apps/web/src/pages/KnowledgeDetail.tsx", ...DETAIL
 const STUFE2 = "apps/web/src/pages/Stufe2.tsx";
 const ABSCHNITTE: readonly (readonly [string, string, string])[] = [
   ["apps/web/src/pages/Analytics.tsx", "ana.byType", "shelp.ana.byType"],
-  ["apps/web/src/pages/Analytics.tsx", "ana.weekly", "shelp.ana.weekly"],
+  // ADMIN-11 (produkt:20261009:admin-wissenskennzahlen): der Abschnitt „ana.weekly“ ist entfallen.
+  // Er gruppierte heute validierte Objekte nach ihrer ERSTELLUNGSwoche und gab das als Verlauf der
+  // Freigaben aus — ein rückwirkender Trend aus nicht erhobenen Ereignissen. Ohne Fläche gibt es
+  // keine Erklärung an der Stelle mehr zu prüfen. An seiner Stelle steht der Abschnitt der
+  // Gesamtzahlen — mit eigener Überschrift und eigener Erklärung, geprüft wie jeder andere.
+  ["apps/web/src/pages/Analytics.tsx", "wkz.bestand.fragenTitel", "wkz.bestand.fragenHilfe"],
   ["apps/web/src/pages/Ask.tsx", "ask.steps", "shelp.ask.steps"],
   [
     "apps/web/src/components/CaptureDraftList.tsx",
@@ -244,7 +249,12 @@ describe("R-0888 / R-1017 · Zuordnung der vorhandenen Hilfen zu Feldern und Abs
     const fehlt: string[] = [];
     for (const [datei, ueberschrift, erklaerung] of ABSCHNITTE) {
       const quelle = lies(datei);
-      if (!quelle.includes(`<SectionLabel>{t("${ueberschrift}"`)) {
+      // Integration mit gesamt-sprache-begriffe (R-0908): sieben Stufe-2-Abschnitte zeigen ihre
+      // Überschrift in Anwendersprache aus `texte/fachwort.ts`; Kennung und Erklärtext bleiben am
+      // alten Schlüssel. Gesucht wird deshalb die Überschrift, die Klara für DENSELBEN Abschnitt
+      // zeigt (`titel` in `lib/klaraRegistry.ts`) — für alle übrigen ist das der Schlüssel selbst.
+      const titel = klaraEntryById(`sec:${ueberschrift}`)?.titleKey ?? ueberschrift;
+      if (!quelle.includes(`<SectionLabel>{t("${titel}"`)) {
         fehlt.push(`${datei}: die Überschrift ${ueberschrift} steht nicht mehr da`);
       }
       if (!quelle.includes(`body={t("${erklaerung}")}`)) {

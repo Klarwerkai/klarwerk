@@ -1,20 +1,20 @@
 {
   "zweck": "Produktstand VOR der Behebung für tests/audit-gesamt/vorher-nachher.integration.test.ts",
-  "kandidat_beim_erzeugen": "dfdc840d0bf4e8c8e3e0d46bc19ed925abb0aeb2 + Arbeitsstand aufnahme:20260922:gesamt-leserechte Nacharbeit 19 (Variante B und ungeklärte Stufen: services/app, services/auth, services/knowledge-object/src/confidentiality.ts, services/library-analytics/src/service.ts; in Formatiererform geschrieben), erzeugt aus dem Arbeitsbaum vor der Kandidatbildung",
+  "kandidat_beim_erzeugen": "a9543197951518834c44cb3e678cd37b71f4a46a zusammengeführt mit main e344d72dd5d04a52582c43097fce3543a62b0a85 (aufnahme:20260922:gesamt-leserechte Nacharbeit 20: Konfliktauflösung in services/app, services/auth, services/audit/index.ts, services/conflicts, services/library-analytics, services/output; in Formatiererform geschrieben), erzeugt aus dem Arbeitsbaum vor der Kandidatbildung",
   "erzeugungshinweis": "Nacharbeit 15 hatte vor der Formatierung erzeugt; die Kandidatbildung formatierte audit-routes.ts (Aufrufketten zusammengezogen), der Patch passte nicht mehr. Patch nur vom formatierten Stand erzeugen.",
   "vorher_hauptstand": "6c576c7014302bc85b86af85c50794e0aefe7d64",
   "vorher_beschreibung": "integrierter Hauptstand ohne die Behebung dieses Auftrags (erster Elternteil des Integrations-Merges 46f89d12 ist die Arbeitssicherung, zweiter 6c576c70 der Hauptstand)",
   "patch": "behebung-rueckwaerts.patch",
-  "umfang": "services/** ohne *.test.ts — 170 Dateien",
+  "umfang": "services/** ohne *.test.ts — 321 Dateien (seit der Integration von main e344d72 deutlich mehr: der Vorher-Stand bleibt der alte Hauptstand 6c576c70; Importverträglichkeit mit dem heutigen Prüfbaum erst im regulären PG-Lauf prüfbar)",
   "befehl": "git diff -R --binary --output=tests/audit-gesamt/vorher/behebung-rueckwaerts.patch 6c576c7014302bc85b86af85c50794e0aefe7d64 -- services ':(exclude)services/**/*.test.ts'",
   "befehl_hinweis": "-R gegen den Arbeitsbaum ist gleichbedeutend mit `git diff <Kandidat> <Ziel>`, sobald der Arbeitsstand der Kandidat ist; so passt der Patch auf die services/ des daraus gebildeten Kandidaten.",
   "lauf2": {
     "zweck": "die Fassung, an der Ben beleg:6818bd52 meldete (gleichzeitige GET /api/audit/export)",
     "fassung": "758e76c118482f11a3f322403d71d188e3fda277",
     "fassung_beschreibung": "ship: 1.0.0-beta.1.622 (lauf:b3:aufnahme:20260922:gesamt-auditprotokoll:2 Runde 1); Elternteil 222abf959b57928d64196b8500e52513088e1ed0; von keinem Branch erreichbar, nur als Git-Objekt vorhanden",
-    "kandidat_beim_erzeugen": "dfdc840d0bf4e8c8e3e0d46bc19ed925abb0aeb2 + Arbeitsstand Nacharbeit 19 (wie oben)",
+    "kandidat_beim_erzeugen": "a9543197951518834c44cb3e678cd37b71f4a46a + main e344d72dd5d04a52582c43097fce3543a62b0a85, Arbeitsstand Nacharbeit 20 (wie oben)",
     "patch": "fassung-758e76c1.patch",
-    "umfang": "services/** ohne *.test.ts — 208 Dateien; Importverträglichkeit mit apps/web und Abhängigkeiten erst im regulären PG-Lauf prüfen",
+    "umfang": "services/** ohne *.test.ts — 342 Dateien; Importverträglichkeit mit apps/web und Abhängigkeiten erst im regulären PG-Lauf prüfen",
     "befehl": "git diff -R --binary --output=tests/audit-gesamt/vorher/fassung-758e76c1.patch 758e76c118482f11a3f322403d71d188e3fda277 -- services ':(exclude)services/**/*.test.ts'"
   }
 }

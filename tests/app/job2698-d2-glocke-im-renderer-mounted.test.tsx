@@ -79,6 +79,8 @@ interface Zaehler {
   vollscanZeilenJeAbruf: number;
   gefiltertAufrufe: number;
   gefiltertZeilen: number;
+  /** R-1089: die gefilterten Abrufe mit `action = answer.helpful` (die Glocke liest seither zwei Aktionen). */
+  gefiltertHelpfulAufrufe: number;
   exists: number;
 }
 
@@ -90,6 +92,7 @@ function poolDoppel() {
     vollscanZeilenJeAbruf: 0,
     gefiltertAufrufe: 0,
     gefiltertZeilen: 0,
+    gefiltertHelpfulAufrufe: 0,
     exists: 0,
   };
   const trifft = (r: Zeile, p: unknown[]): boolean => {
@@ -145,6 +148,9 @@ function poolDoppel() {
         const res = rows.filter((r) => trifft(r, params));
         zaehler.gefiltertAufrufe += 1;
         zaehler.gefiltertZeilen += res.length;
+        if (params[1] === "answer.helpful") {
+          zaehler.gefiltertHelpfulAufrufe += 1;
+        }
         return { rows: res, rowCount: res.length };
       }
       // Aufnahme gesamt-auditprotokoll (Lauf 3): der Anhängeweg (`PgAuditRepo.appendNext`) läuft in
@@ -508,6 +514,8 @@ async function glockeDurchlaufen(
     vollscanZeilenJeAbruf: doppel.rows.length,
     gefiltertAufrufe: doppel.zaehler.gefiltertAufrufe - vorher.gefiltertAufrufe,
     gefiltertZeilen: doppel.zaehler.gefiltertZeilen - vorher.gefiltertZeilen,
+    gefiltertHelpfulAufrufe:
+      doppel.zaehler.gefiltertHelpfulAufrufe - vorher.gefiltertHelpfulAufrufe,
     exists: doppel.zaehler.exists - vorher.exists,
   };
   return { glocke, zaehler, treffer, helpfulZeilen };
@@ -557,7 +565,13 @@ describe("JOB 2698 D2 · die Glocke im echten Renderer, vor und nach dem Umbau",
     expect(alt.zaehler.vollscanZeilenJeAbruf).toBeGreaterThanOrEqual(N);
     expect(neu.zaehler.vollscans, "nachher: Vollscan während der Glocke").toBe(0);
     expect(neu.zaehler.gefiltertAufrufe).toBeGreaterThan(0);
-    expect(neu.zaehler.gefiltertZeilen).toBe(neu.zaehler.gefiltertAufrufe * neu.helpfulZeilen);
+    // R-1089: die Glocke fragt je Abruf zusätzlich `answer.reported` ab (Meldungen an die
+    // verantwortliche Person). Der Bestand trägt keine solche Zeile — jede ausgelieferte Zeile
+    // stammt also weiterhin aus den `answer.helpful`-Abrufen, und zwar genau deren Treffer.
+    expect(neu.zaehler.gefiltertHelpfulAufrufe).toBeGreaterThan(0);
+    expect(neu.zaehler.gefiltertZeilen).toBe(
+      neu.zaehler.gefiltertHelpfulAufrufe * neu.helpfulZeilen,
+    );
     expect(neu.helpfulZeilen).toBeLessThan(N / 2);
     expect(neu.helpfulZeilen).toBeGreaterThanOrEqual(TREFFER);
   });

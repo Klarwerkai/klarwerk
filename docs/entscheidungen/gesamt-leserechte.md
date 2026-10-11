@@ -11,7 +11,7 @@ nicht dieses Dokument. Eine Lieferfassung entsteht erst mit der Auslieferung.*
 
 | Lücke am Stand `a27922e6` | Änderung | Test |
 | --- | --- | --- |
-| **Entwürfe verrieten ihre Existenz.** Ein fremder, nicht sichtbarer Entwurf antwortete auf allen Entwurfswegen 403 `FORBIDDEN` „Entwurf nicht verfuegbar." statt wie ein nicht vorhandener. Das ist genau der Fall des Nutzerwerts dieses Auftrags („403 verraet, dass der Entwurf existiert") und der Entscheidung J24 vom 13.08.2026 („… 404"), R-0239. | `requireVisibleDraft` (`capture-routes.ts`), `naechster-schritt-entwurf.ts` und die Dokumentübernahme mit `draftId` (`build-app.ts`, `draftPromotion.load/applyAndLoad`) antworten 404 `NOT_FOUND` „Entwurf nicht gefunden." — zeichengleich mit einer unbekannten Kennung, in DE/EN/NL. Der Katalogsatz `DRAFT_NOT_VISIBLE` ist entfallen. 403 bleibt nur für den **sichtbaren** Pool-Entwurf, an dem das Verfügungsrecht fehlt (Pedi `297afc57`). | `tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts` (F1–F4, H2), angepasst: `tests/entwurf-pool/pool-rechte.test.ts`, `tests/entwurf-einreichen/entwurf-ist-privat.test.ts`, `tests/entwurf-fortsetzen-fehlersatz/serversatz-bis-blatt.test.tsx`, `tests/app/ka8-naechster-schritt-*.test.ts`, `tests/d1-meine-entwuerfe/entwuerfe-nur-eigene.test.ts`, `tests/capture/mega21-vorgangsdatensatz.test.ts`, `services/app/src/build-app.test.ts` |
+| **Entwürfe verrieten ihre Existenz.** Ein fremder, nicht sichtbarer Entwurf antwortete auf allen Entwurfswegen 403 `FORBIDDEN` „Entwurf nicht verfuegbar." statt wie ein nicht vorhandener. Das ist genau der Fall des Nutzerwerts dieses Auftrags („403 verraet, dass der Entwurf existiert") und der Entscheidung J24 vom 13.08.2026 („… 404"), R-0239. | `requireVisibleDraft` (`capture-routes.ts`), `naechster-schritt-entwurf.ts` (nie registriert; mit main e344d72 als ungenutzter Code entfernt, Nacharbeit 20) und die Dokumentübernahme mit `draftId` (`build-app.ts`, `draftPromotion.load/applyAndLoad`) antworten 404 `NOT_FOUND` „Entwurf nicht gefunden." — zeichengleich mit einer unbekannten Kennung, in DE/EN/NL. Der Katalogsatz `DRAFT_NOT_VISIBLE` ist entfallen. 403 bleibt nur für den **sichtbaren** Pool-Entwurf, an dem das Verfügungsrecht fehlt (Pedi `297afc57`). | `tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts` (F1–F4, H2), angepasst: `tests/entwurf-pool/pool-rechte.test.ts`, `tests/entwurf-einreichen/entwurf-ist-privat.test.ts`, `tests/entwurf-fortsetzen-fehlersatz/serversatz-bis-blatt.test.tsx`, `tests/app/ka8-naechster-schritt-*.test.ts`, `tests/d1-meine-entwuerfe/entwuerfe-nur-eigene.test.ts`, `tests/capture/mega21-vorgangsdatensatz.test.ts`, `services/app/src/build-app.test.ts` |
 | **Output Factory ohne Lesepolicy.** `GET /api/output/sources` und `POST /api/output/generate` prüften nur die Stufe am Objekt: der führende Space galt nicht, und eine fremde Kennung antwortete je nach Zustand `UNKNOWN_KO` / `NOT_VALIDATED` / `CONFIDENTIAL` (Existenzauskunft). | Pflichtfilter `sichtbarkeitsfilterFuer(user)` (fail-closed ohne Filter); nicht sichtbar antwortet wie `UNKNOWN_KO`. | `tests/security/leserechte-ausgabewege.test.ts` |
 | **SCORM-Übergabe nannte den Titel fremder vertraulicher Objekte.** `POST /api/output/scorm/pruefen` befundete `CONFIDENTIAL` **mit Titel** auch für Betrachter ohne Leserecht; Spaces galten nicht. Bilder gingen ins Paket, sobald ein validiertes Objekt ihre Kennung im Fließtext nannte — eine Behauptung, die der Bildabruf seit mega78 abweist. | Objekte über `sichtbarkeitsfilterFuer(user)`, Bilder über `beurteileAnhang` mit denselben Herkünften wie `GET /api/objects/:id`; nicht sichtbar = `UNKNOWN_KO` bzw. `MEDIA_MISSING`, die Bytes werden ohne Urteil gar nicht gelesen. | `tests/security/leserechte-ausgabewege.test.ts`, angepasst `tests/lernplattform-scorm/*` |
 | **Zuruf (Klara-Memo) las Quellen aus fremden Spaces.** `POST /api/klara/sessions/:id/zuruf` gab den Inhalt eines internen Objekts aus einem fremden Space an den Formulierer, sobald seine Kennung genannt wurde. | Der Erzeuger liest je Anfrage über einen Zugang mit der Lesepolicy des Betrachters; nicht sichtbar fällt wie eine unbekannte Kennung weg; Einwilligung weiterhin vor jedem Bestandszugriff. | `tests/security/leserechte-ausgabewege.test.ts` (Zuruf) |
@@ -58,7 +58,7 @@ Meldung „verweigert". Fremder Inhalt wird dabei nicht gelesen.
 | R-0629 Live-Wand, Prüf-Board, Suche, Netz | Vier Flächen mit Prädikat (s. Zeilen oben). | Tests wie oben |
 | R-0631 Vertraulichkeitsstempel in der Suchprojektion | `classification_snapshot` existiert als Fassungsbeleg, ist als Trimquelle ausdrücklich verboten (Höherstufung wirkt sofort über die lebende Zeile). | Code `sichtbarkeit.ts:172-176`; Test `380-trim-vor-pagination` |
 | R-0647 Leck in der Prüfliste | Laut Quelle G7 historisch geschlossen (JOB 2017/2020); heute u. a. Lückenwege über `darfSehen` (`import-run-routes.ts:212`), Prüf-Board mit Prädikat. Die konkrete „Kandidatenliste" der Quelle ist im heutigen Code nicht eindeutig zugeordnet. | Code; Zuordnung der Fläche ungeklärt |
-| R-1271 / R-1853 / R-1858 Pflicht statt optional | Zugänge Pflicht + zweite Linie `zugangTauglich` (`sichtbarkeit.ts:282`); dieselbe Bauform jetzt für Output/SCORM (`fuerBetrachterSichtbar`, `mediumSichtbar`). | Tests `mega76-schutz-erzwungen`, neu `leserechte-ausgabewege` (ohne Filter nichts sichtbar) |
+| R-1271 / R-1853 / R-1858 Pflicht statt optional | Zugänge Pflicht + zweite Linie `zugangTauglich` (`sichtbarkeit.ts:282`); dieselbe Bauform jetzt für Output/SCORM (`listEligible`/`generate`/`lade`: nur ein `true` eines tauglichen Filters zählt; `mediumSichtbar`). | Tests `mega76-schutz-erzwungen`, neu `leserechte-ausgabewege` (ohne Filter nichts sichtbar) |
 | P-D5-ORIGINAL-RECHTE (+ doppelte Quellfassung) | Laut Quelle LIVE `1.0.0-beta.1.574` (JOB 4304, Ben GRÜN). Rest (a): **Pedis G4-Entscheidung „KI aus verbietet zusätzlich den Originalabruf?" steht aus.** Rest (b) laut Quelle ausdrücklich nicht geschnitten. | Historischer Beleg; Test `tests/klara-quellen-nutzerweg/entzug-sperrt-die-quelle.test.ts`; PG+Chromium-Lauf hier nicht wiederholt |
 | TEST-A02 Rollen, Rechte, Gastkonto | Zugeordnet: Rollen und Rechte über die Rollenabnahme (alle Türen × fünf Akteure, s. R-0543) und R-0528; Gastkonto über Anlegen-Anmelden-Arbeiten mit Rolle und Ablauf, Schreib- und Kontenlistensperre des Gastes, Ablauf sperrt Anmeldung und laufende Sitzung, kein offener Zugang, Gast im echten Browser. | Tests `tests/gast-nutzerweg/anlegen-anmelden-arbeiten.test.ts`, `ablauf-beendet-die-laufende-sitzung.test.ts`, `gesperrter-gast-liest-seinen-satz.test.ts`, `tests/gast-befristung/gast-in-einem-schritt.test.ts`, `tests/demo-zugang-gaeste/ablauf-sperrt-sitzung.test.ts`, `kein-offener-zugang.test.ts`, `tests/gast-nutzerweg/gastweg-im-echten-browser.test.ts` |
 | package:entwuerfe | Gemeinsam mit `gesamt-entwurf-einreichen`, `erfassen-verwerfen`, `gesamt-papierkorb`; hier nur der Leserechte-Anteil (404 für fremde Entwürfe). Verwerf-/Lösch-/Papierkorbfälle gehören den anderen Aufträgen. | Abgegrenzt |
@@ -75,3 +75,33 @@ Meldung „verweigert". Fremder Inhalt wird dabei nicht gelesen.
   (Entscheidungen 15 und 16) und in Nacharbeit 19 umgesetzt (s. Tabelle). Offen bleiben: G4 (KI aus
   und Originalabruf), die Bestätigung der Übergangsregel für Konten ohne gesetztes Niveau und die
   Importeinstufung (laut Entscheidung 16 ein eigener Arbeitsauftrag).
+
+## Integration mit main `e344d72d` (Nacharbeit 20)
+
+Beide fachlichen Stände sind erhalten; wo sie sich widersprachen, gilt die engere Regel. Im Einzelnen:
+
+- **Quellleser vor Stufe (R-0549, main) × Variante B:** trägt ein Objekt eine Leserliste aus der
+  Quelle, entscheidet weiter allein sie (wie in main); ohne Liste gilt Variante B. **Offen:** ob ein
+  Quellleser zusätzlich den Freigaberang braucht (ein gelisteter Leser ohne persönliches Niveau
+  liest heute ein vertrauliches Quellobjekt). Das ist eine Produktentscheidung und hier nicht
+  getroffen.
+- **Prüfprotokoll (ADMIN-03, main) × Leseransicht:** main brachte den Seitenweg `GET /api/audit/seite`,
+  den Prüfzeitpunkt `checkedAt` und die Schwärzung von Inhaltsfeldern (`audit-sicht.ts`). Für einen
+  eingeschränkten Leser gilt zuerst die Leseransicht dieses Auftrags (Einträge zu Verborgenem fehlen,
+  Nummern der Ansicht, auch im Seitenweg samt `before`/`nextBefore` und Namensbelegen), darauf die
+  Schwärzung; uneingeschränkt gilt main unverändert. Mains Test
+  `tests/admin-audit-verstaendlich/seitenweg-und-rechte.test.ts` misst die Kettennummern jetzt mit
+  einem uneingeschränkten Controller und den Rechtefall mit dem Fehlen statt der Schwärzung.
+  Teams (produkt:20261009:admin-teams) zählen als bekannte Bezugsziele; ihre Versionszahlen sind keine
+  Bestandsbilanz.
+- **Ausgabewege (R-1175, main) × Pflichtfilter:** `listEligible` und `generate` bleiben fail-closed
+  (ohne tauglichen Filter nichts sichtbar); mains Rückfall `OHNE_BETRACHTER` gilt dort nicht, ein
+  Systemaufruf reicht ihn ausdrücklich herein. SCORM behält den Betrachter mit Medienurteil. Die
+  Dienste rufen den Filter selbst, sodass der Lesewege-Sammler die Wege als `DIENST_FILTERT`
+  nachprüft. Wochenupdate und Zuruf übernehmen mains Form (Route reicht den Filter; ohne ihn bleibt
+  dort mains Rückfall).
+- **Antwort-Erklärung:** Feldname `sichtbar` aus main; die Entscheidung trifft wie seit Nacharbeit 19
+  allein die Lesepolicy (nicht zusätzlich die Rolle), sonst bliebe ein Konto mit persönlichem
+  Niveau ohne Controllerrolle gesperrt.
+- **Entfernter Endpunkt:** `naechster-schritt-entwurf.ts` (nie registriert) hat main als ungenutzten
+  Code gelöscht; die 404-Änderung dort entfällt mit ihm.
