@@ -17,6 +17,7 @@
 // WAS ER TUT
 //   · `karte`: nimmt GENAU die gebundene Karte an (nur für den Nutzer aus `hallo`), legt sie für den
 //     Begleiter ab — nur lesbar für dieses macOS-Konto (0600) — und quittiert Folge und Fassung.
+//   · `verwerfen`: die Karte gilt in der Erweiterung nicht mehr — sofort weg, Verbindung bleibt.
 //   · `widerrufen` oder Ende der Verbindung: verwirft die abgelegte Karte und endet.
 //   Er liest keine Seiten, macht keine Bildschirmaufnahme, hat kein Mikrofon und spricht mit keinem
 //   Server. Anmeldung und Schlüssel der Erweiterung erreichen ihn nie.
@@ -119,6 +120,11 @@ while let nachricht = lesen() {
       continue
     }
     schreiben(["typ": "angenommen", "folge": folge, "fassung": kartenFassung])
+  case "verwerfen":
+    // Die übergebene Karte gilt in der Erweiterung nicht mehr (Tabwechsel, Navigation,
+    // Quelländerung, neue Erfassung): sofort weg, die Verbindung bleibt. Keine Antwort — die
+    // Erweiterung wartet hier auf nichts.
+    verwerfen()
   case "widerrufen":
     verwerfen()
     exit(0)

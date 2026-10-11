@@ -142,6 +142,16 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
     - Widerruf, Abmelden und Kontowechsel melden `widerrufen` und trennen.
   - **Geprüft** ist das im Prüfstand mit einer Host-Attrappe, die das Protokoll der Brücke spricht
     (`tests/klara-browser/kontext-weg.test.ts`, AC10).
+  - **Bindung der nativen Karte (Nacharbeit 8):**
+    - Vor der Übertragung an den Begleiter läuft derselbe frische Quellenabgleich (Text und
+      Tabellenstruktur) samt Vorgangsprüfung wie bei Verbinden und Erklären. Eine geänderte Seite
+      wird veraltet vermerkt und nicht übertragen.
+    - Wird die Karte in der Erweiterung ungültig (Tabwechsel, Navigation, neue Erfassung,
+      Quelländerung), schickt der Worker `verwerfen`, und die Brücke löscht die Karte sofort. Der
+      Kanal bleibt dabei offen.
+    - Ein noch wartender Verbindungsaufbau ist von Anfang an registriert. Widerruf und Abmelden
+      schließen ihn. Eine Generation verhindert, dass ein verspätetes `hallo` oder eine verspätete
+      Quittung noch einen Port oder einen Zustand setzt.
 
   **Was für AC10 noch fehlt, mit konkreten Voraussetzungen:**
   1. **Übersetzen und Einrichten auf diesem Mac** (`./installieren.sh <Kennung>`: `swift build`,
@@ -155,8 +165,15 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
      Brücken-Fassung, macOS-Fassung, Ergebnis-ID der Karte, Widerruf. Dafür sind die Schritte 1
      und 2 die Voraussetzung.
   4. **Die Anzeige der übergebenen Karte in der Begleiter-Oberfläche** (Lesen von
-     `browserkontext.json`) gehört in den Begleiter, den die Hostentwicklung wählt (s. o.). Die
-     Brücke legt die Karte dafür bereits ab.
+     `browserkontext.json`) gehört in den gemeinsamen Begleiter. Stand 11.10.2026 (nachgeprüft):
+     Weder `main` noch dieser Arbeitsbaum enthalten einen Begleiter (`git log main --
+     apps/desktop` ist leer). Beide Kandidaten liegen nur auf fremden, nicht integrierten
+     Auftragszweigen. Ihre Oberfläche zu ändern hieße, fremden Auftragscode außerhalb dieses
+     Arbeitsbaums zu ändern oder einen zweiten Begleiter zu bauen; beides ist hier ausgeschlossen.
+     Konkret nötig ist, dass die Führung bzw. Hostentwicklung den gemeinsamen Begleiter wählt und
+     nach `main` bringt (O06). Danach ist der Anschluss eine Leseansicht auf `browserkontext.json`
+     in dessen Oberfläche. Die Brücke legt die Karte dafür bereits ab, verwirft sie bei
+     Ungültigkeit und hält sie nur für das eigene macOS-Konto lesbar.
 
   Der Server-Sitzungsweg bleibt daneben angeschlossen. Er trägt Erklärung und Belege; der
   Begleiter bekommt die gebundene Karte.

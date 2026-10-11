@@ -180,9 +180,12 @@ function begleiterAttrappe(antworte: (n: Nachricht) => Nachricht | null) {
   const empfangen: Nachricht[] = [];
   const hosts: string[] = [];
   let getrennt = false;
+  /** Die Zuhörer der letzten Verbindung — damit ein Fall eine Antwort SPÄTER zustellen kann. */
+  let letzteHoerer = new Set<(n: unknown) => void>();
   const verbinde = (host: string) => {
     hosts.push(host);
     const hoerer = new Set<(n: unknown) => void>();
+    letzteHoerer = hoerer;
     const trennung = new Set<() => void>();
     return {
       postMessage: (n: object) => {
@@ -207,7 +210,11 @@ function begleiterAttrappe(antworte: (n: Nachricht) => Nachricht | null) {
       },
     };
   };
-  return { verbinde, empfangen, hosts, getrennt: () => getrennt };
+  /** Eine Antwort des Hosts von Hand zustellen (z. B. ein verspätetes `hallo`). */
+  const sende = (n: Nachricht) => {
+    for (const h of [...letzteHoerer]) h(structuredClone(n));
+  };
+  return { verbinde, empfangen, hosts, getrennt: () => getrennt, sende };
 }
 /** Der Host, wie die Brücke antwortet: `hallo` mit Einmalwert, `karte` mit Quittung. */
 const echterHost = (n: Nachricht): Nachricht | null =>
@@ -889,6 +896,76 @@ describe("BPA-01 · der Browserweg der Kontextkarte (Worker, Leiste, Klara-Kern)
       await h.send({ type: "logout" });
       expect(zweiter.empfangen.at(-1)).toEqual({ typ: "widerrufen" });
       expect(zweiter.getrennt()).toBe(true);
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("AC09/AC10 · geänderte Seite vor der Übergabe: der Begleiter bekommt die alte Auswahl nicht", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      // Gleicher Text, andere Zellgrenzen — eine DOM-Änderung ohne Navigation.
+      h.setSelected({ text: TEXT, url: SEITE, title: TITEL, variants: mit(UMGEBAUT) });
+      const host = begleiterAttrappe(echterHost);
+      h.setzeBegleiter(host.verbinde);
+      const sicht = await h.frage("kontextBegleiter");
+      expect(host.empfangen.map((n) => n.typ)).toEqual(["hallo"]);
+      expect(sicht.begleiter?.verbunden).toBe(true);
+      expect(sicht.begleiter?.uebergeben).toBe(false);
+      expect(sicht.sperre).toBe("quelle_geaendert");
+      expect(sicht.karte?.veraltet).toBe(true);
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("AC02/AC10 · ein Tabwechsel nach der Übergabe macht die native Karte sofort ungültig", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      const host = begleiterAttrappe(echterHost);
+      h.setzeBegleiter(host.verbinde);
+      const karte = h.zustand().karte;
+      expect((await h.frage("kontextBegleiter")).begleiter?.uebergeben).toBe(true);
+      await h.listeners.activated?.({ tabId: 8 });
+      expect(host.empfangen.at(-1)).toEqual({ typ: "verwerfen", folge: karte?.folge });
+      expect(host.getrennt()).toBe(false);
+      const sicht = await h.frage();
+      expect(sicht.begleiter).toMatchObject({ verbunden: true, uebergeben: false });
+      expect((h.data.begleiter as { folge: number }).folge).toBe(-1);
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("AC08/AC10 · der Widerruf schliesst auch einen noch wartenden Verbindungsaufbau; ein verspätetes hallo verbindet nicht", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      // Der Host antwortet auf `hallo` zunächst NICHT — der Aufbau wartet.
+      const host = begleiterAttrappe((n) =>
+        n.typ === "karte" ? { typ: "angenommen", folge: n.folge, fassung: n.fassung } : null,
+      );
+      h.setzeBegleiter(host.verbinde);
+      const laufend = h.frage("kontextBegleiter");
+      await vi.waitFor(() => expect(host.empfangen).toHaveLength(1), { timeout: 2000 });
+      const nonce = host.empfangen[0]?.nonce;
+      // Der Stopp wartet nicht auf den Aufbau und schliesst ihn.
+      const stopp = await h.frage("kontextWiderrufen");
+      expect(stopp.status).toBe("widerrufen");
+      expect(host.getrennt()).toBe(true);
+      expect(host.empfangen.at(-1)).toEqual({ typ: "widerrufen" });
+      // Jetzt kommt das gültige, aber verspätete `hallo`.
+      host.sende({ typ: "hallo", protokoll: 1, nonce, version: "0.1.0", macos: "15.1" });
+      const spaet = await laufend;
+      expect(spaet.status).toBe("kontext_gewechselt");
+      expect(spaet.begleiter).toBeNull();
+      expect(h.data.begleiter ?? null).toBeNull();
+      expect(host.empfangen.some((n) => n.typ === "karte")).toBe(false);
     } finally {
       await h.app.close();
     }

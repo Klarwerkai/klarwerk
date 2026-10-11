@@ -1480,6 +1480,7 @@
         else sperre = sperreAus("zugriff_beendet");
       }
       await merke({ kontext: zustand, kontextSperre: sperre });
+      await begleiterNachziehen();
     } catch {
       // Die Übernahme darf an der Kontextkarte nie scheitern; ohne Karte bleibt nur ihre Anzeige leer.
     }
@@ -1494,6 +1495,8 @@
       const zustand = K.wechseln(state.kontext, ereignis);
       if (JSON.stringify(zustand) !== JSON.stringify(state.kontext))
         await merke({ kontext: zustand });
+      // AC02/AC10: eine dem Begleiter übergebene Karte wird mit der Karte der Erweiterung ungültig.
+      await begleiterNachziehen();
     } catch {
       // Ein verpasster Wechsel wird spätestens beim Verbinden sichtbar: dort wird frisch gelesen.
     }
@@ -1591,6 +1594,8 @@
       (jetzt.kontext?.folge ?? -1) === (vorher.kontext?.folge ?? -1) &&
       epocheVon(jetzt) === epocheVon(vorher);
     if (unveraendert) await merke({ kontext: zustand, kontextSperre: sperreAus(grund) });
+    // AC09/AC10: eine veraltete oder weggefallene Karte gilt auch beim Begleiter nicht mehr.
+    await begleiterNachziehen();
     return kontextSicht(await read(), unveraendert ? grund : "widerrufen");
   }
 
@@ -2076,17 +2081,62 @@
     });
   }
 
-  /** Den Kanal schliessen; mit `melden` erfährt der Host vorher, dass die Karte nicht mehr gilt. */
-  function begleiterTrennen(melden = false) {
-    const port = begleiterPort;
-    begleiterPort = null;
-    if (!port) return;
+  /**
+   * Der Verbindungsaufbau, der noch läuft (nacharbeit-8). Er ist von Anfang an registriert, damit
+   * Widerruf und Abmelden ihn schliessen können — nicht erst nach dem Handshake.
+   * @type {import("./types").NativePort | null}
+   */
+  let begleiterAusstehend = null;
+  /** Jeder Aufbau und jedes Trennen zählt hoch; ein älterer Aufbau wirkt danach nicht mehr. */
+  let begleiterGeneration = 0;
+
+  /** @param {import("./types").NativePort} port @param {boolean} melden */
+  function portSchliessen(port, melden) {
     try {
       if (melden) port.postMessage({ typ: "widerrufen" });
       port.disconnect();
     } catch {
       // Ein schon getrennter Kanal ist das Ziel, kein Fehler.
     }
+  }
+
+  /**
+   * Den Kanal schliessen — den verbundenen UND einen noch laufenden Aufbau. Mit `melden` erfährt
+   * der Host vorher, dass die Karte nicht mehr gilt. Die Generation steigt: ein Aufbau, der danach
+   * noch eine Antwort bekommt, setzt weder Port noch Zustand.
+   */
+  function begleiterTrennen(melden = false) {
+    begleiterGeneration += 1;
+    const ports = [begleiterPort, begleiterAusstehend];
+    begleiterPort = null;
+    begleiterAusstehend = null;
+    for (const port of ports) if (port) portSchliessen(port, melden);
+  }
+
+  /**
+   * Die native Karte nachziehen: gilt die übergebene Karte nicht mehr — anderer Tab, Navigation,
+   * neue Erfassung, Quelländerung, Kontowechsel —, erfährt der Begleiter es SOFORT (`verwerfen`), und
+   * der Zustand vermerkt „keine Karte übergeben". Der Kanal selbst bleibt offen.
+   */
+  async function begleiterNachziehen() {
+    const port = begleiterPort;
+    if (!port || !K) return;
+    const state = /** @type {Zustand} */ (await read());
+    const stand = state.begleiter ?? null;
+    if (!stand || stand.folge === -1) return;
+    const karte = kontextVon(state)?.karte ?? null;
+    const gilt =
+      karte !== null &&
+      !karte.veraltet &&
+      karte.folge === stand.folge &&
+      karte.fassung === stand.fassung;
+    if (gilt) return;
+    try {
+      port.postMessage({ typ: "verwerfen", folge: stand.folge });
+    } catch {
+      begleiterTrennen();
+    }
+    await merke({ begleiter: { ...stand, folge: -1, fassung: "" } });
   }
 
   /** @param {string} grund */
@@ -2117,6 +2167,14 @@
     // Ohne erteiltes `nativeMessaging` gibt es die Schnittstelle gar nicht.
     if (typeof verbinde !== "function") return begleiterFehler("begleiter_recht_fehlt");
     begleiterTrennen();
+    // Ab hier gehört der Aufbau GENAU dieser Generation; jeder Wartepunkt prüft sie neu.
+    const generation = begleiterGeneration;
+    const anmeldung = state.auth;
+    /** @param {Zustand} jetzt */
+    const giltNoch = (jetzt) =>
+      generation === begleiterGeneration &&
+      jetzt.auth?.id === anmeldung.id &&
+      jetzt.auth?.token === anmeldung.token;
     /** @type {import("./types").NativePort} */
     let port;
     try {
@@ -2124,6 +2182,15 @@
     } catch {
       return begleiterFehler("begleiter_nicht_erreichbar");
     }
+    // Sofort registriert: Widerruf und Abmelden schliessen auch einen Aufbau, der noch wartet.
+    begleiterAusstehend = port;
+    /** Überholter Aufbau: Port schliessen, NICHTS schreiben. */
+    const ueberholt = () => {
+      if (begleiterAusstehend === port) begleiterAusstehend = null;
+      if (begleiterPort === port) begleiterPort = null;
+      portSchliessen(port, true);
+      return kontextAbbruch("kontext_gewechselt");
+    };
     const nonce = crypto.randomUUID();
     const erste = naechsteNachricht(port, 5000);
     try {
@@ -2131,45 +2198,62 @@
         K.begleiterHallo({
           nonce,
           erweiterung: chrome.runtime.getManifest?.().version ?? "",
-          nutzer: state.auth.id,
+          nutzer: anmeldung.id,
         }),
       );
     } catch {
+      if (begleiterAusstehend === port) begleiterAusstehend = null;
       return begleiterFehler("begleiter_nicht_erreichbar");
     }
     const hallo = K.begleiterAntwort(await erste, nonce);
+    if (!giltNoch(/** @type {Zustand} */ (await read()))) return ueberholt();
     if (!hallo.ok) {
-      try {
-        port.disconnect();
-      } catch {
-        // s. o.
-      }
+      begleiterAusstehend = null;
+      portSchliessen(port, false);
       return begleiterFehler(hallo.grund);
     }
+    begleiterAusstehend = null;
     begleiterPort = port;
     port.onDisconnect.addListener(() => {
       if (begleiterPort !== port) return;
       begleiterPort = null;
       void merke({ begleiter: null });
     });
-    // Die Karte nur, wenn sie unter DIESER Anmeldung gilt und übermittelt werden darf.
+    // Die Karte nur, wenn sie unter DIESER Anmeldung gilt und übermittelt werden darf — und erst
+    // nach dem FRISCHEN Quellenabgleich (Text und Tabellenstruktur) samt Vorgangsprüfung direkt vor
+    // der Übertragung, wie bei Verbinden und Erklären (AC02/AC09).
     const jetzt = /** @type {Zustand} */ (await read());
     const zustand = kontextVon(jetzt);
     const karte = zustand?.karte ?? null;
     let folge = -1;
     let fassung = "";
-    const gleicheAnmeldung = jetzt.auth?.id === state.auth.id;
-    if (zustand && karte && gleicheAnmeldung && K.uebermittlung(zustand).erlaubt) {
-      const quittung = naechsteNachricht(port, 5000);
-      port.postMessage(K.begleiterKarte(karte));
-      const angenommen = K.begleiterQuittung(await quittung, karte);
-      // Gilt die Karte nach der Quittung noch? Sonst zählt die Übergabe nicht.
-      const nachher = kontextVon(/** @type {Zustand} */ (await read()));
-      if (angenommen && nachher?.karte?.folge === karte.folge) {
-        folge = karte.folge;
-        fassung = karte.fassung;
+    if (zustand && karte && giltNoch(jetzt) && K.uebermittlung(zustand).erlaubt) {
+      const abgleich = await frischAbgleichen(zustand, karte);
+      if (!giltNoch(/** @type {Zustand} */ (await read()))) return ueberholt();
+      if (abgleich.grund) {
+        // Die Seite hat sich geändert: die Karte wird veraltet vermerkt, NICHT übertragen.
+        await kontextSperren(jetzt, abgleich.zustand, abgleich.grund);
+      } else {
+        const grund = vorgangGilt(jetzt, karte, /** @type {Zustand} */ (await read()));
+        if (!grund && begleiterPort === port) {
+          const quittung = naechsteNachricht(port, 5000);
+          port.postMessage(K.begleiterKarte(karte));
+          const angenommen = K.begleiterQuittung(await quittung, karte);
+          const nachher = /** @type {Zustand} */ (await read());
+          if (!giltNoch(nachher) || begleiterPort !== port) return ueberholt();
+          // Gilt die Karte nach der Quittung noch? Sonst zählt die Übergabe nicht — und der
+          // Begleiter verwirft sie sofort.
+          if (angenommen && vorgangGilt(jetzt, karte, nachher) === "") {
+            folge = karte.folge;
+            fassung = karte.fassung;
+          } else if (angenommen) {
+            port.postMessage({ typ: "verwerfen", folge: karte.folge });
+          }
+        }
       }
     }
+    if (!giltNoch(/** @type {Zustand} */ (await read())) || begleiterPort !== port)
+      return ueberholt();
     await merke({
       begleiter: {
         version: hallo.version,
