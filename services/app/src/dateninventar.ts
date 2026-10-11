@@ -424,7 +424,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "assistenzprofil",
     name: "Persönliches Assistenzprofil",
     inhalt:
-      "Je Konto der selbst gewählte Anzeigename der Assistenz, die Kennung des gewählten Motivs, die Bewegungseinstellung und der Zeitpunkt der abgeschlossenen Ersteinrichtung.",
+      "Je Konto der selbst gewählte Anzeigename der Assistenz, die Kennung des gewählten Motivs, die Bewegungseinstellung und der Zeitpunkt der abgeschlossenen Ersteinrichtung. Dazu (produkt:20261011:assistenz-skills-werkzeuge) die eigenen Fähigkeits-Favoriten und bestätigten Routinen sowie die eigenen Fähigkeitsaufträge: Bindung (Fähigkeit, Fassung, Eingabe, Kennung und Fassung der Kontextobjekte, nie deren Text), Stand und Ergebnis mit Herkunft; je Konto höchstens 30 abgeschlossene Aufträge, ältere fallen beim nächsten Auftrag heraus. Keine Zugangswerte.",
     personenbezug: "ja",
     personenbezugGrund:
       "Gehört genau einem Konto; der Anzeigename ist Freitext der Person und kann Persönliches enthalten.",
