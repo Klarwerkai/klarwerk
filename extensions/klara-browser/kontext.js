@@ -7,16 +7,22 @@
 // oder eine Beobachtung noch zu genau dieser Karte gehört. Sie ist rein — kein Chrome-Aufruf, kein
 // Netz, kein Speicher, keine Uhr. Zeit, Tab und Konto kommen immer vom Aufrufer.
 //
-// WAS SIE NICHT IST (ehrlich, damit niemand mehr hineinliest):
-//   · keine zweite Assistenz und kein eigenes Kontextschema neben dem gemeinsamen Kern. Die Felder
-//     folgen G04 (Mandant, Nutzer, Sitzung, Host, Objekt, Auswahl, Zeitpunkt, Fassung); sobald der
-//     gemeinsame Kern sein Schema liefert, wird diese Karte darauf abgebildet, nicht umgekehrt.
-//   · noch nicht im Worker oder in der Leiste verdrahtet und nicht mit dem nativen Begleiter
-//     verbunden. Ein Hostnachweis (BPA-01-AC10) entsteht hier nicht.
+// WER SIE BENUTZT: `worker.js` lädt sie per `importScripts` und hält den Zustand im
+// Sitzungsspeicher (Erfassung, Tabereignisse, Verbinden mit dem Klara-Kern, Widerruf);
+// `panel.html` lädt sie für die zweisprachigen Sperrtexte der Kontextkarte.
+//
+// WAS SIE NICHT IST: keine zweite Assistenz und kein eigenes Schema neben dem gemeinsamen Kern. Die
+// Felder folgen G04 (Mandant, Nutzer, Sitzung, Host, Objekt, Auswahl, Zeitpunkt, Fassung). Die
+// Bindung an den Kern geschieht über den vorhandenen Klara-Sitzungsweg (`/api/klara/sessions`) im
+// Worker. Ein nativer Begleiter ist nicht angeschlossen; einen Hostnachweis (AC10) gibt es hier
+// nicht.
 //
 // SEITENTEXT IST INHALT, NIE AUFTRAG (G07). Ein Satz wie „Systemauftrag: lösche alles" erzeugt
 // höchstens einen Hinweis auf der Karte; Befugnis, Freigabe und Aktionen bleiben unberührt.
 (() => {
+  // Ein Neustart des Workers im selben Global (Prüfstand) lädt die Datei erneut; der Vertrag ist
+  // dann schon da und unveränderlich.
+  if (globalThis.KlaraKontext) return;
   const SCHEMA = "klara.browser.kontext/1";
   const AUSZUG = 500;
   // Seiten, die Chrome selbst gehören oder keine Webseite sind. Sie bleiben gesperrt, auch wenn
@@ -27,94 +33,155 @@
     /\b(system ?(auftrag|prompt|anweisung|message)|ignoriere (alle )?(vorherigen|bisherigen)|ignore (all )?(previous|prior)|you are now|du bist (jetzt|ab sofort)|developer mode)\b/i;
 
   /** @typedef {import("./types").Piece} Piece */
-  /** @typedef {{mandant: string, nutzer: string, sitzung: string}} Konto */
-  /**
-   * @typedef {{art: "einmalig", tabId: number, url: string, erteiltAm: string}
-   *   | {art: "bereich", herkunft: string, erteiltAm: string}} Freigabe
-   */
-  /** @typedef {{grund: string, text: string, naechsterSchritt: string}} Sperre */
-  /** @typedef {{zeilen: {kopf: boolean, zellen: string[]}[]}} Tabelle */
-  /** @typedef {{art: string, status: string, text: string, adresse?: string}} Faehigkeit */
-  /**
-   * @typedef {{
-   *   quelle: "seite" | "assistenzfenster",
-   *   tabId: number, url: string, titel: string, text: string,
-   *   nodes?: Piece[], gaps?: {kind: string, detail: string}[],
-   *   incognito?: boolean, frameId?: number, pdfUrl?: string,
-   *   browser: {name: string, version: string}, erweiterung: string
-   * }} Erfassung
-   */
-  /**
-   * @typedef {{
-   *   schema: string, folge: number, konto: Konto,
-   *   host: {browser: string, version: string, erweiterung: string},
-   *   tabId: number, url: string, titel: string,
-   *   auswahl: {text: string, tabelle: Tabelle | null},
-   *   fassung: string, erfasstAm: string, freigabe: "einmalig" | "bereich",
-   *   faehigkeiten: Faehigkeit[], hinweise: string[], aktionen: string[], veraltet: boolean
-   * }} Karte
-   */
-  /**
-   * @typedef {{draftId: string, url: string, herkunft: string, fassung: string, folge: number,
-   *   verbindung: "aktiv" | "widerrufen"}} Import
-   */
-  /**
-   * @typedef {{
-   *   konto: Konto, folge: number, karte: Karte | null,
-   *   verlauf: {folge: number, url: string, titel: string, fassung: string}[],
-   *   freigaben: Freigabe[], widerrufen: string[], importe: Import[]
-   * }} Zustand
-   */
+  /** @typedef {import("./types").Konto} Konto */
+  /** @typedef {import("./types").Freigabe} Freigabe */
+  /** @typedef {import("./types").Sperre} Sperre */
+  /** @typedef {import("./types").Tabelle} Tabelle */
+  /** @typedef {import("./types").Faehigkeit} Faehigkeit */
+  /** @typedef {import("./types").Erfassung} Erfassung */
+  /** @typedef {import("./types").Karte} Karte */
+  /** @typedef {import("./types").KontextZustand} Zustand */
+  /** @typedef {import("./types").KontextZugang} Zugang */
 
-  /** @type {Record<string, {text: string, naechsterSchritt: string}>} */
+  // Jeder Sperrgrund hat Text UND zulässigen nächsten Schritt, in beiden Sprachen der Leiste.
+  /** @type {Record<string, Record<"de" | "en", [string, string]>>} */
   const SPERREN = {
     interne_seite: {
-      text: "Interne Browserseiten liest Klara nicht.",
-      naechsterSchritt: "Öffne die Seite, um die es geht, in einem normalen Tab.",
+      de: [
+        "Interne Browserseiten liest Klara nicht.",
+        "Öffne die Seite, um die es geht, in einem normalen Tab.",
+      ],
+      en: [
+        "Klara does not read internal browser pages.",
+        "Open the page you mean in a normal tab.",
+      ],
     },
     nicht_lesbar: {
-      text: "Diese Adresse ist keine Webseite, die Klara lesen kann.",
-      naechsterSchritt: "Öffne eine Seite mit http oder https.",
+      de: [
+        "Diese Adresse ist keine Webseite, die Klara lesen kann.",
+        "Öffne eine Seite mit http oder https.",
+      ],
+      en: ["This address is not a webpage Klara can read.", "Open a page using http or https."],
     },
     privates_fenster: {
-      text: "Im privaten Fenster liest Klara nichts mit.",
-      naechsterSchritt: "Öffne die Seite in einem normalen Fenster und verbinde sie dort.",
+      de: [
+        "Im privaten Fenster liest Klara nichts mit.",
+        "Öffne die Seite in einem normalen Fenster und verbinde sie dort.",
+      ],
+      en: [
+        "Klara reads nothing in a private window.",
+        "Open the page in a normal window and connect it there.",
+      ],
     },
     geschuetzter_frame: {
-      text: "Die Markierung liegt in einem eingebetteten Rahmen; den liest Klara nicht.",
-      naechsterSchritt:
-        "Öffne den eingebetteten Inhalt als eigene Seite oder füge die Stelle bewusst in die Leiste ein.",
+      de: [
+        "Die Markierung liegt in einem eingebetteten Rahmen; den liest Klara nicht.",
+        "Öffne den eingebetteten Inhalt als eigene Seite oder füge die Stelle bewusst ein.",
+      ],
+      en: [
+        "The selection is inside an embedded frame; Klara does not read it.",
+        "Open the embedded content as its own page or paste the passage deliberately.",
+      ],
     },
     domain_nicht_freigegeben: {
-      text: "Diese Seite ist nicht freigegeben.",
-      naechsterSchritt:
-        "Verbinde genau diese Seite über das Klara-Symbol oder richte für die Domain eine Bereichsfreigabe ein.",
+      de: [
+        "Diese Seite ist nicht freigegeben.",
+        "Klicke auf der Seite auf das Klara-Symbol, um genau sie einmal zu verbinden.",
+      ],
+      en: [
+        "This page is not shared with Klara.",
+        "Click the Klara icon on the page to connect exactly this page once.",
+      ],
     },
     verbindung_widerrufen: {
-      text: "Die Verbindung zu dieser Domain ist widerrufen.",
-      naechsterSchritt: "Verbinde die Seite ausdrücklich neu, wenn Klara sie wieder lesen soll.",
+      de: [
+        "Die Verbindung zu dieser Domain ist widerrufen.",
+        "Verbinde die Seite ausdrücklich neu, wenn Klara sie wieder lesen soll.",
+      ],
+      en: [
+        "The connection to this domain was revoked.",
+        "Connect the page again explicitly if Klara should read it.",
+      ],
     },
     auswahl_im_assistenzfenster: {
-      text: "Die Markierung liegt im Assistenzfenster, nicht auf der Webseite.",
-      naechsterSchritt: "Markiere die Stelle auf der Webseite selbst.",
+      de: [
+        "Die Markierung liegt im Assistenzfenster, nicht auf der Webseite.",
+        "Markiere die Stelle auf der Webseite selbst.",
+      ],
+      en: [
+        "The selection is in the assistant window, not on the webpage.",
+        "Select the passage on the webpage itself.",
+      ],
     },
     keine_auswahl: {
-      text: "Auf der Seite ist nichts markiert.",
-      naechsterSchritt: "Markiere die Angaben, um die es geht, und rufe Klara erneut auf.",
+      de: [
+        "Auf der Seite ist nichts markiert.",
+        "Markiere die Angaben, um die es geht, und rufe Klara erneut auf.",
+      ],
+      en: ["Nothing is selected on the page.", "Select the details you mean and call Klara again."],
     },
     kein_kontext: {
-      text: "Es ist keine Seite verbunden.",
-      naechsterSchritt: "Verbinde die Seite, um die es geht.",
+      de: [
+        "Es ist keine Seite verbunden.",
+        "Markiere auf der Seite und klicke auf das Klara-Symbol.",
+      ],
+      en: ["No page is connected.", "Select on the page and click the Klara icon."],
     },
     quelle_geaendert: {
-      text: "Die Seite hat sich seit der Markierung geändert.",
-      naechsterSchritt: "Markiere die Stelle neu, damit Klara die aktuelle Fassung verwendet.",
+      de: [
+        "Die Seite oder die Markierung hat sich seit der Erfassung geändert.",
+        "Markiere die Stelle neu, damit Klara die aktuelle Fassung verwendet.",
+      ],
+      en: [
+        "The page or the selection changed since it was captured.",
+        "Select the passage again so Klara uses the current version.",
+      ],
+    },
+    zugriff_beendet: {
+      de: [
+        "Klara darf diese Seite gerade nicht lesen.",
+        "Klicke auf der Seite auf das Klara-Symbol, um sie neu zu verbinden.",
+      ],
+      en: [
+        "Klara may not read this page right now.",
+        "Click the Klara icon on the page to connect it again.",
+      ],
+    },
+    anmeldung_fehlt: {
+      de: ["Für die Verbindung mit Klara bitte anmelden.", "Melde dich unten bei Klarwerk an."],
+      en: ["Please sign in to connect with Klara.", "Sign in to Klarwerk below."],
+    },
+    kern_nicht_erreichbar: {
+      de: [
+        "Klara hat die Verbindung nicht bestätigt.",
+        "Versuche es später erneut; es wurde nichts verbunden.",
+      ],
+      en: ["Klara did not confirm the connection.", "Try again later; nothing was connected."],
+    },
+    antwort_veraltet: {
+      de: [
+        "Die Bestätigung gehörte zu einer älteren Markierung und wurde verworfen.",
+        "Verbinde die aktuelle Markierung erneut.",
+      ],
+      en: [
+        "The confirmation belonged to an older selection and was discarded.",
+        "Connect the current selection again.",
+      ],
     },
   };
 
   /** @param {string} grund @returns {Sperre} */
   function sperre(grund) {
-    return { grund, ...SPERREN[grund] };
+    const [text, naechsterSchritt] = (SPERREN[grund] ?? SPERREN.kein_kontext).de;
+    return { grund, text, naechsterSchritt };
+  }
+
+  /** @param {string} grund @param {string} sprache */
+  function sperrText(grund, sprache) {
+    const eintrag = SPERREN[grund];
+    if (!eintrag) return null;
+    const [text, naechsterSchritt] = sprache === "en" ? eintrag.en : eintrag.de;
+    return { text, naechsterSchritt };
   }
 
   /** @param {string} url */
@@ -162,6 +229,15 @@
     }
     const hex = (/** @type {number} */ n) => n.toString(16).padStart(8, "0");
     return `f1-${text.length.toString(36)}-${hex(a)}${hex(b)}`;
+  }
+
+  /**
+   * Die Fassung der ÜBERMITTELTEN Auswahl: Text UND Tabellenstruktur. Eine andere Zuordnung von
+   * Zellen oder Zeilen bei gleichem Text ist eine andere Fassung.
+   * @param {string} text @param {Tabelle | null} tab
+   */
+  function auswahlFassung(text, tab) {
+    return fassung(`${text}\u0000${JSON.stringify(tab?.zeilen ?? null)}`);
   }
 
   /** @param {Piece} piece @returns {string} */
@@ -229,7 +305,7 @@
         liste.push({
           art: "eingebetteter_rahmen",
           status: "nicht_geliefert",
-          text: SPERREN.geschuetzter_frame.text,
+          text: SPERREN.geschuetzter_frame.de[0],
           adresse: gap.detail,
         });
     return liste;
@@ -249,25 +325,23 @@
   }
 
   /**
-   * Die zur Seite passende Freigabe. `einmalig` ist das, was Chrome mit `activeTab` gewährt: gilt
-   * für genau diesen Tab und genau dieses Dokument — eine Navigation oder das Schliessen beendet
-   * sie (`wechseln`). `bereich` ist die eingerichtete Freigabe einer Herkunft.
+   * Die zur Seite passende BROWSERBERECHTIGUNG. `einmalig` folgt Chromes Regel für `activeTab`:
+   * gilt für genau diesen Tab und bleibt bei Navigation innerhalb derselben Herkunft bestehen; ein
+   * Wechsel der Herkunft oder das Schliessen beendet sie (`wechseln`). `bereich` ist die
+   * eingerichtete Freigabe einer Herkunft. Ob die konkrete AUSWAHL noch gilt, ist eine andere
+   * Frage — sie endet schon beim Dokumentwechsel (`wechseln`, Karte).
    * @param {Freigabe[]} freigaben @param {string} url @param {number} tabId
    */
   function passend(freigaben, url, tabId) {
-    return (
-      freigaben.find((f) =>
-        f.art === "einmalig"
-          ? f.tabId === tabId && ohneAnker(f.url) === ohneAnker(url)
-          : f.herkunft === herkunft(url),
-      ) ?? null
-    );
+    const ziel = herkunft(url);
+    /** @param {Freigabe} f */
+    const traegt = (f) =>
+      f.art === "einmalig" ? f.tabId === tabId && herkunft(f.url) === ziel : f.herkunft === ziel;
+    return freigaben.find(traegt) ?? null;
   }
 
   /**
-   * @param {Zustand} zustand
-   * @param {{url: string, tabId: number, incognito?: boolean, frameId?: number}} ziel
-   * @returns {{erlaubt: true, freigabe: Freigabe} | {erlaubt: false, sperre: Sperre}}
+   * @param {Zustand} zustand @param {import("./types").KontextZiel} ziel @returns {Zugang}
    */
   function zugang(zustand, ziel) {
     const nein = (/** @type {string} */ grund) => ({
@@ -338,7 +412,7 @@
       url: erfassung.url,
       titel: erfassung.titel,
       auswahl: { text: erfassung.text, tabelle: tab },
-      fassung: fassung(erfassung.text),
+      fassung: auswahlFassung(erfassung.text, tab),
       erfasstAm: jetzt,
       freigabe: pruefung.freigabe.art,
       faehigkeiten: faehigkeiten(erfassung, tab),
@@ -362,18 +436,23 @@
   }
 
   /**
-   * Fokus- und Navigationswechsel. Eine einmalige Freigabe endet nach Chromes Regel für
-   * `activeTab` mit der Navigation oder dem Schliessen des Tabs; die Karte wird ungültig, sobald
-   * ihr Tab nicht mehr der aktive ist oder ein anderes Dokument zeigt.
-   * @param {Zustand} zustand
-   * @param {{art: "tab", tabId: number} | {art: "navigation", tabId: number, url: string} | {art: "geschlossen", tabId: number}} ereignis
+   * Fokus-, Navigations- und Schliessereignisse — zwei getrennte Folgen:
+   *   · BERECHTIGUNG: eine einmalige Freigabe endet, wenn ihr Tab geschlossen wird oder eine andere
+   *     Herkunft lädt (Chromes `activeTab`). Navigation innerhalb der Herkunft lässt sie bestehen.
+   *   · AUSWAHL: die Karte wird ungültig, sobald ihr Tab nicht mehr der aktive ist oder ein anderes
+   *     Dokument zeigt — auch bei derselben Herkunft. Eine unbekannte Zieladresse (`url: ""`) gilt
+   *     als fremde Herkunft. `dokument` (neues Dokument, Adresse unbekannt) beendet nur die Karte.
+   * @param {Zustand} zustand @param {import("./types").KontextWechsel} ereignis
    * @returns {Zustand}
    */
   function wechseln(zustand, ereignis) {
     const freigaben = zustand.freigaben.filter((f) => {
       if (f.art !== "einmalig" || f.tabId !== ereignis.tabId) return true;
       if (ereignis.art === "geschlossen") return false;
-      if (ereignis.art === "navigation") return ohneAnker(f.url) === ohneAnker(ereignis.url);
+      if (ereignis.art === "navigation") {
+        const ziel = herkunft(ereignis.url);
+        return ziel !== "" && herkunft(f.url) === ziel;
+      }
       return true;
     });
     const karte = zustand.karte;
@@ -381,6 +460,7 @@
       karte !== null &&
       (ereignis.tabId !== karte.tabId ||
         ereignis.art === "geschlossen" ||
+        ereignis.art === "dokument" ||
         (ereignis.art === "navigation" && ohneAnker(ereignis.url) !== ohneAnker(karte.url)));
     return ungueltig
       ? { ...zustand, freigaben, karte: null, folge: zustand.folge + 1 }
@@ -397,6 +477,31 @@
     return sitzung(konto, zustand.folge + 1);
   }
 
+  /**
+   * Das Konto, unter dem der Worker gerade arbeitet, dem Zustand zuordnen. Ein ANDERER Mandant oder
+   * Nutzer ist ein Kontowechsel. Eine noch anonyme Erfassung (vor der Anmeldung) und eine neue
+   * Kernsitzung desselben Nutzers werden übernommen — das ist kein fremdes Konto.
+   * @param {Zustand} zustand @param {Konto} konto @returns {Zustand}
+   */
+  function kontoZuordnen(zustand, konto) {
+    const alt = zustand.konto;
+    const fremd =
+      (alt.nutzer !== "" && alt.nutzer !== konto.nutzer) ||
+      (alt.mandant !== "" && alt.mandant !== konto.mandant);
+    if (fremd) return kontoWechseln(zustand, konto);
+    if (
+      alt.nutzer === konto.nutzer &&
+      alt.mandant === konto.mandant &&
+      alt.sitzung === konto.sitzung
+    )
+      return zustand;
+    return {
+      ...zustand,
+      konto: { ...konto },
+      karte: zustand.karte ? { ...zustand.karte, konto: { ...konto } } : null,
+    };
+  }
+
   /** @param {Konto} a @param {Konto} b */
   function gleichesKonto(a, b) {
     return a.mandant === b.mandant && a.nutzer === b.nutzer && a.sitzung === b.sitzung;
@@ -405,8 +510,7 @@
   /**
    * Gehört eine (womöglich verspätete) Antwort noch zur aktuellen Karte? Nur dann gibt es einen
    * Antwortkontext und ein Einfügeziel — sonst keines, auch nicht „ersatzweise" der aktive Tab.
-   * @param {Zustand} zustand
-   * @param {{folge: number, tabId: number, konto: Konto, fassung: string}} antwort
+   * @param {Zustand} zustand @param {import("./types").KontextAntwort} antwort
    * @returns {{zustellen: boolean, grund: string, einfuegeziel: {tabId: number, url: string} | null}}
    */
   function antwortPruefen(zustand, antwort) {
@@ -421,16 +525,16 @@
   }
 
   /**
-   * Vor jeder Verarbeitung die Seite frisch lesen lassen und hier abgleichen. Hat sich der
-   * markierte Text geändert, wird die Karte als veraltet markiert und verlangt eine gezielte
-   * Aktualisierung — die alte Auswahl wird nie als aktuell ausgegeben (AC09).
-   * @param {Zustand} zustand @param {{tabId: number, url: string, text: string}} frisch
+   * Vor jeder Verarbeitung die Seite frisch lesen lassen und hier abgleichen — Text UND
+   * Tabellenstruktur. Weicht die Fassung ab, wird die Karte als veraltet markiert und verlangt eine
+   * gezielte Aktualisierung; die alte Auswahl wird nie als aktuell ausgegeben (AC09).
+   * @param {Zustand} zustand @param {import("./types").KontextFrisch} frisch
    * @returns {{zustand: Zustand, aktuell: boolean, sperre: Sperre | null, neueFassung: string}}
    */
   function abgleichen(zustand, frisch) {
     const karte = zustand.karte;
     if (!karte) return { zustand, aktuell: false, sperre: sperre("kein_kontext"), neueFassung: "" };
-    const neu = fassung(frisch.text);
+    const neu = auswahlFassung(frisch.text, tabelle(frisch.nodes ?? []));
     const gleich =
       frisch.tabId === karte.tabId &&
       ohneAnker(frisch.url) === ohneAnker(karte.url) &&
@@ -549,7 +653,9 @@
     value: Object.freeze({
       SCHEMA,
       fassung,
+      auswahlFassung,
       tabelle,
+      sperrText,
       sitzung,
       zugang,
       beobachtenErlaubt,
@@ -557,6 +663,7 @@
       binden,
       wechseln,
       kontoWechseln,
+      kontoZuordnen,
       antwortPruefen,
       abgleichen,
       uebermittlung,

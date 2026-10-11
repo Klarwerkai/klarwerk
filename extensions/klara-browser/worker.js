@@ -1,6 +1,15 @@
 // Classic MV3 worker; all listeners are registered synchronously. Session storage is
 // the only durable state across worker suspension. No automatic POST on startup.
 (() => {
+  // BPA-01: der Kontextvertrag (`kontext.js`), synchron beim Start geladen. `importScripts` gibt es
+  // nur im Worker; ohne ihn (und ohne vorgeladenen Vertrag) bindet die Erweiterung keinen Kontext
+  // und sagt das — die Übernahme selbst bleibt davon unberührt.
+  /** @typedef {{ importScripts?: (...urls: string[]) => void }} Arbeiter */
+  const roh = /** @type {unknown} */ (globalThis);
+  const arbeiter = /** @type {Arbeiter} */ (roh);
+  if (!globalThis.KlaraKontext && typeof arbeiter.importScripts === "function")
+    arbeiter.importScripts("kontext.js");
+  const K = globalThis.KlaraKontext;
   const HOST = "https://app.klarwerk.ai";
   const MAX_BYTES = 5 * 1024 * 1024;
   // Deliberately smaller than the transport ceiling: also bounds session quota and preview cost.
@@ -1323,6 +1332,370 @@
     }
   }
   // KW-MARKE-END
+  // ================================================================================================
+  // KW-KONTEXT · BPA-01 — SEITE UND MARKIERUNG AN KLARA BINDEN.
+  // ================================================================================================
+  //
+  // DER WEG: Klickgeste (Symbol/Kontextmenü) → `capture()` liest die Seite → `kontextErfassen`
+  // erteilt die einmalige Freigabe dieser Geste und bindet die Karte (`kontext.js`) → die Leiste
+  // zeigt sie (`kontext`) → „Mit Klara verbinden" liest die Seite FRISCH, gleicht die Fassung ab und
+  // bindet den Kontext an eine Sitzung des vorhandenen Klara-Kerns (`POST /api/klara/sessions` bzw.
+  // `…/document-context`, angemeldet wie jeder andere Abruf). Gesendet wird dabei nur die Adresse
+  // als Dokumentmerkmal; der Server leitet daraus eine opake Kontextkennung ab. Die Markierung
+  // selbst verlässt die Erweiterung auf diesem Weg nicht.
+  //
+  // KEIN ZWEITER KERN: Sitzung, Anmeldung und Rechteprüfung sind die des Servers. Ein nativer
+  // Begleiter ist nicht angeschlossen — im Arbeitsbaum gibt es keinen.
+  //
+  // SPÄTE ANTWORT (AC02): die Bestätigung des Kerns gilt nur, wenn sie beim Eintreffen noch zu
+  // derselben Karte (Folge, Tab, Konto, Fassung) gehört; sonst wird sie nicht gebunden.
+  const KERN_ID = /^[\w-]{1,128}$/;
+  const KONTEXT_NACHRICHTEN = ["kontext", "kontextVerbinden", "kontextWiderrufen"];
+  /** @type {import("./types").KontextSicht} */
+  const KONTEXT_FEHLER = {
+    kontext: true,
+    status: "storage_error",
+    angemeldet: false,
+    karte: null,
+    sperre: null,
+    verbunden: false,
+    beobachtung: false,
+    importe: [],
+  };
+  let kontextBusy = false;
+
+  /** @param {Zustand} state @returns {import("./types").Konto} */
+  const kontoVon = (state) => ({
+    mandant: HOST,
+    nutzer: state.auth?.id ?? "",
+    sitzung: state.kern?.sessionId ?? "",
+  });
+
+  /**
+   * Der Kontextzustand unter dem Konto von JETZT. Gehört der gespeicherte zu einem anderen Nutzer,
+   * entsteht eine leere Sitzung — ohne Karte, Verlauf, Freigaben und Importe (AC03).
+   * @param {Zustand} state @returns {import("./types").KontextZustand | null}
+   */
+  function kontextVon(state) {
+    if (!K) return null;
+    const konto = kontoVon(state);
+    return K.kontoZuordnen(state.kontext ?? K.sitzung(konto), konto);
+  }
+
+  /** @param {string} grund @returns {import("./types").Sperre} */
+  function sperreAus(grund) {
+    const text = K?.sperrText(grund, "de");
+    return { grund, text: text?.text ?? "", naechsterSchritt: text?.naechsterSchritt ?? "" };
+  }
+
+  /**
+   * Die Chrome-Fassung, soweit der Browser sie ohne Zusatzabfrage nennt. Seit der Kürzung der
+   * Kennung ist das die Hauptversion (`141.0.0.0`); die genaue Fassung bindet erst die Hostprobe.
+   */
+  function browserFassung() {
+    const kennung = globalThis.navigator?.userAgent ?? "";
+    return { name: "Chrome", version: /Chrome\/([\d.]+)/.exec(kennung)?.[1] ?? "" };
+  }
+
+  /**
+   * @param {{id?: number, incognito?: boolean} | undefined} tab
+   * @param {{frameId?: number} | undefined} info
+   * @param {string | undefined} source
+   * @param {string} status
+   * @param {{text: string, url: string, title: string, variants: import("./types").Variants} | null} gelesen
+   */
+  async function kontextErfassen(tab, info, source, status, gelesen) {
+    if (!K || tab?.id === undefined) return;
+    try {
+      const state = /** @type {Zustand} */ (await read());
+      let zustand = kontextVon(state);
+      if (!zustand) return;
+      const jetzt = new Date().toISOString();
+      // Die Klickgeste auf Symbol oder Kontextmenü IST die einmalige Freigabe (`activeTab`) — für
+      // genau diesen Tab und diese Herkunft. Interne Seiten nimmt `freigeben` gar nicht an.
+      if (source)
+        zustand = K.freigeben(zustand, {
+          art: "einmalig",
+          tabId: tab.id,
+          url: gelesen?.url ?? source,
+          erteiltAm: jetzt,
+        });
+      /** @type {import("./types").Sperre | null} */
+      let sperre = null;
+      if (gelesen) {
+        const ergebnis = K.binden(
+          zustand,
+          {
+            quelle: "seite",
+            tabId: tab.id,
+            url: gelesen.url,
+            titel: gelesen.title,
+            text: gelesen.text,
+            nodes: gelesen.variants.selection.nodes,
+            gaps: gelesen.variants.page.gaps,
+            browser: browserFassung(),
+            erweiterung: chrome.runtime.getManifest?.().version ?? "",
+          },
+          jetzt,
+        );
+        zustand = ergebnis.zustand;
+        sperre = ergebnis.sperre;
+      } else {
+        const pruefung = K.zugang(zustand, {
+          url: source ?? "",
+          tabId: tab.id,
+          incognito: tab.incognito === true,
+          frameId: info?.frameId ?? 0,
+        });
+        if (!pruefung.erlaubt) sperre = pruefung.sperre;
+        else if (status === "source_changed") sperre = sperreAus("quelle_geaendert");
+        else if (status === "empty") sperre = sperreAus("keine_auswahl");
+        else sperre = sperreAus("zugriff_beendet");
+      }
+      await merke({ kontext: zustand, kontextSperre: sperre });
+    } catch {
+      // Die Übernahme darf an der Kontextkarte nie scheitern; ohne Karte bleibt nur ihre Anzeige leer.
+    }
+  }
+
+  /** @param {import("./types").KontextWechsel} ereignis */
+  async function kontextWechsel(ereignis) {
+    if (!K) return;
+    try {
+      const state = /** @type {Zustand} */ (await read());
+      if (!state.kontext) return;
+      const zustand = K.wechseln(state.kontext, ereignis);
+      if (JSON.stringify(zustand) !== JSON.stringify(state.kontext))
+        await merke({ kontext: zustand });
+    } catch {
+      // Ein verpasster Wechsel wird spätestens beim Verbinden sichtbar: dort wird frisch gelesen.
+    }
+  }
+
+  /** @param {Zustand} state @param {string} status @returns {import("./types").KontextSicht} */
+  function kontextSicht(state, status) {
+    const zustand = kontextVon(state);
+    const karte = zustand?.karte ?? null;
+    const kern = state.kern ?? null;
+    const verbunden =
+      karte !== null &&
+      !karte.veraltet &&
+      kern !== null &&
+      kern.sessionId !== "" &&
+      kern.folge === karte.folge &&
+      kern.fassung === karte.fassung;
+    return {
+      kontext: true,
+      status,
+      angemeldet: Boolean(state.auth),
+      karte: karte && K ? K.anzeige(karte) : null,
+      sperre: state.kontextSperre?.grund ?? null,
+      verbunden,
+      beobachtung: zustand && karte && K ? K.beobachtenErlaubt(zustand, karte.url) : false,
+      importe: (zustand?.importe ?? []).map((i) => ({
+        herkunft: i.herkunft,
+        verbindung: i.verbindung,
+      })),
+    };
+  }
+
+  /**
+   * Zustand und Sperre schreiben — aber nur, wenn seit dem Lesen keine neue Karte entstanden ist.
+   * Sonst gewänne ein langsamer Vorgang gegen eine frischere Erfassung.
+   * @param {Zustand} vorher @param {import("./types").KontextZustand} zustand @param {string} grund
+   */
+  async function kontextSperren(vorher, zustand, grund) {
+    const jetzt = /** @type {Zustand} */ (await read());
+    if ((jetzt.kontext?.folge ?? -1) === (vorher.kontext?.folge ?? -1))
+      await merke({ kontext: zustand, kontextSperre: sperreAus(grund) });
+    return kontextSicht(await read(), grund);
+  }
+
+  /**
+   * Der eine Abruf an den Klara-Kern. Feste Pfade, keine Adresse aus Nachricht oder Seite. Gibt
+   * es schon eine Sitzung, wird ihr Dokumentkontext neu gebunden; scheitert das (abgelaufen,
+   * geschlossen), entsteht eine neue Sitzung.
+   * @param {import("./types").Auth} auth @param {string} url @param {string} instanz
+   * @param {import("./types").Kern | null} kern
+   * @returns {Promise<{sessionId?: unknown, documentContextId?: unknown}>}
+   */
+  async function kernBinden(auth, url, instanz, kern) {
+    const documentDescriptor = { kind: "saved", canonicalUrl: url };
+    const alt =
+      kern && KERN_ID.test(kern.sessionId) && KERN_ID.test(kern.documentContextId) ? kern : null;
+    /** @param {string} pfad @param {object} body @param {Record<string, string>} kopf */
+    function senden(pfad, body, kopf) {
+      return fetch(HOST + pfad, {
+        method: "POST",
+        credentials: "omit",
+        redirect: "error",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${auth.token}`,
+          "x-klara-instance": instanz,
+          ...kopf,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20000),
+      });
+    }
+    if (alt) {
+      const neu = await senden(
+        `/api/klara/sessions/${encodeURIComponent(alt.sessionId)}/document-context`,
+        { documentDescriptor },
+        { "x-klara-session": alt.sessionId, "x-klara-document": alt.documentContextId },
+      );
+      if (neu.status === 401) throw new Error("expired");
+      if (neu.ok) return neu.json();
+    }
+    const response = await senden(
+      "/api/klara/sessions",
+      { addinInstanceId: instanz, documentDescriptor },
+      {},
+    );
+    if (response.status === 401) throw new Error("expired");
+    if (!response.ok) throw new Error("kern_nicht_erreichbar");
+    return response.json();
+  }
+
+  async function kontextVerbinden() {
+    const state = /** @type {Zustand} */ (await read());
+    let zustand = kontextVon(state);
+    if (!K || !zustand) return kontextSicht(state, "kontext_fehlt");
+    const karte = zustand.karte;
+    if (!karte) return kontextSperren(state, zustand, "kein_kontext");
+    if (!state.auth) return kontextSperren(state, zustand, "anmeldung_fehlt");
+    // 1 · Die Seite FRISCH lesen. Chrome entscheidet hier selbst, ob die Freigabe noch trägt.
+    /** @type {import("./types").CaptureResult | undefined} */
+    let frisch;
+    try {
+      frisch = await leseSeite(karte.tabId);
+    } catch {
+      frisch = undefined;
+    }
+    if (!frisch || typeof frisch.text !== "string" || typeof frisch.url !== "string")
+      return kontextSperren(state, zustand, "zugriff_beendet");
+    // 2 · Fassung abgleichen — Text UND Tabellenstruktur (AC09).
+    const abgleich = K.abgleichen(zustand, {
+      tabId: karte.tabId,
+      url: frisch.url,
+      text: frisch.text,
+      nodes: cleanVariants(frisch.variants).selection.nodes,
+    });
+    zustand = abgleich.zustand;
+    if (!abgleich.aktuell) return kontextSperren(state, zustand, "quelle_geaendert");
+    // 3 · Nur was die Freigabe deckt.
+    const ausgang = K.uebermittlung(zustand);
+    if (!ausgang.erlaubt || !ausgang.daten)
+      return kontextSperren(state, zustand, ausgang.sperre?.grund ?? "kein_kontext");
+    const antwort = {
+      folge: karte.folge,
+      tabId: karte.tabId,
+      konto: zustand.konto,
+      fassung: karte.fassung,
+    };
+    const instanz = state.kern?.instanz || `klara-browser-${crypto.randomUUID()}`;
+    /** @type {{sessionId?: unknown, documentContextId?: unknown}} */
+    let bestaetigt;
+    try {
+      bestaetigt = await kernBinden(state.auth, ausgang.daten.url, instanz, state.kern ?? null);
+    } catch (error) {
+      if (error instanceof Error && error.message === "expired")
+        await chrome.storage.session.set({ auth: null });
+      return kontextSperren(state, zustand, "kern_nicht_erreichbar");
+    }
+    const sessionId = typeof bestaetigt?.sessionId === "string" ? bestaetigt.sessionId : "";
+    const documentContextId =
+      typeof bestaetigt?.documentContextId === "string" ? bestaetigt.documentContextId : "";
+    if (!KERN_ID.test(sessionId) || !KERN_ID.test(documentContextId))
+      return kontextSperren(state, zustand, "kern_nicht_erreichbar");
+    // 4 · Gehört die Bestätigung noch zu DIESER Karte? Erst jetzt wird gebunden.
+    const nachher = /** @type {Zustand} */ (await read());
+    const aktuell = kontextVon(nachher);
+    if (!aktuell || !K.antwortPruefen(aktuell, antwort).zustellen) {
+      await merke({
+        kern: { instanz, sessionId, documentContextId, folge: -1, fassung: "", url: "" },
+        kontextSperre: sperreAus("antwort_veraltet"),
+      });
+      return kontextSicht(await read(), "antwort_veraltet");
+    }
+    await merke({
+      kontext: K.kontoZuordnen(aktuell, { ...aktuell.konto, sitzung: sessionId }),
+      kontextSperre: null,
+      kern: {
+        instanz,
+        sessionId,
+        documentContextId,
+        folge: karte.folge,
+        fassung: karte.fassung,
+        url: karte.url,
+      },
+    });
+    return kontextSicht(await read(), "verbunden");
+  }
+
+  async function kontextWiderrufen() {
+    const state = /** @type {Zustand} */ (await read());
+    let zustand = kontextVon(state);
+    if (!K || !zustand) return kontextSicht(state, "kontext_fehlt");
+    const ziel = zustand.karte?.url ?? state.kern?.url ?? "";
+    if (!ziel) return kontextSperren(state, zustand, "kein_kontext");
+    // Ein bereits bewusst gespeicherter Entwurf von dieser Seite bleibt auf dem Server unberührt;
+    // er wird mit Herkunft als widerrufen geführt (G05) — gelöscht wird nichts.
+    const work = state.work;
+    if (zustand.karte && work?.draftId && work.selection.url === zustand.karte.url)
+      zustand = K.importMerken(zustand, work.draftId);
+    zustand = K.widerrufen(zustand, ziel);
+    const kern = state.kern ?? null;
+    /** @type {import("./types").Kern | null} */
+    let ohneSitzung = null;
+    if (kern) ohneSitzung = { ...kern, sessionId: "", documentContextId: "", folge: -1, url: "" };
+    await merke({
+      kontext: zustand,
+      kontextSperre: sperreAus("verbindung_widerrufen"),
+      kern: ohneSitzung,
+    });
+    // Die Kernsitzung wird geschlossen — bestmöglich. Ein Fehlschlag hebt den örtlichen Widerruf
+    // nicht auf: ohne Kennung kann die Erweiterung diese Sitzung ohnehin nicht mehr benutzen.
+    const schliessen =
+      kern !== null && KERN_ID.test(kern.sessionId) && KERN_ID.test(kern.documentContextId);
+    if (kern && state.auth && schliessen) {
+      try {
+        await fetch(`${HOST}/api/klara/sessions/${encodeURIComponent(kern.sessionId)}/close`, {
+          method: "POST",
+          credentials: "omit",
+          redirect: "error",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${state.auth.token}`,
+            "x-klara-instance": kern.instanz,
+            "x-klara-session": kern.sessionId,
+            "x-klara-document": kern.documentContextId,
+          },
+          body: "{}",
+          signal: AbortSignal.timeout(20000),
+        });
+      } catch {
+        // s. o.
+      }
+    }
+    return kontextSicht(await read(), "widerrufen");
+  }
+
+  /** @param {string} art @returns {Promise<import("./types").KontextSicht>} */
+  async function kontextNachricht(art) {
+    if (art === "kontext") return kontextSicht(/** @type {Zustand} */ (await read()), "bereit");
+    if (kontextBusy) return kontextSicht(/** @type {Zustand} */ (await read()), "busy");
+    kontextBusy = true;
+    try {
+      return art === "kontextVerbinden" ? await kontextVerbinden() : await kontextWiderrufen();
+    } finally {
+      kontextBusy = false;
+    }
+  }
+  // KW-KONTEXT-END
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("panel.html")) {
       respond({ status: "forbidden_sender" });
@@ -1341,6 +1714,15 @@
       markeLesen().then(antworte, () => antworte({ ok: false }));
       return true;
     }
+    // BPA-01: die Kontextkarte ist keine Übernahme — eigene Fragen, eigene Antwort (`KontextSicht`),
+    // außerhalb von `dispatch` und seiner Sperre.
+    if (message && typeof message === "object" && KONTEXT_NACHRICHTEN.includes(message.type)) {
+      const antworte = /** @type {(antwort: import("./types").KontextSicht) => void} */ (
+        /** @type {unknown} */ (respond)
+      );
+      kontextNachricht(message.type).then(antworte, () => antworte(KONTEXT_FEHLER));
+      return true;
+    }
     dispatch(message).then(respond, () => respond({ status: "storage_error" }));
     return true;
   });
@@ -1357,7 +1739,7 @@
   // dieselbe Bauform wie `nachholen()`/`erledigt()` in der Leiste. Nur der ZULETZT geäusserte
   // Wunsch wird behalten: zwei Übernahmen hintereinander sind eine Absichtsänderung, keine
   // Warteschlange, und die zweite ist die gemeinte.
-  /** @type {{tab: {id?: number, url?: string, title?: string} | undefined, info: {frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string} | undefined} | null} */
+  /** @type {{tab: {id?: number, url?: string, title?: string, incognito?: boolean} | undefined, info: {frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string} | undefined} | null} */
   let gemerkt = null;
   async function nachholen() {
     const wartend = gemerkt;
@@ -1365,7 +1747,19 @@
     gemerkt = null;
     await capture(wartend.tab, wartend.info);
   }
-  /** @param {{id?: number, url?: string, title?: string} | undefined} tab @param {{frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string}} [info] */
+  /**
+   * Der EINE Skripteinsatz in eine Seite: der Auswahl-Leser. Erfassung und das frische Nachlesen
+   * vor dem Verbinden (BPA-01) gehen beide hier durch; Chrome prüft dabei selbst den Zugriff.
+   * @param {number} tabId
+   */
+  async function leseSeite(tabId) {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["selection.js"],
+    });
+    return results[0]?.result;
+  }
+  /** @param {{id?: number, url?: string, title?: string, incognito?: boolean} | undefined} tab @param {{frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string}} [info] */
   async function capture(tab, info) {
     if (captureBusy || busy) {
       gemerkt = { tab, info };
@@ -1415,13 +1809,19 @@
         return;
       }
       let status = "unsupported";
-      if (tab?.id !== undefined && supported(source) && (!info?.frameId || info.frameId === 0)) {
+      // BPA-01: was die Seite geliefert hat, für die Kontextkarte. Bleibt `null`, wenn nichts
+      // gelesen wurde oder werden durfte.
+      /** @type {{text: string, url: string, title: string, variants: import("./types").Variants} | null} */
+      let gelesen = null;
+      // BPA-01 · AC05: im privaten Fenster wird die Seite gar nicht erst gelesen.
+      if (
+        tab?.id !== undefined &&
+        supported(source) &&
+        (!info?.frameId || info.frameId === 0) &&
+        tab.incognito !== true
+      ) {
         try {
-          const results = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            files: ["selection.js"],
-          });
-          const s = results[0]?.result;
+          const s = await leseSeite(tab.id);
           if (
             s &&
             supported(s.url) &&
@@ -1496,12 +1896,15 @@
                 activeTabId: tab.id,
               };
               await merke(merken);
+              gelesen = { text: s.text, url: s.url, title: s.title, variants };
             }
           } else status = "source_changed";
         } catch {
           status = "capture_failed";
         }
       }
+      // BPA-01: dieselbe Geste bindet die Kontextkarte — oder hält fest, warum nicht.
+      await kontextErfassen(tab, info, source, status, gelesen);
       // JOB 3606: die Nachfrage ist beantwortet — sie und der Tab, auf den sie zeigte, gehen weg.
       await merke({
         captureStatus: status,
@@ -1568,8 +1971,19 @@
       await chrome.storage.session.set({ sourceChangedId: state.work.id });
     }
   }
-  chrome.tabs.onActivated.addListener(({ tabId }) => changed(tabId));
+  chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+    await changed(tabId);
+    // BPA-01 · AC02: ein anderer aktiver Tab entwertet die Kontextkarte.
+    await kontextWechsel({ art: "tab", tabId });
+  });
   chrome.tabs.onUpdated.addListener(async (tabId, info) => {
     if (info.url && (await read()).work?.selection.tabId === tabId) await changed(tabId, info.url);
+    // BPA-01 · AC04/AC09: Navigation. Mit Adresse entscheidet die Herkunft über die Freigabe und
+    // das Dokument über die Karte. Ohne Adresse (Chrome nennt sie nur mit Zugriff) beginnt ein neues
+    // Dokument unbekannter Lage: die Karte wird ungültig, die Freigabe prüft Chrome beim nächsten
+    // Lesen selbst.
+    if (info.url) await kontextWechsel({ art: "navigation", tabId, url: info.url });
+    else if (info.status === "loading") await kontextWechsel({ art: "dokument", tabId });
   });
+  chrome.tabs.onRemoved?.addListener((tabId) => kontextWechsel({ art: "geschlossen", tabId }));
 })();

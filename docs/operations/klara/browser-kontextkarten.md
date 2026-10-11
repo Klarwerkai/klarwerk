@@ -60,47 +60,72 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
 | Erkennung der aktuellen Seite, Speichern oder Grund | `e7cc46316` (11.09.2026) | Commit-Tests in `tests/klara-browser/` |
 | Erweiterung im Manifest | Version `0.4.1`, Chrome ≥ 120 | `extensions/klara-browser/manifest.json` |
 
-**Neu mit diesem Auftrag (BPA-01, Adapterseite der Kontextbrücke):**
+**Neu mit diesem Auftrag (BPA-01) — Nacharbeit 1 nach Bens Befunden:**
 
-- `extensions/klara-browser/kontext.js` — reiner Vertrag ohne Chrome-, Netz- oder Speicherzugriff:
-  gebundene Kontextkarte (URL, Titel, Auswahl, Tabellenstruktur genau der Markierung,
-  Erfassungszeit, Inhaltsfassung, Browser/Version, Erweiterungsversion, Konto), Kontextfolge,
-  Freigaben `einmalig` (Chrome-`activeTab`-Regel) und `bereich`, Sperrgründe mit nächstem Schritt,
-  Fähigkeitsausweis, Antwortprüfung, Abgleich bei Quelländerung, Widerruf.
-- `tests/klara-browser/kontext.test.ts` — AC01–AC09 einzeln; AC01 mit dem echten `selection.js`
-  auf einem synthetischen Datenblatt (Ventile V-17/V-18, BPA-S01).
+- `extensions/klara-browser/kontext.js` — der reine Vertrag (kein Chrome-, Netz- oder
+  Speicherzugriff): gebundene Kontextkarte (URL, Titel, Auswahl, Tabellenstruktur genau der
+  Markierung, Erfassungszeit, Fassung, Browser/Version, Erweiterungsversion, Konto), Kontextfolge,
+  Freigaben, Sperrgründe mit nächstem Schritt (Deutsch/Englisch), Fähigkeitsausweis,
+  Antwortprüfung, Abgleich, Widerruf, Kontozuordnung.
+  - **Freigabe und Auswahl getrennt** (Befund 2): die einmalige Freigabe folgt Chromes
+    `activeTab` — sie bleibt bei Navigation innerhalb derselben Herkunft und endet bei
+    Herkunftswechsel oder Schliessen des Tabs. Die Auswahl (Karte) endet unabhängig davon bei
+    jedem Dokumentwechsel.
+  - **Fassung über die übermittelte Auswahl** (Befund 3): Text UND Tabellenstruktur. Eine andere
+    Zell-/Zeilenzuordnung bei gleichem Text ist eine neue Fassung und verlangt Neumarkieren.
+- **Verdrahtet** (Befund 1):
+  - `worker.js` lädt den Vertrag per `importScripts`. Die Klickgeste (Symbol/Kontextmenü) erteilt
+    die einmalige Freigabe und bindet die Karte. Im privaten Fenster wird die Seite gar nicht
+    gelesen. Tabwechsel, Navigation, neues Dokument und Schliessen wirken auf Freigabe und
+    Karte. Erfassung und Neulesen nutzen denselben einen Skripteinsatz (`selection.js`).
+  - „Mit Klara verbinden" liest die Seite frisch, gleicht die Fassung ab und bindet den Kontext
+    an eine Sitzung des **vorhandenen** Klara-Kerns: `POST /api/klara/sessions` bzw.
+    `…/document-context`, angemeldet wie jeder andere Abruf der Erweiterung; Dokumentmerkmal ist
+    die Seitenadresse, die der Server in eine opake Kontextkennung umrechnet. Die Markierung
+    selbst geht dabei nicht an den Server. Eine verspätete Bestätigung wird nur gebunden, wenn
+    sie noch zu derselben Karte gehört.
+  - „Verbindung widerrufen" verwirft die Karte, sperrt neue Übermittlung, schliesst die
+    Kernsitzung (`…/close`) und führt einen bereits gespeicherten Entwurf mit Herkunft als
+    widerrufen — gelöscht wird nichts.
+  - `panel.html`/`panel.js` zeigen die Kontextkarte (Browser, Seite, Markierung, Zeit, Tabelle,
+    nicht Gelesenes, verbunden/veraltet) sowie Sperrgrund und nächsten Schritt.
+- Tests: `tests/klara-browser/kontext.test.ts` (Vertrag, AC01 mit echtem `selection.js` auf dem
+  synthetischen Datenblatt BPA-S01) und `tests/klara-browser/kontext-weg.test.ts` (echter Worker,
+  echte Leiste, echtes Fastify mit dem Klara-Sitzungsweg).
 
 **Stand je Kriterium:**
 
 | Kriterium | Stand |
 |-----------|-------|
-| AC01 Tabellenbereich, URL, Fassung; Assistenzfenster zählt nicht | Vertrag + Test (Simulation) |
-| AC02 Zwei Tabs, verspätete Antwort | Vertrag + Test (Simulation) |
-| AC03 Konto-/Mandantenwechsel | Vertrag + Test (Simulation) |
-| AC04 Einmalige Freigabe vs. Bereichsfreigabe | Vertrag + Test (Simulation); die tatsächliche Chrome-Regel ist nur nachgebildet |
-| AC05 Domain, privates Fenster, Frame, interne Seiten | Vertrag + Test (Simulation) |
-| AC06 DOM-Tabelle / laufende Seite / PDF getrennt ausgewiesen | Vertrag + Test: Tabelle unterstützt, laufende Seite nur Momentaufnahme, PDF **nicht geliefert** |
-| AC07 Systemauftrag im Seitentext | Vertrag + Test (Simulation) |
-| AC08 Widerruf | Vertrag + Test (Simulation) |
-| AC09 Quelländerung | Vertrag + Test (Simulation) |
+| AC01 Tabellenbereich, URL, Fassung; Assistenzfenster zählt nicht | Vertrag + Browserweg im Prüfstand (Worker, Leiste, Kern) |
+| AC02 Zwei Tabs, verspätete Antwort | Vertrag + Browserweg: späte Kernbestätigung nach Tabwechsel wird nicht gebunden |
+| AC03 Konto-/Mandantenwechsel | Vertrag + Browserweg (abgelaufene Anmeldung, anderes Konto) |
+| AC04 Einmalige Freigabe vs. Bereichsfreigabe | Vertrag + Browserweg; Chromes Regel ist nachgebildet, nicht im echten Chrome gemessen. Eine Bereichsfreigabe einzurichten bietet die Leiste noch nicht an — ohne sie gibt es keine Beobachtung |
+| AC05 Domain, privates Fenster, Frame, interne Seiten | Vertrag + Browserweg inkl. sichtbarem Grund/nächstem Schritt in der Leiste |
+| AC06 DOM-Tabelle / laufende Seite / PDF getrennt ausgewiesen | Tabelle unterstützt, laufende Seite nur Momentaufnahme, PDF **nicht geliefert** |
+| AC07 Systemauftrag im Seitentext | Vertrag + Browserweg (kein weiterer Abruf, keine Aktion) |
+| AC08 Widerruf | Vertrag + Browserweg (Kernsitzung geschlossen, Entwurf bleibt) |
+| AC09 Quelländerung | Vertrag + Browserweg (Text und Tabellenstruktur) |
 | AC10 Reale Erweiterung mit installiertem Begleiter auf diesem Mac | **offen** — siehe 4 |
 
 ## 4 · Grenzen, Widersprüche, fehlende Belege
 
-- **Nicht verdrahtet.** `kontext.js` wird von `worker.js` und `panel.js` noch nicht geladen; die
-  Leiste zeigt die Kontextkarte also noch nicht an, und die Erweiterung erteilt noch keine
-  `einmalig`-/`bereich`-Freigaben über diesen Vertrag. Die Prüfungen sind Simulation bzw.
-  Agentenprüfung, kein Hostnachweis (G13).
-- **Kein Begleiter, kein Kern-Schema im Baum.** `apps/desktop/klara-begleiter/` existiert in
-  diesem Arbeitsbaum nicht; ebenso kein gemeinsames Kontextschema aus
-  `produkt:20261010:klara-office-gemeinsamer-kern`. Native Messaging ist im Manifest bewusst
-  **nicht** angefordert. Die Karte folgt G04 und wird auf das Kern-Schema abgebildet, sobald es
-  geliefert ist — kein zweiter Kern.
+- **Prüfstand, kein Host.** Chrome selbst (Tabs, Skripteinsatz, Sitzungsspeicher) ist in den Tests
+  gestellt; Worker, Leiste, Vertrag und Server laufen echt. Das ist Agentenprüfung, kein
+  Hostnachweis (G13).
+- **Kein Begleiter, kein separates Kern-Schema im Baum.** `apps/desktop/klara-begleiter/` und ein
+  Core-/Native-Kandidat aus `produkt:20261010:klara-office-gemeinsamer-kern` existieren in diesem
+  Arbeitsbaum nicht (auch kein Zweig dafür). Angeschlossen ist deshalb der vorhandene,
+  authentifizierte Klara-Sitzungsweg des Servers — kein zweiter Kern. Native Messaging ist im
+  Manifest bewusst **nicht** angefordert.
+- **Keine Frage an das Modell.** Das Verbinden registriert Kontext und Sitzung; eine Erklärung der
+  Markierung durch Klara (Ausführungsweg mit Zustimmung/Dokumenttext-Riegel) ist in diesem
+  Auftrag nicht verdrahtet und wurde nicht ausgelöst.
 - **AC10 offen.** Benötigt: installierter Begleiter, reale Chrome-Version auf diesem Mac, geladene
   Erweiterung, menschliche Bedienung und Protokoll. Ein DOM-Test oder eine Figur auf dem
   Bildschirm zählt ausdrücklich nicht.
-- **Tatsächliche Chrome-Version** ist nicht gebunden (O01); der Test verwendet einen
-  Platzhalter `141.0.0.0`.
+- **Tatsächliche Chrome-Version** ist nicht gebunden (O01). Die Erweiterung liest die
+  Hauptversion aus der Browserkennung; der Vertragstest verwendet den Platzhalter `141.0.0.0`.
 - **Quellenwiderspruch im README:** `extensions/klara-browser/README.md` nennt „Chrome-Erweiterung
   0.2.0" und führt CHR-04 bis CHR-08 als „noch nicht enthalten"; Manifest `0.4.1` und die Commits
   `a7a168d7e`/`041218b30` liefern diese Umfänge. Das README ist nicht Teil dieses Auftrags und

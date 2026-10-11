@@ -1039,4 +1039,84 @@
     () => markeHolen(true),
   );
   // KW-MARKE-END
+  // ================================================================================================
+  // KW-KONTEXT · BPA-01 — DIE KONTEXTKARTE IN DER LEISTE.
+  // ================================================================================================
+  //
+  // Sie zeigt, welche Seite und welche Markierung Klara gerade kennt (Browser, Seite, Markierung,
+  // Erfassungszeit), ob sie mit dem Klara-Kern verbunden ist, was NICHT gelesen wurde — und bei
+  // einer Sperre den Grund samt zulässigem nächsten Schritt. Die Antworten kommen vom Worker
+  // (`KontextSicht`); die Leiste rechnet nichts selbst und sendet nichts ins Netz.
+  //
+  // KEINE ABFRAGESCHLEIFE: gefragt wird nach dem Aufbau, auf Knopfdruck und wenn sich Karte, Sperre,
+  // Kernbindung oder Anmeldung im Sitzungsspeicher ändern. Die Frage selbst schreibt nichts.
+  /** @type {import("./types").KontextSicht | null} */
+  let kontextStand = null;
+  let kontextLaeuft = false;
+  /** @param {unknown} antwort @returns {antwort is import("./types").KontextSicht} */
+  const istKontext = (antwort) =>
+    typeof antwort === "object" &&
+    antwort !== null &&
+    /** @type {{kontext?: unknown}} */ (antwort).kontext === true;
+  function kontextZeigen() {
+    const stand = kontextStand;
+    const karte = stand?.karte ?? null;
+    const grund = stand?.sperre ?? null;
+    $("kontext").hidden = !karte && !grund;
+    $("kontext-karte").hidden = !karte;
+    $("kontext-browser").textContent = karte?.browser ?? "";
+    $("kontext-seite").textContent = karte ? `${karte.seite} · ${karte.domain}` : "";
+    $("kontext-auswahl").textContent = karte?.auswahl ?? "";
+    $("kontext-zeit").textContent = karte?.erfasstAm ?? "";
+    $("kontext-tabelle").hidden = !karte?.tabelle;
+    $("kontext-luecken").hidden = !karte;
+    $("kontext-rahmen").hidden = !karte?.nichtGeliefert.includes("eingebetteter_rahmen");
+    $("kontext-verbunden").hidden = !stand?.verbunden;
+    $("kontext-veraltet").hidden = !karte?.veraltet;
+    $("kontext-import").hidden = !stand?.importe.some((i) => i.verbindung === "widerrufen");
+    const text = grund ? globalThis.KlaraKontext?.sperrText(grund, language) : null;
+    $("kontext-sperre").hidden = !text;
+    $("kontext-sperre").textContent = text?.text ?? "";
+    $("kontext-schritt").hidden = !text;
+    $("kontext-schritt").textContent = text?.naechsterSchritt ?? "";
+    $("kontext-verbinden").disabled =
+      kontextLaeuft || !karte || karte.veraltet || stand?.verbunden === true;
+    $("kontext-widerrufen").disabled = kontextLaeuft || (!karte && !stand?.verbunden);
+  }
+  /** @param {"kontext" | "kontextVerbinden" | "kontextWiderrufen"} art */
+  async function kontextFragen(art) {
+    const handlung = art !== "kontext";
+    if (handlung) {
+      kontextLaeuft = true;
+      kontextZeigen();
+    }
+    try {
+      const antwort = await chrome.runtime.sendMessage({ type: art });
+      if (istKontext(antwort)) kontextStand = antwort;
+    } catch {
+      // Ohne Antwort bleibt die letzte Karte stehen; der nächste Anlass fragt erneut.
+    } finally {
+      if (handlung) kontextLaeuft = false;
+      kontextZeigen();
+    }
+  }
+  $("kontext-verbinden").addEventListener("click", () => void kontextFragen("kontextVerbinden"));
+  $("kontext-widerrufen").addEventListener("click", () => void kontextFragen("kontextWiderrufen"));
+  $("language").addEventListener("change", kontextZeigen);
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "session") return;
+    if (
+      "kontext" in changes ||
+      "kontextSperre" in changes ||
+      "kern" in changes ||
+      "auth" in changes
+    )
+      void kontextFragen("kontext");
+  });
+  // Wie die Marke: erst nach dem Aufbau, nie als erste Nachricht der Leiste.
+  void aufbau.then(
+    () => kontextFragen("kontext"),
+    () => kontextFragen("kontext"),
+  );
+  // KW-KONTEXT-END
 })();

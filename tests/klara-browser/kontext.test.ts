@@ -10,109 +10,23 @@
 import { createRequire } from "node:module";
 import { createContext, runInContext } from "node:vm";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Piece, Variants } from "../../extensions/klara-browser/types";
+import type {
+  KontextAntwort as Antwort,
+  Erfassung,
+  Freigabe,
+  Karte,
+  KontextApi,
+  Konto,
+  Piece,
+  Variants,
+  KontextZustand as Zustand,
+} from "../../extensions/klara-browser/types";
 import { read } from "./harness";
 
-type Konto = { mandant: string; nutzer: string; sitzung: string };
-type Sperre = { grund: string; text: string; naechsterSchritt: string };
-type Freigabe =
-  | { art: "einmalig"; tabId: number; url: string; erteiltAm: string }
-  | { art: "bereich"; herkunft: string; erteiltAm: string };
-type Tabelle = { zeilen: { kopf: boolean; zellen: string[] }[] };
-type Karte = {
-  schema: string;
-  folge: number;
-  konto: Konto;
-  host: { browser: string; version: string; erweiterung: string };
-  tabId: number;
-  url: string;
-  titel: string;
-  auswahl: { text: string; tabelle: Tabelle | null };
-  fassung: string;
-  erfasstAm: string;
-  freigabe: string;
-  faehigkeiten: { art: string; status: string; text: string; adresse?: string }[];
-  hinweise: string[];
-  aktionen: string[];
-  veraltet: boolean;
-};
-type Zustand = {
-  konto: Konto;
-  folge: number;
-  karte: Karte | null;
-  verlauf: { folge: number; url: string }[];
-  freigaben: Freigabe[];
-  widerrufen: string[];
-  importe: { draftId: string; herkunft: string; fassung: string; verbindung: string }[];
-};
-type Erfassung = {
-  quelle: "seite" | "assistenzfenster";
-  tabId: number;
-  url: string;
-  titel: string;
-  text: string;
-  nodes?: Piece[];
-  gaps?: { kind: string; detail: string }[];
-  incognito?: boolean;
-  frameId?: number;
-  pdfUrl?: string;
-  browser: { name: string; version: string };
-  erweiterung: string;
-};
-type Ziel = { url: string; tabId: number; incognito?: boolean; frameId?: number };
-type Antwort = { folge: number; tabId: number; konto: Konto; fassung: string };
-type Gebunden = { zustand: Zustand; karte: Karte | null; sperre: Sperre | null };
-type Api = {
-  SCHEMA: string;
-  fassung(text: string): string;
-  sitzung(konto: Konto): Zustand;
-  zugang(zustand: Zustand, ziel: Ziel): { erlaubt: boolean; sperre?: Sperre };
-  beobachtenErlaubt(zustand: Zustand, url: string): boolean;
-  freigeben(zustand: Zustand, freigabe: Freigabe): Zustand;
-  binden(zustand: Zustand, erfassung: Erfassung, jetzt: string): Gebunden;
-  wechseln(
-    zustand: Zustand,
-    ereignis:
-      | { art: "tab" | "geschlossen"; tabId: number }
-      | { art: "navigation"; tabId: number; url: string },
-  ): Zustand;
-  kontoWechseln(zustand: Zustand, konto: Konto): Zustand;
-  antwortPruefen(
-    zustand: Zustand,
-    antwort: Antwort,
-  ): { zustellen: boolean; grund: string; einfuegeziel: { tabId: number; url: string } | null };
-  abgleichen(
-    zustand: Zustand,
-    frisch: { tabId: number; url: string; text: string },
-  ): { zustand: Zustand; aktuell: boolean; sperre: Sperre | null; neueFassung: string };
-  uebermittlung(zustand: Zustand): {
-    erlaubt: boolean;
-    sperre: Sperre | null;
-    daten: {
-      folge: number;
-      url: string;
-      fassung: string;
-      inhaltsrolle: string;
-      auswahl: { text: string; tabelle: Tabelle | null };
-    } | null;
-  };
-  anzeige(karte: Karte): {
-    browser: string;
-    seite: string;
-    domain: string;
-    auswahl: string;
-    tabelle: boolean;
-    veraltet: boolean;
-    nichtGeliefert: string[];
-  };
-  importMerken(zustand: Zustand, draftId: string): Zustand;
-  widerrufen(zustand: Zustand, domain: string): Zustand;
-};
-
-function laden(): Api {
+function laden(): KontextApi {
   const kontext = createContext({ URL });
   runInContext(read("kontext.js"), kontext);
-  return (kontext as { KlaraKontext: Api }).KlaraKontext;
+  return (kontext as { KlaraKontext: KontextApi }).KlaraKontext;
 }
 const K = laden();
 
@@ -234,7 +148,9 @@ describe("BPA-01 · Kontextkarte im Browser (Adaptervertrag, kein Hostnachweis)"
       ],
     });
     expect(JSON.stringify(karte)).not.toContain("V-18");
-    expect(karte.fassung).toBe(K.fassung(seite.text));
+    // Die Quellfassung versioniert die übermittelte Auswahl: Text UND Tabellenstruktur.
+    expect(karte.fassung).toBe(K.auswahlFassung(seite.text, karte.auswahl.tabelle));
+    expect(karte.fassung).not.toBe(K.auswahlFassung(seite.text, null));
     expect(karte.erfasstAm).toBe(JETZT);
     expect(karte.host).toEqual({ browser: "Chrome", version: "141.0.0.0", erweiterung: "0.4.1" });
     expect(karte.konto).toEqual(PETER);
@@ -315,28 +231,53 @@ describe("BPA-01 · Kontextkarte im Browser (Adaptervertrag, kein Hostnachweis)"
     expect(K.antwortPruefen(neu, { ...spaet, konto: ANDERE }).zustellen).toBe(false);
     // Die Freigabe des alten Kontos trägt nicht hinüber.
     expect(K.binden(neu, erfassung(), JETZT).sperre?.grund).toBe("domain_nicht_freigegeben");
+
+    // So ordnet der Worker zu: ein anderer Nutzer ist ein Kontowechsel …
+    const zugeordnet = K.kontoZuordnen(mitImport, { ...PETER, nutzer: "nutzer-b" });
+    expect(zugeordnet.karte).toBeNull();
+    expect(JSON.stringify(zugeordnet)).not.toContain("Geheimer Rabatt");
+    // … eine neue Kernsitzung desselben Nutzers nicht: die Karte bleibt und trägt die Sitzung.
+    const gleicherNutzer = K.kontoZuordnen(mitImport, { ...PETER, sitzung: "kern-2" });
+    expect(gleicherNutzer.karte?.konto.sitzung).toBe("kern-2");
   });
 
   it("AC04 · einmalige Seitenfreigabe endet nach Chromes activeTab-Regel; Beobachtung nur mit Bereichsfreigabe", () => {
-    const z = offen(11, PRODUKT);
+    const { zustand: z, karte } = gebunden(offen(11, PRODUKT), erfassung());
     expect(K.zugang(z, { url: PRODUKT, tabId: 11 }).erlaubt).toBe(true);
     expect(K.beobachtenErlaubt(z, PRODUKT)).toBe(false);
     // Nur für diesen Tab.
     expect(K.zugang(z, { url: PRODUKT, tabId: 12 }).erlaubt).toBe(false);
-    // Ein Sprungziel im selben Dokument ist keine Navigation …
+    // Ein Sprungziel im selben Dokument ist keine Navigation: Freigabe UND Auswahl bleiben.
     const anker = K.wechseln(z, { art: "navigation", tabId: 11, url: `${PRODUKT}#technik` });
     expect(K.zugang(anker, { url: `${PRODUKT}#technik`, tabId: 11 }).erlaubt).toBe(true);
-    // … eine Navigation und das Schliessen beenden die Freigabe.
-    const weiter = K.wechseln(z, {
-      art: "navigation",
-      tabId: 11,
-      url: "https://shop.beispiel.test/ventile/v-18",
-    });
-    expect(weiter.freigaben).toEqual([]);
-    expect(K.zugang(weiter, { url: PRODUKT, tabId: 11 }).sperre?.grund).toBe(
+    expect(anker.karte?.folge).toBe(karte.folge);
+
+    // Navigation INNERHALB DERSELBEN HERKUNFT: Chrome behält `activeTab` — die Freigabe bleibt.
+    // Die konkrete Auswahl gehört aber zum alten Dokument und ist damit ungültig.
+    const v18 = "https://shop.beispiel.test/ventile/v-18";
+    const gleicheHerkunft = K.wechseln(z, { art: "navigation", tabId: 11, url: v18 });
+    expect(gleicheHerkunft.freigaben).toEqual(z.freigaben);
+    expect(K.zugang(gleicheHerkunft, { url: v18, tabId: 11 }).erlaubt).toBe(true);
+    expect(gleicheHerkunft.karte).toBeNull();
+    expect(K.uebermittlung(gleicheHerkunft).erlaubt).toBe(false);
+    expect(K.antwortPruefen(gleicheHerkunft, antwortAuf(z, karte)).einfuegeziel).toBeNull();
+    // Ein neues Dokument ohne bekannte Adresse beendet ebenso nur die Auswahl.
+    const neuesDokument = K.wechseln(z, { art: "dokument", tabId: 11 });
+    expect(neuesDokument.karte).toBeNull();
+    expect(neuesDokument.freigaben).toEqual(z.freigaben);
+
+    // Wechsel der HERKUNFT und Schliessen des Tabs beenden die Freigabe.
+    const fremd = K.wechseln(z, { art: "navigation", tabId: 11, url: "https://andere.test/x" });
+    expect(fremd.freigaben).toEqual([]);
+    expect(fremd.karte).toBeNull();
+    expect(K.zugang(fremd, { url: PRODUKT, tabId: 11 }).sperre?.grund).toBe(
       "domain_nicht_freigegeben",
     );
-    expect(K.wechseln(z, { art: "geschlossen", tabId: 11 }).freigaben).toEqual([]);
+    const geschlossen = K.wechseln(z, { art: "geschlossen", tabId: 11 });
+    expect(geschlossen.freigaben).toEqual([]);
+    expect(geschlossen.karte).toBeNull();
+    // Unbekanntes Ziel einer Navigation zählt als fremde Herkunft.
+    expect(K.wechseln(z, { art: "navigation", tabId: 11, url: "" }).freigaben).toEqual([]);
 
     const b = K.freigeben(K.sitzung(PETER), bereich("https://crm.beispiel.test"));
     expect(K.beobachtenErlaubt(b, "https://crm.beispiel.test/tickets/4711")).toBe(true);
@@ -506,6 +447,30 @@ describe("BPA-01 · Kontextkarte im Browser (Adaptervertrag, kein Hostnachweis)"
     expect(neu.karte.fassung).toBe(geaendert.neueFassung);
     expect(neu.karte.folge).toBeGreaterThan(karte.folge);
     expect(K.uebermittlung(neu.zustand).daten?.auswahl.text).toBe("V-17 10 bar 120 °C");
+  });
+
+  it("AC09 · eine geänderte Zell-/Zeilenzuordnung bei GLEICHEM Text ist eine neue Fassung", () => {
+    // Zwei Tabellen mit identischem Auswahltext, aber anderer Zellgrenze: „16 bar" gehört einmal
+    // zur Druckspalte, einmal ist „V-17 16" eine Zelle und „bar" die nächste.
+    const zelle = (text: string): Piece => ({ tag: "td", children: [{ tag: "#text", text }] });
+    const zeile = (...zellen: string[]): Piece => ({ tag: "tr", children: zellen.map(zelle) });
+    const vorher: Piece[] = [{ tag: "tbody", children: [zeile("V-17", "16 bar", "120 °C")] }];
+    const nachher: Piece[] = [{ tag: "tbody", children: [zeile("V-17 16", "bar", "120 °C")] }];
+    const text = "V-17 16 bar 120 °C";
+    expect(K.tabelle(vorher)).not.toEqual(K.tabelle(nachher));
+
+    const { zustand, karte } = gebunden(offen(), erfassung({ text, nodes: vorher }));
+    const gleich = K.abgleichen(zustand, { tabId: 11, url: PRODUKT, text, nodes: vorher });
+    expect(gleich.aktuell).toBe(true);
+    const umgebaut = K.abgleichen(zustand, { tabId: 11, url: PRODUKT, text, nodes: nachher });
+    expect(umgebaut.aktuell).toBe(false);
+    expect(umgebaut.sperre?.grund).toBe("quelle_geaendert");
+    expect(umgebaut.neueFassung).not.toBe(karte.fassung);
+    expect(umgebaut.zustand.karte?.veraltet).toBe(true);
+    // Der alte Tabellenkontext wird NICHT als aktuell freigegeben.
+    expect(K.uebermittlung(umgebaut.zustand)).toMatchObject({ erlaubt: false, daten: null });
+    // Ohne Tabelle frisch gelesen (Struktur verschwunden) ist ebenfalls eine neue Fassung.
+    expect(K.abgleichen(zustand, { tabId: 11, url: PRODUKT, text }).aktuell).toBe(false);
   });
 
   it("der Vertrag bleibt rein: kein Chrome-Aufruf, kein Netz, kein neues Recht im Manifest", () => {

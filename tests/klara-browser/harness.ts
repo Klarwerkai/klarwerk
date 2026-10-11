@@ -130,6 +130,8 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
     tabs: {
       onActivated: event("activated"),
       onUpdated: event("updated"),
+      // BPA-01: Chrome meldet das Schliessen eines Tabs; die einmalige Freigabe endet damit.
+      onRemoved: event("removed"),
     },
     scripting: {
       executeScript: async (options: unknown) => {
@@ -147,6 +149,11 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
     },
     i18n: { getMessage: () => "In Klarwerk übernehmen" },
   };
+  // BPA-01: `importScripts` ist BROWSERVERHALTEN des Workers — er lädt `kontext.js` aus dem Paket in
+  // genau diesen Kontext, wie Chrome es im Service Worker tut. Der Prüfling bleibt unverändert.
+  const importScripts = (...dateien: string[]) => {
+    for (const datei of dateien) runInContext(read(datei), context);
+  };
   const context = createContext({
     chrome,
     fetch: fetcher,
@@ -156,6 +163,7 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
     crypto: globalThis.crypto,
     setTimeout,
     clearTimeout,
+    importScripts,
   });
   const boot = () => runInContext(read("worker.js"), context);
   boot();
