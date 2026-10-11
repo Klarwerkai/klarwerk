@@ -1049,6 +1049,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/objects": { protection: "ko.create" },
   "GET /api/objects/:id": { protection: "ko.read", zeilenrecht: ["beurteileAnhang"] },
   "GET /api/objects/:id/raw": { protection: "ko.read", zeilenrecht: ["beurteileAnhang"] },
+  // R-0095: Rückverweis vom Anhang — Anhang wie /raw, je Träger zusätzlich der Lesefilter.
+  "GET /api/objects/:id/traeger": {
+    protection: "ko.read",
+    zeilenrecht: ["beurteileAnhang", "sichtbareFuer"],
+  },
 
   // --- media (media-routes.ts, SCRUM-382) ---
   "GET /api/media/status": { protection: "auth" },
@@ -1388,6 +1393,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit lesen + ausführen, beides nur Nutzerverwaltung.
   "GET /api/admin/factory-reset": { protection: "users.manage" },
   "POST /api/admin/factory-reset": { protection: "users.manage" },
+  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): Folgenvorschau lesen + Bestandsreset ausführen.
+  // Dieselbe Schranke wie der Werksreset; die Ausführung verlangt zusätzlich zweimal das Passwort,
+  // das Häkchen und die unveränderte Vorschaukennung (`admin-routes.ts`).
+  "GET /api/admin/bestandsreset": { protection: "users.manage" },
+  "POST /api/admin/bestandsreset": { protection: "users.manage" },
   // JOB 4025 (KUNDENBETRIEB-BACKUP): die LESENDE Sicherungsauskunft. Dieselbe Schranke wie jeder
   // andere Weg in `admin-routes.ts`, und das ist hier keine Formsache: die Antwort nennt den
   // ABSOLUTEN Pfad des Sicherungsverzeichnisses, die Namen der Dumps samt Zeitstempel und ihre
