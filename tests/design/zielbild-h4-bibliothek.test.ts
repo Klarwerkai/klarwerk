@@ -384,6 +384,14 @@ describe("JOB 3063 · H4 · die Bibliothek gegen ihr Mockup — echte Seite, Chr
 // Bis zu diesem Auftrag war das eine EIGENE Seite mit dreizehn Karten. Sie ist ersetzt, nicht
 // danebengestellt: hier wird gemessen, dass die Adresse dieselbe Zwei-Flächen-Struktur liefert, mit
 // dem genannten Eintrag rechts — und dass die dreizehn Karten dort NICHT mehr offen liegen.
+//
+// Ben, Nacharbeit 28: der Hauptstand hat seither zwei EIGENE, gesondert beauftragte Bereiche
+// nachgeordnet an die Lesefläche gestellt — die Veröffentlichung (produkt:20261007:
+// veroeffentlichungsoptionen, für jeden Leser) und die Verständnisfragen
+// (aufnahme:20260922:gesamt-lernwege, mit Bearbeitungsrecht). Sie sind keine Karten der alten
+// Detailseite; gezählt werden sie getrennt und namentlich, damit jede andere Karte weiter auffällt.
+const EIGENE_BEREICHE = ["veroeffentlichung-bereich", "verstaendnis-bereich"];
+
 describe("JOB 3063 · H4 · /wissen/:id ist dieselbe Fläche mit vorgewähltem Eintrag", () => {
   let d: H4Stand | null = null;
   let dFehler: string | null = null;
@@ -409,21 +417,26 @@ describe("JOB 3063 · H4 · /wissen/:id ist dieselbe Fläche mit vorgewähltem E
       gewaehlt: string;
       zeilen: number;
       karten: number;
+      eigeneBereiche: string[];
       abschnitteOffen: number;
     }>(
-      fn(`() => {
+      fn(`(eigene) => {
         const zeilen = [...document.querySelectorAll('[data-testid="bib-zeile"]')];
         const gewaehlt = zeilen.find((z) => z.getAttribute('aria-current') === 'true');
+        const alle = [...document.querySelectorAll('main .rounded-card')];
+        const eigen = alle.filter((k) => eigene.includes(k.getAttribute('data-testid') || ''));
         return {
           liste: getComputedStyle(document.querySelector('[data-testid="bib-liste"]')).width,
           lesen: getComputedStyle(document.querySelector('[data-testid="bib-lesen"]')).width,
           titel: document.querySelector('[data-testid="bib-titel"]').textContent.trim(),
           gewaehlt: gewaehlt ? gewaehlt.querySelector('[data-bib-text="zeile-titel"]').textContent.trim() : '',
           zeilen: zeilen.length,
-          karten: document.querySelectorAll('main .rounded-card').length,
+          karten: alle.length - eigen.length,
+          eigeneBereiche: eigen.map((k) => k.getAttribute('data-testid')),
           abschnitteOffen: document.querySelectorAll('[data-bib-abschnitt]').length,
         };
       }`),
+      EIGENE_BEREICHE,
     );
     console.info(`JOB 3063 H4 · /wissen/:id: ${JSON.stringify(befund)}`);
     expect(befund.liste).toBe("380px");
@@ -434,8 +447,10 @@ describe("JOB 3063 · H4 · /wissen/:id ist dieselbe Fläche mit vorgewähltem E
     // Zugeklappt als Vorgabe: die dreizehn Abschnitte sind erst NACH „Mehr" im Dokument.
     expect(befund.abschnitteOffen).toBe(0);
     // Die dreizehn Karten der alten Detailseite gibt es nicht mehr; übrig bleibt die eine
-    // „Mehr"-Karte (plus, im Fall, die Panels für Rückfrage/Löschen — hier keins).
+    // „Mehr"-Karte (plus, im Fall, die Panels für Rückfrage/Löschen — hier keins). Die gesondert
+    // beauftragten Bereiche stehen höchstens je einmal da.
     expect(befund.karten).toBeLessThanOrEqual(2);
+    expect(new Set(befund.eigeneBereiche).size).toBe(befund.eigeneBereiche.length);
   }, 60_000);
 
   it("D2 · ein Klick auf einen anderen Eintrag wechselt Fläche UND Adresse — die Liste bleibt", async () => {

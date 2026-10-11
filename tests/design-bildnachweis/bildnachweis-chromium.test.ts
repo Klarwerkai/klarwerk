@@ -772,8 +772,12 @@ describe("R-1399 · Sichtnachweis: Lesetexte aus dem Hauptstand auf 11 px", () =
       artikelId: artikel,
       absatz: 1,
     };
+    // Ben, Nacharbeit 28: ohne `betrieb` gilt seit „Klara 01“ der echte Betrieb (zustand.ts
+    // `laden()`), und der Demo-Verlauf mit Kennzeichen und Nachrichtenkopf wird gar nicht gezeichnet.
+    // Gemessen werden soll genau dieser Verlauf — deshalb ausdrücklich der Demo-Betrieb der Vorschau.
     const zustand = {
       offen: true,
+      betrieb: "demo",
       ansicht: "kompakt",
       status: "entscheidung",
       geparkt: { artikelId: artikel, absatz: 1 },
