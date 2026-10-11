@@ -251,6 +251,8 @@ describe("P05 · Löschung der Wissenskopie während einer laufenden Antwort", (
           externalId: "P-SPX9",
           spaceKey: "K",
           sourceVersion: 1,
+          author: adminId,
+          at: new Date().toISOString(),
         },
       ],
     });
