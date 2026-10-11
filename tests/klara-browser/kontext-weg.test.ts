@@ -76,17 +76,35 @@ const PASSWORT = "test-password-bpa01";
 /** Ein Worker vor dem echten Fastify. Jeder Abruf wird mit Pfad, Körper und Status notiert. */
 async function bahn() {
   const app = buildApp(buildServices());
+  const kennungen: string[] = [];
   for (const [name, email, password] of [
     ["Kontext A", EMAIL, PASSWORT],
     ["Kontext B", "kontext-b@example.test", PASSWORT],
     // Das Konto, mit dem sich die Leiste in `panel-dom.ts` anmeldet.
     ["Leiste", "a@example.test", "fixture-password"],
-  ])
-    await app.inject({
+  ]) {
+    const konto = await app.inject({
       method: "POST",
       url: "/api/auth/register",
       payload: { name, email, password },
     });
+    kennungen.push(konto.json().id as string);
+  }
+  // Weitere Konten meldet die Anmeldung erst nach Freigabe an (sonst 403 „denied") — freigegeben
+  // wird wie im Bestand durch das erste Konto (`package.test.ts`, „andere Konten …").
+  const erstes = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: EMAIL, password: PASSWORT },
+  });
+  for (const id of kennungen.slice(1)) {
+    const freigabe = await app.inject({
+      method: "POST",
+      url: `/api/auth/users/${id}/approve`,
+      headers: { authorization: `Bearer ${erstes.json().token as string}` },
+    });
+    expect(freigabe.statusCode, `Freigabe ${id}`).toBeLessThan(300);
+  }
   const aufrufe: Aufruf[] = [];
   let kernGehalten: Promise<void> | null = null;
   let kernAngefragt = 0;

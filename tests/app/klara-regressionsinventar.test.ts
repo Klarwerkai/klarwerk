@@ -280,6 +280,12 @@ const INVENTAR: readonly string[] = [
   // dazwischen die Rückfrage statt eines Links auf den überholten Stand. K2 meldete den Pfad
   // (Achse `name`, `tests/klara-browser/`), das Inventar nimmt ihn nicht still auf.
   "tests/klara-browser/zwischenablage.test.ts",
+  // BPA-01 (aufnahme:20260922:gesamt-browser-kontextkarten): der Kontextvertrag `kontext.js` und der
+  // Browserweg der Kontextkarte (Worker, Leiste, Klara-Sitzungsweg). K2 meldete beide Pfade (Achse
+  // `name`, `tests/klara-browser/`); nachgeführt sind genau diese zwei Einträge. Die übrigen 48
+  // Meldungen desselben Laufs stammen aus fremden Aufträgen und sind hier NICHT aufgenommen.
+  "tests/klara-browser/kontext-weg.test.ts",
+  "tests/klara-browser/kontext.test.ts",
   // JOB 3606: die drei Befunde vom 11.09. an der Leiste im Browser — die neue Übernahme, die auf
   // einen offenen Vorgang trifft (sie verschwand stumm, Befunde a und b), der Tabwechsel, der
   // während eines Vorgangs verlorenging, und der Grund, den der Server seiner Abweisung mitgibt.
