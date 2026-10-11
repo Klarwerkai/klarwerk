@@ -1042,9 +1042,10 @@ async function antwortLauf(
      * prüfen — mit demselben Guard wie am Eingang. Wurde das Konto während der Verarbeitung lokal
      * gesperrt (Befristung abgelaufen, Verzeichnis-Austritt) oder hat es das Leserecht verloren,
      * hat der Guard bereits 401/403 gesendet, und die fertige Antwort verlässt den Server nicht.
-     * Nur auf Sitzungswegen gesetzt; der Schlüsselweg hat keine Sitzung.
+     * Nur auf Sitzungswegen gesetzt; der Schlüsselweg hat keine Sitzung. Liefert den FRISCH
+     * aufgelösten Nutzer — mit ihm wird danach das Leserecht an jeder Quelle geprüft.
      */
-    readonly nachpruefung?: () => Promise<boolean>;
+    readonly nachpruefung?: () => Promise<SessionUser | undefined>;
   },
 ): Promise<void> {
   const ask = deps.ask;
@@ -1131,9 +1132,38 @@ async function antwortLauf(
     out.aussagen && request.authContext?.authKind === "addon"
       ? { aussagen: aufKernaussagenBeschraenkt(out.aussagen) }
       : {};
-  // P05 (B-10): nach dem letzten Warten, vor der Auslieferung — kein `await` mehr dazwischen.
-  if (lauf.nachpruefung && !(await lauf.nachpruefung())) {
-    return;
+  // P05 (B-10): nach dem letzten Warten der Antwort, vor der Auslieferung — die Anmeldung erneut.
+  let sichtJetzt = grundlage;
+  if (lauf.nachpruefung) {
+    const frisch = await lauf.nachpruefung();
+    if (!frisch) {
+      return;
+    }
+    sichtJetzt = sichtbarkeitsfilterFuer(frisch);
+  }
+  // P05-AC03 (Ben, Nacharbeit 4): LESERECHTSENTZUG WÄHREND DER VERARBEITUNG. Die Antwort entstand
+  // aus Quellen, die der Fragende beim Eingang sehen durfte. Wurde ihm inzwischen das Leserecht an
+  // einer davon entzogen (Hochstufung auf vertraulich, Space-/Rollenentzug, Löschung), verlässt die
+  // fertige Antwort den Server nicht: jede herangezogene Quelle wird mit dem AKTUELLEN Stand des
+  // Objekts und des Nutzers gegen dieselbe Sichtregel gehalten, Vertrauliches fällt wie im
+  // Fragedienst immer heraus. Die Absage nennt keine Quelle und keinen Inhalt.
+  // Grenze, benannt: zwischen dieser Lesung und dem Senden liegt kein weiteres Warten; ein Entzug
+  // NACH dem Senden wirkt auf die nächste Anfrage (Beleg- und Frageweg prüfen am Eingang).
+  const herangezogen = [...new Set([...out.result.sources, ...out.result.citedSources])];
+  for (const id of herangezogen) {
+    const jetzt = await deps.ko.get(id);
+    if (!jetzt || isConfidential(jetzt.confidentiality) || !sichtJetzt(jetzt)) {
+      reply.code(409).send({
+        error: "QUELLRECHTE_GEAENDERT",
+        message:
+          lauf.locale === "en"
+            ? "Access to a source used for this answer changed while it was being prepared. Please ask again."
+            : lauf.locale === "nl"
+              ? "De toegang tot een bron voor dit antwoord is tijdens het opstellen gewijzigd. Stel de vraag opnieuw."
+              : "Der Zugriff auf eine herangezogene Quelle hat sich während der Antwort geändert. Bitte erneut fragen.",
+      });
+      return;
+    }
   }
   // AUFNAHME 20260922: `belastbarkeit` steht NEBEN `evidence`, nicht darin — die Einstufung
   // bleibt der unveränderte Vertrag, den Word und die Paritätstafel lesen.
@@ -1302,10 +1332,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             // P05 (B-10): nur der Sitzungsweg — der Schlüsselweg hat keine Sitzung zum Nachprüfen.
             ...(request.authContext?.authKind === "addon"
               ? {}
-              : {
-                  nachpruefung: async () =>
-                    (await guards.requirePermission("ko.read", request, reply)) !== undefined,
-                }),
+              : { nachpruefung: () => guards.requirePermission("ko.read", request, reply) }),
           });
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
@@ -2166,8 +2193,7 @@ export function klaraAusfuehrungRoutes(
             // R-0346: Klaras Zugang ist immer an ein Word-Dokument gebunden.
             anlass: "dokument",
             // P05 (B-10): Klaras Zugang ist immer ein Sitzungsweg.
-            nachpruefung: async () =>
-              (await guards.requirePermission("ko.read", request, reply)) !== undefined,
+            nachpruefung: () => guards.requirePermission("ko.read", request, reply),
           });
         };
         if (freigegeben) {

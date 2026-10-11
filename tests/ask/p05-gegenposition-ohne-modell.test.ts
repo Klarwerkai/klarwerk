@@ -198,6 +198,35 @@ describe("P05-AC08 · Negation ist ein bedeutungstragender Unterschied (Ben, Nac
   });
 });
 
+describe("P05-AC08 · Vorzeichen sind ein bedeutungstragender Unterschied (Ben, Nacharbeit 4)", () => {
+  // Bis Kandidat 710c0bb4 entfernte der Wortlautvergleich alle Nicht-Buchstaben/-Ziffern; „-10 °C"
+  // und „+10 °C" galten als gleich, die abweichende bestätigte Quelle wurde übersprungen.
+  const MINUS = "Zulässige Umgebungstemperatur am Hubtisch: -10 °C.";
+  const PLUS = "Zulässige Umgebungstemperatur am Hubtisch: +10 °C.";
+
+  it("G7 sonst gleiche bestätigte Aussagen mit -10 °C und +10 °C: beide sichtbar, Rückfrage, nicht gesichert", async () => {
+    const a = await aufbau();
+    const minus = await a.anlegen("Hubtisch Umgebungstemperatur (Notiz A)", MINUS);
+    const plus = await a.anlegen("Hubtisch Umgebungstemperatur (Notiz B)", PLUS);
+    await a.bestaetigen(minus);
+    await a.bestaetigen(plus);
+
+    const { result, gap } = await a.ask.ask(
+      "Welche Umgebungstemperatur ist am Hubtisch zulässig?",
+      "viewer",
+    );
+    expect(result.answered).toBe(true);
+    expect(gap).toBeNull();
+    const text = result.answer ?? "";
+    expect(text).toContain(`: ${MINUS}`);
+    expect(text).toContain(`: ${PLUS}`);
+    expect(text).toContain("Ohne KI-Modell fand keine Widerspruchsprüfung statt");
+    expect(text).toContain("Rückfrage: Welche dieser Quellen gilt für Ihren Fall?");
+    expect(result.knowledgeClass).not.toBe("gesichert");
+    expect([...result.citedSources].sort()).toEqual([minus, plus].sort());
+  });
+});
+
 describe("P05-AC08 · Gegenfälle", () => {
   it("G4 zwei bestätigte Quellen mit gleichem Wortlaut: keine Gegenüberstellung", async () => {
     const a = await aufbau();

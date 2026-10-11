@@ -11,8 +11,12 @@
 //   S3  Wiedernutzung nach Sperre: der zuvor ausgestellte Antwortbeleg („Hat geholfen") und eine
 //       erneute Frage werden abgewiesen; der Fragedienst wird nicht mehr erreicht, der
 //       Vertrauenswert der Quelle bleibt unverändert.
+//   S4  (Ben, Nacharbeit 4) Leserechtsentzug WÄHREND der Verarbeitung (Hochstufung auf vertraulich):
+//       409 ohne Wortlaut, Titel und Kennung; das Konto bleibt angemeldet.
+//   S5  danach weder über eine erneute Frage noch über den Objektabruf wiederverwendbar.
+//   S6  Kalibrierung: Entzug an einer nicht herangezogenen Quelle hält die Antwort nicht auf.
 // NICHT gemessen: ein echter Modellaufruf (ohne KI-Freigabe läuft der deterministische Ersatz) und
-// Hintergrundjobs anderer Aufträge; der Rechteentzug (Leserecht) gehört zum Rechteentzugsauftrag.
+// die Hintergrundjobs/Gespräche des Rechteentzugsauftrags (rechteentzug-gespraeche-belege).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
@@ -124,5 +128,79 @@ describe("P05 · lokale Sperre während einer laufenden Antwort", () => {
     expect(erneut.statusCode).toBe(401);
     expect(erneut.body).not.toContain(AUSSAGE);
     expect(verarbeitet).not.toHaveBeenCalled();
+  });
+});
+
+// Ben, Nacharbeit 4 — P05-AC03: LESERECHTSENTZUG WÄHREND DER VERARBEITUNG. Der Entzug ist der echte
+// Produktweg (Hochstufung auf „vertraulich", `KoService.setConfidentiality`), derselbe wie in
+// `tests/klara-quellen-nutzerweg/entzug-sperrt-die-quelle.test.ts`. Das Konto bleibt angemeldet.
+describe("P05-AC03 · Leserechtsentzug während einer laufenden Antwort", () => {
+  it("S4 Entzug WÄHREND der Verarbeitung: keine Ausgabe, kein Wortlaut, keine Quelle im Rumpf", async () => {
+    const headers = await anmelden();
+    const original = services.ask.ask.bind(services.ask);
+    const verarbeitet = vi.spyOn(services.ask, "ask").mockImplementation(async (...args) => {
+      const out = await original(...args);
+      // Die Antwort ist aus der berechtigten Quelle fertig — jetzt wird das Leserecht entzogen.
+      await services.ko.setConfidentiality(koId, "vertraulich", adminId);
+      return out;
+    });
+
+    const res = await fragen(headers);
+    expect(verarbeitet).toHaveBeenCalledTimes(1);
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().error).toBe("QUELLRECHTE_GEAENDERT");
+    expect(res.body).not.toContain(AUSSAGE);
+    expect(res.body).not.toContain(TITEL);
+    expect(res.body).not.toContain(koId);
+    expect(res.body).not.toContain("receipt");
+    // Die Sitzung selbst bleibt — entzogen wurde das Recht an der Quelle, nicht das Konto.
+    const me = await app.inject({ method: "GET", url: "/api/auth/me", headers });
+    expect(me.statusCode).toBe(200);
+  });
+
+  it("S5 nach dem Entzug: keine Wiedernutzung über erneute Frage oder Objektabruf", async () => {
+    const headers = await anmelden();
+    const vorher = await fragen(headers);
+    expect(vorher.statusCode, vorher.body).toBe(200);
+    expect(vorher.json().result.citedSources).toEqual([koId]);
+
+    await services.ko.setConfidentiality(koId, "vertraulich", adminId);
+
+    const erneut = await fragen(headers);
+    expect(erneut.body).not.toContain(AUSSAGE);
+    if (erneut.statusCode === 200) {
+      expect(erneut.json().result.sources).not.toContain(koId);
+      expect(erneut.json().result.citedSources).not.toContain(koId);
+    }
+    const objekt = await app.inject({ method: "GET", url: `/api/kos/${koId}`, headers });
+    const erfunden = await app.inject({
+      method: "GET",
+      url: "/api/kos/gibt-es-nicht-p05",
+      headers,
+    });
+    expect(objekt.statusCode).not.toBe(200);
+    expect(objekt.statusCode).toBe(erfunden.statusCode);
+    expect(objekt.body).not.toContain(AUSSAGE);
+  });
+
+  it("S6 Kalibrierung: ein Entzug an einer NICHT herangezogenen Quelle hält die Antwort nicht auf", async () => {
+    const fremd = await services.ko.create({
+      title: "Pausenraum lüften",
+      statement: "Den Pausenraum zweimal täglich lüften.",
+      type: "best_practice",
+      category: "Allgemein",
+      author: adminId,
+    });
+    const headers = await anmelden();
+    const original = services.ask.ask.bind(services.ask);
+    vi.spyOn(services.ask, "ask").mockImplementation(async (...args) => {
+      const out = await original(...args);
+      await services.ko.setConfidentiality(fremd.id, "vertraulich", adminId);
+      return out;
+    });
+
+    const res = await fragen(headers);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().result.answer).toContain(AUSSAGE);
   });
 });

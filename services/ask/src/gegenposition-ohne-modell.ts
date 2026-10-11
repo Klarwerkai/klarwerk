@@ -54,19 +54,19 @@ function quellLabel(title: string, locale: ReasonerLocale): string {
 }
 
 /**
- * Derselbe Wortlaut, unabhängig NUR von Schreibung, Satzzeichen und Leerraum.
+ * Derselbe Wortlaut, unabhängig NUR von Groß-/Kleinschreibung und Leerraum.
  *
  * Ben, Nacharbeit 3: bewusst NICHT über `queryTokens`. Die Suchtokenisierung wirft Stoppwörter weg —
  * darunter „nicht" —, und „Der Hubtisch ist sicher" und „Der Hubtisch ist nicht sicher" wären dann
- * derselbe Wortlaut: die Gegenposition fiele weg und die Antwort bliebe „gesichert". Jedes Wort,
- * das im Text steht, trägt hier Bedeutung; verglichen wird Wort für Wort, ohne Stammformen.
+ * derselbe Wortlaut: die Gegenposition fiele weg und die Antwort bliebe „gesichert".
+ * Ben, Nacharbeit 4: auch Zeichen tragen Bedeutung — Vorzeichen („-10 °C" gegen „+10 °C"),
+ * Vergleichsoperatoren („< 5 bar" gegen „> 5 bar"), Einheiten und Dezimaltrenner. Deshalb bleibt
+ * JEDES Zeichen außer Leerraum stehen; angeglichen werden nur Unicode-Form, Schreibung und
+ * Leerraumfolgen. Die sichere Richtung: zwei Texte, die sich nur in einem Zeichen unterscheiden,
+ * werden lieber einmal zu viel gegenübergestellt als einmal zu wenig.
  */
 export function wortlautSchluessel(text: string): string {
-  return text
-    .normalize("NFC")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim();
+  return text.normalize("NFC").toLowerCase().replace(/\s+/gu, " ").trim();
 }
 
 /**
