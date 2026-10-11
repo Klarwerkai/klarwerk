@@ -63,6 +63,8 @@ import type {
   ExternalResult,
   ExtractResult,
   FeatureFlags,
+  FirmenresetAuftrag,
+  FirmenresetStatus,
   FolgepruefungsFall,
   Fragekontext,
   Gap,
@@ -1450,16 +1452,25 @@ export const endpoints = {
       reset: (id: string) => api.post<DemoPackageResult>(`/admin/demo-packages/${id}/reset`),
       remove: (id: string) => api.del<DemoPackageResult>(`/admin/demo-packages/${id}`),
     },
-    // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit (nur Desktop/Dev) + Ausführen (löscht alles,
-    // beendet das Programm; nächster Start = Ersteinrichtung).
-    factoryResetStatus: () => api.get<{ available: boolean }>("/admin/factory-reset"),
+    // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit (nur Desktop/Dev) + Ausführen (beendet das
+    // Programm). P08: ist er verfügbar, trägt die Auskunft die Vorschau (was entfällt, was bleibt).
+    factoryResetStatus: () => api.get<FirmenresetStatus>("/admin/factory-reset"),
     // JOB 4025 (KUNDENBETRIEB-BACKUP): die LESENDE Auskunft über das Sicherungsverzeichnis. Sie
     // löst nichts aus, löscht nichts und lädt nichts herunter — sie sagt nur, was dort liegt und
     // ob es seine Prüfsumme trägt (`scripts/backup/backup.sh:55-57/:82`).
     sicherungen: () => api.get<SicherungenAuskunft>("/admin/sicherungen"),
-    // SCRUM-450: Werksreset erst nach Passwort-Bestätigung des Admins (Re-Authentifizierung).
-    factoryReset: (password: string) =>
-      api.post<{ ok: boolean }>("/admin/factory-reset", { password }),
+    // SCRUM-450 / P08: Firmenreset nur mit der Kennung der gesehenen Vorschau, der bewussten
+    // Bestätigung und zwei Passworteingaben des Admins.
+    factoryReset: (auftrag: FirmenresetAuftrag) =>
+      api.post<{ ok: boolean }>("/admin/factory-reset", auftrag),
+    // P08-AC05: zweimalige SSO-Wiederanmeldung für Konten ohne Passwort. Der Start ist eine
+    // Seitennavigation zum Anbieter; den Rückruf reicht `SsoCallback` mit code+state hierher.
+    factoryResetSsoStartUrl: (schritt: 1 | 2): string =>
+      `/api/admin/factory-reset/sso/start?schritt=${schritt}`,
+    factoryResetSso: (code: string, state: string) =>
+      api.post<{ bestaetigt: number }>("/admin/factory-reset/sso", { code, state }),
+    factoryResetSsoVerwerfen: () =>
+      api.post<{ bestaetigt: number }>("/admin/factory-reset/sso", { verwerfen: true }),
     // Aufnahme gesamt-bestandsreset (Peters Entscheidung vom 11.10.): Wissensbestand samt
     // Papierkorb zurücksetzen, Konten und Firmenwörterbuch bleiben. Erst die Folgenvorschau (GET),
     // dann die Ausführung mit ihrer Kennung, zweimal Passwort und Häkchen (POST).
