@@ -47,10 +47,12 @@ import {
 } from "../existenzhinweis";
 import { schalterAn } from "../feature-flags";
 import {
+  type Bereichsmarken,
+  type BereichsmarkenQuelle,
   type Firmenfilter,
   type FirmenfilterAbfrage,
   FirmenfilterFehler,
-  type PartnerbereichQuelle,
+  KEINE_BEREICHSMARKEN,
   firmenTrim,
   firmenbereichVon,
   imFirmenfilter,
@@ -797,19 +799,19 @@ export function libraryRoutes(
   nulltreffer?: NulltrefferRepo,
   // produkt:20261010:poc-wiederherstellung-export: optional — ohne Quellen kein Format `paket`.
   paket?: WissenspaketQuellen,
-  // produkt:20261011:peter-p14: optional — ohne Quelle gibt es keinen Partnerbereich (verengt nur).
-  partnerbereiche?: PartnerbereichQuelle,
+  // produkt:20261011:peter-p14: optional — ohne Quelle gibt es keine Bereichsmarke (verengt nur).
+  bereichsmarken?: BereichsmarkenQuelle,
   // P14 · Existenzrecht: optional — ohne Quelle hat niemand ein Existenzrecht (Antwort leer).
   existenzbereiche?: ExistenzbereichQuelle,
 ): FastifyPluginAsync {
   /**
-   * P14: der Firmenfilter einer Anfrage samt der aktuellen Partnerbereiche — oder `null`, wenn die
+   * P14: der Firmenfilter einer Anfrage samt den aktuellen Bereichsmarken — oder `null`, wenn die
    * Angabe ungültig war (dann ist die 400 bereits gesendet, bevor irgendetwas gelesen wurde).
    */
   async function firmaAus(
     abfrage: FirmenfilterAbfrage,
     reply: FastifyReply,
-  ): Promise<{ filter: Firmenfilter; partner: ReadonlySet<string> } | undefined | null> {
+  ): Promise<{ filter: Firmenfilter; marken: Bereichsmarken } | undefined | null> {
     let filter: Firmenfilter | undefined;
     try {
       filter = leseFirmenfilter(abfrage);
@@ -823,7 +825,7 @@ export function libraryRoutes(
     if (!filter) {
       return undefined;
     }
-    return { filter, partner: (await partnerbereiche?.()) ?? new Set<string>() };
+    return { filter, marken: (await bereichsmarken?.()) ?? KEINE_BEREICHSMARKEN };
   }
 
   return async (app) => {
@@ -885,9 +887,9 @@ export function libraryRoutes(
         const treffer = sichtbareFuer(
           user,
           await library.search(q ?? "", filter, {
-            trim: firma ? firmenTrim(trim, firma.filter, firma.partner) : trim,
+            trim: firma ? firmenTrim(trim, firma.filter, firma.marken) : trim,
           }),
-        ).filter((ko) => !firma || imFirmenfilter(ko, firma.filter, firma.partner));
+        ).filter((ko) => !firma || imFirmenfilter(ko, firma.filter, firma.marken));
         // R-0773: eine Suche OHNE Treffer wird für den Suchenden vermerkt — nur mit nicht-leerem
         // Begriff und gemessen an DIESER, schon sichtbarkeitsgeschnittenen Liste. Eine gefilterte
         // Suche wird MIT ihrer Eingrenzung vermerkt (BEN, Nacharbeit 3): sie sagt nur etwas über
@@ -910,7 +912,7 @@ export function libraryRoutes(
           }
         }
         const antwort = firma
-          ? treffer.map((ko) => ({ ...ko, firmenbereich: firmenbereichVon(ko, firma.partner) }))
+          ? treffer.map((ko) => ({ ...ko, firmenbereich: firmenbereichVon(ko, firma.marken) }))
           : treffer;
         reply.code(200).send(antwort);
       },
@@ -1090,7 +1092,7 @@ export function libraryRoutes(
       }
       const sichtbar = sichtbarkeitsfilterFuer(
         user,
-        firma ? (ko) => imFirmenfilter(ko, firma.filter, firma.partner) : undefined,
+        firma ? (ko) => imFirmenfilter(ko, firma.filter, firma.marken) : undefined,
       );
       const opts = (format: "json" | "markdown" | "mediawiki" | "html" | "paket") => ({
         includeConfidential,

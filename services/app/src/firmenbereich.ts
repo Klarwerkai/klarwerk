@@ -13,10 +13,12 @@
 //
 // DIE DREI BEREICHE werden aus dem BESTAND abgeleitet, nie aus der Anfrage:
 //   · `partner`     — der führende Space steht ausdrücklich im Kontext `partner`
-//                     (`SpaceEingabe.kontext`/`partner`, `spaces.ts` · `partnerbereiche`).
-//   · `oeffentlich` — Schutzbedarf „öffentlich" am Objekt (`KnowledgeObject.oeffentlich`, nur bei
-//                     interner Stufe wirksam — dieselbe Lesart wie `KoService.setOeffentlich`).
-//   · `eigen`       — alles andere: das Wissen der eigenen Firma.
+//                     (`SpaceEingabe.kontext`/`partner`, `spaces.ts` · `bereichsmarken`).
+//   · `oeffentlich` — bei interner Stufe: Schutzbedarf „öffentlich" am Objekt
+//                     (`KnowledgeObject.oeffentlich`, dieselbe Lesart wie `KoService.setOeffentlich`)
+//                     ODER der führende Space steht im Kontext `oeffentlich`.
+//   · `eigen`       — alles andere: das Wissen der eigenen Firma (im Spaceweg `firma`).
+// Dieselbe Ableitung trägt den Firmenfilter UND den Space-Artikelfilter (Nacharbeit 8, AC01).
 // Die Reihenfolge ist fest: ein Objekt im Partnerbereich bleibt Partnerwissen, auch wenn es als
 // öffentlich markiert ist — der Bereich sagt, WOHER es kommt.
 //
@@ -34,9 +36,6 @@ export type Firmenbereich = (typeof FIRMENBEREICHE)[number];
 export interface FirmenbereichsFakten extends SichtbarkeitsFakten {
   oeffentlich?: unknown;
 }
-
-/** Die Kennungen der ausdrücklich als Partnerbereich markierten Spaces, je Anfrage erhoben. */
-export type PartnerbereichQuelle = () => Promise<ReadonlySet<string>>;
 
 /** Die Felder des Firmenfilters am Draht (Abfrage oder Körper), noch ungeprüft. */
 export interface FirmenfilterAbfrage {
@@ -125,15 +124,46 @@ export function ohneFirmenfilter<T extends object>(
   return rest as Omit<T, "firmenbereich" | "partner">;
 }
 
-/** Der Bereich eines Objekts — aus dem Bestand, nie aus der Anfrage. */
-export function firmenbereichVon(
-  ko: FirmenbereichsFakten,
-  partnerbereiche: ReadonlySet<string>,
-): Firmenbereich {
-  if (typeof ko.spaceId === "string" && partnerbereiche.has(ko.spaceId)) {
+/**
+ * Bens Befund (Nacharbeit 8, AC01) — DIE EINE BEREICHSABLEITUNG BEIDER PRODUKTWEGE.
+ *
+ * Firmenfilter (`firmenbereich=…`) und Space-Artikelfilter (`/api/spaces/artikel?kontext=…`,
+ * aufnahme:20260922:gesamt-wissensprojekte) leiten den Bereich eines Objekts aus DENSELBEN Marken ab:
+ *   · `partner`     — die Spaces im Kontext `partner` (auch Altfassungen nur mit Partnernamen,
+ *                     `kontextVon`);
+ *   · `oeffentlich` — die Spaces im Kontext `oeffentlich`.
+ * Die Regel steht in `firmenbereichVon` und — zeichengleich — als SQL in `firmenTrim`.
+ */
+export interface Bereichsmarken {
+  partner: ReadonlySet<string>;
+  oeffentlich: ReadonlySet<string>;
+}
+
+/** Die Bereichsmarken des Bestands, je Anfrage frisch aus der Space-Ablage erhoben. */
+export type BereichsmarkenQuelle = () => Promise<Bereichsmarken>;
+
+export const KEINE_BEREICHSMARKEN: Bereichsmarken = { partner: new Set(), oeffentlich: new Set() };
+
+function inSpace(ko: FirmenbereichsFakten, menge: ReadonlySet<string>): boolean {
+  return typeof ko.spaceId === "string" && menge.has(ko.spaceId);
+}
+
+/**
+ * Der Bereich eines Objekts — aus dem Bestand, nie aus der Anfrage. Feste Reihenfolge:
+ *   1. `partner`     — der führende Space ist ein Partnerbereich (Herkunft geht vor);
+ *   2. `oeffentlich` — interne Stufe UND (Öffentlich-Marke am Objekt ODER führender Space im
+ *                      Kontext `oeffentlich`). Vertrauliches ist nie „öffentlich" — dieselbe Lesart
+ *                      wie die Marke selbst (`KoService.setOeffentlich`);
+ *   3. `eigen`       — alles andere (im Spaceweg heisst derselbe Bereich `firma`).
+ */
+export function firmenbereichVon(ko: FirmenbereichsFakten, marken: Bereichsmarken): Firmenbereich {
+  if (inSpace(ko, marken.partner)) {
     return "partner";
   }
-  if (ko.oeffentlich === true && !isConfidential(ko.confidentiality)) {
+  if (
+    !isConfidential(ko.confidentiality) &&
+    (ko.oeffentlich === true || inSpace(ko, marken.oeffentlich))
+  ) {
     return "oeffentlich";
   }
   return "eigen";
@@ -143,9 +173,9 @@ export function firmenbereichVon(
 export function imFirmenfilter(
   ko: FirmenbereichsFakten,
   filter: Firmenfilter,
-  partnerbereiche: ReadonlySet<string>,
+  marken: Bereichsmarken,
 ): boolean {
-  const bereich = firmenbereichVon(ko, partnerbereiche);
+  const bereich = firmenbereichVon(ko, marken);
   if (!filter.bereiche.has(bereich)) {
     return false;
   }
@@ -159,13 +189,20 @@ export function imFirmenfilter(
  * dieselben Felder der lebenden Zeile wie `firmenbereichVon` (`spaceId`, `oeffentlich`, die
  * generierte Stufenspalte `confidentiality_key`), damit eine Herabstufung oder ein Spacewechsel
  * sofort wirkt. In-Memory: `trifftZu` des Betrachters UND `imFirmenfilter`.
+ *
+ * Platzhalter: `$p` die Partnerbereiche (immer genutzt); danach entweder die Partnerkennung des
+ * Filters ODER — nur wenn ein Zweig sie liest — die öffentlichen Spaces. Kein ungenutzter Parameter.
  */
 export function firmenTrim(
   basis: SqlSichtbarkeitstrim,
   filter: Firmenfilter,
-  partnerbereiche: ReadonlySet<string>,
+  marken: Bereichsmarken,
 ): SqlSichtbarkeitstrim {
-  const partnerListe = [...partnerbereiche];
+  const partnerListe = [...marken.partner];
+  const oeffentlichListe = [...marken.oeffentlich];
+  const liestOeffentlich =
+    filter.partner === undefined &&
+    (filter.bereiche.has("oeffentlich") || filter.bereiche.has("eigen"));
   return {
     sql(t: string, ab: number): string {
       const basisSql = basis.sql(t, ab);
@@ -173,7 +210,8 @@ export function firmenTrim(
       // COALESCE: ein fehlendes Feld ergäbe in SQL NULL statt false — und `NOT NULL` ließe ein
       // Objekt ohne Space still aus „eigen" fallen.
       const imPartner = `COALESCE(jsonb_typeof(${t}.data->'spaceId') = 'string' AND ${t}.data->>'spaceId' = ANY($${p}::text[]), false)`;
-      const istOeffentlich = `COALESCE(${t}.data->'oeffentlich' = 'true'::jsonb AND ${t}.confidentiality_key = 'intern', false)`;
+      const imOeffentlichenSpace = `(jsonb_typeof(${t}.data->'spaceId') = 'string' AND ${t}.data->>'spaceId' = ANY($${p + 1}::text[]))`;
+      const istOeffentlich = `COALESCE(${t}.confidentiality_key = 'intern' AND (${t}.data->'oeffentlich' = 'true'::jsonb OR ${imOeffentlichenSpace}), false)`;
       const zweige: string[] = [];
       if (filter.bereiche.has("partner")) {
         zweige.push(
@@ -194,11 +232,13 @@ export function firmenTrim(
       return `(${basisSql} AND ${bereich})`;
     },
     params:
-      filter.partner === undefined
-        ? [...basis.params, partnerListe]
-        : [...basis.params, partnerListe, filter.partner],
+      filter.partner !== undefined
+        ? [...basis.params, partnerListe, filter.partner]
+        : liestOeffentlich
+          ? [...basis.params, partnerListe, oeffentlichListe]
+          : [...basis.params, partnerListe],
     trifftZu(ko: FirmenbereichsFakten & { deletedAt?: string | null | undefined }): boolean {
-      return basis.trifftZu(ko) && imFirmenfilter(ko, filter, partnerbereiche);
+      return basis.trifftZu(ko) && imFirmenfilter(ko, filter, marken);
     },
   };
 }

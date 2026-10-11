@@ -296,6 +296,7 @@ import {
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
+import type { Bereichsmarken } from "./firmenbereich";
 import { FirmenresetSso } from "./firmenreset-sso";
 // Firmenwörterbuch: der versionierte Begriffskatalog der Instanz — im Postgres-Betrieb haltbar
 // (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
@@ -498,9 +499,9 @@ import {
   InMemorySpacesRepo,
   PgSpacesRepo,
   type SpacesRepo,
+  bereichsmarken,
   existenzbereiche,
   lesbareSpaces,
-  partnerbereiche,
 } from "./spaces";
 import { speicherVorgang } from "./speicher-vorgang";
 // JOB 3655: der Startvertrag — die EINE Stelle, die alle Umgebungswerte namentlich führt, den
@@ -4236,14 +4237,15 @@ export function buildApp(
       await services.ko.delete(koId, akteur, { hard: true });
     },
   });
-  // produkt:20261011:peter-p14 — die als Partnerbereich markierten Spaces, je Anfrage frisch aus
-  // derselben Ablage wie `spaceLesbar` (kein Zwischenspeicher: eine Marke wirkt sofort).
-  const partnerbereicheJetzt = async (): Promise<ReadonlySet<string>> =>
-    partnerbereiche(await services.spaces.aktuelle());
+  // produkt:20261011:peter-p14 — die Partner- und öffentlichen Spaces (eine Bereichsableitung mit
+  // dem Space-Artikelfilter), je Anfrage frisch aus derselben Ablage wie `spaceLesbar` (kein
+  // Zwischenspeicher: eine Marke wirkt sofort).
+  const bereichsmarkenJetzt = async (): Promise<Bereichsmarken> =>
+    bereichsmarken(await services.spaces.aktuelle());
   app.register(
     koRoutes(
       {
-        partnerbereiche: partnerbereicheJetzt,
+        bereichsmarken: bereichsmarkenJetzt,
         ko: services.ko,
         validation: services.validation,
         conflicts: services.conflicts,
@@ -4782,7 +4784,7 @@ export function buildApp(
     ko: services.ko,
     conflicts: services.conflicts,
     offeneSpaces,
-    partnerbereiche: partnerbereicheJetzt,
+    bereichsmarken: bereichsmarkenJetzt,
     // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
     kanten: services.kanten,
     // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
@@ -4933,7 +4935,7 @@ export function buildApp(
       // R-0773: erfolglose Suchen je Person.
       services.nulltreffer,
       wissenspaketQuellen,
-      partnerbereicheJetzt,
+      bereichsmarkenJetzt,
       // P14 · Existenzrecht: je Anfrage frisch aus derselben Ablage — ein Widerruf wirkt sofort.
       async (nutzerId) => existenzbereiche(await services.spaces.aktuelle(), nutzerId),
     ),

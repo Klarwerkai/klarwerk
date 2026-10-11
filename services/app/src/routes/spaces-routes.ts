@@ -29,6 +29,7 @@ import {
   responsibleOf,
 } from "../../../knowledge-object";
 import { can } from "../../../rbac";
+import { type Bereichsmarken, firmenbereichVon } from "../firmenbereich";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { darfSehen, sichtbareFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
 import {
@@ -45,6 +46,7 @@ import {
   SpaceFehler,
   type SpaceKontext,
   type SpacesRepo,
+  bereichsmarken,
   darfInSpaceSchreiben,
   darfSpaceBearbeiten,
   darfSpaceInhalteLesen,
@@ -224,12 +226,27 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     return sichtbareFuer(user, await dienste.ko.listForSearch({}, sqlSichtbarkeitFuer(user)));
   }
 
+  // produkt:20261011:peter-p14 · Bens Befund (Nacharbeit 8, AC01): der Kontext eines Artikels kommt
+  // aus DERSELBEN Bereichsableitung wie der Firmenfilter (`firmenbereichVon`, `firmenbereich.ts`) —
+  // Spacekontext UND Öffentlich-Marke am Objekt, Vertrauliches nie „öffentlich". `eigen` heisst im
+  // Spaceweg `firma`. Die Marken je Bestandsliste einmal (dieselbe Liste wird für alle Zeilen gereicht).
+  const markenJe = new WeakMap<readonly SpaceFassung[], Bereichsmarken>();
+  function markenVon(spaces: readonly SpaceFassung[]): Bereichsmarken {
+    let marken = markenJe.get(spaces);
+    if (!marken) {
+      marken = bereichsmarken(spaces);
+      markenJe.set(spaces, marken);
+    }
+    return marken;
+  }
+
   function zeile(ko: KnowledgeObject, spaces: readonly SpaceFassung[]): ArtikelZeile {
     const spaceId = typeof ko.spaceId === "string" ? ko.spaceId : null;
     const space = spaceId ? spaces.find((s) => s.id === spaceId) : undefined;
+    const bereich = firmenbereichVon(ko, markenVon(spaces));
     return {
-      kontext: space ? kontextVon(space) : "firma",
-      partner: space?.partner ?? null,
+      kontext: bereich === "eigen" ? "firma" : bereich,
+      partner: bereich === "partner" ? (space?.partner ?? null) : null,
       id: ko.id,
       version: ko.version,
       title: ko.title,

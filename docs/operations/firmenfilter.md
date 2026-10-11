@@ -13,8 +13,10 @@ Jeder Bereich wird aus dem Bestand abgeleitet (`services/app/src/firmenbereich.t
 | Bereich | Bedingung am Wissensobjekt |
 |---|---|
 | `partner` | Der führende Space steht im Kontext `partner` (mit Namen des Partners). |
-| `oeffentlich` | Der Eintrag ist als öffentlich gekennzeichnet (`schutz-oeffentlich`). Das wirkt nur bei interner Stufe. |
-| `eigen` | Für alle anderen Einträge. |
+| `oeffentlich` | Interne Stufe und entweder die Öffentlich-Marke am Eintrag (`schutz-oeffentlich`) oder ein führender Space im Kontext `oeffentlich`. |
+| `eigen` | Für alle anderen Einträge. Im Space-Artikelfilter heißt dieser Bereich `firma`. |
+
+Die Ableitung gilt gleich für den Firmenfilter (`firmenbereich=…` an Liste, Suche, Export und Frage) und für den Space-Artikelfilter (`GET /api/spaces/artikel?kontext=…`). Sie steht an einer Stelle: `firmenbereichVon` und, in SQL, `firmenTrim` (`services/app/src/firmenbereich.ts`). Die Bereichsmarken kommen aus `bereichsmarken` (`services/app/src/spaces.ts`). Ein vertraulicher Eintrag ist nie „öffentlich", auch nicht in einem öffentlichen Space.
 
 Ein Eintrag in einem Partnerbereich zählt immer als Partnerwissen, auch wenn er als öffentlich markiert ist.
 
@@ -84,7 +86,7 @@ Peters Antwort 25: Existenzhinweise nur mit ausdrücklichem Recht, sonst eine al
 
 ## Grenzen
 
-- Zwei Formen „öffentlich": Der Firmenfilter (`firmenbereich=oeffentlich`) zählt Einträge mit der Öffentlich-Marke am Objekt. `GET /api/spaces/artikel?kontext=oeffentlich` (gesamt-wissensprojekte) zählt Einträge in Spaces mit Kontext `oeffentlich`. Ein Eintrag in einem öffentlichen Space ohne Objektmarke heißt im Firmenfilter `eigen`. Welche Lesart maßgeblich ist, ist nicht entschieden. Beide sind nur Einordnungen und vergeben keine Rechte.
+- Die Partnerangabe unterscheidet sich je Weg: Der Firmenfilter grenzt mit `partner=<Space-Kennung>` ein, der Space-Artikelfilter mit `partner=<Name des Partners>`. Die Einordnung ist dieselbe.
 
 - Eine Bedienfläche für den Bereichswechsel in der Bibliothek ist nicht gebaut. Der Filter ist über die API und die Web-API-Typen nutzbar.
 - Auch für Existenzrecht und Existenzhinweise gibt es keine Bedienfläche. Beides ist nur über die API nutzbar.

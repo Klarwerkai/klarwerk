@@ -27,6 +27,7 @@ import { GenericContainer, type StartedTestContainer, Wait } from "testcontainer
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool, migrate } from "../../services/app/src/db";
 import {
+  type Bereichsmarken,
   FIRMENBEREICHE,
   type Firmenbereich,
   type Firmenfilter,
@@ -42,8 +43,18 @@ import {
   PgKoRepo,
 } from "../../services/knowledge-object";
 
-const PARTNER: ReadonlySet<string> = new Set(["s-alpha", "s-beta"]);
-const SPACES: readonly (string | undefined)[] = [undefined, "s-alpha", "s-beta", "s-werk"];
+// Nacharbeit 8 (AC01): die Marken der EINEN Bereichsableitung — Partner- UND öffentliche Spaces.
+const PARTNER: Bereichsmarken = {
+  partner: new Set(["s-alpha", "s-beta"]),
+  oeffentlich: new Set(["s-normen"]),
+};
+const SPACES: readonly (string | undefined)[] = [
+  undefined,
+  "s-alpha",
+  "s-beta",
+  "s-werk",
+  "s-normen",
+];
 const STUFEN: readonly (Confidentiality | undefined)[] = [undefined, "intern", "vertraulich"];
 const AUTOREN: readonly string[] = ["u-anna", ""];
 const ROLLEN: readonly Role[] = ["viewer", "experte", "controller", "admin"];
@@ -51,7 +62,7 @@ const BETRACHTER: readonly string[] = ["u-anna", "u-bert"];
 const LESBAR: readonly (ReadonlySet<string> | undefined)[] = [
   new Set(),
   new Set(["s-alpha"]),
-  new Set(["s-alpha", "s-beta", "s-werk"]),
+  new Set(["s-alpha", "s-beta", "s-werk", "s-normen"]),
   undefined,
 ];
 
@@ -83,7 +94,8 @@ function ko(overrides: Partial<KnowledgeObject> = {}): KnowledgeObject {
   } as KnowledgeObject;
 }
 
-// 4 Spaces × 2 Marken × 3 Stufen × 2 Autoren × 2 Papierkorbzustände = 96 Zeilen.
+// 5 Spaces (ohne, Partner Alpha, Partner Beta, eigener, öffentlicher) × 2 Marken × 3 Stufen
+// × 2 Autoren × 2 Papierkorbzustände = 120 Zeilen.
 function kreuzbestand(): KnowledgeObject[] {
   const out: KnowledgeObject[] = [];
   for (const [ri, spaceId] of SPACES.entries()) {
@@ -185,7 +197,7 @@ describe("P14 · Firmenfilter: SQL-Prädikat und App-Regel liefern dieselbe Meng
     try {
       const repo = new PgKoRepo(pool);
       const alle = await repo.list({});
-      expect(alle).toHaveLength(96);
+      expect(alle).toHaveLength(120);
       let geprueft = 0;
       let nichtLeer = 0;
       let echtEnger = 0;

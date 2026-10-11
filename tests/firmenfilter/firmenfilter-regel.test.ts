@@ -19,9 +19,15 @@ import {
 } from "../../services/app/src/firmenbereich";
 import type { SessionUser } from "../../services/app/src/http";
 import { sqlSichtbarkeitFuer } from "../../services/app/src/sichtbarkeit";
-import { kontextVon, partnerbereiche, pruefeSpaceEingabe } from "../../services/app/src/spaces";
+import {
+  bereichsmarken,
+  kontextVon,
+  partnerbereiche,
+  pruefeSpaceEingabe,
+} from "../../services/app/src/spaces";
 
-const PARTNER = new Set(["s-alpha"]);
+// Nacharbeit 8 (AC01): die Marken der EINEN Bereichsableitung — Partner- und öffentliche Spaces.
+const PARTNER = { partner: new Set(["s-alpha"]), oeffentlich: new Set(["s-normen"]) };
 
 function bereich(ko: FirmenbereichsFakten): string {
   return firmenbereichVon(ko, PARTNER);
@@ -47,6 +53,37 @@ describe("K1 · drei unterscheidbare Bereiche, abgeleitet aus dem Bestand", () =
     expect(bereich({})).toBe("eigen");
     // Eine Zeichenkette "true" ist keine Marke.
     expect(bereich({ oeffentlich: "true" })).toBe("eigen");
+    // Nacharbeit 8 (AC01): ein Space im Kontext `oeffentlich` ordnet ebenso ein — mit derselben
+    // Stufenregel; Partner geht weiterhin vor.
+    expect(bereich({ spaceId: "s-normen" })).toBe("oeffentlich");
+    expect(bereich({ spaceId: "s-normen", oeffentlich: true })).toBe("oeffentlich");
+    expect(bereich({ spaceId: "s-normen", confidentiality: "vertraulich" })).toBe("eigen");
+    expect(bereich({ spaceId: "s-normen", confidentiality: "streng_vertraulich" })).toBe("eigen");
+  });
+
+  it("die Bereichsmarken kommen aus dem Spacekontext — auch für Altfassungen nur mit Partnernamen", () => {
+    const stempel = {
+      version: 1,
+      angelegtVon: "u-carla",
+      angelegtAm: "2026-10-11T08:00:00.000Z",
+      geaendertVon: "u-carla",
+      geaendertAm: "2026-10-11T08:00:00.000Z",
+      zweck: "Probe",
+      verantwortlich: "u-carla",
+      mitglieder: [],
+      ansichten: [],
+    };
+    const geschlossen = { ...stempel, zugang: "mitglieder" as const };
+    const offen = { ...stempel, zugang: "alle" as const };
+    const marken = bereichsmarken([
+      { ...geschlossen, id: "s-alpha", name: "A", kontext: "partner", partner: "Alpha GmbH" },
+      { ...geschlossen, id: "s-alt", name: "Alt", partner: "Alt GmbH" },
+      { ...offen, id: "s-normen", name: "N", kontext: "oeffentlich" },
+      { ...geschlossen, id: "s-werk", name: "W", kontext: "firma" },
+      { ...offen, id: "s-ohne", name: "O" },
+    ]);
+    expect([...marken.partner].sort()).toEqual(["s-alpha", "s-alt"]);
+    expect([...marken.oeffentlich]).toEqual(["s-normen"]);
   });
 
   it("die Partnermarke am Space ist optional, geprüft und ergibt die Partnerbereiche", () => {
@@ -158,6 +195,12 @@ describe("K2 · der Filter verengt nur — er öffnet nichts", () => {
     const trim = firmenTrim(basis, filterAus({ firmenbereich: "eigen,partner" }), PARTNER);
     expect(trim.sql("kos", 3).startsWith(`(${basis.sql("kos", 3)} AND (`)).toBe(true);
     expect(trim.params.slice(0, basis.params.length)).toEqual([...basis.params]);
-    expect(trim.params[trim.params.length - 1]).toEqual(["s-alpha"]);
+    // Partnerbereiche, dann (weil `eigen` die Öffentlich-Regel liest) die öffentlichen Spaces.
+    expect(trim.params.slice(basis.params.length)).toEqual([["s-alpha"], ["s-normen"]]);
+    // Ohne Zweig, der sie liest, reist die Liste nicht mit — kein ungenutzter Platzhalter.
+    const nurPartner = firmenTrim(basis, filterAus({ firmenbereich: "partner" }), PARTNER);
+    expect(nurPartner.params.slice(basis.params.length)).toEqual([["s-alpha"]]);
+    const genau = firmenTrim(basis, filterAus({ partner: "s-alpha" }), PARTNER);
+    expect(genau.params.slice(basis.params.length)).toEqual([["s-alpha"], "s-alpha"]);
   });
 });

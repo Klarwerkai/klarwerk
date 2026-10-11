@@ -79,8 +79,9 @@ import type { AiCheckWorker } from "../ai-check-worker";
 import type { PruefUmfang } from "../detection-cap";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
 import {
+  type BereichsmarkenQuelle,
   FirmenfilterFehler,
-  type PartnerbereichQuelle,
+  KEINE_BEREICHSMARKEN,
   firmenTrim,
   firmenbereichVon,
   imFirmenfilter,
@@ -285,11 +286,11 @@ export interface KoRoutesDeps {
       ) => Promise<TorUrteil>)
     | undefined;
   /**
-   * produkt:20261011:peter-p14 — die als Partnerbereich markierten Spaces (Firmenfilter). Fehlt die
-   * Quelle (direkt konstruierte Routentests), gibt es keinen Partnerbereich: `firmenbereich=partner`
-   * liefert dann nichts, nie mehr.
+   * produkt:20261011:peter-p14 — die Partner- und öffentlichen Spaces (Firmenfilter, eine Ableitung
+   * mit dem Space-Artikelfilter). Fehlt die Quelle (direkt konstruierte Routentests), gibt es keine
+   * Bereichsmarke: `firmenbereich=partner` liefert dann nichts, nie mehr.
    */
-  partnerbereiche?: PartnerbereichQuelle | undefined;
+  bereichsmarken?: BereichsmarkenQuelle | undefined;
 }
 
 /**
@@ -1780,7 +1781,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         throw fehler;
       }
       const firma = firmenfilter
-        ? { filter: firmenfilter, partner: (await deps.partnerbereiche?.()) ?? new Set<string>() }
+        ? { filter: firmenfilter, marken: (await deps.bereichsmarken?.()) ?? KEINE_BEREICHSMARKEN }
         : undefined;
       // mega74 B: ein unsichtbares Objekt fehlt in der Liste — es erscheint nicht als gesperrter
       // Platzhalter. Ein Platzhalter wäre wieder eine Existenzauskunft.
@@ -1811,9 +1812,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         user,
         await ko.list(
           ohneFirmenfilter(request.query),
-          firma ? firmenTrim(trim, firma.filter, firma.partner) : trim,
+          firma ? firmenTrim(trim, firma.filter, firma.marken) : trim,
         ),
-      ).filter((item) => !firma || imFirmenfilter(item, firma.filter, firma.partner));
+      ).filter((item) => !firma || imFirmenfilter(item, firma.filter, firma.marken));
       // ==========================================================================================
       // JOB 3043 · DER ZWEITE LESEPFAD SAGT JETZT DASSELBE WIE DER ERSTE.
       // ==========================================================================================
@@ -1842,7 +1843,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ...discloseDisplayStatus(item, eingaenge),
             ...discloseFrische(item, jetzt, eingaenge, gelernt),
             // P14: der Bereich nur in gefilterten Antworten — ungefiltert bleibt der Draht wie er war.
-            ...(firma ? { firmenbereich: firmenbereichVon(item, firma.partner) } : {}),
+            ...(firma ? { firmenbereich: firmenbereichVon(item, firma.marken) } : {}),
           };
         }),
       );

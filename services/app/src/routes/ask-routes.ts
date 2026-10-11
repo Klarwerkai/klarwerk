@@ -42,8 +42,9 @@ import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { schalterAn } from "../feature-flags";
 import {
+  type BereichsmarkenQuelle,
   FirmenfilterFehler,
-  type PartnerbereichQuelle,
+  KEINE_BEREICHSMARKEN,
   imFirmenfilter,
   leseFirmenfilter,
 } from "../firmenbereich";
@@ -290,10 +291,10 @@ export interface AskRouteDeps {
    */
   offeneSpaces?: (() => Promise<ReadonlySet<string>>) | undefined;
   /**
-   * produkt:20261011:peter-p14 — die als Partnerbereich markierten Spaces für den Firmenfilter der
-   * Frage. Fehlt die Quelle, gibt es keinen Partnerbereich (der Filter verengt nur).
+   * produkt:20261011:peter-p14 — die Partner- und öffentlichen Spaces für den Firmenfilter der
+   * Frage. Fehlt die Quelle, gibt es keine Bereichsmarke (der Filter verengt nur).
    */
-  partnerbereiche?: PartnerbereichQuelle | undefined;
+  bereichsmarken?: BereichsmarkenQuelle | undefined;
   /**
    * R-1649: legt den abweichenden Weg aus „nicht hilfreich, ich habe es so gemacht …" als Entwurf
    * an. Eine schmale Funktion statt des Erfassungsdienstes (dieselbe Bauart wie `hilfreich` in
@@ -1295,8 +1296,8 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             partner: request.body.partner,
           });
           if (firmenfilter) {
-            const partner = (await deps.partnerbereiche?.()) ?? new Set<string>();
-            bereich = (ko) => imFirmenfilter(ko, firmenfilter, partner);
+            const marken = (await deps.bereichsmarken?.()) ?? KEINE_BEREICHSMARKEN;
+            bereich = (ko) => imFirmenfilter(ko, firmenfilter, marken);
           }
         } catch (fehler) {
           if (fehler instanceof FirmenfilterFehler) {

@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import type { Role } from "../../auth";
 import { can } from "../../rbac";
+import type { Bereichsmarken } from "./firmenbereich";
 
 // ================================================================================================
 // SPACES — ARBEITSRÄUME MIT ZWECK, MITGLIEDERN, VERANTWORTLICHKEIT UND RECHTEN.
@@ -463,6 +464,17 @@ export function pruefeSpaceEingabe(
  */
 export function partnerbereiche(spaces: readonly SpaceFassung[]): Set<string> {
   return new Set(spaces.filter((s) => kontextVon(s) === "partner").map((s) => s.id));
+}
+
+/**
+ * Bens Befund (Nacharbeit 8, AC01): die Bereichsmarken für die EINE Bereichsableitung
+ * (`firmenbereichVon`/`firmenTrim`) — Partner- UND öffentliche Spaces, beide über `kontextVon`.
+ */
+export function bereichsmarken(spaces: readonly SpaceFassung[]): Bereichsmarken {
+  return {
+    partner: partnerbereiche(spaces),
+    oeffentlich: new Set(spaces.filter((s) => kontextVon(s) === "oeffentlich").map((s) => s.id)),
+  };
 }
 
 /**

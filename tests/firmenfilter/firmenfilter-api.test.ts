@@ -1158,6 +1158,194 @@ describe("K3/K4/K6 · Fundstellen lösen mit aktuellen Rechten auf — positiv u
   });
 });
 
+// ================================================================================================
+// Bens Befund (Nacharbeit 8, AC01) — EINE EINORDNUNG ÜBER BEIDE PRODUKTWEGE.
+//
+// Dieselben synthetischen Objekte, alle Kombinationen aus Spacekontext (ohne, firma, partner,
+// oeffentlich, Altfassung nur mit Partnernamen) × Öffentlich-Marke × Stufe. Gemessen wird für drei
+// Rollen über den Space-Artikelfilter (`/api/spaces/artikel?kontext=…`) UND den Firmenfilter
+// (Liste, Suche, Export): dieselbe Menge, derselbe Bereich (`eigen` heisst im Spaceweg `firma`), und
+// beide nur innerhalb der Lesemenge. Die SQL/In-Memory-Gleichheit derselben Regel misst
+// `firmenfilter-pg.integration.test.ts` mit einem öffentlichen Space im Kreuzbestand.
+// ================================================================================================
+describe("K1/K2/K5 · Firmenfilter und Space-Artikelfilter ordnen dieselben Objekte gleich ein", () => {
+  it("Spacekontext × Objektmarke × Stufe × Rolle: beide Wege, dieselbe Menge und derselbe Bereich", async () => {
+    const services = buildServices();
+    const app = buildApp(services);
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Ada Admin", email: "ada@ac01.test", password: KENNWORT },
+    });
+    const ada = await anmelden(app, "ada@ac01.test");
+    await konto(app, ada, "Carla Controller", "carla@ac01.test", "controller");
+    await konto(app, ada, "Erik Experte", "erik@ac01.test", "experte");
+    await konto(app, ada, "Vera Viewer", "vera@ac01.test", "viewer");
+    const k = {
+      carla: await anmelden(app, "carla@ac01.test"),
+      erik: await anmelden(app, "erik@ac01.test"),
+      vera: await anmelden(app, "vera@ac01.test"),
+    };
+    const n = await kontoIds(app, k.carla);
+    const carla = n.get("Carla Controller") ?? "";
+    const erik = n.get("Erik Experte") ?? "";
+    const grund = { verantwortlich: carla, ansichten: [] };
+    const mitErik = [{ nutzer: erik, recht: "schreiben" }];
+    const werkstatt = await space(app, k.carla, {
+      ...grund,
+      name: "Werkstatt",
+      zweck: "Eigene Anweisungen.",
+      zugang: "mitglieder",
+      mitglieder: mitErik,
+      kontext: "firma",
+    });
+    const alpha = await space(app, k.carla, {
+      ...grund,
+      name: "Partner Alpha",
+      zweck: "Austausch mit der Alpha GmbH.",
+      zugang: "mitglieder",
+      mitglieder: mitErik,
+      kontext: "partner",
+      partner: "Alpha GmbH",
+    });
+    const normen = await space(app, k.carla, {
+      ...grund,
+      name: "Normen",
+      zweck: "Öffentliche Quellen.",
+      zugang: "alle",
+      mitglieder: [],
+      kontext: "oeffentlich",
+    });
+    // Altfassung aus einem P14-Kandidaten vor der Zusammenführung: Partnername ohne `kontext`.
+    const altPartner = "s-alt-gamma";
+    const am = "2026-10-11T08:00:00.000Z";
+    await services.spaces.lege({
+      id: altPartner,
+      version: 1,
+      name: "Partner Gamma (alt)",
+      zweck: "Vor der Zusammenführung angelegt.",
+      verantwortlich: carla,
+      zugang: "mitglieder",
+      mitglieder: [{ nutzer: erik, recht: "lesen" }],
+      ansichten: [],
+      partner: "Gamma KG",
+      angelegtVon: carla,
+      angelegtAm: am,
+      geaendertVon: carla,
+      geaendertAm: am,
+    });
+
+    const lege = async (
+      titel: string,
+      spaceId: string | null,
+      oeffentlich: boolean,
+      vertraulich = false,
+    ) => {
+      const id = await eintrag(app, k.erik, titel);
+      if (oeffentlich) {
+        const res = await app.inject({
+          method: "PUT",
+          url: `/api/kos/${id}`,
+          headers: k.carla,
+          payload: { action: "schutz-oeffentlich", oeffentlich: true },
+        });
+        expect(res.statusCode, res.body).toBe(200);
+      }
+      if (vertraulich) {
+        const res = await app.inject({
+          method: "PUT",
+          url: `/api/kos/${id}`,
+          headers: k.erik,
+          payload: { action: "confidentiality", level: "vertraulich" },
+        });
+        expect(res.statusCode, res.body).toBe(200);
+      }
+      if (spaceId) {
+        await services.ko.setLeadingSpace(id, spaceId, carla, null);
+      }
+      await services.ko.setValidationState(id, { trust: 90, status: "validiert" });
+      return id;
+    };
+    // Erwarteter Bereich (Firmenfilter-Namen) — abgeleitet aus Spacekontext, Marke und Stufe.
+    const faelle = {
+      OhneSpace: { id: await lege("OhneSpace", null, false), soll: "eigen" },
+      OhneSpaceMarke: { id: await lege("OhneSpaceMarke", null, true), soll: "oeffentlich" },
+      Werkstatt: { id: await lege("Werkstatt", werkstatt, false), soll: "eigen" },
+      WerkstattMarke: { id: await lege("WerkstattMarke", werkstatt, true), soll: "oeffentlich" },
+      Normen: { id: await lege("Normen", normen, false), soll: "oeffentlich" },
+      NormenMarke: { id: await lege("NormenMarke", normen, true), soll: "oeffentlich" },
+      NormenVertraulich: { id: await lege("NormenVertr", normen, false, true), soll: "eigen" },
+      Alpha: { id: await lege("Alpha", alpha, false), soll: "partner" },
+      AlphaMarke: { id: await lege("AlphaMarke", alpha, true), soll: "partner" },
+      AltPartner: { id: await lege("AltPartner", altPartner, false), soll: "partner" },
+    };
+    const name = (id: string) => Object.entries(faelle).find(([, f]) => f.id === id)?.[0];
+    // Wer was LESEN darf — unabhängig von jedem Filter.
+    const lesbar: Record<keyof typeof k, (keyof typeof faelle)[]> = {
+      carla: Object.keys(faelle) as (keyof typeof faelle)[],
+      erik: Object.keys(faelle) as (keyof typeof faelle)[],
+      vera: ["OhneSpace", "OhneSpaceMarke", "Normen", "NormenMarke"],
+    };
+
+    const spaceweg = async (kopf: Kopf) => {
+      const aus: Record<string, string> = {};
+      for (const kontext of ["firma", "partner", "oeffentlich"]) {
+        const res = await lies(app, kopf, `/api/spaces/artikel?kontext=${kontext}`);
+        expect(res.statusCode, res.body).toBe(200);
+        for (const z of res.json().artikel as { id: string; kontext: string }[]) {
+          expect(z.kontext, z.id).toBe(kontext);
+          const fall = name(z.id);
+          if (fall) {
+            aus[fall] = kontext === "firma" ? "eigen" : kontext;
+          }
+        }
+      }
+      return aus;
+    };
+    const firmenweg = async (kopf: Kopf, weg: "liste" | "suche" | "export") => {
+      const aus: Record<string, string> = {};
+      for (const bereich of ["eigen", "partner", "oeffentlich"]) {
+        const url =
+          weg === "liste"
+            ? `/api/kos?firmenbereich=${bereich}`
+            : weg === "suche"
+              ? `/api/library/search?q=${WORT}&firmenbereich=${bereich}`
+              : `/api/library/export?firmenbereich=${bereich}`;
+        const res = await lies(app, kopf, url);
+        expect(res.statusCode, res.body).toBe(200);
+        for (const [fall, f] of Object.entries(faelle)) {
+          if (res.body.includes(f.id)) {
+            expect(aus[fall], `${fall} in zwei Bereichen (${weg})`).toBeUndefined();
+            aus[fall] = bereich;
+          }
+        }
+      }
+      return aus;
+    };
+
+    for (const rolle of Object.keys(k) as (keyof typeof k)[]) {
+      const soll = Object.fromEntries(lesbar[rolle].map((fall) => [fall, faelle[fall].soll]));
+      expect(await spaceweg(k[rolle]), `${rolle} · Spaceweg`).toEqual(soll);
+      for (const weg of ["liste", "suche"] as const) {
+        expect(await firmenweg(k[rolle], weg), `${rolle} · Firmenfilter ${weg}`).toEqual(soll);
+      }
+      // Der Export gibt Vertrauliches nur an `ko.validate` (SCRUM-506) — auch nicht an den Autor.
+      const { NormenVertraulich: _vertraulich, ...ohneVertraulich } = soll;
+      const sollExport = rolle === "carla" ? soll : ohneVertraulich;
+      expect(await firmenweg(k[rolle], "export"), `${rolle} · Firmenfilter export`).toEqual(
+        sollExport,
+      );
+    }
+    // Die gefilterte Liste nennt den Bereich an jedem Treffer — derselbe wie im Spaceweg.
+    const normenListe = await lies(app, k.vera, "/api/kos?firmenbereich=oeffentlich");
+    expect(normenListe.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: faelle.Normen.id, firmenbereich: "oeffentlich" }),
+      ]),
+    );
+  });
+});
+
 describe("K7 · ein Kontextwechsel lässt keine unberechtigten alten Ergebnisse stehen", () => {
   it("Wechsel der Person, des Bereichs und des Space — jede Antwort gehört zum neuen Kontext", async () => {
     const a = await firmaA();
