@@ -1007,6 +1007,99 @@ export function isConfirmedLocalOrigin(baseUrl: string, allowedOrigins?: string)
     });
 }
 
+// ==================================================================================================
+// AW-12 (aufnahme:20260922:gesamt-kundenbetrieb): DER INTERNE EMBEDDING-WEG.
+// ==================================================================================================
+//
+// Bis hierher gab es für Vektoren nur den deterministischen Stub (`services/embedding`). Dieser Client
+// spricht mit dem Embedding-Endpunkt DESSELBEN lokalen OpenAI-kompatiblen Servers wie der lokale
+// Sprachmodellweg (Ollama/vLLM unter `KLARWERK_LOCAL_LLM_URL`), mit eigenem Modellnamen
+// (`KLARWERK_LOCAL_EMBEDDING_MODEL`, z. B. ein bge-m3-Gewicht).
+//
+// FAIL-CLOSED AUF DAS HAUS BEGRENZT. Anders als beim Chat-Client gibt es hier keinen Wächter, der
+// vertrauliche Inhalte vor einem externen Ziel abfängt — jeder einzubettende Text wäre Egress. Deshalb
+// entsteht der Client NUR für eine als On-Prem bestätigte Adresse (`isConfirmedLocalOrigin`: Loopback
+// oder ausdrücklich in `KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS`). Für jede andere Adresse: `undefined`,
+// kein Aufruf. Ein externer Embedding-Anbieter ist damit in diesem Weg nicht möglich.
+//
+// GETRENNT GEKENNZEICHNET: Ein gebauter Client sagt nur „konfiguriert und intern". Ob der Server
+// antwortet und welche Vektoren er liefert, belegt erst ein echter `einbetten`-Aufruf — der prüft
+// Anzahl, Reihenfolge und Zahlenform der Antwort und wirft bei jeder Abweichung, statt still zu raten.
+export interface LokalerEmbeddingClient {
+  /** Modellname am lokalen Server (kein Geheimnis). */
+  readonly modell: string;
+  /** Herkunft (Schema, Host, Port) des bestätigten internen Servers — ohne Pfad und Zugangsdaten. */
+  readonly herkunft: string;
+  einbetten(texte: readonly string[]): Promise<number[][]>;
+}
+
+export function createLocalEmbeddingClientFromEnv(
+  env: Record<string, string | undefined> = process.env,
+  fetchFn: typeof fetch = fetch,
+): LokalerEmbeddingClient | undefined {
+  const basisUrl = env.KLARWERK_LOCAL_LLM_URL;
+  const modell = env.KLARWERK_LOCAL_EMBEDDING_MODEL?.trim();
+  if (!basisUrl || !modell) {
+    return undefined;
+  }
+  if (!isConfirmedLocalOrigin(basisUrl, env.KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS)) {
+    return undefined;
+  }
+  const herkunft = new URL(basisUrl).origin;
+  const ziel = `${basisUrl.replace(/\/+$/, "")}/embeddings`;
+  const timeoutMs = parseTimeoutMs(env.KLARWERK_LOCAL_LLM_TIMEOUT_MS) ?? DEFAULT_MODEL_TIMEOUT_MS;
+  const schluessel = env.KLARWERK_LOCAL_LLM_KEY;
+  return {
+    modell,
+    herkunft,
+    async einbetten(texte) {
+      if (texte.length === 0) {
+        return [];
+      }
+      const antwort = await fetchFn(ziel, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(schluessel ? { authorization: `Bearer ${schluessel}` } : {}),
+        },
+        body: JSON.stringify({ model: modell, input: [...texte] }),
+        signal: AbortSignal.timeout(timeoutMs),
+        // Geprüft ist nur die Ausgangsadresse. Eine Weiterleitung (307/308 wiederholt den POST mit
+        // demselben Rumpf) könnte die Texte an ein ungeprüftes Ziel tragen — deshalb wird keiner
+        // gefolgt: `fetch` bricht mit einem Fehler ab, bevor ein zweites Ziel angesprochen wird.
+        redirect: "error",
+      });
+      if (!antwort.ok) {
+        throw new Error(`lokaler Embedding-Server antwortet HTTP ${antwort.status}`);
+      }
+      const rumpf = (await antwort.json()) as { data?: unknown };
+      if (!Array.isArray(rumpf.data) || rumpf.data.length !== texte.length) {
+        throw new Error("lokaler Embedding-Server: Antwort ohne passende Anzahl Vektoren");
+      }
+      const nachIndex = new Map<number, number[]>();
+      for (const eintrag of rumpf.data as { index?: unknown; embedding?: unknown }[]) {
+        const index = eintrag?.index;
+        const vektor = eintrag?.embedding;
+        if (
+          typeof index !== "number" ||
+          !Number.isInteger(index) ||
+          index < 0 ||
+          index >= texte.length ||
+          nachIndex.has(index) ||
+          !Array.isArray(vektor) ||
+          vektor.length === 0 ||
+          !vektor.every((zahl) => typeof zahl === "number" && Number.isFinite(zahl))
+        ) {
+          throw new Error("lokaler Embedding-Server: Antwort mit ungültigem Vektor oder Index");
+        }
+        nachIndex.set(index, vektor as number[]);
+      }
+      // Anzahl stimmt und jeder Index ist eindeutig im Bereich — also ist jeder Text belegt.
+      return texte.map((_, index) => nachIndex.get(index) ?? []);
+    },
+  };
+}
+
 // SCRUM-502 R8: analog für den eigenen lokalen LLM (on-prem, kein externer Egress). Gecappt (globaler
 // In-Flight-Cap). D-AISTATE PAKET 1 (bens V1, aistate-fix3): rejectsConfidential ist NICHT mehr blind
 // false — nur eine als On-Prem BESTÄTIGTE Origin (Loopback bzw. explizit freigegeben, s.

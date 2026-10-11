@@ -12,7 +12,7 @@
 ## 1. Heutiger Deploy-Stand (real beschrieben)
 
 - **Stack:** Hetzner Cloud (DE) + **Coolify** (PaaS) + **Postgres** + **Cloudflare** (DNS/TLS) (`deploy-hetzner.md`).
-- **`docker-compose.prod.yml`:** App + Postgres; `restart: unless-stopped`; **DB-Healthcheck** (`pg_isready`) + App `depends_on: db healthy`; `COOKIE_SECURE=true`; **DB-Port nicht veröffentlicht** (nur intern). App-Port `3000:3000` (vom Coolify-/Traefik-Proxy gefrontet).
+- **`docker-compose.prod.yml`:** App + Postgres; `restart: unless-stopped`; **DB-Healthcheck** (`pg_isready`) + App `depends_on: db healthy`; `COOKIE_SECURE=true`; **DB-Port nicht veröffentlicht** (nur intern). App-Port `3001:3001` (vom Coolify-/Traefik-Proxy gefrontet; derselbe Port wie `Dockerfile` und `services/app/src/server.ts`, seit JOB 4201 auch in der Compose-Datei).
 - **TLS:** Let's Encrypt über Coolify/Traefik; DNS/Schutz über Cloudflare.
 - **Backups:** Hetzner-Snapshots (täglich) + `pg_dump` (`backup-disaster-recovery.md`).
 
@@ -43,7 +43,7 @@ Vom Betreiber (Pedi) auf dem Hetzner-Host durchzuführen und abzuhaken:
 
 **Firewall / Ports**
 - [ ] **UFW/Hetzner-Firewall**: nur **80/443** (öffentlich) + **SSH** (möglichst eingeschränkt); alles andere **deny**.
-- [ ] **App-Port 3000 NICHT öffentlich** — nur intern für den Proxy. *(Hardening-Hinweis: `ports: "3000:3000"` bindet auf alle Interfaces; hinter Coolify/Traefik besser an `127.0.0.1:3000:3000` bzw. internes Netz binden. **Kein** Codefix in diesem Item — Betreiber-/Deploy-Entscheidung.)*
+- [ ] **App-Port 3001 NICHT öffentlich** — nur intern für den Proxy. *(Hardening-Hinweis: `ports: "3001:3001"` bindet auf alle Interfaces; hinter Coolify/Traefik besser an `127.0.0.1:3001:3001` bzw. internes Netz binden. **Kein** Codefix in diesem Item — Betreiber-/Deploy-Entscheidung.)*
 - [ ] **Postgres-Port (5432) nie öffentlich** (heute korrekt nicht veröffentlicht — so belassen).
 - [ ] **Coolify-Dashboard** nicht öffentlich (Subdomain + Auth / SSH-Tunnel, `deploy-hetzner.md` §2).
 
@@ -67,7 +67,7 @@ Vom Betreiber (Pedi) auf dem Hetzner-Host durchzuführen und abzuhaken:
 ```
 Internet ──443/80──► Cloudflare ──► Hetzner (UFW: 443/80 + SSH only)
                                    └─► Coolify/Traefik (TLS-Terminierung)
-                                          └─► App :3000 (intern, nicht öffentlich)
+                                          └─► App :3001 (intern, nicht öffentlich)
                                                  └─► Postgres :5432 (nur intern, kein Host-Port)
 SSH :22 ──► nur Key-Auth, kein Root, fail2ban, möglichst IP-/Tunnel-beschränkt
 ```
@@ -92,7 +92,7 @@ Die Klarwerk-App ist **Node + Postgres** — **kein** GPU/CUDA nötig. GPU-Treib
 
 Erst wenn der Betreiber Folgendes **live** zeigt, ist Härtung verifiziert:
 1. `ssh` mit Passwort schlägt fehl; Root-Login verweigert.
-2. `ufw status` / Hetzner-Firewall: nur 80/443/SSH offen; `nmap` von außen zeigt **keine** 3000/5432.
+2. `ufw status` / Hetzner-Firewall: nur 80/443/SSH offen; `nmap` von außen zeigt **keine** 3001/5432.
 3. `fail2ban-client status sshd` aktiv.
 4. `unattended-upgrades` aktiv (Logs/Status).
 5. TLS-Check (z. B. SSL-Labs ≥ A); HSTS-Header live.
