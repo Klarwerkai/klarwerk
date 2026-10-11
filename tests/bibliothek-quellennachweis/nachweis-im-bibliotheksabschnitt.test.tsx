@@ -484,3 +484,31 @@ describe("JOB 4095 · D: der Nachweis ERGÄNZT den Abschnitt, er ersetzt nichts"
     expect(el("bib-quelle-zeit")).toBeNull();
   });
 });
+
+// ================================================================================================
+// E) R-0205 — „STUFE 2" UND „EXTERN · UNGEPRÜFT" AN DER EXTERNEN QUELLE IN DER BIBLIOTHEK
+// ================================================================================================
+// aufnahme:20260922:gesamt-externe-quellen-kennzeichnung. Auch eine importierte Quelle (SharePoint,
+// Confluence) kommt hier mit `peerValidated: false` an und trägt damit dieselbe Kennzeichnung.
+describe("R-0205 · E: die externe Quelle trägt Etikett und Herkunfts-Hinweis", () => {
+  it("nur die nicht peer-validierte Quelle trägt „Stufe 2“ und „Extern · ungeprüft“", async () => {
+    await mount(
+      ko(
+        [
+          quelle({ id: "q-extern", label: "DIN 1234", provider: "SharePoint" }),
+          quelle({ id: "q-geprueft", label: "Betriebsanweisung", peerValidated: true }),
+        ],
+        [],
+      ),
+    );
+    await quellenOeffnen();
+
+    const [extern, geprueft] = [...abschnitt().querySelectorAll("li")];
+    expect(text(extern as HTMLElement)).toContain("DIN 1234");
+    expect(text(extern as HTMLElement)).toContain(i18n.t("externequelle.stufe"));
+    expect(text(extern as HTMLElement)).toContain(i18n.t("ko.sourceExternUnchecked"));
+    expect(text(geprueft as HTMLElement)).toContain("Betriebsanweisung");
+    expect(text(geprueft as HTMLElement)).not.toContain(i18n.t("externequelle.stufe"));
+    expect(text(geprueft as HTMLElement)).not.toContain(i18n.t("ko.sourceExternUnchecked"));
+  });
+});

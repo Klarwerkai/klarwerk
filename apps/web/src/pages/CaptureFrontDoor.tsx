@@ -22,9 +22,10 @@ import { CaptureArbeitsraum } from "./Capture";
 export function CaptureFrontDoor(): JSX.Element {
   return (
     <Blatt
-      arbeitsraum={({ modus, onEntwurfInsBlatt, onZurueckInsBlatt }) => (
+      arbeitsraum={({ modus, thema, onEntwurfInsBlatt, onZurueckInsBlatt }) => (
         <CaptureArbeitsraum
           modus={modus}
+          thema={thema}
           onEntwurfInsBlatt={onEntwurfInsBlatt}
           onZurueckInsBlatt={onZurueckInsBlatt}
         />

@@ -10,7 +10,6 @@ import {
   draftCreatorIds,
   draftListView,
   filterDrafts,
-  isDraftSortKey,
   sortDrafts,
 } from "../../apps/web/src/lib/draftListView";
 
@@ -94,10 +93,8 @@ describe("AUFTRAG-sortfilter: sortDrafts (rein)", () => {
     expect(ids(sortDrafts(DRAFTS, "title", FALLBACK))).toEqual(["d1", "d3", "d2"]);
   });
 
-  it("isDraftSortKey erkennt gültige Schlüssel und weist Fremdwerte ab", () => {
-    expect(isDraftSortKey("oldest")).toBe(true);
-    expect(isDraftSortKey("bogus")).toBe(false);
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zu `isDraftSortKey` ist mit dem Typwächter
+  // entfallen — er hatte keinen Produktleser; der Speicherhaken prüft gegen `DRAFT_SORT_KEYS`.
 });
 
 describe("AUFTRAG-sortfilter: draftListView + draftCreatorIds (rein)", () => {

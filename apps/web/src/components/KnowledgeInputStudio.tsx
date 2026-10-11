@@ -4,14 +4,17 @@
 // deutlich mehr Arbeitsfläche. Arbeitet auf einem internen Entwurf des vorhandenen `bodyHtml`-State
 // und schreibt NUR bei bewusster Übernahme zurück. KEIN Auto-Save, KEINE Auto-Validierung, kein
 // Backend, keine neue Editor-Library — reine Wiederverwendung bestehender Komponenten/Helfer.
-import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { ExternalKnowledgeStage } from "../api/types";
+import { GrenzDialog, useModalBoundaryOptional } from "../app/ModalBoundaryContext";
 import {
   type BodyAssistBlockAction,
   applyBodyAssist,
   bodyAssistStructuredActions,
   bodyTextForAssist,
+  spellingAssistHtmlOrNull,
 } from "../lib/bodyAiAssist";
 import type { EditorFile } from "../lib/bodyFileLink";
 import { BODY_READ_BLOCKS_KEY, BODY_READ_TITLE_KEY } from "../lib/bodyReadMode";
@@ -86,6 +89,13 @@ export function KnowledgeInputStudio({
   documentTitle: string;
 }): JSX.Element | null {
   const { t } = useTranslation();
+  // R-0909 (Aufnahme `gesamt-dialog-bedienung`): das Studio ist eine modale Fläche — ein benannter
+  // Dialog (Name = die Überschrift „Knowledge Studio"), an der einen Grenze angemeldet
+  // (`GrenzDialog`: Hintergrundsperre, Anfangsfokus, Fokusrückgabe) und in deren Portal-Anker
+  // gehoben, weil es im gesperrten Seiteninhalt steht. Ohne Grenze (gemountete Proben ohne Shell)
+  // bleibt es an seinem Platz und trägt Rolle und Namen, aber keine Modalitätsbehauptung.
+  const grenze = useModalBoundaryOptional();
+  const titelId = useId();
   // Interner Entwurf: beim Öffnen aus dem aktuellen Body initialisiert; Änderungen bleiben lokal,
   // bis der Nutzer bewusst übernimmt. So bleibt der bestehende Save/Revise-Flow unberührt.
   const [draft, setDraft] = useState(bodyHtml);
@@ -108,6 +118,10 @@ export function KnowledgeInputStudio({
   const [konflikt, setKonflikt] = useState(false);
   // SCRUM-339: Inline-Bestätigung, bevor unübernommene Änderungen verworfen werden (kein confirm()).
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // R-1057 (Auftrag gesamt-wissen-editor): „Einfach" ist ein ANSICHTSWECHSEL, kein Verwerfen. Nur
+  // wenn draußen inzwischen eine andere Fassung entstanden ist (`konflikt`), fragt der Wechsel,
+  // welche Fassung das Blatt zeigen soll — er überschreibt sie nicht stumm und verwirft nichts.
+  const [ansichtKonflikt, setAnsichtKonflikt] = useState(false);
   // SCRUM-346: Umschalter Bearbeiten ↔ Vorschau/Review der zentralen Editor-Spalte (lokaler Anzeige-State).
   const [view, setView] = useState<StudioEditorView>("edit");
   // Pedi 06.07.: Datei/Bild vom Rechner im Studio anhängen — der eigentliche Upload/Attach passiert
@@ -211,6 +225,7 @@ export function KnowledgeInputStudio({
       herkunftRef.current = bodyHtml;
       setDraft(bodyHtml);
       setConfirmDiscard(false);
+      setAnsichtKonflikt(false);
       setView("edit");
       return;
     }
@@ -287,13 +302,53 @@ export function KnowledgeInputStudio({
     onApply(draft);
     onClose();
   };
+  // ── R-1057 · DAS STUDIO IST EINE ZWEITE ANSICHT DESSELBEN BLATTS ─────────────────────────────
+  //
+  // Vorher hing „Einfach" an `requestClose`: wer im Studio gearbeitet hatte, bekam beim Wechsel
+  // die Frage „verwerfen?" und konnte nur verwerfen oder im Studio bleiben — der Wechsel kostete
+  // die Eingabe oder führte nicht hinaus. Jetzt nimmt der Wechsel den Studio-Stand ins Blatt mit
+  // (derselbe `onApply` wie „In den Entwurf übernehmen"), ohne Rückfrage und ohne Verlust.
+  //
+  // UNVERÄNDERT bleibt: KI-Vorschläge landen weiterhin erst durch einen bewussten Klick in der
+  // KI-Hilfe im Studio-Stand (`AiAssistBox.onApply`); gespeichert wird nichts automatisch — der
+  // Speichern-Knopf des Blatts bleibt der einzige Weg zum Server. „Verwerfen" und Esc behalten
+  // ihre Rückfrage, denn dort WILL der Mensch den Studio-Stand loswerden.
+  //
+  // DER EINE SONDERFALL (JOB 3123): hat sich das Blatt draußen geändert, während hier gearbeitet
+  // wurde, würde das Mitnehmen die fremde Fassung überschreiben. Das geschieht nicht stumm: der
+  // Wechsel hält an und fragt mit dem vorhandenen Konfliktsatz. Verworfen wird auch dann nichts.
+  const zurEinfachenAnsicht = (): void => {
+    if (!studioState.dirty) {
+      onClose();
+      return;
+    }
+    if (konflikt) {
+      setAnsichtKonflikt(true);
+      return;
+    }
+    onApply(draft);
+    onClose();
+  };
+  const meinenStandMitnehmen = (): void => {
+    setAnsichtKonflikt(false);
+    onApply(draft);
+    onClose();
+  };
 
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-page/95 backdrop-blur-sm">
+  // R-0909: die überdeckende Ebene IST der Dialog. `m-0 h-full w-full max-h-none max-w-none
+  // border-0 p-0 text-text` nehmen dem nativen Element seine Vorgaben (Rand, Innenabstand, Farbe,
+  // Breite nach Inhalt); `fixed inset-0` und die Tönung sind unverändert die von vorher.
+  const ebene = (
+    <GrenzDialog
+      benanntDurch={titelId}
+      className="fixed inset-0 z-50 m-0 flex h-full max-h-none w-full max-w-none flex-col border-0 bg-page/95 p-0 text-text backdrop-blur-sm"
+    >
       {/* Kopfzeile: Titel + ehrlicher Hinweis (kein Auto-Save) + Schließen. */}
       <div className="flex items-center justify-between gap-3 border-b border-hairline bg-surface px-4 py-3 sm:px-6">
         <div className="min-w-0">
-          <h2 className="text-[15px] font-semibold text-text">{t("studio.title")}</h2>
+          <h2 id={titelId} className="text-[15px] font-semibold text-text">
+            {t("studio.title")}
+          </h2>
           <p className="truncate text-[11.5px] text-muted">{t("studio.subtitle")}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -316,6 +371,24 @@ export function KnowledgeInputStudio({
                 {t("studio.confirmDiscard.discard")}
               </Button>
             </>
+          ) : ansichtKonflikt && konflikt ? (
+            // R-1057: der Wechsel nach „Einfach" hält nur an, wenn er eine draußen entstandene
+            // Fassung überschreiben würde — und sagt es dort, wo geklickt wurde.
+            <>
+              <span
+                aria-live="polite"
+                data-testid="studio-ansicht-konflikt"
+                className="max-w-[28rem] text-[12px] font-semibold text-text"
+              >
+                {t("studio.fremdfassung.hinweis")}
+              </span>
+              <Button variant="ghost" onClick={() => setAnsichtKonflikt(false)}>
+                {t("studioansicht.imStudioBleiben")}
+              </Button>
+              <Button variant="primary" onClick={meinenStandMitnehmen}>
+                {t("studioansicht.meinenStandMitnehmen")}
+              </Button>
+            </>
           ) : (
             <>
               {/* SCRUM-339: sichtbarer Dirty-Status — unübernommene Änderungen klar markiert. */}
@@ -330,11 +403,14 @@ export function KnowledgeInputStudio({
               </span>
               {/* SCRUM-458 Stufe 1: „Einfach ↔ Strukturiert" als Ansicht-Schalter. „Einfach" ist der
                   immer sichtbare, verlässliche Ausgang zurück aufs Blatt — Studio ist kein zweiter
-                  Ort mehr, sondern eine Ansicht. (Esc schließt ebenfalls.) */}
+                  Ort mehr, sondern eine Ansicht. R-1057: der Wechsel nimmt den Studio-Stand mit
+                  (`zurEinfachenAnsicht`), statt nach dem Verwerfen zu fragen. */}
               <div className="flex overflow-hidden rounded-pill border border-hairline text-[11px] font-semibold">
                 <button
                   type="button"
-                  onClick={requestClose}
+                  data-testid="studio-ansicht-einfach"
+                  onClick={zurEinfachenAnsicht}
+                  title={t("studioansicht.wechselNimmtMit")}
                   aria-label={t("studio.viewSwitch")}
                   className="px-2.5 py-1 text-muted transition-colors hover:text-text"
                 >
@@ -504,6 +580,7 @@ export function KnowledgeInputStudio({
                       applyFn={(mode, _original, suggestion) =>
                         applyBodyAssist(mode, draft, suggestion)
                       }
+                      applySpelling={(suggestion) => spellingAssistHtmlOrNull(draft, suggestion)}
                       onApply={setDraft}
                       hintKey="capture.ai.bodyHint"
                       extraApplyActions={blockActions}
@@ -598,6 +675,10 @@ export function KnowledgeInputStudio({
           </div>
         )}
       </div>
-    </div>
+    </GrenzDialog>
   );
+
+  // Der Anker wird beim Öffnen gelesen (Bauform `Modal.tsx`).
+  const anker = grenze?.host() ?? null;
+  return anker ? createPortal(ebene, anker) : ebene;
 }

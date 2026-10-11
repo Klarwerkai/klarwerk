@@ -469,11 +469,25 @@
       return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
     }
 
-    // AUFTRAG-JOB507-D4 — Retry-After: eine Zahl, sechs Klassen, eine Obergrenze. Spiegel von
-    // apps/web/src/lib/wordAddin.ts#parseRetryAfterSeconds; die ausfuehrliche Begruendung steht dort.
-    // Feste Reihenfolge: fehlend → null · leer → null · ganze Sekunden → gedeckelt · negative
-    // Sekunden → 0 · HTTP-Datum → Zukunft gedeckelt / Vergangenheit 0 · sonst → null.
-    // `null` heisst „unbekannt", `0` heisst „jetzt" — das ist nicht dasselbe.
+    // R-0310 (Spiegel von wordAddin.ts#askAbsaetzeLesen): die Absatz-Beleg-Zuordnung des Servers.
+    // Fehlt das Feld → undefined (alter Server, keine Aussage). Sonst NUR Absaetze mit mindestens einer
+    // TRAGENDEN Quelle (`cited`), Marken `[n]` und Markdown entfernt; unbelegte fallen weg.
+    function askAbsaetzeLesen(body, cited) {
+      if (!body || !Array.isArray(body.absaetze)) { return undefined; }
+      var tragend = Array.isArray(cited) ? cited : [];
+      var out = [];
+      for (var i = 0; i < body.absaetze.length; i += 1) {
+        var a = body.absaetze[i] || {};
+        var q = Array.isArray(a.quellen) ? a.quellen.filter(function (id) { return typeof id === "string" && tragend.indexOf(id) !== -1; }) : [];
+        var text = typeof a.text === "string" ? stripAskAnswerMarkdown(a.text.replace(/\s*\[[0-9\s,]+\]/g, "")) : "";
+        if (q.length > 0 && text.length > 0) { out.push({ text: text, quellen: q }); }
+      }
+      return out;
+    }
+
+    // AUFTRAG-JOB507-D4 — Retry-After (Spiegel von wordAddin.ts#parseRetryAfterSeconds, Begruendung
+    // dort): fehlend/leer → null · Sekunden → gedeckelt · negativ → 0 · HTTP-Datum → Zukunft
+    // gedeckelt / Vergangenheit 0 · sonst null. `null` heisst „unbekannt", `0` heisst „jetzt".
     var WORD_ADDIN_RETRY_AFTER_MAX_SECONDS = 3600;
     // Die Datumsform wird GEPRUEFT, bevor Date.parse laeuft: Date.parse ist nachsichtig und liest
     // auch „12.5" als Datum (im Red-first-Lauf belegt) — eine erfundene Auskunft saehe dann aus wie
@@ -516,31 +530,11 @@
     // Aufgabenfenster ist buildlos, also ist ein Schnitt die einzige Moeglichkeit, das WIRKLICH
     // ausgelieferte `performAsk` (nicht seinen TypeScript-Zwilling) laufen zu lassen.
     // KW-KA4-DOKUMENT-CONSENT-START
-    //
-    // ============================================================================================
-    // KA4 — DIE EINWILLIGUNG GILT JE DOKUMENT, UND SIE WIRD NIE HIER ENTSCHIEDEN.
-    // ============================================================================================
-    //
-    // Pedis Weiche (Werkstattbeschluss 18.08.2026): „Externe KI mit Dokumenttext: JA, aber nie
-    // still. Je Dokument eine ausdrueckliche Einwilligung; Klara darf auch AKTIV fragen …
-    // Vertraulich Markiertes bleibt IMMER draussen."
-    //
-    // WAS DIESER BLOCK TUT — und was ausdruecklich NICHT:
-    //   · Er FUEHRT den Ablehnungsvermerk je Dokument, damit Klara nicht zweimal dasselbe fragt.
-    //     Nur im Arbeitsspeicher dieser Panelinstanz: kein localStorage, kein sessionStorage. Ein
-    //     Nein, das ein Neuladen ueberlebt, waere eine dauerhafte Entscheidung — und eine
-    //     dauerhafte ZUSTIMMUNG waere noch schlimmer. Beide gehoeren dem Server.
-    //   · Er ENTSCHEIDET NICHTS. Ob externe KI laeuft, sagt allein die serverseitige Aufloesung
-    //     (`klaraS4Anzeige`), und ob sie ausgefuehrt werden darf, allein
-    //     `KlaraSessionService.pruefeExterneAusfuehrung` am Ask-Weg. Ein lokales Ja autorisiert
-    //     nichts — der Server prueft neun Bindungen, nicht ein Bool aus dem Panel.
-    //   · Er MERKT SICH KEIN JA. Eine erteilte Zustimmung steht im Serverzustand
-    //     (`consentState`), nicht hier; sie hier zu spiegeln hiesse, sie ueberleben zu lassen,
-    //     wenn der Server sie laengst entwertet hat (Rebind, Widerruf, Ablauf, Policywechsel).
-    //
-    // DER DOKUMENTWECHSEL entwertet den Vermerk von selbst: der Schluessel IST die vom Server
-    // vergebene `documentContextId`, und ein Rebind liefert eine neue. Nichts muss aufgeraeumt
-    // werden, und nichts kann versehentlich stehenbleiben.
+    // KA4 — DIE EINWILLIGUNG GILT JE DOKUMENT, UND SIE WIRD NIE HIER ENTSCHIEDEN. Pedis Weiche (Werkstattbeschluss 18.08.2026): „Externe KI mit Dokumenttext: JA, aber nie still. Je Dokument eine ausdrueckliche Einwilligung; Klara darf auch AKTIV fragen … Vertraulich Markiertes bleibt IMMER draussen."
+    // WAS DIESER BLOCK TUT — und was ausdruecklich NICHT: · Er FUEHRT den Ablehnungsvermerk je Dokument, damit Klara nicht zweimal dasselbe fragt. Nur im Arbeitsspeicher dieser Panelinstanz: kein localStorage, kein sessionStorage. Ein Nein, das ein Neuladen ueberlebt, waere eine dauerhafte Entscheidung — und eine dauerhafte ZUSTIMMUNG waere noch schlimmer. Beide gehoeren dem Server.
+    // · Er ENTSCHEIDET NICHTS. Ob externe KI laeuft, sagt allein die serverseitige Aufloesung (`klaraS4Anzeige`), und ob sie ausgefuehrt werden darf, allein `KlaraSessionService.pruefeExterneAusfuehrung` am Ask-Weg. Ein lokales Ja autorisiert nichts — der Server prueft neun Bindungen, nicht ein Bool aus dem Panel.
+    // · Er MERKT SICH KEIN JA. Eine erteilte Zustimmung steht im Serverzustand (`consentState`), nicht hier; sie hier zu spiegeln hiesse, sie ueberleben zu lassen, wenn der Server sie laengst entwertet hat (Rebind, Widerruf, Ablauf, Policywechsel).
+    // DER DOKUMENTWECHSEL entwertet den Vermerk von selbst: der Schluessel IST die vom Server vergebene `documentContextId`, und ein Rebind liefert eine neue. Nichts muss aufgeraeumt werden, und nichts kann versehentlich stehenbleiben.
     var ka4Abgelehnt = Object.create(null);
 
     /** Der Schluessel ist die SERVERSEITIGE Dokumentkennung — nie eine selbst gebildete. */
@@ -559,14 +553,8 @@
       if (schluessel.length > 0) { ka4Abgelehnt[schluessel] = true; }
     }
 
-    /**
-     * Darf Klara fuer dieses Dokument AKTIV fragen?
-     *
-     * Drei Bedingungen, alle noetig: der Server verlangt die Zustimmung ueberhaupt, sie ist noch
-     * nicht erteilt, und der Anwender hat fuer dieses Dokument noch nicht Nein gesagt. Fehlt die
-     * Anzeige (Ladephase, Abruf gescheitert), wird NICHT gefragt — eine Frage auf unbekanntem
-     * Stand waere geraten.
-     */
+    // Darf Klara fuer dieses Dokument AKTIV fragen? Drei Bedingungen, alle noetig: der Server verlangt die Zustimmung ueberhaupt, sie ist noch nicht erteilt,
+    // und der Anwender hat fuer dieses Dokument noch nicht Nein gesagt. Fehlt die Anzeige (Ladephase, Abruf gescheitert), wird NICHT gefragt — eine Frage auf unbekanntem Stand waere geraten.
     function ka4DarfAktivFragen(anzeige) {
       if (!anzeige || anzeige.consentVisible !== true) { return false; }
       if (anzeige.consentPossible !== true) { return false; }
@@ -591,36 +579,27 @@
         timedOut = true;
         try { controller.abort(); } catch (err) { /* bereits beendet — egal */ }
       }, timeoutMs);
-      // WP-KLARA-ASK-FIX (bens Fix 1): IMMER der server-garantierte retrieval-only-Modus —
-      // markierter Dokumenttext darf NIE zur Cloud; clientseitig gibt es keine andere Wahl.
-      //
-      // KW-KA4: `mode` bleibt UNVERAENDERT gesetzt. Er ist die Bitte um die Enge, nicht ihre
-      // Aufhebung — der Server entscheidet ueber die Einwilligung und ignoriert jeden Wunsch des
-      // Clients. Neu sind allein die drei BINDUNGS-Kopfzeilen: dieselben, die der Sitzungsweg
-      // schon fuehrt (`klaraS4Header`), damit der Server das vorhandene Ausfuehrungstor auf
-      // exakt diese Sitzung UND dieses Dokument anwenden kann. Sie sind opak und autorisieren
-      // fuer sich genommen nichts; ohne registrierte Sitzung sind sie leer und der Server
-      // behandelt die Anfrage wie bisher.
-      //
-      // JOB 3019 (KA5): die markierte Passage reist als EIGENES Feld `selection` — und nur, wenn es
-      // sie gibt. `undefined` faellt bei `JSON.stringify` heraus; ohne Markierung ist der Koerper
-      // deshalb Zeichen fuer Zeichen der bisherige (in tests/klara-panel/ka5-markierung-reist-mit
-      // Faelle C/D durch Ausfuehrung erhoben). Der Modus bleibt unangetastet: die Markierung geht
-      // an DIESELBE Route und in DENSELBEN retrieval-only-Weg, der serverseitig kein Modell
-      // erreicht — sie ergaenzt dort ausschliesslich die Suchterme der Vorauswahl.
+      // WP-KLARA-ASK-FIX (bens Fix 1): IMMER der server-garantierte retrieval-only-Modus — markierter Dokumenttext darf NIE zur Cloud; clientseitig gibt es keine andere Wahl.
+      // KW-KA4: `mode` bleibt UNVERAENDERT gesetzt. Er ist die Bitte um die Enge, nicht ihre Aufhebung — der Server entscheidet ueber die Einwilligung und ignoriert jeden Wunsch des Clients.
+      // Neu sind allein die drei BINDUNGS-Kopfzeilen: dieselben, die der Sitzungsweg schon fuehrt (`klaraS4Header`), damit der Server das vorhandene Ausfuehrungstor auf exakt diese Sitzung
+      // UND dieses Dokument anwenden kann. Sie sind opak und autorisieren fuer sich genommen nichts; ohne registrierte Sitzung sind sie leer und der Server behandelt die Anfrage wie bisher.
+      // JOB 3019 (KA5): die markierte Passage reist als EIGENES Feld `selection` — und nur, wenn es sie gibt. `undefined` faellt bei `JSON.stringify` heraus; ohne Markierung ist der Koerper
+      // deshalb Zeichen fuer Zeichen der bisherige (in tests/klara-panel/ka5-markierung-reist-mit Faelle C/D durch Ausfuehrung erhoben). Der Modus bleibt unangetastet: die Markierung geht
+      // an DIESELBE Route und in DENSELBEN retrieval-only-Weg, der serverseitig kein Modell erreicht — sie ergaenzt dort ausschliesslich die Suchterme der Vorauswahl.
       var markierung = typeof selection === "string" ? selection.trim() : "";
       var askKopf = { "content-type": "application/json" };
       var bindung = bindungsKopf || {};
+      var sitzung = typeof bindung["x-klara-session"] === "string" ? bindung["x-klara-session"] : ""; // R-0700 (KW-S4-24): MIT Sitzung fragt Klara ueber ihren EIGENEN Zugang (Sitzung im Pfad, Kopfzeilen und Koerper wie bisher); OHNE Sitzung bleibt der allgemeine retrieval-only-Weg — ohne Bindungskopfzeilen und ohne Klara-Felder, die er nicht mehr annimmt.
       for (var kopfName in bindung) {
-        if (Object.prototype.hasOwnProperty.call(bindung, kopfName) && bindung[kopfName]) {
+        if (sitzung && Object.prototype.hasOwnProperty.call(bindung, kopfName) && bindung[kopfName]) {
           askKopf[kopfName] = bindung[kopfName];
         }
       }
-      return fetchFn("/api/ask", {
+      return fetchFn(sitzung ? "/api/klara/sessions/" + encodeURIComponent(sitzung) + "/execute" : "/api/ask", {
         method: "POST",
         credentials: "include",
         headers: askKopf,
-        body: JSON.stringify({ question: question, locale: locale, mode: "retrieval-only", selection: markierung.length > 0 ? markierung : undefined, questionSource: questionSource === "selection" || questionSource === "manual" ? questionSource : undefined }),
+        body: JSON.stringify(sitzung ? { question: question, locale: locale, mode: "retrieval-only", selection: markierung.length > 0 ? markierung : undefined, questionSource: questionSource === "selection" || questionSource === "manual" ? questionSource : undefined } : { question: question, locale: locale, mode: "retrieval-only" }),
         signal: controller.signal,
       })
         .then(function (res) {
@@ -637,6 +616,7 @@
               ),
             };
           }
+          if (res.status === 503) { return res.json().then(function (s) { return s && s.error === "KI_ABGESCHALTET" ? { kind: "ki-abgeschaltet" } : { kind: "error", detail: "HTTP 503" }; }, function () { return { kind: "error", detail: "HTTP 503" }; }); } // R-1040: Abschaltung durch den Administrator ≠ Störung
           if (!res.ok) { return res.status !== 409 ? { kind: "error", detail: "HTTP " + res.status } : res.json().then(function (s) { return s && s.error === "KLARA_AUSWEICHWEG_GESPERRT" ? (typeof s.reason === "string" ? { kind: "fallback-blocked", reason: s.reason } : { kind: "fallback-blocked" }) : { kind: "error", detail: "HTTP 409" }; }, function () { return { kind: "error", detail: "HTTP 409" }; }); } // R-0590: gesperrter Ausweichweg = Grund statt nacktem 409
           return res.json().then(function (body) {
             var result = body && body.result ? body.result : null;
@@ -661,11 +641,10 @@
                 if (typeof cid === "string" && cid.trim().length > 0) { cited.push(cid); }
               }
             }
-            // JOB 3366 (KI-FRAGMENT-SICHTBAR): der belegte Abbruchbefund des Servers. GELESEN,
-            // nie hergeleitet — dieselbe Beweislast-Umkehr wie bei `citedSources` darueber: das
-            // Feld muss ein Objekt sein UND `finishReason` als nichtleere Zeichenkette tragen,
-            // sonst gilt es als NICHT gemeldet. Ein aelterer Server sendet es gar nicht; das fuehrt
-            // in den bisherigen Zustand (kein Satz), nie in die Entwarnung „vollstaendig".
+            // R-0310: die ausdrueckliche Absatz-Beleg-Zuordnung (`body.absaetze`) — nur belegte Absaetze.
+            var absaetze = askAbsaetzeLesen(body, cited);
+            // JOB 3366: der Abbruchbefund des Servers wird GELESEN (Objekt mit nichtleerem
+            // `finishReason`), nie hergeleitet; fehlt er, gilt er als NICHT gemeldet.
             var abgeschnitten = false;
             var befund = result ? result.abgeschnitten : null;
             if (befund && typeof befund === "object" && typeof befund.finishReason === "string" && befund.finishReason.length > 0) {
@@ -676,11 +655,8 @@
               firstStep && typeof firstStep.snippet === "string" && firstStep.snippet.trim().length > 0
                 ? firstStep.snippet.trim()
                 : undefined;
-            // JOB 3092 S6 (W5): die Meldung „vorhanden, aber ungeprueft" (JOB 1591 D1) reist NEBEN
-            // `result` im Koerper (`ungeprueft`, nur auf dem Sitzungsweg) und wird GELESEN, nie
-            // hergeleitet: abwesend heisst „nicht gefragt", `[]` heisst „nachgesehen, nichts" —
-            // die Flaeche zeigt in beiden Faellen keinen Satz und behauptet nie „alles geprueft".
-            // Ein Eintrag ohne Kennung ist keine Meldung. Der abgesetzte Rumpf bleibt byte-gleich.
+            // JOB 3092 S6 (W5): `ungeprueft` (JOB 1591 D1, nur Sitzungsweg) wird GELESEN; abwesend
+            // und `[]` zeigen keinen Satz, nie „alles geprueft"; ein Eintrag ohne Kennung zaehlt nicht.
             var ungeprueft;
             if (body && Array.isArray(body.ungeprueft)) {
               ungeprueft = [];
@@ -695,43 +671,44 @@
                 }
               }
             }
-            if (
-              result &&
-              result.answered === true &&
-              typeof answer === "string" &&
-              answer.trim().length > 0 &&
-              sources.length > 0
-            ) {
-              // JOB 3366: die Tatsache reist NUR MIT, WENN SIE EINE IST. Ein `abgeschnitten: false`
-              // an jeder Antwort waere die positive Gegenaussage „vollstaendig", die §9 verbietet —
-              // und es machte den Spiegel-Vertrag mit `apps/web/src/lib/wordAddin.ts` an JEDEM
-              // Ergebnis ungleich statt nur an den abgeschnittenen (word-addin-ask.test.ts, Teil 3).
+            // AUFNAHME 20260922 · R-0335/R-0321 (Spiegel wordAddin.ts): Lage und Konfliktseiten des Servers (answer-belastbarkeit.ts) werden GELESEN. Nur eine belegte
+            // Wissensluecke ist eine: ein Koerper ohne Ergebnis, eine unbekannte, gestoerte oder zur Antwortform widerspruechliche Lage ist ein technischer Fehler.
+            var bel = result && result.belastbarkeit && typeof result.belastbarkeit === "object" ? result.belastbarkeit : null;
+            var belegt = !!(result && result.answered === true && typeof answer === "string" && answer.trim().length > 0 && sources.length > 0);
+            if (!result || typeof result.answered !== "boolean" || (bel && (["belegt", "belegt_zustaendig_fehlt", "belegt_mit_konflikt", "wissensluecke", "geschwaerzt"].indexOf(bel.lage) === -1 || (bel.lage !== "geschwaerzt" && (bel.lage === "wissensluecke") === belegt)))) { return { kind: "error", detail: "lage" }; }
+            if (bel && bel.lage === "geschwaerzt") { return { kind: "redacted" }; }
+            var konflikte = [];
+            var roheKonflikte = bel && Array.isArray(bel.konflikte) ? bel.konflikte : [];
+            for (var ki = 0; ki < roheKonflikte.length; ki += 1) {
+              var rk = roheKonflikte[ki];
+              if (!rk || !Array.isArray(rk.seiten) || rk.seiten.length !== 2) { continue; }
+              konflikte.push({ beschreibung: typeof rk.beschreibung === "string" ? rk.beschreibung : null, seiten: rk.seiten.map(function (s) { return s && s.einsehbar === true ? { einsehbar: true, titel: String(s.titel || ""), aussage: String(s.aussage || ""), traegtAntwort: s.traegtAntwort === true } : { einsehbar: false, traegtAntwort: !!(s && s.traegtAntwort === true) }; }) });
+            }
+            if (belegt && (!absaetze || absaetze.length > 0)) { // R-0310: ohne belegten Absatz wird nichts ausgegeben; die Lage oben bleibt am Koerper geprueft
+              // JOB 3366: `abgeschnitten` reist NUR MIT, wenn es eine Tatsache ist — nie als Gegenaussage „vollstaendig" (§9; Spiegelvertrag word-addin-ask Teil 3).
               var fragmentFeld = abgeschnitten ? { abgeschnitten: true } : {};
               return Object.assign(fragmentFeld, {
                 kind: "answered",
-                // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text.
-                answer: stripAskAnswerMarkdown(answer),
+                // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text; R-0310: NUR belegte Absaetze.
+                answer: absaetze ? absaetze.map(function (a) { return a.text; }).join("\n\n") : stripAskAnswerMarkdown(answer),
+                absaetze: absaetze,
                 sources: sources,
                 trust: typeof result.trust === "number" ? result.trust : 0,
-                // AUFTRAG-mega34 B: die serverseitige Einstufung reist mit. Fehlt sie, ist der
-                // Grad fail-safe "unverified" — Word behauptet nie Sicherheit ohne Beleg.
-                grade: askGradeOf(result.evidence),
+                grade: askGradeOf(result.evidence), // mega34 B: Einstufung vom Server; fehlt sie, fail-safe "unverified".
                 evidence: result.evidence || undefined,
                 citedSources: cited,
                 snippet: snippet,
-                // AUFTRAG-mega81 BLOCK A: das serverseitige Kennzeichnungssignal wird GELESEN.
-                // Auf dem retrieval-only-Weg dieses Fensters fehlt es immer (der Server laesst es
-                // dort bewusst weg) — die Behauptung entsteht also nie aus einer Annahme.
-                // G24: geprueft statt gecastet — siehe KW-KLARA-AI-MARK-* weiter unten.
+                // mega81 A / G24: das Kennzeichnungssignal wird GELESEN und geprueft (KW-KLARA-AI-MARK-*), nie angenommen.
                 aiGenerated: istKiKennzeichnung(result.aiGenerated),
                 ungeprueft: ungeprueft,
+                lage: bel ? bel.lage : undefined,
+                konflikte: bel ? konflikte : undefined,
               });
             }
-            // AUFTRAG-mega77 BLOCK A: die Wissensluecke ist wieder eine reine Wissensluecke — der
-            // Antwortkoerper wird hier NICHT mehr nach einer Bestandszahl durchsucht.
-            // JOB 3092 S6 (W5): sie traegt aber, was der Server AUSDRUECKLICH und betrachter-
-            // gefiltert meldet (JOB 1591) — keine Zahl aus der Vorauswahl, sondern die Liste selbst.
-            return { kind: "gap", ungeprueft: ungeprueft };
+            // mega77 A: die Wissensluecke durchsucht den Koerper NICHT nach einer Bestandszahl; sie traegt nur die betrachtergefilterte Liste (JOB 3092 S6 / JOB 1591).
+            // R-0310/R-0325: nichts belegt UND keine tragende Quelle → die Luecke nennt die unbekannte Zuordnung.
+            var unbekannt = !!absaetze && absaetze.length === 0 && !(cited || []).some(function (x) { return sources.indexOf(x) !== -1; });
+            return unbekannt ? { kind: "gap", ungeprueft: ungeprueft, zuordnungUnbekannt: true } : { kind: "gap", ungeprueft: ungeprueft };
           });
         })
         .catch(function (err) {
@@ -825,9 +802,7 @@
       return grade === "verified" ? texts.verified : texts.unverified;
     }
 
-    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — Spiegel von wordAddin.ts#askEvidenceDetail.
-    // Es wird NICHTS berechnet: gelesen wird nur, was `result.evidence` mitgebracht hat. Die
-    // Regel selbst bleibt in services/ask/src/answer-evidence.ts (KW-W1-13).
+    // W1-VERTRAUENSKOPF-08 B — Spiegel von askEvidenceDetail: nur gelesen, nie berechnet (KW-W1-13).
     var ASK_CAVEAT_KEYS = ["unknown", "unchecked", "noCoverage", "incomplete", "unattributed"];
 
     function askCount(value) {
@@ -857,10 +832,7 @@
       return { caveat: caveat, conflict: conflict };
     }
 
-    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — Spiegel von wordAddin.ts#askSnippetWorthShowing.
-    // Auf dem heutigen retrieval-only-Weg IST die Antwort die Aussage der tragenden Quelle: dann
-    // sind Antwort und Ausschnitt identisch, und derselbe Satz unter zwei Namen saehe aus wie ein
-    // zweiter Beleg. Genau das hat mega39 D2 in der Konsole entfernt.
+    // W1-VERTRAUENSKOPF-08 B — Spiegel von askSnippetWorthShowing: kein Ausschnitt, der die Antwort ist.
     function askSnippetWorthShowing(answer, snippet) {
       var s = typeof snippet === "string" ? snippet.replace(/\s+/g, " ").trim() : "";
       if (s.length === 0) { return false; }
@@ -875,10 +847,8 @@
       return citedSources.indexOf(id) >= 0 ? "carrying" : "consulted";
     }
 
-    // AUFTRAG-mega34 B2: der EINGEFUEGTE Text traegt die Einstufung mit. Das ist der Punkt, an dem
-    // das Ergebnis das Haus verlaesst — ein Hinweis nur im Panel reist nicht mit ins Dokument.
-    // AUFTRAG-mega36 D: ohne Koerper (nach Abzug eines bereits vorhandenen Metablocks) beginnt der
-    // Text NICHT mit zwei Leerzeilen — die Quellen-Zeile steht dann allein.
+    // AUFTRAG-mega34 B2: der eingefuegte Text traegt die Einstufung mit; mega36 D: ohne Koerper
+    // steht die Quellen-Zeile allein (keine fuehrenden Leerzeilen).
     function buildAnswerInsertText(answer, sourceLine, truncatedNote, evidenceNote) {
       var head = answer.replace(/\s+$/g, "");
       var base = head.length > 0 ? head + "\n\n" + sourceLine : sourceLine;
@@ -901,14 +871,8 @@
     }
 
     // AUFTRAG-mega35 A1 — DIE EINE STELLE, AN DER DER AUSZUGEBENDE TEXT ENTSTEHT (Spiegel von
-    // composeAnswerOutput in wordAddin.ts). Der Nutzerin gehoert NUR der Antwortkoerper; Einstufung
-    // und Quellen-Zeile setzt diese Funktion im AUGENBLICK des Kopierens/Einfuegens an — sie koennen
-    // deshalb nicht fehlen, egal wann und wie lange bearbeitet wurde.
-    // AUFTRAG-mega36 D (bens GELB-2): die Zusammensetzung ist IDEMPOTENT. Erkannt wird der am ENDE
-    // angehaengte Metablock — Zeilen in genau den Formen, die diese Funktion selbst erzeugt (beide
-    // Quellen-Zeilen-Vorlagen mit {titles}/{date} als Platzhalter, die beiden Einstufungstexte, der
-    // Kappungshinweis). GRENZE: nur der Trailing-Block; eine Metazeile MITTEN im Koerper und eine
-    // Metazeile in einer ANDEREN Sprache bleiben stehen.
+    // composeAnswerOutput): Einstufung und Quellen-Zeile entstehen erst beim Kopieren/Einfuegen.
+    // mega36 D: IDEMPOTENT — nur der angehaengte Metablock (eigene Formen) am ENDE wird erkannt.
     function composedMetaLinePattern(template) {
       var escaped = template.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       return new RegExp("^" + escaped.replace(/\\\{titles\\\}/g, ".*").replace(/\\\{date\\\}/g, ".*") + "$");
@@ -951,10 +915,7 @@
       );
     }
 
-    // AUFTRAG-mega36 B2: GANZE Auswahl oder Bruchstueck. Der abgefangene native Kopiervorgang gibt
-    // den abgeleiteten Text NUR bei ganzem Antwortkoerper aus; eine Teilauswahl bleibt roh (ein
-    // Bruchstueck ist keine Antwort und traegt deshalb auch keine Einstufung). Umgebender Leerraum
-    // darf ausgelassen werden — mehr nicht.
+    // AUFTRAG-mega36 B2: nur der GANZE Antwortkoerper (umgebender Leerraum egal) gilt als Ausgabe.
     function answerSelectionIsWhole(value, start, end) {
       var body = (value || "").replace(/^\s+|\s+$/g, "");
       if (body.length === 0) { return false; }
@@ -978,10 +939,8 @@
         : "other";
     }
 
-    // AUFTRAG-klara1b (Teil A): Einfuegen ROBUST — moderner Word.run-Weg zuerst, setSelectedDataAsync
-    // als Fallback; Berechtigungsfehler wird ehrlich als "permission" gemeldet (Ausweg Kopieren).
-    // DOM-/Office-frei: die konkreten Aufrufe reicht der Aufrufer als injizierte Versuche (Spiegel des
-    // Moduls performInsert — sequenziell, erster Erfolg gewinnt).
+    // AUFTRAG-klara1b (Teil A): Einfuegen ROBUST (Spiegel von performInsert) — injizierte Versuche,
+    // sequenziell, erster Erfolg gewinnt; ein Berechtigungsfehler wird ehrlich "permission".
     function performInsert(text, attempts) {
       var index = 0;
       var lastDetail = "";
@@ -1044,16 +1003,9 @@
     }
 
     // KW-KLARA-AISTATE-START
-    // AUFTRAG-mega75 Block B — Spiegel von apps/web/src/lib/wordAddin.ts#klaraAiLage.
-    //
-    // Dort wird NICHTS nachgebaut: `klaraAiLage` importiert und RUFT `deriveAiAvailable`
-    // (lib/aiAvailability.ts) und `aiTaskInfoPublic` (lib/reasonerTaskInfo.ts) — also genau die
-    // Funktionen, an denen auch AiModelInfo in der Anwendung haengt. Nur DIESE Fassung hier muss
-    // spiegeln, weil das Taskpane buildlos ist (kein Modulsystem, kein Bundler).
-    //
-    // Der Spiegel ist ueber den VOLLEN Vertrags-Zustandsraum gepinnt, nicht auf ein paar Beispiele:
-    // tests/app/mega75-klara-ki-status.test.ts faehrt jeden Punkt aus interface ReasonerStatus
-    // (api/types.ts) durch beide Fassungen und vergleicht. Ein Wechsel dort wird hier rot.
+    // AUFTRAG-mega75 Block B — Spiegel von wordAddin.ts#klaraAiLage (dort RUFT sie deriveAiAvailable
+    // und aiTaskInfoPublic; hier gespiegelt, weil das Taskpane buildlos ist). Ueber den vollen
+    // Zustandsraum von ReasonerStatus gepinnt: tests/app/mega75-klara-ki-status.test.ts.
     var KLARA_AI_TASK = "answer";
 
     function deriveAiAvailable(status, task) {
@@ -1077,20 +1029,9 @@
     }
     // KW-KLARA-AISTATE-END
 
-    // ============================================================================================
-    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — Spiegel von wordAddin.ts#klaraTrustHead.
-    // ============================================================================================
-    //
-    // BEWUSST AUSSERHALB der mega75-Schnittmarken. Der Sammler von
-    // tests/app/mega75-klara-ki-status.test.ts liest GENAU den Block zwischen KW-KLARA-AISTATE-*
-    // und vergleicht die dort verzweigten Vertragswerte (mode/reachable) mit den echten
-    // KLARWERK-Ableitungsmodulen. Diese Uebersetzung darf diesen Zustandsraum weder erweitern noch
-    // verengen — sie verzweigt deshalb ausschliesslich auf dem ERGEBNIS von `klaraAiLage`, nie auf
-    // einem Feld von ReasonerStatus. Der einzige Zustandsbesitzer bleibt `klaraAiLage`.
-    //
-    // KW-W1-13: `detailKeys` ist die BASIC-1-Erweiterungsstelle (Provider, Modell, Admin-Vorgabe,
-    // Abweichung, Sitzung, Consent). Heute leer — es gibt keine Vertragsdaten, aus denen sie zu
-    // fuellen waere, und Platzhalter waeren erfundene Werte.
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — Spiegel von wordAddin.ts#klaraTrustHead, BEWUSST
+    // ausserhalb der mega75-Schnittmarken: verzweigt nur auf dem ERGEBNIS von `klaraAiLage`, nie auf
+    // ReasonerStatus. KW-W1-13: `detailKeys` bleibt leer, solange es keine Vertragsdaten gibt.
     // KW-KLARA-TRUSTHEAD-START
     function klaraTrustKey(prefix, lage) {
       return prefix + lage.charAt(0).toUpperCase() + lage.slice(1);
@@ -1111,24 +1052,10 @@
     }
     // KW-KLARA-TRUSTHEAD-END
 
-    // ============================================================================================
-    // AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — DIE ANZEIGE-ABLEITUNG DES S4-VERTRAGS.
-    // ============================================================================================
-    //
-    // WAS SIE TUT: sie UEBERSETZT eine `KlaraSessionView`/`KlaraResolution` in Anzeige-Schluessel.
-    // WAS SIE NICHT TUT: entscheiden. Modus, Anbieter, Modell, Abweichung, Consentbedarf und
-    // Ausfuehrbarkeit stehen im Antwortobjekt; hier wird nichts abgeleitet, gewichtet oder
-    // ergaenzt (Auftrag No-Go 1).
-    //
-    // WARUM SIE INLINE STEHT UND NICHT IN wordAddin.ts: der erlaubte Dateibereich dieses Auftrags
-    // umfasst apps/web/public/word-addin/** und schliesst `apps/web/src/**` ausdruecklich aus.
-    // Das Aufgabenfenster ist buildlos; damit die WIRKLICH ausgelieferte Ableitung geprueft werden
-    // kann und nicht nur ihr Quelltext, traegt sie eigene Schnittmarken — dieselbe Bauform wie
-    // KW-KLARA-AISTATE-* und KW-KLARA-ASK-FETCH-*. Die Grenze ist im Bericht benannt.
-    //
-    // FAIL-SAFE IN EINE RICHTUNG: was der Server nicht gesagt hat, wird nicht behauptet. Ein
-    // unbekannter Modus, ein unbekannter Grund oder ein fehlendes Feld fuehren in einen benannten
-    // Vorbehalt — nie in „bereit", nie in „keine KI", nie in eine erfundene Bezeichnung.
+    // AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — DIE ANZEIGE-ABLEITUNG DES S4-VERTRAGS: sie
+    // UEBERSETZT `KlaraSessionView`/`KlaraResolution` in Anzeige-Schluessel und entscheidet nichts
+    // (No-Go 1). Inline mit eigenen Schnittmarken, damit die ausgelieferte Ableitung pruefbar ist.
+    // FAIL-SAFE: Unbekanntes oder Fehlendes fuehrt in einen benannten Vorbehalt, nie in „bereit".
     // KW-KLARA-S4-START
     var KLARA_S4_MODES = ["deterministic", "internal", "external"];
     var KLARA_S4_REASONS = [
@@ -1634,7 +1561,7 @@
         // (AUFTRAG-JOB507-D4).
         sendError: "Senden fehlgeschlagen ({detail}) — es wurde KEIN Entwurf angelegt.",
         sendOffline: "Keine Verbindung — es wurde KEIN Entwurf angelegt.",
-        sendTooLarge: "Zu groß für die Übertragung — es wurde KEIN Entwurf angelegt.",
+        sendTooLarge: "Zu groß für die Übertragung — es wurde KEIN Entwurf angelegt; erneut senden, sobald das Dokument gekürzt ist, in Teilen gesendet wird oder weniger (höchstens 60) oder kleinere Bilder hat.",
         sendForbidden: "Dein Konto darf keine Entwürfe anlegen — es wurde KEIN Entwurf angelegt.",
         sendRateLimited: "Zu viele Anfragen ({n} s warten) — es wurde KEIN Entwurf angelegt.",
         sendRateLimitedUnknown: "Zu viele Anfragen — es wurde KEIN Entwurf angelegt.",
@@ -1740,6 +1667,7 @@
         askConflictConflicted: "Achtung: Eine tragende Quelle steht in einem offenen Konflikt.",
         askConflictUnproven: "Die Konfliktlage ist unbekannt — das heißt nicht, dass keine besteht.",
         askConflictClear: "Keine offenen Konflikte auf den tragenden Quellen.",
+        askLageBelegt: "Lage: belegt.", askLageVerantwortungFehlt: "Lage: belegt — die verantwortliche Person ist nicht erreichbar. Das Wissen bleibt nutzbar; Rückfragen brauchen eine neue Zuständigkeit.", askLageKonflikt: "Lage: belegt, aber mit offenem Widerspruch. Beide Seiten:", askKonfliktSeite: "Seite {n}", askKonfliktTragend: "trägt diese Antwort", askKonfliktNichtEinsehbar: "für dich nicht einsehbar", askKonfliktKeinGewinner: "Klara wählt keine Seite. Den Widerspruch entscheiden Menschen.", askLageGesperrt: "Die Belege dieser Antwort sind für dich gesperrt (geschwärzt).", askLageUnbekannt: "Technischer Fehler: Die Antwort kam in unbekannter Form an. Das ist keine Wissenslücke.",
         // ---- AUFTRAG-W1-KLARA-KOPF-CONSENT-06: der sitzungsbezogene Stand ---------------------
         // Eigenes Etikett, eigene Wörter. Diese Texte sprechen über DIESE Sitzung, nicht über den
         // Hausstand — und ausdrücklich nicht über Klaras Antwortweg, der unverändert zitiert.
@@ -1758,6 +1686,7 @@
         s4StateGesperrtLokal:
           "Der letzte Aufruf ist fehlgeschlagen. Bis der Server einen neuen Stand bestätigt, gilt hier nichts als erlaubt.",
         s4Anbieter: "Anbieter {provider} · Modell {model}",
+        s4KopfKi: "KI: {modus} · {anbieter} · Vorgabe: {vorgabe}",
         s4Abweichung: "Eingerichtet war {soll}. Grund der Abweichung: {grund}",
         s4Blockiert: "Gesperrt. Grund: {grund}",
         s4Veraltet: "Dieser Stand ist abgelaufen und wird neu abgerufen.",
@@ -1844,7 +1773,7 @@
           "Fehlendes Recht: Dein Konto darf das KLARWERK-Wissen nicht lesen. Bitte an die KLARWERK-Administration wenden.",
         askRateLimited: "Zu viele Anfragen — bitte in {n} Sekunden erneut versuchen.",
         askRateLimitedUnknown: "Zu viele Anfragen — bitte später erneut versuchen.",
-        askFallbackBlocked: "Keine Antwort: Der KI-Anbieter, dem du zugestimmt hast, hat nicht geantwortet. Ein anderer Antwortweg wird nicht ersatzweise benutzt, solange nicht entschieden ist, dass er gleichwertig ist.", askFallbackConsentEnded: "Keine Antwort: Deine Zustimmung für dieses Dokument ist beendet. Bitte erneut zustimmen, um die externe KI zu nutzen.",
+        askFallbackBlocked: "Keine Antwort: Der KI-Anbieter, dem du zugestimmt hast, hat nicht geantwortet. Ein anderer Antwortweg wird nicht ersatzweise benutzt, solange nicht entschieden ist, dass er gleichwertig ist.", askFallbackConsentEnded: "Keine Antwort: Deine Zustimmung für dieses Dokument ist beendet. Bitte erneut zustimmen, um die externe KI zu nutzen.", askKiAbgeschaltet: "Der Administrator hat die KI abgeschaltet. Fragen an Klara werden derzeit nicht beantwortet. Die Bibliothek und die Originale bleiben nach deinen Leserechten nutzbar.",
         askAnswerTitle: "Quellengebundene Antwort",
         // AUFTRAG-mega34 B2: die Einstufung — im Panel UND im eingefuegten Text. Bis hierher
         // versprach diese Flaeche unbedingt "geprueftes Wissen", auch bei gedeckelter Abdeckung
@@ -1885,6 +1814,11 @@
         askHerkunftNichtGeladen: "konnte nicht geladen werden",
         askHerkunftLaden: "Quellen werden geladen …",
         askHerkunftKeinBeleg: "Dafür habe ich keinen Beleg.",
+        askQuelleOhneZuordnung: "keine tragende Quelle belegt",
+        askEinschubOriginal: "Im Original öffnen",
+        askEinschubNetz: "Im Wissensnetz anzeigen",
+        askEinschubKeinOriginal: "Kein Original hinterlegt.",
+        askEinschubKeinePassage: "Keine Belegstelle übermittelt.",
         askUngeprueftEins: "Dazu gibt es einen Eintrag, der noch nicht geprüft ist: {titel}",
         askUngeprueftMehrere: "Dazu gibt es {n} Einträge, die noch nicht geprüft sind: {titel}",
         // JOB 3366: wortgleich mit `ai.truncated.hint` der Web-App (apps/web/src/i18n.ts) — derselbe
@@ -2075,7 +2009,7 @@
         // JOB 3057 K2 (§5.6): every failure is ONE sentence (plus ONE button); each keeps the promise: nothing created.
         sendError: "Sending failed ({detail}) — NO draft was created.",
         sendOffline: "No connection — NO draft was created.",
-        sendTooLarge: "Too large to transfer — NO draft was created.",
+        sendTooLarge: "Too large to transfer — NO draft was created; send again once the document is shortened, sent in parts, or has fewer (at most 60) or smaller images.",
         sendForbidden: "Your account may not create drafts — NO draft was created.",
         sendRateLimited: "Too many requests (wait {n} s) — NO draft was created.",
         sendRateLimitedUnknown: "Too many requests — NO draft was created.",
@@ -2141,6 +2075,7 @@
         askConflictConflicted: "Caution: a carrying source is in an open conflict.",
         askConflictUnproven: "The conflict situation is unknown — that does not mean there is none.",
         askConflictClear: "No open conflicts on the carrying sources.",
+        askLageBelegt: "Status: backed by sources.", askLageVerantwortungFehlt: "Status: backed — the responsible person is not reachable. The knowledge stays usable; follow-up questions need a new owner.", askLageKonflikt: "Status: backed, but with an open contradiction. Both sides:", askKonfliktSeite: "Side {n}", askKonfliktTragend: "carries this answer", askKonfliktNichtEinsehbar: "not visible to you", askKonfliktKeinGewinner: "Klara does not pick a side. People decide the contradiction.", askLageGesperrt: "The evidence for this answer is blocked for you (redacted).", askLageUnbekannt: "Technical error: the answer arrived in an unknown form. This is not a knowledge gap.",
         s4Label: "In this session",
         s4ModeDeterministic: "Without a model",
         s4ModeInternal: "On-Premise Enterprise AI",
@@ -2156,6 +2091,7 @@
         s4StateGesperrtLokal:
           "The last call failed. Until the server confirms a new status, nothing counts as allowed here.",
         s4Anbieter: "Provider {provider} · Model {model}",
+        s4KopfKi: "AI: {modus} · {anbieter} · Admin setting: {vorgabe}",
         s4Abweichung: "Configured was {soll}. Reason for the deviation: {grund}",
         s4Blockiert: "Blocked. Reason: {grund}",
         s4Veraltet: "This status has expired and is being retrieved again.",
@@ -2216,7 +2152,7 @@
           "Missing permission: your account may not read the KLARWERK knowledge base. Please contact your KLARWERK administrator.",
         askRateLimited: "Too many requests — please try again in {n} seconds.",
         askRateLimitedUnknown: "Too many requests — please try again later.",
-        askFallbackBlocked: "No answer: the AI provider you consented to did not respond. No other answer path is used as a substitute until it has been decided that it is equivalent.", askFallbackConsentEnded: "No answer: your consent for this document has ended. Please consent again to use the external AI.",
+        askFallbackBlocked: "No answer: the AI provider you consented to did not respond. No other answer path is used as a substitute until it has been decided that it is equivalent.", askFallbackConsentEnded: "No answer: your consent for this document has ended. Please consent again to use the external AI.", askKiAbgeschaltet: "The administrator has switched AI off. Questions to Klara are currently not answered. The library and the originals remain available according to your read permissions.",
         askAnswerTitle: "Source-bound answer",
         // AUFTRAG-mega34 B2: the classification — in the panel AND in the inserted text.
         askEvidenceVerified: "Classification: assured — sources evidenced, no open contradictions known.",
@@ -2244,6 +2180,11 @@
         askHerkunftNichtGeladen: "could not be loaded",
         askHerkunftLaden: "Loading sources …",
         askHerkunftKeinBeleg: "I have no evidence for this.",
+        askQuelleOhneZuordnung: "no carrying source established",
+        askEinschubOriginal: "Open original",
+        askEinschubNetz: "Show in knowledge network",
+        askEinschubKeinOriginal: "No original on file.",
+        askEinschubKeinePassage: "No supporting passage provided.",
         askUngeprueftEins: "There is one entry on this that has not been reviewed yet: {titel}",
         askUngeprueftMehrere: "There are {n} entries on this that have not been reviewed yet: {titel}",
         askFragment: "This answer was cut off at the length limit and may be incomplete.",
@@ -2414,7 +2355,7 @@
         // JOB 3057 K2 (§5.6): elke fout is EEN zin (plus EEN knop); elke houdt de toezegging vast: niets aangemaakt.
         sendError: "Versturen mislukt ({detail}) — er is GEEN concept aangemaakt.",
         sendOffline: "Geen verbinding — er is GEEN concept aangemaakt.",
-        sendTooLarge: "Te groot voor de overdracht — er is GEEN concept aangemaakt.",
+        sendTooLarge: "Te groot voor de overdracht — er is GEEN concept aangemaakt; opnieuw verzenden zodra het document is ingekort, in delen wordt verzonden of minder (hoogstens 60) of kleinere afbeeldingen heeft.",
         sendForbidden: "Je account mag geen concepten aanmaken — er is GEEN concept aangemaakt.",
         sendRateLimited: "Te veel verzoeken ({n} s wachten) — er is GEEN concept aangemaakt.",
         sendRateLimitedUnknown: "Te veel verzoeken — er is GEEN concept aangemaakt.",
@@ -2480,6 +2421,7 @@
         askConflictConflicted: "Let op: een dragende bron staat in een open conflict.",
         askConflictUnproven: "De conflictsituatie is onbekend — dat betekent niet dat er geen is.",
         askConflictClear: "Geen open conflicten op de dragende bronnen.",
+        askLageBelegt: "Status: onderbouwd.", askLageVerantwortungFehlt: "Status: onderbouwd — de verantwoordelijke is niet bereikbaar. De kennis blijft bruikbaar; vervolgvragen hebben een nieuwe verantwoordelijke nodig.", askLageKonflikt: "Status: onderbouwd, maar met een open tegenstrijdigheid. Beide kanten:", askKonfliktSeite: "Kant {n}", askKonfliktTragend: "draagt dit antwoord", askKonfliktNichtEinsehbar: "voor jou niet in te zien", askKonfliktKeinGewinner: "Klara kiest geen kant. Mensen beslissen over de tegenstrijdigheid.", askLageGesperrt: "De onderbouwing van dit antwoord is voor jou afgeschermd.", askLageUnbekannt: "Technische fout: het antwoord kwam in een onbekende vorm aan. Dit is geen kennishiaat.",
         s4Label: "In deze sessie",
         s4ModeDeterministic: "Zonder model",
         s4ModeInternal: "On-Premise Enterprise AI",
@@ -2495,6 +2437,7 @@
         s4StateGesperrtLokal:
           "De laatste aanroep is mislukt. Totdat de server een nieuwe stand bevestigt, geldt hier niets als toegestaan.",
         s4Anbieter: "Aanbieder {provider} · Model {model}",
+        s4KopfKi: "AI: {modus} · {anbieter} · Instelling beheerder: {vorgabe}",
         s4Abweichung: "Ingericht was {soll}. Reden van de afwijking: {grund}",
         s4Blockiert: "Geblokkeerd. Reden: {grund}",
         s4Veraltet: "Deze stand is verlopen en wordt opnieuw opgehaald.",
@@ -2555,7 +2498,7 @@
           "Ontbrekend recht: je account mag de KLARWERK-kennis niet lezen. Neem contact op met de KLARWERK-beheerder.",
         askRateLimited: "Te veel verzoeken — probeer het over {n} seconden opnieuw.",
         askRateLimitedUnknown: "Te veel verzoeken — probeer het later opnieuw.",
-        askFallbackBlocked: "Geen antwoord: de AI-aanbieder waarvoor je toestemming hebt gegeven, heeft niet geantwoord. Er wordt geen andere antwoordweg als vervanging gebruikt zolang niet is besloten dat die gelijkwaardig is.", askFallbackConsentEnded: "Geen antwoord: je toestemming voor dit document is beëindigd. Geef opnieuw toestemming om de externe AI te gebruiken.",
+        askFallbackBlocked: "Geen antwoord: de AI-aanbieder waarvoor je toestemming hebt gegeven, heeft niet geantwoord. Er wordt geen andere antwoordweg als vervanging gebruikt zolang niet is besloten dat die gelijkwaardig is.", askFallbackConsentEnded: "Geen antwoord: je toestemming voor dit document is beëindigd. Geef opnieuw toestemming om de externe AI te gebruiken.", askKiAbgeschaltet: "De beheerder heeft AI uitgeschakeld. Vragen aan Klara worden momenteel niet beantwoord. De bibliotheek en de originelen blijven beschikbaar volgens je leesrechten.",
         askAnswerTitle: "Bronvast antwoord",
         // AUFTRAG-mega34 B2: de classificatie — in het paneel EN in de ingevoegde tekst.
         askEvidenceVerified: "Classificatie: gewaarborgd — bronnen aangetoond, geen open tegenstrijdigheden bekend.",
@@ -2583,6 +2526,11 @@
         askHerkunftNichtGeladen: "kon niet worden geladen",
         askHerkunftLaden: "Bronnen worden geladen …",
         askHerkunftKeinBeleg: "Hiervoor heb ik geen bewijs.",
+        askQuelleOhneZuordnung: "geen dragende bron vastgesteld",
+        askEinschubOriginal: "Origineel openen",
+        askEinschubNetz: "Tonen in kennisnetwerk",
+        askEinschubKeinOriginal: "Geen origineel opgeslagen.",
+        askEinschubKeinePassage: "Geen bewijspassage ontvangen.",
         askUngeprueftEins: "Hierover is één item dat nog niet is beoordeeld: {titel}",
         askUngeprueftMehrere: "Hierover zijn {n} items die nog niet zijn beoordeeld: {titel}",
         askFragment: "Dit antwoord is bij de lengtelimiet afgebroken en kan onvolledig zijn.",
@@ -2891,6 +2839,7 @@
       document.getElementById("kw-zahnrad").setAttribute("aria-label", t("einstTitel"));
       document.getElementById("einst-mitlesen").setAttribute("aria-label", t("einstMitlesen"));
       document.getElementById("einst-sprache-wert").textContent = KW_SPRACHNAMEN[lang] || lang;
+      document.getElementById("einst-sprache-wahl").setAttribute("aria-label", t("einstSprache")); // K22
       document.getElementById("einst-server-wert").textContent = window.location.host || "–";
       document.getElementById("ka1-block").setAttribute("aria-label", t("ka1Title"));
       document.documentElement.lang = lang;
@@ -2926,6 +2875,7 @@
       // Sprachwechsel in der alten Sprache da — dieselbe Falle, die refreshAnswerToggleLabel loest.
       renderAskEvidence();
       renderAskHerkunft(); // JOB 3092 S6: Herkunftszeilen und Ungeprueft-Satz in der neuen Sprache
+      if (askEinschubQuelle) { askEinschubOeffnen(askEinschubQuelle); } // R-0329: Einschub ebenso
       renderAskUngeprueft();
       renderAskFragment(); // JOB 3366: derselbe gehaltene Zustand, neuer Text
       refreshAnswerToggleLabel(); // klara1b: „mehr/weniger anzeigen" in der neuen Sprache
@@ -3644,12 +3594,9 @@
             ? t("s4Veraltet")
             : "";
       abw.textContent = abwText;
-      abw.className = abwText ? "einst-detail" : "einst-detail hidden";
-      // JOB 2621 §1 (Befund 2, 26.08. — Pedi: „keine zustimmung obwohl ich zugestimmt hatte"):
-      // Fehlt die SITZUNG, nennt die Zeile die URSACHE und nur sie (R3: Stoerung sieht niemals aus
-      // wie Leere — und Folge sieht niemals aus wie Verlust). In den uebrigen Faellen ohne
-      // Zustimmungsstand (laedt / nicht abrufbar / lokal gesperrt) steht der Zustand selbst als
-      // Satz (JOB 3056: die Pille, die ihn trug, ist die KI-Zeile mit „–" geworden).
+      abw.className = abwText ? "einst-detail" : "einst-detail hidden"; var kopfKi = document.getElementById("kw-kopf-ki"); if (kopfKi) { kopfKi.textContent = a.modeKey ? t("s4KopfKi", { modus: t(a.modeKey), anbieter: a.provider && a.model ? a.provider + " · " + a.model : "–", vorgabe: t(klaraS4ModeKey(klaraS4Sicht.resolution.adminConfiguredMode)) }) + (abwText ? " · " + abwText : "") : t(a.stateKey); kopfKi.title = kopfKi.textContent; } // R-0378: DIESELBE Aufloesung wie Einstellungen und Ausfuehrung, dauerhaft im Kopf (Modus, Anbieter, Modell, Vorgabe des Verwalters, Abweichung/Sperre); ohne frischen Stand nur der Zustand
+      // JOB 2621 §1 (Befund 2, 26.08. — Pedi: „keine zustimmung obwohl ich zugestimmt hatte"): Fehlt die SITZUNG, nennt die Zeile die URSACHE und nur sie (R3: Stoerung sieht niemals aus wie Leere — und Folge sieht niemals aus wie Verlust).
+      // In den uebrigen Faellen ohne Zustimmungsstand (laedt / nicht abrufbar / lokal gesperrt) steht der Zustand selbst als Satz (JOB 3056: die Pille, die ihn trug, ist die KI-Zeile mit „–" geworden).
       document.getElementById("klara-s4-session").textContent =
         a.consentKey
           ? t("s4Sitzung", { stand: t(a.consentKey) })
@@ -5308,23 +5255,15 @@
     // Zustand des letzten Ask-Laufs: outcome (fuer das Einfuege-Gating), aufgeloeste Quellen-Titel
     // (fuer die Quellen-Zeile) und die gestellte Frage (fuer den Offene-Frage-Entwurf).
     var currentAskOutcome = null;
-    var currentAskSourceTitles = [];
-    // WP-KLARA-ASK-FIX (bens Fix 3): belegte Quell-Daten (history/createdAt) fuer die ehrliche
-    // Stand-Angabe; Fix 2: Einfuegen erst NACH abgeschlossener Quellenaufloesung.
-    var currentAskSourceDates = [];
+    var currentAskSourceTitles = []; // R-0325: Titel der TRAGENDEN Quellen (askQuellenTragend)
+    // WP-KLARA-ASK-FIX Fix 2: Einfuegen erst NACH abgeschlossener Quellenaufloesung.
     var currentAskSourcesResolved = false;
     var currentAskTruncated = false;
     var currentAskQuestion = "";
-    // AUFTRAG-mega35 A2: die Vorbefuellungs-Merkvariable ist ersatzlos entfallen. Sie war der
-    // Torwaechter, der Feldinhalt gegen Vorbefuellung verglich — und genau der schlug fehl, sobald
-    // waehrend der Quellenaufloesung editiert wurde: dann wurde nichts nachgetragen, die
-    // Ausgabewege gingen aber trotzdem auf. Es wird nichts mehr nachgetragen, also gibt es nichts
-    // mehr zu vergleichen. Geblieben ist der Auf-/Zuklapp-Zustand von „mehr anzeigen".
+    // AUFTRAG-mega35 A2: nichts wird mehr nachgetragen; geblieben ist „mehr anzeigen" auf/zu.
     var askAnswerExpanded = false;
-    // JOB 3046 D2 (Runde 2): die Generation des Ergebniszustands. resetAskResult() zaehlt sie hoch;
-    // der Entwurfsversand (sendOpenQuestion) merkt sich seine Generation und laesst einen Ruecklauf,
-    // der eine aeltere traegt, die Oberflaeche NICHT mehr anfassen — ein verspaeteter Erfolg oder
-    // Fehler der alten Frage darf nie im Zustand der neuen erscheinen.
+    // JOB 3046 D2 (Runde 2): die Generation des Ergebniszustands (resetAskResult zaehlt sie hoch) —
+    // ein Ruecklauf einer aelteren Generation fasst die Oberflaeche der neuen Frage nie an.
     var askErgebnisGeneration = 0;
 
     function showAskStatus(kind, text) {
@@ -5346,21 +5285,14 @@
       document.getElementById("ask-retry-btn").className = "ghost";
     }
 
-    // JOB 3016 D3 „PruefungLaeuft": der Wartezustand als EIN Zustand. `askLaeuft` ist die einzige
-    // Quelle fuer die Sperre von Eingabefeld und Knopf waehrend der Suche; updateAskState() liest
-    // sie, damit ein zwischenzeitlicher Statusabruf (checkSession, S4) die Sperre weder aufhebt
-    // noch stehen laesst. Der drehende Kreis im Sendeknopf (JOB 3056, §9; askBusy als sein
-    // zugaenglicher Name) erscheint und verschwindet NUR hier —
-    // der Ausgang aus dem Wartezustand hat genau eine Stelle (askKlara, nach performAsk), nicht
-    // fuenf Zweige. Beim Eintritt wird #ask-status verborgen: der Warnkasten gehoert den echten
-    // Warnungen, nicht dem normalen Warten. Fail-open: der Ausgang gibt das Feld IMMER frei, auch
-    // nach Frist, Fehler oder fehlender Anmeldung — ein gesperrtes Feld ohne Suche waere ein
-    // unbenutzbares Fenster.
+    // JOB 3016 D3 „PruefungLaeuft": `askLaeuft` ist die EINE Quelle fuer die Sperre von Feld und
+    // Knopf (updateAskState liest sie; checkSession S4 hebt sie weder auf noch laesst sie stehen).
+    // Ein- und Ausgang nur hier (askKlara nach performAsk); beim Eintritt wird #ask-status verborgen.
+    // Fail-open: der Ausgang gibt das Feld IMMER frei, auch nach Frist, Fehler oder ohne Anmeldung.
     var askLaeuft = false;
 
-    // JOB 3056 K1 (§9): Laden zeigt der Sendeknopf — der Pfeil weicht dem drehenden Kreis (Klasse
-    // `laeuft`, updateAskState), der Wortlaut askBusy ist solange sein zugaenglicher Name. Keine
-    // Ladekarte, kein Satz im Sichtfeld.
+    // JOB 3056 K1 (§9): Laden zeigt der Sendeknopf (drehender Kreis, Klasse `laeuft`; askBusy als
+    // zugaenglicher Name) — keine Ladekarte, kein Satz im Sichtfeld.
     function askWartezustand(an) {
       askLaeuft = an === true;
       hideAskStatus();
@@ -5371,7 +5303,6 @@
     function resetAskResult() {
       currentAskOutcome = null;
       currentAskSourceTitles = [];
-      currentAskSourceDates = [];
       currentAskSourcesResolved = false;
       askAnswerExpanded = false;
       document.getElementById("ask-answer-block").className = "hidden";
@@ -5403,6 +5334,8 @@
       // lagebezogene Satz unter der Karte und die Quellen-Details werden geleert, die Ruhe kehrt
       // zurueck (kwFlaecheZeichnen).
       askQuellenAufgeloest = [];
+      askQuellenTragend = [];
+      askEinschubSchliessen(); // R-0329: kein Einschub einer frueheren Antwort bleibt stehen
       askQuellenAlleSichtbar = false;
       askMehrOffen = false;
       document.getElementById("ask-quellen-detail").textContent = "";
@@ -5652,6 +5585,17 @@
       return document.getElementById("ask-answer-edit").value;
     }
 
+    // Aufnahme 20260922 · antwort-quellenanzeige (R-0329): das hinterlegte Original eines Objekts —
+    // dieselbe Regel wie `originalweg`/`objectRawHref` im Web: ein Anhang mit gueltiger Kennung UND
+    // Namen, bevorzugt der, auf den eine Quelle zeigt; sonst null (die Flaeche sagt es dann ehrlich).
+    function askOriginalHref(ko) {
+      var anhaenge = ko && Array.isArray(ko.attachments) ? ko.attachments : [];
+      var anker = (ko && Array.isArray(ko.sources) ? ko.sources : []).map(function (s) { return s && typeof s.objectId === "string" ? s.objectId.trim() : ""; });
+      var gueltig = anhaenge.filter(function (a) { return a && typeof a.objectId === "string" && /^[\w-]+$/.test(a.objectId.trim()) && typeof a.name === "string" && a.name.trim().length > 0; });
+      var wahl = gueltig.filter(function (a) { return anker.indexOf(a.objectId.trim()) !== -1; })[0] || gueltig[0];
+      return wahl ? "/api/objects/" + wahl.objectId.trim() + "/raw" : null;
+    }
+
     // Quellen-Titel + Trust je KO nachladen (GET /api/kos/:id, dieselbe ko.read-Permission wie
     // /api/ask) — best-effort: eine nicht ladbare Quelle zeigt ehrlich ihre Id statt eines Fakes.
     function resolveAskSources(ids) {
@@ -5683,21 +5627,21 @@
                 // JOB 3092 S6 (W5): die Inhaltsversion des Objekts fuer die Herkunftszeile —
                 // GELESEN; fehlt sie, bleibt sie null und die Zeile sagt „Version unbekannt".
                 version: ko && typeof ko.version === "number" && isFinite(ko.version) ? ko.version : null,
+                // R-0329: die belegende Passage ist die Aussage des Objekts — derselbe Text, den der
+                // Server als `steps[].snippet` dieser Quelle fuehrt (provider: snippet = statement).
+                passage: ko && typeof ko.statement === "string" && ko.statement.trim().length > 0 ? ko.statement.trim() : null,
+                original: askOriginalHref(ko),
                 // JOB 3092 S6 (Lehre JOB 3091 R3): ein GESCHEITERTER Abruf ist keine Auskunft ueber
-                // das Objekt. `geladen: false` laesst die Herkunftszeile „konnte nicht geladen werden"
-                // sagen statt einen Pruefstand oder eine Version zu behaupten.
+                // das Objekt — `geladen: false` behauptet weder Pruefstand noch Version.
                 geladen: true,
               };
             })
-            .catch(function () { return { id: id, title: id, trust: null, standDate: null, status: "unknown", version: null, geladen: false }; });
+            .catch(function () { return { id: id, title: id, trust: null, standDate: null, status: "unknown", version: null, passage: null, original: null, geladen: false }; });
         })
       );
     }
 
-    // K2/K3 (AUFTRAG-klara1 Paket 2): jede Quelle ist ein klickbarer Deep-Link auf die
-    // KO-Detailseite (/wissen/:id, oeffnet extern/neuer Tab) mit Status-Badge (Bibliotheks-
-    // Logik: Validiert / In Pruefung / Offen / Status unbekannt) und dem bestehenden Trust-Wert.
-    // Aufbau ueber DOM-APIs (textContent) — kein HTML-Sink, Titel bleiben escaped.
+    // K2/K3 (AUFTRAG-klara1 Paket 2): Bearbeitungsstatus nach Bibliotheks-Logik.
     var ASK_STATUS_KEYS = {
       validiert: "askStatusValidiert",
       pruefung: "askStatusPruefung",
@@ -5705,14 +5649,16 @@
       unknown: "askStatusUnknown",
     };
 
-    // JOB 3004 D1: die Quelle ist der CHIP (Vorlage Main.dc.html Z.34-44) — Dokumentsymbol,
-    // „n · Titel" als Deep-Link auf das ECHTE Wissensobjekt, daneben die Fassung: Bearbeitungs-
-    // status, Rolle in der Antwort, Vertrauen und belegtes Stand-Datum. Nichts davon ist erfunden;
-    // jede Angabe kommt wie bisher aus dem geladenen Objekt (resolveAskSources) bzw. aus
-    // `citedSources`. Mehr Quellen als Platz (zwei, wie in der Vorlage) → der „+n"-Chip; ein Klick
-    // darauf zeigt alle. Aufbau ueber DOM-APIs, kein HTML-Sink: Titel bleiben escaped.
+    // JOB 3004 D1: die Quelle ist der CHIP (Vorlage Main.dc.html Z.34-44) — Dokumentsymbol und
+    // „n · Titel" als Link auf das Wissensobjekt; mehr Quellen als Platz (zwei) → der „+n"-Chip.
+    // Aufnahme 20260922 · antwort-quellenanzeige (R-0325): Chips und Ziffern zeigen NUR die
+    // TRAGENDEN Quellen (`askQuellenTragend`, Nummer = Chip = Ziffer); alles Herangezogene steht mit
+    // seiner Rolle in der Detailliste unter „Mehr". Ohne verwertbare Zuordnung gibt es keinen Chip.
+    // R-0329: ein Klick auf Chip oder Ziffer oeffnet den Einschub (askEinschubOeffnen); der Link
+    // bleibt fuer Mittelklick/neuen Tab. Aufbau ueber DOM-APIs, kein HTML-Sink.
     var ASK_QUELLEN_CHIPS_SICHTBAR = 2;
     var askQuellenAufgeloest = [];
+    var askQuellenTragend = [];
     var askQuellenAlleSichtbar = false;
 
     function askChipSymbol() {
@@ -5746,7 +5692,7 @@
       knopf.textContent = "+" + String(rest);
       knopf.addEventListener("click", function () {
         askQuellenAlleSichtbar = true;
-        renderAskSources(askQuellenAufgeloest);
+        renderAskSources(askQuellenAufgeloest, askQuellenTragend);
       });
       item.appendChild(knopf);
       return item;
@@ -5759,10 +5705,10 @@
       var teile = [String(nummer) + " · " + quelle.title];
       teile.push(t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown"));
       // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: die ROLLE dieser Quelle IN DER ANTWORT — tragend
-      // oder nur herangezogen. Ohne `citedSources` (alter Server) wird keine Rolle behauptet.
+      // oder nur herangezogen. Ohne verwertbare Zuordnung (R-0325) wird keine Rolle behauptet.
       var rolle = askSourceRole(
         quelle.id,
-        currentAskOutcome ? currentAskOutcome.citedSources : undefined
+        currentAskOutcome && askQuellenTragend.length > 0 ? currentAskOutcome.citedSources : undefined
       );
       if (rolle !== "unknown") {
         teile.push(t(rolle === "carrying" ? "askRoleCarrying" : "askRoleConsulted"));
@@ -5780,30 +5726,53 @@
       return zeile;
     }
 
-    function renderAskSources(resolved) {
+    // R-0326: Objektadresse samt Belegstelle — Textanker aus Passage und Fassung (Datenmodell in
+    // apps/web/src/lib/belegstelle.ts); ohne Passage oder bei mehr als 600 Zeichen die blosse Adresse.
+    function askStelleHref(q) {
+      var href = koDetailUrl(window.location.origin, q.id);
+      if (!q.passage || q.passage.length > 600) { return href; }
+      return href + "?stelle=" + encodeURIComponent(q.passage) + (typeof q.version === "number" ? "&fassung=" + q.version : "");
+    }
+
+    // R-0325: TRAGEND sind nur Kennungen aus `citedSources`, die unter `sources` stehen; fehlend,
+    // leer oder nur Fremdes → leer (Zuordnung unbekannt, nie „alle").
+    function askZugeordnet(outcome) {
+      var cited = outcome && Array.isArray(outcome.citedSources) ? outcome.citedSources : [];
+      var sources = outcome && Array.isArray(outcome.sources) ? outcome.sources : [];
+      return cited.filter(function (id) { return sources.indexOf(id) !== -1; });
+    }
+
+    function askTragendeQuellen(resolved, outcome) {
+      var zugeordnet = askZugeordnet(outcome);
+      return resolved.filter(function (r) { return zugeordnet.indexOf(r.id) !== -1; });
+    }
+
+    function renderAskSources(resolved, tragend) {
       askQuellenAufgeloest = resolved;
+      askQuellenTragend = tragend;
       var list = document.getElementById("ask-sources");
       list.textContent = "";
       var detail = document.getElementById("ask-quellen-detail");
       detail.textContent = "";
       var sichtbar = askQuellenAlleSichtbar
-        ? resolved.length
-        : Math.min(resolved.length, ASK_QUELLEN_CHIPS_SICHTBAR);
+        ? tragend.length
+        : Math.min(tragend.length, ASK_QUELLEN_CHIPS_SICHTBAR);
       for (var i = 0; i < sichtbar; i += 1) {
         var item = document.createElement("li");
         item.className = "quelle-chip";
         // Runde 4: die Quelle des Chips, damit eine Fussnotenziffer (renderAskFussnoten) und ihr
         // Chip nachweislich dasselbe Wissensobjekt meinen.
-        item.setAttribute("data-quelle", resolved[i].id);
+        item.setAttribute("data-quelle", tragend[i].id);
         item.appendChild(askChipSymbol());
         var titel = document.createElement("span");
         titel.className = "quelle-chip-titel";
         titel.appendChild(document.createTextNode(String(i + 1) + " · "));
         var link = document.createElement("a");
-        link.href = koDetailUrl(window.location.origin, resolved[i].id);
+        link.href = askStelleHref(tragend[i]); // R-0326: mit Belegstelle für die Web-Ansicht
         link.target = "_blank";
         link.rel = "noopener noreferrer";
-        link.textContent = resolved[i].title;
+        link.textContent = tragend[i].title;
+        askEinschubAusloeser(link, tragend[i].id);
         titel.appendChild(link);
         item.appendChild(titel);
         list.appendChild(item);
@@ -5811,8 +5780,8 @@
       for (var d = 0; d < resolved.length; d += 1) {
         detail.appendChild(askQuellenDetailZeile(d + 1, resolved[d]));
       }
-      if (resolved.length > sichtbar) {
-        list.appendChild(askQuellenMehrChip(resolved.length - sichtbar));
+      if (tragend.length > sichtbar) {
+        list.appendChild(askQuellenMehrChip(tragend.length - sichtbar));
       }
       // „Mehr": der letzte Chip der Reihe klappt die Auskunft zur Antwort auf (Funktionsinventar).
       if (resolved.length > 0) {
@@ -5836,27 +5805,13 @@
     // JOB 3092 · S6 (W5) — DIE HERKUNFT AN DER ANTWORT UND DER UNGEPRUEFT-SATZ.
     // ============================================================================================
     //
-    // PEDIS VERTRAUENSBOTSCHAFT (05.09., M2 Geschichte A/B): an jeder Antwort steht sichtbar, worauf
-    // sie beruht — Titel, Pruefstand und Version je TRAGENDER Quelle, direkt unter dem Text, kein
-    // Wechsel in Verwaltungsseiten. Bis hierher lag die Herkunft im „Mehr"-Block (askHerkunft,
-    // askQuellenDetailZeile); der bleibt fuer Einstufung/Vorbehalt und wird nicht angefasst.
-    //
-    // WOHER JEDE ANGABE KOMMT — nichts wird hergeleitet:
-    //   · WELCHE Quellen: `citedSources` der Antwort (services/reasoner/src/types.ts, Gate G-2) —
-    //     die tragende Teilmenge, NICHT `sources` (alles Herangezogene). Fehlt das Feld oder ist es
-    //     leer, sagt die Zeile „Dafuer habe ich keinen Beleg." — das ist die Aussage des SERVERS
-    //     (keine benannte tragende Quelle), keine Folge eines gescheiterten Abrufs.
-    //   · Titel, Pruefstand, Version: aus dem geladenen Objekt (resolveAskSources, GET /api/kos/:id),
-    //     dieselbe Aufloesung, die auch die Chips speist. Kein zweiter Abruf.
-    //   · LEHRE JOB 3091 R3 (Codex): ein gescheiterter Abruf ist KEINE festgestellte Quellenlosigkeit.
-    //     Solange die Aufloesung laeuft, steht „Quellen werden geladen …"; scheitert sie fuer eine
-    //     Quelle (`geladen: false`), sagt ihre Zeile „konnte nicht geladen werden" und behauptet
-    //     weder Pruefstand noch Version.
-    //   · UNGEPRUEFT: das Feld `ungeprueft` des Antwortkoerpers (JOB 1591 D1, betrachtergefiltert,
-    //     nur auf dem Sitzungsweg). Nicht leer → EIN Satz mit Titel(n), in der Antwortkarte UND in
-    //     der Luecke (Pedis Fall: „haben wir dazu etwas?" — ja, aber ungeprueft). Leer oder abwesend
-    //     → kein Satz. Es gibt KEIN „alles geprueft": die Leere der Liste ist kein Versprechen ueber
-    //     den Bestand (mega77 Grund 2, w5-ungeprueft-gemeldet W3).
+    // PEDIS VERTRAUENSBOTSCHAFT (05.09., M2): an jeder Antwort steht, worauf sie beruht — Titel,
+    // Pruefstand, Version und Stand je TRAGENDER Quelle (askZugeordnet), direkt unter dem Text.
+    // Ohne verwertbare Zuordnung: „Dafuer habe ich keinen Beleg." (Aussage des Servers, keine Folge
+    // eines Abrufs). LEHRE JOB 3091 R3: waehrend der Aufloesung „Quellen werden geladen …"; ein
+    // gescheiterter Abruf sagt „konnte nicht geladen werden" und behauptet weder Pruefstand noch
+    // Version. UNGEPRUEFT (`ungeprueft`, JOB 1591 D1): nicht leer → EIN Satz mit Titel(n) in Karte
+    // und Luecke; leer/abwesend → kein Satz, nie „alles geprueft" (mega77 Grund 2).
     // Aufbau ueber DOM-APIs (textContent), kein HTML-Sink: Titel bleiben escaped.
     function s6HerkunftZeile(id, quelle) {
       var zeile = document.createElement("p");
@@ -5871,19 +5826,109 @@
       link.rel = "noopener noreferrer";
       link.textContent = geladen ? quelle.title : id;
       zeile.appendChild(link);
-      var teile = [];
-      if (!geladen) {
-        teile.push(t("askHerkunftNichtGeladen"));
-      } else {
-        teile.push(t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown"));
-        teile.push(
-          quelle.version === null || quelle.version === undefined
-            ? t("askHerkunftVersionUnbekannt")
-            : t("askHerkunftVersion", { n: String(quelle.version) })
-        );
-      }
+      var teile = geladen ? askQuelleStandTeile(quelle) : [t("askHerkunftNichtGeladen")];
       zeile.appendChild(document.createTextNode(" · " + teile.join(" · ")));
       return zeile;
+    }
+
+    // R-0309: Pruefstand, Version und das Datum des letzten Standes EINER geladenen Quelle — dieselben
+    // Angaben an Herkunftszeile, Einschub und Dokumentzeile. Ein fehlendes Datum bleibt weg; es wird
+    // nie durch das einer anderen Quelle ersetzt.
+    function askQuelleStandTeile(quelle) {
+      var teile = [t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown")];
+      teile.push(
+        quelle.version === null || quelle.version === undefined
+          ? t("askHerkunftVersionUnbekannt")
+          : t("askHerkunftVersion", { n: String(quelle.version) })
+      );
+      var stand = quelle.standDate ? new Date(quelle.standDate) : null;
+      if (stand !== null && !isNaN(stand.getTime())) { teile.push(t("askChipStand", { date: formatAskDateLabel(stand) })); }
+      return teile;
+    }
+
+    // Aufnahme 20260922 · antwort-quellenanzeige (R-0329/R-0326) — DER EINSCHUB: Klick auf Chip oder
+    // Ziffer zeigt Titel, Pruefstand · Version · Stand, die hervorgehobene Passage und GENAU zwei
+    // Aktionen: Original (askOriginalHref; fehlt es, gesperrt und benannt) und Wissensnetz (die
+    // geoeffnete Nachbarschaft, `?abschnitt=nachbarschaft`). Escape/zweiter Klick schliesst.
+    var askEinschubQuelle = null;
+
+    function askEinschubAusloeser(el, id) {
+      el.addEventListener("click", function (ev) {
+        if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) { return; }
+        ev.preventDefault();
+        if (askEinschubQuelle === id) { askEinschubSchliessen(); } else { askEinschubOeffnen(id); }
+      });
+    }
+
+    function askEinschubSchliessen() {
+      askEinschubQuelle = null;
+      var alt = document.getElementById("ask-einschub");
+      if (alt && alt.parentNode) { alt.parentNode.removeChild(alt); }
+    }
+
+    function askEinschubOeffnen(id) {
+      askEinschubSchliessen();
+      var q = askQuellenTragend.filter(function (r) { return r.id === id; })[0];
+      var block = document.getElementById("ask-sources-block");
+      if (!q || !block) { return; }
+      askEinschubQuelle = id;
+      var box = document.createElement("section");
+      box.id = "ask-einschub";
+      box.setAttribute("data-quelle", id);
+      box.setAttribute("aria-label", q.title);
+      box.tabIndex = -1;
+      var kopf = document.createElement("h3");
+      kopf.textContent = q.title;
+      var stand = document.createElement("p");
+      stand.className = "einschub-stand";
+      stand.textContent = q.geladen ? askQuelleStandTeile(q).join(" · ") : t("askHerkunftNichtGeladen");
+      var passage = document.createElement("blockquote");
+      passage.className = "einschub-passage";
+      if (q.passage) {
+        // R-0326: die Passage IST das Zitat — ein Klick springt an ihre Stelle im Quelldokument
+        // (Web-Ansicht, `?stelle=…&fassung=…`, dort markiert und angesprungen). Keine dritte Aktion.
+        var zitat = passage.appendChild(document.createElement("a"));
+        zitat.className = "einschub-zitat";
+        zitat.href = askStelleHref(q);
+        zitat.target = "_blank";
+        zitat.rel = "noopener noreferrer";
+        var mark = zitat.appendChild(document.createElement("mark"));
+        mark.textContent = q.passage;
+      } else {
+        passage.textContent = t("askEinschubKeinePassage");
+      }
+      var original = document.createElement(q.original ? "a" : "button");
+      if (q.original) {
+        original.href = window.location.origin + q.original;
+        original.target = "_blank";
+        original.rel = "noopener noreferrer";
+      } else {
+        original.type = "button";
+        original.disabled = true;
+        original.setAttribute("aria-describedby", "ask-einschub-kein-original");
+      }
+      original.id = "ask-einschub-original";
+      original.textContent = t("askEinschubOriginal");
+      var netz = document.createElement("a");
+      netz.id = "ask-einschub-netz";
+      netz.href = koDetailUrl(window.location.origin, id) + "?abschnitt=nachbarschaft"; // geöffnetes Wissensnetz
+      netz.target = "_blank";
+      netz.rel = "noopener noreferrer";
+      netz.textContent = t("askEinschubNetz");
+      var aktionen = document.createElement("p");
+      aktionen.className = "einschub-aktionen";
+      aktionen.appendChild(original);
+      aktionen.appendChild(netz);
+      [kopf, stand, passage, aktionen].forEach(function (k) { box.appendChild(k); });
+      if (!q.original) {
+        var fehlt = document.createElement("p");
+        fehlt.id = "ask-einschub-kein-original";
+        fehlt.textContent = t("askEinschubKeinOriginal");
+        box.appendChild(fehlt);
+      }
+      box.addEventListener("keydown", function (ev) { if (ev.key === "Escape") { askEinschubSchliessen(); } });
+      block.appendChild(box);
+      try { box.focus(); } catch (err) { /* Fokus ist Komfort, kein Vertrag */ }
     }
 
     function renderAskHerkunft() {
@@ -5893,7 +5938,7 @@
       var outcome = currentAskOutcome;
       if (!outcome || outcome.kind !== "answered") { block.className = "hidden"; return; }
       block.className = "";
-      var cited = Array.isArray(outcome.citedSources) ? outcome.citedSources : [];
+      var cited = askZugeordnet(outcome);
       if (cited.length === 0) {
         var kein = document.createElement("p");
         kein.id = "ask-herkunft-kein-beleg";
@@ -5973,26 +6018,15 @@
     // JOB 3056 Runde 4 (Codex Pflicht 1) — DIE FUSSNOTENZIFFERN IM ANTWORTTEXT (Main.dc.html Z.28).
     // ============================================================================================
     //
-    // Hinter dem Antworttext stehen hochgestellte Ziffern, die auf die Chips „n · Titel" zeigen.
-    // Der Antworttext bleibt das bearbeitbare Feld (mega35/36: EIN Feld, alle Ausgaenge — Einfuegen,
-    // Kopieren, Cmd+C, Ausschneiden, Ziehen lesen `value` und die Auswahl des Felds), und ein Feld
-    // kann kein <sup> tragen. Die Ziffern sind deshalb EIGENE <sup>-Elemente (#ask-fussnoten), die
-    // an der GEMESSENEN Stelle nach dem letzten Zeichen stehen: ein unsichtbarer Spiegel
-    // (#ask-answer-spiegel) traegt denselben Text mit denselben Schriftmassen und derselben Breite,
-    // eine Marke an seinem Ende liefert die Koordinaten — dieselbe Bauform, mit der Textfelder ihre
-    // Cursorposition bestimmen. Neu gemessen wird nach jeder Aenderung des Texts, der Hoehe
-    // (kompakt / aufgeklappt) und der Fensterbreite; ist das Textende in der kompakten Ansicht
-    // abgeschnitten, sind die Ziffern es auch (verborgen, nicht falsch platziert).
-    //
-    // WELCHE ZIFFER WOHIN — nichts wird erfunden. Eine Ziffer bekommt, was die Antwort TRAEGT:
-    // `citedSources` (askSourceRole = carrying), nummeriert wie der Chip derselben Quelle. Der
-    // retrieval-only-Weg dieses Panels liefert die Antwort als Aussage GENAU EINER Quelle
-    // (services/reasoner/src/provider.ts: answer = best.statement, citedSources = [best.id]) —
-    // dann steht „1". Nennt ein Server mehrere tragende Quellen, stehen alle ihre Ziffern in
-    // Chip-Reihenfolge am Textende: der Vertrag ordnet Quellen der ANTWORT zu, nicht einzelnen
-    // Saetzen, und eine Zuordnung je Absatz stuende auf nichts. Nur herangezogene Quellen
-    // (consulted) und ein Server ohne `citedSources` bekommen KEINE Ziffer — keine Rolle wird
-    // behauptet, die niemand gesagt hat.
+    // Hochgestellte Ziffern hinter dem Antworttext zeigen auf die Chips „n · Titel". Das Feld bleibt
+    // das EINE bearbeitbare Feld (mega35/36) und kann kein <sup> tragen; die Ziffern (#ask-fussnoten)
+    // stehen an der GEMESSENEN Stelle nach dem letzten Zeichen (unsichtbarer Spiegel
+    // #ask-answer-spiegel mit denselben Schriftmassen, neu gemessen nach Text-, Hoehen- und
+    // Breitenwechsel; ist das Ende in der kompakten Ansicht abgeschnitten, sind sie verborgen).
+    // WELCHE ZIFFER WOHIN: je TRAGENDER Quelle (askQuellenTragend) eine, mit der Nummer ihres Chips.
+    // R-0310: traegt die Antwort die Absatz-Beleg-Zuordnung (`absaetze`), steht am Ende JEDES
+    // Absatzes die Ziffer SEINER Quellen (`.absatzmarke`, relativ zum Textende gesetzt); ohne sie
+    // wie bisher alle tragenden Ziffern am Textende. R-0329: Klick auf eine Ziffer → Einschub.
     var ASK_SPIEGEL_EIGENSCHAFTEN = [
       "font-family", "font-size", "font-weight", "font-style", "letter-spacing", "word-spacing",
       "line-height", "text-transform", "text-indent", "tab-size", "box-sizing",
@@ -6002,18 +6036,46 @@
       var halter = document.getElementById("ask-fussnoten");
       if (!halter) { return; }
       halter.textContent = "";
-      var outcome = currentAskOutcome;
-      var cited = outcome && outcome.kind === "answered" ? outcome.citedSources : undefined;
-      var quellen = askQuellenAufgeloest || [];
-      for (var i = 0; i < quellen.length; i += 1) {
-        if (askSourceRole(quellen[i].id, cited) !== "carrying") { continue; }
-        var ziffer = document.createElement("sup");
-        ziffer.className = "fussnote";
-        ziffer.setAttribute("data-quelle", quellen[i].id);
-        ziffer.textContent = String(i + 1);
-        halter.appendChild(ziffer);
+      var antwort = currentAskOutcome && currentAskOutcome.kind === "answered" ? currentAskOutcome : null;
+      var quellen = antwort ? askQuellenTragend : [];
+      var gruppen = antwort && antwort.absaetze
+        ? antwort.absaetze.map(function (a) { return quellen.filter(function (q) { return a.quellen.indexOf(q.id) !== -1; }); })
+        : [quellen];
+      for (var g = 0; g < gruppen.length; g += 1) {
+        var ziel = halter;
+        if (g < gruppen.length - 1) {
+          ziel = halter.appendChild(document.createElement("span"));
+          ziel.className = "absatzmarke";
+        }
+        for (var i = 0; i < gruppen[g].length; i += 1) {
+          var ziffer = document.createElement("sup");
+          ziffer.className = "fussnote";
+          ziffer.setAttribute("data-quelle", gruppen[g][i].id);
+          if (antwort && antwort.absaetze) { ziffer.setAttribute("data-absatz", String(g)); }
+          ziffer.textContent = String(quellen.indexOf(gruppen[g][i]) + 1);
+          askEinschubAusloeser(ziffer, gruppen[g][i].id);
+          ziel.appendChild(ziffer);
+        }
       }
       askFussnotenSetzen();
+    }
+
+    // R-0310: der Spiegel mit einer Marke am Ende der ersten `vorne` Absaetze und am Textende.
+    function askSpiegelFuellen(spiegel, wert, vorne) {
+      spiegel.textContent = "";
+      var marken = [];
+      var von = 0;
+      var trenner = /\n[ \t]*\n/g;
+      var m;
+      var marke = function () { var s = document.createElement("span"); s.className = "textende"; return s; };
+      while (marken.length < vorne && (m = trenner.exec(wert)) !== null) {
+        spiegel.appendChild(document.createTextNode(wert.slice(von, m.index)));
+        marken.push(spiegel.appendChild(marke()));
+        von = m.index;
+      }
+      spiegel.appendChild(document.createTextNode(wert.slice(von)));
+      marken.push(spiegel.appendChild(marke()));
+      return marken;
     }
 
     function askFussnotenSetzen() {
@@ -6030,33 +6092,51 @@
         );
       }
       spiegel.style.width = feld.clientWidth + "px";
-      spiegel.textContent = feld.value;
-      var marke = document.createElement("span");
-      marke.className = "textende";
-      spiegel.appendChild(marke);
+      var gruppen = halter.querySelectorAll(".absatzmarke");
+      var marken = askSpiegelFuellen(spiegel, feld.value, gruppen.length);
+      var marke = marken[marken.length - 1];
       var zeilenhoehe = parseFloat(stil.lineHeight);
-      // Ohne Layout (jsdom) bleiben die Ziffern da, nur ohne Koordinaten; mit Layout stehen sie am
-      // Textende — oder sind verborgen, wenn das Ende in der kompakten Ansicht nicht im Bild ist.
-      var abgeschnitten = feld.offsetHeight > 0 && zeilenhoehe > 0
-        && marke.offsetTop + zeilenhoehe > feld.offsetHeight + 1;
-      halter.className = abgeschnitten ? "hidden" : "";
+      // Ohne Layout (jsdom) bleiben die Ziffern da, nur ohne Koordinaten; mit Layout steht jede Gruppe
+      // am Ende IHRES Absatzes und ist nur verborgen, wenn GENAU DIESES Ende in der kompakten Ansicht
+      // nicht im Bild ist (Ben zu 6cc581b4: nie der ganze Halter wegen des letzten Absatzes).
+      var ausserhalb = function (m) {
+        return feld.offsetHeight > 0 && zeilenhoehe > 0 && m.offsetTop + zeilenhoehe > feld.offsetHeight + 1;
+      };
+      halter.className = ausserhalb(marke) ? "ende-verborgen" : "";
       halter.style.left = marke.offsetLeft + "px";
       halter.style.top = marke.offsetTop + "px";
       halter.style.lineHeight = zeilenhoehe > 0 ? zeilenhoehe + "px" : "";
+      // R-0310: die Absatzmarken stehen relativ zum Textende; fehlt ihr Absatz (bearbeitet), verborgen.
+      for (var g = 0; g < gruppen.length; g += 1) {
+        var am = marken.length - 1 > g ? marken[g] : null;
+        gruppen[g].className = am && !ausserhalb(am) ? "absatzmarke" : "absatzmarke hidden";
+        gruppen[g].style.left = (am ? am.offsetLeft - marke.offsetLeft : 0) + "px";
+        gruppen[g].style.top = (am ? am.offsetTop - marke.offsetTop : 0) + "px";
+      }
     }
 
-    // ============================================================================================
-    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — EINE STELLE FUER DIE GANZE EVIDENZ.
-    // ============================================================================================
-    //
-    // Sie liest `currentAskOutcome` und ist deshalb auch nach einem SPRACHWECHSEL aufrufbar, ohne
-    // dass die Antwort neu geholt werden muss. Drei Aussagen, sichtbar GETRENNT:
-    //   1. die Einstufung (belegt / nicht belegt)      — unveraendert aus mega34,
-    //   2. der benannte Pruefvorbehalt samt Zaehlung   — bis hierher unsichtbar,
-    //   3. die Konfliktlage                            — bis hierher von 2. ununterscheidbar.
-    // Dazu der real gelieferte Ausschnitt, sofern er nicht ohnehin die Antwort ist.
-    //
-    // Nichts davon wird berechnet: `askEvidenceDetail` liest nur `outcome.evidence` (KW-W1-13).
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — EINE STELLE FUER DIE GANZE EVIDENZ: liest `currentAskOutcome` (auch nach Sprachwechsel), zeigt
+    // GETRENNT Einstufung (mega34), Pruefvorbehalt samt Zaehlung, Konfliktlage und Ausschnitt. Nichts wird berechnet (KW-W1-13).
+    // AUFNAHME 20260922 · R-0335/R-0321: dazu die Lage des Servers und BEIDE Seiten offener Widersprueche (renderAskLage) — gelesen, keine Seite gewaehlt.
+    var ASK_LAGE_TEXT_KEYS = { belegt: "askLageBelegt", belegt_zustaendig_fehlt: "askLageVerantwortungFehlt", belegt_mit_konflikt: "askLageKonflikt" };
+    function renderAskLage() {
+      var liste = document.getElementById("ask-konflikt-seiten");
+      if (!liste) { return; }
+      var o = currentAskOutcome && currentAskOutcome.kind === "answered" ? currentAskOutcome : null;
+      evidenceLine("ask-lage-line", o && ASK_LAGE_TEXT_KEYS[o.lage] ? t(ASK_LAGE_TEXT_KEYS[o.lage]) : "", o && o.lage === "belegt" ? "ok" : "warn");
+      liste.textContent = "";
+      var ks = o && Array.isArray(o.konflikte) ? o.konflikte : [];
+      for (var i = 0; i < ks.length; i += 1) {
+        for (var j = 0; j < ks[i].seiten.length; j += 1) {
+          var s = ks[i].seiten[j];
+          var li = document.createElement("li");
+          li.textContent = t("askKonfliktSeite", { n: String(j + 1) }) + (s.traegtAntwort ? " · " + t("askKonfliktTragend") : "") + ": " + (s.einsehbar ? s.titel + " — " + s.aussage : t("askKonfliktNichtEinsehbar"));
+          liste.appendChild(li);
+        }
+      }
+      if (ks.length > 0) { var hinweis = document.createElement("li"); hinweis.textContent = t("askKonfliktKeinGewinner"); liste.appendChild(hinweis); }
+      liste.className = ks.length > 0 ? "" : "hidden";
+    }
     var ASK_CAVEAT_TEXT_KEYS = {
       unknown: "askCaveatUnknown",
       unchecked: "askCaveatUnchecked",
@@ -6071,9 +6151,7 @@
       clear: "askConflictClear",
     };
 
-    // Die beiden Zeilen sind FESTE Elemente des Markups: sie werden gefuellt und ein-/ausgeblendet,
-    // nicht erzeugt. Sie benutzen dieselben `.status`-Toene wie die Einstufungszeile darueber —
-    // deckende Flaechen, vom Kontrastwaechter eindeutig messbar (s. Stilblock).
+    // Feste Markup-Zeilen (gefuellt, nicht erzeugt) mit den `.status`-Toenen der Einstufungszeile.
     function evidenceLine(id, textValue, tone) {
       var el = document.getElementById(id);
       if (!el) { return; }
@@ -6090,6 +6168,7 @@
       var noteEl = document.getElementById("ask-evidence-note");
       var snippetBlock = document.getElementById("ask-snippet-block");
       if (!noteEl || !snippetBlock) { return; }
+      renderAskLage();
       var outcome = currentAskOutcome;
       var vorbehaltEl = document.getElementById("ask-vorbehalt");
       if (!outcome || outcome.kind !== "answered") {
@@ -6173,47 +6252,32 @@
         document.getElementById("ask-input").value = "";
         kwFlaecheZeichnen();
         updateAskState();
-        // AUFTRAG-mega34 B2: die Einstufung sichtbar machen — derselbe Text, den auch der
-        // eingefuegte Absatz traegt. Bei belegter Einstufung steht die belegte Fassung da, nicht
-        // gar keine; der Leser soll den Unterschied SEHEN und nicht aus dem Schweigen schliessen.
-        // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: Einstufung, Vorbehalt, Konfliktlage und Ausschnitt
-        // entstehen jetzt an EINER Stelle (renderAskEvidence) — dieselbe, die auch der
-        // Sprachwechsel ruft. Zwei Aufrufstellen waeren zwei Gelegenheiten auseinanderzulaufen.
+        // mega34 B2 / W1-VERTRAUENSKOPF-08 B: Einstufung (derselbe Text wie im eingefuegten Absatz), Vorbehalt, Konfliktlage,
+        // Ausschnitt und (R-0335/R-0321) Lage samt Konfliktseiten entstehen an EINER Stelle, die auch der Sprachwechsel ruft.
         renderAskEvidence();
-        // JOB 3092 S6 (W5): Herkunft (zunaechst „Quellen werden geladen …") und Ungeprueft-Satz —
-        // beide an derselben Stelle wie die Einstufung, damit der Sprachwechsel sie mitnimmt.
+        // JOB 3092 S6 (W5): Herkunft und Ungeprueft-Satz an derselben Stelle, damit der Sprachwechsel sie mitnimmt.
         renderAskHerkunft();
         renderAskUngeprueft();
         renderAskFragment(); // JOB 3366: der Satz an einer abgeschnittenen Antwort
-        // AUFTRAG-mega35 A1: das Feld traegt NUR den Antwortkoerper — das ist der Teil, der der
-        // Nutzerin gehoert. Einstufung und Quellen-Zeile werden NICHT vorbefuellt und deshalb auch
-        // nicht nachgetragen; sie entstehen erst im Moment des Kopierens/Einfuegens
-        // (composeOutputText). Damit gibt es keinen Zustand mehr, in dem der Feldinhalt die
-        // Einstufung verloren hat, die Ausgabewege aber schon offen sind.
+        // mega35 A1: das Feld traegt NUR den Antwortkoerper; Einstufung und Quellen-Zeile entstehen erst beim
+        // Kopieren/Einfuegen (composeOutputText) — kein Zustand, in dem der Feldinhalt die Einstufung verloren hat.
         document.getElementById("ask-answer-edit").value = outcome.answer;
         applyAnswerCompaction(outcome.answer);
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
         updateInsertState(); // noch gesperrt — die Quellenaufloesung laeuft (Fix 2)
-        // JOB 3056 Runde 6 (Codex): DIESER RUECKLAUF GEHOERT DIESER ANTWORT. Das Frage-Feld bleibt
-        // unter der Antwort stehen (es IST die neue Frage) — wer die naechste Frage stellt, waehrend
-        // die Quellen der vorigen noch geladen werden, bekam bis Runde 5 deren Chip, Ziffer und
-        // Quellen-Zeile untergeschoben, und der fremde Ruecklauf oeffnete das Ausgabetor der neuen
-        // Antwort. Der Ruecklauf traegt deshalb die Generation des Ergebniszustands (resetAskResult
-        // zaehlt sie bei jeder Frage und beim Zurueck hoch) UND das Ergebnisobjekt selbst; passt
-        // eines nicht mehr, wird er verworfen — kein DOM, keine Metadaten, kein Tor.
+        // JOB 3056 Runde 6 (Codex): DIESER RUECKLAUF GEHOERT DIESER ANTWORT. Er traegt die Generation
+        // des Ergebniszustands (resetAskResult zaehlt sie hoch) UND das Ergebnisobjekt; passt eines
+        // nicht mehr, wird er verworfen — kein Chip, keine Ziffer, keine Quellen-Zeile, kein Tor.
         var generation = askErgebnisGeneration;
         resolveAskSources(outcome.sources || []).then(function (resolved) {
           if (generation !== askErgebnisGeneration || currentAskOutcome !== outcome) { return; }
-          currentAskSourceTitles = resolved.map(function (r) { return r.title; });
-          currentAskSourceDates = resolved.map(function (r) { return r.standDate; });
+          // R-0309/R-0325: Chips, Ziffern und Dokumentzeile nur aus den TRAGENDEN Quellen.
+          var tragend = askTragendeQuellen(resolved, outcome);
+          currentAskSourceTitles = tragend.map(function (r) { return r.title; });
           currentAskSourcesResolved = true; // ab jetzt ist die Quellen-Zeile vollstaendig
-          renderAskSources(resolved);
-          // JOB 3092 S6 (W5): jetzt sind Titel, Pruefstand und Version da — die Ladezeile weicht
-          // den Herkunftszeilen (bzw. „konnte nicht geladen werden" je gescheiterter Quelle).
-          renderAskHerkunft();
-          // Das Feld wird hier NICHT mehr angefasst — eine laufende Bearbeitung kann nichts kaputt
-          // machen und nichts verlieren.
-          updateInsertState();
+          renderAskSources(resolved, tragend);
+          renderAskHerkunft(); // JOB 3092 S6: die Ladezeile weicht den Herkunftszeilen
+          updateInsertState(); // das Feld wird NICHT angefasst — laufende Bearbeitung bleibt
         });
         return;
       }
@@ -6229,6 +6293,7 @@
         // JOB 3092 S6 (W5): KEINE Zahl aus der Vorauswahl — aber die betrachtergefilterte Liste,
         // die der Server seit JOB 1591 ausdruecklich meldet, als EIN Satz mit Titel(n).
         renderAskUngeprueft();
+        document.getElementById("ask-gap-zuordnung").className = outcome.zuordnungUnbekannt ? "" : "hidden";
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
         return;
       }
@@ -6261,8 +6326,9 @@
       }
       // JOB 3056 K1 (§9): ohne Verbindung EIN Satz „Keine Verbindung." und „Erneut versuchen";
       // ein benannter Serverfehler nennt weiter sein Detail. R-0590: der gesperrte Ausweichweg nennt seinen Grund (bei beendeter Zustimmung ohne „Erneut versuchen").
-      showAskStatus("warn", outcome.kind === "fallback-blocked" ? t(outcome.reason === "consent_ended" ? "askFallbackConsentEnded" : "askFallbackBlocked") : outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline"));
-      if (outcome.reason !== "consent_ended") { askRetryZeigen(); }
+      // R-0335: geschwaerzt und unbekannte Antwortlage (technischer Fehler) haben je einen eigenen Satz — nie die Wissensluecke.
+      showAskStatus("warn", outcome.kind === "ki-abgeschaltet" ? t("askKiAbgeschaltet") : outcome.kind === "redacted" ? t("askLageGesperrt") : outcome.kind === "fallback-blocked" ? t(outcome.reason === "consent_ended" ? "askFallbackConsentEnded" : "askFallbackBlocked") : outcome.detail === "lage" ? t("askLageUnbekannt") : outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline"));
+      if (outcome.reason !== "consent_ended" && outcome.kind !== "ki-abgeschaltet" && outcome.kind !== "redacted") { askRetryZeigen(); } // R-1040: eine Abschaltung ist eine Entscheidung — kein „Erneut versuchen"
     }
 
     // Auswahl lesen (nur Text — die Frage ist Klartext); ohne Office ehrlich leer → Eingabefeld.
@@ -6303,17 +6369,11 @@
       }
     }
 
-    // JOB 3056 K1 (Rebase auf KA5): die Wahrheitstabelle der zwei Deckel (`askSelectionTruncated`,
-    // `askBothTruncated`, `askDeckelHinweis`) ist mit dem Herkunftshinweis selbst entfallen — die
-    // Ruhe zeigt vor dem Absenden nur noch den EINEN Verwerfungssatz (s.u.), keinen Deckelhinweis
-    // mehr; die Statuszeile nach der Antwort zeigt `askTruncated` unveraendert (renderAskOutcome).
-
-    // AUFTRAG-mega74 TEIL 2b: die Zeile ueber dem Eingabefeld sagt, WORAUS die Frage entsteht.
-    // Sie benutzt dieselbe Entscheidung wie der Absendeweg (prepareAskQuestion) — nicht eine
-    // zweite, die morgen anders ausfaellt. Sie behauptet nichts, wenn sie nichts weiss: ohne
-    // Office bleibt sie leer.
-    // JOB 3017 D4: die Zeile ist zustandsgebunden — ohne Inhalt verborgen, damit unter dem Feld
-    // genau EIN Satz steht (Zielbild Z.44) und kein leerer Absatz Platz haelt.
+    // JOB 3056 K1 (Rebase auf KA5): kein Deckelhinweis vor dem Absenden mehr; nach der Antwort
+    // zeigt die Statuszeile `askTruncated` unveraendert (renderAskOutcome).
+    // AUFTRAG-mega74 TEIL 2b: die Zeile ueber dem Feld sagt, WORAUS die Frage entsteht — mit
+    // derselben Entscheidung wie der Absendeweg (prepareAskQuestion); ohne Office leer. JOB 3017
+    // D4: ohne Inhalt verborgen, damit unter dem Feld genau EIN Satz steht (Zielbild Z.44).
     function setzeAskSourceNote(note, text) {
       note.textContent = text;
       note.className = text ? "muted" : "muted hidden";
@@ -6325,10 +6385,8 @@
       if (!officeUsable()) { setzeAskSourceNote(note, ""); return; }
       readAskSelection(function (selectionText) {
         var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
-        // JOB 3056 K1 (Rebase auf KA5): nur der EINE Fall bekommt einen Satz — getippter Text UND
-        // Markierung sind da, die Markierung reist zusaetzlich mit (`prep.from === "manual"` seit
-        // KA5, `prep.selection` ist dann die mitgesendete Markierung). Sonst steht nichts ueber dem
-        // Feld (die Ruhe sagt es, der Schalter „Text in Word mitlesen" entscheidet).
+        // JOB 3056 K1 (Rebase auf KA5): nur getippter Text UND Markierung (die zusaetzlich mitreist,
+        // `prep.selection`) bekommen einen Satz; sonst steht nichts ueber dem Feld.
         setzeAskSourceNote(note, prep.from === "manual" && prep.selection.length > 0
           ? t("askSourceSelectionOverride")
           : "");
@@ -6342,9 +6400,8 @@
     }
 
     function askKlara() {
-      // AUFTRAG-W1-KLARA-KOPF-CONSENT-06: der zweite Riegel. Der gesperrte Knopf ist die Anzeige,
-      // DIESE Zeile ist die Wirkung — bei `executionAllowed: false` verlaesst KEINE Anfrage das
-      // Aufgabenfenster. Ein Gate, das nur ein `disabled`-Attribut ist, ist kein Gate.
+      // AUFTRAG-W1-KLARA-KOPF-CONSENT-06: der zweite Riegel — bei `executionAllowed: false` verlaesst
+      // KEINE Anfrage das Fenster (der gesperrte Knopf ist nur die Anzeige).
       if (klaraS4FragenGesperrt()) {
         resetAskResult();
         showAskStatus("warn", t("s4FragenGesperrt"));
@@ -6353,28 +6410,13 @@
         updateAskState();
         return;
       }
-      // JOB 3016 D3 (Runde 4, BEN): SINGLE FLIGHT — das Tor faellt SYNCHRON, VOR dem asynchronen
-      // Auswahlrueckruf von Word. Bis Runde 3 lag zwischen Klick und Wartezustand die Zeit von
-      // `getSelectedDataAsync`; ein zweiter Klick in dieser Luecke startete einen zweiten Lauf,
-      // und der erste Ausgang gab Karte und Feld frei, waehrend der zweite Fetch noch lief.
-      // `askLaeuft` ist deshalb kein Anzeigeschalter mehr, sondern das Tor: solange es steht, geht
-      // KEIN zweiter Auswahlrueckruf und KEIN zweiter Ask ab. Es faellt bei leerer Frage, nach
-      // jedem Ergebnis und — fail-open — bei jedem Fehler vor dem Fetch.
-      //
-      // Runde 5 (BEN): DIE AUSWAHLPHASE IST EIN BEGRENZTER LAUF. Zwischen Klick und Rueckruf haengt
-      // das Fenster an Word — und Word kann den Rueckruf schuldig bleiben, synchron werfen oder
-      // ihn erst liefern, wenn niemand mehr wartet. Jeder Lauf traegt deshalb sein eigenes Ticket
-      // (`lauf`): eine Frist (WORD_ADDIN_ASK_TIMEOUT_MS) beendet ihn fail-open mit einer ehrlichen
-      // Meldung (askSelectionTimeout), OHNE dass ein Ask abgegangen waere; ein synchroner Fehler
-      // beendet ihn mit askError; ein Rueckruf, dessen Lauf vorbei ist (verspaetet oder doppelt),
-      // wird ignoriert und loest KEINEN Ask mehr aus.
-      //
-      // Runde 6 (BEN): EINE ABSOLUTE GESAMTFRIST AB KLICK. Das Versprechen lautet „wartet bis zu
-      // 15 Sekunden" — fuer den ganzen Lauf, nicht je Teilstueck. Die Auswahlfrist und die Frist von
-      // performAsk teilen sich deshalb dieselbe Uhr: performAsk bekommt nach dem Rueckruf nur die
-      // vom Klick an VERBLEIBENDE Zeit (mindestens 1 ms), nicht erneut die volle Konstante. Spaetestens
-      // WORD_ADDIN_ASK_TIMEOUT_MS nach dem Klick sind Karte und Sperre weg — Word langsam oder Server
-      // langsam, es ist dieselbe Wartezeit des Menschen.
+      // JOB 3016 D3 (Runde 4, BEN): SINGLE FLIGHT — `askLaeuft` ist das Tor und faellt SYNCHRON vor
+      // dem Auswahlrueckruf von Word: kein zweiter Rueckruf, kein zweiter Ask; es faellt bei leerer
+      // Frage, nach jedem Ergebnis und fail-open bei jedem Fehler vor dem Fetch.
+      // Runde 5: jeder Lauf traegt sein Ticket (`lauf`) — eine Frist beendet ihn fail-open mit
+      // askSelectionTimeout ohne Ask, ein synchroner Fehler mit askError, ein verspaeteter oder
+      // doppelter Rueckruf wird ignoriert. Runde 6: EINE Gesamtfrist ab Klick — performAsk bekommt
+      // nur die VERBLEIBENDE Zeit (mindestens 1 ms) von WORD_ADDIN_ASK_TIMEOUT_MS.
       if (askLaeuft) { return; }
       resetAskResult();
       // Der Wartezustand ist die Ladekarte, nicht der Warnkasten — und die Sperre trifft
@@ -6386,9 +6428,8 @@
         lauf.offen = false;
         if (lauf.timer !== null) { clearTimeout(lauf.timer); lauf.timer = null; }
       };
-      // Der EINE Ausgang „Word war zu langsam": vom Timer gerufen — oder vom Rueckruf selbst, wenn
-      // er die Frist schon ueberschritten vorfindet (Runde 7, BEN: die Reihenfolge asynchroner
-      // Timer ist keine Garantie; die Uhr wird im Rueckruf selbst gelesen).
+      // Der EINE Ausgang „Word war zu langsam": vom Timer oder vom Rueckruf selbst, wenn er die Frist
+      // schon ueberschritten vorfindet (Runde 7: Timer-Reihenfolge ist keine Garantie).
       var auswahlAbgelaufen = function () {
         laufBeenden();
         askWartezustand(false);
@@ -6459,52 +6500,39 @@
     // „einziger Weg, auf dem Text das Panel verlaesst" war FALSCH — er kannte nur die beiden
     // Schaltflaechen und uebersah den nativen Kopierweg des Antwortfelds.
     //
-    // AUFTRAG-mega37 BLOCK D — WAS DIESE LISTE IST UND WAS SIE NICHT IST (bens GELB-2). Sie zaehlt
-    // die GEFUNDENEN produktdefinierten Ausgaenge auf. Der Negativ-Durchgang (kein Netz-, Datei-,
-    // Druck-, Teilen-, Download- oder Zweitfenster-Ziel fuer den Antworttext) ist von ben fuer
-    // diesen Quelltext nachgeprueft und bestaetigt — aber eine ABZAEHLUNG ist kein Beweis der
-    // Vollstaendigkeit, und die Zahl mischt Zaehlebenen (Word.run und setSelectedDataAsync sind
-    // zwei Wege EINER Schaltflaeche; Tastatur und Kontextmenue sind EIN `copy`-Ereignis). Die Zahl
-    // taugt deshalb NICHT als Architekturbeweis. Tragfaehig ist dieser Satz:
-    //   Jede gefundene VOLLSTAENDIGE Antwortausgabe laeuft entweder durch composeOutputText oder
-    //   stammt aus einem bereits dadurch erzeugten, nur lesbaren Volltext.
-    // Die gefundenen Wege:
-    //   - „In Word einfuegen"        → composeOutputText  (insertAnswer)
-    //   - „Kopieren"                 → composeOutputText  (copyAnswer)
-    //   - Cmd+C / Strg+C             → composeOutputText  (handleAnswerClipboard, `copy`)
-    //   - Kontextmenue „Kopieren"    → composeOutputText  (dasselbe `copy`-Ereignis)
-    //   - Ausschneiden               → composeOutputText  (handleAnswerClipboard, `cut`)
-    //   - Ziehen einer Auswahl       → composeOutputText  (handleAnswerDragStart)
-    //   - Zwischenablage-Rueckfall   → composeOutputText  (showCopyFallback, nur lesbares Feld)
-    // ZWEI AUSNAHMEN, benannt statt verschwiegen — im Kern dieselbe: ein Bruchstueck ist keine
-    // Antwort und traegt deshalb keine Einstufung.
-    //   1. Eine TEILAUSWAHL des Antwortfelds bleibt roh (Block B2). Die Oberflaeche sagt das in dem
-    //      Moment ausdruecklich (askCopyPartial) — seit mega37 B an ALLEN drei nativen Wegen
-    //      gleich, also auch beim Ziehen, wo sie bis mega36 kommentarlos schwieg.
-    //   2. Eine TEILAUSWAHL im Rueckfallfeld (`#ask-copy-fallback-text`, bens GELB-2). Sein Wert
-    //      ist bereits abgeleitet und vollstaendig vorgewaehlt, eine Vollauswahl dort also sicher;
-    //      wer von Hand ein Stueck markiert oder zieht, bekommt dasselbe rohe Bruchstueck. Das
-    //      Feld hat KEINE eigenen Rueckrufe — hier steht es, statt unerwaehnt zu bleiben.
+    // AUFTRAG-mega37 BLOCK D (bens GELB-2): die GEFUNDENEN produktdefinierten Ausgaenge — eine
+    // Abzaehlung, kein Vollstaendigkeitsbeweis (Negativ-Durchgang kein Netz-/Datei-/Druck-/Teilen-/
+    // Download-/Zweitfenster-Ziel von ben bestaetigt). Tragfaehig: jede gefundene VOLLSTAENDIGE
+    // Antwortausgabe laeuft durch composeOutputText oder stammt aus einem dadurch erzeugten, nur
+    // lesbaren Volltext — Einfuegen (insertAnswer), Kopieren (copyAnswer), Cmd/Strg+C, Kontextmenue
+    // und Ausschneiden (handleAnswerClipboard), Ziehen (handleAnswerDragStart), Rueckfall
+    // (showCopyFallback). ZWEI AUSNAHMEN, im Kern dieselbe (ein Bruchstueck traegt keine Einstufung):
+    // eine TEILAUSWAHL des Antwortfelds bleibt roh und wird an allen drei nativen Wegen gesagt
+    // (askCopyPartial, mega37 B); eine Teilauswahl im Rueckfallfeld `#ask-copy-fallback-text` ebenso
+    // (das Feld hat keine eigenen Rueckrufe).
+    // AUFTRAG-mega37 BLOCK A / mega38 BLOCK D: die nativen Wege stehen hinter dem QUELLEN-TOR
+    // (handleAnswerClipboard); die Teilauswahl wird davor abgefangen, der Zweig ohne Datenbehaelter
+    // (mega38 B) bricht dahinter ab. BELEGT ist genau: solange `currentAskSourcesResolved === false`
+    // ist, passiert KEINE VOLLSTAENDIGE ANTWORTAUSGABE das Tor.
     //
-    // AUFTRAG-mega37 BLOCK A / AUFTRAG-mega38 BLOCK D: alle nativen Wege stehen zusaetzlich hinter
-    // dem QUELLEN-TOR (s. handleAnswerClipboard). Hier stand bis mega37 „solange
-    // `currentAskSourcesResolved === false` ist, geht ueberhaupt nichts hinaus" — und das war
-    // wieder ein Satz, der mehr behauptet, als der Code deckt. Zwei Dinge gehen sehr wohl:
-    //   - Eine bewusste TEILAUSWAHL wird VOR dem Tor abgefangen (askCopyPartial) und darf roh
-    //     hinaus — das ist die entschiedene Ausnahme 1 von oben, nicht ein Loch im Tor.
-    //   - Der Zweig ohne brauchbaren Datenbehaelter (mega38 B) ist eine ZWEITE Grenze hinter dem
-    //     Tor; er bricht ab und bietet den abgeleiteten Volltext im Rueckfallfeld an.
-    // BELEGT ist deshalb genau dieser Satz und kein groesserer:
-    //   Solange `currentAskSourcesResolved === false` ist, passiert KEINE VOLLSTAENDIGE
-    //   ANTWORTAUSGABE das Tor — auf keinem der oben aufgezaehlten Wege.
-    //
-    // „Stand <Datum>" NUR mit belegtem KO-Datum (WP-KLARA-ASK-FIX, bens Fix 3), ohne Beleg ehrlich
-    // "abgerufen am <heute>".
+    // Aufnahme 20260922 · antwort-quellenanzeige (R-0309/R-0325): die Quellen-Zeile im Dokument
+    // nennt NUR die TRAGENDEN Quellen (askQuellenTragend), je mit Pruefstand, Version und IHREM
+    // belegten Stand (askQuelleStandTeile); die Zeile endet darum mit „abgerufen am <heute>" statt
+    // mit einem gemeinsamen Datum. Ohne verwertbare Zuordnung sagt sie „keine tragende Quelle
+    // belegt" — dieselbe Lage, in der das Panel „Dafuer habe ich keinen Beleg." zeigt. Eine nicht
+    // geladene Quelle behauptet nichts. Die Vorlagen (askSourceLine*) bleiben unveraendert.
+    function askDokumentQuellenTitel(quellen) {
+      if (quellen.length === 0) { return [t("askQuelleOhneZuordnung")]; }
+      return quellen.map(function (q) {
+        return q.geladen ? q.title + " (" + askQuelleStandTeile(q).join(", ") + ")" : q.title;
+      });
+    }
+
     function composeOutputText(body) {
       return composeAnswerOutput({
         body: body,
-        sourceTitles: currentAskSourceTitles,
-        sourceDates: currentAskSourceDates,
+        sourceTitles: askDokumentQuellenTitel(askQuellenTragend),
+        sourceDates: [],
         truncated: currentAskTruncated,
         grade: askGradeOf(currentAskOutcome && currentAskOutcome.evidence),
         now: new Date(),
@@ -6630,16 +6658,10 @@
       document.getElementById("ask-copy-fallback-text").value = "";
     }
 
-    // ============================================================================================
-    // AUFTRAG-mega36 BLOCK B1/B2 — DER NATIVE AUSGANG.
-    // ============================================================================================
-    //
-    // Das Antwortfeld traegt NUR den Antwortkoerper (mega35 A1). Ohne dieses Abfangen nimmt ein
-    // natives Cmd+C/Strg+C, ein Kontextmenue-Kopieren oder ein Ausschneiden genau diesen Koerper —
-    // ohne Einstufung, ohne Quellen-Zeile, ohne Kappungshinweis. Tastatur und Kontextmenue loesen
-    // DASSELBE `copy`-Ereignis aus; beide sind damit hier erledigt.
-    //
-    // Der Text entsteht auch hier ueber composeOutputText — ein Bauer, alle Wege.
+    // AUFTRAG-mega36 BLOCK B1/B2 — DER NATIVE AUSGANG. Das Feld traegt NUR den Antwortkoerper
+    // (mega35 A1); ohne dieses Abfangen naehme Cmd/Strg+C, Kontextmenue-Kopieren oder Ausschneiden
+    // ihn ohne Einstufung, Quellen-Zeile und Kappungshinweis mit. Tastatur und Kontextmenue loesen
+    // DASSELBE `copy`-Ereignis aus. Der Text entsteht ueber composeOutputText — ein Bauer, alle Wege.
     function handleAnswerClipboard(ev, schneiden) {
       // Nur bei einer echten, belegten Antwort greift die Ableitung; sonst ist das Feld ein Feld.
       if (!currentAskOutcome || currentAskOutcome.kind !== "answered") { return; }
@@ -6651,21 +6673,11 @@
         showAskStatus("warn", t("askCopyPartial"));
         return;
       }
-      // AUFTRAG-mega37 BLOCK A — DAS QUELLEN-TOR, UND ES GILT HIER GENAUSO WIE AN DEN SCHALTFLAECHEN.
-      //
-      // bens ROT-Befund zu mega36: sobald `/api/ask` geantwortet hat, steht der Antwortkoerper im
-      // Feld — die Quellentitel werden DANACH asynchron geladen. Die beiden Schaltflaechen bleiben
-      // in diesem Fenster gesperrt (`updateInsertState`, Fix 2); die nativen Wege pruefen den
-      // Zustand bis mega36 NICHT. Ein Cmd+C in genau diesem Moment baute die Quellen-Zeile mit dem
-      // generischen Namen `KLARWERK` (buildAskSourceLine) — eine Angabe, die aussieht wie ein Beleg
-      // und keiner ist. Das ist nicht dieselbe Klasse wie eine FEHLENDE Einstufung, es ist die
-      // schlechtere. Deshalb FAIL-CLOSED, und zwar VOR jeder Textbildung und vor der Pruefung der
-      // Zwischenablage-Schnittstelle (A6: auch der Rueckfall darf hier keinen Volltext anbieten):
-      //   A1 nichts wird geschrieben · A2 Ausschneiden schneidet nicht · A3 der Standard-Export des
-      //   Browsers wird verhindert · A4 die Oberflaeche sagt es · A5 erst nach der Aufloesung gibt
-      //   composeOutputText aus.
-      // Die TEILAUSWAHL steht bewusst DAVOR: ein Bruchstueck traegt ohnehin keine Quellen-Zeile,
-      // fuer sie ist der Zustand der Aufloesung gleichgueltig.
+      // AUFTRAG-mega37 BLOCK A — DAS QUELLEN-TOR wie an den Schaltflaechen (bens ROT zu mega36: ein
+      // Cmd+C vor der Quellenaufloesung baute eine Quellen-Zeile mit dem generischen `KLARWERK`).
+      // FAIL-CLOSED vor jeder Textbildung (A1 nichts geschrieben · A2 nicht geschnitten · A3 Export
+      // verhindert · A4 gesagt · A5/A6 kein Volltext, auch nicht im Rueckfall). Die TEILAUSWAHL steht
+      // bewusst davor: ein Bruchstueck traegt ohnehin keine Quellen-Zeile.
       if (!currentAskSourcesResolved) {
         if (ev.preventDefault) { ev.preventDefault(); }
         showAskStatus("warn", t("askCopyNativePending"));
@@ -6689,10 +6701,7 @@
         var bis = Math.min(wert.length, Math.max(feld.selectionStart, feld.selectionEnd));
         feld.value = wert.slice(0, von) + wert.slice(bis);
       }
-      // Hier ist die Aufloesung nachweislich durch (das Tor oben ist die einzige Vorbedingung) —
-      // die Quellen-Zeile traegt die echten KO-Titel. Der frueher hier stehende Zweig „kopiert,
-      // aber die Titel fehlten noch" ist mit mega37 A ersatzlos weg: er beschrieb einen Zustand,
-      // den es nicht mehr gibt.
+      // Die Aufloesung ist hier nachweislich durch (Tor oben) — die Quellen-Zeile traegt echte Titel.
       showAskStatus("ok", t("askCopyNativeOk"));
     }
 
@@ -6703,29 +6712,20 @@
       var wert = feld.value;
       if (wert.replace(/^\s+|\s+$/g, "").length === 0) { return; }
       if (!answerSelectionIsWhole(wert, feld.selectionStart, feld.selectionEnd)) {
-        // AUFTRAG-mega37 BLOCK B: die Ausnahme SELBST bleibt — ein Satzfragment braucht keinen
-        // Metablock, das ist entschieden, und der Ziehvorgang laeuft deshalb normal weiter. Falsch
-        // war nur, dass das Panel hier KOMMENTARLOS zurueckkehrte, waehrend der Kommentar
-        // versprach, die Ausnahme werde an jedem Ausgang benannt. Jetzt sagt sie ueberall dasselbe.
+        // AUFTRAG-mega37 BLOCK B: ein Satzfragment braucht keinen Metablock (entschieden), der
+        // Ziehvorgang laeuft weiter — aber die Ausnahme wird wie an jedem Ausgang benannt.
         showAskStatus("warn", t("askCopyPartial"));
         return;
       }
-      // AUFTRAG-mega37 BLOCK A: dasselbe Tor wie beim Kopieren/Ausschneiden — und hier wog der
-      // Mangel am schwersten, weil beim Ziehen bisher nicht einmal ein Hinweis erschien. Der
-      // Ziehvorgang wird abgebrochen (A3), es wird nichts angelegt (A1), die Oberflaeche sagt es (A4).
+      // AUFTRAG-mega37 BLOCK A: dasselbe Tor — abbrechen (A3), nichts anlegen (A1), sagen (A4).
       if (!currentAskSourcesResolved) {
         if (ev.preventDefault) { ev.preventDefault(); }
         showAskStatus("warn", t("askCopyNativePending"));
         return;
       }
-      // AUFTRAG-mega38 BLOCK B: hier stand bis mega37 ein blankes `return` — ohne preventDefault,
-      // ohne Hinweis. Das ist der schlechteste aller Ausgaenge: der Host darf seinen EIGENEN
-      // Standard-Ziehvorgang danach fortsetzen, und der traegt fuer eine Textauswahl den rohen
-      // Antwortkoerper hinaus — ohne Einstufung, ohne Quellen-Zeile, ohne Kappungshinweis.
-      // Jetzt gilt derselbe Vertrag wie am Kopier-/Ausschneideweg (s. handleAnswerClipboard):
-      // abbrechen, nichts roh hinauslassen, den ABGELEITETEN Volltext im Rueckfallfeld anbieten
-      // und es sagen. Ob ein echter Word-/WKWebView-Host diesen Zweig je erreicht, ist UNBELEGT —
-      // gepinnt ist das Verhalten, nicht eine Behauptung ueber den Host.
+      // AUFTRAG-mega38 BLOCK B: ohne Datenbehaelter derselbe Vertrag wie am Kopierweg — abbrechen,
+      // nichts roh hinauslassen, den ABGELEITETEN Volltext im Rueckfallfeld anbieten und es sagen.
+      // Ob ein echter Word-/WKWebView-Host diesen Zweig erreicht, ist UNBELEGT (gepinnt: Verhalten).
       var daten = ev.dataTransfer || null;
       if (!daten || typeof daten.setData !== "function") {
         if (ev.preventDefault) { ev.preventDefault(); }
@@ -11537,956 +11537,3 @@
       }
     }
     // KW-KA7-KONFLIKT-END
-
-    // KW-WORDVERGLEICH-START
-    // ============================================================================================
-    // JOB 3281 · WORD-VERGLEICH — DAS GANZE DOKUMENT, ABSATZ FUER ABSATZ, MIT FARBE UND BELEG.
-    // ============================================================================================
-    //
-    // PEDIS FALL (Auftrag §1): er oeffnet das Vergleichsdokument in Word und klickt „Dokument
-    // pruefen". Klara geht Absatz fuer Absatz durch, faerbt IM DOKUMENT und listet im Panel je
-    // Absatz die Quellen. Sie entscheidet nichts: „aehnlich" und „Widerspruch" sind Hinweise mit
-    // Beleg, die der Mensch im Dokument sieht.
-    //
-    // DIE VIER AUSSAGEN UND WORAN SIE HAENGEN — jede an ihrer eigenen Voraussetzung (§7 des
-    // Zustandsmodells), keine an einer Punktzahl:
-    //
-    //   gruen  „woertlich belegt"   Ein Quellenfund mit `coverage: "full"` UND
-    //          (BrightGreen)        `gedeckteZeichen === passageZeichen` UND — das ist der Kern —
-    //                               die MITGELIEFERTE Fundstelle traegt den normalisierten Absatz
-    //                               woertlich (`wvWoertlich`). Ein hoher Trigramm-/Dublettenwert
-    //                               fuehrt hier NIE hin: `confidence` wird in diesem Block nirgends
-    //                               gelesen. Codex' Nachfuehrung 08.09., Punkt 1, als Code.
-    //   gelb   „aehnlich"           Es gibt Dublettentreffer oder Quellenfunde, aber keinen
-    //          (Yellow)             woertlichen Beleg. Die schwaechere Aussage steht da, nicht die
-    //                               starke — auch bei `relation: "identisch"` mit 0,98.
-    //   tuerkis „kein Fund"         NUR nach einem VOLLSTAENDIGEN Lauf: der Absatz ging ungekuerzt
-    //          (Turquoise)          hinaus, der Bestand wurde wirklich durchsucht
-    //                               (`quellenfund.gelaufen === true`), der Deckel hat nichts
-    //                               abgeschnitten (`sourceHitsTruncated !== true`) — und es kam
-    //                               nichts zurueck. Fehlt eine dieser Voraussetzungen, gibt es
-    //                               KEINE Farbe und einen Grund. Kein pauschales Blau.
-    //                               DER SATZ SAGT „im durchsuchten Bestand", nicht „nirgends": die
-    //                               Kandidatenwahl der Route ist gedeckelt und behauptet keine
-    //                               Vollstaendigkeit (check-text-routes.ts, `includeUnvalidated`).
-    //   rot    „Widerspruch"        Die Antwort traegt einen Konflikttreffer mit einem BENANNTEN
-    //          (Red)                Konflikttyp (`KA7_KONFLIKT_TYPEN`; Doppelungstypen zaehlen als
-    //                               Aehnlichkeit, nicht als Widerspruch). Der belegte Satz aus der
-    //                               Quelle (`stellen.quelle`) steht daneben.
-    //
-    // OHNE FARBE ist eine eigene, ehrliche Lage und kein Rest: zu kurz, gekuerzt, nicht durchsucht,
-    // Deckel, Fehler — jede mit ihrem Grund in der Liste.
-    //
-    // DER WIDERSPRUCHSZWEIG KOSTET EINEN TEXTABFLUSS, UND DEN ENTSCHEIDET NICHT DIESER BLOCK.
-    // `conflicts` entsteht serverseitig nur im tiefen, nicht vertraulichen Zweig
-    // (`want: "deep"`, check-text-routes.ts `deepAllowed`). Das ist der Gang an die externe KI und
-    // braucht Pedis Weiche je Dokument (Werkstattbeschluss 18.08., KA4). Dieser Block liest sie
-    // ueber `ka7ExterneKi()` — dieselbe eine Stelle, die KA7 dafuer gebaut hat, kein zweiter
-    // Riegel. Ohne Einwilligung geht `want` NICHT hinaus, Rot kann konstruktiv nicht entstehen,
-    // und das Fenster sagt genau das (`wvKiFehlt`) — statt „kein Widerspruch" zu behaupten.
-    //
-    // EIN WEG ZUR ROUTE, KEIN ZWEITER. Der Abruf laeuft durch `w6DublettenAusCheckText` (Block
-    // KW-KLARA-W6-CHECKTEXT), denselben Uebersetzer, den die Erfassen- und die Bestandsflaeche
-    // benutzen: dieselbe Sitzung, derselbe Rumpf (`source: "transient-document"`,
-    // `nichtEingestuft: true`), dieselben Grenzen (40 / 8.000 Zeichen), dieselbe Kuerzungsauskunft.
-    // Es kommt KEINE neue `fetch(`-Stelle und KEIN neues Abrufziel dazu (mega69-klara-merkmale
-    // M6/M7 bleiben unberuehrt). Was `wvUmschlag` am hereingereichten `fetchFn` tut, ist zweierlei
-    // und gehoert genau hierher, nicht in den W6-Vertrag:
-    //   · es setzt `want: "deep"` in den Rumpf, WENN die Weiche oben es erlaubt;
-    //   · es hoert die Antwort EINMAL mit, weil `conflicts`/`konfliktpruefung` im selben Rumpf
-    //     stehen und W6 nur `duplicates`/`sourceHits` uebersetzt. `json()` wird dabei genau einmal
-    //     gelesen und das Ergebnis beiden Lesern gegeben (ein zweites `res.json()` wuerde an einer
-    //     echten Antwort werfen).
-    //
-    // GESCHRIEBEN WIRD NICHTS. Kein `insertText`, kein `insertHtml`, kein
-    // `setSelectedDataAsync` — der Block setzt ausschliesslich `font.highlightColor` und ruft
-    // `range.select()`. `tests/app/word-addin-wortvergleich.test.ts` V2 haelt das an den
-    // ausgelieferten Bytes fest, nicht nur an einem Ablauf.
-    //
-    // DIE MERKLISTE HAENGT AM VORKOMMEN, NICHT AN DER ABSATZNUMMER (Codex 08.09., Punkt 3+4):
-    //   · Ein Posten ist (TEXT-HASH + VORKOMMEN `vk`), nicht der Hash allein. Zwei woertlich
-    //     gleiche Absaetze sind ZWEI Posten und zwei Stellen im Dokument. Der Hash allein war der
-    //     Fehler der Runde 1 (Ben 08.09.): er fasste beide zu einem Posten zusammen, liess nach der
-    //     Ruecknahme den zweiten gefaerbt stehen, sprang immer zum ersten — und ueberschrieb beim
-    //     Faerben die fremde Hervorhebung des ersten Vorkommens, obwohl der Auftrag dem zweiten galt.
-    //     Die Absatznummer taugt als Identitaet nicht: sie verschiebt sich beim Bearbeiten. `vk`
-    //     zaehlt je Wortlaut und verschiebt sich nur, wenn ein GLEICHER Absatz davor wegfaellt —
-    //     dann greift der zweite Durchgang von `wvZuordnen`.
-    //   · Vor dem Faerben wird die URSPRUNGSFARBE jedes Absatzes festgehalten. Traegt ein Absatz
-    //     schon eine FREMDE Hervorhebung, wird er NICHT ueberfaerbt — er wird nur eingestuft, mit
-    //     Hinweis. Fremde Arbeit geht nicht verloren. Geprueft wird das ZWEIMAL: beim Lesen und
-    //     noch einmal unmittelbar vor dem Schreiben, denn zwischen beidem kann ein Mensch faerben.
-    //   · „Markierungen entfernen" stellt die Ursprungsfarbe wieder her, nicht „keine Farbe" — und
-    //     nur dort, wo JETZT noch genau die Farbe steht, die Klara gesetzt hat. Hat ein Mensch
-    //     seither umgefaerbt, bleibt seine Farbe stehen und die Zahl sagt es.
-    //   · Ein zweiter Lauf uebernimmt die Ursprungsfarbe aus der Merkliste und nicht das, was er
-    //     im Dokument vorfindet — sonst merkte sich Klara ihre eigene Farbe als Ursprung.
-    //   · Verschiebt sich ein Absatz, findet der Hash ihn wieder. Aendert sich sein Text, wird
-    //     NICHTS blind entfaerbt: der Posten bleibt stehen und wird als „veraendert" gemeldet.
-    //   · Gemerkt wird ERST NACH dem erfolgreichen Schreiblauf. Scheitert er, steht keine Farbe im
-    //     Dokument — dann darf das Panel auch keine Ruecknahme dafuer anbieten.
-    //
-    // WIEDEROEFFNEN: die Farben gehoeren ab dem Speichern Word, nicht Klara — sie bleiben von
-    // selbst. Das Panel haelt NICHTS ueber ein Fenster hinaus (kein localStorage, kein Cookie);
-    // in der Ruhe steht deshalb `wvRuhe` — der Satz, der genau das sagt, statt eine Liste
-    // vorzutaeuschen, die niemand mehr belegen kann.
-    var WV_TEXTE = {
-      de: {
-        wvCta: "Dokument prüfen",
-        wvAbbrechen: "Abbrechen",
-        wvEntfernen: "Markierungen entfernen",
-        wvRuhe: "Für dieses Fenster liegt noch kein Abgleich vor. Farben aus einem früheren Lauf bleiben im Dokument — die Liste hier entsteht erst beim erneuten Abgleich.",
-        wvLaeuft: "Absatz {n} von {m} …",
-        wvFertig: "{n} von {m} Absätzen abgeglichen · {zeit}. Klara hat nur Farben gesetzt, kein Wort im Dokument verändert.",
-        wvAbgebrochen: "Abgebrochen · {n} von {m} Absätzen abgeglichen · {zeit}. Klara hat nur Farben gesetzt, kein Wort im Dokument verändert.",
-        wvLeer: "Das Dokument enthält keinen Absatz mit Text.",
-        wvFehler: "Abgleich nicht möglich — Word hat keinen lesbaren Text geliefert.",
-        wvAnmeldung: "Abgleich abgebrochen: Du bist nicht angemeldet oder darfst den Bestand nicht lesen.",
-        wvLegende: "Farben im Dokument",
-        wvKatExakt: "Wörtlich im Bestand belegt",
-        wvKatSinngleich: "Ähnlich — inhaltlich verwandt, nicht wörtlich",
-        wvKatNeu: "Kein Fund im durchsuchten Bestand",
-        wvKatWiderspruch: "Widerspruch zu einem Eintrag",
-        wvKatOffen: "Nicht abgeglichen",
-        wvFarbeExakt: "Grün",
-        wvFarbeSinngleich: "Gelb",
-        wvFarbeNeu: "Türkis",
-        wvFarbeWiderspruch: "Rot",
-        wvFarbeKeine: "keine Farbe",
-        wvAbsatzNr: "Absatz {n}",
-        wvGrundZuKurz: "unter {min} Zeichen — so kurzen Text nimmt der Bestandsabgleich nicht an",
-        wvGrundGekuerzt: "nur die ersten {max} Zeichen gingen in den Abgleich, der Rest blieb außen vor",
-        wvGrundNichtDurchsucht: "der Bestand wurde für diesen Absatz nicht durchsucht",
-        wvGrundGekappt: "es gab mehr Quellen, als der Deckel durchsucht hat",
-        wvGrundFehler: "der Abgleich dieses Absatzes ist fehlgeschlagen",
-        wvTeilHinweis: "Nur die ersten {max} Zeichen gingen in den Abgleich.",
-        wvFremdeFarbe: "Der Absatz trägt bereits eine eigene Hervorhebung — Klara hat sie nicht überschrieben.",
-        wvKonfliktOffen: "Widerspruch nicht abgeglichen: {grund}.",
-        wvKonfliktStelle: "Die Quelle sagt: „{stelle}“",
-        wvKonfliktOhneStelle: "Die Quelle: Stelle nicht benannt.",
-        wvKeineEntscheidung: "Klara entscheidet nichts — die Belege stehen daneben.",
-        wvSpringen: "Im Dokument zeigen",
-        wvEntferntZahl: "{n} Markierungen zurückgenommen; {m} Absätze haben sich seither verändert und blieben unangetastet.",
-        wvEntferntFremd: "{k} Absätze tragen inzwischen eine andere Hervorhebung — Klara hat sie so gelassen.",
-        wvEntferntFehler: "Die Markierungen konnten nicht zurückgenommen werden.",
-        wvFarbenFehler: "Die Farben konnten nicht ins Dokument geschrieben werden — der Befund steht hier, im Dokument steht keine Markierung.",
-        wvVeraendert: "Der Absatz hat sich seit dem Abgleich verändert — er wurde nicht gefärbt; gleiche ihn erneut ab.",
-        wvKiZeile: "Widerspruchsabgleich mit externer KI{ki}.",
-        wvKiFehlt: "Ohne Einwilligung für dieses Dokument bleibt der Widerspruchsabgleich aus — die Farbe Rot kann in diesem Lauf nicht entstehen.",
-      },
-      en: {
-        wvCta: "Check document",
-        wvAbbrechen: "Cancel",
-        wvEntfernen: "Remove highlights",
-        wvRuhe: "No comparison exists for this pane yet. Colours from an earlier run stay in the document — the list here only appears after a new comparison.",
-        wvLaeuft: "Paragraph {n} of {m} …",
-        wvFertig: "{n} of {m} paragraphs compared · {zeit}. Klara only set colours; no word in the document was changed.",
-        wvAbgebrochen: "Cancelled · {n} of {m} paragraphs compared · {zeit}. Klara only set colours; no word in the document was changed.",
-        wvLeer: "The document contains no paragraph with text.",
-        wvFehler: "Comparison not possible — Word returned no readable text.",
-        wvAnmeldung: "Comparison stopped: you are not signed in or may not read the knowledge base.",
-        wvLegende: "Colours in the document",
-        wvKatExakt: "Found verbatim in the knowledge base",
-        wvKatSinngleich: "Similar — related in content, not verbatim",
-        wvKatNeu: "No match in the searched knowledge base",
-        wvKatWiderspruch: "Contradicts an entry",
-        wvKatOffen: "Not compared",
-        wvFarbeExakt: "Green",
-        wvFarbeSinngleich: "Yellow",
-        wvFarbeNeu: "Turquoise",
-        wvFarbeWiderspruch: "Red",
-        wvFarbeKeine: "no colour",
-        wvAbsatzNr: "Paragraph {n}",
-        wvGrundZuKurz: "under {min} characters — the knowledge check does not accept text that short",
-        wvGrundGekuerzt: "only the first {max} characters went into the comparison, the rest stayed out",
-        wvGrundNichtDurchsucht: "the knowledge base was not searched for this paragraph",
-        wvGrundGekappt: "there were more sources than the cap searched",
-        wvGrundFehler: "the comparison of this paragraph failed",
-        wvTeilHinweis: "Only the first {max} characters went into the comparison.",
-        wvFremdeFarbe: "The paragraph already carries a highlight of its own — Klara did not overwrite it.",
-        wvKonfliktOffen: "Contradiction not compared: {grund}.",
-        wvKonfliktStelle: "The source says: “{stelle}”",
-        wvKonfliktOhneStelle: "The source: passage not named.",
-        wvKeineEntscheidung: "Klara does not decide this — the evidence is right beside it.",
-        wvSpringen: "Show in document",
-        wvEntferntZahl: "{n} highlights taken back; {m} paragraphs have changed since and were left untouched.",
-        wvEntferntFremd: "{k} paragraphs now carry a different highlight — Klara left them as they are.",
-        wvEntferntFehler: "The highlights could not be taken back.",
-        wvFarbenFehler: "The colours could not be written into the document — the findings are here, but no highlight is in the document.",
-        wvVeraendert: "The paragraph has changed since the comparison — it was not coloured; compare it again.",
-        wvKiZeile: "Contradiction compared with external AI{ki}.",
-        wvKiFehlt: "Without consent for this document the contradiction comparison stays off — the colour red cannot appear in this run.",
-      },
-      nl: {
-        wvCta: "Document controleren",
-        wvAbbrechen: "Annuleren",
-        wvEntfernen: "Markeringen verwijderen",
-        wvRuhe: "Voor dit venster is er nog geen vergelijking. Kleuren uit een eerdere ronde blijven in het document — de lijst hier ontstaat pas bij een nieuwe vergelijking.",
-        wvLaeuft: "Alinea {n} van {m} …",
-        wvFertig: "{n} van {m} alinea's vergeleken · {zeit}. Klara heeft alleen kleuren gezet; geen woord in het document is gewijzigd.",
-        wvAbgebrochen: "Afgebroken · {n} van {m} alinea's vergeleken · {zeit}. Klara heeft alleen kleuren gezet; geen woord in het document is gewijzigd.",
-        wvLeer: "Het document bevat geen alinea met tekst.",
-        wvFehler: "Vergelijking niet mogelijk — Word gaf geen leesbare tekst.",
-        wvAnmeldung: "Vergelijking gestopt: je bent niet aangemeld of mag het bestand niet lezen.",
-        wvLegende: "Kleuren in het document",
-        wvKatExakt: "Woordelijk in het bestand aangetroffen",
-        wvKatSinngleich: "Vergelijkbaar — inhoudelijk verwant, niet woordelijk",
-        wvKatNeu: "Geen vondst in het doorzochte bestand",
-        wvKatWiderspruch: "Spreekt een vermelding tegen",
-        wvKatOffen: "Niet vergeleken",
-        wvFarbeExakt: "Groen",
-        wvFarbeSinngleich: "Geel",
-        wvFarbeNeu: "Turkoois",
-        wvFarbeWiderspruch: "Rood",
-        wvFarbeKeine: "geen kleur",
-        wvAbsatzNr: "Alinea {n}",
-        wvGrundZuKurz: "onder {min} tekens — zo korte tekst neemt de bestandsvergelijking niet aan",
-        wvGrundGekuerzt: "alleen de eerste {max} tekens gingen de vergelijking in, de rest bleef buiten beschouwing",
-        wvGrundNichtDurchsucht: "het bestand is voor deze alinea niet doorzocht",
-        wvGrundGekappt: "er waren meer bronnen dan het maximum heeft doorzocht",
-        wvGrundFehler: "de vergelijking van deze alinea is mislukt",
-        wvTeilHinweis: "Alleen de eerste {max} tekens gingen de vergelijking in.",
-        wvFremdeFarbe: "De alinea draagt al een eigen markering — Klara heeft die niet overschreven.",
-        wvKonfliktOffen: "Tegenstrijdigheid niet vergeleken: {grund}.",
-        wvKonfliktStelle: "De bron zegt: “{stelle}”",
-        wvKonfliktOhneStelle: "De bron: passage niet benoemd.",
-        wvKeineEntscheidung: "Klara beslist dit niet — de onderbouwing staat ernaast.",
-        wvSpringen: "In het document tonen",
-        wvEntferntZahl: "{n} markeringen teruggenomen; {m} alinea's zijn sindsdien gewijzigd en zijn onaangeroerd gebleven.",
-        wvEntferntFremd: "{k} alinea's dragen inmiddels een andere markering — Klara heeft ze zo gelaten.",
-        wvEntferntFehler: "De markeringen konden niet worden teruggenomen.",
-        wvFarbenFehler: "De kleuren konden niet in het document worden geschreven — de bevinding staat hier, in het document staat geen markering.",
-        wvVeraendert: "De alinea is sinds de vergelijking gewijzigd — hij is niet gekleurd; vergelijk hem opnieuw.",
-        wvKiZeile: "Tegenstrijdigheid vergeleken met externe AI{ki}.",
-        wvKiFehlt: "Zonder toestemming voor dit document blijft de tegenstrijdigheidsvergelijking uit — de kleur rood kan in deze ronde niet ontstaan.",
-      },
-    };
-
-    // Die vier Word-Hervorhebungen. BEWUSST die Namen der Word-Aufzaehlung und KEIN Farbliteral:
-    // was Word malt, bestimmt Word — ein eigener Hex-Wert waere eine zweite Farbwahrheit neben der
-    // Werkbank-Palette (mega43 B1) und wuerde am Ende doch nicht das zeigen, was im Dokument steht.
-    // Aus demselben Grund traegt die Legende die NAMEN dieser Farben und kein gemaltes Kaestchen.
-    var WV_FARBEN = { exakt: "BrightGreen", sinngleich: "Yellow", neu: "Turquoise", widerspruch: "Red" };
-    var WV_KAT_KEYS = { exakt: "wvKatExakt", sinngleich: "wvKatSinngleich", neu: "wvKatNeu", widerspruch: "wvKatWiderspruch", offen: "wvKatOffen" };
-    var WV_FARB_KEYS = { exakt: "wvFarbeExakt", sinngleich: "wvFarbeSinngleich", neu: "wvFarbeNeu", widerspruch: "wvFarbeWiderspruch" };
-    var WV_LEGENDE = ["exakt", "sinngleich", "neu", "widerspruch", "offen"];
-
-    var wvLauf = 0;        // Laufnummer: ein spaeter Rueckruf eines ueberholten Laufs wird verworfen
-    var wvLaeuft = false;
-    var wvStand = null;    // { zeilen, gesamt, geprueft, zeit, lage, tief, ki }
-    var wvMerk = [];       // [{ hash, vk, kategorie, vorher, gesetzt }] — je VORKOMMEN ein Posten
-    var wvMeldung = "";    // die Auskunft der letzten Ruecknahme
-    var wvSchreibfehler = false; // der Schreiblauf am Ende scheiterte: keine Farbe steht im Dokument
-
-    /** Normalisierung fuer Vergleich UND Hash: Anfuehrungszeichen, Leerraum, Gross-/Kleinschreibung. */
-    function wvNorm(text) {
-      return String(text === null || text === undefined ? "" : text)
-        .replace(/[‘’‚‛′´`]/g, "'")
-        .replace(/[“”„‟″]/g, '"')
-        .replace(/[‐-―]/g, "-")
-        .replace(/\s+/g, " ")
-        .replace(/^ +| +$/g, "")
-        .toLowerCase();
-    }
-
-    /** Ein kurzer, stabiler Fingerabdruck des normalisierten Absatzes (djb2 + Laenge). */
-    function wvHash(text) {
-      var n = wvNorm(text);
-      var h = 5381;
-      for (var i = 0; i < n.length; i += 1) { h = ((h * 33) ^ n.charCodeAt(i)) >>> 0; }
-      return h.toString(36) + ":" + n.length;
-    }
-
-    function wvZeit() {
-      var d = new Date();
-      function pad(n) { return n < 10 ? "0" + n : String(n); }
-      return pad(d.getHours()) + ":" + pad(d.getMinutes());
-    }
-
-    /** Eine Hervorhebung, wie Word sie meldet — `null` heisst „keine". Kein Platzhalter. */
-    function wvFarbeAm(absatz) {
-      var f = absatz && absatz.font ? absatz.font.highlightColor : null;
-      return typeof f === "string" && f.length > 0 ? f : null;
-    }
-
-    /**
-     * EIN Word-Lauf ueber die Absaetze. `arbeit(items)` darf faerben oder waehlen; danach folgt
-     * genau ein zweiter `sync`. Ohne Word, ohne Dokumentkontext oder bei einem Fehler des Hosts
-     * meldet `done(false)` — dann sagt die Flaeche das, statt einen Erfolg zu behaupten.
-     */
-    function wvMitAbsaetzen(arbeit, done) {
-      if (!officeUsable() || !window.Word || typeof Word.run !== "function") { done(false); return; }
-      try {
-        Word.run(function (kontext) {
-          var liste = kontext.document.body.paragraphs;
-          liste.load("items/text,items/font/highlightColor");
-          return kontext.sync().then(function () {
-            arbeit(liste.items || []);
-            return kontext.sync().then(function () { done(true); });
-          });
-        }).catch(function () { done(false); });
-      } catch (err) {
-        done(false);
-      }
-    }
-
-    /**
-     * Die Vorkommen je Wortlaut, in Dokumentreihenfolge: `{ index, vk, vergeben }`. `vk` ist die
-     * laufende Nummer DIESES Wortlauts — bei eindeutigem Text immer 0, bei zwei gleichen Absaetzen
-     * 0 und 1. Gezaehlt wird ueber ALLE Absaetze, auch die leeren, damit die Nummer aus dem
-     * Lesedurchgang (`wvPruefen`) und die aus der Zuordnung dieselbe ist.
-     */
-    function wvVorkommen(items) {
-      var frei = {};
-      for (var i = 0; i < items.length; i += 1) {
-        var h = wvHash(items[i] && items[i].text);
-        if (!frei[h]) { frei[h] = []; }
-        frei[h].push({ index: i, vk: frei[h].length, vergeben: false });
-      }
-      return frei;
-    }
-
-    /**
-     * Merkposten den HEUTIGEN Absaetzen zuordnen — ueber (Text-Hash + Vorkommen), nie ueber die
-     * Absatznummer. Jede Stelle wird hoechstens einmal vergeben; zwei gleiche Absaetze sind zwei
-     * Posten und bleiben zwei. Erster Durchgang: das EIGENE Vorkommen. Zweiter Durchgang: wer es
-     * nicht mehr findet (ein gleicher Absatz davor wurde geloescht), nimmt das naechste freie
-     * Vorkommen desselben Wortlauts. Was gar nichts findet, bleibt UNANGETASTET und kommt als
-     * `verloren` zurueck.
-     */
-    function wvZuordnen(items, posten) {
-      var frei = wvVorkommen(items);
-      var paare = [];
-      var offen = [];
-      var verloren = [];
-      var i;
-      var j;
-      for (i = 0; i < posten.length; i += 1) {
-        var stellen = frei[posten[i].hash];
-        var treffer = null;
-        for (j = 0; stellen && j < stellen.length; j += 1) {
-          if (!stellen[j].vergeben && stellen[j].vk === posten[i].vk) { treffer = stellen[j]; break; }
-        }
-        if (treffer) { treffer.vergeben = true; paare.push({ posten: posten[i], absatz: items[treffer.index] }); }
-        else { offen.push(posten[i]); }
-      }
-      for (i = 0; i < offen.length; i += 1) {
-        var rest = frei[offen[i].hash];
-        var naechste = null;
-        for (j = 0; rest && j < rest.length; j += 1) {
-          if (!rest[j].vergeben) { naechste = rest[j]; break; }
-        }
-        if (naechste) { naechste.vergeben = true; paare.push({ posten: offen[i], absatz: items[naechste.index] }); }
-        else { verloren.push(offen[i]); }
-      }
-      return { paare: paare, verloren: verloren };
-    }
-
-    /** Der Merkposten zu genau diesem Vorkommen, oder `null`. */
-    function wvPosten(hash, vk) {
-      for (var i = 0; i < wvMerk.length; i += 1) {
-        if (wvMerk[i].hash === hash && wvMerk[i].vk === vk) { return wvMerk[i]; }
-      }
-      return null;
-    }
-
-    /** Die Ursprungsfarbe eines Absatzes: aus der Merkliste, sonst die heute gelesene. Ohne diese
-     *  Regel merkte sich ein zweiter Lauf Klaras eigene Farbe als „Ursprung" (D6). */
-    function wvUrsprung(hash, vk, gelesen) {
-      var p = wvPosten(hash, vk);
-      return p ? p.vorher : gelesen;
-    }
-
-    /** Traegt DIESER Absatz jetzt Klaras Farbe? Nur dann darf seine Zeile eine Farbe nennen —
-     *  nach „Markierungen entfernen" steht im Dokument keine mehr, und die Zeile sagt das, statt
-     *  eine Farbe zu behaupten, die niemand mehr sieht. */
-    function wvGefaerbt(hash, vk) {
-      return wvPosten(hash, vk) !== null;
-    }
-
-    /**
-     * Darf Klara auf DIESEN Absatz schreiben? Nur wenn dort keine Hervorhebung steht oder genau
-     * die, die sie selbst zuletzt gesetzt hat. Alles andere ist die Arbeit eines Menschen — auch
-     * dann, wenn sie erst zwischen Lesen und Faerben entstanden ist (Ben 08.09., Pflicht 2).
-     */
-    function wvDarfFaerben(hash, vk, absatz) {
-      var ist = wvFarbeAm(absatz);
-      if (ist === null) { return true; }
-      var p = wvPosten(hash, vk);
-      return p !== null && p.gesetzt === ist;
-    }
-
-    /** `gesetzt` ist die Farbe, die WIRKLICH ins Dokument ging — daran erkennt die Ruecknahme
-     *  spaeter, ob die Markierung noch Klaras ist. */
-    function wvMerken(zeile, farbe) {
-      var p = wvPosten(zeile.hash, zeile.vk);
-      if (p) { p.kategorie = zeile.kategorie; p.gesetzt = farbe; return; }
-      wvMerk.push({ hash: zeile.hash, vk: zeile.vk, kategorie: zeile.kategorie, vorher: zeile.vorher, gesetzt: farbe });
-    }
-
-    /**
-     * DER WOERTLICHE BELEG. `coverage: "full"` sagt: die ganze normalisierte Passage steht
-     * zusammenhaengend im Suchtext der Quelle (check-text-detection.ts `deckungAm`) — und die
-     * `fundstelle` ist genau der Ausschnitt darum. Beides wird hier NACHGEPRUEFT: die Zahlen
-     * muessen sich decken UND der mitgelieferte Quellabschnitt muss den Absatz woertlich tragen.
-     * Stimmt das nicht, ist es kein woertlicher Beleg — dann steht die schwaechere Aussage da.
-     */
-    function wvWoertlich(fund, text) {
-      if (!fund || fund.coverage !== "full") { return false; }
-      if (typeof fund.gedeckteZeichen !== "number" || typeof fund.passageZeichen !== "number") { return false; }
-      if (fund.gedeckteZeichen !== fund.passageZeichen) { return false; }
-      var absatz = wvNorm(text);
-      return absatz.length > 0 && wvNorm(fund.fundstelle).indexOf(absatz) >= 0;
-    }
-
-    /** Die Konflikttreffer der Antwort — nur BENANNTE Konflikttypen; Doppelungstypen sind
-     *  Aehnlichkeit und werden hier bewusst nicht zu Rot (dieselbe Trennung wie KA7). */
-    function wvKonflikteAus(koerper) {
-      var raus = [];
-      if (!koerper || !Array.isArray(koerper.conflicts)) { return raus; }
-      for (var i = 0; i < koerper.conflicts.length; i += 1) {
-        var c = koerper.conflicts[i];
-        var id = c && typeof c.koId === "string" ? c.koId : "";
-        if (!id || !KA7_KONFLIKT_TYPEN[typeof c.type === "string" ? c.type : ""]) { continue; }
-        var stellen = c.stellen && typeof c.stellen === "object" ? c.stellen : null;
-        raus.push({
-          id: id,
-          title: (typeof c.koTitle === "string" && c.koTitle) || id,
-          pruefstand: c.pruefstand === "validiert" || c.pruefstand === "eingereicht" ? c.pruefstand : null,
-          fundort: w6Fundort(c),
-          stelle: stellen && typeof stellen.quelle === "string" && stellen.quelle.replace(/^\s+|\s+$/g, "").length > 0 ? stellen.quelle : null
-        });
-      }
-      return raus;
-    }
-
-    /** Ob und warum die Konfliktpruefung gelaufen ist — gelesen, nie geraten (JOB 3094). */
-    function wvKonfliktlage(koerper) {
-      var p = koerper && koerper.konfliktpruefung && typeof koerper.konfliktpruefung === "object" ? koerper.konfliktpruefung : null;
-      if (!p || typeof p.gelaufen !== "boolean") { return { gelaufen: false, grund: null }; }
-      return { gelaufen: p.gelaufen === true, grund: typeof p.grund === "string" ? p.grund : null };
-    }
-
-    /**
-     * DIE EINSTUFUNG — eine reine Funktion ueber dem, was der Server gesagt hat. `confidence`
-     * kommt darin NICHT vor: eine Punktzahl ist nie ein woertlicher Beleg.
-     */
-    function wvEinstufen(text, ergebnis, konflikte) {
-      var lage = ergebnis && typeof ergebnis.lage === "string" ? ergebnis.lage : "fehler";
-      if (lage === "zu-kurz") { return { kategorie: "offen", grund: "wvGrundZuKurz" }; }
-      if (lage !== "treffer" && lage !== "leer") { return { kategorie: "offen", grund: "wvGrundFehler" }; }
-      if (konflikte.length > 0) { return { kategorie: "widerspruch", grund: null }; }
-      var quellenfund = ergebnis.quellenfund && typeof ergebnis.quellenfund === "object" ? ergebnis.quellenfund : null;
-      var durchsucht = Boolean(quellenfund) && quellenfund.gelaufen === true;
-      var funde = durchsucht && Array.isArray(quellenfund.treffer) ? quellenfund.treffer : [];
-      var i;
-      for (i = 0; i < funde.length; i += 1) {
-        if (wvWoertlich(funde[i], text)) { return { kategorie: "exakt", grund: null }; }
-      }
-      var treffer = Array.isArray(ergebnis.treffer) ? ergebnis.treffer : [];
-      if (treffer.length > 0 || funde.length > 0) { return { kategorie: "sinngleich", grund: null }; }
-      // Ab hier waere die Aussage „nichts gefunden" — sie darf nur nach einem VOLLSTAENDIGEN Lauf
-      // stehen. Jede fehlende Voraussetzung nimmt die Farbe und nennt ihren Grund.
-      if (ergebnis.gekuerzt === true) { return { kategorie: "offen", grund: "wvGrundGekuerzt" }; }
-      if (!durchsucht) { return { kategorie: "offen", grund: "wvGrundNichtDurchsucht" }; }
-      if (quellenfund.mehr === true) { return { kategorie: "offen", grund: "wvGrundGekappt" }; }
-      return { kategorie: "neu", grund: null };
-    }
-
-    /** Die Quellen einer Zeile: Dublettentreffer, Quellenfunde und Konflikte — in EINER Form. */
-    function wvQuellen(ergebnis, konflikte) {
-      var raus = [];
-      var i;
-      for (i = 0; i < konflikte.length; i += 1) {
-        // `konflikt: true` heisst: von DIESER Quelle erwartet der Leser die widersprechende Stelle.
-        // Fehlt sie, wird sie benannt (`wvKonfliktOhneStelle`) und nicht verschwiegen.
-        raus.push({ id: konflikte[i].id, title: konflikte[i].title, pruefstand: konflikte[i].pruefstand,
-          fundort: konflikte[i].fundort, stelle: konflikte[i].stelle, konflikt: true });
-      }
-      var treffer = ergebnis && Array.isArray(ergebnis.treffer) ? ergebnis.treffer : [];
-      for (i = 0; i < treffer.length; i += 1) {
-        raus.push({ id: treffer[i].id, title: treffer[i].title || treffer[i].id,
-          pruefstand: treffer[i].pruefstand, fundort: treffer[i].fundort, stelle: null, konflikt: false });
-      }
-      var quellenfund = ergebnis && ergebnis.quellenfund && Array.isArray(ergebnis.quellenfund.treffer)
-        ? ergebnis.quellenfund.treffer : [];
-      for (i = 0; i < quellenfund.length; i += 1) {
-        raus.push({ id: quellenfund[i].id, title: quellenfund[i].title || quellenfund[i].id,
-          pruefstand: quellenfund[i].pruefstand, fundort: quellenfund[i].fundort, stelle: null, konflikt: false });
-      }
-      return raus;
-    }
-
-    /**
-     * DER UMSCHLAG UM `fetchFn`. Siehe Kopfkommentar: er setzt `want` (nur mit Weiche) und hoert
-     * die EINE Antwort mit, ohne einen zweiten Abruf und ohne eine zweite Abrufstelle.
-     */
-    function wvUmschlag(tief, mitschnitt) {
-      var roh = fetch.bind(window);
-      return function (pfad, anfrage) {
-        var eigen = anfrage;
-        if (tief && anfrage && typeof anfrage.body === "string") {
-          try {
-            var koerper = JSON.parse(anfrage.body);
-            koerper.want = "deep";
-            eigen = { method: anfrage.method, credentials: anfrage.credentials,
-              headers: anfrage.headers, body: JSON.stringify(koerper) };
-          } catch (err) { eigen = anfrage; }
-        }
-        return roh(pfad, eigen).then(function (res) {
-          if (!res || !res.ok || typeof res.json !== "function") { return res; }
-          var einmal = null;
-          return {
-            ok: res.ok,
-            status: res.status,
-            headers: res.headers,
-            json: function () {
-              if (einmal === null) {
-                einmal = res.json().then(function (k) { mitschnitt.koerper = k; return k; });
-              }
-              return einmal;
-            }
-          };
-        });
-      };
-    }
-
-    // ------------------------------------------------------------------------------------------
-    // Der Lauf
-    // ------------------------------------------------------------------------------------------
-    function wvPruefen() {
-      if (wvLaeuft) { return; }
-      wvLauf += 1;
-      var lauf = wvLauf;
-      wvLaeuft = true;
-      wvMeldung = "";
-      wvSchreibfehler = false;
-      var weiche = ka7ExterneKi();
-      var tief = weiche.lage === "erlaubt";
-      wvStand = { zeilen: [], gesamt: 0, geprueft: 0, zeit: null, lage: "laeuft", tief: tief, ki: weiche.ki };
-      wvZeichnen();
-      var gelesen = null;
-      wvMitAbsaetzen(function (items) {
-        gelesen = [];
-        // Die Vorkommen werden ueber ALLE Absaetze gezaehlt — auch die leeren, die gleich
-        // uebersprungen werden. Nur so ist `vk` dieselbe Nummer wie spaeter in `wvZuordnen`.
-        var zaehler = {};
-        for (var i = 0; i < items.length; i += 1) {
-          var text = String(items[i] && items[i].text !== undefined && items[i].text !== null ? items[i].text : "");
-          var hash = wvHash(text);
-          var vk = zaehler[hash] === undefined ? 0 : zaehler[hash];
-          zaehler[hash] = vk + 1;
-          if (text.replace(/^\s+|\s+$/g, "").length === 0) { continue; }
-          gelesen.push({ nr: i + 1, text: text, hash: hash, vk: vk,
-            vorher: wvUrsprung(hash, vk, wvFarbeAm(items[i])) });
-        }
-      }, function (ok) {
-        // UEBERHOLT: ein anderer Lauf haelt die Fahne. Diese Antwort faellt weg — sie raeumt NICHT
-        // auf. `wvLaeuft` gehoert dem Lauf mit der aktuellen Kennung; wer sie hier zuruecksetzte,
-        // nahm dem laufenden Lauf sein „Abbrechen" weg und gab den Startknopf frei, waehrend Klara
-        // noch fragte (Codex-Vorpruefung R2, 08.09.). Jede Stelle, die `wvLauf` erhoeht, setzt
-        // `wvLaeuft` selbst: `wvPruefen` auf true, `wvAbbrechen` und `wvVerwerfen` auf false.
-        if (lauf !== wvLauf) { return; }
-        if (!ok || gelesen === null) { wvSchluss(lauf, "fehler"); return; }
-        wvStand.gesamt = gelesen.length;
-        wvZeichnen();
-        if (gelesen.length === 0) { wvSchluss(lauf, "leer"); return; }
-        wvSchritt(lauf, gelesen, 0, tief);
-      });
-    }
-
-    function wvSchritt(lauf, absaetze, i, tief) {
-      // Ueberholt: stumm aussteigen, nichts anfassen (Begruendung an der ersten Stelle in `wvPruefen`).
-      if (lauf !== wvLauf) { return; }
-      if (i >= absaetze.length) { wvSchluss(lauf, "fertig"); return; }
-      var a = absaetze[i];
-      wvStand.geprueft = i;
-      wvZeichnen();
-      var mitschnitt = { koerper: null };
-      w6DublettenAusCheckText(
-        "wortvergleich",
-        function () { return a.text; },
-        wvUmschlag(tief, mitschnitt),
-        askLocale(lang),
-        deriveDraftTitleFromSelection(a.text)
-      ).then(function (ergebnis) {
-        // DIE VERSPAETETE ANTWORT EINES ABGEBROCHENEN LAUFS: sie gehoert niemandem mehr. Weder
-        // Fortschritt noch Liste noch `wvLaeuft` duerfen sie sehen (Begruendung in `wvPruefen`).
-        if (lauf !== wvLauf) { return; }
-        var http = ergebnis && typeof ergebnis.http === "number" ? ergebnis.http : 0;
-        wvStand.zeilen.push(wvZeile(a, ergebnis, mitschnitt.koerper));
-        wvStand.geprueft = i + 1;
-        // Die Sitzung traegt nicht mehr (oder das Recht fehlt): weiterzufragen waere sinnlos.
-        if (http === 401 || http === 403) { wvSchluss(lauf, "anmeldung"); return; }
-        wvZeichnen();
-        wvSchritt(lauf, absaetze, i + 1, tief);
-      });
-    }
-
-    function wvZeile(absatz, ergebnis, koerper) {
-      var konflikte = wvKonflikteAus(koerper);
-      var urteil = wvEinstufen(absatz.text, ergebnis, konflikte);
-      return {
-        nr: absatz.nr,
-        hash: absatz.hash,
-        vk: absatz.vk,
-        vorher: absatz.vorher,
-        fremdeFarbe: absatz.vorher !== null,
-        kategorie: urteil.kategorie,
-        grund: urteil.grund,
-        teil: Boolean(ergebnis) && ergebnis.gekuerzt === true,
-        quellen: wvQuellen(ergebnis, konflikte),
-        konflikte: konflikte,
-        konfliktlage: wvKonfliktlage(koerper),
-        veraendert: false
-      };
-    }
-
-    function wvSchluss(lauf, lage) {
-      // Die Kennung ZUERST: nur der Lauf, der noch der aktuelle ist, beendet den Lauf. Andernfalls
-      // raeumte ein ueberholter Schluss die Fahne eines fremden, laufenden Vergleichs.
-      if (lauf !== wvLauf || !wvStand) { return; }
-      wvLaeuft = false;
-      wvStand.lage = lage;
-      wvStand.zeit = wvZeit();
-      var auftraege = [];
-      for (var i = 0; i < wvStand.zeilen.length; i += 1) {
-        var z = wvStand.zeilen[i];
-        // Fremde Hervorhebungen werden NICHT ueberfaerbt — sie sind Arbeit eines Menschen.
-        if (WV_FARBEN[z.kategorie] && !z.fremdeFarbe) { auftraege.push(z); }
-      }
-      // ZUERST ZEICHNEN, DANN FAERBEN. Der Lauf ist hier zu Ende — gezeichnet war zuletzt aber
-      // MITTEN im Lauf. Ohne diese Zeile stand im Fenster weiter „Absatz 3 von 3 …" mit sichtbarem
-      // Abbruchknopf, waehrend `wvAbbrechen` schon bei `!wvLaeuft` aussteigt: ein Knopf, der nichts
-      // tut. Das faellt erst auf, wenn Word den bestaetigenden `sync` nicht sofort zurueckgibt —
-      // gemessen mit einem festgehaltenen `sync` (Codex-Vorpruefung R2, 08.09., zweite Pruefluecke).
-      wvZeichnen();
-      if (auftraege.length === 0) { return; }
-      // Was wirklich geschrieben wurde — gemerkt wird es erst, wenn der `sync` es bestaetigt hat.
-      var geschrieben = [];
-      wvMitAbsaetzen(function (items) {
-        // DIE KENNUNG GILT AUCH HIER — VOR DEM ERSTEN SCHREIBVORGANG, NICHT NUR BEIM AUFRAEUMEN.
-        // Zwischen dem Schluss oben und dieser Stelle liegt ein `sync`: Word laedt die Absaetze,
-        // auf die gefaerbt werden soll. Kommt er verzoegert zurueck (in Word der Normalfall bei
-        // grossen Dokumenten), kann in der Zwischenzeit ein NEUER Vergleich vollstaendig gelaufen
-        // sein und seine Farben stehen bereits im Dokument. Wer dann noch faerbt, schreibt die
-        // Kategorien eines ueberholten Laufs ueber die des aktuellen: das Fenster wies „Ähnlich"
-        // aus, im Dokument stand „Turquoise" (Ben, Pruefung der Runde 3 vom 08.09., Z7).
-        // Der ueberholte Lauf schreibt also nichts — `geschrieben` bleibt leer, und damit merkt
-        // er auch nichts vor. Die Farben des laufenden Vergleichs bleiben, wie er sie gesetzt hat.
-        if (lauf !== wvLauf) { return; }
-        var zu = wvZuordnen(items, auftraege);
-        for (var j = 0; j < zu.paare.length; j += 1) {
-          var p = zu.paare[j];
-          // Zweite Pruefung, unmittelbar vor dem Schreiben: zwischen Lesen und Faerben kann ein
-          // Mensch gefaerbt haben. Dann steht seine Farbe da, nicht Klaras.
-          if (!wvDarfFaerben(p.posten.hash, p.posten.vk, p.absatz)) { p.posten.fremdeFarbe = true; continue; }
-          var farbe = WV_FARBEN[p.posten.kategorie];
-          if (p.absatz && p.absatz.font) { p.absatz.font.highlightColor = farbe; }
-          geschrieben.push({ zeile: p.posten, farbe: farbe });
-        }
-        for (var k = 0; k < zu.verloren.length; k += 1) { zu.verloren[k].veraendert = true; }
-      }, function (ok) {
-        // Ohne bestaetigten `sync` steht keine Farbe im Dokument — dann wird auch nichts gemerkt,
-        // sonst boete das Panel eine Ruecknahme fuer Markierungen an, die es nie gab.
-        //
-        // ZWEI VERSCHIEDENE DINGE, ZWEI VERSCHIEDENE ZUSTAENDIGKEITEN — deshalb steht die
-        // Kennungspruefung NUR am zweiten:
-        //   · Die Merkliste gehoert dem DOKUMENT. Was Word bestaetigt hat, steht wirklich dort,
-        //     auch wenn inzwischen ein neuer Vergleich laeuft. Wuerde sie hier uebersprungen,
-        //     stuenden Klaras Farben im Dokument, ohne dass „Markierungen entfernen" sie noch
-        //     zuruecknehmen koennte (Fall Z6).
-        //   · `wvSchreibfehler` gehoert dem LAUF: der Satz steht neben dessen Standsatz. Ein spaet
-        //     gescheiterter Schreiblauf haengte ihn sonst dem naechsten Lauf an, der gar nicht
-        //     geschrieben hat (Fall Z5).
-        if (ok) {
-          for (var m = 0; m < geschrieben.length; m += 1) { wvMerken(geschrieben[m].zeile, geschrieben[m].farbe); }
-        } else if (lauf === wvLauf) {
-          wvSchreibfehler = true;
-        }
-        wvZeichnen();
-      });
-    }
-
-    function wvAbbrechen() {
-      if (!wvLaeuft || !wvStand) { return; }
-      // Die Laufnummer steigt: die noch offene Antwort des laufenden Absatzes faellt weg, und
-      // `wvSchritt` fragt nicht weiter. Das Erreichte bleibt und wird gefaerbt.
-      wvLauf += 1;
-      wvLaeuft = false;
-      wvSchluss(wvLauf, "abgebrochen");
-    }
-
-    /**
-     * Nur Klaras eigene Farben zurueck — auf die URSPRUNGSFARBE, nicht auf „keine". Drei Ausgaenge,
-     * jeder mit eigener Auskunft:
-     *   · zurueck  — der Absatz traegt noch genau Klaras Farbe: Ursprungsfarbe wieder herstellen.
-     *   · fremd    — dort steht inzwischen eine ANDERE Hervorhebung: das ist die Entscheidung eines
-     *                Menschen. Sie bleibt stehen, und der Posten faellt aus der Liste, weil die
-     *                Markierung nicht mehr Klaras ist (Ben 08.09., Pflicht 2).
-     *   · verloren — der Absatz ist nicht mehr da oder umgeschrieben: unangetastet, Posten bleibt.
-     */
-    function wvEntfernen() {
-      if (wvMerk.length === 0) { return; }
-      var posten = wvMerk.slice(0);
-      var ergebnis = null;
-      wvMitAbsaetzen(function (items) {
-        var zu = wvZuordnen(items, posten);
-        var zurueck = 0;
-        var fremd = 0;
-        for (var i = 0; i < zu.paare.length; i += 1) {
-          var p = zu.paare[i];
-          if (wvFarbeAm(p.absatz) !== p.posten.gesetzt) { fremd += 1; continue; }
-          if (p.absatz && p.absatz.font) { p.absatz.font.highlightColor = p.posten.vorher; }
-          zurueck += 1;
-        }
-        ergebnis = { zurueck: zurueck, fremd: fremd, verloren: zu.verloren };
-      }, function (ok) {
-        if (!ok || ergebnis === null) { wvMeldung = t("wvEntferntFehler"); wvZeichnen(); return; }
-        // Nur was WIRKLICH zurueckgestellt wurde, faellt aus der Merkliste; ein veraenderter
-        // Absatz bleibt darin, damit seine Ursprungsfarbe nicht verloren geht.
-        wvMerk = ergebnis.verloren.slice(0);
-        wvMeldung = t("wvEntferntZahl", { n: String(ergebnis.zurueck), m: String(ergebnis.verloren.length) });
-        if (ergebnis.fremd > 0) { wvMeldung += " " + t("wvEntferntFremd", { k: String(ergebnis.fremd) }); }
-        wvZeichnen();
-      });
-    }
-
-    function wvSpringen(hash, vk) {
-      wvMitAbsaetzen(function (items) {
-        var zu = wvZuordnen(items, [{ hash: hash, vk: vk }]);
-        if (zu.paare.length === 0) { return; }
-        var a = zu.paare[0].absatz;
-        var bereich = a && typeof a.getRange === "function" ? a.getRange() : null;
-        if (bereich && typeof bereich.select === "function") { bereich.select(); }
-        else if (a && typeof a.select === "function") { a.select(); }
-      }, function () {});
-    }
-
-    // ------------------------------------------------------------------------------------------
-    // Die Flaeche
-    // ------------------------------------------------------------------------------------------
-    function wvKnoten(tag, klasse, text) {
-      var el = document.createElement(tag);
-      if (klasse) { el.className = klasse; }
-      if (text !== undefined && text !== null) { el.textContent = text; }
-      return el;
-    }
-
-    function wvBlockElement() {
-      var vorhanden = document.getElementById("wv-block");
-      if (vorhanden) { return vorhanden; }
-      var block = wvKnoten("div", "hidden", null);
-      block.id = "wv-block";
-      var knopf = document.createElement("button");
-      knopf.type = "button";
-      knopf.id = "wv-btn";
-      knopf.className = "ghost";
-      knopf.setAttribute("data-t", "wvCta");
-      knopf.textContent = t("wvCta");
-      knopf.addEventListener("click", wvPruefen);
-      block.appendChild(knopf);
-      var stop = document.createElement("button");
-      stop.type = "button";
-      stop.id = "wv-abbrechen";
-      stop.className = "ghost hidden";
-      stop.setAttribute("data-t", "wvAbbrechen");
-      stop.textContent = t("wvAbbrechen");
-      stop.addEventListener("click", wvAbbrechen);
-      block.appendChild(stop);
-      var weg = document.createElement("button");
-      weg.type = "button";
-      weg.id = "wv-entfernen";
-      weg.className = "ghost hidden";
-      weg.setAttribute("data-t", "wvEntfernen");
-      weg.textContent = t("wvEntfernen");
-      weg.addEventListener("click", wvEntfernen);
-      block.appendChild(weg);
-      var karte = wvKnoten("div", "card", null);
-      karte.id = "wv-karte";
-      karte.setAttribute("role", "region");
-      karte.setAttribute("aria-live", "polite");
-      var stand = wvKnoten("p", "muted", "");
-      stand.id = "wv-stand";
-      karte.appendChild(stand);
-      var legende = wvKnoten("ul", "muted", null);
-      legende.id = "wv-legende";
-      karte.appendChild(legende);
-      var liste = wvKnoten("ul", null, null);
-      liste.id = "wv-liste";
-      karte.appendChild(liste);
-      block.appendChild(karte);
-      var anker = document.getElementById("ka7-block") || document.getElementById("bestand-block") || document.getElementById("ask-ruhe");
-      if (anker && anker.parentNode) { anker.parentNode.insertBefore(block, anker.nextSibling); }
-      else { document.body.appendChild(block); }
-      return block;
-    }
-
-    /** Der Standsatz — jede Lage hat ihren eigenen, keine erfindet etwas. */
-    function wvStandsatz() {
-      if (wvMeldung) { return wvMeldung; }
-      if (!wvStand) { return t("wvRuhe"); }
-      var zahlen = { n: String(wvStand.geprueft), m: String(wvStand.gesamt), zeit: wvStand.zeit || "" };
-      if (wvStand.lage === "laeuft") {
-        if (wvStand.gesamt === 0) { return t("wvLaeuft", { n: "1", m: "?" }); }
-        return t("wvLaeuft", { n: String(Math.min(wvStand.geprueft + 1, wvStand.gesamt)), m: String(wvStand.gesamt) });
-      }
-      if (wvStand.lage === "fehler") { return t("wvFehler"); }
-      if (wvStand.lage === "leer") { return t("wvLeer"); }
-      if (wvStand.lage === "anmeldung") { return t("wvAnmeldung"); }
-      return t(wvStand.lage === "abgebrochen" ? "wvAbgebrochen" : "wvFertig", zahlen);
-    }
-
-    /** Die Auskunft ueber den Widerspruchszweig — die Farbe Rot haengt an ihr. */
-    function wvKiSatz() {
-      if (!wvStand) { return ""; }
-      if (!wvStand.tief) { return t("wvKiFehlt"); }
-      return t("wvKiZeile", { ki: ka7KiZusatz(wvStand.ki) });
-    }
-
-    function wvQuellenzeile(quelle) {
-      var zeile = wvKnoten("li", null, null);
-      zeile.appendChild(wvKnoten("span", "wv-quelle-titel", quelle.title));
-      zeile.appendChild(wvKnoten("span", "muted wv-quelle-pruefstand",
-        quelle.pruefstand === "validiert" ? t("askStatusValidiert")
-          : quelle.pruefstand === "eingereicht" ? t("bestandNochNichtGeprueft") : t("askStatusUnknown")));
-      if (quelle.stelle) { zeile.appendChild(wvKnoten("p", "wv-quelle-stelle", t("wvKonfliktStelle", { stelle: quelle.stelle }))); }
-      else if (quelle.konflikt) { zeile.appendChild(wvKnoten("p", "wv-quelle-stelle", t("wvKonfliktOhneStelle"))); }
-      var pfad = quelle.fundort ? quelle.fundort.bibliothekPfad : null;
-      if (pfad) {
-        var weg = wvKnoten("a", null, t("bestandOeffnen"));
-        weg.href = window.location.origin + pfad;
-        weg.target = "_blank";
-        weg.rel = "noopener noreferrer";
-        zeile.appendChild(weg);
-      }
-      return zeile;
-    }
-
-    function wvAbsatzzeile(z) {
-      var zeile = wvKnoten("li", "wv-zeile wv-zeile-" + z.kategorie, null);
-      var kopf = wvKnoten("p", "wv-kopf", null);
-      kopf.appendChild(wvKnoten("span", "wv-nr", t("wvAbsatzNr", { n: String(z.nr) })));
-      kopf.appendChild(wvKnoten("span", "wv-kategorie", t(WV_KAT_KEYS[z.kategorie])));
-      kopf.appendChild(wvKnoten("span", "muted wv-farbe",
-        WV_FARB_KEYS[z.kategorie] && wvGefaerbt(z.hash, z.vk) ? t(WV_FARB_KEYS[z.kategorie]) : t("wvFarbeKeine")));
-      zeile.appendChild(kopf);
-      if (z.grund) {
-        zeile.appendChild(wvKnoten("p", "muted wv-grund",
-          t(z.grund, { min: String(W6_MINDESTZEICHEN), max: String(W6_HOECHSTZEICHEN) })));
-      }
-      if (z.teil && !z.grund) { zeile.appendChild(wvKnoten("p", "muted wv-teil", t("wvTeilHinweis", { max: String(W6_HOECHSTZEICHEN) }))); }
-      if (z.fremdeFarbe) { zeile.appendChild(wvKnoten("p", "muted wv-fremd", t("wvFremdeFarbe"))); }
-      // Zwischen Lesen und Faerben umgeschrieben: nichts wurde blind gefaerbt, und die Zeile sagt es.
-      if (z.veraendert) { zeile.appendChild(wvKnoten("p", "muted wv-veraendert", t("wvVeraendert"))); }
-      if (z.kategorie === "widerspruch") { zeile.appendChild(wvKnoten("p", "wv-entscheidung", t("wvKeineEntscheidung"))); }
-      // Ob die Konfliktpruefung ueberhaupt lief, sagt jede Zeile fuer sich — „kein Widerspruch"
-      // waere sonst eine Aussage ueber einen Vorgang, den niemand angestossen hat.
-      if (z.kategorie !== "widerspruch" && z.konfliktlage.gelaufen !== true && !z.grund) {
-        var grundKey = KA7_GRUND_KEYS[z.konfliktlage.grund || ""] || "ka7GrundUnbekannt";
-        zeile.appendChild(wvKnoten("p", "muted wv-konflikt-offen", t("wvKonfliktOffen", { grund: t(grundKey) })));
-      }
-      if (z.quellen.length > 0) {
-        var quellen = wvKnoten("ul", "wv-quellen", null);
-        for (var i = 0; i < z.quellen.length; i += 1) { quellen.appendChild(wvQuellenzeile(z.quellen[i])); }
-        zeile.appendChild(quellen);
-      }
-      var sprung = document.createElement("button");
-      sprung.type = "button";
-      sprung.className = "ghost wv-sprung";
-      sprung.setAttribute("data-wv-sprung", String(z.nr));
-      sprung.textContent = t("wvSpringen");
-      // Der Sprung gilt DIESEM Vorkommen: bei zwei gleichen Absaetzen fuehrt Zeile 2 zu Absatz 2.
-      sprung.addEventListener("click", (function (hash, vk) {
-        return function () { wvSpringen(hash, vk); };
-      })(z.hash, z.vk));
-      zeile.appendChild(sprung);
-      return zeile;
-    }
-
-    function wvZeichnen() {
-      var block = wvBlockElement();
-      var ruhe = document.getElementById("ask-ruhe");
-      var ruheSichtbar = Boolean(ruhe) && ruhe.className.indexOf("hidden") === -1;
-      block.className = signedIn && officeUsable() && ruheSichtbar ? "" : "hidden";
-      var knopf = document.getElementById("wv-btn");
-      var stop = document.getElementById("wv-abbrechen");
-      var weg = document.getElementById("wv-entfernen");
-      var stand = document.getElementById("wv-stand");
-      var legende = document.getElementById("wv-legende");
-      var liste = document.getElementById("wv-liste");
-      if (!knopf || !stop || !weg || !stand || !legende || !liste) { return; }
-      knopf.disabled = wvLaeuft;
-      stop.className = wvLaeuft ? "ghost" : "ghost hidden";
-      weg.className = wvMerk.length > 0 ? "ghost" : "ghost hidden";
-      var saetze = [wvStandsatz()];
-      // Der Schreiblauf am Ende scheiterte: der Befund steht, die Farben stehen NICHT im Dokument.
-      // Das ersetzt den Standsatz nicht, es ergaenzt ihn — beides ist wahr.
-      if (wvSchreibfehler) { saetze.push(t("wvFarbenFehler")); }
-      var ki = wvKiSatz();
-      if (ki) { saetze.push(ki); }
-      stand.textContent = saetze.join(" ");
-      while (legende.firstChild) { legende.removeChild(legende.firstChild); }
-      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
-      if (!wvStand) { return; }
-      // Die Legende erklaert Farben IM DOKUMENT. Steht dort keine von Klara — vor dem ersten
-      // Faerben und nach „Markierungen entfernen" —, erklaert sie nichts und steht nicht da.
-      if (wvMerk.length > 0) {
-        legende.appendChild(wvKnoten("li", "wv-legende-kopf", t("wvLegende")));
-        for (var l = 0; l < WV_LEGENDE.length; l += 1) {
-          var kat = WV_LEGENDE[l];
-          legende.appendChild(wvKnoten("li", "wv-legende-" + kat,
-            t(WV_KAT_KEYS[kat]) + " · " + (WV_FARB_KEYS[kat] ? t(WV_FARB_KEYS[kat]) : t("wvFarbeKeine"))));
-        }
-      }
-      for (var i = 0; i < wvStand.zeilen.length; i += 1) { liste.appendChild(wvAbsatzzeile(wvStand.zeilen[i])); }
-    }
-
-    /** Ein bestaetigter Logout verwirft den BEFUND — nie den Befund einer fremden Sitzung zeigen.
-     *  Die Merkliste bleibt: sie traegt kein Wissen, nur Farben, und ohne sie waeren Klaras eigene
-     *  Markierungen im Dokument nicht mehr zurueckzunehmen. */
-    function wvVerwerfen() {
-      wvLauf += 1;
-      wvLaeuft = false;
-      wvStand = null;
-      wvMeldung = "";
-      wvSchreibfehler = false;
-      wvZeichnen();
-    }
-
-    // ------------------------------------------------------------------------------------------
-    // Anschluss — derselbe Wrapper-Gedanke wie in KA6/KA7: das Original zuerst und unveraendert.
-    // ------------------------------------------------------------------------------------------
-    if (typeof document !== "undefined" && document.getElementById("ask-ruhe")) {
-      if (typeof STRINGS !== "undefined") {
-        for (var wvSprache in WV_TEXTE) {
-          if (Object.prototype.hasOwnProperty.call(WV_TEXTE, wvSprache) && STRINGS[wvSprache]) {
-            var wvTabelle = WV_TEXTE[wvSprache];
-            for (var wvSchluessel in wvTabelle) {
-              if (Object.prototype.hasOwnProperty.call(wvTabelle, wvSchluessel)) {
-                STRINGS[wvSprache][wvSchluessel] = wvTabelle[wvSchluessel];
-              }
-            }
-          }
-        }
-      }
-      wvBlockElement();
-      wvZeichnen();
-      if (typeof updateAskState === "function") {
-        var wvAskStateBestand = updateAskState;
-        updateAskState = function () { wvAskStateBestand.apply(this, arguments); wvZeichnen(); };
-      }
-      if (typeof kwFlaecheZeichnen === "function") {
-        var wvFlaecheBestand = kwFlaecheZeichnen;
-        kwFlaecheZeichnen = function () { wvFlaecheBestand.apply(this, arguments); wvZeichnen(); };
-      }
-      if (typeof klaraS4Verwerfen === "function") {
-        var wvVerwerfenBestand = klaraS4Verwerfen;
-        klaraS4Verwerfen = function () { wvVerwerfenBestand.apply(this, arguments); wvVerwerfen(); };
-      }
-      if (typeof setLang === "function") {
-        var wvSetLangBestand = setLang;
-        setLang = function () { wvSetLangBestand.apply(this, arguments); wvZeichnen(); };
-      }
-    }
-    // KW-WORDVERGLEICH-END

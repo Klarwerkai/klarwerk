@@ -30,11 +30,7 @@ export function downloadFilename(doc: Pick<OutputDocument, "kind" | "generatedAt
   return `klarwerk-${doc.kind}-${date}.md`;
 }
 
-// Auswahl in die Reihenfolge der Quellenliste bringen (stabil, keine Duplikate).
-export function orderedSelection(
-  selectedIds: readonly string[],
-  sourceIds: readonly string[],
-): string[] {
-  const set = new Set(selectedIds);
-  return sourceIds.filter((id) => set.has(id));
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `orderedSelection` (Auswahl in
+// Quellenreihenfolge). Die Output Factory behält bewusst die Nutzer-Reihenfolge
+// (`outputComposition.ts::sanitizeOrder`, das Backend rendert in genau dieser Folge, FR-EXT-03); die
+// Sortierung rief niemand und ist entfernt.

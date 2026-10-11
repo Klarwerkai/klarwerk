@@ -7,12 +7,18 @@ import type { ReasonerConfigStatus } from "../api/types";
 
 export type AiTaskMode = "cloud" | "local" | "rule" | "unknown";
 
-// Pedi 05.07.: Datenschutz-Einordnung je Aufgabe. Ehrlich: „inhouse" (lokal/regelbasiert → keine
-// Übermittlung an Dritte) darf grün als datenschutzkonform gezeigt werden; „external" (Cloud) ist
-// externe Verarbeitung (DSGVO hängt am Auftragsverarbeitungsvertrag); ohne Konfiguration keine Aussage.
-export type AiDsgvoStance = "inhouse" | "external" | "unknown";
+// R-0600: WOHIN gehen die Inhalte beim Klick — das ist die Datenschutz-Aussage, die sich belegen
+// lässt. „extern" = an den Cloud-Anbieter · „server" = an den vom Betreiber eingerichteten
+// KI-Server (`KLARWERK_LOCAL_LLM_URL`, eine frei gesetzte Adresse — wo er läuft, weiß der Code
+// nicht) · „keiner" = regelbasiert, kein Versand an ein Modell · „unknown" = keine Aussage.
+// Bis R-0599/R-0600 stand hier eine DSGVO-Einordnung („DSGVO-konform" für lokal und regelbasiert).
+// Sie ließ sich weder aus der Stufe noch aus dem Modellnamen ableiten und ist gestrichen.
+export type AiDatenfluss = "extern" | "server" | "keiner" | "unknown";
 
 // Flache Copy-Schlüssel — EINE Quelle für Komponente + Test.
+// `reasoner.taskInfo.bodyLocal` (eigene Hardware, Inhalte verlassen das Haus nicht) und die
+// `dsgvo*`-Texte bleiben im Wörterbuch byteweise gesperrt (PRO 375), werden hier aber nicht mehr
+// gezeigt: für ihre Zusagen gibt es kein Signal.
 export const AI_TASK_INFO_TEXT = {
   title: "reasoner.taskInfo.title",
   cloud: "reasoner.taskInfo.cloud",
@@ -20,22 +26,24 @@ export const AI_TASK_INFO_TEXT = {
   rule: "reasoner.taskInfo.rule",
   unknown: "reasoner.taskInfo.unknown",
   bodyCloud: "reasoner.taskInfo.bodyCloud",
-  bodyLocal: "reasoner.taskInfo.bodyLocal",
+  bodyLocal: "kilage.aktion.serverText",
   bodyRule: "reasoner.taskInfo.bodyRule",
   bodyUnknown: "reasoner.taskInfo.bodyUnknown",
   modelLabel: "reasoner.taskInfo.modelLabel",
-  dsgvoInhouse: "reasoner.taskInfo.dsgvoInhouse",
-  dsgvoInhouseBody: "reasoner.taskInfo.dsgvoInhouseBody",
-  dsgvoExternal: "reasoner.taskInfo.dsgvoExternal",
-  dsgvoExternalBody: "reasoner.taskInfo.dsgvoExternalBody",
+  flussExtern: "kilage.aktion.extern",
+  flussExternBody: "kilage.aktion.externText",
+  flussServer: "kilage.aktion.server",
+  flussServerBody: "kilage.aktion.serverOffen",
+  flussKeiner: "kilage.aktion.keiner",
+  flussKeinerBody: "kilage.aktion.keinerText",
 } as const;
 
 export interface AiTaskInfo {
   mode: AiTaskMode;
   modeLabelKey: string;
   bodyKey: string;
-  // Pedi 05.07.: Datenschutz-Einordnung — steuert den grün/amber-Hinweis in AiModelInfo.
-  dsgvo: AiDsgvoStance;
+  // R-0600: wohin die Inhalte gehen — steuert den Datenfluss-Hinweis in AiModelInfo.
+  datenfluss: AiDatenfluss;
   // Nur gesetzt, wenn ein KI-Modell arbeitet (Cloud/Lokal) — bei Regelbasiert bewusst leer.
   modelName?: string;
 }
@@ -48,7 +56,7 @@ export function aiTaskInfo(config: ReasonerConfigStatus | undefined, task: strin
       mode: "unknown",
       modeLabelKey: AI_TASK_INFO_TEXT.unknown,
       bodyKey: AI_TASK_INFO_TEXT.bodyUnknown,
-      dsgvo: "unknown",
+      datenfluss: "unknown",
     };
   }
   const provider = config.effectiveProvider[task];
@@ -60,7 +68,7 @@ export function aiTaskInfo(config: ReasonerConfigStatus | undefined, task: strin
       mode: "local",
       modeLabelKey: AI_TASK_INFO_TEXT.local,
       bodyKey: AI_TASK_INFO_TEXT.bodyLocal,
-      dsgvo: "inhouse",
+      datenfluss: "server",
       ...(name ? { modelName: name } : {}),
     };
   }
@@ -79,7 +87,7 @@ export function aiTaskInfo(config: ReasonerConfigStatus | undefined, task: strin
       mode: "cloud",
       modeLabelKey: AI_TASK_INFO_TEXT.cloud,
       bodyKey: AI_TASK_INFO_TEXT.bodyCloud,
-      dsgvo: "external",
+      datenfluss: "extern",
       ...(name ? { modelName: name } : {}),
     };
   }
@@ -88,14 +96,14 @@ export function aiTaskInfo(config: ReasonerConfigStatus | undefined, task: strin
       mode: "rule",
       modeLabelKey: AI_TASK_INFO_TEXT.rule,
       bodyKey: AI_TASK_INFO_TEXT.bodyRule,
-      dsgvo: "inhouse",
+      datenfluss: "keiner",
     };
   }
   return {
     mode: "unknown",
     modeLabelKey: AI_TASK_INFO_TEXT.unknown,
     bodyKey: AI_TASK_INFO_TEXT.bodyUnknown,
-    dsgvo: "unknown",
+    datenfluss: "unknown",
   };
 }
 
@@ -112,7 +120,7 @@ export function aiTaskInfoPublic(
       mode: "unknown",
       modeLabelKey: AI_TASK_INFO_TEXT.unknown,
       bodyKey: AI_TASK_INFO_TEXT.bodyUnknown,
-      dsgvo: "unknown",
+      datenfluss: "unknown",
     };
   }
   if (status.mode === "cloud") {
@@ -120,7 +128,7 @@ export function aiTaskInfoPublic(
       mode: "cloud",
       modeLabelKey: AI_TASK_INFO_TEXT.cloud,
       bodyKey: AI_TASK_INFO_TEXT.bodyCloud,
-      dsgvo: "external",
+      datenfluss: "extern",
     };
   }
   if (status.mode === "local") {
@@ -128,13 +136,13 @@ export function aiTaskInfoPublic(
       mode: "local",
       modeLabelKey: AI_TASK_INFO_TEXT.local,
       bodyKey: AI_TASK_INFO_TEXT.bodyLocal,
-      dsgvo: "inhouse",
+      datenfluss: "server",
     };
   }
   return {
     mode: "rule",
     modeLabelKey: AI_TASK_INFO_TEXT.rule,
     bodyKey: AI_TASK_INFO_TEXT.bodyRule,
-    dsgvo: "inhouse",
+    datenfluss: "keiner",
   };
 }

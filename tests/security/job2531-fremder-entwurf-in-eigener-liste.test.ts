@@ -24,8 +24,9 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 //     M1 · visibleDraftsFor filtert nicht mehr  ->  KEINE einzige Testdatei wird rot
 //     M2 · canSeeDraft sagt immer ja            ->  drei Testdateien werden rot
 //
-// Die EINZELentwurfs-Regel (`canSeeDraft`, Route `/api/drafts/:id`) ist also gedeckt — durch
-// `tests/app/ka8-naechster-schritt-entwurf.test.ts` und zwei weitere. Die LISTENregel war es
+// Die EINZELentwurfs-Regel (`canSeeDraft`, Route `/api/drafts/:id`) ist also gedeckt — damals durch
+// drei Testdateien (eine davon prüfte die nie registrierte KA8-Parallelroute und ist mit ihr unter
+// R-1349 entfernt; die beiden übrigen bleiben). Die LISTENregel war es
 // nicht: Haette jemand den Filter entfernt, waere jede Expertin ab dem naechsten Aufruf in die
 // Entwuerfe ihrer Kollegen gefallen, und das Tor waere gruen geblieben.
 //

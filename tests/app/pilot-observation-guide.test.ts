@@ -1,16 +1,13 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import { HELP_TOPICS } from "../../apps/web/src/lib/helpTopics";
-import {
-  PILOT_OBSERVATIONS,
-  pilotObservationGuide,
-} from "../../apps/web/src/lib/pilotObservationGuide";
+import { PILOT_OBSERVATIONS } from "../../apps/web/src/lib/pilotObservationGuide";
 
 // SCRUM-307: beobachtete Pilot-Reibungen werden auf bestehende Knowledge-OS-Flows gemappt — ohne
 // Backend, ohne Speicherung. Reine UX-Notiz bekommt bewusst KEINEN Produktlink.
 describe("SCRUM-307: pilotObservationGuide", () => {
+  // R-1349: gemessen an `PILOT_OBSERVATIONS` — der Zugriff `pilotObservationGuide()` ist entfernt.
   it("deckt alle erwarteten Kategorien in fester Reihenfolge ab", () => {
-    expect(pilotObservationGuide()).toBe(PILOT_OBSERVATIONS);
     expect(PILOT_OBSERVATIONS.map((o) => o.id)).toEqual([
       "missing",
       "unverified",

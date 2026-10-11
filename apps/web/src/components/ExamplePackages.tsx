@@ -12,6 +12,10 @@
 // Demodaten anzufassen. Die Angaben kommen vollständig vom Server (GET /admin/demo-packages),
 // einschließlich der GEZÄHLTEN Stände „geladen" und „bearbeitet": diese Fläche behauptet nichts,
 // was der Server nicht gezählt hat.
+//
+// ADMIN-16: beide Kästen stehen nicht mehr auf `/import`, sondern in der Verwaltung hinter der Karte
+// „Beispiel- und Demopakete" (`pages/AdminDemoDetails.tsx`). Die alten Anker leitet die Importseite
+// dorthin weiter.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Languages, Loader2, PackagePlus, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -174,7 +178,17 @@ export function ExamplePackages(): JSX.Element {
             const result = results[card.id];
             return (
               <div key={card.id} className="rounded-card border border-hairline bg-page p-3">
-                <p className="text-[13.5px] font-semibold text-text">{t(card.titleKey)}</p>
+                {/* ADMIN-16: auch die kleinen Beispielpakete tragen das Fiktions-Etikett der
+                    Demopakete — vor dem Laden ist sichtbar, dass hier erfundene Daten entstehen. */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[13.5px] font-semibold text-text">{t(card.titleKey)}</p>
+                  <span
+                    data-testid="beispielpaket-fiktiv"
+                    className="rounded-btn bg-surface px-2 py-0.5 text-[11.5px] text-muted"
+                  >
+                    {t(DEMO_PACKAGES_TEXT.fictional)}
+                  </span>
+                </div>
                 <p className="mt-0.5 text-[12.5px] text-muted">{t(card.descKey)}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Button
@@ -294,9 +308,35 @@ function DemoPackages(): JSX.Element | null {
   });
 
   // Bis die erste Antwort da ist, gibt es hier nichts zu zeigen — und nichts zu behaupten.
+  // ADMIN-16: ein gescheiterter Erstabruf und eine leere Liste sind dagegen AUSKÜNFTE. Bis hierher
+  // verschwand der Kasten in beiden Fällen still; jetzt nennt er Grund und Zuständigkeit und bietet
+  // keinen Paketknopf an, der ins Leere führte.
   const pakete: DemoPackageInfo[] | undefined = uebersicht.data?.packages;
-  if (!pakete || pakete.length === 0) {
-    return null;
+  if (!pakete) {
+    if (!uebersicht.isError) {
+      return null;
+    }
+    return (
+      <Card id="demopakete" className="mt-5 scroll-mt-4">
+        <SectionLabel>{t(DEMO_PACKAGES_TEXT.title)}</SectionLabel>
+        <p data-testid="demopakete-nicht-abrufbar" className="mb-2 text-[12.5px] text-muted">
+          {t("betriebdemo.pakete.nichtAbrufbar")}
+        </p>
+        <Button variant="ghost" onClick={() => void uebersicht.refetch()}>
+          {t("betriebdemo.pakete.erneut")}
+        </Button>
+      </Card>
+    );
+  }
+  if (pakete.length === 0) {
+    return (
+      <Card id="demopakete" className="mt-5 scroll-mt-4">
+        <SectionLabel>{t(DEMO_PACKAGES_TEXT.title)}</SectionLabel>
+        <p data-testid="demopakete-keine" className="text-[12.5px] text-muted">
+          {t("betriebdemo.pakete.keine")}
+        </p>
+      </Card>
+    );
   }
 
   const frage = async (id: string, griff: Eingriff): Promise<void> => {

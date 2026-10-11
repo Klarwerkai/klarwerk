@@ -4,6 +4,7 @@ import i18n from "../../i18n";
 import { sourceBadgeKey } from "../../lib/koSource";
 import { safeHttpUrl } from "../../lib/safeUrl";
 import { ConfidenceBar } from "../trust";
+import { ExterneQuelleKennung } from "./ExterneQuelleKennung";
 
 // SCRUM-513/486 (WP2-Design): gemeinsamer, wiederverwendbarer Belegschicht-Baustein — die eine Quelle
 // der Wahrheit dafür, WOHER eine Aussage stammt, WANN und WIE sicher. Reine Präsentation (Props rein,
@@ -33,7 +34,9 @@ export function SourceLink({
   // aktiven Link, sondern fällt auf die „interne Quelle"-Textdarstellung zurück.
   const href = safeHttpUrl(source.url);
   return (
-    <span className="inline-flex flex-col gap-0.5">
+    // R-0205: die Kennung macht EINE Quelle adressierbar — die Konfliktansicht zeigt sie kompakt
+    // ohne Listeneintrag (`tests-smoke/externe-quelle-kennzeichnung-browser.spec.ts`).
+    <span data-testid="quelle-beleg" className="inline-flex flex-col gap-0.5">
       <span className="flex flex-wrap items-center gap-1.5">
         {href ? (
           <a
@@ -55,6 +58,8 @@ export function SourceLink({
         <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
           {t(sourceBadgeKey(source))}
         </span>
+        {/* R-0205: „Stufe 2" + „Extern · ungeprüft" an jeder nicht peer-validierten Quelle. */}
+        <ExterneQuelleKennung source={source} />
         {source.provider ? (
           <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
             {source.provider}

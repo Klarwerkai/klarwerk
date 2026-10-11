@@ -670,7 +670,11 @@ describe("JOB 4337 S · der erste Nutzerweg der Demo im Browser, gegen echtes Po
 
         // Die sichtbare Quittung im Fussband — sie steht 3 000 ms (`Validation.tsx:191`), wird
         // deshalb sofort gelesen und sofort kalibriert.
-        const quittung = `${satz("val.decisionSaved")} — ${satz("val.outcome.up")}`;
+        // STATUS-FREIGABE (produkt:20261007): die Quittung nennt seither die eigene Stimme und was
+        // noch fehlt — hier eine von drei nötigen (`FALLBACK_NEEDED_VALIDATIONS`), also noch zwei.
+        // Der frühere Pauschalsatz („automatisch validiert wird dadurch nichts") ist ersetzt.
+        const stimme = satz("statusfreigabe.zustimmung.offen", { count: 2, have: 1, need: 3 });
+        const quittung = `${satz("val.decisionSaved")} — ${stimme}`;
         await aufSichtbarkeitWarten(seite, quittung, "Quittung der Fremdprüfung");
         await sichtbarZugesichert(seite, quittung, "Quittung der Fremdprüfung");
 

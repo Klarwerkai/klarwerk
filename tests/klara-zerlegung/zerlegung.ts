@@ -71,6 +71,22 @@ export function markeQuelle(): string {
   return readFileSync(repoPfad(MARKE_RELATIV), "utf8");
 }
 
+/**
+ * Auftrag „Geschriebene Behauptungen gegen den Wissensbestand prüfen" (R-0336, R-0708) — NOCH EINE
+ * AUSGELIEFERTE SKRIPTDATEI DES FENSTERS, nach der Regel von `marke.js`.
+ *
+ * Sie trägt den Abschnitt KW-WORDVERGLEICH Zeile für Zeile. `taskpane.html` lädt sie unmittelbar
+ * nach `taskpane.js` (in derselben Zeile) und vor `marke.js`, also läuft sie dort, wo der
+ * Abschnitt vorher stand.
+ */
+export const WV_RELATIV = "apps/web/public/word-addin/wortvergleich.js";
+/** Der Dateiname, unter dem sie neben `taskpane.html` liegt (und so auch im `src` steht). */
+export const WV_DATEI = "wortvergleich.js";
+
+export function wortvergleichQuelle(): string {
+  return readFileSync(repoPfad(WV_RELATIV), "utf8");
+}
+
 // ------------------------------------------------------------------------------------------------
 // 1. Die Blöcke: Inline-Stil, Inline-Skript, externe Quellen
 // ------------------------------------------------------------------------------------------------

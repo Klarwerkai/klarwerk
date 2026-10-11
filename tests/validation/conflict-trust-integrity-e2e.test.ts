@@ -136,33 +136,47 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
     expect(notice?.titleKey).toBe("conflict.impact.truthTitle");
     expect(notice?.to).toBe("/konflikte");
 
-    // 5) Ask: Antwort bleibt serverseitig quellengebunden; die KONFLIKTBEWUSSTE Quellensicht zeigt das
-    //    Quell-KO NICHT als uneingeschränkt nutzbar (kein „ready"), klar als konfliktbegrenzt markiert.
+    // 5) Ask — R-0278 (Nacharbeit 3) und R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der
+    //    normale Frageweg antwortet nur aus geprüftem Wissen. Der Konflikt hat KO-A zurück auf
+    //    „offen" gesetzt, KO-B war nie validiert — also trägt KEINES die Antwort. Klara legt die
+    //    Lücke an, meldet die ungeprüften Treffer (JOB 1591 W5) und die fehlende Freigabe (Torlage);
+    //    die KONFLIKTBEWUSSTE Quellensicht zeigt sie NICHT als uneingeschränkt nutzbar.
     const askRes = await app.inject({
       method: "POST",
       url: "/api/ask",
       headers: admin,
       payload: { question: "Wie wird der Hydraulikzylinder HZ7 entlüftet?" },
     });
-    const result = askRes.json().result as AnswerResult;
-    expect(result.answered).toBe(true);
-    expect(result.sources.length).toBeGreaterThan(0);
-    // Beide KOs (A und B) stehen im selben Truth-Konflikt → jede gebundene, bekannte Quelle ist
-    // konfliktbegrenzt und erscheint NICHT als „ready" (unabhängig davon, welches KO gebunden wurde).
+    const askBody = askRes.json() as {
+      result: AnswerResult;
+      gap: unknown;
+      ungeprueft?: Array<{ id: string }>;
+      verschlossen?: Array<{ id: string; freigabeFehlt: boolean }>;
+    };
+    expect(askBody.result.answered).toBe(false);
+    expect(askBody.result.sources).toEqual([]);
+    expect(askBody.gap).not.toBeNull();
+    expect(askBody.verschlossen?.find((h) => h.id === koA.id)?.freigabeFehlt).toBe(true);
+    const gemeldet = (askBody.ungeprueft ?? []).map((h) => h.id);
+    expect(gemeldet).toContain(koA.id);
     const kos = [reviewedA, await getKo(app, admin, koB.id)];
-    const knownRefs = conflictAwareSourceRefs(result.sources, kos, conflicts).filter(
-      (s) => s.known,
-    );
+    const knownRefs = conflictAwareSourceRefs(gemeldet, kos, conflicts).filter((s) => s.known);
     expect(knownRefs.length).toBeGreaterThan(0);
     for (const r of knownRefs) {
       expect(r.usability).not.toBe("ready");
     }
-    // Server-Status der Antwort bleibt unverändert (kein Eingriff in die Antwortlogik) …
+    // Beide KOs zusammen: dieselbe Sicht, keines ist „ready".
+    const beide = conflictAwareSourceRefs([koA.id, koB.id], kos, conflicts).filter((s) => s.known);
+    expect(beide.length).toBe(2);
+    for (const r of beide) {
+      expect(r.usability).not.toBe("ready");
+    }
+    // Und die Antwortstufe behauptet ohne Antwort keine Sicherung.
     expect(
       answerStatus(
         answerGrade({
-          answered: true,
-          knowledgeClass: result.knowledgeClass,
+          answered: false,
+          knowledgeClass: askBody.result.knowledgeClass,
           sourcesConflicted: false,
           // AUFTRAG-mega33 A3: die Abdeckungsbedingung ist Pflicht. Dieser Lauf prueft den
           // Validierungs-Lebenszyklus, nicht die Erkennungsabdeckung — deshalb steht die
@@ -170,12 +184,20 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
           sourcesCheckUnproven: false,
           conflictsUnproven: false,
         }),
-      ),
-    ).toBeDefined();
+      ).key,
+    ).not.toBe("verified");
 
     // 6) Konflikt lösen → fällt aus der unresolved-Liste → der Konflikt-Impact ist weg. SCRUM-358:
     //    das KO bleibt bewusst review-pflichtig (offen) und wird über die normale Bewertung wieder
     //    validiert (kein Fake-Validate, kein Dauer-Block).
+    //    R-0215 (Aufnahme gesamt-konfliktklassifikation): der Wahrheitskonflikt wird verbindlich
+    //    zuerst eskaliert, danach entschieden.
+    const escalated = await app.inject({
+      method: "POST",
+      url: `/api/conflicts/${conflictId}/escalate`,
+      headers: admin,
+    });
+    expect(escalated.statusCode).toBe(200);
     const resolved = await app.inject({
       method: "PUT",
       url: `/api/kos/${koA.id}`,

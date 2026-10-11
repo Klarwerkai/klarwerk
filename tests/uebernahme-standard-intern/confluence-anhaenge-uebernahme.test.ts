@@ -22,7 +22,6 @@ import {
   warteAufOffeneImportLaeufe,
 } from "../../services/app/src/routes/confluence-import-routes";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
-import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import { mapConfluencePageToImportItem } from "../../services/confluence/src/mapper";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import {
@@ -35,6 +34,7 @@ import {
 import { InMemoryImportRunRepo, LibraryService } from "../../services/library-analytics";
 import { leseImportAnhaenge } from "../../services/library-analytics/src/service";
 import { InMemoryObjectRepo, ObjectStore } from "../../services/object-store";
+import { adapterFromConfig } from "../support/confluence-adapter";
 
 const OPTS = { baseUrl: "https://acme.atlassian.net/wiki", spaceKey: "K" };
 

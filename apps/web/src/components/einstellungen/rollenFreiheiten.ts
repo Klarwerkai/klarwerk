@@ -61,6 +61,8 @@ export const STICHWORT_JE_EINTRAG: Record<string, string | null> = {
   conflictCompare: "einst.rollen.wort.konflikte",
   duplikate: "einst.rollen.wort.duplikate",
   duplicateCompare: "einst.rollen.wort.duplikate",
+  // R-1107: das Zusammenführen ist dieselbe Dublettenarbeit des Controllers, kein zweites Recht.
+  duplicateMerge: "einst.rollen.wort.duplikate",
   // Admin — die Auswertungen und die Stufe-2-Flächen gehören zum Thema „Berichte und Analyse", der
   // Import zu „Quellen und Daten". Beleg sind die Abschnittskommentare an `ADMIN_SECTIONS`
   // (`lib/adminSections.ts`, Einträge `berichte` und `quellen`); der frühere Sammelreiter `daten`

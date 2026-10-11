@@ -87,8 +87,13 @@ async function sitzung(dienst: KlaraSessionService, instanz = "instanz-1") {
 // ================================================================================================
 // TEIL 1 — TOUCH NUR BEI BEDARF
 // ================================================================================================
+//
+// R-0777 (Bens Befund zu Kandidat 068ea4a2): bis hierher lief diese Drossel am STATUSABRUF — das
+// blosse Ansehen schrieb damit weiter, nur seltener. Seither beruehrt der Statusabruf gar nicht
+// mehr (Teil 1b); die Drossel gilt fuer den ausdruecklichen Aktivitaetsweg `meldeAktivitaet`.
+// Die Sollwerte der Faelle S2–S7 sind unveraendert, nur der gemessene Weg ist der richtige.
 
-describe("JOB 2688 D1 · Teil 1: zwei Statusabrufe binnen fuenf Sekunden sind EIN Schreibvorgang", () => {
+describe("JOB 2688 D1 · Teil 1: zwei Aktivitaetsmeldungen binnen fuenf Sekunden sind EIN Schreibvorgang", () => {
   it("S1 · der Mindestabstand ist 60 s und liegt weit unter der Gleitfrist von 15 min", () => {
     expect(KLARA_TOUCH_MINDESTABSTAND_MS).toBe(60 * SEK);
     expect(KLARA_TOUCH_MINDESTABSTAND_MS * 15).toBe(KLARA_SESSION_INACTIVITY_MS);
@@ -100,11 +105,11 @@ describe("JOB 2688 D1 · Teil 1: zwei Statusabrufe binnen fuenf Sekunden sind EI
     expect(repo.touches).toBe(0);
 
     vorspulen(61 * SEK);
-    const a = await dienst.getSession(sicht.sessionId, bindung);
+    const a = await dienst.meldeAktivitaet(sicht.sessionId, bindung);
     expect(repo.touches).toBe(1);
 
     vorspulen(5 * SEK);
-    const b = await dienst.getSession(sicht.sessionId, bindung);
+    const b = await dienst.meldeAktivitaet(sicht.sessionId, bindung);
     // Der Beweis aus §3: bis 2688 stand hier 2.
     expect(repo.touches).toBe(1);
     // Und der zweite Abruf traegt den Stand des ersten — nichts wurde fortgeschrieben.
@@ -118,30 +123,30 @@ describe("JOB 2688 D1 · Teil 1: zwei Statusabrufe binnen fuenf Sekunden sind EI
     const { dienst, repo, vorspulen } = aufbau();
     const { sicht, bindung } = await sitzung(dienst);
     vorspulen(61 * SEK);
-    await dienst.getSession(sicht.sessionId, bindung);
+    await dienst.meldeAktivitaet(sicht.sessionId, bindung);
     vorspulen(61 * SEK);
-    await dienst.getSession(sicht.sessionId, bindung);
+    await dienst.meldeAktivitaet(sicht.sessionId, bindung);
     expect(repo.touches).toBe(2);
   });
 
-  it("S4 · Panel-Polling alle 5 s ueber 10 Minuten: 120 Abrufe, hoechstens 10 Schreibvorgaenge", async () => {
+  it("S4 · Aktivitaet alle 5 s ueber 10 Minuten: 120 Meldungen, hoechstens 10 Schreibvorgaenge", async () => {
     const { dienst, repo, vorspulen } = aufbau();
     const { sicht, bindung } = await sitzung(dienst);
     for (let i = 0; i < 120; i++) {
       vorspulen(5 * SEK);
-      await dienst.getSession(sicht.sessionId, bindung);
+      await dienst.meldeAktivitaet(sicht.sessionId, bindung);
     }
     // 600 s / 60 s = 10 Fenster; im ersten Fenster faellt der Touch bei 60 s.
     expect(repo.touches).toBeLessThanOrEqual(10);
     expect(repo.touches).toBeGreaterThanOrEqual(9);
   });
 
-  it("S5 · KEIN vorzeitiger Ablauf unter Nutzung: Abrufe alle 30 s ueber 2 h bleiben gueltig", async () => {
+  it("S5 · KEIN vorzeitiger Ablauf unter Nutzung: Aktivitaet alle 30 s ueber 2 h bleibt gueltig", async () => {
     const { dienst, vorspulen } = aufbau();
     const { sicht, bindung } = await sitzung(dienst);
     for (let i = 0; i < 240; i++) {
       vorspulen(30 * SEK);
-      await expect(dienst.getSession(sicht.sessionId, bindung)).resolves.toBeTruthy();
+      await expect(dienst.meldeAktivitaet(sicht.sessionId, bindung)).resolves.toBeTruthy();
     }
   });
 
@@ -150,18 +155,18 @@ describe("JOB 2688 D1 · Teil 1: zwei Statusabrufe binnen fuenf Sekunden sind EI
     const { sicht, bindung } = await sitzung(dienst);
     // Touch bei +61 s (schreibt) — Ablauf = 61 s + 15 min.
     vorspulen(61 * SEK);
-    const nachTouch = await dienst.getSession(sicht.sessionId, bindung);
+    const nachTouch = await dienst.meldeAktivitaet(sicht.sessionId, bindung);
     expect(Date.parse(nachTouch.expiresAt)).toBe(T0 + 61 * SEK + KLARA_SESSION_INACTIVITY_MS);
     // Letzte Nutzung bei +90 s (schreibt NICHT).
     vorspulen(29 * SEK);
-    const letzte = await dienst.getSession(sicht.sessionId, bindung);
+    const letzte = await dienst.meldeAktivitaet(sicht.sessionId, bindung);
     expect(letzte.expiresAt).toBe(nachTouch.expiresAt);
     expect(repo.touches).toBe(1);
     // Bei der geschriebenen Frist: abgelaufen — 29 s vor „letzte Nutzung + 15 min". Das ist der
     // Preis des Vorschlags; er ist durch den Mindestabstand auf 60 s begrenzt. (Ein Abruf kurz
     // vorher waere selbst eine Nutzung und wuerde beruehren — deshalb gibt es hier keinen.)
     setze(T0 + 61 * SEK + KLARA_SESSION_INACTIVITY_MS);
-    await expect(dienst.getSession(sicht.sessionId, bindung)).rejects.toMatchObject({
+    await expect(dienst.meldeAktivitaet(sicht.sessionId, bindung)).rejects.toMatchObject({
       message: "Sitzung ist abgelaufen.",
     });
   });
@@ -170,10 +175,60 @@ describe("JOB 2688 D1 · Teil 1: zwei Statusabrufe binnen fuenf Sekunden sind EI
     const { dienst, repo, vorspulen } = externAufbau();
     const { sicht, bindung } = await sitzung(dienst);
     vorspulen(61 * SEK);
-    await dienst.getSession(sicht.sessionId, bindung);
+    await dienst.meldeAktivitaet(sicht.sessionId, bindung);
     vorspulen(3 * SEK);
     await dienst.grantConsent(sicht.sessionId, bindung);
     // Der Grant selbst ist ein fachlicher Schreibvorgang (eigener Uebergang) — aber kein Touch.
+    expect(repo.touches).toBe(1);
+  });
+});
+
+// ================================================================================================
+// TEIL 1b — R-0777: ANSEHEN SCHREIBT GAR NICHT
+// ================================================================================================
+
+describe("R-0777 · Teil 1b: der Statusabruf beruehrt nie, auch jenseits von 60 s", () => {
+  it("L1 · Abruf nach 61 s: kein Touch, Frist, Aktivitaet und Revision unveraendert", async () => {
+    const { dienst, repo, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    const vorher = await repo.findSession(sicht.sessionId);
+
+    vorspulen(61 * SEK);
+    const a = await dienst.getSession(sicht.sessionId, bindung);
+
+    expect(repo.touches).toBe(0);
+    expect(a.lastActivityAt).toBe(sicht.lastActivityAt);
+    expect(a.expiresAt).toBe(sicht.expiresAt);
+    expect((await repo.findSession(sicht.sessionId))?.revision).toBe(vorher?.revision);
+  });
+
+  it("L2 · Panel-Polling alle 5 s ueber 10 Minuten: 120 Abrufe, KEIN Schreibvorgang (bis R-0777: 9–10)", async () => {
+    const { dienst, repo, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    const vorher = await repo.findSession(sicht.sessionId);
+    for (let i = 0; i < 120; i++) {
+      vorspulen(5 * SEK);
+      await dienst.getSession(sicht.sessionId, bindung);
+    }
+    expect(repo.touches).toBe(0);
+    expect(await repo.findSession(sicht.sessionId)).toEqual(vorher);
+  });
+
+  it("L3 · statusFor (GET /api/klara/ai-status) beruehrt ebenso wenig", async () => {
+    const { dienst, repo, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    vorspulen(61 * SEK);
+    await dienst.statusFor(sicht.sessionId, bindung);
+    vorspulen(61 * SEK);
+    await dienst.statusFor(sicht.sessionId, bindung);
+    expect(repo.touches).toBe(0);
+  });
+
+  it("L4 · Gegenprobe: dieselbe Lage ueber den Aktivitaetsweg schreibt", async () => {
+    const { dienst, repo, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    vorspulen(61 * SEK);
+    await dienst.meldeAktivitaet(sicht.sessionId, bindung);
     expect(repo.touches).toBe(1);
   });
 });

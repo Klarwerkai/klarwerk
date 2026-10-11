@@ -5,12 +5,7 @@
 //  · stabile Ordnung: gleichrangige Elemente behalten ihre Eingangsreihenfolge.
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
-import {
-  DEFAULT_LIBRARY_SORT,
-  isLibrarySortKey,
-  koChangedMs,
-  sortLibrary,
-} from "../../apps/web/src/lib/librarySort";
+import { DEFAULT_LIBRARY_SORT, koChangedMs, sortLibrary } from "../../apps/web/src/lib/librarySort";
 
 function ko(overrides: Partial<KnowledgeObject>): KnowledgeObject {
   return {
@@ -85,9 +80,6 @@ describe("AUFTRAG-sortfilter: sortLibrary (rein)", () => {
     expect(ids(sortLibrary([x2, x1], "title", (k) => k))).toEqual(["x2", "x1"]);
   });
 
-  it("isLibrarySortKey erkennt gültige Schlüssel und weist Fremdwerte ab", () => {
-    expect(isLibrarySortKey("trust")).toBe(true);
-    expect(isLibrarySortKey("bogus")).toBe(false);
-    expect(isLibrarySortKey(null)).toBe(false);
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zu `isLibrarySortKey` ist mit dem Typwächter
+  // entfallen — er hatte keinen Produktleser; der Speicherhaken prüft gegen `LIBRARY_SORT_KEYS`.
 });

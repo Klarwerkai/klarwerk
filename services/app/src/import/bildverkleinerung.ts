@@ -445,6 +445,13 @@ export function bildausfaelleVermerken(html: string, ausfaelle: readonly Bildaus
 /**
  * Die eigentliche Umwandlung. Liefert entweder die Ableitung ODER den Grund, warum es keine gibt —
  * nie einen geworfenen Fehler: ein einzelnes schlechtes Bild darf den Import nicht kippen.
+ *
+ * R-1398 / GHSA-wq5f-xc86-pv6w (sharp < 0.35.5, librsvg): SVG-Quellen laufen hier bewusst WEITER
+ * durch sharp und damit durch librsvg — die Rasterung zu WebP ist der einzige Weg, auf dem ein
+ * SVG-Bild aus einer `.docx` sichtbar bleibt (der Sanitizer lässt `image/svg+xml` nicht durch).
+ * Eine Sperre an dieser Stelle (Kandidat 8721fb0c) nahm diese Funktion weg und ist zurückgenommen.
+ * Behoben ist die Meldung durch die Hebung auf sharp 0.35.5 (erste behobene Fassung, librsvg
+ * 2.63.2; Bewertung in `tools/abhaengigkeiten-bewertet.json`).
  */
 async function ableiten(quelle: Buffer): Promise<Buffer | Uebersprungsgrund> {
   try {
