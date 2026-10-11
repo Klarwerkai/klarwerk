@@ -131,6 +131,10 @@ function wochenAusText(text: string, lng: Sprache): number | null {
  * Entwürfe" sagt seit `CaptureService.runDraftTrashSweep` dieselbe Frist für den
  * Entwurfs-Papierkorb zu (Pedi 17.09.2026, B5). Bis dahin stand dort „von selbst leert sich der
  * Papierkorb nicht" — ohne Zahl und damit unsichtbar für diesen Wächter.
+ *
+ * `loeschhilfe.deleteKo.body` (Textmodul `apps/web/src/texte/loeschhilfe.ts`): die Erklärung am
+ * Löschknopf des Wissensobjekts sagt „Im Papierkorb bleibt der Beitrag 30 Tage …". Sie kam über das
+ * Textmodul ins Bündel und stand bis hierher ungebunden — der Sammler unten meldete sie.
  */
 const TAGES_ZUSAGEN = [
   "ko.deleteQ",
@@ -138,6 +142,7 @@ const TAGES_ZUSAGEN = [
   "adm.sich.trash.b",
   "rueckzug.frage",
   "entwurfspool.seitenhilfe.body",
+  "loeschhilfe.deleteKo.body",
 ] as const;
 
 /**
@@ -160,6 +165,9 @@ const KEINE_AUFBEWAHRUNGSFRIST: Record<string, string> = {
     "Altersfacette des Suchfilters („≤ 30 Tage“). Die Zahl steht im Schlüsselnamen und hat mit " +
     "der Aufbewahrung im Papierkorb nichts zu tun.",
   "lib.facet.ageBucket.d180": "Dieselbe Facette, zweite Stufe („≤ 180 Tage“).",
+  "freigaberegeln.fehler.ungueltig":
+    "Zulässiger Bereich der Zustimmungsfrist einer KI-Freigaberegel („Frist 1 bis 90 Tage“). " +
+    "Eine Eingabegrenze der Freigaberegeln, keine Aufbewahrung im Papierkorb.",
 };
 
 describe("JOB 1255: die zugesagte Aufbewahrungsfrist ist an TRASH_RETENTION_DAYS gebunden", () => {
