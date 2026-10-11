@@ -9,21 +9,12 @@
 //   · Sie meldet KEIN Ergebnis an die Figur (`meldeErgebnis` wird nicht gerufen), wählt kein Motiv,
 //     speichert nichts und berührt weder Gespräch noch Aufgaben- oder Modellzustände.
 //   · Bei reduzierter Bewegung (eigene Wahl oder System) bleibt jeder Zustand still; der Text bleibt.
-//   · „Nachdenken“ hat im Produkt heute keinen eigenen Auslöser — die Vorschau sagt das dazu.
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type AssistenzAvatarMotiv, animationsStil } from "../../lib/assistenzAvatare";
 import { AvatarBild } from "./AvatarBild";
 import { AvatarMimik } from "./AvatarMimik";
-import {
-  ASSISTENZ_ZUSTAENDE,
-  type AssistenzZustand,
-  VORSCHAU_SCHRITT_MS,
-  zustandsTextSchluessel,
-} from "./ausdruck";
-
-/** Zustände ohne eigenen Auslöser im heutigen Produkt — in der Vorschau gekennzeichnet. */
-export const NUR_IN_VORSCHAU: readonly AssistenzZustand[] = ["nachdenken"];
+import { ASSISTENZ_ZUSTAENDE, VORSCHAU_SCHRITT_MS, zustandsTextSchluessel } from "./ausdruck";
 
 function systemReduziert(): boolean {
   return (
@@ -127,11 +118,6 @@ export function AvatarZustandsVorschau({
         >
           {t("assistenz.vorschau.schritt", { nr: schritt + 1, gesamt, zustand: zustandText })}
         </output>
-        {NUR_IN_VORSCHAU.includes(zustand) ? (
-          <p data-testid="assistenz-zustandsvorschau-nurvorschau" className="text-muted">
-            {t("assistenz.vorschau.nurVorschau")}
-          </p>
-        ) : null}
         <p className="text-[12px] text-muted">{t("assistenz.vorschau.hinweis")}</p>
         {reduziert ? (
           <p data-testid="assistenz-zustandsvorschau-ruhig" className="text-[12px] text-muted">

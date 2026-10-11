@@ -60,7 +60,7 @@ Vorgabe: `ANIMATIONSZUSTAENDE.json` des Bildpakets. Die Figur trägt einen von n
 | --- | --- | --- |
 | bereit | nichts läuft | neue Aktion |
 | warten | Anfrage gesendet, Antwort steht aus | Antwort, Fehler, Stopp |
-| nachdenken | nur bei gemeldeter laufender Verarbeitung — der Frageweg meldet heute keine solche Phase, der Zustand wird deshalb nicht angezeigt | — |
+| nachdenken | die am Server abgelegte Frage wird am Frageweg bearbeitet (assistenz-avatarzustaende) | Antwort, Fehler, Stopp |
 | zuhören | Browser bestätigt die Tonaufnahme (`audiostart`) — nicht schon beim Start oder während die Mikrofonberechtigung aussteht | `audioend`, Ende, Fehler (auch verweigerte Berechtigung), Stopp, Schließen |
 | sprechen | Sprachausgabe hat tatsächlich begonnen (`start`, nach Pause `resume`) — nicht schon bei der Anforderung | `end`, `error`, `pause`, Stopp; späte Ereignisse einer abgelösten Ausgabe zählen nicht |
 | ratlos | Entscheidung bzw. Rückfrage der Person nötig | Person entscheidet |

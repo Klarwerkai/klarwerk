@@ -63,6 +63,7 @@ import {
   ausdruckNachFrage,
   beginneAktion,
   ermittleZustand,
+  istAktuelleAktion,
   meldeErgebnis,
   useLetztesErgebnis,
   zustandsTextSchluessel,
@@ -1214,6 +1215,16 @@ export function KlaraVorschau({
           mitSeitenbezug(objektbezugFuer(gewaehlt, kontextJetzt, auswahlJetzt), seitenbezug);
         pruefungLaeuft.current = false;
         const stand = await echtFragen(text, bezug, sprache, t, seitenbezug);
+        if (stand !== "veraltet" && !istAktuelleAktion(aktion)) {
+          // assistenz-avatarzustaende (K4): eine neuere Aktion hat inzwischen begonnen — das späte
+          // Ende dieser Frage (z. B. das Ablegen nach einem Stopp) überschreibt weder den Ausdruck
+          // der Figur noch den Status einer inzwischen laufenden neuen Frage. Festgehalten ist es im
+          // Gespräch. Läuft keine Frage mehr, endet nur der Laufstatus.
+          if (leseEcht().laeuftSeit === null) {
+            aendere((alt) => (alt.status === "laeuft" ? { ...alt, status: "antwort" } : alt));
+          }
+          return { stand, antwort: null };
+        }
         if (stand === "veraltet") {
           // Kontowechsel während der Frage: nichts mehr ansagen, nichts mehr zeigen.
           aendere((alt) => ({ ...alt, status: "ruhe" }));
@@ -1436,8 +1447,8 @@ export function KlaraVorschau({
   // ---------------------------------------------------------------------------------------------
   // produkt:20261010:assistenz-name-avatar — der Zustand der Figur (ANIMATIONSZUSTAENDE.json), nur
   // aus echten Ereignissen: Mikrofon aktiv, Sprachausgabe spielt, Anfrage läuft, Entscheidung nötig,
-  // Ergebnis des letzten Vorgangs, verkleinert. „Nachdenken" bleibt aus — der Frageweg meldet keine
-  // eigene Verarbeitungsphase (`ausdruck.ts`).
+  // Ergebnis des letzten Vorgangs, verkleinert. „Nachdenken" (assistenz-avatarzustaende): solange der
+  // Frageweg die am Server abgelegte Frage bearbeitet; davor und beim Ablegen der Antwort „Warten".
   // ---------------------------------------------------------------------------------------------
   const vorleseLage = useKlaraVorlesen();
   const letztesErgebnis = useLetztesErgebnis();
@@ -1447,7 +1458,9 @@ export function KlaraVorschau({
     hoertZu: sprechen.hoert,
     spricht: vorleseLage.spielt !== null,
     laeuft: z.status === "laeuft",
-    verarbeitet: false,
+    // assistenz-avatarzustaende: Nachdenken, solange der Frageweg die abgelegte Frage tatsächlich
+    // bearbeitet (`echt.ts`, `verarbeitetSeit`) — endet mit Antwort, Fehler oder Abbruch.
+    verarbeitet: istEcht && echt.verarbeitetSeit !== null,
     rueckfrage: z.status === "entscheidung",
     ergebnis: letztesErgebnis,
     jetzt: Date.now(),

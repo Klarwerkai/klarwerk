@@ -9,9 +9,10 @@
 //
 //   bereit      nichts läuft
 //   warten      eine Anfrage ist gesendet, die Antwort steht aus (Status „läuft")
-//   nachdenken  NUR wenn das System eine laufende Antwortverarbeitung meldet. Der Frageweg meldet
-//               heute keine eigene Verarbeitungsphase (eine Anfrage, eine Antwort) — der Zustand
-//               ist angelegt, wird aber nicht vorgetäuscht (`verarbeitet` bleibt `false`).
+//   nachdenken  NUR wenn das System eine laufende Antwortverarbeitung meldet: der Frageweg hat die
+//               Frage am Server abgelegt und erarbeitet die Antwort (`echt.ts`, `verarbeitetSeit`,
+//               produkt:20261010:assistenz-avatarzustaende). Endet mit Antwort, Fehler oder Abbruch;
+//               kein Zeitgeber, nichts vorgetäuscht.
 //   zuhoeren    die Spracherkennung ist tatsächlich aktiv (nach erteilter Berechtigung gestartet)
 //   sprechen    die Sprachausgabe spielt tatsächlich ab
 //   ratlos      eine Entscheidung/Rückfrage der Person ist nötig (Status „Entscheidung nötig")
@@ -136,6 +137,11 @@ export function beginneAktion(): number {
   aktuelleAktion += 1;
   meldeErgebnis(null);
   return aktuelleAktion;
+}
+
+/** Ist `aktion` noch die jüngste begonnene Aktion? Sonst ist ihr Ergebnis veraltet. */
+export function istAktuelleAktion(aktion: number): boolean {
+  return aktion === aktuelleAktion;
 }
 
 /**

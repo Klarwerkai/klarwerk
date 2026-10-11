@@ -33,6 +33,7 @@ import {
   ausdruckNachFrage,
   beginneAktion,
   ermittleZustand,
+  istAktuelleAktion,
   letztesErgebnis,
   meldeErgebnis,
   zustandsTextSchluessel,
@@ -66,6 +67,8 @@ describe("A1 · neue Aktion vor altem Ergebnis (K4)", () => {
     meldeErgebnis("freude", { aktion: dritte });
     meldeErgebnis("fehler", { aktion: neu });
     expect(letztesErgebnis()?.art).toBe("freude");
+    expect(istAktuelleAktion(dritte)).toBe(true);
+    expect(istAktuelleAktion(neu)).toBe(false);
   });
 
   it("beginneAktion beendet Fehler, Pause und Freude sofort", () => {
@@ -156,7 +159,6 @@ describe("A3 · Textstatus je Zustand und Fehlerart (K3/K5/K9)", () => {
         "assistenz.vorschau.titel",
         "assistenz.vorschau.hinweis",
         "assistenz.vorschau.schritt",
-        "assistenz.vorschau.nurVorschau",
         "assistenz.vorschau.ruhig",
         "assistenz.vorschau.beenden",
         "assistenz.vorschau.fertig",
@@ -288,7 +290,8 @@ describe("A5 · Vorschau aller neun Zustände für jedes der 13 Motive (K6/K1/K8
         const text = q("assistenz-zustandsvorschau-text")?.textContent ?? "";
         expect(text).toContain(`Vorschau ${i + 1} von 9`);
         expect(text).toContain(i18n.t(zustandsTextSchluessel(z)));
-        expect(q("assistenz-zustandsvorschau-nurvorschau") !== null).toBe(z === "nachdenken");
+        // Nachdenken ist seit nacharbeit-1 produktiv angebunden — kein „nur Vorschau“-Vermerk mehr.
+        expect(q("assistenz-zustandsvorschau-nurvorschau")).toBeNull();
         gesehen.push(z);
         weiter();
       }
@@ -403,11 +406,18 @@ describe("A8 · die Figur nutzt Aktionskennung und Fehlerart (Quelle)", () => {
     expect(quelle).toContain("data-fehlerart={figurFehlerArt}");
     // Kein Ergebnis ohne Kennung mehr im Frageweg.
     expect(quelle).not.toMatch(/meldeErgebnis\(\s*stand ===/);
+    // Nachdenken hängt an der gemeldeten Verarbeitungsphase, nicht fest auf „aus“.
+    expect(quelle).toContain("verarbeitet: istEcht && echt.verarbeitetSeit !== null");
+    expect(quelle).not.toContain("verarbeitet: false");
+    // Das späte Ende einer älteren Frage überschreibt keine neuere Aktion.
+    expect(quelle).toContain("!istAktuelleAktion(aktion)");
   });
   it("Speichern: Ergebnis an die Kennung gebunden; Feldprüfung ist ein Nutzerfehler", () => {
     expect(formular).toContain("const aktion = beginneAktion();");
     expect(formular).toContain('meldeErgebnis("freude", { aktion });');
     expect(formular).toContain('meldeErgebnis("fehler", { aktion, fehlerArt: "technisch" });');
     expect(formular).toContain('fehlerArt: "eingabe"');
+    // Abbrechen beendet auch den Eingabefehler an der Figur (Ben, nacharbeit-1).
+    expect(formular).toContain('speicherFehler || letztesErgebnis()?.fehlerArt === "eingabe"');
   });
 });

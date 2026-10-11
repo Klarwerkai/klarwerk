@@ -196,7 +196,9 @@ export function AssistenzFormular({
   };
 
   const abbrechen = (): void => {
-    if (speicherFehler) {
+    // Abbrechen beendet den Fehler DIESES Formulars an der Figur — den Speicherfehler ebenso wie
+    // eine fehlende Angabe (assistenz-avatarzustaende); die Eingabe wird ja verworfen.
+    if (speicherFehler || letztesErgebnis()?.fehlerArt === "eingabe") {
       meldeErgebnis(null);
     }
     setSpeicherFehler(null);

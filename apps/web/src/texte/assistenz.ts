@@ -96,8 +96,6 @@ export default {
     "assistenz.vorschau.hinweis":
       "Nur eine Vorschau – sie ändert weder deine Auswahl noch Gespräche, Aufgaben oder KI-Zustände.",
     "assistenz.vorschau.schritt": "Vorschau {{nr}} von {{gesamt}}: {{zustand}}",
-    "assistenz.vorschau.nurVorschau":
-      "Im Produkt noch ohne eigenen Auslöser – nur in dieser Vorschau zu sehen.",
     "assistenz.vorschau.ruhig": "Bewegung reduziert – jeder Zustand wird still gezeigt.",
     "assistenz.vorschau.beenden": "Vorschau beenden",
     "assistenz.vorschau.fertig": "Vorschau beendet – nichts wurde geändert.",
@@ -188,8 +186,6 @@ export default {
     "assistenz.vorschau.hinweis":
       "Only a preview – it changes neither your choice nor conversations, tasks or AI states.",
     "assistenz.vorschau.schritt": "Preview {{nr}} of {{gesamt}}: {{zustand}}",
-    "assistenz.vorschau.nurVorschau":
-      "No trigger of its own in the product yet – only visible in this preview.",
     "assistenz.vorschau.ruhig": "Reduced motion – each state is shown still.",
     "assistenz.vorschau.beenden": "End preview",
     "assistenz.vorschau.fertig": "Preview ended – nothing was changed.",
@@ -279,8 +275,6 @@ export default {
     "assistenz.vorschau.hinweis":
       "Alleen een voorbeeld – het wijzigt je keuze, gesprekken, taken of AI-toestanden niet.",
     "assistenz.vorschau.schritt": "Voorbeeld {{nr}} van {{gesamt}}: {{zustand}}",
-    "assistenz.vorschau.nurVorschau":
-      "In het product nog zonder eigen aanleiding – alleen in dit voorbeeld te zien.",
     "assistenz.vorschau.ruhig": "Beperkte beweging – elke toestand wordt stil getoond.",
     "assistenz.vorschau.beenden": "Voorbeeld beëindigen",
     "assistenz.vorschau.fertig": "Voorbeeld beëindigd – er is niets gewijzigd.",

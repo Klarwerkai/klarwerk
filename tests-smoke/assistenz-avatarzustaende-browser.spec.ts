@@ -14,11 +14,17 @@
 //   3. Desktop, echte Ereignisse: Freude nach bestätigtem Speichern → sofort neue Aktion (fehlende
 //      Angabe) ersetzt sie, die alte Freude kehrt nicht zurück; Speicherfehler (technisch) und
 //      Abbrechen; Minimieren = Pause ohne Animation; Seitenansicht, Andocken und Verschieben per
-//      Tastatur erhalten das Motiv.
+//      Tastatur erhalten das Motiv. Ungültige Eingabe → Abbrechen → Figur ohne Fehler (auch in 2).
+//   4./5. nacharbeit-1 (Ben) — der echte Frageweg, Desktop und 390 × 844 mit Tastatur: Ablage der
+//      Frage = Warten, Bearbeitung am Frageweg = Nachdenken; Stopp → Pause; schnelle Folgefrage,
+//      während sich der Abschluss der gestoppten Frage verspätet — das späte Ende überschreibt die
+//      neue Frage nicht; ihr Ergebnis folgt der tatsächlichen Antwort des Servers.
 //
 // WAS DIESE SONDEN NICHT ERSETZEN: das Urteil eines Menschen über Bildwirkung und Ausdruck je Motiv,
 // eine Prüfung an echten Endgeräten und echte Sprachein-/-ausgabe (der kopflose Browser hat keine).
-// Eine Transport-Attrappe gibt es genau einmal: die einmal scheiternde Speicherung (Sonde 3).
+// Transport-Attrappen (`page.route`): die einmal scheiternde Speicherung (Sonde 3); in Sonde 4/5
+// Riegel, die einzelne Anfragen anhalten und danach an den echten Server weiterreichen, sowie ein
+// Frageweg, der erst auf den Stopp reagiert. Im hermetischen Tor ist kein Modell aktiv.
 import {
   type Browser,
   type Locator,
@@ -245,6 +251,18 @@ test("Avatarzustände · 390 × 844, reduzierte Bewegung, Tastatur: Vorschau, Es
   await beleg(p, info, "schmal · fehlende Angabe an der Figur");
   await p.keyboard.type("Mia");
   await expect(figur(p)).not.toHaveAttribute("data-zustand", "fehler");
+
+  // nacharbeit-1 (Ben): ungültige Eingabe → Abbrechen per Tastatur → gespeichertes Profil, Figur
+  // ohne Fehlerstatus.
+  await name.fill("");
+  await name.press("Enter");
+  await expect(figur(p)).toHaveAttribute("data-fehlerart", "eingabe");
+  await p.getByTestId("assistenz-abbrechen").focus();
+  await p.keyboard.press("Enter");
+  await expect(name).toHaveValue("Mia");
+  await expect(figur(p)).toHaveAttribute("data-zustand", "bereit");
+  await expect(p.getByTestId("klara-figur-zustand")).toHaveCount(0);
+  await beleg(p, info, "schmal · ungültige Eingabe abgebrochen, Figur ohne Fehler");
   await p.context().close();
 });
 
@@ -276,6 +294,16 @@ test("Avatarzustände · echte Ereignisse: schneller Wechsel, Fehlerarten, Abbre
   await beleg(p, info, "schneller Wechsel: fehlende Angabe ersetzt Freude", figur(p));
   await name.fill("Kai");
   await expect(figur(p)).toHaveAttribute("data-zustand", "bereit");
+
+  // nacharbeit-1 (Ben): ungültige Eingabe → Abbrechen → gespeichertes Profil, Figur ohne Fehler.
+  await name.fill("");
+  await p.getByTestId("assistenz-speichern").click();
+  await expect(figur(p)).toHaveAttribute("data-fehlerart", "eingabe");
+  await p.getByTestId("assistenz-abbrechen").click();
+  await expect(name).toHaveValue("Kai");
+  await expect(figur(p)).toHaveAttribute("data-zustand", "bereit");
+  await expect(p.getByTestId("klara-figur-zustand")).toHaveCount(0);
+  await beleg(p, info, "ungültige Eingabe abgebrochen, Figur ohne Fehler");
 
   // Technischer Fehler: einmal 500 — eigener Text, rot gekennzeichnet; Abbrechen beendet ihn.
   let einmal = true;
@@ -337,4 +365,174 @@ test("Avatarzustände · echte Ereignisse: schneller Wechsel, Fehlerarten, Abbre
   await expect(figur(p)).toHaveAttribute("data-zustand", "bereit");
   await beleg(p, info, "verschoben per Tastatur: Motiv und Zustand erhalten");
   await p.context().close();
+});
+
+// ------------------------------------------------------------------------------------------------
+// Sonde 4/5 — der echte Frageweg (nacharbeit-1, Ben).
+// ------------------------------------------------------------------------------------------------
+
+/** Ein Riegel, der eine abgefangene Anfrage anhält, bis `auf()` gerufen wird. */
+function riegel(): { auf: () => void; offen: Promise<void> } {
+  let auf = (): void => {};
+  const offen = new Promise<void>((r) => {
+    auf = r;
+  });
+  return { auf, offen };
+}
+
+/** Senden per Tastatur: Eingabe fokussieren, tippen, Enter. */
+async function frageSenden(p: Page, text: string): Promise<void> {
+  const eingabe = p.getByTestId("klara-eingabe");
+  await expect(p.getByTestId("klara-senden")).toBeVisible({ timeout: 15_000 });
+  await eingabe.focus();
+  await eingabe.fill("");
+  await p.keyboard.type(text);
+  await p.keyboard.press("Enter");
+}
+
+async function stoppenPerTastatur(p: Page): Promise<void> {
+  const stopp = p.getByTestId("klara-stoppen");
+  await expect(stopp).toBeVisible();
+  await stopp.focus();
+  await p.keyboard.press("Enter");
+}
+
+async function fragewegAblauf(
+  browser: Browser,
+  email: string,
+  groesse: { width: number; height: number },
+  info: TestInfo,
+  wo: string,
+): Promise<void> {
+  const p = await angemeldet(browser, email, groesse);
+  await p.goto("/klara-vorschau");
+  await expect(figur(p)).toHaveAttribute("data-betrieb", "echt", { timeout: 15_000 });
+  await figur(p).focus();
+  await p.keyboard.press("Enter");
+  await expect(p.getByTestId("klara-gespraech")).toBeVisible();
+  await expect(p.getByTestId("klara-echt-hinweis")).toHaveAttribute("data-laden", "bereit", {
+    timeout: 15_000,
+  });
+  await p.getByTestId("klara-einwilligung-erteilen").focus();
+  await p.keyboard.press("Enter");
+  await expect(p.getByTestId("klara-einwilligung-erteilt")).toBeVisible();
+
+  const ablage1 = riegel();
+  const abschluss1 = riegel();
+  const frage2 = riegel();
+  const loesen = riegel();
+  let ablageGehalten = false;
+  let abschlussGehalten = false;
+  let askAufrufe = 0;
+  // Die Ablage der ERSTEN Frage am Server wird angehalten (Phase „warten“).
+  await p.route("**/api/me/klara/gespraeche/*/nachrichten", async (route) => {
+    const rumpf = route.request().postData() ?? "";
+    if (!ablageGehalten && rumpf.includes('"modus":"frage"')) {
+      ablageGehalten = true;
+      await ablage1.offen;
+    }
+    await route.continue();
+  });
+  // Der Abschlussschritt der gestoppten ersten Frage verspätet sich.
+  await p.route("**/api/me/klara/gespraeche/*/schritt", async (route) => {
+    const rumpf = route.request().postData() ?? "";
+    if (!abschlussGehalten && rumpf.includes('"stand":"abgebrochen"')) {
+      abschlussGehalten = true;
+      await abschluss1.offen;
+    }
+    await route.continue();
+  });
+  // Frage 1 und 3 reagieren erst auf den Stopp; Frage 2 wird angehalten und dann echt beantwortet.
+  await p.route("**/api/ask", async (route) => {
+    askAufrufe += 1;
+    if (askAufrufe === 2) {
+      await frage2.offen;
+      await route.continue();
+      return;
+    }
+    await loesen.offen;
+    await route.abort().catch(() => {});
+  });
+
+  // Frage 1: erst Warten (Ablage), dann Nachdenken (Frageweg bearbeitet).
+  await frageSenden(p, `Frage eins ${marke()}`);
+  await expect(figur(p)).toHaveAttribute("data-zustand", "warten");
+  expect(askAufrufe).toBe(0);
+  await beleg(p, info, `${wo} · Frage abgelegt: Warten`);
+  ablage1.auf();
+  await expect(figur(p)).toHaveAttribute("data-zustand", "nachdenken", { timeout: 10_000 });
+  expect(askAufrufe).toBe(1);
+  await expect(p.getByTestId("klara-figur-zustand")).toHaveText("Verarbeitet die Anfrage");
+  await beleg(p, info, `${wo} · Frageweg bearbeitet: Nachdenken`);
+
+  // Stopp; der Abschluss von Frage 1 hängt noch am Server.
+  await stoppenPerTastatur(p);
+  await expect.poll(() => abschlussGehalten, { timeout: 15_000 }).toBe(true);
+  await expect(figur(p)).not.toHaveAttribute("data-zustand", "nachdenken");
+
+  // Schnelle Folgefrage, solange das Ende von Frage 1 aussteht.
+  await frageSenden(p, `Frage zwei ${marke()}`);
+  await expect.poll(() => askAufrufe, { timeout: 15_000 }).toBe(2);
+  await expect(figur(p)).toHaveAttribute("data-zustand", "nachdenken", { timeout: 10_000 });
+  abschluss1.auf();
+  await p.waitForTimeout(1_500);
+  await expect(figur(p), "das späte Ende von Frage 1 überschreibt Frage 2").toHaveAttribute(
+    "data-zustand",
+    "nachdenken",
+  );
+  await expect(figur(p)).toHaveAttribute("data-status", "laeuft");
+  await beleg(p, info, `${wo} · verspätetes Ende der alten Frage: neue Frage denkt weiter nach`);
+
+  // Frage 2 endet mit der tatsächlichen Antwort des Servers.
+  const antwort = p.waitForResponse(
+    (r) => new URL(r.url()).pathname === "/api/ask" && r.request().method() === "POST",
+  );
+  frage2.auf();
+  const koerper = (await (await antwort).json()) as { result: { answered: boolean } };
+  const letzte = p.locator('[data-testid="klara-nachricht"][data-von="klara"]').last();
+  await expect(letzte).toHaveAttribute("data-gespeichert", "ja", { timeout: 15_000 });
+  const modus = await letzte.getAttribute("data-modus");
+  if (modus === "ohne_ki") {
+    await expect(figur(p)).toHaveAttribute("data-zustand", "fehler");
+    await expect(figur(p)).toHaveAttribute("data-fehlerart", "quelle");
+    await expect(p.getByTestId("klara-figur-zustand")).toContainText("Keine geprüfte Quelle");
+  } else {
+    await expect(figur(p)).toHaveAttribute("data-zustand", /freude|bereit/);
+  }
+  await expect(figur(p)).not.toHaveAttribute("data-zustand", "pause");
+  await info.attach(`${wo} · Antwort auf Frage 2`, {
+    body: JSON.stringify({ answered: koerper.result.answered, modus }),
+    contentType: "application/json",
+  });
+  await beleg(p, info, `${wo} · Ergebnis von Frage 2`);
+
+  // Abbruch einer laufenden Anfrage: Nachdenken endet, Pause mit Text.
+  await frageSenden(p, `Frage drei ${marke()}`);
+  await expect(figur(p)).toHaveAttribute("data-zustand", "nachdenken", { timeout: 10_000 });
+  await stoppenPerTastatur(p);
+  await expect(figur(p)).toHaveAttribute("data-zustand", "pause", { timeout: 15_000 });
+  await expect(p.getByTestId("klara-figur-zustand")).toHaveText("Pausiert");
+  await beleg(p, info, `${wo} · Anfrage gestoppt: Pause`);
+
+  loesen.auf();
+  await p.unrouteAll({ behavior: "ignoreErrors" });
+  await p.context().close();
+}
+
+test("Avatarzustände · Frageweg Desktop: Warten, Nachdenken, Stopp, verspätetes Ende, schnelle Folgefrage", async ({
+  page,
+  browser,
+}, info) => {
+  test.setTimeout(180_000);
+  const email = await fiktivesKonto(page, "frageweg");
+  await fragewegAblauf(browser, email, { width: 1280, height: 800 }, info, "Desktop");
+});
+
+test("Avatarzustände · Frageweg 390 × 844 mit Tastatur: Warten, Nachdenken, Stopp, verspätetes Ende, schnelle Folgefrage", async ({
+  page,
+  browser,
+}, info) => {
+  test.setTimeout(180_000);
+  const email = await fiktivesKonto(page, "frageweg-schmal");
+  await fragewegAblauf(browser, email, { width: 390, height: 844 }, info, "390×844");
 });
