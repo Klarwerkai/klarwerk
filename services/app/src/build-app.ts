@@ -471,6 +471,7 @@ import {
   scimSchluessel,
   verzeichnisRoutes,
 } from "./routes/verzeichnis-routes";
+import { vorfuehrungRoutes } from "./routes/vorfuehrung-routes";
 // produkt:20261007:templates-default — Vorlagen, Standards, Space-Vorgaben, Nutzung, Begriffe.
 import { vorlagenRoutes } from "./routes/vorlagen-routes";
 import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
@@ -5114,6 +5115,10 @@ export function buildApp(
   // nichts. Sie ist selbst NICHT geschaltet: Eine Auskunft, die man erst freischalten muss, könnte
   // die Oberfläche nie fragen. Angemeldete Nutzung genügt (Begründung in features-routes.ts).
   app.register(featuresRoutes(guards));
+  // R-0570 / Entscheidung zu Frage 14: die anonyme Vorführung — erfundene Inhalte, ohne Anmeldung,
+  // ohne jeden Zugriff auf den Wissensspeicher. Immer registriert; der Schalter entscheidet über den
+  // Inhalt (Vorgabe aus → 404), Begründung im Kopf von vorfuehrung-routes.ts.
+  app.register(vorfuehrungRoutes());
   // JOB 3510: die EINE Auskunft über das Erscheinungsbild dieser Instanz — und der Adminweg, der es
   // umschaltet. Sie ist wie die Schalterauskunft darüber SELBST nicht geschaltet: Eine Marke, die
   // man erst freischalten müsste, ließe die Vorführinstanz beim ersten Laden ungefärbt. Die
