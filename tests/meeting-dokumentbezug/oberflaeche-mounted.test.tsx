@@ -189,6 +189,16 @@ async function tippen(selektor: string, text: string): Promise<void> {
   });
 }
 
+/**
+ * Eine PPTX als `File`. Die Bytes werden in ein eigenes `ArrayBuffer` kopiert: `BlobPart` verlangt
+ * `Uint8Array<ArrayBuffer>`, jszip liefert `Uint8Array<ArrayBufferLike>`.
+ */
+function pptxDatei(bytes: Uint8Array, name: string): File {
+  const kopie = new Uint8Array(bytes.byteLength);
+  kopie.set(bytes);
+  return new File([kopie], name, { type: PPTX_MIME });
+}
+
 async function dateiSetzen(selektor: string, datei: File): Promise<void> {
   const feld = el<HTMLInputElement>(selektor);
   Object.defineProperty(feld, "files", { value: [datei], configurable: true });
@@ -277,11 +287,11 @@ describe("BPA-16 · Rückmeldungen aus Folie und Gesprächsstelle auf der Seite 
     await waehlen('[data-testid="besprechung-stufe"]', "vertraulich");
     await dateiSetzen(
       '[data-testid="besprechung-datei-praesentation"]',
-      new File([await pptx(NORD, "vortragskopie")], "nord-vortrag.pptx", { type: PPTX_MIME }),
+      pptxDatei(await pptx(NORD, "vortragskopie"), "nord-vortrag.pptx"),
     );
     await dateiSetzen(
       '[data-testid="besprechung-datei-original"]',
-      new File([await pptx(NORD)], "nord.pptx", { type: PPTX_MIME }),
+      pptxDatei(await pptx(NORD), "nord.pptx"),
     );
     await klick('[data-testid="besprechung-praesentation-verbinden"]');
     await bis(
