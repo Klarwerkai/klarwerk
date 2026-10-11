@@ -355,7 +355,7 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/library/export` | `ko.read` | Abfrage `format?`, `ids?` (kommagetrennt; grenzt nur ein — validiert/Vertraulichkeit gelten weiter; leer = leere Auswahl) | 200 Export | — |
 | `POST` | `/api/library/import` | `ko.create` | Rumpf `{ items }` | 200 Importbilanz | Dienstfehler |
 | `GET` | `/api/library/import/candidates` | `ko.read` | — | 200 Prüfwarteschlange | — |
-| `GET` | `/api/library/import/candidates/befunde` | `ko.read` | — | 200 je Kandidat `{ id, schutz, veraltet }` — schützenswert (Gründe ohne Werte) und veraltet (Stand der Quelle), jeweils mit `bewertet: false`, wo nichts zu bewerten war | — |
+| `GET` | `/api/library/import/candidates/befunde` | `ko.read` | — | 200 je für den Aufrufer sichtbarem Kandidaten (dasselbe Tor wie die Liste, `darfKandidatSehen`) `{ id, schutz, veraltet }` — schützenswert (Gründe ohne Werte) und veraltet (Stand der Quelle), jeweils mit `bewertet: false`, wo nichts zu bewerten war | — |
 | `POST` | `/api/library/import/candidates` | `ko.create` | Rumpf `{ items }` | 201 Kandidaten | Dienstfehler |
 | `PUT` | `/api/library/import/candidates/:id` | `ko.validate` | Rumpf `{ action: accept \| reject \| info, note? }` | 200 Kandidat | 400 `BAD_REQUEST` |
 | `POST` | `/api/admin/import/cleanup` | `users.manage` | Rumpf `{ confirm?, digest? }` | 200 `{ preview: true, … }` bzw. `{ preview: false, … }` | 409 `CLEANUP_DRIFT` |
@@ -476,6 +476,32 @@ unangemeldet; die Rollenabnahme (`tests/beta-rollenabnahme/tabelle.ts`) misst da
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/mcp` | Dienst-Schlüssel mit `mcp.werkzeug` (Kopf `x-klarwerk-service-key`), keine Sitzung | — | — (405 `METHOD_NOT_ALLOWED`, kein Ereignisstrom) | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN` bei Browseraufruf (`Origin`) |
 | `POST` | `/mcp` | Dienst-Schlüssel mit `mcp.werkzeug` (Kopf `x-klarwerk-service-key`), keine Sitzung | JSON-RPC-2.0-Nachricht | 200 JSON-RPC-Antwort; Werkzeugaufrufe laufen intern über die Route ihres Rechts | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN` bei Browseraufruf; JSON-RPC-Fehler im Rumpf |
+
+### 3.11 Gesprächsaussagen mit Folien verbinden (`meetingDokumentbezugRoutes`, BPA-16)
+
+Ausser bei Liste und Anlage gilt zusätzlich das Meetingrecht (Eigner oder eingetragener
+Teilnehmer, sonst 404 ohne Existenzauskunft). Für jede Datei gilt das aktuelle Urteil
+`beurteileAnhang` wie an `GET /api/objects/:id`, erhoben bei jeder Anfrage — für jede Fassung am
+Objekt, das sie tatsächlich trägt (`quelleId`), und für jede Rückmeldung zusätzlich an ihrer
+Mitschrift: ohne Leserecht an der Mitschrift gibt es die Rückmeldung nicht (404). Dateien
+(PPTX, WebVTT) kommen als Objekte über `POST /api/objects`. Wirkungen schreiben bedingt gegen
+die gelesene Version.
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/meetings` | `ko.read` | — | 200 `{ meetings: [{ meetingId, titel, version }] }` — nur eigene oder als Teilnehmer | — |
+| `POST` | `/api/meetings` | `ko.create` | Rumpf `{ titel, zeitbasis, teilnehmer? }` (Kontokennungen) | 201 `{ meetingId, titel, version }` | 400 `VALIDATION` |
+| `GET` | `/api/meetings/:id` | `ko.read`, Meetingrecht; Folien je Datei nach `beurteileAnhang` | — | 200 `{ meetingId, titel, eigen, zeitbasis, version, praesentationen, mitschriften, rueckmeldungen }` — je lesbarer Präsentation `dateiId`, `quelleId`, `dateiname`, `fassung`, Abgleich und Folien | 404 `NOT_FOUND` |
+| `POST` | `/api/meetings/:id/praesentationen` | `ko.create`, Meetingrecht, Leserecht an beiden Dateien | Rumpf `{ objectId, originalObjectId? }` | 200 `{ dateiId, fassung, abgleich }` (`identisch`, `inhaltsgleich`, `abweichend`, `nicht_vollstaendig_vergleichbar`, `ungeklaert`) | 400 `VALIDATION` (keine lesbare PPTX); 404; 409 `STAND_VERALTET` |
+| `POST` | `/api/meetings/:id/mitschriften` | `ko.create`, Meetingrecht, Leserecht an der Datei | Rumpf `{ objectId, zeitbasis }` (WebVTT) | 200 `{ id, zeitbasis, stellen }` | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
+| `POST` | `/api/meetings/:id/folienwechsel` | `ko.create`, Meetingrecht, bei `host` Leserecht an der Datei | Rumpf `{ quelle: "host", zeitMs, zeitbasis, dateiId, fassung, sldId }` oder `{ quelle: "nummer", zeitMs, zeitbasis, position }` | 200 `{ angenommen: true }` | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
+| `POST` | `/api/meetings/:id/rueckmeldungen` | `ko.create`, Meetingrecht | Rumpf `{ mitschriftId, stelleId, art (beschlossene_korrektur \| vorschlag \| offene_frage), text }` | 201 Rückmeldung (gefilterte Sicht); 200 dieselbe Rückmeldung erneut (keine Dublette) | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
+| `GET` | `/api/meetings/:id/rueckmeldungen/:rid` | `ko.read`, Meetingrecht; Folie/Ziel nur mit Leserecht | — | 200 `{ rueckmeldung, historie }` | 404 `NOT_FOUND` |
+| `POST` | `/api/meetings/:id/rueckmeldungen/:rid/klaerung` | `ko.create`, Meetingrecht, Leserecht an der Zieldatei (versteckte Folie inbegriffen) | Rumpf `{ dateiId, fassung, sldId }` | 200 Rückmeldung (neue Bindungsversion, alte in der Historie) | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
+| `POST` | `/api/meetings/:id/rueckmeldungen/:rid/verwerfen` | `ko.create`, Meetingrecht | — | 200 Rückmeldung als `verworfener_vorschlag` | 400 `VALIDATION` (kein Vorschlag); 404; 409 `STAND_VERALTET` |
+| `GET` | `/api/meetings/:id/folien/:dateiId/:sldId` | `ko.read`, Meetingrecht, Leserecht an der Datei | — | 200 `{ rueckmeldungen }` — über präsentierte Datei oder Original | 404 `NOT_FOUND` |
+| `GET` | `/api/meetings/:id/zeitstellen/:zeitMs` | `ko.read`, Meetingrecht | — | 200 `{ rueckmeldungen }` | 400 `VALIDATION`; 404 `NOT_FOUND` |
+| `POST` | `/api/meetings/:id/fassungsabgleich` | `ko.create`, Meetingrecht, Leserecht am aktuellen Quellobjekt des Originals und an der neuen Fassung (ein abgelöstes Objekt zählt nicht) | Rumpf `{ originalObjectId, neueFassungObjectId }` | 200 `{ dateiId, quelleId, fassung, eintraege: [{ rueckmeldungId, sldId, stand }] }` — `dateiId` logisches Original, `quelleId` das Objekt der neuen Fassung (Rechte und Öffnen dort); Einträge nur aus lesbaren Mitschriften | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
 
 ## 4 Testabdeckung und Abdeckungsziel
 
