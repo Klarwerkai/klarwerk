@@ -944,6 +944,13 @@ export interface AnhangQuellen {
    */
   ko?: (koId: string) => Promise<AnhangTraeger | undefined>;
   /**
+   * BPA-17 (G05): EIN Wissensobjekt IM PAPIERKORB, frisch gelesen — `undefined`, wenn es nicht im
+   * Papierkorb liegt (aktiv oder endgültig entfernt). Nur `privatesFolgeprodukt` fragt danach: eine
+   * gewöhnliche Löschung der Quelle hebt eine berechtigt erzeugte private Kopie nicht auf, die
+   * Rechte werden aber weiter an den Fakten der gelöschten Quelle geprüft.
+   */
+  papierkorb?: (koId: string) => Promise<AnhangTraeger | undefined>;
+  /**
    * JOB 2706 D1: der SCHREIBSTAND der Ablage — eine Zahl, die bei jedem Schreiben steigt, das einen
    * Traeger erzeugen oder entfernen kann. Der Kandidaten-Speicher merkt sie je Eintrag und verwirft
    * den Eintrag, sobald sie sich geaendert hat. Ohne `stand` arbeitet der Speicher nicht.
@@ -1122,6 +1129,11 @@ export interface AnhangUrteil {
    * eine Fünf-Minuten-Frist, obwohl das Objekt selbst `no-store` verlangt.
    */
   vertraulich: boolean;
+  /**
+   * BPA-17 (G05): gesetzt, wenn ein privates Folgeprodukt sichtbar bleibt, OBWOHL seine Quelle
+   * gewöhnlich gelöscht (im Papierkorb) ist — die Kennung der Quelle. Die Route weist das aus.
+   */
+  quelleGeloescht?: string;
 }
 
 function entwurfNenntObjekt(entwurf: AnhangEntwurf, objectId: string): boolean {
@@ -1249,13 +1261,29 @@ const STUFE_FUER_UNBEKANNT: Confidentiality = "vertraulich";
  *   · lesen darf ausschliesslich der Eigentümer (`lifecycle.owner`, serverseitig gesetzt) — keine
  *     Rolle, auch kein Administrator, öffnet eine fremde private Ableitung;
  *   · und nur, solange er das Quellobjekt JETZT sehen darf (frisch gelesen, `darfSehen`). Wird ihm
- *     die Quelle entzogen (Stufe, Space, Quellleser, Papierkorb), ist auch die Kopie gesperrt.
+ *     die Quelle entzogen (Stufe, Space, Quellleser), ist auch die Kopie gesperrt.
  * Fehlt der Lesezugang zur Quelle (`quellen.ko`), ist die Antwort NEIN (fail-closed).
  *
- * `undefined` heisst: kein privates Folgeprodukt — dann gilt `beurteileAnhang` unverändert.
+ * Ben-Befund G05 (Nacharbeit 6) — DREI FÄLLE AN DER QUELLE, DREI WIRKUNGEN:
+ *   · GEWÖHNLICH GELÖSCHT (Papierkorb): die berechtigt erzeugte Kopie bleibt für ihren Eigentümer
+ *     lesbar, gekennzeichnet (`quelleGeloescht`). Die Rechte prüft weiter `darfSehen` — an den
+ *     Fakten der gelöschten Quelle (Stufe, Space, Quellleser). Ein Rechteentzug wirkt also auch
+ *     nach dem Löschen.
+ *   · RECHTE ENTZOGEN: gesperrt, ob die Quelle aktiv oder im Papierkorb ist.
+ *   · ENDGÜLTIG ENTFERNT (Papierkorb geleert, harte oder personenbezogene Löschung): es gibt keine
+ *     Rechtegrundlage mehr, an der sich prüfen liesse — gesperrt (fail-closed).
+ *
+ * Ben-Befund AC08 (Nacharbeit 6) — DER HOCHGELADENE DOKUMENTSTAND. Auch die bearbeitete Präsentation
+ * selbst trägt `privatQuelle`, sobald sie hochgeladen ist — so ist sie geschützt, wenn der Lauf vor
+ * der Übernahme anhält oder die Übernahme scheitert. Ist sie ÜBERNOMMEN (sie hängt am Quellartikel
+ * oder die Belegkette der Quelle nennt sie), ist sie ein gewöhnlicher Anhang: dann `undefined`, und
+ * es gilt unverändert `beurteileAnhang` — der kontrollierte Übergang in den Dokumentzugriffsweg.
+ *
+ * `undefined` heisst: kein (oder kein privates mehr) Folgeprodukt — dann gilt `beurteileAnhang`.
  */
 export async function privatesFolgeprodukt(
   user: SessionUser,
+  objectId: string,
   lifecycle: { owner?: string | undefined; privatQuelle?: string | undefined } | undefined,
   quellen: AnhangQuellen,
 ): Promise<AnhangUrteil | undefined> {
@@ -1264,12 +1292,28 @@ export async function privatesFolgeprodukt(
     return undefined;
   }
   const nein: AnhangUrteil = { sichtbar: false, vertraulich: true };
-  const eigentuemer = lifecycle?.owner;
-  if (!eigentuemer || eigentuemer !== user.id || typeof quellen.ko !== "function") {
+  if (typeof quellen.ko !== "function") {
     return nein;
   }
-  const quelle = await quellen.ko(quelleId);
-  return quelle && darfSehen(user, quelle) ? { sichtbar: true, vertraulich: true } : nein;
+  const aktiv = await quellen.ko(quelleId);
+  const geloescht = aktiv ? undefined : await quellen.papierkorb?.(quelleId);
+  const traeger = aktiv ?? geloescht;
+  // Übernommen? Dann ist es ein Anhang des Quellartikels und kein privates Folgeprodukt mehr.
+  if (traeger) {
+    if ((traeger.attachments ?? []).some((a) => a.objectId === objectId)) {
+      return undefined;
+    }
+    if ((await quellen.belege(quelleId)).some((b) => b.objectId === objectId)) {
+      return undefined;
+    }
+  }
+  const eigentuemer = lifecycle?.owner;
+  if (!eigentuemer || eigentuemer !== user.id || !traeger || !darfSehen(user, traeger)) {
+    return nein;
+  }
+  return aktiv
+    ? { sichtbar: true, vertraulich: true }
+    : { sichtbar: true, vertraulich: true, quelleGeloescht: quelleId };
 }
 
 export async function beurteileAnhang(

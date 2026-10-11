@@ -29,7 +29,12 @@
 //       über `GET /api/objects/:id` und `/raw` liest nur der Eigentümer (auch Admin nicht), und
 //       ein Rechteentzug an der Quelle sperrt auch die Kopien.                          (K8 K9)
 //   N9  Fehler nach der Übernahme: 500 mit erfolgten Wirkungen und Ergebniskennungen;
-//       Wiederholung derselben Laufkennung erzeugt keine weiteren Kopien.                (K7)
+//       Wiederholung derselben Laufkennung erzeugt keine weiteren Kopien; der übernommene
+//       Stand folgt der gewöhnlichen Anhangsregel.                                       (K7 K8)
+//   N10 Quelle gewöhnlich gelöscht → Kopie gekennzeichnet lesbar (nur Eigentümerin); Rechte
+//       entzogen → gesperrt, auch im Papierkorb; endgültig entfernt → gesperrt.          (K8 K9)
+//   N6 prüft zusätzlich: hochgeladener, nicht übernommener Stand (Stopp oder gescheiterte
+//       Übernahme) ist privat, auch gegen Admin, und Rechteentzug sperrt ihn.            (K7 K8)
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -38,6 +43,7 @@ import { SpeicherOfficeAblage } from "../../services/app/src/office-ablage";
 import { anhangVerlauf, leseOfficeEditorUmgebung } from "../../services/app/src/office-artikel";
 import {
   type NachbearbeitungsErgebnis,
+  type Wirkung,
   fuehreNachbearbeitungAus,
   leseAuftrag,
 } from "../../services/app/src/office-nachbearbeitung";
@@ -149,6 +155,7 @@ async function baueWelt(): Promise<Welt> {
     objectRoutes(objekte, guards, {
       kos: async () => ko.list(),
       ko: (koId) => ko.get(koId),
+      papierkorb: (koId) => ko.papierkorbFassungVon(koId),
       versionen: async (koId) =>
         (await ko.versionsOf(koId)).map((v) => ({ author: v.author, stand: v.snapshot })),
       belege: (koId) => ko.evidenceOf(koId),
@@ -160,6 +167,21 @@ async function baueWelt(): Promise<Welt> {
 }
 
 const als = (nutzer: string) => ({ "x-test-nutzer": nutzer });
+
+/** Über den BESTEHENDEN Objektzugriffsweg lesen: Metadaten/Daten-URL und Rohbytes. */
+async function liesObjekt(w: Welt, nutzer: string, objectId: string) {
+  const meta = await w.app.inject({
+    method: "GET",
+    url: `/api/objects/${objectId}`,
+    headers: als(nutzer),
+  });
+  const roh = await w.app.inject({
+    method: "GET",
+    url: `/api/objects/${objectId}/raw`,
+    headers: als(nutzer),
+  });
+  return { status: [meta.statusCode, roh.statusCode], meta, roh };
+}
 
 async function speichere(w: Welt, bytes: Buffer, owner: string) {
   return w.objekte.put({
@@ -703,8 +725,8 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
       },
       jetzt: () => Date.now(),
     };
-    async function mitStoppAb(n: number) {
-      const neu = await artikelMitPraesentation(w);
+    async function mitStoppAb(n: number, autor = "anna") {
+      const neu = await artikelMitPraesentation(w, autor);
       const artikel = await w.ko.get(neu.koId);
       const anhang = artikel?.attachments?.[0];
       if (!artikel || !anhang) {
@@ -721,7 +743,7 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
           folgeprodukte: { handout: true },
         }),
       );
-      return { ergebnis, version: (await w.ko.get(neu.koId))?.version };
+      return { ergebnis, koId: neu.koId, version: (await w.ko.get(neu.koId))?.version };
     }
     // Abfragen: 1 vor b1, 2 vor n1, 3 vor dem Hochladen, 4 nach dem Hochladen vor der Übernahme,
     // 5 vor dem Handout.
@@ -745,7 +767,8 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
 
     // Ben-Befund AC07: Stopp WÄHREND des Hochladens bestätigt (Abfrage 4 nach dem Upload) — die
     // Übernahme unterbleibt, die hochgeladene Datei ist als Teilergebnis ausgewiesen.
-    const nachHochladen = await mitStoppAb(4);
+    // Der Artikel gehört Bert; Anna bearbeitet nach — so lässt sich Anna die Quelle danach entziehen.
+    const nachHochladen = await mitStoppAb(4, "bert");
     expect(nachHochladen.ergebnis).toMatchObject({
       zustand: "gestoppt",
       gestopptVor: "uebernahme",
@@ -759,6 +782,56 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
     const hochgeladen = nachHochladen.ergebnis.nichtUebernommen?.objectId ?? "";
     expect(await w.objekte.metadata(hochgeladen)).toBeDefined();
     expect(await folienText(await bytesVon(w, hochgeladen), 1)).toContain("vierteljährlich");
+    // Ben-Befund AC08 (Nacharbeit 6): die zurückgebliebene Kopie ist privat — über den bestehenden
+    // Objektzugriffsweg liest nur Anna; weder der Artikelautor noch die Administratorin.
+    expect((await w.objekte.metadata(hochgeladen))?.lifecycle?.privatQuelle).toBe(
+      nachHochladen.koId,
+    );
+    expect((await liesObjekt(w, "anna", hochgeladen)).status).toEqual([200, 200]);
+    expect((await liesObjekt(w, "bert", hochgeladen)).status).toEqual([404, 404]);
+    expect((await liesObjekt(w, "chef", hochgeladen)).status).toEqual([404, 404]);
+    // Rechteentzug an der Quelle sperrt auch diese Kopie.
+    await w.ko.setConfidentiality(nachHochladen.koId, "vertraulich", "chef");
+    expect((await liesObjekt(w, "anna", hochgeladen)).status).toEqual([404, 404]);
+
+    // Gescheiterte Übernahme: der hochgeladene Stand bleibt ebenso privat.
+    {
+      const neu = await artikelMitPraesentation(w, "bert");
+      const artikel = await w.ko.get(neu.koId);
+      const anhang = artikel?.attachments?.[0];
+      if (!artikel || !anhang) {
+        throw new Error("Artikel fehlt");
+      }
+      const gemeldet: Wirkung[] = [];
+      const kaputt = {
+        ...deps,
+        ko: {
+          get: (id: string) => w.ko.get(id),
+          uebernimmOfficeFassung: async () => {
+            throw Object.assign(new Error("Übernahme gestört (Probe)"), { code: "GESTOERT" });
+          },
+        },
+      };
+      await expect(
+        fuehreNachbearbeitungAus(
+          kaputt,
+          {
+            artikel,
+            anhang,
+            nutzerId: "anna",
+            gestoppt: () => false,
+            melde: (x) => gemeldet.push(x),
+          },
+          leseAuftrag({ laufId: "uebernahme-kaputt", basisFassung: 1, schritte: [BESCHLUSS] }),
+        ),
+      ).rejects.toMatchObject({ code: "GESTOERT" });
+      expect(gemeldet.map((x) => x.art)).toEqual(["hochgeladen"]);
+      const rest = gemeldet[0]?.art === "hochgeladen" ? gemeldet[0].objectId : "";
+      expect((await w.ko.get(neu.koId))?.version).toBe(1);
+      expect((await liesObjekt(w, "anna", rest)).status).toEqual([200, 200]);
+      expect((await liesObjekt(w, "bert", rest)).status).toEqual([404, 404]);
+      expect((await liesObjekt(w, "chef", rest)).status).toEqual([404, 404]);
+    }
 
     const nachSpeichern = await mitStoppAb(5);
     expect(nachSpeichern.ergebnis).toMatchObject({
@@ -888,6 +961,11 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
       const ko = await w.ko.get(koId);
       expect(ko?.version).toBe(2);
       expect(ko?.attachments?.[0]?.objectId).toBe(wirkungen[1]?.objectId);
+      // Ben-Befund AC08 (Nacharbeit 6): der übernommene Stand trägt `privatQuelle`, hängt aber am
+      // Artikel — damit gilt die gewöhnliche Anhangsregel: wer den internen Artikel sieht, liest ihn.
+      const uebernommen = wirkungen[1]?.objectId ?? "";
+      expect((await w.objekte.metadata(uebernommen))?.lifecycle?.privatQuelle).toBe(koId);
+      expect((await liesObjekt(w, "bert", uebernommen)).status).toEqual([200, 200]);
 
       // Dieselbe Laufkennung noch einmal: derselbe Stand, kein weiteres Objekt, keine Fassung.
       const puts = w.objekte.puts;
@@ -900,5 +978,51 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
     } finally {
       w.objekte.stoereBeiPut = undefined;
     }
+  });
+
+  it("N10 (K8 K9): Quelle gelöscht, Rechte entzogen, endgültig entfernt — drei Wirkungen", async () => {
+    // Zwei Artikel von Bert; Anna bearbeitet beide nach und erhält je ein privates Handout.
+    const handoutVon = async (laufId: string) => {
+      const { koId, anhangId } = await artikelMitPraesentation(w, "bert");
+      const r = await nachbearbeiten(w, "anna", koId, anhangId, {
+        laufId,
+        basisFassung: 1,
+        schritte: [BESCHLUSS],
+        folgeprodukte: { handout: true },
+      });
+      expect(r.status).toBe(200);
+      const handout = r.body.folgeprodukte.find((f) => f.art === "handout")?.objectId ?? "";
+      return { koId, handout };
+    };
+    const geloescht = await handoutVon("n10-geloescht");
+    const entzogen = await handoutVon("n10-entzogen");
+
+    // 1 · GEWÖHNLICHE LÖSCHUNG (Papierkorb): die Kopie bleibt für Anna lesbar — gekennzeichnet.
+    await w.ko.delete(geloescht.koId, "bert");
+    expect(await w.ko.get(geloescht.koId)).toBeUndefined();
+    const nachLoeschung = await liesObjekt(w, "anna", geloescht.handout);
+    expect(nachLoeschung.status).toEqual([200, 200]);
+    expect(nachLoeschung.meta.headers["x-klarwerk-quelle"]).toBe(`geloescht; ko=${geloescht.koId}`);
+    const kennzeichen = `geloescht; ko=${geloescht.koId}`;
+    expect(nachLoeschung.roh.headers["x-klarwerk-quelle"]).toBe(kennzeichen);
+    expect(nachLoeschung.meta.json()).toMatchObject({
+      quelle: { koId: geloescht.koId, status: "geloescht" },
+      ref: { lifecycle: { privatQuelle: geloescht.koId, owner: "anna" } },
+    });
+    // Niemand sonst — auch nach der Löschung nicht.
+    expect((await liesObjekt(w, "bert", geloescht.handout)).status).toEqual([404, 404]);
+    expect((await liesObjekt(w, "chef", geloescht.handout)).status).toEqual([404, 404]);
+
+    // 2 · RECHTEENTZUG, danach gelöscht: die Rechte gelten an der gelöschten Quelle weiter.
+    await w.ko.setConfidentiality(entzogen.koId, "vertraulich", "chef");
+    await w.ko.delete(entzogen.koId, "bert");
+    const nachEntzug = await liesObjekt(w, "anna", entzogen.handout);
+    expect(nachEntzug.status).toEqual([404, 404]);
+    expect(nachEntzug.meta.headers["x-klarwerk-quelle"]).toBeUndefined();
+
+    // 3 · ENDGÜLTIG ENTFERNT (Papierkorb geleert): keine Rechtegrundlage mehr — gesperrt.
+    await w.ko.purgeTrashed(geloescht.koId, "chef");
+    expect(await w.ko.papierkorbFassungVon(geloescht.koId)).toBeUndefined();
+    expect((await liesObjekt(w, "anna", geloescht.handout)).status).toEqual([404, 404]);
   });
 });

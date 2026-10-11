@@ -50,6 +50,14 @@ Freigaberecht: 403 `PROPOSAL_REQUIRED` (Nur-Vorschlag bleibt). Laufende Editor-S
   Medienroute liest NUR der Eigentümer — keine Rolle, auch kein Admin — und nur, solange er den
   Quellartikel jetzt sehen darf (`privatesFolgeprodukt`, `services/app/src/sichtbarkeit.ts`).
   Rechteentzug an der Quelle sperrt damit auch die Kopien.
+- Quelle gewöhnlich gelöscht (Papierkorb): die Kopie bleibt für ihren Eigentümer lesbar, gekennzeichnet
+  (Kopfzeile `X-Klarwerk-Quelle: geloescht; ko=<id>`, in `GET /api/objects/:id` zusätzlich
+  `quelle: { koId, status: "geloescht" }`); die Rechte gelten an den Fakten der gelöschten Quelle
+  weiter. Quelle endgültig entfernt (Papierkorb geleert, harte/personenbezogene Löschung): gesperrt,
+  weil keine Rechtegrundlage mehr prüfbar ist.
+- Auch der hochgeladene Dokumentstand trägt `privatQuelle`: bei Stopp vor der Übernahme oder
+  gescheiterter Übernahme bleibt er privat. Nach der Übernahme (am Artikel oder in dessen Belegkette)
+  gilt die gewöhnliche Anhangsregel.
 - Zahlenprüfung: Vorzeichen zählen (`-10` → `10` ist eine Änderung); verglichen wird die Zahlenfolge
   Stelle für Stelle, auch Entfernen/Umstellen braucht einen Beleg.
 - Stopp wird auch NACH dem Hochladen und VOR der Übernahme abgefragt (`gestopptVor: "uebernahme"`,
@@ -73,5 +81,5 @@ vom Host geschriebenen Stand. Beleg: `test-results/assistenz-dokumentnachbearbei
 - Laufgedächtnis (Wiederholung/Stopp) je Prozess; nach Neustart zeigt der Anhangsverlauf das Gespeicherte.
 - Keine automatische Meetingbindung (BPA-16); Beschlussstellen kommen als belegte Angaben im Auftrag.
 - Keine Oberfläche in dieser Lieferung; die Fähigkeit ist über die API erreichbar.
-- Eine bei Stopp vor der Übernahme hochgeladene Datei ist ein ungebundenes Objekt ohne Stufe (fail-safe
-  vertraulich nach der bestehenden Regel), kein privates Folgeprodukt.
+- Eine endgültig gelöschte Quelle sperrt ihre privaten Kopien; ob eine personenbezogene Löschung sie
+  zusätzlich physisch entfernen soll, regelt der bestehende Löschweg, nicht diese Lieferung.

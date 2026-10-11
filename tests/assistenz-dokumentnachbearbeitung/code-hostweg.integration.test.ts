@@ -24,6 +24,7 @@
 // wird nur als Bildschirmfoto abgelegt, nicht beurteilt. Ohne Docker, Abbild oder Chromium scheitert
 // die Datei am Start — dann fehlt ein Prüfmittel, das ist kein Befund am Produkt.
 
+import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
@@ -474,42 +475,44 @@ describe("BPA-17 · Hostweg Collabora CODE", { timeout: 900_000 }, () => {
       "Wartungsintervall: quartalsweise",
     );
 
-    writeFileSync(
-      join(BELEGE, "HOSTBELEG.json"),
-      `${JSON.stringify(
-        {
-          auftrag: "produkt:20261011:assistenz-dokumentnachbearbeitung",
-          kandidat: process.env.KLARWERK_KANDIDAT ?? null,
-          zeitpunkt: new Date().toISOString(),
-          host: {
-            abbild: ABBILD,
-            productName: host.productName ?? null,
-            productVersion: host.productVersion ?? null,
-            productVersionHash: host.productVersionHash ?? null,
-          },
-          rolle: { nutzer: "anna", rolle: "experte", schreibweg: "direkt" },
-          artikel: koId,
-          anhang: anhangId,
-          fassungen: {
-            "1_quelle": ref.id,
-            "2_nachbearbeitet": fassung2,
-            "3_vom_host_gespeichert": fassung3,
-            "4_nachbearbeitet_auf_hoststand": fassung4,
-          },
-          folgeprodukte: (nb.body.folgeprodukte as { art: string; objectId: string }[]).map(
-            (f) => ({ art: f.art, objectId: f.objectId }),
-          ),
-          sprechernotizen: nb.body.sprechernotizen,
-          belegstellen: l.body.belegstellen,
-          bilder,
-          grenzen: [
-            "Host ist Collabora CODE, nicht Microsoft PowerPoint.",
-            "Darstellung nur als Bildschirmfoto abgelegt, nicht beurteilt.",
-          ],
-        },
-        null,
-        2,
-      )}\n`,
-    );
+    const sha256 = async (objectId: string) =>
+      createHash("sha256")
+        .update(await bytesVon(objectId))
+        .digest("hex");
+    const beleg = {
+      auftrag: "produkt:20261011:assistenz-dokumentnachbearbeitung",
+      kandidat: process.env.KLARWERK_KANDIDAT ?? null,
+      zeitpunkt: new Date().toISOString(),
+      host: {
+        abbild: ABBILD,
+        productName: host.productName ?? null,
+        productVersion: host.productVersion ?? null,
+        productVersionHash: host.productVersionHash ?? null,
+      },
+      rolle: { nutzer: "anna", rolle: "experte", schreibweg: "direkt" },
+      artikel: koId,
+      anhang: anhangId,
+      fassungen: {
+        "1_quelle": { objectId: ref.id, sha256: await sha256(ref.id) },
+        "2_nachbearbeitet": { objectId: fassung2, sha256: await sha256(fassung2) },
+        "3_vom_host_gespeichert": { objectId: fassung3, sha256: await sha256(fassung3) },
+        "4_nachbearbeitet_auf_hoststand": { objectId: fassung4, sha256: await sha256(fassung4) },
+      },
+      folgeprodukte: (nb.body.folgeprodukte as { art: string; objectId: string }[]).map((f) => ({
+        art: f.art,
+        objectId: f.objectId,
+      })),
+      sprechernotizen: nb.body.sprechernotizen,
+      belegstellen: l.body.belegstellen,
+      bilder,
+      grenzen: [
+        "Host ist Collabora CODE, nicht Microsoft PowerPoint.",
+        "Darstellung nur als Bildschirmfoto abgelegt, nicht beurteilt.",
+      ],
+    };
+    writeFileSync(join(BELEGE, "HOSTBELEG.json"), `${JSON.stringify(beleg, null, 2)}\n`);
+    // Nacharbeit 6 (offener Beleg): die Datei überlebte den Abbau des Prüfservers nicht. Derselbe
+    // Beleg steht deshalb zusätzlich in der Testausgabe, die mit dem Prüfprotokoll gesichert wird.
+    console.log(`HOSTBELEG ${JSON.stringify(beleg)}`);
   });
 });

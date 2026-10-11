@@ -730,9 +730,8 @@ export interface NachbearbeitungsErgebnis {
   };
   /**
    * Ben-Befund AC07: Stopp NACH dem Hochladen, VOR der Übernahme. Die Datei liegt im Speicher, ist
-   * aber nicht am Artikel — ein ungebundenes Objekt des Auftraggebers ohne Stufe, das nach der
-   * bestehenden Regel für ungebundene Objekte fail-safe als vertraulich gilt. Es wird ausgewiesen,
-   * nicht verschwiegen.
+   * aber nicht am Artikel — eine PRIVATE Ableitung (`privatQuelle`): nur ihr Eigentümer liest sie,
+   * solange er die Quelle sehen darf. Sie wird ausgewiesen, nicht verschwiegen.
    */
   readonly nichtUebernommen?: { readonly objectId: string; readonly hinweis: string };
   readonly grenzen: readonly string[];
@@ -1193,6 +1192,11 @@ export async function fuehreNachbearbeitungAus(
       data: `data:${ctx.anhang.mime};base64,${neueBytes.toString("base64")}`,
       purpose: "attachment",
       owner: ctx.nutzerId,
+      // Ben-Befund AC08 (Nacharbeit 6): schon der hochgeladene Stand ist eine private Ableitung der
+      // Quelle — bei Stopp oder gescheiterter Übernahme liest ihn nur sein Eigentümer, solange er
+      // die Quelle sehen darf. Nach der Übernahme hängt er an der Quelle bzw. steht in ihrer
+      // Belegkette; dann gilt die gewöhnliche Anhangsregel (`privatesFolgeprodukt`).
+      privatQuelle: ctx.artikel.id,
     });
     ctx.melde?.({ art: "hochgeladen", objectId: ref.id });
     // Ben-Befund AC07: ein Stopp, der WÄHREND des Hochladens bestätigt wurde, verhindert die
@@ -1210,7 +1214,7 @@ export async function fuehreNachbearbeitungAus(
         nichtUebernommen: {
           objectId: ref.id,
           hinweis:
-            "Die bearbeitete Datei liegt im Speicher, ist aber NICHT am Artikel; der Artikel ist unverändert. Sie ist ein ungebundenes Objekt des Auftraggebers ohne Stufe und gilt nach der bestehenden Regel fail-safe als vertraulich.",
+            "Die bearbeitete Datei liegt im Speicher, ist aber NICHT am Artikel; der Artikel ist unverändert. Sie ist privat: nur der Auftraggeber liest sie, solange er den Artikel sehen darf.",
         },
         fachstatus: fachstatus(ctx.artikel.status),
       };

@@ -36,7 +36,7 @@ export function mediaRoutes(
       return { sichtbar: false, vertraulich: true };
     }
     // BPA-17: ein privates Folgeprodukt liest nur sein Eigentümer, solange die Quelle sichtbar ist.
-    const privat = await privatesFolgeprodukt(user, ref.lifecycle, quellen);
+    const privat = await privatesFolgeprodukt(user, objectId, ref.lifecycle, quellen);
     if (privat) {
       return privat;
     }
