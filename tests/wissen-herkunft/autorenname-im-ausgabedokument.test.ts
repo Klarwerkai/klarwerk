@@ -17,6 +17,10 @@ import { buildServices } from "../../services/app/src/build-app";
 import { OutputService } from "../../services/output";
 
 const KENNWORT = "secret123";
+// aufnahme:20260922:gesamt-leserechte: `generate` verlangt die Sichtbarkeitsentscheidung des
+// Betrachters ausdrücklich. Hier geht es um die Autorenzeile, nicht um Leserechte — jede Quelle
+// ist sichtbar.
+const ALLES_SICHTBAR = () => true;
 
 async function bestand() {
   const services = buildServices();
@@ -91,7 +95,10 @@ describe("A1 · die Auflösung folgt der Leseregel des Verzeichnisses", () => {
 describe("A2 · Output Factory: sichtbarer Autorenname statt Kennung", () => {
   it("Autor und Originalautor stehen mit Namen im Dokument, die Kennungen im Datensatz", async () => {
     const { services, anna, bea, ko } = await bestand();
-    const doc = await services.output.generate({ kind: "management_summary", koIds: [ko.id] });
+    const doc = await services.output.generate(
+      { kind: "management_summary", koIds: [ko.id] },
+      ALLES_SICHTBAR,
+    );
 
     expect(doc.markdown).toContain("Autor: Bea Neu (urspr. Anna Alt)");
     // Kernpunkte der Management-Summary tragen dieselbe Zeile.
@@ -111,7 +118,10 @@ describe("A2 · Output Factory: sichtbarer Autorenname statt Kennung", () => {
     const { services, admin, anna, ko } = await bestand();
     await services.auth.deleteUser(anna.id, admin.id);
 
-    const doc = await services.output.generate({ kind: "instruction", koIds: [ko.id] });
+    const doc = await services.output.generate(
+      { kind: "instruction", koIds: [ko.id] },
+      ALLES_SICHTBAR,
+    );
     expect(doc.markdown).toContain(
       `Autor: Bea Neu (urspr. Gelöschtes Konto (${autorKurzRef(anna.id)}))`,
     );
@@ -142,7 +152,7 @@ describe("A4 · ohne verdrahtete Auflösung bleibt die Kennung (Bestandsverhalte
   it("OutputService ohne autorenNamen schreibt die Kennungen wie vor diesem Auftrag", async () => {
     const { services, anna, bea, ko } = await bestand();
     const ohne = new OutputService({ koService: services.ko });
-    const doc = await ohne.generate({ kind: "instruction", koIds: [ko.id] });
+    const doc = await ohne.generate({ kind: "instruction", koIds: [ko.id] }, ALLES_SICHTBAR);
     expect(doc.markdown).toContain(`Autor: ${bea.id} (urspr. ${anna.id})`);
     expect(doc.provenance[0]?.authorName).toBeUndefined();
   });

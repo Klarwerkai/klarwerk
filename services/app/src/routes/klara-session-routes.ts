@@ -264,6 +264,11 @@ export function klaraZurufRoutes(deps: KlaraZurufRouteDeps, guards: Guards): Fas
       return freigabe;
     },
   };
+  // aufnahme:20260922:gesamt-leserechte / R-1175 (Nacharbeit 20, Integration main): der Erzeuger
+  // bekommt je Anfrage die Lesepolicy DIESES Betrachters (`schlageVor(…, sichtbar)`, Stufe, Autor,
+  // führender Space). Vorher ging der Inhalt eines internen Objekts aus einem fremden Space an den
+  // Formulierer, sobald jemand seine Kennung nannte. Ein verborgenes Objekt fällt wie eine
+  // unbekannte Kennung weg; gelesen wird weiterhin erst NACH der Einwilligung (im Erzeuger).
   const zuruf = new ZurufService({
     koService: deps.ko,
     einwilligungspruefer,

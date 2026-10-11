@@ -881,6 +881,13 @@ export class ConflictService {
     return (await this.repo.all()).filter((c) => c.koA === koId || c.koB === koId).map((c) => c.id);
   }
 
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 15): die Gegenrichtung für das Protokoll —
+  // je Konflikt NUR seine beiden Objektkennungen. Ein Altbeleg, der nur die Konflikt-Id trägt,
+  // wird damit seinen Objekten zugeordnet und nach deren Leserecht ausgegeben (audit-routes.ts).
+  async koZuordnungen(): Promise<{ id: string; koIds: string[] }[]> {
+    return (await this.repo.all()).map((c) => ({ id: c.id, koIds: [c.koA, c.koB] }));
+  }
+
   // R-1662 (geführter Weg vom Problem zur Lösung, Prüfpunkt 5 „gelöste Konflikte"): die von einem
   // MENSCHEN abgeschlossenen Konflikte, an denen eines der genannten Objekte beteiligt ist. Ein
   // systemischer Abschluss (`superseded`, `participant_deleted`, `withdrawn`, `edited_no_conflict`)

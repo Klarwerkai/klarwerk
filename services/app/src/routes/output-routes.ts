@@ -6,9 +6,9 @@ import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 // FR-EXT-03 / SCRUM-117: Output Factory. Quellen + Generierung sind read-only
 // (kein Schreibzugriff, keine Persistenz). Zugriff wie Bibliothek: ko.read.
 //
-// R-1175: beide Türen reichen die EINE Sichtbarkeitsentscheidung dieses Betrachters in den Dienst
-// (Space und Autorschaft, nicht nur die Vertraulichkeitsstufe). Ein unsichtbares Objekt fehlt in
-// der Quellenliste und antwortet beim Erzeugen wie ein unbekanntes.
+// aufnahme:20260922:gesamt-leserechte / R-1175: Quellenliste und Erzeugung tragen die Lesepolicy
+// DIESES Betrachters (Stufe, Autor, führender Space) — die EINE Regel aus `../sichtbarkeit`. Ein
+// unsichtbares Objekt fehlt in der Quellenliste und antwortet beim Erzeugen wie ein unbekanntes.
 export function outputRoutes(output: OutputService, guards: Guards): FastifyPluginAsync {
   return async (app) => {
     app.get("/api/output/sources", async (request, reply) => {
