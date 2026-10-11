@@ -224,7 +224,11 @@ export async function legeFiktivenBestand(app: App): Promise<Bestand> {
   });
   await aktion(app, kopf.anna, nordId, {
     action: "add-source",
-    source: { label: "Prüfprotokoll N-12", excerpt: "Druck vor Anfahren notieren.", objectId },
+    source: {
+      label: "Prüfprotokoll N-12",
+      excerpt: "Druck vor Anfahren notieren.",
+      objectId: objektId,
+    },
   });
   // Verantwortung benennen, dann überarbeiten UND freigeben: zweite Inhaltsfassung, validiert.
   await aktion(app, kopf.admin, nordId, {
