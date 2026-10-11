@@ -2158,6 +2158,12 @@ export interface ImpactReport {
   askTotal: number;
   answeredWithoutGap: number;
   answerRate: number;
+  // R-0723/R-0750: Fragen je Woche (Wochenstart Montag). Optional: ein älterer Server liefert sie
+  // nicht — dann gibt es keinen Wochenverlauf der Quote, und die Fläche sagt das.
+  askByWeek?: Record<string, { asked: number; answeredWithoutGap: number }>;
+  // R-0750: validierte Objekte ohne belegten Prüfzeitpunkt — in keiner Woche gezählt. Optional wie
+  // `askByWeek` (älterer Server).
+  validatedUnknownWeek?: number;
 }
 
 export interface PublicUser {
@@ -3052,6 +3058,9 @@ export interface ManagementSnapshot {
     avgTrust: number;
     healthScore: number;
     healthBand: MgmtBand;
+    // R-0736/R-0755: wie viele der gezählten Objekte Demodaten sind. Optional — ein älterer Server
+    // liefert das Feld nicht, und dann behauptet die Fläche auch nichts darüber.
+    demoKos?: number;
   };
   capital: { score: number; band: MgmtBand; parts: MgmtScorePart[] };
   valuationFacts: { validatedKos: number; totalKos: number; avgTrust: number };
