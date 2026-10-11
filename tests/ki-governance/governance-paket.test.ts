@@ -47,6 +47,24 @@ function abschnitt(titel: string): string {
   return ende < 0 ? rest : rest.slice(0, ende);
 }
 
+/** Speicherstelle der Modellbegründung und ihre Anzeige — je Urteilsaufgabe. */
+const ANZEIGEWEGE: Record<string, readonly (readonly [string, string])[]> = {
+  conflict: [
+    ["services/conflicts/src/service.ts", "rationale: verdict.begruendung"],
+    ["apps/web/src/lib/conflictBoard.ts", "rationale: d.rationale"],
+    ["apps/web/src/pages/Conflicts.tsx", "{origin.rationale}"],
+  ],
+  duplicate: [
+    ["services/conflicts/src/overlap-service.ts", "rationale: verdict.begruendung"],
+    ["apps/web/src/lib/duplicateBoard.ts", "rationale: d.rationale"],
+    ["apps/web/src/pages/Duplicates.tsx", "{info.rationale}"],
+  ],
+};
+
+function quelle(pfad: string): string {
+  return readFileSync(join(WURZEL, pfad), "utf8");
+}
+
 function zeilenVon(titel: string): string[] {
   return abschnitt(titel).split("\n");
 }
@@ -81,6 +99,20 @@ describe("R-0659 · das KI-Governance-Paket", () => {
     const gekennzeichnet = zeilen.filter(([, ergebnis]) => ergebnis === "gekennzeichnet");
     const erwartet = [...KI_ERZEUGENDE_AUFGABEN].sort();
     expect(gekennzeichnet.map(([aufgabe]) => aufgabe).sort()).toEqual(erwartet);
+  });
+
+  it("angezeigte Modellbegründung heisst nicht „kein gelesener Text“", () => {
+    // Ben-Befund Nacharbeit 1: die Lesart im Code nannte `conflict` und `duplicate` textlos, obwohl
+    // die Oberfläche ihre Modellbegründung zeigt. Gemessen wird der Anzeigeweg selbst: solange er
+    // besteht, darf das Paket die Aufgabe nicht als textlos führen.
+    const tabelle = abschnitt("Prüfung der Kennzeichnungspflicht");
+    const paare = [...tabelle.matchAll(ZEILE)].map((m) => [m[1] ?? "", m[2] ?? ""] as const);
+    const ergebnis = new Map(paare);
+    for (const [aufgabe, weg] of Object.entries(ANZEIGEWEGE)) {
+      const angezeigt = weg.every(([datei, stelle]) => quelle(datei).includes(stelle));
+      expect([aufgabe, angezeigt]).toEqual([aufgabe, true]);
+      expect([aufgabe, ergebnis.get(aufgabe)]).not.toEqual([aufgabe, "kein gelesener Text"]);
+    }
   });
 
   it("die genannte Fassung des Hinweistexts ist die des Produkts", () => {

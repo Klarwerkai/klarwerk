@@ -185,8 +185,8 @@ bereitgestellten Eingabedaten nicht wesentlich". Die Lesart steht mit Begründun
 | `extract` | nicht gekennzeichnet | holt Punkte aus einer vorhandenen Datei |
 | `group` | nicht gekennzeichnet | ordnet vorhandene Dokumente |
 | `select` | nicht gekennzeichnet | wählt aus, erzeugt keinen Text |
-| `conflict` | kein gelesener Text | Urteil über ein Paar |
-| `duplicate` | kein gelesener Text | Urteil über ein Paar |
+| `conflict` | nicht gekennzeichnet | modellgenerierte Begründung wird angezeigt; fehlt dennoch in `KI_ERZEUGENDE_AUFGABEN` |
+| `duplicate` | nicht gekennzeichnet | modellgenerierte Begründung wird angezeigt; fehlt dennoch in `KI_ERZEUGENDE_AUFGABEN` |
 | `probe` | kein gelesener Text | Anbieterprobe |
 | `gaps` | kein gelesener Text | Lückenerkennung je Bereich |
 
@@ -194,10 +194,25 @@ Gemessen sind die Marke an Modellausgaben und ihr Fehlen am deterministischen R�
 (`tests/reasoner/mega61-ki-kennzeichnung.test.ts`, `tests/legal/r0604-ki-kennzeichnung-wahrheit.test.tsx`)
 sowie der Export (`tests/legal/mega62-export-kennzeichnung.test.ts`).
 
-**Offen an der Lesart:** `conflict` und `duplicate` speichern eine Begründung mit wörtlichen
-Belegzitaten (`services/conflicts/src/types.ts`). Wird diese Begründung Menschen angezeigt, ist
-„kein gelesener Text" zu prüfen. Das ist eine Frage an die Lesart, kein festgestellter Verstoß. Bis sie
-geklärt ist, gilt der Satz im Code: eine Kennzeichnung zu viel ist kein Verstoß, eine zu wenig schon.
+**Belegter Quellenwiderspruch bei `conflict`:** `services/conflicts/src/service.ts` speichert
+`verdict.begruendung` als `detector.rationale` mit `method: "model"` (Zeilen 626–632).
+`apps/web/src/lib/conflictBoard.ts` übernimmt diese Begründung für automatisch erkannte Konflikte
+(Zeilen 26–36); `apps/web/src/pages/Conflicts.tsx` zeigt `origin.rationale` im Detailbereich an
+(Zeilen 569–573). Die Anzeige modellgenerierter Begründungen ist damit im bestehenden Anzeigeweg
+belegt. Dennoch enthält `KI_ERZEUGENDE_AUFGABEN` in `services/model-runs/src/types.ts` nur `answer`,
+`interview`, `describe` und `enrich` (Zeilen 77–82), nicht `conflict`. Die Begründung im dortigen
+Codekommentar, diese Urteile erzeugten keinen gelesenen Text (Zeilen 59–61), widerspricht für
+`conflict` dem Anzeigeweg.
+
+**Derselbe Widerspruch bei `duplicate`:** `services/conflicts/src/overlap-service.ts` setzt im
+Modellzweig `rationale: verdict.begruendung` mit `method: "model"` (Zeilen 707–716);
+`apps/web/src/lib/duplicateBoard.ts` übernimmt `detector.rationale` (Zeile 120), und
+`apps/web/src/pages/Duplicates.tsx` zeigt sie im Detailbereich an (Zeilen 354–358). Auch `duplicate`
+steht nicht in `KI_ERZEUGENDE_AUFGABEN`.
+
+**Offen bleibt die rechtliche Bewertung** dieses technischen Sachverhalts im Rahmen der
+Kennzeichnungslesart (Register T4). Daraus wird hier weder ein festgestellter Rechtsverstoß noch ein
+pauschaler Auftrag zur Änderung der Kennzeichnung abgeleitet.
 
 ## 8. Abgrenzung zu bestehenden Lieferungen und Aufträgen
 
@@ -224,6 +239,9 @@ geklärt ist, gilt der Satz im Code: eine Kennzeichnung zu viel ist kein Versto�
   kam durch Entscheidung Pedi hinzu). Nach Teil 5 selbst gilt der Produkttext; Teil 2 (der gelesene,
   versionierte Text) nennt keine Zahl und bleibt unverändert. Teil 5 ist bei der nächsten Erhöhung der
   Textfassung nachzuführen.
+- **Begründung der Kennzeichnungslesart:** Der Kommentar in `services/model-runs/src/types.ts`, die
+  Urteile `conflict` und `duplicate` erzeugten keinen gelesenen Text, ist durch den Anzeigeweg
+  widerlegt (Abschnitt 7). Die rechtliche Folge ist offen (Register T4).
 - **Altquelle nicht im Repository:** Die Herkunft von R-0659 (`00_CONTROL/FUNKTIONSREGISTER.json`,
   Landkarte v3 Zeile N10, Plan P-2.6) und die Vorlage der Art.-50-Lesart (`_relay/kopf/…`) liegen nicht
   im Produktrepository. Welches Dokument die Altquelle mit „Betreiber-Runbook" meint, ist daraus nicht
