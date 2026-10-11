@@ -1927,6 +1927,83 @@ export const TABELLE: Zeile[] = [
     payload: { avatar: "gibt-es-nicht" },
     erwartet: ANGEMELDET,
   },
+  // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz. Übersicht,
+  // Vormerkungen und eigene Aufträge prüfen die Anmeldung, Vorschau und Ausführung `ko.read`.
+  // ZUSTANDSFREI GEFAHREN: die schreibenden Türen tragen einen unvollständigen Rumpf und enden in
+  // 400 bzw. 404, BEVOR etwas gespeichert oder ausgeführt wird. Die Wirkung misst
+  // `tests/assistenz-faehigkeiten/faehigkeiten-am-server.test.ts`.
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "GET",
+    pfad: "/api/me/faehigkeiten",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:168",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "POST",
+    pfad: "/api/me/faehigkeiten/vormerkungen",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:184",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "POST",
+    pfad: "/api/me/faehigkeiten/vormerkungen/gibt-es-nicht/deaktivieren",
+    route: "/api/me/faehigkeiten/vormerkungen/:id/deaktivieren",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:228",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "POST",
+    pfad: "/api/me/faehigkeiten/vorschau",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:258",
+    tor: "ko.read",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "POST",
+    pfad: "/api/me/faehigkeiten/auftraege",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:288",
+    tor: "ko.read",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "GET",
+    pfad: "/api/me/faehigkeiten/auftraege",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:363",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "GET",
+    pfad: "/api/me/faehigkeiten/auftraege/gibt-es-nicht",
+    route: "/api/me/faehigkeiten/auftraege/:id",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:376",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "POST",
+    pfad: "/api/me/faehigkeiten/auftraege/gibt-es-nicht/abbrechen",
+    route: "/api/me/faehigkeiten/auftraege/:id/abbrechen",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:397",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
   // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite
   // `minRole: "viewer"`), deshalb bewusst kein Recht über die Anmeldung hinaus.
   {
