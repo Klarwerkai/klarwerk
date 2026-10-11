@@ -61,6 +61,8 @@ import { ImportFindingsOverview } from "../components/ImportFindingsOverview";
 import { ImportHistorySection } from "../components/ImportHistory";
 // AUFTRAG-mega32 H2: der JSON-Kasten lebt jetzt im Cockpit, nicht mehr daneben.
 import { ImportJsonUpload } from "../components/ImportJsonUpload";
+// R-0920: der Weg auf die eigene Ergebnisadresse eines Laufs.
+import { ImportLaufLink } from "../components/ImportLaufLink";
 // ADMIN-02 (Nacharbeit 2): die Importliste über den bestehenden Laufbestand.
 import { ImportLaufListe } from "../components/ImportLaufListe";
 import { ImportCockpitProvider, ImportStepperBar } from "../components/ImportStepper";
@@ -680,6 +682,8 @@ export function ImportRunPanel(): JSX.Element {
                 {t("w2.run.syncListsTruncated")}
               </p>
             ) : null}
+            {/* R-0920: derselbe Lauf unter seiner eigenen, teilbaren Adresse. */}
+            <ImportLaufLink importId={importId} />
           </>
         )}
       </div>
