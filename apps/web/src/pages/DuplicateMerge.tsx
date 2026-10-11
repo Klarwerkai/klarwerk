@@ -53,6 +53,7 @@ import {
   vorschau,
   zusammenfuehrenGesperrt,
 } from "../lib/dublettenZusammenfuehrung";
+import { statusSchluessel } from "../lib/wissensstatus";
 
 const KNOPF =
   "rounded-[10px] px-[16px] py-[8px] text-[13.5px] leading-tight disabled:cursor-not-allowed disabled:opacity-50";
@@ -304,7 +305,7 @@ function Assistent({
                 <span className="min-w-0 flex-1">
                   <span className="block text-[14px] font-semibold text-text">{ko.title}</span>
                   <span className="block text-[12px] text-muted">
-                    {t(`status.${ko.status}`)} · v{ko.version}
+                    {t(statusSchluessel(ko.status))} · v{ko.version}
                   </span>
                 </span>
                 {vorschlag.seite === seite ? (

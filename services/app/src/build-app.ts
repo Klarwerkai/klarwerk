@@ -191,7 +191,7 @@ import {
 } from "../../object-store";
 import { type AuditLeser, LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
 // SCRUM-443: echte Rollenwechsel-Regel (FR-RBAC-03) in den AuthService injizieren.
-import { can, canChangeRole } from "../../rbac";
+import { can, canChangeRole, canManageUsers } from "../../rbac";
 import {
   type AssistPresetRepo,
   Ausgangspruefung,
@@ -260,6 +260,7 @@ import {
   InMemoryBearbeitungsRepo,
   PgBearbeitungsRepo,
 } from "./bearbeitungshinweis";
+import { type BestandsresetDienst, pgBestandsresetDienst } from "./bestandsreset-dienst";
 // JOB 3510/3578: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — im Postgres-Betrieb haltbar
 // (`PgBrandingSettingsRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import {
@@ -784,6 +785,13 @@ export interface AppServices {
    * Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt Ergebnisse beim Neustart zu verlieren.
    */
   verstaendnisfragen: VerstaendnisfragenRepo;
+  /**
+   * Aufnahme gesamt-bestandsreset (Nacharbeit 2): der administrative Bestandsreset (Folgenvorschau
+   * und Ausführung über `fuehreBestandsresetAus`). NUR im Postgres-Betrieb gesetzt. Ohne Datenbank
+   * fehlt er absichtlich: ein Reset, der nur den Speicher leerte, wäre im Desktop-Journal beim
+   * nächsten Neustart wieder da — die Route sagt dann ehrlich „nicht verfügbar".
+   */
+  bestandsreset?: BestandsresetDienst;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -1319,6 +1327,9 @@ export function assembleServices(
     unternehmen?: UnternehmenRepo;
     // Verständnisfragen: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     verstaendnisfragen?: VerstaendnisfragenRepo;
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): gesetzt nur von `buildPgServices` (roher Pool).
+    // Eine Speicherfassung gibt es bewusst nicht — s. `bestandsreset` in `AppServices`.
+    bestandsreset?: BestandsresetDienst;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -1470,6 +1481,13 @@ export function assembleServices(
     audit,
     // SCRUM-395: persistierte Standard-Prüferanzahl (Admin pflegt sie über die Route).
     settings: repos.validationSettings,
+    // R-0256 (gesamt-peer-validierung): dieselbe Lesart von „offen" wie Board und Badge
+    // (`unresolved`, versionsgebunden). `conflicts` entsteht weiter unten; gelesen wird erst beim
+    // Bewerten, nach dem Aufbau.
+    offeneKonfliktArten: async (koId) =>
+      (await conflicts.unresolved())
+        .filter((c) => c.koA === koId || c.koB === koId)
+        .map((c) => c.type),
   });
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
   // FUNKE-FIX P0 (bens ROT-1): optionales Answer-Receipt-Secret aus ENV — gesetzt für
@@ -1763,6 +1781,8 @@ export function assembleServices(
     verstaendnisfragen:
       opts.verstaendnisfragen ??
       new InMemoryVerstaendnisfragenRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): nur mit Datenbank — ohne Injektion fehlt er.
+    ...(opts.bestandsreset ? { bestandsreset: opts.bestandsreset } : {}),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -1873,6 +1893,7 @@ export function assembleServices(
     // zweiter Bestand und damit ein zweiter Wahrheitsort ueber denselben Beleg.
     answerSnapshots: repos.answerSnapshots,
     // produkt:20261010:wissenskreislauf-schliessen: dieselbe Instanz, die der Ask-Dienst liest (oben).
+    // Sie trägt seit der Integration auch die Konfliktlesart von R-0256 (`offeneKonfliktArten`).
     validation,
     conflicts,
     overlaps,
@@ -2280,6 +2301,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // Verständnisfragen: Fragensatzversionen und Ergebnisse überleben Neuladen, Neustart und
       // Deploy (`VERSTAENDNISFRAGEN_SCHEMA`, angelegt von `migrate()`).
       verstaendnisfragen: new PgVerstaendnisfragenRepo(pool),
+      // Aufnahme gesamt-bestandsreset (Nacharbeit 2): der administrative Aufruf des Resets. Er
+      // bekommt den ROHEN Pool — die zweite benannte Ausnahme aus dem Kopf dieser Funktion.
+      bestandsreset: pgBestandsresetDienst(rohPool),
     },
   );
 }
@@ -4212,6 +4236,28 @@ export function buildApp(
         // Derselbe gekoppelte Kern wie das Antwortfeedback (Trust-Schritt + Audit, genau einmal je
         // Person und Objekt) — ko-routes bekommt nur diese eine Funktion, nicht den Ask-Dienst.
         hilfreich: (koId, actor) => services.ask.markKoHelpful(koId, actor),
+        // Aufnahme gesamt-peer-validierung (package:pruefablauf): die benannte Prüfperson eines
+        // Vorschlags muss ihn auch entscheiden können — freigegebenes Konto mit `users.manage`,
+        // dieselbe Rechtefrage wie an `decide-proposal`.
+        freigabeberechtigt: async (userId) => {
+          const person = (await services.auth.listUsers()).find((u) => u.id === userId);
+          return Boolean(person?.approved) && canManageUsers(person?.role ?? "viewer");
+        },
+        // Aufnahme gesamt-peer-validierung (Antworten 18/19): die am Konto vergebene
+        // Weisungsbefugnis — ausdrücklich NICHT aus der Rolle abgeleitet. `freigabeberechtigt`
+        // ist hier das Prüfrecht `ko.validate` (Antwort 21: Entscheidungen brauchen eigene Rechte);
+        // es entscheidet nur, wer die SICHTUNG übernehmen darf, nicht wer Weisungen erteilt.
+        weisungskonto: async (userId) => {
+          const person = (await services.auth.listUsers()).find((u) => u.id === userId);
+          if (!person) {
+            return undefined;
+          }
+          return {
+            aktiv: Boolean(person.approved),
+            weisungsbefugnis: person.weisungsbefugnis,
+            freigabeberechtigt: can(person.role, "ko.validate"),
+          };
+        },
         // produkt:20261007:templates-default: Pflichtangaben beim Einreichen, Vorlagennutzung danach.
         vorlagen: vorlagenPort,
         // ADMIN-09: der Prüfpunkt der Freigaberegel eines Space vor jeder Entscheidung.

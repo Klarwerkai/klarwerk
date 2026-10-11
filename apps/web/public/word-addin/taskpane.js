@@ -1852,7 +1852,9 @@
         askCopyPartial: "Teilauswahl — ohne Einstufung und ohne Quellen-Zeile. Ein Bruchstück ist keine Antwort; für den vollständigen Text bitte alles markieren oder „Kopieren\" nutzen.",
         askShowMore: "Mehr anzeigen",
         askShowLess: "Weniger anzeigen",
-        askStatusValidiert: "Validiert",
+        // Nutzerentscheid Antwort 54 (11.10.2026): der validierte Wissensstatus heisst sichtbar
+        // „Fachlich bestätigt" — derselbe Wortlaut wie im Web (apps/web/src/lib/wissensstatus.ts).
+        askStatusValidiert: "Fachlich bestätigt",
         askStatusPruefung: "In Prüfung",
         askStatusOffen: "Offen",
         askStatusUnknown: "Status unbekannt",

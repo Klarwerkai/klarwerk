@@ -165,6 +165,7 @@ import { useAiBillable } from "../lib/useAiBillable";
 import { useAuthorName } from "../lib/useAuthorName";
 import { useKontoKennung } from "../lib/useKontoKennung";
 import { useReadiness } from "../lib/useReadiness";
+import { statusSchluessel } from "../lib/wissensstatus";
 
 // Tone → Badge-Stil: seit FE-003 (Runde 2) `EVIDENCE_TONE` aus `components/fragen/QuellenListe.tsx`,
 // derselben Tabelle, die die Quellenzeilen tönt.
@@ -1572,7 +1573,7 @@ export function Ask(): JSX.Element {
     const ko = kosById.get(s.id);
     const nummer = result ? result.sources.indexOf(s.id) + 1 : 0;
     const stand = ko ? anzeigestatusAus(ko, { konflikt: s.conflictLimited }).status : null;
-    const standWort = stand ? t(`status.${stand}`) : t("ask.pruefstand.unbekannt");
+    const standWort = stand ? t(statusSchluessel(stand)) : t("ask.pruefstand.unbekannt");
     return {
       ...s,
       nummer,
@@ -1647,7 +1648,7 @@ export function Ask(): JSX.Element {
         // wo gerade keine feststeht — genau der Fehler, den mega34 an anderer Stelle beseitigt hat.
         sourceId: s.id,
         title: s.label,
-        ...(ko ? { statusLabel: t(`status.${ko.status}`), trust: ko.trust } : {}),
+        ...(ko ? { statusLabel: t(statusSchluessel(ko.status)), trust: ko.trust } : {}),
         ...(s.usability ? { usabilityLabel: t(useReadiness(s.usability).labelKey) } : {}),
         // AUFTRAG-mega62 Block E (Register F29): das Kennzeichen reist jetzt MIT. Bis mega61 wurde
         // hier nur die Reihenfolge exportiert — tragende Quellen standen oben, aber nichts sagte
