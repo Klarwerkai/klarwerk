@@ -2734,8 +2734,84 @@ export interface AskResponse {
   // nur bei beantworteter Frage. Angewandt in `lib/askResponse.ts` (`selectAnswer`).
   absaetze?: AbsatzBeleg[];
   // REF-01: je Aussage Kennung, Wortlaut und Fundstellen; nur bei beantworteter Frage. Grundlage der
-  // Beanstandung einer konkreten Aussage (produkt:20261010:antwort-beanstandung-korrektur).
+  // Beanstandung einer konkreten Aussage (produkt:20261010:antwort-beanstandung-korrektur) und der
+  // Aussagetexte der Referenzprüfungsanzeige (REF-02; `AussagenBelegKurz` ist ein Teil davon).
   aussagen?: AntwortAussagenBeleg;
+  // REF-02: das Ergebnis der Referenzprüfung (Spiegel von `ReferenzPruefSicht`,
+  // services/ask/src/referenz-pruefung.ts). Fehlt ohne Prüfdienst oder ohne beantwortete Frage.
+  referenzpruefung?: ReferenzPruefung;
+}
+
+// ================================================================================================
+// produkt:20261009:referenzki-pruefdienst (REF-02) — Spiegel der Prüfsicht des Fragenden.
+// ================================================================================================
+// Stufen statt Anbieter- und Modellnamen: die stehen nur im Prüfprotokoll der Adminsicht.
+export interface AussagenBelegKurz {
+  aussagen: { aussageId: string; text: string }[];
+}
+
+export type ReferenzZustand = "belegt" | "teilweise_belegt" | "widersprochen" | "nicht_pruefbar";
+
+export interface ReferenzFundstelle {
+  fundstelleId: string;
+  koId: string;
+  koVersion: number;
+  start: number;
+  ende: number;
+}
+
+export interface ReferenzTeilErgebnis {
+  teilId: string;
+  zustand: ReferenzZustand;
+  grund?: string;
+  fundstelle: ReferenzFundstelle | null;
+  begruendung: string;
+}
+
+export interface ReferenzAussageErgebnis {
+  aussageId: string;
+  zustand: ReferenzZustand;
+  grund?: string;
+  teile: ReferenzTeilErgebnis[];
+  fundstellen: ReferenzFundstelle[];
+  begruendung: string;
+}
+
+export interface ReferenzHinweis {
+  art:
+    | "neuere_fassung"
+    | "abruf_nicht_belegt"
+    | "bekannter_konflikt"
+    | "gegenpassage"
+    | "fundstelle_verworfen"
+    | "nicht_aufgeloeste_modellangabe"
+    | "anweisungsaehnlicher_text";
+  aussageId?: string;
+  teilId?: string;
+  koId?: string;
+  fundstelleId?: string;
+  fassung?: { gebunden: number; aktuell: number; passageUnveraendert: boolean };
+  zustand?: string;
+  konfliktId?: string;
+  wert?: string;
+  hinweis: string;
+}
+
+export interface ReferenzPruefung {
+  richtlinie: string;
+  pruefId: string;
+  status: "geprueft" | "nicht_pruefbar";
+  grund?: string;
+  rollen: {
+    antwort: "cloud" | "local" | "deterministic" | null;
+    pruefer: "cloud" | "local" | "deterministic" | null;
+  };
+  aussagen: ReferenzAussageErgebnis[];
+  hinweise: ReferenzHinweis[];
+  globaleAktualitaet: "nicht_behauptet";
+  ausCache: boolean;
+  messung: { dauerMs: number; modellaufrufe: 0 | 1 };
+  versuch: { nummer: number; hoechstens: number };
 }
 
 // R-1630 / R-2176: Spiegel von `services/ask/src/wissensstand-vergleich.ts` — dort stehen Regeln
@@ -2768,6 +2844,10 @@ export interface WissensstandVergleich {
   stichtag: string;
   heute: AnswerResult;
   damals: AnswerResult;
+  // REF-01/REF-02: die eigene Aussagebindung und Referenzprüfung je Seite (`null`: kein Text).
+  heuteAussagen?: AussagenBelegKurz | null;
+  damalsAussagen?: AussagenBelegKurz | null;
+  referenzpruefung?: { heute: ReferenzPruefung | null; damals: ReferenzPruefung | null };
   antwortGeaendert: boolean;
   quellen: VergleichsQuelle[];
 }
@@ -3795,6 +3875,8 @@ export const MODEL_RUN_TASKS = [
   "duplicate",
   "probe",
   "gaps",
+  // produkt:20261009:referenzki-pruefdienst (REF-02): die Referenzprüfung der Quellenbelege.
+  "referenz",
 ] as const;
 
 // JOB 3134 (KI-WAHL): die beiden externen Anbieter sind eigene Auswahlwerte. Dieselbe Liste wie

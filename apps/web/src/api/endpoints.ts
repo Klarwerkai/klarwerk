@@ -133,6 +133,7 @@ import type {
   ReasonerKiLage,
   ReasonerProbeResult,
   ReasonerStatus,
+  ReferenzPruefung,
   RetirementEntry,
   RetirementHorizon,
   RevalidierungBestaetigt,
@@ -1129,6 +1130,19 @@ export const endpoints = {
         ...(locale ? { locale } : {}),
         ...(stichtag ? { stichtag } : {}),
       }),
+    // REF-02: die begrenzte, ausdrücklich angestoßene erneute Referenzprüfung einer Antwort.
+    referenzErneut: (pruefId: string) =>
+      api.post<{ referenzpruefung: ReferenzPruefung }>(
+        `/ask/referenzpruefung/${encodeURIComponent(pruefId)}/erneut`,
+        {},
+      ),
+    // REF-02 (Ben nacharbeit-4, K8): eine gespeicherte Anzeige serverseitig bestätigen lassen —
+    // aktuelle Rechte, aktueller Prüfer, nur ein exakt passender Beleg, kein Modellaufruf.
+    referenzBestaetigen: (pruefId: string) =>
+      api.post<{ referenzpruefung: ReferenzPruefung }>(
+        `/ask/referenzpruefung/${encodeURIComponent(pruefId)}/erneut`,
+        { bestaetigen: true },
+      ),
     // R-1089: „Antwort falsch / Quelle passt nicht" — derselbe Beleg; die Antwort ist die Quittung.
     // produkt:20261010:antwort-beanstandung-korrektur: mit `beanstandung` die konkrete Aussage samt
     // kurzer Begründung — der Server prüft sie gegen die signierte Aussagefassung des Belegs.

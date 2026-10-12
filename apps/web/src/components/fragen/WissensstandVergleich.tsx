@@ -11,6 +11,7 @@ import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { AiCostHint } from "../AiCostHint";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
 import { AntwortText } from "../start/AntwortText";
+import { Referenzpruefung } from "./Referenzpruefung";
 
 // ================================================================================================
 // R-1630 / R-2176 — „DIESE FRAGE HÄTTE VOR EINEM JAHR EINE ANDERE ANTWORT GEHABT."
@@ -185,11 +186,53 @@ export function WissensstandVergleichAnzeige({
           </ul>
         </div>
       ) : null}
+      {/* REF-02 (Ben nacharbeit-3): beide Antworten des Vergleichs sind wissensbezogen und tragen
+        je ihre eigene Referenzprüfung — damals gegen die Fassungen zum Stichtag, heute gegen die
+        aktuellen. Eine Seite ohne beantworteten Text hat nichts zu prüfen (`null`). */}
+      {vergleich.referenzpruefung?.damals ? (
+        <Referenzpruefung
+          ergebnis={vergleich.referenzpruefung.damals}
+          aussageTexte={aussageTexteAus(vergleich.damalsAussagen)}
+          titelVon={(id) => titelAus(vergleich, id, "damals")}
+          wissenHref={(id, fassung) => mitFassung(wissenHref(id), fassung)}
+          testId="ask-vergleich-referenz-damals"
+          ueberschrift={t("referenzpruefung.vergleich.damals")}
+        />
+      ) : null}
+      {vergleich.referenzpruefung?.heute ? (
+        <Referenzpruefung
+          ergebnis={vergleich.referenzpruefung.heute}
+          aussageTexte={aussageTexteAus(vergleich.heuteAussagen)}
+          titelVon={(id) => titelAus(vergleich, id, "heute")}
+          wissenHref={(id, fassung) => mitFassung(wissenHref(id), fassung)}
+          testId="ask-vergleich-referenz-heute"
+          ueberschrift={t("referenzpruefung.vergleich.heute")}
+        />
+      ) : null}
       <p data-testid="ask-vergleich-grenzen" className="text-[11.5px] text-muted-2">
         {t("antwortvergleich.grenzen")}
       </p>
     </div>
   );
+}
+
+function aussageTexteAus(
+  beleg: WissensstandVergleich["heuteAussagen"],
+): ReadonlyMap<string, string> {
+  return new Map((beleg?.aussagen ?? []).map((a) => [a.aussageId, a.text]));
+}
+
+function titelAus(
+  vergleich: WissensstandVergleich,
+  id: string,
+  seite: "heute" | "damals",
+): string | undefined {
+  const q = vergleich.quellen.find((x) => x.id === id);
+  return seite === "damals" ? (q?.titelDamals ?? q?.title) : q?.title;
+}
+
+function mitFassung(href: string, fassung: number): string {
+  return `${href}${href.includes("?") ? "&" : "?"}fassung=${fassung}`;
 }
 
 /**
