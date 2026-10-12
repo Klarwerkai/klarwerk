@@ -289,7 +289,11 @@ export function KlaraTastenkuerzelBereich(): JSX.Element {
     k: KuerzelKombination | null,
   ): void => {
     if (r.ok) {
-      setMeldung({ text: erfolg, fehler: false });
+      // Kam die Antwort nicht an, hat erst der Abgleich die Speicherung bestätigt — das wird gesagt.
+      const text = r.abgeglichen ? `${erfolg} ${t("klarasetup.meldung.abgeglichen")}` : erfolg;
+      setMeldung({ text, fehler: false });
+    } else if (r.art === "unbekannt") {
+      setMeldung({ text: t("klarasetup.meldung.unbekannt"), fehler: true });
     } else if (r.art === "doppelt" && k) {
       setMeldung({
         text: konfliktText(k, {
@@ -378,6 +382,10 @@ export function KlaraTastenkuerzelBereich(): JSX.Element {
   const eintragFuer = (aktion: KlaraKuerzelAktion): KuerzelEintrag | undefined =>
     eintraege.find((e) => e.aktion === aktion);
   const irgendeinEigenes = eintraege.some((e) => e.quelle !== "standard");
+  // Solange der Ausgang eines Schreibversuchs abgeglichen wird, heisst er „unklar“ — nicht
+  // „gespeichert“ und nicht „nicht gespeichert“.
+  const imAbgleich: Meldung = { text: t("klarasetup.meldung.abgleich"), fehler: false };
+  const angezeigt: Meldung | null = lage.ausgang === "abgleich" ? imAbgleich : meldung;
 
   return (
     <KlaraGruppe titel={t("klarasetup.gruppe.tastenkuerzel")} testId="klara-setup-tastenkuerzel">
@@ -550,14 +558,31 @@ export function KlaraTastenkuerzelBereich(): JSX.Element {
 
       <p
         data-testid="klara-kuerzel-meldung"
-        data-fehler={meldung?.fehler ? "true" : "false"}
-        role={meldung?.fehler ? "alert" : "status"}
+        data-fehler={angezeigt?.fehler ? "true" : "false"}
+        data-ausgang={lage.ausgang ?? ""}
+        role={angezeigt?.fehler ? "alert" : "status"}
         className={`min-h-[1em] text-[12.5px] ${
-          meldung?.fehler ? "text-trust-crit-text" : "text-muted"
+          angezeigt?.fehler ? "text-trust-crit-text" : "text-muted"
         }`}
       >
-        {meldung?.text ?? ""}
+        {angezeigt?.text ?? ""}
       </p>
+      {kontoId && lage.ausgang === "offen" ? (
+        <button
+          type="button"
+          data-testid="klara-kuerzel-abgleichen"
+          onClick={() => {
+            void ladeTastenkuerzel(kontoId).then(() => {
+              if (tastenkuerzelLage().ausgang === null) {
+                setMeldung({ text: t("klarasetup.meldung.abgeglichenStand"), fehler: false });
+              }
+            });
+          }}
+          className={KNOPF}
+        >
+          {t("klarasetup.knopf.abgleichen")}
+        </button>
+      ) : null}
     </KlaraGruppe>
   );
 }

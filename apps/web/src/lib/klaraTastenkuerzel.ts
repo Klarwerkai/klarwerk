@@ -324,9 +324,21 @@ export interface TastenkuerzelLage {
   readonly antwort: TastenkuerzelAntwort | null;
   /** Welche Änderung gerade unterwegs ist — eine Aktion oder „alle“. */
   readonly speichert: KlaraKuerzelAktion | "alle" | null;
+  /**
+   * Der Ausgang des letzten Schreibversuchs ist unklar (Antwort verloren oder Serverfehler nach
+   * möglicher Speicherung): `abgleich` — der Serverstand wird gerade nachgelesen; `offen` — der
+   * Abgleich ist selbst gescheitert, angezeigt bleibt der zuletzt BESTÄTIGTE Stand.
+   */
+  readonly ausgang: "abgleich" | "offen" | null;
 }
 
-const LEER: TastenkuerzelLage = { kontoId: null, status: "leer", antwort: null, speichert: null };
+const LEER: TastenkuerzelLage = {
+  kontoId: null,
+  status: "leer",
+  antwort: null,
+  speichert: null,
+  ausgang: null,
+};
 
 let lage: TastenkuerzelLage = LEER;
 const hoerer = new Set<() => void>();
@@ -389,33 +401,79 @@ function istAntwort(wert: unknown): wert is TastenkuerzelAntwort {
   );
 }
 
-/** Liest die Kürzel des Kontos. Kommt die Antwort nach einem Kontowechsel, gilt sie nicht. */
-export async function ladeTastenkuerzel(kontoId: string): Promise<void> {
+// ------------------------------------------------------------------------------------------------
+// Laden und Schreiben, koordiniert (Bens Befunde, Nacharbeit 3).
+//
+//   · Setup und Ausführungsweg laden beim direkten Einstieg beide. Gleichzeitige Ladevorgänge
+//     desselben Kontos teilen sich EINE Anfrage.
+//   · Jeder Schreibvorgang erhöht die Schreibmarke. Eine Ladeantwort, die vor oder während eines
+//     Schreibvorgangs angefordert wurde, ist überholt und wird verworfen — eine späte alte
+//     GET-Antwort kann eine bestätigte Änderung oder Entfernung nicht zurückholen.
+//   · Ist der Schreibausgang unklar (Antwort verloren, Serverfehler), wird der Serverstand nachgelesen
+//     und das Ergebnis daran entschieden. Bis dahin heisst der Ausgang „unklar“, nicht „nicht
+//     gespeichert“. Scheitert auch der Abgleich, bleibt der Ausgang offen sichtbar.
+// ------------------------------------------------------------------------------------------------
+
+let schreibmarke = 0;
+let laufendesLaden: { kontoId: string; marke: number; anfrage: Promise<void> } | null = null;
+
+/** Liest den Serverstand — wirft bei Fehler oder unerwarteter Antwort. */
+async function serverstand(): Promise<TastenkuerzelAntwort> {
+  const antwort: unknown = await tastenkuerzelApi.lesen();
+  if (!istAntwort(antwort)) {
+    throw new Error("Unerwartete Antwort auf /api/me/assistenz/tastenkuerzel");
+  }
+  return antwort;
+}
+
+/**
+ * Liest die Kürzel des Kontos. Eine Antwort gilt nur, wenn das Konto noch dasselbe ist und seit
+ * der Anforderung nichts geschrieben wurde; gleichzeitige Aufrufe teilen sich eine Anfrage.
+ */
+export function ladeTastenkuerzel(kontoId: string): Promise<void> {
   if (lage.kontoId !== kontoId) {
     setze({ ...LEER, kontoId, status: "laedt" });
   }
-  try {
-    const antwort: unknown = await tastenkuerzelApi.lesen();
-    if (!istAntwort(antwort)) {
-      throw new Error("Unerwartete Antwort auf /api/me/assistenz/tastenkuerzel");
-    }
-    if (lage.kontoId === kontoId) {
-      setze({ ...lage, status: "bereit", antwort });
-    }
-  } catch {
-    if (lage.kontoId === kontoId) {
-      setze({ ...lage, status: lage.antwort ? "bereit" : "fehler" });
-    }
+  const marke = schreibmarke;
+  if (laufendesLaden && laufendesLaden.kontoId === kontoId && laufendesLaden.marke === marke) {
+    return laufendesLaden.anfrage;
   }
+  const gilt = (): boolean =>
+    lage.kontoId === kontoId && schreibmarke === marke && lage.speichert === null;
+  const anfrage = (async () => {
+    try {
+      const antwort = await serverstand();
+      if (gilt()) {
+        setze({ ...lage, status: "bereit", antwort, ausgang: null });
+      }
+    } catch {
+      if (gilt()) {
+        setze({ ...lage, status: lage.antwort ? "bereit" : "fehler" });
+      }
+    } finally {
+      if (laufendesLaden?.anfrage === anfrage) {
+        laufendesLaden = null;
+      }
+    }
+  })();
+  laufendesLaden = { kontoId, marke, anfrage };
+  return anfrage;
 }
 
 export type SpeicherErgebnis =
-  | { readonly ok: true }
+  | { readonly ok: true; readonly abgeglichen: boolean }
   | { readonly ok: false; readonly art: "doppelt"; readonly belegtVon: KlaraKuerzelAktion | null }
-  | { readonly ok: false; readonly art: "abgelehnt" | "fehler" };
+  /** `fehler`: der Abgleich mit dem Server zeigt, dass die Änderung NICHT gespeichert ist. */
+  | { readonly ok: false; readonly art: "abgelehnt" | "fehler" }
+  /** Weder die Antwort noch der Abgleich kamen an — ob gespeichert wurde, ist unbekannt. */
+  | { readonly ok: false; readonly art: "unbekannt" };
 
-function fehlerArt(fehler: unknown): SpeicherErgebnis {
-  if (fehler instanceof ApiError && fehler.details.grund === "doppelt") {
+/** Ein eindeutiger Fehler: der Server hat geantwortet und die Änderung abgelehnt (4xx). */
+function abgelehnt(fehler: unknown): SpeicherErgebnis | null {
+  if (!(fehler instanceof ApiError) || fehler.status < 400 || fehler.status >= 500) {
+    return null;
+  }
+  if (fehler.details.grund === "doppelt") {
     const von = fehler.details.belegtVon;
     return {
       ok: false,
@@ -425,36 +483,91 @@ function fehlerArt(fehler: unknown): SpeicherErgebnis {
         : null,
     };
   }
-  if (fehler instanceof ApiError && fehler.status === 400) {
-    return { ok: false, art: "abgelehnt" };
+  return { ok: false, art: fehler.status === 400 ? "abgelehnt" : "fehler" };
+}
+
+/** Trägt der Serverstand die beabsichtigte Änderung? */
+export interface EineAbsicht {
+  readonly aktion: KlaraKuerzelAktion;
+  readonly belegung: KuerzelKombination | null | "standard";
+}
+
+export type Absicht = EineAbsicht | { readonly alle: true };
+
+export function erfuellt(antwort: TastenkuerzelAntwort, absicht: Absicht): boolean {
+  if ("alle" in absicht) {
+    return antwort.aktionen.every((e) => e.quelle === "standard");
   }
-  return { ok: false, art: "fehler" };
+  const e = antwort.aktionen.find((x) => x.aktion === absicht.aktion);
+  if (!e) {
+    return false;
+  }
+  if (absicht.belegung === "standard") {
+    return e.quelle === "standard";
+  }
+  if (absicht.belegung === null) {
+    return e.quelle === "entfernt";
+  }
+  return (
+    e.quelle === "eigen" && e.belegung !== null && gleicheKombination(e.belegung, absicht.belegung)
+  );
 }
 
 async function schreibe(
   kontoId: string,
   wer: KlaraKuerzelAktion | "alle",
+  absicht: Absicht,
   aufruf: () => Promise<unknown>,
 ): Promise<SpeicherErgebnis> {
   if (lage.kontoId !== kontoId || lage.speichert !== null) {
     return { ok: false, art: "fehler" };
   }
-  setze({ ...lage, speichert: wer });
+  schreibmarke += 1;
+  setze({ ...lage, speichert: wer, ausgang: null });
+  let fehler: unknown;
   try {
     const antwort = await aufruf();
     if (!istAntwort(antwort)) {
       throw new Error("Unerwartete Antwort auf /api/me/assistenz/tastenkuerzel");
     }
+    schreibmarke += 1;
     if (lage.kontoId === kontoId) {
-      setze({ ...lage, status: "bereit", antwort, speichert: null });
+      setze({ ...lage, status: "bereit", antwort, speichert: null, ausgang: null });
     }
-    return { ok: true };
-  } catch (fehler) {
-    // Nichts wird vorgetäuscht: es gilt weiter der zuletzt bestätigte Stand.
+    return { ok: true, abgeglichen: false };
+  } catch (f) {
+    fehler = f;
+  }
+  const eindeutig = abgelehnt(fehler);
+  if (eindeutig) {
+    // Der Server hat geantwortet und nichts geändert: es gilt der zuletzt bestätigte Stand.
+    schreibmarke += 1;
     if (lage.kontoId === kontoId) {
-      setze({ ...lage, speichert: null });
+      setze({ ...lage, speichert: null, ausgang: null });
     }
-    return fehlerArt(fehler);
+    return eindeutig;
+  }
+  // Unklar, ob der Server gespeichert hat: Serverstand nachlesen, bis dahin „Abgleich“.
+  if (lage.kontoId === kontoId) {
+    setze({ ...lage, ausgang: "abgleich" });
+  }
+  try {
+    const stand = await serverstand();
+    schreibmarke += 1;
+    if (lage.kontoId !== kontoId) {
+      return { ok: false, art: "unbekannt" };
+    }
+    setze({ ...lage, status: "bereit", antwort: stand, speichert: null, ausgang: null });
+    if (erfuellt(stand, absicht)) {
+      return { ok: true, abgeglichen: true };
+    }
+    return { ok: false, art: "fehler" };
+  } catch {
+    schreibmarke += 1;
+    if (lage.kontoId === kontoId) {
+      setze({ ...lage, speichert: null, ausgang: "offen" });
+    }
+    return { ok: false, art: "unbekannt" };
   }
 }
 
@@ -464,17 +577,21 @@ export function setzeKuerzel(
   aktion: KlaraKuerzelAktion,
   belegung: KuerzelKombination | null | "standard",
 ): Promise<SpeicherErgebnis> {
-  return schreibe(kontoId, aktion, () => tastenkuerzelApi.setzen(aktion, belegung));
+  return schreibe(kontoId, aktion, { aktion, belegung }, () =>
+    tastenkuerzelApi.setzen(aktion, belegung),
+  );
 }
 
 /** Stellt für alle Aktionen die definierten Standards wieder her. */
 export function setzeAlleKuerzelZurueck(kontoId: string): Promise<SpeicherErgebnis> {
-  return schreibe(kontoId, "alle", () => tastenkuerzelApi.alleZuruecksetzen());
+  return schreibe(kontoId, "alle", { alle: true }, () => tastenkuerzelApi.alleZuruecksetzen());
 }
 
 /** Abmelden oder Kontowechsel: nichts vom bisherigen Stand bleibt im Browser stehen. */
 export function verwerfeTastenkuerzel(): void {
   aufnahmeLaeuft = false;
+  schreibmarke += 1;
+  laufendesLaden = null;
   if (lage !== LEER) {
     setze(LEER);
   }

@@ -101,6 +101,13 @@ export default {
       "Nicht gespeichert – die Verbindung zum Server ist gestört. Es gilt weiter die bisherige Belegung.",
     "klarasetup.meldung.abgelehnt":
       "Nicht gespeichert – der Server hat die Kombination abgelehnt. Es gilt weiter die bisherige Belegung.",
+    "klarasetup.meldung.abgleich":
+      "Ausgang unklar – die Antwort des Servers fehlt. Der gespeicherte Stand wird abgeglichen …",
+    "klarasetup.meldung.abgeglichen": "Bestätigt durch Abgleich mit dem Server.",
+    "klarasetup.meldung.unbekannt":
+      "Ausgang unbekannt – weder die Antwort noch der Abgleich kamen an. Ob die Änderung gespeichert wurde, ist offen; angezeigt und wirksam ist der zuletzt bestätigte Stand.",
+    "klarasetup.meldung.abgeglichenStand": "Abgeglichen: angezeigt ist der gespeicherte Stand.",
+    "klarasetup.knopf.abgleichen": "Erneut abgleichen",
     "klarasetup.konflikt.ohneModifikator":
       "{{kuerzel}} geht nicht: Ein Kürzel braucht die Befehlstaste (⌘) oder Strg, sonst wäre es normales Schreiben.",
     "klarasetup.konflikt.voiceover":
@@ -223,6 +230,13 @@ export default {
       "Not saved – the connection to the server is disrupted. The previous assignment still applies.",
     "klarasetup.meldung.abgelehnt":
       "Not saved – the server rejected the combination. The previous assignment still applies.",
+    "klarasetup.meldung.abgleich":
+      "Outcome unclear – the server's response is missing. Checking the saved state …",
+    "klarasetup.meldung.abgeglichen": "Confirmed by checking with the server.",
+    "klarasetup.meldung.unbekannt":
+      "Outcome unknown – neither the response nor the check arrived. Whether the change was saved is open; the last confirmed state is shown and active.",
+    "klarasetup.meldung.abgeglichenStand": "Checked: the saved state is shown.",
+    "klarasetup.knopf.abgleichen": "Check again",
     "klarasetup.konflikt.ohneModifikator":
       "{{kuerzel}} is not possible: a shortcut needs Command (⌘) or Ctrl, otherwise it would be normal typing.",
     "klarasetup.konflikt.voiceover":
@@ -346,6 +360,13 @@ export default {
       "Niet opgeslagen – de verbinding met de server is verstoord. De vorige toewijzing blijft gelden.",
     "klarasetup.meldung.abgelehnt":
       "Niet opgeslagen – de server heeft de combinatie geweigerd. De vorige toewijzing blijft gelden.",
+    "klarasetup.meldung.abgleich":
+      "Uitkomst onduidelijk – het antwoord van de server ontbreekt. De opgeslagen stand wordt gecontroleerd …",
+    "klarasetup.meldung.abgeglichen": "Bevestigd door controle bij de server.",
+    "klarasetup.meldung.unbekannt":
+      "Uitkomst onbekend – het antwoord en de controle kwamen niet aan. Of de wijziging is opgeslagen, is open; getoond en actief is de laatst bevestigde stand.",
+    "klarasetup.meldung.abgeglichenStand": "Gecontroleerd: de opgeslagen stand wordt getoond.",
+    "klarasetup.knopf.abgleichen": "Opnieuw controleren",
     "klarasetup.konflikt.ohneModifikator":
       "{{kuerzel}} kan niet: een sneltoets heeft Command (⌘) of Ctrl nodig, anders is het gewoon typen.",
     "klarasetup.konflikt.voiceover":

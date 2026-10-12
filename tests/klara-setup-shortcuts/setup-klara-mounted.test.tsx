@@ -68,6 +68,8 @@ let adaCookie = "";
 let wandaCookie = "";
 let vorherigerFetch: typeof globalThis.fetch;
 let stoerung: { methode: string; pfad: string } | null = null;
+/** Nacharbeit 3: der Server verarbeitet die Anfrage, die ANTWORT geht verloren. */
+let verlust: { methode: string; pfad: string } | null = null;
 const anfragen: { methode: string; pfad: string }[] = [];
 /** Jede Klara-Aktion, die der zentrale Ausführungsweg gemeldet hat. */
 let ausgeloest: string[] = [];
@@ -142,6 +144,10 @@ function drahtAufbauen(): void {
       headers: kopf,
       ...(init?.body !== undefined && init.body !== null ? { payload: String(init.body) } : {}),
     });
+    if (verlust && verlust.methode === methode && url.startsWith(verlust.pfad)) {
+      verlust = null;
+      throw new TypeError("Failed to fetch (Prüfstand: Antwort nach der Verarbeitung verloren)");
+    }
     return {
       status: antwort.statusCode,
       statusText: String(antwort.statusCode),
@@ -380,6 +386,7 @@ beforeEach(async () => {
   RekorderDoppel.alle = 0;
   await i18n.changeLanguage("de");
   stoerung = null;
+  verlust = null;
   anfragen.length = 0;
   ausgeloest = [];
   window.addEventListener(KLARA_AKTION_EREIGNIS, zaehle);
@@ -786,5 +793,55 @@ describe("B4 · Rollen und Konten", () => {
     await belegen("oeffnen", STRG_UMSCHALT_E);
     expect((await amServer(wandaCookie, "oeffnen"))?.belegung).toMatchObject({ code: "KeyE" });
     expect((await amServer(adaCookie, "oeffnen"))?.belegung).toMatchObject({ code: "KeyU" });
+  });
+});
+
+// Nacharbeit 3 (Bens Befund): der Server speichert, die Antwort geht verloren.
+describe("B5 · K9 — unklarer Schreibausgang: Abgleich statt vorgetäuschtem Fehler", () => {
+  it("Antwort verloren: gespeichert und wirksam nach Abgleich; doppelt verloren: Ausgang offen", async () => {
+    await montiere("/profil?bereich=klara");
+    await zumBereich();
+
+    // Die Speicherung gelingt am Server, ihre Antwort kommt nicht an.
+    verlust = { methode: "PUT", pfad: BASIS };
+    let feld = await aufnahmeStarten("oeffnen");
+    await druecke(feld, STRG_UMSCHALT_E);
+    await bis(() => (meldung()?.textContent ?? "").startsWith("Gespeichert"), 160);
+    expect(meldung()?.textContent).toBe(
+      "Gespeichert: „Klara öffnen“ mit Strg+Umschalt+E. Bestätigt durch Abgleich mit dem Server.",
+    );
+    expect(meldung()?.dataset.fehler).toBe("false");
+    expect(zeile("oeffnen").dataset.quelle).toBe("eigen");
+    expect((await amServer(adaCookie, "oeffnen"))?.belegung).toMatchObject({ code: "KeyE" });
+    // Lokal gilt dieselbe Belegung wie am Server — sie wirkt sofort.
+    await druecke(document.body, STRG_UMSCHALT_E);
+    expect(ausgeloest).toEqual(["oeffnen"]);
+
+    // Antwort UND Abgleich gehen verloren: kein „Nicht gespeichert“, sondern ein offener Ausgang;
+    // angezeigt und wirksam bleibt der zuletzt bestätigte Stand.
+    verlust = { methode: "PUT", pfad: BASIS };
+    stoerung = { methode: "GET", pfad: BASIS };
+    feld = await aufnahmeStarten("oeffnen");
+    await druecke(feld, STRG_UMSCHALT_U);
+    await bis(() => meldung()?.dataset.fehler === "true", 160);
+    expect(meldung()?.getAttribute("role")).toBe("alert");
+    expect(meldung()?.textContent).toContain("Ausgang unbekannt");
+    expect(meldung()?.textContent).not.toContain("Nicht gespeichert");
+    expect(meldung()?.dataset.ausgang).toBe("offen");
+    expect(q(zeile("oeffnen"), "klara-kuerzel-wert")?.textContent).toContain("Strg+Umschalt+E");
+    expect((await amServer(adaCookie, "oeffnen"))?.belegung).toMatchObject({ code: "KeyU" });
+
+    // „Erneut abgleichen“ holt den tatsächlich gespeicherten Stand — er wirkt, der alte nicht mehr.
+    await klick(q(document, "klara-kuerzel-abgleichen"));
+    const wert = (): string => q(zeile("oeffnen"), "klara-kuerzel-wert")?.textContent ?? "";
+    await bis(() => wert().includes("Strg+Umschalt+U"));
+    expect(q(zeile("oeffnen"), "klara-kuerzel-wert")?.textContent).toContain("Strg+Umschalt+U");
+    expect(meldung()?.textContent).toBe("Abgeglichen: angezeigt ist der gespeicherte Stand.");
+    expect(q(document, "klara-kuerzel-abgleichen")).toBeNull();
+    ausgeloest = [];
+    await druecke(document.body, STRG_UMSCHALT_E);
+    expect(ausgeloest).toEqual([]);
+    await druecke(document.body, STRG_UMSCHALT_U);
+    expect(ausgeloest).toEqual(["oeffnen"]);
   });
 });

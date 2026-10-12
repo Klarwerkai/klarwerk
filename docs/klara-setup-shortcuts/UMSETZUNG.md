@@ -116,6 +116,15 @@ Layout „Y“ für `KeyZ`).
 Kürzelwechsel ändert die Profilfassung nicht. Konto ausschliesslich aus der Sitzung, fremde Kennung
 403. Ins Prüfprotokoll geht nur das Ereignis `assistenz.tastenkuerzel.geaendert`.
 
+**Konsistenz im Browser** (`lib/klaraTastenkuerzel.ts`, Nacharbeit 3): Gleichzeitige Ladevorgänge
+desselben Kontos (Setup und Ausführungsweg) teilen sich eine Anfrage; jede Schreiboperation erhöht
+eine Schreibmarke, und eine Ladeantwort, die vor oder während des Schreibens angefordert wurde, wird
+verworfen. Ist der Schreibausgang unklar (Antwort verloren, Serverfehler 5xx), liest der Speicher den
+Serverstand nach: bis dahin heisst der Ausgang „unklar“; zeigt der Server die Änderung, gilt sie als
+gespeichert („Bestätigt durch Abgleich“), sonst „Nicht gespeichert“. Scheitert auch der Abgleich,
+bleibt der Ausgang „unbekannt“ sichtbar, angezeigt und wirksam ist der zuletzt bestätigte Stand, und
+„Erneut abgleichen“ klärt ihn. Eine eindeutige Ablehnung (4xx) braucht keinen Abgleich.
+
 ## 6. Grenzen
 
 - Gemessen sind Regeln, Server und Bedienung in jsdom am echten Server sowie PostgreSQL; **nicht**
