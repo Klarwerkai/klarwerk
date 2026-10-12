@@ -72,3 +72,59 @@ self.addEventListener("fetch", (event) => {
     }),
   );
 });
+
+/* R-0679 / FR-VAL-07: Geräte-Push bei einer Prüfzuweisung.
+ * Der Server schickt KEINE Nutzlast (services/notifications/src/push.ts) — der Push-Dienst des
+ * Browserherstellers erfährt nur, dass etwas anliegt. Der Hinweis hier ist deshalb ein fester Satz
+ * ohne Titel oder Namen; ein Antippen öffnet die eigene Prüfliste („Mir zugewiesen"), wo die
+ * angemeldete Anwendung zeigt, was genau anliegt. */
+const PUSH_TEXTE = {
+  de: { title: "KLARWERK", body: "Dir wurde eine Prüfung zugewiesen." },
+  en: { title: "KLARWERK", body: "A review has been assigned to you." },
+  nl: { title: "KLARWERK", body: "Er is een beoordeling aan je toegewezen." },
+};
+const PUSH_ZIEL = "/validierung?mine=1";
+
+self.addEventListener("push", (event) => {
+  const sprache = (self.navigator.language || "de").slice(0, 2).toLowerCase();
+  const text = PUSH_TEXTE[sprache] || PUSH_TEXTE.de;
+  event.waitUntil(
+    self.registration.showNotification(text.title, {
+      body: text.body,
+      icon: "/icon-192.png",
+      tag: "klarwerk-pruefzuweisung",
+      data: { ziel: PUSH_ZIEL },
+    }),
+  );
+});
+
+/* Was ein Antippen des Hinweises tut — als benannte Funktion, damit der Geräteprüfplatz
+ * (tests-smoke/pruefzuweisung-push-geraet.spec.ts) GENAU diesen Weg nach einem echt
+ * empfangenen Hinweis auslösen kann: ein Betriebssystem-Hinweis lässt sich aus dem Prüfbrowser
+ * nicht anklicken. Reihenfolge: ein offenes Fenster ZUERST navigieren, dann fokussieren — der
+ * Fokus kann vom Browser verweigert werden, die Navigation in die Prüfliste darf daran nicht
+ * hängen. Ohne offenes Fenster öffnet ein neues. */
+function oeffnePruefliste(notification) {
+  const angegeben = new URL(notification?.data?.ziel || PUSH_ZIEL, self.location.origin);
+  // Nur Ziele der eigenen Anwendung — nie eine fremde Adresse aus den Hinweisdaten.
+  const ziel =
+    angegeben.origin === self.location.origin
+      ? angegeben.href
+      : new URL(PUSH_ZIEL, self.location.origin).href;
+  return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((fenster) => {
+    const offen = fenster.find((f) => new URL(f.url).origin === self.location.origin);
+    if (offen) {
+      return offen.navigate(ziel).then((neu) => {
+        const fokus = neu || offen;
+        return fokus.focus().catch(() => fokus);
+      });
+    }
+    return self.clients.openWindow(ziel);
+  });
+}
+self.klarwerkPruefzuweisungOeffnen = oeffnePruefliste;
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(oeffnePruefliste(event.notification));
+});

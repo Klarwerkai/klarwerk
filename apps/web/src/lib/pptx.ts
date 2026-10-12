@@ -141,6 +141,13 @@ export interface PptxRichResult {
   duplicateImageRefs: number;
   // JOB 513/D2: der gemeinsame, maschinenlesbare Bildtransfer-Vertrag (identisch im DOCX-Weg).
   imageTransfer: ImageTransferContract;
+  // OCR-02 (Lücke L04): die Folie je eingebettetem Bild — beim Lesen bekannt, im HTML nur mittelbar
+  // über die vorangehende h2. In Dokumentreihenfolge; ein später per Drop-to-fit verworfenes Bild
+  // steht hier noch, im HTML aber nicht mehr (der Aufrufer nimmt das HTML als Wahrheit).
+  imageSlides: { imageId: string; slide: number }[];
+  // OCR-02: die nicht eingebetteten Bilder je Folie (Format, Budget, defekt, ausserhalb p:pic).
+  // Der Drop-to-fit am Schluss ist hier NICHT enthalten — er steht in `droppedImageBudget`.
+  imagesNotEmbeddedBySlide: { slide: number; count: number }[];
 }
 
 const XML_ENTITIES: Record<string, string> = {
@@ -1031,6 +1038,9 @@ export async function extractPptxRich(
   const textParts: string[] = [];
   let imageCount = 0;
   let tableCount = 0;
+  // OCR-02 (L04): Folie je eingebettetem Bild und nicht eingebettete Bilder je Folie.
+  const imageSlides: { imageId: string; slide: number }[] = [];
+  const imagesNotEmbeddedBySlide: { slide: number; count: number }[] = [];
   for (let i = 0; i < readCount; i += 1) {
     const path = order[i];
     if (!path) {
@@ -1094,18 +1104,27 @@ export async function extractPptxRich(
           }
           totalImageBytes += bytes.byteLength;
           embeddedImages += 1;
+          const id = `${IMAGE_ID_PREFIX}${runToken}-${embeddedImages}`;
+          imageSlides.push({ imageId: id, slide: i + 1 });
           return {
             src: `data:${mime};base64,${bytesToBase64(bytes)}`,
-            id: `${IMAGE_ID_PREFIX}${runToken}-${embeddedImages}`,
+            id,
           };
         }
       : undefined;
+    const embeddedBefore = imageSlides.length;
     const slide = slideToHtml(xml, {
       slideNumber: i + 1,
       slideLabel,
       resolveImage,
       imageCaption: opts.imageCaptionPlaceholder,
     });
+    if (wantImages) {
+      const notEmbedded = slide.imageCount - (imageSlides.length - embeddedBefore);
+      if (notEmbedded > 0) {
+        imagesNotEmbeddedBySlide.push({ slide: i + 1, count: notEmbedded });
+      }
+    }
     imageCount += slide.imageCount;
     tableCount += slide.tableCount;
     htmlParts.push(slide.html);
@@ -1169,6 +1188,8 @@ export async function extractPptxRich(
     droppedImageUnresolved,
     droppedImageOutsidePath,
     duplicateImageRefs,
+    imageSlides,
+    imagesNotEmbeddedBySlide,
     // JOB 513/D2: EIN Vertrag aus den REALEN Zaehlern. Die wirksame Bytegrenze ist die BESTEHENDE
     // autoritative Groesse (budgetBytes, default MAX_INLINE_BODY_HTML_BYTES) — keine zweite Zahl.
     // `compressedImages` bleibt 0: der PPTX-Weg kodiert Rohbytes direkt, er re-encodiert nicht. Das ist

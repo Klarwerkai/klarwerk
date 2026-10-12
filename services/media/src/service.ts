@@ -115,6 +115,26 @@ export class MediaAnalysisService {
     return nurWahr(this.zentralFreigegeben);
   }
 
+  // Aufnahme `gesamt-ocr` · R-0181: ein als lokal BESTÄTIGTER Transkriber (`Transcriber.lokal`,
+  // Loopback oder ausdrücklich freigegebene Origin) schickt den Ton nicht aus dem Haus. Für ihn gelten
+  // die zwei Sperren für den Weg HINAUS nicht — die Freigabe für öffentliche KI und die Sperre für
+  // vertrauliche Medien —, dieselbe Lesart wie beim lokalen Sprachdienst des Reasoners
+  // (`pruefeFreigabeVorUebertragung` fragt die Freigabe nur für externe Anbieter). Alle anderen
+  // Prüfungen (Rechte an der Route, Objektart, Größe, Lesbarkeit) bleiben unverändert.
+  private transkribiertLokal(): boolean {
+    return this.transcriber?.lokal === true;
+  }
+
+  // Die Sperre für Vertrauliches greift nur, wenn der Ton das Haus verlassen würde.
+  private vertraulichGesperrt(confidential: boolean): boolean {
+    return confidential && !this.transkribiertLokal() && !nurWahr(this.vertraulichFreigegeben);
+  }
+
+  // Die Freigabe für öffentliche KI ist nur für einen externen Dienst gefragt.
+  private oeffentlicheKiFehlt(): boolean {
+    return !this.transkribiertLokal() && !this.oeffentlicheKiFreigegeben();
+  }
+
   engineInfo(): { active: boolean; engine: string | null } {
     return { active: Boolean(this.transcriber), engine: this.transcriber?.name ?? null };
   }
@@ -159,7 +179,7 @@ export class MediaAnalysisService {
     );
     // gesamt-ki-freigaberegeln: Vertrauliches bleibt ohne die zweite Adminfreigabe drinnen; mit ihr
     // gilt dieselbe Kette wie für alles andere (Schlüssel, Grundfreigabe, Chokepoint).
-    if (confidential && !nurWahr(this.vertraulichFreigegeben)) {
+    if (this.vertraulichGesperrt(confidential)) {
       // Vertrauliches Medium → kein externer Egress. Ehrlich, wie der Inaktiv-Zustand.
       return {
         objectId,
@@ -185,8 +205,9 @@ export class MediaAnalysisService {
     }
     // Auftrag gesamt-ki-freigaberegeln: ohne die zentrale Adminfreigabe geht nichts an die
     // öffentliche Transkriptions-KI. Gefragt NACH dem Inaktiv-Zustand, damit „kein Schlüssel" und
-    // „nicht freigegeben" unterscheidbar bleiben; der Anbieter bleibt benannt.
-    if (!this.oeffentlicheKiFreigegeben()) {
+    // „nicht freigegeben" unterscheidbar bleiben; der Anbieter bleibt benannt. R-0181: ein bestätigt
+    // lokaler Dienst ist keine öffentliche KI — für ihn wird die Freigabe nicht gefragt.
+    if (this.oeffentlicheKiFehlt()) {
       return {
         objectId,
         transcript: null,
@@ -260,7 +281,7 @@ export class MediaAnalysisService {
       throw new MediaAnalysisError("UNSUPPORTED_KIND", "Die Aufnahme ist zu lang.");
     }
     const confidential = mediaIsConfidential(confidentiality);
-    if (confidential && !nurWahr(this.vertraulichFreigegeben)) {
+    if (this.vertraulichGesperrt(confidential)) {
       return {
         transcript: null,
         engineActive: false,
@@ -280,7 +301,7 @@ export class MediaAnalysisService {
           "Bitte den Text eintippen oder das Browser-Diktat nutzen.",
       };
     }
-    if (!this.oeffentlicheKiFreigegeben()) {
+    if (this.oeffentlicheKiFehlt()) {
       return {
         transcript: null,
         engineActive: false,

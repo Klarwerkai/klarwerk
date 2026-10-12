@@ -156,6 +156,9 @@ export interface ReasonerProvider {
   // Lösung); das Bild selbst reist hier NICHT mit, nur dieser Klartext.
   // AUFNAHME 20260922 · WISSEN-INTERVIEW: `options` schaltet Fragebaum und Lücken-Thema zu;
   // ohne sie (und ohne Bildbefund) bleibt die bisherige Fragenfolge.
+  // Aufnahme `gesamt-ocr` (FR-CAP-05): `options.context` = ausdrücklich im Bild erkannter Text. Nur
+  // das Modell nutzt ihn für die Formulierung der Frage; der Entwurf entsteht weiter allein aus den
+  // Antworten. Der deterministische Fallback ignoriert ihn (er formuliert nichts um).
   interview(
     answers: readonly string[],
     locale?: ReasonerLocale,
@@ -227,6 +230,18 @@ export interface ReasonerProvider {
     locale: ReasonerLocale,
     confidential: boolean,
   ): Promise<LueckenBereichsUrteil[] | null>;
+  // produkt:20261009:referenzki-pruefdienst (REF-02): die Referenzprüfung der Quellenbelege. NUR
+  // das echte Modell; der deterministische Fallback bewusst NICHT — eine „Prüfung" ohne Modell wäre
+  // eine Selbstauskunft. Prüfauftrag und Auswertung liegen beim Prüfdienst (`services/ask`), der
+  // Provider reicht genau einen Aufruf durch; `confidential` reist wie überall bis zum Wächter.
+  pruefeQuellenbeleg?(
+    system: string,
+    user: string,
+    confidential: boolean,
+    maxTokens: number,
+    // Anfrageabbruch und Prüfzeitlimit — bis zum Transport durchgereicht (Ben nacharbeit-3).
+    signal?: AbortSignal,
+  ): Promise<string>;
   // D-AISTATE PAKET 1 (bens V1, aistate-fix3): Egress-Politik des dahinterliegenden Clients —
   // `true` = dieser Provider darf vertrauliche Inhalte NICHT sehen (Cloud bzw. ein „lokal"
   // verdrahteter Endpunkt ohne bestätigte On-Prem-Origin). Der Reasoner nimmt ihn dann bei

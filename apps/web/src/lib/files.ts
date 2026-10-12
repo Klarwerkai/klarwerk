@@ -242,7 +242,20 @@ type PdfjsModule = PdfEngine & {
   GlobalWorkerOptions: { workerSrc: string };
 };
 type TesseractModule = {
-  recognize(input: unknown, lang?: string): Promise<{ data: { text: string } }>;
+  recognize(
+    input: unknown,
+    lang?: string,
+    options?: Record<string, unknown>,
+  ): Promise<{
+    data: {
+      text: string;
+      words?: {
+        text: string;
+        confidence: number;
+        bbox?: { x0: number; y0: number; x1: number; y1: number };
+      }[];
+    };
+  }>;
 };
 
 let pdfEnginePromise: Promise<PdfEngine> | null = null;
@@ -348,15 +361,88 @@ export async function readPdfFileWithOriginal(
 // liefert, und `isImage` oben trägt dieselbe Regel. Er ist entfernt; OCR startet weiterhin NIE
 // automatisch (`runImageOcr` nur auf ausdrückliche Nutzeraktion).
 
+// ================================================================================================
+// Aufnahme `gesamt-ocr` · R-0151 (Nacharbeit 13) — DIE ERKENNUNG LÄUFT UNTER DER EIGENEN CSP.
+// ================================================================================================
+//
+// DER BEFUND, GEMESSEN (technische OCR-Probe mit fiktivem Bild, Peters Entscheidung 25,
+// `tests-smoke/ocr-technische-probe-browser.spec.ts`): In der ausgelieferten Anwendung scheiterte
+// JEDE Erkennung. tesseract.js baut seinen Arbeiter standardmäßig aus einer `blob:`-Adresse und
+// lädt Arbeiter, Kern und Sprachdaten von fremden Herkünften (CDN). Die CSP der Anwendung
+// (`script-src 'self'`, `connect-src 'self'`) verbietet beides — „Creating a worker from 'blob:…'
+// violates … script-src 'self'". Ausgang: „OCR für … fehlgeschlagen".
+//
+// JETZT LÄUFT ALLES AUF DERSELBEN HERKUNFT, ohne dass die Richtlinie für fremde Adressen geöffnet
+// wird:
+//   · Arbeiter und Kern liefert der eigene Bau unter `/ocr/engine/` aus (Bau-Plugin
+//     `lib/ocrEngineDateien.ts`), der Arbeiter wird direkt von dort gestartet
+//     (`workerBlobURL: false` — kein `blob:`).
+//   · Die Sprachdaten kommen von `/ocr/lang` (OCR_SPRACHDATEN_PFAD). Fehlen sie in der Auslieferung,
+//     sagt die Anwendung ehrlich „OCR ist derzeit nicht verfügbar", statt einen Lauf zu starten, der
+//     an einer fehlenden Datei scheitert.
+//   · Für das WebAssembly des Kerns braucht die Richtlinie `'wasm-unsafe-eval'`
+//     (`services/app/src/security-headers.ts`) — das erlaubt NUR das Übersetzen von WebAssembly,
+//     kein `eval` von JavaScript und keine fremde Herkunft.
+// Das Bild selbst verlässt den Browser dabei nicht.
+
+/** Wo die Auslieferung die Sprachdaten (`<sprache>.traineddata.gz`) bereitstellt. */
+export const OCR_SPRACHDATEN_PFAD = "/ocr/lang";
+
+/**
+ * Die Engine-Einstellungen — alles auf derselben Herkunft (s. Kopfkommentar). Die Pfade sind
+ * dieselben, unter denen `ocrEngineDateien()` (`lib/ocrEngineDateien.ts`) die Dateien ablegt; jene
+ * Datei ist ein Bau-Plugin (Node) und wird hier bewusst nicht importiert.
+ */
+export function ocrEngineOptionen(): Record<string, unknown> {
+  return {
+    workerPath: "/ocr/engine/worker.min.js",
+    corePath: "/ocr/engine/tesseract-core-simd-lstm.wasm.js",
+    langPath: OCR_SPRACHDATEN_PFAD,
+    workerBlobURL: false,
+  };
+}
+
+/** Liegen die Sprachdaten für jede Sprache von `lang` („deu+eng") auf derselben Herkunft bereit? */
+export async function ocrSprachdatenVorhanden(
+  lang: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<boolean> {
+  try {
+    for (const sprache of lang.split("+").filter((s) => s.trim().length > 0)) {
+      const antwort = await fetchFn(`${OCR_SPRACHDATEN_PFAD}/${sprache.trim()}.traineddata.gz`, {
+        method: "HEAD",
+      });
+      const art = antwort.headers.get("content-type") ?? "";
+      // Eine HTML-Seite ist keine Sprachdatei (Schutz gegen einen Rückfall auf die App-Seite).
+      if (!antwort.ok || art.includes("text/html")) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // SCRUM-123: optionale Bild-OCR (lazy tesseract.js@5, Worker/WASM). Engine nicht ladbar
 // → ehrlich „unavailable", kein Vortäuschen. Nur auf explizite Nutzeraktion aufrufen.
+// OCR-02 (Klara-Bildanalyse, 12.10.2026): Diese Regel ist für bereitgestellte Bilder abgelöst —
+// Peter: „sofort automatisch mitlesen". Die Automatik (`lib/bildAutomatik.ts`) ruft dieselbe
+// Funktion beim Eingang eines Bildes oder Dokuments auf, solange sie eingeschaltet ist; der Klick
+// bleibt als manueller Weg.
 export async function runImageOcr(input: File | string, lang = "deu+eng"): Promise<OcrResult> {
   try {
+    if (!(await ocrSprachdatenVorhanden(lang))) {
+      return { status: "unavailable", text: "" };
+    }
     const mod = (await import("tesseract.js")) as unknown as TesseractModule & {
       default?: TesseractModule;
     };
     const tesseract = mod.default ?? mod;
-    return recognizeImage(input, { recognize: (img) => tesseract.recognize(img, lang) });
+    const optionen = ocrEngineOptionen();
+    return recognizeImage(input, {
+      recognize: (img) => tesseract.recognize(img, lang, optionen),
+    });
   } catch {
     return { status: "unavailable", text: "" };
   }

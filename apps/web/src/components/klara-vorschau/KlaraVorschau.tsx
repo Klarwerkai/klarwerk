@@ -87,6 +87,9 @@ import {
   useAndereFlaecheOffen,
   useAndereFlaecheSchliesst,
 } from "../assistenzFlaechen";
+// produkt:20261012:klara-setup-shortcuts-umsetzung: konfigurierte Kürzel führen vorhandene Wege aus.
+import { useKlaraAktion } from "../klara-setup/KlaraKuerzelAusfuehrung";
+import { KlaraAufgaben } from "./KlaraAufgaben";
 import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
 import {
@@ -95,6 +98,7 @@ import {
   KlaraUebertrageneAufgaben,
   istOffen,
 } from "./KlaraEigeninitiative";
+import { KlaraNotizen } from "./KlaraNotizen";
 import { KlaraQualitaet } from "./KlaraQualitaet";
 import {
   type Absendeergebnis,
@@ -145,6 +149,7 @@ import {
   seiteAusPfad,
   seitenErklaerung,
 } from "./kontext";
+import { legeNotiz } from "./notizen";
 import { auftrittAus, useAssistenzProfil } from "./profil";
 import {
   leseVorlesen,
@@ -1530,6 +1535,21 @@ export function KlaraVorschau({
     setEingabe("");
     void fragenSenden(frage);
   };
+  // Klara 06: der Text im Eingabefeld wird zur privaten Notiz — mit dem gewählten Bezug (Seite,
+  // Markierung oder frei) als Rücklink, OHNE an den Frageweg zu gehen. Das Feld leert sich sofort;
+  // bis der Server bestätigt, steht die Notiz als „wird gespeichert“ bzw. „Nicht gespeichert“ mit
+  // „Erneut speichern“ in „Meine Notizen“ — der Text geht dabei nicht verloren.
+  const alsNotizSpeichern = (): void => {
+    const text = eingabe.trim();
+    if (!text) {
+      return;
+    }
+    const z0 = leseZustand();
+    const objektbezug = objektbezugFuer(z0.bezug, kontextRef.current, z0.auswahl);
+    const weg = diktiertRef.current ? "diktiert" : "geschrieben";
+    setEingabe("");
+    void legeNotiz({ weg, inhalt: text, objektbezug }, t);
+  };
 
   // Klara 02: Diktieren füllt das Eingabefeld, „Auftrag sprechen“ zeigt die Karte mit Ziel.
   const objektLeer = [
@@ -1537,8 +1557,19 @@ export function KlaraVorschau({
     t("klaravorschau.objekt.keineFrage"),
     t("klaravorschau.objekt.neuerEntwurf"),
   ];
+  // Klara 06: ob das Eingabefeld (auch) diktiert wurde — eine daraus gespeicherte Notiz heisst dann
+  // „diktiert“. Ein geleertes Feld beginnt wieder als getippt.
+  const diktiertRef = useRef(false);
+  useEffect(() => {
+    if (!eingabe) {
+      diktiertRef.current = false;
+    }
+  }, [eingabe]);
   const sprechen = useKlaraSprache({
-    setzeEingabe: setEingabe,
+    setzeEingabe: (f) => {
+      diktiertRef.current = true;
+      setEingabe(f);
+    },
     ziel: (): SprachZiel => {
       const k = kontextRef.current;
       return {
@@ -1557,6 +1588,29 @@ export function KlaraVorschau({
       aufnahmeAbbrechen();
     }
   }, [panelSichtbar, aufnahmeAbbrechen]);
+
+  // produkt:20261012:klara-setup-shortcuts-umsetzung (AA-04): konfigurierte Kürzel kommen über den
+  // einen Ausführungsweg (`klara-setup/KlaraKuerzelAusfuehrung.tsx`) und laufen hier über die
+  // VORHANDENEN Wege — kein zweites Gespräch, keine eigene Aufnahme. „Klara öffnen“ ist idempotent:
+  // `oeffnen` setzt nur `offen` auf dem einen Zustand und holt den Fokus ins Gespräch; Verlauf,
+  // Eingabe und Auswahl bleiben stehen. Diktat und Auftrag öffnen das Gespräch zuerst, damit der
+  // Stopp sichtbar ist; Mikrofonfreigabe und „nicht verfügbar“ regelt `useKlaraSprache` wie beim Klick.
+  useKlaraAktion((aktion) => {
+    if (aktion === "oeffnen") {
+      oeffnen();
+    } else if (aktion === "diktieren" || aktion === "auftragSprechen") {
+      oeffnen();
+      if (!sprechen.laeuft) {
+        sprechen.starten(aktion === "diktieren" ? "diktat" : "auftrag");
+      }
+    } else if (aktion === "aufnahmeStoppen") {
+      if (sprechen.laeuft) {
+        sprechen.stoppen();
+      }
+    } else if (aktion === "vorlesenStoppen") {
+      stoppeVorlesen();
+    }
+  });
 
   // ---------------------------------------------------------------------------------------------
   // produkt:20261010:assistenz-name-avatar — der Zustand der Figur (ANIMATIONSZUSTAENDE.json), nur
@@ -2584,6 +2638,22 @@ export function KlaraVorschau({
                 <li>{t("klaraauftrag.bedienhilfe.stoppen")}</li>
                 <li>{t("klaraauftrag.bedienhilfe.rueckgaengig")}</li>
                 <li>{t("klaraauftrag.bedienhilfe.sprechen")}</li>
+                {/* Klara 06: private Notizen anlegen, wiederfinden und als Arbeitszettel führen. */}
+                <li data-testid="klara-bedienhilfe-notiz">{t("klaranotiz.bedienhilfe.anlegen")}</li>
+                <li>{t("klaranotiz.bedienhilfe.gespraech")}</li>
+                <li>{t("klaranotiz.bedienhilfe.ausschnitt")}</li>
+                <li>{t("klaranotiz.bedienhilfe.wiederfinden")}</li>
+                <li>{t("klaranotiz.bedienhilfe.arbeitszettel")}</li>
+                <li>{t("klaranotiz.bedienhilfe.privat")}</li>
+                <li>{t("klaranotiz.bedienhilfe.fehler")}</li>
+                {/* Klara 07: persönliche Aufgaben aus Notiz und Auftrag, bearbeiten, erledigen. */}
+                <li data-testid="klara-bedienhilfe-aufgabe">
+                  {t("klaraaufgabe.bedienhilfe.auftrag")}
+                </li>
+                <li>{t("klaraaufgabe.bedienhilfe.notiz")}</li>
+                <li>{t("klaraaufgabe.bedienhilfe.bearbeiten")}</li>
+                <li>{t("klaraaufgabe.bedienhilfe.privat")}</li>
+                <li>{t("klaraaufgabe.bedienhilfe.fehler")}</li>
                 {/* Klara 12: Modi, Hinweise und übertragene Aufgaben. */}
                 <li data-testid="klara-bedienhilfe-eigeninitiative">
                   {t("klarainitiative.bedienhilfe.modi")}
@@ -2641,6 +2711,10 @@ export function KlaraVorschau({
             )}
             {/* Klara 05: Ausführungsaufträge — Grenze, Schritte, Abbrechen, Rückgängig. */}
             {istEcht ? <KlaraAusfuehrungen umgebung={auftragsUmgebung} /> : null}
+            {/* Klara 06: die privaten Notizen — anlegen, wiederfinden, öffnen, ändern. */}
+            {istEcht && kontoId ? <KlaraNotizen /> : null}
+            {/* Klara 07: die persönlichen Aufgaben — öffnen, ändern, priorisieren, erledigen. */}
+            {istEcht && kontoId ? <KlaraAufgaben /> : null}
             {/* Klara 02: der gesprochene Auftrag — erkannter Text, Ziel, Rückfragen, Ergebnis. */}
             <KlaraAuftragKarte
               s={sprechen}
@@ -2707,6 +2781,19 @@ export function KlaraVorschau({
                 </p>
               ) : null}
             </div>
+            {/* Klara 06: getippt oder diktiert als private Notiz speichern — ohne Senden. */}
+            {istEcht ? (
+              <button
+                type="button"
+                data-testid="klara-als-notiz"
+                title={t("klaranotiz.alsNotizHilfe")}
+                disabled={!eingabe.trim() || sprechen.laeuft === "diktat"}
+                onClick={alsNotizSpeichern}
+                className={KNOPF}
+              >
+                {t("klaranotiz.alsNotiz")}
+              </button>
+            ) : null}
             {istEcht && echt.laeuftSeit !== null ? (
               <button
                 type="button"
@@ -3159,6 +3246,28 @@ function EntwurfKarte({ entwurf }: { entwurf: Entwurf }): JSX.Element {
           {t("klaravorschlag.notiz.hinweis")}
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
+          {/* Klara 06: der Ausschnitt wird zur privaten Notiz am Server — mit der markierten Stelle
+              als Rücklink. Der Entwurf geht in „Meine Notizen“ über; dort steht sein Speicherstand
+              samt „Erneut speichern“ (derselbe Vorgang, keine Doppelnotiz). */}
+          <button
+            type="button"
+            data-testid="klara-entwurf-als-notiz"
+            disabled={!entwurf.inhalt.trim()}
+            onClick={() => {
+              aendere((z) => (z.entwurf?.id === entwurf.id ? { ...z, entwurf: null } : z));
+              void legeNotiz(
+                {
+                  weg: "ausschnitt",
+                  inhalt: entwurf.inhalt,
+                  objektbezug: { ...objektbezugAus(entwurf.herkunft), bezug: "markierung" },
+                },
+                t,
+              );
+            }}
+            className={KNOPF}
+          >
+            {t("klaranotiz.entwurfAlsNotiz")}
+          </button>
           <button
             type="button"
             data-testid="klara-entwurf-verwerfen"

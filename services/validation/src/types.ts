@@ -24,6 +24,16 @@ export interface Assignment {
   // `nochZuBenachrichtigen` mit dem Nachweis des Aufrufers. Eine vorhandene Zuweisung allein beweist
   // nicht, dass die Benachrichtigung lief.
   benachrichtigung?: "ausstehend" | "erledigt";
+  // R-1655: wann zugewiesen und wann durch Bewertung erledigt — daraus entsteht die Prüfdauer.
+  // Additiv in der JSONB-Ablage; Altbestand ohne Feld hat keine messbare Dauer.
+  zugewiesenAm?: string;
+  erledigtAm?: string;
+  // R-1655: über welchen Weg die Zuweisung entstand (Messweg). `automatisch` = vom System nach
+  // Prüfgeschwindigkeit geroutet; nur so lässt sich die Wirkung des Routings gegen die übrigen
+  // Wege messen. BEWUSST NICHT `quelle`: dieses Feld trägt (R-0571/ADMIN-09) die Herkunft
+  // „verzeichnis"/„vertretung", und dessen Fehlen heisst „von Hand" — ein zweiter Wertebereich im
+  // selben Feld hätte den Verzeichnisabgleich verfälscht.
+  weg?: ZuweisungsQuelle;
   /**
    * R-0571: „verzeichnis" = aus der Prüfzuständigkeit des Unternehmensverzeichnisses abgeleitet.
    * Nur solche OFFENEN Zuweisungen gleicht `verzeichnisAbgleichen` mit dem Gruppenstand ab; ohne
@@ -38,6 +48,8 @@ export interface Assignment {
   vertretungFuer?: string;
   seit?: string;
 }
+
+export type ZuweisungsQuelle = "manuell" | "einreichen" | "automatisch";
 
 // SCRUM-395: INVALID_DEFAULT = ungültige Standard-Prüferanzahl (Admin-Einstellung).
 // R-0507: NOT_OWNER = die Eigentümerfreigabe verlangt den benannten Eigentümer (an der Route 403).

@@ -11,6 +11,7 @@ import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
+import { useUploadLimits } from "../api/hooks";
 import type { Confidentiality, ExtractedPoint } from "../api/types";
 import { BODY_EXTRACT_TEXT } from "../lib/bodyExtract";
 import type { OriginalDocument } from "../lib/captureAttachments";
@@ -30,14 +31,18 @@ import {
   isWordDocument,
   readDocxFile,
   readFileAsDataUrl,
-  readPdfFile,
+  readPdfFileWithOriginal,
   readTextFile,
   runImageOcr,
 } from "../lib/files";
+// Aufnahme `gesamt-ocr` (R-0138): derselbe Satz wie im Erfassen, wenn die PDF zu gross ist oder der
+// Parser seine Frist ueberschreitet.
+import { pdfLesefehlerSatz } from "../lib/pdfLesefehler";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { documentProvenance } from "../lib/reasonerProvenance";
 // WP-RETEST7 R1: ehrliche Lese-Fehler (Stale-Bundle vs. Parse-Ursache).
 import { STALE_BUNDLE_KEY, honestParseErrorText } from "../lib/staleChunk";
+import { maxRawAttachmentBytes } from "../lib/uploadLimits";
 import { AiModelInfo } from "./AiModelInfo";
 import { HelpTip } from "./HelpTip";
 import { UploadLimitsHint } from "./UploadLimitsHint";
@@ -117,6 +122,13 @@ export function BodyExtractPanel({
   const [appendedNote, setAppendedNote] = useState<string | null>(null);
 
   const locale = toReasonerLocale(i18n.language);
+  // Aufnahme `gesamt-ocr` (R-0138): die Groessenkante des PDF-Weges VOR dem Parser — dieselbe
+  // Ableitung wie im Erfassen (JOB 2700 D1): was nicht als Original angehaengt werden kann, wird auch
+  // nicht geparst. Bis hierher las dieses Panel jede PDF ohne Kante, und ein gescanntes Handbuch
+  // ueber 50 MB fror den Tab hier weiter ein. Rueckfall = Werksvorgabe des Servers (20 MB je Anhang).
+  const pdfLimitBytes = maxRawAttachmentBytes(
+    useUploadLimits().data?.maxAttachmentBytes ?? 20_000_000,
+  );
 
   // Gleicher extract-Task wie der Erzähl-Modus „Aus Datei" (PMO-FEA-0006/SCRUM-390);
   // ohne Modell kommt eine ehrliche note vom Server — KEINE Fake-Punkte.
@@ -167,13 +179,18 @@ export function BodyExtractPanel({
       let text = "";
       // WP-D3: Hinweis, wenn der PDF-Seiten-Cap griff (nur die ersten N Seiten gelesen).
       let pdfTruncatedPages: number | null = null;
+      // R-0138: bei PDFs entsteht das Original aus DEMSELBEN Lesevorgang wie der Text.
+      let pdfOriginal: string | null = null;
       if (isTextDocument(f) || isWordDocument(f)) {
         text = isWordDocument(f) ? await readDocxFile(f) : await readTextFile(f);
       } else if (isPdfDocument(f)) {
         // WP-D3: zeilen-/absatztreuer PDF-Text; truncated meldet den Seiten-Cap.
-        const pdf = await readPdfFile(f);
+        const { pdf, original: gelesen } = await readPdfFileWithOriginal(f, {
+          maxBytes: pdfLimitBytes,
+        });
         text = pdf.text;
         pdfTruncatedPages = pdf.truncated ? pdf.pageCount : null;
+        pdfOriginal = gelesen;
       } else {
         setFileName(null);
         setStatus(null);
@@ -196,7 +213,7 @@ export function BodyExtractPanel({
       setOriginal({
         name: f.name,
         mime: f.type || "application/octet-stream",
-        data: await readFileAsDataUrl(f),
+        data: pdfOriginal ?? (await readFileAsDataUrl(f)),
       });
       const truncatedNote =
         pdfTruncatedPages !== null
@@ -208,12 +225,14 @@ export function BodyExtractPanel({
       setStatus(null);
       // WP-RETEST7 R1a/c: Stale-Bundle (Chunk-Import nach Deploy gescheitert) → ehrliche
       // Neu-laden-Meldung; echter Parse-Fehler → bestehende Meldung + kurze Ursache.
+      // R-0138: eine zu grosse oder zu langsame PDF bekommt vorher ihren eigenen Satz mit Zahlen.
       setErr(
-        honestParseErrorText(
-          error,
-          t(STALE_BUNDLE_KEY),
-          t(CAPTURE_FILE_TEXT.parseError, { name: f.name }),
-        ),
+        pdfLesefehlerSatz(error, f.name, t) ??
+          honestParseErrorText(
+            error,
+            t(STALE_BUNDLE_KEY),
+            t(CAPTURE_FILE_TEXT.parseError, { name: f.name }),
+          ),
       );
     } finally {
       setBusy(false);

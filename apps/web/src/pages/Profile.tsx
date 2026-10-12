@@ -14,6 +14,7 @@ import { useSession } from "../app/AuthContext";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — Zahlen nur über eigene Beiträge.
 import { MyImpactNumbers } from "../components/FunkeCards";
+import { AutoZuweisungZeile, GeraetePushZeile } from "../components/PruefBenachrichtigung";
 import { istAktiv } from "../components/SprachSchalter";
 // produkt:20261010:assistenz-name-avatar: „Meine Assistenz" — Name und Motiv der eigenen Assistenz.
 import { AssistenzFormular } from "../components/assistenz/AssistenzFormular";
@@ -25,6 +26,14 @@ import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
 import { Zeile, Zeilenkarte } from "../components/einstellungen/Zeilenkarte";
+// produkt:20261012:klara-setup-shortcuts-umsetzung: der Bereich „Klara“ mit Tastenkürzeln.
+import {
+  KlaraGruppe,
+  KlaraSprachausgabeGruppe,
+  KlaraTastenkuerzelBereich,
+  KlaraUnterstuetzung,
+  KlaraWeitereOrte,
+} from "../components/klara-setup/KlaraSetup";
 import { Avatar, Button, Field, TextInput } from "../components/ui";
 import {
   ladeAssistenzProfil,
@@ -545,7 +554,10 @@ const ZWEI_FAKTOR_KEY = ["auth", "second-factor"] as const;
 
 // ================================================================================================
 // produkt:20261010:assistenz-name-avatar — MEINE ASSISTENZ: Name und Motiv jederzeit ändern.
-// Einstellungen → Persönliche Einstellungen (/profil) → „Meine Assistenz".
+// produkt:20261012:klara-setup-shortcuts-umsetzung (AA-02) — daraus wird der Bereich „Klara“:
+// Einstellungen → Persönliche Einstellungen (/profil) → „Klara“. Die Karte gruppiert ALLE
+// Klara-Einstellungen des Bestands (`components/klara-setup/KlaraSetup.tsx`); jede Gruppe schreibt
+// über ihren bisherigen Weg, nichts zieht um.
 // ================================================================================================
 function MeineAssistenzDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
   const { t } = useTranslation();
@@ -553,29 +565,40 @@ function MeineAssistenzDetail({ onZurueck }: { onZurueck: () => void }): JSX.Ele
   const stand = useAssistenzStand();
   return (
     <Detailkarte
-      titel={t("assistenz.einstellungen.titel")}
+      titel={t("klarasetup.titel")}
+      hilfe={[{ titel: t("klarasetup.hilfe.titel"), text: t("klarasetup.hilfe.text") }]}
       onZurueck={onZurueck}
       testId="detail-assistenz"
     >
-      <p className="text-[13px] text-muted">{t("assistenz.einstellungen.intro")}</p>
-      {stand.status === "fehler" ? (
-        <div role="alert" className="space-y-2 text-[12.5px] text-trust-crit-text">
-          <p>{t("assistenz.laden.fehler")}</p>
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (user) {
-                void ladeAssistenzProfil(user.id);
-              }
-            }}
-          >
-            {t("assistenz.laden.wiederholen")}
-          </Button>
-        </div>
-      ) : null}
-      {stand.status === "bereit" ? <AssistenzFormular modus="aendern" /> : null}
-      {/* produkt:20261011:assistenz-skills-werkzeuge: Favoriten, Routinen und Aufrufe. */}
-      <FaehigkeitenBereich />
+      <p className="text-[13px] text-muted">{t("klarasetup.intro")}</p>
+      <KlaraGruppe titel={t("klarasetup.gruppe.erscheinung")} testId="klara-setup-erscheinung">
+        <p className="text-[12.5px] text-muted">{t("assistenz.einstellungen.intro")}</p>
+        {stand.status === "fehler" ? (
+          <div role="alert" className="space-y-2 text-[12.5px] text-trust-crit-text">
+            <p>{t("assistenz.laden.fehler")}</p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (user) {
+                  void ladeAssistenzProfil(user.id);
+                }
+              }}
+            >
+              {t("assistenz.laden.wiederholen")}
+            </Button>
+          </div>
+        ) : null}
+        {stand.status === "bereit" ? <AssistenzFormular modus="aendern" /> : null}
+      </KlaraGruppe>
+      <KlaraUnterstuetzung />
+      <KlaraGruppe titel={t("klarasetup.gruppe.faehigkeiten")} testId="klara-setup-faehigkeiten">
+        {/* produkt:20261011:assistenz-skills-werkzeuge: Favoriten, Routinen und Aufrufe. */}
+        <FaehigkeitenBereich />
+      </KlaraGruppe>
+      <KlaraSprachausgabeGruppe />
+      {/* AA-03/AA-04: der Unterbereich „Tastenkürzel“. */}
+      <KlaraTastenkuerzelBereich />
+      <KlaraWeitereOrte />
     </Detailkarte>
   );
 }
@@ -589,7 +612,9 @@ export function Profile(): JSX.Element {
   const suche = new URLSearchParams(useLocation().search);
   const ausSso = suche.get("kontodaten") === "sso";
   // produkt:20261010:assistenz-name-avatar: `/profil?bereich=assistenz` öffnet „Meine Assistenz".
-  const zurAssistenz = suche.get("bereich") === "assistenz";
+  // produkt:20261012:klara-setup-shortcuts-umsetzung: dieselbe Karte heisst jetzt „Klara“; der
+  // bisherige Direktweg bleibt gültig, `?bereich=klara` führt ebenso dorthin.
+  const zurAssistenz = suche.get("bereich") === "assistenz" || suche.get("bereich") === "klara";
   const [detail, setDetail] = useState<
     | null
     | "passwort"
@@ -644,7 +669,7 @@ export function Profile(): JSX.Element {
           />
           <Zeile label={t("prof.language")} steuerung={<SprachWahl />} testId="zeile-sprache" />
           <Zeile
-            label={t("assistenz.einstellungen.titel")}
+            label={t("klarasetup.titel")}
             vorn={
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-page">
                 <AvatarBild
@@ -684,6 +709,9 @@ export function Profile(): JSX.Element {
             onOeffnen={() => setDetail("wirkung")}
             testId="zeile-wirkung"
           />
+          {/* R-0679: Push auf diesem Gerät; R-1655: Abmeldung von der automatischen Zuweisung. */}
+          <GeraetePushZeile />
+          <AutoZuweisungZeile />
           {/* ADMIN-12: die eigenen Meldungseinstellungen und die Regeln dahinter — eine eigene
               Seite, weil Übersicht und Unternehmensvorgaben dort für alle lesbar stehen. */}
           <Zeile

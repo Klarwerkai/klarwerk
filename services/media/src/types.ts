@@ -19,6 +19,14 @@ export interface MediaAnalysis {
 // true, sodass vertrauliche Medien-Rohbytes NIE an eine externe Transkriptions-API gehen.
 export interface Transcriber {
   name: string;
+  /**
+   * Aufnahme `gesamt-ocr` · R-0181: `true` NUR für einen Dienst auf dem eigenen Rechner, dessen
+   * Adresse als lokal bestätigt ist (Loopback oder ausdrücklich freigegebene Origin,
+   * `istBestaetigtLokaleAdresse`). Dann verlässt der Ton das Haus nicht: keine öffentliche KI, also
+   * keine Freigabe für öffentliche KI nötig, und vertrauliche Medien dürfen bedient werden. Fehlt die
+   * Angabe, gilt der Dienst als extern — alle bisherigen Sperren bleiben.
+   */
+  readonly lokal?: boolean;
   transcribe(
     bytes: Buffer,
     mime: string,
