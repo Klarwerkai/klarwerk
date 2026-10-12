@@ -28,6 +28,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type ProtokollPflegeErgebnis,
+  aeltesterInhalt,
   pflegeDiagnoseordner,
   pflegeProtokolle,
 } from "./protokoll-frist";
@@ -57,16 +58,83 @@ export function leseAuswahl(roh: string | undefined): ContainerAuswahl | null {
   return { label: teil.slice(0, trenner), wert: teil.slice(trenner + 1) };
 }
 
+interface DockerKonfiguration {
+  Name?: unknown;
+  Config?: { Image?: unknown; Labels?: Record<string, unknown> | null };
+}
+
+function leseKonfiguration(verzeichnis: string): DockerKonfiguration | null {
+  try {
+    return JSON.parse(
+      readFileSync(join(verzeichnis, "config.v2.json"), "utf8"),
+    ) as DockerKonfiguration;
+  } catch {
+    return null;
+  }
+}
+
 /** Trägt der Container laut seiner Docker-Konfiguration das verlangte Label? Im Zweifel: nein. */
 function gehoertZurAuswahl(verzeichnis: string, auswahl: ContainerAuswahl): boolean {
-  try {
-    const konfiguration = JSON.parse(readFileSync(join(verzeichnis, "config.v2.json"), "utf8")) as {
-      Config?: { Labels?: Record<string, unknown> | null };
-    };
-    return konfiguration.Config?.Labels?.[auswahl.label] === auswahl.wert;
-  } catch {
-    return false;
+  return leseKonfiguration(verzeichnis)?.Config?.Labels?.[auswahl.label] === auswahl.wert;
+}
+
+/** Eine Zeile des Berichts — nur Kennungen, Namen und Zahlen, nie ein Protokollinhalt. */
+export interface ContainerBericht {
+  id: string;
+  name: string;
+  abbild: string;
+  ausgewaehlt: boolean;
+  protokolldateien: number;
+  /** Alter der ältesten Protokollzeile in Tagen (eine Nachkommastelle), `null` ohne Protokoll. */
+  aeltesteZeileTage: number | null;
+}
+
+/**
+ * DER BETRIEBSNACHWEIS (Ben, Nacharbeit 13): ändert NICHTS, sondern zeigt am echten Host, welche
+ * Container die Auswahl trifft (Name, Abbild, Label) und wie alt die älteste Protokollzeile je
+ * Container und im Diagnoseordner ist. Vor und nach der Einrichtung des geplanten Laufs ausgeführt,
+ * belegt er Zuordnung und Löschwirkung: danach darf kein ausgewählter Container und keine
+ * Diagnosekopie eine Zeile älter als 14 Tage tragen.
+ */
+export function berichteDockerProtokolle(opts: {
+  ordner?: string;
+  auswahl: ContainerAuswahl | null;
+  diagnoseordner?: string;
+  jetzt?: number;
+}): { container: ContainerBericht[]; diagnoseAeltesteTage: number | null } {
+  const ordner = opts.ordner ?? DOCKER_CONTAINER_ORDNER;
+  const jetzt = opts.jetzt ?? Date.now();
+  const tage = (zeit: number) => Math.round(((jetzt - zeit) / 86_400_000) * 10) / 10;
+  const aeltestes = (pfade: string[]): number | null =>
+    pfade.length === 0 ? null : tage(Math.min(...pfade.map((p) => aeltesterInhalt(p))));
+  const container: ContainerBericht[] = [];
+  if (existsSync(ordner)) {
+    for (const id of readdirSync(ordner)) {
+      const verzeichnis = join(ordner, id);
+      if (!CONTAINER_ID.test(id) || !statSync(verzeichnis).isDirectory()) {
+        continue;
+      }
+      const konfiguration = leseKonfiguration(verzeichnis);
+      const protokolle = readdirSync(verzeichnis)
+        .filter((n) => n.startsWith(`${id}-json.`) && !n.endsWith(".beginn"))
+        .map((n) => join(verzeichnis, n));
+      container.push({
+        id,
+        name: typeof konfiguration?.Name === "string" ? konfiguration.Name : "",
+        abbild: typeof konfiguration?.Config?.Image === "string" ? konfiguration.Config.Image : "",
+        ausgewaehlt: opts.auswahl !== null && gehoertZurAuswahl(verzeichnis, opts.auswahl),
+        protokolldateien: protokolle.length,
+        aeltesteZeileTage: aeltestes(protokolle),
+      });
+    }
   }
+  const diagnose =
+    opts.diagnoseordner && existsSync(opts.diagnoseordner)
+      ? readdirSync(opts.diagnoseordner)
+          .map((n) => join(opts.diagnoseordner as string, n))
+          .filter((p) => statSync(p).isFile())
+      : [];
+  return { container, diagnoseAeltesteTage: aeltestes(diagnose) };
 }
 
 /** Ein Lauf über die ausgewählten Container — je Container das Ergebnis der Pflege. */
@@ -127,6 +195,16 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const ordner =
     argumente[0] && !argumente[0].startsWith("--") ? argumente[0] : DOCKER_CONTAINER_ORDNER;
   const diagnoseordner = option(argumente, "--diagnose");
+  if (argumente.includes("--bericht")) {
+    // Nur lesen, nichts ändern — der Nachweis für Zuordnung und Wirkung (siehe berichteDockerProtokolle).
+    const bericht = berichteDockerProtokolle({
+      ordner,
+      auswahl,
+      ...(diagnoseordner ? { diagnoseordner } : {}),
+    });
+    process.stdout.write(`${JSON.stringify(bericht, null, 2)}\n`);
+    process.exit(0);
+  }
   const lauf = pflegeDockerProtokolle({
     ordner,
     auswahl,

@@ -23,6 +23,7 @@ import {
 } from "../../services/app/src/protokoll-frist";
 import {
   KLARWERK_AUSWAHL,
+  berichteDockerProtokolle,
   leseAuswahl,
   pflegeDockerProtokolle,
 } from "../../services/app/src/protokoll-frist-docker";
@@ -364,6 +365,73 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     expect(leseAuswahl("de.klarwerk.protokollpflege=")).toBeNull();
     expect(leseAuswahl("=app")).toBeNull();
     expect(leseAuswahl(KLARWERK_AUSWAHL)).toEqual(KLARWERK);
+  });
+
+  // Ben, Nacharbeit 13: der Betriebsnachweis am echten Host. Der Bericht ändert nichts und zeigt vor
+  // und nach dem Lauf Zuordnung und Alter — hier an derselben Ordnerform wie auf dem Host gemessen.
+  it("Bericht: ändert nichts, zeigt die Zuordnung und belegt die Wirkung vorher/nachher", () => {
+    const wurzel = protokollordner();
+    const dockerZeile = (zeit: number, text: string) =>
+      `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
+    const fremd = fremderContainer(wurzel, dockerZeile);
+    const id = "0123456789abcdef01234567";
+    mkdirSync(join(wurzel, id));
+    datei(join(wurzel, id, `${id}-json.log`), dockerZeile(JETZT - 20 * TAG, "app-alt"), JETZT);
+    datei(join(wurzel, id, `${id}-json.log.1`), dockerZeile(JETZT - 25 * TAG, "app-alt"), JETZT);
+    datei(join(wurzel, id, "config.v2.json"), appKonfiguration(), JETZT);
+    const diagnose = join(wurzel, "diagnose");
+    mkdirSync(diagnose);
+    datei(join(diagnose, "auszug.txt"), dockerZeile(JETZT - 15 * TAG, "kopie"), JETZT);
+    const stand = () =>
+      readdirSync(wurzel)
+        .flatMap((o) =>
+          o === "diagnose" ? [] : readdirSync(join(wurzel, o)).map((n) => `${o}/${n}`),
+        )
+        .sort();
+    const vorherDateien = stand();
+
+    const vorher = berichteDockerProtokolle({
+      ordner: wurzel,
+      auswahl: KLARWERK,
+      diagnoseordner: diagnose,
+      jetzt: JETZT,
+    });
+    // Der Bericht hat nichts verändert.
+    expect(stand()).toEqual(vorherDateien);
+    expect(readdirSync(diagnose)).toEqual(["auszug.txt"]);
+    const app = vorher.container.find((c) => c.id === id);
+    expect(app).toMatchObject({
+      name: "/klarwerk-app-1",
+      abbild: "klarwerk-app",
+      ausgewaehlt: true,
+    });
+    expect(app?.aeltesteZeileTage).toBeGreaterThanOrEqual(25);
+    const fremde = vorher.container.filter((c) => c.id !== id);
+    expect(fremde.length).toBe(2);
+    expect(fremde.every((c) => !c.ausgewaehlt)).toBe(true);
+    expect(vorher.diagnoseAeltesteTage).toBeGreaterThanOrEqual(15);
+    // Keine Protokollinhalte im Bericht — nur Kennungen, Namen und Zahlen.
+    expect(JSON.stringify(vorher)).not.toContain("app-alt");
+    expect(JSON.stringify(vorher)).not.toContain("fremd-alt");
+
+    pflegeDockerProtokolle({
+      ordner: wurzel,
+      auswahl: KLARWERK,
+      diagnoseordner: diagnose,
+      jetzt: JETZT,
+    });
+
+    const nachher = berichteDockerProtokolle({
+      ordner: wurzel,
+      auswahl: KLARWERK,
+      diagnoseordner: diagnose,
+      jetzt: JETZT,
+    });
+    expect(nachher.container.find((c) => c.id === id)?.aeltesteZeileTage ?? 0).toBeLessThan(14);
+    expect(nachher.diagnoseAeltesteTage).toBeNull();
+    // Die fremden Container: im Bericht unverändert, auf der Platte unberührt.
+    expect(nachher.container.filter((c) => c.id !== id)).toEqual(fremde);
+    fremd.unberuehrt();
   });
 
   it("die Auswahl ist überall dieselbe: Dockerfile-Label, Compose-Aufruf, Coolify-Aufruf im Runbook", () => {

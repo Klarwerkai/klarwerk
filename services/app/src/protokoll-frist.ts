@@ -119,8 +119,8 @@ function ersteZeitImInhalt(pfad: string): number | null {
   }
 }
 
-/** Wie alt der älteste Inhalt einer Datei mindestens ist. */
-function aeltesterInhalt(pfad: string): number {
+/** Wann der älteste Inhalt einer Datei höchstens entstand (Inhaltszeit, sonst Dateidatum). */
+export function aeltesterInhalt(pfad: string): number {
   const stand = statSync(pfad);
   const datum = Math.min(
     stand.mtimeMs,
