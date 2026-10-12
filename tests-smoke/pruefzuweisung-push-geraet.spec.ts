@@ -30,10 +30,24 @@
 // dasselbe mitgelieferte Chromium im vollständigen neuen Kopflosmodus — keine Installation, kein
 // fremder Browser. Meldet der Browser dennoch „verweigert", endet der Fall mit genau dieser
 // Diagnose (Anhang `push-erlaubnis-diagnose.json`), statt an einer Zeitgrenze.
-import { type APIRequestContext, type Page, type Worker, expect, test } from "@playwright/test";
+//
+// Nacharbeit 12: mit `channel: "chromium"` stand die Profilzeile auf „Aus", das Abo selbst scheiterte
+// mit „AbortError: Registration failed - permission denied". `browser.newContext()` ist ein
+// flüchtiger Inkognito-Kontext, und Chromium verweigert Push-Abos in Inkognito-Profilen. Die Prüferin
+// bekommt deshalb ein EIGENES, dauerhaftes Profil (`launchPersistentContext`) in einem frischen
+// Verzeichnis je Lauf — isoliert vom Admin und von jedem anderen Lauf, nach dem Lauf gelöscht.
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  type APIRequestContext,
+  type Page,
+  type Worker,
+  chromium,
+  expect,
+  test,
+} from "@playwright/test";
 import { SMOKE_MAIL, SMOKE_PASS, workspaceMarker } from "./support/auth";
-
-test.use({ channel: "chromium" });
 
 const HINWEIS_TAG = "klarwerk-pruefzuweisung";
 const PRUEFLISTE = "/validierung?mine=1";
@@ -128,7 +142,6 @@ async function serviceWorkerVon(page: Page): Promise<Worker> {
 }
 
 test("R-0679: Prüfzuweisung erreicht das Gerät als Push-Hinweis und führt in die eigene Prüfliste", async ({
-  browser,
   browserName,
   request,
   baseURL,
@@ -166,8 +179,12 @@ test("R-0679: Prüfzuweisung erreicht das Gerät als Push-Hinweis und führt in 
   const prueferId = konten.find((k) => k.email === pruefer.email)?.id;
   expect(prueferId, "Prüferkonto in der Kontenliste").toBeTruthy();
 
-  // --- Prüferin: eigener Kontext, Benachrichtigungen erlaubt, Service Worker zugelassen. --------
-  const kontext = await browser.newContext({
+  // --- Prüferin: eigenes dauerhaftes Profil (kein Inkognito), Benachrichtigungen erlaubt, ------
+  // --- Service Worker zugelassen; das Profilverzeichnis ist je Lauf frisch und wird gelöscht. ---
+  const profil = mkdtempSync(join(tmpdir(), "klarwerk-push-pruefer-"));
+  const kontext = await chromium.launchPersistentContext(profil, {
+    channel: "chromium",
+    headless: true,
     ...(baseURL ? { baseURL } : {}),
     serviceWorkers: "allow",
     permissions: ["notifications"],
@@ -178,7 +195,7 @@ test("R-0679: Prüfzuweisung erreicht das Gerät als Push-Hinweis und führt in 
     await kontext.grantPermissions(["notifications"], { origin: new URL(baseURL).origin });
   }
   try {
-    const page = await kontext.newPage();
+    const page = kontext.pages()[0] ?? (await kontext.newPage());
     await imBrowserAnmelden(page, pruefer.email, pruefer.password);
     // Erst wenn der Service Worker steht, kann die Profilzeile ein Abo anlegen — sonst meldete sie
     // ehrlich „auf diesem Gerät nicht möglich“. Deshalb ZUERST warten, DANN die Profilseite öffnen.
@@ -298,5 +315,6 @@ test("R-0679: Prüfzuweisung erreicht das Gerät als Push-Hinweis und führt in 
     });
   } finally {
     await kontext.close();
+    rmSync(profil, { recursive: true, force: true });
   }
 });
