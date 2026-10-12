@@ -7,7 +7,7 @@
 >
 > Fassung 2026-10-08 (Auftrag `aufnahme:20260922:gesamt-geheimnisse-betrieb`, Basis `a42c2881`):
 > Grundentscheidung (§0), vollständiges Inventar mit Ordnung und Wechsel (§1), Erhebungsprotokoll (§1a),
-> eigene Kundenschlüssel (§7a). Die Inventarliste wird gegen den Startvertrag geprüft:
+> eigene Kundenschlüssel (§7a). Ergänzt 2026-10-12: Rotationsplan mit Zuständigkeit (§1b). Die Inventarliste wird gegen den Startvertrag geprüft:
 > `tests/geheimnisse-betrieb/geheimnisse-nur-in-der-betriebsumgebung.test.ts`.
 
 ---
@@ -125,6 +125,48 @@ Ausgegeben wurden nur Dateinamen und Trefferzahlen, nie ein Wert.
 Die Erhebung läuft seither bei jedem Testlauf mit (Test oben, Fall „kein echtes Schlüsselmaterial“) und
 deckt dabei auch das gebaute Client-Bundle `apps/web/dist`, wenn es vorliegt.
 
+## 1b. Rotationsplan und Zuständigkeit
+
+**Festgelegt durch Peters Entscheidung vom 12.10. (Nr. 6, „Verantwortung für Geheimnisse“):**
+Peter ist zunächst der **fachliche Betreiberverantwortliche** für alle Geheimnisse. Die **technische
+Durchführung** liegt beim zugeordneten Betriebsweg — für jede Umgebungsvariable die Service-Env der
+Instanz in Coolify (Hetzner, `deploy-hetzner.md`), für Anbieterwerte zusätzlich das jeweilige
+Anbieterkonto. Handgriffe, die historisch Peter vorbehalten sind (OFFEN.md I56), bleiben bei ihm.
+
+**Regeln dieser Tabelle.** Sie enthält nie einen Wert und kein Präfix.
+„Letzte nachgewiesene Rotation“ nennt nur einen Wechsel **mit Beleg**; fehlt der Beleg, steht dort
+**„nicht nachgewiesen“** — kein geschätztes Datum. Der **nächste Termin** folgt der Anbieterregel
+(ein vom Anbieter gesetztes Ablaufdatum gilt, wenn es früher liegt) und dem Risiko: Ohne Nachweis ist
+das Alter eines Werts unbekannt, deshalb liegt der erste Termin vor der Regelfrist aus §1 — je
+kürzer, je größer die Reichweite laut „Tatsächliche Zugriffswege“. Nach dem ersten nachgewiesenen
+Wechsel gilt die Regelfrist aus §1, gerechnet ab diesem Wechsel. Ein Wert, der in einer Instanz nicht
+gesetzt ist, hat dort keinen Termin. Nach jedem Wechsel trägt der Betreiber hier Datum und Beleg ein
+(z. B. Coolify-Änderungsprotokoll oder Widerrufsbestätigung des Anbieters).
+
+Stand: 2026-10-12.
+
+| Art | Geheimnis | Variable / Ort | Zuständig | Letzte nachgewiesene Rotation | Nächster Termin | Grundlage des Termins |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | Betriebszugang | Coolify-/Hetzner-Konto, Server-SSH | Peter (fachlich und Durchführung, Kontoinhaber) | nicht nachgewiesen | 2026-11-12 | größte Reichweite (jede Service-Env); danach jährlich und bei jedem Personenwechsel |
+| 1 | Datenbank-Zugang | `DATABASE_URL` | Peter (fachlich); Durchführung: Betriebsweg Coolify + Postgres | nicht nachgewiesen | 2026-11-12 | Reichweite: gesamter Bestand und Sitzungen; danach jährlich |
+| 2 | KI-Schlüssel Anthropic | `ANTHROPIC_API_KEY` | Peter selbst (OFFEN.md I56, ihm vorbehalten); Durchführung: Anbieterkonto + Coolify | nicht nachgewiesen | 2026-10-19 | offener Leckbericht OFFEN.md I56 (Schlüssel im Klartext in einem Protokoll) — Notfallwechsel, sofort |
+| 2 | KI-Schlüssel OpenAI | `OPENAI_API_KEY` | Peter (fachlich); Durchführung: Anbieterkonto + Coolify | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite nur Anbieterkonto (Kosten); danach ≤ 12 Monate |
+| 2 | Schlüssel des lokalen Modells | `KLARWERK_LOCAL_LLM_KEY` | Peter (fachlich); Durchführung: lokaler Modellserver + Coolify | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite nur Modellserver; danach ≤ 12 Monate |
+| 2 | Transkriptionsdienst | `MEDIA_TRANSCRIBE_API_KEY` | Peter (fachlich); Durchführung: Anbieterkonto + Coolify | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite nur Anbieterkonto; danach ≤ 12 Monate |
+| 2 | Postausgang | `SMTP_PASS` | Peter (fachlich); Durchführung: Mail-Anbieter + Coolify | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite Versand im Namen der Instanz; danach ≤ 12 Monate |
+| 2 | Single Sign-on | `OIDC_CLIENT_SECRET` | Peter (fachlich); Durchführung: IdP-Verwaltung + Coolify | nicht nachgewiesen | 2027-01-12 | früheres Ablaufdatum beim IdP geht vor; danach ≤ 12 Monate |
+| 3 | Confluence-Token | `KLARWERK_CONFLUENCE_TOKEN` | Peter (fachlich); Durchführung: Atlassian-Konto + Coolify | nicht nachgewiesen | 2027-01-12 | früheres Ablaufdatum des Tokens bei Atlassian geht vor; danach ≤ 12 Monate |
+| 3 | SharePoint-/OneDrive-Token | `KLARWERK_SHAREPOINT_TOKEN` | Peter (fachlich); Durchführung: Microsoft-Mandant + Coolify | nicht nachgewiesen | 2027-01-12 | früheres Ablaufdatum bei Microsoft geht vor; danach ≤ 12 Monate |
+| 4 | Add-in-Schlüssel | `KLARWERK_ADDON_API_KEY` | Peter (fachlich); Durchführung: Coolify + Add-in-Verteilung | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite Add-in-Schnittstelle; danach ≤ 12 Monate |
+| 4 | Signatur der Antwortbelege | `KLARWERK_ASK_RECEIPT_SECRET` | Peter (fachlich); Durchführung: Betriebsweg Coolify | nicht nachgewiesen | 2027-04-12 | geringe Reichweite (nur Belegfälschung, Belege gelten 30 Minuten); danach ≤ 12 Monate |
+| Proxy | Pre-Launch-Gate | Basic-Auth-Hash am Reverse-Proxy | Peter (fachlich); Durchführung: Betriebsweg Coolify/Traefik | nicht nachgewiesen | 2026-11-12 | Zugangsschutz vor der ganzen App; danach bei Personen- oder Phasenwechsel |
+| 4 | Demo-Konten-Kennwörter | erster Start einer Instanz | Peter (fachlich und Durchführung) | 30.07. (Beleg: OFFEN.md, Eintrag zu den Demo-Konten, „die Kennwörter der Demo-Konten sind zurückgesetzt“; Jahr dort nicht genannt) | 2027-07-30 | vor jeder echten Nutzung; sonst ≤ 12 Monate ab dem belegten Wechsel |
+| Proxy | TLS-Zertifikate | Reverse-Proxy | Betriebsweg Coolify/Traefik (automatisch) | nicht nachgewiesen | automatisch | Erneuerung durch den Proxy; Peter prüft nur das Ablaufdatum |
+
+**Offener Beleg:** Für keinen der Werte außer den Demo-Kennwörtern liegt ein Nachweis eines
+erfolgten Wechsels vor. Die Tabelle legt Zuständigkeit und Termine fest — sie bestätigt keine
+Durchführung.
+
 ---
 
 ## 2. Erlaubte Speicherorte
@@ -229,14 +271,15 @@ braucht zuerst eine neue Entscheidung (Plan: Stufe 2).
 - **Im Testlauf:** `tests/geheimnisse-betrieb/geheimnisse-nur-in-der-betriebsumgebung.test.ts` sucht im Produktbaum (und im gebauten Bundle, falls vorhanden) nach echtem Schlüsselmaterial. Er prüft den aktuellen Stand, **nicht** die Git-Historie.
 - **Pre-Commit/CI-Scan der Historie** (z. B. `gitleaks`/`trufflehog`) bleibt empfohlen — Einrichtung ist Betreiber-/Ops-Aufgabe.
 - **PR-Review:** `.env.example` enthält nur Platzhalter; keine echten Werte in Diffs/Logs.
-- **Periodischer Review:** Secret-/Zugriffs-Check und fällige Wechsel (§1) im **Quartals-Compliance-Review** (`gdpr-compliance-runbook.md` §6) mitführen.
+- **Periodischer Review:** Secret-/Zugriffs-Check und fällige Wechsel (§1b) im **Quartals-Compliance-Review** (`gdpr-compliance-runbook.md` §6) mitführen.
 
 ---
 
 ## 11. Offene Betreiberpflichten / Nicht-Ziele
 
-- **Wechsel tatsächlich terminieren** und Verantwortlichen benennen — organisatorisch.
-- Offene Handgriffe aus OFFEN.md I56 (Schlüssel in Coolify wechseln, Protokolldatei löschen) — nur der Betreiber.
+- **Zuständigkeit und Termine sind festgelegt** (§1b, Peters Entscheidung vom 12.10.). Offen bleibt
+  die **Durchführung** der Wechsel zu diesen Terminen und das Eintragen von Datum und Beleg in §1b.
+- Offene Handgriffe aus OFFEN.md I56 (Schlüssel in Coolify wechseln, Protokolldatei löschen) — Peter vorbehalten, Termin §1b.
 - Auswahl/Einrichtung eines **externen Secret-Stores** (Vault/Doppler/Cloud SM) — Option, nicht eingerichtet.
 - **Secret-Scanning der Git-Historie** in CI aktivieren — Ops-Aufgabe.
 - **Eigene Schlüssel je Kunde in einer gemeinsamen Instanz** — nicht gebaut, braucht Entscheidung (§7a).

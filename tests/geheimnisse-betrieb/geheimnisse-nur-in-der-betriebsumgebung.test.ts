@@ -200,6 +200,50 @@ describe("Geheimnisse nur in der Betriebsumgebung", () => {
     expect(HANDBUCH).toContain("## 7a. Eigene Schlüssel der Kunden");
   });
 
+  it("G8 · Rotationsplan: zuständig, letzte belegte Rotation, nächster Termin", () => {
+    // Peters Entscheidung vom 12.10. (Nr. 6): Inventar je Schlüsselart mit letzter NACHGEWIESENER
+    // Rotation, zuständiger Person und nächstem Termin — ein fehlender Nachweis wird nicht durch
+    // ein Datum ersetzt.
+    const plan = abschnitt(HANDBUCH, "## 1b. ", "## 2. ");
+    expect(plan).toContain("Entscheidung vom 12.10.");
+    const stand = /Stand: (\d{4}-\d{2}-\d{2})/.exec(plan)?.[1] ?? "";
+    expect(stand).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const zeilen = plan
+      .split("\n")
+      .filter((z) => z.startsWith("|"))
+      .map((z) =>
+        z
+          .split("|")
+          .slice(1, -1)
+          .map((c) => c.trim()),
+      )
+      .filter((zellen) => zellen.length === 7);
+    const jeVariable = new Map(
+      zeilen.map((zellen) => [/`([A-Z][A-Z0-9_]*)`/.exec(zellen[2] ?? "")?.[1] ?? "", zellen]),
+    );
+    const fehler: string[] = [];
+    for (const name of GEHEIM) {
+      const zellen = jeVariable.get(name);
+      if (!zellen) {
+        fehler.push(`${name}: keine Zeile`);
+        continue;
+      }
+      const [, , , zustaendig = "", letzte = "", termin = ""] = zellen;
+      if (!zustaendig.includes("Peter")) {
+        fehler.push(`${name}: keine zuständige Person`);
+      }
+      if (letzte !== "nicht nachgewiesen" && !letzte.includes("Beleg:")) {
+        fehler.push(`${name}: letzte Rotation ohne Beleg`);
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(termin) || termin < stand) {
+        fehler.push(`${name}: kein künftiger Termin`);
+      }
+    }
+    expect(fehler).toEqual([]);
+    // Die Zuordnung ist entschieden — §11 führt sie nicht mehr als offen.
+    expect(abschnitt(HANDBUCH, "## 11. ", "\n---")).not.toContain("Verantwortlichen benennen");
+  });
+
   it("G3 · kein echtes Schlüsselmaterial im Produktbaum", () => {
     const liste = dateien(REPO, NICHT_PRODUKTBAUM);
     expect(liste.length).toBeGreaterThan(1000);
