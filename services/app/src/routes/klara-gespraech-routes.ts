@@ -1,6 +1,7 @@
-import type { FastifyPluginAsync, FastifyReply } from "fastify";
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { AuditService } from "../../../audit";
 import { type Guards, sendError } from "../http";
+import { KlaraAusfuehrung, type KlaraRufe } from "../klara-ausfuehrung";
 import {
   type KlaraGespraech,
   type KlaraGespraechDienst,
@@ -79,6 +80,7 @@ export function klaraGespraechRoutes(
   guards: Guards,
 ): FastifyPluginAsync {
   const { dienst, audit } = deps;
+  const ausfuehrung = new KlaraAusfuehrung(dienst);
 
   return async (app) => {
     app.get("/api/me/klara/gespraech", async (request, reply) => {
@@ -214,6 +216,256 @@ export function klaraGespraechRoutes(
             target: `klara-gespraech:${request.params.id}`,
           });
           reply.code(200).send({ geloescht: 1 });
+        } catch (fehler) {
+          antworteMitFehler(reply, fehler);
+        }
+      },
+    );
+
+    // ============================================================================================
+    // Klara 05 (produkt:20261008:klara-aktionen) — Ausführungsaufträge im eigenen Gespräch.
+    // ============================================================================================
+    //
+    //   GET  …/gespraeche/:id/auftraege                                 — die Aufträge lesen
+    //   POST …/gespraeche/:id/auftraege                                 — Auftrag mit Grenze geben
+    //   POST …/gespraeche/:id/auftraege/:auftragId/fassungen            — Grenze korrigieren
+    //   PUT  …/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel — Schritt beginnen/melden
+    //   PUT  …/gespraeche/:id/auftraege/:auftragId/abbruch              — keine weiteren Schritte
+    //
+    // Dieselbe Tür wie das Gespräch: nur angemeldet, nur das eigene Konto, fremd und unbekannt 404.
+    // Kein zusätzliches Recht — ob ein Schritt WIRKT, entscheidet der vorhandene Produktweg mit
+    // seinen eigenen Rechten. Ins Prüfprotokoll gehen Ereignis, Kennungen, Aktion und Stand; nie
+    // Wortlaut, Titel oder Inhalte.
+    app.get<{ Params: { id: string } }>(
+      "/api/me/klara/gespraeche/:id/auftraege",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const auftraege = await dienst.auftraege(user.id, request.params.id);
+          reply.code(200).send({ auftraege });
+        } catch (fehler) {
+          antworteMitFehler(reply, fehler);
+        }
+      },
+    );
+
+    app.post<{ Params: { id: string }; Body: unknown }>(
+      "/api/me/klara/gespraeche/:id/auftraege",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const auftrag = await dienst.legeAuftragAn(
+            user.id,
+            request.params.id,
+            rumpf<Record<string, unknown>>(request.body),
+          );
+          await audit.record({
+            actor: user.id,
+            action: "klara.auftrag.angelegt",
+            target: `klara-auftrag:${auftrag.id}`,
+            payload: {
+              gespraech: request.params.id,
+              aktionen: auftrag.erlaubteAktionen,
+              geplanteSchritte: auftrag.geplanteSchritte,
+            },
+          });
+          reply.code(201).send({ auftrag });
+        } catch (fehler) {
+          antworteMitFehler(reply, fehler);
+        }
+      },
+    );
+
+    app.post<{ Params: { id: string; auftragId: string }; Body: unknown }>(
+      "/api/me/klara/gespraeche/:id/auftraege/:auftragId/fassungen",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const auftrag = await dienst.korrigiereAuftrag(
+            user.id,
+            request.params.id,
+            request.params.auftragId,
+            rumpf<Record<string, unknown>>(request.body),
+          );
+          await audit.record({
+            actor: user.id,
+            action: "klara.auftrag.korrigiert",
+            target: `klara-auftrag:${auftrag.id}`,
+            payload: { fassung: auftrag.fassung, aktionen: auftrag.erlaubteAktionen },
+          });
+          reply.code(200).send({ auftrag });
+        } catch (fehler) {
+          antworteMitFehler(reply, fehler);
+        }
+      },
+    );
+
+    app.put<{ Params: { id: string; auftragId: string; schluessel: string }; Body: unknown }>(
+      "/api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const r = await dienst.setzeAuftragsschritt(
+            user.id,
+            request.params.id,
+            request.params.auftragId,
+            request.params.schluessel,
+            rumpf<Record<string, unknown>>(request.body),
+          );
+          if (!r.wiederholt) {
+            await audit.record({
+              actor: user.id,
+              action: "klara.auftrag.schritt",
+              target: `klara-auftrag:${r.auftrag.id}`,
+              payload: {
+                nr: r.schritt.nr,
+                aktion: r.schritt.aktion,
+                stand: r.schritt.stand,
+                ...(r.schritt.ergebnis ? { ergebnis: r.schritt.ergebnis.id } : {}),
+              },
+            });
+          }
+          reply.code(200).send(r);
+        } catch (fehler) {
+          antworteMitFehler(reply, fehler);
+        }
+      },
+    );
+
+    app.put<{ Params: { id: string; auftragId: string }; Body: unknown }>(
+      "/api/me/klara/gespraeche/:id/auftraege/:auftragId/abbruch",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const auftrag = await dienst.brecheAuftragAb(
+            user.id,
+            request.params.id,
+            request.params.auftragId,
+          );
+          await audit.record({
+            actor: user.id,
+            action: "klara.auftrag.abgebrochen",
+            target: `klara-auftrag:${auftrag.id}`,
+          });
+          reply.code(200).send({ auftrag });
+        } catch (fehler) {
+          antworteMitFehler(reply, fehler);
+        }
+      },
+    );
+
+    // ============================================================================================
+    // Nacharbeit 2 (Ben): DIE GEBUNDENE AUSFÜHRUNG — der Server führt den Planschritt aus.
+    // ============================================================================================
+    //
+    //   POST …/auftraege/:auftragId/schritte/:schluessel/ausfuehrung — Planschritt ausführen
+    //   POST …/auftraege/:auftragId/schritte/:schluessel/ruecknahme  — gespeicherten Schritt zurück
+    //
+    // Ausgeführt wird über die VORHANDENEN Türen mit der Anmeldung der Person (`rufeFuer`): dieselben
+    // Rechte, dieselbe Sichtbarkeit, derselbe Vorgangsschlüssel und Standvergleich wie im Editor.
+    // Der Browser schickt nur Schrittnummer und Fassung; Aktion, Ziel und Inhalt stehen im Auftrag.
+    const rufeFuer =
+      (request: FastifyRequest): KlaraRufe =>
+      async (methode, url, rumpf) => {
+        const kopf: Record<string, string> = {};
+        for (const name of ["authorization", "cookie", "accept-language"]) {
+          const wert = request.headers[name];
+          if (typeof wert === "string") {
+            kopf[name] = wert;
+          }
+        }
+        const r = await app.inject({
+          method: methode,
+          url,
+          headers: kopf,
+          ...(rumpf === undefined ? {} : { payload: rumpf as Record<string, unknown> }),
+        });
+        let daten: unknown = null;
+        try {
+          daten = r.body ? JSON.parse(r.body) : null;
+        } catch {
+          daten = null;
+        }
+        return { status: r.statusCode, daten };
+      };
+
+    app.post<{ Params: { id: string; auftragId: string; schluessel: string }; Body: unknown }>(
+      "/api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ausfuehrung",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const r = await ausfuehrung.fuehreAus(
+            user.id,
+            request.params.id,
+            request.params.auftragId,
+            request.params.schluessel,
+            rumpf<{ nr?: unknown; auftragFassung?: unknown }>(request.body),
+            rufeFuer(request),
+          );
+          if (!r.wiederholt) {
+            await audit.record({
+              actor: user.id,
+              action: "klara.auftrag.schritt",
+              target: `klara-auftrag:${r.auftrag.id}`,
+              payload: {
+                nr: r.schritt.nr,
+                aktion: r.schritt.aktion,
+                stand: r.schritt.stand,
+                ausgefuehrt: "server",
+                ...(r.schritt.ergebnis ? { ergebnis: r.schritt.ergebnis.id } : {}),
+                ...(r.schritt.fehlerCode ? { fehler: r.schritt.fehlerCode } : {}),
+              },
+            });
+          }
+          reply.code(200).send(r);
+        } catch (fehler) {
+          antworteMitFehler(reply, fehler);
+        }
+      },
+    );
+
+    app.post<{ Params: { id: string; auftragId: string; schluessel: string }; Body: unknown }>(
+      "/api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ruecknahme",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const r = await ausfuehrung.nimmZurueck(
+            user.id,
+            request.params.id,
+            request.params.auftragId,
+            request.params.schluessel,
+            rufeFuer(request),
+          );
+          if (!r.wiederholt) {
+            await audit.record({
+              actor: user.id,
+              action: "klara.auftrag.schritt",
+              target: `klara-auftrag:${r.auftrag.id}`,
+              payload: { nr: r.schritt.nr, aktion: r.schritt.aktion, stand: r.schritt.stand },
+            });
+          }
+          reply.code(200).send(r);
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }

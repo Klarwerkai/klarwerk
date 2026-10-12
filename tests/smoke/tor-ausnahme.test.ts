@@ -86,6 +86,15 @@ const ERLAUBTE_AUSNAHMEN = [
     file: "klara-basis-browser.spec.ts",
     title: "Klara 01 · tatsächliche Modellantwort in der beweglichen Klara @modell",
   },
+  // produkt:20261008:klara-aktionen (Nacharbeit 6) — FÜNFTE Ausnahme, derselbe Grund: AW10-K01 (S06)
+  // verlangt eine TATSÄCHLICHE Modellzusammenfassung; ohne Modell kann der Fall im Tor nicht laufen.
+  // Alles ohne Modell Nachweisbare (kein Versand, kein Auftrag, keine Befugnis; die Absicht erreicht
+  // den Frageweg) misst `tests/klara-aktionen/auftrag-am-server.test.tsx` (U10).
+  {
+    file: "klara-aktionen-s06-modell.spec.ts",
+    title:
+      "AW10-K01 S06: tatsächliche Modellzusammenfassung, kein Versand, keine neue Befugnis @modell",
+  },
 ] as const;
 
 /** Das npm-Skript, dessen Aufrufzeile das Tor in `tools/check` fährt. */
