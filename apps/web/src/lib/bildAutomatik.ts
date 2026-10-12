@@ -154,7 +154,9 @@ export type QuellenHinweis =
   /** Mehr Bilder als `BILD_HOECHSTZAHL_JE_QUELLE`. */
   | "grenze-erreicht"
   /** Die Quelle selbst kam nicht innerhalb der Ladefrist an (Office-Anhang). */
-  | "ladefrist";
+  | "ladefrist"
+  /** OCR-03: die Einstellung des Kontos konnte nicht gelesen werden — nichts automatisch gelesen. */
+  | "einstellung-unbekannt";
 
 export interface BildQuelleEingang {
   quelle: string;
@@ -591,6 +593,24 @@ export function quellenStatus(
   return "vollstaendig";
 }
 
+/**
+ * OCR-03: Die Einstellung des Kontos ist nicht lesbar — dann wird nicht automatisch gelesen, und das
+ * steht da (statt still „an“ oder still „aus“ anzunehmen).
+ */
+export function einstellungUnbekannt(eingang: BildQuelleEingang): QuellenBefund {
+  const befunde = eingang.vorkommen.map((v) => leererBefund(v.fundstelle, "nicht-analysiert"));
+  const nichtGelesen = (eingang.nichtGelesen ?? []).filter((x) => x.anzahl > 0);
+  const hinweise: QuellenHinweis[] = [...(eingang.hinweise ?? []), "einstellung-unbekannt"];
+  return {
+    quelle: eingang.quelle,
+    art: eingang.art,
+    status: quellenStatus(befunde, nichtGelesen, hinweise),
+    befunde,
+    nichtGelesen,
+    hinweise,
+  };
+}
+
 /** Ein Quellenbefund aus einzeln gelesenen Bildern (z. B. Bildanhänge eines Beitrags). */
 export function quellenBefundAus(
   quelle: string,
@@ -651,13 +671,20 @@ export interface BildOptionen {
 export interface BildAnalyse {
   /** Ein einzelnes Bild lesen (bzw. den vorhandenen Befund derselben Bytes wiederverwenden). */
   befundFuerBild(vorkommen: BildVorkommen, optionen?: BildOptionen): Promise<BildBefund>;
-  /** Alle Bilder einer Quelle lesen, der Reihe nach; `onFortschritt` sieht jeden Zwischenstand. */
+  /**
+   * Alle Bilder einer Quelle lesen, der Reihe nach; `onFortschritt` sieht jeden Zwischenstand.
+   * OCR-03: Ist die Automatik aus, wird NICHTS neu ausgewertet — vorhandene Ergebnisse dieser Fläche
+   * für dieselben Bildbytes bleiben nutzbar (gekennzeichnet als vorhanden), alle übrigen Bilder
+   * heißen „nicht gelesen, Automatik aus“. `abbrechen` beendet einen überholten Lauf vor dem
+   * nächsten Bild (Bild getauscht, Automatik ausgeschaltet); er startet dann nichts mehr.
+   */
   analysiereQuelle(
     eingang: BildQuelleEingang,
     optionen: {
       automatik: boolean;
       beschreibe?: BildBeschreiber | undefined;
       onFortschritt?: (stand: QuellenBefund) => void;
+      abbrechen?: () => boolean;
     },
   ): Promise<QuellenBefund>;
   /** Wie oft die Texterkennung tatsächlich gelaufen ist (für die Wiederverwendungsprüfung). */
@@ -693,6 +720,9 @@ export function createBildAnalyse(optionen: {
   const hoechstzahl = optionen.hoechstzahl ?? BILD_HOECHSTZAHL_JE_QUELLE;
   const gemerkt = new Map<string, Promise<Erkennung>>();
   const inhalteGemerkt = new Map<string, Promise<Bildinhalt>>();
+  // OCR-03: welche Inhaltskennung ein geladenes Objektspeicher-Bild hatte — damit eine ausgeschaltete
+  // Automatik vorhandene Ergebnisse wiederfindet, ohne das Bild erneut zu laden.
+  const kennungJeAdresse = new Map<string, string>();
   let analysen = 0;
   let beschreibungen = 0;
 
@@ -781,6 +811,9 @@ export function createBildAnalyse(optionen: {
       return leererBefund(vorkommen.fundstelle, "kein-zugriff");
     }
     const kennung = await bildInhaltskennung(bytes);
+    if (kennung && vorkommen.src && !istBildDatenUrl(vorkommen.src)) {
+      kennungJeAdresse.set(vorkommen.src.trim(), kennung);
+    }
     const vorhanden = kennung && !bildOptionen.neu ? gemerkt.get(kennung) : undefined;
     let erkennung: Erkennung;
     let wiederverwendet = false;
@@ -839,9 +872,46 @@ export function createBildAnalyse(optionen: {
     };
   };
 
+  // OCR-03: ein VORHANDENES, abgeschlossenes Ergebnis derselben Bildbytes — ohne neue Erkennung, ohne
+  // neue Beschreibung und ohne erneutes Laden. Läuft für dieselben Bytes gerade noch eine Erkennung,
+  // wird ihr Ende abgewartet (eine laufende Analyse läuft zu Ende, sie wird nicht verworfen).
+  const vorhandenerBefund = async (vorkommen: BildVorkommen): Promise<BildBefund | null> => {
+    const src = vorkommen.src?.trim() ?? "";
+    if (src.length === 0) {
+      return null;
+    }
+    let kennung: string | null = null;
+    if (istBildDatenUrl(src)) {
+      const bytes = bildBytes(src);
+      kennung = bytes ? await bildInhaltskennung(bytes) : null;
+    } else {
+      kennung = kennungJeAdresse.get(src) ?? null;
+    }
+    const lauf = kennung ? gemerkt.get(kennung) : undefined;
+    if (!kennung || !lauf) {
+      return null;
+    }
+    const erkennung = await lauf;
+    if (!ERFOLG.has(erkennung.status)) {
+      return null;
+    }
+    const inhalt = inhalteGemerkt.get(kennung);
+    return {
+      fundstelle: vorkommen.fundstelle,
+      status: erkennung.status,
+      inhaltskennung: kennung,
+      text: erkennung.text,
+      textGekennzeichnet: erkennung.textGekennzeichnet,
+      unsicher: erkennung.unsicher,
+      tabelle: erkennung.tabelle,
+      bildinhalt: inhalt ? await inhalt : NICHT_ANALYSIERT,
+      wiederverwendet: true,
+    };
+  };
+
   const analysiereQuelle: BildAnalyse["analysiereQuelle"] = async (
     eingang,
-    { automatik, beschreibe, onFortschritt },
+    { automatik, beschreibe, onFortschritt, abbrechen },
   ) => {
     const nichtGelesen = (eingang.nichtGelesen ?? []).filter((x) => x.anzahl > 0);
     const hinweise = [...(eingang.hinweise ?? [])];
@@ -870,10 +940,25 @@ export function createBildAnalyse(optionen: {
         if (!vorkommen || !befund || befund.status !== "wartet") {
           continue;
         }
+        if (abbrechen?.()) {
+          break;
+        }
         befunde[i] = { ...befund, status: "laeuft" };
         onFortschritt?.(stand());
         befunde[i] = await befundFuerBild(vorkommen, { beschreibe });
         onFortschritt?.(stand());
+      }
+    } else {
+      // OCR-03: aus heißt „nichts NEU auswerten“ — vorhandene Ergebnisse bleiben nutzbar.
+      for (let i = 0; i < befunde.length; i += 1) {
+        const vorkommen = eingang.vorkommen[i];
+        if (!vorkommen || i >= hoechstzahl || abbrechen?.()) {
+          continue;
+        }
+        const vorhanden = await vorhandenerBefund(vorkommen);
+        if (vorhanden) {
+          befunde[i] = vorhanden;
+        }
       }
     }
     const ende = stand();

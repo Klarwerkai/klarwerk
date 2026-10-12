@@ -11,6 +11,7 @@
 //     ruhenden Hinweise (E06) nur lesend, weil „Später“/„Nicht mehr anbieten“ am Hinweis selbst wirken.
 //   · Sprachausgabe (E08) — dieselbe `KlaraSprachausgabe`; sie gilt nur für diesen Browser.
 //   · Tastenkürzel (AA-03) — `KlaraTastenkuerzelBereich` unten.
+//   · Bilder automatisch lesen (OCR-03) — `KlaraBildAutomatikGruppe`, im eigenen Assistenzprofil.
 //   · Vorgaben der Organisation (O01/O02), Browser-Erweiterung (H02) und Word (H03, W01–W05) — mit
 //     klarer Zuständigkeit und direktem Zugang, weil diese Hosts technisch getrennt bleiben.
 //
@@ -29,7 +30,8 @@ import { useTranslation } from "react-i18next";
 import { useSession } from "../../app/AuthContext";
 import { GuardedLink } from "../../app/NavGuardContext";
 import { useRole } from "../../app/RoleContext";
-import { useAssistenzT } from "../../lib/assistenzProfil";
+import { useAssistenzStand, useAssistenzT } from "../../lib/assistenzProfil";
+import { speichereBildAutomatik, useBildAutomatikLage } from "../../lib/bildAutomatikEinstellung";
 import { ladeEigeninitiative, useEigeninitiative } from "../../lib/klaraEigeninitiative";
 import {
   KLARA_KUERZEL_AKTIONEN,
@@ -123,6 +125,84 @@ export function KlaraUnterstuetzung(): JSX.Element {
         )}
         <p className={TEXT}>{t("klarasetup.hinweise.ort")}</p>
       </div>
+    </KlaraGruppe>
+  );
+}
+
+// ------------------------------------------------------------------------------------------------
+// produkt:20261012:klara-bildanalyse-ocr-kontext-setup (OCR-03) — Bilder automatisch lesen.
+// Voreinstellung an; gespeichert im eigenen Assistenzprofil (W17), also je Konto und über Neuladen
+// und Geräte hinweg. Aus heißt: keine neue automatische Auswertung; Vorhandenes bleibt lesbar.
+// ------------------------------------------------------------------------------------------------
+
+export function KlaraBildAutomatikGruppe(): JSX.Element {
+  const { t } = useTranslation();
+  const stand = useAssistenzStand();
+  const lage = useBildAutomatikLage();
+  const [speichert, setSpeichert] = useState(false);
+  const [meldung, setMeldung] = useState<Meldung | null>(null);
+  const schalterId = useId();
+  const bereit = stand.kontoId !== null && stand.status === "bereit";
+  const an = lage === "an";
+
+  const wechsel = async (neu: boolean): Promise<void> => {
+    setSpeichert(true);
+    setMeldung({ text: t("klarabildkontext.setup.speichert"), fehler: false });
+    const r = await speichereBildAutomatik(neu);
+    setSpeichert(false);
+    if (r === "gespeichert") {
+      setMeldung({
+        text: neu
+          ? t("klarabildkontext.setup.gespeichertAn")
+          : t("klarabildkontext.setup.gespeichertAus"),
+        fehler: false,
+      });
+    } else if (r === "konflikt") {
+      setMeldung({ text: t("klarabildkontext.setup.konflikt"), fehler: true });
+    } else {
+      setMeldung({ text: t("klarabildkontext.setup.fehler"), fehler: true });
+    }
+  };
+
+  return (
+    <KlaraGruppe titel={t("klarabildkontext.setup.titel")} testId="klara-setup-bildautomatik">
+      <div className="flex items-start gap-2">
+        <input
+          id={schalterId}
+          type="checkbox"
+          data-testid="klara-bildautomatik-schalter"
+          checked={an}
+          disabled={!bereit || speichert}
+          onChange={(e) => void wechsel(e.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-brand"
+        />
+        <label htmlFor={schalterId} className="text-[13px] font-semibold text-ink">
+          {t("klarabildkontext.setup.schalter")}
+        </label>
+      </div>
+      <p className={TEXT}>{t("klarabildkontext.setup.erklaerung")}</p>
+      <p data-testid="klara-bildautomatik-stand" data-lage={lage} className={TEXT}>
+        {stand.kontoId === null
+          ? t("klarabildkontext.setup.ohneKonto")
+          : lage === "laedt"
+            ? t("klarabildkontext.setup.laedt")
+            : lage === "unbekannt"
+              ? t("klarabildkontext.setup.unbekannt")
+              : an
+                ? t("klarabildkontext.setup.an")
+                : t("klarabildkontext.setup.aus")}
+      </p>
+      <p className={TEXT}>{t("klarabildkontext.setup.geltung")}</p>
+      <p
+        data-testid="klara-bildautomatik-meldung"
+        data-fehler={meldung?.fehler ? "true" : "false"}
+        role={meldung?.fehler ? "alert" : "status"}
+        className={`min-h-[1em] text-[12.5px] ${
+          meldung?.fehler ? "text-trust-crit-text" : "text-muted"
+        }`}
+      >
+        {meldung?.text ?? ""}
+      </p>
     </KlaraGruppe>
   );
 }
