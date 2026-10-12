@@ -425,6 +425,16 @@ const GRUNDWERTE: readonly Startwert[] = [
     ohneIhn: "Keine PID-Datei. Der Restore-Drill findet den Prozess nicht.",
   },
   {
+    name: "KLARWERK_LOG_DATEI",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Die Datei, in die die Standardausgabe dieses Servers geht (Insel: setzt start.command). Sie wird täglich rotiert; Protokolle in ihrem Ordner werden nach 14 Tagen gelöscht.",
+    ohneIhn:
+      "Keine Protokollpflege durch die App — die Aufbewahrung liegt dann beim Docker-Dienst bzw. der Protokollsammlung des Betreibers.",
+  },
+  {
     name: "KLARWERK_TRASH_SWEEP_INTERVAL_MS",
     bereich: "Betrieb",
     pflicht: { art: "nie" },

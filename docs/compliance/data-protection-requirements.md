@@ -57,10 +57,10 @@
 | **KOs/Anhänge** | fachlicher Lebenszyklus; Admin kann **löschen** (`ko.deleted`) | über UI/Admin |
 | **Audit-Log** | **append-only, hash-verkettet** (Abweichungen rechnerisch prüfbar = tamper-evident; kein extern verankerter Kettenkopf) | **bewusst nicht löschbar** → Abwägung *Recht auf Löschung ↔ Nachweispflicht* **dokumentieren** |
 | **Konto** | bis Löschung; Admin `user.delete` | über Admin |
-| **Server-Logs der App** | keine Inhalte: Fehler nur als erlaubte Felder, E-Mail-Adressen/ausgewiesene Namen geschwärzt (`monitoring-logging.md` §4); Ein-Befehl-Weg: Mengengrenze 5 × 10 MB je Dienst | Rotation löscht die älteste Datei; **Frist in Tagen: Betreiber/DSB** |
+| **Server-Logs der App** | **14 Tage** (Entscheidung 12.10.2026, PoC-Standard, keine gesetzliche Frist), einschließlich Diagnosekopien; keine Inhalte: Fehler nur als erlaubte Felder, E-Mail-Adressen/ausgewiesene Namen geschwärzt (`monitoring-logging.md` §4) | Insel: automatisch durch die App (tägliche Rotation, Löschung nach 14 Tagen im Protokollordner); Ein-Befehl-Weg: nur Mengengrenze 5 × 10 MB; Coolify: **Durchsetzung offen** (`monitoring-logging.md` §8) |
 | **Proxy-Logs** | **Betreiber-Logging-Policy** (außerhalb App) | Betreiber |
 
-> **Kritisch/offen:** Für ModelRun-Metadaten und Server-/Proxy-Logs ist die **konkrete Retention-Frist** noch **Betreiberentscheidung**; die **Audit-Löschungs-Abwägung** ist organisatorisch zu dokumentieren.
+> **Kritisch/offen:** Die Frist für Server-Logs ist **entschieden** (14 Tage); ihre **Durchsetzung im Coolify-/Docker-Betrieb** und der Betriebsnachweis am Insel-Ordner fehlen noch. Für ModelRun-Metadaten und Proxy-Logs ist die Frist weiter **Betreiberentscheidung**. **Sicherheits-/Auditnachweise** erhalten eine **eigene begründete Regel** (noch nicht festgelegt); die **Audit-Löschungs-Abwägung** ist organisatorisch zu dokumentieren.
 
 ---
 
@@ -94,7 +94,7 @@
 
 ## 6. Kritische offene Punkte (ehrlich, ohne Folge-Ticketflut)
 
-1. **Retention-Fristen** für ModelRun-Metadaten + Server-/Proxy-Logs — Betreiber festzulegen.
+1. **Retention-Fristen** für ModelRun-Metadaten + Proxy-Logs — Betreiber festzulegen. Server-Logs: 14 Tage entschieden; Durchsetzung im Coolify-/Docker-Betrieb offen.
 2. **Audit-Löschungs-Abwägung** (Art. 17 ↔ Integrität) — organisatorisch dokumentieren.
 3. **Self-Service Auskunft/Export & Löschung** — heute **manuell** (Admin/DSB), kein Produktfeature (NFR-PRV-04).
 4. **Gap-Frage-Freitext** kann PII/sensibles enthalten — Datenminimierung in AUP betonen.

@@ -9,6 +9,7 @@ import { buildDevPersistServices } from "./dev-persist";
 import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
 import { resolveKlaraAufraeumIntervalMs, starteKlaraAufraeumen } from "./klara-aufraeumen";
 import { registerNoindexHook } from "./noindex-hook";
+import { LOG_DATEI_ENV, PROTOKOLL_FRIST_TAGE, starteProtokollPflege } from "./protokoll-frist";
 import { registerSecurityHeaders } from "./security-headers";
 // JOB 3776: der Startvertrag wird am Einstiegspunkt gerufen — als erste Anweisung von `start()`,
 // damit sein Abbruch durch `start().catch(...)` läuft und als EINE lesbare Zeile erscheint.
@@ -244,6 +245,24 @@ async function start(): Promise<void> {
       app.log.warn(`Periodischer Papierkorb-Sweep übersprungen: ${String(error)}`),
   });
   app.log.info(`Papierkorb-Sweep aktiv — Intervall ${Math.round(sweepInterval / 60000)} min.`);
+  // R-0664 · Peters Entscheidung 2 (12.10.2026): Serverprotokolle 14 Tage, dann automatisch gelöscht
+  // — am tatsächlichen Speicherort, einschliesslich Diagnosekopien im Protokollordner. Wirkt, wo
+  // `start.command` die Ausgabedatei nennt (Insel); im Docker-Betrieb ist sie nicht gesetzt.
+  const protokollPflege = starteProtokollPflege({
+    datei: process.env[LOG_DATEI_ENV],
+    onGepflegt: (ergebnis) =>
+      app.log.info(
+        {
+          rotiert: ergebnis.rotiertNach !== null,
+          geloescht: ergebnis.geloescht.length,
+        },
+        "Protokollpflege: rotiert bzw. abgelaufene Protokolle gelöscht.",
+      ),
+    onError: (error) => app.log.warn({ err: error }, "Protokollpflege übersprungen."),
+  });
+  if (protokollPflege) {
+    app.log.info(`Protokollpflege aktiv — Frist ${PROTOKOLL_FRIST_TAGE} Tage.`);
+  }
   if (klaraAufraeumLauf) {
     const klaraInterval = resolveKlaraAufraeumIntervalMs(
       process.env.KLARWERK_KLARA_AUFRAEUM_INTERVAL_MS,

@@ -93,8 +93,13 @@
 - **Audit-Log:** bewusst **append-only und hash-verkettet** — nachträgliche Abweichungen sind rechnerisch prüfbar (tamper-evident), nicht verhindert (kein extern verankerter Kettenkopf); keine automatische Löschung (`gdpr-compliance-runbook.md`).
 - **ModelRun-Protokoll:** nur Metadaten; Aufbewahrung vom Betreiber festzulegen (z. B. 90 Tage), keine Inhalte.
 - **Sessions:** TTL 14 Tage; **Reset-Token:** 1 Stunde (technisch gesetzt).
-- **Server-Logs der App:** Sie sind selbst personenbezogen (DSGVO Art. 5 Abs. 1 lit. c, e). Ein-Befehl-Weg (`docker-compose.prod.yml`): Docker rotiert sie technisch begrenzt — höchstens 5 Dateien × 10 MB je Dienst, die älteste wird gelöscht. Das ist eine **Mengengrenze, keine Frist in Tagen**; Docker kann nicht nach Alter löschen. **Coolify:** diese Grenze wirkt dort nicht; Log-Rotation in der Coolify-/Docker-Daemon-Konfiguration setzen.
-- **Frist in Tagen (offen, Betreiber/DSB):** konkrete Löschfrist festlegen und in der Protokollsammlung durchsetzen; Zweck (Fehlersuche, Betrieb) und Zugriff (nur Betrieb) dokumentieren.
+- **Server-Logs der App — Frist ENTSCHIEDEN:** **14 Tage** als PoC-Standard, danach automatische Löschung am tatsächlichen Speicherort **einschließlich Diagnosekopien** (Entscheidung Peter, 12.10.2026, Nr. 2). Die 14 Tage sind ein Vorschlag, keine gesetzliche Frist. Die Protokolle sind selbst personenbezogen (DSGVO Art. 5 Abs. 1 lit. c, e); protokolliert werden nur erlaubte strukturierte Felder (§4).
+- **Durchsetzung je Speicherort:**
+  - **Insel (Mac Studio, Datei `$SHARED_ROOT/logs/server-<port>.log`):** technisch umgesetzt. `start.command` nennt die Datei über `KLARWERK_LOG_DATEI`; die App (`services/app/src/protokoll-frist.ts`) rotiert sie täglich ohne Neustart (Kopie + Kürzen, der Server schreibt mit Anhängen weiter) und löscht beim Start und stündlich jede andere `.log`-Datei im Ordner — Archive **und dort abgelegte Diagnosekopien** —, sobald ihre älteste Zeile 14 Tage alt ist. Das Alter kommt aus dem Inhalt (`time` der ersten Zeile), nicht nur aus dem Dateidatum. Am echten Mac-Studio-Ordner ist die Wirkung **noch nicht im Betrieb belegt**.
+  - **Ein-Befehl-Weg (`docker-compose.prod.yml`):** nur eine **Mengengrenze** (5 Dateien × 10 MB je Dienst); Docker kann nicht nach Alter löschen. Die 14-Tage-Frist ist hier **nicht durchgesetzt**.
+  - **Coolify:** weder Mengengrenze noch Frist aus diesem Repository wirksam; die 14-Tage-Löschung muss in der Coolify-/Docker-Daemon- bzw. Protokollsammlungs-Konfiguration gesetzt und belegt werden — **offen**.
+  - **Diagnosekopien außerhalb des Protokollordners** (z. B. an Tickets angehängte Auszüge) erfasst die App nicht; sie sind nach derselben Frist von Hand zu löschen.
+- **Sicherheits-/Auditnachweise:** fallen **nicht** unter diese 14 Tage. Das Audit-Log (oben) erhält laut Entscheidung eine **eigene begründete Regel**; die ist noch nicht festgelegt.
 - **Proxy-Logs:** Aufbewahrung = Betreiber-Logging-Policy (DSGVO-konforme Frist).
 
 ---

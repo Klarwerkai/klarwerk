@@ -159,8 +159,8 @@ services:
     # Block wächst `json-file` unbegrenzt — keine Zeile wird je gelöscht. Mit ihm hält der Dienst
     # höchstens fünf Dateien zu 10 MB und löscht die älteste beim Rotieren.
     # GRENZE: Das ist eine MENGEN-, keine Tagesfrist; Docker kennt keine zeitbasierte Löschung.
-    # Eine Frist in Tagen legt der Betreiber mit seinem Datenschutzbeauftragten fest und setzt sie
-    # in seiner Protokollsammlung durch (docs/operations/monitoring-logging.md §8). Für Coolify
+    # Die Frist ist entschieden (14 Tage, 12.10.2026); auf diesem Weg ist sie NICHT durchgesetzt und
+    # muss in der Protokollsammlung des Betreibers gesetzt werden (docs/operations/monitoring-logging.md §8). Für Coolify
     # gilt diese Datei nicht (Kopf dieser Datei). Gehütet von tests/security/log-personenbezug.test.ts.
     logging:
       driver: json-file
