@@ -1119,6 +1119,21 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "ändert nur das eigene Assistenzprofil (user.id); fremde Kennung 403, kein KO-Inhalt.",
   },
+  // produkt:20261008:klara-eigeninitiative — Unterstützungsmodus und ruhende Hinweise.
+  "GET /api/me/assistenz/eigeninitiative": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur Modus und Hinweisschlüssel des eigenen Assistenzprofils (assistenz-profil-routes.ts, " +
+      "user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
+  "PUT /api/me/assistenz/eigeninitiative": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ändert nur den eigenen Modus (user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
+  "POST /api/me/assistenz/eigeninitiative/hinweise": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt nur eigene Hinweisschlüssel ab (user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
   // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz.
   "GET /api/me/faehigkeiten": {
     urteil: "EIGENER_BESTAND",

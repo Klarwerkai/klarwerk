@@ -1108,6 +1108,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // (user.id aus der Sitzung); eine fremde Kontokennung in Rumpf oder Adresse ergibt 403.
   "GET /api/me/assistenz": { protection: "auth" },
   "PUT /api/me/assistenz": { protection: "auth" },
+  // produkt:20261008:klara-eigeninitiative: Unterstützungsmodus und ruhende Hinweise — derselbe
+  // eigene Weg (user.id aus der Sitzung, fremde Kennung 403).
+  "GET /api/me/assistenz/eigeninitiative": { protection: "auth" },
+  "PUT /api/me/assistenz/eigeninitiative": { protection: "auth" },
+  "POST /api/me/assistenz/eigeninitiative/hinweise": { protection: "auth" },
   // produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der eigenen Assistenz — Übersicht,
   // Vormerkungen und eigene Aufträge nur über das Konto der Sitzung; Vorschau und Ausführung
   // zusätzlich mit `ko.read`, weil sie Arbeitsbereichskontext aus dem Bestand laden.

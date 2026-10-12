@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import type { EigeninitiativeStand } from "./assistenz-eigeninitiative";
 import type { AuftragsEintrag, FaehigkeitsVormerkung } from "./assistenz-faehigkeiten";
 
 // ================================================================================================
@@ -68,6 +69,13 @@ export interface AssistenzProfil {
    * Ein Auftrag ändert die Profilfassung nicht — Name und Motiv bleiben ohne 409 änderbar.
    */
   faehigkeitsAuftraege?: readonly AuftragsEintrag[];
+  /**
+   * produkt:20261008:klara-eigeninitiative — der gewählte Unterstützungsmodus und die geschlossenen
+   * bzw. zurückgestellten Hinweise (`assistenz-eigeninitiative.ts`). Gehört AUSSCHLIESSLICH
+   * `schreibeEigeninitiative`: wie die Fähigkeitsaufträge übernimmt ein Profilschreiben immer den
+   * gespeicherten Stand, und ein Moduswechsel ändert die Profilfassung nicht.
+   */
+  eigeninitiative?: EigeninitiativeStand;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -94,6 +102,16 @@ export interface AssistenzProfilRepo {
   ): Promise<boolean>;
   /** Konten mit wartenden oder laufenden Fähigkeitsaufträgen — für den Wiederanlauf nach Neustart. */
   kontenMitOffenenFaehigkeitsauftraegen(): Promise<readonly string[]>;
+  /**
+   * produkt:20261008:klara-eigeninitiative — ersetzt nur den Eigeninitiative-Stand, wenn er noch
+   * `alt` ist (Vergleich auf den Inhalt, `null` = keiner gespeichert), sonst `false`. Ohne Profil
+   * entsteht eine Zeile mit Fassung 0. Die Profilfassung bleibt unverändert.
+   */
+  schreibeEigeninitiative(
+    kontoId: string,
+    alt: EigeninitiativeStand | null,
+    neu: EigeninitiativeStand,
+  ): Promise<boolean>;
 }
 
 function leeresProfil(kontoId: string, stempel: string): AssistenzProfil {
@@ -126,11 +144,29 @@ export class InMemoryAssistenzProfilRepo implements AssistenzProfilRepo {
     if (p.fassung !== erwartet) {
       return Promise.resolve(false);
     }
-    const { faehigkeitsAuftraege: _ignoriert, ...rest } = structuredClone(p);
+    const {
+      faehigkeitsAuftraege: _ignoriert,
+      eigeninitiative: _eigen,
+      ...rest
+    } = structuredClone(p);
     this.profile.set(p.kontoId, {
       ...rest,
       ...(alt?.faehigkeitsAuftraege ? { faehigkeitsAuftraege: alt.faehigkeitsAuftraege } : {}),
+      ...(alt?.eigeninitiative ? { eigeninitiative: alt.eigeninitiative } : {}),
     });
+    return Promise.resolve(true);
+  }
+
+  schreibeEigeninitiative(
+    kontoId: string,
+    alt: EigeninitiativeStand | null,
+    neu: EigeninitiativeStand,
+  ): Promise<boolean> {
+    const p = this.profile.get(kontoId) ?? leeresProfil(kontoId, new Date().toISOString());
+    if (JSON.stringify(p.eigeninitiative ?? null) !== JSON.stringify(alt)) {
+      return Promise.resolve(false);
+    }
+    this.profile.set(kontoId, { ...p, eigeninitiative: structuredClone(neu) });
     return Promise.resolve(true);
   }
 
@@ -181,8 +217,9 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
   async schreibe(p: AssistenzProfil): Promise<boolean> {
     // Die Fähigkeitsaufträge gehören allein `schreibeFaehigkeitsauftraege`: übernommen wird immer
     // der GESPEICHERTE Stand, nie der mitgebrachte (sonst überschriebe ein Namenswechsel einen
-    // inzwischen abgeschlossenen Auftrag).
-    const { faehigkeitsAuftraege: _ignoriert, ...ohneAuftraege } = p;
+    // inzwischen abgeschlossenen Auftrag). Dasselbe gilt für den Eigeninitiative-Stand
+    // (produkt:20261008:klara-eigeninitiative): er gehört allein `schreibeEigeninitiative`.
+    const { faehigkeitsAuftraege: _ignoriert, eigeninitiative: _eigen, ...ohneAuftraege } = p;
     const daten = JSON.stringify(ohneAuftraege);
     if (p.fassung === 1) {
       const res = await this.pool.query(
@@ -194,6 +231,9 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
            data = EXCLUDED.data || CASE WHEN assistenz_profile.data ? 'faehigkeitsAuftraege'
              THEN jsonb_build_object('faehigkeitsAuftraege', assistenz_profile.data->'faehigkeitsAuftraege')
              ELSE '{}'::jsonb END
+             || CASE WHEN assistenz_profile.data ? 'eigeninitiative'
+             THEN jsonb_build_object('eigeninitiative', assistenz_profile.data->'eigeninitiative')
+             ELSE '{}'::jsonb END
          WHERE assistenz_profile.fassung = 0`,
         [p.kontoId, p.fassung, p.geaendertAm, daten],
       );
@@ -204,8 +244,32 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
          data = $4::jsonb || CASE WHEN data ? 'faehigkeitsAuftraege'
            THEN jsonb_build_object('faehigkeitsAuftraege', data->'faehigkeitsAuftraege')
            ELSE '{}'::jsonb END
+           || CASE WHEN data ? 'eigeninitiative'
+           THEN jsonb_build_object('eigeninitiative', data->'eigeninitiative')
+           ELSE '{}'::jsonb END
         WHERE konto_id = $1 AND fassung = $5`,
       [p.kontoId, p.fassung, p.geaendertAm, daten, p.fassung - 1],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async schreibeEigeninitiative(
+    kontoId: string,
+    alt: EigeninitiativeStand | null,
+    neu: EigeninitiativeStand,
+  ): Promise<boolean> {
+    const stempel = new Date().toISOString();
+    await this.pool.query(
+      `INSERT INTO assistenz_profile (konto_id, fassung, geaendert_am, data)
+       VALUES ($1, 0, $2, $3) ON CONFLICT (konto_id) DO NOTHING`,
+      [kontoId, stempel, JSON.stringify(leeresProfil(kontoId, stempel))],
+    );
+    const res = await this.pool.query(
+      `UPDATE assistenz_profile
+          SET data = jsonb_set(data, '{eigeninitiative}', $3::jsonb, true)
+        WHERE konto_id = $1
+          AND COALESCE(data->'eigeninitiative', 'null'::jsonb) = $2::jsonb`,
+      [kontoId, JSON.stringify(alt), JSON.stringify(neu)],
     );
     return (res.rowCount ?? 0) > 0;
   }
