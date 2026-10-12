@@ -40,9 +40,12 @@ macOS-Prüfplatz vollständig grün gelaufen ist, belegen die Auftragsquellen **
 - **Update:** `scripts/insel/update-einspielen.sh` sichert, prüft Paket (Archivintegrität),
   Kollision, Schema-Vertrag und Datenstand, schaltet um und prüft `/health` samt Version; bei Rot
   `scripts/insel/rueckfall.sh`.
-- **Keine Echtheitsprüfung.** Weder Bauer noch Updateweg erzeugen oder prüfen eine Signatur oder ein
-  Prüfsummenmanifest des Pakets. Prüfsummen gibt es nur für die **Sicherungen** (`state.jsonl`,
-  Dump-Sidecar). Ein beliebiges, richtig aufgebautes ZIP wird eingespielt.
+- **Keine Echtheitsprüfung.** Weder Bauer noch Updateweg erzeugen oder prüfen eine Signatur des
+  Pakets. Seit dem Auftrag `aufnahme:20260922:gesamt-kundenbetrieb` schreibt der Bauer neben das ZIP
+  eine SHA-256-Prüfsumme (`<version>.zip.sha256`, `scripts/insel/paket-pruefsumme.mjs`); sie belegt
+  Unversehrtheit gegenüber dem Bauer, nicht Herkunft, und der Updateweg prüft sie **nicht**. Weitere
+  Prüfsummen gibt es für die **Sicherungen** (`state.jsonl`, Dump-Sidecar).
+  Ein beliebiges, richtig aufgebautes ZIP wird eingespielt.
 - **Keine Lizenzierung.** Im Produkt gibt es keine Lizenzdatei, keine Aktivierung, keine Drittlizenzliste
   im Paket.
 - **Kein Datenträgeraustausch.** Es gibt kein Bündelformat, keinen Signaturschritt und keinen eigenen

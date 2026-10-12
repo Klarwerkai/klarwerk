@@ -52,6 +52,7 @@ import { useKoNeighbors } from "../api/hooks";
 import type { KoStatus, NeighborKo } from "../api/types";
 import { layoutNeighborhood } from "../lib/graphLayout";
 import { koDetailPath } from "../lib/graphNav";
+import { EmptyStateCtas } from "./EmptyStateCtas";
 import { QueryState } from "./ui";
 
 // Dieselbe Status-Farbsprache wie der Stufe-2-Graph (GraphView) und die Legende dort.
@@ -144,7 +145,12 @@ export function KnowledgeNeighborhood({
           return (
             <>
               {nb.neighbors.length === 0 ? (
-                <p className="text-[13px] text-muted">{t("nb.empty")}</p>
+                // R-0956: der Leersatz allein war eine Sackgasse. Darunter ordnet der gemeinsame
+                // Leerzustands-Baustein in den Wissenskreis ein und nennt den nächsten Schritt.
+                <div data-testid="nb-leer">
+                  <p className="text-[13px] text-muted">{t("nb.empty")}</p>
+                  <EmptyStateCtas context="neighborhood" />
+                </div>
               ) : (
                 <svg
                   viewBox={`0 0 ${layout.width} ${layout.height}`}
@@ -276,9 +282,7 @@ export function KnowledgeNeighborhood({
                       >
                         {n.title}
                       </button>
-                      <span className="font-mono text-[10.5px] text-muted-2">
-                        {n.via.join(" · ")}
-                      </span>
+                      <span className="font-mono text-klein text-muted-2">{n.via.join(" · ")}</span>
                       <Link
                         to={koDetailPath(n.id)}
                         className="ml-auto shrink-0 text-[11.5px] font-semibold text-ai hover:underline"

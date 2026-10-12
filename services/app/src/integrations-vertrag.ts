@@ -354,6 +354,19 @@ export const SCHEMAS: Readonly<Record<string, unknown>> = {
       answerId: NULLBAR_TEXT,
       gap: { type: ["object", "null"] },
       receipt: { type: "string" },
+      // R-0310: die ausdrückliche Absatz-Beleg-Zuordnung (services/app/src/absatz-belege.ts) —
+      // nur bei beantworteter Frage; `quellen` leer heißt: unbelegt, wird nicht ausgegeben.
+      absaetze: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["text", "quellen"],
+          properties: {
+            text: { type: "string" },
+            quellen: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
     },
   },
   Evidenz: {

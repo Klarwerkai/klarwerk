@@ -13,7 +13,15 @@ import type { LifecycleService } from "../../lifecycle";
 import type { ObjectStore } from "../../object-store";
 import type { Reasoner } from "../../reasoner";
 import type { ValidationService } from "../../validation";
-import { type DemoLocale, demoTexts } from "./demo-content";
+import {
+  type DemoLocale,
+  type DemoTexts,
+  POC_ANLAGE,
+  POC_ANLAGE_UNBETEILIGT,
+  POC_KATEGORIE,
+  POC_TAG,
+  demoTexts,
+} from "./demo-content";
 
 // SCRUM-156/181: reproduzierbarer Demo-/Dev-Seed. Erzeugt einen kleinen, ehrlichen Bestand
 // AUSSCHLIESSLICH über die echten Services — Audit/Statuslogik/Side-Effects bleiben real,
@@ -55,8 +63,8 @@ function isDemoEmail(email: string): boolean {
 }
 
 // Die vom Seed erzeugte Demo-Wissenslücke wird beim Purge über das stabile Herkunfts-Flag
-// (Gap.demoSeed) mitentfernt — siehe purgeDemoSeed. DEMO_GAP_QUESTION (DE) bleibt als Referenz.
-export const DEMO_GAP_QUESTION = demoTexts("de").gapQuestion;
+// (Gap.demoSeed) mitentfernt — siehe purgeDemoSeed. R-1349: die Text-Referenz `DEMO_GAP_QUESTION`
+// las niemand mehr, seit der Purge über das Flag geht; sie ist entfernt.
 
 const TINY_PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
@@ -326,6 +334,12 @@ async function buildDemoContent(
   const erikId = actors.expertId;
   // SCRUM-487: lokalisierte Titel/Aussagen/Konflikt-Texte (Kategorien/Tags bleiben sprachneutral).
   const t = demoTexts(locale);
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Entscheidung 16): ein Objekt OHNE Stufe
+  // gilt jetzt als ungeklärt und bleibt eingeschränkt. Der Demo-Bestand ist synthetisch und
+  // firmenintern gedacht (s. Vortest-Block unten: „auf intern normalisiert") — er trägt das
+  // ausdrücklich. Eine mitgebrachte Stufe (vertraulich, streng vertraulich) geht vor.
+  const anlegen = (eingabe: Parameters<KoService["create"]>[0]) =>
+    ko.create({ confidentiality: "intern", ...eingabe });
 
   // SCRUM-308: eindeutiger Herkunfts-Tag für Demo-/Seed-Wissen (kein neues Datenmodell, keine
   // Migration — nur ein zusätzlicher Tag im vorhandenen tags-Feld). Muss mit dem FE-Konstanten
@@ -334,7 +348,7 @@ async function buildDemoContent(
   // (DEMO_TAG jetzt modulweit — siehe oben; hier bewusst keine zweite Definition.)
 
   // --- Wissensobjekte (verschiedene Kategorien, Arten, Trust, Tags) ---
-  const koValid = await ko.create({
+  const koValid = await anlegen({
     demoSeed: true,
     title: t.koValid.title,
     statement: t.koValid.statement,
@@ -348,7 +362,7 @@ async function buildDemoContent(
     neededValidations: 2,
     asset: "ANL-01",
   });
-  const koOpen = await ko.create({
+  const koOpen = await anlegen({
     demoSeed: true,
     title: t.koOpen.title,
     statement: t.koOpen.statement,
@@ -359,7 +373,7 @@ async function buildDemoContent(
     confidence: 40,
     neededValidations: 2,
   });
-  const koWarm = await ko.create({
+  const koWarm = await anlegen({
     demoSeed: true,
     title: t.koWarm.title,
     statement: t.koWarm.statement,
@@ -370,7 +384,7 @@ async function buildDemoContent(
     confidence: 55,
     neededValidations: 2,
   });
-  const koNoWarm = await ko.create({
+  const koNoWarm = await anlegen({
     demoSeed: true,
     title: t.koNoWarm.title,
     statement: t.koNoWarm.statement,
@@ -383,7 +397,7 @@ async function buildDemoContent(
   });
   // SCRUM-492: zweiter Showcase-Konflikt (Firmenwagenfarbe blau ↔ rot) als reproduzierbarer
   // Demo-Bestand. Zwei echte, gegensätzliche Farb-Vorgaben — der klassische „direkt unvereinbar"-Fall.
-  const koCarBlau = await ko.create({
+  const koCarBlau = await anlegen({
     demoSeed: true,
     title: t.koCarBlau.title,
     statement: t.koCarBlau.statement,
@@ -394,7 +408,7 @@ async function buildDemoContent(
     confidence: 60,
     neededValidations: 2,
   });
-  const koCarRot = await ko.create({
+  const koCarRot = await anlegen({
     demoSeed: true,
     title: t.koCarRot.title,
     statement: t.koCarRot.statement,
@@ -405,7 +419,7 @@ async function buildDemoContent(
     confidence: 60,
     neededValidations: 2,
   });
-  const koFilter = await ko.create({
+  const koFilter = await anlegen({
     demoSeed: true,
     title: t.koFilter.title,
     statement: t.koFilter.statement,
@@ -424,7 +438,7 @@ async function buildDemoContent(
   // Wortwahl bewusst OHNE Überschneidung zur Demo-Wissenslücken-Frage („Schichtwechsel…",
   // s. u.): sonst fände der deterministische Reasoner eine Pseudo-Antwort und die
   // Demo-Lücke entstünde nicht mehr (Seed-Test fängt das ab).
-  const koPflege = await ko.create({
+  const koPflege = await anlegen({
     demoSeed: true,
     title: t.koPflege.title,
     statement: t.koPflege.statement,
@@ -437,7 +451,7 @@ async function buildDemoContent(
     confidence: 70,
     neededValidations: 2,
   });
-  const koKanzlei = await ko.create({
+  const koKanzlei = await anlegen({
     demoSeed: true,
     title: t.koKanzlei.title,
     statement: t.koKanzlei.statement,
@@ -448,7 +462,7 @@ async function buildDemoContent(
     confidence: 75,
     neededValidations: 2,
   });
-  await ko.create({
+  await anlegen({
     demoSeed: true,
     title: t.koVerein.title,
     statement: t.koVerein.statement,
@@ -459,7 +473,7 @@ async function buildDemoContent(
     confidence: 50,
     neededValidations: 2,
   });
-  await ko.create({
+  await anlegen({
     demoSeed: true,
     title: t.koWasser.title,
     statement: t.koWasser.statement,
@@ -477,20 +491,43 @@ async function buildDemoContent(
   // purge-bar). Wortwahl weiterhin OHNE Inhaltstoken der Demo-Wissenslücken-Frage
   // (schwankt/Dosierwert/Linie/jedem/Schichtwechsel) — sonst fände der deterministische
   // Reasoner eine Pseudo-Antwort und die Demo-Lücke entstünde nicht mehr (Seed-Test prüft).
-  await ko.create({
+  // R-1660 (Schaufenster-Modus, „Schweißnaht V1/V2/V3"): die Lernkurve steht im FASSUNGSVERLAUF
+  // desselben Objekts. V1 wird angelegt, V2 und V3 entstehen über den echten Überarbeitungsweg
+  // (`KoService.revise`: Version +1, Verlaufseintrag, Fassungs-Schnappschuss). V3 ist der bisherige
+  // Text (`koSchweiss`) — wer nur den heutigen Stand liest, sieht dasselbe wie vorher.
+  // aufnahme:20260922:gesamt-leserechte: über `anlegen` ausdrücklich „intern“ (Entscheidung 16).
+  const koSchweiss = await anlegen({
     demoSeed: true,
-    title: t.koSchweiss.title,
-    statement: t.koSchweiss.statement,
+    title: t.koSchweissV1.title,
+    statement: t.koSchweissV1.statement,
     type: "lernkurve",
     category: "Anlage 2",
     author: erikId,
     tags: ["schweißen", "nacharbeit", "qualität", DEMO_TAG],
-    conditions: t.koSchweiss.conditions ?? [],
-    measures: t.koSchweiss.measures ?? [],
     confidence: 55,
     neededValidations: 2,
   });
-  await ko.create({
+  await ko.revise(
+    koSchweiss.id,
+    {
+      title: t.koSchweissV2.title,
+      statement: t.koSchweissV2.statement,
+      conditions: t.koSchweissV2.conditions ?? [],
+      measures: t.koSchweissV2.measures ?? [],
+    },
+    erikId,
+  );
+  await ko.revise(
+    koSchweiss.id,
+    {
+      title: t.koSchweiss.title,
+      statement: t.koSchweiss.statement,
+      conditions: t.koSchweiss.conditions ?? [],
+      measures: t.koSchweiss.measures ?? [],
+    },
+    erikId,
+  );
+  await anlegen({
     demoSeed: true,
     title: t.koPresse.title,
     statement: t.koPresse.statement,
@@ -501,7 +538,7 @@ async function buildDemoContent(
     confidence: 25,
     neededValidations: 2,
   });
-  await ko.create({
+  await anlegen({
     demoSeed: true,
     title: t.koNacht.title,
     statement: t.koNacht.statement,
@@ -512,7 +549,7 @@ async function buildDemoContent(
     confidence: 20,
     neededValidations: 2,
   });
-  await ko.create({
+  await anlegen({
     demoSeed: true,
     title: t.koVergleich.title,
     statement: t.koVergleich.statement,
@@ -523,7 +560,7 @@ async function buildDemoContent(
     confidence: 20,
     neededValidations: 2,
   });
-  await ko.create({
+  await anlegen({
     demoSeed: true,
     title: t.koDreh.title,
     statement: t.koDreh.statement,
@@ -534,7 +571,7 @@ async function buildDemoContent(
     confidence: 60,
     neededValidations: 2,
   });
-  await ko.create({
+  await anlegen({
     demoSeed: true,
     title: t.koNotstrom.title,
     statement: t.koNotstrom.statement,
@@ -545,7 +582,7 @@ async function buildDemoContent(
     confidence: 50,
     neededValidations: 2,
   });
-  await ko.create({
+  await anlegen({
     demoSeed: true,
     title: t.koSchalt.title,
     statement: t.koSchalt.statement,
@@ -570,7 +607,7 @@ async function buildDemoContent(
   //      („intern"), die Kopplung Vertraulichkeit × Anhang war damit nicht vorführbar.
   // Der Wächter dafür ist tests/app/mega59-vortest-bestand.test.ts; ohne ihn fiele genau das beim
   // nächsten Umbau still wieder heraus.
-  const koLieferantFrei = await ko.create({
+  const koLieferantFrei = await anlegen({
     demoSeed: true,
     title: t.koLieferantFrei.title,
     statement: t.koLieferantFrei.statement,
@@ -583,7 +620,7 @@ async function buildDemoContent(
     confidence: 70,
     neededValidations: 2,
   });
-  const koLieferantSchutz = await ko.create({
+  const koLieferantSchutz = await anlegen({
     demoSeed: true,
     title: t.koLieferantSchutz.title,
     statement: t.koLieferantSchutz.statement,
@@ -596,7 +633,7 @@ async function buildDemoContent(
     // Die mittlere Stufe — sichtbar in der Facette, und dieses Objekt trägt zusätzlich den Anhang.
     confidentiality: "vertraulich",
   });
-  await ko.create({
+  await anlegen({
     demoSeed: true,
     title: t.koGeheim.title,
     statement: t.koGeheim.statement,
@@ -609,7 +646,7 @@ async function buildDemoContent(
     // Die höchste Stufe — ohne sie hat die Vertraulichkeits-Facette nur zwei von drei Werten.
     confidentiality: "streng_vertraulich",
   });
-  const koWartung = await ko.create({
+  const koWartung = await anlegen({
     demoSeed: true,
     title: t.koWartung.title,
     statement: t.koWartung.statement,
@@ -623,11 +660,30 @@ async function buildDemoContent(
     neededValidations: 2,
   });
 
+  // R-1660 (Schaufenster-Modus, „Lager-Fall Karl/Tom"): Karls Erfahrung zum Hauptlager der Presse 3,
+  // erfasst für seinen Nachfolger Tom. Karl und Tom sind Personen der Geschichte, keine Konten —
+  // Urheber im System bleibt der Demo-Experte. Das Objekt wird unten validiert, damit Toms Frage
+  // (`lagerFrage`) auf geprüftes Wissen trifft. Über `anlegen` ausdrücklich „intern“
+  // (aufnahme:20260922:gesamt-leserechte, Entscheidung 16: fehlende Stufe = ungeklärt).
+  const koLagerKarl = await anlegen({
+    demoSeed: true,
+    title: t.koLagerKarl.title,
+    statement: t.koLagerKarl.statement,
+    type: "best_practice",
+    category: "Anlage 2",
+    author: erikId,
+    tags: ["lager", "instandhaltung", "presse", DEMO_TAG],
+    conditions: t.koLagerKarl.conditions ?? [],
+    measures: t.koLagerKarl.measures ?? [],
+    confidence: 80,
+    neededValidations: 2,
+  });
+
   // --- SCRUM-487 Proben: Duplikatpaar (reifen), stale-date-Seite, unbelegter Claim ---
   // Alle demoSeed → der chirurgische Purge (KO.demoSeed) erfasst sie samt Folge-Einträgen.
   // Duplikatpaar: zwei sehr ähnliche, eigenständige Aussagen → zwei echte KOs. Die eigentliche
   // Duplikat-KENNZEICHNUNG entsteht unten über die echte Erkennung (nicht vorgeformt).
-  const koReifenA = await ko.create({
+  const koReifenA = await anlegen({
     demoSeed: true,
     title: t.koReifenA.title,
     statement: t.koReifenA.statement,
@@ -638,7 +694,7 @@ async function buildDemoContent(
     confidence: 45,
     neededValidations: 2,
   });
-  const koReifenB = await ko.create({
+  const koReifenB = await anlegen({
     demoSeed: true,
     title: t.koReifenB.title,
     statement: t.koReifenB.statement,
@@ -650,7 +706,7 @@ async function buildDemoContent(
     neededValidations: 2,
   });
   // stale-date-Seite: Jahres-Token (2019) steht wörtlich in der Aussage → sichtbar veraltet.
-  const koStale = await ko.create({
+  const koStale = await anlegen({
     demoSeed: true,
     title: t.koStale.title,
     statement: t.koStale.statement,
@@ -670,7 +726,7 @@ async function buildDemoContent(
     provider: "Intern",
   });
   // Unbelegter Claim: bauchgefuehl, bewusst OHNE Quelle/Beleg (kein addSource).
-  await ko.create({
+  await anlegen({
     demoSeed: true,
     title: t.koUnbacked.title,
     statement: t.koUnbacked.statement,
@@ -708,6 +764,9 @@ async function buildDemoContent(
   await validation.rate(koLieferantFrei.id, adminId, "up");
   await validation.rate(koWartung.id, carlaId, "up");
   await validation.rate(koWartung.id, adminId, "up");
+  // R-1660: Karls Lager-Fall ist geprüftes Wissen — Tom bekommt eine belastbare Antwort.
+  await validation.rate(koLagerKarl.id, carlaId, "up");
+  await validation.rate(koLagerKarl.id, adminId, "up");
 
   // --- Offene Validierungsaufgabe: koOpen Carla zuweisen (erscheint im Board/MyTasks) ---
   await validation.assign(koOpen.id, [carlaId], adminId);
@@ -892,6 +951,11 @@ async function buildDemoContent(
     provider: "Intern",
   });
 
+  // produkt:20261010:branchen-poc-arbeitswege: der Ausgangsbestand der drei Arbeitsgeschichten.
+  // Bewusst NACH der Demo-Lückenfrage angelegt — die Lücke entsteht damit unabhängig von diesen
+  // Einträgen (die Wortwahl schließt eine Scheinantwort ohnehin aus, s. `PocTexts`).
+  await buildPocArbeitswege(services, actors, t);
+
   // --- Kennzahlen aus echten Service-Reads ableiten ---
   const allKos = await ko.list();
   return {
@@ -906,6 +970,82 @@ async function buildDemoContent(
     attachments: allKos.reduce((n, k) => n + (k.attachments?.length ?? 0), 0),
     sources: allKos.reduce((n, k) => n + (k.sources?.length ?? 0), 0),
   };
+}
+
+// ================================================================================================
+// produkt:20261010:branchen-poc-arbeitswege — DER AUSGANGSBESTAND DER DREI ARBEITSGESCHICHTEN.
+// ================================================================================================
+//
+// Kein eigener Ladeweg, kein eigenes Datenmodell: dieselben Dienste, derselbe `demoSeed`-Merker und
+// derselbe `DEMO_TAG` wie der übrige Demo-Bestand — „Demodaten entfernen" und „force" nehmen den PoC
+// mit, echte Daten bleiben unberührt. Ablauf, Rollen und Messprotokoll:
+// docs/poc/branchen-poc-arbeitswege.md.
+//
+//   Geschichte 1: ein validierter Eintrag MIT Quelle (Label + wörtlicher Auszug, bewusst ohne
+//                 erfundene Adresse) — die typische Frage `poc.quellenFrage` trifft ihn.
+//   Geschichte 2: braucht hier nichts; Start ist die vorhandene Demo-Lücke (`gapQuestion`).
+//   Geschichte 3: zwei validierte Einträge an `POC_ANLAGE` (Quelle: Betriebsanleitung Fassung 1)
+//                 und ein validierter Eintrag an einer ANDEREN Anlage. Es wird hier bewusst KEINE
+//                 Änderung gemeldet: der Ausgangsstand ist „aktuell", die Änderung meldet der
+//                 Durchlauf.
+async function buildPocArbeitswege(
+  services: DemoSeedServices,
+  actors: SeedActors,
+  t: DemoTexts,
+): Promise<void> {
+  const { ko, validation, lifecycle } = services;
+  const { adminId, controllerId: carlaId, expertId: erikId } = actors;
+  const p = t.poc;
+
+  const anlegen = async (
+    text: { title: string; statement: string },
+    tags: string[],
+    asset?: string,
+  ): Promise<KnowledgeObject> =>
+    ko.create({
+      demoSeed: true,
+      title: text.title,
+      statement: text.statement,
+      type: "best_practice",
+      category: POC_KATEGORIE,
+      author: erikId,
+      tags: [...tags, POC_TAG, DEMO_TAG],
+      confidence: 75,
+      neededValidations: 2,
+      confidentiality: "intern",
+      ...(asset ? { asset } : {}),
+    });
+  // Fachprüfung über den echten Bewertungsweg (zwei Stimmen, wie koValid), NACH dem Anhängen der
+  // Quelle — der validierte Stand umfasst damit Aussage und Beleg.
+  const freigeben = async (id: string): Promise<void> => {
+    await validation.rate(id, carlaId, "up");
+    await validation.rate(id, adminId, "up");
+  };
+
+  const quelle = await anlegen(p.koQuelle, ["kühlschmierstoff", "fräse"]);
+  await ko.addSource(quelle.id, erikId, {
+    label: p.quelleLabel,
+    url: null,
+    excerpt: p.koQuelle.statement,
+    provider: "Intern",
+  });
+  await freigeben(quelle.id);
+
+  for (const text of [p.koAnlageA, p.koAnlageB]) {
+    const eintrag = await anlegen(text, ["abfüllanlage"], POC_ANLAGE);
+    await ko.addSource(eintrag.id, erikId, {
+      label: p.anlageQuelleLabel,
+      url: null,
+      excerpt: text.statement,
+      provider: "Intern",
+    });
+    await freigeben(eintrag.id);
+    await lifecycle.couple(POC_ANLAGE, eintrag.id);
+  }
+
+  const unbeteiligt = await anlegen(p.koUnbeteiligt, ["kompressor"], POC_ANLAGE_UNBETEILIGT);
+  await freigeben(unbeteiligt.id);
+  await lifecycle.couple(POC_ANLAGE_UNBETEILIGT, unbeteiligt.id);
 }
 
 // ---- Demodaten komplett entfernen (Pedi 02.07.) -------------------------------------

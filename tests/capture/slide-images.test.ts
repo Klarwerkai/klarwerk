@@ -4,7 +4,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CAPTURE_FILE_TEXT, imagesOnlyNoticeKey } from "../../apps/web/src/lib/captureFromFile";
 import { MAX_INLINE_BODY_HTML_BYTES, applyInlineImageBudget } from "../../apps/web/src/lib/docx";
 import {
   SLIDE_IMAGES_TEXT,
@@ -76,26 +75,31 @@ describe("WP-D11: Folien-figures (pure)", () => {
     }
   });
 
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Hier prüfte der Fall zusätzlich `imagesOnlyNoticeKey`,
+  // die alte Meldungswahl auf dieser Bilanz. Sie hatte keinen Produktaufrufer mehr — seit JOB 513/D3B
+  // entscheidet der Arbeitsraum über den Bildtransfer-Vertrag (`imageTransfer.embeddedImages`,
+  // `imageTransferCauseNotices`; gemessen in `tests/app/pptx-notes-honesty.test.ts` und
+  // `tests/capture/wp-d9b-image-budget.test.ts`) — und ist entfernt. Die Bilanz selbst liest
+  // `pages/Capture.tsx` weiter; sie bleibt hier gemessen.
   it("GELB c: Folien fließen in DIESELBE Bild-Bilanz — textloses Deck mit behaltenen Folien ist NICHT alle-verworfen", () => {
     // Textloses Deck, 0 eingebettete Bilder (pptx-Extraktion liefert imageInfo mit total 0),
     // 3 Folien konvertiert und alle behalten → die Bilanz zählt 3 Bilder, 0 verworfen.
     const embeddedOnly = { total: 0, compressed: 0, dropped: 0, htmlOverflow: false };
     const merged = mergeSlideImageInfo(embeddedOnly, 3, 3);
     expect(merged).toEqual({ total: 3, compressed: 0, dropped: 0, htmlOverflow: false });
-    // Die Meldungswahl sieht behaltene Folien als Bilder → KEINE All-dropped-Meldung.
-    expect(imagesOnlyNoticeKey("", merged)).toBe(CAPTURE_FILE_TEXT.imagesOnlyNoText);
-    // Gegenprobe: wirklich ALLES verworfen (auch die Folien) → ehrlich All-dropped.
-    expect(imagesOnlyNoticeKey("", mergeSlideImageInfo(embeddedOnly, 3, 0))).toBe(
-      CAPTURE_FILE_TEXT.imagesAllDropped,
-    );
+    // Gegenprobe: wirklich ALLES verworfen (auch die Folien) → alle drei zählen als verworfen.
+    expect(mergeSlideImageInfo(embeddedOnly, 3, 0)).toEqual({
+      total: 3,
+      compressed: 0,
+      dropped: 3,
+      htmlOverflow: false,
+    });
     // Serverseitig verworfene Folien (Oversize/Budget) zählen als dropped mit.
     expect(
       mergeSlideImageInfo({ total: 2, compressed: 1, dropped: 1, htmlOverflow: false }, 5, 3),
     ).toEqual({ total: 7, compressed: 1, dropped: 3, htmlOverflow: false });
     // Ohne Folien bleibt die Bilanz unverändert (auch null bleibt null).
     expect(mergeSlideImageInfo(null, 0, 0)).toBeNull();
-    // Mit Text gibt es keine Bildrein-Meldung.
-    expect(imagesOnlyNoticeKey("Es gibt Text.", merged)).toBeNull();
   });
 
   it("Capture-Verdrahtung: Konvertierung nur bei Toggle, Budget-Lauf, abgesicherter Guard-Lauf", () => {

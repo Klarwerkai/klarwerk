@@ -1,4 +1,5 @@
 import type { UseQueryResult } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -8,6 +9,7 @@ import type {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
+import { StaleMarker } from "./LoadState";
 
 export function cx(...parts: Array<string | false | undefined | null>): string {
   return parts.filter(Boolean).join(" ");
@@ -251,22 +253,61 @@ export function QueryState<T>({
   if (query.isLoading) {
     return <StateShell>{t("state.loading")}</StateShell>;
   }
-  if (query.isError) {
+  const data = query.data;
+  // Lade-/Leer-/Fehlerzustände (R-0954, R-0963, R-1015): bis hierher galt `isError` vor den Daten,
+  // und eine Lage ohne Daten, die weder lud noch scheiterte, fiel in den Leerzweig. Drei Folgen,
+  // jetzt an dieser einen Stelle für alle Aufrufer geschlossen:
+  //   · Erstfehler ohne Daten: die Meldung sagt, was man jetzt tun kann — „Erneut versuchen".
+  //   · gescheiterte AUFFRISCHUNG mit Daten: der Bestand bleibt sichtbar, darüber der vorhandene
+  //     `StaleMarker` (dieselbe Regel wie `lib/abfrageBestand.ts`), statt ihn durch eine
+  //     Fehlerfläche zu ersetzen.
+  //   · ruhende ERSTE Anfrage (`fetchStatus: "paused"`, z. B. ohne Netz): `isLoading` ist dann
+  //     false, es gibt aber keinen Bestand — also kein „Nichts vorhanden.", sondern der vorhandene
+  //     neutrale Satz der Wissensnetz-Fläche („Noch keine Antwort vom Server."), ohne Offline-Urteil.
+  const erneut = (): void => {
+    void query.refetch();
+  };
+  if (query.isError && data == null) {
     const e = query.error;
     const msg = e instanceof ApiError ? e.message : t("state.error");
-    return <StateShell>{msg}</StateShell>;
-  }
-  const data = query.data;
-  const empty = data == null || (Array.isArray(data) && data.length === 0);
-  if (empty) {
     return (
       <StateShell>
-        {emptyText ?? t("state.empty")}
-        {emptyExtra}
+        {msg}
+        <div className="mt-3 flex justify-center">
+          <Button onClick={erneut}>
+            <RefreshCw size={13} />
+            {t("loadstate.error.retry")}
+          </Button>
+        </div>
       </StateShell>
     );
   }
-  return <>{children ? children(data as T) : null}</>;
+  if (data === undefined && query.fetchStatus === "paused") {
+    return <StateShell>{t("wissensnetz.keineAntwort")}</StateShell>;
+  }
+  const veraltet = query.isError ? (
+    <div className="mb-3">
+      <StaleMarker onRetry={erneut} />
+    </div>
+  ) : null;
+  const empty = data == null || (Array.isArray(data) && data.length === 0);
+  if (empty) {
+    return (
+      <>
+        {veraltet}
+        <StateShell>
+          {emptyText ?? t("state.empty")}
+          {emptyExtra}
+        </StateShell>
+      </>
+    );
+  }
+  return (
+    <>
+      {veraltet}
+      {children ? children(data as T) : null}
+    </>
+  );
 }
 
 export function Avatar({ initials }: { initials: string }): JSX.Element {

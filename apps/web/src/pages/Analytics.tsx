@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   useAiCheckCoverageSummary,
   useAnalytics,
   useAudit,
   useBusFactor,
   useConflicts,
-  useDirectory,
   useGaps,
   useImpact,
   useKos,
@@ -16,24 +15,34 @@ import {
   useValidationOverview,
 } from "../api/hooks";
 import type { AuditFilter } from "../api/types";
-import { AuftraegeJePerson, PruefdauerJeWeg } from "../components/AuftraegeJePerson";
+import { PruefdauerJeWeg } from "../components/AuftraegeJePerson";
+import { leerzustandsRahmen } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
+import { PersonenZeilen } from "../components/PruefaufgabenJePerson";
+import { Wissenskennzahlen } from "../components/Wissenskennzahlen";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import {
+  assignmentRows,
   auditActions,
   auditActors,
   averageTrust,
+  categoryDistribution,
   filterAudit,
   formatRate,
   validationRate,
-  weeklyValidated,
+  weeklyAnswerRate,
+  weeklyReviewed,
   workloadSummary,
 } from "../lib/analyticsMetrics";
 import { ANALYTICS_AUDIT_ANCHOR, hashToElementId } from "../lib/analyticsSections";
+import { isDemoKnowledge } from "../lib/demoKnowledge";
+import { emptyStateActions } from "../lib/emptyStateActions";
 import { executiveKpis } from "../lib/executiveKpis";
 import { type HealthBand, knowledgeHealth } from "../lib/knowledgeHealth";
+import { formatKoTimestamp } from "../lib/koDates";
 import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
+import { WISSENSSTATUS_BESTAETIGT } from "../lib/wissensstatus";
 
 const BAND_TONE: Record<HealthBand, string> = {
   gut: "bg-trust-pos-bg text-trust-pos-text",
@@ -41,14 +50,23 @@ const BAND_TONE: Record<HealthBand, string> = {
   kritisch: "bg-trust-crit-bg text-trust-crit-text",
 };
 
-function Kpi({ label, value }: { label: string; value: string | number }): JSX.Element {
+// ADMIN-11: jede Bestandszahl nennt darunter, was sie zählt und wovon (Grundmenge).
+function Kpi({
+  label,
+  value,
+  hint,
+}: { label: string; value: string | number; hint: string }): JSX.Element {
   return (
     <div className="rounded-card bg-page p-4">
       <div className="font-mono text-micro uppercase tracking-wider text-muted-2">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-ink">{value}</div>
+      <div className="mt-0.5 text-[11px] leading-snug text-muted-2">{hint}</div>
     </div>
   );
 }
+
+/** Eine Quote über eine leere Grundmenge ist nicht 0 %, sondern nicht berechenbar. */
+const OHNE_GRUNDMENGE = "—";
 
 // SCRUM-431: Executive-Kachel mit kurzer Erklärung darunter — jede Zahl ist selbsterklärend.
 // E2E-016: solange die Quelle noch lädt, zeigt die Kachel „—" statt einer echten 0 (unbekannt ≠ 0).
@@ -57,7 +75,7 @@ function ExecKpi({
   value,
   hint,
   loading = false,
-}: { label: string; value: number; hint: string; loading?: boolean }): JSX.Element {
+}: { label: string; value: number | string; hint: string; loading?: boolean }): JSX.Element {
   return (
     <div className="rounded-card bg-page p-4">
       <div className="font-mono text-micro uppercase tracking-wider text-muted-2">{label}</div>
@@ -68,12 +86,11 @@ function ExecKpi({
 }
 
 export function Analytics(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const analytics = useAnalytics();
   const audit = useAudit();
   const kos = useKos();
   const overview = useValidationOverview();
-  const directory = useDirectory();
   const pruefdauer = usePruefdauer();
   const impact = useImpact();
   const gaps = useGaps();
@@ -106,6 +123,9 @@ export function Analytics(): JSX.Element {
     void gaps.refetch();
     void busFactor.refetch();
   };
+  // R-0736/R-0755: Demodaten zählen mit, aber nicht stillschweigend — der Anteil wird benannt.
+  const kosList = kos.data ?? [];
+  const demoCount = kosList.filter(isDemoKnowledge).length;
 
   // SCRUM-141: erklärbarer Knowledge-Health-Score aus echten Signalen.
   // AUFTRAG-mega32 F: die Abdeckungs-Zusammenfassung entscheidet, ob der Konfliktfaktor überhaupt
@@ -157,66 +177,77 @@ export function Analytics(): JSX.Element {
     return () => window.clearTimeout(handle);
   }, [location.hash]);
 
+  // ADMIN-11: der Datenstand der Bestandszahlen — der Abruf der Übersicht, nicht „jetzt".
+  const bestandStand =
+    analytics.dataUpdatedAt > 0
+      ? formatKoTimestamp(new Date(analytics.dataUpdatedAt).toISOString(), i18n.language)
+      : null;
+
   return (
     <div className="mx-auto max-w-4xl space-y-7">
       <PageHeader kicker={t("ana.kicker")} title={t("nav.analytics")} pageKey="analytics" />
 
-      {/* SCRUM-431 (VIP/Investor): ruhiger Executive-Blick — vier Kern-Kennzahlen aus Live-Daten. */}
-      <div>
+      {/* ADMIN-11 (produkt:20261009:admin-wissenskennzahlen): der Handlungsbedarf steht ZUERST —
+          mit Zeitraum, Space- und Teamfilter, Datenstand und dem Weg in die Arbeitslisten. */}
+      <Wissenskennzahlen />
+
+      {/* R-0723 (Ben, Nacharbeit 10): ADMIN-11 hebt „vier Kernzahlen oben" nicht auf. Die vier
+          Kernzahlen für Entscheider — geprüftes Wissen, gestellte Fragen, ohne Lücke beantwortet,
+          Antwortquote — stehen deshalb im OBEREN Überblick: direkt nach dem Handlungsbedarf, vor
+          Qualitätswert, Bestandszahlen und Personenübersicht. Genau EINE Reihe; ihr Wochenverlauf
+          steht weiter unten. Überschrift und Hilfe aus ADMIN-11 („Fragen und validiertes Wissen
+          gesamt": Nutzung, keine gemessene Zeit- oder Geldersparnis) gehen mit. */}
+      <div data-testid="analytics-kernzahlen-abschnitt">
         <div className="mb-2 flex items-center gap-1.5">
-          <SectionLabel>{t("ana.exec.title")}</SectionLabel>
-          <HelpTip title={t("ana.exec.title")} body={t("ana.help.exec")} />
+          <SectionLabel>{t("wkz.bestand.fragenTitel")}</SectionLabel>
+          <HelpTip title={t("wkz.bestand.fragenTitel")} body={t("wkz.bestand.fragenHilfe")} />
         </div>
-        <Card>
-          {execStale ? (
-            <div className="mb-3">
-              <StaleMarker onRetry={retryExec} />
-            </div>
-          ) : null}
-          {execError ? (
-            // Block B: dauerhaft gescheitert → ehrlicher Fehlerzustand mit Wiederholen (kein „lädt", keine 0).
-            <LoadErrorState onRetry={retryExec} />
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <ExecKpi
-                label={t("ana.exec.validated")}
-                value={exec.validated}
-                hint={t("ana.exec.validatedHint")}
-                loading={execLoading}
+        <QueryState query={impact}>
+          {(bericht) => (
+            <div
+              className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+              data-testid="analytics-kernzahlen"
+            >
+              <Kpi
+                label={t("ana.impactValidated")}
+                value={bericht.validatedTotal}
+                hint={t("wkz.bestand.impactValidated")}
               />
-              <ExecKpi
-                label={t("ana.exec.openReviews")}
-                value={exec.openReviews}
-                hint={t("ana.exec.openReviewsHint")}
-                loading={execLoading}
+              <Kpi
+                label={t("ana.impactAsk")}
+                value={bericht.askTotal}
+                hint={t("wkz.bestand.impactAsk")}
               />
-              <ExecKpi
-                label={t("ana.exec.busFactor")}
-                value={exec.singleSourceCategories}
-                hint={t("ana.exec.busFactorHint")}
-                loading={execLoading}
+              <Kpi
+                label={t("ana.impactAnswered")}
+                value={bericht.answeredWithoutGap}
+                hint={t("wkz.bestand.impactAnswered")}
               />
-              <ExecKpi
-                label={t("ana.exec.rescued")}
-                value={exec.rescuedGaps}
-                hint={t("ana.exec.rescuedHint")}
-                loading={execLoading}
+              <Kpi
+                label={t("ana.impactRate")}
+                value={bericht.askTotal > 0 ? formatRate(bericht.answerRate) : OHNE_GRUNDMENGE}
+                hint={
+                  bericht.askTotal > 0
+                    ? t("wkz.bestand.impactRate")
+                    : t("wkz.bestand.keineGrundmenge")
+                }
               />
             </div>
           )}
-        </Card>
+        </QueryState>
       </div>
 
-      {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar */}
+      {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar. R-0908: die Überschrift kommt aus
+          `texte/fachwort.ts` („Zustand der Wissensbasis“), `health.title` sagte „Knowledge Health“. */}
       <div>
         <div className="mb-2 flex items-center gap-1.5">
-          <SectionLabel>{t("health.title")}</SectionLabel>
-          <HelpTip title={t("health.title")} body={t("ana.help.health")} />
+          <SectionLabel>{t("fachwort.gesundheit.titel")}</SectionLabel>
+          <HelpTip title={t("fachwort.gesundheit.titel")} body={t("ana.help.health")} />
         </div>
         {healthUnknown ? (
           <Card data-testid="health-unknown" className="flex items-center gap-4">
             <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-card bg-page">
-              <span className="font-mono text-[10px] font-semibold uppercase text-muted-2">
+              <span className="font-mono text-klein font-semibold uppercase text-muted-2">
                 {t("health.unknown")}
               </span>
             </div>
@@ -227,7 +258,7 @@ export function Analytics(): JSX.Element {
             <div className="flex items-center gap-4">
               <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-card bg-page">
                 <span className="text-2xl font-semibold text-ink">{health.score}</span>
-                <span className="font-mono text-[9px] uppercase text-muted-2">/100</span>
+                <span className="font-mono text-klein uppercase text-muted-2">/100</span>
               </div>
               <div className="min-w-0 flex-1">
                 {/* AUFTRAG-mega33 B3: solange der Konfliktanteil unbelegt ist, gibt es KEIN Band.
@@ -264,7 +295,9 @@ export function Analytics(): JSX.Element {
             </div>
             {/* AUFTRAG-mega33 BLOCK B (Pedi 27.07.): bei unbelegter Erkennung rechnet die sichtbare
                 Zahl mit dem VOLLEN Konfliktabzug — der schlechteste Fall steht groß da. Der
-                optimistische Rand steht daneben, benannt als das, was er ist. */}
+                optimistische Rand steht daneben, benannt als das, was er ist.
+                ADMIN-11: die Kennzeichnung (Titelsatz) bleibt sichtbar; Grund und bekannter Abzug
+                stehen mit der übrigen Rechnung im aufklappbaren Teil darunter. */}
             {health.conflictFactor.proven ? null : (
               <div
                 data-testid="health-conflict-unproven"
@@ -277,73 +310,194 @@ export function Analytics(): JSX.Element {
                   })}
                 </p>
                 <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
-                  {t(`health.conflictUnproven.${health.conflictFactor.reason}`)}
-                </p>
-                <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
-                  {t("health.conflictUnproven.known", {
-                    count: health.openConflicts,
-                    penalty: health.conflictFactor.knownPenalty,
-                    max: health.conflictFactor.maxPenalty,
-                  })}
+                  {t("wkz.wert.unbelegt")}
                 </p>
               </div>
             )}
-            <div className="space-y-1.5">
-              {health.factors.map((f) => (
-                <div key={f.key} className="flex items-center gap-2 text-[12.5px]">
-                  <span
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                      f.direction === "positive" ? "bg-trust-pos-fill" : "bg-trust-crit-fill"
-                    }`}
-                  />
-                  <span className="flex-1 text-text">{t(`health.factor.${f.key}`)}</span>
-                  <span className="font-mono text-muted-2">
-                    {f.value}
-                    {f.unit === "percent" ? "%" : ""}
-                  </span>
+            <details data-testid="health-berechnung" className="text-[12.5px]">
+              <summary className="cursor-pointer font-semibold text-text">
+                {t("wkz.wert.details")}
+              </summary>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
+                {t("wkz.wert.erklaerung")}
+              </p>
+              {health.conflictFactor.proven ? null : (
+                <div className="mt-1.5 space-y-0.5 text-[12px] leading-relaxed text-muted">
+                  <p>{t(`health.conflictUnproven.${health.conflictFactor.reason}`)}</p>
+                  <p>
+                    {t("health.conflictUnproven.known", {
+                      count: health.openConflicts,
+                      penalty: health.conflictFactor.knownPenalty,
+                      max: health.conflictFactor.maxPenalty,
+                    })}
+                  </p>
                 </div>
-              ))}
-            </div>
+              )}
+              <div className="mt-2 space-y-1.5">
+                {health.factors.map((f) => (
+                  <div key={f.key} className="flex items-center gap-2 text-[12.5px]">
+                    <span
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                        f.direction === "positive" ? "bg-trust-pos-fill" : "bg-trust-crit-fill"
+                      }`}
+                    />
+                    <span className="flex-1 text-text">{t(`health.factor.${f.key}`)}</span>
+                    <span className="font-mono text-muted-2">
+                      {f.value}
+                      {f.unit === "percent" ? "%" : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
           </Card>
         )}
+      </div>
+
+      {/* ADMIN-11: alles darunter ist Gesamtbestand ohne Zeitraum und ohne Filter — das steht hier,
+          einmal, mit dem Datenstand des Abrufs. */}
+      <div data-testid="bestand-kopf">
+        <SectionLabel>{t("wkz.bestand.titel")}</SectionLabel>
+        <p className="text-[12px] text-muted-2">
+          {t("wkz.bestand.erklaerung", { zeit: bestandStand ?? OHNE_GRUNDMENGE })}
+        </p>
+      </div>
+
+      {/* SCRUM-431 (VIP/Investor): ruhiger Executive-Blick — vier Kern-Kennzahlen aus Live-Daten. */}
+      <div>
+        <div className="mb-2 flex items-center gap-1.5">
+          <SectionLabel>{t("ana.exec.title")}</SectionLabel>
+          <HelpTip title={t("ana.exec.title")} body={t("ana.help.exec")} />
+        </div>
+        <Card>
+          {execStale ? (
+            <div className="mb-3">
+              <StaleMarker onRetry={retryExec} />
+            </div>
+          ) : null}
+          {execError ? (
+            // Block B: dauerhaft gescheitert → ehrlicher Fehlerzustand mit Wiederholen (kein „lädt", keine 0).
+            <LoadErrorState onRetry={retryExec} />
+          ) : (
+            <div className="space-y-3">
+              {/* R-0736/R-0755: Demobestand zählt mit, aber nicht stillschweigend. */}
+              {!execLoading && demoCount > 0 ? (
+                <p
+                  data-testid="analytics-demo-hinweis"
+                  className="rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2 text-[12px] leading-relaxed text-trust-warn-text"
+                >
+                  {t("kennzahlen.demo.hinweis", { demo: demoCount, total: kosList.length })}
+                </p>
+              ) : null}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <ExecKpi
+                  label={t("ana.exec.validated")}
+                  value={exec.validated}
+                  hint={t("ana.exec.validatedHint")}
+                  loading={execLoading}
+                />
+                <ExecKpi
+                  label={t("ana.exec.openReviews")}
+                  value={exec.openReviews}
+                  hint={t("ana.exec.openReviewsHint")}
+                  loading={execLoading}
+                />
+                <ExecKpi
+                  label={t("ana.exec.busFactor")}
+                  value={exec.singleSourceCategories}
+                  hint={t("ana.exec.busFactorHint")}
+                  loading={execLoading}
+                />
+                <ExecKpi
+                  label={t("ana.exec.rescued")}
+                  value={exec.rescuedGaps}
+                  hint={t("ana.exec.rescuedHint")}
+                  loading={execLoading}
+                />
+              </div>
+            </div>
+          )}
+        </Card>
       </div>
 
       <QueryState query={analytics}>
         {(a) => {
           const maxType = Math.max(1, ...Object.values(a.byType));
+          const categories = categoryDistribution(a.byCategory);
+          const maxCategory = Math.max(1, ...categories.map((c) => c.count));
           return (
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Kpi label={t("ana.total")} value={a.total} />
-                <Kpi label={t("status.offen")} value={a.byStatus.offen ?? 0} />
-                <Kpi label={t("status.validiert")} value={a.byStatus.validiert ?? 0} />
-                <Kpi label={t("ana.categories")} value={Object.keys(a.byCategory).length} />
+                <Kpi label={t("ana.total")} value={a.total} hint={t("wkz.bestand.total")} />
+                <Kpi
+                  label={t("status.offen")}
+                  value={a.byStatus.offen ?? 0}
+                  hint={t("wkz.bestand.offen")}
+                />
+                {/* Nutzerentscheid Antwort 54: „Fachlich bestätigt" (lib/wissensstatus.ts). */}
+                <Kpi
+                  label={t(WISSENSSTATUS_BESTAETIGT)}
+                  value={a.byStatus.validiert ?? 0}
+                  hint={t("wkz.bestand.validiert")}
+                />
+                <Kpi
+                  label={t("ana.categories")}
+                  value={Object.keys(a.byCategory).length}
+                  hint={t("wkz.bestand.categories")}
+                />
               </div>
 
-              {/* SCRUM-139: Trust & Arbeitslast */}
+              {/* SCRUM-139: Trust & Arbeitslast. ADMIN-11: über eine leere Grundmenge steht keine 0. */}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Kpi label={t("ana.avgTrust")} value={trust} />
+                <Kpi
+                  label={t("ana.avgTrust")}
+                  value={(kos.data ?? []).length > 0 ? trust : OHNE_GRUNDMENGE}
+                  hint={
+                    (kos.data ?? []).length > 0
+                      ? t("wkz.bestand.avgTrust")
+                      : t("wkz.bestand.keineGrundmenge")
+                  }
+                />
                 <Kpi
                   label={t("ana.validationRate")}
-                  value={`${validationRate(a.total, a.byStatus.validiert ?? 0)}%`}
+                  value={
+                    a.total > 0
+                      ? `${validationRate(a.total, a.byStatus.validiert ?? 0)}%`
+                      : OHNE_GRUNDMENGE
+                  }
+                  hint={
+                    a.total > 0 ? t("wkz.bestand.validationRate") : t("wkz.bestand.keineGrundmenge")
+                  }
                 />
-                <Kpi label={t("ana.openTasks")} value={work.openTotal} />
-                <Kpi label={t("ana.doneTasks")} value={work.doneTotal} />
+                <Kpi
+                  label={t("ana.openTasks")}
+                  value={work.openTotal}
+                  hint={t("wkz.bestand.openTasks")}
+                />
+                <Kpi
+                  label={t("ana.doneTasks")}
+                  value={work.doneTotal}
+                  hint={t("wkz.bestand.doneTasks")}
+                />
               </div>
 
-              {/* R-0756: dieselben Zahlen je Person — erst wenn die Übersicht geantwortet hat. */}
-              {overview.data ? (
-                <AuftraegeJePerson summaries={overview.data} personen={directory.data ?? []} />
-              ) : null}
+              {/* R-0756: die Zahlen je Person stehen in der Auswertung in der EINEN Darstellung
+                  `PersonenZeilen` weiter unten (FR-VAL-06) — hier keine zweite Tabelle. */}
               {/* R-1655: Prüfdauer je Zuweisungsweg — die Messgrundlage des Routings. */}
               {pruefdauer.data ? <PruefdauerJeWeg auswertung={pruefdauer.data} /> : null}
 
               <Card>
                 <SectionLabel>{t("ana.byType")}</SectionLabel>
+                {/* R-0888 (gesamt-hilfen, Nacharbeit 13): die vorhandene Abschnittserklärung
+                    (`shelp.*`) in der Seitenhilfe — bis hierher nur über Klaras Suche erreichbar. */}
+                <HelpTip title={t("ana.byType")} body={t("shelp.ana.byType")} />
                 <div className="space-y-2">
                   {Object.entries(a.byType).map(([k, v]) => (
                     <div key={k} className="flex items-center gap-3">
-                      <span className="w-32 truncate text-[13px] text-text">{t(`ktype.${k}`)}</span>
+                      {/* WCAG 1.4.12 (Audit nacharbeit-10): umbrechen statt abschneiden. */}
+                      <span className="w-32 text-[13px] text-text [overflow-wrap:anywhere]">
+                        {t(`ktype.${k}`)}
+                      </span>
                       <div className="h-2 flex-1 overflow-hidden rounded-full bg-page">
                         <div
                           className="h-full rounded-full bg-brand"
@@ -355,32 +509,113 @@ export function Analytics(): JSX.Element {
                   ))}
                 </div>
               </Card>
+
+              {/* FR-ANA-01 / R-0723: die Kategorie-Verteilung — bisher stand nur ihre Anzahl da. */}
+              {categories.length > 0 ? (
+                <Card data-testid="analytics-kategorien">
+                  <SectionLabel>{t("kennzahlen.byCategory")}</SectionLabel>
+                  <div className="space-y-2">
+                    {categories.map((c) => (
+                      <div key={c.category} className="flex items-center gap-3">
+                        <span className="w-32 truncate text-[13px] text-text">{c.category}</span>
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-page">
+                          <div
+                            className="h-full rounded-full bg-brand"
+                            style={{ width: `${(c.count / maxCategory) * 100}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-[11px] text-muted-2">{c.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ) : null}
             </div>
           );
         }}
       </QueryState>
 
-      {/* SCRUM-140: Wirkungs-/Impact-Metriken aus GET /api/analytics/impact */}
+      {/* FR-VAL-06 / FR-ANA-01: Prüfaufgaben je Person (offen/erledigt) — dieselbe Quelle wie die
+          Summen „Offene Aufgaben"/„Erledigt" darüber, jetzt Zeile für Zeile. */}
       <div>
+        <div className="mb-2">
+          <SectionLabel>{t("kennzahlen.personen.titel")}</SectionLabel>
+        </div>
+        <QueryState query={overview} emptyText={t("kennzahlen.personen.leer")}>
+          {(summaries) => {
+            const rows = assignmentRows(summaries);
+            return (
+              <Card>
+                {rows.length === 0 ? (
+                  <p className="text-[12.5px] text-muted">{t("kennzahlen.personen.leer")}</p>
+                ) : (
+                  <PersonenZeilen rows={rows} />
+                )}
+              </Card>
+            );
+          }}
+        </QueryState>
+      </div>
+
+      {/* R-0750/R-1741: der Wochenverlauf der Kernzahlen oben — Antwortquote je Woche und validiertes
+          Wissen je Woche. main hatte den Wochenbalken entfernt, weil er HEUTE validierte Objekte
+          nach ihrer Erstellungswoche gruppierte. Seit diesem Auftrag zählt er nach dem belegten
+          Prüfzeitpunkt `validatedAt`; Objekte ohne belegten Zeitpunkt stehen gesondert als
+          zeitlich unbekannt. Die vier Zahlen selbst stehen NICHT ein zweites Mal hier. */}
+      <div data-testid="analytics-wochenverlauf">
         <div className="mb-2 flex items-center gap-1.5">
-          <SectionLabel>{t("ana.impact")}</SectionLabel>
-          <HelpTip title={t("ana.impact")} body={t("ana.help.impact")} />
+          <SectionLabel>{t("kennzahlen.wochen.titel")}</SectionLabel>
+          <HelpTip title={t("kennzahlen.wochen.titel")} body={t("kennzahlen.help.wirkung")} />
         </div>
         <QueryState query={impact}>
-          {(im) => {
-            const weeks = weeklyValidated(im.validatedByWeek);
+          {(bericht) => {
+            const weeks = weeklyReviewed(bericht.validatedByWeek);
             const maxWeek = Math.max(1, ...weeks.map((w) => w.count));
+            const rates = weeklyAnswerRate(bericht.askByWeek);
+            const ohnePruefzeitpunkt = bericht.validatedUnknownWeek ?? 0;
             return (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <Kpi label={t("ana.impactValidated")} value={im.validatedTotal} />
-                  <Kpi label={t("ana.impactAsk")} value={im.askTotal} />
-                  <Kpi label={t("ana.impactAnswered")} value={im.answeredWithoutGap} />
-                  <Kpi label={t("ana.impactRate")} value={formatRate(im.answerRate)} />
-                </div>
-                {weeks.length > 0 ? (
-                  <Card>
-                    <SectionLabel>{t("ana.weekly")}</SectionLabel>
+                <Card data-testid="analytics-quote-woche">
+                  <SectionLabel>{t("kennzahlen.wochen.quote")}</SectionLabel>
+                  {rates.length === 0 ? (
+                    <p className="text-[12.5px] text-muted">{t("kennzahlen.wochen.keineFragen")}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {rates.map((w) => (
+                        <div key={w.week} className="flex items-center gap-3">
+                          <span className="w-24 font-mono text-[11px] text-muted-2">{w.week}</span>
+                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-page">
+                            <div
+                              className="h-full rounded-full bg-brand"
+                              style={{ width: `${w.rate * 100}%` }}
+                            />
+                          </div>
+                          <span className="font-mono text-[11px] text-muted-2">
+                            {t("kennzahlen.wochen.quoteZeile", {
+                              rate: formatRate(w.rate),
+                              answered: w.answered,
+                              asked: w.asked,
+                            })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+                {weeks.length > 0 || ohnePruefzeitpunkt > 0 ? (
+                  <Card data-testid="analytics-validiert-woche">
+                    <SectionLabel>{t("kennzahlen.wochen.geprueft")}</SectionLabel>
+                    <p className="mb-2 text-[11px] leading-snug text-muted-2">
+                      {t("kennzahlen.wochen.validiertHinweis")}
+                    </p>
+                    {ohnePruefzeitpunkt > 0 ? (
+                      <p
+                        data-testid="analytics-ohne-pruefzeitpunkt"
+                        className="mb-2 text-[11px] leading-snug text-muted-2"
+                      >
+                        {t("kennzahlen.wochen.ohnePruefzeitpunkt", { n: ohnePruefzeitpunkt })}
+                      </p>
+                    ) : null}
                     <div className="space-y-2">
                       {weeks.map((w) => (
                         <div key={w.week} className="flex items-center gap-3">
@@ -448,7 +683,30 @@ export function Analytics(): JSX.Element {
             className="h-9 min-w-[10rem] flex-1 rounded-input border border-hairline bg-surface px-3 text-[13px] outline-none focus:border-ink/30"
           />
         </div>
-        <QueryState query={audit} emptyText={t("ana.auditEmpty")}>
+        {/* R-0956 (Ben, Nacharbeit 4): der WIRKLICH leere Bestand ordnet in den Wissenskreis ein
+            und nennt den nächsten Schritt. Der Filter-Leerzustand darunter (`ana.auditNoMatch`)
+            bleibt davon getrennt — dort ist der Bestand nicht leer, nur eingegrenzt.
+            Diese Seite ist reine Admin-Fläche (`navigation.ts`, minRole „admin“) und bewusst ohne
+            Rollenzweig gebaut (`tests/seitenhilfe-navkapitel/lesekapitel-am-seitenverhalten`):
+            die Schritte kommen deshalb aus derselben Liste, fest für ihre einzige Rolle. */}
+        <QueryState
+          query={audit}
+          emptyText={t("ana.auditEmpty")}
+          emptyExtra={leerzustandsRahmen(
+            t,
+            "audit",
+            emptyStateActions("audit", "admin", false),
+            (a) => (
+              <Link
+                key={a.to}
+                to={a.to}
+                className="rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-text hover:border-ink/30 hover:text-ai"
+              >
+                {t(a.labelKey)}
+              </Link>
+            ),
+          )}
+        >
           {(entries) => {
             const filtered = filterAudit(entries, filter);
             return (
@@ -474,10 +732,15 @@ export function Analytics(): JSX.Element {
                           className="flex items-center gap-3 px-4 py-2 text-[12.5px]"
                         >
                           <span className="font-mono text-[11px] text-muted-2">
-                            {new Date(e.at).toLocaleString()}
+                            {formatKoTimestamp(e.at, i18n.language)}
                           </span>
                           <span className="font-semibold text-text">{e.action}</span>
-                          <span className="truncate text-muted">{e.target}</span>
+                          {/* WCAG 1.4.12 (Audit nacharbeit-10): bis hier `truncate` — mit größerem
+                              Textabstand schnitt die Zeile das Ziel ab, und der volle Wert war
+                              nirgends sonst zu lesen. Jetzt bricht er um, auch mitten in einer ID. */}
+                          <span className="min-w-0 text-muted [overflow-wrap:anywhere]">
+                            {e.target}
+                          </span>
                           <span className="ml-auto font-mono text-[11px] text-muted-2">
                             {e.actor}
                           </span>

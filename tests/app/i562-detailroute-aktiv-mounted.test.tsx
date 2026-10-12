@@ -42,6 +42,11 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     lifecycle: { pending: offen() },
     notifications: { list: offen(), markSeen: vi.fn(async () => ({})) },
     features: { get: offen() },
+    // Seit „Externe KI und Recherche je Aufgabe und Datenklasse freigeben" (8b8b6fb68) fragt das
+    // Kopfband über `ExternStatus` → `useReasonerStatus` den Reasoner-Stand ab. Ohne diesen Eintrag
+    // brach JEDER Fall dieser Datei mit `reasoner` undefined ab, bevor eine Aktivmarkierung zu
+    // messen war. Offen wie die übrigen Kopfband-Quellen: `ExternStatus` zeichnet dann nichts.
+    reasoner: { status: offen() },
   },
 }));
 

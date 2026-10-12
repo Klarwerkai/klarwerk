@@ -11,7 +11,7 @@
 // Die Gegenseite (PostgreSQL) prüft `suchsichtbarkeit-altbestand-paritaet.integration.test.ts`.
 import { describe, expect, it } from "vitest";
 import type { SessionUser } from "../../services/app/src/http";
-import { darfSehen, sqlSichtbarkeitFuer } from "../../services/app/src/sichtbarkeit";
+import { darfSehen, schutzrang, sqlSichtbarkeitFuer } from "../../services/app/src/sichtbarkeit";
 import type { Role } from "../../services/auth";
 import {
   type KnowledgeObject,
@@ -82,14 +82,21 @@ describe("Aufnahme 20260922 · Suchsichtbarkeit bei Altdaten — die bestehende 
     expect(geprueft).toBe(BESTAND.length * ROLLEN.length * BETRACHTER.length);
   });
 
-  it("jede Altstufe ist nach bestehender Regel 'intern' — die benannte Grenze aus sichtbarkeit.ts:39-43", () => {
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): Entscheidung 16 löst die frühere Grenze
+  // „jede Altstufe gilt als intern" ab. Die Anzeige-Hilfen (`isConfidential`,
+  // `normalizeConfidentiality`) legen weiter aus wie bisher — für die SICHTBARKEIT ist eine
+  // Altstufe ungeklärt und wie vertraulich geschützt.
+  it("jede Altstufe ist ungeklärt und wie vertraulich geschützt (Entscheidung 16)", () => {
     const altstufen = BESTAND.filter((s) => s.altform?.feld === "confidentiality");
     expect(altstufen.length).toBeGreaterThanOrEqual(6);
     for (const saat of altstufen) {
       const ko = fakten(saat.marke);
       expect(isConfidential(ko.confidentiality), saat.marke).toBe(false);
       expect(normalizeConfidentiality(ko.confidentiality), saat.marke).toBe("intern");
-      expect(saat.regel, `${saat.marke}: Regel und Auslegung laufen auseinander`).toBe("jeder");
+      expect(schutzrang(ko.confidentiality), saat.marke).toBe(1);
+      expect(saat.regel, `${saat.marke}: Regel und Auslegung laufen auseinander`).toBe(
+        "nurValidate",
+      );
     }
   });
 

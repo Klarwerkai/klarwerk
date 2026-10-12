@@ -9,8 +9,9 @@
 // Detailseite (`eigeneKollisionStart` neben `eigeneKollisionDetail` in lib/eigeneKollision.ts);
 // ein zweiter Ableitungsweg wäre genau die Drift, an der JOB 3002 R4 fiel.
 //
-// `primaryWorkItem(overview, role)` bleibt unangetastet: dort geht es um Arbeit, die die Rolle
-// ausführen darf. Hier geht es um Auskunft über EIGENE Objekte — eine andere Frage.
+// `primaryWorkItem(overview, role)` blieb damals unangetastet (seit R-1349 entfernt, die Zeile ist in
+// „FÜR DICH" aufgegangen): dort ging es um Arbeit, die die Rolle ausführen darf. Hier geht es um
+// Auskunft über EIGENE Objekte — eine andere Frage.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const box = vi.hoisted(() => ({

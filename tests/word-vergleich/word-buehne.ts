@@ -26,6 +26,10 @@
 // Vergleichsweg benutzt (`Word.run`, `context.document.body.paragraphs`, `load`, `sync`,
 // `paragraph.text`, `paragraph.font.highlightColor`, `paragraph.getRange().select()`). Die
 // Einstufung selbst faellt im Panel, nicht hier.
+//
+// R-0336 („Markierung pruefen"): dazu `context.document.getSelection()` mit `load("text")` und
+// `text` — die Markierung, wie Word sie meldet. Ohne Option `markierung` ist sie leer (nichts
+// markiert); gelesen wird sie nur, wenn der Weg sie anfordert.
 import {
   type FakeReplyInit,
   type FakeRoute,
@@ -99,7 +103,13 @@ interface HostAbsatz {
  */
 export function createWordBuehne(
   absaetze: readonly BuehneAbsatz[],
-  optionen: { laufWirft?: boolean; wirftAbLauf?: number; haelteSync?: number } = {},
+  optionen: {
+    laufWirft?: boolean;
+    wirftAbLauf?: number;
+    haelteSync?: number;
+    /** R-0336: der Text der Markierung, wie `getSelection().text` ihn liefert (Vorgabe: leer). */
+    markierung?: string;
+  } = {},
 ): WordBuehne {
   const mitschrift: WordMitschrift = { syncs: 0, schreib: [], gewaehlt: [], laeufe: 0 };
   // Der festgehaltene `sync`: solange er hier steht, hat der Aufrufer noch keine Antwort.
@@ -142,8 +152,15 @@ export function createWordBuehne(
     },
   };
 
+  const auswahl = {
+    text: optionen.markierung ?? "",
+    load(_felder: string): void {
+      // Wie bei `paragraphs`: der Host haelt den Text ohnehin bereit.
+    },
+  };
+
   const context = {
-    document: { body: { paragraphs } },
+    document: { body: { paragraphs }, getSelection: () => auswahl },
     sync(): Promise<void> {
       mitschrift.syncs += 1;
       if (optionen.haelteSync !== mitschrift.syncs) {

@@ -15,10 +15,13 @@ import {
   bestaetigungInDatei,
   buildDevPersistServices,
   journaledRepos,
-  readJournal,
   readJournalLines,
   replayJournal,
 } from "../../services/app/src/dev-persist";
+
+// R-1349: die Projektion ohne Zeilennummer lebt hier statt als Produktexport `readJournal`, den
+// kein Produktcode las. Der Betrieb liest über `readJournalLines` — genau diese Lesung wird geprüft.
+const readJournal = (file: string): JournalEntry[] => readJournalLines(file).map((l) => l.entry);
 
 // ================================================================================================
 // Auftrag gesamt-dubletten-rueckzug, Lauf 4 — BENS BEN-R3-2 (Rest): TEILSCHREIBEN IM JOURNAL.

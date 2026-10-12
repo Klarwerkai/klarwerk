@@ -21,6 +21,7 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { type AppRepos, type AppServices, assembleServices, inMemoryRepos } from "./build-app";
+import { type BegriffFassung, type BegriffeRepo, InMemoryBegriffeRepo } from "./firmenwoerterbuch";
 import { journalZeileFuer, ohneVorgang } from "./speicher-vorgang";
 
 // Eine Journal-Zeile: welches Repo, welche Methode, welche Argumente (JSON-serialisierbar —
@@ -42,6 +43,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // sonst wäre er nach einem Dev-Neustart weg (pending-Erkennung/Badges würden lügen).
   koRepo: ["insert", "update", "delete", "setAiCheck", "resolveAiCheck"],
   koVersions: ["append"],
+  // aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
+  // Halbwertszeiten überlebt den Dev-Neustart. `ergaenze` legt nur neue Schlüssel an → Replay exakt.
+  halbwertszeitVerlauf: ["ergaenze"],
   evidence: ["append"],
   // W2-A/148: die Laufdomaene. `insertIfAbsent` und `appendItemRefs` sind idempotent, `advance`
   // schreibt einen Zustand fort — alle drei muessen einen Dev-Neustart ueberleben, sonst waere ein
@@ -59,13 +63,20 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   users: ["insert", "update", "delete", "tryClaimBootstrapAdmin"],
   sessions: ["create", "delete", "deleteByUser"],
   resetTokens: ["create", "delete"],
+  // R-0562: der zweite Faktor überlebt den Dev-Neustart — sonst wäre er nach jedem Start still weg.
+  // `claimStep` trägt den Schritt in den Argumenten; das Replay ist damit deterministisch.
+  secondFactors: ["set", "delete", "claimStep"],
   // R-0169 (Nacharbeit 8, bens Befund zum Neustartrundlauf): `insertIfOperationAbsent` (Anlage mit
   // Vorgangskennung, der Word-Weg) und `updateWennStand` (Fortsetzen und das Binden der
   // Dokumentfassung, `CaptureService.dokumentHerkunftBinden`) sind Mutationen. Ohne sie verlor ein
   // Dev-Neustart den Entwurf bzw. seinen Fassungsbezug. Das Replay ist deterministisch: beide tragen
   // ihre Bedingung in den Argumenten, und in derselben Reihenfolge trifft sie denselben Stand.
   drafts: ["insert", "update", "delete", "insertIfOperationAbsent", "updateWennStand"],
-  gaps: ["insert", "update", "delete"],
+  // produkt:20261010:wissenskreislauf-schliessen: `insertOrIncrement` (Hochzählen samt weiterer
+  // Fragender) und `ersetzeWenn` (jeder Vorgangsschritt, auch der Abschluss) sind Mutationen. Beide
+  // tragen ihre Bedingung in den Argumenten — das Replay trifft in derselben Reihenfolge denselben
+  // Stand. Ohne sie verlöre ein Dev-Neustart weitere Fragende und Abschlüsse.
+  gaps: ["insert", "update", "delete", "insertOrIncrement", "ersetzeWenn"],
   // SCRUM-507 R2: die Bewertung (inkl. koVersion) wird per upsert journaled; die Invalidierung ist
   // versionsgebunden (keine separate Löschung), daher kein weiterer Mutator nötig.
   ratings: ["upsert"],
@@ -92,6 +103,10 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // Aufnahme 20260922 · Prüfung-Gedächtnis: `put` ersetzt je Paar (letzter Stand gewinnt) — das
   // Replay ist deterministisch. Ohne den Eintrag ginge nach einem Neustart erneut alles an die KI.
   conflictMemory: ["put"],
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): Planung, Beanspruchung und Abschluss tragen
+  // ihre Bedingungen und Zeitstempel in den Argumenten (Laufkopf, Token, Frist) — das Replay trifft
+  // in derselben Reihenfolge denselben Stand. Ohne den Eintrag verlöre ein Dev-Neustart die Läufe.
+  paarpflichten: ["planen", "beanspruchen", "abschliessen"],
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge überleben den Neustart.
   overlapRepo: ["insert", "update", "closeOpenForKo"],
   // Pedi 04.07.: eingestellte Anzeige-Schwelle überlebt den Neustart (letzter Set gewinnt).
@@ -99,7 +114,17 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte überleben den
   // Neustart. Die args tragen den fertigen Datensatz (inkl. Zeitstempel/Frist) → Replay exakt.
   managementProfiles: ["setCategoryProfile", "setRetirement", "removeRetirement"],
-  lifecycleRepo: ["addCoupling", "markPending", "clearPending", "savePath", "setProgress"],
+  // produkt:20261010:aenderungsfolgen-sichtbar: `markPending` trägt den fertigen Anlass (inkl.
+  // Zeitpunkt) in seinen args → Replay exakt; `restorePending` nimmt eine gescheiterte Bestätigung
+  // ohne Transaktion zurück und ist damit ebenfalls eine Mutation.
+  lifecycleRepo: [
+    "addCoupling",
+    "markPending",
+    "clearPending",
+    "restorePending",
+    "savePath",
+    "setProgress",
+  ],
   objects: ["insert"],
   // SCRUM-510 (WP3): der atomar-idempotente Insert ist ebenfalls eine Mutation → muss journaliert werden,
   // sonst überleben so eingereihte Import-Kandidaten den Dev-Neustart nicht.
@@ -137,6 +162,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   externalKnowledge: ["setStage"],
   // SCRUM-421: Upload-Grenzen überleben den Neustart (letzter Set gewinnt).
   uploadLimits: ["set"],
+  // R-0773: eine erfolglose Suche überlebt den Neustart. Die args tragen Person, Schlüssel, Begriff
+  // und den fertigen Zeitpunkt — das Replay zählt in derselben Reihenfolge exakt dasselbe hoch.
+  nulltreffer: ["erfasse"],
   // ==============================================================================================
   // W1 WEG A (Pedi, Auftrag 143) — DER ANTWORTBELEG ÜBERLEBT DEN NEUSTART.
   // ==============================================================================================
@@ -287,10 +315,8 @@ export function readJournalLines(file: string): JournalLine[] {
   return lines;
 }
 
-/** Dieselbe Lesung ohne die Herkunftsangabe — der unveränderte Bestandsvertrag. */
-export function readJournal(file: string): JournalEntry[] {
-  return readJournalLines(file).map((l) => l.entry);
-}
+// R-1349: Die Projektion `readJournal` (ohne Zeilennummer) hatte keinen Produktaufrufer und ist
+// entfernt. Start und Bestätigung lesen über `readJournalLines`; die Tests bilden die Projektion lokal.
 
 // Journal in frische Repos zurückspielen — ausschließlich über die öffentlichen Interfaces.
 // Unbekannte Repo-/Methodennamen werden bewusst übersprungen (versionstolerant statt Crash).
@@ -409,6 +435,7 @@ function journaled<T extends object>(
   write: (entry: JournalEntry) => void,
   vorgangAbschluss: (zeilen: JournalEntry[]) => void,
   waechter: Waechter,
+  sperre: JournalSchreibsperre | undefined,
 ): T {
   const mutators = MUTATING_METHODS[name];
   return new Proxy(repo, {
@@ -435,6 +462,9 @@ function journaled<T extends object>(
             : fn.apply(target, args);
       }
       return async (...args: unknown[]) => {
+        // P08-AC07: steht der Firmenreset, wird die Mutation abgewiesen, BEVOR sie den Speicher
+        // ändert — kein Schreibvorgang wird bestätigt, der danach nicht im Journal stünde.
+        sperre?.pruefe();
         await waechter.aufloesen();
         const result = await fn.apply(target, args);
         // Auftrag gesamt-dubletten-rueckzug (Runden 2/3, BEN-R3-1/-2): gehört der Aufruf zu einem
@@ -700,6 +730,7 @@ export function journaledRepos(
   rohesSchreiben: (entry: JournalEntry) => void,
   restAmEnde = false,
   lesen?: BestaetigungLesen,
+  sperre?: JournalSchreibsperre,
 ): AppRepos {
   const { write, vorgangAbschluss, waechter } = mitBestaetigung(
     mitNeuaufsatz(rohesSchreiben, restAmEnde),
@@ -708,25 +739,172 @@ export function journaledRepos(
   );
   const wrapped = {} as Record<keyof AppRepos, object>;
   for (const key of Object.keys(MUTATING_METHODS) as (keyof AppRepos)[]) {
-    wrapped[key] = journaled(repos[key] as object, key, write, vorgangAbschluss, waechter);
+    wrapped[key] = journaled(repos[key] as object, key, write, vorgangAbschluss, waechter, sperre);
   }
   return wrapped as unknown as AppRepos;
+}
+
+// ================================================================================================
+// PETER-20261011-P08 · FIRMENRESET IM DESKTOP-JOURNAL.
+// ================================================================================================
+//
+// Drei Bausteine, die der Firmenreset (`factory-reset.ts`) braucht und die nur hier stehen können,
+// weil nur diese Datei weiss, wie das Journal geschrieben und gelesen wird:
+//
+//   · die SCHREIBSPERRE (P08-AC07): ab dem Augenblick, in dem der Reset das Journal ersetzt, weist
+//     jede journalierte Ablage Schreibvorgänge ab — vor der Mutation UND beim Anhängen. Ein Auftrag,
+//     der während des Resets fertig wird (Hintergrundlauf, gleichzeitige Anfrage), bekommt einen
+//     Fehler statt einer Bestätigung, und keine Zeile landet nach dem Reset im neuen Journal.
+//   · das FIRMENWÖRTERBUCH IM JOURNAL (P08-AC03): bis hierher lag es im Desktopbetrieb nur im
+//     Speicher und war nach jedem Neustart weg — „bleibt erhalten" wäre nach dem Reset-Neustart
+//     unwahr gewesen. Es läuft jetzt als eigene Journalart `begriffe.lege` mit; `replayJournal`
+//     kennt sie nicht (unbekannte Ablage → übersprungen), `buildDevPersistServices` spielt sie
+//     getrennt zurück.
+//   · der FILTER (P08-AC03): welche Zeilen ein Firmenreset stehen lässt.
+
+/** Die Journalart des Firmenwörterbuchs (nicht in `AppRepos`, s. build-app.ts `begriffe`). */
+export const BEGRIFFE_ZEILE = { repo: "begriffe", method: "lege" } as const;
+
+/** Die Spur des Firmenresets im neuen Journal. Kein Repo trägt diesen Namen; das Replay übergeht sie. */
+export const FIRMENRESET_ZEILE = { repo: "journal", method: "firmenreset" } as const;
+
+/**
+ * Was ein Firmenreset erhält: Konten (samt zweitem Faktor), Firmenwörterbuch und Prüfprotokoll.
+ * Eine Liste und kein `new Set(...)`: diese Datei lädt `build-app`, und eine Erzeugung auf Modulebene
+ * machte sie für den Einstiegspunkt-Wächter (tests/demo-zugang-start/vertrag-am-einstiegspunkt.test.ts)
+ * zum Prozessstart.
+ */
+export const FIRMENRESET_ERHALTEN: readonly string[] = [
+  "users",
+  "secondFactors",
+  "auditRepo",
+  BEGRIFFE_ZEILE.repo,
+];
+
+/** Ein Schreibvorgang traf auf einen laufenden Firmenreset. Fester Satz, keine Kennung. */
+export class FirmenresetSchreibsperre extends Error {
+  readonly code = "FIRMENRESET_LAEUFT";
+
+  constructor() {
+    super(
+      "Der Firmenreset läuft — dieser Schreibvorgang wurde nicht gespeichert. Bitte nach dem Neustart erneut versuchen.",
+    );
+    this.name = "FirmenresetSchreibsperre";
+  }
+}
+
+/** Die geteilte Sperre zwischen Journal (`buildDevPersistServices`) und Firmenreset. */
+export class JournalSchreibsperre {
+  private aktiv = false;
+
+  get gesperrt(): boolean {
+    return this.aktiv;
+  }
+
+  setzen(): void {
+    this.aktiv = true;
+  }
+
+  loesen(): void {
+    this.aktiv = false;
+  }
+
+  pruefe(): void {
+    if (this.aktiv) {
+      throw new FirmenresetSchreibsperre();
+    }
+  }
+}
+
+/**
+ * Die Zeilen, die nach einem Firmenreset im Journal stehen bleiben — in ihrer Reihenfolge.
+ *
+ * Wirksame Rücknahme-Vorgänge (Vorgangszeile mit Bestätigung, ohne Widerruf — dieselbe Regel wie
+ * das Replay) werden aufgelöst: ihre Teilzeilen erhaltener Ablagen bleiben als Einzelzeilen an ihrer
+ * Stelle stehen. Sonst fiele etwa ein Prüfprotokolleintrag aus der Mitte der Kette, und das Replay
+ * der erhaltenen Kette bräche beim Neustart. Unwirksame Vorgänge, Bestätigungen, Widerrufe und alle
+ * Zeilen entfernter Ablagen entfallen.
+ */
+export function firmenresetZeilen(
+  lines: readonly JournalLine[],
+  erhalten: readonly string[] = FIRMENRESET_ERHALTEN,
+): JournalEntry[] {
+  const wirksam = wirksamIn(lines);
+  const raus: JournalEntry[] = [];
+  for (const { entry } of lines) {
+    if (istVorgangsZeile(entry)) {
+      const vorgang = (entry as VorgangsEintrag).vorgang;
+      if (typeof vorgang === "string" && wirksam(vorgang)) {
+        raus.push(...(entry.args as JournalEntry[]).filter((t) => erhalten.includes(t.repo)));
+      }
+      continue;
+    }
+    if (erhalten.includes(entry.repo)) {
+      raus.push(entry);
+    }
+  }
+  return raus;
+}
+
+/**
+ * Das Firmenwörterbuch mit Journal: erst die Zeile, dann die Ablage. Liefert `lege` beim Replay
+ * `false` (Version schon vergeben), ist die Zeile wirkungslos — in derselben Reihenfolge trifft das
+ * Replay deshalb denselben Stand wie die laufende Instanz.
+ */
+function journaledBegriffe(
+  repo: BegriffeRepo,
+  write: (entry: JournalEntry) => void,
+  sperre: JournalSchreibsperre,
+): BegriffeRepo {
+  return {
+    aktuelle: () => repo.aktuelle(),
+    fassungen: (id) => repo.fassungen(id),
+    lege: async (fassung) => {
+      sperre.pruefe();
+      write({ repo: BEGRIFFE_ZEILE.repo, method: BEGRIFFE_ZEILE.method, args: [fassung] });
+      return repo.lege(fassung);
+    },
+  };
 }
 
 // Komposition „Dev-Persistenz": Journal laden → in In-Memory-Repos zurückspielen →
 // Repos journalierend wrappen → identisch verdrahtete Service-Landschaft.
 // append-only via appendFileSync: kein Rewrite der Datei bei jeder Mutation, crash-tolerant
 // in Kombination mit dem defensiven Parser (s. o.).
-export async function buildDevPersistServices(file: string): Promise<AppServices> {
+// P08: `sperre` teilt der Start (server.ts) mit dem Firmenreset; ohne Angabe eine eigene.
+export async function buildDevPersistServices(
+  file: string,
+  sperre: JournalSchreibsperre = new JournalSchreibsperre(),
+): Promise<AppServices> {
   mkdirSync(dirname(file), { recursive: true });
   const repos = inMemoryRepos();
   // W1/N6: MIT Herkunftsangabe — nur so kann ein Replayfehler die echte physische Zeile nennen.
-  await replayJournal(repos, readJournalLines(file));
+  const lines = readJournalLines(file);
+  await replayJournal(repos, lines);
+  const begriffe = new InMemoryBegriffeRepo();
+  for (const { entry } of lines) {
+    const [fassung] = entry.args;
+    if (
+      entry.repo === BEGRIFFE_ZEILE.repo &&
+      entry.method === BEGRIFFE_ZEILE.method &&
+      typeof fassung === "object" &&
+      fassung !== null &&
+      typeof (fassung as BegriffFassung).id === "string" &&
+      typeof (fassung as BegriffFassung).version === "number"
+    ) {
+      await begriffe.lege(fassung as BegriffFassung);
+    }
+  }
   const write = (entry: JournalEntry): void => {
+    // P08-AC07: auch das Anhängen selbst prüft die Sperre — eine Mutation, die vor dem Reset begann
+    // und erst danach schreiben will, landet nicht im neuen Journal.
+    sperre.pruefe();
     appendFileSync(file, `${JSON.stringify(entry)}\n`, "utf8");
   };
+  const geschrieben = mitNeuaufsatz(write, restAmEnde(file));
   return assembleServices(
-    journaledRepos(repos, write, restAmEnde(file), bestaetigungInDatei(file)),
+    journaledRepos(repos, geschrieben, false, bestaetigungInDatei(file), sperre),
+    { begriffe: journaledBegriffe(begriffe, geschrieben, sperre) },
   );
 }
 

@@ -218,6 +218,9 @@ describe("removeKoFromDuplicatePrefilter (GDPR-Kaskadenlöschung)", () => {
       delete: async () => {
         throw new Error("store kaputt");
       },
+      // R-0470: die beiden Lesewege des dauerhaften Speichers — hier ohne Bedeutung.
+      standVon: async () => undefined,
+      staende: async () => new Map(),
     };
     const prefilter: SemanticPrefilter = {
       embedder: stubEmbeddingProvider(256),

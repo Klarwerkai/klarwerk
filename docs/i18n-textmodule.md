@@ -59,6 +59,26 @@ eine niederländische Oberfläche setzen, und niemand merkt es.
 Wer eine Übersetzung nicht kennt, hat eine Wissenslücke und keine Ausrede — nachfragen, nicht
 erfinden. Ein Platzhaltertext wäre eine Behauptung über einen Text, den es nicht gibt.
 
+## Eine weitere Sprache ergänzen — nur über Ressourcen (R-0997, FR-I18N-02)
+
+DE, EN und NL sind die Untergrenze, nicht die Obergrenze. Eine weitere Sprache (Beispiel `fr`)
+kommt ohne Programmänderung dazu:
+
+1. `apps/web/src/woerterbuch/fr.ts` anlegen wie `en.ts`: `const fr: typeof de = {` … `};` und
+   `export { fr };`. Die Bindung `typeof de` lässt den Typcheck jede fehlende Zeile melden; eine
+   Datei ohne diese Bindung meldet keine Sprache an und hält den Bau als „unbekannte Sprache" an.
+2. Jedem Textmodul unter `texte/` seinen `fr`-Block geben. Der Bau hält an, solange einer fehlt.
+3. Den Sprachnamen `lib.facet.lang.fr` in jedes Wörterbuch eintragen (Beschriftung im Schalter).
+
+Daraus leiten sich ab, ohne dass jemand eine Liste anfasst: der Sprachschalter, `/profil`, die
+Anmeldung, die gespeicherte Wahl, der Textmodulvertrag und das Nachladen (`lib/sprachregister.ts`,
+`sprachenAusRessourcen`; im Bau `registrierteSprachen` in `texte/intern/sprachwaechter.ts`).
+
+Was dabei bewusst NICHT mitwächst: `<html lang>` bleibt nach der Ownerentscheidung JOB 536 auf
+genau `de|en|nl` (`ERLAUBTE_SPRACHEN` in `lib/htmlLang.ts`), der Linkvertrag `?lang=` auf `de|en`,
+und das Word-Seitenfenster führt eigene Wörterbücher. Diese Grenzen zu verschieben ist je eine
+eigene Entscheidung.
+
 ## Was ein Textmodul nicht darf
 
 * **Nichts importieren** ausser Typen (`import type`). Textmodule sind reine Datenmodule; sie

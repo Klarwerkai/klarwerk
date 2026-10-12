@@ -24,6 +24,16 @@ export interface RatingRepo {
    * Sparsamkeit: `= ANY($1)` mit leerem Feld ist eine Anweisung, die nie eine Zeile treffen kann.
    */
   listByKos(koIds: readonly string[]): Promise<Rating[]>;
+  /**
+   * R-0254: die Prüferfahrung — je Person die Zahl ihrer Bewertungen an ANDEREN Objekten als
+   * `ausserKoId`. Personen ohne frühere Bewertung fehlen in der Karte (= 0). Leere Eingabe macht
+   * keine Abfrage. OPTIONAL, damit handgeschriebene Test-Doubles nicht brechen; ohne die Methode
+   * zählt jede Stimme wie die eines Neulings.
+   */
+  fruehereBewertungen?(
+    userIds: readonly string[],
+    ausserKoId: string,
+  ): Promise<Map<string, number>>;
 }
 
 export interface AssignmentRepo {
@@ -42,6 +52,23 @@ export interface AssignmentRepo {
    * Prüfbrett braucht weiterhin alle offenen und bleibt bei `all()`. Leere Eingabe → leere Antwort.
    */
   listByKos(koIds: readonly string[]): Promise<Assignment[]>;
+  /**
+   * ADMIN-09: legt nur an, wenn es für (Objekt, Person) noch KEINE Zuweisung gibt — in einem
+   * Schritt. `true` heisst: genau diese Anlage hat stattgefunden. Zwei gleichzeitige Fristläufe
+   * können damit nicht beide „neu angelegt" melden und belegen. OPTIONAL für Test-Doubles.
+   */
+  createIfAbsent?(assignment: Assignment): Promise<boolean>;
+  /**
+   * ADMIN-09: Compare-and-Set — ersetzt den gespeicherten Stand nur, wenn er noch genau `alt` ist.
+   * `true` heisst: dieser Aufrufer hat ersetzt. Grundlage für die Übergabe einer vorhandenen Aufgabe
+   * an die Vertretung und für die Übernahme eines Versands. OPTIONAL für Test-Doubles.
+   */
+  replaceIf?(alt: Assignment, neu: Assignment): Promise<boolean>;
+}
+
+/** Ein Vergleichsschlüssel unabhängig von der Feldreihenfolge (Zuweisungen sind flach). */
+function stand(a: Assignment): string {
+  return JSON.stringify(a, Object.keys(a).sort());
 }
 
 export class InMemoryRatingRepo implements RatingRepo {
@@ -67,6 +94,20 @@ export class InMemoryRatingRepo implements RatingRepo {
     }
     const gesucht = new Set(koIds);
     return Promise.resolve([...this.ratings.values()].filter((r) => gesucht.has(r.koId)));
+  }
+
+  fruehereBewertungen(
+    userIds: readonly string[],
+    ausserKoId: string,
+  ): Promise<Map<string, number>> {
+    const anzahl = new Map<string, number>();
+    const gesucht = new Set(userIds);
+    for (const r of this.ratings.values()) {
+      if (gesucht.has(r.userId) && r.koId !== ausserKoId) {
+        anzahl.set(r.userId, (anzahl.get(r.userId) ?? 0) + 1);
+      }
+    }
+    return Promise.resolve(anzahl);
   }
 }
 
@@ -99,5 +140,25 @@ export class InMemoryAssignmentRepo implements AssignmentRepo {
   listByKos(koIds: readonly string[]): Promise<Assignment[]> {
     const ids = new Set(koIds);
     return Promise.resolve([...this.assignments.values()].filter((a) => ids.has(a.koId)));
+  }
+
+  // Prüfen und Setzen ohne `await` dazwischen — im Speicher damit ein unteilbarer Schritt.
+  createIfAbsent(assignment: Assignment): Promise<boolean> {
+    const schluessel = `${assignment.koId}:${assignment.userId}`;
+    if (this.assignments.has(schluessel)) {
+      return Promise.resolve(false);
+    }
+    this.assignments.set(schluessel, assignment);
+    return Promise.resolve(true);
+  }
+
+  replaceIf(alt: Assignment, neu: Assignment): Promise<boolean> {
+    const schluessel = `${alt.koId}:${alt.userId}`;
+    const jetzt = this.assignments.get(schluessel);
+    if (!jetzt || stand(jetzt) !== stand(alt)) {
+      return Promise.resolve(false);
+    }
+    this.assignments.set(schluessel, neu);
+    return Promise.resolve(true);
   }
 }

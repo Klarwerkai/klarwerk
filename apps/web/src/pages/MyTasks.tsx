@@ -15,10 +15,11 @@ import { readHistoryIndex } from "../app/navHistory";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { PausedMarker, StaleMarker } from "../components/LoadState";
+import { MeineEinzelquellen } from "../components/MeineEinzelquellen";
 import { KoAuthorLine } from "../components/trust";
 import { PageHeader } from "../components/ui";
 import { fallHref } from "../lib/fallAbsprung";
-import { gapLocaleTag } from "../lib/gapLocaleTag";
+import { gapTitelEtikett } from "../lib/gapLocaleTag";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
 import { groupLoadPhase, gruppeAngehalten, isGroupStale } from "../lib/loadingState";
 // JOB 3808: der Onlinezustand wird GEREICHT, nicht gedeutet — dieselbe eine Quelle wie auf der
@@ -211,8 +212,9 @@ export function MyTasks(): JSX.Element {
     ),
     // FUNKE-FIX2 P0: ohne Detail-Berechtigung liefert der Server den Fragetext redigiert.
     // GAP-SPRACHHERKUNFT: der Fragetext behält die Sprache seiner Quelle; ein Etikett benennt sie.
+    // R-0307 / R-1061: ohne Sprachangabe (Altbestand) steht das neutrale Etikett „Originalfrage".
     ...(gaps.data ?? []).filter(isOpenGap).map((g) => {
-      const sprache = gapLocaleTag(g.locale, i18n.language);
+      const sprache = gapTitelEtikett(g, i18n.language, t);
       return task({
         id: g.id,
         label: g.redacted ? t("task.gapRedacted") : g.question,
@@ -575,6 +577,12 @@ export function MyTasks(): JSX.Element {
             </div>
           );
         })}
+        {/* R-1626 (ROADMAP 1.4): die kurze persönliche Liste „Wissen, das nur bei dir liegt" —
+            nur in der ungefilterten Ansicht, nur mit geladenem Bestand, und nichts, wenn es kein
+            solches Thema gibt (`components/MeineEinzelquellen.tsx`). */}
+        {taskFilter === "all" && kos.data !== undefined ? (
+          <MeineEinzelquellen objekte={kos.data} userId={user?.id} />
+        ) : null}
       </div>
     </div>
   );

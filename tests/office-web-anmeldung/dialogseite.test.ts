@@ -642,3 +642,71 @@ describe("JOB 4076 · S4 · die Dialogseite gibt die Anmeldung an das Seitenfens
     expect(lauf.nachrichten).toEqual([]);
   });
 });
+
+// ================================================================================================
+// AUFNAHME gesamt-sso · R-0541 / R-0560 — DAS DIALOGFENSTER FOLGT DEM SCHALTER „NUR FIRMEN-LOGIN".
+// ================================================================================================
+// Ben (Nacharbeit 2): das Fenster bot bei abgeschaltetem Kennwort weiter E-Mail und Kennwort an,
+// und jeder Versuch endete in einer 403. Gemessen an der AUSGEFÜHRTEN Seite.
+describe("R-0541 · das Word-Anmeldefenster bei abgeschaltetem Kennwort", () => {
+  function kennwortwegSichtbar(lauf: Lauf): boolean {
+    return !lauf.stelle("passwortweg").className.includes("hidden");
+  }
+
+  it("F1 — nur Firmen-Login mit OIDC: kein Kennwortfeld, der SSO-Knopf und die Erklärung stehen da", async () => {
+    const lauf = fahre({
+      routen: routenOhneSitzung({
+        "/api/auth/status": {
+          status: 200,
+          koerper: { needsSetup: false, oidcEnabled: true, passwordLoginEnabled: false },
+        },
+      }),
+    });
+    await lauf.flush();
+    expect(lauf.formularSichtbar()).toBe(true);
+    expect(kennwortwegSichtbar(lauf)).toBe(false);
+    expect(lauf.ssoSichtbar()).toBe(true);
+    lauf.klick("lang-de");
+    expect(lauf.lage()).toContain("nur der Firmen-Login");
+    // Kein Kennwortaufruf ist hinausgegangen.
+    expect(lauf.aufrufe.map((a) => a.url)).not.toContain("/api/auth/login");
+  });
+
+  it("F2 — nur Firmen-Login mit SAML: der SAML-Knopf steht da und führt in den SAML-Weg zurück ins Fenster", async () => {
+    const lauf = fahre({
+      routen: routenOhneSitzung({
+        "/api/auth/status": {
+          status: 200,
+          koerper: { needsSetup: false, samlEnabled: true, passwordLoginEnabled: false },
+        },
+      }),
+    });
+    await lauf.flush();
+    expect(kennwortwegSichtbar(lauf)).toBe(false);
+    expect(lauf.ssoSichtbar()).toBe(false);
+    expect(lauf.stelle("saml").className).not.toContain("hidden");
+    expect(quelle()).toContain('"/api/auth/saml/start?ziel=word-addin"');
+  });
+
+  it("F3 — Kennwort aus, Firmen-Login fehlt: kein Feld, und der Satz sagt, dass die IT ihn einrichten muss", async () => {
+    const lauf = fahre({
+      routen: routenOhneSitzung({
+        "/api/auth/status": {
+          status: 200,
+          koerper: { needsSetup: false, oidcEnabled: false, passwordLoginEnabled: false },
+        },
+      }),
+    });
+    await lauf.flush();
+    expect(kennwortwegSichtbar(lauf)).toBe(false);
+    expect(lauf.ssoSichtbar()).toBe(false);
+    lauf.klick("lang-de");
+    expect(lauf.lage()).toContain("noch nicht eingerichtet");
+  });
+
+  it("F4 — GEGENPROBE: ohne die Angabe (älterer Server) bleibt das Kennwortfeld", async () => {
+    const lauf = fahre({ routen: routenOhneSitzung() });
+    await lauf.flush();
+    expect(kennwortwegSichtbar(lauf)).toBe(true);
+  });
+});

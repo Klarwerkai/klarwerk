@@ -37,3 +37,27 @@
 // EHRLICHKEIT (A2/A3): der Deckel allein wäre eine Lüge. Beide Wege protokollieren ihre Abdeckung
 // (services/conflicts/src/coverage.ts) und der aiCheck trägt sie bis in die Oberfläche.
 export const DETECTION_CANDIDATE_CAP = 20;
+
+// ================================================================================================
+// AUFNAHME 20260922 · R-1124 — DER WAHLWEISE VOLLABGLEICH EINES OBJEKTS GEGEN DEN GANZEN BESTAND.
+// ================================================================================================
+//
+// „Für besonders wichtige Wissensbestände soll die Widerspruchs- und Dublettenprüfung wahlweise
+// gegen den ganzen Bestand laufen statt nur gegen die zwanzig nächsten Treffer."
+//
+// `gedeckelt` ist der Normalfall jedes Einreichens und jedes Abrufs (oben, unverändert).
+// `vollstaendig` wählt ein Mensch mit `ko.validate` ausdrücklich für EIN Objekt
+// (`POST /api/kos/:id/ai-check` mit `{ "umfang": "vollstaendig" }`). Dann fällt im Konflikt- UND im
+// Dublettenweg der Deckel weg, und der Konfliktweg verzichtet zusätzlich auf seinen fachlichen
+// Vorfilter: jedes aktive Nicht-Demo-Objekt wird verglichen. Das ist EIN Subjekt gegen den Bestand —
+// keine Vollpaarprüfung des Bestands; nichts läuft davon automatisch.
+//
+// Was „besonders wichtig" ist, legt keine Quelle fest. Deshalb gibt es kein Merkmal und keine
+// Automatik: die Wahl trifft der Mensch je Objekt. Die Abdeckung meldet das Ergebnis nach derselben
+// Regel wie immer (`isCompleteRun`) — vollständig heißt es nur, wenn jeder Vergleich geurteilt hat.
+export type PruefUmfang = "gedeckelt" | "vollstaendig";
+
+/** Der Vergleichsdeckel je Umfang: `vollstaendig` hat keinen. */
+export function vergleichsDeckel(umfang: PruefUmfang = "gedeckelt"): number {
+  return umfang === "vollstaendig" ? Number.POSITIVE_INFINITY : DETECTION_CANDIDATE_CAP;
+}

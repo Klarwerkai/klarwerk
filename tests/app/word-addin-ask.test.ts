@@ -54,6 +54,7 @@ import {
 // G24 (JOB 1610): die Fixture baut den Serververtrag nicht mehr NACH, sie BENUTZT ihn. Siehe
 // `ka6AskKoerper` — der Grund steht dort.
 import { aiGeneratedMark } from "../../services/model-runs";
+import { istFrageAufruf } from "../support/frageweg";
 import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
@@ -660,6 +661,49 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
     // Ask-Fluss: beide Fassungen liefern auf denselben Fake-fetch-Faellen dasselbe Ergebnis.
     const flows: [string, AskFetchFn][] = [
       ["answered", async () => fakeRes(200, ANSWERED_BODY)],
+      // R-0310: die Absatz-Beleg-Zuordnung — beide Fassungen geben NUR belegte Absätze aus und
+      // fallen ohne belegten Absatz in die Lücke.
+      [
+        "answered-absaetze",
+        async () =>
+          fakeRes(200, {
+            ...ANSWERED_BODY,
+            result: { ...ANSWERED_BODY.result, citedSources: ["ko-2"] },
+            absaetze: [
+              { text: "**Ventil** entlasten. [2]", quellen: ["ko-2"] },
+              { text: "Ohne Beleg.", quellen: [] },
+              { text: "Fremd.", quellen: ["ko-1"] },
+            ],
+          }),
+      ],
+      [
+        "answered-absaetze-unbelegt",
+        async () =>
+          fakeRes(200, {
+            ...ANSWERED_BODY,
+            result: { ...ANSWERED_BODY.result, citedSources: ["ko-2"] },
+            absaetze: [{ text: "Ohne Beleg.", quellen: [] }],
+          }),
+      ],
+      // R-0310/R-0325 (Ben zu 8e6c9d73): keine tragende Quelle — Lücke MIT `zuordnungUnbekannt`.
+      [
+        "gap-zuordnung-unbekannt",
+        async () =>
+          fakeRes(200, {
+            ...ANSWERED_BODY,
+            result: { ...ANSWERED_BODY.result, citedSources: [] },
+            absaetze: [{ text: "Ohne Beleg.", quellen: [] }],
+          }),
+      ],
+      [
+        "gap-zuordnung-fremd",
+        async () =>
+          fakeRes(200, {
+            ...ANSWERED_BODY,
+            result: { ...ANSWERED_BODY.result, citedSources: ["ko-gibt-es-nicht"] },
+            absaetze: [{ text: "Ohne Beleg.", quellen: [] }],
+          }),
+      ],
       ["gap", async () => fakeRes(200, GAP_BODY)],
       ["auth", async () => fakeRes(401, {})],
       // AUFTRAG-JOB507-D4: der neue 403- und der neue 429-Ausgang laufen durch DENSELBEN Vergleich.
@@ -697,6 +741,25 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
       const fromInline = await inline.performAsk("Frage", "de", fetchFn, timeout);
       const fromModule = await performAsk("Frage", "de", fetchFn, timeout);
       expect(fromInline, `flow:${label}`).toEqual(fromModule);
+    }
+    // R-0310/R-0325 (Ben zu 8e6c9d73): ohne tragende Quelle keine Ausgabe, aber die benannte
+    // unbekannte Zuordnung; mit tragender Quelle (ko-2) ohne belegten Absatz die schlichte Lücke.
+    const ablauf = (name: string) => flows.find(([l]) => l === name)?.[1];
+    for (const name of ["gap-zuordnung-unbekannt", "gap-zuordnung-fremd"]) {
+      const fetchFn = ablauf(name);
+      expect(fetchFn, name).toBeDefined();
+      if (fetchFn) {
+        expect(await inline.performAsk("Frage", "de", fetchFn, WORD_ADDIN_ASK_TIMEOUT_MS)).toEqual({
+          kind: "gap",
+          zuordnungUnbekannt: true,
+        });
+      }
+    }
+    const belegtNichts = ablauf("answered-absaetze-unbelegt");
+    if (belegtNichts) {
+      const r = await inline.performAsk("Frage", "de", belegtNichts, WORD_ADDIN_ASK_TIMEOUT_MS);
+      expect(r.kind).toBe("gap");
+      expect(r.zuordnungUnbekannt).toBeUndefined();
     }
     // Gating + Zeilenbau + Titel-Konvention verhaltensgleich.
     const outcomes: (AskOutcome | null)[] = [
@@ -1336,7 +1399,8 @@ function ka6Antwort(koerper: unknown, ok = true, status = 200): unknown {
 function ka6Router(lage: Ka6Lage) {
   return (url: string, init?: { method?: string; body?: string }) => {
     const methode = (init?.method ?? "GET").toUpperCase();
-    if (url === "/api/ask" && methode === "POST" && typeof init?.body === "string") {
+    // R-0700: mit Sitzung fragt das Panel über Klaras eigenen Zugang — derselbe Körper.
+    if (istFrageAufruf(url) && methode === "POST" && typeof init?.body === "string") {
       ka6AskAbgesetzt.push(JSON.parse(init.body) as Record<string, unknown>);
     }
     if (url === "/api/auth/me") {
@@ -1351,7 +1415,7 @@ function ka6Router(lage: Ka6Lage) {
     if (url === "/api/klara/ai-status") {
       return Promise.resolve(ka6Antwort(ka6Aufloesung(lage)));
     }
-    if (url === "/api/ask" && methode === "POST") {
+    if (istFrageAufruf(url) && methode === "POST") {
       return Promise.resolve(ka6Antwort(ka6AskKoerper(lage)));
     }
     if (url.startsWith("/api/kos/")) {
@@ -1814,7 +1878,7 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
     await ladeKa6Fenster(ka6Erlaubt());
     // Der Zuruf laeuft in einen 500er. `performAsk` liefert dafuer `kind: "error"`.
     vi.stubGlobal("fetch", (url: string) =>
-      url === "/api/ask"
+      istFrageAufruf(url)
         ? Promise.resolve(ka6Antwort({}, false, 500))
         : Promise.resolve(ka6Antwort({})),
     );
@@ -1841,7 +1905,7 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
     it(`R-0590: 409 KLARA_AUSWEICHWEG_GESPERRT (${grund}) — #ask-status nennt den Grund, nichts wird eingefuegt`, async () => {
       await ladeKa6Fenster(ka6Erlaubt());
       vi.stubGlobal("fetch", (url: string) =>
-        url === "/api/ask"
+        istFrageAufruf(url)
           ? Promise.resolve(
               ka6Antwort(
                 {
@@ -1890,7 +1954,7 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
       // dort hiesse „abgemeldet", und der Fall maesse die Anmeldung statt der Abschaltung.
       const router = ka6Router(ka6Erlaubt());
       vi.stubGlobal("fetch", (url: string, init?: { method?: string; body?: string }) =>
-        url === "/api/ask"
+        istFrageAufruf(url)
           ? Promise.resolve(
               ka6Antwort(
                 { error: "KI_ABGESCHALTET", message: "Der Administrator hat die KI abgeschaltet." },
@@ -1931,7 +1995,7 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
   it("R-1040 GEGENPROBE: ein anderer 503 bleibt ein Fehler mit Status — keine Abschaltung behauptet", async () => {
     await ladeKa6Fenster(ka6Erlaubt());
     vi.stubGlobal("fetch", (url: string) =>
-      url === "/api/ask"
+      istFrageAufruf(url)
         ? Promise.resolve(ka6Antwort({ error: "REASONER_UNAVAILABLE" }, false, 503))
         : Promise.resolve(ka6Antwort({})),
     );

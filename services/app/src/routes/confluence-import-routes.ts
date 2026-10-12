@@ -36,10 +36,11 @@ import {
   importedAnchorVersions,
   pendingCandidateVersions,
   runConfluenceImport,
+  traegtNichtErmittelteLeser,
 } from "../confluence-import";
 import type { ConfluenceImportSchalterRepo } from "../confluence-import-schalter";
 import type { Guards } from "../http";
-import { sanitizeLogText } from "../log-sanitize";
+import { inhaltsfreieFehlerkennung } from "../log-positivliste";
 import type { ImportRunSourceSync, QuellabgleichRepo } from "../quellabgleich-ablage";
 
 // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import. NUR bei aktivem KLARWERK_CONFLUENCE_IMPORT
@@ -76,8 +77,8 @@ export interface ConfluenceImportRouteDeps {
 // Bis 2693 standen an den Fehlerpfaden dieser Datei Konsolen-Warnungen — ohne Anfrage-Kennung,
 // ohne Level, ohne Format, unstrukturiert auf stderr. Jetzt gehen alle ueber den Logger der
 // Anfrage (`request.log`, traegt `reqId`); der Hintergrundlauf bekommt ihn als Parameter mit.
-// Der Fehlertext wird weiterhin VOR dem Loggen sanitisiert (`sanitizeLogText`) und als Feld
-// `fehler` gefuehrt — kein rohes `err`-Objekt: die Serializer-Disziplin aus 2661 liegt nicht in
+// Seit R-0623 steht im Feld `fehler` nur noch die inhaltsfreie Fehlerkennung
+// (`inhaltsfreieFehlerkennung`: fester Satz oder Klassenname) — kein rohes `err`-Objekt: die Serializer-Disziplin aus 2661 liegt nicht in
 // diesem Basisstand (build-app.ts konfiguriert keinen Logger), und ein roher Fehler traegt Stack
 // und Ziel-URL. Die Wirkung im Produkt tritt erst mit dem Einbau des 2661-Loggers ein.
 //
@@ -111,7 +112,8 @@ function wurzelWarn(
 function warne(log: FastifyBaseLogger, stelle: string, err: unknown): void {
   wurzelWarn(log).call(
     log,
-    { stelle, fehler: sanitizeLogText(err instanceof Error ? err.message : String(err)) },
+    // R-0623 (Ben, Nacharbeit 1): statt des freien Fehlertexts die inhaltsfreie Fehlerkennung.
+    { stelle, fehler: inhaltsfreieFehlerkennung(err) },
     `confluence-import: ${stelle} fehlgeschlagen`,
   );
 }
@@ -1525,6 +1527,12 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
                 const frisch = await adapter.fetchItem(item.externalId);
                 if (!frisch) {
                   notFound.push(id);
+                  continue;
+                }
+                // Nacharbeit 19 (Ben, K1): Leser nicht ermittelt => nicht einreihen; die Seite
+                // erscheint ehrlich als gescheitert, kein Kandidat mit ungeprüfter Leserliste.
+                if (traegtNichtErmittelteLeser(frisch)) {
+                  failed.push({ id, reason: "LESER_NICHT_ERMITTELT" });
                   continue;
                 }
                 zuSchreiben = frisch;

@@ -16,7 +16,6 @@ import {
   KoService,
   SEARCH_PROJECTION_VERSION,
   buildSearchProjection,
-  isReconstructedClassification,
   resolveCapturedAt,
 } from "../../services/knowledge-object";
 
@@ -263,7 +262,7 @@ describe("G27 Welle 1 · AK8 · die deterministische captured_at-Quelle", () => 
     expect(snapshot?.historicalConfidence).toBe("verified");
     expect(snapshot?.capturedAt).toBe("2024-03-01T09:30:00.000Z");
     expect(snapshot?.capturedAtSource).toBe("version_event");
-    expect(isReconstructedClassification(snapshot!)).toBe(false);
+    expect(snapshot?.provenance).not.toBe("reconstructed_from_current_ko");
   });
 
   it("OHNE Versionsstand: bestverfügbar rekonstruiert, ausdrücklich unbestätigt", async () => {
@@ -281,7 +280,7 @@ describe("G27 Welle 1 · AK8 · die deterministische captured_at-Quelle", () => 
     // Deterministischer Zeitpunkt aus dem KO — nicht `now` (No-Go 2).
     expect(snapshot?.capturedAt).toBe(KO_CREATED_AT);
     expect(snapshot?.capturedAtSource).toBe("ko_created_at");
-    expect(isReconstructedClassification(snapshot!)).toBe(true);
+    expect(snapshot?.provenance).toBe("reconstructed_from_current_ko");
   });
 
   it("ohne jede Zeitquelle bleibt captured_at null statt geraten", async () => {

@@ -68,6 +68,25 @@ export class PgRatingRepo implements RatingRepo {
     ]);
     return res.rows.map((row) => row.data);
   }
+
+  // R-0254: EINE gruppierte Abfrage über die Schlüsselspalten — kein Laden der Bewertungsrümpfe.
+  async fruehereBewertungen(
+    userIds: readonly string[],
+    ausserKoId: string,
+  ): Promise<Map<string, number>> {
+    const anzahl = new Map<string, number>();
+    if (userIds.length === 0) {
+      return anzahl;
+    }
+    const res = await this.pool.query<{ user_id: string; n: number }>(
+      "SELECT user_id, count(*)::int AS n FROM ratings WHERE user_id = ANY($1) AND ko_id <> $2 GROUP BY user_id",
+      [[...userIds], ausserKoId],
+    );
+    for (const row of res.rows) {
+      anzahl.set(row.user_id, row.n);
+    }
+    return anzahl;
+  }
 }
 
 export class PgAssignmentRepo implements AssignmentRepo {
@@ -102,6 +121,26 @@ export class PgAssignmentRepo implements AssignmentRepo {
   async all(): Promise<Assignment[]> {
     const res = await this.pool.query<AssignmentRow>("SELECT data FROM assignments");
     return res.rows.map((row) => row.data);
+  }
+
+  // ADMIN-09: EINE Anweisung — der Primärschlüssel entscheidet, wer anlegt; ein Zweiter überschreibt
+  // nichts (anders als `create`, das bei Konflikt ersetzt).
+  async createIfAbsent(assignment: Assignment): Promise<boolean> {
+    const res = await this.pool.query(
+      "INSERT INTO assignments(ko_id,user_id,data) VALUES($1,$2,$3) ON CONFLICT (ko_id,user_id) DO NOTHING",
+      [assignment.koId, assignment.userId, JSON.stringify(assignment)],
+    );
+    return (res.rowCount ?? 0) === 1;
+  }
+
+  // ADMIN-09: Compare-and-Set über den ganzen Datensatz (jsonb-Gleichheit, unabhängig von der
+  // Feldreihenfolge) — nur wer den Stand `alt` noch vorfindet, ersetzt ihn.
+  async replaceIf(alt: Assignment, neu: Assignment): Promise<boolean> {
+    const res = await this.pool.query(
+      "UPDATE assignments SET data=$4 WHERE ko_id=$1 AND user_id=$2 AND data=$3::jsonb",
+      [alt.koId, alt.userId, JSON.stringify(alt), JSON.stringify(neu)],
+    );
+    return (res.rowCount ?? 0) === 1;
   }
 
   // PRÜFSTATUS-ANZEIGE (R-1524): gezielt über die Schlüsselspalte `ko_id` (Teil des Primärschlüssels

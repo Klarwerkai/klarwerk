@@ -167,7 +167,8 @@ export class OverlapService {
     this.onError =
       deps.onError ??
       ((context, error) => {
-        console.error(`[overlaps] ${context}:`, error);
+        // R-0623: nur die Fehlerklasse — Meldung und Stack können Inhalte tragen.
+        console.error(`[overlaps] ${context}: ${error instanceof Error ? error.name : "unknown"}`);
       });
   }
 
@@ -294,7 +295,14 @@ export class OverlapService {
     if (ranked.length === 0) {
       return [];
     }
-    const open = (await this.repo.all()).filter((e) => e.status !== "geschlossen");
+    // AUFNAHME 20260922 · Hintergrundabgleich (R-1111): ein GESCHLOSSENER Eintrag blockt das Paar
+    // ebenfalls — aber NUR für genau die Fassungen, die er trägt. Eine menschliche Entscheidung
+    // (Fehlalarm, getrennt lassen, verknüpfen) über unveränderte Inhalte reißt ein Wiederholungslauf
+    // damit nicht wieder auf. Geschlossene Einträge ohne Fassungspaar (Altbestand) blocken nicht.
+    const open = (await this.repo.all()).filter(
+      (e) =>
+        e.status !== "geschlossen" || (e.koAVersion !== undefined && e.koBVersion !== undefined),
+    );
     // D-AISTATE PAKET 4 (bens V5): versionsbewusste Paar-Dedupe (stale-Befund blockt den neuen Lauf nicht).
     const hasOpenPair = (aId: string, bId: string, aVer?: number, bVer?: number): boolean =>
       open.some((e) => {
@@ -306,7 +314,7 @@ export class OverlapService {
           return true; // Altbestand-Eintrag → wie bisher blocken
         }
         if (aVer === undefined || bVer === undefined) {
-          return true; // versionsloser Lauf → konservativ blocken
+          return e.status !== "geschlossen"; // versionsloser Lauf → konservativ blocken (nur offen)
         }
         const verFor = (koId: string): number | undefined =>
           e.koA === koId ? e.koAVersion : e.koBVersion;
@@ -1107,6 +1115,12 @@ export class OverlapService {
   // die beiden Objekte.
   async idsForKo(koId: string): Promise<string[]> {
     return (await this.repo.all()).filter((e) => e.koA === koId || e.koB === koId).map((e) => e.id);
+  }
+
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 15): wie `ConflictService.koZuordnungen` — je
+  // Überschneidung nur ihre beiden Objektkennungen, für die Leserechtszuordnung des Protokolls.
+  async koZuordnungen(): Promise<{ id: string; koIds: string[] }[]> {
+    return (await this.repo.all()).map((e) => ({ id: e.id, koIds: [e.koA, e.koB] }));
   }
 
   async badgeCount(): Promise<number> {

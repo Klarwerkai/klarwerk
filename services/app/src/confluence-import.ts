@@ -27,9 +27,9 @@ import {
 // KEINE stillen Auto-KOs, alles landet ausschließlich als Kandidat. Never block: eine fehlerhafte Seite
 // wird als `failed` verbucht, der Lauf läuft weiter. Ehrliche Zusammenfassung je Seite.
 
-// R-0162: "removed" = die Seite ist in der Quelle gelöscht und das Wissensobjekt wurde in den
-// Papierkorb gelegt (bzw. würde es im Probelauf); "kept" = in der Quelle gelöscht, das Objekt
-// bleibt aber, weil es weitere Quellen trägt oder zwischenzeitlich überarbeitet wurde.
+// R-0162: "removed" = in der Quelle gelöscht, offener Importkandidat abgelehnt (bzw. würde es im
+// Probelauf); "kept" = in der Quelle gelöscht, das übernommene Objekt bleibt (P05) und trägt den
+// Vermerk „Quelle nicht mehr erreichbar".
 export type ImportPageStatus = "imported" | "skipped" | "failed" | "removed" | "kept";
 
 export interface ImportRunSummary {
@@ -66,10 +66,10 @@ export interface ImportRunSummary {
     belegNachgetragen: number;
     unvollstaendigeSeiten: string[];
   };
-  // R-0162 (Abgleich): in der Quelle gelöschte Seiten, deren Wissensobjekt in den Papierkorb
-  // gelegt wurde (bei dryRun: gelegt WÜRDE). Wiederherstellbar über den Papierkorb.
+  // R-0162 (Abgleich): früher in den Papierkorb gelegte Wissensobjekte. Seit P05 (Peters
+  // Entscheidung 11.10.2026) immer 0 — das Feld bleibt für bestehende Leser der Bilanz.
   removed: number;
-  // R-0162: in der Quelle gelöscht, Objekt bleibt BEWUSST — es trägt weitere Quellen.
+  // R-0162/P05: in der Quelle gelöscht, übernommenes Objekt bleibt BEWUSST erhalten.
   removalKept: number;
   // R-0162 (Nacharbeit, bens Befund 4): OFFENE Importkandidaten einer in der Quelle gelöschten
   // Seite, die abgelehnt wurden (bei dryRun: abgelehnt WÜRDEN) — sonst entstünde aus dem
@@ -88,8 +88,36 @@ export interface ImportRunSummary {
   // Adapter ihn geliefert hat; die bereits gelesenen Seiten bleiben davon unberührt.
   abbruch?: NonNullable<CollectResult["abbruch"]>;
   perPage: { ref: string; status: ImportPageStatus; note?: string }[];
+  // confluence-import-rechte (Nacharbeit 6, Befund F3): Seiten, deren Leserkreis NICHT vollständig
+  // gelesen werden konnte (Gruppenabruf abgebrochen oder über der technischen Grenze). Ihre Leser
+  // sind eine Untermenge der in der Quelle Berechtigten. Fehlt das Feld, gab es keine solche Seite.
+  leserUnvollstaendig?: number;
   // R-0162: der Löschabgleich dieses Laufs (s. `quellAbgleich`). Additiv.
   sourceSync?: SourceSyncSummary;
+}
+
+/** Nacharbeit 6 (Befund F3): trägt der Eintrag den Vermerk „Leserkreis unvollständig gelesen"? */
+function traegtUnvollstaendigeLeser(item: ImportItem): boolean {
+  const rechte = (item as ImportItem & { readonly quellrechte?: unknown }).quellrechte;
+  return (
+    rechte !== null &&
+    typeof rechte === "object" &&
+    (rechte as { leserUnvollstaendig?: unknown }).leserUnvollstaendig === true
+  );
+}
+
+/**
+ * Nacharbeit 19 (Ben, K1): trägt der Eintrag die Marke „Leser nicht ermittelt" (die Prüfung je
+ * Konto endete an der Seitengrenze)? Ein solcher Eintrag darf KEINE Rechte setzen — weder als neuer
+ * Kandidat noch im Rechteabgleich eines bestehenden Objekts.
+ */
+export function traegtNichtErmittelteLeser(item: unknown): boolean {
+  const rechte = (item as { readonly quellrechte?: unknown } | null)?.quellrechte;
+  return (
+    rechte !== null &&
+    typeof rechte === "object" &&
+    (rechte as { leserNichtErmittelt?: unknown }).leserNichtErmittelt === true
+  );
 }
 
 // ================================================================================================
@@ -112,10 +140,9 @@ export interface ImportRunSummary {
 //   3. Die Reaktion ist ein VERMERK am Herkunftsanker (`sourceRemovedAt`), protokolliert im
 //      Audit. Das Wissensobjekt wird weder gelöscht noch revidiert noch herabgestuft — Wissen
 //      verschwindet in Klara nie still, auch nicht, weil es in der Quelle verschwand.
-//      ZUSAMMENFÜHRUNG (Nacharbeit 4): die maßgebliche Reaktion auf eine bestätigte Löschung ist
-//      seither die des Abgleich-Auftrags (`reconcileRemovals`, Papierkorb, solange das Objekt keine
-//      weitere Quelle trägt). Er läuft VOR diesem Abgleich; der Vermerk hier trifft deshalb nur
-//      Objekte, die stehen geblieben sind.
+//      ZUSAMMENFÜHRUNG (Nacharbeit 4): `reconcileRemovals` läuft VOR diesem Abgleich. Seit Peters
+//      Entscheidung P05 (11.10.2026) legt er kein Objekt mehr in den Papierkorb — der Vermerk hier
+//      ist wieder die einzige Reaktion auf eine bestätigte Löschung eines übernommenen Objekts.
 //   4. Im Probelauf (dryRun) wird gemeldet, was vermerkt WÜRDE, und nichts geschrieben.
 //   5. (Runde 3) „Gelöscht" heisst NUR: die Einzelnachfrage antwortete 404 (oder, seit der
 //      Zusammenführung, ein ausdrücklicher Lösch-/Archivstatus — `adapter.isGoneAtSource`). Eine
@@ -664,8 +691,31 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   // Anhänge werden aber abgeglichen (s. unten). Offene Kandidaten gehören nicht dazu: deren Anhänge
   // kommen mit der Annahme.
   const abzugleichen: { item: ImportItem; perPageIdx: number }[] = [];
+  // confluence-import-rechte (Ben, Nacharbeit 6, Befund F2): ALLE übersprungenen Seiten —
+  // bereits importierte UND offen vorgemerkte — bekommen ihre frisch erhobenen Leserechte
+  // nachgezogen. Confluence zählt die Seitenversion bei einer reinen Rechteänderung nicht hoch.
+  const rechteAbzugleichen: { item: ImportItem; perPageIdx: number }[] = [];
+  // Nacharbeit 6 (Befund F3): Seiten, deren Leserkreis nicht vollständig gelesen werden konnte.
+  let leserUnvollstaendig = 0;
+  // Seiten, deren Leserechte nicht abgeglichen bzw. nicht ermittelt wurden (je perPage-Index).
+  const rechteGescheitert = new Set<number>();
   for (const item of items) {
+    if (traegtUnvollstaendigeLeser(item)) {
+      leserUnvollstaendig += 1;
+    }
     const ref = item.externalId ?? item.title;
+    // Nacharbeit 19 (Ben, K1): eine Seite, deren Leser NICHT ermittelt wurden, wird weder
+    // eingereiht noch abgeglichen — sonst ersetzte eine nicht geprüfte, leere Liste die
+    // gespeicherten Leser. Der bisherige Stand bleibt, die Seite zählt als gescheitert.
+    if (traegtNichtErmittelteLeser(item)) {
+      rechteGescheitert.add(perPage.length);
+      perPage.push({
+        ref,
+        status: "failed",
+        note: "Leserechte nicht ermittelt — nichts übernommen, der bisherige Stand bleibt.",
+      });
+      continue;
+    }
     const version = item.sourceVersion ?? 1;
     // bens F3: In-Run-/Pending-/Bestands-Schlüssel sind provider-scoped (wie die Queue selbst).
     const runKey = item.externalId
@@ -686,6 +736,7 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
       if (!isPending) {
         abzugleichen.push({ item, perPageIdx: perPage.length });
       }
+      rechteAbzugleichen.push({ item, perPageIdx: perPage.length });
       perPage.push({ ref, status: "skipped", note: "unverändert (idempotent)" });
       if (already === version) {
         unveraendert.push(item);
@@ -739,6 +790,34 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
         if (entry) {
           entry.status = "skipped";
           entry.note = "Parallelkonflikt (bereits eingereiht)";
+        }
+      }
+    }
+  }
+
+  // ==============================================================================================
+  // confluence-import-rechte (Ben, Nacharbeit 6, Befund F2) — DER RECHTEABGLEICH UNVERÄNDERTER SEITEN.
+  // ==============================================================================================
+  //
+  // Eine Seite gleicher Version geht nicht erneut in die Queue — ihre Leserechte können sich
+  // trotzdem geändert haben. `gleicheQuellrechteFuerAnkerAb` zieht sie am lebenden Objekt über den
+  // geschützten Abgleich nach (`setQuellrechte`, Aktualitätsschutz) und an offenen Kandidaten
+  // derselben Version. Scheitert das, ist die Seite NICHT abgeglichen — sie zählt als gescheitert,
+  // und der Lauf sagt es, statt „unverändert" zu melden (der alte, womöglich offenere Stand bleibt).
+  if (
+    !deps.dryRun &&
+    rechteAbzugleichen.length > 0 &&
+    typeof deps.library.gleicheQuellrechteFuerAnkerAb === "function"
+  ) {
+    for (const { item, perPageIdx } of rechteAbzugleichen) {
+      try {
+        await deps.library.gleicheQuellrechteFuerAnkerAb(item, deps.actor);
+      } catch {
+        rechteGescheitert.add(perPageIdx);
+        const entry = perPage[perPageIdx];
+        if (entry) {
+          entry.status = "failed";
+          entry.note = "Leserechte nicht abgeglichen — der Lauf ist unvollständig.";
         }
       }
     }
@@ -800,7 +879,10 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
         abgleich.belegOffen > 0 ||
         abgleich.listeUnvollstaendig
       ) {
-        abgleichUnvollstaendig += 1;
+        // Nacharbeit 6: eine Seite, deren Rechteabgleich schon gescheitert ist, zählt nur einmal.
+        if (!rechteGescheitert.has(perPageIdx)) {
+          abgleichUnvollstaendig += 1;
+        }
         bilanz.unvollstaendigeSeiten.push(item.externalId ?? item.title);
         if (entry) {
           entry.status = "failed";
@@ -838,10 +920,9 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
         }
       : await reconcileRemovals(deps, items, collectFailed, perPage, quellAuskunft);
 
-  // ZUSAMMENFÜHRUNG (Nacharbeit 4): die maßgebliche Reaktion auf eine bestätigte Löschung ist die
-  // des Abgleich-Auftrags oben (Papierkorb, solange das Objekt keine weitere Quelle trägt). DANACH
-  // läuft der Quellabgleich dieser Lieferung: er liest nur noch AKTIVE Objekte, vermerkt also nur
-  // dort `sourceRemovedAt`, wo das Objekt stehen geblieben ist — damit sein Rücklink nichts mehr
+  // ZUSAMMENFÜHRUNG (Nacharbeit 4, P05): der Abgleich-Auftrag oben lehnt offene Kandidaten ab und
+  // lässt übernommene Objekte stehen. DANACH läuft der Quellabgleich dieser Lieferung: er liest
+  // AKTIVE Objekte und vermerkt `sourceRemovedAt` — damit ihr Rücklink nichts mehr
   // verspricht (R-0131) —, hebt Vermerke wieder auf (Wiederauftauchen) und zieht Anhänge und
   // Leserestriktion unveränderter Seiten nach (s. `quellAbgleich`, `nachzug`).
   const sourceSync = await quellAbgleich(
@@ -867,8 +948,11 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     // Alles Gesehene, das NICHT (real) importiert wurde: In-Run-/Idempotenz-Skips + Parallelkonflikte.
     // R-0163: eine Seite mit unvollständigem Anhangsabgleich zählt nicht mehr als übersprungen,
     // sondern als gescheitert.
-    skipped: items.length - imported - abgleichUnvollstaendig,
-    failed: collectFailed.length + abgleichUnvollstaendig,
+    skipped: items.length - imported - abgleichUnvollstaendig - rechteGescheitert.size,
+    failed: collectFailed.length + abgleichUnvollstaendig + rechteGescheitert.size,
+    // Nacharbeit 6 (Befund F3): nur gesetzt, wenn es solche Seiten gibt — eine fehlende Angabe
+    // heißt „alle Leserkreise vollständig gelesen".
+    ...(leserUnvollstaendig > 0 ? { leserUnvollstaendig } : {}),
     truncated,
     // JOB 1042 D3: unveraendert durchgereicht — nur gesetzt, wenn der Adapter ihn geliefert hat.
     ...(hierarchie ? { hierarchie } : {}),
@@ -910,9 +994,10 @@ function anhangsNotiz(
 // GEGENPROBE: die Quelle wird je Id gefragt (adapter.isGoneAtSource) — fehlt die Seite nur in der
 // Liste, liefert sie aber je Id noch, bleibt alles, wie es ist. Scheitert die Gegenprobe, wird
 // nichts geändert und die Seite als offen gemeldet.
-// WIRKUNG: das Wissensobjekt wandert in den PAPIERKORB (forceTrash, nie Endlöschung, mit
-// expectedVersion) — wiederherstellbar, auditiert über ko.deleted. Trägt das Objekt weitere
-// Quellen, bleibt es stehen ("kept"): es hat dann noch eine Grundlage außerhalb dieser Seite.
+// WIRKUNG (P05, Peters Entscheidung 11.10.2026): das Wissensobjekt BLEIBT ("kept") — mit Inhalt,
+// Herkunft, Fassung und Historie. Den Vermerk „Quelle nicht mehr erreichbar" (`sourceRemovedAt`,
+// Audit ko.source-removed-in-origin) setzt der anschließende Quellabgleich. Früher wanderte es in
+// den Papierkorb (B-01); ein Quellenabgleich ist keine Löschbefugnis für eine gültige Kopie.
 // OFFENE KANDIDATEN (Nacharbeit, bens Befund 4): auch ein noch nicht angenommener Kandidat dieses
 // Providers und Space zählt — sein gespeichertes Item würde beim Annehmen sonst ohne erneuten
 // Quellenabgleich zum Wissensobjekt. Nach bestätigter Löschung wird ein Kandidat im Status "neu"
@@ -974,7 +1059,9 @@ async function reconcileRemovals(
   for (const ko of await deps.koService.list()) {
     for (const s of ko.sources ?? []) {
       const key = ownKey(s);
-      if (!key || !s.externalId || seenKeys.has(key)) {
+      // P05: ein bereits als gelöscht vermerkter Anker ist erledigt — keine erneute Nachfrage je
+      // Lauf (dieselbe Regel wie im Quellabgleich). Sein Wiederauftauchen erkennt `wiederDa`.
+      if (!key || !s.externalId || s.sourceRemovedAt || seenKeys.has(key)) {
         continue;
       }
       const entry = eintrag(key, s.externalId);
@@ -994,7 +1081,8 @@ async function reconcileRemovals(
     eintrag(key, c.item.externalId).candidates.push(c);
   }
 
-  let removed = 0;
+  // P05: seit Peters Entscheidung legt der Abgleich kein Wissensobjekt mehr in den Papierkorb.
+  const removed = 0;
   let removalKept = 0;
   let candidatesRejected = 0;
   let removalOpen = 0;
@@ -1071,45 +1159,22 @@ async function reconcileRemovals(
       handled.add(ko.id);
       const weitereQuellen = (ko.sources ?? []).some((s) => {
         const key = ownKey(s);
-        return !key || !goneKeys.has(key);
+        return !key || (!goneKeys.has(key) && !s.sourceRemovedAt);
       });
-      if (weitereQuellen) {
-        removalKept += 1;
-        perPage.push({
-          ref: externalId,
-          status: "kept",
-          note: "in der Quelle gelöscht — Wissensobjekt trägt weitere Quellen und bleibt",
-        });
-        continue;
-      }
-      if (deps.dryRun) {
-        removed += 1;
-        perPage.push({
-          ref: externalId,
-          status: "removed",
-          note: "in der Quelle gelöscht — würde in den Papierkorb gelegt",
-        });
-        continue;
-      }
-      try {
-        await deps.koService.delete(ko.id, deps.actor, {
-          forceTrash: true,
-          expectedVersion: ko.version,
-        });
-        removed += 1;
-        perPage.push({
-          ref: externalId,
-          status: "removed",
-          note: "in der Quelle gelöscht — Wissensobjekt in den Papierkorb gelegt",
-        });
-      } catch (err) {
-        removalOpen += 1;
-        perPage.push({
-          ref: externalId,
-          status: "kept",
-          note: `in der Quelle gelöscht — nicht nachgezogen (${err instanceof Error ? err.name : "unknown"})`,
-        });
-      }
+      // P05 (Peters Entscheidung 11.10.2026, B-01): die übernommene Kopie bleibt mit Herkunft,
+      // Fassung und Historie nutzbar — auch ohne weitere Quelle. Der Quellabgleich danach vermerkt
+      // am Anker `sourceRemovedAt` (Quelle nicht mehr erreichbar). Rechteentzug sowie
+      // personenbezogene und Lizenzlöschung laufen über ihre eigenen Wege, nie über diesen Abgleich.
+      removalKept += 1;
+      perPage.push({
+        ref: externalId,
+        status: "kept",
+        note: weitereQuellen
+          ? "in der Quelle gelöscht — Wissensobjekt trägt weitere Quellen und bleibt"
+          : deps.dryRun
+            ? "in der Quelle gelöscht — übernommene Kopie bliebe erhalten, Quelle würde als nicht mehr erreichbar vermerkt"
+            : "in der Quelle gelöscht — übernommene Kopie bleibt mit Herkunft erhalten, Quelle als nicht mehr erreichbar vermerkt",
+      });
     }
   }
   return { removed, removalKept, candidatesRejected, removalOpen, removalChecked: true };

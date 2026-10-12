@@ -191,6 +191,10 @@ dem Kunden Arbeit ab, die er sonst selbst schreiben müsste.
 Gehört in den Vertrag oder in die Einführungsunterlage, nicht in eine Fußnote. Die genaue Formulierung
 ist eine Kanzleifrage und steht in Register T4.
 
+**Die anpassbare Vorlage liegt mit dem Produkt aus:** `docs/compliance/unterrichtung-artikel-4-kundenvorlage.md`
+— Teil 2 und Teil 3 auf den Betrieb des Kunden umgeschrieben, mit markierten Stellen
+`[[ANPASSEN: …]]` statt unserer Platzhalter und mit der Bezugsfassung des Produkthinweises.
+
 ---
 
 ## Teil 5 — Herkunft jeder Tatsachenaussage in Teil 2
@@ -239,6 +243,14 @@ niemand außer uns.
 
 **Viertens die Kundenfassung.** Teil 4 sagt, was der Kunde wissen muss, aber es gibt noch keine
 anpassbare Vorlage für seinen Betrieb. Kleine Arbeit, klarer Nutzen, kein Blocker.
+
+**Stand 11.10.2026 zu diesen vier Punkten** (der Text oben bleibt als Stand vom 30.07. erhalten):
+Erstens hat Pedi am 30.07. entschieden — Kurzfassung vor Aufgabe 1, die vollständige Unterrichtung
+danach mit eigenem Datum im Nachweis (Register T6). Zweitens ist unverändert offen und liegt bei der
+Kanzlei. Drittens ist erledigt: dieses Dokument liegt seit mega63 Block E unter `docs/compliance/`,
+ein Sammler koppelt seine Kennung an das Produkt. Viertens ist erledigt: die Kundenvorlage liegt
+unter `docs/compliance/unterrichtung-artikel-4-kundenvorlage.md` (siehe Teil 4). Die Kurzfassung
+selbst liegt nicht im Produkt, nur in der Kopfablage.
 
 ---
 

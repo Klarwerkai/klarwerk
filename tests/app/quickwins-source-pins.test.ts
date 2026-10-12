@@ -32,7 +32,10 @@ describe("Block D4 (Client): Reviewer-Minimum 1", () => {
     const src = web("pages/AdminKiDetails.tsx");
     expect(src).toContain("aria-invalid={!neededValid}");
     expect(src).toContain("|| !neededValid");
-    expect(src).toContain("neededParsed >= 1 && neededParsed <= 5");
+    // R-1349 (Aufnahme gesamt-aufruferwaechter): hier stand der Pin auf der ausgeschriebenen Bedingung
+    // `neededParsed >= 1 && neededParsed <= 5`. Die Seite liest sie jetzt aus der EINEN Quelle — das
+    // Band 1–5 selbst misst `tests/app/reviewer-minimum-parse.test.ts` an `isNeededValidationsValid`.
+    expect(src).toContain("const neededValid = isNeededValidationsValid(neededEffective)");
   });
   it("deutsche Fehlermeldung existiert in allen Sprachen", () => {
     inAllLangs("adm.val.invalid");
@@ -75,9 +78,11 @@ describe("Block D10: Import-Grund erklären (nur JSON)", () => {
   // AUFTRAG-mega32 H2: der JSON-Kasten ist aus pages/Stufe2.tsx in ein eigenes Bauteil im Cockpit
   // gezogen (er stand vorher AUSSERHALB des Providers und wurde deshalb immer gerendert). Der Satz
   // ist unverändert — nur seine Datei ist es nicht.
+  // R-0179 (Nacharbeit 3): NACHGEFÜHRT. Seit der Kasten auch Excel liest, wäre „nur JSON" falsch;
+  // der ehrliche Grund-Hinweis steht jetzt im Textmodul `texte/importtabelle.ts`.
   it("der JSON-Kasten rendert den ehrlichen Import-Grund-Hinweis", () => {
     const src = web("components/ImportJsonUpload.tsx");
-    expect(src).toContain('t("imp.jsonOnlyReason")');
-    inAllLangs("imp.jsonOnlyReason");
+    expect(src).toContain('t("importtabelle.grund")');
+    expect(src).not.toContain('t("imp.jsonOnlyReason")');
   });
 });

@@ -1,35 +1,89 @@
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
+import { useFeatures } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
+import { useToastOptional } from "../app/ToastContext";
 import { Button, Field, TextInput } from "../components/ui";
 // AUFTRAG-mega61 Block A/B/D: Fußbereich, Hinweistext und der Satz nach einer Ablehnung. Der
 // ABLAUF dieser Maske — die sechs Zustände, ihre Übergänge, die Mutationen — bleibt unangetastet;
 // hinzu kommen ausschließlich Anzeigeflächen unterhalb des Formulars.
 import { LegalFooter } from "../legal/LegalPages";
 import { NoticeText, takeDeclineMarker } from "../legal/NoticeBanner";
+import { ToastViewport } from "../shell/ToastViewport";
+import { VORFUEHRUNG_PFAD } from "../vorfuehrung/VorfuehrungScreen";
 // JOB 1097 / D-028 + D-027: Markenfläche und Sprachwahl liegen als EINE Quelle daneben. Der
 // Markenblock stand vorher zeichengleich auch in `ResetScreen.tsx` — jede Änderung hätte an beide
 // Stellen gemusst, sonst wären sie auseinandergelaufen.
 import { BrandCompact, BrandPanel, PublicLangSwitch } from "./BrandPanel";
+import { type Maskenfehler, maskenfehlerAus, maskenfehlerText } from "./maskenfehler";
 
-type Mode = "login" | "register" | "waiting" | "setup" | "forgot" | "forgotSent";
+// R-0562: `secondFactor` ist der zweite Anmeldeschritt — Passwort war richtig, jetzt der Code vom
+// zweiten Gerät.
+type Mode = "login" | "register" | "waiting" | "setup" | "forgot" | "forgotSent" | "secondFactor";
 
 // Auth/Onboarding (BRIEF §6.1 / §7.2). Vollbild, 2-spaltig: dunkles Marken-
 // Panel links, Formular rechts. Sub-Zustände inkl. Ersteinrichtung.
 export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Element {
-  const { t } = useTranslation();
-  const { refresh, oidcEnabled, selfRegistrationEnabled } = useSession();
+  const { t, i18n } = useTranslation();
+  const einblendungen = useToastOptional();
+  const { refresh, oidcEnabled, samlEnabled, selfRegistrationEnabled, passwordLoginEnabled } =
+    useSession();
+  // R-0570: `=== true` — „noch nicht geladen", „nicht gekommen" und „aus" zeigen gleichermassen
+  // keinen Verweis (fail-closed, dieselbe Richtung wie `FeatureGate`).
+  const vorfuehrungAn = useFeatures().data?.features?.vorfuehrung === true;
   const [mode, setMode] = useState<Mode>(needsSetup ? "setup" : "login");
+  // R-0560: Firmen-Login heisst OIDC ODER SAML.
+  const firmenLogin = oidcEnabled || samlEnabled;
+  // R-0541: NUR FIRMEN-LOGIN. Sagt der Server AUSDRÜCKLICH `false`, verschwinden Passwortformular,
+  // „Passwort vergessen" und „Registrieren" — sie führten alle in eine 403. Seit Bens Befund
+  // (Nacharbeit 2) gilt das auch ohne eingerichteten Firmen-Login: dann steht statt des Knopfes,
+  // dass der Zugang erst eingerichtet werden muss. Unbekannt (`undefined`) ändert nichts; die
+  // Ersteinrichtung bleibt unberührt.
+  const nurFirmenLogin = !needsSetup && passwordLoginEnabled === false;
+  const firmenLoginKnoepfe = (variante: "primary" | "ghost") => (
+    <>
+      {oidcEnabled ? (
+        <Button
+          variant={variante}
+          className="w-full"
+          onClick={() => window.location.assign(authApi.ssoStartUrl)}
+        >
+          {t("auth.ssoButton")}
+        </Button>
+      ) : null}
+      {samlEnabled ? (
+        <Button
+          variant={variante}
+          className="w-full"
+          onClick={() => window.location.assign(authApi.samlStartUrl)}
+        >
+          {t("auth.samlButton")}
+        </Button>
+      ) : null}
+    </>
+  );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   // Sicherheit: Passwort-Bestätigung bei Account-Erstellung (register/setup) — ein Vertipper
   // im einzigen Passwortfeld würde sonst still ein falsches Passwort setzen (Aussperrung).
   const [pw2, setPw2] = useState("");
-  const [err, setErr] = useState<string | null>(null);
+  // R-0531: „die Wahl wirkt sofort auf alle Texte der Maske" — auch auf einen schon angezeigten oder
+  // erst nach dem Umschalten eintreffenden Fehler. Im Zustand liegt deshalb kein fertiger Satz,
+  // sondern sein Schlüssel; formuliert wird beim Zeichnen in der gewählten Sprache
+  // (`auth/maskenfehler.ts`).
+  //
+  // `anfrageSprache` ist die Sprache des letzten Absendens (`Accept-Language`, `api/client.ts`). Sie
+  // zählt nur für einen Satz, der nirgends vorrätig ist: er steht in dieser Sprache, sonst steht die
+  // Erklärung in der gewählten.
+  const anfrageSprache = useRef(i18n.language);
+  const [fehler, setFehler] = useState<Maskenfehler | null>(null);
+  const setErr = (text: string | null): void =>
+    setFehler(text === null ? null : maskenfehlerAus(text, anfrageSprache.current, i18n));
+  const err = fehler === null ? null : maskenfehlerText(fehler, (k) => t(k), i18n.language);
   // AUFTRAG-mega61 Block D: Wer den Hinweis abgelehnt hat, landet nach dem Abmelden hier. Ohne
   // diesen Satz stünde er vor einer Anmeldemaske ohne Erklärung — eine Sackgasse mit Gedächtnis.
   // Einmalig beim ersten Rendern gelesen UND gelöscht (`useState`-Initialisierer), damit der Satz
@@ -62,10 +116,32 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   const onError = (e: unknown): void =>
     setErr(e instanceof ApiError ? e.message : t("state.error"));
 
+  // R-0562: die Anmeldeanfrage aus dem Passwortschritt und der eingegebene Code.
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+
   const login = useMutation({
     mutationFn: () => authApi.login(email, pw),
-    onSuccess: () => refresh(),
+    onSuccess: (antwort) => {
+      if (typeof antwort === "object" && antwort !== null && "secondFactorRequired" in antwort) {
+        // Das Passwort wird ab hier nicht mehr gebraucht und bleibt nicht im Formular liegen.
+        setPw("");
+        setCode("");
+        setChallenge(antwort.challenge);
+        setMode("secondFactor");
+        return;
+      }
+      refresh();
+    },
     onError,
+  });
+  const secondFactor = useMutation({
+    mutationFn: () => authApi.loginSecondFactor(challenge ?? "", code),
+    onSuccess: () => refresh(),
+    onError: (e: unknown) => {
+      setCode("");
+      onError(e);
+    },
   });
   const register = useMutation({
     mutationFn: () => authApi.register(name, email, pw),
@@ -102,7 +178,12 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
     onError,
   });
 
-  const busy = login.isPending || register.isPending || setup.isPending || forgot.isPending;
+  const busy =
+    login.isPending ||
+    register.isPending ||
+    setup.isPending ||
+    forgot.isPending ||
+    secondFactor.isPending;
   // ==============================================================================================
   // JOB 4081 RUNDE 3 — DER KÜRZERE WEG IN DIESELBE ABSAGE (BENs Gegenprobe B1 aus Runde 2).
   // ==============================================================================================
@@ -140,6 +221,8 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   const go = (m: Mode): void => {
     setErr(null);
     setPw2("");
+    setChallenge(null);
+    setCode("");
     setMode(m);
   };
 
@@ -181,9 +264,19 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   const passwortLabel = neuesPasswort
     ? `${t("auth.password")} (${t("auth.passwordRule")})`
     : t("auth.password");
+  // R-0562: der Codeschritt hat seine Texte im eigenen Textmodul (`texte/zweifaktor.ts`).
+  const zweiterSchritt = mode === "secondFactor";
+  const titelSchluessel = zweiterSchritt ? "zweifaktor.anmelden.titel" : `auth.title.${mode}`;
+  const unterzeileSchluessel = zweiterSchritt
+    ? "zweifaktor.anmelden.unterzeile"
+    : `auth.sub.${mode}`;
+  const submitSchluessel = zweiterSchritt ? "zweifaktor.anmelden.absenden" : `auth.submit.${mode}`;
 
   return (
     <div className="flex h-full">
+      {/* R-0953 (Nacharbeit 7): vor der Anmeldung gibt es keine App-Hülle und damit keine
+          Anzeige der Einblendungen — Erfolg und Fehler dieser Maske erschienen sonst nirgends. */}
+      {einblendungen ? <ToastViewport /> : null}
       <BrandPanel />
 
       <div className="flex flex-1 items-center justify-center p-6">
@@ -194,8 +287,8 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
           <div className="mb-4 flex justify-end">
             <PublicLangSwitch />
           </div>
-          <h1 className="text-2xl font-semibold text-ink">{t(`auth.title.${mode}`)}</h1>
-          <p className="mt-1.5 text-sm text-muted">{t(`auth.sub.${mode}`)}</p>
+          <h1 className="text-2xl font-semibold text-ink">{t(titelSchluessel)}</h1>
+          <p className="mt-1.5 text-sm text-muted">{t(unterzeileSchluessel)}</p>
 
           {declined ? (
             <div
@@ -215,11 +308,31 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                 {t("auth.backToLogin")}
               </Button>
             </div>
+          ) : nurFirmenLogin ? (
+            // R-0541: kein Passwortfeld, das in eine 403 führt — der eine Weg, der gilt, und warum.
+            <div data-testid="auth-sso-only" className="mt-6 space-y-4">
+              {firmenLogin ? (
+                <>
+                  <p className="rounded-card border border-hairline p-3 text-[12.5px] text-muted">
+                    {t("auth.ssoOnlyNote")}
+                  </p>
+                  {firmenLoginKnoepfe("primary")}
+                </>
+              ) : (
+                <p
+                  data-testid="auth-sso-only-missing"
+                  className="rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3 text-[12.5px] text-trust-warn-text"
+                >
+                  {t("auth.ssoOnlyMissing")}
+                </p>
+              )}
+            </div>
           ) : (
             <form
               className="mt-6 space-y-4"
               onSubmit={(e) => {
                 e.preventDefault();
+                anfrageSprache.current = i18n.language;
                 setErr(null);
                 // JOB 4081 RUNDE 3: Hier und nicht nur am Knopf. Die Eingabetaste gibt ein
                 // Formular ab, ohne den Absendeknopf zu berühren — ein gesperrter Knopf allein
@@ -235,6 +348,8 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                 }
                 if (mode === "login") {
                   login.mutate();
+                } else if (mode === "secondFactor") {
+                  secondFactor.mutate();
                 } else if (mode === "register") {
                   register.mutate();
                 } else if (mode === "forgot") {
@@ -264,19 +379,39 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                   />
                 </Field>
               ) : null}
-              <Field label={t("auth.email")}>
-                <TextInput
-                  id="auth-email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  autoFocus={!neuesPasswort}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </Field>
-              {mode !== "forgot" ? (
+              {/* R-0562: im zweiten Schritt steht NUR das Codefeld. `one-time-code` lässt
+                  Passwortmanager und Mobilgeräte den Code anbieten. */}
+              {mode === "secondFactor" ? (
+                <Field label={t("zweifaktor.code")}>
+                  <TextInput
+                    id="auth-second-factor-code"
+                    name="one-time-code"
+                    data-testid="auth-second-factor-code"
+                    autoComplete="one-time-code"
+                    inputMode="numeric"
+                    pattern="[0-9 ]{6,7}"
+                    maxLength={7}
+                    autoFocus
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    required
+                  />
+                </Field>
+              ) : (
+                <Field label={t("auth.email")}>
+                  <TextInput
+                    id="auth-email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    autoFocus={!neuesPasswort}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </Field>
+              )}
+              {mode !== "forgot" && mode !== "secondFactor" ? (
                 <Field label={passwortLabel}>
                   <TextInput
                     id="auth-password"
@@ -322,7 +457,10 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
               {registrierwegZu ? absageFlaeche : null}
 
               {err ? (
-                <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+                <div
+                  data-testid="auth-error"
+                  className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+                >
                   {err}
                 </div>
               ) : null}
@@ -337,7 +475,7 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                 disabled={busy || registrierwegZu}
                 className="w-full"
               >
-                {t(`auth.submit.${mode}`)}
+                {t(submitSchluessel)}
               </Button>
             </form>
           )}
@@ -347,27 +485,21 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
               Nicht-Funktion — und `oidcEnabled` hat den Vorgabewert `false`, das stand auf einer
               Instanz ohne OIDC also DAUERHAFT da. Ein „oder"-Trenner, auf den nichts folgt, ist
               zudem ein Trenner ohne zweite Seite. */}
-          {mode === "login" && !needsSetup && oidcEnabled ? (
-            <div className="mt-5">
+          {mode === "login" && !needsSetup && firmenLogin && !nurFirmenLogin ? (
+            <div className="mt-5 space-y-2">
               <div className="mb-3 flex items-center gap-3 text-[11px] uppercase tracking-wider text-muted-2">
                 <span className="h-px flex-1 bg-hairline" />
                 {t("auth.or")}
                 <span className="h-px flex-1 bg-hairline" />
               </div>
-              <Button
-                variant="ghost"
-                className="w-full"
-                onClick={() => window.location.assign(authApi.ssoStartUrl)}
-              >
-                {t("auth.ssoButton")}
-              </Button>
+              {firmenLoginKnoepfe("ghost")}
             </div>
           ) : null}
 
           {/* D-025 (b): Reihenfolge und Gewicht getauscht. „Passwort vergessen?" ist der
               Alltagsfall und stand vorher unten und leise; „Registrieren" trifft die meisten
               Besucher genau einmal und stand oben und halbfett. */}
-          {!needsSetup && mode === "login" ? (
+          {!needsSetup && mode === "login" && !nurFirmenLogin ? (
             <div className="mt-5 space-y-2 text-center text-[13px] text-muted">
               <button type="button" className="font-semibold text-ink" onClick={() => go("forgot")}>
                 {t("auth.toForgot")}
@@ -396,6 +528,27 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                   </button>
                 )}
               </div>
+            </div>
+          ) : null}
+          {/* R-0570 / Entscheidung zu Frage 14: der Weg in die anonyme Vorführung. Er steht nur da,
+              wenn der Server sie für diese Installation eingeschaltet hat (Vorgabe aus), und sagt
+              schon im Wortlaut, dass dort nur erfundene Inhalte liegen. */}
+          {!needsSetup && mode === "login" && vorfuehrungAn ? (
+            <div className="mt-4 text-center text-[13px]">
+              <a
+                href={VORFUEHRUNG_PFAD}
+                data-testid="auth-zur-vorfuehrung"
+                className="text-muted underline underline-offset-2 hover:text-ink"
+              >
+                {t("vorfuehrung.zurVorfuehrung")}
+              </a>
+            </div>
+          ) : null}
+          {mode === "secondFactor" ? (
+            <div className="mt-5 text-center text-[13px] text-muted">
+              <button type="button" className="font-semibold text-ink" onClick={() => go("login")}>
+                {t("auth.backToLogin")}
+              </button>
             </div>
           ) : null}
           {!needsSetup && (mode === "register" || mode === "forgot") ? (

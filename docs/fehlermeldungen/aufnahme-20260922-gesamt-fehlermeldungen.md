@@ -16,6 +16,14 @@ laufenden Instanz gesehen — das hat dieser Lauf **nicht** getan.
 | `services/app/src/routes/ko-routes.ts` | `POST /api/kos/from-document` mit `draftId`: die 404/403-Antworten für unbekannten bzw. fremden Entwurf kommen aus dem Katalog (`DRAFT_NOT_FOUND`, `DRAFT_NOT_VISIBLE`, `meldung(…, sprache(request))`) statt als deutsches Literal. Status, Code und Feldmenge unverändert; der deutsche Wortlaut ist zeichengleich. | P-Q9 |
 | `services/app/src/routes/naechster-schritt-entwurf.ts` | Dieselben zwei Literale auf den Katalog umgestellt. Die Route ist in `build-app.ts` **nicht** registriert (Rückbau JOB 1494 D2) — kein Nutzereffekt, nur damit kein Literal dieser Art übrig bleibt. | P-Q9 |
 | `tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts` | Abschnitt I: I1/I2 (404 EN/NL), I3/I4 (403 EN/NL), I5 (DE zeichengleich, Draht `toEqual`), I6 (fremder Versuch lässt den Entwurf unberührt) — am echten Draht über `buildApp(buildServices())`. | P-Q9 |
+
+**Nachtrag bei der Integration mit `aufnahme:20260922:gesamt-leserechte` (R-0239, Entscheidung J24
+„404"):** Ein fremder, nicht sichtbarer Entwurf antwortet seither auf allen Entwurfswegen —
+auch am Dokumentweg und am nächsten Schritt — zeichengleich mit einer unbekannten Kennung
+(404 `NOT_FOUND`, `DRAFT_NOT_FOUND`); der Katalogsatz `DRAFT_NOT_VISIBLE` ist entfallen. I3/I4/I5
+messen deshalb „fremd = unbekannt". Das 403 am Dokumentweg bleibt dem sichtbaren Pool-Entwurf ohne
+Einreichrecht und trägt den Rechtesatz `PERMISSION_DENIED`. Die Katalogumstellung (P-Q9) bleibt
+unverändert erhalten.
 | `tests/q9-serverfehlertexte/katalogschluessel-herkunft.test.ts` | `GEMESSEN_VON` um I1–I4 nachgeführt (H4.2 verlangt die vollständige Liste der Messfälle). | P-Q9 |
 
 ## Abgleich je Aufnahmepunkt

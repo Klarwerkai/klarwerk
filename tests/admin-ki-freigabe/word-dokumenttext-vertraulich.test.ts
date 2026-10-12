@@ -7,7 +7,10 @@
 // gekapselten Anbieter belegen, einschließlich übertragener Einstufung."
 //
 // DER AUFBAU ist der von `tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts` (R4b —
-// Markierung mit offenem Riegel über `POST /api/ask` mit Klara-Bindung), mit zwei Unterschieden:
+// Markierung mit offenem Riegel über Klaras Zugang mit Klara-Bindung), mit zwei Unterschieden:
+// (Auftrag ki-modus-wahrheit, R-0700: die Klara-Frage geht seit der Integration über Klaras eigenen,
+// sitzungsgebundenen Zugang `POST /api/klara/sessions/{sessionId}/execute` statt `POST /api/ask`;
+// der allgemeine Frageweg weist eine Klara-Bindung ab. Prüfungen und Erwartungen sind unverändert.)
 //   · der Modellclient ist GEKAPSELT wie im Betrieb (`cappedModelClient(…, { rejectsConfidential:
 //     true })`); mitgeschrieben wird HINTER dem Wächter, samt dem Vertraulichkeitsbit;
 //   · die Policyquelle des Sitzungsdienstes liest die Freigaben aus DEMSELBEN Reasoner, wie die
@@ -23,7 +26,7 @@
 //   W4  beide Freigaben, OHNE Dokumentzustimmung → kein Modellaufruf überhaupt.
 import Fastify, { type FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
-import { askRoutes } from "../../services/app/src/routes/ask-routes";
+import { klaraAusfuehrungRoutes } from "../../services/app/src/routes/ask-routes";
 import { KlaraSessionService } from "../../services/app/src/services/klara-session-service";
 import { AskService, InMemoryGapRepo } from "../../services/ask";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
@@ -49,6 +52,7 @@ interface Aufruf {
 
 interface Weg {
   app: FastifyInstance;
+  sitzung: string;
   kopf: Record<string, string>;
   aufrufe: Aufruf[];
   entscheidungen: () => { entscheidung: string; grund?: string }[];
@@ -111,7 +115,7 @@ async function wegAufbauen(opt: {
     logger: { level: "info", stream: { write: (z: string) => zeilen.push(z) } },
   });
   app.register(
-    askRoutes(
+    klaraAusfuehrungRoutes(
       {
         ask,
         ko: koService,
@@ -138,6 +142,7 @@ async function wegAufbauen(opt: {
   }
   return {
     app,
+    sitzung: sicht.sessionId,
     kopf: {
       "x-klara-session": sicht.sessionId,
       "x-klara-instance": "inst-1",
@@ -160,7 +165,7 @@ async function wegAufbauen(opt: {
 const fragen = (w: Weg) =>
   w.app.inject({
     method: "POST",
-    url: "/api/ask",
+    url: `/api/klara/sessions/${w.sitzung}/execute`,
     headers: { ...w.kopf, "content-type": "application/json" },
     payload: {
       question: FRAGE,

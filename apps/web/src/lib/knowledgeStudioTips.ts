@@ -33,6 +33,6 @@ export const KNOWLEDGE_STUDIO_TIPS: readonly KnowledgeStudioTip[] = [
   { id: "blocks", labelKey: "studio.tips.blocks.label", hintKey: "studio.tips.blocks.hint" },
 ];
 
-export function knowledgeStudioTips(): readonly KnowledgeStudioTip[] {
-  return KNOWLEDGE_STUDIO_TIPS;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `knowledgeStudioTips()`, das die Tabelle oben
+// zurückgab. `components/KnowledgeStudioTips.tsx` liest `KNOWLEDGE_STUDIO_TIPS` unmittelbar; der
+// Zugriff rief niemand und ist entfernt.

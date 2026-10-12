@@ -4,13 +4,24 @@ import { ASK_EXAMPLES, askExpectation } from "../../apps/web/src/lib/askExamples
 
 // SCRUM-265: produktnahe Beispiel-Fragen als Startimpuls (kein Auto-Ask, nur Vorlage).
 describe("SCRUM-265: askExamples", () => {
-  it("bietet 2–3 Beispiele mit eindeutigen IDs und i18n-Frage-Keys", () => {
+  it("bietet 2–3 Beispiele mit eindeutigen IDs, deren Frage in DE, EN und NL echter Text ist", () => {
     expect(ASK_EXAMPLES.length).toBeGreaterThanOrEqual(2);
     expect(ASK_EXAMPLES.length).toBeLessThanOrEqual(3);
     const ids = ASK_EXAMPLES.map((e) => e.id);
     expect(new Set(ids).size).toBe(ids.length);
+    // R-1001: die Fragen stehen nicht mehr alle unter `ask.example.*` (Pflege und Verein kommen aus
+    // `texte/beispielfragen.ts`). Statt des Namensraums wird deshalb die Wirkung geprüft: jede
+    // Frage löst in allen drei Sprachen zu echtem, voneinander verschiedenem Text auf.
     for (const e of ASK_EXAMPLES) {
-      expect(e.questionKey.startsWith("ask.example.")).toBe(true);
+      const texte = (["de", "en", "nl"] as const).map((lng) => i18n.getFixedT(lng)(e.questionKey));
+      for (const text of texte) {
+        expect(text, e.questionKey).not.toBe(e.questionKey);
+        expect(text.length, e.questionKey).toBeGreaterThan(15);
+      }
+      expect(
+        new Set(texte).size,
+        `${e.questionKey}: eine Sprache fiel auf eine andere zurück`,
+      ).toBe(3);
     }
   });
 
@@ -19,10 +30,16 @@ describe("SCRUM-265: askExamples", () => {
     expect(ASK_EXAMPLES.some((e) => e.kind === "gap")).toBe(true);
   });
 
-  it("enthält die Industrie-/Linie-L4-/Dosierwert-Story als offene Lücke", () => {
-    const dosing = ASK_EXAMPLES.find((e) => e.id === "dosing");
-    expect(dosing).toBeDefined();
-    expect(dosing?.kind).toBe("gap");
+  it("R-1001: nicht nur Industrie — Pflege und Verein stehen neben dem Industriebeispiel", () => {
+    // Der frühere Fall hielt die Industrie-/Linie-L4-/Dosierwert-Story als einzige Lücke fest.
+    // R-1001 verlangt Beispiele für jede Organisation; das Industriebeispiel bleibt, weil es den
+    // deutschen Demo-Bestand trifft, die Lücken-Frage kommt jetzt aus der Pflege.
+    const ids = ASK_EXAMPLES.map((e) => e.id);
+    expect(ids).toEqual(["valve", "pflege", "verein"]);
+    const ersteLuecke = ASK_EXAMPLES.find((e) => e.kind === "gap");
+    expect(ersteLuecke?.id).toBe("pflege");
+    expect(ASK_EXAMPLES.find((e) => e.id === "verein")?.kind).toBe("gap");
+    expect(ASK_EXAMPLES.find((e) => e.id === "valve")?.kind).toBe("answerable");
   });
 });
 
@@ -47,9 +64,9 @@ describe("SCRUM-266: askExpectation", () => {
   });
 });
 
-// SCRUM-269: Beispiele bleiben in DE UND EN seed-sicher — die technischen Seed-Begriffe
-// (Ventil X, Überdruck, Filter F3, Linie L4, Dosierwert, Schichtwechsel) gehen durch die
-// Übersetzung nicht verloren, damit „answerable" ehrlich answerable bleibt.
+// SCRUM-269: Beispiele bleiben in DE UND EN seed-sicher — die Seed-Begriffe (Ventil X, Überdruck;
+// für die Lücken-Fragen die Kennung B2 und der Betrag 500) gehen durch die Übersetzung nicht
+// verloren, damit „answerable" ehrlich answerable bleibt.
 describe("SCRUM-269: askExamples seed-sicher (DE/EN)", () => {
   const text = (lng: string, key: string): string =>
     String(i18n.getResource(lng, "translation", key) ?? "");

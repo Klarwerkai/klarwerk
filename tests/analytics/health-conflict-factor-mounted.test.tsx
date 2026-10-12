@@ -146,8 +146,9 @@ describe("mega33 B · der Score zeigt den schlechtesten Fall, und sagt es", () =
     await mount();
     const text = container.textContent ?? "";
 
-    // Die Punktzahl steht weiter da — sie verschwindet nicht, sie wird nur ehrlich.
-    expect(text).toContain(i18n.t("health.title"));
+    // Die Punktzahl steht weiter da — sie verschwindet nicht, sie wird nur ehrlich. (Überschrift seit
+    // R-0908 aus `fachwort.gesundheit.titel`, vorher `health.title` „Knowledge Health“.)
+    expect(text).toContain(i18n.t("fachwort.gesundheit.titel"));
     expect(container.querySelector('[data-testid="health-conflict-unproven"]')).not.toBeNull();
     // Der schlechteste Fall steht groß da …
     expect(text).toContain("30");

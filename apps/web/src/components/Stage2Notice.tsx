@@ -69,7 +69,7 @@ export function Stage2Notice(): JSX.Element {
     <GateFrame
       icon={Layers}
       title={t("stage2.gate.title")}
-      body={t("stage2.gate.body")}
+      body={t("knopfzitat.stufe2.hinweis")}
       action={
         role === "admin" ? (
           <Button variant="primary" onClick={() => setStufe2(true)}>

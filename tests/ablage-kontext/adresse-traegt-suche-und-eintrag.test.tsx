@@ -211,7 +211,13 @@ import i18n from "../../apps/web/src/i18n";
 import { LIBRARY_SEARCH_DEBOUNCE_MS } from "../../apps/web/src/lib/useDebouncedValue";
 import { KnowledgeDetail } from "../../apps/web/src/pages/KnowledgeDetail";
 import { Library } from "../../apps/web/src/pages/Library";
-import { gewaehlteId, leseTitel, suche, zeilenTitel } from "../library/support/bib-flaeche";
+import {
+  abschnittOeffnen,
+  gewaehlteId,
+  leseTitel,
+  suche,
+  zeilenTitel,
+} from "../library/support/bib-flaeche";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -678,5 +684,129 @@ describe("N-0074 · Nulltreffer nach Texteingabe bei geöffnetem Beitrag", () =>
     expect(zeilenTitel(container)).toContain(ZWEITER.title);
     expect(gewaehlteId(container)).toBe(ZWEITER.id);
     expect(markierung(), "wieder Treffer: Markierung weg").toBeNull();
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// N-0020 — HERKUNFTSKETTE → WISSENSGRAPH → BROWSER-ZURÜCK: DER LESEKONTEXT IST WIEDER DA.
+// ------------------------------------------------------------------------------------------------
+// Der dokumentierte Weg: Bericht suchen und wählen, „Mehr" → Herkunftskette, „Im Wissensgraph
+// ansehen", dann zurück. Suche und Wahl kommen aus der Adresse (JOB 3104, A3c); gemessen wird hier
+// der Rest — „Mehr" und die Herkunftskette stehen wieder offen. Den Rollstand misst die
+// Chromium-Datei daneben (jsdom hat kein Layout). Der Graph ist ein Platzhalter mit einem Knopf,
+// der genau das tut, was Browser-Zurück tut: `navigate(-1)`.
+describe("N-0020 · Rückweg aus dem Herkunftsgraphen", () => {
+  const ANKER_GRAPH_LINK = "bib-herkunft-graph";
+  const HERKUNFT = "herkunftskette";
+
+  function Graph(): JSX.Element {
+    const navigate = useNavigate();
+    return createElement(
+      "button",
+      { type: "button", "data-testid": "graph-zurueck", onClick: () => navigate(-1) },
+      "zurück",
+    );
+  }
+
+  async function montiereMitGraph(eingang: string): Promise<void> {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Number.POSITIVE_INFINITY } },
+    });
+    await act(async () => {
+      root?.render(
+        createElement(
+          QueryClientProvider,
+          { client: qc },
+          createElement(MemoryRouter, { initialEntries: [eingang] }, [
+            createElement(Adresse, { key: "a" }),
+            createElement(
+              Routes,
+              { key: "r" },
+              createElement(Route, { path: "/bibliothek", element: createElement(Library) }),
+              createElement(Route, { path: "/graph", element: createElement(Graph) }),
+            ),
+          ]),
+        ),
+      );
+    });
+    await ruhe();
+  }
+
+  const mehrOffen = (): string | null =>
+    container.querySelector('[data-testid="bib-mehr"]')?.getAttribute("aria-expanded") ?? null;
+  const herkunftOffen = (): boolean => {
+    const el = container.querySelector(`[data-bib-abschnitt="${HERKUNFT}"]`);
+    return el instanceof HTMLDetailsElement && el.open;
+  };
+
+  async function graphLinkKlicken(): Promise<void> {
+    const link = container.querySelector(`[data-testid="${ANKER_GRAPH_LINK}"]`);
+    if (!(link instanceof HTMLAnchorElement)) {
+      throw new Error("der Graph-Link der Herkunftskette fehlt");
+    }
+    await act(async () => {
+      link.click();
+    });
+    await ruhe();
+  }
+
+  async function zurueck(): Promise<void> {
+    await act(async () => {
+      knopf("graph-zurueck").click();
+    });
+    await ruhe();
+  }
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  it("R1 · nach Browser-Zurück: Suche, Bericht, „Mehr“ und Herkunftskette wie vorher", async () => {
+    await montiereMitGraph(`/bibliothek?${SUCH_PARAM}=${BEGRIFF}&${EINTRAG_PARAM}=${DRITTER.id}`);
+    expect(leseTitel(container)).toBe(DRITTER.title);
+    abschnittOeffnen(container, HERKUNFT);
+    await ruhe();
+    expect(herkunftOffen()).toBe(true);
+
+    await graphLinkKlicken();
+    const lesenImGraph = container.querySelector('[data-testid="bib-lesen"]');
+    expect(lesenImGraph, "der Link hat die Bibliothek nicht verlassen").toBeNull();
+
+    await zurueck();
+
+    expect(suchfeldWert()).toBe(BEGRIFF);
+    expect(zeilenTitel(container)).toEqual([ZWEITER.title, DRITTER.title]);
+    expect(leseTitel(container)).toBe(DRITTER.title);
+    expect(mehrOffen(), "„Mehr“ ist nach der Rückkehr wieder zu").toBe("true");
+    expect(herkunftOffen(), "die Herkunftskette ist nach der Rückkehr wieder zu").toBe(true);
+  });
+
+  it("R2 · der Merker wird verbraucht: ein späteres Öffnen desselben Berichts beginnt zu", async () => {
+    await montiereMitGraph(`/bibliothek?${EINTRAG_PARAM}=${DRITTER.id}`);
+    abschnittOeffnen(container, HERKUNFT);
+    await ruhe();
+    await graphLinkKlicken();
+    await zurueck();
+    expect(mehrOffen()).toBe("true");
+
+    abbauen();
+    await montiereMitGraph(`/bibliothek?${EINTRAG_PARAM}=${DRITTER.id}`);
+    expect(leseTitel(container)).toBe(DRITTER.title);
+    expect(mehrOffen(), "ein verbrauchter Merker öffnet „Mehr“ ein zweites Mal").toBe("false");
+  });
+
+  it("R3 · GEGENPROBE: der Merker gilt nur für seinen Bericht — ein anderer öffnet zu", async () => {
+    await montiereMitGraph(`/bibliothek?${EINTRAG_PARAM}=${DRITTER.id}`);
+    abschnittOeffnen(container, HERKUNFT);
+    await ruhe();
+    await graphLinkKlicken();
+
+    abbauen();
+    await montiereMitGraph(`/bibliothek?${EINTRAG_PARAM}=${ZWEITER.id}`);
+    expect(leseTitel(container)).toBe(ZWEITER.title);
+    expect(mehrOffen(), "der Kontext eines anderen Berichts wurde übertragen").toBe("false");
   });
 });

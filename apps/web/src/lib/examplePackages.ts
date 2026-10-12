@@ -24,8 +24,7 @@ export const EXAMPLE_PACKAGE_CARDS: readonly ExamplePackageCard[] = [
   { id: "qualitaet", titleKey: "exp.pkg.qualitaet.title", descKey: "exp.pkg.qualitaet.desc" },
 ];
 
-// Alle Keys (Basis + Karten) — EINE Liste für den ×3-Sprachen-Test.
-export const EXAMPLE_PACKAGES_ALL_KEYS: readonly string[] = [
-  ...Object.values(EXAMPLE_PACKAGES_TEXT),
-  ...EXAMPLE_PACKAGE_CARDS.flatMap((card) => [card.titleKey, card.descKey]),
-];
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `EXAMPLE_PACKAGES_ALL_KEYS`, die Liste aller
+// Schlüssel für den ×3-Sprachen-Test (R-0991 Nr. 25, Fall C „Prüfhilfe"). Sie ist Prüfzeug, keine
+// Produktfähigkeit; der Test bildet sie jetzt selbst aus den beiden Tabellen oben
+// (`tests/app/example-packages.test.ts`).

@@ -29,3 +29,11 @@ export const IMPORT_CLEANUP_TEXT = {
   // sie fail-closed stehen; in Vorschau UND Bilanz ehrlich beziffert.
   auditPendingCandidates: "imp.cleanup.auditPendingCandidates",
 } as const;
+
+// Aufnahme gesamt-bestandsbereinigung (R-0124): Vorschau und Bilanz nennen die erkannten
+// Doppel-Kandidaten. Die Texte liegen im Textmodul `texte/aufraeumbilanz.ts` (nicht im
+// Grundwörterbuch, das byte-genau gepinnt ist).
+export const AUFRAEUM_DOPPEL_TEXT = {
+  vorschau: "aufraeumbilanz.vorschauDoppel",
+  bilanz: "aufraeumbilanz.bilanzDoppel",
+} as const;

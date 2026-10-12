@@ -29,15 +29,16 @@
 // DER BEFUND (ben, sammel79). Bis mega82 las dieses Werkzeug DREI Quellen: aktuelle Wissensobjekte
 // (Anhangsliste und Fließtext) und Versions-Schnappschüsse. Die produktive Entscheidung
 // `beurteileAnhang` kennt aber VIER Trägerquellen (app/src/sichtbarkeit.ts): dazu kommen die
-// append-only BELEGKETTE und die ENTWÜRFE. Das vorhandene Referenzinventar `findObjectReferences`
-// (app/src/object-references.ts) nennt dieselbe vollständige Grundmenge längst ausdrücklich.
+// append-only BELEGKETTE und die ENTWÜRFE. Das damalige Referenzinventar `findObjectReferences`
+// nannte dieselbe vollständige Grundmenge (R-1349: es hatte keinen Produktaufrufer und ist
+// entfernt; die Grundmenge trägt `beurteileAnhang`).
 //
 // WARUM DAS ZÄHLT, obwohl niemand die Zahl bisher benutzt hat: eine Zahl, die zu klein ist,
 // BERUHIGT FALSCH. Ein Objekt, das nur noch an einem Beleg oder einem Entwurf hängt, wäre als
 // „hängt an nichts, nichts zu tun" gemeldet worden — und genau danach wird entschieden. Ein
 // Werkzeug für den Betrieb muss stimmen, BEVOR es je jemand benutzt.
 //
-// DIE GRUNDMENGE AB HIER — dieselbe wie `findObjectReferences`, Route für Route:
+// DIE GRUNDMENGE AB HIER — dieselbe wie `beurteileAnhang`, Route für Route:
 //   aktuelles Wissensobjekt: Anhangsliste (`anhang`) · Fließtext (`fliesstext`)
 //   Versions-Schnappschuss:  Anhangsliste oder Fließtext (`fassung`)
 //   Belegkette:              `ko_evidence.objectId` (`beleg`)
@@ -80,7 +81,7 @@ export interface BelegZeile {
   objectId?: string | null | undefined;
 }
 
-/** Ein Entwurf (`drafts`) mit seinen drei Referenzformen — dieselben wie in object-references.ts. */
+/** Ein Entwurf (`drafts`) mit seinen drei Referenzformen — dieselben wie in `beurteileAnhang`. */
 export interface EntwurfZeile {
   id: string;
   titel?: string | null | undefined;
@@ -151,8 +152,8 @@ function nenntImText(bodyHtml: string | null | undefined, objectId: string): boo
 /**
  * Die AUSWERTUNG — rein, ohne Datenbank, ohne Uhr, ohne Zufall.
  *
- * Die Grundmenge ist dieselbe wie in `findObjectReferences` (app/src/object-references.ts) und
- * dieselbe, die `beurteileAnhang` produktiv befragt (app/src/sichtbarkeit.ts) — s. den Kopf dieser
+ * Die Grundmenge ist dieselbe, die `beurteileAnhang` produktiv befragt (app/src/sichtbarkeit.ts)
+ * — s. den Kopf dieser
  * Datei. Sie wird hier GESPIEGELT und nicht importiert: das Werkzeug liest rohe Datenbankzeilen und
  * hat weder `KnowledgeObject` noch `Draft` in vollständiger Form vor sich; ein Import zwänge zu
  * einer Attrappe, die die Spiegelung nur versteckte. Der Test hält die Deckung fest.

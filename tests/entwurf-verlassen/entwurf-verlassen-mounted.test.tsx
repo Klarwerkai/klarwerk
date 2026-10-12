@@ -71,7 +71,7 @@ afterEach(() => {
 describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
   it("1 · der geöffnete Entwurf bietet den Weg an — das leere Formular nicht", async () => {
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-    expect(feld(i18n.t("capture.fTitle")).value).toBe("Zahlungsziel");
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe("Zahlungsziel");
     const knopfImEntwurf = verlassenKnopf();
     expect(knopfImEntwurf).not.toBeNull();
     expect((knopfImEntwurf?.textContent ?? "").trim()).toBe(i18n.t("capture.leaveDraft.action"));
@@ -84,7 +84,7 @@ describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
 
   it("2 · mit Änderungen fragt die GEMEINSAME Wache — genau ein Dialog, kein eigener daneben", async () => {
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
 
     expect(wacheOffen()).toBe(false);
     await klick(verlassenKnopf() as HTMLButtonElement);
@@ -102,17 +102,17 @@ describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
 
     // Solange nicht geantwortet ist, ist nichts passiert: Fläche steht, Bestand unberührt.
     expect(adresse()).toBe(`/erfassen?draft=${ENTWURF_ID}`);
-    expect(feld(i18n.t("capture.fTitle")).value).toBe("Zahlungsziel (neu gedacht)");
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe("Zahlungsziel (neu gedacht)");
   });
 
   it("2b · Hier bleiben nimmt nichts weg — der geänderte Text steht weiter da", async () => {
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
     await klick(verlassenKnopf() as HTMLButtonElement);
     await klick(knopf(i18n.t("nav.guard.stay")));
 
     expect(wacheOffen()).toBe(false);
-    expect(feld(i18n.t("capture.fTitle")).value).toBe("Zahlungsziel (neu gedacht)");
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe("Zahlungsziel (neu gedacht)");
     expect(adresse()).toBe(`/erfassen?draft=${ENTWURF_ID}`);
   });
 
@@ -126,7 +126,7 @@ describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
   it("3 · DER WÄCHTER: nach dem Verwerfen ist der gespeicherte Entwurf unverändert vorhanden", async () => {
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
     const vorher = bestand();
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
 
     await klick(verlassenKnopf() as HTMLButtonElement);
     await klick(knopf(i18n.t("nav.guard.discard")));
@@ -149,7 +149,7 @@ describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
   it("4 · ohne Änderungen wird nicht gefragt — es ist ja nichts zu verwerfen", async () => {
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
     const vorher = bestand();
-    expect(feld(i18n.t("capture.fTitle")).value).toBe("Zahlungsziel");
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe("Zahlungsziel");
 
     await klick(verlassenKnopf() as HTMLButtonElement);
 
@@ -161,9 +161,9 @@ describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
 
   it("4b · eine zurückgenommene Änderung ist keine Änderung — der Ausgangsstand zählt", async () => {
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-    const feldTitel = feld(i18n.t("capture.fTitle"));
+    const feldTitel = feld(i18n.t("capture.wizard.titleLabel"));
     await tippe(feldTitel, "Zahlungsziel (neu gedacht)");
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel");
 
     await klick(verlassenKnopf() as HTMLButtonElement);
 
@@ -173,7 +173,7 @@ describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
 
   it("5 · GENAU EINMAL gefragt: nach der Antwort steht kein zweiter Dialog mehr", async () => {
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
 
     await klick(verlassenKnopf() as HTMLButtonElement);
     expect(wacheDialoge()).toBe(1);
@@ -208,7 +208,7 @@ describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
 
   it("6 · Sichern bleibt unverändert: es aktualisiert denselben Entwurf, es entsteht keine Dublette", async () => {
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
 
     await klick(knopf(i18n.t("capture.saveDraft")));
 
@@ -269,7 +269,7 @@ describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
   it("9 · EN: Knopf, Zusage und Rückfrage stehen auch auf Englisch da", async () => {
     await i18n.changeLanguage("en");
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-    await tippe(feld(i18n.t("capture.fTitle")), "Payment terms (revised)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Payment terms (revised)");
 
     expect((verlassenKnopf()?.textContent ?? "").trim()).toBe("Leave draft");
     expect(verlassenKnopf()?.getAttribute("title")).toBe(
@@ -295,7 +295,7 @@ describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
 
   it("10 · während SICHERN läuft, ist der Ausgang zu — und die Zusage wird nicht gegeben", async () => {
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
 
     bremse.halte();
     await klick(knopf(i18n.t("capture.saveDraft")));
@@ -341,7 +341,7 @@ describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
 
   it("12 · Speichern und wechseln: der Entwurf ist geschrieben — und die Meldung sagt genau das", async () => {
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
 
     await klick(verlassenKnopf() as HTMLButtonElement);
     expect(wacheOffen()).toBe(true);
@@ -368,7 +368,7 @@ describe("JOB 3526 · der dritte Weg aus einem geöffneten Entwurf", () => {
   it("12b · EN: derselbe Speicherweg, derselbe wahre Satz — auf Englisch", async () => {
     await i18n.changeLanguage("en");
     await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-    await tippe(feld(i18n.t("capture.fTitle")), "Payment terms (revised)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Payment terms (revised)");
 
     await klick(verlassenKnopf() as HTMLButtonElement);
     await klick(knopf(i18n.t("nav.guard.save")));

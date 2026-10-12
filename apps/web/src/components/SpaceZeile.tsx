@@ -10,7 +10,12 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { type Rechtevorschau, spaceFehlerSchluessel, spacesApi } from "../api/spaces";
+import {
+  type ArtikelKontext,
+  type Rechtevorschau,
+  spaceFehlerSchluessel,
+  spacesApi,
+} from "../api/spaces";
 import { Button, Card, SectionLabel } from "./ui";
 
 const OHNE = "__ohne__";
@@ -61,8 +66,56 @@ function Vorschau({ v }: { v: Rechtevorschau }): JSX.Element {
           verantwortung: v.bleibt.artikelVerantwortungName ?? v.bleibt.artikelVerantwortung,
         })}
       </p>
+      {v.regeln ? <Regeln v={v} /> : null}
       {v.grund ? <p className="text-[12.5px] text-trust-crit-text">{v.grund}</p> : null}
     </div>
+  );
+}
+
+/** ADMIN-07 (K4): nach welchen Regeln der Artikel vorher und nachher steht. */
+function Regeln({ v }: { v: Rechtevorschau }): JSX.Element {
+  const { t } = useTranslation();
+  const seiten = [
+    ["quelle", v.regeln?.quelle ?? null],
+    ["ziel", v.regeln?.ziel ?? null],
+  ] as const;
+  return (
+    <div data-testid="space-vorschau-regeln" className="text-[12px] text-text">
+      <p className="font-semibold">{t("spaces.vorschau.regelnTitel")}</p>
+      {seiten.map(([seite, r]) => (
+        <p key={seite} data-seite={seite}>
+          {t(`spaces.vorschau.${seite}`)}:{" "}
+          {r
+            ? t("spaces.vorschau.regelnZeile", {
+                zugang: t(`spaces.zugang.${r.zugang}`),
+                zustaendig: r.verantwortlichName ?? r.verantwortlich,
+              })
+            : t("spaces.vorschau.ohneRegeln")}
+          {r?.regeln ? ` — ${r.regeln}` : ""}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * LESEN-INHALT-ZUERST (nacharbeit-7): trägt die Antwort die Vertragsform? Seit die Zeile IN der
+ * Lesefläche steht (`BibliothekLesen`, nach dem Inhalt), nähme ein Wurf beim Rendern die ganze
+ * Eintragsansicht mit — gemessen in `KnowledgeDetail.owner-chain.test.tsx`, wo eine fremde
+ * Gegenstelle `[]` statt des Kontexts lieferte (`reading 'name'`). Eine unlesbare Antwort wird wie
+ * eine fehlende behandelt: die Zeile zeichnet nichts, der Artikel bleibt lesbar.
+ */
+function istKontext(daten: unknown): daten is ArtikelKontext {
+  if (typeof daten !== "object" || daten === null || Array.isArray(daten)) {
+    return false;
+  }
+  const k = daten as Partial<ArtikelKontext>;
+  return (
+    typeof k.artikelVerantwortung === "object" &&
+    k.artikelVerantwortung !== null &&
+    typeof k.autor === "object" &&
+    k.autor !== null &&
+    Array.isArray(k.ziele)
   );
 }
 
@@ -116,7 +169,7 @@ export function SpaceZeile({ koId }: { koId: string }): JSX.Element | null {
     },
   });
 
-  if (!kontext.isSuccess) {
+  if (!kontext.isSuccess || !istKontext(kontext.data)) {
     return null;
   }
   const k = kontext.data;

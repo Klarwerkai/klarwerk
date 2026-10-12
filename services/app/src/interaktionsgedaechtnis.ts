@@ -324,8 +324,10 @@ export class GedaechtnisDienst {
    * Rumpf nur durch, damit es genau eine Auslegung gibt.
    */
   async merken(kontoId: string, eingabe: GedaechtnisEingabe): Promise<Gedaechtniseintrag> {
-    const art = eingabe.art;
-    if (art !== "frage_antwort" && art !== "vorliebe") {
+    // R-1349: die zulässigen Arten kommen aus `GEDAECHTNIS_ARTEN`, statt hier ein zweites Mal als
+    // Literal dazustehen — vorher war die Liste gebaut, aber von niemandem gelesen.
+    const art = GEDAECHTNIS_ARTEN.find((a) => a === eingabe.art);
+    if (art === undefined) {
       throw new GedaechtnisFehler(400, "eingabe", "art muss frage_antwort oder vorliebe sein.");
     }
     const inhalt = text(eingabe.inhalt);

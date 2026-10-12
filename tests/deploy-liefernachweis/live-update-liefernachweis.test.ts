@@ -292,7 +292,13 @@ describe("klarwerk-ship.command — Versionskopplung und Liefernachweis (ausgef�
   let home: string;
   let repo: string;
 
-  function ship(opts: { version: string; pkg: string; liveUpdateExit?: number; antwort?: string }) {
+  function ship(opts: {
+    version: string;
+    pkg: string;
+    liveUpdateExit?: number;
+    antwort?: string;
+    auditExit?: number;
+  }) {
     home = mkdtempSync(join(tmpdir(), "ship-"));
     repo = join(home, "Documents", "dev_Klarwerk");
     for (const d of [
@@ -300,13 +306,22 @@ describe("klarwerk-ship.command — Versionskopplung und Liefernachweis (ausgef�
       "docs/team2-austausch",
       "scripts/deploy",
       "scripts/local",
+      "tools",
       ".git",
     ]) {
       mkdirSync(join(repo, d), { recursive: true });
     }
     writeFileSync(join(repo, "apps/web/src/version.ts"), VERSION_TS(opts.version));
     writeFileSync(join(repo, "package.json"), PACKAGE(opts.pkg));
-    writeFileSync(join(repo, "docs/team2-austausch/paul-runner.sh"), 'echo "ALLE GATES GRÜN"\n');
+    // R-1398: die Abhängigkeitsprüfung ist ein Platzhalter — kein npm, keine Registry.
+    writeFileSync(
+      join(repo, "tools/abhaengigkeiten-audit.sh"),
+      `echo "audit-platzhalter"\nexit ${opts.auditExit ?? 0}\n`,
+    );
+    writeFileSync(
+      join(repo, "docs/team2-austausch/paul-runner.sh"),
+      'echo "runner-gelaufen"\necho "ALLE GATES GRÜN"\n',
+    );
     writeFileSync(
       join(repo, "scripts/deploy/klarwerk-live-update.command"),
       `echo "live-update $1"\nexit ${opts.liveUpdateExit ?? 0}\n`,
@@ -371,6 +386,27 @@ describe("klarwerk-ship.command — Versionskopplung und Liefernachweis (ausgef�
     expect(r.code).toBe(2);
     expect(r.aus).toContain("NICHT als geliefert bestätigt");
     expect(r.aus).not.toContain("LIVE fertig");
+  });
+
+  // Exit 1 = unbewertete oder veraltete Meldung, Exit 2 = nicht geprüft. Beide sperren.
+  it.each([1, 2])("R-1398: Abhängigkeitsprüfung Exit %i → Abbruch vor Runner und git", (exit) => {
+    const r = ship({ version: "1.0.0-beta.1.628", pkg: "1.0.0-beta.1.628", auditExit: exit });
+    expect(r.code).toBe(1);
+    expect(r.aus).toContain("audit-platzhalter");
+    expect(r.aus).toContain(`Abhaengigkeitspruefung nicht gruen (Exit ${exit})`);
+    expect(r.aus).not.toContain("runner-gelaufen");
+    expect(datei("apps/web/src/version.ts")).toBe(VERSION_TS("1.0.0-beta.1.628"));
+    expect(datei("package.json")).toBe(PACKAGE("1.0.0-beta.1.628"));
+    expect(r.gitLog).toBe("");
+    expect(r.aus).not.toContain("live-update");
+  });
+
+  it("R-1398: grüne Abhängigkeitsprüfung läuft VOR dem Runner", () => {
+    const r = ship({ version: "1.0.0-beta.1.628", pkg: "1.0.0-beta.1.628" });
+    expect(r.code).toBe(0);
+    const audit = r.aus.indexOf("audit-platzhalter");
+    expect(audit).toBeGreaterThan(-1);
+    expect(audit).toBeLessThan(r.aus.indexOf("runner-gelaufen"));
   });
 
   it("Nachfrage verneint → nichts geschrieben, kein git", () => {

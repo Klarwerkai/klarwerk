@@ -143,8 +143,9 @@ export interface EigenerBefund {
 /**
  * Was dieses Signal zusichert — als Datum, nicht als Kommentar.
  *
- * Hausidiom, wie `DUPLICATE_COMPARE_SAFETY` (apps/web/src/lib/duplicateCompare.ts:27): eine
- * Zusicherung, die ein Test lesen kann, überlebt einen Umbau; ein Satz im Kommentar nicht.
+ * Eine Zusicherung, die ein Test lesen kann, überlebt einen Umbau; ein Satz im Kommentar nicht.
+ * R-1349: anders als die frühere, nie gelesene Tabelle `DUPLICATE_COMPARE_SAFETY` der Oberfläche
+ * (entfernt) WIRKT diese — `signalStelle` liest `fremdesDupliziertMeines`.
  */
 export const A28_SIGNAL_GRENZE = {
   /** Vorhandensein wird genannt. */
@@ -181,7 +182,9 @@ function signalStelle(paar: BefundPaar, eigene: ReadonlySet<string>): string | n
   }
   if (bIstMeins) {
     // Fremdes Subjekt, mein Kandidat: „ein fremdes Objekt dupliziert meines". Gesperrt.
-    return null;
+    // R-1349: die Sperre steht als Schalter in `A28_SIGNAL_GRENZE` und wird HIER gelesen — vorher
+    // war die Konstante eine Zusicherung, die nur der Test las, während der Code still `null` gab.
+    return A28_SIGNAL_GRENZE.fremdesDupliziertMeines ? paar.koB : null;
   }
   return null;
 }
@@ -282,23 +285,5 @@ export function eigeneBefunde(
   return [...ziel.values()];
 }
 
-/**
- * Dasselbe für ein einzelnes Objekt — die Form, die eine Detailansicht braucht.
- *
- * Gibt `null` zurück, wenn es keinen Befund gibt. Bewusst `null` und kein Eintrag mit zwei
- * falschen Werten: „kein Befund" und „Befund, aber beides falsch" sind zwei verschiedene Aussagen,
- * und nur die erste ist wahr.
- */
-export function befundFuerEigenesKo(
-  koId: string,
-  eigeneKoIds: readonly string[],
-  offeneDubletten: readonly BefundPaar[],
-  offeneKonflikte: readonly BefundPaar[],
-  deckungJeKo: ReadonlyMap<string, Deckung>,
-): EigenerBefund | null {
-  return (
-    eigeneBefunde(eigeneKoIds, offeneDubletten, offeneKonflikte, deckungJeKo).find(
-      (befund) => befund.koId === koId,
-    ) ?? null
-  );
-}
+// R-1349: Hier stand `befundFuerEigenesKo`, die Einzelabfrage für eine Detailansicht. Keine Fläche
+// und keine Route rief sie; die Route `conflicts-routes.ts` nutzt `eigeneBefunde`. Sie ist entfernt.

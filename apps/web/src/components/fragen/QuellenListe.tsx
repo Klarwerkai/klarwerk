@@ -213,7 +213,7 @@ export function QuellenListe({
               {s.usability ? (
                 <span
                   title={t(useReadiness(s.usability).hintKey)}
-                  className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${EVIDENCE_TONE[useReadiness(s.usability).tone]}`}
+                  className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-klein font-semibold uppercase ${EVIDENCE_TONE[useReadiness(s.usability).tone]}`}
                 >
                   {t(useReadiness(s.usability).labelKey)}
                 </span>
@@ -226,7 +226,7 @@ export function QuellenListe({
                     unproven: 1,
                     total: 1,
                   })}
-                  className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text"
+                  className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text"
                 >
                   {t("ask.checkCaveat.badge")}
                 </span>
@@ -235,14 +235,14 @@ export function QuellenListe({
               {s.conflictLimited ? (
                 <span
                   title={t("conflict.impact.hint")}
-                  className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text"
+                  className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text"
                 >
                   {t("conflict.impact.badge")}
                 </span>
               ) : null}
               {/* WP-RETEST7 R5: Treffer kam über die Bild-Fußnote. */}
               {bildfundstelle(s.id) ? (
-                <span className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2">
+                <span className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
                   {t("lib.match.caption")}
                 </span>
               ) : null}
@@ -250,7 +250,7 @@ export function QuellenListe({
               {s.demo ? (
                 <span
                   title={t("demo.badge.hint")}
-                  className="shrink-0 rounded-pill bg-hairline-soft px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2"
+                  className="shrink-0 rounded-pill bg-hairline-soft px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2"
                 >
                   {t("demo.badge.label")}
                 </span>
@@ -261,7 +261,7 @@ export function QuellenListe({
                   type="button"
                   disabled={dank.bedankt(s.id) || dank.laeuft}
                   onClick={() => dank.danken(s.id)}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-pill border border-hairline px-2 py-0.5 text-[10.5px] font-semibold text-muted hover:text-text disabled:opacity-60"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-pill border border-hairline px-2 py-0.5 text-klein font-semibold text-muted hover:text-text disabled:opacity-60"
                 >
                   <ThumbsUp size={11} />
                   {dank.bedankt(s.id) ? t("ask.thanked") : t("ask.helpful")}

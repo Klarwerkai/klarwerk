@@ -8,8 +8,9 @@ import type { OutputKind, OutputSource } from "../api/types";
 // Spiegelt services/output UNCERTAIN_TRUST_BELOW (Anzeige-Schwelle, kein Persistenz-Bezug).
 export const UNCERTAIN_TRUST_BELOW = 60;
 
-// Nutzer-Reihenfolge beibehalten, nur unbekannte IDs verwerfen (anders als orderedSelection,
-// das in Quellenreihenfolge sortiert). Duplikate werden defensiv entfernt.
+// Nutzer-Reihenfolge beibehalten, nur unbekannte IDs verwerfen (anders als das frühere
+// `outputDoc.ts::orderedSelection`, das in Quellenreihenfolge sortierte und mit R-1349 entfernt ist).
+// Duplikate werden defensiv entfernt.
 export function sanitizeOrder(
   orderedIds: readonly string[],
   sourceIds: readonly string[],

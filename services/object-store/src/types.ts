@@ -68,6 +68,13 @@ export interface ObjectLifecycle {
   draftId?: string;
   /** Bis zu diesem Zeitpunkt (ISO) gilt das Objekt NIE als Waise, auch ohne jede Referenz. */
   retainUntil: string;
+  /**
+   * produkt:20261011:assistenz-dokumentnachbearbeitung (BPA-17): ein PRIVATES Folgeprodukt, abgeleitet
+   * aus diesem Wissensobjekt. Anders als `owner` ist das eine Zugriffsregel: lesen darf NUR der
+   * Eigentümer, und nur solange er das Quellobjekt selbst noch sehen darf (`privatesFolgeprodukt` in
+   * services/app/src/sichtbarkeit.ts). Keine Rolle öffnet es. Optional; Altbestand hat es nicht.
+   */
+  privatQuelle?: string;
 }
 
 // Konservative Schutzfrist ab Upload. Bewusst großzügig: sie ist kein Aufbewahrungs-, sondern ein

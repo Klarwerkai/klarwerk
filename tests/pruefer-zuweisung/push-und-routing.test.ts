@@ -149,8 +149,17 @@ describe("R-0679 · VAPID-Push ohne Nutzlast", () => {
 
 describe("R-0679 · Zuweisungsbenachrichtigung: E-Mail UND Push", () => {
   const auth = {
-    listUsers: async () => [{ id: "u1", name: "Pia", email: "pia@example.org" }],
+    listUsers: async () => [
+      { id: "u1", name: "Pia", email: "pia@example.org", role: "controller" },
+      { id: "u2", name: "Ole", email: "ole@example.org", role: "controller" },
+    ],
   } as unknown as AuthService;
+  // R-0610 (aus main): Benachrichtigt wird nur, wer das Objekt nach `darfSehen` lesen darf. Das
+  // Objekt liegt im Space S-1; nur Pia (u1) liest ihn.
+  const sichtbar = {
+    ko: async () => ({ confidentiality: "intern" as const, author: "autor", spaceId: "S-1" }),
+    spaceLesbar: async (user: { id: string }) => new Set(user.id === "u1" ? ["S-1"] : []),
+  };
 
   it("N1 · Mail an die Person, Push an jedes ihrer Geräte; ein abgelaufenes Abo wird entfernt", async () => {
     const mailer = new ConsoleMailer();
@@ -165,7 +174,7 @@ describe("R-0679 · Zuweisungsbenachrichtigung: E-Mail UND Push", () => {
         return a.endpoint.endsWith("/alt") ? "abgelaufen" : "zugestellt";
       },
     };
-    await makeAssignmentNotifier(auth, mailer, { abos, sender })("ko-1", ["u1"]);
+    await makeAssignmentNotifier(auth, mailer, sichtbar, { abos, sender })("ko-1", ["u1"]);
 
     expect(mailer.sent.map((m) => m.to)).toEqual(["pia@example.org"]);
     expect(gesendet.sort()).toEqual([
@@ -194,7 +203,7 @@ describe("R-0679 · Zuweisungsbenachrichtigung: E-Mail UND Push", () => {
         return "zugestellt";
       },
     };
-    await makeAssignmentNotifier(auth, mailer, {
+    await makeAssignmentNotifier(auth, mailer, sichtbar, {
       abos,
       sender,
       fehler: (art) => gemeldet.push(art),
@@ -203,6 +212,25 @@ describe("R-0679 · Zuweisungsbenachrichtigung: E-Mail UND Push", () => {
     expect(mailer.sent).toHaveLength(1);
     expect(gesendet).toEqual(["https://fcm.googleapis.com/fcm/send/heil"]);
     expect(gemeldet).toEqual(["ausfall"]);
+  });
+
+  it("N3 · wer das Objekt nicht sehen darf, bekommt weder Mail noch Push — die andere schon", async () => {
+    const mailer = new ConsoleMailer();
+    const abos = new InMemoryPushAboRepo();
+    await abos.speichern(abo("u1", "https://fcm.googleapis.com/fcm/send/pia"));
+    await abos.speichern(abo("u2", "https://fcm.googleapis.com/fcm/send/ole"));
+    const gesendet: string[] = [];
+    const sender: PushSender = {
+      publicKey: "k",
+      send: async (a) => {
+        gesendet.push(a.userId);
+        return "zugestellt";
+      },
+    };
+    await makeAssignmentNotifier(auth, mailer, sichtbar, { abos, sender })("ko-1", ["u1", "u2"]);
+
+    expect(mailer.sent.map((m) => m.to)).toEqual(["pia@example.org"]);
+    expect(gesendet).toEqual(["u1"]);
   });
 });
 

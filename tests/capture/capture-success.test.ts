@@ -14,7 +14,8 @@ describe("SCRUM-276: captureNextSteps", () => {
     expect(steps.map((s) => s.to)).toEqual([
       "/wissen/ko-42",
       "/bibliothek?origin=non-demo",
-      "/validierung?origin=non-demo",
+      // Arbeitswege am selben Artikel: die Prüfung nennt den eingereichten Beitrag.
+      "/validierung?origin=non-demo&ko=ko-42",
     ]);
   });
 
@@ -56,7 +57,7 @@ describe("SCRUM-286: Capture→Validation-Führung", () => {
     // SCRUM-311: Review-Step zeigt vorgefiltert auf eigenes/nicht-Demo-Wissen, bleibt aber primär.
     const validate = steps.find((s) => s.to.startsWith("/validierung"));
     const viewKo = steps.find((s) => s.to.startsWith("/wissen/"));
-    expect(validate?.to).toBe("/validierung?origin=non-demo");
+    expect(validate?.to).toBe("/validierung?origin=non-demo&ko=ko-7");
     expect(validate?.primary).toBe(true);
     expect(viewKo?.primary).toBeFalsy();
     // nur der Validierungs-Schritt ist primär.

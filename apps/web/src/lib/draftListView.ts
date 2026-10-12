@@ -22,9 +22,9 @@ export const DRAFT_SORT_LABEL_KEYS: Record<DraftSortKey, string> = {
   title: "capture.draftSort.title",
 };
 
-export function isDraftSortKey(value: unknown): value is DraftSortKey {
-  return typeof value === "string" && (DRAFT_SORT_KEYS as readonly string[]).includes(value);
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `isDraftSortKey`. Die Entwurfsliste prüft
+// den gespeicherten Wert im Speicherhaken gegen `DRAFT_SORT_KEYS` (`components/CaptureDraftList.tsx`,
+// R-0991 Nr. 19); der Typwächter rief niemand und ist entfernt.
 
 // „Zuletzt gespeichert" (ms): updatedAt, sonst createdAt. Unbekannt/kaputt → 0 (sinkt ans Ende).
 export function draftSavedMs(draft: Draft): number {

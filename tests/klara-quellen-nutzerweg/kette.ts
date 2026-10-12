@@ -363,7 +363,33 @@ export async function eintragMitOriginal(
 // DIE HANDGRIFFE DER KETTE
 // ================================================================================================
 
-export const FRAGE = "Wie wird die Zylinderkopfdichtung XQ42 vor dem Wechsel behandelt?";
+// Aufnahme 20260922 · antwort-quellenanzeige (K05, Prüflauf zu 2c099872) — WARUM NICHT MEHR
+// „… behandelt?": Seit R-0473 (mit dem Hauptstand eingemischt, `services/ask/src/service.ts`,
+// `decktAlleFragebegriffe`) müssen ALLE gebundenen Fragebegriffe in der Quelle vorkommen.
+// „behandelt" steht weder im Titel noch in der Kernaussage (`BELEGSTELLE`: „… entlastet.") noch im
+// Original; die Frage wurde damit — vertragsgemäß — eine Wissenslücke, und alle sieben Fälle G1–G7
+// von `tests/d5-gesamtweg/gesamtweg-pg-browser.integration.test.ts` liefen in ihre Zeitgrenze
+// („Gefunden — aber diese Tore sind zu", HISTORIE/nacharbeit-17/PRUEFUNG/k05-d5-gesamtweg-
+// postgres.log). Dieselbe Korrektur wie in `tests/design/h5-funktionsinventar.test.ts` (FRAGE,
+// Nacharbeit 13 dort): die Frage benutzt nur Begriffe, die der Eintrag wirklich trägt; was die
+// Fälle danach verlangen, ist unverändert.
+// Nacharbeit 18 (Prüflauf zu cd0e1b4e) — WARUM NICHT „… entlastet?": D5 G1–G7 waren damit grün,
+// aber `tests/d5-ki-aus/abschaltung-am-frageweg.test.ts` zählt ihre Haltepunkte an GENAU DREI
+// getroffenen Begriffsabfragen (`AskService.prefilterCandidates`: je Begriff eine Abfrage, nur eine
+// mit Treffern liest danach `ko.anhangSchreibstand`; das vierte Auftreten ist dort die Route). Die
+// alte Frage traf mit „behandelt" nichts — drei Treffer; „entlastet" trifft — vier, und der Halt
+// „anhangSchreibstand, mal 4" lag plötzlich im Fragedienst. Jetzt bindet die Frage genau die drei
+// Begriffe der gemessenen Form (zylinderkopfdichtung, xq42, wechsel), alle in `BELEGSTELLE`;
+// „gilt" ist Fragegerüst (`FRAGEGERUEST`, provider.ts) und wird nicht gebunden, „was"/„für"/„vor"/
+// „dem"/„die" sind Stoppwörter. Damit trägt die Frage UND die Zählung bleibt die gemessene.
+// Nacharbeit 19 (Prüflauf zu c504f873) — WARUM NICHT „Was gilt für …?": „gilt" wird zwar nicht
+// GEBUNDEN, aber als Suchbegriff ABGEFRAGT — als ERSTER Begriff der Frage. Seine Abfrage trifft
+// nichts, also folgt ihr kein `ko.listByIds`, und die Halte „suchprojektion.findActive" (erstes
+// Auftreten, Gegenprobe G und Z) lagen auf ihr. Die Frage enthält jetzt AUSSER den drei getroffenen
+// Begriffen — in der Reihenfolge der ursprünglich gemessenen Frage — nur Stoppwörter
+// („was", „ist", „mit", „der", „vor", „dem"; STOPWORDS, provider.ts): erste Abfrage =
+// Zylinderkopfdichtung (mit Treffer), drei getroffene Abfragen, alle Begriffe in `BELEGSTELLE`.
+export const FRAGE = "Was ist mit der Zylinderkopfdichtung XQ42 vor dem Wechsel?";
 
 export interface Antwortlage {
   status: number;

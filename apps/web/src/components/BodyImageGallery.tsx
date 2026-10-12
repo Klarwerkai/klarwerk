@@ -131,6 +131,13 @@ export function BodyImageGallery({
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
   const prevBtnRef = useRef<HTMLButtonElement | null>(null);
   const nextBtnRef = useRef<HTMLButtonElement | null>(null);
+  // AUFNAHME 20260922 (R-0899): „Die Galerie zeigt ihren Ladezustand." Gemerkt wird je QUELLE, was
+  // die Großansicht über das Bild weiß — geladen oder gescheitert. Alles andere heißt „lädt". Weil
+  // der Zustand an der Quelle hängt und nicht an der Position, braucht ein Bildwechsel kein
+  // Zurücksetzen: das neue Bild ist unbekannt, also lädt es, bis sein eigenes Ereignis kommt.
+  const [ladeStand, setLadeStand] = useState<{ src: string; art: "fertig" | "fehler" } | null>(
+    null,
+  );
 
   // WP-D9c (bens Galerie-Auflage 2): ECHTE Modal-Semantik. showModal() erzwingt Top-Layer + Fokusfalle
   // nativ (aria-modal wird nicht mehr nur behauptet); beim ÖFFNEN wandert der Fokus auf den
@@ -340,6 +347,8 @@ export function BodyImageGallery({
   const shownIndex =
     openIndex === null ? null : Math.min(openIndex, Math.max(0, images.length - 1));
   const open = shownIndex !== null ? images[shownIndex] : undefined;
+  const ladeArt =
+    open !== undefined && ladeStand?.src === open.src ? ladeStand.art : ("laedt" as const);
 
   return (
     <div ref={wurzelRef} className="mt-3 border-t border-hairline pt-2">
@@ -429,12 +438,26 @@ export function BodyImageGallery({
               >
                 <ChevronLeft size={18} />
               </button>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1" aria-busy={ladeArt === "laedt"}>
                 <img
                   src={open.src}
                   alt={open.caption}
                   className="max-h-[70vh] w-full rounded-card bg-white object-contain"
+                  onLoad={() => setLadeStand({ src: open.src, art: "fertig" })}
+                  onError={() => setLadeStand({ src: open.src, art: "fehler" })}
                 />
+                {/* R-0899: der Ladezustand, sichtbar. Bewusst KEIN weiterer Live-Bereich — im Modal
+                    spricht genau einer (JOB 1117); für die Vorlesehilfe trägt `aria-busy` am
+                    Bildbereich den Zustand. */}
+                {ladeArt !== "fertig" ? (
+                  <p
+                    data-testid="gallery-image-status"
+                    data-ladestand={ladeArt}
+                    className="mt-2 text-center text-[12px] font-semibold text-white"
+                  >
+                    {ladeArt === "laedt" ? t("bildergalerie.laedt") : t("bildergalerie.ladefehler")}
+                  </p>
+                ) : null}
                 {/* Die AKTUELLE Fußnote aus dem Body — reine Anzeige, bearbeitet wird im Editor. */}
                 {open.caption ? (
                   <p className="mt-2 text-center text-[12.5px] italic leading-relaxed text-white">

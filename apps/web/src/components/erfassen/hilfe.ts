@@ -54,7 +54,8 @@ const EIGENE_SCHLUESSEL: readonly HilfeThema[] = [
   // der Satz über Dateien wäre hier unwahr.
   { id: "ablage", titleKey: "erfassen.hilfe.bilder", bodyKey: EDITOR_DROP_KEYS.hintImagesOnly },
   // CaptureFrontDoor.tsx:1138 — `<HelpTip title={t("conf.field")} body={t("conf.help")} />`.
-  { id: "vertraulichkeit", titleKey: "conf.field", bodyKey: "conf.help" },
+  // R-0908: der Körper kommt aus `texte/fachwort.ts` — `conf.help` sagte „(Output Factory/Export)".
+  { id: "vertraulichkeit", titleKey: "conf.field", bodyKey: "fachwort.vertraulichkeit.hilfe" },
   // Capture.tsx:5018 — die Hilfe, deren Verlust ben gemessen hat.
   {
     id: "kategorie",

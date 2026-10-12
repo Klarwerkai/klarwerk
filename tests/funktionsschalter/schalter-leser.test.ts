@@ -83,6 +83,17 @@ const REGISTER: Record<string, Leseweg> = {
       "`GET /api/kos/:id/provenance` hat in `apps/web` keinen Aufrufer. Die Herkunftskette am " +
       "Objekt (`MehrAbschnitte.tsx`) kommt aus dem Prüfprotokoll und hängt nicht an diesem Schalter.",
   },
+  // R-1136 (aufnahme:20260922:gesamt-rechte-inventar): R-0170 hat `jiraImport` ins Registry gelegt,
+  // aber hier nicht eingeordnet — R1 („jeder Schalter, den `/api/features` meldet, ist
+  // eingeordnet") stand damit gegen den Stand 41ba0b7f (Quelleninspektion). Die Galerie führt Jira
+  // als „bald" (`importSourceGallery.ts`), keine Fläche ruft eine Jira-Route auf.
+  jiraImport: {
+    art: "ohneFlaeche",
+    route: /\/import\/jira\//,
+    grund:
+      "Die drei Jira-Routen und die Zugangsauskunft `GET /api/import/jira/zugang` haben in " +
+      "`apps/web` keinen Aufrufer; die Importgalerie zeigt Jira als „bald“.",
+  },
 };
 
 /**

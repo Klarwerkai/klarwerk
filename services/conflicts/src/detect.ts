@@ -23,7 +23,29 @@ export interface DetectSubject {
   // D-AISTATE PAKET 4 (bens V5): Inhaltsversion des Beitrags zum Prüfzeitpunkt. Befunde werden an
   // BEIDE beteiligten Versionen gebunden (additiv); ein Aufrufer kann darüber Stale-Läufe verwerfen.
   version?: number;
+  // R-1632 / R-1633: die Geltung des Beitrags (Konzern/Werk/Schicht, Rolle), strukturgleich zu
+  // `KoGeltung` in knowledge-object — hier nur durchgereicht. Ausgewertet wird sie ausschliesslich
+  // über die injizierte Regel `geltungsKollision` (detectForSubject); dieses Modul legt sie nicht aus.
+  geltung?: DetectGeltung;
 }
+
+/** R-1632 / R-1633: strukturgleich zu `KoGeltung` (knowledge-object) — bewusst eigenständig. */
+export interface DetectGeltung {
+  ebene: "konzern" | "werk" | "schicht";
+  werk?: string;
+  schicht?: string;
+  rolle?: string;
+}
+
+/**
+ * R-1632 / R-1633: die Regel, die aus zwei Geltungen die Konfliktart eines erkannten Widerspruchs
+ * macht — oder `null` (dann bleibt es beim Wahrheitskonflikt). Die App-Wurzel reicht sie aus
+ * knowledge-object herein (`geltungsKollision`); `vermerk` wird an die Beschreibung gehängt.
+ */
+export type GeltungsKollisionsRegel = (
+  a: DetectGeltung | undefined,
+  b: DetectGeltung | undefined,
+) => { art: "context" | "role"; vermerk: string } | null;
 
 // kon-v1 Modellurteil (striktes JSON aus der Reasoner-Aufgabe „Konfliktprüfung").
 export type ConflictRelation =
@@ -125,12 +147,11 @@ export function trigramSimilarity(a: string, b: string): number {
   return union === 0 ? 0 : intersection / union;
 }
 
-// Dedup-Schlüssel (2.3): type + sortierte Beteiligten-Referenzen. Invariante: höchstens EIN
-// offener Konflikt je pairKey (in der Anlegestelle erzwungen, nicht hier).
-export function pairKey(type: ConflictType, refA: string, refB: string): string {
-  const [x, y] = [refA, refB].sort();
-  return `${type}|ko:${x}|ko:${y}`;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `pairKey(type, refA, refB)`, ein
+// Dedup-Schlüssel aus Typ und sortierten Beteiligten. Kein Produktweg rief ihn. Die Anlegestelle
+// (`service.ts`, `hasOpenPair`) entdoppelt über die beiden KO-Kennungen und die Fassungen,
+// TYPUNABHÄNGIG; das Prüfgedächtnis nutzt `memoryKey` (`pair-memory.ts`). Der Schlüssel beschrieb
+// damit eine Regel, die das Produkt nicht anwendet, und ist entfernt.
 
 interface CandidateScore {
   subject: DetectSubject;
@@ -145,10 +166,15 @@ interface CandidateScore {
 // sie war es nicht: bei gleichem Score entschied die Reihenfolge, in der die Datenquelle die Zeilen
 // lieferte (sort ist stabil, also blieb Pool-Ordnung stehen). Der refId-Stichentscheid macht die
 // Ordnung TOTAL — zwei Läufe über denselben Bestand legen dieselbe Menge vor.
+//
+// AUFNAHME 20260922 · R-1124 (wahlweiser Vollabgleich): `nurNachbarn = false` hebt den fachlichen
+// Vorfilter auf — jedes Objekt außer dem Subjekt wird nach demselben Score und Stichentscheid gereiht.
+// Ohne Deckel (`cap = ∞`) ist das der ganze Bestand. Der Standard bleibt der gefilterte Weg.
 export function selectCandidates(
   subject: DetectSubject,
   pool: readonly DetectSubject[],
   cap = 8,
+  nurNachbarn = true,
 ): DetectSubject[] {
   const tagSet = new Set(subject.tags.map((t) => t.toLowerCase()));
   const subjectText = `${subject.title} ${subject.statement}`;
@@ -162,7 +188,7 @@ export function selectCandidates(
     const tagOverlap = c.tags.some((t) => tagSet.has(t.toLowerCase()));
     const textSim = trigramSimilarity(subjectText, `${c.title} ${c.statement}`);
     const neighbor = sameCategory || sameAsset || tagOverlap || textSim >= 0.3;
-    if (!neighbor) {
+    if (!neighbor && nurNachbarn) {
       continue;
     }
     const score =

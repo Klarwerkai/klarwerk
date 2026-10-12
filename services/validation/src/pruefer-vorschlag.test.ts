@@ -282,7 +282,7 @@ describe("R-1655 · ValidationService: Routing, Opt-out, Messgrundlage", () => {
     expect(geroutet).toEqual(["anna", "bert"]);
     expect(await a.assignments.find(neu.id, "anna")).toMatchObject({
       status: "open",
-      quelle: "automatisch",
+      weg: "automatisch",
     });
     expect(await a.assignments.find(neu.id, "cora")).toBeUndefined();
   });

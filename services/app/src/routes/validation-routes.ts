@@ -26,8 +26,9 @@ import {
 // dieselben Paare, die `/api/duplicates` diesem Menschen zeigt (`sichtbarePaare`) — sonst verlangte
 // der Server die Bestätigung einer Dublette, die die Prüfkarte nie anzeigen darf.
 //
-// Verdrahtet im KO-Dispatcher (`ko-routes.ts`) an den zwei Freigabewegen der Prüfkarte:
-// `rate` mit `verdict: "up"` und `admin-validate`.
+// Verdrahtet im KO-Dispatcher (`ko-routes.ts`) an den Freigabewegen der Prüfkarte:
+// `rate` mit `verdict: "up"`, `admin-validate` und (R-0507) die Eigentümerfreigabe `owner-validate`,
+// dazu (Antworten 18/19) die unmittelbar gültige Weisung `weisung-validate`.
 export const DUBLETTE_BESTAETIGUNG_FEHLT = "DUPLICATE_ACK_REQUIRED";
 export const DUBLETTE_BESTAETIGT_AUDIT = "ko.duplicate-acknowledged";
 
@@ -46,7 +47,15 @@ export async function dublettenTor(
   user: SessionUser,
   koId: string,
   kennzeichen: unknown,
-  weg: "rate" | "admin-validate",
+  // Aufnahme gesamt-wissen-herkunft: auch die befugte Weisung (beide Wege) und die Übernahme einer
+  // externen Freigabe machen ein Objekt gültig — dieselbe Dublettenbestätigung gilt dort.
+  weg:
+    | "rate"
+    | "admin-validate"
+    | "owner-validate"
+    | "weisung-validate"
+    | "weisung"
+    | "externe-freigabe",
   reply: FastifyReply,
 ): Promise<boolean> {
   const offen = (await deps.overlaps.unresolved()).filter(
@@ -181,11 +190,22 @@ function textAus(roh: unknown): string {
   return typeof roh === "string" ? roh.trim() : "";
 }
 
+/**
+ * ADMIN-09 (produkt:20261009:admin-freigaberegeln): die Freigaberegel des führenden Space je
+ * Brettzeile — `FreigabeRegelDienst.auskunftFuer`. Nur Kennung, Name und Zahl; kein Inhalt.
+ */
+export type FreigabeAuskunftQuelle = (
+  kos: readonly { id: string; spaceId?: string | undefined }[],
+) => Promise<ReadonlyMap<string, { zustimmungen: number }>>;
+
 // Validierungs-Leseansichten (§2.3). Bewerten/Zuweisen laufen über den KO-Dispatcher.
 export function validationRoutes(
   validation: ValidationService,
   guards: Guards,
   aiCheck?: ValidationAiCheckDeps,
+  freigabeAuskunft?: FreigabeAuskunftQuelle,
+  // R-0265: der Prüfer-Vorschlag; nach der Freigabeauskunft (ADMIN-09), damit deren Aufrufer
+  // unverändert bleiben.
   vorschlag?: PrueferVorschlagDeps,
 ): FastifyPluginAsync {
   return async (app) => {
@@ -223,6 +243,22 @@ export function validationRoutes(
           });
         }
         board = await mitKiPruefauskunft(user, board, aiCheck);
+      }
+      // ADMIN-09: liegt das Objekt in einem Space mit Freigaberegel, trägt die Zeile sie — und die
+      // WIRKSAM erforderliche Zahl, damit „x von y" nie weniger verlangt, als der Server prüft. Nur
+      // über die schon sichtbare Menge (`sichtbareFuer` oben).
+      if (freigabeAuskunft) {
+        const regeln = await freigabeAuskunft(board);
+        board = board.map((ko) => {
+          const regel = regeln.get(ko.id);
+          return regel
+            ? {
+                ...ko,
+                freigaberegel: regel,
+                neededValidations: Math.max(ko.neededValidations, regel.zustimmungen),
+              }
+            : ko;
+        });
       }
       // ==========================================================================================
       // JOB 3003 · STATION 4 — STUFE UND HERKUNFT, UND EIN FEHLEN HEISST FEHLEN.

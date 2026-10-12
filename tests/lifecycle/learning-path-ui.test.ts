@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LearningPath } from "../../apps/web/src/api/types";
-import {
-  completedCount,
-  isStepDone,
-  nextOpenStep,
-  progressPercent,
-} from "../../apps/web/src/lib/learningPath";
+import { completedCount, isStepDone, progressPercent } from "../../apps/web/src/lib/learningPath";
 
 const path: LearningPath = {
   id: "p1",
@@ -34,8 +29,7 @@ describe("SCRUM-145: Lernpfad-Fortschritt", () => {
     expect(completedCount(path, ["s1", "x9"])).toBe(1);
   });
 
-  it("nextOpenStep liefert den ersten offenen Schritt bzw. null", () => {
-    expect(nextOpenStep(path, ["s1"])?.id).toBe("s2");
-    expect(nextOpenStep(path, ["s1", "s2", "s3"])).toBeNull();
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zu `nextOpenStep` ist mit der Funktion
+  // entfallen — sie hatte keinen Produktleser; der Start zeigt die offenen Schritte über
+  // `learningOpenSteps`.
 });

@@ -66,10 +66,69 @@ export interface DemoTexts {
   koLieferantSchutz: KoText;
   koGeheim: KoText;
   koWartung: KoText;
+  // Aufnahme 20260922 · gesamt-demo-erklaermodus (R-1660, Schaufenster-Modus): die beiden Fälle der
+  // Roadmap-Quelle („Schweißnaht V1/V2/V3, Lager-Fall Karl/Tom").
+  //  · Schweißnaht V1/V2/V3 sind die drei FASSUNGEN desselben Lernkurven-Objekts: V1 und V2 stehen
+  //    hier, V3 ist `koSchweiss` (unverändert). Der Seed legt V1 an und überarbeitet zweimal über
+  //    den echten Überarbeitungsweg — die Lernkurve steht damit im Fassungsverlauf, nicht in drei
+  //    Objekten.
+  //  · Lager-Fall Karl/Tom: Karl (Instandhaltung, bald im Ruhestand) hat erfasst, woran er erkennt,
+  //    dass das Hauptlager der Presse 3 getauscht werden muss; Tom, sein Nachfolger, stellt dazu die
+  //    Frage `lagerFrage`. Karl und Tom sind Personen der Geschichte, keine angelegten Konten.
+  // Wortwahl ohne Inhaltstoken der Demo-Wissenslücken-Frage (s. seed-demo.ts), sonst entstünde die
+  // Demo-Lücke nicht mehr.
+  koSchweissV1: KoText;
+  koSchweissV2: KoText;
+  koLagerKarl: KoText;
+  lagerFrage: string;
   gapQuestion: string;
   warmConflict: ConflictText;
   carConflict: ConflictText;
+  // produkt:20261010:branchen-poc-arbeitswege — die fiktive Musterorganisation und ihre drei
+  // Arbeitsgeschichten (Ablauf und Rollen: docs/poc/branchen-poc-arbeitswege.md).
+  poc: PocTexts;
 }
+
+/**
+ * Die drei Arbeitsgeschichten des Branchen-PoC auf dem bestehenden Demo-Weg.
+ *
+ *   Geschichte 1 (Quellenantwort): `quellenFrage` trifft `koQuelle` — validiert, mit Quelle.
+ *   Geschichte 2 (Lückenabschluss): die vorhandene `gapQuestion` ist der Start; `lueckenAntwort`
+ *     wird NICHT geseedet, sondern im Durchlauf von der Fachzuständigkeit erfasst.
+ *   Geschichte 3 (Quellenänderung): `koAnlageA`/`koAnlageB` hängen an `POC_ANLAGE` und tragen
+ *     Fassung 1 der Betriebsanleitung; `anlageAenderung` ist die im Durchlauf gemeldete Fassung 2.
+ *     `koUnbeteiligt` hängt an einer anderen Anlage und darf nicht betroffen werden.
+ *
+ * WORTWAHL: kein GESEEDETER PoC-Text (koQuelle, koAnlageA/B, koUnbeteiligt) teilt ein Inhaltswort
+ * mit `gapQuestion` derselben Sprache — sonst fände die Antwortsuche eine Scheinantwort und die
+ * Demo-Lücke entstünde nicht. `lueckenAntwort` dagegen beantwortet die Frage SACHLICH (dieselbe
+ * Linie L4, dieselbe Dosierung) und darf und soll von der Suche gefunden werden: sie entsteht erst
+ * im Durchlauf und zeigt bei der Wiederholungsfrage den abgeschlossenen Wissensstand.
+ */
+export interface PocTexts {
+  organisation: string;
+  fiktionshinweis: string;
+  quellenFrage: string;
+  koQuelle: KoText;
+  quelleLabel: string;
+  rueckfrage: string;
+  rueckfrageAntwort: string;
+  lueckenAntwort: KoText;
+  koAnlageA: KoText;
+  koAnlageB: KoText;
+  /** Die in Geschichte 3 nachgezogene Fassung von koAnlageB (Überarbeitung nach Fassung 2). */
+  koAnlageBNeu: string;
+  koUnbeteiligt: KoText;
+  anlageQuelleLabel: string;
+  anlageAenderung: string;
+}
+
+/** Herkunftsmerker der PoC-Einträge — zusätzlich zu `DEMO_TAG` und `demoSeed`. */
+export const POC_TAG = "poc-musterwerk";
+/** Sprachneutrale Anlagenkennungen (wie „ANL-01“ im übrigen Bestand). */
+export const POC_ANLAGE = "AF-2";
+export const POC_ANLAGE_UNBETEILIGT = "KOMP-K1";
+export const POC_KATEGORIE = "Musterwerk Nordtal (fiktiv)";
 
 const de: DemoTexts = {
   koValid: {
@@ -202,6 +261,26 @@ const de: DemoTexts = {
     conditions: ["Förderband länger als vier Wochen im Betrieb"],
     measures: ["Tragrollen sichtprüfen", "Befund im Wartungsplan eintragen"],
   },
+  koSchweissV1: {
+    title: "Schweißnaht Baugruppe 7: auffällig viel Nacharbeit, Ursache offen.",
+    statement:
+      "Die Naht an Baugruppe 7 muss häufig nachgearbeitet werden; Poren zeigen sich vor allem an kalten Werkstücken. Eine Ursache ist noch nicht belegt.",
+  },
+  koSchweissV2: {
+    title: "Schweißnaht Baugruppe 7: kalte Werkstücke vor dem Schweißen anwärmen.",
+    statement:
+      "Erster Versuch der Spätschicht: kalte Werkstücke vor dem Schweißen kurz anwärmen. Die Poren werden seltener; die richtige Temperatur ist noch nicht festgelegt.",
+    conditions: ["Werkstück fühlt sich kalt an"],
+    measures: ["Werkstück kurz anwärmen"],
+  },
+  koLagerKarl: {
+    title: "Lager-Fall Presse 3: woran Karl erkennt, dass das Hauptlager getauscht werden muss",
+    statement:
+      "Karl aus der Instandhaltung geht bald in Rente. Vor Arbeitsbeginn legt er die Hand auf das Gehäuse des Hauptlagers der Presse 3: ist es deutlich wärmer als handwarm und brummt es dumpf, tauscht er das Lager in der nächsten Pause. Seit er so vorgeht, ist das Lager nie im laufenden Betrieb ausgefallen. Tom, sein Nachfolger, findet diesen Griff hier, ohne Karl fragen zu müssen.",
+    conditions: ["Gehäuse deutlich wärmer als handwarm", "dumpfes Brummen im Hauptlager"],
+    measures: ["Lager in der nächsten Pause tauschen", "Tausch im Wartungsplan eintragen"],
+  },
+  lagerFrage: "Woran erkenne ich, dass das Hauptlager der Presse 3 getauscht werden muss?",
   gapQuestion: "Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?",
   warmConflict: {
     description:
@@ -227,6 +306,45 @@ const de: DemoTexts = {
     aWert: "blau",
     bKern: "Firmenwagen ausschließlich in Rot bestellen.",
     bWert: "Rot",
+  },
+  poc: {
+    organisation: "Musterwerk Nordtal GmbH (fiktiv)",
+    fiktionshinweis:
+      "Frei erfundene Musterorganisation für den PoC — keine echten Kunden-, Personal- oder Organisationsdaten.",
+    quellenFrage: "Wie oft muss der Kühlschmierstoff an der Fräse M12 erneuert werden?",
+    koQuelle: {
+      title: "Kühlschmierstoff der Fräse M12 alle sechs Wochen erneuern",
+      statement:
+        "Der Kühlschmierstoff der Fräse M12 wird alle sechs Wochen vollständig erneuert. Vorher die Konzentration mit dem Refraktometer messen und im Maschinenbuch eintragen.",
+    },
+    quelleLabel: "Betriebsanweisung Fräse M12, Abschnitt 3 (fiktiv)",
+    rueckfrage: "Schwankt der Dosierwert an Linie L4 bei allen Rezepturen oder nur bei einer?",
+    rueckfrageAntwort:
+      "Bei allen Rezepturen, jeweils in der ersten halben Stunde nach dem Schichtwechsel.",
+    lueckenAntwort: {
+      title: "Linie L4: Dosierwaage bei jedem Schichtwechsel neu tarieren",
+      statement:
+        "Der Dosierwert an Linie L4 schwankt nach dem Schichtwechsel, weil die Dosierwaage der Linie bei der Übergabe nicht neu tariert wird. Bei jedem Schichtwechsel die leere Dosierwaage an Linie L4 tarieren und den ersten Dosierwert gegen das Rezept prüfen; die Waage driftet sonst um bis zu drei Prozent.",
+    },
+    koAnlageA: {
+      title: "Abfüllanlage AF-2: Füllventile vor dem Anfahren auf Tropfdichtheit prüfen",
+      statement:
+        "Vor dem Anfahren der Abfüllanlage AF-2 alle Füllventile auf Tropfdichtheit prüfen; ein tropfendes Füllventil verfälscht die Füllmenge.",
+    },
+    koAnlageB: {
+      title: "Abfüllanlage AF-2: Etikettierer bei neuem Flaschenformat justieren",
+      statement:
+        "Bei einem neuen Flaschenformat den Etikettierer der Abfüllanlage AF-2 neu justieren und ein Probeetikett gegen das Muster legen.",
+    },
+    koAnlageBNeu:
+      "Bei einem neuen Flaschenformat den Etikettierer der Abfüllanlage AF-2 über das Formatmenü justieren (Fassung 2 der Betriebsanleitung) und ein Probeetikett gegen das Muster legen.",
+    koUnbeteiligt: {
+      title: "Druckluftkompressor K1: Kondensat täglich ablassen",
+      statement:
+        "Am Druckluftkompressor K1 das Kondensat täglich ablassen; sonst gelangt Wasser in die Leitungen.",
+    },
+    anlageQuelleLabel: "Betriebsanleitung Abfüllanlage AF-2, Fassung 1 (fiktiv)",
+    anlageAenderung: "Betriebsanleitung AF-2, Fassung 2",
   },
 };
 
@@ -362,6 +480,29 @@ const en: DemoTexts = {
     conditions: ["Conveyor in operation for more than four weeks"],
     measures: ["Visually check the carrying rollers", "Record the finding in the maintenance plan"],
   },
+  koSchweissV1: {
+    title: "Weld seam on assembly 7: unusually much rework, cause unknown.",
+    statement:
+      "The seam on assembly 7 often has to be reworked; pores appear mainly on cold workpieces. No cause has been proven yet.",
+  },
+  koSchweissV2: {
+    title: "Weld seam on assembly 7: warm up cold workpieces before welding.",
+    statement:
+      "First trial by the late team: briefly warm up cold workpieces before welding. Pores become rarer; the right temperature has not been fixed yet.",
+    conditions: ["Workpiece feels cold"],
+    measures: ["Briefly warm up the workpiece"],
+  },
+  koLagerKarl: {
+    title: "Bearing case press 3: how Karl tells that the main bearing must be replaced",
+    statement:
+      "Karl from maintenance retires soon. Before work starts he puts his hand on the housing of the main bearing of press 3: if it is clearly warmer than hand-warm and hums dully, he replaces the bearing in the next break. Since he has worked like this, the bearing has never failed during operation. Tom, his successor, finds this check here without having to ask Karl.",
+    conditions: ["Housing clearly warmer than hand-warm", "dull hum in the main bearing"],
+    measures: [
+      "Replace the bearing in the next break",
+      "Record the replacement in the maintenance plan",
+    ],
+  },
+  lagerFrage: "How can I tell that the main bearing of press 3 must be replaced?",
   gapQuestion: "Why does the dosing value on line L4 fluctuate after every shift change?",
   warmConflict: {
     description:
@@ -387,6 +528,44 @@ const en: DemoTexts = {
     aWert: "blue",
     bKern: "Order company cars exclusively in red.",
     bWert: "red",
+  },
+  poc: {
+    organisation: "Musterwerk Nordtal Ltd. (fictitious)",
+    fiktionshinweis:
+      "Entirely invented sample organisation for the PoC — no real customer, personnel or organisational data.",
+    quellenFrage: "How often must the cooling lubricant of milling machine M12 be renewed?",
+    koQuelle: {
+      title: "Renew the cooling lubricant of milling machine M12 at six-week intervals",
+      statement:
+        "The cooling lubricant of milling machine M12 is fully renewed at six-week intervals. Beforehand, measure the concentration with the refractometer and record it in the machine log.",
+    },
+    quelleLabel: "Operating instruction milling machine M12, section 3 (fictitious)",
+    rueckfrage: "Does the dosing value on line L4 fluctuate with all recipes or only with one?",
+    rueckfrageAntwort: "With all recipes, always in the first half hour after the shift change.",
+    lueckenAntwort: {
+      title: "Line L4: re-tare the dosing scale at every shift change",
+      statement:
+        "The dosing value on line L4 fluctuates after the shift change because the line's dosing scale is not re-tared at handover. At every shift change, tare the empty dosing scale on line L4 and check the first dosing value against the recipe; otherwise the scale drifts by up to three percent.",
+    },
+    koAnlageA: {
+      title: "Filling plant AF-2: check the filling valves for drip-tightness before start-up",
+      statement:
+        "Before starting up filling plant AF-2, check all filling valves for drip-tightness; a dripping filling valve distorts the fill quantity.",
+    },
+    koAnlageB: {
+      title: "Filling plant AF-2: adjust the labeller for a new bottle format",
+      statement:
+        "For a new bottle format, readjust the labeller of filling plant AF-2 and hold a sample label against the master.",
+    },
+    koAnlageBNeu:
+      "For a new bottle format, readjust the labeller of filling plant AF-2 via the format menu (version 2 of the operating manual) and hold a sample label against the master.",
+    koUnbeteiligt: {
+      title: "Compressor K1: drain the condensate daily",
+      statement:
+        "Drain the condensate of compressor K1 daily; otherwise water gets into the compressed-air pipes.",
+    },
+    anlageQuelleLabel: "Operating manual filling plant AF-2, version 1 (fictitious)",
+    anlageAenderung: "Operating manual AF-2, version 2",
   },
 };
 const nl: DemoTexts = {
@@ -519,6 +698,29 @@ const nl: DemoTexts = {
     conditions: ["Transportband langer dan vier weken in bedrijf"],
     measures: ["Draagrollen visueel controleren", "Bevinding in het onderhoudsplan vastleggen"],
   },
+  koSchweissV1: {
+    title: "Lasnaad module 7: opvallend veel nawerk, oorzaak onbekend.",
+    statement:
+      "De naad van module 7 moet vaak worden nagewerkt; poriën verschijnen vooral bij koude werkstukken. Een oorzaak is nog niet aangetoond.",
+  },
+  koSchweissV2: {
+    title: "Lasnaad module 7: koude werkstukken voor het lassen opwarmen.",
+    statement:
+      "Eerste proef van de late dienst: koude werkstukken voor het lassen kort opwarmen. De poriën worden zeldzamer; de juiste temperatuur ligt nog niet vast.",
+    conditions: ["Werkstuk voelt koud aan"],
+    measures: ["Werkstuk kort opwarmen"],
+  },
+  koLagerKarl: {
+    title: "Lagergeval pers 3: waaraan Karl ziet dat het hoofdlager vervangen moet worden",
+    statement:
+      "Karl van onderhoud gaat binnenkort met pensioen. Voor het werk begint legt hij zijn hand op het huis van het hoofdlager van pers 3: is het duidelijk warmer dan handwarm en bromt het dof, dan vervangt hij het lager in de volgende pauze. Sinds hij zo werkt, is het lager nooit tijdens bedrijf uitgevallen. Tom, zijn opvolger, vindt deze controle hier zonder Karl te hoeven vragen.",
+    conditions: ["Huis duidelijk warmer dan handwarm", "dof gebrom in het hoofdlager"],
+    measures: [
+      "Het lager in de volgende pauze vervangen",
+      "De vervanging in het onderhoudsplan vastleggen",
+    ],
+  },
+  lagerFrage: "Waaraan zie ik dat het hoofdlager van pers 3 vervangen moet worden?",
   gapQuestion: "Waarom schommelt de doseerwaarde op lijn L4 na elke ploegwisseling?",
   warmConflict: {
     description:
@@ -545,6 +747,44 @@ const nl: DemoTexts = {
     bKern: "Bedrijfsauto's uitsluitend in het rood bestellen.",
     bWert: "rood",
   },
+  poc: {
+    organisation: "Musterwerk Nordtal B.V. (fictief)",
+    fiktionshinweis:
+      "Volledig verzonnen voorbeeldorganisatie voor de PoC — geen echte klant-, personeels- of organisatiegegevens.",
+    quellenFrage: "Hoe vaak moet het koelsmeermiddel van freesmachine M12 worden vernieuwd?",
+    koQuelle: {
+      title: "Koelsmeermiddel van freesmachine M12 om de zes weken vernieuwen",
+      statement:
+        "Het koelsmeermiddel van freesmachine M12 wordt om de zes weken volledig vernieuwd. Meet vooraf de concentratie met de refractometer en noteer die in het machineboek.",
+    },
+    quelleLabel: "Bedieningsvoorschrift freesmachine M12, paragraaf 3 (fictief)",
+    rueckfrage: "Schommelt de doseerwaarde op lijn L4 bij alle recepturen of maar bij één?",
+    rueckfrageAntwort: "Bij alle recepturen, steeds in het eerste halfuur na de ploegwisseling.",
+    lueckenAntwort: {
+      title: "Lijn L4: doseerweegschaal bij elke ploegwisseling opnieuw tarreren",
+      statement:
+        "De doseerwaarde op lijn L4 schommelt na de ploegwisseling, omdat de doseerweegschaal van de lijn bij de overdracht niet opnieuw wordt getarreerd. Tarreer bij elke ploegwisseling de lege doseerweegschaal op lijn L4 en controleer de eerste doseerwaarde tegen het recept; anders verloopt de weegschaal tot drie procent.",
+    },
+    koAnlageA: {
+      title: "Afvulinstallatie AF-2: vulkleppen vóór het opstarten op druppeldichtheid controleren",
+      statement:
+        "Controleer vóór het opstarten van afvulinstallatie AF-2 alle vulkleppen op druppeldichtheid; een druppelende vulklep vervalst de vulhoeveelheid.",
+    },
+    koAnlageB: {
+      title: "Afvulinstallatie AF-2: etiketteerder bij een nieuw flesformaat afstellen",
+      statement:
+        "Stel bij een nieuw flesformaat de etiketteerder van afvulinstallatie AF-2 opnieuw af en leg een proefetiket tegen het model.",
+    },
+    koAnlageBNeu:
+      "Stel bij een nieuw flesformaat de etiketteerder van afvulinstallatie AF-2 via het formaatmenu opnieuw af (versie 2 van de bedieningshandleiding) en leg een proefetiket tegen het model.",
+    koUnbeteiligt: {
+      title: "Compressor K1: condensaat dagelijks aftappen",
+      statement:
+        "Tap het condensaat van compressor K1 dagelijks af; anders komt er water in de persluchtleidingen.",
+    },
+    anlageQuelleLabel: "Bedieningshandleiding afvulinstallatie AF-2, versie 1 (fictief)",
+    anlageAenderung: "Bedieningshandleiding AF-2, versie 2",
+  },
 };
 
 export const DEMO_TEXTS: Record<DemoLocale, DemoTexts> = { de, en, nl };
@@ -553,9 +793,6 @@ export function demoTexts(locale: DemoLocale): DemoTexts {
   return DEMO_TEXTS[locale];
 }
 
-// Alle drei lokalisierten Wissenslücken-Fragen — der Purge muss sie sprachübergreifend erkennen.
-export const DEMO_GAP_QUESTIONS: readonly string[] = [
-  de.gapQuestion,
-  en.gapQuestion,
-  nl.gapQuestion,
-];
+// R-1349: Hier stand `DEMO_GAP_QUESTIONS`, die Fragenliste eines früheren Purges über den Text. Der
+// Purge erkennt die Demo-Lücke seit Pedi 14.07. über das Herkunftsfeld `demoSeed` (seed-demo.ts);
+// die Liste las niemand mehr und ist entfernt.

@@ -27,9 +27,14 @@ echo "▶ modalgrenze";  ./tools/modalgrenze.sh || { echo "✖ Modalgrenze verle
 # da, nichts gemessen" — der Normalfall in jedem Clone, denn `_relay/` steht in `.gitignore:25`.
 echo "▶ zentrale-drift"; zentrale_rc=0; ./tools/zentrale-drift.sh || zentrale_rc=$?
 if [ "$zentrale_rc" = "1" ]; then echo "✖ Drift an einer aenderbaren Lesefläche"; exit 1; fi
+# R-1420 (F-1420, secrets-management.md §10): Zugangsdaten gelangen nicht unbemerkt in den
+# Quellcode. Gelesen wird alles, was uebernommen werden kann (versioniert UND neu, nicht ignoriert).
+# Jeder Fund sperrt; ausgegeben wird er nur maskiert. Eng gefasste Formate — s. tools/geheimnis-scan.ts.
+echo "▶ geheimnis-scan"; bash tools/geheimnis-scan.sh ||{ echo "✖ Geheimnis-Scan rot"; exit 1; }
 echo "▶ test";         ./tools/test "$@"
 
-# AUFTRAG-mega24 Block A: der UI-Smoke gehört INS TOR — und zwar Chromium-only.
+# AUFTRAG-mega24 Block A: der UI-Smoke gehört INS TOR — seit Aufnahme 20260922 in DREI Engines
+# (Chromium, Firefox, WebKit); bis dahin Chromium-only, s. „WARUM NUR CHROMIUM" unten.
 #
 # WARUM ÜBERHAUPT: bis mega23 war `smoke:ui` kein Teil dieses Gates, und die Automatisierung fuhr
 # ihn damals nicht mit — `.github/workflows/ci.yml` rief `npm run build`, `lint`, `arch` und `test`
@@ -58,6 +63,37 @@ echo "▶ test";         ./tools/test "$@"
 # die das Tor fangen muss — „lebt der Kernfluss überhaupt noch?" — ist engine-unabhängig und fällt
 # schon in einer Engine auf. Der vollständige Drei-Engine-Lauf bleibt `npm run smoke:ui` und ist
 # weiterhin Ship-Vorbedingung.
+#
+# AUFNAHME 20260922 (R-1334/R-1382/R-1916, A19) — DIE BEGRÜNDUNG OBEN IST ÜBERHOLT. „Ein einmaliger
+# grüner Lauf ist keine Garantie. Bricht Safari beim Kunden, erfahren wir es vom Kunden." Genau der
+# Drei-Engine-Lauf hat die unbedienbare Tastaturführung in Safari gefunden — ein Fehler, den das
+# Chromium-only-Tor baulich nicht sehen konnte. Die Sperre aus Auflage 2 (K7 in
+# `tests/smoke/job1094-engine-kette.test.ts`: erst nach grüner Stufe A verdrahten) ist erfüllt:
+# Stufe A lief am 10.10.2026 auf dem regulären Prüfweg grün — Firefox 151.0 und WebKit 26.5 je
+# gestartet, ohne Startfehler, je 14 bestanden / 4 übersprungen (Chromium-only-Fälle, sichtbar).
+#
+# WIE DAS TOR DIE DREI ENGINES FÄHRT — und warum NICHT als ein `smoke:ui:gate:drei` über alles:
+#   · Chromium fährt wie bisher die VOLLE Suite (`smoke:ui:gate`).
+#   · Firefox und WebKit fahren je in einem EIGENEN Lauf die Kern-Rauchproben (`ui-smoke`,
+#     `smoke-umgebung`, `mobile-drawer-focus-probe`) — genau die Form, die Stufe A grün belegt hat.
+#   Die volle Suite in allen drei Engines wurde am 10.10.2026 gemessen (Prüfbelege
+#   `tor-deckung-firefox` / `tor-deckung-webkit`, Kandidat 8a8a7bd) und war in 14 Fällen aus zehn
+#   Specs rot, neun davon fremde Feature-Specs (u. a. Browser-Zurück in Firefox, Fettdruck per
+#   Kürzel, Vollbild, Fokusring in WebKit). Sie sind für Chromium gebaut und gehören den jeweiligen
+#   Aufträgen; sie hier abzuschwächen oder zu überspringen wäre die falsche Antwort. Dazu kommt ein
+#   Bestandsproblem:
+#   ein Lauf über mehrere Projekte teilt EINEN In-Memory-Server, die Datenlage der späteren Engine
+#   ist dann die der früheren (mega49 „Prüf-Board leer" war in der vollen Messung rot, in Stufe A grün).
+#   Getrennte Läufe je Engine haben je einen frischen Server. Weitere Specs kommen in den Firefox-/
+#   WebKit-Lauf, sobald sie dort grün belegt sind.
+#
+# Welche Engines ein Lauf WIRKLICH gestartet hat, druckt der Engine-Bericht am Laufende
+# (`tests-smoke/support/engine-bericht.ts`); eine Engine, die nicht startet, macht den Lauf rot und
+# steht dort als Startfehler — nie als „gefahren".
+#
+# Der geseedete UX-20b-Lauf weiter unten bleibt bewusst Chromium: er prüft den Inhaltszweig des
+# JSON-Rundlaufs, nicht die Engine-Abdeckung, und mehrere seiner Fälle sind ausdrücklich nur in
+# Chromium steuerbar (`NUR_CHROMIUM_TAB` in `tests-smoke/ui-smoke.spec.ts`).
 #
 # WARUM ZWEI TESTS FEHLEN (`--grep-invert @modell`): „Kernfluss" klickt „Mit KI strukturieren". Seit
 # „KI-Ehrlichkeit" (AI-STATE V1-V5) ist dieser Knopf hart ausgegraut, solange kein echtes Modell
@@ -93,11 +129,26 @@ echo "▶ test";         ./tools/test "$@"
 # NICHTS DAVON GESCHIEHT STILL — genau das war ja die Krankheit. Die Ausnahme wird unten
 # ausgedruckt, sie ist auf EINEN benannten Test begrenzt, und fehlende Browser machen das Tor ROT
 # mit Handlungsanweisung (kein „skip, wenn Chromium fehlt").
-echo "▶ ui-smoke (Chromium, hermetisch — ohne @modell)"
+echo "▶ ui-smoke (Chromium, volle Suite — hermetisch, ohne @modell)"
 npm run --silent smoke:ui:gate || {
   echo "✖ UI-Smoke rot."
   echo "  Fehlt der Browser? → npx playwright install chromium"
   echo "  Alle drei Engines lokal: npm run smoke:ui (braucht KLARWERK_SHIP_SMOKE_API_KEY)"
+  exit 1
+}
+# Bewusst ausgeschrieben statt als Schleife: die Kettenwächter lösen die Aufrufe statisch auf.
+echo "▶ ui-smoke (Firefox, Kern-Rauchproben — hermetisch, ohne @modell)"
+npm run --silent smoke:ui:gate:kern:firefox || {
+  echo "✖ UI-Smoke Firefox rot."
+  echo "  Fehlt der Browser? → npx playwright install chromium firefox"
+  echo "  Ob Firefox überhaupt startete, steht im Engine-Bericht oben (Startfehler)."
+  exit 1
+}
+echo "▶ ui-smoke (WebKit, Kern-Rauchproben — hermetisch, ohne @modell)"
+npm run --silent smoke:ui:gate:kern:webkit || {
+  echo "✖ UI-Smoke WebKit rot."
+  echo "  Fehlt der Browser? → npx playwright install chromium webkit"
+  echo "  Ob WebKit überhaupt startete, steht im Engine-Bericht oben (Startfehler)."
   exit 1
 }
 # UX-20b-R — DER GESEEDETE INHALTSZWEIG DES JSON-RUNDLAUFS, IM TOR UND NICHT NUR AUF ZURUF.
@@ -118,9 +169,11 @@ KLARWERK_SMOKE_MODE=gate KLARWERK_SMOKE_SEED=1 ANTHROPIC_API_KEY= ./tools/browse
   exit 1
 }
 echo "  ⓘ NICHT im Tor gelaufen: ui-smoke.spec.ts „Kernfluss … @modell\" und „Fragen antwortet"
-echo "    ehrlich … @modell\" — beide brauchen ein aktives"
+echo "    ehrlich … @modell\", anleitung-recherche-ki-modell.spec.ts „Anleitung: Recherche und"
+echo "    KI-Entwurf … @modell\" sowie klara-basis-browser.spec.ts „Klara 01 · tatsächliche"
+echo "    Modellantwort … @modell\" — alle vier brauchen ein aktives"
 echo "    Modell (Zugangsdatum + Egress), das dieses hermetische Tor bewusst nicht hat."
-echo "    Dass es bei GENAU DIESEN ZWEI bleibt, hält tests/smoke/tor-ausnahme.test.ts fest;"
+echo "    Dass es bei GENAU DIESEN VIER bleibt, hält tests/smoke/tor-ausnahme.test.ts fest;"
 echo "    dass der Tor-Lauf wirklich ohne Modell lief, hält tests-smoke/smoke-umgebung.spec.ts fest."
 echo "    Abgedeckt durch die Ship-Vorbedingung: npm run smoke:ui (drei Engines, mit Modell)."
 echo "✓ check grün"

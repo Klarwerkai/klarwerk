@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useKo } from "../api/hooks";
+import { useRole } from "../app/RoleContext";
 import { AufgegangenHinweis } from "../components/AufgegangenHinweis";
+import { ChatGespraechKnopf } from "../components/ChatGespraechKnopf";
 import { HelpTip } from "../components/HelpTip";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { SpaceZeile } from "../components/SpaceZeile";
+import { VorlagenHerkunft } from "../components/VorlagenHerkunft";
 import { BibliothekFlaeche } from "../components/bibliothek/BibliothekFlaeche";
 import { Card, SectionLabel } from "../components/ui";
+import { STELLE_PARAM } from "../lib/belegstelle";
 import { sprachcode, useFrischeLesevariante } from "../lib/lesevariante";
+import { FASSUNG_PARAM, fassungsLage, leseFassung } from "../lib/objektbezug";
+import { useGelesenerStand } from "../lib/useGelesenerStand";
 
 // ==================================================================================================
 // JOB 3063 · H4 — DAS WISSENSOBJEKT-DETAIL IST DIE LESEFLÄCHE DER BIBLIOTHEK GEWORDEN.
@@ -49,12 +56,20 @@ export function KnowledgeDetail(): JSX.Element {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  // produkt:20261007:artikel-gemeinsam: der Weg zum gemeinsamen Entwurf nur für Bearbeitende.
+  const darfBearbeiten = useRole().role !== "viewer";
   // `edit=1` gehört zu GENAU DEM Eintrag, für den der Deep-Link kam (SCRUM-417). Bliebe er beim
   // Weiterblättern stehen, risse sich das Bearbeiten-Formular an jedem nächsten Eintrag von selbst
   // auf — die Fläche montiert die Leseansicht je Eintrag neu, ein Ref-Wächter trüge dort nicht.
   const naechsteSuche = (() => {
     const p = new URLSearchParams(params);
     p.delete("edit");
+    // R-0326/R-0329: Belegstelle und Abschnittssprung gehören ebenso nur zu DIESEM Eintrag — und
+    // die Fassung des Rückwegs (Arbeitswege am selben Artikel) ebenso. `fassung` ist EIN Parameter
+    // für beide Wege (`lib/belegstelle.ts` und `lib/objektbezug.ts` nennen denselben Namen).
+    p.delete(STELLE_PARAM);
+    p.delete(FASSUNG_PARAM);
+    p.delete("abschnitt");
     return p.toString();
   })();
 
@@ -80,6 +95,11 @@ export function KnowledgeDetail(): JSX.Element {
   const lage = useFrischeLesevariante(id, sprache);
   const variante = lage.zustand === "da" ? lage.variante : undefined;
   const [zeigtOriginal, setZeigtOriginal] = useState(false);
+  // Arbeitswege am selben Artikel: genannte Fassung (Adresse) gegen die, die die Lesefläche
+  // gerade zeigt (`meldeGelesenenStand` — kein eigener Abruf). Ein anderer Artikel zählt nicht.
+  const genannteFassung = leseFassung(params);
+  const gelesen = useGelesenerStand();
+  const aktuelleFassung = gelesen?.koId === id ? gelesen.fassung : null;
   // Sprachwechsel UND Eintragswechsel setzen die Wahl „Original anzeigen" zurück: sie gehörte zur
   // vorherigen Anzeige. Beim Eintragswechsel bleibt die Fläche darunter montiert — ohne diesen
   // Rückfall trüge der nächste Eintrag die Entscheidung des vorherigen.
@@ -87,6 +107,27 @@ export function KnowledgeDetail(): JSX.Element {
   useEffect(() => {
     setZeigtOriginal(false);
   }, [sprache, id]);
+
+  // WISSENSDETAIL (R-0907/R-1037) — DER BROWSER NENNT DEN EINTRAG, DEN DIE ADRESSE NENNT.
+  // Bis hierher stand im Tab auf jeder `/wissen/:id` derselbe Produktname: wer zwei Einträge in zwei
+  // Tabs offen hatte oder im Verlauf zurücksuchte, fand ihn nicht wieder. Jetzt steht vorn der Titel,
+  // den die Seite gerade zeigt (die Übersetzung, solange sie dasteht), dahinter der bisherige
+  // Dokumenttitel — er wird nicht ersetzt, nur ergänzt, und beim Verlassen zurückgestellt.
+  // `useKo` ist DIESELBE Abfrage, die die Lesefläche stellt (gleicher Schlüssel): kein zweiter Abruf.
+  // Nur hier, nicht auf `/bibliothek`: dort ist die Vorwahl rechts keine getroffene Wahl.
+  const eintrag = useKo(id);
+  const gezeigterTitel = variante && !zeigtOriginal ? variante.title : eintrag.data?.title;
+  const tabTitel = (gezeigterTitel ?? "").trim();
+  useEffect(() => {
+    if (tabTitel.length === 0) {
+      return;
+    }
+    const vorher = document.title;
+    document.title = `${tabTitel} · ${vorher}`;
+    return () => {
+      document.title = vorher;
+    };
+  }, [tabTitel]);
 
   return (
     <div data-testid="page-wissen">
@@ -132,13 +173,59 @@ export function KnowledgeDetail(): JSX.Element {
           {t("lesevariante.abrufFehler")}
         </p>
       ) : null}
-      {/* produkt:20261007:spaces: führender Space, Spacezuständigkeit und Artikelverantwortung
-          getrennt, dazu der Spacewechsel mit Rechtevorschau. Unsichtbar → der Server sagt 404,
-          die Zeile zeichnet dann nichts. */}
-      <SpaceZeile koId={id} />
+      {/* Arbeitswege am selben Artikel: der Rückweg (aus Fragen oder Klara) nennt die Fassung, aus
+          der er kam. Hat sich der Beitrag seitdem geändert, steht das hier — ausserhalb der Fläche,
+          die keinen Erklärtext trägt, und nur dann; bei gleicher Fassung bleibt die Seite still.
+          Trägt die Adresse eine Belegstelle (`stelle`, R-0326), meldet die Lesefläche die andere
+          Fassung schon selbst (`belegLage` „andereFassung“) — dann steht hier nichts doppelt. */}
+      {!params.has(STELLE_PARAM) &&
+      fassungsLage(genannteFassung, aktuelleFassung) === "abweichend" ? (
+        <p
+          data-testid="objektbezug-fassung-abweichend"
+          data-fassung={genannteFassung ?? undefined}
+          data-aktuell={aktuelleFassung ?? undefined}
+          className="mb-3 text-[12.5px] text-trust-warn-text"
+        >
+          {t("arbeitsweg.lesen.fassungAbweichend", {
+            genannt: genannteFassung,
+            aktuell: aktuelleFassung,
+          })}
+        </p>
+      ) : null}
       {/* R-1107: ist dieser Eintrag in einem Führungsartikel aufgegangen, sagt die Zeile worin. */}
       <AufgegangenHinweis koId={id} />
-      <BibliothekFlaeche vorgewaehlt={id} beiWahl={beiWahl} beiLoeschung={beiLoeschung} />
+      <BibliothekFlaeche
+        vorgewaehlt={id}
+        beiWahl={beiWahl}
+        beiLoeschung={beiLoeschung}
+        // produkt:20261007:spaces: führender Space, Spacezuständigkeit und Artikelverantwortung
+        // getrennt, dazu der Spacewechsel mit Rechtevorschau. Unsichtbar → der Server sagt 404,
+        // die Zeile zeichnet dann nichts.
+        // LESEN-INHALT-ZUERST (Ben, nacharbeit-6): die Zeile stand VOR der ganzen Fläche und schob
+        // Titel, Status und erste Regel mobil um etwa 260 px nach unten. Sie steht jetzt in der
+        // Lesespalte NACH dem fachlichen Inhalt — dieselbe Komponente, dieselben Rechte.
+        // produkt:20261007:interner-chat: dahinter der Weg in das Gespräch zu genau diesem Artikel.
+        nachDemInhalt={
+          <>
+            <SpaceZeile koId={id} />
+            {/* produkt:20261007:templates-default: Vorlage und Fassung, mit der er entstand. */}
+            <VorlagenHerkunft koId={id} />
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <ChatGespraechKnopf ziel={{ art: "artikel", koId: id }} />
+              {/* produkt:20261007:artikel-gemeinsam: derselbe Entwurf wie aus dem Artikelgespräch. */}
+              {darfBearbeiten ? (
+                <Link
+                  data-testid="artikel-gemeinsam"
+                  to={`/wissen/${encodeURIComponent(id)}/gemeinsam`}
+                  className="text-[12.5px] font-semibold text-brand-text hover:underline"
+                >
+                  {t("gemeinsam.artikel.oeffnen")}
+                </Link>
+              ) : null}
+            </div>
+          </>
+        }
+      />
     </div>
   );
 }

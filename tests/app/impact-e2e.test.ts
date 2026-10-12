@@ -91,6 +91,7 @@ describe("FUNKE: /api/me/impact + idempotentes Danke (HTTP end-to-end)", () => {
       cited: 0,
       helpfulReceived: 0,
     });
+    // R-0278 (Nacharbeit 3) / R-0584: freigegeben wird NACH der Nullstands-Messung oben.
     await validieren(services, koId);
 
     // FUNKE F2: Vera dankt — zweimal geklickt, zählt EINMAL (idempotent je Nutzer+Ziel).

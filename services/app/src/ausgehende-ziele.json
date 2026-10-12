@@ -22,7 +22,7 @@
     },
     {
       "kennung": "ki-lokal",
-      "zweck": "Lokales Modell des Betreibers (OpenAI-kompatibel)",
+      "zweck": "Lokales Modell des Betreibers (OpenAI-kompatibel): Sprachmodell und internes Embedding-Modell (KLARWERK_LOCAL_EMBEDDING_MODEL, nur fuer eine bestaetigte interne Adresse)",
       "dateien": ["services/reasoner/src/model-client.ts"],
       "hosts": [],
       "umgebung": ["KLARWERK_LOCAL_LLM_URL", "KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS"],
@@ -46,6 +46,14 @@
       "hosts": ["*.wikipedia.org"],
       "umgebung": ["EXTERNAL_SEARCH", "EXTERNAL_SEARCH_LANG"],
       "freigabe": "Admin-Regler der externen Wissensabfrage (ExternalKnowledgeStage, Vorgabe search_on_click, blocked sperrt serverseitig); EXTERNAL_SEARCH=off baut den Weg nicht"
+    },
+    {
+      "kennung": "faehigkeit-perplexity-suche",
+      "zweck": "Assistenzfaehigkeit Perplexity-Suche (BPA-11): begrenzte Websuche mit Originalquellen ueber den kontrollierten Adapter",
+      "dateien": ["services/app/src/assistenz-faehigkeiten.ts"],
+      "hosts": ["api.perplexity.ai"],
+      "umgebung": [],
+      "freigabe": "Nur ueber FaehigkeitsAusfuehrung mit registriertem Vertrag und installiertem Adapter gleicher Fassung; vor jedem Schritt externe Wissensabfrage nicht blocked, Anbieter perplexity ausdruecklich freigegeben, Keine KI nicht aktiv, kein geschuetzter Arbeitsbereichsinhalt in der Eingabe, Zugang PERPLEXITY_API_KEY im sicheren Credentialweg und belegte Kosten mit zugeordnetem Budget (Vertrag: Kosten unbelegt, daher ohne Klaerung kein Aufruf)"
     },
     {
       "kennung": "import-confluence",
@@ -94,6 +102,14 @@
       "hosts": [],
       "umgebung": ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"],
       "freigabe": "Nur wenn alle drei VAPID-Werte gesetzt sind (createPushFromEnv), und nur an die Push-Dienste der Browserhersteller (PUSH_DIENSTE: fcm.googleapis.com, updates.push.services.mozilla.com, web.push.apple.com, Unterdomaenen von push.apple.com und notify.windows.com) per https; jeder andere Abo-Endpunkt wird abgewiesen (pushEndpunktErlaubt)"
+    },
+    {
+      "kennung": "wissensereignisse-webhooks",
+      "zweck": "Meldungen an Fremdwerkzeuge: Wissensobjekt validiert, Revalidierung faellig, Widerspruch offen (R-0710)",
+      "dateien": ["services/app/src/wissensereignisse.ts"],
+      "hosts": [],
+      "umgebung": ["KLARWERK_WEBHOOKS"],
+      "freigabe": "Nur die in KLARWERK_WEBHOOKS eingetragenen Ziele (ladeWebhookZiele): nur https, http nur fuer die eigene Maschine, keine Zugangsdaten in der Adresse, redirect: manual, signiert; gemeldet werden nur Kennungen von Objekten, die auch der Dienst-Schluessel-Export zeigen darf"
     },
     {
       "kennung": "word-addin-officejs",
