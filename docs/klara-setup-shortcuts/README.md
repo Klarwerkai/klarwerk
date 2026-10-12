@@ -12,3 +12,8 @@ Abschnitt AA-01). Reine Bestands- und Planungsdokumentation; am Produkt ist nich
 
 Prüfung: `tests/klara-setup-shortcuts/fundstellen.test.ts` hält Liste, Dokumente und Quellcode
 zusammen (Datei vorhanden, Anker vorhanden, jede ID dokumentiert, der Plan nennt nur erfasste IDs).
+
+**Umsetzung AA-02 bis AA-04** (`produkt:20261012:klara-setup-shortcuts-umsetzung`, nach Peters Wahl
+„Option 1“): [`UMSETZUNG.md`](./UMSETZUNG.md) — Bereich „Klara“, Aktionsinventar mit Diktat und
+Aufnahme, Konfliktregeln, Fokusverhalten, Grenzen. Die AA-01-Dokumente oben bleiben die
+unveränderte Bestandsaufnahme ihres eigenen Auftrags.

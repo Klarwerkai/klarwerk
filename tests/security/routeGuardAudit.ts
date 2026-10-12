@@ -1168,6 +1168,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/me/assistenz/eigeninitiative": { protection: "auth" },
   "PUT /api/me/assistenz/eigeninitiative": { protection: "auth" },
   "POST /api/me/assistenz/eigeninitiative/hinweise": { protection: "auth" },
+  // produkt:20261012:klara-setup-shortcuts-umsetzung: die Klara-Tastenkürzel — derselbe eigene Weg
+  // (user.id aus der Sitzung, fremde Kennung 403).
+  "GET /api/me/assistenz/tastenkuerzel": { protection: "auth" },
+  "PUT /api/me/assistenz/tastenkuerzel": { protection: "auth" },
   // produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der eigenen Assistenz — Übersicht,
   // Vormerkungen und eigene Aufträge nur über das Konto der Sitzung; Vorschau und Ausführung
   // zusätzlich mit `ko.read`, weil sie Arbeitsbereichskontext aus dem Bestand laden.

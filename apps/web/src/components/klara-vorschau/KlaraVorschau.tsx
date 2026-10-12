@@ -87,6 +87,8 @@ import {
   useAndereFlaecheOffen,
   useAndereFlaecheSchliesst,
 } from "../assistenzFlaechen";
+// produkt:20261012:klara-setup-shortcuts-umsetzung: konfigurierte Kürzel führen vorhandene Wege aus.
+import { useKlaraAktion } from "../klara-setup/KlaraKuerzelAusfuehrung";
 import { KlaraAufgaben } from "./KlaraAufgaben";
 import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
@@ -1586,6 +1588,29 @@ export function KlaraVorschau({
       aufnahmeAbbrechen();
     }
   }, [panelSichtbar, aufnahmeAbbrechen]);
+
+  // produkt:20261012:klara-setup-shortcuts-umsetzung (AA-04): konfigurierte Kürzel kommen über den
+  // einen Ausführungsweg (`klara-setup/KlaraKuerzelAusfuehrung.tsx`) und laufen hier über die
+  // VORHANDENEN Wege — kein zweites Gespräch, keine eigene Aufnahme. „Klara öffnen“ ist idempotent:
+  // `oeffnen` setzt nur `offen` auf dem einen Zustand und holt den Fokus ins Gespräch; Verlauf,
+  // Eingabe und Auswahl bleiben stehen. Diktat und Auftrag öffnen das Gespräch zuerst, damit der
+  // Stopp sichtbar ist; Mikrofonfreigabe und „nicht verfügbar“ regelt `useKlaraSprache` wie beim Klick.
+  useKlaraAktion((aktion) => {
+    if (aktion === "oeffnen") {
+      oeffnen();
+    } else if (aktion === "diktieren" || aktion === "auftragSprechen") {
+      oeffnen();
+      if (!sprechen.laeuft) {
+        sprechen.starten(aktion === "diktieren" ? "diktat" : "auftrag");
+      }
+    } else if (aktion === "aufnahmeStoppen") {
+      if (sprechen.laeuft) {
+        sprechen.stoppen();
+      }
+    } else if (aktion === "vorlesenStoppen") {
+      stoppeVorlesen();
+    }
+  });
 
   // ---------------------------------------------------------------------------------------------
   // produkt:20261010:assistenz-name-avatar — der Zustand der Figur (ANIMATIONSZUSTAENDE.json), nur
