@@ -221,6 +221,16 @@ describe("Geheimnisse nur in der Betriebsumgebung", () => {
     const jeVariable = new Map(
       zeilen.map((zellen) => [/`([A-Z][A-Z0-9_]*)`/.exec(zellen[2] ?? "")?.[1] ?? "", zellen]),
     );
+    // R-1999 / OFFEN.md I56: Solange der Leckbericht dort als „SOFORT“ offen steht, ist der Wechsel
+    // ein Notfall OHNE Aufschub — jede Zeile, die I56 nennt, trägt „sofort“, kein Datum.
+    const offen = readFileSync(join(REPO, "OFFEN.md"), "utf8");
+    const i56Offen = /^\| I56 \|[^|]*SOFORT/m.test(offen);
+    const notfall = (zellen: string[]): boolean => i56Offen && zellen.join("|").includes("I56");
+    if (i56Offen) {
+      // Der gemeldete Schlüssel ist ein Anthropic-Schlüssel; seine Zeile muss den Notfall tragen.
+      const anthropic = [...jeVariable.entries()].find(([n]) => n.startsWith("ANTHROPIC_"));
+      expect(anthropic && notfall(anthropic[1]), "I56 an der Anthropic-Zeile").toBe(true);
+    }
     const fehler: string[] = [];
     for (const name of GEHEIM) {
       const zellen = jeVariable.get(name);
@@ -235,11 +245,20 @@ describe("Geheimnisse nur in der Betriebsumgebung", () => {
       if (letzte !== "nicht nachgewiesen" && !letzte.includes("Beleg:")) {
         fehler.push(`${name}: letzte Rotation ohne Beleg`);
       }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(termin) || termin < stand) {
+      if (notfall(zellen)) {
+        if (termin !== "sofort") {
+          fehler.push(`${name}: offener Notfall aufgeschoben`);
+        }
+      } else if (!/^\d{4}-\d{2}-\d{2}$/.test(termin) || termin < stand) {
         fehler.push(`${name}: kein künftiger Termin`);
       }
     }
     expect(fehler).toEqual([]);
+    // §11 führt den offenen Notfall ebenso als sofort fällig, nicht mit Termin.
+    const pflichten = abschnitt(HANDBUCH, "## 11. ", "\n---");
+    if (i56Offen) {
+      expect(pflichten).toMatch(/I56[^\n]*sofort fällig/);
+    }
     // Die Zuordnung ist entschieden — §11 führt sie nicht mehr als offen.
     expect(abschnitt(HANDBUCH, "## 11. ", "\n---")).not.toContain("Verantwortlichen benennen");
   });

@@ -145,7 +145,8 @@ Anbieterkonto. Handgriffe, die historisch Peter vorbehalten sind (OFFEN.md I56),
 das Alter eines Werts unbekannt, deshalb liegt der erste Termin vor der Regelfrist aus §1 — je
 kürzer, je größer die Reichweite laut „Tatsächliche Zugriffswege“. Nach dem ersten nachgewiesenen
 Wechsel gilt die Regelfrist aus §1, gerechnet ab diesem Wechsel. Ein Wert, der in einer Instanz nicht
-gesetzt ist, hat dort keinen Termin. Nach jedem Wechsel trägt der Betreiber hier Datum und Beleg ein
+gesetzt ist, hat dort keinen Termin. **Ein offener Notfall (Leckbericht in OFFEN.md) bekommt kein
+Datum, sondern „sofort“** — ein Datum wäre ein Aufschub. Nach jedem Wechsel trägt der Betreiber hier Datum und Beleg ein
 (z. B. Coolify-Änderungsprotokoll oder Widerrufsbestätigung des Anbieters).
 
 Stand: 2026-10-12.
@@ -154,7 +155,7 @@ Stand: 2026-10-12.
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Betriebszugang | Coolify-/Hetzner-Konto, Server-SSH | Peter (fachlich und Durchführung, Kontoinhaber) | nicht nachgewiesen | 2026-11-12 | größte Reichweite (jede Service-Env); danach jährlich und bei jedem Personenwechsel |
 | 1 | Datenbank-Zugang | `DATABASE_URL` | Peter (fachlich); Durchführung: Betriebsweg Coolify + Postgres | nicht nachgewiesen | 2026-11-12 | Reichweite: gesamter Bestand und Sitzungen; danach jährlich |
-| 2 | KI-Schlüssel Anthropic | `ANTHROPIC_API_KEY` | Peter selbst (OFFEN.md I56, ihm vorbehalten); Durchführung: Anbieterkonto + Coolify | nicht nachgewiesen | 2026-10-19 | offener Leckbericht OFFEN.md I56 (Schlüssel im Klartext in einem Protokoll) — Notfallwechsel, sofort |
+| 2 | KI-Schlüssel Anthropic | `ANTHROPIC_API_KEY` | Peter selbst (OFFEN.md I56, ihm vorbehalten); Durchführung: Anbieterkonto + Coolify | nicht nachgewiesen | sofort | offener Leckbericht OFFEN.md I56 (Schlüssel im Klartext in einem Protokoll, dort „BEI PEDI, SOFORT“) — Notfallwechsel ohne Aufschub; Durchführung nicht nachgewiesen |
 | 2 | KI-Schlüssel OpenAI | `OPENAI_API_KEY` | Peter (fachlich); Durchführung: Anbieterkonto + Coolify | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite nur Anbieterkonto (Kosten); danach ≤ 12 Monate |
 | 2 | Schlüssel des lokalen Modells | `KLARWERK_LOCAL_LLM_KEY` | Peter (fachlich); Durchführung: lokaler Modellserver + Coolify | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite nur Modellserver; danach ≤ 12 Monate |
 | 2 | Transkriptionsdienst | `MEDIA_TRANSCRIBE_API_KEY` | Peter (fachlich); Durchführung: Anbieterkonto + Coolify | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite nur Anbieterkonto; danach ≤ 12 Monate |
@@ -292,7 +293,7 @@ braucht zuerst eine neue Entscheidung (Plan: Stufe 2).
 
 - **Zuständigkeit und Termine sind festgelegt** (§1b, Peters Entscheidung vom 12.10.). Offen bleibt
   die **Durchführung** der Wechsel zu diesen Terminen und das Eintragen von Datum und Beleg in §1b.
-- Offene Handgriffe aus OFFEN.md I56 (Schlüssel in Coolify wechseln, Protokolldatei löschen) — Peter vorbehalten, Termin §1b.
+- Offene Handgriffe aus OFFEN.md I56 (Schlüssel in Coolify wechseln, Protokolldatei löschen) — Peter vorbehalten, **sofort fällig** (§1b); Durchführung nicht nachgewiesen.
 - Auswahl/Einrichtung eines **externen Secret-Stores** (Vault/Doppler/Cloud SM) — Option, nicht eingerichtet.
 - ~~**Secret-Scanning-Tooling** in CI aktivieren~~ — erledigt über den Schritt `geheimnis-scan` in `./tools/check` (§10). Offen bleibt nur: Scan der bestehenden **Git-Historie** und ein lokaler Pre-Commit-Hook — Ops.
 - **Zertifikats-/Key-Lifecycle** (TLS) über Hosting/Reverse-Proxy — Ops.
