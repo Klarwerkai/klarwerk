@@ -541,6 +541,7 @@ PFLICHTTABELLEN=(
   verstaendnis_fragensaetze
   verstaendnis_versuche
   meeting_dokumentbezuege
+  klara_notizen
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do
