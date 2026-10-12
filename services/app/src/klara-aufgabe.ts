@@ -89,7 +89,12 @@ export interface KlaraAufgabe {
 export const KLARA_AUFGABE_TITEL_MAX = 200;
 export const KLARA_AUFGABE_INHALT_MAX = 20_000;
 export const KLARA_AUFGABE_MAX_JE_KONTO = 2_000;
-export const KLARA_AUFGABE_LISTE_MAX = 500;
+/**
+ * Nacharbeit 2 (Ben): die Liste liefert JEDE gespeicherte Aufgabe — die Grenze ist dieselbe wie die
+ * Höchstzahl je Konto, also nie ein Ausschnitt. Vorher kamen nur die 500 zuletzt geänderten an;
+ * ältere (auch offene mit hoher Priorität) verschwanden nach dem Neuladen aus der Bedienung.
+ */
+export const KLARA_AUFGABE_LISTE_MAX = KLARA_AUFGABE_MAX_JE_KONTO;
 const VORGANG_RE = /^[A-Za-z0-9_-]{8,100}$/;
 
 const PRIORITAETS_RANG: Record<KlaraAufgabePrioritaet, number> = { hoch: 0, mittel: 1, niedrig: 2 };
@@ -116,7 +121,10 @@ export function aufgabenOrdnung(a: KlaraAufgabe, b: KlaraAufgabe): number {
 export interface KlaraAufgabeRepo {
   hole(kontoId: string, id: string): Promise<KlaraAufgabe | null>;
   zuVorgang(kontoId: string, vorgang: string): Promise<KlaraAufgabe | null>;
-  /** Die eigenen Aufgaben (wahlweise nur ein Status), zuletzt geänderte zuerst. */
+  /**
+   * Die eigenen Aufgaben (wahlweise nur ein Status) in der Ordnung `aufgabenOrdnung` — die
+   * Ordnung gilt VOR der Begrenzung, damit eine Grenze nie offene, wichtige Aufgaben abschneidet.
+   */
   liste(kontoId: string, status: KlaraAufgabeStatus | null, limit: number): Promise<KlaraAufgabe[]>;
   anzahl(kontoId: string): Promise<number>;
   /** Legt `a` an — oder `false`, wenn das Konto diesen Vorgang schon hat (nichts geschrieben). */
@@ -149,7 +157,7 @@ export class InMemoryKlaraAufgabeRepo implements KlaraAufgabeRepo {
   ): Promise<KlaraAufgabe[]> {
     const treffer = this.eigene(kontoId)
       .filter((a) => status === null || a.status === status)
-      .sort((a, b) => b.geaendertAm.localeCompare(a.geaendertAm) || b.id.localeCompare(a.id));
+      .sort(aufgabenOrdnung);
     return Promise.resolve(treffer.slice(0, limit));
   }
 
@@ -233,7 +241,9 @@ export class PgKlaraAufgabeRepo implements KlaraAufgabeRepo {
       `SELECT data FROM klara_aufgaben
         WHERE konto_id = $1
           AND ($2::text IS NULL OR status = $2)
-        ORDER BY geaendert_am DESC, id DESC
+        ORDER BY (status = 'erledigt'),
+          CASE data->>'prioritaet' WHEN 'hoch' THEN 0 WHEN 'mittel' THEN 1 ELSE 2 END,
+          geaendert_am DESC, id DESC
         LIMIT $3`,
       [kontoId, status, limit],
     );

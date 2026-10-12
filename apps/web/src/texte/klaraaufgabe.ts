@@ -48,6 +48,7 @@ export default {
     "klaraaufgabe.erledigtMeldung": "„{{titel}}“ ist erledigt.",
     "klaraaufgabe.wiederOffenMeldung": "„{{titel}}“ ist wieder offen.",
     "klaraaufgabe.geloescht": "Aufgabe gelöscht.",
+    "klaraaufgabe.zielNichtGeoeffnet": "Die verlinkte Aufgabe ließ sich nicht öffnen: {{grund}}",
     "klaraaufgabe.fehler.konflikt":
       "Die Aufgabe wurde inzwischen an anderer Stelle geändert. Bitte verwerfen, um den aktuellen Stand zu sehen, und erneut ändern.",
     "klaraaufgabe.fehler.voll":
@@ -109,6 +110,7 @@ export default {
     "klaraaufgabe.erledigtMeldung": "“{{titel}}” is done.",
     "klaraaufgabe.wiederOffenMeldung": "“{{titel}}” is open again.",
     "klaraaufgabe.geloescht": "Task deleted.",
+    "klaraaufgabe.zielNichtGeoeffnet": "The linked task could not be opened: {{grund}}",
     "klaraaufgabe.fehler.konflikt":
       "The task was changed elsewhere in the meantime. Please discard to see the current state and change it again.",
     "klaraaufgabe.fehler.voll":
@@ -170,6 +172,7 @@ export default {
     "klaraaufgabe.erledigtMeldung": "‘{{titel}}’ is afgerond.",
     "klaraaufgabe.wiederOffenMeldung": "‘{{titel}}’ is weer open.",
     "klaraaufgabe.geloescht": "Taak verwijderd.",
+    "klaraaufgabe.zielNichtGeoeffnet": "De gelinkte taak kon niet worden geopend: {{grund}}",
     "klaraaufgabe.fehler.konflikt":
       "De taak is intussen elders gewijzigd. Verwerp je wijziging om de actuele stand te zien en wijzig opnieuw.",
     "klaraaufgabe.fehler.voll":

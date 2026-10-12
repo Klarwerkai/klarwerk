@@ -21,6 +21,7 @@ import { guardedLocalPgTestUrl } from "../../services/db-tx";
 
 const ANNA = "u-pg-aufgabe-anna";
 const BERT = "u-pg-aufgabe-bert";
+const CARL = "u-pg-aufgabe-carl";
 const BEZUG = {
   pfad: "/wissen/ko-presse-4",
   seitenName: "Lesen",
@@ -220,5 +221,36 @@ describe("Klara 07 · persönliche Aufgaben gegen echtes PostgreSQL", () => {
     const erledigt = stand.status === "erledigt" && stand.prioritaet === "mittel";
     const niedrig = stand.status === "offen" && stand.prioritaet === "niedrig";
     expect(erledigt !== niedrig).toBe(true);
+  });
+
+  // Nacharbeit 2 (Ben): die Ordnung gilt im SQL VOR dem LIMIT — eine Grenze schneidet nie eine
+  // ältere, offene Aufgabe hoher Priorität zugunsten neuerer ab.
+  it("K2 · SQL ordnet vor der Grenze: offen vor erledigt, dann Priorität, dann Änderungszeit", async () => {
+    const pool = neuePool();
+    await pool.query("DELETE FROM klara_aufgaben WHERE konto_id = $1", [CARL]);
+    const notizId = await notiz(CARL, "Grundlage", "Grundlage");
+    const lege = (titel: string, prioritaet: "hoch" | "mittel" | "niedrig") =>
+      neuerDienst().lege(CARL, {
+        vorgang: vorgang(),
+        weg: "notiz",
+        quelle: { notizId },
+        titel,
+        prioritaet,
+      });
+    const { aufgabe: alt } = await lege("Alt und wichtig", "hoch");
+    const { aufgabe: erledigt } = await lege("Erledigt, aber hoch", "hoch");
+    await neuerDienst().aendere(CARL, erledigt.id, { fassung: 1, status: "erledigt" });
+    await lege("Neu, mittel", "mittel");
+    await lege("Neuer, niedrig", "niedrig");
+    const repo = new PgKlaraAufgabeRepo(neuePool());
+    // Mit Grenze 1 kommt genau die älteste offene hohe — nicht die zuletzt geänderte.
+    expect((await repo.liste(CARL, null, 1)).map((a) => a.titel)).toEqual(["Alt und wichtig"]);
+    expect((await repo.liste(CARL, null, 10)).map((a) => a.titel)).toEqual([
+      "Alt und wichtig",
+      "Neu, mittel",
+      "Neuer, niedrig",
+      "Erledigt, aber hoch",
+    ]);
+    expect((await neuerDienst().liste(CARL, undefined))[0]?.id).toBe(alt.id);
   });
 });

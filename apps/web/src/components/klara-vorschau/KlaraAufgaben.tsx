@@ -18,6 +18,7 @@ import { useAssistenzT } from "../../lib/assistenzProfil";
 import { formatKoTimestamp } from "../../lib/koDates";
 import {
   aendereAufgabe,
+  holeAufgabe,
   ladeAufgaben,
   loescheAufgabe,
   nochmalAendern,
@@ -51,15 +52,22 @@ function bezugText(a: KlaraAufgabe, t: T): string {
 
 function AufgabeZeile({
   a,
-  anfangsOffen,
+  istZiel,
 }: {
   a: KlaraAufgabe;
-  anfangsOffen: boolean;
+  istZiel: boolean;
 }): JSX.Element {
   const { t, i18n } = useAssistenzT();
   const id = useId();
   const s = useAufgaben();
-  const [offen, setOffen] = useState(anfangsOffen);
+  const [offen, setOffen] = useState(istZiel);
+  // Nacharbeit 2 (Ben): nicht nur beim ersten Zeigen — wird diese Aufgabe später zum Ziel eines
+  // Ergebnislinks (`?persoenlich=<id>` bei schon offener Seite), öffnet sie sich ebenfalls.
+  useEffect(() => {
+    if (istZiel) {
+      setOffen(true);
+    }
+  }, [istZiel]);
   const [titel, setTitel] = useState(a.titel);
   const [inhalt, setInhalt] = useState(a.inhalt);
   const [loeschenFragen, setLoeschenFragen] = useState(false);
@@ -269,6 +277,15 @@ export function KlaraAufgaben({ offenId = null }: { offenId?: string | null }): 
       void ladeAufgaben(t, generation);
     }
   }, [laden, generation, t]);
+  // Nacharbeit 2 (Ben): ein direkt verlinktes Ziel hängt nicht am Listenausschnitt — fehlt es nach
+  // dem Lesen in der Liste, wird es einzeln vom Server geholt (oder sein Fehlen gemeldet).
+  const zielFehlt =
+    offenId !== null && laden === "bereit" && !s.liste.some((a) => a.id === offenId);
+  useEffect(() => {
+    if (zielFehlt && offenId) {
+      void holeAufgabe(offenId, t);
+    }
+  }, [zielFehlt, offenId, t]);
   const offene = s.liste.filter((a) => a.status === "offen").length;
 
   return (
@@ -358,7 +375,7 @@ export function KlaraAufgaben({ offenId = null }: { offenId?: string | null }): 
       ) : (
         <ul className="space-y-1" data-testid="klara-aufgaben-liste">
           {s.liste.map((a) => (
-            <AufgabeZeile key={a.id} a={a} anfangsOffen={a.id === offenId} />
+            <AufgabeZeile key={a.id} a={a} istZiel={a.id === offenId} />
           ))}
         </ul>
       )}

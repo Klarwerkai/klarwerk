@@ -30,7 +30,12 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useNavigate,
+} from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
@@ -168,6 +173,25 @@ async function vorrichtung(): Promise<{ a: Aufbau; ich: Konto }> {
   return { a, ich };
 }
 
+/**
+ * Nacharbeit 2 (Ben): ein Ergebnislink, der bei SCHON OFFENER Seite „Meine Aufgaben“ angeklickt
+ * wird — derselbe Router, dieselbe Seite, nur der Suchparameter `persoenlich` wechselt. Das Ziel wird
+ * erst beim Klick gelesen (`sprungZiel`), so wie ein zweiter Ergebnislink auf ein anderes Ziel zeigt.
+ */
+let sprungZiel = "";
+function Sprung(): JSX.Element {
+  const navigiere = useNavigate();
+  return createElement(
+    "button",
+    {
+      type: "button",
+      "data-testid": "test-sprung",
+      onClick: () => navigiere(`/aufgaben?persoenlich=${encodeURIComponent(sprungZiel)}`),
+    },
+    "Sprung",
+  );
+}
+
 async function montiere(pfad: string): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -182,7 +206,10 @@ async function montiere(pfad: string): Promise<void> {
     createElement(
       Routes,
       null,
-      createElement(Route, { path: "/aufgaben", element: createElement(MyTasks) }),
+      createElement(Route, {
+        path: "/aufgaben",
+        element: createElement("div", null, createElement(MyTasks), createElement(Sprung)),
+      }),
       createElement(Route, { path: "*", element: createElement("div", null, "Seite") }),
     ),
   );
@@ -541,5 +568,52 @@ describe("U5 · K3 — „Meine Aufgaben“: persönlich getrennt von gemeinsam,
     expect(eintraege(abschnitt())).toHaveLength(0);
     expect(document.body.textContent).not.toContain("Nur meine Aufgabe zu Presse 4");
     expect(await serverAufgaben(a, fremd)).toEqual([]);
+  });
+});
+
+// ================================================================================================
+describe("U6 · K1/K4 — Nacharbeit 2 (Ben): Ergebnislink bei schon offener Seite öffnet sein Ziel", () => {
+  it("Wechsel A → B öffnet B; ein nicht (mehr) vorhandenes Ziel wird gemeldet, nicht verschwiegen", async () => {
+    await vorrichtung();
+    await montiere("/klara-vorschau");
+    await oeffnen();
+    await alsNotiz("Erste Aufgabe A");
+    await klick(q(document, "klara-notiz-als-aufgabe"));
+    await bis(() => eintraege().length === 1, 120);
+    const idA = eintraege()[0]?.dataset.aufgabe ?? "";
+    await klick(q(document, "klara-notiz-schliessen"));
+    await alsNotiz("Zweite Aufgabe B");
+    await klick(q(document, "klara-notiz-als-aufgabe"));
+    await bis(() => eintraege().length === 2, 120);
+    const idB = eintraege().find((e) => e.dataset.aufgabe !== idA)?.dataset.aufgabe ?? "";
+    expect(idB).not.toBe("");
+
+    abbauen();
+    vergiss();
+    await montiere(`/aufgaben?persoenlich=${idA}`);
+    const abschnitt = (): ParentNode => q(document, "aufgaben-persoenlich") ?? document;
+    const zeile = (id: string): HTMLElement | undefined =>
+      eintraege(abschnitt()).find((e) => e.dataset.aufgabe === id);
+    await bis(() => eintraege(abschnitt()).length === 2, 200);
+    expect(q(zeile(idA) as HTMLElement, "klara-aufgabe-offen")).not.toBeNull();
+    expect(q(zeile(idB) as HTMLElement, "klara-aufgabe-offen")).toBeNull();
+
+    // Zweiter Ergebnislink, DIESELBE offene Seite: jetzt soll B aufgehen.
+    sprungZiel = idB;
+    await klick(q(document, "test-sprung"));
+    await bis(
+      () => Boolean(zeile(idB) && q(zeile(idB) as HTMLElement, "klara-aufgabe-offen")),
+      120,
+    );
+    expect(q(zeile(idB) as HTMLElement, "klara-aufgabe-offen")).not.toBeNull();
+
+    // Ein Ziel, das es (für diese Person) nicht gibt: kein stilles Nichts, sondern eine Meldung.
+    sprungZiel = "gibt-es-nicht";
+    await klick(q(document, "test-sprung"));
+    await bis(
+      () => text(abschnitt(), "klara-aufgabe-meldung").includes("ließ sich nicht öffnen"),
+      120,
+    );
+    expect(text(abschnitt(), "klara-aufgabe-meldung")).toContain("ließ sich nicht öffnen");
   });
 });

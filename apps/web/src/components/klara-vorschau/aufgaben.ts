@@ -190,6 +190,30 @@ export async function ladeAufgaben(
   }
 }
 
+/**
+ * Nacharbeit 2 (Ben): eine einzelne eigene Aufgabe frisch vom Server — für ein direkt verlinktes Ziel
+ * (`?persoenlich=<id>`), das nicht in der gelesenen Liste steht. Gefunden: in die Liste; fremd oder
+ * gelöscht (404): das steht als Meldung da, statt still nichts zu öffnen.
+ */
+export async function holeAufgabe(id: string, t: TFunction): Promise<KlaraAufgabe | null> {
+  const gen = generation;
+  try {
+    const { aufgabe } = await klaraAufgabeApi.hole(id);
+    if (gen !== generation) {
+      return null;
+    }
+    setze((z) => ({ ...z, liste: mitAufgabe(z.liste, aufgabe) }));
+    return aufgabe;
+  } catch (fehler) {
+    if (gen !== generation) {
+      return null;
+    }
+    const text = aufgabenFehler(fehler, t);
+    setze((z) => ({ ...z, meldung: t("klaraaufgabe.zielNichtGeoeffnet", { grund: text }) }));
+    return null;
+  }
+}
+
 async function versucheAnlegen(vorgang: string, t: TFunction): Promise<KlaraAufgabe | null> {
   const gen = generation;
   const eintrag = zustand.ausstehend.find((a) => a.vorgang === vorgang);

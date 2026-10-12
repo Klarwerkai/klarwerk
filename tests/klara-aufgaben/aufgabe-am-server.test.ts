@@ -23,8 +23,15 @@ import {
   buildApp,
   inMemoryRepos,
 } from "../../services/app/src/build-app";
-import { InMemoryKlaraAufgabeRepo, type KlaraAufgabe } from "../../services/app/src/klara-aufgabe";
+import {
+  InMemoryKlaraAufgabeRepo,
+  KLARA_AUFGABE_LISTE_MAX,
+  KLARA_AUFGABE_MAX_JE_KONTO,
+  type KlaraAufgabe,
+  KlaraAufgabeDienst,
+} from "../../services/app/src/klara-aufgabe";
 import type { KlaraAuftrag } from "../../services/app/src/klara-auftrag";
+import { InMemoryKlaraNotizRepo } from "../../services/app/src/klara-notiz";
 import {
   KLARA_AUFGABE_ANGELEGT,
   KLARA_AUFGABE_GEAENDERT,
@@ -532,6 +539,58 @@ describe("A3 · K3 — persönlich bleibt persönlich, gemeinsam bleibt gemeinsa
 });
 
 // ================================================================================================
+describe("A2b · K2 — Nacharbeit 2 (Ben): jede gespeicherte Aufgabe bleibt erreichbar", () => {
+  it("die Liste begrenzt nicht unter der Höchstzahl je Konto", () => {
+    expect(KLARA_AUFGABE_LISTE_MAX).toBeGreaterThanOrEqual(KLARA_AUFGABE_MAX_JE_KONTO);
+  });
+
+  it("mehr Aufgaben als die frühere Grenze (500): alle kommen an, die älteste offene hohe zuerst", async () => {
+    const notizen = new InMemoryKlaraNotizRepo();
+    const KONTO = "u-viele";
+    await notizen.lege({
+      id: "n-viele",
+      kontoId: KONTO,
+      vorgang: "notiz-viele-1",
+      art: "notiz",
+      weg: "geschrieben",
+      titel: "Sammelnotiz",
+      inhalt: "Viele Aufgaben",
+      offeneFragen: [],
+      objektbezug: { pfad: "/fragen", seitenName: "Fragen", objekt: "—" },
+      quelle: null,
+      angelegtAm: "2026-10-12T08:00:00.000Z",
+      geaendertAm: "2026-10-12T08:00:00.000Z",
+      fassung: 1,
+    });
+    let uhr = Date.parse("2026-10-12T08:00:00.000Z");
+    const dienst = new KlaraAufgabeDienst({
+      repo: new InMemoryKlaraAufgabeRepo(),
+      notizen,
+      jetzt: () => {
+        uhr += 1_000;
+        return uhr;
+      },
+    });
+    const lege = (i: number, prioritaet: "hoch" | "mittel", titel: string) =>
+      dienst.lege(KONTO, {
+        vorgang: `viele-${String(i).padStart(4, "0")}`,
+        weg: "notiz",
+        quelle: { notizId: "n-viele" },
+        titel,
+        prioritaet,
+      });
+    // Die ÄLTESTE Aufgabe ist offen und hoch priorisiert — genau die, die vorher wegfiel.
+    const { aufgabe: alt } = await lege(0, "hoch", "Älteste, aber wichtig");
+    for (let i = 1; i <= 520; i++) {
+      await lege(i, "mittel", `Aufgabe ${i}`);
+    }
+    const liste = await dienst.liste(KONTO, undefined);
+    expect(liste).toHaveLength(521);
+    expect(liste[0]?.id).toBe(alt.id);
+    expect(new Set(liste.map((a) => a.id)).size).toBe(521);
+  });
+});
+
 describe("A4 · K4 — Fehler und doppelte Wiederholung, tatsächlicher Status in Klara", () => {
   it("zweimal „Als Aufgabe“ an derselben Notiz (derselbe Vorgang) ergibt eine Aufgabe", async () => {
     const n = await notiz(erik.token, "Einmal genügt");
