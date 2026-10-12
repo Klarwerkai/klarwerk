@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
-import { CAPTURE_FILE_TEXT } from "../../apps/web/src/lib/captureFromFile";
-import {
-  createPointDrafts,
-  draftPayloadFromPoint,
-  mergedDraftFromPoints,
-} from "../../apps/web/src/lib/fileMultiPoint";
+import { CAPTURE_FILE_TEXT, mergeSelectedIntoOne } from "../../apps/web/src/lib/captureFromFile";
+import { createPointDrafts, draftPayloadFromPoint } from "../../apps/web/src/lib/fileMultiPoint";
 
 // SCRUM-409 (PMO-FEA-0008-Delta): Mehrpunkt-Entwürfe + Zusammenführen im „Aus Datei"-Weg.
 // Getestet wird die DOM-freie Logik: Entwurf je Punkt MIT sichtbarem Quellenvermerk,
@@ -31,15 +27,24 @@ describe("SCRUM-409: Mehrpunkt-Entwürfe und Zusammenführen", () => {
     expect(d.bodyHtml).toContain("Quelle: wartung-l4.pdf");
   });
 
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Hier prüfte der Fall `mergedDraftFromPoints`, einen
+  // Baustein ohne Produktleser (entfernt). Zusammengeführt wird über `mergeSelectedIntoOne`
+  // (`lib/captureFromFile.ts`, Knopf „Verbinden") — dieselbe Zusage, an diesem Weg gemessen.
   it("führt erst ab 2 Punkten zusammen; der Eintrag trägt alle Kurzfassungen", () => {
-    expect(mergedDraftFromPoints([P1], false)).toBeNull();
-    expect(mergedDraftFromPoints([], false)).toBeNull();
-    const merged = mergedDraftFromPoints([P1, P2], false);
+    const p1 = { ...P1, id: "p1", selected: true };
+    const p2 = { ...P2, id: "p2", selected: true };
+    expect(mergeSelectedIntoOne([p1, { ...p2, selected: false }])).toEqual([
+      p1,
+      { ...p2, selected: false },
+    ]);
+    expect(mergeSelectedIntoOne([])).toEqual([]);
+    const [merged, ...rest] = mergeSelectedIntoOne([p1, p2]);
+    expect(rest).toEqual([]);
     expect(merged?.title).toBe(P1.title);
-    expect(merged?.statement).toContain(P1.summary);
-    expect(merged?.statement).toContain(P2.summary);
-    expect(merged?.conditions).toEqual([]);
-    expect(merged?.measures).toEqual([]);
+    expect(merged?.summary).toContain(P1.summary);
+    expect(merged?.summary).toContain(P2.summary);
+    expect(merged?.sourceExcerpt).toContain(P1.sourceExcerpt);
+    expect(merged?.sourceExcerpt).toContain(P2.sourceExcerpt);
   });
 
   it("legt Entwürfe EINZELN an — ein Teilfehler kippt nicht den Stapel", async () => {

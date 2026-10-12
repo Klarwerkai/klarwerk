@@ -4,6 +4,7 @@ import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 // JOB 3549 R5: `KnowledgeRef`, `ReasonerLocale`, `ReasonerProvider` und `StructureResult` wurden
 // nur vom mitschreibenden Provider des Falls FR-I18N-01 gebraucht; der ist umgezogen (s. u.).
 import { type AnswerResult, Reasoner } from "../../reasoner";
+import { InMemoryAssignmentRepo, InMemoryRatingRepo, ValidationService } from "../../validation";
 import { InMemoryGapRepo } from "./repo";
 import { AskService } from "./service";
 import type { Gap } from "./types";
@@ -11,6 +12,13 @@ import type { Gap } from "./types";
 async function setup() {
   const koRepo = new InMemoryKoRepo();
   const koService = new KoService({ repo: koRepo });
+  // produkt:20261010:wissenskreislauf-schliessen: der fachliche Abschluss liest den Prüfstand der
+  // vorhandenen Validierung — derselbe Anschluss wie in der Kompositionswurzel.
+  const validation = new ValidationService({
+    koService,
+    ratings: new InMemoryRatingRepo(),
+    assignments: new InMemoryAssignmentRepo(),
+  });
   // G27 R1 / Entscheidung 06 §4: mechanische Initialisierung über den PRODUKTPFAD. Die Suche ist
   // seit R1 fail-closed; ein direkter Testaufbau ist eine nicht in Betrieb genommene Instanz.
   // In der echten App tut das die Startorchestrierung in build-app.ts.
@@ -29,8 +37,17 @@ async function setup() {
     koService,
     gaps,
     audit,
+    pruefstand: (koId, koVersion) => validation.pruefstandFuer(koId, koVersion),
   });
-  return { ask, koService, audit, gaps };
+  // Die vorgeschriebene Fachfreigabe über den ECHTEN Bewertungsweg: so viele grüne Stimmen der
+  // aktuellen Fassung, wie das Objekt verlangt.
+  const freigeben = async (koId: string): Promise<void> => {
+    const ko = await koService.get(koId);
+    for (let i = 0; i < (ko?.neededValidations ?? 0); i++) {
+      await validation.rate(koId, `pruefer-${i}`, "up");
+    }
+  };
+  return { ask, koService, audit, gaps, freigeben };
 }
 
 describe("AskService", () => {
@@ -87,6 +104,47 @@ describe("AskService", () => {
     expect(after?.trust).toBeGreaterThan(ko.trust);
     const audit = await ctx.audit.list({ action: "answer.helpful" });
     expect(audit).toHaveLength(1);
+  });
+
+  // RECHERCHE:pmo-fea-0002: nach einer Autor-Übergabe (FR-LIF-02) trägt der Beleg BEIDE — den
+  // Autor zum Zeitpunkt des Danks und den ursprünglichen Autor, der sonst nichts mehr erführe.
+  it("pmo-fea-0002: der Beleg nennt nach Übergabe auch den ursprünglichen Autor", async () => {
+    const ko = (await ctx.koService.list())[0];
+    if (!ko) {
+      throw new Error("KO fehlt.");
+    }
+    await ctx.koService.setAuthor(ko.id, "bob", "admin");
+    await ctx.ask.markHelpful(await receiptFor("viewer-1"), ko.id, "viewer-1");
+    const [eintrag] = await ctx.audit.list({ action: "answer.helpful" });
+    expect(eintrag?.payload).toMatchObject({ koAuthor: "bob", koOriginalAuthor: "anna" });
+  });
+
+  // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt — OHNE vorausgehende Antwort. Derselbe
+  // Kern wie das Antwortfeedback; ein Schritt je Person und Objekt, gleich über welchen Weg.
+  it("R-0749: markKoHelpful ohne Antwortbeleg — Trust +2, Audit mit via, genau einmal je Person", async () => {
+    const ko = (await ctx.koService.list())[0];
+    if (!ko) {
+      throw new Error("KO fehlt.");
+    }
+    await ctx.ask.markKoHelpful(ko.id, "viewer-1");
+    expect((await ctx.koService.get(ko.id))?.trust).toBe(Math.min(99, ko.trust + 2));
+    const [eintrag] = await ctx.audit.list({ action: "answer.helpful" });
+    expect(eintrag?.payload).toMatchObject({
+      koTitle: ko.title,
+      koAuthor: "anna",
+      koOriginalAuthor: "anna",
+      via: "wissensobjekt",
+    });
+    // Zweiter Klick am Objekt UND ein späteres Antwortfeedback derselben Person: kein weiterer Schritt.
+    await ctx.ask.markKoHelpful(ko.id, "viewer-1");
+    await ctx.ask.markHelpful(await receiptFor("viewer-1"), ko.id, "viewer-1");
+    expect(await ctx.audit.list({ action: "answer.helpful" })).toHaveLength(1);
+    expect((await ctx.koService.get(ko.id))?.trust).toBe(Math.min(99, ko.trust + 2));
+    // Unbekanntes Objekt: NOT_FOUND, nichts geschrieben.
+    await expect(ctx.ask.markKoHelpful("gibt-es-nicht", "viewer-1")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    expect(await ctx.audit.list({ action: "answer.helpful" })).toHaveLength(1);
   });
 
   // FUNKE-FIX P0 (bens ROT-1): eine unbelegte/fremd gewählte KO-ID ist NICHT mehr wirksam →
@@ -163,14 +221,73 @@ describe("AskService", () => {
     }
     const assigned = await ctx.ask.assignGap(gap.id, "experte-1");
     expect(assigned.assignee).toBe("experte-1");
-    const closed = await ctx.ask.closeGap(gap.id);
+    const ko = (await ctx.koService.list())[0];
+    if (!ko) {
+      throw new Error("KO fehlt.");
+    }
+    // R-0846 / L6: geschlossen wird mit dem Wissensobjekt, das die Lücke beantwortet.
+    // produkt:20261010:wissenskreislauf-schliessen: und nur, wenn es fachlich freigegeben ist —
+    // ein bloss vorhandenes, ungeprüftes Objekt schliesst nicht mehr.
+    await expect(ctx.ask.closeGap(gap.id, ko.id)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect((await ctx.gaps.findById(gap.id))?.status).toBe("offen");
+    await ctx.freigeben(ko.id);
+    const closed = await ctx.ask.closeGap(gap.id, ko.id);
     expect(closed.status).toBe("geschlossen");
+    expect(closed.koId).toBe(ko.id);
 
     await expect(ctx.ask.deleteGap(gap.id, false)).rejects.toMatchObject({
       code: "CONFIRM_REQUIRED",
     });
     await ctx.ask.deleteGap(gap.id, true);
     expect(await ctx.ask.listGaps()).toHaveLength(0);
+  });
+
+  // R-0846 / L6: ohne gültigen Objektbezug schliesst keine Lücke — sie bleibt offen.
+  it("L6: ohne Bezug, mit unbekanntem oder gelöschtem Objekt bleibt die Lücke offen", async () => {
+    const { gap } = await ctx.ask.ask("Unbekannte Frage zum Bezug?");
+    if (!gap) {
+      throw new Error("Lücke erwartet.");
+    }
+    const ko = (await ctx.koService.list())[0];
+    if (!ko) {
+      throw new Error("KO fehlt.");
+    }
+    await expect(ctx.ask.closeGap(gap.id)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(ctx.ask.closeGap(gap.id, "   ")).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(ctx.ask.closeGap(gap.id, "ko-gibt-es-nicht")).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await ctx.koService.delete(ko.id, "anna");
+    await expect(ctx.ask.closeGap(gap.id, ko.id)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    const danach = await ctx.gaps.findById(gap.id);
+    expect(danach?.status).toBe("offen");
+    expect(danach?.koId).toBeUndefined();
+  });
+
+  it("L6: ein schon an der Lücke stehender gültiger Bezug trägt das Schliessen; ein verwaister nicht", async () => {
+    const ko = (await ctx.koService.list())[0];
+    if (!ko) {
+      throw new Error("KO fehlt.");
+    }
+    const basis: Gap = {
+      id: "gap-mit-bezug",
+      question: "Frage mit Bezug",
+      status: "offen",
+      assignee: null,
+      priority: "mittel",
+      createdAt: new Date().toISOString(),
+      koId: ko.id,
+    };
+    await ctx.gaps.insert(basis);
+    // produkt:20261010:wissenskreislauf-schliessen: der stehende Bezug trägt erst nach der Fachfreigabe.
+    await ctx.freigeben(ko.id);
+    const geschlossen = await ctx.ask.closeGap(basis.id);
+    expect(geschlossen.status).toBe("geschlossen");
+    expect(geschlossen.koId).toBe(ko.id);
+
+    await ctx.gaps.insert({ ...basis, id: "gap-verwaist", koId: "ko-endgeloescht" });
+    await expect(ctx.ask.closeGap("gap-verwaist")).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect((await ctx.gaps.findById("gap-verwaist"))?.status).toBe("offen");
   });
 
   it("SCRUM-115: neue Lücke hat Default-Priorität 'mittel'", async () => {

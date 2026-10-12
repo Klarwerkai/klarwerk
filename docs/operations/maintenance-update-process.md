@@ -307,6 +307,10 @@ Klarwerk ist **anbieteragnostisch**: ohne `ANTHROPIC_API_KEY` läuft der **deter
 4. **Kommunizieren:** Stakeholder/Pedi informieren; bei DSGVO-Relevanz Meldepflichten prüfen.
 5. **Nacharbeit:** Ursache dokumentieren, Gate/Checkliste ergänzen (Harness-Correction-Gedanke), erst dann erneut ausrollen.
 
+> **Insel:** Dieser Pfad ist auf Cloud/Coolify zugeschnitten. Für die Insel ist ein Sicherheitsupdate
+> **weder signiert noch geprobt**, und der heutige Umschaltweg unterbricht den Betrieb. Sollablauf,
+> Abweichung vom Ziel „ohne Unterbrechung" und die offenen Entscheidungen stehen in `docs/operations/insel-hausbetrieb-anforderungen.md` §4.
+
 ---
 
 ## 12. Offene Betreiberpflichten / Nicht-Ziele
@@ -315,6 +319,8 @@ Klarwerk ist **anbieteragnostisch**: ohne `ANTHROPIC_API_KEY` läuft der **deter
 - **Backup-Restore-Probe** regelmäßig tatsächlich durchführen (nicht nur dokumentiert).
 - **Monitoring/Alerting** (Uptime, Fehlerraten) einrichten — Hosting-/Ops-Aufgabe.
 - **Termine + namentliche Rollen** für Wartungsfenster festlegen.
+- **Insel-Hausbetrieb** (Offline-Installationsmaterial, Hardwareübersicht, signierte Aktualisierung,
+  Lizenzierung, Datenträgeraustausch): konkretisiert, nicht gebaut — `docs/operations/insel-hausbetrieb-anforderungen.md`.
 - Keine neue Runtime/Infrastruktur, keine Modellinstallation in diesem Runbook.
 
 ---

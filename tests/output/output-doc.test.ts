@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  OUTPUT_KIND_OPTIONS,
-  downloadFilename,
-  orderedSelection,
-} from "../../apps/web/src/lib/outputDoc";
+import { OUTPUT_KIND_OPTIONS, downloadFilename } from "../../apps/web/src/lib/outputDoc";
 
 describe("FE-OUT / SCRUM-109: outputDoc helpers", () => {
   it("bietet genau die fünf Output-Typen", () => {
@@ -22,8 +18,7 @@ describe("FE-OUT / SCRUM-109: outputDoc helpers", () => {
     );
   });
 
-  it("orderedSelection bringt die Auswahl in Quellenreihenfolge, ohne Fremd-IDs", () => {
-    expect(orderedSelection(["K3", "K1"], ["K1", "K2", "K3"])).toEqual(["K1", "K3"]);
-    expect(orderedSelection(["X"], ["K1", "K2"])).toEqual([]);
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zu `orderedSelection` ist mit der Funktion
+  // entfallen — sie hatte keinen Produktleser; die Factory behält die Nutzer-Reihenfolge
+  // (`sanitizeOrder`).
 });

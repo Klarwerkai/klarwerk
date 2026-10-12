@@ -59,8 +59,14 @@ async function alleAufklappen(): Promise<void> {
   const knoepfe = Array.from(
     container.querySelectorAll<HTMLElement>('[data-testid="planned-disclosure"]'),
   );
-  // Beide Gruppen haben einen — sonst misst der Fall an der Flaeche vorbei.
-  expect(knoepfe.length, "Aufklappzeilen der zwei Gruppen").toBe(2);
+  // Jede Gruppe mit geplanten Kacheln hat einen — sonst misst der Fall an der Flaeche vorbei.
+  // R-0179 (Nacharbeit 3): NACHGEFÜHRT. Die Dateigruppe hat keine geplante Kachel mehr (Excel liest
+  // der Importkasten selbst) und deshalb keine Zeile; die Systemgruppe traegt ihre weiter.
+  const mitGeplanten = [SYSTEM_SOURCES, FILE_SOURCES].filter((gruppe) =>
+    gruppe.some((s) => s.state === "planned"),
+  ).length;
+  expect(mitGeplanten).toBe(1);
+  expect(knoepfe.length, "Aufklappzeilen der Gruppen mit geplanten Kacheln").toBe(mitGeplanten);
   for (const knopf of knoepfe) {
     await act(async () => {
       knopf.click();
@@ -137,7 +143,11 @@ describe("JOB 3235 · die zwei Gruppen der Galerie tragen fuer dasselbe Format z
       container.querySelectorAll<HTMLElement>('[data-testid="planned-disclosure"]'),
     ).map((el) => (el.textContent ?? "").trim());
     expect(zeilen[0], "Systemgruppe").toBe(`In Planung (${systemGeplant})`);
-    expect(zeilen[1], "Dateigruppe").toBe(`In Planung (${dateiGeplant})`);
+    // R-0179 (Nacharbeit 3): NACHGEFÜHRT. Excel hat „geplant" verlassen — der Importkasten liest
+    // es (`apps/web/src/lib/xlsxImport.ts`). Die Dateigruppe hat damit nichts mehr in Planung und
+    // traegt keine Zeile; auch diese Zahl ist hart gepinnt, aus demselben Grund wie unten.
+    expect(dateiGeplant, "Dateigruppe").toBe(0);
+    expect(zeilen, "nur die Systemgruppe traegt eine Zeile").toHaveLength(1);
     // Der gemessene Zuwachs von JOB 3235: Word und PDF sind dazugekommen (vorher 10, dann 12).
     // JOB 4086 — NACHGEFÜHRT auf 11: SharePoint hat „geplant" verlassen. Nicht weil jemand die
     // Kachel umgeschrieben hätte, sondern weil die drei Messungen, an denen dieser Zustand hängt,

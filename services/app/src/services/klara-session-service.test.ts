@@ -329,14 +329,40 @@ describe("W1 S4 R2 · ROT-4 · die Inaktivitätsfrist gleitet", () => {
     const { dienst, vorspulen } = aufbau();
     const { sicht, bindung } = await sitzung(dienst);
 
+    // R-0777: Benutzung ist der ausdrückliche Aktivitätsweg — reines Ansehen verlängert nicht.
     vorspulen(10 * 60 * 1000);
-    const nachZehn = await dienst.getSession(sicht.sessionId, bindung);
+    const nachZehn = await dienst.meldeAktivitaet(sicht.sessionId, bindung);
     expect(Date.parse(nachZehn.lastActivityAt)).toBe(T0 + 10 * 60 * 1000);
     expect(Date.parse(nachZehn.expiresAt)).toBeGreaterThan(Date.parse(sicht.expiresAt));
 
     // Sechs Minuten später: früher rot, jetzt gültig.
     vorspulen(6 * 60 * 1000);
     await expect(dienst.getSession(sicht.sessionId, bindung)).resolves.toBeTruthy();
+  });
+
+  it("R-0777 · auch das Ausführungstor ist Benutzung und lässt die Frist gleiten", async () => {
+    const { dienst, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    vorspulen(10 * 60 * 1000);
+    await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung);
+    vorspulen(6 * 60 * 1000);
+    await expect(dienst.getSession(sicht.sessionId, bindung)).resolves.toBeTruthy();
+  });
+
+  it("R-0777 · Gegenprobe: reines Ansehen nach zehn Minuten verlängert NICHT", async () => {
+    const { dienst, repo, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    const revisionVorher = (await repo.findSession(sicht.sessionId))?.revision;
+    vorspulen(10 * 60 * 1000);
+    const angesehen = await dienst.getSession(sicht.sessionId, bindung);
+    expect(angesehen.lastActivityAt).toBe(sicht.lastActivityAt);
+    expect(angesehen.expiresAt).toBe(sicht.expiresAt);
+    expect((await repo.findSession(sicht.sessionId))?.revision).toBe(revisionVorher);
+    // Sechs Minuten später ist die Frist seit der letzten BENUTZUNG (Anlage) abgelaufen.
+    vorspulen(6 * 60 * 1000);
+    await expect(dienst.getSession(sicht.sessionId, bindung)).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
   });
 
   it("die absolute Maximaldauer begrenzt die Verlängerung — auch bei dauernder Benutzung", async () => {
@@ -354,14 +380,14 @@ describe("W1 S4 R2 · ROT-4 · die Inaktivitätsfrist gleitet", () => {
       verstrichen += schritt
     ) {
       vorspulen(schritt);
-      letzte = await dienst.getSession(sicht.sessionId, bindung);
+      letzte = await dienst.meldeAktivitaet(sicht.sessionId, bindung);
     }
     // Die Frist ist an der absoluten Grenze gedeckelt, nicht bei lastActivity + 15 Minuten.
     expect(Date.parse(letzte.expiresAt)).toBe(T0 + KLARA_SESSION_ABSOLUTE_MS);
 
     // Und jenseits der Grenze ist Schluss, obwohl gerade eben noch benutzt wurde.
     vorspulen(schritt);
-    await expect(dienst.getSession(sicht.sessionId, bindung)).rejects.toMatchObject({
+    await expect(dienst.meldeAktivitaet(sicht.sessionId, bindung)).rejects.toMatchObject({
       code: "CONFLICT",
     });
   });
@@ -883,6 +909,9 @@ describe("W1 S4 R4 · KW-S4-21 §8 · Nebenlaeufigkeit gegen die In-Memory-Ablag
 //
 // Die Faelle hier pruefen GENAU DAS: nicht, dass die Persistenz stimmt (das tat sie schon), sondern
 // dass Sitzung, Zustimmung und Aufloesung IN EINEM Antwortobjekt zusammengehoeren.
+// R-0777: seit der Statusabruf (`getSession`) nicht mehr beruehrt, gibt es den Touch-Rennfall nur
+// noch auf dem Aktivitaetsweg. `meldeAktivitaet` liefert dieselbe zusammengehoerende Sicht MIT
+// Touch — die Faelle unten messen dort unveraendert dieselben Zusagen.
 describe("W1 S4 R5 · frische Statusaufloesung nach CAS-Verlust (In-Memory)", () => {
   class StatusTaktRepo extends InMemoryKlaraSessionRepo {
     private touchAnhalten = false;
@@ -936,7 +965,7 @@ describe("W1 S4 R5 · frische Statusaufloesung nach CAS-Verlust (In-Memory)", ()
     // Rennfall braucht deshalb erst einen Abstand, sonst wartet `erreicht()` auf nichts.
     vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS + 1000);
     repo.halteNaechstenTouchAn();
-    const statusP = dienst.getSession(sicht.sessionId, bindung);
+    const statusP = dienst.meldeAktivitaet(sicht.sessionId, bindung);
     await erreicht();
 
     // Waehrenddessen wird die Zustimmung VOLLSTAENDIG widerrufen.
@@ -960,7 +989,7 @@ describe("W1 S4 R5 · frische Statusaufloesung nach CAS-Verlust (In-Memory)", ()
     // Rennfall braucht deshalb erst einen Abstand, sonst wartet `erreicht()` auf nichts.
     vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS + 1000);
     repo.halteNaechstenTouchAn();
-    const statusP = dienst.getSession(sicht.sessionId, bindung);
+    const statusP = dienst.meldeAktivitaet(sicht.sessionId, bindung);
     await erreicht();
 
     await dienst.grantConsent(sicht.sessionId, bindung);
@@ -982,7 +1011,7 @@ describe("W1 S4 R5 · frische Statusaufloesung nach CAS-Verlust (In-Memory)", ()
     // Rennfall braucht deshalb erst einen Abstand, sonst wartet `erreicht()` auf nichts.
     vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS + 1000);
     repo.halteNaechstenTouchAn();
-    const statusP = dienst.getSession(sicht.sessionId, bindung);
+    const statusP = dienst.meldeAktivitaet(sicht.sessionId, bindung);
     await erreicht();
     await dienst.closeSession(sicht.sessionId, bindung);
     freigeben();
@@ -1011,7 +1040,7 @@ describe("W1 S4 R5 · frische Statusaufloesung nach CAS-Verlust (In-Memory)", ()
     // Rennfall braucht deshalb erst einen Abstand, sonst wartet `erreicht()` auf nichts.
     vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS + 1000);
     repo.halteNaechstenTouchAn();
-    const statusP = dienst.getSession(start.sessionId, alteBindung);
+    const statusP = dienst.meldeAktivitaet(start.sessionId, alteBindung);
     await erreicht();
     const nach = await dienst.rebindDocumentContext(start.sessionId, alteBindung, {
       kind: "saved",
@@ -1034,7 +1063,7 @@ describe("W1 S4 R5 · frische Statusaufloesung nach CAS-Verlust (In-Memory)", ()
     // Rennfall braucht deshalb erst einen Abstand, sonst wartet `erreicht()` auf nichts.
     vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS + 1000);
     repo.halteNaechstenTouchAn();
-    const statusP = dienst.getSession(sicht.sessionId, bindung);
+    const statusP = dienst.meldeAktivitaet(sicht.sessionId, bindung);
     await erreicht();
     // Zwei Aenderungen gleichzeitig: die Zustimmung faellt UND die Policyversion wechselt.
     await dienst.revokeConsent(sicht.sessionId, bindung);

@@ -353,8 +353,14 @@ describe("JOB 3060 · H1 · das Kopfband — die echte Seite, gemountet in Chrom
   });
   // FE-002 (Pedi, 26.09.2026): der Platzhalter ist BENANNT ABWEICHEND vom Mockup (Z.29 „Suchen") —
   // „Wissen suchen", damit die Wissenssuche sichtbar von „Seite finden ⌘K" unterscheidbar ist.
-  // Schriftgrösse und Farbe bleiben die des Mockups und werden weiter daran gemessen.
-  it("V14 · suchtext: Platzhalter BENANNT ABWEICHEND „Wissen suchen“ statt Mockup-„Suchen“ (FE-002), 13px, #7E879A — placeholder und ::placeholder am realen Eingabefeld", async () => {
+  // Die Schriftgrösse bleibt die des Mockups und wird weiter daran gemessen.
+  //
+  // FARBE BENANNT ABWEICHEND (WCAG 1.4.3, Audit nacharbeit-6, tests-smoke/wcag21-aa-audit.spec.ts):
+  // das Mockup-Grau #7E879A misst als Platzhalter auf der Suchfläche #16213A nur 4,43:1 — Text unter
+  // AA. Der Platzhalter trägt deshalb #B9C1D2 (`--kw-shell-muted`, derselbe Ton wie die inaktiven
+  // Punkte des Bands, ≈ 8,9:1). Dieselbe Abwägung wie V16: Lesbarkeit vor Mockup-Treue beim Text.
+  // Die Lupe (V13) ist kein Text und behält #7E879A.
+  it("V14 · suchtext: Platzhalter BENANNT ABWEICHEND „Wissen suchen“ statt Mockup-„Suchen“ (FE-002), 13px, Farbe BENANNT ABWEICHEND #B9C1D2 statt #7E879A (WCAG 1.4.3) — placeholder und ::placeholder am realen Eingabefeld", async () => {
     const stil = zielStil(ziel, Z_SUCHTEXT);
     expect(zielText(ziel, Z_SUCHTEXT)).toBe("Suchen");
     expect(sel?.placeholder).toBe("Wissen suchen");
@@ -365,7 +371,9 @@ describe("JOB 3060 · H1 · das Kopfband — die echte Seite, gemountet in Chrom
         "::placeholder",
         "color",
       ]),
-    ).toBe(kanon(zielProp(stil, "color")));
+    ).toBe(kanon("#B9C1D2"));
+    // Das Mockup führt weiterhin das alte Grau — die Abweichung ist bewusst, nicht unbemerkt.
+    expect(kanon(zielProp(stil, "color"))).toBe(kanon("#7E879A"));
   });
   it("V15 · zahnrad 18px, Strich #B9C1D2, 1.8 — am realen Symbol", async () => {
     const z = zielSymbol(ziel, "#B9C1D2");

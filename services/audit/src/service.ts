@@ -7,8 +7,27 @@ import {
   inspectChain,
   verifyChain,
 } from "./chain";
-import { type AuditRepo, auditFilterTrifft } from "./repo";
-import type { AuditEntry, AuditFilter, AuditInput } from "./types";
+import { type AuditRepo, auditFilterTrifft, auditSeiteTrifft, namensbelegeAus } from "./repo";
+import type {
+  AuditEntry,
+  AuditFilter,
+  AuditInput,
+  AuditSeite,
+  AuditSeitenAnfrage,
+  AuditSeitenFilter,
+} from "./types";
+
+// produkt:20261009:admin-audit-verstaendlich: die Seitengröße des Seitenwegs. Ohne Angabe 25, nie
+// mehr als 100 — auch ein Aufrufer, der `limit=100000` schickt, bekommt keine Gesamtliste.
+export const AUDIT_SEITE_STANDARD = 25;
+export const AUDIT_SEITE_MAX = 100;
+
+export function auditSeitengroesse(wunsch: number | undefined): number {
+  if (wunsch === undefined || !Number.isFinite(wunsch)) {
+    return AUDIT_SEITE_STANDARD;
+  }
+  return Math.min(AUDIT_SEITE_MAX, Math.max(1, Math.floor(wunsch)));
+}
 
 // R-0613 (Rest „ein externer Anker und ein Export fehlen"): die ganze Kette als Datei. Der Kopf
 // (`head`: letzte Sequenz + ihr Hash) ist der Wert, den ein Betreiber AUSSERHALB der Datenbank
@@ -136,6 +155,49 @@ export class AuditService {
     }
     const all = await this.repo.all();
     return all.filter((e) => auditFilterTrifft(e, filter));
+  }
+
+  // produkt:20261009:admin-audit-verstaendlich (ADMIN-03): EINE Seite der Kette, jüngste zuerst.
+  //
+  // Gelesen werden `limit + 1` Einträge: der überzählige sagt nur, OB es eine ältere Seite gibt, und
+  // wird nicht ausgeliefert. `nextBefore` ist die Sequenz des ältesten ausgelieferten Eintrags — die
+  // nächste Seite beginnt unmittelbar davor. Ein Zeiger über die Sequenz statt eines Versatzes: neue
+  // Einträge, die während des Blätterns angehängt werden, verschieben keine bereits gezeigte Seite.
+  async page(anfrage: AuditSeitenAnfrage = {}): Promise<AuditSeite> {
+    const limit = auditSeitengroesse(anfrage.limit);
+    const before = anfrage.before;
+    const filter: AuditSeitenFilter = {
+      ...(anfrage.actor ? { actor: anfrage.actor } : {}),
+      ...(anfrage.action ? { action: anfrage.action } : {}),
+      ...(anfrage.target ? { target: anfrage.target } : {}),
+      ...(anfrage.actions && anfrage.actions.length > 0 ? { actions: anfrage.actions } : {}),
+      ...(anfrage.from ? { from: anfrage.from } : {}),
+      ...(anfrage.to ? { to: anfrage.to } : {}),
+    };
+    const gelesen = this.repo.findPage
+      ? await this.repo.findPage(filter, before, limit + 1)
+      : (await this.repo.all())
+          .filter((e) => (before === undefined || e.seq < before) && auditSeiteTrifft(e, filter))
+          .reverse()
+          .slice(0, limit + 1);
+    const entries = gelesen.slice(0, limit);
+    const weitere = gelesen.length > limit;
+    return { entries, nextBefore: weitere ? (entries.at(-1)?.seq ?? null) : null, limit };
+  }
+
+  // produkt:20261009:admin-audit-verstaendlich: die Namens- und Kontobelege zu diesen Kennungen —
+  // je Kennung höchstens drei, jeweils der jüngste (`namensbelegeAus`, Bens Befund Nacharbeit 3).
+  // Die Zuordnung „welcher Name gehört zu welcher Kennung" trifft weiter `protokollNamen` an der
+  // Oberfläche; ob eine Kennung ein Konto war, `kontoBelege`.
+  async namensbelege(ids: readonly string[]): Promise<AuditEntry[]> {
+    const gesucht = [...new Set(ids.filter((id) => id !== ""))];
+    if (gesucht.length === 0) {
+      return [];
+    }
+    if (this.repo.findNamensbelege) {
+      return this.repo.findNamensbelege(gesucht);
+    }
+    return namensbelegeAus(await this.repo.all(), gesucht);
   }
 
   // JOB 2698 D1: „gibt es mindestens einen Eintrag?" — für Aufrufer, die nur das wissen wollen

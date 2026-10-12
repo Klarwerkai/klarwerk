@@ -241,7 +241,7 @@ describe("R-0766 · die Kette am Objekt zeigt Konflikte und Exporte", () => {
 
   // Verwalteransicht · Bens Befund Nacharbeit 7: der SCORM-Export trägt als Ziel das Exportpaket
   // (`lms-export:<kennung>`) und nennt die Objekte NUR unter `payload.objekte[].koId`
-  // (`services/app/src/routes/lms-export-routes.ts:53-60`). Bis hierher fehlte er in der Kette.
+  // (`services/app/src/routes/lms-export-routes.ts:90-103`). Bis hierher fehlte er in der Kette.
   it("SCORM-Export · gespeicherter Beleg erscheint in der Kette jedes exportierten Objekts, nicht beim unbeteiligten", async () => {
     const audit = new AuditService({ repo: new InMemoryAuditRepo() });
     await audit.record({ actor: "anna", action: "ko.created", target: "K1" });

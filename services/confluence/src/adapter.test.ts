@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { adapterFromConfig } from "../../../tests/support/confluence-adapter";
 import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 import { LibraryService } from "../../library-analytics";
-import { adapterFromConfig, createConfluenceAdapterFromEnv } from "./adapter";
+import { createConfluenceAdapterFromEnv } from "./adapter";
 import type { ConfluencePage } from "./rest-client";
 
 // SCRUM-510: der Confluence-Adapter (Adapter #1 des quell-agnostischen Vertrags) end-to-end gegen ein

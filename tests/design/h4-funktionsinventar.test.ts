@@ -257,7 +257,9 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     expect(fehler).toBeNull();
     expect(alles(listenMenue).length).toBeGreaterThan(0);
     expect(alles(filterMenue).length).toBeGreaterThan(0);
-    expect(mehr?.abschnitte.length).toBe(13);
+    // R-1644: dazu kommt für Prüfende (Controller/Admin — „Pedi" ist hier der erste, also Admin)
+    // der vierzehnte Abschnitt „wissensauskunft". Ohne Prüferecht bleiben es dreizehn.
+    expect(mehr?.abschnitte.length).toBe(14);
   });
 
   it("F01 · Volltextsuche — Suchfeld oben links", async () => {
@@ -268,10 +270,11 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     expect(da).toBe(true);
   });
 
-  it("F02 · Facette Status — Umschalter Alle · Validiert · Offen", async () => {
+  it("F02 · Facette Status — Umschalter Alle · Fachlich bestätigt · Offen", async () => {
     expect(fehler).toBeNull();
     const texte = await (stand as H4Stand).seite.evaluate<string[]>(fn(SEGMENT_LESEN));
-    expect(texte).toEqual(["Alle", "Validiert", "Offen"]);
+    // Nutzerentscheid Antwort 54 (11.10.2026): „Fachlich bestätigt" statt „Validiert".
+    expect(texte).toEqual(["Alle", "Fachlich bestätigt", "Offen"]);
   });
 
   it("F03 · Facette Abteilung/Bereich — Menü „Bereich“", () => {
@@ -421,6 +424,7 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     "kopplung",
     "herkunftskette",
     "historie",
+    "wissensauskunft",
     "belege",
     "schnappschuesse",
     "kommentare",
@@ -676,7 +680,13 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
    */
   const DEUTSCHE_SOLLWERTE: readonly Sollwert[] = [
     { fall: "F02", teil: "Status-Umschalter", wo: "eintraege", wort: "Alle", art: "gleich" },
-    { fall: "F02", teil: "Status-Umschalter", wo: "eintraege", wort: "Validiert", art: "gleich" },
+    {
+      fall: "F02",
+      teil: "Status-Umschalter",
+      wo: "eintraege",
+      wort: "Fachlich bestätigt",
+      art: "gleich",
+    },
     { fall: "F02", teil: "Status-Umschalter", wo: "eintraege", wort: "Offen", art: "gleich" },
     { fall: "F04", teil: "Filter", wo: "gruppen", wort: "Reife", art: "beginnt" },
     { fall: "F04", teil: "Filter", wo: "gruppen", wort: "Schlagwort", art: "beginnt" },

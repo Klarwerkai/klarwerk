@@ -9,6 +9,8 @@
 // `duplicate` (Konflikt- und Dublettenurteil) und `probe` (Anbieterprobe der KI-Verwaltung). Sie
 // sind keine Aufgaben der KI-Zuordnung (`REASONER_TASKS`), sondern laufen über die globale Wahl —
 // deshalb stehen sie nur hier, nicht in der Zuordnungsliste.
+// R-1657 (aufnahme:20260922:gesamt-wissenssprints): `gaps` — die Lückenerkennung je Bereich; wie
+// `conflict` ein Urteil über die globale Wahl, das keinen gelesenen Text erzeugt (keine Kennzeichnung).
 export type ModelRunTask =
   | "structure"
   | "assist"
@@ -21,7 +23,8 @@ export type ModelRunTask =
   | "enrich"
   | "conflict"
   | "duplicate"
-  | "probe";
+  | "probe"
+  | "gaps";
 export type ModelRunStatus = "success" | "error";
 
 // ================================================================================================
@@ -71,12 +74,18 @@ export type ModelRunStatus = "success" | "error";
 // ------------------------------------------------------------------------------------------------
 
 /** Die vier Aufgaben, deren Ausgabe als KI-erzeugt zu kennzeichnen ist. */
-export const KI_ERZEUGENDE_AUFGABEN: readonly ModelRunTask[] = [
+export const KI_ERZEUGENDE_AUFGABEN = [
   "answer",
   "interview",
   "describe",
   "enrich",
-];
+] as const satisfies readonly ModelRunTask[];
+
+/**
+ * R-1349: die Liste oben IST die Grenze der Kennzeichnung — `aiGeneratedMark` nimmt nur diese
+ * Aufgaben an. Bis hierher las sie niemand im Produkt; jeder Aufrufer nannte seine Aufgabe frei.
+ */
+export type KiErzeugendeAufgabe = (typeof KI_ERZEUGENDE_AUFGABEN)[number];
 
 /**
  * Der Betriebsmodus, in dem die Ausgabe entstand.
@@ -99,9 +108,14 @@ export interface AiGeneratedMark {
 /**
  * Die Kennzeichnung bauen. `demo` ist der bereits vorhandene Marker „aus dem deterministischen
  * Rückfall" — daraus folgt der Betriebsmodus, ohne dass ein zweiter Zustand entsteht.
+ *
+ * R-0604 (G22, mega83 A): der Reasoner hängt die Marke seither NUR an Ausgaben, die ein Modell
+ * geschrieben hat (`demo === false`). Der deterministische Rückfall ist keine KI-Erzeugung und
+ * bekommt keine Marke — `mode: "deterministic"` bleibt als Vertragswert gültig, wird von den
+ * Reasoner-Wegen aber nicht mehr erzeugt.
  */
 export function aiGeneratedMark(
-  task: ModelRunTask,
+  task: KiErzeugendeAufgabe,
   demo: boolean,
   at: string = new Date().toISOString(),
 ): AiGeneratedMark {

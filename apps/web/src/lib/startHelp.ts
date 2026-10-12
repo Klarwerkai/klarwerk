@@ -26,8 +26,18 @@ export interface StartHelpTopic {
 }
 
 // Schlüssel-Schema wie in captureHelp/reviewHelp, eigener Namensraum: shelp.<id>.title / shelp.<id>.body.
+//
+// R-0908 (Aufnahme gesamt-sprache-begriffe): der Titel der Kachel-Hilfe hieß „Der Knowledge-OS-Kreis"
+// — das Fachwort auf dem ersten Bildschirm, den eine Erstnutzerin sieht. Er kommt jetzt aus
+// `texte/fachwort.ts` („Der Wissenskreis"); der Erklärtext bleibt `shelp.cycle.body`.
+const TITEL_ABWEICHEND: Partial<Record<StartHelpId, string>> = { cycle: "fachwort.kreis.titel" };
+
 export function startHelp(id: StartHelpId): StartHelpTopic {
-  return { id, titleKey: `shelp.${id}.title`, bodyKey: `shelp.${id}.body` };
+  return {
+    id,
+    titleKey: TITEL_ABWEICHEND[id] ?? `shelp.${id}.title`,
+    bodyKey: `shelp.${id}.body`,
+  };
 }
 
 export const START_HELP_TOPICS: readonly StartHelpTopic[] = START_HELP_IDS.map(startHelp);

@@ -12,7 +12,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  EFFECTIVE_SEARCH_DOCUMENT_FIELDS,
   InMemoryKoRepo,
   InMemoryKoSearchProjectionRepo,
   InMemoryKoVersionRepo,
@@ -21,6 +20,7 @@ import {
   composeEffectiveSearchDocument,
   matchEffectiveSearchDocument,
 } from "../../services/knowledge-object";
+import { EFFECTIVE_SEARCH_DOCUMENT_FIELDS } from "../support/projektion-feldvertrag";
 
 // G27 R1: EINE FRISCHE INSTANZ IST NICHT SUCHBEREIT (Entscheidung 05 §1). Sie steht persistent auf
 // `UNINITIALIZED`, und die Standardsuche wirft dort — sie liefert kein stilles `[]`. Der Stapel

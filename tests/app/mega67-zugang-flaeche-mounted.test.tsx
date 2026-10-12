@@ -207,7 +207,14 @@ describe("mega67 C · die Fläche nimmt KEIN Geheimnis entgegen und zeigt keines
     expect(container.querySelectorAll("input").length).toBe(0);
     expect(container.querySelectorAll("textarea").length).toBe(0);
     expect(container.querySelectorAll("form").length).toBe(0);
-    expect(container.querySelectorAll("button").length).toBe(0);
+    // ADMIN-02 — NACHGEFÜHRT, nicht gelockert: der EINZIGE Knopf ist der beauftragte, bewusst
+    // gestartete Verbindungstest. Er nimmt nichts entgegen (kein Feld, kein Formular) und ist kein
+    // Speichern-Knopf; jeder weitere Knopf macht diesen Fall weiterhin rot.
+    const knoepfe = [...container.querySelectorAll("button")];
+    expect(knoepfe.map((k) => k.getAttribute("data-testid"))).toEqual([
+      "import-access-verbindungstest-starten",
+    ]);
+    expect(knoepfe[0]?.getAttribute("type")).not.toBe("submit");
     unmount();
   });
 

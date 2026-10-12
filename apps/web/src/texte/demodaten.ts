@@ -13,12 +13,15 @@ export default {
   praefix: "demodaten.",
   legacySchluessel: [],
   de: {
-    "demodaten.ladenAus": "Laden ist in diesem Betrieb ausgeschaltet.",
+    "demodaten.ladenAus":
+      "Laden ist in diesem Betrieb ausgeschaltet. Zuständig ist der Serverbetrieb dieser Installation; hier lässt es sich nicht einschalten.",
   },
   en: {
-    "demodaten.ladenAus": "Loading is switched off in this installation.",
+    "demodaten.ladenAus":
+      "Loading is switched off in this installation. The server operator is responsible; it cannot be switched on here.",
   },
   nl: {
-    "demodaten.ladenAus": "Laden is in deze omgeving uitgeschakeld.",
+    "demodaten.ladenAus":
+      "Laden is in deze omgeving uitgeschakeld. De serverbeheerder is hiervoor verantwoordelijk; hier kan het niet worden ingeschakeld.",
   },
 } satisfies Textmodul;

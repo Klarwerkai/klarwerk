@@ -81,6 +81,7 @@ Die Kernregel ist eine Architekturregel und wird geprüft: `.dependency-cruiser.
 | `services/provenance` | Herkunftskette (`provenanceRoutes`) |
 | `services/confluence` | Confluence-Quelladapter (`createConfluenceAdapterFromEnv`), Zugangsstand |
 | `services/sharepoint` | SharePoint-Quelladapter, Zugangsstand |
+| `services/jira` | Jira-Quelladapter (`createJiraAdapterFromEnv`: Vorgänge und Epics eines Projekts, Projektrollen als Leserechte), Zugangsstand |
 
 ## 4 Ablagen: ein Port, zwei Adapter
 
@@ -97,6 +98,7 @@ genau diesen Satz (`MUTATING_METHODS` in `dev-persist.ts` ist ein vollständiger
 | `users` | `InMemoryUserRepo` | `PgUserRepo` |
 | `sessions` | `InMemorySessionRepo` | `PgSessionRepo` |
 | `resetTokens` | `InMemoryPasswordResetRepo` | `PgPasswordResetRepo` |
+| `secondFactors` | `InMemorySecondFactorRepo` | `PgSecondFactorRepo` |
 | `drafts` | `InMemoryDraftRepo` | `PgDraftRepo` |
 | `gaps` | `InMemoryGapRepo` | `PgGapRepo` |
 | `ratings` | `InMemoryRatingRepo` | `PgRatingRepo` |
@@ -118,6 +120,7 @@ genau diesen Satz (`MUTATING_METHODS` in `dev-persist.ts` ist ein vollständiger
 | `validationSettings` | `InMemoryValidationSettingsRepo` | `PgValidationSettingsRepo` |
 | `externalKnowledge` | `InMemoryExternalKnowledgePolicyRepo` | `PgExternalKnowledgePolicyRepo` |
 | `uploadLimits` | `InMemoryUploadLimitsRepo` | `PgUploadLimitsRepo` |
+| `nulltreffer` | `InMemoryNulltrefferRepo` | `PgNulltrefferRepo` |
 | `answerSnapshots` | `InMemoryAnswerSnapshotRepo` | `PgAnswerSnapshotRepo` |
 
 **Einhängestellen ausserhalb von `AppRepos`** — die Optionen von `assembleServices`. Sie stehen
@@ -137,12 +140,18 @@ im Postgres-Betrieb schon.
 | `brandingSettings` | Speicherablage | `PgBrandingSettingsRepo` |
 | `confluenceImportSchalter` | `InMemoryConfluenceImportSchalterRepo` (Betreiberschalter des Confluence-Imports) | `PgConfluenceImportSchalterRepo` |
 | `bearbeitungen` | Speicherfassung mit Prozessuhr | `PgBearbeitungsRepo` |
+| `officeAblage` | `SpeicherOfficeAblage` (kein Neustartschutz) | `PgOfficeAblage` |
+| `meetingBezuege` | `SpeicherMeetingBezugAblage` (BPA-16, kein Neustartschutz) | `PgMeetingBezugAblage` |
+| `uebersetzungen` | `InMemoryUebersetzungRepo` (im Betrieb gepflegte Oberflächentexte und angelegte Sprachen, R-1034) | `PgUebersetzungRepo` |
+| `bestandsreset` | keiner — ohne Datenbank gibt es den Bestandsreset absichtlich nicht (Route: „nicht verfügbar") | `pgBestandsresetDienst(rohPool)` (Folgenvorschau + `fuehreBestandsresetAus`) |
 
 ## 5 Gemeinsame Klammern
 
 1. **Ein Pool für alles (Postgres).** `buildPgServices` umhüllt den rohen Pool EINMAL mit
    `gatedPool` (Resetsperre) und gibt jeder Ablage dieselbe Hülle. Den rohen Pool nehmen nur die
    Migration beim Start und der Bestandsreset — beide im Kommentar über `buildPgServices` benannt.
+   Den Bestandsreset ruft seit der Aufnahme gesamt-bestandsreset (Nacharbeit 2) der administrative
+   Weg `GET|POST /api/admin/bestandsreset` über `pgBestandsresetDienst(rohPool)`.
 2. **Eine Transaktion über Module (Postgres).** `withTx` geht an `KoService` und `AskService`:
    Bestandsänderung und Protokolleintrag (beim „Danke" auch der Vertrauenszähler) werden zusammen
    festgeschrieben oder zusammen zurückgerollt. Das Aufräumen der Konflikt- und

@@ -22,6 +22,8 @@ const SCHALTER_VARIABLEN = [
   // `schalterLeeren()` sie stehen, und der VORGABE-Fall unten prüfte die Umgebung des Laufs statt
   // die Vorgabe.
   "KLARWERK_SHAREPOINT_IMPORT",
+  // R-0170: die dritte Quelle (Jira), aus demselben Grund wie SharePoint.
+  "KLARWERK_JIRA_IMPORT",
   "KLARWERK_EXPERT_MATCHING",
   // AUFTRAG-mega61: die zwei Notausschalter. Sie stehen hier, weil auch ihr Wert nie über den
   // Draht gehen darf — und weil `schalterLeeren()` unten sonst die VORGABE nicht prüfen könnte.
@@ -38,6 +40,8 @@ const SCHALTER_VARIABLEN = [
   // REGISTRIERTEN Schalter, und ein Name ohne Registry-Eintrag wäre hier eine Unwahrheit. Dass er
   // wirklich keine Wirkung mehr hat, misst `tests/demo-kennzeichnung/schalter.test.ts` (H1) —
   // gesetzt wie ungesetzt, in beide Richtungen.
+  // R-0570 / Entscheidung zu Frage 14: die anonyme Vorführung — Vorgabe AUS.
+  "KLARWERK_VORFUEHRUNG_ANONYM",
 ] as const;
 
 // AUFTRAG-mega61: der erwartete Zustand ohne jede gesetzte Variable. Die drei alten Schalter sind
@@ -49,6 +53,8 @@ const VORGABE = {
   // JOB 4086: eine zweite Quelle, dieselbe Richtung — eine Fähigkeit, die niemand freigegeben hat,
   // ist AUS. Dass dieser Wert hier `false` steht, ist selbst die Zusage.
   sharepointImport: false,
+  // R-0170: Jira ebenso — eine Fähigkeit, die niemand freigegeben hat, ist AUS.
+  jiraImport: false,
   expertMatching: false,
   rechtsseiten: true,
   hinweisbanner: true,
@@ -56,6 +62,9 @@ const VORGABE = {
   // Dass dieser Wert hier `false` ist, ist selbst die Zusage: wer ihn eines Tages auf `true`
   // ändert, muss diese Zeile anfassen und dabei über die Begründung stolpern.
   demodaten: false,
+  // R-0570 / Entscheidung zu Frage 14: ob Unangemeldete eine Vorführung sehen, ist eine
+  // Betriebsentscheidung — Vorgabe AUS. Dass dieser Wert `false` steht, ist selbst die Zusage.
+  vorfuehrung: false,
   // JOB 3761/4365: eine Instanz behauptet nicht von selbst, die Demo zu sein. Sie ist es genau
   // dann, wenn die Anfrage unter `demo.klarwerk.io` ankommt — und die Aufrufe dieser Datei kommen
   // es nicht (`app.inject` setzt `localhost:80`, s. Fall HOST unten, der beide Richtungen misst).
@@ -118,11 +127,19 @@ describe("mega46 F1 · die Auskunft über die gesetzten Schalter", () => {
     // dort sein Kennwort ein). JOB 4365: sie meldet hier `false`, weil dieser Aufruf nicht unter
     // der Vorführ-Adresse ankommt — die Kennzeichnung hängt am Host der Anfrage, nicht mehr an
     // einem Umgebungsschalter.
-    expect(features).toEqual({ rechtsseiten: true, hinweisbanner: true, demoInstanz: false });
+    // R-0570: die Vorführung gehört dazu — sie richtet sich ausschliesslich an Unangemeldete, und die
+    // Anmeldemaske verweist nur auf sie, wenn sie eingeschaltet ist. Vorgabe: aus.
+    expect(features).toEqual({
+      rechtsseiten: true,
+      hinweisbanner: true,
+      vorfuehrung: false,
+      demoInstanz: false,
+    });
     // Ausdrücklich: kein Wort über die gebuchten Fähigkeiten dieses Betriebs.
     expect(Object.keys(features)).not.toContain("herkunft");
     expect(Object.keys(features)).not.toContain("confluenceImport");
     expect(Object.keys(features)).not.toContain("sharepointImport");
+    expect(Object.keys(features)).not.toContain("jiraImport");
     expect(Object.keys(features)).not.toContain("expertMatching");
     // JOB 3761: und kein Wort über die Werkzeuge — `demodaten` bleibt draußen, obwohl der
     // Nachbarschalter `demoInstanz` jetzt drin ist. Zwei „Demo"-Schalter, zwei Zuständigkeiten.

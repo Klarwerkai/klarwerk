@@ -8,16 +8,25 @@
 
 ## Was ist Klarwerk?
 
-Klarwerk ist **kein Chatbot**, sondern ein **Knowledge OS**: Erfahrungswissen wird erfasst, im Team validiert, quellengebunden genutzt und durch Revalidierung aktuell gehalten. Antworten stammen ausschließlich aus **validiertem Wissen mit Quelle, Vertrauen und Status** — gibt es keine Grundlage, wird die **Wissenslücke ehrlich benannt** statt eine Antwort zu erfinden.
+Klarwerk ist **kein Chatbot**, sondern ein **Wissenssystem** für den ganzen Betrieb: Erfahrungswissen wird erfasst, im Team validiert, quellengebunden genutzt und durch Revalidierung aktuell gehalten. Antworten stammen ausschließlich aus **validiertem Wissen mit Quelle, Vertrauen und Status** — gibt es keine Grundlage, wird die **Wissenslücke ehrlich benannt** statt eine Antwort zu erfinden.
 
 > **The AI may change. Your knowledge never does.**
+
+### Das Bild dahinter: ein Lehrling, der nachfragt
+
+Beim Erfassen fragt Klarwerk nach wie ein Lehrling — du antwortest, statt zu dokumentieren. Was du erklärst, bleibt im Haus, auch wenn du mal nicht da bist.
+
+Wofür das Bild steht und wofür nicht:
+
+- **Gedeckt:** Der Interviewweg beim Erfassen stellt dir Rückfragen. In den Bestand kommt nur, was du selbst einreichst, und erst die Prüfung im Team macht es zu gesichertem Wissen.
+- **Nicht gedeckt:** Korrekturen fließen nicht in ein Modell zurück. Was mit der Zeit wächst, ist der geprüfte Bestand, den ihr gemeinsam pflegt — nicht die Software selbst.
 
 ---
 
 ## In 5 Minuten starten
 
 1. **Anmelden.** Mit deinem Konto einloggen (E-Mail + Passwort) oder per SSO/OIDC, falls vom Betreiber aktiviert. Neue Konten müssen ggf. von einem Admin **freigegeben** werden.
-2. **Erste Orientierung auf `/start`.** Die Startseite zeigt den **Knowledge-OS-Kreis** (Erfassen → Validieren → Nutzen → Aktuell halten), den **„besten nächsten Einstieg"** und Kennzahlen.
+2. **Erste Orientierung auf `/start`.** Die Startseite zeigt den **Wissenskreis** (Erfassen → Validieren → Nutzen → Aktuell halten), einen empfohlenen nächsten Einstieg und Kennzahlen.
 3. **Mit Demo-Daten ausprobieren** (für Review/Test): Ein **Admin** kann über `/admin` den **Demo-Datensatz** laden (idempotent, produktionsgeschützt). Danach sind Beispiel-Wissensobjekte, eine Wissenslücke, ein Konflikt und eine fällige Revalidierung sichtbar.
 4. **Hilfe öffnen.** Die **Hilfe-Seite** (`/hilfe`) ist der zentrale Einstieg: durchsuchbare Kapitel zu jedem Bereich, jeweils mit Direktlink in die App.
 
@@ -45,15 +54,15 @@ Unter **`/hilfe`** findest du durchsuchbare Kapitel u. a. zu: Erststart/Demodate
 ## Beispiele
 
 - **Geführter Demo-Pfad:** `docs/demo/stage-1-demo-path.md` — ein 7–10-Minuten-Klickpfad durch Capture → Validate → Use → Maintain mit konkreten Beispieldaten (Ventil X / Überdruck, Filter F3, Linie L4 / Dosierwert).
-- **In der App:** Capture hat „Beispiel laden", Ask hat anklickbare Beispielfragen (mit Erwartung „findet validiertes Wissen" vs. „zeigt Wissenslücke").
+- **In der App:** Capture hat „Beispiel laden", Ask hat anklickbare Beispielfragen (mit Erwartung „findet passendes Wissen" vs. „zeigt Wissenslücke").
 
 ---
 
 ## Grenzen (ehrlich)
 
-- **Quellenbindung statt Bluff:** Antworten kommen nur aus validiertem Wissen mit Quelle/Trust/Status. Ohne Grundlage entsteht eine **Wissenslücke** (kein erfundener Text).
+- **Quellenbindung statt Bluff:** Antworten kommen nur aus validiertem Wissen mit Quelle/Vertrauen/Status. Ohne Grundlage entsteht eine **Wissenslücke** (kein erfundener Text).
 - **KI-Modus:** Ohne konfigurierten Modell-Schlüssel läuft ein **deterministischer Modus** (Antworten = belegte Wissensobjekt-Aussagen, klar als Modus markiert). Mit Modell-Schlüssel der **Modellmodus**. Das Modus-Badge auf `/fragen` zeigt den aktuellen Stand.
-- **Demo-Sprache:** Der mitgelieferte Demo-Datensatz ist **deutsch**; im englischen UI sind Beispiele weiterhin treffsicher, die Demo-Inhalte aber deutsch.
+- **Demo-Sprache:** Der Demo-Datensatz wird in der Oberflächensprache des ladenden Admins angelegt (Deutsch, Englisch oder Niederländisch). Kategorien und Schlagwörter der Beispiele bleiben deutsch.
 - **Mensch entscheidet:** Die KI strukturiert/formuliert nur — Erfassen, Prüfen, Freigeben und Revalidieren bleiben menschliche Entscheidungen.
 
 ---

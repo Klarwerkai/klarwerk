@@ -6,12 +6,12 @@ import { sanitizeLogText } from "./log-sanitize";
 describe("WP-E2: sanitizeLogText", () => {
   it("entfernt Bearer-/Basic-Header, userinfo-URLs und lange Token-Wörter", () => {
     const b64 = Buffer.from("svc@x.example:tok-123456789", "utf8").toString("base64");
-    const input = `auth Basic ${b64} und Bearer abcdefgh12345678 via https://svc:hunter2@host/api mit Token sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456`;
+    const input = `auth Basic ${b64} und Bearer abcdefgh12345678 via https://svc:hunter2@host/api mit Token sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456`; // geheimnis-scan: erlaubt (Attrappe)
     const out = sanitizeLogText(input, {});
     expect(out).not.toContain(b64);
     expect(out).not.toContain("abcdefgh12345678");
     expect(out).not.toContain("hunter2");
-    expect(out).not.toContain("sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456");
+    expect(out).not.toContain("sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456"); // geheimnis-scan: erlaubt
   });
 
   it("ersetzt Werte secret-benannter Env-Variablen (TOKEN/SECRET/PASSWORD/API_KEY im Namen)", () => {

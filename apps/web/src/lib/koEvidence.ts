@@ -14,9 +14,9 @@ export interface EvidenceRow {
   objectId?: string;
 }
 
-export function evidenceKindLabel(kind: EvidenceRecord["kind"]): "source" | "attachment" {
-  return kind;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `evidenceKindLabel` (gab die Art unverändert
+// zurück). Die Belegzeilen tragen ihre Art über `evidenceRows` selbst (`kind`, R-0991 Nr. 37); die
+// Identität rief niemand und ist entfernt.
 
 export function evidenceRows(records: readonly EvidenceRecord[]): EvidenceRow[] {
   return [...records]

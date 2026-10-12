@@ -19,6 +19,6 @@ export const PILOT_NEXT_STEPS: readonly PilotNextStep[] = [
   { id: "ask", labelKey: "pilot.next.ask", to: DEMO_PILOT_PATH[0]?.to ?? "/fragen" },
 ];
 
-export function pilotNextSteps(): readonly PilotNextStep[] {
-  return PILOT_NEXT_STEPS;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `pilotNextSteps()`, das die Tabelle oben
+// zurückgab. Die Verwaltung liest `PILOT_NEXT_STEPS` unmittelbar (`pages/AdminDatenDetails.tsx`); der
+// Zugriff rief niemand und ist entfernt.

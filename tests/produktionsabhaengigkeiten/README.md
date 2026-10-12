@@ -31,7 +31,13 @@ gebundenen** Stand?*
 | `fastify` | `node_modules/fastify` | 5.12.1 | nicht exponiert |
 | `find-my-way` | `node_modules/find-my-way` | 9.6.0 | nicht exponiert |
 | `nodemailer` | `node_modules/nodemailer` | 6.10.1 | exponiert |
-| `sharp` | `node_modules/sharp` | 0.35.4 | nicht exponiert |
+| `sharp` | `node_modules/sharp` | 0.35.5 | nicht exponiert |
+
+> **Nachtrag 08.10.2026 (R-1398, GHSA-wq5f-xc86-pv6w):** Die `sharp`-Zeile steht jetzt auf
+> **0.35.5**. Grund ist die librsvg-Meldung aus dem echten Audit, die erste behobene Fassung laut
+> Advisory. Die Lockdatei ist die von npm erzeugte (`npm update sharp --package-lock-only`, Exit 0),
+> übernommen nach Inhaltsabgleich; `package.json` bleibt `^0.35.4`. Einzelheiten in Abschnitt 6.
+> Der Text dieses Berichts zu `sharp` darunter ist die Messung vom 17.09.2026 und bleibt stehen.
 
 „Unentschieden" bleibt ein erlaubtes Urteil dieses Berichts; in Runde 3 steht es an keiner Zeile
 mehr, weil die beiden vormals unentschiedenen Pakete (`fast-uri`, `brace-expansion`) **gehoben**
@@ -503,6 +509,65 @@ weil „klara" nicht im Pfad steht.
 Mehrere dieser Fälle werden **rot, wenn ein Paket gehoben wird**. Das ist ihre Aufgabe. Ein rot
 gewordener Fall ist dann kein Defekt, sondern der Anlass, die Einordnung neu zu machen — **nicht**,
 den Test anzupassen.
+
+## 5. Nachtrag 07.10.2026 — die Prüfung vor jeder Auslieferung (R-1398)
+
+Dieser Ordner hält die Einordnung vom 17.09. gegen die Lockdatei. Das bemerkt eine
+**Versionsänderung**, aber keine **neu veröffentlichte** Advisory gegen eine unveränderte Version.
+Dafür gibt es seit diesem Nachtrag `tools/abhaengigkeiten-audit.ts`. Gerufen wird es an zwei
+Stellen: im Image-Bau (`Dockerfile`, Stufe `abhaengigkeiten`), über den jeder Lieferweg nach dem
+Push geht, und vorher in `scripts/deploy/klarwerk-ship.command` (Schritt 0b). Es fragt `npm audit --omit=dev` für beide ausgelieferten Bestände (Laufzeit-Image
+und gebündelte SPA unter `apps/web`) und sperrt jede Meldung, die keine Bewertung an der gebundenen
+Version hat. Es sperrt auch, wenn die Prüfung nicht durchführbar war.
+
+Die Bewertungen der fünf heute noch gemeldeten Advisories (`@fastify/static` ×2, `find-my-way`,
+`nodemailer` ×2) stehen maschinenlesbar in
+`tools/abhaengigkeiten-bewertet.json` (dort, weil `.dockerignore` `tests` ausschliesst). Dort steht auch die bewertete
+Version, denn eine Bewertung gilt nur für die Version, an der sie gemacht wurde. Dass die Urteile
+dort mit der Tabelle in Abschnitt 1 übereinstimmen und die Versionen mit der Lockdatei, hält
+`tests/abhaengigkeiten-vor-auslieferung/vor-auslieferung.test.ts` fest. Die Einordnung in diesem
+Bericht bleibt unverändert die Messung vom 17.09.2026 mit dem Nachtrag vom 06.10.2026.
+
+## 6. Nachtrag 08.10.2026 — der erste echte Auditlauf beider Bestände
+
+Der erste echte `npm audit --omit=dev` beider Bestände (Integrationslauf vom 08.10.2026, Bericht
+`echter-audit.json`) meldete 34 bis dahin unbewertete Advisories: 20 im Laufzeitbestand
+(`fastify` ×5, `nodemailer` ×13, `sharp`, `sprintf-js`) und 14 im Webbestand (`@xmldom/xmldom`
+×10, `react-router` ×2, `react-router-dom`, `sprintf-js`). Die Tabelle in Abschnitt 1 bleibt die
+Einordnung je Paket vom 17.09.; die neuen Meldungen sind je Advisory bewertet, mit gebundener
+Version, in `tools/abhaengigkeiten-bewertet.json`. Jede Bewertung ruht auf einem Fall in
+`tests/abhaengigkeiten-vor-auslieferung/exposition-20261008.test.ts`.
+
+**Behoben:**
+- `@xmldom/xmldom` im Webbestand von 0.8.13 auf 0.8.15 gehoben, innerhalb `^0.8.6` von `mammoth`.
+  Der Eintrag ist der von npm erzeugte aus `package-lock.json`, wo 0.8.15 schon gebunden war und der
+  echte Audit nichts meldete. Er liegt ausserhalb aller zehn Bereiche (≤ 0.8.14). Wichtig, weil
+  `docx.ts` mammoth aus `apps/web` lädt, auch serverseitig im Weg `POST /api/drafts/from-docx`.
+- React Router (GHSA-wrjc-x8rr-h8h6, GHSA-jjmj-jmhj-qwj2, Open Redirect über `//` oder `/\`):
+  Alle 155 Navigationsstellen der Oberfläche sind erhoben. Jedes Ziel ist eine Konstante, ein
+  Eintrag fester Konfigurationslisten oder eine Vorlage mit festem Anfang. Nur zwei übernahmen einen
+  früher gelesenen `location.pathname` (Rückweg der Handyfläche, Herkunftssprung der
+  Klara-Vorschau). Beide laufen jetzt durch `internerPfad()` (`apps/web/src/lib/internerPfad.ts`).
+
+- `sharp` (GHSA-wq5f-xc86-pv6w, librsvg, betroffen `< 0.35.5`): von 0.35.4 auf **0.35.5** gehoben,
+  die erste behobene Fassung laut Advisory (sie bringt librsvg 2.63.2). Innerhalb `^0.35.4`, also
+  kein Hauptwechsel; `package.json` ist bytegleich geblieben. Die Lockdatei hat npm erzeugt
+  (`npm update sharp --package-lock-only --ignore-scripts`, npm 11.13.0, Exit 0). Übernommen ist
+  sie nach Inhaltsabgleich: Geändert sind nur `sharp`, 26 `@img/sharp-*`-Pakete (0.35.5,
+  libvips 1.3.4) und die Projektversion der Lockdatei. Der SVG→WebP-Import bleibt erhalten; SVG
+  läuft weiter über librsvg, jetzt in der behobenen Fassung. Eine frühere Sperre davor
+  (Stand 08.10.) nahm diese Funktion weg und ist zurückgenommen.
+
+**Exponiert, bewusst offen:** vier weitere `nodemailer`-Meldungen am Adressparser (Behebung nur mit
+Hauptwechsel, dieselbe offene Entscheidung wie in Abschnitt 1).
+
+**Nicht exponiert**, mit der Bedingung im Register: die fünf `fastify`-Meldungen. Bei GHSA-hwr6 ist
+die Bedingung vorhanden (`additionalProperties: false` in `fragekontext`), die Folge aber
+wirkungslos, weil `normalizeFragekontext` nur drei Felder übernimmt. Ferner neun
+`nodemailer`-Meldungen an Optionen, die Klarwerk nicht setzt, beide `sprintf-js`-Meldungen (zur
+Laufzeit gemessen: nicht in mammoths Modulgraph), die SSR-Meldung und die beiden
+Open-Redirect-Meldungen von React Router (siehe oben). Die Prüfung gibt seit diesem Stand je Meldung
+npms eigene Auskunft zur Behebbarkeit (`fixAvailable`) aus.
 
 ## Nicht gemessen
 

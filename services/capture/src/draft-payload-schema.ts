@@ -34,7 +34,11 @@
 // Schema beantwortet nur die eine Frage, an der `continueDraft` sonst hart scheitert:
 // IST DAS ÜBERHAUPT EINE LADUNG, und tragen ihre Felder Typen, mit denen weitergerechnet werden kann?
 
-import { CONFIDENTIALITY_LEVELS, isValidConfidentiality } from "../../knowledge-object";
+import {
+  CONFIDENTIALITY_LEVELS,
+  isValidConfidentiality,
+  negativwissenGrenzfehler,
+} from "../../knowledge-object";
 import { pruefeAblaufGestalt } from "./ablauf";
 import type { DraftPayload } from "./types";
 
@@ -43,8 +47,17 @@ export type DraftPayloadShapeResult =
   | { ok: false; message: string };
 
 /** Die Felder, deren FALSCHER Typ in der Tiefe rechnet statt normalisiert zu werden. */
-const TEXTFELDER = ["title", "statement", "type", "category", "origin"] as const;
-const LISTENFELDER = ["tags", "conditions", "measures", "reviewerIds"] as const;
+const TEXTFELDER = [
+  "title",
+  "statement",
+  "type",
+  "category",
+  "domain",
+  "aussageart",
+  "revalidierungAm",
+  "origin",
+] as const;
+const LISTENFELDER = ["tags", "conditions", "measures", "reviewerIds", "assets"] as const;
 
 function istEinfachesObjekt(wert: unknown): wert is Record<string, unknown> {
   return typeof wert === "object" && wert !== null && !Array.isArray(wert);
@@ -125,6 +138,37 @@ export function validateDraftPayloadShape(wert: unknown): DraftPayloadShapeResul
   const ablaufFehler = pruefeAblaufGestalt(wert.ablauf);
   if (ablaufFehler !== undefined) {
     return { ok: false, message: ablaufFehler };
+  }
+  // R-1664/R-2179 (BEN, Nacharbeit 2): der geführte Lerneffekt ist die zweite Ausnahme. Eine
+  // Überschreitung seiner Obergrenzen wird abgewiesen statt an der Persistenzgrenze gekürzt — ein
+  // still abgeschnittenes Warnsignal oder eine halbe Vermeidungsregel fiele niemandem auf. Der
+  // gespeicherte Entwurf bleibt dabei unverändert.
+  const negativFehler = negativwissenGrenzfehler(wert.negativwissen);
+  if (negativFehler !== undefined) {
+    return { ok: false, message: negativFehler };
+  }
+  // produkt:20261007:templates-default: der Vorlagenbezug ist `null` (freie Eingabe) oder
+  // { id, version, spaceId? }. Nur die Gestalt — ob es die Vorlage gibt, prüft das Einreichen.
+  const vorlage = wert.vorlage;
+  if (vorlage !== undefined && vorlage !== null) {
+    const v = istEinfachesObjekt(vorlage) ? vorlage : {};
+    const spaceId = v.spaceId;
+    if (
+      typeof v.id !== "string" ||
+      v.id.length === 0 ||
+      v.id.length > 100 ||
+      typeof v.version !== "number" ||
+      !Number.isInteger(v.version) ||
+      v.version < 1 ||
+      (spaceId !== undefined &&
+        spaceId !== null &&
+        (typeof spaceId !== "string" || spaceId.length > 100))
+    ) {
+      return {
+        ok: false,
+        message: "draftPayload.vorlage ist null oder { id, version, spaceId? }.",
+      };
+    }
   }
   // Die verschachtelten Strukturen werden an der Persistenzgrenze typ-tolerant normalisiert
   // (falscher Container ⇒ Feld fällt weg) und können dort nicht werfen. Hier wird deshalb NUR

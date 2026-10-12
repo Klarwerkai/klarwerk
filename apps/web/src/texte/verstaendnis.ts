@@ -1,0 +1,498 @@
+// ================================================================================================
+// VERSTÄNDNISFRAGEN · die Texte der Fläche am Eintrag und des Lernpfads.
+// ================================================================================================
+//
+// Auftrag `aufnahme:20260922:gesamt-lernwege`, Zusatz vom 03.10.2026. Die Texte sagen durchgehend,
+// was ein Ergebnis ist und was NICHT: Verständnis einer genannten Fassung — kein Kompetenz- oder
+// Befähigungsnachweis, keine Zertifizierung, keine Rangliste. Regel und Wiederholung stehen so
+// da, wie die verantwortliche Person sie festgelegt hat; es gibt keine vorbelegte Kennzahl.
+//
+// ANREDE „du", wie die Lesefläche und die Kenntnisnahme.
+import type { Textmodul } from "./intern/pruefung";
+
+export default {
+  praefix: "verstaendnis.",
+  legacySchluessel: [],
+  de: {
+    "verstaendnis.titel": "Verständnisfragen",
+    "verstaendnis.abgrenzung":
+      "Lesen, bestandene Verständnisfragen und praktische Befähigung sind drei verschiedene Dinge. Ein bestandener Fragensatz zeigt Verständnis dieser Fassung – er ist kein Kompetenz- oder Befähigungsnachweis und keine Zertifizierung.",
+    "verstaendnis.zuFassung": "Zu Fassung {{fassung}}",
+    "verstaendnis.regel.bestehen":
+      "Bestanden ab {{mindest}} von {{anzahl}} richtig beantworteten Fragen. Unbeantwortete Fragen zählen als nicht richtig.",
+    "verstaendnis.regel.einVersuch": "Ein Versuch, keine Wiederholung.",
+    "verstaendnis.regel.versuche": "Bis zu {{anzahl}} Versuche je Person.",
+    "verstaendnis.regel.unbegrenzt": "Beliebig viele Versuche.",
+    "verstaendnis.regel.offen": "Bestehensregel oder Wiederholung noch nicht festgelegt.",
+    "verstaendnis.verbleibend": "Verbleibende Versuche: {{anzahl}}",
+    "verstaendnis.keineVersuche": "Für diese Version sind keine weiteren Versuche vorgesehen.",
+    "verstaendnis.quelle.geaendert":
+      "Die Quelle wurde seit Fassung {{fassung}} fachlich geändert. Dieser Fragensatz wird erst nach erneuter fachlicher Prüfung wieder verwendet; bisherige Ergebnisse bleiben als Nachweise zu Fassung {{fassung}} bestehen.",
+    "verstaendnis.quelle.nicht_gueltig":
+      "Der Eintrag ist derzeit nicht freigegeben. Bis dahin wird nicht bewertet.",
+    "verstaendnis.quelle.fehlt":
+      "Die zugrunde liegende Fassung {{fassung}} ist nicht verfügbar. Ohne Quelle wird nicht bewertet.",
+    "verstaendnis.beantworten": "Fragen beantworten",
+    "verstaendnis.mehrfach": "Wähle alle zutreffenden Antworten.",
+    "verstaendnis.abgeben": "Antworten abgeben",
+    "verstaendnis.laeuft": "Wird ausgewertet …",
+    "verstaendnis.unbeantwortet":
+      "Unbeantwortet: {{anzahl}} – unbeantwortete Fragen zählen als nicht richtig.",
+    "verstaendnis.abbrechen": "Abbrechen",
+    "verstaendnis.ergebnis.bestanden": "Bestanden",
+    "verstaendnis.ergebnis.nichtBestanden": "Nicht bestanden",
+    "verstaendnis.ergebnis.zahl": "{{richtig}} von {{anzahl}} richtig (nötig: {{mindest}})",
+    "verstaendnis.ergebnis.unvollstaendig": "Unvollständig abgegeben: {{anzahl}} unbeantwortet.",
+    "verstaendnis.ergebnis.kopf":
+      "Versuch {{nummer}} · {{datum}} · Fragensatz-Version {{version}} · Fassung {{fassung}}",
+    "verstaendnis.ergebnis.bereits":
+      "Dieser Versuch war schon abgegeben – es wurde kein zweiter angelegt.",
+    "verstaendnis.urteil.richtig": "richtig",
+    "verstaendnis.urteil.falsch": "falsch",
+    "verstaendnis.urteil.unbeantwortet": "unbeantwortet",
+    "verstaendnis.rueck.deineWahl": "Deine Wahl: {{wahl}}",
+    "verstaendnis.rueck.keineWahl": "Keine Antwort gewählt.",
+    "verstaendnis.rueck.richtig": "Richtig: {{richtig}}",
+    "verstaendnis.rueck.zurStelle": "Zur Stelle in Fassung {{fassung}}",
+    "verstaendnis.rueck.anzeigen": "Rückmeldung anzeigen",
+    "verstaendnis.rueck.verbergen": "Rückmeldung verbergen",
+    "verstaendnis.eigene": "Deine Ergebnisse",
+    "verstaendnis.keineEigenen": "Noch kein Versuch.",
+    "verstaendnis.fehler.allgemein": "Das hat nicht geklappt. Bitte erneut versuchen.",
+    "verstaendnis.fehler.stand_veraltet":
+      "Inzwischen gibt es einen neueren Stand. Bitte neu laden.",
+    "verstaendnis.fehler.quelle_geaendert":
+      "Die Quelle wurde fachlich geändert – bis zur erneuten Prüfung wird nicht bewertet.",
+    "verstaendnis.fehler.quelle_nicht_gueltig":
+      "Der Eintrag ist derzeit nicht freigegeben – es wird nicht bewertet.",
+    "verstaendnis.fehler.quelle_fehlt": "Die Quelle fehlt – es wird nicht bewertet.",
+    "verstaendnis.fehler.versuche_erschoepft":
+      "Für diese Version sind keine weiteren Versuche vorgesehen.",
+    "verstaendnis.fehler.nicht_angenommen": "Dieser Fragensatz ist nicht angenommen.",
+    "verstaendnis.fehler.befunde": "Es fehlen noch Belege oder Angaben (siehe Liste).",
+    "verstaendnis.fehler.status": "Das ist in diesem Status nicht möglich.",
+    "verstaendnis.fehler.nicht_verantwortlich":
+      "Fragensätze bearbeitet die fachlich verantwortliche Person oder wer freigeben darf.",
+    "verstaendnis.fehler.kein_freigaberecht": "Entscheiden darf, wer freigeben darf.",
+    "verstaendnis.fehler.begruendung_fehlt": "Bitte die Zurückweisung begründen.",
+    "verstaendnis.fehler.eingabe": "Eine Angabe ist ungültig oder zu lang.",
+    "verstaendnis.fehler.gleichzeitig":
+      "Gleichzeitig wurde ein anderer Versuch abgegeben. Bitte neu laden.",
+    "verstaendnis.fehler.nicht_haltbar": "Diese Instanz kann Ergebnisse nicht dauerhaft speichern.",
+    "verstaendnis.fehler.versuch_fremd": "Diese Versuchskennung ist vergeben. Bitte neu laden.",
+    "verstaendnis.bearbeitung": "Bearbeitung",
+    "verstaendnis.bearbeitungHinweis":
+      "Nur für die fachlich verantwortliche Person und wer freigeben darf. Lernende sehen richtige Antworten, Erläuterungen und Belegstellen erst nach ihrer Abgabe.",
+    "verstaendnis.anlegen": "Fragensatz anlegen",
+    "verstaendnis.bearbeiten": "Bearbeiten",
+    "verstaendnis.neuFassen": "Auf Fassung {{fassung}} prüfen und neu fassen",
+    "verstaendnis.status.entwurf": "Entwurf",
+    "verstaendnis.status.vorgelegt": "zur Zweitprüfung vorgelegt",
+    "verstaendnis.status.angenommen": "angenommen",
+    "verstaendnis.status.zurueckgewiesen": "zurückgewiesen",
+    "verstaendnis.statusZeile": "Version {{version}} · {{status}} · Fassung {{fassung}}",
+    "verstaendnis.gueltigeVersion": "Lernende bearbeiten Version {{version}}.",
+    "verstaendnis.keineGueltige":
+      "Noch keine angenommene Version – Lernende sehen diesen Fragensatz nicht.",
+    "verstaendnis.zurueckgewiesenGrund": "Begründung: {{grund}}",
+    "verstaendnis.feld.titel": "Titel",
+    "verstaendnis.feld.rollen": "Zuordnung zu Lernpfaden (Rollen)",
+    "verstaendnis.feld.mindest": "Bestanden ab wie vielen richtigen Antworten",
+    "verstaendnis.feld.versuche": "Versuche je Person (leer: unbegrenzt nur mit Haken)",
+    "verstaendnis.feld.unbegrenzt": "Unbegrenzt viele Versuche",
+    "verstaendnis.feld.frage": "Frage {{nummer}}",
+    "verstaendnis.feld.fragetext": "Fragetext",
+    "verstaendnis.feld.optionen": "Antwortmöglichkeiten",
+    "verstaendnis.feld.option": "Antwortmöglichkeit {{nummer}}",
+    "verstaendnis.feld.richtig": "Richtig",
+    "verstaendnis.feld.erlaeuterung": "Erläuterung mit Bezug auf die Quelle",
+    "verstaendnis.feld.beleg": "Belegstelle – wörtlich aus Fassung {{fassung}}",
+    "verstaendnis.optionHinzu": "Antwortmöglichkeit hinzufügen",
+    "verstaendnis.frageHinzu": "Frage hinzufügen",
+    "verstaendnis.frageEntfernen": "Frage entfernen",
+    "verstaendnis.speichern": "Als Entwurf speichern",
+    "verstaendnis.vorlegen": "Zur Zweitprüfung vorlegen",
+    "verstaendnis.annehmen": "Annehmen",
+    "verstaendnis.zurueckweisen": "Zurückweisen",
+    "verstaendnis.begruendung": "Begründung der Zurückweisung",
+    "verstaendnis.kontoregel":
+      "Annahme nach der bestehenden Kontoregel: Gilt im Space eine Freigaberegel, entscheiden nur ihre Prüfer, niemand über den eigenen Fragensatz, und angenommen ist erst mit der verlangten Zahl an Zustimmungen. Ohne Regel nimmt an, wer freigeben darf; Vorlegen ist die freiwillige Zweitprüfung. Ohne vollständige Belege keine Annahme.",
+    "verstaendnis.annahme.regel":
+      "Freigaberegel „{{space}}“: {{zustimmungen}} von {{erforderlich}} Zustimmungen.",
+    "verstaendnis.annahme.direkt":
+      "Keine Freigaberegel im Space: direkte Annahme durch eine Person mit Freigaberecht.",
+    "verstaendnis.annahme.zuWenige":
+      "Zu wenige unabhängige Prüfer verfügbar ({{anzahl}}) — der Fragensatz bleibt vorgelegt.",
+    "verstaendnis.hindernis.kein_freigaberecht": "Entscheiden darf, wer freigeben darf.",
+    "verstaendnis.hindernis.selbstpruefung":
+      "Über den eigenen Fragensatz entscheidest du nicht (Mehr-Augen-Prinzip).",
+    "verstaendnis.hindernis.nicht_berechtigt":
+      "Du gehörst nicht zu den Prüfern der Freigaberegel dieses Space.",
+    "verstaendnis.hindernis.vertretung_ruht":
+      "Als Vertretung entscheidest du erst, wenn die vertretene Person nicht aktiv ist.",
+    "verstaendnis.hindernis.bereits_zugestimmt": "Du hast dieser Version bereits zugestimmt.",
+    "verstaendnis.fehler.selbstpruefung":
+      "Über den eigenen Fragensatz entscheidest du nicht (Mehr-Augen-Prinzip).",
+    "verstaendnis.fehler.nicht_berechtigt":
+      "Du gehörst nicht zu den Prüfern der Freigaberegel dieses Space.",
+    "verstaendnis.fehler.vertretung_ruht":
+      "Als Vertretung entscheidest du erst, wenn die vertretene Person nicht aktiv ist.",
+    "verstaendnis.fehler.bereits_zugestimmt": "Du hast dieser Version bereits zugestimmt.",
+    "verstaendnis.befundeTitel": "Vor Vorlage oder Annahme zu klären",
+    "verstaendnis.befundFrage": "Frage {{nummer}}: {{befund}}",
+    "verstaendnis.keineBefunde": "Alle Fragen sind aus Fassung {{fassung}} belegt.",
+    "verstaendnis.befund.keine_fragen": "Der Fragensatz enthält keine Frage.",
+    "verstaendnis.befund.regel_fehlt": "Die Bestehensregel ist nicht festgelegt.",
+    "verstaendnis.befund.regel_ungueltig": "Die Bestehensregel passt nicht zur Zahl der Fragen.",
+    "verstaendnis.befund.wiederholung_fehlt": "Die Wiederholung ist nicht festgelegt.",
+    "verstaendnis.befund.wiederholung_ungueltig": "Die Zahl der Versuche ist ungültig (1 bis 20).",
+    "verstaendnis.befund.quelle_geaendert":
+      "Die Quelle wurde seit der gebundenen Fassung fachlich geändert.",
+    "verstaendnis.befund.quelle_nicht_gueltig": "Der Eintrag ist derzeit nicht freigegeben.",
+    "verstaendnis.befund.quelle_fehlt": "Die gebundene Fassung ist nicht verfügbar.",
+    "verstaendnis.befund.frage_fehlt": "Der Fragetext fehlt.",
+    "verstaendnis.befund.zu_wenige_optionen": "Mindestens zwei Antwortmöglichkeiten.",
+    "verstaendnis.befund.option_leer": "Eine Antwortmöglichkeit ist leer.",
+    "verstaendnis.befund.keine_richtige_antwort": "Keine richtige Antwort markiert.",
+    "verstaendnis.befund.erlaeuterung_fehlt": "Die Erläuterung fehlt.",
+    "verstaendnis.befund.beleg_fehlt": "Die Belegstelle fehlt – ohne Beleg keine Musterantwort.",
+    "verstaendnis.befund.beleg_nicht_in_quelle":
+      "Die Belegstelle steht nicht wörtlich in der gebundenen Fassung.",
+    "verstaendnis.uebersicht.titel": "Ergebnisse (nur für Zuständige)",
+    "verstaendnis.uebersicht.hinweis":
+      "Nach Namen geordnet, keine Rangliste. Ergebnisse zeigen Verständnis der genannten Fassung, keine Befähigung.",
+    "verstaendnis.uebersicht.zeigen": "Ergebnisse anzeigen",
+    "verstaendnis.uebersicht.leer": "Noch keine Ergebnisse.",
+    "verstaendnis.uebersicht.zeile":
+      "{{name}} · {{datum}} · Version {{version}} · Fassung {{fassung}} · {{richtig}}/{{anzahl}} · {{urteil}}",
+    "verstaendnis.unbekanntePerson": "unbekanntes Konto",
+    "verstaendnis.lernpfad.titel": "Verständnisfragen für deine Rolle",
+    "verstaendnis.lernpfad.leer": "Deiner Rolle ist kein Fragensatz zugeordnet.",
+    "verstaendnis.lernpfad.offen": "offen",
+    "verstaendnis.lernpfad.bestanden": "bestanden",
+    "verstaendnis.lernpfad.nichtBestanden": "nicht bestanden",
+    "verstaendnis.lernpfad.pruefung": "zur erneuten Prüfung",
+    "verstaendnis.lernpfad.drei":
+      "Lesen (Schritte oben), Verständnisfragen (hier) und praktische Befähigung (nicht in Klarwerk nachgewiesen) sind getrennte Nachweise.",
+  },
+  en: {
+    "verstaendnis.titel": "Comprehension checks",
+    "verstaendnis.abgrenzung":
+      "Reading, passed comprehension checks and practical ability are three different things. A passed question set shows understanding of this version – it is not proof of competence or ability and not a certification.",
+    "verstaendnis.zuFassung": "For version {{fassung}}",
+    "verstaendnis.regel.bestehen":
+      "Passed with at least {{mindest}} of {{anzahl}} questions answered correctly. Unanswered questions count as not correct.",
+    "verstaendnis.regel.einVersuch": "One attempt, no retry.",
+    "verstaendnis.regel.versuche": "Up to {{anzahl}} attempts per person.",
+    "verstaendnis.regel.unbegrenzt": "Unlimited attempts.",
+    "verstaendnis.regel.offen": "Pass rule or retry not set yet.",
+    "verstaendnis.verbleibend": "Attempts left: {{anzahl}}",
+    "verstaendnis.keineVersuche": "No further attempts are provided for this version.",
+    "verstaendnis.quelle.geaendert":
+      "The source has changed in substance since version {{fassung}}. This question set will only be used again after a new expert review; earlier results remain as records for version {{fassung}}.",
+    "verstaendnis.quelle.nicht_gueltig":
+      "The entry is currently not approved. Until then, nothing is scored.",
+    "verstaendnis.quelle.fehlt":
+      "The underlying version {{fassung}} is not available. Without a source, nothing is scored.",
+    "verstaendnis.beantworten": "Answer questions",
+    "verstaendnis.mehrfach": "Select all answers that apply.",
+    "verstaendnis.abgeben": "Submit answers",
+    "verstaendnis.laeuft": "Scoring …",
+    "verstaendnis.unbeantwortet":
+      "Unanswered: {{anzahl}} – unanswered questions count as not correct.",
+    "verstaendnis.abbrechen": "Cancel",
+    "verstaendnis.ergebnis.bestanden": "Passed",
+    "verstaendnis.ergebnis.nichtBestanden": "Not passed",
+    "verstaendnis.ergebnis.zahl": "{{richtig}} of {{anzahl}} correct (required: {{mindest}})",
+    "verstaendnis.ergebnis.unvollstaendig": "Submitted incomplete: {{anzahl}} unanswered.",
+    "verstaendnis.ergebnis.kopf":
+      "Attempt {{nummer}} · {{datum}} · question set version {{version}} · version {{fassung}}",
+    "verstaendnis.ergebnis.bereits":
+      "This attempt had already been submitted – no second one was created.",
+    "verstaendnis.urteil.richtig": "correct",
+    "verstaendnis.urteil.falsch": "wrong",
+    "verstaendnis.urteil.unbeantwortet": "unanswered",
+    "verstaendnis.rueck.deineWahl": "Your choice: {{wahl}}",
+    "verstaendnis.rueck.keineWahl": "No answer selected.",
+    "verstaendnis.rueck.richtig": "Correct: {{richtig}}",
+    "verstaendnis.rueck.zurStelle": "Go to the passage in version {{fassung}}",
+    "verstaendnis.rueck.anzeigen": "Show feedback",
+    "verstaendnis.rueck.verbergen": "Hide feedback",
+    "verstaendnis.eigene": "Your results",
+    "verstaendnis.keineEigenen": "No attempt yet.",
+    "verstaendnis.fehler.allgemein": "That did not work. Please try again.",
+    "verstaendnis.fehler.stand_veraltet": "There is a newer state by now. Please reload.",
+    "verstaendnis.fehler.quelle_geaendert":
+      "The source has changed in substance – nothing is scored until it is reviewed again.",
+    "verstaendnis.fehler.quelle_nicht_gueltig":
+      "The entry is currently not approved – nothing is scored.",
+    "verstaendnis.fehler.quelle_fehlt": "The source is missing – nothing is scored.",
+    "verstaendnis.fehler.versuche_erschoepft": "No further attempts are provided for this version.",
+    "verstaendnis.fehler.nicht_angenommen": "This question set has not been accepted.",
+    "verstaendnis.fehler.befunde": "Evidence or details are still missing (see list).",
+    "verstaendnis.fehler.status": "This is not possible in this status.",
+    "verstaendnis.fehler.nicht_verantwortlich":
+      "Question sets are edited by the responsible person or someone who may approve.",
+    "verstaendnis.fehler.kein_freigaberecht": "Only someone who may approve can decide.",
+    "verstaendnis.fehler.begruendung_fehlt": "Please give a reason for the rejection.",
+    "verstaendnis.fehler.eingabe": "An entry is invalid or too long.",
+    "verstaendnis.fehler.gleichzeitig":
+      "Another attempt was submitted at the same time. Please reload.",
+    "verstaendnis.fehler.nicht_haltbar": "This instance cannot store results permanently.",
+    "verstaendnis.fehler.versuch_fremd": "This attempt ID is already in use. Please reload.",
+    "verstaendnis.bearbeitung": "Editing",
+    "verstaendnis.bearbeitungHinweis":
+      "Only for the responsible person and those who may approve. Learners see correct answers, explanations and evidence passages only after submitting.",
+    "verstaendnis.anlegen": "Create question set",
+    "verstaendnis.bearbeiten": "Edit",
+    "verstaendnis.neuFassen": "Review against version {{fassung}} and revise",
+    "verstaendnis.status.entwurf": "draft",
+    "verstaendnis.status.vorgelegt": "submitted for second review",
+    "verstaendnis.status.angenommen": "accepted",
+    "verstaendnis.status.zurueckgewiesen": "rejected",
+    "verstaendnis.statusZeile": "Version {{version}} · {{status}} · version {{fassung}}",
+    "verstaendnis.gueltigeVersion": "Learners work on version {{version}}.",
+    "verstaendnis.keineGueltige":
+      "No accepted version yet – learners do not see this question set.",
+    "verstaendnis.zurueckgewiesenGrund": "Reason: {{grund}}",
+    "verstaendnis.feld.titel": "Title",
+    "verstaendnis.feld.rollen": "Assignment to learning paths (roles)",
+    "verstaendnis.feld.mindest": "Passed from how many correct answers",
+    "verstaendnis.feld.versuche": "Attempts per person (unlimited only with the checkbox)",
+    "verstaendnis.feld.unbegrenzt": "Unlimited attempts",
+    "verstaendnis.feld.frage": "Question {{nummer}}",
+    "verstaendnis.feld.fragetext": "Question text",
+    "verstaendnis.feld.optionen": "Answer options",
+    "verstaendnis.feld.option": "Answer option {{nummer}}",
+    "verstaendnis.feld.richtig": "Correct",
+    "verstaendnis.feld.erlaeuterung": "Explanation referring to the source",
+    "verstaendnis.feld.beleg": "Evidence passage – verbatim from version {{fassung}}",
+    "verstaendnis.optionHinzu": "Add answer option",
+    "verstaendnis.frageHinzu": "Add question",
+    "verstaendnis.frageEntfernen": "Remove question",
+    "verstaendnis.speichern": "Save as draft",
+    "verstaendnis.vorlegen": "Submit for second review",
+    "verstaendnis.annehmen": "Accept",
+    "verstaendnis.zurueckweisen": "Reject",
+    "verstaendnis.begruendung": "Reason for rejection",
+    "verstaendnis.kontoregel":
+      "Acceptance follows the existing account rule: if the space has an approval rule, only its reviewers decide, nobody decides on their own question set, and it is accepted only once the required number of approvals is reached. Without a rule, whoever may approve accepts directly; submitting is the voluntary second review. No acceptance without complete evidence.",
+    "verstaendnis.annahme.regel":
+      "Approval rule “{{space}}”: {{zustimmungen}} of {{erforderlich}} approvals.",
+    "verstaendnis.annahme.direkt":
+      "No approval rule in this space: direct acceptance by a person who may approve.",
+    "verstaendnis.annahme.zuWenige":
+      "Too few independent reviewers available ({{anzahl}}) — the question set stays submitted.",
+    "verstaendnis.hindernis.kein_freigaberecht": "Only someone who may approve can decide.",
+    "verstaendnis.hindernis.selbstpruefung":
+      "You do not decide on your own question set (four-eyes principle).",
+    "verstaendnis.hindernis.nicht_berechtigt":
+      "You are not one of the reviewers of this space's approval rule.",
+    "verstaendnis.hindernis.vertretung_ruht":
+      "As a deputy you decide only when the person you stand in for is not active.",
+    "verstaendnis.hindernis.bereits_zugestimmt": "You have already approved this version.",
+    "verstaendnis.fehler.selbstpruefung":
+      "You do not decide on your own question set (four-eyes principle).",
+    "verstaendnis.fehler.nicht_berechtigt":
+      "You are not one of the reviewers of this space's approval rule.",
+    "verstaendnis.fehler.vertretung_ruht":
+      "As a deputy you decide only when the person you stand in for is not active.",
+    "verstaendnis.fehler.bereits_zugestimmt": "You have already approved this version.",
+    "verstaendnis.befundeTitel": "To resolve before submitting or accepting",
+    "verstaendnis.befundFrage": "Question {{nummer}}: {{befund}}",
+    "verstaendnis.keineBefunde": "All questions are backed by version {{fassung}}.",
+    "verstaendnis.befund.keine_fragen": "The question set contains no question.",
+    "verstaendnis.befund.regel_fehlt": "The pass rule is not set.",
+    "verstaendnis.befund.regel_ungueltig": "The pass rule does not fit the number of questions.",
+    "verstaendnis.befund.wiederholung_fehlt": "The retry rule is not set.",
+    "verstaendnis.befund.wiederholung_ungueltig": "The number of attempts is invalid (1 to 20).",
+    "verstaendnis.befund.quelle_geaendert":
+      "The source has changed in substance since the bound version.",
+    "verstaendnis.befund.quelle_nicht_gueltig": "The entry is currently not approved.",
+    "verstaendnis.befund.quelle_fehlt": "The bound version is not available.",
+    "verstaendnis.befund.frage_fehlt": "The question text is missing.",
+    "verstaendnis.befund.zu_wenige_optionen": "At least two answer options.",
+    "verstaendnis.befund.option_leer": "An answer option is empty.",
+    "verstaendnis.befund.keine_richtige_antwort": "No correct answer marked.",
+    "verstaendnis.befund.erlaeuterung_fehlt": "The explanation is missing.",
+    "verstaendnis.befund.beleg_fehlt":
+      "The evidence passage is missing – no model answer without evidence.",
+    "verstaendnis.befund.beleg_nicht_in_quelle":
+      "The evidence passage is not found verbatim in the bound version.",
+    "verstaendnis.uebersicht.titel": "Results (responsible persons only)",
+    "verstaendnis.uebersicht.hinweis":
+      "Sorted by name, no ranking. Results show understanding of the named version, not ability.",
+    "verstaendnis.uebersicht.zeigen": "Show results",
+    "verstaendnis.uebersicht.leer": "No results yet.",
+    "verstaendnis.uebersicht.zeile":
+      "{{name}} · {{datum}} · version {{version}} · version {{fassung}} · {{richtig}}/{{anzahl}} · {{urteil}}",
+    "verstaendnis.unbekanntePerson": "unknown account",
+    "verstaendnis.lernpfad.titel": "Comprehension checks for your role",
+    "verstaendnis.lernpfad.leer": "No question set is assigned to your role.",
+    "verstaendnis.lernpfad.offen": "open",
+    "verstaendnis.lernpfad.bestanden": "passed",
+    "verstaendnis.lernpfad.nichtBestanden": "not passed",
+    "verstaendnis.lernpfad.pruefung": "awaiting new review",
+    "verstaendnis.lernpfad.drei":
+      "Reading (steps above), comprehension checks (here) and practical ability (not evidenced in Klarwerk) are separate records.",
+  },
+  nl: {
+    "verstaendnis.titel": "Begripsvragen",
+    "verstaendnis.abgrenzung":
+      "Lezen, behaalde begripsvragen en praktische bekwaamheid zijn drie verschillende dingen. Een behaalde vragenset toont begrip van deze versie – het is geen bewijs van competentie of bekwaamheid en geen certificering.",
+    "verstaendnis.zuFassung": "Bij versie {{fassung}}",
+    "verstaendnis.regel.bestehen":
+      "Behaald vanaf {{mindest}} van {{anzahl}} goed beantwoorde vragen. Onbeantwoorde vragen tellen als niet goed.",
+    "verstaendnis.regel.einVersuch": "Eén poging, geen herhaling.",
+    "verstaendnis.regel.versuche": "Tot {{anzahl}} pogingen per persoon.",
+    "verstaendnis.regel.unbegrenzt": "Onbeperkt aantal pogingen.",
+    "verstaendnis.regel.offen": "Slaagregel of herhaling nog niet vastgelegd.",
+    "verstaendnis.verbleibend": "Resterende pogingen: {{anzahl}}",
+    "verstaendnis.keineVersuche": "Voor deze versie zijn geen verdere pogingen voorzien.",
+    "verstaendnis.quelle.geaendert":
+      "De bron is sinds versie {{fassung}} inhoudelijk gewijzigd. Deze vragenset wordt pas na een nieuwe inhoudelijke controle weer gebruikt; eerdere resultaten blijven als bewijs bij versie {{fassung}} bestaan.",
+    "verstaendnis.quelle.nicht_gueltig":
+      "Het item is momenteel niet vrijgegeven. Tot dan wordt niets beoordeeld.",
+    "verstaendnis.quelle.fehlt":
+      "De onderliggende versie {{fassung}} is niet beschikbaar. Zonder bron wordt niets beoordeeld.",
+    "verstaendnis.beantworten": "Vragen beantwoorden",
+    "verstaendnis.mehrfach": "Kies alle juiste antwoorden.",
+    "verstaendnis.abgeben": "Antwoorden indienen",
+    "verstaendnis.laeuft": "Wordt beoordeeld …",
+    "verstaendnis.unbeantwortet":
+      "Onbeantwoord: {{anzahl}} – onbeantwoorde vragen tellen als niet goed.",
+    "verstaendnis.abbrechen": "Annuleren",
+    "verstaendnis.ergebnis.bestanden": "Behaald",
+    "verstaendnis.ergebnis.nichtBestanden": "Niet behaald",
+    "verstaendnis.ergebnis.zahl": "{{richtig}} van {{anzahl}} goed (nodig: {{mindest}})",
+    "verstaendnis.ergebnis.unvollstaendig": "Onvolledig ingediend: {{anzahl}} onbeantwoord.",
+    "verstaendnis.ergebnis.kopf":
+      "Poging {{nummer}} · {{datum}} · vragenset-versie {{version}} · versie {{fassung}}",
+    "verstaendnis.ergebnis.bereits": "Deze poging was al ingediend – er is geen tweede aangemaakt.",
+    "verstaendnis.urteil.richtig": "goed",
+    "verstaendnis.urteil.falsch": "fout",
+    "verstaendnis.urteil.unbeantwortet": "onbeantwoord",
+    "verstaendnis.rueck.deineWahl": "Jouw keuze: {{wahl}}",
+    "verstaendnis.rueck.keineWahl": "Geen antwoord gekozen.",
+    "verstaendnis.rueck.richtig": "Goed: {{richtig}}",
+    "verstaendnis.rueck.zurStelle": "Naar de passage in versie {{fassung}}",
+    "verstaendnis.rueck.anzeigen": "Terugkoppeling tonen",
+    "verstaendnis.rueck.verbergen": "Terugkoppeling verbergen",
+    "verstaendnis.eigene": "Jouw resultaten",
+    "verstaendnis.keineEigenen": "Nog geen poging.",
+    "verstaendnis.fehler.allgemein": "Dat is niet gelukt. Probeer het opnieuw.",
+    "verstaendnis.fehler.stand_veraltet": "Er is inmiddels een nieuwere stand. Laad opnieuw.",
+    "verstaendnis.fehler.quelle_geaendert":
+      "De bron is inhoudelijk gewijzigd – tot de nieuwe controle wordt niets beoordeeld.",
+    "verstaendnis.fehler.quelle_nicht_gueltig":
+      "Het item is momenteel niet vrijgegeven – er wordt niets beoordeeld.",
+    "verstaendnis.fehler.quelle_fehlt": "De bron ontbreekt – er wordt niets beoordeeld.",
+    "verstaendnis.fehler.versuche_erschoepft":
+      "Voor deze versie zijn geen verdere pogingen voorzien.",
+    "verstaendnis.fehler.nicht_angenommen": "Deze vragenset is niet aangenomen.",
+    "verstaendnis.fehler.befunde": "Er ontbreken nog bewijzen of gegevens (zie lijst).",
+    "verstaendnis.fehler.status": "Dat kan niet in deze status.",
+    "verstaendnis.fehler.nicht_verantwortlich":
+      "Vragensets worden bewerkt door de inhoudelijk verantwoordelijke of wie mag vrijgeven.",
+    "verstaendnis.fehler.kein_freigaberecht": "Alleen wie mag vrijgeven, kan beslissen.",
+    "verstaendnis.fehler.begruendung_fehlt": "Geef een reden voor de afwijzing.",
+    "verstaendnis.fehler.eingabe": "Een invoer is ongeldig of te lang.",
+    "verstaendnis.fehler.gleichzeitig": "Tegelijk werd een andere poging ingediend. Laad opnieuw.",
+    "verstaendnis.fehler.nicht_haltbar": "Deze instantie kan resultaten niet blijvend opslaan.",
+    "verstaendnis.fehler.versuch_fremd": "Deze poging-ID is al in gebruik. Laad opnieuw.",
+    "verstaendnis.bearbeitung": "Bewerking",
+    "verstaendnis.bearbeitungHinweis":
+      "Alleen voor de verantwoordelijke en wie mag vrijgeven. Lerenden zien juiste antwoorden, toelichtingen en bewijspassages pas na het indienen.",
+    "verstaendnis.anlegen": "Vragenset aanmaken",
+    "verstaendnis.bearbeiten": "Bewerken",
+    "verstaendnis.neuFassen": "Controleren tegen versie {{fassung}} en herzien",
+    "verstaendnis.status.entwurf": "concept",
+    "verstaendnis.status.vorgelegt": "voorgelegd voor tweede controle",
+    "verstaendnis.status.angenommen": "aangenomen",
+    "verstaendnis.status.zurueckgewiesen": "afgewezen",
+    "verstaendnis.statusZeile": "Versie {{version}} · {{status}} · versie {{fassung}}",
+    "verstaendnis.gueltigeVersion": "Lerenden werken met versie {{version}}.",
+    "verstaendnis.keineGueltige": "Nog geen aangenomen versie – lerenden zien deze vragenset niet.",
+    "verstaendnis.zurueckgewiesenGrund": "Reden: {{grund}}",
+    "verstaendnis.feld.titel": "Titel",
+    "verstaendnis.feld.rollen": "Toewijzing aan leerpaden (rollen)",
+    "verstaendnis.feld.mindest": "Behaald vanaf hoeveel goede antwoorden",
+    "verstaendnis.feld.versuche": "Pogingen per persoon (onbeperkt alleen met vinkje)",
+    "verstaendnis.feld.unbegrenzt": "Onbeperkt aantal pogingen",
+    "verstaendnis.feld.frage": "Vraag {{nummer}}",
+    "verstaendnis.feld.fragetext": "Vraagtekst",
+    "verstaendnis.feld.optionen": "Antwoordmogelijkheden",
+    "verstaendnis.feld.option": "Antwoordmogelijkheid {{nummer}}",
+    "verstaendnis.feld.richtig": "Goed",
+    "verstaendnis.feld.erlaeuterung": "Toelichting met verwijzing naar de bron",
+    "verstaendnis.feld.beleg": "Bewijspassage – letterlijk uit versie {{fassung}}",
+    "verstaendnis.optionHinzu": "Antwoordmogelijkheid toevoegen",
+    "verstaendnis.frageHinzu": "Vraag toevoegen",
+    "verstaendnis.frageEntfernen": "Vraag verwijderen",
+    "verstaendnis.speichern": "Als concept opslaan",
+    "verstaendnis.vorlegen": "Voorleggen voor tweede controle",
+    "verstaendnis.annehmen": "Aannemen",
+    "verstaendnis.zurueckweisen": "Afwijzen",
+    "verstaendnis.begruendung": "Reden van afwijzing",
+    "verstaendnis.kontoregel":
+      "Aanname volgens de bestaande accountregel: geldt in de space een vrijgaveregel, dan beslissen alleen haar controleurs, niemand over de eigen vragenset, en aangenomen is pas met het vereiste aantal instemmingen. Zonder regel neemt aan wie mag vrijgeven; voorleggen is de vrijwillige tweede controle. Zonder volledige bewijzen geen aanname.",
+    "verstaendnis.annahme.regel":
+      "Vrijgaveregel „{{space}}”: {{zustimmungen}} van {{erforderlich}} instemmingen.",
+    "verstaendnis.annahme.direkt":
+      "Geen vrijgaveregel in de space: directe aanname door iemand die mag vrijgeven.",
+    "verstaendnis.annahme.zuWenige":
+      "Te weinig onafhankelijke controleurs beschikbaar ({{anzahl}}) — de vragenset blijft voorgelegd.",
+    "verstaendnis.hindernis.kein_freigaberecht": "Alleen wie mag vrijgeven, kan beslissen.",
+    "verstaendnis.hindernis.selbstpruefung":
+      "Over je eigen vragenset beslis je niet (vier-ogenprincipe).",
+    "verstaendnis.hindernis.nicht_berechtigt":
+      "Je hoort niet bij de controleurs van de vrijgaveregel van deze space.",
+    "verstaendnis.hindernis.vertretung_ruht":
+      "Als vervanger beslis je pas als de vervangen persoon niet actief is.",
+    "verstaendnis.hindernis.bereits_zugestimmt": "Je hebt al met deze versie ingestemd.",
+    "verstaendnis.fehler.selbstpruefung":
+      "Over je eigen vragenset beslis je niet (vier-ogenprincipe).",
+    "verstaendnis.fehler.nicht_berechtigt":
+      "Je hoort niet bij de controleurs van de vrijgaveregel van deze space.",
+    "verstaendnis.fehler.vertretung_ruht":
+      "Als vervanger beslis je pas als de vervangen persoon niet actief is.",
+    "verstaendnis.fehler.bereits_zugestimmt": "Je hebt al met deze versie ingestemd.",
+    "verstaendnis.befundeTitel": "Op te lossen vóór voorleggen of aannemen",
+    "verstaendnis.befundFrage": "Vraag {{nummer}}: {{befund}}",
+    "verstaendnis.keineBefunde": "Alle vragen zijn onderbouwd met versie {{fassung}}.",
+    "verstaendnis.befund.keine_fragen": "De vragenset bevat geen vraag.",
+    "verstaendnis.befund.regel_fehlt": "De slaagregel is niet vastgelegd.",
+    "verstaendnis.befund.regel_ungueltig": "De slaagregel past niet bij het aantal vragen.",
+    "verstaendnis.befund.wiederholung_fehlt": "De herhaling is niet vastgelegd.",
+    "verstaendnis.befund.wiederholung_ungueltig": "Het aantal pogingen is ongeldig (1 tot 20).",
+    "verstaendnis.befund.quelle_geaendert":
+      "De bron is sinds de gebonden versie inhoudelijk gewijzigd.",
+    "verstaendnis.befund.quelle_nicht_gueltig": "Het item is momenteel niet vrijgegeven.",
+    "verstaendnis.befund.quelle_fehlt": "De gebonden versie is niet beschikbaar.",
+    "verstaendnis.befund.frage_fehlt": "De vraagtekst ontbreekt.",
+    "verstaendnis.befund.zu_wenige_optionen": "Minstens twee antwoordmogelijkheden.",
+    "verstaendnis.befund.option_leer": "Een antwoordmogelijkheid is leeg.",
+    "verstaendnis.befund.keine_richtige_antwort": "Geen goed antwoord gemarkeerd.",
+    "verstaendnis.befund.erlaeuterung_fehlt": "De toelichting ontbreekt.",
+    "verstaendnis.befund.beleg_fehlt":
+      "De bewijspassage ontbreekt – zonder bewijs geen modelantwoord.",
+    "verstaendnis.befund.beleg_nicht_in_quelle":
+      "De bewijspassage staat niet letterlijk in de gebonden versie.",
+    "verstaendnis.uebersicht.titel": "Resultaten (alleen voor verantwoordelijken)",
+    "verstaendnis.uebersicht.hinweis":
+      "Op naam gesorteerd, geen ranglijst. Resultaten tonen begrip van de genoemde versie, geen bekwaamheid.",
+    "verstaendnis.uebersicht.zeigen": "Resultaten tonen",
+    "verstaendnis.uebersicht.leer": "Nog geen resultaten.",
+    "verstaendnis.uebersicht.zeile":
+      "{{name}} · {{datum}} · versie {{version}} · versie {{fassung}} · {{richtig}}/{{anzahl}} · {{urteil}}",
+    "verstaendnis.unbekanntePerson": "onbekend account",
+    "verstaendnis.lernpfad.titel": "Begripsvragen voor jouw rol",
+    "verstaendnis.lernpfad.leer": "Aan jouw rol is geen vragenset toegewezen.",
+    "verstaendnis.lernpfad.offen": "open",
+    "verstaendnis.lernpfad.bestanden": "behaald",
+    "verstaendnis.lernpfad.nichtBestanden": "niet behaald",
+    "verstaendnis.lernpfad.pruefung": "wacht op nieuwe controle",
+    "verstaendnis.lernpfad.drei":
+      "Lezen (stappen hierboven), begripsvragen (hier) en praktische bekwaamheid (niet in Klarwerk aangetoond) zijn aparte bewijzen.",
+  },
+} satisfies Textmodul;

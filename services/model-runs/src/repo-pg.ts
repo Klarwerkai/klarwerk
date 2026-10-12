@@ -43,4 +43,16 @@ export class PgModelRunRepo implements ModelRunRepo {
     );
     return res.rows.map((row) => row.data);
   }
+
+  // Betroffenenrechte (R-0663): die Läufe einer anfragenden Person — nur lesend.
+  async vonAkteur(actor: string): Promise<ModelRunRecord[]> {
+    if (actor.trim().length === 0) {
+      return [];
+    }
+    const res = await this.pool.query<ModelRunRow>(
+      "SELECT data FROM model_runs WHERE data->>'actor' = $1 ORDER BY data->>'startedAt' ASC",
+      [actor],
+    );
+    return res.rows.map((row) => row.data);
+  }
 }

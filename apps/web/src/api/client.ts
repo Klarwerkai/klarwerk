@@ -1,4 +1,5 @@
 import i18n from "i18next";
+import { RECHTEKONTEXT_KOPF, anfrageEpoche, rechtekontextGesehen } from "../lib/rechtekontext";
 import { gespeicherteSprache } from "../lib/sprachwahl";
 
 // Typisierter API-Client gegen die Modul-Endpunkte (gleiche Origin, /api).
@@ -36,7 +37,14 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
 
+  const beginn = anfrageEpoche();
   const res = await fetch(`${BASE}${path}`, { credentials: "include", ...init, headers });
+  // produkt:20261011:peter-p14 (K6/K7): der Rechtekontext dieser Antwort — ändert er sich, verwirft
+  // `RechtekontextWache` alle Inhaltsabfragen. Antworten ohne Kopf zählen nicht.
+  rechtekontextGesehen(
+    typeof res.headers?.get === "function" ? res.headers.get(RECHTEKONTEXT_KOPF) : null,
+    beginn,
+  );
 
   if (res.status === 204) {
     return undefined as T;
@@ -122,6 +130,11 @@ export const api = {
   // zweimal getippt.
   postWithTimeout: <T>(path: string, body: unknown, timeoutMs: number): Promise<T> =>
     mitFrist<T>(path, { method: "POST", body: JSON.stringify(body) }, timeoutMs),
+  // produkt:20261008:klara-basis: POST, den der MENSCH stoppen kann („Anfrage stoppen" in Klara).
+  // Der Abbruch kommt als `AbortError` beim Aufrufer an — er weiss, dass er selbst gestoppt hat, und
+  // sagt das so; ein Ausfall des Servers wird daraus nicht.
+  postAbbrechbar: <T>(path: string, body: unknown, signal: AbortSignal): Promise<T> =>
+    apiFetch<T>(path, { method: "POST", body: JSON.stringify(body), signal }),
   // produkt:wettbewerb:20261003:lernplattform: POST, dessen Erfolg eine DATEI ist (SCORM-Paket).
   // Der Fehlerweg ist derselbe wie bei `apiFetch` — JSON `{ error, message, … }` wird zum ApiError,
   // die übrigen Felder (etwa `pruefung` einer blockierten Übergabe) reisen in `details` mit.

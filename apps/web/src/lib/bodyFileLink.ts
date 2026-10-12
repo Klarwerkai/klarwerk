@@ -5,7 +5,7 @@
 // Upload, keine Validierung (die Datei-Referenz ist Evidence/Anhang, KEIN Status-/Trust-/Validierungs-
 // Signal). Server- und FE-Sanitizer behalten genau die schmale `attachment`-Div-Klasse + sichere Links.
 
-import { htmlToPlainText, isEmptyHtml } from "./richText";
+import { htmlToPlainText } from "./richText";
 
 // Object-Store-IDs sind Wort-/Bindestrich-Token; alles andere wird abgelehnt (kein Pfad-/Scheme-Trick).
 const OBJECT_ID_RE = /^[\w-]+$/;
@@ -54,18 +54,9 @@ export function fileLinkHtml(input: BodyFileInput): string {
   return `<div class="attachment"><a href="${href}" title="${safeName}">${safeName}</a></div>`;
 }
 
-// Body-Datei-Referenz nicht-destruktiv anhängen; leerer Body → setzen; ohne gültige objectId = No-Op.
-export function applyBodyFileLink(
-  currentHtml: string | null | undefined,
-  input: BodyFileInput,
-): string {
-  const next = fileLinkHtml(input);
-  const base = currentHtml ?? "";
-  if (next.length === 0) {
-    return base;
-  }
-  return isEmptyHtml(base) ? next : base + next;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `applyBodyFileLink` („Verweis an den Body
+// hängen"). Kein Produktweg rief ihn — Erfassen und Editor fügen den Verweis über `fileLinkHtml` an
+// ihrer Einfügestelle ein (R-0991 Nr. 10). Er ist entfernt.
 
 // ================================================================================================
 // JOB 3474 · REVIEW26 — DIESES MODUL KONNTE SEINE EIGENE FORM SCHREIBEN, ABER NICHT LESEN.

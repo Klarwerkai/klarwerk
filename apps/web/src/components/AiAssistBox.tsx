@@ -11,6 +11,7 @@ import { ApiError } from "../api/client";
 import { useAssistPresets } from "../api/hooks";
 import {
   ASSIST_ACTIONS,
+  type AssistAction,
   type AssistApplyMode,
   applyAssist,
   assistActionHelpKey,
@@ -32,6 +33,7 @@ export function AiAssistBox({
   hintKey = "capture.ai.hint",
   extraApplyActions = [],
   compact = false,
+  applySpelling,
 }: {
   text: string;
   runAssist: (text: string, instruction?: string) => Promise<string>;
@@ -52,10 +54,15 @@ export function AiAssistBox({
   // SCRUM-384: kompakte Palette (ohne Titel/Hinweis) — für die ✨KI-Toolbar im Editor,
   // wo der Nutzer die Palette bereits bewusst geöffnet hat (ARGUS-Muster).
   compact?: boolean;
+  // R-0103: formaterhaltendes Ersetzen für die Aktion „Rechtschreibung" am Rumpf (Fett, Listen).
+  // `null` = nicht sicher abbildbar → Übernahme blockiert, Vorschau bleibt. Ohne Prop: `applyFn`.
+  applySpelling?: ((suggestion: string) => string | null) | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
   const [pending, setPending] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  // Welche Werksaktion die Vorschau erzeugt hat; `null` bei freier Anweisung oder Vorlage.
+  const [previewAction, setPreviewAction] = useState<AssistAction | null>(null);
   const [boxErr, setBoxErr] = useState<string | null>(null);
   // PAKET 1 (D-AISTATE, Pedi 23.07.): echte LLM-Nachbearbeitung — ohne nutzbares Modell HART
   // ausgrauen statt still in den wirkungslosen Fallback zu laufen.
@@ -63,11 +70,13 @@ export function AiAssistBox({
   const disabled = pending || text.trim().length === 0 || !assistAi.available;
   const warnBeforeReplace = shouldWarnBeforeReplace(text);
 
-  const run = async (instruction?: string): Promise<void> => {
+  const run = async (instruction?: string, action: AssistAction | null = null): Promise<void> => {
     setPending(true);
     setBoxErr(null);
     try {
-      setPreview(await runAssist(text, instruction));
+      const next = await runAssist(text, instruction);
+      setPreview(next);
+      setPreviewAction(action);
     } catch (e) {
       setBoxErr(e instanceof ApiError ? e.message : t("state.error"));
     } finally {
@@ -76,6 +85,17 @@ export function AiAssistBox({
   };
   const apply = (mode: AssistApplyMode): void => {
     if (preview === null) {
+      return;
+    }
+    if (mode === "replace" && previewAction === "spelling" && applySpelling) {
+      const html = applySpelling(preview);
+      if (html === null) {
+        setBoxErr(t("fd.errSpelling"));
+        return;
+      }
+      onApply(html);
+      setBoxErr(null);
+      setPreview(null);
       return;
     }
     onApply(applyFn(mode, text, preview));
@@ -109,7 +129,7 @@ export function AiAssistBox({
             <button
               type="button"
               disabled={disabled}
-              onClick={() => void run(t(assistActionInstructionKey(a)))}
+              onClick={() => void run(t(assistActionInstructionKey(a)), a)}
               className="rounded-pill border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
             >
               {t(assistActionLabelKey(a))}
@@ -123,7 +143,7 @@ export function AiAssistBox({
       {boxErr ? <p className="mt-2 text-[12px] text-trust-crit-text">{boxErr}</p> : null}
       {preview !== null ? (
         <div className="mt-2 rounded-btn border border-ai/30 bg-surface p-2.5">
-          <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
             {t("capture.ai.previewTitle")}
           </div>
           <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-text">
@@ -152,7 +172,7 @@ export function AiAssistBox({
           {extraApplyActions.length > 0 ? (
             <div className="mt-2 border-t border-hairline pt-2">
               {/* SCRUM-343: strukturierte Übernahme-Modi klar gruppiert (als Abschnitt / als Block). */}
-              <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+              <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                 {t("capture.ai.applyAsLabel")}
               </div>
               <div className="mt-1 flex flex-wrap gap-1.5">

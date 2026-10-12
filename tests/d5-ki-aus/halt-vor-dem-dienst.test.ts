@@ -44,7 +44,10 @@ import {
 
 adapterUmgebungSetzen();
 
-const EINGAENGE = ["/api/ask", "/api/reasoner"] as const;
+// R-0700: die Einwilligungsprüfung einer Klara-Frage steht seit dem eigenen Ausführungszugang dort
+// und nicht mehr am allgemeinen Frageweg — der Haltepunkt „vor dem Dienst" liegt also an Klaras Tür.
+const KLARA_TUER = "/api/klara/sessions/:sessionId/execute";
+const EINGAENGE = [KLARA_TUER, "/api/reasoner"] as const;
 type Eingang = (typeof EINGAENGE)[number];
 type Umschalten = "keins" | "aus" | "aus-ein";
 
@@ -104,7 +107,7 @@ async function lageAufbauen(eingang: Eingang, marke: string): Promise<Lage> {
   const s = sitzung.json() as { sessionId: string; documentContextId: string };
   const anfrage: InjectOptions = {
     method: "POST",
-    url: eingang,
+    url: eingang === KLARA_TUER ? `/api/klara/sessions/${s.sessionId}/execute` : eingang,
     headers: {
       ...leser.kopf,
       "x-klara-session": s.sessionId,
@@ -112,8 +115,8 @@ async function lageAufbauen(eingang: Eingang, marke: string): Promise<Lage> {
       "x-klara-document": s.documentContextId,
     },
     payload:
-      eingang === "/api/ask"
-        ? { question: FRAGE, locale: "de", mode: "retrieval-only" }
+      eingang === KLARA_TUER
+        ? { question: FRAGE, locale: "de" }
         : { task: "ask", text: FRAGE, locale: "de" },
   };
   return { aufbau, dienste, grenzen, koId: quelle.koId, anfrage };
@@ -199,7 +202,7 @@ async function haltefall(
 
 describe("D5 · eine vor dem Dienst angehaltene Frage (Einwilligungsprüfung) — Bens B1", () => {
   for (const eingang of EINGAENGE) {
-    const kurz = eingang === "/api/ask" ? "ask" : "rsn";
+    const kurz = eingang === KLARA_TUER ? "ask" : "rsn";
 
     it(`${eingang} · Kontrolle: angehalten ohne Umschalten → antwortet mit Quelle, Zähler zählen`, async () => {
       const { antwort, zugriffe, lage } = await haltefall(eingang, "keins", `${kurz}-k`);

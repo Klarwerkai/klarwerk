@@ -4,7 +4,6 @@ import {
   type DetectSubject,
   coreText,
   decideFromVerdict,
-  pairKey,
   quoteFound,
   quotesVerbatim,
   relationToType,
@@ -52,12 +51,6 @@ describe("Berater-Konzept 04.07. (Stufe 2): Erkennungskern", () => {
     expect(text).toContain("Aussage.");
     expect(text).toContain("Bedingung X");
     expect(text).toContain("Maßnahme Y");
-  });
-
-  it("pairKey ist reihenfolgeunabhängig (Dedup-Invariante)", () => {
-    expect(pairKey("truth", "ko-rot", "ko-blau")).toBe(pairKey("truth", "ko-blau", "ko-rot"));
-    // Typ ist Teil des Schlüssels — dasselbe Paar darf verschiedene Typen offen haben.
-    expect(pairKey("truth", "a", "b")).not.toBe(pairKey("temporal", "a", "b"));
   });
 
   it("relationToType bildet nur modell-sichere Auto-Typen ab (doppelung noch nicht)", () => {

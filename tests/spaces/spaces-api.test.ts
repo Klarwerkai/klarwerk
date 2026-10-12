@@ -165,12 +165,15 @@ async function vorschau(b: Buehne, kopf: Kopf, koId: string, zielSpaceId: string
 function basisAus(v: {
   quelle: { id: string; version: number } | null;
   ziel: { id: string; version: number } | null;
+  grundlage: string;
 }) {
   return {
     quelleId: v.quelle?.id ?? null,
     quelleVersion: v.quelle?.version ?? null,
     zielId: v.ziel?.id ?? null,
     zielVersion: v.ziel?.version ?? null,
+    // ADMIN-07 Nacharbeit 3: die Bestätigung ist an die wirksame Rechtelage gebunden.
+    grundlage: v.grundlage,
   };
 }
 

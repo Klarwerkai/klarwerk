@@ -34,13 +34,14 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix apps/web
       # `--with-deps` ist der Unterschied zum lokalen `npm run smoke:browser:setup`: der Runner
-      # bringt die Systembibliotheken für Chromium nicht mit. Ohne diesen Schritt bricht das Tor
+      # bringt die Systembibliotheken der Browser nicht mit. Ohne diesen Schritt bricht das Tor
       # unten am fehlenden Browser ab — bewusst mit Fehler, denn `tools/check` kennt kein „skip,
-      # wenn Chromium fehlt".
-      - name: browser (Chromium für den hermetischen UI-Smoke)
-        run: npx playwright install --with-deps chromium
-      # Dasselbe Tor wie an der Hand: Build, Lint, Architektur, Tests UND der Chromium-Smoke —
-      # hermetisch, ohne Modell und ohne Egress (`smoke:ui:gate`, nicht `smoke:ui`).
+      # wenn ein Browser fehlt". Seit Aufnahme 20260922 fährt das Tor drei Engines (Chromium mit
+      # der vollen Suite, Firefox und WebKit je mit den Kern-Rauchproben), deshalb stehen hier alle drei.
+      - name: browser (Chromium, Firefox, WebKit für den hermetischen UI-Smoke)
+        run: npx playwright install --with-deps chromium firefox webkit
+      # Dasselbe Tor wie an der Hand: Build, Lint, Architektur, Tests UND der Drei-Engine-Smoke —
+      # hermetisch, ohne Modell und ohne Egress (`smoke:ui:gate*`, nicht `smoke:ui`).
       - name: gate (./tools/check — dasselbe Gesamttor wie lokal)
         run: ./tools/check
 
@@ -66,4 +67,36 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: integration (Postgres via Testcontainers)
         run: npm run test:integration
+
+  # R-1487 (aufnahme:20260922:gesamt-kundenbetrieb): DAS AUSLIEFERUNGSABBILD ENTSTEHT AUTOMATISCH.
+  #
+  # Bis hierher entstand das Container-Abbild nur von Hand oder beim Bau durch Coolify, und niemand
+  # konnte sagen, aus welchem Stand. Dieser Job fährt bei jedem Lauf den versionierten Bauer
+  # `scripts/deploy/abbild-bauen.mjs`: er baut GENAU den ausgecheckten Commit aus `git archive`
+  # (Version aus dessen `package.json`), schreibt `docker save`-Archiv, `.sha256` und die
+  # Nachweisdatei (Abbildname, Abbildkennung, Version, Commit, Prüfsumme) nach `dist/abbild/`, und
+  # dieser Ordner wird als EIN Laufartefakt hochgeladen — Abbild, Prüfsumme und Fassungsnachweis
+  # zusammen.
+  #
+  # KEINE VERÖFFENTLICHUNG: kein `docker login`, kein `docker push`, kein Registry-Geheimnis. Der
+  # Bauer ruft nur `build`, `image inspect` und `save` (`tests/kundenbetrieb-betriebsmodelle/
+  # abbild-bauen.test.ts`). `needs: check`: gebaut wird nur, was das Gesamttor grün durchlaufen hat.
+  # Der Bauer braucht nur Node, git, tar und docker (auf ubuntu-latest vorhanden) — kein `npm ci`.
+  abbild:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: abbild (Container aus dem Commit, mit Prüfsumme, ohne Veröffentlichung)
+        run: node scripts/deploy/abbild-bauen.mjs --ziel dist/abbild
+      - name: Laufartefakt (Abbild, Prüfsumme, Fassungsnachweis)
+        uses: actions/upload-artifact@v4
+        with:
+          name: klarwerk-abbild-${{ github.sha }}
+          path: dist/abbild/
+          if-no-files-found: error
+          retention-days: 14
 # Regel: Nichts kommt nach main, das diese Pipeline nicht grün durchläuft.

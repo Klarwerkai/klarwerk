@@ -39,8 +39,15 @@ export function formatRate(rate: number): string {
   return `${Math.round(rate * 100)}%`;
 }
 
-// SCRUM-140: validierte KOs je Woche, jüngste zuletzt, optional begrenzt.
-export function weeklyValidated(
+// ADMIN-11: `weeklyValidated` ist entfernt — sein einziger Aufrufer, der Wochenbalken auf
+// /analytics, zeigte heute validierte Objekte nach Erstellungswoche als Freigabeverlauf.
+//
+// R-0750 / R-1741 (Aufnahme gesamt-kennzahlen): ein ANDERER, erhobener Verlauf. Der Server zählt
+// `validatedByWeek` seit diesem Auftrag nach dem belegten Prüfzeitpunkt `validatedAt`
+// (services/app/src/impact.ts); Objekte ohne belegten Zeitpunkt zählen in keine Woche. Eigener Name,
+// damit der ADMIN-11-Wächter gegen die rückwirkende Erstellungswochen-Reihe unverändert gilt.
+// Wochen chronologisch, jüngste zuletzt, optional begrenzt.
+export function weeklyReviewed(
   byWeek: Record<string, number>,
   limit = 8,
 ): { week: string; count: number }[] {
@@ -48,6 +55,43 @@ export function weeklyValidated(
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(-limit)
     .map(([week, count]) => ({ week, count }));
+}
+
+// R-0723/R-0750: Antwortquote je Woche, jüngste zuletzt, optional begrenzt. Die Quote rechnet hier,
+// aus den beiden Zählern derselben Woche — eine Woche ohne Fragen erscheint gar nicht (keine 0 %).
+export function weeklyAnswerRate(
+  byWeek: Record<string, { asked: number; answeredWithoutGap: number }> | undefined,
+  limit = 8,
+): { week: string; asked: number; answered: number; rate: number }[] {
+  return Object.entries(byWeek ?? {})
+    .filter(([, w]) => w.asked > 0)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-limit)
+    .map(([week, w]) => ({
+      week,
+      asked: w.asked,
+      answered: w.answeredWithoutGap,
+      rate: w.answeredWithoutGap / w.asked,
+    }));
+}
+
+// FR-ANA-01 / R-0723: Kategorie-Verteilung — größte Kategorie zuerst, bei Gleichstand nach Name.
+export function categoryDistribution(
+  byCategory: Record<string, number>,
+): { category: string; count: number }[] {
+  return Object.entries(byCategory)
+    .filter(([, count]) => count > 0)
+    .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+    .map(([category, count]) => ({ category, count }));
+}
+
+// FR-VAL-06 / FR-ANA-01: Prüfaufgaben je Person — wer am meisten offen hat, steht oben; bei
+// Gleichstand die Person mit mehr Erledigtem, dann stabil nach Kennung. Personen ohne jede
+// Zuweisung fallen weg (sie sind keine Zeile „0/0").
+export function assignmentRows(summaries: readonly AssignmentSummary[]): AssignmentSummary[] {
+  return summaries
+    .filter((s) => s.open + s.done > 0)
+    .sort((a, b) => b.open - a.open || b.done - a.done || a.userId.localeCompare(b.userId));
 }
 
 // SCRUM-143: distinkte Actor-/Action-Werte aus echten Audit-Daten (für Filter-Dropdowns).

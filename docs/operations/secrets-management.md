@@ -268,8 +268,13 @@ braucht zuerst eine neue Entscheidung (Plan: Stufe 2).
 
 ## 10. Secret Scanning / Review
 
-- **Im Testlauf:** `tests/geheimnisse-betrieb/geheimnisse-nur-in-der-betriebsumgebung.test.ts` sucht im Produktbaum (und im gebauten Bundle, falls vorhanden) nach echtem Schlüsselmaterial. Er prüft den aktuellen Stand, **nicht** die Git-Historie.
-- **Pre-Commit/CI-Scan der Historie** (z. B. `gitleaks`/`trufflehog`) bleibt empfohlen — Einrichtung ist Betreiber-/Ops-Aufgabe.
+- **Geheimnis-Scan im Gesamttor (R-1420):** `tools/geheimnis-scan.ts` (Starter `tools/geheimnis-scan.sh`) läuft als Schritt `▶ geheimnis-scan` in `./tools/check` — damit lokal und im `check`-Job von `.github/workflows/ci.yml`. Gelesen wird alles, was übernommen werden kann (`git ls-files --cached --others --exclude-standard`, also auch neue, noch nicht committete Dateien). Jeder Fund sperrt das Tor und wird nur **maskiert** ausgegeben (Datei:Zeile, Regel, vier Zeichen + Länge).
+  - **Erkannt:** private Schlüssel (PEM/OpenSSH/PGP), AWS-, GitHub-, Anthropic-, OpenAI-, Slack-, Google-API-, Stripe-Live- und npm-Token an ihrem Format; Dateien `.env`/`*.env` (Vorlagen wie `.env.example` ausgenommen) und Schlüsseldateien (`*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `id_rsa` …).
+  - **Bewusste Attrappe** (Testfall): in derselben Zeile `geheimnis-scan: erlaubt` mit Grund.
+  - **Nicht erkannt:** Geheimnisse ohne erkennbares Format (frei gewählte Kennwörter, präfixlose Hex-Token). Eine allgemeine „passwort = …"-Regel wurde am Bestand gemessen und verworfen — sie trifft Dutzende bewusster Testkennwörter. Hier bleibt das PR-Review zuständig.
+  - Von Hand vor einem Commit: `bash tools/geheimnis-scan.sh`. Ein automatischer Git-Hook ist **nicht** eingerichtet (lokale Einrichtung je Arbeitsplatz).
+  - Ein externer Scanner (z. B. `gitleaks`/`trufflehog`, auch über die Git-Historie) bleibt optional — Betreiberentscheidung, nicht installiert.
+- **Im Testlauf zusätzlich:** `tests/geheimnisse-betrieb/geheimnisse-nur-in-der-betriebsumgebung.test.ts` sucht im Produktbaum (und im gebauten Bundle `apps/web/dist`, falls vorhanden) nach echtem Schlüsselmaterial und hält Inventar (§1) und Rotationsplan (§1b) gegen den Startvertrag. Er prüft den aktuellen Stand, **nicht** die Git-Historie.
 - **PR-Review:** `.env.example` enthält nur Platzhalter; keine echten Werte in Diffs/Logs.
 - **Periodischer Review:** Secret-/Zugriffs-Check und fällige Wechsel (§1b) im **Quartals-Compliance-Review** (`gdpr-compliance-runbook.md` §6) mitführen.
 
@@ -281,7 +286,8 @@ braucht zuerst eine neue Entscheidung (Plan: Stufe 2).
   die **Durchführung** der Wechsel zu diesen Terminen und das Eintragen von Datum und Beleg in §1b.
 - Offene Handgriffe aus OFFEN.md I56 (Schlüssel in Coolify wechseln, Protokolldatei löschen) — Peter vorbehalten, Termin §1b.
 - Auswahl/Einrichtung eines **externen Secret-Stores** (Vault/Doppler/Cloud SM) — Option, nicht eingerichtet.
-- **Secret-Scanning der Git-Historie** in CI aktivieren — Ops-Aufgabe.
+- ~~**Secret-Scanning-Tooling** in CI aktivieren~~ — erledigt über den Schritt `geheimnis-scan` in `./tools/check` (§10). Offen bleibt nur: Scan der bestehenden **Git-Historie** und ein lokaler Pre-Commit-Hook — Ops.
+- **Zertifikats-/Key-Lifecycle** (TLS) über Hosting/Reverse-Proxy — Ops.
 - **Eigene Schlüssel je Kunde in einer gemeinsamen Instanz** — nicht gebaut, braucht Entscheidung (§7a).
 
 ---

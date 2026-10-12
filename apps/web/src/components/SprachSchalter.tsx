@@ -19,10 +19,11 @@
 // verboten). Das Menü ist der Ort, den der Auftrag nennt, und der Ort, der den Pin nicht bricht.
 //
 // KEIN ZWEITER WECHSELWEG. Gewechselt wird über `i18n.changeLanguage` — dieselbe eine Funktion, die
-// Profil und Anmeldung rufen. Die ERLAUBTE MENGE wird nicht neu geschrieben, sondern aus
-// `lib/htmlLang.ts` geholt (`ERLAUBTE_SPRACHEN`): dort steht sie seit Auftrag 101 als die eine
-// Wahrheit, und dieselbe Liste prüft auch `applyHtmlLang` und `sprachwahl.ts`. Eine vierte Kopie
-// von `["de","en","nl"]` hätte beim nächsten Sprachzuwachs still auseinanderlaufen können.
+// Profil und Anmeldung rufen. Die MENGE wird nicht neu geschrieben, sondern aus den Ressourcen
+// abgeleitet (`OBERFLAECHEN_SPRACHEN`, `lib/sprachregister.ts`, R-0997): dieselbe Menge prüfen
+// Profil, Anmeldung, `sprachwahl.ts` und `i18n.ts`. Eine neue Sprache erscheint hier, sobald ihre
+// Ressource da ist. `ERLAUBTE_SPRACHEN` (`lib/htmlLang.ts`) ist seither allein die Regel für
+// `<html lang>` (JOB 536) — eine andere Frage als „was kann man wählen".
 //
 // WAS DIESER SCHALTER NICHT TUT, und das ist die eigentliche Zusage des Auftrags:
 //   · Er lädt NICHT neu (kein `location.reload`) und navigiert NICHT (kein Routenwechsel). Er ruft
@@ -42,19 +43,26 @@
 // des Konto-Menüs mit aria-pressed". Drei weitere Knöpfe mit `aria-pressed` in derselben Fläche
 // hätten diesen Wächter stumpf gemacht. Die Auszeichnung ist hier ohnehin die richtigere:
 // `role="menuitemradio"` + `aria-checked` sagt „eine aus drei", `aria-pressed` sagt „an/aus".
+//
+// FR-I18N-02 (Übersetzungspflege): hinter den drei mitgelieferten Sprachen stehen die im Betrieb
+// angelegten (`lib/instanzSprachen.ts`) — ohne Codeänderung, sobald der Server sie meldet. Sichtbar
+// ist auch dort das Kürzel, vorgelesen der gepflegte Name.
+import { useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { ERLAUBTE_SPRACHEN } from "../lib/htmlLang";
+import { abonniereAngelegteSprachen, angelegteSprachen } from "../lib/instanzSprachen";
+import { OBERFLAECHEN_SPRACHEN } from "../lib/sprachregister";
 
 /**
- * Die aktive Sprache als Element der erlaubten Menge.
+ * Ist dieser Knopf die gewählte Sprache? Verglichen wird die VOLLSTÄNDIGE Kennung.
  *
- * `startsWith` statt `===` — dieselbe Regel, die `pages/Profile.tsx` und `auth/BrandPanel.tsx`
- * schon anwenden. `i18n.language` ist heute zugesichert exakt „de" | „en" | „nl" (kein Detector,
- * keine Normalisierung, s. `lib/htmlLang.ts`); käme je ein Regionalcode dazu, zeichnet der Schalter
- * trotzdem die richtige Sprache aus, statt gar keine.
+ * Bis FR-I18N-02 stand hier `startsWith`. Seit im Betrieb angelegte Sprachen wählbar sind, können
+ * `fr` und `fr-CA` nebeneinander stehen — mit `startsWith` wären bei gewähltem `fr-CA` beide Knöpfe
+ * aktiv (BEN, Nacharbeit 5). `i18n.language` ist stets genau eine wählbare Kennung (kein Detector,
+ * keine Normalisierung, s. `lib/sprachwahl.ts`); der exakte Vergleich trifft also genau einen Knopf.
+ * Das Profil (`pages/Profile.tsx`) bezieht dieselbe Regel von hier.
  */
-function istAktiv(sprache: string, kandidat: string): boolean {
-  return sprache.startsWith(kandidat);
+export function istAktiv(sprache: string, kandidat: string): boolean {
+  return sprache === kandidat;
 }
 
 /**
@@ -72,6 +80,49 @@ function istAktiv(sprache: string, kandidat: string): boolean {
  */
 export function SprachSchalter(): JSX.Element {
   const { t, i18n } = useTranslation();
+  const angelegt = useSyncExternalStore(
+    abonniereAngelegteSprachen,
+    angelegteSprachen,
+    angelegteSprachen,
+  );
+  const sprachname = (l: string): string =>
+    angelegt.find((s) => s.kennung === l)?.name ?? t(`lib.facet.lang.${l}`);
+  // Ein Knopf je Sprache — derselbe Baustein für die angemeldeten (R-0997) und die im Betrieb
+  // angelegten Sprachen (FR-I18N-02), damit beide Wege gleich aussehen und gleich wählen.
+  const knopf = (l: string): JSX.Element => {
+    const aktiv = istAktiv(i18n.language, l);
+    // ============================================================================================
+    // WARUM DIE ENTSCHEIDUNG HIER STEHT UND NICHT IM `className`.
+    // ============================================================================================
+    // Der Klassenbindungs-Sammler (`tests/app/mega47-modale-flaechen-sammler.test.tsx`,
+    // JOB 1181) zerlegt jede `className`-Bindung in AUFGELÖST und OFFEN. Ein Ternär direkt
+    // im Attribut (`… ${aktiv ? "a" : "b"}`) trägt den Bezeichner `aktiv` in den Ausdruck;
+    // dessen Deklaration führt keine Zeichenkette, also bliebe die Bindung OFFEN und der
+    // gepinnte Zählstand stiege von 217 auf 218. Die Lehre aus JOB 3267 (Q1) steht dort
+    // wörtlich: „die Klassen auflösbar schreiben statt den Pin hochzusetzen."
+    // Als lokale Konstante trägt der Bezeichner BEIDE Klassenketten literal — der Sammler
+    // löst ihn auf, die Bindung bleibt in seiner Erhebung, und nichts ist an ihm vorbei
+    // geschrieben (ein Attributobjekt oder ein festes `className` nähme sie ihm ganz weg).
+    const zustandsKlasse = aktiv
+      ? "bg-ink text-white"
+      : "border border-hairline text-muted hover:text-text";
+    return (
+      <button
+        key={l}
+        type="button"
+        role="menuitemradio"
+        aria-checked={aktiv}
+        aria-label={sprachname(l)}
+        data-testid={`sprach-schalter-${l}`}
+        onClick={() => {
+          void i18n.changeLanguage(l);
+        }}
+        className={`rounded-btn px-2 py-0.5 text-[12px] font-semibold uppercase ${zustandsKlasse}`}
+      >
+        {l}
+      </button>
+    );
+  };
   return (
     <div className="flex items-center gap-2 px-2.5 py-1.5 text-[13px]">
       <span className="min-w-0 flex-1 truncate text-text">{t("prof.language")}</span>
@@ -87,40 +138,10 @@ export function SprachSchalter(): JSX.Element {
         data-testid="sprach-schalter"
         className="flex shrink-0 gap-1"
       >
-        {ERLAUBTE_SPRACHEN.map((l) => {
-          const aktiv = istAktiv(i18n.language, l);
-          // ======================================================================================
-          // WARUM DIE ENTSCHEIDUNG HIER STEHT UND NICHT IM `className`.
-          // ======================================================================================
-          // Der Klassenbindungs-Sammler (`tests/app/mega47-modale-flaechen-sammler.test.tsx`,
-          // JOB 1181) zerlegt jede `className`-Bindung in AUFGELÖST und OFFEN. Ein Ternär direkt
-          // im Attribut (`… ${aktiv ? "a" : "b"}`) trägt den Bezeichner `aktiv` in den Ausdruck;
-          // dessen Deklaration führt keine Zeichenkette, also bliebe die Bindung OFFEN und der
-          // gepinnte Zählstand stiege von 217 auf 218. Die Lehre aus JOB 3267 (Q1) steht dort
-          // wörtlich: „die Klassen auflösbar schreiben statt den Pin hochzusetzen."
-          // Als lokale Konstante trägt der Bezeichner BEIDE Klassenketten literal — der Sammler
-          // löst ihn auf, die Bindung bleibt in seiner Erhebung, und nichts ist an ihm vorbei
-          // geschrieben (ein Attributobjekt oder ein festes `className` nähme sie ihm ganz weg).
-          const zustandsKlasse = aktiv
-            ? "bg-ink text-white"
-            : "border border-hairline text-muted hover:text-text";
-          return (
-            <button
-              key={l}
-              type="button"
-              role="menuitemradio"
-              aria-checked={aktiv}
-              aria-label={t(`lib.facet.lang.${l}`)}
-              data-testid={`sprach-schalter-${l}`}
-              onClick={() => {
-                void i18n.changeLanguage(l);
-              }}
-              className={`rounded-btn px-2 py-0.5 text-[12px] font-semibold uppercase ${zustandsKlasse}`}
-            >
-              {l}
-            </button>
-          );
-        })}
+        {/* R-0997: die angemeldeten Oberflächensprachen; FR-I18N-02: dahinter die im Betrieb
+            angelegten (eine Kennung mit eigener Ressource führt `instanzSprachen.ts` nicht doppelt). */}
+        {OBERFLAECHEN_SPRACHEN.map(knopf)}
+        {angelegt.map((s) => knopf(s.kennung))}
       </span>
     </div>
   );

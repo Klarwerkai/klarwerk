@@ -154,7 +154,8 @@ describe("R-1581 · Lesbarkeit bei 390 px im echten Chromium", () => {
   }, 60_000);
 
   it("P1 · Kontenfläche: die Zeile mit dem langen Namen steht vollständig in der Karte", async () => {
-    await wechsle(stand as Stand, "/admin", '[data-testid="flaeche-nutzer"]');
+    // ADMIN-01: `/admin` ist die Startseite der Verwaltung; die Kontenfläche hat ihre eigene Adresse.
+    await wechsle(stand as Stand, "/admin?bereich=konten", '[data-testid="flaeche-nutzer"]');
     await seite().waitForFunction(
       fn(
         `(n) => [...document.querySelectorAll('[data-testid="flaeche-nutzer"] [data-einst="label"]')].some((l) => (l.textContent || '').includes(n))`,
@@ -193,7 +194,7 @@ describe("R-1581 · Lesbarkeit bei 390 px im echten Chromium", () => {
   }, 120_000);
 
   it("P3 · Rollenkarte: der Titel bleibt in der Karte und überdeckt nichts", async () => {
-    await wechsle(stand as Stand, "/admin", '[data-testid="zeile-rolle-experte"]');
+    await wechsle(stand as Stand, "/admin?bereich=konten", '[data-testid="zeile-rolle-experte"]');
     const fehler = await seite().evaluate<string | null>(fn(OEFFNE), [
       '[data-testid="zeile-rolle-experte"]',
       "detail-rolle",

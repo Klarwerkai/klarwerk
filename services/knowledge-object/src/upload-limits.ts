@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { KoError } from "./types";
+import { KoError, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES } from "./types";
 
 // SCRUM-421 (Pedi 03.07.): Upload-Grenzen sichtbar + im Admin einstellbar. Bisher fest im Code
 // (max. 8 Anhänge, ~700 KB je Anhang). Jetzt persistierte Admin-Einstellung (Muster SCRUM-395):
@@ -12,9 +12,11 @@ export interface UploadLimits {
 // Werksvorgabe. WP-D2 („Original ist heilig"): maxAttachmentBytes dokumententauglich auf 20 MB
 // angehoben (vorher 700 KB — jedes normale Nutzer-PDF/DOCX fiel durch). Gemessen wird die
 // Data-URL-/Thumbnail-Länge; die Transport-Obergrenze setzt der Route-bodyLimit von POST /api/objects.
+// R-1349: die Werte kommen aus `MAX_ATTACHMENTS`/`MAX_ATTACHMENT_BYTES` (types.ts), statt hier ein
+// zweites Mal als Zahl zu stehen — vorher waren die Konstanten gebaut, aber von niemandem gelesen.
 export const DEFAULT_UPLOAD_LIMITS: UploadLimits = {
-  maxAttachments: 8,
-  maxAttachmentBytes: 20_000_000,
+  maxAttachments: MAX_ATTACHMENTS,
+  maxAttachmentBytes: MAX_ATTACHMENT_BYTES,
 };
 
 // Sinnvolle Ober-/Untergrenzen — schützen vor Fehlkonfiguration (kein 0, kein Riesenwert).

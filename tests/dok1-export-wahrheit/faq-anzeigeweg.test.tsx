@@ -13,6 +13,7 @@ import { KlaraAssistant } from "../../apps/web/src/components/KlaraAssistant";
 import i18n from "../../apps/web/src/i18n";
 import { FAQ_CONTENT } from "../../apps/web/src/lib/faqContent";
 import { allFaqEntries } from "../../apps/web/src/lib/klaraRegistry";
+import { hilfeknopfLabel } from "../support/hilfeknopf";
 
 vi.mock("../../apps/web/src/lib/useAiAvailable", () => ({
   useAiAvailable: () => ({ available: false, isLoading: false }),
@@ -51,7 +52,7 @@ describe("DOK1-R: Exportantworten erreichen den Menschen über Klara", () => {
         );
       });
       const open = host.querySelector<HTMLButtonElement>(
-        `button[aria-label="${i18n.t("klara.open")}"]`,
+        `button[aria-label="${hilfeknopfLabel()}"]`,
       );
       expect(open).not.toBeNull();
       await act(async () => open?.click());

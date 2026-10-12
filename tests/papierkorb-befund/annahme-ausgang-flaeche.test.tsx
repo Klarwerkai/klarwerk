@@ -103,7 +103,8 @@ for (const papierkorb of [false, true]) {
         ? `liegt im Papierkorb, Kennung ${zuerst.koId}`
         : `vorhanden, Kennung ${zuerst.koId} wiederverwendet`,
     ]);
-    // Die erste Fassung hat wirklich angelegt — dort bleibt „KO erzeugt" richtig.
-    expect(m.karte("B3 Quelle Fassung 1")).toContain("KO erzeugt");
+    // Die erste Fassung hat wirklich angelegt — dort bleibt das Erzeugt-Abzeichen richtig (seit
+    // R-0908 „Wissensobjekt angelegt" statt „KO erzeugt", `fachwort.fund.angelegt`).
+    expect(m.karte("B3 Quelle Fassung 1")).toContain("Wissensobjekt angelegt");
   });
 }

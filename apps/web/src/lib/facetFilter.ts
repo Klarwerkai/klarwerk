@@ -10,10 +10,10 @@
 import {
   type FacetSelection,
   type FacetValues,
+  combinableFacetCounts,
   facetSelectedValues,
   isFacetGroupActive,
   isFacetNoMatch,
-  matchesFacets,
 } from "./facets";
 
 // Eine Facetten-Dimension: stabiler key + i18n-Schlüssel des Gruppen-Labels.
@@ -91,17 +91,17 @@ export function buildFacetGroups(
   );
   return configs.map((cfg) => {
     const { key } = cfg;
-    // Kontext-Zähler: nur Elemente zählen, die alle ANDEREN aktiven Facetten erfüllen.
-    const counts = new Map<string, number>();
-    for (const item of items) {
-      if (!matchesFacets(item, selection, key)) {
-        continue;
-      }
-      // Dedupe je Element (bens Nebenfund) — doppelter Tag am selben Objekt zählt für diesen Wert 1×.
-      for (const value of new Set(item[key] ?? [])) {
-        counts.set(value, (counts.get(value) ?? 0) + 1);
-      }
-    }
+    // Kontext-Zähler: nur Elemente zählen, die alle ANDEREN aktiven Facetten erfüllen; doppelter Tag
+    // am selben Objekt zählt für diesen Wert 1× (bens Nebenfund).
+    // R-1349 (Aufnahme gesamt-aufruferwaechter): über `combinableFacetCounts`, die EINE Zählregel
+    // aus `lib/facets` — bis hierher stand dieselbe Schleife hier ein zweites Mal ausgeschrieben,
+    // und der Baustein lag ohne Produktaufrufer daneben (der Kopf dieser Datei sagt „KEINE zweite
+    // Zähl-/Match-Logik").
+    const counts = new Map(
+      (combinableFacetCounts(items, [key], selection)[key] ?? []).map(
+        (c) => [c.value, c.count] as const,
+      ),
+    );
     // AUFTRAG-uxpol2 (bens Blocker 1.1): die Auswahl je Gruppe ist eine Wertemenge → `selected` prüft
     // Zugehörigkeit (includes), nicht mehr Gleichheit. Mehrere gewählte Werte einer Gruppe (ODER).
     const selected = facetSelectedValues(selection[key]);

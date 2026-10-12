@@ -1,14 +1,14 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { KO_SEARCH_PROJECTION_SCHEMA, KO_SICHTBARKEIT_SCHEMA } from "../../knowledge-object";
+// R-1349: das Prüfmodell liegt bei den Tests; im Produkt stehen nur noch die beiden Listen.
 import {
-  IRREVERSIBLE_DATENMIGRATIONEN,
-  MIGRATIONS_SOLLLISTE,
   erzeugeStrukturbeleg,
   istStrukturstufe,
   klassifiziereStufe,
-} from "./migrationsbeleg";
+} from "../../../tests/support/migrationsmodell";
+import { KO_SEARCH_PROJECTION_SCHEMA, KO_SICHTBARKEIT_SCHEMA } from "../../knowledge-object";
+import { IRREVERSIBLE_DATENMIGRATIONEN, MIGRATIONS_SOLLLISTE } from "./migrationsbeleg";
 
 // SCRUM-496 (die Lehre): Auf Postgres brach /duplikate ab, weil OVERLAP_SCHEMA + OVERLAP_SETTINGS_SCHEMA
 // zwar existierten, aber NIE in migrate() aufgenommen wurden → die Tabellen fehlten (nur PG; In-Memory
@@ -212,6 +212,10 @@ const ALTER_ONLY_STUFEN = [
   "KO_CREATE_OPERATION_SCHEMA",
   "KO_IMPORT_ANCHOR_SCHEMA",
   "KO_SICHTBARKEIT_SCHEMA",
+  // R-0846 / L6: die Fremdschlüssel-Stufe — reines ALTER TABLE in einem DO-Block.
+  "KO_FREMDSCHLUESSEL_SCHEMA",
+  // R-1133: die Indexspalten der Entwürfe — ADD COLUMN plus CREATE INDEX, kein CREATE TABLE.
+  "CAPTURE_INDEX_SCHEMA",
 ] as const;
 
 describe("JOB 727 D2: die Strukturinventur hat keine CREATE-TABLE-Filterlücke", () => {
@@ -225,7 +229,7 @@ describe("JOB 727 D2: die Strukturinventur hat keine CREATE-TABLE-Filterlücke",
     }
   });
 
-  it("die fünf ALTER-only-Stufen tragen wirklich kein CREATE TABLE — sonst prüfte der Fall nichts", () => {
+  it("die ALTER-only-Stufen tragen wirklich kein CREATE TABLE — sonst prüfte der Fall nichts", () => {
     // Die Gegenkontrolle zum Fall darüber: wären sie CREATE-TABLE-Stufen, hätte der alte Filter
     // sie ohnehin gesehen und der Nachweis wäre leer.
     for (const name of ALTER_ONLY_STUFEN) {

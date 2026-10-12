@@ -52,6 +52,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const bestand = vi.hoisted(() => ({
   ergebnis: null as null | Record<string, unknown>,
   kos: [] as Record<string, unknown>[],
+  // R-0310: die Absatz-Beleg-Zuordnung des Servers; `null` = Feld fehlt (bisherige Lagen).
+  absaetze: null as null | Array<{ text: string; quellen: string[] }>,
 }));
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
@@ -75,6 +77,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
         result: { ...bestand.ergebnis, captionSources: [] },
         gap: null,
         receipt: "r",
+        ...(bestand.absaetze ? { absaetze: bestand.absaetze } : {}),
       })),
       helpful: vi.fn(),
     },
@@ -201,6 +204,7 @@ afterEach(async () => {
   for (const f of offen.splice(0)) {
     f.unmount();
   }
+  bestand.absaetze = null;
   await i18n.changeLanguage("de");
 });
 
@@ -306,6 +310,16 @@ function verwendung(karte: ParentNode, n: number): string | null {
 
 const wort = (e: Element | null): string => (e?.textContent ?? "").trim();
 
+/** Die Nummern der Chips in der Quellenreihe unter der Antwort, in Anzeigereihenfolge. */
+const chipNummern = (karte: ParentNode): number[] =>
+  [...karte.querySelectorAll<HTMLElement>('[data-testid="ask-quellen-chip"]')].map((c) =>
+    Number(((c.textContent ?? "").trim().match(/^(\d+)/) ?? [])[1] ?? 0),
+  );
+
+/** Das Wort der Verwendungsplakette in der Quellenliste („Mehr") zum Anker. */
+const listenWort = (anker: string): string =>
+  wort(document.querySelector(`[data-testid="${anker}"]`));
+
 // ================================================================================================
 // Q1/Q2 · DIE TRAGENDE, OFFENE QUELLE — DER FALL DER VORFÜHRUNG.
 // ================================================================================================
@@ -333,10 +347,17 @@ describe("JOB 3267 Q1 · tragende Quelle, offener Prüfstand", () => {
     expect(hinweis, `der Punkt nennt den Prüfstand nicht: „${hinweis}“`).toContain("Offen");
   });
 
-  it("Q2 · die nicht genannte Quelle OHNE gerenderten Anker heisst „nicht verwendet“", async () => {
-    const { karte } = await lage(LAGEN.tragend);
+  // GEÄNDERT (Aufnahme 20260922, R-0310/R-0325, Ben zu 8e6c9d73): die Quellenreihe unter der
+  // Antwort nennt nur noch, worauf die Antwort steht. Die nicht genannte Quelle steht deshalb NICHT
+  // mehr als Chip da — ihre Aussage „nicht verwendet" steht unverändert in der Quellenliste unter
+  // „Mehr", der ausführlichen Auskunft über alle herangezogenen Quellen.
+  it("Q2 · die nicht genannte Quelle OHNE gerenderten Anker heisst „nicht verwendet“ — in der Quellenliste, nicht in der Chipreihe", async () => {
+    const { f, karte } = await lage(LAGEN.tragend);
     expect(markenIn(karte), "zu Quelle 2 steht doch eine Marke im Text").not.toContain(2);
-    expect(verwendung(karte, 2)).toBe("nichtVerwendet");
+    expect(chipNummern(karte), "die nur herangezogene Quelle steht in der Chipreihe").toEqual([1]);
+    await mehr(f);
+    const zeile = document.querySelector('[data-testid="ask-source-consulted"]')?.closest("li");
+    expect((zeile?.textContent ?? "").replace(/\s+/g, " ")).toContain(RAND_TITEL);
   });
 });
 
@@ -414,15 +435,20 @@ describe("JOB 3267 Q8 · eine Zuordnung ohne auflösbare Kennung trägt keine Au
     expect(document.querySelector('[data-testid="ask-attribution-unknown"]')).not.toBeNull();
   });
 
+  // GEÄNDERT (R-0310/R-0325, Ben zu 8e6c9d73): „nicht verwendet" steht in der Quellenliste, die
+  // Chipreihe trägt nur die tragende Quelle.
   it("Q8b · eine gültige NEBEN einer fremden Kennung bleibt tragfähig — und kippt nicht alles", async () => {
-    const { karte } = await lage(LAGEN_OHNE_MARKE.gemischtOhneMarke);
+    const { f, karte } = await lage(LAGEN_OHNE_MARKE.gemischtOhneMarke);
     expect(verwendung(karte, 2), "die genannte, auflösbare Quelle trägt die Antwort").toBe(
       "verwendet",
     );
+    expect(chipNummern(karte)).toEqual([2]);
+    await mehr(f);
+    const zeile = document.querySelector('[data-testid="ask-source-consulted"]')?.closest("li");
     expect(
-      verwendung(karte, 1),
+      (zeile?.textContent ?? "").replace(/\s+/g, " "),
       "die nicht genannte Quelle ohne Anker ist hier belegt „nicht verwendet“",
-    ).toBe("nichtVerwendet");
+    ).toContain(HEIM_TITEL);
   });
 
   it("Q8c · EN: derselbe Unterschied in Worten — unknown gegen not used", async () => {
@@ -436,9 +462,9 @@ describe("JOB 3267 Q8 · eine Zuordnung ohne auflösbare Kennung trägt keine Au
     expect(
       wort(chip(b.karte, 2).querySelector('[data-testid="ask-quellen-chip-verwendung"]')),
     ).toBe("used");
-    expect(
-      wort(chip(b.karte, 1).querySelector('[data-testid="ask-quellen-chip-verwendung"]')),
-    ).toBe("not used");
+    // R-0310/R-0325: „not used" steht in der Quellenliste unter „Mehr", nicht als Chip.
+    await mehr(b.f);
+    expect(listenWort("ask-source-consulted")).toBe("not used");
   });
 });
 
@@ -451,9 +477,9 @@ describe("JOB 3267 Q5 · DE/EN sagen dasselbe", () => {
     expect(
       wort(chip(a.karte, 1).querySelector('[data-testid="ask-quellen-chip-verwendung"]')),
     ).toBe("verwendet");
-    expect(
-      wort(chip(a.karte, 2).querySelector('[data-testid="ask-quellen-chip-verwendung"]')),
-    ).toBe("nicht verwendet");
+    // R-0310/R-0325: „nicht verwendet" steht in der Quellenliste unter „Mehr", nicht als Chip.
+    await mehr(a.f);
+    expect(listenWort("ask-source-consulted")).toBe("nicht verwendet");
     a.f.unmount();
     offen.splice(offen.indexOf(a.f), 1);
     const b = await lage(LAGEN.ohneZuordnung);
@@ -469,9 +495,9 @@ describe("JOB 3267 Q5 · DE/EN sagen dasselbe", () => {
     );
     expect(wort(plakette)).toBe("used");
     expect(plakette?.getAttribute("title") ?? "").toContain("Used");
-    expect(
-      wort(chip(a.karte, 2).querySelector('[data-testid="ask-quellen-chip-verwendung"]')),
-    ).toBe("not used");
+    // R-0310/R-0325: „not used" steht in der Quellenliste unter „Mehr", nicht als Chip.
+    await mehr(a.f);
+    expect(listenWort("ask-source-consulted")).toBe("not used");
     a.f.unmount();
     offen.splice(offen.indexOf(a.f), 1);
     const b = await lage(LAGEN.ohneZuordnung, "en");
@@ -547,7 +573,9 @@ describe("JOB 3267 Q6 · Prüfstand und Verwendung sind zwei Aussagen", () => {
 // Plakette nach vorn zöge, würde erst im Tor rot; ab jetzt schon hier.
 describe("JOB 3267 Q6d · die gepinnte Chipform „n · Titel“ bleibt unangetastet", () => {
   it("Q6d · das erste <span> eines punktlosen Chips trägt „n · Titel“, und der Chiptext beginnt mit der Ziffer", async () => {
-    const { karte } = await lage(LAGEN.tragend);
+    // R-0310/R-0325: die Chipreihe trägt nur tragende Quellen — deshalb die Lage, in der die
+    // validierte Quelle 2 die Antwort trägt (vorher LAGEN.tragend, dort ist 2 nur herangezogen).
+    const { karte } = await lage(LAGEN_OHNE_MARKE.gemischtOhneMarke);
     // Quelle 2 ist validiert — sie trägt keinen Punkt, genau wie die Demo-Quelle des Zielbilds.
     const zwei = chip(karte, 2);
     expect(
@@ -579,6 +607,118 @@ describe("JOB 3267 Q7 · kein Widerspruch zwischen Antworttext und Quellenauskun
       }
       f.unmount();
       offen.splice(offen.indexOf(f), 1);
+    }
+  });
+});
+
+// ================================================================================================
+// AUFNAHME 20260922 · R-0310 (Ben zu 6cc581b4) — DIE FRAGENSEITE GIBT NUR BELEGTE ABSÄTZE AUS.
+// ================================================================================================
+//
+// Ben: „Ask.tsx:1979 verwendet result.answer unverändert." Gemessen wird an der montierten Seite
+// mit dem Antwortkörper des Servers samt `absaetze`: der unbelegte Absatz steht nirgends, jeder
+// belegte endet mit der Marke SEINER Quelle (dieselbe Nummer wie ihr Chip), und ohne belegten
+// Absatz steht die Wissenslücke statt einer Antwort.
+describe("Aufnahme 20260922 · R-0310 · Absatz-Belege auf der Fragenseite", () => {
+  const ERSTER = "Homeoffice ist an zwei Tagen je Woche moeglich [1].";
+  const UNBELEGT = "Viele Teams sind damit sehr zufrieden.";
+  const LETZTER = "Das Arbeitszeitkonto wird monatlich abgerechnet.";
+  const DREI = `${ERSTER}\n\n${UNBELEGT}\n\n${LETZTER}`;
+
+  it("R1 · der unbelegte Absatz wird nicht ausgegeben; jeder belegte Absatz endet mit der Marke seiner Quelle", async () => {
+    bestand.absaetze = [
+      { text: ERSTER, quellen: [HEIM] },
+      { text: UNBELEGT, quellen: [] },
+      { text: LETZTER, quellen: [RAND] },
+    ];
+    const { karte } = await lage(antwort([HEIM, RAND], DREI));
+    expect(karte.textContent ?? "").not.toContain("zufrieden");
+    const absaetze = [...karte.querySelectorAll(".ask-answer-body p")];
+    expect(absaetze).toHaveLength(2);
+    expect(wort(absaetze[0] ?? null)).toContain("Homeoffice ist an zwei Tagen je Woche moeglich");
+    expect(wort(absaetze[1] ?? null)).toContain("Das Arbeitszeitkonto wird monatlich abgerechnet.");
+    // Je Absatz genau die Marke SEINER Quelle — Quelle 2 trägt den letzten, wörtlich belegten.
+    expect(absaetze.map((p) => markenIn(p))).toEqual([[1], [2]]);
+    expect(verwendung(karte, 2)).toBe("verwendet");
+  });
+
+  it("R2 · eine nur herangezogene Quelle belegt keinen Absatz: ohne belegten Absatz gibt es keine Antwort, sondern die Wissenslücke", async () => {
+    bestand.absaetze = [
+      { text: UNBELEGT, quellen: [] },
+      { text: LETZTER, quellen: [RAND] },
+    ];
+    bestand.ergebnis = antwort([HEIM], `${UNBELEGT}\n\n${LETZTER}`);
+    const f = await mount("de");
+    await fragen(f);
+    expect(f.container.querySelector('[data-testid="ask-answer"]')).toBeNull();
+    expect(f.container.querySelector('[data-testid="ask-gap"]')).not.toBeNull();
+    expect(f.container.textContent ?? "").not.toContain("zufrieden");
+    expect(f.container.textContent ?? "").not.toContain("abgerechnet");
+  });
+
+  it("R3 · Gegenprobe: ohne das Feld (älterer Server) bleibt die Antwort, wie sie war", async () => {
+    const { karte } = await lage(antwort([HEIM], DREI));
+    expect(karte.textContent ?? "").toContain("zufrieden");
+  });
+
+  // Ben zu 8e6c9d73, Befund 1: auch bei UNBEKANNTER Zuordnung (keine tragende Quelle) wird kein
+  // unbelegter Absatz ausgegeben — und die Lücke sagt ausdrücklich, warum.
+  it("R4 · Zuordnung unbekannt: kein Absatz ausgegeben, die Lücke nennt die unbekannte Zuordnung; mit tragender Quelle (R2) steht der Satz nicht", async () => {
+    bestand.absaetze = [
+      { text: ERSTER, quellen: [] },
+      { text: LETZTER, quellen: [] },
+    ];
+    bestand.ergebnis = antwort([], `${ERSTER}\n\n${LETZTER}`);
+    const f = await mount("de");
+    await fragen(f);
+    expect(f.container.querySelector('[data-testid="ask-answer"]')).toBeNull();
+    expect(f.container.querySelector('[data-testid="ask-gap"]')).not.toBeNull();
+    expect(wort(f.container.querySelector('[data-testid="ask-zuordnung-unbekannt"]'))).toBe(
+      i18n.getFixedT("de")("ask.zuordnungUnbekannt"),
+    );
+    expect(f.container.textContent ?? "").not.toContain("abgerechnet");
+    // Gegenprobe: eine tragende Quelle steht fest, belegt aber keinen Absatz → Lücke OHNE den Satz.
+    f.unmount();
+    offen.splice(offen.indexOf(f), 1);
+    bestand.absaetze = [{ text: LETZTER, quellen: [RAND] }];
+    bestand.ergebnis = antwort([HEIM], LETZTER);
+    const g = await mount("de");
+    await fragen(g);
+    expect(g.container.querySelector('[data-testid="ask-gap"]')).not.toBeNull();
+    expect(g.container.querySelector('[data-testid="ask-zuordnung-unbekannt"]')).toBeNull();
+  });
+
+  // Ben zu 8e6c9d73, Befund 2: die Quellenreihe unter der Antwort — nur beitragende Quellen,
+  // höchstens drei unmittelbar, weitere über „+N".
+  it("R5 · fünf tragende Quellen: drei Chips und „+2“; der Klick zeigt alle fünf — eine nur herangezogene steht nie in der Reihe", async () => {
+    const vorher = bestand.kos;
+    const weitere = ["ko-drei", "ko-vier", "ko-fuenf", "ko-sechs"].map((id, i) =>
+      ko(id, `Weitere Quelle ${i + 3}`, "validiert"),
+    );
+    bestand.kos = [...vorher, ...weitere];
+    try {
+      const alle = [HEIM, RAND, "ko-drei", "ko-vier", "ko-fuenf", "ko-sechs"];
+      const { f, karte } = await lage({
+        ...antwort(alle.slice(0, 5), "Homeoffice ist moeglich [1][2][3][4][5]."),
+        sources: alle,
+      });
+      expect(chipNummern(karte)).toEqual([1, 2, 3]);
+      const mehrChip = karte.querySelector<HTMLButtonElement>(
+        '[data-testid="ask-quellen-chip-mehr"]',
+      );
+      expect(wort(mehrChip)).toBe("+2");
+      await act(async () => {
+        mehrChip?.click();
+        await flush();
+      });
+      expect(chipNummern(karte)).toEqual([1, 2, 3, 4, 5]);
+      expect(karte.querySelector('[data-testid="ask-quellen-chip-mehr"]')).toBeNull();
+      // Die nur herangezogene sechste Quelle steht in der Liste unter „Mehr", nicht in der Reihe.
+      await mehr(f);
+      const zeile = document.querySelector('[data-testid="ask-source-consulted"]')?.closest("li");
+      expect((zeile?.textContent ?? "").replace(/\s+/g, " ")).toContain("Weitere Quelle 6");
+    } finally {
+      bestand.kos = vorher;
     }
   });
 });

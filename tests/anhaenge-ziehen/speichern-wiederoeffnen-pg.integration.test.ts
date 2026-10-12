@@ -476,7 +476,7 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
         const titelfeld = await mitte(
           seite,
           `(() => { const l = [...document.querySelectorAll("label")].find((x) =>
-            ((x.querySelector("span") || {}).textContent || "").trim() === ${JSON.stringify(t("capture.fTitle"))});
+            ((x.querySelector("span") || {}).textContent || "").trim() === ${JSON.stringify(t("capture.wizard.titleLabel"))});
             const f = l && l.querySelector("input, textarea");
             if (!f) { throw new Error("Titelfeld fehlt"); } return f; })()`,
         );

@@ -136,11 +136,11 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
     expect(notice?.titleKey).toBe("conflict.impact.truthTitle");
     expect(notice?.to).toBe("/konflikte");
 
-    // 5) Ask — R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der normale Frageweg antwortet
-    //    nur aus geprüftem Wissen. Der Konflikt hat KO-A zurück auf „offen" gesetzt, KO-B war nie
-    //    validiert — also trägt KEINES die Antwort. Beide werden dem berechtigten Fragenden als
-    //    ungeprüfte Treffer gemeldet (JOB 1591 W5), und die KONFLIKTBEWUSSTE Quellensicht zeigt sie
-    //    NICHT als uneingeschränkt nutzbar (kein „ready").
+    // 5) Ask — R-0278 (Nacharbeit 3) und R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der
+    //    normale Frageweg antwortet nur aus geprüftem Wissen. Der Konflikt hat KO-A zurück auf
+    //    „offen" gesetzt, KO-B war nie validiert — also trägt KEINES die Antwort. Klara legt die
+    //    Lücke an, meldet die ungeprüften Treffer (JOB 1591 W5) und die fehlende Freigabe (Torlage);
+    //    die KONFLIKTBEWUSSTE Quellensicht zeigt sie NICHT als uneingeschränkt nutzbar.
     const askRes = await app.inject({
       method: "POST",
       url: "/api/ask",
@@ -149,16 +149,26 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
     });
     const askBody = askRes.json() as {
       result: AnswerResult;
+      gap: unknown;
       ungeprueft?: Array<{ id: string }>;
+      verschlossen?: Array<{ id: string; freigabeFehlt: boolean }>;
     };
     expect(askBody.result.answered).toBe(false);
     expect(askBody.result.sources).toEqual([]);
+    expect(askBody.gap).not.toBeNull();
+    expect(askBody.verschlossen?.find((h) => h.id === koA.id)?.freigabeFehlt).toBe(true);
     const gemeldet = (askBody.ungeprueft ?? []).map((h) => h.id);
     expect(gemeldet).toContain(koA.id);
     const kos = [reviewedA, await getKo(app, admin, koB.id)];
     const knownRefs = conflictAwareSourceRefs(gemeldet, kos, conflicts).filter((s) => s.known);
     expect(knownRefs.length).toBeGreaterThan(0);
     for (const r of knownRefs) {
+      expect(r.usability).not.toBe("ready");
+    }
+    // Beide KOs zusammen: dieselbe Sicht, keines ist „ready".
+    const beide = conflictAwareSourceRefs([koA.id, koB.id], kos, conflicts).filter((s) => s.known);
+    expect(beide.length).toBe(2);
+    for (const r of beide) {
       expect(r.usability).not.toBe("ready");
     }
     // Und die Antwortstufe behauptet ohne Antwort keine Sicherung.
@@ -180,6 +190,14 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
     // 6) Konflikt lösen → fällt aus der unresolved-Liste → der Konflikt-Impact ist weg. SCRUM-358:
     //    das KO bleibt bewusst review-pflichtig (offen) und wird über die normale Bewertung wieder
     //    validiert (kein Fake-Validate, kein Dauer-Block).
+    //    R-0215 (Aufnahme gesamt-konfliktklassifikation): der Wahrheitskonflikt wird verbindlich
+    //    zuerst eskaliert, danach entschieden.
+    const escalated = await app.inject({
+      method: "POST",
+      url: `/api/conflicts/${conflictId}/escalate`,
+      headers: admin,
+    });
+    expect(escalated.statusCode).toBe(200);
     const resolved = await app.inject({
       method: "PUT",
       url: `/api/kos/${koA.id}`,

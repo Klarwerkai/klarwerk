@@ -1,7 +1,7 @@
 # KLARWERK Hilfe-Register — Überschriften-Abdeckung + Voll-Inventur der Hilfe-Texte
 
 > **Zweck (Pedi 05.07.):** Jede Überschrift (wo möglich) hat eine Erklärung — und dieses Register dokumentiert, WAS wo erklärt wird, damit bei App-Änderungen die Erklärungen nachgezogen werden.
-> **Pflege-Regel:** Dieses Dokument ist AUS DEM CODE GENERIERT (Quellen: alle `pages/*.tsx` + `i18n.ts`). Es wird nicht von Hand editiert — nach jedem UI-Batch, der Überschriften oder Hilfen ändert, generiert Paul es neu und liefert es mit. Stand: 05.07.2026. Zeile `adm.trash.help` am 17.09.2026 aus `i18n.ts` nachgeführt (JOB 4327; kein Generator im Repo). Zeile `entwurfspool.saveDraftHelp.body` am 06.10.2026 aus `texte/entwurfspool.ts` nachgeführt (Aufnahme entwurf-in-gemeinsamen-pool-geben).
+> **Pflege-Regel:** Dieses Dokument ist AUS DEM CODE GENERIERT (Quellen: alle `pages/*.tsx` + `i18n.ts`). Es wird nicht von Hand editiert — nach jedem UI-Batch, der Überschriften oder Hilfen ändert, generiert Paul es neu und liefert es mit. Stand: 05.07.2026. Zeile `adm.trash.help` am 17.09.2026 aus `i18n.ts` nachgeführt (JOB 4327; kein Generator im Repo). Zeile `entwurfspool.saveDraftHelp.body` am 06.10.2026 aus `texte/entwurfspool.ts` nachgeführt (Aufnahme entwurf-in-gemeinsamen-pool-geben). Die sieben Stufe-2-Überschriften, die Analytics-Überschrift „Knowledge Health“ und die Vertraulichkeitshilfe am 08.10.2026 aus `texte/fachwort.ts` nachgeführt (Aufnahme gesamt-sprache-begriffe, R-0908: ohne „Reasoner", „Evidence", „Knowledge-OS", „Output Factory").
 > **Doppelnutzen:** Teil 2 ist zugleich die vollständige Inventur für den Berater (Lieferung 2: Audit aller Kurzhilfen).
 
 ## Teil 1 · Überschriften-Abdeckung (SectionLabel je Seite)
@@ -26,7 +26,7 @@
 | Admin | `adm.sich.dataTitle` | Datenschutz & Sicherheit | ✅ |
 | Admin | `adm.ready.title` | VIP-Bereitschaft | ✅ |
 | Analytics | `ana.exec.title` | Executive-Blick | ✅ |
-| Analytics | `health.title` | Knowledge Health | ✅ |
+| Analytics | `fachwort.gesundheit.titel` | Zustand der Wissensbasis | ✅ |
 | Analytics | `ana.byType` | Verteilung nach Wissensart | ❌ |
 | Analytics | `ana.impact` | Wirkung | ✅ |
 | Analytics | `ana.weekly` | Validiert je Woche | ❌ |
@@ -82,13 +82,13 @@
 | Stufe2 | `mgmt.recommendations` | Hero Assist — Empfehlungen | ❌ |
 | Stufe2 | `mgmt.priorities` | Wissens-Priorisierung (9 Faktoren) | ❌ |
 | Stufe2 | `mgmt.pilot` | Pilot-Bericht 30/60/90 | ❌ |
-| Stufe2 | `mrun.title` | Reasoner-Läufe (zuletzt) | ❌ |
-| Stufe2 | `rcfg.title` | Reasoner-Konfiguration | ❌ |
-| Stufe2 | `evx.title` | Evidence-Index (QM) | ❌ |
-| Stufe2 | `prov.title` | Provenance-Index (QM) | ❌ |
-| Stufe2 | `readiness.title` | Knowledge-OS Readiness | ❌ |
-| Stufe2 | `kos.hintsTitle` | Knowledge-OS QM-Hinweise | ❌ |
-| Stufe2 | `evFresh.title` | Evidence-Aktualität (QM) | ❌ |
+| Stufe2 | `fachwort.kiLaeufe.titel` | KI-Läufe (zuletzt) | ❌ |
+| Stufe2 | `fachwort.kiEinstellung.titel` | KI-Einstellung | ❌ |
+| Stufe2 | `fachwort.belegIndex.titel` | Belegverzeichnis (QM) | ❌ |
+| Stufe2 | `fachwort.herkunft.titel` | Herkunftsverzeichnis (QM) | ❌ |
+| Stufe2 | `fachwort.bereitschaft.titel` | Startklarheit des Wissenssystems | ❌ |
+| Stufe2 | `fachwort.qm.titel` | Hinweise zur Wissensqualität (QM) | ❌ |
+| Stufe2 | `fachwort.belegFrische.titel` | Aktualität der Belege (QM) | ❌ |
 
 ## Teil 2 · Voll-Inventur aller Hilfe-Texte (255 Einträge, DE)
 
@@ -176,7 +176,7 @@
 | `chelp.tellUpload.title` | Erfassen (captureHelp) | Datei anhängen beim Erzählen |
 | `chelp.wizardSteps.body` | Erfassen (captureHelp) | Erfassen läuft in drei Schritten: ERZÄHLEN (Rohwissen loswerden), WISSENSSEITE (prüfen und verfeinern, mit KI-Hilfe), EINREICHEN (in die Peer-Prüfung geben). Fertige Schritte kannst du anklicken und zurückgehen — dabei geht nichts verloren. Erst „Prüfen & einreichen“ macht aus deinem Entwurf ein Wissensobjekt für die Kollegen. |
 | `chelp.wizardSteps.title` | Erfassen (captureHelp) | Die drei Schritte |
-| `conf.help` | Capture | Wie vertraulich ist dieses Wissen? Öffentlich-intern ist der Standard (keine Einschränkung). Vertraulich und Streng vertraulich markieren sensibles Wissen: solche Objekte werden nie in externe Kontexte gegeben (Output Factory/Export). Die Stufe ist ab dem Erfassen setzbar und später jederzeit änderbar — jede Änderung wird im Audit-Log festgehalten. Hinweis: Diese Kennzeichnung schränkt (noch) nicht ein, WER das Objekt sieht. |
+| `fachwort.vertraulichkeit.hilfe` | Capture | Wie vertraulich ist dieses Wissen? Öffentlich-intern ist der Standard (keine Einschränkung). Vertraulich und Streng vertraulich markieren sensibles Wissen: solche Objekte werden nie in externe Kontexte gegeben (Auswertungen/Export). Die Stufe ist ab dem Erfassen setzbar und später jederzeit änderbar — jede Änderung wird im Audit-Log festgehalten. Hinweis: Diese Kennzeichnung schränkt (noch) nicht ein, WER das Objekt sieht. |
 | `editor.template.applyHelp` | BodyTemplateChooser | Fügt die gezeigte Startstruktur in die Wissensseite ein: Ist die Seite leer, wird sie eingesetzt; steht schon etwas drin, wird sie UNTEN angehängt — nichts wird ersetzt oder gespeichert. Die Platzhalter („… ergänzen“) ersetzt du danach durch dein Wissen. |
 | `enrich.help` | PublicAiEnrichPanel | Hole zusätzliche Hintergrund-Infos von der Public KI — entweder aus dem Modellwissen oder aus einer belegten Web-Suche. Ergebnisse sind extern und ungeprüft; sie werden nur auf deinen Klick in den Entwurf übernommen und nie automatisch validiert. |
 | `help.ask.body` | Hilfeseite | Antworten stammen nur aus validiertem Wissen, mit Quellen und Vertrauen. Ohne Grundlage entsteht eine Wissenslücke. |
@@ -252,7 +252,7 @@
 | `nav.help` | Help,Topbar,klaraRegistry,navigation | Hilfe |
 | `pilot.check.capture` | Hilfeseite (Pilot-Checkliste) | Erfassen speichert offen: frisch erfasstes Wissen ist noch nicht validiert. |
 | `pilot.check.gap` | Hilfeseite (Pilot-Checkliste) | Keine Grundlage? Die Lücke wird ehrlich benannt und führt in die Erfassung — kein erfundenes Wissen. |
-| `pilot.check.maintain` | Hilfeseite (Pilot-Checkliste) | Revalidierung ist „Aktuell halten“: fällige Objekte erneut prüfen, keine automatische Dauergültigkeit. |
+| `knopfzitat.pilot.pflegen` (vorher `pilot.check.maintain`) | Hilfeseite (Pilot-Checkliste) | Revalidierung ist „Aktuell halten“: fällige Objekte erneut prüfen, keine automatische Dauergültigkeit. |
 | `pilot.check.use` | Hilfeseite (Pilot-Checkliste) | Fragen/Bibliothek nutzen Wissen quellen- und statusbewusst: eine Antwort ist nur so belastbar wie ihre Quelle. |
 | `pilot.check.validation` | Hilfeseite (Pilot-Checkliste) | Validierung ist Review/Entscheidung: Peers bewerten, bis es gesichert ist — keine automatische Freigabe. |
 | `pilot.next.ask` | Hilfeseite (Pilot-Checkliste) | Beispiel-Frage öffnen |
@@ -265,7 +265,7 @@
 | `pilot.obs.missing.map` | Hilfeseite (Pilot-Checkliste) | Risiko/Lücke — priorisieren und erfassen. |
 | `pilot.obs.openFlow` | Hilfeseite (Pilot-Checkliste) | Fluss öffnen |
 | `pilot.obs.outdated.label` | Hilfeseite (Pilot-Checkliste) | Wissen wirkt veraltet oder nicht mehr gültig. |
-| `pilot.obs.outdated.map` | Hilfeseite (Pilot-Checkliste) | Lebenszyklus — Revalidierung, „Aktuell halten“. |
+| `knopfzitat.pilot.veraltet` (vorher `pilot.obs.outdated.map`) | Hilfeseite (Pilot-Checkliste) | Lebenszyklus — Revalidierung, „Aktuell halten“. |
 | `pilot.obs.source.label` | Hilfeseite (Pilot-Checkliste) | Quelle, Trust oder Nutzbarkeit ist unklar. |
 | `pilot.obs.source.map` | Hilfeseite (Pilot-Checkliste) | Bibliothek/KO-Detail — Status, Trust, Version, Quelle prüfen. |
 | `pilot.obs.subtitle` | Hilfeseite (Pilot-Checkliste) | Beobachtete Reibung schnell dem passenden bestehenden Klarwerk-Fluss zuordnen. Nichts wird gespeichert; reine UX-Notizen gehören außerhalb des Produkts. |
@@ -300,7 +300,7 @@
 | `val.feedback.helpHint` | KnowledgeDetail,Validation | Dein Feedback hilft dem Autor, die nächste Version gezielt nachzuarbeiten. |
 | `vhelp.approve.body` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Du bestätigst nach eigener Prüfung: Diese Aussage ist fachlich richtig und so anwendbar. Nutze das erst, wenn du Kernaussage, Bedingungen und Maßnahmen wirklich beurteilt hast — deine Freigabe zählt als eine von mehreren nötigen Prüfstimmen. Danach steigt das Vertrauen des Objekts; VALIDIERT wird es erst, wenn genug Prüfer freigegeben haben. Nichts wird automatisch veröffentlicht oder verändert — deine Stimme wird gezählt, mehr nicht. |
 | `vhelp.approve.title` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Freigeben |
-| `vhelp.assign.body` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Du bittest eine bestimmte Kollegin oder einen Kollegen um die Prüfung dieses Objekts. Die Person sieht es danach in ihrer persönlichen Review-Liste („Mir zugewiesen“) und bekommt eine Benachrichtigung über die Glocke. Die Zuweisung ist eine Einladung, keine Bewertung: Sie ändert weder Status noch Vertrauen, und geprüft wird erst, wenn die Person selbst entscheidet. |
+| `knopfzitat.vhelp.assign` (vorher `vhelp.assign.body`) | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Du bittest eine bestimmte Kollegin oder einen Kollegen um die Prüfung dieses Objekts. Die Person sieht es danach in ihrer persönlichen Review-Liste („Mir zugewiesen“) und bekommt eine Benachrichtigung über die Glocke. Die Zuweisung ist eine Einladung, keine Bewertung: Sie ändert weder Status noch Vertrauen, und geprüft wird erst, wenn die Person selbst entscheidet. |
 | `vhelp.assign.title` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Prüfer zuweisen |
 | `vhelp.conflictEscalate.body` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Hebt einen offenen Sach-Konflikt eine Stufe höher, wenn die Beteiligten ihn nicht selbst klären können — dann entscheidet die fachlich zuständige Instanz. Nutze das, wenn zwei validierte Aussagen einander hart widersprechen und keine Seite nachgeben kann. Der Konflikt bleibt offen und sichtbar, bis eine dokumentierte Entscheidung fällt. |
 | `vhelp.conflictEscalate.title` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Eskalieren |
@@ -310,7 +310,7 @@
 | `vhelp.conflictResolve.title` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Konflikt auflösen |
 | `vhelp.conflictSecondOpinion.body` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Bittet eine weitere fachkundige Person um ihre Einschätzung zum Konflikt und hält sie schriftlich fest. Eine gute Zweitmeinung nennt Fakten und Quellen, nicht nur ein Bauchgefühl. Sie entscheidet den Konflikt nicht automatisch — sie ist Material für die spätere Auflösung. |
 | `vhelp.conflictSecondOpinion.title` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Zweitmeinung einholen |
-| `vhelp.contribution.body` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Du kennst eine Ergänzung, Korrektur oder Fundstelle, willst aber nicht selbst am Objekt arbeiten? Beschreibe sie hier — dein Hinweis wird als Kommentar am Wissensobjekt gespeichert, sichtbar für Autor und Prüfer. Anders als „Quelle hinzufügen“ entsteht dabei KEIN Quellen-Eintrag; es ist eine Nachricht an die Menschen, kein Beleg am Objekt. |
+| `knopfzitat.vhelp.contribution` (vorher `vhelp.contribution.body`) | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Du kennst eine Ergänzung, Korrektur oder Fundstelle, willst aber nicht selbst am Objekt arbeiten? Beschreibe sie hier — dein Hinweis wird als Kommentar am Wissensobjekt gespeichert, sichtbar für Autor und Prüfer. Anders als „Quelle hinzufügen“ entsteht dabei KEIN Quellen-Eintrag; es ist eine Nachricht an die Menschen, kein Beleg am Objekt. |
 | `vhelp.contribution.title` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Beitrag oder Fundstelle melden |
 | `vhelp.deleteKo.body` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Entfernt dieses Wissensobjekt endgültig — erlaubt nur für den Autor selbst sowie Controller und Admin; der Server erzwingt dieselbe Regel. Vor dem Löschen fragt die Inline-Bestätigung bewusst nach. Die Löschung wird im Audit protokolliert. Wenn das Wissen nur veraltet ist, ist Überarbeiten oder ein Konflikt der ehrlichere Weg als Löschen. |
 | `vhelp.deleteKo.title` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Wissensobjekt löschen |
@@ -328,7 +328,7 @@
 | `vhelp.originFilter.title` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Herkunft filtern |
 | `vhelp.query.body` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Du hältst das Wissen für brauchbar, aber etwas ist unklar, unvollständig oder nur unter Bedingungen richtig. Ein kurzer Kommentar ist Pflicht — er ist deine Hilfe an den Autor: Was genau fehlt, was soll er nachtragen? Danach bleibt das Objekt in Prüfung und der Autor sieht deine Rückfrage als Kommentar am Wissensobjekt. Es wird nichts abgelehnt, nichts freigegeben und nichts automatisch geändert — die Überarbeitung macht der Autor bewusst selbst. |
 | `vhelp.query.title` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Rückfrage stellen |
-| `vhelp.reject.body` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Du hältst die Aussage für falsch, veraltet oder riskant. Auch hier ist die Begründung Pflicht — ohne sie kann der Autor nichts lernen und nichts korrigieren. Danach fließt deine Ablehnung in den Prüfstand des Objekts ein; es wird dadurch NICHT gelöscht und NICHT gesperrt, sondern bleibt sichtbar in Prüfung, bis Autor oder Controller reagieren. Wenn zwei gesicherte Aussagen einander widersprechen, ist „Konflikt melden“ der bessere Weg als eine Ablehnung. |
+| `knopfzitat.vhelp.reject` (vorher `vhelp.reject.body`) | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Du hältst die Aussage für falsch, veraltet oder riskant. Auch hier ist die Begründung Pflicht — ohne sie kann der Autor nichts lernen und nichts korrigieren. Danach fließt deine Ablehnung in den Prüfstand des Objekts ein; es wird dadurch NICHT gelöscht und NICHT gesperrt, sondern bleibt sichtbar in Prüfung, bis Autor oder Controller reagieren. Wenn zwei gesicherte Aussagen einander widersprechen, ist „Konflikt melden“ der bessere Weg als eine Ablehnung. |
 | `vhelp.reject.title` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Ablehnen |
 | `vhelp.reportConflict.body` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Du zeigst an, dass dieses Wissen einem ANDEREN Wissensobjekt widerspricht — etwa zwei unterschiedliche Grenzwerte für denselben Fall. Danach erscheint der Fall auf der Konflikte-Seite und wird dort bewusst aufgelöst (Zweitmeinung, Eskalation, dokumentierte Entscheidung). Beide Objekte bleiben unverändert bestehen — es wird nichts automatisch korrigiert, überschrieben oder gelöscht. |
 | `vhelp.reportConflict.title` | Prüfbereich/KO-Detail/Konflikte (reviewHelp) | Konflikt melden |

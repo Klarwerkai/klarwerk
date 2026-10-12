@@ -13,6 +13,9 @@
 // Die Endpointgrenze ist die einzige Attrappe; die Namen sind erfundene Testpersonen.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+/** B5: die Bus-Faktor-Antwort ist erfolgreich, aber leer. */
+const lage = vi.hoisted(() => ({ busLeer: false }));
+
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
     status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
@@ -60,7 +63,10 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       gaps: { list: ok([]), summary: ok({ total: 0, byPriority: {} }) },
       ko: { list: ok(kos) },
       directory: { list: ok(personen) },
-      analytics: { busfactor: ok(bus), expertise: ok([]) },
+      analytics: {
+        busfactor: vi.fn(async () => (lage.busLeer ? [] : bus)),
+        expertise: ok([]),
+      },
       aiCheck: { coverageSummary: ok({ total: 6, incomplete: 0, unchecked: 0, noCoverage: 0 }) },
       // B4: der „Stimmt das noch?"-Merker nach einer Anlagenänderung liegt auf k2 (Betrieb).
       lifecycle: { pending: ok(["k2"]) },
@@ -149,6 +155,7 @@ function hinweis(kategorie: string): Element | undefined {
 
 beforeEach(async () => {
   await i18n.changeLanguage("de");
+  lage.busLeer = false;
 });
 
 afterEach(async () => {
@@ -227,5 +234,42 @@ describe("Risiko-Cockpit · Bus-Faktor je Gebiet an der echten Seite", () => {
     expect(veraltet?.getAttribute("href")).toBe("/lebenszyklus");
     // Gegenprobe: ohne Merker keine Zeile, auch keine „0“.
     expect(karte("Qualitaet").querySelector('[data-testid="risk-stale-asset"]')).toBeNull();
+  });
+
+  // R-0956 (Ben, Nacharbeit 2): die leere Bus-Faktor-Liste sagt nicht nur „Keine Risikodaten.“,
+  // sondern ordnet in den Wissenskreis ein und nennt den nächsten Schritt.
+  it("B5 · leere Bus-Faktor-Liste: Leersatz, Einordnung in den Wissenskreis und ein echter nächster Schritt", async () => {
+    lage.busLeer = true;
+    await mount();
+    const text = container.textContent ?? "";
+
+    expect(text).toContain(i18n.t("risk.busEmpty"));
+    expect(text).toContain(i18n.t("story.rescue.title"));
+    expect(text).toContain(i18n.t("story.surface.risk.lead"));
+    expect(text).toContain(i18n.t("cycle.capture.label"));
+    const erfassen = [...container.querySelectorAll("a")].find(
+      (a) => a.textContent === i18n.t("empty.cta.capture"),
+    );
+    expect(erfassen, "der nächste Schritt ist ein echter Link").toBeDefined();
+    expect(erfassen?.getAttribute("href")?.startsWith("/")).toBe(true);
+  });
+
+  // R-0956 (Bestandsabgleich, Nacharbeit 4): die leere Lückenliste (hier liefert `gaps.list`
+  // nichts) ordnet ebenfalls ein und führt zum Fragen.
+  it("B6 · leere Lückenliste: Leersatz, Einordnung und der Weg zum Fragen", async () => {
+    await mount();
+    const text = container.textContent ?? "";
+    expect(text).toContain(i18n.t("risk.gapsEmpty"));
+    expect(text).toContain(i18n.t("story.surface.gaps.lead"));
+    const fragen = [...container.querySelectorAll("a")].find(
+      (a) => a.textContent === i18n.t("empty.cta.ask"),
+    );
+    expect(fragen?.getAttribute("href")).toBe("/fragen");
+  });
+
+  it("B5b · Gegenprobe: mit Daten keine Leer-Einordnung der Risikoliste", async () => {
+    await mount();
+    expect(container.textContent ?? "").not.toContain(i18n.t("story.surface.risk.lead"));
+    expect(container.textContent ?? "").not.toContain(i18n.t("risk.busEmpty"));
   });
 });

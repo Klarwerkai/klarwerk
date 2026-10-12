@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
-import {
-  MATURITY_FILTERS,
-  countByMaturity,
-  filterByMaturity,
-  libraryMaturity,
-  maturityFilterLabelKey,
-} from "../../apps/web/src/lib/libraryMaturity";
+import { libraryMaturity } from "../../apps/web/src/lib/libraryMaturity";
 
 function ko(overrides: Partial<KnowledgeObject>): KnowledgeObject {
   return {
@@ -58,50 +52,10 @@ describe("SCRUM-262: libraryMaturity", () => {
   });
 });
 
-// SCRUM-267: Reife-Filter über die gerankte Trefferliste.
-describe("SCRUM-267: filterByMaturity / countByMaturity", () => {
-  const scored = [
-    { ko: ko({ id: "a", status: "validiert", trust: 100 }) }, // ready
-    { ko: ko({ id: "b", status: "validiert", trust: 80 }) }, // ready
-    { ko: ko({ id: "c", status: "offen", assignments: ["u-2"] }) }, // in-review
-    { ko: ko({ id: "d", status: "offen", assignments: [] }) }, // needs-work
-  ];
-
-  it("bietet Alle plus die drei Reifearten", () => {
-    expect(MATURITY_FILTERS).toEqual(["all", "ready", "in-review", "needs-work"]);
-  });
-
-  it("'all' lässt die Liste unverändert", () => {
-    expect(filterByMaturity(scored, "all")).toHaveLength(4);
-  });
-
-  it("'ready' (nutzbar) zeigt nur validierte, nie offene/ungeprüfte KOs", () => {
-    const ready = filterByMaturity(scored, "ready");
-    expect(ready.map((s) => s.ko.id)).toEqual(["a", "b"]);
-    expect(ready.every((s) => s.ko.status === "validiert")).toBe(true);
-  });
-
-  it("'in-review' und 'needs-work' sind unterscheidbar", () => {
-    expect(filterByMaturity(scored, "in-review").map((s) => s.ko.id)).toEqual(["c"]);
-    expect(filterByMaturity(scored, "needs-work").map((s) => s.ko.id)).toEqual(["d"]);
-  });
-
-  it("countByMaturity zählt ehrlich je Reife; all = Gesamtzahl", () => {
-    expect(countByMaturity(scored)).toEqual({
-      all: 4,
-      ready: 2,
-      "in-review": 1,
-      "needs-work": 1,
-    });
-  });
-
-  it("maturityFilterLabelKey: all eigener Key, sonst geteiltes Use-Readiness-Label", () => {
-    expect(maturityFilterLabelKey("all")).toBe("lib.maturity.all");
-    expect(maturityFilterLabelKey("ready")).toBe("use.ready.label");
-    expect(maturityFilterLabelKey("in-review")).toBe("use.review.label");
-    expect(maturityFilterLabelKey("needs-work")).toBe("use.open.label");
-  });
-});
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Der Block zum SCRUM-267-Reifefilter
+// (`MATURITY_FILTERS`, `filterByMaturity`, `countByMaturity`, `maturityFilterLabelKey`) ist mit den
+// Bausteinen entfallen — keiner hatte einen Produktleser. Die Reife filtert die Bibliothek als
+// Facette (`lib/libraryFacets.ts`); gemessen in `tests/library/library-facets.test.ts`.
 
 // ================================================================================================
 // SCRUM-288 IST ABGELÖST (JOB 3063 · H4, Runde 5) — HIER STAND DER ALTE FRAGEN-VERTRAG.
@@ -121,6 +75,5 @@ describe("SCRUM-267: filterByMaturity / countByMaturity", () => {
 // `tests/design/h4-funktionsinventar.test.ts` (die zwei über die echte Schnittstelle erreichbaren
 // Zustände, in Chromium am gebauten Stand).
 //
-// `libraryUseCta` selbst liegt in `apps/web/src/lib/libraryMaturity.ts` — AUSSERHALB der Zielpfade
-// dieses Auftrags. Die Funktion ist seither ohne Produktaufrufer und als solche im Register
-// `ERSETZT_JOB3063` des Aufrufer-Wächters geführt; ihr Abbau ist ein Folgeauftrag.
+// `libraryUseCta` lag danach ohne Produktaufrufer in `apps/web/src/lib/libraryMaturity.ts` und stand
+// im Register `ERSETZT_JOB3063` des Aufrufer-Wächters; mit R-1349 ist sie entfernt.

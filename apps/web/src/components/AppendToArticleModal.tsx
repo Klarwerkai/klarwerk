@@ -23,6 +23,7 @@ import {
 import { appendExtractSections, normalizeExtractLocale } from "../lib/bodyExtract";
 import type { OriginalDocument, OriginalRefCache } from "../lib/captureAttachments";
 import { fileSourcePayload } from "../lib/captureFromFile";
+import { leerzustandsZeile } from "./EmptyStateCtas";
 import { Modal } from "./Modal";
 import { QueryState, TextInput } from "./ui";
 
@@ -184,7 +185,11 @@ export function AppendToArticleModal({
         </div>
       ) : null}
       <div className="mt-3 max-h-[45vh] space-y-1.5 overflow-auto">
-        <QueryState query={kos} emptyText={t("xtr.append.none")}>
+        <QueryState
+          query={kos}
+          emptyText={t("xtr.append.none")}
+          emptyExtra={leerzustandsZeile(t, "library")}
+        >
           {(list) => {
             const matches = filterArticlesByTitle(list, query);
             if (matches.length === 0) {

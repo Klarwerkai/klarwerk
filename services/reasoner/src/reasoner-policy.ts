@@ -22,6 +22,8 @@ function clone(config: ReasonerTaskConfig): ReasonerTaskConfig {
     global: config.global,
     perTask: { ...config.perTask },
     ...(config.kiFreigabe ? { kiFreigabe: { ...config.kiFreigabe } } : {}),
+    // R-0305/R-1099: die Wahl der Zweitmeinung muss den Neustart ebenso überleben wie die Freigabe.
+    ...(config.zweitmeinung ? { zweitmeinung: config.zweitmeinung } : {}),
   };
 }
 

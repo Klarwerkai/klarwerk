@@ -17,18 +17,21 @@
 //
 //  3. FAIL-CLOSED. Fehlt die Quelle oder schrumpft die Zustandsliste, ist der Test rot — ein
 //     gruener Nichtlauf waere schlimmer als ein roter Lauf.
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 10): die Bloecke B bis D massen die
+// Ableitungen der alten Resultatflaeche (`sourceBlockView`, `knowledgeBlockView`,
+// `importResultView`). Die Flaeche wurde nie montiert; geliefert ist der Weg R-0142 als
+// `components/bibliothek/ImportErgebnis.tsx` (gesamt-confluence-import, 1.0.0-beta.1.723). Fläche,
+// Ableitungen und diese drei Bloecke sind entfernt. Block A (die Laufzustaende, die der gelieferte
+// Weg ueber `RunStateBanner` weiter zeigt) und Block E (keine Fachlogik im Kern) gelten unveraendert.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   IMPORT_RUN_STATUS,
-  type ImportResultViewInput,
   type ImportRunStatus,
-  importResultView,
   importRunStateView,
   isImportRunStatus,
-  knowledgeBlockView,
-  sourceBlockView,
 } from "../../apps/web/src/lib/importResultView";
 
 const LIB = "apps/web/src/lib/importResultView.ts";
@@ -58,32 +61,6 @@ const STATUS_AUS_KW_W2_17 = [
   "PARTIAL",
   "FAILED",
 ];
-
-function quelle(over: Partial<NonNullable<ImportResultViewInput["source"]>> = {}) {
-  return {
-    sourceRecordId: "src-1",
-    sourceSystem: "confluence",
-    externalId: "123456",
-    sourceVersion: "7",
-    url: "https://example.invalid/wiki/x",
-    title: "Wartung der Ventilstation",
-    importedAt: "2026-08-02T09:00:00.000Z",
-    ...over,
-  };
-}
-
-function einheit(over: Record<string, unknown> = {}) {
-  return {
-    candidateItemId: "item-1",
-    knowledgeObjectId: "ko-1",
-    extractedStatement: "Vor der Wartung Druck ablassen.",
-    locator: "Absatz 3",
-    validationStatus: "offen",
-    conflictIds: [],
-    knowledgeGapIds: [],
-    ...over,
-  };
-}
 
 // ================================================================================================
 // BLOCK A — die neun Laufzustaende
@@ -151,194 +128,6 @@ describe("AUFTRAG-23 BLOCK A: die Laufzustaende kommen aus dem Vertrag", () => {
     // Positive Kontrolle — sonst waere der Erkenner blind.
     expect(isImportRunStatus("COMPLETED")).toBe(true);
     expect(importRunStateView("COMPLETED").unknown).toBe(false);
-  });
-});
-
-// ================================================================================================
-// BLOCK B — das Original
-// ================================================================================================
-describe("AUFTRAG-23 BLOCK B: das Original zeigt Geliefertes und benennt Fehlendes", () => {
-  it("alle fuenf Pflichtangaben erscheinen WOERTLICH", () => {
-    const block = sourceBlockView(quelle());
-    expect(block.present).toBe(true);
-    expect(block.missingRequiredCount).toBe(0);
-    const werte = Object.fromEntries(block.fields.map((f) => [f.labelKey, f.value]));
-    expect(werte["w2.source.title"]).toBe("Wartung der Ventilstation");
-    expect(werte["w2.source.system"]).toBe("confluence");
-    expect(werte["w2.source.version"]).toBe("7");
-    expect(werte["w2.source.url"]).toBe("https://example.invalid/wiki/x");
-    expect(werte["w2.source.importedAt"]).toBe("2026-08-02T09:00:00.000Z");
-  });
-
-  it("eine fehlende Pflichtangabe wird als fehlend BENANNT, nicht weggelassen", () => {
-    const block = sourceBlockView(quelle({ sourceVersion: null, importedAt: "  " }));
-    // Die Zeilen bleiben stehen — eine weggelassene Zeile saehe aus wie ein vollstaendiges Original.
-    expect(block.fields.length).toBe(6);
-    const version = block.fields.find((f) => f.labelKey === "w2.source.version");
-    expect(version?.value).toBeNull();
-    expect(version?.missingKey).toBe("w2.value.missing");
-    expect(block.missingRequiredCount).toBe(2);
-  });
-
-  it("eine ganz fehlende Quelle ist ein Befund, kein leerer Bereich", () => {
-    for (const leer of [null, undefined]) {
-      const block = sourceBlockView(leer);
-      expect(block.present).toBe(false);
-      expect(block.missingKey).toBe("w2.source.missing");
-      expect(block.fields).toEqual([]);
-    }
-  });
-
-  it("die URL geht ueber die gehaertete Anzeige, alles andere als Text", () => {
-    const block = sourceBlockView(quelle());
-    const arten = Object.fromEntries(block.fields.map((f) => [f.labelKey, f.kind]));
-    expect(arten["w2.source.url"]).toBe("url");
-    expect(arten["w2.source.title"]).toBe("text");
-    expect(arten["w2.source.system"]).toBe("text");
-  });
-});
-
-// ================================================================================================
-// BLOCK C — die Wissenseinheiten
-// ================================================================================================
-describe("AUFTRAG-23 BLOCK C: n Einheiten, gelieferte Reihenfolge, gelesene Werte", () => {
-  it("eine Quelle mit drei Einheiten ergibt drei Zeilen in GELIEFERTER Reihenfolge", () => {
-    const block = knowledgeBlockView([
-      einheit({ candidateItemId: "c", extractedStatement: "Drittens" }),
-      einheit({ candidateItemId: "a", extractedStatement: "Erstens" }),
-      einheit({ candidateItemId: "b", extractedStatement: "Zweitens" }),
-    ]);
-    expect(block.count).toBe(3);
-    expect(block.empty).toBe(false);
-    // Die Reihenfolge ist die GELIEFERTE — bewusst NICHT alphabetisch, nicht nach Id sortiert.
-    expect(block.items.map((i) => i.candidateItemId)).toEqual(["c", "a", "b"]);
-    expect(block.items.map((i) => i.statement)).toEqual(["Drittens", "Erstens", "Zweitens"]);
-    expect(block.items.map((i) => i.position)).toEqual([1, 2, 3]);
-  });
-
-  it("eine fehlende Fundstelle wird ausdruecklich benannt — die Zeile bleibt", () => {
-    const block = knowledgeBlockView([einheit({ locator: null }), einheit({ locator: "" })]);
-    expect(block.count).toBe(2);
-    for (const item of block.items) {
-      expect(item.locator).toBeNull();
-      expect(item.locatorMissingKey).toBe("w2.item.locatorMissing");
-    }
-    // Positive Kontrolle: eine vorhandene Fundstelle wird WOERTLICH uebernommen.
-    const mit = knowledgeBlockView([einheit({ locator: "Absatz 3" })]);
-    expect(mit.items[0]?.locator).toBe("Absatz 3");
-    expect(mit.items[0]?.locatorMissingKey).toBeNull();
-  });
-
-  it("der Validierungsstatus wird GELESEN — fehlt er, wird keiner behauptet", () => {
-    const gelesen = knowledgeBlockView([einheit({ validationStatus: "validiert" })]);
-    expect(gelesen.items[0]?.validationStatus).toBe("validiert");
-    const ohne = knowledgeBlockView([einheit({ validationStatus: null })]);
-    expect(ohne.items[0]?.validationStatus).toBeNull();
-    expect(ohne.items[0]?.validationMissingKey).toBe("w2.item.statusMissing");
-  });
-
-  it("Konflikte und Luecken sind GEZAEHLTE gelieferte IDs, nichts Erkanntes", () => {
-    const block = knowledgeBlockView([
-      einheit({ conflictIds: ["k1", "k2"], knowledgeGapIds: ["g1"] }),
-      einheit({ conflictIds: null, knowledgeGapIds: undefined }),
-      // Leere und unbrauchbare Eintraege zaehlen nicht mit — sie sind keine Konflikte.
-      einheit({ conflictIds: ["", "   "], knowledgeGapIds: [] }),
-    ]);
-    expect(block.items.map((i) => i.conflictCount)).toEqual([2, 0, 0]);
-    expect(block.items.map((i) => i.gapCount)).toEqual([1, 0, 0]);
-  });
-
-  it("kein Element ist NICHT dasselbe wie Erfolg", () => {
-    for (const leer of [[], null, undefined]) {
-      const block = knowledgeBlockView(leer);
-      expect(block.empty).toBe(true);
-      expect(block.count).toBe(0);
-      expect(block.emptyKey).toBe("w2.knowledge.empty");
-    }
-  });
-
-  it("eine Einheit ohne Id bekommt einen Stellenschluessel, keinen erfundenen Fachwert", () => {
-    const block = knowledgeBlockView([
-      einheit({ candidateItemId: null }),
-      einheit({ candidateItemId: "x" }),
-    ]);
-    // Die fachliche Id bleibt ehrlich leer — es wird keine erfunden.
-    expect(block.items[0]?.candidateItemId).toBeNull();
-    expect(block.items[1]?.candidateItemId).toBe("x");
-    // Der Listenschluessel traegt die Position und ist damit trotzdem eindeutig.
-    expect(block.items[0]?.key).toBe("1-ohne-id");
-    expect(block.items[1]?.key).toBe("2-x");
-  });
-
-  it("zwei Einheiten mit DERSELBEN gelieferten Id bleiben zwei Einheiten", () => {
-    // Sonst zoege React die Zeilen zusammen und aus n gelieferten Einheiten wuerden sichtbar
-    // weniger — genau die Zusage, um die es in dieser Welle geht.
-    const block = knowledgeBlockView([
-      einheit({ candidateItemId: "doppelt", extractedStatement: "Erste Aussage." }),
-      einheit({ candidateItemId: "doppelt", extractedStatement: "Zweite Aussage." }),
-    ]);
-    expect(block.count).toBe(2);
-    expect(new Set(block.items.map((i) => i.key)).size, "Die Listenschluessel kollidieren").toBe(2);
-    expect(block.items.map((i) => i.statement)).toEqual(["Erste Aussage.", "Zweite Aussage."]);
-  });
-});
-
-// ================================================================================================
-// BLOCK D — das Ganze und die Gegenproben
-// ================================================================================================
-describe("AUFTRAG-23 BLOCK D: Gegenproben gegen erfundene Wahrheit", () => {
-  it("Teilfehler: erzeugte Einheiten bleiben sichtbar, der Lauf gilt trotzdem nicht als Erfolg", () => {
-    const view = importResultView({
-      run: {
-        importId: "imp-1",
-        status: "PARTIAL",
-        failureCode: "SOURCE_PAGE_GONE",
-        failureReason: "Zwei Seiten waren nicht mehr abrufbar.",
-      },
-      source: quelle(),
-      items: [einheit(), einheit({ candidateItemId: "item-2" })],
-    });
-    expect(view.runState.success).toBe(false);
-    expect(view.runState.labelKey).toBe("w2.run.status.PARTIAL");
-    // Die erzeugten Einheiten verschwinden NICHT, nur weil ein Teil fehlschlug.
-    expect(view.knowledge.count).toBe(2);
-    // Grund und Code WOERTLICH — kein Ersatztext.
-    expect(view.failureCode).toBe("SOURCE_PAGE_GONE");
-    expect(view.failureReason).toBe("Zwei Seiten waren nicht mehr abrufbar.");
-  });
-
-  it("ein Fehlschlag ohne Grund erfindet keinen Grund", () => {
-    const view = importResultView({ run: { status: "FAILED" }, source: null, items: [] });
-    expect(view.failureCode).toBeNull();
-    expect(view.failureReason).toBeNull();
-    expect(view.runState.success).toBe(false);
-    expect(view.source.present).toBe(false);
-    expect(view.knowledge.empty).toBe(true);
-  });
-
-  it("eine ganz leere Antwort behauptet nichts", () => {
-    for (const leer of [null, undefined, {}]) {
-      const view = importResultView(leer as ImportResultViewInput);
-      expect(view.runState.unknown).toBe(true);
-      expect(view.runState.success).toBe(false);
-      expect(view.source.present).toBe(false);
-      expect(view.knowledge.empty).toBe(true);
-    }
-  });
-
-  it("die Abbildung ist rein: dieselbe Eingabe, dasselbe Ergebnis, kein Seiteneffekt", () => {
-    const eingabe: ImportResultViewInput = {
-      run: { status: "COMPLETED" },
-      source: quelle(),
-      items: [einheit({ candidateItemId: "z" }), einheit({ candidateItemId: "a" })],
-    };
-    const gefroren = JSON.stringify(eingabe);
-    const eins = importResultView(eingabe);
-    const zwei = importResultView(eingabe);
-    expect(eins).toEqual(zwei);
-    // Insbesondere wurde die gelieferte Liste NICHT an Ort und Stelle sortiert.
-    expect(JSON.stringify(eingabe), "Die Eingabe wurde veraendert").toBe(gefroren);
-    expect(eins.knowledge.items.map((i) => i.candidateItemId)).toEqual(["z", "a"]);
   });
 });
 

@@ -65,6 +65,7 @@ import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import type { LiveWall } from "../../apps/web/src/api/types";
 import { LiveWallValidiert } from "../../apps/web/src/components/start/LiveWallValidiert";
 import i18n from "../../apps/web/src/i18n";
+import { formatKoTimestamp } from "../../apps/web/src/lib/koDates";
 import { LIVEWALL_TAKT_MS, personenAktuell } from "../../apps/web/src/lib/livewallTakt";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -155,6 +156,26 @@ describe("PMO-FEA-0003 · Blatt „Was gerade passiert“", () => {
     expect(personenAktuell(jetzt - 3 * LIVEWALL_TAKT_MS, jetzt)).toBe(true);
     expect(personenAktuell(jetzt - 3 * LIVEWALL_TAKT_MS - 1, jetzt)).toBe(false);
     expect(personenAktuell(0, jetzt)).toBe(false);
+  });
+
+  it("R-1010 · die Zeitangabe folgt der gemeinsamen Zeitregel — in jeder Oberflächensprache", async () => {
+    // Vorher: eigenes Format ohne Jahr, und jede nichtenglische Sprache bekam fest „de-DE".
+    const el = await montieren(WAND);
+    const liste = () => el.querySelector('[data-testid="livewall-validiert"]')?.textContent ?? "";
+    const iso = "2026-07-02T08:00:00.000Z";
+    expect(liste()).toContain(String(formatKoTimestamp(iso, "de")));
+
+    await act(async () => {
+      await i18n.changeLanguage("nl");
+      await flush();
+    });
+    const nl = formatKoTimestamp(iso, "nl");
+    expect(nl, "Kalibrierung: NL ≠ DE").not.toBe(formatKoTimestamp(iso, "de"));
+    expect(liste()).toContain(String(nl));
+    expect(liste()).not.toContain(String(formatKoTimestamp(iso, "de")));
+    await act(async () => {
+      await i18n.changeLanguage("de");
+    });
   });
 
   it("leerer Zweig sagt das ehrlich", async () => {

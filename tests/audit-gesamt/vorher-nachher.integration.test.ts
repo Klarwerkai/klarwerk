@@ -195,7 +195,26 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit
       payload: { email: "vn@x.de", password: "secret123" },
     });
     expect(login.statusCode, login.body).toBe(200);
-    return { name, db, pa, a, b, headers: { authorization: `Bearer ${login.json().token}` } };
+    const headers = { authorization: `Bearer ${login.json().token}` };
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): die unveränderte Kette geht
+    // nur an, wer alles lesen darf. Der Admin bekommt deshalb das persönliche Niveau „streng
+    // vertraulich" — die Vorher-Fassungen kennen das Feld nicht und lassen es unbeachtet.
+    const konto = reg.json() as { id?: string; user?: { id: string } };
+    const kontoId = konto.id ?? konto.user?.id;
+    expect(kontoId, reg.body).toBeTruthy();
+    const freigabe = await a.inject({
+      method: "PUT",
+      url: `/api/users/${kontoId}`,
+      headers,
+      payload: { freigabe: "streng_vertraulich" },
+    });
+    expect([200, 204], freigabe.body).toContain(freigabe.statusCode);
+    // Nacharbeit 28 (Ben): die unveränderte Kette gibt es nur noch mit ausdrücklich erteilter
+    // Ketteneinsicht (Betriebseinstellung). Mehrere Bühnen laufen nebeneinander — deshalb wird das
+    // Konto ERGÄNZT, nicht ersetzt. Die Vorher-Fassungen lesen die Einstellung nicht.
+    const bisher = process.env.KLARWERK_AUDIT_KETTENEINSICHT;
+    process.env.KLARWERK_AUDIT_KETTENEINSICHT = bisher ? `${bisher},${kontoId}` : String(kontoId);
+    return { name, db, pa, a, b, headers };
   }
 
   beforeAll(async () => {
@@ -265,7 +284,14 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit
     for (const p of pools.splice(0)) {
       await p.end().catch(() => undefined);
     }
+    // `Pool.end()` ist fertig, sobald die Clients aus dem Pool genommen sind — nicht erst, wenn ihre
+    // Verbindungen geschlossen sind. Ein sofortiges `DROP … WITH (FORCE)` beendet die noch
+    // schließenden Sitzungen mit 57P01, und der Client meldet das als unbehandelten Fehler
+    // (Nacharbeit 18, aufnahme:20260922:gesamt-leserechte). Erst warten, dann löschen.
     for (const db of datenbanken.splice(0)) {
+      if (verwaltung) {
+        await warteBisOhneVerbindung(verwaltung, db);
+      }
       await verwaltung?.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`).catch(() => undefined);
     }
     await verwaltung?.end();
@@ -274,6 +300,20 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit
       rmSync(o, { recursive: true, force: true });
     }
   });
+
+  /** Wartet (höchstens ~10 s, ohne Ausnahme), bis keine Sitzung mehr an `db` hängt. */
+  async function warteBisOhneVerbindung(admin: Pool, db: string): Promise<void> {
+    for (let versuch = 0; versuch < 100; versuch++) {
+      const { rows } = await admin.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
+        [db],
+      );
+      if ((rows[0]?.n ?? 0) === 0) {
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
 
   function datenbankDa(ctx: { skip: () => void }): void {
     if (!verwaltung) {
