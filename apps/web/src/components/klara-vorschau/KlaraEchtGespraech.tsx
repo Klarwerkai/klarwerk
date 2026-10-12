@@ -24,6 +24,7 @@ import { leserHref } from "../../lib/objektbezug";
 import { useAiAvailable } from "../../lib/useAiAvailable";
 import { type ExternStand, externStand } from "../../shell/ExternStatus";
 import { AnswerMarkdown } from "../AnswerMarkdown";
+import { KiArbeitsweg } from "./KiArbeitsweg";
 import { VorlesenKnopf } from "./KlaraSprache";
 import {
   type EchtNachricht,
@@ -542,6 +543,9 @@ export function KlaraEchtGespraech({
           </ol>
         )}
       </section>
+
+      {/* BPA-13: mit einer ausgewählten KI arbeiten — am eigenen, gespeicherten Gespräch. */}
+      {g ? <KiArbeitsweg gespraechId={g.id} kontext={kontext} /> : null}
 
       {g ? (
         <div className="flex flex-wrap gap-1.5">

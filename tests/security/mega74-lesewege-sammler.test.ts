@@ -1119,6 +1119,21 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "ändert nur das eigene Assistenzprofil (user.id); fremde Kennung 403, kein KO-Inhalt.",
   },
+  // produkt:20261008:klara-eigeninitiative — Unterstützungsmodus und ruhende Hinweise.
+  "GET /api/me/assistenz/eigeninitiative": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur Modus und Hinweisschlüssel des eigenen Assistenzprofils (assistenz-profil-routes.ts, " +
+      "user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
+  "PUT /api/me/assistenz/eigeninitiative": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ändert nur den eigenen Modus (user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
+  "POST /api/me/assistenz/eigeninitiative/hinweise": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt nur eigene Hinweisschlüssel ab (user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
   // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz.
   "GET /api/me/faehigkeiten": {
     urteil: "EIGENER_BESTAND",
@@ -1184,6 +1199,58 @@ const REGISTER: Record<string, Eintrag> = {
   "DELETE /api/me/klara/gespraeche/:id": {
     urteil: "EIGENER_BESTAND",
     grund: "löscht nur ein eigenes Gespräch (user.id), Antwort nur die Zahl.",
+  },
+  // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): die KI-Aufträge lesen Titel und
+  // Inhalt von Wissensobjekten in Paket und Prompt. Jede Registrierung bildet dafür die EINE
+  // Entscheidung (`sichtbarkeitsfilterFuer(user)`) und reicht sie an den Dienst; der Prompt geht
+  // nur hinaus, solange die frische Prüfung des Pakets trägt (ki-arbeitsbegleitung-dienst.ts).
+  "GET /api/me/klara/ki-faehigkeiten": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "nur Fähigkeiten, Adapter und Freigabelage (ki-arbeitsbegleitung-routes.ts), kein KO.",
+  },
+  "POST /api/me/klara/ki-verbindung/:anbieter/pruefen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Anbieterprobe ohne Wissensobjekt; Antwort nur ok und Probendetail.",
+  },
+  "GET /api/me/klara/gespraeche/:id/ki-auftraege": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — sichtbarkeitsfilterFuer je Quelle; Prompt nur bei aktuellem Paket.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Paket nur aus Quellen, die sichtbarkeitsfilterFuer zulässt.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/uebergabe": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — vor jeder Übergabe frische Prüfung mit sichtbarkeitsfilterFuer.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/ergebnis": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Sicht des Auftrags mit sichtbarkeitsfilterFuer neu geprüft.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/unterbrechen": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Sicht des Auftrags mit sichtbarkeitsfilterFuer neu geprüft.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/stopp": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Sicht des Auftrags mit sichtbarkeitsfilterFuer neu geprüft.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/freigabe-schliessen": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Sicht des Auftrags mit sichtbarkeitsfilterFuer neu geprüft.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/neu-binden": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — neues Paket nur aus Quellen, die sichtbarkeitsfilterFuer zulässt.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/codex": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Codex-Wirkung erst nach frischer Prüfung mit sichtbarkeitsfilterFuer.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-vergleich": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Vergleich nur über eigene Aufträge; Sicht mit sichtbarkeitsfilterFuer.",
   },
   // produkt:20261008:klara-aktionen (Klara 05): die Aufträge liegen IM eigenen Gespräch. Titel und
   // Kennungen darin hat die Person selbst auf ihrem Bildschirm gewählt; kein Weg liest ein Objekt.

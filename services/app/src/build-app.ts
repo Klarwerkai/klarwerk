@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import cors, { type FastifyCorsOptions } from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, {
@@ -213,9 +215,11 @@ import {
   type ReasonerPolicyRepo,
   anbieterZugelassen,
   ausgangspruefungAusEnv,
+  bindeAnbieter,
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
   createLocalEmbeddingClientFromEnv,
+  imBindungsrahmen,
   setzeAusgangspruefung,
 } from "../../reasoner";
 import {
@@ -249,6 +253,8 @@ import {
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
 import { Anfragebremse, bremsSatz } from "./anfragebremse";
+// produkt:20261008:klara-eigeninitiative: der persönliche Unterstützungsmodus im Assistenzprofil.
+import { EigeninitiativeDienst } from "./assistenz-eigeninitiative";
 // produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der Assistenz über die vorhandenen Dienste.
 import type { FaehigkeitsAusfuehrung } from "./assistenz-faehigkeiten";
 import {
@@ -343,6 +349,13 @@ import {
   PgKenntnisnahmeRepo,
 } from "./kenntnisnahme";
 import { kiGrenzeAusEnv, registriereKiAnfragebremse } from "./ki-anfragebremse";
+// produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): der Arbeitsweg mit einer ausgewählten
+// KI — am eigenen Klara-Gespräch, mit frischen Rechten, gebundenem Anbieter und echtem Laufbeleg.
+import {
+  type KiApiErgebnis,
+  KiArbeitsbegleitungDienst,
+  type KiCodexEinrichtung,
+} from "./ki-arbeitsbegleitung-dienst";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche — haltbar im Postgres-Betrieb, im
 // Speicher ohne Datenbank.
 import {
@@ -452,6 +465,7 @@ import { importLaufListeRoutes, importRunRoutes } from "./routes/import-run-rout
 import { jiraImportRoutes } from "./routes/jira-import-routes";
 import { kantenRoutes } from "./routes/kanten-routes";
 import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
+import { kiArbeitsbegleitungRoutes } from "./routes/ki-arbeitsbegleitung-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
@@ -3245,6 +3259,12 @@ export function buildApp(
     hintergrundpruefung?: (lauf: () => Promise<HintergrundlaufBericht | null>) => void;
     /** R-0571: Wartezeit bis zur Wiederholung eines unvollständigen Verzeichnisabgleichs. */
     verzeichnisAbgleichWiederholungMs?: number;
+    /**
+     * BPA-13 · AC06: der Basisordner der SYNTHETISCHEN Codex-Arbeitsbereiche (je Auftrag ein
+     * Unterordner). Ohne Angabe ein eigener Ordner im System-Temp-Verzeichnis — bewusst kein
+     * Projektordner. Tests setzen einen eigenen Ordner.
+     */
+    kiCodexBasis?: string;
   } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
@@ -5153,14 +5173,164 @@ export function buildApp(
   );
   // produkt:20261008:klara-basis: die eigenen Klara-Gespräche. Eine Antwort aus dem Frageweg wird
   // gegen DIESELBE Antwortablage geprüft wie die Herkunft im Gedächtnis.
+  // BPA-13: DIESELBE Dienstinstanz trägt auch die KI-Aufträge des Gesprächs (kein zweiter Verlauf).
+  const klaraGespraechDienst = new KlaraGespraechDienst({
+    repo: services.klaraGespraeche,
+    antworten: services.answerSnapshots,
+  });
   app.register(
-    klaraGespraechRoutes(
+    klaraGespraechRoutes({ dienst: klaraGespraechDienst, audit: services.audit }, guards),
+  );
+  // ================================================================================================
+  // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13) — DER ARBEITSWEG MIT EINER GEWÄHLTEN KI.
+  // ================================================================================================
+  //
+  // Nichts davon ist eine neue Entscheidung; alles wird frisch je Aufruf aus dem Bestand gelesen:
+  //   · „Keine KI" = die administrative KI-Abschaltung (`kiAbschaltung`), öffentliche KI = die
+  //     zentrale Adminfreigabe (`kiFreigabe.oeffentlicheKi === true`), Vertrauliches = die zweite
+  //     Freigabe (`vertraulicheAusleitungFreigegeben`).
+  //   · ERLAUBTE ANBIETER = die beiden externen Anbieter des Reasoners, die P04 als erste nennt
+  //     (Claude = `anthropic`, ChatGPT = `openai`). Keine automatische Erweiterung.
+  //   · API-WEG = `assistText` des Reasoners IM BINDUNGSRAHMEN: `bindeAnbieter` lässt in der Kette nur
+  //     den gewählten Anbieter zu; scheitert er, endet der Lauf ohne Ausweichweg
+  //     (`KlaraAusweichwegGesperrtFehler`). Die zentrale Freigabe und die Vertraulichkeitssperre
+  //     des Reasoners wirken unverändert dahinter.
+  //   · BELEG = der Eintrag im Modelllauf-Protokoll, der in genau diesem Zeitfenster für `assist`
+  //     entstand — nur wenn es GENAU EINER ist. Sonst kein Beleg statt eines geratenen.
+  //   · CODEX = ein synthetischer Arbeitsbereich je Auftrag; geschrieben wird nur, was
+  //     `wendeCodexAenderungenAn` annimmt.
+  const KI_P04_ANBIETER = ["anthropic", "openai"] as const;
+  type KiP04Anbieter = (typeof KI_P04_ANBIETER)[number];
+  const istP04Anbieter = (a: unknown): a is KiP04Anbieter =>
+    typeof a === "string" && (KI_P04_ANBIETER as readonly string[]).includes(a);
+  const kiProben = new Map<string, string>();
+  const kiLage = () => {
+    const config = services.reasoner.configStatus();
+    return {
+      keineKi: services.reasoner.kiAbschaltung().abgeschaltet,
+      oeffentlicheKiFreigegeben: config.taskConfig.kiFreigabe?.oeffentlicheKi === true,
+      vertraulichFreigegeben: services.reasoner.vertraulicheAusleitungFreigegeben(),
+      erlaubteAnbieter: [...KI_P04_ANBIETER],
+    };
+  };
+  const kiCodexEinrichtung = ((): KiCodexEinrichtung | undefined => {
+    const basis = opts.kiCodexBasis ?? join(tmpdir(), "klarwerk-ki-codex");
+    try {
+      mkdirSync(basis, { recursive: true });
+    } catch {
+      // Nicht beschreibbar: dann ist der Codex-Weg ehrlich „nicht eingerichtet".
+      return undefined;
+    }
+    return {
+      basis,
+      erlaubtePfade: ["src", "tests", "docs"],
+      anbieter: "openai",
+      version: "codex-uebergabe+arbeitsbereich-1",
+      geprueftAm: new Date().toISOString(),
+    };
+  })();
+  app.register(
+    kiArbeitsbegleitungRoutes(
       {
-        dienst: new KlaraGespraechDienst({
-          repo: services.klaraGespraeche,
-          antworten: services.answerSnapshots,
+        dienst: new KiArbeitsbegleitungDienst({
+          gespraeche: klaraGespraechDienst,
+          ko: services.ko,
+          lage: kiLage,
+          mcpAktiv: () => dienstLage.schluessel.length > 0,
+          codex: kiCodexEinrichtung,
+          api: {
+            bindung: () => {
+              const config = services.reasoner.configStatus();
+              const wirksam = config.effectiveAnbieter.assist;
+              const lage = kiLage();
+              if (!istP04Anbieter(wirksam)) {
+                return {
+                  ausfuehrbar: false,
+                  anbieter: null,
+                  modell: null,
+                  sperrgrund: `assist=${wirksam ?? "unbekannt"}`,
+                };
+              }
+              const sperrgrund = lage.keineKi
+                ? "keine_ki"
+                : !lage.oeffentlicheKiFreigegeben
+                  ? "oeffentliche_ki_nicht_freigegeben"
+                  : null;
+              return {
+                ausfuehrbar: sperrgrund === null,
+                anbieter: wirksam,
+                modell: config.cloudProviders[wirksam].model ?? null,
+                sperrgrund,
+              };
+            },
+            adapter: () => {
+              const config = services.reasoner.configStatus();
+              return KI_P04_ANBIETER.filter((a) => config.cloudProviders[a].configured).map((a) => {
+                const geprueftAm = kiProben.get(a);
+                return {
+                  faehigkeit: "api" as const,
+                  anbieter: a,
+                  version: config.cloudProviders[a].model ?? config.cloudProviders[a].name ?? a,
+                  ...(geprueftAm ? { geprueftAm } : {}),
+                };
+              });
+            },
+            pruefe: async (anbieter) => {
+              if (!istP04Anbieter(anbieter)) {
+                return { ok: false, detail: "Kein freigegebener Anbieter." };
+              }
+              const probe = await services.reasoner.probe(anbieter);
+              const ok = probe.ok && probe.mode === "model" && probe.anbieter === anbieter;
+              if (ok) {
+                kiProben.set(anbieter, probe.at);
+              }
+              return { ok, detail: probe.detail };
+            },
+            fuehreAus: (prompt, anbieter, vertraulich) =>
+              imBindungsrahmen(async (): Promise<KiApiErgebnis> => {
+                if (!bindeAnbieter(anbieter)) {
+                  throw new Error("Die Anbieterbindung ließ sich nicht herstellen.");
+                }
+                const von = new Date().toISOString();
+                const ergebnis = await services.reasoner.assistText(
+                  prompt,
+                  "de",
+                  "Bearbeite die im Text beschriebene Aufgabe ausschließlich mit den dort " +
+                    "genannten Quellen und gib nur das verlangte Ergebnis zurück.",
+                  vertraulich,
+                );
+                if (ergebnis.demo) {
+                  throw new Error(
+                    "Kein Modellergebnis — der gewählte Anbieter hat nicht geantwortet.",
+                  );
+                }
+                const bis = new Date(Date.now() + 1).toISOString();
+                const laeufe = (await services.modelRuns.recent(200)).filter(
+                  (l) =>
+                    l.task === "assist" &&
+                    l.status === "success" &&
+                    !l.demo &&
+                    l.startedAt >= von &&
+                    l.startedAt < bis,
+                );
+                const lauf = laeufe.length === 1 ? laeufe[0] : undefined;
+                if (lauf) {
+                  kiProben.set(anbieter, lauf.finishedAt);
+                }
+                return {
+                  inhalt: ergebnis.text,
+                  laufId: lauf?.id ?? null,
+                  modell: lauf?.model ?? null,
+                  verbrauch: lauf?.verbrauch
+                    ? {
+                        einheit: "token",
+                        menge: lauf.verbrauch.eingabeToken + lauf.verbrauch.ausgabeToken,
+                      }
+                    : null,
+                };
+              }),
+          },
         }),
-        audit: services.audit,
       },
       guards,
     ),
@@ -5184,6 +5354,8 @@ export function buildApp(
     assistenzProfilRoutes(
       {
         dienst: new AssistenzProfilDienst({ repo: services.assistenzProfile }),
+        // produkt:20261008:klara-eigeninitiative: der Unterstützungsmodus liegt im selben Profil.
+        eigeninitiative: new EigeninitiativeDienst({ repo: services.assistenzProfile }),
         audit: services.audit,
       },
       guards,
