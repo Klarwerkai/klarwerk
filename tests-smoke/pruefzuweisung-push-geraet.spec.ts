@@ -150,7 +150,8 @@ test("R-0679: Prüfzuweisung erreicht das Gerät als Push-Hinweis und führt in 
     browserName !== "chromium",
     "Der Geräte-Push wird auf diesem Prüfplatz in Chromium gemessen.",
   );
-  test.setTimeout(180_000);
+  // Erstanmeldung des frischen Profils beim Push-Dienst (bis 120 s) plus Zustellung (bis 90 s).
+  test.setTimeout(300_000);
 
   // --- Admin: Push ist eingerichtet; die Prüferin entsteht als eigenes Konto. -------------------
   const admin = await token(request, SMOKE_MAIL, SMOKE_PASS);
@@ -222,21 +223,48 @@ test("R-0679: Prüfzuweisung erreicht das Gerät als Push-Hinweis und führt in 
         `die Profilzeile meldet Push nicht als einschaltbar („${lage}") — Benachrichtigungserlaubnis des Browsers: ${erlaubnis.erlaubnis}, PushManager: ${erlaubnis.pushManager}, Browser: ${erlaubnis.browser}`,
       );
     }
+    // Nacharbeit 13: das Abo war im Browser möglich, die Profilzeile kam in 30 s trotzdem nicht auf
+    // „An". Ob die Anmeldung beim Push-Dienst in einem FRISCHEN Profil länger braucht oder der
+    // Server das Abo abweist, wird jetzt gemessen: jede Antwort auf `POST /api/push/abo` wird
+    // mitgeschrieben (Status und Fehlerschlüssel, nie der Endpunkt), und die Wartezeit reicht für
+    // die Erstanmeldung des Profils beim Dienst.
+    const anmeldungen: { status: number; fehler: string | null }[] = [];
+    page.on("response", async (antwort) => {
+      const pfad = new URL(antwort.url()).pathname;
+      if (antwort.request().method() !== "POST" || pfad !== "/api/push/abo") {
+        return;
+      }
+      const rumpf = (await antwort.json().catch(() => null)) as { error?: string } | null;
+      anmeldungen.push({ status: antwort.status(), fehler: rumpf?.error ?? null });
+    });
+    const geklickt = Date.now();
     await zeile.getByRole("button", { name: "Einschalten" }).click();
     const angemeldet = await expect(zeile)
-      .toContainText("An", { timeout: 30_000 })
+      .toContainText("An", { timeout: 120_000 })
       .then(
         () => true,
         () => false,
       );
     if (!angemeldet) {
+      // Erst festhalten, was die Oberfläche hinterlassen hat — DANN der eigene Abo-Versuch.
+      const vorhandenesAbo = await page.evaluate(async () => {
+        const reg = await navigator.serviceWorker.ready;
+        const abo = await reg.pushManager?.getSubscription();
+        return abo ? new URL(abo.endpoint).host : null;
+      });
       const diagnose = await aboDiagnose(page, oeffentlicherSchluessel);
+      const bericht = {
+        ...diagnose,
+        wartezeitSekunden: Math.round((Date.now() - geklickt) / 1000),
+        aboNachDemKlick: vorhandenesAbo ?? "keines",
+        anmeldungAmServer: anmeldungen.length > 0 ? anmeldungen : "keine Anfrage gesendet",
+      };
       await testInfo.attach("push-abo-diagnose.json", {
         contentType: "application/json",
-        body: JSON.stringify(diagnose, null, 2),
+        body: JSON.stringify(bericht, null, 2),
       });
       throw new Error(
-        `das Push-Abo beim Dienst des Browsers ist nicht zustande gekommen — der Browser meldet: ${diagnose.meldung}`,
+        `Profilzeile nicht auf „An": Abo nach dem Klick: ${bericht.aboNachDemKlick}; Anmeldung am Server: ${JSON.stringify(bericht.anmeldungAmServer)}; eigener Abo-Versuch: ${diagnose.meldung}`,
       );
     }
     const endpunkt = await page.evaluate(async () => {
