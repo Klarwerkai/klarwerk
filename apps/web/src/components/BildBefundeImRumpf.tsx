@@ -6,23 +6,30 @@
 // und liest die Bilder ohne Klick — Text über W01, Bildinhalt über den Beschreibungsweg der Fläche
 // (W02, `useImageDescribe`, mit deren Herkunft und Vertraulichkeitsregel).
 //
-// Gelesen wird erst, wenn der Text kurz still steht (`RUHE_MS`), damit nicht jeder Tastendruck einen
-// Lauf startet; unveränderte Bilder werden wiedererkannt und nicht erneut gelesen. Ein Lauf, der von
-// einem neueren überholt wurde, wird verworfen.
+// Nacharbeit 5 (Bens Befund 1): Der Lauf hängt an den BILDERN, nicht am Text. Ändert sich ein Bild
+// (neu, ersetzt, entfernt, verschoben), startet sofort ein neuer Lauf, und der bisherige Befund wird
+// im selben Zug durch den laufenden Stand ersetzt — ein ausgetauschtes Bild steht nie mehr mit dem
+// alten Ergebnis da. Reine Texteingaben starten nichts neu und schieben nichts auf. Unveränderte
+// Bilder werden im neuen Lauf wiedererkannt und nicht erneut gelesen.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useImageDescribe } from "../app/ImageDescribeContext";
 import {
   BILD_AUTOMATIK_VOREINSTELLUNG,
+  type BildBeschreiber,
+  type BildQuelleEingang,
   type QuellenBefund,
   bildBeschreiberAus,
+  gleicheBilder,
   rumpfBildEingang,
 } from "../lib/bildAutomatik";
 import { neueBildAnalyse } from "../lib/bildAutomatikLauf";
 import { BildBefundListe } from "./BildBefundListe";
 
-/** So lange muss der Text still stehen, bevor seine Bilder gelesen werden. */
-export const RUHE_MS = 1500;
+interface Gestartet {
+  eingang: BildQuelleEingang;
+  beschreibe: BildBeschreiber;
+}
 
 export function BildBefundeImRumpf({ html }: { html: string }): JSX.Element | null {
   const { t } = useTranslation();
@@ -31,33 +38,42 @@ export function BildBefundeImRumpf({ html }: { html: string }): JSX.Element | nu
   const [analyse] = useState(neueBildAnalyse);
   const [befund, setBefund] = useState<{ lauf: number; befund: QuellenBefund } | null>(null);
   const laufRef = useRef(0);
+  const gestartetRef = useRef<Gestartet | null>(null);
   const beschreibe = useMemo(
     () => bildBeschreiberAus({ available, describe }),
     [available, describe],
   );
   const name = t("bildautomatik.quelle.rumpf");
-  const hatBilder = /<img\b/i.test(html);
+  const eingang = useMemo(() => rumpfBildEingang(name, html), [name, html]);
 
   useEffect(() => {
+    const vorher = gestartetRef.current;
+    if (
+      vorher &&
+      vorher.beschreibe === beschreibe &&
+      gleicheBilder(vorher.eingang.vorkommen, eingang.vorkommen)
+    ) {
+      return; // Nur Text geändert: der laufende bzw. fertige Befund gilt weiter.
+    }
+    gestartetRef.current = { eingang, beschreibe };
     laufRef.current += 1;
     const lauf = laufRef.current;
-    if (!hatBilder) {
+    if (eingang.vorkommen.length === 0) {
       setBefund(null);
       return;
     }
-    const uhr = setTimeout(() => {
-      void analyse.analysiereQuelle(rumpfBildEingang(name, html), {
-        automatik: BILD_AUTOMATIK_VOREINSTELLUNG,
-        beschreibe,
-        onFortschritt: (stand) => {
-          if (laufRef.current === lauf) {
-            setBefund({ lauf, befund: stand });
-          }
-        },
-      });
-    }, RUHE_MS);
-    return () => clearTimeout(uhr);
-  }, [analyse, beschreibe, hatBilder, html, name]);
+    // Sofort: der erste Zwischenstand (alle Bilder „wartet“/„läuft“) ersetzt den alten Befund noch
+    // vor dem ersten Lesezugriff.
+    void analyse.analysiereQuelle(eingang, {
+      automatik: BILD_AUTOMATIK_VOREINSTELLUNG,
+      beschreibe,
+      onFortschritt: (stand) => {
+        if (laufRef.current === lauf) {
+          setBefund({ lauf, befund: stand });
+        }
+      },
+    });
+  }, [analyse, beschreibe, eingang]);
 
   if (!befund) {
     return null;

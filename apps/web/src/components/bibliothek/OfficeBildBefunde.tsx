@@ -14,10 +14,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useImageDescribeWennVorhanden } from "../../app/ImageDescribeContext";
 import {
   BILD_AUTOMATIK_VOREINSTELLUNG,
+  BILD_LADEFRIST_MS,
   type BildQuelleEingang,
   type QuellenBefund,
   bildBeschreiberAus,
   docxBildEingang,
+  mitFrist,
   pptxBildEingang,
 } from "../../lib/bildAutomatik";
 import { neueBildAnalyse } from "../../lib/bildAutomatikLauf";
@@ -39,14 +41,27 @@ export function officeBildArt(name: string): Art | null {
   return endung === "pptx" ? "pptx" : endung === "docx" ? "docx" : null;
 }
 
-/** Den Anhang über den vorhandenen Objektspeicherweg holen und mit dem passenden Leser lesen. */
+/**
+ * Den Anhang über den vorhandenen Objektspeicherweg holen und mit dem passenden Leser lesen.
+ * Nacharbeit 5 (Bens Befund 2): der Abruf einschließlich Antwortkörper ist auf `ladefristMs`
+ * begrenzt; danach wird er abgebrochen und das Ergebnis heißt `"frist"`.
+ */
 export async function officeBildEingang(
   anhang: OfficeBildAnhang,
   art: Art,
-  laden: (href: string) => Promise<Blob | null>,
-): Promise<BildQuelleEingang | null> {
+  laden: (href: string, signal?: AbortSignal) => Promise<Blob | null>,
+  ladefristMs: number = BILD_LADEFRIST_MS,
+): Promise<BildQuelleEingang | null | "frist"> {
   const href = objectRawHref(anhang.objectId);
-  const blob = href ? await laden(href) : null;
+  if (!href) {
+    return null;
+  }
+  const abbruch = new AbortController();
+  const blob = await mitFrist(laden(href, abbruch.signal), ladefristMs);
+  if (blob === "frist") {
+    abbruch.abort();
+    return "frist";
+  }
   if (!blob) {
     return null;
   }
@@ -59,21 +74,27 @@ export async function officeBildEingang(
   return docxBildEingang(anhang.name, docx.html, docx.droppedImages);
 }
 
-async function ladeAnhang(href: string): Promise<Blob | null> {
-  const antwort = await fetch(href, { credentials: "same-origin" });
+/** Abruf und Antwortkörper hängen am selben Abbruchsignal (die Frist setzt `officeBildEingang`). */
+async function ladeAnhang(href: string, signal?: AbortSignal): Promise<Blob | null> {
+  const antwort = await fetch(href, { credentials: "same-origin", ...(signal ? { signal } : {}) });
   return antwort.ok ? antwort.blob() : null;
 }
 
-/** Ohne Zugriff auf den Anhang ist nichts gelesen — und das steht da. */
-function ohneZugriff(name: string, art: Art): QuellenBefund {
+/** Ohne Zugriff auf den Anhang ist nichts gelesen — und das steht da, samt Ladefrist. */
+export function ohneZugriff(name: string, art: Art, frist = false): QuellenBefund {
   return {
     quelle: name,
     art,
     status: "fehlgeschlagen",
     befunde: [],
     nichtGelesen: [],
-    hinweise: [],
+    hinweise: frist ? ["ladefrist"] : [],
   };
+}
+
+/** Vor dem Laden: sichtbar „wird geladen“, nicht leer und nicht fertig. */
+export function wirdGeladen(name: string, art: Art): QuellenBefund {
+  return { quelle: name, art, status: "laeuft", befunde: [], nichtGelesen: [], hinweise: [] };
 }
 
 export function OfficeBildBefunde({
@@ -97,8 +118,10 @@ export function OfficeBildBefunde({
       if (!art) {
         continue;
       }
+      // Sofort sichtbar: der Anhang wird geladen — schon vor dem ersten Byte.
+      setBefunde((b) => ({ ...b, [anhang.objectId]: wirdGeladen(anhang.name, art) }));
       void (async () => {
-        let eingang: BildQuelleEingang | null = null;
+        let eingang: BildQuelleEingang | null | "frist" = null;
         try {
           eingang = await officeBildEingang(anhang, art, ladeAnhang);
         } catch {
@@ -107,8 +130,9 @@ export function OfficeBildBefunde({
         if (!aktiv) {
           return;
         }
-        if (!eingang) {
-          setBefunde((b) => ({ ...b, [anhang.objectId]: ohneZugriff(anhang.name, art) }));
+        if (!eingang || eingang === "frist") {
+          const befund = ohneZugriff(anhang.name, art, eingang === "frist");
+          setBefunde((b) => ({ ...b, [anhang.objectId]: befund }));
           return;
         }
         await analyse.analysiereQuelle(eingang, {

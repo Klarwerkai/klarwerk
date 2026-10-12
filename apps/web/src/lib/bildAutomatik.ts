@@ -42,6 +42,8 @@ import type { PptxRichResult } from "./pptx";
 export const BILD_AUTOMATIK_VOREINSTELLUNG = true;
 /** Höchstdauer je Bild und Weg. Danach gilt der Lauf als „Zeitüberschreitung", nicht als gelesen. */
 export const BILD_ZEITLIMIT_MS = 90_000;
+/** Höchstdauer eines Lesezugriffs (Objektspeicher, Office-Anhang) einschließlich Antwortkörper. */
+export const BILD_LADEFRIST_MS = 30_000;
 /** Höchstzahl automatisch gelesener Bilder je Quelle; der Rest bleibt sichtbar „nicht analysiert". */
 export const BILD_HOECHSTZAHL_JE_QUELLE = 40;
 /** Unter dieser Sicherheit (0–100) gilt ein Wort als unsicher. */
@@ -150,7 +152,9 @@ export type QuellenHinweis =
   /** PowerPoint: Bilder aus Layout, Master, Diagrammen, SmartArt und Notizen werden nicht erfasst (L16). */
   | "pptx-layout-nicht-erfasst"
   /** Mehr Bilder als `BILD_HOECHSTZAHL_JE_QUELLE`. */
-  | "grenze-erreicht";
+  | "grenze-erreicht"
+  /** Die Quelle selbst kam nicht innerhalb der Ladefrist an (Office-Anhang). */
+  | "ladefrist";
 
 export interface BildQuelleEingang {
   quelle: string;
@@ -171,7 +175,8 @@ export interface QuellenBefund {
 
 export type BildErkenner = (src: string) => Promise<OcrResult>;
 export type BildBeschreiber = (src: string) => Promise<Bildinhalt>;
-export type BildLader = (src: string) => Promise<string | null>;
+/** Holt ein Bild als data-URL; `signal` bricht Abruf und Antwortkörper nach der Ladefrist ab. */
+export type BildLader = (src: string, signal?: AbortSignal) => Promise<string | null>;
 
 // ------------------------------------------------------------------------------------------------
 // Vorkommen aus einem Rumpf (PPTX/DOCX-Import, Editor) — in Dokumentreihenfolge
@@ -281,6 +286,20 @@ export function einzelbildEingang(name: string, src: string | null): BildQuelleE
     art: "bild",
     vorkommen: [{ fundstelle: { quelle: name, art: "bild", bild: 1 }, src }],
   };
+}
+
+/**
+ * Tragen zwei Vorkommenslisten dieselben Bilder an denselben Stellen (Anker und Bilddaten)? Reine
+ * Textänderungen lassen sie gleich — dann muss nichts neu gelesen und nichts verworfen werden.
+ */
+export function gleicheBilder(a: readonly BildVorkommen[], b: readonly BildVorkommen[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((v, i) => {
+      const w = b[i];
+      return w !== undefined && v.src === w.src && v.fundstelle.imageId === w.fundstelle.imageId;
+    })
+  );
 }
 
 /** Der Eingang der Bilder im Text eines Entwurfs oder Wissensobjekts (Editor). */
@@ -647,7 +666,8 @@ export interface BildAnalyse {
   anzahlBeschreibungen(): number;
 }
 
-async function mitFrist<T>(lauf: Promise<T>, ms: number): Promise<T | "frist"> {
+/** Ein Lauf mit Höchstdauer: das Ergebnis oder `"frist"`, wenn er nicht rechtzeitig fertig wird. */
+export async function mitFrist<T>(lauf: Promise<T>, ms: number): Promise<T | "frist"> {
   let uhr: ReturnType<typeof setTimeout> | undefined;
   const frist = new Promise<"frist">((resolve) => {
     uhr = setTimeout(() => resolve("frist"), ms);
@@ -665,9 +685,11 @@ export function createBildAnalyse(optionen: {
   erkenne: BildErkenner;
   ladeBild?: BildLader;
   zeitlimitMs?: number;
+  ladefristMs?: number;
   hoechstzahl?: number;
 }): BildAnalyse {
   const zeitlimit = optionen.zeitlimitMs ?? BILD_ZEITLIMIT_MS;
+  const ladefrist = optionen.ladefristMs ?? BILD_LADEFRIST_MS;
   const hoechstzahl = optionen.hoechstzahl ?? BILD_HOECHSTZAHL_JE_QUELLE;
   const gemerkt = new Map<string, Promise<Erkennung>>();
   const inhalteGemerkt = new Map<string, Promise<Bildinhalt>>();
@@ -727,15 +749,23 @@ export function createBildAnalyse(optionen: {
     }
   };
 
-  const ladeDaten = async (src: string | null): Promise<string | null> => {
+  // Nacharbeit 5 (Bens Befund 2): der Lesezugriff ist begrenzt — Abruf UND Antwortkörper. Nach der
+  // Frist wird abgebrochen; das Bild heißt „Zeitüberschreitung“, und das nächste Bild läuft weiter.
+  const ladeDaten = async (src: string | null): Promise<string | null | "frist"> => {
     if (!src || istBildDatenUrl(src)) {
       return src;
     }
-    if (!optionen.ladeBild) {
+    const lader = optionen.ladeBild;
+    if (!lader) {
       return null;
     }
+    const abbruch = new AbortController();
     try {
-      return await optionen.ladeBild(src);
+      const ergebnis = await mitFrist(lader(src, abbruch.signal), ladefrist);
+      if (ergebnis === "frist") {
+        abbruch.abort();
+      }
+      return ergebnis;
     } catch {
       return null;
     }
@@ -743,6 +773,9 @@ export function createBildAnalyse(optionen: {
 
   const befundFuerBild: BildAnalyse["befundFuerBild"] = async (vorkommen, bildOptionen = {}) => {
     const daten = await ladeDaten(vorkommen.src);
+    if (daten === "frist") {
+      return leererBefund(vorkommen.fundstelle, "zeitueberschreitung", { fehler: "ladefrist" });
+    }
     const bytes = bildBytes(daten);
     if (!bytes || !daten) {
       return leererBefund(vorkommen.fundstelle, "kein-zugriff");

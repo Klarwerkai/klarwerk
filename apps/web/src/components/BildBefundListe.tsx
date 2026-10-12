@@ -10,6 +10,7 @@ import {
   type BildFundstelle,
   type BildinhaltStatus,
   type QuellenBefund,
+  type QuellenHinweis,
   type QuellenStatus,
 } from "../lib/bildAutomatik";
 
@@ -32,6 +33,12 @@ const QUELLEN_SCHLUESSEL: Record<Exclude<QuellenStatus, "ohne-bilder">, string> 
   fehlgeschlagen: "bildautomatik.quelle.fehlgeschlagen",
   "nicht-verfuegbar": "bildautomatik.quelle.nichtVerfuegbar",
   aus: "bildautomatik.quelle.aus",
+};
+
+const HINWEIS_SCHLUESSEL: Record<QuellenHinweis, string> = {
+  "pptx-layout-nicht-erfasst": "bildautomatik.hinweis.pptxLayout",
+  "grenze-erreicht": "bildautomatik.hinweis.grenze",
+  ladefrist: "bildautomatik.hinweis.ladefrist",
 };
 
 /** Warum der Bildinhalt fehlt — je Zustand ein eigener Satz. */
@@ -126,7 +133,9 @@ export function BildBefundListe({ befund, lauf }: { befund: QuellenBefund; lauf?
       {/* `<output>` trägt implizit `role="status"` (biome useSemanticElements, Hausmuster wie in
           `CaptureFileImport.tsx`); `block`, weil `<output>` sonst inline steht. */}
       <output aria-live="polite" className="mt-1 block font-semibold text-text">
-        {t(QUELLEN_SCHLUESSEL[befund.status], { name: befund.quelle, fertig, gesamt })}
+        {befund.status === "laeuft" && gesamt === 0
+          ? t("bildautomatik.quelle.laedt", { name: befund.quelle })
+          : t(QUELLEN_SCHLUESSEL[befund.status], { name: befund.quelle, fertig, gesamt })}
       </output>
       {befund.nichtGelesen.length > 0 || befund.hinweise.length > 0 || ohneInhalt > 0 ? (
         <ul className="mt-1 list-disc pl-4 text-muted">
@@ -141,10 +150,8 @@ export function BildBefundListe({ befund, lauf }: { befund: QuellenBefund; lauf?
             </li>
           ))}
           {befund.hinweise.map((h) => (
-            <li key={h} data-testid="bild-befund-hinweis">
-              {h === "pptx-layout-nicht-erfasst"
-                ? t("bildautomatik.hinweis.pptxLayout")
-                : t("bildautomatik.hinweis.grenze", { max: BILD_HOECHSTZAHL_JE_QUELLE })}
+            <li key={h} data-testid="bild-befund-hinweis" data-hinweis={h}>
+              {t(HINWEIS_SCHLUESSEL[h], { max: BILD_HOECHSTZAHL_JE_QUELLE })}
             </li>
           ))}
           {ohneInhalt > 0 ? (

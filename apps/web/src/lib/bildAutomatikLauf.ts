@@ -9,12 +9,18 @@ import { runImageOcr } from "./files";
 /** Nur Bilder des eigenen Objektspeichers — derselbe berechtigte Lesezugriff wie die Anzeige. */
 const OBJEKT_BILD_RE = /^\/api\/objects\/[\w-]+\/raw$/;
 
-/** Ein Objektspeicher-Bild als data-URL holen; alles andere (fremde Adressen) wird nicht geladen. */
-export async function ladeObjektBild(src: string): Promise<string | null> {
+/**
+ * Ein Objektspeicher-Bild als data-URL holen; alles andere (fremde Adressen) wird nicht geladen.
+ * `signal` bricht Abruf UND Antwortkörper ab — die Ladefrist setzt die Analyse (`bildAutomatik.ts`).
+ */
+export async function ladeObjektBild(src: string, signal?: AbortSignal): Promise<string | null> {
   if (!OBJEKT_BILD_RE.test(src.trim())) {
     return null;
   }
-  const antwort = await fetch(src.trim(), { credentials: "same-origin" });
+  const antwort = await fetch(src.trim(), {
+    credentials: "same-origin",
+    ...(signal ? { signal } : {}),
+  });
   if (!antwort.ok) {
     return null;
   }

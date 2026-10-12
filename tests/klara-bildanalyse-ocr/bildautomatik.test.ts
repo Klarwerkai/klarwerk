@@ -20,6 +20,7 @@ import {
   createBildAnalyse,
   docxBildEingang,
   einzelbildEingang,
+  gleicheBilder,
   kennzeichneUnsicheres,
   pptxBildEingang,
   rumpfBildEingang,
@@ -649,6 +650,40 @@ describe("K1/K3/K5 · Bilder im Text (Editor) und aus dem Objektspeicher", () =>
     ]);
     expect(ladeBild).toHaveBeenCalledTimes(2);
     expect(befund.status).toBe("teilweise");
+  });
+
+  // Nacharbeit 5 (Bens Befund 2): ein hängender Lesezugriff blockiert die übrigen Bilder nicht.
+  it("hängendes gespeichertes Bild: nach der Ladefrist abgebrochen, das nächste Bild wird gelesen", async () => {
+    const gesehen: { signal?: AbortSignal | undefined } = {};
+    const ladeBild = vi.fn((_src: string, signal?: AbortSignal) => {
+      gesehen.signal = signal;
+      return new Promise<string | null>(() => {});
+    });
+    const html = [
+      '<figure><img data-image-id="kw-fig-1" src="/api/objects/haengt/raw"></figure>',
+      `<figure><img data-image-id="kw-fig-2" src="${dataUrl(bildMit("A"))}"></figure>`,
+    ].join("");
+    const analyse = createBildAnalyse({ erkenne: markenEngine(), ladeBild, ladefristMs: 20 });
+    const befund = await analyse.analysiereQuelle(rumpfBildEingang("diesem Text", html), {
+      automatik: true,
+    });
+    expect(befund.befunde.map((b) => [b.status, b.text])).toEqual([
+      ["zeitueberschreitung", ""],
+      ["gelesen", TEXT_JE_MARKE.A],
+    ]);
+    expect(befund.befunde[0]?.fehler).toBe("ladefrist");
+    expect(gesehen.signal?.aborted).toBe(true);
+    expect(befund.status).toBe("teilweise");
+  });
+
+  it("gleicheBilder: Textänderung gleich, ersetztes oder neues Bild verschieden", () => {
+    const a = `<p>x</p><figure><img data-image-id="kw-fig-1" src="${dataUrl(bildMit("A"))}"></figure>`;
+    const mitText = `${a}<p>weitergetippt</p>`;
+    const ersetzt = a.replace(dataUrl(bildMit("A")), dataUrl(bildMit("C")));
+    const vor = rumpfBildEingang("t", a).vorkommen;
+    expect(gleicheBilder(vor, rumpfBildEingang("t", mitText).vorkommen)).toBe(true);
+    expect(gleicheBilder(vor, rumpfBildEingang("t", ersetzt).vorkommen)).toBe(false);
+    expect(gleicheBilder(vor, rumpfBildEingang("t", `${a}${a}`).vorkommen)).toBe(false);
   });
 
   it("ausdrücklicher Auftrag (`neu`) erkennt dasselbe Bild noch einmal", async () => {

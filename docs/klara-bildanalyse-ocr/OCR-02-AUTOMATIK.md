@@ -13,7 +13,7 @@ unter der eigenen CSP), Bildinhalt über den vorhandenen Beschreibungsweg W02
 | --- | --- | --- | --- | --- |
 | Dateiimport im Erfassen: Bild, `.pptx`, `.docx` | Q01–Q03, H01 | `pages/Capture.tsx` `onExtractFile` | ja | über die Herkunft des Entwurfs |
 | Bildanhang im Erfassen („Bilder hochladen“, Anhang, Text-aus-Datei mit Bild) | Q01, H01 | `pages/Capture.tsx` `addImage` | ja; **Übernahme** in Aussage/Rohtext bleibt der Klick „OCR → Text“ | über die Herkunft des Entwurfs |
-| Bilder im Text jedes Editors (Erfassen, Blatt, Studio, Artikel, gemeinsamer Entwurf) — eingefügt, abgelegt, aus „Klara in Word“ (H02) oder der Browser-Erweiterung (H04) als Entwurf übernommen, gespeicherte Objektspeicher-Bilder | Q03, Q05, Q06 | `components/BildBefundeImRumpf.tsx` in `RichTextEditor` | ja, nach 1,5 s Ruhe im Text | über die Herkunft der Fläche (`useImageDescribe`) |
+| Bilder im Text jedes Editors (Erfassen, Blatt, Studio, Artikel, gemeinsamer Entwurf) — eingefügt, abgelegt, aus „Klara in Word“ (H02) oder der Browser-Erweiterung (H04) als Entwurf übernommen, gespeicherte Objektspeicher-Bilder | Q03, Q05, Q06 | `components/BildBefundeImRumpf.tsx` in `RichTextEditor` | ja, sofort bei jeder Bildänderung (neu, ersetzt, entfernt); der alte Befund wird dabei sofort durch den laufenden Stand ersetzt. Reine Texteingabe startet nichts neu und schiebt nichts auf | über die Herkunft der Fläche (`useImageDescribe`) |
 | Office im Artikel: angehängte bzw. als neue Fassung übernommene `.pptx`/`.docx` | Q02, Q03, H06 (L17) | `components/bibliothek/OfficeBildBefunde.tsx` in `OfficeImArtikel` | ja, je Fassung | über die Herkunft des Artikels, sonst „nicht angebunden“ |
 
 Der manuelle Weg bleibt: Der Knopf „OCR → Text“ am Bildanhang übernimmt beim ersten Klick den
@@ -40,7 +40,12 @@ Bilder aus.
   neue Beschreibung; geänderte Bytes (auch eine neue Office-Fassung) → neue Analyse. Fehlschläge und
   „nicht zulässig“ werden nicht gemerkt (nach Umstufung wird neu gefragt).
 - **Status**: läuft, gelesen, kein Text, fehlgeschlagen, nicht verfügbar, kein Zugriff,
-  Zeitüberschreitung (90 s), nicht gelesen (Grenze 40 Bilder je Quelle).
+  Zeitüberschreitung (90 s je Erkennung bzw. Beschreibung), nicht gelesen (Grenze 40 Bilder je
+  Quelle).
+- **Ladefrist** (30 s): Lesezugriffe auf gespeicherte Bilder und Office-Anhänge sind einschließlich
+  Antwortkörper begrenzt und werden danach abgebrochen. Ein hängendes Bild heißt „Zeitüberschreitung“,
+  die übrigen Bilder laufen weiter; ein hängender Anhang heißt „fehlgeschlagen“ mit dem Hinweis auf
+  die Ladefrist. Office-Anhänge stehen schon vor dem Laden sichtbar als „wird geladen“ da.
 
 **„Vollständig“** heißt eine Quelle nur, wenn für jedes Bild Text UND Bildinhalt vorliegen, kein Bild
 verloren ging und keine Erfassungsgrenze greift. Sonst „teilweise“, „fehlgeschlagen“ oder „nicht
@@ -70,7 +75,7 @@ Rumpf noch Anhang/Fassung werden geschrieben.
 | --- | --- | --- |
 | `tests/klara-bildanalyse-ocr/bildautomatik.test.ts` | Unit, echte PPTX-Importkette, Engine und W02 gestellt | K1–K5 |
 | `tests/klara-bildanalyse-ocr/automatik-dateiimport-mounted.test.tsx` | gemountete Erfassungsfläche, Dateiimport | K1, K5 |
-| `tests/klara-bildanalyse-ocr/rumpf-bilder-mounted.test.tsx` | gemountete Editor-Automatik, Objektspeicher, W02-Zustände | K1, K3, K4, K5 |
-| `tests/klara-bildanalyse-ocr/office-anhang.test.tsx` | Office-Anhang über Objektspeicher und `readPptxRich`, neue Fassung | K2, K3, K4 |
+| `tests/klara-bildanalyse-ocr/rumpf-bilder-mounted.test.tsx` | gemountete Editor-Automatik, Objektspeicher, W02-Zustände, Bildtausch während fortgesetzter Eingabe | K1, K3, K4, K5 |
+| `tests/klara-bildanalyse-ocr/office-anhang.test.tsx` | Office-Anhang über Objektspeicher und `readPptxRich`, neue Fassung, Ladefrist und Anfangsstatus | K2, K3, K4, K5 |
 | `tests/capture/gesamt-ocr-interview-kontext-mounted.test.tsx` | Bildanhang: automatisch gelesen, Übernahme nur auf Klick | K1 |
 | `tests-smoke/klara-bildautomatik-browser.spec.ts` | Browser, echte Engine, fiktive Vorlagen (PPTX, Einzelbild, Handschrift, Gekritzel, Tabelle) | K1–K5 |

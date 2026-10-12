@@ -11,6 +11,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   officeBildArt,
   officeBildEingang,
+  ohneZugriff,
+  wirdGeladen,
 } from "../../apps/web/src/components/bibliothek/OfficeBildBefunde";
 import { createBildAnalyse } from "../../apps/web/src/lib/bildAutomatik";
 import { TEXT_JE_MARKE, bildMit, deck, markenEngine } from "./deck";
@@ -25,8 +27,9 @@ describe("OCR-02 · Office-Anhang im Artikel", () => {
   it("die Bilder der aktuellen Fassung: Folie, Reihenfolge, Text — über den Objektspeicherweg", async () => {
     const laden = abruf(deck());
     const eingang = await officeBildEingang(ANHANG, "pptx", laden);
-    expect(laden).toHaveBeenCalledWith("/api/objects/obj-1/raw");
-    if (!eingang) {
+    // Nacharbeit 5: der Abruf trägt ein Abbruchsignal (Ladefrist für Abruf UND Antwortkörper).
+    expect(laden).toHaveBeenCalledWith("/api/objects/obj-1/raw", expect.any(AbortSignal));
+    if (!eingang || eingang === "frist") {
       throw new Error("kein Eingang");
     }
     const befund = await createBildAnalyse({ erkenne: markenEngine() }).analysiereQuelle(eingang, {
@@ -50,7 +53,7 @@ describe("OCR-02 · Office-Anhang im Artikel", () => {
       "pptx",
       abruf(deck(bildMit("B2"))),
     );
-    if (!alt || !neu) {
+    if (!alt || !neu || alt === "frist" || neu === "frist") {
       throw new Error("kein Eingang");
     }
     await analyse.analysiereQuelle(alt, { automatik: true });
@@ -71,5 +74,25 @@ describe("OCR-02 · Office-Anhang im Artikel", () => {
     expect(officeBildArt("tabelle.xlsx")).toBeNull();
     expect(officeBildArt("Folien.PPTX")).toBe("pptx");
     expect(officeBildArt("bericht.docx")).toBe("docx");
+  });
+
+  // Nacharbeit 5 (Bens Befund 2): ein hängender Abruf blockiert nichts.
+  it("hängender Abruf: nach der Ladefrist „frist“, der Abruf ist abgebrochen", async () => {
+    const gesehen: { signal?: AbortSignal | undefined } = {};
+    const haengt = vi.fn((_href: string, s?: AbortSignal) => {
+      gesehen.signal = s;
+      return new Promise<Blob | null>(() => {});
+    });
+    const ergebnis = await officeBildEingang(ANHANG, "pptx", haengt, 20);
+    expect(ergebnis).toBe("frist");
+    expect(gesehen.signal?.aborted).toBe(true);
+  });
+
+  it("vor dem Laden „wird geladen“, nach der Ladefrist sichtbar „fehlgeschlagen“ mit Grund", () => {
+    expect(wirdGeladen("wartung.pptx", "pptx")).toMatchObject({ status: "laeuft", befunde: [] });
+    expect(ohneZugriff("wartung.pptx", "pptx", true)).toMatchObject({
+      status: "fehlgeschlagen",
+      hinweise: ["ladefrist"],
+    });
   });
 });

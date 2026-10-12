@@ -10,8 +10,10 @@
 //
 //   R1  eingebettete UND gespeicherte Bilder: Reihenfolge, Text und Bildinhalt — „vollständig“.
 //   R2  die Einstufung erlaubt kein Modell: Text ja, Bildinhalt „nicht zulässig“ — „teilweise“.
-//   R3  Weitertippen ohne Bildänderung: keine neue Erkennung, Befund als unverändert ausgewiesen.
+//   R3  Weitertippen ohne Bildänderung: keine neue Erkennung, kein neuer Lauf.
 //   R4  der Editor trägt die Komponente wirklich.
+//   R5  (Nacharbeit 5) Bild ersetzt: der alte Befund ist sofort weg; der neue Lauf läuft trotz
+//       fortgesetzter Eingabe ohne Pause zu Ende, das unveränderte Bild wird wiederverwendet.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,7 +35,7 @@ import {
   type ImageDescribeValue,
   ImageDescribeValueProvider,
 } from "../../apps/web/src/app/ImageDescribeContext";
-import { BildBefundeImRumpf, RUHE_MS } from "../../apps/web/src/components/BildBefundeImRumpf";
+import { BildBefundeImRumpf } from "../../apps/web/src/components/BildBefundeImRumpf";
 import i18n from "../../apps/web/src/i18n";
 import { TEXT_JE_MARKE, bildMit, dataUrl, markeAus } from "./deck";
 
@@ -56,7 +58,8 @@ function wert(describe: ImageDescribeValue["describe"]): ImageDescribeValue {
   return { available: true, describe };
 }
 
-async function zeige(html: string, weg: ImageDescribeValue): Promise<void> {
+/** Rendern, ohne irgendetwas abzuwarten — wie ein Tastendruck. */
+async function zeigeSofort(html: string, weg: ImageDescribeValue): Promise<void> {
   await act(async () => {
     root.render(
       createElement(ImageDescribeValueProvider, {
@@ -65,15 +68,24 @@ async function zeige(html: string, weg: ImageDescribeValue): Promise<void> {
       }),
     );
   });
-  // Erst nach der Ruhezeit wird gelesen; danach Erkennung, Kennung und Beschreibung abwarten.
-  await act(async () => {
-    await new Promise((r) => setTimeout(r, RUHE_MS + 200));
-  });
-  for (let i = 0; i < 5; i += 1) {
+}
+
+/** Erkennung, Kennung, Laden und Beschreibung abwarten. */
+async function abwarten(): Promise<void> {
+  for (let i = 0; i < 10; i += 1) {
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 5));
     });
   }
+}
+
+async function zeige(html: string, weg: ImageDescribeValue): Promise<void> {
+  await zeigeSofort(html, weg);
+  await abwarten();
+}
+
+function lauf(): string | null {
+  return container.querySelector("[data-testid=bild-befunde]")?.getAttribute("data-lauf") ?? null;
 }
 
 interface Abgelesen {
@@ -131,7 +143,11 @@ describe("OCR-02 · Bilder im Text eines Entwurfs oder Wissensobjekts", () => {
     );
     await zeige(rumpf(), wert(describe));
 
-    expect(objektspeicher).toHaveBeenCalledWith(GESPEICHERT, { credentials: "same-origin" });
+    // Nacharbeit 5: der Abruf trägt das Abbruchsignal der Ladefrist.
+    expect(objektspeicher).toHaveBeenCalledWith(
+      GESPEICHERT,
+      expect.objectContaining({ credentials: "same-origin", signal: expect.any(AbortSignal) }),
+    );
     expect(steuerung.ocr).toHaveBeenCalledTimes(2);
     expect(befunde().map(({ status, inhalt, text }) => ({ status, inhalt, text }))).toEqual([
       { status: "gelesen", inhalt: "beschrieben", text: TEXT_JE_MARKE.A },
@@ -157,7 +173,7 @@ describe("OCR-02 · Bilder im Text eines Entwurfs oder Wissensobjekts", () => {
     expect(container.textContent).toContain(i18n.t("bildautomatik.bildinhalt.nichtZulaessig"));
   });
 
-  it("R3 · Weitertippen ohne Bildänderung liest nichts neu", async () => {
+  it("R3 · Weitertippen ohne Bildänderung liest nichts neu und startet keinen Lauf", async () => {
     const describe = vi.fn(
       async (): Promise<DescribeImageResult> => ({ text: "Ein Schild", demo: false }),
     );
@@ -165,13 +181,62 @@ describe("OCR-02 · Bilder im Text eines Entwurfs oder Wissensobjekts", () => {
     await zeige(rumpf(), weg);
     expect(steuerung.ocr).toHaveBeenCalledTimes(2);
     expect(describe).toHaveBeenCalledTimes(2);
+    const vorher = lauf();
 
     await zeige(rumpf("<p>Noch ein Satz.</p>"), weg);
     expect(steuerung.ocr).toHaveBeenCalledTimes(2);
     expect(describe).toHaveBeenCalledTimes(2);
-    for (const b of befunde()) {
-      expect(b.zeile).toContain(i18n.t("bildautomatik.wiederverwendet"));
+    expect(lauf()).toBe(vorher);
+    expect(befunde().map((b) => b.text)).toEqual([TEXT_JE_MARKE.A, TEXT_JE_MARKE.C]);
+  });
+
+  // Nacharbeit 5 (Bens Befund 1): Bildtausch während fortgesetzter Texteingabe.
+  it("R5 · Bild ersetzt: alter Befund sofort weg, neuer Lauf trotz Weitertippen ohne Pause", async () => {
+    const describe = vi.fn(
+      async (): Promise<DescribeImageResult> => ({ text: "Ein Schild", demo: false }),
+    );
+    const weg = wert(describe);
+    await zeige(rumpf(), weg);
+    expect(befunde()[0]?.text).toBe(TEXT_JE_MARKE.A);
+
+    // Das neue Bild (E) wird erst erkannt, wenn der Test es freigibt — so ist der Zwischenstand
+    // nach dem Austausch ablesbar.
+    const tor: { oeffnen?: () => void } = {};
+    steuerung.ocr.mockImplementation(async (src: unknown): Promise<OcrResult> => {
+      const marke = markeAus(String(src));
+      if (marke === "E") {
+        await new Promise<void>((r) => {
+          tor.oeffnen = r;
+        });
+      }
+      return { status: "success", text: (marke ? TEXT_JE_MARKE[marke] : "") ?? "" };
+    });
+    const ersetzt = (text: string): string =>
+      rumpf(text).replace(dataUrl(bildMit("A")), dataUrl(bildMit("E")));
+
+    // Austausch — ohne zu warten: der alte Text des ersetzten Bildes steht NICHT mehr als aktuell da.
+    await zeigeSofort(ersetzt(""), weg);
+    expect(befunde()[0]?.text).not.toBe(TEXT_JE_MARKE.A);
+    expect(["wartet", "laeuft"]).toContain(befunde()[0]?.status);
+    expect(quellenStatus()).toBe("laeuft");
+    const neuerLauf = lauf();
+
+    // Weitertippen: jeder Tastendruck ein neues Rendern, kein neuer Lauf, kein Aufschub.
+    for (const text of ["<p>a</p>", "<p>ab</p>", "<p>abc</p>"]) {
+      await zeigeSofort(ersetzt(text), weg);
+      await abwarten();
     }
+    expect(lauf()).toBe(neuerLauf);
+    tor.oeffnen?.();
+    await abwarten();
+
+    expect(befunde().map((b) => [b.status, b.text])).toEqual([
+      ["gelesen", TEXT_JE_MARKE.E],
+      ["gelesen", TEXT_JE_MARKE.C],
+    ]);
+    // A und C früher, jetzt nur E neu — C ist unverändert und wurde wiederverwendet.
+    expect(steuerung.ocr).toHaveBeenCalledTimes(3);
+    expect(quellenStatus()).toBe("vollstaendig");
   });
 
   it("R4 · der Editor trägt die Automatik (jede Fläche mit RichTextEditor)", () => {

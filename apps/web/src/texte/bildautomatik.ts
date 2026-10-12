@@ -57,6 +57,9 @@ export default {
     "bildautomatik.bildinhalt.nichtAngebunden":
       "Bildinhalt nicht analysiert: Diese Fläche hat keinen Weg zur Bildbeschreibung.",
     "bildautomatik.bildinhalt.nichtAnalysiert": "Bildinhalt nicht analysiert.",
+    "bildautomatik.quelle.laedt": "{{name}} wird geladen …",
+    "bildautomatik.hinweis.ladefrist":
+      "Die Datei kam nicht innerhalb der Ladefrist an — ihre Bilder sind nicht gelesen.",
   },
   en: {
     "bildautomatik.titel": "Images read automatically",
@@ -105,6 +108,9 @@ export default {
     "bildautomatik.bildinhalt.nichtAngebunden":
       "Image content not analysed: this area has no route to image descriptions.",
     "bildautomatik.bildinhalt.nichtAnalysiert": "Image content not analysed.",
+    "bildautomatik.quelle.laedt": "Loading {{name}} …",
+    "bildautomatik.hinweis.ladefrist":
+      "The file did not arrive within the loading time limit — its images have not been read.",
   },
   nl: {
     "bildautomatik.titel": "Afbeeldingen automatisch gelezen",
@@ -157,5 +163,8 @@ export default {
     "bildautomatik.bildinhalt.nichtAngebunden":
       "Beeldinhoud niet geanalyseerd: dit onderdeel heeft geen weg naar beeldbeschrijvingen.",
     "bildautomatik.bildinhalt.nichtAnalysiert": "Beeldinhoud niet geanalyseerd.",
+    "bildautomatik.quelle.laedt": "{{name}} wordt geladen …",
+    "bildautomatik.hinweis.ladefrist":
+      "Het bestand kwam niet binnen de laadtijd aan — de afbeeldingen zijn niet gelezen.",
   },
 } satisfies Textmodul;
