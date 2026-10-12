@@ -78,6 +78,7 @@ import { KnopfUnterschied } from "../components/KnopfUnterschied";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { Modal } from "../components/Modal";
 import { PublicAiEnrichPanel } from "../components/PublicAiEnrichPanel";
+import { ReviewerSuggestions } from "../components/ReviewerSuggestions";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { RoleLink } from "../components/RoleLink";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
@@ -7359,6 +7360,15 @@ export function CaptureArbeitsraum({
                     <div className="mb-2 flex items-center gap-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                       {t("capture.reviewers.title")}
                     </div>
+                    {/* R-0265: Vorschlag aus Autorenschaft, früheren Prüfungen und Netznähe. */}
+                    <ReviewerSuggestions
+                      category={category}
+                      tags={tags}
+                      choices={reviewerChoices}
+                      selected={reviewerIds}
+                      limitReached={reviewerLimitReached}
+                      onToggle={toggleReviewer}
+                    />
                     {reviewerChoices.length === 0 ? (
                       <>
                         <div className="text-[12px] text-muted-2">

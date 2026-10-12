@@ -4009,4 +4009,40 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // R-0265: Prüfer-Vorschlag beim Einreichen — dasselbe Recht wie das Einreichen selbst.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/validation/reviewer-suggestions",
+    belegstelle: "services/app/src/routes/validation-routes.ts:304",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  // R-1655: Prüfdauer je Zuweisungsweg — dieselbe Lesehürde wie die Personenübersicht.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/validation/pruefdauer",
+    belegstelle: "services/app/src/routes/validation-routes.ts:355",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // R-1655: das eigene Opt-out aus der automatischen Zuweisung lesen.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/me/pruefrouting",
+    belegstelle: "services/app/src/routes/validation-routes.ts:367",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // R-0679: ob dieser Betrieb Geräte-Push eingerichtet hat (samt öffentlichem VAPID-Schlüssel).
+  {
+    gruppe: "pushRoutes",
+    methode: "GET",
+    pfad: "/api/push/config",
+    belegstelle: "services/app/src/routes/push-routes.ts:44",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
 ];

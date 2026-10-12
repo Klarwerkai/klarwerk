@@ -172,6 +172,11 @@ export const LOGFELDER: Readonly<Record<string, Logregel>> = {
   seiten: "zahl",
   // Gründe und Arten aus festen Mengen (csrf.ts, slides-routes.ts).
   grund: "wert",
+  // R-0679 (gesamt-pruefer-zuweisung): Ersatzzustellung ohne Mailserver (`mail_ersatzzustellung`,
+  // notifications/src/mailer.ts). Der Betreff ist ein fester Satz aus dem Quelltext
+  // (`app/src/notify.ts`, `auth/src/routes.ts`) — nie Empfänger, nie Text. `art` trägt beim
+  // Push-Ausfall (`push_fehlgeschlagen`) nur „abgelehnt"/„ausfall".
+  betreff: "satz",
   art: "wert",
   reason: "fehlertyp",
   // Kennungen (ko-routes.ts, ask-routes.ts, auth/routes.ts).
@@ -350,6 +355,10 @@ export const MELDUNGEN: readonly string[] = [
   "KLARWERK Startbericht",
   "Bestandsabfrage gescheitert: {wert}",
   "KLARWERK_TRUST_PROXY ist eine Hop-Anzahl und wird nicht mehr beachtet (GHSA-3m5p-2c4r-xxw2) — die IP-Adresse(n) des Proxys eintragen.",
+  // build-app.ts — Prüfzuweisung (R-0679 Ersatzzustellung und Geräte-Push, R-1655 Routing).
+  "mail_ersatzzustellung",
+  "push",
+  "pruefrouting",
   // model-runs/src/preisliste.ts (über build-app.ts `ki_preisliste`)
   "KLARWERK_KI_PREISLISTE ist kein gültiges JSON.",
   "KLARWERK_KI_PREISLISTE braucht `waehrung` und `preisstand` (je kurzer Text).",

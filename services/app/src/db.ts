@@ -35,7 +35,7 @@ import {
 import { LIFECYCLE_SCHEMA } from "../../lifecycle";
 import { MANAGEMENT_PROFILE_SCHEMA } from "../../management";
 import { MODEL_RUNS_SCHEMA } from "../../model-runs";
-import { NOTIFICATION_SEEN_SCHEMA } from "../../notifications";
+import { NOTIFICATION_SEEN_SCHEMA, PUSH_ABO_SCHEMA } from "../../notifications";
 import { OBJECTSTORE_SCHEMA } from "../../object-store";
 // SCRUM-386: kundeneigene KI-Assist-Presets (eigene Tabelle, Datenhoheit beim reasoner-Modul).
 // SCRUM-525 P.5 (WP6): persistente KI-Zuordnung (Policy) — eigene Tabelle im reasoner-Modul.
@@ -392,6 +392,10 @@ export const schemas = [
   // wiederholbar (CREATE TABLE/UNIQUE INDEX/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne
   // Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   KLARA_NOTIZ_SCHEMA,
+  // R-0679 / FR-VAL-07: die Geräteabos für Push. Additiv und wiederholbar (CREATE TABLE/INDEX IF
+  // NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
+  // Ordnung ist.
+  PUSH_ABO_SCHEMA,
 ];
 
 // ================================================================================================

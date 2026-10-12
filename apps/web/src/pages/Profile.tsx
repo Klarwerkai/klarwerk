@@ -14,6 +14,7 @@ import { useSession } from "../app/AuthContext";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — Zahlen nur über eigene Beiträge.
 import { MyImpactNumbers } from "../components/FunkeCards";
+import { AutoZuweisungZeile, GeraetePushZeile } from "../components/PruefBenachrichtigung";
 import { istAktiv } from "../components/SprachSchalter";
 // produkt:20261010:assistenz-name-avatar: „Meine Assistenz" — Name und Motiv der eigenen Assistenz.
 import { AssistenzFormular } from "../components/assistenz/AssistenzFormular";
@@ -684,6 +685,9 @@ export function Profile(): JSX.Element {
             onOeffnen={() => setDetail("wirkung")}
             testId="zeile-wirkung"
           />
+          {/* R-0679: Push auf diesem Gerät; R-1655: Abmeldung von der automatischen Zuweisung. */}
+          <GeraetePushZeile />
+          <AutoZuweisungZeile />
           {/* ADMIN-12: die eigenen Meldungseinstellungen und die Regeln dahinter — eine eigene
               Seite, weil Übersicht und Unternehmensvorgaben dort für alle lesbar stehen. */}
           <Zeile
