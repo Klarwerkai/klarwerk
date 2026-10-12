@@ -1979,6 +1979,17 @@ export const TABELLE: Zeile[] = [
     payload: {},
     erwartet: ANGEMELDET,
   },
+  // produkt:20261010:assistenz-aktionen-verlauf-ruecknahme — die eigenen Protokolleinträge eines
+  // eigenen Auftrags. Zustandsfrei: erfundene Kennungen, 404 des Dienstes vor jedem Protokollzugriff.
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/auftraege/gibt-es-nicht/protokoll",
+    route: "/api/me/klara/gespraeche/:id/auftraege/:auftragId/protokoll",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:561",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
   // produkt:20261007:klara-notizen-aufgaben (Klara 06) — die eigenen Notizen. Jede Tür prüft nur die
   // Anmeldung; das Konto kommt aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Liste liefert auf der
   // gemeinsamen Bühne die (leeren) eigenen Notizen; das Anlegen mit leerer Nutzlast scheitert am

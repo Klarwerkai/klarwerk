@@ -77,6 +77,7 @@ import {
 import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
 import { KlaraNotizen } from "./KlaraNotizen";
+import { KlaraQualitaet } from "./KlaraQualitaet";
 import {
   type Absendeergebnis,
   KlaraAuftragKarte,
@@ -1453,6 +1454,13 @@ export function KlaraVorschau({
     }
   }, [istEcht, gespraechId]);
   const eingabeAuftrag = istEcht ? erkenneAuftrag(eingabe) : null;
+  // Klara 14: ein Verbesserungsschritt wird nur VORBEREITET — der Satz steht danach im Eingabefeld
+  // und geht erst mit „Senden“ über denselben Ausführungsweg wie ein getippter Auftrag.
+  const befundVorbereiten = (satz: string): void => {
+    setEingabe(satz);
+    setAnsage(t("klaraqualitaet.vorbereitet"));
+    document.getElementById(eingabeId)?.focus();
+  };
 
   /**
    * Ein gesprochener Auftrag: gesendet mit GENAU dem Ziel, das seine Karte zeigt. Ein klarer
@@ -2054,6 +2062,16 @@ export function KlaraVorschau({
               </p>
             </section>
 
+            {/* Klara 14: Befunde zum geöffneten Wissensobjekt erklären — lesend, mit Vorschlag. */}
+            {istEcht && kontext.koId ? (
+              <KlaraQualitaet
+                koId={kontext.koId}
+                titel={kontext.titel ?? kontext.objekt}
+                darfBearbeiten={kontext.darfBearbeiten === true}
+                onVorbereiten={befundVorbereiten}
+              />
+            ) : null}
+
             {/* Markierter Ausschnitt */}
             {auswahl ? (
               <section
@@ -2414,6 +2432,13 @@ export function KlaraVorschau({
                 <li>{t("klaranotiz.bedienhilfe.arbeitszettel")}</li>
                 <li>{t("klaranotiz.bedienhilfe.privat")}</li>
                 <li>{t("klaranotiz.bedienhilfe.fehler")}</li>
+                {/* Klara 14: Befunde erklären, Vorschlag, Grundlage und Rechte. */}
+                <li data-testid="klara-bedienhilfe-qualitaet">
+                  {t("klaraqualitaet.bedienhilfe.erklaeren")}
+                </li>
+                <li>{t("klaraqualitaet.bedienhilfe.vorschlag")}</li>
+                <li>{t("klaraqualitaet.bedienhilfe.grundlage")}</li>
+                <li>{t("klaraqualitaet.bedienhilfe.rechte")}</li>
                 <li>{t("klaragespraech.bedienhilfe.stoppen")}</li>
                 <li>{t("klaragespraech.bedienhilfe.speichern")}</li>
                 <li>{t("klaragespraech.bedienhilfe.schritt")}</li>

@@ -111,6 +111,19 @@ export interface KlaraAuftragSchritt {
    * gilt als ungeklärt; eine Wiederholung liest nur nach und schreibt nicht erneut.
    */
   readonly schreibwirkung?: KlaraSchreibwirkung | null;
+  /**
+   * produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: der Stand des Ziels VOR der Wirkung, vom
+   * Server gelesen (Fassungszeit eines Entwurfs, Priorität/Zuweisung/Status einer Aufgabe). Fehlt er
+   * bei einer Anlage, gab es das Ziel vorher nicht.
+   */
+  readonly vorherStand?: string | null;
+  /** Ebenda: der Stand NACH der Rücknahme (`papierkorb` bzw. die Fassungszeit der Rückänderung). */
+  readonly ruecknahmeStand?: string | null;
+  /**
+   * PV-02-03 (Nacharbeit 3, Ben): die nach der Wirkung NACHGELESENEN Felder eines Entwurfs — neben
+   * `vorher` der vergleichbare Inhalt. Steht nur im eigenen Gespräch, nie im Prüfprotokoll.
+   */
+  readonly nachher?: { readonly title: string; readonly statement: string } | null;
   readonly begonnenAm: string;
   readonly geaendertAm: string;
 }
@@ -263,7 +276,8 @@ export type KlaraAuftragGrund =
   | "nicht_geprueft"
   | "ohne_plan"
   | "geaendert"
-  | "nicht_ruecknehmbar";
+  | "nicht_ruecknehmbar"
+  | "ziel_fehlt";
 
 export class KlaraAuftragFehler extends Error {
   constructor(
@@ -1023,6 +1037,32 @@ export function merkeSchreibwirkung(
     ...a,
     schritte: a.schritte.map((s) =>
       s.schluessel === schluessel ? { ...s, schreibwirkung, geaendertAm: jetzt } : s,
+    ),
+    geaendertAm: jetzt,
+  };
+}
+
+/** Was `merkeStaende` am Schritt festhalten darf. */
+export interface KlaraStaende {
+  vorherStand?: string | null;
+  ruecknahmeStand?: string | null;
+  nachher?: { title: string; statement: string } | null;
+}
+
+/**
+ * produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: vorherigen bzw. nach der Rücknahme gelesenen
+ * Stand am Schritt festhalten. Nur angegebene Felder ändern sich; Stand und Ergebnis bleiben.
+ */
+export function merkeStaende(
+  a: KlaraAuftrag,
+  schluessel: string,
+  staende: KlaraStaende,
+  jetzt: string,
+): KlaraAuftrag {
+  return {
+    ...a,
+    schritte: a.schritte.map((s) =>
+      s.schluessel === schluessel ? { ...s, ...staende, geaendertAm: jetzt } : s,
     ),
     geaendertAm: jetzt,
   };

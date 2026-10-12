@@ -12,14 +12,25 @@
 //   · ABBRECHEN (keine weiteren Schritte) und RÜCKGÄNGIG (eine gespeicherte Änderung zurück) als zwei
 //     getrennte Knöpfe; nicht Rücknehmbares steht als solches da.
 // Kein Text dieser Karte wird als Handlung gelesen.
+//
+// produkt:20261010:assistenz-aktionen-verlauf-ruecknahme (PV-02): dazu der ERGEBNISSTAND des
+// Auftrags (vom Server; „Entwurf“, solange der Plan nur hier steht), je Schritt der NACHWEIS mit
+// Aktionskennung, Zeitpunkt, ausführender Identität, vorherigem/neuem Stand, Aktionsvertrag und
+// Prüfprotokoll, und eine abgelehnte Rücknahme mit betroffenem Stand und Korrekturweg
+// (`KlaraAktionsnachweis.tsx`).
 import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import type { KlaraAktion, KlaraAuftragSchritt } from "../../api/klaraAuftrag";
+import type { KlaraAktion, KlaraAuftragSchritt, KlaraErgebnisstand } from "../../api/klaraAuftrag";
 import { useSession } from "../../app/AuthContext";
 import { HOME_ROUTE } from "../../app/navigation";
 import { internerPfad } from "../../lib/internerPfad";
+import {
+  KlaraErgebnisstandZeile,
+  KlaraRuecknahmeKonflikt,
+  KlaraSchrittNachweis,
+} from "./KlaraAktionsnachweis";
 import {
   type AuftragsUmgebung,
   type Ausfuehrung,
@@ -165,6 +176,15 @@ function AusfuehrungKarte({
       ? (ich.name ?? ich.email ?? ich.id)
       : (auftrag?.verantwortlich ?? "");
   const fehlerPhase = a.phase === "unbekannt" || a.phase === "fehler";
+  // PV-02-02: der Ergebnisstand aus den festgehaltenen Schritten — unklar geht vor; ohne Auftrag am
+  // Server ist der Plan noch ein Entwurf (Prüfen, Rückfrage), nichts ist ausgeführt.
+  const ergebnis: KlaraErgebnisstand | null = unklar
+    ? "unklar"
+    : auftrag
+      ? (auftrag.ergebnisstand ?? null)
+      : a.phase === "pruefen" || a.phase === "rueckfrage"
+        ? "entwurf"
+        : null;
 
   return (
     <section
@@ -262,6 +282,7 @@ function AusfuehrungKarte({
         </dl>
       ) : null}
 
+      <KlaraErgebnisstandZeile stand={ergebnis} />
       {a.phase === "pruefen" && !auftrag ? (
         <p data-testid="klara-ausfuehrung-pruefen" className="mt-1 text-[11.5px] text-ai">
           {t("klaraauftrag.phase.pruefen")}
@@ -509,6 +530,18 @@ function AusfuehrungKarte({
                   >
                     {z.lokal.ruecknahmeMeldung}
                   </p>
+                ) : null}
+                {z.lokal?.ruecknahmeKonflikt ? (
+                  <KlaraRuecknahmeKonflikt konflikt={z.lokal.ruecknahmeKonflikt} />
+                ) : null}
+                {s && auftrag ? (
+                  <KlaraSchrittNachweis
+                    key={`${s.schluessel}-${s.stand}`}
+                    auftrag={auftrag}
+                    schritt={s}
+                    gespraechId={a.gespraechId}
+                    person={verantwortlich}
+                  />
                 ) : null}
               </li>
             );
