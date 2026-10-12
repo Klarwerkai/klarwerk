@@ -1101,6 +1101,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ruecknahme": {
     protection: "auth",
   },
+  // produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: die Prüfprotokolleinträge EINES eigenen
+  // Auftrags (nur eigene Einträge, fremd/unbekannt 404) — keine zweite Auditverwaltung.
+  "GET /api/me/klara/gespraeche/:id/auftraege/:auftragId/protokoll": { protection: "auth" },
   // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil — nur das EIGENE Konto
   // (user.id aus der Sitzung); eine fremde Kontokennung in Rumpf oder Adresse ergibt 403.
   "GET /api/me/assistenz": { protection: "auth" },
