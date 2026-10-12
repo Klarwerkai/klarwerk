@@ -11,3 +11,6 @@ bis OCR-04 sind eigene, verknüpfte Originale.
 | [`INTEGRATIONSPLAN.md`](./INTEGRATIONSPLAN.md) | Anschluss von OCR-02 bis OCR-04 an den Bestand, Hostzugänge | K2, K3 |
 
 Prüfung: `tests/klara-bildanalyse-ocr/fundstellen.test.ts`.
+
+**OCR-02** (`produkt:20261012:klara-bildanalyse-ocr-automatik`): Lieferung und offene Punkte in
+[`OCR-02-AUTOMATIK.md`](./OCR-02-AUTOMATIK.md).

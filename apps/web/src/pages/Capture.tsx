@@ -55,6 +55,8 @@ import { AiModelInfo } from "../components/AiModelInfo";
 import { AiUnavailableHint } from "../components/AiUnavailableHint";
 // SCRUM-435: extrahierte Erkenntnis(se) an einen BESTEHENDEN Artikel anhängen (Artikel-Picker).
 import { AppendToArticleModal } from "../components/AppendToArticleModal";
+// OCR-02 (Klara-Bildanalyse): Befund des automatischen Bildlesens mit Fundstelle je Bild.
+import { BildBefundListe } from "../components/BildBefundListe";
 // SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte anhängen (nichts ersetzen).
 import { BodyExtractPanel } from "../components/BodyExtractPanel";
 import type { BildbeschreibungsBitte } from "../components/BodyImageGallery";
@@ -109,6 +111,16 @@ import { anlagenAlsEingabe, anlagenNutzlast, anlagenVon } from "../lib/anlagen";
 // (und mit ihr der dreiwertige Ausgang) bleibt der Weg für ein BESTEHENDES Wissensobjekt: KO-Detail
 // und „An Artikel anfügen" — s. lib/appendToArticle.ts.
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
+// OCR-02 (Klara-Bildanalyse): bereitgestellte und eingebettete Bilder automatisch lesen.
+import {
+  BILD_AUTOMATIK_VOREINSTELLUNG,
+  type BildQuelleEingang,
+  type QuellenBefund,
+  docxBildEingang,
+  einzelbildEingang,
+  pptxBildEingang,
+} from "../lib/bildAutomatik";
+import { bildAnalyse } from "../lib/bildAutomatikLauf";
 import {
   applyBodyAssist,
   applyBodyAssistBlock,
@@ -1241,8 +1253,17 @@ export function CaptureArbeitsraum({
   // für die Verlustgründe, beim Speichern (gekoppelt an den echten Anhang-Erfolg) für die Meldung, die
   // der Nutzer sieht. null = keine Datei bzw. ein Weg ohne Bildtransfer.
   const [fileImageTransfer, setFileImageTransfer] = useState<ImageTransferContract | null>(null);
-  const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
+  const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat
   const [fileBusy, setFileBusy] = useState(false);
+  // OCR-02: der Befund des automatischen Bildlesens der gerade gelesenen Datei. Der Laufzähler
+  // verwirft Ergebnisse einer Datei, die inzwischen durch eine andere ersetzt oder geräumt wurde.
+  const [fileBildBefund, setFileBildBefund] = useState<{
+    lauf: number;
+    befund: QuellenBefund;
+  } | null>(null);
+  // Der Bildanhang im Formular („Bilder hochladen") bleibt der manuelle Klickweg aus gesamt-ocr K3
+  // (docs/klara-bildanalyse-ocr/ABGLEICH-OCR-AUFTRAG.md).
+  const fileBildLaufRef = useRef(0);
   // ================================================================================================
   // JOB 4203 D3 · RUNDE 2 — DIE ABWEISUNG WIRD ANGESAGT, NICHT NUR ANGEZEIGT.
   // ================================================================================================
@@ -3251,6 +3272,8 @@ export function CaptureArbeitsraum({
     setFileOriginal(null);
     fileOriginalRef.current = { ref: null };
     setFileImageUrl(null);
+    fileBildLaufRef.current += 1;
+    setFileBildBefund(null);
     setFileBusy(false);
     setSlidesAsImages(false);
     setSlidesProgress(null);
@@ -4800,14 +4823,42 @@ export function CaptureArbeitsraum({
     await attachFiles(files);
   };
 
+  // OCR-02 (Klara-Bildanalyse): die Bilder einer gerade eingelesenen Datei automatisch lesen — ohne
+  // Klick, solange die Automatik an ist. Der Befund steht sichtbar unter dem Import, mit Fundstelle
+  // und Zwischenstand. Gehört der Lauf nicht mehr zur aktuellen Datei (`lauf`), wird er verworfen.
+  const leseDateiBilder = async (
+    eingang: BildQuelleEingang,
+    lauf: number,
+  ): Promise<QuellenBefund | null> => {
+    const aktuell = (): boolean => fileBildLaufRef.current === lauf;
+    const ergebnis = await bildAnalyse.analysiereQuelle(eingang, {
+      automatik: BILD_AUTOMATIK_VOREINSTELLUNG,
+      onFortschritt: (stand) => {
+        if (aktuell()) {
+          setFileBildBefund({ lauf, befund: stand });
+        }
+      },
+    });
+    if (!aktuell()) {
+      return null;
+    }
+    setFileBildBefund({ lauf, befund: ergebnis });
+    return ergebnis;
+  };
+
   // PMO-FEA-0006: Dokument für die Wissens-Extraktion lesen — nutzt die VORHANDENEN
-  // Extraktoren (Text/Word/PDF; Bild als OCR-Kandidat, Erkennung NUR auf Klick wie SCRUM-123).
+  // Extraktoren (Text/Word/PDF; Bild als OCR-Kandidat).
+  // OCR-02: Bilder und eingebettete Bilder (PPTX, DOCX) werden seit 12.10.2026 beim Einlesen
+  // automatisch gelesen (`leseDateiBilder`); der Klick auf die Erkennung bleibt als manueller Weg.
   const onExtractFile = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) {
       return;
     }
+    fileBildLaufRef.current += 1;
+    const bildLauf = fileBildLaufRef.current;
+    setFileBildBefund(null);
     setFilePoints(null);
     setFileNote(null);
     setFileAbgeschnitten(null);
@@ -4834,8 +4885,25 @@ export function CaptureArbeitsraum({
     setNotice(t(CAPTURE_FILE_TEXT.extracting, { name: f.name }));
     try {
       if (isImage(f)) {
-        setFileImageUrl(await readFileAsDataUrl(f));
+        const bildUrl = await readFileAsDataUrl(f);
+        setFileImageUrl(bildUrl);
         setNotice(null);
+        // OCR-02: „sofort automatisch mitlesen" — der erkannte Text (mit gekennzeichneten
+        // unsicheren Stellen) wird der Text dieser Datei, wie nach dem Klick auf die Erkennung.
+        void leseDateiBilder(einzelbildEingang(f.name, bildUrl), bildLauf).then((befund) => {
+          const bild = befund?.befunde[0];
+          if (bild?.status !== "gelesen") {
+            return;
+          }
+          setFileText((vorher) => (vorher.length > 0 ? vorher : bild.textGekennzeichnet));
+          ganzdokumentGesichertRef.current = null;
+          setNotice({
+            art: "datei-eingelesen",
+            name: f.name,
+            chars: bild.textGekennzeichnet.length,
+            zusaetze: [],
+          });
+        });
         return;
       }
       let text = "";
@@ -4873,6 +4941,10 @@ export function CaptureArbeitsraum({
       // JOB 2700 D1: das Original aus DEMSELBEN Lesevorgang wie der Text (PDF) — sonst wuerde die
       // Datei unten ein zweites Mal komplett gelesen.
       let originalDataUrl: string | null = null;
+      // OCR-02: die Bilddaten des Imports für das automatische Lesen — DOCX sofort, PPTX erst mit
+      // dem endgültigen HTML (die Folienansicht kann noch Bilder anhängen).
+      let bildEingang: BildQuelleEingang | null = null;
+      let pptxBildDaten: Parameters<typeof pptxBildEingang>[2] | null = null;
       // WP-D5b (bens GELB-Fix 4): Format über die zentrale detectFileKind-Reihenfolge bestimmen
       // (image→pdf→docx→pptx→text). So gewinnt die Endung .pptx gegen einen irreführenden MIME text/plain
       // — sonst landete eine .pptx im Text-Pfad (Bug: isTextDocument stand VOR der PPTX-Erkennung).
@@ -4905,6 +4977,7 @@ export function CaptureArbeitsraum({
         };
         imageTransfer = docx.imageTransfer;
         sourceHadImages = docx.totalImages > 0;
+        bildEingang = docxBildEingang(f.name, docx.html, docx.droppedImages);
       } else if (kind === "pdf") {
         // WP-D3: zeilen-/absatztreuer PDF-Text; truncated meldet den Seiten-Cap.
         // JOB 2700 D1: Groessenkante vor dem Parser, Frist um das Parsen, Original aus demselben Puffer.
@@ -4932,6 +5005,11 @@ export function CaptureArbeitsraum({
         };
         imageTransfer = pptx.imageTransfer;
         sourceHadImages = pptx.imageCount > 0;
+        pptxBildDaten = {
+          imageCount: pptx.imageCount,
+          imageSlides: pptx.imageSlides,
+          imagesNotEmbeddedBySlide: pptx.imagesNotEmbeddedBySlide,
+        };
         // WP-D11 (Pedis Entscheid): optional JEDE Folie als Bild — Server-Konvertierung, Abschnitt
         // „Folienansicht" ANS ENDE. Die D9b/D9c-Budget-Regeln gelten unverändert: das kombinierte
         // HTML läuft erneut durch applyInlineImageBudget (Drop-to-fit GANZER figures in Dokument-
@@ -5102,6 +5180,17 @@ export function CaptureArbeitsraum({
           ...imagesOnlyNotes,
         ],
       });
+      // OCR-02: die eingebetteten Bilder sofort mitlesen — der Klartext oben bleibt unverändert, der
+      // Befund steht mit Folie bzw. Reihenfolge je Bild daneben (`BildBefundListe`).
+      if (pptxBildDaten) {
+        bildEingang = pptxBildEingang(f.name, rich.html, pptxBildDaten);
+      }
+      if (
+        bildEingang &&
+        (bildEingang.vorkommen.length > 0 || (bildEingang.nichtGelesen ?? []).length > 0)
+      ) {
+        void leseDateiBilder(bildEingang, bildLauf);
+      }
     } catch (error) {
       setFileName(null);
       setNotice(null);
@@ -5130,7 +5219,8 @@ export function CaptureArbeitsraum({
     }
   };
 
-  // PMO-FEA-0006: Bild-OCR für die Extraktion — NUR auf Klick, ehrlicher Status (SCRUM-123-Muster).
+  // PMO-FEA-0006: Bild-OCR für die Extraktion — ehrlicher Status (SCRUM-123-Muster). Seit OCR-02 der
+  // manuelle Weg neben der Automatik.
   const onExtractOcr = async (): Promise<void> => {
     if (!fileImageUrl || !fileName) {
       return;
@@ -5139,8 +5229,17 @@ export function CaptureArbeitsraum({
     setOcrBusy("extract-file");
     setNotice(t("capture.ocrRunning", { name: fileName }));
     try {
-      const res = await runImageOcr(fileImageUrl);
-      if (res.status === "success" && res.text.length > 0) {
+      // OCR-02: über dieselbe Analyse wie die Automatik — läuft sie für dieses Bild noch oder hat sie
+      // es schon gelesen, wird ihr Ergebnis übernommen statt ein zweites Mal erkannt.
+      const befund = await bildAnalyse.befundFuerBild({
+        fundstelle: { quelle: fileName, art: "bild", bild: 1 },
+        src: fileImageUrl,
+      });
+      const res = {
+        status: befund.status,
+        text: befund.textGekennzeichnet,
+      };
+      if (res.status === "gelesen" && res.text.length > 0) {
         setFileText(res.text);
         // entscheidung:14ce8681: ein unklarer Vorgang bleibt stehen (s. Datei-Einlesen).
         ganzdokumentGesichertRef.current = null;
@@ -5152,7 +5251,7 @@ export function CaptureArbeitsraum({
           chars: res.text.length,
           zusaetze: [],
         });
-      } else if (res.status === "unavailable") {
+      } else if (res.status === "nicht-verfuegbar") {
         setNotice(null);
         setErr(t("capture.ocrUnavailable"));
       } else {
@@ -6930,15 +7029,22 @@ export function CaptureArbeitsraum({
                       </span>
                     ) : null}
                   </div>
-                  {/* Bild als OCR-Kandidat: Texterkennung NUR auf Klick (SCRUM-123-Muster). */}
+                  {/* Bild als OCR-Kandidat. OCR-02: die Automatik liest es schon beim Einlesen; der
+                    Knopf bleibt als manueller Weg, solange kein Text da ist. */}
                   {fileImageUrl && !fileText ? (
                     <Button
                       variant="ghost"
-                      disabled={ocrBusy !== null}
+                      disabled={ocrBusy !== null || fileBildBefund?.befund.status === "laeuft"}
                       onClick={() => void onExtractOcr()}
                     >
-                      {ocrBusy ? t(CAPTURE_FILE_TEXT.ocrBusy) : t(CAPTURE_FILE_TEXT.ocrCta)}
+                      {ocrBusy || fileBildBefund?.befund.status === "laeuft"
+                        ? t(CAPTURE_FILE_TEXT.ocrBusy)
+                        : t(CAPTURE_FILE_TEXT.ocrCta)}
                     </Button>
+                  ) : null}
+                  {/* OCR-02: Befund des automatischen Bildlesens, mit Fundstelle je Bild. */}
+                  {fileBildBefund ? (
+                    <BildBefundListe befund={fileBildBefund.befund} lauf={fileBildBefund.lauf} />
                   ) : null}
                   {fileWholeDraftSaved ? (
                     <div className="rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg px-3 py-2">

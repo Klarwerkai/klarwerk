@@ -246,7 +246,7 @@ type TesseractModule = {
     input: unknown,
     lang?: string,
     options?: Record<string, unknown>,
-  ): Promise<{ data: { text: string } }>;
+  ): Promise<{ data: { text: string; words?: { text: string; confidence: number }[] } }>;
 };
 
 let pdfEnginePromise: Promise<PdfEngine> | null = null;
@@ -417,6 +417,10 @@ export async function ocrSprachdatenVorhanden(
 
 // SCRUM-123: optionale Bild-OCR (lazy tesseract.js@5, Worker/WASM). Engine nicht ladbar
 // → ehrlich „unavailable", kein Vortäuschen. Nur auf explizite Nutzeraktion aufrufen.
+// OCR-02 (Klara-Bildanalyse, 12.10.2026): Diese Regel ist für bereitgestellte Bilder abgelöst —
+// Peter: „sofort automatisch mitlesen". Die Automatik (`lib/bildAutomatik.ts`) ruft dieselbe
+// Funktion beim Eingang eines Bildes oder Dokuments auf, solange sie eingeschaltet ist; der Klick
+// bleibt als manueller Weg.
 export async function runImageOcr(input: File | string, lang = "deu+eng"): Promise<OcrResult> {
   try {
     if (!(await ocrSprachdatenVorhanden(lang))) {

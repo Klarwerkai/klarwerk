@@ -4,14 +4,23 @@
 
 export type OcrStatus = "running" | "success" | "failed" | "unavailable";
 
+/** Ein erkanntes Wort mit der Sicherheit der Engine (0–100), wie tesseract.js 5 es liefert. */
+export interface OcrWort {
+  text: string;
+  confidence: number;
+}
+
 export interface OcrResult {
   status: OcrStatus;
   text: string;
   error?: string;
+  // OCR-02 (Klara-Bildanalyse): die Wörter mit ihrer Sicherheit — Grundlage, um unsichere und
+  // unleserliche Stellen zu kennzeichnen, statt sie still als gelesen auszugeben.
+  woerter?: OcrWort[];
 }
 
 export interface OcrRecognizer {
-  recognize(input: unknown): Promise<{ data: { text: string } }>;
+  recognize(input: unknown): Promise<{ data: { text: string; words?: OcrWort[] } }>;
 }
 
 // SCRUM-123: Bild → Text. Kein Recognizer (Engine nicht ladbar) → ehrlich „unavailable".
@@ -25,7 +34,15 @@ export async function recognizeImage(
   }
   try {
     const result = await recognizer.recognize(input);
-    return { status: "success", text: (result.data.text ?? "").trim() };
+    const woerter = (result.data.words ?? []).map((w) => ({
+      text: w.text,
+      confidence: w.confidence,
+    }));
+    return {
+      status: "success",
+      text: (result.data.text ?? "").trim(),
+      ...(woerter.length > 0 ? { woerter } : {}),
+    };
   } catch (error) {
     return {
       status: "failed",
