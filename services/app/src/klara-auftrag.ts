@@ -119,6 +119,11 @@ export interface KlaraAuftragSchritt {
   readonly vorherStand?: string | null;
   /** Ebenda: der Stand NACH der Rücknahme (`papierkorb` bzw. die Fassungszeit der Rückänderung). */
   readonly ruecknahmeStand?: string | null;
+  /**
+   * PV-02-03 (Nacharbeit 3, Ben): die nach der Wirkung NACHGELESENEN Felder eines Entwurfs — neben
+   * `vorher` der vergleichbare Inhalt. Steht nur im eigenen Gespräch, nie im Prüfprotokoll.
+   */
+  readonly nachher?: { readonly title: string; readonly statement: string } | null;
   readonly begonnenAm: string;
   readonly geaendertAm: string;
 }
@@ -1037,6 +1042,13 @@ export function merkeSchreibwirkung(
   };
 }
 
+/** Was `merkeStaende` am Schritt festhalten darf. */
+export interface KlaraStaende {
+  vorherStand?: string | null;
+  ruecknahmeStand?: string | null;
+  nachher?: { title: string; statement: string } | null;
+}
+
 /**
  * produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: vorherigen bzw. nach der Rücknahme gelesenen
  * Stand am Schritt festhalten. Nur angegebene Felder ändern sich; Stand und Ergebnis bleiben.
@@ -1044,7 +1056,7 @@ export function merkeSchreibwirkung(
 export function merkeStaende(
   a: KlaraAuftrag,
   schluessel: string,
-  staende: { vorherStand?: string | null; ruecknahmeStand?: string | null },
+  staende: KlaraStaende,
   jetzt: string,
 ): KlaraAuftrag {
   return {

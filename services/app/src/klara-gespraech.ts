@@ -12,6 +12,7 @@ import {
   type KlaraMelder,
   type KlaraSchreibwirkung,
   type KlaraServerZusatz,
+  type KlaraStaende,
   brecheAb,
   korrigiere,
   merkeSchreibwirkung,
@@ -946,7 +947,7 @@ export class KlaraGespraechDienst {
     id: string,
     auftragId: string,
     schluessel: string,
-    staende: { vorherStand?: string | null; ruecknahmeStand?: string | null },
+    staende: KlaraStaende,
   ): Promise<KlaraAuftrag> {
     return this.mitGrenze(async () => {
       const g = await this.aendere(kontoId, id, (alt, jetzt) =>

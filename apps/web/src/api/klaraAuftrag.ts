@@ -68,6 +68,9 @@ export interface KlaraAuftragSchritt {
   /** PV-02: Stand des Ziels vor der Wirkung bzw. nach der Rücknahme (vom Server gelesen). */
   vorherStand?: string | null;
   ruecknahmeStand?: string | null;
+  /** PV-02-03: Felder eines Entwurfs vor bzw. nach der Wirkung — nur im eigenen Gespräch. */
+  vorher?: { title: string; statement: string } | null;
+  nachher?: { title: string; statement: string } | null;
   /** PV-02: Aktionskennung (= Vorgangsschlüssel), Vertrag und was eine Rücknahme jetzt hindert. */
   aktionskennung?: string;
   vertrag?: KlaraVertragsSchluessel;

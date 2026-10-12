@@ -285,6 +285,16 @@ describe("N1 · K2/K3/K4 — ausgeführt, nachgewiesen, nach dem Neuladen zurüc
       expect(q(n, "klara-nachweis-vorher")?.dataset.stand).toBe(d.updatedAt);
       expect(text(n, "klara-nachweis-vorher")).toContain("Fassung vom");
       expect(q(n, "klara-nachweis-neu")?.dataset.stand).toBe(nachher.updatedAt);
+      // Nacharbeit 3 (Ben): der tatsächliche Inhalt vorher/neu — vergleichbar, geändertes Feld markiert.
+      const vorherInhalt = q(n, "klara-nachweis-vorher-inhalt") as HTMLElement;
+      const neuInhalt = q(n, "klara-nachweis-neu-inhalt") as HTMLElement;
+      expect(vorherInhalt.textContent).toContain("Kernaussage: Basis.");
+      expect(vorherInhalt.textContent).toContain("Titel: Pumpe P9");
+      expect(neuInhalt.textContent).toContain("Kernaussage: Basis. Dichtung prüfen");
+      const markiert = (e: HTMLElement, feld: string) =>
+        e.querySelector<HTMLElement>(`[data-feld="${feld}"]`)?.dataset.geaendert;
+      expect(markiert(neuInhalt, "statement")).toBe("ja");
+      expect(markiert(neuInhalt, "title")).toBe("nein");
       expect(q(n, "klara-nachweis-wirkung")?.dataset.vertrag).toBe("entwurf_bearbeiten");
       expect(text(n, "klara-nachweis-recht")).toContain("ko.create");
       return n;

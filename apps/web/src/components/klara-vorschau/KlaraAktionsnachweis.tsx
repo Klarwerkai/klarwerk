@@ -126,6 +126,50 @@ function ereignisInWorten(e: KlaraProtokollEintrag, t: TFunction): string {
   return t(`assistenzverlauf.protokoll.ereignis.${stand}`, { defaultValue: stand || e.action });
 }
 
+type Felder = { title: string; statement: string } | null | undefined;
+
+/**
+ * PV-02-03 (Nacharbeit 3, Ben): der tatsächliche Inhalt eines Entwurfs vor bzw. nach der Wirkung —
+ * vom Server gelesen und nur im eigenen Gespräch abgelegt, nie im Prüfprotokoll. Mit `vergleich`
+ * ist jedes Feld markiert, das sich gegenüber dem vorherigen Inhalt geändert hat.
+ */
+function Inhalt({
+  testId,
+  felder,
+  vergleich,
+}: {
+  testId: string;
+  felder: Felder;
+  vergleich?: Felder;
+}): JSX.Element | null {
+  const { t } = useTranslation();
+  if (!felder) {
+    return null;
+  }
+  const zeilen = [
+    { feld: "title", name: t("assistenzverlauf.feld.titel"), wert: felder.title },
+    { feld: "statement", name: t("assistenzverlauf.feld.kernaussage"), wert: felder.statement },
+  ] as const;
+  return (
+    <span data-testid={testId} className="mt-0.5 block text-[11px] text-muted">
+      {zeilen.map((z) => {
+        const geaendert = vergleich ? vergleich[z.feld] !== z.wert : false;
+        return (
+          <span
+            key={z.feld}
+            data-feld={z.feld}
+            data-geaendert={geaendert ? "ja" : "nein"}
+            className={`block whitespace-pre-wrap ${geaendert ? "font-semibold text-text" : ""}`}
+          >
+            {`${z.name}: ${z.wert || "–"}`}
+            {geaendert ? ` (${t("assistenzverlauf.feld.geaendert")})` : ""}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 const KORREKTURPFAD: Readonly<Record<string, string>> = {
   luecke: "/risiko",
   konflikt: "/konflikte",
@@ -225,6 +269,7 @@ export function KlaraSchrittNachweis({
               className="text-text"
             >
               {standInWorten(s.vorherStand, t, sprache, angelegt ? "neu" : "unbekannt")}
+              <Inhalt testId="klara-nachweis-vorher-inhalt" felder={s.vorher} />
             </dd>
             <dt className={KLEINTITEL}>{t("assistenzverlauf.nachweis.neu")}</dt>
             <dd
@@ -233,6 +278,7 @@ export function KlaraSchrittNachweis({
               className="text-text"
             >
               {standInWorten(s.ergebnis?.stand, t, sprache)}
+              <Inhalt testId="klara-nachweis-neu-inhalt" felder={s.nachher} vergleich={s.vorher} />
             </dd>
           </>
         ) : null}

@@ -294,6 +294,12 @@ export class KlaraAusfuehrung {
       return { auftrag: jetzt, schritt, wiederholt: false };
     };
     const bekannt = vorhanden?.schreibwirkung ?? null;
+    // PV-02-03 (Nacharbeit 3): der nachgelesene Inhalt am eigenen Stand — neben `vorher` der
+    // vergleichbare neue Inhalt. Nur im eigenen Gespräch, nie im Prüfprotokoll.
+    const merkeNachher = (d: Entwurf) =>
+      this.dienst.merkeStaende(kontoId, gespraechId, auftragId, schluessel, {
+        nachher: { title: d.payload.title ?? "", statement: d.payload.statement ?? "" },
+      });
 
     if (!ziel) {
       return scheitert("vorschritt");
@@ -342,6 +348,7 @@ export class KlaraAusfuehrung {
       if ((gelesen.daten.payload.title ?? "") !== ziel.titel) {
         return scheitert("nichtNachgelesen");
       }
+      await merkeNachher(gelesen.daten);
       return melde("gespeichert", {
         ergebnis: {
           art: "entwurf",
@@ -404,6 +411,7 @@ export class KlaraAusfuehrung {
       if (!angewandt(gelesen.daten.payload, p)) {
         return scheitert("nichtNachgelesen");
       }
+      await merkeNachher(gelesen.daten);
       return melde("gespeichert", {
         ergebnis: {
           art: "entwurf",

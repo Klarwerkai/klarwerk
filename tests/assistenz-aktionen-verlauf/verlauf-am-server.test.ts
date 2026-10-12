@@ -229,6 +229,12 @@ describe("V1 · K1–K4/K7 — ausgeführt, nachgewiesen, nach dem Neuladen zur�
     expect(r.schritt.ergebnis?.stand).toBe(nachher.updatedAt);
     expect(nachher.updatedAt).not.toBe(d.updatedAt);
     expect(r.auftrag.ergebnisstand).toBe("ausgefuehrt");
+    // Nacharbeit 3 (Ben): der tatsächliche Inhalt vorher/neu steht am Schritt des eigenen Gesprächs.
+    expect(r.schritt.vorher).toEqual({ title: "Pumpe P7 Wartung", statement: "Basis." });
+    expect(r.schritt.nachher).toEqual({
+      title: "Pumpe P7 Wartung",
+      statement: "Basis. Dichtung D2 prüfen",
+    });
 
     // K3: das Prüfprotokoll des eigenen Auftrags — Vorgang, Zeitpunkt, Identität, vorher/neu.
     const protokollPfad = `${BASIS}/gespraeche/${gid}/auftraege/${a.id}/protokoll`;
