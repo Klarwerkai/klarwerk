@@ -54,6 +54,8 @@ async function aufbau() {
     type: "technik",
     category: "Anlage 7",
     author: "bert",
+    // P14 · B-07: gelernt wird nur an Einträgen, die jedes Konto lesen darf (ausdrücklich intern).
+    confidentiality: "intern",
   });
   for (const druck of [181, 182, 183]) {
     uhr.jetzt += 40 * TAG;

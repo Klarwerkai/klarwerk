@@ -415,6 +415,9 @@ export const MELDUNGEN: readonly string[] = [
   // Wissensereignisse R-0710); die Sätze stehen dort und in wissensereignisse.ts.
   "Lückenerkennung übersprungen",
   "Lückenerkennung über den Reasoner aktiv — Takt {zahl} min.",
+  // produkt:20261011:assistenz-skills-werkzeuge — Wiederaufnahme der Fähigkeitsaufträge (server.ts).
+  "Fähigkeitsaufträge: Wiederaufnahme übersprungen",
+  "Fähigkeitsaufträge: Abarbeitung übersprungen",
   "Wissensereignis-Abgleich übersprungen",
   "Wissensereignis-Meldungen aktiv — {zahl} Ziel(e), Takt {zahl} s.",
   "Webhook-Ziel verworfen: KLARWERK_WEBHOOKS ist kein gültiges JSON.",
@@ -428,6 +431,9 @@ export const MELDUNGEN: readonly string[] = [
   // klara-aufraeumen.ts
   "Klara-Sitzungen aufgeräumt ({wert}): {zahl} entfernt.",
   "Klara-Aufräumlauf ({wert}) übersprungen",
+  // produkt:20261011:peter-p09 — server.ts und wiederanlauf.ts (Wiederanlauf nach einem Restore).
+  "Wiederanlauf {wert}: Außenaktionen gestoppt ({liste}). Nach der Freigabe ohne KLARWERK_WIEDERANLAUF neu starten.",
+  "Wiederanlauf {wert}: {bezeichnung}, Sicherungsstand {wert}, Replay-Grenze: {zahl} Meldungen unterdrückt, {zahl} offene Zustellungen geschlossen.",
 ];
 
 function vorlageAlsMuster(vorlage: string): RegExp {

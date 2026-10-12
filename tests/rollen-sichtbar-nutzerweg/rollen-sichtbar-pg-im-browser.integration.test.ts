@@ -339,12 +339,33 @@ describe("JOB 4326 · fünf Rollen an fünf Türen im echten Chromium gegen echt
       await pool?.end();
     }
     if (adminPool) {
+      // aufnahme:20260922:gesamt-leserechte (Nacharbeit 4): `pool.end()` löst auf, sobald die
+      // Clients aus dem Pool genommen sind — ihre Verbindungen schliessen danach noch. Ein sofortiges
+      // `DROP … WITH (FORCE)` beendete genau diese Verbindungen; das FATAL 57P01 („terminating
+      // connection due to administrator command") kam als unbehandelter Fehler am Pool an. Erst wenn
+      // die Datenbank keine Verbindung mehr hat, wird sie entfernt. Bleibt eine offen, greift FORCE
+      // wie bisher — und ein Fehler daraus bleibt sichtbar, er wird nicht abgefangen.
+      await warteBisOhneVerbindung(adminPool, rollenDb);
       await adminPool
         .query(`DROP DATABASE IF EXISTS ${rollenDb} WITH (FORCE)`)
         .catch(() => undefined);
       await adminPool.end();
     }
   }, 300_000);
+
+  /** Wartet (höchstens ~10 s, ohne Ausnahme), bis keine Sitzung mehr an `db` hängt. */
+  async function warteBisOhneVerbindung(admin: Pool, db: string): Promise<void> {
+    for (let versuch = 0; versuch < 100; versuch++) {
+      const { rows } = await admin.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
+        [db],
+      );
+      if ((rows[0]?.n ?? 0) === 0) {
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
 
   /** Der Stand dieses Laufs — einmal geprüft, danach ohne `undefined`-Fragen benutzbar. */
   function stand(): {

@@ -94,6 +94,7 @@ import {
 import { trustExplainer } from "../../lib/trustExplainer";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { useReadiness } from "../../lib/useReadiness";
+import { statusSchluessel } from "../../lib/wissensstatus";
 import {
   ZEICHNUNG_ACCEPT,
   anhangStelle,
@@ -247,6 +248,55 @@ function AnhangVorschau({ src }: { src: string | undefined }): JSX.Element {
         </span>
       )}
     </span>
+  );
+}
+
+// R-0095: der Rückverweis VOM ANHANG auf die Wissensobjekte, die ihn tragen — gefragt beim Anhang
+// selbst (`GET /api/objects/:id/traeger`), nicht aus dem Objekt abgeleitet, in dem die Kachel
+// gerade steht. Jeder Träger ist ein Link; der eigene Eintrag ist als solcher benannt. Ohne
+// gespeicherte Objekt-Referenz (Altbestand mit Daten-URL) gibt es keinen Anhang zu fragen — dann
+// erscheint nichts, statt einer erfundenen Zuordnung. Ein Fehler der Abfrage bleibt ebenso stumm:
+// die Kachel und ihr Öffnen-Weg hängen nicht an dieser Zeile.
+function AnhangTraeger({
+  objectId,
+  aktuellesKo,
+}: {
+  objectId: string | undefined;
+  aktuellesKo: string;
+}): JSX.Element | null {
+  const { t } = useTranslation();
+  const gueltig = objectRawHref(objectId) !== null;
+  const traeger = useQuery({
+    queryKey: ["objekt-traeger", objectId],
+    queryFn: () => endpoints.objects.traeger((objectId ?? "").trim()),
+    enabled: gueltig,
+  });
+  const roh = traeger.data?.traeger;
+  const liste = Array.isArray(roh) ? roh : [];
+  if (!gueltig || liste.length === 0) {
+    return null;
+  }
+  return (
+    <div data-bib-anhang-traeger={objectId} className="mt-0.5 text-[12px] text-muted">
+      {t("anhangtraeger.gehoertZu")}{" "}
+      {liste.map((k, i) => (
+        <span key={k.id}>
+          {i > 0 ? ", " : null}
+          <RoleLink
+            to={`/wissen/${encodeURIComponent(k.id)}`}
+            className="font-semibold text-ai"
+            hoverClassName="hover:underline"
+          >
+            {() => (
+              <>
+                {k.title.trim() || t("anhangtraeger.ohneTitel")}
+                {k.id === aktuellesKo ? ` ${t("anhangtraeger.dieserEintrag")}` : null}
+              </>
+            )}
+          </RoleLink>
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -1586,13 +1636,13 @@ export function MehrAbschnitte({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-[13.5px] font-medium text-text">{s.label}</span>
-                        <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+                        <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                           {t(sourceBadgeKey(s))}
                         </span>
                         {/* R-0205: „Stufe 2" + „Extern · ungeprüft" — derselbe Baustein wie überall. */}
                         <ExterneQuelleKennung source={s} />
                         {s.provider ? (
-                          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                             {s.provider}
                           </span>
                         ) : null}
@@ -1603,7 +1653,7 @@ export function MehrAbschnitte({
                         {nachweis.zeit ? (
                           <span
                             data-testid="bib-quelle-zeit"
-                            className="font-mono text-[10px] text-muted-2"
+                            className="font-mono text-klein text-muted-2"
                           >
                             {nachweis.zeit}
                           </span>
@@ -1624,7 +1674,7 @@ export function MehrAbschnitte({
                         {nachweis.stand ? (
                           <span
                             data-testid="bib-quelle-stand"
-                            className="font-mono text-[10px] text-muted-2"
+                            className="font-mono text-klein text-muted-2"
                           >
                             {`${t("w2.source.version")} ${nachweis.stand}`}
                           </span>
@@ -1867,7 +1917,7 @@ export function MehrAbschnitte({
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[13px] font-medium text-text">{r.title}</span>
-                          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+                          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                             {r.provider}
                           </span>
                         </div>
@@ -1876,7 +1926,7 @@ export function MehrAbschnitte({
                         ) : null}
                         <ExternalUrlText
                           url={r.url}
-                          className="block truncate font-mono text-[10.5px] text-ai hover:underline"
+                          className="block truncate font-mono text-klein text-ai hover:underline"
                         />
                       </div>
                       <Button
@@ -2116,7 +2166,7 @@ export function MehrAbschnitte({
                         <dt className="text-muted">{t("ko.evFresh.title")}</dt>
                         <dd className="text-text">
                           {t(evidenceFreshnessLabelKey(fresh.status))}
-                          <span className="ml-2 font-mono text-[10.5px] text-muted-2">
+                          <span className="ml-2 font-mono text-klein text-muted-2">
                             {t("ko.evFresh.counts", {
                               version: String(fresh.version),
                               current: String(fresh.currentCount),
@@ -2127,7 +2177,7 @@ export function MehrAbschnitte({
                       </div>
                     </dl>
                   ) : null}
-                  <div className="mb-3 space-y-1.5 font-mono text-[10.5px] text-muted-2">
+                  <div className="mb-3 space-y-1.5 font-mono text-klein text-muted-2">
                     <div>
                       {t(`ko.evCons.status.${consistency.status}`)} ·{" "}
                       {t("ko.evCons.counts", {
@@ -2237,12 +2287,12 @@ export function MehrAbschnitte({
                     <div className="break-words text-[13px] font-semibold text-text">
                       {ev.title}
                     </div>
-                    <div className="mt-1 font-mono text-[10.5px] text-muted-2">
+                    <div className="mt-1 font-mono text-klein text-muted-2">
                       {t(`ko.evidenceKind.${ev.kind}`)} · {nameOf(ev.createdBy)} ·{" "}
                       {new Date(ev.createdAt).toLocaleDateString(i18n.language)}
                     </div>
                     {ev.meta.length > 0 ? (
-                      <div className="mt-1 font-mono text-[10px] text-muted-2">
+                      <div className="mt-1 font-mono text-klein text-muted-2">
                         {ev.meta.join(" · ")}
                       </div>
                     ) : null}
@@ -2319,6 +2369,7 @@ export function MehrAbschnitte({
                     </span>
                     <span className="mt-0.5 block text-[12px] text-muted">{hinweis}</span>
                   </button>
+                  <AnhangTraeger objectId={a.objectId} aktuellesKo={ko.id} />
                   {canEdit ? (
                     <button
                       type="button"
@@ -2417,7 +2468,7 @@ export function MehrAbschnitte({
           {isDemoKnowledge(ko) ? (
             <span
               title={t("demo.badge.hint")}
-              className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+              className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2"
             >
               {t("demo.badge.label")}
             </span>
@@ -2427,7 +2478,7 @@ export function MehrAbschnitte({
           {containsExternalUnchecked(ko.bodyHtml) ? (
             <span
               title={t("ko.externalUnchecked.hint")}
-              className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai"
+              className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase text-ai"
             >
               {t("ko.externalUnchecked.label")}
             </span>
@@ -2437,7 +2488,7 @@ export function MehrAbschnitte({
             <span
               data-testid="ko-origin-word-addin"
               title={t("ko.originWordAddin.hint")}
-              className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+              className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2"
             >
               {t("ko.originWordAddin.label")}
             </span>
@@ -2917,7 +2968,7 @@ export function MehrAbschnitte({
                     >
                       <div className="font-mono text-[11px] text-muted-2">
                         v{v.version} · {new Date(v.at).toLocaleDateString(i18n.language)} ·{" "}
-                        {nameOf(v.author)} · {t(`status.${v.status}`)}
+                        {nameOf(v.author)} · {t(statusSchluessel(v.status))}
                       </div>
                       <div className="mt-1 text-[13px] font-semibold text-text">{v.title}</div>
                       <p className="mt-1 text-[12.5px] text-muted">{v.excerpt}</p>
@@ -2936,7 +2987,7 @@ export function MehrAbschnitte({
                           return (
                             <p
                               data-bib-fassung-aenderung={v.key}
-                              className="mt-1 font-mono text-[10.5px] text-muted-2"
+                              className="mt-1 font-mono text-klein text-muted-2"
                             >
                               {t("fassungsangabe.ersteFassung")}
                             </p>
@@ -2947,7 +2998,7 @@ export function MehrAbschnitte({
                         return (
                           <p
                             data-bib-fassung-aenderung={v.key}
-                            className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10.5px] text-muted-2"
+                            className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-klein text-muted-2"
                           >
                             <span>
                               {geaendert.length === 0
@@ -2981,7 +3032,7 @@ export function MehrAbschnitte({
                         Draht-Leser wie oben. */}
                       <p
                         data-bib-fassung-vermerk={v.key}
-                        className="mt-1 font-mono text-[10.5px] text-muted-2"
+                        className="mt-1 font-mono text-klein text-muted-2"
                       >
                         {koHistoryNote(v.note, t)}
                         {v.herkunft === null
@@ -3001,7 +3052,7 @@ export function MehrAbschnitte({
                       >
                         {aktion}
                         {groesse ? (
-                          <span className="font-mono text-[10.5px] text-muted-2">· {groesse}</span>
+                          <span className="font-mono text-klein text-muted-2">· {groesse}</span>
                         ) : null}
                       </button>
                       {offen ? (
@@ -3018,7 +3069,7 @@ export function MehrAbschnitte({
                             wäre damit eine Behauptung über einen Weg, den es gibt. Wahr bleibt, was
                             der Satz jetzt sagt: DIESE Fassung selbst ändert sich nicht — eine
                             Übernahme KOPIERT sie in eine neue, sie bewegt sie nicht. */}
-                          <p className="font-mono text-[10.5px] text-muted-2">
+                          <p className="font-mono text-klein text-muted-2">
                             {t("ko.snapshotReadOnly", { version: v.version })}
                           </p>
                           <dl className="mt-1.5 grid gap-1.5">
@@ -3026,7 +3077,7 @@ export function MehrAbschnitte({
                               .filter(([, wert]) => wert.trim().length > 0)
                               .map(([feld, wert]) => (
                                 <div key={feld}>
-                                  <dt className="font-mono text-[10.5px] text-muted-2">
+                                  <dt className="font-mono text-klein text-muted-2">
                                     {t(`ko.snapshotField.${feld}`)}
                                   </dt>
                                   <dd className="text-[12.5px] text-text">{wert}</dd>

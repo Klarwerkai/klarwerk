@@ -15,6 +15,15 @@ export function spaceFehlerSchluessel(fehler: unknown): string {
   if (fehler.code === "VERSION_VERALTET") {
     return "spaces.fehler.veraltet";
   }
+  if (fehler.code === "SPACE_KONTEXT_ZUGANG") {
+    return "spaces.fehler.kontextZugang";
+  }
+  if (fehler.code === "SPACE_NICHT_LEER") {
+    return "spaces.loeschen.nichtLeer";
+  }
+  if (fehler.code === "EXISTENZRECHT_FEHLT") {
+    return "spaces.loeschen.existenzrecht";
+  }
   // ADMIN-07
   if (fehler.code === "SPACE_ARCHIVIERT") {
     return "spaces.fehler.archiviert";
@@ -40,6 +49,9 @@ export function spaceFehlerSchluessel(fehler: unknown): string {
 export type SpaceZugang = "alle" | "mitglieder";
 export type SpaceRecht = "lesen" | "schreiben";
 export type EigenesSpaceRecht = "zustaendig" | "schreiben" | "lesen" | "verwalten" | "keins";
+/** Firmenfilter (Frage 51): eigene Firmeninstanz, Partnerbereich, öffentliche Quellen. */
+export type SpaceKontext = "firma" | "partner" | "oeffentlich";
+export const SPACE_KONTEXTE: readonly SpaceKontext[] = ["firma", "partner", "oeffentlich"];
 
 export interface SpaceAnsicht {
   id: string;
@@ -54,6 +66,8 @@ export interface SpaceEingabe {
   zugang: SpaceZugang;
   mitglieder: { nutzer: string; recht: SpaceRecht }[];
   ansichten: { id?: string; name: string; tag: string }[];
+  kontext: SpaceKontext;
+  partner?: string;
   /** produkt:20261009:admin-teams — Teams als Mitgliedschaftsweg. */
   teams?: { team: string; recht: SpaceRecht }[];
   /** ADMIN-07: flaches Etikett für die Übersicht — kein Ordner. */
@@ -88,6 +102,8 @@ export interface SpaceSicht {
   zugang: SpaceZugang;
   mitglieder: { nutzer: string; recht: SpaceRecht; name: string | null }[];
   ansichten: SpaceAnsicht[];
+  kontext: SpaceKontext;
+  partner: string | null;
   /** Gebundene Teams; ein archiviertes Team steht als Verlauf da und gewährt nichts mehr. */
   teams?: { team: string; recht: SpaceRecht; name: string | null; archiviert: boolean }[];
   /** Wer über welches aktive Team dabei ist — getrennt von den direkten Mitgliedern. */
@@ -220,6 +236,8 @@ export interface ArtikelZeile {
   tags: string[];
   spaceId: string | null;
   spaceName: string | null;
+  kontext: SpaceKontext;
+  partner: string | null;
 }
 
 export interface ArtikelKontext {
@@ -276,12 +294,34 @@ export interface RegelSicht {
   verantwortlichName: string | null;
 }
 
+/** Die Folgen einer Spacelöschung (`POST /api/spaces/:id/loeschung/vorschau`). */
+export interface Loeschvorschau {
+  space: { id: string; name: string; version: number };
+  artikel: { id: string; title: string; version: number }[];
+  /** Nur Papierkorbartikel, die der Betrachter lesen dürfte (gesamt-leserechte, Nacharbeit 31). */
+  imPapierkorb: number;
+  ansichten: number;
+  mitglieder: number;
+  darfLoeschen: boolean;
+  grund: "SPACE_NICHT_LEER" | "EXISTENZRECHT_FEHLT" | null;
+}
+
 const pfad = (id: string): string => `/spaces/${encodeURIComponent(id)}`;
 
 export const spacesApi = {
-  liste: () =>
+  liste: (kontext?: SpaceKontext) =>
     api.get<{ spaces: SpaceSicht[]; darfAnlegen: boolean; darfBestandZuordnen?: boolean }>(
-      "/spaces",
+      `/spaces${kontext ? `?kontext=${kontext}` : ""}`,
+    ),
+  // Firmenfilter: die sichtbaren Artikel eines Kontexts; der Server prüft die Berechtigung je Zeile.
+  kontextArtikel: (kontext: SpaceKontext, partner?: string) =>
+    api.get<{
+      kontext: SpaceKontext;
+      partner: string | null;
+      artikel: ArtikelZeile[];
+      partnerBereiche: string[];
+    }>(
+      `/spaces/artikel?kontext=${kontext}${partner ? `&partner=${encodeURIComponent(partner)}` : ""}`,
     ),
   konten: () => api.get<{ konten: SpaceKonto[] }>("/spaces/konten"),
   teams: () => api.get<{ teams: SpaceTeamWahl[] }>("/spaces/teams"),
@@ -328,6 +368,13 @@ export const spacesApi = {
   anlegen: (eingabe: SpaceEingabe) => api.post<SpaceSicht>("/spaces", eingabe),
   aendern: (id: string, version: number, eingabe: SpaceEingabe) =>
     api.put<SpaceSicht>(pfad(id), { ...eingabe, version }),
+  loeschVorschau: (id: string) => api.post<Loeschvorschau>(`${pfad(id)}/loeschung/vorschau`),
+  // Die Version kommt aus der angezeigten Vorschau — nie aus einem später geladenen Stand.
+  loeschen: (vorschau: Loeschvorschau) =>
+    api.post<{ id: string; version: number; geloescht: true }>(
+      `${pfad(vorschau.space.id)}/loeschung`,
+      { version: vorschau.space.version },
+    ),
   artikel: (id: string, ansicht?: string) =>
     api.get<{
       space: { id: string; name: string };

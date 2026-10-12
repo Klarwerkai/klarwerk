@@ -208,6 +208,17 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // R-0507: die Eigentümerfreigabe — ob der Anfragende Eigentümer ist, entscheidet der Dienst.
     case "owner-validate":
       return { action };
+    // Aufnahme gesamt-peer-validierung (Antworten 18/19): die Weisung und ihre Sichtung. Ob der
+    // Anfragende Weisungsbefugnis hat bzw. die benannte Person ist, entscheidet der Zweig/Dienst.
+    // Ben, Nacharbeit 11: beide tragen PFLICHT die gelesene Fassung (`expectedVersion`).
+    case "weisung-validate":
+      return {
+        action,
+        sichtung: { verantwortlich: "verantwortliche-person", frist: "2099-12-31" },
+        expectedVersion: 1,
+      };
+    case "weisung-sichten":
+      return { action, sichtung: { ergebnis: "bestaetigt" }, expectedVersion: 1 };
     case "conflict":
       return {
         action,
@@ -253,6 +264,25 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // R-0235 / R-0749: „Hat geholfen" am Objekt — trägt nichts ausser der Aktion.
     case "helpful":
       return { action };
+    // Aufnahme gesamt-wissen-herkunft (Entscheidungen 18/19 und 27): fachlich gültige
+    // Mindestnutzlasten. Ob der Anfragende weisen, sichten oder übernehmen DARF (Befugnis am Konto,
+    // benannte Verantwortliche, `ko.validate`), entscheidet der Zweig — dieser Wächter prüft nur,
+    // dass das Tor am fremden vertraulichen Objekt vorher mit 404 greift.
+    case "weisung":
+      return { action, sichtung: { verantwortlich: "eva-sichtet", frist: "2099-12-31" } };
+    case "weisung-abschluss":
+      return { action };
+    case "externe-freigabe":
+      return {
+        action,
+        externeFreigabe: {
+          art: "wissen",
+          herausgeber: "Hersteller aus mega80",
+          freigegebenAm: "2026-01-15",
+          zustaendig: "eva-zustaendig",
+          anwendbarBestaetigt: true,
+        },
+      };
     default:
       throw new Error(`Keine Nutzlast hinterlegt für Aktion "${action}" — Test unvollständig.`);
   }

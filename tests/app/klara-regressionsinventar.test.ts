@@ -1090,6 +1090,13 @@ const INVENTAR: readonly string[] = [
   // kommt ALLEIN ueber `worker.js` herein (`capture()`, `:10`) — sie ist der Beleg dafuer, dass der
   // Worker im Muster kein Beiwerk ist: ohne ihn bliebe sie ungedeckt.
   "tests/chrome-einfuegen-leerzustand/neue-uebernahme.test.ts",
+  // Aufnahme chrome-erfassen-einfuegen (Rest aus 3412/3524/3279): Doppelklick, verzögerte
+  // Rechteanfrage, vertauschte Antworten und konkurrierende Erfassungen an der gemounteten Leiste
+  // und am Worker (`panel.html`, `panel.js`, `worker.js`), dazu die Geometrie der schmalen Leiste in
+  // Chromium (`extensions/klara-browser`). Beide über die Achse `erweiterung`; „klara" steht nicht
+  // im Pfad, K5 bleibt unverändert.
+  "tests/chrome-erfassen-einfuegen-rest/einfuegen-rennen.test.ts",
+  "tests/chrome-erfassen-einfuegen-rest/schmale-leiste-chromium.test.ts",
   // JOB 3512: DER AUSLOESER DIESES AUFTRAGS — die gemountete Chrome-Leiste mit der Firmen-CI. Sie
   // nennt `panel.html`, `panel.js` und `worker.js` in ihrem Kopf (`:5`) und kommt ueber die Achse
   // `erweiterung` herein. Der Kommentar weiter oben, der sie seit JOB 3512 als offene Luecke
@@ -1355,6 +1362,20 @@ const INVENTAR: readonly string[] = [
   // Vorlesen — Achse `komponente`. Kein „klara" im Pfad: K5 bleibt unverändert. NICHT GEMESSEN,
   // SONDERN AUS DER QUELLE ABGELEITET (die Bahn startet keine Tests).
   "tests/hilfe-elementbeispiel/elementbeispiel-mounted.test.tsx",
+  // produkt:20261008:klara-aktionen (Klara 05): drei neue Testdateien unter `tests/klara-aktionen/`
+  // tragen „klara" im PFAD (Achse `name`). Nachgeführt für genau diese drei Dateien — NICHT
+  // GEMESSEN, sondern aus der Pfadregel abgeleitet (in dieser Lieferung wurde kein Testlauf
+  // gestartet). Die Zahl in K5 ist hier bewusst nicht angefasst: nach Quelleninspektion fehlen im
+  // Inventar des Basisstands bereits die Verzeichnisse von Klara 01–04 (`tests/klara-basis/`,
+  // `klara-kontext/`, `klara-sprache/`, `klara-vorschau/`, `klara-vorschlaege/`, `klara-produkt/`);
+  // das ist ein Befund am Bestand, kein Teil dieses Auftrags. Nacharbeit 4: eine vierte Datei
+  // (`aufgabenaktion-und-nachlesen.test.ts`) nach derselben Pfadregel.
+  "tests/klara-aktionen/aufgabenaktion-und-nachlesen.test.ts",
+  "tests/klara-aktionen/auftrag-am-server.test.tsx",
+  "tests/klara-aktionen/auftragsgrenze-am-server.test.ts",
+  "tests/klara-aktionen/erkennung.test.ts",
+  // Nacharbeit 9: die Zitatdeckung des Rahmens „Zusammenfassen“ (S06), nach derselben Pfadregel.
+  "tests/klara-aktionen/zusammenfassen-zitatdeckung.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

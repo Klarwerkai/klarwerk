@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { CONF_TONE_CLASS, type ConfidentialityTone } from "../../lib/confidentiality";
 import type { KoPreviewSource } from "../../lib/koPreview";
 import { useLesevariante } from "../../lib/lesevariante";
+import { statusSchluessel } from "../../lib/wissensstatus";
 import { leerzustandsRahmen } from "../EmptyStateCtas";
 import { KoSummaryDisclosure } from "../KoSummaryDisclosure";
 import { Button, cx } from "../ui";
@@ -367,7 +368,7 @@ export function BibliothekListe({
             data-testid="bib-suchfeld"
             className="flex min-w-0 flex-1 items-center gap-2 rounded-btn border border-hairline bg-page px-3 py-2"
           >
-            <Search size={15} aria-hidden className="shrink-0 text-muted" />
+            <Search size={15} strokeWidth={1.8} aria-hidden className="shrink-0 text-muted" />
             <label htmlFor="bib-suche" className="sr-only">
               {t("lib.searchLabel")}
             </label>
@@ -411,7 +412,7 @@ export function BibliothekListe({
                       : "text-muted",
                   )}
                 >
-                  {s === "alle" ? t("lib.segment.alle") : t(`status.${s}`)}
+                  {s === "alle" ? t("lib.segment.alle") : t(statusSchluessel(s))}
                 </button>
               );
             })}

@@ -226,13 +226,13 @@ function DetailWert({
         <span
           data-audit-kurzkennung=""
           title={zeile.id}
-          className="font-mono text-[10.5px] text-muted-2"
+          className="font-mono text-klein text-muted-2"
         >
           {t("auditprotokoll.kurzkennung", { kurz: zeile.id.slice(0, 8) })}
         </span>
       ) : null}
       {kennungZumWort ? (
-        <span className="truncate font-mono text-[10.5px] text-muted-2">{zeile.id}</span>
+        <span className="truncate font-mono text-klein text-muted-2">{zeile.id}</span>
       ) : null}
       {zeile.herkunft === "verzeichnis" ? (
         <span data-audit-herkunft="verzeichnis" className="italic text-muted-2">
@@ -249,7 +249,7 @@ function DetailWert({
         <span className="italic text-muted-2">{t(zeile.hinweisKey)}</span>
       )}
       {kennungInSpalte && zeile.id !== undefined ? (
-        <span className="truncate font-mono text-[10.5px] text-muted-2">{zeile.id}</span>
+        <span className="truncate font-mono text-klein text-muted-2">{zeile.id}</span>
       ) : null}
     </span>
   );

@@ -59,6 +59,8 @@ import {
   type HalbwertszeitVerlaufRepo,
   InMemoryHalbwertszeitVerlauf,
 } from "./halbwertszeit-verlauf";
+// R-1355: die Herkunftsangaben des Wissensobjekts entstehen an genau einer Stelle.
+import { herkunftsmerkmaleBeiAnlage, urheberschaftBeiAnlage } from "./herkunft";
 import {
   type KoMetadataProjection,
   metadataTextsEqual,
@@ -85,10 +87,13 @@ import {
 import {
   bestandsStempelVon,
   brauchtPruefstand,
+  gleichePruefbasis,
   istWissensobjekt,
   mitPruefstand,
   pruefbasisVon,
 } from "./pruefbasis";
+// R-0750/R-1741: Prüfzeitpunkt der geltenden Fassung, an jedem Statuswechsel.
+import { mitPruefzeitpunkt } from "./pruefzeitpunkt";
 import {
   type EvidenceRepo,
   type KoCandidateQuery,
@@ -162,7 +167,9 @@ import {
   type KoSource,
   type KoStatus,
   type KoVeroeffentlichung,
+  type Kontoregel,
   type TrashedKo,
+  type WeisungsSichtung,
 } from "./types";
 
 /**
@@ -2524,8 +2531,8 @@ export class KoService {
       status: "offen",
       version: 1,
       // WP-SAMMEL21-FIX (Fix 4): abweichender Wissensträger nur, wenn explizit gesetzt (Import).
-      originalAuthor: input.originalAuthor?.trim() ? input.originalAuthor : input.author,
-      author: input.author,
+      // R-1355: die Regel steht an EINER Stelle (./herkunft.ts) und wird am Quelltext geprüft.
+      ...urheberschaftBeiAnlage(input),
       neededValidations: needed,
       assignments: [],
       // JOB 593 (Option A, N5): die kanonische Anlagenkennung entsteht HIER in ihrer Normalform.
@@ -2570,14 +2577,12 @@ export class KoService {
       // dieselbe Bauform wie `confidentiality` und `importCandidateId` daneben. Kein stiller
       // Default: ein KO ohne Herkunft bleibt ein KO ohne Herkunft, und genau das liest die
       // Oberflaeche als „unbekannt" statt als „Vordertuer".
-      ...(input.origin ? { origin: input.origin } : {}),
       // WP-SHIP8-CLOSE-3/4 (bens ROT-1): stabiler Kandidaten-Anker des Import-Accepts (DB-unique
       // erzwungen — der Insert eines zweiten KO desselben Kandidaten scheitert am Index/Guard).
-      ...(input.importCandidateId ? { importCandidateId: input.importCandidateId } : {}),
       // R-0139 / FR-EXT-02: der Importweg — dieselbe Bauform, kein stiller Default.
-      ...(input.importedVia ? { importedVia: input.importedVia } : {}),
       // R-0169 (Nacharbeit 5): der Fassungsbezug — dieselbe Bauform, kein stiller Default.
-      ...(input.dokumentHerkunft ? { dokumentHerkunft: input.dokumentHerkunft } : {}),
+      // R-1355: alle vier entstehen an EINER Stelle (./herkunft.ts), in derselben Reihenfolge.
+      ...herkunftsmerkmaleBeiAnlage(input),
       // R-0632 (Nacharbeit 10): die Herabstufungssperre — dieselbe Bauform, kein stiller Default.
       ...(input.stufeNurAnheben === true ? { stufeNurAnheben: true as const } : {}),
       // JOB 557: das Eigentümer-Aggregat nur setzen, wenn der Aufrufer eines MITBRINGT — dieselbe
@@ -4615,23 +4620,33 @@ export class KoService {
     return pruefbasisVon(ko, await this.pruefbestandStempel());
   }
 
-  private async lesefassung(
-    ko: KnowledgeObject,
-    vorInhaltsabruf?: () => void,
-  ): Promise<KnowledgeObject> {
-    return brauchtPruefstand(ko)
-      ? mitPruefstand(ko, await this.pruefbestandStempel(vorInhaltsabruf))
-      : ko;
+  // produkt:20261011:peter-p14 · B-07: die LESEFASSUNG leitet `aiCheck.ueberholt` allein aus Quelle
+  // und Kontext des Objekts ab (pruefbasis.ts, Abschnitt B-07) — ohne Bestandsstempel. Jeder Weg,
+  // der ein Objekt an einen Leser gibt (Routen, Zählungen, Antwortbewertung, Board-Nachreihung),
+  // liest diese Fassung; eine unsichtbare Änderung irgendwo im Bestand ändert sie nicht.
+  private async lesefassung(ko: KnowledgeObject): Promise<KnowledgeObject> {
+    return brauchtPruefstand(ko) ? mitPruefstand(ko) : ko;
   }
 
-  private async lesefassungen(
-    kos: KnowledgeObject[],
-    vorInhaltsabruf?: () => void,
-  ): Promise<KnowledgeObject[]> {
+  private async lesefassungen(kos: KnowledgeObject[]): Promise<KnowledgeObject[]> {
     if (!kos.some(brauchtPruefstand)) {
       return kos;
     }
-    const stempel = await this.pruefbestandStempel(vorInhaltsabruf);
+    return kos.map((ko) => mitPruefstand(ko));
+  }
+
+  /**
+   * B-07 · der INTERNE Abgleich: der aktive Bestand mit dem vollen, bestandsgebundenen Prüfstand
+   * (Quelle, Kontext UND Bestandsstempel). Einziger Leser ist die Hintergrundprüfung, die
+   * Nachweise nach einer Bestandsänderung neu abgleicht. Das Ergebnis verlässt den Server nicht —
+   * keine Route gibt es aus.
+   */
+  async listMitBestandsabgleich(): Promise<KnowledgeObject[]> {
+    const kos = (await this.repo.list({})).filter((k) => !k.deletedAt);
+    if (!kos.some(brauchtPruefstand)) {
+      return kos;
+    }
+    const stempel = await this.pruefbestandStempel();
     return kos.map((ko) => mitPruefstand(ko, stempel));
   }
 
@@ -4660,7 +4675,7 @@ export class KoService {
   async get(id: string, vorInhaltsabruf?: () => void): Promise<KnowledgeObject | undefined> {
     vorInhaltsabruf?.();
     const ko = await this.repo.findById(id);
-    return ko && !ko.deletedAt ? this.lesefassung(ko, vorInhaltsabruf) : undefined;
+    return ko && !ko.deletedAt ? this.lesefassung(ko) : undefined;
   }
 
   // D5 (KI aus): die aktuelle Fassung eines (nicht getrashten) Objekts — die Versions-Autorität der
@@ -4964,6 +4979,29 @@ export class KoService {
     });
   }
 
+  // produkt:20261011:peter-p14 · B-07 (Nacharbeit 5) — DER STILLE BESTANDSABGLEICH.
+  // Erneuert NUR den Bestandsteil der gespeicherten Bindung eines abgeschlossenen Nachweises; Status,
+  // Zeitpunkte, Abdeckung und Ursache bleiben, wie sie ausgegeben wurden. Geschrieben wird nur, wenn
+  // (a) Quelle und Kontext der gespeicherten Bindung noch der Startbindung entsprechen und (b) der
+  // jetzige Stand genau die Startbindung ist — hat sich während des Laufs etwas bewegt, bleibt der
+  // Nachweis intern überholt und der nächste Abgleich nimmt ihn wieder auf. Ein wartender Vermerk
+  // (öffentlicher Lauf) wird nie überschrieben.
+  async vermerkeBestandsabgleich(id: string, startBasis: AiCheckBasis): Promise<boolean> {
+    const ko = await this.repo.findById(id);
+    const check = ko?.aiCheck;
+    if (!ko || ko.deletedAt || !check || check.status === "pending") {
+      return false;
+    }
+    if (check.basis?.quelle !== startBasis.quelle || check.basis?.kontext !== startBasis.kontext) {
+      return false;
+    }
+    if (!gleichePruefbasis(await this.aktuellePruefbasis(ko), startBasis)) {
+      return false;
+    }
+    const { ueberholt: _abgeleitet, ...gespeichert } = check;
+    return this.repo.setAiCheck(id, { ...gespeichert, basis: startBasis });
+  }
+
   // AUFTRAG-mega28 A2: die Abdeckung des Laufs (gedeckelt/übersprungen/abgebrochen) reist mit dem
   // Abschluss mit — additiv, der bedingte Feld-Patch bleibt unverändert schmal.
   // AUFNAHME 20260922: `basis` ist die Basis, unter der der Lauf GESTARTET ist (der Worker liest sie
@@ -5071,14 +5109,14 @@ export class KoService {
     query.vorInhaltsabruf?.();
     const kos = await this.repo.listByIds(hits.map((hit) => hit.koId));
     // AUFNAHME 20260922: auch der Suchkandidat trägt die Lesefassung des Prüfnachweises.
-    // D5: deren Stempel liest nach `listByIds` weiter — die Sperre reist mit (s. `pruefbestandStempel`).
+    // P14 · B-07: sie liest nach `listByIds` nichts mehr (kein Bestandsstempel) — D5 braucht hier
+    // deshalb keinen weiteren Sperrpunkt.
     return this.lesefassungen(
       kos
         // R-0658: ein Objekt in Quarantäne ist kein Suchkandidat (Ask/Klara) — auch nicht über
         // Kategorie oder Schlagwort, die in der Metadatenprojektion weiter stehen.
         .filter((ko) => !ko.deletedAt && !inSchutzdatenQuarantaene(ko))
         .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)),
-      query.vorInhaltsabruf,
     );
   }
 
@@ -5248,13 +5286,19 @@ export class KoService {
     extraPayload: Record<string, unknown>,
     papierkorb?: KoPapierkorbBedingung,
   ): Promise<void> {
+    // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 24): der Beleg hält fest, OB das Objekt
+    // eine Leserliste aus der Quelle trug — nur ein Ja/Nein, keine Kennungen. Nach der Endlöschung
+    // ist das die einzige Schutzinformation, die das Auditprotokoll noch über das Objekt hat; fehlt
+    // sie (Altbelege), gilt das Objekt dort als unklar geschützt und bleibt verborgen.
+    const vorher = await this.repo.findById(id);
+    const quellbeschraenkt = Array.isArray(vorher?.quellrechte?.leser);
     // 1) Cleanup ZUERST — schlägt es fehl, bleibt das KO bestehen (kein Delete, kein Audit). S. (A) oben.
     await this.onPurge?.(id, actor);
     const auditInput = {
       actor,
       action: "ko.purged" as const,
       target: id,
-      payload: { reason, ...extraPayload },
+      payload: { reason, ...extraPayload, quellbeschraenkt },
     };
     const audit = this.audit;
     // ============================================================================================
@@ -5368,6 +5412,36 @@ export class KoService {
   // Papierkorb-Ansicht (Admin): nur Metadaten, jüngste Löschung zuerst.
   // SCRUM-523 P.3 (WP2): reine Leseansicht — löst KEINE Endlöschung mehr aus. Abgelaufene Einträge sind
   // an ihrem `expiresAt` (Vergangenheit) ehrlich erkennbar, bis ein expliziter runTrashSweep sie entfernt.
+  /**
+   * aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 14): die SICHTBARKEITSFAKTEN jedes
+   * Objekts — auch im Papierkorb — und sonst nichts: Kennung, führender Space, Stufe, Autor. Das
+   * Auditprotokoll nennt Objekte auch nach dem Löschen; ob ein Leser sie sehen darf, entscheidet
+   * die Route mit `darfSehen` gegen genau diese Fakten. Kein Titel, kein Inhalt, keine Lesefassung.
+   * Nacharbeit 24 (Ben): dazu die Leserliste aus der Quelle (`quellrechte.leser`) — ohne sie fiele
+   * ein Objekt mit Quellbeschränkung im Protokoll auf die bloße Stufenregel zurück.
+   */
+  async sichtbarkeitsfaktenAller(): Promise<
+    {
+      id: string;
+      spaceId?: string;
+      confidentiality: KnowledgeObject["confidentiality"];
+      author: string;
+      quellrechte?: { leser: readonly string[] };
+    }[]
+  > {
+    const all = await this.repo.list({});
+    return all.map((k) => {
+      const leser = k.quellrechte?.leser;
+      return {
+        id: k.id,
+        ...(typeof k.spaceId === "string" ? { spaceId: k.spaceId } : {}),
+        confidentiality: k.confidentiality,
+        author: k.author,
+        ...(Array.isArray(leser) ? { quellrechte: { leser: [...leser] } } : {}),
+      };
+    });
+  }
+
   async trashed(): Promise<TrashedKo[]> {
     const all = await this.repo.list({});
     return all
@@ -6015,7 +6089,12 @@ export class KoService {
     };
     // R-0658: dieselbe Schutzdatenprüfung wie beim Anlegen, an der neuen Fassung — eine
     // Überarbeitung mit Schutzdaten setzt die Quarantäne, eine ohne hebt sie auf.
-    const geprueft = mitSchutzdatenBefund(fassung, at);
+    // R-0750: eine Freigabe in derselben Bewegung ist die Prüfung DIESER Fassung (Zeitpunkt jetzt);
+    // ohne Freigabe ist die Fassung offen und trägt keinen Prüfzeitpunkt mehr.
+    const geprueft = mitSchutzdatenBefund(
+      mitPruefzeitpunkt(ko, fassung, at, wirkendeFreigabe !== undefined),
+      at,
+    );
     if (!wirkendeFreigabe) {
       return geprueft;
     }
@@ -6024,6 +6103,75 @@ export class KoService {
     // zweiter Schreibvorgang wäre ein zweiter Zustand und (über `withKoLock`) nicht einmal möglich.
     const ownership = withRole(ownershipOf(geprueft), "validators", [wirkendeFreigabe.actor]);
     return ownership === null ? geprueft : { ...geprueft, ownership };
+  }
+
+  // ==============================================================================================
+  // AW06-K02 (Ben, Nacharbeit 4) — DIE ANNAHME VERWEIST AUF IHREN BELEG.
+  // ==============================================================================================
+  //
+  // Die beiden Freigabewege dieses Dienstes (`reviseUndFreigeben`, Übernahme in `decideProposal`)
+  // schrieben ihren Beleg `ko.admin-validated`, hängten aber keinen `validationDecisionRef` an die
+  // neue Fassung. Damit liess sich die Annahme dieser Fassung — Person, Zeitpunkt, Kontoregel — am
+  // Objekt nicht benennen. Jetzt wird der Verweis IN DERSELBEN KLAMMER geschrieben, als letzter
+  // Schritt des Belegs: zweiter Write auf demselben Transaktionsclient (dieselbe Bauform wie
+  // `setValidationStateMitBeleg`, „Zweiter Write DERSELBEN Klammer").
+  /**
+   * AW06-K02 (Ben, Nacharbeit 8) — DER BELEGTE ANNAHMEBEZUG EINES BESTANDSOBJEKTS.
+   *
+   * Objekte, die vor `annahmeRef` validiert wurden, tragen ihre Annahme nur im
+   * `validationDecisionRef`. Bevor ein neuer Beleg diesen Verweis ersetzt, wird er hier geprüft und —
+   * nur wenn er belegt die Annahme dieser Fassung ist — als `annahmeRef` übernommen: derselbe Eintrag
+   * (Nummer UND Hash), eine Annahmeaktion (`ko.admin-validated`, `ko.owner-validated` oder eine
+   * grüne `ko.rated`), dieselbe Fassung, Objekt validiert. Person, Zeitpunkt und Kontoregel bleiben
+   * damit die des bestehenden Belegs; nichts wird ergänzt. Passt etwas nicht, gibt es keinen
+   * Annahmebezug — es wird keiner erfunden.
+   */
+  private async belegteAnnahmeAusVerweis(
+    ko: KnowledgeObject,
+  ): Promise<KnowledgeObject["annahmeRef"] | undefined> {
+    const ref = ko.validationDecisionRef;
+    if (
+      !this.audit ||
+      !ref ||
+      ko.status !== "validiert" ||
+      ko.annahmeRef?.koVersion === ko.version
+    ) {
+      return undefined;
+    }
+    const beleg = (await this.audit.list({ target: ko.id })).find(
+      (e) => e.seq === ref.auditSeq && e.hash === ref.auditHash,
+    );
+    const p = beleg?.payload ?? {};
+    const istAnnahme =
+      beleg?.action === "ko.admin-validated" ||
+      beleg?.action === "ko.owner-validated" ||
+      // Antworten 18/19: die unmittelbar gültige Weisung ist ebenfalls eine Annahme.
+      beleg?.action === "ko.weisung-validated" ||
+      (beleg?.action === "ko.rated" && p.verdict === "up");
+    if (!beleg || !istAnnahme || p.koVersion !== ko.version) {
+      return undefined;
+    }
+    return { auditSeq: ref.auditSeq, auditHash: ref.auditHash, koVersion: ko.version };
+  }
+
+  private async verweisAufAnnahme(
+    updated: KnowledgeObject,
+    beleg: { seq: number; hash: string } | undefined,
+    tx?: TxContext,
+  ): Promise<void> {
+    if (!beleg) {
+      return;
+    }
+    await this.repo.update(
+      {
+        ...updated,
+        rowVersion: (updated.rowVersion ?? 0) + 1,
+        validationDecisionRef: { auditSeq: beleg.seq, auditHash: beleg.hash },
+        // AW06-K02: diese Wege SIND die Annahme der neuen Fassung.
+        annahmeRef: { auditSeq: beleg.seq, auditHash: beleg.hash, koVersion: updated.version },
+      },
+      tx,
+    );
   }
 
   // ==============================================================================================
@@ -6090,10 +6238,18 @@ export class KoService {
             { actor, action: "ko.revised", target: id, payload: { version } },
             tx,
           );
-          await this.audit?.record(
-            { actor, action: "ko.admin-validated", target: id, payload: { koVersion: version } },
+          // AW06-K02: der Beleg nennt die Kontoregel — hier die direkte Annahme durch ein Konto
+          // mit Freigaberecht (die Route lässt diesen Weg nur dafür zu).
+          const annahme = await this.audit?.record(
+            {
+              actor,
+              action: "ko.admin-validated",
+              target: id,
+              payload: { koVersion: version, kontoregel: "direktannahme" satisfies Kontoregel },
+            },
             tx,
           );
+          await this.verweisAufAnnahme(fassung, annahme, tx);
         },
       };
     });
@@ -6125,8 +6281,19 @@ export class KoService {
       clearBody?: boolean;
       baseVersion: number;
       origin?: string;
+      /** package:pruefablauf: die benannte Prüfperson. Ihr Freigaberecht prüft die Route. */
+      pruefer?: string;
+      /** AW06-K02: die Kontoregel des Einreichers; die Route leitet sie aus seinem Recht ab. */
+      kontoregel?: KoProposal["kontoregel"];
     },
   ): Promise<{ ko: KnowledgeObject; proposal: KoProposal }> {
+    if (input.pruefer !== undefined && input.pruefer === author) {
+      // Dieselbe Regel wie bei der Entscheidung: die eigene Änderung prüft niemand selbst.
+      throw new KoError(
+        "PROPOSAL_OWN",
+        "Die eigene Änderung prüft niemand selbst — bitte eine andere Person benennen.",
+      );
+    }
     const statement = input.statement.trim();
     if (statement.length === 0) {
       // Ein leerer Vorschlag ist kein Vorschlag — und als Übernahme wäre er eine Löschung.
@@ -6153,6 +6320,8 @@ export class KoService {
         ...(input.clearBody === true ? { clearBody: true } : {}),
         status: "offen",
         ...(input.origin ? { origin: input.origin } : {}),
+        ...(input.pruefer ? { pruefer: input.pruefer } : {}),
+        ...(input.kontoregel ? { kontoregel: input.kontoregel } : {}),
       };
       const updated: KnowledgeObject = { ...ko, proposals: [...(ko.proposals ?? []), proposal] };
       return {
@@ -6164,7 +6333,12 @@ export class KoService {
               actor: author,
               action: "ko.proposed",
               target: id,
-              payload: { proposalId: proposal.id, baseVersion: proposal.baseVersion },
+              payload: {
+                proposalId: proposal.id,
+                baseVersion: proposal.baseVersion,
+                ...(proposal.pruefer ? { pruefer: proposal.pruefer } : {}),
+                ...(proposal.kontoregel ? { kontoregel: proposal.kontoregel } : {}),
+              },
             },
             tx,
           );
@@ -6193,9 +6367,14 @@ export class KoService {
     id: string,
     proposalId: string,
     actor: string,
-    entscheidung: "uebernehmen" | "ablehnen",
+    entscheidung: "uebernehmen" | "ablehnen" | "rueckfrage",
     opts: { trust: number; expectedVersion?: number; note?: string },
   ): Promise<{ ko: KnowledgeObject; proposal: KoProposal }> {
+    const rueckfrageText = (opts.note ?? "").trim();
+    if (entscheidung === "rueckfrage" && rueckfrageText.length === 0) {
+      // Eine Rückfrage ohne Inhalt wäre nicht nachvollziehbar — niemand wüsste, was fehlt.
+      throw new KoError("INVALID_SOURCE", "Eine Rückfrage braucht einen Text.");
+    }
     return this.mutateKoTx(id, (ko) => {
       this.pruefeErwarteteVersion(ko, opts.expectedVersion);
       const offen = ko.proposals ?? [];
@@ -6219,6 +6398,43 @@ export class KoService {
         );
       }
       const entschiedenAm = new Date(this.now()).toISOString();
+      // ==========================================================================================
+      // Aufnahme gesamt-peer-validierung (package:pruefablauf, Ben Nacharbeit 3) — DIE RÜCKFRAGE.
+      // ==========================================================================================
+      //
+      // Die dritte Antwort neben Übernehmen und Ablehnen. Sie ENTSCHEIDET NICHTS: der Vorschlag
+      // bleibt `offen`, das Objekt behält Inhalt, Fassung und Prüfstand. Festgehalten wird, wer was
+      // wann gefragt hat — am Vorschlag (für Einreicher und Prüfer sichtbar) und im Protokoll.
+      // Dieselben Regeln wie die Entscheidung: nur an einem offenen Vorschlag, nicht am eigenen.
+      if (entscheidung === "rueckfrage") {
+        const befragt: KoProposal = {
+          ...vorschlag,
+          rueckfragen: [
+            ...(vorschlag.rueckfragen ?? []),
+            { von: actor, at: entschiedenAm, text: rueckfrageText },
+          ],
+        };
+        const updated: KnowledgeObject = {
+          ...ko,
+          proposals: offen.map((p) => (p.id === proposalId ? befragt : p)),
+        };
+        return {
+          updated,
+          value: { ko: updated, proposal: befragt },
+          // KEIN Snapshot: es ist keine neue Inhaltsfassung entstanden.
+          audit: async (tx) => {
+            await this.audit?.record(
+              {
+                actor,
+                action: "ko.proposal-queried",
+                target: id,
+                payload: { proposalId, baseVersion: vorschlag.baseVersion },
+              },
+              tx,
+            );
+          },
+        };
+      }
       if (entscheidung === "ablehnen") {
         const abgelehnt: KoProposal = {
           ...vorschlag,
@@ -6241,7 +6457,11 @@ export class KoService {
                 actor,
                 action: "ko.proposal-rejected",
                 target: id,
-                payload: { proposalId, baseVersion: vorschlag.baseVersion },
+                payload: {
+                  proposalId,
+                  baseVersion: vorschlag.baseVersion,
+                  ...(vorschlag.kontoregel ? { kontoregel: vorschlag.kontoregel } : {}),
+                },
               },
               tx,
             );
@@ -6287,15 +6507,23 @@ export class KoService {
             },
             tx,
           );
-          await this.audit?.record(
+          // AW06-K02: der Beleg nennt die Kontoregel, unter der der Vorschlag entstand —
+          // Pflichtprüfung oder freiwillige Zweitprüfung. Altvorschläge ohne Regel: kein Feld,
+          // statt einer geratenen.
+          const annahme = await this.audit?.record(
             {
               actor,
               action: "ko.admin-validated",
               target: id,
-              payload: { koVersion: fassung.version, proposalId },
+              payload: {
+                koVersion: fassung.version,
+                proposalId,
+                ...(vorschlag.kontoregel ? { kontoregel: vorschlag.kontoregel } : {}),
+              },
             },
             tx,
           );
+          await this.verweisAufAnnahme(updated, annahme, tx);
         },
       };
     });
@@ -6517,6 +6745,8 @@ export class KoService {
         // beim Anlegen und Überarbeiten, VOR Commit und Projektion. Ein übernommener Text mit
         // Schutzdaten setzt die Quarantäne, einer ohne hebt eine bestehende auf.
         committed = mitSchutzdatenBefund(committed, at);
+        // R-0750: die übernommene Fassung ist offen — ihr gilt kein Prüfzeitpunkt der Vorfassung.
+        committed = mitPruefzeitpunkt(before, committed, at);
       }
 
       // ---- DER COMMIT: GENAU EIN SCHREIBVORGANG ---------------------------------------------
@@ -7051,6 +7281,11 @@ export class KoService {
   // Erfassungszeitpunkt), und erst danach zählen sie. Eine Beobachtung, die nicht festgehalten
   // werden konnte, zählt nicht — sonst hinge eine Frist an einem Stand, der nach dem nächsten
   // Löschen eines anderen Objekts nicht mehr rekonstruierbar wäre.
+  //
+  // produkt:20261011:peter-p14 · B-07 (Nacharbeit 5, Bens Befund): „über den ganzen Bestand" hieß,
+  // dass Änderungen an einem für den Leser UNSICHTBAREN Eintrag die Frische seiner sichtbaren
+  // Einträge verschoben. Jetzt zählen nur Beobachtungen, die beim Erfassen für jedes Konto lesbar
+  // waren (`oeffentlich`, frische.ts) — weiterhin unabhängig vom Betrachter, aber ohne Seitenkanal.
   async gelernteHalbwertszeiten(): Promise<GelernteHalbwertszeiten> {
     const jetzt = this.now();
     if (this.halbwertszeitSpeicher && this.halbwertszeitSpeicher.bis > jetzt) {
@@ -7251,38 +7486,71 @@ export class KoService {
   // bei Konflikten gegen nicht existierende/offene Bezugs-KOs). Konsistent mit der FE-Ableitung aus
   // SCRUM-357 (ready → in Prüfung). Eine spätere Auto-Erholung bleibt bewusst aus: nach `resolve` bleibt
   // das KO review-pflichtig und wird über die normale Bewertung erneut validiert (kein Fake-Validate).
+  //
+  // Aufnahme gesamt-peer-validierung (Ben, Nacharbeit 1): UNTER DEMSELBEN KO-LOCK wie die
+  // Bewertungsklammer (`setValidationStateMitBeleg`). Ohne ihn las dieser Weg „offen" und tat nichts,
+  // während eine laufende Bewertung noch rechnete — und die Bewertung schrieb danach „validiert, 99"
+  // über einen eben angelegten Wahrheitskonflikt. Jetzt wartet er auf die Bewertung und findet dann
+  // ihr „validiert"; die Bewertung liest den Konfliktbestand ihrerseits erst unter dem Lock.
+  //
+  // Ben, Nacharbeit 3 — DERSELBE KONFLIKT GEHT GENAU EINMAL EIN. Hatte die eben geschriebene
+  // Bewertung den Wahrheitskonflikt schon in ihre Formel aufgenommen, zog dieser Weg ihn danach ein
+  // zweites Mal pauschal ab (87 → 75, je nach Reihenfolge). `neuerWert` rechnet deshalb aus der
+  // gespeicherten Grundlage neu (`vertrauensGrundlage`, gesetzt von der Bewertungsklammer); die
+  // Validierung liefert die Funktion (`ValidationService.wahrheitskonfliktFolge`), denn die Formel
+  // gehört dorthin. Ohne `neuerWert` bleibt es beim bisherigen Abzug.
   async markTruthConflictReview(
     id: string,
     actor = "system",
+    neuerWert?: (ko: KnowledgeObject) => {
+      trust: number;
+      grundlage?: { ohneKonflikte: number; konflikte: string[] };
+    },
   ): Promise<KnowledgeObject | undefined> {
-    const ko = await this.repo.findById(id);
-    if (!ko || ko.status !== "validiert") {
-      return ko;
-    }
-    const previousTrust = ko.trust;
-    const trust = Math.max(0, ko.trust - TRUTH_CONFLICT_TRUST_PENALTY);
-    const updated: KnowledgeObject = { ...ko, status: "offen", trust };
-    await this.schreibeMitBeleg(
-      (tx) => this.repo.update(updated, tx),
-      async (tx) => {
-        await this.audit?.record(
-          {
-            actor,
-            action: "ko.conflict-review",
-            target: id,
-            payload: {
-              previousStatus: "validiert",
-              previousTrust,
-              trust,
-              reason: "truth-conflict",
+    return this.withKoLock(id, async () => {
+      const ko = await this.repo.findById(id);
+      if (!ko || ko.status !== "validiert") {
+        return ko;
+      }
+      const previousTrust = ko.trust;
+      const neu = neuerWert
+        ? neuerWert(ko)
+        : { trust: Math.max(0, ko.trust - TRUTH_CONFLICT_TRUST_PENALTY) };
+      const trust = neu.trust;
+      const { vertrauensGrundlage: _bisher, ...ohneGrundlage } = ko;
+      // R-0750: der Rückfall auf „offen" nimmt den Prüfzeitpunkt weg (`pruefzeitpunkt.ts`).
+      const updated: KnowledgeObject = mitPruefzeitpunkt(
+        ko,
+        {
+          ...ohneGrundlage,
+          status: "offen",
+          trust,
+          ...(neu.grundlage ? { vertrauensGrundlage: { trust, ...neu.grundlage } } : {}),
+        },
+        new Date(this.now()).toISOString(),
+      );
+      await this.schreibeMitBeleg(
+        (tx) => this.repo.update(updated, tx),
+        async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.conflict-review",
+              target: id,
+              payload: {
+                previousStatus: "validiert",
+                previousTrust,
+                trust,
+                reason: "truth-conflict",
+              },
             },
-          },
-          tx,
-        );
-      },
-      () => this.rollbackKo(ko),
-    );
-    return updated;
+            tx,
+          );
+        },
+        () => this.rollbackKo(ko),
+      );
+      return updated;
+    });
   }
 
   // Von der Validierung gesetzt (FR-VAL-01/02): Trust + Status nach Bewertungslage.
@@ -7300,7 +7568,11 @@ export class KoService {
       if (opts.expectedVersion !== undefined && ko.version !== opts.expectedVersion) {
         return ko; // Version hat sich geändert (Revise) → Bewertung galt der Vorversion, nicht schreiben.
       }
-      const updated = { ...ko, trust: state.trust, status: state.status };
+      const updated = mitPruefzeitpunkt(
+        ko,
+        { ...ko, trust: state.trust, status: state.status },
+        new Date(this.now()).toISOString(),
+      );
       await this.repo.update(updated);
       return updated;
     });
@@ -7338,9 +7610,31 @@ export class KoService {
   // geworfen. Runde 3 (BEN-R2-B2): hatte der Schritt schon Auditeinträge angehängt (etwa `ko.rated`
   // vor einem gescheiterten `ko.returned-to-*`), bleiben sie stehen — die Kette ist append-only —,
   // und `ko.change-rolled-back` nennt sie danach ausdrücklich als zurückgenommen.
+  //
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27: `zustand` darf zusätzlich die
+  // Herkunft der Entscheidung liefern (`weisung` bzw. `externeFreigabe`). Sie wird im SELBEN ersten
+  // Schreibvorgang gesetzt wie Status und Vertrauen — also gemeinsam mit dem Beleg oder gar nicht.
+  // Andere Felder kann `zustand` nicht setzen.
   async setValidationStateMitBeleg(
     id: string,
-    zustand: (ko: KnowledgeObject) => Promise<{ trust: number; status: KoStatus }>,
+    zustand: (ko: KnowledgeObject) => Promise<{
+      trust: number;
+      status: KoStatus;
+      herkunft?: Pick<KnowledgeObject, "weisung" | "externeFreigabe">;
+      // R-0256: die Grundlage dieses Werts (s. `KnowledgeObject.vertrauensGrundlage`). Fehlt sie,
+      // wird eine frühere entfernt — sie gälte sonst für einen Wert, den dieser Weg ersetzt.
+      grundlage?: { ohneKonflikte: number; konflikte: string[] };
+      // AW06-K02 (Ben, Nacharbeit 7): ist der Beleg dieses Vorgangs die ANNAHME dieser Fassung?
+      // Dann wird er zusätzlich als `annahmeRef` festgehalten. Sonst bleibt ein vorhandener
+      // Annahmeverweis unberührt — eine Rückgabe verdrängt ihn nicht.
+      annahme?: boolean;
+      // Antwort 19: ist der Beleg die unmittelbar gültige WEISUNG? Dann wird ihre Sichtung
+      // (verantwortliche Person, Frist) an genau diesen Beleg gebunden festgehalten.
+      weisung?: Pick<WeisungsSichtung, "erteiltVon" | "bereich" | "verantwortlich" | "frist">;
+      // Antwort 19: das Ergebnis der Sichtung, gebunden an den Beleg DIESES Vorgangs. `widerrufen`
+      // nimmt zugleich den Annahmeverweis der Fassung zurück — die Annahme gilt nicht mehr.
+      sichtung?: { art: "bestaetigt" | "widerrufen"; von: string; am: string };
+    }>,
     opts: { expectedVersion: number; beiVersionswechsel: "nichts" | "nurBeleg" },
     beleg: (tx?: TxContext) => Promise<{ auditSeq: number; auditHash: string } | null>,
     ruecknahme: () => Promise<void> = async () => undefined,
@@ -7375,7 +7669,36 @@ export class KoService {
           return { ko, geschrieben: false, ref };
         }
         const state = await zustand(ko);
-        const updated: KnowledgeObject = { ...ko, trust: state.trust, status: state.status };
+        // AW06-K02 (Ben, Nacharbeit 8): BESTAND ohne `annahmeRef`. Zeigt der bisherige
+        // Entscheidungsverweis belegt auf die Annahme DIESER Fassung, wird er übernommen, BEVOR der
+        // Beleg dieses Vorgangs (etwa die Rückgabe einer gelben Stimme) ihn ersetzt.
+        // Antwort 19: ein Widerruf nimmt die Annahme zurück — dann wird auch keine übernommen.
+        const widerruf = state.sichtung?.art === "widerrufen";
+        const bisherigeAnnahme =
+          state.annahme || widerruf ? undefined : await this.belegteAnnahmeAusVerweis(ko);
+        const { vertrauensGrundlage: _bisher, annahmeRef: _annahme, ...ohneGrundlage } = ko;
+        // R-0750: der Übergang nach „validiert" bekommt HIER, unter demselben Lock, seinen
+        // Prüfzeitpunkt; ein Rückfall auf „offen" nimmt ihn weg.
+        const updated: KnowledgeObject = mitPruefzeitpunkt(
+          ko,
+          {
+            ...ohneGrundlage,
+            ...(ko.annahmeRef && !widerruf ? { annahmeRef: ko.annahmeRef } : {}),
+            trust: state.trust,
+            status: state.status,
+            ...(state.grundlage
+              ? { vertrauensGrundlage: { trust: state.trust, ...state.grundlage } }
+              : {}),
+            ...(bisherigeAnnahme ? { annahmeRef: bisherigeAnnahme } : {}),
+            // Aufnahme gesamt-wissen-herkunft: die Herkunft der Entscheidung (Weisung mit
+            // punktweiser Entscheidung bzw. externe Freigabe) im selben ersten Schreibvorgang.
+            ...(state.herkunft?.weisung ? { weisung: state.herkunft.weisung } : {}),
+            ...(state.herkunft?.externeFreigabe
+              ? { externeFreigabe: state.herkunft.externeFreigabe }
+              : {}),
+          },
+          new Date(this.now()).toISOString(),
+        );
         const schritte = async (tx?: TxContext) => {
           await this.repo.update(updated, tx);
           const ref = await beleg(tx);
@@ -7387,6 +7710,44 @@ export class KoService {
             ...updated,
             rowVersion: (updated.rowVersion ?? 0) + 1,
             validationDecisionRef: { auditSeq: ref.auditSeq, auditHash: ref.auditHash },
+            ...(state.annahme
+              ? {
+                  annahmeRef: {
+                    auditSeq: ref.auditSeq,
+                    auditHash: ref.auditHash,
+                    koVersion: updated.version,
+                  },
+                }
+              : {}),
+            ...(state.weisung
+              ? {
+                  weisungsSichtung: {
+                    auditSeq: ref.auditSeq,
+                    auditHash: ref.auditHash,
+                    koVersion: updated.version,
+                    ...state.weisung,
+                  },
+                }
+              : {}),
+            ...(state.sichtung && updated.weisungsSichtung
+              ? {
+                  weisungsSichtung: {
+                    ...updated.weisungsSichtung,
+                    ergebnis: { ...state.sichtung, auditSeq: ref.auditSeq },
+                  },
+                }
+              : {}),
+            // Aufnahme gesamt-wissen-herkunft · Nacharbeit 14 (Ben B1): die Weisung mit punktweiser
+            // Entscheidung wird an GENAU ihren Beleg gebunden — so ist eindeutig, welche Weisung
+            // (diese oder eine frühere `weisungsSichtung`) die aktuelle ist. Beide bleiben stehen.
+            ...(state.herkunft?.weisung && updated.weisung
+              ? {
+                  weisung: {
+                    ...updated.weisung,
+                    beleg: { auditSeq: ref.auditSeq, auditHash: ref.auditHash },
+                  },
+                }
+              : {}),
           };
           await this.repo.update(mitVerweis, tx);
           return { ko: mitVerweis, geschrieben: true, ref };
@@ -7494,6 +7855,105 @@ export class KoService {
       throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
     return trust;
+  }
+
+  // ==============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · Entscheidung 19 — DIE NACHFOLGENDE SICHTUNG EINER WEISUNG.
+  // ==============================================================================================
+  //
+  // „Unmittelbar gültige befugte Weisung mit nachfolgender zuständiger Sichtung." Gesichtet wird
+  // von genau der Person, die beim Setzen als verantwortlich benannt wurde — die Route prüft das
+  // vorab, diese Stelle noch einmal unter dem Objekt-Lock (zwischen beiden könnte eine neue Weisung
+  // gesetzt worden sein). Die Sichtung ändert WEDER Status noch Vertrauen noch Fassung: die Weisung
+  // bleibt gültig, solange kein Widerruf oder Konflikt vorliegt; sie hält nur fest, wer sie wann
+  // gesehen hat. Eine zweite Sichtung derselben Weisung wird abgelehnt, nicht überschrieben.
+  async weisungSichten(id: string, actor: string, vermerk?: string): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      const weisung = ko.weisung;
+      if (!weisung || weisung.sichtung.verantwortlich !== actor || weisung.sichtung.gesichtetAm) {
+        throw new KoError(
+          "KO_STALE",
+          "Die Weisung an diesem Wissensobjekt ist nicht (mehr) von Ihnen zu sichten.",
+        );
+      }
+      const am = new Date(this.now()).toISOString();
+      const text = vermerk?.trim();
+      const updated: KnowledgeObject = {
+        ...ko,
+        weisung: {
+          ...weisung,
+          sichtung: {
+            ...weisung.sichtung,
+            gesichtetVon: actor,
+            gesichtetAm: am,
+            ...(text ? { vermerk: text } : {}),
+          },
+        },
+      };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              // Integration Nacharbeit 12: eigener Name — `ko.weisung-gesichtet` ist die Sichtungs-
+              // ENTSCHEIDUNG aus gesamt-peer-validierung (mit Verweis); dies ist der Sichtungsvermerk
+              // der Weisung mit punktweiser Entscheidung (ohne Statuswirkung, ohne Verweis).
+              action: "ko.weisung-sichtung-vermerkt",
+              target: id,
+              payload: { weisungVon: weisung.von, weisungAm: weisung.am, fassung: weisung.fassung },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · R-0573 (Nacharbeit 11, Ben B2) — ÜBERSTIMMT, GESCHLOSSEN.
+  // ==============================================================================================
+  //
+  // „Überstimmte Punkte werden geschlossen, nicht gelöscht." Es ändert sich NUR das Feld
+  // `geschlossen` — keine Inhaltsfassung, kein Text, kein Status, kein Autor, kein Originalautor,
+  // keine Herkunft, keine Historie. Das Objekt bleibt im Bestand und lesbar. Bauform wie
+  // `markMergedInto`: per Objekt serialisiert, Beleg im selben Schritt. Ein bereits geschlossener
+  // Punkt wird nicht ein zweites Mal geschlossen (der erste Vermerk bleibt die Auskunft). WER das
+  // darf, entscheidet der Aufrufer (die Weisungsroute) — dieser Dienst kennt keine Rechte.
+  async schliesseDurchWeisung(
+    id: string,
+    eintrag: { durchKoId: string; conflictId: string },
+    actor: string,
+  ): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      if (ko.geschlossen) {
+        throw new KoError("KO_STALE", "Dieser Wissenspunkt ist bereits geschlossen.");
+      }
+      const geschlossen = {
+        durchKoId: eintrag.durchKoId,
+        conflictId: eintrag.conflictId,
+        von: actor,
+        am: new Date(this.now()).toISOString(),
+        fassung: ko.version,
+      };
+      const updated: KnowledgeObject = { ...ko, geschlossen };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.durch-weisung-geschlossen",
+              target: id,
+              payload: geschlossen,
+            },
+            tx,
+          );
+        },
+      };
+    });
   }
 
   // ==============================================================================================

@@ -58,7 +58,7 @@ export function leerzustandsRahmen(
       {/* SCRUM-377: ruhige Story-/Kreis-Rahmung (Progressive Disclosure, keine Textwand). */}
       <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
         <span className="text-[12.5px] font-semibold text-text">{t(story.titleKey)}</span>
-        <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2">
+        <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
           {t("task.phaseLabel")} {t(story.phaseLabelKey)}
         </span>
       </div>
@@ -92,7 +92,7 @@ export function leerzustandsZeile(t: TFunction, context: StorySurface): JSX.Elem
       className="mt-1 text-[11.5px] leading-relaxed text-muted-2"
     >
       <span className="font-semibold text-muted">{t(story.titleKey)}</span>{" "}
-      <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase">
+      <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold uppercase">
         {t("task.phaseLabel")} {t(story.phaseLabelKey)}
       </span>{" "}
       {t(story.leadKey)}

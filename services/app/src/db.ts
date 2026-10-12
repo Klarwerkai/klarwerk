@@ -8,7 +8,7 @@ import {
   CAPTURE_SCHEMA,
 } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
-import { vorratsKonfiguration } from "../../db-tx";
+import { BESTANDSRESET_SCHEMA, vorratsKonfiguration } from "../../db-tx";
 import { EMBEDDING_SCHEMA } from "../../embedding";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
@@ -84,6 +84,8 @@ import { LIVEWALL_FOTO_SCHEMA } from "./livewall-fotos";
 // Betroffenenrechte (R-0661): die Löschanträge. Im App-Wurzelverzeichnis wie die Kenntnisnahme —
 // sie verbinden Konto (auth) und Verwalteraufgabe, kein Fachmodul besitzt sie.
 import { LOESCHANTRAG_SCHEMA } from "./loeschantraege";
+// BPA-16: Meetingbezüge (verbundene Präsentationsfassungen, Mitschriften, Rückmeldungen).
+import { MEETING_DOKUMENTBEZUG_SCHEMA } from "./meeting-dokumentbezug-ablage";
 // Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände.
 import { OFFICE_ABLAGE_SCHEMA } from "./office-ablage";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
@@ -299,6 +301,12 @@ export const schemas = [
   // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS); der einzige Fremdschlüssel zeigt auf den
   // eigenen Kopf, keine Extension, kein Seed.
   KENNTNISNAHME_SCHEMA,
+  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Laufakte des Bestandsresets
+  // (`bestandsreset_laeufe`). Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne
+  // Fremdschlüssel, ohne Extension, ohne Seed. Ohne sie könnte der administrative Reset auf einer
+  // frisch migrierten Instanz seinen ersten Schritt nicht schreiben. Ihre Stelle hat keine
+  // Abhängigkeit zu den Nachbarstufen; die Sollliste in `migrationsbeleg.ts` folgt derselben Ordnung.
+  BESTANDSRESET_SCHEMA,
   // R-0162 (Confluence-Gesamtimport): das dauerhafte Quellabgleichsergebnis je Importlauf. Additiv
   // und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel auf `import_runs` und ohne
   // Extension; sie steht am Ende, weil das die lesbare Ordnung ist (keine Abhängigkeit zu den
@@ -375,6 +383,10 @@ export const schemas = [
   // Additiv und wiederholbar (zwei CREATE TABLE IF NOT EXISTS samt Indizes), ohne Fremdschlüssel,
   // ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   VERSTAENDNISFRAGEN_SCHEMA,
+  // BPA-16 (produkt:20261011:assistenz-meeting-dokumentbezug): die Meetingbezüge. Additiv und
+  // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed;
+  // am Ende, weil das die lesbare Ordnung ist.
+  MEETING_DOKUMENTBEZUG_SCHEMA,
 ];
 
 // ================================================================================================

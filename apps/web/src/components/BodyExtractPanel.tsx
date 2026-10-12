@@ -335,7 +335,7 @@ export function BodyExtractPanel({
             <UploadLimitsHint className="basis-full text-[11px] text-muted-2" />
             {fileName ? (
               <span className="inline-flex items-center gap-1.5 text-[12.5px] text-text">
-                <FileText size={13} className="text-muted-2" />
+                <FileText size={13} strokeWidth={1.8} className="text-muted-2" />
                 {fileName}
                 <button
                   type="button"
@@ -438,7 +438,7 @@ export function BodyExtractPanel({
                           {p.summary}
                         </span>
                         <span className="mt-1.5 block rounded-input bg-page px-2.5 py-1.5 text-[11.5px] leading-relaxed text-muted-2">
-                          <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider">
+                          <span className="font-mono text-klein font-semibold uppercase tracking-wider">
                             {t(CAPTURE_FILE_TEXT.excerptLabel)}
                             {fileName ? ` · ${fileName}` : ""}
                           </span>

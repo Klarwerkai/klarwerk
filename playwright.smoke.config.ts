@@ -106,8 +106,10 @@ const PORT_ZUSTAND = 3124;
 // Quelle samt Bewertungen und einen Vorgang an.
 // aufnahme:20260922:gesamt-lernwege: die Verständnisfragen-Sonde legt Konto, Eintrag, Fragensatz
 // und Versuch an — aus demselben Grund im isolierten Kontext.
+// produkt:20261008:klara-eigeninitiative: die Eigeninitiative-Sonde legt zwei Konten, einen Entwurf
+// und einen Klara-Auftrag an — aus demselben Grund im isolierten Kontext.
 const ZUSTAND_SPEC =
-  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser|luecken-vorgang-browser|assistenz-produkteinstieg-browser|fragen-pruefen-einstieg-browser|kommunikation-browser|antwort-beanstandung-browser|branchen-poc-arbeitswege-browser|verstaendnisfragen-browser)\.spec\.ts/;
+  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser|luecken-vorgang-browser|assistenz-produkteinstieg-browser|fragen-pruefen-einstieg-browser|kommunikation-browser|antwort-beanstandung-browser|branchen-poc-arbeitswege-browser|verstaendnisfragen-browser|klara-eigeninitiative-browser)\.spec\.ts/;
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 // AUFTRAG-mega25 Blöcke A + C — DIE UMGEBUNG DES SMOKE-SERVERS WIRD HIER DEKLARIERT, NIRGENDWO SONST.
@@ -214,6 +216,11 @@ const smokeServerEnv = (port: number): Record<string, string> => ({
   //      Schalter darum auch nicht — sonst stünde in der Tor-Umgebung ein Werkzeug scharf, das
   //      dieser Lauf nicht benutzt.
   ...(process.env.KLARWERK_SMOKE_SEED === "1" ? { KLARWERK_DEMO_SEED: "1" } : {}),
+  // (2c) aufnahme:20260922:gesamt-leserechte (Nacharbeit 32, Entscheidung 25): einen Space, dessen
+  //      sichtbarer Bestand leer ist, löscht nur ein Konto mit ausdrücklichem Existenzrecht. Die
+  //      Smoke-Suite kennt genau ein Konto (`tests-smoke/support/auth.ts`, SMOKE_MAIL); ihm wird
+  //      das Recht hier ausdrücklich erteilt — `wissensprojekte-loeschen.spec.ts` löscht so.
+  KLARWERK_EXISTENZRECHT: "smoke@klarwerk.test",
   // (3) Der Cloud-Schlüssel steht NICHT hier — er kommt als geerbte Prozessumgebung aus dem
   //     Start-Befehl (s. oben, `package.json`). Dort wird er im Tor auf LEER gesetzt (nicht
   //     „ungesetzt": leer, damit ein in Pedis Shell exportierter Wert die Hermetik nicht doch

@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { leerzustandsZeile } from "../EmptyStateCtas";
-import { Button, Card, SectionLabel } from "../ui";
+import { Button, SectionLabel } from "../ui";
 import {
   type EigeneKenntnisnahme,
   type KenntnisnahmeAnforderung,
@@ -446,23 +446,27 @@ export function KenntnisnahmeBereich({
   if (eigene.length === 0 && !darfAnfordern) {
     return null;
   }
+  // KEINE EIGENE KARTE (Design-Abgleich H4, `zielbild-h4-bibliothek` D1): die Lesefläche trägt neben
+  // der „Mehr"-Karte höchstens eine weitere; die Kenntnisnahme ist ein Abschnitt des gelesenen
+  // Eintrags und steht deshalb in BEIDEN Lagen als Abschnitt mit Haarlinie da, nicht als zusätzliche
+  // `rounded-card`. Lagen, Sprunganker und Aufklapper sind die der Lesereihenfolge (oben): ohne
+  // eigene Anforderung eine zugeklappte Zeile — der Erklärsatz liegt dann hinter dem Klick (R-1025).
   if (eigene.length === 0) {
     // Nur das Zuweisungsrecht, nichts verlangt: eine Zeile, zugeklappt.
     return (
-      <div
+      <section
         id={zielId}
         data-testid="kenntnisnahme-bereich"
         data-kenntnisnahme-lage="nur-anfordern"
-        className="rounded-card border border-hairline bg-surface px-4 shadow-tile"
+        className="border-t border-hairline"
       >
         <AnfordernZeile koId={koId} hinweis />
-      </div>
+      </section>
     );
   }
   return (
-    <Card
-      interactive={false}
-      className="space-y-3"
+    <section
+      className="space-y-3 border-t border-hairline pt-3"
       data-testid="kenntnisnahme-bereich"
       data-kenntnisnahme-lage={eigene.some(istOffen) ? "pflicht-offen" : "eigene"}
       {...(zielId ? { id: zielId } : {})}
@@ -473,7 +477,7 @@ export function KenntnisnahmeBereich({
         <EigeneAnforderung key={e.anforderungId} eintrag={e} />
       ))}
       {darfAnfordern ? <AnfordernZeile koId={koId} hinweis={false} /> : null}
-    </Card>
+    </section>
   );
 }
 

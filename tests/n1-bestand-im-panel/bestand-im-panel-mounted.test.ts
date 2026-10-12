@@ -130,7 +130,8 @@ describe("JOB 3093 · „Haben wir das schon?“ im ausgelieferten Aufgabenfenst
     });
     await fragen(p);
     const liste = p.text("#bestand-liste");
-    expect(liste).toContain("Validiert");
+    // Antwort 54 (11.10.2026): der validierte Wissensstatus heisst „Fachlich bestätigt".
+    expect(liste).toContain("Fachlich bestätigt");
     expect(liste).not.toContain("noch nicht geprüft");
     expect(liste).toContain("Version 7");
   });

@@ -193,6 +193,18 @@ export const VALIDATION_DECISION_ACTIONS: readonly string[] = [
   // Ungültigkeit auf Belege, an denen niemand etwas verändert hat.
   "ko.returned-to-author",
   "ko.returned-to-owner",
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27: zwei weitere Wege, auf denen
+  // über ein Wissensobjekt entschieden wird — die befugte Weisung mit punktweiser Entscheidung
+  // (`ValidationService.weisungSetzen`) und die Übernahme einer externen Freigabe mit bestätigter
+  // interner Geltung (`ValidationService.externeFreigabeUebernehmen`). Beide schreiben ihren Verweis
+  // in derselben Klammer wie die übrigen; ohne Eintrag hier wäre er `WRONG_EVENT_TYPE`.
+  "ko.weisung",
+  "ko.externe-freigabe-uebernommen",
+  // Aufnahme gesamt-peer-validierung (Antworten 18/19): die unmittelbar gültige Weisung eines
+  // befugten Kontos und ihre nachfolgende Sichtung (bestätigt oder widerrufen) sind Entscheidungen
+  // über das Objekt — beide setzen den Entscheidungsverweis.
+  "ko.weisung-validated",
+  "ko.weisung-gesichtet",
 ];
 
 /**

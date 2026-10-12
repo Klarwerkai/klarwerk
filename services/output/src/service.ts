@@ -12,11 +12,13 @@ import {
   toSource,
 } from "./render";
 import {
+  type AutorenNamen,
   type GenerateOutputInput,
   OUTPUT_KINDS,
   type OutputDocument,
   OutputError,
   type OutputPruefnachweis,
+  type OutputSichtbarkeit,
   type OutputSource,
 } from "./types";
 import { type Wochenupdate, WochenupdateService } from "./wochenupdate";
@@ -32,6 +34,10 @@ export const OHNE_BETRACHTER: Sichtbarkeitsentscheidung = () => true;
 export interface OutputServiceDeps {
   koService: KoService;
   now?: () => number;
+  // Aufnahme gesamt-wissen-herkunft (R-0298 / FR-LIF-04): löst Autorenkennungen zu sichtbaren
+  // Namen auf (Leseregel des Verzeichnisses, s. services/app/src/autorennamen.ts). Ohne Angabe
+  // bleibt es bei den Kennungen — so wie vor diesem Auftrag.
+  autorenNamen?: AutorenNamen;
   /**
    * aufnahme:20260922:gesamt-dokumenterzeugung (R-0337, Nacharbeit 5): der Leseweg zum
    * Validierungsnachweis. `findBySeq` adressiert den Eintrag, `all` liefert die Kette für die
@@ -44,22 +50,30 @@ export interface OutputServiceDeps {
 export class OutputService {
   private readonly koService: KoService;
   private readonly now: () => number;
+  private readonly autorenNamen: AutorenNamen | undefined;
   private readonly audit: AuditLeser | undefined;
 
   constructor(deps: OutputServiceDeps) {
     this.koService = deps.koService;
     this.now = deps.now ?? (() => Date.now());
+    this.autorenNamen = deps.autorenNamen;
     this.audit = deps.audit;
   }
 
   // Nur validierte KOs sind als Output-Quelle zulässig (Anti-Fake-Guard).
   // SCRUM-415: vertrauliche KOs erscheinen NICHT als Output-Quelle — ein Output ist teilbar (externer
   // Kontext), vertrauliche Objekte bleiben davon ausgeschlossen.
-  async listEligible(
-    sichtbar: Sichtbarkeitsentscheidung = OHNE_BETRACHTER,
-  ): Promise<OutputSource[]> {
+  // aufnahme:20260922:gesamt-leserechte: zusätzlich nur, was DIESER Betrachter sehen darf
+  // (`sichtbar`, Pflicht — ohne tauglichen Filter ist die Liste leer). Nacharbeit 20 (Integration
+  // main): der Rückfall `OHNE_BETRACHTER` aus R-1175 gilt hier bewusst NICHT — ein Systemaufruf
+  // reicht ausdrücklich `OHNE_BETRACHTER` herein, statt den Filter wegzulassen. Der Filter wird hier
+  // selbst gerufen (nachprüfbar für den Lesewege-Sammler) — nur ein `true` einer Funktion zählt.
+  async listEligible(sichtbar: OutputSichtbarkeit): Promise<OutputSource[]> {
     const kos = await this.koService.list({ status: "validiert" });
-    return kos.filter((ko) => !isConfidential(ko.confidentiality) && sichtbar(ko)).map(toSource);
+    const tauglich = typeof sichtbar === "function";
+    return kos
+      .filter((ko) => tauglich && sichtbar(ko) === true && !isConfidential(ko.confidentiality))
+      .map(toSource);
   }
 
   /** R-0337: das Prüfdatum je Quelle — dieselbe Lesung wie im Zuruf (`pruefnachweis.ts`). */
@@ -69,7 +83,7 @@ export class OutputService {
 
   async generate(
     input: GenerateOutputInput,
-    sichtbar: Sichtbarkeitsentscheidung = OHNE_BETRACHTER,
+    sichtbar: OutputSichtbarkeit,
   ): Promise<OutputDocument> {
     if (!OUTPUT_KINDS.includes(input.kind)) {
       throw new OutputError("UNKNOWN_KIND", `Unbekannter Output-Typ: ${input.kind}.`);
@@ -80,9 +94,10 @@ export class OutputService {
     const selected: KnowledgeObject[] = [];
     for (const id of input.koIds) {
       const ko = await this.koService.get(id);
-      // R-1175: ein Objekt, das dieser Betrachter nicht sehen darf, antwortet wie ein unbekanntes —
-      // ein eigener Fehler wäre selbst die Existenzauskunft.
-      if (!ko || !sichtbar(ko)) {
+      // aufnahme:20260922:gesamt-leserechte / R-1175: ein Objekt, das der Betrachter nicht sehen
+      // darf, gibt es für ihn nicht — dieselbe Antwort wie für eine unbekannte Kennung, damit weder
+      // Status noch Stufe seine Existenz verraten.
+      if (!ko || typeof sichtbar !== "function" || sichtbar(ko) !== true) {
         throw new OutputError("UNKNOWN_KO", `Wissensobjekt nicht gefunden: ${id}.`);
       }
       if (ko.status !== "validiert") {
@@ -105,11 +120,16 @@ export class OutputService {
     const anlass =
       typeof input.anlass === "string" && input.anlass.trim() ? input.anlass.trim() : null;
     const generatedAt = new Date(this.now()).toISOString();
+    const namen = await this.namenFuer(selected);
     const pruefungen = await this.pruefnachweise(selected);
     const provenance = selected.map((ko, i) =>
       // `pruefnachweise` liefert je Quelle genau einen Eintrag; der Rückfall bedient nur den
       // indizierten Zugriff (exactOptionalPropertyTypes) und heißt „kein Nachweis", nie „belegt".
-      toProvenance(ko, { marke: `Q${i + 1}`, pruefung: pruefungen[i] ?? { zustand: "MISSING" } }),
+      toProvenance(ko, {
+        marke: `Q${i + 1}`,
+        pruefung: pruefungen[i] ?? { zustand: "MISSING" },
+        ...(namen ? { namen } : {}),
+      }),
     );
     const marken = selected.map((ko, i) => quellenMarke(i, ko));
     const title = KIND_TITLE[input.kind];
@@ -131,12 +151,29 @@ export class OutputService {
       "",
       OUTPUT_NO_CHECK_NOTE,
       "",
-      renderBody(input.kind, selected, { marken, anlass, audienceRole, provenance }),
+      renderBody(input.kind, selected, {
+        marken,
+        anlass,
+        audienceRole,
+        provenance,
+        ...(namen ? { namen } : {}),
+      }),
       "",
       renderProvenance(provenance),
     ].join("\n");
 
     return { kind: input.kind, title, audienceRole, generatedAt, markdown, provenance };
+  }
+
+  // Eine Auflösung je Dokument über alle Autoren- und Originalautorenkennungen der Quellen.
+  private async namenFuer(
+    kos: readonly KnowledgeObject[],
+  ): Promise<((id: string) => string) | undefined> {
+    if (!this.autorenNamen) {
+      return undefined;
+    }
+    const texte = await this.autorenNamen(kos.flatMap((ko) => [ko.author, ko.originalAuthor]));
+    return (id) => texte.get(id) ?? id;
   }
 
   // RECHERCHE:pmo-fea-0004: das Wissensupdate fürs Teamgespräch — dieselbe Quelle, dieselbe Uhr.

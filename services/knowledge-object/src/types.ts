@@ -351,6 +351,82 @@ export interface KoProposal {
   resultVersion?: number;
   /** Begründung der Entscheidung — bei einer Ablehnung die Auskunft, warum. */
   note?: string;
+  /**
+   * Aufnahme gesamt-peer-validierung (package:pruefablauf, Ben Nacharbeit 3): die BENANNTE
+   * Prüfperson, der der Einreicher die Änderung gibt (Kennung). Beim Einreichen geprüft: nicht der
+   * Einreicher selbst, und mit Freigaberecht. Sie ist eine Zuordnung, kein exklusives Recht —
+   * entscheiden darf weiterhin jede freigabeberechtigte Person ausser dem Einreicher.
+   */
+  pruefer?: string;
+  /**
+   * Rückfragen an den Einreicher — mit wem, wann und welchem Inhalt. Eine Rückfrage entscheidet
+   * nichts: der Vorschlag bleibt `offen`, und der geprüfte Bestand bleibt unverändert.
+   */
+  rueckfragen?: KoProposalRueckfrage[];
+  /**
+   * AW06-K02 (Ben, Nacharbeit 4): unter welcher Kontoregel dieser Vorschlag entstand — beim
+   * Einreichen aus dem Recht des Einreichers festgehalten. `pflichtpruefung`: er durfte nicht
+   * direkt freigeben; `freiwillige-zweitpruefung`: er hätte gedurft und hat die fremde Prüfung
+   * gewählt. Fehlt bei Vorschlägen von vor dieser Regel.
+   */
+  kontoregel?: Extract<Kontoregel, "pflichtpruefung" | "freiwillige-zweitpruefung">;
+}
+
+/**
+ * AW06-K02 — DIE KONTOREGEL EINER ANNAHME, wie sie im Entscheidungsbeleg steht.
+ *   · `peer-pruefung`             — Bewertungsweg; der Beleg nennt die erforderliche Freigabezahl.
+ *   · `direktannahme`             — ein Konto mit Freigaberecht nimmt direkt an (Admin-Freigabe,
+ *                                   Überarbeiten-und-Freigeben).
+ *   · `pflichtpruefung`           — Übernahme eines Vorschlags, dessen Einreicher nicht direkt
+ *                                   freigeben durfte.
+ *   · `freiwillige-zweitpruefung` — Übernahme eines Vorschlags, dessen Einreicher hätte freigeben
+ *                                   dürfen und die fremde Prüfung gewählt hat.
+ *   · `eigentuemerfreigabe`       — R-0507: der benannte Eigentümer mit Freigaberecht gibt frei
+ *                                   (`ValidationService.ownerValidate`, Beleg `ko.owner-validated`).
+ *   · `weisung`                   — Antworten 18/19: ein Konto mit fachlicher Weisungsbefugnis für
+ *                                   den Bereich stellt die eigene Weisung unmittelbar gültig ein
+ *                                   (`ValidationService.weisungValidate`, Beleg
+ *                                   `ko.weisung-validated`); eine benannte Person sichtet nach.
+ */
+export type Kontoregel =
+  | "peer-pruefung"
+  | "direktannahme"
+  | "pflichtpruefung"
+  | "freiwillige-zweitpruefung"
+  | "eigentuemerfreigabe"
+  | "weisung";
+
+/**
+ * Antwort 19 — DIE NACHFOLGENDE SICHTUNG EINER UNMITTELBAR GÜLTIGEN WEISUNG.
+ *
+ * Die Weisung gilt ab ihrer Einstellung; die benannte verantwortliche Person (nie die
+ * Weisungsgeberin selbst) sichtet sie bis zur Frist. `auditSeq`/`auditHash`/`koVersion` binden die
+ * Sichtung an den Beleg `ko.weisung-validated` und an genau die gültig gesetzte Fassung. `ergebnis`
+ * fehlt, solange nicht gesichtet ist: `bestaetigt` lässt die Weisung stehen, `widerrufen` nimmt sie
+ * zurück (Status offen). Ein Wahrheitskonflikt öffnet das Objekt unabhängig davon
+ * (`wahrheitskonfliktFolge`).
+ */
+export interface WeisungsSichtung {
+  auditSeq: number;
+  auditHash: string;
+  koVersion: number;
+  erteiltVon: string;
+  bereich: string;
+  verantwortlich: string;
+  /** Kalendertag (JJJJ-MM-TT), bis zu dem gesichtet sein soll. */
+  frist: string;
+  ergebnis?: {
+    art: "bestaetigt" | "widerrufen";
+    von: string;
+    am: string;
+    auditSeq: number;
+  };
+}
+
+export interface KoProposalRueckfrage {
+  von: string;
+  at: string;
+  text: string;
 }
 
 // FR-CAP-05: Anhang/Foto am Objekt. Pilot: client-seitig verkleinertes Thumbnail
@@ -790,6 +866,35 @@ export interface KnowledgeObject {
   // der schlechte Kompromiss, den die Entscheidung ausschließt. Nach einer Revision bleibt der
   // Verweis stehen und wird folgerichtig `WRONG_SUBJECT`.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
+  // Aufnahme gesamt-peer-validierung (R-0256, Ben Nacharbeit 3): WORAUS der gespeicherte
+  // Vertrauenswert entstand. `trust` ist der Wert, für den diese Angabe gilt; `ohneKonflikte` der
+  // Wert der gemeinsamen Formel VOR der Konfliktwirkung; `konflikte` die Arten, die bereits
+  // eingerechnet sind. Die Wahrheitskonflikt-Folge rechnet damit aus derselben Grundlage neu, statt
+  // eine schon eingerechnete Strafe ein zweites Mal abzuziehen. Weicht `trust` vom gespeicherten
+  // `KnowledgeObject.trust` ab, hat ein anderer Weg den Wert seither gesetzt (Admin-Freigabe,
+  // Übernahme, „Hat geholfen") — dann gilt die Angabe nicht mehr. Additiv, JSON-persistiert.
+  vertrauensGrundlage?: { trust: number; ohneKonflikte: number; konflikte: string[] };
+  // AW06-K02 (Ben, Nacharbeit 7): der Verweis auf den Beleg, der DIESE Fassung angenommen hat —
+  // getrennt von `validationDecisionRef`, das immer die NEUESTE Prüfentscheidung nennt. Eine spätere
+  // gelbe Rückfrage an derselben, weiter validierten Fassung ersetzt dort den Verweis durch ihre
+  // Rückgabe; die Annahme bleibt hier stehen. `koVersion` bindet ihn an die angenommene Fassung.
+  // Gesetzt nur beim Übergang nach „validiert" (erste Annahme der Fassung). Additiv, JSON-persistiert.
+  annahmeRef?: { auditSeq: number; auditHash: string; koVersion: number };
+  // Antwort 19 (Aufnahme gesamt-peer-validierung): die Sichtung der zuletzt unmittelbar gültig
+  // gesetzten Weisung (s. `WeisungsSichtung`). Additiv, JSON-persistiert.
+  weisungsSichtung?: WeisungsSichtung;
+  // ============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27 (Peter, 11.10.2026).
+  // ============================================================================================
+  //
+  // Zwei Wege, auf denen ein Objekt OHNE Vier-Augen-Prüfung gültig wird — und deshalb seine
+  // befugte bzw. externe Herkunft sichtbar mitträgt. Beide sind optional und ohne Migration (JSONB);
+  // die öffentlichen Schreibwege setzen sie nicht (`CreateKoInput`/`ReviseKoInput` kennen sie
+  // nicht), nur `ValidationService.weisungSetzen` / `externeFreigabeUebernehmen` über die
+  // Validierungsklammer. Eine spätere Revision schreibt sie NICHT um: sie bleiben mit ihrer
+  // `fassung` stehen, und die Marke sagt dann, dass sie einer früheren Fassung galten.
+  weisung?: KoWeisung;
+  externeFreigabe?: KoExterneFreigabe;
   // ============================================================================================
   // JOB 557 (Pedi 13.08.2026) — WEM DAS OBJEKT GEHÖRT, WER ES GEPRÜFT UND WER ES VALIDIERT HAT.
   // ============================================================================================
@@ -868,6 +973,12 @@ export interface KnowledgeObject {
   // Demodaten-Merker (Pedi 02.07.): vom Seed gesetzt, überlebt Bearbeitungen/Versionen —
   // damit Demo-Bestand sichtbar bleibt und komplett entfernt werden kann.
   demoSeed?: boolean;
+  // R-0750/R-1741 (Aufnahme gesamt-kennzahlen): WANN die geltende Fassung validiert wurde — der
+  // Prüfzeitpunkt, getrennt vom Erfassungszeitpunkt `createdAt`. Gesetzt beim Übergang nach
+  // „validiert" (und bei jeder Freigabe einer neuen Fassung), entfernt beim Rückfall auf „offen"
+  // (`pruefzeitpunkt.ts`). Altbestand, der schon vor diesem Feld validiert war, hat es nicht: sein
+  // Prüfzeitpunkt ist UNBEKANNT und wird nicht aus `createdAt` geraten.
+  validatedAt?: string;
   // WP-SHIP8-CLOSE-3/4 (bens ROT-1, 1A/1B/1C): STABILER Idempotenzanker des Import-Accepts — die
   // Id des Review-KANDIDATEN, aus dem dieses KO entstand. Bewusst der Kandidat (stabil über alle
   // Claim-Vorgänge/Retries hinweg), NICHT die je Claim wechselnde opId: nur so erzwingt der
@@ -970,6 +1081,88 @@ export interface KnowledgeObject {
   // Kommentare und Historie mit): es bleibt dauerhaft lesbar und nennt den verbleibenden Artikel.
   // Additiv im JSONB, keine Migration; fehlt das Feld, ist das Objekt in nichts aufgegangen.
   mergedInto?: KoMergedInto;
+  // ============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · R-0573 (Nacharbeit 11, Ben B2) — DURCH WEISUNG ÜBERSTIMMT.
+  // ============================================================================================
+  //
+  // „Überstimmte Punkte werden geschlossen, nicht gelöscht." Gesetzt ausschließlich über
+  // `KoService.schliesseDurchWeisung`, wenn eine befugte Weisung diesen Punkt ausdrücklich
+  // überstimmt hat. Inhalt, Fassung, Historie, Autor, Originalautor und Herkunft bleiben
+  // unverändert; das Objekt bleibt lesbar, ist aber — wie ein aufgegangener Artikel — kein
+  // Suchtreffer und kein Antwortkandidat mehr. Additiv im JSONB; fehlt das Feld, ist nichts
+  // geschlossen.
+  geschlossen?: KoGeschlossen;
+}
+
+/**
+ * Entscheidungen 18/19 (R-0573, R-0114, W10): eine befugte Person hat dieses Objekt als Weisung
+ * unmittelbar gültig gesetzt — ohne Vier-Augen-Prüfung, aber mit Herkunft „Weisung von wem, wann,
+ * in welchem Bereich" und mit einer nachfolgenden zuständigen Sichtung.
+ */
+export interface KoWeisung {
+  /** Die weisende Person (Kennung). Ihre Befugnis war beim Setzen am Konto vermerkt. */
+  von: string;
+  am: string;
+  /** Der fachliche Geltungsbereich, für den die Befugnis galt (Kategorie des Objekts). */
+  bereich: string;
+  /** Die Fassung, die als Weisung gesetzt wurde. */
+  fassung: number;
+  /**
+   * R-0573: die betroffenen bestehenden Punkte (offene Konflikte), die die weisende Person einzeln
+   * gesehen und ausdrücklich BESTEHEN gelassen hat. Sie bleiben unverändert.
+   */
+  bestehenGelassen: string[];
+  /**
+   * R-0573 · Nacharbeit 11: die Punkte (Konfliktkennungen), die die weisende Person ausdrücklich
+   * ÜBERSTIMMT hat. Je Punkt wird der Konflikt zugunsten dieser Weisung entschieden und der
+   * überstimmte Wissenspunkt geschlossen (`KnowledgeObject.geschlossen`) — nicht gelöscht.
+   * Fehlt das Feld (Weisungen vor Nacharbeit 11), wurde nichts überstimmt.
+   */
+  ueberstimmt?: string[];
+  /**
+   * Nacharbeit 14 (Ben B1): der Beleg `ko.weisung`, mit dem DIESE Weisung gesetzt wurde. Bindet die
+   * Sichtung an genau diese Entscheidung (gegenüber einer früheren `weisungsSichtung`). Fehlt bei
+   * Weisungen vor Nacharbeit 14.
+   */
+  beleg?: { auditSeq: number; auditHash: string };
+  /** Entscheidung 19: die nachfolgende Sichtung — wer zuständig ist und bis wann. */
+  sichtung: {
+    verantwortlich: string;
+    frist: string;
+    gesichtetVon?: string;
+    gesichtetAm?: string;
+    vermerk?: string;
+  };
+}
+
+/**
+ * Entscheidung 27 (R-0164, R-0178): eine extern bereits erteilte fachliche Freigabe wird mit ihrer
+ * Herkunft übernommen; intern werden Geltung und Zuständigkeit bestätigt — keine zweite,
+ * pauschale Inhaltsprüfung. `art` trennt die beiden Wege:
+ *   · `wissen`   — das Wissen aus dem freigegebenen Dokument wird übernommen (R-0164);
+ *   · `referenz` — das ganze Dokument steht als externe Referenz im Bestand (R-0178), mit dem
+ *                  Etikett „externe Referenz" und der Bestätigung der Herkunft.
+ */
+export interface KoExterneFreigabe {
+  art: "wissen" | "referenz";
+  /** Wer extern freigegeben hat (Herausgeber, Organisation). */
+  herausgeber: string;
+  /** Die externe Freigabe- bzw. Dokumentkennung, falls vorhanden. */
+  freigabeKennung?: string;
+  /** Wann extern freigegeben wurde (Datum, ISO). */
+  freigegebenAm: string;
+  /** Name der extern freigebenden Person, falls bekannt — kein Konto dieses Systems. */
+  freigegebenVon?: string;
+  /** Der Nachweis der externen Freigabe (Adresse), falls vorhanden. */
+  nachweis?: string;
+  /** Die bestätigte interne Geltung: der fachliche Bereich (Kategorie des Objekts). */
+  geltung: string;
+  /** Die intern zuständige Person (Kennung). */
+  zustaendig: string;
+  bestaetigtVon: string;
+  bestaetigtAm: string;
+  /** Die Fassung, für die die Übernahme bestätigt wurde. */
+  fassung: number;
 }
 
 /** R-1107: wohin ein aufgegangener Artikel zusammengeführt wurde (s. `KnowledgeObject.mergedInto`). */
@@ -982,6 +1175,19 @@ export interface KoMergedInto {
   overlapId: string;
   at: string;
   by: string;
+}
+
+/** R-0573: wodurch ein Wissenspunkt geschlossen wurde (s. `KnowledgeObject.geschlossen`). */
+export interface KoGeschlossen {
+  /** Das Wissensobjekt, dessen Weisung diesen Punkt überstimmt hat. */
+  durchKoId: string;
+  /** Der entschiedene Konflikt zwischen beiden. */
+  conflictId: string;
+  /** Die weisende Person (Kennung). */
+  von: string;
+  am: string;
+  /** Die Fassung DIESES Objekts, die geschlossen wurde. */
+  fassung: number;
 }
 
 // SCRUM-422: Papierkorb-Zeile für den Admin — nur Metadaten, keine Inhalte.

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { KoStatus } from "../../../api/types";
 import type { LiveVerdict } from "../../../lib/intakeSimilarity";
 import { umfangErklaerung } from "../../../lib/vorschauUmfang";
+import { WISSENSSTATUS_BESTAETIGT } from "../../../lib/wissensstatus";
 import { StatusPill } from "../../trust/StatusPill";
 
 // JOB 3045: DIE FUNDORTZEILE — wo der Treffer liegt (Kategorie) und wie er dasteht (Zustand).
@@ -26,13 +27,16 @@ import { StatusPill } from "../../trust/StatusPill";
 // bis hierher, abgeleitet wird nichts. Die Kategorie ist ein roher Bestandswert, unübersetzt.
 //
 // P-M3b (Runde 2, BEN-3) — DAS WORT IST DAS DER TREFFERLISTE, NICHT DAS DES STATUSFELDS. Web und
-// Word-Panel zeigen denselben Prüfstand: „Validiert“ und „noch nicht geprüft“ (Pedi 05.09., M3
+// Word-Panel zeigen denselben Prüfstand: „Fachlich bestätigt“ (bis Antwort 54 „Validiert“) und
+// „noch nicht geprüft“ (Pedi 05.09., M3
 // „Haben wir das schon?“; im Panel `askStatusValidiert`/`bestandNochNichtGeprueft`). Das allgemeine
 // „Offen“ der StatusPill sagte hier dasselbe mit einem anderen Wort. Geprüft gegen EINE Tabelle:
 // tests/erfassungs-konfliktpruefung/pruefstand-wortlaut.test.tsx.
+// Nutzerentscheid Antwort 54 (11.10.2026): der validierte Zustand heisst „Fachlich bestätigt" — im
+// Web über den Schlüssel aus lib/wissensstatus.ts, im Panel über `askStatusValidiert`.
 const PRUEFSTAND_KEY: Record<KoStatus, string> = {
   offen: "intake.live.pruefstand.offen",
-  validiert: "intake.live.pruefstand.validiert",
+  validiert: WISSENSSTATUS_BESTAETIGT,
 };
 function Fundort({
   koStatus,

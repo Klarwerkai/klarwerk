@@ -23,7 +23,7 @@ export function ErgebnisStufeMarke({
     <span
       data-testid="ergebnis-stufe"
       data-stufe={stufe}
-      className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider ${STIL[stufe]} ${className ?? ""}`}
+      className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase tracking-wider ${STIL[stufe]} ${className ?? ""}`}
     >
       {stufe === "entwurf" ? <span aria-hidden>✦</span> : null}
       {t(ERGEBNIS_STUFE_TEXT[stufe])}

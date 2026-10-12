@@ -1,4 +1,5 @@
 import type { AnstehendeUebergabe } from "../lib/autorenuebergabe";
+import { trenneVerzeichnis } from "../lib/geloeschteKonten";
 import type { Verbindungsnachweis } from "../lib/integrationStatus";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
@@ -12,6 +13,7 @@ import type {
   Analytics,
   AnlagenKontext,
   AnsprechpartnerAuskunft,
+  AnswerExplanationResponse,
   AnswerResult,
   AntwortBeanstandung,
   AntwortMeldeGrund,
@@ -34,6 +36,9 @@ import type {
   AuditVerifyReport,
   BearbeitungsLage,
   BearbeitungsMeldung,
+  BestandsresetAuftrag,
+  BestandsresetAuskunft,
+  BestandsresetErgebnis,
   BeziehungSetzenBody,
   BeziehungWiderrufBody,
   BusFactorEntry,
@@ -61,6 +66,8 @@ import type {
   ExternalResult,
   ExtractResult,
   FeatureFlags,
+  FirmenresetAuftrag,
+  FirmenresetStatus,
   FolgepruefungsFall,
   Fragekontext,
   Gap,
@@ -163,7 +170,18 @@ function qs(params?: Record<string, string | undefined>): string {
   return `?${entries.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&")}`;
 }
 
-export type KoFilter = { type?: string; status?: string; category?: string; tag?: string };
+export type KoFilter = {
+  type?: string;
+  status?: string;
+  category?: string;
+  tag?: string;
+  // produkt:20261011:peter-p14 — der serverseitige Firmenfilter (`eigen`, `partner`, `oeffentlich`,
+  // kommagetrennt; optional `partner` = Bereichskennung). Als Teil der Parameter steht er auch im
+  // Abfrageschlüssel (`useKos`, `useLibrarySearch`): ein Wechsel des Bereichs holt neu, statt eine
+  // Antwort des vorigen Bereichs stehen zu lassen.
+  firmenbereich?: string;
+  partner?: string;
+};
 
 // ================================================================================================
 // JOB 4357 (WIKI-ZUSAMMENARBEIT) — DER DRAHTVERTRAG DER BESTANDSLISTE DER GESAMTANWEISUNGEN.
@@ -291,6 +309,34 @@ export type KoAction =
     }
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
   | { action: "admin-validate"; duplicateAcknowledged?: true; expectedVersion?: number }
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 (R-0573): die befugte Weisung mit
+  // nachfolgender Sichtung; `bestehenLassen` nennt die betroffenen Punkte, die bestehen bleiben.
+  | {
+      action: "weisung";
+      sichtung: { verantwortlich: string; frist: string };
+      bestehenLassen?: string[];
+      // R-0573 · Nacharbeit 11: ausdrücklich überstimmte Punkte — sie werden geschlossen.
+      ueberstimmen?: string[];
+      duplicateAcknowledged?: true;
+    }
+  | { action: "weisung-sichten"; vermerk?: string }
+  // Nacharbeit 14 (Ben B2): den unvollständigen Abschluss überstimmter Punkte nachholen.
+  | { action: "weisung-abschluss" }
+  // Entscheidung 27: externe Freigabe übernehmen, interne Anwendbarkeit ausdrücklich bestätigt.
+  | {
+      action: "externe-freigabe";
+      externeFreigabe: {
+        art: "wissen" | "referenz";
+        herausgeber: string;
+        freigabeKennung?: string;
+        freigegebenAm: string;
+        freigegebenVon?: string;
+        nachweis?: string;
+        zustaendig: string;
+        anwendbarBestaetigt: true;
+      };
+      duplicateAcknowledged?: true;
+    }
   | { action: "assign"; userIds: string[] }
   // ================================================================================================
   // JOB 3667 R3 — `expectedVersion` AM REVISE: DER BEDINGTE SCHREIBZUGRIFF, VOM CLIENT AUS NUTZBAR.
@@ -411,6 +457,21 @@ export type KoAction =
   // R-0507: der benannte Eigentümer gibt inhaltlich frei (Recht `ko.validate`, sonst 403).
   // ADMIN-09: `expectedVersion` = die geprüfte Fassung (in Spaces mit Freigaberegel Pflicht).
   | { action: "owner-validate"; duplicateAcknowledged?: true; expectedVersion?: number }
+  // Antworten 18/19: die eigene Weisung unmittelbar gültig einstellen (Weisungsbefugnis am Konto)
+  // samt Sichtung, und die Sichtung durch die benannte verantwortliche Person.
+  // Beide tragen PFLICHT die gelesene Fassung (`expectedVersion`, sonst 400; weicht sie ab, 409
+  // `KO_STALE` mit `currentVersion` — es wird nichts entschieden).
+  | {
+      action: "weisung-validate";
+      sichtung: { verantwortlich: string; frist: string };
+      expectedVersion: number;
+      duplicateAcknowledged?: true;
+    }
+  | {
+      action: "weisung-sichten";
+      sichtung: { ergebnis: "bestaetigt" | "widerrufen" };
+      expectedVersion: number;
+    }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
   // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet
@@ -481,12 +542,15 @@ export type KoAction =
         clearBody?: true;
         baseVersion: number;
         origin?: string;
+        /** package:pruefablauf: die benannte Prüfperson; der Server prüft ihr Freigaberecht. */
+        pruefer?: string;
       };
     }
   | {
       action: "decide-proposal";
       proposalId: string;
-      decision: "uebernehmen" | "ablehnen";
+      /** `rueckfrage` entscheidet nichts: der Vorschlag bleibt offen, `note` ist die Frage. */
+      decision: "uebernehmen" | "ablehnen" | "rueckfrage";
       note?: string;
       expectedVersion?: number;
     }
@@ -1024,6 +1088,11 @@ export const endpoints = {
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
+    // R-0293: der Weg zur Antwort aus dem gespeicherten Beleg — liest, sucht nicht neu.
+    explanation: (answerId: string) =>
+      api.get<AnswerExplanationResponse>(
+        `/klara/answers/${encodeURIComponent(answerId)}/explanation`,
+      ),
     // R-1630 / R-2176: dieselbe Frage aus dem Wissensstand zum Stichtag (`JJJJ-MM-TT`; ohne
     // Angabe vor einem Jahr) — ohne Wissenslücke, ohne Beleg, ohne „Danke".
     vergleich: (question: string, locale?: ReasonerLocale, stichtag?: string) =>
@@ -1212,7 +1281,11 @@ export const endpoints = {
     // Audit-P3 (SCRUM-397): bewusstes Als-gesehen-Markieren (idempotent, nur eigene Sicht).
     markSeen: (ids: string[]) => api.post<{ unseenCount: number }>("/notifications/seen", { ids }),
   },
-  directory: { list: () => api.get<{ id: string; name: string }[]>("/directory") },
+  // Aufnahme gesamt-wissen-herkunft (K3): gelöschte Konten kommen als Marke mit und werden hier
+  // abgetrennt — Zuweisungslisten sehen nur Konten, die Autorenzeile die Kennungen (lib/geloeschteKonten).
+  directory: {
+    list: () => api.get<{ id: string; name: string }[]>("/directory").then(trenneVerzeichnis),
+  },
   // Audit-P4 (SCRUM-398): Live-Wall (read-only Aggregation).
   livewall: {
     get: () => api.get<LiveWall>("/livewall"),
@@ -1278,6 +1351,11 @@ export const endpoints = {
       draftId?: string;
     }) => api.post<ObjectRef>("/objects", input),
     read: (id: string) => api.get<ObjectContent>(`/objects/${id}`),
+    // R-0095: der Rückverweis vom Anhang — die lesbaren Wissensobjekte, die ihn tragen.
+    traeger: (id: string) =>
+      api.get<{ traeger: { id: string; title: string }[] }>(
+        `/objects/${encodeURIComponent(id)}/traeger`,
+      ),
   },
   // SCRUM-382: Video-/Audio-Analyse — Transkript serverseitig (Schlüssel bleibt im Backend).
   media: {
@@ -1436,16 +1514,33 @@ export const endpoints = {
       reset: (id: string) => api.post<DemoPackageResult>(`/admin/demo-packages/${id}/reset`),
       remove: (id: string) => api.del<DemoPackageResult>(`/admin/demo-packages/${id}`),
     },
-    // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit (nur Desktop/Dev) + Ausführen (löscht alles,
-    // beendet das Programm; nächster Start = Ersteinrichtung).
-    factoryResetStatus: () => api.get<{ available: boolean }>("/admin/factory-reset"),
+    // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit (nur Desktop/Dev) + Ausführen (beendet das
+    // Programm). P08: ist er verfügbar, trägt die Auskunft die Vorschau (was entfällt, was bleibt).
+    factoryResetStatus: () => api.get<FirmenresetStatus>("/admin/factory-reset"),
     // JOB 4025 (KUNDENBETRIEB-BACKUP): die LESENDE Auskunft über das Sicherungsverzeichnis. Sie
     // löst nichts aus, löscht nichts und lädt nichts herunter — sie sagt nur, was dort liegt und
     // ob es seine Prüfsumme trägt (`scripts/backup/backup.sh:55-57/:82`).
     sicherungen: () => api.get<SicherungenAuskunft>("/admin/sicherungen"),
-    // SCRUM-450: Werksreset erst nach Passwort-Bestätigung des Admins (Re-Authentifizierung).
-    factoryReset: (password: string) =>
-      api.post<{ ok: boolean }>("/admin/factory-reset", { password }),
+    // SCRUM-450 / P08: Firmenreset nur mit der Kennung der gesehenen Vorschau, der bewussten
+    // Bestätigung und zwei Passworteingaben des Admins.
+    factoryReset: (auftrag: FirmenresetAuftrag) =>
+      api.post<{ ok: boolean }>("/admin/factory-reset", auftrag),
+    // P08-AC05: zweimalige SSO-Wiederanmeldung für Konten ohne Passwort. Der Start ist eine
+    // Seitennavigation zum Anbieter; den Rückruf reicht `SsoCallback` mit code+state hierher.
+    factoryResetSsoStartUrl: (schritt: 1 | 2): string =>
+      `/api/admin/factory-reset/sso/start?schritt=${schritt}`,
+    factoryResetSso: (code: string, state: string) =>
+      api.post<{ bestaetigt: number }>("/admin/factory-reset/sso", { code, state }),
+    factoryResetSsoVerwerfen: () =>
+      api.post<{ bestaetigt: number }>("/admin/factory-reset/sso", { verwerfen: true }),
+    // Aufnahme gesamt-bestandsreset (Peters Entscheidung vom 11.10.): Wissensbestand samt
+    // Papierkorb zurücksetzen, Konten und Firmenwörterbuch bleiben. Erst die Folgenvorschau (GET),
+    // dann die Ausführung mit ihrer Kennung, zweimal Passwort und Häkchen (POST).
+    bestandsreset: {
+      status: () => api.get<BestandsresetAuskunft>("/admin/bestandsreset"),
+      ausfuehren: (auftrag: BestandsresetAuftrag) =>
+        api.post<BestandsresetErgebnis>("/admin/bestandsreset", auftrag),
+    },
     // IC-2 (Import-Cockpit): READ-ONLY Erkundung „was ist da" VOR jedem Import. Schreibt nichts —
     // liefert nur die aggregierte Landkarte (Mengen/Autoren/Themen/Zeitraum) + truncated.
     import: {
@@ -1654,6 +1749,10 @@ export const endpoints = {
     // R-0582: der Admin berichtigt Name und E-Mail — dieselbe Route, die Antwort ist der neue Stand.
     correct: (id: string, name: string, email: string) =>
       api.put<PublicUser>(`/users/${id}`, { name, email }),
+    // Aufnahme gesamt-peer-validierung (Antwort 18): die fachliche Weisungsbefugnis vergeben
+    // (Bereiche) oder entziehen (`null`) — dieselbe Route, die Antwort ist der neue Stand.
+    setWeisungsbefugnis: (id: string, bereiche: string[] | null) =>
+      api.put<PublicUser>(`/users/${id}`, { weisungsbefugnis: bereiche }),
   },
   // ==============================================================================================
   // JOB 4154 · WIKI-GESAMTANWEISUNG — NEUN ADRESSEN, UND JEDE SCHREIBENDE TRÄGT DEN GELESENEN STAND.

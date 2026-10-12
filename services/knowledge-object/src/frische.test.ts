@@ -20,7 +20,14 @@ import {
  * (der Betrieb erfasst sie beim Lernen, `KoService.gelernteHalbwertszeiten`).
  */
 function lerneHalbwertszeiten(kos: readonly KnowledgeObject[]) {
-  const mitKennung = kos.map((k, i) => ({ ...k, id: `objekt-${i}` }));
+  // P14 · B-07: gelernt wird nur an Einträgen, die jedes Konto lesen darf — ausdrücklich „intern"
+  // (Entscheidung 16: eine fehlende Stufe zählt wie vertraulich). Die Lernobjekte dieser Datei sind
+  // so gemeint; eine ausdrücklich gesetzte Stufe bleibt stehen.
+  const mitKennung = kos.map((k, i) => ({
+    ...k,
+    confidentiality: k.confidentiality ?? ("intern" as const),
+    id: `objekt-${i}`,
+  }));
   return halbwertszeitenAusVerlauf(
     beobachtungenAus(mitKennung).map((b) => ({ ...b, erfasst: b.ende })),
   );
@@ -357,6 +364,35 @@ describe("R-1636 · aus der Bewährungs-Historie gelernte Halbwertszeit je Kateg
   it("eine gelernte Zeit bleibt in ihren Grenzen", () => {
     const kurz = lerneHalbwertszeiten([mitFassungen("a", "Takt", [1, 2, 3])]);
     expect(kurz.get("takt")?.tage).toBe(HALBWERTSZEIT_GRENZEN_TAGE.min);
+  });
+});
+
+describe("P14 · B-07 · gelernt wird nur an Einträgen, die jedes Konto lesen darf", () => {
+  it("ausdrücklich intern ohne Space und Quellleser zählt — nie eingestuft, vertraulich, Space nicht", () => {
+    const fassungen = [0, 40, 80, 120].map((t, i) => ({
+      version: i + 1,
+      at: new Date(START + t * TAG).toISOString(),
+      author: "anna",
+      note: "Fassung",
+    }));
+    const lesbar = (teil: Partial<KnowledgeObject>) =>
+      beobachtungenAus([ko({ history: fassungen, ...teil })]).map((b) => b.oeffentlich);
+    expect(lesbar({ confidentiality: "intern" })).toEqual([true, true, true]);
+    // Entscheidung 16: eine fehlende Stufe zählt wie vertraulich — nicht für jedes Konto lesbar.
+    expect(lesbar({})).toEqual([false, false, false]);
+    expect(lesbar({ confidentiality: "vertraulich" })).toEqual([false, false, false]);
+    expect(lesbar({ confidentiality: "intern", spaceId: "s-werk" })).toEqual([false, false, false]);
+    const quelle = { quellrechte: { leser: ["anna"] } } as Partial<KnowledgeObject>;
+    expect(lesbar({ confidentiality: "intern", ...quelle })).toEqual([false, false, false]);
+    // Nur die lesbaren zählen beim Lernen.
+    const verlauf = beobachtungenAus([
+      ko({ id: "a", history: fassungen, confidentiality: "intern" }),
+      ko({ id: "b", history: fassungen }),
+    ]).map((b) => ({ ...b, erfasst: b.ende }));
+    expect(halbwertszeitenAusVerlauf(verlauf).get("anlage 1")).toEqual({
+      tage: 40,
+      beobachtungen: 3,
+    });
   });
 });
 

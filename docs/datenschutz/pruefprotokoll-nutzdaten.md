@@ -61,6 +61,14 @@ wiederholt.
 | `ko.ownership-role` | `role`, `added` | K |
 | `ko.ownership-released` | `previousOwner` | K |
 | `ko.owner-validated` | `koVersion` | Z |
+| `ko.weisung-validated` | `koVersion`, `kontoregel`, `bereich`, `sichtung` (`verantwortlich` als Kontokennung, `frist`) | Z, M, K |
+| `ko.weisung-gesichtet` | `koVersion`, `ergebnis` | Z |
+| `user.weisungsbefugnis-set` | `bereiche` (Kategorienamen) oder `entfernt` | M |
+| `ko.weisung` (gesamt-wissen-herkunft: Weisung mit punktweiser Entscheidung) | `koVersion`, `bereich`, `sichtung` (`verantwortlich` als Kontokennung, `frist`), `bestehenGelassen`, `ueberstimmt` (Konfliktkennungen) | Z, M, K |
+| `ko.weisung-sichtung-vermerkt` | `weisungVon` (Kontokennung), `weisungAm`, `fassung` | K, M, Z |
+| `ko.weisung-abschluss-unvollstaendig` | `offen` (je Punkt `conflictId`, Stand `punkt`/`konflikt` aus geschlossener Menge) | K, Z |
+| `ko.durch-weisung-geschlossen` | `durchKoId`, `conflictId`, `von` (Kontokennung), `am`, `fassung` | K, M, Z |
+| `ko.externe-freigabe-uebernommen` | `koVersion`, `art`, `herausgeber`, `freigegebenAm`, `geltung`, `zustaendig` (Kontokennung) | Z, M, F (`herausgeber` ist eine freie Angabe, etwa ein Firmenname), K |
 | `lifecycle.handover` (Ziel: Kennung der ausscheidenden Person) | `from`, `to`, `transferred` (Anzahl je Art), `failed` (Art und Kennung, kein Inhalt) | K, Z |
 | `ko.purged` | `reason` (geschlossene Menge) + Zusatz des Aufrufers | Z |
 | `ko.restored`, `ko.deleted` | `trash` / leer + Beitrag | Z |
@@ -136,6 +144,22 @@ am Konflikt, **nicht** im Protokoll.
 | `reasoner.ki-freigabe` | `vorher`, `nachher` (Freigabestand) | Z |
 | `reasoner.zweitmeinung`, `reasoner.zweitmeinung-nicht-wirksam` (R-0305/R-1099) | `vorher`, `nachher` (`openai`/`anthropic`/`local`/`aus`) | Z |
 | `audit.exported` | `count`, `headSeq`, `headHash` | Z |
+
+### Klara-Aufträge (`services/app/src/routes/klara-gespraech-routes.ts`)
+
+Nachtrag `produkt:20261010:assistenz-aktionen-verlauf-ruecknahme` (PV-02), Quelleninspektion und
+gemessen in `tests/assistenz-aktionen-verlauf/verlauf-am-server.test.ts` (V1, V2): kein Wortlaut,
+kein Titel, kein Inhalt, kein Personenname.
+
+| Aktion | Nutzlast | Klasse |
+| --- | --- | --- |
+| `klara.gespraech.begonnen`, `klara.gespraech.geloescht` | — | — |
+| `klara.gespraech.einwilligung` | `erteilt` | Z |
+| `klara.auftrag.angelegt` | `gespraech`, `aktionen`, `geplanteSchritte` | K, Z |
+| `klara.auftrag.korrigiert` | `fassung`, `aktionen` | Z |
+| `klara.auftrag.abgebrochen` | — | — |
+| `klara.auftrag.schritt` | `nr`, `aktion`, `stand`, ggf. `ausgefuehrt`, `ergebnis` (Kennung), `fehler` (Grundschlüssel); seit PV-02 `gespraech`, `aktionskennung`, `vertrag`, bei gespeichert/zurückgenommen `vorherStand`, `neuerStand` (Fassungszeit eines Entwurfs bzw. Art einer Aufgabenwirkung wie `prioritaet:hoch`, `zugewiesen` — ohne Namen) | K, Z, M |
+| `klara.auftrag.ruecknahme-abgelehnt` (PV-02) | `gespraech`, `grund`, ggf. `aktionskennung`, `vertrag`, `eigenerStand`, `aktuellerStand` (Fassungszeiten) | K, Z, M |
 
 ### Konten und Anmeldung (`services/auth`)
 
