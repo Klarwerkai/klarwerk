@@ -782,6 +782,18 @@ export const TABELLE: Zeile[] = [
     },
     erwartet: NUR_LESEN,
   },
+  // produkt:20261009:referenzki-pruefdienst (REF-02): die erneute Referenzprüfung trägt keinen
+  // Inhalt im Rumpf. Eine erfundene Prüfkennung ergibt nach dem Tor für jede Rolle die fachliche
+  // 404 „nicht (mehr) verfügbar" — die Tür ist registriert und gemessen, ohne Bestand vorauszusetzen.
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/ask/referenzpruefung/gibt-es-nicht/erneut",
+    route: "/api/ask/referenzpruefung/:pruefId/erneut",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1643",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   // R-1663 / R-2178: hinter demselben Schalter wie `GET /api/analytics/expertise` (an dieser Bühne
   // gesetzt). Eine erfundene Kennung ergibt nach dem Tor die fachliche 404 — die Tür ist registriert.
   {
@@ -2146,6 +2158,57 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/ki-arbeitsbegleitung-routes.ts:279",
     tor: "requireUser",
     payload: {},
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261007:klara-notizen-aufgaben (Klara 06) — die eigenen Notizen. Jede Tür prüft nur die
+  // Anmeldung; das Konto kommt aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Liste liefert auf der
+  // gemeinsamen Bühne die (leeren) eigenen Notizen; das Anlegen mit leerer Nutzlast scheitert am
+  // Pflichtfeld `vorgang` (400), BEVOR etwas angelegt wird; die Türen mit Kennung tragen eine
+  // erfundene und enden in 400 (Bearbeiten ohne Fassung) oder 404 des Dienstes. Die Wirkung (eigene
+  // Notiz, Fremdkonto 404) misst `tests/klara-notizen/notiz-am-server.test.ts`.
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/notizen",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:84",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/notizen",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:100",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/notizen/gibt-es-nicht",
+    route: "/api/me/klara/notizen/:id",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:125",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/notizen/gibt-es-nicht",
+    route: "/api/me/klara/notizen/:id",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:138",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "DELETE",
+    pfad: "/api/me/klara/notizen/gibt-es-nicht",
+    route: "/api/me/klara/notizen/:id",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:168",
+    tor: "requireUser",
     erwartet: ANGEMELDET,
   },
   // produkt:20261010:assistenz-name-avatar — das eigene Assistenzprofil. Beide Türen prüfen nur die

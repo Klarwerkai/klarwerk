@@ -23,6 +23,7 @@ import {
   PgAnswerSnapshotRepo,
   PgGapRepo,
   PgNulltrefferRepo,
+  ReferenzPruefdienst,
   parseConfiguredReceiptSecret,
 } from "../../ask";
 import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "../../audit";
@@ -142,6 +143,7 @@ import {
   type UploadLimitsRepo,
   type WithTx,
   anweisungFehler,
+  isConfidential,
   ohneBestandsstempel,
   responsibleOf,
 } from "../../knowledge-object";
@@ -364,6 +366,14 @@ import {
   type KlaraGespraechRepo,
   PgKlaraGespraechRepo,
 } from "./klara-gespraech";
+// produkt:20261007:klara-notizen-aufgaben (Klara 06): die privaten Notizen — haltbar im Postgres-
+// Betrieb, im Speicher ohne Datenbank.
+import {
+  InMemoryKlaraNotizRepo,
+  KlaraNotizDienst,
+  type KlaraNotizRepo,
+  PgKlaraNotizRepo,
+} from "./klara-notiz";
 // ADMIN-12: Kommunikationsregeln, persönliche Abwahl und Zustellstatus — haltbar im Postgres-
 // Betrieb, im Speicher ohne Datenbank.
 import {
@@ -465,6 +475,8 @@ import { klaraAiRoutes } from "./routes/klara-ai-routes";
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
 // produkt:20261008:klara-basis: die eigenen, serverseitig gespeicherten Klara-Gespräche.
 import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
+// produkt:20261007:klara-notizen-aufgaben (Klara 06): die eigenen, serverseitig gespeicherten Notizen.
+import { klaraNotizRoutes } from "./routes/klara-notiz-routes";
 // JOB 3110 (M2b): der Memo-Weg des Word-Panels. Die Route ist seit JOB 3091 gebaut und gemessen;
 // hier — und nur hier — bekommt sie ihren Aufrufer.
 import { type ZurufModell, klaraZurufRoutes } from "./routes/klara-session-routes";
@@ -756,6 +768,12 @@ export interface AppServices {
    * (`PgKlaraGespraechRepo`), sonst die In-Memory-Ablage.
    */
   klaraGespraeche: KlaraGespraechRepo;
+  /**
+   * produkt:20261007:klara-notizen-aufgaben (Klara 06): die privaten Notizen (`klara-notiz.ts`) je
+   * Konto. Aus demselben Grund wie `klaraGespraeche` NICHT in `AppRepos` und nicht im
+   * Wissensbestand; im Postgres-Betrieb haltbar (`PgKlaraNotizRepo`), sonst im Speicher.
+   */
+  klaraNotizen: KlaraNotizRepo;
   /**
    * produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil (`assistenz-profil.ts`)
    * je Konto. Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
@@ -1353,6 +1371,8 @@ export function assembleServices(
     mitgelesen?: MitgelesenRepo;
     // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     klaraGespraeche?: KlaraGespraechRepo;
+    // produkt:20261007:klara-notizen-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
+    klaraNotizen?: KlaraNotizRepo;
     // produkt:20261010:assistenz-name-avatar: gesetzt von `buildPgServices`; sonst im Speicher.
     assistenzProfile?: AssistenzProfilRepo;
     // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
@@ -1817,6 +1837,8 @@ export function assembleServices(
     mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
     // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
     klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
+    // produkt:20261007:klara-notizen-aufgaben: die Notizen — Postgres, wenn injiziert, sonst im Speicher.
+    klaraNotizen: opts.klaraNotizen ?? new InMemoryKlaraNotizRepo(),
     // produkt:20261010:assistenz-name-avatar: die Assistenzprofile — Postgres, wenn injiziert.
     assistenzProfile: opts.assistenzProfile ?? new InMemoryAssistenzProfilRepo(),
     // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
@@ -2341,6 +2363,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
       // Neustart und Deploy (`KLARA_GESPRAECH_SCHEMA`, angelegt von `migrate()`).
       klaraGespraeche: new PgKlaraGespraechRepo(pool),
+      // produkt:20261007:klara-notizen-aufgaben: eine Notiz überlebt erneute Anmeldung, Neustart und
+      // Deploy (`KLARA_NOTIZ_SCHEMA`, angelegt von `migrate()`).
+      klaraNotizen: new PgKlaraNotizRepo(pool),
       // produkt:20261010:assistenz-name-avatar: Name, Avatar und Ersteinrichtung überleben Neuladen,
       // erneute Anmeldung, zweites Gerät und Deploy (`ASSISTENZ_PROFIL_SCHEMA`, von `migrate()`).
       assistenzProfile: new PgAssistenzProfilRepo(pool),
@@ -4878,6 +4903,42 @@ export function buildApp(
         return { erreichbar, namen };
       },
     },
+    // produkt:20261009:referenzki-pruefdienst (REF-02): EIN gemeinsamer Prüfdienst für beide
+    // Zugänge (Fragekonsole und Klara) — derselbe Reasoner, dieselben Freigaben, dasselbe Audit.
+    referenz: new ReferenzPruefdienst({
+      waehlePruefer: (antwort, vertraulich) =>
+        services.reasoner.referenzPruefer(antwort, vertraulich),
+      externErlaubt: (vertraulich) => services.reasoner.externeVerarbeitungErlaubt(vertraulich),
+      istVertraulich: (ko) =>
+        isConfidential(ko.confidentiality as KnowledgeObject["confidentiality"]),
+      // Das Prüfprotokoll: Kennungen, Zustandszahlen, Rollen mit tatsächlichem Anbieter und Modell,
+      // Fingerabdrücke und Messung — kein Antwort-, Aussage- oder Quellentext.
+      protokolliere: async (e) => {
+        await services.audit.record({
+          actor: e.akteur,
+          action: "ask.referenzpruefung",
+          target: e.pruefId,
+          payload: {
+            richtlinie: e.richtlinie,
+            status: e.status,
+            grund: e.grund ?? null,
+            antwortAnbieter: e.antwort?.anbieter ?? null,
+            antwortModell: e.antwort?.modell ?? null,
+            prueferAnbieter: e.pruefer?.anbieter ?? null,
+            prueferModell: e.pruefer?.modell ?? null,
+            antwortFingerabdruck: e.antwortFingerabdruck,
+            paketFingerabdruck: e.paketFingerabdruck,
+            ergebnisFingerabdruck: e.ergebnisFingerabdruck,
+            zustaende: e.zustaende,
+            ausCache: e.ausCache,
+            versuch: e.versuch,
+            dauerMs: e.dauerMs,
+            eingabeToken: e.verbrauch?.eingabe ?? null,
+            ausgabeToken: e.verbrauch?.ausgabe ?? null,
+          },
+        });
+      },
+    }),
   };
   // R-0700: der allgemeine Frageweg bekommt das Sitzungstor NICHT mehr — er nimmt keine
   // Klara-Bindung an.
@@ -5333,6 +5394,20 @@ export function buildApp(
               }),
           },
         }),
+      },
+      guards,
+    ),
+  );
+  // produkt:20261007:klara-notizen-aufgaben (Klara 06): die eigenen Notizen. Eine Notiz aus dem
+  // Gespräch liest Wortlaut und Bezug aus DEMSELBEN eigenen Gespräch.
+  app.register(
+    klaraNotizRoutes(
+      {
+        dienst: new KlaraNotizDienst({
+          repo: services.klaraNotizen,
+          gespraeche: services.klaraGespraeche,
+        }),
+        audit: services.audit,
       },
       guards,
     ),
