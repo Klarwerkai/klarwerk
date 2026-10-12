@@ -279,9 +279,32 @@ describe("Geheimnisse nur in der Betriebsumgebung", () => {
       (d) => /\.(ts|tsx)$/.test(d) && !/\.(test|spec)\.(ts|tsx)$/.test(d),
     );
     expect(quellen.length).toBeGreaterThan(100);
+    const inhalte = new Map(quellen.map((d) => [d, readFileSync(d, "utf8")]));
+    // BAU-MODULE: Vite-Plugins, die `apps/web/vite.config.ts` lädt (etwa `ocrEngineDateien.ts`),
+    // laufen beim Bauen in Node und dürfen dort die Bauumgebung lesen. Erkannt werden sie an einem
+    // `node:`-Import — der im Browser gar nicht laufen kann. Die Ausnahme gilt nur, solange KEIN
+    // Browser-Modul sie importiert und sie kein Geheimnis des Startvertrags nennen.
+    const istBauModul = (inhalt: string): boolean => /from\s+["']node:/.test(inhalt);
+    const bauModule = quellen.filter((d) => istBauModul(inhalte.get(d) ?? ""));
     const verstoesse: string[] = [];
-    for (const datei of quellen) {
-      const inhalt = readFileSync(datei, "utf8");
+    for (const bau of bauModule) {
+      const name = relative(REPO, bau).replaceAll("\\", "/");
+      const stamm = (bau.split(/[\\/]/).pop() ?? "").replace(/\.tsx?$/, "");
+      for (const [datei, inhalt] of inhalte) {
+        const ziele = [...inhalt.matchAll(/(?:from\s+|import\(\s*)["']([^"']+)["']/g)];
+        if (
+          !istBauModul(inhalt) &&
+          ziele.some(([, ziel]) => (ziel ?? "").split("/").pop() === stamm)
+        ) {
+          verstoesse.push(`${relative(REPO, datei)}: importiert Bau-Modul ${name}`);
+        }
+      }
+      const genannt = GEHEIM.filter((g) => (inhalte.get(bau) ?? "").includes(g));
+      if (genannt.length > 0) {
+        verstoesse.push(`${name}: Bau-Modul nennt Geheimnis ${genannt.join(", ")}`);
+      }
+    }
+    for (const [datei, inhalt] of inhalte) {
       const name = relative(REPO, datei).replaceAll("\\", "/");
       // Nur die Build-Flags, die Vite selbst setzt — nie ein Wert aus der Umgebung.
       for (const [, feld] of inhalt.matchAll(/import\.meta\.env\.([A-Za-z_][A-Za-z0-9_]*)/g)) {
@@ -289,7 +312,7 @@ describe("Geheimnisse nur in der Betriebsumgebung", () => {
           verstoesse.push(`${name}: import.meta.env.${feld}`);
         }
       }
-      if (/\bprocess\.env\b/.test(inhalt)) {
+      if (/\bprocess\.env\b/.test(inhalt) && !istBauModul(inhalt)) {
         verstoesse.push(`${name}: process.env`);
       }
       if (ANBIETER_EGRESS.some((muster) => muster.test(inhalt))) {

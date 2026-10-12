@@ -52,7 +52,7 @@ anderen Art (ein KI-Anbieterschlüssel öffnet weder ein Confluence-Token noch d
 | **1** | Datenhaltung | Datenbank-Zugang |
 | **2** | Ausgehende Anbieter-Zugänge | KI-Modelle, Transkription, Postausgang, Single Sign-on, Signiergeheimnisse der Wissensereignisse |
 | **3** | Quellsystem-Zugänge (Import, lesend) | Confluence, SharePoint/OneDrive, Jira |
-| **4** | Produkteigene Geheimnisse | Add-in-Schlüssel, Verzeichnisschlüssel (SCIM), Signatur der Antwortbelege |
+| **4** | Produkteigene Geheimnisse | Add-in-Schlüssel, Verzeichnisschlüssel (SCIM), Signatur der Antwortbelege, VAPID-Schlüsselpaar für Geräte-Push |
 
 **Tatsächliche Zugriffswege.** Was ein kompromittierter Zugang wirklich erreicht — daraus bestimmt
 sich der Pflichtumfang eines Notfallwechsels (§7):
@@ -65,6 +65,7 @@ sich der Pflichtumfang eines Notfallwechsels (§7):
 | ein Quellsystem-Token (Confluence, SharePoint, Jira) | lesend den freigegebenen Space, die Bibliothek bzw. das Projekt im Quellsystem | nur dieses Token; Zugriffe im Quellsystem prüfen |
 | `KLARWERK_ADDON_API_KEY` | die Add-in-Schnittstelle von Klarwerk mit den Rechten des Add-ins — keine anderen Geheimnisse | nur dieser Schlüssel, im Add-in nachziehen |
 | `KLARWERK_SCIM_TOKEN` | die Verzeichnisschnittstelle: Konten anlegen, sperren und über Verzeichnisgruppen Rollen ändern — damit mittelbar Zugang zum Bestand mit jeder dort vergebbaren Rolle; keine anderen Geheimnisse | dieser Schlüssel; über SCIM angelegte oder geänderte Konten prüfen, Sitzungen invalidieren |
+| `VAPID_PRIVATE_KEY` | Push-Anstöße an alle Geräte, die Geräte-Push dieser Instanz abonniert haben — keine anderen Geheimnisse, kein Zugang zum Bestand | das Schlüsselpaar `VAPID_PRIVATE_KEY`/`VAPID_PUBLIC_KEY` gemeinsam |
 | `KLARWERK_WEBHOOKS` (Signiergeheimnisse) | gefälschte, gültig signierte Wissensereignisse an die eingetragenen Empfänger; die Liste nennt deren Adressen | alle Signiergeheimnisse der Liste, bei jedem Empfänger nachziehen |
 | `KLARWERK_ASK_RECEIPT_SECRET` | Fälschen von Antwortbelegen dieser Instanz | nur dieses Geheimnis |
 | Repository, Build, Client-Bundle | **kein** Geheimnis (§1a, Test G3–G6) | — (Fund prüfen; enthält er doch einen Wert, gilt die Zeile dieses Werts) |
@@ -93,6 +94,8 @@ sobald eine fehlt. Ablageort für alle: **Service-Env in Coolify** (Produktion) 
 | 2 | Signiergeheimnisse der Wissensereignisse | `KLARWERK_WEBHOOKS` | keine Ereignisse an Fremdwerkzeuge | ≤ 12 Monate je Ziel | Neustart; der Empfänger braucht das neue Signiergeheimnis gleichzeitig, sonst verwirft er die Ereignisse |
 | 3 | Jira-Token | `KLARWERK_JIRA_TOKEN` | kein Jira-Import | ≤ 12 Monate bzw. Ablauf bei Atlassian | Neustart; das Konto braucht weiter Leserecht auf das Projekt und seine Projektrollen |
 | 4 | Add-in-Schlüssel | `KLARWERK_ADDON_API_KEY` | Add-in-Pfad ist zu | ≤ 12 Monate und bei jedem Wechsel des Add-in-Verteilwegs | Neustart; das Add-in braucht denselben neuen Schlüssel |
+| 4 | Geräte-Push, privater Schlüssel | `VAPID_PRIVATE_KEY` | kein Geräte-Push, Zuweisungen nur per E-Mail | ≤ 12 Monate, nur als Paar mit `VAPID_PUBLIC_KEY` | Neustart. Bestehende Geräte-Abos sind an den alten öffentlichen Schlüssel gebunden, und die Oberfläche legt kein neues Abo von selbst an (`apps/web/src/lib/geraetePush.ts` übernimmt ein vorhandenes Abo): Nutzer schalten Geräte-Push einmal aus und wieder ein, bis dahin nur E-Mail |
+| 4 | Geräte-Push, öffentlicher Schlüssel | `VAPID_PUBLIC_KEY` | kein Geräte-Push, Zuweisungen nur per E-Mail | ≤ 12 Monate, nur als Paar mit `VAPID_PRIVATE_KEY` | Fachlich öffentlich (der Browser erhält ihn), wird aber nur mit dem privaten Schlüssel zusammen erzeugt und gewechselt; Folge wie dort |
 | 4 | Verzeichnisschlüssel (SCIM) | `KLARWERK_SCIM_TOKEN` | keine Verzeichnispflege, Konten von Hand | ≤ 12 Monate | Neustart; das Unternehmensverzeichnis braucht denselben neuen Schlüssel; unter 32 Zeichen bleibt die Pflege aus |
 | 4 | Signatur der Antwortbelege | `KLARWERK_ASK_RECEIPT_SECRET` | signiert mit einem prozesslokalen Zufallswert (`services/ask/src/service.ts`); nach einem Neustart nicht mehr bestätigbar | ≤ 12 Monate, zusätzlich Notfallwechsel (§7) | Neustart. Ein Beleg trägt kein Schlüsselkennzeichen und ist nur 30 Minuten gültig (`ANSWER_RECEIPT_TTL_MS`, `services/ask/src/receipt.ts`): Belege aus den letzten 30 Minuten vor dem Wechsel werden nicht mehr bestätigt, ältere waren ohnehin abgelaufen. Den regulären Wechsel deshalb in eine nutzungsarme Zeit legen; ein Parallelbetrieb mit altem Wert ist nicht nötig |
 
@@ -166,6 +169,8 @@ Stand: 2026-10-12.
 | 2 | Signiergeheimnisse der Wissensereignisse | `KLARWERK_WEBHOOKS` | Peter (fachlich); Durchführung: Coolify + jeweiliger Empfänger | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite gefälschte Ereignisse an die Empfänger; danach ≤ 12 Monate |
 | 3 | Jira-Token | `KLARWERK_JIRA_TOKEN` | Peter (fachlich); Durchführung: Atlassian-Konto + Coolify | nicht nachgewiesen | 2027-01-12 | früheres Ablaufdatum des Tokens bei Atlassian geht vor; danach ≤ 12 Monate |
 | 4 | Add-in-Schlüssel | `KLARWERK_ADDON_API_KEY` | Peter (fachlich); Durchführung: Coolify + Add-in-Verteilung | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite Add-in-Schnittstelle; danach ≤ 12 Monate |
+| 4 | Geräte-Push, privater Schlüssel | `VAPID_PRIVATE_KEY` | Peter (fachlich); Durchführung: Betriebsweg Coolify | nicht nachgewiesen | 2027-01-12 | Alter unbekannt, Reichweite nur Push-Anstöße an abonnierte Geräte; Wechsel kostet ein Neu-Abo je Gerät; danach ≤ 12 Monate |
+| 4 | Geräte-Push, öffentlicher Schlüssel | `VAPID_PUBLIC_KEY` | Peter (fachlich); Durchführung: Betriebsweg Coolify | nicht nachgewiesen | 2027-01-12 | nur zusammen mit `VAPID_PRIVATE_KEY` |
 | 4 | Verzeichnisschlüssel (SCIM) | `KLARWERK_SCIM_TOKEN` | Peter (fachlich); Durchführung: Coolify + Verzeichnisverwaltung | nicht nachgewiesen | 2026-11-12 | große Reichweite (Konten und Rollen über das Verzeichnis); danach ≤ 12 Monate |
 | 4 | Signatur der Antwortbelege | `KLARWERK_ASK_RECEIPT_SECRET` | Peter (fachlich); Durchführung: Betriebsweg Coolify | nicht nachgewiesen | 2027-04-12 | geringe Reichweite (nur Belegfälschung, Belege gelten 30 Minuten); danach ≤ 12 Monate |
 | Proxy | Pre-Launch-Gate | Basic-Auth-Hash am Reverse-Proxy | Peter (fachlich); Durchführung: Betriebsweg Coolify/Traefik | nicht nachgewiesen | 2026-11-12 | Zugangsschutz vor der ganzen App; danach bei Personen- oder Phasenwechsel |
