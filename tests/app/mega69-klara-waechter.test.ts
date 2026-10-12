@@ -3176,7 +3176,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Hash-Werkzeug ist der neue Wert hier nicht berechenbar — der Wert unten ist der bisherige und
     // damit ein PLATZHALTER; der Prüflauf meldet den Ist-Wert als „Received", er wird danach
     // gemessen übernommen.
-    const PIN = "13a4708e0d85d80ded0ff5b86f1abdfdfe0314211c9f8ff8412da35df403a41e";
+    // NACHARBEIT 20 (gesamt-browser-kontextkarten): PIN BEWUSST AKTUALISIERT (13a4708e… -> 7f023668…).
+    // Im Prüflauf zu Kandidat 6e1a7105 GEMESSEN („Received", HISTORIE/nacharbeit-20/PRUEFUNG/
+    // integration-waechter.log) und unverändert übernommen; die Panel-Dateien sind seit dieser
+    // Messung unberührt.
+    const PIN = "7f0236681d9f18ea351d7267375563445e5afee2806f49fa0319822c945444aa";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

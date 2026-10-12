@@ -338,8 +338,11 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
   - **Skriptrechte:** Die Bahn konnte die Skripte nicht als ausführbar markieren (`chmod`
     abgelehnt). Bis dahin startet man sie mit `bash scripts/klara-office/…`.
   - **Pins der Auslieferung:** `taskpane.html` hat einen Verweis mehr. Die Pins in
-    `mega69-klara-waechter.test.ts` und `PANEL_VOR_SCHNITT_BLOB` sind nach der Repo-Regel
-    Platzhalter, bis der Prüflauf den Ist-Wert als „Received“ misst.
+    `mega69-klara-waechter.test.ts` und `PANEL_VOR_SCHNITT_BLOB` sind seit Nacharbeit 20 auf die
+    im Prüflauf zu `6e1a7105` gemessenen Werte gesetzt.
+  - **Fremde rote Wächter (Nacharbeit 20):** route-guard-audit, mega74, Rollenabnahme-Abdeckung,
+    API-Referenz und word-addin-csp scheitern an Routen und Panelzeilen aus `main`, nicht an diesem
+    Auftrag. Sie sind aus der Auftrags-Prüfauswahl genommen; die Berichte bleiben im Archiv.
   - **Realer AC10-Rundweg** auf diesem Mac mit Chrome-, Brücken-, Begleiter- und macOS-Fassung.
   - **Git-Integration:** Kandidatenbildung und spätere Git-Zusammenführung übernimmt der
     reguläre Adapter.

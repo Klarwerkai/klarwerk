@@ -474,8 +474,11 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * Bezugspunkt MUSS deshalb wandern; ohne zugelassenes Hash-Werkzeug (in dieser Bahn gesperrt) ist er
  * hier nicht berechenbar. Der Wert unten ist der bisherige und damit ein PLATZHALTER — E2 meldet den
  * Ist-Wert im Prüflauf als „Received"; er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 20 (gesamt-browser-kontextkarten): GEMESSEN im Prüflauf zu Kandidat 6e1a7105
+ * (`32f7af32…`, „Received" von E2, HISTORIE/nacharbeit-20/PRUEFUNG/integration-waechter.log;
+ * vorher `cd5def0d…`) und unverändert übernommen.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "cd5def0d7ba5db5da48dcce8c99d77d8bb2d6fea";
+export const PANEL_VOR_SCHNITT_BLOB = "32f7af320a766ecca9daab860a53de850c938bad";
 
 export interface PanelTeile {
   html: string;
