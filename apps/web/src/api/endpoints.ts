@@ -1,5 +1,5 @@
-import type { PushAboJson } from "../lib/geraetePush";
 import { trenneVerzeichnis } from "../lib/geloeschteKonten";
+import type { PushAboJson } from "../lib/geraetePush";
 import type { Verbindungsnachweis } from "../lib/integrationStatus";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
