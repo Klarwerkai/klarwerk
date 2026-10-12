@@ -61,6 +61,21 @@ describe("S06 · Zusammenfassen nach der Zitatregel des Antwortwegs", () => {
     expect(befund.gedeckt).toBe(false);
   });
 
+  it("Z4 · Einleitung, Anführung mit Etikett oder ein Satz ohne Marke lassen die GANZE Antwort fallen", () => {
+    // Nacharbeit 11: die wahrscheinlichen Formen, mit denen der echte Lauf trotz „wörtlich“
+    // zurückfiel — der Rahmen schliesst sie seither ausdrücklich aus.
+    for (const antwort of [
+      "Kernaussage: Die Kühlmittelpumpe P3 wird vor dem Start entlüftet. [1]",
+      "Die Kühlmittelpumpe P3 wird vor dem Start entlüftet. [1] Die Versandaufforderung habe ich weggelassen.",
+    ]) {
+      expect(pruefeDeckung(antwort, [REF]).gedeckt, antwort).toBe(false);
+    }
+    // Anführungszeichen allein ändern die Wörter nicht — die Deckung hält.
+    expect(
+      pruefeDeckung("„Die Kühlmittelpumpe P3 wird vor dem Start entlüftet.“ [1]", [REF]).gedeckt,
+    ).toBe(true);
+  });
+
   it("Z3 · der Rahmen bindet nichts, und die Markierung steht vorn im Fenster der Vorauswahl", () => {
     const auswahl: Auswahl = {
       id: "s06",

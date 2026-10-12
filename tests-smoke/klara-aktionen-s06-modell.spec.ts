@@ -202,7 +202,7 @@ test("AW10-K01 S06: tatsächliche Modellzusammenfassung, kein Versand, keine neu
     await anhang("gesendete-frage", gesendet);
     // Die Absicht reist ausdrücklich mit; die Markierung steht als Zitat (Quelle) dahinter.
     expect(gesendet.question ?? "").toContain(
-      "Fasse den zitierten Text kurz zusammen: gib nur seine Kernaussage wörtlich wieder",
+      "Fasse den zitierten Text kurz zusammen: antworte nur mit seiner Kernaussage als wörtlich übernommenem Satz",
     );
     const antwort = await antwortVersprochen;
     expect(antwort.status(), await antwort.text()).toBe(200);
@@ -215,6 +215,9 @@ test("AW10-K01 S06: tatsächliche Modellzusammenfassung, kein Versand, keine neu
       };
     };
     await anhang("modellantwort", ergebnis);
+    // Nacharbeit 11 · Diagnose: das Laufprotokoll des Modells (vorhandener Leseweg, Projektion für
+    // den Leser) — hält fest, ob der Antwortweg den Modelltext ausgab oder zurückfiel.
+    await anhang("modelllaeufe-danach", await json(admin, "/api/model-runs?limit=5"));
     expect(ergebnis.result.answered).toBe(true);
     expect(ergebnis.result.demo).toBe(false);
     expect(ergebnis.result.aiGenerated?.mode).toBe("model");
