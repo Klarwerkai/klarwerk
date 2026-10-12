@@ -248,6 +248,11 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "MEETING_DOKUMENTBEZUG_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:klara-notizen-aufgaben: die privaten Notizen. ADDITIV, nachgezählt: ein
+  // `CREATE TABLE IF NOT EXISTS`, ein `CREATE UNIQUE INDEX IF NOT EXISTS` und ein `CREATE INDEX IF
+  // NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter
+  // Lauf ist folgenlos.
+  { stufe: "KLARA_NOTIZ_SCHEMA", risiko: "ADDITIV" },
   // R-0679 / FR-VAL-07: die Geräteabos für Push. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT
   // EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel,
   // keine Extension. Ein zweiter Lauf ist folgenlos.

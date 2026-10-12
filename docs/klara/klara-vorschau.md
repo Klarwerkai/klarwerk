@@ -136,6 +136,26 @@ führt Klara nur Priorität, Zuweisung (Lücke) und Eskalation (Konflikt) aus; P
 Schliessen und Konfliktentscheide bleiben bei der Person am Arbeitsort. Wissensobjekte
 werden über Klara 05 nur geöffnet — geändert werden sie weiter über Klara 04 und den Editor.
 
+## Private Notizen aufnehmen und wiederfinden (Klara 06, `produkt:20261007:klara-notizen-aufgaben`)
+
+Nur im echten Betrieb und nur für die angemeldete Person. Ablage am Server
+(`services/app/src/klara-notiz.ts`, Tabelle `klara_notizen`, Türen `/api/me/klara/notizen` in
+`routes/klara-notiz-routes.ts`), Oberfläche „Meine Notizen“ in Klaras Fläche
+(`klara-vorschau/KlaraNotizen.tsx`, Abläufe in `notizen.ts`, Texte `texte/klaranotiz.ts`).
+
+| Fähigkeit | Wie es tatsächlich geht |
+| --- | --- |
+| Anlegen | „Als Notiz speichern“ unter dem Eingabefeld: getippter oder diktierter Text (Weg `geschrieben`/`diktiert`) wird zur Notiz — er geht NICHT an den Frageweg, eine Einwilligung ist nicht nötig. „Als Notiz“ an einer gespeicherten Gesprächsnachricht: der Server übernimmt Wortlaut und Ort der eigenen Nachricht (Weg `gespraech`). „Als private Notiz speichern“ am Notizentwurf eines markierten Ausschnitts (Klara 04) speichert ihn mit Bezug `markierung` (Weg `ausschnitt`). |
+| Rücklink | Der Objektbezug von damals (Seite, Objekt, Wissensobjekt und Fassung bzw. Artikel und Absatz, Anfang der Markierung) wird beim Anlegen geprüft (`pruefeObjektbezug`) und nie verändert; „Zur Stelle“ führt dorthin zurück. |
+| Wiederfinden | „Meine Notizen“: Liste (zuletzt geänderte zuerst) und Suche über Titel, Text, offene Fragen und Ort — gross/klein egal, alle Wörter müssen vorkommen. Öffnen liest frisch vom Server. |
+| Bearbeiten | Titel, Text und offene Fragen (eine je Zeile); „Als persönlichen Arbeitszettel behalten“. Gespeichert wird mit der gesehenen Fassung; eine inzwischen anderswo geänderte Notiz wird nicht still überschrieben (409). |
+| Fehler und Wiederholung | Jedes Anlegen trägt einen Vorgangsschlüssel. Scheitert es, steht „Nicht gespeichert: Grund“ mit „Erneut speichern“ da; die Wiederholung schickt denselben Schlüssel — kam der erste Versuch doch an, antwortet der Server mit derselben Notiz (eindeutiger Index `konto_id, vorgang`). Eine gescheiterte Änderung bleibt im Feld und lässt sich mit derselben Fassung erneut speichern. |
+| Privatheit | Fremd und unbekannt antworten gleich (404), auch für Administratoren. Notizen liegen nicht im Wissensbestand: Bibliothekssuche, Frageweg und Spaces kennen die Tabelle nicht. Das Prüfprotokoll (`klara.notiz.angelegt/geaendert/geloescht`) trägt Kennung, Weg, Art und Fassung — nie Inhalt. |
+
+Grenzen: Aufgaben, gemeinsames Wissen (Übernahme in Artikel oder Space) und Präferenzen sind eigene
+Folgeaufträge (Klara 07–09). Die Notizen sind noch kein eigener Bereich der Selbstauskunft und der
+Sicherungsübersicht (sie liegen im Datenbank-Dump und im Restore-Drill-Pflichtsatz).
+
 ## Verlauf, Nachweis und Rücknahme je Aktion (PV-02, `produkt:20261010:assistenz-aktionen-verlauf-ruecknahme`)
 
 Baut nichts von Klara 05 oder ADMIN-03 neu. Es verbindet Gespräch, Aktionskennung, Prüfprotokoll
@@ -225,6 +245,10 @@ Person selbst sieht ihre Einträge im Nachweis.
 - `tests/klara-vorschlaege/` — Klara 04: Übernahmeregel (`uebernahme-logik.test.ts`) und der ganze
   Weg Vorschlag → Übernahme → Editor → Speichern → Wiederöffnen, Rückfrage und fehlendes Recht gegen
   den echten Server mit kontrolliertem Modelladapter (`vorschlag-am-server.test.tsx`)
+- `tests/klara-notizen/` — Klara 06: Ablage, Rechte, Suche, Prüfprotokoll und Wiederholung am
+  Server (`notiz-am-server.test.ts`), PostgreSQL mit Neustart und gleichzeitigen Versuchen
+  (`notiz-pg.integration.test.ts`), die echte Klara gegen den echten Server
+  (`notizen-am-server.test.tsx`)
 - `tests/klara-aktionen/` — Klara 05: Erkennung (`erkennung.test.ts`), Auftragsgrenze am Server
   (`auftragsgrenze-am-server.test.ts`), Aufgabenaktionen, ausbleibendes Nachlesen und unteilbares
   Löschen (`aufgabenaktion-und-nachlesen.test.ts`) und der ganze Weg getippt/gesprochen → Grenze → Ausführung →
