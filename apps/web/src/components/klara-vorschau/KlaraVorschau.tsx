@@ -89,13 +89,13 @@ import {
 } from "../assistenzFlaechen";
 import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
-import { KlaraQualitaet } from "./KlaraQualitaet";
 import {
   KlaraHinweis,
   KlaraModusWahl,
   KlaraUebertrageneAufgaben,
   istOffen,
 } from "./KlaraEigeninitiative";
+import { KlaraQualitaet } from "./KlaraQualitaet";
 import {
   type Absendeergebnis,
   KlaraAuftragKarte,

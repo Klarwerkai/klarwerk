@@ -94,8 +94,11 @@ async function waehle(page: Page, modus: "nachfrage" | "hinweise" | "auftraege")
   const gespeichert = page.waitForResponse(
     (r) => new URL(r.url()).pathname === BASIS && r.request().method() === "PUT",
   );
-  await page.getByTestId(`klara-eigeninitiative-${modus}`).locator("input").check();
+  const auswahl = page.getByTestId(`klara-eigeninitiative-${modus}`).locator("input");
+  // Der kontrollierte Radiozustand folgt erst der Serverbestätigung.
+  await auswahl.click();
   expect((await gespeichert).status()).toBe(200);
+  await expect(auswahl).toBeChecked();
   await expect(page.getByTestId("klara-eigeninitiative")).toHaveAttribute("data-modus", modus);
   await expect(page.getByTestId("klara-eigeninitiative-stand")).toContainText(
     "Für dein Konto gespeichert",
