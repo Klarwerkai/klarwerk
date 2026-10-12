@@ -336,8 +336,12 @@ export function KlaraNotizen(): JSX.Element {
         </button>
       </form>
 
-      {s.laden === "laedt" ? (
-        <p className="text-[11.5px] text-muted-2">{t("klaranotiz.laden")}</p>
+      {/* Erst nach dem Lesen vom Server heisst eine leere Liste „keine Notizen“ — vorher
+          (`aus`: noch nicht begonnen, `laedt`) steht der Ladehinweis da. */}
+      {s.laden === "aus" || s.laden === "laedt" ? (
+        <p data-testid="klara-notizen-laden" className="text-[11.5px] text-muted-2">
+          {t("klaranotiz.laden")}
+        </p>
       ) : s.laden === "fehler" ? (
         <p
           role="alert"

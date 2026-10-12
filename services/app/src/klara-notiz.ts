@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import {
+  KlaraGespraechFehler,
   type KlaraGespraechRepo,
   type KlaraObjektbezug,
   pruefeObjektbezug,
@@ -342,6 +343,21 @@ function pflichtText(wert: unknown, max: number, feld: string): string {
   return wert;
 }
 
+/**
+ * Der Rücklink nach DERSELBEN Regel wie im Gespräch (`pruefeObjektbezug`). Dessen Eingabefehler
+ * heisst hier, was er ist: ein 400 dieser Ablage — nicht ein unbekannter Fehler (500).
+ */
+function rueckLinkAus(roh: unknown): KlaraObjektbezug {
+  try {
+    return pruefeObjektbezug(roh);
+  } catch (fehler) {
+    if (fehler instanceof KlaraGespraechFehler && fehler.status === 400) {
+      throw eingabeFehler(fehler.message);
+    }
+    throw fehler;
+  }
+}
+
 function titelAus(wert: unknown, inhalt: string): string {
   if (wert !== undefined && wert !== null && wert !== "") {
     if (typeof wert !== "string" || wert.length > KLARA_NOTIZ_TITEL_MAX) {
@@ -484,7 +500,7 @@ export class KlaraNotizDienst {
         throw eingabeFehler("quelle gehört nur zum Weg gespraech.");
       }
       inhalt = pflichtText(eingabe.inhalt, KLARA_NOTIZ_INHALT_MAX, "inhalt");
-      objektbezug = pruefeObjektbezug(eingabe.objektbezug);
+      objektbezug = rueckLinkAus(eingabe.objektbezug);
       if (weg === "ausschnitt" && objektbezug.bezug !== "markierung") {
         throw eingabeFehler("Eine Notiz aus einem Ausschnitt trägt den Bezug markierung.");
       }
