@@ -283,7 +283,7 @@ async function setzeServerModus(a: Aufbau, k: Konto, m: string): Promise<void> {
 /** Wartet so lange, wie ein Hinweis höchstens bräuchte, bis er erscheint. */
 async function bisHinweis(): Promise<HTMLElement | null> {
   await bis(() => Boolean(q(document, "klara-hinweis")), 160);
-  return q(document, "klara-hinweis");
+  return q<HTMLElement>(document, "klara-hinweis");
 }
 
 const text = (id: string): string => q(document, id)?.textContent ?? "";
