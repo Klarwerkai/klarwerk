@@ -100,6 +100,10 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
     private var anmeldeAbfrage = 0
     private var anmeldeTakt: Timer?
     private lazy var programme = ProgrammeFenster()
+    // nacharbeit-21: der Menüabschnitt der Browserkarte — ersetzt seine Einträge bei jeder
+    // Kartenänderung, auch im geöffneten Menü.
+    private lazy var kartenMenue = KartenMenueAbschnitt(
+        ziel: self, oeffnenAktion: #selector(browserQuelleOeffnen(_:)))
 
     private var begleiterURL: URL { einst.server.appendingPathComponent("begleiter") }
 
@@ -491,7 +495,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         menu.addItem(.separator())
         // BPA-01: die Browserkarte — beim Öffnen frisch geprüft, nie die zuletzt gesehene.
         anmeldungPruefen()
-        for item in browserKartenEintraege(kartenQuelle.aktuell()) { menu.addItem(item) }
+        kartenMenue.anhaengen(an: menu, karte: kartenQuelle.aktuell())
         menu.addItem(eintrag("In anderen Programmen …", #selector(programmeOeffnen)))
         menu.addItem(.separator())
         menu.addItem(eintrag("Neu verbinden", #selector(neuLaden)))
@@ -600,10 +604,13 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
 
     private func karteAnzeigen(_ karte: BrowserKarte?) {
         if let karte {
-            statusItem?.button?.toolTip = "Klara · Browserkarte: \(kurz(karte.titel, 60))"
+            statusItem?.button?.toolTip = "Klara · Browserkarte: \(kartenKurz(karte.titel, 60))"
         } else {
             statusItem?.button?.toolTip = "Klara · \(zustand)"
         }
+        // nacharbeit-21: auch ein bereits GEÖFFNETES Menü zeigt sofort den neuen Stand; bei `nil`
+        // verschwinden Titel, Seite, Fassung, Auswahl und das Quellziel.
+        kartenMenue.aktualisieren(karte: karte)
         karteAnWebflaeche(karte)
     }
 
@@ -619,27 +626,6 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         webView.callAsyncJavaScript(
             "window.dispatchEvent(new CustomEvent('klara-begleiter-browserkarte', { detail: karte }));",
             arguments: ["karte": detail], in: nil, in: .page, completionHandler: nil)
-    }
-
-    private func kurz(_ text: String, _ laenge: Int) -> String {
-        let einzeilig = text.split(whereSeparator: \.isNewline).joined(separator: " ")
-        return einzeilig.count > laenge ? String(einzeilig.prefix(laenge)) + "…" : einzeilig
-    }
-
-    private func browserKartenEintraege(_ karte: BrowserKarte?) -> [NSMenuItem] {
-        guard let karte else { return [eintrag("Browserkarte: keine", nil)] }
-        let seite = URL(string: karte.url)
-        var eintraege = [
-            eintrag("Browserkarte: \(kurz(karte.titel.isEmpty ? karte.url : karte.titel, 60))", nil),
-            eintrag("Seite: \(seite?.host ?? karte.url) · Fassung \(karte.fassung.prefix(12))", nil),
-            eintrag("Auswahl: \(kurz(karte.auswahl, 80))", nil),
-        ]
-        if let seite, seite.scheme == "https" || seite.scheme == "http" {
-            let oeffnen = eintrag("Quelle im Browser öffnen", #selector(browserQuelleOeffnen))
-            oeffnen.representedObject = seite
-            eintraege.append(oeffnen)
-        }
-        return eintraege
     }
 
     @objc private func browserQuelleOeffnen(_ sender: NSMenuItem) {

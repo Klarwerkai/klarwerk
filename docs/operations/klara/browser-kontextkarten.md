@@ -340,6 +340,14 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
   - **Pins der Auslieferung:** `taskpane.html` hat einen Verweis mehr. Die Pins in
     `mega69-klara-waechter.test.ts` und `PANEL_VOR_SCHNITT_BLOB` sind seit Nacharbeit 20 auf die
     im Prüflauf zu `6e1a7105` gemessenen Werte gesetzt.
+  - **Menü bei Entwertung (Nacharbeit 21):** Der Menüabschnitt der Browserkarte ist
+    `KartenMenueAbschnitt` (`BrowserBruecke/Sources/KlaraBrowserKarte/KartenMenue.swift`).
+    - Bei jeder Kartenänderung ersetzt `karteAnzeigen` die Einträge an derselben Stelle, auch im
+      bereits geöffneten Menü.
+    - Bei `nil` verschwinden Titel, Seite, Fassung, Auswahl und das Quellziel sofort. Alte
+      Einträge verlieren Ziel, Aktion und URL.
+    - Die Prüfung beim Klick bleibt.
+    - Gegenprobe: `KartenMenueTests.swift` (nicht ausgeführt, kein XCTest in dieser Bahn).
   - **Fremde rote Wächter (Nacharbeit 20):** route-guard-audit, mega74, Rollenabnahme-Abdeckung,
     API-Referenz und word-addin-csp scheitern an Routen und Panelzeilen aus `main`, nicht an diesem
     Auftrag. Sie sind aus der Auftrags-Prüfauswahl genommen; die Berichte bleiben im Archiv.
