@@ -33,6 +33,63 @@ export const useLibrarySearch = (params: KoFilter & { q?: string }, enabled = tr
 // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler.
 export const useMyImpact = () =>
   useQuery({ queryKey: ["me", "impact"], queryFn: () => endpoints.me.impact() });
+// Autorenübergabe-Auftrag K3: textfreier Zähler der an mich zurückgegebenen Entwürfe — die sechste
+// Quelle des Aufgaben-Badges. Lazy wie `useConflicts`: ein Testbestand, der den Endpunkt nicht
+// kennt, reißt beim bloßen Rendern nicht ab.
+export const useReturnedTasksSummary = () =>
+  useQuery({
+    queryKey: ["me", "returned-tasks", "summary"],
+    queryFn: () => endpoints.me.returnedSummary(),
+  });
+// Dieselbe Auswahl als Liste für die Aufgabenseite (`pages/MyTasks.tsx`). Beide Schlüssel liegen
+// unter `["me", "returned-tasks"]`: wer diesen Präfix entwertet, frischt Liste und Zahl gemeinsam auf.
+export const useReturnedTasks = () =>
+  useQuery({
+    queryKey: ["me", "returned-tasks", "list"],
+    queryFn: () => endpoints.me.returnedTasks(),
+  });
+
+// ================================================================================================
+// AUTORENÜBERGABE-AUFTRAG (R-0961) — DIE WARTENDEN AUTORENÜBERGABEN, NUR FÜR DIE VERWALTUNG.
+// ================================================================================================
+//
+// Angezeigt werden sie nur Admins (`users.manage`): Nur sie dürfen übergeben, und nur ihnen
+// antwortet der Server (`aufgaben-zaehler-routes.ts`). Für alle anderen gibt es diese Quelle NICHT
+// (`null`), statt einer Abfrage, die mit 403 scheitert oder als abgeschaltete Abfrage ewig „lädt".
+// Beides hielte den Aufgaben-Zähler und die Seite in einem falschen Lade- oder Fehlerzustand.
+//
+// OB die Verwaltung fragt, entscheidet der AUFRUFER (`verwaltung`, aus Sitzung bzw. Rolle). Dieses
+// Modul importiert bewusst keinen React-Kontext: es wird auch aus Node-Prüfungen erreicht, die kein
+// JSX übersetzen (Nacharbeit 7, TS6142).
+//
+// DER SCHLÜSSEL TRÄGT DIE ENTSCHEIDUNG MIT. Die Rolle steht erst fest, wenn die Sitzung geladen
+// ist. Wechselt `verwaltung` dann auf wahr, ist es ein NEUER Schlüssel und damit ein neuer Abruf.
+// Das gilt auch für Flächen, die schon vor der Sitzung montiert waren. Mit einem festen Schlüssel
+// und nur umspringendem `enabled` blieben genau diese Flächen ohne Daten (Nacharbeit 7: Kopfband und
+// Aufgabenseite zählten die Übergaben nicht, solange sie vor der Sitzung montiert waren). Beide
+// Schlüssel liegen weiter unter `["me", "author-transfers"]`; wer diesen Präfix entwertet, frischt
+// Liste und Zahl gemeinsam auf.
+function verwaltungsSchluessel(verwaltung: boolean): string {
+  return verwaltung ? "verwaltung" : "keine";
+}
+
+export function useAuthorTransfers(verwaltung: boolean) {
+  const abfrage = useQuery({
+    queryKey: ["me", "author-transfers", "list", verwaltungsSchluessel(verwaltung)],
+    queryFn: () => endpoints.me.authorTransfers(),
+    enabled: verwaltung,
+  });
+  return verwaltung ? abfrage : null;
+}
+
+export function useAuthorTransfersSummary(verwaltung: boolean) {
+  const abfrage = useQuery({
+    queryKey: ["me", "author-transfers", "summary", verwaltungsSchluessel(verwaltung)],
+    queryFn: () => endpoints.me.authorTransfersSummary(),
+    enabled: verwaltung,
+  });
+  return verwaltung ? abfrage : null;
+}
 export const useImportCandidates = () =>
   useQuery({
     queryKey: ["import-candidates"],

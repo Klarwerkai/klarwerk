@@ -9,9 +9,35 @@
 //
 // Es entscheidet NICHTS: ob überhaupt eine Variante gezeigt wird, entscheidet `anzuzeigendeVariante`
 // (lib/lesevariante.ts). Hier steht nur, wie die Entscheidung aussieht.
+//
+// PETER NR. 20 (12.10.2026): „Übersetzung sichtbar als maschinelle Lesehilfe mit Originalquelle und
+// Fassung kennzeichnen; Original bleibt maßgeblich. Übersetzungswidersprüche melden, keine
+// automatische fachliche Freigabe." Deshalb trägt der Baustein jetzt zusätzlich
+//   · den Satz „Maschinelle Lesehilfe — maßgeblich ist das Original",
+//   · die Originalquelle (Titel, Anker, Quellfassung) — oder ausdrücklich „nicht zugeordnet",
+//   · die belegte Fassung — oder ausdrücklich „Fassung nicht zugeordnet",
+//   · und, wo die Fläche einen Meldeweg reicht (`onWiderspruch`), „Widerspruch melden". Die Meldung
+//     ist ein Protokolleintrag; sie ändert weder Übersetzung noch Original noch Freigabe.
+// Die bisherigen Wortlaute („Übersetzung · Original: …", „Übersetzung, keine Freigabe") bleiben.
+//
+// WARUM KEINE NEUEN TEILKOMPONENTEN: die Zeilen und das Meldeformular stehen als kleingeschriebene
+// Hilfsfunktionen bzw. im Baustein selbst. Es ist dieselbe EINE Kennzeichnungsfläche — sie wird
+// länger, nicht mehr (die Sammler in `tests/app/mega84-…` zählen Komponenten exakt).
 import { Languages } from "lucide-react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { LesevarianteKennzeichnung } from "../api/types";
+import type {
+  LesevarianteFassung,
+  LesevarianteKennzeichnung,
+  LesevarianteOriginalquelle,
+} from "../api/types";
+
+// Dieselbe Form wie `Translate` in `lib/auditAction.ts`: als Überladung ohne `undefined`-Fall ist
+// die echte i18next-`t` auch unter `exactOptionalPropertyTypes` zuweisbar.
+interface Uebersetze {
+  (schluessel: string): string;
+  (schluessel: string, werte: Record<string, unknown>): string;
+}
 
 // Die Kennzeichnung trägt bewusst KEINE von aussen gesetzte Klassenkette: sie soll überall gleich
 // aussehen, und ein durchgereichtes `className` wäre eine im Quelltext nicht auflösbare Bindung
@@ -29,13 +55,23 @@ export function LesevarianteHinweis({
   variante,
   zeigtOriginal,
   onUmschalten,
+  onWiderspruch,
 }: {
   variante: LesevarianteKennzeichnung;
   /** Der Leser hat „Original anzeigen" gewählt — dann steht hier die Gegenrichtung. */
   zeigtOriginal: boolean;
   onUmschalten: () => void;
+  /**
+   * Peter Nr. 20: der Meldeweg „Übersetzungswiderspruch". Die FLÄCHE reicht ihn, weil nur sie weiss,
+   * WORAN gemeldet wird (Wissensobjekt oder Kandidat). Fehlt er, steht kein Meldeknopf da.
+   */
+  onWiderspruch?: (begruendung: string) => Promise<unknown>;
 }): JSX.Element {
   const { t } = useTranslation();
+  const feldId = useId();
+  const [meldestand, setMeldestand] = useState<Meldestand>("zu");
+  const [begruendung, setBegruendung] = useState("");
+  const [begruendungFehlt, setBegruendungFehlt] = useState(false);
   // Die Sprachnamen kommen aus der Übersetzungsfläche und nicht aus einer Tabelle im Code: „EN"
   // heißt auf Deutsch „Englisch" und auf Englisch „English".
   const sprachname = (code: string): string => {
@@ -44,6 +80,28 @@ export function LesevarianteHinweis({
     // Unbekannter Code → der Code selbst, groß. Ehrlicher als ein erfundener Name.
     return name === schluessel ? code.toUpperCase() : name;
   };
+  // Peter Nr. 20: ohne Begründung keine Meldung — sonst wüsste niemand, WAS sich widerspricht.
+  const sendeWiderspruch = async (): Promise<void> => {
+    const text = begruendung.trim();
+    if (!onWiderspruch) {
+      return;
+    }
+    if (text.length === 0) {
+      setBegruendungFehlt(true);
+      return;
+    }
+    setBegruendungFehlt(false);
+    setMeldestand("laeuft");
+    try {
+      await onWiderspruch(text);
+      setBegruendung("");
+      setMeldestand("gemeldet");
+    } catch {
+      setMeldestand("fehler");
+    }
+  };
+  const formularOffen =
+    meldestand === "offen" || meldestand === "laeuft" || meldestand === "fehler";
   return (
     <div
       data-testid="lesevariante-hinweis"
@@ -77,6 +135,38 @@ export function LesevarianteHinweis({
           {t("lesevariante.herkunft", { herkunft: variante.herkunft })}
         </p>
       )}
+      {/* Peter Nr. 20: die Art der Übersetzung, ihr Original und dessen Fassung — immer sichtbar,
+          auch wenn gerade das Original gezeigt wird: die Bindung gilt für beide Ansichten. */}
+      <p
+        data-testid="lesevariante-maschinell"
+        className="mt-1 text-[11.5px] font-semibold text-text"
+      >
+        {t("lesevariante.maschinell")}
+      </p>
+      {variante.originalquelle ? (
+        <p data-testid="lesevariante-originalquelle" className="mt-1 text-[11.5px] text-muted-2">
+          {t("lesevariante.originalquelle", { quelle: quellText(variante.originalquelle, t) })}
+        </p>
+      ) : (
+        <p
+          data-testid="lesevariante-originalquelle-fehlt"
+          className="mt-1 text-[11.5px] font-semibold text-trust-warn-text"
+        >
+          {t("lesevariante.originalquelleFehlt")}
+        </p>
+      )}
+      {variante.fassung ? (
+        <p data-testid="lesevariante-fassung" className="mt-1 text-[11.5px] text-muted-2">
+          {fassungText(variante.fassung, t)}
+        </p>
+      ) : (
+        <p
+          data-testid="lesevariante-fassung-fehlt"
+          className="mt-1 text-[11.5px] font-semibold text-trust-warn-text"
+        >
+          {t("lesevariante.fassungFehlt")}
+        </p>
+      )}
       {variante.originalGeaendert ? (
         <p
           data-testid="lesevariante-veraltet"
@@ -93,6 +183,138 @@ export function LesevarianteHinweis({
           {t("lesevariante.zuordnungUnbestaetigt")}
         </p>
       ) : null}
+      {/* Peter Nr. 20: „Übersetzungswidersprüche melden". Das Formular steht in Karten, die selbst
+          auf Klick und Tasten reagieren können (Prüfkarte, Bibliothek) — es hält seine Ereignisse
+          deshalb bei sich. Nach dem Senden steht die Quittung da, und eine weitere Meldung bleibt
+          möglich. */}
+      {onWiderspruch && meldestand === "gemeldet" ? (
+        <output
+          data-testid="lesevariante-widerspruch-gemeldet"
+          className="mt-2 block text-[11.5px] text-text"
+        >
+          {t("lesevariante.widerspruch.gemeldet")}
+        </output>
+      ) : null}
+      {onWiderspruch && !formularOffen ? (
+        <button
+          type="button"
+          data-testid="lesevariante-widerspruch-oeffnen"
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            setMeldestand("offen");
+          }}
+          className="mt-2 rounded-btn border border-hairline px-2 py-0.5 text-[11.5px] font-semibold text-text hover:bg-card"
+        >
+          {t("lesevariante.widerspruch.oeffnen")}
+        </button>
+      ) : null}
+      {onWiderspruch && formularOffen ? (
+        <div
+          data-testid="lesevariante-widerspruch-formular"
+          className="mt-2"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <label htmlFor={feldId} className="block text-[11.5px] font-semibold text-text">
+            {t("lesevariante.widerspruch.label")}
+          </label>
+          <textarea
+            id={feldId}
+            data-testid="lesevariante-widerspruch-text"
+            value={begruendung}
+            onChange={(e) => setBegruendung(e.target.value)}
+            maxLength={2000}
+            rows={3}
+            className="mt-1 w-full rounded-btn border border-hairline bg-card px-2 py-1 text-[12px] text-text"
+          />
+          {begruendungFehlt ? (
+            <p role="alert" className="mt-1 text-[11.5px] text-trust-warn-text">
+              {t("lesevariante.widerspruch.leer")}
+            </p>
+          ) : null}
+          {meldestand === "fehler" ? (
+            <p
+              data-testid="lesevariante-widerspruch-fehler"
+              role="alert"
+              className="mt-1 text-[11.5px] text-trust-warn-text"
+            >
+              {t("lesevariante.widerspruch.fehler")}
+            </p>
+          ) : null}
+          <div className="mt-1 flex gap-2">
+            <button
+              type="button"
+              data-testid="lesevariante-widerspruch-senden"
+              disabled={meldestand === "laeuft"}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                void sendeWiderspruch();
+              }}
+              className="rounded-btn border border-hairline px-2 py-0.5 text-[11.5px] font-semibold text-text hover:bg-card"
+            >
+              {meldestand === "laeuft"
+                ? t("lesevariante.widerspruch.laeuft")
+                : t("lesevariante.widerspruch.senden")}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setBegruendungFehlt(false);
+                setMeldestand("zu");
+              }}
+              className="rounded-btn border border-hairline px-2 py-0.5 text-[11.5px] font-semibold text-text hover:bg-card"
+            >
+              {t("lesevariante.widerspruch.abbrechen")}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+type Meldestand = "zu" | "offen" | "laeuft" | "gemeldet" | "fehler";
+
+/** Peter Nr. 20: „Titel · Provider Kennung · Quellfassung n" — nur, was die Antwort wirklich trägt. */
+function quellText(quelle: LesevarianteOriginalquelle, t: Uebersetze): string {
+  const anker = [quelle.provider, quelle.kennung]
+    .filter((teil): teil is string => typeof teil === "string" && teil.trim().length > 0)
+    .join(" ");
+  const teile = [
+    quelle.titel.trim(),
+    anker,
+    quelle.quellfassung === null
+      ? ""
+      : t("lesevariante.quellfassung", { quellfassung: quelle.quellfassung }),
+  ];
+  return teile.filter((teil) => teil.length > 0).join(" · ");
+}
+
+/**
+ * Peter Nr. 20: Originalquelle und Fassung als EIN Satz — für die Kurzformen (Bibliothekszeile,
+ * Kurzvorschau), die keinen Platz für den ganzen Baustein haben und ihn als Werkzeugtipp tragen.
+ * Dieselben Wortlaute wie oben, einschliesslich „nicht zugeordnet".
+ */
+export function bindungsText(variante: LesevarianteKennzeichnung, t: Uebersetze): string {
+  const quelle = variante.originalquelle
+    ? t("lesevariante.originalquelle", { quelle: quellText(variante.originalquelle, t) })
+    : t("lesevariante.originalquelleFehlt");
+  const fassung = variante.fassung
+    ? fassungText(variante.fassung, t)
+    : t("lesevariante.fassungFehlt");
+  return `${t("lesevariante.maschinell")} · ${quelle} · ${fassung}`;
+}
+
+/** Peter Nr. 20: die belegte Fassung in Worten. */
+function fassungText(fassung: LesevarianteFassung, t: Uebersetze): string {
+  return fassung.art === "wissensobjekt"
+    ? t("lesevariante.fassungWissensobjekt", {
+        version: fassung.version,
+        abdruck: fassung.abdruck,
+      })
+    : t("lesevariante.fassungQuelle", { quellfassung: fassung.quellfassung });
 }
