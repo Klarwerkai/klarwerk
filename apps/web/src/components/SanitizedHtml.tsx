@@ -6,6 +6,14 @@ import { RICH_TEXT_VOID_TAGS, sanitizeHtml } from "../lib/richText";
 // WP-D10: Altlast-Platzhalter („Noch keine Bildbeschreibung" u. Ä.) werden in der ANZEIGE wie leer
 // behandelt (geleert → das CSS blendet die leere Fußnote aus) — reine Render-Transformation, die
 // gespeicherten Daten bleiben unangetastet; der Editor migriert sie beim Laden (editorFigures.ts).
+// R-1056 (Rechts-nach-links-Sprachen, erster begrenzter Schritt): `dir="auto"` lässt den Browser die
+// Schreibrichtung des INHALTS am ersten starken Zeichen bestimmen. Ein hebräischer oder arabischer
+// Originaltext (z. B. eine importierte Confluence-Seite in der Prüfkarte oder das Original hinter
+// „Original anzeigen") steht damit rechtsbündig in Leserichtung; deutscher/englischer Inhalt bleibt
+// unverändert links. Der Sanitizer bleibt unberührt (kein `dir` aus fremdem HTML), die Oberfläche
+// selbst bleibt LTR. Gemischte Texte folgen dem ersten starken Zeichen — eine Absatzauflösung je
+// Block ist nicht Teil dieses Schritts. Das Attribut steht am äusseren Behälter, in beiden Formen
+// (mit und ohne Lesehülle).
 //
 // R-1160 (Lesehülle als Element statt HTML): Eine eigene Kennzeichnung für einen Abschnitt im
 // Lesepfad — heute die waagerechte Scroll-Hülle um eine breite Tabelle (Scheibe D-037) — wird NICHT
@@ -89,10 +97,10 @@ export function SanitizedHtml({
     // Ohne Tabelle (oder ohne Lesehülle) bleibt das Markup exakt das bisherige.
     const inner = { __html: sauber };
     // biome-ignore lint/security/noDangerouslySetInnerHtml: Inhalt ist allowlist-sanitisiert (richText.sanitizeHtml + Server).
-    return <div className={className} dangerouslySetInnerHTML={inner} />;
+    return <div className={className} dir="auto" dangerouslySetInnerHTML={inner} />;
   }
   return (
-    <div className={className}>
+    <div className={className} dir="auto">
       {teile.map((t, i) =>
         t.art === "tabelle" ? (
           <div
