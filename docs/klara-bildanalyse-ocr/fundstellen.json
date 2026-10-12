@@ -4,7 +4,7 @@
   "quelle": "20261012-auto-bilder-peter-v1 · OCR-01",
   "basis": "0b8ad62c06cea76182fcb957e286cf2e6a5e0a58",
   "erhoben_am": "2026-10-12",
-  "hinweis": "Jeder Eintrag mit fundstellen ist im Arbeitsbaum dieser Basis per Datei und wörtlichem Anker belegt (tests/klara-bildanalyse-ocr/fundstellen.test.ts). stand=geliefert: im Hauptstand vorhanden. stand=kandidat: nur auf dem genannten Zweig. stand=fehlt: im Hauptstand nicht vorhanden; die Fundstellen belegen dann die Grenze, nicht eine Lieferung.",
+  "hinweis": "Jeder Eintrag mit fundstellen ist im Arbeitsbaum dieser Basis per Datei und wörtlichem Anker belegt (tests/klara-bildanalyse-ocr/fundstellen.test.ts). stand=geliefert: im Hauptstand vorhanden. stand=kandidat: nicht in dieser Arbeitsbasis, sondern nur auf dem genannten Zweig bzw. erst im späteren Hauptstand. stand=fehlt: im Hauptstand nicht vorhanden; die Fundstellen belegen dann die Grenze, nicht eine Lieferung.",
   "eintraege": [
     {
       "id": "H01",
@@ -114,9 +114,9 @@
       "name": "PowerPoint-Datei (.pptx) als Dateiimport",
       "stand": "geliefert",
       "host": ["H01", "H06"],
-      "wege": ["W03", "W04", "W13"],
+      "wege": ["W03", "W04", "W13", "W18"],
       "fundstelle": "Folie nur mittelbar über die vorangehende Folienüberschrift (h2); Bildkennung zählt über das ganze Deck; Folienansicht mit Foliennummer (W04)",
-      "luecken": ["L01", "L03", "L04", "L05", "L08", "L11", "L15"],
+      "luecken": ["L01", "L03", "L04", "L05", "L08", "L11", "L15", "L16", "L17"],
       "fundstellen": [
         {
           "pfad": "apps/web/src/pages/Capture.tsx",
@@ -130,9 +130,9 @@
       "name": "Word-Datei (.docx) als Dateiimport oder aus dem Word-Add-in",
       "stand": "geliefert",
       "host": ["H01", "H02", "H06"],
-      "wege": ["W05", "W08"],
+      "wege": ["W05", "W08", "W18"],
       "fundstelle": "Reihenfolge im Dokument (data-image-id); keine Seitenangabe",
-      "luecken": ["L01", "L03", "L07", "L08", "L10"],
+      "luecken": ["L01", "L03", "L07", "L08", "L10", "L17"],
       "fundstellen": [
         {
           "pfad": "apps/web/src/pages/Capture.tsx",
@@ -446,6 +446,10 @@
         {
           "pfad": "services/app/src/meeting-dokumentbezug.ts",
           "anker": "export async function foliensatzLesen("
+        },
+        {
+          "pfad": "services/app/src/meeting-dokumentbezug.ts",
+          "anker": "Medien, Layout, Master und Design — rekursiv, ohne Notizfolie."
         }
       ]
     },
@@ -498,6 +502,22 @@
       ]
     },
     {
+      "id": "W18",
+      "art": "weg",
+      "name": "Office-Anhang im Artikel: lesen (ko.read) und neue Fassung übernehmen",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/routes/office-routes.ts",
+          "anker": "\"/api/kos/:id/office/:anhangId/uebernahme\","
+        },
+        {
+          "pfad": "services/knowledge-object/src/service.ts",
+          "anker": "async uebernimmOfficeFassung("
+        }
+      ]
+    },
+    {
       "id": "C01",
       "art": "kandidat",
       "name": "Aufnahme gesamt-ocr · „Text aus Fotos und Scans auf Wunsch erkennen“",
@@ -505,8 +525,48 @@
       "auftrag_id": "aufnahme:20260922:gesamt-ocr",
       "revision": 2,
       "zweig": "codex/auftrag-77a81a7a269ac1a4770d",
-      "commit": "842d2f636bdffdd18aad616135dd67e3f0d4c33c",
-      "anforderungen": ["FR-CAP-05", "R-0121", "R-0138", "R-0151", "R-0181"]
+      "commit": "64e1768c1aa48ffb70f509dc0f0181de97db95bc",
+      "frueherer_commit": "842d2f636bdffdd18aad616135dd67e3f0d4c33c",
+      "ben_urteil": "erfuellt",
+      "hauptstand": "github/main steht auf 64e1768c (1.0.0-beta.1.946); nicht in der Arbeitsbasis 0b8ad62c",
+      "anforderungen": ["R-0121", "R-0138", "R-0151", "R-0181", "R-2098", "FR-CAP-05"],
+      "kriterien": [
+        {
+          "k": "K1",
+          "anforderung": "R-0121",
+          "bezug": "abgegrenzt"
+        },
+        {
+          "k": "K2",
+          "anforderung": "R-0138",
+          "bezug": "wiederverwenden"
+        },
+        {
+          "k": "K3",
+          "anforderung": "R-0151",
+          "bezug": "wiederverwenden"
+        },
+        {
+          "k": "K4",
+          "anforderung": "R-0181",
+          "bezug": "abgegrenzt"
+        },
+        {
+          "k": "K5",
+          "anforderung": "R-2098",
+          "bezug": "teilweise"
+        },
+        {
+          "k": "K6",
+          "anforderung": "FR-CAP-05",
+          "bezug": "teilweise"
+        },
+        {
+          "k": "K7",
+          "anforderung": "Nachweis",
+          "bezug": "uebernommen"
+        }
+      ]
     }
   ],
   "luecken": [
@@ -516,7 +576,7 @@
     },
     {
       "id": "L02",
-      "name": "Im Hauptstand lädt tesseract.js Arbeiter und Sprachdaten fremd (blob:, CDN); die CSP verbietet das. Behoben erst im Kandidaten C01."
+      "name": "In der Arbeitsbasis lädt tesseract.js Arbeiter und Sprachdaten fremd (blob:, CDN); die CSP verbietet das. Behoben in C01 (64e1768c), inzwischen github/main."
     },
     {
       "id": "L03",
@@ -528,7 +588,7 @@
     },
     {
       "id": "L05",
-      "name": "PPTX: Bilder außerhalb von p:pic (Hintergrund, Gruppen, Layout, Master), Diagramme, SmartArt und EMF/WMF werden nicht gelesen, nur gezählt."
+      "name": "PPTX, gezählt, aber nicht gelesen: a:blip im Folien-XML außerhalb von p:pic (z. B. Folienhintergrund p:bg) als droppedImageOutsidePath, EMF/WMF/TIFF/BMP als droppedImageFormat. Bilder in verschachtelten Gruppen (p:grpSp) sind nicht belegt."
     },
     {
       "id": "L06",
@@ -569,6 +629,14 @@
     {
       "id": "L15",
       "name": "Die Folienansicht ist standardmäßig aus, braucht soffice und pdftoppm und endet nach 30 Folien."
+    },
+    {
+      "id": "L16",
+      "name": "PPTX, überhaupt nicht erfasst und nicht gezählt: Layout- und Masterdateien, Diagramme (ppt/charts), SmartArt (ppt/diagrams) und Notizen werden nicht eingelesen (PPTX_NEEDED_ENTRY_RE). Eine ausgeglichene Bildbilanz heißt daher nicht, dass alle sichtbaren Bilder erfasst sind."
+    },
+    {
+      "id": "L17",
+      "name": "Office-Anhänge im Artikel (H06): eingebettete Bilder einer angehängten oder neu übernommenen .pptx/.docx werden nicht analysiert."
     }
   ]
 }

@@ -11,8 +11,14 @@
 //   F4  Plan und Abgleich setzen nur erfasste IDs voraus; fehlende Hosts sind als fehlend geführt
 //       und das Office-Manifest kennt tatsächlich nur Word; die Erkennung ist im Code weiterhin
 //       klickgebunden, wie die Matrix es sagt (K3).
+//   F5  Nacharbeit 1 (Bens Befunde): der Abgleich führt alle sieben Kriterien von gesamt-ocr
+//       Revision 2 mit dem aktuellen Kandidaten 64e1768c und seinem Urteil (K2); gezählte PPTX-
+//       Verluste (L05) sind von nie eingelesenen Teilen (L16) getrennt — gegen den echten
+//       Eintragsfilter des Imports geprüft (K1); Office-Anhänge im Artikel (H06) sind ein Eingang
+//       von OCR-02 mit offener Lücke L17, kein Ausschluss (K2, K3).
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { PPTX_NEEDED_ENTRY_RE } from "../../apps/web/src/lib/pptx";
 import { repoPfad } from "../support/repoPfad";
 
 interface Fundstelle {
@@ -35,7 +41,9 @@ interface Eintrag {
   revision?: number;
   zweig?: string;
   commit?: string;
+  ben_urteil?: string;
   anforderungen?: string[];
+  kriterien?: { k: string; anforderung: string; bezug: string }[];
 }
 
 const ORDNER = "docs/klara-bildanalyse-ocr";
@@ -217,5 +225,101 @@ describe("F4 · vorhandene Architektur, fehlende Hosts wahrheitsgemäß", () => 
     );
     expect(lueckenIds.has("L01")).toBe(true);
     expect(lies("BESTAND.md")).toContain("Eine automatische Auslösung gibt es nirgends (L01).");
+  });
+});
+
+describe("F5 · Nacharbeit 1: Originalabgleich, PPTX-Grenzen, Artikelanhänge", () => {
+  const abgleich = lies("ABGLEICH-OCR-AUFTRAG.md");
+  const bestand = lies("BESTAND.md");
+  const plan = lies("INTEGRATIONSPLAN.md");
+  const zeile = (text: string, id: string): string =>
+    text.split("\n").find((z) => z.startsWith(`| ${id} | `)) ?? "";
+
+  it("C01 ist der aktuelle Kandidat 64e1768c mit Bens Urteil", () => {
+    const c01 = eintrag("C01");
+    expect(c01.commit).toBe("64e1768c1aa48ffb70f509dc0f0181de97db95bc");
+    expect(c01.ben_urteil).toBe("erfuellt");
+    expect(c01.anforderungen).toContain("R-2098");
+    expect(abgleich).toContain("Urteil **„erfuellt“**");
+    expect(abgleich).toContain("Er löst den früher genannten Stand `842d2f63` ab");
+    expect(abgleich).not.toContain("lag diesem Lauf **nicht** vor");
+  });
+
+  it("alle sieben Kriterien stehen mit Wortlaut, Lieferstand und Bezug im Abgleich", () => {
+    const soll: [string, string, string][] = [
+      ["K1", "R-0121", "Eine Sprach- oder Videoaufnahme wird automatisch in Text umgewandelt"],
+      ["K2", "R-0138", "Bei einer eingescannten PDF ueber 50 MB"],
+      ["K3", "R-0151", "Die Erkennung startet nur auf ausdruecklichen Klick, nie von selbst."],
+      ["K4", "R-0181", "Aufnahmen sollen auf dem eigenen Rechner ohne Cloud"],
+      ["K5", "R-2098", "Dokumentanhang + OCR (SOLL)"],
+      ["K6", "FR-CAP-05", "mit Auto-OCR als Kontext"],
+      ["K7", "Nachweis", "Konkrete Quellenwidersprüche und fehlende Belege benennen."],
+    ];
+    const kriterien = eintrag("C01").kriterien ?? [];
+    expect(kriterien.map((k) => k.k)).toEqual(soll.map(([k]) => k));
+    for (const [k, anforderung, wortlaut] of soll) {
+      const z = zeile(abgleich, k);
+      expect(z, `${k} fehlt im Abgleich`).not.toBe("");
+      expect(z, k).toContain(wortlaut);
+      if (anforderung !== "Nachweis") {
+        expect(z, k).toContain(anforderung);
+      }
+      // Wortlaut | Lieferstand | Bezug: jede Zeile hat fünf befüllte Spalten.
+      const spalten = z.split(" | ").map((s) => s.replace(/^\| |\|$/g, "").trim());
+      expect(spalten.filter((s) => s.length > 0).length, k).toBeGreaterThanOrEqual(4);
+      expect(kriterien.find((x) => x.k === k)?.anforderung, k).toBe(anforderung);
+    }
+    expect(abgleich).toContain("**Quellenwiderspruch");
+  });
+
+  it("der PPTX-Eintragsfilter liest Layout, Master, Diagramme nicht ein (L16)", () => {
+    for (const gelesen of [
+      "ppt/presentation.xml",
+      "ppt/slides/slide1.xml",
+      "ppt/slides/_rels/slide1.xml.rels",
+      "ppt/media/image1.png",
+    ]) {
+      expect(PPTX_NEEDED_ENTRY_RE.test(gelesen), gelesen).toBe(true);
+    }
+    for (const nieGelesen of [
+      "ppt/slideLayouts/slideLayout1.xml",
+      "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+      "ppt/slideMasters/slideMaster1.xml",
+      "ppt/charts/chart1.xml",
+      "ppt/diagrams/data1.xml",
+      "ppt/notesSlides/notesSlide1.xml",
+    ]) {
+      expect(PPTX_NEEDED_ENTRY_RE.test(nieGelesen), nieGelesen).toBe(false);
+    }
+  });
+
+  it("gezählte Verluste (L05) und nie erfasste Teile (L16) sind überall getrennt", () => {
+    expect(zeile(bestand, "L05")).toContain("**gezählt, aber nicht gelesen**");
+    expect(zeile(bestand, "L05")).not.toMatch(/Layout|Master|Diagramme|SmartArt/);
+    expect(zeile(bestand, "L16")).toContain("**überhaupt nicht erfasst und nicht gezählt**");
+    expect(zeile(bestand, "L16")).toContain("`PPTX_NEEDED_ENTRY_RE`");
+    const l05 = liste.luecken.find((l) => l.id === "L05")?.name ?? "";
+    const l16 = liste.luecken.find((l) => l.id === "L16")?.name ?? "";
+    expect(l05).toContain("gezählt, aber nicht gelesen");
+    expect(l05).not.toMatch(/Layout|Master|Diagramme|SmartArt/);
+    expect(l16).toContain("überhaupt nicht erfasst und nicht gezählt");
+    expect(eintrag("Q02").luecken).toEqual(expect.arrayContaining(["L05", "L16"]));
+    expect(plan).toContain("- **Gezählt, aber nicht gelesen (L05).**");
+    expect(plan).toContain("- **Gar nicht erfasst (L16).**");
+    expect(plan).toContain("nie „alle Bilder gelesen“ melden");
+  });
+
+  it("Office-Anhänge im Artikel (H06) sind Eingang von OCR-02 mit offener Lücke L17", () => {
+    expect(eintrag("W18").stand).toBe("geliefert");
+    for (const q of ["Q02", "Q03"]) {
+      expect(eintrag(q).wege, q).toContain("W18");
+      expect(eintrag(q).luecken, q).toContain("L17");
+      expect(eintrag(q).host, q).toContain("H06");
+    }
+    expect(zeile(bestand, "L17")).not.toBe("");
+    expect(plan).toMatch(/^\| Office-Anhang im Artikel \(H06\).*\| Q02, Q03 \|.*W03.*W05.*W01/m);
+    expect(plan).toContain("**Offene technische Schritte für Artikelanhänge (H06, L17).**");
+    expect(plan).toMatch(/^\| H06 \| ja, als Eingang von OCR-02 \|/m);
+    expect(plan).not.toContain("nicht Teil von OCR-02");
   });
 });

@@ -42,8 +42,8 @@ wiederzufinden ist.
 | ID | Quelle | Host | Erfassungsweg | Auslöser heute | Fundstelle heute | Lücken |
 | --- | --- | --- | --- | --- | --- | --- |
 | Q01 | **Einzeln bereitgestelltes Bild** (`image/*`): Dateiimport im Erfassen, Bildanhang, „Aus Dokument ergänzen“, Foto-Interview | H01 | W14 erkennt die Art `image`. W01 erkennt Text, W02 beschreibt das Bild | Import automatisch; **Erkennung nur auf Klick** | Dateiname bzw. Anhangskennung | L01, L02, L08, L09 |
-| Q02 | **PowerPoint-Datei (.pptx)** als Dateiimport. Als Anhang im Artikel auch über H06 | H01, H06 | W03: Folientext, Tabellen und Bilder aus `p:pic` als `<figure>`, mit Bildbilanz je Verlustgrund. W04: optional jede Folie als Bild. W13: Folienkennung `p:sldId` (Meeting) | Import automatisch; Folienansicht nur, wenn eingeschaltet; **keine Erkennung** | Folie nur mittelbar über die vorangehende Überschrift `<h2>` je Folie. Die Bildkennung `kw-img-<lauf>-<n>` zählt über das ganze Deck. W04 trägt die Foliennummer (`-s<N>`) | L01, L03, L04, L05, L08, L11, L15 |
-| Q03 | **Word-Datei (.docx)**: Dateiimport, „Wissen erfassen“ im Word-Add-in (ganze Datei bzw. Bilder einzeln), Anhang im Artikel | H01, H02, H06 | W05 (mammoth, auch serverseitig über `/api/drafts/from-docx`), W08 (`getFileAsync`, sonst `inlinePictures`, höchstens 60) | Import automatisch; **keine Erkennung** | Reihenfolge im Dokument (`data-image-id`), keine Seite | L01, L03, L07, L08, L10 |
+| Q02 | **PowerPoint-Datei (.pptx)** als Dateiimport. Als Office-Anhang im Artikel auch über H06 | H01, H06 | W03: Folientext, Tabellen und Bilder aus `p:pic` im Folien-XML als `<figure>`, mit Bildbilanz je Verlustgrund **nur über das Folien-XML**. W04: optional jede Folie als Bild. W13: Folienkennung `p:sldId` mit rekursiv aufgelösten Teilen (Meeting). W18: Anhang lesen und Fassung übernehmen | Import automatisch; Folienansicht nur, wenn eingeschaltet; **keine Erkennung**; Anhänge im Artikel **nicht analysiert** | Folie nur mittelbar über die vorangehende Überschrift `<h2>` je Folie. Die Bildkennung `kw-img-<lauf>-<n>` zählt über das ganze Deck. W04 trägt die Foliennummer (`-s<N>`) | L01, L03, L04, L05, L08, L11, L15, L16, L17 |
+| Q03 | **Word-Datei (.docx)**: Dateiimport, „Wissen erfassen“ im Word-Add-in (ganze Datei bzw. Bilder einzeln), Office-Anhang im Artikel | H01, H02, H06 | W05 (mammoth, auch serverseitig über `/api/drafts/from-docx`), W08 (`getFileAsync`, sonst `inlinePictures`, höchstens 60), W18 (Anhang) | Import automatisch; **keine Erkennung**; Anhänge im Artikel **nicht analysiert** | Reihenfolge im Dokument (`data-image-id`), keine Seite | L01, L03, L07, L08, L10, L17 |
 | Q04 | **PDF** (Text-PDF und Scan) | H01 | W06 liest nur den Textlayer. W07 kann eine Seite als Bild zeichnen, ist aber nur im Zeichnungsanhang angeschlossen | Import automatisch; **Bilder und Scanseiten werden nicht gelesen** | Seite für Text; für Bilder keine | L01, L06, L08 |
 | Q05 | **Bilder einer Webseite** (Markierung, Artikel, Seite) | H04 | W09: Kopie der angezeigten Darstellung über eine Zeichenfläche, höchstens 8, bis 1200 px | Übernahme auf Geste; **keine Erkennung** | Seiten- und Bildadresse; fremde Herkunft unter „Nicht übernommen“ | L01, L08, L13 |
 | Q06 | **Bilder im Rumpf** eines Entwurfs oder Wissensobjekts (Einfügen, Ablegen, Import) | H01 | W15 fügt ein. W02 schlägt eine Bildunterschrift vor. W10 macht Bildunterschrift und Bildname suchbar und für Klara nutzbar | Bildunterschrift nur auf Klick | `data-image-id` an `img` und `figcaption` | L01, L08 |
@@ -66,17 +66,19 @@ Zwei weitere vorhandene Bausteine, an die OCR-02 und OCR-03 anschließen:
 | H03 | PowerPoint-Add-in | **fehlt** | — | Das Manifest kennt nur `<Host Name="Document" />`. PowerPoint erreicht Klarwerk nur als Datei (Q02) |
 | H04 | Chrome-Erweiterung „Klara im Browser“ | geliefert | Markierung, Artikel oder Seite mit bis zu 8 Bildern (W09) → Entwurf | Spricht nur mit `app.klarwerk.ai`; kein KI-Aufruf in der Erweiterung (L13) |
 | H05 | Mac (KLARWERK App) | **fehlt** als Host | — | Nur Starter für Server und Browser. Kein Finder-, Zwischenablage- oder Bildschirmzugriff. Ein neuer Bildschirmzugriff ist nicht beauftragt (L12) |
-| H06 | Office im Artikel (WOPI-Dateihost) | geliefert | Die Datei liegt als Anhang im Objektspeicher; Word, Excel und PowerPoint werden im Office-Editor geöffnet | Eine Analyse eingebetteter Bilder aus dem Anhang gibt es nicht (L03) |
+| H06 | Office im Artikel (WOPI-Dateihost) | geliefert | Die Datei liegt als Anhang mit Fassung im Objektspeicher; Word, Excel und PowerPoint werden im Office-Editor geöffnet, neue Fassungen über W18 übernommen | Bestehender Eingang für Q02 und Q03. Eine Analyse eingebetteter Bilder aus dem Anhang fehlt (L03, L17) und ist Teil von OCR-02 |
 
 ## 3. Konkrete Lücken
 
 | ID | Lücke | betrifft |
 | --- | --- | --- |
 | L01 | Keine automatische Auslösung. W01 und W02 laufen nur auf Klick | alle Quellen |
-| L02 | Im Hauptstand lädt `runImageOcr` tesseract.js ohne Engine-Optionen, also Arbeiter als `blob:` und Sprachdaten vom CDN. Laut technischer Probe des Kandidaten C01 verbietet die CSP beides, sodass die Erkennung in der Auslieferung scheitert. Behoben ist das nur auf C01 | W01 |
+| L02 | In der Arbeitsbasis `0b8ad62c` lädt `runImageOcr` tesseract.js ohne Engine-Optionen, also Arbeiter als `blob:` und Sprachdaten vom CDN. Laut technischer Probe von C01 verbietet die CSP beides, sodass die Erkennung in der Auslieferung scheitert. Behoben in C01 (`64e1768c`), von Ben abgenommen und inzwischen Stand von `github/main` | W01 |
 | L03 | Eingebettete Bilder werden nie erkannt; ihre `figcaption` bleibt leer | Q02, Q03, Q07, H06 |
 | L04 | PPTX-Bilder tragen keine Foliennummer. Verworfene Bilder (Format, Budget, defekt, außerhalb `p:pic`) sind nur gezählt, ohne Folie | Q02 |
-| L05 | PPTX: Bilder außerhalb von `p:pic` (Hintergrund `p:bg`, Gruppen `p:grpSp`, Layout, Master), Diagramme, SmartArt sowie EMF/WMF/TIFF/BMP werden nicht gelesen, nur gezählt | Q02 |
+| L05 | PPTX, **gezählt, aber nicht gelesen**: `a:blip` im Folien-XML außerhalb von `p:pic` (typisch der Folienhintergrund `p:bg`) als `droppedImageOutsidePath`, EMF/WMF/TIFF/BMP in `p:pic` als `droppedImageFormat`. Ob Bilder in verschachtelten Gruppen (`p:grpSp`, nicht rekursiv aufgelöst) eingebettet oder nur gezählt werden, ist nicht belegt | Q02 |
+| L16 | PPTX, **überhaupt nicht erfasst und nicht gezählt**: `PPTX_NEEDED_ENTRY_RE` liest nur `presentation.xml`, Folien, Folien-Rels und `media/*`. Bilder aus Layout- und Masterdateien, Diagramme (`ppt/charts`), SmartArt (`ppt/diagrams`) und Notizen kommen weder in den Entwurf noch in die Bildbilanz. Eine ausgeglichene Bilanz heißt deshalb nicht, dass alle sichtbaren Bilder erfasst sind | Q02 |
+| L17 | Office-Anhänge im Artikel (H06): eingebettete Bilder einer angehängten oder über W18 neu übernommenen `.pptx`/`.docx` werden nicht analysiert | Q02, Q03, H06 |
 | L06 | PDF: keine Extraktion eingebetteter Bilder, gescannte Seiten ergeben keinen Text. W07 zeichnet Seiten nur für den Zeichnungsanhang | Q04 |
 | L07 | DOCX: Fundstelle nur als Reihenfolge, keine Seite. Bilder in Kopf-/Fußzeilen und Textfeldern sind nicht belegt | Q03 |
 | L08 | Klaras Kontext (W10) hat kein Feld für erkannten Bildtext, keine Bildbefunde und keinen Status „läuft / teilweise / fehlgeschlagen“ | alle |
@@ -96,8 +98,9 @@ Zwei weitere vorhandene Bausteine, an die OCR-02 und OCR-03 anschließen:
 - **Dateiimport ist kein Add-in.** Eine `.pptx` im Dateiimport (Q02) ist ein vollständiger,
   unabhängiger Weg. „PowerPoint unterstützt“ heißt in diesem Bestand nur das, nicht „Klara in
   PowerPoint“.
-- **Technische Voraussetzung der Erkennung:** L02 ist nur auf C01 behoben. Automatische
-  Texterkennung im Browser setzt die Integration von C01 voraus (siehe Integrationsplan, Schritt 0).
+- **Technische Voraussetzung der Erkennung:** L02 ist in C01 (`64e1768c`, Urteil „erfuellt“)
+  behoben, aber noch nicht in dieser Arbeitsbasis. Automatische Texterkennung im Browser beginnt auf
+  einem Hauptstand mit `64e1768c` (siehe Integrationsplan, Schritt 0).
 - **Modellweg (W02):** Die Bildbeschreibung hängt an einem konfigurierten Vision-Modell und an der
   Vertraulichkeitsregel. Vertrauliche Inhalte gehen nicht an eine Cloud. Das bleibt wirksam.
 - **Folienansicht (W04):** braucht Betreiberschalter und Systemwerkzeuge. Ohne sie antwortet die
@@ -107,7 +110,8 @@ Zwei weitere vorhandene Bausteine, an die OCR-02 und OCR-03 anschließen:
 
 - Erhoben durch Quelleninspektion. Kein Lauf in einem echten Office-, PowerPoint- oder Mac-Host,
   keine echte Erkennung.
-- Die sieben Originalkriterien von `aufnahme:20260922:gesamt-ocr` (Revision 2) lagen diesem Lauf
-  nicht im Wortlaut vor. Der Abgleich stützt sich auf die Anforderungs-IDs im Code und in den Tests
-  des Kandidaten C01 (siehe `ABGLEICH-OCR-AUFTRAG.md`).
-- L07 (Kopf-/Fußzeilen, Textfelder in DOCX) ist eine unbelegte Stelle, kein gemessener Verlust.
+- Die sieben Originalkriterien von `aufnahme:20260922:gesamt-ocr` (Revision 2) sind im Wortlaut
+  aus Bens Prüflesung übernommen (`HISTORIE/nacharbeit-1/BEN/STREAM.jsonl`), weil die Auftragsdateien
+  von C01 außerhalb des Lesebereichs liegen (siehe `ABGLEICH-OCR-AUFTRAG.md`).
+- L07 (Kopf-/Fußzeilen, Textfelder in DOCX) und die Gruppenbilder in L05 sind unbelegte Stellen,
+  keine gemessenen Verluste.
