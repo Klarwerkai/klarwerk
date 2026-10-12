@@ -91,7 +91,7 @@ function zeitstempel(ms: number): string {
  * Die älteste Zeitangabe am Dateianfang, sonst `null`. Zwei Formen: pino schreibt `"time":<ms>`,
  * Dockers `json-file` schreibt je Zeile `"time":"<ISO-8601>"`.
  */
-function ersteZeitImInhalt(pfad: string): number | null {
+export function ersteZeitImInhalt(pfad: string): number | null {
   let fd: number | null = null;
   try {
     fd = openSync(pfad, "r");

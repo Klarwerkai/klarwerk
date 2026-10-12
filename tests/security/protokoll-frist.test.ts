@@ -409,7 +409,7 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     const fremde = vorher.container.filter((c) => c.id !== id);
     expect(fremde.length).toBe(2);
     expect(fremde.every((c) => !c.ausgewaehlt)).toBe(true);
-    expect(vorher.diagnoseAeltesteTage).toBeGreaterThanOrEqual(15);
+    expect(vorher.diagnose.aeltesteZeileTage).toBeGreaterThanOrEqual(15);
     // Keine Protokollinhalte im Bericht — nur Kennungen, Namen und Zahlen.
     expect(JSON.stringify(vorher)).not.toContain("app-alt");
     expect(JSON.stringify(vorher)).not.toContain("fremd-alt");
@@ -427,11 +427,61 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
       diagnoseordner: diagnose,
       jetzt: JETZT,
     });
-    expect(nachher.container.find((c) => c.id === id)?.aeltesteZeileTage ?? 0).toBeLessThan(14);
-    expect(nachher.diagnoseAeltesteTage).toBeNull();
+    // Die aktive Datei ist gekürzt (leer): kein Protokollinhalt, also keine älteste Zeile.
+    expect(nachher.container.find((c) => c.id === id)).toMatchObject({
+      aeltesteZeileTage: null,
+      ohneZeitangabe: 0,
+    });
+    expect(nachher.diagnose).toEqual({
+      aeltesteZeileTage: null,
+      ohneZeitangabe: 0,
+      ohneZeitangabeDateidatumTage: null,
+    });
     // Die fremden Container: im Bericht unverändert, auf der Platte unberührt.
     expect(nachher.container.filter((c) => c.id !== id)).toEqual(fremde);
     fremd.unberuehrt();
+  });
+
+  // Ben, Nacharbeit 14: der Bericht setzte Dateialter mit Inhaltsalter gleich. Eine alte aktive Datei,
+  // längst gekürzt und mit neuen Zeilen, galt als überfällig — der Nachher-Nachweis wäre fälschlich
+  // gescheitert. Das ältere Dateidatum (`min(Änderung, Anlage)`) wird hier über das Änderungsdatum
+  // nachgestellt; das Anlagedatum lässt sich im Test nicht zurücksetzen und wirkt im Bericht gleich.
+  it("Bericht: alte, gekürzte Datei mit neuen Zeilen ist NICHT überfällig; unbekannte Inhaltszeit steht gesondert", () => {
+    const wurzel = protokollordner();
+    const dockerZeile = (zeit: number, text: string) =>
+      `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
+    const id = "0123456789abcdef01234567";
+    mkdirSync(join(wurzel, id));
+    datei(join(wurzel, id, "config.v2.json"), appKonfiguration(), JETZT);
+    // Aktive Datei: 30 Tage altes Dateidatum, aber nach dem Kürzen nur eine Zeile von vor einer Stunde.
+    datei(
+      join(wurzel, id, `${id}-json.log`),
+      dockerZeile(JETZT - 3_600_000, "neu"),
+      JETZT - 30 * TAG,
+    );
+    // Ein altes, leeres Archiv: kein Inhalt, zählt nicht.
+    datei(join(wurzel, id, `${id}-json.log.1`), "", JETZT - 40 * TAG);
+
+    const neu = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(neu.container[0]).toMatchObject({
+      aeltesteZeileTage: 0,
+      ohneZeitangabe: 0,
+      ohneZeitangabeDateidatumTage: null,
+    });
+
+    // Eine Datei ohne erkennbare Zeitangabe: nicht als Inhaltsalter, sondern ausdrücklich unbekannt.
+    datei(join(wurzel, id, `${id}-json.log.2`), "kein json, keine zeit\n", JETZT - 20 * TAG);
+    const unbekannt = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(unbekannt.container[0]).toMatchObject({
+      aeltesteZeileTage: 0,
+      ohneZeitangabe: 1,
+      ohneZeitangabeDateidatumTage: 20,
+    });
+
+    // Gegenprobe: Liegt im Inhalt wirklich eine alte Zeile, meldet der Bericht sie.
+    datei(join(wurzel, id, `${id}-json.log.3`), dockerZeile(JETZT - 16 * TAG, "alt"), JETZT);
+    const alt = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(alt.container[0]?.aeltesteZeileTage).toBe(16);
   });
 
   it("die Auswahl ist überall dieselbe: Dockerfile-Label, Compose-Aufruf, Coolify-Aufruf im Runbook", () => {
