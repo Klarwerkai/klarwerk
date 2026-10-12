@@ -224,6 +224,17 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "JOB 3326 — sichtbareFuer + sqlSichtbarkeitFuer über der Grundmenge.",
   },
+  // Peter Nr. 20: die Widerspruchsmeldung fährt dasselbe Prädikat wie der Abruf (`darfSehen`, 404
+  // statt Meldung). Ihre Antwort trägt nur Kennung, Sprache und Protokollnummer.
+  "POST /api/kos/:id/lesevariante/:lang/widerspruch": {
+    urteil: "PRAEDIKAT",
+    grund: "Peter Nr. 20 — darfSehen am Objekt, 404 statt Meldung; Antwort ohne KO-Inhalt.",
+  },
+  "POST /api/library/import/candidates/:id/lesevariante/:lang/widerspruch": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Peter Nr. 20 — Meldung zum Kandidaten (keine koId); Antwort trägt nur Kennung, Sprache, Protokollnummer.",
+  },
   // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 10): das frühere Urteil KEIN_KO_INHALT
   // stimmte nicht — die Bilanz nannte Objektkennungen (`textGeaendert`, `originalGeaendert`) und
   // zählte unsichtbare Objekte mit. Jetzt zählt und nennt sie nur, was der Admin sehen darf.
@@ -1038,6 +1049,27 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "requireVisibleDraft + canSeeDraft je Treffer (capture-routes.ts).",
   },
   "GET /api/me/impact": { urteil: "EIGENER_BESTAND", grund: "vier eigene Zähler (impact.ts:88)." },
+  // Autorenübergabe-Auftrag K3: Zahl der an mich zurückgegebenen Entwürfe, über derselben
+  // sichtbaren Grundmenge wie `GET /api/kos` gerechnet.
+  "GET /api/me/returned-tasks/summary": {
+    urteil: "PRAEDIKAT",
+    grund: "K3 — sichtbareFuer + sqlSichtbarkeitFuer über der Grundmenge, nur die Zahl.",
+  },
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Übergaben — Kennung, Grund, Dringlichkeit.
+  "GET /api/me/author-transfers": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "R-0961 — wartende Autorenübergaben (koId, grund, kritisch); Admin.",
+  },
+  "GET /api/me/author-transfers/summary": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "R-0961 — nur die Zahl der wartenden Autorenübergaben; Admin.",
+  },
+  "GET /api/me/returned-tasks": {
+    urteil: "PRAEDIKAT",
+    grund: "K3 — dieselbe Auswahl als Liste { koId, at, verdict }, nur eigene sichtbare Objekte.",
+  },
   // Betroffenenrechte (datenschutz-routes.ts). Die Auskunft gibt die EIGENEN Beiträge immer aus
   // (Kommentartext, Fragetext, Entwurf) — den TITEL eines Objekts nur, wenn der Betrachter es heute
   // sehen darf: `sichtbarkeitsfilterFuer` des Betrachters geht unbedingt in die Zusammenstellung.
@@ -1795,6 +1827,8 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/auth/second-factor/confirm": "bestätigt den eigenen zweiten Faktor.",
     "POST /api/auth/second-factor/disable": "schaltet den eigenen zweiten Faktor ab.",
     "DELETE /api/users/:id/second-factor": "setzt den zweiten Faktor eines Kontos zurück (Admin).",
+    // R-0961: Antwort sind Kontokennung, Vertretung und die Kennungen übertragener Vorgänge.
+    "POST /api/users/:id/ausscheiden": "setzt den Status „Ausgeschieden“ eines Kontos (Admin).",
     "GET /api/auth/saml/start": "SAML-Start (Weiterleitung an den Anbieter).",
     "GET /api/auth/saml/metadata": "SAML-Metadaten des Dienstes, keine Nutzerdaten.",
     "POST /api/auth/saml/acs": "SAML-Rücksprung des Anbieters; Weiterleitung mit Abschlusscode.",

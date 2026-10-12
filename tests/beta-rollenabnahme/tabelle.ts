@@ -1754,6 +1754,41 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // Autorenübergabe-Auftrag K3: die an mich zurückgegebenen Entwürfe — Liste für die Aufgabenseite
+  // und textfreie Zahl für das Kopfband, beide nur mit `ko.read` (Experten eingeschlossen).
+  {
+    gruppe: "aufgabenZaehlerRoutes",
+    methode: "GET",
+    pfad: "/api/me/returned-tasks",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:107",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "aufgabenZaehlerRoutes",
+    methode: "GET",
+    pfad: "/api/me/returned-tasks/summary",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:116",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Übergaben — nur für Admins, die sie ausführen.
+  {
+    gruppe: "aufgabenZaehlerRoutes",
+    methode: "GET",
+    pfad: "/api/me/author-transfers",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:91",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "aufgabenZaehlerRoutes",
+    methode: "GET",
+    pfad: "/api/me/author-transfers/summary",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:99",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
   // Betroffenenrechte (R-0661, R-0663): die EIGENEN Daten und der EIGENE Löschantrag — jede
   // angemeldete Rolle, auch der Gast. Die Nutzlasten sind so gewählt, dass nichts angelegt wird: eine
   // Begründung, die kein Text ist, endet nach dem Tor mit 400; eine erfundene Antragskennung mit 404.

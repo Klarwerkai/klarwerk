@@ -3599,6 +3599,9 @@ export interface LesevarianteKurz {
    */
   quellabgleich: "bestaetigt" | "unbestaetigt";
   updatedAt: string;
+  /** Peter Nr. 20 — s. `LesevarianteKennzeichnung`. Optional: ältere Antworten tragen es nicht. */
+  originalquelle?: LesevarianteOriginalquelle | null;
+  fassung?: LesevarianteFassung | null;
 }
 
 // ================================================================================================
@@ -3624,7 +3627,37 @@ export type LesevarianteKennzeichnung = Pick<
    * nichts, weder das eine noch das andere.
    */
   originalGeaendert?: boolean;
+  /**
+   * Peter Nr. 20 (12.10.2026): das Original, zu dem die Übersetzung gehört. `null` ODER fehlend
+   * heisst „nicht zugeordnet" — die Fläche sagt das ausdrücklich, statt eine Quelle zu erfinden.
+   */
+  originalquelle?: LesevarianteOriginalquelle | null;
+  /** Peter Nr. 20: die belegte Fassung des Originals. `null`/fehlend = „Fassung nicht zugeordnet". */
+  fassung?: LesevarianteFassung | null;
 };
+
+/** Spiegel von `Originalquelle` (services/app/src/lesevarianten.ts). */
+export interface LesevarianteOriginalquelle {
+  titel: string;
+  provider: string | null;
+  kennung: string | null;
+  url: string | null;
+  quellfassung: number | null;
+}
+
+/** Spiegel von `BelegteFassung` (services/app/src/lesevarianten.ts). */
+export type LesevarianteFassung =
+  | { art: "wissensobjekt"; version: number; abdruck: string }
+  | { art: "quelle"; quellfassung: number };
+
+/** Antwort der Widerspruchsmeldung — ein Protokolleintrag, keine Freigabe. */
+export interface LesevariantenWiderspruchQuittung {
+  gemeldet: true;
+  gegenstand: "wissensobjekt" | "kandidat";
+  ziel: string;
+  lang: string;
+  seq: number;
+}
 
 /**
  * JOB 3363 · Die LIVE aufgelöste Leseübersetzung eines Import-Kandidaten der Prüfkarte (Stufe 2).
@@ -3653,6 +3686,9 @@ export interface KandidatenLesevariante {
   quellabgleich: "bestaetigt" | "unbestaetigt";
   // KEIN `originalGeaendert`: die Aussage ist für eine live aufgelöste Variante nicht beantwortbar
   // (s. `LesevarianteKennzeichnung`). Sie fehlt deshalb, statt mit `false` gefüllt zu werden.
+  /** Peter Nr. 20 — s. `LesevarianteKennzeichnung`. */
+  originalquelle?: LesevarianteOriginalquelle | null;
+  fassung?: LesevarianteFassung | null;
 }
 
 /** Die volle Fassung für die Leseansicht. */

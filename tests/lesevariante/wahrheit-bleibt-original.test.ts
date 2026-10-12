@@ -30,6 +30,11 @@ const ERLAUBTE_LESER: Readonly<Record<string, string>> = {
   "services/app/src/routes/lesevarianten-routes.ts": "die drei Routen der Lesevariante",
   "services/app/src/routes/ko-routes.ts":
     "der Detailabruf reicht die Variante als EIGENES Feld neben dem unveränderten Objekt mit",
+  // aufnahme:20260922:gesamt-leserechte (main): das Prüfprotokoll blendet Alteinträge
+  // `lesevarianten.load` mit Bestandsdaten aus. Importiert werden NUR zwei Konstanten (Aktionsname,
+  // erlaubte Nutzlastfelder) — keine Ablage, keine Variante, kein Übersetzungstext.
+  "services/app/src/routes/audit-routes.ts":
+    "Prüfprotokoll: nur LESEVARIANTEN_LADE_AKTION und LESEVARIANTEN_LADE_PROTOKOLLFELDER",
 };
 
 /**
@@ -79,12 +84,29 @@ describe("JOB 3326 · die Lesevariante bleibt eine LESART", () => {
     );
   });
 
-  it("W2 · die Kalibrierung: der Wächter findet die vier bekannten Leser wirklich", () => {
+  it("W2 · die Kalibrierung: der Wächter findet die fünf bekannten Leser wirklich", () => {
     // Ohne diese Zeile wäre W1 auch dann grün, wenn das Muster gar nichts fände.
     const gefunden = Object.keys(ERLAUBTE_LESER)
       .filter((d) => d !== "services/app/src/lesevarianten.ts")
       .filter((d) => importiertLesevarianten(inhalt(d)));
-    expect(gefunden.length).toBe(4);
+    expect(gefunden.length).toBe(5);
+  });
+
+  it("W6 · das Prüfprotokoll liest aus dem Modul NUR die zwei Konstanten, nie die Ablage", () => {
+    const quelle = inhalt("services/app/src/routes/audit-routes.ts");
+    const muster = /^\s*import\s*(?:type\s*)?\{([^}]*)\}\s*from\s+["'][^"']*\/lesevarianten["']/gm;
+    const importe: string[] = [];
+    for (const m of quelle.matchAll(muster)) {
+      for (const name of (m[1] ?? "").split(",")) {
+        if (name.trim().length > 0) {
+          importe.push(name.trim());
+        }
+      }
+    }
+    expect(importe.sort()).toEqual([
+      "LESEVARIANTEN_LADE_AKTION",
+      "LESEVARIANTEN_LADE_PROTOKOLLFELDER",
+    ]);
   });
 
   it("W3 · Suche, Ähnlichkeit, Konflikt, KI-Antwort, Export und Prüfprotokoll lesen sie nicht", () => {

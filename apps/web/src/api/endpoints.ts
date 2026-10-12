@@ -1,3 +1,4 @@
+import type { AnstehendeUebergabe } from "../lib/autorenuebergabe";
 import { trenneVerzeichnis } from "../lib/geloeschteKonten";
 import type { Verbindungsnachweis } from "../lib/integrationStatus";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
@@ -105,6 +106,7 @@ import type {
   Lesevariante,
   LesevariantenLadeBilanz,
   LesevariantenUebersicht,
+  LesevariantenWiderspruchQuittung,
   LibraryImageSearchResponse,
   LiveWall,
   LiveWallConsent,
@@ -450,6 +452,8 @@ export type KoAction =
   // R-0263: `vorrang` optional — welcher der beiden Punkte gilt bzw. einschränkt.
   | { action: "resolve-conflict"; conflictId: string; decision: string; vorrang?: VorrangWahl }
   | { action: "transfer-author"; newAuthor: string }
+  // R-0961: Autor oder Admin verlangen die Übergabe ausdrücklich (nur Protokolleintrag).
+  | { action: "request-author-transfer" }
   // R-0507: der benannte Eigentümer gibt seine Verantwortung zurück (sonst 403 `NOT_OWNER`).
   | { action: "ownership-release" }
   // R-0507: der benannte Eigentümer gibt inhaltlich frei (Recht `ko.validate`, sonst 403).
@@ -1139,6 +1143,15 @@ export const endpoints = {
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler (nur eigene Beiträge, nur Zahlen).
   me: {
     impact: () => api.get<MyImpact>("/me/impact"),
+    // Autorenübergabe-Auftrag K3: nur die Zahl der an mich zurückgegebenen Entwürfe (Kopfband).
+    returnedSummary: () => api.get<{ open: number }>("/me/returned-tasks/summary"),
+    // Dieselbe Auswahl als Liste für die Aufgabenseite. Nur `ko.read` — Experten sehen ihre
+    // Rückgaben, ohne das ganze Protokoll (`/audit`, `ko.validate`) lesen zu dürfen.
+    returnedTasks: () =>
+      api.get<{ koId: string; at: string; verdict: string }[]>("/me/returned-tasks"),
+    // Autorenübergabe-Auftrag (R-0961): wartende Autorenübergaben (nur `users.manage`).
+    authorTransfers: () => api.get<AnstehendeUebergabe[]>("/me/author-transfers"),
+    authorTransfersSummary: () => api.get<{ open: number }>("/me/author-transfers/summary"),
   },
   // SCRUM-527: Live-Check eines Entwurfstextes (Ähnlichkeit/Widerspruch gegen den Bestand).
   //
@@ -1669,6 +1682,18 @@ export const endpoints = {
     fuerKandidat: (kandidatId: string, lang: string) =>
       api.get<KandidatenLesevariante>(
         `/library/import/candidates/${encodeURIComponent(kandidatId)}/lesevariante/${encodeURIComponent(lang)}`,
+      ),
+    // Peter Nr. 20: „Übersetzungswidersprüche melden" — ein Protokolleintrag mit Bezug auf genau
+    // diese Übersetzung und dieses Original. Er gibt nichts frei und ändert nichts.
+    widerspruchKo: (koId: string, lang: string, begruendung: string) =>
+      api.post<LesevariantenWiderspruchQuittung>(
+        `/kos/${encodeURIComponent(koId)}/lesevariante/${encodeURIComponent(lang)}/widerspruch`,
+        { begruendung },
+      ),
+    widerspruchKandidat: (kandidatId: string, lang: string, begruendung: string) =>
+      api.post<LesevariantenWiderspruchQuittung>(
+        `/library/import/candidates/${encodeURIComponent(kandidatId)}/lesevariante/${encodeURIComponent(lang)}/widerspruch`,
+        { begruendung },
       ),
   },
   // AUFTRAG-mega46 Block F: „welche Schalter stehen" — die EINE Auskunft, Ja/Nein je Schalter.
