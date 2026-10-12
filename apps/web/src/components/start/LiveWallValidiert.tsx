@@ -7,8 +7,10 @@ import {
   useSetLiveWallPhoto,
 } from "../../api/hooks";
 import type { LiveWall } from "../../api/types";
+import { formatKoTimestamp } from "../../lib/koDates";
 import { FOTO_TYPEN, fotoVorbereiten } from "../../lib/livewallFoto";
 import { LIVEWALL_TAKT_MS, personenAktuell, useJetzt } from "../../lib/livewallTakt";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { RoleLink } from "../RoleLink";
 
 // ================================================================================================
@@ -39,7 +41,8 @@ export function LiveWallValidiert({
   return (
     <>
       <div data-testid="livewall-validiert">
-        <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-2">
+        {/* R-0918: Leseschrift-Untergrenze 11 px — `text-klein` statt frei gesetzter 10 px. */}
+        <div className="mb-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
           {t("start.livewall.validated")}
         </div>
         <ValidiertListe
@@ -65,9 +68,13 @@ export function ValidiertListe({
   const { t, i18n } = useTranslation();
   if (eintraege.length === 0) {
     return (
-      <p className={gross ? "text-[22px] text-muted" : "text-[12.5px] text-muted"}>
-        {t("start.livewall.validatedEmpty")}
-      </p>
+      <>
+        <p className={gross ? "text-projektion text-muted" : "text-[12.5px] text-muted"}>
+          {t("start.livewall.validatedEmpty")}
+        </p>
+        {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+        {leerzustandsZeile(t, "start")}
+      </>
     );
   }
   const foto = gross ? "h-14 w-14" : "h-6 w-6";
@@ -98,7 +105,7 @@ export function ValidiertListe({
             <span
               data-testid="livewall-validiert-name"
               className={
-                gross ? "shrink-0 text-[22px] text-muted" : "shrink-0 text-[12px] text-muted"
+                gross ? "shrink-0 text-projektion text-muted" : "shrink-0 text-[12px] text-muted"
               }
             >
               {v.name}
@@ -107,16 +114,11 @@ export function ValidiertListe({
           <span
             className={
               gross
-                ? "shrink-0 font-mono text-[18px] text-muted-2"
-                : "shrink-0 font-mono text-[10.5px] text-muted-2"
+                ? "shrink-0 font-mono text-projektion-klein text-muted-2"
+                : "shrink-0 font-mono text-klein text-muted-2"
             }
           >
-            {new Date(v.at).toLocaleString(i18n.language.startsWith("en") ? "en-GB" : "de-DE", {
-              day: "2-digit",
-              month: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+            {formatKoTimestamp(v.at, i18n.language)}
           </span>
         </li>
       ))}
@@ -203,6 +205,19 @@ function WandZustimmung(): JSX.Element | null {
       {fotoFehler ? (
         <p role="alert" className="text-[12px] text-trust-warn-text">
           {t("start.livewall.photoError")}
+        </p>
+      ) : null}
+      {/* R-0953 (Bestandsabgleich, Nacharbeit 4): Umschalten der Namenszustimmung und Widerruf des
+          Fotos scheiterten bis hierher still — das Kästchen sprang zurück, das Foto blieb. Bei
+          einer Zustimmung muss der Mensch wissen, dass sein Widerruf NICHT wirkte. */}
+      {setzen.isError ? (
+        <p role="alert" className="text-[12px] text-trust-warn-text">
+          {t("start.livewall.consentError")}
+        </p>
+      ) : null}
+      {fotoLoeschen.isError ? (
+        <p role="alert" className="text-[12px] text-trust-warn-text">
+          {t("start.livewall.photoRevokeError")}
         </p>
       ) : null}
     </div>

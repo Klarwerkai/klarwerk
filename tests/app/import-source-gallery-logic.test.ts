@@ -18,7 +18,15 @@ import {
 
 // mega15 Block D: „unconfigured" (gebaut, aber kein Dienst hinterlegt) steht zwischen aktiv und bald.
 // JOB 3190 (UX-18): „elsewhere" (anderswo im Produkt wirklich einlesbar) steht direkt hinter aktiv.
-const RANK = { active: 0, elsewhere: 1, unconfigured: 2, soon: 3, planned: 4 } as const;
+// ADMIN-02: „available" (gebaut, Stand dieser Installation unbekannt/ungeprüft) direkt hinter „elsewhere".
+const RANK = {
+  active: 0,
+  elsewhere: 1,
+  available: 2,
+  unconfigured: 3,
+  soon: 4,
+  planned: 5,
+} as const;
 
 function isOrdered(sources: readonly GallerySource[]): boolean {
   for (let i = 1; i < sources.length; i++) {
@@ -71,7 +79,9 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
     const fileStates = new Set(FILE_SOURCES.map((s) => s.state));
     expect(fileStates.has("active")).toBe(true);
     expect(fileStates.has("elsewhere")).toBe(true);
-    expect(fileStates.has("planned")).toBe(true);
+    // R-0179 (Nacharbeit 3): NACHGEFÜHRT. Excel war die letzte geplante Dateikachel auf `/import`;
+    // seit der Importkasten sie liest, ist dort keine Dateikachel mehr geplant.
+    expect(fileStates.has("planned"), "keine Dateikachel behauptet noch „geplant“").toBe(false);
     expect(fileStates.has("soon"), "keine Dateikachel behauptet noch „bald“").toBe(false);
   });
 
@@ -89,11 +99,18 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
   // Dass die Kachel das nicht nur behauptet, misst
   // `tests/sharepoint-onedrive-import/katalog-sagt-die-wahrheit.test.ts` an allen drei Stellen —
   // hier steht nur noch der Zustand, den diese Messungen decken.
-  it("Systeme: Confluence, JSON-Import und SharePoint aktiv; Jira bald; Word-/PDF-Quelle und die uebrigen geplant", () => {
+  //
+  // ADMIN-02 — NACHGEFÜHRT: die drei Messungen decken „gebaut", nicht „in DIESER Installation aktiv".
+  // Statisch steht SharePoint deshalb auf „available"; den Stand der Installation setzt die Galerie
+  // aus der Zugangsauskunft (`systemKachelMitStatus`, gemessen in
+  // `tests/admin-integrationszustaende/`).
+  // ADMIN-02 Nacharbeit 2 — NACHGEFÜHRT: auch Confluence steht statisch nicht mehr auf „active";
+  // den Stand der Installation setzt die Galerie aus der Confluence-Auskunft (Bens Befund).
+  it("Systeme: JSON-Import aktiv; Confluence und SharePoint verfuegbar; Jira bald; Word-/PDF-Quelle und die uebrigen geplant", () => {
     const byId = new Map(SYSTEM_SOURCES.map((s) => [s.id, s.state]));
-    expect(byId.get("confluence")).toBe("active");
+    expect(byId.get("confluence")).toBe("available");
     expect(byId.get("json")).toBe("active");
-    expect(byId.get("sharepoint"), "sharepoint").toBe("active");
+    expect(byId.get("sharepoint"), "sharepoint").toBe("available");
     expect(byId.get("jira"), "jira").toBe("soon");
     for (const id of [
       "word-sys",
@@ -117,13 +134,14 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
   // `/import` heissen sie deshalb „anderswo verfügbar". Excel bleibt geplant — dort gibt es
   // wirklich keinen Extraktionsweg. Die Ableitung selbst misst
   // `tests/import-einstieg/zustand-aus-der-weiche.test.ts`.
-  it("Dateien: JSON aktiv; Word/PDF/PowerPoint/CSV/OCR anderswo verfuegbar; Excel geplant", () => {
+  // R-0179 (Nacharbeit 3): NACHGEFÜHRT — Excel liest der Importkasten jetzt selbst.
+  it("Dateien: JSON und Excel aktiv; Word/PDF/PowerPoint/CSV/OCR anderswo verfuegbar", () => {
     const byId = new Map(FILE_SOURCES.map((s) => [s.id, s.state]));
     expect(byId.get("json-file")).toBe("active");
     for (const id of ["docx", "pdf", "pptx", "csv", "ocr"]) {
       expect(byId.get(id), id).toBe("elsewhere");
     }
-    expect(byId.get("xlsx"), "xlsx").toBe("planned");
+    expect(byId.get("xlsx"), "xlsx").toBe("active");
   });
 
   // AUFTRAG-mega15 Block D (SCRUM-382): das Audio-/Video-Transkript ist NICHT geplant — es ist

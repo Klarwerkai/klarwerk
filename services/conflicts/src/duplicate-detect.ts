@@ -46,8 +46,8 @@ export interface OverlapVerdict {
 
 // Startwerte (4.1/4.2, bewusst konservativ — Präzision vor Vollständigkeit).
 export const DUP_DETERMINISTIC_THRESHOLD = 0.85; // ≥ → Auto-Eintrag „identisch" ohne Modell
-export const DUP_MODEL_MIN = 0.45; // [MIN, DET) → Modell-Kandidat (die schweren Fälle)
-export const DUP_TITLE_MIN = 0.8; // gleicher Titel, anderer Text ist ein klassisches Duplikat-Muster
+// R-1349: `DUP_MODEL_MIN` (0,45) und `DUP_TITLE_MIN` (0,8) las allein die abgelöste dreistufige
+// `overlapCandidacy`; beide sind mit ihr entfernt.
 // Pedi 04.07.: Startwert der Anzeige-Schwelle jetzt 0,5 (vorher 0,7) — und im Admin einstellbar
 // (OverlapSettings). „Lieber ein Fehlalarm zum Wegklicken als ein übersehenes Duplikat."
 export const DUP_MIN_CONFIDENCE = 0.5;
@@ -93,26 +93,9 @@ export function lexicalOverlapScore(a: DetectSubject, b: DetectSubject): number 
   return weightSum === 0 ? 0 : weighted / weightSum;
 }
 
-export type OverlapCandidacy = "deterministic" | "model" | "none";
-
-// Kandidatenstufe (4.1): sehr hohe Deckung → deterministischer Auto-Eintrag; mittlere Deckung ODER
-// sehr ähnlicher Titel → Modell; sonst kein Kandidat.
-export function overlapCandidacy(
-  lexicalScore: number,
-  titleSimilarity: number,
-  opts: { deterministic?: number; modelMin?: number; titleMin?: number } = {},
-): OverlapCandidacy {
-  if (lexicalScore >= (opts.deterministic ?? DUP_DETERMINISTIC_THRESHOLD)) {
-    return "deterministic";
-  }
-  if (
-    lexicalScore >= (opts.modelMin ?? DUP_MODEL_MIN) ||
-    titleSimilarity >= (opts.titleMin ?? DUP_TITLE_MIN)
-  ) {
-    return "model";
-  }
-  return "none";
-}
+// R-1349: Hier stand die dreistufige Kandidatenwahl `overlapCandidacy` (4.1: deterministisch ·
+// Modell · keiner). Seit „jeder gegen jeden" gibt es die Stufe „keiner" nicht mehr; der Betrieb
+// ruft allein `exhaustiveOverlapCandidacy` (overlap-service.ts). Sie ist entfernt.
 
 // „Jeder gegen jeden" (Pedi 04.07.): der Textabgleich ist nur noch die günstige Abkürzung für den
 // offensichtlichen Fall (fast wortgleich → deterministischer Eintrag ohne Modell). Alles andere geht
@@ -270,10 +253,8 @@ export function overlapPairKey(refA: string, refB: string): string {
   return `dup|ko:${x}|ko:${y}`;
 }
 
-// Textdeckung als ehrliche Prozentzahl fürs Board (Anhaltspunkt, kein Urteil).
-export function overlapScorePercent(lexicalScore: number): number {
-  return Math.round(Math.min(1, Math.max(0, lexicalScore)) * 100);
-}
+// R-1349: `overlapScorePercent` (Textdeckung als Prozentzahl fürs Board) rief keine Fläche und keine
+// Route; sie ist entfernt.
 
 // JOB 2609 (27.08.2026): `titleSimilarity` — der reine Titel-Ähnlichkeitswert — ist hier entfernt
 // worden. Sie belieferte allein den zweiten Parameter von `overlapCandidacy`, also die Kandidaten-

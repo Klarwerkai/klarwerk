@@ -81,6 +81,7 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { canSee, kopfbandItems } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
+import { aktuellePlattform, kuerzelText } from "../../apps/web/src/lib/tastenkuerzel";
 import { AppShell } from "../../apps/web/src/shell/AppShell";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -347,7 +348,9 @@ describe("JOB 3605 · N5 · „Gehe zu …“ bleibt auf dem Band ein Knopf", ()
       const knopf = kopfband().querySelector<HTMLButtonElement>('[data-testid="kopfband-gehezu"]');
       expect(knopf, `${breite}px: „Gehe zu …“ ist mit verschwunden`).not.toBeNull();
       expect(knopf?.textContent).toContain(i18n.t("fe002.seiteFinden"));
-      expect(knopf?.textContent, `${breite}px: das Kürzel fehlt`).toContain("⌘K");
+      expect(knopf?.textContent, `${breite}px: das Kürzel fehlt`).toContain(
+        kuerzelText("K", i18n.language, aktuellePlattform()),
+      );
       // Und er ist kein Navigationspunkt geworden, um die Lücke zu füllen.
       expect(knopf?.getAttribute("data-kopfband-punkt")).toBeNull();
     });

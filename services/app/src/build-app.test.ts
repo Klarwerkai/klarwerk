@@ -321,14 +321,16 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
       url: `/api/drafts/${adminDraft.json().id}`,
       headers: erikHeaders,
     });
-    expect(erikReadsAdmin.statusCode).toBe(403);
+    // aufnahme:20260922:gesamt-leserechte (R-0239, J24 „404"): ein fremder Entwurf antwortet wie
+    // ein nicht vorhandener — 404 statt 403, damit seine Existenz nicht erfragbar ist.
+    expect(erikReadsAdmin.statusCode).toBe(404);
 
     const adminReadsErik = await app.inject({
       method: "GET",
       url: `/api/drafts/${erikDraft.json().id}`,
       headers: adminHeaders,
     });
-    expect(adminReadsErik.statusCode).toBe(403);
+    expect(adminReadsErik.statusCode).toBe(404);
 
     await app.close();
   });
@@ -348,8 +350,8 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
         neededValidations: 1,
       },
     });
-    // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): beantwortbar ist eine Frage nur aus
-    // geprüftem Wissen — das KO wird über die echte Bewertung validiert.
+    // R-0278 (Nacharbeit 3) / R-0584 (Auftrag gesamt-datenschutz-voreinstellung): beantwortbar ist
+    // eine Frage nur aus geprüftem Wissen — das KO wird über die echte Bewertung validiert.
     const bewertet = await app.inject({
       method: "PUT",
       url: `/api/kos/${angelegt.json().id}`,
@@ -377,6 +379,12 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
     expect(impact.json().askTotal).toBe(2);
     expect(impact.json().answeredWithoutGap).toBe(1);
     expect(impact.json().answerRate).toBeCloseTo(0.5);
+    // R-0723/R-0750: die Antwortquote im Wochenverlauf — beide Fragen fallen in die laufende Woche
+    // (Montag, UTC), und die Wochenzähler ergeben zusammen genau die Gesamtzahlen.
+    const montag = new Date();
+    montag.setUTCDate(montag.getUTCDate() - ((montag.getUTCDay() + 6) % 7));
+    const woche = montag.toISOString().slice(0, 10);
+    expect(impact.json().askByWeek).toEqual({ [woche]: { asked: 2, answeredWithoutGap: 1 } });
     await app.close();
   });
 });

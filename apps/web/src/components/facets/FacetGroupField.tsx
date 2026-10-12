@@ -48,13 +48,13 @@ export function FacetGroupField({
   return (
     <div className="border-b border-hairline-soft py-3 last:border-b-0">
       <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+        <span className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
           {groupLabel}
         </span>
         {/* Block B Punkt 2: die Einschränkung durch die übergeordnete Dimension wird AUSGEWIESEN —
             eine stille Verkürzung der Werteliste wäre genau das Verschweigen, das uxpol verbietet. */}
         {group.restricted ? (
-          <span className="text-[10.5px] text-muted-2">{t("facet.restricted")}</span>
+          <span className="text-klein text-muted-2">{t("facet.restricted")}</span>
         ) : null}
       </div>
 
@@ -119,7 +119,7 @@ export function FacetGroupField({
                 className="h-3.5 w-3.5 shrink-0 accent-brand"
               />
               <span className="min-w-0 flex-1 truncate">{labelForValue(group.key, o.value)}</span>
-              <span className="shrink-0 font-mono text-[10.5px] text-muted-2">{o.count}</span>
+              <span className="shrink-0 font-mono text-klein text-muted-2">{o.count}</span>
             </label>
           ))}
         </fieldset>

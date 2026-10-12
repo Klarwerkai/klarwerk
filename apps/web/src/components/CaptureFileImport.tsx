@@ -162,7 +162,7 @@ export function CaptureFileImport({
         }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
-        className={`mb-2 w-full cursor-pointer rounded-card border border-dashed p-4 text-center text-[12.5px] transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/40 ${
+        className={`mb-2 w-full cursor-pointer rounded-card border border-dashed p-4 text-center text-[12.5px] transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand-text ${
           dragOver ? "border-brand bg-brand/5 text-text" : "border-hairline text-muted"
         }`}
       >
@@ -189,7 +189,7 @@ export function CaptureFileImport({
           // der Compiler die Auszeichnung an.
           data-wegziel={WEGZIEL_DATEI}
           onClick={openFileDialog}
-          className="rounded-btn border border-hairline bg-page px-3 py-1.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand/40"
+          className="rounded-btn border border-hairline bg-page px-3 py-1.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand-text"
         >
           {t(CAPTURE_FILE_TEXT.pick)}
         </button>

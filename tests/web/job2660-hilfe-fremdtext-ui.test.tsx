@@ -104,11 +104,16 @@ const FRAGE_OHNE_SUBSTANZ = `Was ist ein ${FANTASIEWORT}?`;
 // Die Woerter, die laut Abnahme NICHT sichtbar werden duerfen — in allen drei Sprachen des
 // Katalogs, damit der Ausschluss nicht an der eingestellten Sprache haengt.
 const VERBOTENE_WOERTER = [
+  // Peters Entscheidung 54 (11.10.2026): das deutsche Statuswort heisst jetzt „Fachlich bestätigt";
+  // das alte bleibt verboten, damit es nicht über eine zweite Stelle zurückkommt.
+  "Fachlich bestätigt",
   "Gesichert",
   "Verified",
   "Gecontroleerd",
   "validiert",
   "Validiert",
+  // Antwort 54 (11.10.2026): der sichtbare Name des validierten Zustands — ebenso ausgeschlossen.
+  "Fachlich bestätigt",
 ] as const;
 
 // Dieselbe Menge als EIN Muster — BEWUSST OHNE Wortgrenzen, und das ist gemessen, nicht erwogen:

@@ -16,7 +16,6 @@
 //   G — SIE GREIFT ZU WEIT. Kein Netz, kein Modell, keine Ableitung, kein Vorfilter.
 import { describe, expect, it } from "vitest";
 import {
-  S2_ERWEITERUNG_GRENZE,
   SUCH_ZUORDNUNGEN,
   expandSearchTerms,
   normalizeSearchTerms,
@@ -104,7 +103,6 @@ describe("S2 · E — sie nimmt nichts weg und sortiert nichts um", () => {
   it("E3 · ohne Treffer in der Tabelle ist die Ausgabe die Eingabe", () => {
     const eingabe = ["dichtung", "flansch"];
     expect(expandSearchTerms(eingabe)).toEqual(eingabe);
-    expect(S2_ERWEITERUNG_GRENZE.entferntTerme).toBe(false);
   });
 
   it("E4 · nichts wird doppelt, auch wenn beide Seiten eines Paares eingegeben werden", () => {
@@ -127,7 +125,6 @@ describe("S2 · G — sie greift nicht zu weit", () => {
     // die „Uebersetzung", die S2 ausschliesst — und tut es unbelegt.
     expect(expandSearchTerms(["ventile"])).toEqual(["ventile"]);
     expect(expandSearchTerms(["urlaub"])).toEqual(["urlaub"]);
-    expect(S2_ERWEITERUNG_GRENZE.leitetAb).toBe(false);
   });
 
   it("G2 · kein Teilstring-Treffer", () => {
@@ -136,10 +133,9 @@ describe("S2 · G — sie greift nicht zu weit", () => {
     expect(expandSearchTerms(["klepper"])).toEqual(["klepper"]);
   });
 
-  it("G3 · die Grenzen stehen als lesbares Datum da", () => {
-    expect(S2_ERWEITERUNG_GRENZE.brauchtNetz).toBe(false);
-    expect(S2_ERWEITERUNG_GRENZE.ruehrtVorfilterAn).toBe(false);
-  });
+  // R-1349: G3 las die Konstante `S2_ERWEITERUNG_GRENZE` ab, die kein Produktweg las — der Fall
+  // belegte nur ihren eigenen Inhalt. „Kein Netz, kein Vorfilter" misst F5 in
+  // `tests/suche-zuordnung/n2-klara-versteht-zusammensetzungen.test.ts` am echten Fragepfad.
 
   it("G4 · normalizeSearchTerms bleibt unveraendert — der Panelspiegel haengt daran", () => {
     // `tests/app/word-addin.test.ts:1106` misst die Aequivalenz der buildlosen Spiegelfassung im

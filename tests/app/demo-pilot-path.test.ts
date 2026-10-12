@@ -6,16 +6,17 @@ import {
   type DemoSurface,
   captureDemoHref,
   demoHref,
-  demoPilotPath,
   demoSurfaceBanner,
   isDemoContext,
   withDemo,
 } from "../../apps/web/src/lib/demoPilotPath";
 
 // SCRUM-290: kompakter Demo-/Pilotpfad Start → Ask → Library/KO-Detail → Validation.
+// R-1349 (Aufnahme gesamt-aufruferwaechter): gemessen an `DEMO_PILOT_PATH`, das die Flächen lesen —
+// der Zugriff `demoPilotPath()` hatte keinen Produktleser und ist entfernt.
 describe("SCRUM-290: demoPilotPath", () => {
   it("führt in 3 Schritten Ask → Library → Validation (nur vorhandene Routen)", () => {
-    const steps = demoPilotPath();
+    const steps = DEMO_PILOT_PATH;
     expect(steps.map((s) => s.id)).toEqual(["ask", "library", "validation"]);
     expect(steps.map((s) => s.n)).toEqual([1, 2, 3]);
   });

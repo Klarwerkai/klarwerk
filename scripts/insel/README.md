@@ -59,6 +59,12 @@ Geprüft wird das in `tests/insel-paketausgabe/`: dort wird ein Paket nachgestel
 relative Einfuhr ab `server.ts` im Zielordner aufgelöst. Der volle Baulauf (`npm ci`, `zip`) ist
 dort nicht fahrbar; ein echtes Auspacken und Starten auf dem Mac Studio bleibt eine Handprobe.
 
+**Prüfsumme.** Neben `dist/insel/<version>.zip` schreibt der Bauer `<version>.zip.sha256` im Format
+von `shasum -a 256` und meldet den Wert als `sha256` in seiner JSON-Ausgabe (`paket-pruefsumme.mjs`).
+Wer das Paket empfängt, prüft im Paketordner mit `shasum -a 256 -c <version>.zip.sha256`. Die
+Prüfsumme belegt, dass das Paket unverändert ist, nicht woher es kommt; `update-einspielen.sh` prüft
+sie nicht.
+
 **Lesegrenzen.** `paketinhalt.mjs` ist **kein Parser**, sondern ein Zerleger mit Regeln. Zugesagt
 ist nur, was `tests/insel-paketausgabe/quellgrenzen-katalog.test.ts` mit einem kleinen, wirklich
 startenden Quellbaum belegt (Kennungen `Q-…`, dieselben wie im Dateikopf von `erreichteQuellen`:

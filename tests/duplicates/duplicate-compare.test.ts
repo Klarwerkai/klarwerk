@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject, OverlapEntry } from "../../apps/web/src/api/types";
 import {
-  DUPLICATE_COMPARE_SAFETY,
   buildDuplicateCompareSections,
   compareHeadline,
   overallFromOverlap,
@@ -48,6 +47,8 @@ const t = (key: string, opts?: Record<string, unknown>): string => {
     "dcmp.tagsCategory": "Kategorie {{category}}; Wissensart {{type}}; Tags {{tags}}",
     "status.offen": "Offen",
     "status.validiert": "Validiert",
+    // Nutzerentscheid Antwort 54: der sichtbare Name des validierten Zustands (lib/wissensstatus.ts).
+    "pruefablauf.wissensstatus.validiert": "Fachlich bestätigt",
     "ktype.technik": "Technik",
     "ktype.bauchgefuehl": "Intuition",
     "ktype.best_practice": "Best Practice",
@@ -142,15 +143,9 @@ describe("KW-DUP-02: read-only duplicate comparison", () => {
     );
   });
 
-  it("hat keine aktiven Merge-, Delete-, Auto-Validate-, Persistenz- oder KI-Aktionen", () => {
-    expect(DUPLICATE_COMPARE_SAFETY).toEqual({
-      mergeEnabled: false,
-      deleteEnabled: false,
-      autoValidateEnabled: false,
-      persistDecisions: false,
-      aiActionEnabled: false,
-    });
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Hier prüfte ein Fall die Tabelle
+  // `DUPLICATE_COMPARE_SAFETY` (lauter `false`). Sie hatte keinen Produktleser und ist entfernt; die
+  // Zusage „keine mutierenden Aktionen" misst der folgende Fall an der Seite selbst.
 
   it("verdrahtet eine Deep-Link-Route und keine mutierenden Duplicate-Endpunkte in der Vergleichsseite", () => {
     // AUFTRAG-mega51 BLOCK A: die beiden bewachten Vergleichs-Routen standen als eigene Tabelle IN

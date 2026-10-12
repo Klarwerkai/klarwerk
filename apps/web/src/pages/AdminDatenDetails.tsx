@@ -14,19 +14,22 @@ import {
   Trash2,
   UserPlus,
 } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useAudit, useFeatures, useUsers } from "../api/hooks";
+import { useAuditSeite, useDirectory, useFeatures, useUsers } from "../api/hooks";
 import type {
+  BestandsresetZustand,
   DemoPackageInfo,
   DemoPackageResult,
   DemoPackageTextDto,
   DemoSeedResult,
+  FirmenresetAuftrag,
 } from "../api/types";
 import { useToast } from "../app/ToastContext";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 // AUFTRAG-mega64 Block A: der Demodaten-Knopf steht hinter dem Betriebsschalter — dieselbe
 // fail-closed Regel wie jede andere geschaltete Fläche (mega46 F2).
 import { FeatureGate } from "../components/FeatureGate";
@@ -34,9 +37,18 @@ import { FeatureGate } from "../components/FeatureGate";
 // Bildschirme sind. `HelpTip` rendert nichts; er meldet beim Sammler an, das Zahnrad listet.
 import { HelpTip } from "../components/HelpTip";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
+import {
+  AuditFilterLeiste,
+  AuditLeer,
+  AuditSeitenleiste,
+  AuditTabelle,
+  useAuditAdressfilter,
+  useVerzeichnislage,
+} from "../components/einstellungen/Auditprotokoll";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { Button, Field, TextInput } from "../components/ui";
-import { isUserAuditAction } from "../lib/adminForms";
+import { KONTO_AUDIT_AKTIONEN, isUserAuditAction } from "../lib/adminForms";
+import { auditAnfrage } from "../lib/auditFilter";
 import type { BrandProfil, BrandingStand, BrandingWunsch } from "../lib/brandTheme";
 import {
   BRAND_PROFIL_ADVISOR,
@@ -258,7 +270,8 @@ const ADVISOR_PAKET = "advisor-ict-en-v1";
  * WAS UNBERÜHRT BLEIBT (Auftrag §5): die Rückfrage vor dem frischen Laden (`force`), der
  * Entfernen-Weg samt seiner Bestätigung, das Erscheinungsbild als eigener, ungekoppelter Abschnitt
  * — und die Rücksetzlogik aus JOB 3277. Zurücksetzen und paketbezogenes Entfernen wohnen weiterhin
- * NUR im Demopaket-Kasten auf `/import` (`components/ExamplePackages.tsx`); hier steht der eine
+ * NUR im Demopaket-Kasten (`components/ExamplePackages.tsx`, seit ADMIN-16 in der Nachbarkarte
+ * „Beispiel- und Demopakete" statt auf `/import`); hier steht der eine
  * Handgriff, den Pedi hier verlangt hat. Eine zweite Fassung der Eingriffe wäre eine zweite
  * Wahrheit über denselben Bestand.
  *
@@ -497,7 +510,9 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
       titel={t("adm.seedTitle")}
       onZurueck={onZurueck}
       testId="detail-demodaten"
-      hilfe={demoLadenAn ? [{ titel: t("adm.seedTitle"), text: t("adm.seedHint") }] : []}
+      hilfe={
+        demoLadenAn ? [{ titel: t("adm.seedTitle"), text: t("fachwort.demodaten.hinweis") }] : []
+      }
     >
       {/* JOB 3670: die Seitenhilfe dieses Bildschirms. Sie sagt, was das „?"-Menü der Karte nicht
           sagt: dass hier ZWEI verschiedene Bestände wohnen (Kommentar unten, Z. 252-253), dass die
@@ -512,6 +527,10 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
           Schlüssel, damit die Karte später „Allgemeine Demodaten" heissen kann, ohne dass sich die
           Beschriftung des Knopfes mit ändert (s. RUECKGABE, ABWEICHUNGEN: die Textlieferung gehört
           nach `i18n.ts` und damit in einen eigenen Auftrag).
+
+          R-0908: der Hilfekörper kommt seit der Aufnahme gesamt-sprache-begriffe aus
+          `fachwort.demodaten.hinweis` (`texte/fachwort.ts`) — `adm.seedHint` sagte „KOs" und
+          „KI-Reasoner". Die Begründung unten gilt für ihn unverändert.
 
           WARUM HIER KEIN ERKLÄRSATZ STEHT, obwohl der Auftrag einen verlangt: `adm.seedHint` ist
           der Hilfekörper DIESER Karte (`hilfe` oben, verlangt von
@@ -597,7 +616,7 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
             data-testid="demo-einmalkennwoerter"
             className="mt-2 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3 text-trust-warn-text"
           >
-            <div className="font-mono text-[10px] uppercase tracking-wider">
+            <div className="font-mono text-klein uppercase tracking-wider">
               {t("adm.seedCredsTitle")}
             </div>
             <p className="mt-0.5 text-[12.5px] leading-relaxed">{t("adm.seedCredsHint")}</p>
@@ -612,7 +631,7 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
         ) : null}
         {demoSeed.isSuccess && !demoSeed.data?.skipped ? (
           <div className="mt-2 rounded-card border border-hairline bg-surface p-3">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+            <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
               {t("pilot.next.title")}
             </div>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
@@ -647,10 +666,12 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
             const paket = liste.packages.find((p) => p.id === ADVISOR_PAKET);
             if (paket === undefined) {
               // EHRLICHE LÜCKE STATT ERFUNDENER KENNUNG (Auftrag §4): kein Knopf, keine Zusage.
-              // Der Wortlaut ist der, den diese Fläche für „gibt es hier nicht" schon führt.
+              // ADMIN-16: bis hierher stand hier der Satz des Werksresets („… gibt es nur im
+              // Desktop-Betrieb") — ein falscher Grund. Jetzt nennt er den echten Grund und wer
+              // zuständig ist.
               return (
                 <p data-testid="advisor-fehlt" className="mt-1 text-[12.5px] text-muted-2">
-                  {t("adm.factory.unavailable")}
+                  {t("betriebdemo.paketFehlt")}
                 </p>
               );
             }
@@ -759,8 +780,14 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
 }
 
 /**
- * Pedi 05.07. (Beta): Werksreset — nur im Desktop/Dev-Modus. Löscht ALLE Daten und beendet das
+ * Pedi 05.07. (Beta): Werksreset — nur im Desktop/Dev-Modus. Entfernt den Bestand und beendet das
  * Programm. Doppelte Rückfrage plus Re-Authentifizierung (SCRUM-450).
+ *
+ * PETER-20261011-P08 (Firmenreset): Stufe 1 zeigt die VORSCHAU des Servers (was entfällt, was
+ * bleibt — Konten und Firmenwörterbuch bleiben), verlangt die bewusst gesetzte Checkbox und zwei
+ * Passworteingaben; erst dann kommt die große Warnung. Ausgeführt wird mit der Kennung genau der
+ * gezeigten Vorschau — hat sich der Bestand inzwischen bewegt, löscht der Server nichts und die
+ * Karte lädt die Vorschau neu.
  *
  * JOB 3065: Die Karte gibt es jetzt IMMER (die Zeile davor nennt die Verfügbarkeit als Wert) —
  * ist der Weg in dieser Installation nicht vorhanden, sagt die Karte genau das, statt zu fehlen.
@@ -772,28 +799,77 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
     queryKey: ["factory-reset-status"],
     queryFn: endpoints.admin.factoryResetStatus,
   });
-  // Zwei-Stufen-Bestätigung: "" (aus) → "armed" (Passwort + erste Rückfrage) → "confirm" (Warnung).
+  // Zwei-Stufen-Bestätigung: "" (aus) → "armed" (Vorschau, Checkbox, zwei Passwörter) → "confirm"
+  // (Warnung).
   const [factoryStep, setFactoryStep] = useState<"" | "armed" | "confirm">("");
   const [factoryPw, setFactoryPw] = useState("");
+  const [factoryPw2, setFactoryPw2] = useState("");
+  const [bestaetigt, setBestaetigt] = useState(false);
+  const [geseheneKennung, setGeseheneKennung] = useState("");
   const [factoryDone, setFactoryDone] = useState(false);
+  // P08-AC05: ein Konto ohne lokales Passwort bestätigt mit zwei SSO-Wiederanmeldungen. Jede ist
+  // eine Seitennavigation zum Anbieter und zurück; die Karte öffnet danach wieder Stufe 1.
+  const ssoStand =
+    factoryResetStatus.data?.available === true ? factoryResetStatus.data.sso : undefined;
+  const ssoKonto = ssoStand?.erforderlich === true;
+  const ssoBestaetigt = ssoStand?.bestaetigt ?? 0;
+  const [params, setParams] = useSearchParams();
+  const ssoFehler = params.get("sso") === "fehler";
+  useEffect(() => {
+    if (ssoFehler) {
+      push("error", t("adm.factory.sso.fehler"));
+      const ohne = new URLSearchParams(params);
+      ohne.delete("sso");
+      setParams(ohne, { replace: true });
+      setFactoryStep("armed");
+    }
+  }, [ssoFehler, params, setParams, push, t]);
+  useEffect(() => {
+    if (ssoKonto && ssoBestaetigt > 0) {
+      setFactoryStep((schritt) => (schritt === "" ? "armed" : schritt));
+    }
+  }, [ssoKonto, ssoBestaetigt]);
+  const leeren = (): void => {
+    setFactoryPw("");
+    setFactoryPw2("");
+    setBestaetigt(false);
+    setGeseheneKennung("");
+  };
   const cancelFactory = (): void => {
     setFactoryStep("");
-    setFactoryPw("");
+    leeren();
+    // P08-AC06: der Abbruch verwirft auch bereits bestätigte SSO-Wiederanmeldungen.
+    if (ssoKonto) {
+      void endpoints.admin
+        .factoryResetSsoVerwerfen()
+        .finally(() => void factoryResetStatus.refetch());
+    }
   };
   const factoryReset = useMutation({
-    mutationFn: (password: string) => endpoints.admin.factoryReset(password),
+    mutationFn: (auftrag: FirmenresetAuftrag) => endpoints.admin.factoryReset(auftrag),
     onSuccess: () => {
       // Der Server beendet sich unmittelbar danach — die Oberfläche zeigt einen Neustart-Hinweis.
       setFactoryStep("");
-      setFactoryPw("");
+      leeren();
       setFactoryDone(true);
       push("success", t("adm.factoryDone"));
     },
-    // SCRUM-450: Falsches Passwort → zurück zur Eingabe (Passwort leeren) mit klarer Meldung.
-    onError: () => {
+    // SCRUM-450: Falsches Passwort → zurück zur Eingabe (Passwörter und Checkbox leeren) mit klarer
+    // Meldung. R-0537: nur `INVALID_PASSWORD` heißt „falsches Passwort"; jede andere Absage (etwa
+    // 403 „nur Desktop", 409 „Vorschau veraltet" oder eine abgelaufene Sitzung) nennt ihren eigenen
+    // Grund, statt fälschlich das Passwort zu beschuldigen.
+    onError: (e) => {
       setFactoryStep("armed");
-      setFactoryPw("");
-      push("error", t("adm.factory.wrongPassword"));
+      leeren();
+      // Die SSO-Bestätigung wird bei jedem Ausführungsversuch eingelöst — danach neu laden.
+      if ((e instanceof ApiError && e.code === "VORSCHAU_VERALTET") || ssoKonto) {
+        void factoryResetStatus.refetch();
+      }
+      if (e instanceof ApiError && e.code === "INVALID_PASSWORD") {
+        push("error", t("adm.factory.wrongPassword"));
+        return;
+      }
+      push("error", e instanceof ApiError ? e.message : t("state.error"));
     },
   });
 
@@ -814,41 +890,148 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
       {/* Die Hülle steht davor: „In dieser Installation nicht verfügbar" ist eine TATSACHENAUSSAGE
           und darf nur aus einer erfolgreichen Antwort stammen — nicht aus einem gescheiterten
           Abruf, der nichts über die Installation weiß. */}
-      <Abfragehuelle abfrage={factoryResetStatus}>
+      <Abfragehuelle abfrage={factoryResetStatus} testId="huelle-werksreset">
         {(stand) => (
           <>
             {stand.available !== true ? (
               <p className="text-[12.5px] text-muted-2">{t("adm.factory.unavailable")}</p>
             ) : factoryDone ? (
-              <p className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+              <p
+                data-testid="firmenreset-neustart"
+                className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text"
+              >
                 {t("adm.factory.restartHint")}
               </p>
             ) : factoryStep === "" ? (
               <button
                 type="button"
-                onClick={() => setFactoryStep("armed")}
+                data-testid="firmenreset-start"
+                onClick={() => {
+                  setFactoryStep("armed");
+                  // Die Vorschau zeigt den Stand JETZT, nicht den beim Öffnen der Karte.
+                  void factoryResetStatus.refetch();
+                }}
                 className="inline-flex items-center gap-1.5 rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
               >
                 <RotateCcw size={14} />
                 {t("adm.factory.button")}
               </button>
             ) : factoryStep === "armed" ? (
-              // SCRUM-450: Stufe 1 — Passwort-Bestätigung (Re-Authentifizierung).
+              // SCRUM-450 / P08: Stufe 1 — Vorschau, bewusste Checkbox und zwei Passworteingaben.
               <div className="space-y-2 rounded-card border border-hairline bg-page px-3 py-2.5">
                 <span className="block text-[12.5px] font-semibold text-text">
                   {t("adm.factory.confirm1")}
                 </span>
-                <Field label={t("adm.factory.passwordLabel")}>
-                  <TextInput
-                    type="password"
-                    value={factoryPw}
-                    autoComplete="current-password"
-                    onChange={(e) => setFactoryPw(e.target.value)}
+                <div data-testid="firmenreset-vorschau" className="grid gap-2 sm:grid-cols-2">
+                  <div data-vorschau="entfernt">
+                    <p className="text-[12px] font-semibold text-trust-crit-text">
+                      {t("adm.factory.vorschau.entfernt")}
+                    </p>
+                    <ul className="mt-0.5 list-disc pl-4 text-[12px] text-text">
+                      <li>
+                        {t("adm.factory.vorschau.kos", {
+                          anzahl: stand.vorschau.entfernt.wissensobjekte,
+                        })}
+                      </li>
+                      <li>
+                        {t("adm.factory.vorschau.fragen", {
+                          anzahl: stand.vorschau.entfernt.offeneFragen,
+                        })}
+                      </li>
+                      <li>
+                        {t("adm.factory.vorschau.weitere", {
+                          anzahl: stand.vorschau.entfernt.weitereEintraege,
+                          ablagen:
+                            stand.vorschau.entfernt.ablagen.length > 0
+                              ? stand.vorschau.entfernt.ablagen.join(", ")
+                              : "—",
+                        })}
+                      </li>
+                      <li>{t("adm.factory.vorschau.anmeldungen")}</li>
+                    </ul>
+                  </div>
+                  <div data-vorschau="erhalten">
+                    <p className="text-[12px] font-semibold text-text">
+                      {t("adm.factory.vorschau.erhalten")}
+                    </p>
+                    <ul className="mt-0.5 list-disc pl-4 text-[12px] text-text">
+                      <li>
+                        {t("adm.factory.vorschau.konten", {
+                          anzahl: stand.vorschau.erhalten.benutzerkonten,
+                        })}
+                      </li>
+                      <li>
+                        {t("adm.factory.vorschau.woerterbuch", {
+                          anzahl: stand.vorschau.erhalten.woerterbuch,
+                        })}
+                      </li>
+                      <li>
+                        {t("adm.factory.vorschau.protokoll", {
+                          anzahl: stand.vorschau.erhalten.protokolleintraege,
+                        })}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <label className="flex items-start gap-2 text-[12.5px] text-text">
+                  <input
+                    type="checkbox"
+                    data-testid="firmenreset-bestaetigt"
+                    className="mt-0.5"
+                    checked={bestaetigt}
+                    onChange={(e) => setBestaetigt(e.target.checked)}
                   />
-                </Field>
+                  {t("adm.factory.checkbox")}
+                </label>
+                {ssoKonto ? (
+                  // P08-AC05: zwei SSO-Wiederanmeldungen statt zweier Passwörter.
+                  <div data-testid="firmenreset-sso" className="space-y-1.5">
+                    <p className="text-[12.5px] text-text">
+                      {t("adm.factory.sso.stand", { anzahl: ssoBestaetigt })}
+                    </p>
+                    {ssoStand?.eingerichtet !== true ? (
+                      <p className="text-[12.5px] text-muted-2">
+                        {t("adm.factory.sso.nichtEingerichtet")}
+                      </p>
+                    ) : ssoBestaetigt < 2 ? (
+                      // Eine Seitennavigation zum Anbieter — deshalb ein Link, kein Abruf.
+                      <a
+                        data-testid="firmenreset-sso-start"
+                        className="inline-block text-[12px] font-semibold text-text underline"
+                        href={endpoints.admin.factoryResetSsoStartUrl(ssoBestaetigt === 0 ? 1 : 2)}
+                      >
+                        {t(
+                          ssoBestaetigt === 0
+                            ? "adm.factory.sso.schritt1"
+                            : "adm.factory.sso.schritt2",
+                        )}
+                      </a>
+                    ) : null}
+                  </div>
+                ) : (
+                  <>
+                    <Field label={t("adm.factory.passwordLabel")}>
+                      <TextInput
+                        type="password"
+                        value={factoryPw}
+                        autoComplete="current-password"
+                        onChange={(e) => setFactoryPw(e.target.value)}
+                      />
+                    </Field>
+                    <Field label={t("adm.factory.password2Label")}>
+                      <TextInput
+                        type="password"
+                        value={factoryPw2}
+                        autoComplete="current-password"
+                        onChange={(e) => setFactoryPw2(e.target.value)}
+                      />
+                    </Field>
+                  </>
+                )}
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
+                    data-testid="firmenreset-abbrechen"
                     className="text-[12px] font-semibold text-muted hover:text-text"
                     onClick={cancelFactory}
                   >
@@ -856,29 +1039,45 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
                   </button>
                   <button
                     type="button"
-                    disabled={factoryPw.trim().length === 0}
+                    data-testid="firmenreset-weiter"
+                    disabled={
+                      !bestaetigt ||
+                      (ssoKonto
+                        ? ssoBestaetigt < 2
+                        : factoryPw.trim().length === 0 || factoryPw2.trim().length === 0)
+                    }
                     className="text-[12px] font-semibold text-trust-crit-text disabled:opacity-40"
-                    onClick={() => setFactoryStep("confirm")}
+                    onClick={() => {
+                      // Festgehalten wird die Kennung der Vorschau, die in DIESEM Augenblick zu
+                      // sehen ist — ein späteres Nachladen im Hintergrund ändert sie nicht still.
+                      setGeseheneKennung(stand.available ? stand.vorschau.kennung : "");
+                      setFactoryStep("confirm");
+                    }}
                   >
                     {t("adm.factory.continue")}
                   </button>
                 </div>
               </div>
             ) : (
-              // SCRUM-450: Stufe 2 — große, unübersehbare Warnung vor dem unwiderruflichen Schritt.
-              <div className="space-y-2.5 rounded-card border border-trust-crit-text/40 bg-trust-crit-bg px-4 py-3.5">
+              // SCRUM-450: Stufe 2 — unübersehbare Warnung vor dem unwiderruflichen Schritt.
+              // R-0896 (Markenregel): die Rückfrage liegt auf NEUTRALER Fläche wie Stufe 1; Rot
+              // steht allein am gefährlichen Knopf „Ausführen". Unübersehbar bleibt sie durch
+              // Größe, Gewicht und Symbol, nicht durch eine Ampelfläche (Ampelfarben = Status).
+              <div
+                data-testid="adm-factory-rueckfrage"
+                className="space-y-2.5 rounded-card border border-hairline bg-page px-4 py-3.5"
+              >
                 <div className="flex items-center gap-2">
-                  <AlertTriangle size={18} className="shrink-0 text-trust-crit-text" />
-                  <span className="text-[14px] font-bold text-trust-crit-text">
+                  <AlertTriangle size={18} className="shrink-0 text-text" />
+                  <span className="text-[14px] font-bold text-text">
                     {t("adm.factory.confirm2")}
                   </span>
                 </div>
-                <p className="text-[12.5px] leading-snug text-trust-crit-text/90">
-                  {t("adm.factory.warnBody")}
-                </p>
+                <p className="text-[12.5px] leading-snug text-muted">{t("adm.factory.warnBody")}</p>
                 <div className="flex items-center gap-3 pt-0.5">
                   <button
                     type="button"
+                    data-testid="firmenreset-warnung-abbrechen"
                     className="text-[12px] font-semibold text-muted hover:text-text"
                     onClick={cancelFactory}
                   >
@@ -886,9 +1085,17 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
                   </button>
                   <button
                     type="button"
+                    data-testid="firmenreset-ausfuehren"
                     disabled={factoryReset.isPending}
                     className="inline-flex items-center gap-1 rounded-btn bg-trust-crit-text px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
-                    onClick={() => factoryReset.mutate(factoryPw)}
+                    onClick={() =>
+                      factoryReset.mutate({
+                        kennung: geseheneKennung,
+                        bestaetigt: true,
+                        passwort1: factoryPw,
+                        passwort2: factoryPw2,
+                      })
+                    }
                   >
                     <Power size={13} />
                     {t("adm.factory.execute")}
@@ -899,7 +1106,256 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
           </>
         )}
       </Abfragehuelle>
+      <BestandsresetAbschnitt />
     </Detailkarte>
+  );
+}
+
+/** Der Lauf in Worten — die sechs Zustände des Auditautomaten auf vier Aussagen für Menschen. */
+function bestandsresetZustandKey(zustand: BestandsresetZustand): string {
+  switch (zustand) {
+    case "OK":
+      return "bestandsreset.zustand.ok";
+    case "ROLLED_BACK":
+    case "ROLLED_BACK_BY_CRASH":
+      return "bestandsreset.zustand.zurueck";
+    case "RUNNING":
+      return "bestandsreset.zustand.laeuft";
+    default:
+      return "bestandsreset.zustand.unklar";
+  }
+}
+
+/**
+ * AUFNAHME 20260922 · GESAMT-BESTANDSRESET — der administrative Aufruf (Nacharbeit 2).
+ *
+ * Peters Entscheidung vom 11.10.: Konten und Firmenwörterbuch bleiben; vor dem Löschen die
+ * Folgenvorschau, zweimal das Passwort und ein Häkchen. Der Abschnitt wohnt in der Karte
+ * Werkseinstellungen — eine eigene Karte bräuchte eine neue Kennung im Navigationsinventar, das
+ * die Ziele der Vorlage festzählt (`tests/admin-navigation/inventar.test.tsx`).
+ *
+ * Die Vorschau ist verbindlich: der Knopf schickt ihre `kennung` mit, und der Server führt nur aus,
+ * wenn der Bestand noch genau der gezeigte ist. Die Oberfläche hält den Knopf gesperrt, bis beide
+ * Passworteingaben übereinstimmen und das Häkchen gesetzt ist; der Server prüft dasselbe noch
+ * einmal, denn die Oberfläche ist nicht die Sicherung.
+ */
+function BestandsresetAbschnitt(): JSX.Element {
+  const { t } = useTranslation();
+  const { push } = useToast();
+  const qc = useQueryClient();
+  const status = useQuery({
+    queryKey: ["admin", "bestandsreset"],
+    queryFn: endpoints.admin.bestandsreset.status,
+  });
+  const [offen, setOffen] = useState(false);
+  const [passwort, setPasswort] = useState("");
+  const [wiederholung, setWiederholung] = useState("");
+  const [haken, setHaken] = useState(false);
+  // Nacharbeit 7 (BEN): die Kennung der Vorschau, für die die Bestätigung gilt — festgehalten beim
+  // Öffnen des Formulars. Ändert sich die angezeigte Vorschau danach (etwa durch eine automatische
+  // Aktualisierung), ist die Bestätigung hinfällig: Passwörter und Häkchen werden geleert, und der
+  // Knopf schickt nie eine Kennung, die der Mensch nicht bestätigt hat.
+  const [bestaetigt, setBestaetigt] = useState<string | null>(null);
+  const [vorschauGeaendert, setVorschauGeaendert] = useState(false);
+  const aktuelleKennung = status.data?.verfuegbar ? status.data.vorschau.kennung : null;
+  useEffect(() => {
+    if (
+      offen &&
+      bestaetigt !== null &&
+      aktuelleKennung !== null &&
+      aktuelleKennung !== bestaetigt
+    ) {
+      setPasswort("");
+      setWiederholung("");
+      setHaken(false);
+      setBestaetigt(aktuelleKennung);
+      setVorschauGeaendert(true);
+    }
+  }, [offen, bestaetigt, aktuelleKennung]);
+  const oeffnen = (kennung: string): void => {
+    setBestaetigt(kennung);
+    setVorschauGeaendert(false);
+    setOffen(true);
+  };
+  const schliessen = (): void => {
+    setOffen(false);
+    setPasswort("");
+    setWiederholung("");
+    setHaken(false);
+    setBestaetigt(null);
+    setVorschauGeaendert(false);
+  };
+  const ausfuehren = useMutation({
+    mutationFn: (vorschauKennung: string) =>
+      endpoints.admin.bestandsreset.ausfuehren({
+        passwort,
+        passwortWiederholung: wiederholung,
+        folgenBestaetigt: haken,
+        vorschauKennung,
+      }),
+    onSuccess: () => {
+      schliessen();
+      push("success", t("bestandsreset.fertig"));
+      void qc.invalidateQueries({ queryKey: ["admin", "bestandsreset"] });
+      void qc.invalidateQueries({ queryKey: ["kos"] });
+    },
+    onError: (e) => {
+      setPasswort("");
+      setWiederholung("");
+      if (e instanceof ApiError && e.code === "INVALID_PASSWORD") {
+        push("error", t("bestandsreset.falsch"));
+        return;
+      }
+      if (e instanceof ApiError && e.code === "VORSCHAU_VERALTET") {
+        setHaken(false);
+        push("error", t("bestandsreset.veraltet"));
+        void qc.invalidateQueries({ queryKey: ["admin", "bestandsreset"] });
+        return;
+      }
+      push("error", e instanceof ApiError ? e.message : t("bestandsreset.fehler"));
+      void qc.invalidateQueries({ queryKey: ["admin", "bestandsreset"] });
+    },
+  });
+  const ungleich = passwort !== "" && wiederholung !== "" && passwort !== wiederholung;
+  const bereit =
+    passwort !== "" &&
+    passwort === wiederholung &&
+    haken &&
+    bestaetigt !== null &&
+    bestaetigt === aktuelleKennung &&
+    !ausfuehren.isPending;
+
+  return (
+    <div
+      data-testid="abschnitt-bestandsreset"
+      className="mt-4 space-y-2 border-t border-hairline pt-3"
+    >
+      <p className="text-[13.5px] font-semibold text-text">{t("bestandsreset.titel")}</p>
+      <p className="text-[12.5px] leading-snug text-muted">{t("bestandsreset.erklaerung")}</p>
+      <Abfragehuelle abfrage={status} testId="huelle-bestandsreset">
+        {(stand) => (
+          <>
+            <p className="text-[12.5px] text-muted-2">{t("bestandsreset.erhaltenHinweis")}</p>
+            {!stand.verfuegbar ? (
+              <p className="text-[12.5px] text-muted-2">{t("bestandsreset.nichtVerfuegbar")}</p>
+            ) : (
+              <>
+                <div
+                  data-testid="bestandsreset-vorschau"
+                  className="space-y-1 rounded-card border border-hairline bg-page px-3 py-2.5"
+                >
+                  <span className="block text-[12.5px] font-semibold text-text">
+                    {t("bestandsreset.vorschauTitel")}
+                  </span>
+                  <p className="text-[12.5px] text-trust-crit-text">
+                    {t("bestandsreset.wissensobjekte", {
+                      anzahl: stand.vorschau.wissensobjekte,
+                      papierkorb: stand.vorschau.papierkorb,
+                    })}
+                  </p>
+                  <p className="text-[12.5px] text-text">
+                    {t("bestandsreset.erhalten", {
+                      konten: stand.vorschau.erhalten.konten,
+                      begriffe: stand.vorschau.erhalten.begriffe,
+                    })}
+                  </p>
+                  <details className="text-[12px] text-muted">
+                    <summary className="cursor-pointer">{t("bestandsreset.tabellen")}</summary>
+                    <ul className="mt-1 space-y-0.5">
+                      {stand.vorschau.geloescht.map((z) => (
+                        <li key={z.tabelle}>
+                          <code>{z.tabelle}</code>: {z.zeilen}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </div>
+                <p className="text-[12px] text-muted-2">
+                  {stand.letzterLauf
+                    ? t("bestandsreset.letzterLauf", {
+                        zustand: t(bestandsresetZustandKey(stand.letzterLauf.zustand)),
+                      })
+                    : t("bestandsreset.keinLauf")}
+                </p>
+                {!offen ? (
+                  <button
+                    type="button"
+                    onClick={() => oeffnen(stand.vorschau.kennung)}
+                    className="inline-flex items-center gap-1.5 rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                  >
+                    <Trash2 size={14} />
+                    {t("bestandsreset.starten")}
+                  </button>
+                ) : (
+                  <div className="space-y-2.5 rounded-card border border-trust-crit-text/40 bg-trust-crit-bg px-4 py-3.5">
+                    {vorschauGeaendert ? (
+                      <p
+                        data-testid="bestandsreset-vorschau-geaendert"
+                        className="text-[12.5px] font-semibold text-trust-crit-text"
+                      >
+                        {t("bestandsreset.vorschauGeaendert")}
+                      </p>
+                    ) : null}
+                    <Field label={t("bestandsreset.passwort")}>
+                      <TextInput
+                        type="password"
+                        value={passwort}
+                        autoComplete="current-password"
+                        onChange={(e) => setPasswort(e.target.value)}
+                      />
+                    </Field>
+                    <Field label={t("bestandsreset.passwortWiederholung")}>
+                      <TextInput
+                        type="password"
+                        value={wiederholung}
+                        autoComplete="off"
+                        onChange={(e) => setWiederholung(e.target.value)}
+                      />
+                    </Field>
+                    {ungleich ? (
+                      <p className="text-[12px] text-trust-crit-text">
+                        {t("bestandsreset.ungleich")}
+                      </p>
+                    ) : null}
+                    <label className="flex items-start gap-2 text-[12.5px] text-trust-crit-text">
+                      <input
+                        type="checkbox"
+                        checked={haken}
+                        onChange={(e) => setHaken(e.target.checked)}
+                        className="mt-0.5 accent-brand"
+                      />
+                      <span>{t("bestandsreset.checkbox")}</span>
+                    </label>
+                    <div className="flex items-center gap-3 pt-0.5">
+                      <button
+                        type="button"
+                        className="text-[12px] font-semibold text-muted hover:text-text"
+                        onClick={schliessen}
+                      >
+                        {t("bestandsreset.abbrechen")}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!bereit}
+                        className="inline-flex items-center gap-1 rounded-btn bg-trust-crit-text px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
+                        onClick={() => {
+                          if (bestaetigt !== null) {
+                            ausfuehren.mutate(bestaetigt);
+                          }
+                        }}
+                      >
+                        <AlertTriangle size={13} />
+                        {t("bestandsreset.ausfuehren")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </Abfragehuelle>
+    </div>
   );
 }
 
@@ -959,7 +1415,10 @@ export function PapierkorbDetail({ onZurueck }: { onZurueck: () => void }): JSX.
         {(eintraege) => (
           <>
             {eintraege.length === 0 ? (
-              <p className="text-[12.5px] text-muted-2">{t("adm.trash.empty")}</p>
+              <>
+                <p className="text-[12.5px] text-muted-2">{t("adm.trash.empty")}</p>
+                {leerzustandsZeile(t, "verwaltung")}
+              </>
             ) : (
               <ul className="space-y-2">
                 {eintraege.map((entry) => (
@@ -1028,44 +1487,63 @@ export function PapierkorbDetail({ onZurueck }: { onZurueck: () => void }): JSX.
   );
 }
 
-/** SCRUM-149: die kleine echte Audit-Sicht für Nutzer-/Auth-Aktionen. */
+/**
+ * SCRUM-149: die kleine echte Audit-Sicht für Nutzer-/Auth-Aktionen.
+ *
+ * produkt:20261009:admin-audit-verstaendlich (ADMIN-03): bis hierher zeigte diese Karte den ROHEN
+ * Aktionscode und die Kennung des Handelnden — eine zweite, schlechtere Fassung desselben
+ * Protokolls. Jetzt dieselbe Darstellung wie das Prüfprotokoll (`Auditprotokoll.tsx`): Namen,
+ * verständliche Vorgänge, Zeitpunkt mit Zeitzone, Kennungen und Rohaktion in den technischen
+ * Angaben, Filter in der Adresse und seitenweise. Der Ausschnitt bleibt derselbe: nur Konto- und
+ * Anmeldeereignisse (`KONTO_AUDIT_AKTIONEN`, am Server gefiltert).
+ */
 export function AuditDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
   const { t } = useTranslation();
-  const audit = useAudit();
+  const filter = useAuditAdressfilter();
+  // Ein Vorgang, der kein Konto- oder Anmeldeereignis ist (etwa aus einer von Hand geänderten
+  // Adresse), gilt hier nicht — die Karte bleibt bei ihrem Ausschnitt, statt leer zu werden.
+  const werte = isUserAuditAction(filter.werte.aktion)
+    ? filter.werte
+    : { ...filter.werte, aktion: "" };
+  const anfrage = auditAnfrage(werte, filter.vor);
+  // Ohne gewählten Vorgang: alle Kontoereignisse, am Server gefiltert. Mit Vorgang: genau dieser.
+  const audit = useAuditSeite(
+    anfrage.action === undefined ? { ...anfrage, actions: KONTO_AUDIT_AKTIONEN } : anfrage,
+  );
+  const verzeichnis = useVerzeichnislage(useDirectory());
   return (
     <Detailkarte titel={t("adm.auditTitle")} onZurueck={onZurueck} testId="detail-audit">
       {/* JOB 3670: Diese Karte hatte bisher überhaupt keine Hilfequelle — weder ein „?"-Menü noch
           einen Eintrag im Zahnrad. Der Text sagt das Wichtigste zuerst: hier wird nur gelesen, und
-          die vollständige Kette samt Prüfknopf wohnt woanders. */}
-      <HelpTip
-        title={t("seitenhilfe.admin.audit.titel")}
-        body={t("seitenhilfe.admin.audit.text")}
+          die vollständige Kette samt Prüfknopf wohnt woanders.
+
+          produkt:20261009:admin-audit-verstaendlich: der Text beschreibt jetzt die gemeinsame
+          Darstellung mit Filtern und Seiten (`auditprotokoll.hilfe.konten`). Der alte Wortlaut
+          („ohne Bedienelemente … die Kennung des Ausführenden") stimmte nicht mehr — auch nicht in
+          seiner zeichengleich zitierenden Fassung `knopfzitat.admin.audit` (R-1176). Der neue Text
+          zitiert den Reiter „Sicherheit und Nachweise“ ebenso zeichengleich in DE, EN und NL
+          (`tests/sprache-begriffe/zitierte-beschriftungen.test.ts`, Z-3). */}
+      <HelpTip title={t("seitenhilfe.admin.audit.titel")} body={t("auditprotokoll.hilfe.konten")} />
+      <AuditFilterLeiste
+        filter={filter}
+        verzeichnis={verzeichnis}
+        aktionen={KONTO_AUDIT_AKTIONEN}
+        idPraefix="audit-filter"
       />
       <Abfragehuelle abfrage={audit}>
-        {(entries) => {
-          const userEntries = entries
-            .filter((e) => isUserAuditAction(e.action))
-            .slice(-15)
-            .reverse();
-          if (userEntries.length === 0) {
-            return <p className="text-[13px] text-muted">{t("adm.auditEmpty")}</p>;
-          }
-          return (
-            <div className="divide-y divide-hairline">
-              {userEntries.map((e) => (
-                <div key={e.seq} className="flex items-center gap-3 py-2 text-[12.5px]">
-                  <span className="font-mono text-[11px] text-muted-2">
-                    {new Date(e.at).toLocaleString()}
-                  </span>
-                  <span className="font-semibold text-text">{e.action}</span>
-                  <span className="ml-auto truncate font-mono text-[11px] text-muted-2">
-                    {e.actor}
-                  </span>
-                </div>
-              ))}
-            </div>
-          );
-        }}
+        {(seite) => (
+          <>
+            {seite.entries.length === 0 ? (
+              <>
+                <AuditLeer filter={filter} leerKey="adm.auditEmpty" />
+                {leerzustandsZeile(t, "verwaltung")}
+              </>
+            ) : (
+              <AuditTabelle seite={seite} verzeichnis={verzeichnis} />
+            )}
+            <AuditSeitenleiste seite={seite} filter={filter} />
+          </>
+        )}
       </Abfragehuelle>
     </Detailkarte>
   );

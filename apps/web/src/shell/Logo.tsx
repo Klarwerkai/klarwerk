@@ -2,6 +2,7 @@
 // Seite mit ungespeicherter Eingabe ohne jede Nachfrage. Es läuft jetzt durch dieselbe geschützte
 // Grenze wie alle übrigen Shell-Navigationen.
 import { useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
 import { GuardedLink } from "../app/NavGuardContext";
 import { HOME_ROUTE } from "../app/navigation";
 import { BRAND_LOGO_ALT, abonniereBranding, aktuellesBranding } from "../lib/brandTheme";
@@ -144,6 +145,7 @@ const LOGO_BREITE_ZEILE_QUERY = "(min-width: 1280px)";
 const LOGO_OHNE_PLATZ_QUERY = "(min-width: 900px) and (max-width: 999px)";
 
 export function Logo(): JSX.Element {
+  const { t } = useTranslation();
   const stand = useSyncExternalStore(abonniereBranding, aktuellesBranding, aktuellesBranding);
   const ohnePlatz = useMediaQuery(LOGO_OHNE_PLATZ_QUERY);
   const breiteZeile = useMediaQuery(LOGO_BREITE_ZEILE_QUERY);
@@ -156,9 +158,10 @@ export function Logo(): JSX.Element {
     // Chromium gegen sein Mockup gemessen (tests/design/zielbild-h1-huelle.test.ts), und ein
     // Layoutwechsel hier wäre der Umbau, den der Auftrag für Freitag ausschließt. Das Logo hängt
     // sich deshalb als eigenes Inline-Element daneben, statt den Link zu einer Flexbox zu machen.
+    // R-1169: die Ansage des Logo-Links stand nur auf Deutsch im Code (`texte/beschriftung.ts`).
     <GuardedLink
       to={HOME_ROUTE}
-      aria-label="Klarwerk - zur Startseite"
+      aria-label={t("beschriftung.logo.start")}
       className="kw-kopfband-marke shrink-0 text-[16px] font-[650] leading-none tracking-[0.4px] text-white no-underline outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
     >
       KLARWERK

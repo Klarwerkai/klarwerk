@@ -3,33 +3,12 @@
 // konsistent abgeleitet. „returned/Nacharbeit" stammt aus Audit ko.returned-to-author,
 // nicht aus einem neuen Kernstatus.
 import type { AuditEntry, KnowledgeObject } from "../api/types";
-import type { DisplayStatus } from "../components/trust/types";
 
-export interface DisplayFlags {
-  conflict?: boolean;
-  revalidation?: boolean;
-  rejected?: boolean;
-}
-
-// SCRUM-125: eine konsistente Ableitung (spiegelt services/.../display-status.ts).
-export function deriveDisplayStatus(
-  ko: Pick<KnowledgeObject, "status" | "assignments">,
-  flags: DisplayFlags = {},
-): DisplayStatus {
-  if (flags.conflict) {
-    return "konflikt";
-  }
-  if (flags.rejected) {
-    return "abgelehnt";
-  }
-  if (ko.status === "validiert") {
-    return flags.revalidation ? "revalidierung" : "validiert";
-  }
-  if ((ko.assignments?.length ?? 0) > 0) {
-    return "pruefung";
-  }
-  return "offen";
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand SCRUM-125 `deriveDisplayStatus` (samt
+// `DisplayFlags`) — eine zweite Fassung der Anzeige-Ableitung. Die Flächen leiten den Status über
+// `lib/displayStatus.ts::deriveStatus` ab (dieselbe Regel, dazu der Serverstatus vorrangig; R-0991
+// Nr. 57). Die Zweitfassung rief niemand und ist entfernt; ihre Fälle misst
+// `tests/validation/validation-status.test.ts` jetzt an `deriveStatus`.
 
 // ================================================================================================
 // JOB 557 D8 — ZWEI NAMEN FÜR EINE RÜCKGABE, UND ZWEI VERSCHIEDENE AUSSAGEN DARÜBER

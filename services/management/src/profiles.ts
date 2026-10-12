@@ -117,8 +117,11 @@ export function normalizeRetirementHorizon(raw: unknown): RetirementHorizon | nu
   if (raw === null) {
     return null;
   }
-  if (raw === 24 || raw === 36) {
-    return raw;
+  // R-1349: die zulässigen Horizonte kommen aus EINER Liste, statt hier ein zweites Mal als Literal
+  // dazustehen — vorher war `RETIREMENT_HORIZONS` gebaut, aber von niemandem gelesen.
+  const treffer = RETIREMENT_HORIZONS.find((h) => h === raw);
+  if (treffer !== undefined) {
+    return treffer;
   }
   throw new ManagementProfileError("horizonMonths muss 24, 36 oder null sein.");
 }

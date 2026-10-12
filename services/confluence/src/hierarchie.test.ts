@@ -21,9 +21,10 @@
 // einer realen Instanz genau so geliefert werden, misst diese Datei nicht.
 
 import { describe, expect, it } from "vitest";
+import { adapterFromConfig } from "../../../tests/support/confluence-adapter";
 import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 import { LibraryService, toPreviewEntry } from "../../library-analytics";
-import { adapterFromConfig, hierarchieBefund } from "./adapter";
+import { hierarchieBefund } from "./adapter";
 import type { ConfluencePage } from "./rest-client";
 
 type Ahne = { id: string; title: string };

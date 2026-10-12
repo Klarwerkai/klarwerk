@@ -177,15 +177,16 @@ describe("JOB 1494 D2 · KA8 — das Recht greift wirklich", () => {
   it("KALIBRIERUNG: der 403 der Betrachterin kommt vom RECHT — nicht vom Eigentum", async () => {
     // DIE SCHAERFSTE AUSSAGE DIESER DATEI, und sie musste geschaerft werden.
     //
-    // Ein blosser Vergleich „viewer 403, experte 200" traegt NICHT: vor dieser Route liegen ZWEI
-    // Tore, und beide antworten mit 403. Eine Betrachterin scheitert am ersten (kein `ko.create`)
-    // — sie wuerde aber auch am zweiten scheitern, weil der Entwurf ihr nicht gehoert. Der blosse
-    // Statuscode sagt also nicht, welches Tor gegriffen hat.
+    // Ein blosser Vergleich „viewer 403, experte 200" trug NICHT: vor dieser Route lagen ZWEI
+    // Tore, und beide antworteten mit 403. Eine Betrachterin scheitert am ersten (kein `ko.create`)
+    // — sie wuerde aber auch am zweiten scheitern, weil der Entwurf ihr nicht gehoert.
     //
     // Belegt durch eine Gegenmutation in JOB 1494 D2: das Recht auf `ko.read` herabgesetzt — der
     // Fall blieb GRUEN, weil das Eigentuemertor uebernahm. Erst die MELDUNG trennt die beiden:
     //     Rechtetor      `http.ts:169`          -> "Recht fehlt: ko.create"
-    //     Eigentuemertor `capture-routes.ts:45` -> "Entwurf nicht verfuegbar."
+    //     Eigentuemertor (naechster-schritt-entwurf.ts) -> seit R-0239 404 „Entwurf nicht gefunden."
+    // (aufnahme:20260922:gesamt-leserechte: das Eigentuemertor antwortet seither 404, die Statuszahl
+    // allein trennt die Tore nun auch; die Meldung bleibt die schaerfere Probe.)
     const { app, experte, viewer } = await echterAufbau();
     const id = await entwurfAnlegen(app, experte, "Kalibrierfall");
 
@@ -207,8 +208,9 @@ describe("JOB 1494 D2 · KA8 — das Recht greift wirklich", () => {
 
     const fremd = await app.inject({ method: "GET", url: PFAD(id), headers: zweiter });
 
-    expect(fremd.statusCode, fremd.body).toBe(403);
-    expect((fremd.json() as { error: string }).error).toBe("FORBIDDEN");
+    // aufnahme:20260922:gesamt-leserechte (R-0239, J24 „404"): fremd heisst „gibt es nicht".
+    expect(fremd.statusCode, fremd.body).toBe(404);
+    expect((fremd.json() as { error: string }).error).toBe("NOT_FOUND");
   });
 
   // Entscheidung Pedi `debbb8e8` (Aufnahme gesamt-entwurf-einreichen, Lauf :3): Entwürfe sind
@@ -222,7 +224,7 @@ describe("JOB 1494 D2 · KA8 — das Recht greift wirklich", () => {
     const alsAdminFremd = await app.inject({ method: "GET", url: PFAD(fremd), headers: admin });
     const alsAdminEigen = await app.inject({ method: "GET", url: PFAD(eigen), headers: admin });
 
-    expect(alsAdminFremd.statusCode, alsAdminFremd.body).toBe(403);
+    expect(alsAdminFremd.statusCode, alsAdminFremd.body).toBe(404);
     expect(alsAdminEigen.statusCode, alsAdminEigen.body).toBe(200);
   });
 

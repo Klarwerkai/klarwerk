@@ -17,7 +17,6 @@ import {
   warteAufOffeneImportLaeufe,
 } from "../../services/app/src/routes/confluence-import-routes";
 import { importRunRoutes } from "../../services/app/src/routes/import-run-routes";
-import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import {
   type ConfluencePage,
   ConfluenceRestClient,
@@ -25,6 +24,7 @@ import {
 } from "../../services/confluence/src/rest-client";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { LibraryService } from "../../services/library-analytics";
+import { adapterFromConfig } from "../support/confluence-adapter";
 
 const BASIS = "https://acme.atlassian.net/wiki";
 

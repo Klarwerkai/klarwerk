@@ -12,7 +12,6 @@
 // Parameter, Index-DDL — und dass der alte Weg für die anderen Aufrufer unverändert weiter existiert.
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
-import { klassifiziereStufe } from "../../services/app/src/migrationsbeleg";
 import { InMemoryKoRepo, type KoRepo } from "../../services/knowledge-object/src/repo";
 import {
   KO_ANHANG_TRAEGER_SQL,
@@ -22,6 +21,7 @@ import {
   PgKoRepo,
   anhangTraegerParameter,
 } from "../../services/knowledge-object/src/repo-pg";
+import { klassifiziereStufe } from "../support/migrationsmodell";
 
 function fakePool(rows: unknown[] = []): { pool: Pool; query: ReturnType<typeof vi.fn> } {
   const query = vi.fn(async () => ({ rows, rowCount: rows.length }));

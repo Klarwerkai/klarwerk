@@ -1,12 +1,19 @@
 // FR-EXT-03 / FE-OUT: Output Factory. Erzeugt strukturierte Dokumente AUSSCHLIESSLICH
 // aus validierten Wissensobjekten — kein roher Library-Export, kein Fake.
+import type { KnowledgeObject } from "../../knowledge-object";
 
 export type OutputKind =
   | "instruction" // Arbeitsanweisung / SOP (FE-OUT-01)
   | "checklist"
   | "troubleshooting"
   | "training"
-  | "management_summary";
+  | "management_summary"
+  // aufnahme:20260922:gesamt-dokumenterzeugung (R-0732, SOLL:FR-EXT-03): die FAQ war als
+  // Dokumentart beauftragt, im Dienst aber nicht vorhanden.
+  | "faq"
+  // R-0350 / R-0349: die Betriebsmitteilung — Anrede, Sie-Form, Betreff, geltende Punkte, was zu
+  // tun ist, Ansprechpartner, Gruß. Ein ENTWURF, regelbasiert aus geprüftem Wissen (kein Modell).
+  | "betriebsmitteilung";
 
 export const OUTPUT_KINDS: readonly OutputKind[] = [
   "instruction",
@@ -14,7 +21,38 @@ export const OUTPUT_KINDS: readonly OutputKind[] = [
   "troubleshooting",
   "training",
   "management_summary",
+  "faq",
+  "betriebsmitteilung",
 ];
+
+/**
+ * R-0337: was der Validierungsnachweis einer Quelle belegt. `OK` trägt das Datum der Entscheidung
+ * aus dem Auditeintrag (über `validationDecisionRef` adressiert und gegen die Kette geprüft); jeder
+ * andere Zustand heißt: für DIESE Fassung ist kein Prüfdatum belegt.
+ */
+export type OutputPruefnachweis =
+  | { zustand: "OK"; am: string; ereignis: string }
+  | { zustand: "MISSING" | "HASH_MISMATCH" | "WRONG_EVENT_TYPE" | "WRONG_SUBJECT" };
+
+/**
+ * R-0337 / R-1739: was an einer Quelle NICHT vollständig belegt ist. Codes statt Sätzen, damit jede
+ * Oberfläche (Markdown hier, Word-Panel in drei Sprachen) denselben Befund in ihrer Sprache sagt.
+ */
+export type OutputUnsicherheit =
+  /** Trust unter UNCERTAIN_TRUST_BELOW. */
+  | "niedriger_trust"
+  /** `geltung` fehlt am Objekt — der Gültigkeitsbereich ist unbekannt, nicht „überall". */
+  | "geltung_fehlt"
+  /** `ownership.owner` fehlt — Verantwortung nicht benannt (kein Rückfall auf den Autor). */
+  | "verantwortung_fehlt"
+  /** `ownership.ownerRole` fehlt — die verantwortliche Rolle ist nicht benannt. */
+  | "rolle_fehlt"
+  /** Kein Validierungsnachweis am Objekt bzw. im Audit nicht auffindbar — kein Prüfdatum belegt. */
+  | "pruefdatum_fehlt"
+  /** Der Validierungsnachweis gilt einer FRÜHEREN Fassung (WRONG_SUBJECT). */
+  | "pruefnachweis_fremde_fassung"
+  /** Der Validierungsnachweis hält der Auditprüfung nicht stand (Hash/Kette/Ereignis). */
+  | "pruefnachweis_ungueltig";
 
 // Trust unter diesem Wert wird je Quelle als Unsicherheit markiert (FE-OUT-03).
 export const UNCERTAIN_TRUST_BELOW = 60;
@@ -39,11 +77,48 @@ export interface OutputProvenance {
   version: number;
   author: string;
   originalAuthor: string;
+  // Aufnahme gesamt-wissen-herkunft (R-0298 / FR-LIF-04): die angezeigten Autorentexte. Nur gesetzt,
+  // wenn der Dienst eine Namensauflösung bekommen hat; die Kennungen darüber bleiben unverändert.
+  authorName?: string;
+  originalAuthorName?: string;
   category: string;
   type: string;
   validity: string; // abgeleitet: "validiert · v{version} · Stand {createdAt}" — kein Ablaufdatum
   uncertain: boolean; // Trust < UNCERTAIN_TRUST_BELOW
+  // ---- R-0337 / R-1739 (aufnahme:20260922:gesamt-dokumenterzeugung): die Pflichtangaben je Quelle,
+  // aus den Feldern des Wissensobjekts übernommen. `null` heißt: am Objekt NICHT festgehalten —
+  // es wird nichts abgeleitet oder geraten; `unsicherheiten` nennt jede solche Lücke.
+  /** Gültigkeitsbereich aus `geltung` (Konzern/Werk/Schicht, ggf. Rolle) — null: nicht angegeben. */
+  geltungsbereich: string | null;
+  /** Verantwortung aus `ownership.owner` — null: nicht benannt (bewusst kein Rückfall auf `author`). */
+  verantwortlich: string | null;
+  /** Verantwortliche Rolle aus `ownership.ownerRole` — null: nicht benannt. */
+  verantwortlicheRolle: string | null;
+  /**
+   * R-0349 / R-0414: die Marke dieser Quelle im Dokument („Q1", „Q2" …). Jede tragende Passage im
+   * Rumpf trägt `[Qn: koId · vVersion]`; der Herkunftsblock beginnt je Quelle mit `[Qn]`.
+   */
+  marke: string;
+  /** Wer die Validierung getragen hat (`ownership.validators`) — leer: nicht festgehalten. */
+  validiertVon: string[];
+  /** Datum der aktuellen Fassung (History-Eintrag dieser Version; v1 ohne Eintrag: `createdAt`). */
+  fassungVom: string | null;
+  /**
+   * Datum der letzten fachlichen Prüfung — aus dem Auditeintrag, auf den `validationDecisionRef`
+   * zeigt, wenn er geprüft für DIESE Fassung gilt (`pruefeValidationDecisionRef` = OK). Sonst null,
+   * und `unsicherheiten` sagt, warum (fehlt / frühere Fassung / ungültig).
+   */
+  letztePruefungAm: string | null;
+  /** Jede offene Unsicherheit dieser Quelle — leer heißt: alle Pflichtangaben belegt. */
+  unsicherheiten: OutputUnsicherheit[];
 }
+
+/**
+ * Aufnahme gesamt-wissen-herkunft: Kennung → angezeigter Autorentext (Name, „Gelöschtes Konto",
+ * „Unbekannte Person" oder „nicht abrufbar"). Die Kompositionswurzel liefert sie; dieser Dienst
+ * kennt den Kontodienst nicht. Fehlt eine Kennung in der Antwort, bleibt es bei der Kennung.
+ */
+export type AutorenNamen = (ids: readonly string[]) => Promise<ReadonlyMap<string, string>>;
 
 export interface OutputDocument {
   kind: OutputKind;
@@ -58,13 +133,33 @@ export interface GenerateOutputInput {
   kind: OutputKind;
   koIds: readonly string[];
   audienceRole?: string | null;
+  /** R-0349: das Vorhaben in Alltagssprache (Betreff/Anlass einer Betriebsmitteilung). Optional. */
+  anlass?: string | null;
 }
+
+// aufnahme:20260922:gesamt-leserechte — DIE LESEPOLICY DES BETRACHTERS, als Datum hereingereicht.
+//
+// Die Ausgabewege prüften bis hierher nur die Stufe am Objekt (`isConfidential`), nicht den
+// Menschen davor: der führende Space (produkt:20261007:spaces) galt hier nicht, und eine unbekannte
+// Kennung, eine nicht validierte und eine vertrauliche antworteten verschieden — eine
+// Existenzauskunft über Objekte, die der Fragende nicht sehen darf (die SCORM-Prüfung nannte dabei
+// sogar den Titel). Die Regel selbst wohnt in services/app/src/sichtbarkeit.ts (`darfSehen`); die
+// Route reicht sie als `sichtbarkeitsfilterFuer(user)` herein. Ein eigenes Prädikat steht hier
+// bewusst nicht — das wäre die zweite Auslegung derselben Regel.
+//
+// PFLICHT, nicht optional (dieselbe Lehre wie mega76 Block A): fehlt sie oder ist sie keine
+// Funktion, ist NICHTS sichtbar. Nacharbeit 20 (Integration main): die Dienste prüfen das am
+// Aufruf selbst (`typeof … === "function"` und nur ein `true` zählt) und rufen den übergebenen
+// Filter dort direkt — so weist der Lesewege-Sammler (R-1175) seine Anwendung nach.
+export type OutputSichtbarkeit = (ko: KnowledgeObject) => boolean;
 
 export type OutputErrorCode =
   | "NO_SOURCES"
   | "NOT_VALIDATED"
   | "UNKNOWN_KO"
   | "UNKNOWN_KIND"
+  // RECHERCHE:pmo-fea-0004: ungültiger Zeitraum des Wissensupdates (`bis` kein JJJJ-MM-TT).
+  | "BAD_REQUEST"
   // SCRUM-415: vertrauliche KOs dürfen nicht in einen (teilbaren) Output — externe Kontexte tabu.
   | "CONFIDENTIAL";
 

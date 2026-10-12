@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
+// R-1349: das Prüfmodell liegt bei den Tests; im Produkt stehen nur noch die beiden Listen.
 import {
-  IRREVERSIBLE_DATENMIGRATIONEN,
-  MIGRATIONS_SOLLLISTE,
   RISIKOMARKER,
   erzeugeStrukturbeleg,
   istStrukturstufe,
   klassifiziereStufe,
   markerVon,
-} from "./migrationsbeleg";
+} from "../../../tests/support/migrationsmodell";
+import { IRREVERSIBLE_DATENMIGRATIONEN, MIGRATIONS_SOLLLISTE } from "./migrationsbeleg";
 
 // ==================================================================================================
 // JOB 727 · D2 — DAS REINE MODELL. Was es kann, und wo es aufhört.

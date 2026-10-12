@@ -9,12 +9,17 @@
 import "./i18n";
 import { useLocation } from "react-router-dom";
 import { AuthProvider, useSession } from "./app/AuthContext";
+// R-1029 / R-1674: die geteilten Stände der Hülle im Takt nachladen — nur hinter dem Tor, also nie
+// auf der Sperrfläche nach gescheitertem Abmelden und nie auf dem Anmeldeweg.
+import { GeteilterStandNachlader } from "./app/GeteilterStandNachlader";
 // AUFTRAG-mega50 Block A: der Weg zur Bildbeschreibung für die ganze App. Er steht hier und nicht in
 // der AppShell, weil er — anders als die Modalgrenze — keinen DOM-Anker braucht: `AppShell` hat drei
 // Rückgaben (/mobile, schmal, breit), das wären drei Montagen und damit wieder drei Wahrheiten.
 // Hier ist es eine, neben den übrigen App-Kontexten, und sie deckt AUCH die shell-lose Route.
 import { ImageDescribeProvider } from "./app/ImageDescribeContext";
 import { NavGuardProvider } from "./app/NavGuardContext";
+// produkt:20261011:peter-p14 (K6/K7): räumt den Zwischenspeicher bei einem Wechsel des Rechtekontexts.
+import { RechtekontextWache } from "./app/RechtekontextWache";
 import { RoleProvider } from "./app/RoleContext";
 import { ToastProvider } from "./app/ToastContext";
 import { AuthScreens } from "./auth/AuthScreens";
@@ -39,6 +44,12 @@ import { SignOutBlocked } from "./legal/SignOutBlocked";
 import { offeneVorgaengeAmGeraet } from "./lib/sessionState";
 import { AppRoutes } from "./routes";
 import { AppShell } from "./shell/AppShell";
+// R-0570: die anonyme Vorführung mit erfundenen Inhalten, vor dem Anmeldetor.
+import {
+  VORFUEHRUNG_PFAD,
+  VorfuehrungScreen,
+  useVorfuehrungTor,
+} from "./vorfuehrung/VorfuehrungScreen";
 
 // JOB 4333: die shell-lose Erfassungsroute. Dieselbe Zeichenkette entscheidet in
 // `shell/AppShell.tsx` („/mobile OHNE Shell") und in `routes.tsx` über die Route; sie steht hier
@@ -81,13 +92,20 @@ function Gate(): JSX.Element {
   // AUFTRAG-mega61 Block A: der Schalter der Rechtsseiten. Er wird UNBEDINGT gelesen (Regel der
   // Hooks), ausgewertet wird er nur auf den beiden Pfaden unten.
   const rechtsseiten = useRechtsseitenTor();
+  // R-0570: der Schalter der anonymen Vorführung — ebenso unbedingt gelesen, ausgewertet nur auf
+  // ihrem Pfad unten.
+  const vorfuehrung = useVorfuehrungTor();
   const devPreview = import.meta.env.DEV && s.error && !s.user;
   // JOB 4333: die Anwendung selbst — EINMAL gebildet, damit der neue Zweig unten sie durchreichen
   // kann, statt eine zweite Hülle daneben aufzubauen.
   const anwendung = (
-    <AppShell>
-      <AppRoutes />
-    </AppShell>
+    <>
+      <GeteilterStandNachlader />
+      <RechtekontextWache />
+      <AppShell>
+        <AppRoutes />
+      </AppShell>
+    </>
   );
 
   // Passwort-Reset (E-Mail-Link) ist ohne Anmeldung erreichbar.
@@ -112,6 +130,17 @@ function Gate(): JSX.Element {
     }
     if (rechtsseiten.an) {
       return <LegalScreen page={legalPage} />;
+    }
+  }
+  // R-0570 / Entscheidung zu Frage 14: die anonyme Vorführung (nur erfundene Inhalte) liegt VOR dem
+  // Anmeldetor. Ist sie ausgeschaltet, läuft der Ablauf unverändert weiter — wie bei den
+  // Rechtsseiten verhält sich die Adresse dann wie jede andere unbekannte.
+  if (window.location.pathname === VORFUEHRUNG_PFAD) {
+    if (!vorfuehrung.geklaert) {
+      return <Splash />;
+    }
+    if (vorfuehrung.an) {
+      return <VorfuehrungScreen />;
     }
   }
   // AUFTRAG-mega62 Block C: HIER ist die Sperre, und sie steht bewusst VOR jedem geschützten

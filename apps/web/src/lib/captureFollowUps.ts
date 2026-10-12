@@ -28,6 +28,8 @@ export const CAPTURE_FOLLOW_UP_STEPS = [
   "validation-assign",
   "notify-assignment",
   "ai-check",
+  // produkt:20261007:templates-default: Vorlagenvermerk und Ablage im gewählten Space.
+  "vorlage",
 ] as const;
 
 export type CaptureFollowUpStep = (typeof CAPTURE_FOLLOW_UP_STEPS)[number];
@@ -37,6 +39,7 @@ const NAME_KEYS: Record<CaptureFollowUpStep, string> = {
   "validation-assign": "capture.followUp.validationAssign",
   "notify-assignment": "capture.followUp.notifyAssignment",
   "ai-check": "capture.followUp.aiCheck",
+  vorlage: "vorlagen.followUp.name",
 };
 
 const NEXT_KEYS: Record<CaptureFollowUpStep, string> = {
@@ -44,6 +47,7 @@ const NEXT_KEYS: Record<CaptureFollowUpStep, string> = {
   "validation-assign": "capture.followUp.validationAssignNext",
   "notify-assignment": "capture.followUp.notifyAssignmentNext",
   "ai-check": "capture.followUp.aiCheckNext",
+  vorlage: "vorlagen.followUp.next",
 };
 
 function bekannt(step: string): step is CaptureFollowUpStep {

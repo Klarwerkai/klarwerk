@@ -71,7 +71,8 @@
 
 import { describe, expect, it } from "vitest";
 import { FAQ_CONTENT, type FaqItem } from "../../apps/web/src/lib/faqContent";
-import { allFaqEntries, rankKlara, searchKlara } from "../../apps/web/src/lib/klaraRegistry";
+import { allFaqEntries, searchKlara } from "../../apps/web/src/lib/klaraRegistry";
+import { rankKlara } from "../support/klara-rangfolge";
 
 // --------------------------------------------------------------------------------------------
 // DIE VERBOTSLISTE — und warum genau diese sechs Stämme.

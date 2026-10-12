@@ -114,9 +114,24 @@ describe("SCRUM-240: Management-Snapshot (HTTP end-to-end)", () => {
     expect(snap.statement.net).toBeGreaterThanOrEqual(0);
     expect(snap.statement.net).toBeLessThanOrEqual(100);
 
-    // house: Kategorie-„Etage" mit echtem koCount.
-    const floor = snap.house.find((f: { category: string }) => f.category === "Mgmt 240");
-    expect(floor.koCount).toBe(3);
+    // house (R-0768): ein Stockwerk je Fachgebiet; ohne gesetztes Fachgebiet `domain: null`.
+    expect(snap.house).toHaveLength(1);
+    expect(snap.house[0]).toMatchObject({ domain: null, koCount: 3, validated: 2 });
+    expect(snap.houseFlow).toMatchObject({ inHouse: 3, secured: 2, outputReady: 2, imported: 0 });
+
+    // Das Fachgebiet, über die echte Route gesetzt, macht aus einem Objekt ein eigenes Stockwerk.
+    const dom = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${ids[0]}`,
+      headers,
+      payload: { action: "domain", domain: "Montage" },
+    });
+    expect(dom.statusCode).toBe(200);
+    const mitFach = (await snapshot(app, headers)).json();
+    // Das Stockwerk ohne Fachgebiet steht zuletzt, obwohl es mehr Objekte hat.
+    const fachgebiete = mitFach.house.map((f: { domain: string | null }) => f.domain);
+    expect(fachgebiete).toEqual(["Montage", null]);
+    expect(mitFach.house[0]).toMatchObject({ domain: "Montage", koCount: 1, validated: 1 });
 
     // pilot: alle 3 KOs eben erstellt → im 30-Tage-Fenster, 2 davon validiert.
     expect(snap.pilot[0].created).toBe(3);

@@ -198,6 +198,8 @@ export interface KoFassungslage {
    */
   readonly confidentiality?: Confidentiality | null | undefined;
   readonly author?: string | null | undefined;
+  /** Die AKTUELLEN Quellleser des Eintrags (confluence-import-rechte) — Teil derselben Fakten. */
+  readonly quellrechte?: AnweisungQuellrechte | null | undefined;
   readonly aktuelleVersion: number | null;
   readonly gebunden: GebundeneFassung | null;
 }
@@ -213,10 +215,16 @@ export type Fassungslagen = ReadonlyMap<string, KoFassungslage>;
 // DIE RECHTEENTSCHEIDUNG — ÜBERGEBEN, NICHT SELBST GETROFFEN
 // ================================================================================================
 
+/** Die Leserliste aus der Quelle, so weit `darfSehen` sie liest. */
+export interface AnweisungQuellrechte {
+  readonly leser?: readonly string[] | undefined;
+}
+
 /** Dieselbe Mindestform wie `KoFassungslage` sie trägt — und wie `SichtbarkeitsFakten` sie fordert. */
 export interface AnweisungSichtbarkeitsFakten {
   readonly confidentiality?: Confidentiality | null | undefined;
   readonly author?: string | null | undefined;
+  readonly quellrechte?: AnweisungQuellrechte | null | undefined;
 }
 
 export type AnweisungSichtbar = (fakten: AnweisungSichtbarkeitsFakten) => boolean;

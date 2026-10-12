@@ -188,7 +188,29 @@ afterEach(async () => {
 
 // Das Panel EINER Fläche: `Modal` setzt `tabIndex={-1}` genau dort. Es gibt zu jedem Zeitpunkt
 // höchstens eines, weil die Fälle jeweils eine Fläche öffnen.
-const panel = (): HTMLElement | null => document.querySelector<HTMLElement>("div[tabindex='-1']");
+// R-0909 (Aufnahme `gesamt-dialog-bedienung`): das Panel ist seit dem gemeinsamen `GrenzDialog`
+// ein `<dialog>` statt eines `<div>` — dieselbe Stelle, jetzt mit Rolle und Namen.
+const panel = (): HTMLElement | null =>
+  document.querySelector<HTMLElement>("dialog[tabindex='-1']");
+
+// R-0909: die vierte Frage, je Fläche einzeln — ein Vorleseprogramm kündigt das Panel als Dialog
+// an, und zwar mit Namen. Gemessen am DOM: die Dialogrolle trägt das native Element, `aria-modal`
+// steht (die Fläche hängt hier an der Grenze), und der Name ist die sichtbare Überschrift, auf die
+// `aria-labelledby` zeigt — nicht leer und nicht ins Leere verwiesen.
+function dialogMitNamen(p: HTMLElement | null, erwarteterName?: string): void {
+  expect(p?.tagName, "das Panel ist kein Dialog").toBe("DIALOG");
+  expect(p?.getAttribute("aria-modal"), "das Panel behauptet keine Modalität").toBe("true");
+  const verweis = p?.getAttribute("aria-labelledby") ?? "";
+  expect(verweis, "das Panel trägt keinen Namen").not.toBe("");
+  const ueberschrift = document.getElementById(verweis);
+  expect(ueberschrift, "der Name zeigt ins Leere").not.toBeNull();
+  expect(p?.contains(ueberschrift), "der Name steht nicht im Dialog").toBe(true);
+  const name = (ueberschrift?.textContent ?? "").trim();
+  expect(name, "der Name ist leer").not.toBe("");
+  if (erwarteterName !== undefined) {
+    expect(name).toBe(erwarteterName);
+  }
+}
 
 // Ein Bedienelement in der Fläche, über das sie sich schließen lässt: der beschriftete
 // Schließen-Knopf aus `Modal.tsx:72-78`.
@@ -208,11 +230,14 @@ const schliessKnopf = (): HTMLElement => {
 
 // Die drei Fragen, je Fläche einzeln gestellt. Kein Sammelbeleg: der Aufrufer übergibt SEINE
 // Fläche und SEINEN Auslöser, und die Zusicherungen gelten genau für diese.
-async function grenzeGiltFuer(ausloeser: HTMLElement): Promise<void> {
+async function grenzeGiltFuer(ausloeser: HTMLElement, erwarteterName?: string): Promise<void> {
   // 1. FOKUS HINEIN
   const p = panel();
   expect(p, "die Fläche ist offen").not.toBeNull();
   expect(p?.contains(document.activeElement), "Fokus liegt im Panel").toBe(true);
+
+  // 0. ROLLE UND NAME (R-0909)
+  dialogMitNamen(p, erwarteterName);
 
   // 2. HINTERGRUND ZU
   const gesperrt = container.querySelector("[inert]");
@@ -438,7 +463,9 @@ describe("JOB 1900 · die Grenze gilt für alle sieben modalen Flächen — je F
     expect(document.querySelector("[data-navguard-dialog]"), "die Wächterfläche ist offen").toBe(
       panel(),
     );
-    await grenzeGiltFuer(knopf);
+    // R-0909 nennt den Hinweis auf ungespeicherte Änderungen ausdrücklich: sein Name ist der
+    // sichtbare Titel des Wächterdialogs.
+    await grenzeGiltFuer(knopf, i18n.t("nav.guard.title"));
   });
 });
 

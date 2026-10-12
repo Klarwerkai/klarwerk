@@ -26,7 +26,7 @@ const de = {
   "extpage.help.scope.body":
     "Externe Treffer sind Recherchehilfe, kein geprüftes Wissen: nichts wird automatisch importiert oder von Kolleg:innen validiert. Ist die externe Abfrage vom Admin gesperrt, bleibt der Bereich leer.",
   "app.name": "KLARWERK",
-  "app.subtitle": "Reasoning System",
+  "app.subtitle": "Knowledge OS",
   "app.staleBundle":
     "Eine neue Version der App ist verfügbar — bitte die Seite neu laden (Cmd+R bzw. Strg+R).",
   // JOB 3268 (D1-R): ZWEI verschiedene Zustände, zwei verschiedene Sätze. Der Satz darüber gehört
@@ -453,7 +453,7 @@ const de = {
   "status.konflikt": "Konflikt",
   "quality.preliminary": "Vorläufig",
   "quality.reliable": "Belastbar",
-  "quality.assured": "Gesichert",
+  "quality.assured": "Fachlich bestätigt",
   "evidence.percentSure": "Prüfstand: {{pct}} %",
   // AUFTRAG-mega51 BLOCK D1: der Balken sagt jetzt, WAS er zeigt (title + aria-label).
   "evidence.confidenceLabel": "Prüfstand: {{pct}} von 100",
@@ -855,7 +855,7 @@ const de = {
   "kg.ask.title": "Antworten sind quellengebunden",
   "kg.ask.body":
     "Die Fragen-Seite nutzt den Wissensbestand; offene oder ungeprüfte Quellen werden markiert und zur Validierung geführt.",
-  "kg.secured.label": "Gesichert",
+  "kg.secured.label": "Fachlich bestätigt",
   "kg.secured.body":
     "Validiertes Wissen ist nutzbar und bleibt über Quellen, Vertrauen und Version nachvollziehbar.",
   "kg.review.label": "Zu prüfen",
@@ -2802,7 +2802,7 @@ const de = {
     "Zeigt, ob Antworten über ein konfiguriertes Modell oder den regelbasierten Fallback laufen. Quellen und Validierung bleiben gleich.",
   "ask.fromValidated": "Aus quellengebundenem Wissen",
   "ask.evidence": "Evidenz",
-  "ask.knowledgeClass.gesichert": "Gesichert",
+  "ask.knowledgeClass.gesichert": "Fachlich bestätigt",
   "ask.knowledgeClass.ungeprueft": "Ungeprüft",
   "ask.knowledgeClass.meinung": "Meinung/Erfahrung",
   "ask.knowledgeClass.extern": "Externe Quelle",
@@ -2889,7 +2889,7 @@ const de = {
   "ask.aiUnavailable.toCapture": "Wissen erfassen",
   "ask.helpful": "Hat geholfen",
   "ask.thanked": "Danke!",
-  "ask.status.verified": "Gesichert",
+  "ask.status.verified": "Fachlich bestätigt",
   "ask.status.unverified": "Noch ungeprüft",
   "ask.reviewGuard.openLabel": "Noch nicht als gesichertes Wissen nutzen",
   "ask.reviewGuard.openHint":
@@ -2958,6 +2958,11 @@ const de = {
   "ask.verschlossen.freigabe": "Freigabe fehlt",
   "ask.verschlossen.freigabeHint": "Das Dokument ist noch nicht freigegeben.",
   "ask.verschlossen.stufe": "Stufe fehlt",
+  // R-0303: dasselbe Wort wie die Validierung beim Anlegen (services/capture/src/service.ts,
+  // ko-routes.ts: „Vertraulichkeitsstufe fehlt — …") — Antwortfläche und Validierung sprechen gleich.
+  // Die Torlage und der Belegbedarf einer Lücke rendern DIESEN Schlüssel; der kurze darüber bleibt
+  // als Bestandswert stehen (tests/i18n-textmodule/werte-vorher.json), wird aber nicht mehr gezeigt.
+  "ask.verschlossen.vertraulichkeitsstufe": "Vertraulichkeitsstufe fehlt",
   "ask.verschlossen.stufeHint": "Für das Dokument ist keine Vertraulichkeitsstufe gesetzt.",
   "ask.verschlossen.volltext": "Kein durchsuchbarer Text",
   "ask.verschlossen.volltextHint": "Von diesem Dokument liegt noch kein durchsuchbarer Text vor.",
@@ -3059,6 +3064,38 @@ const de = {
   // SCRUM-283: datensparsamer, ehrlicher Hinweis zur gespeicherten Wissenslücke (Ask + Risk).
   "gap.privacyNotice":
     "Die Frage wird als Wissenslücke gespeichert — keine Antwort und kein validiertes Wissen. Bitte keine sensiblen oder personenbezogenen Details erfassen; ergänze später geprüfte Erfahrung.",
+  // R-0307 / R-1061: das neutrale Etikett für Lücken ohne Sprachangabe (Altbestand) — immer wahr,
+  // weil der Titel die gestellte Frage im Wortlaut ist; es behauptet keine Sprache.
+  "gap.originalfrage": "Originalfrage",
+  // R-0333 / R-0753: die Häufigkeit derselben Frage, erst ab zwei.
+  "gap.askCount": "{{count}}× gefragt",
+  // N-0084: die Ausgangsfrage über dem Editor, wenn das Blatt aus einer Lücke geöffnet wurde.
+  "gap.ausgangsfrage": "Ausgangsfrage der Wissenslücke",
+  // R-0291: welcher Beleg für eine tragfähige Antwort fehlen würde. Die drei Tore benutzen die
+  // Schlüssel `ask.verschlossen.*` — hier stehen nur die zwei Fälle ohne Tor.
+  "gap.belegbedarf.label": "Fehlender Beleg",
+  "gap.belegbedarf.wissensobjekt":
+    "Kein passendes Wissensobjekt gefunden — es fehlt eines, das die Frage beantwortet",
+  "gap.belegbedarf.unbestimmt": "Unbestimmt — welcher Beleg fehlt, lässt sich nicht herleiten",
+  // R-0773: die eigenen Suchen ohne Treffer (nur die eigene Liste).
+  "nulltreffer.titel": "Deine Suchen ohne Treffer",
+  "nulltreffer.hinweis":
+    "Zu diesen Begriffen hat deine Suche nichts gefunden, was du sehen darfst — ein Hinweis, wo Wissen fehlen könnte. Nur du siehst diese Liste.",
+  "nulltreffer.anzahl": "{{count}}× gesucht",
+  "nulltreffer.erfassen": "Wissen erfassen",
+  "nulltreffer.eingegrenzt":
+    "Nur innerhalb dieser Eingrenzung gesucht ({{filter}}) — kein Befund über den ganzen Bestand.",
+  "nulltreffer.feld.type": "Wissensart",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Kategorie",
+  "nulltreffer.feld.tag": "Schlagwort",
+  // R-1626 (ROADMAP 1.4): die kurze persönliche Liste der Themen mit Bus-Faktor 1.
+  "einzelquelle.titel": "Wissen, das nur bei dir liegt",
+  "einzelquelle.satz":
+    "Themen mit Bus-Faktor 1, deren sichtbares Wissen nur von dir stammt: {{count}}",
+  "einzelquelle.zeile": "„{{thema}}“ — möchtest du dazu jetzt fünf Minuten erzählen?",
+  "einzelquelle.einstieg": "Interview starten",
+  "einzelquelle.themaLabel": "Thema",
   "ask.toGaps": "Zu den Wissenslücken",
   "ask.toCapture": "Wissen erfassen",
   "ko.use.ready": "Produktionsnah nutzbar",
@@ -3763,6 +3800,7 @@ const de = {
   "ko.attachmentOriginalUnavailable": "Original nicht verfügbar",
   // JOB 3061 · H2 — die gemeinsame Prüffläche (vier Reiter, vier Menüorte).
   "pruefen.title": "Prüfen",
+  "pruefen.handeltAls": "Du prüfst als {{role}}",
   "pruefen.tab.offen": "Offen",
   "pruefen.tab.konflikte": "Konflikte",
   "pruefen.tab.duplikate": "Duplikate",
@@ -4466,6 +4504,16 @@ const de = {
   "lib.liste.offline": "Ohne Verbindung kann gerade nicht gesucht werden.",
   "lib.liste.offlineWeiter":
     "Sobald die Verbindung wieder steht, wird die Suche von selbst fortgesetzt.",
+  // R-0429 Slice 2 (Peter, Frage 52): der KI-Antwortbereich über den Treffern. „Von der KI
+  // verdichtet" und „Gefunden" sind die zwei Seiten der Trennung, die der Berater verlangt.
+  "lib.antwort.titel": "Von der KI verdichtet",
+  "lib.antwort.anfordern": "Antwort aus den Quellen",
+  "lib.antwort.laeuft": "Die KI liest die Quellen …",
+  "lib.antwort.ausblenden": "Ausblenden",
+  "lib.antwort.einblenden": "Einblenden",
+  "lib.antwort.quellen": "Quellen",
+  "lib.antwort.quelleN": "Quelle {{n}}",
+  "lib.antwort.gefunden": "Gefunden",
   // JOB 3335 · UX-21: der Schalter „Trefferliste" des Lese-Tablets (760–899 px). Die Beschriftung
   // nennt den ZUSTAND, den ein Klick herstellt — kein Symbol allein, kein Erklärsatz (H4).
   "lib.lesemodus.listeEinblenden": "Trefferliste einblenden",
@@ -6683,7 +6731,7 @@ const de = {
   "fd.author": "Autor",
   "fd.whatOnSave": "Was beim Speichern passiert",
   "fd.whatOnSaveBody":
-    "Wird als Entwurf gesichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn du „Einreichen“ wählst; nichts wird automatisch validiert.",
+    "Wird als Entwurf gespeichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn du „Einreichen“ wählst; nichts wird automatisch validiert.",
   "fd.moreWays": "Mehr Erfassungswege",
   "fd.moreWaysBody":
     "Brauchst du das klassische Formular, Diktat oder das geführte Interview? Der vollständige Erfassen-Bereich hat alle Wege — diese Fläche hier ist der schnelle Einstieg.",
@@ -6702,7 +6750,8 @@ const de = {
   // JOB 3106 (UX-01): die bleibende Bestätigung unter den Knöpfen. Sie sagt genau das, was der
   // Server quittiert hat — der Entwurf liegt unter diesem Titel, und das Blatt schreibt in ihn
   // weiter (die Adresse trägt seine Kennung). Keine Zusage über die Entwurfsliste daneben.
-  "fd.saved.line": "Entwurf gesichert: {{titel}} — du schreibst hier in diesem Entwurf weiter.",
+  "fd.saved.line":
+    "Als Entwurf gespeichert: {{titel}} — du schreibst hier in diesem Entwurf weiter.",
   "fd.saved.toDrafts": "Meine Entwürfe",
   "fd.toastSubmitted": "Zur Prüfung eingereicht.",
   "fd.confirmDiscard": "Eingabe verwerfen? Nicht gespeicherte Inhalte gehen verloren.",
@@ -6762,7 +6811,7 @@ const de = {
   "erfassen.beispiel.keins": "Im Bestand liegt noch kein passendes Beispiel.",
   "erfassen.platzhalter.titel": "Titel",
   "erfassen.platzhalter.text": "Text",
-  "erfassen.entwurfSichern": "Entwurf sichern",
+  "erfassen.entwurfSichern": "Als Entwurf speichern",
   "erfassen.einreichen": "Einreichen",
   "erfassen.eingereicht": "Eingereicht:",
   "erfassen.live.aehnlich": "Ähnlich:",
@@ -7630,7 +7679,7 @@ const en: typeof de = {
   "extpage.help.scope.body":
     "External hits are research support, not verified knowledge: nothing is imported automatically or validated by colleagues. If the admin has disabled external lookup, the area stays empty.",
   "app.name": "KLARWERK",
-  "app.subtitle": "Reasoning System",
+  "app.subtitle": "Knowledge OS",
   "app.staleBundle":
     "A new version of the app is available — please reload the page (Cmd+R or Ctrl+R).",
   "version.neu.hinweis": "New version available",
@@ -9909,6 +9958,7 @@ const en: typeof de = {
   "ask.verschlossen.freigabe": "Approval missing",
   "ask.verschlossen.freigabeHint": "The document has not been approved yet.",
   "ask.verschlossen.stufe": "Level missing",
+  "ask.verschlossen.vertraulichkeitsstufe": "Confidentiality level missing",
   "ask.verschlossen.stufeHint": "No confidentiality level is set for the document.",
   "ask.verschlossen.volltext": "No searchable text",
   "ask.verschlossen.volltextHint": "No searchable text of this document is available yet.",
@@ -9961,6 +10011,30 @@ const en: typeof de = {
   // SCRUM-283: data-minimising, honest notice about the stored knowledge gap (Ask + Risk).
   "gap.privacyNotice":
     "The question is stored as a knowledge gap — not an answer and not validated knowledge. Please avoid sensitive or personal details; add reviewed experience later.",
+  "gap.originalfrage": "Original question",
+  "gap.askCount": "asked {{count}}×",
+  "gap.ausgangsfrage": "Question behind this knowledge gap",
+  "gap.belegbedarf.label": "Missing evidence",
+  "gap.belegbedarf.wissensobjekt":
+    "No matching knowledge object found — one that answers the question is missing",
+  "gap.belegbedarf.unbestimmt": "Undetermined — which evidence is missing cannot be derived",
+  "nulltreffer.titel": "Your searches without results",
+  "nulltreffer.hinweis":
+    "For these terms your search found nothing you are allowed to see — a hint where knowledge may be missing. Only you see this list.",
+  "nulltreffer.anzahl": "searched {{count}}×",
+  "nulltreffer.erfassen": "Capture knowledge",
+  "nulltreffer.eingegrenzt":
+    "Searched only within this filter ({{filter}}) — no finding about the whole collection.",
+  "nulltreffer.feld.type": "Knowledge type",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Category",
+  "nulltreffer.feld.tag": "Keyword",
+  "einzelquelle.titel": "Knowledge only you hold",
+  "einzelquelle.satz":
+    "Topics with bus factor 1 whose visible knowledge comes only from you: {{count}}",
+  "einzelquelle.zeile": "“{{thema}}” — would you like to spend five minutes on it now?",
+  "einzelquelle.einstieg": "Start interview",
+  "einzelquelle.themaLabel": "Topic",
   "ask.toGaps": "To the knowledge gaps",
   "ask.toCapture": "Capture knowledge",
   "ko.use.ready": "Ready to use",
@@ -10463,6 +10537,7 @@ const en: typeof de = {
   "ko.attachmentPreviewUnavailable": "No preview available",
   "ko.attachmentOriginalUnavailable": "Original unavailable",
   "pruefen.title": "Review",
+  "pruefen.handeltAls": "You are reviewing as {{role}}",
   "pruefen.tab.offen": "Open",
   "pruefen.tab.konflikte": "Conflicts",
   "pruefen.tab.duplikate": "Duplicates",
@@ -11012,6 +11087,15 @@ const en: typeof de = {
   "lib.liste.erfassen": "Capture",
   "lib.liste.offline": "Searching is not possible without a connection.",
   "lib.liste.offlineWeiter": "The search continues on its own as soon as the connection is back.",
+  // R-0429 Slice 2 — see the German entry.
+  "lib.antwort.titel": "Condensed by AI",
+  "lib.antwort.anfordern": "Answer from the sources",
+  "lib.antwort.laeuft": "The AI is reading the sources …",
+  "lib.antwort.ausblenden": "Hide",
+  "lib.antwort.einblenden": "Show",
+  "lib.antwort.quellen": "Sources",
+  "lib.antwort.quelleN": "Source {{n}}",
+  "lib.antwort.gefunden": "Found",
   // JOB 3335 · UX-21 — see the German entry.
   "lib.lesemodus.listeEinblenden": "Show result list",
   "lib.lesemodus.listeAusblenden": "Hide result list",
@@ -13463,7 +13547,7 @@ const nl: typeof de = {
   "extpage.help.scope.body":
     "Externe treffers zijn onderzoekshulp, geen geverifieerde kennis: niets wordt automatisch geïmporteerd of door collega’s gevalideerd. Heeft de beheerder externe opvraging uitgeschakeld, dan blijft het gebied leeg.",
   "app.name": "KLARWERK",
-  "app.subtitle": "Reasoning System",
+  "app.subtitle": "Knowledge OS",
   "app.staleBundle":
     "Er is een nieuwe versie van de app beschikbaar — laad de pagina opnieuw (Cmd+R of Ctrl+R).",
   "version.neu.hinweis": "Nieuwe versie beschikbaar",
@@ -15731,6 +15815,7 @@ const nl: typeof de = {
   "ask.verschlossen.freigabe": "Vrijgave ontbreekt",
   "ask.verschlossen.freigabeHint": "Het document is nog niet vrijgegeven.",
   "ask.verschlossen.stufe": "Niveau ontbreekt",
+  "ask.verschlossen.vertraulichkeitsstufe": "Vertrouwelijkheidsniveau ontbreekt",
   "ask.verschlossen.stufeHint": "Voor het document is geen vertrouwelijkheidsniveau ingesteld.",
   "ask.verschlossen.volltext": "Geen doorzoekbare tekst",
   "ask.verschlossen.volltextHint": "Van dit document is nog geen doorzoekbare tekst beschikbaar.",
@@ -15783,6 +15868,30 @@ const nl: typeof de = {
     "De bekende tegenstrijdigheden konden niet worden opgehaald. Of een van de bronnen in een open conflict staat, is daarmee onbekend; dit antwoord geldt daarom als ongecontroleerd.",
   "gap.privacyNotice":
     "De vraag wordt als kennishiaat opgeslagen — geen antwoord en geen gevalideerde kennis. Leg alsjeblieft geen gevoelige of persoonsgebonden details vast; vul later gecontroleerde ervaring aan.",
+  "gap.originalfrage": "Oorspronkelijke vraag",
+  "gap.askCount": "{{count}}× gevraagd",
+  "gap.ausgangsfrage": "Vraag achter dit kennishiaat",
+  "gap.belegbedarf.label": "Ontbrekend bewijs",
+  "gap.belegbedarf.wissensobjekt":
+    "Geen passend kennisobject gevonden — er ontbreekt er een dat de vraag beantwoordt",
+  "gap.belegbedarf.unbestimmt": "Onbepaald — welk bewijs ontbreekt, valt niet af te leiden",
+  "nulltreffer.titel": "Jouw zoekopdrachten zonder resultaat",
+  "nulltreffer.hinweis":
+    "Voor deze termen vond je zoekopdracht niets wat je mag zien — een aanwijzing waar kennis kan ontbreken. Alleen jij ziet deze lijst.",
+  "nulltreffer.anzahl": "{{count}}× gezocht",
+  "nulltreffer.erfassen": "Kennis vastleggen",
+  "nulltreffer.eingegrenzt":
+    "Alleen binnen deze afbakening gezocht ({{filter}}) — geen bevinding over het hele bestand.",
+  "nulltreffer.feld.type": "Kennissoort",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Categorie",
+  "nulltreffer.feld.tag": "Trefwoord",
+  "einzelquelle.titel": "Kennis die alleen bij jou ligt",
+  "einzelquelle.satz":
+    "Onderwerpen met busfactor 1 waarvan de zichtbare kennis alleen van jou komt: {{count}}",
+  "einzelquelle.zeile": "„{{thema}}” — wil je er nu vijf minuten over vertellen?",
+  "einzelquelle.einstieg": "Interview starten",
+  "einzelquelle.themaLabel": "Onderwerp",
   "ask.toGaps": "Naar de kennishiaten",
   "ask.toCapture": "Kennis vastleggen",
   "ko.use.ready": "Bruikbaar in de praktijk",
@@ -16289,6 +16398,7 @@ const nl: typeof de = {
   "ko.attachmentPreviewUnavailable": "Geen voorbeeld beschikbaar",
   "ko.attachmentOriginalUnavailable": "Origineel niet beschikbaar",
   "pruefen.title": "Controleren",
+  "pruefen.handeltAls": "Je controleert als {{role}}",
   "pruefen.tab.offen": "Open",
   "pruefen.tab.konflikte": "Conflicten",
   "pruefen.tab.duplikate": "Duplicaten",
@@ -16828,6 +16938,15 @@ const nl: typeof de = {
   "lib.liste.erfassen": "Vastleggen",
   "lib.liste.offline": "Zonder verbinding kan er nu niet worden gezocht.",
   "lib.liste.offlineWeiter": "Zodra de verbinding er weer is, gaat het zoeken vanzelf verder.",
+  // R-0429 Slice 2 — zie de Duitse regel.
+  "lib.antwort.titel": "Door AI samengevat",
+  "lib.antwort.anfordern": "Antwoord uit de bronnen",
+  "lib.antwort.laeuft": "De AI leest de bronnen …",
+  "lib.antwort.ausblenden": "Verbergen",
+  "lib.antwort.einblenden": "Tonen",
+  "lib.antwort.quellen": "Bronnen",
+  "lib.antwort.quelleN": "Bron {{n}}",
+  "lib.antwort.gefunden": "Gevonden",
   // JOB 3335 · UX-21 — zie de Duitse regel.
   "lib.lesemodus.listeEinblenden": "Resultatenlijst tonen",
   "lib.lesemodus.listeAusblenden": "Resultatenlijst verbergen",

@@ -32,13 +32,9 @@ export const GAP_RESCUE_STEPS: readonly GapRescueStep[] = [
   { id: "review", labelKey: "ask.gap.step.review.label", hintKey: "ask.gap.step.review.hint" },
 ];
 
-export function gapRescueSteps(): readonly GapRescueStep[] {
-  return GAP_RESCUE_STEPS;
-}
-
-export function gapRescueStepLabelKey(id: GapRescueStepId): string {
-  return `ask.gap.step.${id}.label`;
-}
+// R-1349: Hier standen `gapRescueSteps()` (gab die Tabelle oben zurück) und
+// `gapRescueStepLabelKey(id)` (baute den Schlüssel, den jeder Schritt als `labelKey` schon trägt).
+// Ask und Erfassen rendern direkt aus `GAP_RESCUE_STEPS` (R-0991 Nr. 4); beide sind entfernt.
 
 // Flache Copy-Schlüssel des Rescue-Rahmens — EINE Quelle für Komponenten + Tests (kein Doppel-Literal).
 // - storyTitle/impact: „Wissenslücke retten" + Beitragswert (AG-P2-4, ehrlich: zählt erst nach Prüfung).

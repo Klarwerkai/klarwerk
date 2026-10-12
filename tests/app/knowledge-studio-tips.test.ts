@@ -3,13 +3,13 @@ import i18n from "../../apps/web/src/i18n";
 import {
   KNOWLEDGE_STUDIO_TIPS,
   type KnowledgeStudioTipId,
-  knowledgeStudioTips,
 } from "../../apps/web/src/lib/knowledgeStudioTips";
 
 // SCRUM-345: DOM-freie Bedien-/Formatierungs-Hilfe für den Knowledge Input Studio.
+// R-1349: gemessen an `KNOWLEDGE_STUDIO_TIPS`, das die Komponente liest — der Zugriff
+// `knowledgeStudioTips()` hatte keinen Produktleser und ist entfernt.
 describe("SCRUM-345: knowledgeStudioTips", () => {
   it("liefert die stabile Item-Liste in fester Reihenfolge mit stabilen IDs", () => {
-    expect(knowledgeStudioTips()).toBe(KNOWLEDGE_STUDIO_TIPS);
     expect(KNOWLEDGE_STUDIO_TIPS.map((t) => t.id)).toEqual<KnowledgeStudioTipId[]>([
       "select",
       "structure",

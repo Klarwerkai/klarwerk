@@ -123,7 +123,8 @@ const FAELLE: Fall[] = [
     kennung: "f",
     was: "eine Version in der Lockdatei verstellen",
     datei: "package-lock.json",
-    ersetze: ['    "node_modules/sharp": {', '      "version": "0.35.4",'].join("\n"),
+    // R-1398 (08.10.2026): Anker auf die gebundene Fassung 0.35.5 nachgezogen (GHSA-wq5f behoben).
+    ersetze: ['    "node_modules/sharp": {', '      "version": "0.35.5",'].join("\n"),
     durch: ['    "node_modules/sharp": {', '      "version": "0.0.0-verstellt",'].join("\n"),
     test: `${ORDNER}/gebundene-versionen.test.ts`,
     erwartet: "die Lockdatei sagt 0.0.0-verstellt",

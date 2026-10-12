@@ -35,18 +35,24 @@ export const ADMIN_SECTIONS = [
   { id: "ki", labelKey: "adm.sec.ki" },
   // Quellen und Daten: Import und Quellen (Kurzlink), Papierkorb, Verweis auf die Uploadgrenzen
   { id: "quellen", labelKey: "adm.sec.quellen" },
-  // Vorführdaten: Demodaten und die auswählbaren Pakete (JOB 3277/3326) an EINEM Auffindeort
-  { id: "vorfuehrdaten", labelKey: "adm.sec.vorfuehrdaten" },
   // Sicherheit und Nachweise: Prüfprotokoll, Datenschutz, Benutzeränderungen (Audit)
   { id: "sicherheit", labelKey: "adm.sec.sicherheit" },
   // Berichte und Analyse: Analytics & Audit, Auswertungen, Wissensgraph, Kapital-Sichten
   { id: "berichte", labelKey: "adm.sec.berichte" },
   // System: Bereitschaft, Erweiterte Module (Stufe 2), Werkseinstellungen im eigenen Abschnitt
   { id: "system", labelKey: "adm.sec.system" },
+  // Vorführdaten: Demodaten, Beispiel-/Demopakete und das Aufräumen von Testimporten an EINEM
+  // Auffindeort. ADMIN-16 (produkt:20261009:admin-demo-diagnose): bewusst ZULETZT — die tägliche
+  // Verwaltung beginnt nicht mit Vorführwerkzeugen; auf der Startseite steht das Thema unter
+  // „Organisation und Betrieb" (`lib/adminUebersicht.ts`).
+  { id: "vorfuehrdaten", labelKey: "adm.sec.vorfuehrdaten" },
 ] as const;
 
 export type AdminSectionId = (typeof ADMIN_SECTIONS)[number]["id"];
 
+// ADMIN-01 (produkt:20261009:admin-verwaltung-uebersicht): `/admin` ohne Thema öffnet nicht mehr
+// dieses Thema, sondern die Startseite der Verwaltung (`pages/AdminUebersicht.tsx`). Das erste
+// Thema bleibt der Rückfall für Wege, die ein Thema brauchen (Pfadzeile, Rückweg einer Karte).
 export const DEFAULT_ADMIN_SECTION: AdminSectionId = "konten";
 
 export function isAdminSectionId(value: string): value is AdminSectionId {
@@ -71,6 +77,9 @@ export interface AdminDetailZiel {
 
 export const ADMIN_DETAILS: readonly AdminDetailZiel[] = [
   { id: "nutzerNeu", section: "konten", labelKey: "einst.konten.hinzufuegen" },
+  // ADMIN-06 (produkt:20261009:admin-teams): die Teams. Ein einzelnes Team (`team:<id>`) ist wie
+  // `nutzer:<id>` dynamisch und steht deshalb nicht hier.
+  { id: "teams", section: "konten", labelKey: "teams.titel", synonymKeys: ["teams.syn"] },
   { id: "ansichtRolle", section: "konten", labelKey: "role.viewAs" },
   { id: "ki", section: "ki", labelKey: "adm.ai.title", synonymKeys: ["adm.ziel.ki.syn"] },
   { id: "kiZugaenge", section: "ki", labelKey: "adm.ai.accessTitle" },
@@ -92,6 +101,22 @@ export const ADMIN_DETAILS: readonly AdminDetailZiel[] = [
     labelKey: "adm.ziel.demo",
     synonymKeys: ["adm.ziel.demo.syn"],
   },
+  // ADMIN-16: die Beispiel-/Demopakete und das Aufräumen von Testimporten standen bis hierher als
+  // Kästen auf der produktiven Importseite (`/import`). Sie wohnen jetzt hier, hinter je einer
+  // eigenen Karte; die alten Anker `/import#beispielpakete` und `/import#demopakete` leiten auf
+  // `pakete` weiter (`pages/Stufe2.tsx`). Auch hier nennt der Name das ZIEL, nicht die Handlung.
+  {
+    id: "pakete",
+    section: "vorfuehrdaten",
+    labelKey: "betriebdemo.ziel.pakete",
+    synonymKeys: ["betriebdemo.ziel.pakete.syn"],
+  },
+  {
+    id: "testimporte",
+    section: "vorfuehrdaten",
+    labelKey: "betriebdemo.ziel.testimporte",
+    synonymKeys: ["betriebdemo.ziel.testimporte.syn"],
+  },
   { id: "protokoll", section: "sicherheit", labelKey: "adm.ziel.protokoll" },
   { id: "datenschutz", section: "sicherheit", labelKey: "adm.sich.dataTitle" },
   { id: "audit", section: "sicherheit", labelKey: "adm.auditTitle" },
@@ -102,11 +127,14 @@ export const ADMIN_DETAILS: readonly AdminDetailZiel[] = [
   // des ZIELS ist „Sicherung", nicht „Sicherung anlegen": eine Navigation sichert nichts, und
   // diese Karte tut es auch nicht (Auslösen ist ausdrücklich ein eigenes Paket, Auftrag §10).
   { id: "sicherung", section: "system", labelKey: "adm.backup.title" },
+  // R-1034 / FR-I18N-02: Oberflächentexte im laufenden Betrieb anpassen und übersetzen. Unter
+  // „System", weil die Texte die ganze Instanz betreffen und keinem Fachbereich gehören.
+  { id: "uebersetzungen", section: "system", labelKey: "uebersetzungen.titel" },
 ];
 
 /** Das Thema, unter dem diese Detailkarte wohnt — oder `null` für eine unbekannte Kennung. */
 export function adminSectionFuerDetail(detail: string): AdminSectionId | null {
-  if (detail.startsWith("nutzer:") || detail.startsWith("rolle:")) {
+  if (detail.startsWith("nutzer:") || detail.startsWith("rolle:") || detail.startsWith("team:")) {
     return "konten";
   }
   return ADMIN_DETAILS.find((d) => d.id === detail)?.section ?? null;
@@ -116,8 +144,9 @@ export function adminSectionFuerDetail(detail: string): AdminSectionId | null {
  * Die Adresse eines Verwaltungsziels.
  *
  * Vorlage, Punkt 4: „Reiter/Detailzustand muss über einen geprüften, erlaubten Navigationswert
- * adressierbar sein, etwa Queryparameter." `/admin` ohne Query bleibt gültig und führt auf das
- * erste Thema — alte Links, Hilfekapitel und der FAQ-Bestand zeigen weiterhin dorthin.
+ * adressierbar sein, etwa Queryparameter." `/admin` ohne Query bleibt gültig — seit ADMIN-01 als
+ * Startseite der Verwaltung, von der jedes Thema einen Klick entfernt ist; alte Links,
+ * Hilfekapitel und der FAQ-Bestand zeigen weiterhin dorthin.
  */
 export function adminHref(section: AdminSectionId, detail?: string): string {
   const query = `bereich=${encodeURIComponent(section)}`;

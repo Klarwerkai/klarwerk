@@ -108,7 +108,9 @@ describe.runIf(existsSync(ZIELBILD))(
   "JOB 3065 H6 · Einstellungen — die echte Seite, gemountet in Chromium (Theme modern)",
   () => {
     beforeAll(async () => {
-      stand = await starte("/admin", '[data-einst="seite"]');
+      // ADMIN-01: gemessen wird die Themenfläche „Benutzer und Rollen" des Zielbilds. Seit
+      // `/admin` die Startseite der Verwaltung ist, hat sie ihre eigene Adresse.
+      stand = await starte("/admin?bereich=konten", '[data-einst="seite"]');
       if (stand.fehler === null && stand.seite) {
         // Auf die erste Zeile warten: die Nutzerliste kommt aus dem echten `/api/users`.
         await stand.seite.waitForFunction(

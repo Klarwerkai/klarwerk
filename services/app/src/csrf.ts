@@ -21,17 +21,10 @@ export const SESSION_COOKIE = "kw_session";
 export const UNSAFE_METHODS = ["POST", "PUT", "DELETE", "PATCH"] as const;
 export type UnsafeMethod = (typeof UNSAFE_METHODS)[number];
 
-// Dokumentierte Eigenschaften des Session-Cookies (Quelle der Wahrheit: services/auth/src/routes.ts).
-// `secureWhenConfigured`: WP-VIP2-GATE (bens P1) — in Produktion (NODE_ENV=production) wird Secure
-// ERZWUNGEN (COOKIE_SECURE kann es dort nicht mehr abschalten; explizites =false bricht den Start ab).
-// Außerhalb von Produktion bleibt das Opt-in COOKIE_SECURE=true für HTTPS-Dev-Setups.
-export const COOKIE_STRATEGY = {
-  name: SESSION_COOKIE,
-  httpOnly: true,
-  path: "/",
-  sameSite: "Lax",
-  secureWhenConfigured: true,
-} as const;
+// Die Eigenschaften des Session-Cookies setzt allein `services/auth/src/routes.ts` (HttpOnly, Path=/,
+// SameSite=Lax; Secure in Produktion erzwungen, WP-VIP2-GATE). R-1349: Hier stand bis dahin eine
+// Abschrift `COOKIE_STRATEGY`, die niemand las und deren Test nur die Abschrift prüfte. Sie ist
+// entfernt; `csrf.test.ts` misst die Eigenschaften seitdem am echten `Set-Cookie` der Anmeldung.
 
 export function isUnsafeMethod(method: string): boolean {
   return (UNSAFE_METHODS as readonly string[]).includes(method.toUpperCase());
@@ -171,14 +164,16 @@ function herkunftsUrteil(input: {
   headers: Record<string, string | string[] | undefined>;
   host: string;
 }): HerkunftsUrteil {
-  if (!isUnsafeMethod(input.method)) {
-    return { angenommen: true };
-  }
-  const authMode = requestAuthMode({
-    authorization: einzelwert(input.headers.authorization),
-    cookie: einzelwert(input.headers.cookie),
+  // R-1349: ob überhaupt geprüft wird, entscheidet die eine Einschätzung `csrfAssessment` — nur ein
+  // schreibender Aufruf mit Session-Cookie (`origin-check`) braucht die Herkunftsprüfung.
+  const einschaetzung = csrfAssessment({
+    method: input.method,
+    authMode: requestAuthMode({
+      authorization: einzelwert(input.headers.authorization),
+      cookie: einzelwert(input.headers.cookie),
+    }),
   });
-  if (authMode !== "cookie") {
+  if (einschaetzung.mitigation !== "origin-check") {
     return { angenommen: true };
   }
   const fetchSite = input.headers["sec-fetch-site"];

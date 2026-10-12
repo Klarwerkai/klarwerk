@@ -129,13 +129,18 @@ async function aufbauen(): Promise<Aufbau> {
   return { app, kopf, bindung, validiert, offen };
 }
 
-const fragen = (a: Aufbau, extraKopf: Record<string, string>) =>
-  a.app.inject({
+// R-0700: Klara fragt über ihren EIGENEN Zugang — die Sitzung steht im Pfad. Die Kopfzeile
+// `x-klara-session` reist zusätzlich mit; weicht sie ab, ist das dieselbe Absage.
+const fragen = (a: Aufbau, extraKopf: Record<string, string>) => {
+  const kopf = { ...a.bindung, ...extraKopf };
+  const sitzung = encodeURIComponent(kopf["x-klara-session"] ?? "");
+  return a.app.inject({
     method: "POST",
-    url: "/api/ask",
-    headers: { ...a.kopf, ...extraKopf, "content-type": "application/json" },
-    payload: { question: FRAGE, locale: "de", mode: "retrieval-only" },
+    url: `/api/klara/sessions/${sitzung}/execute`,
+    headers: { ...a.kopf, ...kopf, "content-type": "application/json" },
+    payload: { question: FRAGE, locale: "de" },
   });
+};
 
 describe("KA4 · D2 · die Einwilligung, ungemockt bis zu den Flags", () => {
   it("KA4-I0 · KALIBRIERUNG: die Sitzung entsteht wirklich — und die Einwilligung wird ABGELEHNT", async () => {
@@ -247,7 +252,10 @@ describe("KA4 · D2 · die Einwilligung, ungemockt bis zu den Flags", () => {
     expect(mit.model).toBe("claude");
   });
 
-  it("KA4-I3 · GEGENFALL fremde Sitzung: die Enge bleibt", async () => {
+  // R-0700: am eigenen, sitzungsgebundenen Zugang gibt es ohne gültige Zuordnung GAR KEINE Antwort
+  // — auch keine eingeengte. Bis dahin lief eine fremde Bindung am allgemeinen Weg in die Enge;
+  // jetzt ist sie eine generische Absage, und kein Objekt wird überhaupt gelesen.
+  it("KA4-I3 · GEGENFALL fremde Sitzung: keine Antwort, generische Absage", async () => {
     const a = await aufbauen();
     await a.app.inject({
       method: "POST",
@@ -255,12 +263,13 @@ describe("KA4 · D2 · die Einwilligung, ungemockt bis zu den Flags", () => {
       headers: { ...a.kopf, ...a.bindung },
     });
     const res = await fragen(a, { ...a.bindung, "x-klara-session": "sess-fremd" });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().result.sources ?? []).not.toContain(a.offen);
+    expect(res.statusCode).toBe(404);
+    expect(res.body).not.toContain(a.offen);
+    expect(res.body).not.toContain(a.validiert);
     await a.app.close();
   });
 
-  it("KA4-I4 · GEGENFALL fremdes Dokument: die Enge bleibt", async () => {
+  it("KA4-I4 · GEGENFALL fremdes Dokument: keine Antwort, generische Absage", async () => {
     const a = await aufbauen();
     await a.app.inject({
       method: "POST",
@@ -268,8 +277,34 @@ describe("KA4 · D2 · die Einwilligung, ungemockt bis zu den Flags", () => {
       headers: { ...a.kopf, ...a.bindung },
     });
     const res = await fragen(a, { ...a.bindung, "x-klara-document": "doc-fremd" });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().result.sources ?? []).not.toContain(a.offen);
+    expect(res.statusCode).toBe(404);
+    expect(res.body).not.toContain(a.offen);
+    expect(res.body).not.toContain(a.validiert);
+    await a.app.close();
+  });
+
+  it("KA4-I7 · R-0700: der allgemeine Frageweg nimmt die Klara-Bindung NICHT an", async () => {
+    // Dieselbe Bindung, derselbe Körper — nur an `/api/ask`. Bis R-0700 entschied dort die
+    // Einwilligung; jetzt weist der allgemeine Weg die Anfrage ab und nennt den eigenen Zugang.
+    const a = await aufbauen();
+    const res = await a.app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { ...a.kopf, ...a.bindung, "content-type": "application/json" },
+      payload: { question: FRAGE, locale: "de", mode: "retrieval-only" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("KLARA_EIGENER_WEG");
+    expect(res.body).not.toContain(a.validiert);
+    // Ohne Bindung bleibt der allgemeine retrieval-only-Weg, was er war: Antwort aus Validiertem.
+    const allgemein = await a.app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { ...a.kopf, "content-type": "application/json" },
+      payload: { question: FRAGE, locale: "de", mode: "retrieval-only" },
+    });
+    expect(allgemein.statusCode).toBe(200);
+    expect(allgemein.json().result.sources ?? []).not.toContain(a.offen);
     await a.app.close();
   });
 

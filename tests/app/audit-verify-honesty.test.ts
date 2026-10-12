@@ -10,7 +10,22 @@ import { auditVerifyView } from "../../apps/web/src/lib/auditVerifyState";
 const LANGS = ["de", "en", "nl"] as const;
 type Lang = (typeof LANGS)[number];
 
+// produkt:20261009:admin-audit-verstaendlich (K6): ein grünes Ergebnis trägt seinen Prüfzeitpunkt.
+const GEPRUEFT_UM = "2026-10-09T08:00:00.000Z";
+
 const CLEAN: AuditVerifyReport = {
+  ok: true,
+  count: 871,
+  linkageBreaks: 0,
+  payloadDeviations: 0,
+  serialisationDeviations: 0,
+  unresolvedDeviations: 0,
+  uncheckedDeviations: 0,
+  checkedAt: GEPRUEFT_UM,
+};
+
+/** Dasselbe Ergebnis OHNE Prüfzeitpunkt — es darf keinen Nachweis behaupten. */
+const OHNE_ZEITPUNKT: AuditVerifyReport = {
   ok: true,
   count: 871,
   linkageBreaks: 0,
@@ -105,12 +120,51 @@ function verifyEntries(lang: Lang): [string, string][] {
 }
 
 describe("Block A-2: die drei Anzeigezustände", () => {
-  it("GRÜN — heile Kette bleibt unverändert bei adm.sich.verify.ok", () => {
+  // produkt:20261009:admin-audit-verstaendlich (K6): Grün trägt jetzt seinen Prüfzeitpunkt, unter
+  // einem eigenen Schlüssel (der Bestandstext `adm.sich.verify.ok` bleibt unverändert stehen).
+  it("GRÜN — heile Kette MIT Prüfzeitpunkt bei auditprotokoll.pruefung.ok", () => {
     const view = auditVerifyView(CLEAN);
     expect(view.tone).toBe("ok");
-    expect(view.key).toBe("adm.sich.verify.ok");
-    expect(view.params).toEqual({ count: 871 });
+    expect(view.key).toBe("auditprotokoll.pruefung.ok");
+    expect(view.params).toEqual({ count: 871, zeitpunkt: GEPRUEFT_UM });
     expect(render(CLEAN, "de")).toContain("871");
+    expect(render(CLEAN, "de")).toContain(GEPRUEFT_UM);
+  });
+
+  it("K6 · ohne Prüfzeitpunkt kein Grün und kein Haken — in allen drei Sprachen", () => {
+    const view = auditVerifyView(OHNE_ZEITPUNKT);
+    expect(view.tone).toBe("warn");
+    expect(view.key).toBe("auditprotokoll.pruefung.ohneZeitpunkt");
+    for (const lang of LANGS) {
+      const text = render(OHNE_ZEITPUNKT, lang);
+      expect(text.length, `${lang}: Text fehlt`).toBeGreaterThan(10);
+      expect(text, `${lang}: ein Haken ohne Zeitpunkt`).not.toContain("✓");
+    }
+    // Ein unlesbarer Zeitpunkt zählt wie keiner.
+    expect(auditVerifyView({ ...CLEAN, checkedAt: "gestern" }).tone).toBe("warn");
+  });
+
+  it("K6 · beide Texte behaupten weder Manipulation noch ihren Ausschluss", () => {
+    const verboten = [
+      "manipulation",
+      "manipulatie",
+      "tamper",
+      "ausgeschlossen",
+      "unverändert",
+      "garantiert",
+      "guaranteed",
+      "unchanged",
+      "ongewijzigd",
+      "gegarandeerd",
+    ];
+    for (const lang of LANGS) {
+      for (const report of [CLEAN, OHNE_ZEITPUNKT]) {
+        const text = render(report, lang).toLowerCase();
+        for (const wort of verboten) {
+          expect(text, `${lang}: „${wort}“ in „${text}“`).not.toContain(wort);
+        }
+      }
+    }
   });
 
   it("GELB — Verkettung lückenlos, jede Abweichung als Feldreihenfolge aufgelöst", () => {
@@ -226,7 +280,14 @@ describe('Block A-2: das Wort "Manipulation" ist getilgt — in allen drei Sprac
 
   it("alle Zustände sind in allen drei Sprachen übersetzt, ohne offene Platzhalter", () => {
     for (const lang of LANGS) {
-      for (const report of [CLEAN, LIVE_BEFUND, LINKAGE_BROKEN, UNRESOLVED, UNCHECKED]) {
+      for (const report of [
+        CLEAN,
+        OHNE_ZEITPUNKT,
+        LIVE_BEFUND,
+        LINKAGE_BROKEN,
+        UNRESOLVED,
+        UNCHECKED,
+      ]) {
         const view = auditVerifyView(report);
         expect(i18n.getResource(lang, "translation", view.key)).toBeTruthy();
         if (view.kindKey) {

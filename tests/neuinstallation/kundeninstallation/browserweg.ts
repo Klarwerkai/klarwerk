@@ -195,7 +195,9 @@ export async function imSeitenkontext(
 // --------------------------------------------------------------------------------------------------
 
 export async function betrachterAnlegen(seite: Page, basis: string, konto: Konto): Promise<void> {
-  await gehe(seite, `${basis}/admin`, { waitUntil: "domcontentloaded" });
+  // ADMIN-01: `/admin` ist die Startseite der Verwaltung; „Nutzer hinzufügen" steht in der
+  // Kontenliste unter ihrer eigenen Adresse.
+  await gehe(seite, `${basis}/admin?bereich=konten`, { waitUntil: "domcontentloaded" });
   await seite.getByTestId("knopf-nutzer-hinzufuegen").click();
   const karte = seite.getByTestId("detail-nutzer-neu");
   await karte.waitFor({ state: "visible", timeout: 30_000 });

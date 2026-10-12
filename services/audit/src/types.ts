@@ -37,3 +37,32 @@ export interface AuditFilter {
   action?: string;
   target?: string;
 }
+
+// produkt:20261009:admin-audit-verstaendlich (ADMIN-03) — DER SEITENWEISE LESEWEG DER VERWALTERSICHT.
+//
+// Bis hierher lud die Verwalteransicht das ganze Protokoll (`GET /api/audit`) und zeigte davon die
+// letzten zwölf. Der Seitenweg liest stattdessen höchstens `limit` Einträge, jüngste zuerst, und
+// nennt die Sequenz, ab der die nächste (ältere) Seite beginnt. Er ist ein ZUSÄTZLICHER Leseweg auf
+// dieselbe Kette — `AuditFilter`, `list()` und alle bisherigen Aufrufer bleiben, wie sie sind.
+export interface AuditSeitenFilter extends AuditFilter {
+  /** Mehrere Aktionen zugleich (ODER) — etwa alle Konto- und Anmeldeereignisse der Auth-Ansicht. */
+  actions?: readonly string[];
+  /** Zeitraum über `at` (ISO-Zeitpunkt in UTC): `from` einschließlich, `to` ausschließlich. */
+  from?: string;
+  to?: string;
+}
+
+export interface AuditSeitenAnfrage extends AuditSeitenFilter {
+  /** Nur Einträge mit `seq < before` — der Zeiger auf die nächste ältere Seite. */
+  before?: number;
+  limit?: number;
+}
+
+export interface AuditSeite {
+  /** Höchstens `limit` Einträge, absteigend nach `seq` (jüngster zuerst). */
+  entries: AuditEntry[];
+  /** `before` der nächsten älteren Seite — `null`, wenn es keine ältere gibt. */
+  nextBefore: number | null;
+  /** Die tatsächlich angewandte Seitengröße (nach Begrenzung). */
+  limit: number;
+}

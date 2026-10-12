@@ -12,7 +12,6 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { type Guards, makeGuards } from "../../services/app/src/http";
 import { confluenceImportRoutes } from "../../services/app/src/routes/confluence-import-routes";
 import { externalRoutes } from "../../services/app/src/routes/external-routes";
-import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import { InMemoryExternalKnowledgePolicyRepo } from "../../services/external-search/src/policy";
 import { ExternalSearchService } from "../../services/external-search/src/service";
 import type { FetchLike } from "../../services/external-search/src/types";
@@ -20,6 +19,7 @@ import {
   EXTERNAL_SEARCH_MELDUNG,
   createWikipediaProvider,
 } from "../../services/external-search/src/wikipedia";
+import { adapterFromConfig } from "../support/confluence-adapter";
 
 const HOST_CONFLUENCE = "acme.atlassian.net";
 const nieAntwortend = (() => new Promise<Response>(() => undefined)) as unknown as typeof fetch;

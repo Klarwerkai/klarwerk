@@ -34,7 +34,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
-import { askRoutes } from "../../services/app/src/routes/ask-routes";
+import { klaraAusfuehrungRoutes } from "../../services/app/src/routes/ask-routes";
 import { klaraAiRoutes } from "../../services/app/src/routes/klara-ai-routes";
 import { KlaraSessionService } from "../../services/app/src/services/klara-session-service";
 import { AskService, InMemoryGapRepo } from "../../services/ask";
@@ -201,11 +201,13 @@ function panelAsk(app: FastifyInstance, kopf: Record<string, string>) {
     setTimeout: () => 1,
     clearTimeout: () => undefined,
     AbortController,
-    fetch: async (url: string, init: { body: string }) => {
+    fetch: async (url: string, init: { body: string; headers?: Record<string, string> }) => {
+      // R-0700: die Bindungskopfzeilen setzt `performAsk` selbst (aus `bindungsKopf`), genau wie
+      // im Panel — hier wird nur durchgereicht, was es abgesetzt hat.
       const res = await app.inject({
         method: "POST",
         url,
-        headers: { ...kopf, "content-type": "application/json" },
+        headers: { ...(init.headers ?? {}), "content-type": "application/json" },
         payload: init.body,
       });
       return { ok: res.statusCode === 200, status: res.statusCode, json: async () => res.json() };
@@ -226,7 +228,7 @@ function panelAsk(app: FastifyInstance, kopf: Record<string, string>) {
       l: string,
       f: unknown,
       t: number,
-      kopf: null,
+      kopf: Record<string, string>,
       markierung: undefined,
       herkunft: "manual",
     ) => Promise<AskAusgang>;
@@ -234,8 +236,9 @@ function panelAsk(app: FastifyInstance, kopf: Record<string, string>) {
   };
   return {
     // R-0639 Runde 3: dieselben Argumente wie `askKlara` bei getippter Frage (Herkunft `manual`).
+    // R-0700: mit der Bindung als `bindungsKopf` — so wählt `performAsk` Klaras eigenen Zugang.
     fragen: () =>
-      geschnitten.performAsk(FRAGE, "de", umgebung.fetch, 5000, null, undefined, "manual"),
+      geschnitten.performAsk(FRAGE, "de", umgebung.fetch, 5000, kopf, undefined, "manual"),
     notizSichtbar: geschnitten.askAiNoticeVisible,
   };
 }
@@ -294,6 +297,9 @@ async function ketteAufbauen(
     category: "Betrieb",
     author: "anna",
   });
+  // R-0278 (Nacharbeit 3): auch mit Einwilligung ist nur Geprüftes Antwortgrundlage. Gemessen wird
+  // hier die EINWILLIGUNG — das Objekt ist deshalb freigegeben, sonst erreichte es den Anbieter nie.
+  await koService.setValidationState(ko.id, { trust: 90, status: "validiert" });
 
   const reasoner = new Reasoner(provider);
   // JOB 3588: die GRUNDFREIGABE im Aufbau. V2-E1 („die Antwort kommt vom Anbieter und trägt seinen
@@ -323,9 +329,10 @@ async function ketteAufbauen(
   const app = Fastify();
   // BEN-Korrekturpflicht 2: BEIDE Routen an EINER App — der Consent-Weg, den das Panel ruft, und
   // der Ask-Weg. Runde 1 hatte nur den zweiten und rief den ersten am HTTP vorbei.
+  // R-0700: der Ask-Weg des Panels ist Klaras EIGENER Zugang (`/api/klara/sessions/{id}/execute`).
   app.register(klaraAiRoutes({ sessions: dienst }, guards));
   app.register(
-    askRoutes(
+    klaraAusfuehrungRoutes(
       {
         ask,
         ko: koService,
@@ -381,11 +388,11 @@ const zustimmen = (k: Kette) =>
     headers: k.bindung,
   });
 
-/** Genau der Weg, den das Word-Panel fährt (same-origin, `mode: "retrieval-only"`). */
+/** Genau der Weg, den das Word-Panel fährt (same-origin, R-0700: Klaras eigener Zugang). */
 const fragen = (k: Kette) =>
   k.app.inject({
     method: "POST",
-    url: "/api/ask",
+    url: `/api/klara/sessions/${k.sitzung}/execute`,
     headers: { ...k.bindung, "content-type": "application/json" },
     // R-0639 Runde 3 (Bens Befund B1): das Fenster meldet eine getippte Frage als `manual`.
     payload: { question: FRAGE, locale: "de", mode: "retrieval-only", questionSource: "manual" },
@@ -449,6 +456,46 @@ describe("JOB 3079 · V2 · die Einwilligung wirkt bis zum Anbieter", () => {
     expect(kasten.indexOf('t("s4ConsentSatz"')).toBeLessThan(kasten.indexOf('t("s4ConsentUmfang"'));
     expect(kasten).toContain('klaraS4KlassenListe(a.payloadClasses, t("s4KlassenUnd"))');
     expect(kasten).toContain('klassen: a.payloadClasses.join(", ")');
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // P05 (Ben, Nacharbeit 8) — URSACHENEINGRENZUNG zu V2-E1 („error" statt „answered").
+  // ----------------------------------------------------------------------------------------------
+  // Getrennt gemessen, was V2-E1 zusammen misst: (a) der SERVER über denselben Draht ohne Panel —
+  // Status, Rumpf, Quelle, Kennzeichnung, und ausdrücklich KEINE P05-Auslieferungssperre;
+  // (b) die SANDBOX des Falls: der ausgeschnittene `performAsk` ruft `askAbsaetzeLesen` (R-0310),
+  // das AUSSERHALB der drei ausgeschnittenen Blöcke steht. Ohne diese Funktion wirft der Erfolgszweig
+  // eine ReferenceError, und der Fangzweig von `performAsk` meldet `{ kind: "error" }` — genau der
+  // Zustand aus V2-E1, und nur bei einer 200-Antwort. V2-E1 selbst bleibt unverändert.
+  it("V2-E1u · Ursache: Server antwortet 200 mit Quelle; der Panel-Ausschnitt kennt `askAbsaetzeLesen` nicht", async () => {
+    const k = await ketteAufbauen();
+    expect((await zustimmen(k)).statusCode).toBe(200);
+
+    const res = await fragen(k);
+    expect(res.statusCode, `HTTP-Rumpf: ${res.body}`).toBe(200);
+    const rumpf = res.json() as {
+      error?: string;
+      result: { answered: boolean; answer: string; sources: string[]; aiGenerated?: unknown };
+    };
+    expect(rumpf.error).not.toBe("QUELLRECHTE_GEAENDERT");
+    expect(rumpf.result.answered).toBe(true);
+    expect(rumpf.result.answer).toContain(MODELLANTWORT);
+    expect(rumpf.result.sources).toContain(k.koId);
+    expect(rumpf.result.aiGenerated).toBeTruthy();
+
+    const ausgeschnitten = [
+      schnitt("// KW-KLARA-AI-MARK-START", "// KW-KLARA-AI-MARK-END"),
+      schnitt("// KW-KLARA-AI-NOTICE-START", "// KW-KLARA-AI-NOTICE-END"),
+      schnitt("// KW-KLARA-ASK-FETCH-START", "// KW-KLARA-ASK-FETCH-END"),
+    ].join("\n");
+    expect(ausgeschnitten).toContain("askAbsaetzeLesen(body, cited)");
+    expect(ausgeschnitten).not.toContain("function askAbsaetzeLesen");
+    expect(HTML).toContain("function askAbsaetzeLesen");
+
+    const ausgang = await panelAsk(k.app, k.bindung).fragen();
+    expect(ausgang.kind).toBe("error");
+    expect(String((ausgang as { detail?: unknown }).detail)).toContain("askAbsaetzeLesen");
+    await k.app.close();
   });
 
   // ----------------------------------------------------------------------------------------------

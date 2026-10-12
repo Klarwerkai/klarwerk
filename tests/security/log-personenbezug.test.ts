@@ -10,6 +10,7 @@ import {
   buildServices,
   senkeUeberWert,
 } from "../../services/app/src/build-app";
+import { MELDUNG_NICHT_GELISTET } from "../../services/app/src/log-positivliste";
 import { istPersonenFeld, sanitizeLogText } from "../../services/app/src/log-sanitize";
 
 // ================================================================================================
@@ -118,22 +119,28 @@ describe("R-0664 · Personenmuster in der Logsenke", () => {
     }
   });
 
-  it("am ECHTEN Logger: Personenfelder fallen in jeder Tiefe weg, Kennungen bleiben", async () => {
+  // Seit main die Positivliste der Logfelder trägt (R-0623, log-positivliste.ts), fallen ungelistete
+  // Felder wie `autor`/`nutzer` schon VOR dieser Senke weg, und ein ungelisteter Meldungstext wird
+  // zu `MELDUNG_NICHT_GELISTET`. Die Personenmuster der Senke wirken am echten Logger deshalb dort,
+  // wo die Liste freien Text zulässt: im Feld `fehler` (Regel `satz`).
+  it("am ECHTEN Logger: Personenfelder fehlen, Personenmuster im gelisteten Freitextfeld geschwärzt", async () => {
     const puffer = logPuffer();
     const app = buildApp(buildServices(), { log: { senke: puffer.senke, stufe: "info" } });
     app.log.warn(
       {
+        probe: "zustellung",
         autor: "Anna Meier",
         nutzer: { id: "u-4711", name: "Anna Meier", email: ADRESSE },
-        vorgang: "zustellung",
+        fehler: `Zustellung an ${ADRESSE} gescheitert — Name: Anna Meier`,
       },
       `Zustellung an ${ADRESSE} gescheitert — Name: Anna Meier`,
     );
-    const zeile = puffer.zeilen().find((z) => z.vorgang === "zustellung");
+    const zeile = puffer.zeilen().find((z) => z.probe === "zustellung");
     expect(zeile, "die Logzeile fehlt").toBeDefined();
     expect(Object.keys(zeile ?? {})).not.toContain("autor");
-    expect(zeile?.nutzer).toEqual({ id: "u-4711" });
-    expect(String(zeile?.msg)).toBe("Zustellung an [redacted] gescheitert — Name: [redacted]");
+    expect(Object.keys(zeile ?? {})).not.toContain("nutzer");
+    expect(zeile?.fehler).toBe("Zustellung an [redacted] gescheitert — Name: [redacted]");
+    expect(zeile?.msg).toBe(MELDUNG_NICHT_GELISTET);
     expect(puffer.roh()).not.toContain("Meier");
     expect(puffer.roh()).not.toContain(ADRESSE);
     await app.close();
@@ -231,7 +238,7 @@ describe("R-0664 · Personenmuster in der Logsenke", () => {
     expect(senkeUeberWert({ zeit }, {})).toEqual({ zeit: "2026-10-08T12:00:00.000Z" });
   });
 
-  it("am ECHTEN Logger: Klasseninstanz ersetzt, `err` und `req` laufen weiter durch ihre Serializer", async () => {
+  it("am ECHTEN Logger: Klasseninstanz erreicht die Zeile nicht, `err` und `req` laufen durch ihre Serializer", async () => {
     const puffer = logPuffer();
     const app = buildApp(buildServices(), { log: { senke: puffer.senke, stufe: "info" } });
     const fehler = new Error(`Zustellung an ${ADRESSE}`) as Error & { code?: string };
@@ -247,7 +254,9 @@ describe("R-0664 · Personenmuster in der Logsenke", () => {
     );
     const zeile = puffer.zeilen().find((z) => z.probe === "klasse");
     expect(zeile, "die Logzeile fehlt").toBeDefined();
-    expect(zeile?.kontakt).toBe(SENKE_NICHT_EINFACH);
+    // Ungelistet — die Positivliste nimmt das Feld vor der Senke heraus; die Senke selbst ersetzt
+    // eine Klasseninstanz durch SENKE_NICHT_EINFACH (Fall „Klasseninstanz: in jeder Tiefe …").
+    expect(Object.keys(zeile ?? {})).not.toContain("kontakt");
     // Der err-Serializer hat den Fehler bekommen — nicht die Senke, nicht der feste Wert.
     const err = zeile?.err as Record<string, unknown>;
     expect(err.type).toBe("Error");
@@ -394,16 +403,17 @@ describe("R-1140 · Nachprüfung: Senke und Stufenschalter tragen im Betriebsweg
     process.env.KLARWERK_PRUEF_TOKEN = "pruefwert-r1140-xyz";
     const puffer = logPuffer();
     const app = buildApp(buildServices(), { log: { senke: puffer.senke } });
-    app.log.warn(
-      { probe: "senke", detail: "Antwort mit pruefwert-r1140-xyz" },
-      "Aufruf mit Authorization: Bearer abcdefgh12345678 an https://svc:hunter2@host/api",
-    );
+    const geheim =
+      "Antwort mit pruefwert-r1140-xyz, Authorization: Bearer abcdefgh12345678 an https://svc:hunter2@host/api";
+    // `fehler` ist das gelistete Freitextfeld (Regel `satz`) — dort muss die Senke wirken.
+    app.log.warn({ probe: "senke", fehler: geheim }, geheim);
     const zeile = puffer.zeilen().find((z) => z.probe === "senke");
     expect(zeile).toBeDefined();
     expect(puffer.roh()).not.toContain("pruefwert-r1140-xyz");
     expect(puffer.roh()).not.toContain("abcdefgh12345678");
     expect(puffer.roh()).not.toContain("hunter2");
-    expect(String(zeile?.msg)).toContain("Bearer [redacted]");
+    expect(String(zeile?.fehler)).toContain("Bearer [redacted]");
+    expect(String(zeile?.fehler)).toContain("https://[redacted]@host/api");
     await app.close();
   });
 });

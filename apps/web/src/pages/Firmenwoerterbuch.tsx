@@ -22,6 +22,7 @@ import { useDirectory } from "../api/hooks";
 import { useRole } from "../app/RoleContext";
 import { ROLE_RANK } from "../app/navigation";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
+import { formatKoTimestamp } from "../lib/koDates";
 
 const SPRACHEN: readonly BegriffSprache[] = ["de", "en"];
 
@@ -186,7 +187,7 @@ function Fassungsverlauf({
           <p className="mb-1 text-[11.5px] text-muted-2">
             {t("begriffe.verlauf.fassung", {
               version: f.version,
-              zeit: new Date(f.geaendertAm).toLocaleString(i18n.language),
+              zeit: formatKoTimestamp(f.geaendertAm, i18n.language) ?? "—",
               wer: name(f.geaendertVon),
             })}
           </p>

@@ -74,7 +74,7 @@ describe("W4 · Mobile-Quellen zeigen KO-Titel statt UUID", () => {
     expect(refs[1]?.known).toBe(false);
   });
 
-  it("Mobile.tsx rendert den aufgelösten Titel (line-clamp + Tooltip), nicht die rohe ID", () => {
+  it("Mobile.tsx rendert den aufgelösten Titel (umbrechend + Tooltip), nicht die rohe ID", () => {
     const src = read("apps/web/src/pages/Mobile.tsx");
     // AUFTRAG-mega33 A2: die Auflösung passiert nicht mehr in der Seite, sondern EINMAL in der
     // gemeinsamen Ableitung (summarizeAnswer → effectiveAnswer → conflictAwareSourceRefs). Die
@@ -90,7 +90,10 @@ describe("W4 · Mobile-Quellen zeigen KO-Titel statt UUID", () => {
     expect(src).toContain("{s.sources.map((ref) => (");
     expect(src).toContain("{ref.label}");
     expect(src).toContain("title={ref.label}");
-    expect(src).toContain("line-clamp-1");
+    // Aufnahme 20260922 · antwort-quellenanzeige (R-1026): der Überlaufschutz ist der Umbruch, nicht
+    // mehr die Kappung auf eine Zeile — auf dem Telefon gibt es keinen Tooltip für den Rest.
+    expect(src).toContain("[overflow-wrap:anywhere]");
+    expect(src).not.toContain("line-clamp-1 max-w-[220px]");
     // Die alte rohe-ID-Darstellung ist weg.
     expect(src).not.toContain("{s.sources.map((id) => (");
   });

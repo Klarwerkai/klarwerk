@@ -22,12 +22,14 @@ import {
   PANEL_JS_VERWEIS,
   PANEL_MARKE_VERWEIS,
   PANEL_VOR_SCHNITT_BLOB,
+  PANEL_WV_VERWEIS,
   fuegePanelZusammen,
   gitBlobKennung,
   markeAbschnitt,
   panelQuelle,
   panelQuelleAus,
   panelTeile,
+  wortvergleichAbschnitt,
 } from "../support/panelquelle";
 import { bytes, tabelle, zeilen } from "./zerlegung";
 
@@ -82,6 +84,7 @@ describe("R-1611 · E — das zusammengefügte Fenster ist die Datei des Basisst
           zeile("taskpane.css (Stil)", teile.css),
           zeile("taskpane.js (Skript)", teile.js),
           zeile("marke.js (KW-MARKE)", teile.marke),
+          zeile("wortvergleich.js (KW-WORDVERGLEICH)", teile.wortvergleich),
           zeile("vorher: eine Datei", ganz),
         ],
       )}\n`,
@@ -98,8 +101,19 @@ describe("R-1611 · E — das zusammengefügte Fenster ist die Datei des Basisst
     const markeVerweis = bytes(`\n  ${PANEL_MARKE_VERWEIS}`);
     const markeKopf = bytes(teile.marke) - bytes(markeAbschnitt(teile.marke));
     expect(markeKopf).toBeGreaterThan(0);
-    expect(bytes(teile.html) + bytes(teile.css) + bytes(teile.js) + bytes(teile.marke)).toBe(
-      bytes(ganz) - tags + verweise + markeVerweis + markeKopf,
+    // R-0336/R-0708: dazu die fünfte Datei. Ihr Verweis steht in der Zeile von `taskpane.js` (kein
+    // Zeilenumbruch, keine Einrückung), ihren Kopf bringt sie in sich selbst mit — sonst nichts.
+    const wvVerweis = bytes(PANEL_WV_VERWEIS);
+    const wvKopf = bytes(teile.wortvergleich) - bytes(wortvergleichAbschnitt(teile.wortvergleich));
+    expect(wvKopf).toBeGreaterThan(0);
+    const dateien =
+      bytes(teile.html) +
+      bytes(teile.css) +
+      bytes(teile.js) +
+      bytes(teile.marke) +
+      bytes(teile.wortvergleich);
+    expect(dateien).toBe(
+      bytes(ganz) - tags + verweise + markeVerweis + markeKopf + wvVerweis + wvKopf,
     );
   });
 });
