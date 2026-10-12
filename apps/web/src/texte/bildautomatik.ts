@@ -41,6 +41,22 @@ export default {
     "bildautomatik.unsicher":
       "Unsichere Stellen: {{n}}. [?…] ist unsicher gelesen, [unleserlich] war nicht lesbar.",
     "bildautomatik.wiederverwendet": "unverändert — vorhandenes Ergebnis",
+    "bildautomatik.fundstelle.datei": "{{name}}",
+    "bildautomatik.quelle.rumpf": "diesem Text",
+    "bildautomatik.quelle.anhaenge": "den Bildanhängen",
+    "bildautomatik.hinweis.bildinhaltFehlt":
+      "Bildinhalt nicht analysiert bei {{anzahl}} Bild(ern).",
+    "bildautomatik.tabelle": "Erkannte Tabelle",
+    "bildautomatik.bildinhalt.titel": "Bildinhalt:",
+    "bildautomatik.bildinhalt.nichtZulaessig":
+      "Bildinhalt nicht analysiert: Die Einstufung erlaubt für dieses Bild kein Modell.",
+    "bildautomatik.bildinhalt.nichtVerfuegbar":
+      "Bildinhalt nicht analysiert: Kein Modell für Bildbeschreibungen verfügbar.",
+    "bildautomatik.bildinhalt.fehlgeschlagen":
+      "Bildinhalt nicht analysiert: Die Bildbeschreibung ist fehlgeschlagen.",
+    "bildautomatik.bildinhalt.nichtAngebunden":
+      "Bildinhalt nicht analysiert: Diese Fläche hat keinen Weg zur Bildbeschreibung.",
+    "bildautomatik.bildinhalt.nichtAnalysiert": "Bildinhalt nicht analysiert.",
   },
   en: {
     "bildautomatik.titel": "Images read automatically",
@@ -74,6 +90,21 @@ export default {
     "bildautomatik.unsicher":
       "Uncertain passages: {{n}}. [?…] was read with uncertainty, [unleserlich] was illegible.",
     "bildautomatik.wiederverwendet": "unchanged — existing result",
+    "bildautomatik.fundstelle.datei": "{{name}}",
+    "bildautomatik.quelle.rumpf": "this text",
+    "bildautomatik.quelle.anhaenge": "the image attachments",
+    "bildautomatik.hinweis.bildinhaltFehlt": "Image content not analysed for {{anzahl}} image(s).",
+    "bildautomatik.tabelle": "Recognised table",
+    "bildautomatik.bildinhalt.titel": "Image content:",
+    "bildautomatik.bildinhalt.nichtZulaessig":
+      "Image content not analysed: the classification does not allow a model for this image.",
+    "bildautomatik.bildinhalt.nichtVerfuegbar":
+      "Image content not analysed: no model for image descriptions is available.",
+    "bildautomatik.bildinhalt.fehlgeschlagen":
+      "Image content not analysed: the image description failed.",
+    "bildautomatik.bildinhalt.nichtAngebunden":
+      "Image content not analysed: this area has no route to image descriptions.",
+    "bildautomatik.bildinhalt.nichtAnalysiert": "Image content not analysed.",
   },
   nl: {
     "bildautomatik.titel": "Afbeeldingen automatisch gelezen",
@@ -110,5 +141,21 @@ export default {
     "bildautomatik.unsicher":
       "Onzekere plaatsen: {{n}}. [?…] is onzeker gelezen, [unleserlich] was onleesbaar.",
     "bildautomatik.wiederverwendet": "ongewijzigd — bestaand resultaat",
+    "bildautomatik.fundstelle.datei": "{{name}}",
+    "bildautomatik.quelle.rumpf": "deze tekst",
+    "bildautomatik.quelle.anhaenge": "de afbeeldingsbijlagen",
+    "bildautomatik.hinweis.bildinhaltFehlt":
+      "Beeldinhoud niet geanalyseerd voor {{anzahl}} afbeelding(en).",
+    "bildautomatik.tabelle": "Herkende tabel",
+    "bildautomatik.bildinhalt.titel": "Beeldinhoud:",
+    "bildautomatik.bildinhalt.nichtZulaessig":
+      "Beeldinhoud niet geanalyseerd: de classificatie staat voor deze afbeelding geen model toe.",
+    "bildautomatik.bildinhalt.nichtVerfuegbar":
+      "Beeldinhoud niet geanalyseerd: geen model voor beeldbeschrijvingen beschikbaar.",
+    "bildautomatik.bildinhalt.fehlgeschlagen":
+      "Beeldinhoud niet geanalyseerd: de beeldbeschrijving is mislukt.",
+    "bildautomatik.bildinhalt.nichtAngebunden":
+      "Beeldinhoud niet geanalyseerd: dit onderdeel heeft geen weg naar beeldbeschrijvingen.",
+    "bildautomatik.bildinhalt.nichtAnalysiert": "Beeldinhoud niet geanalyseerd.",
   },
 } satisfies Textmodul;

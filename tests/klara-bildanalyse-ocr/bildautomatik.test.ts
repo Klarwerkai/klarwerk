@@ -10,156 +10,85 @@
 // Text zurück. So ist nachprüfbar, dass JEDES Bild SEINEN Text bekommt — die Genauigkeit der echten
 // Engine misst `tests-smoke/klara-bildautomatik-browser.spec.ts` im Browser.
 import { describe, expect, it, vi } from "vitest";
-import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from "../../apps/web/node_modules/fflate";
 import {
   BILD_AUTOMATIK_VOREINSTELLUNG,
+  type BildBeschreiber,
   type BildQuelleEingang,
   type QuellenBefund,
+  bildBeschreiberAus,
   bildVorkommenAusRumpf,
   createBildAnalyse,
   docxBildEingang,
   einzelbildEingang,
   kennzeichneUnsicheres,
   pptxBildEingang,
+  rumpfBildEingang,
+  tabelleAusWoertern,
 } from "../../apps/web/src/lib/bildAutomatik";
-import { MAX_INLINE_BODY_HTML_BYTES } from "../../apps/web/src/lib/docx";
-import type { OcrResult } from "../../apps/web/src/lib/ocr";
-import { budgetedPptxUnzip, extractPptxRich } from "../../apps/web/src/lib/pptx";
-
-// ------------------------------------------------------------------------------------------------
-// Bilder mit Marke und eine Engine, die die Marke liest
-// ------------------------------------------------------------------------------------------------
-
-const PNG_SIGNATUR = [137, 80, 78, 71, 13, 10, 26, 10];
-
-/** Bildbytes mit einer Marke am Ende — verschiedene Marke, verschiedener Inhalt. */
-function bildMit(marke: string): Uint8Array {
-  const marken = new TextEncoder().encode(`#${marke}#`);
-  return Uint8Array.from([...PNG_SIGNATUR, 0, 0, 0, 13, ...marken]);
-}
-
-const TEXT_JE_MARKE: Record<string, string> = {
-  A: "PRUEFKARTE 47",
-  B: "VENTIL 83 SCHLIESSEN",
-  B2: "VENTIL 84 OEFFNEN",
-  C: "LAGER 29",
-  E: "AUSHANG 61",
-};
-
-function markeAus(src: string): string | null {
-  const b64 = src.slice(src.indexOf(",") + 1);
-  const roh = Buffer.from(b64, "base64").toString("latin1");
-  return /#([A-Z0-9]+)#$/.exec(roh)?.[1] ?? null;
-}
-
-function markenEngine() {
-  return vi.fn(async (src: string): Promise<OcrResult> => {
-    const marke = markeAus(src);
-    const text = marke ? TEXT_JE_MARKE[marke] : undefined;
-    return text ? { status: "success", text } : { status: "success", text: "" };
-  });
-}
-
-const dataUrl = (bytes: Uint8Array, mime = "image/png"): string =>
-  `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`;
-
-// ------------------------------------------------------------------------------------------------
-// Ein Deck: Folie 1 Text + Bild A; Folie 2 Text + Bild B + Bild C + ein BMP (wird nicht übernommen)
-// ------------------------------------------------------------------------------------------------
-
-const URI_P = "http://schemas.openxmlformats.org/presentationml/2006/main";
-const URI_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
-const URI_R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const URI_PKG_R = "http://schemas.openxmlformats.org/package/2006/relationships";
-const KOPF = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
-
-function folie(titel: string, absatz: string, rids: readonly string[]): string {
-  const sp = (ph: string, text: string) =>
-    `<p:sp><p:nvSpPr><p:nvPr>${ph}</p:nvPr></p:nvSpPr><p:txBody><a:p><a:r><a:t>${text}</a:t></a:r></a:p></p:txBody></p:sp>`;
-  const bilder = rids
-    .map((rid) => `<p:pic><p:blipFill><a:blip r:embed="${rid}"/></p:blipFill></p:pic>`)
-    .join("");
-  return `${KOPF}<p:sld xmlns:p="${URI_P}" xmlns:a="${URI_A}" xmlns:r="${URI_R}"><p:cSld><p:spTree>${sp('<p:ph type="title"/>', titel)}${sp("", absatz)}${bilder}</p:spTree></p:cSld></p:sld>`;
-}
-
-function rels(ziele: Record<string, string>): string {
-  const r = Object.entries(ziele)
-    .map(
-      ([rid, datei]) =>
-        `<Relationship Id="${rid}" Type="${URI_R}/image" Target="../media/${datei}"/>`,
-    )
-    .join("");
-  return `${KOPF}<Relationships xmlns="${URI_PKG_R}">${r}</Relationships>`;
-}
-
-const FOLIENTEXT = ["Wartungsplan", "Siehe Bild", "Anlage", "Zwei Bilder"];
-
-function deck(bildB: Uint8Array = bildMit("B")): Uint8Array {
-  return zipSync({
-    "[Content_Types].xml": enc(
-      `${KOPF}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/></Types>`,
-    ),
-    "_rels/.rels": enc(
-      `${KOPF}<Relationships xmlns="${URI_PKG_R}"><Relationship Id="rId1" Type="${URI_R}/officeDocument" Target="ppt/presentation.xml"/></Relationships>`,
-    ),
-    "ppt/presentation.xml": enc(
-      `${KOPF}<p:presentation xmlns:p="${URI_P}" xmlns:a="${URI_A}" xmlns:r="${URI_R}"><p:sldIdLst><p:sldId id="256" r:id="rId1"/><p:sldId id="257" r:id="rId2"/></p:sldIdLst></p:presentation>`,
-    ),
-    "ppt/_rels/presentation.xml.rels": enc(
-      `${KOPF}<Relationships xmlns="${URI_PKG_R}"><Relationship Id="rId1" Type="${URI_R}/slide" Target="slides/slide1.xml"/><Relationship Id="rId2" Type="${URI_R}/slide" Target="slides/slide2.xml"/></Relationships>`,
-    ),
-    "ppt/slides/slide1.xml": enc(folie("Wartungsplan", "Siehe Bild", ["rId9"])),
-    "ppt/slides/slide2.xml": enc(folie("Anlage", "Zwei Bilder", ["rId9", "rId10", "rId11"])),
-    "ppt/slides/_rels/slide1.xml.rels": enc(rels({ rId9: "a.png" })),
-    "ppt/slides/_rels/slide2.xml.rels": enc(
-      rels({ rId9: "b.png", rId10: "c.png", rId11: "d.bmp" }),
-    ),
-    "ppt/media/a.png": bildMit("A"),
-    "ppt/media/b.png": bildB,
-    "ppt/media/c.png": bildMit("C"),
-    "ppt/media/d.bmp": Uint8Array.from([0x42, 0x4d, 1, 2, 3, 4]),
-  });
-}
-
-async function lesePptx(bytes: Uint8Array) {
-  const kopie = new Uint8Array(bytes);
-  return extractPptxRich(kopie.buffer as ArrayBuffer, {
-    unzip: budgetedPptxUnzip({ Unzip, UnzipInflate, UnzipPassThrough }),
-    budgetBytes: MAX_INLINE_BODY_HTML_BYTES,
-    imageCaptionPlaceholder: "",
-    imageRunToken: "ocr02",
-  });
-}
+import type { OcrResult, OcrWort } from "../../apps/web/src/lib/ocr";
+import {
+  FOLIENTEXT,
+  TEXT_JE_MARKE,
+  bildMit,
+  dataUrl,
+  deck,
+  lesePptx,
+  markeAus,
+  markenEngine,
+} from "./deck";
 
 async function pptxEingang(bytes: Uint8Array = deck()): Promise<BildQuelleEingang> {
   const pptx = await lesePptx(bytes);
   return pptxBildEingang("wartung.pptx", pptx.html, pptx);
 }
 
+/** Ohne Weg zur Bildbeschreibung: der Bildinhalt heißt „nicht angebunden". */
 const ohneFortschritt = { automatik: true } as const;
+
+/** Ein Beschreibungsweg (W02), der zu jeder Marke einen Bildinhalt liefert. */
+function beschreiberMitInhalt() {
+  return vi.fn<BildBeschreiber>(async (src) => ({
+    status: "beschrieben",
+    text: `Foto eines Aushangs (${markeAus(src) ?? "?"})`,
+  }));
+}
 
 // ================================================================================================
 // K1 · Ein neu bereitgestelltes Bild wird bei aktiver Automatik ohne separaten Auftrag verarbeitet.
 // ================================================================================================
 describe("K1 · Einzelbild: Automatik an liest, Automatik aus liest nicht", () => {
-  it("an: der Eingang allein löst die Erkennung aus — einmal, mit Fundstelle", async () => {
+  it("an: der Eingang allein löst Erkennung UND Bildinhalt aus — einmal, mit Fundstelle", async () => {
     const erkenne = markenEngine();
+    const beschreibe = beschreiberMitInhalt();
     const analyse = createBildAnalyse({ erkenne });
     const befund = await analyse.analysiereQuelle(
       einzelbildEingang("aushang.png", dataUrl(bildMit("E"))),
-      ohneFortschritt,
+      { automatik: true, beschreibe },
     );
     expect(erkenne).toHaveBeenCalledTimes(1);
+    expect(beschreibe).toHaveBeenCalledTimes(1);
     expect(befund.status).toBe("vollstaendig");
     expect(befund.befunde).toHaveLength(1);
     expect(befund.befunde[0]).toMatchObject({
       status: "gelesen",
       text: "AUSHANG 61",
+      bildinhalt: { status: "beschrieben", text: "Foto eines Aushangs (E)" },
       fundstelle: { quelle: "aushang.png", art: "bild", bild: 1 },
       wiederverwendet: false,
     });
     expect(befund.befunde[0]?.inhaltskennung).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  it("an, aber ohne Weg zur Bildbeschreibung: Text gelesen, Quelle nur „teilweise“", async () => {
+    const befund = await createBildAnalyse({ erkenne: markenEngine() }).analysiereQuelle(
+      einzelbildEingang("aushang.png", dataUrl(bildMit("E"))),
+      ohneFortschritt,
+    );
+    expect(befund.befunde[0]).toMatchObject({
+      status: "gelesen",
+      bildinhalt: { status: "nicht-angebunden" },
+    });
+    expect(befund.status).toBe("teilweise");
   });
 
   it("aus: nichts wird erkannt, und es steht nicht als gelesen da", async () => {
@@ -485,7 +414,11 @@ describe("K5 · erkennbare Grenzen", () => {
     const fortschritt: QuellenBefund[] = [];
     const ende = await createBildAnalyse({ erkenne: markenEngine() }).analysiereQuelle(
       einzelbildEingang("x.png", dataUrl(bildMit("E"))),
-      { automatik: true, onFortschritt: (s) => fortschritt.push(s) },
+      {
+        automatik: true,
+        beschreibe: beschreiberMitInhalt(),
+        onFortschritt: (s) => fortschritt.push(s),
+      },
     );
     expect(fortschritt.length).toBeGreaterThanOrEqual(2);
     expect(fortschritt[0]?.status).toBe("laeuft");
@@ -502,5 +435,235 @@ describe("K5 · erkennbare Grenzen", () => {
     await createBildAnalyse({ erkenne: markenEngine() }).analysiereQuelle(eingang, ohneFortschritt);
     expect(Buffer.from(bytes).toString("base64")).toBe(vorher);
     expect(eingang.vorkommen.map((v) => v.src)).toEqual(quellen);
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 3 (Bens Befund 2) · Wesentlicher Bildinhalt über W02 — oder der konkrete Grund
+// ================================================================================================
+describe("K2/K5 · Bildinhalt über den vorhandenen Beschreibungsweg (W02)", () => {
+  it("PowerPoint: jedes eingebettete Bild bekommt Text UND Bildinhalt, je Bild der eigene", async () => {
+    const beschreibe = beschreiberMitInhalt();
+    const befund = await createBildAnalyse({ erkenne: markenEngine() }).analysiereQuelle(
+      await pptxEingang(),
+      { automatik: true, beschreibe },
+    );
+    expect(befund.befunde.map((b) => [b.fundstelle.folie, b.text, b.bildinhalt.text])).toEqual([
+      [1, TEXT_JE_MARKE.A, "Foto eines Aushangs (A)"],
+      [2, TEXT_JE_MARKE.B, "Foto eines Aushangs (B)"],
+      [2, TEXT_JE_MARKE.C, "Foto eines Aushangs (C)"],
+    ]);
+    // PowerPoint bleibt wegen L16 und des verworfenen BMP „teilweise“ — auch mit Bildinhalt.
+    expect(befund.status).toBe("teilweise");
+  });
+
+  it("die Einstufung verbietet das Modell → „nicht zulässig“, sichtbar als Teilverarbeitung", async () => {
+    const describe = vi.fn(async () => ({
+      text: null,
+      demo: true,
+      fallbackReason: "confidential" as const,
+    }));
+    const befund = await createBildAnalyse({ erkenne: markenEngine() }).analysiereQuelle(
+      einzelbildEingang("x.png", dataUrl(bildMit("E"))),
+      { automatik: true, beschreibe: bildBeschreiberAus({ available: true, describe }) },
+    );
+    expect(describe).toHaveBeenCalledTimes(1);
+    expect(befund.befunde[0]).toMatchObject({
+      status: "gelesen",
+      text: "AUSHANG 61",
+      bildinhalt: { status: "nicht-zulaessig", grund: "confidential" },
+    });
+    expect(befund.status).toBe("teilweise");
+  });
+
+  it("kein Modell verfügbar → es wird gar nicht erst angefragt, „nicht verfügbar“", async () => {
+    const describe = vi.fn(async () => ({ text: "egal", demo: false }));
+    const befund = await createBildAnalyse({ erkenne: markenEngine() }).analysiereQuelle(
+      einzelbildEingang("x.png", dataUrl(bildMit("E"))),
+      { automatik: true, beschreibe: bildBeschreiberAus({ available: false, describe }) },
+    );
+    expect(describe).not.toHaveBeenCalled();
+    expect(befund.befunde[0]?.bildinhalt.status).toBe("nicht-verfuegbar");
+    expect(befund.status).toBe("teilweise");
+  });
+
+  it("die Vertraulichkeitssperre des Servers (409) ist „nicht zulässig“, ein Fehler „fehlgeschlagen“", async () => {
+    const gesperrt = bildBeschreiberAus({
+      available: true,
+      describe: async () => {
+        throw Object.assign(new Error("gesperrt"), { status: 409 });
+      },
+    });
+    const kaputt = bildBeschreiberAus({
+      available: true,
+      describe: async () => ({ text: null, demo: true, fallbackReason: "model-error" as const }),
+    });
+    expect((await gesperrt("data:image/png;base64,AA==")).status).toBe("nicht-zulaessig");
+    expect((await kaputt("data:image/png;base64,AA==")).status).toBe("fehlgeschlagen");
+  });
+
+  it("Text nicht lesbar, Bildinhalt beschrieben → verwertbar, aber „teilweise“", async () => {
+    const analyse = createBildAnalyse({
+      erkenne: async () => ({ status: "failed", text: "", error: "worker-crash" }),
+    });
+    const eingang = einzelbildEingang("x.png", dataUrl(bildMit("E")));
+    const befund = await analyse.analysiereQuelle(eingang, {
+      automatik: true,
+      beschreibe: beschreiberMitInhalt(),
+    });
+    expect(befund.befunde[0]).toMatchObject({
+      status: "fehlgeschlagen",
+      bildinhalt: { status: "beschrieben" },
+    });
+    expect(befund.status).toBe("teilweise");
+  });
+
+  it("unverändertes Bild: auch der Bildinhalt wird nicht erneut angefragt", async () => {
+    const beschreibe = beschreiberMitInhalt();
+    const analyse = createBildAnalyse({ erkenne: markenEngine() });
+    const eingang = einzelbildEingang("x.png", dataUrl(bildMit("E")));
+    await analyse.analysiereQuelle(eingang, { automatik: true, beschreibe });
+    const zweit = await analyse.analysiereQuelle(eingang, { automatik: true, beschreibe });
+    expect(beschreibe).toHaveBeenCalledTimes(1);
+    expect(analyse.anzahlBeschreibungen()).toBe(1);
+    expect(zweit.befunde[0]?.bildinhalt.status).toBe("beschrieben");
+  });
+
+  it("„nicht zulässig“ wird nicht gemerkt — nach einer Umstufung wird neu gefragt", async () => {
+    const analyse = createBildAnalyse({ erkenne: markenEngine() });
+    const eingang = einzelbildEingang("x.png", dataUrl(bildMit("E")));
+    const gesperrt = vi.fn<BildBeschreiber>(async () => ({
+      status: "nicht-zulaessig",
+      text: "",
+      grund: "confidential",
+    }));
+    await analyse.analysiereQuelle(eingang, { automatik: true, beschreibe: gesperrt });
+    const frei = beschreiberMitInhalt();
+    const danach = await analyse.analysiereQuelle(eingang, { automatik: true, beschreibe: frei });
+    expect(frei).toHaveBeenCalledTimes(1);
+    expect(danach.befunde[0]?.bildinhalt.status).toBe("beschrieben");
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 3 (Bens Befund 2) · Tabellenstruktur — nur, wenn sie zuverlässig bestimmbar ist
+// ================================================================================================
+function wort(text: string, x0: number, y0: number, sicherheit = 95): OcrWort {
+  const bbox = { x0, y0, x1: x0 + text.length * 18, y1: y0 + 30 };
+  return { text, confidence: sicherheit, bbox };
+}
+
+describe("K3/K5 · Tabellen aus den Wortrahmen", () => {
+  it("drei Zeilen, drei ausgerichtete Spalten → Tabelle in Lesereihenfolge", () => {
+    const woerter = [
+      wort("Teil", 20, 10),
+      wort("Menge", 300, 10),
+      wort("Preis", 600, 10),
+      wort("Ventil", 20, 60),
+      wort("4", 300, 60),
+      wort("12,50", 600, 60),
+      wort("Dichtung", 20, 110),
+      wort("10", 300, 110),
+      wort("0,80", 600, 110),
+    ];
+    expect(tabelleAusWoertern(woerter)).toEqual([
+      ["Teil", "Menge", "Preis"],
+      ["Ventil", "4", "12,50"],
+      ["Dichtung", "10", "0,80"],
+    ]);
+  });
+
+  it("Fließtext ohne Spaltenstruktur → keine Tabelle (kein Raten)", () => {
+    const woerter = [
+      wort("Vor", 20, 10),
+      wort("der", 90, 10),
+      wort("Wartung", 160, 10),
+      wort("Ventil", 20, 60),
+      wort("schließen.", 140, 60),
+    ];
+    expect(tabelleAusWoertern(woerter)).toBeNull();
+  });
+
+  it("unsichere Zellen bleiben gekennzeichnet", () => {
+    const woerter = [
+      wort("Teil", 20, 10),
+      wort("Menge", 300, 10),
+      wort("Ventil", 20, 60),
+      wort("4", 300, 60, 40),
+    ];
+    expect(tabelleAusWoertern(woerter)).toEqual([
+      ["Teil", "Menge"],
+      ["Ventil", "[?4]"],
+    ]);
+  });
+
+  it("die Tabelle kommt im Befund an", async () => {
+    const erkenne = async (): Promise<OcrResult> => ({
+      status: "success",
+      text: "Teil Menge\nVentil 4",
+      woerter: [
+        wort("Teil", 20, 10),
+        wort("Menge", 300, 10),
+        wort("Ventil", 20, 60),
+        wort("4", 300, 60),
+      ],
+    });
+    const befund = await createBildAnalyse({ erkenne }).analysiereQuelle(
+      einzelbildEingang("x.png", dataUrl(bildMit("E"))),
+      ohneFortschritt,
+    );
+    expect(befund.befunde[0]?.tabelle).toEqual([
+      ["Teil", "Menge"],
+      ["Ventil", "4"],
+    ]);
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 3 (Bens Befund 1) · Weitere Eingänge: Bilder im Text, Objektspeicher, manueller Weg
+// ================================================================================================
+describe("K1/K3/K5 · Bilder im Text (Editor) und aus dem Objektspeicher", () => {
+  it("Rumpf: Bilder in Dokumentreihenfolge, Objektspeicher-Bild über den Lader, fremdes ohne Zugriff", async () => {
+    const html = [
+      `<p>Einleitung</p><figure><img data-image-id="kw-fig-1" src="${dataUrl(bildMit("A"))}"></figure>`,
+      '<p>Gespeichert</p><figure><img data-image-id="kw-fig-2" src="/api/objects/obj-7/raw"></figure>',
+      '<figure><img data-image-id="kw-fig-3" src="https://example.invalid/x.png"></figure>',
+    ].join("");
+    const ladeBild = vi.fn(async (src: string) =>
+      src === "/api/objects/obj-7/raw" ? dataUrl(bildMit("C")) : null,
+    );
+    const befund = await createBildAnalyse({ erkenne: markenEngine(), ladeBild }).analysiereQuelle(
+      rumpfBildEingang("diesem Text", html),
+      ohneFortschritt,
+    );
+    const ist = befund.befunde.map((b) => [
+      b.fundstelle.bild,
+      b.fundstelle.imageId,
+      b.status,
+      b.text,
+    ]);
+    expect(ist).toEqual([
+      [1, "kw-fig-1", "gelesen", TEXT_JE_MARKE.A],
+      [2, "kw-fig-2", "gelesen", TEXT_JE_MARKE.C],
+      [3, "kw-fig-3", "kein-zugriff", ""],
+    ]);
+    expect(ladeBild).toHaveBeenCalledTimes(2);
+    expect(befund.status).toBe("teilweise");
+  });
+
+  it("ausdrücklicher Auftrag (`neu`) erkennt dasselbe Bild noch einmal", async () => {
+    const erkenne = markenEngine();
+    const analyse = createBildAnalyse({ erkenne });
+    const v = einzelbildEingang("x.png", dataUrl(bildMit("E"))).vorkommen[0];
+    if (!v) {
+      throw new Error("kein Vorkommen");
+    }
+    await analyse.befundFuerBild(v);
+    const wieder = await analyse.befundFuerBild(v);
+    expect(erkenne).toHaveBeenCalledTimes(1);
+    expect(wieder.wiederverwendet).toBe(true);
+    const neu = await analyse.befundFuerBild(v, { neu: true });
+    expect(erkenne).toHaveBeenCalledTimes(2);
+    expect(neu.wiederverwendet).toBe(false);
   });
 });

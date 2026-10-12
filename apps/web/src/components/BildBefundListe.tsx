@@ -1,12 +1,14 @@
 // OCR-02 · Der Befund des automatischen Bildlesens einer Quelle — sichtbar, mit Fundstelle je Bild
 // und ehrlichem Gesamtstatus. Laufende, teilweise und fehlgeschlagene Analysen erscheinen nie als
-// „vollständig gelesen" (Logik in `lib/bildAutomatik.ts`, `quellenStatus`).
+// „vollständig gelesen" (Logik in `lib/bildAutomatik.ts`, `quellenStatus`). Je Bild stehen Text,
+// erkannte Tabelle und Bildinhalt (W02) — oder der konkrete Grund, warum etwas fehlt.
 import { useTranslation } from "react-i18next";
 import {
   BILD_HOECHSTZAHL_JE_QUELLE,
   type BildBefund,
   type BildBefundStatus,
   type BildFundstelle,
+  type BildinhaltStatus,
   type QuellenBefund,
   type QuellenStatus,
 } from "../lib/bildAutomatik";
@@ -32,14 +34,26 @@ const QUELLEN_SCHLUESSEL: Record<Exclude<QuellenStatus, "ohne-bilder">, string> 
   aus: "bildautomatik.quelle.aus",
 };
 
+/** Warum der Bildinhalt fehlt — je Zustand ein eigener Satz. */
+const BILDINHALT_FEHLT: Record<Exclude<BildinhaltStatus, "beschrieben">, string> = {
+  "nicht-zulaessig": "bildautomatik.bildinhalt.nichtZulaessig",
+  "nicht-verfuegbar": "bildautomatik.bildinhalt.nichtVerfuegbar",
+  fehlgeschlagen: "bildautomatik.bildinhalt.fehlgeschlagen",
+  "nicht-angebunden": "bildautomatik.bildinhalt.nichtAngebunden",
+  "nicht-analysiert": "bildautomatik.bildinhalt.nichtAnalysiert",
+};
+
 export function bildStatusSchluessel(status: BildBefundStatus): string {
   return STATUS_SCHLUESSEL[status];
 }
 
-/** Schlüssel und Werte der sichtbaren Fundstelle („Folie 2, Bild 1"). */
-export function fundstelleBaustein(f: BildFundstelle): {
+/** Schlüssel und Werte der sichtbaren Fundstelle („Folie 2, Bild 1", bei Bildanhängen der Name). */
+export function fundstelleBaustein(
+  f: BildFundstelle,
+  quelle?: string,
+): {
   key: string;
-  params: Record<string, number>;
+  params: Record<string, number | string>;
 } {
   if (f.folie !== undefined && f.folienansicht) {
     return { key: "bildautomatik.fundstelle.folienansicht", params: { folie: f.folie } };
@@ -50,11 +64,43 @@ export function fundstelleBaustein(f: BildFundstelle): {
       params: { folie: f.folie, bild: f.bildAufFolie ?? 1 },
     };
   }
+  if (f.art === "bild" && quelle !== undefined && f.quelle !== quelle) {
+    return { key: "bildautomatik.fundstelle.datei", params: { name: f.quelle } };
+  }
   return { key: "bildautomatik.fundstelle.bild", params: { bild: f.bild } };
+}
+
+interface Zelle {
+  nr: string;
+  text: string;
+}
+
+interface TabellenZeile {
+  nr: string;
+  zellen: Zelle[];
+}
+
+/** Zeilen und Zellen einer erkannten Tabelle mit ihrer Position als Kennung (sie haben keine andere). */
+function nummeriert(tabelle: string[][]): TabellenZeile[] {
+  const zeilen: TabellenZeile[] = [];
+  for (let z = 0; z < tabelle.length; z += 1) {
+    const zellen: Zelle[] = [];
+    for (let s = 0; s < (tabelle[z]?.length ?? 0); s += 1) {
+      zellen.push({ nr: `s${s}`, text: tabelle[z]?.[s] ?? "" });
+    }
+    zeilen.push({ nr: `z${z}`, zellen });
+  }
+  return zeilen;
 }
 
 function istFertig(b: BildBefund): boolean {
   return b.status === "gelesen" || b.status === "kein-text";
+}
+
+/** Abgeschlossen, aber ohne beschriebenen Bildinhalt. */
+function ohneBildinhalt(b: BildBefund): boolean {
+  const laeuft = b.status === "laeuft" || b.status === "wartet";
+  return !laeuft && b.bildinhalt.status !== "beschrieben";
 }
 
 /** `lauf` zählt die Eingänge dieser Fläche — ein neuer Eingang derselben Datei ist ein neuer Lauf. */
@@ -66,6 +112,7 @@ export function BildBefundListe({ befund, lauf }: { befund: QuellenBefund; lauf?
   const fertig = befund.befunde.filter(istFertig).length;
   const verloren = befund.nichtGelesen.reduce((n, x) => n + x.anzahl, 0);
   const gesamt = befund.befunde.length + verloren;
+  const ohneInhalt = befund.befunde.filter(ohneBildinhalt).length;
   return (
     <section
       data-testid="bild-befunde"
@@ -81,7 +128,7 @@ export function BildBefundListe({ befund, lauf }: { befund: QuellenBefund; lauf?
       <output aria-live="polite" className="mt-1 block font-semibold text-text">
         {t(QUELLEN_SCHLUESSEL[befund.status], { name: befund.quelle, fertig, gesamt })}
       </output>
-      {befund.nichtGelesen.length > 0 || befund.hinweise.length > 0 ? (
+      {befund.nichtGelesen.length > 0 || befund.hinweise.length > 0 || ohneInhalt > 0 ? (
         <ul className="mt-1 list-disc pl-4 text-muted">
           {befund.nichtGelesen.map((x) => (
             <li key={`verloren-${x.folie ?? "ohne"}`} data-testid="bild-befund-verloren">
@@ -100,39 +147,72 @@ export function BildBefundListe({ befund, lauf }: { befund: QuellenBefund; lauf?
                 : t("bildautomatik.hinweis.grenze", { max: BILD_HOECHSTZAHL_JE_QUELLE })}
             </li>
           ))}
+          {ohneInhalt > 0 ? (
+            <li data-testid="bild-befund-hinweis">
+              {t("bildautomatik.hinweis.bildinhaltFehlt", { anzahl: ohneInhalt })}
+            </li>
+          ) : null}
         </ul>
       ) : null}
       <ol className="mt-2 space-y-1.5">
-        {befund.befunde.map((b) => (
-          <li
-            key={`${b.fundstelle.bild}-${b.fundstelle.imageId ?? ""}`}
-            data-testid="bild-befund"
-            data-status={b.status}
-            data-folie={b.fundstelle.folie ?? ""}
-          >
-            <span className="font-semibold text-text">
-              {t(fundstelleBaustein(b.fundstelle).key, fundstelleBaustein(b.fundstelle).params)}
-            </span>
-            {" · "}
-            <span className="text-muted">{t(STATUS_SCHLUESSEL[b.status])}</span>
-            {b.wiederverwendet ? (
-              <span className="text-muted-2"> · {t("bildautomatik.wiederverwendet")}</span>
-            ) : null}
-            {b.textGekennzeichnet ? (
-              <pre
-                data-testid="bild-befund-text"
-                className="mt-0.5 whitespace-pre-wrap break-words font-sans text-text"
-              >
-                {b.textGekennzeichnet}
-              </pre>
-            ) : null}
-            {b.unsicher.length > 0 ? (
-              <p className="text-trust-warn-text">
-                {t("bildautomatik.unsicher", { n: b.unsicher.length })}
-              </p>
-            ) : null}
-          </li>
-        ))}
+        {befund.befunde.map((b) => {
+          const ort = fundstelleBaustein(b.fundstelle, befund.quelle);
+          return (
+            <li
+              key={`${b.fundstelle.bild}-${b.fundstelle.imageId ?? ""}-${b.fundstelle.quelle}`}
+              data-testid="bild-befund"
+              data-status={b.status}
+              data-folie={b.fundstelle.folie ?? ""}
+              data-bildinhalt={b.bildinhalt.status}
+            >
+              <span className="font-semibold text-text">{t(ort.key, ort.params)}</span>
+              {" · "}
+              <span className="text-muted">{t(STATUS_SCHLUESSEL[b.status])}</span>
+              {b.wiederverwendet ? (
+                <span className="text-muted-2"> · {t("bildautomatik.wiederverwendet")}</span>
+              ) : null}
+              {b.textGekennzeichnet ? (
+                <pre
+                  data-testid="bild-befund-text"
+                  className="mt-0.5 whitespace-pre-wrap break-words font-sans text-text"
+                >
+                  {b.textGekennzeichnet}
+                </pre>
+              ) : null}
+              {b.unsicher.length > 0 ? (
+                <p className="text-trust-warn-text">
+                  {t("bildautomatik.unsicher", { n: b.unsicher.length })}
+                </p>
+              ) : null}
+              {b.tabelle ? (
+                <table data-testid="bild-befund-tabelle" className="mt-1 border-collapse">
+                  <caption className="text-left text-muted">{t("bildautomatik.tabelle")}</caption>
+                  <tbody>
+                    {nummeriert(b.tabelle).map((zeile) => (
+                      <tr key={zeile.nr}>
+                        {zeile.zellen.map((zelle) => (
+                          <td key={zelle.nr} className="border border-hairline px-1.5 py-0.5">
+                            {zelle.text}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
+              {b.bildinhalt.status === "beschrieben" ? (
+                <p data-testid="bild-befund-inhalt" className="mt-0.5 text-text">
+                  <span className="font-semibold">{t("bildautomatik.bildinhalt.titel")}</span>{" "}
+                  {b.bildinhalt.text}
+                </p>
+              ) : b.status !== "laeuft" && b.status !== "wartet" ? (
+                <p data-testid="bild-befund-inhalt-fehlt" className="mt-0.5 text-muted">
+                  {t(BILDINHALT_FEHLT[b.bildinhalt.status])}
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
       </ol>
     </section>
   );

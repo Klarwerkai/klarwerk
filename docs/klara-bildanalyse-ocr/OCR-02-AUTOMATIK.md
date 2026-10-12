@@ -2,63 +2,75 @@
 
 Auftrag `produkt:20261012:klara-bildanalyse-ocr-automatik`, Revision 1, Paket OCR-02. Aufbauend auf
 OCR-01 ([`BESTAND.md`](./BESTAND.md), [`INTEGRATIONSPLAN.md`](./INTEGRATIONSPLAN.md)) und auf der
-Erkennung aus gesamt-ocr (C01, `64e1768c`, im Hauptstand). Es gibt **keine zweite Engine**: gelesen
-wird mit der vorhandenen Texterkennung W01 (`runImageOcr`, tesseract.js unter der eigenen CSP).
+Erkennung aus gesamt-ocr (C01, `64e1768c`, im Hauptstand). Es gibt **keine zweite Engine** und
+**keinen neuen Datenweg**: Text über die vorhandene Texterkennung W01 (`runImageOcr`, tesseract.js
+unter der eigenen CSP), Bildinhalt über den vorhandenen Beschreibungsweg W02
+(`/api/reasoner/describe`) mit der Herkunft und Vertraulichkeitsregel der jeweiligen Fläche.
 
-## Was geliefert ist
+## Eingänge, an denen ohne Klick gelesen wird
 
-| Baustein | Datei | Inhalt |
-| --- | --- | --- |
-| Automatik (DOM-frei) | `apps/web/src/lib/bildAutomatik.ts` | Vorkommen je Bild mit Fundstelle, Inhaltskennung `sha256` (wie W16), Wiederverwendung, Frist je Bild, Höchstzahl je Quelle, Kennzeichnung unsicherer Stellen, ehrlicher Gesamtstatus |
-| Eine Analyse je App | `apps/web/src/lib/bildAutomatikLauf.ts` | W01 hinter der Automatik; unveränderte Bilder werden über alle Dateieingänge wiedererkannt |
-| Folie je Bild (L04) | `apps/web/src/lib/pptx.ts` | `imageSlides` (Folie je eingebettetem Bild) und `imagesNotEmbeddedBySlide` (nicht übernommene Bilder je Folie) |
-| Wortsicherheit | `apps/web/src/lib/ocr.ts` | `woerter` mit Sicherheit aus tesseract.js 5 |
-| Auslösung (L01) | `apps/web/src/pages/Capture.tsx`, `onExtractFile` | Einzelbild, `.pptx` und `.docx` im Dateiimport des Erfassens werden beim Einlesen gelesen, ohne Klick |
-| Anzeige | `apps/web/src/components/BildBefundListe.tsx`, `apps/web/src/texte/bildautomatik.ts` | Befund je Bild mit „Folie N, Bild M" bzw. „Bild N", Status, erkanntem Text, unsicheren Stellen, Wiederverwendung; Gesamtstatus und Verluste (DE/EN/NL) |
+| Eingang | Quelle/Host | Wo | Text | Bildinhalt (W02) |
+| --- | --- | --- | --- | --- |
+| Dateiimport im Erfassen: Bild, `.pptx`, `.docx` | Q01–Q03, H01 | `pages/Capture.tsx` `onExtractFile` | ja | über die Herkunft des Entwurfs |
+| Bildanhang im Erfassen („Bilder hochladen“, Anhang, Text-aus-Datei mit Bild) | Q01, H01 | `pages/Capture.tsx` `addImage` | ja; **Übernahme** in Aussage/Rohtext bleibt der Klick „OCR → Text“ | über die Herkunft des Entwurfs |
+| Bilder im Text jedes Editors (Erfassen, Blatt, Studio, Artikel, gemeinsamer Entwurf) — eingefügt, abgelegt, aus „Klara in Word“ (H02) oder der Browser-Erweiterung (H04) als Entwurf übernommen, gespeicherte Objektspeicher-Bilder | Q03, Q05, Q06 | `components/BildBefundeImRumpf.tsx` in `RichTextEditor` | ja, nach 1,5 s Ruhe im Text | über die Herkunft der Fläche (`useImageDescribe`) |
+| Office im Artikel: angehängte bzw. als neue Fassung übernommene `.pptx`/`.docx` | Q02, Q03, H06 (L17) | `components/bibliothek/OfficeBildBefunde.tsx` in `OfficeImArtikel` | ja, je Fassung | über die Herkunft des Artikels, sonst „nicht angebunden“ |
 
-### Verhalten
+Der manuelle Weg bleibt: Der Knopf „OCR → Text“ am Bildanhang übernimmt beim ersten Klick den
+automatischen Befund (kein zweiter Lauf), jeder weitere Klick erkennt ausdrücklich neu. Damit gilt aus
+gesamt-ocr weiter: **ohne Klick gelangt kein Bildtext in Aussage, Rohtext oder Interview**
+(`tests/capture/gesamt-ocr-interview-kontext-mounted.test.tsx` I1/I2). Dass das Bild selbst erst nach
+einem Klick erkannt wird („nie von selbst“, K3), gilt nicht mehr: Bens Befund (Nacharbeit 3) und der
+neuere Originalauftrag („sofort automatisch mitlesen“) schließen diese Ausnahme für bereitgestellte
+Bilder aus.
 
-- **Auslösung.** Sobald eine Datei im Dateiimport eingelesen ist, startet das Lesen. Ein Einzelbild
-  wird danach der Dateitext (wie früher nach dem Klick). Bei `.pptx`/`.docx` bleibt der Klartext
-  unverändert; der Befund steht je Bild daneben. Der Knopf „Text im Bild erkennen (OCR)" bleibt als
-  manueller Weg und nutzt dieselbe Analyse (kein Doppellauf, erneuter Versuch nach Fehlschlag).
-- **Voreinstellung.** `BILD_AUTOMATIK_VOREINSTELLUNG = true`. Der Schalter unter Setup › Klara ist
-  OCR-03 (L14) und noch nicht gebaut; bis dahin ist die Automatik immer an.
-- **Fundstelle.** Quelle, Position in Dokumentreihenfolge, Anker `data-image-id`; bei PowerPoint
-  Folie und Bild auf der Folie, Folienansicht-Bilder (W04) als „Folienansicht, Folie N".
-- **Wiederverwendung.** Gleiche Bildbytes → vorhandener Befund ohne neue Erkennung, angezeigt als
-  „unverändert — vorhandenes Ergebnis". Geänderte Bytes → neue Kennung, neue Erkennung; ein Befund
-  gehört immer nur zu den Bytes, aus denen er stammt. Fehlschläge werden nicht gemerkt.
-- **Grenzen sichtbar.** Zustände je Bild: läuft, gelesen, kein Text, fehlgeschlagen, nicht
-  verfügbar, kein Zugriff, Zeitüberschreitung (90 s), nicht gelesen (Grenze 40 Bilder je Datei bzw.
-  Automatik aus). Gesamtstatus „vollständig" nur, wenn jedes Bild gelesen ist, nichts verloren ging
-  und keine Erfassungsgrenze greift; sonst „teilweise", „fehlgeschlagen", „nicht verfügbar".
-  Nicht übernommene PowerPoint-Bilder stehen je Folie da, Word-Verluste als Zahl.
-- **PowerPoint nie „vollständig".** Layout, Master, Diagramme, SmartArt und Notizen liest der
-  PPTX-Leser nicht (L16). Jede PowerPoint-Quelle trägt deshalb diesen Hinweis und heißt höchstens
-  „teilweise".
-- **Unsichere Stellen.** Wörter unter 60 % Sicherheit erscheinen als `[?wort]`, unter 30 % als
-  `[unleserlich]`. Es wird nichts ergänzt.
-- **Original unverändert.** Gelesen wird aus der data-URL des Imports; Datei, Rumpf und Original-
-  Anhang werden nicht verändert. Das Bild verlässt den Browser für die Erkennung nicht.
+## Was der Befund je Bild enthält
 
-## Bewusst nicht in OCR-02 (offen, konkret)
+- **Fundstelle**: Quelle, Position in Dokumentreihenfolge, Anker `data-image-id`; bei PowerPoint Folie
+  und Bild auf der Folie; Folienansicht-Bilder (W04); bei Bildanhängen der Dateiname.
+- **Text** mit Kennzeichnung: unter 60 % Sicherheit `[?wort]`, unter 30 % `[unleserlich]`. Nichts
+  wird ergänzt.
+- **Tabelle**, nur wenn zuverlässig bestimmbar: mindestens zwei Zeilen mit mindestens zwei Zellen,
+  deren Spalten an linker, rechter oder mittlerer Kante übereinanderstehen (aus den Wortrahmen der
+  Engine). Sonst keine Tabelle.
+- **Bildinhalt** (Diagramm, Foto, bildhafte Tabelle) über W02 — oder der Grund, warum er fehlt:
+  „nicht zulässig“ (Einstufung schließt das Modell aus), „nicht verfügbar“ (kein Modell),
+  „fehlgeschlagen“, „nicht angebunden“.
+- **Wiederverwendung**: gleiche Bildbytes (`sha256`) → vorhandener Befund ohne neue Erkennung und ohne
+  neue Beschreibung; geänderte Bytes (auch eine neue Office-Fassung) → neue Analyse. Fehlschläge und
+  „nicht zulässig“ werden nicht gemerkt (nach Umstufung wird neu gefragt).
+- **Status**: läuft, gelesen, kein Text, fehlgeschlagen, nicht verfügbar, kein Zugriff,
+  Zeitüberschreitung (90 s), nicht gelesen (Grenze 40 Bilder je Quelle).
+
+**„Vollständig“** heißt eine Quelle nur, wenn für jedes Bild Text UND Bildinhalt vorliegen, kein Bild
+verloren ging und keine Erfassungsgrenze greift. Sonst „teilweise“, „fehlgeschlagen“ oder „nicht
+verfügbar“. Eine PowerPoint-Quelle heißt nie „vollständig“ (Layout, Master, Diagramme, SmartArt,
+Notizen werden nicht erfasst, L16).
+
+**Original unverändert**: gelesen wird aus der data-URL bzw. dem Objektspeicher (lesend); weder Datei,
+Rumpf noch Anhang/Fassung werden geschrieben.
+
+## Grenzen (offen, konkret)
 
 | Punkt | Stand |
 | --- | --- |
-| Bildanhang im Formular („Bilder hochladen") | bleibt der manuelle Klickweg aus gesamt-ocr K3 („nur auf ausdrücklichen Klick"), siehe [`ABGLEICH-OCR-AUFTRAG.md`](./ABGLEICH-OCR-AUFTRAG.md) Abschnitt 3. Die dortigen Prüfstände (`tests/capture/gesamt-ocr-interview-kontext-mounted.test.tsx` I1/I2) sind unverändert |
-| Bildinhalt (Diagramme, bildhafte Tabellen) über ein Modell (W02) | nicht automatisch: ein automatischer Modellaufruf je Bild ist ein neuer Datenweg und braucht die Vertraulichkeitsentscheidung. Erkannt wird der Text; Tabellenstruktur nur so weit, wie die Zeilen der Erkennung sie tragen |
-| Handschrift | die Engine (tesseract, `deu+eng`) ist für Druckschrift trainiert; lesbare Handschrift wird bestenfalls teilweise erkannt und dann als unsicher gekennzeichnet. Nicht gemessen |
+| Handschrift | Nachweis über eine kontrollierte, im Browser gezeichnete Druckhandschrift-Vorlage (freihändige Striche, Großbuchstaben, Ziffern) mit bekanntem Inhalt, dazu eine unleserliche Gekritzel-Vorlage (`tests-smoke/klara-bildautomatik-browser.spec.ts`, zweiter Fall). Eine echte Schriftprobe eines Menschen liegt nicht vor; Schreibschrift ist nicht gemessen |
+| Tabellenstruktur | aus Wortrahmen ausgerichteter Spalten; verbundene Zellen, mehrzeilige Zellen und Tabellen mit Linien als einziger Struktur werden nicht rekonstruiert (dann keine Tabelle, nur Text) |
+| Bildinhalt | hängt an einem konfigurierten, zulässigen Vision-Modell; ohne dieses ist jede Quelle „teilweise“ |
 | PDF (Q04, L06) | eingebettete Bilder und Scanseiten werden nicht gelesen |
-| Entwürfe aus Word-Add-in (H02) und Browser-Erweiterung (H04), Bilder im Editor (Q06), Office-Anhänge im Artikel (H06, L17) | nicht ausgelöst; dort bleiben Bilder ungelesen |
+| Excel (Q08) | kein Leser, im Artikel nichts behauptet |
 | PowerPoint-Add-in (H03), Mac-Host (H05) | gibt es nicht |
-| Nutzung in Klaras Antworten, Status in Antworten, Setup-Schalter | OCR-03 |
-| Kundenabnahme mit echten Dokumenten | OCR-04 bzw. Pilot; die Browserprobe nutzt fiktive Bilder |
+| Browser-Erweiterung/Word-Add-in selbst | dort keine Analyse; gelesen wird, sobald der Entwurf in einem Editor der Web-App geöffnet ist |
+| Nutzung in Klaras Antworten, Setup-Schalter | OCR-03; bis dahin ist die Automatik immer an |
+| Kundenabnahme mit echten Dokumenten | OCR-04 bzw. Pilot |
 
 ## Prüfstände
 
 | Datei | Art | Kriterien |
 | --- | --- | --- |
-| `tests/klara-bildanalyse-ocr/bildautomatik.test.ts` | Unit, echte PPTX-Importkette, Engine gestellt | K1–K5 |
-| `tests/klara-bildanalyse-ocr/automatik-dateiimport-mounted.test.tsx` | gemountete Erfassungsfläche, Engine gestellt | K1, K5 |
-| `tests-smoke/klara-bildautomatik-browser.spec.ts` | Browser, echte Engine, fiktive Bilder | K1–K5 |
+| `tests/klara-bildanalyse-ocr/bildautomatik.test.ts` | Unit, echte PPTX-Importkette, Engine und W02 gestellt | K1–K5 |
+| `tests/klara-bildanalyse-ocr/automatik-dateiimport-mounted.test.tsx` | gemountete Erfassungsfläche, Dateiimport | K1, K5 |
+| `tests/klara-bildanalyse-ocr/rumpf-bilder-mounted.test.tsx` | gemountete Editor-Automatik, Objektspeicher, W02-Zustände | K1, K3, K4, K5 |
+| `tests/klara-bildanalyse-ocr/office-anhang.test.tsx` | Office-Anhang über Objektspeicher und `readPptxRich`, neue Fassung | K2, K3, K4 |
+| `tests/capture/gesamt-ocr-interview-kontext-mounted.test.tsx` | Bildanhang: automatisch gelesen, Übernahme nur auf Klick | K1 |
+| `tests-smoke/klara-bildautomatik-browser.spec.ts` | Browser, echte Engine, fiktive Vorlagen (PPTX, Einzelbild, Handschrift, Gekritzel, Tabelle) | K1–K5 |

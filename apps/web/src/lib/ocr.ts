@@ -8,6 +8,8 @@ export type OcrStatus = "running" | "success" | "failed" | "unavailable";
 export interface OcrWort {
   text: string;
   confidence: number;
+  // OCR-02: der Rahmen des Wortes im Bild (Pixel) — Grundlage der Tabellenerkennung.
+  bbox?: { x0: number; y0: number; x1: number; y1: number };
 }
 
 export interface OcrResult {
@@ -37,6 +39,7 @@ export async function recognizeImage(
     const woerter = (result.data.words ?? []).map((w) => ({
       text: w.text,
       confidence: w.confidence,
+      ...(w.bbox ? { bbox: { x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 } } : {}),
     }));
     return {
       status: "success",

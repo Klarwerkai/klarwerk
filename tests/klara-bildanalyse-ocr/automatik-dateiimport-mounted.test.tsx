@@ -96,14 +96,19 @@ afterEach(() => {
 });
 
 describe("OCR-02 · Dateiimport: ein bereitgestelltes Bild wird automatisch gelesen", () => {
-  it("A1 · ohne Klick erkannt, Befund vollständig, Text übernommen", async () => {
+  it("A1 · ohne Klick erkannt, Text übernommen; ohne Bildmodell ehrlich „teilweise“", async () => {
     steuerung.ocr.mockResolvedValue({ status: "success", text: "Ventil V3 vor Wartung schließen" });
     await ablegen(bild("aushang.png", zaehler));
 
     expect(steuerung.ocr).toHaveBeenCalledTimes(1);
-    expect(panel()?.getAttribute("data-status")).toBe("vollstaendig");
     expect(befunde()).toEqual([{ status: "gelesen", text: "Ventil V3 vor Wartung schließen" }]);
-    expect(sichtbar()).toContain(
+    // Nacharbeit 3: „vollständig“ verlangt auch den Bildinhalt (W02). Die Attrappe liefert keine
+    // Bildbeschreibung — der Befund sagt das, statt „alle Bilder gelesen“ zu behaupten.
+    const zeile = flaeche().querySelector<HTMLElement>("[data-testid=bild-befund]");
+    expect(zeile?.getAttribute("data-bildinhalt")).toBe("nicht-verfuegbar");
+    expect(panel()?.getAttribute("data-status")).toBe("teilweise");
+    expect(sichtbar()).toContain(i18n.t("bildautomatik.bildinhalt.nichtVerfuegbar"));
+    expect(sichtbar()).not.toContain(
       i18n.t("bildautomatik.quelle.vollstaendig", { name: "aushang.png", gesamt: 1 }),
     );
     // Der manuelle Knopf ist nicht mehr nötig: es gibt schon Text.

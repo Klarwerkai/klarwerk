@@ -6,33 +6,41 @@
 // Peter, 12.10.2026: „sofort automatisch mitlesen." Ein bereitgestelltes Bild und die eingebetteten
 // Bilder eines Dokuments werden beim Eingang gelesen — ohne Klick auf „OCR → Text".
 //
-// DIESE DATEI IST DOM-FREI. Die Erkennung selbst wird injiziert (`erkenne`); im Browser ist das
-// die vorhandene Texterkennung `runImageOcr` (W01, `lib/files.ts`), in den Tests ein Stellvertreter.
-// Es gibt keine zweite Engine.
+// DIESE DATEI IST DOM-FREI. Die Wege werden injiziert:
+//   · `erkenne` — die vorhandene Texterkennung `runImageOcr` (W01, `lib/files.ts`). Text hat Vorrang.
+//   · `beschreibe` — der vorhandene Bildbeschreibungsweg W02 (`/api/reasoner/describe`) mit der
+//     Herkunft der jeweiligen Fläche. Ob ein Modell das Bild sehen DARF, entscheidet weiterhin der
+//     Server (Vertraulichkeitsregel); diese Datei liest nur das Ergebnis und weist es aus.
+//   · `ladeBild` — Bilder, die nicht als data-URL vorliegen (Objektspeicher), über den vorhandenen,
+//     berechtigten Lesezugriff holen.
+// Es gibt keine zweite Engine und keinen neuen Datenweg.
 //
 // WAS SIE ZUSAGT, und was nicht:
 //   · Jeder Befund trägt seine Fundstelle: Quelle, Bild in Dokumentreihenfolge, bei PowerPoint die
 //     Folie und das Bild auf dieser Folie (L04).
 //   · Gleiche Bildbytes (`sha256`, wie W16) heißen gleicher Befund, ohne neue Analyse. Andere Bytes
 //     heißen neue Analyse; ein Befund gehört immer zu genau der Inhaltskennung, aus der er stammt.
-//     Fehlgeschlagene Läufe werden nicht gemerkt — ein neuer Eingang versucht es erneut.
+//     Fehlgeschlagene Läufe werden nicht gemerkt — ein neuer Eingang versucht es erneut. Nur ein
+//     AUSDRÜCKLICHER Auftrag (`neu`) erkennt dasselbe Bild noch einmal.
 //   · Unsichere Wörter werden markiert (`[?wort]`), sehr unsichere als `[unleserlich]` ersetzt. Es
 //     wird nichts ergänzt.
-//   · Eine Quelle heißt nur dann „vollständig gelesen", wenn jedes Bild gelesen ist, kein Bild der
-//     Quelle beim Einlesen verloren ging und keine bekannte Erfassungsgrenze greift. Sonst
-//     „teilweise", „fehlgeschlagen" oder „nicht verfügbar" — nie stillschweigend „fertig".
+//   · Tabellen: nur wenn mindestens zwei Zeilen mit mindestens zwei Spalten an denselben Kanten
+//     ausgerichtet sind, entsteht eine Tabelle — sonst keine (kein Raten).
+//   · Bildinhalt: beschrieben, nicht zulässig (vertraulich), nicht verfügbar (kein Modell),
+//     fehlgeschlagen oder nicht angebunden — jeder Zustand außer „beschrieben" macht die Quelle zur
+//     Teilverarbeitung.
+//   · Eine Quelle heißt nur dann „vollständig gelesen", wenn für jedes Bild Text und Bildinhalt
+//     vorliegen, kein Bild verloren ging und keine bekannte Erfassungsgrenze greift.
 //   · Das Original wird nicht verändert: gelesen wird aus der data-URL, geschrieben wird nur der
 //     Befund.
-//
-// NICHT HIER: die Beschreibung des Bildinhalts über ein Modell (W02) und die Nutzung der Befunde in
-// Klaras Antworten sowie der Setup-Schalter — das sind OCR-03 bzw. eigene Entscheidungen.
 
+import type { DescribeImageResult } from "../api/types";
 import type { OcrResult, OcrWort } from "./ocr";
 import type { PptxRichResult } from "./pptx";
 
 /** Die Automatik ist ohne abweichende Einstellung an (Product-Owner-Konkretisierung). */
 export const BILD_AUTOMATIK_VOREINSTELLUNG = true;
-/** Höchstdauer je Bild. Danach gilt der Lauf als „Zeitüberschreitung", nicht als gelesen. */
+/** Höchstdauer je Bild und Weg. Danach gilt der Lauf als „Zeitüberschreitung", nicht als gelesen. */
 export const BILD_ZEITLIMIT_MS = 90_000;
 /** Höchstzahl automatisch gelesener Bilder je Quelle; der Rest bleibt sichtbar „nicht analysiert". */
 export const BILD_HOECHSTZAHL_JE_QUELLE = 40;
@@ -41,7 +49,8 @@ export const UNSICHER_UNTER = 60;
 /** Unter dieser Sicherheit gilt ein Wort als unleserlich und wird nicht als Text ausgegeben. */
 export const UNLESERLICH_UNTER = 30;
 
-export type BildQuellenArt = "bild" | "pptx" | "docx";
+/** `rumpf`: Bilder im Text eines Entwurfs oder Wissensobjekts (Editor, auch aus Word/Browser). */
+export type BildQuellenArt = "bild" | "pptx" | "docx" | "rumpf";
 
 export interface BildFundstelle {
   /** Name der Quelle (Dateiname). */
@@ -61,7 +70,7 @@ export interface BildFundstelle {
 
 export interface BildVorkommen {
   fundstelle: BildFundstelle;
-  /** Die Bilddaten als data-URL; `null` oder eine fremde Adresse heißt: kein Zugriff auf die Bytes. */
+  /** Die Bilddaten als data-URL; sonst eine Adresse, die `ladeBild` auflösen darf, oder `null`. */
   src: string | null;
 }
 
@@ -75,6 +84,25 @@ export type BildBefundStatus =
   | "kein-zugriff"
   | "zeitueberschreitung"
   | "nicht-analysiert";
+
+export type BildinhaltStatus =
+  | "beschrieben"
+  /** Die Vertraulichkeitsregel schließt das Modell aus. */
+  | "nicht-zulaessig"
+  /** Kein Modell für die Bildbeschreibung verfügbar. */
+  | "nicht-verfuegbar"
+  | "fehlgeschlagen"
+  /** Diese Fläche hat keinen Weg zur Bildbeschreibung. */
+  | "nicht-angebunden"
+  | "nicht-analysiert";
+
+export interface Bildinhalt {
+  status: BildinhaltStatus;
+  /** Die Beschreibung des wesentlichen Bildinhalts (Diagramm, Foto, bildhafte Tabelle …). */
+  text: string;
+  /** Ursache bei allem außer „beschrieben" (z. B. `confidential`, `no-model`). */
+  grund?: string;
+}
 
 export interface UnsichereStelle {
   wort: string;
@@ -92,7 +120,11 @@ export interface BildBefund {
   /** Derselbe Text mit gekennzeichneten unsicheren und unleserlichen Stellen. */
   textGekennzeichnet: string;
   unsicher: UnsichereStelle[];
-  /** Der Befund stammt aus einer früheren Analyse derselben Bildbytes. */
+  /** Zuverlässig erkannte Tabellenstruktur (Zeilen × Zellen, Zellen gekennzeichnet) oder `null`. */
+  tabelle: string[][] | null;
+  /** Der wesentliche Bildinhalt über W02. */
+  bildinhalt: Bildinhalt;
+  /** Der Textbefund stammt aus einer früheren Analyse derselben Bildbytes. */
   wiederverwendet: boolean;
   /** Warum nicht analysiert wurde. */
   grund?: "automatik-aus" | "grenze";
@@ -138,9 +170,11 @@ export interface QuellenBefund {
 }
 
 export type BildErkenner = (src: string) => Promise<OcrResult>;
+export type BildBeschreiber = (src: string) => Promise<Bildinhalt>;
+export type BildLader = (src: string) => Promise<string | null>;
 
 // ------------------------------------------------------------------------------------------------
-// Vorkommen aus einem Rumpf (PPTX/DOCX-Import) — in Dokumentreihenfolge
+// Vorkommen aus einem Rumpf (PPTX/DOCX-Import, Editor) — in Dokumentreihenfolge
 // ------------------------------------------------------------------------------------------------
 
 const IMG_RE = /<img\b[^>]*>/gi;
@@ -149,6 +183,11 @@ const FOLIENANSICHT_RE = /-s(\d+)$/;
 function attribut(tag: string, name: string): string | null {
   const m = new RegExp(`\\s${name}\\s*=\\s*"([^"]*)"`, "i").exec(tag);
   return m ? (m[1] ?? "") : null;
+}
+
+/** HTML-Entities eines Attributwerts (`&amp;` in Adressen) auflösen. */
+function attributText(wert: string): string {
+  return wert.replace(/&amp;/g, "&").replace(/&quot;/g, '"');
 }
 
 /**
@@ -166,7 +205,8 @@ export function bildVorkommenAusRumpf(
   const aus: BildVorkommen[] = [];
   const zaehlerJeFolie = new Map<string, number>();
   for (const tag of html.match(IMG_RE) ?? []) {
-    const src = attribut(tag, "src");
+    const roh = attribut(tag, "src");
+    const src = roh === null ? null : attributText(roh);
     const imageId = attribut(tag, "data-image-id") ?? undefined;
     const folienansicht = imageId ? FOLIENANSICHT_RE.exec(imageId) : null;
     const folie = folienansicht
@@ -243,11 +283,25 @@ export function einzelbildEingang(name: string, src: string | null): BildQuelleE
   };
 }
 
+/** Der Eingang der Bilder im Text eines Entwurfs oder Wissensobjekts (Editor). */
+export function rumpfBildEingang(name: string, html: string | null): BildQuelleEingang {
+  return {
+    quelle: name,
+    art: "rumpf",
+    vorkommen: bildVorkommenAusRumpf(html, { name, art: "rumpf" }),
+  };
+}
+
 // ------------------------------------------------------------------------------------------------
-// Inhaltskennung und Kennzeichnung
+// Inhaltskennung, Kennzeichnung, Tabellen
 // ------------------------------------------------------------------------------------------------
 
 const DATA_URL_RE = /^data:image\/[^;,]+;base64,([\s\S]*)$/i;
+
+/** Liegt das Bild schon als data-URL vor? */
+export function istBildDatenUrl(src: string | null): boolean {
+  return src !== null && DATA_URL_RE.test(src.trim());
+}
 
 /** Die Bytes einer Bild-data-URL — `null` für alles andere (fremde Adresse, kein Bild). */
 export function bildBytes(src: string | null): Uint8Array | null {
@@ -283,6 +337,17 @@ export async function bildInhaltskennung(bytes: Uint8Array): Promise<string | nu
   return `sha256:${Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
+/** Ein Wort, wie es im Befund steht: sicher wie gelesen, unsicher `[?wort]`, sonst `[unleserlich]`. */
+function gekennzeichnet(wort: string, sicherheit: number): string {
+  if (sicherheit < UNLESERLICH_UNTER) {
+    return "[unleserlich]";
+  }
+  if (sicherheit < UNSICHER_UNTER) {
+    return `[?${wort}]`;
+  }
+  return wort;
+}
+
 /**
  * Der Text mit gekennzeichneten Stellen. Die Wörter der Engine kommen in Lesereihenfolge; sie werden
  * der Reihe nach den Wörtern des Textes zugeordnet, Zeilenumbrüche bleiben stehen.
@@ -309,17 +374,150 @@ export function kennzeichneUnsicheres(
     }
     zeiger = treffer + 1;
     const sicherheit = woerter[treffer]?.confidence ?? 100;
-    if (sicherheit < UNLESERLICH_UNTER) {
-      unsicher.push({ wort: token, sicherheit, unleserlich: true });
-      return "[unleserlich]";
-    }
     if (sicherheit < UNSICHER_UNTER) {
-      unsicher.push({ wort: token, sicherheit, unleserlich: false });
-      return `[?${token}]`;
+      unsicher.push({ wort: token, sicherheit, unleserlich: sicherheit < UNLESERLICH_UNTER });
     }
-    return token;
+    return gekennzeichnet(token, sicherheit);
   });
   return { textGekennzeichnet, unsicher };
+}
+
+interface Zelle {
+  x0: number;
+  x1: number;
+  text: string;
+}
+
+type WortMitRahmen = OcrWort & { bbox: NonNullable<OcrWort["bbox"]> };
+
+function hatRahmen(w: OcrWort): w is WortMitRahmen {
+  return w.bbox !== undefined && w.text.trim().length > 0;
+}
+
+function median(werte: number[]): number {
+  const s = [...werte].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)] ?? 0;
+}
+
+/**
+ * Tabellenstruktur aus den Wortrahmen — NUR wenn sie zuverlässig bestimmbar ist: mindestens zwei
+ * aufeinanderfolgende Zeilen mit gleich vielen (≥ 2) Zellen, deren Spalten an der linken, rechten
+ * oder mittleren Kante übereinanderstehen. Sonst `null`. Zellen tragen die Kennzeichnung unsicherer
+ * Wörter wie der Text.
+ */
+export function tabelleAusWoertern(woerter: readonly OcrWort[] | undefined): string[][] | null {
+  const mitRahmen = (woerter ?? []).filter(hatRahmen);
+  if (mitRahmen.length < 4) {
+    return null;
+  }
+  const hoehe = Math.max(1, median(mitRahmen.map((w) => w.bbox.y1 - w.bbox.y0)));
+  const mitte = (w: WortMitRahmen): number => (w.bbox.y0 + w.bbox.y1) / 2;
+  const sortiert = [...mitRahmen].sort((a, b) => mitte(a) - mitte(b));
+  const zeilen: WortMitRahmen[][] = [];
+  for (const w of sortiert) {
+    const letzte = zeilen[zeilen.length - 1];
+    const letzteMitte = letzte
+      ? letzte.reduce((n, x) => n + mitte(x), 0) / letzte.length
+      : Number.NEGATIVE_INFINITY;
+    if (letzte && Math.abs(mitte(w) - letzteMitte) <= hoehe * 0.6) {
+      letzte.push(w);
+    } else {
+      zeilen.push([w]);
+    }
+  }
+  const zellenJeZeile: Zelle[][] = zeilen.map((zeile) => {
+    const z = [...zeile].sort((a, b) => a.bbox.x0 - b.bbox.x0);
+    const zellen: Zelle[] = [];
+    for (const w of z) {
+      const text = gekennzeichnet(w.text, w.confidence);
+      const vorige = zellen[zellen.length - 1];
+      if (vorige && w.bbox.x0 - vorige.x1 <= hoehe * 1.2) {
+        vorige.text = `${vorige.text} ${text}`;
+        vorige.x1 = w.bbox.x1;
+      } else {
+        zellen.push({ x0: w.bbox.x0, x1: w.bbox.x1, text });
+      }
+    }
+    return zellen;
+  });
+  const toleranz = hoehe * 1.5;
+  const passt = (a: Zelle[], b: Zelle[]): boolean =>
+    a.length === b.length &&
+    a.length >= 2 &&
+    a.every((za, j) => {
+      const zb = b[j];
+      if (!zb) {
+        return false;
+      }
+      return (
+        Math.abs(za.x0 - zb.x0) <= toleranz ||
+        Math.abs(za.x1 - zb.x1) <= toleranz ||
+        Math.abs((za.x0 + za.x1) / 2 - (zb.x0 + zb.x1) / 2) <= toleranz
+      );
+    });
+  let beste: Zelle[][] = [];
+  let lauf: Zelle[][] = [];
+  for (const zeile of zellenJeZeile) {
+    const erste = lauf[0];
+    if (erste && passt(erste, zeile)) {
+      lauf.push(zeile);
+    } else {
+      lauf = [zeile];
+    }
+    if (lauf.length > beste.length) {
+      beste = [...lauf];
+    }
+  }
+  if (beste.length < 2 || (beste[0]?.length ?? 0) < 2) {
+    return null;
+  }
+  return beste.map((zeile) => zeile.map((z) => z.text));
+}
+
+// ------------------------------------------------------------------------------------------------
+// Bildinhalt über W02 — das Ergebnis des vorhandenen Wegs, ehrlich eingeordnet
+// ------------------------------------------------------------------------------------------------
+
+/**
+ * Macht aus dem vorhandenen Beschreibungsweg (W02, `useImageDescribe` bzw.
+ * `endpoints.reasoner.describeImage` mit der Herkunft der Fläche) einen Beschreiber für die
+ * Automatik. Ist kein Modell nutzbar, wird gar nicht erst angefragt.
+ */
+export function bildBeschreiberAus(weg: {
+  available: boolean;
+  describe: (dataUrl: string) => Promise<DescribeImageResult>;
+}): BildBeschreiber {
+  return async (src) => {
+    if (!weg.available) {
+      return { status: "nicht-verfuegbar", text: "", grund: "no-model" };
+    }
+    try {
+      const r = await weg.describe(src);
+      const text = (r.text ?? "").trim();
+      if (!r.demo && text.length > 0) {
+        return { status: "beschrieben", text };
+      }
+      if (r.fallbackReason === "confidential") {
+        return { status: "nicht-zulaessig", text: "", grund: "confidential" };
+      }
+      if (r.fallbackReason === "model-timeout" || r.fallbackReason === "model-error") {
+        return { status: "fehlgeschlagen", text: "", grund: r.fallbackReason };
+      }
+      return { status: "nicht-verfuegbar", text: "", grund: r.fallbackReason ?? "no-model" };
+    } catch (error) {
+      // 409 ist die typisierte Vertraulichkeitssperre des Servers (reasoner-routes.ts) — eine Regel,
+      // kein Fehler.
+      const status = (error as { status?: unknown } | null)?.status;
+      if (status === 409) {
+        return { status: "nicht-zulaessig", text: "", grund: "confidential" };
+      }
+      return {
+        status: "fehlgeschlagen",
+        text: "",
+        grund: error instanceof Error ? error.message : "fehler",
+      };
+    }
+  };
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -327,6 +525,26 @@ export function kennzeichneUnsicheres(
 // ------------------------------------------------------------------------------------------------
 
 const ERFOLG: ReadonlySet<BildBefundStatus> = new Set(["gelesen", "kein-text"]);
+
+/** Ein Befund in diesem Zustand ist kein Ergebnis — ein ausdrücklicher Auftrag versucht es neu. */
+export const NEU_VERSUCHEN: ReadonlySet<BildBefundStatus> = new Set([
+  "wartet",
+  "laeuft",
+  "fehlgeschlagen",
+  "zeitueberschreitung",
+  "kein-zugriff",
+  "nicht-analysiert",
+]);
+
+/** Text gelesen UND Bildinhalt beschrieben — erst dann ist ein Bild vollständig verarbeitet. */
+export function bildVollstaendig(b: BildBefund): boolean {
+  return ERFOLG.has(b.status) && b.bildinhalt.status === "beschrieben";
+}
+
+/** Etwas Nutzbares liegt vor: Text gelesen oder Bildinhalt beschrieben. */
+function verwertbar(b: BildBefund): boolean {
+  return ERFOLG.has(b.status) || b.bildinhalt.status === "beschrieben";
+}
 
 export function quellenStatus(
   befunde: readonly BildBefund[],
@@ -343,16 +561,31 @@ export function quellenStatus(
   if (befunde.every((b) => b.grund === "automatik-aus")) {
     return "aus";
   }
-  const erfolgreich = befunde.filter((b) => ERFOLG.has(b.status)).length;
-  if (erfolgreich === 0) {
+  if (!befunde.some(verwertbar)) {
     return befunde.every((b) => b.status === "nicht-verfuegbar")
       ? "nicht-verfuegbar"
       : "fehlgeschlagen";
   }
-  if (erfolgreich < befunde.length || verloren > 0 || hinweise.length > 0) {
+  if (!befunde.every(bildVollstaendig) || verloren > 0 || hinweise.length > 0) {
     return "teilweise";
   }
   return "vollstaendig";
+}
+
+/** Ein Quellenbefund aus einzeln gelesenen Bildern (z. B. Bildanhänge eines Beitrags). */
+export function quellenBefundAus(
+  quelle: string,
+  art: BildQuellenArt,
+  befunde: BildBefund[],
+): QuellenBefund {
+  return {
+    quelle,
+    art,
+    status: quellenStatus(befunde, [], []),
+    befunde,
+    nichtGelesen: [],
+    hinweise: [],
+  };
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -364,10 +597,13 @@ interface Erkennung {
   text: string;
   textGekennzeichnet: string;
   unsicher: UnsichereStelle[];
+  tabelle: string[][] | null;
   fehler?: string;
 }
 
-function leererBefund(
+const NICHT_ANALYSIERT: Bildinhalt = { status: "nicht-analysiert", text: "" };
+
+export function leererBefund(
   fundstelle: BildFundstelle,
   status: BildBefundStatus,
   extra: Partial<BildBefund> = {},
@@ -379,95 +615,181 @@ function leererBefund(
     text: "",
     textGekennzeichnet: "",
     unsicher: [],
+    tabelle: null,
+    bildinhalt: NICHT_ANALYSIERT,
     wiederverwendet: false,
     ...extra,
   };
 }
 
+export interface BildOptionen {
+  /** Der Weg zur Bildbeschreibung der Fläche; fehlt er, heißt der Bildinhalt „nicht angebunden". */
+  beschreibe?: BildBeschreiber | undefined;
+  /** Ausdrücklicher Auftrag: dasselbe Bild trotz vorhandenem Befund noch einmal erkennen. */
+  neu?: boolean;
+}
+
 export interface BildAnalyse {
   /** Ein einzelnes Bild lesen (bzw. den vorhandenen Befund derselben Bytes wiederverwenden). */
-  befundFuerBild(vorkommen: BildVorkommen): Promise<BildBefund>;
+  befundFuerBild(vorkommen: BildVorkommen, optionen?: BildOptionen): Promise<BildBefund>;
   /** Alle Bilder einer Quelle lesen, der Reihe nach; `onFortschritt` sieht jeden Zwischenstand. */
   analysiereQuelle(
     eingang: BildQuelleEingang,
-    optionen: { automatik: boolean; onFortschritt?: (stand: QuellenBefund) => void },
+    optionen: {
+      automatik: boolean;
+      beschreibe?: BildBeschreiber | undefined;
+      onFortschritt?: (stand: QuellenBefund) => void;
+    },
   ): Promise<QuellenBefund>;
-  /** Wie oft die Engine tatsächlich gelaufen ist (für die Wiederverwendungsprüfung). */
+  /** Wie oft die Texterkennung tatsächlich gelaufen ist (für die Wiederverwendungsprüfung). */
   anzahlAnalysen(): number;
+  /** Wie oft die Bildbeschreibung tatsächlich angefragt wurde. */
+  anzahlBeschreibungen(): number;
+}
+
+async function mitFrist<T>(lauf: Promise<T>, ms: number): Promise<T | "frist"> {
+  let uhr: ReturnType<typeof setTimeout> | undefined;
+  const frist = new Promise<"frist">((resolve) => {
+    uhr = setTimeout(() => resolve("frist"), ms);
+  });
+  try {
+    return await Promise.race([lauf, frist]);
+  } finally {
+    if (uhr !== undefined) {
+      clearTimeout(uhr);
+    }
+  }
 }
 
 export function createBildAnalyse(optionen: {
   erkenne: BildErkenner;
+  ladeBild?: BildLader;
   zeitlimitMs?: number;
   hoechstzahl?: number;
 }): BildAnalyse {
   const zeitlimit = optionen.zeitlimitMs ?? BILD_ZEITLIMIT_MS;
   const hoechstzahl = optionen.hoechstzahl ?? BILD_HOECHSTZAHL_JE_QUELLE;
   const gemerkt = new Map<string, Promise<Erkennung>>();
+  const inhalteGemerkt = new Map<string, Promise<Bildinhalt>>();
   let analysen = 0;
+  let beschreibungen = 0;
 
   const erkenneMitFrist = async (src: string): Promise<Erkennung> => {
     analysen += 1;
-    let uhr: ReturnType<typeof setTimeout> | undefined;
-    const frist = new Promise<"frist">((resolve) => {
-      uhr = setTimeout(() => resolve("frist"), zeitlimit);
-    });
+    const leer = { text: "", textGekennzeichnet: "", unsicher: [], tabelle: null };
     try {
-      const ergebnis = await Promise.race([optionen.erkenne(src), frist]);
+      const ergebnis = await mitFrist(optionen.erkenne(src), zeitlimit);
       if (ergebnis === "frist") {
-        return { status: "zeitueberschreitung", text: "", textGekennzeichnet: "", unsicher: [] };
+        return { status: "zeitueberschreitung", ...leer };
       }
       if (ergebnis.status === "success") {
         const text = ergebnis.text.trim();
         if (text.length === 0) {
-          return { status: "kein-text", text: "", textGekennzeichnet: "", unsicher: [] };
+          return { status: "kein-text", ...leer };
         }
-        return { status: "gelesen", text, ...kennzeichneUnsicheres(text, ergebnis.woerter) };
+        return {
+          status: "gelesen",
+          text,
+          ...kennzeichneUnsicheres(text, ergebnis.woerter),
+          tabelle: tabelleAusWoertern(ergebnis.woerter),
+        };
       }
       return {
         status: ergebnis.status === "unavailable" ? "nicht-verfuegbar" : "fehlgeschlagen",
-        text: "",
-        textGekennzeichnet: "",
-        unsicher: [],
+        ...leer,
         ...(ergebnis.error ? { fehler: ergebnis.error } : {}),
       };
     } catch (error) {
       return {
         status: "fehlgeschlagen",
-        text: "",
-        textGekennzeichnet: "",
-        unsicher: [],
+        ...leer,
         fehler: error instanceof Error ? error.message : "fehler",
       };
-    } finally {
-      if (uhr !== undefined) {
-        clearTimeout(uhr);
-      }
     }
   };
 
-  const befundFuerBild = async (vorkommen: BildVorkommen): Promise<BildBefund> => {
-    const bytes = bildBytes(vorkommen.src);
-    if (!bytes || !vorkommen.src) {
+  const beschreibeMitFrist = async (
+    beschreibe: BildBeschreiber,
+    src: string,
+  ): Promise<Bildinhalt> => {
+    beschreibungen += 1;
+    try {
+      const ergebnis = await mitFrist(beschreibe(src), zeitlimit);
+      return ergebnis === "frist"
+        ? { status: "fehlgeschlagen", text: "", grund: "zeitueberschreitung" }
+        : ergebnis;
+    } catch (error) {
+      return {
+        status: "fehlgeschlagen",
+        text: "",
+        grund: error instanceof Error ? error.message : "fehler",
+      };
+    }
+  };
+
+  const ladeDaten = async (src: string | null): Promise<string | null> => {
+    if (!src || istBildDatenUrl(src)) {
+      return src;
+    }
+    if (!optionen.ladeBild) {
+      return null;
+    }
+    try {
+      return await optionen.ladeBild(src);
+    } catch {
+      return null;
+    }
+  };
+
+  const befundFuerBild: BildAnalyse["befundFuerBild"] = async (vorkommen, bildOptionen = {}) => {
+    const daten = await ladeDaten(vorkommen.src);
+    const bytes = bildBytes(daten);
+    if (!bytes || !daten) {
       return leererBefund(vorkommen.fundstelle, "kein-zugriff");
     }
     const kennung = await bildInhaltskennung(bytes);
-    const vorhanden = kennung ? gemerkt.get(kennung) : undefined;
+    const vorhanden = kennung && !bildOptionen.neu ? gemerkt.get(kennung) : undefined;
     let erkennung: Erkennung;
     let wiederverwendet = false;
     if (vorhanden) {
       erkennung = await vorhanden;
       wiederverwendet = true;
     } else {
-      const lauf = erkenneMitFrist(vorkommen.src);
+      const lauf = erkenneMitFrist(daten);
       if (kennung) {
         gemerkt.set(kennung, lauf);
       }
       erkennung = await lauf;
       // Nur ein abgeschlossener Befund wird gemerkt; ein Fehlschlag darf beim nächsten Eingang
       // erneut versucht werden.
-      if (kennung && !ERFOLG.has(erkennung.status)) {
+      if (kennung && !ERFOLG.has(erkennung.status) && gemerkt.get(kennung) === lauf) {
         gemerkt.delete(kennung);
+      }
+    }
+    // Bildinhalt nach dem Text (Text hat Vorrang). Gemerkt wird nur eine gelungene Beschreibung;
+    // „nicht zulässig" oder „nicht verfügbar" wird beim nächsten Eingang neu gefragt, denn
+    // Einstufung und Modelllage können sich ändern.
+    let bildinhalt: Bildinhalt;
+    if (!bildOptionen.beschreibe) {
+      bildinhalt = { status: "nicht-angebunden", text: "" };
+    } else {
+      const inhaltVorhanden =
+        kennung && !bildOptionen.neu ? inhalteGemerkt.get(kennung) : undefined;
+      if (inhaltVorhanden) {
+        bildinhalt = await inhaltVorhanden;
+      } else {
+        const lauf = beschreibeMitFrist(bildOptionen.beschreibe, daten);
+        if (kennung) {
+          inhalteGemerkt.set(kennung, lauf);
+        }
+        bildinhalt = await lauf;
+        if (
+          kennung &&
+          bildinhalt.status !== "beschrieben" &&
+          inhalteGemerkt.get(kennung) === lauf
+        ) {
+          inhalteGemerkt.delete(kennung);
+        }
       }
     }
     return {
@@ -477,6 +799,8 @@ export function createBildAnalyse(optionen: {
       text: erkennung.text,
       textGekennzeichnet: erkennung.textGekennzeichnet,
       unsicher: erkennung.unsicher,
+      tabelle: erkennung.tabelle,
+      bildinhalt,
       wiederverwendet,
       ...(erkennung.fehler ? { fehler: erkennung.fehler } : {}),
     };
@@ -484,7 +808,7 @@ export function createBildAnalyse(optionen: {
 
   const analysiereQuelle: BildAnalyse["analysiereQuelle"] = async (
     eingang,
-    { automatik, onFortschritt },
+    { automatik, beschreibe, onFortschritt },
   ) => {
     const nichtGelesen = (eingang.nichtGelesen ?? []).filter((x) => x.anzahl > 0);
     const hinweise = [...(eingang.hinweise ?? [])];
@@ -515,7 +839,7 @@ export function createBildAnalyse(optionen: {
         }
         befunde[i] = { ...befund, status: "laeuft" };
         onFortschritt?.(stand());
-        befunde[i] = await befundFuerBild(vorkommen);
+        befunde[i] = await befundFuerBild(vorkommen, { beschreibe });
         onFortschritt?.(stand());
       }
     }
@@ -530,5 +854,6 @@ export function createBildAnalyse(optionen: {
     befundFuerBild,
     analysiereQuelle,
     anzahlAnalysen: () => analysen,
+    anzahlBeschreibungen: () => beschreibungen,
   };
 }

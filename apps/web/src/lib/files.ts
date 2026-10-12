@@ -246,7 +246,16 @@ type TesseractModule = {
     input: unknown,
     lang?: string,
     options?: Record<string, unknown>,
-  ): Promise<{ data: { text: string; words?: { text: string; confidence: number }[] } }>;
+  ): Promise<{
+    data: {
+      text: string;
+      words?: {
+        text: string;
+        confidence: number;
+        bbox?: { x0: number; y0: number; x1: number; y1: number };
+      }[];
+    };
+  }>;
 };
 
 let pdfEnginePromise: Promise<PdfEngine> | null = null;

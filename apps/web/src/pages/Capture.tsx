@@ -57,6 +57,7 @@ import { AiUnavailableHint } from "../components/AiUnavailableHint";
 import { AppendToArticleModal } from "../components/AppendToArticleModal";
 // OCR-02 (Klara-Bildanalyse): Befund des automatischen Bildlesens mit Fundstelle je Bild.
 import { BildBefundListe } from "../components/BildBefundListe";
+import { BildBeschreiberBruecke } from "../components/BildBeschreiberBruecke";
 // SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte anhängen (nichts ersetzen).
 import { BodyExtractPanel } from "../components/BodyExtractPanel";
 import type { BildbeschreibungsBitte } from "../components/BodyImageGallery";
@@ -114,13 +115,19 @@ import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
 // OCR-02 (Klara-Bildanalyse): bereitgestellte und eingebettete Bilder automatisch lesen.
 import {
   BILD_AUTOMATIK_VOREINSTELLUNG,
+  type BildBefund,
+  type BildBeschreiber,
   type BildQuelleEingang,
+  type BildVorkommen,
+  NEU_VERSUCHEN,
   type QuellenBefund,
   docxBildEingang,
   einzelbildEingang,
+  leererBefund,
   pptxBildEingang,
+  quellenBefundAus,
 } from "../lib/bildAutomatik";
-import { bildAnalyse } from "../lib/bildAutomatikLauf";
+import { neueBildAnalyse } from "../lib/bildAutomatikLauf";
 import {
   applyBodyAssist,
   applyBodyAssistBlock,
@@ -265,7 +272,6 @@ import {
   readPdfFileWithOriginal,
   readPptxRich,
   readTextFile,
-  runImageOcr,
 } from "../lib/files";
 import { type FotoAnker, applyFotoAnker, applyFotoArtikel } from "../lib/fotoInterview";
 import {
@@ -1261,9 +1267,18 @@ export function CaptureArbeitsraum({
     lauf: number;
     befund: QuellenBefund;
   } | null>(null);
-  // Der Bildanhang im Formular („Bilder hochladen") bleibt der manuelle Klickweg aus gesamt-ocr K3
-  // (docs/klara-bildanalyse-ocr/ABGLEICH-OCR-AUFTRAG.md).
   const fileBildLaufRef = useRef(0);
+  // OCR-02: EINE Bildanalyse für diesen Arbeitsraum (Dateiimport und Bildanhänge) — darin werden
+  // unveränderte Bilder wiedererkannt. Der Weg zur Bildbeschreibung (W02) kommt über die Brücke aus
+  // dem eigenen `ImageDescribeProvider`, also mit der Herkunft und Einstufung dieses Entwurfs.
+  const [bildAnalyse] = useState(neueBildAnalyse);
+  const bildBeschreiberRef = useRef<BildBeschreiber | undefined>(undefined);
+  // OCR-02 (Bens Befund, Nacharbeit 3): auch die über „Bilder hochladen" bzw. den Anhang gegebenen
+  // Bilder werden beim Eingang gelesen. Die TEXTÜBERNAHME in Aussage/Rohtext bleibt der ausdrückliche
+  // Klick „OCR → Text" (gesamt-ocr K3/K6). Der erste Klick übernimmt den automatischen Befund, ein
+  // weiterer Klick erkennt ausdrücklich neu.
+  const [anhangBildBefunde, setAnhangBildBefunde] = useState<Record<string, BildBefund>>({});
+  const anhangBildLaeufeRef = useRef(new Map<string, Promise<BildBefund>>());
   // ================================================================================================
   // JOB 4203 D3 · RUNDE 2 — DIE ABWEISUNG WIRD ANGESAGT, NICHT NUR ANGEZEIGT.
   // ================================================================================================
@@ -4833,6 +4848,7 @@ export function CaptureArbeitsraum({
     const aktuell = (): boolean => fileBildLaufRef.current === lauf;
     const ergebnis = await bildAnalyse.analysiereQuelle(eingang, {
       automatik: BILD_AUTOMATIK_VOREINSTELLUNG,
+      beschreibe: bildBeschreiberRef.current,
       onFortschritt: (stand) => {
         if (aktuell()) {
           setFileBildBefund({ lauf, befund: stand });
@@ -5231,10 +5247,10 @@ export function CaptureArbeitsraum({
     try {
       // OCR-02: über dieselbe Analyse wie die Automatik — läuft sie für dieses Bild noch oder hat sie
       // es schon gelesen, wird ihr Ergebnis übernommen statt ein zweites Mal erkannt.
-      const befund = await bildAnalyse.befundFuerBild({
-        fundstelle: { quelle: fileName, art: "bild", bild: 1 },
-        src: fileImageUrl,
-      });
+      const befund = await bildAnalyse.befundFuerBild(
+        { fundstelle: { quelle: fileName, art: "bild", bild: 1 }, src: fileImageUrl },
+        { beschreibe: bildBeschreiberRef.current },
+      );
       const res = {
         status: befund.status,
         text: befund.textGekennzeichnet,
@@ -5263,6 +5279,15 @@ export function CaptureArbeitsraum({
     }
   };
 
+  // OCR-02: ein Bildanhang wird beim Eingang gelesen; sein Befund steht unter den Anhängen. Er wird
+  // gemerkt, damit der Klick „OCR → Text" ihn übernimmt statt ein zweites Mal zu erkennen.
+  const starteAnhangLesen = (id: string, vorkommen: BildVorkommen): void => {
+    setAnhangBildBefunde((b) => ({ ...b, [id]: leererBefund(vorkommen.fundstelle, "laeuft") }));
+    const lauf = bildAnalyse.befundFuerBild(vorkommen, { beschreibe: bildBeschreiberRef.current });
+    anhangBildLaeufeRef.current.set(id, lauf);
+    void lauf.then((befund) => setAnhangBildBefunde((b) => ({ ...b, [id]: befund })));
+  };
+
   const addImage = async (f: File): Promise<void> => {
     try {
       // SCRUM-121: kleine Vorschau lokal + Original separat (geht beim Submit in den Object-Store).
@@ -5276,10 +5301,16 @@ export function CaptureArbeitsraum({
       } catch {
         // Vorschau optional — Original bleibt als Anzeige erhalten.
       }
+      const id = crypto.randomUUID();
       setImages((im) => [
         ...im,
-        { id: crypto.randomUUID(), name: f.name, mime: f.type || "image/jpeg", dataUrl, original },
+        { id, name: f.name, mime: f.type || "image/jpeg", dataUrl, original },
       ]);
+      // OCR-02: sofort mitlesen — aus dem Original, nicht aus der Vorschau.
+      starteAnhangLesen(id, {
+        fundstelle: { quelle: f.name, art: "bild", bild: 1 },
+        src: original,
+      });
     } catch {
       setErr(t("capture.imageError", { name: f.name }));
     }
@@ -5356,14 +5387,29 @@ export function CaptureArbeitsraum({
     }
   };
 
-  // SCRUM-123: optionale Bild-OCR, NUR auf Nutzeraktion. Status ehrlich anzeigen.
+  // SCRUM-123: Bild-OCR → Text auf Nutzeraktion. Status ehrlich anzeigen. Seit OCR-02 liest die
+  // Automatik das Bild schon beim Eingang; dieser Klick ist die ausdrückliche TEXTÜBERNAHME. Der
+  // erste Klick übernimmt den automatischen Befund (kein zweiter Lauf), ein weiterer Klick — oder
+  // einer nach einem Fehlschlag — erkennt ausdrücklich neu.
   const onOcr = async (img: { id: string; name: string; dataUrl: string }): Promise<void> => {
     setErr(null);
     setOcrBusy(img.id);
     setNotice(t("capture.ocrRunning", { name: img.name }));
     try {
-      const res = await runImageOcr(img.dataUrl);
-      if (res.status === "success" && res.text.length > 0) {
+      const automatisch = anhangBildLaeufeRef.current.get(img.id);
+      anhangBildLaeufeRef.current.delete(img.id);
+      let befund = automatisch ? await automatisch : null;
+      if (!befund || NEU_VERSUCHEN.has(befund.status)) {
+        const original = images.find((i) => i.id === img.id)?.original ?? img.dataUrl;
+        befund = await bildAnalyse.befundFuerBild(
+          { fundstelle: { quelle: img.name, art: "bild", bild: 1 }, src: original },
+          { beschreibe: bildBeschreiberRef.current, neu: true },
+        );
+        const neuer = befund;
+        setAnhangBildBefunde((b) => ({ ...b, [img.id]: neuer }));
+      }
+      const res = { status: befund.status, text: befund.textGekennzeichnet };
+      if (res.status === "gelesen" && res.text.length > 0) {
         const erkannt = res.text;
         // R-1688/R-1733 (Bens Befund 10.10., Nacharbeit 2): dasselbe Ziel wie das Transkript — im
         // Formular die sichtbare „Aussage", sonst der Rohtext. Die Meldung erst nach der Übernahme.
@@ -5381,9 +5427,9 @@ export function CaptureArbeitsraum({
         // durch eine Übernahme ersetzt wurde.
         setOcrErsetzt((e) => ocrErsetztOhne(e, img.name, erkannt));
         setNotice(t("capture.ocrDone", { name: img.name }));
-      } else if (res.status === "success") {
+      } else if (res.status === "gelesen" || res.status === "kein-text") {
         setErr(t("capture.ocrEmpty", { name: img.name }));
-      } else if (res.status === "unavailable") {
+      } else if (res.status === "nicht-verfuegbar") {
         setErr(t("capture.ocrUnavailable"));
       } else {
         setErr(t("capture.ocrFailed", { name: img.name }));
@@ -6163,6 +6209,15 @@ export function CaptureArbeitsraum({
   // SCRUM-384: abgeleiteter Wizard-Zustand (refine nur mit Entwurf) + sichtbare Schritt-Leiste.
   const expertView = isExpertMode(mode);
   const wizStep = resolveWizardStep(wizStepRaw, draft !== null);
+  // OCR-02: die Befunde der Bildanhänge, in der Reihenfolge der Anhänge (entfernte fallen heraus).
+  const anhangBefundListe = images.flatMap((img) => {
+    const befund = anhangBildBefunde[img.id];
+    return befund ? [befund] : [];
+  });
+  const anhangQuellenBefund =
+    anhangBefundListe.length > 0
+      ? quellenBefundAus(t("bildautomatik.quelle.anhaenge"), "bild", anhangBefundListe)
+      : null;
   return (
     // AUFTRAG-mega50 Block A: DAS EINZIGE, was diese Fläche zur Bildbeschreibung noch zu sagen hat —
     // die Herkunft ihres Inhalts. Der Weg selbst (describe-Aufruf, Sprache, Verfügbarkeit) kommt aus
@@ -6175,6 +6230,8 @@ export function CaptureArbeitsraum({
     <ImageDescribeProvider
       provenance={draftProvenance(declaredConfidentiality, undefined, draftId ?? undefined)}
     >
+      {/* OCR-02: der Weg zur Bildbeschreibung für das automatische Bildlesen dieses Arbeitsraums. */}
+      <BildBeschreiberBruecke ziel={bildBeschreiberRef} />
       <div className="mx-auto max-w-5xl">
         {/* SCRUM-296: Demo-/Pilotpfad auf der Erfassungsseite wiedererkennbar (nur bei ?demo=stage1). */}
         {isDemoContext(params) ? <DemoBanner surface="capture" /> : null}
@@ -7044,7 +7101,9 @@ export function CaptureArbeitsraum({
                   ) : null}
                   {/* OCR-02: Befund des automatischen Bildlesens, mit Fundstelle je Bild. */}
                   {fileBildBefund ? (
-                    <BildBefundListe befund={fileBildBefund.befund} lauf={fileBildBefund.lauf} />
+                    <div data-testid="datei-bild-befunde">
+                      <BildBefundListe befund={fileBildBefund.befund} lauf={fileBildBefund.lauf} />
+                    </div>
                   ) : null}
                   {fileWholeDraftSaved ? (
                     <div className="rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg px-3 py-2">
@@ -7700,7 +7759,8 @@ export function CaptureArbeitsraum({
                             >
                               <X size={12} aria-hidden="true" />
                             </button>
-                            {/* SCRUM-123: OCR nur auf Klick, mit sichtbarem Lade-/Fehlerstatus */}
+                            {/* SCRUM-123: Textübernahme auf Klick, mit sichtbarem Lade-/Fehlerstatus.
+                              OCR-02: gelesen wird schon beim Eingang (Befund unten). */}
                             <button
                               type="button"
                               disabled={ocrBusy === img.id}
@@ -7711,6 +7771,12 @@ export function CaptureArbeitsraum({
                             </button>
                           </div>
                         ))}
+                      </div>
+                    ) : null}
+                    {/* OCR-02: Befund der automatisch gelesenen Bildanhänge (Text und Bildinhalt). */}
+                    {anhangQuellenBefund ? (
+                      <div className="mt-2" data-testid="anhang-bild-befunde">
+                        <BildBefundListe befund={anhangQuellenBefund} />
                       </div>
                     ) : null}
                   </div>

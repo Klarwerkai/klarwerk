@@ -181,19 +181,35 @@ function deck(bilder: readonly Buffer[]): Buffer {
 interface Abgelesen {
   status: string | null;
   folie: string | null;
+  /** Zustand des Bildinhalts (W02): beschrieben, nicht-zulaessig, nicht-verfuegbar, … */
+  inhalt: string | null;
   text: string;
   zeile: string;
+  /** Erkannte Tabelle, Zeile für Zeile. */
+  tabelle: string[][];
 }
+
+/** Der Befund des Dateiimports — andere Befundlisten der Seite (Editor, Anhänge) zählen nicht. */
+const DATEI_BEFUND = "[data-testid=datei-bild-befunde] [data-testid=bild-befunde]";
 
 async function befundeAblesen(panel: Locator): Promise<Abgelesen[]> {
   return panel.locator("[data-testid=bild-befund]").evaluateAll((els) =>
     els.map((el) => ({
       status: el.getAttribute("data-status"),
       folie: el.getAttribute("data-folie"),
+      inhalt: el.getAttribute("data-bildinhalt"),
       text: el.querySelector("[data-testid=bild-befund-text]")?.textContent ?? "",
       zeile: (el.textContent ?? "").replace(/\s+/g, " ").trim(),
+      tabelle: [...el.querySelectorAll("[data-testid=bild-befund-tabelle] tr")].map((tr) =>
+        [...tr.querySelectorAll("td")].map((td) => (td.textContent ?? "").trim()),
+      ),
     })),
   );
+}
+
+/** Ohne beschriebenen Bildinhalt (W02) ist eine Quelle ehrlich „teilweise“ — sonst „vollständig“. */
+function erwarteterEinzelstatus(befund: Abgelesen | undefined): string {
+  return befund?.inhalt === "beschrieben" ? "vollstaendig" : "teilweise";
 }
 
 /**
@@ -208,15 +224,15 @@ async function wartenBisFertig(
   await expect
     .poll(
       async () => {
-        const gelesen = await page.evaluate(() => {
-          const el = document.querySelector("[data-testid=bild-befunde]");
+        const gelesen = await page.evaluate((auswahl) => {
+          const el = document.querySelector(auswahl);
           return el
             ? {
                 status: el.getAttribute("data-status") ?? "fehlt",
                 lauf: Number(el.getAttribute("data-lauf") ?? "0"),
               }
             : null;
-        });
+        }, DATEI_BEFUND);
         if (!gelesen || gelesen.lauf <= nachLauf) {
           return "wartet";
         }
@@ -262,7 +278,7 @@ test("OCR-02 · PowerPoint und Bild werden beim Einlesen automatisch gelesen —
     mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     buffer: pptx,
   });
-  const panel = page.getByTestId("bild-befunde").first();
+  const panel = page.locator(DATEI_BEFUND).first();
   const lauf1 = await wartenBisFertig(page, 0);
   const status1 = lauf1.status;
   const befunde1 = await befundeAblesen(panel);
@@ -324,12 +340,246 @@ test("OCR-02 · PowerPoint und Bild werden beim Einlesen automatisch gelesen —
     expect(b.zeile).toContain("unverändert — vorhandenes Ergebnis");
   }
 
-  // K1 · das Einzelbild ist ohne Klick gelesen.
-  expect(status3).toBe("vollstaendig");
+  // K1 · das Einzelbild ist ohne Klick gelesen. „Vollständig“ nur mit beschriebenem Bildinhalt
+  // (W02); fehlt er (kein Modell, Einstufung), steht der Grund am Bild und die Quelle ist „teilweise“.
   expect(befunde3).toHaveLength(1);
+  expect(status3).toBe(erwarteterEinzelstatus(befunde3[0]));
+  if (befunde3[0]?.inhalt !== "beschrieben") {
+    expect(befunde3[0]?.zeile).toContain("Bildinhalt nicht analysiert");
+  }
   expect(befunde3[0]?.status).toBe("gelesen");
   expect(befunde3[0]?.zeile).not.toContain("unverändert");
   const einzeltext = (befunde3[0]?.text ?? "").toUpperCase();
   expect(einzeltext).toMatch(EINZELBILD.wort);
   expect(einzeltext).toMatch(EINZELBILD.marke);
+});
+
+// ================================================================================================
+// Nacharbeit 3 (Bens Befund 3) · LESBARE HANDSCHRIFT, UNLESERLICHE STELLE, BILDHAFTE TABELLE
+// ================================================================================================
+//
+// KONTROLLIERTE VORLAGEN MIT BEKANNTEM INHALT, im Browser gezeichnet:
+//   · Handschrift: Großbuchstaben und Ziffern als freihändige Striche (Tinte, Stiftbreite, leichte
+//     Neigung, je Punkt ein fester, pseudozufälliger Versatz — also bei jedem Lauf dieselbe Vorlage).
+//     Das ist eine nachgebildete Druckhandschrift, KEINE Schriftprobe eines Menschen; eine echte
+//     Handschriftprobe liegt diesem Auftrag nicht vor und wird nicht behauptet.
+//   · Unleserlich: nur Gekritzel. Erwartet: kein erfundener Text — entweder „kein Text“ oder jedes
+//     Wort als unsicher/unleserlich gekennzeichnet.
+//   · Tabelle: drei Spalten, drei Zeilen, ohne Linien. Erwartet: eine erkannte Tabelle 3 × 3.
+
+/**
+ * Striche je Zeichen im Kasten Breite 0,6 × Höhe 1 (y nach unten). Schreibweise: Punkte „x,y“ durch
+ * Leerzeichen, Striche durch „|“ getrennt.
+ */
+const STRICHE: Record<string, string> = {
+  T: "0,0 0.6,0|0.3,0 0.3,1",
+  E: "0.55,0 0,0 0,1 0.55,1|0,0.5 0.45,0.5",
+  I: "0.3,0 0.3,1",
+  L: "0,0 0,1 0.55,1",
+  H: "0,0 0,1|0.6,0 0.6,1|0,0.5 0.6,0.5",
+  A: "0,1 0.3,0 0.6,1|0.12,0.62 0.48,0.62",
+  "1": "0.15,0.2 0.35,0 0.35,1",
+  "4": "0.45,1 0.45,0 0,0.65 0.6,0.65",
+  "7": "0,0 0.6,0 0.2,1",
+};
+
+const HANDSCHRIFT = [
+  { zeile: "TEIL 47", wort: /TEIL/, zahl: /\b47\b/ },
+  { zeile: "HALT 71", wort: /HALT/, zahl: /\b71\b/ },
+] as const;
+
+const TABELLE = [
+  ["TEIL", "MENGE", "PREIS"],
+  ["VENTIL", "4", "12"],
+  ["DICHTUNG", "10", "8"],
+] as const;
+
+/** Die Handschrift-Vorlage: freihändige Striche mit festem Versatz (immer dieselbe Vorlage). */
+async function fiktiveHandschrift(page: Page, zeilen: readonly string[]): Promise<Buffer> {
+  const b64 = await page.evaluate(
+    ({ z, striche }) => {
+      const hoehe = 90;
+      const canvas = document.createElement("canvas");
+      canvas.width = 1200;
+      canvas.height = 80 + z.length * 150;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        throw new Error("kein Canvas");
+      }
+      ctx.fillStyle = "#fbfaf4";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = "#1b2a6b";
+      ctx.lineWidth = 9;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      let saat = 7;
+      const versatz = (): number => {
+        saat = (saat * 9301 + 49297) % 233280;
+        return (saat / 233280 - 0.5) * 8;
+      };
+      z.forEach((zeile, n) => {
+        let x = 60;
+        const oben = 60 + n * 150;
+        for (const zeichen of zeile) {
+          const form = striche[zeichen];
+          if (form) {
+            for (const strich of form.split("|")) {
+              ctx.beginPath();
+              strich.split(" ").forEach((punkt, i) => {
+                const [px = 0, py = 0] = punkt.split(",").map(Number);
+                const gx = x + px * hoehe + (1 - py) * 10 + versatz();
+                const gy = oben + py * hoehe + versatz();
+                if (i === 0) {
+                  ctx.moveTo(gx, gy);
+                } else {
+                  ctx.lineTo(gx, gy);
+                }
+              });
+              ctx.stroke();
+            }
+          }
+          x += zeichen === " " ? 0.7 * hoehe : 0.85 * hoehe;
+        }
+      });
+      return canvas.toDataURL("image/png").split(",")[1] ?? "";
+    },
+    { z: zeilen, striche: STRICHE },
+  );
+  return Buffer.from(b64, "base64");
+}
+
+/** Nur Gekritzel — nichts darin ist lesbar. */
+async function gekritzel(page: Page): Promise<Buffer> {
+  const b64 = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1000;
+    canvas.height = 260;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("kein Canvas");
+    }
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#333333";
+    ctx.lineWidth = 3;
+    let saat = 11;
+    const zufall = (): number => {
+      saat = (saat * 9301 + 49297) % 233280;
+      return saat / 233280;
+    };
+    ctx.beginPath();
+    ctx.moveTo(40, 130);
+    for (let i = 0; i < 160; i += 1) {
+      ctx.lineTo(40 + i * 5.6, 60 + zufall() * 140);
+    }
+    ctx.stroke();
+    return canvas.toDataURL("image/png").split(",")[1] ?? "";
+  });
+  return Buffer.from(b64, "base64");
+}
+
+/** Eine bildhafte Tabelle ohne Linien: drei Spalten an festen Kanten. */
+async function fiktiveTabelle(page: Page, zeilen: readonly (readonly string[])[]): Promise<Buffer> {
+  const b64 = await page.evaluate((z) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1300;
+    canvas.height = 80 + z.length * 120;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("kein Canvas");
+    }
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#000000";
+    ctx.font = "bold 64px Arial, Helvetica, sans-serif";
+    z.forEach((zeile, n) => {
+      zeile.forEach((zelle, s) => {
+        ctx.fillText(zelle, 60 + s * 450, 110 + n * 120);
+      });
+    });
+    return canvas.toDataURL("image/png").split(",")[1] ?? "";
+  }, zeilen);
+  return Buffer.from(b64, "base64");
+}
+
+test("OCR-02 · Handschrift, unleserliche Stelle und bildhafte Tabelle werden automatisch gelesen und gekennzeichnet", async ({
+  page,
+}) => {
+  test.setTimeout(600_000);
+  await ensureLoggedIn(page);
+  await page.goto("/erfassen?weg=datei");
+  const eingang = page.locator('input[type="file"][accept*=".pptx"][accept*="image/*"]').first();
+  await expect(eingang, "Dateiimport des Erfassens ist nicht da").toBeAttached({ timeout: 20_000 });
+  const panel = page.locator(DATEI_BEFUND).first();
+  const protokoll: Record<string, unknown> = {
+    art: "Technische OCR-Probe mit kontrollierten, fiktiven Vorlagen — keine Kundenabnahme",
+    handschrift: HANDSCHRIFT.map((h) => h.zeile),
+    tabelle: TABELLE,
+  };
+
+  // ── Handschrift ─────────────────────────────────────────────────────────────────────────────
+  await eingang.setInputFiles({
+    name: "fiktive-handschrift-ocr02.png",
+    mimeType: "image/png",
+    buffer: await fiktiveHandschrift(
+      page,
+      HANDSCHRIFT.map((h) => h.zeile),
+    ),
+  });
+  const lauf1 = await wartenBisFertig(page, 0);
+  const hand = await befundeAblesen(panel);
+  protokoll.handschriftBefund = { ...lauf1, befunde: hand };
+
+  // ── Gekritzel ───────────────────────────────────────────────────────────────────────────────
+  await eingang.setInputFiles({
+    name: "fiktives-gekritzel-ocr02.png",
+    mimeType: "image/png",
+    buffer: await gekritzel(page),
+  });
+  const lauf2 = await wartenBisFertig(page, lauf1.lauf);
+  const kritzel = await befundeAblesen(panel);
+  protokoll.gekritzelBefund = { ...lauf2, befunde: kritzel };
+
+  // ── Tabelle ─────────────────────────────────────────────────────────────────────────────────
+  await eingang.setInputFiles({
+    name: "fiktive-tabelle-ocr02.png",
+    mimeType: "image/png",
+    buffer: await fiktiveTabelle(page, TABELLE),
+  });
+  const lauf3 = await wartenBisFertig(page, lauf2.lauf);
+  const tabelle = await befundeAblesen(panel);
+  protokoll.tabelleBefund = { ...lauf3, befunde: tabelle };
+
+  await test.info().attach("ocr02-handschrift-tabelle.json", {
+    contentType: "application/json",
+    body: JSON.stringify(protokoll, null, 2),
+  });
+
+  // Handschrift: beide Zeilen mit Wort und Zahl erkannt — mit oder ohne Unsicherheitsmarke.
+  expect(hand).toHaveLength(1);
+  expect(hand[0]?.status).toBe("gelesen");
+  const handtext = (hand[0]?.text ?? "").toUpperCase().replace(/\[\?([^\]]*)\]/g, "$1");
+  for (const h of HANDSCHRIFT) {
+    expect(handtext, `Handschrift „${h.zeile}“`).toMatch(h.wort);
+    expect(handtext, `Handschrift „${h.zeile}“`).toMatch(h.zahl);
+  }
+
+  // Unleserlich: kein erfundener Text — nichts steht da, was nicht als unsicher markiert ist.
+  expect(kritzel).toHaveLength(1);
+  const ungekennzeichnet = (kritzel[0]?.text ?? "").replace(/\[[^\]]*\]/g, "").trim();
+  expect(
+    kritzel[0]?.status === "kein-text" || ungekennzeichnet === "",
+    `Gekritzel ergab ungekennzeichneten Text: „${kritzel[0]?.text ?? ""}“`,
+  ).toBe(true);
+
+  // Tabelle: drei Zeilen, drei Spalten, an der richtigen Stelle.
+  expect(tabelle).toHaveLength(1);
+  const zellen = (tabelle[0]?.tabelle ?? []).map((zeile) => zeile.map((z) => z.toUpperCase()));
+  expect(zellen).toHaveLength(TABELLE.length);
+  TABELLE.forEach((soll, n) => {
+    expect(zellen[n], `Tabellenzeile ${n + 1}`).toHaveLength(soll.length);
+    soll.forEach((zelle, s) => {
+      expect(zellen[n]?.[s], `Zelle ${n + 1}/${s + 1}`).toContain(zelle);
+    });
+  });
 });

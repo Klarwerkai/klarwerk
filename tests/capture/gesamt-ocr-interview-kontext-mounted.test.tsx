@@ -317,10 +317,18 @@ describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführt
   it("I1 · nach dem Klick auf die Erkennung trägt der Interview-Aufruf den erkannten Text", async () => {
     steuerung.ocr.mockResolvedValue({ status: "success", text: ERKANNT });
     await haengeBildAn();
-    // Das Anhängen allein erkennt nichts.
-    expect(steuerung.ocr).not.toHaveBeenCalled();
-    await klicke(knopf(i18n.t("capture.ocr")));
+    // OCR-02 (produkt:20261012:klara-bildanalyse-ocr-automatik, Bens Befund Nacharbeit 3): das
+    // bereitgestellte Bild wird beim Anhängen automatisch gelesen — genau einmal — und sein Befund
+    // steht sichtbar unter den Anhängen. Die ÜBERNAHME in den Text bleibt der ausdrückliche Klick
+    // (gesamt-ocr): ohne ihn steht der erkannte Text weder im Rohtext noch im Interview (I2).
     expect(steuerung.ocr).toHaveBeenCalledTimes(1);
+    const anhangBefund = container.querySelector("[data-testid=anhang-bild-befunde]");
+    expect(anhangBefund?.textContent ?? "").toContain(ERKANNT);
+    expect(rohtextFeld().value).not.toContain(ERKANNT);
+    await klicke(knopf(i18n.t("capture.ocr")));
+    // Der Klick übernimmt den automatischen Befund — kein zweiter Erkennungslauf.
+    expect(steuerung.ocr).toHaveBeenCalledTimes(1);
+    expect(rohtextFeld().value).toContain(ERKANNT);
 
     await waehleModus("interview");
     // Der Moduswechsel allein sendet nichts (E2E-008).
@@ -335,11 +343,15 @@ describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführt
   });
 
   it("I2 · Gegenprobe: ohne Klick auf die Erkennung reist kein Bildtext ins Interview", async () => {
+    // OCR-02: das Bild wird automatisch gelesen (auch mit erkanntem Text) — übernommen wird er nur
+    // auf Klick. Deshalb liefert die Erkennung hier ECHTEN Text: die Gegenprobe zeigt, dass er
+    // trotzdem nicht ins Interview reist.
+    steuerung.ocr.mockResolvedValue({ status: "success", text: ERKANNT });
     await haengeBildAn();
     await waehleModus("interview");
     await klicke(knopf(i18n.t("capture.ivStart")));
 
-    expect(steuerung.ocr).not.toHaveBeenCalled();
+    expect(steuerung.ocr).toHaveBeenCalledTimes(1);
     expect(steuerung.interview).toHaveBeenCalledTimes(1);
     expect(steuerung.interview.mock.calls[0]?.[KONTEXT_ARG] ?? "").toBe("");
   });
