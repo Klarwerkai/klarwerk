@@ -207,6 +207,7 @@ export function OfficeBildBefunde({
           <BildBefundListe befund={stand.befund} />
           {stand.eingang ? (
             <KlaraBildKontextFrage
+              kontextSchluessel={`office:${a.id}:${a.objectId}`}
               dokumentTextVon={() => stand.text ?? ""}
               quellen={[stand.befund]}
               aktuell={[stand.eingang]}

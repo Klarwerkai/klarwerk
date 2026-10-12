@@ -685,6 +685,12 @@ export interface BildAnalyse {
       beschreibe?: BildBeschreiber | undefined;
       onFortschritt?: (stand: QuellenBefund) => void;
       abbrechen?: () => boolean;
+      /**
+       * Nacharbeit 4 (Bens Befund „datei-automatik“): die Automatik wurde WÄHREND des Laufs
+       * ausgeschaltet. Vor dem nächsten Bild geprüft: abgeschlossene Ergebnisse bleiben, die übrigen
+       * Bilder heißen „nicht gelesen, Automatik aus“, und dieser Endstand wird gemeldet.
+       */
+      automatikAus?: () => boolean;
     },
   ): Promise<QuellenBefund>;
   /** Wie oft die Texterkennung tatsächlich gelaufen ist (für die Wiederverwendungsprüfung). */
@@ -911,7 +917,7 @@ export function createBildAnalyse(optionen: {
 
   const analysiereQuelle: BildAnalyse["analysiereQuelle"] = async (
     eingang,
-    { automatik, beschreibe, onFortschritt, abbrechen },
+    { automatik, beschreibe, onFortschritt, abbrechen, automatikAus },
   ) => {
     const nichtGelesen = (eingang.nichtGelesen ?? []).filter((x) => x.anzahl > 0);
     const hinweise = [...(eingang.hinweise ?? [])];
@@ -941,6 +947,18 @@ export function createBildAnalyse(optionen: {
           continue;
         }
         if (abbrechen?.()) {
+          break;
+        }
+        if (automatikAus?.()) {
+          for (let j = i; j < befunde.length; j += 1) {
+            const rest = befunde[j];
+            if (rest && rest.status === "wartet") {
+              befunde[j] = leererBefund(rest.fundstelle, "nicht-analysiert", {
+                grund: "automatik-aus",
+              });
+            }
+          }
+          onFortschritt?.(stand());
           break;
         }
         befunde[i] = { ...befund, status: "laeuft" };

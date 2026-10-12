@@ -56,6 +56,8 @@ export default {
     "klarabildkontext.antwort.ohneModellZusammenfassung":
       "Für eine Zusammenfassung ist hier gerade kein Modell verfügbar.",
     "klarabildkontext.antwort.fehler": "Klara konnte nicht antworten: {{grund}}",
+    "klarabildkontext.antwort.veraltet":
+      "Der Inhalt hat sich seit dieser Antwort geändert – sie beruht auf dem früheren Stand. Bitte erneut fragen.",
     "klarabildkontext.belege.titel": "Fundstellen",
     "klarabildkontext.belege.keine":
       "Keine passende Stelle gefunden – weder im Text noch in den gelesenen Bildern.",
@@ -126,6 +128,8 @@ export default {
     "klarabildkontext.antwort.ohneModellZusammenfassung":
       "No model is currently available here for a summary.",
     "klarabildkontext.antwort.fehler": "Klara could not answer: {{grund}}",
+    "klarabildkontext.antwort.veraltet":
+      "The content has changed since this answer – it is based on the earlier state. Please ask again.",
     "klarabildkontext.belege.titel": "Locations",
     "klarabildkontext.belege.keine":
       "No matching passage found – neither in the text nor in the images read.",
@@ -196,6 +200,8 @@ export default {
     "klarabildkontext.antwort.ohneModellZusammenfassung":
       "Voor een samenvatting is hier nu geen model beschikbaar.",
     "klarabildkontext.antwort.fehler": "Klara kon niet antwoorden: {{grund}}",
+    "klarabildkontext.antwort.veraltet":
+      "De inhoud is sinds dit antwoord gewijzigd – het berust op de eerdere stand. Vraag opnieuw.",
     "klarabildkontext.belege.titel": "Vindplaatsen",
     "klarabildkontext.belege.keine":
       "Geen passende plaats gevonden – niet in de tekst en niet in de gelezen afbeeldingen.",

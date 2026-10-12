@@ -279,3 +279,174 @@ test("OCR-03 · Klara nutzt den automatisch gelesenen Bildtext einer PowerPoint 
   // Nicht vollständig gelesen → die Antwort sagt es.
   expect(unvollstaendig).toBe(1);
 });
+
+// ================================================================================================
+// Nacharbeit 4 (Bens Befund) · DIE TATSÄCHLICHE ANTWORT ÜBER DEN PRODUKTIVEN WEG — mit Modell.
+// ================================================================================================
+//
+// Der Fall oben belegt Erkennung, Fundstellen und Bilderliste, aber keine formulierte Antwort: im
+// hermetischen Tor gibt es kein Modell. DIESER Fall trägt `@modell` und läuft deshalb nur im VOLLEN
+// Smoke (`npm run smoke:ui`, Zugang ausschliesslich über `KLARWERK_SHIP_SMOKE_API_KEY`). Dort wird
+// NICHT übersprungen: fehlt ein nutzbares Modell für „assist“, ist der Fall ROT, und eine fehlende
+// oder leere Antwort lässt ihn nie bestehen.
+//
+// WARUM EIN ENTWURF MIT EINSTUFUNG „intern“: eine nicht eingestufte Datei gilt fail-safe als
+// vertraulich (`lib/reasonerProvenance.ts`) — dann darf kein Cloud-Modell sie sehen, und das ist
+// richtig so. Der Fall stuft deshalb einen fiktiven Entwurf über den vorhandenen Entwurfsweg
+// ausdrücklich ein und öffnet ihn im Editor; gefragt wird über genau die Fläche, die jeder Editor
+// trägt (`BildBefundeImRumpf` → `KlaraBildKontextFrage` → assist-Weg mit der Provenienz des
+// Entwurfs). Die Grundfreigabe der Instanz wird wie in `klara-basis-browser.spec.ts` über den
+// Adminweg gesetzt und danach wiederhergestellt.
+
+interface Zuordnung {
+  global: string;
+  perTask: Record<string, string>;
+  kiFreigabe?: { oeffentlicheKi?: boolean; vertraulicheInhalte?: boolean };
+}
+
+async function zuordnungLesen(admin: Page): Promise<Zuordnung> {
+  const antwort = await admin.request.get("/api/reasoner/config");
+  expect(antwort.status(), await antwort.text()).toBe(200);
+  return ((await antwort.json()) as { taskConfig: Zuordnung }).taskConfig;
+}
+
+async function freigabeSetzen(
+  admin: Page,
+  basis: Zuordnung,
+  kiFreigabe: { oeffentlicheKi: boolean; vertraulicheInhalte: boolean },
+): Promise<void> {
+  const antwort = await admin.request.put("/api/reasoner/config", {
+    data: { global: basis.global, perTask: basis.perTask, kiFreigabe },
+  });
+  expect(antwort.status(), await antwort.text()).toBe(200);
+}
+
+const RUMPF_BEFUND = "[data-testid=rumpf-bild-befunde] [data-testid=bild-befunde]";
+
+test("OCR-03 · Klara antwortet mit dem Modell auf Bildtext und fasst Text und Bilder zusammen @modell", async ({
+  page,
+}) => {
+  test.setTimeout(600_000);
+  await ensureLoggedIn(page);
+  const vorher = await zuordnungLesen(page);
+  await freigabeSetzen(page, vorher, { oeffentlicheKi: true, vertraulicheInhalte: false });
+  let entwurfId: string | null = null;
+  const protokoll: Record<string, unknown> = {
+    art: "Modelllauf mit fiktiven Daten — keine Kundenabnahme",
+  };
+  try {
+    const statusAntwort = await page.request.get("/api/reasoner/status");
+    const status = (await statusAntwort.json()) as {
+      active?: boolean;
+      reachable?: string;
+      kiAbgeschaltet?: boolean;
+      extern?: string;
+      tasks?: { assist?: boolean };
+    };
+    protokoll.modellstatus = status;
+    expect(status.extern, "die Grundfreigabe ist nicht wirksam").toBe("frei");
+    expect(
+      status.active === true &&
+        status.tasks?.assist === true &&
+        status.kiAbgeschaltet !== true &&
+        status.reachable !== "unreachable",
+      `Kein nutzbares Modell für „assist“ (Status ${JSON.stringify(status)}) — der volle Smoke braucht KLARWERK_SHIP_SMOKE_API_KEY.`,
+    ).toBe(true);
+
+    // Ein fiktiver, ausdrücklich „intern“ eingestufter Entwurf: der Text nennt weder Lager noch
+    // Prüfkarte — beides steht NUR in den eingebetteten Bildern.
+    await page.goto("/");
+    const bildA = (await fiktivesBild(page, "PRUEFKARTE 47")).toString("base64");
+    const bildB = (await fiktivesBild(page, "LAGER 29")).toString("base64");
+    const bodyHtml = [
+      "<h2>Wartungsplan</h2>",
+      "<p>Die Anlage wird jede Woche geprüft.</p>",
+      `<figure><img src="data:image/png;base64,${bildA}"></figure>`,
+      "<p>Weitere Angaben stehen im Aushang.</p>",
+      `<figure><img src="data:image/png;base64,${bildB}"></figure>`,
+    ].join("");
+    const angelegt = await page.request.post("/api/drafts", {
+      data: {
+        title: "Fiktiver Wartungsplan OCR-03",
+        statement: "Fiktiver Entwurf für die Klara-Bildprobe.",
+        type: "best_practice",
+        category: "Anlage 1",
+        confidentiality: "intern",
+        bodyHtml,
+      },
+    });
+    expect(angelegt.status(), await angelegt.text()).toBe(201);
+    entwurfId = ((await angelegt.json()) as { id: string }).id;
+
+    await page.goto(`/capture/frontdoor?draft=${entwurfId}`);
+    await expect
+      .poll(
+        async () =>
+          (await page.evaluate(
+            (auswahl) => document.querySelector(auswahl)?.getAttribute("data-status") ?? null,
+            RUMPF_BEFUND,
+          )) ?? "wartet",
+        { timeout: 240_000, intervals: [1_000] },
+      )
+      .not.toMatch(/^(wartet|laeuft)$/);
+    const panel = page.locator("[data-testid=rumpf-bild-befunde] [data-testid=klara-bild-kontext]");
+    await expect(panel.first()).toBeVisible();
+    const p = panel.first();
+
+    // K1: Frage zu Text, der NUR im zweiten Bild steht.
+    await p.getByTestId("klara-bild-kontext-frage").fill("Welche Nummer hat das LAGER?");
+    await p.getByTestId("klara-bild-kontext-fragen").click();
+    await expect(p.getByTestId("klara-bild-kontext-antwort")).toHaveAttribute(
+      "data-auftrag",
+      "frage",
+      { timeout: 180_000 },
+    );
+    const ohneModell1 = await p.getByTestId("klara-bild-kontext-ohne-modell").count();
+    const antwort = (await p.getByTestId("klara-bild-kontext-antworttext").count())
+      ? ((await p.getByTestId("klara-bild-kontext-antworttext").textContent()) ?? "")
+      : "";
+    protokoll.frage = { antwort, ohneModell: ohneModell1 };
+
+    // K2: Zusammenfassung mit Text UND Bildern.
+    await p.getByTestId("klara-bild-kontext-zusammenfassen").click();
+    await expect(p.getByTestId("klara-bild-kontext-antwort")).toHaveAttribute(
+      "data-auftrag",
+      "zusammenfassung",
+      { timeout: 180_000 },
+    );
+    const ohneModell2 = await p.getByTestId("klara-bild-kontext-ohne-modell").count();
+    const zusammenfassung = (await p.getByTestId("klara-bild-kontext-antworttext").count())
+      ? ((await p.getByTestId("klara-bild-kontext-antworttext").textContent()) ?? "")
+      : "";
+    protokoll.zusammenfassung = { zusammenfassung, ohneModell: ohneModell2 };
+
+    await test.info().attach("ocr03-klara-modellantwort.json", {
+      contentType: "application/json",
+      body: JSON.stringify(protokoll, null, 2),
+    });
+    await test.info().attach("ocr03-klara-modellantwort.png", {
+      contentType: "image/png",
+      body: await p.screenshot(),
+    });
+
+    // Keine fehlende, leere oder ersatzweise Antwort.
+    expect(ohneModell1, "keine Modellantwort auf die Frage").toBe(0);
+    expect(antwort.trim().length, "leere Antwort auf die Frage").toBeGreaterThan(0);
+    // Inhaltlich richtig: die Nummer aus dem Bild — und die Fundstelle dieses Bildes.
+    expect(antwort).toMatch(/\b29\b/);
+    expect(antwort).toMatch(/Bild\s*2/);
+    expect(ohneModell2, "keine Modellzusammenfassung").toBe(0);
+    expect(zusammenfassung.trim().length, "leere Zusammenfassung").toBeGreaterThan(0);
+    // Dokumenttext UND Bildinhalt sind berücksichtigt.
+    expect(zusammenfassung).toMatch(/Wartung|Anlage|Woche/i);
+    expect(zusammenfassung).toMatch(/PRUEFKARTE|Prüfkarte|\b47\b|LAGER|Lager|\b29\b/);
+  } finally {
+    if (entwurfId) {
+      await page.request.delete(`/api/drafts/${entwurfId}`).catch(() => undefined);
+    }
+    await freigabeSetzen(page, vorher, {
+      oeffentlicheKi: vorher.kiFreigabe?.oeffentlicheKi === true,
+      vertraulicheInhalte: vorher.kiFreigabe?.vertraulicheInhalte === true,
+    });
+  }
+});

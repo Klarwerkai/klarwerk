@@ -16,6 +16,7 @@
 //       bleiben nutzbar; ein neues Bild bleibt „Automatik aus“; ein überholter Lauf bricht ab.
 //   C6  K4 — die Lage der Einstellung aus dem bestätigten Profilstand (Voreinstellung an).
 //   C7  K5 — Lesen und Kontextbau verändern weder Datei noch Bilddaten noch Befund.
+//   C8  K4 — Nacharbeit 4: Ausschalten während des Laufs startet kein weiteres Bild.
 import { describe, expect, it } from "vitest";
 import { fundstelleBaustein } from "../../apps/web/src/components/BildBefundListe";
 import i18n from "../../apps/web/src/i18n";
@@ -285,5 +286,41 @@ describe("C7 · K5 — Original unverändert", () => {
     expect(befund).toEqual(befundVorher);
     // Die Bilddaten, die erkannt wurden, sind die Bytes der Datei.
     expect(pptx.html).toContain(dataUrl(bildMit("A")));
+  });
+});
+
+describe("C8 · K4 — Nacharbeit 4: Ausschalten WÄHREND des Laufs", () => {
+  it("nach dem Ausschalten startet kein weiteres Bild; Fertiges bleibt, der Rest heißt „aus“", async () => {
+    await i18n.changeLanguage("de");
+    const pptx = await lesePptx(deck());
+    const eingang = pptxBildEingang("wartung.pptx", pptx.html, pptx);
+    const erkenne = markenEngine();
+    let aus = false;
+    const staende: QuellenBefund[] = [];
+    const ende = await createBildAnalyse({ erkenne }).analysiereQuelle(eingang, {
+      automatik: true,
+      // Der Mensch schaltet aus, sobald das erste Bild gelesen ist.
+      onFortschritt: (s) => {
+        staende.push(s);
+        if (s.befunde[0]?.status === "gelesen") {
+          aus = true;
+        }
+      },
+      automatikAus: () => aus,
+    });
+    expect(erkenne).toHaveBeenCalledTimes(1);
+    expect(ende.befunde.map((b) => [b.status, b.grund ?? null])).toEqual([
+      ["gelesen", null],
+      ["nicht-analysiert", "automatik-aus"],
+      ["nicht-analysiert", "automatik-aus"],
+    ]);
+    expect(ende.befunde[0]?.text).toBe(TEXT_JE_MARKE.A);
+    // Kein Anschein eines laufenden oder vollständigen Laufs — und der Endstand wurde gemeldet.
+    expect(ende.status).toBe("teilweise");
+    expect(staende[staende.length - 1]?.befunde.map((b) => b.status)).toEqual([
+      "gelesen",
+      "nicht-analysiert",
+      "nicht-analysiert",
+    ]);
   });
 });

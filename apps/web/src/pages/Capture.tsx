@@ -114,6 +114,8 @@ import { anlagenAlsEingabe, anlagenNutzlast, anlagenVon } from "../lib/anlagen";
 // (und mit ihr der dreiwertige Ausgang) bleibt der Weg für ein BESTEHENDES Wissensobjekt: KO-Detail
 // und „An Artikel anfügen" — s. lib/appendToArticle.ts.
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
+// OCR-03 (Nacharbeit 4): der Dateilauf prüft Konto und Einstellung vor jedem weiteren Bild.
+import { assistenzStand } from "../lib/assistenzProfil";
 // OCR-02 (Klara-Bildanalyse): bereitgestellte und eingebettete Bilder automatisch lesen.
 import {
   type BildBefund,
@@ -130,7 +132,7 @@ import {
   quellenBefundAus,
 } from "../lib/bildAutomatik";
 // OCR-03: Setup › Klara „Bilder automatisch analysieren und Text erkennen“, Analyse je Konto.
-import { bildAutomatikAbwarten } from "../lib/bildAutomatikEinstellung";
+import { bildAutomatikAbwarten, bildAutomatikLage } from "../lib/bildAutomatikEinstellung";
 import { useBildAnalyse } from "../lib/bildAutomatikLauf";
 import {
   applyBodyAssist,
@@ -4852,7 +4854,11 @@ export function CaptureArbeitsraum({
     eingang: BildQuelleEingang,
     lauf: number,
   ): Promise<QuellenBefund | null> => {
-    const aktuell = (): boolean => fileBildLaufRef.current === lauf;
+    // Nacharbeit 4 (Bens Befund „datei-automatik“): der Lauf gehört zu DIESER Datei UND zu dem
+    // Konto, unter dem er begonnen hat. Wechselt das Konto, werden seine Rückgaben verworfen.
+    const kontoBeiStart = assistenzStand().kontoId;
+    const aktuell = (): boolean =>
+      fileBildLaufRef.current === lauf && assistenzStand().kontoId === kontoBeiStart;
     // OCR-03: die Einstellung des Kontos — lädt das Profil noch, wird kurz gewartet.
     const lage = await bildAutomatikAbwarten();
     if (!aktuell()) {
@@ -4867,6 +4873,9 @@ export function CaptureArbeitsraum({
       automatik: lage === "an",
       beschreibe: bildBeschreiberRef.current,
       abbrechen: () => !aktuell(),
+      // Die Einstellung wird vor JEDEM weiteren Bild neu gelesen: eine bestätigte Deaktivierung
+      // während des Laufs startet kein weiteres Bild; Fertiges bleibt, der Rest heißt „aus“.
+      automatikAus: () => bildAutomatikLage(assistenzStand()) === "aus",
       onFortschritt: (stand) => {
         if (aktuell()) {
           setFileBildBefund({ lauf, befund: stand, eingang });
@@ -5315,7 +5324,13 @@ export function CaptureArbeitsraum({
       return bildAnalyse.befundFuerBild(vorkommen, { beschreibe: bildBeschreiberRef.current });
     });
     anhangBildLaeufeRef.current.set(id, lauf);
-    void lauf.then((befund) => setAnhangBildBefunde((b) => ({ ...b, [id]: befund })));
+    // Nacharbeit 4: die Rückgabe eines inzwischen gewechselten Kontos wird verworfen.
+    const kontoBeiStart = assistenzStand().kontoId;
+    void lauf.then((befund) => {
+      if (assistenzStand().kontoId === kontoBeiStart) {
+        setAnhangBildBefunde((b) => ({ ...b, [id]: befund }));
+      }
+    });
   };
 
   const addImage = async (f: File): Promise<void> => {
@@ -7136,6 +7151,7 @@ export function CaptureArbeitsraum({
                       {/* OCR-03: Klara zu dieser Datei fragen — Text der Datei UND erkannte Bilder.
                         Bei einem Einzelbild IST der Dateitext der Bildtext; er steht nur einmal drin. */}
                       <KlaraBildKontextFrage
+                        kontextSchluessel={`datei:${fileBildBefund.lauf}`}
                         dokumentTextVon={() => (fileImageUrl ? "" : fileText)}
                         quellen={[fileBildBefund.befund]}
                         aktuell={[fileBildBefund.eingang]}

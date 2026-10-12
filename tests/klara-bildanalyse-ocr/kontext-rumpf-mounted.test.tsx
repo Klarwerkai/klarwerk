@@ -17,6 +17,9 @@
 //       wirkt; wieder aus: vorhandene Ergebnisse bleiben, ein neues Bild wird nicht gelesen.
 //   M4  K6 — Kontowechsel: nichts aus der Analyse des vorigen Kontos wird wiederverwendet; ist das
 //       Profil nicht lesbar, wird nicht automatisch gelesen, und das steht da.
+//   M5  K6/K1 — Nacharbeit 4: eine Antwort gehört zu Konto, Quelle und Bildern. Bild- oder
+//       Kontowechsel entfernt die fertige Antwort, eine Textänderung kennzeichnet sie; eine noch
+//       laufende Anfrage, deren Rückgabe (Erfolg oder Fehler) nach dem Wechsel kommt, erscheint nie.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OcrResult } from "../../apps/web/src/lib/ocr";
 
@@ -398,5 +401,92 @@ describe("M4 · K6 — Ergebnisse gehören zum Konto; ohne lesbares Profil kein 
       i18n.t("klarabildkontext.hinweis.einstellungUnbekannt"),
     );
     expect(befunde().map((b) => b.status)).toEqual(["nicht-analysiert", "nicht-analysiert"]);
+  });
+});
+
+/** Dasselbe Rumpf-Markup, aber das zweite Bild ist ein anderes (E statt C). */
+function rumpfMitNeuemBild(zusatz = ""): string {
+  return rumpf(zusatz).replace(BILD_C, BILD_E);
+}
+
+function laeuftAnzeige(): boolean {
+  return (q("klara-bild-kontext")?.textContent ?? "").includes(
+    i18n.t("klarabildkontext.frage.laeuft"),
+  );
+}
+
+describe("M5 · Nacharbeit 4 — Antworten sind an Konto, Quelle und Bilder gebunden", () => {
+  it("fertige Antwort: Textänderung kennzeichnet sie, Konto- und Bildwechsel entfernen sie", async () => {
+    await profilLaden("konto-a");
+    const frage = vi.fn(
+      async (_text: string, _anweisung: string): Promise<AssistResult> => ({
+        text: "Die Nummer ist 47 [diesem Text · Bild 1].",
+        demo: false,
+      }),
+    );
+    await zeige(rumpf(), weg(frage));
+    await tippe(q("klara-bild-kontext-frage"), "Welche Nummer steht auf der PRUEFKARTE?");
+    await klick(q("klara-bild-kontext-fragen"));
+    expect(q("klara-bild-kontext-antworttext")?.textContent).toContain("47");
+    expect(q("klara-bild-kontext-veraltet")).toBeNull();
+
+    // Nur der Text derselben Quelle ändert sich: die Antwort bleibt, ist aber als veraltet markiert.
+    await zeige(rumpf("<p>Ein neuer Satz.</p>"), weg(frage));
+    expect(q("klara-bild-kontext-antwort")?.getAttribute("data-veraltet")).toBe("true");
+    expect(q("klara-bild-kontext-veraltet")?.textContent).toBe(
+      i18n.t("klarabildkontext.antwort.veraltet"),
+    );
+
+    // Kontowechsel: die Antwort des vorigen Kontos ist weg.
+    await profilLaden("konto-b");
+    await zeige(rumpf("<p>Ein neuer Satz.</p>"), weg(frage));
+    expect(q("klara-bild-kontext-antwort")).toBeNull();
+
+    // Neue Antwort im neuen Konto — dann ein anderes Bild: auch sie ist weg.
+    await tippe(q("klara-bild-kontext-frage"), "Welche Nummer steht auf der PRUEFKARTE?");
+    await klick(q("klara-bild-kontext-fragen"));
+    expect(q("klara-bild-kontext-antworttext")?.textContent).toContain("47");
+    await zeige(rumpfMitNeuemBild("<p>Ein neuer Satz.</p>"), weg(frage));
+    expect(q("klara-bild-kontext-antwort")).toBeNull();
+  });
+
+  it("laufende Anfrage: verspäteter Erfolg und verspäteter Fehler nach dem Wechsel erscheinen nie", async () => {
+    await profilLaden("konto-a");
+    const tore: { oeffnen?: (r: AssistResult) => void; scheitern?: (e: Error) => void }[] = [];
+    const frage = vi.fn(
+      (_text: string, _anweisung: string) =>
+        new Promise<AssistResult>((oeffnen, scheitern) => {
+          tore.push({ oeffnen, scheitern });
+        }),
+    );
+    await zeige(rumpf(), weg(frage));
+    await tippe(q("klara-bild-kontext-frage"), "Welche Nummer steht auf der PRUEFKARTE?");
+    await klick(q("klara-bild-kontext-fragen"));
+    expect(laeuftAnzeige()).toBe(true);
+
+    // Bildwechsel, während die Antwort noch aussteht: der neue Kontext läuft nicht und hat keine.
+    await zeige(rumpfMitNeuemBild(), weg(frage));
+    expect(laeuftAnzeige()).toBe(false);
+    await act(async () => {
+      tore[0]?.oeffnen?.({ text: "Veraltete Antwort 47.", demo: false });
+    });
+    await abwarten();
+    expect(q("klara-bild-kontext-antwort")).toBeNull();
+    expect(container.textContent).not.toContain("Veraltete Antwort");
+
+    // Zweite Anfrage im neuen Kontext; dann Kontowechsel; dann scheitert sie: kein Fehler steht da.
+    await tippe(q("klara-bild-kontext-frage"), "Was steht zum AUSHANG?");
+    await klick(q("klara-bild-kontext-fragen"));
+    expect(laeuftAnzeige()).toBe(true);
+    await profilLaden("konto-b");
+    await zeige(rumpfMitNeuemBild(), weg(frage));
+    expect(laeuftAnzeige()).toBe(false);
+    await act(async () => {
+      tore[1]?.scheitern?.(new Error("verspätet gescheitert"));
+    });
+    await abwarten();
+    expect(q("klara-bild-kontext-antwort")).toBeNull();
+    expect(q("klara-bild-kontext")?.querySelector("[role=alert]")).toBeNull();
+    expect(frage).toHaveBeenCalledTimes(2);
   });
 });

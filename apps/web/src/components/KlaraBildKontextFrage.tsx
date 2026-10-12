@@ -11,11 +11,17 @@
 //   · Liest die Fläche noch oder ist eine Quelle nur teilweise gelesen, steht das VOR der Frage und
 //     an der Antwort — sie gibt sich nie als vollständig aus.
 //   · Die Antwort ist eine Anzeige: sie schreibt nichts in Text, Datei oder Bild.
+//   · Nacharbeit 4 (Bens Befund „antwort-kontext“): Antwort UND laufende Anfrage gehören zu genau
+//     einem Kontext — Konto, Quelle (vom Aufrufer, `kontextSchluessel`) und die Bilder der Quelle.
+//     Wechselt er, verschwindet die alte Antwort; eine verspätete Rückgabe (Erfolg, Fehler,
+//     Abschluss) einer überholten Anfrage wird verworfen. Ändert sich nur der Text derselben Quelle,
+//     bleibt die Antwort stehen, ist aber sichtbar als „vor der Änderung“ gekennzeichnet.
 import { Sparkles } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { useImageDescribeWennVorhanden } from "../app/ImageDescribeContext";
+import { useAssistenzStand } from "../lib/assistenzProfil";
 import type { BildFundstelle, BildQuelleEingang, QuellenBefund } from "../lib/bildAutomatik";
 import {
   type Belegstelle,
@@ -41,16 +47,35 @@ interface Ergebnis {
   vollstaendig: boolean;
   offen: number;
   gesamt: number;
+  /** Der Kontext, zu dem diese Antwort gehört (Konto, Quelle, Bilder). */
+  schluessel: string;
+  /** Der Text der Quelle, auf dem die Antwort beruht. */
+  dokumentText: string;
+}
+
+/** Konto, Quelle und die Bilder der Quelle — ändert sich eines, gilt eine Antwort nicht mehr. */
+export function antwortKontext(
+  kontoId: string | null,
+  kontextSchluessel: string,
+  quellen: readonly QuellenBefund[],
+): string {
+  const bilder = quellen.flatMap((q) =>
+    q.befunde.map((b) => `${q.quelle}|${b.fundstelle.bild}|${b.fundstelle.imageId ?? ""}`),
+  );
+  return `${kontoId ?? "-"}::${kontextSchluessel}::${bilder.join(",")}`;
 }
 
 const KNOPF =
   "inline-flex h-8 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-text hover:border-ink/30 disabled:opacity-40";
 
 export function KlaraBildKontextFrage({
+  kontextSchluessel,
   dokumentTextVon,
   quellen,
   aktuell,
 }: {
+  /** Die Quelle und ihr Lauf beim Aufrufer (z. B. `datei:3`, `office:<anhang>:<fassung>`). */
+  kontextSchluessel: string;
   /** Der übrige Text der Quelle — erst beim Fragen gelesen (der Editor ändert ihn je Tastendruck). */
   dokumentTextVon: () => string;
   quellen: readonly QuellenBefund[];
@@ -59,10 +84,19 @@ export function KlaraBildKontextFrage({
 }): JSX.Element | null {
   const { t } = useTranslation();
   const weg = useImageDescribeWennVorhanden();
+  const kontoId = useAssistenzStand().kontoId;
   const feldId = useId();
   const [frage, setFrage] = useState("");
-  const [laeuft, setLaeuft] = useState(false);
-  const [ergebnis, setErgebnis] = useState<Ergebnis | null>(null);
+  // Für welchen Kontext gerade eine Anfrage läuft — `null`: keine.
+  const [laeuftFuer, setLaeuftFuer] = useState<string | null>(null);
+  const [ergebnisRoh, setErgebnis] = useState<Ergebnis | null>(null);
+  const schluessel = antwortKontext(kontoId, kontextSchluessel, quellen);
+  const schluesselRef = useRef(schluessel);
+  schluesselRef.current = schluessel;
+  const anfrageRef = useRef(0);
+  // Nur die Antwort DIESES Kontexts wird gezeigt; eine ältere bleibt unsichtbar und wird ersetzt.
+  const ergebnis = ergebnisRoh?.schluessel === schluessel ? ergebnisRoh : null;
+  const laeuft = laeuftFuer === schluessel;
   const ue = useMemo<Uebersetze>(
     () => (schluessel, werte) => String(t(schluessel, werte ?? {})),
     [t],
@@ -90,9 +124,17 @@ export function KlaraBildKontextFrage({
       return;
     }
     // Der Stand JETZT — die Antwort wird mit genau ihm gekennzeichnet.
+    const fuer = schluessel;
+    anfrageRef.current += 1;
+    const anfrage = anfrageRef.current;
+    // Gilt die Rückgabe noch? Nur für die letzte Anfrage UND denselben Kontext.
+    const giltNoch = (): boolean =>
+      anfrageRef.current === anfrage && schluesselRef.current === fuer;
     const dokumentText = dokumentTextVon();
     const k = klaraBildKontext(dokumentText, quellen, ue, ortVon, aktuell);
     const basis: Ergebnis = {
+      schluessel: fuer,
+      dokumentText,
       auftrag,
       frage: f,
       antwort: null,
@@ -104,20 +146,32 @@ export function KlaraBildKontextFrage({
       gesamt: k.gesamt,
     };
     if (!modell || !weg?.frage) {
+      setLaeuftFuer(null);
       setErgebnis(basis);
       return;
     }
-    setLaeuft(true);
+    setLaeuftFuer(fuer);
+    setErgebnis(null);
     try {
       const r = await weg.frage(k.kontext, klaraAnweisung(auftrag, f, k, ue));
-      setErgebnis({ ...basis, antwort: r.demo ? null : r.text.trim() || null });
+      if (giltNoch()) {
+        setErgebnis({ ...basis, antwort: r.demo ? null : r.text.trim() || null });
+      }
     } catch (fehler) {
-      const grund = fehler instanceof ApiError ? fehler.message : String(t("state.error"));
-      setErgebnis({ ...basis, fehler: grund });
+      if (giltNoch()) {
+        const grund = fehler instanceof ApiError ? fehler.message : String(t("state.error"));
+        setErgebnis({ ...basis, fehler: grund });
+      }
     } finally {
-      setLaeuft(false);
+      // Eine überholte Anfrage beendet nichts: weder den Ladezustand einer neueren noch den eines
+      // anderen Kontexts.
+      if (anfrageRef.current === anfrage) {
+        setLaeuftFuer(null);
+      }
     }
   };
+  // Derselbe Kontext, aber der Text der Quelle hat sich seit der Antwort geändert.
+  const veraltet = ergebnis !== null && dokumentTextVon() !== ergebnis.dokumentText;
 
   const standText = kontext.vollstaendig
     ? t("klarabildkontext.stand.vollstaendig", { gesamt: kontext.gesamt })
@@ -189,6 +243,7 @@ export function KlaraBildKontextFrage({
         <div
           data-testid="klara-bild-kontext-antwort"
           data-auftrag={ergebnis.auftrag}
+          data-veraltet={veraltet ? "true" : "false"}
           className="mt-2 rounded-btn border border-ai/30 bg-surface p-2.5"
         >
           <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
@@ -196,6 +251,11 @@ export function KlaraBildKontextFrage({
               ? t("klarabildkontext.antwort.titel")
               : t("klarabildkontext.antwort.zusammenfassungTitel")}
           </div>
+          {veraltet ? (
+            <p data-testid="klara-bild-kontext-veraltet" className="mt-1 text-trust-warn-text">
+              {t("klarabildkontext.antwort.veraltet")}
+            </p>
+          ) : null}
           {!ergebnis.vollstaendig ? (
             <p
               data-testid="klara-bild-kontext-unvollstaendig"

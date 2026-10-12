@@ -120,6 +120,7 @@ export function BildBefundeImRumpf({ html }: { html: string }): JSX.Element | nu
     <div data-testid="rumpf-bild-befunde" className="border-t border-hairline p-2">
       <BildBefundListe befund={befund.befund} lauf={befund.lauf} />
       <KlaraBildKontextFrage
+        kontextSchluessel={`rumpf:${befund.lauf}`}
         dokumentTextVon={dokumentTextVon}
         quellen={quellen}
         aktuell={aktuell}

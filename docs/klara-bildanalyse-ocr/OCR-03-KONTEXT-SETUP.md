@@ -34,6 +34,20 @@ neuer Datenweg, keine neue Route.
 - **Original unverändert:** Klaras Antwort ist eine Anzeige; sie schreibt nichts in Text, Datei,
   Anhang oder Bild. Die Textübernahme bleibt ein ausdrücklicher Schritt (wie in OCR-02).
 
+### Nacharbeit 4 (Bens Befunde)
+
+- **Antworten sind gebunden** an Konto, Quelle (Lauf bzw. Anhang/Fassung) und die Bilder der Quelle.
+  Wechselt eines davon, verschwindet die Antwort; verspätete Rückgaben (Erfolg, Fehler, Abschluss)
+  einer überholten Anfrage werden verworfen. Ändert sich nur der Text derselben Quelle, bleibt die
+  Antwort als „beruht auf dem früheren Stand“ gekennzeichnet stehen.
+- **Der Dateiimport** prüft vor jedem weiteren Bild Konto und Einstellung: nach bestätigtem
+  Ausschalten startet kein Bild mehr, Fertiges bleibt, der Rest steht als „nicht gelesen ·
+  automatisches Lesen ist ausgeschaltet“ da; Rückgaben eines gewechselten Kontos werden verworfen
+  (auch bei Bildanhängen).
+- **Modellnachweis:** `tests-smoke/klara-bild-kontext-browser.spec.ts` hat einen zweiten Fall
+  `@modell` (nur voller Smoke): ein „intern“ eingestufter fiktiver Entwurf, Frage und Zusammenfassung
+  über den produktiven Weg; fehlende oder leere Antworten lassen ihn nicht bestehen.
+
 ## Grenzen (offen, konkret)
 
 | Punkt | Stand |
