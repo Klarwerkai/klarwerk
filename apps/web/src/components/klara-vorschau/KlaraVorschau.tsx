@@ -52,6 +52,19 @@ import { animationsStil } from "../../lib/assistenzAvatare";
 import { useAssistenzAnzeige, useAssistenzT } from "../../lib/assistenzProfil";
 import { internerPfad } from "../../lib/internerPfad";
 import { erkenneAuftrag, istAusfuehrungsauftrag } from "../../lib/klaraAuftragErkennung";
+// produkt:20261008:klara-eigeninitiative: Modus, Hinweise und übertragene Aufgaben.
+import {
+  type Hinweis,
+  hinweisErlaubt,
+  hinweisFuer,
+  ladeEigeninitiative,
+  legeHinweisAb,
+  merkeGezeigt,
+  useEigeninitiative,
+  verwerfeEigeninitiative,
+  warSchonGezeigt,
+  wirksamerModus,
+} from "../../lib/klaraEigeninitiative";
 import { leseobjektJetzt, useLeseobjekt } from "../../lib/leseobjekt";
 import { leserHref } from "../../lib/objektbezug";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
@@ -76,6 +89,12 @@ import {
 } from "../assistenzFlaechen";
 import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
+import {
+  KlaraHinweis,
+  KlaraModusWahl,
+  KlaraUebertrageneAufgaben,
+  istOffen,
+} from "./KlaraEigeninitiative";
 import { KlaraQualitaet } from "./KlaraQualitaet";
 import {
   type Absendeergebnis,
@@ -168,6 +187,12 @@ const VERZOEGERUNG_MS = 700;
  * hat („Zeige mir den nächsten Schritt“ öffnet es im selben Klick). Kein vorgetäuschtes Rechnen.
  */
 const HILFE_TAKT_MS = 400;
+/**
+ * Klara 12: ein Hinweis erscheint erst, wenn die Seite eine Weile steht — nicht schon beim
+ * Durchklicken. Danach höchstens einmal je Sitzung (`lib/klaraEigeninitiative.ts`).
+ */
+const HINWEIS_VERZUG_MS = 1500;
+const HINWEIS_BREITE = 260;
 const PANEL_BREITE = 360;
 const MINI_GROESSE = 48;
 /**
@@ -340,6 +365,18 @@ export function KlaraVorschau({
     if (sitzungBeantwortet) {
       aendere((alt) => anKontoBinden(alt, kontoId));
       eingabeAnKontoBinden(kontoId);
+    }
+  }, [sitzungBeantwortet, kontoId]);
+  // Klara 12: der Unterstützungsmodus des Kontos — vom Server, nach jeder Anmeldung und jedem
+  // Neuladen neu gelesen; abgemeldet bleibt nichts davon im Browser.
+  useEffect(() => {
+    if (!sitzungBeantwortet) {
+      return;
+    }
+    if (kontoId) {
+      void ladeEigeninitiative(kontoId);
+    } else {
+      verwerfeEigeninitiative();
     }
   }, [sitzungBeantwortet, kontoId]);
   useEffect(() => {
@@ -1550,6 +1587,116 @@ export function KlaraVorschau({
   const figurZustandText = t(zustandsTextSchluessel(figurZustand, figurFehlerArt));
 
   // ---------------------------------------------------------------------------------------------
+  // Klara 12 (produkt:20261008:klara-eigeninitiative): wann sich Klara von selbst meldet.
+  //   · „Nur auf Nachfrage“ (Vorgabe): nichts erscheint von selbst.
+  //   · „Passende Hinweise anbieten“: EIN Hinweis aus dem tatsächlichen Kontext (Seite, Anleitung,
+  //     Prüfstatus des gelesenen Objekts) neben der Figur — erst wenn niemand gerade mit Klara
+  //     arbeitet, höchstens einmal je Sitzung, nicht solange er geschlossen/zurückgestellt ruht.
+  //     Der Hinweis selbst führt nichts aus; erst ein Klick auf sein Angebot öffnet die vorhandene
+  //     Hilfe (erklären bzw. nächsten Schritt zeigen — Klarwerk-Hilfe, ohne KI, ohne Änderung).
+  //   · „Ausdrücklich übertragene Aufgaben“: keine Hinweise; die selbst erteilten Aufträge
+  //     (Klara 05, vom Server) stehen sichtbar im Gespräch, offene zählt die Figur.
+  // ---------------------------------------------------------------------------------------------
+  const eigen = useEigeninitiative();
+  const unterstuetzung = wirksamerModus(eigen);
+  const offeneAufgaben = ausfuehrungen.filter(istOffen).length;
+  const hinweisKandidat = istEcht
+    ? hinweisFuer({
+        pfad: kontext.pfad,
+        koId: kontext.koId,
+        pruefstatus: kontext.pruefstatus,
+        modus: kontext.modus,
+        tutorialVorhanden: tutorial.vorhanden,
+        tutorialOffen: tutorial.offen,
+        erklaerbar: seitenErklaerung(kontext.pfad, t) !== null,
+      })
+    : null;
+  const beschaeftigt =
+    panelSichtbar ||
+    hilfeOffen ||
+    z.minimiert ||
+    z.status !== "ruhe" ||
+    ziehPos !== null ||
+    auswahlKnopf !== null ||
+    sprechen.hoert ||
+    ausfuehrungLaeuft;
+  const hinweisSchluessel = hinweisErlaubt(hinweisKandidat, eigen, {
+    beschaeftigt,
+    jetzt: Date.now(),
+  })
+    ? hinweisKandidat.schluessel
+    : null;
+  const hinweisKandidatRef = useRef<Hinweis | null>(hinweisKandidat);
+  hinweisKandidatRef.current = hinweisKandidat;
+  const [hinweis, setHinweis] = useState<Hinweis | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: der erlaubte Schlüssel ist der Auslöser.
+  useEffect(() => {
+    if (!hinweisSchluessel) {
+      setHinweis(null);
+      return;
+    }
+    setHinweis((alt) => (alt?.schluessel === hinweisSchluessel ? alt : null));
+    if (warSchonGezeigt(hinweisSchluessel)) {
+      return;
+    }
+    const uhr = window.setTimeout(() => {
+      const k = hinweisKandidatRef.current;
+      if (k?.schluessel === hinweisSchluessel) {
+        merkeGezeigt(k.schluessel);
+        setHinweis(k);
+        setAnsage(
+          tRef.current(`klarainitiative.hinweis.${k.art}.text`, {
+            seite: kontextRef.current.seitenName,
+          }),
+        );
+      }
+    }, HINWEIS_VERZUG_MS);
+    return () => window.clearTimeout(uhr);
+  }, [hinweisSchluessel]);
+  /** Das Angebot annehmen: die Person bestellt jetzt die Hilfe — vorher geschah nichts. */
+  const hinweisAnnehmen = (): void => {
+    const h = hinweis;
+    setHinweis(null);
+    oeffnen();
+    if (!h || hilfeGesperrt) {
+      return;
+    }
+    if (h.angebot === "zeige") {
+      zeige();
+    } else if (h.art === "ungeprueft") {
+      anfrage(t("klarainitiative.hinweis.ungeprueft.angebot"), "modus", () => ({
+        text: t("klarainitiative.erklaerung.ungeprueft", { objekt: kontextRef.current.objekt }),
+      }));
+    } else {
+      erklaere();
+    }
+  };
+  const hinweisAblegen = (stand: "geschlossen" | "zurueckgestellt"): void => {
+    const h = hinweis;
+    setHinweis(null);
+    setFokusZiel("figur");
+    if (!h || !kontoId) {
+      return;
+    }
+    void legeHinweisAb(kontoId, h.schluessel, stand);
+    setAnsage(
+      t(
+        stand === "geschlossen"
+          ? "klarainitiative.hinweis.ansage.geschlossen"
+          : "klarainitiative.hinweis.ansage.spaeter",
+      ),
+    );
+  };
+  // Links neben der Figur; ist dort kein Platz, rechts daneben — immer ganz im Fenster.
+  const hinweisLinks = position.x - HINWEIS_BREITE - 8;
+  const hinweisRechts = position.x + FIGUR_GROESSE + 8;
+  const hinweisMaxLinks = fenster.breite - HINWEIS_BREITE - 8;
+  const hinweisStil: CSSProperties = {
+    left: hinweisLinks >= 8 ? hinweisLinks : Math.max(8, Math.min(hinweisRechts, hinweisMaxLinks)),
+    top: Math.max(8, Math.min(position.y, fenster.hoehe - 220)),
+  };
+
+  // ---------------------------------------------------------------------------------------------
   // Vollbild, Ende der Vorschau.
   // ---------------------------------------------------------------------------------------------
   const vollbildUmschalten = (): void => {
@@ -1745,6 +1892,16 @@ export function KlaraVorschau({
             {t("klaragespraech.betrieb.demo")}
           </span>
         ) : null}
+        {/* Klara 12: im Aufgabenmodus zeigt die Figur, wie viele übertragene Aufgaben offen sind. */}
+        {istEcht && unterstuetzung === "auftraege" && offeneAufgaben > 0 && !z.minimiert ? (
+          <span
+            data-testid="klara-figur-aufgaben"
+            data-anzahl={offeneAufgaben}
+            className="mt-1 whitespace-nowrap rounded-pill bg-ai-surface-1 px-2 py-0.5 text-klein font-semibold text-ai shadow-tile"
+          >
+            {t("klarainitiative.figur.offen", { anzahl: offeneAufgaben })}
+          </span>
+        ) : null}
         {z.geparkt && parkAbsatz ? (
           <span
             data-testid="klara-geparkt"
@@ -1761,6 +1918,19 @@ export function KlaraVorschau({
       <output data-klara="1" className="sr-only" data-testid="klara-ansage">
         {ansage}
       </output>
+
+      {/* ------------------------------------------------------------------ Klara 12: Hinweis */}
+      {hinweis && !beschaeftigt ? (
+        <KlaraHinweis
+          hinweis={hinweis}
+          ort={kontext.seitenName}
+          t={t}
+          stil={hinweisStil}
+          onAngebot={hinweisAnnehmen}
+          onSpaeter={() => hinweisAblegen("zurueckgestellt")}
+          onSchliessen={() => hinweisAblegen("geschlossen")}
+        />
+      ) : null}
 
       {/* ------------------------------------------------------------------ „Klara fragen“ */}
       {auswahlKnopf ? (
@@ -1937,6 +2107,11 @@ export function KlaraVorschau({
               >
                 {t("klaravorschau.panel.demoHinweis")}
               </p>
+            ) : null}
+
+            {/* Klara 12: im Aufgabenmodus stehen die übertragenen Aufgaben zuerst da. */}
+            {istEcht && unterstuetzung === "auftraege" ? (
+              <KlaraUebertrageneAufgaben liste={ausfuehrungen} t={t} />
             ) : null}
 
             {/* Du bist hier */}
@@ -2365,6 +2540,19 @@ export function KlaraVorschau({
               <EntwurfKarte entwurf={z.entwurf} />
             ) : null}
 
+            {/* Klara 12: wann sich Klara meldet — persönlich gespeichert. */}
+            {kontoId ? (
+              <KlaraModusWahl
+                kontoId={kontoId}
+                t={t}
+                onGewaehlt={(m, ok) =>
+                  setAnsage(
+                    ok ? t(`klarainitiative.ansage.${m}`) : t("klarainitiative.ansage.fehler"),
+                  )
+                }
+              />
+            ) : null}
+
             {/* Klara 01: Bedienhilfe zu dieser Fähigkeit — von Anfang an über Klara. */}
             <details
               data-testid="klara-bedienhilfe"
@@ -2396,6 +2584,12 @@ export function KlaraVorschau({
                 <li>{t("klaraauftrag.bedienhilfe.stoppen")}</li>
                 <li>{t("klaraauftrag.bedienhilfe.rueckgaengig")}</li>
                 <li>{t("klaraauftrag.bedienhilfe.sprechen")}</li>
+                {/* Klara 12: Modi, Hinweise und übertragene Aufgaben. */}
+                <li data-testid="klara-bedienhilfe-eigeninitiative">
+                  {t("klarainitiative.bedienhilfe.modi")}
+                </li>
+                <li>{t("klarainitiative.bedienhilfe.hinweise")}</li>
+                <li>{t("klarainitiative.bedienhilfe.aufgaben")}</li>
                 {/* Klara 14: Befunde erklären, Vorschlag, Grundlage und Rechte. */}
                 <li data-testid="klara-bedienhilfe-qualitaet">
                   {t("klaraqualitaet.bedienhilfe.erklaeren")}

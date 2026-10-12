@@ -253,6 +253,8 @@ import {
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
 import { Anfragebremse, bremsSatz } from "./anfragebremse";
+// produkt:20261008:klara-eigeninitiative: der persönliche Unterstützungsmodus im Assistenzprofil.
+import { EigeninitiativeDienst } from "./assistenz-eigeninitiative";
 // produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der Assistenz über die vorhandenen Dienste.
 import type { FaehigkeitsAusfuehrung } from "./assistenz-faehigkeiten";
 import {
@@ -5315,6 +5317,8 @@ export function buildApp(
     assistenzProfilRoutes(
       {
         dienst: new AssistenzProfilDienst({ repo: services.assistenzProfile }),
+        // produkt:20261008:klara-eigeninitiative: der Unterstützungsmodus liegt im selben Profil.
+        eigeninitiative: new EigeninitiativeDienst({ repo: services.assistenzProfile }),
         audit: services.audit,
       },
       guards,
