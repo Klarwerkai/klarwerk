@@ -144,6 +144,8 @@ test("gesamt-ocr · technische OCR-Probe mit fiktivem Bild — Text in der Aussa
     ),
   });
 
+  // Nacharbeit 13: zuerst die Richtlinie — der gemessene Befund war eine CSP-Sperre des Arbeiters.
+  expect(cspMeldungen, "CSP-Meldungen während der Erkennung").toEqual([]);
   expect(ausgang, `Ausgang der Erkennung; CSP: ${cspMeldungen.join(" | ")}`).toBe("uebernommen");
   expect(erkannt).toContain(`[OCR: ${BILDNAME}]`);
   const normal = erkannt.toUpperCase();
