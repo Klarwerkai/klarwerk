@@ -28,7 +28,6 @@
 // (Regelwerk „Aus BEN 494–500" Punkt 7). Belegt ist hier nur, WAS der Adapter absetzt und wie er
 // sich verhält — und dass die Stufe additiv bleibt (über die echte Klassifikationsfunktion).
 import { describe, expect, it } from "vitest";
-import { klassifiziereStufe, markerVon } from "../../services/app/src/migrationsbeleg";
 import { MAX_GAP_QUESTION_LENGTH, gapCompareKey } from "../../services/ask/src/gap-text";
 import { InMemoryGapRepo } from "../../services/ask/src/repo";
 import { ASK_SCHEMA, PgGapRepo } from "../../services/ask/src/repo-pg";
@@ -37,6 +36,7 @@ import type { Gap } from "../../services/ask/src/types";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { Reasoner } from "../../services/reasoner";
+import { klassifiziereStufe, markerVon } from "../support/migrationsmodell";
 
 // Eine Frage, auf die der Bestand nichts hergibt — sie erzeugt zuverlässig eine Wissenslücke.
 const OHNE_GRUNDLAGE = "Wie hoch ist der Wechselkurs?";

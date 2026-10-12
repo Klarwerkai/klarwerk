@@ -30,7 +30,7 @@ export function ToastViewport(): JSX.Element | null {
             onClick={() => dismiss(toast.id)}
             className="shrink-0 opacity-70 hover:opacity-100"
           >
-            <X size={14} />
+            <X size={14} aria-hidden="true" />
           </button>
         </output>
       ))}

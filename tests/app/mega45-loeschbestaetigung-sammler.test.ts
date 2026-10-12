@@ -257,6 +257,12 @@ describe("mega45 E · zerstoerende Bestaetigungen tragen ueberall dieselbe Warnf
       true,
     );
     expect([...dateien].some((d) => d.endsWith("pages/Validation.tsx"))).toBe(true);
+    // R-0959 (Aufnahme 20260922, gesamt-bibliothek-loeschen): der Papierkorb ist an die Trefferzeile
+    // ZURÜCKGEKEHRT, mit einer ruhigen Rückfragezeile unter dem Treffer. Sie steht damit wieder unter
+    // diesem Sammler — und zwar zusätzlich zur Rückfrage der Lesefläche, nicht an ihrer Stelle.
+    expect([...dateien].some((d) => d.endsWith("components/bibliothek/BibliothekListe.tsx"))).toBe(
+      true,
+    );
   });
 
   it("SAMMLER: genau ein Knopf je Gruppe traegt die Warnfarbe, keiner die neutrale Vorgabe", () => {
@@ -346,6 +352,22 @@ describe("mega45 E · zerstoerende Bestaetigungen tragen ueberall dieselbe Warnf
     const { rahmen } = rahmenVor(quelltext, ab);
     expect(rahmen.length).toBeGreaterThan(0);
     const kopf = rahmen.join(" ");
+    expect(kopf).toContain("flex-1");
+    expect(kopf).toContain("min-w-0");
+  });
+
+  it("R-0959 · die ruhige Rückfragezeile an der Trefferzeile quetscht nichts", () => {
+    // Die Trefferzeile trägt seit R-0959 wieder einen Papierkorb. Ihre Rückfrage steht als eigene
+    // ruhige Zeile UNTER dem Treffer (kein `basis-full` — sie teilt sich keine Reihe mit dem
+    // Zeileninhalt, deshalb fällt sie oben nicht unter die Listenzeilen-Form). Pedis Befund vom
+    // 04.07. gilt trotzdem: der Fragetext muss schrumpfen dürfen und den Rest füllen.
+    const quelltext = readFileSync(
+      join(WURZEL, "apps/web/src/components/bibliothek/BibliothekListe.tsx"),
+      "utf8",
+    );
+    const ab = quelltext.indexOf('t("ko.deleteQ")');
+    expect(ab, "die Rückfrage der Trefferzeile wurde nicht gefunden").toBeGreaterThan(0);
+    const kopf = rahmenVor(quelltext, ab).rahmen.join(" ");
     expect(kopf).toContain("flex-1");
     expect(kopf).toContain("min-w-0");
   });

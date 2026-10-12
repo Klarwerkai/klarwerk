@@ -1033,7 +1033,7 @@ describe("R-1580 · die Fragenfläche bedient: Quelle öffnen, Kopieren, Rückme
           fn(
             `(w) => { const i = document.querySelector('[data-testid="page-fragen"] form input'); return !!i && i.getAttribute('placeholder') === w; }`,
           ),
-          tt("ask.placeholder"),
+          tt("beispielfragen.platzhalter"),
           { timeout: 30_000 },
         );
 

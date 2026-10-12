@@ -31,7 +31,8 @@ import { UiKit } from "../../apps/web/src/pages/UiKit";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // Anzeigeform mit großem G — beiläufige Kleinschreibung im Fließtext ist keine Behauptung.
-const GESICHERT = "Gesichert";
+// Peters Entscheidung 54 (11.10.2026): das Statuswort heisst „Fachlich bestätigt" statt „Gesichert".
+const GESICHERT = "Fachlich bestätigt";
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;

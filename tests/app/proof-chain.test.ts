@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
-import { PROOF_CHAIN, type ProofBeatId, proofChain } from "../../apps/web/src/lib/proofChain";
+import { PROOF_CHAIN, type ProofBeatId } from "../../apps/web/src/lib/proofChain";
 
 // SCRUM-301: die sichtbare Pilot-Beweiskette Start → Library → KO-Detail ist EINE Quelle der Wahrheit
 // („Wissen finden → Nutzbarkeit erkennen → Quelle/Trust/Version prüfen"). Reine i18n-Datenbeschreibung.
+// R-1349: gemessen an `PROOF_CHAIN`, das der Start liest — der Zugriff `proofChain()` ist entfernt.
 describe("SCRUM-301: proofChain", () => {
   it("liefert genau drei Beats in fester Reihenfolge (find → usability → verify)", () => {
-    expect(proofChain().map((b) => b.id)).toEqual<ProofBeatId[]>(["find", "usability", "verify"]);
-    expect(proofChain()).toBe(PROOF_CHAIN);
+    expect(PROOF_CHAIN.map((b) => b.id)).toEqual<ProofBeatId[]>(["find", "usability", "verify"]);
   });
 
   it("nummeriert 1..3 aufsteigend und nutzt stabile i18n-Keys", () => {

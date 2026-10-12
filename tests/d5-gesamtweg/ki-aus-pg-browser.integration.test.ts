@@ -492,10 +492,11 @@ describe("D5 · KI aus — am echten Weg (PostgreSQL · Socket · gebaute Fläch
       });
       expect(angelegt.statusCode, angelegt.body).toBe(201);
       const sitzung = angelegt.json() as { sessionId: string; documentContextId: string };
+      // R-0700: die Klara-Frage geht über Klaras eigenen, sitzungsgebundenen Zugang.
       const klaraFrage = () =>
         lage.instanz.app.inject({
           method: "POST",
-          url: "/api/ask",
+          url: `/api/klara/sessions/${sitzung.sessionId}/execute`,
           headers: {
             ...lage.leser.kopf,
             "content-type": "application/json",
@@ -503,7 +504,7 @@ describe("D5 · KI aus — am echten Weg (PostgreSQL · Socket · gebaute Fläch
             "x-klara-instance": "d5-kiaus-h1",
             "x-klara-document": sitzung.documentContextId,
           },
-          payload: { question: FRAGE, locale: "de", mode: "retrieval-only" },
+          payload: { question: FRAGE, locale: "de" },
         });
       expect((await klaraFrage()).statusCode, "die vorbereitete Klara-Sitzung trug nicht").toBe(
         200,

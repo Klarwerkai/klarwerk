@@ -344,8 +344,9 @@ async function ueberAnhaengeZumFormular(): Promise<void> {
 
 /** Das Titelfeld des Expertenformulars, an seiner sichtbaren Beschriftung gefunden. */
 function formularTitel(): HTMLInputElement | HTMLTextAreaElement | null {
+  const beschriftung = i18n.t("capture.wizard.titleLabel");
   const l = [...container.querySelectorAll("label")].find(
-    (x) => (x.querySelector("span")?.textContent ?? "").trim() === i18n.t("capture.fTitle"),
+    (x) => (x.querySelector("span")?.textContent ?? "").trim() === beschriftung,
   );
   const el = l?.querySelector("input, textarea");
   return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el : null;

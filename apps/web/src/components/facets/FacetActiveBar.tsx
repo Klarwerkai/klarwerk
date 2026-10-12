@@ -54,7 +54,7 @@ export function FacetActiveBar({
 
   return (
     <div className="mb-2.5 flex flex-wrap items-center gap-1.5 rounded-card border border-hairline bg-surface px-2.5 py-2">
-      <span className="mr-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <span className="mr-0.5 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("facet.active")}:
       </span>
       {pills.map((p) => {

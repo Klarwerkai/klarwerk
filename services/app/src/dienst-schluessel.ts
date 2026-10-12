@@ -43,6 +43,7 @@ export const DIENST_RECHTE = [
   "export.validated",
   "import.kandidaten",
   "status.read",
+  "mcp.werkzeug",
 ] as const satisfies readonly AddonCapability[];
 export type DienstRecht = (typeof DIENST_RECHTE)[number];
 
@@ -72,6 +73,9 @@ export const KEINE_DIENST_SCHLUESSEL: DienstSchluesselLage = { schluessel: [], f
 //   · Kandidaten als `experte`: reiht in die Prüfwarteschlange ein, legt KEIN Wissensobjekt an
 //     (R-0143); angenommen wird nur durch einen Menschen mit `ko.validate`.
 // Fragen und Textprüfung haben ihren eigenen Schlüsselzweig (nur validiertes Wissen, kein Modell).
+// Aufnahme gesamt-mcp (R-0713): `/mcp` ist der MCP-Zugang für fremde KI-Programme. Er hat ein
+// EIGENES Recht und reicht Werkzeugaufrufe mit demselben Schlüssel an die Route ihres Rechts weiter
+// (`routes/mcp-routes.ts`) — ohne `ask.validated` gibt es dort kein Fragewerkzeug.
 // ------------------------------------------------------------------------------------------------
 export interface DienstRoute {
   readonly methode: "GET" | "POST";
@@ -97,6 +101,8 @@ export const DIENST_ROUTEN: readonly DienstRoute[] = [
   },
   { methode: "GET", pfad: "/health", recht: "status.read" },
   { methode: "GET", pfad: "/api/reasoner/status", recht: "status.read" },
+  { methode: "POST", pfad: "/mcp", recht: "mcp.werkzeug" },
+  { methode: "GET", pfad: "/mcp", recht: "mcp.werkzeug" },
 ];
 
 // Wie `matchAddonRoute`: Methode, kanonischer Fastify-Pfad UND der byte-genaue Rohpfad müssen

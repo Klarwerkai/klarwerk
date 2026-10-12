@@ -38,13 +38,42 @@ interface Anbieterbindung {
   anbieter: string | null;
   /** Je Freigabe dieser Anfrage: gilt die Zustimmung, auf die sie sich stützt, noch? */
   zustimmungen: Array<() => boolean>;
+  /** gesamt-ki-freigaberegeln (Ben Nacharbeit 3): die HERKUNFT des Texts sperrt jede Ausleitung. */
+  ausleitungGesperrt: boolean;
 }
 
 const speicher = new AsyncLocalStorage<Anbieterbindung>();
 
 /** Öffnet den Rahmen einer Anfrage; darin ist zunächst NICHTS gebunden. */
 export function imBindungsrahmen<T>(lauf: () => T): T {
-  return speicher.run({ gebunden: false, anbieter: null, zustimmungen: [] }, lauf);
+  return speicher.run(
+    { gebunden: false, anbieter: null, zustimmungen: [], ausleitungGesperrt: false },
+    lauf,
+  );
+}
+
+// ================================================================================================
+// Auftrag gesamt-ki-freigaberegeln · BEN NACHARBEIT 3 — HERKUNFTSSPERRE GETRENNT VON DER KLASSE.
+// ================================================================================================
+//
+// Die zentrale Adminfreigabe für vertrauliche Inhalte hebt die KLASSENSPERRE auf („dieser Text ist
+// vertraulich"). Sie hebt NICHT auf, was aus der HERKUNFT folgt: ein Entwurfstext ohne auflösbaren
+// Anker oder ein Text, der sich als Wissensobjekt ausgibt, ohne dass der Server es belegen kann.
+// Solche Anfragen stuften die Routen bisher nur als `confidential` ein — mit beiden Freigaben wäre
+// das eine Öffnung gewesen. Die Route vermerkt die Herkunftssperre deshalb HIER, im Rahmen der
+// Anfrage; `anbieterZugelassen` lässt danach keinen externen Anbieter mehr zu, im Kettenbau wie
+// unmittelbar vor der Übertragung, unabhängig von jeder Freigabe.
+/**
+ * Sperrt in der laufenden Anfrage jede externe Ausleitung. Gibt `false` zurück, wenn es keinen
+ * Rahmen gibt — der Aufrufer muss dann selbst sperren (fail-closed).
+ */
+export function sperreAusleitung(): boolean {
+  const bindung = speicher.getStore();
+  if (!bindung) {
+    return false;
+  }
+  bindung.ausleitungGesperrt = true;
+  return true;
 }
 
 /**
@@ -141,6 +170,10 @@ export class KlaraAusweichwegGesperrtFehler extends Error {
 export function anbieterZugelassen(anbieter: string | undefined): boolean {
   const bindung = speicher.getStore();
   if (!zustimmungenTragen()) {
+    return false;
+  }
+  // Ben Nacharbeit 3: eine Herkunftssperre der Anfrage hebt keine Freigabe auf.
+  if (bindung?.ausleitungGesperrt === true) {
     return false;
   }
   if (!bindung?.gebunden) {

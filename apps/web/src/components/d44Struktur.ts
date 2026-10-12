@@ -100,7 +100,9 @@ export function d44SichtbareEintraege(eintraege: readonly D44Eintrag[]): D44Eint
  * null Ueberschriften ergeben keine Leiste, weil es dann nichts anzuspringen gibt.
  */
 export function d44LeisteZeigen(eintraege: readonly D44Eintrag[]): boolean {
-  return d44SichtbareEintraege(eintraege).length > 0;
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): die Schwelle kommt aus der Zusicherung unten — bis
+  // hierher stand hier eine eigene `0`, und die Zusicherung war ein Datum, das niemand las.
+  return d44SichtbareEintraege(eintraege).length > D44_GLIEDERUNG_GRENZE.mindestzahl;
 }
 
 /** Was diese Gliederung zusichert — als Datum, damit ein Test es lesen kann. */

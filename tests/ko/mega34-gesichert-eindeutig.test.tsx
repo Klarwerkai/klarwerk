@@ -15,18 +15,28 @@
 //
 // Der Test pinnt beide Hälften: das Wort ist weg UND die Zahl steht noch da. Ohne die zweite Hälfte
 // wäre die Zusage durch Löschen des ganzen Balkens erfüllbar.
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter): C1 maß die Kopfzeile bis hierher an `KoReadHeader`
+// (`components/ko/KoRead.tsx`). Diese Leseansicht hatte seit JOB 3063 keinen Produktaufrufer mehr und
+// ist entfernt. Das KO-Detail ist heute das „Mehr" der Bibliothek, und dort steht derselbe Balken mit
+// denselben Eigenschaften (`MehrAbschnitte.tsx`). C1 misst jetzt genau diesen Balken und pinnt, dass
+// die Fläche ihn so führt.
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
-import { KoReadHeader } from "../../apps/web/src/components/ko/KoRead";
 import { SourceEvidence } from "../../apps/web/src/components/ko/SourceEvidence";
+import { ConfidenceBar } from "../../apps/web/src/components/trust";
 import i18n from "../../apps/web/src/i18n";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // Anzeigeform mit großem G — beiläufige Kleinschreibung im Fließtext ist keine Behauptung.
-const GESICHERT = "Gesichert";
+// Peters Entscheidung 54 (11.10.2026, R-1044): das Statuswort heisst „Fachlich bestätigt" statt
+// „Gesichert" (Verwechslung mit Datensicherung). Geprüft wird weiter DAS Statuswort.
+const GESICHERT = "Fachlich bestätigt";
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -67,7 +77,22 @@ afterEach(() => {
 
 describe("mega34 C1 · im KO-Detail steht die Zahl, nicht das Wort", () => {
   it("die Kopfzeile des KO-Detail zeigt „87 % sicher“ und NICHT „Gesichert“", () => {
-    const text = render(createElement(KoReadHeader, { ko }));
+    // Der Balken des KO-Details, wörtlich mit den Eigenschaften, die die Fläche setzt …
+    const flaeche = readFileSync(
+      resolve(process.cwd(), "apps/web/src/components/bibliothek/MehrAbschnitte.tsx"),
+      "utf8",
+    );
+    expect(flaeche).toContain(
+      "<ConfidenceBar value={ko.confidence} showLabel={false} percentPhrase />",
+    );
+    // … und gerendert mit dem Wert des Beispielobjekts.
+    const text = render(
+      createElement(ConfidenceBar, {
+        value: (ko as { confidence: number }).confidence,
+        showLabel: false,
+        percentPhrase: true,
+      }),
+    );
 
     expect(text).toContain(i18n.t("evidence.percentSure", { pct: 87 }));
     expect(text).not.toContain(GESICHERT);
@@ -83,9 +108,9 @@ describe("mega34 C1 · im KO-Detail steht die Zahl, nicht das Wort", () => {
   });
 
   it("C2 · die Skala bleibt unangetastet — die Übersetzung existiert weiter", () => {
-    // Umbenannt wird nichts. Vier Tage vor einem Test, dessen Frage „versteht man das?“ lautet,
-    // wird kein neues Vokabular in drei Sprachen eingeführt. Der Schlüssel bleibt, er erscheint
-    // in dieser Ansicht nur nicht mehr.
+    // Der Schlüssel bleibt, er erscheint in dieser Ansicht nur nicht mehr. Sein deutscher Wortlaut
+    // ist seit Peters Entscheidung 54 (11.10.2026) „Fachlich bestätigt" — die damalige Zurückhaltung
+    // („kein neues Vokabular vier Tage vor dem Test") ist durch diese jüngere Entscheidung abgelöst.
     expect(i18n.t("quality.assured")).toBe(GESICHERT);
     expect(i18n.t("quality.reliable")).toBeTruthy();
     expect(i18n.t("quality.preliminary")).toBeTruthy();

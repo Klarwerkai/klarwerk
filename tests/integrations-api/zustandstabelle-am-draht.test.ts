@@ -174,6 +174,36 @@ const FAELLE: Fall[] = [
   },
   { name: "Health", methode: "GET", pfad: "/health", erwartet: 200 },
   { name: "KI-Status", methode: "GET", pfad: "/api/reasoner/status", erwartet: 200 },
+  // Aufnahme gesamt-mcp (R-0713): der MCP-Zugang mit seinen Zuständen.
+  {
+    name: "MCP initialize",
+    methode: "POST",
+    pfad: "/mcp",
+    payload: { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
+    erwartet: 200,
+  },
+  {
+    name: "MCP Benachrichtigung",
+    methode: "POST",
+    pfad: "/mcp",
+    payload: { jsonrpc: "2.0", method: "notifications/initialized" },
+    erwartet: 202,
+  },
+  {
+    name: "MCP kein JSON",
+    methode: "POST",
+    pfad: "/mcp",
+    roh: { body: "{kaputt", contentType: "application/json" },
+    erwartet: 400,
+  },
+  {
+    name: "MCP als CSV",
+    methode: "POST",
+    pfad: "/mcp",
+    roh: { body: "a;b", contentType: "text/csv" },
+    erwartet: 415,
+  },
+  { name: "MCP Ereignisstrom", methode: "GET", pfad: "/mcp", erwartet: 405 },
   {
     name: "falscher Schlüssel",
     methode: "GET",

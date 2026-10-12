@@ -1,0 +1,1159 @@
+// ================================================================================================
+// R-1399 · SICHTNACHWEIS DER GESTALTUNGSÄNDERUNGEN DIESES AUFTRAGS — BILD UND ZAHL, AN DER ECHTEN APP.
+// ================================================================================================
+//
+// Zu jeder Gestaltungsänderung soll belegt sein, wie die Fläche danach WIRKLICH aussieht. Diese Datei
+// ist das Vergleichsmaterial samt Startbefehl: sie lädt die GEBAUTE Anwendung (`apps/web/dist`) in
+// Chromium über die H4-Bühne (`tests/design/h4-harness.ts`: echte Fastify-App, echter Bestand, echte
+// Anmeldung als erstes Konto = Admin) und legt je Zustand ein PNG ab:
+//
+//   test-results/bildnachweis/b1-bibliothek-exportumfang.png      — Menü „…" → „Export" (K19)
+//   test-results/bildnachweis/b2-kenntnisnahme-zu.png             — Lesefläche, Aufklapper zu (K25/K8)
+//   test-results/bildnachweis/b2-kenntnisnahme-offen.png          — derselbe Aufklapper geöffnet
+//   test-results/bildnachweis/b3-werksreset-rueckfrage.png        — Werksreset Stufe 2 (K2)
+//   test-results/bildnachweis/b4-ui-kit-1.png, -2.png, …          — Bausteinkatalog, in Bildschirm-
+//                                                                   höhen durchlaufen (K5/K7/K4)
+//   test-results/bildnachweis/b5-entwuerfe-fortsetzen.png         — /entwuerfe, Zeile mit Fortsetzen
+//                                                                   (Öffnen-Symbol) und Löschen (K33)
+//   test-results/bildnachweis/b6-mobil-entwurf.png, -rueckfrage.png, -quittung.png
+//                                                                 — /mobile (390 px): Entwurfszeile,
+//                                                                   Rückfrage „Löschen?“, Quittung (K33)
+//   test-results/bildnachweis/b7-luecke-erfassen-ausgangsfrage.png — /risiko?fall=… → „Wissen
+//                                                                   erfassen“ → Blatt mit Frage (K19)
+//
+// Startbefehl (wie jede Datei der Browsergruppe, nach `./tools/build`):
+//   npx vitest run --config vitest.browser.config.ts tests/design-bildnachweis/bildnachweis-chromium.test.ts
+//
+// Neben jedem Bild steht die ZAHL, die das Bild trägt (Werkzeug-Hälfte von R-1399): sichtbar ja/nein,
+// Reihenfolge, offen/zu, berechnete Farben — gemessen per `getComputedStyle`, nicht behauptet.
+//
+// EINE EHRLICHE GRENZE, BENANNT: der Werksreset ist auf dieser Bühne nicht verfügbar (kein Journal,
+// `factoryResetUnavailable`). Damit Stufe 2 überhaupt erscheint, wird NUR die Antwort des Statusabrufs
+// `GET /api/admin/factory-reset` auf `{ available: true, vorschau, sso }` mit festen Prüfwerten
+// gestellt (`antworten.vorAuslieferung` der Bühne; Vertrag `FirmenresetStatus`). „Ausführen" wird
+// NICHT gedrückt — es wird nichts ausgeführt.
+import { mkdirSync } from "node:fs";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { type H4Stand, ORIGIN, fn, h4Stand } from "../design/h4-harness";
+import { repoPfad } from "../support/repoPfad";
+
+const ORDNER = repoPfad("test-results/bildnachweis");
+const bild = (name: string): string => `${ORDNER}/${name}.png`;
+
+interface Rechteck {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// In der Seite: das Rechteck eines Elements, mit 12 px Rand — der Ausschnitt fürs Bild.
+const RECHTECK = `(sel) => {
+  const el = document.querySelector(sel);
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  const x = Math.max(0, r.left - 12);
+  const y = Math.max(0, r.top - 12);
+  return { x, y, width: r.width + 24, height: r.height + 24 };
+}`;
+
+// In der Seite: die berechnete Hintergrundfarbe einer Token-Klasse, an einem Prüfling gemessen.
+const TOKENFARBE = `(klasse) => {
+  const p = document.createElement('div');
+  p.className = klasse;
+  document.body.appendChild(p);
+  const f = getComputedStyle(p).backgroundColor;
+  p.remove();
+  return f;
+}`;
+
+let stand: H4Stand | null = null;
+let fehler: string | null = null;
+
+async function warte(selektor: string): Promise<void> {
+  await (stand as H4Stand).seite.waitForFunction(
+    fn("(sel) => !!document.querySelector(sel)"),
+    selektor,
+    { timeout: 30_000 },
+  );
+}
+
+// Der Hinweis „Kurz zur Kenntnis" (`legal/NoticeBanner.tsx`) liegt unten über jeder Fläche, bis er
+// quittiert ist. Er wird über seinen vorgesehenen Bedienweg geschlossen — „Verstanden — weiter" —,
+// nicht weggeblendet; die Quittung landet am Server dieser Bühne.
+async function hinweisQuittieren(): Promise<void> {
+  const s = (stand as H4Stand).seite;
+  const da = await s.evaluate<boolean>(
+    fn(`() => !!document.querySelector('[data-testid="notice-ack"]')`),
+  );
+  if (!da) return;
+  await s.click('[data-testid="notice-ack"]');
+  await s.waitForFunction(
+    fn(`() => !document.querySelector('[data-testid="notice-banner"]')`),
+    undefined,
+    { timeout: 15_000 },
+  );
+}
+
+async function ausschnitt(selektor: string, name: string): Promise<void> {
+  const s = (stand as H4Stand).seite;
+  const clip = await s.evaluate<Rechteck | null>(fn(RECHTECK), selektor);
+  expect(clip, `${selektor} nicht gefunden`).not.toBeNull();
+  await s.screenshot({ path: bild(name), clip });
+  console.info(`R-1399 · Bild ${bild(name)} · Ausschnitt ${JSON.stringify(clip)}`);
+}
+
+describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rückfrage, Katalog", () => {
+  beforeAll(async () => {
+    mkdirSync(ORDNER, { recursive: true });
+    try {
+      stand = await h4Stand("/bibliothek", "bild@design-bildnachweis.test");
+    } catch (e) {
+      fehler = String(e).split("\n").slice(0, 4).join(" | ");
+    }
+  }, 180_000);
+
+  afterAll(async () => {
+    await stand?.browser.close();
+    await stand?.app.close();
+  }, 60_000);
+
+  it("B1 · Bibliothek, Menü „…“ → „Export“: der Umfang steht vor den Formaten", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    await hinweisQuittieren();
+    await s.click('[data-testid="bib-liste-menue"]');
+    await warte('[role="menu"]');
+    await s.evaluate(
+      fn(`() => {
+        const m = document.querySelector('[data-testid="bib-liste-menue"]').parentElement.querySelector('[role="menu"]');
+        const d = [...m.querySelectorAll('details')].find((x) => (x.querySelector('summary').textContent || '').includes('Export'));
+        d.open = true;
+        d.scrollIntoView({ block: 'center' });
+      }`),
+    );
+    // Nacharbeit 26 (Integration mit main): der Export hat jetzt einen wählbaren Umfang (N-0082);
+    // der Umfangssatz `bib-export-umfang-satz` steht vor den Formaten — in der Grundwahl
+    // „Validierter Gesamtbestand" sagt er dasselbe, was REVIEW26 „Exportumfang" verlangt.
+    const m = await s.evaluate<{ sichtbar: boolean; text: string; vorLink: boolean }>(
+      fn(`() => {
+        const u = document.querySelector('[data-testid="bib-export-umfang-satz"]');
+        const l = document.querySelector('[data-testid="bib-export-json"]');
+        const r = u.getBoundingClientRect();
+        return {
+          sichtbar: r.width > 0 && r.height > 0,
+          text: (u.innerText || '').trim(),
+          vorLink: r.top < l.getBoundingClientRect().top,
+        };
+      }`),
+    );
+    console.info(`R-1399 · B1 · ${JSON.stringify(m)}`);
+    expect(m.sichtbar).toBe(true);
+    expect(m.text).toContain("alle validierten Einträge");
+    expect(m.text).toContain("unabhängig von Suche und Filter");
+    expect(m.text).toContain("vertrauliche nur mit Prüfrecht");
+    expect(m.vorLink, "der Umfang steht nicht über den Formaten").toBe(true);
+    await ausschnitt('[role="menu"]', "b1-bibliothek-exportumfang");
+    await s.keyboard.press("Escape");
+  }, 60_000);
+
+  it("B2 · Lesefläche: Kenntnisnahme steht zu da — nur die Beschriftung; geöffnet die Verneinung", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    // Nacharbeit 26 (Integration mit main): ohne eigene Anforderung steht die Kenntnisnahme als
+    // zugeklappte Zeile „Kenntnisnahme: anfordern und Übersicht" (`kenntnisnahme-verwalten`) da —
+    // dieselbe Zusage (Erklärung hinter einem Klick), jetzt in der Bauform der Lesereihenfolge.
+    await warte('[data-testid="kenntnisnahme-verwalten"]');
+    const zu = await s.evaluate<{ offen: boolean; text: string; karte: boolean }>(
+      fn(`() => {
+        const d = document.querySelector('[data-testid="kenntnisnahme-verwalten"]');
+        const b = document.querySelector('[data-testid="kenntnisnahme-bereich"]');
+        d.scrollIntoView({ block: 'center' });
+        return {
+          offen: d.open,
+          text: (b.innerText || '').trim(),
+          karte: b.className.indexOf('rounded-card') >= 0,
+        };
+      }`),
+    );
+    console.info(`R-1399 · B2 zu · ${JSON.stringify(zu)}`);
+    expect(zu.offen).toBe(false);
+    expect(zu.text.replace(/\s*▾\s*$/, "")).toBe("Kenntnisnahme: anfordern und Übersicht");
+    expect(zu.karte, "die Kenntnisnahme ist wieder eine eigene Karte (H4 D1)").toBe(false);
+    await ausschnitt('[data-testid="kenntnisnahme-bereich"]', "b2-kenntnisnahme-zu");
+
+    await s.click('[data-testid="kenntnisnahme-verwalten"] > summary');
+    const auf = await s.evaluate<{ offen: boolean; text: string }>(
+      fn(`() => {
+        const d = document.querySelector('[data-testid="kenntnisnahme-verwalten"]');
+        return { offen: d.open, text: (d.innerText || '').trim() };
+      }`),
+    );
+    console.info(`R-1399 · B2 offen · ${auf.text.length} Zeichen`);
+    expect(auf.offen).toBe(true);
+    expect(auf.text).toContain("keine elektronische Signatur");
+    await ausschnitt('[data-testid="kenntnisnahme-bereich"]', "b2-kenntnisnahme-offen");
+  }, 60_000);
+
+  it("B3 · Werksreset Stufe 2: neutrale Fläche, Rot nur am Knopf — gemessene Farben", async () => {
+    expect(fehler).toBeNull();
+    const st = stand as H4Stand;
+    const s = st.seite;
+    // NUR der Statusabruf wird verstellt (s. Kopf) — sonst bliebe die Karte bei „nicht verfügbar".
+    // Ben, Nacharbeit 36: seit dem integrierten Firmenreset-Auftrag trägt die Antwort eine
+    // Folgenvorschau (`FirmenresetStatus` in api/types.ts: kennung, entfernt, erhalten; sso optional),
+    // auf die Stufe 1 zugreift. Die Zahlen sind feste Prüfwerte dieser Bühne, keine Messung; ein
+    // Passwortkonto (sso.erforderlich=false) bestätigt mit zwei Passwörtern. „Ausführen" wird nie
+    // gedrückt — gemessen wird nur die Rückfrage davor.
+    const vorbereitet = {
+      available: true,
+      vorschau: {
+        kennung: "b3-bildnachweis",
+        entfernt: {
+          wissensobjekte: 3,
+          offeneFragen: 1,
+          weitereEintraege: 2,
+          ablagen: ["uploads"],
+        },
+        erhalten: { benutzerkonten: 2, woerterbuch: 5, protokolleintraege: 7 },
+      },
+      sso: { erforderlich: false, eingerichtet: false, bestaetigt: 0 },
+    };
+    st.antworten.vorAuslieferung = async (url, body) =>
+      url.pathname === "/api/admin/factory-reset" ? JSON.stringify(vorbereitet) : body;
+    try {
+      await s.goto(`${ORIGIN}/admin?detail=werk`, { waitUntil: "load", timeout: 60_000 });
+      const karte = '[data-testid="detail-werkseinstellungen"]';
+      await warte('[data-testid="firmenreset-start"]');
+      await s.click('[data-testid="firmenreset-start"]');
+      // Stufe 1: Vorschau, bewusstes Häkchen, zweimal das Passwort — jeweils über den Bedienweg.
+      await warte('[data-testid="firmenreset-vorschau"]');
+      await s.click('[data-testid="firmenreset-bestaetigt"]');
+      await s.click(`${karte} input[type="password"] >> nth=0`);
+      await s.keyboard.type("geheim12345");
+      await s.click(`${karte} input[type="password"] >> nth=1`);
+      await s.keyboard.type("geheim12345");
+      const stufe1 = await s.evaluate<{ haken: boolean; felder: number; weiterFrei: boolean }>(
+        fn(`() => ({
+          haken: document.querySelector('[data-testid="firmenreset-bestaetigt"]').checked,
+          felder: [...document.querySelectorAll('[data-testid="detail-werkseinstellungen"] input[type="password"]')]
+            .filter((f) => f.value.length > 0).length,
+          weiterFrei: !document.querySelector('[data-testid="firmenreset-weiter"]').disabled,
+        })`),
+      );
+      expect(stufe1).toEqual({ haken: true, felder: 2, weiterFrei: true });
+      await s.click('[data-testid="firmenreset-weiter"]');
+      await warte('[data-testid="adm-factory-rueckfrage"]');
+      const f = await s.evaluate<{ flaeche: string; knopf: string; titel: string }>(
+        fn(`() => {
+          const k = document.querySelector('[data-testid="adm-factory-rueckfrage"]');
+          k.scrollIntoView({ block: 'center' });
+          const knoepfe = [...k.querySelectorAll('button')];
+          const los = knoepfe[knoepfe.length - 1];
+          return {
+            flaeche: getComputedStyle(k).backgroundColor,
+            knopf: getComputedStyle(los).backgroundColor,
+            titel: getComputedStyle(k.querySelector('span')).color,
+          };
+        }`),
+      );
+      const neutral = await s.evaluate<string>(fn(TOKENFARBE), "bg-page");
+      const rotFlaeche = await s.evaluate<string>(fn(TOKENFARBE), "bg-trust-crit-bg");
+      const rotKnopf = await s.evaluate<string>(fn(TOKENFARBE), "bg-trust-crit-text");
+      console.info(
+        `R-1399 · B3 · Fläche ${f.flaeche} (bg-page ${neutral}, crit-bg ${rotFlaeche}) · Knopf ${f.knopf} (crit ${rotKnopf}) · Titel ${f.titel}`,
+      );
+      expect(f.flaeche).toBe(neutral);
+      expect(f.flaeche).not.toBe(rotFlaeche);
+      expect(f.knopf).toBe(rotKnopf);
+      await ausschnitt('[data-testid="adm-factory-rueckfrage"]', "b3-werksreset-rueckfrage");
+    } finally {
+      delete st.antworten.vorAuslieferung;
+    }
+  }, 90_000);
+
+  it("B4 · Bausteinkatalog /ui-kit: Farbbedeutung, Schriftskala, Radien, Rückfrage — jeder Abschnitt im Bild", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    await s.goto(`${ORIGIN}/ui-kit`, { waitUntil: "load", timeout: 60_000 });
+    await warte('[data-testid="bausteine-rueckfrage"]');
+    const z = await s.evaluate<{ farben: number; stufen: number; klein: string; zaehler: string }>(
+      fn(`() => {
+        const groesse = (k) => {
+          const p = document.createElement('span');
+          p.className = k;
+          document.body.appendChild(p);
+          const g = getComputedStyle(p).fontSize;
+          p.remove();
+          return g;
+        };
+        return {
+          farben: document.querySelectorAll('[data-testid^="bausteine-farbe-"]').length,
+          stufen: document.querySelectorAll('[data-testid="bausteine-stufe"]').length,
+          klein: groesse('text-klein'),
+          zaehler: groesse('text-zaehler'),
+        };
+      }`),
+    );
+    console.info(`R-1399 · B4 · ${JSON.stringify(z)}`);
+    expect(z.farben).toBe(6);
+    expect(z.stufen).toBe(4);
+    // Die Skala ist im GEBAUTEN Bündel angekommen, nicht nur im Quelltext.
+    expect(z.klein).toBe("11px");
+    expect(z.zaehler).toBe("10.5px");
+
+    // Ben, Nacharbeit 7: das frühere „fullPage"-Bild zeigte nur den oberen Ausschnitt — die App
+    // scrollt in `<main>` (`shell/AppShell.tsx`), nicht im Dokument, und der Hinweis „Kurz zur
+    // Kenntnis" lag über dem unteren Rand. Deshalb: (1) den Hinweis über seinen vorgesehenen
+    // Bedienweg quittieren („Verstanden — weiter", `legal/NoticeBanner.tsx`), (2) `<main>` in
+    // Bildschirmhöhen durchlaufen, je Stand ein Bild, (3) belegen, dass JEDER Katalogabschnitt in
+    // mindestens einem Bild VOLLSTÄNDIG im sichtbaren Bereich stand.
+    //
+    // Nacharbeit 8: mit allen 16 Skalenstufen ist der Abschnitt „Schriftskala" höher als der
+    // sichtbare Bereich eines 900-px-Fensters und stand deshalb in KEINEM Bild ganz. Das Fenster für
+    // B4 wird darum höher gesetzt (1620 × 1400), und es gilt zweierlei: jeder Abschnitt, der in den
+    // sichtbaren Bereich passt, steht in mindestens einem Bild GANZ; und JEDER Abschnitt wird von den
+    // Bildern zusammen LÜCKENLOS abgedeckt (überlappende Ausschnitte, gemessen in Inhaltskoordinaten).
+    await s.setViewportSize({ width: 1620, height: 1400 });
+    await hinweisQuittieren();
+    const ABSCHNITTE = [
+      "farben",
+      "schrift",
+      "radien",
+      "rueckfrage",
+      "status",
+      "konfidenz",
+      "wissensarten",
+      "ki",
+      "herkunft",
+    ];
+    const hoehe = await s.evaluate<{ scroll: number; sicht: number }>(
+      fn(`() => {
+        const m = document.querySelector('main');
+        m.scrollTop = 0;
+        return { scroll: m.scrollHeight, sicht: m.clientHeight };
+      }`),
+    );
+    // KALIBRIERUNG: der Katalog ist höher als ein Bildschirm — sonst bewiese das Durchlaufen nichts.
+    expect(hoehe.scroll).toBeGreaterThan(hoehe.sicht);
+    const schritt = Math.max(200, hoehe.sicht - 80);
+    const gesehen = new Set<string>();
+    const bilder: string[] = [];
+    // Je Bild der sichtbare Ausschnitt von `<main>` in Inhaltskoordinaten [oben, unten].
+    const fenster: [number, number][] = [];
+    // Je Abschnitt seine Lage in Inhaltskoordinaten (vom ersten Stand an unverändert).
+    let lagen: Record<string, [number, number]> = {};
+    let oben = 0;
+    let nr = 1;
+    let ende = false;
+    while (!ende) {
+      const lage = await s.evaluate<{
+        voll: string[];
+        ende: boolean;
+        ueberdeckt: boolean;
+        fenster: [number, number];
+        abschnitte: Record<string, [number, number]>;
+      }>(
+        fn(`([oben, kennungen]) => {
+          const m = document.querySelector('main');
+          m.scrollTop = oben;
+          const r = m.getBoundingClientRect();
+          const abschnitte = {};
+          const voll = [];
+          for (const k of kennungen) {
+            const e = document.querySelector('[data-testid="bausteine-abschnitt-' + k + '"]');
+            if (!e) continue;
+            const b = e.getBoundingClientRect();
+            abschnitte[k] = [b.top - r.top + m.scrollTop, b.bottom - r.top + m.scrollTop];
+            if (b.top >= r.top - 1 && b.bottom <= r.bottom + 1) voll.push(k);
+          }
+          return {
+            voll,
+            ende: m.scrollTop + m.clientHeight >= m.scrollHeight - 1,
+            ueberdeckt: !!document.querySelector('[data-testid="notice-banner"]'),
+            fenster: [m.scrollTop, m.scrollTop + m.clientHeight],
+            abschnitte,
+          };
+        }`),
+        [oben, ABSCHNITTE],
+      );
+      expect(lage.ueberdeckt, "der Hinweis liegt noch über dem Katalog").toBe(false);
+      const name = `b4-ui-kit-${nr}`;
+      await s.screenshot({ path: bild(name) });
+      bilder.push(bild(name));
+      fenster.push(lage.fenster);
+      if (nr === 1) lagen = lage.abschnitte;
+      for (const k of lage.voll) gesehen.add(k);
+      console.info(
+        `R-1399 · Bild ${bild(name)} · Ausschnitt ${lage.fenster.join("–")} · ganz: ${lage.voll.join(", ")}`,
+      );
+      ende = lage.ende || nr >= 12;
+      oben += schritt;
+      nr += 1;
+    }
+    console.info(`R-1399 · B4 · Abschnitte ${JSON.stringify(lagen)} · Sichthöhe ${hoehe.sicht}`);
+    // (a) LÜCKENLOS: für jeden Abschnitt decken die Bild-Ausschnitte zusammen [oben, unten] ab.
+    const abgedeckt = (von: number, bis: number): boolean => {
+      let bisher = von;
+      for (const [a, b] of [...fenster].sort((x, y) => x[0] - y[0])) {
+        if (a <= bisher + 1 && b > bisher) bisher = b;
+      }
+      return bisher >= bis - 1;
+    };
+    const lageVon = (k: string): [number, number] | null => lagen[k] ?? null;
+    expect(
+      ABSCHNITTE.filter((k) => {
+        const l = lageVon(k);
+        return l === null || !abgedeckt(l[0], l[1]);
+      }),
+      "Katalogabschnitt von den Bildern nicht lückenlos abgedeckt",
+    ).toEqual([]);
+    // (b) GANZ: wer in den sichtbaren Bereich passt, steht in mindestens einem Bild vollständig.
+    const passtHinein = ABSCHNITTE.filter((k) => {
+      const l = lageVon(k);
+      return l !== null && l[1] - l[0] <= hoehe.sicht;
+    });
+    // KALIBRIERUNG: mit dem höheren Fenster passen alle neun Abschnitte, auch die Schriftskala.
+    expect(passtHinein).toEqual(ABSCHNITTE);
+    expect(
+      passtHinein.filter((k) => !gesehen.has(k)),
+      "Katalogabschnitt in keinem Bild vollständig sichtbar",
+    ).toEqual([]);
+    console.info(`R-1399 · B4 · ${bilder.length} Bilder: ${bilder.join(", ")}`);
+    expect((stand as H4Stand).seitenfehler).toEqual([]);
+  }, 120_000);
+
+  // ----------------------------------------------------------------------------------------------
+  // Ben, Nacharbeit 9: die Aktionsflächen aus K33 (gleiche Aktion, gleiches Wort, gleiches Symbol)
+  // brauchen ihren eigenen Sichtnachweis — Fortsetzen-Symbol der Entwurfsliste (B5) und die mobile
+  // Entwurfsbedienung mit Löschen, Rückfrage und Rückmeldung (B6). Der Entwurf wird über die echte
+  // Route angelegt (`POST /api/drafts`, dieselbe Nutzlast wie `entwurf-laden-zeitgrenze`).
+  // ----------------------------------------------------------------------------------------------
+  const ENTWURF_TITEL = "Bildnachweis Schmierplan Linie 2";
+
+  it("B5 · Entwurfsliste /entwuerfe: Fortsetzen mit Öffnen-Symbol, Löschen mit Papierkorb", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    const angelegt = await s.evaluate<{ status: number }>(
+      fn(`async (titel) => {
+        const res = await fetch("/api/drafts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            title: titel,
+            statement: "Vor jedem Anlauf die Schmierstellen prüfen.",
+            category: "Instandhaltung",
+            confidentiality: "intern",
+            origin: "frontdoor",
+          }),
+        });
+        return { status: res.status };
+      }`),
+      ENTWURF_TITEL,
+    );
+    expect(angelegt.status).toBe(201);
+    await s.setViewportSize({ width: 1620, height: 900 });
+    await s.goto(`${ORIGIN}/entwuerfe`, { waitUntil: "load", timeout: 60_000 });
+    await warte('[data-testid="entwurfsliste-fortsetzen"]');
+    const m = await s.evaluate<{ fortsetzen: string; loeschen: string; wort: string }>(
+      fn(`() => {
+        const f = document.querySelector('[data-testid="entwurfsliste-fortsetzen"]');
+        const l = document.querySelector('[data-testid="entwurfsliste-loeschen"]');
+        f.closest('li').scrollIntoView({ block: 'center' });
+        const klasse = (b) => {
+          const svg = b ? b.querySelector('svg') : null;
+          return svg ? svg.getAttribute('class') || '' : '';
+        };
+        return { fortsetzen: klasse(f), loeschen: klasse(l), wort: (f.innerText || '').trim() };
+      }`),
+    );
+    console.info(`R-1399 · B5 · ${JSON.stringify(m)}`);
+    expect(m.fortsetzen).toContain("folder-open");
+    expect(m.fortsetzen).not.toContain("rotate");
+    expect(m.loeschen).toContain("trash");
+    expect(m.wort).toBe("Fortsetzen");
+    await ausschnitt('[data-testid="entwurfsliste-eintrag"]', "b5-entwuerfe-fortsetzen");
+  }, 90_000);
+
+  it("B6 · Mobil: Fortsetzen/Löschen-Symbole, Rückfrage „Löschen?“, Quittung „Entwurf gelöscht.“", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    await s.setViewportSize({ width: 390, height: 844 });
+    await s.goto(`${ORIGIN}/mobile`, { waitUntil: "load", timeout: 60_000 });
+    await warte('[data-testid="mobil-entwurf-fortsetzen"]');
+    const zeile = `() => document.querySelector('[data-testid="mobil-entwurf-fortsetzen"]')`;
+    const symbol = (testId: string): string =>
+      `(() => { const b = document.querySelector('[data-testid="${testId}"]'); const svg = b && b.querySelector('svg'); return svg ? svg.getAttribute('class') || '' : ''; })()`;
+    const ruhe = await s.evaluate<{ fortsetzen: string; loeschen: string; name: string }>(
+      fn(`() => {
+        const f = (${zeile})();
+        f.closest('li').scrollIntoView({ block: 'center' });
+        return {
+          fortsetzen: ${symbol("mobil-entwurf-fortsetzen")},
+          loeschen: ${symbol("mobil-entwurf-loeschen")},
+          name: document.querySelector('[data-testid="mobil-entwurf-loeschen"]').getAttribute('aria-label'),
+        };
+      }`),
+    );
+    console.info(`R-1399 · B6 Ruhe · ${JSON.stringify(ruhe)}`);
+    expect(ruhe.fortsetzen).toContain("folder-open");
+    expect(ruhe.loeschen).toContain("trash");
+    expect(ruhe.name).toBe("Löschen");
+    const zeilenRechteck = await s.evaluate<Rechteck>(
+      fn(`() => {
+        const r = (${zeile})().closest('li').getBoundingClientRect();
+        return { x: 0, y: Math.max(0, r.top - 12), width: 390, height: r.height + 24 };
+      }`),
+    );
+    await s.screenshot({ path: bild("b6-mobil-entwurf"), clip: zeilenRechteck });
+
+    await s.click('[data-testid="mobil-entwurf-loeschen"]');
+    await warte('[data-testid="mobil-entwurf-loeschen-ja"]');
+    const frage = await s.evaluate<{ text: string; ja: string; nein: string; jaName: string }>(
+      fn(`() => {
+        const ja = document.querySelector('[data-testid="mobil-entwurf-loeschen-ja"]');
+        return {
+          text: (ja.closest('li').innerText || '').replace(/\\s+/g, ' ').trim(),
+          ja: ${symbol("mobil-entwurf-loeschen-ja")},
+          nein: document.querySelector('[data-testid="mobil-entwurf-loeschen-nein"]').getAttribute('aria-label'),
+          jaName: ja.getAttribute('aria-label'),
+        };
+      }`),
+    );
+    console.info(`R-1399 · B6 Rückfrage · ${JSON.stringify(frage)}`);
+    expect(frage.text).toContain("Löschen? Der Entwurf wandert in den Papierkorb");
+    expect(frage.text).not.toContain("Verwerfen");
+    expect(frage.ja).toContain("trash");
+    expect(frage.jaName).toBe("Löschen");
+    expect(frage.nein).toBe("Behalten");
+    const frageRechteck = await s.evaluate<Rechteck>(
+      fn(`() => {
+        const r = document.querySelector('[data-testid="mobil-entwurf-loeschen-ja"]').closest('li').getBoundingClientRect();
+        return { x: 0, y: Math.max(0, r.top - 12), width: 390, height: r.height + 24 };
+      }`),
+    );
+    await s.screenshot({ path: bild("b6-mobil-rueckfrage"), clip: frageRechteck });
+
+    await s.click('[data-testid="mobil-entwurf-loeschen-ja"]');
+    await s.waitForFunction(
+      fn(`() => (document.body.innerText || '').includes('Entwurf gelöscht.')`),
+      undefined,
+      { timeout: 30_000 },
+    );
+    const quittung = await s.evaluate<boolean>(
+      fn(`() => !(document.body.innerText || '').includes('Entwurf verworfen')`),
+    );
+    expect(quittung, "die alte Quittung „Entwurf verworfen“ steht noch da").toBe(true);
+    await s.screenshot({ path: bild("b6-mobil-quittung") });
+    console.info(`R-1399 · Bilder ${bild("b6-mobil-entwurf")}, -rueckfrage, -quittung`);
+    expect((stand as H4Stand).seitenfehler).toEqual([]);
+  }, 120_000);
+
+  // ----------------------------------------------------------------------------------------------
+  // Ben, Nacharbeit 10 · REVIEW26 „Lückenbezug" (K19): der ganze Weg Lücke → „Wissen erfassen" →
+  // normales Blatt, an der gebauten App. Die Lücke entsteht über den echten Frageweg
+  // (`POST /api/ask`, unbeantwortbare Frage des angemeldeten Kontos — Ersteller sieht den Volltext).
+  // ----------------------------------------------------------------------------------------------
+  const LUECKEN_FRAGE = "Warum schwankt der Dosierwert an Testlinie L4?";
+
+  it("B7 · Lücke → „Wissen erfassen“ → Blatt: die Ausgangsfrage steht über dem Antworteditor", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    await s.setViewportSize({ width: 1620, height: 900 });
+    const gefragt = await s.evaluate<{ status: number; gapId: string | null }>(
+      fn(`async (frage) => {
+        const res = await fetch("/api/ask", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ question: frage }),
+        });
+        const j = await res.json().catch(() => ({}));
+        return { status: res.status, gapId: j && j.gap ? j.gap.id : null };
+      }`),
+      LUECKEN_FRAGE,
+    );
+    expect(gefragt.status).toBeLessThan(300);
+    expect(gefragt.gapId, "die Frage hat keine Lücke angelegt").not.toBeNull();
+    const gapId = gefragt.gapId as string;
+
+    await s.goto(`${ORIGIN}/risiko?fall=${encodeURIComponent(gapId)}`, {
+      waitUntil: "load",
+      timeout: 60_000,
+    });
+    await warte('[data-testid="luecke-zeile"][aria-current="true"]');
+    const zeile = await s.evaluate<{ text: string; ziel: string | null }>(
+      fn(`() => {
+        const z = document.querySelector('[data-testid="luecke-zeile"][aria-current="true"]');
+        const a = [...z.querySelectorAll('a')].find((x) => (x.getAttribute('href') || '').startsWith('/erfassen?gap='));
+        return { text: z.innerText || '', ziel: a ? a.getAttribute('href') : null };
+      }`),
+    );
+    expect(zeile.text).toContain(LUECKEN_FRAGE);
+    expect(zeile.ziel).toBe(`/erfassen?gap=${encodeURIComponent(gapId)}`);
+    await s.click('[data-testid="luecke-zeile"][aria-current="true"] a[href^="/erfassen?gap="]');
+    await warte('[data-testid="blatt-ausgangsfrage-text"]');
+
+    const m = await s.evaluate<{
+      adresse: string;
+      frage: string;
+      ueberTitel: boolean;
+      ueberText: boolean;
+      titel: string;
+      imText: boolean;
+    }>(
+      fn(`() => {
+        const top = (sel) => document.querySelector(sel).getBoundingClientRect().top;
+        const frage = document.querySelector('[data-testid="blatt-ausgangsfrage-text"]');
+        const text = document.querySelector('[data-testid="blatt-text"]');
+        return {
+          adresse: location.pathname + location.search,
+          frage: (frage.innerText || '').trim(),
+          ueberTitel: top('[data-testid="blatt-ausgangsfrage"]') < top('[data-testid="blatt-titel"]'),
+          ueberText: top('[data-testid="blatt-ausgangsfrage"]') < top('[data-testid="blatt-text"]'),
+          titel: document.querySelector('[data-testid="blatt-titel"]').value,
+          imText: (text.innerText || '').includes(${JSON.stringify(LUECKEN_FRAGE)}),
+        };
+      }`),
+    );
+    console.info(`R-1399 · B7 · ${JSON.stringify(m)}`);
+    expect(m.adresse).toBe(`/erfassen?gap=${encodeURIComponent(gapId)}`);
+    expect(m.frage).toBe(`„${LUECKEN_FRAGE}“`);
+    expect(m.ueberTitel).toBe(true);
+    expect(m.ueberText).toBe(true);
+    // Die Frage ist Bezug, nicht Inhalt: Titel und Text des Blattes bleiben die des Menschen.
+    expect(m.titel).toBe("");
+    expect(m.imText).toBe(false);
+    // Seit main (N-0084) steht die Frage ÜBER dem Blatt in dessen Hülle — das Bild nimmt die Hülle.
+    await ausschnitt('[data-testid="blatt-huelle"]', "b7-luecke-erfassen-ausgangsfrage");
+    expect((stand as H4Stand).seitenfehler).toEqual([]);
+  }, 120_000);
+});
+
+// ================================================================================================
+// Ben, Nacharbeit 16 · R-1399 zu R-0918: die Lesetexte unter 11 px aus dem Hauptstand tragen jetzt
+// `text-klein`. Bild und gemessene Größe (getComputedStyle) je Fläche:
+//   b8-duplikate-beleg.png              — /duplikate, Belegzeile der Karte („Beleg“)
+//   b9-zusammenfuehren-inhalte.png      — /duplikate/:id/zusammenfuehren, Schritt „Inhalte“
+//   b10-klara-vorschau-artikel.png      — /klara-vorschau/artikel/…: Kennzeichen, „geändert“,
+//                                         Figur-Status, „geparkt“, Gespräch mit Kleintiteln,
+//                                         Verlaufskopf und Demo-Schild
+// EIGENE BÜHNE: das Dublettenpaar entsteht über die echten Dienste (`overlaps.createAuto`, derselbe
+// Weg wie `zielbild-h2-pruefen`), damit die Bibliothek der Bühne oben unverändert bleibt. Der Zustand
+// der Klara-Vorschau ist der Sitzungszustand, den das Produkt selbst schreibt (`klara-vorschau/
+// zustand.ts`, sessionStorage) — gesetzt wird er vor dem Laden, gerendert wird die gebaute Fläche.
+// ================================================================================================
+const DUP_A = "Bildnachweis Spannrolle nachstellen";
+const DUP_B = "Bildnachweis Spannrolle nachziehen";
+const DUP_GEMEINSAM = "Spannrolle bei stehendem Band um eine halbe Umdrehung nachstellen.";
+
+let stand2: H4Stand | null = null;
+let fehler2: string | null = null;
+let dublettenId = "";
+
+async function warte2(selektor: string): Promise<void> {
+  await (stand2 as H4Stand).seite.waitForFunction(
+    fn("(sel) => !!document.querySelector(sel)"),
+    selektor,
+    { timeout: 30_000 },
+  );
+}
+
+// In der Seite: berechnete Schriftgröße und Text aller Treffer eines Selektors.
+const GROESSEN = `(sel) => [...document.querySelectorAll(sel)].map((el) => ({
+  px: getComputedStyle(el).fontSize,
+  text: (el.textContent || '').trim().slice(0, 40),
+}))`;
+
+async function groessen(selektor: string): Promise<{ px: string; text: string }[]> {
+  return (stand2 as H4Stand).seite.evaluate<{ px: string; text: string }[]>(fn(GROESSEN), selektor);
+}
+
+async function ausschnitt2(selektor: string, name: string): Promise<void> {
+  const s = (stand2 as H4Stand).seite;
+  const clip = await s.evaluate<Rechteck | null>(fn(RECHTECK), selektor);
+  expect(clip, `${selektor} nicht gefunden`).not.toBeNull();
+  await s.screenshot({ path: bild(name), clip });
+  console.info(`R-1399 · Bild ${bild(name)} · Ausschnitt ${JSON.stringify(clip)}`);
+}
+
+describe("R-1399 · Sichtnachweis: Lesetexte aus dem Hauptstand auf 11 px", () => {
+  beforeAll(async () => {
+    mkdirSync(ORDNER, { recursive: true });
+    try {
+      stand2 = await h4Stand("/bibliothek", "bild2@design-bildnachweis.test", async (z) => {
+        // Nacharbeit 17: die Dubletten stammen von einem ZWEITEN Konto. Wer Autor einer Seite ist,
+        // darf sie nicht zusammenführen (R-0565, `zusammenfuehrenGesperrt` → „eigeneSeite“) — mit
+        // dem angemeldeten Konto als Autor zeigte B9 zu Recht nur die Sperre statt des Assistenten.
+        const adminLogin = await z.app.inject({
+          method: "POST",
+          url: "/api/auth/login",
+          payload: { email: "bild2@design-bildnachweis.test", password: "geheim12345" },
+        });
+        const adminToken = (adminLogin.json() as { token: string }).token;
+        const angelegt = await z.app.inject({
+          method: "POST",
+          url: "/api/users",
+          headers: { authorization: `Bearer ${adminToken}` },
+          payload: {
+            name: "Fremdautor",
+            email: "fremd@design-bildnachweis.test",
+            password: "geheim12345",
+            role: "experte",
+          },
+        });
+        if (angelegt.statusCode >= 300) {
+          throw new Error(`Fremdautor nicht angelegt: ${angelegt.statusCode} ${angelegt.body}`);
+        }
+        const fremdLogin = await z.app.inject({
+          method: "POST",
+          url: "/api/auth/login",
+          payload: { email: "fremd@design-bildnachweis.test", password: "geheim12345" },
+        });
+        const fremdId = (fremdLogin.json() as { user: { id: string } }).user.id;
+        const anlegen = async (title: string, zusatz: string): Promise<string> => {
+          const ko = (await z.services.ko.create({
+            title,
+            statement: `${DUP_GEMEINSAM} ${zusatz}`,
+            bodyHtml: `<p>${DUP_GEMEINSAM} ${zusatz}</p>`,
+            type: "best_practice",
+            category: "Instandhaltung",
+            author: fremdId,
+            // Nacharbeit 38: seit aufnahme:20260922:gesamt-leserechte (Entscheidung 16) ist eine
+            // FEHLENDE Stufe „ungeklärt“ und wie vertraulich geschützt. Dann gibt `feldFreigabe`
+            // die Inhalte nur dem Autor frei, der Server liefert das Paar `redacted`, und der
+            // Assistent zeigt zu Recht die Sperre „redigiert“ statt „Weiter“. Gemessen werden soll
+            // aber der Schritt „Inhalte“ — also ausdrücklich eingestuft wie normales Wissen.
+            confidentiality: "intern",
+          } as never)) as { id: string };
+          return ko.id;
+        };
+        const a = await anlegen(DUP_A, "Danach Lauf prüfen.");
+        const b = await anlegen(DUP_B, "Danach Spannung messen.");
+        const eintrag = (await z.services.overlaps.createAuto(
+          {
+            koA: a,
+            koB: b,
+            relation: "identisch",
+            aspects: [
+              {
+                beschreibung: "Spannrolle nachstellen",
+                zitatA: DUP_GEMEINSAM,
+                zitatB: DUP_GEMEINSAM,
+              },
+            ],
+            eigenanteilA: "Danach Lauf prüfen.",
+            eigenanteilB: "Danach Spannung messen.",
+            recommendation: "zusammenfuehren_pruefen",
+          } as never,
+          {
+            trigger: "background",
+            method: "model",
+            lexicalScore: 0.9,
+            confidence: 0.93,
+            rationale: "Dieselbe Handlungsanweisung.",
+          } as never,
+        )) as { id: string };
+        dublettenId = eintrag.id;
+      });
+      await stand2.seite.setViewportSize({ width: 1280, height: 900 });
+    } catch (e) {
+      fehler2 = String(e).split("\n").slice(0, 4).join(" | ");
+    }
+  }, 180_000);
+
+  afterAll(async () => {
+    await stand2?.browser.close();
+    await stand2?.app.close();
+  }, 60_000);
+
+  it("B8 · Duplikatvergleich: die Belegzeile der Karte steht in 11 px", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    await s.goto(`${ORIGIN}/duplikate`, { waitUntil: "load", timeout: 60_000 });
+    await warte2('[data-testid="pruefen-paar"] [data-text="meta"]');
+    const beleg = await groessen('[data-text="meta"] > div:first-child');
+    console.info(`R-1399 · B8 · ${JSON.stringify(beleg)}`);
+    expect(beleg.length).toBeGreaterThan(0);
+    expect(beleg.map((b) => b.px)).toEqual(beleg.map(() => "11px"));
+    await ausschnitt2('[data-testid="pruefen-paar"]', "b8-duplikate-beleg");
+    expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+  }, 90_000);
+
+  it("B9 · Zusammenführen, Schritt „Inhalte“: Seiten- und Fließtext-Beschriftung in 11 px", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    await s.goto(`${ORIGIN}/duplikate/${encodeURIComponent(dublettenId)}/zusammenfuehren`, {
+      waitUntil: "load",
+      timeout: 60_000,
+    });
+    await warte2('[data-testid="zusammenfuehren-weiter"]');
+    await s.click('[data-testid="zusammenfuehren-weiter"]');
+    await warte2('[data-testid="feld-kernaussage"]');
+    // Die einzigen Mono-Marken des Schritts: Seitenmarke (führend/aufgehend) und Fließtext-Marke.
+    const marken = await groessen('[data-testid="schritt-inhalte"] span.font-mono');
+    console.info(`R-1399 · B9 · ${JSON.stringify(marken)}`);
+    // Titel und Kernaussage je zwei Seitenmarken, dazu die Fließtext-Marken.
+    expect(marken.length).toBeGreaterThanOrEqual(4);
+    expect(marken.map((m) => m.px)).toEqual(marken.map(() => "11px"));
+    await ausschnitt2('[data-testid="schritt-inhalte"]', "b9-zusammenfuehren-inhalte");
+    expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+  }, 90_000);
+
+  it("B10 · Klara-Vorschau am Artikel: Kennzeichen, Plaketten, Kleintitel und Verlaufskopf in 11 px", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    const artikel = "foerderbandrolle";
+    const pfad = `/klara-vorschau/artikel/${artikel}`;
+    const herkunft = {
+      pfad,
+      seite: "artikel",
+      seitenName: "Artikel",
+      objekt: "Bildnachweis",
+      artikelId: artikel,
+      absatz: 1,
+    };
+    // Ben, Nacharbeit 28: ohne `betrieb` gilt seit „Klara 01“ der echte Betrieb (zustand.ts
+    // `laden()`), und der Demo-Verlauf mit Kennzeichen und Nachrichtenkopf wird gar nicht gezeichnet.
+    // Gemessen werden soll genau dieser Verlauf — deshalb ausdrücklich der Demo-Betrieb der Vorschau.
+    const zustand = {
+      offen: true,
+      betrieb: "demo",
+      ansicht: "kompakt",
+      status: "entscheidung",
+      geparkt: { artikelId: artikel, absatz: 1 },
+      verlauf: [
+        { id: "b10-1", von: "du", text: "Bitte umformulieren.", herkunft, demo: false },
+        { id: "b10-2", von: "klara", text: "Vorgefertigte Antwort.", herkunft, demo: true },
+      ],
+      artikelText: { [`${artikel}#1`]: "Geänderter Absatz für den Bildnachweis." },
+    };
+    await s.evaluate(
+      fn(`(z) => {
+        sessionStorage.setItem("klarwerk.klaraVorschau.aktiv", "1");
+        sessionStorage.setItem("klarwerk.klaraVorschau.zustand", JSON.stringify(z));
+      }`),
+      zustand,
+    );
+    await s.goto(`${ORIGIN}${pfad}`, { waitUntil: "load", timeout: 60_000 });
+    await warte2('[data-testid="klara-gespraech"]');
+    await warte2('[data-testid="klara-absatz-geaendert"]');
+    const sel = [
+      '[data-testid="klara-vorschau-kennzeichen"]',
+      '[data-testid="klara-absatz-geaendert"]',
+      '[data-testid="klara-figur-status"]',
+      '[data-testid="klara-geparkt"]',
+      '[data-testid="klara-demo-kennzeichen"]',
+      '[data-testid="klara-nachricht"] > div:first-child',
+      '[data-testid="klara-gespraech"] .text-klein',
+    ];
+    const je: Record<string, string[]> = {};
+    for (const x of sel) {
+      je[x] = (await groessen(x)).map((g) => g.px);
+    }
+    console.info(`R-1399 · B10 · ${JSON.stringify(je)}`);
+    for (const x of sel) {
+      expect(je[x]?.length ?? 0, `${x} nicht gerendert`).toBeGreaterThan(0);
+      expect(je[x], x).toEqual((je[x] ?? []).map(() => "11px"));
+    }
+    await s.screenshot({ path: bild("b10-klara-vorschau-artikel") });
+    console.info(`R-1399 · Bild ${bild("b10-klara-vorschau-artikel")}`);
+    expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+  }, 120_000);
+
+  // ----------------------------------------------------------------------------------------------
+  // Ben, Nacharbeit 19 · R8: die Beamer-Ansicht `/livewall` auf den benannten Projektionsstufen
+  // (`text-projektion-titel` 44 px, `text-projektion` 22 px, `text-projektion-klein` 18 px).
+  //   b13-livewall-projektion.png — die ganze Beamer-Fläche
+  // Gemessen wird jede Stelle mit einer Projektionsstufe gegen ihren Sollwert; die Kalibrierung
+  // verlangt Titel und Untertitel, die ohne Datenlage immer stehen. Läuft VOR B11/B12, weil die
+  // Erfassung dort einen ungesicherten Inhalt hinterlässt.
+  // ----------------------------------------------------------------------------------------------
+  it("B13 · Beamer-Ansicht: Titel, Untertitel und Liste tragen die Projektionsstufen", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    await s.setViewportSize({ width: 1600, height: 1000 });
+    await s.goto(`${ORIGIN}/livewall`, { waitUntil: "load", timeout: 60_000 });
+    await warte2('[data-testid="livewall-beamer"] h1');
+    const soll: Record<string, string> = {
+      "text-projektion-titel": "44px",
+      "text-projektion": "22px",
+      "text-projektion-klein": "18px",
+    };
+    const gemessen = await s.evaluate<{ klasse: string; px: string }[]>(
+      fn(`(stufen) => [...document.querySelectorAll('[data-testid="livewall-beamer"] *')]
+        .flatMap((el) => {
+          const k = [...el.classList].find((c) => stufen.includes(c));
+          return k ? [{ klasse: k, px: getComputedStyle(el).fontSize }] : [];
+        })`),
+      Object.keys(soll),
+    );
+    console.info(`R-1399 · B13 · ${JSON.stringify(gemessen)}`);
+    const klassen = new Set(gemessen.map((g) => g.klasse));
+    expect(klassen.has("text-projektion-titel"), "Titel").toBe(true);
+    expect(klassen.has("text-projektion"), "Untertitel").toBe(true);
+    expect(gemessen.filter((g) => g.px !== soll[g.klasse])).toEqual([]);
+    await s.screenshot({ path: bild("b13-livewall-projektion") });
+    console.info(`R-1399 · Bild ${bild("b13-livewall-projektion")}`);
+    await s.setViewportSize({ width: 1280, height: 900 });
+    expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+  }, 90_000);
+
+  // ----------------------------------------------------------------------------------------------
+  // Nacharbeit 20 · R-0918 S1: vier weitere Lesetexte unter 11 px aus dem Hauptstand tragen jetzt
+  // `text-klein` — drei in der Hilfe-Bibliothek (`pages/Help.tsx`), einer in der Ansprechpartner-
+  // Auskunft einer Lücke (`components/LueckenAnsprechpartner.tsx`).
+  //   b14-hilfe-bibliothek.png        — /hilfe, Gruppenüberschrift und Teilbezeichnungen
+  //   b15-luecke-ansprechpartner.png  — /risiko?fall=…, „Ansprechpartner“ aufgeklappt
+  // ----------------------------------------------------------------------------------------------
+  it("B14 · Hilfe-Bibliothek: Gruppenüberschriften und Teilbezeichnungen in 11 px", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    await s.goto(`${ORIGIN}/hilfe`, { waitUntil: "load", timeout: 60_000 });
+    await warte2("[data-hilfe-gruppe] > h3");
+    await s.evaluate(
+      fn(`() => {
+        for (const d of document.querySelectorAll('details[data-hilfe-artikel]')) d.open = true;
+      }`),
+    );
+    const gruppen = await groessen("[data-hilfe-gruppe] > h3");
+    const teile = await groessen("[data-hilfe-artikel] dt");
+    console.info(`R-1399 · B14 · ${gruppen.length} Gruppen, ${teile.length} Teile`);
+    expect(gruppen.length).toBeGreaterThan(0);
+    expect(teile.length).toBeGreaterThan(0);
+    expect([...new Set([...gruppen, ...teile].map((g) => g.px))]).toEqual(["11px"]);
+    // Nacharbeit 21: die erste Gruppe liegt unter dem Fenster (die Shell scrollt in `<main>`), und
+    // aufgeklappt ist sie höher als das Fenster — der Ausschnitt lag ausserhalb des Bildes. Sie wird
+    // deshalb an den oberen Rand geholt, und das Bild nimmt den sichtbaren Teil ab ihrer Überschrift.
+    const clip = await s.evaluate<Rechteck | null>(
+      fn(`() => {
+        const g = document.querySelector('[data-hilfe-gruppe]');
+        if (!g) return null;
+        g.scrollIntoView({ block: 'start' });
+        const r = g.getBoundingClientRect();
+        const y = Math.max(0, r.top - 12);
+        const x = Math.max(0, r.left - 12);
+        return {
+          x,
+          y,
+          width: Math.min(r.width + 24, window.innerWidth - x),
+          height: Math.min(r.height + 24, window.innerHeight - y),
+        };
+      }`),
+    );
+    expect(clip, "Hilfe-Gruppe nicht gefunden").not.toBeNull();
+    expect((clip as Rechteck).height).toBeGreaterThan(40);
+    await s.screenshot({ path: bild("b14-hilfe-bibliothek"), clip });
+    console.info(`R-1399 · B14 · Bild ${bild("b14-hilfe-bibliothek")}`, JSON.stringify(clip));
+    expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+  }, 90_000);
+
+  it("B15 · Lücke → Ansprechpartner: die Grundlagenzeile der Auskunft steht in 11 px", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    // Die Auskunft steht hinter dem Serverschalter `expertMatching` (`KLARWERK_EXPERT_MATCHING`,
+    // bei jeder Anfrage gelesen, wie in `tests/expertensuche/ansprechpartner-route.test.ts`).
+    // Er gilt nur für diesen Fall und wird danach zurückgesetzt.
+    const vorher = process.env.KLARWERK_EXPERT_MATCHING;
+    process.env.KLARWERK_EXPERT_MATCHING = "1";
+    try {
+      const gapId = await s.evaluate<string | null>(
+        fn(`async () => {
+          const res = await fetch("/api/ask", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ question: "Wie entlüfte ich die Kühlmittelpumpe an Linie 5?" }),
+          });
+          const j = await res.json().catch(() => ({}));
+          return j && j.gap ? j.gap.id : null;
+        }`),
+      );
+      expect(gapId, "die Frage hat keine Lücke angelegt").not.toBeNull();
+      await s.goto(`${ORIGIN}/risiko?fall=${encodeURIComponent(gapId as string)}`, {
+        waitUntil: "load",
+        timeout: 60_000,
+      });
+      const zeile = '[data-testid="luecke-zeile"][aria-current="true"]';
+      await warte2(`${zeile} [data-testid="luecke-ansprechpartner"] button`);
+      await s.click(`${zeile} [data-testid="luecke-ansprechpartner"] button`);
+      const grundlage = `${zeile} [data-testid="luecke-ansprechpartner"] p.text-klein`;
+      await warte2(grundlage);
+      const g = await groessen(grundlage);
+      console.info(`R-1399 · B15 · ${JSON.stringify(g)}`);
+      expect(g.length).toBe(1);
+      expect(g[0]?.px).toBe("11px");
+
+      // Nacharbeit 22 (Ben): im Bild verdeckten der Kenntnisnahmehinweis und das aus B10 noch
+      // offene Klara-Gespräch die Zeile. Beide werden über ihre vorgesehenen Bedienelemente
+      // geschlossen (Klaras „Schliessen“, „Verstanden — weiter“), dann kommt die Zeile in Sicht.
+      // Nacharbeit 23: ZUERST das Gespräch — es liegt über dem Knopf des Hinweises und fing den
+      // Klick ab (Klaras Eingabefeld, laut Aufrufprotokoll von Playwright).
+      const da = (sel: string): Promise<boolean> =>
+        s.evaluate<boolean>(fn("(sel) => !!document.querySelector(sel)"), sel);
+      if (await da('[data-testid="klara-gespraech"]')) {
+        await s.click('[data-testid="klara-schliessen"]');
+        await s.waitForFunction(
+          fn(`() => !document.querySelector('[data-testid="klara-gespraech"]')`),
+          undefined,
+          { timeout: 15_000 },
+        );
+      }
+      if (await da('[data-testid="notice-ack"]')) {
+        await s.click('[data-testid="notice-ack"]');
+        await s.waitForFunction(
+          fn(`() => !document.querySelector('[data-testid="notice-banner"]')`),
+          undefined,
+          { timeout: 15_000 },
+        );
+      }
+      // Sichtbar heisst: die Zeile liegt im Fenster, und an ihrer Mitte liegt sie selbst obenauf —
+      // nicht ein Hinweis, ein Gespräch oder Klaras Figur.
+      const lage = await s.evaluate<{ imFenster: boolean; obenauf: boolean; clip: Rechteck }>(
+        fn(`(sel) => {
+          const p = document.querySelector(sel);
+          p.scrollIntoView({ block: 'center' });
+          const r = p.getBoundingClientRect();
+          const oben = document.elementFromPoint(r.left + Math.min(40, r.width / 2), r.top + r.height / 2);
+          const z = p.closest('[data-testid="luecke-zeile"]').getBoundingClientRect();
+          const y = Math.max(0, Math.max(z.top, r.top - 160) - 12);
+          const x = Math.max(0, z.left - 12);
+          return {
+            imFenster: r.top >= 0 && r.bottom <= window.innerHeight,
+            obenauf: !!oben && (oben === p || p.contains(oben)),
+            clip: {
+              x,
+              y,
+              width: Math.min(z.width + 24, window.innerWidth - x),
+              height: Math.min(r.bottom + 12 - y, window.innerHeight - y),
+            },
+          };
+        }`),
+        grundlage,
+      );
+      console.info(`R-1399 · B15 · Lage ${JSON.stringify(lage)}`);
+      expect(lage.imFenster, "Grundlagenzeile ausserhalb des Fensters").toBe(true);
+      expect(lage.obenauf, "Grundlagenzeile ist verdeckt").toBe(true);
+      await s.screenshot({ path: bild("b15-luecke-ansprechpartner"), clip: lage.clip });
+      console.info(`R-1399 · Bild ${bild("b15-luecke-ansprechpartner")}`);
+      expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+    } finally {
+      if (vorher === undefined) Reflect.deleteProperty(process.env, "KLARWERK_EXPERT_MATCHING");
+      else process.env.KLARWERK_EXPERT_MATCHING = vorher;
+    }
+  }, 90_000);
+
+  // ----------------------------------------------------------------------------------------------
+  // Nacharbeit 25 · Peters Entscheidung 54 (11.10.2026): die Entwurfsaktion des Blatts heisst
+  // „Als Entwurf speichern", ihre Rückmeldung „Als Entwurf gespeichert: …" (vorher „Entwurf sichern"
+  // / „Entwurf gesichert: …").
+  //   b16-blatt-als-entwurf-speichern.png — /erfassen nach dem Speichern: Knopf und Rückmeldung
+  // Läuft VOR B11/B12; nach dem Speichern ist das Blatt nicht mehr ungesichert.
+  // ----------------------------------------------------------------------------------------------
+  it("B16 · Blatt: der Knopf heisst „Als Entwurf speichern“, die Rückmeldung „Als Entwurf gespeichert“", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    await s.goto(`${ORIGIN}/erfassen`, { waitUntil: "load", timeout: 60_000 });
+    await warte2('[data-testid="blatt-entwurf-sichern"]');
+    await warte2('[data-testid="blatt-titel"]:not([disabled])');
+    await s.click('[data-testid="blatt-titel"]');
+    await s.keyboard.type("Bildnachweis Begriffe");
+    await s.click('[data-testid="blatt-text"] [role="textbox"]');
+    await s.keyboard.type("Der Knopf heisst jetzt Als Entwurf speichern.");
+    const knopf = await s.evaluate<string>(
+      fn(
+        `() => (document.querySelector('[data-testid="blatt-entwurf-sichern"]').innerText || '').trim()`,
+      ),
+    );
+    expect(knopf).toBe("Als Entwurf speichern");
+    await s.click('[data-testid="blatt-entwurf-sichern"]');
+    await warte2('[data-testid="blatt-entwurf-gespeichert"]');
+    const zeile = await s.evaluate<string>(
+      fn(`() => {
+        const z = document.querySelector('[data-testid="blatt-entwurf-gespeichert"]');
+        z.scrollIntoView({ block: 'center' });
+        return (z.innerText || '').trim();
+      }`),
+    );
+    console.info(`R-1399 · B16 · Knopf „${knopf}“ · Rückmeldung „${zeile}“`);
+    expect(zeile.startsWith("Als Entwurf gespeichert: Bildnachweis Begriffe")).toBe(true);
+    expect(zeile).not.toContain("gesichert");
+    await s.screenshot({ path: bild("b16-blatt-als-entwurf-speichern") });
+    console.info(`R-1399 · Bild ${bild("b16-blatt-als-entwurf-speichern")}`);
+    expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+  }, 90_000);
+
+  // ----------------------------------------------------------------------------------------------
+  // Ben, Nacharbeit 18 · die zwei Foto-/Interview-Plaketten an der gebauten Erfassungsfläche:
+  //   b11-foto-befund-ki.png          — /erfassen?weg=interview, Foto gewählt, „Bild auswerten“
+  //                                     → Plakette „KI-Vorschlag“ (FotoInterviewStart.tsx)
+  //   b12-interview-foto-plakette.png — „Foto-Interview starten“ → Plakette „Foto-Interview“
+  //                                     neben der Fragezählung (Capture.tsx)
+  // FESTE ANTWORTEN, AUSDRÜCKLICH GEKENNZEICHNET: die Bühne hat kein Bildmodell. Genau zwei Antworten
+  // sind vorgegeben — die Statusauskunft meldet die Aufgaben „describe“/„interview“ als nutzbar
+  // (der echte Status, nur diese Felder überschrieben), und `POST /api/reasoner/describe` liefert den
+  // festen Befund unten (wie `tests/foto-wissen/foto-interview-start-mounted.test.tsx` S1/S2). Alles
+  // andere — Fläche, Foto-Einlesen im Browser, Interviewstart — ist der echte Weg.
+  // ----------------------------------------------------------------------------------------------
+  const FOTO_BEFUND = "FESTE TESTANTWORT · Kehlnaht mit Riss am Nahtübergang.";
+  const PNG_1X1 =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const KLICK_TEXT = `(text) => {
+    const b = [...document.querySelectorAll('button')].find(
+      (x) => (x.textContent || '').trim() === text && !x.disabled,
+    );
+    if (!b) return false;
+    b.click();
+    return true;
+  }`;
+
+  it("B11/B12 · Foto-Interview: Plakette „KI-Vorschlag“ und Plakette „Foto-Interview“ in 11 px", async () => {
+    expect(fehler2).toBeNull();
+    const st = stand2 as H4Stand;
+    const s = st.seite;
+    st.antworten.vorAuslieferung = async (url, body) => {
+      if (url.pathname !== "/api/reasoner/status") return body;
+      const echt = JSON.parse(body) as { tasks?: Record<string, boolean> };
+      return JSON.stringify({
+        ...echt,
+        active: true,
+        mode: "local",
+        reachable: "ok",
+        tasks: { ...(echt.tasks ?? {}), describe: true, interview: true },
+        billable: {},
+      });
+    };
+    await s.route(`${ORIGIN}/api/reasoner/describe`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ text: FOTO_BEFUND, demo: false }),
+      });
+    });
+    try {
+      await s.goto(`${ORIGIN}/erfassen?weg=interview`, { waitUntil: "load", timeout: 60_000 });
+      await warte2('[data-foto-interview] input[type="file"]');
+      await s.setInputFiles('[data-foto-interview] input[type="file"]', [
+        { name: "schaden.png", mimeType: "image/png", buffer: Buffer.from(PNG_1X1, "base64") },
+      ]);
+      await warte2("[data-foto-interview] img");
+      expect(await s.evaluate<boolean>(fn(KLICK_TEXT), "Bild auswerten")).toBe(true);
+      await warte2("[data-foto-interview] textarea");
+
+      const ki = await groessen("[data-foto-interview] span.font-mono");
+      console.info(`R-1399 · B11 · ${JSON.stringify(ki)}`);
+      expect(ki).toEqual([{ px: "11px", text: "KI-Vorschlag" }]);
+      await ausschnitt2("[data-foto-interview]", "b11-foto-befund-ki");
+
+      expect(await s.evaluate<boolean>(fn(KLICK_TEXT), "Foto-Interview starten")).toBe(true);
+      // Die Kopfzeile des laufenden Interviews: Fragezählung, Quellen- und Foto-Plakette.
+      const plakette = '[data-help="cap:interview"] > div:first-child span.rounded-pill.border';
+      await warte2(plakette);
+      const iv = await groessen(plakette);
+      console.info(`R-1399 · B12 · ${JSON.stringify(iv)}`);
+      expect(iv).toEqual([{ px: "11px", text: "Foto-Interview" }]);
+      await ausschnitt2('[data-help="cap:interview"]', "b12-interview-foto-plakette");
+      expect(st.seitenfehler).toEqual([]);
+    } finally {
+      Reflect.deleteProperty(st.antworten, "vorAuslieferung");
+    }
+  }, 120_000);
+});

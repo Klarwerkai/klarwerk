@@ -18,8 +18,11 @@ import { DIENST_ROUTEN, DIENST_SCHLUESSEL_HEADER, type DienstRecht } from "./die
 // Platzhalter mehr, der jede beliebige Kennung zuließe; der Kandidatenimport führt seine 413 und
 // seine beiden fachlichen 400-Kennungen ausdrücklich; Anfragen und Antworten sind mit Feldern,
 // Pflichtfeldern, Wertemengen und Antwortvarianten beschrieben statt als „beliebiges Objekt".
+//
+// Fassung 1.2.0 — Aufnahme gesamt-mcp (R-0713): der MCP-Zugang `/mcp` (Recht `mcp.werkzeug`,
+// `routes/mcp-routes.ts`) steht mit seinen Zuständen in derselben Tabelle.
 
-export const VERTRAGSFASSUNG = "1.1.0";
+export const VERTRAGSFASSUNG = "1.2.0";
 
 export interface Antwortzustand {
   readonly status: number;
@@ -32,6 +35,8 @@ export interface Antwortzustand {
   readonly bedeutung: string;
   /** Kopfzeilen, die in diesem Zustand verbindlich mitkommen. */
   readonly kopf?: readonly string[];
+  /** Erfolg ohne Antwortkörper (MCP: angenommene Benachrichtigung). */
+  readonly ohneRumpf?: true;
 }
 
 export interface Vertragsroute {
@@ -46,7 +51,8 @@ export interface Vertragsroute {
     | "export"
     | "Kandidatenliste"
     | "Betriebszustand"
-    | "KiZustand";
+    | "KiZustand"
+    | "McpAntwort";
   readonly zustaende: readonly Antwortzustand[];
 }
 
@@ -190,6 +196,44 @@ export const INTEGRATIONS_VERTRAG: readonly Vertragsroute[] = [
     erfolg: "KiZustand",
     zustaende: [{ status: 200, bedeutung: "Aktueller KI-Zustand." }],
   },
+  {
+    methode: "POST",
+    pfad: "/mcp",
+    recht: "mcp.werkzeug",
+    zweck:
+      "MCP-Zugang für fremde KI-Programme (Model Context Protocol, Streamable HTTP, zustandslos): eine JSON-RPC-2.0-Nachricht je Anfrage. Werkzeug klara_fragen nur mit zusätzlichem Recht ask.validated; es fragt über POST /api/ask mit demselben Schlüssel und liefert nur validiertes Wissen mit Beleg. Kein Browseraufruf (Anfrage mit Origin: 403).",
+    erfolg: "McpAntwort",
+    zustaende: [
+      {
+        status: 200,
+        bedeutung:
+          "JSON-RPC-Antwort: Ergebnis (initialize, ping, tools/list, tools/call) oder JSON-RPC-Fehler (-32600, -32601, -32602). Ein Werkzeugfehler steht als result.isError = true im Ergebnis.",
+      },
+      {
+        status: 202,
+        bedeutung: "Benachrichtigung oder Antwort des Clients angenommen; kein Antwortkörper.",
+        ohneRumpf: true,
+      },
+      { ...SCHEMAFEHLER, bedeutung: "Rumpf ist kein JSON oder leer (code: FST_ERR_CTP_…)." },
+      ZU_GROSS,
+      FALSCHER_INHALTSTYP,
+    ],
+  },
+  {
+    methode: "GET",
+    pfad: "/mcp",
+    recht: "mcp.werkzeug",
+    zweck: "Ereignisstrom des MCP-Zugangs — nicht angeboten (zustandsloser Server).",
+    erfolg: "McpAntwort",
+    zustaende: [
+      {
+        status: 405,
+        fehler: "METHOD_NOT_ALLOWED",
+        bedeutung: "Kein Ereignisstrom; Nachrichten nur per POST.",
+        kopf: ["allow"],
+      },
+    ],
+  },
 ];
 
 /** Alle erlaubten Zustände einer Route: ihre eigenen und die gemeinsamen. */
@@ -310,6 +354,19 @@ export const SCHEMAS: Readonly<Record<string, unknown>> = {
       answerId: NULLBAR_TEXT,
       gap: { type: ["object", "null"] },
       receipt: { type: "string" },
+      // R-0310: die ausdrückliche Absatz-Beleg-Zuordnung (services/app/src/absatz-belege.ts) —
+      // nur bei beantworteter Frage; `quellen` leer heißt: unbelegt, wird nicht ausgegeben.
+      absaetze: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["text", "quellen"],
+          properties: {
+            text: { type: "string" },
+            quellen: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
     },
   },
   Evidenz: {
@@ -610,12 +667,48 @@ export const SCHEMAS: Readonly<Record<string, unknown>> = {
       },
     },
   },
+  // R-0713 — die Nachrichten des MCP-Zugangs (`routes/mcp-routes.ts`).
+  McpNachricht: {
+    type: "object",
+    required: ["jsonrpc"],
+    properties: {
+      jsonrpc: { const: "2.0" },
+      id: { type: ["string", "integer"] },
+      method: {
+        type: "string",
+        description: "initialize, ping, tools/list, tools/call; Benachrichtigungen ohne id.",
+      },
+      params: { type: "object" },
+    },
+  },
+  McpAntwort: {
+    type: "object",
+    required: ["jsonrpc", "id"],
+    properties: {
+      jsonrpc: { const: "2.0" },
+      id: { type: ["string", "integer", "null"] },
+      result: { type: "object" },
+      error: {
+        type: "object",
+        required: ["code", "message"],
+        properties: {
+          code: { type: "integer", enum: [-32600, -32601, -32602] },
+          message: { type: "string" },
+        },
+      },
+    },
+    oneOf: [
+      { title: "Ergebnis", required: ["result"] },
+      { title: "JSON-RPC-Fehler", required: ["error"] },
+    ],
+  },
 };
 
 const ANFRAGE_SCHEMAS: Readonly<Record<string, string>> = {
   "POST /api/ask": "Frage",
   "POST /api/check-text": "Textpruefung",
   "POST /api/library/import/candidates": "Einlieferung",
+  "POST /mcp": "McpNachricht",
 };
 
 const ref = (name: string): { $ref: string } => ({ $ref: `#/components/schemas/${name}` });
@@ -650,16 +743,18 @@ function antwortAus(zustaende: readonly Antwortzustand[], erfolg: Vertragsroute[
   const status = erste?.status ?? 0;
   const fehler = zustaende.flatMap((z) => (z.fehler ? [z.fehler] : []));
   const mitWartezeit = zustaende.some((z) => z.kopf?.includes("retry-after"));
+  const ohneRumpf = zustaende.every((z) => z.ohneRumpf);
   // Die Fehlerkennung(en) dieses Status — genau die aus der Tabelle, keine andere.
   const kennung = fehler.length === 1 ? { const: fehler[0] } : { enum: fehler };
   const fehlerSchema = { allOf: [ref("Fehler"), { properties: { error: kennung } }] };
+  const content =
+    status >= 400 ? { "application/json": { schema: fehlerSchema } } : erfolgsinhalt(erfolg);
   return {
     description: zustaende.map(beschreibung).join(" | "),
     ...(mitWartezeit
       ? { headers: { "Retry-After": { schema: { type: "integer", minimum: 1 } } } }
       : {}),
-    content:
-      status >= 400 ? { "application/json": { schema: fehlerSchema } } : erfolgsinhalt(erfolg),
+    ...(ohneRumpf ? {} : { content }),
   };
 }
 

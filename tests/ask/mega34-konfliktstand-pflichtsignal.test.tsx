@@ -131,7 +131,8 @@ const PROVEN = {
 };
 
 // Kein \b-Anker: `textContent` klebt die Plaketten aneinander.
-const GESICHERT = "Gesichert";
+// Peters Entscheidung 54 (11.10.2026): das Statuswort heisst „Fachlich bestätigt" statt „Gesichert".
+const GESICHERT = "Fachlich bestätigt";
 
 function ko(): Record<string, unknown> {
   return {
@@ -252,7 +253,7 @@ async function mountMobileAndAsk(): Promise<string> {
     await flush();
   });
   const input = el.querySelector<HTMLInputElement>(
-    `input[placeholder="${i18n.t("ask.placeholder")}"]`,
+    `input[placeholder="${i18n.t("beispielfragen.platzhalter")}"]`,
   );
   expect(input, "Frage-Eingabe nicht gefunden").toBeTruthy();
   await act(async () => {

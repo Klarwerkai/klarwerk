@@ -49,9 +49,11 @@ describe("JOB 4086 · S2 — der Quellenkatalog sagt die Wahrheit über SharePoi
     const kachel = SYSTEM_SOURCES.find((s) => s.id === "sharepoint");
     expect(kachel, "die Systemkachel `sharepoint` muss es weiterhin geben").toBeDefined();
     expect(kachel?.state).not.toBe("planned");
-    // Und sie steht auf dem Zustand, den die drei Messungen unten decken: ein realer, von dieser
-    // Fläche aus erreichbarer Weg.
-    expect(kachel?.state).toBe("active");
+    // ADMIN-02 — NACHGEFÜHRT: die drei Messungen unten decken „gebaut und von hier erreichbar",
+    // nicht „in DIESER Installation eingeschaltet und eingerichtet". Statisch steht die Kachel daher
+    // auf „available"; „active" setzt erst ein bestandener Verbindungstest aus der Zugangsauskunft
+    // (`systemKachelMitStatus`, gemessen in `tests/admin-integrationszustaende/`).
+    expect(kachel?.state).toBe("available");
   });
 
   it("Messung 1 — es gibt ein eigenes Modul `services/sharepoint` mit öffentlicher Schnittstelle", () => {

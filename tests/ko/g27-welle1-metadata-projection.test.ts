@@ -17,9 +17,9 @@ import {
   InMemoryKoSearchProjectionRepo,
   InMemoryKoVersionRepo,
   KoService,
-  METADATA_PROJECTION_FIELDS,
   METADATA_REVISION_NONE,
 } from "../../services/knowledge-object";
+import { METADATA_PROJECTION_FIELDS } from "../support/projektion-feldvertrag";
 
 // G27 R1 / Entscheidung 06 §4 — MECHANISCHE INITIALISIERUNG ÜBER DEN PRODUKTPFAD.
 //

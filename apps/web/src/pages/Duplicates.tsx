@@ -29,6 +29,7 @@ import { endpoints } from "../api/endpoints";
 import { useDuplicates, useKos } from "../api/hooks";
 import type { KnowledgeObject, OverlapEntry } from "../api/types";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
+import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { SourceEvidence } from "../components/ko/SourceEvidence";
 import { PruefenKopf } from "../components/pruefen/PruefenKopf";
@@ -71,6 +72,7 @@ import {
   relationLabelKey,
 } from "../lib/duplicateBoard";
 import { groupFindingsByBeitrag, overlapFinding, resolveKo } from "../lib/findingGroups";
+import { statusSchluessel } from "../lib/wissensstatus";
 
 /**
  * JOB 3061 · H2: die drei Abschlussgründe, die ein MENSCH wählen darf — dieselbe Teilmenge, die der
@@ -96,7 +98,7 @@ function metaVon(ko: KnowledgeObject | null, t: (k: string) => string): string {
   }
   const datum = new Date(ko.createdAt);
   return [
-    t(`status.${ko.status}`),
+    t(statusSchluessel(ko.status)),
     ko.category,
     Number.isNaN(datum.getTime()) ? null : String(datum.getFullYear()),
   ]
@@ -268,6 +270,9 @@ export function Duplicates(): JSX.Element {
         {lage.lage === "leer" ? <PruefenSatz kennung="leer">{t("dup.empty")}</PruefenSatz> : null}
         {aktiv ? duplikatFlaeche(aktiv) : null}
       </div>
+      {/* R-0956 (Bestandsabgleich, Nacharbeit 4): die Einordnung steht UNTER der Brettfläche — die
+          Fläche selbst trägt im Leerfall weiter genau ihren Satz (dup.empty). */}
+      {lage.lage === "leer" ? <EmptyStateCtas context="duplicates" /> : null}
     </div>
   );
 
@@ -310,7 +315,7 @@ export function Duplicates(): JSX.Element {
     const beleg = (ko: KnowledgeObject | null): JSX.Element | undefined =>
       ko ? (
         <div data-text="meta">
-          <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-muted-2">
+          <div className="mb-1 font-mono text-klein uppercase tracking-wider text-muted-2">
             {t("dublettenvergleich.beleg")}
           </div>
           <SourceEvidence

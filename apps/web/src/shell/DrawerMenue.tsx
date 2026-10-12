@@ -4,6 +4,7 @@ import { KontoEintraege } from "./KontoMenue";
 import { KopfbandPunkteListe } from "./KopfbandPunkte";
 import { useMeldungenZustand } from "./Meldungen";
 import { MenueKopf, MenueTrenner } from "./Menue";
+import { WeiterUntenHinweis } from "./WeiterUnten";
 import { ZahnradEintraege } from "./ZahnradMenue";
 
 // ================================================================================================
@@ -45,6 +46,8 @@ export function DrawerMenue({
       <MenueTrenner />
       <MenueKopf>{t("kopfband.konto")}</MenueKopf>
       <KontoEintraege meldungen={meldungen} onNavigiert={onClose} />
+      {/* Gesamt-Navigation (R-1045): die Liste ist auf dem Tablet hochkant länger als das Fenster. */}
+      <WeiterUntenHinweis testid="drawer-weiter-unten" />
     </div>
   );
 }

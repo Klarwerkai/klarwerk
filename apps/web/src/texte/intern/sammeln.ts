@@ -35,6 +35,11 @@ import { dirname, join, resolve } from "node:path";
 import { runInThisContext } from "node:vm";
 import ts from "typescript";
 import { basisSchluesselAusQuelltext, pruefeTextmodule } from "./pruefung";
+import {
+  pruefeHartkodierteTexte,
+  pruefeSprachdateien,
+  registrierteSprachen,
+} from "./sprachwaechter";
 
 /** Der Ordner, in dem die Textmodule wohnen — relativ zu `apps/web/src`. */
 export const TEXTE_ORDNER = "texte";
@@ -219,7 +224,10 @@ export function ladeTextbaum(srcOrdner: string): Textbaum {
  */
 export function pruefeTextbaum(srcOrdner: string): string[] {
   const baum = ladeTextbaum(srcOrdner);
-  return [...baum.ladefehler, ...pruefeTextmodule(baum.module, baum.basisSchluessel)];
+  // R-0997: geprüft wird gegen die aus `woerterbuch/` ANGEMELDETEN Sprachen — eine neue Sprache
+  // verlangt damit ihren Block in jedem Textmodul, ohne dass hier eine Liste wächst.
+  const sprachen = registrierteSprachen(srcOrdner);
+  return [...baum.ladefehler, ...pruefeTextmodule(baum.module, baum.basisSchluessel, sprachen)];
 }
 
 /**
@@ -252,7 +260,8 @@ export function textmodulVertrag(): TextmodulPlugin {
     // buildStart und nicht closeBundle: ein verletzter Vertrag soll den Bau gar nicht erst
     // durchlaufen lassen, statt nach zwei Minuten Bündeln ein fertiges dist zu verwerfen.
     buildStart() {
-      const fehler = pruefeTextbaum(join(wurzel ?? resolve("."), "src"));
+      const src = join(wurzel ?? resolve("."), "src");
+      const fehler = pruefeTextbaum(src);
       if (fehler.length > 0) {
         // `throw` und nicht `this.error(…)`: Rollup bricht bei beidem ab, aber ein geworfener
         // Fehler lässt sich aus einem Test heraus ohne nachgebauten Plugin-Kontext auslösen und
@@ -260,6 +269,15 @@ export function textmodulVertrag(): TextmodulPlugin {
         const regeln = "apps/web/src/texte/intern/pruefung.ts, docs/i18n-textmodule.md";
         throw new Error(
           `Textmodule verletzen ihren Vertrag (${fehler.length}):\n  ${fehler.join("\n  ")}\nRegeln und Begründung: ${regeln}`,
+        );
+      }
+      // R-1169 (Aufnahme gesamt-sprache-begriffe): derselbe Bau bricht auch an einer unbekannten
+      // Sprache im Grundbestand und an einem NEUEN hart codierten Anzeigetext ab. Getrennte
+      // Meldung, damit niemand einen harten Text im Textmodul-Vertrag sucht.
+      const sprachfehler = [...pruefeSprachdateien(src), ...pruefeHartkodierteTexte(src)];
+      if (sprachfehler.length > 0) {
+        throw new Error(
+          `Sprachwächter (${sprachfehler.length}):\n  ${sprachfehler.join("\n  ")}\nRegeln und Bestand: apps/web/src/texte/intern/sprachwaechter.ts`,
         );
       }
     },

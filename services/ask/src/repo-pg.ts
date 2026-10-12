@@ -1,4 +1,10 @@
 import type { Pool } from "pg";
+import {
+  type NulltrefferErfassung,
+  type NulltrefferRepo,
+  type NulltrefferSuche,
+  leseEingrenzung,
+} from "./nulltreffer";
 import { type AnswerSnapshotRepo, type GapRepo, pruefeSnapshotKette } from "./repo";
 import { type AnswerEvidenceSnapshot, type AnswerRecord, AskError, type Gap } from "./types";
 
@@ -38,7 +44,64 @@ ALTER TABLE gaps
   GENERATED ALWAYS AS (data->>'compareKey') STORED;
 CREATE UNIQUE INDEX IF NOT EXISTS gaps_offener_vergleichsschluessel_uq
   ON gaps (compare_key) WHERE (data->>'status') = 'offen';
+CREATE TABLE IF NOT EXISTS ask_nulltreffer (
+  user_id text NOT NULL,
+  vergleichsschluessel text NOT NULL,
+  begriff text NOT NULL,
+  anzahl integer NOT NULL,
+  zuletzt text NOT NULL,
+  eingrenzung text NOT NULL DEFAULT '',
+  PRIMARY KEY (user_id, vergleichsschluessel, eingrenzung)
+);
 `;
+
+interface NulltrefferRow {
+  begriff: string;
+  anzahl: number;
+  zuletzt: string;
+  eingrenzung: string;
+}
+
+// R-0773: die erfolglosen Suchen je Person (Begründung und Grenzen in `nulltreffer.ts`). Additiv
+// im selben Schema wie die Lücken: eine neue Tabelle, kein Eingriff in bestehende. Die Zeile je
+// (Person, Begriff, Eingrenzung) ist durch den Primärschlüssel eindeutig; das Fortschreiben ist
+// EINE Anweisung.
+export class PgNulltrefferRepo implements NulltrefferRepo {
+  constructor(private readonly pool: Pool) {}
+
+  async erfasse(eintrag: NulltrefferErfassung): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO ask_nulltreffer(
+         user_id, vergleichsschluessel, begriff, anzahl, zuletzt, eingrenzung)
+       VALUES($1, $2, $3, 1, $4, $5)
+       ON CONFLICT (user_id, vergleichsschluessel, eingrenzung)
+       DO UPDATE SET anzahl = ask_nulltreffer.anzahl + 1,
+                     begriff = EXCLUDED.begriff,
+                     zuletzt = EXCLUDED.zuletzt`,
+      [
+        eintrag.userId,
+        eintrag.vergleichsschluessel,
+        eintrag.begriff,
+        eintrag.zeitpunkt,
+        eintrag.eingrenzung,
+      ],
+    );
+  }
+
+  async fuer(userId: string, deckel: number): Promise<NulltrefferSuche[]> {
+    const res = await this.pool.query<NulltrefferRow>(
+      `SELECT begriff, anzahl, zuletzt, eingrenzung FROM ask_nulltreffer
+       WHERE user_id = $1 ORDER BY zuletzt DESC LIMIT $2`,
+      [userId, Math.max(0, deckel)],
+    );
+    return res.rows.map((r) => ({
+      begriff: r.begriff,
+      anzahl: Number(r.anzahl),
+      zuletzt: r.zuletzt,
+      eingrenzung: leseEingrenzung(r.eingrenzung),
+    }));
+  }
+}
 
 interface GapRow {
   data: Gap;
@@ -74,6 +137,29 @@ export class PgGapRepo implements GapRepo {
       await this.insert(gap);
       return { gap, created: true };
     }
+    // produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 3): wird die offene Lücke
+    // ZWISCHEN Konflikt und Zählung geschlossen, gab es bisher nichts hochzuzählen, und die Frage
+    // ging verloren — der Aufrufer bekam einen nie gespeicherten Datensatz. Jetzt beginnt der Weg
+    // dann von vorn: ohne offene Lücke greift der Index nicht mehr, und die Frage wird eine neue
+    // Lücke (Wiederaufnahme). Höchstens drei Durchläufe; jeder endet entweder mit einer Zeile oder
+    // mit dem Befund, dass gerade wieder eine offene Lücke entstanden ist.
+    for (let versuch = 0; versuch < 3; versuch += 1) {
+      const ergebnis = await this.anlegenOderZaehlen(gap, vorInhaltsabruf);
+      if (ergebnis) {
+        return ergebnis;
+      }
+      vorInhaltsabruf?.();
+    }
+    throw new AskError(
+      "CONFLICT",
+      "Die Wissenslücke wurde gerade mehrfach geändert — die Frage bitte erneut stellen.",
+    );
+  }
+
+  private async anlegenOderZaehlen(
+    gap: Gap,
+    vorInhaltsabruf?: () => void,
+  ): Promise<{ gap: Gap; created: boolean } | null> {
     const angelegt = await this.pool.query<GapRow>(
       `INSERT INTO gaps(id,data) VALUES($1,$2::jsonb)
        ON CONFLICT (compare_key) WHERE (data->>'status') = 'offen'
@@ -84,30 +170,54 @@ export class PgGapRepo implements GapRepo {
       return { gap: angelegt.rows[0]?.data ?? gap, created: true };
     }
     vorInhaltsabruf?.();
+    // produkt:20261010:wissenskreislauf-schliessen: in DERSELBEN Anweisung wird der Fragende als
+    // weiterer Fragender zugeordnet — dieselbe Regel wie `mitWeiteremFragenden` (gap-vorgang.ts):
+    // nicht „system", nicht der Ersteller, nicht doppelt.
     const erhoeht = await this.pool.query<GapRow>(
       `UPDATE gaps
           SET data = jsonb_set(
-                data,
-                '{askCount}',
-                to_jsonb(COALESCE((data->>'askCount')::int, 1) + 1)
+                jsonb_set(
+                  data,
+                  '{askCount}',
+                  to_jsonb(COALESCE((data->>'askCount')::int, 1) + 1)
+                ),
+                '{weitereFragende}',
+                CASE
+                  WHEN $2::text IS NULL
+                    OR $2::text = ''
+                    OR $2::text = 'system'
+                    OR (data->>'createdBy') IS NOT DISTINCT FROM $2::text
+                    OR COALESCE(data->'weitereFragende', '[]'::jsonb) ? $2::text
+                  THEN COALESCE(data->'weitereFragende', '[]'::jsonb)
+                  ELSE COALESCE(data->'weitereFragende', '[]'::jsonb) || jsonb_build_array($2::text)
+                END
               )
         WHERE (data->>'compareKey') = $1 AND (data->>'status') = 'offen'
         RETURNING data`,
-      [gap.compareKey],
+      [gap.compareKey, gap.createdBy ?? null],
     );
     const treffer = erhoeht.rows[0]?.data;
-    if (!treffer) {
-      // Die offene Lücke ist zwischen Konflikt und Zählung verschwunden (geschlossen oder
-      // gelöscht). Ehrlich: dann gibt es nichts hochzuzählen — der Aufrufer bekommt seinen
-      // eigenen Datensatz zurück, ohne dass eine fremde Zeile erfunden wird.
-      return { gap, created: false };
-    }
-    return { gap: treffer, created: false };
+    // Ohne Treffer ist die offene Lücke zwischen Konflikt und Zählung verschwunden (geschlossen
+    // oder gelöscht) — `null` schickt den Aufrufer in den nächsten Durchlauf (s. oben).
+    return treffer ? { gap: treffer, created: false } : null;
   }
 
   async findById(id: string): Promise<Gap | undefined> {
     const res = await this.pool.query<GapRow>("SELECT data FROM gaps WHERE id=$1", [id]);
     return res.rows[0]?.data;
+  }
+
+  // produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 3): VERGLEICHEN UND SETZEN gegen
+  // den zuletzt gelesenen Stand — Prüfen und Schreiben sind EINE Anweisung. Hat sich die Zeile
+  // inzwischen geändert (weitere Fragende, Zähler, Abschluss, Rückfrage), schreibt sie nichts, und
+  // der Dienst rechnet den Schritt am frischen Stand neu (`AskService.aendereLuecke`). So
+  // überschreibt keine alte Momentaufnahme mehr, was zwischenzeitlich hinzukam.
+  async ersetzeWenn(erwartet: Gap, neu: Gap): Promise<boolean> {
+    const res = await this.pool.query(
+      "UPDATE gaps SET data=$2::jsonb WHERE id=$1 AND data = $3::jsonb",
+      [neu.id, JSON.stringify(neu), JSON.stringify(erwartet)],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   async update(gap: Gap): Promise<void> {
@@ -212,6 +322,21 @@ export class PgAnswerSnapshotRepo implements AnswerSnapshotRepo {
       [answerId],
     );
     return res.rows[0]?.data;
+  }
+
+  // Betroffenenrechte (R-0663): nur lesend. Dieselbe Eigentumsregel wie `gehoertNutzer` — ein
+  // Altbestandsrecord ohne `owner` und eine Systemantwort gehören keinem Konto und fallen heraus.
+  async listRecordsByOwner(userId: string): Promise<AnswerRecord[]> {
+    if (userId.trim().length === 0) {
+      return [];
+    }
+    const res = await this.pool.query<AnswerRecordRow>(
+      `SELECT data FROM answer_records
+        WHERE data->'owner'->>'kind' = 'user' AND data->'owner'->>'userId' = $1
+        ORDER BY data->>'createdAt' ASC`,
+      [userId],
+    );
+    return res.rows.map((z) => z.data);
   }
 
   // D5 (KI aus): `vorInhaltsabruf` vor JEDER der vier Anweisungen (s. `AnswerSnapshotRepo`) —

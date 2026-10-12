@@ -77,14 +77,14 @@ export function KoSummaryDisclosure({
       </button>
       {open ? (
         <div className="mt-1 rounded-card border border-hairline bg-page px-3 py-2">
-          <span className="mb-0.5 block font-mono text-[9.5px] font-semibold uppercase tracking-wide text-muted-2">
+          <span className="mb-0.5 block font-mono text-klein font-semibold uppercase tracking-wide text-muted-2">
             {t("ko.preview.label")}
           </span>
           {uebersetzt.length > 0 && variante ? (
             <span
               data-testid="ko-preview-uebersetzung"
               title={bindungsText(variante, t)}
-              className="mb-0.5 block text-[10.5px] font-semibold text-muted-2"
+              className="mb-0.5 block text-klein font-semibold text-muted-2"
             >
               {kennzeichnung} · {t("lesevariante.kurzMaschinell")}
             </span>

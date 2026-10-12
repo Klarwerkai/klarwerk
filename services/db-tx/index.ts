@@ -1,6 +1,14 @@
 // Öffentliche API des Moduls db-tx (SCRUM-523 P.3 WP-A2): gemeinsamer, storage-neutraler
 // Transaktions-Kernel für Chokepoints, die über Modulgrenzen hinweg atomar committen/rollbacken
 // müssen (z. B. knowledge-object.purgeKo: repo.delete + audit.record). Siehe src/tx.ts.
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 6): `src/write-fence.ts` (`PgWriteFence`,
+// `fenceKey`, JOB 1060 D7) ist entfernt. Die Schreibsperre war nie scharf — ihre Tabelle stand nur
+// als Kommentar-DDL, kein Dienst band sie, und sie ging nie durch diese Fassade. Für ihren Einbau ist
+// weder eine Sperre noch ein gesonderter Auftrag belegt. Das Rennen zwischen Konflikt- und
+// Überschneidungsbefund beantwortet das Produkt heute über das versionsbedingte Einfügen
+// (`services/conflicts/src/repo-pg.ts`, `insertIfVersionsCurrent`) und den fail-closed Leseweg; die
+// volle Schreib-Serialisierung ist dort als eigene Scheibe „Job-Queue“ vorgemerkt.
 export { type TxContext, type Queryable, poolQueryable, pgQueryable, withPgTx } from "./src/tx";
 // R-1437 / I10: der Vertrag für eng begrenzte, nur lesende, nichtinteraktive Prüfungen.
 export {
@@ -58,6 +66,7 @@ export {
   pruefbefehl,
 } from "./src/idle-in-transaction";
 export {
+  BESTANDSRESET_SCHEMA,
   type BestandsresetBefund,
   type BestandsresetLauf,
   type BestandsresetStatus,
@@ -66,7 +75,6 @@ export {
   SQL_COMMITMERKMAL_SETZEN,
   SQL_LAUF_ANLEGEN,
   SQL_LETZTER_LAUF,
-  SQL_SCHEMA_BESTANDSRESET,
   bestandsresetBefund,
   letzterBestandsresetLauf,
   loeseBestandsresetAuf,

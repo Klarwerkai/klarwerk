@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useLibrarySearch } from "../api/hooks";
-import { useModalLocked } from "../app/ModalBoundaryContext";
+import { GrenzDialog, useModalBoundaryOptional, useModalLocked } from "../app/ModalBoundaryContext";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import {
@@ -10,6 +11,7 @@ import {
   trefferFuer,
   trefferNachGruppen,
 } from "../app/navigationGliederung";
+import { useKuerzel } from "../lib/tastenkuerzel";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 
 // Command Palette (FE-FND-03): ⌘K / Strg+K öffnet eine Schnellnavigation über
@@ -92,6 +94,8 @@ type Zeilenziel = Pick<Direktziel, "id" | "label" | "path" | "kontext">;
 
 export function CommandPalette(): JSX.Element | null {
   const { t } = useTranslation();
+  // R-0987: der Platzhalter nennt das Kürzel der eigenen Plattform (`lib/tastenkuerzel.ts`).
+  const kuerzel = useKuerzel("K");
   // AUFTRAG-mega11 Block B-2: dieselbe geschützte Grenze wie Sidebar/Topbar/Logo.
   const navigate = useGuardedNavigate();
   const { role, stufe2 } = useRole();
@@ -100,6 +104,10 @@ export function CommandPalette(): JSX.Element | null {
   // Listener. Ohne diese Abfrage wäre die Palette bei offenem Filterblatt oder Drawer die eine
   // Fläche, die die Modalgrenze durchbricht (per Cmd/Ctrl+K, also genau der Weg, den ben benennt).
   const modalOffen = useModalLocked();
+  // R-0909: die offene Palette ist selbst eine modale Fläche. Sie hängt dafür an derselben einen
+  // Grenze (`GrenzDialog`) — und weil sie im gesperrten Bereich der Shell STEHT, wird ihre Ebene in
+  // den Portal-Anker der Grenze gehoben. Sonst sperrte ihre eigene Anmeldung sie mit.
+  const grenze = useModalBoundaryOptional();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
@@ -231,7 +239,8 @@ export function CommandPalette(): JSX.Element | null {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         // Solange eine modale Fläche offen ist, öffnet das Kürzel nichts — sonst erschiene über
         // dem Dialog eine zweite Bedienfläche, die er laut `aria-modal` gar nicht zulässt.
-        if (modalOffen) {
+        // R-0909: ist die offene Fläche die Palette SELBST, schließt das Kürzel sie wie bisher.
+        if (modalOffen && !offenRef.current) {
           return;
         }
         e.preventDefault();
@@ -378,7 +387,7 @@ export function CommandPalette(): JSX.Element | null {
     );
   };
 
-  return (
+  const ebene = (
     // ============================================================================================
     // JOB 3337 R7 — DIE LISTE RECHNET MIT DEM FENSTER (BEN-Befund der Runde 6).
     // ============================================================================================
@@ -401,13 +410,25 @@ export function CommandPalette(): JSX.Element | null {
     // Fenster: auf einem gewöhnlichen Bildschirm sieht die Liste aus wie bisher, auf einem flachen
     // wird sie kürzer und scrollt — statt aus dem Bild zu laufen.
     <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pb-[6vh] pt-[12vh]">
+      {/* R-0909 (Ben, Nacharbeit 4): Klickfänger nur für die Maus, nicht in der Tab-Reihenfolge —
+          die Tastatur schließt mit Escape (oder ⌘K). */}
       <button
         type="button"
+        tabIndex={-1}
         aria-label={t("cmd.close")}
         onClick={() => setOpen(false)}
         className="absolute inset-0 bg-ink/30"
       />
-      <div className="relative flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-card border border-hairline bg-surface shadow-popover">
+      {/* R-0909: der Kasten ist ein benannter Dialog an der einen Grenze. Den Fokus setzt die
+          Palette selbst ins Suchfeld (unten), und ihre Rückgabe bleibt ihre eigene — beim
+          Wegnavigieren geht er bewusst NICHT zurück (`go`); deshalb gibt die Grenze hier keinen
+          Auslöser zurück. `m-0 p-0 text-text` nehmen dem nativen Element seine Vorgaben. */}
+      <GrenzDialog
+        name={t("fe002.seiteFindenMenue")}
+        anfangsfokus={false}
+        ausloeser={() => null}
+        className="relative m-0 flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-card border border-hairline bg-surface p-0 text-text shadow-popover"
+      >
         <input
           ref={inputRef}
           value={q}
@@ -452,7 +473,7 @@ export function CommandPalette(): JSX.Element | null {
               }
             }
           }}
-          placeholder={`${t("fe002.seiteFindenMenue")} (⌘K)`}
+          placeholder={`${t("fe002.seiteFindenMenue")} (${kuerzel})`}
           // `shrink-0`: Suchfeld und Trefferzahl behalten ihre Höhe, wenn der Kasten eng wird —
           // schrumpfen soll die LISTE (sie kann scrollen), nicht das Feld, in das man tippt.
           className="w-full shrink-0 border-b border-hairline bg-transparent px-4 py-3 text-sm outline-none"
@@ -525,7 +546,12 @@ export function CommandPalette(): JSX.Element | null {
             ))
           )}
         </ul>
-      </div>
+      </GrenzDialog>
     </div>
   );
+
+  // Der Anker wird beim Öffnen gelesen (Bauform `Modal.tsx`). Ohne Grenze — gemountete Proben ohne
+  // Shell — steht die Ebene an ihrem angestammten Platz.
+  const anker = grenze?.host() ?? null;
+  return anker ? createPortal(ebene, anker) : ebene;
 }

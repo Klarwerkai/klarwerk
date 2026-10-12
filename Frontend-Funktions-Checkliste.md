@@ -61,8 +61,8 @@
 | ID | Funktion | Label | BE-API | Reife | Stufe | G | T |
 |---|---|---|---|---|---|---|---|
 | FE-AUTH-01 | Ersteinrichtung leere Instanz → erstes Konto = Admin (Setup-Maske) | FE+BE | ✅ | A | 1 | [ ] | [ ] |
-| FE-AUTH-02 | Registrierung (Name, E-Mail, Passwort ≥ 8) | FE+BE | ✅ | A | 1 | [ ] | [ ] |
-| FE-AUTH-03 | „Wartet auf Freigabe"-Hinweisbildschirm | FE | ✅ | A | 1 | [ ] | [ ] |
+| FE-AUTH-02 | Registrierung (Name, E-Mail, Passwort ≥ 8) — historisch, abgelöst durch „Registrierung nur per Einladung" (Ship 8): die Maske zeigt im Auslieferungszustand statt des Registrierwegs den Hinweis auf die Einladung; Konten legt der Admin an | FE+BE | ✅ | A | 1 | [ ] | [ ] |
+| FE-AUTH-03 | „Wartet auf Freigabe"-Hinweisbildschirm — nur noch bei eingeschalteter Selbstregistrierung (Entwicklungsweg) erreichbar | FE | ✅ | A | 1 | [ ] | [ ] |
 | FE-AUTH-04 | Login / Logout / Session-Status | FE+BE | ✅ | A | 1 | [ ] | [ ] |
 | FE-AUTH-05 | Eigenes Profil / „Me" | FE | ✅ | A | 1 | [ ] | [ ] |
 | FE-AUTH-06 | Self-Service-Passwort-Reset per E-Mail-Link | FE+BE | ✅ notifications | V | 2 | [ ] | [ ] |

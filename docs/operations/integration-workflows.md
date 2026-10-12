@@ -15,6 +15,14 @@
 > Beschreibung**. Maßgeblich dafür ist `docs/architektur/integrations-schnittstelle.md`. Die
 > Aussagen unten zu „keine API-Keys / kein Rate-Limit" (§2, §3, §8, §9) beschreiben den Stand vor
 > diesem Nachtrag. Eine produktive Drittanbindung ist weiterhin **nicht** belegt (§10).
+>
+> **Nachtrag (Aufnahme gesamt-webhooks, R-0710, Oktober 2026):** Es gibt jetzt einen
+> **Webhook-/Event-Ausgang**. Er meldet `wissen.validiert`, `wissen.revalidierung_faellig` und
+> `widerspruch.offen` signiert an die in `KLARWERK_WEBHOOKS` eingetragenen Ziele, nur mit Kennungen und
+> nur für nicht vertrauliches Wissen ohne Space. Maßgeblich ist
+> `docs/architektur/integrations-schnittstelle.md` §7. Die Aussagen „kein Webhook" unten (§1, §3, §9)
+> beschreiben den Stand vor diesem Nachtrag. Eine produktive Anbindung an ein konkretes Werkzeug ist
+> damit weiterhin **nicht** belegt.
 
 ---
 

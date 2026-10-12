@@ -1,6 +1,7 @@
 import type { CandidateSource, Conflict, KnowledgeObject, OverlapEntry } from "../api/types";
 import { LEAD_METRIC_TEXT, type LeadMetric, overlapDetectorInfo } from "./duplicateBoard";
 import { htmlToPlainText } from "./richText";
+import { statusSchluessel } from "./wissensstatus";
 
 export type CompareTone = "green" | "yellow" | "red";
 export type CompareScoreSource = "detector" | "heuristic" | "mixed";
@@ -54,13 +55,11 @@ export const COMPARE_OVERALL_KO_MISSING: CompareOverall = {
   matchLeadKey: null,
 };
 
-export const DUPLICATE_COMPARE_SAFETY = {
-  mergeEnabled: false,
-  deleteEnabled: false,
-  autoValidateEnabled: false,
-  persistDecisions: false,
-  aiActionEnabled: false,
-} as const;
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `DUPLICATE_COMPARE_SAFETY`, eine Tabelle
+// lauter `false` („kein Zusammenführen, kein Löschen, keine Auto-Freigabe, keine Persistenz, keine
+// KI-Aktion"). Kein Produktweg las sie; sie war eine Behauptung ohne Wirkung. Die Zusage selbst
+// misst `tests/duplicates/duplicate-compare.test.ts` an der Vergleichsseite (keine mutierenden
+// Endpunkte); die Tabelle ist entfernt.
 
 function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
@@ -218,7 +217,7 @@ function hintsText(ko: KnowledgeObject): string {
 function trustStatusText(ko: KnowledgeObject, t: Translate): string {
   return t("dcmp.trustStatus", {
     trust: ko.trust,
-    status: t(`status.${ko.status}`),
+    status: t(statusSchluessel(ko.status)),
     needed: ko.neededValidations,
   });
 }

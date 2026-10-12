@@ -15,7 +15,7 @@
 // Von `tests/support/` sind es fest zwei Ebenen zur Wurzel.
 //
 // BEWUSST OHNE `new URL(relativ, import.meta.url)` — gemessen, nicht vermutet, und im Bestand unter
-// `tests/library/support/wissensraum-ort-vertrag.ts:35-44` dokumentiert: In der jsdom-Umgebung ist
+// `tests/library/support/wissensraum-ort-vertrag.ts:22-31` dokumentiert: In der jsdom-Umgebung ist
 // `URL` global die jsdom-Fassung, und die löst eine relative Basis gegen den DOKUMENT-Ursprung auf
 // statt gegen die `file:`-URL. Aus `file:///…/tests/support/x.ts` wurde dort
 // `http://localhost:3000/@fs/Users/peterkohnert/Documents` — zwei Verzeichnisse zu hoch und vom

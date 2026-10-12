@@ -2,11 +2,9 @@
 // h3/h4, fett/kursiv, Listen, Absätze) wird strukturiert geparst; alles andere bleibt Text —
 // gerendert wird ausschließlich über React-Elemente (kein HTML-Sink, Test dazu mounted).
 import { describe, expect, it } from "vitest";
-import {
-  parseAnswerInline,
-  parseAnswerMarkdown,
-  stripAnswerMarkdown,
-} from "../../apps/web/src/lib/answerMarkdown";
+import { parseAnswerInline, parseAnswerMarkdown } from "../../apps/web/src/lib/answerMarkdown";
+// R-1349: der Klartext-Maßstab steht seit dem Aufruferwächter bei den Tests (kein Produktleser).
+import { stripAnswerMarkdown } from "../support/antwort-klartext";
 
 describe("WP-UX-WOW-1 U1: parseAnswerMarkdown", () => {
   it("zerlegt Überschriften, Absätze und Listen in Subset-Segmente", () => {

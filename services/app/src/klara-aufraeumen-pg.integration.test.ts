@@ -186,7 +186,7 @@ describe("R-0609 · Bens B14: Nachtrag und Löschen mit PgKlaraSessionRepo und P
         return p;
       },
       intervalMs: 60_000,
-      log: { info: () => undefined, warn: (t) => warnungen.push(t) },
+      log: { info: () => undefined, warn: (_felder, t) => warnungen.push(t) },
       ...z,
     });
     return { laeufe, warnungen, tick: z.tick };

@@ -159,3 +159,49 @@ describe("S · sameOwnership — die Gleichheit, an der die Idempotenz hängt", 
     ).toBe(false);
   });
 });
+
+// aufnahme:20260922:gesamt-dokumenterzeugung (R-0337/R-1739, Nacharbeit 5): die verantwortliche
+// ROLLE gehört in dasselbe Aggregat — dieselbe Normalform, dieselbe Gleichheit, kein Rückfall.
+describe("V · ownerRole — die verantwortliche Rolle", () => {
+  it("V1 · wird getrimmt übernommen und trägt allein schon ein Aggregat", () => {
+    expect(normalizeOwnership({ ownerRole: "  Instandhaltungsleitung " })).toEqual({
+      ownerRole: "Instandhaltungsleitung",
+      reviewers: [],
+      validators: [],
+    });
+  });
+
+  it("V2 · eine leere Rolle ist keine Rolle", () => {
+    expect(normalizeOwnership({ owner: "eva", ownerRole: "   " })).toEqual({
+      owner: "eva",
+      reviewers: [],
+      validators: [],
+    });
+  });
+
+  it("V3 · eine Fortschreibung (withRole) behält die Rolle", () => {
+    const vorher = normalizeOwnership({ owner: "eva", ownerRole: "Schichtleitung" });
+    expect(withRole(vorher, "validators", ["victor"])).toEqual({
+      owner: "eva",
+      ownerRole: "Schichtleitung",
+      reviewers: [],
+      validators: ["victor"],
+    });
+  });
+
+  it("V4 · ein Rollenwechsel wird erkannt — die Idempotenz schreibt ihn also", () => {
+    expect(
+      sameOwnership(
+        { owner: "eva", ownerRole: "Schichtleitung", reviewers: [], validators: [] },
+        { owner: "eva", ownerRole: "Werkleitung", reviewers: [], validators: [] },
+      ),
+    ).toBe(false);
+  });
+
+  it("V5 · keine Rolle wird aus Person oder Autor abgeleitet", () => {
+    const eigentum = ownershipOf(
+      ko({ ownership: { owner: "eva", reviewers: [], validators: [] } }),
+    );
+    expect(eigentum?.ownerRole).toBeUndefined();
+  });
+});

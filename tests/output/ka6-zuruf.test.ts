@@ -23,6 +23,7 @@
 // `tests/ka6/job3026-riegel-am-erzeuger.test.ts` gemessen.
 
 import { describe, expect, it } from "vitest";
+import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import { InMemoryKoRepo, type KnowledgeObject, KoService } from "../../services/knowledge-object";
 import {
   type Formulierer,
@@ -166,6 +167,8 @@ describe("KA6 Stufe 1 · B · das Ergebnis ist ein Vorschlag, keine Schreibanwei
     // JOB 3091 (M2): `anbieter` und `modell` kommen dazu — WER formuliert hat, aus der Aufloesung des
     // Sitzungstors. Beides sind Herkunftsangaben, keine Anweisungen; die Verbotsliste darunter
     // bleibt unveraendert, und sie ist es, die den Schreibweg ausschliesst.
+    // gesamt-dokumenterzeugung (Nacharbeit 7): `passagen` kommt dazu — der Vorschlag je Absatz mit
+    // den Marken seiner Quellen (R-0349/R-0414). Ebenfalls eine Herkunftsangabe, keine Position.
     expect(Object.keys(v).sort()).toEqual(
       [
         "aiGenerated",
@@ -174,6 +177,7 @@ describe("KA6 Stufe 1 · B · das Ergebnis ist ein Vorschlag, keine Schreibanwei
         "generatedAt",
         "herkunft",
         "modell",
+        "passagen",
         "provenance",
         "vorschlag",
       ].sort(),
@@ -329,5 +333,88 @@ describe("KA6 Stufe 1 · E · erfunden wird nichts", () => {
     } catch (e) {
       expect((e as ZurufError).code).toBe("NO_FORMULIERER");
     }
+  });
+});
+
+// ================================================================================================
+// aufnahme:20260922:gesamt-dokumenterzeugung (Nacharbeit 7) — HERKUNFT JE PASSAGE UND VOLLSTÄNDIG.
+// ================================================================================================
+//
+// R-0349/R-0414: jede tragende Passage eines KI-Entwurfs nennt ihre Quelle; R-0337/R-1739: jede
+// Quelle trägt alle Pflichtangaben, das Prüfdatum aus dem GEPRÜFTEN Validierungsnachweis.
+describe("KA6 · F · Passagenzuordnung und vollständige Herkunft (gesamt-dokumenterzeugung)", () => {
+  it("F1 · die Belege tragen Marken, der Vorschlag wird je Passage seinen Marken zugeordnet", async () => {
+    const t = await setup(
+      [ko({ id: "A", title: "Ventil" }), ko({ id: "B", title: "Filter" })],
+      "Erster Absatz zum Ventil. [Q1]\n\nZweiter Absatz zu beidem [Q1, Q2].\nDritter ohne Marke.\nVierter mit erfundener Marke [Q7].",
+    );
+    const v = await t.zuruf.schlageVor({
+      art: "erstellen",
+      text: "Thema",
+      bindung: BINDUNG,
+      koIds: ["A", "B"],
+    });
+    expect(t.auftraege[0]?.belege.map((b) => b.marke)).toEqual(["Q1", "Q2"]);
+    expect(v.passagen).toEqual([
+      { text: "Erster Absatz zum Ventil.", marken: ["Q1"] },
+      { text: "Zweiter Absatz zu beidem.", marken: ["Q1", "Q2"] },
+      { text: "Dritter ohne Marke.", marken: [] },
+      // Eine Marke, zu der es keinen Beleg gibt, wird verworfen — nie einer Quelle zugeschlagen.
+      { text: "Vierter mit erfundener Marke.", marken: [] },
+    ]);
+    expect(v.provenance.map((p) => p.marke)).toEqual(["Q1", "Q2"]);
+  });
+
+  it("F2 · die Herkunft nennt Trust, Geltung, Rolle, Verantwortung und Unsicherheiten — und das Prüfdatum aus dem Audit", async () => {
+    const auditRepo = new InMemoryAuditRepo();
+    const audit = new AuditService({
+      repo: auditRepo,
+      now: () => Date.parse("2026-10-01T09:00:00Z"),
+    });
+    const frei = await audit.record({
+      actor: "pruefer-1",
+      action: "ko.admin-validated",
+      target: "A",
+      payload: { koVersion: 2 },
+    });
+    const repo = new InMemoryKoRepo();
+    await repo.insert(
+      ko({
+        id: "A",
+        title: "Ventil",
+        version: 2,
+        trust: 90,
+        geltung: { ebene: "konzern", rolle: "Instandhaltung" },
+        ownership: {
+          owner: "meister-1",
+          ownerRole: "Instandhaltungsleitung",
+          reviewers: [],
+          validators: [],
+        },
+        validationDecisionRef: { auditSeq: frei.seq, auditHash: frei.hash },
+      }),
+    );
+    const s = spion("Absatz [Q1]");
+    const zuruf = new ZurufService({
+      koService: new KoService({ repo }),
+      formulierer: s.formulierer,
+      einwilligungspruefer: sitzungstor(true),
+      audit: auditRepo,
+    });
+    const v = await zuruf.schlageVor({
+      art: "erstellen",
+      text: "T",
+      bindung: BINDUNG,
+      koIds: ["A"],
+    });
+    expect(v.provenance[0]).toMatchObject({
+      marke: "Q1",
+      trust: 90,
+      geltungsbereich: "Konzern-Standard, Rolle Instandhaltung",
+      verantwortlicheRolle: "Instandhaltungsleitung",
+      verantwortlich: "meister-1",
+      letztePruefungAm: "2026-10-01T09:00:00.000Z",
+      unsicherheiten: [],
+    });
   });
 });

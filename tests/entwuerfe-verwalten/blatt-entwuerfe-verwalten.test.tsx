@@ -617,14 +617,22 @@ describe("JOB 3426 · die Entwurfsliste des Editors lässt sich verwalten", () =
     // ==========================================================================================
     // Ändern → „Eingabe verwerfen" bestätigen → denselben Entwurf wieder öffnen. Was dabei
     // verloren geht, ist die EINGABE; was bleibt, ist der gespeicherte Entwurf.
+    // FR-MOB-03: gefragt wird IN DER ANWENDUNG (Rückfragezeile), nicht über `window.confirm` —
+    // der Spion belegt, dass kein Systemdialog mehr aufgeht.
     const frage = vi.spyOn(window, "confirm").mockReturnValue(true);
     await tippe(titelfeld(), "Überdruck an der Presse — Fassung Pedi");
     expect(titelfeld().value).toBe("Überdruck an der Presse — Fassung Pedi");
 
     await eingabeVerwerfen();
-    // Verworfen wird nur mit Rückfrage — genau einmal gefragt, nicht wortlos geleert.
-    expect(frage).toHaveBeenCalledTimes(1);
-    expect(frage).toHaveBeenCalledWith(i18n.t("fd.confirmDiscard"));
+    // Verworfen wird nur mit Rückfrage — die Frage steht, und noch ist nichts geleert.
+    expect(da("blatt-rueckfrage"), "die Rückfrage des Blattes fehlt").toBe(true);
+    expect(container.querySelector('[data-testid="blatt-rueckfrage"]')?.textContent).toContain(
+      i18n.t("fd.confirmDiscard"),
+    );
+    expect(titelfeld().value).toBe("Überdruck an der Presse — Fassung Pedi");
+    await click(knopf("blatt-rueckfrage-ja"));
+    expect(frage, "ein Systemdialog wurde geöffnet").not.toHaveBeenCalled();
+    expect(da("blatt-rueckfrage")).toBe(false);
     // Das BLATT ist leer und der Ort ein neues Blatt …
     expect(titelfeld().value).toBe("");
     expect(adresse()).toBe("/erfassen");
@@ -640,7 +648,8 @@ describe("JOB 3426 · die Entwurfsliste des Editors lässt sich verwalten", () =
     expect(editor().innerHTML).toContain("Ventil X");
     // Das Wiederöffnen war kein zweiter Verlust: gefragt wurde nicht noch einmal (das Blatt war
     // sauber), und gelöscht wurde nach wie vor nichts.
-    expect(frage).toHaveBeenCalledTimes(1);
+    expect(da("blatt-rueckfrage")).toBe(false);
+    expect(frage).not.toHaveBeenCalled();
     expect(box.zaehler.remove).toBe(0);
     // Das Öffnen schliesst das Menü (`entwurfOeffnen`) — für den Blick in den Bestand wird es
     // wieder aufgeklappt: alle drei Entwürfe stehen unverändert da.

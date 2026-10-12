@@ -1,7 +1,7 @@
 import type { Pool } from "pg";
 import { type Queryable, type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
 import type { AuditRepo } from "./repo";
-import type { AuditEntry, AuditFilter } from "./types";
+import type { AuditEntry, AuditFilter, AuditSeitenFilter } from "./types";
 
 // Postgres-Adapter für audit. Nur Anhängen (FR-AUD-02): kein UPDATE/DELETE.
 //
@@ -42,6 +42,47 @@ export const AUDIT_EXISTS_BY_SQL = `SELECT EXISTS(
     AND ($2::text IS NULL OR action = $2)
     AND ($3::text IS NULL OR target = $3)
 ) AS vorhanden`;
+
+// produkt:20261009:admin-audit-verstaendlich: der Seitenweg — dieselbe Regel wie `auditSeiteTrifft`
+// (repo.ts). `$4` ist die Aktionsliste (NULL = kein Filter), `$5`/`$6` der Zeitraum über `at` (ISO in
+// UTC, also als Text vergleichbar), `$7` der Zeiger `before`, `$8` die Seitengröße. Absteigend über
+// den Primärschlüssel `seq` — eine Seite liest nur ihre Zeilen, nicht die ganze Kette.
+export const AUDIT_FIND_PAGE_SQL = `SELECT * FROM audit
+  WHERE ($1::text IS NULL OR actor = $1)
+    AND ($2::text IS NULL OR action = $2)
+    AND ($3::text IS NULL OR target = $3)
+    AND ($4::text[] IS NULL OR action = ANY($4))
+    AND ($5::text IS NULL OR at >= $5)
+    AND ($6::text IS NULL OR at < $6)
+    AND ($7::integer IS NULL OR seq < $7)
+  ORDER BY seq DESC
+  LIMIT $8`;
+
+// produkt:20261009:admin-audit-verstaendlich: die Namens- und Kontobelege zu den Kennungen einer
+// Seite — BEGRENZT, und zwar schon in der Datenbank (Bens Befund Nacharbeit 3). Je Kennung höchstens
+// drei Zeilen, jeweils die JÜNGSTE: der gespeicherte Name als Akteur, der gespeicherte Name als
+// Kontoziel und der jüngste Kontovorgang mit dieser Kennung als Ziel (`istKontoAktion` in repo.ts).
+// Eine Seite mit 25 Ereignissen bekommt damit höchstens 3 × 50 Belege, gleich wie lang die Historie
+// eines Akteurs ist. Dieselbe Regel in Node: `namensbelegeAus` (repo.ts).
+export const AUDIT_NAMENSBELEGE_SQL = `SELECT * FROM (
+  SELECT DISTINCT ON (actor) * FROM audit
+    WHERE actor = ANY($1::text[]) AND payload ? 'actorName'
+    ORDER BY actor, seq DESC
+) AS akteurname
+UNION
+SELECT * FROM (
+  SELECT DISTINCT ON (target) * FROM audit
+    WHERE target = ANY($1::text[]) AND payload ? 'targetName'
+    ORDER BY target, seq DESC
+) AS zielname
+UNION
+SELECT * FROM (
+  SELECT DISTINCT ON (target) * FROM audit
+    WHERE target = ANY($1::text[])
+      AND (action LIKE 'user.%' OR action LIKE 'auth.%' OR action = 'notice.acknowledged')
+    ORDER BY target, seq DESC
+) AS kontobeleg
+ORDER BY seq`;
 
 /** `""`/undefined → NULL (kein Filter); sonst der Wert — die Übersetzung von `!filter.x` nach SQL. */
 export function auditFilterParams(
@@ -229,6 +270,31 @@ export class PgAuditRepo implements AuditRepo {
       auditFilterParams(filter),
     );
     return res.rows[0]?.vorhanden === true;
+  }
+
+  // produkt:20261009:admin-audit-verstaendlich: der Seitenweg der Verwalteransicht.
+  async findPage(
+    filter: AuditSeitenFilter,
+    before: number | undefined,
+    limit: number,
+  ): Promise<AuditEntry[]> {
+    const res = await this.pool.query<AuditRow>(AUDIT_FIND_PAGE_SQL, [
+      ...auditFilterParams(filter),
+      filter.actions && filter.actions.length > 0 ? [...filter.actions] : null,
+      filter.from || null,
+      filter.to || null,
+      before ?? null,
+      limit,
+    ]);
+    return res.rows.map(toEntry);
+  }
+
+  async findNamensbelege(ids: readonly string[]): Promise<AuditEntry[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const res = await this.pool.query<AuditRow>(AUDIT_NAMENSBELEGE_SQL, [[...ids]]);
+    return res.rows.map(toEntry);
   }
 
   async last(tx?: TxContext): Promise<AuditEntry | undefined> {

@@ -147,7 +147,7 @@ describe("R-0913 · Demodatenkarte: ausgeschaltet ist ein sichtbarer Zustand", (
     await karte();
     expect(ausZeile()?.textContent).toBe(i18n.t("demodaten.ladenAus"));
     expect(ladeknopf(), "der Ladeknopf steht trotz „aus“ da").toBeUndefined();
-    expect(await hilfetext()).not.toContain(i18n.t("adm.seedHint"));
+    expect(await hilfetext()).not.toContain(i18n.t("fachwort.demodaten.hinweis"));
     expect(d.demoSeed).not.toHaveBeenCalled();
   });
 
@@ -156,7 +156,7 @@ describe("R-0913 · Demodatenkarte: ausgeschaltet ist ein sichtbarer Zustand", (
     await karte();
     expect(ausZeile()).toBeNull();
     expect(ladeknopf()).toBeInstanceOf(HTMLButtonElement);
-    expect(await hilfetext()).toContain(i18n.t("adm.seedHint"));
+    expect(await hilfetext()).toContain(i18n.t("fachwort.demodaten.hinweis"));
   });
 
   it("S3 · Auskunft lädt noch: weder Knopf noch Aus-Zeile", async () => {
@@ -164,7 +164,7 @@ describe("R-0913 · Demodatenkarte: ausgeschaltet ist ein sichtbarer Zustand", (
     await karte();
     expect(ausZeile(), "Laden wurde als bestätigtes „aus“ ausgegeben").toBeNull();
     expect(ladeknopf()).toBeUndefined();
-    expect(await hilfetext()).not.toContain(i18n.t("adm.seedHint"));
+    expect(await hilfetext()).not.toContain(i18n.t("fachwort.demodaten.hinweis"));
   });
 
   it("S4 · Auskunft gescheitert: weder Knopf noch Aus-Zeile", async () => {

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import { DEMO_PILOT_PATH } from "../../apps/web/src/lib/demoPilotPath";
-import { PILOT_NEXT_STEPS, pilotNextSteps } from "../../apps/web/src/lib/pilotNextSteps";
+import { PILOT_NEXT_STEPS } from "../../apps/web/src/lib/pilotNextSteps";
 
 // SCRUM-306: nach dem Demodaten-/Pilot-Start sichtbare Operator-Next-Steps in den Stage-1-Lauf —
 // nur vorhandene Routen, keine automatische Navigation, kein Backend.
 describe("SCRUM-306: pilotNextSteps", () => {
+  // R-1349: gemessen an `PILOT_NEXT_STEPS` — der Zugriff `pilotNextSteps()` ist entfernt.
   it("liefert Start, Pilot-Checkliste und die demo-sichere Beispiel-Frage in fester Reihenfolge", () => {
-    expect(pilotNextSteps()).toBe(PILOT_NEXT_STEPS);
     expect(PILOT_NEXT_STEPS.map((s) => s.id)).toEqual(["start", "checklist", "ask"]);
   });
 

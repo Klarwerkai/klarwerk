@@ -239,9 +239,9 @@ describe("JOB 3668 · D — Der Anker eines getrashten Entwurfs bleibt zählbar"
   // ändern dürfte — deshalb trägt `repo.list()` den Papierkorb weiter, und die Sicht auf einen
   // Menschen trimmt die Route.
   //
-  // WARUM DAS NICHT NUR BEQUEM, SONDERN NOTWENDIG IST: `objectReferences.drafts`
-  // (`services/app/src/build-app.ts:756`) und die Anhangquellen (`:2339`) zählen über `list()`,
-  // ob ein gesichertes Original noch gebraucht wird. Verschwände ein getrashter Entwurf daraus,
+  // WARUM DAS NICHT NUR BEQUEM, SONDERN NOTWENDIG IST: die Anhangquellen in
+  // `services/app/src/build-app.ts` zählen über `list()`, ob ein gesichertes Original noch
+  // gebraucht wird (R-1349: die frühere zweite Quelle `objectReferences.drafts` ist entfernt). Verschwände ein getrashter Entwurf daraus,
   // dürfte sein Originaldokument entfernt werden — und die Wiederherstellung lieferte einen
   // Entwurf mit fehlendem Anker, dessen Rumpf `withAnchorCheck` ausdünnt. Genau die Hülle, die
   // §4.3 verbietet. Das Wissensobjekt hält seinen Anker aus demselben Grund

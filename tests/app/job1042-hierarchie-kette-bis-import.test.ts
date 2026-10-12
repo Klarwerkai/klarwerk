@@ -23,10 +23,10 @@
 // `Z3` pinnt genau das.
 import { describe, expect, it } from "vitest";
 import { runConfluenceImport } from "../../services/app/src/confluence-import";
-import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { LibraryService } from "../../services/library-analytics";
+import { adapterFromConfig } from "../support/confluence-adapter";
 
 function fetchReturning(pages: ConfluencePage[]): typeof fetch {
   return (async () =>

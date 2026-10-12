@@ -348,7 +348,9 @@ describe("BASIC 380 · T-S-1: SQL-Trim und darfSehen liefern über denselben Bes
       const fremder: SessionUser = { id: "u-bert", role: "experte" };
       const trim = sqlSichtbarkeitFuer(fremder);
       const repo = new PgKoRepo(pool);
-      const ziel = "k-0-0-live"; // Stufe fehlt, Autor u-anna, lebend → für u-bert sichtbar.
+      // aufnahme:20260922:gesamt-leserechte (Entscheidung 16): ein Objekt OHNE Stufe ist ungeklärt
+      // und für u-bert ohnehin verborgen — die Höherstufung wird deshalb an „intern“ gemessen.
+      const ziel = "k-1-0-live"; // Stufe intern, Autor u-anna, lebend → für u-bert sichtbar.
 
       expect((await repo.listForSearch({}, trim)).map((k) => k.id)).toContain(ziel);
 
@@ -379,7 +381,10 @@ describe("BASIC 380 · T-S-1: SQL-Trim und darfSehen liefern über denselben Bes
       expect(danach).not.toContain(ziel);
 
       // Zurücksetzen, damit die übrigen Fälle auf demselben Bestand laufen.
-      await pool.query("UPDATE kos SET data = data - 'confidentiality' WHERE id = $1", [ziel]);
+      await pool.query(
+        "UPDATE kos SET data = jsonb_set(data,'{confidentiality}', to_jsonb('intern'::text)) WHERE id = $1",
+        [ziel],
+      );
       expect((await repo.listForSearch({}, trim)).map((k) => k.id)).toContain(ziel);
     } finally {
       await pool.end();

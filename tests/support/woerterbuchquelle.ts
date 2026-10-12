@@ -147,6 +147,96 @@ export function woerterbuchBlock(sprache: WoerterbuchSprache, datei: string): st
   return datei.slice(vor.length, datei.length - nach.length);
 }
 
+// ================================================================================================
+// NACH DER AUFTEILUNG ERLAUBT ERGÄNZT — Aufnahme 20260922 · antwort-quellenanzeige (Ben zu e6eb2409).
+// ================================================================================================
+// Der Umzugsnachweis (W1) gilt dem Text, der VOR der Aufteilung stand. Neue Produkttexte, die ein
+// späterer Auftrag ausdrücklich ergänzt, gehören nicht zu diesem historischen Umfang. Sie stehen hier
+// BENANNT — Schlüssel und die Kommentarzeilen, die sie begründen —, und NUR der historische
+// Vergleich (`woerterbuchQuelleHistorisch`, W1) nimmt GENAU diese Zeilen heraus; der volle Text für
+// alle anderen Leser bleibt unberührt. Fail-closed wie `einmal`: steht ein Eintrag nicht genau einmal
+// da, bricht es ab; eine stille Toleranz für irgendwelche neuen Zeilen gibt es nicht. Was W1 danach
+// noch meldet, stammt NICHT aus diesen Ergänzungen. Gegenprobe: `tests/i18n-woerterbuch/
+// ergaenzungen-antwort-quellenanzeige.test.ts`.
+export const ERGAENZTE_SCHLUESSEL: readonly string[] = [
+  // R-0326: die Lage der Belegstelle an der Lesefläche (BibliothekLesen).
+  "lib.lesen.belegstelle.markiert",
+  "lib.lesen.belegstelle.nichtGefunden",
+  "lib.lesen.belegstelle.andereFassung",
+  // R-0310: der Chip „+N" unter der Web-Antwort (Ask.tsx).
+  "ask.quellen.weitere",
+  // R-0310/R-0325: die zurückgehaltene Antwort bei unbekannter Zuordnung (Ask.tsx).
+  "ask.zuordnungUnbekannt",
+];
+
+export const ERGAENZTE_KOMMENTARE: Readonly<Record<WoerterbuchSprache, readonly string[]>> = {
+  de: [
+    "  // R-0310/R-0325 (Ben zu 8e6c9d73): die Antwort ist zurückgehalten, weil sich kein Absatz einer",
+    "  // Quelle zuordnen ließ. Zuordnung unbekannt macht einen unbelegten Absatz nicht ausgabefähig.",
+    '  // R-0310: der Chip „+N" unter der Antwort — sein zugänglicher Name.',
+  ],
+  en: [
+    "  // R-0310/R-0325: the answer is withheld because no paragraph could be attributed to a source.",
+  ],
+  nl: [
+    "  // R-0310/R-0325: het antwoord wordt achtergehouden omdat geen alinea aan een bron toe te wijzen was.",
+  ],
+};
+
+/** Der Block einer Sprache OHNE die benannten Ergänzungen — fail-closed (je Eintrag genau einmal). */
+export function ohneErgaenzungen(sprache: WoerterbuchSprache, block: string): string {
+  const zeilen = block.split("\n");
+  const raus = new Set<number>();
+  const genauEinmal = (treffer: number[], was: string): number => {
+    if (treffer.length !== 1) {
+      throw new Error(
+        `${woerterbuchRelativ(sprache)}: ${was} steht ${treffer.length}-mal da, erwartet genau einmal`,
+      );
+    }
+    return treffer[0] as number;
+  };
+  for (const kommentar of ERGAENZTE_KOMMENTARE[sprache]) {
+    const treffer = zeilen.flatMap((z, i) => (z === kommentar ? [i] : []));
+    raus.add(genauEinmal(treffer, `der Kommentar „${kommentar.trim()}"`));
+  }
+  for (const schluessel of ERGAENZTE_SCHLUESSEL) {
+    const kopf = `  "${schluessel}":`;
+    const treffer = zeilen.flatMap((z, i) => (z.startsWith(kopf) ? [i] : []));
+    const i = genauEinmal(treffer, `der Schlüssel ${schluessel}`);
+    raus.add(i);
+    // Steht der Wert auf der Folgezeile (`"schluessel":` am Zeilenende), gehört sie dazu.
+    if ((zeilen[i] ?? "").trimEnd() === kopf) {
+      raus.add(i + 1);
+    }
+  }
+  return zeilen.filter((_, i) => !raus.has(i)).join("\n");
+}
+
+/**
+ * Der Umzugsnachweis in seinem HISTORISCHEN Umfang: wie `fuegeWoerterbuchZusammen`, aber ohne die
+ * oben benannten, nach der Aufteilung erlaubt ergänzten Zeilen. NUR für W1 — alle übrigen Leser
+ * (`woerterbuchQuelle()`, über 30 Prüfungen auf Schlüssel und Texte) sehen weiter den VOLLEN Text.
+ */
+export function fuegeWoerterbuchZusammenHistorisch(teile: WoerterbuchTeile): string {
+  return fuegeWoerterbuchZusammen({
+    ...teile,
+    de: ohneErgaenzungenDatei("de", teile.de),
+    en: ohneErgaenzungenDatei("en", teile.en),
+    nl: ohneErgaenzungenDatei("nl", teile.nl),
+  });
+}
+
+/** Der historische Vergleichstext aus dem Baum — `woerterbuchQuelle()` ohne die benannten Ergänzungen. */
+export function woerterbuchQuelleHistorisch(): string {
+  return fuegeWoerterbuchZusammenHistorisch(woerterbuchTeile());
+}
+
+/** Eine ganze Sprachdatei ohne die Ergänzungen — Vor- und Nachspann bleiben, wie sie sind. */
+function ohneErgaenzungenDatei(sprache: WoerterbuchSprache, datei: string): string {
+  const block = woerterbuchBlock(sprache, datei);
+  return `${woerterbuchVorspann(sprache)}${ohneErgaenzungen(sprache, block)}${woerterbuchNachspann(sprache)}`;
+}
+
 /** Die Umkehrung der Aufteilung: der Text von `i18n.ts`, wie er vorher war. */
 export function fuegeWoerterbuchZusammen(teile: WoerterbuchTeile): string {
   const bloecke = WOERTERBUCH_SPRACHEN.map((sprache) => woerterbuchBlock(sprache, teile[sprache]));

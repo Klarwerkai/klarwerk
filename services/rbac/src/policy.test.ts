@@ -1,7 +1,6 @@
-import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 import type { Role } from "../../auth";
-import { can, canChangeRole, canManageUsers, requirePermission } from "../index";
+import { can, canChangeRole, canManageUsers } from "../index";
 
 describe("rbac policy", () => {
   it("FR-RBAC-01: Rechtematrix wirkt je Rolle", () => {
@@ -29,35 +28,7 @@ describe("rbac policy", () => {
   });
 });
 
-describe("FR-RBAC-04: requirePermission als serverseitiger Guard", () => {
-  function appFor(role: Role | undefined) {
-    const app = Fastify();
-    app.post(
-      "/admin/users",
-      { preHandler: requirePermission("users.manage", () => role) },
-      async () => ({ ok: true }),
-    );
-    return app;
-  }
-
-  it("Admin → 200", async () => {
-    const app = appFor("admin");
-    const res = await app.inject({ method: "POST", url: "/admin/users" });
-    expect(res.statusCode).toBe(200);
-    await app.close();
-  });
-
-  it("Experte ohne Recht → 403", async () => {
-    const app = appFor("experte");
-    const res = await app.inject({ method: "POST", url: "/admin/users" });
-    expect(res.statusCode).toBe(403);
-    await app.close();
-  });
-
-  it("nicht angemeldet → 401", async () => {
-    const app = appFor(undefined);
-    const res = await app.inject({ method: "POST", url: "/admin/users" });
-    expect(res.statusCode).toBe(401);
-    await app.close();
-  });
-});
+// R-1349: Der Block „FR-RBAC-04: requirePermission als serverseitiger Guard" prüfte den preHandler
+// aus `src/guard.ts`, den kein Produktweg rief. FR-RBAC-04 trägt der Rechteweg in
+// `services/app/src/http.ts` (`makeGuards().requirePermission`), am Draht geprüft unter anderem in
+// `tests/q9-rechtefehler/rechtetor-sprachfaelle.test.ts` und den Routentests.

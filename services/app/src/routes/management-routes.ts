@@ -24,7 +24,13 @@ export function managementRoutes(
       // AUFTRAG-mega76 BLOCK D: der breiteste der sechs Leckpfade. Die Grundmenge wird gefiltert,
       // BEVOR gerechnet wird — sonst trügen die Scores und die Kategoriezeilen den unsichtbaren
       // Bestand weiter mit.
-      reply.code(200).send(await management.snapshot({ sichtbar: sichtbarkeitsfilterFuer(user) }));
+      // R-1657 (Nacharbeit 2): `sicht` merkt DIESE Betrachtersicht für die regelmäßige
+      // Reasoner-Analyse der Wissens-Sprints vor — sie urteilt nur über das, was sie sehen darf.
+      const snapshot = await management.snapshot({
+        sichtbar: sichtbarkeitsfilterFuer(user),
+        sicht: user.id,
+      });
+      reply.code(200).send(snapshot);
     });
 
     // R-1639 / R-2183: „mein Bereich" — nur Bereiche, die den Abrufenden als Verantwortlichen

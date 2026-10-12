@@ -40,10 +40,27 @@
 // grösser/kleiner. Ein DriveItem hat keine Revisionsnummer an sich (die `/versions`-Liste wäre ein
 // weiterer Abruf und ein weiterer Vertrag). Was es hat, ist `lastModifiedDateTime`.
 //
-// Der Quellstand ist deshalb dieser Zeitpunkt IN SEKUNDEN seit 1970 — abgeleitet, nicht erfunden:
-// er wächst genau dann, wenn die Datei in SharePoint geändert wurde, und er ist eine positive
-// sichere Ganzzahl (`normalizeSourceVersion` verlangt genau das). Liefert die Quelle den Zeitpunkt
-// nicht oder ist er unlesbar, FEHLT das Feld — kein Platzhalter, keine geratene 1.
+// Der Quellstand ist deshalb dieser Zeitpunkt IN SEKUNDEN seit der Epoche 2025-01-01T00:00:00Z —
+// abgeleitet, nicht erfunden: er wächst, wenn die Datei in SharePoint geändert wurde, und er ist
+// eine positive sichere Ganzzahl (`normalizeSourceVersion` verlangt genau das). Liefert die Quelle
+// den Zeitpunkt nicht oder ist er unlesbar, FEHLT das Feld — kein Platzhalter, keine geratene 1.
+//
+// R-0144 — WARUM DIESE EPOCHE. Die Fassung ist zugleich die Revisionsidentität der unveränderlichen
+// Quellrevision (`ExternalSourceRecord`), und die trägt höchstens `MAX_SOURCE_VERSION =
+// 999_999_999` (`library-analytics/src/repo.ts`, in PostgreSQL neun Ziffern; FREEZE-144). Sekunden
+// seit 1970 liegen seit 2001 darüber (heute rund 1,79 Mrd.): jede Datei wurde beim Einreihen
+// abgewiesen. Minuten (Nacharbeit 3) passten, machten aber zwei Fassungen derselben Minute zu
+// EINER (Bens Befund, Nacharbeit 4). Sekunden seit 2025 halten die volle Auflösung, die Graph
+// liefert, und passen bis 2056-09-09T01:46:39Z in die Grenze.
+//
+// ZEITPUNKTE VOR DER EPOCHE werden zu 1 — das ist keine geratene Fassung, sondern die kleinste:
+// `lastModifiedDateTime` setzt SharePoint SERVERSEITIG beim Ändern. Jede Änderung NACH dem ersten
+// Import trägt also einen späteren Zeitpunkt als diesen Import (≥ 2026) und damit einen Stand > 1.
+// Zwei verschiedene Zustände vor 2025 kann Klarwerk für dieselbe Datei nicht nacheinander sehen.
+//
+// GRENZEN, BENANNT: (a) Graph nennt Sekunden; zwei Änderungen in derselben SEKUNDE sind schon an
+// der Quelle nicht unterscheidbar. (b) Ab 2056-09-09T01:46:40Z liegt der Stand über der
+// Revisionsgrenze; der Import-Kern weist ihn dann ab (`pruefeAnkerEintrag`), statt ihn zu kappen.
 
 import type { ImportItem } from "../../library-analytics";
 import { kernaussageAusKlartext } from "../../structure";
@@ -98,8 +115,12 @@ export function istDatei(item: GraphDriveItem): boolean {
   return item.file !== undefined && item.folder === undefined;
 }
 
+/** Die Epoche des Quellstands: 2025-01-01T00:00:00Z (Begründung im Kopf). */
+const SHAREPOINT_QUELLSTAND_EPOCHE_MS = Date.UTC(2025, 0, 1);
+
 /**
- * Der Quellstand einer Datei — Sekunden seit 1970, oder `undefined`.
+ * Der Quellstand einer Datei — Sekunden seit 2025-01-01, frühere Zeitpunkte als 1 (s. Kopf), oder
+ * `undefined`.
  *
  * `undefined` ist eine AUSSAGE („diese Datei nennt keinen Änderungszeitpunkt") und darf nie durch
  * eine Ersatzzahl gefüllt werden: eine erfundene Version erzeugte beim nächsten Lauf ein falsches
@@ -111,10 +132,10 @@ export function sharepointQuellstand(item: GraphDriveItem): number | undefined {
     return undefined;
   }
   const ms = Date.parse(roh);
-  if (!Number.isFinite(ms) || ms <= 0) {
+  if (!Number.isFinite(ms)) {
     return undefined;
   }
-  return Math.floor(ms / 1000);
+  return Math.max(1, Math.floor((ms - SHAREPOINT_QUELLSTAND_EPOCHE_MS) / 1000));
 }
 
 /**

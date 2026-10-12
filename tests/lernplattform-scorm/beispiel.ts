@@ -7,11 +7,21 @@ import JSZip from "jszip";
 import type { KnowledgeObject } from "../../services/knowledge-object";
 import {
   LmsExportService,
+  type ScormBetrachter,
   type ScormEmpfaenger,
   type ScormExportEingabe,
   type ScormMedium,
   type ScormPaket,
 } from "../../services/output";
+
+/**
+ * Ein Betrachter, der jedes Objekt und jedes Medium sehen darf — für die Fälle, die Inhalts- und
+ * Empfängerfreigabe prüfen, nicht die Lesepolicy (die prüft leserechte-scorm.test.ts).
+ */
+export const ALLES_SICHTBAR: ScormBetrachter = {
+  ko: () => true,
+  medium: async () => true,
+};
 
 /** Ein echtes 1×1-PNG — klein, aber ein gültiges Bild. */
 export const PNG_1X1 = Buffer.from(
@@ -83,8 +93,9 @@ export function eingabe(
 export async function paketOderFehler(
   dienst: LmsExportService,
   e: ScormExportEingabe,
+  betrachter: ScormBetrachter = ALLES_SICHTBAR,
 ): Promise<ScormPaket> {
-  const r = await dienst.exportiere(e);
+  const r = await dienst.exportiere(e, betrachter);
   if (!("daten" in r)) {
     throw new Error(`Export blockiert: ${JSON.stringify(r.pruefung.befunde)}`);
   }

@@ -29,6 +29,7 @@ import type {
 } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { SourceLink } from "../components/ko/SourceEvidence";
@@ -52,6 +53,7 @@ import {
   vorschau,
   zusammenfuehrenGesperrt,
 } from "../lib/dublettenZusammenfuehrung";
+import { statusSchluessel } from "../lib/wissensstatus";
 
 const KNOPF =
   "rounded-[10px] px-[16px] py-[8px] text-[13.5px] leading-tight disabled:cursor-not-allowed disabled:opacity-50";
@@ -303,7 +305,7 @@ function Assistent({
                 <span className="min-w-0 flex-1">
                   <span className="block text-[14px] font-semibold text-text">{ko.title}</span>
                   <span className="block text-[12px] text-muted">
-                    {t(`status.${ko.status}`)} · v{ko.version}
+                    {t(statusSchluessel(ko.status))} · v{ko.version}
                   </span>
                 </span>
                 {vorschlag.seite === seite ? (
@@ -377,7 +379,12 @@ function Assistent({
                 ))}
               </ul>
             ) : (
-              <p className="text-[12.5px] text-muted-2">{t("dublettenvergleich.quellen.keine")}</p>
+              <>
+                <p className="text-[12.5px] text-muted-2">
+                  {t("dublettenvergleich.quellen.keine")}
+                </p>
+                {leerzustandsZeile(t, "duplicates")}
+              </>
             )}
           </div>
           <fieldset>
@@ -410,7 +417,12 @@ function Assistent({
                 ))}
               </ul>
             ) : (
-              <p className="text-[12.5px] text-muted-2">{t("dublettenvergleich.quellen.keine")}</p>
+              <>
+                <p className="text-[12.5px] text-muted-2">
+                  {t("dublettenvergleich.quellen.keine")}
+                </p>
+                {leerzustandsZeile(t, "duplicates")}
+              </>
             )}
           </fieldset>
         </div>
@@ -551,7 +563,7 @@ function FeldWahl({
                 className="mt-1"
               />
               <span className="min-w-0">
-                <span className="block font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                <span className="block font-mono text-klein uppercase tracking-wider text-muted-2">
                   {t(`dublettenvergleich.seite.${seite}`)}
                 </span>
                 <span className="block whitespace-pre-wrap text-[13px] text-text">
@@ -562,7 +574,7 @@ function FeldWahl({
                     data-testid={`fliesstext-${seite}`}
                     className="mt-2 block border-t border-hairline pt-2"
                   >
-                    <span className="block font-mono text-[10px] uppercase text-muted-2">
+                    <span className="block font-mono text-klein uppercase text-muted-2">
                       {t("dublettenvergleich.feld.fliesstext")}
                     </span>
                     {rumpf[seite]?.trim() ? (
@@ -616,7 +628,10 @@ function ListenWahl({
         {t(`dublettenvergleich.feld.${feld}`)}
       </legend>
       {positionen.length === 0 ? (
-        <p className="text-[12.5px] text-muted-2">{t("dublettenvergleich.keinePositionen")}</p>
+        <>
+          <p className="text-[12.5px] text-muted-2">{t("dublettenvergleich.keinePositionen")}</p>
+          {leerzustandsZeile(t, "duplicates")}
+        </>
       ) : (
         <ul className="space-y-1">
           {positionen.map((p) => (

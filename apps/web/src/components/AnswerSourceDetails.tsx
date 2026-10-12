@@ -104,7 +104,7 @@ export function AnswerSourceDetails({
       <div className="flex flex-wrap items-center gap-1.5">
         {/* Status + Trust — dieselbe Sprache wie Bibliothek/Validierung, kein neues Vokabular. */}
         <StatusPill status={status ?? deriveStatus(ko)} />
-        <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+        <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
           {t("answerSource.trust", { n: ko.trust })}
         </span>
         {authorName ? (
@@ -123,7 +123,7 @@ export function AnswerSourceDetails({
           Ohne jedes erreichbare Original steht der ehrliche Satz — kein leerer Platz, der wie ein
           noch nicht geladener Beleg aussähe, und keine angedeutete Tür. */}
       <div data-testid="answer-source-originals" className="mt-1">
-        <div className="font-mono text-[9px] font-semibold uppercase tracking-wider text-muted-2">
+        <div className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
           {t("answerSource.originalsTitle")}
         </div>
         {!standBestaetigt ? (
@@ -147,7 +147,7 @@ export function AnswerSourceDetails({
                     title={t("answerSource.originalFile")}
                     className={BELEG_LINK}
                   >
-                    <FileText size={11} aria-hidden="true" />
+                    <FileText size={11} strokeWidth={1.8} aria-hidden="true" />
                     {q.datei.name}
                   </a>
                 ) : null}
@@ -191,7 +191,7 @@ export function AnswerSourceDetails({
                   title={t("answerSource.originalFile")}
                   className={BELEG_LINK}
                 >
-                  <FileText size={11} aria-hidden="true" />
+                  <FileText size={11} strokeWidth={1.8} aria-hidden="true" />
                   {d.name}
                 </a>
               </li>
@@ -224,7 +224,7 @@ export function AnswerSourceDetails({
           </button>
           {excerptOpen ? (
             <div className="mt-1.5 rounded-card border border-hairline bg-surface p-3">
-              {/* Dieselbe sichere Kette wie die KO-Leseansicht (KoRead): SanitizedHtml + prose-kw. */}
+              {/* Dieselbe sichere Kette wie die KO-Leseansicht (BibliothekLesen): SanitizedHtml + prose-kw. */}
               <SanitizedHtml
                 html={body}
                 className="prose-kw text-[13.5px] leading-relaxed text-text"

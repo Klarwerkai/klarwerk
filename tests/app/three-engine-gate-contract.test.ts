@@ -48,18 +48,26 @@ function lies(relativ: string): string {
 // ── Schritt 1 · tools/check: welches npm-Skript ruft das Tor wirklich? ──────────────────────────
 // Kommentare und reine Ausgaben tragen keine Wahrheit — `tools/check` nennt `npm run smoke:ui`
 // mehrfach als Hinweis an den Menschen, ohne es auszuführen.
-function torSkript(): string {
+function torSkripte(): string[] {
   const zeilen = lies("tools/check")
     .split("\n")
     .map((z) => z.replace(/#.*$/, "").trim())
     .filter((z) => z.length > 0 && !z.startsWith("echo "));
+  const skripte: string[] = [];
   for (const zeile of zeilen) {
     const treffer = /npm run (?:--silent )?["']?([\w:]+)["']?/.exec(zeile);
     if (treffer?.[1]) {
-      return treffer[1];
+      skripte.push(treffer[1]);
     }
   }
-  throw new Error("tools/check ruft kein npm-Skript aus — die Kette beginnt im Leeren.");
+  if (skripte.length === 0) {
+    throw new Error("tools/check ruft kein npm-Skript aus — die Kette beginnt im Leeren.");
+  }
+  return skripte;
+}
+
+function torSkript(): string {
+  return torSkripte()[0] as string;
 }
 
 // ── Schritt 2 · package.json: das letzte Glied der &&-Kette ist der Playwright-Aufruf ───────────
@@ -188,23 +196,21 @@ describe("JOB 1123 · Enginekette bis zur effektiven Projektmenge", () => {
     });
   }
 
-  // ── PFLICHT 2 + K7 · Die Sperre wird gehalten, nicht umgangen ────────────────────────────────
-  it("das Tor bleibt einengig, solange Stufe A nicht grün gemessen ist", () => {
-    // Diese Zusicherung ist DECKUNGSGLEICH mit K7 in tests/smoke/job1094-engine-kette.test.ts.
-    // Sie steht hier ein zweites Mal, weil dieser Durchgang die Verdrahtung tatsächlich gebaut,
-    // Stufe A gemessen und sie daraufhin zurückgenommen hat — der Verzicht soll an der Stelle
-    // sichtbar sein, an der er entschieden wurde.
-    const skript = torSkript();
-    const engines = effektiveEngines(
-      lies("playwright.smoke.config.ts"),
-      playwrightArgumente(skript),
-    );
+  // ── PFLICHT 2 + K7 · Die Sperre ist nach grüner Stufe A eingelöst ────────────────────────────
+  it("das Tor fährt nach grüner Stufe A alle drei Engines, je in einem eigenen Lauf", () => {
+    // Deckungsgleich mit K7 in tests/smoke/job1094-engine-kette.test.ts. Bis Aufnahme 20260922
+    // hielt dieser Fall den Verzicht fest: JOB 1123 hatte die Verdrahtung gebaut, Stufe A rot
+    // gemessen und sie zurückgenommen. Am 10.10.2026 lief Stufe A auf dem regulären Prüfweg grün
+    // (Firefox 151.0, WebKit 26.5, je gestartet ohne Startfehler) — erst danach wurde verdrahtet.
+    const konfig = lies("playwright.smoke.config.ts");
+    const jeSkript = torSkripte().map((s) => effektiveEngines(konfig, playwrightArgumente(s)));
+    const vereinigt = [...new Set(jeSkript.flat())].sort();
 
-    expect(
-      skript,
-      "Das Tor ruft den Drei-Engine-Weg, obwohl Stufe A rot gemessen ist. Ein Gate, das drei Engines beauftragt, von denen keine startet, meldet Fehler der Umgebung als Produktfehler.",
-    ).not.toBe("smoke:ui:gate:drei");
-    expect(engines, "Das Tor ist nicht mehr einengig.").toEqual(["chromium"]);
+    expect(vereinigt, "Das Tor fährt nicht alle drei Engines.").toEqual(ALLE_ENGINES);
+    // Je Aufruf GENAU eine Engine: ein gemeinsamer Lauf teilt den In-Memory-Server.
+    for (const engines of jeSkript) {
+      expect(engines, "Ein Toraufruf mischt Engines auf einem Server.").toHaveLength(1);
+    }
   });
 
   // ── PFLICHT 4 · Browserlage benennen, nichts installieren, nichts überspringen ───────────────
@@ -214,7 +220,7 @@ describe("JOB 1123 · Enginekette bis zur effektiven Projektmenge", () => {
     // Sichtbar in der Ausgabe: installiert ist nicht gestartet. Genau diese Unterscheidung hat
     // JOB 1094 aufgedeckt und dieser Durchgang bestätigt.
     const lage = vorhanden.length > 0 ? vorhanden.join(" ") : "(keine)";
-    const befund = `[JOB 1123] vorprovisioniert: ${lage} · Stufe A (netzfreier Start) in dieser Bahn: chromium ROT, firefox ROT, webkit ROT — Rohprotokoll in der Arbeitsspur, Verdrahtung deshalb zurückgenommen.`;
+    const befund = `[JOB 1123] vorprovisioniert: ${lage} · Stufe A (netzfreier Start) in dieser Bahn: chromium ROT, firefox ROT, webkit ROT — Rohprotokoll in der Arbeitsspur, Verdrahtung deshalb zurückgenommen. Nachtrag 10.10.2026: Stufe A auf dem regulären Prüfweg grün, Tor seither drei Engines.`;
 
     console.info(befund);
 

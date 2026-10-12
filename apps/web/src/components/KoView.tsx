@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { KnowledgeObject } from "../api/types";
+import { ExterneQuelleKennung } from "./ko/ExterneQuelleKennung";
 
 // SCRUM-127 / Pedi 04.07.: eine gemeinsame Detaildarstellung eines Wissensobjekts
 // (Aussage, Bedingungen, Maßnahmen, Quellen). Genutzt im Konflikt-Board, in der
@@ -13,7 +14,7 @@ export function KoView({ ko }: { ko: KnowledgeObject }): JSX.Element {
       <p className="text-[12.5px] leading-relaxed text-muted">{ko.statement}</p>
       {ko.conditions.length > 0 ? (
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
             {t("con.conditions")}
           </div>
           <ul className="list-disc pl-4 text-[12px] text-text">
@@ -25,7 +26,7 @@ export function KoView({ ko }: { ko: KnowledgeObject }): JSX.Element {
       ) : null}
       {ko.measures.length > 0 ? (
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
             {t("con.measures")}
           </div>
           <ul className="list-disc pl-4 text-[12px] text-text">
@@ -37,7 +38,7 @@ export function KoView({ ko }: { ko: KnowledgeObject }): JSX.Element {
       ) : null}
       {(ko.sources ?? []).length > 0 ? (
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
             {t("con.sources")}
           </div>
           <ul className="space-y-1">
@@ -55,12 +56,11 @@ export function KoView({ ko }: { ko: KnowledgeObject }): JSX.Element {
                     keine Prüfstimme, und das steht jetzt da.
 
                     Als TEXT und nicht als `title` oder Farbe: Ein Hinweis, den ein Screenreader
-                    nicht vorliest, ist keiner. */}
-                {s.peerValidated ? null : (
-                  <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
-                    {t("ko.sourceExternUnchecked")}
-                  </span>
-                )}
+                    nicht vorliest, ist keiner.
+
+                    R-0205: Hinweis und Etikett „Stufe 2" kommen aus dem gemeinsamen Baustein —
+                    dieselbe Bedingung wie an allen anderen Quellenflächen. */}
+                <ExterneQuelleKennung source={s} />
               </li>
             ))}
           </ul>

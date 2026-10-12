@@ -12,6 +12,7 @@
 // benutzt. Was hier steht, sind die drei Adressen und ihre Drahtformen.
 
 import { api } from "../../api/client";
+import type { Verbindungsnachweis } from "../../lib/integrationStatus";
 
 // ================================================================================================
 // JOB 4232 — DIE BEFUNDE ÜBER DEN INHALT, AUF DER LEITUNG.
@@ -39,6 +40,11 @@ export interface SharePointZugang {
   credentialsUsable: boolean;
   blocker: "missing" | "insecure-base-url" | null;
   lastConnectedAt: string | null;
+  /**
+   * ADMIN-02: der zuletzt festgehaltene Verbindungstest. Optional, weil ältere Server ihn nicht
+   * führen — fehlt er, gilt dasselbe wie `null`: es ist keiner belegt.
+   */
+  letzterVerbindungstest?: Verbindungsnachweis | null;
 }
 
 /** Eine Zeile der Auswahlliste. `null` heisst „unbekannt" und ist von „0"/leer unterscheidbar. */
@@ -118,6 +124,12 @@ export interface SharePointUebernahme {
 
 export const sharepointApi = {
   zugang: (): Promise<SharePointZugang> => api.get("/import/sharepoint/zugang"),
+  /**
+   * ADMIN-02: der bewusst gestartete Verbindungstest. Liest eine Listenseite (nur Merkmale) und
+   * hält das Ergebnis fest — er importiert nichts und verändert keine Beiträge.
+   */
+  verbindungstest: (): Promise<Verbindungsnachweis> =>
+    api.post("/import/sharepoint/verbindungstest", {}),
   dateien: (folderId?: string): Promise<SharePointDateiliste> =>
     api.post("/admin/import/sharepoint/files", folderId ? { folderId } : {}),
   /**

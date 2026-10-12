@@ -16,9 +16,10 @@ import { type ObjectRef, isTransientMedia, isWithinRetention } from "../../objec
 //   3. WAISEN. Ein Objekt im Object-Store ist eine Waise, wenn seine Schutzfrist abgelaufen ist
 //      (`isWithinRetention`) UND seine Kennung in KEINER Text-/JSON-Spalte irgendeiner Tabelle
 //      vorkommt — ausgenommen nur `objects` selbst und `audit`. Das ist eine bewusste OBERMENGE der
-//      fünf Referenzorte aus `object-references.ts` (Objekte samt Papierkorb, Fließtext, Fassungen,
-//      Belege, Entwürfe samt Papierkorb) und schliesst jede Tabelle ein, die später dazukommt: die
-//      Prüfung irrt in die Richtung „referenziert" (dieselbe Richtung des Zweifels wie dort).
+//      fünf Referenzorte aus mega20 Block C (Objekte samt Papierkorb, Fließtext, Fassungen, Belege,
+//      Entwürfe samt Papierkorb) und schliesst jede Tabelle ein, die später dazukommt: die Prüfung
+//      irrt in die Richtung „referenziert". R-1349: die frühere Referenzprüfung `object-references.ts`
+//      hatte keinen Produktaufrufer und ist entfernt; dieser Lauf ist der eine Weg.
 //   4. PRÜFSPUR AUF GELÖSCHTE OBJEKTE. Die Prüfspur bleibt — `audit` bekommt bewusst KEINEN
 //      Fremdschlüssel, sie muss eine Löschung überdauern. Konsistent ist ein `ko.*`-Eintrag ohne
 //      Objekt genau dann, wenn für dieses Ziel ein `ko.purged`-Beleg existiert (die Endlöschung
