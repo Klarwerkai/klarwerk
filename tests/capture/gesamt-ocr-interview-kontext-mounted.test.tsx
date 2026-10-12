@@ -121,7 +121,7 @@ const ERKANNT = "Bei Druckabfall an P2 zuerst Ventil V3 prüfen.";
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
-let modus: "freitext" | "interview" | undefined;
+let modus: "freitext" | "interview" | "formular" | undefined;
 let zeichnen: (() => Promise<void>) | null = null;
 
 const flush = async (): Promise<void> => {
@@ -199,7 +199,7 @@ async function mount(): Promise<void> {
 }
 
 /** Der Modus kommt als Prop — wie im Produkt aus dem Menü „Datei ▾" des Blatts (JOB 3062 H3). */
-async function waehleModus(m: "freitext" | "interview"): Promise<void> {
+async function waehleModus(m: "freitext" | "interview" | "formular"): Promise<void> {
   modus = m;
   if (!zeichnen) {
     throw new Error("waehleModus vor mount() gerufen");
@@ -423,7 +423,73 @@ describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführt
     expect(steuerung.angelegt).toHaveLength(2);
     expect(steuerung.angelegt[1]?.ocrAbschnitte).toBeUndefined();
   });
+
+  // Nacharbeit 11 (Bens Befund): im Formular schreibt die Erkennung in die sichtbare „Aussage"
+  // (R-1688/R-1733). Bis hierher las der Interviewkontext nur den Rohtext.
+  it("I8 · Formular: erkannter Text in der Aussage reist beim direkten Wechsel ins Interview mit", async () => {
+    await waehleModus("formular");
+    await erkenneBild();
+    expect(aussageFeld().value).toContain(ERKANNT);
+    expect(rohtextFeldOderNull()?.value ?? "").not.toContain(ERKANNT);
+
+    const kontext = await starteInterview();
+    expect(kontext).toContain(ERKANNT);
+    expect(kontext).toContain("aushang.png");
+    expect(kontext.split(ERKANNT)).toHaveLength(2);
+  });
+
+  it("I9 · Formular: gespeichert, frisch geöffnet, fortgesetzt — der Kontext ist da, genau einmal", async () => {
+    await waehleModus("formular");
+    await erkenneBild();
+    await entferneBild();
+    await speichereUeberWache();
+    expect(steuerung.angelegt).toHaveLength(1);
+    // Die gesonderte OCR-Sicherung trägt jetzt auch den Block aus der Aussage.
+    expect(steuerung.angelegt[0]?.ocrAbschnitte).toEqual([{ name: "aushang.png", text: ERKANNT }]);
+
+    await neuOeffnenUndFortsetzen();
+    expect(aussageFeld().value).toContain(ERKANNT);
+    const kontext = await starteInterview();
+    expect(kontext).toContain(ERKANNT);
+    // Aussage und gesicherte Kopie sind DERSELBE Abschnitt — er zählt einmal.
+    expect(kontext.split(ERKANNT)).toHaveLength(2);
+  });
+
+  it("I10 · Formular: eine Korrektur in der Aussage gilt — keine veraltete Kopie", async () => {
+    await waehleModus("formular");
+    await erkenneBild();
+    const korrigiert = ERKANNT.replace("V3", "V8");
+    await tippe(aussageFeld(), aussageFeld().value.replace(ERKANNT, korrigiert));
+    const kontext = await starteInterview();
+    expect(kontext).toContain(korrigiert);
+    expect(kontext).not.toContain(ERKANNT);
+  });
+
+  it("I11 · Formular: wer den Abschnitt aus der Aussage löscht, schickt ihn nicht ins Interview", async () => {
+    await waehleModus("formular");
+    await erkenneBild();
+    await tippe(aussageFeld(), "Nur noch eigener Text.");
+    const kontext = await starteInterview();
+    expect(kontext).toBe("");
+  });
 });
+
+/** Das Formularfeld „Aussage" — an seiner sichtbaren Beschriftung gefunden (wie im Hauptstand). */
+function aussageFeld(): HTMLTextAreaElement {
+  const label = [...container.querySelectorAll("label")].find(
+    (l) => l.querySelector("span")?.textContent?.trim() === i18n.t("capture.fStatement"),
+  );
+  const feld = label?.querySelector("textarea");
+  if (!(feld instanceof HTMLTextAreaElement)) {
+    throw new Error("Feld „Aussage“ nicht gefunden");
+  }
+  return feld;
+}
+
+function rohtextFeldOderNull(): HTMLTextAreaElement | null {
+  const ph = i18n.t("capture.rawPlaceholder");
+  return [...container.querySelectorAll("textarea")].find((x) => x.placeholder === ph) ?? null;
+}
 
 async function entferneBild(): Promise<void> {
   // Das Bild selbst reist nicht im Entwurf (lokaler Anhang) — vor dem Speichern entfernen, damit

@@ -13,9 +13,10 @@
 // die der Prozess dabei aufbaut, wird mitgeschnitten. Belegt wird damit: die Aufnahme geht an den
 // eigenen Rechner und an NICHTS sonst.
 //
-// WAS DAS NICHT BELEGT, und das bleibt offen: Der Dienst hier gibt einen festen Text zurück. Eine
-// echte Spracherkennung durch eine lokal installierte Engine (z. B. whisper.cpp oder
-// faster-whisper) ist ein eigener Realnachweis — sie ist in diesem Prüflauf nicht installiert.
+// WAS DAS NICHT BELEGT (Bens Befund Nacharbeit 11): Der Dienst hier gibt einen festen Text auf eine
+// stille Datei zurück — das ist ein SCHNITTSTELLENBELEG, kein Spracherkennungsnachweis. Die echte
+// Spracherkennung prüft `r0181-realprobe-lokale-engine.test.ts` gegen eine tatsächlich laufende
+// lokale Engine mit einer künstlichen Sprachaufnahme; ohne Engine wird sie übersprungen.
 import { Buffer } from "node:buffer";
 import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";

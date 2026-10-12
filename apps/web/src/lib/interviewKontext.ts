@@ -108,32 +108,73 @@ export function ocrAbschnitte(raw: string): OcrAbschnitt[] {
   return abschnitte.filter((a) => a.text.length > 0);
 }
 
+// ================================================================================================
+// Nacharbeit 11 (Bens Befund) — DIE SICHTBAREN FELDER, NICHT NUR DER ROHTEXT.
+// ================================================================================================
+//
+// Seit der Integration mit R-1688/R-1733 landet erkannter Bildtext im SICHTBAREN Feld: im Formular
+// in der „Aussage" (`draft.statement`), sonst im Rohtext. Bis hierher las der Interviewkontext und
+// die Entwurfssicherung nur den Rohtext — ein im Formular erkannter Block fehlte im Interview und in
+// `ocrAbschnitte`. Jetzt nehmen alle drei Funktionen die FELDER entgegen (Rohtext und Aussage) und
+// lesen jedes für sich (ein Feld mit fehlender Endzeile kann das andere nicht verschlucken). Ein
+// Abschnitt, der in beiden Feldern steht — der Moduswechsel übernimmt Text zwischen ihnen —, zählt
+// EINMAL. Gelesen wird immer der aktuelle Inhalt; Korrekturen und Löschungen wirken sofort, eine
+// zweite, veraltende Kopie entsteht nicht.
+
+/** Ein Feld oder mehrere — Rohtext und Aussage, so wie sie gerade dastehen. */
+export type SichtbareFelder = string | readonly string[];
+
+const schluessel = (a: OcrAbschnitt): string => `${a.name}\n${a.text.trim()}`;
+
+/** Die erkannten Abschnitte aller sichtbaren Felder, jeder Abschnitt einmal, in Feldreihenfolge. */
+export function ocrAbschnitteDerFelder(felder: SichtbareFelder): OcrAbschnitt[] {
+  const liste = typeof felder === "string" ? [felder] : felder;
+  const gesehen = new Set<string>();
+  const ergebnis: OcrAbschnitt[] = [];
+  for (const feld of liste) {
+    for (const abschnitt of ocrAbschnitte(feld)) {
+      if (!gesehen.has(schluessel(abschnitt))) {
+        gesehen.add(schluessel(abschnitt));
+        ergebnis.push(abschnitt);
+      }
+    }
+  }
+  return ergebnis;
+}
+
 /**
- * Was der Entwurf als `ocrAbschnitte` sichert: die gesicherten (beim Fortsetzen ohne Rohtext
- * zurückgekommenen) und die im Rohtext stehenden Abschnitte.
+ * Was der Entwurf als `ocrAbschnitte` sichert: die gesicherten (beim Fortsetzen nicht wieder
+ * sichtbar gewordenen) und die in den sichtbaren Feldern stehenden Abschnitte — jeder einmal.
  */
 export function ocrAbschnitteFuerEntwurf(
   gesichert: readonly OcrAbschnitt[],
-  raw: string,
+  felder: SichtbareFelder,
 ): OcrAbschnitt[] {
-  return [...gesichert.filter((a) => a.text.trim().length > 0), ...ocrAbschnitte(raw)];
+  const sichtbar = ocrAbschnitteDerFelder(felder);
+  const imFeld = new Set(sichtbar.map(schluessel));
+  const mitInhalt = gesichert.filter((a) => a.text.trim().length > 0);
+  const unsichtbar = mitInhalt.filter((a) => !imFeld.has(schluessel(a)));
+  return [...unsichtbar, ...sichtbar];
 }
 
 /**
- * Gesicherte Abschnitte, die NICHT schon im wiederhergestellten Rohtext stehen — so kommt beim
- * Fortsetzen nichts doppelt, und der Rohtext bleibt für seine Abschnitte die Quelle.
+ * Gesicherte Abschnitte, die NICHT schon in den wiederhergestellten Feldern stehen — so kommt beim
+ * Fortsetzen nichts doppelt, und die sichtbaren Felder bleiben für ihre Abschnitte die Quelle.
  */
 export function gesicherteOhneRohtext(
   gespeichert: readonly OcrAbschnitt[],
-  raw: string,
+  felder: SichtbareFelder,
 ): OcrAbschnitt[] {
-  const imRohtext = new Set(ocrAbschnitte(raw).map((a) => `${a.name}\n${a.text}`));
-  return gespeichert.filter((a) => !imRohtext.has(`${a.name}\n${a.text.trim()}`));
+  const imFeld = new Set(ocrAbschnitteDerFelder(felder).map(schluessel));
+  return gespeichert.filter((a) => !imFeld.has(schluessel(a)));
 }
 
 /** Der Kontext für das Interview — leer, wenn kein erkannter Abschnitt mit Inhalt mehr dasteht. */
-export function interviewKontext(raw: string, gesichert: readonly OcrAbschnitt[] = []): string {
-  return ocrAbschnitteFuerEntwurf(gesichert, raw)
+export function interviewKontext(
+  felder: SichtbareFelder,
+  gesichert: readonly OcrAbschnitt[] = [],
+): string {
+  return ocrAbschnitteFuerEntwurf(gesichert, felder)
     .map((a) => `[${a.name}]\n${a.text.trim()}`)
     .join("\n\n");
 }

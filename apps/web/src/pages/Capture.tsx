@@ -1189,6 +1189,10 @@ export function CaptureArbeitsraum({
   // Aussage). Sie bleiben Interviewkontext und reisen beim nächsten Speichern wieder mit. Abschnitte
   // im Rohtext sind weiterhin dort die Quelle (lib/interviewKontext.ts).
   const [ocrGesichert, setOcrGesichert] = useState<readonly OcrAbschnitt[]>([]);
+  // Nacharbeit 11 (Bens Befund): die Felder, in die die Erkennung SCHREIBT (R-1688/R-1733) — Rohtext
+  // und die „Aussage" des Formulars. Interviewkontext und Entwurfssicherung lesen beide, jeweils im
+  // aktuellen Stand; ein Abschnitt in beiden zählt einmal (lib/interviewKontext.ts).
+  const sichtbareOcrFelder: readonly string[] = [raw, draft?.statement ?? ""];
   // R-1624: der bestätigte Bildbefund des laufenden Foto-Interviews. null = normales Interview.
   // Der Befund reist mit jedem Turn als Klartext mit und wird mit dem Interviewfortschritt
   // gesichert und wiederhergestellt; das Foto selbst steht als Bild-Anker im Rumpf (beim Start
@@ -1521,8 +1525,10 @@ export function CaptureArbeitsraum({
         },
         // Aufnahme `gesamt-ocr` (FR-CAP-05): die auf Klick erkannten Abschnitte des Rohtextes, so wie
         // sie JETZT dastehen — auch nach dem Fortsetzen eines Entwurfs (lib/interviewKontext.ts),
-        // dazu die gesicherten Abschnitte eines strukturiert gespeicherten Entwurfs.
-        interviewKontext(raw, ocrGesichert),
+        // dazu die gesicherten Abschnitte eines strukturiert gespeicherten Entwurfs. Nacharbeit 11:
+        // gelesen werden BEIDE sichtbaren Felder — Rohtext und die „Aussage" des Formulars, in die
+        // die Erkennung dort schreibt (R-1688/R-1733).
+        interviewKontext(sichtbareOcrFelder, ocrGesichert),
       ),
     onSuccess: (res, v) => {
       if (v.run !== ivRunRef.current) {
@@ -2754,7 +2760,7 @@ export function CaptureArbeitsraum({
       const isDraftUpdate = Boolean(draftId);
       // Aufnahme `gesamt-ocr` (Nacharbeit 4): die erkannten Abschnitte reisen als eigenes Feld mit —
       // auch wenn `statement` unten die verdichtete Aussage statt des Rohtextes trägt.
-      const ocrFuerEntwurf = ocrAbschnitteFuerEntwurf(ocrGesichert, raw);
+      const ocrFuerEntwurf = ocrAbschnitteFuerEntwurf(ocrGesichert, sichtbareOcrFelder);
       const payload: DraftPayload = {
         title: draft?.title || raw.split("\n")[0]?.slice(0, 80) || t("capture.draftFallbackTitle"),
         statement: draft?.statement || raw,
@@ -3120,8 +3126,10 @@ export function CaptureArbeitsraum({
     // Aufnahme `gesamt-ocr` (Nacharbeit 4): gesicherte Bildtext-Abschnitte zurückholen — nur die,
     // die nicht ohnehin im (beim Erzähl-Einstieg wiederhergestellten) Rohtext stehen.
     const erzaehlRohtext = p.statement ?? p.title ?? "";
-    const kuenftigerRohtext = target === "tell" ? erzaehlRohtext : raw;
-    setOcrGesichert(gesicherteOhneRohtext(p.ocrAbschnitte ?? [], kuenftigerRohtext));
+    // Nacharbeit 11: die Felder, die NACH dem Laden sichtbar sind — beim Erzähl-Einstieg der Rohtext,
+    // sonst der unveränderte Rohtext UND die wiederhergestellte Aussage (Formular, Studio).
+    const kuenftigeFelder = target === "tell" ? [erzaehlRohtext] : [raw, p.statement ?? ""];
+    setOcrGesichert(gesicherteOhneRohtext(p.ocrAbschnitte ?? [], kuenftigeFelder));
     if (target === "tell") {
       // Erzähl-Einstieg → Rohtext-Feld, sofort editier- und speicherbar.
       setMode("freitext");

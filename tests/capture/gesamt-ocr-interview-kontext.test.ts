@@ -274,6 +274,27 @@ describe("gesamt-ocr · FR-CAP-05 · Prompt und Client-Auswahl", () => {
   });
 });
 
+describe("gesamt-ocr · Nacharbeit 11 · Rohtext UND Aussage sind sichtbare Felder", () => {
+  it("K8 · beide Felder werden gelesen, jedes für sich, und ein Abschnitt in beiden zählt einmal", () => {
+    const block = ocrAbschnittText("aushang.png", ERKANNT);
+    const aussage = `Eigene Aussage.\n\n${block}`;
+    // Rohtext mit einem Altblock OHNE Endzeile — er darf die Aussage nicht verschlucken.
+    const raw = `${ocrAbschnittKopf("notiz.jpg")}\nZweiter Block ohne Ende`;
+    expect(interviewKontext([raw, aussage])).toBe(
+      `[notiz.jpg]\nZweiter Block ohne Ende\n\n[aushang.png]\n${ERKANNT}`,
+    );
+    expect(interviewKontext([block, aussage])).toBe(`[aushang.png]\n${ERKANNT}`);
+  });
+
+  it("K9 · Sicherung und Fortsetzen: keine Doppelung zwischen Aussage und gesicherter Kopie", () => {
+    const gesichert = [{ name: "aushang.png", text: ERKANNT }];
+    const aussage = ocrAbschnittText("aushang.png", ERKANNT);
+    expect(ocrAbschnitteFuerEntwurf(gesichert, ["", aussage])).toEqual(gesichert);
+    expect(gesicherteOhneRohtext(gesichert, ["", aussage])).toEqual([]);
+    expect(gesicherteOhneRohtext(gesichert, ["", "Andere Aussage."])).toEqual(gesichert);
+  });
+});
+
 describe("gesamt-ocr · Nacharbeit 4 · der Entwurfsdienst sichert die erkannten Abschnitte", () => {
   it("E1 · angelegt und gelesen: Abschnitte bleiben, Kaputtes und Leeres fällt weg", async () => {
     const svc = new CaptureService({ repo: new InMemoryDraftRepo() });
