@@ -61,6 +61,12 @@ export interface NotizZustand {
   ausstehend: AusstehendeNotiz[];
   /** Der letzte bestätigte Schritt, für die Ansage (`aria-live`). */
   meldung: string | null;
+  /**
+   * Zählt jedes Vergessen (Abmelden, Kontowechsel). Ein Vergessen mitten im ersten Lesen setzt den
+   * Ladestand wieder auf `aus` — für React derselbe Wert wie vorher. Erst diese Zahl macht den
+   * neuen Anfang sichtbar, damit die Fläche erneut liest statt beim Ladehinweis stehen zu bleiben.
+   */
+  generation: number;
 }
 
 const LEER: NotizZustand = {
@@ -72,6 +78,7 @@ const LEER: NotizZustand = {
   bearbeitung: null,
   ausstehend: [],
   meldung: null,
+  generation: 0,
 };
 
 let zustand: NotizZustand = LEER;
@@ -110,7 +117,7 @@ export function useNotizen(): NotizZustand {
 /** Abmelden, Kontowechsel, Tests: alles vergessen. */
 export function vergissNotizen(): void {
   generation += 1;
-  zustand = LEER;
+  zustand = { ...LEER, generation };
   for (const h of hoerer) {
     h();
   }
@@ -184,8 +191,18 @@ function mitNotiz(liste: readonly KlaraNotiz[], n: KlaraNotiz): KlaraNotiz[] {
 // Abläufe gegen den Server.
 // ------------------------------------------------------------------------------------------------
 
-/** Liest die eigenen Notizen (mit Suchwörtern) — die zuletzt geänderten zuerst. */
-export async function ladeNotizen(t: TFunction, suche = zustand.suche): Promise<void> {
+/**
+ * Liest die eigenen Notizen (mit Suchwörtern) — die zuletzt geänderten zuerst. `fuerGeneration`:
+ * der Anstoss gilt nur für diesen Stand; ein inzwischen vergessener Stand liest nicht mehr.
+ */
+export async function ladeNotizen(
+  t: TFunction,
+  suche = zustand.suche,
+  fuerGeneration: number = generation,
+): Promise<void> {
+  if (fuerGeneration !== generation) {
+    return;
+  }
   const gen = generation;
   suchlauf += 1;
   const lauf = suchlauf;

@@ -241,12 +241,15 @@ export function KlaraNotizen(): JSX.Element {
   const s = useNotizen();
   const [suche, setSuche] = useState(s.suche);
   // Beim ersten Zeigen die eigenen Notizen vom Server lesen — nach erneuter Anmeldung genauso.
+  // Die Generation gehört dazu: ein Vergessen während des ersten Lesens führt zurück auf `aus`, und
+  // nur an der neuen Generation sieht React, dass erneut gelesen werden muss.
   const laden = s.laden;
+  const generation = s.generation;
   useEffect(() => {
     if (laden === "aus") {
-      void ladeNotizen(t);
+      void ladeNotizen(t, undefined, generation);
     }
-  }, [laden, t]);
+  }, [laden, generation, t]);
 
   return (
     <section
