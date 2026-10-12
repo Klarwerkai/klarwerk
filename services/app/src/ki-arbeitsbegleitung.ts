@@ -1172,6 +1172,12 @@ function zitat(roh: string): { readonly quelleId: string; readonly fassung: stri
  * Nacharbeit 5 (Ben, AC09): ein Texttreffer ist nur eine FUNDSTELLE. Bestätigt wird erst, wenn im
  * selben Satz Gegenstand und Wert stehen — der Wert als ganze Wortfolge (keine Teilzahl: „20 EUR"
  * steckt nicht in „120 EUR") — und der Satz nicht verneint ist (`gleicheAb`).
+ *
+ * Nacharbeit 6 (Ben, AC09): gemeinsames Vorkommen im Satz genügt nicht. Der Wert muss dem
+ * Gegenstand GESICHERT zugeordnet sein: beide im selben Satzglied, ohne weiteren Zahlenwert dort
+ * (`zugeordnet`). Ist das nicht entscheidbar, bleibt es eine Fundstelle — bewusst streng: eine
+ * richtige Aussage in komplizierter Satzform bleibt eher unbestätigt, als dass eine falsche
+ * bestätigt wird.
  */
 export function vergleicheKiErgebnisse(
   paket: Pick<KiKontextpaket, "quellenstand" | "passagen">,
@@ -1225,14 +1231,16 @@ export function vergleicheKiErgebnisse(
       status = "quelle_belegt";
       const orte = bestaetigt.map((f) => `${f.quelleId} (Fassung ${f.fassung}, ${f.abschnittId})`);
       const belegt = orte.join(", ");
-      text = `Übereinstimmend; Gegenstand und Wert stehen im selben Satz in ${belegt}.`;
+      text = `Übereinstimmend; der Wert ist dem Gegenstand zugeordnet in ${belegt}.`;
     } else if (abgleich.length > 0) {
-      // Der Wert steht dort — aber nicht als Aussage über diesen Gegenstand, oder verneint.
+      // Der Wert steht dort — aber nicht gesichert als Aussage über diesen Gegenstand, oder verneint.
       status = "quelle_genannt_unbestaetigt";
       const orte = abgleich.map((f) => `${f.quelleId} (${f.abschnittId})`).join(", ");
       const warum = abgleich.some((f) => f.verneint)
         ? "die Aussage ist dort verneint"
-        : "dort ist nicht von diesem Gegenstand die Rede";
+        : abgleich.some((f) => f.gegenstand)
+          ? "der Wert ist dort nicht gesichert diesem Gegenstand zugeordnet"
+          : "dort ist nicht von diesem Gegenstand die Rede";
       text = `Der Wert steht in ${orte}, aber ${warum}. ${UNBESTAETIGT}`;
     } else if (genannteQuellen.length > 0) {
       status = "quelle_genannt_unbestaetigt";
@@ -1324,16 +1332,56 @@ function gegenstandImSatz(satz: readonly string[], thema: string): boolean {
 export interface KiAbgleich extends KiFundstelle {
   /** Der Gegenstand der Aussage steht im selben Satz wie der Wert. */
   readonly gegenstand: boolean;
+  /**
+   * Nacharbeit 6 (Ben, AC09): der Wert ist dem Gegenstand GESICHERT zugeordnet — beide stehen im
+   * selben Satzglied, und dort steht kein anderer Zahlenwert, dem der Gegenstand ebenso gehören
+   * könnte. Gemeinsames Vorkommen im Satz allein ist keine Zuordnung.
+   */
+  readonly zuordnung: boolean;
   /** Der Satz mit dem Wert ist verneint. */
   readonly verneint: boolean;
-  /** Erst Gegenstand UND Wert im selben Satz OHNE Verneinung bestätigen die Aussage. */
+  /** Erst Gegenstand, gesicherte Zuordnung und keine Verneinung bestätigen die Aussage. */
   readonly bestaetigt: boolean;
+}
+
+/**
+ * Satzglieder: ein Satz, geteilt an Komma, Semikolon und nebenordnenden Konjunktionen. In „Der
+ * Listenpreis beträgt 120 EUR und der Versand kostet 20 EUR" sind „Listenpreis … 120 EUR" und
+ * „Versand … 20 EUR" zwei Glieder — der zweite Wert gehört nicht zum ersten Gegenstand.
+ */
+const NEBENORDNUNG =
+  /\s*[,;]\s*|\s+(?:und|sowie|aber|oder|jedoch|während|wohingegen|and|or|but|while|whereas)\s+/iu;
+
+function satzglieder(satz: string): string[][] {
+  return satz
+    .split(NEBENORDNUNG)
+    .map((teil) => wortfolge(teil))
+    .filter((w) => w.length > 0);
+}
+
+function istZahl(wort: string): boolean {
+  return /^\p{N}/u.test(wort);
+}
+
+/**
+ * Ist der Wert dem Gegenstand in einem Satzglied gesichert zugeordnet? Das Glied muss den Wert als
+ * ganze Wortfolge UND den Gegenstand tragen, und es darf keinen weiteren Zahlenwert enthalten —
+ * sonst ist nicht entscheidbar, welcher Wert zum Gegenstand gehört, und es bleibt beim Texttreffer.
+ */
+function zugeordnet(satz: string, thema: string, gesucht: readonly string[]): boolean {
+  const eigeneZahlen = new Set(gesucht.filter(istZahl));
+  return satzglieder(satz).some(
+    (glied) =>
+      enthaeltFolge(glied, gesucht) &&
+      gegenstandImSatz(glied, thema) &&
+      glied.filter(istZahl).every((w) => eigeneZahlen.has(w)),
+  );
 }
 
 /**
  * Gleicht eine Aussage (Gegenstand + Wert) mit einer Originalpassage ab. `null` heisst: der Wert
  * steht dort als ganze Wortfolge gar nicht — kein Texttreffer. Sonst wird der BESTE Satz mit dem
- * Wert gemeldet; bestätigt ist nur ein Satz mit Gegenstand und ohne Verneinung.
+ * Wert gemeldet; bestätigt ist nur ein Satz mit gesicherter Zuordnung und ohne Verneinung.
  */
 function gleicheAb(
   passage: string,
@@ -1346,8 +1394,9 @@ function gleicheAb(
     const woerter = wortfolge(satz);
     if (!enthaeltFolge(woerter, gesucht)) continue;
     const gegenstand = gegenstandImSatz(woerter, thema);
+    const zuordnung = gegenstand && zugeordnet(satz, thema, gesucht);
     const verneint = woerter.some((w) => VERNEINUNGEN.has(w));
-    const jetzt = { gegenstand, verneint, bestaetigt: gegenstand && !verneint };
+    const jetzt = { gegenstand, zuordnung, verneint, bestaetigt: zuordnung && !verneint };
     if (jetzt.bestaetigt) return jetzt;
     treffer ??= jetzt;
   }

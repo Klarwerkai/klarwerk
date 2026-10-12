@@ -139,7 +139,7 @@ function AuftragKarte({
           <button
             type="button"
             data-testid="ki-auftrag-uebergeben"
-            disabled={laeuft || !a.paketAktuell}
+            disabled={laeuft || !a.paketAktuell || a.wegGesperrt !== null}
             onClick={() =>
               void tue(async () => {
                 const r = await kiArbeitswegApi.uebergib(gespraechId, job.jobId, erneut);

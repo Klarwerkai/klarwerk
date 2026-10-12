@@ -869,6 +869,53 @@ describe("K9 · zwei KI-Ergebnisse gegen Originalquellen vergleichen", () => {
     });
   });
 
+  // Nacharbeit 6 (Ben, AC09): zwei Gegenstände und zwei Werte im SELBEN Satz.
+  const zweiGegenstaende = (text: string) =>
+    paket([quelle({ quelleId: "q-satz", abschnitte: [{ abschnittId: "a1", text }] })]);
+
+  it("GEGENFALL (Ben): „Listenpreis 120 EUR und Versand 20 EUR“ bestätigt „Listenpreis: 20 EUR“ nicht", () => {
+    const p = zweiGegenstaende("Der Listenpreis beträgt 120 EUR und der Versand kostet 20 EUR.");
+    const z = beide(p, "Listenpreis", "20 EUR", ["q-satz"]);
+    expect(z).toMatchObject({
+      status: "quelle_genannt_unbestaetigt",
+      belegteQuellen: [],
+      fundstellen: [{ quelleId: "q-satz", abschnittId: "a1" }],
+      abgleich: [{ gegenstand: true, zuordnung: false, verneint: false, bestaetigt: false }],
+    });
+    expect(z?.text).toContain("nicht gesichert diesem Gegenstand zugeordnet");
+  });
+
+  it("GEGENBELEG: im selben Satz wird jeder Wert seinem eigenen Gegenstand richtig zugeordnet", () => {
+    for (const text of [
+      "Der Listenpreis beträgt 120 EUR und der Versand kostet 20 EUR.",
+      "Listenpreis 120 EUR, Versand 20 EUR.",
+    ]) {
+      const p = zweiGegenstaende(text);
+      expect(beide(p, "Listenpreis", "120 EUR", ["q-satz"]), text).toMatchObject({
+        status: "quelle_belegt",
+        abgleich: [{ zuordnung: true, bestaetigt: true }],
+      });
+      expect(beide(p, "Versand", "20 EUR", ["q-satz"]), text).toMatchObject({
+        status: "quelle_belegt",
+        abgleich: [{ zuordnung: true, bestaetigt: true }],
+      });
+      expect(beide(p, "Versand", "120 EUR", ["q-satz"])?.status, text).toBe(
+        "quelle_genannt_unbestaetigt",
+      );
+      expect(beide(p, "Listenpreis", "20 EUR", ["q-satz"])?.status, text).toBe(
+        "quelle_genannt_unbestaetigt",
+      );
+    }
+  });
+
+  it("nicht entscheidbare Zuordnung (zweiter Zahlenwert im selben Glied) bleibt Fundstelle", () => {
+    const p = zweiGegenstaende("Der Listenpreis für 10 Lizenzen beträgt 1200 EUR.");
+    expect(beide(p, "Listenpreis", "1200 EUR", ["q-satz"])).toMatchObject({
+      status: "quelle_genannt_unbestaetigt",
+      abgleich: [{ gegenstand: true, zuordnung: false, bestaetigt: false }],
+    });
+  });
+
   it("die gesperrte Passage ist kein Beleg — sie war nie im Paket", () => {
     const p = paket();
     const marge = (anbieter: string): KiErgebnis => ({

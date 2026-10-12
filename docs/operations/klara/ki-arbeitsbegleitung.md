@@ -61,8 +61,16 @@ eindeutig zuzuordnen, wird kein Beleg geraten.
   zurückgehalten (`inhalteZurueckgehalten`). Titel entzogener Quellen erscheinen nicht. Der
   Vergleich ist dann gesperrt.
 - Vergleich (AC09): Ein Texttreffer ist nur eine Fundstelle. Bestätigt ist eine Aussage erst, wenn
-  im selben Satz der Originalpassage Gegenstand und Wert stehen — der Wert als ganze Wortfolge,
-  ohne Verneinung.
+  der Wert dem Gegenstand gesichert zugeordnet ist: beide im selben Satzglied (getrennt an Komma,
+  Semikolon und „und/oder/aber …“), dort kein weiterer Zahlenwert, der Wert als ganze Wortfolge,
+  ohne Verneinung. Nicht entscheidbare Fälle bleiben unbestätigt.
+
+## Bedienprobe der Oberfläche
+
+`tests-smoke/ki-arbeitsweg-browser.spec.ts` bedient die Fläche im Chromium-Prüfweg: Auftrag
+vorbereiten, Prompt sehen, übergeben, Ergebnis zurückgeben, dazu die sichtbaren Sperren „Keine KI“
+und Rechteentzug. Kandidat (`/health`) und Browserversion liegen als Anhang bei. Eine Menschenprobe
+ist das nicht.
 
 ## Offene Grenzen
 
