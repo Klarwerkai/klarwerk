@@ -440,7 +440,14 @@ export function ladeTastenkuerzel(kontoId: string): Promise<void> {
   }
   const gilt = (): boolean =>
     lage.kontoId === kontoId && schreibmarke === marke && lage.speichert === null;
-  const anfrage = (async () => {
+  // Der Eintrag steht, BEVOR die Anfrage läuft; am Ende räumt sie nur ihren eigenen Eintrag ab.
+  const eintrag: { kontoId: string; marke: number; anfrage: Promise<void> } = {
+    kontoId,
+    marke,
+    anfrage: Promise.resolve(),
+  };
+  laufendesLaden = eintrag;
+  eintrag.anfrage = (async () => {
     try {
       const antwort = await serverstand();
       if (gilt()) {
@@ -451,13 +458,12 @@ export function ladeTastenkuerzel(kontoId: string): Promise<void> {
         setze({ ...lage, status: lage.antwort ? "bereit" : "fehler" });
       }
     } finally {
-      if (laufendesLaden?.anfrage === anfrage) {
+      if (laufendesLaden === eintrag) {
         laufendesLaden = null;
       }
     }
   })();
-  laufendesLaden = { kontoId, marke, anfrage };
-  return anfrage;
+  return eintrag.anfrage;
 }
 
 export type SpeicherErgebnis =
