@@ -143,6 +143,8 @@ am Konflikt, **nicht** im Protokoll.
 | `external.policy.set` | `stage` | Z |
 | `reasoner.ki-freigabe` | `vorher`, `nachher` (Freigabestand) | Z |
 | `reasoner.zweitmeinung`, `reasoner.zweitmeinung-nicht-wirksam` (R-0305/R-1099) | `vorher`, `nachher` (`openai`/`anthropic`/`local`/`aus`) | Z |
+| `reasoner.referenzpruefung`, `reasoner.referenzpruefung-nicht-wirksam` (REF-02/REF-03) | `vorher`, `nachher` (Listen aus `openai`/`anthropic`/`local`); bei Änderung zusätzlich `modelleVorher`, `modelleNachher` (je `wahl`, `anbieter` = Clientname, `modell`) | Z — kein Schlüssel, kein Quelltext |
+| `reasoner.referenzpruefung-funktionscheck` (REF-03; Ziel `reasoner.referenzpruefung:<wahl>`) | `wahl`, `zeit`, `anbieter`, `modell`, `ergebnis`, `grund`, `modellaufruf`, `dauerMs`, `verbrauch`, `kosten`, `richtlinie`, `fiktiv` | Z — der Prüfstoff ist fiktiv und steht **nicht** im Protokoll |
 | `audit.exported` | `count`, `headSeq`, `headHash` | Z |
 
 ### Klara-Aufträge (`services/app/src/routes/klara-gespraech-routes.ts`)

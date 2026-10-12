@@ -3979,6 +3979,73 @@ export interface ReasonerConfigStatus {
 // als Ursache ausgegeben werden (s. `apps/web/src/lib/kiTestBefund.ts`).
 export type ModelFailureClass = "timeout" | "http" | "network" | "parse" | "unknown";
 
+// produkt:20261009:referenzki-adminauswahl (REF-03): der Einstieg „Referenzprüfung" — wortgleich
+// zu `GET /api/reasoner/referenzpruefung` (`services/app/src/routes/reasoner-routes.ts`).
+export type ReferenzWahl = "openai" | "anthropic" | "local";
+export type ReferenzOptionZustand =
+  | "nicht_eingerichtet"
+  | "ausgeschaltet"
+  | "nicht_verfuegbar"
+  | "konfiguriert"
+  | "letzte_pruefung_erfolgreich"
+  | "letzte_pruefung_fehlgeschlagen";
+export type ReferenzOptionSperre =
+  | "ki_abgeschaltet"
+  | "keine_freigabe_externe_verarbeitung"
+  | "nicht_erreichbar"
+  | "kein_pruefmodell";
+
+export interface ReferenzFunktionscheck {
+  wahl: ReferenzWahl;
+  zeit: string;
+  anbieter: string;
+  modell: string | null;
+  ergebnis: "erfolgreich" | "fehlgeschlagen";
+  grund: string | null;
+  modellaufruf: boolean;
+  dauerMs: number;
+  verbrauch: { eingabe: number; ausgabe: number } | null;
+  kosten: { betrag: number; waehrung: string; preisstand: string } | null;
+  richtlinie: string;
+  fiktiv: true;
+  /** Nur in der Antwort des Checks: ob er im Audit gespeichert wurde. */
+  gespeichert?: boolean;
+}
+
+export interface ReferenzOption {
+  wahl: ReferenzWahl;
+  art: "intern" | "oeffentlich";
+  anbieter: string | null;
+  modell: string | null;
+  eingerichtet: boolean;
+  erlaubt: boolean;
+  rang: number | null;
+  sperre: ReferenzOptionSperre | null;
+  gleichWieAntwortmodell: boolean;
+  zustand: ReferenzOptionZustand;
+  letzteFunktionspruefung: ReferenzFunktionscheck | null;
+}
+
+export interface ReferenzVerwaltung {
+  liste: ReferenzWahl[];
+  optionen: ReferenzOption[];
+  antwortmodell: { anbieter: string; modell: string | null } | null;
+  freigabe: { oeffentlicheKi: boolean; vertraulicheInhalte: boolean };
+  unabhaengigVerfuegbar: boolean;
+  policySource: ReasonerConfigStatus["policySource"];
+  kiAbgeschaltet: boolean;
+  grenzen: {
+    richtlinie: string;
+    zeitlimitMs: number;
+    antwortMaxToken: number;
+    postenMax: number;
+    eingabeMaxZeichen: number;
+    erneutMax: number;
+    automatischeWiederholung: false;
+  };
+  preise: { hinterlegt: boolean; waehrung?: string; preisstand?: string; fehler?: string };
+}
+
 // Key-Test (Pedi 02.07.): Ergebnis des echten Mini-Modellaufrufs (ehrlich, kein Secret).
 export interface ReasonerProbeResult {
   ok: boolean;

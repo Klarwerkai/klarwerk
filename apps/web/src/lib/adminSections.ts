@@ -82,6 +82,13 @@ export const ADMIN_DETAILS: readonly AdminDetailZiel[] = [
   { id: "teams", section: "konten", labelKey: "teams.titel", synonymKeys: ["teams.syn"] },
   { id: "ansichtRolle", section: "konten", labelKey: "role.viewAs" },
   { id: "ki", section: "ki", labelKey: "adm.ai.title", synonymKeys: ["adm.ziel.ki.syn"] },
+  // produkt:20261009:referenzki-adminauswahl (REF-03): die Referenz-KI als eigene Prüfrolle.
+  {
+    id: "kiReferenz",
+    section: "ki",
+    labelKey: "referenzpruefung.einstieg.titel",
+    synonymKeys: ["referenzpruefung.admin.titel"],
+  },
   { id: "kiZugaenge", section: "ki", labelKey: "adm.ai.accessTitle" },
   { id: "kiFunktionen", section: "ki", labelKey: "adm.presets.title" },
   { id: "kiGrenzen", section: "ki", labelKey: "einst.ki.grenzen" },

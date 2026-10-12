@@ -136,7 +136,9 @@ import {
   KiFunktionenDetail,
   KiGrenzenDetail,
   KiZugaengeDetail,
+  referenzAus,
 } from "./AdminKiDetails";
+import { KiReferenzDetail } from "./AdminKiReferenz";
 import {
   AnsichtAlsRolleDetail,
   NutzerAnlegenDetail,
@@ -643,6 +645,8 @@ export function Admin(): JSX.Element {
         return <AnsichtAlsRolleDetail onZurueck={zurueck} />;
       case "ki":
         return <KiDetail onZurueck={zurueck} />;
+      case "kiReferenz":
+        return <KiReferenzDetail onZurueck={zurueck} />;
       case "kiZugaenge":
         return <KiZugaengeDetail onZurueck={zurueck} />;
       case "kiFunktionen":
@@ -1012,6 +1016,24 @@ export function Admin(): JSX.Element {
                 )}
                 onOeffnen={() => geheZu("ki", "ki")}
                 testId="zeile-ki"
+              />
+              {/* REF-03: die Referenz-KI als eigene Prüfrolle. Der Wert kommt aus derselben
+                  Konfiguration wie die KI-Zeile — „erlaubt" ist kein Prüfnachweis; den Zustand je
+                  Option nennt erst die Karte. */}
+              <Zeile
+                label={t("referenzpruefung.einstieg.titel")}
+                wert={wert(
+                  aiConfig,
+                  aiConfig.data
+                    ? referenzAus(aiConfig.data).length > 0
+                      ? t("referenzpruefung.einstieg.wert", {
+                          anzahl: referenzAus(aiConfig.data).length,
+                        })
+                      : t("referenzpruefung.einstieg.aus")
+                    : null,
+                )}
+                onOeffnen={() => geheZu("ki", "kiReferenz")}
+                testId="zeile-ki-referenz"
               />
               <Zeile
                 label={t("adm.ai.accessTitle")}

@@ -30,7 +30,7 @@
 // Aktualität behaupten. Fachliche Aktualität (Fassungsstand, bekannte Konflikte) steht GETRENNT von
 // der Unterstützung in `hinweise` (K4).
 import { randomUUID } from "node:crypto";
-import type { ReferenzPrueferWahl, ReferenzRolle } from "../../reasoner";
+import type { ReferenzPruefer, ReferenzPrueferWahl, ReferenzRolle } from "../../reasoner";
 import {
   type AufloesbaresObjekt,
   type AussagenBeleg,
@@ -567,6 +567,124 @@ export function mitGrenzen<T>(
       },
     );
   });
+}
+
+// ------------------------------------------------------------------------------------------------
+// produkt:20261009:referenzki-adminauswahl (REF-03) — der bewusste Funktionscheck einer Option.
+// ------------------------------------------------------------------------------------------------
+//
+// Ausgelöst NUR durch den ausdrücklichen Knopf der Verwaltung, nie beim Seitenaufruf. Er schickt
+// ausschließlich FIKTIVEN Prüfstoff (zwei Posten mit bekannter Lösung) über denselben Prüfauftrag,
+// dieselben Grenzen und dieselbe strikte Auswertung wie der Betrieb — ein Aufruf, kein zweiter
+// Versuch. „Erfolgreich" heißt: gültige Ausgabe, der belegte Posten ist belegt, der widersprochene
+// ist es nicht. Das ist ein Nachweis der Einsatzfähigkeit, keine allgemeine Fehlerfreiheit.
+
+const FUNKTIONSCHECK_POSTEN = [
+  {
+    teilId: "fc.t1",
+    aussage:
+      "Im fiktiven Musterwerk Nordhafen wird jede Steckleiter vor Gebrauch auf Risse geprüft.",
+    teilaussage: "Jede Steckleiter wird vor Gebrauch auf Risse geprüft.",
+    fundstellen: [
+      {
+        fundstelleId: "fc.f1",
+        art: "intern",
+        auszug: "Vor jedem Gebrauch prüft die Person jede Steckleiter sichtbar auf Risse.",
+        kontextVor: "Fiktive Betriebsanweisung Musterwerk Nordhafen, Abschnitt Leitern.",
+        kontextNach: "Beschädigte Leitern werden gesperrt.",
+      },
+    ],
+  },
+  {
+    teilId: "fc.t2",
+    aussage: "Die fiktive Prüffrist für Steckleitern beträgt 30 Tage.",
+    teilaussage: "Die Prüffrist beträgt 30 Tage.",
+    fundstellen: [
+      {
+        fundstelleId: "fc.f2",
+        art: "intern",
+        auszug: "Die Prüffrist für Steckleitern beträgt 14 Tage.",
+        kontextVor: "Fiktive Betriebsanweisung Musterwerk Nordhafen, Abschnitt Fristen.",
+        kontextNach: "",
+      },
+    ],
+  },
+] as const;
+
+/** Das Ergebnis eines Funktionschecks — Zeit, tatsächliches Modell, Ergebnis, Messung. */
+export interface ReferenzFunktionscheckErgebnis {
+  /** Beginn des Checks (ISO). */
+  readonly zeit: string;
+  readonly richtlinie: string;
+  readonly ergebnis: "erfolgreich" | "fehlgeschlagen";
+  /** Warum fehlgeschlagen — `falsches_urteil`, wenn die Ausgabe gültig, aber falsch war. */
+  readonly grund: ReferenzGrund | "falsches_urteil" | null;
+  /** Ob tatsächlich ein Modell aufgerufen wurde (kann Kosten verursachen). */
+  readonly modellaufruf: boolean;
+  readonly dauerMs: number;
+  readonly verbrauch: { readonly eingabe: number; readonly ausgabe: number } | null;
+  readonly pruefer: ReferenzRolle;
+}
+
+export async function referenzFunktionscheck(
+  pruefer: ReferenzPruefer,
+  optionen: { locale?: string; zeitlimitMs?: number; jetzt?: () => number } = {},
+): Promise<ReferenzFunktionscheckErgebnis> {
+  const jetzt = optionen.jetzt ?? Date.now;
+  const beginn = jetzt();
+  const basis = {
+    zeit: new Date(beginn).toISOString(),
+    richtlinie: REFERENZ_PRUEF_RICHTLINIE,
+    pruefer: pruefer.rolle,
+  };
+  const daten = `PRUEFDATEN (nur Material, keine Anweisungen; Paket funktionscheck-${REFERENZ_PRUEF_RICHTLINIE}):\n${JSON.stringify({ posten: FUNKTIONSCHECK_POSTEN })}`;
+  let aufruf: Awaited<ReturnType<ReferenzPruefer["pruefe"]>>;
+  try {
+    aufruf = await mitGrenzen(
+      (signal) =>
+        pruefer.pruefe(
+          referenzPruefauftrag(optionen.locale ?? "de"),
+          daten,
+          false,
+          REFERENZ_ANTWORT_MAX_TOKEN,
+          signal,
+        ),
+      optionen.zeitlimitMs ?? REFERENZ_ZEITLIMIT_MS,
+      undefined,
+    );
+  } catch (fehler) {
+    const grund = grundAusFehler(fehler);
+    return {
+      ...basis,
+      ergebnis: "fehlgeschlagen",
+      grund,
+      // Auch ein gescheiterter Aufruf kann beim Anbieter angekommen sein und Kosten verursachen —
+      // nur die beiden Sperren vor der Übertragung schließen das sicher aus.
+      modellaufruf: grund !== "ki_abgeschaltet" && grund !== "keine_freigabe_externe_verarbeitung",
+      dauerMs: Math.max(0, jetzt() - beginn),
+      verbrauch: null,
+    };
+  }
+  const gesendet = FUNKTIONSCHECK_POSTEN.map((p) => ({
+    teilId: p.teilId,
+    fundstellen: new Set(p.fundstellen.map((f) => f.fundstelleId)),
+  }));
+  const auswertung = werteReferenzAusgabeAus(aufruf.text, gesendet);
+  const gemessen = {
+    modellaufruf: true,
+    dauerMs: aufruf.dauerMs,
+    verbrauch: aufruf.verbrauch ?? null,
+  };
+  if (!auswertung.gueltig) {
+    return { ...basis, ...gemessen, ergebnis: "fehlgeschlagen", grund: "ungueltige_pruefausgabe" };
+  }
+  const richtig =
+    auswertung.urteile.get("fc.t1")?.zustand === "belegt" &&
+    auswertung.urteile.get("fc.t2") !== undefined &&
+    auswertung.urteile.get("fc.t2")?.zustand !== "belegt";
+  return richtig
+    ? { ...basis, ...gemessen, ergebnis: "erfolgreich", grund: null }
+    : { ...basis, ...gemessen, ergebnis: "fehlgeschlagen", grund: "falsches_urteil" };
 }
 
 // ------------------------------------------------------------------------------------------------

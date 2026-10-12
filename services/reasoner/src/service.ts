@@ -101,6 +101,9 @@ import type {
   ReasonerWahlMigration,
   ReasonerZweitmeinungWahl,
   ReferenzAufrufErgebnis,
+  ReferenzLage,
+  ReferenzOptionLage,
+  ReferenzOptionSperre,
   ReferenzPruefer,
   ReferenzPrueferGrund,
   ReferenzPrueferWahl,
@@ -2900,56 +2903,144 @@ export class Reasoner {
     };
     const gebunden = vertraulich ? undefined : gebundenerAnbieter();
     for (const wahl of liste) {
-      let provider: ReasonerProvider | undefined;
-      if (wahl === "local") {
-        if (!this.usingSecondary()) {
-          merke("nicht_verfuegbar");
-          continue;
-        }
-        if (
-          (vertraulich && this.secondary.rejectsConfidential?.() === true) ||
-          gebunden !== undefined
-        ) {
-          merke("nicht_freigegeben");
-          continue;
-        }
-        provider = this.secondary;
-      } else {
-        provider = this.cloudProvider(wahl);
-        if (!provider) {
-          merke("nicht_verfuegbar");
-          continue;
-        }
-        if (
-          !this.oeffentlicheKiErlaubt(vertraulich) ||
-          !anbieterZugelassen(wahl) ||
-          (gebunden !== undefined && gebunden !== wahl)
-        ) {
-          merke("nicht_freigegeben");
-          continue;
-        }
-      }
-      // Ohne Modellbezeichner ist die Unabhängigkeit nicht nachweisbar — keine Option.
-      const modell = provider.modelName?.()?.trim() || null;
-      if (modell === null || typeof provider.pruefeQuellenbeleg !== "function") {
-        merke("nicht_verfuegbar");
+      const option = this.referenzOption(wahl, vertraulich, gebunden);
+      if ("grund" in option) {
+        merke(option.grund);
         continue;
       }
-      if (gleichesModell(modell, antwort.modell)) {
+      if (gleichesModell(option.modell, antwort.modell)) {
         merke("nicht_unabhaengig");
         continue;
       }
-      const extern =
-        this.anbieterVon(provider) !== undefined || provider.rejectsConfidential?.() === true;
-      return {
-        pruefer: this.baueReferenzPruefer(
-          provider,
-          { anbieter: provider.name, modell, stufe: this.stufeVon(provider) },
-          extern,
-        ),
-      };
+      return { pruefer: this.referenzPrueferAus(option.provider, option.modell) };
     }
     return { grund: stand.grund };
+  }
+
+  // REF-02/REF-03: ob EINE Option für einen Prüfaufruf bereitsteht — eingerichtet, freigegeben, mit
+  // Modellbezeichner und Prüffähigkeit. Dieselbe Prüfung für die Wahl je Anfrage und für den
+  // bewussten Funktionscheck der Verwaltung; die Unabhängigkeit prüft der Aufrufer.
+  private referenzOption(
+    wahl: ReasonerReferenzWahl,
+    vertraulich: boolean,
+    gebunden: ReturnType<typeof gebundenerAnbieter>,
+  ): { provider: ReasonerProvider; modell: string } | { grund: ReferenzPrueferGrund } {
+    let provider: ReasonerProvider | undefined;
+    if (wahl === "local") {
+      if (!this.usingSecondary()) {
+        return { grund: "nicht_verfuegbar" };
+      }
+      if (
+        (vertraulich && this.secondary.rejectsConfidential?.() === true) ||
+        gebunden !== undefined
+      ) {
+        return { grund: "nicht_freigegeben" };
+      }
+      provider = this.secondary;
+    } else {
+      provider = this.cloudProvider(wahl);
+      if (!provider) {
+        return { grund: "nicht_verfuegbar" };
+      }
+      if (
+        !this.oeffentlicheKiErlaubt(vertraulich) ||
+        !anbieterZugelassen(wahl) ||
+        (gebunden !== undefined && gebunden !== wahl)
+      ) {
+        return { grund: "nicht_freigegeben" };
+      }
+    }
+    // Ohne Modellbezeichner ist die Unabhängigkeit nicht nachweisbar — keine Option.
+    const modell = provider.modelName?.()?.trim() || null;
+    if (modell === null || typeof provider.pruefeQuellenbeleg !== "function") {
+      return { grund: "nicht_verfuegbar" };
+    }
+    return { provider, modell };
+  }
+
+  private referenzPrueferAus(provider: ReasonerProvider, modell: string): ReferenzPruefer {
+    const extern =
+      this.anbieterVon(provider) !== undefined || provider.rejectsConfidential?.() === true;
+    return this.baueReferenzPruefer(
+      provider,
+      { anbieter: provider.name, modell, stufe: this.stufeVon(provider) },
+      extern,
+    );
+  }
+
+  // ==============================================================================================
+  // produkt:20261009:referenzki-adminauswahl (REF-03) — DIE LAGE JE OPTION UND DER FUNKTIONSCHECK.
+  // ==============================================================================================
+  //
+  // `referenzLage` beantwortet die KONFIGURATIONSfrage der Verwaltung: welche registrierten Zugänge
+  // gibt es, welches Modell steht dahinter, intern oder öffentlich, erlaubt mit welchem Vorrang —
+  // und was den Einsatz einer erlaubten Option gerade sperrt. Sie ruft kein Modell. „Erlaubt und
+  // ohne Sperre" heißt nur „konfiguriert": ob eine Prüfung gelingt, belegt erst ein Lauf.
+  referenzLage(): ReferenzLage {
+    const liste = this.taskConfig.referenzpruefung ?? [];
+    const abgeschaltet = this.kiAbschaltung().abgeschaltet;
+    const antwortGlied = this.chainForChoice(this.choiceFor("answer"), false, {
+      fuerAnzeige: true,
+    })[0];
+    const antwortmodell =
+      antwortGlied && antwortGlied !== this.fallback
+        ? { anbieter: antwortGlied.name, modell: antwortGlied.modelName?.()?.trim() || null }
+        : null;
+    const optionen = REASONER_REFERENZ_WAHLEN.map((wahl): ReferenzOptionLage => {
+      // Eingerichtet = verdrahtet (registrierter Zugang), auch wenn er gerade nicht erreichbar ist.
+      const verdrahtet: ReasonerProvider | undefined =
+        wahl === "local" ? this.secondary : this.cloud[wahl];
+      const zugang = verdrahtet !== undefined && verdrahtet !== this.fallback ? verdrahtet : null;
+      const modell = zugang?.modelName?.()?.trim() || null;
+      const rang = liste.indexOf(wahl);
+      let sperre: ReferenzOptionSperre | null = null;
+      if (zugang) {
+        if (abgeschaltet) {
+          sperre = "ki_abgeschaltet";
+        } else if (wahl !== "local" && !this.oeffentlicheKiErlaubt(false)) {
+          sperre = "keine_freigabe_externe_verarbeitung";
+        } else if (!zugang.isAvailable()) {
+          sperre = "nicht_erreichbar";
+        } else if (modell === null || typeof zugang.pruefeQuellenbeleg !== "function") {
+          sperre = "kein_pruefmodell";
+        }
+      }
+      return {
+        wahl,
+        art: wahl === "local" ? "intern" : "oeffentlich",
+        anbieter: zugang ? zugang.name : null,
+        modell,
+        eingerichtet: zugang !== null,
+        erlaubt: rang >= 0,
+        rang: rang >= 0 ? rang + 1 : null,
+        sperre,
+        gleichWieAntwortmodell: gleichesModell(modell, antwortmodell?.modell ?? null),
+      };
+    });
+    const freigabe = this.taskConfig.kiFreigabe;
+    return {
+      optionen,
+      antwortmodell,
+      freigabe: {
+        oeffentlicheKi: freigabe?.oeffentlicheKi === true,
+        vertraulicheInhalte: freigabe?.vertraulicheInhalte === true,
+      },
+    };
+  }
+
+  // REF-03: der Prüfer GENAU EINER Option für den bewussten Funktionscheck mit fiktivem, nicht
+  // vertraulichem Inhalt. Dieselben Sperren wie im Betrieb (Abschaltung, Freigabe, Bindung,
+  // Modellbezeichner); die Option muss NICHT erlaubt sein — geprüft wird, ob sie einsatzfähig wäre.
+  // Ein Aufruf über dasselbe Laufbuch wie jede Referenzprüfung (Laufart `referenz`).
+  referenzFunktionsPruefer(wahl: ReasonerReferenzWahl): ReferenzPrueferWahl {
+    if (this.kiAbschaltung().abgeschaltet) {
+      return { grund: "nicht_freigegeben" };
+    }
+    const option = this.referenzOption(wahl, false, gebundenerAnbieter());
+    if ("grund" in option) {
+      return option;
+    }
+    return { pruefer: this.referenzPrueferAus(option.provider, option.modell) };
   }
 
   /**

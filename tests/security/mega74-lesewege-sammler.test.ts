@@ -955,6 +955,11 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "Zugangszustand, Admin.",
   },
   "GET /api/reasoner/config": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Admin." },
+  "GET /api/reasoner/referenzpruefung": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Admin (REF-03) — Zugänge, Modelle, Zustand; kein Wissensobjekt.",
+  },
   "GET /api/library/import/candidates": {
     urteil: "KEIN_KO_INHALT",
     grund: "Import-Kandidaten sind noch keine Wissensobjekte; DTO hält Interna zurück (:63).",
@@ -2116,6 +2121,9 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/reasoner/test-local": "users.manage.",
     "POST /api/reasoner/conflict-self-test": "users.manage.",
     "POST /api/reasoner/duplicate-self-test": "users.manage.",
+    // REF-03: Liste setzen und Funktionscheck mit fiktivem Inhalt — kein Wissensobjekt.
+    "PUT /api/reasoner/referenzpruefung": "users.manage.",
+    "POST /api/reasoner/referenzpruefung/funktionscheck": "users.manage.",
   }),
   // ==============================================================================================
   // JOB 4154 (WIKI-GESAMTANWEISUNG) · zehn Wege, zehn Urteile.

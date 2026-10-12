@@ -15,7 +15,7 @@ Es heißt nicht: menschliche Freigabe oder Fehlerfreiheit.
 | Tatsächliches Antwortmodell je Anfrage | `antwortRolleVon` (Reasoner) → `AskService.antwortRolleVon` |
 | Einbindung in beide Antwortwege (Fragekonsole, Klara) | `antwortLauf` in `services/app/src/routes/ask-routes.ts` |
 | Erneute Prüfung | `POST /api/ask/referenzpruefung/:pruefId/erneut` |
-| Adminliste | `PUT /api/reasoner/config` mit `referenzpruefung: ["openai" \| "anthropic" \| "local", …]` |
+| Adminliste | `PUT /api/reasoner/config` mit `referenzpruefung: ["openai" \| "anthropic" \| "local", …]`; Einstieg REF-03: `GET`/`PUT /api/reasoner/referenzpruefung` |
 
 ## Ablauf je beantworteter Frage
 
@@ -100,6 +100,36 @@ als Hinweis ausgewiesen.
 - **Stichtagsvergleich** (`POST /api/ask/vergleich`, `components/fragen/WissensstandVergleich.tsx`):
   Beide Antworten werden mit ihrer eigenen Bindung (heute: aktuelle Fassungen, damals: Fassungen
   zum Stichtag) und ihrem tatsächlichen Antwortmodell geprüft (`referenzpruefung: { heute, damals }`).
+
+## Einstieg „Referenzprüfung" in der Verwaltung (REF-03)
+
+`produkt:20261009:referenzki-adminauswahl`. Unter Verwaltung → KI → Referenzprüfung
+(`pages/AdminKiReferenz.tsx`, Detailkennung `kiReferenz`) steht die eigene Prüfrolle. Die Auswahl
+in der KI-Karte ist dorthin umgezogen; die KI-Karte verweist nur noch darauf.
+
+- **Optionen** sind die registrierten Zugänge der bestehenden Providerverwaltung (ChatGPT, Claude,
+  eigenes Modell). Es gibt keine eigene Schlüsselablage. Je Option stehen Anbieter, Modell,
+  intern/öffentlich und genau ein Zustand: `nicht_eingerichtet`, `ausgeschaltet` (nicht erlaubt),
+  `nicht_verfuegbar` (mit Sperre: KI abgeschaltet, Freigabe für externe Verarbeitung fehlt, nicht
+  erreichbar, kein Prüfmodell), `konfiguriert`, `letzte_pruefung_erfolgreich` oder
+  `letzte_pruefung_fehlgeschlagen`. „Konfiguriert" ist kein Prüfnachweis. Ein Funktionscheck gilt
+  nur für das Modell, mit dem er lief.
+- **Unabhängigkeit**: Jede Option zeigt, ob sie dasselbe Modell nutzt wie die heutige Antwort-KI.
+  Gibt es keine einsatzbereite Option mit anderem Modell, erklärt die Karte das mit nächstem
+  Schritt. Erzwungen wird es weiterhin je Anfrage in `Reasoner.referenzPruefer`.
+- **Freigabe**: Öffentliche Optionen ohne Grundfreigabe sind gesperrt und nennen den Weg zur Freigabe.
+  Vertrauliche Inhalte brauchen zusätzlich die zweite Freigabe. Space-, Nutzer- und Mandantenrechte
+  gelten je Fundstelle unverändert.
+- **Speichern**: `PUT /api/reasoner/referenzpruefung` (`users.manage`) über denselben Schreibweg wie
+  `PUT /api/reasoner/config`. Zuordnung und Freigaben bleiben so, wie der Server sie hält. Das Audit
+  `reasoner.referenzpruefung` nennt zusätzlich die Modelle vorher und nachher.
+- **Grenzen** stehen sichtbar: Zeitlimit, Antwortbudget, Posten- und Zeichendeckel, eine erneute
+  Prüfung, keine automatische Wiederholung, Preisgrundlage.
+- **Funktionscheck**: `POST /api/reasoner/referenzpruefung/funktionscheck` startet nur auf
+  ausdrücklichen Klick. Er sendet ausschließlich fiktiven Prüfstoff (einen belegten und einen
+  widersprochenen Posten) über denselben Prüfauftrag. Es gibt genau einen Aufruf und einen Lauf zur
+  Zeit. Zeit, Modell, Ergebnis, Dauer, Verbrauch und Kosten (nur mit Preisliste) stehen im Audit
+  `reasoner.referenzpruefung-funktionscheck`. Beim Seitenaufruf wird kein Modell gerufen.
 
 ## Abbruch bis zum Transport (Ben nacharbeit-3)
 

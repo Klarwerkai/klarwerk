@@ -1213,6 +1213,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // normale Nutzer sehen nur den abstrahierten Status (/api/reasoner/status).
   "GET /api/reasoner/config": { protection: "users.manage" },
   "PUT /api/reasoner/config": { protection: "users.manage" },
+  // produkt:20261009:referenzki-adminauswahl (REF-03): der Einstieg „Referenzprüfung" — Lage
+  // lesen, erlaubte Liste setzen, bewusster Funktionscheck. Alles nur Admin.
+  "GET /api/reasoner/referenzpruefung": { protection: "users.manage" },
+  "PUT /api/reasoner/referenzpruefung": { protection: "users.manage" },
+  "POST /api/reasoner/referenzpruefung/funktionscheck": { protection: "users.manage" },
   // SCRUM-386: kundeneigene KI-Assist-Presets — lesen alle Rollen (Palette), pflegen nur Admin.
   "GET /api/reasoner/assist-presets": { protection: "ko.read" },
   "PUT /api/reasoner/assist-presets": { protection: "users.manage" },

@@ -15,7 +15,8 @@
 //   B2 · 390 × 844: Prüferausfall sichtbar „nicht prüfbar" mit Grund → „Erneut prüfen" per Tastatur →
 //        geprüft, Versuch 2 von 2, kein weiterer Knopf; ohne waagerechtes Überlaufen.
 //   B3 · 390 × 844 und 1280 × 800: KI-Verwaltung — die erlaubte Referenz-KI per Tastatur abwählen,
-//        der Server speichert über den bestehenden Adminweg; Rückweg über „Zurück".
+//        der Server speichert über den bestehenden Adminweg; Rückweg über „Zurück". Seit REF-03 im
+//        eigenen Einstieg Verwaltung → KI → Referenzprüfung (`detail=kiReferenz`).
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { buildServices } from "../../services/app/src/build-app";
 import type { ReferenzPruefer } from "../../services/reasoner";
@@ -278,7 +279,8 @@ describe("REF-02 · Prüfergebnis und Adminauswahl, bedient in Chromium", () => 
         referenzpruefung: ["local"],
       });
       await s.seite.setViewportSize({ width: breite, height: hoehe });
-      await s.seite.goto(`${ORIGIN}/admin?bereich=ki&detail=ki`, { waitUntil: "load" });
+      // REF-03: die Auswahl wohnt seither im eigenen Einstieg Verwaltung → KI → Referenzprüfung.
+      await s.seite.goto(`${ORIGIN}/admin?bereich=ki&detail=kiReferenz`, { waitUntil: "load" });
       await s.seite.waitForFunction(DA, '[data-testid="ki-referenzpruefung"]', {
         timeout: 30_000,
       });
@@ -297,10 +299,10 @@ describe("REF-02 · Prüfergebnis und Adminauswahl, bedient in Chromium", () => 
         ),
       ).toBe(false);
 
-      // Rückweg: „Zurück" der Detailkarte schließt die KI-Karte.
-      await s.seite.click('[data-testid="detail-ki"] [data-einst="zurueck"]');
+      // Rückweg: „Zurück" der Detailkarte schließt die Karte der Referenzprüfung.
+      await s.seite.click('[data-testid="detail-ki-referenz"] [data-einst="zurueck"]');
       await s.seite.waitForFunction(
-        fn(`() => !document.querySelector('[data-testid="detail-ki"]')`),
+        fn(`() => !document.querySelector('[data-testid="detail-ki-referenz"]')`),
         undefined,
         { timeout: 30_000 },
       );
