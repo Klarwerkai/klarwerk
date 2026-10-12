@@ -47,6 +47,7 @@ import {
   type Qualitaetslage,
   befundeAus,
   ladeQualitaet,
+  leerAussage,
 } from "../../apps/web/src/components/klara-vorschau/qualitaet";
 import { zuruecksetzenGanz } from "../../apps/web/src/components/klara-vorschau/zustand";
 import i18n from "../../apps/web/src/i18n";
@@ -595,6 +596,52 @@ describe("Q5 · K1/K4 — Quellenalter und Rechte", () => {
     const ohneKonflikte = befundeAus(daten(ko, { konflikte: null }), de(), "de");
     expect(ohneKonflikte.nichtGelesen).toEqual(["konflikte"]);
   });
+
+  it("Nacharbeit 2 (Ben): ein ausgefallener Leseweg ist keine Rechtebeschränkung", async () => {
+    const { ko } = await gelesen();
+    const signal: EigenerBefund = {
+      koId: ko.id,
+      dublette: true,
+      konflikt: true,
+      deckung: { geprueft: null, bestand: null, lage: "ohne_protokoll" },
+    };
+    // Konfliktliste antwortete nicht, Duplikatliste wurde gelesen und nennt das Paar nicht.
+    const lage = befundeAus(
+      daten(ko, { konflikte: null, ueberschneidungen: [], signale: [signal] }),
+      de(),
+      "de",
+    );
+    const ungelesen = befund(lage, `ungelesen:konflikt:${ko.id}`);
+    expect(ungelesen.art).toBe("ungelesen");
+    expect(ungelesen.grundlage).toBe("nicht_verfuegbar");
+    expect(ungelesen.titel).toBe("Offener Konflikt gemeldet – Konfliktliste nicht gelesen");
+    expect(ungelesen.unsicherheit).toContain("Ursache unbekannt");
+    expect(ungelesen.erklaerung.join(" ")).not.toContain("nicht sehen");
+    // Kein „verdeckt“ und kein „zurückgehalten“ für den Konflikt — das wäre unbelegt.
+    expect(lage.befunde.some((x) => x.schluessel === `verdeckt:konflikt:${ko.id}`)).toBe(false);
+    // Die GELESENE Duplikatliste nennt das gemeldete Paar nicht: das bleibt „verdeckt“.
+    expect(befund(lage, `verdeckt:duplikat:${ko.id}`).grundlage).toBe("zurueckgehalten");
+
+    // Beide Paarlisten ausgefallen: beide Befunde mit unbekannter Ursache.
+    const beide = befundeAus(
+      daten(ko, { konflikte: null, ueberschneidungen: null, signale: [signal] }),
+      de(),
+      "de",
+    );
+    expect(beide.befunde.filter((x) => x.art === "verdeckt")).toEqual([]);
+    expect(beide.befunde.filter((x) => x.art === "ungelesen").map((x) => x.schluessel)).toEqual([
+      `ungelesen:konflikt:${ko.id}`,
+      `ungelesen:duplikat:${ko.id}`,
+    ]);
+  });
+
+  it("Nacharbeit 2 (Ben): „keine offenen Befunde“ nur bei vollständig gelesener Grundlage", () => {
+    expect(leerAussage({ befunde: [], nichtGelesen: [] })).toBe("keine");
+    expect(leerAussage({ befunde: [], nichtGelesen: ["konflikte"] })).toBe("unvollstaendig");
+    expect(leerAussage({ befunde: [], nichtGelesen: ["signale"] })).toBe("unvollstaendig");
+    const einer = { befunde: [{} as Befund], nichtGelesen: [] };
+    expect(leerAussage(einer)).toBeNull();
+  });
 });
 
 // ================================================================================================
@@ -745,5 +792,41 @@ describe("Q6 · K1–K3 — in der echten Klara: erklären, vorbereiten, erst �
     const danach = alle(document, "klara-befund").find((x) => x.dataset.schluessel === kennung);
     expect(danach, "der eskalierte Konflikt bleibt offen und erklärt").toBeTruthy();
     expect(danach ? q(danach, "klara-befund-vorbereiten") : null).toBeNull();
+  });
+
+  it("Nacharbeit 2 (Ben): fällt die Konfliktliste aus, steht keine Entwarnung da", async () => {
+    const { a } = await app();
+    const eintrag = await eintragMitOriginal(a.app, a.admin, {
+      titel: "Kompressor K1 entwässern",
+      kernaussage: "Kondensat am Kompressor K1 vor jeder Schicht ablassen.",
+    });
+    alsKonto(a.admin);
+    await klaraOeffnen(`/wissen/${eintrag.koId}`);
+    await bis(() => Boolean(q(document, "klara-qualitaet")), 200);
+
+    // Genau ein Aufruf der Konfliktliste antwortet mit 503 — der Server bleibt sonst echt.
+    draht.stoerungEinmal("/api/conflicts", 503);
+    await klick(q(document, "klara-qualitaet-pruefen"));
+    await bis(() => q(document, "klara-qualitaet")?.dataset.stand === "fertig", 200);
+
+    expect(q(document, "klara-qualitaet")?.dataset.stand).toBe("fertig");
+    // Die uneingeschränkte Aussage „keine offenen Befunde“ fehlt; der Ausfall ist benannt.
+    expect(q(document, "klara-qualitaet-keine")).toBeNull();
+    expect(text(document, "klara-qualitaet-nicht-gelesen")).toContain("Konflikte");
+    // Ohne Befunde steht der unvollständige Prüfstand da; mit Befunden stehen diese da.
+    const befunde = alle(document, "klara-befund");
+    if (befunde.length === 0) {
+      expect(text(document, "klara-qualitaet-unvollstaendig")).toContain("unvollständig");
+    } else {
+      expect(q(document, "klara-qualitaet-unvollstaendig")).toBeNull();
+    }
+    // Kein Rechteurteil aus dem Lesefehler.
+    expect(befunde.filter((x) => x.dataset.grundlage === "zurueckgehalten")).toEqual([]);
+
+    // Erneut lesen ohne Störung: dieselbe Fläche, jetzt vollständig gelesen.
+    await klick(q(document, "klara-qualitaet-pruefen"));
+    await bis(() => q(document, "klara-qualitaet")?.dataset.stand === "fertig", 200);
+    expect(q(document, "klara-qualitaet-nicht-gelesen")).toBeNull();
+    expect(q(document, "klara-qualitaet-unvollstaendig")).toBeNull();
   });
 });

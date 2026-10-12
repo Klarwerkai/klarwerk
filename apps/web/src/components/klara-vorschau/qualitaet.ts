@@ -40,7 +40,14 @@ import { isUnresolvedConflict } from "../../lib/taskFilters";
 const MAX_GEGENSEITEN = 8;
 const MAX_QUELLEN_ZEILEN = 5;
 
-export type BefundArt = "konflikt" | "duplikat" | "quellenalter" | "fehlende_angabe" | "verdeckt";
+/** `ungelesen`: ein offener Befund ist gemeldet, seine Paarliste antwortete aber nicht. */
+export type BefundArt =
+  | "konflikt"
+  | "duplikat"
+  | "quellenalter"
+  | "fehlende_angabe"
+  | "verdeckt"
+  | "ungelesen";
 
 /**
  * Worauf sich der Befund stützt:
@@ -50,6 +57,7 @@ export type BefundArt = "konflikt" | "duplikat" | "quellenalter" | "fehlende_ang
  *   `keine`            — keine Quelle und kein belegtes Zitat.
  *   `unbekannt`        — die Gegenseite ist nicht lesbar; darüber sagt Klara nichts.
  *   `zurueckgehalten`  — der Inhalt ist für diese Person zurückgehalten (Rechte).
+ *   `nicht_verfuegbar` — der Prüfweg antwortete nicht; Ursache unbekannt, kein Rechteurteil.
  */
 export type Grundlage =
   | "belegt"
@@ -57,7 +65,8 @@ export type Grundlage =
   | "einseitig"
   | "keine"
   | "unbekannt"
-  | "zurueckgehalten";
+  | "zurueckgehalten"
+  | "nicht_verfuegbar";
 
 export interface BefundQuelle {
   koId: string;
@@ -516,12 +525,15 @@ function fehlendeAngaben(d: QualitaetsDaten, t: TFunction): Befund[] {
 }
 
 /**
- * Das Signal am eigenen Objekt meldet einen offenen Befund, dessen Paar die Person NICHT sieht:
- * Klara sagt, dass es ihn gibt — ohne Gegenseite, ohne Inhalt.
+ * Das Signal am eigenen Objekt meldet einen offenen Befund, der in der Paarliste nicht steht.
+ *   · Die Paarliste wurde GELESEN (`gelesen`) und nennt ihn nicht: der Server hat das Paar für
+ *     diese Person ausgefiltert — Klara sagt, dass es ihn gibt, ohne Gegenseite, ohne Inhalt.
+ *   · Die Paarliste antwortete NICHT (`null`): ein Lesefehler belegt keine Rechtebeschränkung.
+ *     Klara nennt den bekannten offenen Befund mit unbekannter Ursache und ohne Grundlage.
  */
-function verdeckteBefunde(
+function signalBefunde(
   d: QualitaetsDaten,
-  sichtbar: { konflikt: boolean; duplikat: boolean },
+  lage: Record<"konflikt" | "duplikat", { gelesen: boolean; sichtbar: boolean }>,
   t: TFunction,
 ): Befund[] {
   const signal = (d.signale ?? []).find((s) => s.koId === d.ko.id);
@@ -529,22 +541,48 @@ function verdeckteBefunde(
     return [];
   }
   const arten: ("konflikt" | "duplikat")[] = [];
-  if (signal.konflikt && !sichtbar.konflikt) {
+  if (signal.konflikt && !lage.konflikt.sichtbar) {
     arten.push("konflikt");
   }
-  if (signal.dublette && !sichtbar.duplikat) {
+  if (signal.dublette && !lage.duplikat.sichtbar) {
     arten.push("duplikat");
   }
-  return arten.map((art) => ({
-    schluessel: `verdeckt:${art}:${d.ko.id}`,
-    art: "verdeckt" as const,
-    titel: t(`klaraqualitaet.verdeckt.titel.${art}`),
-    erklaerung: [t("klaraqualitaet.verdeckt.text")],
-    quellen: [quelleAus(d.ko, d.ko.id, true, null)],
-    grundlage: "zurueckgehalten" as const,
-    unsicherheit: null,
-    vorschlaege: [{ art: "hinweis" as const, text: t("klaraqualitaet.vorschlag.verdeckt") }],
-  }));
+  return arten.map((art): Befund => {
+    const quellen = [quelleAus(d.ko, d.ko.id, true, null)];
+    if (!lage[art].gelesen) {
+      return {
+        schluessel: `ungelesen:${art}:${d.ko.id}`,
+        art: "ungelesen",
+        titel: t(`klaraqualitaet.ungelesen.titel.${art}`),
+        erklaerung: [t("klaraqualitaet.ungelesen.text")],
+        quellen,
+        grundlage: "nicht_verfuegbar",
+        unsicherheit: t("klaraqualitaet.unsicher.ursacheUnbekannt"),
+        vorschlaege: [{ art: "hinweis", text: t("klaraqualitaet.vorschlag.erneutLesen") }],
+      };
+    }
+    return {
+      schluessel: `verdeckt:${art}:${d.ko.id}`,
+      art: "verdeckt",
+      titel: t(`klaraqualitaet.verdeckt.titel.${art}`),
+      erklaerung: [t("klaraqualitaet.verdeckt.text")],
+      quellen,
+      grundlage: "zurueckgehalten",
+      unsicherheit: null,
+      vorschlaege: [{ art: "hinweis", text: t("klaraqualitaet.vorschlag.verdeckt") }],
+    };
+  });
+}
+
+/**
+ * Was die Fläche sagt, wenn KEIN Befund dasteht: „keine offenen Befunde“ nur bei vollständig
+ * gelesener Grundlage; fehlt ein Prüfweg, ist der Prüfstand unvollständig. `null`: es gibt Befunde.
+ */
+export function leerAussage(lage: Qualitaetslage): "keine" | "unvollstaendig" | null {
+  if (lage.befunde.length > 0) {
+    return null;
+  }
+  return lage.nichtGelesen.length === 0 ? "keine" : "unvollstaendig";
 }
 
 /**
@@ -563,13 +601,12 @@ export function befundeAus(d: QualitaetsDaten, t: TFunction, sprache: string): Q
     befunde.push(alter);
   }
   befunde.push(...fehlendeAngaben(d, t));
-  befunde.push(
-    ...verdeckteBefunde(
-      d,
-      { konflikt: konflikte.length > 0, duplikat: ueberschneidungen.length > 0 },
-      t,
-    ),
-  );
+  const konfliktLage = { gelesen: d.konflikte !== null, sichtbar: konflikte.length > 0 };
+  const duplikatLage = {
+    gelesen: d.ueberschneidungen !== null,
+    sichtbar: ueberschneidungen.length > 0,
+  };
+  befunde.push(...signalBefunde(d, { konflikt: konfliktLage, duplikat: duplikatLage }, t));
   const nichtGelesen: Pruefweg[] = [];
   if (d.konflikte === null) {
     nichtGelesen.push("konflikte");

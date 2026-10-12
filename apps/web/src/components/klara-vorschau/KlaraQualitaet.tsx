@@ -19,6 +19,7 @@ import {
   type Qualitaetslage,
   befundeAus,
   ladeQualitaet,
+  leerAussage,
 } from "./qualitaet";
 
 const KNOPF =
@@ -104,11 +105,19 @@ export function KlaraQualitaet({
       ) : null}
       {lage ? (
         <div className="mt-1.5 space-y-2">
-          {lage.befunde.length === 0 ? (
+          {/* „Keine offenen Befunde“ nur, wenn ALLE Prüfwege gelesen wurden — sonst ist der
+              Prüfstand unvollständig, und genau das steht da. */}
+          {leerAussage(lage) === "keine" ? (
             <p data-testid="klara-qualitaet-keine" className="text-[11.5px] text-text">
               {t("klaraqualitaet.keine")}
             </p>
-          ) : (
+          ) : null}
+          {leerAussage(lage) === "unvollstaendig" ? (
+            <p data-testid="klara-qualitaet-unvollstaendig" className="text-[11.5px] text-text">
+              {t("klaraqualitaet.unvollstaendig")}
+            </p>
+          ) : null}
+          {lage.befunde.length === 0 ? null : (
             <ul className="space-y-2">
               {lage.befunde.map((b) => (
                 <BefundKarte key={b.schluessel} b={b} onVorbereiten={onVorbereiten} />

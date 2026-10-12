@@ -47,6 +47,19 @@ export default {
     "klaraqualitaet.grundlage.unbekannt":
       "nicht beurteilbar – die Gegenseite ist für dich nicht lesbar",
     "klaraqualitaet.grundlage.zurueckgehalten": "Inhalt für dich zurückgehalten",
+    "klaraqualitaet.grundlage.nicht_verfuegbar": "nicht verfügbar – der Prüfweg antwortete nicht",
+    "klaraqualitaet.unvollstaendig":
+      "Prüfstand unvollständig: Nicht alle Prüfwege konnten gelesen werden. Ob offene Befunde vorliegen, ist deshalb nicht bekannt.",
+    "klaraqualitaet.ungelesen.titel.konflikt":
+      "Offener Konflikt gemeldet – Konfliktliste nicht gelesen",
+    "klaraqualitaet.ungelesen.titel.duplikat":
+      "Offene Überschneidung gemeldet – Duplikatliste nicht gelesen",
+    "klaraqualitaet.ungelesen.text":
+      "Der Hinweis an diesem Beitrag meldet einen offenen Befund. Die zugehörige Liste konnte nicht gelesen werden; Gegenseite, Inhalt und Ursache sind deshalb unbekannt.",
+    "klaraqualitaet.unsicher.ursacheUnbekannt":
+      "Ursache unbekannt: ein Lesefehler ist keine Aussage über Rechte oder Inhalt.",
+    "klaraqualitaet.vorschlag.erneutLesen":
+      "Später mit „Erneut lesen“ noch einmal prüfen; bleibt der Fehler, die Administration informieren.",
     "klaraqualitaet.unsicherheitLabel": "Unsicherheit",
     "klaraqualitaet.vorschlagLabel": "Vorschlag",
     "klaraqualitaet.vorbereiten": "Als Auftrag vorbereiten",
@@ -155,6 +168,19 @@ export default {
     "klaraqualitaet.grundlage.unbekannt":
       "cannot be judged – the other side is not readable for you",
     "klaraqualitaet.grundlage.zurueckgehalten": "content withheld for you",
+    "klaraqualitaet.grundlage.nicht_verfuegbar": "not available – the check did not respond",
+    "klaraqualitaet.unvollstaendig":
+      "Check incomplete: not all checks could be read. Whether open findings exist is therefore unknown.",
+    "klaraqualitaet.ungelesen.titel.konflikt":
+      "Open conflict reported – the conflict list could not be read",
+    "klaraqualitaet.ungelesen.titel.duplikat":
+      "Open overlap reported – the duplicate list could not be read",
+    "klaraqualitaet.ungelesen.text":
+      "The notice on this entry reports an open finding. The related list could not be read, so the other side, content and cause are unknown.",
+    "klaraqualitaet.unsicher.ursacheUnbekannt":
+      "Cause unknown: a read error says nothing about permissions or content.",
+    "klaraqualitaet.vorschlag.erneutLesen":
+      "Check again later with “Read again”; if the error persists, inform the administration.",
     "klaraqualitaet.unsicherheitLabel": "Uncertainty",
     "klaraqualitaet.vorschlagLabel": "Suggestion",
     "klaraqualitaet.vorbereiten": "Prepare as task",
@@ -258,6 +284,19 @@ export default {
     "klaraqualitaet.grundlage.unbekannt":
       "niet te beoordelen – de andere kant is voor jou niet leesbaar",
     "klaraqualitaet.grundlage.zurueckgehalten": "inhoud voor jou achtergehouden",
+    "klaraqualitaet.grundlage.nicht_verfuegbar": "niet beschikbaar – de controle antwoordde niet",
+    "klaraqualitaet.unvollstaendig":
+      "Controle onvolledig: niet alle controles konden worden gelezen. Of er open bevindingen zijn, is daarom onbekend.",
+    "klaraqualitaet.ungelesen.titel.konflikt":
+      "Open conflict gemeld – de conflictlijst kon niet worden gelezen",
+    "klaraqualitaet.ungelesen.titel.duplikat":
+      "Open overlap gemeld – de duplicatenlijst kon niet worden gelezen",
+    "klaraqualitaet.ungelesen.text":
+      "De melding bij deze bijdrage geeft een open bevinding aan. De bijbehorende lijst kon niet worden gelezen; andere kant, inhoud en oorzaak zijn daarom onbekend.",
+    "klaraqualitaet.unsicher.ursacheUnbekannt":
+      "Oorzaak onbekend: een leesfout zegt niets over rechten of inhoud.",
+    "klaraqualitaet.vorschlag.erneutLesen":
+      "Later opnieuw controleren met „Opnieuw lezen”; blijft de fout, informeer dan de beheerder.",
     "klaraqualitaet.unsicherheitLabel": "Onzekerheid",
     "klaraqualitaet.vorschlagLabel": "Voorstel",
     "klaraqualitaet.vorbereiten": "Als opdracht voorbereiden",
