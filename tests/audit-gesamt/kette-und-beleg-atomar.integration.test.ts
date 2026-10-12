@@ -151,6 +151,9 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
     expect(reg.statusCode, reg.body).toBe(201);
     const angelegt = reg.json() as { id?: string; user?: { id: string } };
     adminId = angelegt.user?.id ?? angelegt.id ?? "";
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 28, Ben): den Kettenexport (`audit.exported`)
+    // gibt es nur mit ausdrücklich erteilter Ketteneinsicht (Betriebseinstellung, je Abruf gelesen).
+    process.env.KLARWERK_AUDIT_KETTENEINSICHT = adminId;
     const login = await appA.inject({
       method: "POST",
       url: "/api/auth/login",

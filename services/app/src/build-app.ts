@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import cors, { type FastifyCorsOptions } from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, {
@@ -140,6 +142,7 @@ import {
   type UploadLimitsRepo,
   type WithTx,
   anweisungFehler,
+  ohneBestandsstempel,
   responsibleOf,
 } from "../../knowledge-object";
 import {
@@ -212,9 +215,11 @@ import {
   type ReasonerPolicyRepo,
   anbieterZugelassen,
   ausgangspruefungAusEnv,
+  bindeAnbieter,
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
   createLocalEmbeddingClientFromEnv,
+  imBindungsrahmen,
   setzeAusgangspruefung,
 } from "../../reasoner";
 import {
@@ -248,6 +253,15 @@ import {
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
 import { Anfragebremse, bremsSatz } from "./anfragebremse";
+// produkt:20261008:klara-eigeninitiative: der persönliche Unterstützungsmodus im Assistenzprofil.
+import { EigeninitiativeDienst } from "./assistenz-eigeninitiative";
+// produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der Assistenz über die vorhandenen Dienste.
+import type { FaehigkeitsAusfuehrung } from "./assistenz-faehigkeiten";
+import {
+  FAEHIGKEITEN_MANDANT,
+  baueFaehigkeiten,
+  ladeKontext,
+} from "./assistenz-faehigkeiten-anbindung";
 // produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil je Konto — haltbar im
 // Postgres-Betrieb, im Speicher ohne Datenbank.
 import {
@@ -256,6 +270,7 @@ import {
   InMemoryAssistenzProfilRepo,
   PgAssistenzProfilRepo,
 } from "./assistenz-profil";
+import { autorenNamenAus } from "./autorennamen";
 import {
   type BearbeitungsRepo,
   InMemoryBearbeitungsRepo,
@@ -294,6 +309,7 @@ import {
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
+import type { Bereichsmarken } from "./firmenbereich";
 import { FirmenresetSso } from "./firmenreset-sso";
 // Firmenwörterbuch: der versionierte Begriffskatalog der Instanz — im Postgres-Betrieb haltbar
 // (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
@@ -333,6 +349,13 @@ import {
   PgKenntnisnahmeRepo,
 } from "./kenntnisnahme";
 import { kiGrenzeAusEnv, registriereKiAnfragebremse } from "./ki-anfragebremse";
+// produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): der Arbeitsweg mit einer ausgewählten
+// KI — am eigenen Klara-Gespräch, mit frischen Rechten, gebundenem Anbieter und echtem Laufbeleg.
+import {
+  type KiApiErgebnis,
+  KiArbeitsbegleitungDienst,
+  type KiCodexEinrichtung,
+} from "./ki-arbeitsbegleitung-dienst";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche — haltbar im Postgres-Betrieb, im
 // Speicher ohne Datenbank.
 import {
@@ -377,6 +400,12 @@ import {
   stapelRahmen,
 } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
+// BPA-16: Meeting-/Folienbezüge — im Postgres-Betrieb haltbar (`PgMeetingBezugAblage`).
+import {
+  type MeetingBezugAblage,
+  PgMeetingBezugAblage,
+  SpeicherMeetingBezugAblage,
+} from "./meeting-dokumentbezug-ablage";
 import { makeAssignmentNotifier } from "./notify";
 import { type OfficeAblage, PgOfficeAblage, SpeicherOfficeAblage } from "./office-ablage";
 import { leseOfficeEditorUmgebung } from "./office-artikel";
@@ -395,10 +424,14 @@ import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
+// produkt:20261011:assistenz-skills-werkzeuge: Übersicht, Vormerkungen und Aufträge der Fähigkeiten.
+import { assistenzFaehigkeitenRoutes } from "./routes/assistenz-faehigkeiten-routes";
 // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil (Name, Avatar, Ersteinrichtung).
 import { assistenzProfilRoutes } from "./routes/assistenz-profil-routes";
-import { auditRoutes } from "./routes/audit-routes";
+import { auditRoutes, ketteneinsichtKonten } from "./routes/audit-routes";
+import { aufgabenZaehlerRoutes } from "./routes/aufgaben-zaehler-routes";
 import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
+import { ausscheidenRoutes } from "./routes/ausscheiden-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 import { begriffeRoutes } from "./routes/begriffe-routes";
 import { brandingRoutes } from "./routes/branding-routes";
@@ -426,6 +459,7 @@ import { importLaufListeRoutes, importRunRoutes } from "./routes/import-run-rout
 import { jiraImportRoutes } from "./routes/jira-import-routes";
 import { kantenRoutes } from "./routes/kanten-routes";
 import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
+import { kiArbeitsbegleitungRoutes } from "./routes/ki-arbeitsbegleitung-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
@@ -445,6 +479,7 @@ import { lmsExportRoutes } from "./routes/lms-export-routes";
 import { managementRoutes } from "./routes/management-routes";
 import { mcpRoutes } from "./routes/mcp-routes";
 import { mediaRoutes } from "./routes/media-routes";
+import { meetingDokumentbezugRoutes } from "./routes/meeting-dokumentbezug-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
@@ -489,10 +524,17 @@ import { AnswerExplanationService } from "./services/answer-explanation";
 import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
 import { tabellenDerStufen } from "./sicherungsumfang";
-import { type AnhangQuellen, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
+import { type AnhangQuellen, entwurfSichtbarFuer, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 // produkt:20261007:spaces — die versionierten Arbeitsräume; im Postgres-Betrieb haltbar.
-import { InMemorySpacesRepo, PgSpacesRepo, type SpacesRepo, lesbareSpaces } from "./spaces";
+import {
+  InMemorySpacesRepo,
+  PgSpacesRepo,
+  type SpacesRepo,
+  bereichsmarken,
+  existenzbereiche,
+  lesbareSpaces,
+} from "./spaces";
 import { speicherVorgang } from "./speicher-vorgang";
 // JOB 3655: der Startvertrag — die EINE Stelle, die alle Umgebungswerte namentlich führt, den
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
@@ -515,7 +557,7 @@ import {
   UnternehmenDienst,
   type UnternehmenRepo,
 } from "./unternehmensprofil";
-import { verantwortungBeiAnlage } from "./verantwortung";
+import { sitzungVon, verantwortungBeiAnlage, zugangsstand } from "./verantwortung";
 import {
   InMemoryNachfolgeRepo,
   type NachfolgeRepo,
@@ -748,6 +790,13 @@ export interface AppServices {
    */
   officeAblage: OfficeAblage;
   /**
+   * BPA-16 (produkt:20261011:assistenz-meeting-dokumentbezug): Meetingbezüge — verbundene
+   * Präsentationsfassungen, Mitschriften, Rückmeldungen und Änderungsobjekte. Aus demselben Grund
+   * wie `bearbeitungen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgMeetingBezugAblage`; ohne
+   * Datenbank die Speicherfassung, die einen Neustart nicht überlebt.
+   */
+  meetingBezuege: MeetingBezugAblage;
+  /**
    * Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen. Aus demselben Grund wie
    * `bearbeitungen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgKenntnisnahmeRepo`; ohne Datenbank
    * die Speicherfassung, die im Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt sie beim
@@ -828,6 +877,9 @@ export interface AppServices {
   // buildApp — wie `aiCheckWorker`; ein vorab gesetzter Wert hat Vorrang.
   paarpflichten: PaarpflichtService;
   paarpflichtAusfuehrung?: PaarpflichtAusfuehrung;
+  // produkt:20261011:assistenz-skills-werkzeuge: die Fähigkeitsausführung. Erstellt von buildApp;
+  // `server.ts` nimmt wartende und unterbrochene Aufträge nach dem Start wieder auf.
+  faehigkeiten?: FaehigkeitsAusfuehrung;
   // Berater-Konzept Duplikate 04.07. (Stufe D3): Überschneidungs-/Duplikat-Erkennung (eigene Entität).
   overlaps: OverlapService;
   // Pedi 04.07.: einstellbare Anzeige-Schwelle der Duplikat-Erkennung (Admin) — schmale Repo-Schnittstelle.
@@ -1314,6 +1366,8 @@ export function assembleServices(
     // Office im Artikel: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die
     // Speicherfassung, die einen Neustart nicht überlebt.
     officeAblage?: OfficeAblage;
+    // BPA-16: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    meetingBezuege?: MeetingBezugAblage;
     // Kenntnisnahme: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
     kenntnisnahmen?: KenntnisnahmeRepo;
     // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
@@ -1596,9 +1650,28 @@ export function assembleServices(
   const objects = new ObjectStore({ repo: repos.objects });
   // R-0169 (Nacharbeit 5): EINE Dokumentakte für Word-Weg und Bibliotheksimport.
   const dokumente = new DokumentaktenService({ repo: repos.dokumente });
+  // Aufnahme gesamt-wissen-herkunft (R-0298): der Kontodienst entsteht eine Stufe früher, weil
+  // Bibliotheksexport und Output Factory die Autorennamen über ihn auflösen — DIESELBE Instanz, die
+  // unten als `auth` zurückgegeben wird, kein zweiter Kontobestand.
+  const auth = new AuthService({
+    users: repos.users,
+    sessions: repos.sessions,
+    resetTokens: repos.resetTokens,
+    secondFactors: repos.secondFactors,
+    audit,
+    // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
+    canChangeRole,
+    // AUFTRAG-mega62 Block B: dieselbe echte DB-Transaktion wie KoService/AskService — der
+    // Konto-Vermerk der Hinweis-Kenntnisnahme und sein Prüfprotokoll-Eintrag committen bzw.
+    // rollbacken gemeinsam. Nur mit echtem Pg-Pool gesetzt; ohne ihn trägt die Schreibreihenfolge
+    // (Protokoll zuerst) die verbleibende Zusage, s. AuthService.acknowledgeNotice.
+    ...(opts.withTx ? { withTx: opts.withTx } : {}),
+  });
+  const autorenNamen = autorenNamenAus(auth);
   const library = new LibraryService({
     koService: ko,
     dokumente,
+    autorenNamen,
     audit,
     candidates: repos.candidates,
     externalUpsert: externalImportEnabled,
@@ -1756,6 +1829,8 @@ export function assembleServices(
     bearbeitungen: opts.bearbeitungen ?? new InMemoryBearbeitungsRepo(),
     // Office im Artikel: Postgres, wenn injiziert, sonst im Speicher.
     officeAblage: opts.officeAblage ?? new SpeicherOfficeAblage(),
+    // BPA-16: Meetingbezüge — Postgres, wenn injiziert, sonst im Speicher.
+    meetingBezuege: opts.meetingBezuege ?? new SpeicherMeetingBezugAblage(),
     // Kenntnisnahme: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit zu
     // (Desktop-Journal), lehnt die Speicherfassung Schreibvorgänge ab — eine angenommene und beim
     // Neustart verlorene Bestätigung wäre schlimmer als eine abgelehnte.
@@ -1795,20 +1870,9 @@ export function assembleServices(
     // R-0169 (Nacharbeit 5): DIESELBE Instanz, die oben in den `LibraryService` gereicht wurde.
     dokumente,
     ko,
-    auth: new AuthService({
-      users: repos.users,
-      sessions: repos.sessions,
-      resetTokens: repos.resetTokens,
-      secondFactors: repos.secondFactors,
-      audit,
-      // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
-      canChangeRole,
-      // AUFTRAG-mega62 Block B: dieselbe echte DB-Transaktion wie KoService/AskService — der
-      // Konto-Vermerk der Hinweis-Kenntnisnahme und sein Prüfprotokoll-Eintrag committen bzw.
-      // rollbacken gemeinsam. Nur mit echtem Pg-Pool gesetzt; ohne ihn trägt die Schreibreihenfolge
-      // (Protokoll zuerst) die verbleibende Zusage, s. AuthService.acknowledgeNotice.
-      ...(opts.withTx ? { withTx: opts.withTx } : {}),
-    }),
+    // Aufnahme gesamt-wissen-herkunft: oben gebaut (s. `autorenNamen`), hier unverändert gereicht —
+    // mit dem zweiten Faktor (R-0562).
+    auth,
     // AUFTRAG-mega20 Block D: die Ankerprüfung des Entwurfs bekommt ihre Auflösung HIER — capture
     // kennt den Objektspeicher nicht (Modulgrenze), die Composition-Root kennt beide. Dieselbe
     // Bewegung wie bei `koConfidentiality` für die Medien-Analyse.
@@ -1907,8 +1971,9 @@ export function assembleServices(
     candidates: repos.candidates,
     // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
     // gesamt-dokumenterzeugung (R-0337): dieselbe Auditablage, damit das Prüfdatum je Quelle aus
-    // dem Validierungsnachweis belegt werden kann.
-    output: new OutputService({ koService: ko, audit: repos.auditRepo }),
+    // dem Validierungsnachweis belegt werden kann. Aufnahme gesamt-wissen-herkunft (R-0298):
+    // sichtbare Autorennamen im Ausgabedokument.
+    output: new OutputService({ koService: ko, audit: repos.auditRepo, autorenNamen }),
     auditLeser: repos.auditRepo,
     // produkt:wettbewerb:20261003:lernplattform: dieselbe Inhaltsquelle wie die Output Factory; die
     // Bilder liest er aus DEMSELBEN Objektspeicher. Die zugelassenen Lernplattformen legt allein
@@ -2288,6 +2353,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände überleben Neustart und
       // Deploy (`OFFICE_ABLAGE_SCHEMA`).
       officeAblage: new PgOfficeAblage(pool),
+      // BPA-16: Meetingbezüge überleben Neustart und Deploy (`MEETING_DOKUMENTBEZUG_SCHEMA`).
+      meetingBezuege: new PgMeetingBezugAblage(pool),
       // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
       kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
       // Veröffentlichung: die Zustellungen überleben Neuladen, Neuanmeldung und Neustart.
@@ -3171,6 +3238,12 @@ export function buildApp(
     hintergrundpruefung?: (lauf: () => Promise<HintergrundlaufBericht | null>) => void;
     /** R-0571: Wartezeit bis zur Wiederholung eines unvollständigen Verzeichnisabgleichs. */
     verzeichnisAbgleichWiederholungMs?: number;
+    /**
+     * BPA-13 · AC06: der Basisordner der SYNTHETISCHEN Codex-Arbeitsbereiche (je Auftrag ein
+     * Unterordner). Ohne Angabe ein eigener Ordner im System-Temp-Verzeichnis — bewusst kein
+     * Projektordner. Tests setzen einen eigenen Ordner.
+     */
+    kiCodexBasis?: string;
   } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
@@ -3297,6 +3370,14 @@ export function buildApp(
   const guards = makeGuards(services.auth, {
     spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
   });
+
+  // produkt:20261011:peter-p14 · B-07 (Nacharbeit 5): der gespeicherte Bestandsstempel ist ein
+  // Fingerabdruck über ALLE aktiven Einträge — auch über unsichtbare. Er verlässt den Server in KEINER
+  // JSON-Antwort (Regel und Grenzen: knowledge-object/src/pruefbasis.ts, `ohneBestandsstempel`).
+  // Als Hook der Wurzel, VOR den Routenregistrierungen: er gilt damit für jede Route dieser App.
+  app.addHook("preSerialization", async (_request, _reply, payload) =>
+    ohneBestandsstempel(payload),
+  );
 
   // D5 (KI aus, Lauf 5 Runde 3 — Bens B2): die Abschalt-Epoche einer Klara-Frage wird beim EINGANG
   // festgehalten, als ERSTER onRequest-Hook dieser App — vor dem asynchronen Anmelde-Hook der Add-on-API
@@ -3773,7 +3854,14 @@ export function buildApp(
     }),
   );
   // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
-  const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
+  // aufnahme:20260922:gesamt-leserechte (R-0610): die Mail nennt das Objekt — sie geht nur an
+  // Empfänger, die es nach der EINEN Regel (`darfSehen`) sehen dürfen, mit denselben lesbaren
+  // Spaces wie die Anmeldung (`makeGuards` oben). Das gilt auch für den Verzeichnisabgleich
+  // (R-0571) darunter, der denselben Notifier benutzt.
+  const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer, {
+    ko: (koId) => services.ko.get(koId),
+    spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
+  });
   // ADMIN-09 (produkt:20261009:admin-freigaberegeln): die Freigaberegel je Space — Prüfpunkt an den
   // Entscheidungswegen, Prüfbrett-Auskunft, Spacewechsel und die Verwaltungsrouten teilen EINEN Dienst.
   const freigaberegeln = new FreigabeRegelDienst({
@@ -4164,6 +4252,17 @@ export function buildApp(
             vorVergleich,
           }),
         }),
+      // produkt:20261011:peter-p14 · B-07: derselbe Runner für den stillen Bestandsabgleich.
+      baueLauf: (vorVergleich) =>
+        createAiCheckRunner({
+          ko: services.ko,
+          conflicts: services.conflicts,
+          overlaps: services.overlaps,
+          overlapSettings: services.overlapSettings,
+          reasoner: services.reasoner,
+          semanticPrefilter,
+          vorVergleich,
+        }),
       modellAktiv: () => services.reasoner.status().active,
       audit: services.audit,
     }),
@@ -4199,9 +4298,15 @@ export function buildApp(
       await services.ko.delete(koId, akteur, { hard: true });
     },
   });
+  // produkt:20261011:peter-p14 — die Partner- und öffentlichen Spaces (eine Bereichsableitung mit
+  // dem Space-Artikelfilter), je Anfrage frisch aus derselben Ablage wie `spaceLesbar` (kein
+  // Zwischenspeicher: eine Marke wirkt sofort).
+  const bereichsmarkenJetzt = async (): Promise<Bereichsmarken> =>
+    bereichsmarken(await services.spaces.aktuelle());
   app.register(
     koRoutes(
       {
+        bereichsmarken: bereichsmarkenJetzt,
         ko: services.ko,
         validation: services.validation,
         conflicts: services.conflicts,
@@ -4232,6 +4337,26 @@ export function buildApp(
         // die Lesevarianten-Routen benutzen, keine zweite. Das Original selbst bleibt unberührt:
         // die Variante tritt als eigenes Feld daneben, nie an die Stelle eines KO-Feldes.
         lesevarianten: services.lesevarianten,
+        // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27: Befugnis und Konto kommen
+        // aus DEMSELBEN Kontodienst wie die Anmeldung — kein zweiter Kontobestand. Die Befugnis ist
+        // seit der Integration (Nacharbeit 12) DIESELBE wie an `weisungskonto` unten
+        // (`User.weisungsbefugnis`, Aufnahme gesamt-peer-validierung).
+        konten: {
+          befugnisVon: (userId) => services.auth.weisungsbefugnisVon(userId),
+          kontoBesteht: (userId) => services.auth.kontoBesteht(userId),
+          // Nacharbeit 11 (Ben B1): der Lesekontext jedes Kontos aus DENSELBEN Quellen wie
+          // `makeGuards` (Kontenliste, aktuelle Spaces) — die Sicht des Kontos selbst.
+          lesekontexte: async () => {
+            const spaces = await services.spaces.aktuelle();
+            const jetzt = Date.now();
+            return (await services.auth.listUsers()).map((konto) => ({
+              id: konto.id,
+              zugang: zugangsstand(konto, jetzt),
+              ...(konto.accessExpiresAt ? { zugangEndet: konto.accessExpiresAt } : {}),
+              sitzung: sitzungVon(konto, spaces),
+            }));
+          },
+        },
         // Weg 3 (Feature-Flag): semantischer Vorfilter (undefined = Default „jeder gegen jeden").
         semanticPrefilter,
         // WP-SUBMIT-ASYNC: Prüf-Job-Vermerk + Hintergrund-Worker statt synchroner Erkennung.
@@ -4287,7 +4412,12 @@ export function buildApp(
         draftPromotion: {
           load: async (draftId, user) => {
             const draft = await services.capture.getDraft(draftId);
-            if (!draft) {
+            // aufnahme:20260922:gesamt-leserechte (R-0239, J24 „404"): ein Entwurf, den dieser
+            // Mensch nicht SEHEN darf, gibt es für ihn nicht — dieselbe Antwort wie die
+            // Entwurfsrouten (`requireVisibleDraft`). 403 bleibt dem sichtbaren Pool-Entwurf, an dem
+            // nur das Recht zum Einreichen fehlt.
+            const betrachter = { id: user.id, role: user.role as SessionUser["role"] };
+            if (!draft || !entwurfSichtbarFuer(betrachter, draft)) {
               return { ok: false, reason: "not-found" as const };
             }
             // Pool-Auftrag (Pedi, entscheidung:297afc57): die Dokumentübernahme REICHT EIN — und
@@ -4324,7 +4454,9 @@ export function buildApp(
           // Formprüfung; deren Fehler wird als `invalid` durchgereicht statt als 500 verschluckt.
           applyAndLoad: async (draftId, payload, user, expectedUpdatedAt) => {
             const draft = await services.capture.getDraft(draftId);
-            if (!draft) {
+            // aufnahme:20260922:gesamt-leserechte: dieselbe 404-Regel wie in `load` oben.
+            const betrachter = { id: user.id, role: user.role as SessionUser["role"] };
+            if (!draft || !entwurfSichtbarFuer(betrachter, draft)) {
               return { ok: false, reason: "not-found" as const };
             }
             // Pool-Auftrag (297afc57): derselbe Einreichweg wie `load` — nur der Autor.
@@ -4720,6 +4852,7 @@ export function buildApp(
     ko: services.ko,
     conflicts: services.conflicts,
     offeneSpaces,
+    bereichsmarken: bereichsmarkenJetzt,
     // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
     kanten: services.kanten,
     // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
@@ -4781,6 +4914,8 @@ export function buildApp(
         explanations: new AnswerExplanationService({
           answerSnapshots: services.answerSnapshots,
           ko: services.ko,
+          // R-0293: die heutige Konfliktlage je Beleg — derselbe Dienst wie an der Ask-Route.
+          conflicts: services.conflicts,
         }),
       },
       guards,
@@ -4870,11 +5005,13 @@ export function buildApp(
       // R-0773: erfolglose Suchen je Person.
       services.nulltreffer,
       wissenspaketQuellen,
+      bereichsmarkenJetzt,
+      // P14 · Existenzrecht: je Anfrage frisch aus derselben Ablage — ein Widerruf wirkt sofort.
+      async (nutzerId) => existenzbereiche(await services.spaces.aktuelle(), nutzerId),
     ),
   );
   app.register(categoryRoutes(services.ko, guards));
   app.register(outputRoutes(services.output, guards));
-  app.register(lmsExportRoutes(services.lmsExport, services.audit, guards));
   // R-2183 (Nacharbeit 3): Ruhestandshorizonte nur an echten internen Konten.
   const kontoGibtEs = async (id: string) =>
     (await services.auth.listUsers()).some((u) => u.id === id);
@@ -4999,6 +5136,25 @@ export function buildApp(
   );
   // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler aus eigenen KOs + Audits.
   app.register(impactRoutes({ ko: services.ko, audit: services.audit }, guards));
+  // Autorenübergabe-Auftrag K3: textfreier Zähler der an mich zurückgegebenen Entwürfe (Kopfband).
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Übergaben brauchen die Konten (gelöscht,
+  // ausgeschieden) und die gepflegten Bereichsprofile (Kritikalität → Priorität „Kritisch").
+  app.register(
+    aufgabenZaehlerRoutes(
+      {
+        ko: services.ko,
+        audit: services.audit,
+        konten: () => services.auth.listUsers(),
+        bereiche: () => services.management.listCategoryProfiles(),
+      },
+      guards,
+    ),
+  );
+  // R-0961, Peters Entscheidung 1 (12.10.2026): der Status „Ausgeschieden“. Offene Aufgaben gehen
+  // über dieselbe Wissensübergabe an die Vertretung wie in der Verantwortungsübergabe.
+  app.register(
+    ausscheidenRoutes({ auth: services.auth, vorgaenge: services.wissensuebergabe }, guards),
+  );
   // R-0466: das eigene Interaktionsgedächtnis. Die Herkunft „antwort" wird gegen DIESELBE
   // Antwortablage geprüft, die auch die Erklärroute liest.
   app.register(
@@ -5015,14 +5171,164 @@ export function buildApp(
   );
   // produkt:20261008:klara-basis: die eigenen Klara-Gespräche. Eine Antwort aus dem Frageweg wird
   // gegen DIESELBE Antwortablage geprüft wie die Herkunft im Gedächtnis.
+  // BPA-13: DIESELBE Dienstinstanz trägt auch die KI-Aufträge des Gesprächs (kein zweiter Verlauf).
+  const klaraGespraechDienst = new KlaraGespraechDienst({
+    repo: services.klaraGespraeche,
+    antworten: services.answerSnapshots,
+  });
   app.register(
-    klaraGespraechRoutes(
+    klaraGespraechRoutes({ dienst: klaraGespraechDienst, audit: services.audit }, guards),
+  );
+  // ================================================================================================
+  // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13) — DER ARBEITSWEG MIT EINER GEWÄHLTEN KI.
+  // ================================================================================================
+  //
+  // Nichts davon ist eine neue Entscheidung; alles wird frisch je Aufruf aus dem Bestand gelesen:
+  //   · „Keine KI" = die administrative KI-Abschaltung (`kiAbschaltung`), öffentliche KI = die
+  //     zentrale Adminfreigabe (`kiFreigabe.oeffentlicheKi === true`), Vertrauliches = die zweite
+  //     Freigabe (`vertraulicheAusleitungFreigegeben`).
+  //   · ERLAUBTE ANBIETER = die beiden externen Anbieter des Reasoners, die P04 als erste nennt
+  //     (Claude = `anthropic`, ChatGPT = `openai`). Keine automatische Erweiterung.
+  //   · API-WEG = `assistText` des Reasoners IM BINDUNGSRAHMEN: `bindeAnbieter` lässt in der Kette nur
+  //     den gewählten Anbieter zu; scheitert er, endet der Lauf ohne Ausweichweg
+  //     (`KlaraAusweichwegGesperrtFehler`). Die zentrale Freigabe und die Vertraulichkeitssperre
+  //     des Reasoners wirken unverändert dahinter.
+  //   · BELEG = der Eintrag im Modelllauf-Protokoll, der in genau diesem Zeitfenster für `assist`
+  //     entstand — nur wenn es GENAU EINER ist. Sonst kein Beleg statt eines geratenen.
+  //   · CODEX = ein synthetischer Arbeitsbereich je Auftrag; geschrieben wird nur, was
+  //     `wendeCodexAenderungenAn` annimmt.
+  const KI_P04_ANBIETER = ["anthropic", "openai"] as const;
+  type KiP04Anbieter = (typeof KI_P04_ANBIETER)[number];
+  const istP04Anbieter = (a: unknown): a is KiP04Anbieter =>
+    typeof a === "string" && (KI_P04_ANBIETER as readonly string[]).includes(a);
+  const kiProben = new Map<string, string>();
+  const kiLage = () => {
+    const config = services.reasoner.configStatus();
+    return {
+      keineKi: services.reasoner.kiAbschaltung().abgeschaltet,
+      oeffentlicheKiFreigegeben: config.taskConfig.kiFreigabe?.oeffentlicheKi === true,
+      vertraulichFreigegeben: services.reasoner.vertraulicheAusleitungFreigegeben(),
+      erlaubteAnbieter: [...KI_P04_ANBIETER],
+    };
+  };
+  const kiCodexEinrichtung = ((): KiCodexEinrichtung | undefined => {
+    const basis = opts.kiCodexBasis ?? join(tmpdir(), "klarwerk-ki-codex");
+    try {
+      mkdirSync(basis, { recursive: true });
+    } catch {
+      // Nicht beschreibbar: dann ist der Codex-Weg ehrlich „nicht eingerichtet".
+      return undefined;
+    }
+    return {
+      basis,
+      erlaubtePfade: ["src", "tests", "docs"],
+      anbieter: "openai",
+      version: "codex-uebergabe+arbeitsbereich-1",
+      geprueftAm: new Date().toISOString(),
+    };
+  })();
+  app.register(
+    kiArbeitsbegleitungRoutes(
       {
-        dienst: new KlaraGespraechDienst({
-          repo: services.klaraGespraeche,
-          antworten: services.answerSnapshots,
+        dienst: new KiArbeitsbegleitungDienst({
+          gespraeche: klaraGespraechDienst,
+          ko: services.ko,
+          lage: kiLage,
+          mcpAktiv: () => dienstLage.schluessel.length > 0,
+          codex: kiCodexEinrichtung,
+          api: {
+            bindung: () => {
+              const config = services.reasoner.configStatus();
+              const wirksam = config.effectiveAnbieter.assist;
+              const lage = kiLage();
+              if (!istP04Anbieter(wirksam)) {
+                return {
+                  ausfuehrbar: false,
+                  anbieter: null,
+                  modell: null,
+                  sperrgrund: `assist=${wirksam ?? "unbekannt"}`,
+                };
+              }
+              const sperrgrund = lage.keineKi
+                ? "keine_ki"
+                : !lage.oeffentlicheKiFreigegeben
+                  ? "oeffentliche_ki_nicht_freigegeben"
+                  : null;
+              return {
+                ausfuehrbar: sperrgrund === null,
+                anbieter: wirksam,
+                modell: config.cloudProviders[wirksam].model ?? null,
+                sperrgrund,
+              };
+            },
+            adapter: () => {
+              const config = services.reasoner.configStatus();
+              return KI_P04_ANBIETER.filter((a) => config.cloudProviders[a].configured).map((a) => {
+                const geprueftAm = kiProben.get(a);
+                return {
+                  faehigkeit: "api" as const,
+                  anbieter: a,
+                  version: config.cloudProviders[a].model ?? config.cloudProviders[a].name ?? a,
+                  ...(geprueftAm ? { geprueftAm } : {}),
+                };
+              });
+            },
+            pruefe: async (anbieter) => {
+              if (!istP04Anbieter(anbieter)) {
+                return { ok: false, detail: "Kein freigegebener Anbieter." };
+              }
+              const probe = await services.reasoner.probe(anbieter);
+              const ok = probe.ok && probe.mode === "model" && probe.anbieter === anbieter;
+              if (ok) {
+                kiProben.set(anbieter, probe.at);
+              }
+              return { ok, detail: probe.detail };
+            },
+            fuehreAus: (prompt, anbieter, vertraulich) =>
+              imBindungsrahmen(async (): Promise<KiApiErgebnis> => {
+                if (!bindeAnbieter(anbieter)) {
+                  throw new Error("Die Anbieterbindung ließ sich nicht herstellen.");
+                }
+                const von = new Date().toISOString();
+                const ergebnis = await services.reasoner.assistText(
+                  prompt,
+                  "de",
+                  "Bearbeite die im Text beschriebene Aufgabe ausschließlich mit den dort " +
+                    "genannten Quellen und gib nur das verlangte Ergebnis zurück.",
+                  vertraulich,
+                );
+                if (ergebnis.demo) {
+                  throw new Error(
+                    "Kein Modellergebnis — der gewählte Anbieter hat nicht geantwortet.",
+                  );
+                }
+                const bis = new Date(Date.now() + 1).toISOString();
+                const laeufe = (await services.modelRuns.recent(200)).filter(
+                  (l) =>
+                    l.task === "assist" &&
+                    l.status === "success" &&
+                    !l.demo &&
+                    l.startedAt >= von &&
+                    l.startedAt < bis,
+                );
+                const lauf = laeufe.length === 1 ? laeufe[0] : undefined;
+                if (lauf) {
+                  kiProben.set(anbieter, lauf.finishedAt);
+                }
+                return {
+                  inhalt: ergebnis.text,
+                  laufId: lauf?.id ?? null,
+                  modell: lauf?.model ?? null,
+                  verbrauch: lauf?.verbrauch
+                    ? {
+                        einheit: "token",
+                        menge: lauf.verbrauch.eingabeToken + lauf.verbrauch.ausgabeToken,
+                      }
+                    : null,
+                };
+              }),
+          },
         }),
-        audit: services.audit,
       },
       guards,
     ),
@@ -5032,15 +5338,66 @@ export function buildApp(
     assistenzProfilRoutes(
       {
         dienst: new AssistenzProfilDienst({ repo: services.assistenzProfile }),
+        // produkt:20261008:klara-eigeninitiative: der Unterstützungsmodus liegt im selben Profil.
+        eigeninitiative: new EigeninitiativeDienst({ repo: services.assistenzProfile }),
         audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261011:assistenz-skills-werkzeuge (BPA-11): Fähigkeiten der eigenen Assistenz. Jede
+  // Entscheidung kommt frisch aus dem Dienst, der sie schon trifft — KI-Abschaltung und Freigaben
+  // aus dem Reasoner, die Stufe der externen Wissensabfrage, Konto- und Kontextrechte über
+  // `darfSehen`; die Aufträge liegen im Assistenzprofil. Nichts davon hat hier eine zweite Regel.
+  const faehigkeitenWissen = {
+    get: (id: string) => services.ko.get(id),
+  };
+  const faehigkeitenLesbareSpaces = async (nutzerId: string) =>
+    lesbareSpaces(await services.spaces.aktuelle(), nutzerId);
+  const faehigkeiten = baueFaehigkeiten({
+    reasoner: services.reasoner,
+    externeWissensabfrage: services.externalKnowledge,
+    externeSuche: services.externalSearch,
+    profile: services.assistenzProfile,
+    konten: () => services.auth.listUsers(),
+    wissen: faehigkeitenWissen,
+    lesbareSpaces: faehigkeitenLesbareSpaces,
+  });
+  services.faehigkeiten = faehigkeiten.ausfuehrung;
+  app.register(
+    assistenzFaehigkeitenRoutes(
+      {
+        ausfuehrung: faehigkeiten.ausfuehrung,
+        vormerkungen: faehigkeiten.vormerkungen,
+        kontext: (user, kennungen) => ladeKontext({ wissen: faehigkeitenWissen }, user, kennungen),
+        audit: services.audit,
+        mandant: FAEHIGKEITEN_MANDANT,
+        hintergrund: () => {
+          void faehigkeiten.ausfuehrung.arbeiteWarteschlangeAb().catch(() => undefined);
+        },
       },
       guards,
     ),
   );
   // produkt:20261009:admin-audit-verstaendlich: derselbe Sichtbarkeitszugang wie die Nebenwege —
   // Titel, Rücklinks und Inhaltsfelder im Protokoll nur für Objekte, die der Betrachter öffnen darf.
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 14/15, 20): dazu das Protokoll nach dem
+  // Leserecht des Lesers — gegen die Sichtbarkeitsfakten des Bestands samt Papierkorb, die Spaces
+  // und die Objektzuordnung der Befunde (Gelöschtes rekonstruiert die Route aus der Kette selbst).
   app.register(
-    auditRoutes(services.audit, guards, [services.conflicts, services.overlaps], koSichtbarkeit),
+    auditRoutes(services.audit, guards, [services.conflicts, services.overlaps], koSichtbarkeit, {
+      sichtbarkeitsfaktenAller: () => services.ko.sichtbarkeitsfaktenAller(),
+      spaceKennungen: async () => (await services.spaces.aktuelle()).map((s) => s.id),
+      befundZuordnungen: async () => [
+        ...(await services.conflicts.koZuordnungen()),
+        ...(await services.overlaps.koZuordnungen()),
+      ],
+      weitereZiele: async () => (await services.teams.aktuelle()).map((t) => t.id),
+      // Nacharbeit 28 (Ben): die vollständige Kette nur mit ausdrücklich erteilter Ketteneinsicht —
+      // vom Betrieb je Konto vergeben, bei jedem Abruf frisch gelesen (Entzug wirkt sofort).
+      ketteneinsicht: (kontoId) =>
+        ketteneinsichtKonten(process.env.KLARWERK_AUDIT_KETTENEINSICHT).has(kontoId),
+    }),
   );
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
@@ -5081,6 +5438,9 @@ export function buildApp(
     // Ein Traeger FRISCH — `KoService.get` liefert fuer den Papierkorb `undefined`, zeichengleich
     // mit dem Trim in `list`.
     ko: (koId) => services.ko.get(koId),
+    // BPA-17 (G05): die Quelle IM PAPIERKORB, nur für private Folgeprodukte — eine gewöhnliche
+    // Löschung hebt die berechtigt erzeugte Kopie nicht auf; Rechte gelten an ihren Fakten weiter.
+    papierkorb: (koId) => services.ko.papierkorbFassungVon(koId),
     // Der Schreibstand aus der ABLAGE (Pg: Zeile `ko_schreibstand`; Speicher: geteiltes Objekt des
     // Bestands) — der Kandidaten-Speicher verwirft damit jeden Eintrag, sobald irgendwo, auch in
     // einem anderen Prozess, ein Traeger entstanden oder verschwunden sein kann. Ohne diese Quelle
@@ -5111,6 +5471,19 @@ export function buildApp(
   };
   app.register(objectRoutes(services.objects, guards, anhangQuellen));
   app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
+  // BPA-16: Gesprächsaussagen mit Folien verbinden. Präsentationen und Mitschriften kommen aus
+  // DEMSELBEN Objektspeicher und werden mit DENSELBEN Herkünften beurteilt wie `/api/objects/:id`.
+  app.register(
+    meetingDokumentbezugRoutes(
+      { ablage: services.meetingBezuege, objects: services.objects, quellen: anhangQuellen },
+      guards,
+    ),
+  );
+  // aufnahme:20260922:gesamt-leserechte: der SCORM-Export liest Bilder aus DEMSELBEN Speicher und
+  // bekommt deshalb dieselben Herkünfte für die Anhangsregel — keine zweite Aufzählung.
+  app.register(
+    lmsExportRoutes(services.lmsExport, services.audit, guards, services.objects, anhangQuellen),
+  );
   // R-1034 / FR-I18N-02: die Oberflächentexte — öffentlich lesbar (die Anmeldemaske braucht sie vor
   // jeder Sitzung), gepflegt ausschließlich mit `users.manage`.
   app.register(
@@ -5248,6 +5621,13 @@ export function buildApp(
         teams: services.teams,
         // ADMIN-09: kommt ein Objekt in einen Space mit Freigaberegel, gilt deren Mindestzahl sofort.
         freigaberegelAnwenden: (koId, akteur) => freigaberegeln.anwenden(koId, akteur),
+        // gesamt-leserechte (Nacharbeit 32, Entscheidung 25): das ausdrückliche Existenzrecht — vom
+        // Betrieb je Konto (Kennung oder E-Mail) vergeben, bei jedem Abruf frisch gelesen (Entzug
+        // wirkt sofort).
+        existenzrecht: ({ id, email }) =>
+          [...ketteneinsichtKonten(process.env.KLARWERK_EXISTENZRECHT)].some(
+            (k) => k === id || k.toLowerCase() === email.toLowerCase(),
+          ),
         // R-0571: wechselt ein Objekt den Space, folgen ihm die laut Verzeichnis Zuständigen —
         // neue werden zugewiesen und benachrichtigt, die des alten Space verlieren die offene
         // Verzeichnis-Zuweisung.

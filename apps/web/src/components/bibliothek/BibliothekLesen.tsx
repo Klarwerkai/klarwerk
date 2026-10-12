@@ -16,6 +16,7 @@ import { type KoAction, endpoints } from "../../api/endpoints";
 import {
   useAudit,
   useConflicts,
+  useDirectory,
   useEigeneBefunde,
   useKo,
   useKoBeziehungen,
@@ -98,6 +99,11 @@ import {
   latestValidationFeedback,
 } from "../../lib/validationFeedback";
 import { isReturnedForRework } from "../../lib/validationStatus";
+import {
+  aktuelleWeisungsart,
+  sichtungsAuswahl,
+  weisungsbefugtFuer,
+} from "../../lib/weisungsbefugnis";
 import { statusSchluessel } from "../../lib/wissensstatus";
 import { AiAssistBox } from "../AiAssistBox";
 import { BodyExtractPanel } from "../BodyExtractPanel";
@@ -125,6 +131,9 @@ import { ListEditor, TagEditor } from "../editors";
 import { KenntnisnahmeBereich, KenntnisnahmeVerweis } from "../kenntnisnahme/KenntnisnahmeBereich";
 import { NegativwissenAnzeige } from "../ko/NegativwissenAnzeige";
 import { KNOWLEDGE_TYPES } from "../trust";
+import { ExterneFreigabeDialog } from "../trust/ExterneFreigabeDialog";
+import { Verifizierungsmarke } from "../trust/Verifizierungsmarke";
+import { type BetroffenerPunktAnzeige, WeisungDialog } from "../trust/WeisungDialog";
 import { Button, Field, SectionLabel, TextInput, cx } from "../ui";
 import { VeroeffentlichungBereich } from "../veroeffentlichung/VeroeffentlichungBereich";
 import { VerstaendnisfragenBereich } from "../verstaendnisfragen/VerstaendnisfragenBereich";
@@ -1184,12 +1193,65 @@ export function BibliothekLesen({
     void qc.invalidateQueries({ queryKey: ["library"] });
     void qc.invalidateQueries({ queryKey: ["conflicts"] });
     void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+    // Autorenübergabe-Auftrag K3 (Nacharbeit 4): Eine Überarbeitung (`ko.revised`) beendet eine
+    // Rückgabe. Liste und Zahl der an MICH zurückgegebenen Entwürfe dürfen sie dann nicht bis zum
+    // Ablauf der Frischefrist weiterführen — dieselbe Lücke wie bei der Übergabe in MehrAbschnitte.
+    void qc.invalidateQueries({ queryKey: ["me", "returned-tasks"] });
   };
 
   const act = useMutation({
     mutationFn: (body: KoAction) => endpoints.ko.act(koId, body),
     onSuccess: invalidate,
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+  // ==============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27 — WEISUNG, SICHTUNG, EXTERNE
+  // FREIGABE. Die Oberfläche bietet an und zeigt; ob es gilt, entscheidet der Server. Seine
+  // Ablehnungen kommen wörtlich in den Dialog: `WEISUNG_PUNKTE_OFFEN` legt die betroffenen Punkte
+  // einzeln vor (R-0573), `DUPLICATE_ACK_REQUIRED` verlangt die Bestätigung der offenen Dublette —
+  // der nächste Klick auf denselben Knopf IST diese Bestätigung, und die Meldung sagt das.
+  const verzeichnis = useDirectory();
+  const [weisungOffen, setWeisungOffen] = useState(false);
+  const [externOffen, setExternOffen] = useState(false);
+  const [weisungPunkte, setWeisungPunkte] = useState<readonly BetroffenerPunktAnzeige[]>([]);
+  const [entscheidungsFehler, setEntscheidungsFehler] = useState<string | null>(null);
+  const [dubletteBestaetigen, setDubletteBestaetigen] = useState(false);
+  const entscheidungAbgelehnt = (e: unknown): void => {
+    // Nacharbeit 14 (Ben B2): die Weisung IST gesetzt, ihr Abschluss aber unvollständig. Kein
+    // Erfolg und kein stiller Fehlschlag: der Stand wird neu geladen (die Marke zeigt den offenen
+    // Abschluss samt „Abschluss nachholen“), der Dialog schließt, die Meldung bleibt sichtbar.
+    if (e instanceof ApiError && e.code === "WEISUNG_ABSCHLUSS_UNVOLLSTAENDIG") {
+      invalidate();
+      setWeisungOffen(false);
+      setWeisungPunkte([]);
+      setEntscheidungsFehler(null);
+      push("error", e.message);
+      return;
+    }
+    if (e instanceof ApiError) {
+      if (e.code === "WEISUNG_PUNKTE_OFFEN" && Array.isArray(e.details.punkte)) {
+        setWeisungPunkte(e.details.punkte as BetroffenerPunktAnzeige[]);
+      }
+      if (e.code === "DUPLICATE_ACK_REQUIRED") {
+        setDubletteBestaetigen(true);
+      }
+      setEntscheidungsFehler(e.message);
+      return;
+    }
+    setEntscheidungsFehler(t("state.error"));
+  };
+  // Nacharbeit 7: eigener Name — `entscheiden` ist weiter unten der Vorschlagsentscheid.
+  const herkunftsEntscheid = useMutation({
+    mutationFn: (body: KoAction) => endpoints.ko.act(koId, body),
+    onSuccess: () => {
+      invalidate();
+      setWeisungOffen(false);
+      setExternOffen(false);
+      setWeisungPunkte([]);
+      setEntscheidungsFehler(null);
+      setDubletteBestaetigen(false);
+    },
+    onError: entscheidungAbgelehnt,
   });
   // R-0235 / R-0749: „Hat geholfen" am Objekt selbst — Bewährung, keine Prüfstimme. Der Server
   // zählt je Person und Objekt genau einmal; ein zweiter Klick ist ein ehrlicher No-op.
@@ -2868,6 +2930,39 @@ export function BibliothekLesen({
                       {t("lib.revalidate")}
                     </MenuePunkt>
                   ) : null}
+                  {/* Aufnahme gesamt-wissen-herkunft · Entscheidung 18: angeboten nur, wenn am
+                      eigenen Konto eine Weisungsbefugnis für diesen Bereich vermerkt ist — die
+                      Rolle allein genügt nicht. Entscheidung 27: wer prüfen darf, kann eine
+                      externe Freigabe übernehmen. Das Urteil fällt in beiden Fällen am Server. */}
+                  {weisungsbefugtFuer(user?.weisungsbefugnis, ko.category) ? (
+                    <MenuePunkt
+                      testId="bib-menue-weisung"
+                      onClick={() => {
+                        setEntscheidungsFehler(null);
+                        setWeisungPunkte([]);
+                        setDubletteBestaetigen(false);
+                        setExternOffen(false);
+                        setWeisungOffen(true);
+                        schliessen();
+                      }}
+                    >
+                      {t("weisung.menue.setzen")}
+                    </MenuePunkt>
+                  ) : null}
+                  {canReview ? (
+                    <MenuePunkt
+                      testId="bib-menue-extern"
+                      onClick={() => {
+                        setEntscheidungsFehler(null);
+                        setDubletteBestaetigen(false);
+                        setWeisungOffen(false);
+                        setExternOffen(true);
+                        schliessen();
+                      }}
+                    >
+                      {t("weisung.extern.menue")}
+                    </MenuePunkt>
+                  ) : null}
                   <MenuePunkt
                     testId="bib-menue-hilfreich"
                     disabled={hilfreich.isPending || hilfreich.isSuccess}
@@ -2905,6 +3000,75 @@ export function BibliothekLesen({
             </Menue>
           </div>
         </div>
+
+        {/* Aufnahme gesamt-wissen-herkunft (R-0228): wer wann fachlich prüfte und ob der
+            maschinelle Prüflauf vollständig war — unmittelbar am Eintrag, nicht in der Kette. */}
+        <Verifizierungsmarke
+          ko={ko}
+          nameOf={nameOf}
+          sichtenLaeuft={herkunftsEntscheid.isPending}
+          // Nacharbeit 14 (Ben B1): gesichtet wird die AKTUELLE Weisung. Ist sie die mit punktweiser
+          // Entscheidung, steht der Knopf hier — auch wenn früher eine Sichtung aus
+          // `weisung-validate` lief; ist es die eigene Weisung, führt sie der Prüfablauf.
+          {...(ko.weisung &&
+          aktuelleWeisungsart(ko) === "punktweise" &&
+          !ko.weisung.sichtung.gesichtetAm &&
+          user?.id === ko.weisung.sichtung.verantwortlich
+            ? { aufSichten: () => herkunftsEntscheid.mutate({ action: "weisung-sichten" }) }
+            : {})}
+          // Nacharbeit 14 (Ben B2): ein unvollständiger Abschluss überstimmter Punkte steht an der
+          // Marke; die weisende Person holt ihn hier nach.
+          {...(ko.weisungAbschlussOffen && ko.weisungAbschlussOffen.length > 0
+            ? {
+                abschlussOffen: ko.weisungAbschlussOffen.length,
+                ...(ko.weisung && user?.id === ko.weisung.von
+                  ? {
+                      aufAbschlussNachholen: () =>
+                        herkunftsEntscheid.mutate({ action: "weisung-abschluss" }),
+                    }
+                  : {}),
+              }
+            : {})}
+        />
+        {weisungOffen ? (
+          <WeisungDialog
+            bereich={ko.category}
+            konten={sichtungsAuswahl(
+              Array.isArray(verzeichnis.data) ? verzeichnis.data : [],
+              ko.sichtungsKandidaten,
+              user?.id,
+            )}
+            punkte={weisungPunkte}
+            laeuft={herkunftsEntscheid.isPending}
+            fehler={entscheidungsFehler}
+            aufSetzen={(eingabe) =>
+              herkunftsEntscheid.mutate({
+                action: "weisung",
+                sichtung: { verantwortlich: eingabe.verantwortlich, frist: eingabe.frist },
+                bestehenLassen: eingabe.bestehenLassen,
+                ueberstimmen: eingabe.ueberstimmen,
+                ...(dubletteBestaetigen ? { duplicateAcknowledged: true as const } : {}),
+              })
+            }
+            aufAbbrechen={() => setWeisungOffen(false)}
+          />
+        ) : null}
+        {externOffen ? (
+          <ExterneFreigabeDialog
+            bereich={ko.category}
+            konten={Array.isArray(verzeichnis.data) ? verzeichnis.data : []}
+            laeuft={herkunftsEntscheid.isPending}
+            fehler={entscheidungsFehler}
+            aufUebernehmen={(eingabe) =>
+              herkunftsEntscheid.mutate({
+                action: "externe-freigabe",
+                externeFreigabe: eingabe,
+                ...(dubletteBestaetigen ? { duplicateAcknowledged: true as const } : {}),
+              })
+            }
+            aufAbbrechen={() => setExternOffen(false)}
+          />
+        ) : null}
 
         {/* SCRUM-245: der Treffergrund — nur bei aktiver Suche, sonst steht hier nichts. */}
         {suchtext.trim().length > 0 && treffer.length > 0 ? (
@@ -3711,6 +3875,9 @@ export function BibliothekLesen({
                 variante={lesevariante}
                 zeigtOriginal={zeigtOriginal}
                 onUmschalten={() => setZeigtOriginal((v) => !v)}
+                onWiderspruch={(begruendung) =>
+                  endpoints.lesevarianten.widerspruchKo(koId, lesevariante.lang, begruendung)
+                }
               />
             ) : null}
             {/* Der Abruf ist gescheitert (Netz, Zugriff, Serverfehler). Dann steht das ORIGINAL da —
@@ -3990,7 +4157,7 @@ export function BibliothekLesen({
                 onClick={() => springeZu("quellen")}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-surface px-2.5 py-[5px] text-[12px] font-semibold text-text hover:bg-hairline-soft"
               >
-                <FileText size={13} aria-hidden className="text-muted" />
+                <FileText size={13} strokeWidth={1.8} aria-hidden className="text-muted" />
                 {quellen.length > 0
                   ? t("lib.lesen.sprung.quellen", { count: quellen.length })
                   : t("lib.lesen.sprung.quellenLeer")}
@@ -4018,7 +4185,7 @@ export function BibliothekLesen({
                     : {})}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-surface px-2.5 py-[5px] text-[12px] font-semibold text-text hover:bg-hairline-soft"
                 >
-                  <FileText size={13} aria-hidden className="text-muted" />
+                  <FileText size={13} strokeWidth={1.8} aria-hidden className="text-muted" />
                   {originalDateien.length > 1
                     ? t("lib.lesen.sprung.originaldateien", { count: originalDateien.length })
                     : t("lib.lesen.sprung.originaldatei", { name: originalDateien[0]?.name ?? "" })}
@@ -4169,7 +4336,7 @@ export function BibliothekLesen({
                   {aussageZeigen ? (
                     <div data-testid="bib-feld-aussage">
                       <SectionLabel>{t("ko.statement")}</SectionLabel>
-                      <p className="text-[14.5px] leading-relaxed text-text">{aussage}</p>
+                      <p className="text-[15px] leading-relaxed text-text">{aussage}</p>
                     </div>
                   ) : null}
                   {anlage.length > 0 ? (
@@ -4226,7 +4393,7 @@ export function BibliothekLesen({
                   data-bib-text="quellenchip"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-page px-2.5 py-[5px]"
                 >
-                  <FileText size={13} aria-hidden className="text-muted" />
+                  <FileText size={13} strokeWidth={1.8} aria-hidden className="text-muted" />
                   <span className="text-[12px] font-semibold text-text">{`${i + 1} · ${s.label}`}</span>
                 </span>
               ))}

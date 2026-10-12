@@ -405,7 +405,7 @@ export function Kopfband({
               <span>{t("fe002.seiteFinden")}</span>
               {/* R-0987: das Kürzel folgt der Plattform — „⌘K" auf Apple, sonst „Strg+K"/„Ctrl+K"
                 (`lib/tastenkuerzel.ts`, dieselbe Quelle wie die Zeile unter „Arbeitsbereiche"). */}
-              <span className="rounded-[5px] bg-hairline/15 px-1.5 py-px font-mono text-[10.5px] text-hairline">
+              <span className="rounded-[5px] bg-hairline/15 px-1.5 py-px font-mono text-klein text-hairline">
                 {kuerzel}
               </span>
             </button>

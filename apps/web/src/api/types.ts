@@ -575,6 +575,79 @@ export interface KoFrische {
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
+/**
+ * Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 — Spiegel von `KoWeisung`
+ * (services/knowledge-object/src/types.ts): wer das Objekt als Weisung gültig gesetzt hat, für
+ * welchen Bereich und welche Fassung, welche betroffenen Punkte ausdrücklich bestehen blieben, und
+ * die nachfolgende Sichtung (Verantwortliche, Frist, ggf. erledigt).
+ */
+export interface KoWeisung {
+  von: string;
+  am: string;
+  bereich: string;
+  fassung: number;
+  bestehenGelassen: string[];
+  /** R-0573 · Nacharbeit 11: ausdrücklich überstimmte Punkte (Konfliktkennungen). */
+  ueberstimmt?: string[];
+  /** Nacharbeit 14: der Beleg dieser Weisung — bindet die Sichtung an genau sie. */
+  beleg?: { auditSeq: number; auditHash: string };
+  sichtung: {
+    verantwortlich: string;
+    frist: string;
+    gesichtetVon?: string;
+    gesichtetAm?: string;
+    vermerk?: string;
+  };
+}
+
+/** Entscheidung 27 — Spiegel von `KoExterneFreigabe` (services/knowledge-object/src/types.ts). */
+export interface KoExterneFreigabe {
+  art: "wissen" | "referenz";
+  herausgeber: string;
+  freigabeKennung?: string;
+  freigegebenAm: string;
+  freigegebenVon?: string;
+  nachweis?: string;
+  geltung: string;
+  zustaendig: string;
+  bestaetigtVon: string;
+  bestaetigtAm: string;
+  fassung: number;
+}
+
+/**
+ * Entscheidung 18 / Antwort 18 — die Weisungsbefugnis am Konto (Spiegel von
+ * services/auth/src/types.ts). `bereiche` sind Kategorien; `*` steht für das ganze Unternehmen.
+ */
+export interface Weisungsbefugnis {
+  bereiche: string[];
+  erteiltVon: string;
+  erteiltAm: string;
+}
+
+/** R-0228: Spiegel von `Verifizierung` in services/app/src/verifizierungsmarke.ts. */
+export interface KoVerifizierung {
+  mensch:
+    | { stand: "nicht_belegt" }
+    | { stand: "nicht_auffindbar" }
+    | { stand: "nicht_abrufbar" }
+    | {
+        stand: "belegt";
+        art:
+          | "bewertung"
+          | "verwalter"
+          | "rueckgabe"
+          | "weisung"
+          | "externe_freigabe"
+          | "weisung_sichtung";
+        pruefer: string;
+        zeitpunkt: string;
+        fassung: number | null;
+        aktuell: boolean;
+      };
+  validiertVon: string[];
+}
+
 /** R-1631: Bauteile, Materialien und Geltungskontext — Spiegel von `AnlagenKontext` im Dienst. */
 export interface AnlagenKontext {
   bauteile?: string[];
@@ -759,6 +832,22 @@ export interface KnowledgeObject {
   // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
   // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
+  // Aufnahme gesamt-wissen-herkunft (R-0228): die Verifizierungsmarke — Spiegel von
+  // `services/app/src/verifizierungsmarke.ts`. Nur `GET /api/kos/:id` liefert sie; fehlt das Feld,
+  // ist sie in dieser Antwort NICHT ERHOBEN (Liste, Suche, Prüfbrett) — nicht „ungeprüft".
+  verifizierung?: KoVerifizierung;
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27 — fehlen sie, ist das Objekt
+  // weder als Weisung gesetzt noch aus einer externen Freigabe übernommen.
+  weisung?: KoWeisung;
+  externeFreigabe?: KoExterneFreigabe;
+  // Nacharbeit 11 (Ben B1): nur an `GET /api/kos/:id` und nur für weisungsbefugte Lesende — die
+  // Konten, die diesen Eintrag mit ihrem eigenen Zugang lesen und deshalb sichten können.
+  sichtungsKandidaten?: string[];
+  // Nacharbeit 14 (Ben B2): nur an `GET /api/kos/:id` — überstimmte Punkte (Konfliktkennungen),
+  // deren Abschluss noch nicht vollständig ist. Fehlt das Feld, ist nichts offen.
+  weisungAbschlussOffen?: string[];
+  // Nacharbeit 11 (Ben B2): durch eine Weisung überstimmt und geschlossen (nicht gelöscht).
+  geschlossen?: { durchKoId: string; conflictId: string; von: string; am: string; fassung: number };
   /**
    * AW06-K02: die Annahme DIESER Fassung, vom Server aus genau dem referenzierten Beleg gelesen —
    * Fassung, Person, Zeitpunkt und die Kontoregel, die im Beleg steht (`null`: dort nicht
@@ -2098,8 +2187,9 @@ export interface PublicUser {
   accessExpiresAt?: string;
   // Aufnahme gesamt-peer-validierung (Antwort 18): die am Konto vergebene fachliche
   // Weisungsbefugnis mit Zuständigkeitsbereichen (`*` = ganzes Unternehmen). Fehlt das Feld, hat
-  // das Konto keine — unabhängig von seiner Rolle.
-  weisungsbefugnis?: { bereiche: string[]; erteiltVon: string; erteiltAm: string };
+  // das Konto keine — unabhängig von seiner Rolle. Seit der Integration (gesamt-wissen-herkunft,
+  // Nacharbeit 12) die EINE Befugnis auch für die Weisung mit punktweiser Entscheidung.
+  weisungsbefugnis?: Weisungsbefugnis;
 }
 
 // SCRUM-116/108: Import-/Source-Review-Kandidaten (JSON-Re-Import).
@@ -2607,6 +2697,9 @@ export interface AskResponse {
   // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
   // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
   verschlossen?: VerschlossenHinweis[];
+  // R-0293 (W3-C): die Kennung des dauerhaften Antwortbelegs. `null`, wenn kein Beleg entstand
+  // (Ablage nicht verdrahtet oder ausgefallen); ein älterer Server sendet das Feld nicht.
+  answerId?: string | null;
   // R-0284: der Rahmen der Suche; ein älterer Server sendet ihn nicht — dann steht kein Satz.
   pruefrahmen?: AskPruefrahmen;
   // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
@@ -2719,6 +2812,60 @@ export interface AskGeltungsauskunft {
   fragekontext: Fragekontext;
   quellen: { id: string; passung: GeltungsPassung; geltung?: KoGeltung }[];
 }
+
+// R-0293 / R-0276 / R-0317 / R-0340: GET /api/klara/answers/:answerId/explanation — der Weg zur
+// Antwort aus dem gespeicherten Beleg. Spiegel des Server-Lesemodells
+// (services/ask/src/answer-explanation.ts); `apps/web` darf nicht aus `services/` importieren.
+export type AnswerPrimaryResolutionFailure =
+  | "UNKNOWN_REFERENCE"
+  | "UNRESOLVABLE_REFERENCE"
+  | "DAMAGED_REFERENCE"
+  | "ACCESS_DENIED"
+  | "REDACTION_REQUIRED";
+
+export interface AnswerExplanationEvidence {
+  knowledgeObjectId: string;
+  knowledgeObjectVersion: number | null;
+  evidenceRole: "carrying" | "consulted";
+  validationDecisionRef: { auditSeq: number; auditHash: string } | null;
+  validationReferenceAbsenceReason: string | null;
+  sourceRecordId: string | null;
+  sourceRecordIdReason: string | null;
+  locator: string | null;
+  locatorReason: string | null;
+  confidentialityAtExecution: string | null;
+  responsibleAtExecution: string | null;
+  responsibleKindAtExecution: "owner" | "author-fallback" | null;
+  // R-0293: der Prüf-Lauf zum Antwortzeitpunkt (getrennt von der Freigabe). Ein älterer Server
+  // sendet das Feld nicht — dann gilt es als unbekannt.
+  checkStateAtExecution?: "unknown" | "unchecked" | "noCoverage" | "incomplete" | "proven" | null;
+  openConflictToday: boolean | null;
+  redacted: boolean;
+}
+
+export type AnswerExplanationResponse =
+  | {
+      state: "OK";
+      answerId: string;
+      createdAt: string;
+      snapshotStatus: "PENDING_EVIDENCE" | "INCOMPLETE" | "PARTIAL" | "COMPLETE";
+      snapshotRevision: number;
+      integrity: "VALID" | "DEGRADED" | "INVALIDATED" | "REDACTED";
+      primaryResolutionFailure: AnswerPrimaryResolutionFailure | null;
+      // Freigabe der tragenden Quellen — NUR Freigabe, keine Aussage über den Prüf-Lauf.
+      carryingSourcesValidated: boolean | null;
+      // R-0293: vollständiger Prüf-Lauf aller tragenden Quellen; fehlt bei älteren Servern.
+      carryingSourcesChecked?: boolean | null;
+      openConflictToday: boolean | null;
+      generationMode: "model" | "deterministic" | null;
+      // R-0317: Referenz auf den Laufprotokoll-Datensatz (Modellfassung); kein Anbietername.
+      // Optional, weil ein älterer Server das Feld nicht sendet.
+      modelRunId?: string | null;
+      modelRunIdReason?: string | null;
+      evidence: AnswerExplanationEvidence[];
+      evidenceCount: number;
+    }
+  | { state: "NO_SNAPSHOT"; answerId: string; createdAt: string };
 
 // R-0305/R-1099: Spiegel von `ZweitmeinungErgebnis` in `services/reasoner/src/types.ts` (der
 // webbuild kopiert nur `apps/web`, ein Import von dort bräche den Produktionsbau). `stufe` statt
@@ -3372,6 +3519,9 @@ export interface LesevarianteKurz {
    */
   quellabgleich: "bestaetigt" | "unbestaetigt";
   updatedAt: string;
+  /** Peter Nr. 20 — s. `LesevarianteKennzeichnung`. Optional: ältere Antworten tragen es nicht. */
+  originalquelle?: LesevarianteOriginalquelle | null;
+  fassung?: LesevarianteFassung | null;
 }
 
 // ================================================================================================
@@ -3397,7 +3547,37 @@ export type LesevarianteKennzeichnung = Pick<
    * nichts, weder das eine noch das andere.
    */
   originalGeaendert?: boolean;
+  /**
+   * Peter Nr. 20 (12.10.2026): das Original, zu dem die Übersetzung gehört. `null` ODER fehlend
+   * heisst „nicht zugeordnet" — die Fläche sagt das ausdrücklich, statt eine Quelle zu erfinden.
+   */
+  originalquelle?: LesevarianteOriginalquelle | null;
+  /** Peter Nr. 20: die belegte Fassung des Originals. `null`/fehlend = „Fassung nicht zugeordnet". */
+  fassung?: LesevarianteFassung | null;
 };
+
+/** Spiegel von `Originalquelle` (services/app/src/lesevarianten.ts). */
+export interface LesevarianteOriginalquelle {
+  titel: string;
+  provider: string | null;
+  kennung: string | null;
+  url: string | null;
+  quellfassung: number | null;
+}
+
+/** Spiegel von `BelegteFassung` (services/app/src/lesevarianten.ts). */
+export type LesevarianteFassung =
+  | { art: "wissensobjekt"; version: number; abdruck: string }
+  | { art: "quelle"; quellfassung: number };
+
+/** Antwort der Widerspruchsmeldung — ein Protokolleintrag, keine Freigabe. */
+export interface LesevariantenWiderspruchQuittung {
+  gemeldet: true;
+  gegenstand: "wissensobjekt" | "kandidat";
+  ziel: string;
+  lang: string;
+  seq: number;
+}
 
 /**
  * JOB 3363 · Die LIVE aufgelöste Leseübersetzung eines Import-Kandidaten der Prüfkarte (Stufe 2).
@@ -3426,6 +3606,9 @@ export interface KandidatenLesevariante {
   quellabgleich: "bestaetigt" | "unbestaetigt";
   // KEIN `originalGeaendert`: die Aussage ist für eine live aufgelöste Variante nicht beantwortbar
   // (s. `LesevarianteKennzeichnung`). Sie fehlt deshalb, statt mit `false` gefüllt zu werden.
+  /** Peter Nr. 20 — s. `LesevarianteKennzeichnung`. */
+  originalquelle?: LesevarianteOriginalquelle | null;
+  fassung?: LesevarianteFassung | null;
 }
 
 /** Die volle Fassung für die Leseansicht. */

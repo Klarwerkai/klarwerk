@@ -511,6 +511,7 @@ PFLICHTTABELLEN=(
   kenntnisnahme_anforderungen
   kenntnisnahme_empfaenger
   veroeffentlichung_zustellungen
+  bestandsreset_laeufe
   spaces_fassungen
   livewall_fotos
   interaktions_gedaechtnis
@@ -539,6 +540,7 @@ PFLICHTTABELLEN=(
   meldung_zustellstatus
   verstaendnis_fragensaetze
   verstaendnis_versuche
+  meeting_dokumentbezuege
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

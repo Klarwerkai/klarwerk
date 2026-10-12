@@ -354,7 +354,12 @@ export type {
   DokumentaktenRepo,
 } from "./src/dokumentakte";
 // AUFNAHME 20260922 · Prüfbasis-Aktualität: die EINE Regel, wann ein Prüfnachweis überholt ist.
-export { gleichePruefbasis, pruefbasisVon } from "./src/pruefbasis";
+export {
+  gleichePruefbasis,
+  nurBestandAbweichend,
+  ohneBestandsstempel,
+  pruefbasisVon,
+} from "./src/pruefbasis";
 // R-1632 / R-1633 (gesamt-standortwissen): die EINE Geltungsregel für Speichern, Fragen und Erkennung.
 export {
   GELTUNG_TEXT_MAX,
@@ -486,6 +491,9 @@ export type {
   KoCreateOperationState,
   // R-1107: der Verweis eines aufgegangenen Artikels auf den verbleibenden.
   KoMergedInto,
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27.
+  KoWeisung,
+  KoExterneFreigabe,
   // AW06-K02: die Kontoregel einer Annahme (Entscheidungsbeleg und Leseweg).
   Kontoregel,
   KoSource,

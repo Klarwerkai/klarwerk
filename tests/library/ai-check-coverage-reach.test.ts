@@ -21,6 +21,11 @@ import type { AiCheckCoverage } from "../../services/knowledge-object";
 import { EXPORT_NO_CHECK_NOTE } from "../../services/library-analytics";
 import { OUTPUT_NO_CHECK_NOTE, renderProvenance } from "../../services/output";
 
+// aufnahme:20260922:gesamt-leserechte: die Output Factory verlangt die Lesepolicy des Betrachters.
+// Gemessen wird hier die Stellung des Warnsatzes, nicht die Sichtbarkeit: der Betrachter sieht
+// alles.
+const ALLES_SICHTBAR = () => true;
+
 const saved: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -364,7 +369,7 @@ describe("mega29 C3 · menschliche Ausgaben sagen, worüber sie KEINE Aussage tr
       koIds.push(ko.id);
     }
 
-    const doc = await services.output.generate({ kind: "instruction", koIds });
+    const doc = await services.output.generate({ kind: "instruction", koIds }, ALLES_SICHTBAR);
     const md = doc.markdown;
     const title = md.indexOf("# ");
     const note = md.indexOf(OUTPUT_NO_CHECK_NOTE);
@@ -384,7 +389,10 @@ describe("mega29 C3 · menschliche Ausgaben sagen, worüber sie KEINE Aussage tr
     const ko = await makeKo(services, "Fabrikinhalt");
     await services.ko.setValidationState(ko.id, { trust: 80, status: "validiert" });
 
-    const doc = await services.output.generate({ kind: "instruction", koIds: [ko.id] });
+    const doc = await services.output.generate(
+      { kind: "instruction", koIds: [ko.id] },
+      ALLES_SICHTBAR,
+    );
     const title = doc.markdown.indexOf("# ");
     const note = doc.markdown.indexOf(OUTPUT_NO_CHECK_NOTE);
     const body = doc.markdown.indexOf("Fabrikinhalt");

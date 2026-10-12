@@ -24,6 +24,7 @@ import { leserHref } from "../../lib/objektbezug";
 import { useAiAvailable } from "../../lib/useAiAvailable";
 import { type ExternStand, externStand } from "../../shell/ExternStatus";
 import { AnswerMarkdown } from "../AnswerMarkdown";
+import { KiArbeitsweg } from "./KiArbeitsweg";
 import { VorlesenKnopf } from "./KlaraSprache";
 import {
   type EchtNachricht,
@@ -39,8 +40,8 @@ const KNOPF =
   "inline-flex h-8 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-text hover:border-ink/30 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 const KNOPF_KI =
   "inline-flex h-8 items-center rounded-btn border border-ai bg-ai-surface-2 px-2.5 text-[12px] font-semibold text-ai hover:bg-ai-surface-1 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
-const KLEINTITEL = "font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2";
-const SCHILD = "rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase";
+const KLEINTITEL = "font-mono text-klein font-semibold uppercase tracking-wider text-muted-2";
+const SCHILD = "rounded-pill px-1.5 py-0.5 font-mono text-klein font-semibold uppercase";
 
 export interface KiLage {
   /** Der Administrator hat die KI abgeschaltet (D5) — dann geht keine Frage los. */
@@ -179,7 +180,7 @@ function NachrichtEcht({
             : "mr-2 border border-ai/30 bg-ai-surface-2 text-text"
       }`}
     >
-      <div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] text-muted-2">
+      <div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-klein text-muted-2">
         <span className="font-semibold text-text">
           {n.von === "du"
             ? t("klaravorschau.verlauf.du")
@@ -255,7 +256,7 @@ function NachrichtEcht({
         </div>
       ) : null}
       {n.gespeichert === "laeuft" ? (
-        <p data-testid="klara-speicherstand" className="mt-1 text-[10.5px] text-muted-2">
+        <p data-testid="klara-speicherstand" className="mt-1 text-klein text-muted-2">
           {t("klaragespraech.gespeichert.laeuft")}
         </p>
       ) : n.gespeichert === "nein" ? (
@@ -514,6 +515,9 @@ export function KlaraEchtGespraech({
           </ol>
         )}
       </section>
+
+      {/* BPA-13: mit einer ausgewählten KI arbeiten — am eigenen, gespeicherten Gespräch. */}
+      {g ? <KiArbeitsweg gespraechId={g.id} kontext={kontext} /> : null}
 
       {g ? (
         <div className="flex flex-wrap gap-1.5">

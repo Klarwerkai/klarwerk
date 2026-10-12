@@ -66,6 +66,14 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
         ),
       },
       lifecycle: { pending: vi.fn(quelle(["ko-x"], [])) },
+      // Autorenübergabe-Auftrag K3: die sechste Zählquelle, an mich zurückgegebene Entwürfe.
+      me: {
+        returnedSummary: vi.fn(quelle({ open: 1 }, { open: 0 })),
+        // R-0961: die wartenden Autorenübergaben fragt die Hülle nur in der Admin-Sitzung ab. Sie
+        // stehen hier auf 0, damit die Zahl „aufgaben" für alle vier Rollen dieselbe bleibt; die
+        // Zahl selbst misst `tests/app/nav-badges-sidebar-mounted.test.tsx` (f).
+        authorTransfersSummary: vi.fn(quelle({ open: 0 }, { open: 0 })),
+      },
       notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
       features: { get: vi.fn(async () => ({ features: {} })) },
     },
@@ -116,10 +124,11 @@ const ZUSTAENDE = [
 type Zustand = (typeof ZUSTAENDE)[number];
 
 /** Die Zahl je Zählquelle im Zustand „geladen" (`app/useNavBadges.ts`): Board 2, 1 offener
- *  Konflikt, 1 Dublette, 1 offene Lücke, 1 fällige Re-Validierung. */
+ *  Konflikt, 1 Dublette, 1 offene Lücke, 1 fällige Re-Validierung, 1 an mich zurückgegebener
+ *  Entwurf (Autorenübergabe-Auftrag K3). */
 const ZAHL: Record<string, string> = {
   validierung: "2",
-  aufgaben: "5",
+  aufgaben: "6",
   konflikte: "1",
   duplikate: "1",
 };
@@ -221,6 +230,11 @@ async function mount(): Promise<void> {
     );
     await flush();
   });
+  await act(flush);
+  await act(flush);
+  // R-0961: Beim Admin kommt die Zählquelle der Autorenübergaben erst nach der Sitzung dazu
+  // (Status → `/auth/me` → Rolle → Abruf). Jede Stufe braucht eine eigene `act`-Runde. Bis dahin
+  // steht ehrlich keine Zahl.
   await act(flush);
   await act(flush);
 }

@@ -415,6 +415,9 @@ export const MELDUNGEN: readonly string[] = [
   // Wissensereignisse R-0710); die Sätze stehen dort und in wissensereignisse.ts.
   "Lückenerkennung übersprungen",
   "Lückenerkennung über den Reasoner aktiv — Takt {zahl} min.",
+  // produkt:20261011:assistenz-skills-werkzeuge — Wiederaufnahme der Fähigkeitsaufträge (server.ts).
+  "Fähigkeitsaufträge: Wiederaufnahme übersprungen",
+  "Fähigkeitsaufträge: Abarbeitung übersprungen",
   "Wissensereignis-Abgleich übersprungen",
   "Wissensereignis-Meldungen aktiv — {zahl} Ziel(e), Takt {zahl} s.",
   "Webhook-Ziel verworfen: KLARWERK_WEBHOOKS ist kein gültiges JSON.",

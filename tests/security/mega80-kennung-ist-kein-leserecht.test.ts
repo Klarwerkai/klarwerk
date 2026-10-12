@@ -228,6 +228,11 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
       return { action, conflictId: "konflikt-mega80", decision: "Entschieden in mega80" };
     case "transfer-author":
       return { action, newAuthor: "irgendwer" };
+    // R-0961 (Autorenübergabe): der Antrag braucht keine weiteren Felder. Ob der Anfragende ihn
+    // stellen DARF (Autor oder `users.manage`), entscheidet der Zweig — dieser Wächter prüft nur,
+    // dass am fremden vertraulichen Objekt vorher 404 steht.
+    case "request-author-transfer":
+      return { action };
     // JOB 3667 R2 (WORD-RÜCKWEG): die drei Aktionen der Accountregel. Fachlich gültige
     // Mindestnutzlasten — ob der Anfragende sie ausführen DARF (`users.manage` bzw. `ko.create`),
     // entscheidet der jeweilige Zweig, und genau das soll dieser Wächter nicht vorwegnehmen. Er
@@ -259,6 +264,25 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // R-0235 / R-0749: „Hat geholfen" am Objekt — trägt nichts ausser der Aktion.
     case "helpful":
       return { action };
+    // Aufnahme gesamt-wissen-herkunft (Entscheidungen 18/19 und 27): fachlich gültige
+    // Mindestnutzlasten. Ob der Anfragende weisen, sichten oder übernehmen DARF (Befugnis am Konto,
+    // benannte Verantwortliche, `ko.validate`), entscheidet der Zweig — dieser Wächter prüft nur,
+    // dass das Tor am fremden vertraulichen Objekt vorher mit 404 greift.
+    case "weisung":
+      return { action, sichtung: { verantwortlich: "eva-sichtet", frist: "2099-12-31" } };
+    case "weisung-abschluss":
+      return { action };
+    case "externe-freigabe":
+      return {
+        action,
+        externeFreigabe: {
+          art: "wissen",
+          herausgeber: "Hersteller aus mega80",
+          freigegebenAm: "2026-01-15",
+          zustaendig: "eva-zustaendig",
+          anwendbarBestaetigt: true,
+        },
+      };
     default:
       throw new Error(`Keine Nutzlast hinterlegt für Aktion "${action}" — Test unvollständig.`);
   }

@@ -452,8 +452,21 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * GEMESSEN im Prüflauf zu Kandidat 61ea0cad am ZUSAMMENGEFÜHRTEN Panel (`1e57e17c…`, „Received" von
  * E2, HISTORIE/nacharbeit-94/PRUEFUNG/panel-pins-und-tor.log; vorher `05ff5c13…`) und unverändert
  * übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+ * AUFNAHME gesamt-design-abgleich (Peters Entscheidung 55, 11.10.2026): Stufenknöpfe neutral,
+ * Standardsatz #capture-stufe-standard samt Wörterbuchschlüssel je Sprache. GEMESSEN im Prüflauf zu
+ * Kandidat 09f84e0e (`df3a2076…`, „Received" von E2,
+ * HISTORIE/nacharbeit-27/PRUEFUNG/entscheidungen-53-55-texte-und-panel.log; vorher `1e57e17c…`)
+ * und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+ * AUFNAHME gesamt-design-abgleich (Peters Entscheidung 54, 11.10.2026): deutscher Einstufungshinweis
+ * „Fachlich bestätigt“ statt „gesichert“. GEMESSEN im Prüflauf zu Kandidat 7854cbde (`957753ba…`,
+ * „Received" von E2, HISTORIE/nacharbeit-30/PRUEFUNG/entscheidung-54-statuswort.log; vorher
+ * `df3a2076…`) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+ * INTEGRATION Hauptstand (a55bab3b): `askStatusValidiert` DE „Fachlich bestätigt“ (Antwort 54, Auftrag
+ * „Menschliche Bewertungen und nachvollziehbare Freigaberegeln“). GEMESSEN im Prüflauf zu Kandidat
+ * 82db4e0a (`cd5def0d…`, „Received" von E2, HISTORIE/nacharbeit-31/PRUEFUNG/
+ * panel-pins-entscheidung-54.log; vorher `957753ba…`) und unverändert übernommen.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "1e57e17c9fe02ca6f04d94e5846ee8a0d98fd794";
+export const PANEL_VOR_SCHNITT_BLOB = "cd5def0d7ba5db5da48dcce8c99d77d8bb2d6fea";
 
 export interface PanelTeile {
   html: string;

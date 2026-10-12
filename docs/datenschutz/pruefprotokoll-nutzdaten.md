@@ -64,6 +64,11 @@ wiederholt.
 | `ko.weisung-validated` | `koVersion`, `kontoregel`, `bereich`, `sichtung` (`verantwortlich` als Kontokennung, `frist`) | Z, M, K |
 | `ko.weisung-gesichtet` | `koVersion`, `ergebnis` | Z |
 | `user.weisungsbefugnis-set` | `bereiche` (Kategorienamen) oder `entfernt` | M |
+| `ko.weisung` (gesamt-wissen-herkunft: Weisung mit punktweiser Entscheidung) | `koVersion`, `bereich`, `sichtung` (`verantwortlich` als Kontokennung, `frist`), `bestehenGelassen`, `ueberstimmt` (Konfliktkennungen) | Z, M, K |
+| `ko.weisung-sichtung-vermerkt` | `weisungVon` (Kontokennung), `weisungAm`, `fassung` | K, M, Z |
+| `ko.weisung-abschluss-unvollstaendig` | `offen` (je Punkt `conflictId`, Stand `punkt`/`konflikt` aus geschlossener Menge) | K, Z |
+| `ko.durch-weisung-geschlossen` | `durchKoId`, `conflictId`, `von` (Kontokennung), `am`, `fassung` | K, M, Z |
+| `ko.externe-freigabe-uebernommen` | `koVersion`, `art`, `herausgeber`, `freigegebenAm`, `geltung`, `zustaendig` (Kontokennung) | Z, M, F (`herausgeber` ist eine freie Angabe, etwa ein Firmenname), K |
 | `lifecycle.handover` (Ziel: Kennung der ausscheidenden Person) | `from`, `to`, `transferred` (Anzahl je Art), `failed` (Art und Kennung, kein Inhalt) | K, Z |
 | `ko.purged` | `reason` (geschlossene Menge) + Zusatz des Aufrufers | Z |
 | `ko.restored`, `ko.deleted` | `trash` / leer + Beitrag | Z |
@@ -79,6 +84,7 @@ wiederholt.
 | `qualitaet.rueckmeldung-uebernommen` (ADMIN-10, je Meldung höchstens einmal) | `meldungId`, `vorgang` (`revalidierung:<Objekt>`); Ziel ist das Objekt der Meldung — **kein Meldegrund-Text, kein Fragetext, kein Meldender** | K, Z |
 | `ko.conflict-review` | `previousStatus`, `previousTrust`, `trust`, `reason` | Z |
 | `ko.author-transferred` | `author` | K |
+| `ko.author-transfer-requested` (R-0961, Antrag auf Autorenübergabe) | `author` | K |
 | `verantwortung.uebergabe` (Ziel: bisherige Person; `services/app/src/routes/verantwortung-routes.ts`) | `uebertragen`, `bereitsErledigt`, `abgelehnt`, `fehlgeschlagen`, `verbleibt`, `nachfolger` (je `an` + `anzahl`) | Z, K — keine Titel; je Beitrag steht zusätzlich `ko.ownership` |
 | `vermaechtnis.erzeugt` (Ziel: die Person des Buchs; `services/app/src/routes/verantwortung-routes.ts`) | `aufgenommen`, `ausgelassen` (`papierkorb`, `nichtEinsehbar`, `vertraulich`, `nichtValidiert`) | Z — keine Titel, kein Buchinhalt (nachgetragen mit `gesamt-wissensvermaechtnis`) |
 | `ko.source-removed-in-origin`, `ko.source-restored-in-origin` | `provider`, `externalId`, `at`/`removedAt` | M, K |
@@ -139,6 +145,22 @@ am Konflikt, **nicht** im Protokoll.
 | `reasoner.zweitmeinung`, `reasoner.zweitmeinung-nicht-wirksam` (R-0305/R-1099) | `vorher`, `nachher` (`openai`/`anthropic`/`local`/`aus`) | Z |
 | `audit.exported` | `count`, `headSeq`, `headHash` | Z |
 
+### Klara-Aufträge (`services/app/src/routes/klara-gespraech-routes.ts`)
+
+Nachtrag `produkt:20261010:assistenz-aktionen-verlauf-ruecknahme` (PV-02), Quelleninspektion und
+gemessen in `tests/assistenz-aktionen-verlauf/verlauf-am-server.test.ts` (V1, V2): kein Wortlaut,
+kein Titel, kein Inhalt, kein Personenname.
+
+| Aktion | Nutzlast | Klasse |
+| --- | --- | --- |
+| `klara.gespraech.begonnen`, `klara.gespraech.geloescht` | — | — |
+| `klara.gespraech.einwilligung` | `erteilt` | Z |
+| `klara.auftrag.angelegt` | `gespraech`, `aktionen`, `geplanteSchritte` | K, Z |
+| `klara.auftrag.korrigiert` | `fassung`, `aktionen` | Z |
+| `klara.auftrag.abgebrochen` | — | — |
+| `klara.auftrag.schritt` | `nr`, `aktion`, `stand`, ggf. `ausgefuehrt`, `ergebnis` (Kennung), `fehler` (Grundschlüssel); seit PV-02 `gespraech`, `aktionskennung`, `vertrag`, bei gespeichert/zurückgenommen `vorherStand`, `neuerStand` (Fassungszeit eines Entwurfs bzw. Art einer Aufgabenwirkung wie `prioritaet:hoch`, `zugewiesen` — ohne Namen) | K, Z, M |
+| `klara.auftrag.ruecknahme-abgelehnt` (PV-02) | `gespraech`, `grund`, ggf. `aktionskennung`, `vertrag`, `eigenerStand`, `aktuellerStand` (Fassungszeiten) | K, Z, M |
+
 ### Konten und Anmeldung (`services/auth`)
 
 | Aktion | Nutzlast | Klasse |
@@ -150,6 +172,8 @@ am Konflikt, **nicht** im Protokoll.
 | `user.oidc-linked`, `user.oidc-linked-unverified` | `aussteller` | P (Adresse des Identitätsanbieters; **kein** `sub`, **keine** Mailadresse) |
 | `user.role-claim-missing`, `user.role-synced` | `aussteller`, `rolle` bzw. `von`/`nach` | P, Z |
 | `notice.acknowledged` | `version` | Z |
+| `user.ausgeschieden` (R-0961, Status „Ausgeschieden“; Ziel: das Konto) | `vertretung` (Kontokennung) | K — kein Name |
+| `user.ausscheiden-beendet` (R-0961, Status beendet durch Wiederfreigabe; Ziel: das Konto) | `via` (`freigabe`/`verzeichnis`) | Z |
 | **`user.role-change`** | `role`, `previousRole`, **`actorName`, `targetName`** | **P** — siehe Befund 2 |
 | **`user.delete`** | **`targetName`**, **`actorName`** | **P** — siehe Befund 2 |
 

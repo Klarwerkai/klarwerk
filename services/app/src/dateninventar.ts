@@ -424,7 +424,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "assistenzprofil",
     name: "Persönliches Assistenzprofil",
     inhalt:
-      "Je Konto der selbst gewählte Anzeigename der Assistenz, die Kennung des gewählten Motivs, die Bewegungseinstellung und der Zeitpunkt der abgeschlossenen Ersteinrichtung.",
+      "Je Konto der selbst gewählte Anzeigename der Assistenz, die Kennung des gewählten Motivs, die Bewegungseinstellung und der Zeitpunkt der abgeschlossenen Ersteinrichtung. Dazu (produkt:20261011:assistenz-skills-werkzeuge) die eigenen Fähigkeits-Favoriten und bestätigten Routinen sowie die eigenen Fähigkeitsaufträge: Bindung (Fähigkeit, Fassung, Eingabe, Kennung und Fassung der Kontextobjekte, nie deren Text), Stand und Ergebnis mit Herkunft; je Konto höchstens 30 abgeschlossene Aufträge, ältere fallen beim nächsten Auftrag heraus. Keine Zugangswerte.",
     personenbezug: "ja",
     personenbezugGrund:
       "Gehört genau einem Konto; der Anzeigename ist Freitext der Person und kann Persönliches enthalten.",
@@ -602,6 +602,23 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    id: "meeting-dokumentbezuege",
+    name: "Meetingbezüge: Folien und Gesprächsstellen",
+    inhalt:
+      "Je Meetingbezug: Titel, Kennung des Eigners und der Teilnehmer, verbundene Präsentationsfassungen (Dateikennung, Fassung, Folienkennung, Folientitel, Sprechernotiz), Folienwechsel, verbundene Mitschriften (Zeitstelle, Sprecherbezeichnung, Gesprächstext), Rückmeldungen mit Zuordnungshistorie und Änderungsobjekte.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennungen von Eigner und Teilnehmern, Sprecherbezeichnungen und Gesprächstext der Mitschrift.",
+    ablage: { ort: DATENBANK, tabellen: ["meeting_dokumentbezuege"] },
+    taetigkeit: "wissen",
+    loeschung: "Mit dem Bestandsreset; kein eigener Löschweg in dieser Fassung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Im Meetingbezug selbst für Eigner und Teilnehmer einsehbar.",
+    },
+  },
+  {
     id: "lesevarianten",
     name: "Lesevarianten (gekennzeichnete Übersetzungen)",
     inhalt: "Übersetzte Lesefassungen von Wissensobjekten und Import-Kandidaten.",
@@ -693,9 +710,10 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "spaces",
     name: "Arbeitsräume (Spaces)",
     inhalt:
-      "Fassungen der Arbeitsräume mit Name, Zweck, zuständiger Person, Mitgliedern samt Recht, Ansichten, anlegender und ändernder Kennung.",
+      "Fassungen der Arbeitsräume mit Name, Zweck, zuständiger Person, Mitgliedern samt Recht, Ansichten, Firmenkontext (eigene Firma, Partner, öffentlich) samt Namen des Partners, Konten mit Existenzrecht, anlegender und ändernder Kennung.",
     personenbezug: "ja",
-    personenbezugGrund: "Kennungen der zuständigen Person, der Mitglieder und der Bearbeiter.",
+    personenbezugGrund:
+      "Kennungen der zuständigen Person, der Mitglieder, der Konten mit Existenzrecht und der Bearbeiter.",
     ablage: { ort: DATENBANK, tabellen: ["spaces_fassungen"] },
     taetigkeit: "wissen",
     loeschung: "Kein Löschweg — jede Fassung bleibt zuordenbar.",

@@ -224,18 +224,35 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "JOB 3326 — sichtbareFuer + sqlSichtbarkeitFuer über der Grundmenge.",
   },
-  // Die Ladeaktion gibt keinen KO-Inhalt aus: ihre Antwort ist eine Bilanz aus Zahlen und den
-  // Paketschlüsseln der Lieferung (`nichtZugeordnet`) — keine Titel, keine Kennungen des Bestands.
-  "POST /api/admin/lesevarianten/laden": {
+  // Peter Nr. 20: die Widerspruchsmeldung fährt dasselbe Prädikat wie der Abruf (`darfSehen`, 404
+  // statt Meldung). Ihre Antwort trägt nur Kennung, Sprache und Protokollnummer.
+  "POST /api/kos/:id/lesevariante/:lang/widerspruch": {
+    urteil: "PRAEDIKAT",
+    grund: "Peter Nr. 20 — darfSehen am Objekt, 404 statt Meldung; Antwort ohne KO-Inhalt.",
+  },
+  "POST /api/library/import/candidates/:id/lesevariante/:lang/widerspruch": {
     urteil: "KEIN_KO_INHALT",
     grund:
-      "JOB 3326 — Antwort ist eine Zählbilanz plus Lieferschlüssel (lesevarianten.ts, LadeBilanz).",
+      "Peter Nr. 20 — Meldung zum Kandidaten (keine koId); Antwort trägt nur Kennung, Sprache, Protokollnummer.",
+  },
+  // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 10): das frühere Urteil KEIN_KO_INHALT
+  // stimmte nicht — die Bilanz nannte Objektkennungen (`textGeaendert`, `originalGeaendert`) und
+  // zählte unsichtbare Objekte mit. Jetzt zählt und nennt sie nur, was der Admin sehen darf.
+  "POST /api/admin/lesevarianten/laden": {
+    urteil: "PRAEDIKAT",
+    grund: "Ladebilanz über sichtbarkeitsfilterFuer(user); Zuordnung bleibt bestandsweit.",
   },
   "GET /api/library/search": { urteil: "PRAEDIKAT", grund: "Block B — Titel/Kernaussage." },
   // R-0773: nur die EIGENEN Suchbegriffe ohne Treffer — kein Objekt, keine Kennung, kein Titel.
   "GET /api/library/nulltreffer": {
     urteil: "EIGENER_BESTAND",
     grund: "R-0773 — nulltreffer.fuer(user.id) (library-routes.ts), nur die eigene Liste.",
+  },
+  // produkt:20261011:peter-p14 · Existenzrecht: gibt nur Bereichsnamen aus; ob ein Bereich genannt
+  // wird, entscheidet `darfSehen` mit dem auf genau diesen Space beschränkten Blick.
+  "GET /api/library/existenzhinweise": {
+    urteil: "PRAEDIKAT",
+    grund: "P14 — darfSehen(bereichsblick) + sqlSichtbarkeitFuer je Bereich (existenzhinweis.ts).",
   },
   "GET /api/categories": {
     urteil: "PRAEDIKAT",
@@ -325,6 +342,62 @@ const REGISTER: Record<string, Eintrag> = {
   "DELETE /api/kos/:id/bearbeitungen/:sitzung": {
     urteil: "PRAEDIKAT",
     grund: "Bearbeitungshinweis — darfSehen vor dem Beenden, sonst 404.",
+  },
+  // --- BPA-16: Gesprächsaussagen mit Folien verbinden ----------------------------------------
+  // Folientitel, Notizen und Änderungsziele stammen aus Dateiobjekten (Anhängen). Jede Tür mit
+  // Meetingkennung erhebt VOR jeder Antwort je Datei dasselbe Urteil wie GET /api/objects/:id
+  // (`beurteileAnhang`, Helfer `zugang`/`dateiLesen`); ohne Meetingrecht 404.
+  "GET /api/meetings": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Kennung, Titel und Version der eigenen bzw. als Teilnehmer geführten Meetingbezüge.",
+  },
+  "POST /api/meetings": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Anlage — Antwort trägt nur Kennung, Titel und Version des neuen eigenen Bezugs.",
+  },
+  "GET /api/meetings/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "Meetingbezug — beurteileAnhang je Datei vor der Ausgabe der Folien.",
+  },
+  "POST /api/meetings/:id/praesentationen": {
+    urteil: "PRAEDIKAT",
+    grund: "beurteileAnhang an präsentierter Datei und Original vor dem Einlesen.",
+  },
+  "POST /api/meetings/:id/mitschriften": {
+    urteil: "PRAEDIKAT",
+    grund: "beurteileAnhang an der Mitschriftdatei vor dem Einlesen.",
+  },
+  "POST /api/meetings/:id/folienwechsel": {
+    urteil: "PRAEDIKAT",
+    grund: "beurteileAnhang je verbundener Datei; Hostwechsel nur mit Leserecht.",
+  },
+  "POST /api/meetings/:id/rueckmeldungen": {
+    urteil: "PRAEDIKAT",
+    grund: "Antwort ist die nach beurteileAnhang gefilterte Sicht der Rückmeldung.",
+  },
+  "GET /api/meetings/:id/rueckmeldungen/:rid": {
+    urteil: "PRAEDIKAT",
+    grund: "Sicht und Historie nach beurteileAnhang je Datei gefiltert.",
+  },
+  "POST /api/meetings/:id/rueckmeldungen/:rid/klaerung": {
+    urteil: "PRAEDIKAT",
+    grund: "Klärung nur mit Leserecht an der Zieldatei (beurteileAnhang).",
+  },
+  "POST /api/meetings/:id/rueckmeldungen/:rid/verwerfen": {
+    urteil: "PRAEDIKAT",
+    grund: "Antwort ist die nach beurteileAnhang gefilterte Sicht.",
+  },
+  "GET /api/meetings/:id/folien/:dateiId/:sldId": {
+    urteil: "PRAEDIKAT",
+    grund: "Nur mit Leserecht an der angefragten Datei (beurteileAnhang).",
+  },
+  "GET /api/meetings/:id/zeitstellen/:zeitMs": {
+    urteil: "PRAEDIKAT",
+    grund: "Rückmeldungen nach beurteileAnhang je Datei gefiltert.",
+  },
+  "POST /api/meetings/:id/fassungsabgleich": {
+    urteil: "PRAEDIKAT",
+    grund: "beurteileAnhang an Original und neuer Fassung vor dem Einlesen.",
   },
   // --- Kenntnisnahme einer gültigen Fassung ------------------------------------------------------
   // Übersicht und eigene Anforderungen tragen den Titel des Eintrags; alle fünf Türen halten den
@@ -531,8 +604,14 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/library/export": {
     urteil: "PRAEDIKAT",
     grund:
-      "Export nur über sichtbarkeitsfilterFuer (darfSehen) des Betrachters; Stufe/Status wie SCRUM-506.",
+      "Export nur über sichtbarkeitsfilterFuer (darfSehen) des Betrachters; Stufe/Status wie " +
+      "SCRUM-506; seit gesamt-leserechte Nacharbeit 19 samt Freigaberang (Variante B).",
   },
+  // aufnahme:20260922:gesamt-leserechte: die vier Ausgabewege tragen jetzt die Lesepolicy des
+  // Betrachters (vorher nur die Stufe am Objekt — Spaces galten nicht, und die SCORM-Prüfung nannte
+  // den Titel eines fremden vertraulichen Objekts). Damit sind sie MESSBAR statt Leseurteil.
+  // Nacharbeit 20 (Integration main): die nachgeprüften Wege aus R-1175 gelten; der Dienst ruft den
+  // übergebenen Filter selbst und bleibt dabei fail-closed (fehlt er, ist nichts sichtbar).
   "GET /api/output/sources": {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
@@ -571,13 +650,27 @@ const REGISTER: Record<string, Eintrag> = {
       "erzeuge begrenzt die Grundmenge mit sichtbar(ko); danach validiert UND !isConfidential " +
       "(wochenupdate.ts, waehleWochenupdate).",
   },
+  // aufnahme:20260922:gesamt-leserechte: die Entscheidung reist als `betrachter.ko` (daneben
+  // `betrachter.medium`, die Anhangsregel `beurteileAnhang` für Bilder).
   "POST /api/output/scorm/pruefen": {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
     kette: [
-      { datei: "services/output/src/scorm.ts", funktion: "pruefe", filter: { index: 1 } },
-      { datei: "services/output/src/scorm.ts", funktion: "bereite", filter: { index: 1 } },
-      { datei: "services/output/src/scorm.ts", funktion: "lade", filter: { index: 2 } },
+      {
+        datei: "services/output/src/scorm.ts",
+        funktion: "pruefe",
+        filter: { index: 1, eigenschaft: "ko" },
+      },
+      {
+        datei: "services/output/src/scorm.ts",
+        funktion: "bereite",
+        filter: { index: 1, eigenschaft: "ko" },
+      },
+      {
+        datei: "services/output/src/scorm.ts",
+        funktion: "lade",
+        filter: { index: 2, eigenschaft: "ko" },
+      },
     ],
     anwendung: "sichtbar",
     grund: "scorm.ts lade — unsichtbar blockiert wie UNKNOWN_KO; vertraulich bleibt CONFIDENTIAL.",
@@ -586,9 +679,21 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
     kette: [
-      { datei: "services/output/src/scorm.ts", funktion: "exportiere", filter: { index: 1 } },
-      { datei: "services/output/src/scorm.ts", funktion: "bereite", filter: { index: 1 } },
-      { datei: "services/output/src/scorm.ts", funktion: "lade", filter: { index: 2 } },
+      {
+        datei: "services/output/src/scorm.ts",
+        funktion: "exportiere",
+        filter: { index: 1, eigenschaft: "ko" },
+      },
+      {
+        datei: "services/output/src/scorm.ts",
+        funktion: "bereite",
+        filter: { index: 1, eigenschaft: "ko" },
+      },
+      {
+        datei: "services/output/src/scorm.ts",
+        funktion: "lade",
+        filter: { index: 2, eigenschaft: "ko" },
+      },
     ],
     anwendung: "sichtbar",
     grund: "scorm.ts lade — unsichtbares oder vertrauliches KO blockiert, kein Paket.",
@@ -620,6 +725,8 @@ const REGISTER: Record<string, Eintrag> = {
   // Modell und Titel/Version als Herkunft zurueck ans Panel. Der Erzeuger filtert an EINER Stelle,
   // bevor irgendetwas hinausgeht: nur `status === "validiert"` (zuruf.ts:384) und `dropConfidential`
   // (zuruf.ts:389); und er sammelt erst NACH bestaetigter Einwilligung des Sitzungstors (zuruf.ts:250).
+  // aufnahme:20260922:gesamt-leserechte: der Bestandszugang des Erzeugers trägt jetzt zusätzlich
+  // die Lesepolicy des Betrachters (vorher galt der führende Space hier nicht).
   "POST /api/klara/sessions/:sessionId/zuruf": {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
@@ -629,8 +736,8 @@ const REGISTER: Record<string, Eintrag> = {
     ],
     anwendung: "sichtbar",
     grund:
-      "output/src/zuruf.ts:384/389 — nur validierte KOs, dropConfidential auf der Quellenliste; " +
-      "Einwilligung (zuruf.ts:250) vor jedem Bestandszugriff.",
+      "sichtbarkeitsfilterFuer(user) als Quellenfilter des Erzeugers (sammleQuellen); dazu nur " +
+      "validierte KOs und dropConfidential (zuruf.ts); Einwilligung vor jedem Bestandszugriff.",
   },
   // R-0700: Klaras eigener Ausführungszugang ruft DENSELBEN Fragedienst wie `POST /api/ask`.
   // R-0700 (aus main) · Nacharbeit 28: Klaras Zugang läuft über DENSELBEN `antwortLauf` wie
@@ -674,6 +781,9 @@ const REGISTER: Record<string, Eintrag> = {
     grund:
       "istPoolKandidat wendet poolSichtbar (sichtbarkeitsfilterFuer der Route) neben !isConfidential an.",
   },
+  // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 8): `dropConfidential` allein liess
+  // interne Objekte aus gesperrten Spaces durch. Die Aufgabe `ask` übergibt jetzt die Lesepolicy
+  // des Fragenden als Grundlage — gemessen statt Leseurteil.
   "POST /api/reasoner": {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
@@ -691,10 +801,26 @@ const REGISTER: Record<string, Eintrag> = {
   },
   // --- Kuratorentore: nur Rollen, die Vertrauliches ohnehin sehen dürfen ---------------------
   "GET /api/kos/trash": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Papierkorb." },
-  "GET /api/audit": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
-  "GET /api/audit/seite": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
-  "GET /api/audit/verify": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
-  "GET /api/audit/export": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 14/15): wer einen Space nicht lesen darf,
+  // bekommt Liste, Prüfbericht und Export als Leseransicht — ohne Einträge zu verborgenen Objekten
+  // und Befunden (auch endgültig gelöschten), ohne Kettenfelder und globale Zählwerte.
+  "GET /api/audit": {
+    urteil: "PRAEDIKAT",
+    grund: "Protokoll; je Eintrag darfSehen über leselage (Ziel, eventId, Nutzlast).",
+  },
+  // Nacharbeit 20 (Integration main): der Seitenweg (ADMIN-03) über dieselbe Leseransicht.
+  "GET /api/audit/seite": {
+    urteil: "PRAEDIKAT",
+    grund: "Seite über leselage (darfSehen); eingeschränkt nur die eigene Leseransicht.",
+  },
+  "GET /api/audit/verify": {
+    urteil: "PRAEDIKAT",
+    grund: "Eingeschränkter Leser: Bericht nur über die eigene Ansicht.",
+  },
+  "GET /api/audit/export": {
+    urteil: "PRAEDIKAT",
+    grund: "Volle Kette nur uneingeschränkt; sonst Leseransicht ohne Kettenfelder.",
+  },
   "GET /api/audit/ko/:koId/findings": {
     urteil: "KURATORENTOR",
     recht: "ko.validate",
@@ -920,6 +1046,27 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "requireVisibleDraft + canSeeDraft je Treffer (capture-routes.ts).",
   },
   "GET /api/me/impact": { urteil: "EIGENER_BESTAND", grund: "vier eigene Zähler (impact.ts:88)." },
+  // Autorenübergabe-Auftrag K3: Zahl der an mich zurückgegebenen Entwürfe, über derselben
+  // sichtbaren Grundmenge wie `GET /api/kos` gerechnet.
+  "GET /api/me/returned-tasks/summary": {
+    urteil: "PRAEDIKAT",
+    grund: "K3 — sichtbareFuer + sqlSichtbarkeitFuer über der Grundmenge, nur die Zahl.",
+  },
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Übergaben — Kennung, Grund, Dringlichkeit.
+  "GET /api/me/author-transfers": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "R-0961 — wartende Autorenübergaben (koId, grund, kritisch); Admin.",
+  },
+  "GET /api/me/author-transfers/summary": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "R-0961 — nur die Zahl der wartenden Autorenübergaben; Admin.",
+  },
+  "GET /api/me/returned-tasks": {
+    urteil: "PRAEDIKAT",
+    grund: "K3 — dieselbe Auswahl als Liste { koId, at, verdict }, nur eigene sichtbare Objekte.",
+  },
   // Betroffenenrechte (datenschutz-routes.ts). Die Auskunft gibt die EIGENEN Beiträge immer aus
   // (Kommentartext, Fragetext, Entwurf) — den TITEL eines Objekts nur, wenn der Betrachter es heute
   // sehen darf: `sichtbarkeitsfilterFuer` des Betrachters geht unbedingt in die Zusammenstellung.
@@ -1010,6 +1157,63 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "ändert nur das eigene Assistenzprofil (user.id); fremde Kennung 403, kein KO-Inhalt.",
   },
+  // produkt:20261008:klara-eigeninitiative — Unterstützungsmodus und ruhende Hinweise.
+  "GET /api/me/assistenz/eigeninitiative": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur Modus und Hinweisschlüssel des eigenen Assistenzprofils (assistenz-profil-routes.ts, " +
+      "user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
+  "PUT /api/me/assistenz/eigeninitiative": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ändert nur den eigenen Modus (user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
+  "POST /api/me/assistenz/eigeninitiative/hinweise": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt nur eigene Hinweisschlüssel ab (user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
+  // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz.
+  "GET /api/me/faehigkeiten": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Fähigkeitsverträge der Instanz und die eigenen Vormerkungen aus dem eigenen Assistenzprofil " +
+      "(assistenz-faehigkeiten-routes.ts, user.id); kein KO-Inhalt.",
+  },
+  "POST /api/me/faehigkeiten/vormerkungen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "schreibt nur eigene Vormerkungen (user.id); fremde Kontoangabe 403, kein KO-Inhalt.",
+  },
+  "POST /api/me/faehigkeiten/vormerkungen/:id/deaktivieren": {
+    urteil: "EIGENER_BESTAND",
+    grund: "deaktiviert nur eigene Vormerkungen (user.id); kein KO-Inhalt.",
+  },
+  "POST /api/me/faehigkeiten/vorschau": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Bindung des eigenen Auftrags; Kontextobjekte lädt ladeKontext (assistenz-faehigkeiten-" +
+      "anbindung.ts) nur über darfSehen und gibt davon nur Kennung, Fassung und Stufe zurück — " +
+      "verborgen oder fehlend ergibt 404 ohne Hinweis auf das Objekt.",
+  },
+  "POST /api/me/faehigkeiten/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "wie die Vorschau; das Ergebnis sind Treffer des Werkzeugs (Titel, Adresse, Auszug), kein " +
+      "Bestand. Vor jeder Ausführung prüft produktKontextPruefung Konto und Kontext über darfSehen.",
+  },
+  "GET /api/me/faehigkeiten/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur die eigenen Aufträge aus dem eigenen Assistenzprofil (user.id); jedes Ergebnis erst nach " +
+      "aktueller Rechteprüfung (FaehigkeitsAusfuehrung.sicht → produktKontextPruefung → darfSehen).",
+  },
+  "GET /api/me/faehigkeiten/auftraege/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ein eigener Auftrag (user.id), Ergebnis wie in der Liste erst nach Rechteprüfung.",
+  },
+  "POST /api/me/faehigkeiten/auftraege/:id/abbrechen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "bricht nur einen eigenen laufenden Auftrag ab (Schlüssel aus user.id); kein KO-Inhalt.",
+  },
   "POST /api/me/klara/gespraeche": {
     urteil: "EIGENER_BESTAND",
     grund: "legt nur ein eigenes Gespräch an; der Objektbezug kommt vom Bildschirm der Person.",
@@ -1033,6 +1237,100 @@ const REGISTER: Record<string, Eintrag> = {
   "DELETE /api/me/klara/gespraeche/:id": {
     urteil: "EIGENER_BESTAND",
     grund: "löscht nur ein eigenes Gespräch (user.id), Antwort nur die Zahl.",
+  },
+  // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): die KI-Aufträge lesen Titel und
+  // Inhalt von Wissensobjekten in Paket und Prompt. Jede Registrierung bildet dafür die EINE
+  // Entscheidung (`sichtbarkeitsfilterFuer(user)`) und reicht sie an den Dienst; der Prompt geht
+  // nur hinaus, solange die frische Prüfung des Pakets trägt (ki-arbeitsbegleitung-dienst.ts).
+  "GET /api/me/klara/ki-faehigkeiten": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "nur Fähigkeiten, Adapter und Freigabelage (ki-arbeitsbegleitung-routes.ts), kein KO.",
+  },
+  "POST /api/me/klara/ki-verbindung/:anbieter/pruefen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Anbieterprobe ohne Wissensobjekt; Antwort nur ok und Probendetail.",
+  },
+  "GET /api/me/klara/gespraeche/:id/ki-auftraege": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — sichtbarkeitsfilterFuer je Quelle; Prompt nur bei aktuellem Paket.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Paket nur aus Quellen, die sichtbarkeitsfilterFuer zulässt.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/uebergabe": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — vor jeder Übergabe frische Prüfung mit sichtbarkeitsfilterFuer.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/ergebnis": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Sicht des Auftrags mit sichtbarkeitsfilterFuer neu geprüft.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/unterbrechen": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Sicht des Auftrags mit sichtbarkeitsfilterFuer neu geprüft.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/stopp": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Sicht des Auftrags mit sichtbarkeitsfilterFuer neu geprüft.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/freigabe-schliessen": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Sicht des Auftrags mit sichtbarkeitsfilterFuer neu geprüft.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/neu-binden": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — neues Paket nur aus Quellen, die sichtbarkeitsfilterFuer zulässt.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/codex": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Codex-Wirkung erst nach frischer Prüfung mit sichtbarkeitsfilterFuer.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-vergleich": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Vergleich nur über eigene Aufträge; Sicht mit sichtbarkeitsfilterFuer.",
+  },
+  // produkt:20261008:klara-aktionen (Klara 05): die Aufträge liegen IM eigenen Gespräch. Titel und
+  // Kennungen darin hat die Person selbst auf ihrem Bildschirm gewählt; kein Weg liest ein Objekt.
+  "GET /api/me/klara/gespraeche/:id/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur die Aufträge eines eigenen Gesprächs (user.id), fremd und unbekannt 404.",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt einen Auftrag im eigenen Gespräch an; Antwort ist dieser Auftrag.",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/fassungen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "engt die Grenze eines eigenen Auftrags ein; fremd und unbekannt 404.",
+  },
+  "PUT /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel": {
+    urteil: "EIGENER_BESTAND",
+    grund: "meldet einen Schritt eines eigenen Auftrags; liest kein Wissensobjekt.",
+  },
+  "PUT /api/me/klara/gespraeche/:id/auftraege/:auftragId/abbruch": {
+    urteil: "EIGENER_BESTAND",
+    grund: "bricht einen eigenen Auftrag ab; fremd und unbekannt 404.",
+  },
+  // Nacharbeit 2: der Server führt den Planschritt über die vorhandenen Türen mit der Anmeldung der
+  // Person aus (klara-ausfuehrung.ts). Die Antwort trägt nur den eigenen Auftrag: Kennungen, Stände
+  // und die Titel, die die Person im Auftrag selbst gewählt hat — kein neu gelesener Objektinhalt.
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ausfuehrung": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "führt einen eigenen Planschritt aus; Antwort ist der eigene Auftrag (klara-ausfuehrung.ts).",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ruecknahme": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nimmt einen eigenen gespeicherten Schritt mit Standvergleich zurück; Antwort eigener Auftrag.",
+  },
+  // produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: die eigenen Protokolleinträge EINES
+  // eigenen Auftrags — Kennungen, Aktionen, Stände (Fassungszeiten); nie Titel oder Inhalt.
+  "GET /api/me/klara/gespraeche/:id/auftraege/:auftragId/protokoll": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur Einträge des eigenen Kontos zum eigenen Auftrag (klara-auftrag:<id>); fremd/unbekannt 404.",
   },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
@@ -1526,6 +1824,8 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/auth/second-factor/confirm": "bestätigt den eigenen zweiten Faktor.",
     "POST /api/auth/second-factor/disable": "schaltet den eigenen zweiten Faktor ab.",
     "DELETE /api/users/:id/second-factor": "setzt den zweiten Faktor eines Kontos zurück (Admin).",
+    // R-0961: Antwort sind Kontokennung, Vertretung und die Kennungen übertragener Vorgänge.
+    "POST /api/users/:id/ausscheiden": "setzt den Status „Ausgeschieden“ eines Kontos (Admin).",
     "GET /api/auth/saml/start": "SAML-Start (Weiterleitung an den Anbieter).",
     "GET /api/auth/saml/metadata": "SAML-Metadaten des Dienstes, keine Nutzerdaten.",
     "POST /api/auth/saml/acs": "SAML-Rücksprung des Anbieters; Weiterleitung mit Abschlusscode.",
@@ -1573,7 +1873,7 @@ const REGISTER: Record<string, Eintrag> = {
     ],
     anwendung: "sichtbar",
     grund:
-      "services/app/src/services/answer-explanation.ts — gehoertNutzer() als Eigentumstor, isConfidential() schwaerzt je Beleg.",
+      "answer-explanation.ts — gehoertNutzer() als Eigentumstor, sichtbarkeitsfilterFuer schwaerzt je Beleg (Nacharbeit 19).",
   },
   "GET /api/klara/ai-status": {
     urteil: "KEIN_KO_INHALT",
@@ -1746,7 +2046,8 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/duplicates/:id/link-related": "ko.validate.",
     "POST /api/duplicates/:id/status": "ko.validate.",
     // R-1107 (overlap-routes.ts): Zusammenführen — ko.validate; `fuehreZusammen` verlangt vor jedem
-    // Schreibschritt Einsicht in beide Seiten. Seit dem Dublettenvergleich ohne Urteil hier.
+    // Schreibschritt Einsicht in beide Seiten und denselben Space (dubletten-zusammenfuehrung.ts).
+    // Seit dem Dublettenvergleich ohne Urteil hier (auch aufnahme:20260922:gesamt-leserechte).
     "POST /api/duplicates/:id/merge": "ko.validate; Einsicht in beide Seiten prüft fuehreZusammen.",
     "PUT /api/duplicates/settings": "users.manage.",
     "PUT /api/gaps/:id": "ko.assign.",
@@ -3048,6 +3349,14 @@ const AUSGAENGE: Record<string, Ausgangseintrag> = {
   "services/external-search/src/wikipedia.ts::search#1": {
     urteil: "KEIN_KO_INHALT",
     grund: "Externe Suche: geht nur der Suchbegriff des Fragenden hinaus, kein Bestand.",
+  },
+  "services/app/src/assistenz-faehigkeiten.ts::fuehreAus#1": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Perplexity-Suchadapter (BPA-11): geht nur der geprüfte Suchbegriff des Auftrags hinaus; " +
+      "FaehigkeitsAusfuehrung sperrt ihn, wenn er einen Auszug geschützten Arbeitsbereichskontexts " +
+      "enthält. In dieser Instanz ist der Adapter nicht installiert (O09: keine Anbieterfreigabe, " +
+      "Kosten unbelegt).",
   },
   "services/reasoner/src/model-client.ts::postMessages#1": {
     urteil: "AUFTRAGSVERARBEITER",

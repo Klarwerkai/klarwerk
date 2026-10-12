@@ -23,6 +23,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       lifecycle: { pending: ok([]) },
       gaps: { list: ok([]), summary: ok({ open: 0, byPriority: {} }) },
       audit: { list: ok([]) },
+      me: { returnedTasks: ok([]) },
       ko: { list: ok([]) },
       directory: { list: ok([{ id: "u1", name: "Pia", email: "p@x.de", role: "editor" }]) },
     },
@@ -123,6 +124,20 @@ describe("R-0962 · die Aufgabenfläche nennt ihren Gegenstand statt ihres Besit
       "Re-Validierungen",
     ]) {
       expect(satz).toContain(art);
+    }
+  });
+
+  // Autorenübergabe-Auftrag (R-0961): Pedis Entscheidung bringt die sechste Art auf die Fläche. Der
+  // Satz nennt sie in allen drei Sprachen, samt dem Zusatz, dass nur die Verwaltung sie sieht —
+  // die Abweichung von D-003 (fünf Arten) ist benannt, nicht stillschweigend.
+  it("G2b · der Satz nennt die Autorenübergabe als Art der Verwaltung — in DE/EN/NL", () => {
+    const erwartet: Record<(typeof SPRACHEN)[number], RegExp> = {
+      de: /für die Verwaltung.*Autorenübergaben/,
+      en: /for administrators.*author handovers/,
+      nl: /voor het beheer.*auteursoverdrachten/,
+    };
+    for (const sprache of SPRACHEN) {
+      expect(i18n.getFixedT(sprache)("aufgaben.leitsatz"), sprache).toMatch(erwartet[sprache]);
     }
   });
 

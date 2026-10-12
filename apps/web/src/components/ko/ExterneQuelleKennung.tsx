@@ -27,13 +27,13 @@ export function ExterneQuelleKennung({
       <span
         data-testid="quelle-stufe2"
         title={t("externequelle.erklaerung")}
-        className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted"
+        className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted"
       >
         {t("externequelle.stufe")}
       </span>
       <span
         data-testid="quelle-extern-ungeprueft"
-        className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text"
+        className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text"
       >
         {t("ko.sourceExternUnchecked")}
       </span>

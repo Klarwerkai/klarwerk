@@ -18,7 +18,7 @@ const de = {
   "extpage.help.scope.body":
     "Externe Treffer sind Recherchehilfe, kein geprüftes Wissen: nichts wird automatisch importiert oder von Kolleg:innen validiert. Ist die externe Abfrage vom Admin gesperrt, bleibt der Bereich leer.",
   "app.name": "KLARWERK",
-  "app.subtitle": "Reasoning System",
+  "app.subtitle": "Knowledge OS",
   "app.staleBundle":
     "Eine neue Version der App ist verfügbar — bitte die Seite neu laden (Cmd+R bzw. Strg+R).",
   // JOB 3268 (D1-R): ZWEI verschiedene Zustände, zwei verschiedene Sätze. Der Satz darüber gehört
@@ -453,7 +453,7 @@ const de = {
   "status.konflikt": "Konflikt",
   "quality.preliminary": "Vorläufig",
   "quality.reliable": "Belastbar",
-  "quality.assured": "Gesichert",
+  "quality.assured": "Fachlich bestätigt",
   "evidence.percentSure": "Prüfstand: {{pct}} %",
   // AUFTRAG-mega51 BLOCK D1: der Balken sagt jetzt, WAS er zeigt (title + aria-label).
   "evidence.confidenceLabel": "Prüfstand: {{pct}} von 100",
@@ -583,6 +583,7 @@ const de = {
   "audit.action.user_role_change": "Rolle geändert",
   "audit.action.user_approve": "Konto freigegeben",
   "audit.action.user_account_corrected": "Kontodaten berichtigt",
+  "audit.action.user_freigabe_set": "Freigabeniveau geändert",
   "audit.action.auth_login": "Angemeldet",
   "audit.action.auth_logout": "Abgemeldet",
   "audit.action.notice_acknowledged": "Hinweis zur Kenntnis genommen",
@@ -864,7 +865,7 @@ const de = {
   "kg.ask.title": "Antworten sind quellengebunden",
   "kg.ask.body":
     "Die Fragen-Seite nutzt den Wissensbestand; offene oder ungeprüfte Quellen werden markiert und zur Validierung geführt.",
-  "kg.secured.label": "Gesichert",
+  "kg.secured.label": "Fachlich bestätigt",
   "kg.secured.body":
     "Validiertes Wissen ist nutzbar und bleibt über Quellen, Vertrauen und Version nachvollziehbar.",
   "kg.review.label": "Zu prüfen",
@@ -977,6 +978,14 @@ const de = {
   "task.filter.conflict": "Konflikte",
   "task.filter.gap": "Wissenslücken",
   "task.filter.revalidation": "Revalidierung",
+  "task.filter.authorTransfer": "Autorenübergabe",
+  "task.authorTransfer": "Autorenübergabe",
+  "task.authorTransfer.grund.konto-geloescht": "Autorenkonto gelöscht",
+  "task.authorTransfer.grund.ausgeschieden": "Autor ausgeschieden",
+  "task.authorTransfer.grund.angefordert": "Übergabe angefordert",
+  "task.action.authorTransfer": "Neuen Autor bestimmen",
+  "task.explain.authorTransfer":
+    "Dieses Wissen braucht einen erreichbaren Autor. Öffne den Eintrag, wähle unter „Mehr“ → „Provenienz“ den neuen Autor und übertrage. Danach ist die Aufgabe erledigt; der Originalautor bleibt vermerkt.",
   "task.conflict": "Konflikt",
   "task.validation": "Validierung",
   "task.revalidation": "Re-Validierung",
@@ -2842,7 +2851,7 @@ const de = {
     "Zeigt, ob Antworten über ein konfiguriertes Modell oder den regelbasierten Fallback laufen. Quellen und Validierung bleiben gleich.",
   "ask.fromValidated": "Aus quellengebundenem Wissen",
   "ask.evidence": "Evidenz",
-  "ask.knowledgeClass.gesichert": "Gesichert",
+  "ask.knowledgeClass.gesichert": "Fachlich bestätigt",
   "ask.knowledgeClass.ungeprueft": "Ungeprüft",
   "ask.knowledgeClass.meinung": "Meinung/Erfahrung",
   "ask.knowledgeClass.extern": "Externe Quelle",
@@ -2950,7 +2959,7 @@ const de = {
   "ask.aiUnavailable.toCapture": "Wissen erfassen",
   "ask.helpful": "Hat geholfen",
   "ask.thanked": "Danke!",
-  "ask.status.verified": "Gesichert",
+  "ask.status.verified": "Fachlich bestätigt",
   "ask.status.unverified": "Noch ungeprüft",
   "ask.reviewGuard.openLabel": "Noch nicht als gesichertes Wissen nutzen",
   "ask.reviewGuard.openHint":
@@ -3776,10 +3785,19 @@ const de = {
   // machte aus einem Ausfall eine Geduldsfrage.
   "ko.authorLoading": "Autorenname wird geladen …",
   "ko.authorUnavailable": "Autorenname nicht abrufbar",
+  // Aufnahme gesamt-wissen-herkunft (K3): das Konto gab es und es wurde gelöscht — kein Name, nur
+  // das kurze Merkmal wie bei der Unbekannten, damit zwei Gelöschte nicht wie eine Person aussehen.
+  "ko.authorDeleted": "Gelöschtes Konto ({{ref}})",
   "ko.originalAuthor": "Original",
   "ko.transferPick": "Neuen Autor wählen …",
   "ko.transfer": "Übergeben",
   "ko.transferDone": "Autor übergeben. Originalautor bleibt sichtbar.",
+  // Autorenübergabe-Auftrag (R-0961): die Übergabe ausdrücklich verlangen (Autor oder Admin).
+  "ko.transferRequest": "Übergabe anfordern",
+  "ko.transferRequestHint":
+    "Die Verwaltung bekommt eine wartende Aufgabe „Autorenübergabe“ und bestimmt einen neuen Autor.",
+  "ko.transferRequestDone":
+    "Übergabe angefordert. Die Verwaltung sieht sie unter „Offene Aufgaben“.",
   "ko.history": "Versionen",
   "ko.evidenceTitle": "Evidenz",
   // ================================================================================================
@@ -7049,7 +7067,7 @@ const de = {
   "fd.author": "Autor",
   "fd.whatOnSave": "Was beim Speichern passiert",
   "fd.whatOnSaveBody":
-    "Wird als Entwurf gesichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn du „Einreichen“ wählst; nichts wird automatisch validiert.",
+    "Wird als Entwurf gespeichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn du „Einreichen“ wählst; nichts wird automatisch validiert.",
   "fd.moreWays": "Mehr Erfassungswege",
   "fd.moreWaysBody":
     "Brauchst du das klassische Formular, Diktat oder das geführte Interview? Der vollständige Erfassen-Bereich hat alle Wege — diese Fläche hier ist der schnelle Einstieg.",
@@ -7068,7 +7086,8 @@ const de = {
   // JOB 3106 (UX-01): die bleibende Bestätigung unter den Knöpfen. Sie sagt genau das, was der
   // Server quittiert hat — der Entwurf liegt unter diesem Titel, und das Blatt schreibt in ihn
   // weiter (die Adresse trägt seine Kennung). Keine Zusage über die Entwurfsliste daneben.
-  "fd.saved.line": "Entwurf gesichert: {{titel}} — du schreibst hier in diesem Entwurf weiter.",
+  "fd.saved.line":
+    "Als Entwurf gespeichert: {{titel}} — du schreibst hier in diesem Entwurf weiter.",
   "fd.saved.toDrafts": "Meine Entwürfe",
   "fd.toastSubmitted": "Zur Prüfung eingereicht.",
   "fd.confirmDiscard": "Eingabe verwerfen? Nicht gespeicherte Inhalte gehen verloren.",
@@ -7137,7 +7156,7 @@ const de = {
   "erfassen.beispiel.keins": "Im Bestand liegt noch kein passendes Beispiel.",
   "erfassen.platzhalter.titel": "Titel",
   "erfassen.platzhalter.text": "Text",
-  "erfassen.entwurfSichern": "Entwurf sichern",
+  "erfassen.entwurfSichern": "Als Entwurf speichern",
   "erfassen.einreichen": "Einreichen",
   "erfassen.eingereicht": "Eingereicht:",
   "erfassen.live.aehnlich": "Ähnlich:",

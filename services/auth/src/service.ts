@@ -15,6 +15,7 @@ import {
 import { neuesTotpGeheimnis, otpauthAdresse, pruefeTotp } from "./totp";
 import {
   AuthError,
+  type Freigabestufe,
   type PublicUser,
   type Role,
   type Session,
@@ -207,6 +208,10 @@ export interface LoginInput {
   password: string;
 }
 
+// R-0961: die ausdrücklichen Wechsel des Status „Ausgeschieden“ (s. `istAusgeschieden`).
+const AUSGESCHIEDEN = "user.ausgeschieden";
+const AUSSCHEIDEN_BEENDET = "user.ausscheiden-beendet";
+
 function toPublic(user: User): PublicUser {
   const { passwordSalt: _salt, passwordHash: _hash, ...rest } = user;
   return rest;
@@ -256,6 +261,45 @@ export class AuthService {
   async listUsers(): Promise<PublicUser[]> {
     const users = await this.users.list();
     return users.map(toPublic);
+  }
+
+  // Aufnahme gesamt-wissen-herkunft (K3): WELCHE KENNUNGEN GEHÖRTEN EINEM GELÖSCHTEN KONTO?
+  //
+  // Nach `deleteUser` fehlt das Konto im Verzeichnis, und jede Autorenzeile, die darauf zeigt, sagte
+  // „Unbekannte Person" — dieselbe Auskunft wie für eine Kennung, die nie ein Konto war. Der Beleg,
+  // dass es ein Konto WAR, steht im Prüfprotokoll (`user.delete`, Ziel = Kennung). Geliefert werden
+  // NUR Kennungen, nie der Name von damals: den sieht weiter nur die Verwalteransicht (N-0027).
+  // Eine Kennung, die heute (wieder) ein Konto ist, gilt nicht als gelöscht. Ohne verdrahtetes
+  // Protokoll gibt es keinen Beleg und damit keine gelöschten Kennungen.
+  async listDeletedUserIds(): Promise<string[]> {
+    if (!this.audit) {
+      return [];
+    }
+    const vermerke = await this.audit.list({ action: "user.delete" });
+    if (vermerke.length === 0) {
+      return [];
+    }
+    const bestehend = new Set((await this.users.list()).map((u) => u.id));
+    const geloescht = new Set<string>();
+    for (const vermerk of vermerke) {
+      if (vermerk.target && !bestehend.has(vermerk.target)) {
+        geloescht.add(vermerk.target);
+      }
+    }
+    return [...geloescht];
+  }
+
+  /** Gibt es dieses Konto (heute)? Für Zuständigkeiten, die auf ein Konto zeigen müssen. */
+  async kontoBesteht(userId: string): Promise<boolean> {
+    return (await this.users.findById(userId)) !== undefined;
+  }
+
+  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18 (Integration Nacharbeit 12): die
+  // Weisungsbefugnis steht am Konto (`User.weisungsbefugnis`, vergeben über `setWeisungsbefugnis`,
+  // Aufnahme gesamt-peer-validierung). Lesen für Wege, die nur die Kennung kennen — fehlt der
+  // Vermerk oder das Konto, ist niemand weisungsbefugt, gleich welche Rolle.
+  async weisungsbefugnisVon(userId: string): Promise<Weisungsbefugnis | undefined> {
+    return (await this.users.findById(userId))?.weisungsbefugnis;
   }
 
   // FR-AUTH-01 (erstes Konto = Admin) + FR-AUTH-02 (Selbstregistrierung, gesperrt bis Freigabe).
@@ -736,6 +780,27 @@ export class AuthService {
    * bedeutet. Was der Mensch sieht, ist an BEIDEN Wegen dasselbe (G6); der zu grobe Code darunter
    * bleibt als offener Punkt benannt, statt still zu einer zweiten Auslegung zu werden.
    */
+  /**
+   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): das persönliche Freigabeniveau
+   * setzen oder (`undefined`) entziehen. Wirkt beim nächsten Abruf: die Sitzung liest das Konto je
+   * Anfrage neu (`makeGuards`). Vor dem Schreiben steht der Vermerk mit altem und neuem Niveau.
+   */
+  async setFreigabe(
+    userId: string,
+    freigabe: Freigabestufe | undefined,
+    actorId: string,
+  ): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    const { freigabe: vorher, ...ohneFreigabe } = user;
+    const aktualisiert: User = freigabe === undefined ? ohneFreigabe : { ...user, freigabe };
+    await this.gemeinsamSchreiben(async (tx) => {
+      const vermerk = { vorher: vorher ?? null, nachher: freigabe ?? null };
+      await this.record(actorId, "user.freigabe-set", userId, vermerk, tx);
+      await this.users.update(aktualisiert, tx);
+    });
+    return toPublic(aktualisiert);
+  }
+
   async setAccessExpiry(
     userId: string,
     expiresAt: string | undefined,
@@ -1220,6 +1285,10 @@ export class AuthService {
       return toPublic(user);
     }
     const gesperrt = user.approved && !neu.approved;
+    // R-0961 (Ben, Nacharbeit 13): gibt das Verzeichnis ein ausgeschiedenes Konto wieder frei, endet
+    // der Status ausdrücklich — wie bei der Freigabe durch die Verwaltung (`approveUser`).
+    const beendetAusscheiden =
+      !user.approved && neu.approved && (await this.istAusgeschieden(userId));
     await this.users.withAdminGuard(async (tx) => {
       const verliertAdmin = user.role === "admin" && (neu.role !== "admin" || !neu.approved);
       if (user.approved && verliertAdmin && (await this.isLastApprovedAdmin(userId, tx))) {
@@ -1240,6 +1309,9 @@ export class AuthService {
         },
         tx,
       );
+      if (beendetAusscheiden) {
+        await this.record("system", AUSSCHEIDEN_BEENDET, userId, { via: "verzeichnis" }, tx);
+      }
       await this.users.update(neu, tx);
       if (felder.includes("verzeichnisGruppen")) {
         await this.users.setzeVerzeichnisGruppen?.(userId, neu.verzeichnisGruppen ?? [], tx);
@@ -1356,11 +1428,83 @@ export class AuthService {
   async approveUser(userId: string, actorId: string): Promise<PublicUser> {
     const user = await this.requireUser(userId);
     const aktualisiert: User = { ...user, approved: true };
+    // R-0961 (Ben, Nacharbeit 13): wer ein ausgeschiedenes Konto wieder freigibt, beendet den Status
+    // ausdrücklich, mit eigenem Vermerk im selben Rahmen. Eine spätere Sperre belebt ihn nicht wieder.
+    const beendetAusscheiden = await this.istAusgeschieden(userId);
     await this.gemeinsamSchreiben(async (tx) => {
       await this.record(actorId, "user.approve", userId, undefined, tx);
+      if (beendetAusscheiden) {
+        await this.record(actorId, AUSSCHEIDEN_BEENDET, userId, { via: "freigabe" }, tx);
+      }
       await this.users.update(aktualisiert, tx);
     });
     return toPublic(aktualisiert);
+  }
+
+  /**
+   * R-0961 (Ben, Nacharbeit 13): TRÄGT DIESES KONTO JETZT DEN STATUS „AUSGESCHIEDEN“?
+   *
+   * Der Status ist ein eigener Zustand mit ausdrücklichen Wechseln. Gesetzt wird er mit
+   * `user.ausgeschieden` (`ausscheiden`), beendet mit `user.ausscheiden-beendet` (Wiederfreigabe
+   * durch einen Berechtigten oder das Verzeichnis). Entscheidend ist der LETZTE dieser Vermerke,
+   * nicht die Freigabe: eine spätere gewöhnliche Sperre ändert den Status nicht. Dieselbe Regel
+   * rechnet die Aufgabenfläche (`apps/web/src/lib/autorenuebergabe.ts`, `ausgeschiedeneKonten`).
+   */
+  private async istAusgeschieden(userId: string): Promise<boolean> {
+    if (!this.audit) {
+      return false;
+    }
+    const [gesetzt, beendet] = await Promise.all([
+      this.audit.list({ action: AUSGESCHIEDEN, target: userId }),
+      this.audit.list({ action: AUSSCHEIDEN_BEENDET, target: userId }),
+    ]);
+    const letzter = [...gesetzt, ...beendet].sort((a, b) => a.seq - b.seq).at(-1);
+    return letzter?.action === AUSGESCHIEDEN;
+  }
+
+  /**
+   * Autorenübergabe-Auftrag (R-0961), Peters Entscheidung 1 vom 12.10.2026 — DER STATUS
+   * „AUSGESCHIEDEN“, ausdrücklich durch einen Berechtigten gesetzt (die Route verlangt
+   * `users.manage`).
+   *
+   * Der Status ist der Vermerk `user.ausgeschieden`, solange ihn kein `user.ausscheiden-beendet`
+   * ablöst (`istAusgeschieden`). Vermerk und Sperre entstehen hier in EINEM Rahmen. Folgen nach der
+   * Entscheidung:
+   *   · Zugang entzogen: `approved: false` (dieselbe Sperre wie beim Verzeichnis-Austritt).
+   *   · Sitzungen entzogen: alle Sitzungen des Kontos werden gelöscht.
+   *   · Urheberschaft erhalten: das Konto bleibt bestehen, kein Wissensobjekt wird hier angefasst.
+   *   · Vertretung: im Vermerk benannt; die offenen Aufgaben überträgt die Route über die
+   *     vorhandene Wissensübergabe.
+   * Eine bloße Sperre, Befristung oder Inaktivität schreibt diesen Vermerk nie und ist deshalb
+   * kein Ausscheiden. Der letzte freigegebene Admin kann nicht ausscheiden (derselbe Schutz wie
+   * beim Löschen).
+   */
+  async ausscheiden(userId: string, actorId: string, vertretung: string): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    const aktualisiert: User = { ...user, approved: false };
+    await this.users.withAdminGuard(async (tx) => {
+      if (user.role === "admin" && user.approved && (await this.isLastApprovedAdmin(userId, tx))) {
+        throw new AuthError("FORBIDDEN", "LAST_ADMIN_DELETION" satisfies Meldungsschluessel);
+      }
+      // Nur Kennungen, keine Klarnamen (docs/datenschutz/pruefprotokoll-nutzdaten.md, Befund 2).
+      await this.record(actorId, AUSGESCHIEDEN, userId, { vertretung }, tx);
+      await this.users.update(aktualisiert, tx);
+    });
+    await this.sessions.deleteByUser(userId);
+    return toPublic(aktualisiert);
+  }
+
+  /**
+   * R-0961 (Ben, Nacharbeit 13): DARF DIESES KONTO AUSSCHEIDEN? Dieselbe Prüfung wie in
+   * `ausscheiden`, aber ohne zu schreiben. Die Route ruft sie VOR der Aufgabenübertragung, damit ein
+   * abgewiesenes Ausscheiden keine Nebenwirkung hinterlässt. Die verbindliche Prüfung bleibt in
+   * `ausscheiden` (im Rahmen des Admin-Schutzes).
+   */
+  async ausscheidenPruefen(userId: string): Promise<void> {
+    const user = await this.requireUser(userId);
+    if (user.role === "admin" && user.approved && (await this.isLastApprovedAdmin(userId))) {
+      throw new AuthError("FORBIDDEN", "LAST_ADMIN_DELETION" satisfies Meldungsschluessel);
+    }
   }
 
   /**

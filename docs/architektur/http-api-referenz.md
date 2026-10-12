@@ -131,8 +131,9 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `POST` | `/api/users` | `requireAdmin` | Rumpf `{ name, email, password, role?, accessExpiresAt? }` | 201 Konto | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` (Befristung unlesbar oder Rollenwechsel unzulässig); 409 `EMAIL_TAKEN` |
 | `PUT` | `/api/users/:id` | `requireAdmin` | Rumpf `{ role?, approve?, password?, accessExpiresAt?, weisungsbefugnis? }` (`weisungsbefugnis`: Liste von Bereichen, `*` = ganzes Unternehmen, `null` entzieht) | 200 Konto bzw. 204 | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` |
 | `DELETE` | `/api/users/:id` | `requireAdmin` | — | 204 | 401; 403; Dienstfehler |
+| `POST` | `/api/users/:id/ausscheiden` | `users.manage` | Rumpf `{ vertretung }` (Kontokennung) | 200 `{ id, approved: false, vertretung, vorgaenge: { uebertragen, bereitsErledigt } }` — Status „Ausgeschieden“ (R-0961): erst Prüfung (Vorschau der Wissensübergabe), dann offene Vorgänge an die Vertretung, erst danach Vermerk `user.ausgeschieden`, Zugang und Sitzungen entzogen; Urheberschaft bleibt | 400 `VERTRETUNG_UNGUELTIG`; 401; 403 (`FORBIDDEN`, letzter Admin); 404; 409 `VERTRETUNG_UNGEEIGNET` (`abgelehnt`, nichts geändert) bzw. `UEBERGABE_UNVOLLSTAENDIG` (`uebertragen`, `abgelehnt`, `fehlgeschlagen`; Status nicht gesetzt) |
 | `DELETE` | `/api/users/:id/second-factor` | `requireAdmin` | — | 204 (zweiter Faktor entfernt, z. B. bei verlorenem Gerät) | 401; 403 `FORBIDDEN` (nicht eingerichtet); 404 |
-| `GET` | `/api/directory` | `requireUser` (Modul) | — | 200 `[{ id, name }]` — ohne E-Mail | 401 |
+| `GET` | `/api/directory` | `requireUser` (Modul) | — | 200 `[{ id, name }]` — ohne E-Mail; dahinter gelöschte Konten als `{ id, geloescht: true }` ohne Namen (Beleg: Prüfprotokoll `user.delete`) | 401 |
 | `GET` | `/api/verantwortung/person/:id/vermaechtnis` | `users.manage` (`verantwortungRoutes`) | — | 200 Wissens-Vermächtnis-Buch `{ person, titel, erzeugtAm, dateiname, aufgenommen, zeitraum, themen, ausgelassen, markdown, provenance }` — nur einsehbare, validierte, nicht vertrauliche Beiträge; schreibt kein Wissen; Auditeintrag `vermaechtnis.erzeugt` | 401; 403 `FORBIDDEN`; 404 `NOT_FOUND` (weder Konto noch Beitrag) |
 
 Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anmeldung mit
@@ -184,6 +185,8 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/lesevarianten` | `ko.read` | Abfrage `lang` | 200 `{ lang, eintraege }` | 400 `MISSING_LANG` |
 | `GET` | `/api/library/import/candidates/:id/lesevariante/:lang` | `ko.read` | — | 200 Lesevariante des Kandidaten | 404 `NOT_FOUND`, `NO_LESEVARIANTE` |
 | `POST` | `/api/admin/lesevarianten/laden` | `users.manage` | Rumpf `{ package }` | 200 Ladebilanz | 400 `UNKNOWN_PACKAGE` |
+| `POST` | `/api/kos/:id/lesevariante/:lang/widerspruch` | `ko.read`, sichtbar | Rumpf `{ begruendung }` | 201 `{ gemeldet, gegenstand, ziel, lang, seq }` (Protokolleintrag `lesevariante.widerspruch`, keine Freigabe) | 400 `MISSING_REASON`, `REASON_TOO_LONG`; 404 `NOT_FOUND`, `NO_LESEVARIANTE`; 503 `AUDIT_UNAVAILABLE` |
+| `POST` | `/api/library/import/candidates/:id/lesevariante/:lang/widerspruch` | `ko.read` | Rumpf `{ begruendung }` | 201 `{ gemeldet, gegenstand, ziel, lang, seq }` (Kandidat bleibt unverändert) | 400 `MISSING_REASON`, `REASON_TOO_LONG`; 404 `NOT_FOUND`, `NO_LESEVARIANTE`; 503 `AUDIT_UNAVAILABLE` |
 | `GET` | `/api/kos/:id/beziehungen` | `ko.read`, sichtbar | — | 200 kuratierte Beziehungen | 404 |
 | `POST` | `/api/kos/:id/beziehungen` | `ko.relate` | Rumpf `{ zielId, art, richtung, beitragSchluessel?, gesehen }` | 201 neu angelegt, 200 Wiederholung desselben Beitrags (Ansicht der Beziehung) | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` (mit den aktuellen Fassungen) |
 | `POST` | `/api/beziehungen/:beziehungId/widerruf` | `ko.relate` | Rumpf `{ version }` | 200 widerrufene Beziehung | 400; 404; 409 `STAND_VERALTET` |
@@ -219,11 +222,14 @@ herabgestuft werden (409 `mutability`).
 | `ownership` | `ko.validate` | `ownership` |
 | `owner-validate` | `ko.validate`; nur der benannte Eigentümer (sonst 403 `NOT_OWNER`); Dublettentor wie `rate` | `duplicateAcknowledged?` (Status „validiert“, Vertrauen unverändert; Audit `ko.owner-validated`; Eigentümer in `ownership.validators`) |
 | `weisung-validate` | `ko.read` **und** Weisungsbefugnis am Konto für den Bereich des Objekts (sonst 403; die Rolle allein genügt nicht); nur das eigene Objekt (sonst 403 `NOT_OWNER`); Dublettentor wie `rate` | `expectedVersion` (Pflicht; gelesene Fassung, sonst 400, abweichend 409 `KO_STALE` mit `currentVersion`); offener Wahrheitskonflikt → 409 `CONFLICT`; `sichtung: { verantwortlich, frist: JJJJ-MM-TT }` — andere, freigegebene Person mit `ko.validate` oder Weisungsbefugnis im Bereich, Frist ab heute (sonst 400); `duplicateAcknowledged?` (Status „validiert“, Vertrauen unverändert; Audit `ko.weisung-validated`, Kontoregel `weisung`; `weisungsSichtung` am Objekt) |
-| `weisung-sichten` | `ko.read`; nur die benannte verantwortliche Person, die JETZT noch `ko.validate` oder Weisungsbefugnis für den Bereich hat (sonst 403), nur die offene Sichtung der gültigen Fassung (sonst 400) | `expectedVersion` (Pflicht, wie oben); `sichtung: { ergebnis: bestaetigt \| widerrufen }` (`widerrufen` → Status offen, Annahme entfällt; Audit `ko.weisung-gesichtet`) |
+| `weisung-sichten` | `ko.read`; nur die benannte verantwortliche Person, die JETZT noch `ko.validate` oder Weisungsbefugnis für den Bereich hat (sonst 403), nur die offene Sichtung der gültigen Fassung (sonst 400) | `expectedVersion` (Pflicht, wie oben); `sichtung: { ergebnis: bestaetigt \| widerrufen }` (`widerrufen` → Status offen, Annahme entfällt; Audit `ko.weisung-gesichtet`). **Ist stattdessen eine Weisung mit punktweiser Entscheidung (`weisung`, s. nächste Zeile) die AKTUELLE — ihr Beleg (`weisung.beleg`) steht später in der Kette als der einer früheren `weisungsSichtung`, oder es gibt keine:** eine Sichtung mit `sichtung.ergebnis` wird mit 409 `WEISUNG_NICHT_AKTUELL` abgelehnt; sonst nur die dort benannte Person (sonst 403 `SICHTUNG_NICHT_ZUSTAENDIG`), einmal (sonst 409 `WEISUNG_BEREITS_GESICHTET`), `vermerk?`; Audit `ko.weisung-sichtung-vermerkt`, Status unverändert |
+| `weisung` | `ko.read` **und** Weisungsbefugnis am Konto (dieselbe wie oben) für den Bereich des Objekts (sonst 403 `WEISUNGSBEFUGNIS_FEHLT`); Dublettentor wie `rate` | `sichtung: { verantwortlich, frist }` — die Person muss das Objekt mit ihrem eigenen Zugang lesen können und aktiv sein (sonst 400 `SICHTUNG_NICHT_MOEGLICH`); jeder offene Konflikt des Objekts einzeln in `bestehenLassen` oder `ueberstimmen` (sonst 409 `WEISUNG_PUNKTE_OFFEN` bzw. `WEISUNG_PUNKT_VERBORGEN`); überstimmen nur im eigenen Bereich (sonst 403). Wirkung: Status „validiert“, Herkunft `weisung`, Audit `ko.weisung`; je überstimmtem Punkt zuerst `geschlossen` am Gegenpunkt (Audit `ko.durch-weisung-geschlossen`), dann die Konfliktentscheidung mit Vorrang. Scheitert ein Schritt: 409 `WEISUNG_ABSCHLUSS_UNVOLLSTAENDIG` mit Stand je Punkt (`punkt`, `konflikt`), Audit `ko.weisung-abschluss-unvollstaendig`, und `GET /api/kos/:id` führt `weisungAbschlussOffen`; die Weisung selbst bleibt gesetzt |
+| `weisung-abschluss` | `ko.read`; nur die weisende Person (sonst 403 `WEISUNG_NICHT_EIGENE`) mit weiterhin deckender Weisungsbefugnis (sonst 403) | — ; holt für jeden Punkt aus `weisung.ueberstimmt` genau die fehlenden Schritte nach (bereits Erledigtes wird nicht wiederholt); vor jedem noch ausstehenden Schritt wird JETZT geprüft, dass der Gegenpunkt für die Person sichtbar ist und ihre Weisungsbefugnis seinen Bereich deckt — sonst bleibt der Punkt unverändert (weder Gegenpunkt noch Konflikt) mit `fehler`, bei fehlender Sichtbarkeit ohne Kennung des Gegenpunkts (`koId: null`); Antwort wie oben (200 vollständig, sonst 409) |
 | `ownership-release` | `ko.read`; nur der benannte Eigentümer selbst (sonst 403 `NOT_OWNER`) | — (Spur `reviewers`/`validators` bleibt; Audit `ko.ownership-released`) |
 | `conflict` | `ko.validate` | `conflict` (antwortet 201) |
 | `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |
 | `transfer-author` | `users.manage` | `newAuthor` |
+| `request-author-transfer` | `requireUser`; Autor des Objekts oder `users.manage` (sonst 403 `FORBIDDEN`) | — (Protokoll `ko.author-transfer-requested`) |
 | `revalidate` | `ko.create` | `stand` und `fassung` (die angezeigte Inhaltsfassung; wurde der Eintrag inzwischen überarbeitet, 409 `KO_STALE` mit `currentVersion`, fehlt sie neben `stand`, 400); `stand` (positive ganze Zahl: der gesehene Stand der Folgeprüfung; Pflicht, solange eine Folgeprüfung offen ist — fehlt er, ist inzwischen eine weitere Änderung eingegangen oder der Fall schon abgeschlossen, 409 `STAND_VERALTET` ohne neue Fassung; ohne offenen Fall bestätigt `revalidate` ohne Stand nur die Gültigkeit) |
 | `request-revalidation` | `ko.create` | — (antwortet 204; setzt den Merker „Stimmt das noch?" für dieses Objekt — erneute Prüfung aus der Bibliothek, R-1732; eine wiederholte Anforderung am offenen Fall legt keinen neuen Anlass an) |
 | `neighbors-changed` | `ko.validate` | `aenderung?` (Änderungsbeleg, höchstens 200 Zeichen) — (antwortet 200 `{ markiert }`; meldet die Änderung aller an dieses Objekt gekoppelten Anlagen und markiert alle Objekte daran, R-0203; nur die Zahl der für den Meldenden sichtbaren markierten Objekte, keine Kennungen) |
@@ -353,7 +359,7 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/library/export` | `ko.read` | Abfrage `format?`, `ids?` (kommagetrennt; grenzt nur ein — validiert/Vertraulichkeit gelten weiter; leer = leere Auswahl) | 200 Export | — |
 | `POST` | `/api/library/import` | `ko.create` | Rumpf `{ items }` | 200 Importbilanz | Dienstfehler |
 | `GET` | `/api/library/import/candidates` | `ko.read` | — | 200 Prüfwarteschlange | — |
-| `GET` | `/api/library/import/candidates/befunde` | `ko.read` | — | 200 je Kandidat `{ id, schutz, veraltet }` — schützenswert (Gründe ohne Werte) und veraltet (Stand der Quelle), jeweils mit `bewertet: false`, wo nichts zu bewerten war | — |
+| `GET` | `/api/library/import/candidates/befunde` | `ko.read` | — | 200 je für den Aufrufer sichtbarem Kandidaten (dasselbe Tor wie die Liste, `darfKandidatSehen`) `{ id, schutz, veraltet }` — schützenswert (Gründe ohne Werte) und veraltet (Stand der Quelle), jeweils mit `bewertet: false`, wo nichts zu bewerten war | — |
 | `POST` | `/api/library/import/candidates` | `ko.create` | Rumpf `{ items }` | 201 Kandidaten | Dienstfehler |
 | `PUT` | `/api/library/import/candidates/:id` | `ko.validate` | Rumpf `{ action: accept \| reject \| info, note? }` | 200 Kandidat | 400 `BAD_REQUEST` |
 | `POST` | `/api/admin/import/cleanup` | `users.manage` | Rumpf `{ confirm?, digest? }` | 200 `{ preview: true, … }` bzw. `{ preview: false, … }` | 409 `CLEANUP_DRIFT` |
@@ -407,6 +413,10 @@ herabgestuft werden (409 `mutability`).
 | `DELETE` | `/api/livewall/photo` | `requireUser` | — | 200 `{ photoConsent: false }` — Widerruf löscht die Bilddaten | — |
 | `PUT` | `/api/livewall/consent` | `requireUser` | Rumpf `{ nameConsent: boolean }` | 200 `{ nameConsent }` — Zustimmung/Widerruf als Prüfprotokoll-Ereignis | 400 `BAD_REQUEST` |
 | `GET` | `/api/me/impact` | `requireUser` | — | 200 eigene Wirkung | — |
+| `GET` | `/api/me/author-transfers` | `users.manage` | — | 200 `[{ koId, grund, kritisch }]` — wartende Autorenübergaben | 403 |
+| `GET` | `/api/me/author-transfers/summary` | `users.manage` | — | 200 `{ open }` — Zahl der wartenden Autorenübergaben | 403 |
+| `GET` | `/api/me/returned-tasks` | `ko.read`, sichtbar | — | 200 `[{ koId, at, verdict }]` — an mich zurückgegebene Entwürfe | — |
+| `GET` | `/api/me/returned-tasks/summary` | `ko.read`, sichtbar | — | 200 `{ open }` — Zahl der an mich zurückgegebenen Entwürfe | — |
 | `GET` | `/api/gesamtanweisungen` | `ko.read` | — | 200 sichtbare Anweisungen | — |
 | `POST` | `/api/gesamtanweisungen` | `ko.create` | Rumpf `{ titel?, zweck?, geltungsbereich?, voraussetzungen? }` | 201 Anweisung | Dienstfehler |
 | `GET` | `/api/gesamtanweisungen/:id` | `ko.read`, sichtbar | — | 200 Anweisung | 404 |
@@ -464,6 +474,42 @@ herabgestuft werden (409 `mutability`).
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/addin` | keines | — | — (immer 404, kein Verzeichnislisting) | 404 `NOT_FOUND` |
 | `GET` | `/addin/*` | keines | Dateipfad im Bündel | 200 Datei aus der festen Dateiliste | 404 `NOT_FOUND` |
+
+### 3.10 MCP-Zugang für fremde KI-Programme (`mcpRoutes`, nur mit `KLARWERK_SERVICE_KEYS`)
+
+Registriert nur, wenn ein Dienst-Schlüssel konfiguriert ist. Eine Sitzung jeder Rolle ist hier
+unangemeldet; die Rollenabnahme (`tests/beta-rollenabnahme/tabelle.ts`) misst das mit fünf Akteuren.
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/mcp` | Dienst-Schlüssel mit `mcp.werkzeug` (Kopf `x-klarwerk-service-key`), keine Sitzung | — | — (405 `METHOD_NOT_ALLOWED`, kein Ereignisstrom) | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN` bei Browseraufruf (`Origin`) |
+| `POST` | `/mcp` | Dienst-Schlüssel mit `mcp.werkzeug` (Kopf `x-klarwerk-service-key`), keine Sitzung | JSON-RPC-2.0-Nachricht | 200 JSON-RPC-Antwort; Werkzeugaufrufe laufen intern über die Route ihres Rechts | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN` bei Browseraufruf; JSON-RPC-Fehler im Rumpf |
+
+### 3.11 Gesprächsaussagen mit Folien verbinden (`meetingDokumentbezugRoutes`, BPA-16)
+
+Ausser bei Liste und Anlage gilt zusätzlich das Meetingrecht (Eigner oder eingetragener
+Teilnehmer, sonst 404 ohne Existenzauskunft). Für jede Datei gilt das aktuelle Urteil
+`beurteileAnhang` wie an `GET /api/objects/:id`, erhoben bei jeder Anfrage — für jede Fassung am
+Objekt, das sie tatsächlich trägt (`quelleId`), und für jede Rückmeldung zusätzlich an ihrer
+Mitschrift: ohne Leserecht an der Mitschrift gibt es die Rückmeldung nicht (404). Dateien
+(PPTX, WebVTT) kommen als Objekte über `POST /api/objects`. Wirkungen schreiben bedingt gegen
+die gelesene Version.
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/meetings` | `ko.read` | — | 200 `{ meetings: [{ meetingId, titel, version }] }` — nur eigene oder als Teilnehmer | — |
+| `POST` | `/api/meetings` | `ko.create` | Rumpf `{ titel, zeitbasis, teilnehmer? }` (Kontokennungen) | 201 `{ meetingId, titel, version }` | 400 `VALIDATION` |
+| `GET` | `/api/meetings/:id` | `ko.read`, Meetingrecht; Folien je Datei nach `beurteileAnhang` | — | 200 `{ meetingId, titel, eigen, zeitbasis, version, praesentationen, mitschriften, rueckmeldungen }` — je lesbarer Präsentation `dateiId`, `quelleId`, `dateiname`, `fassung`, Abgleich und Folien | 404 `NOT_FOUND` |
+| `POST` | `/api/meetings/:id/praesentationen` | `ko.create`, Meetingrecht, Leserecht an beiden Dateien | Rumpf `{ objectId, originalObjectId? }` | 200 `{ dateiId, fassung, abgleich }` (`identisch`, `inhaltsgleich`, `abweichend`, `nicht_vollstaendig_vergleichbar`, `ungeklaert`) | 400 `VALIDATION` (keine lesbare PPTX); 404; 409 `STAND_VERALTET` |
+| `POST` | `/api/meetings/:id/mitschriften` | `ko.create`, Meetingrecht, Leserecht an der Datei | Rumpf `{ objectId, zeitbasis }` (WebVTT) | 200 `{ id, zeitbasis, stellen }` | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
+| `POST` | `/api/meetings/:id/folienwechsel` | `ko.create`, Meetingrecht, bei `host` Leserecht an der Datei | Rumpf `{ quelle: "host", zeitMs, zeitbasis, dateiId, fassung, sldId }` oder `{ quelle: "nummer", zeitMs, zeitbasis, position }` | 200 `{ angenommen: true }` | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
+| `POST` | `/api/meetings/:id/rueckmeldungen` | `ko.create`, Meetingrecht | Rumpf `{ mitschriftId, stelleId, art (beschlossene_korrektur \| vorschlag \| offene_frage), text }` | 201 Rückmeldung (gefilterte Sicht); 200 dieselbe Rückmeldung erneut (keine Dublette) | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
+| `GET` | `/api/meetings/:id/rueckmeldungen/:rid` | `ko.read`, Meetingrecht; Folie/Ziel nur mit Leserecht | — | 200 `{ rueckmeldung, historie }` | 404 `NOT_FOUND` |
+| `POST` | `/api/meetings/:id/rueckmeldungen/:rid/klaerung` | `ko.create`, Meetingrecht, Leserecht an der Zieldatei (versteckte Folie inbegriffen) | Rumpf `{ dateiId, fassung, sldId }` | 200 Rückmeldung (neue Bindungsversion, alte in der Historie) | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
+| `POST` | `/api/meetings/:id/rueckmeldungen/:rid/verwerfen` | `ko.create`, Meetingrecht | — | 200 Rückmeldung als `verworfener_vorschlag` | 400 `VALIDATION` (kein Vorschlag); 404; 409 `STAND_VERALTET` |
+| `GET` | `/api/meetings/:id/folien/:dateiId/:sldId` | `ko.read`, Meetingrecht, Leserecht an der Datei | — | 200 `{ rueckmeldungen }` — über präsentierte Datei oder Original | 404 `NOT_FOUND` |
+| `GET` | `/api/meetings/:id/zeitstellen/:zeitMs` | `ko.read`, Meetingrecht | — | 200 `{ rueckmeldungen }` | 400 `VALIDATION`; 404 `NOT_FOUND` |
+| `POST` | `/api/meetings/:id/fassungsabgleich` | `ko.create`, Meetingrecht, Leserecht am aktuellen Quellobjekt des Originals und an der neuen Fassung (ein abgelöstes Objekt zählt nicht) | Rumpf `{ originalObjectId, neueFassungObjectId }` | 200 `{ dateiId, quelleId, fassung, eintraege: [{ rueckmeldungId, sldId, stand }] }` — `dateiId` logisches Original, `quelleId` das Objekt der neuen Fassung (Rechte und Öffnen dort); Einträge nur aus lesbaren Mitschriften | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
 
 ## 4 Testabdeckung und Abdeckungsziel
 
