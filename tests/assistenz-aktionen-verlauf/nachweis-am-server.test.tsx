@@ -296,7 +296,8 @@ describe("N1 · K2/K3/K4 — ausgeführt, nachgewiesen, nach dem Neuladen zurüc
     await klick(q(n, "klara-nachweis-protokoll-laden"));
     await bis(() => alle(n, "klara-nachweis-protokoll-eintrag").length > 0, 200);
     const eintraege = alle(n, "klara-nachweis-protokoll-eintrag");
-    expect(eintraege.map((e) => e.dataset.stand)).toEqual(["begonnen", "gespeichert"]);
+    // Die Serverausführung protokolliert den Schritt einmal, mit seinem tatsächlichen Ergebnis.
+    expect(eintraege.map((e) => e.dataset.stand)).toEqual(["gespeichert"]);
     expect(eintraege.every((e) => e.dataset.aktionskennung === `klara-auftrag-${aid}-1`)).toBe(
       true,
     );

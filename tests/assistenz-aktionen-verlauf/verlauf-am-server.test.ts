@@ -329,7 +329,7 @@ describe("V1 · K1–K4/K7 — ausgeführt, nachgewiesen, nach dem Neuladen zur�
       eintraege
         .filter((e) => e.payload.aktionskennung === `klara-auftrag-${a.id}-1`)
         .map((e) => e.payload.stand),
-    ).toEqual(["begonnen", "gespeichert", "zurueckgenommen"]);
+    ).toEqual(["gespeichert", "zurueckgenommen"]);
     expect(eintraege.every((e) => e.actor === erik.id)).toBe(true);
     expect(JSON.stringify(eintraege)).not.toContain("Dichtung");
   });
