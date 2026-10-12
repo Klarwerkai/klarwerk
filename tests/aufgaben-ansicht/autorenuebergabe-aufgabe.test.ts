@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
 
 // ================================================================================================
@@ -30,10 +30,12 @@ import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/sr
 //       Status lebt nicht wieder auf, keine Aufgabe.
 //   A12 Vertretung hat das Objekt schon geprüft ⇒ 409 ohne Nebenwirkung; mit geeigneter
 //       Vertretung 200, die Prüfaufgabe liegt danach bei ihr.
+//   A13 Teilfehler der Übertragung (injizierter Schreibfehler) ⇒ 409, kein Status, Sitzung gilt,
+//       Rest bei der Person; Wiederholung überträgt nur den Rest, 200, ohne Doppel.
 describe("R-0961: wartende Autorenübergabe — Auslöser, Berechtigung, Priorität, Abschluss", () => {
   async function setup() {
-    // Dieselbe Komposition wie `buildServices()`; die Ablage wird nur gebraucht, um in A12 eine
-    // bereits erledigte Prüfung der Vertretung herzustellen.
+    // Dieselbe Komposition wie `buildServices()`. Die Ablage wird nur gebraucht für die bereits
+    // erledigte Prüfung der Vertretung (A12) und für eine offene Lücke samt Schreibfehler (A13).
     const repos = inMemoryRepos();
     const services = assembleServices(repos);
     const app = buildApp(services);
@@ -337,6 +339,76 @@ describe("R-0961: wartende Autorenübergabe — Auslöser, Berechtigung, Priorit
     const offenNachher = await services.wissensuebergabe.offeneVorgaenge([anna.id, ada.id]);
     expect(offenNachher.get(anna.id)?.pruefaufgaben).toEqual([]);
     expect(offenNachher.get(ada.id)?.pruefaufgaben).toEqual([{ koId: pruefobjekt }]);
+    expect(await anstehend()).toEqual([{ koId: k, grund: "ausgeschieden", kritisch: false }]);
+  });
+
+  // Ben, Nacharbeit 14: der Teilfehlerpfad. Die Lücke geht über, das Schreiben der Prüfaufgabe
+  // scheitert genau einmal (injizierter Fehler der Ablage). Dann darf kein Status entstehen, Anna
+  // behält Zugang und den Rest, und die Wiederholung überträgt nur noch diesen Rest.
+  it("A13 · Teilfehler der Übertragung ⇒ 409, kein Status, Zugang und Rest bleiben; Wiederholung ⇒ 200 ohne Doppel", async () => {
+    const { app, repos, services, ada, anna, bert, eintrag, anstehend } = await setup();
+    const k = await eintrag(anna.id, "Instandhaltung");
+    const pruefobjekt = await eintrag(ada.id, "Instandhaltung");
+    await services.validation.assign(pruefobjekt, [anna.id], ada.id);
+    await repos.gaps.insert({
+      id: "g-anna",
+      question: "Fiktive Frage A13",
+      status: "offen",
+      assignee: anna.id,
+      priority: "mittel" as const,
+      createdAt: "2026-10-01T08:00:00.000Z",
+    });
+    const ausscheiden = () =>
+      app.inject({
+        method: "POST",
+        url: `/api/users/${anna.id}/ausscheiden`,
+        headers: ada.headers,
+        payload: { vertretung: bert.id },
+      });
+    const status = () => services.audit.list({ action: "user.ausgeschieden", target: anna.id });
+    const sitzung = async () =>
+      (await app.inject({ method: "GET", url: "/api/auth/me", headers: anna.headers })).statusCode;
+
+    const schreiben = vi
+      .spyOn(repos.assignments, "create")
+      .mockRejectedValueOnce(new Error("Ablage nicht erreichbar (Testfehler A13)"));
+    const teil = await ausscheiden();
+    schreiben.mockRestore();
+    expect(teil.statusCode, teil.body).toBe(409);
+    expect(teil.json().error).toBe("UEBERGABE_UNVOLLSTAENDIG");
+    expect(teil.json().uebertragen).toEqual([{ art: "luecke", id: "g-anna", an: bert.id }]);
+    expect(teil.json().fehlgeschlagen).toEqual([
+      expect.objectContaining({ art: "pruefaufgabe", id: pruefobjekt, an: bert.id }),
+    ]);
+
+    // Kein Status, Zugang bleibt, keine Übergabeaufgabe.
+    expect(await status()).toHaveLength(0);
+    expect(await sitzung(), "ein Teilfehler hat den Zugang entzogen").toBe(200);
+    expect(await anstehend()).toEqual([]);
+    // Zuständigkeiten: die Lücke liegt bei Bert, die Prüfaufgabe weiter bei Anna, nichts doppelt.
+    expect((await repos.gaps.findById("g-anna"))?.assignee).toBe(bert.id);
+    const nachTeil = await services.wissensuebergabe.offeneVorgaenge([anna.id, bert.id]);
+    expect(nachTeil.get(anna.id)?.pruefaufgaben).toEqual([{ koId: pruefobjekt }]);
+    expect(nachTeil.get(anna.id)?.luecken).toEqual([]);
+    expect(nachTeil.get(bert.id)?.pruefaufgaben).toEqual([]);
+
+    // Dieselbe Eingabe noch einmal: nur der Rest wird übertragen, dann der Status gesetzt.
+    const wieder = await ausscheiden();
+    expect(wieder.statusCode, wieder.body).toBe(200);
+    expect(wieder.json().vorgaenge.uebertragen).toEqual([
+      { art: "pruefaufgabe", id: pruefobjekt, an: bert.id },
+    ]);
+    expect(await status()).toHaveLength(1);
+    expect(await sitzung(), "nach dem Ausscheiden gilt die Sitzung noch").toBe(401);
+    const danach = await services.wissensuebergabe.offeneVorgaenge([anna.id, bert.id]);
+    expect(danach.get(anna.id)?.pruefaufgaben).toEqual([]);
+    expect(danach.get(anna.id)?.luecken).toEqual([]);
+    expect(danach.get(bert.id)?.pruefaufgaben).toEqual([{ koId: pruefobjekt }]);
+    expect(danach.get(bert.id)?.luecken).toEqual([{ id: "g-anna" }]);
+    const bertsZuweisungen = (await repos.assignments.all()).filter(
+      (z) => z.koId === pruefobjekt && z.userId === bert.id,
+    );
+    expect(bertsZuweisungen, "die Prüfaufgabe wurde doppelt angelegt").toHaveLength(1);
     expect(await anstehend()).toEqual([{ koId: k, grund: "ausgeschieden", kritisch: false }]);
   });
 

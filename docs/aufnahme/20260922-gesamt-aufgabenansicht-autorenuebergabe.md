@@ -442,6 +442,16 @@ Grenzen:
   - A10: ohne `users.manage` 403, ohne Anmeldung 401, ohne gültige Vertretung 400; eine bloße
     Sperre ohne Status löst nichts aus.
 
+## Nacharbeit 14 (Kandidat `d13e5a87`): Gegenprobe zum Teilfehler
+
+- Ben: Der Pfad `UEBERGABE_UNVOLLSTAENDIG` war ungeprüft. Neu ist A13 in
+  `autorenuebergabe-aufgabe.test.ts`. Die Lücke geht über, das Schreiben der Prüfaufgabe scheitert
+  einmal (injizierter Ablagefehler). Ergebnis:
+  - 409, kein Status, die Sitzung gilt weiter, die Lücke liegt bei der Vertretung, die Prüfaufgabe
+    weiter bei der Person.
+  - Die Wiederholung überträgt nur noch die Prüfaufgabe (ohne Doppel) und setzt den Status.
+- Produktcode unverändert.
+
 ## Nacharbeit 13 (Kandidat `52bfad89`): Status unabhängig von der Freigabe, Vertretung vorab geprüft
 
 - Ben, Befund 1: Der Status setzte sich aus einem beliebig alten Vermerk und `approved: false`
