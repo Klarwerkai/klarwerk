@@ -169,6 +169,16 @@ export function ocrUebernahmeErsetzt(
 }
 
 /**
+ * Nacharbeit 17 (Bens Befund): Wurde Feld `feld` seit dem letzten Räumen in ein anderes übernommen?
+ * `ocrUebernahmeErsetzt` legt die Liste des Quellfeldes bei JEDER Übernahme an (auch ohne erkannten
+ * Abschnitt) und eine Rückübernahme entfernt sie. Dann ist die Kopie maßgeblich — auch wenn sie
+ * absichtlich ganz geleert wurde; die stehen gebliebene Quelle ist kein Ersatz für sie.
+ */
+export function feldUebernommen(ersetzt: OcrErsetzt, feld: number): boolean {
+  return ersetzt[feld] !== undefined;
+}
+
+/**
  * Eine neue Erkennung schreibt einen frischen Abschnitt — der zählt, auch wenn ein gleichlautender
  * früher durch eine Übernahme ersetzt wurde.
  */

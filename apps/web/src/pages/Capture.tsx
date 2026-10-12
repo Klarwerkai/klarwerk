@@ -271,6 +271,7 @@ import {
 import {
   type OcrAbschnitt,
   type OcrErsetzt,
+  feldUebernommen,
   gesicherteOhneRohtext,
   interviewKontext,
   ocrAbschnitteFuerEntwurf,
@@ -2773,7 +2774,11 @@ export function CaptureArbeitsraum({
       const ocrFuerEntwurf = ocrAbschnitteFuerEntwurf(ocrGesichert, sichtbareOcrFelder, ocrErsetzt);
       const payload: DraftPayload = {
         title: draft?.title || raw.split("\n")[0]?.slice(0, 80) || t("capture.draftFallbackTitle"),
-        statement: draft?.statement || raw,
+        // Nacharbeit 17 (Bens Befund): hat ein Moduswechsel den Rohtext in die Aussage übernommen,
+        // ist sie maßgeblich — auch absichtlich ganz geleert. Der Rückfall auf den Rohtext brächte
+        // sonst den dort stehen gebliebenen, ersetzten Bildtext zurück.
+        statement:
+          draft && feldUebernommen(ocrErsetzt, 0) ? draft.statement : draft?.statement || raw,
         type,
         tags: tags.filter((x) => x.trim()),
         conditions: draft?.conditions.filter((x) => x.trim()) ?? [],

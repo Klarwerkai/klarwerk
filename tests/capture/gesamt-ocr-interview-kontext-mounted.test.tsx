@@ -524,6 +524,26 @@ describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführt
     expect(kontext).toBe("");
   });
 
+  // Nacharbeit 17 (Bens Befund, vorbereitet von der technischen Hilfe als H2627): I15 ließ einen
+  // eigenen Text stehen. Wird die übernommene Aussage GANZ geleert, fiel das Speichern auf den
+  // Rohtext zurück — samt dem dort stehen gebliebenen, ersetzten Bildtext.
+  it("H2627 · vollständig geleerte Aussage bleibt nach Speichern, frischem Fortsetzen und Interview leer", async () => {
+    await erkenneImErzaehlenUndWechsleInsFormular();
+    await tippe(aussageFeld(), "");
+    expect(aussageFeld().value).toBe("");
+    await entferneBild();
+    await speichereUeberWache();
+    expect(steuerung.angelegt).toHaveLength(1);
+    const payload = steuerung.angelegt[0];
+    expect(payload?.ocrAbschnitte).toBeUndefined();
+    expect(payload?.statement, "Gespeicherte Aussage muss absichtlich leer bleiben").toBe("");
+
+    await neuOeffnenUndFortsetzen();
+    expect(aussageFeld().value, "Nach frischem Fortsetzen muss die Aussage leer bleiben").toBe("");
+    const kontext = await starteInterview();
+    expect(kontext, "Das Interview darf gelöschten Bildtext nicht wiederverwenden").toBe("");
+  });
+
   it("I16 · Übernahme: ein danach im Erzählen NEU erkannter Abschnitt bleibt erhalten", async () => {
     await erkenneImErzaehlenUndWechsleInsFormular();
     const korrigiert = ERKANNT.replace("V3", "V8");

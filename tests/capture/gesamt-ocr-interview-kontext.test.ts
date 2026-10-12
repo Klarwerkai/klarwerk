@@ -18,6 +18,7 @@
 //          Das Fortsetzen belegen die gemounteten Tests I4 (unstrukturiert) und I5 (strukturiert).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  feldUebernommen,
   gesicherteOhneRohtext,
   interviewKontext,
   ocrAbschnittKopf,
@@ -331,6 +332,19 @@ describe("gesamt-ocr · Nacharbeit 16 · nach der Übernahme zählt die Kopie", 
     const ersetzt = ocrUebernahmeErsetzt([], 0, block, 1);
     const gesichert = [{ name: "aushang.png", text: korrigiert }];
     expect(gesicherteOhneRohtext(gesichert, [block, ""], ersetzt)).toEqual(gesichert);
+  });
+
+  it("K13 · Nacharbeit 17: die Übernahme selbst ist vermerkt — auch ohne erkannten Abschnitt", () => {
+    expect(feldUebernommen([], 0)).toBe(false);
+    expect(feldUebernommen(ocrUebernahmeErsetzt([], 0, block, 1), 0)).toBe(true);
+    expect(feldUebernommen(ocrUebernahmeErsetzt([], 0, "Nur eigener Text.", 1), 0)).toBe(true);
+    // Rückübernahme: jetzt ist der Rohtext maßgeblich, nicht mehr die Aussage.
+    const zurueck = ocrUebernahmeErsetzt(ocrUebernahmeErsetzt([], 0, block, 1), 1, block, 0);
+    expect(feldUebernommen(zurueck, 0)).toBe(false);
+    expect(feldUebernommen(zurueck, 1)).toBe(true);
+    // Eine neue Erkennung hebt den Vermerk nicht auf.
+    const frisch = ocrErsetztOhne(ocrUebernahmeErsetzt([], 0, block, 1), "aushang.png", ERKANNT);
+    expect(feldUebernommen(frisch, 0)).toBe(true);
   });
 });
 
