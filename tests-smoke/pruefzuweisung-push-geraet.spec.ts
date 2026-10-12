@@ -22,8 +22,18 @@
 // bekommt, ist eine MESSUNG dieses Laufs, keine Annahme: scheitert das Abo, nennt der Fall die
 // wörtliche Meldung des Browsers (`aboDiagnose`) statt nur an einer Zeitgrenze zu enden. Fehlt der
 // Netzweg zum Push-Dienst, nennt er das ebenso — rot mit Grund, nie still grün.
+//
+// Nacharbeit 11: im Standardstart zeigte die Profilzeile „Im Browser blockiert" — der Browser
+// meldete die Benachrichtigungserlaubnis trotz erteilter Kontextberechtigung als verweigert. Das
+// Produkt hat damit richtig geantwortet; die Ursache ist der kopflose Standardstart des Projekts
+// (die reduzierte „headless shell" ohne Benachrichtigungen). `channel: "chromium"` startet
+// dasselbe mitgelieferte Chromium im vollständigen neuen Kopflosmodus — keine Installation, kein
+// fremder Browser. Meldet der Browser dennoch „verweigert", endet der Fall mit genau dieser
+// Diagnose (Anhang `push-erlaubnis-diagnose.json`), statt an einer Zeitgrenze.
 import { type APIRequestContext, type Page, type Worker, expect, test } from "@playwright/test";
 import { SMOKE_MAIL, SMOKE_PASS, workspaceMarker } from "./support/auth";
+
+test.use({ channel: "chromium" });
 
 const HINWEIS_TAG = "klarwerk-pruefzuweisung";
 const PRUEFLISTE = "/validierung?mine=1";
@@ -163,6 +173,10 @@ test("R-0679: Prüfzuweisung erreicht das Gerät als Push-Hinweis und führt in 
     permissions: ["notifications"],
     locale: "de-DE",
   });
+  // Die Erlaubnis zusätzlich ausdrücklich für den Ursprung des Prüfservers (nicht nur pauschal).
+  if (baseURL) {
+    await kontext.grantPermissions(["notifications"], { origin: new URL(baseURL).origin });
+  }
   try {
     const page = await kontext.newPage();
     await imBrowserAnmelden(page, pruefer.email, pruefer.password);
@@ -172,9 +186,25 @@ test("R-0679: Prüfzuweisung erreicht das Gerät als Push-Hinweis und führt in 
     await page.goto("/profil");
 
     const zeile = page.getByTestId("zeile-geraete-push");
-    await expect(zeile, "die Profilzeile meldet Push als einschaltbar").toContainText("Aus", {
+    // Erst warten, bis die Zeile überhaupt eine Lage nennt (statt „—"), dann sie beurteilen.
+    await expect(zeile, "die Profilzeile nennt eine Push-Lage").not.toContainText("—", {
       timeout: 15_000,
     });
+    if (!(await zeile.textContent())?.includes("Aus")) {
+      const erlaubnis = await page.evaluate(() => ({
+        browser: navigator.userAgent,
+        erlaubnis: typeof Notification === "undefined" ? "fehlt" : Notification.permission,
+        pushManager: "PushManager" in window,
+      }));
+      const lage = (await zeile.textContent()) ?? "";
+      await testInfo.attach("push-erlaubnis-diagnose.json", {
+        contentType: "application/json",
+        body: JSON.stringify({ profilzeile: lage, ...erlaubnis }, null, 2),
+      });
+      throw new Error(
+        `die Profilzeile meldet Push nicht als einschaltbar („${lage}") — Benachrichtigungserlaubnis des Browsers: ${erlaubnis.erlaubnis}, PushManager: ${erlaubnis.pushManager}, Browser: ${erlaubnis.browser}`,
+      );
+    }
     await zeile.getByRole("button", { name: "Einschalten" }).click();
     const angemeldet = await expect(zeile)
       .toContainText("An", { timeout: 30_000 })
