@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
 import type { OverlapService } from "../../../conflicts";
-import type { AiCheck, KoService } from "../../../knowledge-object";
+import type { AiCheck, KantenRepo, KoService } from "../../../knowledge-object";
 import { type BoardFilter, type ValidationService, mitHerkunft } from "../../../validation";
 import { type AiCheckWorker, shouldReEnqueueAiCheck } from "../ai-check-worker";
 import { type Guards, type SessionUser, sendError } from "../http";
@@ -163,6 +163,33 @@ async function mitKiPruefauskunft<T extends { id: string; aiCheck?: AiCheck }>(
   });
 }
 
+// R-0265: was der Prüfer-Vorschlag aus der Kompositionswurzel braucht. Die Personen sind dieselbe
+// Liste wie die manuelle Auswahl (`GET /api/directory`); die Beziehungen kommen aus demselben
+// Kantenbestand wie das Wissensnetz.
+export interface PrueferVorschlagDeps {
+  ko: Pick<KoService, "get">;
+  kanten: Pick<KantenRepo, "fuerKo">;
+  personen: () => Promise<readonly { id: string }[]>;
+}
+
+/**
+ * `tags` kommt als kommagetrennte Liste; leere Teile fallen weg. Ein wiederholter Parameter
+ * (`?tags=a&tags=b`) kommt als Feld an und wird ebenso gelesen; alles andere zählt nicht.
+ */
+function schlagworteAus(roh: unknown): string[] {
+  const teile = Array.isArray(roh) ? roh : [roh];
+  return teile
+    .filter((t): t is string => typeof t === "string")
+    .flatMap((t) => t.split(","))
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
+/** Ein Abfragewert als Text — ein Feld oder ein Fremdtyp gilt als nicht angegeben. */
+function textAus(roh: unknown): string {
+  return typeof roh === "string" ? roh.trim() : "";
+}
+
 /**
  * ADMIN-09 (produkt:20261009:admin-freigaberegeln): die Freigaberegel des führenden Space je
  * Brettzeile — `FreigabeRegelDienst.auskunftFuer`. Nur Kennung, Name und Zahl; kein Inhalt.
@@ -177,6 +204,9 @@ export function validationRoutes(
   guards: Guards,
   aiCheck?: ValidationAiCheckDeps,
   freigabeAuskunft?: FreigabeAuskunftQuelle,
+  // R-0265: der Prüfer-Vorschlag; nach der Freigabeauskunft (ADMIN-09), damit deren Aufrufer
+  // unverändert bleiben.
+  vorschlag?: PrueferVorschlagDeps,
 ): FastifyPluginAsync {
   return async (app) => {
     app.get<{ Querystring: BoardFilter }>("/api/validation/board", async (request, reply) => {
@@ -263,6 +293,102 @@ export function validationRoutes(
       }
       // AUFTRAG-mega76 BLOCK D: die Personenzeilen rechnen über den SICHTBAREN Zuweisungen.
       reply.code(200).send(await validation.overview({ sichtbar: sichtbarkeitsfilterFuer(user) }));
+    });
+
+    // R-0265: Prüfer-Vorschlag. Zwei Lagen:
+    //   · ohne `koId` — ein NEUES Objekt beim Einreichen: Thema aus `category`/`tags`, Autor ist
+    //     der Fragende selbst, Beziehungen gibt es noch keine.
+    //   · mit `koId` — ein vorhandenes Objekt: Thema und Autor vom Objekt, dazu seine aktiven
+    //     Beziehungen. Ein Objekt, das der Fragende nicht sehen darf, ist für ihn nicht da (404).
+    // Rechnet nur über den SICHTBAREN Bestand. Weist niemanden zu.
+    app.get<{ Querystring: { category?: string; tags?: string; koId?: string } }>(
+      "/api/validation/reviewer-suggestions",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        if (!vorschlag) {
+          reply.code(503).send({
+            error: "SUGGESTIONS_UNAVAILABLE",
+            message: "Der Prüfer-Vorschlag ist in dieser Umgebung nicht verdrahtet.",
+          });
+          return;
+        }
+        const sichtbar = sichtbarkeitsfilterFuer(user);
+        const koId = textAus(request.query.koId);
+        let ziel: { id?: string; category?: string; tags?: readonly string[] } = {
+          category: textAus(request.query.category),
+          tags: schlagworteAus(request.query.tags),
+        };
+        const ausgeschlossen = [user.id];
+        const nachbarn = new Set<string>();
+        if (koId) {
+          const ko = await vorschlag.ko.get(koId);
+          if (!ko || !sichtbar(ko)) {
+            reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
+            return;
+          }
+          ziel = { id: ko.id, category: ko.category, tags: ko.tags };
+          ausgeschlossen.push(ko.author);
+          for (const k of await vorschlag.kanten.fuerKo(ko.id)) {
+            if (k.status === "aktiv") {
+              nachbarn.add(k.quelleId === ko.id ? k.zielId : k.quelleId);
+            }
+          }
+        }
+        const kandidaten = (await vorschlag.personen()).map((p) => p.id);
+        reply.code(200).send(
+          await validation.prueferVorschlagFuer({
+            ziel,
+            ausgeschlossen,
+            kandidaten,
+            nachbarn,
+            sichtbar,
+          }),
+        );
+      },
+    );
+
+    // R-1655: die Messgrundlage „Validierungszeiten sinken messbar" — je Zuweisungsweg erledigte
+    // und offene Zuweisungen samt Median der Prüfdauer, nur über den SICHTBAREN Bestand.
+    app.get("/api/validation/pruefdauer", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      reply
+        .code(200)
+        .send(await validation.pruefdauerAuswertung({ sichtbar: sichtbarkeitsfilterFuer(user) }));
+    });
+
+    // R-1655: das persönliche Opt-out aus der automatischen Zuweisung — nur das EIGENE Konto.
+    // `optOut: null` = in dieser Umgebung wird die Einstellung nicht geführt.
+    app.get("/api/me/pruefrouting", async (request, reply) => {
+      const user = await guards.requireUser(request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send({ optOut: await validation.routingOptOutVon(user.id) });
+    });
+
+    app.put<{ Body: { optOut?: unknown } }>("/api/me/pruefrouting", async (request, reply) => {
+      const user = await guards.requireUser(request, reply);
+      if (!user) {
+        return;
+      }
+      const optOut = request.body?.optOut;
+      if (typeof optOut !== "boolean") {
+        reply
+          .code(400)
+          .send({ error: "BAD_REQUEST", message: "optOut muss true oder false sein." });
+        return;
+      }
+      try {
+        reply.code(200).send({ optOut: await validation.setzeRoutingOptOut(user.id, optOut) });
+      } catch (error) {
+        sendError(reply, error);
+      }
     });
 
     // SCRUM-395: Standard-Prüferanzahl. Lesen dürfen alle Leseberechtigten (die

@@ -637,6 +637,23 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // SCRUM-395: Standard-Prüferanzahl — lesen dürfen alle Leseberechtigten (Anzeige beim
   // Erfassen), ändern nur die Nutzerverwaltung.
   "GET /api/validation/settings": { protection: "ko.read" },
+  // R-0265: Prüfer-Vorschlag — rechnet nur über den sichtbaren Bestand.
+  "GET /api/validation/reviewer-suggestions": {
+    protection: "ko.create",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  // R-1655: Prüfdauer je Zuweisungsweg — nur über den sichtbaren Bestand.
+  "GET /api/validation/pruefdauer": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  // R-1655: eigenes Opt-out aus der automatischen Zuweisung — nur das eigene Konto.
+  "GET /api/me/pruefrouting": { protection: "auth" },
+  "PUT /api/me/pruefrouting": { protection: "auth" },
+  // R-0679: Geräte-Push — Einrichtung lesen, eigenes Gerät an- und abmelden.
+  "GET /api/push/config": { protection: "auth" },
+  "POST /api/push/abo": { protection: "auth" },
+  "POST /api/push/abo/entfernen": { protection: "auth" },
   "PUT /api/validation/settings": { protection: "users.manage" },
   // SCRUM-414: Regler „externe Wissensabfrage" — lesen alle Leseberechtigten, setzen nur Admin.
   "GET /api/external/policy": { protection: "ko.read" },
@@ -770,6 +787,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // REF-01: Fundstellen einer Antwort mit aktuellen Rechten auflösen — ko.read und je Fundstelle
   // dasselbe Zeilenrecht wie GET /api/kos/:id; unbekannt und nicht berechtigt sehen gleich aus.
   "POST /api/ask/fundstellen": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
+  // REF-02: erneute Referenzprüfung eines serverseitig festgehaltenen Prüfkontexts — ko.read, nur
+  // derselbe Nutzer, und jede Fundstelle wird mit SEINER aktuellen Sicht neu aufgelöst.
+  "POST /api/ask/referenzpruefung/:pruefId/erneut": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
   // produkt:20261007:spaces: ähnliche Artikel/Widersprüche nur aus dem für den Prüfenden Sichtbaren.
   "POST /api/knowledge/check": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },

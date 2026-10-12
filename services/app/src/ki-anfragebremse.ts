@@ -30,6 +30,8 @@ export const KI_ROUTEN: readonly { readonly methode: "POST"; readonly pfad: stri
   { methode: "POST", pfad: "/api/help/explain" },
   { methode: "POST", pfad: "/api/media/analyze" },
   { methode: "POST", pfad: "/api/media/transcribe" },
+  // produkt:20261009:referenzki-pruefdienst (REF-02): die erneute Referenzprüfung ruft ein Modell.
+  { methode: "POST", pfad: "/api/ask/referenzpruefung/:pruefId/erneut" },
   // BPA-13: die Übergabe eines KI-Auftrags ruft auf dem API-Weg den gebundenen Anbieter.
   { methode: "POST", pfad: "/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/uebergabe" },
 ];

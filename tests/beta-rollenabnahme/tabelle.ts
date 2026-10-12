@@ -782,6 +782,18 @@ export const TABELLE: Zeile[] = [
     },
     erwartet: NUR_LESEN,
   },
+  // produkt:20261009:referenzki-pruefdienst (REF-02): die erneute Referenzprüfung trägt keinen
+  // Inhalt im Rumpf. Eine erfundene Prüfkennung ergibt nach dem Tor für jede Rolle die fachliche
+  // 404 „nicht (mehr) verfügbar" — die Tür ist registriert und gemessen, ohne Bestand vorauszusetzen.
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/ask/referenzpruefung/gibt-es-nicht/erneut",
+    route: "/api/ask/referenzpruefung/:pruefId/erneut",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1643",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   // R-1663 / R-2178: hinter demselben Schalter wie `GET /api/analytics/expertise` (an dieser Bühne
   // gesetzt). Eine erfundene Kennung ergibt nach dem Tor die fachliche 404 — die Tür ist registriert.
   {
@@ -4023,5 +4035,41 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/validation-routes.ts:85",
     tor: "ko.read",
     erwartet: NUR_LESEN,
+  },
+  // R-0265: Prüfer-Vorschlag beim Einreichen — dasselbe Recht wie das Einreichen selbst.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/validation/reviewer-suggestions",
+    belegstelle: "services/app/src/routes/validation-routes.ts:304",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  // R-1655: Prüfdauer je Zuweisungsweg — dieselbe Lesehürde wie die Personenübersicht.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/validation/pruefdauer",
+    belegstelle: "services/app/src/routes/validation-routes.ts:355",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // R-1655: das eigene Opt-out aus der automatischen Zuweisung lesen.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/me/pruefrouting",
+    belegstelle: "services/app/src/routes/validation-routes.ts:367",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // R-0679: ob dieser Betrieb Geräte-Push eingerichtet hat (samt öffentlichem VAPID-Schlüssel).
+  {
+    gruppe: "pushRoutes",
+    methode: "GET",
+    pfad: "/api/push/config",
+    belegstelle: "services/app/src/routes/push-routes.ts:44",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
   },
 ];
