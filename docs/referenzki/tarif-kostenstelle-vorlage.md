@@ -24,14 +24,19 @@ der bestehenden Produktkostenstelle zugeordnet. Verbrauch und Wiederholungen wer
   Ausgabetoken über alle Versuche aller Prüfläufe (`versucheGesamt`). Gesamtkosten nennt er nur,
   wenn jeder Lauf mit Verbrauch einen Preis hat; sonst steht `null` und `modelleOhnePreis`.
 
-## Vom Betreiber auszufüllen (alle Werte offen — nichts davon ist hier ermittelt)
+## Vom Betreiber zu bestätigen
+
+Das Modell ist durch den Lauf vom 12.10.2026 belegt. Verbrauch, Kostenrechnung, die Behandlung des
+abgebrochenen Versuchs und ein ausdrücklich unverifizierter Referenztarif stehen in
+`kostennachweis-beobachtung-20261012.md`. Preise bleiben hier offen, bis eine datierte
+Anbieterquelle sie bestätigt.
 
 ```json
 {
   "auftrag": "produkt:20261009:referenzki-pruefdienst",
   "tarif": {
     "anbieter": "anthropic",
-    "modell": "<exakt der Wert aus modellaufrufeNachweis.modelle>",
+    "modell": "claude-sonnet-4-6",
     "quelle": "<URL der Anbieter-Preisseite oder Vertragsdokument>",
     "abgerufenAm": "<JJJJ-MM-TT>",
     "gueltigAb": "<JJJJ-MM-TT>",

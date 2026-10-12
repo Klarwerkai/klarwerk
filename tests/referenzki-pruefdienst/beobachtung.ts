@@ -187,6 +187,13 @@ export async function beobachte(wahl: ReasonerReferenzWahl, env: Umgebung) {
     // `docs/referenzki/tarif-kostenstelle-vorlage.md` — hier wird keine erfunden.
     kostenstelle: null,
     versucheGesamt: pruefLaeufe.reduce((n, l) => n + Math.max(l.versuche.length, 1), 0),
+    // Ben nacharbeit-9: Versuche mit Modell, aber ohne gemeldeten Verbrauch (z. B. am Zeitlimit
+    // abgebrochen). Unbekannter Verbrauch ist kein Nachweis für null Kosten — `kostenGesamt` ist dann
+    // ausdrücklich nur die Summe des GEMELDETEN Verbrauchs.
+    versucheOhneVerbrauch: pruefLaeufe.reduce(
+      (n, l) => n + l.versuche.filter((v) => v.model !== null && v.verbrauch === null).length,
+      0,
+    ),
     verbrauchGesamt: {
       eingabeToken: mitVerbrauch.reduce((n, l) => n + (l.verbrauch?.eingabeToken ?? 0), 0),
       ausgabeToken: mitVerbrauch.reduce((n, l) => n + (l.verbrauch?.ausgabeToken ?? 0), 0),
@@ -198,6 +205,9 @@ export async function beobachte(wahl: ReasonerReferenzWahl, env: Umgebung) {
               Math.round(mitVerbrauch.reduce((n, l) => n + (l.kosten?.betrag ?? 0), 0) * 1e6) / 1e6,
             waehrung: preisliste.waehrung,
             preisstand: preisliste.preisstand,
+            nurGemeldeterVerbrauch: pruefLaeufe.some((l) =>
+              l.versuche.some((v) => v.model !== null && v.verbrauch === null),
+            ),
           }
         : null,
     laufzeitGesamtMs: pruefLaeufe.reduce((n, l) => n + l.dauerMs, 0),
