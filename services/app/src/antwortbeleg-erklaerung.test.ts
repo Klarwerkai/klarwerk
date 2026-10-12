@@ -690,6 +690,73 @@ describe("R-0293 / R-0317 · der Weg zur Antwort aus dem gespeicherten Beleg", (
     expect(body.openConflictToday).toBe(true);
   });
 
+  // ==============================================================================================
+  // produkt:20261011:peter-p14 · Bens Befund (Nacharbeit 12) — KEIN EXISTENZ-SEITENKANAL ÜBER DIE
+  // KONFLIKTLAGE. Ein offener Konflikt zählt nur, wenn der Leser BEIDE Seiten sehen darf
+  // (`paarSichtbar`). Gemessen wird die VOLLSTÄNDIGE Erklärungsantwort, nicht nur das Bit.
+  // ==============================================================================================
+  it("P14 · ein Konflikt mit unsichtbarer Gegenseite ändert die Erklärung nicht — Gegenprobe und Widerruf", async () => {
+    const ctx = await kontoMitDiensten("konfliktbit@x.de");
+    const koId = await koAnlegen(ctx.app, ctx.auth);
+    const answerId = await fragen(ctx.app, ctx.auth);
+    // Eine UNABHÄNGIGE zweite Wissenseinheit (keine Dublette), danach in einem Space, den dieses
+    // Konto nicht lesen darf — auch als Admin kein Durchgriff (sichtbarkeit.ts, `spaceErlaubt`).
+    const gegenseite = await koAnlegen(ctx.app, ctx.auth, "Pumpe im fremden Space", {
+      aussage: "Die Pumpe P2 wird monatlich entlueftet und das Ergebnis protokolliert.",
+    });
+    const fremd = "space-ohne-zugang";
+    const wechsle = async (id: string, ziel: string | null, quelle: string | null) => {
+      for (let versuch = 0; versuch < 5; versuch += 1) {
+        try {
+          await ctx.services.ko.setLeadingSpace(id, ziel, ctx.kontoId, quelle);
+          return;
+        } catch (fehler) {
+          if ((fehler as { code?: string }).code !== "STALE_WRITE") {
+            throw fehler;
+          }
+        }
+      }
+      throw new Error("Space-Wechsel ließ sich nicht schreiben (dauernd STALE_WRITE).");
+    };
+    await wechsle(gegenseite, fremd, null);
+
+    const vorher = await erklaerung(ctx.app, ctx.auth, answerId);
+    expect(vorher.statusCode).toBe(200);
+    expect(zeileZu(vorher.json(), koId).openConflictToday).toBe(false);
+    expect(vorher.json().openConflictToday).toBe(false);
+
+    const a = await ctx.services.ko.get(koId);
+    const b = await ctx.services.ko.get(gegenseite);
+    await ctx.services.conflicts.create({
+      koA: koId,
+      koB: gegenseite,
+      type: "truth",
+      description: "Widerspruch mit einer Gegenseite im fremden Space.",
+      ...(a ? { koAVersion: a.version } : {}),
+      ...(b ? { koBVersion: b.version } : {}),
+    });
+    // KALIBRIERUNG: der Konflikt ist heute offen — vor der Reparatur setzte er das Bit.
+    const offen = await ctx.services.conflicts.unresolved();
+    expect(offen.some((c) => c.koA === koId && c.koB === gegenseite)).toBe(true);
+
+    // Unsichtbare Gegenseite: die VOLLSTÄNDIGE Antwort ist zeichengleich.
+    const mitUnsichtbarem = await erklaerung(ctx.app, ctx.auth, answerId);
+    expect(mitUnsichtbarem.statusCode).toBe(200);
+    expect(mitUnsichtbarem.body).toBe(vorher.body);
+    expect(mitUnsichtbarem.body.includes(gegenseite)).toBe(false);
+
+    // ERLAUBTE GEGENPROBE: die Gegenseite wird lesbar — jetzt steht der Widerspruch da.
+    await wechsle(gegenseite, null, fremd);
+    const erlaubt = (await erklaerung(ctx.app, ctx.auth, answerId)).json();
+    expect(zeileZu(erlaubt, koId).openConflictToday).toBe(true);
+    expect(erlaubt.openConflictToday).toBe(true);
+
+    // WIDERRUF: wieder im fremden Space — mit dem nächsten Abruf wie vorher, Zeichen für Zeichen.
+    await wechsle(gegenseite, fremd, null);
+    const widerrufen = await erklaerung(ctx.app, ctx.auth, answerId);
+    expect(widerrufen.body).toBe(vorher.body);
+  });
+
   it("der gespeicherte Beleg aendert sich beim Oeffnen nicht — es wird nicht neu gesucht", async () => {
     const services = buildServices();
     const app = buildApp(services);

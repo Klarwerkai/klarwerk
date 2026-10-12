@@ -96,6 +96,13 @@ const CaptureFrontDoor = lazy(() =>
   import("./pages/CaptureFrontDoor").then((m) => ({ default: m.CaptureFrontDoor })),
 );
 const Conflicts = lazy(() => import("./pages/Conflicts").then((m) => ({ default: m.Conflicts })));
+// BPA-16: Besprechungen und Folien — Rückmeldungen aus Folie und Gesprächsstelle öffnen.
+const Besprechungen = lazy(() =>
+  import("./pages/Besprechungen").then((m) => ({ default: m.Besprechungen })),
+);
+const BesprechungAnsicht = lazy(() =>
+  import("./pages/Besprechungen").then((m) => ({ default: m.BesprechungAnsicht })),
+);
 const Dokumentfragen = lazy(() =>
   import("./pages/Dokumentfragen").then((m) => ({ default: m.Dokumentfragen })),
 );
@@ -432,6 +439,12 @@ export function AppRoutes(): JSX.Element {
             Fläche liest die Datei im Browser und sendet nichts (`pages/Dokumentfragen.tsx`).
             Erreichbar von der Fragen-Seite; im Menü markiert die Präfixregel „Fragen". */}
         <Route path="/fragen/dokument" element={<Dokumentfragen />} />
+        {/* BPA-16: Besprechungen und Folien. Ohne `Guarded`, wie `/chat`: die Türen dahinter
+            fordern ihr Recht am Server (`ko.read`/`ko.create`, Meetingrecht und je Datei das
+            Leserecht, `services/app/src/routes/meeting-dokumentbezug-routes.ts`). Erreichbar vom
+            Dokumentweg (`/fragen/dokument`) und von der Fragen-Seite. */}
+        <Route path="/besprechungen" element={<Besprechungen />} />
+        <Route path="/besprechungen/:id" element={<BesprechungAnsicht />} />
         {/* ADMIN-15: Unternehmensprofil und interne Richtlinien. Ohne `Guarded`, wie `/begriffe`:
             die Türen dahinter fordern ihr Recht am Server (`requireUser` zum Lesen und für die
             eigene Kenntnisnahme/Zustimmung, `users.manage` für die Verwaltung,

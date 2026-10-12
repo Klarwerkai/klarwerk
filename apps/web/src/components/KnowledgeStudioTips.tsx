@@ -20,7 +20,7 @@ export function KnowledgeStudioTips(): JSX.Element {
             <div className="flex items-center gap-1.5">
               <span className="text-[11.5px] font-semibold text-text">{t(tip.labelKey)}</span>
               {tip.shortcut ? (
-                <span className="rounded-btn border border-hairline bg-surface px-1.5 py-0.5 font-mono text-[9.5px] text-muted-2">
+                <span className="rounded-btn border border-hairline bg-surface px-1.5 py-0.5 font-mono text-klein text-muted-2">
                   {tip.shortcut}
                 </span>
               ) : null}

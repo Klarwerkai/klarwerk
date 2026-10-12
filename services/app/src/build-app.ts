@@ -142,6 +142,7 @@ import {
   type UploadLimitsRepo,
   type WithTx,
   anweisungFehler,
+  ohneBestandsstempel,
   responsibleOf,
 } from "../../knowledge-object";
 import {
@@ -252,6 +253,13 @@ import {
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
 import { Anfragebremse, bremsSatz } from "./anfragebremse";
+// produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der Assistenz über die vorhandenen Dienste.
+import type { FaehigkeitsAusfuehrung } from "./assistenz-faehigkeiten";
+import {
+  FAEHIGKEITEN_MANDANT,
+  baueFaehigkeiten,
+  ladeKontext,
+} from "./assistenz-faehigkeiten-anbindung";
 // produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil je Konto — haltbar im
 // Postgres-Betrieb, im Speicher ohne Datenbank.
 import {
@@ -299,6 +307,7 @@ import {
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
+import type { Bereichsmarken } from "./firmenbereich";
 import { FirmenresetSso } from "./firmenreset-sso";
 // Firmenwörterbuch: der versionierte Begriffskatalog der Instanz — im Postgres-Betrieb haltbar
 // (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
@@ -389,6 +398,12 @@ import {
   stapelRahmen,
 } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
+// BPA-16: Meeting-/Folienbezüge — im Postgres-Betrieb haltbar (`PgMeetingBezugAblage`).
+import {
+  type MeetingBezugAblage,
+  PgMeetingBezugAblage,
+  SpeicherMeetingBezugAblage,
+} from "./meeting-dokumentbezug-ablage";
 import { makeAssignmentNotifier } from "./notify";
 import { type OfficeAblage, PgOfficeAblage, SpeicherOfficeAblage } from "./office-ablage";
 import { leseOfficeEditorUmgebung } from "./office-artikel";
@@ -407,6 +422,8 @@ import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
+// produkt:20261011:assistenz-skills-werkzeuge: Übersicht, Vormerkungen und Aufträge der Fähigkeiten.
+import { assistenzFaehigkeitenRoutes } from "./routes/assistenz-faehigkeiten-routes";
 // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil (Name, Avatar, Ersteinrichtung).
 import { assistenzProfilRoutes } from "./routes/assistenz-profil-routes";
 import { auditRoutes, ketteneinsichtKonten } from "./routes/audit-routes";
@@ -458,6 +475,7 @@ import { lmsExportRoutes } from "./routes/lms-export-routes";
 import { managementRoutes } from "./routes/management-routes";
 import { mcpRoutes } from "./routes/mcp-routes";
 import { mediaRoutes } from "./routes/media-routes";
+import { meetingDokumentbezugRoutes } from "./routes/meeting-dokumentbezug-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
@@ -505,7 +523,14 @@ import { tabellenDerStufen } from "./sicherungsumfang";
 import { type AnhangQuellen, entwurfSichtbarFuer, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 // produkt:20261007:spaces — die versionierten Arbeitsräume; im Postgres-Betrieb haltbar.
-import { InMemorySpacesRepo, PgSpacesRepo, type SpacesRepo, lesbareSpaces } from "./spaces";
+import {
+  InMemorySpacesRepo,
+  PgSpacesRepo,
+  type SpacesRepo,
+  bereichsmarken,
+  existenzbereiche,
+  lesbareSpaces,
+} from "./spaces";
 import { speicherVorgang } from "./speicher-vorgang";
 // JOB 3655: der Startvertrag — die EINE Stelle, die alle Umgebungswerte namentlich führt, den
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
@@ -761,6 +786,13 @@ export interface AppServices {
    */
   officeAblage: OfficeAblage;
   /**
+   * BPA-16 (produkt:20261011:assistenz-meeting-dokumentbezug): Meetingbezüge — verbundene
+   * Präsentationsfassungen, Mitschriften, Rückmeldungen und Änderungsobjekte. Aus demselben Grund
+   * wie `bearbeitungen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgMeetingBezugAblage`; ohne
+   * Datenbank die Speicherfassung, die einen Neustart nicht überlebt.
+   */
+  meetingBezuege: MeetingBezugAblage;
+  /**
    * Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen. Aus demselben Grund wie
    * `bearbeitungen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgKenntnisnahmeRepo`; ohne Datenbank
    * die Speicherfassung, die im Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt sie beim
@@ -841,6 +873,9 @@ export interface AppServices {
   // buildApp — wie `aiCheckWorker`; ein vorab gesetzter Wert hat Vorrang.
   paarpflichten: PaarpflichtService;
   paarpflichtAusfuehrung?: PaarpflichtAusfuehrung;
+  // produkt:20261011:assistenz-skills-werkzeuge: die Fähigkeitsausführung. Erstellt von buildApp;
+  // `server.ts` nimmt wartende und unterbrochene Aufträge nach dem Start wieder auf.
+  faehigkeiten?: FaehigkeitsAusfuehrung;
   // Berater-Konzept Duplikate 04.07. (Stufe D3): Überschneidungs-/Duplikat-Erkennung (eigene Entität).
   overlaps: OverlapService;
   // Pedi 04.07.: einstellbare Anzeige-Schwelle der Duplikat-Erkennung (Admin) — schmale Repo-Schnittstelle.
@@ -1327,6 +1362,8 @@ export function assembleServices(
     // Office im Artikel: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die
     // Speicherfassung, die einen Neustart nicht überlebt.
     officeAblage?: OfficeAblage;
+    // BPA-16: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    meetingBezuege?: MeetingBezugAblage;
     // Kenntnisnahme: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
     kenntnisnahmen?: KenntnisnahmeRepo;
     // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
@@ -1788,6 +1825,8 @@ export function assembleServices(
     bearbeitungen: opts.bearbeitungen ?? new InMemoryBearbeitungsRepo(),
     // Office im Artikel: Postgres, wenn injiziert, sonst im Speicher.
     officeAblage: opts.officeAblage ?? new SpeicherOfficeAblage(),
+    // BPA-16: Meetingbezüge — Postgres, wenn injiziert, sonst im Speicher.
+    meetingBezuege: opts.meetingBezuege ?? new SpeicherMeetingBezugAblage(),
     // Kenntnisnahme: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit zu
     // (Desktop-Journal), lehnt die Speicherfassung Schreibvorgänge ab — eine angenommene und beim
     // Neustart verlorene Bestätigung wäre schlimmer als eine abgelehnte.
@@ -2310,6 +2349,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände überleben Neustart und
       // Deploy (`OFFICE_ABLAGE_SCHEMA`).
       officeAblage: new PgOfficeAblage(pool),
+      // BPA-16: Meetingbezüge überleben Neustart und Deploy (`MEETING_DOKUMENTBEZUG_SCHEMA`).
+      meetingBezuege: new PgMeetingBezugAblage(pool),
       // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
       kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
       // Veröffentlichung: die Zustellungen überleben Neuladen, Neuanmeldung und Neustart.
@@ -3326,6 +3367,14 @@ export function buildApp(
     spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
   });
 
+  // produkt:20261011:peter-p14 · B-07 (Nacharbeit 5): der gespeicherte Bestandsstempel ist ein
+  // Fingerabdruck über ALLE aktiven Einträge — auch über unsichtbare. Er verlässt den Server in KEINER
+  // JSON-Antwort (Regel und Grenzen: knowledge-object/src/pruefbasis.ts, `ohneBestandsstempel`).
+  // Als Hook der Wurzel, VOR den Routenregistrierungen: er gilt damit für jede Route dieser App.
+  app.addHook("preSerialization", async (_request, _reply, payload) =>
+    ohneBestandsstempel(payload),
+  );
+
   // D5 (KI aus, Lauf 5 Runde 3 — Bens B2): die Abschalt-Epoche einer Klara-Frage wird beim EINGANG
   // festgehalten, als ERSTER onRequest-Hook dieser App — vor dem asynchronen Anmelde-Hook der Add-on-API
   // darunter, der bei `KLARWERK_ADDON_API=1` auch Sitzungsanfragen an `/api/ask` authentifiziert. Wer
@@ -4199,6 +4248,17 @@ export function buildApp(
             vorVergleich,
           }),
         }),
+      // produkt:20261011:peter-p14 · B-07: derselbe Runner für den stillen Bestandsabgleich.
+      baueLauf: (vorVergleich) =>
+        createAiCheckRunner({
+          ko: services.ko,
+          conflicts: services.conflicts,
+          overlaps: services.overlaps,
+          overlapSettings: services.overlapSettings,
+          reasoner: services.reasoner,
+          semanticPrefilter,
+          vorVergleich,
+        }),
       modellAktiv: () => services.reasoner.status().active,
       audit: services.audit,
     }),
@@ -4234,9 +4294,15 @@ export function buildApp(
       await services.ko.delete(koId, akteur, { hard: true });
     },
   });
+  // produkt:20261011:peter-p14 — die Partner- und öffentlichen Spaces (eine Bereichsableitung mit
+  // dem Space-Artikelfilter), je Anfrage frisch aus derselben Ablage wie `spaceLesbar` (kein
+  // Zwischenspeicher: eine Marke wirkt sofort).
+  const bereichsmarkenJetzt = async (): Promise<Bereichsmarken> =>
+    bereichsmarken(await services.spaces.aktuelle());
   app.register(
     koRoutes(
       {
+        bereichsmarken: bereichsmarkenJetzt,
         ko: services.ko,
         validation: services.validation,
         conflicts: services.conflicts,
@@ -4782,6 +4848,7 @@ export function buildApp(
     ko: services.ko,
     conflicts: services.conflicts,
     offeneSpaces,
+    bereichsmarken: bereichsmarkenJetzt,
     // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
     kanten: services.kanten,
     // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
@@ -4934,6 +5001,9 @@ export function buildApp(
       // R-0773: erfolglose Suchen je Person.
       services.nulltreffer,
       wissenspaketQuellen,
+      bereichsmarkenJetzt,
+      // P14 · Existenzrecht: je Anfrage frisch aus derselben Ablage — ein Widerruf wirkt sofort.
+      async (nutzerId) => existenzbereiche(await services.spaces.aktuelle(), nutzerId),
     ),
   );
   app.register(categoryRoutes(services.ko, guards));
@@ -5250,6 +5320,40 @@ export function buildApp(
       guards,
     ),
   );
+  // produkt:20261011:assistenz-skills-werkzeuge (BPA-11): Fähigkeiten der eigenen Assistenz. Jede
+  // Entscheidung kommt frisch aus dem Dienst, der sie schon trifft — KI-Abschaltung und Freigaben
+  // aus dem Reasoner, die Stufe der externen Wissensabfrage, Konto- und Kontextrechte über
+  // `darfSehen`; die Aufträge liegen im Assistenzprofil. Nichts davon hat hier eine zweite Regel.
+  const faehigkeitenWissen = {
+    get: (id: string) => services.ko.get(id),
+  };
+  const faehigkeitenLesbareSpaces = async (nutzerId: string) =>
+    lesbareSpaces(await services.spaces.aktuelle(), nutzerId);
+  const faehigkeiten = baueFaehigkeiten({
+    reasoner: services.reasoner,
+    externeWissensabfrage: services.externalKnowledge,
+    externeSuche: services.externalSearch,
+    profile: services.assistenzProfile,
+    konten: () => services.auth.listUsers(),
+    wissen: faehigkeitenWissen,
+    lesbareSpaces: faehigkeitenLesbareSpaces,
+  });
+  services.faehigkeiten = faehigkeiten.ausfuehrung;
+  app.register(
+    assistenzFaehigkeitenRoutes(
+      {
+        ausfuehrung: faehigkeiten.ausfuehrung,
+        vormerkungen: faehigkeiten.vormerkungen,
+        kontext: (user, kennungen) => ladeKontext({ wissen: faehigkeitenWissen }, user, kennungen),
+        audit: services.audit,
+        mandant: FAEHIGKEITEN_MANDANT,
+        hintergrund: () => {
+          void faehigkeiten.ausfuehrung.arbeiteWarteschlangeAb().catch(() => undefined);
+        },
+      },
+      guards,
+    ),
+  );
   // produkt:20261009:admin-audit-verstaendlich: derselbe Sichtbarkeitszugang wie die Nebenwege —
   // Titel, Rücklinks und Inhaltsfelder im Protokoll nur für Objekte, die der Betrachter öffnen darf.
   // aufnahme:20260922:gesamt-leserechte (Nacharbeit 14/15, 20): dazu das Protokoll nach dem
@@ -5309,6 +5413,9 @@ export function buildApp(
     // Ein Traeger FRISCH — `KoService.get` liefert fuer den Papierkorb `undefined`, zeichengleich
     // mit dem Trim in `list`.
     ko: (koId) => services.ko.get(koId),
+    // BPA-17 (G05): die Quelle IM PAPIERKORB, nur für private Folgeprodukte — eine gewöhnliche
+    // Löschung hebt die berechtigt erzeugte Kopie nicht auf; Rechte gelten an ihren Fakten weiter.
+    papierkorb: (koId) => services.ko.papierkorbFassungVon(koId),
     // Der Schreibstand aus der ABLAGE (Pg: Zeile `ko_schreibstand`; Speicher: geteiltes Objekt des
     // Bestands) — der Kandidaten-Speicher verwirft damit jeden Eintrag, sobald irgendwo, auch in
     // einem anderen Prozess, ein Traeger entstanden oder verschwunden sein kann. Ohne diese Quelle
@@ -5339,6 +5446,14 @@ export function buildApp(
   };
   app.register(objectRoutes(services.objects, guards, anhangQuellen));
   app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
+  // BPA-16: Gesprächsaussagen mit Folien verbinden. Präsentationen und Mitschriften kommen aus
+  // DEMSELBEN Objektspeicher und werden mit DENSELBEN Herkünften beurteilt wie `/api/objects/:id`.
+  app.register(
+    meetingDokumentbezugRoutes(
+      { ablage: services.meetingBezuege, objects: services.objects, quellen: anhangQuellen },
+      guards,
+    ),
+  );
   // aufnahme:20260922:gesamt-leserechte: der SCORM-Export liest Bilder aus DEMSELBEN Speicher und
   // bekommt deshalb dieselben Herkünfte für die Anhangsregel — keine zweite Aufzählung.
   app.register(

@@ -260,6 +260,25 @@ export class PgDraftRepo implements DraftRepo {
     ]);
   }
 
+  // Klara 05 (Nacharbeit 4): Standvergleich und Papierkorbvermerk in EINER Anweisung — dieselbe
+  // Bedingung wie `DRAFT_UPDATE_WENN_STAND_SQL`. `rowCount 0`: anderer Stand, fehlt oder getrasht.
+  async deleteWennStand(
+    id: string,
+    erwarteterStand: string,
+    geloeschtVon?: string,
+    zeitpunkt?: string,
+  ): Promise<boolean> {
+    const vermerk = {
+      deletedAt: zeitpunkt ?? new Date().toISOString(),
+      ...(geloeschtVon === undefined ? {} : { deletedBy: geloeschtVon }),
+    };
+    const res = await this.pool.query(
+      `UPDATE drafts SET data = data || $2::jsonb WHERE id=$1 AND ${AKTIV} AND data->>'updatedAt' = $3`,
+      [id, JSON.stringify(vermerk), erwarteterStand],
+    );
+    return res.rowCount === 1;
+  }
+
   // JOB 3668: DIE EINZIGE HARTE LÖSCHUNG DES ADAPTERS — wörtlich die Anweisung, die bis zu diesem
   // Auftrag in `delete` stand. Sie ist nicht verschwunden, sie hat ihren richtigen Namen bekommen.
   //

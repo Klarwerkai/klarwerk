@@ -484,6 +484,51 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.create",
     zeilenrecht: ["darfSehen"],
   },
+  // BPA-16: Gesprächsaussagen mit Folien verbinden. Lesen `ko.read`, Wirkungen `ko.create`; jede
+  // Tür mit Meetingkennung urteilt je Datei mit `beurteileAnhang` (wie `GET /api/objects/:id`).
+  "GET /api/meetings": { protection: "ko.read" },
+  "POST /api/meetings": { protection: "ko.create" },
+  "GET /api/meetings/:id": { protection: "ko.read", zeilenrecht: ["beurteileAnhang"] },
+  "POST /api/meetings/:id/praesentationen": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/mitschriften": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/folienwechsel": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/rueckmeldungen": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "GET /api/meetings/:id/rueckmeldungen/:rid": {
+    protection: "ko.read",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/rueckmeldungen/:rid/klaerung": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/rueckmeldungen/:rid/verwerfen": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "GET /api/meetings/:id/folien/:dateiId/:sldId": {
+    protection: "ko.read",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "GET /api/meetings/:id/zeitstellen/:zeitMs": {
+    protection: "ko.read",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/fassungsabgleich": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
   // Kenntnisnahme einer gültigen Fassung: Anfordern, Übersicht und Erinnern mit dem vorhandenen
   // Zuweisungsrecht (`ko.assign`), die eigenen Anforderungen und das Bestätigen mit `ko.read`. Jede
   // Tür hält den Eintrag vor der Antwort gegen `darfSehen` (sonst 404 wie am Detailabruf).
@@ -836,6 +881,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/library/search": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
   // R-0773: die eigenen Suchen ohne Treffer — gelesen nur unter der eigenen Kennung, kein Objekt.
   "GET /api/library/nulltreffer": { protection: "ko.read" },
+  // produkt:20261011:peter-p14 · Existenzrecht: nur Bereichsnamen, je Bereich über `darfSehen`
+  // mit dem auf genau diesen Space beschränkten Blick (existenzhinweis.ts).
+  "GET /api/library/existenzhinweise": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   // JOB 3095 · M5: Bildsuche — Kandidaten über `sichtbareFuer` (plus SQL-Trim), jeder geladene
   // Rumpf zusätzlich über `darfSehen` am vollen Objekt (library-routes.ts, `/api/library/images`).
   "GET /api/library/images": {
@@ -1052,10 +1100,42 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/neu-binden": { protection: "auth" },
   "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/codex": { protection: "auth" },
   "POST /api/me/klara/gespraeche/:id/ki-vergleich": { protection: "auth" },
+  // produkt:20261008:klara-aktionen (Klara 05): Ausführungsaufträge im EIGENEN Gespräch — dieselbe
+  // Tür wie das Gespräch. Kein zusätzliches Recht: die Grenze kann nur verhindern; ob ein Schritt
+  // wirkt, entscheidet der vorhandene Produktweg (`/api/drafts`, `/api/kos/:id`) mit seinen Rechten.
+  "GET /api/me/klara/gespraeche/:id/auftraege": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/auftraege": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/fassungen": { protection: "auth" },
+  "PUT /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel": {
+    protection: "auth",
+  },
+  "PUT /api/me/klara/gespraeche/:id/auftraege/:auftragId/abbruch": { protection: "auth" },
+  // Nacharbeit 2: die gebundene Ausführung/Rücknahme ruft die vorhandenen Türen MIT der Anmeldung
+  // der Person auf (`/api/drafts`, `/api/kos/:id`, Aufgabenquellen) — deren Rechte gelten unverändert.
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ausfuehrung": {
+    protection: "auth",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ruecknahme": {
+    protection: "auth",
+  },
+  // produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: die Prüfprotokolleinträge EINES eigenen
+  // Auftrags (nur eigene Einträge, fremd/unbekannt 404) — keine zweite Auditverwaltung.
+  "GET /api/me/klara/gespraeche/:id/auftraege/:auftragId/protokoll": { protection: "auth" },
   // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil — nur das EIGENE Konto
   // (user.id aus der Sitzung); eine fremde Kontokennung in Rumpf oder Adresse ergibt 403.
   "GET /api/me/assistenz": { protection: "auth" },
   "PUT /api/me/assistenz": { protection: "auth" },
+  // produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der eigenen Assistenz — Übersicht,
+  // Vormerkungen und eigene Aufträge nur über das Konto der Sitzung; Vorschau und Ausführung
+  // zusätzlich mit `ko.read`, weil sie Arbeitsbereichskontext aus dem Bestand laden.
+  "GET /api/me/faehigkeiten": { protection: "auth" },
+  "POST /api/me/faehigkeiten/vormerkungen": { protection: "auth" },
+  "POST /api/me/faehigkeiten/vormerkungen/:id/deaktivieren": { protection: "auth" },
+  "POST /api/me/faehigkeiten/vorschau": { protection: "ko.read" },
+  "POST /api/me/faehigkeiten/auftraege": { protection: "ko.read" },
+  "GET /api/me/faehigkeiten/auftraege": { protection: "auth" },
+  "GET /api/me/faehigkeiten/auftraege/:id": { protection: "auth" },
+  "POST /api/me/faehigkeiten/auftraege/:id/abbrechen": { protection: "auth" },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },

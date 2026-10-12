@@ -270,6 +270,9 @@ CREATE TABLE IF NOT EXISTS ko_halbwertszeit_beobachtungen (
   erfasst text NOT NULL,
   PRIMARY KEY (ko_id, ende)
 );
+-- produkt:20261011:peter-p14 (B-07): war die Beobachtung beim Erfassen für jedes Konto lesbar?
+-- NULL = Altverlauf ohne Angabe, zählt beim Lernen nicht (frische.ts, halbwertszeitenAusVerlauf).
+ALTER TABLE ko_halbwertszeit_beobachtungen ADD COLUMN IF NOT EXISTS oeffentlich boolean;
 `;
 
 // SCRUM-160: Evidence-Records für Quellen/Anhänge, separat vom KO-JSON.

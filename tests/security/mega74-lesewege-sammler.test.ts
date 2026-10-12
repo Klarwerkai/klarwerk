@@ -237,6 +237,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "R-0773 — nulltreffer.fuer(user.id) (library-routes.ts), nur die eigene Liste.",
   },
+  // produkt:20261011:peter-p14 · Existenzrecht: gibt nur Bereichsnamen aus; ob ein Bereich genannt
+  // wird, entscheidet `darfSehen` mit dem auf genau diesen Space beschränkten Blick.
+  "GET /api/library/existenzhinweise": {
+    urteil: "PRAEDIKAT",
+    grund: "P14 — darfSehen(bereichsblick) + sqlSichtbarkeitFuer je Bereich (existenzhinweis.ts).",
+  },
   "GET /api/categories": {
     urteil: "PRAEDIKAT",
     grund: "JOB 3507 — Kategorien und Zähler erst nach sqlSichtbarkeitFuer + sichtbareFuer.",
@@ -325,6 +331,62 @@ const REGISTER: Record<string, Eintrag> = {
   "DELETE /api/kos/:id/bearbeitungen/:sitzung": {
     urteil: "PRAEDIKAT",
     grund: "Bearbeitungshinweis — darfSehen vor dem Beenden, sonst 404.",
+  },
+  // --- BPA-16: Gesprächsaussagen mit Folien verbinden ----------------------------------------
+  // Folientitel, Notizen und Änderungsziele stammen aus Dateiobjekten (Anhängen). Jede Tür mit
+  // Meetingkennung erhebt VOR jeder Antwort je Datei dasselbe Urteil wie GET /api/objects/:id
+  // (`beurteileAnhang`, Helfer `zugang`/`dateiLesen`); ohne Meetingrecht 404.
+  "GET /api/meetings": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Kennung, Titel und Version der eigenen bzw. als Teilnehmer geführten Meetingbezüge.",
+  },
+  "POST /api/meetings": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Anlage — Antwort trägt nur Kennung, Titel und Version des neuen eigenen Bezugs.",
+  },
+  "GET /api/meetings/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "Meetingbezug — beurteileAnhang je Datei vor der Ausgabe der Folien.",
+  },
+  "POST /api/meetings/:id/praesentationen": {
+    urteil: "PRAEDIKAT",
+    grund: "beurteileAnhang an präsentierter Datei und Original vor dem Einlesen.",
+  },
+  "POST /api/meetings/:id/mitschriften": {
+    urteil: "PRAEDIKAT",
+    grund: "beurteileAnhang an der Mitschriftdatei vor dem Einlesen.",
+  },
+  "POST /api/meetings/:id/folienwechsel": {
+    urteil: "PRAEDIKAT",
+    grund: "beurteileAnhang je verbundener Datei; Hostwechsel nur mit Leserecht.",
+  },
+  "POST /api/meetings/:id/rueckmeldungen": {
+    urteil: "PRAEDIKAT",
+    grund: "Antwort ist die nach beurteileAnhang gefilterte Sicht der Rückmeldung.",
+  },
+  "GET /api/meetings/:id/rueckmeldungen/:rid": {
+    urteil: "PRAEDIKAT",
+    grund: "Sicht und Historie nach beurteileAnhang je Datei gefiltert.",
+  },
+  "POST /api/meetings/:id/rueckmeldungen/:rid/klaerung": {
+    urteil: "PRAEDIKAT",
+    grund: "Klärung nur mit Leserecht an der Zieldatei (beurteileAnhang).",
+  },
+  "POST /api/meetings/:id/rueckmeldungen/:rid/verwerfen": {
+    urteil: "PRAEDIKAT",
+    grund: "Antwort ist die nach beurteileAnhang gefilterte Sicht.",
+  },
+  "GET /api/meetings/:id/folien/:dateiId/:sldId": {
+    urteil: "PRAEDIKAT",
+    grund: "Nur mit Leserecht an der angefragten Datei (beurteileAnhang).",
+  },
+  "GET /api/meetings/:id/zeitstellen/:zeitMs": {
+    urteil: "PRAEDIKAT",
+    grund: "Rückmeldungen nach beurteileAnhang je Datei gefiltert.",
+  },
+  "POST /api/meetings/:id/fassungsabgleich": {
+    urteil: "PRAEDIKAT",
+    grund: "beurteileAnhang an Original und neuer Fassung vor dem Einlesen.",
   },
   // --- Kenntnisnahme einer gültigen Fassung ------------------------------------------------------
   // Übersicht und eigene Anforderungen tragen den Titel des Eintrags; alle fünf Türen halten den
@@ -1057,6 +1119,48 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "ändert nur das eigene Assistenzprofil (user.id); fremde Kennung 403, kein KO-Inhalt.",
   },
+  // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz.
+  "GET /api/me/faehigkeiten": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Fähigkeitsverträge der Instanz und die eigenen Vormerkungen aus dem eigenen Assistenzprofil " +
+      "(assistenz-faehigkeiten-routes.ts, user.id); kein KO-Inhalt.",
+  },
+  "POST /api/me/faehigkeiten/vormerkungen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "schreibt nur eigene Vormerkungen (user.id); fremde Kontoangabe 403, kein KO-Inhalt.",
+  },
+  "POST /api/me/faehigkeiten/vormerkungen/:id/deaktivieren": {
+    urteil: "EIGENER_BESTAND",
+    grund: "deaktiviert nur eigene Vormerkungen (user.id); kein KO-Inhalt.",
+  },
+  "POST /api/me/faehigkeiten/vorschau": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Bindung des eigenen Auftrags; Kontextobjekte lädt ladeKontext (assistenz-faehigkeiten-" +
+      "anbindung.ts) nur über darfSehen und gibt davon nur Kennung, Fassung und Stufe zurück — " +
+      "verborgen oder fehlend ergibt 404 ohne Hinweis auf das Objekt.",
+  },
+  "POST /api/me/faehigkeiten/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "wie die Vorschau; das Ergebnis sind Treffer des Werkzeugs (Titel, Adresse, Auszug), kein " +
+      "Bestand. Vor jeder Ausführung prüft produktKontextPruefung Konto und Kontext über darfSehen.",
+  },
+  "GET /api/me/faehigkeiten/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur die eigenen Aufträge aus dem eigenen Assistenzprofil (user.id); jedes Ergebnis erst nach " +
+      "aktueller Rechteprüfung (FaehigkeitsAusfuehrung.sicht → produktKontextPruefung → darfSehen).",
+  },
+  "GET /api/me/faehigkeiten/auftraege/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ein eigener Auftrag (user.id), Ergebnis wie in der Liste erst nach Rechteprüfung.",
+  },
+  "POST /api/me/faehigkeiten/auftraege/:id/abbrechen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "bricht nur einen eigenen laufenden Auftrag ab (Schlüssel aus user.id); kein KO-Inhalt.",
+  },
   "POST /api/me/klara/gespraeche": {
     urteil: "EIGENER_BESTAND",
     grund: "legt nur ein eigenes Gespräch an; der Objektbezug kommt vom Bildschirm der Person.",
@@ -1132,6 +1236,48 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/me/klara/gespraeche/:id/ki-vergleich": {
     urteil: "PRAEDIKAT",
     grund: "BPA-13 — Vergleich nur über eigene Aufträge; Sicht mit sichtbarkeitsfilterFuer.",
+  },
+  // produkt:20261008:klara-aktionen (Klara 05): die Aufträge liegen IM eigenen Gespräch. Titel und
+  // Kennungen darin hat die Person selbst auf ihrem Bildschirm gewählt; kein Weg liest ein Objekt.
+  "GET /api/me/klara/gespraeche/:id/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur die Aufträge eines eigenen Gesprächs (user.id), fremd und unbekannt 404.",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt einen Auftrag im eigenen Gespräch an; Antwort ist dieser Auftrag.",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/fassungen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "engt die Grenze eines eigenen Auftrags ein; fremd und unbekannt 404.",
+  },
+  "PUT /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel": {
+    urteil: "EIGENER_BESTAND",
+    grund: "meldet einen Schritt eines eigenen Auftrags; liest kein Wissensobjekt.",
+  },
+  "PUT /api/me/klara/gespraeche/:id/auftraege/:auftragId/abbruch": {
+    urteil: "EIGENER_BESTAND",
+    grund: "bricht einen eigenen Auftrag ab; fremd und unbekannt 404.",
+  },
+  // Nacharbeit 2: der Server führt den Planschritt über die vorhandenen Türen mit der Anmeldung der
+  // Person aus (klara-ausfuehrung.ts). Die Antwort trägt nur den eigenen Auftrag: Kennungen, Stände
+  // und die Titel, die die Person im Auftrag selbst gewählt hat — kein neu gelesener Objektinhalt.
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ausfuehrung": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "führt einen eigenen Planschritt aus; Antwort ist der eigene Auftrag (klara-ausfuehrung.ts).",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ruecknahme": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nimmt einen eigenen gespeicherten Schritt mit Standvergleich zurück; Antwort eigener Auftrag.",
+  },
+  // produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: die eigenen Protokolleinträge EINES
+  // eigenen Auftrags — Kennungen, Aktionen, Stände (Fassungszeiten); nie Titel oder Inhalt.
+  "GET /api/me/klara/gespraeche/:id/auftraege/:auftragId/protokoll": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur Einträge des eigenen Kontos zum eigenen Auftrag (klara-auftrag:<id>); fremd/unbekannt 404.",
   },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
@@ -3143,6 +3289,14 @@ const AUSGAENGE: Record<string, Ausgangseintrag> = {
   "services/external-search/src/wikipedia.ts::search#1": {
     urteil: "KEIN_KO_INHALT",
     grund: "Externe Suche: geht nur der Suchbegriff des Fragenden hinaus, kein Bestand.",
+  },
+  "services/app/src/assistenz-faehigkeiten.ts::fuehreAus#1": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Perplexity-Suchadapter (BPA-11): geht nur der geprüfte Suchbegriff des Auftrags hinaus; " +
+      "FaehigkeitsAusfuehrung sperrt ihn, wenn er einen Auszug geschützten Arbeitsbereichskontexts " +
+      "enthält. In dieser Instanz ist der Adapter nicht installiert (O09: keine Anbieterfreigabe, " +
+      "Kosten unbelegt).",
   },
   "services/reasoner/src/model-client.ts::postMessages#1": {
     urteil: "AUFTRAGSVERARBEITER",

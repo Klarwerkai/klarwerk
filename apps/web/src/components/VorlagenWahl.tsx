@@ -241,7 +241,7 @@ export function VorlagenWahl({
         data-testid="vorlagen-zeile"
         className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted"
       >
-        <FileText size={13} className="text-muted-2" aria-hidden />
+        <FileText size={13} strokeWidth={1.8} className="text-muted-2" aria-hidden />
         <span data-testid="vorlagen-zeile-text">
           {bezug && verwendet
             ? t("vorlagen.zeile.mit", {
@@ -282,7 +282,7 @@ export function VorlagenWahl({
       className="mb-2 rounded-card border border-hairline bg-surface p-2.5"
     >
       <div className="flex flex-wrap items-center gap-1.5">
-        <FileText size={13} className="text-muted" aria-hidden />
+        <FileText size={13} strokeWidth={1.8} className="text-muted" aria-hidden />
         <h3 id="vorlagen-wahl-titel" className="text-[11.5px] font-semibold text-ink">
           {t("vorlagen.wahl.titel")}
         </h3>
@@ -341,7 +341,7 @@ export function VorlagenWahl({
           }
           return (
             <div key={g} className="flex flex-wrap items-center gap-1.5">
-              <span className="w-full font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2 sm:w-auto">
+              <span className="w-full font-mono text-klein font-semibold uppercase tracking-wider text-muted-2 sm:w-auto">
                 {t(`vorlagen.geltung.${g}`)}
               </span>
               {gruppe.map((v) => (

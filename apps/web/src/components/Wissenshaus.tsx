@@ -37,7 +37,7 @@ function Stockwerk({ floor }: { floor: MgmtHouseFloor }): JSX.Element {
         <span
           data-testid="haus-zustand"
           className={cx(
-            "shrink-0 rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase",
+            "shrink-0 rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase",
             floor.fragile
               ? "bg-trust-crit-bg text-trust-crit-text"
               : "bg-trust-pos-bg text-trust-pos-text",
@@ -88,7 +88,7 @@ function Station({
 }): JSX.Element {
   return (
     <div data-testid={`haus-fluss-${id}`} className="min-w-0 flex-1 rounded-card bg-page p-3">
-      <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">{label}</div>
+      <div className="font-mono text-klein uppercase tracking-wider text-muted-2">{label}</div>
       <div data-testid="haus-fluss-wert" className="mt-1 text-xl font-semibold text-ink">
         {value}
       </div>

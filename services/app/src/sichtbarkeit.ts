@@ -196,7 +196,16 @@ export function sichtbareFuer<T extends SichtbarkeitsFakten>(
  */
 export type Sichtbarkeitsfilter = (ko: SichtbarkeitsFakten) => boolean;
 
-export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter {
+// produkt:20261011:peter-p14 — `eingrenzung` (der Firmenfilter, `firmenbereich.ts`) tritt als UND
+// HINTER `darfSehen`: sie kann die Menge nur verkleinern, nie erweitern. Sie steht hier und nicht an
+// jeder Route, damit jede Übergabe ein Aufruf DIESER Entscheidung bleibt.
+export function sichtbarkeitsfilterFuer(
+  user: SessionUser,
+  eingrenzung?: Sichtbarkeitsfilter,
+): Sichtbarkeitsfilter {
+  if (eingrenzung) {
+    return (ko) => darfSehen(user, ko) && eingrenzung(ko);
+  }
   return (ko) => darfSehen(user, ko);
 }
 
@@ -935,6 +944,13 @@ export interface AnhangQuellen {
    */
   ko?: (koId: string) => Promise<AnhangTraeger | undefined>;
   /**
+   * BPA-17 (G05): EIN Wissensobjekt IM PAPIERKORB, frisch gelesen — `undefined`, wenn es nicht im
+   * Papierkorb liegt (aktiv oder endgültig entfernt). Nur `privatesFolgeprodukt` fragt danach: eine
+   * gewöhnliche Löschung der Quelle hebt eine berechtigt erzeugte private Kopie nicht auf, die
+   * Rechte werden aber weiter an den Fakten der gelöschten Quelle geprüft.
+   */
+  papierkorb?: (koId: string) => Promise<AnhangTraeger | undefined>;
+  /**
    * JOB 2706 D1: der SCHREIBSTAND der Ablage — eine Zahl, die bei jedem Schreiben steigt, das einen
    * Traeger erzeugen oder entfernen kann. Der Kandidaten-Speicher merkt sie je Eintrag und verwirft
    * den Eintrag, sobald sie sich geaendert hat. Ohne `stand` arbeitet der Speicher nicht.
@@ -1113,6 +1129,11 @@ export interface AnhangUrteil {
    * eine Fünf-Minuten-Frist, obwohl das Objekt selbst `no-store` verlangt.
    */
   vertraulich: boolean;
+  /**
+   * BPA-17 (G05): gesetzt, wenn ein privates Folgeprodukt sichtbar bleibt, OBWOHL seine Quelle
+   * gewöhnlich gelöscht (im Papierkorb) ist — die Kennung der Quelle. Die Route weist das aus.
+   */
+  quelleGeloescht?: string;
 }
 
 function entwurfNenntObjekt(entwurf: AnhangEntwurf, objectId: string): boolean {
@@ -1231,6 +1252,77 @@ const STUFE_FUER_UNBEKANNT: Confidentiality = "vertraulich";
  * Stufe. Kann der Speicher nicht arbeiten (keine Frist, keine `kosFuer`/`ko`/`stand`-Quelle), laeuft
  * der bisherige Weg unveraendert. Ohne `speicher` ist alles wie vor 2706.
  */
+/**
+ * produkt:20261011:assistenz-dokumentnachbearbeitung (BPA-17, Ben-Befund AC08/AC09) — PRIVATE
+ * FOLGEPRODUKTE (Handout, Notizdatei, Änderungsübersicht, Entwurf einer Nachbearbeitung).
+ *
+ * Sie tragen `lifecycle.privatQuelle` = das Wissensobjekt, aus dem sie abgeleitet sind. Für sie gilt
+ * NICHT die Stufenregel (`vertraulich` öffnete `ko.validate`), sondern:
+ *   · lesen darf ausschliesslich der Eigentümer (`lifecycle.owner`, serverseitig gesetzt) — keine
+ *     Rolle, auch kein Administrator, öffnet eine fremde private Ableitung;
+ *   · und nur, solange er das Quellobjekt JETZT sehen darf (frisch gelesen, `darfSehen`). Wird ihm
+ *     die Quelle entzogen (Stufe, Space, Quellleser), ist auch die Kopie gesperrt.
+ * Fehlt der Lesezugang zur Quelle (`quellen.ko`), ist die Antwort NEIN (fail-closed).
+ *
+ * Ben-Befund G05 (Nacharbeit 6) — DREI FÄLLE AN DER QUELLE, DREI WIRKUNGEN:
+ *   · GEWÖHNLICH GELÖSCHT (Papierkorb): die berechtigt erzeugte Kopie bleibt für ihren Eigentümer
+ *     lesbar, gekennzeichnet (`quelleGeloescht`). Die Rechte prüft weiter `darfSehen` — an den
+ *     Fakten der gelöschten Quelle (Stufe, Space, Quellleser). Ein Rechteentzug wirkt also auch
+ *     nach dem Löschen.
+ *   · RECHTE ENTZOGEN: gesperrt, ob die Quelle aktiv oder im Papierkorb ist.
+ *   · ENDGÜLTIG ENTFERNT (Papierkorb geleert, harte oder personenbezogene Löschung): es gibt keine
+ *     Rechtegrundlage mehr, an der sich prüfen liesse — gesperrt (fail-closed).
+ *
+ * Ben-Befund AC08 (Nacharbeit 6) — DER HOCHGELADENE DOKUMENTSTAND. Auch die bearbeitete Präsentation
+ * selbst trägt `privatQuelle`, sobald sie hochgeladen ist — so ist sie geschützt, wenn der Lauf vor
+ * der Übernahme anhält oder die Übernahme scheitert. Ist sie ÜBERNOMMEN (sie hängt am AKTIVEN
+ * Quellartikel oder dessen Belegkette nennt sie), ist sie ein gewöhnlicher Anhang: dann `undefined`,
+ * und es gilt unverändert `beurteileAnhang` — der kontrollierte Übergang in den Dokumentzugriffsweg.
+ * Liegt die Quelle im Papierkorb, gibt es diesen Übergang nicht (Nacharbeit 8): dann gilt auch für
+ * den übernommenen Stand die Regel oben — Eigentümer, Rechte an der gelöschten Quelle, Kennzeichnung.
+ *
+ * `undefined` heisst: kein (oder kein privates mehr) Folgeprodukt — dann gilt `beurteileAnhang`.
+ */
+export async function privatesFolgeprodukt(
+  user: SessionUser,
+  objectId: string,
+  lifecycle: { owner?: string | undefined; privatQuelle?: string | undefined } | undefined,
+  quellen: AnhangQuellen,
+): Promise<AnhangUrteil | undefined> {
+  const quelleId = lifecycle?.privatQuelle;
+  if (!quelleId) {
+    return undefined;
+  }
+  const nein: AnhangUrteil = { sichtbar: false, vertraulich: true };
+  if (typeof quellen.ko !== "function") {
+    return nein;
+  }
+  const aktiv = await quellen.ko(quelleId);
+  const geloescht = aktiv ? undefined : await quellen.papierkorb?.(quelleId);
+  const traeger = aktiv ?? geloescht;
+  // Übernommen? Dann ist es ein Anhang des Quellartikels und kein privates Folgeprodukt mehr —
+  // aber NUR, solange die Quelle AKTIV ist. Ben-Befund Nacharbeit 8: liegt die Quelle im Papierkorb,
+  // findet der gewöhnliche Anhangsweg keinen aktiven Träger und fiele auf „Hochladender + Stufe"
+  // zurück — ohne Blick auf die Rechte an der gelöschten Quelle. Deshalb bleibt bei gelöschter
+  // Quelle auch der übernommene Stand hier: Eigentümer, Rechte an den Fakten der gelöschten Quelle,
+  // Kennzeichnung. (Die Belegkette liest `KoService.evidenceOf` ohnehin nur an aktiven Objekten.)
+  if (aktiv) {
+    if ((aktiv.attachments ?? []).some((a) => a.objectId === objectId)) {
+      return undefined;
+    }
+    if ((await quellen.belege(quelleId)).some((b) => b.objectId === objectId)) {
+      return undefined;
+    }
+  }
+  const eigentuemer = lifecycle?.owner;
+  if (!eigentuemer || eigentuemer !== user.id || !traeger || !darfSehen(user, traeger)) {
+    return nein;
+  }
+  return aktiv
+    ? { sichtbar: true, vertraulich: true }
+    : { sichtbar: true, vertraulich: true, quelleGeloescht: quelleId };
+}
+
 export async function beurteileAnhang(
   user: SessionUser,
   objectId: string,
