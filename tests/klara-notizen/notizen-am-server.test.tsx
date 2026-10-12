@@ -35,6 +35,7 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { setzeKlaraVorschauAktiv } from "../../apps/web/src/components/klara-vorschau/aktiv";
 import { vergiss } from "../../apps/web/src/components/klara-vorschau/echt";
+import { nochmalAendern } from "../../apps/web/src/components/klara-vorschau/notizen";
 import { zuruecksetzenGanz } from "../../apps/web/src/components/klara-vorschau/zustand";
 import i18n from "../../apps/web/src/i18n";
 import { AppShell } from "../../apps/web/src/shell/AppShell";
@@ -488,6 +489,92 @@ describe("U4 · K4 — fehlgeschlagene Speicherung sichtbar, Wiederholung ohne D
     await bis(() => q(document, "klara-notiz-offen")?.dataset.fassung === "2", 120);
     const nachher = (await serverNotizen(a, leser))[0];
     expect(nachher).toMatchObject({ inhalt: "Zweite Fassung", fassung: 2 });
+  });
+
+  // Nacharbeit 5 (Ben): A speichern, während der Anfrage B öffnen, danach trifft der Fehler für A
+  // ein. Beide Notizen tragen Fassung 1 — genau die Lage, in der der Server As Inhalt an B annähme.
+  it("verspäteter Fehler für A, während B offen ist: B bleibt unberührt, nichts wird an B gesendet", async () => {
+    const { a, leser } = await vorrichtung();
+    await montiere("/klara-vorschau");
+    await oeffnen();
+    await alsNotiz("Inhalt der Notiz A");
+    await bis(() => Boolean(q(document, "klara-notiz-offen")), 120);
+    const idA = q(document, "klara-notiz-offen")?.dataset.notiz ?? "";
+    await klick(q(document, "klara-notiz-schliessen"));
+    await alsNotiz("Inhalt der Notiz B");
+    await bis(() => {
+      const offen = q(document, "klara-notiz-offen")?.dataset.notiz;
+      return Boolean(offen) && offen !== idA;
+    }, 120);
+    const idB = q(document, "klara-notiz-offen")?.dataset.notiz ?? "";
+    expect(idB).not.toBe("");
+    expect(idB).not.toBe(idA);
+    const eintrag = (id: string) => eintraege().find((e) => e.dataset.notiz === id);
+    await bis(() => Boolean(eintrag(idA)), 120);
+
+    // A öffnen und ändern.
+    await klick(eintrag(idA));
+    await bis(() => q(document, "klara-notiz-offen")?.dataset.notiz === idA, 120);
+    await schreibe(q<HTMLTextAreaElement>(document, "klara-notiz-inhalt"), "A geändert");
+
+    // ATTRAPPE: die Bearbeitung von A hängt, bis der Test sie mit einem Fehler beendet.
+    const weiter = globalThis.fetch;
+    const anB: string[] = [];
+    let freigeben: () => void = () => {};
+    const gehalten = new Promise<void>((r) => {
+      freigeben = r;
+    });
+    const verzoegert = (async (eingabe: unknown, init?: RequestInit) => {
+      const url = String(eingabe);
+      if (init?.method === "PUT" && url === `${NOTIZ_URL}/${idB}`) {
+        anB.push(String(init.body ?? ""));
+      }
+      if (init?.method === "PUT" && url === `${NOTIZ_URL}/${idA}`) {
+        await gehalten;
+        const rumpf = JSON.stringify({ error: "SERVER", message: "Dienst kurz weg." });
+        return {
+          status: 503,
+          statusText: "503",
+          ok: false,
+          text: async () => rumpf,
+        } as unknown as Response;
+      }
+      return weiter(eingabe as RequestInfo, init);
+    }) as typeof globalThis.fetch;
+    globalThis.fetch = verzoegert;
+    window.fetch = verzoegert;
+
+    await klick(q(document, "klara-notiz-speichern"));
+    // Während As Anfrage läuft: B öffnen.
+    await klick(eintrag(idB));
+    await bis(() => q(document, "klara-notiz-offen")?.dataset.notiz === idB, 120);
+    // Jetzt trifft der Fehler für A ein.
+    await act(async () => {
+      freigeben();
+    });
+    await bis(
+      () => (q(document, "klara-notiz-meldung")?.textContent ?? "").includes("nicht gespeichert"),
+      120,
+    );
+    expect(q(document, "klara-notiz-meldung")?.textContent).toContain("Änderung nicht gespeichert");
+
+    // B ist offen und unberührt: kein fremder Fehler, kein „Erneut speichern“, Inhalt von B.
+    expect(q(document, "klara-notiz-offen")?.dataset.notiz).toBe(idB);
+    expect(q(document, "klara-notiz-aenderung-fehler")).toBeNull();
+    expect(q(document, "klara-notiz-aenderung-nochmal")).toBeNull();
+    expect(q<HTMLTextAreaElement>(document, "klara-notiz-inhalt")?.value).toBe(
+      "Inhalt der Notiz B",
+    );
+    // Auch der Wiederholungsweg selbst schickt As Änderung nicht an B.
+    expect(await nochmalAendern(i18n.t)).toBe(false);
+    await ruhe(10);
+    expect(anB).toEqual([]);
+
+    const amServer = await serverNotizen(a, leser);
+    const notizA = amServer.find((n) => n.id === idA);
+    const notizB = amServer.find((n) => n.id === idB);
+    expect(notizA).toMatchObject({ inhalt: "Inhalt der Notiz A", fassung: 1 });
+    expect(notizB).toMatchObject({ inhalt: "Inhalt der Notiz B", fassung: 1 });
   });
 });
 

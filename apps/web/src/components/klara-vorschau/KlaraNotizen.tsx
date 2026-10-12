@@ -69,7 +69,8 @@ function NotizOffen({ n }: { n: KlaraNotiz }): JSX.Element {
     setArbeitszettel(n.art === "arbeitszettel");
     setLoeschenFragen(false);
   }, [n]);
-  const b = s.bearbeitung;
+  // Nur der Versuch DIESER Notiz zählt (Nacharbeit 5) — nie der einer zuvor offenen.
+  const b = s.bearbeitung?.notizId === n.id ? s.bearbeitung : null;
   const geaendert =
     titel.trim() !== n.titel ||
     inhalt !== n.inhalt ||

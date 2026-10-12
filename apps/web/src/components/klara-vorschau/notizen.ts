@@ -44,6 +44,8 @@ export interface AusstehendeNotiz {
 }
 
 export interface NotizBearbeitung {
+  /** Die Notiz, für die dieser Versuch begann — nur ihr gehören Fehler und Wiederholung. */
+  notizId: string;
   stand: "laeuft" | "fehler";
   fehler: string | null;
   /** Die zuletzt versuchte Änderung — „Erneut speichern" schickt genau sie. */
@@ -320,15 +322,24 @@ export function schliesseNotiz(): void {
   setze((z) => ({ ...z, offen: null, bearbeitung: null }));
 }
 
-async function versucheAendern(aenderung: KlaraNotizAenderung, t: TFunction): Promise<boolean> {
+/**
+ * Nacharbeit 5 (Ben): Jeder Versuch gehört der Notiz, für die er begann (`notizId`). Wechselt die
+ * Person während der Anfrage zu einer anderen Notiz, ändert eine verspätete Antwort — Erfolg wie
+ * Fehler — den Bearbeitungszustand der nun geöffneten Notiz NICHT; nur Liste und Meldung erfahren
+ * davon. So kann „Erneut speichern" nie den Inhalt einer Notiz an eine andere schicken.
+ */
+async function versucheAendern(
+  notizId: string,
+  aenderung: KlaraNotizAenderung,
+  t: TFunction,
+): Promise<boolean> {
   const gen = generation;
-  const offen = zustand.offen;
-  if (!offen) {
+  if (zustand.offen?.id !== notizId) {
     return false;
   }
-  setze((z) => ({ ...z, bearbeitung: { stand: "laeuft", fehler: null, aenderung } }));
+  setze((z) => ({ ...z, bearbeitung: { notizId, stand: "laeuft", fehler: null, aenderung } }));
   try {
-    const { notiz } = await klaraNotizApi.aendere(offen.id, aenderung);
+    const { notiz } = await klaraNotizApi.aendere(notizId, aenderung);
     if (gen !== generation) {
       return false;
     }
@@ -336,7 +347,7 @@ async function versucheAendern(aenderung: KlaraNotizAenderung, t: TFunction): Pr
       ...z,
       offen: z.offen?.id === notiz.id ? notiz : z.offen,
       liste: mitNotiz(z.liste, notiz),
-      bearbeitung: null,
+      bearbeitung: z.bearbeitung?.notizId === notizId ? null : z.bearbeitung,
       meldung: t("klaranotiz.geaendert", { titel: notiz.titel }),
     }));
     return true;
@@ -344,10 +355,13 @@ async function versucheAendern(aenderung: KlaraNotizAenderung, t: TFunction): Pr
     if (gen !== generation) {
       return false;
     }
-    setze((z) => ({
-      ...z,
-      bearbeitung: { stand: "fehler", fehler: notizFehler(fehler, t), aenderung },
-    }));
+    const text = notizFehler(fehler, t);
+    setze((z) =>
+      z.offen?.id === notizId
+        ? { ...z, bearbeitung: { notizId, stand: "fehler", fehler: text, aenderung } }
+        : // Inzwischen ist eine andere Notiz offen: deren Zustand bleibt unberührt.
+          { ...z, meldung: t("klaranotiz.aenderungNichtGespeichert", { grund: text }) },
+    );
     return false;
   }
 }
@@ -361,13 +375,19 @@ export function speichereNotiz(
   if (!offen) {
     return Promise.resolve(false);
   }
-  return versucheAendern({ ...felder, fassung: offen.fassung }, t);
+  return versucheAendern(offen.id, { ...felder, fassung: offen.fassung }, t);
 }
 
-/** „Erneut speichern" einer gescheiterten Bearbeitung — dieselbe Änderung, dieselbe Fassung. */
+/**
+ * „Erneut speichern" einer gescheiterten Bearbeitung — dieselbe Änderung, dieselbe Fassung, und
+ * nur an DIESELBE Notiz, solange sie die geöffnete ist.
+ */
 export function nochmalAendern(t: TFunction): Promise<boolean> {
   const b = zustand.bearbeitung;
-  return b ? versucheAendern(b.aenderung, t) : Promise.resolve(false);
+  if (!b || b.notizId !== zustand.offen?.id) {
+    return Promise.resolve(false);
+  }
+  return versucheAendern(b.notizId, b.aenderung, t);
 }
 
 export async function loescheNotiz(id: string, t: TFunction): Promise<void> {
