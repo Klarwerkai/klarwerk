@@ -21,6 +21,7 @@ import {
   feldUebernommen,
   gesicherteOhneRohtext,
   interviewKontext,
+  massgeblicheAussage,
   ocrAbschnittKopf,
   ocrAbschnittText,
   ocrAbschnitte,
@@ -345,6 +346,21 @@ describe("gesamt-ocr · Nacharbeit 16 · nach der Übernahme zählt die Kopie", 
     // Eine neue Erkennung hebt den Vermerk nicht auf.
     const frisch = ocrErsetztOhne(ocrUebernahmeErsetzt([], 0, block, 1), "aushang.png", ERKANNT);
     expect(feldUebernommen(frisch, 0)).toBe(true);
+  });
+
+  it("K14 · Nacharbeit 18: gesichert wird die maßgebliche Fassung — in beiden Richtungen", () => {
+    const hin = ocrUebernahmeErsetzt([], 0, block, 1);
+    const zurueck = ocrUebernahmeErsetzt([], 1, block, 0);
+    // Rohtext → Aussage: die Aussage gilt, auch ganz geleert.
+    expect(massgeblicheAussage("", block, hin)).toBe("");
+    expect(massgeblicheAussage("Korrigiert.", block, hin)).toBe("Korrigiert.");
+    // Aussage → Rohtext: der Rohtext gilt, auch wenn die alte Aussage nicht leer ist.
+    expect(massgeblicheAussage(block, "Korrigiert.", zurueck)).toBe("Korrigiert.");
+    expect(massgeblicheAussage(block, "", zurueck)).toBe("");
+    // Ohne Übernahme unverändert: Aussage, sonst Rohtext.
+    expect(massgeblicheAussage("Aussage.", "Rohtext.", [])).toBe("Aussage.");
+    expect(massgeblicheAussage("", "Rohtext.", [])).toBe("Rohtext.");
+    expect(massgeblicheAussage(undefined, "Rohtext.", hin)).toBe("Rohtext.");
   });
 });
 

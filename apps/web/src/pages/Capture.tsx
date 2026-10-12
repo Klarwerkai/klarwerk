@@ -274,6 +274,7 @@ import {
   feldUebernommen,
   gesicherteOhneRohtext,
   interviewKontext,
+  massgeblicheAussage,
   ocrAbschnitteFuerEntwurf,
   ocrErsetztOhne,
   ocrUebernahmeErsetzt,
@@ -2774,11 +2775,10 @@ export function CaptureArbeitsraum({
       const ocrFuerEntwurf = ocrAbschnitteFuerEntwurf(ocrGesichert, sichtbareOcrFelder, ocrErsetzt);
       const payload: DraftPayload = {
         title: draft?.title || raw.split("\n")[0]?.slice(0, 80) || t("capture.draftFallbackTitle"),
-        // Nacharbeit 17 (Bens Befund): hat ein Moduswechsel den Rohtext in die Aussage übernommen,
-        // ist sie maßgeblich — auch absichtlich ganz geleert. Der Rückfall auf den Rohtext brächte
-        // sonst den dort stehen gebliebenen, ersetzten Bildtext zurück.
-        statement:
-          draft && feldUebernommen(ocrErsetzt, 0) ? draft.statement : draft?.statement || raw,
+        // Nacharbeit 17/18 (Bens Befunde): nach einer Übernahme gilt die maßgebliche Fassung — in
+        // BEIDEN Richtungen und auch absichtlich ganz geleert. Rohtext → Aussage: die Aussage;
+        // Aussage → Rohtext: der Rohtext. Sonst käme der stehen gebliebene, ersetzte Bildtext zurück.
+        statement: massgeblicheAussage(draft?.statement, raw, ocrErsetzt),
         type,
         tags: tags.filter((x) => x.trim()),
         conditions: draft?.conditions.filter((x) => x.trim()) ?? [],
@@ -3378,17 +3378,25 @@ export function CaptureArbeitsraum({
     // Bug (Pedi 04.07.): Inhalt beim Moduswechsel NICHT verlieren. Der Rohtext (Freitext/Diktat)
     // und die Aussage des Experten-Formulars werden aneinander übergeben.
     const carried = raw.trim();
+    // Nacharbeit 18 (Bens Befund): nach einer Übernahme ist das QUELLFELD eine veraltete Kopie
+    // (`feldUebernommen`). Wer in dieses Feld zurückkehrt, bekommt die maßgebliche Fassung — auch
+    // eine korrigierte oder geleerte —, und die Richtung kehrt sich um. So ist das sichtbare Feld
+    // immer das maßgebliche, und Speichern (`statement` in der Entwurfs-Nutzlast) liest genau dieses.
+    const aussageVeraltet = Boolean(draft) && feldUebernommen(ocrErsetzt, 1);
+    const rohtextVeraltet = Boolean(draft) && feldUebernommen(ocrErsetzt, 0);
     if (m === "formular") {
       // Nacharbeit 16 (Bens Befund): übernimmt der Wechsel den Rohtext, ist ab jetzt die Kopie in
       // der Aussage die maßgebliche Fassung seiner erkannten Abschnitte — Korrektur und Löschung
       // dort gelten, die stehen gebliebene Quelle im Rohtext zählt nicht mehr.
-      if (carried && !draft?.statement.trim()) {
+      const uebernehmen = (carried && !draft?.statement.trim()) || aussageVeraltet;
+      if (uebernehmen) {
         setOcrErsetzt((e) => ocrUebernahmeErsetzt(e, 0, raw, 1));
       }
-      // Freitext → Formular: Rohtext als „Aussage" ins Formular übernehmen (nur wenn dort leer).
+      // Freitext → Formular: Rohtext als „Aussage" ins Formular übernehmen (nur wenn dort leer
+      // oder die Aussage eine veraltete Kopie ist).
       setDraft((d) => {
         const base = d ?? { ...EMPTY_DRAFT };
-        if (base.statement.trim()) {
+        if (!uebernehmen) {
           return base;
         }
         return {
@@ -3397,9 +3405,13 @@ export function CaptureArbeitsraum({
           title: base.title || carried.split("\n")[0]?.slice(0, 80) || "",
         };
       });
-    } else if ((m === "freitext" || m === "diktat") && !carried && draft?.statement.trim()) {
-      // Formular → Erzählen: Aussage zurück in den Rohtext (nur wenn der Rohtext leer ist).
-      // Nacharbeit 16: umgekehrt dasselbe — jetzt ist der Rohtext die maßgebliche Fassung.
+    } else if (
+      (m === "freitext" || m === "diktat") &&
+      draft &&
+      ((!carried && draft.statement.trim()) || rohtextVeraltet)
+    ) {
+      // Formular → Erzählen: Aussage zurück in den Rohtext (nur wenn der Rohtext leer ist oder eine
+      // veraltete Kopie). Nacharbeit 16: jetzt ist der Rohtext die maßgebliche Fassung.
       setOcrErsetzt((e) => ocrUebernahmeErsetzt(e, 1, draft.statement, 0));
       setRaw(draft.statement);
     }

@@ -179,6 +179,26 @@ export function feldUebernommen(ersetzt: OcrErsetzt, feld: number): boolean {
 }
 
 /**
+ * Nacharbeit 18 (Bens Befund): die Aussage, die ein Entwurf sichert — Feld 0 ist der Rohtext,
+ * Feld 1 die Formularaussage (wie `sichtbareOcrFelder` in Capture.tsx). Nach einer Übernahme gilt
+ * die maßgebliche Kopie in BEIDEN Richtungen, auch leer. Ohne Übernahme bleibt der bisherige
+ * Rückfall: die Aussage, und wenn sie leer ist oder fehlt, der Rohtext.
+ */
+export function massgeblicheAussage(
+  aussage: string | undefined,
+  rohtext: string,
+  ersetzt: OcrErsetzt,
+): string {
+  if (aussage !== undefined && feldUebernommen(ersetzt, 0)) {
+    return aussage;
+  }
+  if (aussage !== undefined && feldUebernommen(ersetzt, 1)) {
+    return rohtext;
+  }
+  return aussage || rohtext;
+}
+
+/**
  * Eine neue Erkennung schreibt einen frischen Abschnitt — der zählt, auch wenn ein gleichlautender
  * früher durch eine Übernahme ersetzt wurde.
  */

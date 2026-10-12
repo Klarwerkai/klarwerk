@@ -548,7 +548,8 @@ describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführt
     await erkenneImErzaehlenUndWechsleInsFormular();
     const korrigiert = ERKANNT.replace("V3", "V8");
     await tippe(aussageFeld(), aussageFeld().value.replace(ERKANNT, korrigiert));
-    // Zurück ins Erzählen (der Rohtext ist nicht leer, also keine Rückkopie) und weiter erkennen.
+    // Zurück ins Erzählen und weiter erkennen. Seit Nacharbeit 18 zeigt der Rohtext dort die
+    // maßgebliche (korrigierte) Fassung aus der Aussage.
     await waehleModus("freitext");
     const weiter = "Filter F1 monatlich tauschen.";
     steuerung.ocr.mockResolvedValue({ status: "success", text: weiter });
@@ -560,7 +561,75 @@ describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführt
     expect(kontext).toContain(korrigiert);
     expect(kontext).not.toContain(ERKANNT);
   });
+
+  // Nacharbeit 18 (Bens Befund): die UMGEKEHRTE Übernahme. Erkannt im Formular, der Wechsel ins
+  // leere Erzählen kopiert die Aussage in den Rohtext — ab da ist der Rohtext maßgeblich. Bis hierher
+  // sicherte das Speichern trotzdem die alte Aussage, und das Fortsetzen holte den alten Block zurück.
+  it("I17 · Formular → Erzählen: die Korrektur im Rohtext wird gesichert und gilt nach dem Fortsetzen", async () => {
+    await erkenneImFormularUndWechsleInsErzaehlen();
+    const korrigiert = ERKANNT.replace("V3", "V8");
+    await tippe(rohtextFeld(), rohtextFeld().value.replace(ERKANNT, korrigiert));
+    await entferneBild();
+    await speichereUeberWache();
+    expect(steuerung.angelegt).toHaveLength(1);
+    const payload = steuerung.angelegt[0];
+    expect(String(payload?.statement)).toContain(korrigiert);
+    expect(String(payload?.statement)).not.toContain(ERKANNT);
+    expect(payload?.ocrAbschnitte).toEqual([{ name: "aushang.png", text: korrigiert }]);
+
+    await neuOeffnenUndFortsetzen();
+    const kontext = await starteInterview();
+    expect(kontext).toContain(korrigiert);
+    expect(kontext).not.toContain(ERKANNT);
+  });
+
+  it("I18 · Formular → Erzählen: durch eigenen Text ersetzt — der alte Block kommt nicht zurück", async () => {
+    await erkenneImFormularUndWechsleInsErzaehlen();
+    await tippe(rohtextFeld(), "Nur noch eigener Text.");
+    await entferneBild();
+    await speichereUeberWache();
+    expect(steuerung.angelegt).toHaveLength(1);
+    const payload = steuerung.angelegt[0];
+    expect(payload?.statement).toBe("Nur noch eigener Text.");
+    expect(payload?.ocrAbschnitte).toBeUndefined();
+
+    await neuOeffnenUndFortsetzen();
+    const kontext = await starteInterview();
+    expect(kontext).toBe("");
+  });
+
+  it("I19 · hin und zurück: das wieder betretene Feld zeigt die maßgebliche Fassung, gesichert wird sie", async () => {
+    await erkenneImErzaehlenUndWechsleInsFormular();
+    const korrigiert = ERKANNT.replace("V3", "V8");
+    await tippe(aussageFeld(), aussageFeld().value.replace(ERKANNT, korrigiert));
+    // Zurück ins Erzählen: der Rohtext zeigt die Korrektur, nicht mehr den alten Block.
+    await waehleModus("freitext");
+    expect(rohtextFeld().value).toContain(korrigiert);
+    expect(rohtextFeld().value).not.toContain(ERKANNT);
+    const ergaenzt = "Ergänzt im Erzählen.";
+    await tippe(rohtextFeld(), `${rohtextFeld().value}\n${ergaenzt}`);
+    // Wieder ins Formular: die Aussage zeigt den Rohtext samt Ergänzung.
+    await waehleModus("formular");
+    expect(aussageFeld().value).toContain(ergaenzt);
+    expect(aussageFeld().value).toContain(korrigiert);
+    await entferneBild();
+    await speichereUeberWache();
+    expect(steuerung.angelegt).toHaveLength(1);
+    const gespeichert = String(steuerung.angelegt[0]?.statement);
+    expect(gespeichert).toContain(ergaenzt);
+    expect(gespeichert).toContain(korrigiert);
+    expect(gespeichert).not.toContain(ERKANNT);
+  });
 });
+
+/** Im Formular erkennen, dann ins leere Erzählen — der Wechsel kopiert die Aussage in den Rohtext. */
+async function erkenneImFormularUndWechsleInsErzaehlen(): Promise<void> {
+  await waehleModus("formular");
+  await erkenneBild();
+  expect(aussageFeld().value).toContain(ERKANNT);
+  await waehleModus("freitext");
+  expect(rohtextFeld().value).toContain(ERKANNT);
+}
 
 /** Im Erzählen erkennen, dann ins Formular — der Wechsel kopiert den Block in die Aussage. */
 async function erkenneImErzaehlenUndWechsleInsFormular(): Promise<void> {
