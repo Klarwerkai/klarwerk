@@ -35,34 +35,40 @@ Arbeitsumgebung gibt es keinen Webzugriff. Das Repository enthält keine Anbiete
 Werte in `tests/ki-lauf-protokoll/*` sind Testfixturen mit `EUR` und `preisstand` 2026-10-01 und
 damit keine Tarifquelle. Ein Preis wird deshalb nicht als Beleg ausgegeben.
 
-Zur Einordnung steht unten ein **Referenzwert aus dem Modellwissen des Bearbeiters** (Wissensstand
-bis Juni 2026, nicht datiert abgerufen): die öffentliche Listenpreisangabe von Anthropic für
-Claude Sonnet 4.x. Für Anfragen bis 200 000 Eingabetoken sind das **3 USD je Million
-Eingabetoken** und **15 USD je Million Ausgabetoken**. Zusatzpositionen der Liste:
-Cache-Schreiben/-Lesen, Batch-Rabatt, Websuche/Werkzeuge und ein Langkontext-Zuschlag über
-200 000 Token. Alle Zusatzpositionen fallen **für diesen Lauf nach dem Code nicht an**: kein
-`cache_control`, keine Werkzeuge, kein Batch, Eingabe unter 1 000 Token. Peter (Entscheidung 13)
-oder ein Chat mit Quellenzugang muss diesen Referenzwert gegen die Preisseite oder den Vertrag
-prüfen und mit Datum bestätigen oder ersetzen, siehe `tarif-kostenstelle-vorlage.md`.
+Ben nacharbeit-10: Die frühere Rechnung mit Preisen aus dem Modellwissen des Bearbeiters ist
+**entfernt**. Unverifizierte Preise sind kein Tarifnachweis, auch nicht als Einordnung. Die
+Arbeitsumgebung hat keinen Webzugriff: Sowohl ein Abruf der Preisseite des Anbieters als auch ein
+Hilfsskript zum Auslesen des Berichts wurden ohne Freigabe abgelehnt. Eine Vertragsquelle liegt im
+Auftragsbestand nicht vor. **Offene Voraussetzung:** Peter (Entscheidung 13) oder ein Chat mit
+Quellenzugang muss die datierte Anbieter- oder Vertragsquelle für `anthropic`/`claude-sonnet-4-6`
+liefern. Dazu gehören Quelle, Abrufdatum, Währung, Eingabe- und Ausgabepreis sowie die
+Zusatzpositionen der Liste.
 
-## Kostenrechnung des Laufs
+Zusatzkosten, unabhängig vom Preis aus dem Code bestimmt: Die Prüfaufrufe senden kein
+`cache_control`, keine Werkzeuge und keine Websuche, laufen nicht über Batch, und ihre Eingabe liegt
+unter 1 000 Token. Cache-, Werkzeug-, Batch- und Langkontextpositionen gelten für diesen Lauf also
+nicht. Ob sonstige Positionen wie Steuern oder Gebühren anfallen, belegt nur Quelle oder Abrechnung.
+
+## Kostenrechnung des Laufs — sofort ausführbar, sobald die Quelle vorliegt
 
 Formel je Versuch: `Eingabe × Eingabepreis / 10^6 + Ausgabe × Ausgabepreis / 10^6`. Das ist
 dieselbe Rechnung wie `kostenEinesLaufs` in `services/model-runs/src/preisliste.ts`.
 
-Mit dem **unverifizierten Referenzwert** 3 / 15 USD je Million Token:
+Gemeldeter Verbrauch des Laufs: **3987 Eingabe- und 566 Ausgabetoken**. Die Kosten des gemeldeten
+Verbrauchs sind also `3987 × Eingabepreis / 10^6 + 566 × Ausgabepreis / 10^6`, in der Währung der
+Quelle.
 
-| Fall | Kosten USD |
-| --- | ---: |
-| korrekter_beleg | 0.004062 |
-| teilweise_gedeckt | 0.004017 |
-| gegenpassage | 0.004203 |
-| sachfremde_quelle | 0.004056 |
-| prompt_injection | 0.004113 |
-| **gemeldeter Verbrauch gesamt** | **0.020451** (Eingabe 0.011961 + Ausgabe 0.008490) |
+Die Auswertung ohne neuen Modelllauf:
 
-Allgemein, für jede bestätigte Preisliste: Kosten = 3987 × Eingabepreis / 10^6 + 566 ×
-Ausgabepreis / 10^6, zuzüglich des Anteils des abgebrochenen Versuchs (s. u.).
+```
+npx tsx scripts/referenzki/kosten-auswerten.ts --bericht <Anhang beobachtung.json> --tarif <tarif.json>
+```
+
+Das Skript nutzt `tests/referenzki-pruefdienst/kostenauswertung.ts`. Die Tarifdatei braucht
+`quelle`, `abgerufenAm` und die Preisliste in Produktform; ohne datierte Herkunft rechnet es nicht.
+Es gibt die Kosten je Versuch und die Summe des gemeldeten Verbrauchs aus und führt Versuche ohne
+gemeldeten Verbrauch getrennt unter `unbekannt` (`vollstaendig: false`). Die Rechnung ist mit
+fiktiven Preisen und dem echten Verbrauch dieses Laufs geprüft (`kostenauswertung.test.ts`).
 
 ## Abgebrochener Versuch (Prüferausfall)
 
@@ -71,15 +77,14 @@ Ausgabepreis / 10^6, zuzüglich des Anteils des abgebrochenen Versuchs (s. u.).
 - **Unbekannter Verbrauch ist kein Nachweis für null Kosten.** Deshalb rechnet `kostenEinesLaufs`
   dafür bewusst keine Kosten. Ob die Anfrage den Anbieter erreicht hat, lässt sich aus dem Lauf
   nicht sagen.
-- Behandlung als **Spanne statt Schätzung**:
-  - Untergrenze 0 Token: Die Anfrage hat den Anbieter nicht erreicht oder wurde nicht berechnet.
-  - Obergrenze: Das Prüfpaket ist dasselbe wie beim korrekten Beleg, also wohl 799 Eingabetoken.
-    Dazu kommt höchstens das Antwortbudget von `REFERENZ_ANTWORT_MAX_TOKEN` = 1500 Ausgabetoken
-    (`services/ask/src/referenz-pruefung.ts`).
-  - Mit dem Referenzwert ergibt das 0 bis **0.024897 USD** (799 × 3 / 10^6 + 1500 × 15 / 10^6).
-- **Gesamtkosten des Laufs** mit dem Referenzwert: **0.020451 bis 0.045348 USD**. Den genauen Wert
-  für den abgebrochenen Versuch kann nur die Anbieterabrechnung für den 2026-10-12, 12:23:55Z,
-  belegen.
+- Behandlung (Ben nacharbeit-10): Die Kosten dieses Versuchs sind **unbekannt**. Sie gehen weder
+  als 0 noch als angenommene Obergrenze in eine Summe ein. Die Kosten des Laufs sind deshalb
+  ausdrücklich nur die Kosten des **gemeldeten** Verbrauchs, zuzüglich eines getrennt ausgewiesenen
+  unbekannten Anteils.
+- Zur Einordnung, nicht als gesicherter Wert: Das Antwortbudget des Prüfdiensts begrenzt jede
+  Prüfantwort auf `REFERENZ_ANTWORT_MAX_TOKEN` = 1500 Ausgabetoken
+  (`services/ask/src/referenz-pruefung.ts`). Was der Anbieter für einen nach 2 ms abgebrochenen
+  Aufruf tatsächlich berechnet, belegt nur seine Abrechnung für 2026-10-12, 12:23:55Z.
 
 ## Zuordnung
 

@@ -27,9 +27,9 @@ der bestehenden Produktkostenstelle zugeordnet. Verbrauch und Wiederholungen wer
 ## Vom Betreiber zu bestätigen
 
 Das Modell ist durch den Lauf vom 12.10.2026 belegt. Verbrauch, Kostenrechnung, die Behandlung des
-abgebrochenen Versuchs und ein ausdrücklich unverifizierter Referenztarif stehen in
-`kostennachweis-beobachtung-20261012.md`. Preise bleiben hier offen, bis eine datierte
-Anbieterquelle sie bestätigt.
+abgebrochenen Versuchs stehen in `kostennachweis-beobachtung-20261012.md`. Preise bleiben hier
+offen, bis eine datierte Anbieterquelle sie belegt. Danach rechnet
+`scripts/referenzki/kosten-auswerten.ts` den vorhandenen Lauf ohne neuen Modellaufruf aus.
 
 ```json
 {
