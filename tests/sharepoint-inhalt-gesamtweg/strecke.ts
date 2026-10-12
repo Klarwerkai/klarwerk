@@ -59,6 +59,7 @@ import { expect } from "vitest";
 import { buildApp, buildPgServices, buildServices } from "../../services/app/src/build-app";
 import { makeGuards } from "../../services/app/src/http";
 import { sharepointImportRoutes } from "../../services/app/src/routes/sharepoint-import-routes";
+import { lesbareSpaces } from "../../services/app/src/spaces";
 import {
   type SharePointInhaltsTransport,
   SharePointSourceAdapter,
@@ -325,10 +326,25 @@ export async function starteAnwendung(opts: { pool?: Pool } = {}): Promise<Strec
   const app = buildApp(services);
   process.env.KLARWERK_SHAREPOINT_IMPORT = "1";
 
+  // gesamt-nutzerverwaltung · Nacharbeit 15 — DIESELBEN GUARDS WIE `buildApp`, NICHT EIGENE.
+  //
+  // Seit produkt:20261011:peter-p14 trägt jede angemeldete Antwort den Rechtekontext als Stempel
+  // (`services/app/src/rechtekontext.ts`: Konto, Rolle, lesbare Spaces, Freigabeniveau), und die
+  // Fläche setzt bei JEDEM Stempelwechsel alle Inhaltsabfragen zurück (`RechtekontextWache`,
+  // `apps/web/src/lib/rechtekontext.ts`). Ein `makeGuards(services.auth)` OHNE `spaceLesbar` stempelt
+  // `spaces = null`, die Routen von `buildApp` stempeln die erhobenen Spaces — für DASSELBE Konto
+  // zwei verschiedene Stempel. Zugangsauskunft (aus `buildApp`) und Dateiliste (von hier) setzten
+  // einander damit fortlaufend zurück, und die Liste kam nie zur Anzeige (Nacharbeit 15: „die
+  // SharePoint-Dateiliste ist sichtbar — nicht eingetreten", kein einziger Graph-Abruf). Im Betrieb
+  // registriert `buildApp` diese Routen mit SEINEN Guards (`build-app.ts`, `makeGuards(… spaceLesbar)`);
+  // genau so steht es jetzt auch hier.
+  const guards = makeGuards(services.auth, {
+    spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
+  });
   app.register(
     sharepointImportRoutes({
       library: services.library,
-      guards: makeGuards(services.auth),
+      guards,
       importRuns: services.importRuns,
       makeAdapter: () =>
         new SharePointSourceAdapter(
