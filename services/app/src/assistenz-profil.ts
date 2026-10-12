@@ -84,6 +84,13 @@ export interface AssistenzProfil {
    * Profilfassung nicht.
    */
   tastenkuerzel?: TastenkuerzelStand;
+  /**
+   * produkt:20261012:klara-bildanalyse-ocr-kontext-setup (OCR-03) — Setup › Klara „Bilder
+   * automatisch analysieren und Text erkennen“. Fehlt das Feld, gilt die Voreinstellung „an“; nur
+   * eine bewusste Wahl wird gespeichert. Ein normales Profilfeld wie `bewegung`: es reist mit
+   * `schreibe` und übersteht Neuladen und Neuanmeldung.
+   */
+  bildAutomatik?: boolean;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -376,7 +383,13 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
 // DER DIENST
 // ------------------------------------------------------------------------------------------------
 
-export type AssistenzProfilGrund = "name" | "avatar" | "bewegung" | "unvollstaendig" | "konflikt";
+export type AssistenzProfilGrund =
+  | "name"
+  | "avatar"
+  | "bewegung"
+  | "bildAutomatik"
+  | "unvollstaendig"
+  | "konflikt";
 
 export class AssistenzProfilFehler extends Error {
   constructor(
@@ -393,6 +406,8 @@ export interface AssistenzProfilEingabe {
   name?: unknown;
   avatar?: unknown;
   bewegung?: unknown;
+  /** OCR-03: Bilder automatisch analysieren und Text erkennen (`true`/`false`). */
+  bildAutomatik?: unknown;
   /** `true`: dieser Schreibvorgang schliesst die Ersteinrichtung ab (Name UND Avatar nötig). */
   einrichtungAbschliessen?: unknown;
   /** Die Fassung, die der Client zuletzt bestätigt gesehen hat — schützt vor stillem Überschreiben. */
@@ -519,6 +534,17 @@ export class AssistenzProfilDienst {
       }
       bewegung = eingabe.bewegung as AssistenzBewegung;
     }
+    let bildAutomatik = alt?.bildAutomatik;
+    if (eingabe.bildAutomatik !== undefined) {
+      if (typeof eingabe.bildAutomatik !== "boolean") {
+        throw new AssistenzProfilFehler(
+          400,
+          "bildAutomatik",
+          "bildAutomatik muss true oder false sein.",
+        );
+      }
+      bildAutomatik = eingabe.bildAutomatik;
+    }
 
     const abschliessen = eingabe.einrichtungAbschliessen === true;
     if (abschliessen && (name === null || avatar === null)) {
@@ -538,6 +564,7 @@ export class AssistenzProfilDienst {
       fassung: (alt?.fassung ?? 0) + 1,
       geaendertAm: stempel,
       ...(alt?.faehigkeiten ? { faehigkeiten: alt.faehigkeiten } : {}),
+      ...(bildAutomatik !== undefined ? { bildAutomatik } : {}),
     };
     if (!(await this.repo.schreibe(neu))) {
       throw new AssistenzProfilFehler(

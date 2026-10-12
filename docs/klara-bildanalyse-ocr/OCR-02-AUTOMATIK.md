@@ -66,7 +66,7 @@ Rumpf noch Anhang/Fassung werden geschrieben.
 | Excel (Q08) | kein Leser, im Artikel nichts behauptet |
 | PowerPoint-Add-in (H03), Mac-Host (H05) | gibt es nicht |
 | Browser-Erweiterung/Word-Add-in selbst | dort keine Analyse; gelesen wird, sobald der Entwurf in einem Editor der Web-App geöffnet ist |
-| Nutzung in Klaras Antworten, Setup-Schalter | OCR-03; bis dahin ist die Automatik immer an |
+| Nutzung in Klaras Antworten, Setup-Schalter | OCR-03, siehe [`OCR-03-KONTEXT-SETUP.md`](./OCR-03-KONTEXT-SETUP.md) |
 | Kundenabnahme mit echten Dokumenten | OCR-04 bzw. Pilot |
 
 ## Prüfstände

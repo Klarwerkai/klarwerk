@@ -77,6 +77,8 @@ import { FileFormatInfo } from "../components/FileFormatInfo";
 // R-1624: Foto-zu-Wissen — Einstieg ins geführte Interview über ein Foto.
 import { FotoInterviewStart } from "../components/FotoInterviewStart";
 import { HelpTip } from "../components/HelpTip";
+// OCR-03: Klara zu einer bereitgestellten Datei fragen — Text und erkannte Bilder mit Fundstelle.
+import { KlaraBildKontextFrage } from "../components/KlaraBildKontextFrage";
 import { KnopfUnterschied } from "../components/KnopfUnterschied";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { Modal } from "../components/Modal";
@@ -112,9 +114,10 @@ import { anlagenAlsEingabe, anlagenNutzlast, anlagenVon } from "../lib/anlagen";
 // (und mit ihr der dreiwertige Ausgang) bleibt der Weg für ein BESTEHENDES Wissensobjekt: KO-Detail
 // und „An Artikel anfügen" — s. lib/appendToArticle.ts.
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
+// OCR-03 (Nacharbeit 4): der Dateilauf prüft Konto und Einstellung vor jedem weiteren Bild.
+import { assistenzStand } from "../lib/assistenzProfil";
 // OCR-02 (Klara-Bildanalyse): bereitgestellte und eingebettete Bilder automatisch lesen.
 import {
-  BILD_AUTOMATIK_VOREINSTELLUNG,
   type BildBefund,
   type BildBeschreiber,
   type BildQuelleEingang,
@@ -122,12 +125,15 @@ import {
   NEU_VERSUCHEN,
   type QuellenBefund,
   docxBildEingang,
+  einstellungUnbekannt,
   einzelbildEingang,
   leererBefund,
   pptxBildEingang,
   quellenBefundAus,
 } from "../lib/bildAutomatik";
-import { neueBildAnalyse } from "../lib/bildAutomatikLauf";
+// OCR-03: Setup › Klara „Bilder automatisch analysieren und Text erkennen“, Analyse je Konto.
+import { bildAutomatikAbwarten, bildAutomatikLage } from "../lib/bildAutomatikEinstellung";
+import { useBildAnalyse } from "../lib/bildAutomatikLauf";
 import {
   applyBodyAssist,
   applyBodyAssistBlock,
@@ -1266,12 +1272,15 @@ export function CaptureArbeitsraum({
   const [fileBildBefund, setFileBildBefund] = useState<{
     lauf: number;
     befund: QuellenBefund;
+    // OCR-03: der Eingang dieses Laufs — nur seine Befunde kommen in Klaras Kontext.
+    eingang: BildQuelleEingang;
   } | null>(null);
   const fileBildLaufRef = useRef(0);
   // OCR-02: EINE Bildanalyse für diesen Arbeitsraum (Dateiimport und Bildanhänge) — darin werden
   // unveränderte Bilder wiedererkannt. Der Weg zur Bildbeschreibung (W02) kommt über die Brücke aus
   // dem eigenen `ImageDescribeProvider`, also mit der Herkunft und Einstufung dieses Entwurfs.
-  const [bildAnalyse] = useState(neueBildAnalyse);
+  // OCR-03: an das angemeldete Konto gebunden — ein Kontowechsel beginnt mit einer leeren Analyse.
+  const bildAnalyse = useBildAnalyse();
   const bildBeschreiberRef = useRef<BildBeschreiber | undefined>(undefined);
   // OCR-02 (Bens Befund, Nacharbeit 3): auch die über „Bilder hochladen" bzw. den Anhang gegebenen
   // Bilder werden beim Eingang gelesen. Die TEXTÜBERNAHME in Aussage/Rohtext bleibt der ausdrückliche
@@ -4845,20 +4854,38 @@ export function CaptureArbeitsraum({
     eingang: BildQuelleEingang,
     lauf: number,
   ): Promise<QuellenBefund | null> => {
-    const aktuell = (): boolean => fileBildLaufRef.current === lauf;
+    // Nacharbeit 4 (Bens Befund „datei-automatik“): der Lauf gehört zu DIESER Datei UND zu dem
+    // Konto, unter dem er begonnen hat. Wechselt das Konto, werden seine Rückgaben verworfen.
+    const kontoBeiStart = assistenzStand().kontoId;
+    const aktuell = (): boolean =>
+      fileBildLaufRef.current === lauf && assistenzStand().kontoId === kontoBeiStart;
+    // OCR-03: die Einstellung des Kontos — lädt das Profil noch, wird kurz gewartet.
+    const lage = await bildAutomatikAbwarten();
+    if (!aktuell()) {
+      return null;
+    }
+    if (lage === "unbekannt") {
+      const befund = einstellungUnbekannt(eingang);
+      setFileBildBefund({ lauf, befund, eingang });
+      return befund;
+    }
     const ergebnis = await bildAnalyse.analysiereQuelle(eingang, {
-      automatik: BILD_AUTOMATIK_VOREINSTELLUNG,
+      automatik: lage === "an",
       beschreibe: bildBeschreiberRef.current,
+      abbrechen: () => !aktuell(),
+      // Die Einstellung wird vor JEDEM weiteren Bild neu gelesen: eine bestätigte Deaktivierung
+      // während des Laufs startet kein weiteres Bild; Fertiges bleibt, der Rest heißt „aus“.
+      automatikAus: () => bildAutomatikLage(assistenzStand()) === "aus",
       onFortschritt: (stand) => {
         if (aktuell()) {
-          setFileBildBefund({ lauf, befund: stand });
+          setFileBildBefund({ lauf, befund: stand, eingang });
         }
       },
     });
     if (!aktuell()) {
       return null;
     }
-    setFileBildBefund({ lauf, befund: ergebnis });
+    setFileBildBefund({ lauf, befund: ergebnis, eingang });
     return ergebnis;
   };
 
@@ -5281,11 +5308,29 @@ export function CaptureArbeitsraum({
 
   // OCR-02: ein Bildanhang wird beim Eingang gelesen; sein Befund steht unter den Anhängen. Er wird
   // gemerkt, damit der Klick „OCR → Text" ihn übernimmt statt ein zweites Mal zu erkennen.
+  // OCR-03: nur bei eingeschalteter Automatik (Setup › Klara). Ausgeschaltet bzw. nicht lesbar steht
+  // der Anhang als „nicht gelesen“ da; „OCR → Text“ erkennt dann ausdrücklich auf Klick.
   const starteAnhangLesen = (id: string, vorkommen: BildVorkommen): void => {
-    setAnhangBildBefunde((b) => ({ ...b, [id]: leererBefund(vorkommen.fundstelle, "laeuft") }));
-    const lauf = bildAnalyse.befundFuerBild(vorkommen, { beschreibe: bildBeschreiberRef.current });
+    setAnhangBildBefunde((b) => ({ ...b, [id]: leererBefund(vorkommen.fundstelle, "wartet") }));
+    const lauf = bildAutomatikAbwarten().then((lage) => {
+      if (lage !== "an") {
+        return leererBefund(
+          vorkommen.fundstelle,
+          "nicht-analysiert",
+          lage === "aus" ? { grund: "automatik-aus" } : {},
+        );
+      }
+      setAnhangBildBefunde((b) => ({ ...b, [id]: leererBefund(vorkommen.fundstelle, "laeuft") }));
+      return bildAnalyse.befundFuerBild(vorkommen, { beschreibe: bildBeschreiberRef.current });
+    });
     anhangBildLaeufeRef.current.set(id, lauf);
-    void lauf.then((befund) => setAnhangBildBefunde((b) => ({ ...b, [id]: befund })));
+    // Nacharbeit 4: die Rückgabe eines inzwischen gewechselten Kontos wird verworfen.
+    const kontoBeiStart = assistenzStand().kontoId;
+    void lauf.then((befund) => {
+      if (assistenzStand().kontoId === kontoBeiStart) {
+        setAnhangBildBefunde((b) => ({ ...b, [id]: befund }));
+      }
+    });
   };
 
   const addImage = async (f: File): Promise<void> => {
@@ -7103,6 +7148,14 @@ export function CaptureArbeitsraum({
                   {fileBildBefund ? (
                     <div data-testid="datei-bild-befunde">
                       <BildBefundListe befund={fileBildBefund.befund} lauf={fileBildBefund.lauf} />
+                      {/* OCR-03: Klara zu dieser Datei fragen — Text der Datei UND erkannte Bilder.
+                        Bei einem Einzelbild IST der Dateitext der Bildtext; er steht nur einmal drin. */}
+                      <KlaraBildKontextFrage
+                        kontextSchluessel={`datei:${fileBildBefund.lauf}`}
+                        dokumentTextVon={() => (fileImageUrl ? "" : fileText)}
+                        quellen={[fileBildBefund.befund]}
+                        aktuell={[fileBildBefund.eingang]}
+                      />
                     </div>
                   ) : null}
                   {fileWholeDraftSaved ? (

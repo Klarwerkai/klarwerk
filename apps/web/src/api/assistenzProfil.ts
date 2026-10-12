@@ -12,6 +12,8 @@ export interface AssistenzProfilDaten {
   eingerichtetAm: string | null;
   fassung: number;
   geaendertAm: string;
+  /** OCR-03: nur nach bewusster Wahl vorhanden — sonst gilt die Voreinstellung „an“. */
+  bildAutomatik?: boolean;
 }
 
 export interface AssistenzProfilAntwort {
@@ -23,6 +25,8 @@ export interface AssistenzProfilAenderung {
   name?: string;
   avatar?: string;
   bewegung?: AssistenzBewegung;
+  /** OCR-03: Setup › Klara „Bilder automatisch analysieren und Text erkennen“. */
+  bildAutomatik?: boolean;
   einrichtungAbschliessen?: boolean;
   /** Die zuletzt bestätigte Fassung (0 ohne Profil) — schützt vor stillem Überschreiben. */
   fassung: number;

@@ -26,6 +26,7 @@ import { type Guards, sendError } from "../http";
 //
 //   GET /api/me/assistenz   — das eigene Profil (oder `profil: null` mit `einrichtungOffen: true`)
 //   PUT /api/me/assistenz   — Name, Avatar, Bewegung ändern; Ersteinrichtung abschliessen
+//                             OCR-03: auch `bildAutomatik` (Setup › Klara, Bilder automatisch lesen)
 //
 // Derselbe persönliche Weg wie `/api/me/klara/...`: das Konto kommt AUSSCHLIESSLICH aus der Sitzung
 // (`user.id`). Nennt eine Anfrage trotzdem eine Kontokennung (Rumpf oder Adresse) und ist es nicht
@@ -117,6 +118,8 @@ function sicht(p: AssistenzProfil | null) {
           eingerichtetAm: p.eingerichtetAm,
           fassung: p.fassung,
           geaendertAm: p.geaendertAm,
+          // OCR-03: nur eine bewusste Wahl steht hier; ohne sie gilt die Voreinstellung „an“.
+          ...(p.bildAutomatik !== undefined ? { bildAutomatik: p.bildAutomatik } : {}),
         }
       : null,
     einrichtungOffen: p?.eingerichtetAm == null,
