@@ -101,7 +101,7 @@
       "dateien": ["services/notifications/src/push.ts"],
       "hosts": [],
       "umgebung": ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"],
-      "freigabe": "Nur wenn alle drei VAPID-Werte gesetzt sind (createPushFromEnv), und nur an die Push-Dienste der Browserhersteller (PUSH_DIENSTE: fcm.googleapis.com, updates.push.services.mozilla.com, web.push.apple.com, Unterdomaenen von push.apple.com und notify.windows.com) per https; jeder andere Abo-Endpunkt wird abgewiesen (pushEndpunktErlaubt)"
+      "freigabe": "Nur wenn alle drei VAPID-Werte gesetzt sind (createPushFromEnv), und nur an die Push-Dienste der Browserhersteller (PUSH_DIENSTE: fcm.googleapis.com, jmt17.google.com, updates.push.services.mozilla.com, web.push.apple.com, Unterdomaenen von push.apple.com und notify.windows.com) per https; jeder andere Abo-Endpunkt wird abgewiesen (pushEndpunktErlaubt)"
     },
     {
       "kennung": "wissensereignisse-webhooks",

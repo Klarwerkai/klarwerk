@@ -111,6 +111,10 @@ describe("R-0679 · VAPID-Push ohne Nutzlast", () => {
 
   it("P3 · nur https an bekannte Push-Dienste", () => {
     expect(pushEndpunktErlaubt(ENDPUNKT)).toBe(true);
+    // Nacharbeit 14: der Endpunkt, den Chrome am Geräteprüfplatz tatsächlich vergab.
+    expect(pushEndpunktErlaubt("https://jmt17.google.com/fcm/send/abc:def")).toBe(true);
+    // Nur dieser Host — nicht jede Google-Unterdomäne.
+    expect(pushEndpunktErlaubt("https://irgendwas.google.com/fcm/send/abc")).toBe(false);
     expect(pushEndpunktErlaubt("https://updates.push.services.mozilla.com/wpush/v2/x")).toBe(true);
     expect(pushEndpunktErlaubt("https://web.push.apple.com/abc")).toBe(true);
     expect(pushEndpunktErlaubt("https://db5p.notify.windows.com/w/?token=x")).toBe(true);

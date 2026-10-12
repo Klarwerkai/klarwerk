@@ -92,6 +92,10 @@ export class PgPushAboRepo implements PushAboRepo {
 /** Die Push-Dienste der Browserhersteller. Genau diese Hosts (oder ihre Unterdomänen bei `*.`). */
 export const PUSH_DIENSTE: readonly string[] = [
   "fcm.googleapis.com",
+  // Chrome vergibt Web-Push-Endpunkte auch unter diesem Host (gemessen am Geräteprüfplatz,
+  // Nacharbeit 14: Chrome for Testing 149 abonnierte unter `jmt17.google.com`, der Server wies das
+  // Abo ab). Genau dieser Host — bewusst NICHT pauschal `*.google.com`.
+  "jmt17.google.com",
   "updates.push.services.mozilla.com",
   "web.push.apple.com",
   "*.push.apple.com",
