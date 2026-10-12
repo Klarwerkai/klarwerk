@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { type AnswerSnapshotRepo, gehoertNutzer } from "../../ask";
+import type { KiAuftragEintrag } from "./ki-arbeitsbegleitung";
 import {
   type KlaraAuftrag,
   type KlaraAuftragEingabe,
@@ -182,6 +183,13 @@ export interface KlaraGespraech {
   /** Zähler für den Standvergleich beim Schreiben (kein stilles Überschreiben paralleler Tabs). */
   readonly fassung: number;
   /**
+   * BPA-13 (produkt:20261011:assistenz-ki-arbeitsbegleitung): die KI-Aufträge dieses Gesprächs —
+   * Paket, Jobstand, Antworten und Belege im BESTEHENDEN Verlauf, kein eigener Datenraum.
+   * Optional und ohne Migration (Voll-JSONB); ein Gespräch ohne das Feld hat keine KI-Aufträge.
+   * Gelesen und geschrieben ausschliesslich über `KiArbeitsbegleitungDienst`.
+   */
+  readonly kiAuftraege?: readonly KiAuftragEintrag[];
+  /**
    * Klara 05 (produkt:20261008:klara-aktionen): die in diesem Gespräch gegebenen Ausführungsaufträge
    * mit ihrer Grenze und ihren Schritten (`klara-auftrag.ts`). Fehlt bei Gesprächen von davor.
    */
@@ -189,6 +197,8 @@ export interface KlaraGespraech {
 }
 
 export const KLARA_GESPRAECH_MAX_NACHRICHTEN = 400;
+/** BPA-13: höchstens so viele KI-Aufträge je Gespräch. */
+export const KLARA_GESPRAECH_MAX_KI_AUFTRAEGE = 50;
 export const KLARA_GESPRAECH_MAX_JE_KONTO = 100;
 export const KLARA_FRAGE_MAX = 8_000;
 export const KLARA_ANTWORT_MAX = 20_000;
@@ -764,6 +774,28 @@ export class KlaraGespraechDienst {
       ...g,
       einwilligungAm: erteilt ? (g.einwilligungAm ?? jetzt) : null,
     }));
+  }
+
+  /**
+   * BPA-13: die KI-Aufträge dieses Gesprächs mit demselben Standvergleich ändern wie jede andere
+   * Änderung (kein stilles Überschreiben). `f` darf werfen — dann wird nichts geschrieben.
+   */
+  aendereKiAuftraege(
+    kontoId: string,
+    id: string,
+    f: (liste: readonly KiAuftragEintrag[], jetzt: string) => readonly KiAuftragEintrag[],
+  ): Promise<KlaraGespraech> {
+    return this.aendere(kontoId, id, (g, jetzt) => {
+      const neu = f(g.kiAuftraege ?? [], jetzt);
+      if (neu.length > KLARA_GESPRAECH_MAX_KI_AUFTRAEGE) {
+        throw new KlaraGespraechFehler(
+          409,
+          "voll",
+          `Ein Gespräch hält höchstens ${KLARA_GESPRAECH_MAX_KI_AUFTRAEGE} KI-Aufträge. Bitte ein neues beginnen.`,
+        );
+      }
+      return { ...g, kiAuftraege: neu };
+    });
   }
 
   loesche(kontoId: string, id: string): Promise<boolean> {
