@@ -18,7 +18,7 @@ import { TEXT_JE_MARKE, bildMit, deck, markenEngine } from "./deck";
 const ANHANG = { id: "anh-1", name: "wartung.pptx", objectId: "obj-1" };
 
 function abruf(bytes: Uint8Array) {
-  return vi.fn(async (_href: string) => new Blob([bytes]));
+  return vi.fn(async (_href: string) => new Blob([new Uint8Array(bytes).buffer]));
 }
 
 describe("OCR-02 · Office-Anhang im Artikel", () => {

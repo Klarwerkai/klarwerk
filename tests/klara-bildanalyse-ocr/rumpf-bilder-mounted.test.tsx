@@ -98,7 +98,7 @@ function quellenStatus(): string | null {
 
 const objektspeicher = vi.fn(async (_href: string) => ({
   ok: true,
-  blob: async () => new Blob([bildMit("C")], { type: "image/png" }),
+  blob: async () => new Blob([new Uint8Array(bildMit("C")).buffer], { type: "image/png" }),
 }));
 
 beforeEach(async () => {
