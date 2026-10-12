@@ -173,6 +173,7 @@ kein Titel, kein Inhalt, kein Personenname.
 | `user.role-claim-missing`, `user.role-synced` | `aussteller`, `rolle` bzw. `von`/`nach` | P, Z |
 | `notice.acknowledged` | `version` | Z |
 | `user.ausgeschieden` (R-0961, Status „Ausgeschieden“; Ziel: das Konto) | `vertretung` (Kontokennung) | K — kein Name |
+| `user.ausscheiden-beendet` (R-0961, Status beendet durch Wiederfreigabe; Ziel: das Konto) | `via` (`freigabe`/`verzeichnis`) | Z |
 | **`user.role-change`** | `role`, `previousRole`, **`actorName`, `targetName`** | **P** — siehe Befund 2 |
 | **`user.delete`** | **`targetName`**, **`actorName`** | **P** — siehe Befund 2 |
 

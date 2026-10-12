@@ -208,6 +208,10 @@ export interface LoginInput {
   password: string;
 }
 
+// R-0961: die ausdrücklichen Wechsel des Status „Ausgeschieden“ (s. `istAusgeschieden`).
+const AUSGESCHIEDEN = "user.ausgeschieden";
+const AUSSCHEIDEN_BEENDET = "user.ausscheiden-beendet";
+
 function toPublic(user: User): PublicUser {
   const { passwordSalt: _salt, passwordHash: _hash, ...rest } = user;
   return rest;
@@ -1281,6 +1285,10 @@ export class AuthService {
       return toPublic(user);
     }
     const gesperrt = user.approved && !neu.approved;
+    // R-0961 (Ben, Nacharbeit 13): gibt das Verzeichnis ein ausgeschiedenes Konto wieder frei, endet
+    // der Status ausdrücklich — wie bei der Freigabe durch die Verwaltung (`approveUser`).
+    const beendetAusscheiden =
+      !user.approved && neu.approved && (await this.istAusgeschieden(userId));
     await this.users.withAdminGuard(async (tx) => {
       const verliertAdmin = user.role === "admin" && (neu.role !== "admin" || !neu.approved);
       if (user.approved && verliertAdmin && (await this.isLastApprovedAdmin(userId, tx))) {
@@ -1301,6 +1309,9 @@ export class AuthService {
         },
         tx,
       );
+      if (beendetAusscheiden) {
+        await this.record("system", AUSSCHEIDEN_BEENDET, userId, { via: "verzeichnis" }, tx);
+      }
       await this.users.update(neu, tx);
       if (felder.includes("verzeichnisGruppen")) {
         await this.users.setzeVerzeichnisGruppen?.(userId, neu.verzeichnisGruppen ?? [], tx);
@@ -1417,11 +1428,38 @@ export class AuthService {
   async approveUser(userId: string, actorId: string): Promise<PublicUser> {
     const user = await this.requireUser(userId);
     const aktualisiert: User = { ...user, approved: true };
+    // R-0961 (Ben, Nacharbeit 13): wer ein ausgeschiedenes Konto wieder freigibt, beendet den Status
+    // ausdrücklich, mit eigenem Vermerk im selben Rahmen. Eine spätere Sperre belebt ihn nicht wieder.
+    const beendetAusscheiden = await this.istAusgeschieden(userId);
     await this.gemeinsamSchreiben(async (tx) => {
       await this.record(actorId, "user.approve", userId, undefined, tx);
+      if (beendetAusscheiden) {
+        await this.record(actorId, AUSSCHEIDEN_BEENDET, userId, { via: "freigabe" }, tx);
+      }
       await this.users.update(aktualisiert, tx);
     });
     return toPublic(aktualisiert);
+  }
+
+  /**
+   * R-0961 (Ben, Nacharbeit 13): TRÄGT DIESES KONTO JETZT DEN STATUS „AUSGESCHIEDEN“?
+   *
+   * Der Status ist ein eigener Zustand mit ausdrücklichen Wechseln. Gesetzt wird er mit
+   * `user.ausgeschieden` (`ausscheiden`), beendet mit `user.ausscheiden-beendet` (Wiederfreigabe
+   * durch einen Berechtigten oder das Verzeichnis). Entscheidend ist der LETZTE dieser Vermerke,
+   * nicht die Freigabe: eine spätere gewöhnliche Sperre ändert den Status nicht. Dieselbe Regel
+   * rechnet die Aufgabenfläche (`apps/web/src/lib/autorenuebergabe.ts`, `ausgeschiedeneKonten`).
+   */
+  private async istAusgeschieden(userId: string): Promise<boolean> {
+    if (!this.audit) {
+      return false;
+    }
+    const [gesetzt, beendet] = await Promise.all([
+      this.audit.list({ action: AUSGESCHIEDEN, target: userId }),
+      this.audit.list({ action: AUSSCHEIDEN_BEENDET, target: userId }),
+    ]);
+    const letzter = [...gesetzt, ...beendet].sort((a, b) => a.seq - b.seq).at(-1);
+    return letzter?.action === AUSGESCHIEDEN;
   }
 
   /**
@@ -1429,8 +1467,9 @@ export class AuthService {
    * „AUSGESCHIEDEN“, ausdrücklich durch einen Berechtigten gesetzt (die Route verlangt
    * `users.manage`).
    *
-   * Der Status ist der Vermerk `user.ausgeschieden` an einem Konto, dessen Freigabe entzogen ist.
-   * Beides entsteht hier in EINEM Rahmen. Folgen nach der Entscheidung:
+   * Der Status ist der Vermerk `user.ausgeschieden`, solange ihn kein `user.ausscheiden-beendet`
+   * ablöst (`istAusgeschieden`). Vermerk und Sperre entstehen hier in EINEM Rahmen. Folgen nach der
+   * Entscheidung:
    *   · Zugang entzogen: `approved: false` (dieselbe Sperre wie beim Verzeichnis-Austritt).
    *   · Sitzungen entzogen: alle Sitzungen des Kontos werden gelöscht.
    *   · Urheberschaft erhalten: das Konto bleibt bestehen, kein Wissensobjekt wird hier angefasst.
@@ -1448,11 +1487,24 @@ export class AuthService {
         throw new AuthError("FORBIDDEN", "LAST_ADMIN_DELETION" satisfies Meldungsschluessel);
       }
       // Nur Kennungen, keine Klarnamen (docs/datenschutz/pruefprotokoll-nutzdaten.md, Befund 2).
-      await this.record(actorId, "user.ausgeschieden", userId, { vertretung }, tx);
+      await this.record(actorId, AUSGESCHIEDEN, userId, { vertretung }, tx);
       await this.users.update(aktualisiert, tx);
     });
     await this.sessions.deleteByUser(userId);
     return toPublic(aktualisiert);
+  }
+
+  /**
+   * R-0961 (Ben, Nacharbeit 13): DARF DIESES KONTO AUSSCHEIDEN? Dieselbe Prüfung wie in
+   * `ausscheiden`, aber ohne zu schreiben. Die Route ruft sie VOR der Aufgabenübertragung, damit ein
+   * abgewiesenes Ausscheiden keine Nebenwirkung hinterlässt. Die verbindliche Prüfung bleibt in
+   * `ausscheiden` (im Rahmen des Admin-Schutzes).
+   */
+  async ausscheidenPruefen(userId: string): Promise<void> {
+    const user = await this.requireUser(userId);
+    if (user.role === "admin" && user.approved && (await this.isLastApprovedAdmin(userId))) {
+      throw new AuthError("FORBIDDEN", "LAST_ADMIN_DELETION" satisfies Meldungsschluessel);
+    }
   }
 
   /**

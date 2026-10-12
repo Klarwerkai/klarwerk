@@ -13,20 +13,26 @@ import type { VorgangZuteilung, Wissensuebergabe } from "../wissensuebergabe";
 // erhalten und eine zuständige Vertretung für offene Aufgaben zuordnen.“
 //
 // `POST /api/users/:id/ausscheiden` mit `{ vertretung }`, nur mit `users.manage`. Das ist dieselbe
-// Berechtigung wie die übrige Kontoverwaltung und die Autorenübergabe. Ablauf über vorhandene
-// Funktionen:
-//   1. `AuthService.ausscheiden`: Vermerk `user.ausgeschieden`, Freigabe entzogen, Sitzungen
-//      gelöscht, in einem Rahmen. Der letzte freigegebene Admin kann nicht ausscheiden.
-//   2. Offene Aufgaben (Entwürfe, offene Lücken, offene Prüfaufgaben) an die Vertretung, über die
-//      vorhandene Wissensübergabe (`Wissensuebergabe.vorgaengeUebergeben`, Vermerk
-//      `lifecycle.handover`).
-//   3. Die Urheberschaft bleibt. Kein Wissensobjekt wird angefasst; `author` zeigt weiter auf das
-//      Konto. Genau daraus entsteht die wartende Autorenübergabe (`lib/autorenuebergabe.ts`, Grund
-//      `ausgeschieden`), die über die vorhandene `transfer-author` erledigt wird.
-// Ein zweiter Aufruf ist harmlos: Er vermerkt den Status erneut und überträgt nur, was noch offen
-// ist.
+// Berechtigung wie die übrige Kontoverwaltung und die Autorenübergabe.
+//
+// DIE REIHENFOLGE TRÄGT DIE ZUSAGE (Ben, Nacharbeit 13): keine offene Aufgabe bleibt bei einem
+// Konto ohne Zugang zurück.
+//   1. Prüfen, ohne zu schreiben: Vertretung erreichbar, Ausscheiden zulässig (letzter Admin,
+//      `AuthService.ausscheidenPruefen`) und jede offene Aufgabe auf die Vertretung übertragbar.
+//      Letzteres prüft die Vorschau der vorhandenen Wissensübergabe (`vorgaengeUebergeben` mit
+//      `schreiben = false`). Lehnt sie etwas ab, etwa weil die Vertretung das Objekt schon geprüft
+//      hat, antwortet die Route 409 `VERTRETUNG_UNGEEIGNET` und ändert nichts.
+//   2. Übertragen: Offene Entwürfe, offene Lücken und offene Prüfaufgaben gehen über denselben Weg
+//      an die Vertretung (Vermerk `lifecycle.handover`). Scheitert ein Schritt, antwortet die Route
+//      409 `UEBERGABE_UNVOLLSTAENDIG` und setzt den Status NICHT. Das Konto behält dann Zugang und
+//      Zuständigkeit für den Rest, und derselbe Aufruf überträgt beim nächsten Mal nur noch diesen.
+//   3. Erst dann der Status: `AuthService.ausscheiden` schreibt den Vermerk `user.ausgeschieden`,
+//      entzieht die Freigabe und löscht die Sitzungen, in einem Rahmen.
+// Die Urheberschaft bleibt. Kein Wissensobjekt wird angefasst; `author` zeigt weiter auf das Konto.
+// Genau daraus entsteht die wartende Autorenübergabe (`lib/autorenuebergabe.ts`, Grund
+// `ausgeschieden`), die über die vorhandene `transfer-author` erledigt wird.
 export interface AusscheidenDienste {
-  auth: Pick<AuthService, "ausscheiden" | "kontoLesen">;
+  auth: Pick<AuthService, "ausscheiden" | "ausscheidenPruefen" | "kontoLesen">;
   vorgaenge: Pick<Wissensuebergabe, "offeneVorgaenge" | "vorgaengeUebergeben">;
   now?: () => number;
 }
@@ -73,7 +79,8 @@ export function ausscheidenRoutes(dienste: AusscheidenDienste, guards: Guards): 
             });
             return;
           }
-          const konto = await dienste.auth.ausscheiden(id, user.id, vertretung);
+          // 1. Prüfen, ohne zu schreiben.
+          await dienste.auth.ausscheidenPruefen(id);
           const offen = (await dienste.vorgaenge.offeneVorgaenge([id])).get(id);
           const zuteilung: VorgangZuteilung[] = [
             ...(offen?.entwuerfe ?? []).map((e) => ({
@@ -92,20 +99,48 @@ export function ausscheidenRoutes(dienste: AusscheidenDienste, guards: Guards): 
               an: vertretung,
             })),
           ];
+          const vorschau = await dienste.vorgaenge.vorgaengeUebergeben(
+            id,
+            zuteilung,
+            user.id,
+            false,
+          );
+          if (vorschau.abgelehnt.length > 0) {
+            reply.code(409).send({
+              error: "VERTRETUNG_UNGEEIGNET",
+              message:
+                "Die Vertretung kann nicht alle offenen Aufgaben übernehmen. Bitte eine geeignete Vertretung wählen; es wurde nichts geändert.",
+              abgelehnt: vorschau.abgelehnt,
+            });
+            return;
+          }
+          // 2. Übertragen. Ein Teilfehler setzt den Status nicht.
           const ergebnis = await dienste.vorgaenge.vorgaengeUebergeben(
             id,
             zuteilung,
             user.id,
             true,
           );
+          if (ergebnis.fehlgeschlagen.length > 0 || ergebnis.abgelehnt.length > 0) {
+            reply.code(409).send({
+              error: "UEBERGABE_UNVOLLSTAENDIG",
+              message:
+                "Nicht alle offenen Aufgaben wurden übertragen. Der Status ist nicht gesetzt; das Konto behält Zugang und den Rest.",
+              uebertragen: ergebnis.uebertragen,
+              abgelehnt: ergebnis.abgelehnt,
+              fehlgeschlagen: ergebnis.fehlgeschlagen,
+            });
+            return;
+          }
+          // 3. Erst jetzt der Status.
+          const konto = await dienste.auth.ausscheiden(id, user.id, vertretung);
           reply.code(200).send({
             id: konto.id,
             approved: konto.approved,
             vertretung,
             vorgaenge: {
               uebertragen: ergebnis.uebertragen,
-              abgelehnt: ergebnis.abgelehnt,
-              fehlgeschlagen: ergebnis.fehlgeschlagen,
+              bereitsErledigt: ergebnis.bereitsErledigt,
             },
           });
         } catch (e) {

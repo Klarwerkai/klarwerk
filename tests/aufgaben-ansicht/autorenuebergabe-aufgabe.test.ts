@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
 
 // ================================================================================================
 // AUTORENÜBERGABE-AUFTRAG (R-0961, K1–K3) — DIE WARTENDE AUTORENÜBERGABE AM HTTP-RAND.
@@ -7,8 +7,9 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 //
 // Quelle der Regel: Peters Entscheidungen 23/24 vom 11.10.2026 und Entscheidung 1 vom 12.10.2026,
 // abgebildet in `apps/web/src/lib/autorenuebergabe.ts`. Gemessen wird über HTTP, mit der Anmeldung
-// der Person, für die der Schritt gilt. Dienstaufrufe legen nur Wissensobjekte und Prüfaufgaben an,
-// lesen Belege nach und stellen in A10 die bloße Sperre her (Verzeichnisweg, ohne Status).
+// der Person, für die der Schritt gilt. Dienstaufrufe legen nur Wissensobjekte und Prüfaufgaben an
+// (in A12 auch eine erledigte), lesen Belege nach und stellen in A10/A11 die bloße Sperre her
+// (Verzeichnisweg, ohne Status).
 //
 //   A1  Auslöser „Konto gelöscht": Der Autor wird gelöscht, und die Übergabe steht an.
 //   A2  Gegenfall: Eine abgelaufene Zugangsbefristung allein löst nichts aus (kein belegtes
@@ -25,9 +26,16 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 //       die Übergabe steht an und ist nach `transfer-author` erledigt.
 //   A10 Gegenfälle: ohne Berechtigung (403/401), ohne gültige Vertretung (400), bloße Sperre ohne
 //       Status ⇒ kein Ausscheiden, keine Aufgabe.
+//   A11 Ausscheiden → Wiederfreigabe (beendet den Status mit Vermerk) → gewöhnliche Sperre ⇒ der
+//       Status lebt nicht wieder auf, keine Aufgabe.
+//   A12 Vertretung hat das Objekt schon geprüft ⇒ 409 ohne Nebenwirkung; mit geeigneter
+//       Vertretung 200, die Prüfaufgabe liegt danach bei ihr.
 describe("R-0961: wartende Autorenübergabe — Auslöser, Berechtigung, Priorität, Abschluss", () => {
   async function setup() {
-    const services = buildServices();
+    // Dieselbe Komposition wie `buildServices()`; die Ablage wird nur gebraucht, um in A12 eine
+    // bereits erledigte Prüfung der Vertretung herzustellen.
+    const repos = inMemoryRepos();
+    const services = assembleServices(repos);
     const app = buildApp(services);
     await app.inject({
       method: "POST",
@@ -85,7 +93,7 @@ describe("R-0961: wartende Autorenübergabe — Auslöser, Berechtigung, Priorit
     };
     const aktion = (koId: string, headers: Record<string, string>, payload: object) =>
       app.inject({ method: "PUT", url: `/api/kos/${koId}`, headers, payload });
-    return { app, services, ada, anna, bert, eintrag, lesen, anstehend, aktion };
+    return { app, repos, services, ada, anna, bert, eintrag, lesen, anstehend, aktion };
   }
 
   it("Kalibrierung: ohne Auslöser steht keine Übergabe an", async () => {
@@ -250,6 +258,86 @@ describe("R-0961: wartende Autorenübergabe — Auslöser, Berechtigung, Priorit
     expect(await vermerke()).toHaveLength(0);
     expect(await anstehend(), "eine bloße Sperre hat eine Übergabe ausgelöst").toEqual([]);
     expect((await services.ko.get(k))?.author).toBe(anna.id);
+  });
+
+  // Ben, Nacharbeit 13: Der Status hat ausdrückliche Wechsel. Eine Wiederfreigabe beendet ihn mit
+  // eigenem Vermerk; eine spätere gewöhnliche Sperre ist kein neues Ausscheiden.
+  it("A11 · Ausscheiden → Wiederfreigabe → gewöhnliche Sperre ⇒ der Status lebt nicht wieder auf", async () => {
+    const { app, services, ada, anna, bert, eintrag, anstehend } = await setup();
+    const k = await eintrag(anna.id, "Instandhaltung");
+    const aus = await app.inject({
+      method: "POST",
+      url: `/api/users/${anna.id}/ausscheiden`,
+      headers: ada.headers,
+      payload: { vertretung: bert.id },
+    });
+    expect(aus.statusCode, aus.body).toBe(200);
+    expect(await anstehend()).toEqual([{ koId: k, grund: "ausgeschieden", kritisch: false }]);
+
+    // Die Verwaltung gibt das Konto wieder frei: der Status endet ausdrücklich, mit Vermerk.
+    const frei = await app.inject({
+      method: "PUT",
+      url: `/api/users/${anna.id}`,
+      headers: ada.headers,
+      payload: { approve: true },
+    });
+    expect(frei.statusCode, frei.body).toBe(200);
+    const beendet = await services.audit.list({
+      action: "user.ausscheiden-beendet",
+      target: anna.id,
+    });
+    expect(beendet).toHaveLength(1);
+    expect(beendet[0]?.actor).toBe(ada.id);
+    expect(await anstehend(), "nach der Wiederfreigabe steht die Übergabe noch an").toEqual([]);
+
+    // Später eine gewöhnliche Sperre (Verzeichnisweg, ohne Status): kein neues Ausscheiden.
+    await services.auth.verzeichnisAendern(anna.id, { aktiv: false });
+    expect(await anstehend(), "eine spätere Sperre hat das alte Ausscheiden belebt").toEqual([]);
+    const gesetzt = await services.audit.list({ action: "user.ausgeschieden", target: anna.id });
+    expect(gesetzt).toHaveLength(1);
+  });
+
+  // Ben, Nacharbeit 13: Kann die Vertretung eine offene Aufgabe nicht übernehmen (sie hat das Objekt
+  // schon geprüft), wird das Ausscheiden ohne Nebenwirkung abgelehnt.
+  it("A12 · Vertretung hat das Objekt schon geprüft ⇒ 409 ohne Nebenwirkung; geeignete Vertretung ⇒ 200", async () => {
+    const { app, repos, services, ada, anna, bert, eintrag, anstehend } = await setup();
+    const k = await eintrag(anna.id, "Instandhaltung");
+    const pruefobjekt = await eintrag(ada.id, "Instandhaltung");
+    await services.validation.assign(pruefobjekt, [anna.id], ada.id);
+    // Bert hat dieses Objekt bereits geprüft (erledigte Zuweisung).
+    await repos.assignments.create({ koId: pruefobjekt, userId: bert.id, status: "done" });
+    const ausscheiden = (vertretung: string) =>
+      app.inject({
+        method: "POST",
+        url: `/api/users/${anna.id}/ausscheiden`,
+        headers: ada.headers,
+        payload: { vertretung },
+      });
+
+    const abgewiesen = await ausscheiden(bert.id);
+    expect(abgewiesen.statusCode, abgewiesen.body).toBe(409);
+    expect(abgewiesen.json().error).toBe("VERTRETUNG_UNGEEIGNET");
+    expect(abgewiesen.json().abgelehnt).toEqual([
+      expect.objectContaining({ art: "pruefaufgabe", id: pruefobjekt, an: bert.id }),
+    ]);
+    // Keine Nebenwirkung: kein Status, keine Übertragung, Zugang und Aufgabe bleiben bei Anna.
+    const status = () => services.audit.list({ action: "user.ausgeschieden", target: anna.id });
+    expect(await status()).toHaveLength(0);
+    expect(await services.audit.list({ action: "lifecycle.handover" })).toHaveLength(0);
+    const sitzung = await app.inject({ method: "GET", url: "/api/auth/me", headers: anna.headers });
+    expect(sitzung.statusCode, "ein abgewiesenes Ausscheiden hat den Zugang entzogen").toBe(200);
+    const offenVorher = await services.wissensuebergabe.offeneVorgaenge([anna.id]);
+    expect(offenVorher.get(anna.id)?.pruefaufgaben).toEqual([{ koId: pruefobjekt }]);
+    expect(await anstehend()).toEqual([]);
+
+    // Ada hat das Objekt nicht geprüft und ist eine geeignete Vertretung.
+    const erfolgreich = await ausscheiden(ada.id);
+    expect(erfolgreich.statusCode, erfolgreich.body).toBe(200);
+    expect(await status()).toHaveLength(1);
+    const offenNachher = await services.wissensuebergabe.offeneVorgaenge([anna.id, ada.id]);
+    expect(offenNachher.get(anna.id)?.pruefaufgaben).toEqual([]);
+    expect(offenNachher.get(ada.id)?.pruefaufgaben).toEqual([{ koId: pruefobjekt }]);
+    expect(await anstehend()).toEqual([{ koId: k, grund: "ausgeschieden", kritisch: false }]);
   });
 
   it("A3 · der Autor verlangt die Übergabe ⇒ sie steht an; A7 · Übergabe ⇒ erledigt", async () => {

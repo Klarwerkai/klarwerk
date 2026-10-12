@@ -1669,9 +1669,10 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     gruppe: "ausscheidenRoutes",
     methode: "POST",
     route: "/api/users/:id/ausscheiden",
-    belegstelle: "services/app/src/routes/ausscheiden-routes.ts:46",
+    belegstelle: "services/app/src/routes/ausscheiden-routes.ts:52",
     // NUR 200. Fehlt die Vertretung oder ist sie kein freigeschaltetes Konto, antwortet die Route
-    // 400; eine erfundene Kennung 404. Beides käme durchs Tor, ohne dass ein Status gesetzt wurde.
+    // 400; eine erfundene Kennung 404; eine ungeeignete Vertretung oder eine unvollständige
+    // Übertragung 409. All das käme durchs Tor, ohne dass ein Status gesetzt wurde.
     erfolg: [200],
     tor: "users.manage",
     erwartet: NUR_ADMIN,

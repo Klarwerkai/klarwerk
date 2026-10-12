@@ -20,11 +20,13 @@
 //   · `ausgeschieden`: Das Konto des Autors trägt den Status „Ausgeschieden“. Quelle ist Peters
 //     Entscheidung 1 vom 12.10.2026 (QUELLEN-PETER-BLOCKADEN-ENTSCHEIDUNGEN-20261012): ein eigener
 //     Status, ausdrücklich durch einen Berechtigten gesetzt (`POST /api/users/:id/ausscheiden`,
-//     `AuthService.ausscheiden`). Er besteht aus dem Vermerk `user.ausgeschieden` UND der dabei
-//     entzogenen Freigabe (`approved: false`).
+//     `AuthService.ausscheiden`). Der Status hat ausdrückliche Wechsel: gesetzt mit
+//     `user.ausgeschieden`, beendet mit `user.ausscheiden-beendet` (Wiederfreigabe durch die
+//     Verwaltung oder das Verzeichnis, `AuthService.approveUser`/`verzeichnisAendern`). Es gilt der
+//     LETZTE dieser Vermerke, unabhängig von der Freigabe (Ben, Nacharbeit 13): eine spätere
+//     gewöhnliche Sperre belebt einen beendeten Status nicht wieder.
 //     NICHT ausgeschieden sind ein abgelaufener Zugang (`accessExpiresAt`), eine bloße Sperre ohne
-//     Vermerk und Inaktivität (Ben, Nacharbeit 9; Entscheidung 1). Wird das Konto später wieder
-//     freigegeben, ist es nicht mehr ausgeschieden.
+//     Vermerk und Inaktivität (Ben, Nacharbeit 9; Entscheidung 1).
 //   · `angefordert`: Autor oder Admin haben die Übergabe ausdrücklich verlangt (Protokoll
 //     `ko.author-transfer-requested`), und seitdem gab es keine Übergabe (`ko.author-transferred`).
 //
@@ -46,11 +48,14 @@ export const UEBERGABE_ANGEFORDERT = "ko.author-transfer-requested";
 export const UEBERGABE_AUSGEFUEHRT = "ko.author-transferred";
 /** Protokollaktion des Status „Ausgeschieden“ (`AuthService.ausscheiden`; Ziel: das Konto). */
 export const KONTO_AUSGESCHIEDEN = "user.ausgeschieden";
+/** Protokollaktion: der Status „Ausgeschieden“ ist ausdrücklich beendet (Wiederfreigabe). */
+export const KONTO_AUSSCHEIDEN_BEENDET = "user.ausscheiden-beendet";
 /** Die Protokollaktionen, aus denen die Regel rechnet — und nur diese. */
 export const UEBERGABE_REGEL_AKTIONEN: readonly string[] = [
   UEBERGABE_ANGEFORDERT,
   UEBERGABE_AUSGEFUEHRT,
   KONTO_AUSGESCHIEDEN,
+  KONTO_AUSSCHEIDEN_BEENDET,
 ];
 
 export type UebergabeGrund = "konto-geloescht" | "ausgeschieden" | "angefordert";
@@ -64,7 +69,6 @@ export interface AnstehendeUebergabe {
 /** Was die Regel über ein Konto wissen muss. */
 export interface UebergabeKonto {
   id: string;
-  approved: boolean;
 }
 
 /** Was die Regel über einen Wissensbereich wissen muss (gepflegtes Bereichsprofil). */
@@ -91,25 +95,41 @@ function angefordert(
   return letzter?.action === UEBERGABE_ANGEFORDERT;
 }
 
+/** Die Konten, deren LETZTER Statusvermerk `user.ausgeschieden` ist (Ziel: das Konto). */
+export function ausgeschiedeneKonten(
+  protokoll: readonly Pick<AuditEntry, "seq" | "action" | "target">[],
+): Set<string> {
+  const letzter = new Map<string, Pick<AuditEntry, "seq" | "action">>();
+  for (const e of protokoll) {
+    if (e.action !== KONTO_AUSGESCHIEDEN && e.action !== KONTO_AUSSCHEIDEN_BEENDET) {
+      continue;
+    }
+    const bisher = letzter.get(e.target);
+    if (!bisher || bisher.seq < e.seq) {
+      letzter.set(e.target, e);
+    }
+  }
+  return new Set(
+    [...letzter].filter(([, e]) => e.action === KONTO_AUSGESCHIEDEN).map(([id]) => id),
+  );
+}
+
 export function anstehendeUebergaben(eingabe: {
   kos: readonly UebergabeObjekt[];
   konten: readonly UebergabeKonto[];
   protokoll: readonly Pick<AuditEntry, "seq" | "action" | "target">[];
   bereiche: readonly UebergabeBereich[];
 }): AnstehendeUebergabe[] {
-  const konten = new Map(eingabe.konten.map((k) => [k.id, k]));
-  const vermerkt = new Set(
-    eingabe.protokoll.filter((e) => e.action === KONTO_AUSGESCHIEDEN).map((e) => e.target),
-  );
+  const konten = new Set(eingabe.konten.map((k) => k.id));
+  const ausgeschieden = ausgeschiedeneKonten(eingabe.protokoll);
   const kritischeBereiche = new Set(
     eingabe.bereiche.filter((b) => b.criticality === "hoch").map((b) => b.category),
   );
   const out: AnstehendeUebergabe[] = [];
   for (const ko of eingabe.kos) {
-    const konto = konten.get(ko.author);
-    const grund: UebergabeGrund | null = !konto
+    const grund: UebergabeGrund | null = !konten.has(ko.author)
       ? "konto-geloescht"
-      : vermerkt.has(konto.id) && !konto.approved
+      : ausgeschieden.has(ko.author)
         ? "ausgeschieden"
         : angefordert(eingabe.protokoll, ko.id)
           ? "angefordert"

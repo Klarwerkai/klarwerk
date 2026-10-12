@@ -100,18 +100,20 @@ Umsetzung:
 
 | Punkt | Umsetzung | Grund der Abbildung |
 |---|---|---|
-| **Status** | Vermerk `user.ausgeschieden` (Nutzlast `{ vertretung }`) an einem Konto, dessen Freigabe entzogen ist. Beides schreibt `AuthService.ausscheiden` in einem Rahmen. | Eigener, ausdrücklicher Zustand ohne neue Kontospalte. Dieselbe Bauart wie der Antrag (Zustand aus dem Protokoll). Eine Sperre ohne Vermerk ist kein Ausscheiden. |
+| **Status** | Eigener Zustand mit ausdrücklichen Wechseln, unabhängig von der Freigabe. Gesetzt mit `user.ausgeschieden` (Nutzlast `{ vertretung }`), beendet mit `user.ausscheiden-beendet`. Es gilt der letzte dieser Vermerke (seit Nacharbeit 13). | Eigener, ausdrücklicher Zustand ohne neue Kontospalte. Dieselbe Bauart wie der Antrag (Zustand aus dem Protokoll). Eine Sperre ohne Vermerk ist kein Ausscheiden, und eine spätere Sperre belebt einen beendeten Status nicht wieder. |
 | **Wer setzt ihn** | `POST /api/users/:id/ausscheiden`, nur `users.manage`; sonst 403, ohne Anmeldung 401. | „Berechtigter“ = die Kontoverwaltung, dieselbe Rolle wie die übrige Kontopflege und die Autorenübergabe. |
 | **Zugang und Sitzungen** | Freigabe entzogen (`approved: false`), alle Sitzungen gelöscht. Der letzte freigegebene Admin kann nicht ausscheiden. | Vorhandene Sperre wie beim Verzeichnis-Austritt; derselbe Aussperrschutz wie beim Löschen. |
 | **Urheberschaft** | Konto, `author` und `originalAuthor` bleiben unverändert. | Daraus entsteht die wartende Autorenübergabe. |
-| **Vertretung** | Pflichtangabe; muss ein freigeschaltetes, nicht abgelaufenes anderes Konto sein (sonst 400 `VERTRETUNG_UNGUELTIG`). Offene Entwürfe, offene Lücken und offene Prüfaufgaben gehen über `Wissensuebergabe.vorgaengeUebergeben` an sie (Vermerk `lifecycle.handover`). | Vorhandene Funktion der Verantwortungsübergabe. |
+| **Vertretung** | Pflichtangabe; muss ein freigeschaltetes, nicht abgelaufenes anderes Konto sein (sonst 400 `VERTRETUNG_UNGUELTIG`). Offene Entwürfe, offene Lücken und offene Prüfaufgaben gehen über `Wissensuebergabe.vorgaengeUebergeben` an sie (Vermerk `lifecycle.handover`). Reihenfolge seit Nacharbeit 13: Vorschau, dann Übertragung, dann Status. Kann die Vertretung eine Aufgabe nicht übernehmen, antwortet die Route 409 `VERTRETUNG_UNGEEIGNET` ohne Nebenwirkung. Scheitert die Übertragung teilweise, kommt 409 `UEBERGABE_UNVOLLSTAENDIG`, und der Status bleibt ungesetzt. | Vorhandene Funktion der Verantwortungsübergabe. Keine offene Aufgabe bleibt bei einem Konto ohne Zugang. |
 | **Auslöser und Anzeige** | Grund `ausgeschieden` in `lib/autorenuebergabe.ts`; angezeigt wie die übrigen Gründe nur der Verwaltung, Priorität wie oben. | Entscheidung 24 (11.10.) und Entscheidung 1 (12.10.). |
 | **Erledigt** | Durch die vorhandene `transfer-author` (`setAuthor`, Audit `ko.author-transferred`). Danach zeigt `author` auf ein anderes Konto. | K3. |
 
 Nicht Teil der Entscheidung und deshalb nicht gebaut: ein eigener Weg, den Status wieder
-aufzuheben, und eine Bedienung in der Kontenverwaltung. Wird ein ausgeschiedenes Konto über die
-vorhandene Freigabe wieder freigeschaltet, gilt es nach der Regel nicht mehr als ausgeschieden,
-weil der Status die entzogene Freigabe voraussetzt.
+aufzuheben, und eine Bedienung in der Kontenverwaltung. Gibt ein Berechtigter ein ausgeschiedenes
+Konto über die vorhandene Freigabe wieder frei (Verwaltung `approveUser` oder Verzeichnis), endet
+der Status ausdrücklich mit dem Vermerk `user.ausscheiden-beendet`. Der Zugang ist dann wieder
+gewährt, und ein Konto mit Zugang ist nicht ausgeschieden. Ob eine Wiederfreigabe eines
+Ausgeschiedenen fachlich gewollt ist, hat Peter nicht entschieden.
 
 ## Frage an Pedi (K2, Nacharbeit 9): Was gilt als „dauerhaft ausgeschieden“? — **beantwortet am 12.10.2026 (siehe oben)**
 
@@ -439,6 +441,27 @@ Grenzen:
     der Vertretung; Aufgabe steht an, Liste = Zahl; nach `transfer-author` erledigt.
   - A10: ohne `users.manage` 403, ohne Anmeldung 401, ohne gültige Vertretung 400; eine bloße
     Sperre ohne Status löst nichts aus.
+
+## Nacharbeit 13 (Kandidat `52bfad89`): Status unabhängig von der Freigabe, Vertretung vorab geprüft
+
+- Ben, Befund 1: Der Status setzte sich aus einem beliebig alten Vermerk und `approved: false`
+  zusammen. Nach Ausscheiden, Wiederfreigabe und späterer gewöhnlicher Sperre stand die Aufgabe
+  wieder an. Korrigiert:
+  - Der Status hat jetzt ausdrückliche Wechsel: `user.ausgeschieden` setzt ihn,
+    `user.ausscheiden-beendet` beendet ihn. Den zweiten Vermerk schreiben `approveUser` und der
+    Verzeichnisweg im selben Rahmen, wenn sie ein ausgeschiedenes Konto wieder freigeben.
+  - Es gilt der letzte Vermerk (`ausgeschiedeneKonten` in `lib/autorenuebergabe.ts`,
+    `istAusgeschieden` im Auth-Dienst); `approved` spielt keine Rolle mehr.
+  - Gegenprobe A11.
+- Ben, Befund 2: Das Konto wurde gesperrt, bevor feststand, dass die Vertretung alles übernehmen
+  kann. Korrigiert:
+  - Die Route prüft zuerst ohne Schreiben: letzter Admin (`ausscheidenPruefen`) und die Vorschau
+    der Wissensübergabe. Lehnt die Vorschau etwas ab, etwa wegen einer erledigten Prüfung der
+    Vertretung, kommt 409 `VERTRETUNG_UNGEEIGNET`, und nichts ist geändert.
+  - Danach überträgt sie. Ein Teilfehler ergibt 409 `UEBERGABE_UNVOLLSTAENDIG`, und der Status
+    bleibt ungesetzt; das Konto behält Zugang und Rest.
+  - Erst danach setzt sie den Status.
+  - Gegenprobe A12.
 
 ## Nacharbeit 12 (Kandidat `53d5ef55`): A4 und mains Sichtbarkeit
 
