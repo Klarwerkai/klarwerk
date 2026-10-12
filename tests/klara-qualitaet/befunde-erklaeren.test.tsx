@@ -298,12 +298,16 @@ describe("Q1 · K1/K4 — ein Konflikt mit Quelle, Erklärung und kenntlich gema
 
   it("keine Seite belegt → „keine Grundlage“; beide belegt → „widersprüchliche Quellen“", async () => {
     const { a, s } = await app();
+    // Jeder Beitrag mit eigener Kernaussage: gleichlautende Beiträge hält die vorhandene
+    // Duplikatregel bei der Freigabe an (DUPLICATE_ACK_REQUIRED) — das ist hier nicht Gegenstand.
     const x = await eintragMitOriginal(a.app, a.admin, {
       titel: "Ölwechsel 500 h",
+      kernaussage: "Getriebeöl der Presse alle 500 Betriebsstunden wechseln.",
       ohneQuelle: true,
     });
     const y = await eintragMitOriginal(a.app, a.admin, {
       titel: "Ölwechsel 750 h",
+      kernaussage: "Hydrauliköl im Aggregat nach 750 Stunden Laufzeit erneuern.",
       ohneQuelle: true,
     });
     const kx = await s.conflicts.create({
@@ -312,10 +316,13 @@ describe("Q1 · K1/K4 — ein Konflikt mit Quelle, Erklärung und kenntlich gema
       type: "temporal",
       description: "Intervall",
     });
-    const p = await eintragMitOriginal(a.app, a.admin, { titel: "Prüfdruck 6 bar" });
+    const p = await eintragMitOriginal(a.app, a.admin, {
+      titel: "Prüfdruck 6 bar",
+      kernaussage: "Druckbehälter B2 vor Inbetriebnahme mit 6 bar abdrücken.",
+    });
     const r = await eintragMitOriginal(a.app, a.admin, {
       titel: "Prüfdruck 8 bar",
-      quelle: { label: "Herstellerblatt P-8", excerpt: "Prüfdruck 8 bar." },
+      kernaussage: "Leitungsnetz Halle Ost beim Abnahmetest auf 8 bar bringen.",
     });
     const kp = await s.conflicts.createAuto(
       { koA: p.koId, koB: r.koId, type: "truth", description: "Prüfdruck widersprüchlich" },
@@ -344,8 +351,14 @@ describe("Q1 · K1/K4 — ein Konflikt mit Quelle, Erklärung und kenntlich gema
 describe("Q2 · K1/K2 — ein Duplikat: Beziehung, Zitate und Empfehlung als Arbeitsweg", () => {
   it("erklärt die Überschneidung und schlägt den Vergleich vor — ohne Auftrag, ohne Wirkung", async () => {
     const { a, s } = await app();
-    const eins = await eintragMitOriginal(a.app, a.admin, { titel: "Filterwechsel Linie 2" });
-    const zwei = await eintragMitOriginal(a.app, a.admin, { titel: "Filter tauschen Linie 2" });
+    const eins = await eintragMitOriginal(a.app, a.admin, {
+      titel: "Filterwechsel Linie 2",
+      kernaussage: "Ansaugfilter der Linie 2 regelmäßig gegen Neuteile tauschen.",
+    });
+    const zwei = await eintragMitOriginal(a.app, a.admin, {
+      titel: "Filter tauschen Linie 2",
+      kernaussage: "Deckelschrauben am Gehäuse vor dem Öffnen kreuzweise lösen.",
+    });
     const o = await s.overlaps.createAuto(
       {
         koA: eins.koId,
@@ -396,8 +409,14 @@ describe("Q2 · K1/K2 — ein Duplikat: Beziehung, Zitate und Empfehlung als Arb
 describe("Q3 · K2 — Erklären liest nur", () => {
   it("am Draht ausschliesslich GET; Konflikt, Beiträge und Klara-Aufträge bleiben unverändert", async () => {
     const { a, s } = await app();
-    const eins = await eintragMitOriginal(a.app, a.admin, { titel: "Kühlmittel 30 %" });
-    const zwei = await eintragMitOriginal(a.app, a.admin, { titel: "Kühlmittel 40 %" });
+    const eins = await eintragMitOriginal(a.app, a.admin, {
+      titel: "Kühlmittel 30 %",
+      kernaussage: "Kühlschmierstoff der Drehbank mit 30 Prozent Konzentrat ansetzen.",
+    });
+    const zwei = await eintragMitOriginal(a.app, a.admin, {
+      titel: "Kühlmittel 40 %",
+      kernaussage: "Frostschutz im Rückkühlwerk auf vierzig Prozent Glykol einstellen.",
+    });
     const k = await s.conflicts.createAuto(
       { koA: eins.koId, koB: zwei.koId, type: "truth", description: "Kühlmittelanteil" },
       ERKANNT,
@@ -420,9 +439,13 @@ describe("Q3 · K2 — Erklären liest nur", () => {
 describe("Q4 · K4 — Sprache und persönliches Profil ändern den Wortlaut, nie das Urteil", () => {
   it("dieselben Befunde, dieselbe Grundlage, dieselben Wege in DE und EN, mit und ohne Profil", async () => {
     const { a, s } = await app();
-    const eins = await eintragMitOriginal(a.app, a.admin, { titel: "Schmierung täglich" });
+    const eins = await eintragMitOriginal(a.app, a.admin, {
+      titel: "Schmierung täglich",
+      kernaussage: "Kettenantrieb des Förderbands zu Schichtbeginn täglich fetten.",
+    });
     const zwei = await eintragMitOriginal(a.app, a.admin, {
       titel: "Schmierung wöchentlich",
+      kernaussage: "Lagerstellen der Walzen einmal pro Woche mit Fettpresse versorgen.",
       ohneQuelle: true,
     });
     const k = await s.conflicts.createAuto(
@@ -454,8 +477,14 @@ describe("Q4 · K4 — Sprache und persönliches Profil ändern den Wortlaut, ni
 describe("Q5 · K1/K4 — Quellenalter und Rechte", () => {
   async function gelesen(): Promise<{ ko: KnowledgeObject; andere: KnowledgeObject }> {
     const { a } = await app();
-    const eins = await eintragMitOriginal(a.app, a.admin, { titel: "Kalibrierung Waage W3" });
-    const zwei = await eintragMitOriginal(a.app, a.admin, { titel: "Kalibrierung Waage W4" });
+    const eins = await eintragMitOriginal(a.app, a.admin, {
+      titel: "Kalibrierung Waage W3",
+      kernaussage: "Plattformwaage W3 monatlich mit dem Prüfgewicht 20 kg justieren.",
+    });
+    const zwei = await eintragMitOriginal(a.app, a.admin, {
+      titel: "Kalibrierung Waage W4",
+      kernaussage: "Feinwaage im Labor nach jedem Standortwechsel neu nivellieren.",
+    });
     alsKonto(a.admin);
     const d1 = await ladeQualitaet(eins.koId, true);
     const d2 = await ladeQualitaet(zwei.koId, true);
