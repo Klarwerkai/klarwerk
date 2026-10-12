@@ -92,7 +92,10 @@ const DATEI_BEFUND = "[data-testid=datei-bild-befunde] [data-testid=bild-befunde
 async function bildBereitstellen(
   page: Page,
   name: string,
-): Promise<{ status: string; befunde: { status: string | null; zeile: string }[] }> {
+): Promise<{
+  status: string;
+  befunde: { status: string | null; zeile: string; text: string }[];
+}> {
   await page.goto("/erfassen?weg=datei");
   const eingang = page.locator('input[type="file"][accept*=".pptx"][accept*="image/*"]').first();
   await expect(eingang).toBeAttached({ timeout: 20_000 });
@@ -121,6 +124,9 @@ async function bildBereitstellen(
       els.map((el) => ({
         status: el.getAttribute("data-status"),
         zeile: (el.textContent ?? "").replace(/\s+/g, " ").trim(),
+        // Der erkannte Text aus seinem eigenen Element — im textContent der ganzen Zeile stossen
+        // Status, Text und Bildinhalt ohne Leerzeichen aneinander („…AUSHANG 61BILDINHALT…“).
+        text: el.querySelector("[data-testid=bild-befund-text]")?.textContent ?? "",
       })),
     );
   return { status, befunde };
@@ -184,6 +190,6 @@ test("OCR-03 · Setup Klara: Bildautomatik voreingestellt an, aus und wieder an 
   expect(aus.befunde.map((b) => b.status)).toEqual(["nicht-analysiert"]);
   expect(aus.befunde[0]?.zeile).toContain("automatisches Lesen ist ausgeschaltet");
   expect(an.befunde.map((b) => b.status)).toEqual(["gelesen"]);
-  expect(an.befunde[0]?.zeile.toUpperCase()).toMatch(/\b61\b/);
+  expect(an.befunde[0]?.text.toUpperCase()).toMatch(/\b61\b/);
   await p.context().close();
 });

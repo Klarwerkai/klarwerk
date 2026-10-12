@@ -217,6 +217,9 @@ test("OCR-03 · Klara nutzt den automatisch gelesenen Bildtext einer PowerPoint 
       els.map((el) => ({
         status: el.getAttribute("data-status"),
         zeile: (el.textContent ?? "").replace(/\s+/g, " ").trim(),
+        // Der erkannte Text aus seinem eigenen Element — im textContent der ganzen Zeile stossen
+        // Status, Text und Bildinhalt ohne Leerzeichen aneinander („…LAGER 29BILDINHALT…“).
+        text: el.querySelector("[data-testid=bild-befund-text]")?.textContent ?? "",
       })),
     );
   protokoll.befund = { ...lauf, befunde };
@@ -264,7 +267,7 @@ test("OCR-03 · Klara nutzt den automatisch gelesenen Bildtext einer PowerPoint 
 
   expect(befunde.map((b) => b.status)).toEqual(["gelesen", "gelesen"]);
   expect(befunde[1]?.zeile).toContain("Folie 2, Bild 1");
-  expect(befunde[1]?.zeile.toUpperCase()).toMatch(/\b29\b/);
+  expect(befunde[1]?.text.toUpperCase()).toMatch(/\b29\b/);
   // Die Fundstelle ist das Bild auf Folie 2 — und sie trägt den echt erkannten Text.
   expect(belege[0]?.art).toBe("bild");
   expect(belege[0]?.text).toContain(`${DECKNAME} · Folie 2, Bild 1`);
