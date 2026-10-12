@@ -9,9 +9,10 @@
 //   G2  das Bau-Plugin legt genau die Dateien ab, die die Einstellungen erwarten
 //   G3  fehlende Sprachdaten → ehrlich „nicht verfügbar", ohne Engine-Start
 //   G4  die CSP erlaubt WebAssembly, aber weder fremde Herkünfte noch `blob:`
+//   G5  die Sprachdaten deu/eng liegen in der Auslieferung (Nacharbeit 15)
 // Ob die Erkennung im Browser tatsächlich Text liefert, belegt die Browserprobe
-// `tests-smoke/ocr-technische-probe-browser.spec.ts` — sobald Sprachdaten ausgeliefert werden.
-import { mkdtempSync, writeFileSync } from "node:fs";
+// `tests-smoke/ocr-technische-probe-browser.spec.ts`.
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Fastify from "fastify";
@@ -116,5 +117,19 @@ describe("gesamt-ocr · Nacharbeit 13 · die Engine auf derselben Herkunft", () 
     expect(direktive("connect-src")).toEqual(["'self'"]);
     expect(csp).not.toContain("blob:");
     expect(csp).not.toContain("'unsafe-eval'");
+  });
+
+  it("G5 · die Auslieferung enthält die Sprachdaten der voreingestellten Sprachen (Nacharbeit 15)", () => {
+    // Gemessen in nacharbeit-15: der reguläre Bau hatte keine Sprachdaten, die Probe endete ehrlich
+    // mit „nicht verfügbar". Seitdem liegen sie in `public/` und gehen in jede Auslieferung.
+    const ordner = join(process.cwd(), "apps/web/public", OCR_SPRACHDATEN_ZIEL.slice(1));
+    for (const sprache of ["deu", "eng"]) {
+      const datei = join(ordner, `${sprache}.traineddata.gz`);
+      expect(existsSync(datei), datei).toBe(true);
+      const inhalt = readFileSync(datei);
+      // gzip-Kennung und eine Größe, die nach echten Modelldaten aussieht, nicht nach Platzhalter.
+      expect([inhalt[0], inhalt[1]], datei).toEqual([0x1f, 0x8b]);
+      expect(inhalt.length, datei).toBeGreaterThan(1_000_000);
+    }
   });
 });

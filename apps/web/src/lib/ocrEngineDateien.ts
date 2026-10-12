@@ -33,6 +33,12 @@ export const OCR_SPRACHDATEN_ZIEL = "/ocr/lang";
  *   1. als Dateien `apps/web/public/ocr/lang/<sprache>.traineddata.gz` (Vite übernimmt `public/`),
  *   2. beim Bau aus dem Verzeichnis in KLARWERK_OCR_SPRACHDATEN (alle `*.traineddata.gz` darin).
  * Fehlen sie, meldet die Anwendung beim Klick ehrlich „OCR ist derzeit nicht verfügbar".
+ *
+ * Nacharbeit 15: Der reguläre Bau hatte keinen der beiden Wege, die Browserprobe endete deshalb mit
+ * „nicht verfügbar". Seitdem liefert Weg 1 die voreingestellten Sprachen deu und eng mit
+ * (`@tesseract.js-data/deu|eng@1.0.0`, Datenfamilie 4.0.0_best_int passend zu tesseract.js 5,
+ * Apache-2.0; Beschaffung und Prüfsummen im Hilfebeleg 97b85131c73446ce). Weg 2 bleibt für weitere
+ * Sprachen.
  */
 export const OCR_SPRACHDATEN_UMGEBUNG = "KLARWERK_OCR_SPRACHDATEN";
 
