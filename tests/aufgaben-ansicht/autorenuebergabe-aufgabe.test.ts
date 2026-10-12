@@ -272,13 +272,32 @@ describe("R-0961: wartende Autorenübergabe — Auslöser, Berechtigung, Priorit
     expect(await anstehend()).toEqual([{ koId: k, grund: "angefordert", kritisch: false }]);
   });
 
-  it("A4 · verlangen dürfen Autor und Admin — ein fremder Experte bekommt 403", async () => {
-    const { ada, anna, bert, eintrag, anstehend, aktion, services } = await setup();
+  it("A4 · verlangen dürfen Autor und Admin — fremder Experte: verborgen 404, sichtbar 403", async () => {
+    const { ada, anna, bert, eintrag, lesen, anstehend, aktion, services } = await setup();
     const k = await eintrag(anna.id, "Instandhaltung");
+    expect((await lesen(`/api/kos/${k}`, bert.headers)).statusCode).toBe(404);
+    const verborgen = await aktion(k, bert.headers, { action: "request-author-transfer" });
+    const fehlend = await aktion("nicht-vorhandenes-testobjekt", bert.headers, {
+      action: "request-author-transfer",
+    });
+    expect(verborgen.statusCode).toBe(404);
+    expect(fehlend.statusCode).toBe(404);
+    expect(verborgen.json()).toEqual(fehlend.json());
+    expect(await anstehend(), "ein verborgener Antrag hat eine Aufgabe erzeugt").toEqual([]);
+    const angefordert = { action: "ko.author-transfer-requested", target: k };
+    expect(await services.audit.list(angefordert)).toHaveLength(0);
+
+    const freigabe = await aktion(k, ada.headers, {
+      action: "confidentiality",
+      level: "intern",
+    });
+    expect(freigabe.statusCode, freigabe.body).toBe(200);
+    const sichtbar = await lesen(`/api/kos/${k}`, bert.headers);
+    expect(sichtbar.statusCode, sichtbar.body).toBe(200);
+    expect(sichtbar.json().author).toBe(anna.id);
     const fremd = await aktion(k, bert.headers, { action: "request-author-transfer" });
     expect(fremd.statusCode).toBe(403);
     expect(await anstehend(), "ein abgewiesener Antrag hat eine Aufgabe erzeugt").toEqual([]);
-    const angefordert = { action: "ko.author-transfer-requested", target: k };
     expect(await services.audit.list(angefordert)).toHaveLength(0);
 
     const verwaltung = await aktion(k, ada.headers, { action: "request-author-transfer" });

@@ -440,6 +440,17 @@ Grenzen:
   - A10: ohne `users.manage` 403, ohne Anmeldung 401, ohne gültige Vertretung 400; eine bloße
     Sperre ohne Status löst nichts aus.
 
+## Nacharbeit 12 (Kandidat `53d5ef55`): A4 und mains Sichtbarkeit
+
+- Rot war nur A4: Der fremde Experte bekam 404 statt 403. Ein Objekt ohne Einstufung gilt nach
+  mains Sichtbarkeitsregel als vertraulich und ist für ihn unsichtbar. Das Zieltor der KO-Aktionen
+  antwortet deshalb mit 404, bevor die Antragsregel greift. Das ist richtig: Ein verborgenes
+  Objekt darf sich nicht durch 403 verraten.
+- Produktcode unverändert. A4 prüft jetzt beide Fälle:
+  - verborgen: 404 wie ein nicht vorhandenes Objekt, keine Aufgabe, kein Vermerk;
+  - nach Einstufung „intern“ sichtbar: 403 wie bisher, keine Aufgabe, kein Vermerk;
+  - der Admin-Antrag danach: 200 mit genau einem Vermerk.
+
 ## Unverändert (K3, K4)
 
 - `setAuthor`, `transferAuthor`, die Route `transfer-author` und das Audit `ko.author-transferred`
