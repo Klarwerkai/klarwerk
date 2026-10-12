@@ -918,7 +918,12 @@ function zielDes(a: Ausfuehrung, s: GeplanterSchritt): KlaraAuftragZiel | null {
   const quelle = a.geplant[s.erkannt.ausSchritt];
   const vorher = quelle ? serverSchritt(a, quelle.schluessel) : undefined;
   const e = vorher?.ergebnis;
-  if (!e || (vorher?.stand !== "gespeichert" && vorher?.stand !== "abgeschlossen")) {
+  // Klara 07: eine persönliche Aufgabe ist kein Ziel des Öffnen-Wegs — dieselbe Regel wie am Server.
+  if (
+    !e ||
+    e.art === "persoenliche_aufgabe" ||
+    (vorher?.stand !== "gespeichert" && vorher?.stand !== "abgeschlossen")
+  ) {
     return null;
   }
   return { art: e.art, id: e.id, titel: e.titel, stand: e.stand, pfad: e.pfad };

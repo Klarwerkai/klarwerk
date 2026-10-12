@@ -243,8 +243,12 @@ export class KlaraAusfuehrung {
     if (p.ausSchritt !== null) {
       const quelle = a.schritte.find((s) => s.nr === p.ausSchritt);
       const e = quelle?.ergebnis;
+      // Klara 07: eine persönliche Aufgabe ist kein Ziel dieses Öffnen-Wegs (`bestaetige` kennt
+      // Wissensobjekt, Entwurf und gemeinsame Aufgabe) — sie wird an ihrem Ort geöffnet.
       ziel =
-        e && (quelle?.stand === "gespeichert" || quelle?.stand === "abgeschlossen")
+        e &&
+        e.art !== "persoenliche_aufgabe" &&
+        (quelle?.stand === "gespeichert" || quelle?.stand === "abgeschlossen")
           ? { art: e.art, id: e.id, titel: e.titel, stand: e.stand, pfad: e.pfad }
           : null;
     }
