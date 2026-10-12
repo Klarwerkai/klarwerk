@@ -24,6 +24,8 @@ import {
   ocrAbschnittText,
   ocrAbschnitte,
   ocrAbschnitteFuerEntwurf,
+  ocrErsetztOhne,
+  ocrUebernahmeErsetzt,
 } from "../../apps/web/src/lib/interviewKontext";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { InMemoryDraftRepo } from "../../services/capture/src/repo";
@@ -292,6 +294,43 @@ describe("gesamt-ocr · Nacharbeit 11 · Rohtext UND Aussage sind sichtbare Feld
     expect(ocrAbschnitteFuerEntwurf(gesichert, ["", aussage])).toEqual(gesichert);
     expect(gesicherteOhneRohtext(gesichert, ["", aussage])).toEqual([]);
     expect(gesicherteOhneRohtext(gesichert, ["", "Andere Aussage."])).toEqual(gesichert);
+  });
+});
+
+describe("gesamt-ocr · Nacharbeit 16 · nach der Übernahme zählt die Kopie", () => {
+  const block = ocrAbschnittText("aushang.png", ERKANNT);
+  const korrigiert = ERKANNT.replace("V3", "V8");
+
+  it("K10 · Rohtext → Aussage: Korrektur und Löschung in der Kopie gelten, die Quelle zählt nicht", () => {
+    const ersetzt = ocrUebernahmeErsetzt([], 0, block, 1);
+    const aussageKorrigiert = ocrAbschnittText("aushang.png", korrigiert);
+    expect(interviewKontext([block, aussageKorrigiert], [], ersetzt)).toBe(
+      `[aushang.png]\n${korrigiert}`,
+    );
+    expect(interviewKontext([block, "Nur noch eigener Text."], [], ersetzt)).toBe("");
+    expect(ocrAbschnitteFuerEntwurf([], [block, "Nur noch eigener Text."], ersetzt)).toEqual([]);
+    // Ohne Markierung (vorher): beide Fassungen bzw. die gelöschte reisten mit.
+    expect(interviewKontext([block, "Nur noch eigener Text."])).toContain(ERKANNT);
+  });
+
+  it("K11 · unabhängige und neu erkannte Abschnitte bleiben; Rückkopie zählt im neuen Feld", () => {
+    const ersetzt = ocrUebernahmeErsetzt([], 0, block, 1);
+    const neu = ocrAbschnittText("notiz.jpg", "Filter F1 monatlich tauschen.");
+    expect(interviewKontext([`${block}\n${neu}`, ""], [], ersetzt)).toBe(
+      "[notiz.jpg]\nFilter F1 monatlich tauschen.",
+    );
+    // Dieselbe Erkennung noch einmal: der frische Abschnitt zählt wieder.
+    const frisch = ocrErsetztOhne(ersetzt, "aushang.png", ERKANNT);
+    expect(interviewKontext([block, ""], [], frisch)).toBe(`[aushang.png]\n${ERKANNT}`);
+    // Aussage → Rohtext zurück, unverändert: der Abschnitt zählt genau einmal (im Rohtext).
+    const zurueck = ocrUebernahmeErsetzt(ersetzt, 1, block, 0);
+    expect(interviewKontext([block, block], [], zurueck)).toBe(`[aushang.png]\n${ERKANNT}`);
+  });
+
+  it("K12 · Fortsetzen: gesicherte Abschnitte gegen die maßgeblichen Felder abgeglichen", () => {
+    const ersetzt = ocrUebernahmeErsetzt([], 0, block, 1);
+    const gesichert = [{ name: "aushang.png", text: korrigiert }];
+    expect(gesicherteOhneRohtext(gesichert, [block, ""], ersetzt)).toEqual(gesichert);
   });
 });
 

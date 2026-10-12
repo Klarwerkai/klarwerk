@@ -118,23 +118,79 @@ export function ocrAbschnitte(raw: string): OcrAbschnitt[] {
 // `ocrAbschnitte`. Jetzt nehmen alle drei Funktionen die FELDER entgegen (Rohtext und Aussage) und
 // lesen jedes für sich (ein Feld mit fehlender Endzeile kann das andere nicht verschlucken). Ein
 // Abschnitt, der in beiden Feldern steht — der Moduswechsel übernimmt Text zwischen ihnen —, zählt
-// EINMAL. Gelesen wird immer der aktuelle Inhalt; Korrekturen und Löschungen wirken sofort, eine
-// zweite, veraltende Kopie entsteht nicht.
+// EINMAL. Gelesen wird immer der aktuelle Inhalt. Dass eine KORRIGIERTE oder GELÖSCHTE Kopie die
+// alte Quelle ablöst, regelt erst Nacharbeit 16 (unten).
 
 /** Ein Feld oder mehrere — Rohtext und Aussage, so wie sie gerade dastehen. */
 export type SichtbareFelder = string | readonly string[];
 
+// ================================================================================================
+// Nacharbeit 16 (Bens Befund) — NACH DER ÜBERNAHME ZÄHLT DIE KOPIE, NICHT DIE ALTE QUELLE.
+// ================================================================================================
+//
+// Der Moduswechsel kopiert den Rohtext in die leere Aussage (und umgekehrt), die Quelle bleibt
+// dabei stehen. Bis hierher zählten beide Felder: eine in der Aussage korrigierte Fassung reiste
+// NEBEN der alten, und eine dort gelöschte lebte aus dem Rohtext weiter. Die Deduplizierung über
+// Name und Text half nur bei identischen Fassungen.
+//
+// Jetzt merkt sich die Seite bei JEDER Übernahme, welche Abschnitte des Quellfeldes durch die Kopie
+// ersetzt sind (`ocrUebernahmeErsetzt`). Diese Abschnitte zählen im Quellfeld nicht mehr — die Kopie
+// ist die maßgebliche Fassung, mit allen Korrekturen und Löschungen. Was danach NEU im Quellfeld
+// entsteht (eine weitere Erkennung oder eine eigene Änderung am alten Block), hat einen anderen
+// Schlüssel und zählt wieder: unabhängige Abschnitte bleiben erhalten.
+
+/** Je Feld (Reihenfolge wie die Felder) die Schlüssel der durch Übernahme ersetzten Abschnitte. */
+export type OcrErsetzt = readonly (readonly string[] | undefined)[];
+
 const schluessel = (a: OcrAbschnitt): string => `${a.name}\n${a.text.trim()}`;
 
+/**
+ * Nach einer Übernahme aus Feld `von` (Inhalt `quelle`) in Feld `nach`: alle Abschnitte, die gerade
+ * in der Quelle stehen, gelten dort als ersetzt. Das Zielfeld bekommt neuen Inhalt — seine früheren
+ * Markierungen gelten nicht mehr (sonst zählte ein unverändert zurückkopierter Abschnitt nirgends).
+ */
+export function ocrUebernahmeErsetzt(
+  ersetzt: OcrErsetzt,
+  von: number,
+  quelle: string,
+  nach: number,
+): OcrErsetzt {
+  const neu = [...ersetzt];
+  while (neu.length <= Math.max(von, nach)) {
+    neu.push(undefined);
+  }
+  const bisher = neu[von] ?? [];
+  const dazu = ocrAbschnitte(quelle)
+    .map(schluessel)
+    .filter((s) => !bisher.includes(s));
+  neu[von] = [...bisher, ...dazu];
+  neu[nach] = undefined;
+  return neu;
+}
+
+/**
+ * Eine neue Erkennung schreibt einen frischen Abschnitt — der zählt, auch wenn ein gleichlautender
+ * früher durch eine Übernahme ersetzt wurde.
+ */
+export function ocrErsetztOhne(ersetzt: OcrErsetzt, bild: string, erkannt: string): OcrErsetzt {
+  const frisch = new Set(ocrAbschnitte(ocrAbschnittText(bild, erkannt)).map(schluessel));
+  return ersetzt.map((liste) => liste?.filter((s) => !frisch.has(s)));
+}
+
 /** Die erkannten Abschnitte aller sichtbaren Felder, jeder Abschnitt einmal, in Feldreihenfolge. */
-export function ocrAbschnitteDerFelder(felder: SichtbareFelder): OcrAbschnitt[] {
+export function ocrAbschnitteDerFelder(
+  felder: SichtbareFelder,
+  ersetzt: OcrErsetzt = [],
+): OcrAbschnitt[] {
   const liste = typeof felder === "string" ? [felder] : felder;
   const gesehen = new Set<string>();
   const ergebnis: OcrAbschnitt[] = [];
-  for (const feld of liste) {
+  for (const [index, feld] of liste.entries()) {
+    const ersetztHier = new Set(ersetzt[index] ?? []);
     for (const abschnitt of ocrAbschnitte(feld)) {
-      if (!gesehen.has(schluessel(abschnitt))) {
-        gesehen.add(schluessel(abschnitt));
+      const s = schluessel(abschnitt);
+      if (!ersetztHier.has(s) && !gesehen.has(s)) {
+        gesehen.add(s);
         ergebnis.push(abschnitt);
       }
     }
@@ -144,13 +200,14 @@ export function ocrAbschnitteDerFelder(felder: SichtbareFelder): OcrAbschnitt[] 
 
 /**
  * Was der Entwurf als `ocrAbschnitte` sichert: die gesicherten (beim Fortsetzen nicht wieder
- * sichtbar gewordenen) und die in den sichtbaren Feldern stehenden Abschnitte — jeder einmal.
+ * sichtbar gewordenen) und die in den sichtbaren Feldern maßgeblichen Abschnitte — jeder einmal.
  */
 export function ocrAbschnitteFuerEntwurf(
   gesichert: readonly OcrAbschnitt[],
   felder: SichtbareFelder,
+  ersetzt: OcrErsetzt = [],
 ): OcrAbschnitt[] {
-  const sichtbar = ocrAbschnitteDerFelder(felder);
+  const sichtbar = ocrAbschnitteDerFelder(felder, ersetzt);
   const imFeld = new Set(sichtbar.map(schluessel));
   const mitInhalt = gesichert.filter((a) => a.text.trim().length > 0);
   const unsichtbar = mitInhalt.filter((a) => !imFeld.has(schluessel(a)));
@@ -164,8 +221,9 @@ export function ocrAbschnitteFuerEntwurf(
 export function gesicherteOhneRohtext(
   gespeichert: readonly OcrAbschnitt[],
   felder: SichtbareFelder,
+  ersetzt: OcrErsetzt = [],
 ): OcrAbschnitt[] {
-  const imFeld = new Set(ocrAbschnitteDerFelder(felder).map(schluessel));
+  const imFeld = new Set(ocrAbschnitteDerFelder(felder, ersetzt).map(schluessel));
   return gespeichert.filter((a) => !imFeld.has(schluessel(a)));
 }
 
@@ -173,8 +231,9 @@ export function gesicherteOhneRohtext(
 export function interviewKontext(
   felder: SichtbareFelder,
   gesichert: readonly OcrAbschnitt[] = [],
+  ersetzt: OcrErsetzt = [],
 ): string {
-  return ocrAbschnitteFuerEntwurf(gesichert, felder)
+  return ocrAbschnitteFuerEntwurf(gesichert, felder, ersetzt)
     .map((a) => `[${a.name}]\n${a.text.trim()}`)
     .join("\n\n");
 }

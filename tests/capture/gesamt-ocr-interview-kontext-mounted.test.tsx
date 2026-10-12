@@ -472,7 +472,83 @@ describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführt
     const kontext = await starteInterview();
     expect(kontext).toBe("");
   });
+
+  // Nacharbeit 16 (Bens Befund): erkannt im Erzählen, der Wechsel ins Formular KOPIERT den Block in
+  // die Aussage, der Rohtext behält ihn. Ab da ist die Kopie maßgeblich — Korrektur und Löschung dort
+  // gelten für Interview und Entwurf, die stehen gebliebene Quelle zählt nicht mehr.
+  it("I12 · Übernahme ins Formular: die Korrektur in der Aussage gilt, die alte Fassung reist nicht mit", async () => {
+    await erkenneImErzaehlenUndWechsleInsFormular();
+    const korrigiert = ERKANNT.replace("V3", "V8");
+    await tippe(aussageFeld(), aussageFeld().value.replace(ERKANNT, korrigiert));
+    const kontext = await starteInterview();
+    expect(kontext).toContain(korrigiert);
+    expect(kontext).not.toContain(ERKANNT);
+    expect(kontext.split(korrigiert)).toHaveLength(2);
+  });
+
+  it("I13 · Übernahme ins Formular: in der Aussage gelöscht heißt aus dem Interview verschwunden", async () => {
+    await erkenneImErzaehlenUndWechsleInsFormular();
+    await tippe(aussageFeld(), "Nur noch eigener Text.");
+    const kontext = await starteInterview();
+    expect(kontext).toBe("");
+  });
+
+  it("I14 · Übernahme, Korrektur, gespeichert und fortgesetzt — nur die korrigierte Fassung", async () => {
+    await erkenneImErzaehlenUndWechsleInsFormular();
+    const korrigiert = ERKANNT.replace("V3", "V8");
+    await tippe(aussageFeld(), aussageFeld().value.replace(ERKANNT, korrigiert));
+    await entferneBild();
+    await speichereUeberWache();
+    expect(steuerung.angelegt).toHaveLength(1);
+    expect(steuerung.angelegt[0]?.ocrAbschnitte).toEqual([
+      { name: "aushang.png", text: korrigiert },
+    ]);
+
+    await neuOeffnenUndFortsetzen();
+    const kontext = await starteInterview();
+    expect(kontext).toContain(korrigiert);
+    expect(kontext).not.toContain(ERKANNT);
+  });
+
+  it("I15 · Übernahme, Löschung, gespeichert und fortgesetzt — der gelöschte Text kommt nicht zurück", async () => {
+    await erkenneImErzaehlenUndWechsleInsFormular();
+    await tippe(aussageFeld(), "Nur noch eigener Text.");
+    await entferneBild();
+    await speichereUeberWache();
+    expect(steuerung.angelegt).toHaveLength(1);
+    expect(steuerung.angelegt[0]?.ocrAbschnitte).toBeUndefined();
+
+    await neuOeffnenUndFortsetzen();
+    const kontext = await starteInterview();
+    expect(kontext).not.toContain(ERKANNT);
+    expect(kontext).toBe("");
+  });
+
+  it("I16 · Übernahme: ein danach im Erzählen NEU erkannter Abschnitt bleibt erhalten", async () => {
+    await erkenneImErzaehlenUndWechsleInsFormular();
+    const korrigiert = ERKANNT.replace("V3", "V8");
+    await tippe(aussageFeld(), aussageFeld().value.replace(ERKANNT, korrigiert));
+    // Zurück ins Erzählen (der Rohtext ist nicht leer, also keine Rückkopie) und weiter erkennen.
+    await waehleModus("freitext");
+    const weiter = "Filter F1 monatlich tauschen.";
+    steuerung.ocr.mockResolvedValue({ status: "success", text: weiter });
+    await klicke(knopf(i18n.t("capture.ocr")));
+    expect(rohtextFeld().value).toContain(weiter);
+
+    const kontext = await starteInterview();
+    expect(kontext).toContain(weiter);
+    expect(kontext).toContain(korrigiert);
+    expect(kontext).not.toContain(ERKANNT);
+  });
 });
+
+/** Im Erzählen erkennen, dann ins Formular — der Wechsel kopiert den Block in die Aussage. */
+async function erkenneImErzaehlenUndWechsleInsFormular(): Promise<void> {
+  await erkenneBild();
+  expect(rohtextFeld().value).toContain(ERKANNT);
+  await waehleModus("formular");
+  expect(aussageFeld().value).toContain(ERKANNT);
+}
 
 /** Das Formularfeld „Aussage" — an seiner sichtbaren Beschriftung gefunden (wie im Hauptstand). */
 function aussageFeld(): HTMLTextAreaElement {
