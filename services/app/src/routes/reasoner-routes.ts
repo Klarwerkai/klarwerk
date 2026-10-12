@@ -671,13 +671,18 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // wartende alte Frage übernahm so die neue Epoche. Jetzt die Eingangsepoche, und vor dem Dienst
         // geprüft; zwischen `kiSperreVorFrage` und dem Einstieg in `ask.ask` liegt kein `await`.
         const kiBeginn = kiEingang;
+        // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 8): die Grundlage ist, was DIESER
+        // Fragende sehen darf — dieselbe Regel wie `/api/ask` (ask-routes.ts, `grundlage`), samt
+        // führendem Space. Ohne sie nahm der Dienst die GESAMTE Vorauswahl, und ein internes,
+        // validiertes Objekt aus einem gesperrten Space konnte Antwortgrundlage und Quelle werden.
+        // Synchron vorbereitet: zwischen `kiSperreVorFrage` und `ask.ask` liegt weiter kein `await`.
+        // R-1175: dieselbe Grundlage wie `/api/ask` — nur, was DIESER Fragende sehen darf. Bis
+        // hierher lief dieser Weg ohne sie und sah damit fremde Spaces, die `/api/ask` verbirgt.
+        // R-0278 (Nacharbeit 3, ben): derselbe Prüfstand wie `/api/ask` — Ungeprüftes wird auch
+        // über diesen Task nie Antwortgrundlage („für alle Wege gleich").
+        const grundlage = sichtbarkeitsfilterFuer(user);
         try {
           ask.kiSperreVorFrage(kiBeginn);
-          // R-1175: dieselbe Grundlage wie `/api/ask` — nur, was DIESER Fragende sehen darf. Bis
-          // hierher lief dieser Weg ohne sie und sah damit fremde Spaces, die `/api/ask` verbirgt.
-          // R-0278 (Nacharbeit 3, ben): derselbe Prüfstand wie `/api/ask` — Ungeprüftes wird auch
-          // über diesen Task nie Antwortgrundlage („für alle Wege gleich").
-          const grundlage = sichtbarkeitsfilterFuer(user);
           const antwort = gebundenOhneFreigabe
             ? await ask.ask(
                 text ?? "",

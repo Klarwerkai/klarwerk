@@ -26,6 +26,13 @@ export interface SpeechRec {
   onend: (() => void) | null;
   /** Der Browser reicht ein Ereignis mit `error` („not-allowed“, „no-speech“ …) — wer will, liest es. */
   onerror: ((e?: { error?: string }) => void) | null;
+  /**
+   * produkt:20261010:assistenz-name-avatar: Der Browser bestätigt, dass er tatsächlich Ton aufnimmt
+   * (`audiostart`, erst nach erteilter Mikrofonberechtigung) bzw. damit aufgehört hat (`audioend`).
+   * `start()` ist nur die Anforderung. Optional — wer die Ereignisse nicht braucht, setzt sie nicht.
+   */
+  onaudiostart?: (() => void) | null;
+  onaudioend?: (() => void) | null;
 }
 interface SpeechResultEvent {
   resultIndex: number;

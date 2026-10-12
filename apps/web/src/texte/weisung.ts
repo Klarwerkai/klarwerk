@@ -1,0 +1,195 @@
+// ================================================================================================
+// AUFNAHME 20260922 · gesamt-wissen-herkunft — WEISUNG (Entscheidungen 18/19) UND EXTERNE FREIGABE
+// (Entscheidung 27, Peter 11.10.2026).
+// ================================================================================================
+//
+// Die Sätze, mit denen die Oberfläche zwei Wege zeigt, auf denen ein Eintrag ohne Vier-Augen-
+// Prüfung gültig wird — und zwar MIT ihrer Herkunft: die befugte Weisung samt nachfolgender
+// Sichtung und die übernommene externe Freigabe samt bestätigter interner Anwendbarkeit. Die
+// Vergabe der Weisungsbefugnis am Konto pflegt seit der Integration (Nacharbeit 12) allein die
+// Kontenkarte aus Aufnahme gesamt-peer-validierung — ihre Texte stehen dort.
+import type { Textmodul } from "./intern/pruefung";
+
+export default {
+  praefix: "weisung.",
+  legacySchluessel: [],
+  de: {
+    "weisung.marke.gesetzt": "Weisung von {{name}} am {{zeit}} · Bereich „{{bereich}}“",
+    "weisung.marke.fruehereFassung": "galt Fassung v{{fassung}}",
+    "weisung.marke.sichtungOffen": "Sichtung durch {{name}} bis {{frist}} — offen",
+    "weisung.marke.sichtungUeberfaellig": "Sichtung durch {{name}} bis {{frist}} — überfällig",
+    "weisung.marke.gesichtet": "Gesichtet von {{name}} am {{zeit}}",
+    "weisung.marke.vermerk": "Vermerk: {{vermerk}}",
+    "weisung.marke.bestehenGelassen_one":
+      "{{count}} betroffener Punkt ausdrücklich bestehen gelassen",
+    "weisung.marke.bestehenGelassen_other":
+      "{{count}} betroffene Punkte ausdrücklich bestehen gelassen",
+    "weisung.marke.sichten": "Als gesichtet bestätigen",
+    "weisung.marke.abschlussOffen_one":
+      "Abschluss unvollständig: {{count}} überstimmter Punkt ist noch nicht geschlossen bzw. entschieden",
+    "weisung.marke.abschlussOffen_other":
+      "Abschluss unvollständig: {{count}} überstimmte Punkte sind noch nicht geschlossen bzw. entschieden",
+    "weisung.marke.abschlussNachholen": "Abschluss nachholen",
+    "weisung.menue.setzen": "Als Weisung gültig setzen",
+    "weisung.dialog.titel": "Als Weisung gültig setzen",
+    "weisung.dialog.erklaerung":
+      "Der Eintrag gilt sofort als geprüft — ohne Vier-Augen-Prüfung, mit Ihnen als befugter Herkunft. Eine andere Person sichtet ihn danach bis zur Frist.",
+    "weisung.dialog.verantwortlich": "Sichtung durch",
+    "weisung.dialog.frist": "Sichten bis",
+    "weisung.dialog.waehlen": "Person wählen",
+    "weisung.dialog.punkteTitel": "Betroffene Punkte — jeden einzeln entscheiden",
+    "weisung.dialog.punktHinweis":
+      "Überstimmen Sie einen Punkt (er wird geschlossen, nicht gelöscht; Inhalt und Herkunft bleiben) — oder lassen Sie ihn ausdrücklich bestehen.",
+    "weisung.dialog.punktBestehen": "bleibt bestehen",
+    "weisung.dialog.punktUeberstimmen": "überstimmen und schließen",
+    "weisung.dialog.keineKandidaten":
+      "Niemand außer Ihnen kann diesen Eintrag lesen und sichten. Klären Sie erst den Zugang (Space, Vertraulichkeit).",
+    "weisung.geschlossen.hinweis":
+      "Durch Weisung überstimmt und geschlossen am {{zeit}} — gilt nicht mehr. Inhalt, Fassungen und Herkunft bleiben erhalten.",
+    "weisung.dialog.setzen": "Weisung setzen",
+    "weisung.dialog.abbrechen": "Abbrechen",
+    "weisung.dialog.fehltAngabe": "Bitte Person und Frist der Sichtung angeben.",
+    "weisung.extern.menue": "Externe Freigabe übernehmen",
+    "weisung.extern.dialogTitel": "Externe Freigabe übernehmen",
+    "weisung.extern.erklaerung":
+      "Die externe Freigabe und ihre Herkunft werden übernommen. Sie bestätigen nur, dass der Inhalt hier gilt und wer zuständig ist — keine zweite Inhaltsprüfung.",
+    "weisung.extern.art": "Art",
+    "weisung.extern.artWissen": "Wissen aus dem Dokument übernehmen",
+    "weisung.extern.artReferenz": "Ganzes Dokument als externe Referenz",
+    "weisung.extern.herausgeber": "Extern freigegeben von (Herausgeber)",
+    "weisung.extern.freigegebenAm": "Extern freigegeben am",
+    "weisung.extern.kennungFeld": "Freigabe- oder Dokumentkennung (optional)",
+    "weisung.extern.vonFeld": "Freigebende Person (optional)",
+    "weisung.extern.nachweisFeld": "Nachweis-Adresse (optional)",
+    "weisung.extern.zustaendig": "Intern zuständig",
+    "weisung.extern.anwendbar": "Ich bestätige: der Inhalt gilt hier im Bereich „{{bereich}}“.",
+    "weisung.extern.uebernehmen": "Übernehmen",
+    "weisung.extern.fehltAngabe":
+      "Bitte Herausgeber, Datum, Zuständigkeit und die Bestätigung der Anwendbarkeit angeben.",
+    "weisung.extern.referenz": "Externe Referenz",
+    "weisung.extern.freigabe": "Externe Freigabe: {{herausgeber}}, freigegeben am {{datum}}",
+    "weisung.extern.kennung": "Kennung {{kennung}}",
+    "weisung.extern.von": "durch {{von}}",
+    "weisung.extern.nachweis": "Nachweis: {{nachweis}}",
+    "weisung.extern.bestaetigt":
+      "Intern anwendbar bestätigt von {{name}} am {{zeit}} · Bereich „{{geltung}}“ · zuständig: {{zustaendig}}",
+  },
+  en: {
+    "weisung.marke.gesetzt": "Directive by {{name}} on {{zeit}} · area “{{bereich}}”",
+    "weisung.marke.fruehereFassung": "applied to version v{{fassung}}",
+    "weisung.marke.sichtungOffen": "Review by {{name}} due {{frist}} — open",
+    "weisung.marke.sichtungUeberfaellig": "Review by {{name}} due {{frist}} — overdue",
+    "weisung.marke.gesichtet": "Reviewed by {{name}} on {{zeit}}",
+    "weisung.marke.vermerk": "Note: {{vermerk}}",
+    "weisung.marke.bestehenGelassen_one": "{{count}} affected point explicitly kept",
+    "weisung.marke.bestehenGelassen_other": "{{count}} affected points explicitly kept",
+    "weisung.marke.sichten": "Confirm review",
+    "weisung.marke.abschlussOffen_one":
+      "Completion incomplete: {{count}} overruled point is not yet closed or decided",
+    "weisung.marke.abschlussOffen_other":
+      "Completion incomplete: {{count}} overruled points are not yet closed or decided",
+    "weisung.marke.abschlussNachholen": "Complete now",
+    "weisung.menue.setzen": "Set as valid directive",
+    "weisung.dialog.titel": "Set as valid directive",
+    "weisung.dialog.erklaerung":
+      "The entry counts as reviewed immediately — without peer review, with you as its authorised source. Another person reviews it afterwards by the due date.",
+    "weisung.dialog.verantwortlich": "Reviewed by",
+    "weisung.dialog.frist": "Review due",
+    "weisung.dialog.waehlen": "Choose a person",
+    "weisung.dialog.punkteTitel": "Affected points — decide each one",
+    "weisung.dialog.punktHinweis":
+      "Overrule a point (it is closed, not deleted; content and source remain) — or keep it explicitly.",
+    "weisung.dialog.punktBestehen": "stays in place",
+    "weisung.dialog.punktUeberstimmen": "overrule and close",
+    "weisung.dialog.keineKandidaten":
+      "Nobody but you can read and review this entry. Clarify access first (space, confidentiality).",
+    "weisung.geschlossen.hinweis":
+      "Overruled by directive and closed on {{zeit}} — no longer applies. Content, versions and source are kept.",
+    "weisung.dialog.setzen": "Set directive",
+    "weisung.dialog.abbrechen": "Cancel",
+    "weisung.dialog.fehltAngabe": "Please name the reviewer and the due date.",
+    "weisung.extern.menue": "Adopt external approval",
+    "weisung.extern.dialogTitel": "Adopt external approval",
+    "weisung.extern.erklaerung":
+      "The external approval and its source are adopted. You only confirm that the content applies here and who is responsible — no second content review.",
+    "weisung.extern.art": "Kind",
+    "weisung.extern.artWissen": "Adopt the knowledge from the document",
+    "weisung.extern.artReferenz": "Whole document as external reference",
+    "weisung.extern.herausgeber": "Externally approved by (issuer)",
+    "weisung.extern.freigegebenAm": "Externally approved on",
+    "weisung.extern.kennungFeld": "Approval or document ID (optional)",
+    "weisung.extern.vonFeld": "Approving person (optional)",
+    "weisung.extern.nachweisFeld": "Evidence address (optional)",
+    "weisung.extern.zustaendig": "Internally responsible",
+    "weisung.extern.anwendbar": "I confirm: the content applies here in the area “{{bereich}}”.",
+    "weisung.extern.uebernehmen": "Adopt",
+    "weisung.extern.fehltAngabe":
+      "Please give the issuer, date, responsibility and the confirmation of applicability.",
+    "weisung.extern.referenz": "External reference",
+    "weisung.extern.freigabe": "External approval: {{herausgeber}}, approved on {{datum}}",
+    "weisung.extern.kennung": "ID {{kennung}}",
+    "weisung.extern.von": "by {{von}}",
+    "weisung.extern.nachweis": "Evidence: {{nachweis}}",
+    "weisung.extern.bestaetigt":
+      "Applicability confirmed by {{name}} on {{zeit}} · area “{{geltung}}” · responsible: {{zustaendig}}",
+  },
+  nl: {
+    "weisung.marke.gesetzt": "Instructie van {{name}} op {{zeit}} · gebied “{{bereich}}”",
+    "weisung.marke.fruehereFassung": "gold voor versie v{{fassung}}",
+    "weisung.marke.sichtungOffen": "Beoordeling door {{name}} vóór {{frist}} — open",
+    "weisung.marke.sichtungUeberfaellig": "Beoordeling door {{name}} vóór {{frist}} — te laat",
+    "weisung.marke.gesichtet": "Beoordeeld door {{name}} op {{zeit}}",
+    "weisung.marke.vermerk": "Notitie: {{vermerk}}",
+    "weisung.marke.bestehenGelassen_one": "{{count}} betrokken punt uitdrukkelijk behouden",
+    "weisung.marke.bestehenGelassen_other": "{{count}} betrokken punten uitdrukkelijk behouden",
+    "weisung.marke.sichten": "Beoordeling bevestigen",
+    "weisung.marke.abschlussOffen_one":
+      "Afronding onvolledig: {{count}} overstemd punt is nog niet gesloten of beslist",
+    "weisung.marke.abschlussOffen_other":
+      "Afronding onvolledig: {{count}} overstemde punten zijn nog niet gesloten of beslist",
+    "weisung.marke.abschlussNachholen": "Afronding inhalen",
+    "weisung.menue.setzen": "Als geldige instructie vastleggen",
+    "weisung.dialog.titel": "Als geldige instructie vastleggen",
+    "weisung.dialog.erklaerung":
+      "Het item geldt meteen als gecontroleerd — zonder vier-ogencontrole, met u als bevoegde herkomst. Een andere persoon beoordeelt het daarna vóór de termijn.",
+    "weisung.dialog.verantwortlich": "Beoordeling door",
+    "weisung.dialog.frist": "Beoordelen vóór",
+    "weisung.dialog.waehlen": "Persoon kiezen",
+    "weisung.dialog.punkteTitel": "Betrokken punten — elk afzonderlijk beslissen",
+    "weisung.dialog.punktHinweis":
+      "Overstem een punt (het wordt gesloten, niet verwijderd; inhoud en herkomst blijven) — of behoud het uitdrukkelijk.",
+    "weisung.dialog.punktBestehen": "blijft bestaan",
+    "weisung.dialog.punktUeberstimmen": "overstemmen en sluiten",
+    "weisung.dialog.keineKandidaten":
+      "Niemand behalve u kan dit item lezen en beoordelen. Regel eerst de toegang (space, vertrouwelijkheid).",
+    "weisung.geschlossen.hinweis":
+      "Door instructie overstemd en gesloten op {{zeit}} — geldt niet meer. Inhoud, versies en herkomst blijven bewaard.",
+    "weisung.dialog.setzen": "Instructie vastleggen",
+    "weisung.dialog.abbrechen": "Annuleren",
+    "weisung.dialog.fehltAngabe": "Geef de beoordelaar en de termijn op.",
+    "weisung.extern.menue": "Externe goedkeuring overnemen",
+    "weisung.extern.dialogTitel": "Externe goedkeuring overnemen",
+    "weisung.extern.erklaerung":
+      "De externe goedkeuring en haar herkomst worden overgenomen. U bevestigt alleen dat de inhoud hier geldt en wie verantwoordelijk is — geen tweede inhoudelijke controle.",
+    "weisung.extern.art": "Soort",
+    "weisung.extern.artWissen": "Kennis uit het document overnemen",
+    "weisung.extern.artReferenz": "Volledig document als externe referentie",
+    "weisung.extern.herausgeber": "Extern goedgekeurd door (uitgever)",
+    "weisung.extern.freigegebenAm": "Extern goedgekeurd op",
+    "weisung.extern.kennungFeld": "Goedkeurings- of documentkenmerk (optioneel)",
+    "weisung.extern.vonFeld": "Goedkeurende persoon (optioneel)",
+    "weisung.extern.nachweisFeld": "Adres van het bewijs (optioneel)",
+    "weisung.extern.zustaendig": "Intern verantwoordelijk",
+    "weisung.extern.anwendbar": "Ik bevestig: de inhoud geldt hier in het gebied “{{bereich}}”.",
+    "weisung.extern.uebernehmen": "Overnemen",
+    "weisung.extern.fehltAngabe":
+      "Geef de uitgever, datum, verantwoordelijke en de bevestiging van de toepasbaarheid op.",
+    "weisung.extern.referenz": "Externe referentie",
+    "weisung.extern.freigabe": "Externe goedkeuring: {{herausgeber}}, goedgekeurd op {{datum}}",
+    "weisung.extern.kennung": "Kenmerk {{kennung}}",
+    "weisung.extern.von": "door {{von}}",
+    "weisung.extern.nachweis": "Bewijs: {{nachweis}}",
+    "weisung.extern.bestaetigt":
+      "Toepasbaarheid bevestigd door {{name}} op {{zeit}} · gebied “{{geltung}}” · verantwoordelijk: {{zustaendig}}",
+  },
+} satisfies Textmodul;

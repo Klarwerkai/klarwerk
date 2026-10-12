@@ -1,4 +1,5 @@
 import i18n from "i18next";
+import { RECHTEKONTEXT_KOPF, anfrageEpoche, rechtekontextGesehen } from "../lib/rechtekontext";
 import { gespeicherteSprache } from "../lib/sprachwahl";
 
 // Typisierter API-Client gegen die Modul-Endpunkte (gleiche Origin, /api).
@@ -36,7 +37,14 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
 
+  const beginn = anfrageEpoche();
   const res = await fetch(`${BASE}${path}`, { credentials: "include", ...init, headers });
+  // produkt:20261011:peter-p14 (K6/K7): der Rechtekontext dieser Antwort — ändert er sich, verwirft
+  // `RechtekontextWache` alle Inhaltsabfragen. Antworten ohne Kopf zählen nicht.
+  rechtekontextGesehen(
+    typeof res.headers?.get === "function" ? res.headers.get(RECHTEKONTEXT_KOPF) : null,
+    beginn,
+  );
 
   if (res.status === 204) {
     return undefined as T;

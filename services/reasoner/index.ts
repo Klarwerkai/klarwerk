@@ -96,7 +96,10 @@ export {
   // D-AISTATE PAKET 1 (bens V1, aistate-fix3): technische On-Prem-Begrenzung der „lokalen" URL —
   // nur Loopback bzw. explizit freigegebene private Origins gelten als vertraulichkeits-tauglich.
   isConfirmedLocalOrigin,
+  // AW-12: interner Embedding-Weg — entsteht NUR für eine bestätigte On-Prem-Adresse (kein Egress).
+  createLocalEmbeddingClientFromEnv,
 } from "./src/model-client";
+export type { LokalerEmbeddingClient } from "./src/model-client";
 // WP-D10 (Fix 3): typisierte Modellfehler + Klassifizierung (timeout|http|network|parse) — nur
 // Metadaten (Status/Dauer), keine Credentials, kein Prompt-/Antwortinhalt.
 export {

@@ -109,6 +109,7 @@ import { fallHref, leseFall } from "../lib/fallAbsprung";
 import { conflictFinding, groupFindingsByBeitrag, resolveKo } from "../lib/findingGroups";
 import { clusterReihenfolge, konfliktCluster } from "../lib/konfliktCluster";
 import { REVIEW_HELP_TOPICS } from "../lib/reviewHelp";
+import { statusSchluessel } from "../lib/wissensstatus";
 
 const PATH: ConflictStatus[] = ["eskaliert", "zweitmeinung", "geloest"];
 
@@ -128,7 +129,7 @@ function metaVon(ko: KnowledgeObject | null, t: (k: string) => string): string {
   }
   const jahr = new Date(ko.createdAt);
   return [
-    t(`status.${ko.status}`),
+    t(statusSchluessel(ko.status)),
     ko.category,
     Number.isNaN(jahr.getTime()) ? null : String(jahr.getFullYear()),
   ]
@@ -668,7 +669,7 @@ export function Conflicts(): JSX.Element {
             <>
               <PruefenMenueTrenner />
               <div className="px-2.5 py-2">
-                <div className="mb-1 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                <div className="mb-1 font-mono text-klein uppercase tracking-wider text-muted-2">
                   {t("con.escPath")}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">

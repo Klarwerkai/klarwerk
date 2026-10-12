@@ -183,16 +183,20 @@ async function vorrichtung(): Promise<Lage> {
     d0.folge.some((p) => p.startsWith("belege.")),
     `Kalibrierung: der Antwortbeleg wurde nicht gezählt — ${d0.folge.join(" → ")}`,
   ).toBe(true);
-  // Der Konfliktabruf der Route liest danach beide Konfliktseiten für die Versionsprüfung.
+  // Der Konfliktabruf der Route liest danach beide Konfliktseiten für die Versionsprüfung — und,
+  // weil der Konflikt an die aktuellen Fassungen gebunden und damit offen ist, die Gegenseite des
+  // tragenden Eintrags über denselben Leseweg (R-0321, `konfliktGegenseiten` in ask-routes.ts).
+  // produkt:20261011:peter-p14 · Nacharbeit 3: am Kandidaten 1fa5b19 gezählt — nach `konflikte.all`
+  // stehen drei `ko.findById`; die Tafel der Haltefälle unten trägt den fünften Zugriff mit.
   const nachKonflikten = d0.folge.slice(d0.folge.indexOf("konflikte.all") + 1);
   expect(
     d0.folge.includes("konflikte.all") ? nachKonflikten : d0.folge,
-    `Kalibrierung: die Versionsprüfung des Konfliktabrufs las die beiden Seiten nicht — ${d0.folge.join(" → ")}`,
-  ).toEqual(["ko.findById", "ko.findById"]);
+    `Kalibrierung: die Versionsprüfung des Konfliktabrufs las die beiden Seiten und die Gegenseite nicht — ${d0.folge.join(" → ")}`,
+  ).toEqual(["ko.findById", "ko.findById", "ko.findById"]);
   expect(
     d0.folge.filter((p) => p === "ko.findById").length,
-    `Kalibrierung: die Haltefälle zählen ko.findById 1 (Dokumenttext), 2 (Quelle der Route), 3–4 (Konfliktseiten) — ${d0.folge.join(" → ")}`,
-  ).toBe(4);
+    `Kalibrierung: die Haltefälle zählen ko.findById 1 (Dokumenttext), 2 (Quelle der Route), 3–4 (Konfliktseiten), 5 (Gegenseite) — ${d0.folge.join(" → ")}`,
+  ).toBe(5);
   expect(d0.antwortweg, "Kalibrierung: der Antwortweg wurde nicht gezählt").toBeGreaterThan(0);
   expect(d0.modell, "Kalibrierung: der Modelldraht hat nicht generiert").toBeGreaterThan(0);
   return {
@@ -465,21 +469,15 @@ const HALTEFAELLE: readonly Haltefall[] = [
     sperre: ["vorauswahl"],
     naechster: { lesen: /^ko\.listByIds$/ },
   },
-  // Lauf 3: seit der Prüfbasis-Aktualität (AUFNAHME 20260922) liest die Lesefassung der Kandidaten
-  // nach `listByIds` noch den Schreibstand der Ablage (und bei verändertem Stand den ganzen Bestand,
-  // `KoService.pruefbestandStempel`). Die Sperre „vorauswahl" steht deshalb auch dort.
+  // Lauf 3 las die Lesefassung der Kandidaten nach `listByIds` noch den Schreibstand der Ablage
+  // (`KoService.pruefbestandStempel`). produkt:20261011:peter-p14 · B-07: die Lesefassung liest den
+  // Bestandsstempel nicht mehr — nach `listByIds` folgt kein weiterer Ablagezugriff des Kandidaten-
+  // wegs. Der Halt liegt deshalb am Nachladen selbst: das dritte Auftreten ist die letzte der drei
+  // parallelen Begriffsabfragen, danach geht die Frage geschlossen zum Dokumenttext weiter.
   {
     punkt: "ko.listByIds",
-    wo: "mit nachgeladenen Kandidaten, vor ihrer Lesefassung",
-    sperre: ["vorauswahl"],
-    naechster: { lesen: /^ko\.anhangSchreibstand$/ },
-  },
-  {
-    // Das dritte Auftreten: die letzte der drei parallelen Begriffsabfragen — danach geht die Frage
-    // geschlossen zum Dokumenttext weiter.
-    punkt: "ko.anhangSchreibstand",
     mal: 3,
-    wo: "mit gestempelten Kandidaten, vor dem Dokumenttext",
+    wo: "mit nachgeladenen Kandidaten, vor dem Dokumenttext",
     sperre: ["vorauswahl", "suchprojektion"],
     naechster: { lesen: /^ko\.findById$/ },
   },
@@ -518,19 +516,13 @@ const HALTEFAELLE: readonly Haltefall[] = [
     naechster: { lesen: /^ko\.findById$/ },
   },
   // Runde 3, Bens Befund: die Route liest nach den Quellen die offenen Konflikte — und liefert aus.
+  // P14 · B-07: die Lesefassung der Quelle liest keinen Schreibstand mehr — nach dem Quellenlesen
+  // folgt direkt der Konfliktabruf.
   {
     punkt: "ko.findById",
     mal: 2,
     nurRoute: true,
-    wo: "beim Quellenlesen der Route, vor der Lesefassung der Quelle",
-    sperre: ["auslieferung"],
-    naechster: { lesen: /^ko\.anhangSchreibstand$/ },
-  },
-  {
-    punkt: "ko.anhangSchreibstand",
-    mal: 4,
-    nurRoute: true,
-    wo: "in der Lesefassung der Quelle, vor dem Konfliktabruf",
+    wo: "beim Quellenlesen der Route, vor dem Konfliktabruf",
     sperre: ["auslieferung"],
     naechster: { lesen: /^konflikte\./ },
   },
@@ -555,7 +547,17 @@ const HALTEFAELLE: readonly Haltefall[] = [
     punkt: "ko.findById",
     mal: 4,
     nurRoute: true,
-    wo: "nach der Versionsprüfung, vor der Auslieferung",
+    wo: "nach der Versionsprüfung, vor dem Lesen der Konflikt-Gegenseite",
+    sperre: ["auslieferung"],
+    naechster: { lesen: /^ko\.findById$/ },
+  },
+  // P14 · Nacharbeit 3: der offene, versionsgebundene Konflikt lässt die Route die Gegenseite des
+  // tragenden Eintrags lesen (R-0321) — erst danach wird ausgeliefert.
+  {
+    punkt: "ko.findById",
+    mal: 5,
+    nurRoute: true,
+    wo: "nach dem Lesen der Konflikt-Gegenseite, vor der Auslieferung",
     sperre: ["auslieferung"],
     naechster: { ausgeliefert: true },
   },

@@ -13,11 +13,11 @@ export function DemoBanner({ surface }: { surface: DemoSurface }): JSX.Element {
   return (
     <div className="-mt-2 mb-4 rounded-card border border-dashed border-hairline bg-page p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[10px] font-semibold text-white">
+        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-klein font-semibold text-white">
           {banner.n}
         </span>
         <span className="text-[12.5px] font-semibold text-ink">{t(banner.titleKey)}</span>
-        <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+        <span className="font-mono text-klein uppercase tracking-wider text-muted-2">
           {t("demo.banner.tag")}
         </span>
       </div>

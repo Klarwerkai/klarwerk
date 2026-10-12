@@ -15,7 +15,15 @@ import {
   KandidatenSpeicher,
   type SichtbarkeitsFakten,
   beurteileAnhang,
+  privatesFolgeprodukt,
+  sichtbareFuer,
 } from "../sichtbarkeit";
+
+/** R-0095: ein Wissensobjekt, das diesen Anhang trägt — so viel, wie ein Rückverweis braucht. */
+export interface AnhangTraegerVerweis {
+  id: string;
+  title: string;
+}
 
 // AUFTRAG-mega20 Block C: die erlaubten Zwecke als LAUFZEIT-Prüfung. Der Typ allein hilft an einer
 // HTTP-Grenze nichts — dort kommt eine beliebige Zeichenkette an, und sie in den Vertrag zu casten
@@ -150,6 +158,18 @@ function mitVary(reply: FastifyReply): FastifyReply {
   return reply;
 }
 
+/**
+ * BPA-17 (G05): ein privates Folgeprodukt, dessen Quelle gewöhnlich gelöscht (im Papierkorb) ist,
+ * bleibt für seinen Eigentümer lesbar — aber GEKENNZEICHNET. Die Kopfzeile nennt die Herkunft; nur
+ * bei einer sichtbaren Antwort gesetzt, also kein Existenzorakel für Unberechtigte.
+ */
+function kennzeichneGeloeschteQuelle(reply: FastifyReply, urteil: AnhangUrteil): FastifyReply {
+  if (urteil.quelleGeloescht) {
+    reply.header("X-Klarwerk-Quelle", `geloescht; ko=${urteil.quelleGeloescht}`);
+  }
+  return reply;
+}
+
 // SCRUM-121: Objekt-/Attachment-Speicher. Upload liefert eine ObjectRef (nur Metadaten);
 // das KO speichert die Referenz + kleine Vorschau statt des großen Originals.
 //
@@ -211,6 +231,11 @@ export function objectRoutes(
     // das alte bedingungslose Ja.
     if (typeof quellen?.kos !== "function") {
       return { sichtbar: false, vertraulich: true };
+    }
+    // BPA-17: ein privates Folgeprodukt liest nur sein Eigentümer, solange die Quelle sichtbar ist.
+    const privat = await privatesFolgeprodukt(user, objectId, ref.lifecycle, quellen);
+    if (privat) {
+      return privat;
     }
     // JOB 2706 D1: dieselbe Regel, ueber den Kandidaten-Speicher (Begruendung am Kopf dieses Blocks).
     return beurteileAnhang(user, objectId, eigen, quellen, speicher);
@@ -287,7 +312,7 @@ export function objectRoutes(
         return;
       }
       const obj = await store.read(request.params.id);
-      const urteil = obj
+      const urteil: AnhangUrteil = obj
         ? await urteile(user, request.params.id, obj.ref)
         : { sichtbar: false, vertraulich: true };
       // mega74 C: dieselbe Form wie am Wissensobjekt — nicht sichtbar sieht aus wie nicht
@@ -312,10 +337,51 @@ export function objectRoutes(
       // der Entzug wirkte am Rohbyteweg sofort und an dieser Tür nur, wenn die Heuristik mitspielte.
       // Deshalb derselbe Vertrag wie `/raw`, nach demselben Urteil: vertraulich nie speicherbar,
       // sonst Rückfrage vor jeder Wiederverwendung.
-      mitVary(reply)
+      kennzeichneGeloeschteQuelle(mitVary(reply), urteil)
         .header("Cache-Control", urteil.vertraulich ? CACHE_VERTRAULICH : CACHE_UNVERTRAULICH)
         .code(200)
-        .send(obj);
+        .send(
+          urteil.quelleGeloescht
+            ? { ...obj, quelle: { koId: urteil.quelleGeloescht, status: "geloescht" } }
+            : obj,
+        );
+    });
+
+    // R-0095 — DER RÜCKVERWEIS VOM ANHANG AUF SEIN WISSENSOBJEKT. Bisher kannte nur das Objekt seine
+    // Anhänge (`attachments[].objectId`); vom Anhang führte kein Weg zurück. Diese Route antwortet
+    // aus Sicht des ANHANGS: welche Wissensobjekte tragen ihn als Anhang? Dasselbe Tor wie die
+    // beiden Nachbarrouten (unsichtbar = 404, bytegleich), dazu der Lesefilter `sichtbareFuer` —
+    // ein Rückverweis darf weder Titel noch Kennung eines Objekts verraten, das der Betrachter nicht
+    // lesen darf. Fließtext-Fundstellen zählen bewusst nicht: R-0095 meint die Anhangskopplung.
+    app.get<{ Params: { id: string } }>("/api/objects/:id/traeger", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const objectId = request.params.id;
+      const obj = await store.read(objectId);
+      if (!obj || !(await urteile(user, objectId, obj.ref)).sichtbar) {
+        mitVary(reply)
+          .header("Cache-Control", CACHE_KEINE_ANTWORT)
+          .code(404)
+          .send({ error: "NOT_FOUND", message: "Objekt nicht gefunden." });
+        return;
+      }
+      // `quellen.kos` ist eine OBERMENGE (Vertrag in sichtbarkeit.ts) — erst auf die echten Träger
+      // eingrenzen, dann EIN unbedingter Lesefilter über alle.
+      const kandidaten = (await quellen.kos(objectId)).filter((ko) =>
+        (ko.attachments ?? []).some((a) => a.objectId === objectId),
+      );
+      const traeger: AnhangTraegerVerweis[] = [];
+      const gesehen = new Set<string>();
+      for (const ko of sichtbareFuer(user, kandidaten)) {
+        if (!gesehen.has(ko.id)) {
+          gesehen.add(ko.id);
+          traeger.push({ id: ko.id, title: ko.title ?? "" });
+        }
+      }
+      // Die Antwort hängt am Betrachter und an jedem späteren Entzug — nichts davon darf liegen.
+      mitVary(reply).header("Cache-Control", CACHE_KEINE_ANTWORT).code(200).send({ traeger });
     });
 
     // SCRUM-45/46/48 (KW-STR): rohe Bytes für <img src="/api/objects/:id/raw"> im Editor-Body.
@@ -325,7 +391,7 @@ export function objectRoutes(
         return;
       }
       const obj = await store.read(request.params.id);
-      const urteil = obj
+      const urteil: AnhangUrteil = obj
         ? await urteile(user, request.params.id, obj.ref)
         : { sichtbar: false, vertraulich: true };
       if (!obj || !urteil.sichtbar) {
@@ -353,7 +419,7 @@ export function objectRoutes(
       // App-Origin rendert. nosniff verhindert MIME-Sniffing auf octet-stream.
       const claimedMime = obj.ref.mime || decoded.mime;
       const isSafeInlineImage = SAFE_INLINE_IMAGE_MIMES.has(claimedMime);
-      mitVary(reply)
+      kennzeichneGeloeschteQuelle(mitVary(reply), urteil)
         .header("Content-Type", isSafeInlineImage ? claimedMime : "application/octet-stream")
         .header("X-Content-Type-Options", "nosniff")
         .header(

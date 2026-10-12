@@ -1,7 +1,14 @@
 // Öffentliche API des Moduls embedding. Cross-Modul-Import nur hierüber (Arch-Regel module-boundaries).
-export type { EmbeddingProvider, EmbeddingResult } from "./src/provider";
+export type {
+  EmbeddingArt,
+  EmbeddingProvider,
+  EmbeddingResult,
+  InternerEmbeddingWeg,
+} from "./src/provider";
 export {
   stubEmbeddingProvider,
+  internerEmbeddingProvider,
+  embeddingArt,
   createEmbeddingProviderFromEnv,
   STUB_DEFAULT_DIM,
 } from "./src/provider";

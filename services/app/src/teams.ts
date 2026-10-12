@@ -174,6 +174,11 @@ export class TeamAufloesendeSpaces implements SpacesRepo {
     const { teamMitglieder: _abgeleitet, ...rein } = fassung;
     return this.basis.lege(rein);
   }
+
+  /** aufnahme:20260922:gesamt-wissensprojekte — dieselbe Sperre wie die zugrunde liegende Ablage. */
+  exklusiv<T>(arbeit: () => Promise<T>): Promise<T> {
+    return this.basis.exklusiv(arbeit);
+  }
 }
 
 // ================================================================================================

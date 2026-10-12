@@ -42,6 +42,9 @@ wiederholt.
 | `gap.draft-linked` | `koId` | K |
 | `gap.closed` (fachlicher Abschluss) | `koId`, `koVersion` | K, M |
 | `gap.withdrawn` (administrative Rücknahme) | `grund` (geschlossene Auswahl `GAP_RUECKNAHME_GRUENDE`) | Z — **kein Freitext** |
+| `answer.reported` (R-1089; einfache Meldung) | `meldungId`, `grund` (geschlossene Auswahl), `koTitle`, `responsible`, `responsibleKind` | K, M, Z |
+| `answer.reported` als Beanstandung einer Aussage (produkt:20261010:antwort-beanstandung-korrektur) | wie oben (ohne Quelle entfallen `koTitle`, `responsible`, `responsibleKind`), zusätzlich `aussageId`, `aussageFingerabdruck`, ggf. `answerId`, `koVersion`, `fundstelleId`, `quelleFehlt` | K, M, Z — **kein Aussagetext, keine Begründung, keine Frage** (gemessen: `tests/antwort-beanstandung/beanstandung-dienst.test.ts` B1); Aussage und Begründung stehen nur am Vorgang |
+| `gap.beanstandung-zurueckgewiesen` | ggf. `koId`, `koVersion` | K, M — **keine Begründung** (gemessen: dieselbe Datei, B8); die Begründung steht nur am Vorgang |
 | `ask.zweitmeinung` (R-0305/R-1099, nur auf Anforderung) | `status`, und entweder `abweichend`, `abweichungen` (Merkmalsnamen, kommagetrennt), `ersteStufe`, `zweiteStufe` (`cloud`/`local`/`deterministic`) oder `grund` | Z — **kein Frage- oder Antworttext, kein Anbieter- oder Modellname**; `target` ist die tragende Quelle (gemessen: `tests/zweitmeinung/fragedienst.test.ts`, `route-und-protokoll.test.ts`) |
 
 ### Wissensobjekte (`services/knowledge-object`, `services/validation`, `services/lifecycle`)
@@ -58,6 +61,14 @@ wiederholt.
 | `ko.ownership-role` | `role`, `added` | K |
 | `ko.ownership-released` | `previousOwner` | K |
 | `ko.owner-validated` | `koVersion` | Z |
+| `ko.weisung-validated` | `koVersion`, `kontoregel`, `bereich`, `sichtung` (`verantwortlich` als Kontokennung, `frist`) | Z, M, K |
+| `ko.weisung-gesichtet` | `koVersion`, `ergebnis` | Z |
+| `user.weisungsbefugnis-set` | `bereiche` (Kategorienamen) oder `entfernt` | M |
+| `ko.weisung` (gesamt-wissen-herkunft: Weisung mit punktweiser Entscheidung) | `koVersion`, `bereich`, `sichtung` (`verantwortlich` als Kontokennung, `frist`), `bestehenGelassen`, `ueberstimmt` (Konfliktkennungen) | Z, M, K |
+| `ko.weisung-sichtung-vermerkt` | `weisungVon` (Kontokennung), `weisungAm`, `fassung` | K, M, Z |
+| `ko.weisung-abschluss-unvollstaendig` | `offen` (je Punkt `conflictId`, Stand `punkt`/`konflikt` aus geschlossener Menge) | K, Z |
+| `ko.durch-weisung-geschlossen` | `durchKoId`, `conflictId`, `von` (Kontokennung), `am`, `fassung` | K, M, Z |
+| `ko.externe-freigabe-uebernommen` | `koVersion`, `art`, `herausgeber`, `freigegebenAm`, `geltung`, `zustaendig` (Kontokennung) | Z, M, F (`herausgeber` ist eine freie Angabe, etwa ein Firmenname), K |
 | `lifecycle.handover` (Ziel: Kennung der ausscheidenden Person) | `from`, `to`, `transferred` (Anzahl je Art), `failed` (Art und Kennung, kein Inhalt) | K, Z |
 | `ko.purged` | `reason` (geschlossene Menge) + Zusatz des Aufrufers | Z |
 | `ko.restored`, `ko.deleted` | `trash` / leer + Beitrag | Z |
@@ -126,10 +137,28 @@ am Konflikt, **nicht** im Protokoll.
 | `unternehmensprofil.geaendert` | `vorherVersion`, `version`, `akzent`, `nameGeaendert`, `logoGeaendert`, `uebernommenAus` | Z — weder Name noch Logodatei stehen im Protokoll |
 | `richtlinie.veroeffentlicht` | `fassung`, `anforderung`, `rollen`, `gueltigAb`, `betroffen`, ggf. `erneut`, `bisherigeHandlungen` | Z, M — der Richtlinientext steht **nicht** im Protokoll |
 | `richtlinie.handlung` | `fassung`, `handlung` (Akteur = die handelnde Person) | Z — dieselbe Angabe steht im Handlungsprotokoll der Richtlinie |
+| `kommunikationsregeln.geaendert` (ADMIN-12) | `vorherVersion`, `version`, `aenderungen` (je Ereignis, Feld, vorher, nachher — Werte aus geschlossenen Mengen) | Z — keine Inhalte, keine Empfänger |
+| `meldungsregel.persoenlich` (ADMIN-12) | `ereignis`, `abgewaehlt` (Akteur und Ziel = die Person selbst) | Z |
 | `external.policy.set` | `stage` | Z |
 | `reasoner.ki-freigabe` | `vorher`, `nachher` (Freigabestand) | Z |
 | `reasoner.zweitmeinung`, `reasoner.zweitmeinung-nicht-wirksam` (R-0305/R-1099) | `vorher`, `nachher` (`openai`/`anthropic`/`local`/`aus`) | Z |
 | `audit.exported` | `count`, `headSeq`, `headHash` | Z |
+
+### Klara-Aufträge (`services/app/src/routes/klara-gespraech-routes.ts`)
+
+Nachtrag `produkt:20261010:assistenz-aktionen-verlauf-ruecknahme` (PV-02), Quelleninspektion und
+gemessen in `tests/assistenz-aktionen-verlauf/verlauf-am-server.test.ts` (V1, V2): kein Wortlaut,
+kein Titel, kein Inhalt, kein Personenname.
+
+| Aktion | Nutzlast | Klasse |
+| --- | --- | --- |
+| `klara.gespraech.begonnen`, `klara.gespraech.geloescht` | — | — |
+| `klara.gespraech.einwilligung` | `erteilt` | Z |
+| `klara.auftrag.angelegt` | `gespraech`, `aktionen`, `geplanteSchritte` | K, Z |
+| `klara.auftrag.korrigiert` | `fassung`, `aktionen` | Z |
+| `klara.auftrag.abgebrochen` | — | — |
+| `klara.auftrag.schritt` | `nr`, `aktion`, `stand`, ggf. `ausgefuehrt`, `ergebnis` (Kennung), `fehler` (Grundschlüssel); seit PV-02 `gespraech`, `aktionskennung`, `vertrag`, bei gespeichert/zurückgenommen `vorherStand`, `neuerStand` (Fassungszeit eines Entwurfs bzw. Art einer Aufgabenwirkung wie `prioritaet:hoch`, `zugewiesen` — ohne Namen) | K, Z, M |
+| `klara.auftrag.ruecknahme-abgelehnt` (PV-02) | `gespraech`, `grund`, ggf. `aktionskennung`, `vertrag`, `eigenerStand`, `aktuellerStand` (Fassungszeiten) | K, Z, M |
 
 ### Konten und Anmeldung (`services/auth`)
 

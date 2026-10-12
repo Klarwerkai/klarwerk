@@ -283,7 +283,7 @@ export function PruefenMenue({
         {zaehler !== undefined && zaehler > 0 ? (
           <span
             data-testid={`pruefen-menue-${kennung}-zaehler`}
-            className="rounded-[999px] bg-ink px-1.5 py-0.5 font-mono text-[10px] font-bold text-white"
+            className="rounded-[999px] bg-ink px-1.5 py-0.5 font-mono text-klein font-bold text-white"
           >
             {zaehler}
           </span>

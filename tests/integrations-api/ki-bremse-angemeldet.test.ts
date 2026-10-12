@@ -174,6 +174,8 @@ describe("R-0842 · angemeldete Sitzungen werden gebremst", () => {
       "POST /api/help/explain",
       "POST /api/media/analyze",
       "POST /api/media/transcribe",
+      // BPA-13: die Übergabe eines KI-Auftrags erreicht auf dem API-Weg den gebundenen Anbieter.
+      "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/uebergabe",
     ]);
   });
 });

@@ -94,6 +94,21 @@ export interface DraftRepo {
    */
   delete(id: string, geloeschtVon?: string, zeitpunkt?: string): Promise<void>;
   /**
+   * produkt:20261008:klara-aktionen (Nacharbeit 4) — WEICH LÖSCHEN NUR AM ERWARTETEN STAND.
+   *
+   * Dieselbe Unteilbarkeit wie `updateWennStand`: Standvergleich und Papierkorbvermerk in EINEM
+   * Schritt (Speicherablage synchron, PostgreSQL in einer `UPDATE`-Anweisung). `false`: der Entwurf
+   * fehlt, liegt schon im Papierkorb oder trägt einen anderen Stand — dann ist nichts geschehen.
+   * Wahlweise, damit vorhandene Ablagen (Testablagen) unverändert gültig bleiben; der Dienst lehnt
+   * einen Standvergleich ohne diese Methode ab, statt ihn nicht-unteilbar nachzubauen.
+   */
+  deleteWennStand?(
+    id: string,
+    erwarteterStand: string,
+    geloeschtVon?: string,
+    zeitpunkt?: string,
+  ): Promise<boolean>;
+  /**
    * JOB 3668 — DIE PAPIERKORB-SICHT: NUR das Gelöschte, jüngste Löschung zuerst.
    *
    * Dieselbe Reihenfolge wie `KoService.trashed` (`knowledge-object/src/service.ts:3487`) und
@@ -158,8 +173,13 @@ export interface DraftRepo {
    *
    * `false` heisst ehrlich: es lag nicht (mehr) im Papierkorb — oder es war überhaupt nichts mehr
    * da. Der Aufrufer erfindet dann keinen Vollzug.
+   *
+   * `geloeschtAm` (Aufnahme gesamt-papierkorb, Bens Befund Nacharbeit 2) — DER FRISTLAUF LÖSCHT NUR
+   * DEN STAND, DESSEN FRIST ER GEPRÜFT HAT. Wurde der Entwurf zwischen Liste und Löschung
+   * wiederhergestellt und erneut gelöscht, trägt er einen neuen `deletedAt` und eine neue Frist;
+   * die Bedingung steht deshalb in derselben Anweisung wie das Löschen und trifft ihn nicht.
    */
-  purge(id: string, auchLebende?: boolean): Promise<boolean>;
+  purge(id: string, auchLebende?: boolean, geloeschtAm?: string): Promise<boolean>;
   /**
    * FR-CAP-06: gemeinsamer Pool — alle Entwürfe.
    *
@@ -361,6 +381,26 @@ export class InMemoryDraftRepo implements DraftRepo {
     return Promise.resolve();
   }
 
+  // Klara 05 (Nacharbeit 4): geprüft und vermerkt ohne `await` dazwischen — wie `updateWennStand`.
+  deleteWennStand(
+    id: string,
+    erwarteterStand: string,
+    geloeschtVon?: string,
+    zeitpunkt?: string,
+  ): Promise<boolean> {
+    const draft = this.drafts.get(id);
+    if (!draft || istGetrasht(draft) || draft.updatedAt !== erwarteterStand) {
+      return Promise.resolve(false);
+    }
+    const vermerk: EntwurfImPapierkorb = {
+      ...draft,
+      deletedAt: zeitpunkt ?? new Date().toISOString(),
+      ...(geloeschtVon === undefined ? {} : { deletedBy: geloeschtVon }),
+    };
+    this.drafts.set(id, vermerk);
+    return Promise.resolve(true);
+  }
+
   listTrashed(fuerAutor?: string): Promise<EntwurfImPapierkorb[]> {
     return Promise.resolve(
       [...this.drafts.values()]
@@ -395,9 +435,13 @@ export class InMemoryDraftRepo implements DraftRepo {
   // kann zwischen die Bedingung und das Entfernen nicht mehr geraten, weil zwischen ihnen kein
   // Punkt liegt, an dem die Ereignisschleife eine andere Zusage fortsetzen könnte. In PostgreSQL
   // leistet dasselbe die eine `DELETE`-Anweisung mit ihrem `WHERE`.
-  purge(id: string, auchLebende = false): Promise<boolean> {
+  purge(id: string, auchLebende = false, geloeschtAm?: string): Promise<boolean> {
     const draft = this.drafts.get(id);
     if (!draft || !(auchLebende || istGetrasht(draft))) {
+      return Promise.resolve(false);
+    }
+    // Aufnahme gesamt-papierkorb: Spiegel von `data->>'deletedAt' = $2` — ohne await dazwischen.
+    if (geloeschtAm !== undefined && draft.deletedAt !== geloeschtAm) {
       return Promise.resolve(false);
     }
     // R-1133: der Index geht mit der Zeile — in PostgreSQL sind es Spalten derselben Zeile.

@@ -8,7 +8,7 @@ import {
   CAPTURE_SCHEMA,
 } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
-import { vorratsKonfiguration } from "../../db-tx";
+import { BESTANDSRESET_SCHEMA, vorratsKonfiguration } from "../../db-tx";
 import { EMBEDDING_SCHEMA } from "../../embedding";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
@@ -46,6 +46,8 @@ import {
   REASONER_POLICY_SCHEMA,
 } from "../../reasoner";
 import { VALIDATION_SCHEMA, VALIDATION_SETTINGS_SCHEMA } from "../../validation";
+// produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil (eine Zeile je Konto).
+import { ASSISTENZ_PROFIL_SCHEMA } from "./assistenz-profil";
 // JOB 3578: die instanzweite Markenwahl (Demo-Firmen-CI). Sie wohnt wie die Lesevarianten im
 // App-Wurzelverzeichnis, weil sie zu keinem Fachmodul gehört: drei Oberflächen lesen sie, und
 // keine davon besitzt sie.
@@ -53,11 +55,17 @@ import { VALIDATION_SCHEMA, VALIDATION_SETTINGS_SCHEMA } from "../../validation"
 // die Lesevarianten: ein danebenliegender, flüchtiger Datenraum, der das KO-Modell nicht berührt.
 import { KO_BEARBEITUNG_SCHEMA } from "./bearbeitungshinweis";
 import { BRANDING_SETTINGS_SCHEMA } from "./branding-settings";
+// produkt:20261007:interner-chat: Gespräche und Nachrichten des internen Chats. Im App-Wurzel-
+// verzeichnis wie die Spaces: die Sichtbarkeitsregel entscheidet über sie, kein Fachmodul besitzt sie.
+import { CHAT_SCHEMA } from "./chat";
 // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports (umlegbar über die Oberfläche).
 import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter";
 // Firmenwörterbuch: die Fassungen des Begriffskatalogs. Im App-Wurzelverzeichnis wie die
 // Markenwahl: Editor und Word-Panel lesen ihn, kein Fachmodul besitzt ihn.
 import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
+import { GEMEINSAMER_ENTWURF_SCHEMA } from "./gemeinsamer-entwurf";
+// Instanztrennung: die eine Zeile, die diese Datenbank an genau eine Anlage bindet.
+import { INSTANZBINDUNG_SCHEMA } from "./instanzbindung";
 // R-0466: das Interaktionsgedächtnis (frühere Fragen, Antworten, Vorlieben je Konto). Im
 // App-Wurzelverzeichnis wie die Live-Wand-Fotos: ein eigener Datenraum, den kein Fachmodul besitzt.
 import { GEDAECHTNIS_SCHEMA } from "./interaktionsgedaechtnis";
@@ -65,6 +73,8 @@ import { GEDAECHTNIS_SCHEMA } from "./interaktionsgedaechtnis";
 import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (eine Zeile je Gespräch und Konto).
 import { KLARA_GESPRAECH_SCHEMA } from "./klara-gespraech";
+// ADMIN-12: Fassungen der Kommunikationsregeln, persönliche Abwahlen und Zustellstatus.
+import { KOMMUNIKATION_SCHEMA } from "./kommunikationsregeln";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
@@ -74,6 +84,8 @@ import { LIVEWALL_FOTO_SCHEMA } from "./livewall-fotos";
 // Betroffenenrechte (R-0661): die Löschanträge. Im App-Wurzelverzeichnis wie die Kenntnisnahme —
 // sie verbinden Konto (auth) und Verwalteraufgabe, kein Fachmodul besitzt sie.
 import { LOESCHANTRAG_SCHEMA } from "./loeschantraege";
+// BPA-16: Meetingbezüge (verbundene Präsentationsfassungen, Mitschriften, Rückmeldungen).
+import { MEETING_DOKUMENTBEZUG_SCHEMA } from "./meeting-dokumentbezug-ablage";
 // Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände.
 import { OFFICE_ABLAGE_SCHEMA } from "./office-ablage";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
@@ -89,6 +101,8 @@ import { UNTERNEHMEN_SCHEMA } from "./unternehmensprofil";
 import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
 // produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer Veröffentlichung.
 import { VEROEFFENTLICHUNG_SCHEMA } from "./veroeffentlichung";
+// aufnahme:20260922:gesamt-lernwege: Fragensatzversionen und Versuche der Verständnisfragen.
+import { VERSTAENDNISFRAGEN_SCHEMA } from "./verstaendnisfragen";
 // produkt:20261007:templates-default: Vorlagen, persönliche Standards, Space-Vorgaben, Nutzung und
 // Begriffspflege als unveränderliche Fassungen.
 import { VORLAGEN_SCHEMA } from "./vorlagen";
@@ -287,6 +301,12 @@ export const schemas = [
   // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS); der einzige Fremdschlüssel zeigt auf den
   // eigenen Kopf, keine Extension, kein Seed.
   KENNTNISNAHME_SCHEMA,
+  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Laufakte des Bestandsresets
+  // (`bestandsreset_laeufe`). Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne
+  // Fremdschlüssel, ohne Extension, ohne Seed. Ohne sie könnte der administrative Reset auf einer
+  // frisch migrierten Instanz seinen ersten Schritt nicht schreiben. Ihre Stelle hat keine
+  // Abhängigkeit zu den Nachbarstufen; die Sollliste in `migrationsbeleg.ts` folgt derselben Ordnung.
+  BESTANDSRESET_SCHEMA,
   // R-0162 (Confluence-Gesamtimport): das dauerhafte Quellabgleichsergebnis je Importlauf. Additiv
   // und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel auf `import_runs` und ohne
   // Extension; sie steht am Ende, weil das die lesbare Ordnung ist (keine Abhängigkeit zu den
@@ -333,10 +353,40 @@ export const schemas = [
   // Veröffentlichung. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne
   // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   VEROEFFENTLICHUNG_SCHEMA,
+  // produkt:20261007:interner-chat: Gespräche und Nachrichten. Additiv und wiederholbar (CREATE
+  // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die
+  // lesbare Ordnung ist.
+  CHAT_SCHEMA,
   // produkt:20261007:templates-default: die Fassungen der Vorlagen samt Standards, Space-Vorgaben,
   // Nutzung und Begriffspflege. Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne
   // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   VORLAGEN_SCHEMA,
+  // produkt:20261007:artikel-gemeinsam: die gemeinsamen Entwürfe der Artikel. Additiv und
+  // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed;
+  // am Ende, weil das die lesbare Ordnung ist.
+  GEMEINSAMER_ENTWURF_SCHEMA,
+  // Instanztrennung (R-0597/R-0790/R-0860): die eine Bindungszeile Datenbank → Anlage. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed — die
+  // Zeile schreibt erst der Start (`bindeInstanzVorMigration` in server.ts, VOR dieser Liste); hier
+  // ist die Stufe danach ein No-op und hält Migrationsbeleg und Restore-Drill vollständig.
+  INSTANZBINDUNG_SCHEMA,
+  // produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil je Konto. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am
+  // Ende, weil das die lesbare Ordnung ist.
+  ASSISTENZ_PROFIL_SCHEMA,
+  // ADMIN-12: Fassungen der Kommunikationsregeln, persönliche Abwahlen und Zustellstatus je
+  // Veröffentlichung, Empfänger und Kanal. Additiv und wiederholbar (drei CREATE TABLE IF NOT
+  // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung
+  // ist.
+  KOMMUNIKATION_SCHEMA,
+  // aufnahme:20260922:gesamt-lernwege: Fragensatzversionen und Versuche der Verständnisfragen.
+  // Additiv und wiederholbar (zwei CREATE TABLE IF NOT EXISTS samt Indizes), ohne Fremdschlüssel,
+  // ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  VERSTAENDNISFRAGEN_SCHEMA,
+  // BPA-16 (produkt:20261011:assistenz-meeting-dokumentbezug): die Meetingbezüge. Additiv und
+  // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed;
+  // am Ende, weil das die lesbare Ordnung ist.
+  MEETING_DOKUMENTBEZUG_SCHEMA,
 ];
 
 // ================================================================================================

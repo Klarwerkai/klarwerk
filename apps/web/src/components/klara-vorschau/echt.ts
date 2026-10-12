@@ -56,6 +56,13 @@ export interface EchtZustand {
   nachrichten: EchtNachricht[];
   /** Beginn der laufenden Anfrage (ms) — oder `null`. */
   laeuftSeit: number | null;
+  /**
+   * produkt:20261010:assistenz-avatarzustaende — die tatsächliche Verarbeitungsphase: der Server hat
+   * die Frage angenommen und abgelegt, die Antwort wird jetzt am Frageweg (`POST /api/ask`)
+   * erarbeitet. Gesetzt unmittelbar vor dem Aufruf, beendet sobald er mit Antwort, Fehler oder
+   * Abbruch zurückkehrt — kein Zeitgeber. `null`: keine Verarbeitung.
+   */
+  verarbeitetSeit: number | null;
   /** Der zuletzt gescheiterte Verwaltungsschritt (Einwilligung, neues Gespräch, Löschen). */
   hinweis: string | null;
   /** `false`, wenn der letzte Schritt NICHT gespeichert werden konnte. */
@@ -69,6 +76,7 @@ const LEER: EchtZustand = {
   gespraech: null,
   nachrichten: [],
   laeuftSeit: null,
+  verarbeitetSeit: null,
   hinweis: null,
   schrittGespeichert: true,
 };
@@ -132,12 +140,25 @@ export function useEchtGespraech(): EchtZustand {
   );
 }
 
+/**
+ * Klara 05: wer mit dem Gespräch vergessen werden muss (die Ausführungsaufträge in `auftrag.ts`).
+ * Sie hängen am Konto wie das Gespräch selbst.
+ */
+const vergessenHoerer = new Set<() => void>();
+
+export function beimVergessen(f: () => void): void {
+  vergessenHoerer.add(f);
+}
+
 /** Abmelden, Kontowechsel, Tests: alles Gelesene vergessen, eine laufende Anfrage stoppen. */
 export function vergiss(): void {
   generation += 1;
   laufend?.abort();
   laufend = null;
   zustand = LEER;
+  for (const f of vergessenHoerer) {
+    f();
+  }
   for (const h of hoerer) {
     h();
   }
@@ -286,6 +307,14 @@ async function sichereGespraech(bezug: KlaraObjektbezug, gen: number): Promise<s
   pruefe(gen);
   setze((z) => ({ ...z, gespraech: ohneNachrichten(gespraech) }));
   return gespraech.id;
+}
+
+/**
+ * Klara 05: das eigene Gespräch, in dem ein Ausführungsauftrag geführt wird — dasselbe wie für
+ * Fragen; gibt es noch keins, beginnt es hier mit dem Objektbezug des Auftrags.
+ */
+export function gespraechFuerAuftrag(bezug: KlaraObjektbezug): Promise<string> {
+  return sichereGespraech(bezug, generation);
 }
 
 function lokaleNachricht(e: KlaraNachrichtEingabe, gespeichert: Speicherstand): EchtNachricht {
@@ -545,7 +574,7 @@ export async function fragen(
       laufend = null;
     }
     if (gueltig(gen)) {
-      setze((z) => ({ ...z, laeuftSeit: null }));
+      setze((z) => ({ ...z, laeuftSeit: null, verarbeitetSeit: null }));
     }
   }
   if (stand === "veraltet" || !gueltig(gen)) {
@@ -566,14 +595,21 @@ async function frageStellen(
   t: TFunction,
   seitenbezug?: KlaraSeitenbezug,
 ): Promise<Fragestand> {
+  // Die Frage ist am Server abgelegt; ab jetzt erarbeitet der Frageweg die Antwort.
+  setze((z) => ({ ...z, verarbeitetSeit: Date.now() }));
+  const verarbeitungEnde = (): void => {
+    if (gueltig(gen)) {
+      setze((z) => (z.verarbeitetSeit === null ? z : { ...z, verarbeitetSeit: null }));
+    }
+  };
   try {
-    const antwort = await klaraGespraechApi.frage(
-      frage,
-      locale,
-      faden,
-      steuerung.signal,
-      seitenbezug,
-    );
+    let antwort: Awaited<ReturnType<typeof klaraGespraechApi.frage>>;
+    try {
+      antwort = await klaraGespraechApi.frage(frage, locale, faden, steuerung.signal, seitenbezug);
+    } finally {
+      // Antwort, Fehler oder Abbruch: die Verarbeitung ist zu Ende (das Ablegen ist Warten).
+      verarbeitungEnde();
+    }
     if (!gueltig(gen)) {
       return "veraltet";
     }

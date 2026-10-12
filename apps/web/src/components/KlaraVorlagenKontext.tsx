@@ -22,7 +22,7 @@ export function KlaraVorlagenKontext({ pfad }: { pfad: string }): JSX.Element | 
     .map((f) => feldText(f, sprache).titel);
   return (
     <div data-testid="klara-vorlagen-kontext">
-      <div className="mb-1 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="mb-1 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("vorlagen.klara.label")}
       </div>
       <p className="text-[12px] leading-relaxed text-muted">

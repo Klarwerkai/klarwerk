@@ -34,6 +34,8 @@ import {
   stelleSpracheEin,
   tabBisVorlage,
 } from "./support/import-json-kasten";
+// Aufnahme 20260922 (R-2212): die zentrale KI-Freigabe der Instanz für die beiden @modell-Fälle.
+import { mitGrundfreigabe } from "./support/ki-freigabe";
 
 test.describe.configure({ mode: "serial" });
 
@@ -91,34 +93,87 @@ test.describe.configure({ mode: "serial" });
 // KI-Weg des Blattes ist NICHT mehr hart ausgegraut, wenn kein Modell aktiv ist (`canStructure`
 // hängt am Text, nicht an `aiModelUsable`) — der harte Riegel sass am Wizard-Knopf „Mit KI
 // strukturieren" in `Capture.tsx`, den dieser Fall nicht mehr betritt.
-test("Kernfluss: Erzählen → Wissensseite → Einreichen @modell", async ({ page }) => {
+// ------------------------------------------------------------------------------------------------
+// AUFNAHME 20260922 (R-2212, Bens Befund nacharbeit-34) — EINE VORSCHLAGSKARTE IST KEIN MODELLBELEG.
+// ------------------------------------------------------------------------------------------------
+//
+// In der Browser-Modellprobe vom 10.10.2026 war dieser Fall grün, während der Server die
+// Strukturierung mit `reason=confidential` deterministisch beantwortete: die Karte erscheint auch
+// beim Fallback (`demo: true`). Zwei Vorbedingungen fehlten, beide sind Produktregeln und bleiben
+// unangetastet:
+//   · `source:"draft"` OHNE gespeicherten Entwurf gilt fail-closed als vertraulich (JOB 2692 D2,
+//     `reasoner-routes.ts`, `ankerSperre`). Die Einstufung „Öffentlich-intern" stand zudem erst NACH
+//     der Strukturierung. Jetzt: einstufen → Entwurf sichern → strukturieren.
+//   · Ohne zentrale Grundfreigabe der Instanz ist kein externer Anbieter zugelassen. Sie wird über die
+//     geteilte Vorrichtung erteilt und danach zurückgenommen (`support/ki-freigabe.ts`).
+// Der Nachweis steht an der SERVERANTWORT: `demo: false` und kein `fallbackReason`. Ein Fallback
+// wird ausdrücklich als solcher gemeldet und macht den Fall rot.
+test("Kernfluss: Erzählen → Wissensseite → Einreichen @modell", async ({ page }, info) => {
   await ensureLoggedIn(page);
-  await page.goto("/erfassen");
+  await mitGrundfreigabe(page, "structure", async () => {
+    await page.goto("/erfassen");
 
-  // KALIBRIERUNG: erst wenn das Schreibfeld des Blattes wirklich steht, sagt alles Weitere etwas
-  // über das Produkt statt über einen Selektor. Adressiert über den ZUGÄNGLICHEN NAMEN des
-  // Fließtextfeldes (`RichTextEditor`, `editor.bodyLabel`) — ein `textarea`-Selektor träfe hier
-  // nichts mehr, das Blatt schreibt in ein `contenteditable`.
-  const blattText = page.getByRole("textbox", { name: "Wissensseite — Fließtext" }).first();
-  await expect(blattText).toBeVisible({ timeout: 15_000 });
-  await blattText.fill(
-    "Beim Anfahren der Linie L4 nach dem Schichtwechsel den Dosierwert erst nach zehn Minuten " +
-      "anpassen, sonst schwankt die Qualität. Vorher Druck am Ventil V2 prüfen.",
-  );
+    // KALIBRIERUNG: erst wenn das Schreibfeld des Blattes wirklich steht, sagt alles Weitere etwas
+    // über das Produkt statt über einen Selektor. Adressiert über den ZUGÄNGLICHEN NAMEN des
+    // Fließtextfeldes (`RichTextEditor`, `editor.bodyLabel`) — ein `textarea`-Selektor träfe hier
+    // nichts mehr, das Blatt schreibt in ein `contenteditable`.
+    const blattText = page.getByRole("textbox", { name: "Wissensseite — Fließtext" }).first();
+    await expect(blattText).toBeVisible({ timeout: 15_000 });
+    await blattText.fill(
+      "Beim Anfahren der Linie L4 nach dem Schichtwechsel den Dosierwert erst nach zehn Minuten " +
+        "anpassen, sonst schwankt die Qualität. Vorher Druck am Ventil V2 prüfen.",
+    );
 
-  // KI ▾ → „Struktur vorschlagen". Der Vorschlag wird NIE automatisch übernommen (Auftrag JOB 3062
-  // §5.2): er erscheint als Karte mit „Übernehmen"/„Verwerfen", und erst der Klick wirkt.
-  await page.getByTestId("blatt-werkzeug-ki").click();
-  await page.getByRole("menuitem", { name: "Struktur vorschlagen" }).click();
-  await expect(page.getByTestId("blatt-ki-vorschlag")).toBeVisible({ timeout: 20_000 });
-  await page.getByRole("button", { name: "Übernehmen", exact: true }).click();
+    // Vertraulichkeit ist Pflicht vor dem Einreichen (§5.4 / §8.5 — Egress) — und hier VOR der
+    // Strukturierung, denn sie entscheidet, ob der Text hinausgehen darf.
+    await page.getByTestId("blatt-werkzeug-vertraulichkeit").click();
+    await page.getByRole("menuitem", { name: "Öffentlich-intern" }).click();
 
-  // Vertraulichkeit ist Pflicht vor dem Einreichen (§5.4 / §8.5 — Egress).
-  await page.getByTestId("blatt-werkzeug-vertraulichkeit").click();
-  await page.getByRole("menuitem", { name: "Öffentlich-intern" }).click();
+    // Der gespeicherte Entwurf ist der Anker, an dem der Server die Einstufung nachprüft.
+    await page.getByRole("button", { name: "Entwurf sichern", exact: true }).click();
+    await expect(page.getByText("Entwurf gespeichert.")).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(/[?&]draft=[^&]+/, { timeout: 15_000 });
 
-  await page.getByRole("button", { name: "Einreichen", exact: true }).click();
-  await expect(page.getByText("Eingereicht:").first()).toBeVisible({ timeout: 20_000 });
+    // KI ▾ → „Struktur vorschlagen". Der Vorschlag wird NIE automatisch übernommen (Auftrag JOB
+    // 3062 §5.2): er erscheint als Karte mit „Übernehmen"/„Verwerfen", und erst der Klick wirkt.
+    const strukturweg = page.waitForResponse((r) => {
+      if (new URL(r.url()).pathname !== "/api/reasoner" || r.request().method() !== "POST") {
+        return false;
+      }
+      return (r.request().postDataJSON() as { task?: string } | null)?.task === "structure";
+    });
+    await page.getByTestId("blatt-werkzeug-ki").click();
+    await page.getByRole("menuitem", { name: "Struktur vorschlagen" }).click();
+    const antwort = await strukturweg;
+    expect(antwort.status(), await antwort.text()).toBe(200);
+    const anfrage = antwort.request().postDataJSON() as {
+      confidentiality?: string;
+      draftId?: string;
+    };
+    const vorschlag = (await antwort.json()) as { demo?: boolean; fallbackReason?: string };
+    await info.attach("Strukturierung: Anfrage-Herkunft und Antwortmetadaten", {
+      body: JSON.stringify({
+        confidentiality: anfrage.confidentiality,
+        draftId: anfrage.draftId !== undefined,
+        demo: vorschlag.demo,
+        fallbackReason: vorschlag.fallbackReason ?? null,
+      }),
+      contentType: "application/json",
+    });
+    expect(anfrage.confidentiality, "die Einstufung ging nicht mit").toBe("intern");
+    expect(anfrage.draftId, "der Entwurfsanker ging nicht mit").toBeTruthy();
+    expect(
+      vorschlag.fallbackReason,
+      `Fallback statt Modell (fallbackReason=${vorschlag.fallbackReason})`,
+    ).toBeUndefined();
+    expect(vorschlag.demo, "die Strukturierung entstand ohne Modell").toBe(false);
+
+    await expect(page.getByTestId("blatt-ki-vorschlag")).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Übernehmen", exact: true }).click();
+
+    await page.getByRole("button", { name: "Einreichen", exact: true }).click();
+    await expect(page.getByText("Eingereicht:").first()).toBeVisible({ timeout: 20_000 });
+  });
 });
 
 // ================================================================================================
@@ -250,18 +305,69 @@ test("Fragen ohne Modell: der Weg ist gesperrt und sagt warum", async ({ page })
   askZaehler.stoppen();
 });
 
+// AUFNAHME 20260922 (R-2212, Bens Befund nacharbeit-34): in der Browser-Modellprobe vom 10.10.2026
+// lief dieser Fall bei gesperrter Grundfreigabe — der Fragenknopf blieb deaktiviert, es ging KEIN
+// `POST /api/ask` hinaus. Jetzt bereitet die geteilte Vorrichtung die Freigabe vor und nimmt sie
+// danach zurück (`support/ki-freigabe.ts`). Ein geprüfter Eintrag deckt die Frage vollständig, damit
+// die Antwort am Modell hängt und nicht an der Datenlage; geprüft werden Bedienbarkeit, der
+// tatsächliche Versand und die Antwortmetadaten. Eine Wissenslücke bliebe ehrlich sichtbar
+// (`ask-gap`), belegte aber kein Modell — deshalb wird hier die Antwort verlangt.
 test("Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell", async ({
   page,
-}) => {
+}, info) => {
   await ensureLoggedIn(page);
-  await page.goto("/fragen");
-  const input = page.getByPlaceholder(/Frist verlängern/);
-  await input.fill("Wie stelle ich den Dosierwert an Linie L4 nach Schichtwechsel ein?");
-  await input.press("Enter");
-  // Ehrliches Ergebnis: entweder eine quellengebundene Antwort ODER die Wissenslücke. Die Anker
-  // sind Testids des Ergebnisbereichs — sie können nicht mehr im statischen Seitentext mitmatchen.
-  await expect(page.getByTestId("ask-answer").or(page.getByTestId("ask-gap")).first()).toBeVisible({
-    timeout: 20_000,
+  await mitGrundfreigabe(page, "answer", async () => {
+    const m = Date.now().toString(36);
+    const angelegt = await page.request.post("/api/kos", {
+      data: {
+        title: `Ventil ${m} entlüften`,
+        statement: `Das Ventil ${m} wird vor dem Start zehn Sekunden lang entlüftet.`,
+        type: "best_practice",
+        category: "Betrieb",
+        confidentiality: "intern",
+        neededValidations: 1,
+      },
+    });
+    expect(angelegt.status(), await angelegt.text()).toBe(201);
+    const ko = (await angelegt.json()) as { id: string };
+    const frei = await page.request.put(`/api/kos/${ko.id}`, {
+      data: { action: "admin-validate" },
+    });
+    expect(frei.status(), await frei.text()).toBe(200);
+
+    await page.goto("/fragen");
+    const input = page.getByPlaceholder(/Frist verlängern/);
+    await expect(input).toBeVisible({ timeout: 15_000 });
+    await input.fill(`Wie wird das Ventil ${m} vor dem Start entlüftet?`);
+    // Bedienbar: mit Freigabe und Modell ist der Knopf frei — die Sperre aus dem Tor-Fall gilt hier
+    // gerade nicht.
+    const fragen = page.getByRole("button", { name: /^Fragen$/ });
+    await expect(fragen).toBeEnabled({ timeout: 15_000 });
+
+    const frageweg = page.waitForResponse(
+      (r) => new URL(r.url()).pathname === "/api/ask" && r.request().method() === "POST",
+    );
+    await fragen.click();
+    const antwort = await frageweg;
+    expect(antwort.status(), await antwort.text()).toBe(200);
+    const koerper = (await antwort.json()) as {
+      result?: { answered?: boolean; demo?: boolean; aiGenerated?: { mode?: string } };
+    };
+    await info.attach("Antwort des Fragewegs (Metadaten)", {
+      body: JSON.stringify({
+        answered: koerper.result?.answered,
+        demo: koerper.result?.demo,
+        mode: koerper.result?.aiGenerated?.mode ?? null,
+      }),
+      contentType: "application/json",
+    });
+    expect(koerper.result?.answered, "der Frageweg hat nicht geantwortet").toBe(true);
+    expect(koerper.result?.demo, "die Antwort entstand ohne Modell").toBe(false);
+    expect(koerper.result?.aiGenerated?.mode).toBe("model");
+
+    // Ehrliches Ergebnis im Ergebnisbereich — der Anker ist eine Testid, kein Seitentext.
+    await expect(page.getByTestId("ask-answer")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("ask-gap")).toHaveCount(0);
   });
 });
 

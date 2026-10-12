@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ReasonerLocale } from "../../reasoner";
+import type { AnswerCheckState } from "./answer-evidence";
 
 // FR-ASK-05 / SCRUM-115: Priorität einer Wissenslücke. Default "mittel".
 export type GapPriority = "hoch" | "mittel" | "niedrig";
@@ -105,6 +106,50 @@ export interface Gap {
   // der geprüften Fassung; ADMINISTRATIV ist eine Rücknahme mit geschlossenem Grund — nie „gelöst".
   // Fehlt bei einer geschlossenen Lücke: Altbestand von vor dieser Regel.
   abschluss?: GapAbschluss;
+  // produkt:20261010:antwort-beanstandung-korrektur — DIESE LÜCKE IST EINE BEANSTANDETE AUSSAGE.
+  // Kein zweites Feedbackmodell: die Beanstandung läuft über genau diesen Vorgang (Zuständigkeit,
+  // Rückfrage, fachlicher Abschluss, Rückmeldung). Der Melder ist Fragender (`createdBy` bzw.
+  // `weitereFragende`), dieselbe Aussage aus weiteren Meldungen zählt hoch (`compareKey`). Regeln in
+  // `antwort-beanstandung.ts`. Fehlt bei jeder gewöhnlichen Lücke.
+  beanstandung?: GapBeanstandung;
+}
+
+/**
+ * Die beanstandete Aussage und jede Meldung dazu — mit dem Versionsbezug, den der Antwortbeleg
+ * damals signiert hat. Wird nie auf einen späteren Stand umgeschrieben.
+ */
+export interface GapBeanstandung {
+  /** Die Quelle, an der die Aussage beanstandet ist; fehlt, wenn eine Quelle gänzlich fehlt. */
+  koId: string | null;
+  /** Der Wortlaut der Aussage, wie die Antwort ihn auslieferte (Fingerabdruck im Beleg geprüft). */
+  aussageText: string;
+  aussageFingerabdruck: string;
+  /**
+   * Alle Objekte, aus denen die Aussage in IRGENDEINER zugeführten Meldung Fundstellen hatte — die
+   * Vereinigung über alle Meldungen, Grundlage der Kontextfreigabe (Ben, Nacharbeit 2).
+   */
+  aussageKoIds: string[];
+  meldungen: GapBeanstandungMeldung[];
+}
+
+export interface GapBeanstandungMeldung {
+  /** Die bestehende Meldekennung (`answer.reported`, `antwortMeldungId`). */
+  meldungId: string;
+  von: string;
+  at: string;
+  answerId: string | null;
+  aussageId: string;
+  /** Die Fassung der Quelle in DIESER Antwort; `null` ohne Quelle oder ohne gebundene Fassung. */
+  koVersion: number | null;
+  fundstelleId: string | null;
+  quelleFehlt: boolean;
+  /** Die kurze Begründung des Melders. Steht nur hier, nie im Prüfprotokoll. */
+  begruendung: string;
+  /**
+   * Die Objekte, aus denen die Aussage in DIESER Antwort Fundstellen hatte. Fehlt nur bei Meldungen
+   * von vor dieser Angabe — dann gilt die Menge am Vorgang (`GapBeanstandung.aussageKoIds`).
+   */
+  aussageKoIds?: string[];
 }
 
 /** Eine Zuordnung der Lücke: wer zuständig wurde, durch wen, wann und auf welchem Weg. */
@@ -122,6 +167,14 @@ export interface GapRueckfrage {
   frage: string;
   von: string;
   at: string;
+  /**
+   * produkt:20261010:antwort-beanstandung-korrektur: bei einer Beanstandung ist eine Rückfrage an
+   * GENAU EINEN Melder gerichtet (den der gewählten Meldung). Nur er und die zuständige Person sehen
+   * und beantworten sie. Fehlt bei gewöhnlichen Lücken (Rückfrage an alle Fragenden).
+   */
+  an?: string;
+  /** Die Meldung, zu der die Rückfrage gestellt wurde (nur bei Beanstandungen). */
+  meldungId?: string;
   antwort?: string;
   beantwortetVon?: string;
   beantwortetAm?: string;
@@ -153,7 +206,18 @@ export type GapAbschluss =
       von: string;
       at: string;
     }
-  | { art: "administrativ"; grund: GapRuecknahmeGrund; von: string; at: string };
+  | { art: "administrativ"; grund: GapRuecknahmeGrund; von: string; at: string }
+  // produkt:20261010:antwort-beanstandung-korrektur: die fachlich BEGRÜNDETE Zurückweisung einer
+  // Beanstandung — die Aussage bleibt, wie sie ist. Keine Erfolgsmeldung „gelöst", aber eine
+  // Rückmeldung mit der Begründung. `koVersion` ist die Fassung, auf die sich die Zurückweisung stützt.
+  | {
+      art: "zurueckgewiesen";
+      begruendung: string;
+      koId: string | null;
+      koVersion: number | null;
+      von: string;
+      at: string;
+    };
 
 // FUNKE-FIX P0 (bens ROT-1): FORBIDDEN — ein „Danke" ohne gültigen, dieses KO belegenden
 // Antwort-Receipt (unbelegte/fremd gewählte KO-ID) → 403 (sendError-Mapping).
@@ -215,10 +279,40 @@ export type AnswerIntegrityState = "VALID" | "DEGRADED" | "INVALIDATED" | "REDAC
 export type AnswerNullReason =
   /** W1 beruehrt den Antwortweg nicht — es gibt keine Resolution, die man binden koennte. */
   | "w1_not_on_answer_path"
-  /** Die W2-A-Quellrevision ist nicht verdrahtet; niemand schreibt ExternalSourceRecords. */
+  /**
+   * Die W2-A-Quellrevision ist nicht verdrahtet; niemand schreibt ExternalSourceRecords.
+   *
+   * SEIT R-0169 UEBERHOLT: die Importwege schreiben `sourceRecordId` an den Quellenanker. Der Wert
+   * bleibt im Wertebereich, weil Altbestand ihn traegt; NEUE Snapshots schreiben ihn nicht mehr
+   * (Antwortbeleg, Nacharbeit 3) — sie binden den Anker oder nennen einen der Gruende darunter.
+   */
   | "w2a_not_wired"
-  /** Der Import erzeugt bis heute keine Fundstelle (buildSource setzt excerpt: null). */
+  /** Altbestand wie `w2a_not_wired`: neue Snapshots binden die Fundstelle aus dem Quellenanker. */
   | "no_locator_from_import"
+  /**
+   * ANTWORTBELEG (R-0293/R-0317) — DIE GRUENDE DER QUELLBINDUNG AUS DEM QUELLENANKER.
+   *
+   * Der Schreibweg bindet Quelle und Fundstelle aus dem Quellenanker (`KoSource`) der Wissenseinheit,
+   * wie der Antwortlauf sie in der Hand hielt. Leer bleibt ein Feld nur, wenn die Angabe wirklich
+   * fehlt — und dann mit genau einem dieser Gruende:
+   *   · `ko_not_in_execution`          die Antwort nennt ein Objekt, das der Lauf nicht hielt
+   *   · `no_source_anchor`             das Objekt traegt keinen Quellenanker (etwa manuell erfasst)
+   *   · `multiple_source_anchors`      mehrere Anker — welcher die Antwort trug, ist nicht belegt,
+   *                                    und geraten wird nicht
+   *   · `anchor_without_source_record` der Anker traegt keine festgeschriebene Quellfassung
+   *                                    (Anker von vor R-0169 oder nicht ueber einen Import entstanden)
+   *   · `anchor_without_excerpt`       der Anker traegt keine woertliche Belegstelle
+   */
+  | "ko_not_in_execution"
+  | "no_source_anchor"
+  | "multiple_source_anchors"
+  | "anchor_without_source_record"
+  | "anchor_without_excerpt"
+  /**
+   * R-0317: zu dieser Antwort gibt es keinen Laufprotokoll-Datensatz — der Retrieval-Weg ruft kein
+   * Modell und protokolliert keinen Lauf, oder es ist kein Laufprotokoll verdrahtet.
+   */
+  | "no_model_run_recorded"
   /**
    * Der Validation-Leseweg (findBySeq) existiert noch nicht — das war W3-B.
    *
@@ -314,7 +408,45 @@ export interface AnswerEvidenceRef {
    * keines von beiden verhindert `COMPLETE`.
    */
   readonly validationReferenceAbsenceReason?: ValidationReferenceAbsenceReason;
+  /**
+   * R-0317 — DIE RECHTELAGE DIESER WISSENSEINHEIT ZUM AUSFUEHRUNGSZEITPUNKT.
+   *
+   * Die Vertraulichkeitsstufe, die das Objekt trug, als die Antwort entstand. `null` heisst: das
+   * Objekt trug keine Stufe (Altbestand, gilt im Bestand als „intern"). Das ist eine HISTORISCHE
+   * Angabe — gelesen wird trotzdem mit den heutigen Rechten (`answer-explanation.ts`).
+   *
+   * OPTIONAL, weil Belege vor R-0317 sie nicht kennen; fehlt sie, steht sie auch nicht im Hash.
+   */
+  readonly confidentialityAtExecution?: string | null;
+  /**
+   * R-0340 — WER ZUM AUSFUEHRUNGSZEITPUNKT FUER DIESES WISSEN ZUSTAENDIG WAR.
+   *
+   * Abgeschrieben aus `responsibleOf`/`responsibleKindOf` (knowledge-object/src/ownership.ts):
+   * ein benannter Eigentuemer, sonst der Autor als ausgewiesener Rueckfall. Wechselt die
+   * Zustaendigkeit spaeter, bleibt hier der damalige Stand — genau dafuer steht es im Beleg.
+   */
+  readonly responsibleAtExecution?: string;
+  readonly responsibleKindAtExecution?: "owner" | "author-fallback";
+  /**
+   * R-0293 (Ben, Nacharbeit 7) — DER PRUEF-LAUF DIESER WISSENSEINHEIT ZUM AUSFUEHRUNGSZEITPUNKT.
+   *
+   * Abgeschrieben mit DERSELBEN Ableitung, aus der die Antwort ihren Pruefvorbehalt bildet
+   * (`answerCheckState`, answer-evidence.ts). Sie ist etwas ANDERES als die Freigabe
+   * (`validationDecisionRef`): eine freigegebene Quelle kann ohne vollstaendigen Konflikt-Pruef-Lauf
+   * sein, und genau diese Lage darf die Erklaerung nicht als „vollstaendig geprueft" ausgeben.
+   * Optional, weil Belege vor dieser Regel sie nicht kennen; fehlt sie, steht sie nicht im Hash.
+   */
+  readonly checkStateAtExecution?: AnswerCheckState;
 }
+
+/**
+ * R-0317 — WIE DER ANTWORTTEXT ENTSTAND: MIT MODELL ODER DETERMINISTISCH.
+ *
+ * Bewusst die grobe Stufe aus der KI-Kennzeichnung (`AiGeneratedMark.mode`) und KEIN Anbieter- oder
+ * Modellname: der ist Infrastrukturdetail und gehoert allein in die Admin-Sicht
+ * (`/api/reasoner/config`); der Beleg soll laut R-0317 ausdruecklich keine Anbieter-Spuren tragen.
+ */
+export type AnswerGenerationMode = "model" | "deterministic";
 
 /**
  * ================================================================================================
@@ -411,6 +543,20 @@ export interface AnswerEvidenceSnapshot {
   readonly validationDecisionRefReason: AnswerNullReason | null;
   readonly status: AnswerSnapshotStatus;
   readonly integrityHash: string;
+  /** R-0317: Erzeugungsart des Antworttextes. Optional wie die Felder an `AnswerEvidenceRef`. */
+  readonly generationMode?: AnswerGenerationMode;
+  /**
+   * R-0317 — DIE MODELLFASSUNG ALS UNVERAENDERLICHE INTERNE REFERENZ.
+   *
+   * Die Kennung des Laufprotokoll-Datensatzes (`ModelRunRecord.id`, append-only), der diese Antwort
+   * protokolliert hat: Anbieter, tatsaechlich gerufenes Modell, Rueckfall, Zeitpunkt. Der Beleg
+   * fuehrt bewusst nur die Referenz und keinen Anbieter- oder Modellnamen (keine Anbieter-Spuren im
+   * Beleg); wer den Datensatz liest, liest ihn mit den Rechten des Laufprotokolls.
+   * `null` nur mit Grund (`modelRunIdReason`). Optional, weil Belege vor dieser Regel sie nicht
+   * kennen — dann steht sie auch nicht im Hash.
+   */
+  readonly modelRunId?: string | null;
+  readonly modelRunIdReason?: AnswerNullReason | null;
 }
 
 /**
@@ -455,27 +601,53 @@ export function answerSnapshotHashMaterial(snapshot: AnswerEvidenceSnapshot): re
     `status=${snapshot.status}`,
     `evidenceCount=${snapshot.evidence.length}`,
   ];
+  // R-0317: die Erzeugungsart ist Inhalt des Belegs. Sie geht NUR ein, wenn sie gesetzt ist — so
+  // bleibt das Material eines Belegs von vor R-0317 Zeichen fuer Zeichen gleich, und sein
+  // gespeicherter Hash stimmt weiter. Ein nachtraeglich entferntes Feld aendert dagegen das
+  // Material und faellt damit auf.
+  if (snapshot.generationMode !== undefined) {
+    material.push(`generationMode=${snapshot.generationMode}`);
+  }
+  // R-0317: die Modelllauf-Referenz — dieselbe Regel: nur gesetzte Felder gehen ein.
+  if (snapshot.modelRunId !== undefined) {
+    material.push(`modelRunId=${hashWert(snapshot.modelRunId)}`);
+  }
+  if (snapshot.modelRunIdReason !== undefined) {
+    material.push(`modelRunIdReason=${hashWert(snapshot.modelRunIdReason)}`);
+  }
   snapshot.evidence.forEach((ref, index) => {
-    material.push(
-      [
-        `evidence[${index}].koId=${ref.knowledgeObjectId}`,
-        `koVersion=${hashWert(ref.knowledgeObjectVersion)}`,
-        `role=${ref.evidenceRole}`,
-        `sourceRecordId=${hashWert(ref.sourceRecordId)}`,
-        `sourceRecordIdReason=${hashWert(ref.sourceRecordIdReason)}`,
-        `locator=${hashWert(ref.locator)}`,
-        `locatorReason=${hashWert(ref.locatorReason)}`,
-        // KW-W3-23: die per-Evidence-Referenz IST Inhalt des Belegs und gehoert deshalb ins
-        // Material. Ohne sie liesse sich eine Entscheidung nachtraeglich an eine Evidence haengen
-        // oder von ihr loesen, ohne dass der Hash es merkt — und genau das soll er merken.
-        `evidenceValidationRef=${
-          ref.validationDecisionRef === undefined
-            ? NULL_MARKER
-            : `${ref.validationDecisionRef.auditSeq}#${ref.validationDecisionRef.auditHash}`
-        }`,
-        `evidenceAbsenceReason=${hashWert(ref.validationReferenceAbsenceReason ?? null)}`,
-      ].join("\u001e"),
-    );
+    const teile = [
+      `evidence[${index}].koId=${ref.knowledgeObjectId}`,
+      `koVersion=${hashWert(ref.knowledgeObjectVersion)}`,
+      `role=${ref.evidenceRole}`,
+      `sourceRecordId=${hashWert(ref.sourceRecordId)}`,
+      `sourceRecordIdReason=${hashWert(ref.sourceRecordIdReason)}`,
+      `locator=${hashWert(ref.locator)}`,
+      `locatorReason=${hashWert(ref.locatorReason)}`,
+      // KW-W3-23: die per-Evidence-Referenz IST Inhalt des Belegs und gehoert deshalb ins
+      // Material. Ohne sie liesse sich eine Entscheidung nachtraeglich an eine Evidence haengen
+      // oder von ihr loesen, ohne dass der Hash es merkt — und genau das soll er merken.
+      `evidenceValidationRef=${
+        ref.validationDecisionRef === undefined
+          ? NULL_MARKER
+          : `${ref.validationDecisionRef.auditSeq}#${ref.validationDecisionRef.auditHash}`
+      }`,
+      `evidenceAbsenceReason=${hashWert(ref.validationReferenceAbsenceReason ?? null)}`,
+    ];
+    // R-0317 / R-0340: dieselbe Regel wie bei `generationMode` — nur gesetzte Felder gehen ein.
+    if (ref.confidentialityAtExecution !== undefined) {
+      teile.push(`confidentiality=${hashWert(ref.confidentialityAtExecution)}`);
+    }
+    if (ref.responsibleAtExecution !== undefined) {
+      teile.push(`responsible=${ref.responsibleAtExecution}`);
+    }
+    if (ref.responsibleKindAtExecution !== undefined) {
+      teile.push(`responsibleKind=${ref.responsibleKindAtExecution}`);
+    }
+    if (ref.checkStateAtExecution !== undefined) {
+      teile.push(`checkState=${ref.checkStateAtExecution}`);
+    }
+    material.push(teile.join("\u001e"));
   });
   return material;
 }
@@ -728,7 +900,7 @@ export type AnswerPrimaryResolutionFailure =
  * pruefbar bleiben muessen. Ein fremder Wert kann aus einem aelteren Aufrufer, aus JSON oder aus
  * einem `as`-Cast stammen; der Compiler sieht ihn dann nicht.
  */
-const BEKANNTE_PRIMAERURSACHEN: readonly string[] = [
+export const BEKANNTE_PRIMAERURSACHEN: readonly string[] = [
   "UNKNOWN_REFERENCE",
   "UNRESOLVABLE_REFERENCE",
   "DAMAGED_REFERENCE",

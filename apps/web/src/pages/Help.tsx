@@ -223,7 +223,7 @@ export function Help(): JSX.Element {
               >
                 <ExternalLink size={12} aria-hidden="true" className="self-center" />
                 <span>{support.bezeichnung ?? t("help.support.linkDefault")}</span>
-                <span className="font-mono text-[10px] font-normal text-muted-2">
+                <span className="font-mono text-klein font-normal text-muted-2">
                   ({t("help.support.newTab")})
                 </span>
               </a>
@@ -278,6 +278,30 @@ export function Help(): JSX.Element {
           </p>
         ) : null}
       </Card>
+      {/* Aufnahme 20260922 · gesamt-demo-erklaermodus: der Einstieg in den geführten Vorführweg.
+          Die Seite ist eine statische Datei (`public/demonstration/vorfuehrweg.html`), keine
+          App-Route — sie öffnet deshalb in einem eigenen Fenster, damit sie auf dem zweiten
+          Bildschirm stehen bleiben kann. Nicht durchsuchbar (fester Orientierungspunkt wie die
+          Karten daneben); eine Klassenkette, ein Link, keine Liste. */}
+      <Card data-testid="hilfe-vorfuehrweg" className="mb-5 border-dashed">
+        <h2 className="text-[14px] font-semibold text-ink">{t("vorfuehrweg.hilfe.titel")}</h2>
+        <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+          {t("vorfuehrweg.hilfe.text")}
+        </p>
+        <a
+          href="/demonstration/vorfuehrweg.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="hilfe-vorfuehrweg-link"
+          className="mt-1.5 inline-flex flex-wrap items-baseline gap-1 text-[13px] font-semibold text-ai hover:underline"
+        >
+          <ExternalLink size={12} aria-hidden="true" className="self-center" />
+          <span>{t("vorfuehrweg.hilfe.link")}</span>
+          <span className="font-mono text-[10px] font-normal text-muted-2">
+            ({t("help.support.newTab")})
+          </span>
+        </a>
+      </Card>
       {/* R-0443 (Aufnahme gesamt-hilfen): der Einstieg in die eigene Seite „So arbeitet Klarwerk“
           (`pages/Arbeitsweise.tsx`). Nicht durchsuchbar — ein fester Orientierungspunkt wie die
           Karten darunter. */}
@@ -324,7 +348,7 @@ export function Help(): JSX.Element {
         <ol className="mt-3 space-y-2">
           {schritte.map((schritt) => (
             <li key={schritt.item.id} className="flex items-start gap-2.5">
-              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[10px] font-semibold text-white">
+              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-klein font-semibold text-white">
                 {schritt.item.n}
               </span>
               <span className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-text">
@@ -364,7 +388,7 @@ export function Help(): JSX.Element {
             <li key={obs.id} className="flex flex-col gap-1 border-l-2 border-hairline pl-3">
               <span className="text-[12.5px] leading-relaxed text-text">{t(obs.labelKey)}</span>
               <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-muted">
-                <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                <span className="font-mono text-klein uppercase tracking-wider text-muted-2">
                   {t("pilot.obs.mapLabel")}:
                 </span>
                 <span>{t(obs.mapKey)}</span>
@@ -436,7 +460,7 @@ export function Help(): JSX.Element {
             const merkmale = topic.tags.map((tag) => (
               <span
                 key={tag}
-                className="rounded-pill bg-hairline-soft px-1.5 py-0.5 font-mono text-[10px] text-muted-2"
+                className="rounded-pill bg-hairline-soft px-1.5 py-0.5 font-mono text-klein text-muted-2"
               >
                 {tag}
               </span>
@@ -481,7 +505,7 @@ export function Help(): JSX.Element {
                     <dl className="mt-1.5 space-y-2">
                       {BIBLIOTHEK_TEILE.map((teil) => (
                         <div key={teil}>
-                          <dt className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                          <dt className="font-mono text-klein uppercase tracking-wider text-muted-2">
                             {t(`hilfebibliothek.teil.${teil}`)}
                           </dt>
                           <dd
@@ -511,7 +535,7 @@ export function Help(): JSX.Element {
                   // `2701` ist ein SUCHALIAS, keine Normbezeichnung. Bei den ISO-Kapiteln bekommt
                   // die Merkmalsleiste deshalb eine Überschrift, die genau das sagt.
                   <div className="mt-2.5" data-testid={`hilfe-suchbegriffe-${topic.id}`}>
-                    <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                    <span className="font-mono text-klein uppercase tracking-wider text-muted-2">
                       {ISO_HELP_LABELS.searchTerms[isoLng]}
                     </span>
                     <div className="mt-1 flex flex-wrap gap-1">{merkmale}</div>
@@ -524,7 +548,7 @@ export function Help(): JSX.Element {
                     data-testid={`hilfe-quellen-${topic.id}`}
                     className="mt-3 rounded-input border border-hairline bg-page px-2.5 py-2"
                   >
-                    <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                    <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                       {ISO_HELP_LABELS.sources[isoLng]}
                     </div>
                     <ul className="mt-1.5 space-y-1">
@@ -540,7 +564,7 @@ export function Help(): JSX.Element {
                           >
                             <ExternalLink size={11} aria-hidden="true" className="self-center" />
                             <span className="break-all">{isoQuellenAnzeige(quelle)}</span>
-                            <span className="font-mono text-[10px] font-normal text-muted-2">
+                            <span className="font-mono text-klein font-normal text-muted-2">
                               ({ISO_HELP_LABELS.newTab[isoLng]})
                             </span>
                           </a>
@@ -612,7 +636,7 @@ export function Help(): JSX.Element {
             }
             return (
               <div key={gruppe} data-hilfe-gruppe={gruppe} className="mt-3">
-                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                <h3 className="font-mono text-klein uppercase tracking-wider text-muted-2">
                   {t(`hilfebibliothek.gruppe.${gruppe}`)}
                 </h3>
                 <ul className="mt-1.5 space-y-2">
@@ -631,7 +655,7 @@ export function Help(): JSX.Element {
                           <dl className="mt-1.5 space-y-2">
                             {BIBLIOTHEK_TEILE.map((teil) => (
                               <div key={teil}>
-                                <dt className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                                <dt className="font-mono text-klein uppercase tracking-wider text-muted-2">
                                   {t(`hilfebibliothek.teil.${teil}`)}
                                 </dt>
                                 <dd

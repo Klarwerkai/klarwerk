@@ -43,6 +43,8 @@ export interface PutObjectInput {
   owner?: string;
   /** An welchen Entwurf das Objekt (vorläufig) gebunden ist. */
   draftId?: string;
+  /** BPA-17: privates Folgeprodukt dieses Wissensobjekts (s. `ObjectLifecycle.privatQuelle`). */
+  privatQuelle?: string;
 }
 
 // Leitet die Objektart aus dem MIME-Typ ab (überschreibbar via input.kind).
@@ -89,6 +91,7 @@ export class ObjectStore {
       purpose: input.purpose ?? "unknown",
       ...(input.owner?.trim() ? { owner: input.owner.trim() } : {}),
       ...(input.draftId?.trim() ? { draftId: input.draftId.trim() } : {}),
+      ...(input.privatQuelle?.trim() ? { privatQuelle: input.privatQuelle.trim() } : {}),
       retainUntil: new Date(at + OBJECT_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString(),
     };
     const ref: ObjectRef = {

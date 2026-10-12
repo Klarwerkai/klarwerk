@@ -25,6 +25,17 @@ export {
   type AntwortMeldeGrund,
   type AntwortMeldungQuittung,
 } from "./src/antwort-meldung";
+// produkt:20261010:antwort-beanstandung-korrektur: die Beanstandung einer konkreten Aussage —
+// Regeln in `src/antwort-beanstandung.ts`, Schreibwege am `AskService`.
+export {
+  BEANSTANDUNG_BEGRUENDUNG_MAX,
+  BEANSTANDUNG_FRAGE,
+  beanstandungSicht,
+  istKorrektur,
+  leseBeanstandung,
+  type BeanstandungEingabe,
+  type BeanstandungSicht,
+} from "./src/antwort-beanstandung";
 export { PgGapRepo, ASK_SCHEMA } from "./src/repo-pg";
 // R-0773: erfolglose Suchen je Person (Begründung und Grenzen in `src/nulltreffer.ts`).
 export {
@@ -68,6 +79,8 @@ export type {
 export type {
   AnswerEvidenceRef,
   AnswerEvidenceSnapshot,
+  // R-0317: die Erzeugungsart im Beleg — `services/app` und die Tests lesen sie ueber die Fassade.
+  AnswerGenerationMode,
   AnswerIntegrityContext,
   // KW-W3-22 (Auftrag 129): die geschlossene Ursache MUSS ueber die Fassade erreichbar sein — der
   // spaetere W3-C-Lesepfad in `services/app` bildet sie, und ein Typ, den die Fassade nicht
@@ -85,6 +98,7 @@ export {
   ANSWER_RECEIPT_TTL_MS,
   MIN_RECEIPT_SECRET_BYTES,
   ReceiptSecretError,
+  aussageFingerabdruck,
   parseConfiguredReceiptSecret,
   signAnswerReceipt,
   verifyAnswerReceipt,
@@ -98,6 +112,8 @@ export {
 export type {
   Gap,
   GapAbschluss,
+  GapBeanstandung,
+  GapBeanstandungMeldung,
   GapBelegbedarf,
   GapPriority,
   GapRueckfrage,

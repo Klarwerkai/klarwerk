@@ -20,6 +20,7 @@ import {
   isGapPriority,
   isGapRuecknahmeGrund,
   konfliktGegenseiten,
+  leseBeanstandung,
   leseFundstellenAnfrage,
   loeseFundstelleAuf,
   redactGapForViewer,
@@ -40,10 +41,21 @@ import { type AbsatzBeleg, absatzBelege } from "../absatz-belege";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { schalterAn } from "../feature-flags";
+import {
+  type BereichsmarkenQuelle,
+  FirmenfilterFehler,
+  KEINE_BEREICHSMARKEN,
+  imFirmenfilter,
+  leseFirmenfilter,
+} from "../firmenbereich";
 import { type Guards, type SessionUser, sendError } from "../http";
 import type { KlaraAufgabe } from "../services/klara-session-service";
 // JOB 1591 D1 (W5): NUR gelesen — das bestehende Praedikat, kein zweites.
-import { schluesselBetrachter, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
+import {
+  type Sichtbarkeitsfilter,
+  schluesselBetrachter,
+  sichtbarkeitsfilterFuer,
+} from "../sichtbarkeit";
 
 // SCRUM-498 B1 (ben-Review): bewusste Eingabe-Härtung von POST /api/ask, definiert über die GÜLTIGE
 // HÜLLE eines Requests:
@@ -278,6 +290,11 @@ export interface AskRouteDeps {
    * werden. Fehlt die Quelle, fällt dort JEDES Objekt mit führendem Space weg (fail-closed).
    */
   offeneSpaces?: (() => Promise<ReadonlySet<string>>) | undefined;
+  /**
+   * produkt:20261011:peter-p14 — die Partner- und öffentlichen Spaces für den Firmenfilter der
+   * Frage. Fehlt die Quelle, gibt es keine Bereichsmarke (der Filter verengt nur).
+   */
+  bereichsmarken?: BereichsmarkenQuelle | undefined;
   /**
    * R-1649: legt den abweichenden Weg aus „nicht hilfreich, ich habe es so gemacht …" als Entwurf
    * an. Eine schmale Funktion statt des Erfassungsdienstes (dieselbe Bauart wie `hilfreich` in
@@ -1036,6 +1053,17 @@ async function antwortLauf(
     // Anfrage an ein Word-Dokument gebunden ist — Klaras Zugang immer; sonst `frage`. Bewusst NICHT
     // die bloße Markierung (KA5-R2).
     readonly anlass: FrageAnlass;
+    /**
+     * P05 (B-10, RF-10): die Anmeldung des Fragenden UNMITTELBAR vor der Auslieferung erneut
+     * prüfen — mit demselben Guard wie am Eingang. Wurde das Konto während der Verarbeitung lokal
+     * gesperrt (Befristung abgelaufen, Verzeichnis-Austritt) oder hat es das Leserecht verloren,
+     * hat der Guard bereits 401/403 gesendet, und die fertige Antwort verlässt den Server nicht.
+     * Nur auf Sitzungswegen gesetzt; der Schlüsselweg hat keine Sitzung. Liefert den FRISCH
+     * aufgelösten Nutzer — mit ihm wird danach das Leserecht an jeder Quelle geprüft.
+     */
+    readonly nachpruefung?: () => Promise<SessionUser | undefined>;
+    /** P14: der Firmenfilter dieser Frage — tritt als UND hinter die Grundlage, nie an ihre Stelle. */
+    readonly bereich?: Sichtbarkeitsfilter;
   },
 ): Promise<void> {
   const ask = deps.ask;
@@ -1044,13 +1072,17 @@ async function antwortLauf(
     : lauf.opts;
   const betrachter = request.askSessionUser;
   let grundlage: (ko: KnowledgeObject) => boolean;
+  // produkt:20261011:peter-p14: der Modellkontext bleibt im erlaubten Raum — der Firmenfilter
+  // (`lauf.bereich`) verengt die Grundlage innerhalb derselben Entscheidung, er ersetzt sie nicht.
   if (betrachter) {
-    grundlage = sichtbarkeitsfilterFuer(betrachter);
+    grundlage = sichtbarkeitsfilterFuer(betrachter, lauf.bereich);
   } else {
     // R-1175: auch ohne Sitzungsnutzer DIESELBE Entscheidung — `darfSehen` mit dem engsten
     // Betrachter (keine Kennung, `viewer`, nur offene Spaces), statt einer eigenen Zeile.
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19/20): ein Schlüssel hat kein persönliches
+    // Freigabeniveau — Rang 0, also nur ausdrücklich „intern" (Entscheidung 15/16).
     const offen = (await deps.offeneSpaces?.()) ?? new Set<string>();
-    grundlage = sichtbarkeitsfilterFuer(schluesselBetrachter(offen));
+    grundlage = sichtbarkeitsfilterFuer(schluesselBetrachter(offen), lauf.bereich);
   }
   // D5: die Abschalt-Epoche beim EINGANG dieser Frage (onRequest). Jede Prüfung bis zur
   // Auslieferung vergleicht mit ihr — auch eine Aus-/Wiedereinschaltung dazwischen entwertet die
@@ -1122,6 +1154,45 @@ async function antwortLauf(
     out.aussagen && request.authContext?.authKind === "addon"
       ? { aussagen: aufKernaussagenBeschraenkt(out.aussagen) }
       : {};
+  // P05 (B-10): nach dem letzten Warten der Antwort, vor der Auslieferung — die Anmeldung erneut.
+  let sichtJetzt = grundlage;
+  if (lauf.nachpruefung) {
+    const frisch = await lauf.nachpruefung();
+    if (!frisch) {
+      return;
+    }
+    // Zusammenführung mit P14: dieselbe Entscheidung wie am Eingang — samt Firmenfilter.
+    sichtJetzt = sichtbarkeitsfilterFuer(frisch, lauf.bereich);
+  }
+  // P05-AC03 (Ben, Nacharbeit 4): LESERECHTSENTZUG WÄHREND DER VERARBEITUNG. Die Antwort entstand
+  // aus Quellen, die der Fragende beim Eingang sehen durfte. Wurde ihm inzwischen das Leserecht an
+  // einer davon entzogen (Hochstufung auf vertraulich, Space-/Rollenentzug), verlässt die fertige
+  // Antwort den Server nicht: jede herangezogene Quelle wird mit dem AKTUELLEN Stand des Objekts und
+  // des Nutzers gegen dieselbe Sichtregel gehalten, Vertrauliches fällt wie im Fragedienst immer
+  // heraus. Die Absage nennt keine Quelle und keinen Inhalt.
+  // Nacharbeit 6 (Ben): auch eine WÄHREND der Verarbeitung verschwundene Wissenskopie sperrt — in
+  // den Papierkorb gelegt (`ko.get` liefert dann nichts) oder endgelöscht, etwa durch eine gesonderte
+  // personenbezogene oder Lizenzlöschung (P05-AC06). Davon zu unterscheiden ist die nur
+  // UNERREICHBARE externe Quelle einer gewöhnlichen Quellenlöschung (P05-AC01/AC02): dort bleibt die
+  // Kopie bestehen, trägt nur den Vermerk `sourceRemovedAt` am Anker und wird weiter ausgeliefert.
+  // Grenze, benannt: zwischen dieser Lesung und dem Senden liegt kein weiteres Warten; ein Entzug
+  // NACH dem Senden wirkt auf die nächste Anfrage (Beleg- und Frageweg prüfen am Eingang).
+  const herangezogen = [...new Set([...out.result.sources, ...out.result.citedSources])];
+  for (const id of herangezogen) {
+    const jetzt = await deps.ko.get(id);
+    if (!jetzt || isConfidential(jetzt.confidentiality) || !sichtJetzt(jetzt)) {
+      reply.code(409).send({
+        error: "QUELLRECHTE_GEAENDERT",
+        message:
+          lauf.locale === "en"
+            ? "Access to a source used for this answer changed while it was being prepared. Please ask again."
+            : lauf.locale === "nl"
+              ? "De toegang tot een bron voor dit antwoord is tijdens het opstellen gewijzigd. Stel de vraag opnieuw."
+              : "Der Zugriff auf eine herangezogene Quelle hat sich während der Antwort geändert. Bitte erneut fragen.",
+      });
+      return;
+    }
+  }
   // AUFNAHME 20260922: `belastbarkeit` steht NEBEN `evidence`, nicht darin — die Einstufung
   // bleibt der unveränderte Vertrag, den Word und die Paritätstafel lesen.
   reply.code(200).send({
@@ -1266,6 +1337,25 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           reply.code(400).send({ error: "INVALID", message: "fragekontext ist ungültig." });
           return;
         }
+        // produkt:20261011:peter-p14: der Firmenfilter der Frage — auf JEDEM Zweig derselbe, geprüft
+        // vor jedem Lesen. Ungültig → 400 mit einem Text, der nichts über den Bestand sagt.
+        let bereich: Sichtbarkeitsfilter | undefined;
+        try {
+          const firmenfilter = leseFirmenfilter({
+            firmenbereich: request.body.firmenbereich,
+            partner: request.body.partner,
+          });
+          if (firmenfilter) {
+            const marken = (await deps.bereichsmarken?.()) ?? KEINE_BEREICHSMARKEN;
+            bereich = (ko) => imFirmenfilter(ko, firmenfilter, marken);
+          }
+        } catch (fehler) {
+          if (fehler instanceof FirmenfilterFehler) {
+            reply.code(400).send({ error: fehler.code, message: fehler.message });
+            return;
+          }
+          throw fehler;
+        }
         // Der Abschluss dieses Wegs — derselbe Antwortlauf wie an Klaras Zugang. Als `answer(…)`
         // benannt, weil `tests/app/mega52-validiert-zusicherung-sammler.test.ts` die Session-
         // Abschlüsse `answer(user.id, …)` AUS DIESEM QUELLTEXT liest (R-0278: alle mit
@@ -1283,9 +1373,14 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             opts,
             ...(zusatz ? { zusatz } : {}),
             ...(beilage ? { beilage } : {}),
+            ...(bereich ? { bereich } : {}),
             // R-0346: hier kommt eine Klara-Bindung nur noch mit einem Dienst-Schlüssel an (R-0688,
             // Abweisung oben); dann gilt wie bisher der Anlass `dokument`.
             anlass: klaraBindungVorhanden(request.headers) ? "dokument" : "frage",
+            // P05 (B-10): nur der Sitzungsweg — der Schlüsselweg hat keine Sitzung zum Nachprüfen.
+            ...(request.authContext?.authKind === "addon"
+              ? {}
+              : { nachpruefung: () => guards.requirePermission("ko.read", request, reply) }),
           });
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
@@ -1489,23 +1584,45 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
 
     // R-1089 / R-1721: „Antwort falsch" / „Quelle passt nicht" — an den Verantwortlichen des
     // zitierten Wissensobjekts, mit Quittung. Dieselbe Beleg-Bindung wie „Hat geholfen".
-    app.post<{ Body: { koId?: string; receipt?: string; grund?: string } }>(
-      "/api/ask/report",
-      async (request, reply) => {
-        const user = await guards.requirePermission("ko.read", request, reply);
-        if (!user) {
-          return;
-        }
-        try {
-          const body = request.body ?? {};
-          reply
-            .code(200)
-            .send(await ask.reportAnswer(body.receipt ?? "", body.koId ?? "", body.grund, user.id));
-        } catch (error) {
-          sendError(reply, error);
-        }
-      },
-    );
+    //
+    // produkt:20261010:antwort-beanstandung-korrektur: mit `aussage` ({ aussageId, text,
+    // fundstelleId?, quelleFehlt? }) und `begruendung` wird daraus die Beanstandung einer konkreten
+    // Aussage — gebunden an die signierte Aussagefassung des Belegs und geführt als Vorgang. Die
+    // verantwortliche Person wird zuständig, wenn sie HEUTE eine berechtigte Fachzuständigkeit ist.
+    app.post<{
+      Body: {
+        koId?: string;
+        receipt?: string;
+        grund?: string;
+        aussage?: unknown;
+        begruendung?: unknown;
+      };
+    }>("/api/ask/report", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        const body = request.body ?? {};
+        const beanstandung =
+          body.aussage !== undefined ? leseBeanstandung(body.aussage, body.begruendung) : undefined;
+        const pruefen = deps.fachzustaendigkeit;
+        reply
+          .code(200)
+          .send(
+            await ask.reportAnswer(
+              body.receipt ?? "",
+              body.koId ?? "",
+              body.grund,
+              user.id,
+              beanstandung,
+              pruefen ? { zustaendigVerfuegbar: (id) => pruefen(id) } : {},
+            ),
+          );
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
 
     // R-1649 (ROADMAP 7.3): „Das war nicht hilfreich, ich habe es so gemacht …" — die Negativ-
     // Bewährung an der tragenden Quelle, optional verbunden mit dem abweichenden Weg als Entwurf.
@@ -1822,11 +1939,14 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
       if (!user) {
         return;
       }
+      // Bei einer Beanstandung: an welche Meldung (und damit an welchen Melder) die Rückfrage geht.
+      const meldungId = textFeld(request.body, "meldungId");
       try {
         await ask.askGapFollowUp(
           request.params.id,
           beteiligterAus(user),
           textFeld(request.body, "frage") as string,
+          typeof meldungId === "string" ? meldungId : undefined,
         );
         await vorgangSenden(reply, request.params.id, user);
       } catch (error) {
@@ -1893,6 +2013,26 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           request.params.id,
           typeof roh === "string" ? roh.trim() : undefined,
           beteiligterAus(user),
+        );
+        await vorgangSenden(reply, request.params.id, user);
+      } catch (error) {
+        vorgangsfehler(reply, error);
+      }
+    });
+
+    // produkt:20261010:antwort-beanstandung-korrektur: die begründete Zurückweisung einer
+    // Beanstandung durch die zuständige Person (oder Verwaltende) — dasselbe Recht wie der fachliche
+    // Abschluss (`ko.create`, HEUTE verlangt). Die Begründung erreicht den Melder als Rückmeldung.
+    app.post<{ Params: { id: string } }>("/api/gaps/:id/zurueckweisen", async (request, reply) => {
+      const user = await guards.requirePermission("ko.create", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        await ask.rejectBeanstandung(
+          request.params.id,
+          beteiligterAus(user),
+          textFeld(request.body, "begruendung"),
         );
         await vorgangSenden(reply, request.params.id, user);
       } catch (error) {
@@ -2100,6 +2240,8 @@ export function klaraAusfuehrungRoutes(
             ...(zusatz ? { zusatz } : {}),
             // R-0346: Klaras Zugang ist immer an ein Word-Dokument gebunden.
             anlass: "dokument",
+            // P05 (B-10): Klaras Zugang ist immer ein Sitzungsweg.
+            nachpruefung: () => guards.requirePermission("ko.read", request, reply),
           });
         };
         if (freigegeben) {

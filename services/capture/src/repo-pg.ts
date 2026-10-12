@@ -260,6 +260,25 @@ export class PgDraftRepo implements DraftRepo {
     ]);
   }
 
+  // Klara 05 (Nacharbeit 4): Standvergleich und Papierkorbvermerk in EINER Anweisung — dieselbe
+  // Bedingung wie `DRAFT_UPDATE_WENN_STAND_SQL`. `rowCount 0`: anderer Stand, fehlt oder getrasht.
+  async deleteWennStand(
+    id: string,
+    erwarteterStand: string,
+    geloeschtVon?: string,
+    zeitpunkt?: string,
+  ): Promise<boolean> {
+    const vermerk = {
+      deletedAt: zeitpunkt ?? new Date().toISOString(),
+      ...(geloeschtVon === undefined ? {} : { deletedBy: geloeschtVon }),
+    };
+    const res = await this.pool.query(
+      `UPDATE drafts SET data = data || $2::jsonb WHERE id=$1 AND ${AKTIV} AND data->>'updatedAt' = $3`,
+      [id, JSON.stringify(vermerk), erwarteterStand],
+    );
+    return res.rowCount === 1;
+  }
+
   // JOB 3668: DIE EINZIGE HARTE LÖSCHUNG DES ADAPTERS — wörtlich die Anweisung, die bis zu diesem
   // Auftrag in `delete` stand. Sie ist nicht verschwunden, sie hat ihren richtigen Namen bekommen.
   //
@@ -275,7 +294,19 @@ export class PgDraftRepo implements DraftRepo {
   // gerade ein Wissensobjekt geworden ist, hat den Papierkorb nie gesehen und muss trotzdem
   // gehen. Es bleibt EINE Mechanik: dieselbe Methode, dieselbe Anweisung, ein Prädikat mehr oder
   // weniger. `rowCount` sagt ehrlich, ob etwas entfernt wurde.
-  async purge(id: string, auchLebende = false): Promise<boolean> {
+  //
+  // Aufnahme gesamt-papierkorb (Bens Befund, Nacharbeit 2): `geloeschtAm` bindet die Löschung an
+  // den Löschzeitpunkt, dessen Frist der Aufrufer geprüft hat — in DERSELBEN Anweisung. Ein
+  // zwischenzeitlich wiederhergestellter und neu gelöschter Entwurf trägt einen anderen Zeitpunkt
+  // und bleibt mit seiner neuen Frist stehen. Ohne `geloeschtAm` ist die Anweisung unverändert.
+  async purge(id: string, auchLebende = false, geloeschtAm?: string): Promise<boolean> {
+    if (geloeschtAm !== undefined) {
+      const res = await this.pool.query(
+        `DELETE FROM drafts WHERE id=$1 AND ${IM_PAPIERKORB} AND data->>'deletedAt' = $2`,
+        [id, geloeschtAm],
+      );
+      return res.rowCount === 1;
+    }
     const res = await this.pool.query(
       `DELETE FROM drafts WHERE id=$1${auchLebende ? "" : ` AND ${IM_PAPIERKORB}`}`,
       [id],

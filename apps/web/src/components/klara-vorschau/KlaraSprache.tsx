@@ -17,8 +17,9 @@
 // Knopf; Mikrofon abgelehnt → ehrlicher Satz; „Aufnahme stoppen“ beendet das Zuhören jederzeit, und
 // das Schliessen der Fläche ebenso (Abbau = Stopp).
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { useDirectory } from "../../api/hooks";
+// produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
+import { useAssistenzT } from "../../lib/assistenzProfil";
 import { anfuegen, auftragsArt, klaerungen } from "../../lib/klaraSprache";
 import { type SpeechRec, diktatSprache, makeRec } from "../../lib/speechDictation";
 import { hasSpeechRecognition, istIosGeraet } from "../../lib/speechSupport";
@@ -39,12 +40,23 @@ const KNOPF =
   "inline-flex h-8 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-text hover:border-ink/30 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 const KNOPF_KI =
   "inline-flex h-8 items-center rounded-btn border border-ai bg-ai-surface-2 px-2.5 text-[12px] font-semibold text-ai hover:bg-ai-surface-1 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
-const KLEINTITEL = "font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2";
+const KLEINTITEL = "font-mono text-klein font-semibold uppercase tracking-wider text-muted-2";
 
 export type Aufnahmeart = "diktat" | "auftrag";
 
-/** Was aus einem gesendeten Auftrag wurde — `demo` im Demo-Betrieb, sonst der Stand des Fragewegs. */
-export type SprachStand = Exclude<Fragestand, "veraltet"> | "demo" | "nicht_gesendet";
+/**
+ * Was aus einem gesendeten Auftrag wurde — `demo` im Demo-Betrieb, sonst der Stand des Fragewegs.
+ * Klara 05: `uebergeben` — ein Ausführungsauftrag ging an die Auftragskarte (`KlaraAusfuehrung.tsx`),
+ * die den tatsächlichen Stand jedes Schritts zeigt.
+ */
+export type SprachStand =
+  | Exclude<Fragestand, "veraltet">
+  | "demo"
+  | "nicht_gesendet"
+  | "uebergeben";
+
+/** Klara 05: eine Frage, ein (noch) nicht ausführbarer Arbeitsauftrag oder ein Ausführungsauftrag. */
+export type SprachArt = "frage" | "aktion" | "ausfuehrung";
 
 export interface SprachZiel {
   seitenName: string;
@@ -72,7 +84,7 @@ export interface GesprochenerAuftrag {
   erledigt: string[];
   gesendet: {
     text: string;
-    art: "frage" | "aktion";
+    art: SprachArt;
     stand: SprachStand | "laeuft";
     antwort: string | null;
   } | null;
@@ -88,6 +100,12 @@ export interface KlaraSprachSteuerung {
   moeglich: boolean;
   ios: boolean;
   laeuft: Aufnahmeart | null;
+  /**
+   * produkt:20261010:assistenz-name-avatar: `true` erst, wenn der Browser die Tonaufnahme bestätigt
+   * (`audiostart`) — nicht schon bei der Anforderung (`laeuft`), etwa während die Mikrofonberechtigung
+   * noch aussteht. Ende, Fehler, Stopp und Abbruch setzen es zurück. Grundlage für „Zuhören“ der Figur.
+   */
+  hoert: boolean;
   zwischen: string;
   hinweis: string | null;
   starten: (art: Aufnahmeart) => void;
@@ -106,10 +124,11 @@ export function useKlaraSprache(optionen: {
   /** Das Ziel im Augenblick des Sprechens. */
   ziel: () => SprachZiel;
 }): KlaraSprachSteuerung {
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useAssistenzT();
   const moeglich = typeof window !== "undefined" && hasSpeechRecognition(window);
   const ios = typeof window !== "undefined" && istIosGeraet(window);
   const [laeuft, setLaeuft] = useState<Aufnahmeart | null>(null);
+  const [hoert, setHoert] = useState(false);
   const [zwischen, setZwischen] = useState("");
   const [hinweis, setHinweis] = useState<string | null>(null);
   const [auftrag, setAuftrag] = useState<GesprochenerAuftrag | null>(null);
@@ -126,12 +145,15 @@ export function useKlaraSprache(optionen: {
       rec.onresult = null;
       rec.onend = null;
       rec.onerror = null;
+      rec.onaudiostart = null;
+      rec.onaudioend = null;
       try {
         rec.stop();
       } catch {
         // schon beendet
       }
       setLaeuft(null);
+      setHoert(false);
       setZwischen("");
     }
   }, []);
@@ -166,6 +188,7 @@ export function useKlaraSprache(optionen: {
         }
         recRef.current = null;
         setLaeuft(null);
+        setHoert(false);
         setZwischen("");
         const tt = tRef.current;
         if (grund === "not-allowed" || grund === "service-not-allowed") {
@@ -207,10 +230,23 @@ export function useKlaraSprache(optionen: {
       return;
     }
     vorgang.rec = rec;
+    // produkt:20261010:assistenz-name-avatar: „Zuhören“ erst, wenn der Browser die Tonaufnahme
+    // bestätigt; Ereignisse eines abgelösten Rekorders ändern den neuen Lauf nicht.
+    rec.onaudiostart = () => {
+      if (recRef.current === vorgang.rec) {
+        setHoert(true);
+      }
+    };
+    rec.onaudioend = () => {
+      if (recRef.current === vorgang.rec) {
+        setHoert(false);
+      }
+    };
     if (art === "auftrag") {
       setAuftrag(null);
     }
     recRef.current = rec;
+    setHoert(false);
     try {
       rec.start();
     } catch {
@@ -238,6 +274,7 @@ export function useKlaraSprache(optionen: {
     moeglich,
     ios,
     laeuft,
+    hoert,
     zwischen,
     hinweis,
     starten,
@@ -252,7 +289,7 @@ export function useKlaraSprache(optionen: {
 // Die Leiste über dem Eingabefeld: Diktieren · Auftrag sprechen · Aufnahme stoppen · Vorlesen stoppen.
 // -------------------------------------------------------------------------------------------------
 export function KlaraSprachLeiste({ s }: { s: KlaraSprachSteuerung }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const vorlesen = useKlaraVorlesen();
   return (
     <div data-testid="klara-sprache" className="w-full space-y-1">
@@ -344,10 +381,19 @@ export function KlaraAuftragKarte({
   s,
   sendebereit,
   absenden,
+  ausfuehrbar,
+  ausfuehrungBereit = false,
 }: {
   s: KlaraSprachSteuerung;
   sendebereit: boolean;
   absenden: (text: string, ziel: SprachZiel) => Promise<Absendeergebnis>;
+  /**
+   * Klara 05: ist dieser Text ein klarer Ausführungsauftrag (`lib/klaraAuftragErkennung.ts`)? Dann
+   * geht „Senden“ an denselben Ausführungsweg wie ein getippter Auftrag. Fehlt die Angabe (Demo),
+   * bleibt alles wie in Klara 02.
+   */
+  ausfuehrbar?: (text: string) => boolean;
+  ausfuehrungBereit?: boolean;
 }): JSX.Element | null {
   const a = s.auftrag;
   if (!a) {
@@ -356,7 +402,14 @@ export function KlaraAuftragKarte({
   return a.gesendet ? (
     <AuftragErgebnis a={a} s={s} />
   ) : (
-    <AuftragEntwurf a={a} s={s} sendebereit={sendebereit} absenden={absenden} />
+    <AuftragEntwurf
+      a={a}
+      s={s}
+      sendebereit={sendebereit}
+      absenden={absenden}
+      ausfuehrbar={ausfuehrbar}
+      ausfuehrungBereit={ausfuehrungBereit}
+    />
   );
 }
 
@@ -367,15 +420,19 @@ function zielText(z: SprachZiel): string {
 function AuftragEntwurf({
   a,
   s,
-  sendebereit,
+  sendebereit: frageBereit,
   absenden,
+  ausfuehrbar,
+  ausfuehrungBereit,
 }: {
   a: GesprochenerAuftrag;
   s: KlaraSprachSteuerung;
   sendebereit: boolean;
   absenden: (text: string, ziel: SprachZiel) => Promise<Absendeergebnis>;
+  ausfuehrbar: ((text: string) => boolean) | undefined;
+  ausfuehrungBereit: boolean;
 }): JSX.Element {
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useAssistenzT();
   const feldId = useId();
   const personen = useDirectory();
   const bezug = a.ziel.bekannt ? t("klarasprache.bezug", { ziel: zielText(a.ziel) }) : null;
@@ -385,7 +442,9 @@ function AuftragEntwurf({
     sprache: i18n.language,
     bezug,
   }).filter((k) => !a.erledigt.includes(k.schluessel));
-  const art = auftragsArt(a.text);
+  // Klara 05: ein klarer Ausführungsauftrag ist sichtbar etwas anderes als Frage und Diktat.
+  const art: SprachArt = ausfuehrbar?.(a.text) ? "ausfuehrung" : auftragsArt(a.text);
+  const sendebereit = art === "ausfuehrung" ? ausfuehrungBereit : frageBereit;
   const leer = a.text.trim().length === 0;
   const aendere = (f: (x: GesprochenerAuftrag) => GesprochenerAuftrag): void =>
     s.setzeAuftrag((x) => (x && x.id === a.id ? f(x) : x));
@@ -440,9 +499,19 @@ function AuftragEntwurf({
         </dd>
         <dt className={KLEINTITEL}>{t("klarasprache.auftrag.artLabel")}</dt>
         <dd data-testid="klara-auftrag-art" data-art={art} className="font-semibold text-text">
-          {t(`klarasprache.auftrag.art.${art}`)}
+          {art === "ausfuehrung"
+            ? t("klaraauftrag.sprache.art")
+            : t(`klarasprache.auftrag.art.${art}`)}
         </dd>
       </dl>
+      {art === "ausfuehrung" ? (
+        <p
+          data-testid="klara-auftrag-ausfuehrung-hinweis"
+          className="mt-1 text-[11px] leading-relaxed text-muted-2"
+        >
+          {t("klaraauftrag.sprache.hinweis")}
+        </p>
+      ) : null}
       {art === "aktion" ? (
         <p
           data-testid="klara-auftrag-aktion-hinweis"
@@ -534,7 +603,7 @@ function AuftragErgebnis({
   a: GesprochenerAuftrag;
   s: KlaraSprachSteuerung;
 }): JSX.Element | null {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const g = a.gesendet;
   if (!g) {
     return null;
@@ -562,8 +631,20 @@ function AuftragErgebnis({
         </dd>
         <dt className={KLEINTITEL}>{t("klarasprache.ergebnis.ergebnis")}</dt>
         <dd data-testid="klara-ergebnis-stand" className="font-semibold text-text">
-          {t(`klarasprache.ergebnis.stand.${g.stand}`)}
-          {g.art === "aktion" ? ` ${t("klarasprache.ergebnis.keineAktion")}` : ""}
+          {g.art === "ausfuehrung" ? (
+            g.stand === "uebergeben" ? (
+              t("klaraauftrag.sprache.ergebnis")
+            ) : g.stand === "laeuft" ? (
+              t("klarasprache.ergebnis.stand.laeuft")
+            ) : (
+              t("klaraauftrag.sprache.nichtUebergeben")
+            )
+          ) : (
+            <>
+              {t(`klarasprache.ergebnis.stand.${g.stand}`)}
+              {g.art === "aktion" ? ` ${t("klarasprache.ergebnis.keineAktion")}` : ""}
+            </>
+          )}
         </dd>
       </dl>
       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -585,7 +666,7 @@ function AuftragErgebnis({
 // Vorlesen: ein Knopf je Antwort, und die Einstellungen.
 // -------------------------------------------------------------------------------------------------
 export function VorlesenKnopf({ id, text }: { id: string; text: string }): JSX.Element | null {
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useAssistenzT();
   const v = useKlaraVorlesen();
   if (!vorlesenMoeglich()) {
     return null;
@@ -605,7 +686,7 @@ export function VorlesenKnopf({ id, text }: { id: string; text: string }): JSX.E
 }
 
 export function KlaraSprachausgabe(): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const v = useKlaraVorlesen();
   const tempoId = useId();
   if (!vorlesenMoeglich()) {

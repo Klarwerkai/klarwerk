@@ -96,9 +96,12 @@ async function imFenster(page: Page, l: Locator, wann: string): Promise<void> {
   expect(b.y >= 0 && b.y + b.height <= v.height + 1, `${wann}: senkrecht ausserhalb`).toBe(true);
 }
 
+// produkt:20261010:assistenz-name-avatar (K6): ohne gespeichertes Profil heisst der Hilfeknopf
+// neutral — kein fester Produktname mehr.
 const hilfeKnopf = (page: Page) =>
-  page.locator('button[data-klara="1"][aria-label="Klara öffnen — Hilfe zu dieser Seite"]');
-const hilfeFlaeche = (page: Page) => page.locator('section[data-klara="1"][aria-label="Klara"]');
+  page.locator('button[data-klara="1"][aria-label="Assistenz öffnen — Hilfe zu dieser Seite"]');
+const hilfeFlaeche = (page: Page) =>
+  page.locator('section[data-klara="1"][aria-label="Deine Assistenz"]');
 const nachrichten = (page: Page) => page.locator('[data-testid="klara-nachricht"]');
 const letzteKlara = (page: Page) =>
   page.locator('[data-testid="klara-nachricht"][data-von="klara"]').last();

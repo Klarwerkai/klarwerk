@@ -36,6 +36,7 @@ import type {
   Schutzwege,
   SicherungenAuskunft,
   SicherungsEintrag,
+  SicherungsUmfang,
   VergleichKategorie,
 } from "../api/types";
 import { leerzustandsZeile } from "../components/EmptyStateCtas";
@@ -461,6 +462,9 @@ function restoreBefundText(t: Uebersetzer, sprache: string, r: RestoreDrillBefun
         {vergleichZeile(t, "anhaenge", v.anhaenge)}
         {vergleichZeile(t, "beziehungen", v.beziehungen)}
         {vergleichZeile(t, "rechte", v.rechte)}
+        {/* produkt:20261010:poc-wiederherstellung-export: private Assistenzspeicher als eigene
+            Zeile. Ein älteres Protokoll ohne die Kategorie zeigt der Server als „nicht gemessen". */}
+        {v.assistenz ? vergleichZeile(t, "assistenz", v.assistenz) : null}
       </ul>
       {v.anhaenge.belegeOhneAnhang === null ? null : (
         <p className="text-[11.5px] text-muted-2">
@@ -654,6 +658,62 @@ function schutzwegeBefund(t: Uebersetzer, sprache: string, wege: Schutzwege): JS
 }
 
 /**
+ * produkt:20261010:poc-wiederherstellung-export (PV-01-01, PV-01-03) — der Sicherungsumfang je
+ * Bereich: im Dump, bewusst ausgeschlossen (mit Grund und Folge) oder in dieser Fassung gar nicht
+ * vorhanden — und was die LETZTE Probe für den Bereich tatsächlich belegt. Dieselbe Bauform wie die
+ * Schutzwege oben: eine Renderfunktion, feste Klassenketten.
+ */
+function umfangBefund(t: Uebersetzer, umfang: SicherungsUmfang): JSX.Element {
+  return (
+    <section
+      data-testid="sicherungsumfang"
+      aria-labelledby="sicherungsumfang-titel"
+      className="space-y-1.5 rounded-card border border-hairline px-3 py-2.5"
+    >
+      <h3 id="sicherungsumfang-titel" className="text-[13px] font-semibold text-text">
+        {t("sicherungsnachweise.bereiche.titel")}
+      </h3>
+      <p data-testid="umfang-fassung" className="text-[11.5px] leading-relaxed text-muted-2">
+        {t("sicherungsnachweise.bereiche.fassung", {
+          version: umfang.produkt.version,
+          commit: umfang.produkt.commit,
+          tabellen: umfang.tabellenImDump,
+        })}
+      </p>
+      <ul className="space-y-1.5">
+        {umfang.bereiche.map((b) => (
+          <li
+            key={b.id}
+            data-bereich={b.id}
+            data-umfang={b.zustand}
+            data-beleg={b.beleg}
+            className="text-[12px] leading-relaxed text-text"
+          >
+            <span className="font-semibold">
+              {t("sicherungsnachweise.restore.zeile", {
+                kategorie: t(`sicherungsnachweise.bereiche.${b.id}.titel`),
+                zustand: t(`sicherungsnachweise.bereiche.zustand.${b.zustand}`),
+              })}
+            </span>
+            <span className="block text-[11.5px] text-muted-2">
+              {t(`sicherungsnachweise.bereiche.${b.id}.text`)}
+            </span>
+            {b.tabellen.length > 0 ? (
+              <span className="block text-[11.5px] text-muted-2">
+                {t("sicherungsnachweise.bereiche.tabellen", { liste: b.tabellen.join(", ") })}
+              </span>
+            ) : null}
+            <span className="block text-[11.5px] text-muted-2">
+              {t(`sicherungsnachweise.bereiche.beleg.${b.beleg}`)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
  * JOB 4025 — die Karte „Sicherung" unter „System".
  *
  * Sie LIEST nur. Eine Sicherung aus der Oberfläche auszulösen bleibt draußen (Auftrag §10): dafür
@@ -718,6 +778,7 @@ export function SicherungDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
             {/* ADMIN-13 — die vier Schutzwege aus DERSELBEN Lesung. Ältere Antworten ohne das Feld
                 zeigen den Abschnitt nicht; der Server sendet es in jedem der drei Zustände. */}
             {daten.schutzwege ? schutzwegeBefund(t, i18n.language, daten.schutzwege) : null}
+            {daten.umfang ? umfangBefund(t, daten.umfang) : null}
           </div>
         )}
       </Abfragehuelle>

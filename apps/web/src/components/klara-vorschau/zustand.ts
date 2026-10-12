@@ -44,6 +44,11 @@ export type Ansicht = "kompakt" | "seitlich";
 export type Betrieb = "echt" | "demo";
 /** `artikel` ist der fiktive Vorschau-Artikel, `wissen` ein echtes Wissensobjekt (Klara 03). */
 export type SeitenArt = "uebersicht" | "artikel" | "wissen" | "erfassung" | "fragen" | "andere";
+/**
+ * Der Arbeitsstatus des Gesprächs. Den AUSDRUCK der Figur — die neun Zustände aus
+ * `ANIMATIONSZUSTAENDE.json` (bereit … pause) — leitet `components/assistenz/ausdruck.ts` aus diesem
+ * Status und weiteren echten Ereignissen ab (Mikrofon, Vorlesen, Ergebnis, verkleinert).
+ */
 export type Status = "ruhe" | "laeuft" | "antwort" | "entscheidung";
 export type Aktion = "erklaeren" | "zusammenfassen" | "umformulieren" | "notiz" | "frage" | "modus";
 /**

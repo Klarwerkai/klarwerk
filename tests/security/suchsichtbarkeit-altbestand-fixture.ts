@@ -24,11 +24,11 @@
 //
 // DIE REGEL STEHT VOR DER PRÜFUNG FEST (Feld `regel`) und ist die BESTEHENDE, nicht eine neue:
 //
-//   · Stufe: nur die Zeichenfolgen „vertraulich" und „streng_vertraulich" sind vertraulich; alles
-//     andere — fehlend, null, leer, andere Schreibweise, anderer Typ — gilt als „intern"
-//     (`isConfidential`/`normalizeConfidentiality`, confidentiality.ts; sichtbarkeit.ts:39-43).
-//     Das ist KEINE Legitimierung durch diese Prüfung, sondern die dort benannte Grenze. Sie ist
-//     hier fallweise festgehalten, damit eine Änderung an ihr sichtbar rot wird.
+//   · Stufe (aufnahme:20260922:gesamt-leserechte, Nacharbeit 19 — Entscheidung 16 vom 11.10.2026
+//     löst die frühere Grenze „alles andere gilt als intern" ab): nur die Zeichenfolge „intern" ist
+//     frei; alles andere — fehlend, null, leer, andere Schreibweise, anderer Typ — ist UNGEKLÄRT
+//     und wird wie „vertraulich" geschützt (`schutzrang`, sichtbarkeit.ts). Fallweise festgehalten,
+//     damit eine Änderung an der Auslegung sichtbar rot wird.
 //   · Autor: Autorschaft nur bei einer NICHTLEEREN ZEICHENFOLGE, die gleich der Betrachterkennung
 //     ist (`darfSehen`, sichtbarkeit.ts:74-76). Fehlend, null, leer, anderer Typ: keine Autorschaft.
 //   · Papierkorb: die Referenz ist `!deletedAt` (`trifftZu`). Wo PostgreSQL nach Lesart des Codes
@@ -141,8 +141,9 @@ export const BESTAND: readonly AltSaat[] = [
     regel: "validateOderAnna",
     quelle: "sichtbarkeit.ts:74-76",
   },
-  // ── Stufen-Altfälle: vertraulich angelegt, dann roh überschrieben. Nach bestehender Regel
-  //    „intern" — die benannte Grenze aus sichtbarkeit.ts:39-43.
+  // ── Stufen-Altfälle: vertraulich angelegt, dann roh überschrieben. Seit Entscheidung 16
+  //    UNGEKLÄRT und wie vertraulich geschützt (`schutzrang`, sichtbarkeit.ts) — bis Nacharbeit 19
+  //    stand hier „jeder" (die abgelöste Grenze „gilt als intern").
   {
     marke: "stufeFehlt",
     begriff: BEGRIFF_ALT,
@@ -150,8 +151,8 @@ export const BESTAND: readonly AltSaat[] = [
     stufe: "vertraulich",
     trust: 89,
     altform: { feld: "confidentiality", entfernt: true },
-    regel: "jeder",
-    quelle: "confidentiality.ts:4 (fehlendes Feld = intern)",
+    regel: "nurValidate",
+    quelle: "sichtbarkeit.ts schutzrang (Entscheidung 16: ungeklärt geschützt)",
   },
   {
     marke: "stufeNull",
@@ -160,8 +161,8 @@ export const BESTAND: readonly AltSaat[] = [
     stufe: "vertraulich",
     trust: 88,
     altform: { feld: "confidentiality", wert: null },
-    regel: "jeder",
-    quelle: "confidentiality.ts isConfidential",
+    regel: "nurValidate",
+    quelle: "sichtbarkeit.ts schutzrang (Entscheidung 16)",
   },
   {
     marke: "stufeLeer",
@@ -170,8 +171,8 @@ export const BESTAND: readonly AltSaat[] = [
     stufe: "vertraulich",
     trust: 87,
     altform: { feld: "confidentiality", wert: "" },
-    regel: "jeder",
-    quelle: "confidentiality.ts isConfidential",
+    regel: "nurValidate",
+    quelle: "sichtbarkeit.ts schutzrang (Entscheidung 16)",
   },
   {
     marke: "stufeGrossschreibung",
@@ -180,8 +181,8 @@ export const BESTAND: readonly AltSaat[] = [
     stufe: "vertraulich",
     trust: 86,
     altform: { feld: "confidentiality", wert: "Vertraulich" },
-    regel: "jeder",
-    quelle: "confidentiality.ts isConfidential (zeichengenau)",
+    regel: "nurValidate",
+    quelle: "sichtbarkeit.ts schutzrang (zeichengenau; Entscheidung 16)",
   },
   {
     marke: "stufeUnbekannt",
@@ -190,8 +191,8 @@ export const BESTAND: readonly AltSaat[] = [
     stufe: "vertraulich",
     trust: 85,
     altform: { feld: "confidentiality", wert: "geheim" },
-    regel: "jeder",
-    quelle: "sichtbarkeit.ts:39-43",
+    regel: "nurValidate",
+    quelle: "sichtbarkeit.ts schutzrang (Entscheidung 16)",
   },
   {
     marke: "stufeZahl",
@@ -200,8 +201,8 @@ export const BESTAND: readonly AltSaat[] = [
     stufe: "vertraulich",
     trust: 84,
     altform: { feld: "confidentiality", wert: 2 },
-    regel: "jeder",
-    quelle: "confidentiality.ts isConfidential",
+    regel: "nurValidate",
+    quelle: "sichtbarkeit.ts schutzrang (Entscheidung 16)",
   },
   {
     marke: "stufeListe",
@@ -210,8 +211,8 @@ export const BESTAND: readonly AltSaat[] = [
     stufe: "vertraulich",
     trust: 83,
     altform: { feld: "confidentiality", wert: ["vertraulich"] },
-    regel: "jeder",
-    quelle: "confidentiality.ts isConfidential",
+    regel: "nurValidate",
+    quelle: "sichtbarkeit.ts schutzrang (Entscheidung 16)",
   },
   {
     marke: "kontrolleIntern",
