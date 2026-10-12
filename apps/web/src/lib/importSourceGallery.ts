@@ -543,5 +543,6 @@ export function openCaptureFileDialog(
 
 // PAKET 2 — Dateien der IC-7 Import-Review. JOB 3190: JSON aktiv (der echte Upload dieser Fläche);
 // Word/PDF/PowerPoint/Text-CSV/OCR „anderswo verfügbar" (im Erfassen wirklich einlesbar);
-// Transkript nicht konfiguriert; Excel geplant.
-export const FILE_SOURCES: readonly GallerySource[] = fileSourcesForSurface("import");
+// Transkript nach gemeldetem Mediendienst; Excel geplant. Seit gesamt-ocr Nacharbeit 6 leitet die
+// Galerie die Liste je Dienststand mit `fileSourcesForSurface("import", mediendienst)` ab; eine
+// feste Konstante ohne Dienststand hätte keinen Aufrufer mehr (Aufrufer-Wächter, Nacharbeit 14).

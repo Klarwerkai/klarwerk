@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import {
   AVTRANSCRIPT_ACTIVE_HINT_KEY,
-  FILE_SOURCES,
   type GallerySource,
   JSON_SOURCE_IDS,
   STATE_BADGE_KEY,
@@ -17,6 +16,9 @@ import {
   openCaptureFileDialog,
   orderByState,
 } from "../../apps/web/src/lib/importSourceGallery";
+
+// Die Dateiliste der Import-Galerie ohne gemeldeten Mediendienst (frühere Konstante FILE_SOURCES).
+const FILE_SOURCES = fileSourcesForSurface("import");
 
 // mega15 Block D: „unconfigured" (gebaut, aber kein Dienst hinterlegt) steht zwischen aktiv und bald.
 // JOB 3190 (UX-18): „elsewhere" (anderswo im Produkt wirklich einlesbar) steht direkt hinter aktiv.
