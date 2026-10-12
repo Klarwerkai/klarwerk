@@ -1830,6 +1830,10 @@ function interviewSystem(locale: ReasonerLocale): string {
   return `${base} ${outputLanguageRule(locale)}`;
 }
 
+// Aufnahme `gesamt-ocr` (FR-CAP-05): Deckel für den erkannten Bildtext im Interview-Prompt — die
+// Frage soll Begriffe aufgreifen, nicht ein ganzes Dokument lesen (Token-Schutz).
+export const MAX_INTERVIEW_CONTEXT_LENGTH = 6_000;
+
 // R-1624 (Foto-zu-Wissen): Zusatz zum Interview-Prompt, wenn ein Bildbefund vorliegt. Der Befund
 // dient NUR dazu, Maschine/Bauteil aus dem Bild in der Frage beim Namen zu nennen — er ist keine
 // Antwort des Experten, und das Modell darf daraus keinen Fehler, keine Ursache und keine Lösung
@@ -1885,6 +1889,10 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     // F-0295 / R-0639: die markierte Passage aus dem Word-Dokument. Sie steht VOR den Quellen und
     // ohne Nummer: sie ist Kontext der Frage und keine Quelle, die das Modell zitieren dürfte.
     selection: "Markierte Passage im Dokument (Kontext der Frage, keine Quelle)",
+    // Aufnahme `gesamt-ocr` (FR-CAP-05): der auf Klick im Bild erkannte Text. Er steht VOR den
+    // Antworten und ist ausdrücklich keine Antwort — das Modell darf Begriffe daraus aufgreifen,
+    // aber nichts daraus als Aussage des Menschen ausgeben.
+    recognized: "Im Bild erkannter Text (Kontext, keine Antwort)",
     // R-1624: der vom Menschen bestätigte Bildbefund des Fotos, um das das Interview geht.
     imageFinding: "Bildbefund (Foto, vom Experten bestätigt)",
   },
@@ -1899,6 +1907,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     researchAim: "Check point for this question",
     excerpt: "Document text (excerpt)",
     selection: "Selected passage in the document (context of the question, not a source)",
+    recognized: "Text recognized in the image (context, not an answer)",
     imageFinding: "Image finding (photo, confirmed by the expert)",
   },
   // mega52 D1: Niederländisch ist eine eigene Reasoner-Sprache — der Compiler verlangt diesen
@@ -1914,6 +1923,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     researchAim: "Controlepunt voor deze vraag",
     excerpt: "Documenttekst (fragment)",
     selection: "Gemarkeerde passage in het document (context van de vraag, geen bron)",
+    recognized: "In de afbeelding herkende tekst (context, geen antwoord)",
     imageFinding: "Beeldbevinding (foto, door de expert bevestigd)",
   },
 };
@@ -2471,6 +2481,9 @@ export class ModelProvider implements ReasonerProvider {
     // denselben Vertraulichkeits-Wächter wie die Antworten — kein neuer Egress-Pfad.
     imageContext?: string,
     // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum / Lücken-Thema.
+    // Aufnahme `gesamt-ocr` (FR-CAP-05): `options.context` = ausdrücklich im Bild erkannter Text als
+    // Kontext. Er reist über DENSELBEN Chokepoint wie die Antworten (gleiche Vertraulichkeit) und
+    // ändert nur die Formulierung der Frage — Abschluss und Entwurf bleiben allein aus den Antworten.
     options: InterviewOptions = {},
   ): Promise<InterviewResult> {
     const finding = normalizeInterviewImageContext(imageContext);
@@ -2482,6 +2495,10 @@ export class ModelProvider implements ReasonerProvider {
     const client = this.requireClient();
     const labels = LABELS[locale];
     const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
+    // Aufnahme `gesamt-ocr` (FR-CAP-05): der erkannte Bildtext steht als eigener, gedeckelter Block
+    // VOR allen anderen Angaben — ausdrücklich als Kontext und nicht als Antwort beschriftet.
+    const kontext = (options.context ?? "").trim().slice(0, MAX_INTERVIEW_CONTEXT_LENGTH);
+    const kontextBlock = kontext ? `${labels.recognized}:\n${kontext}\n\n` : "";
     // Fragebaum (nicht Foto): nur dort trägt das Ergebnis einen Knoten.
     const baum = !photo && base.node !== undefined;
     // Das Fachthema gilt nur für den Fragebaum; das Foto-Interview behält seinen Bildbefund.
@@ -2505,7 +2522,7 @@ export class ModelProvider implements ReasonerProvider {
     const phrased = (
       await client.complete(
         system,
-        `${findingBlock}${topicLine}${researchBlock}${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}${aimLine}`,
+        `${kontextBlock}${findingBlock}${topicLine}${researchBlock}${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}${aimLine}`,
         confidential,
       )
     ).trim();

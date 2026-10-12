@@ -29,12 +29,15 @@
   // Klara 05 (produkt:20261008:klara-aktionen): `zusammenfassen-zitatdeckung.test.ts` prüft den
   // Frage-Rahmen über `apps/web/src/components/klara-vorschau/bezug.ts`, das DOMParser benutzt —
   // aus demselben Grund dort geprüft, nicht hier.
+  // Die OCR-Engine-Probe importiert files.ts mit FileReader/Image/document und gehört ebenfalls
+  // in den bestehenden DOM-Typecheck (tsconfig.tests-tsx.json).
   "exclude": [
     "node_modules",
     "dist",
     "tests/**/*.tsx",
     "tests/types",
     "tests/klara-vorschlaege/uebernahme-logik.test.ts",
-    "tests/klara-aktionen/zusammenfassen-zitatdeckung.test.ts"
+    "tests/klara-aktionen/zusammenfassen-zitatdeckung.test.ts",
+    "tests/capture/ocr-engine-gleiche-herkunft.test.ts"
   ]
 }

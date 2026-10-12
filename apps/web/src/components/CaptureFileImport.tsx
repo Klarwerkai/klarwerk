@@ -19,6 +19,7 @@ import { CAPTURE_FILE_TEXT, FILE_IMPORT_ACCEPT } from "../lib/captureFromFile";
 import { detectFileKind } from "../lib/extract";
 import { fileSourcesForSurface, openCaptureFileDialog } from "../lib/importSourceGallery";
 import { FileTypePicker } from "./FileTypePicker";
+import { MitMediendienst } from "./MediendienstZustand";
 import { UploadLimitsHint } from "./UploadLimitsHint";
 import type { ArbeitsraumModus } from "./erfassen/Blatt";
 
@@ -228,14 +229,20 @@ export function CaptureFileImport({
       >
         {meldung ?? importMeldung ?? ""}
       </output>
-      <FileTypePicker
-        sources={fileSourcesForSurface("capture")}
-        onActivate={(id) => {
-          openCaptureFileDialog(id, fileImportInputRef.current);
-        }}
-        // F-0120 / K-27: Der ehrliche Kachel-Hinweis läuft in DIESE eine Region, statt sich
-        // daneben eine zweite zu nehmen. Die Galerie rendert dann keine eigene Ansage mehr.
-        onHintChange={(hintKey) => setMeldung(hintKey ? t(hintKey) : null)}
+      {/* Aufnahme `gesamt-ocr` (R-0121, Nacharbeit 6): die Transkript-Kachel folgt dem gemeldeten
+          Stand des Transkriptionsdienstes. */}
+      <MitMediendienst
+        darstellen={(mediendienst) => (
+          <FileTypePicker
+            sources={fileSourcesForSurface("capture", mediendienst)}
+            onActivate={(id) => {
+              openCaptureFileDialog(id, fileImportInputRef.current);
+            }}
+            // F-0120 / K-27: Der ehrliche Kachel-Hinweis läuft in DIESE eine Region, statt sich
+            // daneben eine zweite zu nehmen. Die Galerie rendert dann keine eigene Ansage mehr.
+            onHintChange={(hintKey) => setMeldung(hintKey ? t(hintKey) : null)}
+          />
+        )}
       />
     </>
   );

@@ -2132,6 +2132,10 @@ export function assembleServices(
       // Client + Credential modul-intern, hier nicht erreichbar). Ohne Schlüssel → undefined (inaktiv).
       // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): der Chokepoint fragt dieselbe zentrale Freigabe
       // für Vertrauliches wie der Dienst — entschieden allein im Reasoner.
+      // Aufnahme gesamt-ocr · R-0181: dieselbe Factory liefert bei KLARWERK_LOCAL_TRANSCRIBE_URL den
+      // LOKALEN Transkriber (eigener Rechner, kein Ton nach draussen) — er gewinnt vor einem
+      // Cloudschlüssel. Ist seine Adresse als lokal bestätigt, trägt er `lokal: true`; dann fragt der
+      // Dienst weder die Freigabe für öffentliche KI noch sperrt er Vertrauliches.
       transcriber: createCappedTranscriberFromEnv(process.env, {
         vertraulichFreigegeben: () => reasoner.vertraulicheAusleitungFreigegeben(),
       }),

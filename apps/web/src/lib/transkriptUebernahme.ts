@@ -7,6 +7,7 @@
 // wird; die Fläche koppelt ihre Meldung an genau diese Übernahme.
 import type { CaptureMode } from "./captureEntry";
 import { isExpertMode } from "./captureEntry";
+import { ocrAbschnittText } from "./interviewKontext";
 
 /** Welches sichtbare Feld das Transkript aufnimmt. */
 export type TranskriptZiel = "aussage" | "rohtext";
@@ -36,7 +37,13 @@ export function mitTranskript(vorher: string, quelle: string, transkript: string
 // R-1688/R-1733 (Bens Befund 10.10., Nacharbeit 2): die Bild-OCR hatte denselben Fehler — sie
 // schrieb nur in den Rohtext und meldete im Formular eine Übernahme bei unveränderter Aussage. Sie
 // nimmt jetzt dasselbe Ziel (`transkriptZiel`) und denselben Anhängeweg; nur der Vermerk heißt `OCR`.
+//
+// Aufnahme `gesamt-ocr` (FR-CAP-05, Nacharbeit 4): der erkannte Bildtext steht als ABGESCHLOSSENER
+// Abschnitt `[OCR: <Bild>]` … `[/OCR]` im Feld (`ocrAbschnittText`). Kopf und Endzeile sind die
+// eindeutige Zuordnung, aus der `interviewKontext` den Text ins geführte Interview reicht — auch nach
+// Korrekturen und dem Fortsetzen. Derselbe Anhängeweg wie oben; nur der Block kommt von dort.
 /** Erkannter Bildtext (SCRUM-123). */
 export function mitOcrText(vorher: string, quelle: string, text: string): string {
-  return mitQuellvermerk(vorher, "OCR", quelle, text);
+  const block = ocrAbschnittText(quelle, text);
+  return vorher.trim() ? `${vorher}\n\n${block}` : block;
 }

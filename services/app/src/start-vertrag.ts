@@ -930,6 +930,37 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer: "Modellname des Transkriptionsdienstes.",
     ohneIhn: "Es gilt der eingebaute Name.",
   },
+  // Aufnahme gesamt-ocr · R-0181: Verschriftlichung auf dem eigenen Rechner, ohne Cloud
+  // (`services/media/src/transcriber.ts`, lokalerTranskriber). Ist er eingerichtet, gewinnt er
+  // vor einem Cloudschlüssel.
+  {
+    name: "KLARWERK_LOCAL_TRANSCRIBE_URL",
+    bereich: "Medien",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Adresse eines lokal betriebenen Transkriptionsdienstes (OpenAI-kompatibel, z. B. http://127.0.0.1:8000/v1).",
+    ohneIhn:
+      "Keine lokale Transkription — es bleibt der Cloud-Weg, sofern ein Schlüssel hinterlegt ist.",
+  },
+  {
+    name: "KLARWERK_LOCAL_TRANSCRIBE_MODEL",
+    bereich: "Medien",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer: "Modellname am lokalen Transkriptionsdienst.",
+    ohneIhn: "Es gilt der eingebaute Name.",
+  },
+  {
+    name: "KLARWERK_LOCAL_TRANSCRIBE_ALLOWED_ORIGINS",
+    bereich: "Medien",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Private Adressen außerhalb dieses Rechners, die als lokaler Transkriptionsdienst gelten dürfen.",
+    ohneIhn:
+      "Nur dieser Rechner (Loopback) gilt als lokal; jede andere Adresse wird wie ein externer Dienst behandelt.",
+  },
   // --------------------------------------------------------------------------------------- E-Mail
   {
     name: "SMTP_HOST",
