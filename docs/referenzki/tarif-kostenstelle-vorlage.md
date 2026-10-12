@@ -49,7 +49,7 @@ der bestehenden Produktkostenstelle zugeordnet. Verbrauch und Wiederholungen wer
   "kostenstelle": {
     "kennung": "<bestehende Produktkostenstelle>",
     "bezeichnung": "<z. B. KLARWERK PoC · KI-Betrieb>",
-    "verantwortlich": "Betreiber (PoC)",
+    "verantwortlich": "Peter, Betreiberverantwortlicher im PoC (Entscheidung 13)",
     "budgetbezug": "<vorhandene Budgetbindung, falls festgelegt>"
   },
   "abrechnung": {
