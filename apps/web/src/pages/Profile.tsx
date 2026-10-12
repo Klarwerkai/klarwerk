@@ -18,6 +18,7 @@ import { istAktiv } from "../components/SprachSchalter";
 // produkt:20261010:assistenz-name-avatar: „Meine Assistenz" — Name und Motiv der eigenen Assistenz.
 import { AssistenzFormular } from "../components/assistenz/AssistenzFormular";
 import { AvatarBild } from "../components/assistenz/AvatarBild";
+import { FaehigkeitenBereich } from "../components/assistenz/FaehigkeitenBereich";
 // Betroffenenrechte (R-0663, R-0661): „Meine Daten" und der eigene Löschantrag.
 import { LoeschantragDetail, MeineDatenDetail } from "../components/datenschutz/MeineDaten";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
@@ -573,6 +574,8 @@ function MeineAssistenzDetail({ onZurueck }: { onZurueck: () => void }): JSX.Ele
         </div>
       ) : null}
       {stand.status === "bereit" ? <AssistenzFormular modus="aendern" /> : null}
+      {/* produkt:20261011:assistenz-skills-werkzeuge: Favoriten, Routinen und Aufrufe. */}
+      <FaehigkeitenBereich />
     </Detailkarte>
   );
 }

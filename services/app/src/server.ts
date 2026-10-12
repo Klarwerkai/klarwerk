@@ -380,6 +380,24 @@ async function start(): Promise<void> {
     );
     return;
   }
+  // produkt:20261011:assistenz-skills-werkzeuge: wartende und durch einen Neustart unterbrochene
+  // Fähigkeitsaufträge aus dem Assistenzprofil wieder aufnehmen — unter derselben Auftragskennung,
+  // mit der DANN gültigen Lage und den DANN gültigen Rechten. Beim Start und im Takt des
+  // Papierkorb-Sweeps; im Wiederanlauf nicht (oben beendet: eine Fähigkeit kann nach außen wirken).
+  const faehigkeiten = services.faehigkeiten;
+  if (faehigkeiten) {
+    const aufnehmen = async (): Promise<number> =>
+      (await faehigkeiten.arbeiteWarteschlangeAb()).length;
+    aufnehmen().catch((error) =>
+      app.log.warn({ err: error }, "Fähigkeitsaufträge: Wiederaufnahme übersprungen"),
+    );
+    startTrashSweepScheduler({
+      intervalMs: sweepInterval,
+      runSweep: aufnehmen,
+      onError: (error) =>
+        app.log.warn({ err: error }, "Fähigkeitsaufträge: Abarbeitung übersprungen"),
+    });
+  }
   // R-1657 (Nacharbeit 2): „KLARWERK analysiert regelmäßig …" — die Lückenerkennung über den
   // Reasoner läuft im eigenen Takt über die vorgemerkten Betrachtersichten (services/management,
   // `wissenssprintLauf`). Intervall aus KLARWERK_WISSENSSPRINT_INTERVAL_MS, Vorgabe 15 min,

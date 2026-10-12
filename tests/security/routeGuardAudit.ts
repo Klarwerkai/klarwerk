@@ -1105,6 +1105,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // (user.id aus der Sitzung); eine fremde Kontokennung in Rumpf oder Adresse ergibt 403.
   "GET /api/me/assistenz": { protection: "auth" },
   "PUT /api/me/assistenz": { protection: "auth" },
+  // produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der eigenen Assistenz — Übersicht,
+  // Vormerkungen und eigene Aufträge nur über das Konto der Sitzung; Vorschau und Ausführung
+  // zusätzlich mit `ko.read`, weil sie Arbeitsbereichskontext aus dem Bestand laden.
+  "GET /api/me/faehigkeiten": { protection: "auth" },
+  "POST /api/me/faehigkeiten/vormerkungen": { protection: "auth" },
+  "POST /api/me/faehigkeiten/vormerkungen/:id/deaktivieren": { protection: "auth" },
+  "POST /api/me/faehigkeiten/vorschau": { protection: "ko.read" },
+  "POST /api/me/faehigkeiten/auftraege": { protection: "ko.read" },
+  "GET /api/me/faehigkeiten/auftraege": { protection: "auth" },
+  "GET /api/me/faehigkeiten/auftraege/:id": { protection: "auth" },
+  "POST /api/me/faehigkeiten/auftraege/:id/abbrechen": { protection: "auth" },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },

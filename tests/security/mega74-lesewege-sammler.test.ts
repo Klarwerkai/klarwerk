@@ -1119,6 +1119,48 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "ändert nur das eigene Assistenzprofil (user.id); fremde Kennung 403, kein KO-Inhalt.",
   },
+  // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz.
+  "GET /api/me/faehigkeiten": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Fähigkeitsverträge der Instanz und die eigenen Vormerkungen aus dem eigenen Assistenzprofil " +
+      "(assistenz-faehigkeiten-routes.ts, user.id); kein KO-Inhalt.",
+  },
+  "POST /api/me/faehigkeiten/vormerkungen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "schreibt nur eigene Vormerkungen (user.id); fremde Kontoangabe 403, kein KO-Inhalt.",
+  },
+  "POST /api/me/faehigkeiten/vormerkungen/:id/deaktivieren": {
+    urteil: "EIGENER_BESTAND",
+    grund: "deaktiviert nur eigene Vormerkungen (user.id); kein KO-Inhalt.",
+  },
+  "POST /api/me/faehigkeiten/vorschau": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "Bindung des eigenen Auftrags; Kontextobjekte lädt ladeKontext (assistenz-faehigkeiten-" +
+      "anbindung.ts) nur über darfSehen und gibt davon nur Kennung, Fassung und Stufe zurück — " +
+      "verborgen oder fehlend ergibt 404 ohne Hinweis auf das Objekt.",
+  },
+  "POST /api/me/faehigkeiten/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "wie die Vorschau; das Ergebnis sind Treffer des Werkzeugs (Titel, Adresse, Auszug), kein " +
+      "Bestand. Vor jeder Ausführung prüft produktKontextPruefung Konto und Kontext über darfSehen.",
+  },
+  "GET /api/me/faehigkeiten/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur die eigenen Aufträge aus dem eigenen Assistenzprofil (user.id); jedes Ergebnis erst nach " +
+      "aktueller Rechteprüfung (FaehigkeitsAusfuehrung.sicht → produktKontextPruefung → darfSehen).",
+  },
+  "GET /api/me/faehigkeiten/auftraege/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ein eigener Auftrag (user.id), Ergebnis wie in der Liste erst nach Rechteprüfung.",
+  },
+  "POST /api/me/faehigkeiten/auftraege/:id/abbrechen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "bricht nur einen eigenen laufenden Auftrag ab (Schlüssel aus user.id); kein KO-Inhalt.",
+  },
   "POST /api/me/klara/gespraeche": {
     urteil: "EIGENER_BESTAND",
     grund: "legt nur ein eigenes Gespräch an; der Objektbezug kommt vom Bildschirm der Person.",
@@ -3188,6 +3230,14 @@ const AUSGAENGE: Record<string, Ausgangseintrag> = {
   "services/external-search/src/wikipedia.ts::search#1": {
     urteil: "KEIN_KO_INHALT",
     grund: "Externe Suche: geht nur der Suchbegriff des Fragenden hinaus, kein Bestand.",
+  },
+  "services/app/src/assistenz-faehigkeiten.ts::fuehreAus#1": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Perplexity-Suchadapter (BPA-11): geht nur der geprüfte Suchbegriff des Auftrags hinaus; " +
+      "FaehigkeitsAusfuehrung sperrt ihn, wenn er einen Auszug geschützten Arbeitsbereichskontexts " +
+      "enthält. In dieser Instanz ist der Adapter nicht installiert (O09: keine Anbieterfreigabe, " +
+      "Kosten unbelegt).",
   },
   "services/reasoner/src/model-client.ts::postMessages#1": {
     urteil: "AUFTRAGSVERARBEITER",
