@@ -463,6 +463,27 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    // produkt:20261007:klara-notizen-aufgaben (Klara 06) — die privaten Notizen
+    // (`services/app/src/klara-notiz.ts`), eine Zeile je Notiz.
+    id: "klaranotizen",
+    name: "Private Klara-Notizen",
+    inhalt:
+      "Je Konto die eigenen Notizen und Arbeitszettel: Titel, Notiztext, offene Fragen, Weg (geschrieben, diktiert, aus dem Gespräch, aus einem Ausschnitt), Objektbezug als Rücklink (Seite, Objekt, Artikel/Absatz bzw. Wissensobjekt und Fassung, Anfang der Markierung), Kennungen der Gesprächsnachricht und der Vorgangsschlüssel des Anlegens.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; Notiztext und Fragen sind Freitext und können sensible Angaben enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["klara_notizen"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto löscht eine Notiz selbst (DELETE /api/me/klara/notizen/:id); auch Administratoren lesen fremde Notizen nicht, und keine Suche des Wissensbestands führt sie.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht seine Notizen (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
     id: "lernpfade",
     name: "Lernpfade und Fortschritt",
     inhalt:

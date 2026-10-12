@@ -2160,6 +2160,57 @@ export const TABELLE: Zeile[] = [
     payload: {},
     erwartet: ANGEMELDET,
   },
+  // produkt:20261007:klara-notizen-aufgaben (Klara 06) — die eigenen Notizen. Jede Tür prüft nur die
+  // Anmeldung; das Konto kommt aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Liste liefert auf der
+  // gemeinsamen Bühne die (leeren) eigenen Notizen; das Anlegen mit leerer Nutzlast scheitert am
+  // Pflichtfeld `vorgang` (400), BEVOR etwas angelegt wird; die Türen mit Kennung tragen eine
+  // erfundene und enden in 400 (Bearbeiten ohne Fassung) oder 404 des Dienstes. Die Wirkung (eigene
+  // Notiz, Fremdkonto 404) misst `tests/klara-notizen/notiz-am-server.test.ts`.
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/notizen",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:84",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/notizen",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:100",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/notizen/gibt-es-nicht",
+    route: "/api/me/klara/notizen/:id",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:125",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/notizen/gibt-es-nicht",
+    route: "/api/me/klara/notizen/:id",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:138",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "DELETE",
+    pfad: "/api/me/klara/notizen/gibt-es-nicht",
+    route: "/api/me/klara/notizen/:id",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:168",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
   // produkt:20261010:assistenz-name-avatar — das eigene Assistenzprofil. Beide Türen prüfen nur die
   // Anmeldung; das Konto kommt aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Lesetür liefert das
   // eigene (leere) Profil; die Schreibtür trägt ein unbekanntes Motiv und endet in 400, BEVOR etwas
