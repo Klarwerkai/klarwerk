@@ -1220,6 +1220,13 @@ const REGISTER: Record<string, Eintrag> = {
     grund:
       "nimmt einen eigenen gespeicherten Schritt mit Standvergleich zurück; Antwort eigener Auftrag.",
   },
+  // produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: die eigenen Protokolleinträge EINES
+  // eigenen Auftrags — Kennungen, Aktionen, Stände (Fassungszeiten); nie Titel oder Inhalt.
+  "GET /api/me/klara/gespraeche/:id/auftraege/:auftragId/protokoll": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur Einträge des eigenen Kontos zum eigenen Auftrag (klara-auftrag:<id>); fremd/unbekannt 404.",
+  },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },

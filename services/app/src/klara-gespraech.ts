@@ -15,6 +15,7 @@ import {
   brecheAb,
   korrigiere,
   merkeSchreibwirkung,
+  merkeStaende,
   merkeVorher,
   mitNeuemAuftrag,
   neuerAuftrag,
@@ -348,10 +349,16 @@ export type KlaraGespraechGrund =
   | KlaraAuftragGrund;
 
 export class KlaraGespraechFehler extends Error {
+  /**
+   * produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: `konflikt` erklärt einer abgelehnten
+   * Rücknahme den betroffenen Stand (eigener und aktueller Stand, Weg zum Korrigieren) — nur an die
+   * Person selbst, nie ins Prüfprotokoll.
+   */
   constructor(
     readonly status: 400 | 404 | 409,
     readonly grund: KlaraGespraechGrund,
     message: string,
+    readonly konflikt?: Readonly<Record<string, string | boolean | null>>,
   ) {
     super(message);
     this.name = "KlaraGespraechFehler";
@@ -927,6 +934,25 @@ export class KlaraGespraechDienst {
             schreibwirkung,
             jetzt,
           ),
+        ),
+      );
+      return KlaraGespraechDienst.auftragIn(g, auftragId);
+    });
+  }
+
+  /** produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: vorherigen bzw. Rücknahmestand festhalten. */
+  merkeStaende(
+    kontoId: string,
+    id: string,
+    auftragId: string,
+    schluessel: string,
+    staende: { vorherStand?: string | null; ruecknahmeStand?: string | null },
+  ): Promise<KlaraAuftrag> {
+    return this.mitGrenze(async () => {
+      const g = await this.aendere(kontoId, id, (alt, jetzt) =>
+        KlaraGespraechDienst.ersetzeAuftrag(
+          alt,
+          merkeStaende(KlaraGespraechDienst.auftragIn(alt, auftragId), schluessel, staende, jetzt),
         ),
       );
       return KlaraGespraechDienst.auftragIn(g, auftragId);

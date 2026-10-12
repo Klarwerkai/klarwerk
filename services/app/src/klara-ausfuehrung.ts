@@ -24,6 +24,17 @@
 //
 // Rückgängig läuft ebenfalls hier: mit dem nachgelesenen Ergebnisstand als erwartetem Stand am
 // vorhandenen Lösch- bzw. Speicherweg. Wurde der Entwurf inzwischen geändert, bleibt er erhalten.
+//
+// produkt:20261010:assistenz-aktionen-verlauf-ruecknahme (PV-02):
+//   · Vor der Wirkung hält der Server den VORHERIGEN Stand des Ziels fest (`vorherStand`), nach einer
+//     Rücknahme den neuen (`ruecknahmeStand`) — beides nachlesbar nach dem Neuladen.
+//   · Vor einer Rücknahme liest er das Ziel mit den Rechten der Person: fehlt es oder das Recht, steht
+//     das da (`ziel_fehlt`); weicht der Stand ab, erklärt der Konflikt eigenen und aktuellen Stand und
+//     den Korrekturweg (`konflikt`). Der Standvergleich am Speicherweg bleibt die letzte Sicherung.
+//   · Ausführung und Rücknahme DESSELBEN Schritts laufen in diesem Prozess nacheinander. Ein zweiter,
+//     gleichzeitiger Versuch sieht danach den festgehaltenen Stand und antwortet `wiederholt` — er
+//     wirkt nicht doppelt und meldet eine geschehene Wirkung nicht als gescheitert.
+import { aktionskennung, vertragFuer } from "./klara-aktionsverlauf";
 import type {
   KlaraAufgabenaktion,
   KlaraAuftrag,
@@ -49,6 +60,14 @@ interface Entwurf {
   createdAt?: string;
   updatedAt: string;
   payload: { title?: string; statement?: string };
+}
+
+/** Eine Zeile der vorhandenen Aufgabenquellen (Konflikte, Lücken) — nur, was hier gelesen wird. */
+interface AufgabenZeile {
+  id?: unknown;
+  status?: unknown;
+  priority?: unknown;
+  assignee?: unknown;
 }
 
 function istEntwurf(roh: unknown): roh is Entwurf {
@@ -115,14 +134,45 @@ function gleich(a: KlaraAuftragZiel, b: KlaraAuftragZiel): boolean {
 }
 
 export class KlaraAusfuehrung {
+  /** PV-02-06: je Schritt die gerade laufende Ausführung oder Rücknahme in diesem Prozess. */
+  private readonly laufend = new Map<string, Promise<unknown>>();
+
   constructor(private readonly dienst: KlaraGespraechDienst) {}
+
+  /** Arbeiten an DEMSELBEN Schritt nacheinander — ein zweiter Versuch wartet auf den ersten. */
+  private async nacheinander<T>(schluessel: string, f: () => Promise<T>): Promise<T> {
+    const vorher = this.laufend.get(schluessel) ?? Promise.resolve();
+    const jetzt = vorher.then(f, f);
+    const gemerkt = jetzt.catch(() => undefined);
+    this.laufend.set(schluessel, gemerkt);
+    try {
+      return await jetzt;
+    } finally {
+      if (this.laufend.get(schluessel) === gemerkt) {
+        this.laufend.delete(schluessel);
+      }
+    }
+  }
 
   /**
    * Führt den Planschritt `nr` aus. Derselbe Schlüssel ist derselbe Schritt: ist er schon
    * gespeichert, abgeschlossen oder gescheitert, antwortet der Server mit dem festgehaltenen Stand
    * (`wiederholt`) und führt nichts erneut aus.
    */
-  async fuehreAus(
+  fuehreAus(
+    kontoId: string,
+    gespraechId: string,
+    auftragId: string,
+    schluessel: string,
+    eingabe: { nr?: unknown; auftragFassung?: unknown },
+    rufe: KlaraRufe,
+  ): Promise<Ergebnis> {
+    return this.nacheinander(`${kontoId}|${gespraechId}|${auftragId}|${schluessel}`, () =>
+      this.fuehreAusAllein(kontoId, gespraechId, auftragId, schluessel, eingabe, rufe),
+    );
+  }
+
+  private async fuehreAusAllein(
     kontoId: string,
     gespraechId: string,
     auftragId: string,
@@ -183,6 +233,11 @@ export class KlaraAusfuehrung {
       { ...basis, auftragFassung: eingabe.auftragFassung, stand: "begonnen" },
       "server",
     );
+    // PV-02-06: hat ein anderer Versuch (etwa eine zweite Instanz) den Schritt eben begonnen, wirkt
+    // dieser nicht noch einmal — er antwortet mit dem festgehaltenen Stand.
+    if (begonnen.wiederholt && !vorhanden) {
+      return { ...begonnen, wiederholt: true };
+    }
     const fassung = begonnen.schritt.auftragFassung;
     const melde = (
       stand: "gespeichert" | "abgeschlossen" | "fehlgeschlagen",
@@ -319,6 +374,10 @@ export class KlaraAusfuehrung {
             title: jetzt.daten.payload.title ?? "",
             statement: jetzt.daten.payload.statement ?? "",
           });
+          // PV-02-03: der vorherige Stand (Fassungszeit) — nachvollziehbar neben dem neuen.
+          await this.dienst.merkeStaende(kontoId, gespraechId, auftragId, schluessel, {
+            vorherStand: jetzt.daten.updatedAt,
+          });
           const geschrieben = await rufe("PUT", `/api/drafts/${encodeURIComponent(id)}`, {
             ...anwenden(jetzt.daten.payload, p),
             expectedUpdatedAt: gebunden,
@@ -365,11 +424,18 @@ export class KlaraAusfuehrung {
       const id = ziel.id as string;
       let pfad = bekannt?.pfad ?? ziel.pfad ?? "";
       if (!bekannt) {
-        const verfuegbar = await this.bestaetige(ziel, rufe);
+        let vorherStand: string | null = null;
+        const verfuegbar = await this.bestaetige(ziel, rufe, (s) => {
+          vorherStand = s;
+        });
         if ("code" in verfuegbar) {
           return scheitert(verfuegbar.code);
         }
         pfad = verfuegbar.pfad;
+        // PV-02-03: der Stand der Aufgabe VOR der Fachaktion, am selben Lesweg gelesen.
+        await this.dienst.merkeStaende(kontoId, gespraechId, auftragId, schluessel, {
+          vorherStand,
+        });
         const geschrieben =
           aufgabenaktion.art === "eskalieren"
             ? await rufe("POST", `/api/conflicts/${encodeURIComponent(id)}/escalate`)
@@ -447,9 +513,14 @@ export class KlaraAusfuehrung {
     return g.assignee === aktion.personId ? `zugewiesen:${aktion.personName}` : "abweichend";
   }
 
+  /**
+   * `vorher` (PV-02-03) erhält bei einer Aufgabe ihren gelesenen Stand: „prioritaet:…“ und
+   * „zugewiesen“/„nicht_zugewiesen“ an einer Lücke, „status:…“ an einem Konflikt.
+   */
   private async bestaetige(
     ziel: KlaraAuftragZiel,
     rufe: KlaraRufe,
+    vorher?: (stand: string) => void,
   ): Promise<KlaraAuftragErgebnis | { code: string }> {
     const id = ziel.id;
     if (!id) {
@@ -494,16 +565,24 @@ export class KlaraAusfuehrung {
           r.status === 200 && Array.isArray(r.daten) && r.daten.some((k) => k?.id === id);
       } else if (pfad.startsWith("/konflikte")) {
         const r = await rufe("GET", "/api/conflicts");
-        verfuegbar =
-          r.status === 200 &&
-          Array.isArray(r.daten) &&
-          r.daten.some((c) => c?.id === id && c?.status !== "geloest");
+        const liste: AufgabenZeile[] = Array.isArray(r.daten) ? r.daten : [];
+        const c = liste.find((x) => x?.id === id);
+        verfuegbar = r.status === 200 && c !== undefined && c.status !== "geloest";
+        if (verfuegbar && typeof c?.status === "string") {
+          vorher?.(`status:${c.status}`);
+        }
       } else if (pfad.startsWith("/risiko")) {
         const r = await rufe("GET", "/api/gaps");
-        verfuegbar =
-          r.status === 200 &&
-          Array.isArray(r.daten) &&
-          r.daten.some((g) => g?.id === id && g?.status === "offen");
+        const liste: AufgabenZeile[] = Array.isArray(r.daten) ? r.daten : [];
+        const g = liste.find((x) => x?.id === id);
+        verfuegbar = r.status === 200 && g !== undefined && g.status === "offen";
+        if (verfuegbar && g) {
+          const teile = [g.assignee ? "zugewiesen" : "nicht_zugewiesen"];
+          if (typeof g.priority === "string") {
+            teile.unshift(`prioritaet:${g.priority}`);
+          }
+          vorher?.(teile.join(" "));
+        }
       }
       if (!verfuegbar) {
         return { code: "nichtVerfuegbar" };
@@ -517,7 +596,30 @@ export class KlaraAusfuehrung {
    * Rückgängig — mit dem nachgelesenen Ergebnisstand als erwartetem Stand am vorhandenen Weg. Wurde
    * der Entwurf inzwischen geändert, antwortet der Server 409 und der Entwurf bleibt erhalten.
    */
-  async nimmZurueck(
+  nimmZurueck(
+    kontoId: string,
+    gespraechId: string,
+    auftragId: string,
+    schluessel: string,
+    rufe: KlaraRufe,
+  ): Promise<Ergebnis> {
+    return this.nacheinander(`${kontoId}|${gespraechId}|${auftragId}|${schluessel}`, async () => {
+      try {
+        return await this.nimmZurueckAllein(kontoId, gespraechId, auftragId, schluessel, rufe);
+      } catch (fehler) {
+        // PV-02-06: hat ein anderer Weg (zweite Instanz) inzwischen zurückgenommen, ist das der
+        // tatsächliche Stand — kein Fehler, der eine geschehene Rücknahme als gescheitert zeigt.
+        const jetzt = await this.dienst.auftrag(kontoId, gespraechId, auftragId).catch(() => null);
+        const s = jetzt?.schritte.find((x) => x.schluessel === schluessel);
+        if (jetzt && s?.stand === "zurueckgenommen") {
+          return { auftrag: jetzt, schritt: s, wiederholt: true };
+        }
+        throw fehler;
+      }
+    });
+  }
+
+  private async nimmZurueckAllein(
     kontoId: string,
     gespraechId: string,
     auftragId: string,
@@ -533,28 +635,72 @@ export class KlaraAusfuehrung {
       return { auftrag: a, schritt: s, wiederholt: true };
     }
     const e = s.ergebnis;
+    // PV-02-04/05: die tatsächliche Aktionswirkung zuerst — ist sie laut Vertrag nicht rücknehmbar
+    // (Fachaktion an einer Aufgabe, Öffnen) oder nicht mit eigenem Stand gespeichert, sagt die
+    // Ablehnung das samt Weg zum Korrigieren am vorhandenen Arbeitsort.
+    const plan = (a.plan ?? []).find((p) => p.nr === s.nr);
+    const vertrag = vertragFuer(s.aktion, plan?.aufgabenaktion);
     if (!s.ruecknehmbar || !e || s.stand !== "gespeichert") {
       throw new KlaraGespraechFehler(
         409,
         "nicht_ruecknehmbar",
         "Dieser Schritt ist nicht rücknehmbar — seine Wirkung bleibt bestehen.",
+        {
+          aktionskennung: aktionskennung(a.id, s.nr),
+          vertrag: vertrag.schluessel,
+          fuerAndereSichtbar: vertrag.fuerAndereSichtbar,
+          korrekturweg: vertrag.korrekturweg,
+          pfad: e?.pfad ?? s.ziel.pfad,
+          fremdstand: s.fehlerCode === "fremdstand",
+        },
       );
     }
-    const geaendert = (): never => {
+    const url = `/api/drafts/${encodeURIComponent(e.id)}`;
+    const eigenerStand = e.stand;
+    const ergebnisPfad = e.pfad;
+    /** Der Konflikt: eigener und aktueller Stand, Weg zum Korrigieren — nur an die Person. */
+    const geaendert = (aktuell: string | null): never => {
       throw new KlaraGespraechFehler(
         409,
         "geaendert",
         "Der Entwurf wurde seitdem weiter geändert. Klara nimmt nichts über eine spätere Änderung hinweg zurück.",
+        {
+          aktionskennung: aktionskennung(a.id, s.nr),
+          eigenerStand,
+          aktuellerStand: aktuell,
+          korrekturweg: "entwurf",
+          pfad: ergebnisPfad,
+        },
       );
     };
-    const url = `/api/drafts/${encodeURIComponent(e.id)}`;
+    const aktuellerStand = async (): Promise<string | null> => {
+      const r = await rufe("GET", url);
+      return r.status === 200 && istEntwurf(r.daten) ? r.daten.updatedAt : null;
+    };
+    // PV-02-04: vor der Rücknahme aktuelle Rechte und Zielversion — mit der Anmeldung der Person.
+    const vorab = await rufe("GET", url);
+    if (vorab.status !== 200 || !istEntwurf(vorab.daten)) {
+      throw new KlaraGespraechFehler(
+        409,
+        "ziel_fehlt",
+        GRUND[codeAus(vorab.status)] ?? GRUND.server ?? "",
+        { aktionskennung: aktionskennung(a.id, s.nr), korrekturweg: "entwurf", pfad: null },
+      );
+    }
+    if (vorab.daten.updatedAt !== e.stand) {
+      geaendert(vorab.daten.updatedAt);
+    }
+    if (s.aktion === "entwurf_bearbeiten" && plan && !angewandt(vorab.daten.payload, plan)) {
+      // Gleicher Stand, aber Klaras Änderung steht nicht da: nichts zurückzunehmen.
+      geaendert(vorab.daten.updatedAt);
+    }
     if (s.aktion === "entwurf_erstellen") {
       const geloescht = await rufe(
         "DELETE",
         `${url}?expectedUpdatedAt=${encodeURIComponent(e.stand ?? "")}`,
       );
       if (geloescht.status === 409) {
-        geaendert();
+        geaendert(await aktuellerStand());
       }
       if (geloescht.status !== 204) {
         throw new KlaraGespraechFehler(409, "geaendert", GRUND[codeAus(geloescht.status)] ?? "");
@@ -563,6 +709,9 @@ export class KlaraAusfuehrung {
       if (danach.status !== 404) {
         throw new KlaraGespraechFehler(409, "geaendert", GRUND.nichtNachgelesen ?? "");
       }
+      await this.dienst.merkeStaende(kontoId, gespraechId, auftragId, schluessel, {
+        ruecknahmeStand: "papierkorb",
+      });
     } else {
       const vorher = s.vorher;
       if (!vorher) {
@@ -578,7 +727,7 @@ export class KlaraAusfuehrung {
         expectedUpdatedAt: e.stand ?? "",
       });
       if (geschrieben.status === 409) {
-        geaendert();
+        geaendert(await aktuellerStand());
       }
       if (geschrieben.status !== 200) {
         throw new KlaraGespraechFehler(409, "geaendert", GRUND[codeAus(geschrieben.status)] ?? "");
@@ -594,6 +743,10 @@ export class KlaraAusfuehrung {
       ) {
         throw new KlaraGespraechFehler(409, "geaendert", GRUND.nichtNachgelesen ?? "");
       }
+      // Der neue Stand nach der Rückänderung: eine NEUE Fassung, keine Wiederherstellung der alten.
+      await this.dienst.merkeStaende(kontoId, gespraechId, auftragId, schluessel, {
+        ruecknahmeStand: gelesen.daten.updatedAt,
+      });
     }
     return this.dienst.setzeAuftragsschritt(
       kontoId,

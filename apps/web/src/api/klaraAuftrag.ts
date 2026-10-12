@@ -65,8 +65,52 @@ export interface KlaraAuftragSchritt {
     /** Nacharbeit 5: der vom Schreibweg bestätigte eigene Stand (`null`: keiner bestätigt). */
     stand?: string | null;
   } | null;
+  /** PV-02: Stand des Ziels vor der Wirkung bzw. nach der Rücknahme (vom Server gelesen). */
+  vorherStand?: string | null;
+  ruecknahmeStand?: string | null;
+  /** PV-02: Aktionskennung (= Vorgangsschlüssel), Vertrag und was eine Rücknahme jetzt hindert. */
+  aktionskennung?: string;
+  vertrag?: KlaraVertragsSchluessel;
+  ruecknahmeHinderung?: KlaraRuecknahmeHinderung | null;
   begonnenAm: string;
   geaendertAm: string;
+}
+
+export type KlaraRuecknahmeHinderung =
+  | "nicht_ruecknehmbar"
+  | "fremdstand"
+  | "nicht_gespeichert"
+  | "zurueckgenommen";
+
+/** PV-02-01: Spiegel von `KlaraVertragsSchluessel` in `services/app/src/klara-aktionsverlauf.ts`. */
+export type KlaraVertragsSchluessel =
+  | "oeffnen"
+  | "entwurf_erstellen"
+  | "entwurf_bearbeiten"
+  | "aufgabe_oeffnen"
+  | "aufgabe_prioritaet"
+  | "aufgabe_zuweisen"
+  | "aufgabe_eskalieren";
+
+/** PV-02-02: Spiegel von `KlaraErgebnisstand` — dazu `entwurf`, solange der Plan nur hier steht. */
+export type KlaraErgebnisstand =
+  | "entwurf"
+  | "vorschlag"
+  | "laeuft"
+  | "unklar"
+  | "ausgefuehrt"
+  | "teilweise"
+  | "fehlgeschlagen"
+  | "zurueckgenommen"
+  | "teilweise_zurueckgenommen"
+  | "abgebrochen";
+
+/** PV-02-03: ein Eintrag der vorhandenen Prüfprotokollkette zu einem eigenen Auftrag. */
+export interface KlaraProtokollEintrag {
+  seq: number;
+  at: string;
+  action: string;
+  payload: Record<string, unknown>;
 }
 
 /** Nacharbeit 2: ein Schritt des gebundenen Plans — der Server führt nur aus, was hier steht. */
@@ -116,6 +160,8 @@ export interface KlaraAuftrag extends KlaraAuftragGrenze {
   ziel: string;
   verantwortlich: string;
   stand: KlaraAuftragStand;
+  /** PV-02-02: abgeleitet am Server aus den festgehaltenen Schritten. */
+  ergebnisstand?: Exclude<KlaraErgebnisstand, "entwurf">;
   abgebrochenAm: string | null;
   schritte: KlaraAuftragSchritt[];
   fassungen: KlaraAuftragGrenze[];
@@ -209,5 +255,10 @@ export const klaraAuftragApi = {
     api.put<{ auftrag: KlaraAuftrag }>(
       pfad(gespraechId, `/${encodeURIComponent(auftragId)}/abbruch`),
       {},
+    ),
+  /** PV-02-03: die eigenen Einträge der vorhandenen Prüfprotokollkette zu diesem Auftrag. */
+  protokoll: (gespraechId: string, auftragId: string) =>
+    api.get<{ auftrag: string; aktionskennungen: string[]; eintraege: KlaraProtokollEintrag[] }>(
+      pfad(gespraechId, `/${encodeURIComponent(auftragId)}/protokoll`),
     ),
 };

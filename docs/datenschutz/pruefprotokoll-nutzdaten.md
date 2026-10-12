@@ -144,6 +144,22 @@ am Konflikt, **nicht** im Protokoll.
 | `reasoner.zweitmeinung`, `reasoner.zweitmeinung-nicht-wirksam` (R-0305/R-1099) | `vorher`, `nachher` (`openai`/`anthropic`/`local`/`aus`) | Z |
 | `audit.exported` | `count`, `headSeq`, `headHash` | Z |
 
+### Klara-Aufträge (`services/app/src/routes/klara-gespraech-routes.ts`)
+
+Nachtrag `produkt:20261010:assistenz-aktionen-verlauf-ruecknahme` (PV-02), Quelleninspektion und
+gemessen in `tests/assistenz-aktionen-verlauf/verlauf-am-server.test.ts` (V1, V2): kein Wortlaut,
+kein Titel, kein Inhalt, kein Personenname.
+
+| Aktion | Nutzlast | Klasse |
+| --- | --- | --- |
+| `klara.gespraech.begonnen`, `klara.gespraech.geloescht` | — | — |
+| `klara.gespraech.einwilligung` | `erteilt` | Z |
+| `klara.auftrag.angelegt` | `gespraech`, `aktionen`, `geplanteSchritte` | K, Z |
+| `klara.auftrag.korrigiert` | `fassung`, `aktionen` | Z |
+| `klara.auftrag.abgebrochen` | — | — |
+| `klara.auftrag.schritt` | `nr`, `aktion`, `stand`, ggf. `ausgefuehrt`, `ergebnis` (Kennung), `fehler` (Grundschlüssel); seit PV-02 `gespraech`, `aktionskennung`, `vertrag`, bei gespeichert/zurückgenommen `vorherStand`, `neuerStand` (Fassungszeit eines Entwurfs bzw. Art einer Aufgabenwirkung wie `prioritaet:hoch`, `zugewiesen` — ohne Namen) | K, Z, M |
+| `klara.auftrag.ruecknahme-abgelehnt` (PV-02) | `gespraech`, `grund`, ggf. `aktionskennung`, `vertrag`, `eigenerStand`, `aktuellerStand` (Fassungszeiten) | K, Z, M |
+
 ### Konten und Anmeldung (`services/auth`)
 
 | Aktion | Nutzlast | Klasse |
