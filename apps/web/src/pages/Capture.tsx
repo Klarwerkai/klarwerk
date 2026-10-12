@@ -244,7 +244,6 @@ import { detectFileKind } from "../lib/extract";
 // SCRUM-409 (PMO-FEA-0008-Delta): Mehrpunkt-Entwürfe + Zusammenführen im „Aus Datei"-Weg.
 import { createPointDrafts } from "../lib/fileMultiPoint";
 import {
-  PdfTooLargeError,
   fileToThumbDataUrl,
   isImage,
   readDocxFile,
@@ -269,6 +268,17 @@ import {
   interviewSourceKey,
   isInterviewDone,
 } from "../lib/interviewFlow";
+import {
+  type OcrAbschnitt,
+  type OcrErsetzt,
+  feldUebernommen,
+  gesicherteOhneRohtext,
+  interviewKontext,
+  massgeblicheAussage,
+  ocrAbschnitteFuerEntwurf,
+  ocrErsetztOhne,
+  ocrUebernahmeErsetzt,
+} from "../lib/interviewKontext";
 import { ERGEBNIS_STUFE_TEXT } from "../lib/kiHerkunft";
 import {
   EMPTY_SOURCE_FORM,
@@ -289,8 +299,9 @@ import {
   stufeWaehlbar,
 } from "../lib/negativwissen";
 // JOB 2700 D1: die Groessenkante des PDF-Weges ist die Grenze des Original-Anhangs (dieselbe
-// Ableitung wie 2676 fuer PPTX) — und die Frist des Parsers hat einen eigenen Fehler.
-import { PdfTimeoutError } from "../lib/pdf";
+// Ableitung wie 2676 fuer PPTX) — und die Frist des Parsers hat einen eigenen Fehler. Der Satz
+// dazu ist seit `gesamt-ocr` (R-0138) mit „Aus Dokument ergaenzen" geteilt.
+import { pdfLesefehlerSatz } from "../lib/pdfLesefehler";
 // WP-D5b (bens GELB-Fix 3): ehrlicher Importfehler bei Überschreitung des Archiv-/Dekompressionsbudgets.
 import { PptxTooLargeError } from "../lib/pptx";
 import { toReasonerLocale } from "../lib/reasonerLocale";
@@ -905,21 +916,8 @@ export function CaptureArbeitsraum({
   // Was nicht als Original angehaengt werden kann, wird auch nicht geparst.
   const pdfLimitBytes = maxRawAttachmentBytes(uploadLimitsData.maxAttachmentBytes);
   /** Die ehrliche Meldung zu einer PDF, die zu gross ist oder zu lange braucht — sonst null. */
-  const pdfFehlerText = (error: unknown, name: string): string | null => {
-    if (error instanceof PdfTooLargeError) {
-      // Die Grenze ABGERUNDET (14,9 statt 15,0): was angezeigt wird, muss real durchgehen — dieselbe
-      // Regel wie maxRawAttachmentMb in uploadLimits.ts.
-      return t("capture.file.pdfTooLarge", {
-        name,
-        mb: (error.size / 1_000_000).toFixed(1),
-        limitMb: (Math.floor(error.limit / 100_000) / 10).toFixed(1),
-      });
-    }
-    if (error instanceof PdfTimeoutError) {
-      return t("capture.file.pdfTimeout", { name, s: Math.round(error.timeoutMs / 1000) });
-    }
-    return null;
-  };
+  const pdfFehlerText = (error: unknown, name: string): string | null =>
+    pdfLesefehlerSatz(error, name, t);
   const reviewerChoices = (directory.data ?? []).filter((p) => p.id !== user?.id);
   // AUFTRAG-mega6 Block D (bens Ehrlichkeitskante): die Persistenzgrenze speichert höchstens
   // DRAFT_LIMITS.reviewers Prüfer. Die Auswahl war ein unbeschränktes Toggle — der Server kappte
@@ -1192,6 +1190,19 @@ export function CaptureArbeitsraum({
   // die aktuelle ist — eine SPÄTE Antwort eines vor dem Speichern gestarteten Requests kann den
   // danach geltenden Zustand damit nicht wieder einschreiben.
   const ivRunRef = useRef(0);
+  // Aufnahme `gesamt-ocr` (FR-CAP-05, Nacharbeit 4): erkannte Bildtext-Abschnitte eines fortgesetzten
+  // Entwurfs, die NICHT im Rohtext zurückkamen (strukturiert gespeichert ⇒ nur die verdichtete
+  // Aussage). Sie bleiben Interviewkontext und reisen beim nächsten Speichern wieder mit. Abschnitte
+  // im Rohtext sind weiterhin dort die Quelle (lib/interviewKontext.ts).
+  const [ocrGesichert, setOcrGesichert] = useState<readonly OcrAbschnitt[]>([]);
+  // Nacharbeit 11 (Bens Befund): die Felder, in die die Erkennung SCHREIBT (R-1688/R-1733) — Rohtext
+  // und die „Aussage" des Formulars. Interviewkontext und Entwurfssicherung lesen beide, jeweils im
+  // aktuellen Stand; ein Abschnitt in beiden zählt einmal (lib/interviewKontext.ts).
+  const sichtbareOcrFelder: readonly string[] = [raw, draft?.statement ?? ""];
+  // Nacharbeit 16 (Bens Befund): je Feld die Abschnitte, die ein Moduswechsel ins andere Feld
+  // übernommen hat. Dort ist die Kopie maßgeblich — mit Korrektur und Löschung; die stehen
+  // gebliebene Quelle zählt nicht mehr (lib/interviewKontext.ts, `ocrUebernahmeErsetzt`).
+  const [ocrErsetzt, setOcrErsetzt] = useState<OcrErsetzt>([]);
   // R-1624: der bestätigte Bildbefund des laufenden Foto-Interviews. null = normales Interview.
   // Der Befund reist mit jedem Turn als Klartext mit und wird mit dem Interviewfortschritt
   // gesichert und wiederhergestellt; das Foto selbst steht als Bild-Anker im Rumpf (beim Start
@@ -1522,6 +1533,13 @@ export function CaptureArbeitsraum({
           research: v.research,
           ...(v.recherchieren ? { recherchieren: true } : {}),
         },
+        // Aufnahme `gesamt-ocr` (FR-CAP-05): die auf Klick erkannten Abschnitte des Rohtextes, so wie
+        // sie JETZT dastehen — auch nach dem Fortsetzen eines Entwurfs (lib/interviewKontext.ts),
+        // dazu die gesicherten Abschnitte eines strukturiert gespeicherten Entwurfs. Nacharbeit 11:
+        // gelesen werden BEIDE sichtbaren Felder — Rohtext und die „Aussage" des Formulars, in die
+        // die Erkennung dort schreibt (R-1688/R-1733). Nacharbeit 16: übernommene Abschnitte zählen
+        // nur in ihrer maßgeblichen Kopie.
+        interviewKontext(sichtbareOcrFelder, ocrGesichert, ocrErsetzt),
       ),
     onSuccess: (res, v) => {
       if (v.run !== ivRunRef.current) {
@@ -2609,6 +2627,10 @@ export function CaptureArbeitsraum({
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setDraft(null);
       setRaw("");
+      // Aufnahme `gesamt-ocr` (Nacharbeit 5): die gesicherten Bildtext-Abschnitte gehörten zu DIESEM
+      // Beitrag — sonst trüge der nächste sie unsichtbar ins Interview und in seinen Entwurf.
+      setOcrGesichert([]);
+      setOcrErsetzt([]);
       setBodyHtml("");
       setTags([]);
       setImages([]);
@@ -2748,9 +2770,15 @@ export function CaptureArbeitsraum({
       });
       // AUFTRAG-mega6 Block B: „wird aktualisiert" entscheidet, ob Leerwerte als Löschmarker mitgehen.
       const isDraftUpdate = Boolean(draftId);
+      // Aufnahme `gesamt-ocr` (Nacharbeit 4): die erkannten Abschnitte reisen als eigenes Feld mit —
+      // auch wenn `statement` unten die verdichtete Aussage statt des Rohtextes trägt.
+      const ocrFuerEntwurf = ocrAbschnitteFuerEntwurf(ocrGesichert, sichtbareOcrFelder, ocrErsetzt);
       const payload: DraftPayload = {
         title: draft?.title || raw.split("\n")[0]?.slice(0, 80) || t("capture.draftFallbackTitle"),
-        statement: draft?.statement || raw,
+        // Nacharbeit 17/18 (Bens Befunde): nach einer Übernahme gilt die maßgebliche Fassung — in
+        // BEIDEN Richtungen und auch absichtlich ganz geleert. Rohtext → Aussage: die Aussage;
+        // Aussage → Rohtext: der Rohtext. Sonst käme der stehen gebliebene, ersetzte Bildtext zurück.
+        statement: massgeblicheAussage(draft?.statement, raw, ocrErsetzt),
         type,
         tags: tags.filter((x) => x.trim()),
         conditions: draft?.conditions.filter((x) => x.trim()) ?? [],
@@ -2805,6 +2833,11 @@ export function CaptureArbeitsraum({
         ...(isDraftUpdate || extQuery.trim() ? { extQuery } : {}),
         ...(isDraftUpdate || ivProgress
           ? { interview: ivProgress ?? CLEARED_DRAFT_INTERVIEW }
+          : {}),
+        // Dieselbe Leerwert-Semantik: beim Aktualisieren geht auch eine leere Liste als Löschmarker
+        // mit — wer die erkannten Abschnitte entfernt hat, bekommt sie beim Fortsetzen nicht zurück.
+        ...(isDraftUpdate || ocrFuerEntwurf.length > 0
+          ? { ocrAbschnitte: ocrFuerEntwurf.map(({ name, text }) => ({ name, text })) }
           : {}),
         // produkt:20261007:templates-default: der Vorlagenbezug übersteht Speichern/Fortsetzen;
         // beim Aktualisieren auch als `null`, damit „freie Eingabe" den alten Bezug wirklich löst.
@@ -2864,6 +2897,10 @@ export function CaptureArbeitsraum({
       // Bugfix (Pedi 04.07.): nach dem Speichern ist die Eingabe leer/neu — der Entwurf liegt in
       // „Entwürfe fortsetzen"; Weiterarbeiten läuft bewusst über „Fortsetzen".
       setRaw("");
+      // Aufnahme `gesamt-ocr` (Nacharbeit 5): die gesicherten Abschnitte liegen jetzt im Entwurf und
+      // kommen über „Fortsetzen" zurück — im geleerten Arbeitsraum haben sie nichts mehr zu suchen.
+      setOcrGesichert([]);
+      setOcrErsetzt([]);
       setDraft(null);
       setBodyHtml("");
       setTags([]);
@@ -3102,6 +3139,19 @@ export function CaptureArbeitsraum({
       conditions: p.conditions ?? [],
       measures: p.measures ?? [],
     };
+    // Aufnahme `gesamt-ocr` (Nacharbeit 4): gesicherte Bildtext-Abschnitte zurückholen — nur die,
+    // die nicht ohnehin im (beim Erzähl-Einstieg wiederhergestellten) Rohtext stehen.
+    const erzaehlRohtext = p.statement ?? p.title ?? "";
+    // Nacharbeit 11: die Felder, die NACH dem Laden sichtbar sind — beim Erzähl-Einstieg der Rohtext,
+    // sonst der unveränderte Rohtext UND die wiederhergestellte Aussage (Formular, Studio).
+    const kuenftigeFelder = target === "tell" ? [erzaehlRohtext] : [raw, p.statement ?? ""];
+    // Nacharbeit 16: die Aussage kommt neu aus dem Entwurf — ihre Übernahme-Markierung gilt nicht
+    // mehr. Ein unverändert stehen gebliebener Rohtext behält seine; beim Erzähl-Einstieg wird auch
+    // er neu gefüllt.
+    const kuenftigErsetzt: OcrErsetzt = target === "tell" ? [] : [ocrErsetzt[0]];
+    setOcrErsetzt(kuenftigErsetzt);
+    const gespeicherteOcr = p.ocrAbschnitte ?? [];
+    setOcrGesichert(gesicherteOhneRohtext(gespeicherteOcr, kuenftigeFelder, kuenftigErsetzt));
     if (target === "tell") {
       // Erzähl-Einstieg → Rohtext-Feld, sofort editier- und speicherbar.
       setMode("freitext");
@@ -3261,6 +3311,9 @@ export function CaptureArbeitsraum({
   // beiden kanonischen Räum-Funktionen. Eine Quelle für den Leerzustand, geteilt von beiden Verwerfen-Wegen.
   const resetCaptureForm = (): void => {
     setRaw("");
+    // Aufnahme `gesamt-ocr`: mit dem Rohtext gehen auch die gesicherten Bildtext-Abschnitte.
+    setOcrGesichert([]);
+    setOcrErsetzt([]);
     setDraft(null);
     setBodyHtml("");
     setStudioApplied(false);
@@ -3325,11 +3378,25 @@ export function CaptureArbeitsraum({
     // Bug (Pedi 04.07.): Inhalt beim Moduswechsel NICHT verlieren. Der Rohtext (Freitext/Diktat)
     // und die Aussage des Experten-Formulars werden aneinander übergeben.
     const carried = raw.trim();
+    // Nacharbeit 18 (Bens Befund): nach einer Übernahme ist das QUELLFELD eine veraltete Kopie
+    // (`feldUebernommen`). Wer in dieses Feld zurückkehrt, bekommt die maßgebliche Fassung — auch
+    // eine korrigierte oder geleerte —, und die Richtung kehrt sich um. So ist das sichtbare Feld
+    // immer das maßgebliche, und Speichern (`statement` in der Entwurfs-Nutzlast) liest genau dieses.
+    const aussageVeraltet = Boolean(draft) && feldUebernommen(ocrErsetzt, 1);
+    const rohtextVeraltet = Boolean(draft) && feldUebernommen(ocrErsetzt, 0);
     if (m === "formular") {
-      // Freitext → Formular: Rohtext als „Aussage" ins Formular übernehmen (nur wenn dort leer).
+      // Nacharbeit 16 (Bens Befund): übernimmt der Wechsel den Rohtext, ist ab jetzt die Kopie in
+      // der Aussage die maßgebliche Fassung seiner erkannten Abschnitte — Korrektur und Löschung
+      // dort gelten, die stehen gebliebene Quelle im Rohtext zählt nicht mehr.
+      const uebernehmen = (carried && !draft?.statement.trim()) || aussageVeraltet;
+      if (uebernehmen) {
+        setOcrErsetzt((e) => ocrUebernahmeErsetzt(e, 0, raw, 1));
+      }
+      // Freitext → Formular: Rohtext als „Aussage" ins Formular übernehmen (nur wenn dort leer
+      // oder die Aussage eine veraltete Kopie ist).
       setDraft((d) => {
         const base = d ?? { ...EMPTY_DRAFT };
-        if (base.statement.trim()) {
+        if (!uebernehmen) {
           return base;
         }
         return {
@@ -3338,8 +3405,14 @@ export function CaptureArbeitsraum({
           title: base.title || carried.split("\n")[0]?.slice(0, 80) || "",
         };
       });
-    } else if ((m === "freitext" || m === "diktat") && !carried && draft?.statement.trim()) {
-      // Formular → Erzählen: Aussage zurück in den Rohtext (nur wenn der Rohtext leer ist).
+    } else if (
+      (m === "freitext" || m === "diktat") &&
+      draft &&
+      ((!carried && draft.statement.trim()) || rohtextVeraltet)
+    ) {
+      // Formular → Erzählen: Aussage zurück in den Rohtext (nur wenn der Rohtext leer ist oder eine
+      // veraltete Kopie). Nacharbeit 16: jetzt ist der Rohtext die maßgebliche Fassung.
+      setOcrErsetzt((e) => ocrUebernahmeErsetzt(e, 1, draft.statement, 0));
       setRaw(draft.statement);
     }
     setMode(m);
@@ -5195,6 +5268,8 @@ export function CaptureArbeitsraum({
         const erkannt = res.text;
         // R-1688/R-1733 (Bens Befund 10.10., Nacharbeit 2): dasselbe Ziel wie das Transkript — im
         // Formular die sichtbare „Aussage", sonst der Rohtext. Die Meldung erst nach der Übernahme.
+        // Aufnahme `gesamt-ocr`: `mitOcrText` schreibt den abgeschlossenen Abschnitt
+        // (`ocrAbschnittText`), dessen Kopf zugleich die Zuordnung für den Interviewkontext ist.
         if (transkriptZiel(mode) === "aussage") {
           setDraft((dr) => {
             const basis = dr ?? { ...EMPTY_DRAFT };
@@ -5203,6 +5278,9 @@ export function CaptureArbeitsraum({
         } else {
           setRaw((prev) => mitOcrText(prev, img.name, erkannt));
         }
+        // Nacharbeit 16: eine NEUE Erkennung zählt, auch wenn ein gleichlautender Abschnitt früher
+        // durch eine Übernahme ersetzt wurde.
+        setOcrErsetzt((e) => ocrErsetztOhne(e, img.name, erkannt));
         setNotice(t("capture.ocrDone", { name: img.name }));
       } else if (res.status === "success") {
         setErr(t("capture.ocrEmpty", { name: img.name }));

@@ -18,7 +18,8 @@
     "tests/**/*.tsx",
     "tests/types/**/*.d.ts",
     "tests/klara-vorschlaege/uebernahme-logik.test.ts",
-    "tests/klara-aktionen/zusammenfassen-zitatdeckung.test.ts"
+    "tests/klara-aktionen/zusammenfassen-zitatdeckung.test.ts",
+    "tests/capture/ocr-engine-gleiche-herkunft.test.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

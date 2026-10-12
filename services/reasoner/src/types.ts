@@ -340,6 +340,10 @@ export interface InterviewOptions {
   // Route, nach Stufen- und Vertraulichkeitsprüfung. Ohne Quellen gibt es keine Recherche — das
   // Modell leitet Prüfpunkte nur aus ihnen ab, nie aus eigenem Wissen.
   sources?: unknown;
+  // Aufnahme `gesamt-ocr` (FR-CAP-05): der auf Klick im Bild erkannte Text als Kontext. Er reist
+  // über dieselbe Kette und Vertraulichkeit wie die Antworten; nur das Modell nutzt ihn für die
+  // Formulierung der Frage, der Entwurf entsteht weiter allein aus den Antworten.
+  context?: string;
 }
 
 // PMO-FEA-0006: ein aus einem Dokument extrahierter Wissenspunkt. sourceExcerpt ist die

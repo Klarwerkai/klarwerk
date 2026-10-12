@@ -37,6 +37,14 @@
       "freigabe": "Zentrale Adminfreigabe (MediaAnalysisDeps.zentralFreigegeben); vertrauliche Medien nur mit der zweiten Freigabe (MediaAnalysisDeps.vertraulichFreigegeben, Chokepoint cappedTranscriber fragt dieselbe Entscheidung)"
     },
     {
+      "kennung": "transkription-lokal",
+      "zweck": "Lokaler Sprach-zu-Text-Dienst des Betreibers (OpenAI-kompatibel) fuer Video- und Audio-Erfassung ohne Cloud (R-0181)",
+      "dateien": ["services/media/src/transcriber.ts"],
+      "hosts": [],
+      "umgebung": ["KLARWERK_LOCAL_TRANSCRIBE_URL", "KLARWERK_LOCAL_TRANSCRIBE_ALLOWED_ORIGINS"],
+      "freigabe": "Nur Loopback oder ausdruecklich in KLARWERK_LOCAL_TRANSCRIBE_ALLOWED_ORIGINS genannte Origins gelten als lokal (istBestaetigtLokaleAdresse); dann ist es keine oeffentliche KI und vertrauliche Medien werden im Haus bedient. Jedes andere Ziel wird wie ein externes behandelt: zentrale Adminfreigabe und Vertraulichkeitssperre am Chokepoint cappedTranscriber"
+    },
+    {
       "kennung": "wissenssuche-wikipedia",
       "zweck": "Externe Wissenssuche (Quellen suchen und anhaengen)",
       "dateien": [
