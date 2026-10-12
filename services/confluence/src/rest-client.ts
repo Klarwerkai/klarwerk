@@ -238,6 +238,8 @@ type ErsterHop = { inhalt: ConfluenceAnhangInhalt } | { weiter: string };
 
 export interface ConfluenceUser {
   displayName?: string;
+  /** Nacharbeit 16: die Kennung des Autors — ein Kandidat für die Leseprüfung je Konto. */
+  accountId?: string;
 }
 export interface ConfluencePage {
   id: string;
@@ -273,6 +275,42 @@ export interface ConfluencePage {
   children?: {
     attachment?: { results?: ConfluenceAttachment[]; _links?: { next?: string } };
   };
+}
+
+/**
+ * confluence-import-rechte (Nacharbeit 3): das Leserecht eines Space, wie Confluence es liefert.
+ * `users`/`groups` sind die rohen Subjekte (Benutzer mit `accountId`/ggf. `email`, Gruppen mit
+ * `name`); aufgelöst werden sie im Adapter.
+ */
+export interface ConfluenceSpaceLeserechte {
+  anonym: boolean;
+  users: unknown[];
+  groups: unknown[];
+  /**
+   * Nacharbeit 16 (Ben, K1): Zugangsklassen mit Leserecht (V2-Principal `access-class`, etwa
+   * `ALL_LICENSED_USERS`). V1 liefert diese Einträge OHNE `subjects` — bis hierher fielen sie weg.
+   */
+  zugangsklassen: string[];
+  /** Ein Lese-Eintrag, dessen Principal sich nicht bestimmen ließ (V2 nicht lesbar, PAT). */
+  principalsUnbekannt: boolean;
+}
+
+interface SpacePermissionV2Roh {
+  principal?: { type?: unknown; id?: unknown };
+  operation?: { key?: unknown; targetType?: unknown };
+}
+
+interface SpacePermissionRoh {
+  operation?: { operation?: unknown; targetType?: unknown };
+  anonymousAccess?: unknown;
+  subjects?: { user?: { results?: unknown }; group?: { results?: unknown } };
+}
+
+/** Höchstens so viele Seiten à 200 Mitglieder je Gruppe — darüber gilt die Gruppe als unvollständig. */
+const CONFLUENCE_MAX_GRUPPENSEITEN = 50;
+
+function arrayOder(wert: unknown): unknown[] {
+  return Array.isArray(wert) ? wert : [];
 }
 
 // AUFTRAG-mega27 A1: `ancestors` kommt MINIMAL dazu — ohne jeden Unter-Expand. Die Elternkette ist
@@ -663,6 +701,362 @@ export class ConfluenceRestClient {
         return leseAnhangBegrenzt(res, maxBytes);
       },
     );
+  }
+
+  // ==============================================================================================
+  // AUFNAHME 20260922 · confluence-import-rechte (Ben, Nacharbeit 3, Befund F1) — DIE RECHTE, DIE
+  // DIE SEITE NICHT SELBST TRÄGT: Space-Leserecht, Gruppenmitglieder, Mailadresse je Konto.
+  // ==============================================================================================
+  //
+  // Alle drei laufen über DENSELBEN Netzweg (`getJson`: Origin-Pin, Frist, Größengrenze,
+  // `redirect:error`, Redaction). Und alle drei sind FAIL-CLOSED in dieselbe Richtung: was nicht
+  // gelesen werden kann (fehlendes Recht des Dienstkontos, 404, Frist, Abbruch), ergibt „unbekannt"
+  // bzw. weniger Leser — nie eine allgemeine Freigabe. Der Aufrufer (`adapter.ts`) entscheidet, was
+  // „unbekannt" heisst; hier wird nichts geraten.
+
+  /**
+   * Das Leserecht des konfigurierten Space (`expand=permissions`, Operation `read` auf `space`).
+   * `undefined` = nicht nachsehbar (das Dienstkonto darf die Berechtigungen nicht lesen, oder die
+   * Antwort trägt keine Leseangabe).
+   */
+  async getSpaceLeserechte(): Promise<ConfluenceSpaceLeserechte | undefined> {
+    const url = `${this.baseUrl}/rest/api/space/${encodeURIComponent(this.config.spaceKey)}?expand=permissions`;
+    let data: unknown;
+    try {
+      data = await this.getJson(url, this.allowedOrigin(), { nichtGefundenIstLeer: true });
+    } catch {
+      return undefined;
+    }
+    const permissions = (data as { permissions?: unknown } | undefined)?.permissions;
+    if (!Array.isArray(permissions)) {
+      return undefined;
+    }
+    let lesend = false;
+    let anonym = false;
+    let ohneSubjekt = false;
+    const users: unknown[] = [];
+    const groups: unknown[] = [];
+    for (const eintrag of permissions as SpacePermissionRoh[]) {
+      const op = eintrag?.operation;
+      if (op?.operation !== "read" || op?.targetType !== "space") {
+        continue;
+      }
+      lesend = true;
+      if (eintrag.anonymousAccess === true) {
+        anonym = true;
+      }
+      // Nacharbeit 16: so liefert V1 einen Lese-Eintrag einer Zugangsklasse — ganz ohne `subjects`
+      // (SPACE-RECHTE-V2.json, Einträge 655385/655438). Der Principal steht nur in V2.
+      if (eintrag.subjects === undefined && eintrag.anonymousAccess !== true) {
+        ohneSubjekt = true;
+      }
+      users.push(...arrayOder(eintrag.subjects?.user?.results));
+      groups.push(...arrayOder(eintrag.subjects?.group?.results));
+    }
+    if (!lesend) {
+      return undefined;
+    }
+    // Nacharbeit 16 (Ben, K1): einen Lese-Eintrag ohne Subjekt nicht verwerfen — V2 nennt seinen
+    // Principal. Nur im Cloud-Weg; selbst betriebenes Confluence hat diese API nicht.
+    let zugangsklassen: string[] = [];
+    let principalsUnbekannt = false;
+    if (ohneSubjekt && !anonym) {
+      const spaceId = (data as { id?: unknown }).id;
+      const mitId = typeof spaceId === "number" || typeof spaceId === "string";
+      const gelesen =
+        this.config.authMode !== "pat" && mitId
+          ? await this.spaceZugangsklassen(String(spaceId))
+          : undefined;
+      zugangsklassen = gelesen?.klassen ?? [];
+      principalsUnbekannt = !gelesen?.vollstaendig || zugangsklassen.length === 0;
+    }
+    return { anonym, users, groups, zugangsklassen, principalsUnbekannt };
+  }
+
+  /**
+   * Nacharbeit 16: die Zugangsklassen mit Leserecht am Space aus `/api/v2/spaces/{id}/permissions`
+   * (Cursor-Pagination über `_links.next`). Derselbe Netzweg, dieselbe Seitenobergrenze wie die
+   * Gruppen; ein Fehler oder die Grenze ergeben `vollstaendig: false`.
+   */
+  private async spaceZugangsklassen(
+    spaceId: string,
+  ): Promise<{ klassen: string[]; vollstaendig: boolean }> {
+    const allowedOrigin = this.allowedOrigin();
+    const klassen = new Set<string>();
+    let url = `${this.baseUrl}/api/v2/spaces/${encodeURIComponent(spaceId)}/permissions?limit=100`;
+    for (let seite = 0; seite < CONFLUENCE_MAX_GRUPPENSEITEN; seite += 1) {
+      let data: unknown;
+      try {
+        data = await this.getJson(url, allowedOrigin);
+      } catch {
+        return { klassen: [...klassen], vollstaendig: false };
+      }
+      const antwort = data as { results?: unknown; _links?: { next?: unknown } } | undefined;
+      if (!Array.isArray(antwort?.results)) {
+        return { klassen: [...klassen], vollstaendig: false };
+      }
+      for (const eintrag of antwort.results as SpacePermissionV2Roh[]) {
+        if (
+          eintrag?.operation?.key === "read" &&
+          eintrag.operation.targetType === "space" &&
+          eintrag.principal?.type === "access-class" &&
+          typeof eintrag.principal.id === "string" &&
+          eintrag.principal.id.trim()
+        ) {
+          klassen.add(eintrag.principal.id.trim());
+        }
+      }
+      const next = antwort._links?.next;
+      if (typeof next !== "string" || !next) {
+        return { klassen: [...klassen], vollstaendig: true };
+      }
+      url = this.nextUrl(next, allowedOrigin);
+    }
+    return { klassen: [...klassen], vollstaendig: false };
+  }
+
+  /**
+   * Nacharbeit 16 (Ben, K1): darf dieses Konto diese Seite in der QUELLE lesen? Die tatsächliche
+   * Quellberechtigung (Space, Zugangsklassen, Gruppen, Restriktionen) über
+   * `POST /rest/api/content/{id}/permission/check` — eine reine Abfrage, die nichts verändert; die
+   * einzige Nicht-GET-Anfrage dieses Clients. Origin-Pin, Frist, Größengrenze, `redirect:error` wie
+   * überall. `undefined` = nicht feststellbar (Fehler, unlesbare Antwort, PAT): kein Leserecht.
+   */
+  async pruefeLeserecht(contentId: string, accountId: string): Promise<boolean | undefined> {
+    if (this.config.authMode === "pat" || !contentId.trim() || !accountId.trim()) {
+      return undefined;
+    }
+    const url = `${this.baseUrl}/rest/api/content/${encodeURIComponent(contentId)}/permission/check`;
+    const allowedOrigin = this.allowedOrigin();
+    let data: unknown;
+    try {
+      assertAllowedConfluenceUrl(url, allowedOrigin);
+      const maxBytes = this.config.maxResponseBytes ?? CONFLUENCE_MAX_RESPONSE_BYTES;
+      data = await this.mitFrist(
+        url,
+        {
+          method: "POST",
+          headers: {
+            authorization: this.authHeader(),
+            accept: "application/json",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            subject: { type: "user", identifier: accountId },
+            operation: "read",
+          }),
+          redirect: "error",
+        },
+        async (res) => {
+          if (!res.ok) {
+            throw new ConfluenceStatusError(res.status);
+          }
+          return leseBegrenzt(res, maxBytes);
+        },
+      );
+    } catch {
+      return undefined;
+    }
+    const erlaubt = (data as { hasPermission?: unknown } | undefined)?.hasPermission;
+    return typeof erlaubt === "boolean" ? erlaubt : undefined;
+  }
+
+  // CF-REST-01 (Quellbefund 2026-10-06): in Confluence Cloud antwortet der Namensweg
+  // `/rest/api/group/member?name=` auf eine vorhandene Gruppe mit 404; dokumentiert ist der
+  // Mitgliederweg über die Gruppen-ID (`/rest/api/group/{id}/membersByGroupId`). Der Name aus der
+  // Restriktion wird deshalb im lesenden Gruppenverzeichnis EXAKT einer ID zugeordnet — mit derselben
+  // Seitenobergrenze, Origin, Frist und Größengrenze. Kein Treffer, kein lesbares Verzeichnis oder
+  // keine ID: `undefined`, die Gruppe bleibt unbekannt (fail-closed).
+  /** Cloud-Gruppennamen werden exakt zugeordnet; Mitglieder werden dort über die ID gelesen. */
+  private async cloudGruppenId(name: string): Promise<string | undefined> {
+    const limit = 200;
+    const allowedOrigin = this.allowedOrigin();
+    const ersteSeite = (start: number) =>
+      `${this.baseUrl}/rest/api/group?${new URLSearchParams({ start: String(start), limit: String(limit) })}`;
+    let url = ersteSeite(0);
+    let gelesen = 0;
+    for (let seite = 0; seite < CONFLUENCE_MAX_GRUPPENSEITEN; seite += 1) {
+      let data: unknown;
+      try {
+        data = await this.getJson(url, allowedOrigin);
+      } catch {
+        return undefined;
+      }
+      const antwort = data as { results?: unknown; _links?: { next?: unknown } } | undefined;
+      if (!Array.isArray(antwort?.results)) {
+        return undefined;
+      }
+      for (const gruppe of antwort.results as { name?: unknown; id?: unknown }[]) {
+        if (gruppe?.name === name) {
+          return typeof gruppe.id === "string" && gruppe.id.trim() ? gruppe.id : undefined;
+        }
+      }
+      gelesen += antwort.results.length;
+      if (antwort._links && typeof antwort._links === "object") {
+        if (typeof antwort._links.next === "string" && antwort._links.next) {
+          url = this.nextUrl(antwort._links.next, allowedOrigin);
+          continue;
+        }
+        return undefined;
+      }
+      if (antwort.results.length < limit) {
+        return undefined;
+      }
+      url = ersteSeite(gelesen);
+    }
+    return undefined;
+  }
+
+  /**
+   * Nacharbeit 18 (Ben, K1): das GANZE lesende Gruppenverzeichnis (`GET /rest/api/group`) — derselbe
+   * Weg, dieselbe Seitenlogik und Seitenobergrenze wie `cloudGruppenId`. Es ist der reguläre
+   * Quellkontenweg für Leserechte über Zugangsklassen: deren Konten nennt die Quelle nicht, wohl
+   * aber die Gruppen, in denen sie stehen. Nur Cloud (der PAT-Weg prüft Leserechte je Konto nicht).
+   * Ein Fehler, eine unlesbare Antwort oder die Grenze ergeben `vollstaendig: false`.
+   */
+  async getGruppenverzeichnis(): Promise<{
+    gruppen: { name: string; id: string }[];
+    vollstaendig: boolean;
+  }> {
+    const gruppen: { name: string; id: string }[] = [];
+    if (this.config.authMode === "pat") {
+      return { gruppen, vollstaendig: false };
+    }
+    const limit = 200;
+    const allowedOrigin = this.allowedOrigin();
+    const ersteSeite = (start: number) =>
+      `${this.baseUrl}/rest/api/group?${new URLSearchParams({ start: String(start), limit: String(limit) })}`;
+    let url = ersteSeite(0);
+    let gelesen = 0;
+    for (let seite = 0; seite < CONFLUENCE_MAX_GRUPPENSEITEN; seite += 1) {
+      let data: unknown;
+      try {
+        data = await this.getJson(url, allowedOrigin);
+      } catch {
+        return { gruppen, vollstaendig: false };
+      }
+      const antwort = data as { results?: unknown; _links?: { next?: unknown } } | undefined;
+      if (!Array.isArray(antwort?.results)) {
+        return { gruppen, vollstaendig: false };
+      }
+      for (const gruppe of antwort.results as { name?: unknown; id?: unknown }[]) {
+        const name = typeof gruppe?.name === "string" ? gruppe.name.trim() : "";
+        const id = typeof gruppe?.id === "string" ? gruppe.id.trim() : "";
+        if (name && id) {
+          gruppen.push({ name, id });
+        }
+      }
+      gelesen += antwort.results.length;
+      if (antwort._links && typeof antwort._links === "object") {
+        if (typeof antwort._links.next === "string" && antwort._links.next) {
+          url = this.nextUrl(antwort._links.next, allowedOrigin);
+          continue;
+        }
+        return { gruppen, vollstaendig: true };
+      }
+      if (antwort.results.length < limit) {
+        return { gruppen, vollstaendig: true };
+      }
+      url = ersteSeite(gelesen);
+    }
+    return { gruppen, vollstaendig: false };
+  }
+
+  /**
+   * Die Mitglieder einer Gruppe, seitenweise. Bricht ein Abruf ab, bleibt es bei den bis dahin
+   * gelesenen — weniger Leser, nie mehr. `vollstaendig` sagt, ob das Ende erreicht wurde.
+   */
+  //
+  // Nacharbeit 6 (Ben, Befund F3): DIE TATSÄCHLICHE PAGINIERUNG. Bis hierher endete der Abruf an
+  // einer Seite mit weniger als 200 Einträgen — Confluence kann aber eine kürzere Seite MIT
+  // Fortsetzung liefern, und die restlichen Mitglieder fielen still weg. Jetzt gilt:
+  //   · trägt die Antwort `_links.next`, wird ihm gefolgt (derselbe Weg wie beim Seitenlisting,
+  //     `nextUrl`: gepinnte Origin, Kontextpfad) — gleich, wie lang die Seite war;
+  //   · trägt sie `_links` OHNE `next`, ist die Gruppe zu Ende;
+  //   · trägt sie gar keine `_links` (ältere Antwortform), entscheidet die Länge: eine volle Seite
+  //     heißt „es kann mehr geben", weitergelesen wird ab `start + gelesen`.
+  // Ein Abruffehler, eine unlesbare Antwort und das Erreichen der technischen Grenze
+  // (`CONFLUENCE_MAX_GRUPPENSEITEN`) ergeben `vollstaendig: false` — nie eine still gekürzte Gruppe.
+  async getGruppenmitglieder(
+    name: string,
+    // Nacharbeit 18: die ID aus dem bereits gelesenen Gruppenverzeichnis — dann ohne erneute Suche.
+    bekannteId?: string,
+  ): Promise<{ users: unknown[]; vollstaendig: boolean }> {
+    const users: unknown[] = [];
+    const limit = 200;
+    const allowedOrigin = this.allowedOrigin();
+    // CF-REST-01: Cloud liest über die Gruppen-ID; der PAT-Weg (selbst betrieben) behält den
+    // Namensweg. Eine Cloud-Gruppe ohne zuordenbare ID bleibt unbekannt — keine Leser daraus.
+    let groupId: string | undefined;
+    if (this.config.authMode !== "pat") {
+      groupId = bekannteId || (await this.cloudGruppenId(name));
+    }
+    if (this.config.authMode !== "pat" && !groupId) {
+      return { users, vollstaendig: false };
+    }
+    const ersteSeite = (start: number): string => {
+      if (groupId) {
+        const params = new URLSearchParams({ start: String(start), limit: String(limit) });
+        return `${this.baseUrl}/rest/api/group/${encodeURIComponent(groupId)}/membersByGroupId?${params.toString()}`;
+      }
+      const params = new URLSearchParams({ name, start: String(start), limit: String(limit) });
+      return `${this.baseUrl}/rest/api/group/member?${params.toString()}`;
+    };
+    let url = ersteSeite(0);
+    for (let seite = 0; seite < CONFLUENCE_MAX_GRUPPENSEITEN; seite += 1) {
+      let data: unknown;
+      try {
+        data = await this.getJson(url, allowedOrigin, { nichtGefundenIstLeer: true });
+      } catch {
+        return { users, vollstaendig: false };
+      }
+      const antwort = data as { results?: unknown; _links?: { next?: unknown } } | undefined;
+      const results = antwort?.results;
+      if (!Array.isArray(results)) {
+        return { users, vollstaendig: false };
+      }
+      users.push(...results);
+      const links = antwort?._links;
+      if (links && typeof links === "object") {
+        if (typeof links.next === "string" && links.next.length > 0) {
+          url = this.nextUrl(links.next, allowedOrigin);
+          continue;
+        }
+        return { users, vollstaendig: true };
+      }
+      if (results.length < limit) {
+        return { users, vollstaendig: true };
+      }
+      url = ersteSeite(users.length);
+    }
+    return { users, vollstaendig: false };
+  }
+
+  /**
+   * Die Mailadresse eines Kontos, wenn Atlassian sie dem Dienstkonto herausgibt
+   * (`/rest/api/user/email`, in Cloud danach die normale Benutzerantwort).
+   * Sonst `undefined` — das Konto bleibt dann ohne Klara-Zuordnung.
+   */
+  // CF-REST-02 (Quellbefund 2026-10-06): der Spezialendpunkt antwortet in Cloud für ein normales
+  // Konto mit 400, obwohl `/rest/api/user?accountId=` dieselbe Adresse sichtbar liefert. Nur eine dort
+  // TATSÄCHLICH gelieferte, nichtleere Mail zählt; sonst bleibt das Konto ohne Zuordnung. Keine
+  // Ersatzidentität, keine App-Ausnahme, keine andere Anmeldung. Der PAT-Weg bleibt unverändert.
+  async getKontoEmail(accountId: string): Promise<string | undefined> {
+    const paths = this.config.authMode === "pat" ? ["user/email"] : ["user/email", "user"];
+    for (const path of paths) {
+      const url = `${this.baseUrl}/rest/api/${path}?${new URLSearchParams({ accountId }).toString()}`;
+      let data: unknown;
+      try {
+        data = await this.getJson(url, this.allowedOrigin(), { nichtGefundenIstLeer: true });
+      } catch {
+        continue;
+      }
+      const email = (data as { email?: unknown } | undefined)?.email;
+      if (typeof email === "string" && email.trim().length > 0) {
+        return email.trim().toLowerCase();
+      }
+    }
+    return undefined;
   }
 
   private firstUrl(): string {

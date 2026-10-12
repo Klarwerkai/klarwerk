@@ -191,6 +191,14 @@ const SCHALTER_ERKLAERUNG: Record<SchalterName, { wofuer: string; ohneIhn: strin
     wofuer: "Das Laden der Demodaten (POST /api/admin/demo-seed) — legt Konten an.",
     ohneIhn: "Die Route ist nicht registriert. Vorgabe: aus, ohne Ausnahme.",
   },
+  // R-0570 / Entscheidung zu Frage 14: anonym nur erfundene Inhalte, Unternehmenswissen bleibt
+  // hinter der Anmeldung.
+  vorfuehrung: {
+    wofuer:
+      "Die anonyme Vorführung (/vorfuehrung): Lesen und Fragen ohne Anmeldung, nur an erfundenen Beispielinhalten.",
+    ohneIhn:
+      "Beide Vorführungswege antworten 404, die Anmeldemaske verweist nicht darauf. Unternehmenswissen ist in keinem Fall ohne Anmeldung erreichbar. Vorgabe: aus.",
+  },
 };
 
 // ================================================================================================
@@ -855,16 +863,31 @@ const GRUNDWERTE: readonly Startwert[] = [
     bereich: "Einbettung",
     pflicht: { art: "nie" },
     geheim: false,
-    wofuer: "Der Anbieter der Vektor-Einbettung.",
-    ohneIhn: "Es gilt der eingebaute Anbieter.",
+    vorgabe: "stub",
+    wofuer:
+      "Der Anbieter der Vektor-Einbettung: `stub` (Testersatz ohne Modell) oder `local` (internes Embedding-Modell am lokalen Server).",
+    ohneIhn: "Es gilt der Stub — lexikalische Testvektoren, kein Modell und kein Qualitätsbeleg.",
   },
   {
     name: "KLARWERK_EMBEDDING_DIM",
     bereich: "Einbettung",
     pflicht: { art: "nie" },
     geheim: false,
-    wofuer: "Die Dimension der Einbettung.",
-    ohneIhn: "Es gilt die eingebaute Dimension. Ein Wechsel entwertet vorhandene Vektoren.",
+    wofuer:
+      "Die Dimension der Einbettung. Bei `local` Pflicht und gleich der Ausgabelänge des Modells.",
+    ohneIhn:
+      "Beim Stub gilt die eingebaute Dimension; bei `local` entsteht kein Embedder. Ein Wechsel entwertet vorhandene Vektoren.",
+  },
+  {
+    // AW-12 (aufnahme:20260922:gesamt-kundenbetrieb): der interne Embedding-Weg.
+    name: "KLARWERK_LOCAL_EMBEDDING_MODEL",
+    bereich: "Einbettung",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Modellname des internen Embedding-Modells am lokalen Server (KLARWERK_LOCAL_LLM_URL), nur für eine bestätigte On-Prem-Adresse.",
+    ohneIhn:
+      "Kein interner Embedding-Weg; `local` liefert dann keinen Embedder, der Stub bleibt Testersatz.",
   },
   {
     name: "KLARWERK_EMBED_MAX_INFLIGHT",
@@ -1169,6 +1192,28 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer:
       "Welche Verzeichnisgruppe für die Prüfung in welchem Space zuständig ist: Gruppe=space-a,space-b;Gruppe2=space-c.",
     ohneIhn: "Prüfende werden wie bisher von Hand benannt.",
+  },
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 28): die ausdrücklich erteilte Ketteneinsicht.
+  {
+    name: "KLARWERK_AUDIT_KETTENEINSICHT",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Kontokennungen (durch Komma getrennt), die im Prüfprotokoll die vollständige, nachrechenbare Kette samt Export erhalten — auch Einträge zu Objekten, die sie sonst nicht lesen dürfen.",
+    ohneIhn:
+      "Jedes Konto bekommt das Prüfprotokoll als Leseansicht nach seinem Leserecht; eine vollständige Kette gibt es über die Oberfläche nicht.",
+  },
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 32; Entscheidung 25): ausdrückliches Existenzrecht.
+  {
+    name: "KLARWERK_EXISTENZRECHT",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Kontokennungen oder E-Mail-Adressen (durch Komma getrennt) mit ausdrücklichem Existenzrecht: sie dürfen erfahren, dass es Objekte gibt, die sie nicht lesen dürfen — heute beim Löschen eines Space, dessen sichtbarer Bestand leer ist.",
+    ohneIhn:
+      "Ein Space, dessen für den Löschenden sichtbarer Bestand leer ist, lässt sich nicht löschen — sonst verriete der Ausgang verborgene Artikel.",
   },
   // ------------------------------------------------------------------------------- Externe Quellen
   {

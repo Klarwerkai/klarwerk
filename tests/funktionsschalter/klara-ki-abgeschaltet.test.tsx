@@ -29,6 +29,7 @@ import { KlaraAssistant } from "../../apps/web/src/components/KlaraAssistant";
 import i18n from "../../apps/web/src/i18n";
 import { aiSperrHinweisKey } from "../../apps/web/src/lib/aiAvailability";
 import d5kiaus from "../../apps/web/src/texte/d5kiaus";
+import { hilfeknopfLabel } from "../support/hilfeknopf";
 
 vi.mock("../../apps/web/src/components/AiModelInfo", () => ({ AiModelInfo: () => null }));
 
@@ -143,7 +144,7 @@ async function panelMitFrage(): Promise<void> {
   });
   await durchatmen();
   const oeffnen = neuerHost.querySelector<HTMLButtonElement>(
-    `button[aria-label="${i18n.t("klara.open")}"]`,
+    `button[aria-label="${hilfeknopfLabel()}"]`,
   );
   expect(oeffnen, "der Öffnen-Knopf des Klara-Panels fehlt").not.toBeNull();
   await act(async () => oeffnen?.click());

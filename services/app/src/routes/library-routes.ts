@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import {
   NULLTREFFER_DECKEL,
   type NulltrefferRepo,
@@ -38,15 +38,37 @@ import {
   runWithTimeout,
 } from "../ai-check-worker";
 import type { SemanticPrefilter } from "../duplicate-detection";
+import {
+  EXISTENZ_BEGRIFF,
+  type ExistenzbereichQuelle,
+  type Existenzhinweis,
+  bereichsTrim,
+  bereichsblick,
+} from "../existenzhinweis";
 import { schalterAn } from "../feature-flags";
+import {
+  type Bereichsmarken,
+  type BereichsmarkenQuelle,
+  type Firmenfilter,
+  type FirmenfilterAbfrage,
+  FirmenfilterFehler,
+  KEINE_BEREICHSMARKEN,
+  firmenTrim,
+  firmenbereichVon,
+  imFirmenfilter,
+  leseFirmenfilter,
+  ohneFirmenfilter,
+} from "../firmenbereich";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { importKandidatBefunde } from "../import-befunde";
 import {
+  darfKandidatSehen,
   darfSehen,
   sichtbareFuer,
   sichtbarkeitsfilterFuer,
   sqlSichtbarkeitFuer,
 } from "../sichtbarkeit";
+import { type WissenspaketQuellen, baueWissenspaket } from "../wissenspaket";
 
 // Consultant-System (Experten-Matching): Feature-Flag, Default AUS. Vor der BR/DSB-Freigabe bleibt das
 // Thema→Personen-Matching unsichtbar (Route antwortet 404, als gäbe es sie nicht). Erst
@@ -94,10 +116,30 @@ interface ImportCandidateDto {
   auditPending?: boolean;
 }
 
+// AUFNAHME 20260922 · confluence-import-rechte — Quellrechte (Leser einer Confluence-Seite) setzt
+// nur ein Quell-Adapter auf dem Server (services/confluence/src/mapper.ts). Ein öffentlicher
+// Importrumpf verliert sie hier: ein Client mit `ko.create` darf sich keine Leserechte an einem
+// Objekt schreiben und keine quellgetreue Herabstufung auslösen. Kein Array → unverändert (die
+// Route prüft weiter wie bisher).
+function ohneQuellrechte<T>(items: T): T {
+  if (!Array.isArray(items)) {
+    return items;
+  }
+  return items.map((item) => {
+    if (item === null || typeof item !== "object" || !("quellrechte" in item)) {
+      return item;
+    }
+    const { quellrechte: _verworfen, ...rest } = item as Record<string, unknown>;
+    return rest;
+  }) as T;
+}
+
 function toImportCandidateDto(candidate: ImportCandidate): ImportCandidateDto {
   return {
     id: candidate.id,
-    item: candidate.item,
+    // AUFNAHME 20260922 · confluence-import-rechte: die Quellrechte (Mailadressen der Leser) bleiben
+    // im Server — die Prüfkarte braucht sie nicht, und `ko.read` reicht für diese Liste.
+    item: ohneQuellrechte([candidate.item])[0] ?? candidate.item,
     status: candidate.status,
     duplicate: candidate.duplicate,
     note: candidate.note,
@@ -568,7 +610,8 @@ function bildsucheLimit(raw: string | undefined): number {
 
 // aufnahme:20260922:gesamt-wissen-export (R-0681 / FR-LIB-02): die Abfrage des Exports. `ids` ist
 // eine kommagetrennte Kennungsliste (oder der wiederholte Parameter, wie Fastify ihn liefert).
-interface ExportAbfrage {
+// produkt:20261011:peter-p14 — der Firmenfilter grenzt wie `ids` nur ein.
+interface ExportAbfrage extends FirmenfilterAbfrage {
   format?: string;
   ids?: string | string[];
 }
@@ -754,7 +797,37 @@ export function libraryRoutes(
   detection?: ImportDetectionDeps,
   // R-0773: optional — ohne Ablage (Teilaufbauten in Tests) bleibt die Suche wie bisher.
   nulltreffer?: NulltrefferRepo,
+  // produkt:20261010:poc-wiederherstellung-export: optional — ohne Quellen kein Format `paket`.
+  paket?: WissenspaketQuellen,
+  // produkt:20261011:peter-p14: optional — ohne Quelle gibt es keine Bereichsmarke (verengt nur).
+  bereichsmarken?: BereichsmarkenQuelle,
+  // P14 · Existenzrecht: optional — ohne Quelle hat niemand ein Existenzrecht (Antwort leer).
+  existenzbereiche?: ExistenzbereichQuelle,
 ): FastifyPluginAsync {
+  /**
+   * P14: der Firmenfilter einer Anfrage samt den aktuellen Bereichsmarken — oder `null`, wenn die
+   * Angabe ungültig war (dann ist die 400 bereits gesendet, bevor irgendetwas gelesen wurde).
+   */
+  async function firmaAus(
+    abfrage: FirmenfilterAbfrage,
+    reply: FastifyReply,
+  ): Promise<{ filter: Firmenfilter; marken: Bereichsmarken } | undefined | null> {
+    let filter: Firmenfilter | undefined;
+    try {
+      filter = leseFirmenfilter(abfrage);
+    } catch (fehler) {
+      if (fehler instanceof FirmenfilterFehler) {
+        reply.code(400).send({ error: fehler.code, message: fehler.message });
+        return null;
+      }
+      throw fehler;
+    }
+    if (!filter) {
+      return undefined;
+    }
+    return { filter, marken: (await bereichsmarken?.()) ?? KEINE_BEREICHSMARKEN };
+  }
+
   return async (app) => {
     // R-0773: die EIGENEN Suchen ohne Treffer. Nur die eigene Liste — ein Suchbegriff ist Freitext
     // derselben Art wie der Fragetext einer Lücke (R-0585), fremde Suchen liest hier niemand.
@@ -767,14 +840,20 @@ export function libraryRoutes(
       reply.code(200).send(eigene);
     });
 
-    app.get<{ Querystring: KoFilter & { q?: string } }>(
+    app.get<{ Querystring: KoFilter & FirmenfilterAbfrage & { q?: string } }>(
       "/api/library/search",
       async (request, reply) => {
         const user = await guards.requirePermission("ko.read", request, reply);
         if (!user) {
           return;
         }
-        const { q, ...filter } = request.query;
+        // produkt:20261011:peter-p14: der Firmenfilter — geprüft vor der Suche, als UND im Trim (vor
+        // dem Trefferdeckel) und noch einmal vor der Ausgabe.
+        const firma = await firmaAus(request.query, reply);
+        if (firma === null) {
+          return;
+        }
+        const { q, ...filter } = ohneFirmenfilter(request.query);
         // WP-BILD-1f/1g (bens P4 + sammel14-ROT): die Trefferliste transportiert KEINE Bilddaten —
         // die Suche arbeitet bereits auf der bodyHtml-freien Datenquellen-Projektion; die
         // durchsuchbaren Bild-Fußnoten reisen als kleines persistiertes captionTexts-Feld mit
@@ -804,10 +883,13 @@ export function libraryRoutes(
         // (etwa in einem zweiten Aufbau) nicht anwendet, findet hier weiterhin das Tor vor, das
         // seit mega74 hier steht. Die Zusage der Route ändert sich damit nicht — sie wird nur
         // billiger und, was mehr zählt, paginierbar.
+        const trim = sqlSichtbarkeitFuer(user);
         const treffer = sichtbareFuer(
           user,
-          await library.search(q ?? "", filter, { trim: sqlSichtbarkeitFuer(user) }),
-        );
+          await library.search(q ?? "", filter, {
+            trim: firma ? firmenTrim(trim, firma.filter, firma.marken) : trim,
+          }),
+        ).filter((ko) => !firma || imFirmenfilter(ko, firma.filter, firma.marken));
         // R-0773: eine Suche OHNE Treffer wird für den Suchenden vermerkt — nur mit nicht-leerem
         // Begriff und gemessen an DIESER, schon sichtbarkeitsgeschnittenen Liste. Eine gefilterte
         // Suche wird MIT ihrer Eingrenzung vermerkt (BEN, Nacharbeit 3): sie sagt nur etwas über
@@ -815,7 +897,9 @@ export function libraryRoutes(
         // bereits verlassen und wird nie als Nulltreffer gezählt. Ein Fehler beim Vermerken nimmt
         // dem Suchenden sein (leeres) Ergebnis nicht.
         const begriff = nulltrefferBegriff(q ?? "");
-        if (nulltreffer && treffer.length === 0 && begriff) {
+        // P14: eine Suche mit Firmenfilter wird NICHT vermerkt — die Eingrenzung kennt den Bereich
+        // nicht, und der Vermerk behauptete sonst eine Suche im ganzen sichtbaren Bestand.
+        if (nulltreffer && !firma && treffer.length === 0 && begriff) {
           try {
             await nulltreffer.erfasse({
               userId: user.id,
@@ -827,7 +911,44 @@ export function libraryRoutes(
             request.log.warn({ err: fehler }, "Nulltreffer-Suche konnte nicht vermerkt werden");
           }
         }
-        reply.code(200).send(treffer);
+        const antwort = firma
+          ? treffer.map((ko) => ({ ...ko, firmenbereich: firmenbereichVon(ko, firma.marken) }))
+          : treffer;
+        reply.code(200).send(antwort);
+      },
+    );
+
+    // P14 · Bens Befund 3 — DIE EXISTENZHINWEISE (Regel und Grenzen: `existenzhinweis.ts`). Die Form
+    // der Anfrage wird VOR jedem Lesen geprüft, gleich für jedes Konto. Ohne Existenzrecht ist die
+    // Antwort `{hinweise: []}` — dieselbe wie ohne passenden Treffer.
+    app.get<{ Querystring: { q?: string } }>(
+      "/api/library/existenzhinweise",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const q = typeof request.query.q === "string" ? request.query.q.trim() : "";
+        if (q.length < EXISTENZ_BEGRIFF.min || q.length > EXISTENZ_BEGRIFF.max) {
+          reply.code(400).send({
+            error: "BEGRIFF_UNGUELTIG",
+            message: "Der Suchbegriff hat 3 bis 200 Zeichen.",
+          });
+          return;
+        }
+        const hinweise: Existenzhinweis[] = [];
+        for (const bereich of (await existenzbereiche?.(user.id)) ?? []) {
+          // Derselbe Mensch, als läse er GENAU diesen Space: Stufe und Quellleser gelten weiter.
+          const blick = bereichsblick(user, bereich.id);
+          const trim = bereichsTrim(sqlSichtbarkeitFuer(blick), bereich.id);
+          const treffer = (await library.search(q, {}, { trim })).some(
+            (ko) => ko.spaceId === bereich.id && darfSehen(blick, ko),
+          );
+          if (treffer) {
+            hinweise.push({ spaceId: bereich.id, spaceName: bereich.name });
+          }
+        }
+        reply.code(200).send({ hinweise });
       },
     );
 
@@ -962,13 +1083,62 @@ export function libraryRoutes(
       // ADMIN-07 K3: zusätzlich die eine Sichtregel des Betrachters — sonst trüge der Export
       // validierte Artikel geschlossener Spaces an Nichtmitglieder aus. Hier im Rumpf erhoben (wie
       // `/api/graph`), damit die Entscheidung an der Route selbst ausgeführt wird.
-      const sichtbar = sichtbarkeitsfilterFuer(user);
-      const opts = (format: "json" | "markdown" | "mediawiki" | "html") => ({
+      // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): damit öffnet `ko.validate` allein auch
+      // nicht mehr jede Stufe — persönliches Freigabeniveau und ungeklärte Stufen gelten mit.
+      //
+      // produkt:20261011:peter-p14: der Firmenfilter tritt als UND hinter dieselbe Sichtregel — er
+      // grenzt die Exportmenge ein, er erweitert sie nie (Exportmenge ⊆ Lesemenge bleibt).
+      const firma = await firmaAus(request.query, reply);
+      if (firma === null) {
+        return;
+      }
+      const sichtbar = sichtbarkeitsfilterFuer(
+        user,
+        firma ? (ko) => imFirmenfilter(ko, firma.filter, firma.marken) : undefined,
+      );
+      const opts = (format: "json" | "markdown" | "mediawiki" | "html" | "paket") => ({
         includeConfidential,
         sichtbar,
         ...(ids ? { ids } : {}),
         beleg: { actor: user.id, format },
       });
+      // produkt:20261010:poc-wiederherstellung-export (PV-01-04/05): das Wissenspaket — dieselbe
+      // Grundmenge und derselbe Beleg (`library.export`, Format `paket`) wie jedes andere Format;
+      // dazu Fassungen, Originalanhänge und das Verzeichnis (`wissenspaket.ts`). Ohne verdrahtete
+      // Quellen (Teilaufbauten) gibt es dieses Format nicht.
+      if (request.query.format === "paket") {
+        if (!paket) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Format nicht verfügbar." });
+          return;
+        }
+        try {
+          const jetzt = new Date();
+          const { zip } = await baueWissenspaket(
+            {
+              betrachter: user,
+              betrachterName: (await paket.personen()).get(user.id) ?? null,
+              vertraulichErlaubt: includeConfidential,
+              beitraege: await library.exportJson(opts("paket")),
+              auswahl: ids,
+              jetzt,
+            },
+            paket,
+          );
+          const stempel = jetzt.toISOString().slice(0, 19).replace(/[-:]/g, "");
+          reply
+            .header("content-type", "application/zip")
+            .header("cache-control", "no-store")
+            .header(
+              "content-disposition",
+              `attachment; filename="klarwerk-wissenspaket-${stempel}Z.zip"`,
+            )
+            .code(200)
+            .send(zip);
+        } catch (error) {
+          sendError(reply, error);
+        }
+        return;
+      }
       if (request.query.format === "markdown") {
         reply
           .header("content-type", "text/markdown; charset=utf-8")
@@ -1016,7 +1186,9 @@ export function libraryRoutes(
         // auch der direkte Re-Sync fremder Objekte (NACHARBEIT 2, `zielDarf`): fortgeschrieben wird
         // nur noch über die Annahme mit `ko.validate`.
         // package:confluence (K6): die Lese-Einschränkung ist eine Quellangabe, kein Rumpffeld.
-        const items = ohneQuellRestriktionen(request.body.items ?? []);
+        // confluence-import-rechte: ebenso die Leserechte (`quellrechte`) — sie setzt nur ein
+        // Quell-Adapter auf dem Server.
+        const items = ohneQuellrechte(ohneQuellRestriktionen(request.body.items ?? []));
         const kandidaten = await einreihen(items, user.id);
         // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele — auch hier.
         const dtos = await kandidatenDtosFuer(library, user, kandidaten);
@@ -1042,7 +1214,9 @@ export function libraryRoutes(
           // ein Eintrag hier an Quellangaben mitbringt, bleibt bei der Übernahme erhalten — auch
           // ohne eingeschalteten Quelladapter (`einreihen` setzt den Dateiweg-Vermerk).
           // package:confluence (K6): nur der Quell-Adapter erzeugt `sourceRestrictions`.
-          const items = ohneQuellRestriktionen(request.body.items ?? []);
+          // AUFNAHME 20260922 · confluence-import-rechte: Leserechte setzt nur ein Quell-Adapter auf
+          // dem Server — ein Rumpf mit `quellrechte` verliert sie hier, vor dem Import-Kern.
+          const items = ohneQuellrechte(ohneQuellRestriktionen(request.body.items ?? []));
           const created = await einreihen(items, user.id);
           // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele.
           reply.code(201).send(await kandidatenDtosFuer(library, user, created));
@@ -1071,7 +1245,15 @@ export function libraryRoutes(
       // WP-SHIP8-CLOSE-8 (bens GELB-2): NIE rohe Kandidatenobjekte auf den Draht — das DTO
       // hält Lease-/Claim-Felder und Beleg-Interna zurück (ko.read-Nutzer sehen nur Produktdaten).
       // NACHARBEIT 3 (bens F3): dieselbe Sichtbarkeitsgrenze für die Kandidatenliste.
-      const kandidaten = await library.listImportCandidates();
+      // confluence-import-rechte (Nacharbeit 6, F1): ein Kandidat, dessen Quelle diesen Menschen
+      // nicht lesen lässt, fehlt in der Liste ganz — Titel und Text eingeschlossen, auch für
+      // `ko.validate`.
+      const kandidaten: ImportCandidate[] = [];
+      for (const kandidat of await library.listImportCandidates()) {
+        if (await darfKandidatSehen(user, kandidat, library)) {
+          kandidaten.push(kandidat);
+        }
+      }
       reply.code(200).send(await kandidatenDtosFuer(library, user, kandidaten));
     });
 
@@ -1083,7 +1265,15 @@ export function libraryRoutes(
       if (!user) {
         return;
       }
-      const kandidaten = await library.listImportCandidates();
+      // BES-01-K06: das Tor der Liste galt hier bisher nur dem Kommentar nach — Kennung und Anzahl
+      // quellbeschränkter Kandidaten standen jedem `ko.read`-Konto offen (eine verdeckte
+      // Trefferzahl). Gezählt wird jetzt dieselbe sichtbare Menge wie in der Liste.
+      const kandidaten: ImportCandidate[] = [];
+      for (const kandidat of await library.listImportCandidates()) {
+        if (await darfKandidatSehen(user, kandidat, library)) {
+          kandidaten.push(kandidat);
+        }
+      }
       reply.code(200).send(importKandidatBefunde(kandidaten, Date.now()));
     });
 
@@ -1137,6 +1327,14 @@ export function libraryRoutes(
         return;
       }
       try {
+        // confluence-import-rechte (Nacharbeit 6, F1): wer den Kandidaten nicht sehen darf, kann
+        // ihn auch nicht entscheiden — die Antwort trüge sonst Titel und Text. 404 wie für eine
+        // unbekannte Kennung, damit keine Existenzauskunft entsteht.
+        const vorher = await library.importKandidat(request.params.id);
+        if (vorher && !(await darfKandidatSehen(user, vorher, library))) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Importkandidat nicht gefunden." });
+          return;
+        }
         const result = await library.reviewImportCandidate(
           request.params.id,
           request.body.action,

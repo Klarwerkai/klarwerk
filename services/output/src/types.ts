@@ -1,5 +1,6 @@
 // FR-EXT-03 / FE-OUT: Output Factory. Erzeugt strukturierte Dokumente AUSSCHLIESSLICH
 // aus validierten Wissensobjekten — kein roher Library-Export, kein Fake.
+import type { KnowledgeObject } from "../../knowledge-object";
 
 export type OutputKind =
   | "instruction" // Arbeitsanweisung / SOP (FE-OUT-01)
@@ -76,6 +77,10 @@ export interface OutputProvenance {
   version: number;
   author: string;
   originalAuthor: string;
+  // Aufnahme gesamt-wissen-herkunft (R-0298 / FR-LIF-04): die angezeigten Autorentexte. Nur gesetzt,
+  // wenn der Dienst eine Namensauflösung bekommen hat; die Kennungen darüber bleiben unverändert.
+  authorName?: string;
+  originalAuthorName?: string;
   category: string;
   type: string;
   validity: string; // abgeleitet: "validiert · v{version} · Stand {createdAt}" — kein Ablaufdatum
@@ -108,6 +113,13 @@ export interface OutputProvenance {
   unsicherheiten: OutputUnsicherheit[];
 }
 
+/**
+ * Aufnahme gesamt-wissen-herkunft: Kennung → angezeigter Autorentext (Name, „Gelöschtes Konto",
+ * „Unbekannte Person" oder „nicht abrufbar"). Die Kompositionswurzel liefert sie; dieser Dienst
+ * kennt den Kontodienst nicht. Fehlt eine Kennung in der Antwort, bleibt es bei der Kennung.
+ */
+export type AutorenNamen = (ids: readonly string[]) => Promise<ReadonlyMap<string, string>>;
+
 export interface OutputDocument {
   kind: OutputKind;
   title: string;
@@ -124,6 +136,22 @@ export interface GenerateOutputInput {
   /** R-0349: das Vorhaben in Alltagssprache (Betreff/Anlass einer Betriebsmitteilung). Optional. */
   anlass?: string | null;
 }
+
+// aufnahme:20260922:gesamt-leserechte — DIE LESEPOLICY DES BETRACHTERS, als Datum hereingereicht.
+//
+// Die Ausgabewege prüften bis hierher nur die Stufe am Objekt (`isConfidential`), nicht den
+// Menschen davor: der führende Space (produkt:20261007:spaces) galt hier nicht, und eine unbekannte
+// Kennung, eine nicht validierte und eine vertrauliche antworteten verschieden — eine
+// Existenzauskunft über Objekte, die der Fragende nicht sehen darf (die SCORM-Prüfung nannte dabei
+// sogar den Titel). Die Regel selbst wohnt in services/app/src/sichtbarkeit.ts (`darfSehen`); die
+// Route reicht sie als `sichtbarkeitsfilterFuer(user)` herein. Ein eigenes Prädikat steht hier
+// bewusst nicht — das wäre die zweite Auslegung derselben Regel.
+//
+// PFLICHT, nicht optional (dieselbe Lehre wie mega76 Block A): fehlt sie oder ist sie keine
+// Funktion, ist NICHTS sichtbar. Nacharbeit 20 (Integration main): die Dienste prüfen das am
+// Aufruf selbst (`typeof … === "function"` und nur ein `true` zählt) und rufen den übergebenen
+// Filter dort direkt — so weist der Lesewege-Sammler (R-1175) seine Anwendung nach.
+export type OutputSichtbarkeit = (ko: KnowledgeObject) => boolean;
 
 export type OutputErrorCode =
   | "NO_SOURCES"

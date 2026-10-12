@@ -14,9 +14,9 @@
 //   · Ziele ausserhalb der Verwaltung sind Einträge aus `app/navigation.ts` (Rolle und Stufe 2
 //     entscheidet dort `canSee`, nicht diese Datei) oder eine vorhandene Route (`/spaces`).
 //
-// „Funktionen ohne Umsetzung nicht als benutzbar anbieten": Die Gruppe Kommunikation hat in der
-// Verwaltung heute keinen Bedienort. Sie steht deshalb mit leerer Zielliste da — die Fläche sagt
-// „noch nicht verfügbar" und bietet keinen Weg an.
+// „Funktionen ohne Umsetzung nicht als benutzbar anbieten": Eine Gruppe ohne Bedienort steht mit
+// leerer Zielliste da — die Fläche sagt „noch nicht verfügbar" und bietet keinen Weg an. Die Gruppe
+// Kommunikation hat seit ADMIN-12 ihren Bedienort (`/kommunikation`).
 //
 // DIE AUFGABEN hängen ausschliesslich an Quellen, die es schon gibt und deren Liste dieselbe Menge
 // zeigt (Auftrag: „zunächst an vorhandene Prüfungen, Lücken und Verbindungszustände anschließen").
@@ -110,7 +110,9 @@ export const VERWALTUNG_GRUPPEN: readonly UebersichtGruppe[] = [
     id: "kommunikation",
     labelKey: "verwaltung.gruppe.kommunikation",
     zweckKey: "verwaltung.zweck.kommunikation",
-    ziele: [],
+    // ADMIN-12: die zentrale Übersicht der Meldungen (Ereignis, Empfänger, Kanal, Häufigkeit) samt
+    // Unternehmensvorgaben. Den Zustellstatus einer Veröffentlichung zeigt der Eintrag selbst.
+    ziele: [{ art: "pfad", pfad: "/kommunikation", labelKey: "kommunikation.verwaltung.ziel" }],
   },
   {
     id: "berichte",

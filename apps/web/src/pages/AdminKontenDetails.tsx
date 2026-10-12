@@ -25,6 +25,7 @@ import { VermaechtnisBuch } from "../components/VermaechtnisBuch";
 import { UebergabeVorschauInhalt } from "../components/Wissensuebergabe";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
+import { Weisungsbefugnis } from "../components/einstellungen/Weisungsbefugnis";
 import { freiheitenSchluessel, kiWahlFrei } from "../components/einstellungen/rollenFreiheiten";
 import { Button, Field, TextInput } from "../components/ui";
 import { isPasswordResetValid, newUserIssues, passwordRepeatMismatch } from "../lib/adminForms";
@@ -864,6 +865,11 @@ export function NutzerDetail({
                     </p>
                   )}
                 </div>
+                {/* Antwort 18 (gesamt-peer-validierung): die fachliche Weisungsbefugnis am Konto —
+                    neben Rolle und Befristung, unabhängig von der Rolle. Seit der Integration
+                    (gesamt-wissen-herkunft, Nacharbeit 12) die EINE Befugnispflege für beide
+                    Weisungswege. */}
+                <Weisungsbefugnis nutzer={nutzer} />
               </>
             ) : (
               <button
@@ -1519,7 +1525,7 @@ export function RolleDetail({
           }
           return (
             <li key={gruppe.id}>
-              <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+              <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                 {t(gruppe.titleKey)}
               </div>
               <div className="mt-1 flex flex-wrap gap-1.5">

@@ -295,7 +295,7 @@ export function WissensstandVergleichBereich({
           <History size={14} aria-hidden="true" />
           {vergleich.isPending ? t("antwortvergleich.laeuft") : t("antwortvergleich.start")}
         </button>
-        <AiCostHint billable={billable} className="text-[10.5px]" />
+        <AiCostHint billable={billable} className="text-klein" />
       </div>
       {vergleich.isError && ergebnisFuer === schluessel ? (
         <p

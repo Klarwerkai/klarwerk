@@ -158,6 +158,11 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // und zwei `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, keine Extension; der
   // einzige Fremdschlüssel zeigt auf den eigenen Kopf. Ein zweiter Lauf ist folgenlos.
   { stufe: "KENNTNISNAHME_SCHEMA", risiko: "ADDITIV" },
+  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Laufakte des Bestandsresets. ADDITIV,
+  // nachgezählt: ein einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
+  // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos. Die Löschungen des Resets
+  // stehen NICHT in dieser Stufe, sondern im aufrufbaren Vorgang (`db-tx/src/bestandsreset.ts`).
+  { stufe: "BESTANDSRESET_SCHEMA", risiko: "ADDITIV" },
   // R-0162 (Confluence-Gesamtimport): die Tabelle der Quellabgleichsergebnisse je Importlauf.
   // ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
   // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
@@ -211,10 +216,38 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
   // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "VEROEFFENTLICHUNG_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:interner-chat: Gespräche und Nachrichten. ADDITIV, nachgezählt: zwei `CREATE
+  // TABLE IF NOT EXISTS` (mit Unique-Schlüsseln) und ein `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "CHAT_SCHEMA", risiko: "ADDITIV" },
   // produkt:20261007:templates-default: die Fassungen der Vorlagen. ADDITIV, nachgezählt: ein
   // einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "VORLAGEN_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:artikel-gemeinsam: die gemeinsamen Entwürfe. ADDITIV, nachgezählt: ein
+  // `CREATE TABLE IF NOT EXISTS` und ein `CREATE UNIQUE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein
+  // Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "GEMEINSAMER_ENTWURF_SCHEMA", risiko: "ADDITIV" },
+  // Instanztrennung: die eine Bindungszeile Datenbank → Anlage. ADDITIV, nachgezählt: ein einziges
+  // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "INSTANZBINDUNG_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil. ADDITIV, nachgezählt:
+  // ein `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "ASSISTENZ_PROFIL_SCHEMA", risiko: "ADDITIV" },
+  // ADMIN-12: Kommunikationsregeln, persönliche Abwahlen und Zustellstatus. ADDITIV, nachgezählt:
+  // drei `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "KOMMUNIKATION_SCHEMA", risiko: "ADDITIV" },
+  // aufnahme:20260922:gesamt-lernwege: Fragensatzversionen und Versuche der Verständnisfragen.
+  // ADDITIV, nachgezählt: zwei `CREATE TABLE IF NOT EXISTS` und drei `CREATE INDEX IF NOT EXISTS`,
+  // kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "VERSTAENDNISFRAGEN_SCHEMA", risiko: "ADDITIV" },
+  // BPA-16: die Meetingbezüge. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein
+  // `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "MEETING_DOKUMENTBEZUG_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

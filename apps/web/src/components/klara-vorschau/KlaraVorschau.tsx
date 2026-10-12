@@ -42,23 +42,60 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { setzeKlaraEntwurf } from "../../api/chat";
 import type { KlaraObjektbezug } from "../../api/klaraGespraech";
 import { useSession } from "../../app/AuthContext";
 import { HOME_ROUTE } from "../../app/navigation";
+// produkt:20261010:assistenz-name-avatar: Name, Motiv und Bewegung aus dem persönlichen Profil.
+import { animationsStil } from "../../lib/assistenzAvatare";
+import { useAssistenzAnzeige, useAssistenzT } from "../../lib/assistenzProfil";
 import { internerPfad } from "../../lib/internerPfad";
+import { erkenneAuftrag, istAusfuehrungsauftrag } from "../../lib/klaraAuftragErkennung";
+// produkt:20261008:klara-eigeninitiative: Modus, Hinweise und übertragene Aufgaben.
+import {
+  type Hinweis,
+  hinweisErlaubt,
+  hinweisFuer,
+  ladeEigeninitiative,
+  legeHinweisAb,
+  merkeGezeigt,
+  useEigeninitiative,
+  verwerfeEigeninitiative,
+  warSchonGezeigt,
+  wirksamerModus,
+} from "../../lib/klaraEigeninitiative";
 import { leseobjektJetzt, useLeseobjekt } from "../../lib/leseobjekt";
 import { leserHref } from "../../lib/objektbezug";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { useTutorialFuerKlara } from "../../tutorial/TutorialRahmen";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
+import { AvatarBild } from "../assistenz/AvatarBild";
+import { AvatarMimik } from "../assistenz/AvatarMimik";
+// produkt:20261010:assistenz-name-avatar: die neun Zustände der Figur aus echten Ereignissen.
+import {
+  ausdruckNachFrage,
+  beginneAktion,
+  ermittleZustand,
+  istAktuelleAktion,
+  meldeErgebnis,
+  useLetztesErgebnis,
+  zustandsTextSchluessel,
+} from "../assistenz/ausdruck";
 import {
   meldeFlaeche,
   useAndereFlaecheOffen,
   useAndereFlaecheSchliesst,
 } from "../assistenzFlaechen";
+import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
+import {
+  KlaraHinweis,
+  KlaraModusWahl,
+  KlaraUebertrageneAufgaben,
+  istOffen,
+} from "./KlaraEigeninitiative";
+import { KlaraQualitaet } from "./KlaraQualitaet";
 import {
   type Absendeergebnis,
   KlaraAuftragKarte,
@@ -72,7 +109,7 @@ import { KlaraTutorialKarte, KlaraZeiger, type ZielTreffer, findeZiel } from "./
 import { setzeKlaraVorschauAktiv } from "./aktiv";
 import { antwortAufAuswahl, antwortAufFrage, entwurfsInhalt, kuerze } from "./antworten";
 import { VORSCHAU_PFAD, artikelPfad, demoArtikel } from "./artikel";
-import { klaraAvatarUrl } from "./avatar";
+import { type AuftragsUmgebung, ladeAuftraege, starteAuftrag, useAusfuehrungen } from "./auftrag";
 import {
   type KontextAktion,
   ZIELSPRACHEN,
@@ -109,7 +146,12 @@ import {
   seitenErklaerung,
 } from "./kontext";
 import { auftrittAus, useAssistenzProfil } from "./profil";
-import { leseVorlesen, stoppeVorlesen, vorlesen as vorlesenStarten } from "./vorlesen";
+import {
+  leseVorlesen,
+  stoppeVorlesen,
+  useKlaraVorlesen,
+  vorlesen as vorlesenStarten,
+} from "./vorlesen";
 import { formuliere, liesNach, setzeVorschlag, uebernehme } from "./vorschlag";
 import {
   type Aktion,
@@ -145,6 +187,12 @@ const VERZOEGERUNG_MS = 700;
  * hat („Zeige mir den nächsten Schritt“ öffnet es im selben Klick). Kein vorgetäuschtes Rechnen.
  */
 const HILFE_TAKT_MS = 400;
+/**
+ * Klara 12: ein Hinweis erscheint erst, wenn die Seite eine Weile steht — nicht schon beim
+ * Durchklicken. Danach höchstens einmal je Sitzung (`lib/klaraEigeninitiative.ts`).
+ */
+const HINWEIS_VERZUG_MS = 1500;
+const HINWEIS_BREITE = 260;
 const PANEL_BREITE = 360;
 const MINI_GROESSE = 48;
 /**
@@ -173,9 +221,9 @@ const KNOPF =
   "inline-flex h-8 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-text hover:border-ink/30 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 const KNOPF_KI =
   "inline-flex h-8 items-center rounded-btn border border-ai bg-ai-surface-2 px-2.5 text-[12px] font-semibold text-ai hover:bg-ai-surface-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
-const KLEINTITEL = "font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2";
+const KLEINTITEL = "font-mono text-klein font-semibold uppercase tracking-wider text-muted-2";
 const DEMO_SCHILD =
-  "rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text";
+  "rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text";
 
 interface Fenster {
   breite: number;
@@ -269,12 +317,16 @@ export function KlaraVorschau({
 }: {
   betriebsart?: "vorschau" | "produkt";
 } = {}): JSX.Element {
-  const { t, i18n } = useTranslation();
+  // produkt:20261010:assistenz-name-avatar: `t` trägt den persönlichen Namen als `{{assistenz}}`;
+  // Name, Motiv und Bewegung kommen aus dem kontobezogenen Profil (`lib/assistenzProfil.ts`).
+  const { t, i18n } = useAssistenzT();
+  const assistenz = useAssistenzAnzeige();
   const produkt = betriebsart === "produkt";
-  // Name und Avatar: im Produkt aus dem persönlichen Profil, ohne Profil neutral (`profil.ts`).
+  // produkt:20261010:assistenz-produkteinstieg: der Leseeinstieg `profil.ts` bleibt angeschlossen.
+  // Der am Konto gespeicherte Name (dieser Auftrag) hat Vorrang; ohne ihn gilt ein über
+  // `setzeAssistenzProfil` gesetzter Name, sonst die neutrale Bezeichnung.
   const auftritt = auftrittAus(useAssistenzProfil());
-  const anzeigeName = auftritt.name ?? t("klaraprodukt.name.neutral");
-  const avatarUrl = produkt ? auftritt.avatarUrl : klaraAvatarUrl();
+  const anzeigeName = assistenz.name ?? auftritt.name ?? t("klaraprodukt.name.neutral");
   const figurLabel = produkt
     ? t("klaraprodukt.figur.label", { name: anzeigeName })
     : t("klaravorschau.figur.label");
@@ -283,7 +335,8 @@ export function KlaraVorschau({
   const navigate = useNavigate();
   const tutorial = useTutorialFuerKlara();
   const schmal = useMedien(SCHMAL);
-  const reduziert = useMedien(REDUZIERT);
+  // Reduzierte Bewegung: Systemeinstellung ODER die eigene Wahl unter „Meine Assistenz".
+  const reduziert = useMedien(REDUZIERT) || assistenz.bewegungReduziert;
   const fenster = useFenster();
   const vollbildEl = useVollbild();
   const hinweisId = useId();
@@ -312,6 +365,18 @@ export function KlaraVorschau({
     if (sitzungBeantwortet) {
       aendere((alt) => anKontoBinden(alt, kontoId));
       eingabeAnKontoBinden(kontoId);
+    }
+  }, [sitzungBeantwortet, kontoId]);
+  // Klara 12: der Unterstützungsmodus des Kontos — vom Server, nach jeder Anmeldung und jedem
+  // Neuladen neu gelesen; abgemeldet bleibt nichts davon im Browser.
+  useEffect(() => {
+    if (!sitzungBeantwortet) {
+      return;
+    }
+    if (kontoId) {
+      void ladeEigeninitiative(kontoId);
+    } else {
+      verwerfeEigeninitiative();
     }
   }, [sitzungBeantwortet, kontoId]);
   useEffect(() => {
@@ -1150,6 +1215,9 @@ export function KlaraVorschau({
     if (lageRef.current) {
       pausieren();
     }
+    // Eine neue Aktion beendet Fehler-, Pause- und Freudezustand der Figur; ihr Ergebnis zählt nur,
+    // solange keine neuere Aktion begann (assistenz-avatarzustaende).
+    const aktion = beginneAktion();
     aendere((alt) => ({ ...alt, status: "laeuft" }));
     const sprache = toReasonerLocale(i18n.language);
     const z0 = leseZustand();
@@ -1188,14 +1256,32 @@ export function KlaraVorschau({
           mitSeitenbezug(objektbezugFuer(gewaehlt, kontextJetzt, auswahlJetzt), seitenbezug);
         pruefungLaeuft.current = false;
         const stand = await echtFragen(text, bezug, sprache, t, seitenbezug);
+        if (stand !== "veraltet" && !istAktuelleAktion(aktion)) {
+          // assistenz-avatarzustaende (K4): eine neuere Aktion hat inzwischen begonnen — das späte
+          // Ende dieser Frage (z. B. das Ablegen nach einem Stopp) überschreibt weder den Ausdruck
+          // der Figur noch den Status einer inzwischen laufenden neuen Frage. Festgehalten ist es im
+          // Gespräch. Läuft keine Frage mehr, endet nur der Laufstatus.
+          if (leseEcht().laeuftSeit === null) {
+            aendere((alt) => (alt.status === "laeuft" ? { ...alt, status: "antwort" } : alt));
+          }
+          return { stand, antwort: null };
+        }
         if (stand === "veraltet") {
           // Kontowechsel während der Frage: nichts mehr ansagen, nichts mehr zeigen.
           aendere((alt) => ({ ...alt, status: "ruhe" }));
           return { stand: "nicht_gesendet", antwort: null };
         }
         aendere((alt) => ({ ...alt, status: "antwort" }));
-        setAnsage(t(`klaragespraech.ansage.${stand}`));
         const letzte = [...leseEcht().nachrichten].reverse().find((n) => n.von === "klara");
+        // Das tatsächliche Ergebnis für den Ausdruck der Figur: belegte Antwort = Freude (kurz),
+        // Antwort ohne geprüfte Quelle = Fehler „quelle", gestoppt = Pause, fehlgeschlagen = Fehler
+        // (technisch oder fehlende Angabe) — bis zur nächsten Aktion.
+        const ausdruck = ausdruckNachFrage(stand, letzte ?? null);
+        meldeErgebnis(ausdruck?.art ?? null, {
+          aktion,
+          ...(ausdruck?.fehlerArt ? { fehlerArt: ausdruck.fehlerArt } : {}),
+        });
+        setAnsage(t(`klaragespraech.ansage.${stand}`));
         const antwort = letzte?.text ?? null;
         if (letzte) {
           autoVorlesen(letzte.id, antwort);
@@ -1356,13 +1442,86 @@ export function KlaraVorschau({
       );
     });
   };
-  /** Ein gesprochener Auftrag: gesendet mit GENAU dem Ziel, das seine Karte zeigt. */
-  const auftragSenden = (text: string, ziel: SprachZiel): Promise<Absendeergebnis> =>
-    fragenSenden(text, ziel.herkunft);
+  // ---------------------------------------------------------------------------------------------
+  // Klara 05 (produkt:20261008:klara-aktionen): EIN Ausführungsweg für getippte und gesprochene
+  // Aufträge (`auftrag.ts`). Nur im echten Betrieb, nur mit gelesenem Gespräch — und nur, was die
+  // Person selbst eingibt oder als Auftrag spricht; kein Text einer Antwort oder Markierung.
+  // ---------------------------------------------------------------------------------------------
+  const ausfuehrungen = useAusfuehrungen();
+  const ausfuehrungLaeuft = ausfuehrungen.some(
+    (a) => a.phase === "pruefen" || a.phase === "laeuft",
+  );
+  const ausfuehrungBereit =
+    istEcht && Boolean(kontoId) && echt.laden === "bereit" && !ausfuehrungLaeuft;
+  const ortRef = useRef(`${location.pathname}${location.search}`);
+  ortRef.current = `${location.pathname}${location.search}`;
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const auftragsUmgebung = useCallback(
+    (): AuftragsUmgebung => ({
+      t: tRef.current,
+      navigiere: (pfad) => navigateRef.current(pfad),
+      ort: () => ortRef.current,
+    }),
+    [],
+  );
+  const ausfuehren = (
+    text: string,
+    quelle: "getippt" | "gesprochen",
+    ziel?: Herkunft,
+  ): "gestartet" | "kein_auftrag" | "belegt" => {
+    if (!istEcht || !kontoId || echt.laden !== "bereit") {
+      return "kein_auftrag";
+    }
+    const r = starteAuftrag(text, quelle, ziel ?? kontextRef.current, auftragsUmgebung());
+    if (r === "gestartet") {
+      setAnsage(t("klaraauftrag.ansage.gestartet"));
+    } else if (r === "belegt") {
+      setAnsage(t("klaraauftrag.belegt"));
+    }
+    return r;
+  };
+  // Nach Neuladen oder neuer Anmeldung: die Aufträge des eigenen Gesprächs vom Server.
+  const gespraechId = echt.gespraech?.id ?? null;
+  useEffect(() => {
+    if (istEcht && gespraechId) {
+      void ladeAuftraege(gespraechId, kontextRef.current);
+    }
+  }, [istEcht, gespraechId]);
+  const eingabeAuftrag = istEcht ? erkenneAuftrag(eingabe) : null;
+  // Klara 14: ein Verbesserungsschritt wird nur VORBEREITET — der Satz steht danach im Eingabefeld
+  // und geht erst mit „Senden“ über denselben Ausführungsweg wie ein getippter Auftrag.
+  const befundVorbereiten = (satz: string): void => {
+    setEingabe(satz);
+    setAnsage(t("klaraqualitaet.vorbereitet"));
+    document.getElementById(eingabeId)?.focus();
+  };
+
+  /**
+   * Ein gesprochener Auftrag: gesendet mit GENAU dem Ziel, das seine Karte zeigt. Ein klarer
+   * Ausführungsauftrag geht an denselben Ausführungsweg wie ein getippter (Klara 05).
+   */
+  const auftragSenden = (text: string, ziel: SprachZiel): Promise<Absendeergebnis> => {
+    const r = ausfuehren(text, "gesprochen", ziel.herkunft);
+    if (r === "gestartet") {
+      return Promise.resolve({ stand: "uebergeben", antwort: null });
+    }
+    if (r === "belegt") {
+      return Promise.resolve({ stand: "nicht_gesendet", antwort: null });
+    }
+    return fragenSenden(text, ziel.herkunft);
+  };
   const senden = (e: FormEvent): void => {
     e.preventDefault();
     const frage = eingabe.trim();
     if (!frage) {
+      return;
+    }
+    const r = ausfuehren(frage, "getippt");
+    if (r !== "kein_auftrag") {
+      if (r === "gestartet") {
+        setEingabe("");
+      }
       return;
     }
     if (istEcht && !echtSendebereit) {
@@ -1398,6 +1557,144 @@ export function KlaraVorschau({
       aufnahmeAbbrechen();
     }
   }, [panelSichtbar, aufnahmeAbbrechen]);
+
+  // ---------------------------------------------------------------------------------------------
+  // produkt:20261010:assistenz-name-avatar — der Zustand der Figur (ANIMATIONSZUSTAENDE.json), nur
+  // aus echten Ereignissen: Mikrofon aktiv, Sprachausgabe spielt, Anfrage läuft, Entscheidung nötig,
+  // Ergebnis des letzten Vorgangs, verkleinert. „Nachdenken" (assistenz-avatarzustaende): solange der
+  // Frageweg die am Server abgelegte Frage bearbeitet; davor und beim Ablegen der Antwort „Warten".
+  // ---------------------------------------------------------------------------------------------
+  const vorleseLage = useKlaraVorlesen();
+  const letztesErgebnis = useLetztesErgebnis();
+  const figurZustand = ermittleZustand({
+    minimiert: z.minimiert,
+    // Bestätigte Aktivität, nicht die Anforderung: `hoert` ab `audiostart`, `spielt` ab `start`.
+    hoertZu: sprechen.hoert,
+    spricht: vorleseLage.spielt !== null,
+    laeuft: z.status === "laeuft",
+    // assistenz-avatarzustaende: Nachdenken, solange der Frageweg die abgelegte Frage tatsächlich
+    // bearbeitet (`echt.ts`, `verarbeitetSeit`) — endet mit Antwort, Fehler oder Abbruch.
+    verarbeitet: istEcht && echt.verarbeitetSeit !== null,
+    rueckfrage: z.status === "entscheidung",
+    ergebnis: letztesErgebnis,
+    jetzt: Date.now(),
+  });
+  const figurStil = animationsStil(assistenz.motiv);
+  // assistenz-avatarzustaende: technischer Fehler, fehlende Quelle und fehlende Angabe unterscheiden
+  // sich in Text und ruhiger Darstellung.
+  const figurFehlerArt =
+    figurZustand === "fehler" ? (letztesErgebnis?.fehlerArt ?? "technisch") : undefined;
+  const figurZustandText = t(zustandsTextSchluessel(figurZustand, figurFehlerArt));
+
+  // ---------------------------------------------------------------------------------------------
+  // Klara 12 (produkt:20261008:klara-eigeninitiative): wann sich Klara von selbst meldet.
+  //   · „Nur auf Nachfrage“ (Vorgabe): nichts erscheint von selbst.
+  //   · „Passende Hinweise anbieten“: EIN Hinweis aus dem tatsächlichen Kontext (Seite, Anleitung,
+  //     Prüfstatus des gelesenen Objekts) neben der Figur — erst wenn niemand gerade mit Klara
+  //     arbeitet, höchstens einmal je Sitzung, nicht solange er geschlossen/zurückgestellt ruht.
+  //     Der Hinweis selbst führt nichts aus; erst ein Klick auf sein Angebot öffnet die vorhandene
+  //     Hilfe (erklären bzw. nächsten Schritt zeigen — Klarwerk-Hilfe, ohne KI, ohne Änderung).
+  //   · „Ausdrücklich übertragene Aufgaben“: keine Hinweise; die selbst erteilten Aufträge
+  //     (Klara 05, vom Server) stehen sichtbar im Gespräch, offene zählt die Figur.
+  // ---------------------------------------------------------------------------------------------
+  const eigen = useEigeninitiative();
+  const unterstuetzung = wirksamerModus(eigen);
+  const offeneAufgaben = ausfuehrungen.filter(istOffen).length;
+  const hinweisKandidat = istEcht
+    ? hinweisFuer({
+        pfad: kontext.pfad,
+        koId: kontext.koId,
+        pruefstatus: kontext.pruefstatus,
+        modus: kontext.modus,
+        tutorialVorhanden: tutorial.vorhanden,
+        tutorialOffen: tutorial.offen,
+        erklaerbar: seitenErklaerung(kontext.pfad, t) !== null,
+      })
+    : null;
+  const beschaeftigt =
+    panelSichtbar ||
+    hilfeOffen ||
+    z.minimiert ||
+    z.status !== "ruhe" ||
+    ziehPos !== null ||
+    auswahlKnopf !== null ||
+    sprechen.hoert ||
+    ausfuehrungLaeuft;
+  const hinweisSchluessel = hinweisErlaubt(hinweisKandidat, eigen, {
+    beschaeftigt,
+    jetzt: Date.now(),
+  })
+    ? hinweisKandidat.schluessel
+    : null;
+  const hinweisKandidatRef = useRef<Hinweis | null>(hinweisKandidat);
+  hinweisKandidatRef.current = hinweisKandidat;
+  const [hinweis, setHinweis] = useState<Hinweis | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: der erlaubte Schlüssel ist der Auslöser.
+  useEffect(() => {
+    if (!hinweisSchluessel) {
+      setHinweis(null);
+      return;
+    }
+    setHinweis((alt) => (alt?.schluessel === hinweisSchluessel ? alt : null));
+    if (warSchonGezeigt(hinweisSchluessel)) {
+      return;
+    }
+    const uhr = window.setTimeout(() => {
+      const k = hinweisKandidatRef.current;
+      if (k?.schluessel === hinweisSchluessel) {
+        merkeGezeigt(k.schluessel);
+        setHinweis(k);
+        setAnsage(
+          tRef.current(`klarainitiative.hinweis.${k.art}.text`, {
+            seite: kontextRef.current.seitenName,
+          }),
+        );
+      }
+    }, HINWEIS_VERZUG_MS);
+    return () => window.clearTimeout(uhr);
+  }, [hinweisSchluessel]);
+  /** Das Angebot annehmen: die Person bestellt jetzt die Hilfe — vorher geschah nichts. */
+  const hinweisAnnehmen = (): void => {
+    const h = hinweis;
+    setHinweis(null);
+    oeffnen();
+    if (!h || hilfeGesperrt) {
+      return;
+    }
+    if (h.angebot === "zeige") {
+      zeige();
+    } else if (h.art === "ungeprueft") {
+      anfrage(t("klarainitiative.hinweis.ungeprueft.angebot"), "modus", () => ({
+        text: t("klarainitiative.erklaerung.ungeprueft", { objekt: kontextRef.current.objekt }),
+      }));
+    } else {
+      erklaere();
+    }
+  };
+  const hinweisAblegen = (stand: "geschlossen" | "zurueckgestellt"): void => {
+    const h = hinweis;
+    setHinweis(null);
+    setFokusZiel("figur");
+    if (!h || !kontoId) {
+      return;
+    }
+    void legeHinweisAb(kontoId, h.schluessel, stand);
+    setAnsage(
+      t(
+        stand === "geschlossen"
+          ? "klarainitiative.hinweis.ansage.geschlossen"
+          : "klarainitiative.hinweis.ansage.spaeter",
+      ),
+    );
+  };
+  // Links neben der Figur; ist dort kein Platz, rechts daneben — immer ganz im Fenster.
+  const hinweisLinks = position.x - HINWEIS_BREITE - 8;
+  const hinweisRechts = position.x + FIGUR_GROESSE + 8;
+  const hinweisMaxLinks = fenster.breite - HINWEIS_BREITE - 8;
+  const hinweisStil: CSSProperties = {
+    left: hinweisLinks >= 8 ? hinweisLinks : Math.max(8, Math.min(hinweisRechts, hinweisMaxLinks)),
+    top: Math.max(8, Math.min(position.y, fenster.hoehe - 220)),
+  };
 
   // ---------------------------------------------------------------------------------------------
   // Vollbild, Ende der Vorschau.
@@ -1499,6 +1796,10 @@ export function KlaraVorschau({
           data-angedockt={z.angedockt ?? ""}
           data-geparkt={z.geparkt ? String(z.geparkt.absatz) : ""}
           data-ablage={ablage ? "true" : "false"}
+          data-bewegung={assistenz.bewegungReduziert ? "reduziert" : "standard"}
+          data-zustand={figurZustand}
+          data-fehlerart={figurFehlerArt}
+          data-stil={figurStil}
           aria-label={figurLabel}
           aria-expanded={panelSichtbar}
           aria-describedby={hinweisId}
@@ -1512,19 +1813,28 @@ export function KlaraVorschau({
           onDragLeave={() => setAblage(false)}
           onDrop={beiAblegen}
           title={ablage ? t("klaravorschau.figur.ablegen") : figurLabel}
-          className={`klara-figur grid place-items-center overflow-hidden rounded-full border-2 border-brand bg-surface shadow-popover focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink ${
+          className={`klara-figur relative grid place-items-center overflow-hidden rounded-full border-2 border-brand bg-surface shadow-popover focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink ${
             ziehPos ? "cursor-grabbing" : "cursor-grab"
           }`}
           style={{ width: groesse, height: groesse }}
         >
-          <img
-            src={avatarUrl}
+          <AvatarBild
+            motiv={assistenz.motiv}
             alt=""
-            draggable={false}
+            ersatzBeschriftung=""
             width={groesse}
             height={groesse}
-            data-testid="klara-avatar"
-            className="pointer-events-none h-full w-full object-cover"
+            testId="klara-avatar"
+            className="klara-motiv pointer-events-none h-full w-full"
+            // Die Mimik der Motive mit Gesicht (Lidschlag, Mund/Schnabel), deckungsgleich über dem
+            // unveränderten Bild; sachliche Objekte und die Ersatzgrafik bekommen keine.
+            ueberlagerung={
+              <AvatarMimik
+                motivId={assistenz.motiv?.id}
+                zustand={figurZustand}
+                bewegungReduziert={assistenz.bewegungReduziert}
+              />
+            }
           />
         </button>
         {/* Produktbetrieb: der Name steht SICHTBAR an der Figur — der Einstieg ist ohne Vorwissen
@@ -1541,7 +1851,7 @@ export function KlaraVorschau({
         {z.status !== "ruhe" ? (
           <span
             data-testid="klara-figur-status"
-            className={`mt-1 whitespace-nowrap rounded-pill px-2 py-0.5 text-[10.5px] font-semibold shadow-tile ${
+            className={`mt-1 whitespace-nowrap rounded-pill px-2 py-0.5 text-klein font-semibold shadow-tile ${
               z.status === "entscheidung"
                 ? "bg-brand text-ink"
                 : z.status === "laeuft"
@@ -1550,6 +1860,27 @@ export function KlaraVorschau({
             }`}
           >
             {t(STATUS_TEXT[z.status])}
+          </span>
+        ) : null}
+        {/* produkt:20261010:assistenz-name-avatar: jeder Zustand der Figur steht auch als Text da —
+            unabhängig von Bewegung, Licht und Farbe. Warten und Rückfrage nennt schon der Status
+            oben; verkleinert bleibt die Figur ohne zusätzliche Pille (der Text steht vorgelesen). */}
+        {!z.minimiert &&
+        figurZustand !== "bereit" &&
+        figurZustand !== "warten" &&
+        figurZustand !== "ratlos" &&
+        !(figurZustand === "freude" && z.status === "antwort") ? (
+          <span
+            data-testid="klara-figur-zustand"
+            data-zustand={figurZustand}
+            data-fehlerart={figurFehlerArt}
+            className={`mt-1 whitespace-nowrap rounded-pill px-2 py-0.5 text-klein font-semibold shadow-tile ${
+              figurFehlerArt === "technisch"
+                ? "bg-trust-crit-bg text-trust-crit-text"
+                : "bg-surface text-text"
+            }`}
+          >
+            {figurZustandText}
           </span>
         ) : null}
         {/* Klara 01: der Demo-Betrieb ist auch an der geschlossenen Figur zu erkennen. */}
@@ -1561,22 +1892,45 @@ export function KlaraVorschau({
             {t("klaragespraech.betrieb.demo")}
           </span>
         ) : null}
+        {/* Klara 12: im Aufgabenmodus zeigt die Figur, wie viele übertragene Aufgaben offen sind. */}
+        {istEcht && unterstuetzung === "auftraege" && offeneAufgaben > 0 && !z.minimiert ? (
+          <span
+            data-testid="klara-figur-aufgaben"
+            data-anzahl={offeneAufgaben}
+            className="mt-1 whitespace-nowrap rounded-pill bg-ai-surface-1 px-2 py-0.5 text-klein font-semibold text-ai shadow-tile"
+          >
+            {t("klarainitiative.figur.offen", { anzahl: offeneAufgaben })}
+          </span>
+        ) : null}
         {z.geparkt && parkAbsatz ? (
           <span
             data-testid="klara-geparkt"
-            className="mt-1 whitespace-nowrap rounded-pill bg-surface px-2 py-0.5 text-[10.5px] text-muted shadow-tile"
+            className="mt-1 whitespace-nowrap rounded-pill bg-surface px-2 py-0.5 text-klein text-muted shadow-tile"
           >
             {t("klaravorschau.figur.geparkt", { nr: z.geparkt.absatz })}
           </span>
         ) : null}
         <span id={hinweisId} className="sr-only">
-          {t("klaravorschau.figur.tastatur")} {t(STATUS_TEXT[z.status])}{" "}
+          {t("klaravorschau.figur.tastatur")} {t(STATUS_TEXT[z.status])} {figurZustandText}{" "}
           {istEcht ? t("klaragespraech.betrieb.echtKurz") : t("klaragespraech.betrieb.demoKurz")}
         </span>
       </div>
       <output data-klara="1" className="sr-only" data-testid="klara-ansage">
         {ansage}
       </output>
+
+      {/* ------------------------------------------------------------------ Klara 12: Hinweis */}
+      {hinweis && !beschaeftigt ? (
+        <KlaraHinweis
+          hinweis={hinweis}
+          ort={kontext.seitenName}
+          t={t}
+          stil={hinweisStil}
+          onAngebot={hinweisAnnehmen}
+          onSpaeter={() => hinweisAblegen("zurueckgestellt")}
+          onSchliessen={() => hinweisAblegen("geschlossen")}
+        />
+      ) : null}
 
       {/* ------------------------------------------------------------------ „Klara fragen“ */}
       {auswahlKnopf ? (
@@ -1592,7 +1946,12 @@ export function KlaraVorschau({
             top: Math.max(8, Math.min(auswahlKnopf.y, fenster.hoehe - 48)),
           }}
         >
-          <img src={avatarUrl} alt="" className="h-5 w-5 rounded-full" />
+          <AvatarBild
+            motiv={assistenz.motiv}
+            alt=""
+            ersatzBeschriftung=""
+            className="h-5 w-5 rounded-full bg-surface"
+          />
           {produkt
             ? t("klaraprodukt.auswahl.knopf", { name: anzeigeName })
             : t("klaravorschau.auswahl.knopf")}
@@ -1618,20 +1977,34 @@ export function KlaraVorschau({
           className={`fixed z-[59] flex flex-col overflow-hidden border border-hairline bg-surface shadow-popover ${panelForm}`}
           style={panelStil}
         >
-          {/* Kopf */}
-          <div className="flex items-start justify-between gap-2 border-b border-hairline px-3 py-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <img src={avatarUrl} alt="" className="h-8 w-8 shrink-0 rounded-full" />
-              <div className="min-w-0">
+          {/* Kopf. produkt:20261010:assistenz-name-avatar: der Name der Assistenz muss im Kopf
+              sichtbar bleiben. Vorher hatte die Knopfleiste `shrink-0` und drückte den Titel im
+              360 px breiten Gespräch auf Breite 0; jetzt hat der Titel eine Mindestbreite und die
+              Knöpfe brechen bei Platzmangel in eine eigene Zeile um. */}
+          <div className="flex flex-wrap items-start justify-between gap-2 border-b border-hairline px-3 py-2">
+            <div className="flex min-w-[10rem] flex-1 items-center gap-2">
+              <AvatarBild
+                motiv={assistenz.motiv}
+                alt=""
+                ersatzBeschriftung=""
+                testId="klara-gespraech-avatar"
+                className="h-8 w-8 shrink-0 rounded-full"
+              />
+              <div className="min-w-0 flex-1">
                 <h2
                   id={`${hinweisId}-titel`}
                   ref={panelTitelRef}
                   tabIndex={-1}
                   data-testid="klara-panel-titel"
-                  className="text-[14px] font-semibold text-ink outline-none focus-visible:underline"
+                  className="break-words text-[14px] font-semibold text-ink outline-none focus-visible:underline"
                 >
                   {produkt ? anzeigeName : t("klaravorschau.panel.titel")}
                 </h2>
+                {assistenz.avatarFehlt ? (
+                  <p data-testid="klara-avatar-fehlt" className="text-[11.5px] text-text">
+                    {t("assistenz.avatar.fehlt")}
+                  </p>
+                ) : null}
                 <p className={KLEINTITEL}>
                   {produkt
                     ? t("klaraprodukt.untertitel")
@@ -1649,7 +2022,7 @@ export function KlaraVorschau({
                 </p>
               </div>
             </div>
-            <div className="flex shrink-0 flex-wrap justify-end gap-1">
+            <div className="ml-auto flex flex-wrap justify-end gap-1">
               <button
                 type="button"
                 data-testid="klara-ansicht"
@@ -1693,7 +2066,7 @@ export function KlaraVorschau({
                 data-betrieb={istEcht ? "echt" : "demo"}
                 className={
                   istEcht
-                    ? "rounded-pill border border-ai bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-ai"
+                    ? "rounded-pill border border-ai bg-ai-surface-1 px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-ai"
                     : DEMO_SCHILD
                 }
               >
@@ -1734,6 +2107,11 @@ export function KlaraVorschau({
               >
                 {t("klaravorschau.panel.demoHinweis")}
               </p>
+            ) : null}
+
+            {/* Klara 12: im Aufgabenmodus stehen die übertragenen Aufgaben zuerst da. */}
+            {istEcht && unterstuetzung === "auftraege" ? (
+              <KlaraUebertrageneAufgaben liste={ausfuehrungen} t={t} />
             ) : null}
 
             {/* Du bist hier */}
@@ -1830,6 +2208,16 @@ export function KlaraVorschau({
                   .join(" · ") || t("klarakontext.aktionen.keine")}
               </p>
             </section>
+
+            {/* Klara 14: Befunde zum geöffneten Wissensobjekt erklären — lesend, mit Vorschlag. */}
+            {istEcht && kontext.koId ? (
+              <KlaraQualitaet
+                koId={kontext.koId}
+                titel={kontext.titel ?? kontext.objekt}
+                darfBearbeiten={kontext.darfBearbeiten === true}
+                onVorbereiten={befundVorbereiten}
+              />
+            ) : null}
 
             {/* Markierter Ausschnitt */}
             {auswahl ? (
@@ -1994,6 +2382,32 @@ export function KlaraVorschau({
                   >
                     {t("klaravorschau.auswahl.entfernen")}
                   </button>
+                  {/* produkt:20261007:interner-chat: die Markierung wird nur ein ENTWURF. Ziel und
+                      Text stehen danach im Chat sichtbar da; erst „Senden" dort verschickt etwas. */}
+                  <button
+                    type="button"
+                    data-testid="klara-aktion-nachricht"
+                    onClick={() => {
+                      const h = auswahl.herkunft;
+                      const text = auswahl.text.slice(0, 1200);
+                      const quelle = (h.titel || h.objekt || h.seitenName).slice(0, 200);
+                      setzeKlaraEntwurf({
+                        ausschnitt: h.koId
+                          ? {
+                              text,
+                              quelle,
+                              fiktiv: false,
+                              koId: h.koId,
+                              ...(h.fassung ? { fassung: h.fassung } : {}),
+                            }
+                          : { text, quelle, fiktiv: true, pfad: h.pfad },
+                      });
+                      navigate("/chat?klara=1");
+                    }}
+                    className={KNOPF}
+                  >
+                    {t("chat.klara.ausKlara")}
+                  </button>
                 </div>
               </section>
             ) : (
@@ -2126,6 +2540,19 @@ export function KlaraVorschau({
               <EntwurfKarte entwurf={z.entwurf} />
             ) : null}
 
+            {/* Klara 12: wann sich Klara meldet — persönlich gespeichert. */}
+            {kontoId ? (
+              <KlaraModusWahl
+                kontoId={kontoId}
+                t={t}
+                onGewaehlt={(m, ok) =>
+                  setAnsage(
+                    ok ? t(`klarainitiative.ansage.${m}`) : t("klarainitiative.ansage.fehler"),
+                  )
+                }
+              />
+            ) : null}
+
             {/* Klara 01: Bedienhilfe zu dieser Fähigkeit — von Anfang an über Klara. */}
             <details
               data-testid="klara-bedienhilfe"
@@ -2149,6 +2576,27 @@ export function KlaraVorschau({
                 <li>{t("klaravorschlag.bedienhilfe.uebernehmen")}</li>
                 <li>{t("klaravorschlag.bedienhilfe.rueckfrage")}</li>
                 <li>{t("klaravorschlag.bedienhilfe.notiz")}</li>
+                {/* Klara 05: Aufträge ausführen, stoppen, korrigieren und rückgängig machen. */}
+                <li data-testid="klara-bedienhilfe-auftrag">
+                  {t("klaraauftrag.bedienhilfe.ausfuehren")}
+                </li>
+                <li>{t("klaraauftrag.bedienhilfe.grenze")}</li>
+                <li>{t("klaraauftrag.bedienhilfe.stoppen")}</li>
+                <li>{t("klaraauftrag.bedienhilfe.rueckgaengig")}</li>
+                <li>{t("klaraauftrag.bedienhilfe.sprechen")}</li>
+                {/* Klara 12: Modi, Hinweise und übertragene Aufgaben. */}
+                <li data-testid="klara-bedienhilfe-eigeninitiative">
+                  {t("klarainitiative.bedienhilfe.modi")}
+                </li>
+                <li>{t("klarainitiative.bedienhilfe.hinweise")}</li>
+                <li>{t("klarainitiative.bedienhilfe.aufgaben")}</li>
+                {/* Klara 14: Befunde erklären, Vorschlag, Grundlage und Rechte. */}
+                <li data-testid="klara-bedienhilfe-qualitaet">
+                  {t("klaraqualitaet.bedienhilfe.erklaeren")}
+                </li>
+                <li>{t("klaraqualitaet.bedienhilfe.vorschlag")}</li>
+                <li>{t("klaraqualitaet.bedienhilfe.grundlage")}</li>
+                <li>{t("klaraqualitaet.bedienhilfe.rechte")}</li>
                 <li>{t("klaragespraech.bedienhilfe.stoppen")}</li>
                 <li>{t("klaragespraech.bedienhilfe.speichern")}</li>
                 <li>{t("klaragespraech.bedienhilfe.schritt")}</li>
@@ -2191,11 +2639,15 @@ export function KlaraVorschau({
             ) : (
               <DemoVerlauf verlauf={z.verlauf} />
             )}
+            {/* Klara 05: Ausführungsaufträge — Grenze, Schritte, Abbrechen, Rückgängig. */}
+            {istEcht ? <KlaraAusfuehrungen umgebung={auftragsUmgebung} /> : null}
             {/* Klara 02: der gesprochene Auftrag — erkannter Text, Ziel, Rückfragen, Ergebnis. */}
             <KlaraAuftragKarte
               s={sprechen}
               sendebereit={sprachSendebereit}
               absenden={auftragSenden}
+              {...(istEcht ? { ausfuehrbar: istAusfuehrungsauftrag } : {})}
+              ausfuehrungBereit={ausfuehrungBereit}
             />
             <div ref={endeRef} />
           </div>
@@ -2235,6 +2687,25 @@ export function KlaraVorschau({
                 }
                 className="h-9 w-full rounded-input border border-hairline bg-surface px-2.5 text-[13px] text-text outline-none placeholder:text-muted-2 focus:border-ink/30"
               />
+              {/* Klara 05: vor dem Senden sichtbar, dass dieser Text ein Ausführungsauftrag ist. */}
+              {eingabeAuftrag ? (
+                <p
+                  data-testid="klara-eingabe-auftrag"
+                  className="mt-0.5 text-[11px] leading-relaxed text-ai"
+                >
+                  {t("klaraauftrag.eingabeHinweis", {
+                    schritte: eingabeAuftrag.schritte
+                      .map((s, i) =>
+                        t("klaraauftrag.schritt", {
+                          nr: i + 1,
+                          aktion: t(`klaraauftrag.aktion.${s.aktion}`),
+                          titel: s.name,
+                        }),
+                      )
+                      .join(" · "),
+                  })}
+                </p>
+              ) : null}
             </div>
             {istEcht && echt.laeuftSeit !== null ? (
               <button
@@ -2249,7 +2720,10 @@ export function KlaraVorschau({
               <button
                 type="submit"
                 data-testid="klara-senden"
-                disabled={!eingabe.trim() || (istEcht && !echtSendebereit)}
+                disabled={
+                  !eingabe.trim() ||
+                  (istEcht && !echtSendebereit && !(eingabeAuftrag && ausfuehrungBereit))
+                }
                 className={KNOPF_KI}
               >
                 {t("klaravorschau.eingabe.senden")}
@@ -2323,7 +2797,7 @@ export function KlaraVorschau({
 // Der Verlauf des Demo-Betriebs — unverändert aus der Vorschau, jede Klara-Antwort als Demo markiert.
 // -------------------------------------------------------------------------------------------------
 function DemoVerlauf({ verlauf }: { verlauf: readonly Nachricht[] }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   return (
     <section data-testid="klara-verlauf" aria-label={t("klaravorschau.verlauf.titel")}>
       <p className={KLEINTITEL}>{t("klaravorschau.verlauf.titel")}</p>
@@ -2343,7 +2817,7 @@ function DemoVerlauf({ verlauf }: { verlauf: readonly Nachricht[] }): JSX.Elemen
                   : "mr-2 border border-ai/30 bg-ai-surface-2 text-text"
               }`}
             >
-              <div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] text-muted-2">
+              <div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-klein text-muted-2">
                 <span className="font-semibold text-text">
                   {n.von === "du"
                     ? t("klaravorschau.verlauf.du")
@@ -2386,7 +2860,7 @@ function VorschlagKarte({
   nachrichtId: string;
   vorschlag: Vorschlag;
 }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const uebernehmbar = Boolean(vorschlag.artikelId && vorschlag.absatz);
   return (
     <div
@@ -2470,7 +2944,8 @@ function TextvorschlagKarte({
   v: Textvorschlag;
   onUebernehmen: (wahl?: { nr: number; stand: string }) => void;
 }): JSX.Element {
-  const { t } = useTranslation();
+  // produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
+  const { t } = useAssistenzT();
   const h = v.herkunft;
   const titel = h.titel ?? h.objekt;
   const ende = VORSCHLAG_ENDE.includes(v.stand);
@@ -2491,8 +2966,8 @@ function TextvorschlagKarte({
           data-ki={v.ki}
           className={
             v.ki === "ki"
-              ? "rounded-pill border border-ai bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-ai"
-              : "rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted"
+              ? "rounded-pill border border-ai bg-ai-surface-1 px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-ai"
+              : "rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted"
           }
         >
           {v.ki === "ki" ? t("klaravorschlag.ki.ki") : t("klaravorschlag.ki.ohneKi")}
@@ -2633,7 +3108,7 @@ function TextvorschlagKarte({
 // Notiz- oder Aufgabenentwurf mit Rücklink — Erinnerung, Termin und Speichern sind Demo.
 // -------------------------------------------------------------------------------------------------
 function EntwurfKarte({ entwurf }: { entwurf: Entwurf }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const id = useId();
   const artikel = entwurf.herkunft.artikelId ? demoArtikel(entwurf.herkunft.artikelId) : null;
   const setze = (teil: Partial<Entwurf>): void =>
@@ -2654,7 +3129,7 @@ function EntwurfKarte({ entwurf }: { entwurf: Entwurf }): JSX.Element {
           </h3>
           <span
             data-testid="klara-entwurf-sitzung"
-            className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted"
+            className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted"
           >
             {t("klaravorschlag.notiz.kennzeichen")}
           </span>

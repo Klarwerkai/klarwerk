@@ -1,10 +1,17 @@
+import { randomUUID } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyPluginAsync } from "fastify";
 import type { AuditEntry, AuditService } from "../../../audit";
+import { BestandsresetGesperrtError } from "../../../db-tx";
 import { TRASH_RETENTION_DAYS } from "../../../knowledge-object";
+import {
+  type BestandsresetDienst,
+  BestandsresetVorschauVeraltetError,
+  pruefeFreigabe,
+} from "../bestandsreset-dienst";
 import { type ExampleLoadServices, examplePackage, loadExamplePackage } from "../example-packages";
 // JOB 3277: der paketbezogene Weg (wählen · laden · zurücksetzen · entfernen) — additiv neben
 // WP-B6, siehe Kopf von example-packages/demo-pakete.ts.
@@ -16,12 +23,15 @@ import {
   entferneDemoPaket,
   ladeDemoPaket,
 } from "../example-packages/demo-pakete";
-import { type FactoryReset, factoryResetUnavailable } from "../factory-reset";
+import { type FactoryReset, FirmenresetFehler, factoryResetUnavailable } from "../factory-reset";
 // AUFTRAG-mega64 Block A: der Betriebsschalter für das Demodaten-Laden — dieselbe eine Wahrheit,
 // aus der auch GET /api/features antwortet (mega46 F).
 import { schalterAn } from "../feature-flags";
-import type { Guards } from "../http";
+import { FirmenresetSso, FirmenresetSsoFehler, sitzungsSchluessel } from "../firmenreset-sso";
+import type { BegriffeRepo } from "../firmenwoerterbuch";
+import { type Guards, tokenFromRequest } from "../http";
 import { type DemoSeedServices, purgeDemoSeed, seedDemoForAdmin } from "../seed-demo";
+import { type Produktfassung, type UmfangAuskunft, umfangAuskunft } from "../sicherungsumfang";
 // SCRUM-501 (nacht24): Demo-/Simulationskorpus DE/EN/NL — NICHT automatisch, nur über diesen
 // Admin-Weg (bzw. tools/seed-sim-corpus); Entfernen über den bestehenden Demo-Purge (demoSeed).
 import { loadSimCorpus } from "../sim-corpus";
@@ -275,6 +285,14 @@ interface DrillBefund {
     anhaenge: VergleichKategorie & { belegeOhneAnhang: number | null };
     beziehungen: VergleichKategorie;
     rechte: VergleichKategorie & { rollenDump: string | null; rollenDatenbank: string | null };
+    /**
+     * produkt:20261010:poc-wiederherstellung-export — die privaten Assistenzspeicher als eigene
+     * Kategorie. Ein Protokoll ohne sie (ältere Fassung des Drills) ergibt `nicht_gemessen`; das ist
+     * Absicht: ein früherer Lauf belegt keine später gelieferten Assistenzdaten. Sie zählt NICHT zu
+     * den vier ADMIN-13-Kategorien, die über `erfolg`/`teilweise` entscheiden — eine Abweichung ist
+     * aber ein Widerspruch.
+     */
+    assistenz: VergleichKategorie;
   };
   wissensnachweis: string | null;
 }
@@ -477,6 +495,7 @@ async function restoreBefund(verzeichnis: string): Promise<DrillBefund | Unbekan
       rollenDump: textOderNull(rechte.rollenDump),
       rollenDatenbank: textOderNull(rechte.rollenDatenbank),
     },
+    assistenz: kategorieAus(v.assistenz),
   };
   const sicherung = textOderNull(w.sicherung);
   const ziel = textOderNull(w.ziel);
@@ -538,6 +557,11 @@ async function restoreBefund(verzeichnis: string): Promise<DrillBefund | Unbekan
       } else if (k.zustand === "nicht_gemessen") {
         luecken.push(name);
       }
+    }
+    // Assistenzspeicher: nicht gemessen ist KEINE Lücke der ADMIN-13-Probe (sie steht am Bereich
+    // als „nicht gemessen"), eine gemessene Abweichung aber ein Widerspruch zum behaupteten Erfolg.
+    if (vergleich.assistenz.zustand === "abweichend") {
+      widersprueche.push("assistenz");
     }
     if (waisen === null) {
       luecken.push("belege_ohne_anhang");
@@ -667,15 +691,97 @@ async function schutzwegeFuer(
   };
 }
 
+/**
+ * produkt:20261010:poc-wiederherstellung-export — woran der Sicherungsumfang gebunden ist: die
+ * laufende Produktfassung und die Zahl der Tabellen, die ihre Migration anlegt. Gesetzt von
+ * `build-app.ts`; Teilaufbauten ohne diese Angabe senden kein `umfang`.
+ */
+export interface UmfangLage {
+  produkt: Produktfassung;
+  tabellenImDump: number;
+}
+
+/** Der Umfang je Bereich, mit dem Beleg aus DERSELBEN Lesung des Drillprotokolls. */
+function umfangFuer(lage: UmfangLage, wege: Schutzwege): UmfangAuskunft {
+  const r = wege.restore;
+  const gemessen =
+    r.zustand === "unbekannt"
+      ? null
+      : [
+          ...r.vergleich.beitraege.tabellen,
+          ...r.vergleich.anhaenge.tabellen,
+          ...r.vergleich.beziehungen.tabellen,
+          ...r.vergleich.rechte.tabellen,
+          ...r.vergleich.assistenz.tabellen,
+        ];
+  return umfangAuskunft(lage.produkt, lage.tabellenImDump, gemessen, r.zustand === "erfolg");
+}
+
+// ==================================================================================================
+// PETER-20261011-P08 · DIE VORSCHAU DES FIRMENRESETS (AC02).
+// ==================================================================================================
+//
+// Konkrete Mengen statt „ALLE Daten": was entfällt (Wissensobjekte samt Papierkorb, offene Fragen,
+// alle übrigen gespeicherten Einträge mit den Namen ihrer Ablagen) und was bleibt (Benutzerkonten,
+// Firmenwörterbuch, Prüfprotokoll). Die KENNUNG wird ZUERST gebildet: schreibt jemand, während die
+// Mengen gezählt werden, passt die Kennung nicht mehr und die Ausführung löscht nichts
+// (`VORSCHAU_VERALTET`) — die Vorschau kann nie zu wenig versprechen.
+export interface FirmenresetVorschau {
+  kennung: string;
+  entfernt: {
+    wissensobjekte: number;
+    offeneFragen: number;
+    weitereEintraege: number;
+    ablagen: string[];
+  };
+  erhalten: { benutzerkonten: number; woerterbuch: number; protokolleintraege: number };
+}
+
+/** Ablagen, deren Menge die Vorschau schon als eigene Zeile nennt. */
+const EIGENE_ZEILE = ["koRepo", "gaps"];
+
+async function firmenresetVorschau(
+  services: DemoSeedServices & { begriffe?: BegriffeRepo },
+  factoryReset: FactoryReset,
+): Promise<FirmenresetVorschau> {
+  const journal = await factoryReset.vorschau();
+  const weitere = Object.entries(journal.entfernt).filter(
+    ([ablage, n]) => n > 0 && !EIGENE_ZEILE.includes(ablage),
+  );
+  return {
+    kennung: journal.kennung,
+    entfernt: {
+      wissensobjekte: (await services.ko.listEinschliesslichPapierkorb()).length,
+      offeneFragen: (await services.ask.listGaps()).length,
+      weitereEintraege: weitere.reduce((summe, [, n]) => summe + n, 0),
+      ablagen: weitere.map(([ablage]) => ablage).sort(),
+    },
+    erhalten: {
+      benutzerkonten: (await services.auth.listUsers()).length,
+      woerterbuch: services.begriffe ? (await services.begriffe.aktuelle()).length : 0,
+      protokolleintraege: journal.erhalten.auditRepo ?? 0,
+    },
+  };
+}
+
 // SCRUM-181: admin-geschützte Aktion, um eine LEERE Instanz mit Demodaten sichtbar zu machen.
 // Kein Auto-Seed, kein anonymer Zugriff. Idempotent über den Empty-Guard im Seed selbst.
 // Pedi 05.07.: zusätzlich der Werksreset (Factory-Settings) — nur im Desktop/Dev-Modus verfügbar.
 export function adminRoutes(
   // WP-B6: die Beispielpaket-Route braucht zusätzlich das (optionale) Audit — build-app reicht die
   // vollen AppServices, die das strukturell erfüllen; direkte Test-Aufrufer bleiben kompatibel.
-  services: DemoSeedServices & { audit?: AuditService },
+  // P08: `begriffe` zählt die Vorschau des Firmenresets (erhaltene Wörterbucheinträge).
+  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): `bestandsreset` setzt nur `buildPgServices`.
+  services: DemoSeedServices & {
+    audit?: AuditService;
+    begriffe?: BegriffeRepo;
+    bestandsreset?: BestandsresetDienst;
+  },
   guards: Guards,
   factoryReset: FactoryReset = factoryResetUnavailable,
+  umfangLage?: UmfangLage,
+  // P08-AC05: die zweimalige SSO-Wiederanmeldung des Firmenresets. Ohne Angabe ohne Anbieter.
+  firmenresetSso: FirmenresetSso = new FirmenresetSso(undefined),
 ): FastifyPluginAsync {
   return async (app) => {
     // ==========================================================================================
@@ -923,17 +1029,144 @@ export function adminRoutes(
 
     // Pedi 05.07. (Beta): Verfügbarkeit des Werksresets. Die Oberfläche blendet den Knopf nur ein,
     // wenn er im aktuellen Betriebsmodus (Desktop/Dev-Journal) überhaupt möglich ist.
+    // P08-AC02: ist er verfügbar, trägt dieselbe Auskunft die Vorschau — konkrete Mengen dessen, was
+    // entfällt und was bleibt, und die Kennung, die die Ausführung zurückverlangt. Lesend; dieselbe
+    // Schranke wie bisher (`users.manage`, nur die Rolle admin).
     app.get("/api/admin/factory-reset", async (request, reply) => {
       const user = await guards.requirePermission("users.manage", request, reply);
       if (!user) {
         return;
       }
-      reply.code(200).send({ available: factoryReset.available });
+      if (!factoryReset.available) {
+        reply.code(200).send({ available: false });
+        return;
+      }
+      // P08-AC05: wie sich DIESES Konto bestätigt — Passwort oder zweimalige SSO-Wiederanmeldung —
+      // und wie viele SSO-Schritte in dieser Sitzung schon gültig bestätigt sind.
+      const sitzung = sitzungsSchluessel(tokenFromRequest(request) ?? "");
+      const ssoErforderlich = !(await services.auth.hatLokalesPasswort(user.id));
+      reply.code(200).send({
+        available: true,
+        vorschau: await firmenresetVorschau(services, factoryReset),
+        sso: {
+          erforderlich: ssoErforderlich,
+          eingerichtet: firmenresetSso.eingerichtet,
+          bestaetigt: ssoErforderlich ? firmenresetSso.bestaetigt(user.id, sitzung) : 0,
+        },
+      });
     });
 
-    // Pedi 05.07. (Beta): Werksreset ausführen — ALLE lokalen Daten löschen und das Programm
-    // beenden; der nächste Start beginnt mit der Ersteinrichtung (erster Anwender = Admin).
-    // Nur im Desktop/Dev-Modus möglich (sonst 403), damit produktive Daten nie betroffen sind.
+    // P08-AC05: Schritt 1 bzw. 2 der SSO-Wiederanmeldung beginnen (Seitennavigation zum Anbieter).
+    // Nur für Konten OHNE lokales Passwort, nur im Desktopbetrieb, nur in der eigenen Sitzung.
+    app.get<{ Querystring: { schritt?: string } }>(
+      "/api/admin/factory-reset/sso/start",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        if (!factoryReset.available) {
+          reply.code(403).send({
+            error: "FORBIDDEN",
+            message:
+              "Werksreset ist nur in der lokalen Desktop-Version möglich (nicht im Server-/Produktivbetrieb).",
+          });
+          return;
+        }
+        if (await services.auth.hatLokalesPasswort(user.id)) {
+          reply.code(409).send({
+            error: "SSO_NICHT_VORGESEHEN",
+            message: "Dieses Konto bestätigt den Firmenreset mit seinem Passwort.",
+          });
+          return;
+        }
+        const schritt = request.query.schritt === "2" ? 2 : request.query.schritt === "1" ? 1 : 0;
+        if (schritt === 0) {
+          reply.code(400).send({ error: "SSO_SCHRITT_UNGUELTIG", message: "Unbekannter Schritt." });
+          return;
+        }
+        try {
+          const ziel = firmenresetSso.starte(
+            user.id,
+            sitzungsSchluessel(tokenFromRequest(request) ?? ""),
+            schritt,
+          );
+          reply.header("cache-control", "no-store");
+          reply.redirect(ziel);
+        } catch (fehler) {
+          if (fehler instanceof FirmenresetSsoFehler) {
+            reply.code(409).send({ error: fehler.code, message: fehler.message });
+            return;
+          }
+          throw fehler;
+        }
+      },
+    );
+
+    // P08-AC05/AC06: der Rückruf eines Schritts (die SPA-Rückrufseite reicht ihn mit code+state
+    // hierher) — oder der Abbruch (`verwerfen: true`). Setzt nur die Bestätigung; keine Sitzung,
+    // keine Löschung.
+    app.post("/api/admin/factory-reset/sso", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      if (!factoryReset.available) {
+        reply.code(403).send({
+          error: "FORBIDDEN",
+          message:
+            "Werksreset ist nur in der lokalen Desktop-Version möglich (nicht im Server-/Produktivbetrieb).",
+        });
+        return;
+      }
+      const sitzung = sitzungsSchluessel(tokenFromRequest(request) ?? "");
+      const body = (request.body ?? {}) as { code?: unknown; state?: unknown; verwerfen?: unknown };
+      if (body.verwerfen === true) {
+        firmenresetSso.verwerfen(sitzung);
+        reply.code(200).send({ bestaetigt: 0 });
+        return;
+      }
+      if (typeof body.code !== "string" || typeof body.state !== "string") {
+        reply.code(400).send({
+          error: "SSO_VORGANG_UNBEKANNT",
+          message: "Der Rückruf ist unvollständig. Es wurde nichts bestätigt.",
+        });
+        return;
+      }
+      const konto = (await services.auth.listUsers()).find((u) => u.id === user.id);
+      try {
+        const bestaetigt = await firmenresetSso.rueckruf(
+          user.id,
+          sitzung,
+          { oidcIssuer: konto?.oidcIssuer, oidcSubject: konto?.oidcSubject },
+          body.code,
+          body.state,
+        );
+        reply.code(200).send({ bestaetigt });
+      } catch (fehler) {
+        if (fehler instanceof FirmenresetSsoFehler) {
+          // Fehlgeschlagene oder unpassende Anmeldung: 401; Vorgang/Reihenfolge: 409.
+          const abgewiesen = ["SSO_ANMELDUNG_FEHLGESCHLAGEN", "SSO_KONTO_PASST_NICHT"];
+          const status = abgewiesen.includes(fehler.code) ? 401 : 409;
+          reply.code(status).send({ error: fehler.code, message: fehler.message });
+          return;
+        }
+        throw fehler;
+      }
+    });
+
+    // Pedi 05.07. (Beta): Werksreset ausführen und das Programm beenden. Nur im Desktop/Dev-Modus
+    // möglich (sonst 403), damit produktive Daten nie betroffen sind.
+    //
+    // PETER-20261011-P08 (Firmenreset): Konten und Firmenwörterbuch bleiben erhalten. Die Ausführung
+    // verlangt, in dieser Reihenfolge, und bricht beim ersten Fehlen OHNE jede Löschung ab:
+    //   AC01  das administrative Resetrecht (`users.manage` = Rolle admin) und den Desktopbetrieb;
+    //   AC02  die Kennung der Vorschau, die der Admin gesehen hat;
+    //   AC04  die bewusst gesetzte Checkbox (`bestaetigt: true`, nichts anderes zählt);
+    //   AC05  zwei Passwortbestätigungen, JEDE einzeln geprüft — oder, für ein Konto OHNE lokales
+    //         Passwort, zwei gültige, passende SSO-Wiederanmeldungen dieser Sitzung (eingelöst und
+    //         damit verbraucht);
+    //   AC07  einen unveränderten Bestand seit der Vorschau und keinen zweiten laufenden Reset.
     app.post("/api/admin/factory-reset", async (request, reply) => {
       const user = await guards.requirePermission("users.manage", request, reply);
       if (!user) {
@@ -947,22 +1180,183 @@ export function adminRoutes(
         });
         return;
       }
-      // SCRUM-450: Re-Authentifizierung. Der Werksreset löscht ALLE Daten unwiderruflich —
-      // „angemeldet als Admin" allein reicht nicht, der Admin muss sein Passwort bestätigen.
-      // So kann ein offener/übernommener Admin-Tab den Reset nicht ohne Passwort auslösen.
-      const body = (request.body ?? {}) as { password?: unknown };
-      const password = typeof body.password === "string" ? body.password : "";
-      if (!password || !(await services.auth.verifyUserPassword(user.id, password))) {
-        reply.code(401).send({
-          error: "INVALID_PASSWORD",
-          message: "Falsches Passwort. Der Werksreset wurde nicht ausgeführt.",
+      const body = (request.body ?? {}) as {
+        kennung?: unknown;
+        bestaetigt?: unknown;
+        passwort1?: unknown;
+        passwort2?: unknown;
+      };
+      if (typeof body.kennung !== "string" || body.kennung.length === 0) {
+        reply.code(400).send({
+          error: "VORSCHAU_FEHLT",
+          message: "Ohne bestätigte Vorschau wird nichts gelöscht.",
         });
         return;
       }
-      // Erst antworten (damit die Oberfläche die Bestätigung erhält), dann Bestand löschen und
-      // den Prozess beenden. Der Reset läuft bewusst NACH dem Flush der Antwort.
+      if (body.bestaetigt !== true) {
+        reply.code(400).send({
+          error: "BESTAETIGUNG_FEHLT",
+          message: "Die Bestätigung der Folgen ist nicht gesetzt. Es wurde nichts gelöscht.",
+        });
+        return;
+      }
+      // SCRUM-450 / P08-AC05: Re-Authentifizierung, zweimal. „Angemeldet als Admin" allein reicht
+      // nicht — ein offener oder übernommener Admin-Tab kann den Reset so nicht auslösen.
+      if (!(await services.auth.hatLokalesPasswort(user.id))) {
+        // Reines SSO-Konto: statt der Passwörter die zwei Wiederanmeldungen DIESER Sitzung.
+        const sitzung = sitzungsSchluessel(tokenFromRequest(request) ?? "");
+        if (!firmenresetSso.einloesen(user.id, sitzung)) {
+          reply.code(403).send({
+            error: "SSO_WIEDERANMELDUNG_ERFORDERLICH",
+            message:
+              "Dieses Konto meldet sich über SSO an. Der Firmenreset verlangt zwei passende SSO-Wiederanmeldungen in dieser Sitzung. Es wurde nichts gelöscht.",
+          });
+          return;
+        }
+      } else {
+        for (const eingabe of [body.passwort1, body.passwort2]) {
+          const passwort = typeof eingabe === "string" ? eingabe : "";
+          if (!passwort || !(await services.auth.verifyUserPassword(user.id, passwort))) {
+            reply.code(401).send({
+              error: "INVALID_PASSWORD",
+              message: "Falsches Passwort. Der Werksreset wurde nicht ausgeführt.",
+            });
+            return;
+          }
+        }
+      }
+      try {
+        await factoryReset.run({ kennung: body.kennung, durch: user.id });
+      } catch (error) {
+        if (error instanceof FirmenresetFehler) {
+          reply.code(409).send({ error: error.code, message: error.message });
+          return;
+        }
+        throw error;
+      }
+      // Das Journal ist ersetzt; der Prozess beendet sich kurz nach dieser Antwort.
       reply.code(200).send({ ok: true });
-      void factoryReset.run();
+    });
+
+    // ==========================================================================================
+    // AUFNAHME 20260922 · GESAMT-BESTANDSRESET — DER ADMINISTRATIVE AUFRUF (Nacharbeit 2).
+    // ==========================================================================================
+    //
+    // Peters Entscheidung vom 11.10.: Konten und Firmenwörterbuch bleiben; Folgenvorschau,
+    // zweimalige Passworteingabe und ein Häkchen. Anders als der Werksreset darüber (Desktop-Journal,
+    // P08: entfernt den lokalen Bestand samt Einstellungen und Anmeldungen und beendet den Prozess)
+    // löscht dieser Weg NUR den Wissensbestand samt Papierkorb, läuft im Server-/Postgres-Betrieb und
+    // beendet nichts. Ohne Datenbank (Speicher, Desktop-Journal) gibt es ihn nicht: `verfuegbar: false`
+    // bzw. 409 — ein Reset, der nur den Speicher leerte, wäre beim nächsten Neustart wieder da.
+    //
+    // GET liefert die Folgenvorschau samt ihrer Kennung und den Befund des letzten Laufs.
+    app.get("/api/admin/bestandsreset", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      const dienst = services.bestandsreset;
+      if (!dienst) {
+        reply.code(200).send({ verfuegbar: false });
+        return;
+      }
+      reply.code(200).send({ verfuegbar: true, ...(await dienst.stand()) });
+    });
+
+    // POST führt aus — erst, wenn alle drei Bestätigungen tragen und die Vorschau noch stimmt.
+    // Reihenfolge: Tor → Verfügbarkeit → Form (Häkchen, Vorschaukennung, zweimal dasselbe
+    // Passwort) → Passwort gegen das Konto → Vorschau gegen den Bestand JETZT → Reset.
+    app.post("/api/admin/bestandsreset", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      const dienst = services.bestandsreset;
+      if (!dienst) {
+        reply.code(409).send({
+          error: "BESTANDSRESET_NICHT_VERFUEGBAR",
+          message:
+            "Der Bestandsreset ist nur im Serverbetrieb mit Datenbank verfügbar. Es wurde nichts gelöscht.",
+        });
+        return;
+      }
+      const freigabe = pruefeFreigabe(request.body);
+      if (!freigabe.ok) {
+        reply.code(400).send({ error: freigabe.fehler, message: freigabe.meldung });
+        return;
+      }
+      // Wie beim Werksreset (SCRUM-450): ein offener Admin-Tab allein genügt nicht. Ein Konto ohne
+      // eigenes Passwort (nur SSO) besteht diese Prüfung nicht — `verifyUserPassword` ist dort false.
+      if (!(await services.auth.verifyUserPassword(user.id, freigabe.passwort))) {
+        reply.code(401).send({
+          error: "INVALID_PASSWORD",
+          message: "Falsches Passwort. Der Bestandsreset wurde nicht ausgeführt.",
+        });
+        return;
+      }
+      const jetzt = await dienst.stand();
+      if (jetzt.vorschau.kennung !== freigabe.vorschauKennung) {
+        reply.code(409).send({
+          error: "VORSCHAU_VERALTET",
+          message:
+            "Der Bestand hat sich seit der Vorschau verändert. Prüfe die neue Vorschau und bestätige erneut.",
+          vorschau: jetzt.vorschau,
+        });
+        return;
+      }
+      const laufId = `bestandsreset-${new Date().toISOString()}-${randomUUID()}`;
+      const protokolliere = async (
+        action: string,
+        payload: Record<string, unknown>,
+      ): Promise<boolean> => {
+        if (!services.audit) {
+          return false;
+        }
+        try {
+          await services.audit.record({ actor: user.id, action, target: laufId, payload });
+          return true;
+        } catch (fehler) {
+          request.log.error({ err: fehler, laufId }, "Bestandsreset: Auditeintrag fehlgeschlagen");
+          return false;
+        }
+      };
+      try {
+        // Nacharbeit 7 (BEN): die bestätigte Kennung geht mit und wird IN der Löschtransaktion unter
+        // der exklusiven Sperre erneut geprüft — die Prüfung oben schliesst das Fenster bis zur
+        // Sperre nicht, sie liefert nur früh die neue Vorschau.
+        const befund = await dienst.ausfuehren(laufId, freigabe.vorschauKennung);
+        const protokolliert = await protokolliere("bestandsreset.ausgefuehrt", {
+          zustand: befund.zustand,
+          geloescht: jetzt.vorschau.geloescht,
+          erhalten: jetzt.vorschau.erhalten,
+        });
+        reply.code(200).send({ ok: true, laufId, befund, protokolliert });
+      } catch (fehler) {
+        if (fehler instanceof BestandsresetGesperrtError) {
+          reply.code(409).send({ error: fehler.code, message: fehler.message });
+          return;
+        }
+        if (fehler instanceof BestandsresetVorschauVeraltetError) {
+          // Zurückgerollt, der Lauf steht als ROLLED_BACK in der Laufakte — es ist nichts gelöscht.
+          const neu = await dienst.stand().catch(() => undefined);
+          reply.code(409).send({
+            error: fehler.code,
+            message: fehler.message,
+            ...(neu ? { vorschau: neu.vorschau } : {}),
+          });
+          return;
+        }
+        request.log.error({ err: fehler, laufId }, "Bestandsreset fehlgeschlagen");
+        await protokolliere("bestandsreset.fehlgeschlagen", {});
+        const nachher = await dienst.stand().catch(() => undefined);
+        reply.code(500).send({
+          error: "BESTANDSRESET_FEHLGESCHLAGEN",
+          message:
+            "Der Bestandsreset ist fehlgeschlagen. Der Befund des Laufs sagt, ob der Bestand noch steht.",
+          laufId,
+          befund: nachher?.letzterLauf ?? null,
+        });
+      }
     });
 
     // ==========================================================================================
@@ -1012,20 +1406,24 @@ export function adminRoutes(
       } catch (fehler) {
         const code = (fehler as NodeJS.ErrnoException).code;
         if (code === "ENOENT") {
+          const wege = await schutzwegeFuer(services, verzeichnis, "kein_verzeichnis");
           reply.code(200).send({
             zustand: "kein_verzeichnis",
             verzeichnis,
             gelesenUtc,
-            schutzwege: await schutzwegeFuer(services, verzeichnis, "kein_verzeichnis"),
+            schutzwege: wege,
+            ...(umfangLage ? { umfang: umfangFuer(umfangLage, wege) } : {}),
           });
           return;
         }
+        const wege = await schutzwegeFuer(services, verzeichnis, "unlesbar");
         reply.code(200).send({
           zustand: "unlesbar",
           verzeichnis,
           gelesenUtc,
           grund: code ?? "UNBEKANNT",
-          schutzwege: await schutzwegeFuer(services, verzeichnis, "unlesbar"),
+          schutzwege: wege,
+          ...(umfangLage ? { umfang: umfangFuer(umfangLage, wege) } : {}),
         });
         return;
       }
@@ -1062,12 +1460,14 @@ export function adminRoutes(
         const fb = b.folgeNummer ?? 0;
         return fa === fb ? b.datei.localeCompare(a.datei) : fb - fa;
       });
+      const wege = await schutzwegeFuer(services, verzeichnis, "gelesen");
       reply.code(200).send({
         zustand: "gelesen",
         verzeichnis,
         gelesenUtc,
         sicherungen,
-        schutzwege: await schutzwegeFuer(services, verzeichnis, "gelesen"),
+        schutzwege: wege,
+        ...(umfangLage ? { umfang: umfangFuer(umfangLage, wege) } : {}),
       });
     });
   };

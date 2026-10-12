@@ -1311,10 +1311,6 @@ interface OffenerRest extends Ausnahme {
   readonly entscheidet: string;
 }
 
-const AUFTRAG_BESTANDSRESET =
-  "Auftrag aufnahme:20260922:gesamt-bestandsreset — R-0774: offene Owner-Punkte OV-1 bis OV-5 " +
-  "(Sperrrichtung, Löschgraph, Auditwahrheit bei Absturz, Zielpfade, zweiter Server); " +
-  "R-1911: E9 OFFEN";
 // R-1349 (Nacharbeit 10, BEN; Integration mit main): hier stand
 // `services/app/src/reindex-queue.ts::createReindexQueue` als „Sperre“ — begründet mit BENs Satz aus
 // JOB 1163, die Anschlusswahl sei „weiterhin nicht freigegeben“. Das war eine historische
@@ -1345,43 +1341,12 @@ const OFFENER_REST: readonly OffenerRest[] = [
   // als „Betriebs-/Architekturentscheidung“. Eine Sperre oder ein gesonderter Auftrag dazu ist nicht
   // belegt; die Sperre war nie scharf (keine Tabelle, kein Dienst). Sie ist samt ihren zwei
   // Prüfständen entfernt (Grund am Kopf von `services/db-tx/index.ts`).
-  {
-    schluessel: "services/db-tx/src/bestandsreset.ts::fuehreBestandsresetAus",
-    grund:
-      "Der aufrufbare Postgres-Bestandsreset aus JOB 596 D8 (drei Transaktionen, Auditautomat). Sein " +
-      "Loeschgraph ist dort ausdruecklich „Vorschlag, nicht Entscheidung“ (Rueckgabe D8, V-1); ohne " +
-      "diese Entscheidung bekommt der Reset keinen Betreiber- oder Adminweg.",
-    abgrenzung: "gesonderter-auftrag",
-    beleg: AUFTRAG_BESTANDSRESET,
-    entscheidet: "Owner (OV-1 bis OV-5) im Auftrag gesamt-bestandsreset",
-  },
-  {
-    schluessel: "services/db-tx/src/bestandsreset-audit.ts::bestandsresetBefund",
-    grund:
-      "Teil des Bestandsresets (Auswertung des Laufzustands); offen mit derselben Entscheidung wie " +
-      "`fuehreBestandsresetAus`.",
-    abgrenzung: "gesonderter-auftrag",
-    beleg: AUFTRAG_BESTANDSRESET,
-    entscheidet: "Owner (OV-1 bis OV-5) im Auftrag gesamt-bestandsreset",
-  },
-  {
-    schluessel: "services/db-tx/src/bestandsreset-audit.ts::SQL_SCHEMA_BESTANDSRESET",
-    grund:
-      "Das Schema der Reset-Laufakte; es kommt erst mit dem Betreiberweg des Resets in die " +
-      "Migrationsliste. Offen mit derselben Entscheidung wie `fuehreBestandsresetAus`.",
-    abgrenzung: "gesonderter-auftrag",
-    beleg: AUFTRAG_BESTANDSRESET,
-    entscheidet: "Owner (OV-1 bis OV-5) im Auftrag gesamt-bestandsreset",
-  },
-  {
-    schluessel: "services/db-tx/src/reset-lock.ts::SQL_SPERRE_WIRD_GEHALTEN",
-    grund:
-      "Die beobachtende Sperrabfrage des Reset-Auditautomaten (`pg_locks`); offen mit derselben " +
-      "Entscheidung wie `fuehreBestandsresetAus`.",
-    abgrenzung: "gesonderter-auftrag",
-    beleg: AUFTRAG_BESTANDSRESET,
-    entscheidet: "Owner (OV-1 bis OV-5) im Auftrag gesamt-bestandsreset",
-  },
+  // AUFNAHME 20260922 (gesamt-bestandsreset, Nacharbeit 2/3) · GESTRICHEN, WEIL ANGESCHLOSSEN: hier
+  // standen `fuehreBestandsresetAus`, `bestandsresetBefund`, `SQL_SCHEMA_BESTANDSRESET` und
+  // `SQL_SPERRE_WIRD_GEHALTEN` als Rest dieses Auftrags. Peters Entscheidung vom 11.10. hat Löschgraph
+  // und Aufrufweg geklärt; seither ruft `services/app/src/bestandsreset-dienst.ts` die drei ersten
+  // (Weg `GET|POST /api/admin/bestandsreset`), und die Laufakte heißt `BESTANDSRESET_SCHEMA` und
+  // steht in `services/app/src/db.ts` (`schemas`).
   // R-1349 (Nacharbeit 6): `kanten-service.ts::netzQualitaet` stand hier, weil „ob und wo“ die Zahl
   // gezeigt werde, offen sei. Das ist entschieden: der Qualitätsblick ist ohne neuen Server-Weg
   // geliefert (`apps/web/src/lib/netzQualitaet.ts`, R-0744). Die Funktion ist entfernt.
@@ -1729,13 +1694,33 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
     ).toBe(true);
 
     // NEGATIV: eine blosse NENNUNG ist kein Aufruf.
-    // `fuehreBestandsresetAus` steht in `build-app.ts:684` in einem KOMMENTAR und in
-    // `db-tx/index.ts:26` als Barrel-Re-Export — beides darf nicht zaehlen.
+    //
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): Bis hierher stand an dieser Stelle
+    // `fuehreBestandsresetAus` — Kommentar in `build-app.ts` und Barrel-Re-Export in
+    // `db-tx/index.ts`. Seit dem administrativen Aufruf hat er einen ECHTEN Aufrufer (unten,
+    // POSITIV über den Barrel). Die Probe nimmt deshalb einen Export derselben Lage:
+    // `wissensnetzLuecken` steht in `services/app/src/routes/ko-routes.ts` nur in einem KOMMENTAR
+    // und in `services/wissensnetz/index.ts` als Barrel-Re-Export; gerufen wird er nur in seiner
+    // eigenen Datei (`luecken-einstieg.ts`). Beides darf nicht als fremder Aufrufer zaehlen.
     expect(
-      fremdGenutzt(benannt("services/db-tx/src/bestandsreset.ts", "fuehreBestandsresetAus")),
+      fremdGenutzt(benannt("services/wissensnetz/src/luecken-einstieg.ts", "wissensnetzLuecken")),
       "Kommentar und Barrel-Re-Export duerfen NICHT als Aufrufer zaehlen",
     ).toBe(false);
-    expect(finde("fuehreBestandsresetAus").datei).toBe("services/db-tx/src/bestandsreset.ts");
+    // Und ein bekannter Fall ohne Aufrufer steht wirklich in der Fundliste — an dieser Stelle stand
+    // bis zur Nacharbeit 2 `fuehreBestandsresetAus`. Die Probe nimmt jetzt einen Export, der BAUART-
+    // BEDINGT ohne Produktaufrufer bleibt (`BEWUSST`, eine reine Testhilfe): Altfälle aus
+    // `OFFENER_REST` taugen dafür nicht, weil sie verdrahtet oder entfernt werden sollen
+    // (`PgWriteFence` ist auf main entfernt, `pruefeValidationDecisionRef` inzwischen angeschlossen).
+    expect(finde("resetEmbedSemaphoreForTests").datei).toBe(
+      "services/app/src/embed-concurrency.ts",
+    );
+
+    // POSITIV: ein Aufruf, dessen Import über den BARREL läuft, zählt — der Sammler löst ihn bis
+    // zur definierenden Datei auf. `bestandsreset-dienst.ts` importiert aus `../../db-tx`.
+    expect(
+      fremdGenutzt(benannt("services/db-tx/src/bestandsreset.ts", "fuehreBestandsresetAus")),
+      "`fuehreBestandsresetAus` wird in bestandsreset-dienst.ts gerufen — der Sammler muss das sehen",
+    ).toBe(true);
   });
 
   it("A3 · KEINE LEICHEN: jeder Registereintrag trifft heute noch zu", () => {

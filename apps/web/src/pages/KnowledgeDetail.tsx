@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useKo } from "../api/hooks";
+import { useRole } from "../app/RoleContext";
 import { AufgegangenHinweis } from "../components/AufgegangenHinweis";
+import { ChatGespraechKnopf } from "../components/ChatGespraechKnopf";
 import { HelpTip } from "../components/HelpTip";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
@@ -54,6 +56,8 @@ export function KnowledgeDetail(): JSX.Element {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  // produkt:20261007:artikel-gemeinsam: der Weg zum gemeinsamen Entwurf nur für Bearbeitende.
+  const darfBearbeiten = useRole().role !== "viewer";
   // `edit=1` gehört zu GENAU DEM Eintrag, für den der Deep-Link kam (SCRUM-417). Bliebe er beim
   // Weiterblättern stehen, risse sich das Bearbeiten-Formular an jedem nächsten Eintrag von selbst
   // auf — die Fläche montiert die Leseansicht je Eintrag neu, ein Ref-Wächter trüge dort nicht.
@@ -200,11 +204,25 @@ export function KnowledgeDetail(): JSX.Element {
         // LESEN-INHALT-ZUERST (Ben, nacharbeit-6): die Zeile stand VOR der ganzen Fläche und schob
         // Titel, Status und erste Regel mobil um etwa 260 px nach unten. Sie steht jetzt in der
         // Lesespalte NACH dem fachlichen Inhalt — dieselbe Komponente, dieselben Rechte.
+        // produkt:20261007:interner-chat: dahinter der Weg in das Gespräch zu genau diesem Artikel.
         nachDemInhalt={
           <>
             <SpaceZeile koId={id} />
             {/* produkt:20261007:templates-default: Vorlage und Fassung, mit der er entstand. */}
             <VorlagenHerkunft koId={id} />
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <ChatGespraechKnopf ziel={{ art: "artikel", koId: id }} />
+              {/* produkt:20261007:artikel-gemeinsam: derselbe Entwurf wie aus dem Artikelgespräch. */}
+              {darfBearbeiten ? (
+                <Link
+                  data-testid="artikel-gemeinsam"
+                  to={`/wissen/${encodeURIComponent(id)}/gemeinsam`}
+                  className="text-[12.5px] font-semibold text-brand-text hover:underline"
+                >
+                  {t("gemeinsam.artikel.oeffnen")}
+                </Link>
+              ) : null}
+            </div>
           </>
         }
       />

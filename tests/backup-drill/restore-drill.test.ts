@@ -563,6 +563,8 @@ interface Protokoll {
     anhaenge: Kategorie & { belegeOhneAnhang: number | null };
     beziehungen: Kategorie;
     rechte: Kategorie & { rollenDump: string | null; rollenDatenbank: string | null };
+    /** produkt:20261010:poc-wiederherstellung-export — private Assistenzspeicher, eigene Kategorie. */
+    assistenz: Kategorie;
   };
   wissensnachweis: string | null;
 }
@@ -610,6 +612,26 @@ describe("ADMIN-13 · Protokoll der Wiederherstellungsprobe", () => {
     expect(r.protokoll).not.toContain('"token"');
   }, 120_000);
 
+  // produkt:20261010:poc-wiederherstellung-export (PV-01-01): die privaten Assistenzspeicher stehen
+  // GETRENNT von Beiträgen und Anhangsbytes im Protokoll — jede Tabelle mit beiden Zahlen.
+  it("P1b bestanden: die privaten Assistenzspeicher sind eine eigene, gemessene Kategorie", () => {
+    const r = run();
+    expect(r.code, r.output).toBe(0);
+    const p = protokollAus(r);
+    expect(p.vergleich.assistenz.tabellen.map((t) => t.tabelle)).toEqual([
+      "assistenz_profile",
+      "klara_gespraeche",
+      "interaktions_gedaechtnis",
+      "klara_sessions",
+      "klara_session_consents",
+    ]);
+    for (const t of p.vergleich.assistenz.tabellen) {
+      expect(t.dump, t.tabelle).not.toBeNull();
+      expect(t.datenbank, t.tabelle).toBe(t.dump);
+    }
+    expect(p.vergleich.assistenz.zustand).toBe("gleich");
+  }, 120_000);
+
   it("P2 Rechte weichen ab: Exit 74, Befund im Protokoll, die Anwendung startet gar nicht", () => {
     const r = run("rechte-abweichung");
     expect(r.code, r.output).toBe(74);
@@ -650,7 +672,7 @@ describe("ADMIN-13 · Protokoll der Wiederherstellungsprobe", () => {
       expect(p.exitcode).toBe(code);
       expect(p.pruefsumme.zustand).toBe(pruefsumme);
       expect(p.grund).toContain("nichts wiederhergestellt");
-      for (const k of ["beitraege", "anhaenge", "beziehungen", "rechte"] as const) {
+      for (const k of ["beitraege", "anhaenge", "beziehungen", "rechte", "assistenz"] as const) {
         expect(p.vergleich[k].zustand, k).toBe("nicht_gemessen");
       }
     },

@@ -1640,6 +1640,11 @@ export class Reasoner {
       kette?: readonly ReasonerProvider[];
       beantwortetVon?: (provider: ReasonerProvider) => void;
     },
+    // ANTWORTBELEG (R-0317): die vom Aufrufer vergebene Kennung des ERFOLGSdatensatzes. So kann der
+    // Aufrufer genau den Laufprotokoll-Eintrag benennen, der sein Ergebnis belegt. Ohne sie vergibt
+    // `recordRun` wie bisher selbst eine Kennung. Hinter `lenkung`, damit deren Aufrufer
+    // unverändert bleiben.
+    erfolgsLaufId?: string,
   ): Promise<T> {
     const startedAt = new Date().toISOString();
     // D5: die Abschalt-Epoche beim Start dieses Laufs — vor jedem Warten (s. `kiAbschaltStand`).
@@ -1799,6 +1804,7 @@ export class Reasoner {
           startedAt,
           "success",
           {
+            ...(erfolgsLaufId ? { id: erfolgsLaufId } : {}),
             fallback: i > 0,
             demo: result.demo,
             provider: provider.name,
@@ -1959,6 +1965,8 @@ export class Reasoner {
     startedAt: string,
     status: ModelRunStatus,
     extra: {
+      // ANTWORTBELEG (R-0317): vom Aufrufer vergebene Kennung (s. `runTask`); sonst eine neue.
+      id?: string;
       fallback: boolean;
       demo: boolean;
       provider: string;
@@ -1981,7 +1989,7 @@ export class Reasoner {
     }
     const runContext = sanitizeModelRunContext(context);
     await this.modelRuns.append({
-      id: randomUUID(),
+      id: extra.id ?? randomUUID(),
       task,
       provider: extra.provider,
       demo: extra.demo,
@@ -2644,6 +2652,10 @@ export class Reasoner {
   ): Promise<AnswerResult> {
     // REF-02: das Glied, das GENAU DIESE Antwort geliefert hat (s. `ANTWORT_ROLLEN`).
     const lauf: { provider?: ReasonerProvider } = {};
+    // ANTWORTBELEG (R-0317): die Kennung des Laufprotokoll-Datensatzes, der diese Antwort belegt —
+    // hier vergeben, damit sie dem Ergebnis mitgegeben werden kann. `runTask` schreibt den
+    // Erfolgsdatensatz VOR der Rückgabe; kehrt der Aufruf zurück, steht der Datensatz.
+    const laufId = randomUUID();
     const result = await this.runTask(
       "answer",
       locale,
@@ -2658,6 +2670,7 @@ export class Reasoner {
           lauf.provider = p;
         },
       },
+      laufId,
     );
     // AUFTRAG-mega61 Block F: die Kennzeichnung wird HIER gesetzt und nicht in den Providern —
     // es gibt drei Provider-Wege zu einer Antwort (Cloud, lokal, deterministisch), und drei
@@ -2665,7 +2678,18 @@ export class Reasoner {
     // R-0604 (G22, mega83 A): gesetzt wird sie aber nur, wenn wirklich ein Modell geantwortet hat.
     // Der deterministische Rückfall stellt Sätze aus geprüftem Wissen regelbasiert zusammen — ihn
     // „von KI erzeugt" zu nennen, war genau die Falschaussage aus G22.
-    return this.mitAntwortRolle(mitHerkunftsmarke(result), lauf.provider);
+    // REF-02 + R-0317: die Rolle wird an das AUSGELIEFERTE Objekt gebunden — `mitLaufkennung`
+    // erzeugt ein neues Objekt, deshalb zuletzt.
+    return this.mitAntwortRolle(
+      this.mitLaufkennung(mitHerkunftsmarke(result), laufId),
+      lauf.provider,
+    );
+  }
+
+  // ANTWORTBELEG (R-0317): die Laufprotokoll-Kennung an das Ergebnis — nur mit Laufprotokoll; ohne
+  // es gibt keinen Datensatz und damit auch keine Kennung, die auf ihn zeigte.
+  private mitLaufkennung(result: AnswerResult, laufId: string): AnswerResult {
+    return this.modelRuns ? { ...result, modelRunId: laufId } : result;
   }
 
   // REF-02: bindet die Rolle des liefernden Glieds an das ausgelieferte Ergebnisobjekt. Ohne Glied
@@ -2723,18 +2747,32 @@ export class Reasoner {
     // Ein Behälter statt `let`: die Zuweisung geschieht im Rückruf, und eine Variable verengte der
     // Typprüfer danach fälschlich auf `undefined`.
     const ersterLauf: { provider?: ReasonerProvider } = {};
-    const ersteRoh = await this.runTask("answer", locale, frage, confidential, runContext, {
-      beantwortetVon: (p) => {
-        ersterLauf.provider = p;
+    // ANTWORTBELEG (R-0317): auch die Antwort mit Zweitmeinung belegt, welcher Laufprotokoll-Eintrag
+    // sie getragen hat — dieselbe Kennungsvergabe wie in `answer`.
+    const laufId = randomUUID();
+    const ersteRoh = await this.runTask(
+      "answer",
+      locale,
+      frage,
+      confidential,
+      runContext,
+      {
+        beantwortetVon: (p) => {
+          ersterLauf.provider = p;
+        },
       },
-    });
+      laufId,
+    );
     const ersterProvider = ersterLauf.provider;
     // Ben (Nacharbeit 17): dieselbe Regel wie `answer` (R-0604) — die KI-Marke NUR, wenn wirklich
     // ein Modell geantwortet hat; der deterministische Rückfall wird nicht „von KI erzeugt" genannt.
-    // REF-02: auch hier trägt die (erste) Antwort ihre tatsächliche Rolle.
-    const erste = this.mitAntwortRolle(mitHerkunftsmarke(ersteRoh), ersterProvider);
+    const erste = mitHerkunftsmarke(ersteRoh);
+    // Die Kennung reist NUR an der ausgelieferten ersten Antwort, nicht in Vergleich und
+    // Gegenüberstellung (`ersteVerglichen` unten bleibt ohne sie).
+    // REF-02: die tatsächliche Rolle hängt am ausgelieferten Objekt, also an diesem.
+    const ersteMitLauf = this.mitAntwortRolle(this.mitLaufkennung(erste, laufId), ersterProvider);
     const nicht = (grund: ZweitmeinungGrund) => ({
-      erste,
+      erste: ersteMitLauf,
       zweitmeinung: { status: "nicht_moeglich" as const, grund },
     });
     const wahl = this.zweitmeinungsModell(confidential);
@@ -2764,7 +2802,7 @@ export class Reasoner {
     const zweite = gegenueberstellbar(mitHerkunftsmarke(zweiteRoh));
     const abweichungen = vergleicheAntworten(ersteVerglichen, zweite);
     return {
-      erste,
+      erste: ersteMitLauf,
       zweitmeinung: {
         status: "verglichen",
         ersteStufe: this.stufeVon(ersterProvider),

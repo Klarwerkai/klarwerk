@@ -334,13 +334,17 @@ describe("ADMIN-01 · K1 · der Einstieg Verwaltung öffnet die Übersicht", () 
     }
   });
 
-  it("K1.2 · Kommunikation bietet nichts Unbenutzbares an — eine Zeile ohne Link und ohne Knopf", async () => {
+  // ADMIN-12 (produkt:20261007:veroeffentlichungsoptionen:admin-20261009): bis hierher stand die
+  // Gruppe ohne Weg da, weil es keinen Bedienort gab. Seit ADMIN-12 führt sie auf `/kommunikation`
+  // — und nur dorthin; eine Leerzeile „noch nicht verfügbar“ steht nicht mehr da.
+  it("K1.2 · Kommunikation führt auf ihren Bedienort — ein echter Link, keine Leerzeile", async () => {
     netz(ALLE);
     const s = await oeffne("/admin");
-    const leer = q(s, "gruppe-kommunikation-leer");
-    expect(leer?.textContent).toContain(t("verwaltung.nichtVerfuegbar"));
-    expect(leer?.tagName).toBe("DIV");
-    expect(q(s, "gruppe-kommunikation")?.querySelector("a, button")).toBeNull();
+    expect(q(s, "gruppe-kommunikation-leer")).toBeNull();
+    const weg = q(s, "ziel-kommunikation");
+    expect(weg?.getAttribute("href")).toBe("/kommunikation");
+    expect(weg?.textContent).toContain(t("kommunikation.verwaltung.ziel"));
+    expect(q(s, "gruppe-kommunikation")?.querySelectorAll("a").length).toBe(1);
   });
 
   it("K1.3 · jeder Verwaltungsweg landet auf seiner Adresse; Zurück führt auf die Übersicht", async () => {

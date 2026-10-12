@@ -4,6 +4,7 @@ import {
   type DokumentHerkunft,
   type KoAussageart,
   type KoSource,
+  TRASH_RETENTION_DAYS,
   createOperationFingerprint,
   isConfidentialityDowngrade,
   isValidConfidentiality,
@@ -1328,9 +1329,26 @@ export class CaptureService {
    * nicht vorhanden (`findById` gibt ihn nicht heraus) — der zweite Klick auf „löschen" ergibt 404
    * und nicht still einen neuen Löschzeitpunkt.
    */
-  async deleteDraft(id: string, actor?: string): Promise<void> {
-    await this.require(id);
-    await this.repo.delete(id, actor, new Date(this.now()).toISOString());
+  async deleteDraft(id: string, actor?: string, erwarteterStand?: string): Promise<void> {
+    const draft = await this.require(id);
+    const zeitpunkt = new Date(this.now()).toISOString();
+    if (erwarteterStand === undefined) {
+      await this.repo.delete(id, actor, zeitpunkt);
+      return;
+    }
+    // Klara 05 (Nacharbeit 4): mit erwartetem Stand löscht die Ablage UNTEILBAR — Vergleich und
+    // Papierkorbvermerk in einem Schritt. Wer verliert, bekommt den gespeicherten Stand zurück.
+    if (!this.repo.deleteWennStand) {
+      throw new DraftStaleError(draft.updatedAt);
+    }
+    const geloescht = await this.repo.deleteWennStand(id, erwarteterStand, actor, zeitpunkt);
+    if (!geloescht) {
+      const jetzt = await this.repo.findById(id);
+      if (!jetzt) {
+        throw new CaptureError("NOT_FOUND", "Entwurf nicht gefunden.");
+      }
+      throw new DraftStaleError(jetzt.updatedAt);
+    }
   }
 
   /**
@@ -1411,6 +1429,48 @@ export class CaptureService {
     if (!(await this.repo.purge(id))) {
       throw new CaptureError("NOT_FOUND", "Entwurf nicht im Papierkorb.");
     }
+  }
+
+  /**
+   * AUFNAHME 20260922 · gesamt-papierkorb — DIE FRIST GILT AUCH FÜR ENTWÜRFE.
+   *
+   * Pedi 17.09.2026 (B5, `EINGANG-20260917-PEDI-LOESCHUMFANG-B5.md`): „Papierkorb mit Frist von
+   * 30 Tagen, danach endgültig" — festgelegt für gelöschte Wissensobjekte UND Entwürfe. Bis hierher
+   * hielt nur das Wissensobjekt die Frist (`KoService.runTrashSweep`); der Entwurfs-Papierkorb
+   * leerte sich nie (JOB 3668, Rückgabe R1). Dieselbe Handlung war damit wieder an zwei Stellen
+   * verschieden behandelt — genau der Befund aus P-ENTWURFS-PAPIERKORB.
+   *
+   * EINE FRIST, EINE QUELLE: `TRASH_RETENTION_DAYS`, keine zweite Konstante für Entwürfe.
+   *
+   * KEIN NEUES FENSTER: gelöscht wird über `repo.purge(id, false, deletedAt)` — Papierkorbstatus
+   * UND der gelesene Löschzeitpunkt stehen in derselben Anweisung wie das Löschen. Holt jemand den
+   * Entwurf zwischen Liste und Löschung zurück, liefert `purge` `false`, der Entwurf lebt. Löscht
+   * er ihn danach erneut, trägt er einen neuen Zeitpunkt mit neuer Frist — auch er bleibt stehen
+   * (Bens Befund, Nacharbeit 2).
+   *
+   * Ein Fehler an EINEM Entwurf bricht den Lauf nicht ab (dieselbe Regel wie beim Wissensobjekt);
+   * er geht an `onSweepError`. Rückgabe: Zahl der wirklich endgültig gelöschten Entwürfe.
+   */
+  async runDraftTrashSweep(onSweepError?: (id: string, error: unknown) => void): Promise<number> {
+    const nowMs = this.now();
+    const fristMs = TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    let purged = 0;
+    for (const entwurf of await this.repo.listTrashed()) {
+      // Ein unlesbarer Zeitpunkt ergibt `NaN` und damit `false` — der Entwurf bleibt liegen.
+      if (!(Date.parse(entwurf.deletedAt) + fristMs <= nowMs)) {
+        continue;
+      }
+      try {
+        // Nacharbeit 2 (Bens Befund): gelöscht wird nur der Stand mit GENAU diesem Löschzeitpunkt.
+        // Zurückgeholt und erneut gelöscht → neuer Zeitpunkt, neue Frist, kein Treffer.
+        if (await this.repo.purge(entwurf.id, false, entwurf.deletedAt)) {
+          purged++;
+        }
+      } catch (err) {
+        onSweepError?.(entwurf.id, err);
+      }
+    }
+    return purged;
   }
 
   /**

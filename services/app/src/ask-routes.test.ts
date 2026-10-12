@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
+import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 import { ModelCapacityError } from "../../reasoner";
 import { buildApp, buildServices } from "./build-app";
 import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
@@ -1033,7 +1034,23 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
 // das Feld dort, fiele das Panel still auf den Stand „älterer Server" zurück. Beide Zugänge laufen
 // durch `antwortLauf`; dieselbe Antwort ergibt dieselbe Zuordnung.
 describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Frageweg", () => {
+  // P05 (Ben, Nacharbeit 6): die Auslieferung prüft die herangezogene Wissenskopie gegen den
+  // AKTUELLEN Bestand — eine verschwundene oder gelöschte Kopie wird nicht mehr ausgeliefert. Die
+  // Attrappe lieferte bis hierher KEINEN Objektbestand (`ko.get` → undefined) zu einer Antwort, die
+  // eine Quelle nennt; sie trägt deshalb jetzt einen echten Bestand mit genau dieser Quelle. Der
+  // Vertrag des Falls (200, dieselbe Absatzzuordnung an beiden Zugängen) bleibt unverändert.
+  let quelleId = "";
   async function aufbau() {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    quelleId = (
+      await koService.create({
+        title: "Ventil schließen",
+        statement: "Ventil schließen.",
+        type: "best_practice",
+        category: "Anlage 1",
+        author: "autor-1",
+      })
+    ).id;
     const ask = {
       kiStand: () => undefined,
       kiSperreVorFrage: () => undefined,
@@ -1043,8 +1060,8 @@ describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Fra
           answered: true,
           knowledgeClass: "validiert",
           answer: "Ventil schließen [1].\n\nFrei erfunden.",
-          sources: ["ko-1"],
-          citedSources: ["ko-1"],
+          sources: [quelleId],
+          citedSources: [quelleId],
           steps: [],
           trust: 1,
         },
@@ -1057,7 +1074,7 @@ describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Fra
     } as never;
     const basis = {
       ask: ask as never,
-      ko: { get: async () => undefined } as never,
+      ko: koService as never,
       conflicts: { unresolved: async () => [] } as never,
     };
     const app = Fastify();
@@ -1078,8 +1095,8 @@ describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Fra
     return app;
   }
 
-  const ERWARTET = [
-    { text: "Ventil schließen [1].", quellen: ["ko-1"] },
+  const erwartet = () => [
+    { text: "Ventil schließen [1].", quellen: [quelleId] },
     { text: "Frei erfunden.", quellen: [] },
   ];
 
@@ -1096,7 +1113,7 @@ describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Fra
       payload: { question: "Wie schließe ich das Ventil?", questionSource: "manual" },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().absaetze).toEqual(ERWARTET);
+    expect(res.json().absaetze).toEqual(erwartet());
     await app.close();
   });
 
@@ -1108,7 +1125,7 @@ describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Fra
       payload: { question: "Wie schließe ich das Ventil?" },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().absaetze).toEqual(ERWARTET);
+    expect(res.json().absaetze).toEqual(erwartet());
     await app.close();
   });
 });

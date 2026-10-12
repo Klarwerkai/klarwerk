@@ -11,6 +11,7 @@ export {
   type OutputDocument,
   type GenerateOutputInput,
   type OutputErrorCode,
+  type OutputSichtbarkeit,
   type OutputUnsicherheit,
   type OutputPruefnachweis,
 } from "./src/types";
@@ -41,6 +42,7 @@ export type {
   ScormBefund,
   ScormBefundCode,
   ScormBefundBereich,
+  ScormBetrachter,
   ScormEmpfaenger,
   ScormExportEingabe,
   ScormFassung,

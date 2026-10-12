@@ -1,0 +1,16 @@
+# R-1487 / R-2072 (aufnahme:20260922:gesamt-kundenbetrieb) — eine Kundeninstanz fährt das GEPRÜFTE
+# Abbild aus `scripts/deploy/abbild-bauen.mjs`, statt auf dem Zielrechner neu zu bauen.
+#
+# Ergänzt `docker-compose.prod.yml`, ändert es nicht:
+#   shasum -a 256 -c klarwerk-<version>-<commit12>.tar.sha256
+#   docker load -i klarwerk-<version>-<commit12>.tar
+#   KLARWERK_ABBILD=klarwerk:<version>-<commit12> \
+#     docker compose -f docker-compose.prod.yml -f scripts/deploy/compose-abbild.yml up -d
+#
+# OHNE `--build`: Compose nimmt dann das geladene Abbild dieses Namens. `pull_policy: never` verbietet,
+# es aus einer Registry zu holen — fehlt es, bricht der Start ab, statt still etwas anderes zu fahren.
+# Ohne `KLARWERK_ABBILD` bricht `docker compose` ab und nennt den Namen.
+services:
+  app:
+    image: ${KLARWERK_ABBILD:?KLARWERK_ABBILD setzen - Abbildname aus abbild-bauen.mjs}
+    pull_policy: never

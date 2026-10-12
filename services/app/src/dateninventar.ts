@@ -193,8 +193,9 @@ export const DATENINVENTAR: readonly Datenart[] = [
     personenbezugGrund: "Kennungen von Autor und Bearbeiter; Freitext.",
     ablage: { ort: DATENBANK, tabellen: ["drafts"] },
     taetigkeit: "wissen",
-    loeschung: "Durch den Autor löschbar (Entwurfs-Papierkorb); mit dem Einreichen verbraucht.",
-    frist: BETREIBERFRIST,
+    loeschung:
+      "Durch den Autor löschbar: Löschen legt in den Entwurfs-Papierkorb; Endlöschung nach 30 Tagen (TRASH_RETENTION_DAYS, `CaptureService.runDraftTrashSweep`) oder vorher durch den Autor. Mit dem Einreichen verbraucht.",
+    frist: "Bis zum Löschen oder Einreichen; im Papierkorb 30 Tage.",
     selbstauskunft: { enthalten: true },
   },
   {
@@ -320,6 +321,60 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    // ADMIN-12 — die Fassungen der unternehmensweiten Kommunikationsregeln
+    // (`services/app/src/kommunikationsregeln.ts`).
+    id: "kommunikationsregeln",
+    name: "Kommunikationsregeln (Unternehmensvorgabe)",
+    inhalt:
+      "Je Fassung: Abwählbarkeit, Häufigkeit und Mailversand je Meldungsereignis, Kennung der ändernden Person, Zeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung der Person, die die Fassung gespeichert hat.",
+    ablage: { ort: DATENBANK, tabellen: ["kommunikationsregel_fassungen"] },
+    taetigkeit: "betrieb",
+    loeschung: "Kein Löschweg; korrigiert wird durch eine neue Fassung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Unternehmensvorgabe, keine Angabe über die Person; ihre Änderung steht im Prüfprotokoll.",
+    },
+  },
+  {
+    // ADMIN-12 — die persönliche Abwahl einer abwählbaren Meldung.
+    id: "meldungseinstellungen",
+    name: "Persönliche Meldungseinstellungen",
+    inhalt: "Je Konto und Meldungsereignis: abgewählt ja/nein und Zeitpunkt der letzten Änderung.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung des Kontos, dessen Einstellung gespeichert ist.",
+    ablage: { ort: DATENBANK, tabellen: ["meldungsregel_persoenlich"] },
+    taetigkeit: "konten",
+    loeschung: "Die Person setzt ihre Wahl selbst zurück; kein Löschweg mit der Kontolöschung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Die eigenen Einstellungen stehen für die Person auf der Seite „Meldungen und Kanäle“ und sind dort änderbar; ein eigener Abschnitt der Selbstauskunft ist noch nicht gebaut.",
+    },
+  },
+  {
+    // ADMIN-12 — der Zustellstatus je Veröffentlichung, Empfänger und Kanal.
+    id: "meldungszustellstatus",
+    name: "Zustellstatus von Veröffentlichungsmeldungen",
+    inhalt:
+      "Je Veröffentlichung, Empfänger und Kanal (Glocke, Mail): Status (angelegt, zugestellt, fehlgeschlagen, entfallen), feste Ursache, Zeitpunkte. Keine Mailadresse, kein Inhalt, keine Servermeldung.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung des Kontos, an das die Meldung ging.",
+    ablage: { ort: DATENBANK, tabellen: ["meldung_zustellstatus"] },
+    taetigkeit: "wissen",
+    loeschung: "Kein Löschweg, auch nicht mit der Kontolöschung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Der Status beschreibt die Zustellung der Meldungen der eigenen Glocke; ein eigener Abschnitt der Selbstauskunft ist noch nicht gebaut.",
+    },
+  },
+  {
     id: "protokoll",
     name: "Prüfprotokoll (Audit)",
     inhalt: "Wer (Kennung), wann, welche Aktion, welches Ziel und Nutzdaten der Aktion.",
@@ -364,6 +419,50 @@ export const DATENINVENTAR: readonly Datenart[] = [
     selbstauskunft: { enthalten: true },
   },
   {
+    // produkt:20261010:assistenz-name-avatar — das persönliche Assistenzprofil
+    // (`services/app/src/assistenz-profil.ts`), eine Zeile je Konto.
+    id: "assistenzprofil",
+    name: "Persönliches Assistenzprofil",
+    inhalt:
+      "Je Konto der selbst gewählte Anzeigename der Assistenz, die Kennung des gewählten Motivs, die Bewegungseinstellung und der Zeitpunkt der abgeschlossenen Ersteinrichtung. Dazu (produkt:20261011:assistenz-skills-werkzeuge) die eigenen Fähigkeits-Favoriten und bestätigten Routinen sowie die eigenen Fähigkeitsaufträge: Bindung (Fähigkeit, Fassung, Eingabe, Kennung und Fassung der Kontextobjekte, nie deren Text), Stand und Ergebnis mit Herkunft; je Konto höchstens 30 abgeschlossene Aufträge, ältere fallen beim nächsten Auftrag heraus. Keine Zugangswerte.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; der Anzeigename ist Freitext der Person und kann Persönliches enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["assistenz_profile"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto ändert Name und Motiv selbst unter „Meine Assistenz“; ein eigener Löschweg der Zeile ist nicht gebaut.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Das Konto sieht und ändert sein Profil jederzeit selbst unter „Meine Assistenz“; ein eigener Abschnitt der Selbstauskunft ist noch nicht gebaut.",
+    },
+  },
+  {
+    // produkt:20261010:poc-wiederherstellung-export — die persönlichen Klara-Gespräche
+    // (`services/app/src/klara-gespraech.ts`, produkt:20261008:klara-basis) standen bis hierher in
+    // keiner Datenart, obwohl `migrate()` sie anlegt. Der Sicherungsumfang ordnet sie ausdrücklich zu
+    // (`sicherungsumfang.ts`); hier steht, was sie sind und wie sie heute gelöscht werden.
+    id: "klaragespraeche",
+    name: "Persönliche Klara-Gespräche",
+    inhalt:
+      "Je Konto die Gespräche mit Klara: Nachrichten (Frage, Hilfe, Antworttext mit Antwortkennung und Quellenangaben), Objektbezug je Nachricht, der zuletzt bewusst begonnene Schritt mit Stand und der Zeitpunkt der Einwilligung.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; Frage- und Antworttext sind Freitext und können sensible Angaben enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["klara_gespraeche"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto löscht ein Gespräch selbst (DELETE /api/me/klara/gespraeche/:id); auch Administratoren lesen fremde Gespräche nicht.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht seine Gespräche (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
     id: "lernpfade",
     name: "Lernpfade und Fortschritt",
     inhalt:
@@ -385,6 +484,25 @@ export const DATENINVENTAR: readonly Datenart[] = [
     loeschung: "Kein Löschweg.",
     frist: BETREIBERFRIST,
     selbstauskunft: { enthalten: true },
+  },
+  {
+    id: "verstaendnisfragen",
+    name: "Verständnisfragen und Ergebnisse",
+    inhalt:
+      "Fragensätze zu einer Wissensfassung (Fragen, Antwortmöglichkeiten, richtige Antworten, Erläuterung, Belegstelle, Bestehensregel, Rollenzuordnung) mit ändernder, vorlegender und entscheidender Kennung; je Versuch Person, Eintrag, Fassung, Fragensatzversion, Zeitpunkt, gewählte Antworten und Ergebnis.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Jeder Versuch ist einer Person zugeordnet; Fragensätze nennen die Kennungen der Bearbeitenden.",
+    ablage: {
+      ort: DATENBANK,
+      tabellen: ["verstaendnis_fragensaetze", "verstaendnis_versuche"],
+    },
+    taetigkeit: "lernpfade",
+    loeschung: "Kein Löschweg.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: { enthalten: true },
+    befund:
+      "Ergebnisse sehen die Person selbst und die für den Fragensatz Zuständigen; keine Rangliste, kein Eintrag im Prüfprotokoll je Versuch.",
   },
   {
     id: "management",
@@ -484,6 +602,23 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    id: "meeting-dokumentbezuege",
+    name: "Meetingbezüge: Folien und Gesprächsstellen",
+    inhalt:
+      "Je Meetingbezug: Titel, Kennung des Eigners und der Teilnehmer, verbundene Präsentationsfassungen (Dateikennung, Fassung, Folienkennung, Folientitel, Sprechernotiz), Folienwechsel, verbundene Mitschriften (Zeitstelle, Sprecherbezeichnung, Gesprächstext), Rückmeldungen mit Zuordnungshistorie und Änderungsobjekte.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennungen von Eigner und Teilnehmern, Sprecherbezeichnungen und Gesprächstext der Mitschrift.",
+    ablage: { ort: DATENBANK, tabellen: ["meeting_dokumentbezuege"] },
+    taetigkeit: "wissen",
+    loeschung: "Mit dem Bestandsreset; kein eigener Löschweg in dieser Fassung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Im Meetingbezug selbst für Eigner und Teilnehmer einsehbar.",
+    },
+  },
+  {
     id: "lesevarianten",
     name: "Lesevarianten (gekennzeichnete Übersetzungen)",
     inhalt: "Übersetzte Lesefassungen von Wissensobjekten und Import-Kandidaten.",
@@ -575,9 +710,10 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "spaces",
     name: "Arbeitsräume (Spaces)",
     inhalt:
-      "Fassungen der Arbeitsräume mit Name, Zweck, zuständiger Person, Mitgliedern samt Recht, Ansichten, anlegender und ändernder Kennung.",
+      "Fassungen der Arbeitsräume mit Name, Zweck, zuständiger Person, Mitgliedern samt Recht, Ansichten, Firmenkontext (eigene Firma, Partner, öffentlich) samt Namen des Partners, Konten mit Existenzrecht, anlegender und ändernder Kennung.",
     personenbezug: "ja",
-    personenbezugGrund: "Kennungen der zuständigen Person, der Mitglieder und der Bearbeiter.",
+    personenbezugGrund:
+      "Kennungen der zuständigen Person, der Mitglieder, der Konten mit Existenzrecht und der Bearbeiter.",
     ablage: { ort: DATENBANK, tabellen: ["spaces_fassungen"] },
     taetigkeit: "wissen",
     loeschung: "Kein Löschweg — jede Fassung bleibt zuordenbar.",
@@ -585,6 +721,42 @@ export const DATENINVENTAR: readonly Datenart[] = [
     selbstauskunft: {
       enthalten: false,
       grund: "Je Space mit Zuständigkeit und Mitgliedern in der Space-Ansicht einsehbar.",
+    },
+  },
+  {
+    id: "chat",
+    name: "Interner Chat",
+    inhalt:
+      "Gespräche (direkt, Gruppe, Space, Artikel) mit Teilnehmenden, Gruppenname und Bezug; Nachrichten mit Absender, Zeitpunkt, Text, Sendekennung, Erwähnungen, Verweisen auf Artikel und Anhänge (nur Kennungen), markiertem Ausschnitt samt Herkunft und Wissensübernahmen (Kennung des Entwurfs).",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennungen von Absendern, Teilnehmenden und Erwähnten; der Nachrichtentext kann Angaben über Personen enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["chat_gespraeche", "chat_nachrichten"] },
+    taetigkeit: "wissen",
+    loeschung: "Kein Löschweg im Code — Nachrichten bleiben im Gespräch zuordenbar.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Noch nicht in der Selbstauskunft; die eigenen Gespräche und Nachrichten sind im Chat einsehbar.",
+    },
+  },
+  {
+    id: "gemeinsame-entwuerfe",
+    name: "Gemeinsame Artikelentwürfe",
+    inhalt:
+      "Je Artikel die gemeinsame Arbeitsfassung (Titel, Text, Basisfassung des Artikels), ihre gespeicherten Arbeitsstände und der Verlauf mit Kennung und Name der speichernden Person und Zeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennung und Name der speichernden Personen; der Entwurfstext kann Angaben über Personen enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["gemeinsame_entwuerfe"] },
+    taetigkeit: "wissen",
+    loeschung:
+      "Kein Löschweg im Code — ein übernommener oder eingereichter Entwurf bleibt als Verlauf zuordenbar.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Am gemeinsamen Entwurf des Artikels mit Verlauf einsehbar.",
     },
   },
   {
@@ -810,7 +982,8 @@ const TAETIGKEITEN: readonly TaetigkeitStamm[] = [
   {
     id: "lernpfade",
     name: "Lernpfade",
-    zweck: "Einarbeitung je Rolle und Nachprüfung gekoppelter Arbeitsmittel.",
+    zweck:
+      "Einarbeitung je Rolle, Verständnisfragen zu gültigen Wissensfassungen und Nachprüfung gekoppelter Arbeitsmittel.",
   },
   {
     id: "betroffenenrechte",

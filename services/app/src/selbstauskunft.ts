@@ -30,6 +30,7 @@ import { DATENINVENTAR, type Datenart } from "./dateninventar";
 import type { Kenntnisnahmeeintrag } from "./kenntnisnahme";
 import type { Loeschantrag, LoeschantragRepo } from "./loeschantraege";
 import type { NachfolgeEintrag } from "./verantwortung-nachfolge";
+import type { Versuch } from "./verstaendnisfragen";
 
 /** Die Quellen der Auskunft — strukturell, damit Tests sie ohne die ganze App stellen können. */
 export interface SelbstauskunftQuellen {
@@ -65,6 +66,8 @@ export interface SelbstauskunftQuellen {
   };
   /** Nachfolge bei Befristung: die Einträge, in denen die Person vorkommt (`verantwortung-nachfolge.ts`). */
   nachfolge: { betreffend?(person: string): Promise<NachfolgeEintrag[]> };
+  /** Verständnisfragen: die eigenen Versuche (`verstaendnisfragen.ts`); optional (schmale Attrappen). */
+  verstaendnisfragen?: { versucheVon(personId: string): Promise<Versuch[]> };
 }
 
 /** In welcher Rolle die Person in einem Nachfolgeeintrag steht. */
@@ -149,6 +152,22 @@ export interface Selbstauskunft {
   }>;
   anhaenge: Array<{ id: string; name: string; typ: string; groesse: number; erstelltAm: string }>;
   lernpfade: Array<{ rolle: string; pfadId: string; erledigteSchritte: string[] }>;
+  /**
+   * Die eigenen Versuche an Verständnisfragen — `null`: diese Ablage ist hier nicht angebunden
+   * („nicht abrufbar", nicht leer).
+   */
+  verstaendnisfragen: Array<{
+    versuchId: string;
+    koId: string;
+    titel: Titel;
+    koFassung: number;
+    fragensatzId: string;
+    fragensatzVersion: number;
+    abgegebenAm: string;
+    richtig: number;
+    fragen: number;
+    bestanden: boolean;
+  }> | null;
   management: { ruhestandshorizont: RetirementEntry | null; bereichsverantwortung: string[] };
   /** R-1645: was bei einem Ausscheiden noch zu übergeben wäre. */
   uebergabe: {
@@ -311,6 +330,21 @@ export async function erstelleSelbstauskunft(
     }
   }
 
+  const verstaendnisfragen: Selbstauskunft["verstaendnisfragen"] = quellen.verstaendnisfragen
+    ? (await quellen.verstaendnisfragen.versucheVon(nutzerId)).map((v) => ({
+        versuchId: v.id,
+        koId: v.koId,
+        titel: titel(v.koId),
+        koFassung: v.koVersion,
+        fragensatzId: v.fragensatzId,
+        fragensatzVersion: v.fragensatzVersion,
+        abgegebenAm: v.abgegebenAm,
+        richtig: v.bewertung.richtig,
+        fragen: v.bewertung.fragen,
+        bestanden: v.bewertung.bestanden,
+      }))
+    : null;
+
   const fragen = luecken
     .filter((g) => g.createdBy === nutzerId)
     .map((g) => ({
@@ -415,6 +449,7 @@ export async function erstelleSelbstauskunft(
         erstelltAm: o.createdAt,
       })),
     lernpfade,
+    verstaendnisfragen,
     management: {
       ruhestandshorizont: ruhestand.find((r) => r.userId === nutzerId) ?? null,
       bereichsverantwortung: profile.filter((p) => p.managerId === nutzerId).map((p) => p.category),
@@ -451,6 +486,7 @@ export async function erstelleSelbstauskunft(
     kenntnisnahmen: auskunft.kenntnisnahmen.length,
     anhaenge: auskunft.anhaenge.length,
     lernpfade: auskunft.lernpfade.length,
+    verstaendnisfragen: auskunft.verstaendnisfragen?.length ?? -1,
     loeschantraege: auskunft.loeschantraege.length,
     nachfolge: auskunft.nachfolge?.length ?? -1,
     kiLaeufe: auskunft.kiLaeufe?.length ?? -1,

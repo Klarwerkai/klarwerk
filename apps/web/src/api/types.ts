@@ -89,6 +89,10 @@ export interface KoProposal {
   resultVersion?: number;
   /** Begründung der Entscheidung — bei einer Ablehnung die Auskunft, warum. */
   note?: string;
+  /** package:pruefablauf: die benannte Prüfperson (Kennung). */
+  pruefer?: string;
+  /** package:pruefablauf: Rückfragen an den Einreicher; der Vorschlag bleibt dabei offen. */
+  rueckfragen?: { von: string; at: string; text: string }[];
 }
 
 // SCRUM-129 / FR-KO-07: echte externe Quelle am Objekt (Stufe 2, nie peer-validiert).
@@ -571,6 +575,79 @@ export interface KoFrische {
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
+/**
+ * Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 — Spiegel von `KoWeisung`
+ * (services/knowledge-object/src/types.ts): wer das Objekt als Weisung gültig gesetzt hat, für
+ * welchen Bereich und welche Fassung, welche betroffenen Punkte ausdrücklich bestehen blieben, und
+ * die nachfolgende Sichtung (Verantwortliche, Frist, ggf. erledigt).
+ */
+export interface KoWeisung {
+  von: string;
+  am: string;
+  bereich: string;
+  fassung: number;
+  bestehenGelassen: string[];
+  /** R-0573 · Nacharbeit 11: ausdrücklich überstimmte Punkte (Konfliktkennungen). */
+  ueberstimmt?: string[];
+  /** Nacharbeit 14: der Beleg dieser Weisung — bindet die Sichtung an genau sie. */
+  beleg?: { auditSeq: number; auditHash: string };
+  sichtung: {
+    verantwortlich: string;
+    frist: string;
+    gesichtetVon?: string;
+    gesichtetAm?: string;
+    vermerk?: string;
+  };
+}
+
+/** Entscheidung 27 — Spiegel von `KoExterneFreigabe` (services/knowledge-object/src/types.ts). */
+export interface KoExterneFreigabe {
+  art: "wissen" | "referenz";
+  herausgeber: string;
+  freigabeKennung?: string;
+  freigegebenAm: string;
+  freigegebenVon?: string;
+  nachweis?: string;
+  geltung: string;
+  zustaendig: string;
+  bestaetigtVon: string;
+  bestaetigtAm: string;
+  fassung: number;
+}
+
+/**
+ * Entscheidung 18 / Antwort 18 — die Weisungsbefugnis am Konto (Spiegel von
+ * services/auth/src/types.ts). `bereiche` sind Kategorien; `*` steht für das ganze Unternehmen.
+ */
+export interface Weisungsbefugnis {
+  bereiche: string[];
+  erteiltVon: string;
+  erteiltAm: string;
+}
+
+/** R-0228: Spiegel von `Verifizierung` in services/app/src/verifizierungsmarke.ts. */
+export interface KoVerifizierung {
+  mensch:
+    | { stand: "nicht_belegt" }
+    | { stand: "nicht_auffindbar" }
+    | { stand: "nicht_abrufbar" }
+    | {
+        stand: "belegt";
+        art:
+          | "bewertung"
+          | "verwalter"
+          | "rueckgabe"
+          | "weisung"
+          | "externe_freigabe"
+          | "weisung_sichtung";
+        pruefer: string;
+        zeitpunkt: string;
+        fassung: number | null;
+        aktuell: boolean;
+      };
+  validiertVon: string[];
+}
+
 /** R-1631: Bauteile, Materialien und Geltungskontext — Spiegel von `AnlagenKontext` im Dienst. */
 export interface AnlagenKontext {
   bauteile?: string[];
@@ -755,6 +832,49 @@ export interface KnowledgeObject {
   // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
   // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
+  // Aufnahme gesamt-wissen-herkunft (R-0228): die Verifizierungsmarke — Spiegel von
+  // `services/app/src/verifizierungsmarke.ts`. Nur `GET /api/kos/:id` liefert sie; fehlt das Feld,
+  // ist sie in dieser Antwort NICHT ERHOBEN (Liste, Suche, Prüfbrett) — nicht „ungeprüft".
+  verifizierung?: KoVerifizierung;
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27 — fehlen sie, ist das Objekt
+  // weder als Weisung gesetzt noch aus einer externen Freigabe übernommen.
+  weisung?: KoWeisung;
+  externeFreigabe?: KoExterneFreigabe;
+  // Nacharbeit 11 (Ben B1): nur an `GET /api/kos/:id` und nur für weisungsbefugte Lesende — die
+  // Konten, die diesen Eintrag mit ihrem eigenen Zugang lesen und deshalb sichten können.
+  sichtungsKandidaten?: string[];
+  // Nacharbeit 14 (Ben B2): nur an `GET /api/kos/:id` — überstimmte Punkte (Konfliktkennungen),
+  // deren Abschluss noch nicht vollständig ist. Fehlt das Feld, ist nichts offen.
+  weisungAbschlussOffen?: string[];
+  // Nacharbeit 11 (Ben B2): durch eine Weisung überstimmt und geschlossen (nicht gelöscht).
+  geschlossen?: { durchKoId: string; conflictId: string; von: string; am: string; fassung: number };
+  /**
+   * AW06-K02: die Annahme DIESER Fassung, vom Server aus genau dem referenzierten Beleg gelesen —
+   * Fassung, Person, Zeitpunkt und die Kontoregel, die im Beleg steht (`null`: dort nicht
+   * festgehalten). Fehlt das Feld, gibt es für diese Fassung keine belegte Annahme.
+   */
+  annahme?: {
+    fassung: number;
+    person: string;
+    zeitpunkt: string;
+    kontoregel: string | null;
+    benoetigt?: number;
+  };
+  /**
+   * Antwort 19 (gesamt-peer-validierung): die Sichtung der unmittelbar gültig gesetzten Weisung —
+   * verantwortliche Person, Frist (JJJJ-MM-TT), gebunden an `koVersion`; `ergebnis` fehlt, solange
+   * nicht gesichtet ist.
+   */
+  weisungsSichtung?: {
+    auditSeq: number;
+    auditHash: string;
+    koVersion: number;
+    erteiltVon: string;
+    bereich: string;
+    verantwortlich: string;
+    frist: string;
+    ergebnis?: { art: "bestaetigt" | "widerrufen"; von: string; am: string; auditSeq: number };
+  };
   // R-0082: ab zwei Anlagen trägt `assets` die Liste und `asset` spiegelt die erste; eine einzelne
   // Anlage (und Altbestand) steht nur in `asset`. Gelesen wird beides über `anlagenVon`.
   asset: string | null;
@@ -1209,7 +1329,10 @@ export interface Gap {
   // produkt:20261010:wissenskreislauf-schliessen (Spiegel von `GapView`): wie eine geschlossene
   // Lücke geschlossen wurde — fachlich gelöst oder administrativ zurückgenommen. Fehlt bei offenen
   // Lücken und beim Altbestand.
-  abschlussArt?: "fachlich" | "administrativ";
+  abschlussArt?: "fachlich" | "administrativ" | "zurueckgewiesen";
+  // produkt:20261010:antwort-beanstandung-korrektur: die Lücke ist eine beanstandete Antwortaussage
+  // (der Fragetext ist dann eine Neutralbezeichnung; die Aussage steht nur im Vorgang).
+  beanstandung?: true;
   // Nur in der berechtigten Sicht: eine Rückfrage an die Fragenden ist offen.
   rueckfrageOffen?: true;
   // Nur in der berechtigten Sicht: der Betrachter hat diese Frage selbst gestellt.
@@ -1232,6 +1355,7 @@ export type GapVorgangsphase =
   | "bereit_zum_abschluss"
   | "geloest"
   | "zurueckgenommen"
+  | "zurueckgewiesen"
   | "geschlossen_ohne_nachweis";
 
 export type GapVorgangsrolle = "fragend" | "zustaendig" | "verwaltend";
@@ -1248,6 +1372,7 @@ export type GapNaechsterSchritt =
   | "bearbeitung_abwarten"
   | "ergebnis_lesen"
   | "erneut_fragen"
+  | "begruendung_lesen"
   | "keiner";
 
 export type NutzbarkeitsGrund =
@@ -1303,13 +1428,45 @@ export interface GapVorgang {
     antwort?: string;
     beantwortetAm?: string;
     vonMirBeantwortet?: boolean;
+    // Nur für die zuständige Person bei einer Beanstandung: die angefragte Meldung.
+    meldungId?: string;
   }[];
   entwurf: GapVorgangEintrag | { zugaenglich: false } | null;
   ergebnis: GapVorgangEintrag | { zugaenglich: false } | null;
   abschluss:
     | { art: "fachlich"; at: string; koVersion: number }
     | { art: "administrativ"; at: string; grund: GapRuecknahmeGrund }
+    | {
+        art: "zurueckgewiesen";
+        at: string;
+        begruendung: string;
+        koId: string | null;
+        koVersion: number | null;
+      }
     | null;
+  // produkt:20261010:antwort-beanstandung-korrektur (Spiegel von `BeanstandungSicht`).
+  beanstandung?: GapBeanstandungSicht;
+}
+
+export interface GapBeanstandungSicht {
+  koId: string | null;
+  quelleZugaenglich: boolean;
+  quelleFehlt: boolean;
+  fassungenDamals: number[];
+  aussage: string;
+  aussageZurueckgehalten: boolean;
+  meldungen: number;
+  eigeneMeldungen: {
+    meldungId: string;
+    at: string;
+    answerId: string | null;
+    aussageId: string;
+    koVersion: number | null;
+    fundstelleId: string | null;
+    quelleFehlt: boolean;
+    begruendung: string;
+  }[];
+  begruendungen: { meldungId: string; at: string; text: string }[];
 }
 
 // R-0773: eine eigene Suche ohne Treffer (`GET /api/library/nulltreffer`, nur die eigene Liste).
@@ -2001,6 +2158,12 @@ export interface ImpactReport {
   askTotal: number;
   answeredWithoutGap: number;
   answerRate: number;
+  // R-0723/R-0750: Fragen je Woche (Wochenstart Montag). Optional: ein älterer Server liefert sie
+  // nicht — dann gibt es keinen Wochenverlauf der Quote, und die Fläche sagt das.
+  askByWeek?: Record<string, { asked: number; answeredWithoutGap: number }>;
+  // R-0750: validierte Objekte ohne belegten Prüfzeitpunkt — in keiner Woche gezählt. Optional wie
+  // `askByWeek` (älterer Server).
+  validatedUnknownWeek?: number;
 }
 
 export interface PublicUser {
@@ -2022,6 +2185,11 @@ export interface PublicUser {
   // regulären Kontos (`services/auth/src/types.ts:42-45`). Das fehlende Feld bedeutet
   // „unbefristet" — es ist keine fehlende Auskunft, sondern eine.
   accessExpiresAt?: string;
+  // Aufnahme gesamt-peer-validierung (Antwort 18): die am Konto vergebene fachliche
+  // Weisungsbefugnis mit Zuständigkeitsbereichen (`*` = ganzes Unternehmen). Fehlt das Feld, hat
+  // das Konto keine — unabhängig von seiner Rolle. Seit der Integration (gesamt-wissen-herkunft,
+  // Nacharbeit 12) die EINE Befugnis auch für die Weisung mit punktweiser Entscheidung.
+  weisungsbefugnis?: Weisungsbefugnis;
 }
 
 // SCRUM-116/108: Import-/Source-Review-Kandidaten (JSON-Re-Import).
@@ -2529,6 +2697,9 @@ export interface AskResponse {
   // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
   // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
   verschlossen?: VerschlossenHinweis[];
+  // R-0293 (W3-C): die Kennung des dauerhaften Antwortbelegs. `null`, wenn kein Beleg entstand
+  // (Ablage nicht verdrahtet oder ausgefallen); ein älterer Server sendet das Feld nicht.
+  answerId?: string | null;
   // R-0284: der Rahmen der Suche; ein älterer Server sendet ihn nicht — dann steht kein Satz.
   pruefrahmen?: AskPruefrahmen;
   // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
@@ -2542,8 +2713,10 @@ export interface AskResponse {
   // R-0310: je Absatz die tragenden Quellen, die ihn belegen (services/app/src/absatz-belege.ts);
   // nur bei beantworteter Frage. Angewandt in `lib/askResponse.ts` (`selectAnswer`).
   absaetze?: AbsatzBeleg[];
-  // REF-01: die Aussagebindung der Antwort — hier nur gelesen, was die Prüfanzeige braucht.
-  aussagen?: AussagenBelegKurz;
+  // REF-01: je Aussage Kennung, Wortlaut und Fundstellen; nur bei beantworteter Frage. Grundlage der
+  // Beanstandung einer konkreten Aussage (produkt:20261010:antwort-beanstandung-korrektur) und der
+  // Aussagetexte der Referenzprüfungsanzeige (REF-02; `AussagenBelegKurz` ist ein Teil davon).
+  aussagen?: AntwortAussagenBeleg;
   // REF-02: das Ergebnis der Referenzprüfung (Spiegel von `ReferenzPruefSicht`,
   // services/ask/src/referenz-pruefung.ts). Fehlt ohne Prüfdienst oder ohne beantwortete Frage.
   referenzpruefung?: ReferenzPruefung;
@@ -2719,6 +2892,60 @@ export interface AskGeltungsauskunft {
   fragekontext: Fragekontext;
   quellen: { id: string; passung: GeltungsPassung; geltung?: KoGeltung }[];
 }
+
+// R-0293 / R-0276 / R-0317 / R-0340: GET /api/klara/answers/:answerId/explanation — der Weg zur
+// Antwort aus dem gespeicherten Beleg. Spiegel des Server-Lesemodells
+// (services/ask/src/answer-explanation.ts); `apps/web` darf nicht aus `services/` importieren.
+export type AnswerPrimaryResolutionFailure =
+  | "UNKNOWN_REFERENCE"
+  | "UNRESOLVABLE_REFERENCE"
+  | "DAMAGED_REFERENCE"
+  | "ACCESS_DENIED"
+  | "REDACTION_REQUIRED";
+
+export interface AnswerExplanationEvidence {
+  knowledgeObjectId: string;
+  knowledgeObjectVersion: number | null;
+  evidenceRole: "carrying" | "consulted";
+  validationDecisionRef: { auditSeq: number; auditHash: string } | null;
+  validationReferenceAbsenceReason: string | null;
+  sourceRecordId: string | null;
+  sourceRecordIdReason: string | null;
+  locator: string | null;
+  locatorReason: string | null;
+  confidentialityAtExecution: string | null;
+  responsibleAtExecution: string | null;
+  responsibleKindAtExecution: "owner" | "author-fallback" | null;
+  // R-0293: der Prüf-Lauf zum Antwortzeitpunkt (getrennt von der Freigabe). Ein älterer Server
+  // sendet das Feld nicht — dann gilt es als unbekannt.
+  checkStateAtExecution?: "unknown" | "unchecked" | "noCoverage" | "incomplete" | "proven" | null;
+  openConflictToday: boolean | null;
+  redacted: boolean;
+}
+
+export type AnswerExplanationResponse =
+  | {
+      state: "OK";
+      answerId: string;
+      createdAt: string;
+      snapshotStatus: "PENDING_EVIDENCE" | "INCOMPLETE" | "PARTIAL" | "COMPLETE";
+      snapshotRevision: number;
+      integrity: "VALID" | "DEGRADED" | "INVALIDATED" | "REDACTED";
+      primaryResolutionFailure: AnswerPrimaryResolutionFailure | null;
+      // Freigabe der tragenden Quellen — NUR Freigabe, keine Aussage über den Prüf-Lauf.
+      carryingSourcesValidated: boolean | null;
+      // R-0293: vollständiger Prüf-Lauf aller tragenden Quellen; fehlt bei älteren Servern.
+      carryingSourcesChecked?: boolean | null;
+      openConflictToday: boolean | null;
+      generationMode: "model" | "deterministic" | null;
+      // R-0317: Referenz auf den Laufprotokoll-Datensatz (Modellfassung); kein Anbietername.
+      // Optional, weil ein älterer Server das Feld nicht sendet.
+      modelRunId?: string | null;
+      modelRunIdReason?: string | null;
+      evidence: AnswerExplanationEvidence[];
+      evidenceCount: number;
+    }
+  | { state: "NO_SNAPSHOT"; answerId: string; createdAt: string };
 
 // R-0305/R-1099: Spiegel von `ZweitmeinungErgebnis` in `services/reasoner/src/types.ts` (der
 // webbuild kopiert nur `apps/web`, ein Import von dort bräche den Produktionsbau). `stufe` statt
@@ -2968,6 +3195,9 @@ export interface ManagementSnapshot {
     avgTrust: number;
     healthScore: number;
     healthBand: MgmtBand;
+    // R-0736/R-0755: wie viele der gezählten Objekte Demodaten sind. Optional — ein älterer Server
+    // liefert das Feld nicht, und dann behauptet die Fläche auch nichts darüber.
+    demoKos?: number;
   };
   capital: { score: number; band: MgmtBand; parts: MgmtScorePart[] };
   valuationFacts: { validatedKos: number; totalKos: number; avgTrust: number };
@@ -3912,9 +4142,41 @@ export interface AntwortMeldungQuittung {
   grund: AntwortMeldeGrund;
   at: string;
   // Wohin die Meldung ging — benannte verantwortliche Person oder ersatzweise der Autor. Wer das
-  // ist, sagt die Quittung bewusst nicht.
-  zugestelltAn: "owner" | "author-fallback";
+  // ist, sagt die Quittung bewusst nicht. `niemand`: „Quelle fehlt" ohne Quelle — offen ohne
+  // Zuständigkeit.
+  zugestelltAn: "owner" | "author-fallback" | "niemand";
   bereitsGemeldet: boolean;
+  // produkt:20261010:antwort-beanstandung-korrektur: nur bei der Beanstandung einer Aussage.
+  beanstandung?: {
+    vorgangId: string;
+    answerId: string | null;
+    aussageId: string;
+    aussageFingerabdruck: string;
+    koVersion: number | null;
+    fundstelleId: string | null;
+    quelleFehlt: boolean;
+    zusammengefuehrt: boolean;
+    zustaendigkeit: "zugeordnet" | "offen";
+  };
+}
+
+/** Die Beanstandung einer konkreten Aussage (`POST /api/ask/report`, Felder `aussage`/`begruendung`). */
+export interface AntwortBeanstandung {
+  aussage: { aussageId: string; text: string; fundstelleId?: string; quelleFehlt?: true };
+  begruendung: string;
+}
+
+// produkt:20261009:referenzki-quellenbelege (REF-01): Spiegel des Teils von `AussagenBeleg`
+// (services/ask/src/aussage-fundstellen.ts), den die Fragenseite für die Beanstandung braucht.
+export interface AntwortAussagenBeleg {
+  aussagen: {
+    aussageId: string;
+    text: string;
+    deckung: "belegt" | "teilweise" | "unbelegt";
+    teile: {
+      fundstellen: { fundstelleId: string; koId: string; koVersion: number; auszug: string }[];
+    }[];
+  }[];
 }
 
 export interface Notification {
@@ -3944,8 +4206,20 @@ export interface Notification {
   art?: "neu" | "aktualisierung";
   hervorgehoben?: boolean;
   // produkt:20261010:wissenskreislauf-schliessen: Unterart und Lücke einer `luecke`-Meldung.
-  lueckenArt?: "geloest" | "rueckfrage" | "rueckfrage_beantwortet";
+  lueckenArt?: "geloest" | "rueckfrage" | "rueckfrage_beantwortet" | "zurueckgewiesen";
   gapId?: string;
+  // ADMIN-12: die tägliche Zusammenfassung gewöhnlicher Veröffentlichungen eines Tages (ohne `koId`).
+  zusammenfassung?: {
+    tag: string;
+    anzahl: number;
+    eintraege: Array<{
+      vermerkId: string;
+      koId: string;
+      title: string;
+      fassung: number;
+      art: "neu" | "aktualisierung";
+    }>;
+  };
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH
@@ -3977,7 +4251,10 @@ export type FeatureName =
   // AUFTRAG-mega64 Block A: das Demodaten-Laden. Vorgabe AUS, fail-closed — ein Werkzeug, das
   // Konten anlegt, ist keine Grundausstattung. Ohne diesen Schalter existiert die Route nicht
   // (services/app/src/routes/admin-routes.ts), und der Knopf erscheint deshalb auch nicht.
-  | "demodaten";
+  | "demodaten"
+  // R-0570 / Entscheidung zu Frage 14: die anonyme Vorführung mit erfundenen Inhalten. Vorgabe AUS;
+  // steht auch in der Teilmenge VOR der Anmeldung, weil sie sich nur an Unangemeldete richtet.
+  | "vorfuehrung";
 
 // AUFTRAG-mega61: `Partial`, weil ein UNANGEMELDETER Aufrufer nur die Teilmenge bekommt, deren
 // Fläche vor der Anmeldung erreichbar ist (rechtsseiten, hinweisbanner). Ein fehlender Schlüssel
@@ -4076,6 +4353,45 @@ export interface SicherungsEintrag {
   folgeNummer: number | null;
 }
 
+/**
+ * PETER-20261011-P08 — die Vorschau des Firmenresets, wie `GET /api/admin/factory-reset` sie im
+ * Desktopbetrieb mitliefert (services/app/src/routes/admin-routes.ts, `FirmenresetVorschau`).
+ */
+export interface FirmenresetVorschau {
+  /** Die Ausführung verlangt genau diese Kennung zurück; hat sich der Bestand bewegt, löscht sie nichts. */
+  kennung: string;
+  entfernt: {
+    wissensobjekte: number;
+    offeneFragen: number;
+    weitereEintraege: number;
+    ablagen: string[];
+  };
+  erhalten: { benutzerkonten: number; woerterbuch: number; protokolleintraege: number };
+}
+
+/**
+ * P08-AC05: wie sich das angemeldete Konto bestätigt. `erforderlich` = Konto ohne lokales Passwort
+ * (reines SSO): statt zweier Passwörter zwei passende SSO-Wiederanmeldungen; `bestaetigt` zählt die
+ * in dieser Sitzung gültig bestätigten Schritte (0–2). Optional, damit ältere Prüfstände gelten.
+ */
+export interface FirmenresetSsoStand {
+  erforderlich: boolean;
+  eingerichtet: boolean;
+  bestaetigt: number;
+}
+
+export type FirmenresetStatus =
+  | { available: false }
+  | { available: true; vorschau: FirmenresetVorschau; sso?: FirmenresetSsoStand };
+
+export interface FirmenresetAuftrag {
+  kennung: string;
+  bestaetigt: true;
+  /** Leer bei einem SSO-Konto — dort zählen die zwei Wiederanmeldungen dieser Sitzung. */
+  passwort1: string;
+  passwort2: string;
+}
+
 export type SicherungenAuskunft = (
   | {
       zustand: "gelesen";
@@ -4091,7 +4407,36 @@ export type SicherungenAuskunft = (
    * Feld weiter gelten; der Server sendet es in jedem der drei Zustände.
    */
   schutzwege?: Schutzwege;
+  /**
+   * produkt:20261010:poc-wiederherstellung-export — was die Sicherung je Bereich enthält, gebunden an
+   * die laufende Fassung. Optional für Teilaufbauten ohne Fassungsangabe.
+   */
+  umfang?: SicherungsUmfang;
 };
+
+// ================================================================================================
+// produkt:20261010:poc-wiederherstellung-export — DER SICHERUNGSUMFANG JE BEREICH.
+// Spiegel von `services/app/src/sicherungsumfang.ts`; Titel, Grund und Folge übersetzt die Fläche.
+// ================================================================================================
+export type UmfangZustand = "im_dump" | "ausgeschlossen" | "nicht_vorhanden";
+export type UmfangBeleg =
+  | "belegt"
+  | "zeilen_gleich"
+  | "abweichend"
+  | "nicht_gemessen"
+  | "kein_beleg";
+export interface SicherungsUmfangBereich {
+  id: string;
+  art: "kern" | "assistenz";
+  zustand: UmfangZustand;
+  tabellen: string[];
+  beleg: UmfangBeleg;
+}
+export interface SicherungsUmfang {
+  produkt: { version: string; commit: string };
+  tabellenImDump: number;
+  bereiche: SicherungsUmfangBereich[];
+}
 
 // ================================================================================================
 // ADMIN-13 · DIE VIER SCHUTZWEGE — Spiegel von `services/app/src/routes/admin-routes.ts`.
@@ -4148,6 +4493,11 @@ export interface RestoreDrillBefund {
     anhaenge: VergleichKategorie & { belegeOhneAnhang: number | null };
     beziehungen: VergleichKategorie;
     rechte: VergleichKategorie & { rollenDump: string | null; rollenDatenbank: string | null };
+    /**
+     * produkt:20261010:poc-wiederherstellung-export — private Assistenzspeicher. Optional: ältere
+     * Server senden das Feld nicht; ein älteres Protokoll ergibt am Server `nicht_gemessen`.
+     */
+    assistenz?: VergleichKategorie;
   };
   wissensnachweis: string | null;
 }
@@ -4180,6 +4530,56 @@ export interface Schutzwege {
   restore: RestoreDrillBefund | SchutzwegUnbekannt;
   export: ExportBefund | SchutzwegUnbekannt;
   papierkorb: PapierkorbBefund | SchutzwegUnbekannt;
+}
+
+// ==================================================================================================
+// AUFNAHME 20260922 · GESAMT-BESTANDSRESET — der Drahtvertrag des administrativen Aufrufs.
+// ==================================================================================================
+//
+// Gegenstück: `services/app/src/bestandsreset-dienst.ts` (Vorschau, Befund) und
+// `services/app/src/routes/admin-routes.ts` (`GET|POST /api/admin/bestandsreset`).
+
+export type BestandsresetZustand =
+  | "RUNNING"
+  | "OK"
+  | "ROLLED_BACK"
+  | "ROLLED_BACK_BY_CRASH"
+  | "COMMITTED_AUDIT_MISSING"
+  | "INCONSISTENT";
+
+export interface BestandsresetBefund {
+  zustand: BestandsresetZustand;
+  /** Steht der Bestand noch auf seinem Stand vor dem Reset? `undefined` = nicht aussagbar. */
+  bestandIstP0?: boolean;
+  erfolgMeldbar: boolean;
+  begruendung: string;
+}
+
+export interface BestandsresetVorschau {
+  geloescht: { tabelle: string; zeilen: number }[];
+  wissensobjekte: number;
+  papierkorb: number;
+  erhalten: { konten: number; begriffe: number };
+  /** Muss beim Ausführen unverändert zurückgegeben werden — sonst läuft nichts. */
+  kennung: string;
+}
+
+export type BestandsresetAuskunft =
+  | { verfuegbar: false }
+  | { verfuegbar: true; vorschau: BestandsresetVorschau; letzterLauf: BestandsresetBefund | null };
+
+export interface BestandsresetAuftrag {
+  passwort: string;
+  passwortWiederholung: string;
+  folgenBestaetigt: boolean;
+  vorschauKennung: string;
+}
+
+export interface BestandsresetErgebnis {
+  ok: true;
+  laufId: string;
+  befund: BestandsresetBefund;
+  protokolliert: boolean;
 }
 
 // ==================================================================================================

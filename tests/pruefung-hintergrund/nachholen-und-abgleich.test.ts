@@ -12,7 +12,7 @@ import {
   createHintergrundpruefung,
   hintergrundArt,
 } from "../../services/app/src/hintergrundpruefung";
-import type { KnowledgeObject } from "../../services/knowledge-object";
+import { type KnowledgeObject, ohneBestandsstempel } from "../../services/knowledge-object";
 import { type ModelClient, ModelProvider, Reasoner } from "../../services/reasoner";
 import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 import { GOOD_CONFLICT, GOOD_DUPLICATE } from "../review26-teilpruefung-ursache/fixture";
@@ -61,6 +61,8 @@ async function buehne(budget: Budget = {}) {
           run: createAiCheckRunner({ ...services, vorVergleich }),
           log: () => undefined,
         }),
+      // P14 · B-07: derselbe Runner für den stillen Bestandsabgleich (wie build-app.ts).
+      baueLauf: (vorVergleich) => createAiCheckRunner({ ...services, vorVergleich }),
       modellAktiv: () => services.reasoner.status().active,
       audit: services.audit,
       now: () => uhr.jetzt,
@@ -211,21 +213,70 @@ describe("R-1111 · laufender Abgleich: später entstandene Nachbarn, Tagesbudge
     expect((await b.vermerk(id))?.ueberholt).toBeFalsy();
 
     const spaeter = await b.lege("Später", "Das Ventil bleibt während der Wartung offen");
-    expect((await b.vermerk(id))?.ueberholt).toBe(true);
+    // produkt:20261011:peter-p14 · B-07: der Bestandsteil wirkt im INTERNEN Abgleich; die
+    // Lesefassung (`get`) zeigt eine Änderung an einem anderen Objekt nicht.
+    const intern = (await b.services.ko.listMitBestandsabgleich()).find((k) => k.id === id);
+    expect(intern?.aiCheck?.ueberholt).toBe(true);
+    expect((await b.vermerk(id))?.ueberholt).toBeFalsy();
+    const ausgegebenVorher = await b.vermerk(id);
     const aufrufeVorher = b.modell.aufrufe;
 
     const bericht = await b.lauf();
 
     expect(bericht).toMatchObject({ abgeglichen: 1, nachgeholt: 0, fehlgeschlagen: 0 });
     expect(b.modell.aufrufe).toBeGreaterThan(aufrufeVorher);
-    const nachher = await b.vermerk(id);
-    expect(nachher?.status).toBe("done");
-    expect(nachher?.ueberholt).toBeFalsy();
-    // Der später hinzugekommene Nachbar ist jetzt Teil des geprüften Bestands.
-    expect(nachher?.coverage?.available).toBe(2);
+    // P14 · B-07 (Nacharbeit 5): der Abgleich war STILL — der ausgegebene Vermerk (Status,
+    // Zeitpunkte, Abdeckung) ist Zeichen für Zeichen derselbe wie vor dem Lauf. Ausgegeben heisst:
+    // ohne den Bestandsteil der Bindung, den keine Antwort trägt (`ohneBestandsstempel`, Haken in
+    // build-app.ts). Genau dieser interne Teil ist erneuert — das ist der Abgleich (Nacharbeit 7).
+    const nachLauf = await b.vermerk(id);
+    expect(ohneBestandsstempel({ aiCheck: nachLauf })).toEqual(
+      ohneBestandsstempel({ aiCheck: ausgegebenVorher }),
+    );
+    expect(nachLauf?.basis?.bestand).not.toBe(ausgegebenVorher?.basis?.bestand);
+    // Intern ist der Nachweis an den jetzigen Bestand gebunden: der später hinzugekommene Nachbar
+    // ist Teil des geprüften Bestands, der Abgleich hat nichts mehr zu tun.
+    const internNachher = (await b.services.ko.listMitBestandsabgleich()).find((k) => k.id === id);
+    expect(internNachher?.aiCheck?.ueberholt).toBeUndefined();
+    const ko = (await b.services.ko.get(id)) as KnowledgeObject;
+    expect(ko.aiCheck?.basis).toEqual(await b.services.ko.aktuellePruefbasis(ko));
+    expect(await b.lauf()).toMatchObject({ abgeglichen: 0, offen: 0 });
     // Ohne Prüfvermerk (Import ohne angeforderte Prüfung) startet der Lauf keinen Modellaufruf.
     expect((await b.services.ko.get(spaeter.id))?.aiCheck).toBeUndefined();
     expect((await b.protokoll())[0]?.payload).toMatchObject({ abgeglichen: 1 });
+  });
+
+  // P14 · Nacharbeit 7 (Prüflauf: derselbe still scheiternde Abgleich stand in jedem Takt vorn und
+  // verbrauchte das Laufbudget). Ein NICHT vorübergehender Fehlschlag wird für genau diesen
+  // Bestandsstand zurückgestellt; ein neuer Bestandsstand nimmt ihn wieder auf.
+  it("ein still gescheiterter Abgleich wartet auf einen neuen Bestand — der Vermerk bleibt unberührt", async () => {
+    const b = await buehne();
+    await b.lege("Kandidat", "Pumpenleistung im Betrieb prüfen");
+    const id = await b.reicheEin("Subjekt", "Das Ventil muss vor der Wartung geschlossen werden");
+    await b.lege("Später", "Das Ventil bleibt während der Wartung offen");
+    const ausgegebenVorher = ohneBestandsstempel({ aiCheck: await b.vermerk(id) });
+
+    // Jede Antwort des Modells ist jetzt unbrauchbar — kein Ausfall des Modellwegs.
+    b.modell.fehler = () => new Error("unverständliche Antwort");
+    const erster = await b.lauf();
+    expect(erster).toMatchObject({ abgeglichen: 0, fehlgeschlagen: 1 });
+    expect(erster?.abbruch).toBeUndefined();
+    const intern = async () =>
+      (await b.services.ko.listMitBestandsabgleich()).find((k) => k.id === id)?.aiCheck;
+    expect((await intern())?.ueberholt).toBe(true);
+
+    // Derselbe Bestand: zurückgestellt — kein Modellaufruf, nichts offen.
+    const aufrufe = b.modell.aufrufe;
+    expect(await b.lauf()).toMatchObject({ offen: 0, fehlgeschlagen: 0, vergleiche: 0 });
+    expect(b.modell.aufrufe).toBe(aufrufe);
+    expect(ohneBestandsstempel({ aiCheck: await b.vermerk(id) })).toEqual(ausgegebenVorher);
+
+    // GEGENPROBE: ein neuer Bestandsstand nimmt ihn wieder auf; jetzt gelingt der stille Abgleich.
+    b.modell.fehler = () => undefined;
+    await b.lege("Noch später", "Das Ventil wird nach der Wartung geprüft");
+    expect(await b.lauf()).toMatchObject({ abgeglichen: 1, fehlgeschlagen: 0 });
+    expect((await intern())?.ueberholt).toBeUndefined();
+    expect(ohneBestandsstempel({ aiCheck: await b.vermerk(id) })).toEqual(ausgegebenVorher);
   });
 
   // Bens Befunde 1–3: tatsächlicher Verbrauch je Weg, Obergrenze, Neustart.

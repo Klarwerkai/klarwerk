@@ -643,8 +643,9 @@ describe("V5 · K4 — ohne Bearbeitungsrecht: verständlicher Fehler statt Änd
     expect(stand(), text("klara-textvorschlag")).toBe("fehler");
     const meldung = q(document, "klara-textvorschlag-meldung");
     expect(meldung?.getAttribute("role")).toBe("alert");
+    // produkt:20261010:assistenz-name-avatar (K6): ohne gespeicherten Namen die neutrale Bezeichnung.
     expect(meldung?.textContent).toBe(
-      `Du darfst „${eintrag.titel}“ nicht bearbeiten. Klara hat nichts geändert.`,
+      `Du darfst „${eintrag.titel}“ nicht bearbeiten. Assistenz hat nichts geändert.`,
     );
     expect(editorOffen()).toBe(false);
     const nachher = await koLesen(a, viewer, eintrag.koId);
