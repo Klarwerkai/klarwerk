@@ -2742,6 +2742,14 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   // Lage steht im Code (`LmsExportCode`, ein geschlossener Literaltyp), die Meldung unterdrückt
   // der Serializer ohnehin.
   "LmsExportError",
+  // R-1372 (Nacharbeit 9): mit main ohne Eintrag gekommen, vom Wächter gemeldet. ENTSCHEIDUNG: die
+  // Namen dürfen ins Protokoll — feste Klassennamen ohne Nutzerdaten; die Meldung unterdrückt der
+  // Serializer. Herkunft: app/src/bestandsreset-dienst.ts, lifecycle/src/service.ts,
+  // db-tx/src/begrenzte-pruefung.ts, app/src/transport-tls.ts.
+  "BestandsresetVorschauVeraltetError",
+  "FolgepruefungStandError",
+  "HaengendeSitzungError",
+  "TransportTlsError",
   "TranscriberConfidentialError",
   "ValidationError",
   "ZurufError",
@@ -2938,6 +2946,25 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "CONFIDENTIALITY_DOWNGRADE",
   // Spaces (services/knowledge-object/src/types.ts): veralteter Space-Stand beim Schreiben.
   "SPACE_STAND_VERALTET",
+  // R-1372 (Nacharbeit 9): mit main ohne Eintrag gekommen, vom Wächter gemeldet. ENTSCHEIDUNG: alle
+  // dürfen ins Protokoll — feste Literale ohne Nutzertext und Kennung.
+  // Chat (app/src/routes/chat-routes.ts):
+  "ANHANG_UNBEKANNT",
+  "ERWAEHNUNG_OHNE_ZUGANG",
+  "VERWEIS_UNBEKANNT",
+  // Paarpflichten (conflicts/src/paarpflichten.ts):
+  "AUSSAGE_DOPPELT",
+  // Firmenbereich und Firmenreset (app/src/firmenbereich.ts, dev-persist.ts, bestandsreset-dienst.ts):
+  "FIRMENFILTER_UNGUELTIG",
+  "FIRMENRESET_LAEUFT",
+  "VORSCHAU_VERALTET",
+  // Verantwortung (app/src/verantwortung.ts):
+  "NACHFOLGE_FEHLT",
+  "NACHFOLGE_SIEHT_BEITRAG_NICHT",
+  // Validierung und Wissensobjekte (validation/src/types.ts, knowledge-object/src/types.ts):
+  "NOT_OWNER",
+  // Vorlagen (app/src/vorlagen.ts):
+  "VORLAGE_SPACE_KONFLIKT",
   // --- Fremdcodes, namentlich ---
   // PostgreSQL: die beiden, an denen im Betrieb wirklich etwas hängt.
   "23505", // unique_violation — die Sequenz-Kollision aus JOB 2677

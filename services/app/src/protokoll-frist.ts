@@ -195,7 +195,8 @@ export function starteProtokollPflege(deps: {
     return null;
   }
   const lauf = async (): Promise<number> => {
-    const ergebnis = pflegeProtokolle({ datei, jetzt: deps.jetzt?.() });
+    // `exactOptionalPropertyTypes`: ein fehlender Wert wird weggelassen, nicht als `undefined` gesetzt.
+    const ergebnis = pflegeProtokolle(deps.jetzt ? { datei, jetzt: deps.jetzt() } : { datei });
     const anzahl = ergebnis.geloescht.length + (ergebnis.rotiertNach ? 1 : 0);
     if (anzahl > 0) {
       deps.onGepflegt?.(ergebnis);
@@ -206,8 +207,8 @@ export function starteProtokollPflege(deps: {
   return startTrashSweepScheduler({
     intervalMs: deps.intervalMs ?? PROTOKOLL_PFLEGE_INTERVALL_MS,
     runSweep: lauf,
-    setIntervalFn: deps.setIntervalFn,
-    clearIntervalFn: deps.clearIntervalFn,
-    onError: deps.onError,
+    ...(deps.setIntervalFn ? { setIntervalFn: deps.setIntervalFn } : {}),
+    ...(deps.clearIntervalFn ? { clearIntervalFn: deps.clearIntervalFn } : {}),
+    ...(deps.onError ? { onError: deps.onError } : {}),
   });
 }
