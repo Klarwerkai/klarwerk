@@ -84,6 +84,10 @@ ENV KLARWERK_BUILD_COMMIT=$SOURCE_COMMIT
 # neues Prüfergebnis nur diese Ebene entwertet, nicht apt/npm weiter oben.
 COPY --from=abhaengigkeiten /pruef/abhaengigkeiten-audit.txt ./abhaengigkeiten-audit.txt
 EXPOSE 3001
+# R-0664: die Auswahl der Protokollpflege. Der Docker-Hostlauf (services/app/src/protokoll-frist-docker.ts,
+# Aufruf mit --auswahl de.klarwerk.protokollpflege=app) bearbeitet NUR Container mit diesem Label —
+# also nur die aus diesem Abbild, nie fremde Container auf demselben Host.
+LABEL de.klarwerk.protokollpflege=app
 USER node
 # Ehrlicher Selbsttest: /health muss {"status":"ok"} liefern, sonst gilt der Container als krank.
 # R-2057: mit KLARWERK_TLS_CERT_FILE fragt er über HTTPS mit Zertifikatsprüfung

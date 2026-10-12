@@ -21,7 +21,11 @@ import {
   pflegeProtokolle,
   starteProtokollPflege,
 } from "../../services/app/src/protokoll-frist";
-import { pflegeDockerProtokolle } from "../../services/app/src/protokoll-frist-docker";
+import {
+  KLARWERK_AUSWAHL,
+  leseAuswahl,
+  pflegeDockerProtokolle,
+} from "../../services/app/src/protokoll-frist-docker";
 
 // ================================================================================================
 // R-0664 · PETERS ENTSCHEIDUNG 2 (12.10.2026): 14 TAGE, DANN AUTOMATISCH GELÖSCHT —
@@ -58,6 +62,51 @@ function zeile(zeit: number, text: string): string {
 function datei(pfad: string, inhalt: string, geaendert: number): void {
   writeFileSync(pfad, inhalt, "utf8");
   utimesSync(pfad, geaendert / 1000, geaendert / 1000);
+}
+
+/** Die Auswahl, die Dockerfile, Compose und Coolify-Aufruf gemeinsam tragen. */
+const KLARWERK = { label: "de.klarwerk.protokollpflege", wert: "app" };
+
+/** Eine `config.v2.json`, wie dockerd sie für einen Container aus dem App-Abbild schreibt (Auszug). */
+function appKonfiguration(): string {
+  return JSON.stringify({
+    Name: "/klarwerk-app-1",
+    Config: { Image: "klarwerk-app", Labels: { "de.klarwerk.protokollpflege": "app" } },
+  });
+}
+
+/**
+ * Zwei FREMDE, syntaktisch gültige Container mit überfälligen Protokollen: einer mit eigenen Labels
+ * (etwa ein Auditdienst), einer mit dem Klarwerk-Labelnamen, aber anderem Wert. `unberuehrt()` prüft,
+ * dass der Lauf an keinem von beiden etwas geändert hat — keine Datei weg, keine neu, kein Inhalt fort.
+ */
+function fremderContainer(
+  wurzel: string,
+  dockerZeile: (zeit: number, text: string) => string,
+): { unberuehrt: () => void } {
+  const faelle = [
+    { id: "fedcba9876543210fedcba98", labels: { "com.example.audit": "sicherheit" } },
+    { id: "abcdefabcdefabcdefabcdef", labels: { "de.klarwerk.protokollpflege": "nein" } },
+  ];
+  const vorher = new Map<string, string[]>();
+  for (const { id, labels } of faelle) {
+    const ordner = join(wurzel, id);
+    mkdirSync(ordner);
+    datei(join(ordner, `${id}-json.log`), dockerZeile(JETZT - 20 * TAG, "fremd-alt"), JETZT);
+    datei(join(ordner, `${id}-json.log.1`), dockerZeile(JETZT - 30 * TAG, "fremd-alt"), JETZT);
+    datei(join(ordner, "config.v2.json"), JSON.stringify({ Config: { Labels: labels } }), JETZT);
+    vorher.set(id, readdirSync(ordner).sort());
+  }
+  return {
+    unberuehrt: () => {
+      for (const { id } of faelle) {
+        const ordner = join(wurzel, id);
+        expect(readdirSync(ordner).sort(), id).toEqual(vorher.get(id));
+        expect(readFileSync(join(ordner, `${id}-json.log`), "utf8"), id).toContain("fremd-alt");
+        expect(readFileSync(join(ordner, `${id}-json.log.1`), "utf8"), id).toContain("fremd-alt");
+      }
+    },
+  };
 }
 
 describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
@@ -255,20 +304,29 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     writeSync(fd, dockerZeile(JETZT - 20 * TAG, "uralt"));
     datei(join(ordner, `${id}-json.log.1`), dockerZeile(JETZT - 15 * TAG, "rotiert-alt"), JETZT);
     datei(join(ordner, `${id}-json.log.2`), dockerZeile(JETZT - 3 * TAG, "rotiert-jung"), JETZT);
-    datei(join(ordner, "config.v2.json"), "{}", JETZT - 40 * TAG);
+    // Die Docker-Konfiguration des Containers — mit dem Label, das das Dockerfile setzt.
+    datei(join(ordner, "config.v2.json"), appKonfiguration(), JETZT - 40 * TAG);
     // Kein Container (keine Hex-Kennung) — wird nicht angefasst.
     mkdirSync(join(wurzel, "kein-container"));
     datei(join(wurzel, "kein-container", "kein-container-json.log"), "x\n", JETZT - 40 * TAG);
+    // Ben, Nacharbeit 12: ein SYNTAKTISCH GÜLTIGER fremder Container mit überfälligem Protokoll.
+    const fremd = fremderContainer(wurzel, dockerZeile);
     const diagnose = join(wurzel, "diagnose-protokolle");
     mkdirSync(diagnose);
     datei(join(diagnose, "docker-logs-app.txt"), dockerZeile(JETZT - 15 * TAG, "kopie"), JETZT);
 
-    const lauf = pflegeDockerProtokolle({ ordner: wurzel, diagnoseordner: diagnose, jetzt: JETZT });
+    const lauf = pflegeDockerProtokolle({
+      ordner: wurzel,
+      auswahl: KLARWERK,
+      diagnoseordner: diagnose,
+      jetzt: JETZT,
+    });
     writeSync(fd, dockerZeile(JETZT, "danach"));
     closeSync(fd);
 
     const ergebnis = lauf.container[id];
     expect(Object.keys(lauf.container)).toEqual([id]);
+    fremd.unberuehrt();
     expect(ergebnis?.rotiertNach).toMatch(new RegExp(`^${id}-json\\.\\d{8}T\\d{6}Z\\.log$`));
     expect(ergebnis?.geloescht.sort()).toEqual([`${id}-json.log.1`, ergebnis?.rotiertNach].sort());
     expect(existsSync(join(ordner, `${id}-json.log.2`))).toBe(true);
@@ -280,6 +338,41 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     expect(inhalt.startsWith("{")).toBe(true);
     expect(inhalt).toContain("danach");
     expect(inhalt).not.toContain("uralt");
+  });
+
+  it("Docker-Hostlauf OHNE Auswahl: kein Container wird bearbeitet — auch kein Klarwerk-Container", () => {
+    const wurzel = protokollordner();
+    const dockerZeile = (zeit: number, text: string) =>
+      `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
+    const fremd = fremderContainer(wurzel, dockerZeile);
+    const id = "0123456789abcdef01234567";
+    mkdirSync(join(wurzel, id));
+    datei(join(wurzel, id, `${id}-json.log`), dockerZeile(JETZT - 20 * TAG, "app-alt"), JETZT);
+    datei(join(wurzel, id, `${id}-json.log.1`), dockerZeile(JETZT - 20 * TAG, "app-alt"), JETZT);
+    datei(join(wurzel, id, "config.v2.json"), appKonfiguration(), JETZT);
+    const vorher = readdirSync(join(wurzel, id)).sort();
+
+    const lauf = pflegeDockerProtokolle({ ordner: wurzel, auswahl: null, jetzt: JETZT });
+
+    expect(lauf.container).toEqual({});
+    expect(readdirSync(join(wurzel, id)).sort()).toEqual(vorher);
+    expect(readFileSync(join(wurzel, id, `${id}-json.log`), "utf8")).toContain("app-alt");
+    fremd.unberuehrt();
+    // Die Kommandozeile liest die Auswahl streng: ohne `=` oder mit leerer Hälfte gibt es keine.
+    expect(leseAuswahl(undefined)).toBeNull();
+    expect(leseAuswahl("de.klarwerk.protokollpflege")).toBeNull();
+    expect(leseAuswahl("de.klarwerk.protokollpflege=")).toBeNull();
+    expect(leseAuswahl("=app")).toBeNull();
+    expect(leseAuswahl(KLARWERK_AUSWAHL)).toEqual(KLARWERK);
+  });
+
+  it("die Auswahl ist überall dieselbe: Dockerfile-Label, Compose-Aufruf, Coolify-Aufruf im Runbook", () => {
+    expect(readFileSync("Dockerfile", "utf8")).toMatch(
+      /^LABEL de\.klarwerk\.protokollpflege=app$/m,
+    );
+    expect(readFileSync("docs/operations/monitoring-logging.md", "utf8")).toContain(
+      `protokoll-frist-docker.ts /docker-container --auswahl ${KLARWERK_AUSWAHL} --diagnose /diagnose`,
+    );
   });
 
   it("Ein-Befehl-Weg: der Dienst `protokollpflege` ruft den Hostlauf stündlich am Containerordner", () => {
@@ -295,7 +388,7 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     expect(block).toContain("- /var/lib/docker/containers:/docker-container");
     expect(block).toContain("- ./diagnose-protokolle:/diagnose");
     expect(block).toContain(
-      "npx tsx services/app/src/protokoll-frist-docker.ts /docker-container /diagnose; sleep 3600",
+      `npx tsx services/app/src/protokoll-frist-docker.ts /docker-container --auswahl ${KLARWERK_AUSWAHL} --diagnose /diagnose; sleep 3600`,
     );
     expect(block).toContain("user: root");
   });
