@@ -73,7 +73,7 @@ describe("U2 · Server und Oberfläche kennen dieselben Aktionen", () => {
 describe("U3 · Option 1, Standard, nicht angebotene Funktionen", () => {
   it("innerhalb Klarwerks; systemweit nur vorgemerkt; ab Werk unbelegt", () => {
     expect(doku).toContain("innerhalb des aktiven Klarwerk-Fensters");
-    expect(doku).toContain("vorgemerkt, nicht gebaut");
+    expect(doku).toMatch(/vorgemerkt,\s+nicht gebaut/);
     expect(Object.values(STANDARD_BELEGUNG).every((b) => b === null)).toBe(true);
     const texte = quelle("apps/web/src/texte/klarasetup.ts");
     expect(texte).toContain("in Klarwerk, solange das Klarwerk-Fenster aktiv ist");
