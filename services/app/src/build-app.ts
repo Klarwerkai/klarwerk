@@ -429,7 +429,9 @@ import { assistenzFaehigkeitenRoutes } from "./routes/assistenz-faehigkeiten-rou
 // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil (Name, Avatar, Ersteinrichtung).
 import { assistenzProfilRoutes } from "./routes/assistenz-profil-routes";
 import { auditRoutes, ketteneinsichtKonten } from "./routes/audit-routes";
+import { aufgabenZaehlerRoutes } from "./routes/aufgaben-zaehler-routes";
 import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
+import { ausscheidenRoutes } from "./routes/ausscheiden-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 import { begriffeRoutes } from "./routes/begriffe-routes";
 import { brandingRoutes } from "./routes/branding-routes";
@@ -5138,6 +5140,25 @@ export function buildApp(
   );
   // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler aus eigenen KOs + Audits.
   app.register(impactRoutes({ ko: services.ko, audit: services.audit }, guards));
+  // Autorenübergabe-Auftrag K3: textfreier Zähler der an mich zurückgegebenen Entwürfe (Kopfband).
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Übergaben brauchen die Konten (gelöscht,
+  // ausgeschieden) und die gepflegten Bereichsprofile (Kritikalität → Priorität „Kritisch").
+  app.register(
+    aufgabenZaehlerRoutes(
+      {
+        ko: services.ko,
+        audit: services.audit,
+        konten: () => services.auth.listUsers(),
+        bereiche: () => services.management.listCategoryProfiles(),
+      },
+      guards,
+    ),
+  );
+  // R-0961, Peters Entscheidung 1 (12.10.2026): der Status „Ausgeschieden“. Offene Aufgaben gehen
+  // über dieselbe Wissensübergabe an die Vertretung wie in der Verantwortungsübergabe.
+  app.register(
+    ausscheidenRoutes({ auth: services.auth, vorgaenge: services.wissensuebergabe }, guards),
+  );
   // R-0466: das eigene Interaktionsgedächtnis. Die Herkunft „antwort" wird gegen DIESELBE
   // Antwortablage geprüft, die auch die Erklärroute liest.
   app.register(
