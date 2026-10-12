@@ -337,6 +337,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/users/:id": { protection: "admin" },
   "DELETE /api/users/:id": { protection: "admin" },
   "DELETE /api/users/:id/second-factor": { protection: "admin" },
+  // R-0961 (Peters Entscheidung 1, 12.10.2026): Status „Ausgeschieden“ setzen — Kontoverwaltung
+  // (`services/app/src/routes/ausscheiden-routes.ts`).
+  "POST /api/users/:id/ausscheiden": { protection: "users.manage" },
 
   // --- Composition-Root inline (services/app/src/build-app.ts) ---
   "GET /health": { protection: "public", reason: "Health-Probe; liefert nur { status: ok }." },
@@ -1173,6 +1176,19 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },
+  // Autorenübergabe-Auftrag K3: Zahl der an MICH zurückgegebenen Entwürfe für das Kopfband —
+  // dieselbe Tür und Grundmenge wie `GET /api/kos`, nur die Zahl, kein Titel, keine Kennung.
+  "GET /api/me/returned-tasks/summary": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // Dieselbe Auswahl als Liste `[{ koId, at, verdict }]` für die Aufgabenseite — ohne
+  // `GET /api/audit` (bleibt `ko.validate`), damit auch Experten ihre Rückgaben sehen.
+  "GET /api/me/returned-tasks": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Übergaben — nur Admins, die sie ausführen.
+  // Gerechnet über dieselbe sichtbare Grundmenge wie `GET /api/kos` (Helfer `uebergaben`).
+  "GET /api/me/author-transfers": { protection: "users.manage", zeilenrecht: ["sichtbareFuer"] },
+  "GET /api/me/author-transfers/summary": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbareFuer"],
+  },
   // SCRUM-501 (nacht24 Paket 7.2): Simulationskorpus laden — nur Admin (users.manage), nie automatisch.
   "POST /api/admin/sim-corpus": { protection: "users.manage" },
   // Klara Stufe 2: KI-gestuetzte Hilfe-Antwort — jeder angemeldete Leser (viewer inkl.).

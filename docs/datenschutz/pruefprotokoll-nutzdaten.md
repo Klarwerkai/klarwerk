@@ -84,6 +84,7 @@ wiederholt.
 | `qualitaet.rueckmeldung-uebernommen` (ADMIN-10, je Meldung höchstens einmal) | `meldungId`, `vorgang` (`revalidierung:<Objekt>`); Ziel ist das Objekt der Meldung — **kein Meldegrund-Text, kein Fragetext, kein Meldender** | K, Z |
 | `ko.conflict-review` | `previousStatus`, `previousTrust`, `trust`, `reason` | Z |
 | `ko.author-transferred` | `author` | K |
+| `ko.author-transfer-requested` (R-0961, Antrag auf Autorenübergabe) | `author` | K |
 | `verantwortung.uebergabe` (Ziel: bisherige Person; `services/app/src/routes/verantwortung-routes.ts`) | `uebertragen`, `bereitsErledigt`, `abgelehnt`, `fehlgeschlagen`, `verbleibt`, `nachfolger` (je `an` + `anzahl`) | Z, K — keine Titel; je Beitrag steht zusätzlich `ko.ownership` |
 | `vermaechtnis.erzeugt` (Ziel: die Person des Buchs; `services/app/src/routes/verantwortung-routes.ts`) | `aufgenommen`, `ausgelassen` (`papierkorb`, `nichtEinsehbar`, `vertraulich`, `nichtValidiert`) | Z — keine Titel, kein Buchinhalt (nachgetragen mit `gesamt-wissensvermaechtnis`) |
 | `ko.source-removed-in-origin`, `ko.source-restored-in-origin` | `provider`, `externalId`, `at`/`removedAt` | M, K |
@@ -173,6 +174,8 @@ kein Titel, kein Inhalt, kein Personenname.
 | `user.oidc-linked`, `user.oidc-linked-unverified` | `aussteller` | P (Adresse des Identitätsanbieters; **kein** `sub`, **keine** Mailadresse) |
 | `user.role-claim-missing`, `user.role-synced` | `aussteller`, `rolle` bzw. `von`/`nach` | P, Z |
 | `notice.acknowledged` | `version` | Z |
+| `user.ausgeschieden` (R-0961, Status „Ausgeschieden“; Ziel: das Konto) | `vertretung` (Kontokennung) | K — kein Name |
+| `user.ausscheiden-beendet` (R-0961, Status beendet durch Wiederfreigabe; Ziel: das Konto) | `via` (`freigabe`/`verzeichnis`) | Z |
 | **`user.role-change`** | `role`, `previousRole`, **`actorName`, `targetName`** | **P** — siehe Befund 2 |
 | **`user.delete`** | **`targetName`**, **`actorName`** | **P** — siehe Befund 2 |
 

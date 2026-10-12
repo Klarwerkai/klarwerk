@@ -131,6 +131,7 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `POST` | `/api/users` | `requireAdmin` | Rumpf `{ name, email, password, role?, accessExpiresAt? }` | 201 Konto | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` (Befristung unlesbar oder Rollenwechsel unzulässig); 409 `EMAIL_TAKEN` |
 | `PUT` | `/api/users/:id` | `requireAdmin` | Rumpf `{ role?, approve?, password?, accessExpiresAt?, weisungsbefugnis? }` (`weisungsbefugnis`: Liste von Bereichen, `*` = ganzes Unternehmen, `null` entzieht) | 200 Konto bzw. 204 | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` |
 | `DELETE` | `/api/users/:id` | `requireAdmin` | — | 204 | 401; 403; Dienstfehler |
+| `POST` | `/api/users/:id/ausscheiden` | `users.manage` | Rumpf `{ vertretung }` (Kontokennung) | 200 `{ id, approved: false, vertretung, vorgaenge: { uebertragen, bereitsErledigt } }` — Status „Ausgeschieden“ (R-0961): erst Prüfung (Vorschau der Wissensübergabe), dann offene Vorgänge an die Vertretung, erst danach Vermerk `user.ausgeschieden`, Zugang und Sitzungen entzogen; Urheberschaft bleibt | 400 `VERTRETUNG_UNGUELTIG`; 401; 403 (`FORBIDDEN`, letzter Admin); 404; 409 `VERTRETUNG_UNGEEIGNET` (`abgelehnt`, nichts geändert) bzw. `UEBERGABE_UNVOLLSTAENDIG` (`uebertragen`, `abgelehnt`, `fehlgeschlagen`; Status nicht gesetzt) |
 | `DELETE` | `/api/users/:id/second-factor` | `requireAdmin` | — | 204 (zweiter Faktor entfernt, z. B. bei verlorenem Gerät) | 401; 403 `FORBIDDEN` (nicht eingerichtet); 404 |
 | `GET` | `/api/directory` | `requireUser` (Modul) | — | 200 `[{ id, name }]` — ohne E-Mail; dahinter gelöschte Konten als `{ id, geloescht: true }` ohne Namen (Beleg: Prüfprotokoll `user.delete`) | 401 |
 | `GET` | `/api/verantwortung/person/:id/vermaechtnis` | `users.manage` (`verantwortungRoutes`) | — | 200 Wissens-Vermächtnis-Buch `{ person, titel, erzeugtAm, dateiname, aufgenommen, zeitraum, themen, ausgelassen, markdown, provenance }` — nur einsehbare, validierte, nicht vertrauliche Beiträge; schreibt kein Wissen; Auditeintrag `vermaechtnis.erzeugt` | 401; 403 `FORBIDDEN`; 404 `NOT_FOUND` (weder Konto noch Beitrag) |
@@ -228,6 +229,7 @@ herabgestuft werden (409 `mutability`).
 | `conflict` | `ko.validate` | `conflict` (antwortet 201) |
 | `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |
 | `transfer-author` | `users.manage` | `newAuthor` |
+| `request-author-transfer` | `requireUser`; Autor des Objekts oder `users.manage` (sonst 403 `FORBIDDEN`) | — (Protokoll `ko.author-transfer-requested`) |
 | `revalidate` | `ko.create` | `stand` und `fassung` (die angezeigte Inhaltsfassung; wurde der Eintrag inzwischen überarbeitet, 409 `KO_STALE` mit `currentVersion`, fehlt sie neben `stand`, 400); `stand` (positive ganze Zahl: der gesehene Stand der Folgeprüfung; Pflicht, solange eine Folgeprüfung offen ist — fehlt er, ist inzwischen eine weitere Änderung eingegangen oder der Fall schon abgeschlossen, 409 `STAND_VERALTET` ohne neue Fassung; ohne offenen Fall bestätigt `revalidate` ohne Stand nur die Gültigkeit) |
 | `request-revalidation` | `ko.create` | — (antwortet 204; setzt den Merker „Stimmt das noch?" für dieses Objekt — erneute Prüfung aus der Bibliothek, R-1732; eine wiederholte Anforderung am offenen Fall legt keinen neuen Anlass an) |
 | `neighbors-changed` | `ko.validate` | `aenderung?` (Änderungsbeleg, höchstens 200 Zeichen) — (antwortet 200 `{ markiert }`; meldet die Änderung aller an dieses Objekt gekoppelten Anlagen und markiert alle Objekte daran, R-0203; nur die Zahl der für den Meldenden sichtbaren markierten Objekte, keine Kennungen) |
@@ -418,6 +420,10 @@ herabgestuft werden (409 `mutability`).
 | `DELETE` | `/api/livewall/photo` | `requireUser` | — | 200 `{ photoConsent: false }` — Widerruf löscht die Bilddaten | — |
 | `PUT` | `/api/livewall/consent` | `requireUser` | Rumpf `{ nameConsent: boolean }` | 200 `{ nameConsent }` — Zustimmung/Widerruf als Prüfprotokoll-Ereignis | 400 `BAD_REQUEST` |
 | `GET` | `/api/me/impact` | `requireUser` | — | 200 eigene Wirkung | — |
+| `GET` | `/api/me/author-transfers` | `users.manage` | — | 200 `[{ koId, grund, kritisch }]` — wartende Autorenübergaben | 403 |
+| `GET` | `/api/me/author-transfers/summary` | `users.manage` | — | 200 `{ open }` — Zahl der wartenden Autorenübergaben | 403 |
+| `GET` | `/api/me/returned-tasks` | `ko.read`, sichtbar | — | 200 `[{ koId, at, verdict }]` — an mich zurückgegebene Entwürfe | — |
+| `GET` | `/api/me/returned-tasks/summary` | `ko.read`, sichtbar | — | 200 `{ open }` — Zahl der an mich zurückgegebenen Entwürfe | — |
 | `GET` | `/api/gesamtanweisungen` | `ko.read` | — | 200 sichtbare Anweisungen | — |
 | `POST` | `/api/gesamtanweisungen` | `ko.create` | Rumpf `{ titel?, zweck?, geltungsbereich?, voraussetzungen? }` | 201 Anweisung | Dienstfehler |
 | `GET` | `/api/gesamtanweisungen/:id` | `ko.read`, sichtbar | — | 200 Anweisung | 404 |
