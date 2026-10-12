@@ -1506,6 +1506,8 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/auth/second-factor/confirm": "bestätigt den eigenen zweiten Faktor.",
     "POST /api/auth/second-factor/disable": "schaltet den eigenen zweiten Faktor ab.",
     "DELETE /api/users/:id/second-factor": "setzt den zweiten Faktor eines Kontos zurück (Admin).",
+    // R-0961: Antwort sind Kontokennung, Vertretung und die Kennungen übertragener Vorgänge.
+    "POST /api/users/:id/ausscheiden": "setzt den Status „Ausgeschieden“ eines Kontos (Admin).",
     "GET /api/auth/saml/start": "SAML-Start (Weiterleitung an den Anbieter).",
     "GET /api/auth/saml/metadata": "SAML-Metadaten des Dienstes, keine Nutzerdaten.",
     "POST /api/auth/saml/acs": "SAML-Rücksprung des Anbieters; Weiterleitung mit Abschlusscode.",

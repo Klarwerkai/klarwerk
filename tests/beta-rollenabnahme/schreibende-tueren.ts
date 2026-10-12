@@ -1662,6 +1662,38 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
       };
     },
   },
+  // R-0961 (Peters Entscheidung 1, 12.10.2026): der Status „Ausgeschieden“ — nur `users.manage`.
+  {
+    gruppe: "ausscheidenRoutes",
+    methode: "POST",
+    route: "/api/users/:id/ausscheiden",
+    belegstelle: "services/app/src/routes/ausscheiden-routes.ts:46",
+    // NUR 200. Fehlt die Vertretung oder ist sie kein freigeschaltetes Konto, antwortet die Route
+    // 400; eine erfundene Kennung 404. Beides käme durchs Tor, ohne dass ein Status gesetzt wurde.
+    erfolg: [200],
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+    ruesten: async (buehne) => {
+      const ziel = await legeZielkontoAn(buehne);
+      return {
+        pfad: `/api/users/${ziel.id}/ausscheiden`,
+        // Die Vertretung ist ein freigeschaltetes Bühnenkonto; ausscheiden muss das eigens
+        // angelegte Konto, nicht eines der fünf, mit denen gemessen wird.
+        payload: { vertretung: buehne.konto.experte.id },
+        bestand: async () => {
+          const vermerke = await buehne.services.audit.list({
+            action: "user.ausgeschieden",
+            target: ziel.id,
+          });
+          return vermerke.length;
+        },
+        wirkung: {
+          beschreibung: "das Zielkonto trägt danach den Status „Ausgeschieden“",
+          eingetreten: (anzahl) => anzahl === 1,
+        },
+      };
+    },
+  },
 
   // --- JOB 4141 · Urteile über den Bestand: Widersprüche und Dubletten ---------------------------
   {

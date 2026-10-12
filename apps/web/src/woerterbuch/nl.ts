@@ -697,6 +697,7 @@ const nl: typeof de = {
   "task.filter.authorTransfer": "Auteursoverdracht",
   "task.authorTransfer": "Auteursoverdracht",
   "task.authorTransfer.grund.konto-geloescht": "Auteursaccount verwijderd",
+  "task.authorTransfer.grund.ausgeschieden": "Auteur uit dienst",
   "task.authorTransfer.grund.angefordert": "Overdracht aangevraagd",
   "task.action.authorTransfer": "Nieuwe auteur bepalen",
   "task.explain.authorTransfer":

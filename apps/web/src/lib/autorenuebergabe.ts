@@ -17,20 +17,21 @@
 // WIE DIE ENTSCHEIDUNG AUF DEN BESTAND ABGEBILDET IST (je Grund EIN vorhandener Systemzustand):
 //   · `konto-geloescht`: Der Autor des Objekts hat kein Konto mehr (`AuthService.deleteUser`
 //     lässt `author` unverändert stehen).
+//   · `ausgeschieden`: Das Konto des Autors trägt den Status „Ausgeschieden“. Quelle ist Peters
+//     Entscheidung 1 vom 12.10.2026 (QUELLEN-PETER-BLOCKADEN-ENTSCHEIDUNGEN-20261012): ein eigener
+//     Status, ausdrücklich durch einen Berechtigten gesetzt (`POST /api/users/:id/ausscheiden`,
+//     `AuthService.ausscheiden`). Er besteht aus dem Vermerk `user.ausgeschieden` UND der dabei
+//     entzogenen Freigabe (`approved: false`).
+//     NICHT ausgeschieden sind ein abgelaufener Zugang (`accessExpiresAt`), eine bloße Sperre ohne
+//     Vermerk und Inaktivität (Ben, Nacharbeit 9; Entscheidung 1). Wird das Konto später wieder
+//     freigegeben, ist es nicht mehr ausgeschieden.
 //   · `angefordert`: Autor oder Admin haben die Übergabe ausdrücklich verlangt (Protokoll
 //     `ko.author-transfer-requested`), und seitdem gab es keine Übergabe (`ko.author-transferred`).
 //
-// NICHT ABGEBILDET: „dauerhaft ausgeschieden" (Ben, Nacharbeit 9). Ein abgelaufener Zugang
-// (`accessExpiresAt`) ist eine aufhebbare Befristung und kein belegtes Ausscheiden. Frage 24
-// setzt beides nicht gleich, deshalb löst er hier NICHTS aus. Welcher Zustand als Ausscheiden
-// gilt, ist als offene Frage an Pedi festgehalten
-// (`docs/aufnahme/20260922-gesamt-aufgabenansicht-autorenuebergabe.md`).
-// Bis zur Antwort entsteht für einen ausgeschiedenen Autor mit bestehendem Konto die Aufgabe nur
-// über den ausdrücklichen Antrag.
-//
 // ERLEDIGT ist die Aufgabe durch die vorhandene Admin-Handlung `setAuthor` (FR-LIF-02):
-//   · Danach zeigt `author` auf ein bestehendes Konto, sodass der erste Grund entfällt.
-//   · `ko.author-transferred` steht nach dem Antrag, sodass der zweite Grund entfällt.
+//   · Danach zeigt `author` auf ein bestehendes, nicht ausgeschiedenes Konto, sodass die ersten
+//     beiden Gründe entfallen.
+//   · `ko.author-transferred` steht nach dem Antrag, sodass der dritte Grund entfällt.
 //
 // PRIORITÄT: „Heute". „Kritisch", wenn der Wissensbereich (Kategorie) des Objekts im gepflegten
 // Bereichsprofil die Kritikalität „hoch" trägt (`management/src/profiles.ts`, Faktor
@@ -43,13 +44,16 @@ import type { AuditEntry, KnowledgeObject } from "../api/types";
 export const UEBERGABE_ANGEFORDERT = "ko.author-transfer-requested";
 /** Protokollaktion der vorhandenen Admin-Handlung `setAuthor` (FR-LIF-02). */
 export const UEBERGABE_AUSGEFUEHRT = "ko.author-transferred";
+/** Protokollaktion des Status „Ausgeschieden“ (`AuthService.ausscheiden`; Ziel: das Konto). */
+export const KONTO_AUSGESCHIEDEN = "user.ausgeschieden";
 /** Die Protokollaktionen, aus denen die Regel rechnet — und nur diese. */
 export const UEBERGABE_REGEL_AKTIONEN: readonly string[] = [
   UEBERGABE_ANGEFORDERT,
   UEBERGABE_AUSGEFUEHRT,
+  KONTO_AUSGESCHIEDEN,
 ];
 
-export type UebergabeGrund = "konto-geloescht" | "angefordert";
+export type UebergabeGrund = "konto-geloescht" | "ausgeschieden" | "angefordert";
 
 export interface AnstehendeUebergabe {
   koId: string;
@@ -60,6 +64,7 @@ export interface AnstehendeUebergabe {
 /** Was die Regel über ein Konto wissen muss. */
 export interface UebergabeKonto {
   id: string;
+  approved: boolean;
 }
 
 /** Was die Regel über einen Wissensbereich wissen muss (gepflegtes Bereichsprofil). */
@@ -76,7 +81,11 @@ function angefordert(
   koId: string,
 ): boolean {
   const letzter = protokoll
-    .filter((e) => e.target === koId && UEBERGABE_REGEL_AKTIONEN.includes(e.action))
+    .filter(
+      (e) =>
+        e.target === koId &&
+        (e.action === UEBERGABE_ANGEFORDERT || e.action === UEBERGABE_AUSGEFUEHRT),
+    )
     .sort((a, b) => a.seq - b.seq)
     .at(-1);
   return letzter?.action === UEBERGABE_ANGEFORDERT;
@@ -88,17 +97,23 @@ export function anstehendeUebergaben(eingabe: {
   protokoll: readonly Pick<AuditEntry, "seq" | "action" | "target">[];
   bereiche: readonly UebergabeBereich[];
 }): AnstehendeUebergabe[] {
-  const konten = new Set(eingabe.konten.map((k) => k.id));
+  const konten = new Map(eingabe.konten.map((k) => [k.id, k]));
+  const vermerkt = new Set(
+    eingabe.protokoll.filter((e) => e.action === KONTO_AUSGESCHIEDEN).map((e) => e.target),
+  );
   const kritischeBereiche = new Set(
     eingabe.bereiche.filter((b) => b.criticality === "hoch").map((b) => b.category),
   );
   const out: AnstehendeUebergabe[] = [];
   for (const ko of eingabe.kos) {
-    const grund: UebergabeGrund | null = !konten.has(ko.author)
+    const konto = konten.get(ko.author);
+    const grund: UebergabeGrund | null = !konto
       ? "konto-geloescht"
-      : angefordert(eingabe.protokoll, ko.id)
-        ? "angefordert"
-        : null;
+      : vermerkt.has(konto.id) && !konto.approved
+        ? "ausgeschieden"
+        : angefordert(eingabe.protokoll, ko.id)
+          ? "angefordert"
+          : null;
     if (grund) {
       out.push({ koId: ko.id, grund, kritisch: kritischeBereiche.has(ko.category) });
     }

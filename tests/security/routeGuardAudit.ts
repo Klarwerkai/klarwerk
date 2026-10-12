@@ -337,6 +337,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/users/:id": { protection: "admin" },
   "DELETE /api/users/:id": { protection: "admin" },
   "DELETE /api/users/:id/second-factor": { protection: "admin" },
+  // R-0961 (Peters Entscheidung 1, 12.10.2026): Status „Ausgeschieden“ setzen — Kontoverwaltung
+  // (`services/app/src/routes/ausscheiden-routes.ts`).
+  "POST /api/users/:id/ausscheiden": { protection: "users.manage" },
 
   // --- Composition-Root inline (services/app/src/build-app.ts) ---
   "GET /health": { protection: "public", reason: "Health-Probe; liefert nur { status: ok }." },

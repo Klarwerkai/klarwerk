@@ -1357,6 +1357,37 @@ export class AuthService {
   }
 
   /**
+   * Autorenübergabe-Auftrag (R-0961), Peters Entscheidung 1 vom 12.10.2026 — DER STATUS
+   * „AUSGESCHIEDEN“, ausdrücklich durch einen Berechtigten gesetzt (die Route verlangt
+   * `users.manage`).
+   *
+   * Der Status ist der Vermerk `user.ausgeschieden` an einem Konto, dessen Freigabe entzogen ist.
+   * Beides entsteht hier in EINEM Rahmen. Folgen nach der Entscheidung:
+   *   · Zugang entzogen: `approved: false` (dieselbe Sperre wie beim Verzeichnis-Austritt).
+   *   · Sitzungen entzogen: alle Sitzungen des Kontos werden gelöscht.
+   *   · Urheberschaft erhalten: das Konto bleibt bestehen, kein Wissensobjekt wird hier angefasst.
+   *   · Vertretung: im Vermerk benannt; die offenen Aufgaben überträgt die Route über die
+   *     vorhandene Wissensübergabe.
+   * Eine bloße Sperre, Befristung oder Inaktivität schreibt diesen Vermerk nie und ist deshalb
+   * kein Ausscheiden. Der letzte freigegebene Admin kann nicht ausscheiden (derselbe Schutz wie
+   * beim Löschen).
+   */
+  async ausscheiden(userId: string, actorId: string, vertretung: string): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    const aktualisiert: User = { ...user, approved: false };
+    await this.users.withAdminGuard(async (tx) => {
+      if (user.role === "admin" && user.approved && (await this.isLastApprovedAdmin(userId, tx))) {
+        throw new AuthError("FORBIDDEN", "LAST_ADMIN_DELETION" satisfies Meldungsschluessel);
+      }
+      // Nur Kennungen, keine Klarnamen (docs/datenschutz/pruefprotokoll-nutzdaten.md, Befund 2).
+      await this.record(actorId, "user.ausgeschieden", userId, { vertretung }, tx);
+      await this.users.update(aktualisiert, tx);
+    });
+    await this.sessions.deleteByUser(userId);
+    return toPublic(aktualisiert);
+  }
+
+  /**
    * JOB 4011 R4: Vermerk und Zustandsschreiben in EINEM Rahmen, wo es einen gibt.
    *
    * Nur für die Schritte OHNE eigenen Rahmen. `changeRole` und `setAccessExpiry` schreiben innerhalb

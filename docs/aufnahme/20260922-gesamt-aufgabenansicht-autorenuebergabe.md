@@ -46,7 +46,7 @@ Was der Code heute kann (Quelleninspektion, Basis `3264ad7d`):
 |---|---|---|
 | **Wem** wird sie angezeigt? | **Ableitbar: Admins** (Recht `users.manage`), denn nur sie dürfen die Übergabe ausführen. Eine Aufgabe für andere Rollen endete am Rollentor. | BRIEF §10 und Rollenliste, Anforderungsbeschreibung §7.14 und R-Admin, `ko-routes.ts:3557` |
 | **Wann** gilt sie als erledigt? | **Ableitbar: sobald für dieses Objekt `setAuthor` ausgeführt ist.** Dann ist `author` geändert, `originalAuthor` bleibt, und das Audit `ko.author-transferred` steht. Dasselbe verlangt K3 („Nach ausgeführter Übergabe verschwindet die Aufgabe“). | Anforderungsbeschreibung §7.14, `service.ts:6297–6310`, Kriterium K3 |
-| **Was** löst sie aus? | Bis 10.10. **nicht ableitbar** (nur „bei Personalwechsel“). Seit 11.10. **entschieden** durch Peter (Frage 24), siehe „Entscheidung“. | QUELLEN-FACHHILFE-PETER-ENTSCHEIDUNGEN-20261011, Frage 24 |
+| **Was** löst sie aus? | Bis 10.10. **nicht ableitbar** (nur „bei Personalwechsel“). Seit 11.10. **entschieden** durch Peter (Frage 24), siehe „Entscheidung“. Was „dauerhaft ausgeschieden“ im System bedeutet, hat Peter am 12.10. entschieden (Status „Ausgeschieden“). | QUELLEN-FACHHILFE-PETER-ENTSCHEIDUNGEN-20261011, Frage 24; QUELLEN-PETER-BLOCKADEN-ENTSCHEIDUNGEN-20261012-df7e4c214e4a, Entscheidung 1 |
 
 ## Entscheidung (Peter, 11.10.2026) — Auslöser, Berechtigte, Anzeige, Priorität, Abschluss
 
@@ -71,7 +71,7 @@ und Oberfläche):
 | Punkt | Umsetzung | Grund der Abbildung |
 |---|---|---|
 | **Auslöser „gelöscht“** | Der Autor des Objekts hat kein Konto mehr (`konto-geloescht`). | `deleteUser` lässt `author` stehen; ein fehlendes Konto ist genau „gelöscht“. |
-| **Auslöser „dauerhaft ausgeschieden“** | **Offen, nicht gebaut** (seit Nacharbeit 9). Frage an Pedi: siehe „Offene Frage: Was gilt als dauerhaft ausgeschieden?“. Bis zur Antwort entsteht die Aufgabe für einen ausgeschiedenen Autor mit bestehendem Konto nur über den ausdrücklichen Antrag. | Frage 24 nennt den Fall, legt aber keinen Systemzustand fest. Die frühere Gleichsetzung mit dem abgelaufenen Zugang (`accessExpiresAt`) war nicht belegt (Ben, Nacharbeit 9): Eine Befristung ist aufhebbar und kein Personalaustritt. Sie ist aus Regel und Tests entfernt. |
+| **Auslöser „dauerhaft ausgeschieden“** | Status „Ausgeschieden“ (`ausgeschieden`), gesetzt über `POST /api/users/:id/ausscheiden` mit `{ vertretung }`, nur `users.manage`. Der Status ist der Vermerk `user.ausgeschieden` an einem Konto mit entzogener Freigabe. Folgen: Freigabe entzogen, Sitzungen gelöscht, Konto und `author` bleiben, offene Entwürfe/Lücken/Prüfaufgaben gehen über die vorhandene Wissensübergabe an die Vertretung. | Peters Entscheidung 1 vom 12.10.2026 (siehe „Entscheidung (Peter, 12.10.2026)“). Abgelaufener Zugang, bloße Sperre und Inaktivität lösen nichts aus. |
 | **Auslöser „ausdrückliche Anforderung“** | Neue Aktion `request-author-transfer` an `PUT /api/kos/:id`. Sie schreibt nur den Protokolleintrag `ko.author-transfer-requested`. Die Aufgabe steht an, solange danach kein `ko.author-transferred` folgt (`angefordert`). | Kein neues Datenfeld; dieselbe Bauart wie die Rückgaben (Zustand aus dem Protokoll). |
 | **Wer darf verlangen** | Der Autor des Objekts und wer `users.manage` trägt (Admin); sonst 403. | „Zuständige Verwaltungsrolle“ = die Rolle, die Konten und die Übergabe verwaltet. |
 | **Wem angezeigt** | Admins (`users.manage`): `GET /api/me/author-transfers` und `/summary`. Andere Rollen bekommen 403, und die Oberfläche fragt für sie gar nicht erst ab. | Nur Admins dürfen übergeben (`transfer-author`). |
@@ -86,7 +86,34 @@ Priorität fest. Ob und wie „dauerhaft ausgeschieden“ einem Systemzustand en
 nicht. Das ist die offene Frage unten (Nacharbeit 9). Die alte Option B dieser Frage (abgelaufen oder
 gesperrt) ist damit nicht beschlossen.
 
-## Offene Frage an Pedi (K2, Nacharbeit 9): Was gilt als „dauerhaft ausgeschieden“?
+## Entscheidung (Peter, 12.10.2026) — Status „Ausgeschieden“
+
+Quelle: `QUELLEN-PETER-BLOCKADEN-ENTSCHEIDUNGEN-20261012-df7e4c214e4a.json` (Auftragsunterlagen),
+Entscheidung 1 „Dauerhaft ausgeschiedene Autoren“. Originalantwort: „deine empfehlung“.
+Übernommene Entscheidung, wörtlich: „Eigener Status ‚Ausgeschieden‘, ausdrücklich durch einen
+Berechtigten gesetzt. Inaktivität oder vorübergehende Sperrung reichen dafür nicht. Zugang und
+Sitzungen entziehen, Urheberschaft erhalten und eine zuständige Vertretung für offene Aufgaben
+zuordnen.“ Damit ist die Frage unten beantwortet. Gewählt ist die Richtung von Option A (eigene
+Markierung).
+
+Umsetzung:
+
+| Punkt | Umsetzung | Grund der Abbildung |
+|---|---|---|
+| **Status** | Vermerk `user.ausgeschieden` (Nutzlast `{ vertretung }`) an einem Konto, dessen Freigabe entzogen ist. Beides schreibt `AuthService.ausscheiden` in einem Rahmen. | Eigener, ausdrücklicher Zustand ohne neue Kontospalte. Dieselbe Bauart wie der Antrag (Zustand aus dem Protokoll). Eine Sperre ohne Vermerk ist kein Ausscheiden. |
+| **Wer setzt ihn** | `POST /api/users/:id/ausscheiden`, nur `users.manage`; sonst 403, ohne Anmeldung 401. | „Berechtigter“ = die Kontoverwaltung, dieselbe Rolle wie die übrige Kontopflege und die Autorenübergabe. |
+| **Zugang und Sitzungen** | Freigabe entzogen (`approved: false`), alle Sitzungen gelöscht. Der letzte freigegebene Admin kann nicht ausscheiden. | Vorhandene Sperre wie beim Verzeichnis-Austritt; derselbe Aussperrschutz wie beim Löschen. |
+| **Urheberschaft** | Konto, `author` und `originalAuthor` bleiben unverändert. | Daraus entsteht die wartende Autorenübergabe. |
+| **Vertretung** | Pflichtangabe; muss ein freigeschaltetes, nicht abgelaufenes anderes Konto sein (sonst 400 `VERTRETUNG_UNGUELTIG`). Offene Entwürfe, offene Lücken und offene Prüfaufgaben gehen über `Wissensuebergabe.vorgaengeUebergeben` an sie (Vermerk `lifecycle.handover`). | Vorhandene Funktion der Verantwortungsübergabe. |
+| **Auslöser und Anzeige** | Grund `ausgeschieden` in `lib/autorenuebergabe.ts`; angezeigt wie die übrigen Gründe nur der Verwaltung, Priorität wie oben. | Entscheidung 24 (11.10.) und Entscheidung 1 (12.10.). |
+| **Erledigt** | Durch die vorhandene `transfer-author` (`setAuthor`, Audit `ko.author-transferred`). Danach zeigt `author` auf ein anderes Konto. | K3. |
+
+Nicht Teil der Entscheidung und deshalb nicht gebaut: ein eigener Weg, den Status wieder
+aufzuheben, und eine Bedienung in der Kontenverwaltung. Wird ein ausgeschiedenes Konto über die
+vorhandene Freigabe wieder freigeschaltet, gilt es nach der Regel nicht mehr als ausgeschieden,
+weil der Status die entzogene Freigabe voraussetzt.
+
+## Frage an Pedi (K2, Nacharbeit 9): Was gilt als „dauerhaft ausgeschieden“? — **beantwortet am 12.10.2026 (siehe oben)**
 
 Peters Entscheidung 24 verlangt eine wartende Autorenübergabe auch bei **dauerhaft ausgeschiedenen**
 Autoren. Ein Zustand, der genau das bedeutet, ist im Produkt nicht festgelegt. Vorhanden sind:
@@ -114,9 +141,9 @@ Autoren. Ein Zustand, der genau das bedeutet, ist im Produkt nicht festgelegt. V
 - **D · Kein eigener Auslöser.** Ausscheiden läuft über die vorhandene Ausscheidensübergabe oder
   über den ausdrücklichen Antrag. Es gibt keine automatische Aufgabe.
 
-Bis zur Antwort gilt: Ein gelöschtes Konto und der befugte Antrag lösen die Aufgabe aus. Ein
-abgelaufener Zugang allein löst nichts aus; das belegt `autorenuebergabe-aufgabe.test.ts` A2 als
-Gegenfall. Den Gegenfall „dauerhaft ausgeschieden ⇒ Aufgabe“ gibt es erst mit der Antwort.
+Stand bis zur Antwort (Nacharbeit 9): Ein gelöschtes Konto und der befugte Antrag lösten die
+Aufgabe aus, ein abgelaufener Zugang allein nichts (A2). Seit Nacharbeit 10 ist der positive Fall
+gebaut und belegt (A9, Gegenfälle A10).
 
 **Wann soll auf der Fläche „Offene Aufgaben“ eine Autorenübergabe als wartende Aufgabe für Admins
 erscheinen?**
@@ -398,6 +425,20 @@ Grenzen:
     (siehe oben).
 - Test A2 ist jetzt der Gegenfall: Eine abgelaufene Befristung allein erzeugt keine Aufgabe, der
   befugte Antrag bleibt möglich. Der positive Fall „ausgeschieden ⇒ Aufgabe“ folgt mit der Antwort.
+
+## Nacharbeit 10 (Kandidat `fbd29719`): Status „Ausgeschieden“ nach Peters Entscheidung 1
+
+- Gebaut nach „Entscheidung (Peter, 12.10.2026)“:
+  - `AuthService.ausscheiden` (`services/auth/src/service.ts`);
+  - Route `POST /api/users/:id/ausscheiden` (`services/app/src/routes/ausscheiden-routes.ts`);
+  - Grund `ausgeschieden` in `lib/autorenuebergabe.ts`, Texte DE/EN/NL.
+- Inventare ergänzt: Schreibtabelle der Rollenabnahme, Guard-Audit, Lesewege-Sammler,
+  HTTP-API-Referenz, Datenschutz-Nutzlasttabelle (auch der Antrag `ko.author-transfer-requested`).
+- Gegenproben in `autorenuebergabe-aufgabe.test.ts`:
+  - A9: Status mit Vertretung; Zugang und Sitzung entzogen; Urheberschaft bleibt; Prüfaufgabe bei
+    der Vertretung; Aufgabe steht an, Liste = Zahl; nach `transfer-author` erledigt.
+  - A10: ohne `users.manage` 403, ohne Anmeldung 401, ohne gültige Vertretung 400; eine bloße
+    Sperre ohne Status löst nichts aus.
 
 ## Unverändert (K3, K4)
 
