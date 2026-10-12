@@ -72,7 +72,9 @@ function profilMit(bildAutomatik: boolean): AssistenzProfilAntwort {
 
 /** Die PowerPoint als Datei. `arrayBuffer` wird nur ergänzt, falls die Testumgebung ihn nicht hat. */
 function pptxDatei(): File {
-  const datei = new File([deck()], "wartung.pptx", { type: PPTX_MIME });
+  // Als eigener ArrayBuffer (wie in rumpf-bilder-mounted): ein `Uint8Array<ArrayBufferLike>` ist
+  // für TypeScript kein `BlobPart`.
+  const datei = new File([new Uint8Array(deck()).buffer], "wartung.pptx", { type: PPTX_MIME });
   if (typeof (datei as { arrayBuffer?: unknown }).arrayBuffer !== "function") {
     Object.defineProperty(datei, "arrayBuffer", {
       value: () =>
