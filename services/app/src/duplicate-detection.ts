@@ -17,7 +17,11 @@ import {
 import type { EmbeddingProvider, EmbeddingStore } from "../../embedding";
 import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
 import type { Reasoner } from "../../reasoner";
-import { comparisonFailureReason } from "./conflict-detection";
+import {
+  comparisonFailureReason,
+  unterFreigabe,
+  verarbeitungsfreigabe,
+} from "./conflict-detection";
 import { type PruefUmfang, vergleichsDeckel } from "./detection-cap";
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext (title+statement+conditions+measures), nicht bodyHtml.
@@ -95,9 +99,10 @@ export async function detectDuplicatesForKo(
     // bleibt für andere Pfade bestehen; die VIP-Bestandsgröße trägt die Voll-Pool-Prüfung locker.
     // R-0194: derselbe Pool speist die Ähnlichkeitsprüfsumme in detectForSubject — Demo-Seed und
     // das Objekt selbst bleiben ihr damit ebenso fern wie dem Trigramm-Rang.
-    const pool = (await deps.ko.list())
-      .filter((k) => k.id !== koId && !k.demoSeed && !k.mergedInto)
-      .map(toDetectSubject);
+    const poolObjekte = (await deps.ko.list()).filter(
+      (k) => k.id !== koId && !k.demoSeed && !k.mergedInto,
+    );
+    const pool = poolObjekte.map(toDetectSubject);
     if (pool.length === 0) {
       // R-0194 (bens Befund zu K3): auch ohne Vergleichspartner ist das eine Anlage bzw. Änderung —
       // die lokale Prüfsumme des (nicht-Demo-)Subjekts wird gepflegt. Kein Vergleich, kein Modell.
@@ -106,13 +111,17 @@ export async function detectDuplicatesForKo(
     }
     const minConfidence =
       (await deps.settings.get())?.minConfidence ?? DEFAULT_OVERLAP_SETTINGS.minConfidence;
+    // rechteentzug-gespraeche-belege (Nacharbeit 35): die heutige Freigabe beider Seiten vor jedem
+    // Anbieteraufruf und vor der Übernahme des Urteils (s. verarbeitungsfreigabe).
+    const freigabe = verarbeitungsfreigabe(deps.ko, [subject, ...poolObjekte]);
     await deps.overlaps.detectForSubject(
       subjectSubject,
       pool,
-      async (a, b, confidential) => {
-        const outcome = await deps.reasoner.judgeDuplicateOutcome(a, b, "de", confidential);
-        return { verdict: outcome.verdict, failureReason: comparisonFailureReason(outcome) };
-      },
+      (a, b, confidential) =>
+        unterFreigabe(freigabe, [a, b], async () => {
+          const outcome = await deps.reasoner.judgeDuplicateOutcome(a, b, "de", confidential);
+          return { verdict: outcome.verdict, failureReason: comparisonFailureReason(outcome) };
+        }),
       {
         minConfidence,
         // AUFTRAG-mega28 A1 (Pedi 26.07.): Hier stand bis mega27 GAR KEIN cap — der Weg legte den

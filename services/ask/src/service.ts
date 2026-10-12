@@ -101,6 +101,7 @@ import {
   vorgangsphase,
   zurueckweisungMeldungId,
 } from "./gap-vorgang";
+import { gegenpositionOhneModell } from "./gegenposition-ohne-modell";
 import { aussageFingerabdruck, signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
 import { type AnswerSnapshotRepo, type GapRepo, gleicherLueckenstand } from "./repo";
 import {
@@ -1488,7 +1489,17 @@ export class AskService {
     );
     // ANTWORTBELEG (R-0317): die Laufprotokoll-Kennung geht in den Beleg, NICHT an die Antwortfläche.
     // Sie wird hier abgetrennt, damit alles Weitere (Antwort, Wissenslücke, Ausgabe) feldgleich bleibt.
-    const { modelRunId: modelllauf, ...rawResult } = rawMitLauf;
+    const { modelRunId: modelllauf, ...antwortwegErgebnis } = rawMitLauf;
+    // P05-AC08 (B-02/B-05): ohne Modell keine Widerspruchsprüfung — trägt eine weitere bestätigte
+    // Quelle derselben Auswahl einen anderen Wortlaut, wird nicht still gewählt, sondern beide
+    // genannt und gezielt nach dem Geltungsfall gefragt (Regel und Grenzen im Modul). Der wörtliche
+    // Add-in-Weg bleibt unberührt. Zusammenführung mit R-0317: die Gegenposition wirkt auf das
+    // Ergebnis OHNE Laufkennung — die Kennung reist unverändert über `modelllauf` in den Beleg.
+    const gegenposition =
+      opts?.retrievalOnly === true
+        ? null
+        : gegenpositionOhneModell(antwortwegErgebnis, candidates, locale);
+    const rawResult = gegenposition ?? antwortwegErgebnis;
     // D5: danach werden Beleg, Wissenslücke und (in der Route) die Quellobjekte der Einstufung
     // geschrieben bzw. gelesen. Ist inzwischen abgeschaltet, wird nichts davon mehr ausgeliefert.
     this.pruefeKiSperre("ergebnis", kiBeginn);

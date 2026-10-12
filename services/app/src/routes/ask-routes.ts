@@ -1053,6 +1053,15 @@ async function antwortLauf(
     // Anfrage an ein Word-Dokument gebunden ist — Klaras Zugang immer; sonst `frage`. Bewusst NICHT
     // die bloße Markierung (KA5-R2).
     readonly anlass: FrageAnlass;
+    /**
+     * P05 (B-10, RF-10): die Anmeldung des Fragenden UNMITTELBAR vor der Auslieferung erneut
+     * prüfen — mit demselben Guard wie am Eingang. Wurde das Konto während der Verarbeitung lokal
+     * gesperrt (Befristung abgelaufen, Verzeichnis-Austritt) oder hat es das Leserecht verloren,
+     * hat der Guard bereits 401/403 gesendet, und die fertige Antwort verlässt den Server nicht.
+     * Nur auf Sitzungswegen gesetzt; der Schlüsselweg hat keine Sitzung. Liefert den FRISCH
+     * aufgelösten Nutzer — mit ihm wird danach das Leserecht an jeder Quelle geprüft.
+     */
+    readonly nachpruefung?: () => Promise<SessionUser | undefined>;
     /** P14: der Firmenfilter dieser Frage — tritt als UND hinter die Grundlage, nie an ihre Stelle. */
     readonly bereich?: Sichtbarkeitsfilter;
   },
@@ -1145,6 +1154,45 @@ async function antwortLauf(
     out.aussagen && request.authContext?.authKind === "addon"
       ? { aussagen: aufKernaussagenBeschraenkt(out.aussagen) }
       : {};
+  // P05 (B-10): nach dem letzten Warten der Antwort, vor der Auslieferung — die Anmeldung erneut.
+  let sichtJetzt = grundlage;
+  if (lauf.nachpruefung) {
+    const frisch = await lauf.nachpruefung();
+    if (!frisch) {
+      return;
+    }
+    // Zusammenführung mit P14: dieselbe Entscheidung wie am Eingang — samt Firmenfilter.
+    sichtJetzt = sichtbarkeitsfilterFuer(frisch, lauf.bereich);
+  }
+  // P05-AC03 (Ben, Nacharbeit 4): LESERECHTSENTZUG WÄHREND DER VERARBEITUNG. Die Antwort entstand
+  // aus Quellen, die der Fragende beim Eingang sehen durfte. Wurde ihm inzwischen das Leserecht an
+  // einer davon entzogen (Hochstufung auf vertraulich, Space-/Rollenentzug), verlässt die fertige
+  // Antwort den Server nicht: jede herangezogene Quelle wird mit dem AKTUELLEN Stand des Objekts und
+  // des Nutzers gegen dieselbe Sichtregel gehalten, Vertrauliches fällt wie im Fragedienst immer
+  // heraus. Die Absage nennt keine Quelle und keinen Inhalt.
+  // Nacharbeit 6 (Ben): auch eine WÄHREND der Verarbeitung verschwundene Wissenskopie sperrt — in
+  // den Papierkorb gelegt (`ko.get` liefert dann nichts) oder endgelöscht, etwa durch eine gesonderte
+  // personenbezogene oder Lizenzlöschung (P05-AC06). Davon zu unterscheiden ist die nur
+  // UNERREICHBARE externe Quelle einer gewöhnlichen Quellenlöschung (P05-AC01/AC02): dort bleibt die
+  // Kopie bestehen, trägt nur den Vermerk `sourceRemovedAt` am Anker und wird weiter ausgeliefert.
+  // Grenze, benannt: zwischen dieser Lesung und dem Senden liegt kein weiteres Warten; ein Entzug
+  // NACH dem Senden wirkt auf die nächste Anfrage (Beleg- und Frageweg prüfen am Eingang).
+  const herangezogen = [...new Set([...out.result.sources, ...out.result.citedSources])];
+  for (const id of herangezogen) {
+    const jetzt = await deps.ko.get(id);
+    if (!jetzt || isConfidential(jetzt.confidentiality) || !sichtJetzt(jetzt)) {
+      reply.code(409).send({
+        error: "QUELLRECHTE_GEAENDERT",
+        message:
+          lauf.locale === "en"
+            ? "Access to a source used for this answer changed while it was being prepared. Please ask again."
+            : lauf.locale === "nl"
+              ? "De toegang tot een bron voor dit antwoord is tijdens het opstellen gewijzigd. Stel de vraag opnieuw."
+              : "Der Zugriff auf eine herangezogene Quelle hat sich während der Antwort geändert. Bitte erneut fragen.",
+      });
+      return;
+    }
+  }
   // AUFNAHME 20260922: `belastbarkeit` steht NEBEN `evidence`, nicht darin — die Einstufung
   // bleibt der unveränderte Vertrag, den Word und die Paritätstafel lesen.
   reply.code(200).send({
@@ -1329,6 +1377,10 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             // R-0346: hier kommt eine Klara-Bindung nur noch mit einem Dienst-Schlüssel an (R-0688,
             // Abweisung oben); dann gilt wie bisher der Anlass `dokument`.
             anlass: klaraBindungVorhanden(request.headers) ? "dokument" : "frage",
+            // P05 (B-10): nur der Sitzungsweg — der Schlüsselweg hat keine Sitzung zum Nachprüfen.
+            ...(request.authContext?.authKind === "addon"
+              ? {}
+              : { nachpruefung: () => guards.requirePermission("ko.read", request, reply) }),
           });
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
@@ -2188,6 +2240,8 @@ export function klaraAusfuehrungRoutes(
             ...(zusatz ? { zusatz } : {}),
             // R-0346: Klaras Zugang ist immer an ein Word-Dokument gebunden.
             anlass: "dokument",
+            // P05 (B-10): Klaras Zugang ist immer ein Sitzungsweg.
+            nachpruefung: () => guards.requirePermission("ko.read", request, reply),
           });
         };
         if (freigegeben) {

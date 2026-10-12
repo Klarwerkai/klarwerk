@@ -494,6 +494,11 @@ export function MehrAbschnitte({
   const canEdit = role !== "viewer";
   const canReview = role === "controller" || role === "admin";
   const canTransfer = role === "admin";
+  // Autorenübergabe-Auftrag (R-0961, Peters Entscheidung 24): die Übergabe ausdrücklich verlangen
+  // dürfen der Autor dieses Eintrags und die Verwaltung (Admin). Dieselbe Regel prüft der Server
+  // (`ko-routes.ts`, `request-author-transfer`); hier entscheidet sie nur, ob der Knopf erscheint.
+  const user = session.user;
+  const canRequestTransfer = Boolean(user) && (user?.id === ko.author || canTransfer);
 
   const evidence = useKoEvidence(id);
   const versions = useKoVersions(id);
@@ -522,6 +527,15 @@ export function MehrAbschnitte({
     void qc.invalidateQueries({ queryKey: ["kos"] });
     void qc.invalidateQueries({ queryKey: ["library"] });
     void qc.invalidateQueries({ queryKey: ["conflicts"] });
+    // Autorenübergabe-Auftrag K3 (Ben, Nacharbeit 4): Eine Übergabe (`transfer`) ändert, bei WEM
+    // eine Rückgabe liegt. Die Liste der Aufgabenseite und die Zahl im Kopfband
+    // (`["me", "returned-tasks", …]`, api/hooks.ts) blieben sonst bis zum Ablauf der Frischefrist
+    // (30 s, main.tsx) beim alten Autor stehen. Der gemeinsame Präfix trifft beide zugleich.
+    void qc.invalidateQueries({ queryKey: ["me", "returned-tasks"] });
+    // R-0961: Übergabe und Antrag ändern, welche Autorenübergaben anstehen. Liste der Aufgabenseite
+    // und Zahl im Kopfband (`["me", "author-transfers", …]`) frischen gemeinsam auf — sonst stünde
+    // eine erledigte Übergabe bis zum Fristablauf weiter da (K3: „verschwindet von der Fläche").
+    void qc.invalidateQueries({ queryKey: ["me", "author-transfers"] });
   };
   const fehlerToast = (e: unknown): void =>
     push("error", e instanceof ApiError ? e.message : t("state.error"));
@@ -622,6 +636,16 @@ export function MehrAbschnitte({
       invalidate();
       setNewAuthor("");
       push("success", t("ko.transferDone"));
+    },
+    onError: fehlerToast,
+  });
+  // R-0961: der Antrag. Er schreibt nur einen Protokolleintrag; die wartende Aufgabe entsteht beim
+  // Server daraus (`lib/autorenuebergabe.ts`) und wird mit `transfer` oben erledigt.
+  const requestTransfer = useMutation({
+    mutationFn: () => endpoints.ko.act(id, { action: "request-author-transfer" }),
+    onSuccess: () => {
+      invalidate();
+      push("success", t("ko.transferRequestDone"));
     },
     onError: fehlerToast,
   });
@@ -2560,6 +2584,19 @@ export function MehrAbschnitte({
             >
               {t("ko.transfer")}
             </Button>
+          </div>
+        ) : null}
+        {canRequestTransfer ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
+            <Button
+              variant="ghost"
+              data-testid="ko-uebergabe-anfordern"
+              disabled={requestTransfer.isPending}
+              onClick={() => requestTransfer.mutate()}
+            >
+              {t("ko.transferRequest")}
+            </Button>
+            <span className="text-[12px] text-muted-2">{t("ko.transferRequestHint")}</span>
           </div>
         ) : null}
         {/* R-1632 / R-1633: wo dieser Punkt gilt — Konzern-Standard, Werks-Praxis oder
