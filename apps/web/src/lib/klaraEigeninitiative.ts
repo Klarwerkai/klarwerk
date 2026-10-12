@@ -171,6 +171,24 @@ export function verwerfeEigeninitiative(): void {
 const GEZEIGT_PRAEFIX = "kw-klara-hinweise-gezeigt:";
 let gezeigt: { kontoId: string; menge: Set<string> } | null = null;
 
+/**
+ * Der Teil des Tab-Speichers, den diese Datei braucht — strukturell beschrieben statt über die
+ * DOM-Typen (`window`, `Storage`): die reine Hinweislogik wird auch aus dem Root-Typcheck ohne
+ * DOM-Bibliothek gelesen (`tests/klara-eigeninitiative/hinweis-logik.test.ts`). Im Browser ist es
+ * `sessionStorage`; fehlt er (Server, gesperrter Speicher), gilt die Merkliste nur im Speicher.
+ */
+interface TabSpeicher {
+  readonly length: number;
+  key(index: number): string | null;
+  getItem(schluessel: string): string | null;
+  setItem(schluessel: string, wert: string): void;
+  removeItem(schluessel: string): void;
+}
+
+function tabSpeicher(): TabSpeicher | null {
+  return (globalThis as { sessionStorage?: TabSpeicher }).sessionStorage ?? null;
+}
+
 function gezeigtMenge(): Set<string> {
   const kontoId = lage.kontoId;
   if (!kontoId) {
@@ -181,7 +199,7 @@ function gezeigtMenge(): Set<string> {
   }
   const menge = new Set<string>();
   try {
-    const roh = window.sessionStorage.getItem(`${GEZEIGT_PRAEFIX}${kontoId}`);
+    const roh = tabSpeicher()?.getItem(`${GEZEIGT_PRAEFIX}${kontoId}`) ?? null;
     const liste: unknown = roh ? JSON.parse(roh) : [];
     if (Array.isArray(liste)) {
       for (const s of liste) {
@@ -210,7 +228,7 @@ export function merkeGezeigt(schluessel: string): void {
   m.add(schluessel);
   try {
     const liste = JSON.stringify([...m].slice(-200));
-    window.sessionStorage.setItem(`${GEZEIGT_PRAEFIX}${kontoId}`, liste);
+    tabSpeicher()?.setItem(`${GEZEIGT_PRAEFIX}${kontoId}`, liste);
   } catch {
     // Ohne Tab-Speicher gilt die Merkliste nur bis zum Neuladen.
   }
@@ -219,10 +237,20 @@ export function merkeGezeigt(schluessel: string): void {
 function vergissGezeigte(): void {
   gezeigt = null;
   try {
-    for (const schluessel of Object.keys(window.sessionStorage)) {
-      if (schluessel.startsWith(GEZEIGT_PRAEFIX)) {
-        window.sessionStorage.removeItem(schluessel);
+    const speicher = tabSpeicher();
+    if (!speicher) {
+      return;
+    }
+    // Erst sammeln, dann löschen — Löschen verschiebt die Indizes von `key()`.
+    const weg: string[] = [];
+    for (let i = 0; i < speicher.length; i++) {
+      const schluessel = speicher.key(i);
+      if (schluessel?.startsWith(GEZEIGT_PRAEFIX)) {
+        weg.push(schluessel);
       }
+    }
+    for (const schluessel of weg) {
+      speicher.removeItem(schluessel);
     }
   } catch {
     // Ohne Tab-Speicher gibt es nichts zu vergessen.
