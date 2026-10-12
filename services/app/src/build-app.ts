@@ -277,6 +277,8 @@ import {
   InMemoryAssistenzProfilRepo,
   PgAssistenzProfilRepo,
 } from "./assistenz-profil";
+// produkt:20261012:klara-setup-shortcuts-umsetzung: die Klara-Tastenkürzel im Assistenzprofil.
+import { TastenkuerzelDienst } from "./assistenz-tastenkuerzel";
 import { autorenNamenAus } from "./autorennamen";
 import {
   type BearbeitungsRepo,
@@ -5528,6 +5530,8 @@ export function buildApp(
         dienst: new AssistenzProfilDienst({ repo: services.assistenzProfile }),
         // produkt:20261008:klara-eigeninitiative: der Unterstützungsmodus liegt im selben Profil.
         eigeninitiative: new EigeninitiativeDienst({ repo: services.assistenzProfile }),
+        // produkt:20261012:klara-setup-shortcuts-umsetzung: die Klara-Kürzel im selben Profil.
+        tastenkuerzel: new TastenkuerzelDienst({ repo: services.assistenzProfile }),
         audit: services.audit,
       },
       guards,
