@@ -15,6 +15,9 @@ H01). Systemweit ist nicht entschieden — siehe [`ENTSCHEIDUNG-SYSTEMWEIT.md`](
 2. AA-04 berührt `KlaraVorschau.tsx` nur an einer Stelle (Öffnen über ein Ereignis, siehe 3.1).
    C01, C04 und C05 ändern dieselbe Datei großflächig; der Anschluss bleibt deshalb bewusst klein.
 3. AA-03 und AA-04 gemeinsam integrieren (Vorgabe der Quelle).
+4. C06 (Kalender) bringt eine eigene persönliche Einstellung und ändert `taskpane.html`. AA-02
+   ändert das Word-Panel nicht und übernimmt die Kalender-Sichtwahl nicht; ist C06 geliefert, darf
+   der Bereich „Klara“ auf `/kalender` verweisen.
 
 ## 1. AA-02 · Bereich „Klara“ in den Persönlichen Einstellungen
 
@@ -24,26 +27,66 @@ keine neue Route: die vorhandene Zeile „Meine Assistenz“ (`zeile-assistenz`)
 vorhandene Direktweg `/profil?bereich=assistenz` bleibt gültig; ein zusätzlicher Wert
 `?bereich=klara` darf auf dieselbe Karte zeigen.
 
-**Benennung — Entscheidung nötig.** Seit `assistenz-name-avatar` heißt die bewegliche Assistenz
-neutral „Assistenz“ bzw. mit dem persönlichen Namen; `tests/assistenz-profil/katalog.test.ts` (M4)
-verlangt das für die Gesprächstexte. Peter wünscht „Klara“ als Bereichsname. Vorschlag: Zeile und
-Kartentitel „Klara“ mit dem gewählten Assistenznamen als Wert (z. B. „Klara · Mia“). M4 betrifft
-die Zeilentexte von `/profil` nicht; der Widerspruch zur Gestaltungsabsicht ist trotzdem eine
-Product-Owner-Entscheidung und wird nicht still aufgelöst.
+**Benennung — feste Vorgabe.** Der Bereich heißt „Klara“ (verbindlicher Nutzerwunsch, AA-02:
+„eindeutig benannter Bereich ‚Klara‘“). Zeile und Kartentitel lauten „Klara“; der persönliche
+Assistenzname (E01) bleibt daneben als Wert der Zeile sichtbar (z. B. „Klara · Mia“) und wird in
+Figur und Gespräch weiter verwendet. Die neutrale Benennung der Gesprächstexte
+(`tests/assistenz-profil/katalog.test.ts`, M4) prüft die Gesprächsmodule, nicht die Zeilentexte von
+`/profil`; sie bleibt unverändert und wird nicht abgeschwächt.
 
 **Gruppen in der Detailkarte** (nur Bestand):
 
 | Gruppe | Inhalt | Vorgehen |
 | --- | --- | --- |
 | Name und Erscheinung | E01, E02, E03 | unverändert `AssistenzFormular modus="aendern"` |
-| Unterstützung | E05, E06 | dieselbe `KlaraModusWahl` mit derselben Ablage zusätzlich hier einbinden; im Gespräch bleibt sie stehen |
+| Unterstützung | E05 | dieselbe `KlaraModusWahl` mit derselben Ablage (`waehleModus` → `PUT /api/me/assistenz/eigeninitiative`) zusätzlich hier einbinden; im Gespräch bleibt sie stehen |
+| Ruhende Hinweise | E06 | siehe „Hinweisaktionen (E06)“ unten |
 | Fähigkeiten | E07 | unverändert `FaehigkeitenBereich` |
 | Sprachausgabe | E08 | dieselbe `KlaraSprachausgabe` einbinden; Beschriftung „gilt für diesen Browser“, weil die Ablage `localStorage` ist. Eine Übernahme ins Konto wäre ein Speicherwechsel und ist **nicht** Teil von AA-02 |
 | Tastenkürzel | AA-03 | neuer Unterbereich mit kurzer Beschreibung und Geltungsbereich |
 | Vorgaben der Organisation | O01, O02 | nur lesbarer Hinweis „von der Verwaltung festgelegt“; für `admin` Verweis auf `/admin` (vorhandene Fläche). Keine Kopie der Schalter, keine neue Berechtigung |
-| Weitere Hosts | H02, H03 | Hinweis mit Zuständigkeit: Browser-Kürzel in Chrome (`chrome://extensions/shortcuts`), Word ohne Einstellungen |
+| Klara im Browser | H02 | Hinweis mit Zuständigkeit: Sprache in der Seitenleiste, Kürzel T05 in Chrome (`chrome://extensions/shortcuts`) |
+| Klara in Word | H03, W01–W05 | siehe „Word-Einstellungen (H03)“ unten |
 
 Nicht ins Setup: E04 (Ablaufband), E09/E10 (Sitzungs-Bedienzustand), O03 (Betrieb).
+
+**Hinweisaktionen (E06).** „Später“ und „Nicht mehr anbieten“ gelten immer für **einen konkreten**
+Hinweis, dessen Schlüssel erst aus dem Seitenkontext entsteht (`hinweisFuer` in
+`lib/klaraEigeninitiative.ts`: `tutorial:<ort>`, `ungeprueft:<id>`, `seite:<ort>`). Im Setup gibt es
+diesen Kontext nicht. Deshalb:
+
+1. Die Aktionen bleiben, wo sie heute wirken: `KlaraHinweis` (`onSpaeter`/`onSchliessen`) →
+   `hinweisAblegen` in `KlaraVorschau.tsx` → `legeHinweisAb` →
+   `POST /api/me/assistenz/eigeninitiative/hinweise` mit `zurueckgestellt` bzw. `geschlossen`.
+   Unverändert, kein zweiter Weg.
+2. Der Bereich „Klara“ zeigt in der Gruppe „Unterstützung“ den gespeicherten Stand derselben
+   Ablage nur lesend: die Liste `hinweise` (Schlüssel, Stand, „ruht bis“) kommt bereits mit
+   `GET /api/me/assistenz/eigeninitiative` und liegt im Speicher `useEigeninitiative()`. Dazu ein Satz
+   mit klarer Zuständigkeit: „Hinweise legst du direkt am Hinweis neben der Figur ab.“ Für die
+   Anzeige wird jeder Schlüssel über seine Art (`tutorial`, `ungeprueft`, `seite`) mit dem
+   vorhandenen Hinweistext `klarainitiative.hinweis.<art>.text` (`texte/klarainitiative.ts`)
+   beschriftet; fehlt der Kontextwert (Seitenname), erscheint nur Art und „ruht bis“.
+3. Nicht vorausgesetzt: ein Wiederfreigeben ruhender Hinweise. Der Serververtrag kennt nur
+   `geschlossen` und `zurueckgestellt`; ein Zurücknehmen wäre eine neue Funktion und gehört nicht
+   zu AA-02.
+
+**Word-Einstellungen (H03).** Das Word-Add-in hat eine eigene Einstellungsfläche im
+Aufgabenbereich, die nur dort erreichbar ist: Das Panel läuft in einem eigenen Rahmen mit eigener
+Anmeldung, und W01–W03 sowie das „Nein“ aus W04 leben nur in der jeweiligen Panelinstanz. Aus der
+Web-App lassen sie sich weder lesen noch setzen; sie dorthin zu verlegen, wäre ein neuer
+Speicherweg und ist nicht Teil von AA-02. Der Bereich „Klara“ nennt deshalb in der Gruppe
+„Klara in Word“ jede Word-Einstellung mit ihrer tatsächlichen Geltung und dem direkten Zugang:
+
+| Eintrag | Geltung, wie angezeigt | Direkter Zugang |
+| --- | --- | --- |
+| W01 Sprache | gilt nur für das gerade geöffnete Word-Panel | Word › Klara › Zahnrad (`kw-zahnrad`) › Sprache |
+| W02 Text in Word mitlesen | wie W01, Vorgabe an | Word › Klara › Zahnrad › Mitlesen |
+| W03 Absatzblick | wie W01, Vorgabe aus | Word › Klara › Zahnrad › Absatzblick |
+| W04 Zustimmung externe KI | gilt für die Klara-Sitzung dieses Dokuments; erscheint nur, wenn der Server sie verlangt | Word › Klara › Zahnrad |
+| W05 Dokumentkennung | keine Einstellung; nur erklärender Satz „Word merkt sich im Dokument, zu welchem Klarwerk-Eintrag es gehört“ | keiner (nicht bedienbar) |
+
+Die Gruppe „Vom Admin eingestellt“ im Word-Panel zeigt O01 bereits lesend; daran ändert AA-02
+nichts. Ein Klara-Kürzel in Word ist nicht Teil von AA-03/AA-04 (siehe Abschnitt 4).
 
 **Werte und Rechte.** Kein Umzug von Daten: alle Gruppen lesen und schreiben über ihre bisherigen
 Wege (`/api/me/assistenz`, `/api/me/assistenz/eigeninitiative`, `/api/me/faehigkeiten/…`,

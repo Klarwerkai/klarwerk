@@ -50,7 +50,5 @@ Klarwerk, solange das Fenster aktiv ist“ und verspricht keine systemweite Wirk
 
 1. A bestätigen (nur innerhalb Klarwerks) — ja / nein.
 2. B als Folgeauftrag nach Abnahme des Mac-Begleiters vormerken — ja / nein / später.
-3. Bereichsname im Setup: „Klara“ (Wunsch) trotz neutraler Assistenzbenennung seit
-   `assistenz-name-avatar` — siehe Integrationsplan, Abschnitt 1.
-4. Standardbelegung für „Klara öffnen“: unbelegt ausliefern (Vorschlag) oder Control+Command+K
+3. Standardbelegung für „Klara öffnen“: unbelegt ausliefern (Vorschlag) oder Control+Command+K
    nach Konfliktprüfung — Control+Command+K ist kein zertifiziert freies Kürzel.

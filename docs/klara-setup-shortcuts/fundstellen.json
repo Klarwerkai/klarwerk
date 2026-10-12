@@ -517,7 +517,7 @@
       "stand": "geliefert",
       "host": ["office"],
       "geltung": "keine",
-      "speicher": "keiner im Add-in (nur Arbeitsspeicher der Panelinstanz); Sitzungen serverseitig klara_sessions",
+      "speicher": "Frage und Antwort werden im Add-in nicht dauerhaft abgelegt; Sitzungen serverseitig klara_sessions; Dokumentkennung siehe W05",
       "recht": "ko.read (/api/klara/*)",
       "ort_heute": "Word-Aufgabenbereich „Klara“",
       "fundstellen": [
@@ -681,13 +681,146 @@
       "stand": "geliefert",
       "host": ["office"],
       "geltung": "keine",
-      "speicher": "bewusst keine dauerhafte Ablage im Add-in",
+      "speicher": "Panelschalter W01–W03 nur in der Panelinstanz; Zustimmung W04 am Server; Dokumentkennung W05 dauerhaft in den Einstellungen des Word-Dokuments; Anmeldeschlüssel nur im Arbeitsspeicher des Panels (kein localStorage, kein Cookie)",
       "recht": "ko.read",
-      "ort_heute": "keine Einstellungsfläche; Manifest ohne Tastenkürzel",
+      "ort_heute": "eigene Einstellungsfläche im Aufgabenbereich (kw-einstellungen) mit W01–W04, Gruppe „Vom Admin eingestellt“ (O01 nur lesbar) und Konto; Manifest ohne Tastenkürzel",
       "fundstellen": [
         {
           "pfad": "docs/word-addin/klara-manifest.xml",
           "anker": "<DisplayName DefaultValue=\"Klara\" />"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.html",
+          "anker": "<div id=\"kw-einstellungen\" class=\"hidden\">"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "var officeSchluessel = null;"
+        }
+      ]
+    },
+    {
+      "id": "W01",
+      "art": "einstellung",
+      "name": "Word: Sprache des Aufgabenbereichs (Deutsch, English, Nederlands)",
+      "stand": "geliefert",
+      "host": ["office"],
+      "geltung": "panelinstanz",
+      "speicher": "nur Arbeitsspeicher der Panelinstanz (Start „de“); nicht am Konto, nicht im Dokument",
+      "recht": "keine Serverprüfung",
+      "ort_heute": "Word › Klara › Einstellungen › Sprache",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.html",
+          "anker": "id=\"einst-sprache-zeile\""
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "var lang = \"de\";"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "function setLang(next) {"
+        }
+      ]
+    },
+    {
+      "id": "W02",
+      "art": "einstellung",
+      "name": "Word: Text in Word mitlesen (Markierung als Fragegrundlage)",
+      "stand": "geliefert",
+      "host": ["office"],
+      "geltung": "panelinstanz",
+      "speicher": "nur Arbeitsspeicher der Panelinstanz; Voreinstellung an",
+      "recht": "keine Serverprüfung",
+      "ort_heute": "Word › Klara › Einstellungen › Schalter „Mitlesen“",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.html",
+          "anker": "id=\"einst-mitlesen\""
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "var askMitlesen = true;"
+        }
+      ]
+    },
+    {
+      "id": "W03",
+      "art": "einstellung",
+      "name": "Word: Absatzblick (Bestandsblick beim Absatzwechsel nur nach bewusstem Ja)",
+      "stand": "geliefert",
+      "host": ["office"],
+      "geltung": "panelinstanz",
+      "speicher": "nur Arbeitsspeicher der Panelinstanz; Voreinstellung aus",
+      "recht": "keine Serverprüfung",
+      "ort_heute": "Word › Klara › Einstellungen › Schalter „Absatzblick“",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.html",
+          "anker": "id=\"einst-absatzblick\""
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "var ka3AbsatzAn = false, ka3AbsatzRunde = 0;"
+        }
+      ]
+    },
+    {
+      "id": "W04",
+      "art": "einstellung",
+      "name": "Word: Zustimmung zur externen KI für diese Klara-Sitzung (erteilen/widerrufen) und Ablehnung je Dokument",
+      "stand": "geliefert",
+      "host": ["office"],
+      "geltung": "sitzung",
+      "speicher": "Zustimmung am Server (klara_session_consents) über POST/DELETE /api/klara/sessions/:sessionId/consent; ein „Nein“ je Dokument nur im Arbeitsspeicher der Panelinstanz",
+      "recht": "ko.read; der Server entscheidet über Bedarf und Wirkung (O01), das Panel nicht",
+      "ort_heute": "Word › Klara › Einstellungen, sichtbar nur wenn der Server die Zustimmung verlangt oder sie erteilt ist",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.html",
+          "anker": "id=\"klara-consent-grant\""
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.html",
+          "anker": "id=\"klara-consent-revoke\""
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "function klaraS4Zustimmen() {"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "function ka4Ablehnen() {"
+        },
+        {
+          "pfad": "services/app/src/routes/klara-ai-routes.ts",
+          "anker": "\"/api/klara/sessions/:sessionId/consent\","
+        }
+      ]
+    },
+    {
+      "id": "W05",
+      "art": "dokumentzustand",
+      "name": "Word: Klarwerk-Dokumentkennung klarwerkDokumentId (keine Nutzereinstellung, keine Anmeldung)",
+      "stand": "geliefert",
+      "host": ["office"],
+      "geltung": "dokument",
+      "speicher": "dauerhaft in den Einstellungen DIESES Word-Dokuments (Office.context.document.settings, saveAsync); reist mit der Datei; vom Server vergeben; bis zur bestätigten Speicherung nur als ungesicherte Kennung im Panel",
+      "recht": "vom Server beim Senden vergeben; vom Anwender nicht einstellbar",
+      "ort_heute": "keine Bedienfläche; Warnung, wenn die Speicherung im Dokument scheitert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "var WORD_ADDIN_DOKUMENT_SETTING = \"klarwerkDokumentId\";"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "einstellungen.saveAsync(function (ergebnis) {"
+        },
+        {
+          "pfad": "apps/web/src/lib/wordAddin.ts",
+          "anker": "export const WORD_ADDIN_DOKUMENT_SETTING = \"klarwerkDokumentId\";"
         }
       ]
     },
@@ -782,6 +915,23 @@
       "kandidat_fundstellen": [
         "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx · geändert",
         "apps/web/src/components/klara-vorschau/KlaraUebernahme.tsx · neu"
+      ]
+    },
+    {
+      "id": "C06",
+      "art": "kandidat",
+      "name": "Eigener persönlicher Kalender (produkt:20261010:klara-eigener-kalender) mit Sichtwahl als persönlicher Einstellung und Word-Block „Mein Kalender“",
+      "stand": "kandidat",
+      "host": ["web", "office"],
+      "zweig": "codex/auftrag-037bbf78aabef05890d7",
+      "commit": "0b88f41b2",
+      "titel": "Eigenen persönlichen Kalender ohne externen Dienst nutzbar machen (1.0.0-beta.1.883)",
+      "kandidat_fundstellen": [
+        "apps/web/src/routes.tsx · neue Route /kalender",
+        "apps/web/src/shell/KontoMenue.tsx · Einstieg über das Konto-Menü",
+        "services/app/src/routes/eigener-kalender-routes.ts · PUT /api/me/kalender/einstellungen (Sichtwahl eigen | vorhanden | beide)",
+        "apps/web/public/word-addin/taskpane.html · Block #kalender-block (4 Zeilen geändert)",
+        "docs/operations/klara/eigener-kalender.md · Stand Nacharbeit 2"
       ]
     },
     {

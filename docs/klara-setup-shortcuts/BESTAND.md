@@ -54,7 +54,27 @@ und wird hier nicht mitgezählt.
 | O02 | Stufe der externen Wissensabfrage | geliefert | gibt die Fähigkeit Wikipedia-Suche frei oder nicht | Server, `external_knowledge_policy` | `users.manage` (admin) |
 | O03 | `KLARWERK_ADDON_API` (älteres Office-Bündel `/addin/*`) | geliefert | Route registriert oder 404 | Server-Umgebung | Betreiber, keine Oberfläche |
 
-### 2.3 Rollen- und Berechtigungsregeln (zu übernehmen, nicht zu erweitern)
+### 2.3 Word-Add-in (eigene Einstellungsfläche im Aufgabenbereich)
+
+Das Word-Add-in hat eine eigene Einstellungsfläche (`#kw-einstellungen` in
+`apps/web/public/word-addin/taskpane.html`) mit Sprache, zwei Schaltern, der Sitzungszustimmung,
+der nur lesbaren Gruppe „Vom Admin eingestellt“ (Werte aus O01 über `/api/klara/ai-status`) und
+dem Konto (Abmelden).
+
+| ID | Einstellung | Stand | Ort heute | Speicher | Geltung | Recht |
+| --- | --- | --- | --- | --- | --- | --- |
+| W01 | Sprache des Aufgabenbereichs (de/en/nl) | geliefert | Word › Klara › Einstellungen | nur Arbeitsspeicher des Panels, Start „de“ | Panelinstanz | keine Serverprüfung |
+| W02 | Text in Word mitlesen | geliefert | wie W01, Schalter (Vorgabe an) | nur Arbeitsspeicher des Panels | Panelinstanz | keine Serverprüfung |
+| W03 | Absatzblick (Bestandsblick beim Absatzwechsel) | geliefert | wie W01, Schalter (Vorgabe aus) | nur Arbeitsspeicher des Panels | Panelinstanz | keine Serverprüfung |
+| W04 | Zustimmung zur externen KI dieser Sitzung; Ablehnung je Dokument | geliefert | wie W01, nur sichtbar, wenn der Server sie verlangt oder sie erteilt ist | Zustimmung am Server (`klara_session_consents`, `POST/DELETE /api/klara/sessions/:sessionId/consent`); das „Nein“ je Dokument nur im Arbeitsspeicher | Sitzung bzw. Dokument im Panel | `ko.read`; Bedarf und Wirkung entscheidet der Server |
+| W05 | Dokumentkennung `klarwerkDokumentId` | geliefert | keine Bedienfläche | **dauerhaft in den Einstellungen des Word-Dokuments** (`Office.context.document.settings` + `saveAsync`), reist mit der Datei | Dokument | vom Server beim Senden vergeben, nicht vom Anwender einstellbar |
+
+Abgrenzung: W05 ist **keine** Nutzereinstellung und **keine** Anmeldung, sondern die dauerhafte
+Zuordnung eines Dokuments zu seiner Klarwerk-Akte. Die Anmeldung hält das Panel getrennt davon
+nur im Arbeitsspeicher (`officeSchluessel`, kein `localStorage`, kein Cookie). W01–W03 und das
+„Nein“ aus W04 sind flüchtiger Panelzustand und beginnen bei jedem Öffnen neu.
+
+### 2.4 Rollen- und Berechtigungsregeln (zu übernehmen, nicht zu erweitern)
 
 - Persönliche Assistenz-Einstellungen (E01–E07): jede angemeldete Rolle (`requireUser`); das Konto
   kommt **ausschließlich** aus der Sitzung; nennt eine Anfrage eine fremde Kontokennung, antwortet
@@ -64,6 +84,8 @@ und wird hier nicht mitgezählt.
   Eine eigene `klara.*`-Berechtigung gibt es nicht und ist nicht vorgesehen.
 - Organisationsweite Werte (O01, O02): `users.manage`, also nur `admin`.
 - Browser-Erweiterung und Word-Add-in: eigene Anmeldung am Server; dort gelten dieselben Rechte.
+  Die Word-Schalter W01–W03 sind ohne Serverrecht; die Zustimmung W04 läuft über `ko.read` und
+  die serverseitige Sitzungsbindung.
 
 ## 3. Aktionen
 
@@ -104,7 +126,7 @@ eine Quelle (`apps/web/src/lib/tastenkuerzel.ts`, Apple „⌘“, sonst „Strg
 | --- | --- | --- | --- | --- |
 | H01 | Web-App (SPA, `KlaraEbene` in `AppShell.tsx`) | geliefert | alle Einstellungen E01–E10, O01–O02; A01–A07 | Tastenereignisse nur, solange Tab und Fenster aktiv sind; Browser behält reservierte Kürzel (⌘W, ⌘T, ⌘Q …) |
 | H02 | Chrome-Erweiterung „Klara im Browser“ 0.4.2 | geliefert | A08, T05; Sprache in `chrome.storage.local` | Kürzel nur über `commands` im Manifest, Nutzerbelegung nur in `chrome://extensions/shortcuts`; die Web-App kann sie nicht setzen |
-| H03 | Word-Add-in „Klara“ | geliefert | A09 | Manifest ohne Kürzel; Add-in speichert bewusst nichts dauerhaft |
+| H03 | Word-Add-in „Klara“ | geliefert | A09; Einstellungen W01–W05 im eigenen Aufgabenbereich | Manifest ohne Kürzel; Einstellungen nur im Word-Panel erreichbar (eigener Rahmen, eigene Anmeldung); dauerhaft ist nur W05 im Dokument und W04 am Server |
 | H04 | „KLARWERK App.app“ | geliefert | Start des lokalen Servers, öffnet den Browser | Bash-Skript ohne eigenes Fenster und ohne Ereignisschleife — **kein Ort für ein systemweites Kürzel** |
 | C01 | „Klara Begleiter“ (Swift/AppKit) | Kandidat | schwebende Figur über allen Apps, Menüleiste | einziger nativer Host mit globaler Registrierung; Hostabnahme offen |
 
@@ -117,11 +139,23 @@ eine Quelle (`apps/web/src/lib/tastenkuerzel.ts`, Apple „⌘“, sonst „Strg
 | C03 | `codex/auftrag-97d57ecfa8c8bd7d3426` · `0dac2221a` | neue Zeile „Besprechungsassistenz“ in `/profil` — gehört in die Gruppierung von AA-02, sobald geliefert |
 | C04 | `codex/auftrag-71c74841eea80f27c7b3` · `fb5766f0a` | ändert `KlaraVorschau.tsx` (Erinnerungen) |
 | C05 | `codex/auftrag-a9f1916ab14978df76b8` · `bf41ae240` | ändert `KlaraVorschau.tsx` (Übernahme) |
+| C06 | `codex/auftrag-037bbf78aabef05890d7` · `0b88f41b2` | Kalender (`produkt:20261010:klara-eigener-kalender`): neue persönliche Einstellung „Sichtwahl“ (`PUT /api/me/kalender/einstellungen`, eigene Tabelle `kalender_einstellungen`), Seite `/kalender` über das Konto-Menü, Block „Mein Kalender“ in `taskpane.html` |
 
 Diese Kandidaten werden hier nur gelesen, nicht verändert. Nur beauftragt, ohne Code: AA-02 (B02),
-AA-03 (B03), AA-04 (B04), AA-05 (B05). Offene Kalender-/Einführungsaufträge wurden hier nicht
-inhaltlich abgeglichen; sie bleiben ihre eigenen Originale und werden von AA-02 bis AA-04 nicht
-übernommen.
+AA-03 (B03), AA-04 (B04), AA-05 (B05).
+
+### 6.1 Abgleich weiterer laufender und gelieferter Aufträge
+
+Gelesen wurden am 12.10.2026 die Commit-Historie aller Zweige, der Hauptstand der Basis und bei
+Kandidaten die Dateiliste ihres Unterschieds zur Basis sowie ihre mitgelieferte Betriebsdoku.
+
+| Auftrag (Titel laut Lieferung) | Stand | Belegt durch | Ergebnis für AA-02 bis AA-04 |
+| --- | --- | --- | --- |
+| Eigenen persönlichen Kalender ohne externen Dienst nutzbar machen | Kandidat C06, Stand „Nacharbeit 2“ | Zweig oben; `docs/operations/klara/eigener-kalender.md` auf dem Zweig | **Überschneidung**: Die Sichtwahl ist eine kontobezogene Einstellung mit eigener Ablage, und der Word-Block ändert `taskpane.html` neben W01–W04. Sie bleibt Eigentum ihres Auftrags; der Bereich „Klara“ darf nach deren Lieferung höchstens auf `/kalender` verweisen, übernimmt aber weder Speicher noch Bedienung. |
+| Rollengerechte Befehlspalette und globale Schnellsuche anbieten | geliefert (1.0.0-beta.1.713, `2b1131adc`) | im Hauptstand | **Überschneidung T01**: ⌘K/Strg+K gehört der Palette; AA-04 behandelt das als Konfliktgrenze und verändert die Palette nicht ohne Zustimmung. |
+| Navigation, Logo und aktiven Bereich konsistent bedienen; Navigation und wirksame Rolle verständlich anzeigen; Verwaltung mit Aufgabenübersicht und verständlicher Navigation | geliefert (bis 1.0.0-beta.1.807, `8e3b1366d`) | im Hauptstand | Bestand des Zahnradmenüs und der Profilzeilen (H01); AA-02 fügt sich in diese Zeilen ein und legt keinen neuen Menüpunkt an. |
+| Dialoggrenzen, Tastaturfokus und Vorleseansagen einheitlich führen; Kontrast, Tastatur, Fokus und tatsächliche Vorleseausgabe nachweisen | geliefert (bis 1.0.0-beta.1.862, `d0b026c4f`) | im Hauptstand | Modalgrenze und Fokusführung sind Bestand; AA-04 setzt auf `useModalBoundary` auf und darf deren Prüfungen nicht abschwächen. |
+| Einführungsauftrag mit Klara-Bezug | nicht gefunden | keine Lieferung und kein Zweig mit passendem Titel seit 15.09.2026 | Keine Überschneidung belegbar; siehe Grenzen. |
 
 ## 7. Grenzen dieser Erhebung
 
@@ -129,5 +163,10 @@ inhaltlich abgeglichen; sie bleiben ihre eigenen Originale und werden von AA-02 
   keine Screenreader-Prüfung.
 - Das ältere Office-Bündel `services/app/addin-static` stammt aus einem eigenen Repository
   (`klarwerk-office-addin`); dessen Quellen liegen nicht hier und wurden nicht gelesen.
-- Ob weitere laufende Aufträge außerhalb der Repository-Zweige Klara-Einstellungen planen, ist aus
-  dem Repository nicht feststellbar.
+- Die Originalauftragsdateien und Vertragsrevisionen der anderen Aufträge (deren `AUFTRAG-B1.json`
+  in den Nachbarordnern der Produktion) waren für diese Erhebung nicht lesbar: Der Zugriff ist auf den
+  eigenen Auftragsordner beschränkt. Der Abgleich in 6.1 stützt sich deshalb auf Liefercommits,
+  Zweige und die mitgelieferte Doku der Kandidaten. Ein Abgleich gegen die Originalverträge und
+  ihren aktuellen Revisionsstand steht noch aus und braucht Lesezugriff auf diese Dateien.
+- Ob weitere laufende Aufträge ohne Repository-Zweig Klara-Einstellungen planen, ist aus dem
+  Repository nicht feststellbar.

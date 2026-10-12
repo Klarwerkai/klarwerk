@@ -10,6 +10,10 @@
 //       und nennen den offenen Status der systemweiten Frage (K2).
 //   F4  Integrationsplan und Entscheidungsvorlage setzen nur IDs voraus, die im Bestand stehen —
 //       keine zusätzlichen Einstellungen oder Aktionen (K3).
+//   F5  Nacharbeit 1 (Bens Befunde): jeder Schalter der Word-Einstellungsfläche und die im
+//       Word-Dokument gespeicherte Kennung sind inventarisiert und von Anmeldung und Panelzustand
+//       getrennt; der Plan führt E06 über den vorhandenen Hinweisweg; „Klara“ ist feste Vorgabe;
+//       der Abgleich laufender Aufträge nennt den Kalender-Kandidaten (K1, K2, K3).
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { repoPfad } from "../support/repoPfad";
@@ -30,6 +34,7 @@ interface Eintrag {
   aa?: string;
   host?: string[];
   speicher?: string;
+  geltung?: string;
 }
 
 const ORDNER = "docs/klara-setup-shortcuts";
@@ -118,7 +123,7 @@ describe("F3 · Bestand, Integrationsplan und Entscheidungsvorlage liegen vor", 
 describe("F4 · der Plan setzt nur erfasste Einstellungen und Aktionen voraus", () => {
   for (const datei of ["INTEGRATIONSPLAN.md", "ENTSCHEIDUNG-SYSTEMWEIT.md"]) {
     it(datei, () => {
-      const genannt = [...lies(datei).matchAll(/\b[EOATHC]\d{2}\b/g)].map((m) => m[0]);
+      const genannt = [...lies(datei).matchAll(/\b[EOATHCW]\d{2}\b/g)].map((m) => m[0]);
       expect(genannt.length).toBeGreaterThan(0);
       expect(genannt.filter((id) => !ids.has(id))).toEqual([]);
     });
@@ -134,5 +139,86 @@ describe("F4 · der Plan setzt nur erfasste Einstellungen und Aktionen voraus", 
       expect(e?.art, id).toBe("aktion");
       expect(e?.stand, id).toBe("geliefert");
     }
+  });
+});
+
+describe("F5 · Nacharbeit 1: Word, Hinweisaktionen, Bereichsname, laufende Aufträge", () => {
+  const quelle = (relativ: string): string => readFileSync(repoPfad(relativ), "utf8");
+  const TASKPANE_HTML = "apps/web/public/word-addin/taskpane.html";
+  const TASKPANE_JS = "apps/web/public/word-addin/taskpane.js";
+  const eintrag = (id: string): Eintrag => {
+    const e = eintraege.find((x) => x.id === id);
+    if (!e) {
+      throw new Error(`${id} fehlt in fundstellen.json`);
+    }
+    return e;
+  };
+  const wordAnker = eintraege
+    .filter((e) => e.id.startsWith("W") && e.stand === "geliefert")
+    .flatMap((e) => (e.fundstellen ?? []).map((f) => ({ ...f, id: e.id })));
+
+  it("jeder Schalter der Word-Einstellungsfläche ist als W-Eintrag erfasst", () => {
+    const html = quelle(TASKPANE_HTML);
+    const start = html.indexOf('<div id="kw-einstellungen"');
+    const ende = html.indexOf('data-t="einstAdminKicker"', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(ende).toBeGreaterThan(start);
+    const flaeche = html.slice(start, ende);
+    const schalter = [...flaeche.matchAll(/id="([^"]+)" role="switch"/g)].map((m) => m[1]);
+    expect(schalter.length).toBeGreaterThanOrEqual(4);
+    for (const id of [...schalter, "einst-sprache-zeile"]) {
+      const erfasst = wordAnker.some((a) => a.pfad === TASKPANE_HTML && a.anker === `id="${id}"`);
+      expect(erfasst, `Word-Einstellung #${id} fehlt im Bestand`).toBe(true);
+    }
+  });
+
+  it("die Dokumentkennung ist von Anmeldung und Panelzustand getrennt", () => {
+    expect(quelle(TASKPANE_JS)).toContain("Office.context.document.settings");
+    const kennung = eintrag("W05");
+    expect(kennung.geltung).toBe("dokument");
+    expect(kennung.art).not.toBe("einstellung");
+    expect(kennung.speicher ?? "").toContain("Word-Dokuments");
+    for (const id of ["W01", "W02", "W03"]) {
+      expect(eintrag(id).geltung, id).toBe("panelinstanz");
+    }
+    const host = eintrag("H03");
+    expect(host.fundstellen?.some((f) => f.anker === "var officeSchluessel = null;")).toBe(true);
+    expect(host.speicher ?? "").not.toMatch(/keine dauerhafte Ablage/);
+    expect(lies("BESTAND.md")).not.toContain("speichert bewusst nichts dauerhaft");
+    expect(lies("INTEGRATIONSPLAN.md")).not.toContain("Word ohne Einstellungen");
+  });
+
+  it("E06 bleibt über den vorhandenen Hinweisweg erreichbar, nicht über KlaraModusWahl", () => {
+    const plan = lies("INTEGRATIONSPLAN.md");
+    expect(plan).toContain("**Hinweisaktionen (E06).**");
+    expect(plan).toContain("`POST /api/me/assistenz/eigeninitiative/hinweise`");
+    expect(plan).not.toMatch(/\| Unterstützung \| E05, E06 \|/);
+    expect(quelle("apps/web/src/components/klara-vorschau/KlaraVorschau.tsx")).toContain(
+      "void legeHinweisAb(kontoId, h.schluessel, stand);",
+    );
+    expect(quelle("apps/web/src/api/assistenzEigeninitiative.ts")).toContain(
+      '"/me/assistenz/eigeninitiative/hinweise"',
+    );
+  });
+
+  it("„Klara“ ist feste Vorgabe und kein erneuter Entscheidungspunkt", () => {
+    expect(lies("INTEGRATIONSPLAN.md")).toContain("Der Bereich heißt „Klara“");
+    expect(lies("INTEGRATIONSPLAN.md")).not.toContain("Entscheidung nötig");
+    expect(lies("ENTSCHEIDUNG-SYSTEMWEIT.md")).not.toContain("Bereichsname");
+  });
+
+  it("der Auftragsabgleich nennt Kalender, Palette, Navigation, Barrierefreiheit", () => {
+    const bestand = lies("BESTAND.md");
+    expect(bestand).toContain("### 6.1 Abgleich weiterer laufender und gelieferter Aufträge");
+    expect(eintrag("C06").zweig).toBe("codex/auftrag-037bbf78aabef05890d7");
+    for (const titel of [
+      "Eigenen persönlichen Kalender ohne externen Dienst nutzbar machen",
+      "Rollengerechte Befehlspalette und globale Schnellsuche anbieten",
+      "Navigation, Logo und aktiven Bereich konsistent bedienen",
+      "Dialoggrenzen, Tastaturfokus und Vorleseansagen einheitlich führen",
+    ]) {
+      expect(bestand, titel).toContain(titel);
+    }
+    expect(bestand).not.toContain("wurden hier nicht\ninhaltlich abgeglichen");
   });
 });
