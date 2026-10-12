@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 import type { KlaraNotiz } from "../../api/klaraNotiz";
 import { useAssistenzT } from "../../lib/assistenzProfil";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { legeAufgabeAusNotiz } from "./aufgaben";
 import {
   fragenAusText,
   ladeNotizen,
@@ -193,6 +194,17 @@ function NotizOffen({ n }: { n: KlaraNotiz }): JSX.Element {
           className={KNOPF_HAUPT}
         >
           {b?.stand === "laeuft" ? t("klaranotiz.speichertGerade") : t("klaranotiz.speichern")}
+        </button>
+        {/* Klara 07: aus dieser (gespeicherten) Notiz eine persönliche Aufgabe — Titel, Text und
+            Stelle liest der Server aus der Notiz; zweimal gedrückt ergibt eine Aufgabe. */}
+        <button
+          type="button"
+          data-testid="klara-notiz-als-aufgabe"
+          title={t("klaraaufgabe.alsAufgabeHilfe")}
+          onClick={() => void legeAufgabeAusNotiz(n, t)}
+          className={KNOPF}
+        >
+          {t("klaraaufgabe.alsAufgabe")}
         </button>
         <button
           type="button"

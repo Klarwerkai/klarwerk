@@ -2199,6 +2199,57 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // produkt:20261008:klara-aufgaben (Klara 07) — die eigenen Aufgaben. Dieselbe Tür-Regel wie die
+  // Notizen: nur Anmeldung, das Konto aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Liste liefert die
+  // (leeren) eigenen Aufgaben; das Anlegen mit leerer Nutzlast scheitert am Pflichtfeld `vorgang`
+  // (400), BEVOR etwas angelegt wird; die Türen mit Kennung tragen eine erfundene und enden in 400
+  // (Ändern ohne Fassung) oder 404 des Dienstes. Die Wirkung (eigene Aufgabe, Fremdkonto 404) misst
+  // `tests/klara-aufgaben/aufgabe-am-server.test.ts`.
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/aufgaben",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:89",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/aufgaben",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:105",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:130",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:143",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "DELETE",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:176",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
   // produkt:20261010:assistenz-name-avatar — das eigene Assistenzprofil. Beide Türen prüfen nur die
   // Anmeldung; das Konto kommt aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Lesetür liefert das
   // eigene (leere) Profil; die Schreibtür trägt ein unbekanntes Motiv und endet in 400, BEVOR etwas

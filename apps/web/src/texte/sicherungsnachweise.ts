@@ -203,7 +203,7 @@ export default {
       "Diese Fassung bietet weder Hochladen noch Generieren eines eigenen Avatars. Es wird nichts gesichert und kein Sicherungsbeleg dafür ausgegeben.",
     "sicherungsnachweise.bereiche.aufgaben.titel": "Persönliche Aufgabenlisten",
     "sicherungsnachweise.bereiche.aufgaben.text":
-      "Diese Fassung hat keine eigene Ablage für persönliche Aufgaben. Der zuletzt begonnene Schritt eines Gesprächs liegt im Gespräch selbst.",
+      "Persönliche Aufgaben je Konto mit Priorität, Status und Bezug zur Notiz bzw. zum Klara-Auftrag. Nur das Konto selbst sieht sie — auch nach einer Wiederherstellung.",
     "sicherungsnachweise.bereiche.endgeraet.titel": "Speicher im Browser",
     "sicherungsnachweise.bereiche.endgeraet.text":
       "Grund: Sitzungscookie und lokale Einstellungen liegen im Gerät der Person, nicht auf dem Server. Folge: Nach einer Wiederherstellung meldet man sich neu an; Geräteeinstellungen bleiben, wie sie im Browser waren.",
@@ -381,7 +381,7 @@ export default {
       "This version offers neither uploading nor generating an own avatar. Nothing is backed up and no backup evidence is issued for it.",
     "sicherungsnachweise.bereiche.aufgaben.titel": "Personal task lists",
     "sicherungsnachweise.bereiche.aufgaben.text":
-      "This version has no separate store for personal tasks. The last step started in a conversation is kept in the conversation itself.",
+      "Personal tasks per account with priority, status and link to the note or Klara instruction. Only the account itself sees them — also after a restore.",
     "sicherungsnachweise.bereiche.endgeraet.titel": "Browser storage",
     "sicherungsnachweise.bereiche.endgeraet.text":
       "Reason: the session cookie and local settings are kept on the person's device, not on the server. Consequence: after a restore you sign in again; device settings stay as they were in the browser.",
@@ -561,7 +561,7 @@ export default {
       "Deze versie biedt geen uploaden en geen genereren van een eigen avatar. Er wordt niets geback-upt en er wordt geen back-upbewijs voor afgegeven.",
     "sicherungsnachweise.bereiche.aufgaben.titel": "Persoonlijke takenlijsten",
     "sicherungsnachweise.bereiche.aufgaben.text":
-      "Deze versie heeft geen eigen opslag voor persoonlijke taken. De laatst begonnen stap van een gesprek staat in het gesprek zelf.",
+      "Persoonlijke taken per account met prioriteit, status en verwijzing naar de notitie of de Klara-opdracht. Alleen het account zelf ziet ze — ook na een herstel.",
     "sicherungsnachweise.bereiche.endgeraet.titel": "Opslag in de browser",
     "sicherungsnachweise.bereiche.endgeraet.text":
       "Reden: de sessiecookie en lokale instellingen staan op het apparaat van de persoon, niet op de server. Gevolg: na een herstel meldt men zich opnieuw aan; apparaatinstellingen blijven zoals ze in de browser waren.",

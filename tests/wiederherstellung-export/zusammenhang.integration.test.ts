@@ -705,10 +705,11 @@ describe("PV-01 · zusammenhängende Restore- und Exportprobe an echter PostgreS
       }
       // Die Verwaltung kennt für private Bereiche nur den Tabellenvergleich des Drills — sie darf
       // daraus keinen inhaltlichen Wiederherstellungsbeleg machen (Nacharbeit 3).
-      for (const id of ["assistenzprofil", "gespraeche", "gedaechtnis", "sitzungen"]) {
+      // produkt:20261008:klara-aufgaben: die persönlichen Aufgaben liegen seit Klara 07 im Dump.
+      for (const id of ["assistenzprofil", "gespraeche", "gedaechtnis", "sitzungen", "aufgaben"]) {
         expect(beleg(id), id).toBe("zeilen_gleich");
       }
-      for (const id of ["eigeneavatare", "aufgaben", "avatarmotive", "endgeraet"]) {
+      for (const id of ["eigeneavatare", "avatarmotive", "endgeraet"]) {
         expect(beleg(id), id).toBe("kein_beleg");
       }
       await zielApp.close();

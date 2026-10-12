@@ -484,6 +484,27 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    // produkt:20261008:klara-aufgaben (Klara 07) — die persönlichen Aufgaben
+    // (`services/app/src/klara-aufgabe.ts`), eine Zeile je Aufgabe.
+    id: "klaraaufgaben",
+    name: "Persönliche Klara-Aufgaben",
+    inhalt:
+      "Je Konto die eigenen Aufgaben: Titel, Aufgabentext, Priorität, Status (offen/erledigt) mit Zeitpunkt des Erledigens, Weg (aus einer Notiz oder einem Klara-Auftrag), Bezug (Kennung und Titel der Notiz bzw. Kennungen, Wortlaut und Art des Auftrags), Objektbezug als Rücklink und der Vorgangsschlüssel des Anlegens.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto, das zugleich zuständig ist; Titel, Text und Auftragswortlaut sind Freitext und können sensible Angaben enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["klara_aufgaben"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto löscht eine Aufgabe selbst (DELETE /api/me/klara/aufgaben/:id); auch Administratoren lesen fremde Aufgaben nicht, und keine gemeinsame Aufgabenquelle führt sie.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht seine Aufgaben (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
     id: "lernpfade",
     name: "Lernpfade und Fortschritt",
     inhalt:

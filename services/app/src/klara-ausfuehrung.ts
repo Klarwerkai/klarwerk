@@ -83,6 +83,37 @@ function entwurfPfad(id: string): string {
   return `/erfassen?draft=${encodeURIComponent(id)}`;
 }
 
+/** produkt:20261008:klara-aufgaben: der Ort einer persönlichen Aufgabe — „Meine Aufgaben", geöffnet. */
+function persoenlicheAufgabePfad(id: string): string {
+  return `/aufgaben?persoenlich=${encodeURIComponent(id)}`;
+}
+
+/** Was die eigene Aufgabenablage beim Nachlesen liefert — nur, was hier gelesen wird. */
+interface PersoenlicheAufgabe {
+  id: string;
+  titel: string;
+  status: string;
+  prioritaet: string;
+  bezug: { art?: unknown; auftragId?: unknown };
+}
+
+function persoenlicheAufgabeAus(roh: unknown): PersoenlicheAufgabe | null {
+  const a = (roh as { aufgabe?: Partial<PersoenlicheAufgabe> | null } | null)?.aufgabe;
+  if (
+    typeof a !== "object" ||
+    a === null ||
+    typeof a.id !== "string" ||
+    typeof a.titel !== "string" ||
+    typeof a.status !== "string" ||
+    typeof a.prioritaet !== "string" ||
+    typeof a.bezug !== "object" ||
+    a.bezug === null
+  ) {
+    return null;
+  }
+  return a as PersoenlicheAufgabe;
+}
+
 /** Der Grundschlüssel eines abgelehnten Aufrufs — dieselbe Einteilung wie in der Oberfläche. */
 function codeAus(status: number): string {
   if (status === 401) {
@@ -421,6 +452,65 @@ export class KlaraAusfuehrung {
           pfad: entwurfPfad(id),
         },
         ruecknehmbar: true,
+      });
+    }
+
+    // produkt:20261008:klara-aufgaben (Klara 07): eine persönliche Aufgabe aus diesem Auftrag — über
+    // die eigene Ablage (`/api/me/klara/aufgaben`) mit der Anmeldung der Person. Der Vorgangsschlüssel
+    // ist die Aktionskennung (Auftrag + Planschritt): eine Wiederholung legt keine zweite Aufgabe an.
+    // Den Bezug liest die Ablage selbst aus dem eigenen Gespräch; hier wird nur nachgelesen, dass die
+    // Aufgabe wirklich da ist und zu DIESEM Auftrag gehört. Erst dann steht „gespeichert" da.
+    if (p.aktion === "persoenliche_aufgabe_anlegen") {
+      let aufgabeId = bekannt?.id ?? null;
+      if (!aufgabeId) {
+        const lege = () =>
+          rufe("POST", "/api/me/klara/aufgaben", {
+            vorgang: aktionskennung(auftragId, p.nr),
+            weg: "auftrag",
+            quelle: { gespraechId, auftragId },
+            titel: ziel.titel,
+            ...(p.inhalt ? { inhalt: p.inhalt } : {}),
+          });
+        let angelegt = await lege();
+        if (angelegt.status >= 500) {
+          // Ob die Ablage trotz Fehlerantwort schon geschrieben hat, ist offen. Derselbe
+          // Vorgangsschlüssel klärt es ohne Doppelung: stand sie schon da, antwortet die Ablage mit
+          // GENAU dieser Aufgabe — sonst wird jetzt angelegt oder der Fehler bleibt bestehen.
+          angelegt = await lege();
+        }
+        const neu = persoenlicheAufgabeAus(angelegt.daten);
+        if ((angelegt.status !== 201 && angelegt.status !== 200) || !neu) {
+          return scheitert(codeAus(angelegt.status));
+        }
+        aufgabeId = neu.id;
+        await merke({
+          art: "persoenliche_aufgabe",
+          id: aufgabeId,
+          pfad: persoenlicheAufgabePfad(aufgabeId),
+          stand: null,
+        });
+      }
+      const gelesen = await rufe("GET", `/api/me/klara/aufgaben/${encodeURIComponent(aufgabeId)}`);
+      if (gelesen.status === 404) {
+        return scheitert("nichtGefunden");
+      }
+      const aufgabe = persoenlicheAufgabeAus(gelesen.daten);
+      if (gelesen.status !== 200 || !aufgabe) {
+        return ungeklaert();
+      }
+      if (aufgabe.bezug.art !== "auftrag" || aufgabe.bezug.auftragId !== auftragId) {
+        return scheitert("nichtNachgelesen");
+      }
+      return melde("gespeichert", {
+        ergebnis: {
+          art: "persoenliche_aufgabe",
+          id: aufgabe.id,
+          titel: aufgabe.titel,
+          // Der TATSÄCHLICHE Stand am Server — Status und Priorität, nie Inhalt.
+          stand: `status:${aufgabe.status} prioritaet:${aufgabe.prioritaet}`,
+          pfad: persoenlicheAufgabePfad(aufgabe.id),
+        },
+        // Nicht rücknehmbar (Vertrag `persoenliche_aufgabe_anlegen`): korrigiert wird am Ort.
       });
     }
 

@@ -356,6 +356,14 @@ import {
   KiArbeitsbegleitungDienst,
   type KiCodexEinrichtung,
 } from "./ki-arbeitsbegleitung-dienst";
+// produkt:20261008:klara-aufgaben (Klara 07): die persönlichen Aufgaben — haltbar im Postgres-
+// Betrieb, im Speicher ohne Datenbank.
+import {
+  InMemoryKlaraAufgabeRepo,
+  KlaraAufgabeDienst,
+  type KlaraAufgabeRepo,
+  PgKlaraAufgabeRepo,
+} from "./klara-aufgabe";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche — haltbar im Postgres-Betrieb, im
 // Speicher ohne Datenbank.
 import {
@@ -471,6 +479,8 @@ import { kiArbeitsbegleitungRoutes } from "./routes/ki-arbeitsbegleitung-routes"
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
+// produkt:20261008:klara-aufgaben (Klara 07): die eigenen, serverseitig gespeicherten Aufgaben.
+import { klaraAufgabeRoutes } from "./routes/klara-aufgabe-routes";
 // produkt:20261008:klara-basis: die eigenen, serverseitig gespeicherten Klara-Gespräche.
 import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
 // produkt:20261007:klara-notizen-aufgaben (Klara 06): die eigenen, serverseitig gespeicherten Notizen.
@@ -772,6 +782,12 @@ export interface AppServices {
    * Wissensbestand; im Postgres-Betrieb haltbar (`PgKlaraNotizRepo`), sonst im Speicher.
    */
   klaraNotizen: KlaraNotizRepo;
+  /**
+   * produkt:20261008:klara-aufgaben (Klara 07): die persönlichen Aufgaben (`klara-aufgabe.ts`) je
+   * Konto. Aus demselben Grund wie `klaraNotizen` NICHT in `AppRepos` und in keiner gemeinsamen
+   * Aufgabenquelle; im Postgres-Betrieb haltbar (`PgKlaraAufgabeRepo`), sonst im Speicher.
+   */
+  klaraAufgaben: KlaraAufgabeRepo;
   /**
    * produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil (`assistenz-profil.ts`)
    * je Konto. Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
@@ -1371,6 +1387,8 @@ export function assembleServices(
     klaraGespraeche?: KlaraGespraechRepo;
     // produkt:20261007:klara-notizen-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
     klaraNotizen?: KlaraNotizRepo;
+    // produkt:20261008:klara-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
+    klaraAufgaben?: KlaraAufgabeRepo;
     // produkt:20261010:assistenz-name-avatar: gesetzt von `buildPgServices`; sonst im Speicher.
     assistenzProfile?: AssistenzProfilRepo;
     // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
@@ -1837,6 +1855,8 @@ export function assembleServices(
     klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
     // produkt:20261007:klara-notizen-aufgaben: die Notizen — Postgres, wenn injiziert, sonst im Speicher.
     klaraNotizen: opts.klaraNotizen ?? new InMemoryKlaraNotizRepo(),
+    // produkt:20261008:klara-aufgaben: die Aufgaben — Postgres, wenn injiziert, sonst im Speicher.
+    klaraAufgaben: opts.klaraAufgaben ?? new InMemoryKlaraAufgabeRepo(),
     // produkt:20261010:assistenz-name-avatar: die Assistenzprofile — Postgres, wenn injiziert.
     assistenzProfile: opts.assistenzProfile ?? new InMemoryAssistenzProfilRepo(),
     // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
@@ -2360,6 +2380,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261007:klara-notizen-aufgaben: eine Notiz überlebt erneute Anmeldung, Neustart und
       // Deploy (`KLARA_NOTIZ_SCHEMA`, angelegt von `migrate()`).
       klaraNotizen: new PgKlaraNotizRepo(pool),
+      // produkt:20261008:klara-aufgaben: eine Aufgabe überlebt Neuladen, erneute Anmeldung,
+      // Neustart und Deploy (`KLARA_AUFGABE_SCHEMA`, angelegt von `migrate()`).
+      klaraAufgaben: new PgKlaraAufgabeRepo(pool),
       // produkt:20261010:assistenz-name-avatar: Name, Avatar und Ersteinrichtung überleben Neuladen,
       // erneute Anmeldung, zweites Gerät und Deploy (`ASSISTENZ_PROFIL_SCHEMA`, von `migrate()`).
       assistenzProfile: new PgAssistenzProfilRepo(pool),
@@ -5363,6 +5386,21 @@ export function buildApp(
       {
         dienst: new KlaraNotizDienst({
           repo: services.klaraNotizen,
+          gespraeche: services.klaraGespraeche,
+        }),
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261008:klara-aufgaben (Klara 07): die eigenen Aufgaben. Der Bezug kommt aus der
+  // EIGENEN Notiz bzw. aus einem Auftrag im EIGENEN Gespräch — der Server liest beides selbst.
+  app.register(
+    klaraAufgabeRoutes(
+      {
+        dienst: new KlaraAufgabeDienst({
+          repo: services.klaraAufgaben,
+          notizen: services.klaraNotizen,
           gespraeche: services.klaraGespraeche,
         }),
         audit: services.audit,
