@@ -34,7 +34,7 @@ const AUFNAHME = readFileSync(
 // die Kennung lautet Testaufnahme Nord, es werden keine echten Personen- oder Kundendaten genannt."
 // Geprüft werden markante Wörter, nicht der Wortlaut — Satzzeichen und Groß-/Kleinschreibung
 // unterscheiden sich zwischen Engines.
-const ERWARTETE_WOERTER = ["sprachprobe", "schrank", "sieben", "gelbe", "karten", "nord"];
+const ERWARTETE_WOERTER = ["sprachprobe", "schrank", "gelbe", "karten", "nord"];
 
 const UMGEBUNG = [
   "KLARWERK_LOCAL_TRANSCRIBE_URL",
@@ -128,6 +128,9 @@ describe.skipIf(!ENGINE)("gesamt-ocr · R-0181 · Realprobe lokale Engine", () =
     for (const wort of ERWARTETE_WOERTER) {
       expect(erkannt, wort).toContain(wort);
     }
+    // Reale Engines schreiben gesprochene Zahlen auch als Ziffern. Der Inhalt bleibt sieben;
+    // andere Zahlen wie 17 oder 70 dürfen diese Prüfung weiterhin nicht erfüllen.
+    expect(erkannt, "sieben oder 7").toMatch(/\b(?:sieben|7)\b/u);
 
     // Die Aufnahme hat den Prozess nur in Richtung des eigenen Rechners verlassen.
     expect(dateiUebertragungen.length).toBeGreaterThan(0);
