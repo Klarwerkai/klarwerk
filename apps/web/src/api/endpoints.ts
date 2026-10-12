@@ -106,6 +106,7 @@ import type {
   Lesevariante,
   LesevariantenLadeBilanz,
   LesevariantenUebersicht,
+  LesevariantenWiderspruchQuittung,
   LibraryImageSearchResponse,
   LiveWall,
   LiveWallConsent,
@@ -1667,6 +1668,18 @@ export const endpoints = {
     fuerKandidat: (kandidatId: string, lang: string) =>
       api.get<KandidatenLesevariante>(
         `/library/import/candidates/${encodeURIComponent(kandidatId)}/lesevariante/${encodeURIComponent(lang)}`,
+      ),
+    // Peter Nr. 20: „Übersetzungswidersprüche melden" — ein Protokolleintrag mit Bezug auf genau
+    // diese Übersetzung und dieses Original. Er gibt nichts frei und ändert nichts.
+    widerspruchKo: (koId: string, lang: string, begruendung: string) =>
+      api.post<LesevariantenWiderspruchQuittung>(
+        `/kos/${encodeURIComponent(koId)}/lesevariante/${encodeURIComponent(lang)}/widerspruch`,
+        { begruendung },
+      ),
+    widerspruchKandidat: (kandidatId: string, lang: string, begruendung: string) =>
+      api.post<LesevariantenWiderspruchQuittung>(
+        `/library/import/candidates/${encodeURIComponent(kandidatId)}/lesevariante/${encodeURIComponent(lang)}/widerspruch`,
+        { begruendung },
       ),
   },
   // AUFTRAG-mega46 Block F: „welche Schalter stehen" — die EINE Auskunft, Ja/Nein je Schalter.

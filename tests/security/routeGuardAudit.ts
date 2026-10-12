@@ -475,6 +475,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // fährt deshalb GENAU DIESELBE Entscheidung wie `GET /api/kos/:id` bzw. `GET /api/kos`.
   "GET /api/kos/:id/lesevariante/:lang": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "GET /api/lesevarianten": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // Peter Nr. 20: „Übersetzungswidersprüche melden". Wer die Übersetzung lesen darf, darf sie
+  // beanstanden — dasselbe Recht und dieselbe Sichtbarkeit wie der Abruf eine Zeile darüber. Die
+  // Meldung schreibt nur einen Protokolleintrag; sie ändert weder Objekt noch Variante.
+  "POST /api/kos/:id/lesevariante/:lang/widerspruch": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
   // WIKI-BEARBEITUNGSRESERVIERUNG: der Bearbeitungshinweis. Lesen mit `ko.read`, Beginnen/Erneuern/
   // Beenden mit `ko.create` (dasselbe Recht wie Bearbeiten) — und alle drei nur für einen Eintrag,
   // den der Aufrufer sehen darf (`darfSehen`, sonst 404 wie am Detailabruf).
@@ -915,6 +922,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Gemessen: `kandidatenvariante-route.test.ts` (K6) fährt beide Routen ohne Anmeldung im selben
   // Fall gegeneinander.
   "GET /api/library/import/candidates/:id/lesevariante/:lang": { protection: "ko.read" },
+  // Peter Nr. 20: die Widerspruchsmeldung an derselben Prüfkarte — dasselbe Recht wie der Abruf,
+  // nur ein Protokolleintrag mit der Kandidaten-Kennung als Ziel; der Kandidat bleibt unverändert.
+  "POST /api/library/import/candidates/:id/lesevariante/:lang/widerspruch": {
+    protection: "ko.read",
+  },
   "GET /api/analytics": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "GET /api/analytics/busfactor": {
     protection: "ko.read",

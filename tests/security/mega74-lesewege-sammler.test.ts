@@ -224,6 +224,17 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "JOB 3326 — sichtbareFuer + sqlSichtbarkeitFuer über der Grundmenge.",
   },
+  // Peter Nr. 20: die Widerspruchsmeldung fährt dasselbe Prädikat wie der Abruf (`darfSehen`, 404
+  // statt Meldung). Ihre Antwort trägt nur Kennung, Sprache und Protokollnummer.
+  "POST /api/kos/:id/lesevariante/:lang/widerspruch": {
+    urteil: "PRAEDIKAT",
+    grund: "Peter Nr. 20 — darfSehen am Objekt, 404 statt Meldung; Antwort ohne KO-Inhalt.",
+  },
+  "POST /api/library/import/candidates/:id/lesevariante/:lang/widerspruch": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Peter Nr. 20 — Meldung zum Kandidaten (keine koId); Antwort trägt nur Kennung, Sprache, Protokollnummer.",
+  },
   // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 10): das frühere Urteil KEIN_KO_INHALT
   // stimmte nicht — die Bilanz nannte Objektkennungen (`textGeaendert`, `originalGeaendert`) und
   // zählte unsichtbare Objekte mit. Jetzt zählt und nennt sie nur, was der Admin sehen darf.

@@ -3875,6 +3875,9 @@ export function BibliothekLesen({
                 variante={lesevariante}
                 zeigtOriginal={zeigtOriginal}
                 onUmschalten={() => setZeigtOriginal((v) => !v)}
+                onWiderspruch={(begruendung) =>
+                  endpoints.lesevarianten.widerspruchKo(koId, lesevariante.lang, begruendung)
+                }
               />
             ) : null}
             {/* Der Abruf ist gescheitert (Netz, Zugriff, Serverfehler). Dann steht das ORIGINAL da —

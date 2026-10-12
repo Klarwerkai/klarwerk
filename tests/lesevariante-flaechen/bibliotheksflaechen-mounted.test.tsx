@@ -535,7 +535,10 @@ describe("R · Bibliotheks-Lesefläche", () => {
       (a.getAttribute("href") ?? "").includes("/fragen"),
     );
     expect(link).toBeDefined();
-    expect(decodeURIComponent(link?.getAttribute("href") ?? "")).toContain("Alpha pressure limits");
+    // Der Link wird als Abfragezeichenkette gebaut (Leerzeichen als `+`); gelesen wird deshalb der
+    // Parameter selbst — und zwar GENAU der Originaltitel, nicht nur „enthält".
+    const abfrage = new URLSearchParams((link?.getAttribute("href") ?? "").split("?")[1] ?? "");
+    expect(abfrage.get("q")).toBe("Alpha pressure limits");
   });
 
   it("R-g · scheitert der Abruf, steht das ORIGINAL da — und der Fehlzustand wird benannt", async () => {
