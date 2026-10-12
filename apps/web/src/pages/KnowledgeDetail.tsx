@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { endpoints } from "../api/endpoints";
 import { AufgegangenHinweis } from "../components/AufgegangenHinweis";
 import { HelpTip } from "../components/HelpTip";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
@@ -109,6 +110,9 @@ export function KnowledgeDetail(): JSX.Element {
             variante={variante}
             zeigtOriginal={zeigtOriginal}
             onUmschalten={() => setZeigtOriginal((v) => !v)}
+            onWiderspruch={(begruendung) =>
+              endpoints.lesevarianten.widerspruchKo(id, variante.lang, begruendung)
+            }
           />
           {zeigtOriginal ? (
             <p className="mt-2 text-[12.5px] text-muted">{t("lesevariante.originalUnten")}</p>

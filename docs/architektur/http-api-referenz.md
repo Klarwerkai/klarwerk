@@ -147,6 +147,8 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/api/lesevarianten` | `ko.read` | Abfrage `lang` | 200 `{ lang, eintraege }` | 400 `MISSING_LANG` |
 | `GET` | `/api/library/import/candidates/:id/lesevariante/:lang` | `ko.read` | — | 200 Lesevariante des Kandidaten | 404 `NOT_FOUND`, `NO_LESEVARIANTE` |
 | `POST` | `/api/admin/lesevarianten/laden` | `users.manage` | Rumpf `{ package }` | 200 Ladebilanz | 400 `UNKNOWN_PACKAGE` |
+| `POST` | `/api/kos/:id/lesevariante/:lang/widerspruch` | `ko.read`, sichtbar | Rumpf `{ begruendung }` | 201 `{ gemeldet, gegenstand, ziel, lang, seq }` (Protokolleintrag `lesevariante.widerspruch`, keine Freigabe) | 400 `MISSING_REASON`, `REASON_TOO_LONG`; 404 `NOT_FOUND`, `NO_LESEVARIANTE`; 503 `AUDIT_UNAVAILABLE` |
+| `POST` | `/api/library/import/candidates/:id/lesevariante/:lang/widerspruch` | `ko.read` | Rumpf `{ begruendung }` | 201 `{ gemeldet, gegenstand, ziel, lang, seq }` (Kandidat bleibt unverändert) | 400 `MISSING_REASON`, `REASON_TOO_LONG`; 404 `NOT_FOUND`, `NO_LESEVARIANTE`; 503 `AUDIT_UNAVAILABLE` |
 | `GET` | `/api/kos/:id/beziehungen` | `ko.read`, sichtbar | — | 200 kuratierte Beziehungen | 404 |
 | `POST` | `/api/kos/:id/beziehungen` | `ko.relate` | Rumpf `{ zielId, art, richtung, beitragSchluessel?, gesehen }` | 201 neu angelegt, 200 Wiederholung desselben Beitrags (Ansicht der Beziehung) | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` (mit den aktuellen Fassungen) |
 | `POST` | `/api/beziehungen/:beziehungId/widerruf` | `ko.relate` | Rumpf `{ version }` | 200 widerrufene Beziehung | 400; 404; 409 `STAND_VERALTET` |

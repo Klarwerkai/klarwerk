@@ -81,6 +81,29 @@ export const lesevarianteTexteDe = {
     "{{zugeordnet}} Datensätze · {{objekte}} Objekte · {{neu}} neu · {{aktualisiert}} aktualisiert · {{unbestaetigt}} ohne Quellbeleg",
   "lesevariante.laden.unmatched":
     "{{count}} Datensätze ohne passendes Wissensobjekt (unübersetzt): {{keys}}",
+  // Peter Nr. 20 (12.10.2026): „Übersetzung sichtbar als maschinelle Lesehilfe mit Originalquelle
+  // und Fassung kennzeichnen; Original bleibt maßgeblich. Übersetzungswidersprüche melden, keine
+  // automatische fachliche Freigabe." Die bestehenden Wortlaute oben bleiben unverändert.
+  "lesevariante.maschinell": "Maschinelle Lesehilfe — maßgeblich ist das Original",
+  "lesevariante.kurzMaschinell": "Maschinelle Lesehilfe",
+  "lesevariante.originalquelle": "Originalquelle: {{quelle}}",
+  "lesevariante.originalquelleFehlt": "Originalquelle nicht zugeordnet",
+  "lesevariante.quellfassung": "Quellfassung {{quellfassung}}",
+  "lesevariante.fassungWissensobjekt":
+    "Fassung: Original Version {{version}} (Abdruck {{abdruck}})",
+  "lesevariante.fassungQuelle": "Fassung: Quellfassung {{quellfassung}}",
+  "lesevariante.fassungFehlt":
+    "Fassung nicht zugeordnet — zu welcher Fassung des Originals diese Übersetzung gehört, ist nicht belegt.",
+  "lesevariante.widerspruch.oeffnen": "Widerspruch melden",
+  "lesevariante.widerspruch.label": "Was sagt die Übersetzung anders als das Original?",
+  "lesevariante.widerspruch.senden": "Meldung senden",
+  "lesevariante.widerspruch.abbrechen": "Abbrechen",
+  "lesevariante.widerspruch.laeuft": "Wird gemeldet …",
+  "lesevariante.widerspruch.leer": "Bitte beschreiben, was sich widerspricht.",
+  "lesevariante.widerspruch.gemeldet":
+    "Gemeldet. Die Meldung steht im Prüfprotokoll; Übersetzung, Original und Freigabe bleiben unverändert.",
+  "lesevariante.widerspruch.fehler": "Die Meldung konnte nicht gespeichert werden.",
+  "audit.action.lesevariante_widerspruch": "Übersetzungswiderspruch gemeldet",
 };
 
 /** Spiegel der DE-Schluessel — die Begruendung steht dort. */
@@ -110,6 +133,25 @@ export const lesevarianteTexteEn: typeof lesevarianteTexteDe = {
     "{{zugeordnet}} records · {{objekte}} objects · {{neu}} new · {{aktualisiert}} updated · {{unbestaetigt}} without source proof",
   "lesevariante.laden.unmatched":
     "{{count}} records without a matching knowledge object (untranslated): {{keys}}",
+  "lesevariante.maschinell": "Machine reading aid — the original prevails",
+  "lesevariante.kurzMaschinell": "Machine reading aid",
+  "lesevariante.originalquelle": "Original source: {{quelle}}",
+  "lesevariante.originalquelleFehlt": "Original source not assigned",
+  "lesevariante.quellfassung": "source version {{quellfassung}}",
+  "lesevariante.fassungWissensobjekt": "Version: original version {{version}} (digest {{abdruck}})",
+  "lesevariante.fassungQuelle": "Version: source version {{quellfassung}}",
+  "lesevariante.fassungFehlt":
+    "Version not assigned — which version of the original this translation belongs to is not proven.",
+  "lesevariante.widerspruch.oeffnen": "Report contradiction",
+  "lesevariante.widerspruch.label": "What does the translation say differently from the original?",
+  "lesevariante.widerspruch.senden": "Send report",
+  "lesevariante.widerspruch.abbrechen": "Cancel",
+  "lesevariante.widerspruch.laeuft": "Reporting …",
+  "lesevariante.widerspruch.leer": "Please describe what contradicts.",
+  "lesevariante.widerspruch.gemeldet":
+    "Reported. The report is in the audit log; translation, original and approval remain unchanged.",
+  "lesevariante.widerspruch.fehler": "The report could not be saved.",
+  "audit.action.lesevariante_widerspruch": "Translation contradiction reported",
 };
 
 /** Spiegel der DE-Schluessel — die Begruendung steht dort. */
@@ -139,6 +181,25 @@ export const lesevarianteTexteNl: typeof lesevarianteTexteDe = {
     "{{zugeordnet}} records · {{objekte}} objecten · {{neu}} nieuw · {{aktualisiert}} bijgewerkt · {{unbestaetigt}} zonder bronbewijs",
   "lesevariante.laden.unmatched":
     "{{count}} records zonder passend kennisobject (onvertaald): {{keys}}",
+  "lesevariante.maschinell": "Machinale leeshulp — het origineel is bepalend",
+  "lesevariante.kurzMaschinell": "Machinale leeshulp",
+  "lesevariante.originalquelle": "Oorspronkelijke bron: {{quelle}}",
+  "lesevariante.originalquelleFehlt": "Oorspronkelijke bron niet toegewezen",
+  "lesevariante.quellfassung": "bronversie {{quellfassung}}",
+  "lesevariante.fassungWissensobjekt": "Versie: origineel versie {{version}} (afdruk {{abdruck}})",
+  "lesevariante.fassungQuelle": "Versie: bronversie {{quellfassung}}",
+  "lesevariante.fassungFehlt":
+    "Versie niet toegewezen — bij welke versie van het origineel deze vertaling hoort, is niet aangetoond.",
+  "lesevariante.widerspruch.oeffnen": "Tegenstrijdigheid melden",
+  "lesevariante.widerspruch.label": "Wat zegt de vertaling anders dan het origineel?",
+  "lesevariante.widerspruch.senden": "Melding versturen",
+  "lesevariante.widerspruch.abbrechen": "Annuleren",
+  "lesevariante.widerspruch.laeuft": "Wordt gemeld …",
+  "lesevariante.widerspruch.leer": "Beschrijf wat tegenstrijdig is.",
+  "lesevariante.widerspruch.gemeldet":
+    "Gemeld. De melding staat in het auditlogboek; vertaling, origineel en goedkeuring blijven ongewijzigd.",
+  "lesevariante.widerspruch.fehler": "De melding kon niet worden opgeslagen.",
+  "audit.action.lesevariante_widerspruch": "Vertalingstegenstrijdigheid gemeld",
 };
 
 /**

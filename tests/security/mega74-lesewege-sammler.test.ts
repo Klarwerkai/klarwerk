@@ -140,6 +140,17 @@ const REGISTER: Record<string, Eintrag> = {
   },
   // Die Ladeaktion gibt keinen KO-Inhalt aus: ihre Antwort ist eine Bilanz aus Zahlen und den
   // Paketschlüsseln der Lieferung (`nichtZugeordnet`) — keine Titel, keine Kennungen des Bestands.
+  // Peter Nr. 20: die Widerspruchsmeldung fährt dasselbe Prädikat wie der Abruf (`darfSehen`, 404
+  // statt Meldung). Ihre Antwort trägt nur Kennung, Sprache und Protokollnummer.
+  "POST /api/kos/:id/lesevariante/:lang/widerspruch": {
+    urteil: "PRAEDIKAT",
+    grund: "Peter Nr. 20 — darfSehen am Objekt, 404 statt Meldung; Antwort ohne KO-Inhalt.",
+  },
+  "POST /api/library/import/candidates/:id/lesevariante/:lang/widerspruch": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Peter Nr. 20 — Meldung zum Kandidaten (keine koId); Antwort trägt nur Kennung, Sprache, Protokollnummer.",
+  },
   "POST /api/admin/lesevarianten/laden": {
     urteil: "KEIN_KO_INHALT",
     grund:

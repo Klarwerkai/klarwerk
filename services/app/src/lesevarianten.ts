@@ -187,6 +187,42 @@ export interface Lesevariante {
  */
 export type Quellabgleich = "bestaetigt" | "unbestaetigt";
 
+// ================================================================================================
+// PETER NR. 20 (12.10.2026) · ORIGINALQUELLE UND BELEGTE FASSUNG AN JEDER VARIANTE.
+// ================================================================================================
+//
+// „Übersetzung sichtbar als maschinelle Lesehilfe mit Originalquelle und Fassung kennzeichnen;
+// Original bleibt maßgeblich." Originalsprache und Paketkennung allein sagen NICHT, zu welchem
+// Original und zu welcher Fassung eine Übersetzung gehört. Beides wird deshalb beim LESEN ermittelt
+// und mitgegeben — oder ausdrücklich als fehlend (`null`) gemeldet. Erfunden wird keins von beiden.
+
+/** Das Original, zu dem die Übersetzung gehört — über den Herkunftsanker, nie über den Titel. */
+export interface Originalquelle {
+  /** Titel des Originals, so wie er im Bestand bzw. am Kandidaten steht. */
+  titel: string;
+  /** Provider des Ankers („Confluence", „Beispielpaket"). */
+  provider: string | null;
+  /** Die Quellkennung des Ankers (Confluence-Seiten-Id bzw. `<paket>/<key>`). */
+  kennung: string | null;
+  url: string | null;
+  /** Die Quellfassung, die der Import am Anker mitschrieb — `null`, wenn die Quelle keine führt. */
+  quellfassung: number | null;
+}
+
+/**
+ * Die Fassung des Originals, zu der die Übersetzung BELEGT gehört.
+ *
+ * · `wissensobjekt`: der Abdruck des heutigen Originals ist derselbe wie beim Ablegen der
+ *   Übersetzung (`originalSha256`). Genau dann ist die heutige Version die, gegen die sie abgelegt
+ *   wurde. Hat sich das Original seitdem geändert, ist die damalige Version NICHT gespeichert — die
+ *   Fassung ist dann `null` und die Fläche sagt „Fassung nicht zugeordnet".
+ * · `quelle`: für einen Kandidaten ohne Ablagezeitpunkt trägt nur der Quellabgleich. Ist er
+ *   bestätigt, gehört die Übersetzung zu genau dem Text, den die Quelle in dieser Fassung führt.
+ */
+export type BelegteFassung =
+  | { art: "wissensobjekt"; version: number; abdruck: string }
+  | { art: "quelle"; quellfassung: number };
+
 /** Die Variante, wie sie den Leser erreicht — mit der beim Lesen ERMITTELTEN Änderungsauskunft. */
 export interface LesevarianteSicht extends Lesevariante {
   /**
@@ -195,6 +231,10 @@ export interface LesevarianteSicht extends Lesevariante {
    * SICHTBAR (sie ist die bessere Auskunft als gar keine), trägt aber diesen Vorbehalt.
    */
   originalGeaendert: boolean;
+  /** Peter Nr. 20: das zugehörige Original — `null` heisst „nicht zugeordnet", nicht „keins". */
+  originalquelle: Originalquelle | null;
+  /** Peter Nr. 20: die belegte Fassung des Originals — `null` heisst „Fassung nicht zugeordnet". */
+  fassung: BelegteFassung | null;
 }
 
 /**
@@ -314,12 +354,94 @@ export function quellabgleichFuer(
   return abdruck === record.source_body_sha256 ? "bestaetigt" : "unbestaetigt";
 }
 
-/** Ergänzt die beim LESEN ermittelte Änderungsauskunft. */
+/**
+ * Ergänzt die beim LESEN ermittelte Änderungsauskunft — und (Peter Nr. 20) Originalquelle und
+ * belegte Fassung. `version` und `sources` sind optional typisiert, weil ältere Aufrufer nur die
+ * drei Inhaltsfelder reichen; fehlen sie, lautet die Auskunft ehrlich „nicht zugeordnet".
+ */
 export function mitAenderungsauskunft(
   variante: Lesevariante,
-  ko: Pick<KnowledgeObject, "title" | "statement" | "bodyHtml">,
+  ko: Pick<KnowledgeObject, "title" | "statement" | "bodyHtml"> &
+    Partial<Pick<KnowledgeObject, "version" | "sources">>,
 ): LesevarianteSicht {
-  return { ...variante, originalGeaendert: originalAbdruck(ko) !== variante.originalSha256 };
+  const originalGeaendert = originalAbdruck(ko) !== variante.originalSha256;
+  return {
+    ...variante,
+    originalGeaendert,
+    originalquelle: originalquelleFuerKo(variante, ko),
+    fassung:
+      !originalGeaendert && typeof ko.version === "number"
+        ? {
+            art: "wissensobjekt",
+            version: ko.version,
+            abdruck: variante.originalSha256.slice(0, 12),
+          }
+        : null,
+  };
+}
+
+const LIEFERUNGS_HERKUNFT = "lokale Lieferung ";
+
+/** Merkt sich den Abdruck je (Paket, Datensatz, Sprache) — die Lieferung ist je Prozess fest. */
+const uebersetzungsAbdruecke = new Map<string, string | null>();
+
+function abdruckDerLieferung(
+  paket: LokalisierungsPaket,
+  record: LokalisierungsRecord,
+  lang: string,
+): string | null {
+  const schluessel = `${paket.package_id}\u0000${record.key}\u0000${lang}`;
+  const gemerkt = uebersetzungsAbdruecke.get(schluessel);
+  if (gemerkt !== undefined) {
+    return gemerkt;
+  }
+  const text = textFuerSprache(paket, record, lang);
+  const abdruck = text ? uebersetzungsAbdruck(text) : null;
+  uebersetzungsAbdruecke.set(schluessel, abdruck);
+  return abdruck;
+}
+
+/**
+ * Das Original, zu dem DIESE gespeicherte Übersetzung gehört.
+ *
+ * Der Datensatz wird über den ABDRUCK DER ÜBERSETZUNG gefunden (`uebersetzungSha256`), nicht über
+ * die Reihenfolge der Lieferung: trüge ein Objekt Anker zweier Datensätze, wäre „der erste" eine
+ * Behauptung. Die Quelle des Objekts muss danach denselben Anker beim selben Provider führen wie
+ * beim Laden (`ankerFuer`, `providerPasst`). Passt nichts — Lieferung inzwischen anders, Variante
+ * von Hand, Anker entfernt —, ist die Antwort `null`: Originalquelle nicht zugeordnet.
+ */
+export function originalquelleFuerKo(
+  variante: Pick<Lesevariante, "herkunft" | "lang" | "uebersetzungSha256">,
+  ko: Pick<KnowledgeObject, "title"> & Partial<Pick<KnowledgeObject, "sources">>,
+): Originalquelle | null {
+  if (!variante.herkunft.startsWith(LIEFERUNGS_HERKUNFT)) {
+    return null;
+  }
+  const paket = lokalisierungsPaket(variante.herkunft.slice(LIEFERUNGS_HERKUNFT.length).trim());
+  if (!paket) {
+    return null;
+  }
+  for (const record of paket.records) {
+    if (abdruckDerLieferung(paket, record, variante.lang) !== variante.uebersetzungSha256) {
+      continue;
+    }
+    for (const anker of ankerFuer(paket.package_id, record)) {
+      const quelle = (ko.sources ?? []).find(
+        (q) =>
+          q.externalId === anker.externalId && providerPasst(anker.provider, q.provider ?? null),
+      );
+      if (quelle) {
+        return {
+          titel: ko.title,
+          provider: quelle.provider ?? null,
+          kennung: quelle.externalId ?? null,
+          url: quelle.url ?? null,
+          quellfassung: typeof quelle.sourceVersion === "number" ? quelle.sourceVersion : null,
+        };
+      }
+    }
+  }
+  return null;
 }
 
 // ================================================================================================
@@ -863,6 +985,11 @@ export async function ladeLesevarianten(
 export interface Kandidatenherkunft {
   provider?: string | null | undefined;
   externalId?: string | null | undefined;
+  // Peter Nr. 20: was die Kennzeichnung über das Original sagt — Titel, Adresse und Quellfassung,
+  // wie sie der Kandidat selbst führt. Sie bilden KEINEN Anker und entscheiden nichts.
+  title?: string | null | undefined;
+  url?: string | null | undefined;
+  sourceVersion?: number | null | undefined;
 }
 
 /**
@@ -893,6 +1020,10 @@ export interface KandidatenLesevariante {
   quellabgleich: Quellabgleich;
   /** Der Datensatzschlüssel der Lieferung, aus dem dieser Text stammt — Herkunft im Klartext. */
   recordKey: string;
+  /** Peter Nr. 20: der Kandidat selbst ist das Original — mit seinem Anker. */
+  originalquelle: Originalquelle;
+  /** Peter Nr. 20: nur bei bestätigtem Quellabgleich UND geführter Quellfassung belegt. */
+  fassung: BelegteFassung | null;
 }
 
 /**
@@ -939,6 +1070,13 @@ export function kandidatenLesevariante(
       if (!text || text.paragraphs.length === 0) {
         return undefined;
       }
+      // DIESELBE Prüfung wie am Wissensobjekt: der gelieferte Quellabdruck gegen den Text, der
+      // wirklich vorliegt. Bei einer importierten Confluence-Seite ist das die vom Import
+      // erzeugte Kernaussage — dort schlägt der Vergleich fehl, und das heisst dann
+      // „unbestaetigt": der Beleg fehlt, die Übersetzung ist deshalb nicht falsch.
+      const quellabgleich = quellabgleichFuer(record, original);
+      const quellfassung =
+        typeof herkunft.sourceVersion === "number" ? herkunft.sourceVersion : null;
       return {
         lang: sprache,
         originalLanguage: record.original_language,
@@ -947,12 +1085,19 @@ export function kandidatenLesevariante(
         bodyHtml: absaetzeZuHtml(text.paragraphs),
         herkunft: `lokale Lieferung ${paket.package_id}`,
         status: record.translation_status,
-        // DIESELBE Prüfung wie am Wissensobjekt: der gelieferte Quellabdruck gegen den Text, der
-        // wirklich vorliegt. Bei einer importierten Confluence-Seite ist das die vom Import
-        // erzeugte Kernaussage — dort schlägt der Vergleich fehl, und das heisst dann
-        // „unbestaetigt": der Beleg fehlt, die Übersetzung ist deshalb nicht falsch.
-        quellabgleich: quellabgleichFuer(record, original),
+        quellabgleich,
         recordKey: record.key,
+        originalquelle: {
+          titel: herkunft.title ?? "",
+          provider: herkunft.provider?.trim() || null,
+          kennung: externalId,
+          url: herkunft.url ?? null,
+          quellfassung,
+        },
+        fassung:
+          quellabgleich === "bestaetigt" && quellfassung !== null
+            ? { art: "quelle", quellfassung }
+            : null,
       };
     }
   }

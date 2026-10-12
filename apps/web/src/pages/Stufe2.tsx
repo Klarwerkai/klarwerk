@@ -1033,6 +1033,9 @@ function ImportKandidatKarte({
           variante={variante}
           zeigtOriginal={zeigtOriginal}
           onUmschalten={() => setZeigtOriginal((v) => !v)}
+          onWiderspruch={(begruendung) =>
+            endpoints.lesevarianten.widerspruchKandidat(c.id, variante.lang, begruendung)
+          }
         />
       ) : null}
       {/* Der Abruf ist gescheitert (Netz, Zugriff, Serverfehler). Dann steht der ORIGINALtext da —
