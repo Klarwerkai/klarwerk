@@ -16,13 +16,14 @@
 // (`self.klarwerkPruefzuweisungOeffnen`, apps/web/public/sw.js) — mit dem tatsächlich empfangenen
 // Hinweis als Argument. Belegt wird damit die Navigation in die eigene, gefilterte Prüfliste.
 //
-// BROWSER: Google Chrome (`channel: "chrome"`). Das mitgelieferte Chromium von Playwright trägt
-// keine Zugangsdaten für den Push-Dienst und kann kein Abo anlegen; nur Chrome kann es. Fehlt
-// Chrome oder der Netzweg zum Push-Dienst, wird dieser Fall ROT — mit Grund, nicht still grün.
+// BROWSER: das auf dem Prüfplatz VORHANDENE Chromium des Projekts `chromium` (Nacharbeit 10: Google
+// Chrome ist dort nicht installiert, `channel: "chrome"` scheiterte schon beim Start — und eine
+// Installation ist nicht Teil dieses Auftrags). Ob dieses Chromium beim Push-Dienst ein Abo
+// bekommt, ist eine MESSUNG dieses Laufs, keine Annahme: scheitert das Abo, nennt der Fall die
+// wörtliche Meldung des Browsers (`aboDiagnose`) statt nur an einer Zeitgrenze zu enden. Fehlt der
+// Netzweg zum Push-Dienst, nennt er das ebenso — rot mit Grund, nie still grün.
 import { type APIRequestContext, type Page, type Worker, expect, test } from "@playwright/test";
 import { SMOKE_MAIL, SMOKE_PASS, workspaceMarker } from "./support/auth";
-
-test.use({ channel: "chrome" });
 
 const HINWEIS_TAG = "klarwerk-pruefzuweisung";
 const PRUEFLISTE = "/validierung?mine=1";
@@ -68,6 +69,46 @@ async function angezeigteHinweise(page: Page): Promise<Hinweis[]> {
   }, HINWEIS_TAG);
 }
 
+interface AboDiagnose {
+  browser: string;
+  erlaubnis: string;
+  pushManager: boolean;
+  meldung: string;
+}
+
+/**
+ * Warum der Browser kein Abo bekommt — gemessen, nicht vermutet: derselbe Aufruf, den die
+ * Profilzeile macht (`pushManager.subscribe` mit dem öffentlichen VAPID-Schlüssel des Servers),
+ * mit der wörtlichen Meldung des Browsers. Gelingt er hier, lag der Fehler in der Oberfläche.
+ */
+async function aboDiagnose(page: Page, oeffentlicherSchluessel: string): Promise<AboDiagnose> {
+  return page.evaluate(async (schluessel) => {
+    const browser = navigator.userAgent;
+    const erlaubnis = typeof Notification === "undefined" ? "fehlt" : Notification.permission;
+    const reg = await navigator.serviceWorker.ready;
+    if (!reg.pushManager) {
+      return { browser, erlaubnis, pushManager: false, meldung: "kein PushManager" };
+    }
+    const b64 = schluessel.replace(/-/g, "+").replace(/_/g, "/");
+    const roh = atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4));
+    try {
+      await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: Uint8Array.from(roh, (z) => z.charCodeAt(0)),
+      });
+      return {
+        browser,
+        erlaubnis,
+        pushManager: true,
+        meldung: "Abo im Browser möglich — der Fehler lag zwischen Oberfläche und Server",
+      };
+    } catch (fehler) {
+      const e = fehler as { name?: string; message?: string };
+      return { browser, erlaubnis, pushManager: true, meldung: `${e.name}: ${e.message}` };
+    }
+  }, oeffentlicherSchluessel);
+}
+
 async function serviceWorkerVon(page: Page): Promise<Worker> {
   const vorhanden = page
     .context()
@@ -82,15 +123,22 @@ test("R-0679: Prüfzuweisung erreicht das Gerät als Push-Hinweis und führt in 
   request,
   baseURL,
 }, testInfo) => {
-  test.skip(browserName !== "chromium", "Push-Abo nur mit Google Chrome auf diesem Prüfplatz.");
+  test.skip(
+    browserName !== "chromium",
+    "Der Geräte-Push wird auf diesem Prüfplatz in Chromium gemessen.",
+  );
   test.setTimeout(180_000);
 
   // --- Admin: Push ist eingerichtet; die Prüferin entsteht als eigenes Konto. -------------------
   const admin = await token(request, SMOKE_MAIL, SMOKE_PASS);
-  const config = await request.get("/api/push/config", { headers: admin });
-  expect(await config.json(), "der Smoke-Server trägt die VAPID-Konfiguration").toMatchObject({
+  const config = (await (await request.get("/api/push/config", { headers: admin })).json()) as {
+    verfuegbar: boolean;
+    publicKey: string | null;
+  };
+  expect(config, "der Smoke-Server trägt die VAPID-Konfiguration").toMatchObject({
     verfuegbar: true,
   });
+  const oeffentlicherSchluessel = config.publicKey ?? "";
   const pruefer = {
     name: "Push Prüferin",
     email: `push-pruefer-${Date.now()}@klarwerk.test`,
@@ -128,10 +176,22 @@ test("R-0679: Prüfzuweisung erreicht das Gerät als Push-Hinweis und führt in 
       timeout: 15_000,
     });
     await zeile.getByRole("button", { name: "Einschalten" }).click();
-    await expect(
-      zeile,
-      "das Push-Abo beim Dienst des Browsers ist nicht zustande gekommen (Chrome und Netzweg nötig)",
-    ).toContainText("An", { timeout: 30_000 });
+    const angemeldet = await expect(zeile)
+      .toContainText("An", { timeout: 30_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    if (!angemeldet) {
+      const diagnose = await aboDiagnose(page, oeffentlicherSchluessel);
+      await testInfo.attach("push-abo-diagnose.json", {
+        contentType: "application/json",
+        body: JSON.stringify(diagnose, null, 2),
+      });
+      throw new Error(
+        `das Push-Abo beim Dienst des Browsers ist nicht zustande gekommen — der Browser meldet: ${diagnose.meldung}`,
+      );
+    }
     const endpunkt = await page.evaluate(async () => {
       const reg = await navigator.serviceWorker.ready;
       return (await reg.pushManager.getSubscription())?.endpoint ?? null;
