@@ -14,6 +14,7 @@
 // Chrome/Chromium, Firefox und Safari/WebKit — `history.go(delta)`, schnelle aufeinanderfolgende
 // Traversierungen und `popstate`-Reihenfolgen sind browsernahe Mechanik, und ein Beleg aus EINER
 // Engine sagt darüber wenig. Pedi hat die Nachinstallation freigegeben; hier sind die drei Engines.
+import { generateKeyPairSync } from "node:crypto";
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 3123;
@@ -133,8 +134,29 @@ if (!GATE && !shipSmokeKeyVorhanden) {
 // aus einer Kopie schnell eine zweite Wahrheit über Modell und Egress geworden — genau das, was
 // mega25 an dieser Datei geschlossen hat. Der einzige Unterschied zwischen beiden Servern ist die
 // Portnummer.
+// R-0679 / FR-VAL-07 (Peters Entscheidung 23): Geräte-Push gehört auf diesen Prüfplatz. Der
+// Smoke-Server bekommt dafür ein FRISCHES VAPID-Schlüsselpaar je Lauf — erzeugt hier, nirgends
+// gespeichert, kein Betreiberschlüssel und kein Geheimnis im Repo. Der Browser liest den
+// öffentlichen Teil über `GET /api/push/config`. Ohne Geräteabo sendet der Server nichts; die
+// übrigen Smokes berührt das nicht.
+const SMOKE_VAPID = ((): Record<string, string> => {
+  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const jwk = privateKey.export({ format: "jwk" });
+  const punkt = Buffer.concat([
+    Buffer.from([4]),
+    Buffer.from(jwk.x ?? "", "base64url"),
+    Buffer.from(jwk.y ?? "", "base64url"),
+  ]);
+  return {
+    VAPID_PUBLIC_KEY: punkt.toString("base64url"),
+    VAPID_PRIVATE_KEY: jwk.d ?? "",
+    VAPID_SUBJECT: "mailto:pruefplatz@klarwerk.test",
+  };
+})();
+
 const smokeServerEnv = (port: number): Record<string, string> => ({
   PORT: String(port),
+  ...SMOKE_VAPID,
   // (1) Der Schlüsselbund bleibt auf JEDEM Testweg zu — auch im vollen Smoke. Das ist bens
   //     Zusatzbedingung aus sammel24 und gilt unabhängig davon, welchen Weg Pedi wählt: dass
   //     ein automatisiertes Tor ohne ausdrückliche Freigabe das persönliche Zugangsdatum eines

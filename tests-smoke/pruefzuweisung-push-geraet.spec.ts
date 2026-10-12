@@ -1,0 +1,212 @@
+// ================================================================================================
+// R-0679 / R-2156 / FR-VAL-07 — DER GERÄTEHINWEIS EINER PRÜFZUWEISUNG, AM ECHTEN BROWSER.
+// ================================================================================================
+//
+// Peters Entscheidung 23: Push-Konfiguration und Empfangsbeleg gehören auf diesen Prüfplatz.
+// Was hier ECHT ist:
+//   · der Smoke-Server trägt ein frisches VAPID-Paar (playwright.smoke.config.ts, SMOKE_VAPID);
+//   · der Browser abonniert über den Knopf der Profilseite beim Push-Dienst seines Herstellers;
+//   · der Server signiert und schickt den Anstoß an diesen Dienst, der Dienst stellt ihn dem
+//     Browser zu, der Service Worker zeigt den Hinweis — kein Ersatzsender, keine Attrappe.
+// Die Prüferin ist ein eigenes Konto in einem eigenen Browserkontext (isoliert vom Admin, der
+// über die Schnittstelle anlegt und zuweist).
+//
+// WAS DIESER PLATZ NICHT KANN: einen Hinweis des Betriebssystems anklicken. Den Klick ersetzt der
+// Aufruf GENAU der Funktion, die der Service Worker beim Antippen ausführt
+// (`self.klarwerkPruefzuweisungOeffnen`, apps/web/public/sw.js) — mit dem tatsächlich empfangenen
+// Hinweis als Argument. Belegt wird damit die Navigation in die eigene, gefilterte Prüfliste.
+//
+// BROWSER: Google Chrome (`channel: "chrome"`). Das mitgelieferte Chromium von Playwright trägt
+// keine Zugangsdaten für den Push-Dienst und kann kein Abo anlegen; nur Chrome kann es. Fehlt
+// Chrome oder der Netzweg zum Push-Dienst, wird dieser Fall ROT — mit Grund, nicht still grün.
+import { type APIRequestContext, type Page, type Worker, expect, test } from "@playwright/test";
+import { SMOKE_MAIL, SMOKE_PASS, workspaceMarker } from "./support/auth";
+
+test.use({ channel: "chrome" });
+
+const HINWEIS_TAG = "klarwerk-pruefzuweisung";
+const PRUEFLISTE = "/validierung?mine=1";
+const HINWEISTEXTE = [
+  "Dir wurde eine Prüfung zugewiesen.",
+  "A review has been assigned to you.",
+  "Er is een beoordeling aan je toegewezen.",
+];
+
+interface Hinweis {
+  title: string;
+  body: string;
+  ziel: string | undefined;
+}
+
+async function token(request: APIRequestContext, email: string, password: string) {
+  const res = await request.post("/api/auth/login", { data: { email, password } });
+  expect(res.status(), `Anmeldung ${email} über die Schnittstelle`).toBe(200);
+  return { authorization: `Bearer ${((await res.json()) as { token: string }).token}` };
+}
+
+async function imBrowserAnmelden(page: Page, email: string, password: string): Promise<void> {
+  await page.goto("/");
+  await page.locator('input[type="email"]').fill(email);
+  const pw = page.locator('input[type="password"]');
+  for (let i = 0; i < (await pw.count()); i++) {
+    await pw.nth(i).fill(password);
+  }
+  await page.locator('button[type="submit"]').click();
+  await expect(workspaceMarker(page)).toBeVisible({ timeout: 15_000 });
+}
+
+/** Die angezeigten Hinweise dieser Anwendung, gelesen beim Service Worker der Seite. */
+async function angezeigteHinweise(page: Page): Promise<Hinweis[]> {
+  return page.evaluate(async (tag) => {
+    const reg = await navigator.serviceWorker.ready;
+    const liste = await reg.getNotifications({ tag });
+    return liste.map((n) => ({
+      title: n.title,
+      body: n.body,
+      ziel: (n.data as { ziel?: string } | null)?.ziel,
+    }));
+  }, HINWEIS_TAG);
+}
+
+async function serviceWorkerVon(page: Page): Promise<Worker> {
+  const vorhanden = page
+    .context()
+    .serviceWorkers()
+    .find((w) => w.url().endsWith("/sw.js"));
+  return vorhanden ?? page.context().waitForEvent("serviceworker", { timeout: 15_000 });
+}
+
+test("R-0679: Prüfzuweisung erreicht das Gerät als Push-Hinweis und führt in die eigene Prüfliste", async ({
+  browser,
+  browserName,
+  request,
+  baseURL,
+}, testInfo) => {
+  test.skip(browserName !== "chromium", "Push-Abo nur mit Google Chrome auf diesem Prüfplatz.");
+  test.setTimeout(180_000);
+
+  // --- Admin: Push ist eingerichtet; die Prüferin entsteht als eigenes Konto. -------------------
+  const admin = await token(request, SMOKE_MAIL, SMOKE_PASS);
+  const config = await request.get("/api/push/config", { headers: admin });
+  expect(await config.json(), "der Smoke-Server trägt die VAPID-Konfiguration").toMatchObject({
+    verfuegbar: true,
+  });
+  const pruefer = {
+    name: "Push Prüferin",
+    email: `push-pruefer-${Date.now()}@klarwerk.test`,
+    password: "Pruef-Passwort-1",
+  };
+  const angelegt = await request.post("/api/users", {
+    headers: admin,
+    data: { ...pruefer, role: "controller" },
+  });
+  expect(angelegt.status(), "Prüferkonto anlegen").toBe(201);
+  const konten = (await (await request.get("/api/users", { headers: admin })).json()) as {
+    id: string;
+    email: string;
+  }[];
+  const prueferId = konten.find((k) => k.email === pruefer.email)?.id;
+  expect(prueferId, "Prüferkonto in der Kontenliste").toBeTruthy();
+
+  // --- Prüferin: eigener Kontext, Benachrichtigungen erlaubt, Service Worker zugelassen. --------
+  const kontext = await browser.newContext({
+    ...(baseURL ? { baseURL } : {}),
+    serviceWorkers: "allow",
+    permissions: ["notifications"],
+    locale: "de-DE",
+  });
+  try {
+    const page = await kontext.newPage();
+    await imBrowserAnmelden(page, pruefer.email, pruefer.password);
+    // Erst wenn der Service Worker steht, kann die Profilzeile ein Abo anlegen — sonst meldete sie
+    // ehrlich „auf diesem Gerät nicht möglich“. Deshalb ZUERST warten, DANN die Profilseite öffnen.
+    await page.evaluate(() => navigator.serviceWorker.ready.then(() => true));
+    await page.goto("/profil");
+
+    const zeile = page.getByTestId("zeile-geraete-push");
+    await expect(zeile, "die Profilzeile meldet Push als einschaltbar").toContainText("Aus", {
+      timeout: 15_000,
+    });
+    await zeile.getByRole("button", { name: "Einschalten" }).click();
+    await expect(
+      zeile,
+      "das Push-Abo beim Dienst des Browsers ist nicht zustande gekommen (Chrome und Netzweg nötig)",
+    ).toContainText("An", { timeout: 30_000 });
+    const endpunkt = await page.evaluate(async () => {
+      const reg = await navigator.serviceWorker.ready;
+      return (await reg.pushManager.getSubscription())?.endpoint ?? null;
+    });
+    expect(endpunkt, "Abo im Browser").toBeTruthy();
+    expect(await angezeigteHinweise(page), "vor der Zuweisung liegt kein Hinweis vor").toEqual([]);
+
+    // --- Admin: Objekt anlegen und der Prüferin zuweisen. ---------------------------------------
+    const titel = `Push-Prüfplatz ${Date.now()}`;
+    const ko = await request.post("/api/kos", {
+      headers: admin,
+      data: {
+        confidentiality: "intern",
+        title: titel,
+        statement: "Vor dem Öffnen den Hydraulikdruck vollständig ablassen.",
+        type: "best_practice",
+        category: "Push-Prüfplatz",
+        neededValidations: 1,
+      },
+    });
+    expect(ko.status(), "Objekt anlegen").toBe(201);
+    const koId = ((await ko.json()) as { id: string }).id;
+    const zuweisung = await request.put(`/api/kos/${koId}`, {
+      headers: admin,
+      data: { action: "assign", userIds: [prueferId] },
+    });
+    expect(zuweisung.status(), "Zuweisung").toBe(204);
+
+    // --- Gerät: der echte Hinweis kommt über den Push-Dienst an. --------------------------------
+    await expect
+      .poll(async () => (await angezeigteHinweise(page)).length, {
+        timeout: 90_000,
+        message:
+          "kein Gerätehinweis nach der Zuweisung — der Push-Dienst hat nicht zugestellt (Protokoll des Smoke-Servers: `push_fehlgeschlagen`)",
+      })
+      .toBe(1);
+    const [hinweis] = await angezeigteHinweise(page);
+    expect(hinweis?.title).toBe("KLARWERK");
+    expect(HINWEISTEXTE).toContain(hinweis?.body);
+    expect(hinweis?.ziel).toBe(PRUEFLISTE);
+    await testInfo.attach("geraetehinweis.json", {
+      contentType: "application/json",
+      body: JSON.stringify(
+        // Der Endpunkt trägt eine Gerätekennung — im Anhang steht nur der Dienst.
+        { pushDienst: new URL(endpunkt ?? "").host, hinweis, zugewiesen: koId },
+        null,
+        2,
+      ),
+    });
+
+    // --- Antippen: derselbe Weg wie `notificationclick`, mit dem empfangenen Hinweis. -----------
+    const sw = await serviceWorkerVon(page);
+    await sw.evaluate(async (tag) => {
+      const scope = globalThis as unknown as {
+        registration: { getNotifications(o: { tag: string }): Promise<{ close(): void }[]> };
+        klarwerkPruefzuweisungOeffnen(n: unknown): Promise<unknown>;
+      };
+      const [empfangen] = await scope.registration.getNotifications({ tag });
+      empfangen?.close();
+      await scope.klarwerkPruefzuweisungOeffnen(empfangen);
+    }, HINWEIS_TAG);
+    await expect(page, "das Antippen führt in die eigene Prüfliste").toHaveURL(
+      /\/validierung\?mine=1$/,
+      { timeout: 15_000 },
+    );
+    await expect(page.getByText(titel).first(), "die Zuweisung steht in der Prüfliste").toBeVisible(
+      {
+        timeout: 15_000,
+      },
+    );
+    await testInfo.attach("pruefliste-nach-hinweis.png", {
+      contentType: "image/png",
+      body: await page.screenshot({ fullPage: false }),
+    });
+  } finally {
+    await kontext.close();
+  }
+});
