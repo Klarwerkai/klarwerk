@@ -1,6 +1,7 @@
 import {
   closeSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readFileSync,
@@ -14,11 +15,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  DIAGNOSE_UNTERORDNER,
   PROTOKOLL_FRIST_TAGE,
   PROTOKOLL_ROTATION_MS,
   pflegeProtokolle,
   starteProtokollPflege,
 } from "../../services/app/src/protokoll-frist";
+import { pflegeDockerProtokolle } from "../../services/app/src/protokoll-frist-docker";
 
 // ================================================================================================
 // R-0664 · PETERS ENTSCHEIDUNG 2 (12.10.2026): 14 TAGE, DANN AUTOMATISCH GELÖSCHT —
@@ -113,19 +116,69 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     ]);
   });
 
-  it("erster Lauf ohne Markierung: Markierung gesetzt, nicht sofort rotiert", () => {
+  // Ben, Nacharbeit 10: beim ersten Lauf ohne Beginn-Markierung blieb ein über 14 Tage alter Bestand
+  // in der aktiven Datei mindestens einen weiteren Tag stehen. Der Beginn kommt jetzt aus dem Inhalt.
+  it("erster Lauf, ÜBERFÄLLIGER Bestand: sofort rotiert und im selben Lauf gelöscht — der Schreiber hängt weiter an", () => {
+    const o = protokollordner();
+    const aktiv = join(o, "server-3002.log");
+    const fd = openSync(aktiv, "a");
+    try {
+      writeSync(fd, zeile(JETZT - 20 * TAG, "uralt"));
+      writeSync(fd, zeile(JETZT - 1000, "frisch"));
+      const ergebnis = pflegeProtokolle({ datei: aktiv, jetzt: JETZT });
+      expect(ergebnis.rotiertNach).toMatch(/^server-3002\.\d{8}T\d{6}Z\.log$/);
+      expect(ergebnis.geloescht).toEqual([ergebnis.rotiertNach]);
+      writeSync(fd, zeile(JETZT, "danach"));
+    } finally {
+      closeSync(fd);
+    }
+    // Kein Rest des Bestands, nirgends im Ordner.
+    for (const name of readdirSync(o)) {
+      expect(readFileSync(join(o, name), "utf8"), name).not.toContain("uralt");
+    }
+    // Die aktive Datei steht noch an ihrem Pfad, und der Schreiber schreibt sauber weiter.
+    const inhalt = readFileSync(aktiv, "utf8");
+    expect(inhalt.startsWith("{")).toBe(true);
+    expect(inhalt).toContain("danach");
+    expect(readFileSync(`${aktiv}.beginn`, "utf8").trim()).toBe(String(JETZT));
+  });
+
+  it("erster Lauf, Bestand 3 Tage alt: sofort rotiert, Archiv bleibt bis zur Frist seiner ältesten Zeile", () => {
     const o = protokollordner();
     const aktiv = join(o, "server-3002.log");
     datei(aktiv, zeile(JETZT - 3 * TAG, "Bestand"), JETZT);
     const ergebnis = pflegeProtokolle({ datei: aktiv, jetzt: JETZT });
-    expect(ergebnis.rotiertNach).toBeNull();
-    expect(readFileSync(`${aktiv}.beginn`, "utf8").trim()).toBe(String(JETZT));
-    // Einen Tag später wird der Bestand rotiert …
-    const danach = pflegeProtokolle({ datei: aktiv, jetzt: JETZT + PROTOKOLL_ROTATION_MS });
-    expect(danach.rotiertNach).not.toBeNull();
+    expect(ergebnis.rotiertNach).not.toBeNull();
+    expect(ergebnis.geloescht).toEqual([]);
     // … und fällt, sobald seine älteste Zeile 14 Tage alt ist.
     const spaeter = pflegeProtokolle({ datei: aktiv, jetzt: JETZT + 11 * TAG });
-    expect(spaeter.geloescht).toEqual([danach.rotiertNach]);
+    expect(spaeter.geloescht).toEqual([ergebnis.rotiertNach]);
+  });
+
+  it("erster Lauf, Bestand von heute: nur die Markierung, keine Rotation", () => {
+    const o = protokollordner();
+    const aktiv = join(o, "server-3002.log");
+    datei(aktiv, zeile(JETZT - 60_000, "heute"), JETZT);
+    const ergebnis = pflegeProtokolle({ datei: aktiv, jetzt: JETZT });
+    expect(ergebnis.rotiertNach).toBeNull();
+    expect(Number(readFileSync(`${aktiv}.beginn`, "utf8").trim())).toBeLessThanOrEqual(JETZT);
+    expect(readFileSync(aktiv, "utf8")).toContain("heute");
+    // Einen Tag später wird rotiert.
+    const danach = pflegeProtokolle({ datei: aktiv, jetzt: JETZT + PROTOKOLL_ROTATION_MS });
+    expect(danach.rotiertNach).not.toBeNull();
+  });
+
+  it("Diagnose-Unterordner: jede Datei darin fällt nach der Frist, gleich welcher Endung", () => {
+    const o = protokollordner();
+    const aktiv = join(o, "server-3002.log");
+    datei(aktiv, "", JETZT);
+    mkdirSync(join(o, DIAGNOSE_UNTERORDNER));
+    datei(join(o, DIAGNOSE_UNTERORDNER, "ticket-4711.txt"), zeile(JETZT - 15 * TAG, "x"), JETZT);
+    datei(join(o, DIAGNOSE_UNTERORDNER, "auszug.json"), "{}", JETZT - 16 * TAG);
+    datei(join(o, DIAGNOSE_UNTERORDNER, "neu.txt"), zeile(JETZT - TAG, "y"), JETZT);
+    const ergebnis = pflegeProtokolle({ datei: aktiv, jetzt: JETZT });
+    expect(ergebnis.geloescht.sort()).toEqual(["diagnose/auszug.json", "diagnose/ticket-4711.txt"]);
+    expect(readdirSync(join(o, DIAGNOSE_UNTERORDNER))).toEqual(["neu.txt"]);
   });
 
   it("WIRKUNG ohne Neustart: der laufende Schreiber (O_APPEND) schreibt nach dem Kürzen sauber weiter", () => {
@@ -185,6 +238,66 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     await new Promise((fertig) => setTimeout(fertig, 0));
     expect(existsSync(join(o, "diagnose.log"))).toBe(false);
     expect(gepflegt.flat()).toContain("diagnose.log");
+  });
+
+  // Ben, Nacharbeit 10: Docker/Coolify waren nicht abgedeckt. Die Containerprotokolle liegen auf dem
+  // Host unter /var/lib/docker/containers/<id>/ — gemessen wird an genau dieser Ordnerform.
+  it("Docker-Hostlauf: aktive Datei, Dockers Rotationen und Diagnoseordner nach der Frist", () => {
+    const wurzel = protokollordner();
+    const id = "a1b2c3d4e5f60718293a4b5c";
+    const ordner = join(wurzel, id);
+    mkdirSync(ordner);
+    const dockerZeile = (zeit: number, text: string) =>
+      `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
+    const aktiv = join(ordner, `${id}-json.log`);
+    // So schreibt dockerd: anhängend. Bestand 20 Tage alt, kein Beginn — der erste Lauf.
+    const fd = openSync(aktiv, "a");
+    writeSync(fd, dockerZeile(JETZT - 20 * TAG, "uralt"));
+    datei(join(ordner, `${id}-json.log.1`), dockerZeile(JETZT - 15 * TAG, "rotiert-alt"), JETZT);
+    datei(join(ordner, `${id}-json.log.2`), dockerZeile(JETZT - 3 * TAG, "rotiert-jung"), JETZT);
+    datei(join(ordner, "config.v2.json"), "{}", JETZT - 40 * TAG);
+    // Kein Container (keine Hex-Kennung) — wird nicht angefasst.
+    mkdirSync(join(wurzel, "kein-container"));
+    datei(join(wurzel, "kein-container", "kein-container-json.log"), "x\n", JETZT - 40 * TAG);
+    const diagnose = join(wurzel, "diagnose-protokolle");
+    mkdirSync(diagnose);
+    datei(join(diagnose, "docker-logs-app.txt"), dockerZeile(JETZT - 15 * TAG, "kopie"), JETZT);
+
+    const lauf = pflegeDockerProtokolle({ ordner: wurzel, diagnoseordner: diagnose, jetzt: JETZT });
+    writeSync(fd, dockerZeile(JETZT, "danach"));
+    closeSync(fd);
+
+    const ergebnis = lauf.container[id];
+    expect(Object.keys(lauf.container)).toEqual([id]);
+    expect(ergebnis?.rotiertNach).toMatch(new RegExp(`^${id}-json\\.\\d{8}T\\d{6}Z\\.log$`));
+    expect(ergebnis?.geloescht.sort()).toEqual([`${id}-json.log.1`, ergebnis?.rotiertNach].sort());
+    expect(existsSync(join(ordner, `${id}-json.log.2`))).toBe(true);
+    expect(existsSync(join(ordner, "config.v2.json"))).toBe(true);
+    expect(existsSync(join(wurzel, "kein-container", "kein-container-json.log"))).toBe(true);
+    expect(lauf.diagnose).toEqual(["docker-logs-app.txt"]);
+    // Dockers aktive Datei bleibt an ihrem Pfad und nimmt weitere Zeilen an — ohne den Bestand.
+    const inhalt = readFileSync(aktiv, "utf8");
+    expect(inhalt.startsWith("{")).toBe(true);
+    expect(inhalt).toContain("danach");
+    expect(inhalt).not.toContain("uralt");
+  });
+
+  it("Ein-Befehl-Weg: der Dienst `protokollpflege` ruft den Hostlauf stündlich am Containerordner", () => {
+    const compose = readFileSync("docker-compose.prod.yml", "utf8");
+    const start = compose.indexOf("\n  protokollpflege:\n");
+    expect(start, "kein Dienst protokollpflege in docker-compose.prod.yml").toBeGreaterThan(-1);
+    const ende = compose.indexOf("\nvolumes:", start);
+    const block = compose
+      .slice(start, ende)
+      .split("\n")
+      .filter((z) => !z.trimStart().startsWith("#"))
+      .join("\n");
+    expect(block).toContain("- /var/lib/docker/containers:/docker-container");
+    expect(block).toContain("- ./diagnose-protokolle:/diagnose");
+    expect(block).toContain(
+      "npx tsx services/app/src/protokoll-frist-docker.ts /docker-container /diagnose; sleep 3600",
+    );
+    expect(block).toContain("user: root");
   });
 
   it("start.command nennt der App die Datei, in die beide Insel-Startwege schreiben", () => {

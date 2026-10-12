@@ -87,7 +87,10 @@ function zeitstempel(ms: number): string {
     .replace(/\.\d{3}Z$/, "Z");
 }
 
-/** Die älteste pino-Zeitangabe am Dateianfang, sonst `null`. */
+/**
+ * Die älteste Zeitangabe am Dateianfang, sonst `null`. Zwei Formen: pino schreibt `"time":<ms>`,
+ * Dockers `json-file` schreibt je Zeile `"time":"<ISO-8601>"`.
+ */
 function ersteZeitImInhalt(pfad: string): number | null {
   let fd: number | null = null;
   try {
@@ -95,9 +98,15 @@ function ersteZeitImInhalt(pfad: string): number | null {
     const puffer = Buffer.alloc(KOPF_BYTES);
     const gelesen = readSync(fd, puffer, 0, KOPF_BYTES, 0);
     for (const zeile of puffer.subarray(0, gelesen).toString("utf8").split("\n")) {
-      const treffer = /^\{.*"time":(\d{10,})/.exec(zeile.trim());
-      if (treffer?.[1]) {
-        return Number(treffer[1]);
+      const roh = zeile.trim();
+      const ms = /^\{.*"time":(\d{10,})/.exec(roh);
+      if (ms?.[1]) {
+        return Number(ms[1]);
+      }
+      const iso = /^\{.*"time":"(\d{4}-\d{2}-\d{2}T[^"]+)"/.exec(roh);
+      const wert = iso?.[1] ? Date.parse(iso[1]) : Number.NaN;
+      if (Number.isFinite(wert)) {
+        return wert;
       }
     }
     return null;
@@ -122,19 +131,37 @@ function aeltesterInhalt(pfad: string): number {
 }
 
 /**
+ * Der Unterordner des Protokollordners, in den Diagnosekopien gehören. Er wird mit derselben Frist
+ * gepflegt — eine Kopie, die dort liegt, fällt automatisch (Entscheidung 2: „einschließlich
+ * Diagnosekopien").
+ */
+export const DIAGNOSE_UNTERORDNER = "diagnose";
+
+/** Welche Dateien neben der aktiven als Protokoll gelten. Vorgabe: jede `.log`-Datei. */
+function istLogdatei(name: string): boolean {
+  return name.endsWith(".log");
+}
+
+/**
  * EIN Pflegelauf: rotieren, dann löschen. Rein in Bezug auf die Zeit (`jetzt` einspritzbar).
  *
- * Fehlt die Beginn-Markierung (erster Lauf nach dem Einspielen), wird sie gesetzt und NICHT sofort
- * rotiert — der Bestand unbekannten Alters wird nach einem Tag rotiert und fällt dann mit seiner
- * ältesten Zeile.
+ * ERSTER LAUF OHNE BEGINN-MARKIERUNG (Ben, Nacharbeit 10): Der Beginn wird aus dem INHALT der
+ * aktiven Datei abgeleitet — ihrer ältesten Zeile —, nicht auf „jetzt" gesetzt. Ist der Bestand
+ * mindestens einen Tag alt, wird sofort rotiert; ist er die Frist alt, fällt das Archiv im selben
+ * Lauf. Die aktive Datei bleibt an ihrem Pfad und wird nur gekürzt — der Schreiber hängt weiter an.
+ *
+ * `istKandidat` wählt, welche Nachbardateien als Protokoll gelten (Vorgabe: `.log`); der Docker-
+ * Hostlauf (`protokoll-frist-docker.ts`) zählt dort auch Dockers eigene Rotationen `….log.1` usw.
  */
 export function pflegeProtokolle(opts: {
   datei: string;
   jetzt?: number;
   fristTage?: number;
+  istKandidat?: (name: string) => boolean;
 }): ProtokollPflegeErgebnis {
   const jetzt = opts.jetzt ?? Date.now();
   const fristMs = (opts.fristTage ?? PROTOKOLL_FRIST_TAGE) * TAG_MS;
+  const istKandidat = opts.istKandidat ?? istLogdatei;
   const ordner = dirname(opts.datei);
   const name = basename(opts.datei);
   const ergebnis: ProtokollPflegeErgebnis = { rotiertNach: null, geloescht: [] };
@@ -144,25 +171,71 @@ export function pflegeProtokolle(opts: {
 
   // 1. ROTIEREN
   if (existsSync(opts.datei)) {
-    const beginn = leseBeginn(opts.datei);
+    let beginn = leseBeginn(opts.datei);
     if (beginn === null) {
-      writeFileSync(beginnDatei(opts.datei), `${jetzt}\n`, "utf8");
-    } else if (jetzt - beginn >= PROTOKOLL_ROTATION_MS && statSync(opts.datei).size === 0) {
-      // Nichts zu archivieren — nur der Beginn rückt nach.
-      writeFileSync(beginnDatei(opts.datei), `${jetzt}\n`, "utf8");
-    } else if (jetzt - beginn >= PROTOKOLL_ROTATION_MS) {
-      const stamm = name.replace(/\.log$/, "");
-      const archiv = `${stamm}.${zeitstempel(beginn)}.log`;
-      copyFileSync(opts.datei, join(ordner, archiv));
-      truncateSync(opts.datei, 0);
-      writeFileSync(beginnDatei(opts.datei), `${jetzt}\n`, "utf8");
-      ergebnis.rotiertNach = archiv;
+      const leer = statSync(opts.datei).size === 0;
+      beginn = leer ? jetzt : Math.min(jetzt, aeltesterInhalt(opts.datei));
+      writeFileSync(beginnDatei(opts.datei), `${beginn}\n`, "utf8");
+    }
+    if (jetzt - beginn >= PROTOKOLL_ROTATION_MS) {
+      if (statSync(opts.datei).size === 0) {
+        // Nichts zu archivieren — nur der Beginn rückt nach.
+        writeFileSync(beginnDatei(opts.datei), `${jetzt}\n`, "utf8");
+      } else {
+        const stamm = name.replace(/\.log$/, "");
+        const archiv = `${stamm}.${zeitstempel(beginn)}.log`;
+        copyFileSync(opts.datei, join(ordner, archiv));
+        truncateSync(opts.datei, 0);
+        writeFileSync(beginnDatei(opts.datei), `${jetzt}\n`, "utf8");
+        ergebnis.rotiertNach = archiv;
+      }
     }
   }
 
-  // 2. LÖSCHEN — jede andere `.log`-Datei im Ordner, deren älteste Zeile die Frist erreicht hat.
+  // 2. LÖSCHEN — jede andere Protokolldatei im Ordner, deren älteste Zeile die Frist erreicht hat.
+  loescheAbgelaufene(ordner, name, istKandidat, jetzt, fristMs, ergebnis);
+  // … und jede Datei im Diagnose-Unterordner, gleich welcher Endung: dort liegen nur Kopien.
+  ergebnis.geloescht.push(
+    ...pflegeDiagnoseordner({ ordner: join(ordner, DIAGNOSE_UNTERORDNER), jetzt, fristMs }).map(
+      (eintrag) => `${DIAGNOSE_UNTERORDNER}/${eintrag}`,
+    ),
+  );
+  return ergebnis;
+}
+
+/**
+ * Ein Ordner, in dem nur Diagnosekopien liegen: jede Datei, gleich welcher Endung, fällt, sobald
+ * ihre älteste Zeile die Frist erreicht hat. Gibt die Namen der gelöschten Dateien zurück.
+ */
+export function pflegeDiagnoseordner(opts: {
+  ordner: string;
+  jetzt?: number;
+  fristMs?: number;
+}): string[] {
+  const ergebnis: ProtokollPflegeErgebnis = { rotiertNach: null, geloescht: [] };
+  if (existsSync(opts.ordner) && statSync(opts.ordner).isDirectory()) {
+    loescheAbgelaufene(
+      opts.ordner,
+      "",
+      () => true,
+      opts.jetzt ?? Date.now(),
+      opts.fristMs ?? PROTOKOLL_FRIST_TAGE * TAG_MS,
+      ergebnis,
+    );
+  }
+  return ergebnis.geloescht;
+}
+
+function loescheAbgelaufene(
+  ordner: string,
+  aktiv: string,
+  istKandidat: (name: string) => boolean,
+  jetzt: number,
+  fristMs: number,
+  ergebnis: ProtokollPflegeErgebnis,
+): void {
   for (const eintrag of readdirSync(ordner)) {
-    if (eintrag === name || !eintrag.endsWith(".log")) {
+    if (eintrag === aktiv || eintrag.endsWith(".beginn") || !istKandidat(eintrag)) {
       continue;
     }
     const pfad = join(ordner, eintrag);
@@ -174,7 +247,6 @@ export function pflegeProtokolle(opts: {
       ergebnis.geloescht.push(eintrag);
     }
   }
-  return ergebnis;
 }
 
 /**
