@@ -87,6 +87,16 @@ export function useImageDescribe(): ImageDescribeValue {
 }
 
 /**
+ * OCR-02 · Für das AUTOMATISCHE Bildlesen, das keine Bildbeschreibung anbietet, sondern nur ihr
+ * Ergebnis ausweist (Office im Artikel). Fehlt der Provider, liefert er `null` — der Befund sagt dann
+ * sichtbar „Bildinhalt nicht analysiert: keine Anbindung". Er ersetzt `useImageDescribe` NICHT für
+ * Flächen, die die Bildbeschreibung anbieten; die bleiben fail-closed.
+ */
+export function useImageDescribeWennVorhanden(): ImageDescribeValue | null {
+  return useContext(ImageDescribeCtx);
+}
+
+/**
  * Der echte Provider. Ohne `provenance` gilt die fail-safe Vorgabe; eine Fläche, die die Herkunft
  * ihres Inhalts kennt, schachtelt einen zweiten mit ihrer eigenen.
  */

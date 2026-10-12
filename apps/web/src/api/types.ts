@@ -1005,6 +1005,26 @@ export interface AssignmentSummary {
   done: number;
 }
 
+// R-0265: ein Prüfer-Vorschlag (services/validation/src/pruefer-vorschlag.ts). Nur die tragenden
+// Gründe, in fester Reihenfolge; die Punktzahl ordnet, sie wird nicht angezeigt.
+export type ReviewerSuggestionReason = "autorschaft" | "pruefungen" | "netznaehe" | "schnell";
+export interface ReviewerSuggestion {
+  userId: string;
+  punkte: number;
+  gruende: ReviewerSuggestionReason[];
+  /** R-1655: Median der Prüfdauer zum Thema in Stunden, nur wenn die Person dazu geprüft hat. */
+  medianStunden?: number;
+}
+
+// R-1655: Messgrundlage je Zuweisungsweg (`GET /api/validation/pruefdauer`).
+export interface PruefdauerJeWeg {
+  erledigt: number;
+  offen: number;
+  medianStunden: number | null;
+}
+export type ZuweisungsWeg = "automatisch" | "manuell" | "einreichen";
+export type PruefdauerAuswertung = Record<ZuweisungsWeg, PruefdauerJeWeg>;
+
 // SCRUM-395: Validierungs-Einstellungen (Standard-Prüferanzahl für neue Einreichungen).
 export interface ValidationSettings {
   defaultNeededValidations: number;
@@ -1610,6 +1630,9 @@ export interface DraftPayload {
     topic?: string;
     confirmed?: boolean;
   };
+  // Aufnahme `gesamt-ocr` (FR-CAP-05): die auf Klick erkannten Bildtext-Abschnitte als Kontext
+  // des Interviews — auch für strukturierte Entwürfe, die den Rohtext nicht mehr tragen.
+  ocrAbschnitte?: { name: string; text: string }[];
   // produkt:20261007:templates-default: Vorlage und Fassung, mit der der Entwurf geschrieben wird,
   // und der gewählte Space (Spiegel von services/capture/src/types.ts). `null` = freie Eingabe.
   vorlage?: { id: string; version: number; spaceId?: string | null } | null;
@@ -2714,8 +2737,84 @@ export interface AskResponse {
   // nur bei beantworteter Frage. Angewandt in `lib/askResponse.ts` (`selectAnswer`).
   absaetze?: AbsatzBeleg[];
   // REF-01: je Aussage Kennung, Wortlaut und Fundstellen; nur bei beantworteter Frage. Grundlage der
-  // Beanstandung einer konkreten Aussage (produkt:20261010:antwort-beanstandung-korrektur).
+  // Beanstandung einer konkreten Aussage (produkt:20261010:antwort-beanstandung-korrektur) und der
+  // Aussagetexte der Referenzprüfungsanzeige (REF-02; `AussagenBelegKurz` ist ein Teil davon).
   aussagen?: AntwortAussagenBeleg;
+  // REF-02: das Ergebnis der Referenzprüfung (Spiegel von `ReferenzPruefSicht`,
+  // services/ask/src/referenz-pruefung.ts). Fehlt ohne Prüfdienst oder ohne beantwortete Frage.
+  referenzpruefung?: ReferenzPruefung;
+}
+
+// ================================================================================================
+// produkt:20261009:referenzki-pruefdienst (REF-02) — Spiegel der Prüfsicht des Fragenden.
+// ================================================================================================
+// Stufen statt Anbieter- und Modellnamen: die stehen nur im Prüfprotokoll der Adminsicht.
+export interface AussagenBelegKurz {
+  aussagen: { aussageId: string; text: string }[];
+}
+
+export type ReferenzZustand = "belegt" | "teilweise_belegt" | "widersprochen" | "nicht_pruefbar";
+
+export interface ReferenzFundstelle {
+  fundstelleId: string;
+  koId: string;
+  koVersion: number;
+  start: number;
+  ende: number;
+}
+
+export interface ReferenzTeilErgebnis {
+  teilId: string;
+  zustand: ReferenzZustand;
+  grund?: string;
+  fundstelle: ReferenzFundstelle | null;
+  begruendung: string;
+}
+
+export interface ReferenzAussageErgebnis {
+  aussageId: string;
+  zustand: ReferenzZustand;
+  grund?: string;
+  teile: ReferenzTeilErgebnis[];
+  fundstellen: ReferenzFundstelle[];
+  begruendung: string;
+}
+
+export interface ReferenzHinweis {
+  art:
+    | "neuere_fassung"
+    | "abruf_nicht_belegt"
+    | "bekannter_konflikt"
+    | "gegenpassage"
+    | "fundstelle_verworfen"
+    | "nicht_aufgeloeste_modellangabe"
+    | "anweisungsaehnlicher_text";
+  aussageId?: string;
+  teilId?: string;
+  koId?: string;
+  fundstelleId?: string;
+  fassung?: { gebunden: number; aktuell: number; passageUnveraendert: boolean };
+  zustand?: string;
+  konfliktId?: string;
+  wert?: string;
+  hinweis: string;
+}
+
+export interface ReferenzPruefung {
+  richtlinie: string;
+  pruefId: string;
+  status: "geprueft" | "nicht_pruefbar";
+  grund?: string;
+  rollen: {
+    antwort: "cloud" | "local" | "deterministic" | null;
+    pruefer: "cloud" | "local" | "deterministic" | null;
+  };
+  aussagen: ReferenzAussageErgebnis[];
+  hinweise: ReferenzHinweis[];
+  globaleAktualitaet: "nicht_behauptet";
+  ausCache: boolean;
+  messung: { dauerMs: number; modellaufrufe: 0 | 1 };
+  versuch: { nummer: number; hoechstens: number };
 }
 
 // R-1630 / R-2176: Spiegel von `services/ask/src/wissensstand-vergleich.ts` — dort stehen Regeln
@@ -2748,6 +2847,10 @@ export interface WissensstandVergleich {
   stichtag: string;
   heute: AnswerResult;
   damals: AnswerResult;
+  // REF-01/REF-02: die eigene Aussagebindung und Referenzprüfung je Seite (`null`: kein Text).
+  heuteAussagen?: AussagenBelegKurz | null;
+  damalsAussagen?: AussagenBelegKurz | null;
+  referenzpruefung?: { heute: ReferenzPruefung | null; damals: ReferenzPruefung | null };
   antwortGeaendert: boolean;
   quellen: VergleichsQuelle[];
 }
@@ -3519,6 +3622,9 @@ export interface LesevarianteKurz {
    */
   quellabgleich: "bestaetigt" | "unbestaetigt";
   updatedAt: string;
+  /** Peter Nr. 20 — s. `LesevarianteKennzeichnung`. Optional: ältere Antworten tragen es nicht. */
+  originalquelle?: LesevarianteOriginalquelle | null;
+  fassung?: LesevarianteFassung | null;
 }
 
 // ================================================================================================
@@ -3544,7 +3650,37 @@ export type LesevarianteKennzeichnung = Pick<
    * nichts, weder das eine noch das andere.
    */
   originalGeaendert?: boolean;
+  /**
+   * Peter Nr. 20 (12.10.2026): das Original, zu dem die Übersetzung gehört. `null` ODER fehlend
+   * heisst „nicht zugeordnet" — die Fläche sagt das ausdrücklich, statt eine Quelle zu erfinden.
+   */
+  originalquelle?: LesevarianteOriginalquelle | null;
+  /** Peter Nr. 20: die belegte Fassung des Originals. `null`/fehlend = „Fassung nicht zugeordnet". */
+  fassung?: LesevarianteFassung | null;
 };
+
+/** Spiegel von `Originalquelle` (services/app/src/lesevarianten.ts). */
+export interface LesevarianteOriginalquelle {
+  titel: string;
+  provider: string | null;
+  kennung: string | null;
+  url: string | null;
+  quellfassung: number | null;
+}
+
+/** Spiegel von `BelegteFassung` (services/app/src/lesevarianten.ts). */
+export type LesevarianteFassung =
+  | { art: "wissensobjekt"; version: number; abdruck: string }
+  | { art: "quelle"; quellfassung: number };
+
+/** Antwort der Widerspruchsmeldung — ein Protokolleintrag, keine Freigabe. */
+export interface LesevariantenWiderspruchQuittung {
+  gemeldet: true;
+  gegenstand: "wissensobjekt" | "kandidat";
+  ziel: string;
+  lang: string;
+  seq: number;
+}
 
 /**
  * JOB 3363 · Die LIVE aufgelöste Leseübersetzung eines Import-Kandidaten der Prüfkarte (Stufe 2).
@@ -3573,6 +3709,9 @@ export interface KandidatenLesevariante {
   quellabgleich: "bestaetigt" | "unbestaetigt";
   // KEIN `originalGeaendert`: die Aussage ist für eine live aufgelöste Variante nicht beantwortbar
   // (s. `LesevarianteKennzeichnung`). Sie fehlt deshalb, statt mit `false` gefüllt zu werden.
+  /** Peter Nr. 20 — s. `LesevarianteKennzeichnung`. */
+  originalquelle?: LesevarianteOriginalquelle | null;
+  fassung?: LesevarianteFassung | null;
 }
 
 /** Die volle Fassung für die Leseansicht. */
@@ -3739,6 +3878,8 @@ export const MODEL_RUN_TASKS = [
   "duplicate",
   "probe",
   "gaps",
+  // produkt:20261009:referenzki-pruefdienst (REF-02): die Referenzprüfung der Quellenbelege.
+  "referenz",
 ] as const;
 
 // JOB 3134 (KI-WAHL): die beiden externen Anbieter sind eigene Auswahlwerte. Dieselbe Liste wie

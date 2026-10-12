@@ -176,7 +176,12 @@ export async function registerSecurityHeaders(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
+        // Aufnahme `gesamt-ocr` · R-0151 (Nacharbeit 13): `'wasm-unsafe-eval'` erlaubt NUR das
+        // Übersetzen von WebAssembly — den Kern der Bild-Texterkennung (tesseract.js-core), der als
+        // gleichherkünftige Datei ausgeliefert wird. Kein `eval` von JavaScript, keine fremde
+        // Herkunft. Ohne ihn scheiterte jede Erkennung in der ausgelieferten Anwendung (gemessen mit
+        // `tests-smoke/ocr-technische-probe-browser.spec.ts`, fiktives Bild).
+        scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:"],
         fontSrc: ["'self'"],

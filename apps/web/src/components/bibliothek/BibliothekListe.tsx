@@ -7,6 +7,7 @@ import { useLesevariante } from "../../lib/lesevariante";
 import { statusSchluessel } from "../../lib/wissensstatus";
 import { leerzustandsRahmen } from "../EmptyStateCtas";
 import { KoSummaryDisclosure } from "../KoSummaryDisclosure";
+import { bindungsText } from "../LesevarianteHinweis";
 import { Button, cx } from "../ui";
 import { BIB_SEGMENTE, type BibSegment, type ZustandsTon, amListenende } from "./zustand";
 
@@ -141,6 +142,11 @@ function ZeilenTitel({ zeile, gewaehlt }: { zeile: BibZeile; gewaehlt: boolean }
     const name = t(schluessel);
     return name === schluessel ? code.toUpperCase() : name;
   };
+  // Peter Nr. 20: die Zeile sagt sichtbar „Maschinelle Lesehilfe"; Originalquelle und Fassung
+  // stehen als Werkzeugtipp (`bindungsText`) — der volle Baustein steht in der Lesefläche rechts.
+  const kennzeichnung = uebersetzt
+    ? t("lesevariante.badge.uebersetzung", { sprache: sprachname(uebersetzt.originalLanguage) })
+    : "";
   return (
     <>
       <span
@@ -156,12 +162,11 @@ function ZeilenTitel({ zeile, gewaehlt }: { zeile: BibZeile; gewaehlt: boolean }
       {uebersetzt ? (
         <span
           data-testid="bib-zeile-uebersetzung"
+          title={bindungsText(uebersetzt, t)}
           className="flex items-center gap-1 text-[11px] font-semibold text-muted-2"
         >
           <Languages size={12} aria-hidden="true" className="shrink-0" />
-          {t("lesevariante.badge.uebersetzung", {
-            sprache: sprachname(uebersetzt.originalLanguage),
-          })}
+          {kennzeichnung} · {t("lesevariante.kurzMaschinell")}
         </span>
       ) : null}
     </>

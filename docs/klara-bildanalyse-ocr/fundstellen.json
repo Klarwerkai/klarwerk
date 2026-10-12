@@ -1,0 +1,642 @@
+{
+  "auftrag": "produkt:20261012:klara-bildanalyse-ocr-bestand",
+  "revision": 1,
+  "quelle": "20261012-auto-bilder-peter-v1 · OCR-01",
+  "basis": "0b8ad62c06cea76182fcb957e286cf2e6a5e0a58",
+  "erhoben_am": "2026-10-12",
+  "hinweis": "Jeder Eintrag mit fundstellen ist im Arbeitsbaum dieser Basis per Datei und wörtlichem Anker belegt (tests/klara-bildanalyse-ocr/fundstellen.test.ts). stand=geliefert: im Hauptstand vorhanden. stand=kandidat: nicht in dieser Arbeitsbasis, sondern nur auf dem genannten Zweig bzw. erst im späteren Hauptstand. stand=fehlt: im Hauptstand nicht vorhanden; die Fundstellen belegen dann die Grenze, nicht eine Lieferung.",
+  "eintraege": [
+    {
+      "id": "H01",
+      "art": "host",
+      "name": "Web-App (Erfassen, Editor des Wissensobjekts, Klara-Figur)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/captureFromFile.ts",
+          "anker": ".docx,.pdf,application/pdf,.pptx"
+        },
+        {
+          "pfad": "apps/web/src/components/RichTextEditor.tsx",
+          "anker": "const part = partitionDropMedia(files.map((f) => ({ mime: f.type, file: f })));"
+        }
+      ]
+    },
+    {
+      "id": "H02",
+      "art": "host",
+      "name": "Word-Add-in „Klara in Word“ (Office-Host Document)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "docs/word-addin/klara-manifest.xml",
+          "anker": "<Host Name=\"Document\" />"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "function holeWordBilder(scope, done) {"
+        }
+      ]
+    },
+    {
+      "id": "H03",
+      "art": "host",
+      "name": "PowerPoint-Add-in (Klara in PowerPoint)",
+      "stand": "fehlt",
+      "grenze": "Das einzige Office-Manifest nennt nur den Host Document (Word). Es gibt kein Add-in für PowerPoint; PowerPoint-Dateien erreichen Klarwerk nur als Datei (Q02).",
+      "fundstellen": [
+        {
+          "pfad": "docs/word-addin/klara-manifest.xml",
+          "anker": "<Host Name=\"Document\" />"
+        }
+      ]
+    },
+    {
+      "id": "H04",
+      "art": "host",
+      "name": "Chrome-Erweiterung „Klara im Browser“ (Seitenleiste)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "extensions/klara-browser/manifest.json",
+          "anker": "\"host_permissions\": [\"https://app.klarwerk.ai/*\"]"
+        },
+        {
+          "pfad": "extensions/klara-browser/selection.js",
+          "anker": "const MAX_IMAGES = 8;"
+        }
+      ]
+    },
+    {
+      "id": "H05",
+      "art": "host",
+      "name": "Mac (KLARWERK App)",
+      "stand": "fehlt",
+      "grenze": "Die Mac-App ist ein Starter für Server und Browser. Es gibt keinen nativen Mac-Host, keinen Zugriff auf Finder, Zwischenablage oder Bildschirm. Ein neuer Bildschirmzugriff ist ausdrücklich nicht beauftragt.",
+      "fundstellen": [
+        {
+          "pfad": "desktop-app/KLARWERK App.app/Contents/MacOS/KLARWERK_App",
+          "anker": "# KLARWERK App – Desktop-Starter (Team 1)"
+        }
+      ]
+    },
+    {
+      "id": "H06",
+      "art": "host",
+      "name": "Office im Artikel (WOPI-Dateihost für Word, Excel, PowerPoint)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/office-wopi.ts",
+          "anker": "export type OfficeAnwendung = \"word\" | \"excel\" | \"powerpoint\";"
+        }
+      ]
+    },
+    {
+      "id": "Q01",
+      "art": "quelle",
+      "name": "Einzeln bereitgestelltes Bild (image/*)",
+      "stand": "geliefert",
+      "host": ["H01"],
+      "wege": ["W01", "W02", "W14"],
+      "fundstelle": "Dateiname bzw. Anhangskennung; ein Bild = eine Fundstelle",
+      "luecken": ["L01", "L02", "L08", "L09"],
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/extract.ts",
+          "anker": "export type FileKind = \"text\" | \"docx\" | \"pdf\" | \"pptx\" | \"image\" | \"unsupported\";"
+        }
+      ]
+    },
+    {
+      "id": "Q02",
+      "art": "quelle",
+      "name": "PowerPoint-Datei (.pptx) als Dateiimport",
+      "stand": "geliefert",
+      "host": ["H01", "H06"],
+      "wege": ["W03", "W04", "W13", "W18"],
+      "fundstelle": "Folie nur mittelbar über die vorangehende Folienüberschrift (h2); Bildkennung zählt über das ganze Deck; Folienansicht mit Foliennummer (W04)",
+      "luecken": ["L01", "L03", "L04", "L05", "L08", "L11", "L15", "L16", "L17"],
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/pages/Capture.tsx",
+          "anker": "const pptx = await readPptxRich(f, t(CAPTURE_FILE_TEXT.imageCaptionPlaceholder));"
+        }
+      ]
+    },
+    {
+      "id": "Q03",
+      "art": "quelle",
+      "name": "Word-Datei (.docx) als Dateiimport oder aus dem Word-Add-in",
+      "stand": "geliefert",
+      "host": ["H01", "H02", "H06"],
+      "wege": ["W05", "W08", "W18"],
+      "fundstelle": "Reihenfolge im Dokument (data-image-id); keine Seitenangabe",
+      "luecken": ["L01", "L03", "L07", "L08", "L10", "L17"],
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/pages/Capture.tsx",
+          "anker": "const docx = await readDocxRich(f, t(CAPTURE_FILE_TEXT.imageCaptionPlaceholder));"
+        }
+      ]
+    },
+    {
+      "id": "Q04",
+      "art": "quelle",
+      "name": "PDF-Datei (auch gescannt)",
+      "stand": "geliefert",
+      "host": ["H01"],
+      "wege": ["W06", "W07"],
+      "fundstelle": "Seite nur für den Textlayer; Bilder und Scanseiten ohne Erfassung",
+      "luecken": ["L01", "L06", "L08"],
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/pages/Capture.tsx",
+          "anker": "readPdfFileWithOriginal(f, { maxBytes: pdfLimitBytes })"
+        }
+      ]
+    },
+    {
+      "id": "Q05",
+      "art": "quelle",
+      "name": "Bilder einer Webseite (Markierung, Artikel, Seite)",
+      "stand": "geliefert",
+      "host": ["H04"],
+      "wege": ["W09"],
+      "fundstelle": "Seitenadresse und Bildadresse; nicht übernommene Bilder unter „Nicht übernommen“",
+      "luecken": ["L01", "L08", "L13"],
+      "fundstellen": [
+        {
+          "pfad": "extensions/klara-browser/selection.js",
+          "anker": "function pixels(image) {"
+        }
+      ]
+    },
+    {
+      "id": "Q06",
+      "art": "quelle",
+      "name": "Bilder im Rumpf eines Entwurfs oder Wissensobjekts (Einfügen, Ablegen, Import)",
+      "stand": "geliefert",
+      "host": ["H01"],
+      "wege": ["W02", "W10", "W15"],
+      "fundstelle": "data-image-id an img und figcaption",
+      "luecken": ["L01", "L08"],
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/pptx.ts",
+          "anker": "function imageFigureHtml(src: string, id: string, _caption: string): string {"
+        }
+      ]
+    },
+    {
+      "id": "Q07",
+      "art": "quelle",
+      "name": "Foliensatz einer Besprechung (Meeting-Dokumentbezug)",
+      "stand": "geliefert",
+      "host": ["H01"],
+      "wege": ["W13"],
+      "fundstelle": "Folienkennung p:sldId mit Datei und Fassung",
+      "luecken": ["L03"],
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/meeting-dokumentbezug.ts",
+          "anker": "export async function foliensatzLesen("
+        }
+      ]
+    },
+    {
+      "id": "Q08",
+      "art": "quelle",
+      "name": "Excel und weitere Office-Formate als Dateiimport",
+      "stand": "fehlt",
+      "grenze": "Der Dateiimport nimmt nur Text, .docx, .pdf, .pptx und Bilder an. .xlsx, .ppt, .doc und Ähnliches werden nicht gelesen.",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/captureFromFile.ts",
+          "anker": ".docx,.pdf,application/pdf,.pptx"
+        }
+      ]
+    },
+    {
+      "id": "W01",
+      "art": "weg",
+      "name": "Texterkennung im Browser (tesseract.js), nur auf Klick",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/ocr.ts",
+          "anker": "export async function recognizeImage("
+        },
+        {
+          "pfad": "apps/web/src/lib/files.ts",
+          "anker": "Nur auf explizite Nutzeraktion aufrufen."
+        },
+        {
+          "pfad": "apps/web/src/pages/Capture.tsx",
+          "anker": "const onExtractOcr = async (): Promise<void> => {"
+        },
+        {
+          "pfad": "apps/web/src/pages/Capture.tsx",
+          "anker": "const onOcr = async (img: { id: string; name: string; dataUrl: string }): Promise<void> => {"
+        },
+        {
+          "pfad": "apps/web/src/components/BodyExtractPanel.tsx",
+          "anker": "// Bild-OCR NUR auf Klick, ehrlicher Status (SCRUM-123-Muster)."
+        }
+      ]
+    },
+    {
+      "id": "W02",
+      "art": "weg",
+      "name": "Bildbeschreibung über das Modell (Vision), nur auf Klick, Vertraulichkeit fail-closed",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/routes/reasoner-routes.ts",
+          "anker": "\"/api/reasoner/describe\","
+        },
+        {
+          "pfad": "services/reasoner/src/service.ts",
+          "anker": "async describeImage("
+        },
+        {
+          "pfad": "apps/web/src/app/ImageDescribeContext.tsx",
+          "anker": "endpoints.reasoner.describeImage("
+        },
+        {
+          "pfad": "apps/web/src/components/FotoInterviewStart.tsx",
+          "anker": "const res = await describe(dataUrl);"
+        }
+      ]
+    },
+    {
+      "id": "W03",
+      "art": "weg",
+      "name": "PPTX-Leser: Folien als HTML, eingebettete Bilder (p:pic) als figure, Bildbilanz",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/pptx.ts",
+          "anker": "export async function extractPptxRich("
+        },
+        {
+          "pfad": "apps/web/src/lib/pptx.ts",
+          "anker": "const html = `<h2>${escapeHtml(heading)}</h2>"
+        },
+        {
+          "pfad": "apps/web/src/lib/pptx.ts",
+          "anker": "droppedImageOutsidePath: number;"
+        },
+        {
+          "pfad": "apps/web/src/lib/pptx.ts",
+          "anker": "BEWUSSTE GRENZE: verschachtelte Gruppen (p:grpSp) werden nicht rekursiv aufgelöst"
+        }
+      ]
+    },
+    {
+      "id": "W04",
+      "art": "weg",
+      "name": "Folienansicht: jede Folie als Bild (LibreOffice + pdftoppm), Voreinstellung aus",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/routes/slides-routes.ts",
+          "anker": "\"/api/capture/slides\","
+        },
+        {
+          "pfad": "services/app/src/routes/slides-routes.ts",
+          "anker": "const flag = process.env.KLARWERK_SLIDES_ENABLED;"
+        },
+        {
+          "pfad": "services/app/src/slide-converter.ts",
+          "anker": "max. 30 Folien"
+        },
+        {
+          "pfad": "apps/web/src/lib/slideImages.ts",
+          "anker": "export function slideImageId(runToken: string, slideNo: number): string {"
+        }
+      ]
+    },
+    {
+      "id": "W05",
+      "art": "weg",
+      "name": "DOCX-Leser (mammoth): Bilder als figure im Entwurfsrumpf, auch serverseitig für Word",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/docx.ts",
+          "anker": "export async function extractDocxRich("
+        },
+        {
+          "pfad": "services/app/src/routes/capture-routes.ts",
+          "anker": "\"/api/drafts/from-docx\","
+        }
+      ]
+    },
+    {
+      "id": "W06",
+      "art": "weg",
+      "name": "PDF-Leser (pdfjs): nur Textlayer, seitenweise",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/pdf.ts",
+          "anker": "export async function extractPdfDocument("
+        }
+      ]
+    },
+    {
+      "id": "W07",
+      "art": "weg",
+      "name": "PDF-Seite als Bild zeichnen (Zeichnungsanhang, gleiche pdfjs-Engine)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/zeichnungsanhang.ts",
+          "anker": "async function pdfSeiteAlsBild("
+        }
+      ]
+    },
+    {
+      "id": "W08",
+      "art": "weg",
+      "name": "Word-Add-in: Bildbytes über inlinePictures bzw. ganze .docx (getFileAsync)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "var WORD_ADDIN_MAX_BILDER = 60;"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "Office.context.document.getFileAsync("
+        }
+      ]
+    },
+    {
+      "id": "W09",
+      "art": "weg",
+      "name": "Browser-Erweiterung: angezeigte Bilder als Kopie über eine Zeichenfläche",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "extensions/klara-browser/selection.js",
+          "anker": "const MAX_IMAGES = 8;"
+        },
+        {
+          "pfad": "extensions/klara-browser/selection.js",
+          "anker": "function pixels(image) {"
+        }
+      ]
+    },
+    {
+      "id": "W10",
+      "art": "weg",
+      "name": "Klara-Antwortkontext: Rumpftext plus Bildfußnoten (captionTexts) und Bildnamen",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/ask/src/service.ts",
+          "anker": "...(ko.captionTexts?.length ? { captionTexts: ko.captionTexts } : {}),"
+        },
+        {
+          "pfad": "services/structure/src/captions.ts",
+          "anker": "export function searchCaptionTexts(bodyHtml: string | null | undefined): string[] {"
+        },
+        {
+          "pfad": "services/structure/src/captions.ts",
+          "anker": "export function searchImageNames(bodyHtml: string | null | undefined): string[] {"
+        }
+      ]
+    },
+    {
+      "id": "W11",
+      "art": "weg",
+      "name": "Klara-Figur: Ablegen übernimmt nur Text",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "e.dataTransfer.getData(\"text/plain\")"
+        }
+      ]
+    },
+    {
+      "id": "W12",
+      "art": "weg",
+      "name": "Klara in Word: Frage liest nur Text der Markierung",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "// Auswahl lesen (nur Text — die Frage ist Klartext)"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "function readAskSelection(done, wordZuerst, fehler) {"
+        }
+      ]
+    },
+    {
+      "id": "W13",
+      "art": "weg",
+      "name": "Foliensatz serverseitig lesen mit stabiler Folienkennung (p:sldId)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/meeting-dokumentbezug.ts",
+          "anker": "export async function foliensatzLesen("
+        },
+        {
+          "pfad": "services/app/src/meeting-dokumentbezug.ts",
+          "anker": "Medien, Layout, Master und Design — rekursiv, ohne Notizfolie."
+        }
+      ]
+    },
+    {
+      "id": "W14",
+      "art": "weg",
+      "name": "Dateiart-Erkennung (image, pdf, docx, pptx, text)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/extract.ts",
+          "anker": "export function detectFileKind(input: { name: string; type?: string }): FileKind {"
+        }
+      ]
+    },
+    {
+      "id": "W15",
+      "art": "weg",
+      "name": "Editor: Bilder einfügen und ablegen",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/RichTextEditor.tsx",
+          "anker": "const part = partitionDropMedia(files.map((f) => ({ mime: f.type, file: f })));"
+        }
+      ]
+    },
+    {
+      "id": "W16",
+      "art": "weg",
+      "name": "Inhaltskennung je Bildvorkommen (sha256 der Bildbytes zu data-image-id)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/structure/src/bildinhalt.ts",
+          "anker": "export async function bildInhalteAusRumpf("
+        }
+      ]
+    },
+    {
+      "id": "W17",
+      "art": "weg",
+      "name": "Ablage persönlicher Assistenz-Einstellungen je Konto",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/assistenz-profil.ts",
+          "anker": "CREATE TABLE IF NOT EXISTS assistenz_profile ("
+        }
+      ]
+    },
+    {
+      "id": "W18",
+      "art": "weg",
+      "name": "Office-Anhang im Artikel: lesen (ko.read) und neue Fassung übernehmen",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/routes/office-routes.ts",
+          "anker": "\"/api/kos/:id/office/:anhangId/uebernahme\","
+        },
+        {
+          "pfad": "services/knowledge-object/src/service.ts",
+          "anker": "async uebernimmOfficeFassung("
+        }
+      ]
+    },
+    {
+      "id": "C01",
+      "art": "kandidat",
+      "name": "Aufnahme gesamt-ocr · „Text aus Fotos und Scans auf Wunsch erkennen“",
+      "stand": "kandidat",
+      "auftrag_id": "aufnahme:20260922:gesamt-ocr",
+      "revision": 2,
+      "zweig": "codex/auftrag-77a81a7a269ac1a4770d",
+      "commit": "64e1768c1aa48ffb70f509dc0f0181de97db95bc",
+      "frueherer_commit": "842d2f636bdffdd18aad616135dd67e3f0d4c33c",
+      "ben_urteil": "erfuellt",
+      "hauptstand": "github/main steht auf 64e1768c (1.0.0-beta.1.946); nicht in der Arbeitsbasis 0b8ad62c",
+      "anforderungen": ["R-0121", "R-0138", "R-0151", "R-0181", "R-2098", "FR-CAP-05"],
+      "kriterien": [
+        {
+          "k": "K1",
+          "anforderung": "R-0121",
+          "bezug": "abgegrenzt"
+        },
+        {
+          "k": "K2",
+          "anforderung": "R-0138",
+          "bezug": "wiederverwenden"
+        },
+        {
+          "k": "K3",
+          "anforderung": "R-0151",
+          "bezug": "wiederverwenden"
+        },
+        {
+          "k": "K4",
+          "anforderung": "R-0181",
+          "bezug": "abgegrenzt"
+        },
+        {
+          "k": "K5",
+          "anforderung": "R-2098",
+          "bezug": "teilweise"
+        },
+        {
+          "k": "K6",
+          "anforderung": "FR-CAP-05",
+          "bezug": "teilweise"
+        },
+        {
+          "k": "K7",
+          "anforderung": "Nachweis",
+          "bezug": "uebernommen"
+        }
+      ]
+    }
+  ],
+  "luecken": [
+    {
+      "id": "L01",
+      "name": "Keine automatische Auslösung: Texterkennung und Bildbeschreibung starten nur auf Klick."
+    },
+    {
+      "id": "L02",
+      "name": "In der Arbeitsbasis lädt tesseract.js Arbeiter und Sprachdaten fremd (blob:, CDN); die CSP verbietet das. Behoben in C01 (64e1768c), inzwischen github/main."
+    },
+    {
+      "id": "L03",
+      "name": "Eingebettete Bilder aus PPTX, DOCX und Foliensätzen werden nie automatisch erkannt; ihre figcaption bleibt leer."
+    },
+    {
+      "id": "L04",
+      "name": "PPTX-Bilder tragen keine Foliennummer; die Kennung zählt über das ganze Deck, verworfene Bilder sind nur gezählt."
+    },
+    {
+      "id": "L05",
+      "name": "PPTX, gezählt, aber nicht gelesen: a:blip im Folien-XML außerhalb von p:pic (z. B. Folienhintergrund p:bg) als droppedImageOutsidePath, EMF/WMF/TIFF/BMP als droppedImageFormat. Bilder in verschachtelten Gruppen (p:grpSp) sind nicht belegt."
+    },
+    {
+      "id": "L06",
+      "name": "PDF: eingebettete Bilder und Scanseiten liefern keinen Text; Seitenbilder gibt es nur im Zeichnungsanhang."
+    },
+    {
+      "id": "L07",
+      "name": "DOCX: Fundstelle nur als Reihenfolge, keine Seite; Kopf-/Fußzeilen und Textfelder sind für Bilder nicht belegt."
+    },
+    {
+      "id": "L08",
+      "name": "Klaras Kontext kennt kein Feld für erkannten Bildtext und keinen Analysestatus (läuft, teilweise, fehlgeschlagen)."
+    },
+    {
+      "id": "L09",
+      "name": "Die Klara-Figur nimmt beim Ablegen nur Text an, keine Bilder oder Dateien."
+    },
+    {
+      "id": "L10",
+      "name": "Klara in Word fragt nur mit Text der Markierung; Bilder erreichen Klarwerk nur über den Entwurfsweg."
+    },
+    {
+      "id": "L11",
+      "name": "Kein PowerPoint-Add-in: PowerPoint ist nur als Datei angebunden."
+    },
+    {
+      "id": "L12",
+      "name": "Kein nativer Mac-Host; die KLARWERK App startet nur Server und Browser."
+    },
+    {
+      "id": "L13",
+      "name": "Browser-Erweiterung: höchstens 8 Bilder, fremde Herkunft nicht übernehmbar, Kopie der Darstellung statt Original."
+    },
+    {
+      "id": "L14",
+      "name": "Setup › Klara mit dem Schalter „Bilder automatisch analysieren und Text erkennen“ gibt es noch nicht."
+    },
+    {
+      "id": "L15",
+      "name": "Die Folienansicht ist standardmäßig aus, braucht soffice und pdftoppm und endet nach 30 Folien."
+    },
+    {
+      "id": "L16",
+      "name": "PPTX, überhaupt nicht erfasst und nicht gezählt: Layout- und Masterdateien, Diagramme (ppt/charts), SmartArt (ppt/diagrams) und Notizen werden nicht eingelesen (PPTX_NEEDED_ENTRY_RE). Eine ausgeglichene Bildbilanz heißt daher nicht, dass alle sichtbaren Bilder erfasst sind."
+    },
+    {
+      "id": "L17",
+      "name": "Office-Anhänge im Artikel (H06): eingebettete Bilder einer angehängten oder neu übernommenen .pptx/.docx werden nicht analysiert."
+    }
+  ]
+}

@@ -29,6 +29,14 @@ export default {
     "klaraauftrag.aktion.entwurf_erstellen": "Entwurf anlegen",
     "klaraauftrag.aktion.entwurf_bearbeiten": "Entwurf bearbeiten",
     "klaraauftrag.aktion.aufgabe_bearbeiten": "Aufgabe bearbeiten",
+    "klaraauftrag.aktion.persoenliche_aufgabe_anlegen": "Persönliche Aufgabe anlegen",
+    "klaraauftrag.zielArt.neue_persoenliche_aufgabe": "neue persönliche Aufgabe",
+    "klaraauftrag.zielText.persoenliche_aufgabe_anlegen": "Persönliche Aufgabe „{{titel}}“ anlegen",
+    "klaraauftrag.ergebnisAnforderung.persoenliche_aufgabe_anlegen":
+      "Aufgabe unter deinen persönlichen Aufgaben gespeichert und am Server nachgelesen",
+    "klaraauftrag.nachgelesen.status": "Aufgabe {{status}}",
+    "klaraauftrag.nichtRuecknehmbar.persoenlicheAufgabe":
+      "Das Anlegen nimmt Klara nicht zurück – ändern, erledigen oder löschen kannst du die Aufgabe unter „Meine persönlichen Aufgaben“.",
     "klaraauftrag.zielArt.wissensobjekt": "Artikel",
     "klaraauftrag.zielArt.entwurf": "Entwurf",
     "klaraauftrag.zielArt.aufgabe": "Aufgabe",
@@ -243,6 +251,14 @@ export default {
     "klaraauftrag.aktion.entwurf_erstellen": "Create draft",
     "klaraauftrag.aktion.entwurf_bearbeiten": "Edit draft",
     "klaraauftrag.aktion.aufgabe_bearbeiten": "Work on task",
+    "klaraauftrag.aktion.persoenliche_aufgabe_anlegen": "Create personal task",
+    "klaraauftrag.zielArt.neue_persoenliche_aufgabe": "new personal task",
+    "klaraauftrag.zielText.persoenliche_aufgabe_anlegen": "Create personal task “{{titel}}”",
+    "klaraauftrag.ergebnisAnforderung.persoenliche_aufgabe_anlegen":
+      "Task saved under your personal tasks and read back on the server",
+    "klaraauftrag.nachgelesen.status": "Task {{status}}",
+    "klaraauftrag.nichtRuecknehmbar.persoenlicheAufgabe":
+      "Klara does not undo the creation – you can change, complete or delete the task under “My personal tasks”.",
     "klaraauftrag.zielArt.wissensobjekt": "Article",
     "klaraauftrag.zielArt.entwurf": "Draft",
     "klaraauftrag.zielArt.aufgabe": "Task",
@@ -450,6 +466,14 @@ export default {
     "klaraauftrag.aktion.entwurf_erstellen": "Concept aanmaken",
     "klaraauftrag.aktion.entwurf_bearbeiten": "Concept bewerken",
     "klaraauftrag.aktion.aufgabe_bearbeiten": "Taak bewerken",
+    "klaraauftrag.aktion.persoenliche_aufgabe_anlegen": "Persoonlijke taak aanmaken",
+    "klaraauftrag.zielArt.neue_persoenliche_aufgabe": "nieuwe persoonlijke taak",
+    "klaraauftrag.zielText.persoenliche_aufgabe_anlegen": "Persoonlijke taak „{{titel}}” aanmaken",
+    "klaraauftrag.ergebnisAnforderung.persoenliche_aufgabe_anlegen":
+      "Taak opgeslagen onder je persoonlijke taken en op de server teruggelezen",
+    "klaraauftrag.nachgelesen.status": "Taak {{status}}",
+    "klaraauftrag.nichtRuecknehmbar.persoenlicheAufgabe":
+      "Klara draait het aanmaken niet terug – wijzigen, afronden of verwijderen doe je onder ‘Mijn persoonlijke taken’.",
     "klaraauftrag.zielArt.wissensobjekt": "Artikel",
     "klaraauftrag.zielArt.entwurf": "Concept",
     "klaraauftrag.zielArt.aufgabe": "Taak",

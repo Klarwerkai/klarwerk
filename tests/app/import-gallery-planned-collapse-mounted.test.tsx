@@ -15,7 +15,10 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { ImportSourceGallery } from "../../apps/web/src/components/ImportSourceGallery";
 import i18n from "../../apps/web/src/i18n";
-import { FILE_SOURCES, SYSTEM_SOURCES } from "../../apps/web/src/lib/importSourceGallery";
+import { SYSTEM_SOURCES, fileSourcesForSurface } from "../../apps/web/src/lib/importSourceGallery";
+
+// Die Dateiliste der Import-Galerie ohne gemeldeten Mediendienst (frühere Konstante FILE_SOURCES).
+const FILE_SOURCES = fileSourcesForSurface("import");
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

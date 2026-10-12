@@ -114,6 +114,8 @@ import { statusSchluessel } from "../lib/wissensstatus";
 import { AiCostHint } from "./AiCostHint";
 import { AiGeneratedNotice, AiSurfaceNotice } from "./AiGeneratedNotice";
 import { AiUnavailableHint } from "./AiUnavailableHint";
+// OCR-02: Bilder im Text automatisch lesen (Text und Bildinhalt).
+import { BildBefundeImRumpf } from "./BildBefundeImRumpf";
 // D44 Teil 2, Weg (a): nur der Ereignisname und seine Nutzlast — keine Komponente, kein Zyklus
 // (`BodyImageGallery` importiert nichts aus dieser Datei, gemessen).
 import { type D44BildEreignis, D44_BILD_EREIGNIS } from "./BodyImageGallery";
@@ -3654,6 +3656,8 @@ export function RichTextEditor({
           ) : null}
         </div>
       ) : null}
+      {/* OCR-02: die Bilder dieses Textes werden ohne Klick gelesen (Text und Bildinhalt). */}
+      <BildBefundeImRumpf html={value} />
     </div>
   );
 }

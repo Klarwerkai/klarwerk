@@ -2,6 +2,7 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { klaraStand } from "./src/lib/klaraStand";
+import { ocrEngineDateien } from "./src/lib/ocrEngineDateien";
 import { textmodulVertrag } from "./src/texte/intern/sammeln";
 import { sprachpaketeNachladen } from "./src/texte/intern/sprachpakete";
 
@@ -52,7 +53,10 @@ import { sprachpaketeNachladen } from "./src/texte/intern/sprachpakete";
 const apiTarget = process.env.VITE_API_TARGET ?? "http://localhost:3001";
 
 export default defineConfig({
-  plugins: [react(), klaraStand(), textmodulVertrag(), sprachpaketeNachladen()],
+  // Aufnahme `gesamt-ocr` (Nacharbeit 13): `ocr-engine-dateien` legt Arbeiter und Kern der
+  // Bild-Texterkennung unter /ocr/engine/ ab — gleiche Herkunft statt CDN (Begründung in
+  // `src/lib/ocrEngineDateien.ts`).
+  plugins: [react(), klaraStand(), textmodulVertrag(), sprachpaketeNachladen(), ocrEngineDateien()],
   resolve: { alias: { "@": "/src" } },
   // Kein Inline-Modulepreload-Polyfill → strikte CSP (script-src 'self') ohne 'unsafe-inline'.
   build: { modulePreload: { polyfill: false } },

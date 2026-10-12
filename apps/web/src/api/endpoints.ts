@@ -1,4 +1,6 @@
+import type { AnstehendeUebergabe } from "../lib/autorenuebergabe";
 import { trenneVerzeichnis } from "../lib/geloeschteKonten";
+import type { PushAboJson } from "../lib/geraetePush";
 import type { Verbindungsnachweis } from "../lib/integrationStatus";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
@@ -105,6 +107,7 @@ import type {
   Lesevariante,
   LesevariantenLadeBilanz,
   LesevariantenUebersicht,
+  LesevariantenWiderspruchQuittung,
   LibraryImageSearchResponse,
   LiveWall,
   LiveWallConsent,
@@ -124,15 +127,18 @@ import type {
   OutputSource,
   OverlapEntry,
   OverlapSettings,
+  PruefdauerAuswertung,
   PublicUser,
   ReasonerConfigStatus,
   ReasonerKiLage,
   ReasonerProbeResult,
   ReasonerStatus,
+  ReferenzPruefung,
   RetirementEntry,
   RetirementHorizon,
   RevalidierungBestaetigt,
   ReviewAction,
+  ReviewerSuggestion,
   RiskHorizonView,
   Role,
   ScormExportBody,
@@ -449,6 +455,8 @@ export type KoAction =
   // R-0263: `vorrang` optional — welcher der beiden Punkte gilt bzw. einschränkt.
   | { action: "resolve-conflict"; conflictId: string; decision: string; vorrang?: VorrangWahl }
   | { action: "transfer-author"; newAuthor: string }
+  // R-0961: Autor oder Admin verlangen die Übergabe ausdrücklich (nur Protokolleintrag).
+  | { action: "request-author-transfer" }
   // R-0507: der benannte Eigentümer gibt seine Verantwortung zurück (sonst 403 `NOT_OWNER`).
   | { action: "ownership-release" }
   // R-0507: der benannte Eigentümer gibt inhaltlich frei (Recht `ko.validate`, sonst 403).
@@ -828,6 +836,30 @@ export const endpoints = {
     // jetzt; vorher las die Oberfläche eine Auskunft, von der ihr Vertrag nichts wusste.
     board: (f?: KoFilter) => api.get<ValidationBoardKo[]>(`/validation/board${qs(f)}`),
     overview: () => api.get<AssignmentSummary[]>("/validation/overview"),
+    // R-0265: wer ein neues Objekt dieses Themas prüfen sollte (Autorenschaft, frühere Prüfungen,
+    // Netznähe). Liest nur; zugewiesen wird erst mit dem Einreichen.
+    reviewerSuggestions: (q: { category?: string; tags?: readonly string[]; koId?: string }) => {
+      const params = new URLSearchParams();
+      if (q.category) {
+        params.set("category", q.category);
+      }
+      if (q.tags && q.tags.length > 0) {
+        params.set("tags", q.tags.join(","));
+      }
+      if (q.koId) {
+        params.set("koId", q.koId);
+      }
+      const query = params.toString();
+      return api.get<ReviewerSuggestion[]>(
+        `/validation/reviewer-suggestions${query ? `?${query}` : ""}`,
+      );
+    },
+    // R-1655: Prüfdauer je Zuweisungsweg (Messgrundlage des Routings).
+    pruefdauer: () => api.get<PruefdauerAuswertung>("/validation/pruefdauer"),
+    // R-1655: eigenes Opt-out aus der automatischen Zuweisung.
+    routingOptOut: () => api.get<{ optOut: boolean | null }>("/me/pruefrouting"),
+    setRoutingOptOut: (optOut: boolean) =>
+      api.put<{ optOut: boolean }>("/me/pruefrouting", { optOut }),
     // SCRUM-395: Standard-Prüferanzahl (lesen: alle Leseberechtigten; setzen: Admin).
     settings: () => api.get<ValidationSettings>("/validation/settings"),
     saveSettings: (defaultNeededValidations: number) =>
@@ -1098,6 +1130,19 @@ export const endpoints = {
         ...(locale ? { locale } : {}),
         ...(stichtag ? { stichtag } : {}),
       }),
+    // REF-02: die begrenzte, ausdrücklich angestoßene erneute Referenzprüfung einer Antwort.
+    referenzErneut: (pruefId: string) =>
+      api.post<{ referenzpruefung: ReferenzPruefung }>(
+        `/ask/referenzpruefung/${encodeURIComponent(pruefId)}/erneut`,
+        {},
+      ),
+    // REF-02 (Ben nacharbeit-4, K8): eine gespeicherte Anzeige serverseitig bestätigen lassen —
+    // aktuelle Rechte, aktueller Prüfer, nur ein exakt passender Beleg, kein Modellaufruf.
+    referenzBestaetigen: (pruefId: string) =>
+      api.post<{ referenzpruefung: ReferenzPruefung }>(
+        `/ask/referenzpruefung/${encodeURIComponent(pruefId)}/erneut`,
+        { bestaetigen: true },
+      ),
     // R-1089: „Antwort falsch / Quelle passt nicht" — derselbe Beleg; die Antwort ist die Quittung.
     // produkt:20261010:antwort-beanstandung-korrektur: mit `beanstandung` die konkrete Aussage samt
     // kurzer Begründung — der Server prüft sie gegen die signierte Aussagefassung des Belegs.
@@ -1125,6 +1170,15 @@ export const endpoints = {
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler (nur eigene Beiträge, nur Zahlen).
   me: {
     impact: () => api.get<MyImpact>("/me/impact"),
+    // Autorenübergabe-Auftrag K3: nur die Zahl der an mich zurückgegebenen Entwürfe (Kopfband).
+    returnedSummary: () => api.get<{ open: number }>("/me/returned-tasks/summary"),
+    // Dieselbe Auswahl als Liste für die Aufgabenseite. Nur `ko.read` — Experten sehen ihre
+    // Rückgaben, ohne das ganze Protokoll (`/audit`, `ko.validate`) lesen zu dürfen.
+    returnedTasks: () =>
+      api.get<{ koId: string; at: string; verdict: string }[]>("/me/returned-tasks"),
+    // Autorenübergabe-Auftrag (R-0961): wartende Autorenübergaben (nur `users.manage`).
+    authorTransfers: () => api.get<AnstehendeUebergabe[]>("/me/author-transfers"),
+    authorTransfersSummary: () => api.get<{ open: number }>("/me/author-transfers/summary"),
   },
   // SCRUM-527: Live-Check eines Entwurfstextes (Ähnlichkeit/Widerspruch gegen den Bestand).
   //
@@ -1180,6 +1234,8 @@ export const endpoints = {
     // SCRUM-132: reasoner-getriebenes Interview, stateless.
     // AUFNAHME 20260922 · WISSEN-INTERVIEW: `guide.tree` schaltet den Fragebaum mit Restlückenwert
     // zu, `guide.topic` das Lücken-Interview (drei Fragen zu einem festen Thema).
+    // Aufnahme `gesamt-ocr` (FR-CAP-05): optional `context` = der auf Klick im Bild erkannte Text —
+    // im selben Request, also unter derselben Provenienz/Vertraulichkeit wie die Antworten.
     interview: (
       answers: string[],
       locale: ReasonerLocale | undefined,
@@ -1194,6 +1250,7 @@ export const endpoints = {
         // R-0088: ausdrücklicher Wunsch nach Quellenrecherche (Knopf „Zum Thema recherchieren").
         recherchieren?: boolean;
       },
+      context?: string,
     ) =>
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
@@ -1204,6 +1261,7 @@ export const endpoints = {
         ...(guide?.topic?.trim() ? { topic: guide.topic.trim() } : {}),
         ...(guide?.research && guide.research.length > 0 ? { research: guide.research } : {}),
         ...(guide?.recherchieren ? { recherchieren: true } : {}),
+        ...(context?.trim() ? { context: context.trim() } : {}),
         ...provenanceFields(provenance),
       }),
     // WP-BILD-1c/1f: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). EIGENE
@@ -1273,6 +1331,13 @@ export const endpoints = {
   // abgetrennt — Zuweisungslisten sehen nur Konten, die Autorenzeile die Kennungen (lib/geloeschteKonten).
   directory: {
     list: () => api.get<{ id: string; name: string }[]>("/directory").then(trenneVerzeichnis),
+  },
+  // R-0679 / FR-VAL-07: Geräte-Push — Einrichtung lesen, eigenes Gerät an- und abmelden.
+  push: {
+    config: () => api.get<{ verfuegbar: boolean; publicKey: string | null }>("/push/config"),
+    anmelden: (abo: PushAboJson) => api.post<{ angemeldet: boolean }>("/push/abo", abo),
+    abmelden: (endpoint: string) =>
+      api.post<{ angemeldet: boolean }>("/push/abo/entfernen", { endpoint }),
   },
   // Audit-P4 (SCRUM-398): Live-Wall (read-only Aggregation).
   livewall: {
@@ -1655,6 +1720,18 @@ export const endpoints = {
     fuerKandidat: (kandidatId: string, lang: string) =>
       api.get<KandidatenLesevariante>(
         `/library/import/candidates/${encodeURIComponent(kandidatId)}/lesevariante/${encodeURIComponent(lang)}`,
+      ),
+    // Peter Nr. 20: „Übersetzungswidersprüche melden" — ein Protokolleintrag mit Bezug auf genau
+    // diese Übersetzung und dieses Original. Er gibt nichts frei und ändert nichts.
+    widerspruchKo: (koId: string, lang: string, begruendung: string) =>
+      api.post<LesevariantenWiderspruchQuittung>(
+        `/kos/${encodeURIComponent(koId)}/lesevariante/${encodeURIComponent(lang)}/widerspruch`,
+        { begruendung },
+      ),
+    widerspruchKandidat: (kandidatId: string, lang: string, begruendung: string) =>
+      api.post<LesevariantenWiderspruchQuittung>(
+        `/library/import/candidates/${encodeURIComponent(kandidatId)}/lesevariante/${encodeURIComponent(lang)}/widerspruch`,
+        { begruendung },
       ),
   },
   // AUFTRAG-mega46 Block F: „welche Schalter stehen" — die EINE Auskunft, Ja/Nein je Schalter.

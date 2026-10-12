@@ -41,6 +41,7 @@
 // `soll`. Und: was hier nicht steht, steht mit eigenem Grund und `art: "zurueckgestellt"` in
 // `NICHT_ABGENOMMEN`; eine stille Auslassung gibt es nicht (E2 verbietet sie).
 import type { FastifyInstance } from "fastify";
+import { lokalisierungsPaket } from "../../services/app/src/lesevarianten";
 import { AKTEURE, type Akteur, type Buehne, PASSWORT, ROLLEN, type Rolle } from "./buehne";
 import {
   AB_CONTROLLER,
@@ -369,6 +370,88 @@ async function legeKoAn(buehne: Buehne, rolle: Rolle = "admin"): Promise<{ id: s
   });
   return antwort.json() as { id: string };
 }
+
+// ------------------------------------------------------------------------------------------------
+// PETER NR. 20 · DIE WIDERSPRUCHSMELDUNG ZUR LESEÜBERSETZUNG — der Vorgang ist eine ECHTE Variante.
+// ------------------------------------------------------------------------------------------------
+// Datensatz S01 der Lieferung (eine Confluence-Seite, Original englisch). Kennung GELESEN, nicht
+// abgeschrieben: ändert sich die Lieferung, scheitert die Vorbereitung laut statt still.
+const S01_ANKER = (() => {
+  const record = lokalisierungsPaket("advisor-ict-en-v1")?.records.find((r) => r.key === "S01");
+  if (!record?.confluence_id || !record.en) {
+    throw new Error("Datensatz S01 der Lieferung advisor-ict-en-v1 fehlt.");
+  }
+  return { confluenceId: record.confluence_id, titel: record.en.title };
+})();
+
+/** Ein Wissensobjekt mit dem S01-Anker, dessen deutsche Lesevariante der Admin geladen hat. */
+async function legeUebersetztesKoAn(buehne: Buehne): Promise<{ id: string }> {
+  const objekt = await buehne.services.ko.create({
+    title: S01_ANKER.titel,
+    statement: "Harbor Field Services is a fictional customer.",
+    bodyHtml: "<p>Harbor Field Services is a fictional customer.</p>",
+    type: "best_practice",
+    category: "Onboarding",
+    author: buehne.konto.admin.id,
+    confidentiality: "intern",
+    sources: [
+      {
+        id: S01_ANKER.confluenceId,
+        label: "Confluence-Seite",
+        url: null,
+        excerpt: null,
+        kind: "external",
+        peerValidated: false,
+        provider: "Confluence",
+        externalId: S01_ANKER.confluenceId,
+        author: "importer",
+        at: "2026-09-01T00:00:00.000Z",
+      },
+    ],
+  });
+  await musterhaft(buehne.app, kopf(buehne, "admin"), "POST", "/api/admin/lesevarianten/laden", {
+    package: "advisor-ict-en-v1",
+  });
+  return { id: objekt.id };
+}
+
+/** Ein noch NICHT angenommener Kandidat mit dem S01-Anker — über den echten Eingang eingereiht. */
+async function legeUebersetztenKandidatenAn(buehne: Buehne): Promise<{ id: string }> {
+  const angelegt = await musterhaft(
+    buehne.app,
+    kopf(buehne, "admin"),
+    "POST",
+    "/api/library/import/candidates",
+    {
+      items: [
+        {
+          ...IMPORT_EINTRAG,
+          title: S01_ANKER.titel,
+          provider: "Confluence",
+          externalId: S01_ANKER.confluenceId,
+        },
+      ],
+    },
+  );
+  const erster = (angelegt.json() as { id: string }[])[0];
+  if (!erster) {
+    throw new Error(
+      `Vorbereitung fehlgeschlagen: POST /api/library/import/candidates lieferte keinen Kandidaten — ${angelegt.body.slice(0, 300)}`,
+    );
+  }
+  return erster;
+}
+
+/** Die Zahl der Widerspruchsmeldungen im Prüfprotokoll — die Wirkung der Tür. */
+async function zaehleWidersprueche(buehne: Buehne): Promise<number> {
+  const eintraege = await buehne.services.audit?.list({ action: "lesevariante.widerspruch" });
+  return eintraege?.length ?? 0;
+}
+
+const WIDERSPRUCH_WIRKUNG: Wirkung = {
+  beschreibung: "genau eine Widerspruchsmeldung im Prüfprotokoll",
+  eingetreten: (bestand) => bestand === 1,
+};
 
 async function zaehleKos(buehne: Buehne): Promise<number> {
   const antwort = await musterhaft(buehne.app, kopf(buehne, "admin"), "GET", "/api/kos");
@@ -1444,6 +1527,44 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
       };
     },
   },
+  // Peter Nr. 20: „Übersetzungswidersprüche melden". Dasselbe Recht wie das Lesen der Übersetzung —
+  // wer sie sehen darf, darf sie beanstanden. Die Wirkung ist GENAU EIN Protokolleintrag.
+  {
+    gruppe: "lesevariantenRoutes",
+    methode: "POST",
+    route: "/api/kos/:id/lesevariante/:lang/widerspruch",
+    belegstelle: "services/app/src/routes/lesevarianten-routes.ts:261",
+    erfolg: [201],
+    tor: "ko.read (danach darfSehen am Objekt)",
+    erwartet: NUR_LESEN,
+    ruesten: async (buehne) => {
+      const objekt = await legeUebersetztesKoAn(buehne);
+      return {
+        pfad: `/api/kos/${objekt.id}/lesevariante/de/widerspruch`,
+        payload: { begruendung: "Die Übersetzung nennt eine andere Zahl als das Original." },
+        bestand: () => zaehleWidersprueche(buehne),
+        wirkung: WIDERSPRUCH_WIRKUNG,
+      };
+    },
+  },
+  {
+    gruppe: "lesevariantenRoutes",
+    methode: "POST",
+    route: "/api/library/import/candidates/:id/lesevariante/:lang/widerspruch",
+    belegstelle: "services/app/src/routes/lesevarianten-routes.ts:336",
+    erfolg: [201],
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+    ruesten: async (buehne) => {
+      const kandidat = await legeUebersetztenKandidatenAn(buehne);
+      return {
+        pfad: `/api/library/import/candidates/${kandidat.id}/lesevariante/de/widerspruch`,
+        payload: { begruendung: "Die Übersetzung nennt eine andere Zahl als das Original." },
+        bestand: () => zaehleWidersprueche(buehne),
+        wirkung: WIDERSPRUCH_WIRKUNG,
+      };
+    },
+  },
 
   // --- Konto und Sitzung: erst die frische Bühne macht diese Türen messbar -----------------------
   {
@@ -1661,6 +1782,39 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
       return {
         pfad: `/api/users/${ziel.id}`,
         bestand: () => zaehleKonten(buehne),
+      };
+    },
+  },
+  // R-0961 (Peters Entscheidung 1, 12.10.2026): der Status „Ausgeschieden“ — nur `users.manage`.
+  {
+    gruppe: "ausscheidenRoutes",
+    methode: "POST",
+    route: "/api/users/:id/ausscheiden",
+    belegstelle: "services/app/src/routes/ausscheiden-routes.ts:52",
+    // NUR 200. Fehlt die Vertretung oder ist sie kein freigeschaltetes Konto, antwortet die Route
+    // 400; eine erfundene Kennung 404; eine ungeeignete Vertretung oder eine unvollständige
+    // Übertragung 409. All das käme durchs Tor, ohne dass ein Status gesetzt wurde.
+    erfolg: [200],
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+    ruesten: async (buehne) => {
+      const ziel = await legeZielkontoAn(buehne);
+      return {
+        pfad: `/api/users/${ziel.id}/ausscheiden`,
+        // Die Vertretung ist ein freigeschaltetes Bühnenkonto; ausscheiden muss das eigens
+        // angelegte Konto, nicht eines der fünf, mit denen gemessen wird.
+        payload: { vertretung: buehne.konto.experte.id },
+        bestand: async () => {
+          const vermerke = await buehne.services.audit.list({
+            action: "user.ausgeschieden",
+            target: ziel.id,
+          });
+          return vermerke.length;
+        },
+        wirkung: {
+          beschreibung: "das Zielkonto trägt danach den Status „Ausgeschieden“",
+          eingetreten: (anzahl) => anzahl === 1,
+        },
       };
     },
   },
@@ -2048,4 +2202,101 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
       };
     },
   },
+
+  // --- R-0679 / R-1655 · Persönliche Einstellungen zur Prüfzuweisung ---------------------------
+  // Jede Tür wirkt nur auf das EIGENE Konto. Nachgelesen wird je Rolle an der Ablage: die Wirkung
+  // trifft genau den Besitzer, und der Unangemeldete (gemessen gegen den Viewer) ändert nichts.
+  {
+    gruppe: "validationRoutes",
+    methode: "PUT",
+    route: "/api/me/pruefrouting",
+    belegstelle: "services/app/src/routes/validation-routes.ts:375",
+    erfolg: [200],
+    tor: "requireUser — nur das eigene Opt-out",
+    erwartet: ANGEMELDET,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      return {
+        pfad: "/api/me/pruefrouting",
+        payload: { optOut: true },
+        bestand: () => routingOptOutStand(buehne),
+        wirkung: {
+          beschreibung: `${besitzer} ist danach von der automatischen Zuweisung abgemeldet`,
+          eingetreten: (stand) => eigeneZahl(stand, besitzer) === 1,
+        },
+      };
+    },
+  },
+  {
+    gruppe: "pushRoutes",
+    methode: "POST",
+    route: "/api/push/abo",
+    belegstelle: "services/app/src/routes/push-routes.ts:54",
+    erfolg: [200],
+    tor: "requireUser — nur ein Gerät des eigenen Kontos",
+    erwartet: ANGEMELDET,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      return {
+        pfad: "/api/push/abo",
+        payload: {
+          endpoint: `https://fcm.googleapis.com/fcm/send/abnahme-${besitzer}`,
+          keys: { p256dh: "abnahme-p256dh", auth: "abnahme-auth" },
+        },
+        bestand: () => pushAboStand(buehne),
+        wirkung: {
+          beschreibung: `${besitzer} hat danach genau ein Geräteabo`,
+          eingetreten: (stand) => eigeneZahl(stand, besitzer) === 1,
+        },
+      };
+    },
+  },
+  {
+    gruppe: "pushRoutes",
+    methode: "POST",
+    route: "/api/push/abo/entfernen",
+    belegstelle: "services/app/src/routes/push-routes.ts:74",
+    erfolg: [200],
+    tor: "requireUser — nur ein Gerät des eigenen Kontos",
+    erwartet: ANGEMELDET,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      const endpoint = `https://fcm.googleapis.com/fcm/send/abnahme-${besitzer}`;
+      await buehne.services.pushAbos.speichern({
+        userId: buehne.konto[besitzer].id,
+        endpoint,
+        p256dh: "abnahme-p256dh",
+        auth: "abnahme-auth",
+        angelegtAm: new Date().toISOString(),
+      });
+      return {
+        pfad: "/api/push/abo/entfernen",
+        payload: { endpoint },
+        bestand: () => pushAboStand(buehne),
+        wirkung: {
+          beschreibung: `das Geräteabo von ${besitzer} ist danach entfernt`,
+          eingetreten: (stand) => eigeneZahl(stand, besitzer) === 0,
+        },
+      };
+    },
+  },
 ];
+
+/** R-1655: je Rolle 1, wenn abgemeldet, sonst 0 — gelesen an der Ablage, nicht am Draht. */
+async function routingOptOutStand(buehne: Buehne): Promise<Record<Rolle, number>> {
+  const stand = {} as Record<Rolle, number>;
+  for (const rolle of ROLLEN) {
+    const abgemeldet = await buehne.services.validation.routingOptOutVon(buehne.konto[rolle].id);
+    stand[rolle] = abgemeldet ? 1 : 0;
+  }
+  return stand;
+}
+
+/** R-0679: Zahl der Geräteabos je Rolle, gelesen an der Ablage. */
+async function pushAboStand(buehne: Buehne): Promise<Record<Rolle, number>> {
+  const stand = {} as Record<Rolle, number>;
+  for (const rolle of ROLLEN) {
+    stand[rolle] = (await buehne.services.pushAbos.fuer(buehne.konto[rolle].id)).length;
+  }
+  return stand;
+}

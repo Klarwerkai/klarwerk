@@ -24,7 +24,9 @@ const GRUPPE = "assistenzProfilRoutes";
 const gescannt = scanRouteFile(readFileSync(join(WURZEL, DATEI), "utf8"), DATEI);
 
 describe("Routeninventare · eigener Anteil des Unterstützungsmodus", () => {
-  it("die Erhebung findet alle fünf Wege der Datei", () => {
+  // produkt:20261012:klara-setup-shortcuts-umsetzung: dieselbe Datei trägt seither auch die zwei Wege
+  // der Klara-Tastenkürzel; R1–R3 gelten für sie unverändert.
+  it("die Erhebung findet alle sieben Wege der Datei", () => {
     expect(gescannt.map((r) => routeKey(r.method, r.url)).sort()).toEqual(
       [
         "GET /api/me/assistenz",
@@ -32,6 +34,8 @@ describe("Routeninventare · eigener Anteil des Unterstützungsmodus", () => {
         "GET /api/me/assistenz/eigeninitiative",
         "PUT /api/me/assistenz/eigeninitiative",
         "POST /api/me/assistenz/eigeninitiative/hinweise",
+        "GET /api/me/assistenz/tastenkuerzel",
+        "PUT /api/me/assistenz/tastenkuerzel",
       ].sort(),
     );
   });

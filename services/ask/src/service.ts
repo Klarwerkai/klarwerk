@@ -31,9 +31,11 @@ import {
   type KnowledgeRef,
   type Reasoner,
   type ReasonerLocale,
+  type ReferenzRolle,
   type Relevanztext,
   type ZuordnungsPaar,
   type ZweitmeinungErgebnis,
+  antwortRolleVon,
   decktAlleFragebegriffe,
   queryTokens,
   waehleKandidaten,
@@ -925,7 +927,32 @@ function aufruferBeschriftung(aufrufer: AskCaller): string {
   return aufrufer.kind === "system" ? SYSTEM_ACTOR : aufrufer.userId;
 }
 
+// produkt:20261009:referenzki-pruefdienst (REF-02): das tatsächliche Antwortmodell GENAU DIESER
+// Frage — gebunden an das zurückgegebene Ergebnisobjekt, nicht als Feld darin. Anbieter und Modell
+// sind Adminangaben (WP-VIP2-GATE-2); ein Feld im Ergebnis ginge über `...out` an jeden Fragenden.
+const FRAGE_ROLLEN = new WeakMap<object, ReferenzRolle>();
+// Dasselbe für die beiden Seiten eines Stichtagsvergleichs (Ben nacharbeit-3).
+const VERGLEICH_ROLLEN = new WeakMap<
+  object,
+  { heute: ReferenzRolle | undefined; damals: ReferenzRolle | undefined }
+>();
+
+function mitAntwortRolle<T extends object>(ergebnis: T, rolle: ReferenzRolle | undefined): T {
+  if (rolle) {
+    FRAGE_ROLLEN.set(ergebnis, rolle);
+  }
+  return ergebnis;
+}
+
 export class AskService {
+  /**
+   * REF-02: das Modell, das die Antwort dieses Ergebnisses geschrieben hat — `undefined`, wenn es
+   * nicht festgehalten ist (Rückgabe ohne Antwortlauf, Test-Doppelgänger). Nie geraten.
+   */
+  antwortRolleVon(ergebnis: AskResult): ReferenzRolle | undefined {
+    return FRAGE_ROLLEN.get(ergebnis);
+  }
+
   private readonly reasoner: Reasoner;
   private readonly koService: KoService;
   private readonly gaps: GapRepo;
@@ -1487,6 +1514,14 @@ export class AskService {
             dokumenttext,
           ),
     );
+    // REF-02: wer GENAU DIESE Antwort geschrieben hat. Der wörtliche Weg des Add-ins ist der
+    // deterministische Ersatz ohne Modell — auch das ist eine festgehaltene Rolle, keine Lücke.
+    // Nachgeschlagen am Ergebnisobjekt des Reasoners selbst (`rawMitLauf`): die Abtrennung der
+    // Laufkennung unten erzeugt ein neues Objekt. Die Gegenposition entsteht nur an einer Antwort
+    // des deterministischen Ersatzes und ändert die Rolle daher nicht.
+    const antwortRolle: ReferenzRolle | undefined = opts?.retrievalOnly
+      ? { anbieter: "deterministic", modell: null, stufe: "deterministic" }
+      : antwortRolleVon(rawMitLauf);
     // ANTWORTBELEG (R-0317): die Laufprotokoll-Kennung geht in den Beleg, NICHT an die Antwortfläche.
     // Sie wird hier abgetrennt, damit alles Weitere (Antwort, Wissenslücke, Ausgabe) feldgleich bleibt.
     const { modelRunId: modelllauf, ...antwortwegErgebnis } = rawMitLauf;
@@ -1843,10 +1878,29 @@ export class AskService {
         () => this.pruefeKiSperre("ergebnis", kiBeginn),
         belegbedarf,
       );
-      return {
+      return mitAntwortRolle<AskResult>(
+        {
+          result,
+          answerId,
+          gap,
+          receipt,
+          quellenStand,
+          ...ungeprueftFeld,
+          ...verschlossenFeld,
+          ...zweitmeinungFeld,
+          ...zweitmeinungAussagenFeld,
+          ...geltungFeld,
+          ...zuschnittFeld,
+          pruefrahmen,
+        },
+        antwortRolle,
+      );
+    }
+    return mitAntwortRolle<AskResult>(
+      {
         result,
         answerId,
-        gap,
+        gap: null,
         receipt,
         quellenStand,
         ...ungeprueftFeld,
@@ -1855,24 +1909,11 @@ export class AskService {
         ...zweitmeinungAussagenFeld,
         ...geltungFeld,
         ...zuschnittFeld,
+        ...aussagenFeld,
         pruefrahmen,
-      };
-    }
-    return {
-      result,
-      answerId,
-      gap: null,
-      receipt,
-      quellenStand,
-      ...ungeprueftFeld,
-      ...verschlossenFeld,
-      ...zweitmeinungFeld,
-      ...zweitmeinungAussagenFeld,
-      ...geltungFeld,
-      ...zuschnittFeld,
-      ...aussagenFeld,
-      pruefrahmen,
-    };
+      },
+      antwortRolle,
+    );
   }
 
   /**
@@ -2021,7 +2062,7 @@ export class AskService {
         antwortGeaendert: geaendert,
       },
     });
-    return {
+    const vergleich: WissensstandVergleich = {
       stichtag: new Date(stichtagMs).toISOString(),
       heute: heute.antwort,
       damals: damals.antwort,
@@ -2030,6 +2071,20 @@ export class AskService {
       antwortGeaendert: geaendert,
       quellen,
     };
+    // REF-02: die Rollen beider Seiten neben dem Ergebnis, nicht darin (s. `FRAGE_ROLLEN`).
+    VERGLEICH_ROLLEN.set(vergleich, { heute: heute.rolle, damals: damals.rolle });
+    return vergleich;
+  }
+
+  /**
+   * REF-02 (Ben nacharbeit-3): die tatsächlichen Antwortmodelle beider Seiten eines Stichtags-
+   * vergleichs — je `undefined`, wenn nicht festgehalten. Nie geraten.
+   */
+  antwortRollenDesVergleichs(vergleich: WissensstandVergleich): {
+    heute: ReferenzRolle | undefined;
+    damals: ReferenzRolle | undefined;
+  } {
+    return VERGLEICH_ROLLEN.get(vergleich) ?? { heute: undefined, damals: undefined };
   }
 
   /**
@@ -2045,7 +2100,11 @@ export class AskService {
     relevanz: Relevanztext,
     actor: string,
     kiBeginn: number | undefined,
-  ): Promise<{ antwort: AnswerResult; aussagen: AussagenBeleg | null }> {
+  ): Promise<{
+    antwort: AnswerResult;
+    aussagen: AussagenBeleg | null;
+    rolle: ReferenzRolle | undefined;
+  }> {
     const jetzt = new Date(this.now()).toISOString();
     // REF-01 (nacharbeit-7, K1): die Bindungsquellen in GENAU den übergebenen Fassungen — derselbe
     // Volltext, den der Antwortweg dieser Seite gelesen hat.
@@ -2091,7 +2150,12 @@ export class AskService {
       roh.answered && roh.sources.length === 0
         ? { ...ohneAbbruch, answered: false, answer: null, citedSources: [] }
         : roh;
-    return { antwort, aussagen: bindeAntworttext(antwort, bindungsQuellen) ?? null };
+    // REF-02 (Ben nacharbeit-3): das tatsächliche Modell GENAU DIESER Seite des Vergleichs.
+    return {
+      antwort,
+      aussagen: bindeAntworttext(antwort, bindungsQuellen) ?? null,
+      rolle: antwortRolleVon(roh),
+    };
   }
 
   /**

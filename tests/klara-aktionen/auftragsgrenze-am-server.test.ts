@@ -645,6 +645,9 @@ describe("A6 · K6 — Versand ist keine Aktion; aus Inhalten entsteht keine Bef
       "entwurf_erstellen",
       "entwurf_bearbeiten",
       "aufgabe_bearbeiten",
+      // produkt:20261008:klara-aufgaben (Klara 07): die fünfte gelieferte Produktaktion — eine
+      // persönliche Aufgabe der Person selbst über `/api/me/klara/aufgaben`. Versand bleibt keine.
+      "persoenliche_aufgabe_anlegen",
     ]);
     const gid = await gespraech(erik.token);
     for (const aktion of ["versenden", "einladen", "veroeffentlichen", "senden"]) {

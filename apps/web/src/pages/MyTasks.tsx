@@ -3,11 +3,12 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
-  useAudit,
+  useAuthorTransfers,
   useConflicts,
   useGaps,
   useKos,
   useLifecyclePending,
+  useReturnedTasks,
   useValidationBoard,
 } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
@@ -16,6 +17,7 @@ import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { PausedMarker, StaleMarker } from "../components/LoadState";
 import { MeineEinzelquellen } from "../components/MeineEinzelquellen";
+import { KlaraAufgaben } from "../components/klara-vorschau/KlaraAufgaben";
 import { KoAuthorLine } from "../components/trust";
 import { PageHeader } from "../components/ui";
 import { fallHref } from "../lib/fallAbsprung";
@@ -46,8 +48,12 @@ import {
   writeTaskFilterToParams,
 } from "../lib/taskViewState";
 import { useAuthorName } from "../lib/useAuthorName";
-import { returnedToAuthor } from "../lib/validationStatus";
-import { type WorkSeverity, groupTasks, severityForType } from "../lib/workCenter";
+import {
+  type WorkSeverity,
+  groupTasks,
+  severityForAuthorTransfer,
+  severityForType,
+} from "../lib/workCenter";
 
 // ================================================================================================
 // JOB 3064 · H5 — „MEINE AUFGABEN" IN DER ZEILENFORM DER STARTSEITE.
@@ -104,11 +110,14 @@ interface Task {
   localeTag?: string;
   // JOB 1111 / D-032: wie oft dieselbe Frage zu dieser Lücke geführt hat. Nur ab zwei.
   askCount?: number;
+  // R-0961: warum eine Autorenübergabe ansteht (Konto gelöscht, Zugang beendet, angefordert).
+  grundKey?: string;
 }
 
-// Aufgabe mit aus dem typeKey abgeleiteter Severity bauen (eine Quelle der Wahrheit).
-function task(input: Omit<Task, "severity">): Task {
-  return { ...input, severity: severityForType(input.typeKey) };
+// Aufgabe mit aus dem typeKey abgeleiteter Severity bauen (eine Quelle der Wahrheit). Die
+// Autorenübergabe bringt ihre Dringlichkeit selbst mit (`severityForAuthorTransfer`).
+function task(input: Omit<Task, "severity"> & { severity?: WorkSeverity }): Task {
+  return { ...input, severity: input.severity ?? severityForType(input.typeKey) };
 }
 
 /**
@@ -153,9 +162,15 @@ export function MyTasks(): JSX.Element {
   const conflicts = useConflicts();
   const lifecycle = useLifecyclePending();
   const gaps = useGaps();
-  const audit = useAudit();
-  const kos = useKos();
+  // Autorenübergabe-Auftrag K3 (Ben, Nacharbeit 3): die an MICH zurückgegebenen Entwürfe kommen vom
+  // Server (`GET /api/me/returned-tasks`, nur `ko.read`), nicht mehr aus dem ganzen Protokoll
+  // (`GET /api/audit`, `ko.validate`). Daran scheiterte die Liste für Experten, während das
+  // Kopfband sie zählte. Liste und Zahl rechnen jetzt serverseitig mit derselben Auswahl.
+  const zurueckgegeben = useReturnedTasks();
   const { user } = useSession();
+  // R-0961: die wartenden Autorenübergaben — nur für die Verwaltung (`null` für alle anderen).
+  const uebergaben = useAuthorTransfers(user?.role === "admin");
+  const kos = useKos();
 
   // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts).
   const nameOf = useAuthorName();
@@ -168,7 +183,7 @@ export function MyTasks(): JSX.Element {
   // SCRUM-247: alle echten Signale zu EINER flachen Aufgabenliste verdichten.
   const tasks: Task[] = [
     ...(user
-      ? returnedToAuthor(audit.data ?? [], kos.data ?? [], user.id).map((r) =>
+      ? (zurueckgegeben.data ?? []).map((r) =>
           task({
             id: `rw-${r.koId}`,
             label: kosById.get(r.koId)?.title ?? r.koId,
@@ -208,6 +223,21 @@ export function MyTasks(): JSX.Element {
         typeKey: "task.revalidation",
         to: fallHref("/lebenszyklus", id),
         ...(authorOf(id) ? { author: authorOf(id) as KoAuthorParts } : {}),
+      }),
+    ),
+    // R-0961 (Peters Entscheidung 24): die wartende Autorenübergabe. Dringlichkeit „Heute", bei
+    // kritischem Wissen „Kritisch" (rechnet der Server). Der Absprung führt direkt zum Objekt; dort
+    // steht unter „Mehr" → „Provenienz" die Übergabe. Erledigt ist sie, sobald der Server sie nicht
+    // mehr liefert (nach `transfer-author`, s. `MehrAbschnitte.tsx`).
+    ...(uebergaben?.data ?? []).map((u) =>
+      task({
+        id: `at-${u.koId}`,
+        label: kosById.get(u.koId)?.title ?? u.koId,
+        typeKey: "task.authorTransfer",
+        to: `/wissen/${u.koId}`,
+        severity: severityForAuthorTransfer(u.kritisch),
+        grundKey: `task.authorTransfer.grund.${u.grund}`,
+        ...(authorOf(u.koId) ? { author: authorOf(u.koId) as KoAuthorParts } : {}),
       }),
     ),
     // FUNKE-FIX2 P0: ohne Detail-Berechtigung liefert der Server den Fragetext redigiert.
@@ -259,7 +289,15 @@ export function MyTasks(): JSX.Element {
   // die Liste oben gebaut ist. Zusammengehörig und atomar: erst wenn jede geliefert hat, darf über
   // den Bestand etwas ausgesagt werden. Ein gescheiterter Refetch bei vorhandenen Daten bleibt
   // `loaded` — die Liste bleibt sichtbar, sie schlägt nicht auf „Nichts offen." um.
-  const quellen = [board, conflicts, lifecycle, gaps, audit, kos];
+  const quellen = [
+    board,
+    conflicts,
+    lifecycle,
+    gaps,
+    zurueckgegeben,
+    kos,
+    ...(uebergaben ? [uebergaben] : []),
+  ];
   const ladephase = groupLoadPhase(quellen);
 
   // ==============================================================================================
@@ -406,7 +444,9 @@ export function MyTasks(): JSX.Element {
         aria-label={t("task.kicker")}
         className="mb-5 inline-flex flex-wrap rounded-btn border border-hairline bg-surface p-0.5"
       >
-        {TASK_FILTERS.map((f) => (
+        {/* R-0961: die Autorenübergabe ist eine Art der Verwaltung. Wer sie nicht ausführen darf,
+            bekommt keinen Filter für eine Art, die es für ihn nie gibt. */}
+        {TASK_FILTERS.filter((f) => f.key !== "authorTransfer" || uebergaben !== null).map((f) => (
           <button
             key={f.key}
             type="button"
@@ -559,6 +599,17 @@ export function MyTasks(): JSX.Element {
                               <span className="shrink-0">{t(it.review.labelKey)}</span>
                             </>
                           ) : null}
+                          {/* R-0961: warum die Autorenübergabe ansteht. */}
+                          {it.grundKey ? (
+                            <>
+                              <span aria-hidden="true" className="shrink-0">
+                                ·
+                              </span>
+                              <span data-testid="task-uebergabe-grund" className="shrink-0">
+                                {t(it.grundKey)}
+                              </span>
+                            </>
+                          ) : null}
                         </span>
                         {it.author ? <KoAuthorLine {...it.author} /> : null}
                       </Link>
@@ -577,6 +628,14 @@ export function MyTasks(): JSX.Element {
             </div>
           );
         })}
+        {/* produkt:20261008:klara-aufgaben (Klara 07): die PERSÖNLICHEN Aufgaben — ein eigener
+            Abschnitt aus der eigenen Ablage (`/api/me/klara/aufgaben`), getrennt von den gemeinsamen
+            Aufgaben darüber. Sie gehen in keinen Filter und keinen Zähler dieser Seite und des
+            Kopfbands ein; keine gemeinsame Aufgabe wird hier persönlich. `?persoenlich=<id>` (der
+            Ergebnisweg eines Klara-Auftrags) öffnet genau diese Aufgabe. */}
+        <div data-testid="aufgaben-persoenlich">
+          <KlaraAufgaben offenId={params.get("persoenlich")} />
+        </div>
         {/* R-1626 (ROADMAP 1.4): die kurze persönliche Liste „Wissen, das nur bei dir liegt" —
             nur in der ungefilterten Ansicht, nur mit geladenem Bestand, und nichts, wenn es kein
             solches Thema gibt (`components/MeineEinzelquellen.tsx`). */}

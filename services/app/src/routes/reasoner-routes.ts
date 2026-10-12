@@ -20,6 +20,7 @@ import {
   ConfidentialCloudBlockedError,
   MAX_DESCRIBE_IMAGE_DATAURL_CHARS,
   type ModelRunSubject,
+  REASONER_REFERENZ_WAHLEN,
   REASONER_ZWEITMEINUNG_WAHLEN,
   type Reasoner,
   type ReasonerLocale,
@@ -371,6 +372,34 @@ function zweitmeinungsStand(wahl: string | null | undefined): string {
   return typeof wahl === "string" ? wahl : "aus";
 }
 
+// ================================================================================================
+// produkt:20261009:referenzki-pruefdienst (REF-02) · DIE ERLAUBTEN REFERENZ-PRÜFER — DIESELBE REGEL.
+// ================================================================================================
+//
+// Eine erlaubte Referenz-KI bekommt Antwortaussagen und Quellauszüge zu sehen — ein weiterer
+// Empfänger wie die Zweitmeinung. Ein NEUER Empfänger wird nur mit Beleg wirksam (fail-closed, 503);
+// eine Rücknahme gilt und wird protokolliert, ohne daran zu scheitern.
+const REFERENZ_NICHT_PROTOKOLLIERBAR = "REASONER_REFERENZ_NICHT_PROTOKOLLIERBAR";
+const REFERENZ_NICHT_PROTOKOLLIERBAR_MELDUNG =
+  "Die Liste der Referenz-Prüfer konnte nicht protokolliert werden und wurde deshalb NICHT gesetzt. " +
+  "Bitte später erneut versuchen.";
+const REFERENZ_ZIEL = "reasoner.referenzpruefung";
+
+/** Die Liste im Protokoll: Werte in Reihenfolge, oder `[]` für „aus". */
+function referenzStand(liste: readonly string[] | null | undefined): string[] {
+  return Array.isArray(liste) ? [...new Set(liste)] : [];
+}
+
+function gueltigeReferenzEingabe(wert: unknown): wert is string[] | null | undefined {
+  return (
+    wert === undefined ||
+    wert === null ||
+    (Array.isArray(wert) &&
+      wert.length <= REASONER_REFERENZ_WAHLEN.length * 2 &&
+      wert.every((w) => (REASONER_REFERENZ_WAHLEN as readonly unknown[]).includes(w)))
+  );
+}
+
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
   const { reasoner, ask, externalKnowledge, ko, capture, ka4, audit, externalSearch } = deps;
 
@@ -586,6 +615,10 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         instruction?: string;
         // PMO-FEA-0006: optionaler Suchauftrag des Experten für 'extract' (wonach suchen?).
         query?: string;
+        // Aufnahme `gesamt-ocr` (FR-CAP-05): optional der auf Klick im Bild erkannte Text als
+        // Kontext für 'interview'. Er reist im selben Request und damit über dieselbe
+        // Vertraulichkeitsentscheidung wie die Antworten.
+        context?: unknown;
         // R-1624: optionaler, vom Menschen bestätigter Bildbefund für 'interview' (Foto-Fragen).
         imageContext?: unknown;
         // SCRUM-451: Ergebnis-Sprache für 'extract' — "system" (Default, UI-Sprache) oder
@@ -742,6 +775,10 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             log: request.log,
           },
         );
+        // Aufnahme `gesamt-ocr` (FR-CAP-05): nur eine Zeichenkette ist Bildtext-Kontext; alles
+        // andere wird nicht weitergereicht.
+        const roherKontext = request.body.context;
+        const context = typeof roherKontext === "string" ? roherKontext : undefined;
         // R-1624: nur ein String wird als Bildbefund weitergereicht; Fremdtypen ergeben „kein
         // Foto-Interview" statt eines Fehlers. Gesäubert und gekappt wird autoritativ im Provider
         // (`normalizeInterviewImageContext`), egal, was der Client schickt.
@@ -775,6 +812,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             // wird sie im Reasoner (`normalizeInterviewResearch`).
             ...(research.length > 0 ? { research } : {}),
             ...(sources.length > 0 ? { sources } : {}),
+            ...(context ? { context } : {}),
           }),
         );
         return;
@@ -988,12 +1026,41 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         kiFreigabe?: { oeffentlicheKi?: boolean; vertraulicheInhalte?: boolean };
         // R-0305/R-1099: das Modell der Zweitmeinung. Weglassen lässt es unverändert, `null` = aus.
         zweitmeinung?: string | null;
+        // REF-02: die erlaubten Referenz-Prüfer in Vorzugsreihenfolge. Weglassen = unverändert,
+        // `null` oder `[]` = aus.
+        referenzpruefung?: string[] | null;
       };
     }>("/api/reasoner/config", async (request, reply) => {
       const user = await guards.requirePermission("users.manage", request, reply);
       if (!user) {
         return;
       }
+      // REF-02: ein unbekannter Wert ist ein Eingabefehler — abgewiesen vor jedem Protokoll.
+      const refEingabe: unknown = request.body.referenzpruefung;
+      if (!gueltigeReferenzEingabe(refEingabe)) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: "Ungültige Wahl für die Referenzprüfung.",
+        });
+        return;
+      }
+      const refVorher = referenzStand(reasoner.configStatus().taskConfig.referenzpruefung);
+      const refNachher = refEingabe === undefined ? refVorher : referenzStand(refEingabe);
+      // Ein NEUER Empfänger (eine Option, die vorher nicht erlaubt war) ist belegpflichtig.
+      const refNeu = refNachher.some((w) => !refVorher.includes(w));
+      const refGeaendert = refVorher.join(",") !== refNachher.join(",");
+      const refNichtWirksam = async (): Promise<void> => {
+        if (refNeu) {
+          await audit
+            ?.record({
+              actor: user.id,
+              action: "reasoner.referenzpruefung-nicht-wirksam",
+              target: REFERENZ_ZIEL,
+              payload: { vorher: refVorher, nachher: refNachher },
+            })
+            .catch(() => undefined);
+        }
+      };
       // R-0305/R-1099: ein unbekannter Wert ist ein Eingabefehler — abgewiesen, BEVOR irgendetwas
       // protokolliert oder geschrieben wird.
       const zweitEingabe = request.body.zweitmeinung;
@@ -1005,6 +1072,34 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         const meldung = "Ungültige Wahl für die Zweitmeinung.";
         reply.code(400).send({ error: "BAD_REQUEST", message: meldung });
         return;
+      }
+      // REF-02: erst nach beiden Eingabeprüfungen, und VOR jedem anderen Beleg — scheitert er, ist
+      // noch nichts protokolliert, das korrigiert werden müsste.
+      if (refNeu) {
+        let belegt = false;
+        if (audit) {
+          try {
+            await audit.record({
+              actor: user.id,
+              action: "reasoner.referenzpruefung",
+              target: REFERENZ_ZIEL,
+              payload: { vorher: refVorher, nachher: refNachher },
+            });
+            belegt = true;
+          } catch (fehler) {
+            request.log.error(
+              { err: fehler instanceof Error ? fehler.name : "unknown" },
+              "reasoner.referenzpruefung konnte nicht protokolliert werden — Wahl abgelehnt",
+            );
+          }
+        }
+        if (!belegt) {
+          reply.code(503).send({
+            error: REFERENZ_NICHT_PROTOKOLLIERBAR,
+            message: REFERENZ_NICHT_PROTOKOLLIERBAR_MELDUNG,
+          });
+          return;
+        }
       }
       const zweitVorher = zweitmeinungsStand(reasoner.configStatus().taskConfig.zweitmeinung);
       const zweitNachher =
@@ -1041,6 +1136,8 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             { err: fehler instanceof Error ? fehler.name : "unknown" },
             "reasoner.ki-freigabe konnte nicht protokolliert werden — Erweiterung abgelehnt",
           );
+          // REF-02: die schon belegte Referenzliste wird nun doch nicht wirksam.
+          await refNichtWirksam();
           reply.code(503).send({
             error: FREIGABE_NICHT_PROTOKOLLIERBAR,
             message: FREIGABE_NICHT_PROTOKOLLIERBAR_MELDUNG,
@@ -1080,6 +1177,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
               })
               .catch(() => undefined);
           }
+          await refNichtWirksam();
           reply.code(503).send({
             error: ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR,
             message: ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR_MELDUNG,
@@ -1096,8 +1194,10 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           perTask: request.body.perTask ?? {},
           ...(request.body.kiFreigabe === undefined ? {} : { kiFreigabe: request.body.kiFreigabe }),
           ...(zweitEingabe === undefined ? {} : { zweitmeinung: zweitEingabe }),
+          ...(refEingabe === undefined ? {} : { referenzpruefung: refEingabe }),
         } as Parameters<typeof reasoner.setTaskConfig>[0]);
       } catch (error) {
+        await refNichtWirksam();
         // R-0305/R-1099: der Beleg des neuen Empfängers steht schon in der Kette, die Wahl ist aber
         // nicht wirksam geworden — ein zweiter Eintrag korrigiert, best-effort (sichere Richtung).
         if (zweitNeu) {
@@ -1193,6 +1293,25 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             request.log.error(
               { err: fehler instanceof Error ? fehler.name : "unknown" },
               "reasoner.zweitmeinung (Ausschalten) konnte nicht protokolliert werden — es gilt trotzdem",
+            );
+          });
+      }
+      // REF-02: dieselben zwei Nachläufe für die Liste der Referenz-Prüfer.
+      const refWirksam = referenzStand(status.taskConfig.referenzpruefung);
+      if (refNeu && refWirksam.join(",") !== refNachher.join(",")) {
+        await refNichtWirksam();
+      } else if (!refNeu && refGeaendert) {
+        await audit
+          ?.record({
+            actor: user.id,
+            action: "reasoner.referenzpruefung",
+            target: REFERENZ_ZIEL,
+            payload: { vorher: refVorher, nachher: refNachher },
+          })
+          .catch((fehler: unknown) => {
+            request.log.error(
+              { err: fehler instanceof Error ? fehler.name : "unknown" },
+              "reasoner.referenzpruefung (Rücknahme) konnte nicht protokolliert werden — sie gilt trotzdem",
             );
           });
       }
