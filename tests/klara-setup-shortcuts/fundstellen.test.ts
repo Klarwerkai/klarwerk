@@ -35,6 +35,8 @@ interface Eintrag {
   host?: string[];
   speicher?: string;
   geltung?: string;
+  auftrag_id?: string;
+  revision?: number;
 }
 
 const ORDNER = "docs/klara-setup-shortcuts";
@@ -220,5 +222,25 @@ describe("F5 · Nacharbeit 1: Word, Hinweisaktionen, Bereichsname, laufende Auft
       expect(bestand, titel).toContain(titel);
     }
     expect(bestand).not.toContain("wurden hier nicht\ninhaltlich abgeglichen");
+  });
+
+  // Nacharbeit 2 (Bens Befund): der Abgleich gegen die Originalaufträge nennt je Kandidat
+  // Auftragskennung und Revision samt Auswirkung; der Vorbehalt „steht noch aus“ ist entfallen.
+  it("der Vertragsabgleich nennt je Kandidat Originalauftrag und Revision", () => {
+    const bestand = lies("BESTAND.md");
+    const start = bestand.indexOf("### 6.2 Vertragsabgleich mit den Originalaufträgen");
+    expect(start).toBeGreaterThan(-1);
+    const abschnitt = bestand.slice(start, bestand.indexOf("## 7.", start));
+    expect(abschnitt).toContain("HISTORIE/nacharbeit-2/BEN/STREAM.jsonl");
+    const kandidaten = eintraege.filter((e) => e.stand === "kandidat");
+    expect(kandidaten.length).toBe(6);
+    for (const e of kandidaten) {
+      expect(e.auftrag_id ?? "", e.id).toMatch(/^produkt:\d{8}:[a-z0-9-]+$/);
+      expect(Number.isInteger(e.revision), e.id).toBe(true);
+      const ordner = (e.zweig ?? "").replace("codex/", "");
+      const zeile = `| ${e.id} | \`${e.auftrag_id}\` · \`${ordner}\` | ${e.revision} |`;
+      expect(abschnitt, e.id).toContain(zeile);
+    }
+    expect(bestand).not.toContain("steht noch aus und braucht Lesezugriff");
   });
 });

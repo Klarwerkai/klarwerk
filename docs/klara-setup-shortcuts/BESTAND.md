@@ -155,7 +155,30 @@ Kandidaten die Dateiliste ihres Unterschieds zur Basis sowie ihre mitgelieferte 
 | Rollengerechte Befehlspalette und globale Schnellsuche anbieten | geliefert (1.0.0-beta.1.713, `2b1131adc`) | im Hauptstand | **Überschneidung T01**: ⌘K/Strg+K gehört der Palette; AA-04 behandelt das als Konfliktgrenze und verändert die Palette nicht ohne Zustimmung. |
 | Navigation, Logo und aktiven Bereich konsistent bedienen; Navigation und wirksame Rolle verständlich anzeigen; Verwaltung mit Aufgabenübersicht und verständlicher Navigation | geliefert (bis 1.0.0-beta.1.807, `8e3b1366d`) | im Hauptstand | Bestand des Zahnradmenüs und der Profilzeilen (H01); AA-02 fügt sich in diese Zeilen ein und legt keinen neuen Menüpunkt an. |
 | Dialoggrenzen, Tastaturfokus und Vorleseansagen einheitlich führen; Kontrast, Tastatur, Fokus und tatsächliche Vorleseausgabe nachweisen | geliefert (bis 1.0.0-beta.1.862, `d0b026c4f`) | im Hauptstand | Modalgrenze und Fokusführung sind Bestand; AA-04 setzt auf `useModalBoundary` auf und darf deren Prüfungen nicht abschwächen. |
-| Einführungsauftrag mit Klara-Bezug | nicht gefunden | keine Lieferung und kein Zweig mit passendem Titel seit 15.09.2026 | Keine Überschneidung belegbar; siehe Grenzen. |
+| Einführungsauftrag mit Klara-Bezug | nicht gefunden | keine Lieferung und kein Zweig mit passendem Titel seit 15.09.2026; die Suche in den Originalaufträgen (6.2) findet unter „einführ“ nur den Chat-Auftrag | Kein Einführungs-/Onboarding-Auftrag mit Klara-Einstellungen belegt. |
+
+### 6.2 Vertragsabgleich mit den Originalaufträgen (Revision, Status, Kriterien)
+
+**Quelle.** Die Originaldateien `AUFTRAG-B1.json` der Nachbaraufträge liegen außerhalb des für diese
+Bearbeitung lesbaren Bereichs. Gelesen wurde deshalb die unveränderte Ausgabe, mit der Ben sie am
+12.10.2026 vollständig gelesen hat (Felder `id`, `title`, `revision`, `status`, `criteria`,
+`delivery`): `HISTORIE/nacharbeit-2/BEN/STREAM.jsonl`, Befehl `item_5` im eigenen Auftragsordner.
+Alle sieben dort gelesenen Aufträge haben `status: "offen"` und `delivery: null`, sind also zentral
+nicht abgeschlossen.
+
+| ID | Originalauftrag · Ordner | Revision | Vertragskriterien mit Bezug zu AA-02 bis AA-04 | Auswirkung |
+| --- | --- | --- | --- | --- |
+| C01 | `produkt:20261011:assistenz-minimalistische-oberflaeche` · `auftrag-08abbc8ce7113845b115` | 1 | UI-MIN-08 (Einwilligung/Datenkontrolle, Verlauf, Fähigkeiten, Hilfe über das Menü erreichbar, Widerruf wirksam), UI-MIN-11 (Grundansicht nur Kopf, Kontextzeile, Gespräch, Eingabe), UI-MIN-15 (Name/Avatar, Rechte, KI-Abschaltung, Speicherung bleiben wirksam; Widerruf in höchstens vier Aktionen), UI-MIN-03 (Tastatur, Fokus) | Die Gesprächsfläche wird schlanker; Einstellungen wie E05 und E07 gehören dann eher in den Bereich „Klara“. AA-02 bindet dieselben Komponenten und Ablagen ein, die C01 über sein Menü erreicht — kein zweiter Speicher, kein abweichender Widerrufsweg. **Das globale Kürzel Control-Option-K ist kein Vertragskriterium von C01**, sondern eine Umsetzungseinzelheit seines Kandidaten; die Systemweiten-Entscheidung bleibt deshalb offen und an keinen Vertrag gebunden. |
+| C02 | `produkt:20261010:assistenz-avatar-generieren` · `auftrag-f592e61e001e4eccfde7` | 2 | „Eigenen Avatar gestalten“ bei der Avatar-Auswahl „im Setup und in Meine Assistenz“; eigene Avatare stabil und serverseitig je Konto; Modellwahl und Freigabe in der bestehenden Administration; Kontingentgrenzen | Erweitert E02 vertraglich. AA-02 bindet `AssistenzFormular` mit dem gelieferten Generator unverändert ein und baut keine eigene Avatar-Auswahl. AA-03 erweitert dieselbe Ablage `assistenz_profile` erst auf dem Stand, der C02 enthält. |
+| C03 | `produkt:20261011:assistenz-meeting-teilnahme` · `auftrag-97d57ecfa8c8bd7d3426` | 1 | BPA-15-AC04 (Status erkennen, Pause/Stopp/Entfernung); kein Kriterium zu einem Einstellungsort | Die Profilzeile „Besprechungsassistenz“ ist Umsetzung, kein Vertrag. Nach Lieferung erreicht der Bereich „Klara“ sie als direkten Eintrag; Steuerung und Status bleiben bei C03. |
+| C04 | `produkt:20261007:klara-erinnerungen-kalender` · `auftrag-71c74841eea80f27c7b3` | 5 | Kriterium 1 (eindeutiges Benachrichtigungsziel), Kriterium 3 („über den gewählten vorhandenen Weg“ zugestellt), AW18-K11 (keine zweite Scheduler-Instanz) | Das Zustellziel ist eine Erinnerungs- bzw. Meldeeinstellung, keine allgemeine Klara-Einstellung; AA-02 übernimmt sie nicht. Überschneidung nur im Code (`KlaraVorschau.tsx`). |
+| C05 | `produkt:20261008:klara-gemeinsames-wissen` · `auftrag-a9f1916ab14978df76b8` | 3 | AW02-K05 (Text und Diktat nutzen denselben Weg); Kriterien 1–4 (bewusste Übernahme, Rechte) | Kein Einstellungskriterium. Für AA-04: Ein Kürzel darf keine Übernahme auslösen — erfüllt, weil nur A01/A02 belegbar sind. Überschneidung nur im Code. |
+| C06 | `produkt:20261010:klara-eigener-kalender` · `auftrag-037bbf78aabef05890d7` | 1 | AW16-K04 (Sichtmodus eigener, vorhandener oder beide Kalender wählbar), AW16-K02 (Tastaturbedienung der Ansichten) | AW16-K04 ist eine vertragliche persönliche Einstellung dieses Auftrags. Der Bereich „Klara“ verweist nach Lieferung auf `/kalender` und übernimmt sie nicht. AA-04 darf die Tastaturbedienung der Kalenderansichten nicht überlagern: Der zentrale Hörer reagiert nur auf die konfigurierte Kombination mit Modifikator. |
+| — | `produkt:20261007:interner-chat` · `auftrag-a96cfc21e96bff8310d0` („Direkt-, Gruppen- und Artikelchat einführen“) | 1 | „Klara-Auswahl wird nur durch bewusstes Senden zur Nachricht; Ziel und Inhalt sind vorher sichtbar.“ | Code im Hauptstand (`ca5ccb434`), zentral offen. Betrifft A05 „als Nachricht entwerfen“. AA-04 belegt A05 nicht mit einem Kürzel; der bewusste Sendeweg bleibt unberührt. |
+
+Nicht in dieser Quelle enthalten sind die Originalaufträge der bereits im Hauptstand integrierten
+Palette-, Navigations- und Barrierefreiheitsaufträge (6.1). Für sie belegt der Hauptstand den
+gelieferten Code; ihre Vertragsrevisionen sind hier nicht abgeglichen.
 
 ## 7. Grenzen dieser Erhebung
 
@@ -163,10 +186,10 @@ Kandidaten die Dateiliste ihres Unterschieds zur Basis sowie ihre mitgelieferte 
   keine Screenreader-Prüfung.
 - Das ältere Office-Bündel `services/app/addin-static` stammt aus einem eigenen Repository
   (`klarwerk-office-addin`); dessen Quellen liegen nicht hier und wurden nicht gelesen.
-- Die Originalauftragsdateien und Vertragsrevisionen der anderen Aufträge (deren `AUFTRAG-B1.json`
-  in den Nachbarordnern der Produktion) waren für diese Erhebung nicht lesbar: Der Zugriff ist auf den
-  eigenen Auftragsordner beschränkt. Der Abgleich in 6.1 stützt sich deshalb auf Liefercommits,
-  Zweige und die mitgelieferte Doku der Kandidaten. Ein Abgleich gegen die Originalverträge und
-  ihren aktuellen Revisionsstand steht noch aus und braucht Lesezugriff auf diese Dateien.
+- Die Originalverträge der Kandidaten C01–C06 und des Chat-Auftrags sind in 6.2 nach Revision und
+  Kriterien abgeglichen. Grundlage ist Bens unveränderte Leseausgabe vom 12.10.2026 im eigenen
+  Auftragsordner, nicht ein eigener Direktzugriff; ändert sich danach eine Revision, ist 6.2 zu
+  erneuern. Die Originalverträge der bereits integrierten Palette-, Navigations- und
+  Barrierefreiheitsaufträge waren in keiner lesbaren Quelle enthalten.
 - Ob weitere laufende Aufträge ohne Repository-Zweig Klara-Einstellungen planen, ist aus dem
   Repository nicht feststellbar.

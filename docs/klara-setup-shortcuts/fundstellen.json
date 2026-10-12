@@ -853,6 +853,8 @@
       "host": ["mac", "web", "office"],
       "zweig": "codex/auftrag-08abbc8ce7113845b115",
       "commit": "5b836e73b",
+      "auftrag_id": "produkt:20261011:assistenz-minimalistische-oberflaeche",
+      "revision": 1,
       "titel": "Assistenz im Mac-Begleiter und Web minimalistisch und situationsbezogen bedienen (1.0.0-beta.1.945)",
       "kandidat_fundstellen": [
         "apps/desktop/klara-begleiter/Sources/Steuerung.swift · registriereHotKey() · RegisterEventHotKey(kVK_ANSI_K, controlKey | optionKey)",
@@ -868,6 +870,8 @@
       "host": ["web"],
       "zweig": "codex/auftrag-f592e61e001e4eccfde7",
       "commit": "7713702f5",
+      "auftrag_id": "produkt:20261010:assistenz-avatar-generieren",
+      "revision": 2,
       "titel": "Eigene Avatare im Setup und in Meine Assistenz generieren (1.0.0-beta.1.941)",
       "kandidat_fundstellen": [
         "services/app/src/routes/assistenz-profil-routes.ts · geändert",
@@ -883,6 +887,8 @@
       "host": ["web"],
       "zweig": "codex/auftrag-97d57ecfa8c8bd7d3426",
       "commit": "0dac2221a",
+      "auftrag_id": "produkt:20261011:assistenz-meeting-teilnahme",
+      "revision": 1,
       "titel": "Als sichtbare Assistenz an Teams Zoom und weiteren Meetings mitwirken · BPA-Ergänzung (1.0.0-beta.1.943)",
       "kandidat_fundstellen": [
         "apps/web/src/pages/Profile.tsx · neue Zeile testId=\"zeile-meeting-assistenz\", Direktweg /profil?bereich=meeting",
@@ -897,6 +903,8 @@
       "host": ["web"],
       "zweig": "codex/auftrag-71c74841eea80f27c7b3",
       "commit": "fb5766f0a",
+      "auftrag_id": "produkt:20261007:klara-erinnerungen-kalender",
+      "revision": 5,
       "titel": "Klara 10 · Erinnerungen zuverlässig verwalten und zustellen (1.0.0-beta.1.945)",
       "kandidat_fundstellen": [
         "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx · geändert",
@@ -911,6 +919,8 @@
       "host": ["web"],
       "zweig": "codex/auftrag-a9f1916ab14978df76b8",
       "commit": "bf41ae240",
+      "auftrag_id": "produkt:20261008:klara-gemeinsames-wissen",
+      "revision": 3,
       "titel": "Klara 08 · Persönliches bewusst in Artikel oder Space übernehmen (1.0.0-beta.1.945)",
       "kandidat_fundstellen": [
         "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx · geändert",
@@ -925,6 +935,8 @@
       "host": ["web", "office"],
       "zweig": "codex/auftrag-037bbf78aabef05890d7",
       "commit": "0b88f41b2",
+      "auftrag_id": "produkt:20261010:klara-eigener-kalender",
+      "revision": 1,
       "titel": "Eigenen persönlichen Kalender ohne externen Dienst nutzbar machen (1.0.0-beta.1.883)",
       "kandidat_fundstellen": [
         "apps/web/src/routes.tsx · neue Route /kalender",

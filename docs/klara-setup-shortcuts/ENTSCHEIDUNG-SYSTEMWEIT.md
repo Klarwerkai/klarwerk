@@ -22,7 +22,10 @@ Fenster ist — etwa in Word, Mail oder dem Finder?
   systemweites Kürzel (Control-Option-K „Figur wiederfinden“) über `RegisterEventHotKey` (Carbon).
   Dieser Weg braucht **keine** Bedienungshilfen-Freigabe und kein Mitlesen aller Tasten. Der
   Begleiter ist nicht im Hauptstand, nur ad hoc signiert, nicht notarisiert, und sein lokales
-  Abnahmeprotokoll ist leer.
+  Abnahmeprotokoll ist leer. Sein Originalauftrag
+  (`produkt:20261011:assistenz-minimalistische-oberflaeche`, Revision 1, UI-MIN-01 bis UI-MIN-16)
+  enthält kein Kriterium zu einem globalen Kürzel; Control-Option-K ist dort nicht vertraglich
+  festgelegt (BESTAND 6.2).
 
 ## Optionen
 
