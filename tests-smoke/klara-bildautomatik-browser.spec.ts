@@ -276,7 +276,6 @@ test("OCR-02 · PowerPoint und Bild werden beim Einlesen automatisch gelesen —
     buffer: pptx,
   });
   const lauf2 = await wartenBisFertig(page, lauf1.lauf);
-  const status2 = lauf2.status;
   const befunde2 = await befundeAblesen(panel);
   protokoll.zweiterLauf = { ...lauf2, befunde: befunde2 };
 
@@ -318,7 +317,8 @@ test("OCR-02 · PowerPoint und Bild werden beim Einlesen automatisch gelesen —
   expect(status1).toBe("teilweise");
   expect(hinweise1.join(" ")).toContain("Folienlayout");
 
-  // K4 · unverändert: dieselben Befunde, aber keine neue Erkennung.
+  // K4 · unverändert: dieselben Befunde, aber keine neue Erkennung — und derselbe ehrliche Status.
+  expect(lauf2.status).toBe("teilweise");
   expect(befunde2.map((b) => b.text)).toEqual(befunde1.map((b) => b.text));
   for (const b of befunde2) {
     expect(b.zeile).toContain("unverändert — vorhandenes Ergebnis");
