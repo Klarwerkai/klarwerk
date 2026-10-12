@@ -119,6 +119,13 @@ Anfrageabbruch und Prüfzeitlimit lösen ein eigenes Abbruchsignal des Prüfdien
   erlaubte Option (`ANTHROPIC_API_KEY` bzw. `KLARWERK_SHIP_SMOKE_API_KEY`, `OPENAI_API_KEY` mit
   Modell oder ein lokaler LLM). Fehlt sie, belegt V0 die konkreten Gründe, und V1 wird
   übersprungen. Kosten erscheinen nur mit `KLARWERK_KI_PREISLISTE`, sonst `null`.
+- Betreiberweg (Ben nacharbeit-6): `tests-smoke/referenzki-modellbeobachtung.spec.ts` (`@modell`)
+  läuft im vollen Smoke (`npm run smoke:ui`, Projekt `chromium`). Dort setzt der Startbefehl den
+  vorhandenen `KLARWERK_SHIP_SMOKE_API_KEY` als Anthropic-Zugang. Bericht und Ausgabe hängen als
+  native Anhänge am Lauf. Ohne Zugang wird der Lauf rot, statt übersprungen zu werden.
+- Tarif und Kostenstelle: `docs/referenzki/tarif-kostenstelle-vorlage.md`. Im Produkt gibt es keine
+  Kostenstelle, und die Preisliste kennt keine Zusatzkosten. Preise ermittelt der Betreiber; hier
+  ist keiner eingetragen.
 - Ist im regulären Testlauf ein Anbieter eingerichtet, ruft V1 je Lauf bis zu sechs begrenzte
   Prüfungen auf. `KLARWERK_REFERENZ_BEOBACHTUNG=aus` schaltet das ab.
 - Die Prüfrichtlinie ist eine Konstante im Code (`referenzpruefung-v1`) und Teil des Cache-

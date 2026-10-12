@@ -151,7 +151,8 @@ export async function beobachte(wahl: ReasonerReferenzWahl, env: Umgebung) {
   await new Promise((r) => setTimeout(r, 200));
   // Kosten mit DERSELBEN Preisliste des Betreibers wie im Produkt (`KLARWERK_KI_PREISLISTE`);
   // ohne Preisliste steht `null` — es wird kein Preis erfunden.
-  const preisliste = lesePreisliste(env.KLARWERK_KI_PREISLISTE).preisliste;
+  const lesung = lesePreisliste(env.KLARWERK_KI_PREISLISTE);
+  const preisliste = lesung.preisliste;
   const laeufe = (await runs.recent(100)).map((l) => ({
     task: l.task,
     status: l.status,
@@ -160,10 +161,47 @@ export async function beobachte(wahl: ReasonerReferenzWahl, env: Umgebung) {
     startedAt: l.startedAt,
     finishedAt: l.finishedAt,
     dauerMs: Date.parse(l.finishedAt) - Date.parse(l.startedAt),
+    // Je Versuch (Wiederholungen eingeschlossen) — die Grundmenge der Kostenrechnung.
+    versuche: (l.versuche ?? []).map((v) => ({
+      model: v.model ?? null,
+      verbrauch: v.verbrauch ?? null,
+    })),
     verbrauch: l.verbrauch ?? null,
     kosten: kostenEinesLaufs(l, preisliste) ?? null,
   }));
   const pruefLaeufe = laeufe.filter((l) => l.task === "referenz");
+  const modelle = [...new Set(pruefLaeufe.flatMap((l) => (l.model ? [l.model] : [])))];
+  // Ben nacharbeit-6: Tarif- und Kostenbindung des Nachweises. Summiert wird über ALLE Versuche
+  // aller Prüfläufe; Gesamtkosten nur, wenn JEDER Prüflauf mit Verbrauch berechenbar ist.
+  const mitVerbrauch = pruefLaeufe.filter((l) => l.verbrauch !== null);
+  const kostenOffen = mitVerbrauch.some((l) => l.kosten === null);
+  const kostengrundlage = {
+    preislisteVorhanden: preisliste !== null,
+    preislisteFehler: lesung.fehler ?? null,
+    waehrung: preisliste?.waehrung ?? null,
+    preisstand: preisliste?.preisstand ?? null,
+    modelleOhnePreis: preisliste
+      ? modelle.filter((m) => !Object.hasOwn(preisliste.modelle, m))
+      : modelle,
+    // Im Produkt gibt es keine Kostenstelle; Zuordnung über die Vorlage
+    // `docs/referenzki/tarif-kostenstelle-vorlage.md` — hier wird keine erfunden.
+    kostenstelle: null,
+    versucheGesamt: pruefLaeufe.reduce((n, l) => n + Math.max(l.versuche.length, 1), 0),
+    verbrauchGesamt: {
+      eingabeToken: mitVerbrauch.reduce((n, l) => n + (l.verbrauch?.eingabeToken ?? 0), 0),
+      ausgabeToken: mitVerbrauch.reduce((n, l) => n + (l.verbrauch?.ausgabeToken ?? 0), 0),
+    },
+    kostenGesamt:
+      preisliste && mitVerbrauch.length > 0 && !kostenOffen
+        ? {
+            betrag:
+              Math.round(mitVerbrauch.reduce((n, l) => n + (l.kosten?.betrag ?? 0), 0) * 1e6) / 1e6,
+            waehrung: preisliste.waehrung,
+            preisstand: preisliste.preisstand,
+          }
+        : null,
+    laufzeitGesamtMs: pruefLaeufe.reduce((n, l) => n + l.dauerMs, 0),
+  };
   return {
     auftrag: "produkt:20261009:referenzki-pruefdienst",
     art: "echte_modellbeobachtung",
@@ -176,8 +214,9 @@ export async function beobachte(wahl: ReasonerReferenzWahl, env: Umgebung) {
       pruefLaeufe: pruefLaeufe.length,
       mitModell: pruefLaeufe.filter((l) => l.model !== null).length,
       erfolgreich: pruefLaeufe.filter((l) => l.status === "success").length,
-      modelle: [...new Set(pruefLaeufe.flatMap((l) => (l.model ? [l.model] : [])))],
+      modelle,
     },
+    kostengrundlage,
     ergebnisse,
     laufprotokoll: laeufe,
   };
