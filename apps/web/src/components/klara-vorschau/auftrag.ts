@@ -174,6 +174,40 @@ export interface LokalerSchritt {
   vorher?: DraftPayload;
   ruecknahme?: "laeuft" | "fehler" | null;
   ruecknahmeMeldung?: string;
+  /**
+   * PV-02-05: die vom Server erklärte Ablehnung einer Rücknahme — eigener und aktueller Stand, ob
+   * die Wirkung für andere sichtbar ist, und der vorhandene Arbeitsort zum Korrigieren.
+   */
+  ruecknahmeKonflikt?: RuecknahmeKonflikt | null;
+}
+
+export interface RuecknahmeKonflikt {
+  grund: string;
+  eigenerStand: string | null;
+  aktuellerStand: string | null;
+  pfad: string | null;
+  korrekturweg: string | null;
+  fuerAndereSichtbar: boolean;
+}
+
+function konfliktAus(fehler: unknown): RuecknahmeKonflikt | null {
+  if (!(fehler instanceof ApiError) || fehler.status !== 409) {
+    return null;
+  }
+  const k = fehler.details.konflikt;
+  if (typeof k !== "object" || k === null) {
+    return null;
+  }
+  const o = k as Record<string, unknown>;
+  const text = (x: unknown): string | null => (typeof x === "string" && x !== "" ? x : null);
+  return {
+    grund: String(fehler.details.grund ?? ""),
+    eigenerStand: text(o.eigenerStand),
+    aktuellerStand: text(o.aktuellerStand),
+    pfad: text(o.pfad),
+    korrekturweg: text(o.korrekturweg),
+    fuerAndereSichtbar: o.fuerAndereSichtbar === true,
+  };
 }
 
 export type Phase =
@@ -1249,14 +1283,18 @@ export async function nimmZurueck(lokalId: string, nr: number, u: AuftragsUmgebu
   if (!a || !amServer?.ruecknehmbar || !amServer.ergebnis || !a.auftrag || !a.gespraechId) {
     return;
   }
-  setzeLokal(lokalId, nr, { ruecknahme: "laeuft", ruecknahmeMeldung: "" });
+  setzeLokal(lokalId, nr, {
+    ruecknahme: "laeuft",
+    ruecknahmeMeldung: "",
+    ruecknahmeKonflikt: null,
+  });
   try {
     // Nacharbeit 2 (Ben): die Rücknahme läuft am Server — mit dem nachgelesenen Ergebnisstand als
     // erwartetem Stand am vorhandenen Lösch- bzw. Speicherweg. Wurde der Entwurf inzwischen
     // geändert, antwortet der Server 409 und der Entwurf bleibt erhalten.
     const r = await klaraAuftragApi.nimmZurueck(a.gespraechId, a.auftrag.id, amServer.schluessel);
     uebernimmAuftrag(lokalId, r.auftrag);
-    setzeLokal(lokalId, nr, { ruecknahme: null, ruecknahmeMeldung: "" });
+    setzeLokal(lokalId, nr, { ruecknahme: null, ruecknahmeMeldung: "", ruecknahmeKonflikt: null });
   } catch (fehler) {
     const grund = fehler instanceof ApiError ? String(fehler.details.grund ?? "") : "";
     let meldung = t("klaraauftrag.ruecknahme.fehler", { grund: fehlerGrund(fehler, t) });
@@ -1264,8 +1302,15 @@ export async function nimmZurueck(lokalId: string, nr: number, u: AuftragsUmgebu
       meldung = t("klaraauftrag.ruecknahme.geaendert");
     } else if (grund === "nicht_ruecknehmbar") {
       meldung = t("klaraauftrag.ruecknahme.ohneVorher");
+    } else if (grund === "ziel_fehlt") {
+      // PV-02-04: vor der Rücknahme mit den Rechten der Person gelesen — nicht (mehr) erreichbar.
+      meldung = t("assistenzverlauf.ruecknahme.zielFehlt");
     }
-    setzeLokal(lokalId, nr, { ruecknahme: "fehler", ruecknahmeMeldung: meldung });
+    setzeLokal(lokalId, nr, {
+      ruecknahme: "fehler",
+      ruecknahmeMeldung: meldung,
+      ruecknahmeKonflikt: konfliktAus(fehler),
+    });
   }
 }
 

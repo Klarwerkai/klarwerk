@@ -1,6 +1,13 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { AuditService } from "../../../audit";
 import { type Guards, sendError } from "../http";
+import {
+  aktionskennung,
+  auftragMitVerlauf,
+  protokollStand,
+  schrittVerlauf,
+} from "../klara-aktionsverlauf";
+import type { KlaraAuftrag, KlaraAuftragSchritt } from "../klara-auftrag";
 import { KlaraAusfuehrung, type KlaraRufe } from "../klara-ausfuehrung";
 import {
   type KlaraGespraech,
@@ -52,10 +59,53 @@ function antworteMitFehler(reply: FastifyReply, fehler: unknown): void {
       error: FEHLERCODE[fehler.status],
       grund: fehler.grund,
       message: fehler.message,
+      ...(fehler.konflikt ? { konflikt: fehler.konflikt } : {}),
     });
     return;
   }
   sendError(reply, fehler);
+}
+
+// ================================================================================================
+// produkt:20261010:assistenz-aktionen-verlauf-ruecknahme (PV-02) — GESPRÄCH, AKTION, PROTOKOLL.
+// ================================================================================================
+//
+// Jede Antwort über Aufträge trägt den ERGEBNISSTAND und je Schritt AKTIONSKENNUNG, VERTRAG und ob
+// er jetzt zurückgenommen werden kann (`klara-aktionsverlauf.ts`). Ein Schrittereignis im
+// Prüfprotokoll nennt Gespräch, Aktionskennung, Vertrag sowie vorherigen und neuen Stand — als
+// Fassungszeit bzw. Art der Aufgabenwirkung, nie Titel, Inhalt oder Personenname. Eine abgelehnte
+// Rücknahme steht dort als eigenes Ereignis. `GET …/auftraege/:auftragId/protokoll` gibt der Person
+// genau diese Einträge ihres eigenen Auftrags aus der vorhandenen Kette zurück.
+export const KLARA_AUFTRAG_SCHRITT = "klara.auftrag.schritt";
+export const KLARA_AUFTRAG_RUECKNAHME_ABGELEHNT = "klara.auftrag.ruecknahme-abgelehnt";
+
+type SchrittAntwort = { auftrag: KlaraAuftrag; schritt: KlaraAuftragSchritt; wiederholt: boolean };
+
+function schrittSicht(r: SchrittAntwort) {
+  return {
+    auftrag: auftragMitVerlauf(r.auftrag),
+    schritt: { ...r.schritt, ...schrittVerlauf(r.auftrag, r.schritt) },
+    wiederholt: r.wiederholt,
+  };
+}
+
+/** Der Bezug eines Schrittereignisses: Gespräch, Aktionskennung, Vertrag, vorher/neu. */
+function schrittBezug(gespraechId: string, r: SchrittAntwort): Record<string, unknown> {
+  const s = r.schritt;
+  const verlauf = schrittVerlauf(r.auftrag, s);
+  const bezug: Record<string, unknown> = {
+    gespraech: gespraechId,
+    aktionskennung: verlauf.aktionskennung,
+    vertrag: verlauf.vertrag,
+  };
+  if (s.stand === "gespeichert") {
+    bezug.vorherStand = protokollStand(s.vorherStand);
+    bezug.neuerStand = protokollStand(s.ergebnis?.stand);
+  } else if (s.stand === "zurueckgenommen") {
+    bezug.vorherStand = protokollStand(s.ergebnis?.stand);
+    bezug.neuerStand = protokollStand(s.ruecknahmeStand);
+  }
+  return bezug;
 }
 
 /** Die Sicht nach außen — ohne Kontokennung, die der Fragende ohnehin selbst ist. */
@@ -231,6 +281,7 @@ export function klaraGespraechRoutes(
     //   POST …/gespraeche/:id/auftraege/:auftragId/fassungen            — Grenze korrigieren
     //   PUT  …/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel — Schritt beginnen/melden
     //   PUT  …/gespraeche/:id/auftraege/:auftragId/abbruch              — keine weiteren Schritte
+    //   GET  …/gespraeche/:id/auftraege/:auftragId/protokoll            — eigene Protokolleinträge (PV-02)
     //
     // Dieselbe Tür wie das Gespräch: nur angemeldet, nur das eigene Konto, fremd und unbekannt 404.
     // Kein zusätzliches Recht — ob ein Schritt WIRKT, entscheidet der vorhandene Produktweg mit
@@ -245,7 +296,7 @@ export function klaraGespraechRoutes(
         }
         try {
           const auftraege = await dienst.auftraege(user.id, request.params.id);
-          reply.code(200).send({ auftraege });
+          reply.code(200).send({ auftraege: auftraege.map(auftragMitVerlauf) });
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }
@@ -275,7 +326,7 @@ export function klaraGespraechRoutes(
               geplanteSchritte: auftrag.geplanteSchritte,
             },
           });
-          reply.code(201).send({ auftrag });
+          reply.code(201).send({ auftrag: auftragMitVerlauf(auftrag) });
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }
@@ -302,7 +353,7 @@ export function klaraGespraechRoutes(
             target: `klara-auftrag:${auftrag.id}`,
             payload: { fassung: auftrag.fassung, aktionen: auftrag.erlaubteAktionen },
           });
-          reply.code(200).send({ auftrag });
+          reply.code(200).send({ auftrag: auftragMitVerlauf(auftrag) });
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }
@@ -327,17 +378,18 @@ export function klaraGespraechRoutes(
           if (!r.wiederholt) {
             await audit.record({
               actor: user.id,
-              action: "klara.auftrag.schritt",
+              action: KLARA_AUFTRAG_SCHRITT,
               target: `klara-auftrag:${r.auftrag.id}`,
               payload: {
                 nr: r.schritt.nr,
                 aktion: r.schritt.aktion,
                 stand: r.schritt.stand,
                 ...(r.schritt.ergebnis ? { ergebnis: r.schritt.ergebnis.id } : {}),
+                ...schrittBezug(request.params.id, r),
               },
             });
           }
-          reply.code(200).send(r);
+          reply.code(200).send(schrittSicht(r));
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }
@@ -362,7 +414,7 @@ export function klaraGespraechRoutes(
             action: "klara.auftrag.abgebrochen",
             target: `klara-auftrag:${auftrag.id}`,
           });
-          reply.code(200).send({ auftrag });
+          reply.code(200).send({ auftrag: auftragMitVerlauf(auftrag) });
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }
@@ -423,7 +475,7 @@ export function klaraGespraechRoutes(
           if (!r.wiederholt) {
             await audit.record({
               actor: user.id,
-              action: "klara.auftrag.schritt",
+              action: KLARA_AUFTRAG_SCHRITT,
               target: `klara-auftrag:${r.auftrag.id}`,
               payload: {
                 nr: r.schritt.nr,
@@ -432,10 +484,11 @@ export function klaraGespraechRoutes(
                 ausgefuehrt: "server",
                 ...(r.schritt.ergebnis ? { ergebnis: r.schritt.ergebnis.id } : {}),
                 ...(r.schritt.fehlerCode ? { fehler: r.schritt.fehlerCode } : {}),
+                ...schrittBezug(request.params.id, r),
               },
             });
           }
-          reply.code(200).send(r);
+          reply.code(200).send(schrittSicht(r));
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }
@@ -460,12 +513,68 @@ export function klaraGespraechRoutes(
           if (!r.wiederholt) {
             await audit.record({
               actor: user.id,
-              action: "klara.auftrag.schritt",
+              action: KLARA_AUFTRAG_SCHRITT,
               target: `klara-auftrag:${r.auftrag.id}`,
-              payload: { nr: r.schritt.nr, aktion: r.schritt.aktion, stand: r.schritt.stand },
+              payload: {
+                nr: r.schritt.nr,
+                aktion: r.schritt.aktion,
+                stand: r.schritt.stand,
+                ...schrittBezug(request.params.id, r),
+              },
             });
           }
-          reply.code(200).send(r);
+          reply.code(200).send(schrittSicht(r));
+        } catch (fehler) {
+          // PV-02-05: eine abgelehnte Rücknahme ist ein Ereignis des Vorgangs — mit Kennungen und
+          // Ständen, ohne Titel oder Inhalt. Ein unbekannter Schritt oder Auftrag (404) nicht.
+          // Die Antwort an die Person geht in jedem Fall hinaus, auch wenn das Protokoll ausfällt.
+          try {
+            if (fehler instanceof KlaraGespraechFehler && fehler.status === 409) {
+              const k: Readonly<Record<string, unknown>> = fehler.konflikt ?? {};
+              await audit.record({
+                actor: user.id,
+                action: KLARA_AUFTRAG_RUECKNAHME_ABGELEHNT,
+                target: `klara-auftrag:${request.params.auftragId}`,
+                payload: {
+                  gespraech: request.params.id,
+                  grund: fehler.grund,
+                  ...(typeof k.aktionskennung === "string"
+                    ? { aktionskennung: k.aktionskennung }
+                    : {}),
+                  ...(typeof k.vertrag === "string" ? { vertrag: k.vertrag } : {}),
+                  ...(typeof k.eigenerStand === "string" ? { eigenerStand: k.eigenerStand } : {}),
+                  ...(typeof k.aktuellerStand === "string"
+                    ? { aktuellerStand: k.aktuellerStand }
+                    : {}),
+                },
+              });
+            }
+          } finally {
+            antworteMitFehler(reply, fehler);
+          }
+        }
+      },
+    );
+
+    // PV-02-03: das Prüfprotokoll EINES eigenen Auftrags — dieselben Einträge der vorhandenen Kette,
+    // nur die dieser Person zu diesem Auftrag. Fremd oder unbekannt: 404 wie jeder Auftragsweg.
+    app.get<{ Params: { id: string; auftragId: string } }>(
+      "/api/me/klara/gespraeche/:id/auftraege/:auftragId/protokoll",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const a = await dienst.auftrag(user.id, request.params.id, request.params.auftragId);
+          const eintraege = await audit.list({ target: `klara-auftrag:${a.id}` });
+          reply.code(200).send({
+            auftrag: a.id,
+            aktionskennungen: a.schritte.map((s) => aktionskennung(a.id, s.nr)),
+            eintraege: eintraege
+              .filter((e) => e.actor === user.id)
+              .map((e) => ({ seq: e.seq, at: e.at, action: e.action, payload: e.payload })),
+          });
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }
