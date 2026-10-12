@@ -272,6 +272,13 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/validation/overview` | `ko.read` | — | 200 Übersicht | — |
 | `GET` | `/api/validation/settings` | `ko.read` | — | 200 `{ defaultNeededValidations }` | — |
 | `PUT` | `/api/validation/settings` | `users.manage` | Rumpf `{ defaultNeededValidations }` | 200 `{ defaultNeededValidations }` | Dienstfehler |
+| `GET` | `/api/validation/pruefdauer` | `ko.read`, sichtbar | — | 200 je Weg (`automatisch`, `manuell`, `einreichen`) `{ erledigt, offen, medianStunden }` | — |
+| `GET` | `/api/me/pruefrouting` | `requireUser` | — | 200 `{ optOut }` — eigenes Konto; `null` ohne Einstellungsablage | — |
+| `PUT` | `/api/me/pruefrouting` | `requireUser` | Rumpf `{ optOut: boolean }` | 200 `{ optOut }` — eigenes Opt-out aus der automatischen Zuweisung | 400 `BAD_REQUEST`, Dienstfehler |
+| `GET` | `/api/push/config` | `requireUser` | — | 200 `{ verfuegbar, publicKey }` | — |
+| `POST` | `/api/push/abo` | `requireUser` | Rumpf `PushSubscription.toJSON()` (`endpoint`, `keys.p256dh`, `keys.auth`) | 200 `{ angemeldet: true }` — Gerät des eigenen Kontos | 400 `BAD_REQUEST` (unvollständig oder kein bekannter Push-Dienst) |
+| `POST` | `/api/push/abo/entfernen` | `requireUser` | Rumpf `{ endpoint }` | 200 `{ angemeldet: false }` | 400 `BAD_REQUEST` |
+| `GET` | `/api/validation/reviewer-suggestions` | `ko.create`, sichtbar | Abfrage `category`, `tags` (kommagetrennt), `koId` | 200 Prüfer-Vorschläge `{ userId, punkte, gruende }[]` aus dem sichtbaren Bestand | 404 `NOT_FOUND`, 503 `SUGGESTIONS_UNAVAILABLE` |
 | `GET` | `/api/spaces/:id/freigaberegel` | `ko.read`, Space sichtbar | Pfad `:id` = Space | 200 Regelübersicht: Regel, berechtigte Prüfer, Schritte, fehlende Voraussetzungen, laufende Vorgänge (Titel nur sichtbarer), Regelverlauf (ADMIN-09) | 404 `NOT_FOUND` |
 | `POST` | `/api/spaces/:id/freigaberegel/vorschau` | `users.manage` | Rumpf `{ regel: { zustimmungen, pruefer[], prueferTeams[], fristTage?, vertretungen[] } }` | 200 alte und neue Regel, Wirkung auf laufende Vorgänge und Prüfer, `grundlage`; schreibt nichts | 400 `FREIGABEREGEL_UNGUELTIG`, 404 `NOT_FOUND`, 409 `SPACE_ARCHIVIERT` |
 | `PUT` | `/api/spaces/:id/freigaberegel` | `users.manage` | Rumpf `{ version, regel, grundlage, begruendung? }` | 200 Übersicht der neuen Space-Fassung samt `angehoben` | 400 `FREIGABEREGEL_UNGUELTIG`, `VORSCHAU_FEHLT`, `KEINE_AENDERUNG`; 404; 409 `VERSION_VERALTET`, `VORSCHAU_VERALTET` (mit `vorschau`), `SPACE_ARCHIVIERT` |

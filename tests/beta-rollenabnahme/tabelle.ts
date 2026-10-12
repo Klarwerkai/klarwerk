@@ -2211,6 +2211,57 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // produkt:20261008:klara-aufgaben (Klara 07) — die eigenen Aufgaben. Dieselbe Tür-Regel wie die
+  // Notizen: nur Anmeldung, das Konto aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Liste liefert die
+  // (leeren) eigenen Aufgaben; das Anlegen mit leerer Nutzlast scheitert am Pflichtfeld `vorgang`
+  // (400), BEVOR etwas angelegt wird; die Türen mit Kennung tragen eine erfundene und enden in 400
+  // (Ändern ohne Fassung) oder 404 des Dienstes. Die Wirkung (eigene Aufgabe, Fremdkonto 404) misst
+  // `tests/klara-aufgaben/aufgabe-am-server.test.ts`.
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/aufgaben",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:89",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/aufgaben",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:105",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:130",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:143",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "DELETE",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:176",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
   // produkt:20261010:assistenz-name-avatar — das eigene Assistenzprofil. Beide Türen prüfen nur die
   // Anmeldung; das Konto kommt aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Lesetür liefert das
   // eigene (leere) Profil; die Schreibtür trägt ein unbekanntes Motiv und endet in 400, BEVOR etwas
@@ -3984,5 +4035,41 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/validation-routes.ts:85",
     tor: "ko.read",
     erwartet: NUR_LESEN,
+  },
+  // R-0265: Prüfer-Vorschlag beim Einreichen — dasselbe Recht wie das Einreichen selbst.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/validation/reviewer-suggestions",
+    belegstelle: "services/app/src/routes/validation-routes.ts:304",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  // R-1655: Prüfdauer je Zuweisungsweg — dieselbe Lesehürde wie die Personenübersicht.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/validation/pruefdauer",
+    belegstelle: "services/app/src/routes/validation-routes.ts:355",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // R-1655: das eigene Opt-out aus der automatischen Zuweisung lesen.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/me/pruefrouting",
+    belegstelle: "services/app/src/routes/validation-routes.ts:367",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // R-0679: ob dieser Betrieb Geräte-Push eingerichtet hat (samt öffentlichem VAPID-Schlüssel).
+  {
+    gruppe: "pushRoutes",
+    methode: "GET",
+    pfad: "/api/push/config",
+    belegstelle: "services/app/src/routes/push-routes.ts:44",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
   },
 ];

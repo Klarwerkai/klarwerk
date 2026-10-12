@@ -1,5 +1,6 @@
 import type { AnstehendeUebergabe } from "../lib/autorenuebergabe";
 import { trenneVerzeichnis } from "../lib/geloeschteKonten";
+import type { PushAboJson } from "../lib/geraetePush";
 import type { Verbindungsnachweis } from "../lib/integrationStatus";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
@@ -126,6 +127,7 @@ import type {
   OutputSource,
   OverlapEntry,
   OverlapSettings,
+  PruefdauerAuswertung,
   PublicUser,
   ReasonerConfigStatus,
   ReasonerKiLage,
@@ -136,6 +138,7 @@ import type {
   RetirementHorizon,
   RevalidierungBestaetigt,
   ReviewAction,
+  ReviewerSuggestion,
   RiskHorizonView,
   Role,
   ScormExportBody,
@@ -833,6 +836,30 @@ export const endpoints = {
     // jetzt; vorher las die Oberfläche eine Auskunft, von der ihr Vertrag nichts wusste.
     board: (f?: KoFilter) => api.get<ValidationBoardKo[]>(`/validation/board${qs(f)}`),
     overview: () => api.get<AssignmentSummary[]>("/validation/overview"),
+    // R-0265: wer ein neues Objekt dieses Themas prüfen sollte (Autorenschaft, frühere Prüfungen,
+    // Netznähe). Liest nur; zugewiesen wird erst mit dem Einreichen.
+    reviewerSuggestions: (q: { category?: string; tags?: readonly string[]; koId?: string }) => {
+      const params = new URLSearchParams();
+      if (q.category) {
+        params.set("category", q.category);
+      }
+      if (q.tags && q.tags.length > 0) {
+        params.set("tags", q.tags.join(","));
+      }
+      if (q.koId) {
+        params.set("koId", q.koId);
+      }
+      const query = params.toString();
+      return api.get<ReviewerSuggestion[]>(
+        `/validation/reviewer-suggestions${query ? `?${query}` : ""}`,
+      );
+    },
+    // R-1655: Prüfdauer je Zuweisungsweg (Messgrundlage des Routings).
+    pruefdauer: () => api.get<PruefdauerAuswertung>("/validation/pruefdauer"),
+    // R-1655: eigenes Opt-out aus der automatischen Zuweisung.
+    routingOptOut: () => api.get<{ optOut: boolean | null }>("/me/pruefrouting"),
+    setRoutingOptOut: (optOut: boolean) =>
+      api.put<{ optOut: boolean }>("/me/pruefrouting", { optOut }),
     // SCRUM-395: Standard-Prüferanzahl (lesen: alle Leseberechtigten; setzen: Admin).
     settings: () => api.get<ValidationSettings>("/validation/settings"),
     saveSettings: (defaultNeededValidations: number) =>
@@ -1304,6 +1331,13 @@ export const endpoints = {
   // abgetrennt — Zuweisungslisten sehen nur Konten, die Autorenzeile die Kennungen (lib/geloeschteKonten).
   directory: {
     list: () => api.get<{ id: string; name: string }[]>("/directory").then(trenneVerzeichnis),
+  },
+  // R-0679 / FR-VAL-07: Geräte-Push — Einrichtung lesen, eigenes Gerät an- und abmelden.
+  push: {
+    config: () => api.get<{ verfuegbar: boolean; publicKey: string | null }>("/push/config"),
+    anmelden: (abo: PushAboJson) => api.post<{ angemeldet: boolean }>("/push/abo", abo),
+    abmelden: (endpoint: string) =>
+      api.post<{ angemeldet: boolean }>("/push/abo/entfernen", { endpoint }),
   },
   // Audit-P4 (SCRUM-398): Live-Wall (read-only Aggregation).
   livewall: {

@@ -87,6 +87,7 @@ import {
   useAndereFlaecheOffen,
   useAndereFlaecheSchliesst,
 } from "../assistenzFlaechen";
+import { KlaraAufgaben } from "./KlaraAufgaben";
 import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
 import {
@@ -2620,6 +2621,14 @@ export function KlaraVorschau({
                 <li>{t("klaranotiz.bedienhilfe.arbeitszettel")}</li>
                 <li>{t("klaranotiz.bedienhilfe.privat")}</li>
                 <li>{t("klaranotiz.bedienhilfe.fehler")}</li>
+                {/* Klara 07: persönliche Aufgaben aus Notiz und Auftrag, bearbeiten, erledigen. */}
+                <li data-testid="klara-bedienhilfe-aufgabe">
+                  {t("klaraaufgabe.bedienhilfe.auftrag")}
+                </li>
+                <li>{t("klaraaufgabe.bedienhilfe.notiz")}</li>
+                <li>{t("klaraaufgabe.bedienhilfe.bearbeiten")}</li>
+                <li>{t("klaraaufgabe.bedienhilfe.privat")}</li>
+                <li>{t("klaraaufgabe.bedienhilfe.fehler")}</li>
                 {/* Klara 12: Modi, Hinweise und übertragene Aufgaben. */}
                 <li data-testid="klara-bedienhilfe-eigeninitiative">
                   {t("klarainitiative.bedienhilfe.modi")}
@@ -2679,6 +2688,8 @@ export function KlaraVorschau({
             {istEcht ? <KlaraAusfuehrungen umgebung={auftragsUmgebung} /> : null}
             {/* Klara 06: die privaten Notizen — anlegen, wiederfinden, öffnen, ändern. */}
             {istEcht && kontoId ? <KlaraNotizen /> : null}
+            {/* Klara 07: die persönlichen Aufgaben — öffnen, ändern, priorisieren, erledigen. */}
+            {istEcht && kontoId ? <KlaraAufgaben /> : null}
             {/* Klara 02: der gesprochene Auftrag — erkannter Text, Ziel, Rückfragen, Ergebnis. */}
             <KlaraAuftragKarte
               s={sprechen}
