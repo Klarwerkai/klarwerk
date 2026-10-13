@@ -887,18 +887,25 @@ function herkunftText(h: Herkunft): string {
   return `${h.art === "datenblatt" ? "Datenblatt" : "HTML-Seite"} · ${h.abschnitt} · Zeile ${h.zeile}, Spalte „${h.spalte}" · Fassung ${h.fassung.slice(0, 12)} · erfasst ${h.abgerufenAm}`;
 }
 
+/**
+ * Vermerk im Rumpf über den Stand BEI DER ERFASSUNG (Nacharbeit 9). Der Rumpf wandert beim
+ * Einreichen unverändert ins Wissensobjekt; ein Satz wie „noch nicht ins Wissen übernommen“
+ * würde dort dem tatsächlichen Zustand widersprechen. Deshalb ist der Vermerk ausdrücklich
+ * historisch und verweist für den aktuellen Übernahme- und Freigabestand auf den Objektstatus.
+ */
+export const ERFASSUNGSSTAND_VERMERK =
+  "<p><strong>Erfassungsstand (historisch):</strong> Bei der Erfassung aus der Quelle als ungeprüfter Entwurf angelegt. Dieser Vermerk beschreibt nur den Erfassungszeitpunkt; ob die Angaben inzwischen ins Wissen übernommen oder fachlich freigegeben sind, zeigt allein der Status des Objekts.</p>";
+
 /** Der lesbare Entwurfsrumpf: Originalwerte, Normalisierung mit Formel, Herkunft je Wert. */
 export function entwurfHtml(u: Uebernahme, schutzklasseUnbekannt: boolean): string {
   const teile: string[] = [];
-  teile.push(
-    "<p><strong>Stand:</strong> Ungeprüfter Entwurf. Nicht fachlich freigegeben und noch nicht ins Wissen übernommen.</p>",
-  );
+  teile.push(ERFASSUNGSSTAND_VERMERK);
   teile.push(
     "<p><strong>Verarbeitung:</strong> Regelbasierte Tabellenauswertung in Klarwerk, ohne KI-Anbieter.</p>",
   );
   if (schutzklasseUnbekannt) {
     teile.push(
-      "<p><strong>Schutzklasse unbekannt:</strong> vorläufig streng vertraulich und privat, bis die Klasse geklärt ist.</p>",
+      "<p><strong>Schutzklasse bei der Erfassung unbekannt:</strong> vorläufig als streng vertraulich angelegt, bis die Klasse geklärt ist. Die aktuell geltende Klasse zeigt das Objekt.</p>",
     );
   }
   for (const g of u.geraete) {

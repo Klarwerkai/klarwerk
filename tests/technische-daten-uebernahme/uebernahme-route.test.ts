@@ -14,7 +14,11 @@ import {
   QUELLENBEOBACHTUNG_AKTION,
   quellKennung,
 } from "../../services/app/src/routes/technische-daten-routes";
-import { type ErfassterAbschnitt, belegFassung } from "../../services/app/src/technische-daten";
+import {
+  ERFASSUNGSSTAND_VERMERK,
+  type ErfassterAbschnitt,
+  belegFassung,
+} from "../../services/app/src/technische-daten";
 import { DATENBLATT, HTML_SEITE, geaendert } from "./fixture";
 
 type App = ReturnType<typeof buildApp>;
@@ -265,7 +269,9 @@ describe("BPA-02 · /api/technische-daten", () => {
     expect(d.payload.bodyHtml).toContain("16 bar ±0,5 bar");
     expect(d.payload.bodyHtml).toContain("10 (bei 20 °C)");
     expect(d.payload.bodyHtml).toContain("Zeile 1, Spalte „Betriebsdruck");
-    expect(d.payload.bodyHtml).toContain("Nicht fachlich freigegeben");
+    // Nacharbeit 9: der Rumpf nennt nur den historischen Erfassungsstand, keinen aktuellen Status.
+    expect(d.payload.bodyHtml).toContain(ERFASSUNGSSTAND_VERMERK);
+    expect(d.payload.bodyHtml).not.toContain("noch nicht ins Wissen übernommen");
     expect(d.payload.pendingSources).toEqual([
       expect.objectContaining({
         url: "https://ventile.example.test/produkte/v-serie#technische-daten",
@@ -309,6 +315,16 @@ describe("BPA-02 · /api/technische-daten", () => {
     // Bewusste Übernahme ins Wissen über den bestehenden Einreichweg — danach dieselbe Erfassung.
     const wissen = await einreichen(app, anna, erst.json().entwurf.id);
     expect(await entwuerfe(app, anna)).toHaveLength(0);
+    // AC10 · Nacharbeit 9: das wiedergeöffnete Wissensobjekt widerspricht seinem Zustand nicht.
+    // Der Rumpf trägt nur den historischen Erfassungsvermerk; der aktuelle Stand ist der Objekt-
+    // status, und Einreichen hebt die fachliche Freigabe nicht an.
+    const objekt = await app.inject({ method: "GET", url: `/api/kos/${wissen.id}`, headers: anna });
+    expect(objekt.statusCode, objekt.body).toBe(200);
+    const ko = objekt.json() as { bodyHtml: string; status: string };
+    expect(ko.bodyHtml).toContain(ERFASSUNGSSTAND_VERMERK);
+    expect(ko.bodyHtml).not.toContain("noch nicht ins Wissen übernommen");
+    expect(ko.bodyHtml).not.toContain("Ungeprüfter Entwurf.");
+    expect(ko.status, "Einreichen ist keine fachliche Freigabe").toBe("offen");
     const nachEinreichen = await uebernehmen(app, anna, auftrag);
     expect(nachEinreichen.statusCode, nachEinreichen.body).toBe(200);
     expect(nachEinreichen.json()).toMatchObject({

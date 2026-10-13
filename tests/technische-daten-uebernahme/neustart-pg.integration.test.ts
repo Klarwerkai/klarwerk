@@ -20,7 +20,7 @@ import { GenericContainer, type StartedTestContainer, Wait } from "testcontainer
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
-import { belegFassung } from "../../services/app/src/technische-daten";
+import { ERFASSUNGSSTAND_VERMERK, belegFassung } from "../../services/app/src/technische-daten";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import { DATENBLATT, HTML_SEITE, geaendert } from "./fixture";
 
@@ -184,7 +184,7 @@ describe("BPA-02 · Übernahme technischer Daten gegen echtes PostgreSQL", () =>
     expect(d.originalAuthor).toBe(annaId);
     expect(d.payload.confidentiality).toBe("intern");
     expect(d.payload.bodyHtml).toContain("16 bar ±0,5 bar");
-    expect(d.payload.bodyHtml).toContain("Nicht fachlich freigegeben");
+    expect(d.payload.bodyHtml).toContain(ERFASSUNGSSTAND_VERMERK);
     expect(
       (d.payload.pendingSources as { excerpt: string }[]).map((q) => q.excerpt.slice(0, 79)),
     ).toEqual([
@@ -279,6 +279,11 @@ describe("BPA-02 · Übernahme technischer Daten gegen echtes PostgreSQL", () =>
     const wieder = await anmelden(zweite);
     const ko = await zweite.inject({ method: "GET", url: `/api/kos/${koId}`, headers: wieder });
     expect(ko.statusCode, ko.body).toBe(200);
+    // AC10 · Nacharbeit 9: das wiedergeöffnete Objekt trägt nur den historischen Erfassungsvermerk,
+    // keinen widersprechenden „noch nicht übernommen“-Satz; fachlich bleibt es ungeprüft.
+    expect(ko.json().bodyHtml).toContain(ERFASSUNGSSTAND_VERMERK);
+    expect(ko.json().bodyHtml).not.toContain("noch nicht ins Wissen übernommen");
+    expect(ko.json().status, "Einreichen ist keine fachliche Freigabe").toBe("offen");
     const quellen = ko.json().sources as { url: string; sourceRemovedAt?: string }[];
     const html = quellen.find((s) => s.url === `${HTML_SEITE.url}#technische-daten`);
     const blatt = quellen.find((s) => s.url === DATENBLATT.url);
