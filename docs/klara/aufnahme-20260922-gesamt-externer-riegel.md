@@ -129,3 +129,12 @@ Dieser Lauf ändert keinen Produktcode, nur den Kopfkommentar einer Testdatei un
 Der Prüfplan führt die vorhandenen Riegeltests aus (Erzeuger, Sitzungstor, Schalter, Route).
 Ergebnisse stehen im Bericht des Prüfadapters, nicht in diesem Dokument. Gilt nur der
 **jüngste** Lauf.
+
+**Nacharbeit 1 (Prüflauf am Kandidaten `8a8fdf6f`):** Die fünf Riegeltests waren grün (101 Fälle
+in fünf Dateien). Rot war `tests/app/klara-regressionsinventar.test.ts` in den Fällen K2, K4 und
+K5. Ursache sind 80 Klara-Testdateien anderer Aufträge aus dem integrierten Hauptstand, die im
+gepinnten Inventar fehlen (u. a. `tests/klara-bildanalyse-ocr/*`, `tests/klara-setup-shortcuts/*`,
+`tests/klara-vorschau/*`). Die hier geänderte Datei steht nicht in dieser Liste. Die Kalibrierung
+ihrer Achse `einwilligung` (K3) war grün. Das Inventar wird hier nicht nachgeführt, weil das
+fremde Umfänge wären. Der Inventartest bleibt unverändert und fällt aus der Prüfauswahl dieses
+Auftrags.
