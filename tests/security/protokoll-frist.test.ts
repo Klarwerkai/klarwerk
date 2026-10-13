@@ -35,6 +35,7 @@ import {
   leseMaxSize,
   starteRotationsimpuls,
 } from "../../services/app/src/protokoll-rotationsimpuls";
+import { STARTVERTRAG } from "../../services/app/src/start-vertrag";
 
 // ================================================================================================
 // R-0664 · PETERS ENTSCHEIDUNG 2 (12.10.2026): 14 TAGE, DANN AUTOMATISCH GELÖSCHT —
@@ -664,6 +665,27 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     const ohne = lauf(false);
     expect(Math.max(...ohne.hoechstalter)).toBeGreaterThanOrEqual(14);
     expect(ohne.zeilen.some((z) => z.log.includes("Bestand vom ersten Tag"))).toBe(true);
+  });
+
+  // Nacharbeit 17: env-beispiel.test.ts C5 fand für KLARWERK_LOG_DATEI „—Die" statt „— Die". Die
+  // globalen Wächter C1/C5/D1 sind zusätzlich durch fremde Einträge aus main rot (VAPID_*, zehn nicht
+  // angemeldete Umgebungswerte); diese Probe hält DIESELBEN Regeln für die Namen dieses Auftrags.
+  it("Startvertrag und Beispieldatei: die Namen dieses Auftrags nach den Regeln von C1/C5/D1", () => {
+    const beispiel = readFileSync("env.demo.beispiel", "utf8");
+    for (const name of ["KLARWERK_LOG_DATEI", "KLARWERK_DOCKER_LOG_MAX_SIZE"]) {
+      const wert = STARTVERTRAG.find((w) => w.name === name);
+      expect(wert, `${name} fehlt im Startvertrag`).toBeDefined();
+      expect(beispiel, `${name} ohne Zuweisungszeile`).toMatch(new RegExp(`^# ${name}=$`, "m"));
+      expect(beispiel, `${name} ohne Erklärung`).toContain(`# ${name} — ${wert?.wofuer}`);
+      expect(beispiel, `${name} ohne Folgesatz`).toContain(`#   Ohne ihn: ${wert?.ohneIhn}`);
+    }
+    // D1 erhebt Namen u. a. über `const X_ENV = "NAME"` — so lesen beide Module ihre Variable.
+    expect(readFileSync("services/app/src/protokoll-frist.ts", "utf8")).toContain(
+      'LOG_DATEI_ENV = "KLARWERK_LOG_DATEI"',
+    );
+    expect(readFileSync("services/app/src/protokoll-rotationsimpuls.ts", "utf8")).toContain(
+      'DOCKER_LOG_MAX_SIZE_ENV = "KLARWERK_DOCKER_LOG_MAX_SIZE"',
+    );
   });
 
   it("Dockerfile und Compose nennen dieselbe max-size wie der Rotationsimpuls", () => {
