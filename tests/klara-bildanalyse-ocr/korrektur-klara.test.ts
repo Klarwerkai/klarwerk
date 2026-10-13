@@ -28,6 +28,7 @@ import {
   type BildKorrekturDaten,
   andereFassungBerichtigt,
   befundMitKorrektur,
+  beschreibungAngleichen,
   korrekturFingerabdruck,
   korrekturQuelleFuer,
   ortKennung,
@@ -53,6 +54,8 @@ const ROH: Record<string, string> = {
   L: "LAGFR 29",
   W: "WARTUNG 12.10.2026",
   N: "LAGFR 30",
+  // Nacharbeit 4: wiederholte Zahl im Bildtext.
+  Z: "10 10",
 };
 const engine = async (src: string): Promise<OcrResult> => ({
   status: "success",
@@ -258,5 +261,64 @@ describe("B5 · K5 — die Berichtigung wirkt auch in der Bildbeschreibung desse
     const ohne = klaraBildKontext("", [roh], t, ortVon);
     expect(ohne.kontext).toContain("LAGFR 4711");
     expect(klaraAnweisung("frage", "x", ohne, t)).not.toContain("bildfundstelle.anweisung");
+    expect(b?.korrektur?.beschreibungNichtAngeglichen).toBeUndefined();
+  });
+});
+
+// Nacharbeit 4 (Bens Befund): die Angleichung ersetzte global — „10 10“ → „10 11“ machte aus
+// „Links 10, rechts 10“ fälschlich „Links 11, rechts 11“.
+describe("B6 · K5/K8 — wiederholte Wörter und Zahlen: Angleichung nur bei eindeutiger Zuordnung", () => {
+  it("Bens Beispiel: Beschreibung bleibt unverändert, gekennzeichnet; Klara gilt der Bildtext", async () => {
+    expect(beschreibungAngleichen("10 10", "10 11", "Links 10, rechts 10")).toEqual({
+      text: "Links 10, rechts 10",
+      uneindeutig: true,
+    });
+    // Eindeutig im Rohtext, aber mehrfach in der Beschreibung: ebenfalls nicht angleichen.
+    expect(beschreibungAngleichen("LAGFR 29", "LAGER 29", "LAGFR links, LAGFR rechts")).toEqual({
+      text: "LAGFR links, LAGFR rechts",
+      uneindeutig: true,
+    });
+    // Eindeutig an beiden Stellen: genau dieses eine Vorkommen, alles andere unverändert.
+    expect(beschreibungAngleichen("A1 B2 10", "A7 B2 10", "Feld A1 neben B2, Wert 10")).toEqual({
+      text: "Feld A7 neben B2, Wert 10",
+      uneindeutig: false,
+    });
+    // Keine Kette: eine Ersetzung wird nicht von einer weiteren erneut ersetzt.
+    expect(beschreibungAngleichen("AB1 AB2", "AB2 AB3", "Feld AB1 und Feld AB2")).toEqual({
+      text: "Feld AB2 und Feld AB3",
+      uneindeutig: false,
+    });
+
+    // Am Befund: angezeigt und an Klara übergeben wird die UNVERÄNDERTE Beschreibung, als Stand
+    // vor der Berichtigung gekennzeichnet; der berichtigte Bildtext ist maßgeblich.
+    const eingang = einzelbildEingang("seiten.png", dataUrl(bildMitMassen("Z", 400, 200)));
+    const beschreibe = async () => ({
+      status: "beschrieben" as const,
+      text: "Links 10, rechts 10",
+    });
+    const roh = await createBildAnalyse({ erkenne: engine }).analysiereQuelle(eingang, {
+      automatik: true,
+      beschreibe,
+    });
+    const bild = roh.befunde[0];
+    if (!bild) {
+      throw new Error("kein Befund");
+    }
+    const praefix = "anhang";
+    const quelle = korrekturQuelleFuer(praefix, bild.fundstelle);
+    const [wirksam] = quellenMitKorrekturen([roh], praefix, [korrektur(quelle, bild, "10 11")]);
+    const b = wirksam?.befunde[0];
+    expect(b?.textGekennzeichnet).toBe("10 11");
+    expect(b?.bildinhalt.text).toBe("Links 10, rechts 10");
+    expect(b?.korrektur?.beschreibungNichtAngeglichen).toBe(true);
+    const k = klaraBildKontext("", [wirksam as QuellenBefund], t, ortVon);
+    expect(k.kontext).not.toContain("11, rechts 11");
+    expect(k.kontext).toContain("bildfundstelle.kontext.textBerichtigt: 10 11");
+    expect(k.kontext).toContain(
+      "bildfundstelle.kontext.inhaltVorBerichtigung: Links 10, rechts 10",
+    );
+    expect(klaraAnweisung("zusammenfassung", "", k, t)).toContain(
+      "bildfundstelle.anweisung.berichtigt",
+    );
   });
 });

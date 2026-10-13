@@ -154,7 +154,12 @@ export function klaraBildKontext(
         zeilen.push(`${marke} ${t("klarabildkontext.kontext.offen", { status })}`);
       }
       if (bildinhalt) {
-        zeilen.push(`${marke} ${t("klarabildkontext.kontext.inhalt")}: ${bildinhalt}`);
+        // Nacharbeit 4: eine nicht eindeutig angeglichene Beschreibung steht als Stand VOR der
+        // Berichtigung da — maßgeblich ist der berichtigte Bildtext.
+        const inhalt = b.korrektur?.beschreibungNichtAngeglichen
+          ? "bildfundstelle.kontext.inhaltVorBerichtigung"
+          : "klarabildkontext.kontext.inhalt";
+        zeilen.push(`${marke} ${t(inhalt)}: ${bildinhalt}`);
       }
     }
     for (const x of q.nichtGelesen) {

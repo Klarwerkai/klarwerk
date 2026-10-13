@@ -143,7 +143,9 @@ export function befundMitKorrektur(b: BildBefund, k: BildKorrekturDaten | null):
   // berichtigten Lesefehler wörtlich enthalten („Schild mit LAGFR 4711“). Die Berichtigung wirkt
   // deshalb auch dort — nur für die berichtigten Wörter; die Beschreibung bleibt im Rohbefund.
   const beschrieben = b.bildinhalt.status === "beschrieben";
-  const angeglichen = beschrieben ? beschreibungAngleichen(b.text, k.text, b.bildinhalt.text) : "";
+  const angleichung = beschrieben
+    ? beschreibungAngleichen(b.text, k.text, b.bildinhalt.text)
+    : { text: "", uneindeutig: false };
   return {
     ...b,
     status: k.text.trim().length > 0 ? "gelesen" : "kein-text",
@@ -152,50 +154,79 @@ export function befundMitKorrektur(b: BildBefund, k: BildKorrekturDaten | null):
     unsicher: [],
     // Die erkannte Tabelle stammt aus dem Rohbefund; sie bleibt dort sichtbar.
     tabelle: null,
-    ...(beschrieben ? { bildinhalt: { ...b.bildinhalt, text: angeglichen } } : {}),
+    ...(beschrieben ? { bildinhalt: { ...b.bildinhalt, text: angleichung.text } } : {}),
     korrektur: {
       rohText: b.text,
       rohGekennzeichnet: b.textGekennzeichnet,
       rohUnsicher: b.unsicher,
       rohTabelle: b.tabelle,
       ...(beschrieben ? { rohBildinhalt: b.bildinhalt.text } : {}),
+      ...(angleichung.uneindeutig ? { beschreibungNichtAngeglichen: true } : {}),
       geaendertAm: k.geaendertAm,
       schritte: k.schritte,
     },
   };
 }
 
-/** Ein Wort als ganzes Wort im Text finden (Groß-/Kleinschreibung egal, Unicode-Grenzen). */
-function ganzesWort(wort: string): RegExp {
+/** Alle Vorkommen eines Wortes als ganzes Wort (Groß-/Kleinschreibung egal, Unicode-Grenzen). */
+function vorkommen(text: string, wort: string): { index: number; laenge: number }[] {
   const sicher = wort.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?<![\\p{L}\\p{N}])${sicher}(?![\\p{L}\\p{N}])`, "giu");
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])${sicher}(?![\\p{L}\\p{N}])`, "giu");
+  return [...text.matchAll(re)].map((m) => ({ index: m.index ?? 0, laenge: m[0].length }));
 }
 
 /**
- * Die Beschreibung, angeglichen an die Berichtigung: jedes Wort, das die Berichtigung an derselben
- * Stelle durch ein ÄHNLICHES ersetzt hat (Lesefehler wie „LAGFR“ → „LAGER“, Zuordnung wie bei den
- * Fundstellen), wird auch in der Beschreibung ersetzt. Andere Wörter bleiben unverändert.
+ * Die Beschreibung, angeglichen an die Berichtigung — NUR wo die Zuordnung eindeutig ist
+ * (Nacharbeit 4, Bens Befund): ein Wort, das die Berichtigung an derselben Stelle durch ein
+ * ÄHNLICHES ersetzt hat („LAGFR“ → „LAGER“), wird in der Beschreibung ersetzt, wenn es im Rohtext
+ * GENAU EINMAL steht und in der Beschreibung GENAU EINMAL vorkommt. Kommt es mehrfach vor (Rohtext
+ * „10 10“, Berichtigung „10 11“, Beschreibung „Links 10, rechts 10“), ist nicht bestimmbar, welches
+ * Vorkommen gemeint ist: dann bleibt die Beschreibung unverändert und `uneindeutig` ist gesetzt —
+ * maßgeblich ist der berichtigte Bildtext, und die Beschreibung wird als „vor der Berichtigung“
+ * gekennzeichnet. Alle Ersetzungen beziehen sich auf die ursprüngliche Beschreibung (keine Kette).
  */
 export function beschreibungAngleichen(
   roh: string,
   berichtigt: string,
   beschreibung: string,
-): string {
+): { text: string; uneindeutig: boolean } {
   const rohWoerter = roh.split(/\s+/).filter((w) => w.length > 0);
   const neuWoerter = berichtigt.split(/\s+/).filter((w) => w.length > 0);
-  const zuordnung = ausrichten(
-    neuWoerter.map((w) => w.toLocaleLowerCase()),
-    rohWoerter.map((w) => w.toLocaleLowerCase()),
-  );
-  let text = beschreibung;
+  const klein = (w: string): string => w.toLocaleLowerCase();
+  const zuordnung = ausrichten(neuWoerter.map(klein), rohWoerter.map(klein));
+  const ersetzungen: { index: number; laenge: number; neu: string }[] = [];
+  let uneindeutig = false;
   for (const [i, z] of zuordnung.entries()) {
     const alt = z.wort === null ? undefined : rohWoerter[z.wort];
     const neu = neuWoerter[i];
-    if (z.ersetzt && alt && neu && alt.toLocaleLowerCase() !== neu.toLocaleLowerCase()) {
-      text = text.replace(ganzesWort(alt), neu);
+    if (!z.ersetzt || !alt || !neu || klein(alt) === klein(neu)) {
+      continue;
     }
+    const treffer = vorkommen(beschreibung, alt);
+    if (treffer.length === 0) {
+      continue;
+    }
+    const imRohtext = rohWoerter.filter((w) => klein(w) === klein(alt)).length;
+    const stelle = treffer[0];
+    if (imRohtext !== 1 || treffer.length !== 1 || !stelle) {
+      uneindeutig = true;
+      continue;
+    }
+    if (ersetzungen.some((e) => e.index === stelle.index)) {
+      uneindeutig = true;
+      continue;
+    }
+    ersetzungen.push({ ...stelle, neu });
   }
-  return text;
+  if (uneindeutig) {
+    // Keine Teilangleichung: lieber die ganze Beschreibung unverändert und gekennzeichnet.
+    return { text: beschreibung, uneindeutig: true };
+  }
+  let text = beschreibung;
+  for (const e of [...ersetzungen].sort((x, y) => y.index - x.index)) {
+    text = text.slice(0, e.index) + e.neu + text.slice(e.index + e.laenge);
+  }
+  return { text, uneindeutig: false };
 }
 
 /**

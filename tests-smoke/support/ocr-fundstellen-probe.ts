@@ -182,3 +182,31 @@ export function deckMit(folien: readonly { titel: string; png: Buffer }[]): Buff
 }
 
 export const PPTX_TYP = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
+export const DOCX_TYP = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+const URI_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const URI_WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+const URI_PIC = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+
+/**
+ * Nacharbeit 4: eine minimale Word-Datei mit einem Absatz und einem eingebetteten Bild — dieselbe
+ * Form, die „Klara in Word“ über `getFileAsync` als ganze .docx an `/api/drafts/from-docx` schickt.
+ */
+export function docxMit(absatz: string, png: Buffer): Buffer {
+  const bild = `<w:p><w:r><w:drawing><wp:inline><wp:extent cx="3000000" cy="650000"/><wp:docPr id="1" name="Bild 1"/><a:graphic><a:graphicData uri="${URI_PIC}"><pic:pic><pic:nvPicPr><pic:cNvPr id="1" name="bild1.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rId5"/></pic:blipFill><pic:spPr/></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+  const dokument = `${KOPF}<w:document xmlns:w="${URI_W}" xmlns:r="${URI_R}" xmlns:wp="${URI_WP}" xmlns:a="${URI_A}" xmlns:pic="${URI_PIC}"><w:body><w:p><w:r><w:t>${absatz}</w:t></w:r></w:p>${bild}</w:body></w:document>`;
+  return zipOhneKompression({
+    "[Content_Types].xml": enc(
+      `${KOPF}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
+    ),
+    "_rels/.rels": enc(
+      `${KOPF}<Relationships xmlns="${URI_PKG_R}"><Relationship Id="rId1" Type="${URI_R}/officeDocument" Target="word/document.xml"/></Relationships>`,
+    ),
+    "word/document.xml": enc(dokument),
+    "word/_rels/document.xml.rels": enc(
+      `${KOPF}<Relationships xmlns="${URI_PKG_R}"><Relationship Id="rId5" Type="${URI_R}/image" Target="media/bild1.png"/></Relationships>`,
+    ),
+    "word/media/bild1.png": new Uint8Array(png),
+  });
+}

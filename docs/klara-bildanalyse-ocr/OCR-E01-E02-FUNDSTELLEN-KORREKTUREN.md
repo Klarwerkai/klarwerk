@@ -40,7 +40,12 @@ aktive, abschaltbare Automatik ist unverändert.
   Bildbeschreibung (W02) desselben Bildes kann den Lesefehler wörtlich enthalten. Die berichtigten
   Wörter werden dort ebenso ersetzt (die ursprüngliche Beschreibung bleibt im Rohbefund), und die
   Anweisung an Klara sagt: für berichtigte Bilder gilt allein der berichtigte Bildtext. Gefunden im
-  Modelllauf, in dem Klara „LAGFR“ aus der Beschreibung zitierte.
+  Modelllauf, in dem Klara „LAGFR“ aus der Beschreibung zitierte. **Nur bei eindeutiger Zuordnung
+  (Nacharbeit 4):** ersetzt wird ein Wort nur, wenn es im Rohtext genau einmal steht und in der
+  Beschreibung genau einmal vorkommt. Sonst (etwa Rohtext „10 10“, Berichtigung „10 11“,
+  Beschreibung „Links 10, rechts 10“) bleibt die Beschreibung unverändert, wird sichtbar als „vor
+  der Berichtigung“ gekennzeichnet und geht so gekennzeichnet an Klara — maßgeblich ist der
+  berichtigte Bildtext.
 - **Zuordnung berichtigter Wörter:** ein berichtigtes Wort übernimmt die Position des erkannten nur,
   wenn beide ähnlich sind (Lesefehler wie „Mül1er“/„Müller“, „1.5OO“/„1.500“) oder das erkannte
   `[unleserlich]` war; ein ganz anderes Wort hat keine Position (ehrlicher Rückfall).
@@ -92,8 +97,9 @@ OCR-E06 werden nicht vorausgesetzt.
 
 | Punkt | Stand |
 | --- | --- |
-| PowerPoint-Host | Es gibt kein PowerPoint-Add-in (H03). Geprüft ist der Dateiweg (`.pptx` im Erfassen, Q02) im Browser; „Office im Artikel“ (H06) ist angebunden, aber nicht im Browser geprüft |
-| Word-Host | „Klara in Word“ (H02) liest weiterhin nur Text; Bilder aus Word werden erst im Editor der Web-App gelesen und berichtigt. Im Word-Host selbst nicht geprüft |
+| PowerPoint-Host (H03) | Es gibt kein PowerPoint-Add-in; nicht prüfbar. Geprüft ist der Dateiweg (`.pptx` im Erfassen, Q02) im Browser |
+| Office im Artikel (H06) | Browserfall „H06 Office im Artikel“: Artikel mit PowerPoint-Anhang über die echten Routen, Fundstelle am Bild der Anhangsfassung, Berichtigung gebunden an `office:<anhang>`, Neuladen, Klara. **Offen:** der eingebettete Office-Editor selbst (Collabora/WOPI) — im Prüfaufbau ist keiner eingerichtet (`office-artikel-browser.spec.ts` misst „nicht eingerichtet“, Sitzung 503); für die Bildbefunde wird er nicht gebraucht |
+| Word-Host (H02) | Browserfall „H02-Übernahmeweg“: genau die Anfrage des Add-ins für das ganze Dokument (`POST /api/drafts/from-docx`) und sein Deep-Link (`/capture/frontdoor?draft=<id>`), dort Fundstelle und Berichtigung (`entwurf:<id>`) samt Neuladen. **Offen:** die Bedienung in Word selbst — konkret fehlt im Prüfaufbau ein Word (Desktop oder Web) mit eingespieltem Add-in-Manifest und Zugriff auf eine HTTPS-erreichbare Klarwerk-Instanz. Klara in Word fragt weiterhin nur mit Text (L10) |
 | Echtes Modell | Im Smoke-Tor läuft kein Modell. Der Nachweis der tatsächlichen Antwort und Zusammenfassung mit Berichtigung ist der `@modell`-Fall in `tests-smoke/klara-ocr-fundstelle-korrektur-browser.spec.ts`; er braucht den vollen Smoke mit freigegebenem Modellzugang und ist erst belegt, wenn er dort gelaufen ist |
 | Gedrehte Fotos | Gemessen mit gebauten JPEG-Köpfen (EXIF 6/8) und der gedrehten Ansicht im Browser; ein echtes Handyfoto mit Drehangabe durch die echte Engine ist nicht gelaufen. Bei 180° (EXIF 3) und gespiegelten Fotos gibt es bewusst nur den Rückfall |
 | Editor ohne gespeicherte Quelle | Ein noch nie gespeicherter Entwurf hat keine Quelle; dort wird nicht berichtigt, und das steht da. Eine Berichtigung an `entwurf:<id>` folgt nicht automatisch zum daraus entstandenen Wissensobjekt (`ko:<id>`) |

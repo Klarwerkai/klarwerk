@@ -66,6 +66,10 @@ export default {
     "bildfundstelle.korrektur.zurueckgesetzt": "Rohbefund wiederhergestellt.",
     "bildfundstelle.kontext.textBerichtigt": "Bildtext (berichtigt)",
     "bildfundstelle.korrektur.erneutLaden": "Erneut laden",
+    "bildfundstelle.kontext.inhaltVorBerichtigung":
+      "Bildinhalt (Beschreibung vor der Berichtigung; abweichende Angaben gelten nicht, maßgeblich ist der berichtigte Bildtext)",
+    "bildfundstelle.korrektur.beschreibungVorBerichtigung":
+      "Diese Beschreibung stammt von vor der Berichtigung und ließ sich nicht eindeutig angleichen. Maßgeblich ist der berichtigte Bildtext.",
     "bildfundstelle.anweisung.berichtigt":
       "Für Bilder mit „Bildtext (berichtigt)“ gilt allein dieser berichtigte Text. Gib keine davon abweichende Schreibweise oder Lesung wieder.",
     "bildfundstelle.klara.wartet":
@@ -128,6 +132,10 @@ export default {
     "bildfundstelle.korrektur.zurueckgesetzt": "Raw recognition result restored.",
     "bildfundstelle.kontext.textBerichtigt": "Image text (corrected)",
     "bildfundstelle.korrektur.erneutLaden": "Load again",
+    "bildfundstelle.kontext.inhaltVorBerichtigung":
+      "Image content (description from before the correction; differing details do not apply, the corrected image text is authoritative)",
+    "bildfundstelle.korrektur.beschreibungVorBerichtigung":
+      "This description dates from before the correction and could not be aligned unambiguously. The corrected image text is authoritative.",
     "bildfundstelle.anweisung.berichtigt":
       "For images with “Image text (corrected)” only this corrected text applies. Do not repeat any differing spelling or reading.",
     "bildfundstelle.klara.wartet":
@@ -191,6 +199,10 @@ export default {
     "bildfundstelle.korrektur.zurueckgesetzt": "Ruw resultaat hersteld.",
     "bildfundstelle.kontext.textBerichtigt": "Afbeeldingstekst (gecorrigeerd)",
     "bildfundstelle.korrektur.erneutLaden": "Opnieuw laden",
+    "bildfundstelle.kontext.inhaltVorBerichtigung":
+      "Beeldinhoud (beschrijving van vóór de correctie; afwijkende gegevens gelden niet, de gecorrigeerde afbeeldingstekst is bepalend)",
+    "bildfundstelle.korrektur.beschreibungVorBerichtigung":
+      "Deze beschrijving dateert van vóór de correctie en kon niet eenduidig worden aangepast. De gecorrigeerde afbeeldingstekst is bepalend.",
     "bildfundstelle.anweisung.berichtigt":
       "Voor afbeeldingen met „Afbeeldingstekst (gecorrigeerd)” geldt alleen deze gecorrigeerde tekst. Geef geen afwijkende spelling of lezing weer.",
     "bildfundstelle.klara.wartet":

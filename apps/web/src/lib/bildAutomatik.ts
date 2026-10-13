@@ -151,6 +151,11 @@ export interface BildKorrekturAnzeige {
   rohTabelle: string[][] | null;
   /** Nacharbeit 3: die Bildbeschreibung (W02) vor der Angleichung an die Berichtigung. */
   rohBildinhalt?: string;
+  /**
+   * Nacharbeit 4: die Beschreibung ließ sich nicht eindeutig angleichen (ein berichtigtes Wort kommt
+   * mehrfach vor) — sie steht unverändert da und gilt als Stand VOR der Berichtigung.
+   */
+  beschreibungNichtAngeglichen?: boolean;
   geaendertAm: string;
   /** Wie oft „Rückgängig“ eine frühere Berichtigung zurückholt (danach gilt der Rohbefund). */
   schritte: number;

@@ -33,6 +33,7 @@ import {
   type GezeichnetesWort,
   PPTX_TYP,
   deckMit,
+  docxMit,
   zeichneBild,
 } from "./support/ocr-fundstellen-probe";
 
@@ -664,5 +665,233 @@ test("OCR-E02 · Klara antwortet und fasst zusammen mit dem berichtigten Bildtex
       oeffentlicheKi: vorher.kiFreigabe?.oeffentlicheKi === true,
       vertraulicheInhalte: vorher.kiFreigabe?.vertraulicheInhalte === true,
     });
+  }
+});
+
+// ================================================================================================
+// Nacharbeit 4 (Bens Befund K12) · DIE E01/E02-NUTZERWEGE DER VERFÜGBAREN HOSTS.
+// ================================================================================================
+//
+// H06 „Office im Artikel“: ein Artikel mit PowerPoint-Anhang über die echten Routen; die Bildbefunde
+// der Anhangsfassung (OfficeBildBefunde) — Fundstelle, Berichtigung (gebunden an den Anhang),
+// Neuladen, Klara. Im Prüfaufbau ist KEIN Office-Editor (Collabora/WOPI) eingerichtet
+// (`office-artikel-browser.spec.ts`, „nicht eingerichtet“); dieser Weg braucht ihn nicht — der
+// Editor selbst ist hier nicht Gegenstand.
+//
+// H02 „Klara in Word“: der Prüfaufbau hat KEINEN Word-Host (kein Word mit eingespieltem Add-in).
+// Geprüft wird deshalb der Klarwerk-Teil desselben Wegs: genau die Anfrage, die das Add-in für das
+// ganze Dokument schickt (`POST /api/drafts/from-docx`, Name + Base64 der .docx), dann der
+// Entwurf über den Deep-Link des Add-ins (`/capture/frontdoor?draft=<id>`). Die Bedienung IN Word
+// bleibt offen.
+
+/** Wie `office-artikel-browser.spec.ts`: der einmalige Nutzungshinweis wird quittiert. */
+async function nutzungshinweisQuittieren(page: Page): Promise<void> {
+  const weiter = page.getByTestId("notice-ack");
+  if (await weiter.isVisible().catch(() => false)) {
+    await weiter.click();
+  }
+}
+
+/** Wartet, bis der Bildbefund unter `bereich` abgeschlossen ist. */
+async function befundFertig(page: Page, bereich: string): Promise<void> {
+  await expect
+    .poll(
+      async () =>
+        (await page.evaluate(
+          (auswahl) => document.querySelector(auswahl)?.getAttribute("data-status") ?? null,
+          `${bereich} [data-testid=bild-befunde]`,
+        )) ?? "wartet",
+      { timeout: 240_000, intervals: [1_000] },
+    )
+    .not.toMatch(/^(wartet|laeuft)$/);
+  // Die gespeicherten Berichtigungen sind geladen.
+  await expect(page.locator(`${bereich} [data-testid=bild-berichtigung-stand]`)).toHaveCount(0, {
+    timeout: 20_000,
+  });
+}
+
+/** Klickt die Stelle `wort` in `zeile` und misst Bild und Markierung der Ansicht. */
+async function fundstelleIn(page: Page, zeileL: Locator, wort: string, b: GezeichnetesBild) {
+  const sicher = wort.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  await zeileL
+    .getByTestId("bild-befund-stelle")
+    .filter({ hasText: new RegExp(`^${sicher}$`, "i") })
+    .first()
+    .click();
+  await expect(page.getByTestId("bild-fundstelle-ansicht")).toBeVisible();
+  const src = (await page.getByTestId("bild-fundstelle-bild").getAttribute("src")) ?? "";
+  const bild = await rechteck(page.getByTestId("bild-fundstelle-bild"));
+  const markierung = await rechteck(page.getByTestId("bild-fundstelle-markierung"));
+  const ergebnis = {
+    gleichesBild: src.split(",")[1] === b.png.toString("base64"),
+    liegtAuf: liegtAuf(markierung, soll(bild, b, gezeichnet(b, wort), 0)),
+  };
+  await schliessen(page);
+  return ergebnis;
+}
+
+async function berichtigeIn(zeileL: Locator, text: string): Promise<void> {
+  await zeileL.getByTestId("bild-berichtigung-bearbeiten").click();
+  await zeileL.getByTestId("bild-berichtigung-feld").fill(text);
+  await zeileL.getByTestId("bild-berichtigung-speichern").click();
+  await expect(zeileL.getByTestId("bild-befund-text")).toHaveText(text);
+}
+
+async function aufraeumen(page: Page): Promise<void> {
+  const rest = await korrekturenAmServer(page).catch(() => null);
+  for (const k of rest?.korrekturen ?? []) {
+    await page.request
+      .put(KORREKTUREN, {
+        data: { aktion: "zuruecksetzen", quelle: k.quelle, inhaltskennung: k.inhaltskennung },
+      })
+      .catch(() => undefined);
+  }
+}
+
+test("OCR-E01/E02 · H06 Office im Artikel · Fundstelle und Berichtigung am PowerPoint-Anhang", async ({
+  page,
+}) => {
+  test.setTimeout(600_000);
+  await ensureLoggedIn(page);
+  await page.goto("/");
+  const bild = await zeichneBild(page, 1200, 260, [{ text: "LAGFR 4711", x: 60, y: 160 }]);
+  const name = `lagerliste-h06-${marke()}.pptx`;
+  const protokoll: Record<string, unknown> = {
+    art: "Fiktiver Artikel mit PowerPoint-Anhang; Office-Editor im Prüfaufbau nicht eingerichtet",
+  };
+  try {
+    const ko = await page.request.post("/api/kos", {
+      data: {
+        title: `Fiktive Lagerliste H06 ${marke()}`,
+        statement: "Fiktiver Artikel für die Bildbefunde eines Office-Anhangs.",
+        type: "best_practice",
+        category: "Lager",
+        confidentiality: "intern",
+      },
+    });
+    expect(ko.ok(), await ko.text()).toBe(true);
+    const { id: koId } = (await ko.json()) as { id: string };
+    const deck = deckMit([{ titel: "Lagerliste", png: bild.png }]);
+    const objekt = await page.request.post("/api/objects", {
+      data: {
+        name,
+        mime: PPTX_TYP,
+        data: `data:${PPTX_TYP};base64,${deck.toString("base64")}`,
+        purpose: "attachment",
+      },
+    });
+    expect(objekt.ok(), await objekt.text()).toBe(true);
+    const { id: objectId } = (await objekt.json()) as { id: string };
+    const angehaengt = await page.request.put(`/api/kos/${koId}`, {
+      data: { action: "attach", attachment: { name, mime: PPTX_TYP, objectId } },
+    });
+    expect(angehaengt.ok(), await angehaengt.text()).toBe(true);
+    const stand = (await angehaengt.json()) as { attachments?: { id: string }[] };
+    const anhangId = stand.attachments?.at(-1)?.id ?? "";
+    expect(anhangId).not.toBe("");
+
+    const bereich = `[data-office-bild-befund="${anhangId}"]`;
+    const oeffnen = async (): Promise<void> => {
+      await page.goto(`/wissen/${koId}`);
+      await expect(page.getByTestId("bib-titel")).toBeVisible({ timeout: 15_000 });
+      await nutzungshinweisQuittieren(page);
+      await page.getByTestId("bib-mehr").click();
+      await page.locator('[data-bib-abschnitt="anhaenge"] > summary').click();
+      await befundFertig(page, bereich);
+    };
+    await oeffnen();
+    const zeileL = page.locator(bereich).getByTestId("bild-befund").first();
+    const roh = (await zeileL.getByTestId("bild-befund-text").textContent()) ?? "";
+    const zahl = await fundstelleIn(page, zeileL, "4711", bild);
+    await berichtigeIn(zeileL, "LAGER 4711");
+    const amServer = await korrekturenAmServer(page);
+
+    // Neuladen: der Artikel neu geöffnet, die Fassung erneut gelesen — die Berichtigung bleibt.
+    await page.reload();
+    await oeffnen();
+    const nachNeuladen = (await zeileL.getByTestId("bild-befund-text").textContent()) ?? "";
+    const berichtigtStelle = await fundstelleIn(page, zeileL, "LAGER", bild);
+
+    // Klara zu diesem Anhang: die Fundstelle der Frage trägt die Berichtigung.
+    const panel = page.locator(bereich).getByTestId("klara-bild-kontext");
+    await panel.getByTestId("klara-bild-kontext-frage").fill("Welche Nummer hat das LAGER?");
+    await panel.getByTestId("klara-bild-kontext-fragen").click();
+    await expect(panel.getByTestId("klara-bild-kontext-antwort")).toHaveAttribute(
+      "data-auftrag",
+      "frage",
+      { timeout: 120_000 },
+    );
+    const belege = await panel
+      .getByTestId("klara-bild-kontext-beleg")
+      .evaluateAll((els) => els.map((el) => el.textContent ?? ""));
+    Object.assign(protokoll, { roh, zahl, amServer, nachNeuladen, berichtigtStelle, belege });
+    await test.info().attach("ocr-e01-e02-h06-office-im-artikel.json", {
+      contentType: "application/json",
+      body: JSON.stringify(protokoll, null, 2),
+    });
+
+    expect(zahl).toEqual({ gleichesBild: true, liegtAuf: true });
+    expect(amServer.korrekturen.map((k) => [k.quelle, k.text])).toEqual([
+      [`office:${anhangId}`, "LAGER 4711"],
+    ]);
+    expect(nachNeuladen).toBe("LAGER 4711");
+    expect(berichtigtStelle).toEqual({ gleichesBild: true, liegtAuf: true });
+    expect(belege.join(" ")).toContain("LAGER 4711");
+    expect(belege.join(" ")).not.toMatch(/LAGFR/);
+  } finally {
+    await aufraeumen(page);
+  }
+});
+
+test("OCR-E01/E02 · H02-Übernahmeweg (Word-Add-in-Route) · Fundstelle und Berichtigung im Entwurf", async ({
+  page,
+}) => {
+  test.setTimeout(600_000);
+  await ensureLoggedIn(page);
+  await page.goto("/");
+  const bild = await zeichneBild(page, 1200, 260, [{ text: "LAGFR 4711", x: 60, y: 160 }]);
+  let entwurfId: string | null = null;
+  try {
+    // Genau die Nutzlast, die das Add-in für „Ganzes Dokument“ schickt (taskpane.js, sendeDocxDatei).
+    const angelegt = await page.request.post("/api/drafts/from-docx", {
+      data: {
+        name: "Lagerliste aus Word.docx",
+        data: docxMit("Lagerliste aus Word", bild.png).toString("base64"),
+        confidentiality: "intern",
+      },
+    });
+    expect(angelegt.ok(), await angelegt.text()).toBe(true);
+    entwurfId = ((await angelegt.json()) as { id: string }).id;
+
+    // Der Deep-Link des Add-ins.
+    await page.goto(`/capture/frontdoor?draft=${entwurfId}`);
+    await befundFertig(page, RUMPF);
+    const zeileL = page.locator(RUMPF).first().getByTestId("bild-befund").first();
+    const zahl = await fundstelleIn(page, zeileL, "4711", bild);
+    await berichtigeIn(zeileL, "LAGER 4711");
+    const amServer = await korrekturenAmServer(page);
+
+    await page.reload();
+    await befundFertig(page, RUMPF);
+    const nachNeuladen = (await zeileL.getByTestId("bild-befund-text").textContent()) ?? "";
+    await test.info().attach("ocr-e01-e02-h02-word-route.json", {
+      contentType: "application/json",
+      body: JSON.stringify(
+        { art: "Word-Add-in-Route ohne Word-Host", zahl, amServer, nachNeuladen },
+        null,
+        2,
+      ),
+    });
+
+    expect(zahl).toEqual({ gleichesBild: true, liegtAuf: true });
+    expect(amServer.korrekturen.map((k) => [k.quelle, k.text])).toEqual([
+      [`entwurf:${entwurfId}`, "LAGER 4711"],
+    ]);
+    expect(nachNeuladen).toBe("LAGER 4711");
+  } finally {
+    await aufraeumen(page);
+    if (entwurfId) {
+      await page.request.delete(`/api/drafts/${entwurfId}`).catch(() => undefined);
+    }
   }
 });

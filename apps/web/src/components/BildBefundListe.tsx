@@ -336,6 +336,14 @@ export function BildBefundListe({
                 <p data-testid="bild-befund-inhalt" className="mt-0.5 text-text">
                   <span className="font-semibold">{t("bildautomatik.bildinhalt.titel")}</span>{" "}
                   {b.bildinhalt.text}
+                  {b.korrektur?.beschreibungNichtAngeglichen ? (
+                    <span
+                      data-testid="bild-befund-inhalt-vor-berichtigung"
+                      className="block text-trust-warn-text"
+                    >
+                      {t("bildfundstelle.korrektur.beschreibungVorBerichtigung")}
+                    </span>
+                  ) : null}
                 </p>
               ) : b.status !== "laeuft" && b.status !== "wartet" ? (
                 <p data-testid="bild-befund-inhalt-fehlt" className="mt-0.5 text-muted">
