@@ -25,7 +25,6 @@ import {
 } from "../../services/reasoner/src/model-errors";
 import { DeterministicProvider, type ReasonerProvider } from "../../services/reasoner/src/provider";
 import { Reasoner } from "../../services/reasoner/src/service";
-import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 import type { AnswerResult, KnowledgeRef } from "../../services/reasoner/src/types";
 
 // Fiktiver Bestand — kein echter Inhalt.
@@ -53,7 +52,7 @@ function fiktivesModell(lage: Lage): ReasonerProvider {
     name: "fiktiv-modell",
     isAvailable: () => true,
     structure: (text, locale) => ersatz.structure(text, locale),
-    assistText: (text, locale) => ersatz.assistText(text, locale),
+    assistText: (text) => ersatz.assistText(text),
     interview: (antworten, locale) => ersatz.interview(antworten, locale),
     extract: (text, locale) => ersatz.extract(text, locale),
     select: (frage, kandidaten, relevanz) => ersatz.select(frage, kandidaten, relevanz),
@@ -77,11 +76,16 @@ function fiktivesModell(lage: Lage): ReasonerProvider {
   };
 }
 
-async function aufbau(fehler: unknown): Promise<{ reasoner: Reasoner; lage: Lage }> {
+// Das fiktive Modell steht als LOKALES Glied (secondary) in der Kette: die Vorgabe „auto" nimmt es
+// ohne Freigabe für öffentliche KI auf. So braucht diese Datei den Freigabe-Helfer nicht und bleibt
+// ausserhalb des Freigabe-Registers (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`, F1).
+function reasonerMit(lage: Lage, runs?: InMemoryModelRunRepo): Reasoner {
+  return new Reasoner(undefined, undefined, runs, undefined, fiktivesModell(lage));
+}
+
+function aufbau(fehler: unknown): { reasoner: Reasoner; lage: Lage } {
   const lage: Lage = { fehler, aufrufe: 0 };
-  const reasoner = new Reasoner(fiktivesModell(lage));
-  await erteileKiFreigabe(reasoner);
-  return { reasoner, lage };
+  return { reasoner: reasonerMit(lage), lage };
 }
 
 describe("E1 · die Ursache wird aus dem Fehler abgeleitet, nie aus Meldungstext an die Fläche", () => {
@@ -105,7 +109,7 @@ describe("E1 · die Ursache wird aus dem Fehler abgeleitet, nie aus Meldungstext
 
 describe("E2/E3 · isolierter Ausfall und Erholung am echten Reasoner", () => {
   it("Ausfall: der Ersatz antwortet mit Ursache; Erholung: das Modell antwortet ohne Ursache", async () => {
-    const { reasoner, lage } = await aufbau(new ModelTimeoutError(`Zeitlimit ${GEHEIM}`, 1000));
+    const { reasoner, lage } = aufbau(new ModelTimeoutError(`Zeitlimit ${GEHEIM}`, 1000));
 
     const ausfall = await reasoner.answer("Wann Ventil bei Überdruck schließen?", KOS);
     expect(lage.aufrufe, "das Modell wurde nicht versucht").toBe(1);
@@ -130,7 +134,7 @@ describe("E2/E3 · isolierter Ausfall und Erholung am echten Reasoner", () => {
   });
 
   it("die Ursache steht auch an einer Lücke (Ersatz findet keine Grundlage)", async () => {
-    const { reasoner } = await aufbau(new Error("fetch failed"));
+    const { reasoner } = aufbau(new Error("fetch failed"));
     const luecke = await reasoner.answer("Wie hoch ist der fiktive Wechselkurs?", KOS);
     expect(luecke.answered).toBe(false);
     expect(luecke.ersatzGrund).toBe("nicht_erreichbar");
@@ -139,8 +143,7 @@ describe("E2/E3 · isolierter Ausfall und Erholung am echten Reasoner", () => {
   it("PV-03-06 · der tatsächlich verwendete Weg bleibt im Laufprotokoll nachvollziehbar", async () => {
     const runs = new InMemoryModelRunRepo();
     const lage: Lage = { fehler: new ModelHttpError("antwortete mit 503", 503), aufrufe: 0 };
-    const reasoner = new Reasoner(fiktivesModell(lage), undefined, runs);
-    await erteileKiFreigabe(reasoner);
+    const reasoner = reasonerMit(lage, runs);
     const ausfall = await reasoner.answer("Wann Ventil bei Überdruck schließen?", KOS);
     expect(ausfall.ersatzGrund).toBe("nicht_erreichbar");
     const [lauf] = await runs.recent(10);
@@ -165,7 +168,7 @@ describe("E4 · ohne eingerichtetes Modell sagt die Antwort keine Ausfallursache
 
 describe("E5 · die bestehende Kapazitätsgrenze bleibt eine Grenze", () => {
   it("ModelCapacityError fällt nicht still auf den Ersatz, sondern wird durchgereicht", async () => {
-    const { reasoner } = await aufbau(new ModelCapacityError("Kapazität erschöpft"));
+    const { reasoner } = aufbau(new ModelCapacityError("Kapazität erschöpft"));
     const frage = "Wann Ventil bei Überdruck schließen?";
     await expect(reasoner.answer(frage, KOS)).rejects.toBeInstanceOf(ModelCapacityError);
   });
@@ -173,7 +176,7 @@ describe("E5 · die bestehende Kapazitätsgrenze bleibt eine Grenze", () => {
 
 describe("E6 · Zweitmeinungsweg", () => {
   it("die ausgelieferte erste Antwort trägt dieselbe Ursache", async () => {
-    const { reasoner } = await aufbau(new ModelTimeoutError("Zeitlimit", 1000));
+    const { reasoner } = aufbau(new ModelTimeoutError("Zeitlimit", 1000));
     const frage = "Wann Ventil bei Überdruck schließen?";
     const { erste } = await reasoner.answerMitZweitmeinung(frage, KOS);
     expect(erste.demo).toBe(true);
