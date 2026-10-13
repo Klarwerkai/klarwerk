@@ -37,6 +37,16 @@ export default {
       "Ohne KI beantwortet: Das Kontingent beim KI-Dienst ist ausgeschöpft. Diese Antwort ist regelbasiert aus dem Bestand zusammengestellt.",
     "kiausfall.ersatz.fehler":
       "Ohne KI beantwortet: Der KI-Dienst hat keine verwertbare Antwort geliefert. Diese Antwort ist regelbasiert aus dem Bestand zusammengestellt.",
+    "kiausfall.ohneAntwort.zeitueberschreitung":
+      "Keine Antwort: Der KI-Dienst hat nicht rechtzeitig geantwortet (Zeitüberschreitung), und ohne KI fand sich im Bestand keine belastbare Grundlage. Die Frage ist nicht beantwortet und bleibt offen.",
+    "kiausfall.ohneAntwort.nicht_erreichbar":
+      "Keine Antwort: Der KI-Dienst war nicht erreichbar, und ohne KI fand sich im Bestand keine belastbare Grundlage. Die Frage ist nicht beantwortet und bleibt offen.",
+    "kiausfall.ohneAntwort.verweigert":
+      "Keine Antwort: Die Verarbeitung durch den KI-Dienst wurde abgelehnt, und ohne KI fand sich im Bestand keine belastbare Grundlage. Die Frage ist nicht beantwortet und bleibt offen.",
+    "kiausfall.ohneAntwort.kontingent":
+      "Keine Antwort: Das Kontingent beim KI-Dienst ist ausgeschöpft, und ohne KI fand sich im Bestand keine belastbare Grundlage. Die Frage ist nicht beantwortet und bleibt offen.",
+    "kiausfall.ohneAntwort.fehler":
+      "Keine Antwort: Der KI-Dienst hat keine verwertbare Antwort geliefert, und ohne KI fand sich im Bestand keine belastbare Grundlage. Die Frage ist nicht beantwortet und bleibt offen.",
   },
   en: {
     "kiausfall.status.nichtErreichbar":
@@ -64,6 +74,16 @@ export default {
       "Answered without AI: the quota of the AI service is exhausted. This answer was compiled by rules from the knowledge base.",
     "kiausfall.ersatz.fehler":
       "Answered without AI: the AI service did not return a usable answer. This answer was compiled by rules from the knowledge base.",
+    "kiausfall.ohneAntwort.zeitueberschreitung":
+      "No answer: the AI service did not respond in time (timeout), and without AI no reliable basis was found in the knowledge base. The question is not answered and remains open.",
+    "kiausfall.ohneAntwort.nicht_erreichbar":
+      "No answer: the AI service was unreachable, and without AI no reliable basis was found in the knowledge base. The question is not answered and remains open.",
+    "kiausfall.ohneAntwort.verweigert":
+      "No answer: processing by the AI service was refused, and without AI no reliable basis was found in the knowledge base. The question is not answered and remains open.",
+    "kiausfall.ohneAntwort.kontingent":
+      "No answer: the quota of the AI service is exhausted, and without AI no reliable basis was found in the knowledge base. The question is not answered and remains open.",
+    "kiausfall.ohneAntwort.fehler":
+      "No answer: the AI service did not return a usable answer, and without AI no reliable basis was found in the knowledge base. The question is not answered and remains open.",
   },
   nl: {
     "kiausfall.status.nichtErreichbar":
@@ -91,5 +111,15 @@ export default {
       "Zonder AI beantwoord: het tegoed bij de AI-dienst is uitgeput. Dit antwoord is op basis van regels uit de kennisbank samengesteld.",
     "kiausfall.ersatz.fehler":
       "Zonder AI beantwoord: de AI-dienst heeft geen bruikbaar antwoord geleverd. Dit antwoord is op basis van regels uit de kennisbank samengesteld.",
+    "kiausfall.ohneAntwort.zeitueberschreitung":
+      "Geen antwoord: de AI-dienst heeft niet op tijd geantwoord (time-out), en zonder AI is in de kennisbank geen betrouwbare basis gevonden. De vraag is niet beantwoord en blijft open.",
+    "kiausfall.ohneAntwort.nicht_erreichbar":
+      "Geen antwoord: de AI-dienst was niet bereikbaar, en zonder AI is in de kennisbank geen betrouwbare basis gevonden. De vraag is niet beantwoord en blijft open.",
+    "kiausfall.ohneAntwort.verweigert":
+      "Geen antwoord: de verwerking door de AI-dienst is geweigerd, en zonder AI is in de kennisbank geen betrouwbare basis gevonden. De vraag is niet beantwoord en blijft open.",
+    "kiausfall.ohneAntwort.kontingent":
+      "Geen antwoord: het tegoed bij de AI-dienst is uitgeput, en zonder AI is in de kennisbank geen betrouwbare basis gevonden. De vraag is niet beantwoord en blijft open.",
+    "kiausfall.ohneAntwort.fehler":
+      "Geen antwoord: de AI-dienst heeft geen bruikbaar antwoord geleverd, en zonder AI is in de kennisbank geen betrouwbare basis gevonden. De vraag is niet beantwoord en blijft open.",
   },
 } satisfies Textmodul;

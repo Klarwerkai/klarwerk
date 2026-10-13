@@ -2564,15 +2564,30 @@ export function Ask(): JSX.Element {
         {/* produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): ist das Modell in DIESEM Lauf
             gescheitert und hat der regelbasierte Ersatz geantwortet, steht die Ursache vor der
             Karte — bei Antwort wie bei Lücke. Vor und nicht in der Karte: dort zählt das
-            Zeichenbudget bis zur KI-Kennzeichnung (mega62 E1), und die Antwort steht vorn (D-047). */}
-        {karteSichtbar && result && ersatzGrundKey(result.ersatzGrund) ? (
-          <p
+            Zeichenbudget bis zur KI-Kennzeichnung (mega62 E1), und die Antwort steht vorn (D-047).
+            Ben (nacharbeit-2): der Satz folgt dem TATSÄCHLICHEN Antwortstatus — ohne Antwort sagt
+            er „keine Antwort" und nennt den offenen Weg, nie „beantwortet". */}
+        {karteSichtbar && result && ersatzGrundKey(result.ersatzGrund, result.answered) ? (
+          <div
             data-testid="ask-ersatz-grund"
             data-grund={result.ersatzGrund}
+            data-beantwortet={result.answered ? "1" : "0"}
             className="mb-3 mt-5 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] leading-relaxed text-trust-warn-text"
           >
-            {t(ersatzGrundKey(result.ersatzGrund) ?? "")}
-          </p>
+            <p className="m-0">{t(ersatzGrundKey(result.ersatzGrund, result.answered) ?? "")}</p>
+            {result.answered ? null : (
+              <p data-testid="ask-ersatz-weiterweg" className="m-0 mt-1.5">
+                {t("kiausfall.hilfe.manuell")}{" "}
+                <RoleLink to="/bibliothek" className="font-semibold text-brand-text">
+                  {() => t("ask.aiUnavailable.toLibrary")}
+                </RoleLink>
+                {" · "}
+                <RoleLink to="/erfassen" className="font-semibold text-brand-text">
+                  {() => t("ask.aiUnavailable.toCapture")}
+                </RoleLink>
+              </p>
+            )}
+          </div>
         ) : null}
         {/* Eine ANDERE Frage räumt die alte Antwort ab (`onMutate`) — sie gehört zu einer anderen
             Frage, und stehenzubleiben hieße, sie als Antwort auf die neue auszugeben. DIESELBE

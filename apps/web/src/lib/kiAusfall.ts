@@ -56,9 +56,20 @@ export function erneutVersuchenSinnvoll(ursache: KiFehlerUrsache | null): boolea
   return ursache !== "abgeschaltet" && ursache !== "verweigert";
 }
 
-/** Der Satz zur Ursache des Ersatzwegs — oder `null`, wenn der Server keine genannt hat. */
-export function ersatzGrundKey(grund: KiErsatzGrund | undefined): string | null {
-  return grund ? `kiausfall.ersatz.${grund}` : null;
+/**
+ * Der Satz zur Ursache des Ersatzwegs — oder `null`, wenn der Server keine genannt hat. Ben
+ * (nacharbeit-2): die Erfolgsaussage hängt am TATSÄCHLICHEN Antwortstatus. Hat auch der Ersatz
+ * keine Antwort gefunden, heisst der Satz „keine Antwort" (`kiausfall.ohneAntwort.*`), nie
+ * „beantwortet"; die Ursache steht in beiden Fällen da.
+ */
+export function ersatzGrundKey(
+  grund: KiErsatzGrund | undefined,
+  beantwortet: boolean,
+): string | null {
+  if (!grund) {
+    return null;
+  }
+  return beantwortet ? `kiausfall.ersatz.${grund}` : `kiausfall.ohneAntwort.${grund}`;
 }
 
 /**

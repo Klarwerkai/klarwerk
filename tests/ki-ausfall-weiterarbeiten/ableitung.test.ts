@@ -73,12 +73,36 @@ describe("A1 · Ursache einer gescheiterten Frage", () => {
       "kontingent",
       "fehler",
     ] as const) {
-      const key = ersatzGrundKey(grund) ?? "";
-      expect(kiausfall.de).toHaveProperty([key]);
-      expect(kiausfall.en).toHaveProperty([key]);
-      expect(kiausfall.nl).toHaveProperty([key]);
+      for (const beantwortet of [true, false]) {
+        const key = ersatzGrundKey(grund, beantwortet) ?? "";
+        expect(kiausfall.de).toHaveProperty([key]);
+        expect(kiausfall.en).toHaveProperty([key]);
+        expect(kiausfall.nl).toHaveProperty([key]);
+      }
     }
-    expect(ersatzGrundKey(undefined)).toBeNull();
+    expect(ersatzGrundKey(undefined, true)).toBeNull();
+    expect(ersatzGrundKey(undefined, false)).toBeNull();
+  });
+
+  it("Ben nacharbeit-2: ohne Antwort behauptet kein Satz eine Antwort", () => {
+    for (const [sprache, block] of Object.entries({
+      de: kiausfall.de,
+      en: kiausfall.en,
+      nl: kiausfall.nl,
+    })) {
+      const ohne = Object.entries(block).filter(([k]) => k.startsWith("kiausfall.ohneAntwort."));
+      expect(ohne.length, sprache).toBe(5);
+      for (const [, satz] of ohne) {
+        expect(satz).not.toMatch(/beantwortet:|answered without|zonder AI beantwoord/i);
+        expect(satz).not.toMatch(/zusammengestellt|compiled|samengesteld/i);
+      }
+    }
+    expect(ersatzGrundKey("zeitueberschreitung", false)).toBe(
+      "kiausfall.ohneAntwort.zeitueberschreitung",
+    );
+    expect(ersatzGrundKey("zeitueberschreitung", true)).toBe(
+      "kiausfall.ersatz.zeitueberschreitung",
+    );
   });
 
   it("kein Satz nennt einen Anbieter, Schlüssel oder Statuscode", () => {

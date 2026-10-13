@@ -322,6 +322,41 @@ describe("F4 · Ersatz nach Modellausfall", () => {
   });
 });
 
+describe("F4b · Ersatz nach Modellausfall OHNE Antwort (Ben nacharbeit-2)", () => {
+  it("die Ursache steht da, aber „keine Antwort“ statt „beantwortet“ — mit offenem Weiterweg", async () => {
+    const f = await oeffnen(neuerCache());
+    await tippen(f, FRAGE);
+    steuer.antworten.push(() => ({
+      result: {
+        answered: false,
+        answer: null,
+        knowledgeClass: "unbekannt",
+        trust: 0,
+        sources: [],
+        citedSources: [],
+        steps: [],
+        demo: true,
+        captionSources: [],
+        ersatzGrund: "zeitueberschreitung",
+      },
+      gap: { id: "luecke-fiktiv-1" },
+      receipt: "beleg-fiktiv",
+    }));
+    await absenden(f);
+    expect(teil(f, "ask-answer"), "ohne Antwort steht eine Antwortkarte").toBeNull();
+    const satz = teil(f, "ask-ersatz-grund");
+    expect(satz?.getAttribute("data-beantwortet")).toBe("0");
+    expect(satz?.textContent).toContain(i18n.t("kiausfall.ohneAntwort.zeitueberschreitung"));
+    expect(satz?.textContent).not.toContain(i18n.t("kiausfall.ersatz.zeitueberschreitung"));
+    expect(satz?.textContent ?? "").not.toContain("Ohne KI beantwortet");
+    // Der offene Bearbeitungsweg steht im selben Satz: Bestand durchsuchen, Wissen erfassen.
+    const weg = teil(f, "ask-ersatz-weiterweg");
+    expect(weg?.textContent).toContain(i18n.t("ask.aiUnavailable.toLibrary"));
+    expect(weg?.textContent).toContain(i18n.t("ask.aiUnavailable.toCapture"));
+    f.abbauen();
+  });
+});
+
 describe("F5 · Netzfehler des Abrufs ist kein belegter KI-Ausfall", () => {
   it("allgemeiner Satz, keine KI-Wege behauptet, Speicherort ehrlich", async () => {
     const f = await oeffnen(neuerCache());
