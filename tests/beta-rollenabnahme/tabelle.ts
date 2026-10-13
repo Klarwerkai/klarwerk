@@ -3543,6 +3543,58 @@ export const TABELLE: Zeile[] = [
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
+  // produkt:20261013:produktbudget-anwender-admin (PBE-05): die Produktbudgets — Lesen und Ändern
+  // allein mit `users.manage`. ZUSTANDSFREI GEFAHREN: der PUT trägt keinen Betrag und endet für den
+  // Admin in 400, ohne etwas zu schreiben; gemessen wird die TÜR.
+  {
+    gruppe: "produktbudgetRoutes",
+    methode: "GET",
+    pfad: "/api/admin/produktbudget",
+    belegstelle: "services/app/src/routes/produktbudget-routes.ts:78",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "produktbudgetRoutes",
+    methode: "PUT",
+    pfad: "/api/admin/produktbudget/perplexity-poc",
+    route: "/api/admin/produktbudget/:bereich",
+    belegstelle: "services/app/src/routes/produktbudget-routes.ts:91",
+    tor: "users.manage",
+    payload: { aenderungId: "rollenabnahme-probe" },
+    erwartet: NUR_ADMIN,
+  },
+  // PBE-12: die Zuweisung eines Kontos (nur Verwaltung) und das eigene Unterlimit (jedes Konto mit
+  // `ko.read`, nur für sich). ZUSTANDSFREI: die Zuweisung zielt auf ein unbekanntes Konto (Admin
+  // 404), das Unterlimit trägt keinen Betrag (400) — gemessen wird die TÜR.
+  {
+    gruppe: "produktbudgetRoutes",
+    methode: "PUT",
+    pfad: "/api/admin/produktbudget/perplexity-poc/konten/gibt-es-nicht",
+    route: "/api/admin/produktbudget/:bereich/konten/:konto",
+    belegstelle: "services/app/src/routes/produktbudget-routes.ts:132",
+    tor: "users.manage",
+    payload: { zuweisung: "5", fassung: 0 },
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "produktbudgetRoutes",
+    methode: "GET",
+    pfad: "/api/me/produktbudget",
+    belegstelle: "services/app/src/routes/produktbudget-routes.ts:175",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "produktbudgetRoutes",
+    methode: "PUT",
+    pfad: "/api/me/produktbudget/perplexity-poc",
+    route: "/api/me/produktbudget/:bereich",
+    belegstelle: "services/app/src/routes/produktbudget-routes.ts:188",
+    tor: "ko.read",
+    payload: { fassung: 0 },
+    erwartet: NUR_LESEN,
+  },
   {
     gruppe: "askRoutes",
     methode: "GET",
