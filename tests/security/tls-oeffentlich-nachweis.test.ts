@@ -13,7 +13,11 @@
 // Ops/Pedi die Probe gegen die Installation fahren (docs/operations/tls-bis-zur-anwendung.md).
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { createServer as createHttpServer } from "node:http";
+import {
+  type IncomingMessage,
+  type ServerResponse,
+  createServer as createHttpServer,
+} from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import { type Server, createServer as createNetServer } from "node:net";
 import type { FastifyInstance } from "fastify";
@@ -21,6 +25,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   HSTS_MINDEST_MAX_AGE,
   KLARTEXT_PFADE,
+  MAX_WEITERLEITUNGEN,
   type ProbenZiel,
   TASKPANE_PFAD,
   nachweis,
@@ -68,6 +73,15 @@ async function anwendung(tls?: { cert: string; key: string }): Promise<FastifyIn
   return app;
 }
 
+// Leitet jede Anfrage pfaderhaltend auf `<schema>://NAME:<port>` um. Der Port wird erst beim Aufruf
+// gelesen, weil er erst nach `listen` feststeht.
+function weiter(status: number, schema: "http" | "https", port: () => number) {
+  return (anfrage: IncomingMessage, antwort: ServerResponse): void => {
+    const ort = `${schema}://${NAME}:${port()}${anfrage.url ?? "/"}`;
+    antwort.writeHead(status, { Location: ort }).end();
+  };
+}
+
 function portVon(app: FastifyInstance): number {
   const adresse = app.server.address();
   return typeof adresse === "object" && adresse ? adresse.port : 0;
@@ -85,6 +99,15 @@ describe("R-0816 / R-0822 · Probe am öffentlichen Betriebsweg", () => {
   let httpUmleitungPort = 0;
   let ohneHstsPort = 0;
   let zuPort = 0;
+  // Nacharbeit 2 (Ben): Ketten mit HTTPS-Zwischenstation.
+  let zwischenGutPort = 0;
+  let zumZwischenGutPort = 0;
+  let rueckfallStationPort = 0;
+  let zurRueckfallPort = 0;
+  let fremdStationPort = 0;
+  let zurFremdStationPort = 0;
+  let schleifePort = 0;
+  let zurSchleifePort = 0;
 
   beforeAll(async () => {
     pruefeSelbst(z, NAME);
@@ -93,22 +116,52 @@ describe("R-0816 / R-0822 · Probe am öffentlichen Betriebsweg", () => {
     klarApp = await anwendung();
     klarPort = portVon(klarApp);
 
-    // Ein Vermittler, wie er sein soll: jede Klartext-Anfrage geht auf https:// um.
-    const umleitung = createHttpServer((anfrage, antwort) => {
-      antwort.writeHead(308, { Location: `https://${NAME}${anfrage.url ?? "/"}` }).end();
-    });
+    const tls = { cert: z.cert, key: z.key };
+    // Ein Vermittler, wie er sein soll: jede Klartext-Anfrage geht auf die echte Anwendung über TLS.
+    const umleitung = createHttpServer(weiter(308, "https", () => httpsPort));
     // Ein Vermittler, der nur auf einen anderen Klartext-Ort umleitet.
-    const httpUmleitung = createHttpServer((anfrage, antwort) => {
-      antwort.writeHead(301, { Location: `http://${NAME}:8080${anfrage.url ?? "/"}` }).end();
-    });
+    const httpUmleitung = createHttpServer(weiter(301, "http", () => 8080));
     // Eine HTTPS-Gegenstelle mit gültigem Zertifikat, aber ohne HSTS.
-    const ohneHsts = createHttpsServer({ cert: z.cert, key: z.key }, (_anfrage, antwort) => {
+    const ohneHsts = createHttpsServer(tls, (_anfrage, antwort) => {
       antwort.writeHead(200, { "Content-Type": "text/html" }).end("Taskpane");
     });
-    server.push(umleitung, httpUmleitung, ohneHsts);
+    // HTTP → HTTPS-Zwischenstation → HTTPS-Anwendung (zwei Schritte, alles verschlüsselt).
+    const zwischenGut = createHttpsServer(
+      tls,
+      weiter(302, "https", () => httpsPort),
+    );
+    const zumZwischenGut = createHttpServer(weiter(301, "https", () => zwischenGutPort));
+    // HTTP → HTTPS-Zwischenstation → HTTP: der Rückfall in den Klartext hinter dem ersten Schritt.
+    const rueckfallStation = createHttpsServer(
+      tls,
+      weiter(302, "http", () => klarPort),
+    );
+    const zurRueckfall = createHttpServer(weiter(301, "https", () => rueckfallStationPort));
+    // HTTP → HTTPS-Ziel mit einem Zertifikat, dem der Anker nicht traut.
+    const fremdStation = createHttpsServer({ cert: fremd.cert, key: fremd.key }, (_a, antwort) => {
+      antwort.writeHead(200, { "Content-Type": "text/html" }).end("Taskpane");
+    });
+    const zurFremdStation = createHttpServer(weiter(301, "https", () => fremdStationPort));
+    // HTTP → HTTPS-Station, die immer wieder auf sich selbst umleitet.
+    const schleife = createHttpsServer(
+      tls,
+      weiter(302, "https", () => schleifePort),
+    );
+    const zurSchleife = createHttpServer(weiter(301, "https", () => schleifePort));
+
+    server.push(umleitung, httpUmleitung, ohneHsts, zwischenGut, zumZwischenGut, rueckfallStation);
+    server.push(zurRueckfall, fremdStation, zurFremdStation, schleife, zurSchleife);
     umleitungPort = await lausche(umleitung);
     httpUmleitungPort = await lausche(httpUmleitung);
     ohneHstsPort = await lausche(ohneHsts);
+    zwischenGutPort = await lausche(zwischenGut);
+    zumZwischenGutPort = await lausche(zumZwischenGut);
+    rueckfallStationPort = await lausche(rueckfallStation);
+    zurRueckfallPort = await lausche(zurRueckfall);
+    fremdStationPort = await lausche(fremdStation);
+    zurFremdStationPort = await lausche(zurFremdStation);
+    schleifePort = await lausche(schleife);
+    zurSchleifePort = await lausche(zurSchleife);
     zuPort = await geschlossenerPort();
   });
 
@@ -161,25 +214,55 @@ describe("R-0816 / R-0822 · Probe am öffentlichen Betriebsweg", () => {
   });
 
   describe("O2 · kein Klartext-Startweg für den Word-Zusatz", () => {
-    it("Umleitung auf https:// → bestanden für das Taskpane und /health", async () => {
+    it("Umleitung auf die Anwendung über TLS → bestanden für das Taskpane und /health", async () => {
       expect(KLARTEXT_PFADE).toContain(TASKPANE_PFAD);
       for (const pfad of KLARTEXT_PFADE) {
         const p = await pruefeKlartext(ziel({ httpPort: umleitungPort }), pfad);
-        expect(p.ergebnis, pfad).toBe("bestanden");
-        expect(p.umleitung).toBe(`https://${NAME}${pfad}`);
+        expect(p.ergebnis, `${pfad}: ${p.grund}`).toBe("bestanden");
+        // Die Kette ist verfolgt, nicht nur der erste Schritt: das Ziel hat selbst geantwortet.
+        expect(p.kette?.map((s) => s.status)).toEqual([308, 200]);
+        expect(p.kette?.[1]?.url).toBe(`https://${NAME}:${httpsPort}${pfad}`);
       }
+    });
+
+    it("HTTP → HTTPS-Zwischenstation → HTTPS-Anwendung → bestanden (Kette mit zwei Schritten)", async () => {
+      const p = await pruefeKlartext(ziel({ httpPort: zumZwischenGutPort }), TASKPANE_PFAD);
+      expect(p.ergebnis, p.grund).toBe("bestanden");
+      expect(p.kette?.map((s) => s.status)).toEqual([301, 302, 200]);
+    });
+
+    it("HTTP → HTTPS-Zwischenstation → HTTP → durchgefallen (HTTP-Rückfall hinter dem ersten Schritt)", async () => {
+      const p = await pruefeKlartext(ziel({ httpPort: zurRueckfallPort }), TASKPANE_PFAD);
+      expect(p.ergebnis).toBe("durchgefallen");
+      expect(p.grund).toMatch(/^HTTP-Rückfall: /);
+      expect(p.grund).toContain(`http://${NAME}:${klarPort}`);
+      // Der erste Schritt allein hätte wie ein Erfolg ausgesehen — genau das darf nicht reichen.
+      expect(p.kette?.[0]?.umleitung).toMatch(/^https:\/\//);
+    });
+
+    it("HTTP → HTTPS-Ziel mit nicht vertrautem Zertifikat → durchgefallen", async () => {
+      const p = await pruefeKlartext(ziel({ httpPort: zurFremdStationPort }), TASKPANE_PFAD);
+      expect(p.ergebnis).toBe("durchgefallen");
+      expect(p.grund).toMatch(/^Zertifikat des Weiterleitungsziels abgelehnt: /);
+    });
+
+    it(`mehr als ${MAX_WEITERLEITUNGEN} Weiterleitungen → durchgefallen`, async () => {
+      const p = await pruefeKlartext(ziel({ httpPort: zurSchleifePort }), TASKPANE_PFAD);
+      expect(p.ergebnis).toBe("durchgefallen");
+      expect(p.grund).toContain(`mehr als ${MAX_WEITERLEITUNGEN}`);
+      expect(p.kette).toHaveLength(MAX_WEITERLEITUNGEN + 1);
     });
 
     it("die Anwendung selbst im Klartext liefert das Taskpane aus → durchgefallen", async () => {
       const p = await pruefeKlartext(ziel({ httpPort: klarPort }), TASKPANE_PFAD);
       expect(p.ergebnis).toBe("durchgefallen");
-      expect(p.status).toBe(200);
+      expect(p.kette?.[0]?.status).toBe(200);
     });
 
     it("Umleitung auf einen anderen Klartext-Ort → durchgefallen", async () => {
       const p = await pruefeKlartext(ziel({ httpPort: httpUmleitungPort }), TASKPANE_PFAD);
       expect(p.ergebnis).toBe("durchgefallen");
-      expect(p.umleitung).toMatch(/^http:\/\//);
+      expect(p.grund).toMatch(/^Umleitung nicht auf https:\/\/: http:\/\//);
     });
 
     it("niemand lauscht → ungeklärt", async () => {

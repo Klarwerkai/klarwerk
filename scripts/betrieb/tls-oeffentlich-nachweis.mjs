@@ -16,10 +16,13 @@
 // Je Host drei Proben:
 //   O1  Zertifikat: TLS-Handschlag gegen den Vertrauensspeicher des Systems mit Namensprüfung,
 //       mindestens TLS 1.2, Restlaufzeit mindestens MINDEST_RESTTAGE. Aussteller und Laufzeit stehen
-//       im Beleg — daran sieht man, WER das Zertifikat ausgestellt hat (bei Let's Encrypt über den
-//       Vermittler: Aussteller „Let's Encrypt", Laufzeit höchstens 90 Tage).
+//       im Beleg — daran sieht man, welches Zertifikat ausgeliefert wird und wer es ausgestellt hat,
+//       nicht aber, wer es beschafft hat.
 //   O2  Kein Klartext-Startweg: http://<host><pfad> für das Taskpane des Word-Zusatzes und /health
-//       muss auf https:// umleiten. Jede andere Klartext-Antwort ist durchgefallen.
+//       muss auf https:// umleiten. Die Weiterleitungskette wird bis MAX_WEITERLEITUNGEN Schritte
+//       verfolgt: jedes Ziel muss https:// sein und sein Zertifikat die Prüfung bestehen, das letzte
+//       Ziel antwortet mit 2xx. Eine Klartext-Antwort, ein HTTP-Rückfall irgendwo in der Kette, ein
+//       abgelehntes Zertifikat oder eine zu lange Kette sind durchgefallen.
 //   O3  Der Startweg selbst: https://<host>/word-addin/taskpane.html antwortet 200 und trägt HSTS mit
 //       max-age von mindestens einem Jahr.
 //
@@ -27,9 +30,11 @@
 // bestanden: eine verweigerte Verbindung, ein unbekannter Name oder eine Zeitüberschreitung sagt
 // nichts über den Vermittler. Exitcode 0 nur, wenn jede Probe jedes Hosts bestanden hat.
 //
-// GRENZE: Die Probe sieht, was der Vermittler AUSLIEFERT, nicht seine Konfiguration. Ob er das
-// Zertifikat selbst erneuert, zeigt sich erst über die Zeit (Aussteller und Restlaufzeit in zwei
-// Belegen im Abstand einer Erneuerung). Die Strecke Vermittler → Anwendung belegt
+// GRENZE: Die Probe sieht, was der Vermittler AUSLIEFERT, nicht seine Konfiguration. Zwei Belege mit
+// verschiedenem `gueltig_bis` zeigen höchstens einen beobachteten Zertifikatswechsel — ob ihn der
+// Vermittler selbst beschafft oder jemand von Hand getauscht hat, ist daraus nicht unterscheidbar.
+// Die Beschaffung durch den Vermittler braucht einen eigenen Konfigurations- oder Betriebsbeleg
+// (OFFEN.md I11-U3). Die Strecke Vermittler → Anwendung belegt
 // `scripts/betrieb/tls-intern-nachweis.sh` (R-2057).
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -117,7 +122,7 @@ export function pruefeZertifikat(optionen) {
       } else if (restTage < mindestRestTage) {
         ende({
           ergebnis: "durchgefallen",
-          grund: `Restlaufzeit ${restTage} Tage unter ${mindestRestTage} — die Erneuerung durch den Vermittler greift nicht rechtzeitig`,
+          grund: `Restlaufzeit ${restTage} Tage unter ${mindestRestTage} — ein neues Zertifikat ist nicht rechtzeitig ausgeliefert`,
           ...beleg,
         });
       } else {
@@ -148,32 +153,77 @@ function hole(modul, optionen) {
   });
 }
 
-/** O2 — ein Pfad im Klartext: nur eine Umleitung auf https:// ist bestanden. */
-export async function pruefeKlartext(optionen, pfad) {
-  const z = ziel(optionen);
-  const a = await hole(httpRequest, {
-    host: z.adresse,
-    port: z.httpPort,
-    path: pfad,
-    headers: { Host: z.host },
+export const MAX_WEITERLEITUNGEN = 5;
+const WEITERLEITUNG = new Set([301, 302, 303, 307, 308]);
+
+// Ein Schritt der Kette. `optionen.adresse` (nur Tests) lenkt JEDEN Schritt auf dieselbe Adresse;
+// Servername und Host-Kopf kommen immer aus der URL des Schritts, Zertifikate prüft Node gegen den
+// Vertrauensspeicher (oder den Testanker `ca`).
+function schritt(z, adresse, url) {
+  const verschluesselt = url.protocol === "https:";
+  return hole(verschluesselt ? httpsRequest : httpRequest, {
+    host: adresse ?? url.hostname,
+    port: Number(url.port || (verschluesselt ? 443 : 80)),
+    path: `${url.pathname}${url.search}`,
+    headers: { Host: url.host },
+    ...(verschluesselt ? { servername: url.hostname, ca: z.ca } : {}),
     timeout: z.zeitMs,
     agent: false,
   });
+}
+
+/**
+ * O2 — ein Pfad im Klartext. Bestanden nur, wenn die GANZE Weiterleitungskette (höchstens
+ * MAX_WEITERLEITUNGEN Schritte) nach dem ersten Klartextschritt ausschliesslich über https://
+ * mit geprüftem Zertifikat läuft und das letzte Ziel mit 2xx antwortet. Der erste Umleitungsschritt
+ * allein sagt nichts: eine HTTPS-Zwischenstation kann zurück in den Klartext führen.
+ */
+export async function pruefeKlartext(optionen, pfad) {
+  const z = ziel(optionen);
   const basis = { probe: "O2", host: z.host, pfad };
-  if (a.fehler) {
-    return { ...basis, ergebnis: "ungeklaert", grund: `keine Klartext-Antwort messbar: ${a.fehler}` };
+  const kette = [];
+  const ende = (ergebnis, grund) => ({ ...basis, ergebnis, grund, kette });
+  let url = new URL(`http://${z.host}:${z.httpPort}${pfad}`);
+  for (let n = 0; n <= MAX_WEITERLEITUNGEN; n += 1) {
+    const verschluesselt = url.protocol === "https:";
+    const a = await schritt(z, optionen.adresse, url);
+    if (a.fehler) {
+      kette.push({ url: url.href, fehler: a.fehler });
+      if (verschluesselt && ZERTIFIKATSFEHLER.has(a.fehler)) {
+        return ende("durchgefallen", `Zertifikat des Weiterleitungsziels abgelehnt: ${a.fehler}`);
+      }
+      return ende("ungeklaert", `Schritt ${n} nicht messbar: ${a.fehler}`);
+    }
+    const ort = a.kopf.location ? String(a.kopf.location) : null;
+    kette.push({ url: url.href, status: a.status, umleitung: ort });
+    if (!WEITERLEITUNG.has(a.status)) {
+      if (!verschluesselt) {
+        return ende("durchgefallen", "Klartext-Antwort ohne Umleitung auf https://");
+      }
+      return a.status >= 200 && a.status < 300
+        ? ende("bestanden", `Kette endet verschlüsselt nach ${n} Weiterleitung(en)`)
+        : ende("durchgefallen", `letztes HTTPS-Ziel antwortet ${a.status}`);
+    }
+    if (ort === null) {
+      return ende("durchgefallen", `Weiterleitung ${a.status} ohne Ziel`);
+    }
+    let naechste;
+    try {
+      naechste = new URL(ort, url);
+    } catch {
+      return ende("durchgefallen", `ungültiges Weiterleitungsziel: ${ort}`);
+    }
+    if (naechste.protocol !== "https:") {
+      return ende(
+        "durchgefallen",
+        verschluesselt
+          ? `HTTP-Rückfall: ${url.href} leitet auf ${naechste.href}`
+          : `Umleitung nicht auf https://: ${naechste.href}`,
+      );
+    }
+    url = naechste;
   }
-  const ort = String(a.kopf.location ?? "");
-  if ([301, 302, 303, 307, 308].includes(a.status) && ort.startsWith("https://")) {
-    return { ...basis, ergebnis: "bestanden", status: a.status, umleitung: ort };
-  }
-  return {
-    ...basis,
-    ergebnis: "durchgefallen",
-    status: a.status,
-    umleitung: ort || null,
-    grund: "Klartext-Antwort ohne Umleitung auf https://",
-  };
+  return ende("durchgefallen", `mehr als ${MAX_WEITERLEITUNGEN} Weiterleitungen`);
 }
 
 function hstsMaxAge(wert) {

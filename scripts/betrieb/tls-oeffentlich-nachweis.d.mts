@@ -17,6 +17,13 @@ export interface ProbenZiel {
   readonly jetzt?: number | undefined;
 }
 
+export interface Kettenschritt {
+  readonly url: string;
+  readonly status?: number;
+  readonly umleitung?: string | null;
+  readonly fehler?: string;
+}
+
 export interface Probe {
   readonly probe: "O1" | "O2" | "O3";
   readonly host: string;
@@ -24,7 +31,8 @@ export interface Probe {
   readonly grund?: string;
   readonly pfad?: string;
   readonly status?: number;
-  readonly umleitung?: string | null;
+  /** O2: jeder verfolgte Schritt der Weiterleitungskette. */
+  readonly kette?: readonly Kettenschritt[];
   readonly hsts?: string | null;
   readonly protokoll?: string | null;
   readonly aussteller?: string | null;
@@ -48,6 +56,7 @@ export declare const TASKPANE_PFAD: string;
 export declare const KLARTEXT_PFADE: readonly string[];
 export declare const MINDEST_RESTTAGE: number;
 export declare const HSTS_MINDEST_MAX_AGE: number;
+export declare const MAX_WEITERLEITUNGEN: number;
 
 export declare function pruefeZertifikat(optionen: ProbenZiel): Promise<Probe>;
 export declare function pruefeKlartext(optionen: ProbenZiel, pfad: string): Promise<Probe>;

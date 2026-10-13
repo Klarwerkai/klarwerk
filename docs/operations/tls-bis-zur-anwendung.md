@@ -146,15 +146,18 @@ node <repo>/scripts/betrieb/tls-oeffentlich-nachweis.mjs            # klarwerk.a
 | Probe | Erwartung |
 | --- | --- |
 | O1 | TLS-Handschlag gegen den Vertrauensspeicher des Systems mit Namensprüfung, mindestens TLS 1.2, Restlaufzeit mindestens 14 Tage. Aussteller und Laufzeit stehen im Beleg. |
-| O2 | `http://<host>/word-addin/taskpane.html` und `http://<host>/health` leiten auf `https://` um; jede andere Klartext-Antwort ist durchgefallen. |
+| O2 | `http://<host>/word-addin/taskpane.html` und `http://<host>/health` leiten auf `https://` um. Die Kette wird bis zu fünf Weiterleitungen verfolgt: jedes Ziel `https://` mit geprüftem Zertifikat, das letzte antwortet 2xx. Klartext-Antwort, HTTP-Rückfall an beliebiger Stelle, abgelehntes Zertifikat oder längere Kette sind durchgefallen; jeder Schritt steht in `kette`. |
 | O3 | `https://<host>/word-addin/taskpane.html` antwortet 200 mit HSTS von mindestens einem Jahr. |
 
 Ausgänge wie oben: bestanden, durchgefallen, ungeklärt; Exitcode 0 nur, wenn alles bestanden ist.
 Gegengeprüft an echten Sockets in `tests/security/tls-oeffentlich-nachweis.test.ts`.
 
-Grenze: Die Probe sieht, was der Vermittler ausliefert, nicht seine Konfiguration. Dass er das
-Zertifikat selbst erneuert, belegen zwei Läufe im Abstand einer Erneuerung (Aussteller gleich,
-`gueltig_bis` später). Bis ein solcher Beleg vorliegt, bleibt `OFFEN.md` I11-U3 UNBELEGT.
+Grenze: Die Probe sieht, was der Vermittler ausliefert, nicht seine Konfiguration. Zwei Läufe mit
+verschiedenem `gueltig_bis` zeigen nur einen beobachteten Zertifikatswechsel; ob der Vermittler das
+Zertifikat selbst beschafft oder jemand es von Hand getauscht hat, ist daraus nicht unterscheidbar.
+Dass der Vermittler TLS terminiert und das Zertifikat beschafft, verlangt einen eigenen
+Konfigurations- oder Betriebsbeleg der Plattform (Ops/Pedi). Bis er vorliegt, bleibt `OFFEN.md`
+I11-U3 UNBELEGT.
 
 ## Zertifikatswechsel
 
