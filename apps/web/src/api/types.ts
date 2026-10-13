@@ -2493,6 +2493,15 @@ export interface AbbruchBefund {
   zeichen: number;
 }
 
+// produkt:20261010:poc-ki-ausfall-weiterarbeiten: WORTGLEICH zu `KiErsatzGrund` in
+// `services/reasoner/src/types.ts` (hier gehalten und nicht importiert, s. `REASONER_TASKS`).
+export type KiErsatzGrund =
+  | "zeitueberschreitung"
+  | "nicht_erreichbar"
+  | "verweigert"
+  | "kontingent"
+  | "fehler";
+
 export interface AnswerResult {
   answered: boolean;
   answer: string | null;
@@ -2512,6 +2521,10 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): gesetzt NUR, wenn ein Modellversuch
+  // scheiterte und danach der regelbasierte Ersatz antwortete — Spiegel von `KiErsatzGrund` in
+  // `services/reasoner/src/types.ts`. Fehlt es (alter Server, Modellantwort), sagt die Fläche nichts.
+  ersatzGrund?: KiErsatzGrund;
   // R-1643: die Argumentationskette — je Aussage die Quelle, deren Wortlaut sie belegt (Vertrag
   // am Serverfeld `AnswerResult.argumentation`, services/reasoner/src/types.ts). Optional: ein
   // älterer Server sendet sie nicht, und das Protokoll sagt dann, dass keine Kette vorliegt.

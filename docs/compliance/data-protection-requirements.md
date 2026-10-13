@@ -66,9 +66,10 @@
 | **KOs/Anhänge** | fachlicher Lebenszyklus; Admin kann **löschen** (`ko.deleted`) | über UI/Admin |
 | **Audit-Log** | **append-only, hash-verkettet** (Abweichungen rechnerisch prüfbar = tamper-evident; kein extern verankerter Kettenkopf) | **bewusst nicht löschbar** → Abwägung *Recht auf Löschung ↔ Nachweispflicht* **dokumentieren** |
 | **Konto** | bis Löschung; Admin `user.delete` | über Admin; Mitarbeiter stellen im Profil einen **Löschantrag** mit Frist (ein Monat), den die Verwaltung erledigt oder mit Grund ablehnt |
-| **Server-/Proxy-Logs** | **Betreiber-Logging-Policy** (außerhalb App) | Betreiber |
+| **Server-Logs der App** | **14 Tage** (Entscheidung 12.10.2026, PoC-Standard, keine gesetzliche Frist), einschließlich Diagnosekopien; keine Inhalte: Fehler nur als erlaubte Felder, E-Mail-Adressen/ausgewiesene Namen geschwärzt (`monitoring-logging.md` §4) | Insel: automatisch durch die App (tägliche Rotation, Löschung nach 14 Tagen im Protokollordner und in `diagnose/`); Ein-Befehl-Weg: automatisch durch den Dienst `protokollpflege` (Docker-Hostlauf); Coolify: derselbe Hostlauf als geplanter Aufruf — **Einrichtung am Host offen** (`monitoring-logging.md` §8) |
+| **Proxy-Logs** | **Betreiber-Logging-Policy** (außerhalb App) | Betreiber |
 
-> **Kritisch/offen:** Für ModelRun-Metadaten und Server-/Proxy-Logs ist die **konkrete Retention-Frist** noch **Betreiberentscheidung**; die **Audit-Löschungs-Abwägung** ist organisatorisch zu dokumentieren.
+> **Kritisch/offen:** Die Frist für Server-Logs ist **entschieden** (14 Tage); technisch umgesetzt für Insel und Ein-Befehl-Weg; für Coolify liegt der Hostlauf bereit, seine **Einrichtung am Coolify-Host** und die Wirkungsnachweise an den echten Speicherorten fehlen noch. Für ModelRun-Metadaten und Proxy-Logs ist die Frist weiter **Betreiberentscheidung**. **Sicherheits-/Auditnachweise** erhalten eine **eigene begründete Regel** (noch nicht festgelegt); die **Audit-Löschungs-Abwägung** ist organisatorisch zu dokumentieren.
 
 ---
 
@@ -102,7 +103,7 @@
 
 ## 6. Kritische offene Punkte (ehrlich, ohne Folge-Ticketflut)
 
-1. **Retention-Fristen** für ModelRun-Metadaten + Server-/Proxy-Logs — Betreiber festzulegen.
+1. **Retention-Fristen** für ModelRun-Metadaten + Proxy-Logs — Betreiber festzulegen. Server-Logs: 14 Tage entschieden und umgesetzt (Insel, Ein-Befehl-Weg); Einrichtung des Hostlaufs am Coolify-Host offen.
 2. **Audit-Löschungs-Abwägung** (Art. 17 ↔ Integrität) — organisatorisch dokumentieren.
 3. **Self-Service Auskunft/Export & Löschung** — seit Auftrag „Betroffenenrechte" Produktfunktion:
    „Meine Daten" (Auskunft + JSON-Datenmitnahme) und „Konto löschen lassen" (Antrag mit Frist) im
