@@ -10,6 +10,9 @@
 //   P3  R-2193 ist je Teil getrennt bewertet, mit dem gesonderten Auftrag; die genannten
 //       vorhandenen Bausteine existieren; Gamification bleibt ausgeschlossen (K3, R-1050).
 //   P4  Fehlende Belege und Widersprüche sind benannt (K4).
+//   P5  R-1925: SCRUM-475–481 sind einzeln gegen den Originalexport abgeglichen — Konzeptergebnis,
+//       Bestand mit Fassung und Beleg, offener Rest; 475 gegen R-1050 abgegrenzt, 477 mit der
+//       Konzeptantwort vom 17.07. und SCRUM-518, 481 geparkt (K2, K3, K4).
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { repoPfad } from "../support/repoPfad";
@@ -128,11 +131,58 @@ describe("P3 · R-2193 getrennt bewertet, Gamification ausgeschlossen", () => {
   });
 });
 
+describe("P5 · R-1925: die sieben Konzeptvorgänge einzeln abgeglichen", () => {
+  const abgleich = abschnitt("## 7.", "## 8.");
+  const zeile = (vorgang: string): string => {
+    const treffer = zeilenMit(abgleich, new RegExp(`^\\| ${vorgang} \\|`));
+    expect(treffer, vorgang).toHaveLength(1);
+    return treffer[0] ?? "";
+  };
+
+  it("je Vorgang eine Zeile mit Inhalt, Konzeptergebnis, Bestand und offenem Rest", () => {
+    for (let nummer = 475; nummer <= 481; nummer += 1) {
+      const vorgang = `SCRUM-${nummer}`;
+      const spalten = zeile(vorgang)
+        .split("|")
+        .map((s) => s.trim());
+      for (const index of [2, 3, 4, 5]) {
+        expect(spalten[index]?.length ?? 0, `${vorgang}, Spalte ${index}`).toBeGreaterThan(0);
+      }
+    }
+    expect(abgleich).toContain("jira-SCRUM.json");
+    expect(abgleich).toContain("1.0.0-beta.1.956");
+  });
+
+  it("die genannten Fundstellen und Belege existieren", () => {
+    for (const stelle of codeStellen(abgleich)) {
+      if (/^(apps|services|tests|docs)\//.test(stelle)) {
+        expect(existsSync(repoPfad(stelle)), stelle).toBe(true);
+      }
+    }
+  });
+
+  it("475 gegen R-1050; 477 mit Antwort vom 17.07. und SCRUM-518; 481 geparkt", () => {
+    expect(zeile("SCRUM-475")).toContain("**Abgelehnt.**");
+    expect(zeile("SCRUM-475")).toContain("R-1050");
+    expect(zeile("SCRUM-475")).toContain("Keine Gamification-Freigabe");
+    expect(zeile("SCRUM-477")).toContain("Kommentar vom 17.07.2026");
+    expect(zeile("SCRUM-477")).toContain("**SCRUM-518**");
+    expect(zeile("SCRUM-477")).toContain("Leere-Antwort-Rate");
+    expect(zeile("SCRUM-481")).toContain("**geparkt als Idee**");
+    expect(zeile("SCRUM-476")).toContain("Widerspruch zum heutigen Stand");
+    // Beide Video-Richtungen, Kopierschutz und Informationsbewertung stehen ausdrücklich da.
+    expect(zeile("SCRUM-479")).toContain("**Video → Wissen:**");
+    expect(zeile("SCRUM-479")).toContain("**Wissen → Video:**");
+    expect(zeile("SCRUM-478")).toContain("**Kopierschutz:**");
+    expect(zeile("SCRUM-478")).toContain("**Informationsbewertung:**");
+  });
+});
+
 describe("P4 · fehlende Belege und Widersprüche benannt", () => {
   it("SCRUM-475–481, Playbook, BEN-Urteil und Zeitachse", () => {
-    const offen = abschnitt("## 7.", "## Abgrenzung");
+    const offen = abschnitt("## 8.", "## Abgrenzung");
     for (const beleg of [
-      "SCRUM-475–481 nicht im Repository",
+      "SCRUM-475–481 jetzt abgeglichen",
       "Adoption-Playbook „Drei Akte“",
       "JOB 1043 / BEN-Urteil ROT",
       "Widerspruch zur Zeitachse",

@@ -139,11 +139,40 @@ keine pauschale Freigabe.
 | Selbstbedienungsbereitstellung | Bleibt an eine Firma je Instanz gebunden; keine Mandanten-Selbstanlage für die Einführung | — | `aufnahme:20260922:gesamt-instanztrennung` |
 | Gamification | Widerspricht der ausdrücklichen Grenze (R-1050); nicht Teil des Plans | Grenze im Code, siehe Abschnitt 5 | — |
 
-## 7. Offene Belege, Widersprüche und Entscheidungen
+## 7. R-1925: die sieben Konzeptvorgänge SCRUM-475–481 einzeln abgeglichen
 
-- **SCRUM-475–481 nicht im Repository:** Der Wortlaut der sieben Konzeptvorgänge liegt nicht im
-  Arbeitsbaum. Im Code erwähnt ist nur SCRUM-477 (FUNKE, zusammen mit SCRUM-529). Ob dieser Plan die
-  übrigen sechs abdeckt, ist **nicht abgeglichen**.
+Quelle: der datierte Originalexport `jira-SCRUM.json` vom 16.09.2026 (SHA-256 `753613a3…`), in den
+Auftragsunterlagen als `QUELLEN-FUEHRUNG-ADOPTION-SCRUM-475-481-20261013.json` bereitgestellt. Er
+enthält alle sieben Beschreibungen und alle vorhandenen Kommentare. Alle sieben stehen dort auf
+„To Do“ und sind als Konzeptantwort für die Demo angelegt. Ausdrückliche Abnahmekriterien enthält
+der Export nicht, und hier werden keine erfunden. Es ist ein historischer Export, kein heutiger
+Jira-Stand.
+
+„Vorhanden“ nennt Bestand in Fassung `1.0.0-beta.1.956` (Kandidat `715cf8d6d`), jeweils mit einer
+Fundstelle und einem vorhandenen Test als Beleg. Dieser Abgleich baut nichts, gibt nichts frei und
+legt keine Personal- oder Preispolitik fest.
+
+| Vorgang | Inhalt laut Export | Konzeptergebnis für die Nutzung | Vorhanden (Fassung 1.0.0-beta.1.956) | Gesondert oder heute ungeklärt |
+|---|---|---|---|---|
+| SCRUM-475 | Bonuspunkte-System mit Stufen Blue/Silver/Gold/Diamant; Punkte fürs Eingeben, Auszeichnung des besten Beitrags | **Abgelehnt.** Widerspricht der jüngeren ausdrücklichen Grenze R-1050 (keine Punkte, Abzeichen oder Ranglisten; Pflichtenheft §6). Das Ziel „zum Pflegen animieren“ übernimmt die freiwillige Wirkungsanzeige ohne Personenwertung (N3, N4, N10) | `services/app/src/impact.ts` (nur eigene Zahlen), Beleg `tests/app/impact-e2e.test.ts` | Keine Gamification-Freigabe. Eine spätere Umkehr wäre eine neue Entscheidung von Pedi |
+| SCRUM-476 | Offene Fragen eingeben und zuweisen, von ausgeschiedenen Mitarbeitenden (Rentnern) gegen Bezahlung abarbeiten lassen; „Basis existiert: Gap-System“ | Die Basis ist vorhanden: Lücken mit Zuständigen und der Meldung „gelöst“ (N2), dazu das Vermächtnis-Buch beim Weggang (N8). Bezahlung und Vertragsform sind keine Produktfrage dieses Plans | `services/ask/src/service.ts` (Lückenvorgang, `gap.assigned`), `services/app/src/routes/ausscheiden-routes.ts` (Status „Ausgeschieden“), Beleg `tests/aufgaben-ansicht/autorenuebergabe-aufgabe.test.ts` | **Widerspruch zum heutigen Stand:** Nach Peters Entscheidung vom 12.10.2026 verliert ein ausgeschiedenes Konto Zugang und Sitzungen, und offene Lücken gehen an eine Vertretung. Ein Rentnermodell bräuchte einen eigenen Zugangsweg. Ob eine Wiederfreigabe Ausgeschiedener gewollt ist, ist nicht entschieden (`docs/aufnahme/20260922-gesamt-aufgabenansicht-autorenuebergabe.md`). Offen für Pedi; hier nicht gebaut |
+| SCRUM-477 | Kernfrage: Warum nehmen sich Anwender täglich 15 Minuten? Geringe Reibung, Anreize, nicht-invasiver Begleiter (Klara ausbauen) | **Konzeptantwort vorhanden** (Kommentar vom 17.07.2026, Pedi und Kopf): Konsumieren lohnt sofort, wenn der Bestand steht. Pflegen lohnt nur mit „Import zuerst“, KI-Screening, sichtbarem Lückenbedarf und Nachfragezähler. Einwand „lieber face-to-face“: „Klarwerk konkurriert nicht mit dem Gespräch, sondern mit dem Vergessen danach.“ Ihre **messbaren Erfolgsbedingungen** — niedrige Leere-Antwort-Rate und minimale Pflege-Reibung — übernimmt dieser Plan als N1/G3 und B4. Die dort genannte Achillesferse „erlebter Rückfluss“ entspricht N2 bis N4 | FUNKE (SCRUM-477/529): `services/app/src/impact.ts`, `apps/web/src/components/FunkeCards.tsx`, Beleg `tests/app/funke.test.ts`; Nachfragezähler D-032 in `services/app/src/wissenskennzahlen.ts` | **SCRUM-518** („Internationaler Frühschoppen“: Experten-Meeting aufzeichnen, auswerten, als Kandidaten prüfen) ist die operative Antwort aus dem Kommentar. Es ist ein eigener Vorgang auf „To Do“ mit den Toren BR/DSGVO (484) und Media-Chunking (382), diesem Auftrag nicht als Originalpunkt zugeordnet. Der heutige Erfüllungsstand ist ungeklärt; Bausteine siehe SCRUM-480 |
+| SCRUM-478 | Kopierschutz des Systems („Secure the IP“) und Bewertung der Information nach dem Firmen-IP-Wert | **Kopierschutz:** Strategie- und Rechtsfrage, keine Nutzungsfrage; im Arbeitsbaum gibt es dazu keinen Bestand. **Informationsbewertung:** vorhanden nur als gekennzeichnetes Schätzmodell, nicht als gemessener IP-Wert. Für die Nutzung zählt der Schutz der Kundeninformation: Vertraulichkeitsstufen und kein Abfluss vertraulicher Inhalte | Schätzmodell `apps/web/src/pages/Stufe2.tsx` (Abschnitt `mgmt.valuation`); Vertraulichkeit `services/knowledge-object/src/confidentiality.ts` | Kopierschutz und eine IP-Bewertung über das Schätzmodell hinaus: kein Bestand, kein zugeordneter Auftrag, heute ungeklärt. Hier nicht gebaut |
+| SCRUM-479 | Video in beide Richtungen: aus Wissen Video erzeugen und aus Video Wissen gewinnen | **Video → Wissen:** teilweise vorhanden; Video und Audio werden importiert und transkribiert, ohne aktiven Dienst ehrlich „inactive“, vertrauliche Medien nur lokal oder freigegeben. **Wissen → Video:** kein Bestand gefunden | `services/media/src/transcriber.ts` (SCRUM-382), Beleg `tests/app/media-analyze-e2e.test.ts` | Wissen → Video: kein Bestand, kein zugeordneter Auftrag, heute ungeklärt. Hier nicht gebaut |
+| SCRUM-480 | Note-Taker per Sprache für Meetings; Auswertung von Meeting- und Notiz-Inhalten auf verwertbares Wissen | Teilweise vorhanden: Transkription (SCRUM-382), Bindung von Meeting-Aussagen an Folien und Dokumentstellen (BPA-16), Übernahme von Wissen aus Gesprächen als Entwurf (N6). Ein durchgehender Note-Taker vom Meeting bis zum validierten Wissen ist nicht belegt | `services/app/src/meeting-dokumentbezug.ts`, `services/app/src/routes/chat-routes.ts`; Belege `tests/meeting-dokumentbezug/`, `tests/interner-chat/` | Durchgehender Note-Taker: heute ungeklärt, eng verwandt mit SCRUM-518. Hier nicht gebaut |
+| SCRUM-481 | White-Label: Der Kunde gibt das System als sein eigenes aus. Konkretisierung vom 14.07.: Basic-CI mit Logo, Anzeigename, Primär- und Akzentfarbe | Laut Kommentar **geparkt als Idee**, mit der Vorbedingung „Abgrenzung zum Mandanten-/Tenant-Konzept klären“. Im heutigen Bestand gibt es eine Instanz je Firma. Ein Unternehmensprofil mit Name, optionalem Logo und einer Akzentfarbe aus fester Liste ist vorhanden; ausdrücklich kein Theme-Editor und keine freie Primärfarbe | `services/app/src/unternehmensprofil.ts` (ADMIN-15, `produkt:20261009:admin-unternehmensprofil`), Beleg `tests/admin-unternehmensprofil/` | Ein volles White-Label (eigene Marke statt Klarwerk, freie Farben) bleibt geparkt; Instanztrennung siehe `aufnahme:20260922:gesamt-instanztrennung`. Hier nicht gebaut |
+
+**Ergebnis für R-1925:** Zu jedem der sieben Vorgänge stehen hier Konzeptergebnis, vorhandener
+Bestand und der offene Rest. SCRUM-475 ist durch R-1050 abgelehnt. SCRUM-477 hat seit dem 17.07.
+eine Konzeptantwort, die dieser Plan weiterverwendet. SCRUM-481 ist geparkt. Die übrigen Reste
+(Rentnermodell, Kopierschutz, Wissen → Video, durchgehender Note-Taker, SCRUM-518) sind Ideen ohne
+zugeordneten Auftrag. Ihr heutiger Erfüllungsstand bleibt ungeklärt, bis jemand sie beauftragt.
+
+## 8. Offene Belege, Widersprüche und Entscheidungen
+
+- **SCRUM-475–481 jetzt abgeglichen** (Abschnitt 7) gegen den Originalexport vom 16.09.2026. Offen
+  bleibt nur, was der Export selbst nicht enthält: ausdrückliche Abnahmekriterien und ein heutiger
+  Jira-Stand. Im Arbeitsbaum selbst liegt der Wortlaut weiterhin nicht.
 - **Adoption-Playbook „Drei Akte“** (KBB-112, `BETA_ADOPTION_PLAYBOOK_DREI_AKTE_V1.md`, Repository
   `klarwerk-business-backend`) und `PEDI_INPUT_KONZEPTDELTA_ADOPTION_2026-07-01.md` liegen nicht im
   Arbeitsbaum (wie schon `docs/wissensupdate-teamgespraech.md` vermerkt). Die Momente oben stammen
