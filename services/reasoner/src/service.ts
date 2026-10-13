@@ -37,6 +37,7 @@ import {
   ModelTimeoutError,
   ReasonerMeldungFehler,
   classifyModelFailure,
+  ersatzGrundAus,
 } from "./model-errors";
 import type { ModelFailureInfo } from "./model-errors";
 import {
@@ -1642,6 +1643,9 @@ export class Reasoner {
     lenkung?: {
       kette?: readonly ReasonerProvider[];
       beantwortetVon?: (provider: ReasonerProvider) => void;
+      // PV-03-01: jeder gescheiterte Versuch, nach dem die Kette weiterläuft — der Aufrufer leitet
+      // daraus die Ursache des Ersatzwegs ab. Auslastung und Abschaltung brechen ab und melden nicht.
+      fehlversuch?: (fehler: unknown) => void;
     },
     // ANTWORTBELEG (R-0317): die vom Aufrufer vergebene Kennung des ERFOLGSdatensatzes. So kann der
     // Aufrufer genau den Laufprotokoll-Eintrag benennen, der sein Ergebnis belegt. Ohne sie vergibt
@@ -1869,6 +1873,7 @@ export class Reasoner {
           throw err;
         }
         lastError = err;
+        lenkung?.fehlversuch?.(err);
         // JOB 3036 R2: auch hier zählt nur der wirklich erfolgte Aufruf. Ein Provider, der vor dem
         // Client-Aufruf an etwas anderem gescheitert ist, hat kein Modell versucht.
         const versuchsModell = spur.gerufen ? provider.modelName?.() : undefined;
@@ -2654,12 +2659,13 @@ export class Reasoner {
     dokumenttext?: string,
   ): Promise<AnswerResult> {
     // REF-02: das Glied, das GENAU DIESE Antwort geliefert hat (s. `ANTWORT_ROLLEN`).
-    const lauf: { provider?: ReasonerProvider } = {};
+    // PV-03-01: dazu der letzte gescheiterte Versuch davor (s. `mitErsatzGrund`).
+    const lauf: { provider?: ReasonerProvider; fehler?: unknown } = {};
     // ANTWORTBELEG (R-0317): die Kennung des Laufprotokoll-Datensatzes, der diese Antwort belegt —
     // hier vergeben, damit sie dem Ergebnis mitgegeben werden kann. `runTask` schreibt den
     // Erfolgsdatensatz VOR der Rückgabe; kehrt der Aufruf zurück, steht der Datensatz.
     const laufId = randomUUID();
-    const result = await this.runTask(
+    const roh = await this.runTask(
       "answer",
       locale,
       (p) =>
@@ -2672,9 +2678,13 @@ export class Reasoner {
         beantwortetVon: (p) => {
           lauf.provider = p;
         },
+        fehlversuch: (fehler) => {
+          lauf.fehler = fehler;
+        },
       },
       laufId,
     );
+    const result = this.mitErsatzGrund(roh, lauf);
     // AUFTRAG-mega61 Block F: die Kennzeichnung wird HIER gesetzt und nicht in den Providern —
     // es gibt drei Provider-Wege zu einer Antwort (Cloud, lokal, deterministisch), und drei
     // Stellen wären drei Gelegenheiten, sie zu vergessen.
@@ -2687,6 +2697,20 @@ export class Reasoner {
       this.mitLaufkennung(mitHerkunftsmarke(result), laufId),
       lauf.provider,
     );
+  }
+
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): hat der deterministische Ersatz
+  // geantwortet, NACHDEM ein Modellversuch gescheitert ist, trägt die Antwort die Klasse dieses
+  // Scheiterns. Antwortete ein Modell (auch ein späteres Glied) oder wurde gar keins versucht, bleibt
+  // das Ergebnis unverändert — „nicht eingerichtet" sagt der Status, nicht die Antwort.
+  private mitErsatzGrund(
+    ergebnis: AnswerResult,
+    lauf: { provider?: ReasonerProvider; fehler?: unknown },
+  ): AnswerResult {
+    if (lauf.provider !== this.fallback || lauf.fehler === undefined) {
+      return ergebnis;
+    }
+    return { ...ergebnis, ersatzGrund: ersatzGrundAus(lauf.fehler) };
   }
 
   // ANTWORTBELEG (R-0317): die Laufprotokoll-Kennung an das Ergebnis — nur mit Laufprotokoll; ohne
@@ -2749,7 +2773,7 @@ export class Reasoner {
         : p.answer(question, context, locale, confidential, relevanz, dokumenttext);
     // Ein Behälter statt `let`: die Zuweisung geschieht im Rückruf, und eine Variable verengte der
     // Typprüfer danach fälschlich auf `undefined`.
-    const ersterLauf: { provider?: ReasonerProvider } = {};
+    const ersterLauf: { provider?: ReasonerProvider; fehler?: unknown } = {};
     // ANTWORTBELEG (R-0317): auch die Antwort mit Zweitmeinung belegt, welcher Laufprotokoll-Eintrag
     // sie getragen hat — dieselbe Kennungsvergabe wie in `answer`.
     const laufId = randomUUID();
@@ -2763,6 +2787,9 @@ export class Reasoner {
         beantwortetVon: (p) => {
           ersterLauf.provider = p;
         },
+        fehlversuch: (fehler) => {
+          ersterLauf.fehler = fehler;
+        },
       },
       laufId,
     );
@@ -2773,7 +2800,11 @@ export class Reasoner {
     // Die Kennung reist NUR an der ausgelieferten ersten Antwort, nicht in Vergleich und
     // Gegenüberstellung (`ersteVerglichen` unten bleibt ohne sie).
     // REF-02: die tatsächliche Rolle hängt am ausgelieferten Objekt, also an diesem.
-    const ersteMitLauf = this.mitAntwortRolle(this.mitLaufkennung(erste, laufId), ersterProvider);
+    // PV-03-01: die Ursache eines Ersatzwegs nur an der ausgelieferten Antwort, nicht im Vergleich.
+    const ersteMitLauf = this.mitAntwortRolle(
+      this.mitLaufkennung(this.mitErsatzGrund(erste, ersterLauf), laufId),
+      ersterProvider,
+    );
     const nicht = (grund: ZweitmeinungGrund) => ({
       erste: ersteMitLauf,
       zweitmeinung: { status: "nicht_moeglich" as const, grund },

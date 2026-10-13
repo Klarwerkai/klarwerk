@@ -153,6 +153,15 @@ import {
 import { fadenFuerAnfrage, fadenNachAntwort } from "../lib/gespraechsfaden";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 // R-0625 / R-1020 / R-1695: Herkunft und Stufe der Antwort aus EINER Ableitung.
+// produkt:20261010:poc-ki-ausfall-weiterarbeiten: Ursache, Hilfe und Speicherort beim KI-Ausfall.
+import {
+  entwurfSpeicherort,
+  erneutVersuchenSinnvoll,
+  ersatzGrundKey,
+  kiFehlerUrsache,
+  kiStoerungHinweisKey,
+  statusErneutPruefbar,
+} from "../lib/kiAusfall";
 import { ergebnisStufeFuerAntwort, kiHerkunftAus } from "../lib/kiHerkunft";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
@@ -848,7 +857,9 @@ export function Ask(): JSX.Element {
   // PAKET 1 (D-AISTATE, Pedi 23.07.): die KI-Antwort (Reasoner-Task „answer") ohne nutzbares Modell
   // HART ausgrauen — kein stiller deterministischer Fallback, der „KI antwortet" vortäuscht.
   const answerAi = useAiAvailable("answer");
-  const aiHintKey = answerAi.statusUnknown ? "ai.statusUnknown.hint" : "ai.unavailable.hint";
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): „eingerichtet, aber zuletzt nicht
+  // erreichbar" ist eine Störung und liest sich anders als „kein Modell eingerichtet".
+  const aiHintKey = kiStoerungHinweisKey(reasonerStatus.data, answerAi.statusUnknown);
   // D5: hat der ADMINISTRATOR die KI abgeschaltet, sagt die Fläche das so — und nicht „nicht
   // verfügbar", was eine Störung meint. Die Absendesperre selbst bleibt `answerAi.available`: eine
   // abgeschaltete Aufgabe `answer` hat keinen nutzbaren Modellweg, der Server meldet sie `false`.
@@ -1499,6 +1510,10 @@ export function Ask(): JSX.Element {
       ? ask.error.message
       : null;
   const gebremstAbgewiesen = gebremstSatz !== null;
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten: die belegte Ursache der gescheiterten Frage
+  // (PV-03-01) und wo die Frage jetzt gesichert ist (PV-03-03) — nachgelesen, nicht angenommen.
+  const fehlerUrsache = ask.isError ? kiFehlerUrsache(ask.error) : null;
+  const entwurfOrt = ask.isError ? entwurfSpeicherort(fragenSpeicher(), konto, q) : "nurSeite";
 
   const resultRef = useRef<HTMLDivElement | null>(null);
   // ==============================================================================================
@@ -2264,7 +2279,17 @@ export function Ask(): JSX.Element {
                 hinweisTestId="ask-ki-abgeschaltet-hinweis"
               />
             ) : (
-              <KiNichtVerfuegbar hinweisKey={aiHintKey} />
+              <KiNichtVerfuegbar
+                hinweisKey={aiHintKey}
+                // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-07): Erholung ohne
+                // Neuladen — bei einer Störung wird der Status auf Wunsch neu gelesen.
+                {...(statusErneutPruefbar(aiHintKey)
+                  ? {
+                      onErneutPruefen: () => void reasonerStatus.refetch(),
+                      pruefLaeuft: reasonerStatus.isFetching,
+                    }
+                  : {})}
+              />
             )
           ) : null}
         </span>
@@ -2432,6 +2457,23 @@ export function Ask(): JSX.Element {
                   {gebremstSatz}
                 </p>
               </div>
+            ) : fehlerUrsache === "kapazitaet" || fehlerUrsache === "verweigert" ? (
+              // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): die belegte Ursache
+              // statt „steckengeblieben". Nur bei Kapazität lohnt derselbe Versuch erneut.
+              <div data-testid={`ask-ki-${fehlerUrsache}`}>
+                <p className="text-[13px] font-semibold text-trust-crit-text">
+                  {t(`kiausfall.fehler.${fehlerUrsache}.titel`)}
+                </p>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-trust-crit-text">
+                  {t(`kiausfall.fehler.${fehlerUrsache}.text`)}
+                </p>
+                {erneutVersuchenSinnvoll(fehlerUrsache) ? (
+                  <Button className="mt-3" variant="ghost" onClick={() => submitAsk(asked || q)}>
+                    {t("ask.error.retry")}
+                    <ArrowRight size={14} />
+                  </Button>
+                ) : null}
+              </div>
             ) : (
               <>
                 <p className="text-[13px] font-semibold text-trust-crit-text">
@@ -2446,6 +2488,28 @@ export function Ask(): JSX.Element {
                 </Button>
               </>
             )}
+            {/* PV-03-03: wo die Frage jetzt liegt — „im Browser" nur, wenn dort nachgelesen. */}
+            <p
+              data-testid="ask-entwurf-speicherort"
+              data-ort={entwurfOrt}
+              className="mt-3 text-[12px] leading-relaxed text-muted"
+            >
+              {t(`kiausfall.entwurf.${entwurfOrt}`)}
+            </p>
+            {/* PV-03-02: bei belegter KI-Ursache stehen die Wege ohne KI auch hier, nicht nur bei
+                gesperrtem Knopf. Ein unbelegter Fehler wird nicht zum KI-Ausfall erklärt. */}
+            {fehlerUrsache !== null ? (
+              <p data-testid="ask-fehler-manuell" className="mt-1.5 text-[12px] text-muted">
+                {t("kiausfall.hilfe.manuell")}{" "}
+                <RoleLink to="/bibliothek" className="font-semibold text-brand-text">
+                  {() => t("ask.aiUnavailable.toLibrary")}
+                </RoleLink>
+                {" · "}
+                <RoleLink to="/erfassen" className="font-semibold text-brand-text">
+                  {() => t("ask.aiUnavailable.toCapture")}
+                </RoleLink>
+              </p>
+            ) : null}
           </div>
         ) : null}
         {/* R-0330 (Ben R1, F5): die Störung sieht nie wie Leere aus — und nie wie eine Antwort. */}
@@ -2496,6 +2560,19 @@ export function Ask(): JSX.Element {
               <ArrowRight size={14} />
             </Button>
           </output>
+        ) : null}
+        {/* produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): ist das Modell in DIESEM Lauf
+            gescheitert und hat der regelbasierte Ersatz geantwortet, steht die Ursache vor der
+            Karte — bei Antwort wie bei Lücke. Vor und nicht in der Karte: dort zählt das
+            Zeichenbudget bis zur KI-Kennzeichnung (mega62 E1), und die Antwort steht vorn (D-047). */}
+        {karteSichtbar && result && ersatzGrundKey(result.ersatzGrund) ? (
+          <p
+            data-testid="ask-ersatz-grund"
+            data-grund={result.ersatzGrund}
+            className="mb-3 mt-5 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] leading-relaxed text-trust-warn-text"
+          >
+            {t(ersatzGrundKey(result.ersatzGrund) ?? "")}
+          </p>
         ) : null}
         {/* Eine ANDERE Frage räumt die alte Antwort ab (`onMutate`) — sie gehört zu einer anderen
             Frage, und stehenzubleiben hieße, sie als Antwort auf die neue auszugeben. DIESELBE
