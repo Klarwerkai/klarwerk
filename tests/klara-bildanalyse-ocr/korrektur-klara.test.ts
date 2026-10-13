@@ -218,3 +218,45 @@ describe("B4 · K8 — keine Übertragung auf eine fremde Quelle oder ein verän
     expect(neu?.befunde[1]?.inhaltskennung).toBe(fassung1.befunde[1]?.inhaltskennung);
   });
 });
+
+// Nacharbeit 3 (Modelllauf am Kandidaten 382c5c45): Klara zitierte „LAGFR“, obwohl der Bildtext
+// berichtigt war — der Lesefehler stand in der automatischen Bildbeschreibung desselben Bildes.
+describe("B5 · K5 — die Berichtigung wirkt auch in der Bildbeschreibung desselben Bildes", () => {
+  it("„LAGFR“ steht weder im Bildtext noch in der Beschreibung; die Anweisung gibt Vorrang", async () => {
+    const eingang = einzelbildEingang("lager.png", dataUrl(bildMitMassen("L", 600, 200)));
+    const beschreibe = async () => ({
+      status: "beschrieben" as const,
+      text: "Ein weißes Schild mit der Aufschrift LAGFR 4711 in schwarzer Schrift.",
+    });
+    const roh = await createBildAnalyse({ erkenne: engine }).analysiereQuelle(eingang, {
+      automatik: true,
+      beschreibe,
+    });
+    const bild = roh.befunde[0];
+    if (!bild) {
+      throw new Error("kein Befund");
+    }
+    const praefix = "anhang";
+    const quelle = korrekturQuelleFuer(praefix, bild.fundstelle);
+    const [wirksam] = quellenMitKorrekturen([roh], praefix, [korrektur(quelle, bild, "LAGER 29")]);
+    const b = wirksam?.befunde[0];
+    expect(b?.bildinhalt.text).toBe(
+      "Ein weißes Schild mit der Aufschrift LAGER 4711 in schwarzer Schrift.",
+    );
+    // Der Rohbefund behält die ursprüngliche Beschreibung.
+    expect(b?.korrektur?.rohBildinhalt).toContain("LAGFR");
+
+    const k = klaraBildKontext("Lagerliste.", [wirksam as QuellenBefund], t, ortVon);
+    expect(k.kontext).not.toMatch(/LAGFR/i);
+    expect(k.kontext).toContain("klarabildkontext.kontext.inhalt: Ein weißes Schild");
+    for (const auftrag of ["frage", "zusammenfassung"] as const) {
+      expect(klaraAnweisung(auftrag, "Was steht auf dem Bild?", k, t)).toContain(
+        "bildfundstelle.anweisung.berichtigt",
+      );
+    }
+    // Ohne Berichtigung: keine solche Anweisung, Beschreibung unverändert (Gegenprobe).
+    const ohne = klaraBildKontext("", [roh], t, ortVon);
+    expect(ohne.kontext).toContain("LAGFR 4711");
+    expect(klaraAnweisung("frage", "x", ohne, t)).not.toContain("bildfundstelle.anweisung");
+  });
+});

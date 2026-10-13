@@ -20,6 +20,7 @@ import {
   type QuellenBefund,
   bildInhaltskennung,
 } from "./bildAutomatik";
+import { ausrichten } from "./bildFundstelle";
 
 /** Höchstlänge eines Namens in der Quelle (die ganze Quelle darf höchstens 300 Zeichen haben). */
 const NAME_MAX = 100;
@@ -138,6 +139,11 @@ export function befundMitKorrektur(b: BildBefund, k: BildKorrekturDaten | null):
   if (!k || !berichtigbar(b) || k.inhaltskennung !== b.inhaltskennung) {
     return b;
   }
+  // Nacharbeit 3 (Modelllauf): die automatische Bildbeschreibung (W02) desselben Bildes kann den
+  // berichtigten Lesefehler wörtlich enthalten („Schild mit LAGFR 4711“). Die Berichtigung wirkt
+  // deshalb auch dort — nur für die berichtigten Wörter; die Beschreibung bleibt im Rohbefund.
+  const beschrieben = b.bildinhalt.status === "beschrieben";
+  const angeglichen = beschrieben ? beschreibungAngleichen(b.text, k.text, b.bildinhalt.text) : "";
   return {
     ...b,
     status: k.text.trim().length > 0 ? "gelesen" : "kein-text",
@@ -146,15 +152,50 @@ export function befundMitKorrektur(b: BildBefund, k: BildKorrekturDaten | null):
     unsicher: [],
     // Die erkannte Tabelle stammt aus dem Rohbefund; sie bleibt dort sichtbar.
     tabelle: null,
+    ...(beschrieben ? { bildinhalt: { ...b.bildinhalt, text: angeglichen } } : {}),
     korrektur: {
       rohText: b.text,
       rohGekennzeichnet: b.textGekennzeichnet,
       rohUnsicher: b.unsicher,
       rohTabelle: b.tabelle,
+      ...(beschrieben ? { rohBildinhalt: b.bildinhalt.text } : {}),
       geaendertAm: k.geaendertAm,
       schritte: k.schritte,
     },
   };
+}
+
+/** Ein Wort als ganzes Wort im Text finden (Groß-/Kleinschreibung egal, Unicode-Grenzen). */
+function ganzesWort(wort: string): RegExp {
+  const sicher = wort.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\p{L}\\p{N}])${sicher}(?![\\p{L}\\p{N}])`, "giu");
+}
+
+/**
+ * Die Beschreibung, angeglichen an die Berichtigung: jedes Wort, das die Berichtigung an derselben
+ * Stelle durch ein ÄHNLICHES ersetzt hat (Lesefehler wie „LAGFR“ → „LAGER“, Zuordnung wie bei den
+ * Fundstellen), wird auch in der Beschreibung ersetzt. Andere Wörter bleiben unverändert.
+ */
+export function beschreibungAngleichen(
+  roh: string,
+  berichtigt: string,
+  beschreibung: string,
+): string {
+  const rohWoerter = roh.split(/\s+/).filter((w) => w.length > 0);
+  const neuWoerter = berichtigt.split(/\s+/).filter((w) => w.length > 0);
+  const zuordnung = ausrichten(
+    neuWoerter.map((w) => w.toLocaleLowerCase()),
+    rohWoerter.map((w) => w.toLocaleLowerCase()),
+  );
+  let text = beschreibung;
+  for (const [i, z] of zuordnung.entries()) {
+    const alt = z.wort === null ? undefined : rohWoerter[z.wort];
+    const neu = neuWoerter[i];
+    if (z.ersetzt && alt && neu && alt.toLocaleLowerCase() !== neu.toLocaleLowerCase()) {
+      text = text.replace(ganzesWort(alt), neu);
+    }
+  }
+  return text;
 }
 
 /**

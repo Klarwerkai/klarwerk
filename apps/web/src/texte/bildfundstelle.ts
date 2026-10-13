@@ -66,6 +66,8 @@ export default {
     "bildfundstelle.korrektur.zurueckgesetzt": "Rohbefund wiederhergestellt.",
     "bildfundstelle.kontext.textBerichtigt": "Bildtext (berichtigt)",
     "bildfundstelle.korrektur.erneutLaden": "Erneut laden",
+    "bildfundstelle.anweisung.berichtigt":
+      "Für Bilder mit „Bildtext (berichtigt)“ gilt allein dieser berichtigte Text. Gib keine davon abweichende Schreibweise oder Lesung wieder.",
     "bildfundstelle.klara.wartet":
       "Gespeicherte Berichtigungen werden geladen — Klara fragt erst danach, mit dem berichtigten Text.",
     "bildfundstelle.klara.ladeFehler":
@@ -126,6 +128,8 @@ export default {
     "bildfundstelle.korrektur.zurueckgesetzt": "Raw recognition result restored.",
     "bildfundstelle.kontext.textBerichtigt": "Image text (corrected)",
     "bildfundstelle.korrektur.erneutLaden": "Load again",
+    "bildfundstelle.anweisung.berichtigt":
+      "For images with “Image text (corrected)” only this corrected text applies. Do not repeat any differing spelling or reading.",
     "bildfundstelle.klara.wartet":
       "Loading saved corrections — Klara will only answer afterwards, using the corrected text.",
     "bildfundstelle.klara.ladeFehler":
@@ -187,6 +191,8 @@ export default {
     "bildfundstelle.korrektur.zurueckgesetzt": "Ruw resultaat hersteld.",
     "bildfundstelle.kontext.textBerichtigt": "Afbeeldingstekst (gecorrigeerd)",
     "bildfundstelle.korrektur.erneutLaden": "Opnieuw laden",
+    "bildfundstelle.anweisung.berichtigt":
+      "Voor afbeeldingen met „Afbeeldingstekst (gecorrigeerd)” geldt alleen deze gecorrigeerde tekst. Geef geen afwijkende spelling of lezing weer.",
     "bildfundstelle.klara.wartet":
       "Opgeslagen correcties worden geladen — Klara antwoordt pas daarna, met de gecorrigeerde tekst.",
     "bildfundstelle.klara.ladeFehler":

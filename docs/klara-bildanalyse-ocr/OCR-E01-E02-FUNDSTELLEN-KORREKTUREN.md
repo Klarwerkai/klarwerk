@@ -36,6 +36,11 @@ aktive, abschaltbare Automatik ist unverändert.
   Frage und Zusammenfassung gesperrt, solange die gespeicherten Berichtigungen laden oder ihr Laden
   fehlgeschlagen ist; das steht sichtbar da, mit „Erneut laden“. So geht nie unbemerkt der
   Rohbefund an Klara.
+- **Berichtigung wirkt auch in der Bildbeschreibung (Nacharbeit 3):** die automatische
+  Bildbeschreibung (W02) desselben Bildes kann den Lesefehler wörtlich enthalten. Die berichtigten
+  Wörter werden dort ebenso ersetzt (die ursprüngliche Beschreibung bleibt im Rohbefund), und die
+  Anweisung an Klara sagt: für berichtigte Bilder gilt allein der berichtigte Bildtext. Gefunden im
+  Modelllauf, in dem Klara „LAGFR“ aus der Beschreibung zitierte.
 - **Zuordnung berichtigter Wörter:** ein berichtigtes Wort übernimmt die Position des erkannten nur,
   wenn beide ähnlich sind (Lesefehler wie „Mül1er“/„Müller“, „1.5OO“/„1.500“) oder das erkannte
   `[unleserlich]` war; ein ganz anderes Wort hat keine Position (ehrlicher Rückfall).

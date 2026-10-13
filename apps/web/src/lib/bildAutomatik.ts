@@ -149,6 +149,8 @@ export interface BildKorrekturAnzeige {
   rohGekennzeichnet: string;
   rohUnsicher: UnsichereStelle[];
   rohTabelle: string[][] | null;
+  /** Nacharbeit 3: die Bildbeschreibung (W02) vor der Angleichung an die Berichtigung. */
+  rohBildinhalt?: string;
   geaendertAm: string;
   /** Wie oft „Rückgängig“ eine frühere Berichtigung zurückholt (danach gilt der Rohbefund). */
   schritte: number;

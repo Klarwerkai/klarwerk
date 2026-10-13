@@ -47,6 +47,8 @@ export interface BildKontextEintrag {
   /** Läuft oder wartet noch. */
   laeuft: boolean;
   status: BildBefund["status"];
+  /** OCR-E02: der Bildtext ist eine Berichtigung (sie hat Vorrang vor jeder anderen Lesung). */
+  berichtigt?: boolean;
 }
 
 export interface KlaraBildKontext {
@@ -137,6 +139,7 @@ export function klaraBildKontext(
         textGelesen,
         laeuft: b.status === "laeuft" || b.status === "wartet",
         status: b.status,
+        ...(b.korrektur ? { berichtigt: true } : {}),
       });
       if (text) {
         // OCR-E02: ein berichtigter Bildtext steht als solcher da (der Rohbefund geht nicht ein).
@@ -200,6 +203,11 @@ export function klaraAnweisung(
       : t("klarabildkontext.anweisung.zusammenfassung"),
     t("klarabildkontext.anweisung.fundstellen", { beispiel }),
   ];
+  // OCR-E02 (Nacharbeit 3): für berichtigte Bilder gilt allein der berichtigte Bildtext — keine davon
+  // abweichende Lesung (etwa aus einer früheren Bildbeschreibung) wiedergeben.
+  if (k.eintraege.some((e) => e.berichtigt)) {
+    teile.push(t("bildfundstelle.anweisung.berichtigt"));
+  }
   if (k.laeuft) {
     teile.push(t("klarabildkontext.anweisung.laeuft"));
   }
