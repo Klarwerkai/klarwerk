@@ -26,6 +26,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   truncateSync,
   writeFileSync,
 } from "node:fs";
@@ -33,9 +34,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import {
+  type Dateizugriff,
   EXITCODE,
+  NODE_DATEIZUGRIFF,
   argumente,
   bericht,
+  byteGleich,
   diagnostiziere,
   istAusgelagert,
   originalName,
@@ -76,6 +80,38 @@ function fahreStarter(args: string[]) {
     cwd: WURZEL,
     encoding: "utf-8",
   });
+}
+
+/**
+ * Der echte Dateizugriff mit einem nachgestellten Ausfall: `scheitert(art, pfad)` entscheidet,
+ * ob Oeffnen bzw. Lesen dieser Datei mit EACCES wirft. Gezaehlt wird, welche Deskriptoren offen
+ * blieben — die Gegenprobe zu Bens Befund (Nacharbeit 2), unabhaengig von Dateirechten, die ein
+ * Prueflauf als root ignorieren wuerde.
+ */
+function zugriffMitAusfall(scheitert: (art: "oeffne" | "lies", pfad: string) => boolean) {
+  const offen = new Map<number, string>();
+  const zugriff: Dateizugriff = {
+    oeffne(pfad) {
+      if (scheitert("oeffne", pfad)) {
+        throw Object.assign(new Error(`EACCES: open '${pfad}'`), { code: "EACCES" });
+      }
+      const fd = NODE_DATEIZUGRIFF.oeffne(pfad);
+      offen.set(fd, pfad);
+      return fd;
+    },
+    lies(fd, puffer) {
+      const pfad = offen.get(fd) ?? "";
+      if (scheitert("lies", pfad)) {
+        throw Object.assign(new Error(`EIO: read '${pfad}'`), { code: "EIO" });
+      }
+      return NODE_DATEIZUGRIFF.lies(fd, puffer);
+    },
+    schliesse(fd) {
+      offen.delete(fd);
+      NODE_DATEIZUGRIFF.schliesse(fd);
+    },
+  };
+  return { zugriff, offen };
 }
 
 describe("R-1303 · der Name allein entscheidet nichts — er waehlt nur Kandidaten", () => {
@@ -203,6 +239,53 @@ describe("R-2190 · Platten- und Dateizugriffsausfaelle werden nachvollziehbar f
     expect(bericht(d).join("\n")).toContain("NICHT vollstaendig gemessen");
   });
 
+  it("scheitert das Oeffnen des ORIGINALS: Fehler unter dem Originalpfad, kein Deskriptor offen", () => {
+    const wurzel = baum({ "a.txt": "gleich\n", "a 2.txt": "gleich\n" });
+    const original = join(wurzel, "a.txt");
+    const { zugriff, offen } = zugriffMitAusfall((art, p) => art === "oeffne" && p === original);
+
+    const d = diagnostiziere(wurzel, zugriff);
+
+    expect(d.zugriffsfehler).toHaveLength(1);
+    expect(d.zugriffsfehler[0]?.pfad, "gehoert dem Original, nicht der Kopie").toBe("a.txt");
+    expect(d.zugriffsfehler[0]?.code).toBe("EACCES");
+    expect([...offen.values()], "die schon geoeffnete Kopie blieb offen").toEqual([]);
+    expect(d.duplikate).toEqual([]);
+    expect(urteil(d)).toBe("UNVOLLSTAENDIG");
+  });
+
+  it("scheitert das Oeffnen der KOPIE: Fehler unter dem Kopienpfad, das Original wird nicht geoeffnet", () => {
+    const wurzel = baum({ "a.txt": "gleich\n", "a 2.txt": "gleich\n" });
+    const kopie = join(wurzel, "a 2.txt");
+    const geoeffnet: string[] = [];
+    const { zugriff, offen } = zugriffMitAusfall((art, p) => {
+      if (art === "oeffne") geoeffnet.push(p);
+      return art === "oeffne" && p === kopie;
+    });
+
+    const d = diagnostiziere(wurzel, zugriff);
+
+    expect(d.zugriffsfehler.map((x) => `${x.pfad} · ${x.code}`)).toEqual(["a 2.txt · EACCES"]);
+    expect(geoeffnet).toEqual([kopie]);
+    expect([...offen.values()]).toEqual([]);
+  });
+
+  it("scheitert das LESEN des Originals: Fehler unter dem Originalpfad, beide Deskriptoren zu", () => {
+    const wurzel = baum({});
+    const original = join(wurzel, "a.txt");
+    const kopie = join(wurzel, "a 2.txt");
+    writeFileSync(original, "gleich\n");
+    writeFileSync(kopie, "gleich\n");
+    const { zugriff, offen } = zugriffMitAusfall((art, p) => art === "lies" && p === original);
+
+    const ergebnis = byteGleich(kopie, original, zugriff);
+
+    expect(ergebnis).toMatchObject({ pfad: original });
+    expect([...offen.values()], "ein Deskriptor blieb nach dem Lesefehler offen").toEqual([]);
+    // KALIBRIERUNG: ohne Ausfall ist dasselbe Paar ein Duplikat — die Vorrichtung misst wirklich.
+    expect(byteGleich(kopie, original)).toBe(true);
+  });
+
   it("der freie Platz des Datentraegers steht in jedem Bericht", () => {
     const d = diagnostiziere(baum({ "a.txt": "a" }));
     expect("freiBytes" in d.platz, "statfs lieferte keinen Platz").toBe(true);
@@ -246,6 +329,21 @@ describe("Die Kette: Starter, Rueckgabewerte und Aufrufer", () => {
     expect(betroffen.status, betroffen.stderr).toBe(EXITCODE.SYNCHRONISATION_ERKANNT);
     expect(betroffen.stdout).toContain("a 2.txt  =  a.txt");
     expect(betroffen.stdout).toContain("ERKANNT");
+  });
+
+  it("der dokumentierte Direktaufruf ./tools/arbeitsordner-diagnose.sh laeuft ohne `bash` davor", () => {
+    // Ben, Nacharbeit 2: SETUP.md und das Onboarding nennen den Direktaufruf; versioniert war der
+    // Starter aber mit 100644 und scheiterte nach dem Klonen am fehlenden Ausfuehrungsrecht.
+    const starter = join(WURZEL, "tools/arbeitsordner-diagnose.sh");
+    expect(statSync(starter).mode & 0o111, "der Starter ist nicht ausfuehrbar").not.toBe(0);
+
+    const direkt = spawnSync("./tools/arbeitsordner-diagnose.sh", [baum({ "a.txt": "a\n" })], {
+      cwd: WURZEL,
+      encoding: "utf-8",
+    });
+    expect(direkt.error, "der Direktaufruf startet nicht").toBeUndefined();
+    expect(direkt.status, direkt.stderr).toBe(EXITCODE.KEIN_HINWEIS);
+    expect(direkt.stdout).toContain("Keine Sync-Wirkung gefunden");
   });
 
   it("tools/check faehrt den Waechter — und er meldet dort, ohne das Tor zu sperren", () => {

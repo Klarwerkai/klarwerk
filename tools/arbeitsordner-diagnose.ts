@@ -155,23 +155,61 @@ function alsZugriffsfehler(pfad: string, e: unknown): Zugriffsfehler {
   return { pfad, code: fehler.code ?? "UNBEKANNT", meldung: fehler.message ?? String(e) };
 }
 
-/** Bytevergleich in Bloecken — beide Dateien muessen lokal vorliegen (vom Aufrufer geprueft). */
-function byteGleich(a: string, b: string): boolean {
-  const fa = openSync(a, "r");
-  const fb = openSync(b, "r");
+/** Der Dateizugriff des Bytevergleichs — austauschbar, damit der Test Ausfaelle nachstellen kann. */
+export interface Dateizugriff {
+  oeffne(pfad: string): number;
+  lies(fd: number, puffer: Buffer): number;
+  schliesse(fd: number): void;
+}
+
+export const NODE_DATEIZUGRIFF: Dateizugriff = {
+  oeffne: (pfad) => openSync(pfad, "r"),
+  lies: (fd, puffer) => readSync(fd, puffer, 0, puffer.length, null),
+  schliesse: (fd) => closeSync(fd),
+};
+
+/** Ein Ausfall beim Vergleich — mit dem Pfad der Datei, an der er WIRKLICH auftrat. */
+export interface Vergleichsausfall {
+  pfad: string;
+  fehler: unknown;
+}
+
+/**
+ * Bytevergleich in Bloecken — beide Dateien muessen lokal vorliegen (vom Aufrufer geprueft).
+ *
+ * Ben, Nacharbeit 2: vorher wurden beide Dateien VOR dem try/finally geoeffnet. Scheiterte das
+ * Oeffnen des Originals, blieb der Deskriptor der Kopie offen, und der Aufrufer schrieb den Fehler
+ * dem Kopienpfad zu. Jetzt wird jeder erfolgreich geoeffnete Deskriptor im finally geschlossen, und
+ * ein Ausfall nennt die Datei, an der Oeffnen oder Lesen gescheitert ist (R-2190).
+ */
+export function byteGleich(
+  a: string,
+  b: string,
+  zugriff: Dateizugriff = NODE_DATEIZUGRIFF,
+): boolean | Vergleichsausfall {
+  let fa: number | undefined;
+  let fb: number | undefined;
+  let betroffen = a;
   try {
+    fa = zugriff.oeffne(a);
+    betroffen = b;
+    fb = zugriff.oeffne(b);
     const pa = Buffer.alloc(64 * 1024);
     const pb = Buffer.alloc(64 * 1024);
     for (;;) {
-      const na = readSync(fa, pa, 0, pa.length, null);
-      const nb = readSync(fb, pb, 0, pb.length, null);
+      betroffen = a;
+      const na = zugriff.lies(fa, pa);
+      betroffen = b;
+      const nb = zugriff.lies(fb, pb);
       if (na !== nb) return false;
       if (na === 0) return true;
       if (!pa.subarray(0, na).equals(pb.subarray(0, nb))) return false;
     }
+  } catch (e) {
+    return { pfad: betroffen, fehler: e };
   } finally {
-    closeSync(fa);
-    closeSync(fb);
+    if (fa !== undefined) zugriff.schliesse(fa);
+    if (fb !== undefined) zugriff.schliesse(fb);
   }
 }
 
@@ -198,7 +236,10 @@ function pfadHinweis(wurzel: string): string | null {
 }
 
 /** Die Diagnose eines Ordners. Liest Metadaten; Dateiinhalte nur fuer lokale Duplikat-Paare. */
-export function diagnostiziere(wurzel: string): Diagnose {
+export function diagnostiziere(
+  wurzel: string,
+  zugriff: Dateizugriff = NODE_DATEIZUGRIFF,
+): Diagnose {
   const diagnose: Diagnose = {
     wurzel,
     zeitpunkt: new Date().toISOString(),
@@ -256,12 +297,11 @@ export function diagnostiziere(wurzel: string): Diagnose {
       diagnose.unverglichen.push({ pfad: rel(pfad), original: rel(original), grund });
       continue;
     }
-    try {
-      if (byteGleich(pfad, original)) {
-        diagnose.duplikate.push({ pfad: rel(pfad), original: rel(original) });
-      }
-    } catch (e) {
-      diagnose.zugriffsfehler.push(alsZugriffsfehler(rel(pfad), e));
+    const gleich = byteGleich(pfad, original, zugriff);
+    if (gleich === true) {
+      diagnose.duplikate.push({ pfad: rel(pfad), original: rel(original) });
+    } else if (gleich !== false) {
+      diagnose.zugriffsfehler.push(alsZugriffsfehler(rel(gleich.pfad), gleich.fehler));
     }
   }
 
