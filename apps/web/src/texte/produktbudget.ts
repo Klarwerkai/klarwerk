@@ -52,6 +52,8 @@ export default {
       "Aufteilung und Zeitraum sind gefragt und noch nicht beantwortet. Bis dahin gibt dieses Budget nichts frei.",
     "produktbudget.speichern": "Speichern",
     "produktbudget.gespeichert": "Gespeichert.",
+    "produktbudget.gespeichertWeitere":
+      "Die gesendete Änderung ist gespeichert. Deine weitere Eingabe ist noch nicht gespeichert.",
     "produktbudget.unveraendert": "Keine Änderung — der Stand ist derselbe.",
     "produktbudget.konfliktUebernehmen": "Eingabe auf den neuen Stand beziehen",
     "produktbudget.verlaufZeile": "{{datum}} · Konto {{von}}: {{vorher}} → {{nachher}}",
@@ -113,6 +115,8 @@ export default {
       "Split and period have been asked about and are not yet answered. Until then this budget releases nothing.",
     "produktbudget.speichern": "Save",
     "produktbudget.gespeichert": "Saved.",
+    "produktbudget.gespeichertWeitere":
+      "The sent change is saved. Your further input is not saved yet.",
     "produktbudget.unveraendert": "No change — the status is the same.",
     "produktbudget.konfliktUebernehmen": "Apply my input to the new status",
     "produktbudget.verlaufZeile": "{{datum}} · account {{von}}: {{vorher}} → {{nachher}}",
@@ -173,6 +177,8 @@ export default {
       "Verdeling en periode zijn gevraagd en nog niet beantwoord. Tot dan geeft dit budget niets vrij.",
     "produktbudget.speichern": "Opslaan",
     "produktbudget.gespeichert": "Opgeslagen.",
+    "produktbudget.gespeichertWeitere":
+      "De verzonden wijziging is opgeslagen. Je verdere invoer is nog niet opgeslagen.",
     "produktbudget.unveraendert": "Geen wijziging — de stand is dezelfde.",
     "produktbudget.konfliktUebernehmen": "Invoer op de nieuwe stand betrekken",
     "produktbudget.verlaufZeile": "{{datum}} · account {{von}}: {{vorher}} → {{nachher}}",

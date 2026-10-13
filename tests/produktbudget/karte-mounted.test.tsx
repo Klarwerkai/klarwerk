@@ -26,6 +26,7 @@ vi.mock("../../apps/web/src/api/auth", async (importOriginal) => {
   };
 });
 
+import { act } from "../../apps/web/node_modules/react";
 import type { BudgetBereich, Produktbudgetstand } from "../../apps/web/src/api/produktbudget";
 import i18n from "../../apps/web/src/i18n";
 import { adminHref } from "../../apps/web/src/lib/adminSections";
@@ -102,10 +103,12 @@ interface Antwort {
 }
 
 let lesen: () => Antwort = () => ({ status: 200, body: stand() });
-let schreiben: (rumpf: Record<string, unknown>) => Antwort | "netzfehler" = () => ({
-  status: 200,
-  body: { ...stand(), wiederholt: false, geaendert: true },
-});
+type Schreibantwort = Antwort | "netzfehler";
+let schreiben: (rumpf: Record<string, unknown>) => Schreibantwort | Promise<Schreibantwort> =
+  () => ({
+    status: 200,
+    body: { ...stand(), wiederholt: false, geaendert: true },
+  });
 let puts: Record<string, unknown>[] = [];
 
 function netz(): void {
@@ -122,7 +125,7 @@ function netz(): void {
       } else if (methode === "PUT" && pfad.startsWith(`${WEG}/`)) {
         const rumpf = JSON.parse(init?.body ?? "{}") as Record<string, unknown>;
         puts.push(rumpf);
-        a = schreiben(rumpf);
+        a = await schreiben(rumpf);
       } else {
         throw new Error(`kein Netz in diesem Prüfstand: ${methode} ${pfad}`);
       }
@@ -262,6 +265,86 @@ describe("M3 · unklarer Schreibausgang", () => {
     expect(puts).toHaveLength(2);
     expect(puts[1]?.aenderungId).toBe(puts[0]?.aenderungId);
     expect(text(s, "pb-betrag-perplexity-poc")).toBe("26,00 EUR");
+  });
+});
+
+describe("M3b · Antwortverlust, danach geänderte Eingabe (Ben, nacharbeit-2)", () => {
+  it("die geänderte Eingabe bekommt eine NEUE Kennung und wird gespeichert, nicht verworfen", async () => {
+    let erster = true;
+    schreiben = (rumpf) => {
+      if (erster) {
+        erster = false;
+        return "netzfehler"; // die erste Sendung (26) ging verloren
+      }
+      return {
+        status: 200,
+        body: {
+          ...stand({ betragCent: 2700, fassung: 1 }),
+          wiederholt: false,
+          geaendert: rumpf.betrag === "27",
+        },
+      };
+    };
+    const s = await karte();
+    await tippe(eingabe(s, "perplexity-poc"), "26");
+    const knopf = s.container.querySelector('[data-testid="pb-speichern-perplexity-poc"]');
+    await klicke(knopf);
+    expect(text(s, "pb-meldung-perplexity-poc")).toBe(t("produktbudget.fehler.unklar"));
+    await tippe(eingabe(s, "perplexity-poc"), "27");
+    await klicke(knopf);
+    expect(puts).toHaveLength(2);
+    expect(puts[1]).toMatchObject({ betrag: "27", fassung: 0 });
+    expect(puts[1]?.aenderungId, "die alte Kennung stünde für eine andere Eingabe").not.toBe(
+      puts[0]?.aenderungId,
+    );
+    expect(text(s, "pb-betrag-perplexity-poc")).toBe("27,00 EUR");
+    expect(text(s, "pb-meldung-perplexity-poc")).toBe(t("produktbudget.gespeichert"));
+  });
+});
+
+describe("M3c · Eingabe während des Speicherns", () => {
+  it("die alte Antwort löscht nur den bestätigten Entwurf; die neue Eingabe bleibt", async () => {
+    let freigeben: ((a: Schreibantwort) => void) | null = null;
+    schreiben = (rumpf) =>
+      rumpf.betrag === "25"
+        ? new Promise<Schreibantwort>((ja) => {
+            freigeben = ja;
+          })
+        : {
+            status: 200,
+            body: {
+              ...stand({ betragCent: 3000, fassung: 2 }),
+              wiederholt: false,
+              geaendert: true,
+            },
+          };
+    const s = await karte();
+    await tippe(eingabe(s, "perplexity-poc"), "25");
+    await klicke(s.container.querySelector('[data-testid="pb-speichern-perplexity-poc"]'));
+    expect(puts).toHaveLength(1);
+    // Die Antwort steht noch aus — die Person tippt weiter.
+    await tippe(eingabe(s, "perplexity-poc"), "30");
+    await act(async () => {
+      (freigeben as ((a: Schreibantwort) => void) | null)?.({
+        status: 200,
+        body: {
+          ...stand({ betragCent: 2500, fassung: 1 }),
+          wiederholt: false,
+          geaendert: true,
+        },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await beruhige(5);
+    expect(text(s, "pb-betrag-perplexity-poc")).toBe("25,00 EUR");
+    expect(eingabe(s, "perplexity-poc").value, "die neue Eingabe wurde verworfen").toBe("30");
+    expect(text(s, "pb-meldung-perplexity-poc")).toBe(t("produktbudget.gespeichertWeitere"));
+    // Gespeichert wird sie als NEUE Änderung auf der eben bestätigten eigenen Fassung.
+    await klicke(s.container.querySelector('[data-testid="pb-speichern-perplexity-poc"]'));
+    expect(puts).toHaveLength(2);
+    expect(puts[1]).toMatchObject({ betrag: "30", fassung: 1 });
+    expect(puts[1]?.aenderungId).not.toBe(puts[0]?.aenderungId);
+    expect(text(s, "pb-betrag-perplexity-poc")).toBe("30,00 EUR");
   });
 });
 

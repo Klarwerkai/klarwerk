@@ -109,10 +109,15 @@ export interface BudgetEinstellung {
 /**
  * Eine Buchung gegen einen Bereich. `reserviert`: vor einem kostenpflichtigen Aufruf gegen den
  * Deckel gesperrt; `verbucht`: tatsächlich angefallen. Beide zählen gegen den Deckel. Je
- * Auftragskennung höchstens eine Buchung — Wiederholung und Neustart buchen nicht doppelt.
+ * AUSFÜHRUNG (Konto, Auftragskennung, Versuch) höchstens eine Buchung — dieselbe Ausführung bucht
+ * nicht doppelt, jeder weitere kostenwirksame Versuch und jedes andere Konto zählt eigens.
  */
 export interface BudgetBuchung {
+  /** Konto der Ausführung; `null` bei einer Buchung ohne Fähigkeitsauftrag (z. B. direkter Weg). */
+  readonly nutzer?: string | null;
   readonly auftragId: string;
+  /** Versuch der Ausführung; `null` wie bei `nutzer`. */
+  readonly versuch?: number | null;
   readonly art: "reserviert" | "verbucht";
   readonly cent: number;
   readonly waehrung: BudgetWaehrung;
@@ -134,6 +139,8 @@ export interface BudgetAenderung {
   readonly vorher: BudgetWerte;
   readonly nachher: BudgetWerte;
   readonly grund: string | null;
+  /** Die Fassung, auf die sich die Änderung bezog — Teil der Wiederholungsprüfung. */
+  readonly basisFassung?: number;
 }
 
 export interface ProduktbudgetStand {
@@ -306,6 +313,22 @@ export interface ProduktbudgetSicht {
   readonly bereiche: readonly BudgetBereichSicht[];
   /** Zeitpunkt dieser Lesung. */
   readonly gelesenAm: string;
+}
+
+/**
+ * Gehört die Buchung zu GENAU dieser Ausführung? Konto und Versuch zählen mit; eine Buchung ohne
+ * Herkunft (direkter Weg, ältere Zeile) passt nur zu einer Anfrage ohne Herkunft.
+ */
+function dieselbeAusfuehrung(
+  b: BudgetBuchung,
+  auftragId: string,
+  herkunft: { readonly nutzer: string; readonly versuch: number } | undefined,
+): boolean {
+  return (
+    b.auftragId === auftragId &&
+    (b.nutzer ?? null) === (herkunft?.nutzer ?? null) &&
+    (b.versuch ?? null) === (herkunft?.versuch ?? null)
+  );
 }
 
 function summe(buchungen: readonly BudgetBuchung[], art: BudgetBuchung["art"]): number {
@@ -546,8 +569,34 @@ export class Produktbudget {
       | { art: "fehler"; f: ProduktbudgetFehler };
     const ergebnis = await this.aendereStand<Ausgang>((stand) => {
       // Dieselbe Änderung kam schon an (unklarer Ausgang, erneutes Senden): kein zweiter Eintrag.
-      if (stand.aenderungen.some((a) => a.aenderungId === aenderungId)) {
-        return { neu: null, wert: { art: "wiederholt" } };
+      // „Dieselbe" heisst: dieselbe Person, derselbe Bereich, dieselbe Grundfassung und dieselbe
+      // Nutzlast. Eine bekannte Kennung mit ANDERER Eingabe bestätigt nichts — sonst verschwände
+      // eine neue, nie gespeicherte Eingabe hinter einer alten Bestätigung.
+      const frueher = stand.aenderungen.find((a) => a.aenderungId === aenderungId);
+      if (frueher) {
+        const gleich =
+          frueher.von === von &&
+          frueher.bereich === bereich &&
+          (frueher.basisFassung === undefined || frueher.basisFassung === fassung) &&
+          frueher.nachher.betragCent === nachher.betragCent &&
+          frueher.nachher.waehrung === nachher.waehrung &&
+          frueher.nachher.zeitraum === nachher.zeitraum &&
+          frueher.grund === grund;
+        if (gleich) {
+          return { neu: null, wert: { art: "wiederholt" } };
+        }
+        return {
+          neu: null,
+          wert: {
+            art: "fehler",
+            f: new ProduktbudgetFehler(
+              409,
+              "aenderung",
+              "Diese Änderungskennung gehört zu einer anderen Änderung; nichts wurde gespeichert.",
+              this.sicht(stand),
+            ),
+          },
+        };
       }
       const alt = stand.einstellungen.find((e) => e.bereich === bereich) as BudgetEinstellung;
       if (alt.fassung !== fassung) {
@@ -626,6 +675,7 @@ export class Produktbudget {
               },
               nachher,
               grund,
+              basisFassung: fassung,
             },
           ].slice(-MAX_AENDERUNGEN),
         },
@@ -659,15 +709,20 @@ export class Produktbudget {
         return e.zeitraum === "offen" ? null : r.verbleibend;
       },
       reserviere: (r) => this.reserviere(r),
-      verbuche: (zuordnung, cent, auftragId) => this.verbuche(zuordnung, cent, auftragId),
+      verbuche: (zuordnung, cent, auftragId, herkunft) =>
+        this.verbuche(zuordnung, cent, auftragId, herkunft),
     };
   }
 
   /**
    * Sperrt `cent` gegen den Deckel — atomar mit der Prüfung (Vergleich-und-Tausch auf die ganze
    * Zeile), daher können zwei parallele Aufrufe den Rest nicht beide verbrauchen. Nur bei passendem
-   * Anbieter, passender Währung, festgelegtem Zeitraum und ausreichendem Rest. Dieselbe
-   * Auftragskennung reserviert kein zweites Mal (Wiederholung, Wiederanlauf nach Neustart).
+   * Anbieter, passender Währung, festgelegtem Zeitraum und ausreichendem Rest.
+   *
+   * Die Identität ist die AUSFÜHRUNG — Konto, Auftragskennung, Versuch. Dieselbe Ausführung
+   * reserviert kein zweites Mal; ihre Wiederholung wird nur mit gleichem Betrag, gleicher Währung
+   * und noch offener Reservierung bestätigt. Ein anderes Konto mit derselben Auftragskennung und
+   * jeder weitere Versuch sind eigene kostenwirksame Aufrufe und zählen eigens gegen den Deckel.
    */
   async reserviere(r: KostenReservierung): Promise<boolean> {
     const zuordnung = r.zuordnung;
@@ -677,11 +732,24 @@ export class Produktbudget {
     if (r.anbieter !== vorgabe(zuordnung).anbieter) {
       return false;
     }
+    if (typeof r.nutzer !== "string" || r.nutzer === "" || !Number.isSafeInteger(r.versuch)) {
+      return false;
+    }
     return this.aendereStand<boolean>((stand) => {
       const e = stand.einstellungen.find((x) => x.bereich === zuordnung) as BudgetEinstellung;
       const buchungen = stand.buchungen[zuordnung] ?? [];
-      if (buchungen.some((b) => b.auftragId === r.auftragId)) {
-        return { neu: null, wert: true };
+      const vorhanden = buchungen.find((b) =>
+        dieselbeAusfuehrung(b, r.auftragId, { nutzer: r.nutzer, versuch: r.versuch }),
+      );
+      if (vorhanden) {
+        return {
+          neu: null,
+          wert:
+            vorhanden.art === "reserviert" &&
+            vorhanden.cent === r.cent &&
+            vorhanden.waehrung === r.waehrung &&
+            e.waehrung === r.waehrung,
+        };
       }
       if (e.zeitraum !== "einmalig" || r.waehrung !== e.waehrung) {
         return { neu: null, wert: false };
@@ -690,7 +758,9 @@ export class Produktbudget {
         return { neu: null, wert: false };
       }
       const b: BudgetBuchung = {
+        nutzer: r.nutzer,
         auftragId: r.auftragId,
+        versuch: r.versuch,
         art: "reserviert",
         cent: r.cent,
         waehrung: e.waehrung,
@@ -704,31 +774,37 @@ export class Produktbudget {
   }
 
   /**
-   * Verbucht tatsächlich angefallene Kosten. Eine Reservierung derselben Auftragskennung wird zur
-   * Buchung; ohne Reservierung entsteht eine neue — angefallene Kosten werden immer sichtbar, auch
-   * über dem Deckel. Dieselbe Kennung wird nie zweimal verbucht.
+   * Verbucht tatsächlich angefallene Kosten. Die Reservierung DERSELBEN Ausführung (Konto,
+   * Auftragskennung, Versuch) wird zur Buchung; ohne Reservierung entsteht eine neue — angefallene
+   * Kosten werden immer sichtbar, auch über dem Deckel. Dieselbe Ausführung wird nie zweimal
+   * verbucht.
    */
-  async verbuche(zuordnung: string, cent: number, auftragId: string): Promise<void> {
+  async verbuche(
+    zuordnung: string,
+    cent: number,
+    auftragId: string,
+    herkunft?: { readonly nutzer: string; readonly versuch: number },
+  ): Promise<void> {
     if (!istBereich(zuordnung) || !Number.isSafeInteger(cent) || cent < 0) {
       return;
     }
     await this.aendereStand<undefined>((stand) => {
       const e = stand.einstellungen.find((x) => x.bereich === zuordnung) as BudgetEinstellung;
       const buchungen = stand.buchungen[zuordnung] ?? [];
-      const vorhanden = buchungen.find((b) => b.auftragId === auftragId);
+      const vorhanden = buchungen.find((b) => dieselbeAusfuehrung(b, auftragId, herkunft));
       if (vorhanden?.art === "verbucht") {
         return { neu: null, wert: undefined };
       }
       const b: BudgetBuchung = {
+        nutzer: herkunft?.nutzer ?? null,
         auftragId,
+        versuch: herkunft?.versuch ?? null,
         art: "verbucht",
         cent,
         waehrung: vorhanden?.waehrung ?? e.waehrung,
         am: this.stempel(),
       };
-      const neu = vorhanden
-        ? buchungen.map((x) => (x.auftragId === auftragId ? b : x))
-        : [...buchungen, b];
+      const neu = vorhanden ? buchungen.map((x) => (x === vorhanden ? b : x)) : [...buchungen, b];
       return {
         neu: { ...stand, buchungen: { ...stand.buchungen, [zuordnung]: neu } },
         wert: undefined,

@@ -409,7 +409,14 @@ export interface GeheimnisQuelle {
 export interface KostenReservierung {
   readonly zuordnung: string;
   readonly cent: number;
+  /**
+   * Die Kostenidentität ist DIESE Ausführung: Konto, Auftragskennung (je Konto eindeutig) und
+   * Versuch. Eine Auftragskennung allein ist mandantenweit nicht eindeutig, und jeder weitere
+   * Versuch ist ein weiterer kostenwirksamer Aufruf.
+   */
+  readonly nutzer: string;
   readonly auftragId: string;
+  readonly versuch: number;
   /** Anbieterkennung des Empfängers — eine Zuordnung gilt nur für ihren Anbieter. */
   readonly anbieter: string | null;
   /** Währung des belegten Tarifs (`grenzen.kostenWaehrung`); `null` = nicht belegt. */
@@ -419,11 +426,18 @@ export interface KostenReservierung {
 /** Persistenter Kostenstand je Budgetzuordnung (G18). */
 export interface Kostenbuch {
   rest(zuordnung: string): Promise<number | null>;
-  verbuche(zuordnung: string, cent: number, auftragId: string): Promise<void>;
+  /** `herkunft`: Konto und Versuch der Ausführung — dieselbe Identität wie bei `reserviere`. */
+  verbuche(
+    zuordnung: string,
+    cent: number,
+    auftragId: string,
+    herkunft?: { readonly nutzer: string; readonly versuch: number },
+  ): Promise<void>;
   /**
    * produkt:20261013:produktbudget-anwender-admin (PBE-06): reserviert die Kosten eines Aufrufs
    * ATOMAR gegen den Deckel, bevor die Wirkung startet — parallele Aufrufe können den Rest so nicht
-   * beide verbrauchen. Dieselbe Auftragskennung reserviert nur einmal. `false`: keine Wirkung.
+   * beide verbrauchen. Dieselbe Ausführung (Konto, Auftrag, Versuch) reserviert nur einmal, und nur
+   * mit gleichem Betrag und gleicher Währung. `false`: keine Wirkung.
    */
   reserviere?(r: KostenReservierung): Promise<boolean>;
 }
@@ -1670,7 +1684,9 @@ export class FaehigkeitsAusfuehrung {
       const reserviert = await reserviere({
         zuordnung: v.kostenzuordnung,
         cent: vorab,
+        nutzer: bindung.nutzer,
         auftragId: bindung.auftragId,
+        versuch,
         anbieter: v.datenempfaenger.art === "extern" ? v.datenempfaenger.anbieter : null,
         waehrung: v.grenzen.kostenWaehrung ?? null,
       }).catch(() => false);
@@ -1846,7 +1862,10 @@ export class FaehigkeitsAusfuehrung {
         ? antwort.verbrauchCent
         : (v.grenzen.kostenJeAufrufCent ?? null);
     if (kosten !== null && kosten > 0 && v.kostenzuordnung && this.deps.kostenbuch) {
-      await this.deps.kostenbuch.verbuche(v.kostenzuordnung, kosten, bindung.auftragId);
+      await this.deps.kostenbuch.verbuche(v.kostenzuordnung, kosten, bindung.auftragId, {
+        nutzer: bindung.nutzer,
+        versuch,
+      });
     }
     const meldung =
       stand === "erfolgreich"

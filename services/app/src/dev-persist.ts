@@ -22,6 +22,11 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { type AppRepos, type AppServices, assembleServices, inMemoryRepos } from "./build-app";
 import { type BegriffFassung, type BegriffeRepo, InMemoryBegriffeRepo } from "./firmenwoerterbuch";
+import {
+  InMemoryProduktbudgetRepo,
+  type ProduktbudgetRepo,
+  type ProduktbudgetStand,
+} from "./produktbudget";
 import { journalZeileFuer, ohneVorgang } from "./speicher-vorgang";
 
 // Eine Journal-Zeile: welches Repo, welche Methode, welche Argumente (JSON-serialisierbar —
@@ -867,6 +872,62 @@ function journaledBegriffe(
   };
 }
 
+/**
+ * produkt:20261013:produktbudget-anwender-admin (PBE-06/08): die Journalart der Produktbudgets —
+ * Einstellungen, Provenienz, Buchungen und Reservierungen einer Mandantenzeile. Wie das
+ * Firmenwörterbuch nicht in `AppRepos`; `replayJournal` übergeht sie, `buildDevPersistServices`
+ * spielt sie getrennt zurück.
+ */
+export const PRODUKTBUDGET_ZEILE = { repo: "produktbudget", method: "ersetze" } as const;
+
+/**
+ * Die Produktbudgets mit Journal: ERST die Zeile, DANN die Ablage. Scheitert das Anhängen (Sperre,
+ * Schreibfehler), wirft der Aufruf, bevor sich der Speicherstand ändert — eine Änderung, eine
+ * Reservierung oder eine Buchung wird nie bestätigt, ohne dass ihre Zeile geschrieben wurde. Der
+ * Vergleich-und-Tausch läuft ohne Unterbrechung direkt nach dem Anhängen; das Replay ruft ihn in
+ * derselben Reihenfolge und erreicht damit denselben Stand (auch eine gescheiterte Zeile scheitert
+ * dort wieder).
+ */
+function journaledProduktbudget(
+  repo: ProduktbudgetRepo,
+  write: (entry: JournalEntry) => void,
+  sperre: JournalSchreibsperre,
+): ProduktbudgetRepo {
+  return {
+    hole: (mandant) => repo.hole(mandant),
+    ersetze: (mandant, alteVersion, neu) => {
+      sperre.pruefe();
+      write({
+        repo: PRODUKTBUDGET_ZEILE.repo,
+        method: PRODUKTBUDGET_ZEILE.method,
+        args: [mandant, alteVersion, neu],
+      });
+      return repo.ersetze(mandant, alteVersion, neu);
+    },
+  };
+}
+
+/** Spielt die Produktbudget-Zeilen eines Journals in eine frische Ablage zurück. */
+export async function produktbudgetAusJournal(
+  lines: readonly JournalLine[],
+): Promise<InMemoryProduktbudgetRepo> {
+  const repo = new InMemoryProduktbudgetRepo();
+  for (const { entry } of lines) {
+    const [mandant, alteVersion, neu] = entry.args;
+    if (
+      entry.repo === PRODUKTBUDGET_ZEILE.repo &&
+      entry.method === PRODUKTBUDGET_ZEILE.method &&
+      typeof mandant === "string" &&
+      typeof alteVersion === "number" &&
+      typeof neu === "object" &&
+      neu !== null
+    ) {
+      await repo.ersetze(mandant, alteVersion, neu as ProduktbudgetStand);
+    }
+  }
+  return repo;
+}
+
 // Komposition „Dev-Persistenz": Journal laden → in In-Memory-Repos zurückspielen →
 // Repos journalierend wrappen → identisch verdrahtete Service-Landschaft.
 // append-only via appendFileSync: kein Rewrite der Datei bei jeder Mutation, crash-tolerant
@@ -901,10 +962,14 @@ export async function buildDevPersistServices(
     sperre.pruefe();
     appendFileSync(file, `${JSON.stringify(entry)}\n`, "utf8");
   };
+  const produktbudget = await produktbudgetAusJournal(lines);
   const geschrieben = mitNeuaufsatz(write, restAmEnde(file));
   return assembleServices(
     journaledRepos(repos, geschrieben, false, bestaetigungInDatei(file), sperre),
-    { begriffe: journaledBegriffe(begriffe, geschrieben, sperre) },
+    {
+      begriffe: journaledBegriffe(begriffe, geschrieben, sperre),
+      produktbudget: journaledProduktbudget(produktbudget, geschrieben, sperre),
+    },
   );
 }
 

@@ -135,7 +135,9 @@ describe("Produktbudgets gegen echtes PostgreSQL", () => {
         (i % 2 === 0 ? a : b).reserviere({
           zuordnung: "perplexity-poc",
           cent: 500,
+          nutzer: `konto-pg-${i % 3}`,
           auftragId: `pg-parallel-${i}`,
+          versuch: 1,
           anbieter: "perplexity",
           waehrung: "EUR",
         }),

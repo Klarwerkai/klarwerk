@@ -192,7 +192,9 @@ describe("B2 · Geld exakt in Cent", () => {
       await d.reserviere({
         zuordnung: "perplexity-poc",
         cent: 1,
+        nutzer: "konto-fiktiv",
         auftragId: "auftrag-null",
+        versuch: 1,
         anbieter: "perplexity",
         waehrung: "EUR",
       }),
@@ -269,6 +271,39 @@ describe("B4 · unklarer Schreibausgang und konkurrierende Änderung", () => {
     const p = await bereich(d, "perplexity-poc");
     expect(p.fassung).toBe(1);
     expect(p.letzteAenderungen).toHaveLength(1);
+  });
+
+  it("bekannte Kennung mit ANDERER Eingabe, anderem Konto oder Bereich: 409, nichts bestätigt", async () => {
+    const d = dienst();
+    const id = aenderungId();
+    const erste = {
+      betrag: "22",
+      waehrung: "EUR",
+      zeitraum: "einmalig",
+      fassung: 0,
+      aenderungId: id,
+    };
+    await d.aendere(ADMIN, "perplexity-poc", erste);
+    // Nach Antwortverlust tippt die Person weiter — dieselbe Kennung darf das NICHT bestätigen.
+    await expect(
+      d.aendere(ADMIN, "perplexity-poc", { ...erste, betrag: "23" }),
+    ).rejects.toMatchObject({ status: 409, grund: "aenderung" });
+    await expect(
+      d.aendere(ADMIN, "perplexity-poc", { ...erste, grund: "anderer Grund" }),
+    ).rejects.toMatchObject({ status: 409, grund: "aenderung" });
+    await expect(d.aendere("konto-fremd", "perplexity-poc", erste)).rejects.toMatchObject({
+      status: 409,
+      grund: "aenderung",
+    });
+    await expect(
+      d.aendere(ADMIN, "nr32-claude", { ...erste, zeitraum: "offen" }),
+    ).rejects.toMatchObject({ status: 409, grund: "aenderung" });
+    const p = await bereich(d, "perplexity-poc");
+    expect(p).toMatchObject({ betragCent: 2200, fassung: 1 });
+    expect(p.letzteAenderungen).toHaveLength(1);
+    expect((await bereich(d, "nr32-claude")).fassung).toBe(0);
+    // Die IDENTISCHE Wiederholung bleibt eine Wiederholung.
+    expect((await d.aendere(ADMIN, "perplexity-poc", erste)).wiederholt).toBe(true);
   });
 
   it("zwei Personen auf derselben Fassung: die zweite bekommt 409 samt neuem Stand", async () => {
@@ -404,10 +439,12 @@ describe("B6 · Buchungen bleiben, Währung ist gebunden", () => {
 });
 
 describe("B7 · Reservierung gegen den Deckel", () => {
-  const anfrage = (auftragId: string, cent = 500) => ({
+  const anfrage = (auftragId: string, cent = 500, nutzer = "konto-a", versuch = 1) => ({
     zuordnung: "perplexity-poc",
     cent,
+    nutzer,
     auftragId,
+    versuch,
     anbieter: "perplexity",
     waehrung: "EUR",
   });
@@ -422,15 +459,50 @@ describe("B7 · Reservierung gegen den Deckel", () => {
     expect(p).toMatchObject({ reserviertCent: 2000, verbleibendCent: 0, sperre: "ausgeschoepft" });
   });
 
-  it("dieselbe Auftragskennung reserviert einmal; Verbuchen macht daraus eine Buchung", async () => {
+  it("dieselbe Ausführung reserviert einmal; Verbuchen macht daraus eine Buchung", async () => {
     const d = dienst();
+    const herkunft = { nutzer: "konto-a", versuch: 1 };
     expect(await d.reserviere(anfrage("einmal"))).toBe(true);
     expect(await d.reserviere(anfrage("einmal"))).toBe(true);
     expect((await bereich(d, "perplexity-poc")).reserviertCent).toBe(500);
-    await d.verbuche("perplexity-poc", 300, "einmal");
-    await d.verbuche("perplexity-poc", 300, "einmal");
+    await d.verbuche("perplexity-poc", 300, "einmal", herkunft);
+    await d.verbuche("perplexity-poc", 300, "einmal", herkunft);
     const p = await bereich(d, "perplexity-poc");
     expect(p).toMatchObject({ reserviertCent: 0, verbrauchtCent: 300, buchungen: 1 });
+    // Nach dem Verbuchen ist dieselbe Ausführung abgeschlossen — keine erneute Bestätigung.
+    expect(await d.reserviere(anfrage("einmal"))).toBe(false);
+  });
+
+  it("andere Konten mit derselben Auftragskennung und jeder weitere Versuch zählen eigens", async () => {
+    const d = dienst();
+    expect(await d.reserviere(anfrage("gleich", 500, "konto-a"))).toBe(true);
+    expect(await d.reserviere(anfrage("gleich", 500, "konto-b"))).toBe(true);
+    expect(await d.reserviere(anfrage("gleich", 500, "konto-a", 2))).toBe(true);
+    let p = await bereich(d, "perplexity-poc");
+    expect(p).toMatchObject({ reserviertCent: 1500, verbleibendCent: 500, buchungen: 3 });
+    // Das Verbuchen eines Kontos berührt die Reservierung des anderen nicht.
+    await d.verbuche("perplexity-poc", 500, "gleich", { nutzer: "konto-b", versuch: 1 });
+    p = await bereich(d, "perplexity-poc");
+    expect(p).toMatchObject({ reserviertCent: 1000, verbrauchtCent: 500, buchungen: 3 });
+    expect(await d.reserviere(anfrage("gleich", 500, "konto-c"))).toBe(true);
+    expect(await d.reserviere(anfrage("gleich", 500, "konto-d"))).toBe(false);
+  });
+
+  it("eine Wiederholung wird nur mit gleichem Betrag und gleicher Währung bestätigt", async () => {
+    const d = dienst();
+    expect(await d.reserviere(anfrage("bindung", 500))).toBe(true);
+    expect(await d.reserviere(anfrage("bindung", 400))).toBe(false);
+    expect(await d.reserviere({ ...anfrage("bindung", 500), waehrung: "USD" })).toBe(false);
+    expect(await d.reserviere({ ...anfrage("bindung", 500), waehrung: null })).toBe(false);
+    expect(await d.reserviere(anfrage("bindung", 500))).toBe(true);
+    expect((await bereich(d, "perplexity-poc")).reserviertCent).toBe(500);
+  });
+
+  it("ohne Konto oder Versuch keine Reservierung", async () => {
+    const d = dienst();
+    expect(await d.reserviere({ ...anfrage("x1"), nutzer: "" })).toBe(false);
+    expect(await d.reserviere({ ...anfrage("x2"), versuch: Number.NaN })).toBe(false);
+    expect((await bereich(d, "perplexity-poc")).buchungen).toBe(0);
   });
 
   it("falscher Anbieter, falsche oder fehlende Währung, offener Zeitraum: keine Freigabe", async () => {
@@ -449,7 +521,7 @@ describe("B7 · Reservierung gegen den Deckel", () => {
 
   it("Reservierungen überstehen den Neustart und zählen danach weiter gegen den Deckel", async () => {
     const repo = new InMemoryProduktbudgetRepo();
-    await dienst(repo).reserviere(anfrage("vor-neustart", 1500));
+    expect(await dienst(repo).reserviere(anfrage("vor-neustart", 1500))).toBe(true);
     const nach = dienst(repo);
     expect(await nach.reserviere(anfrage("nach-neustart", 1000))).toBe(false);
     expect(await nach.reserviere(anfrage("vor-neustart", 1500))).toBe(true);
@@ -590,6 +662,61 @@ describe("B8 · der Deckel am Ausführungsweg der Fähigkeiten", () => {
     expect(zweite.aufrufe).toEqual([]);
     const p = await bereich(zweite.budget, "perplexity-poc");
     expect(p).toMatchObject({ verbrauchtCent: 500, buchungen: 1 });
+  });
+
+  it("zwei Konten mit derselben Auftragskennung: zwei Aufrufe, zwei Buchungen", async () => {
+    const a = aufbau(new InMemoryProduktbudgetRepo());
+    a.registry.registriere(BEZAHLTE_SUCHE);
+    a.registry.installiereAdapter(a.adapter(BEZAHLTE_SUCHE));
+    const bindungen: Faehigkeitsbindung[] = [];
+    for (const konto of ["konto-x", "konto-y"]) {
+      const a2 = auftrag("gleiche-kennung", BEZAHLTE_SUCHE.id, konto);
+      const v = await a.ausfuehrung.bereiteVor(a2);
+      if (v.art !== "gebunden") {
+        throw new Error("nicht gebunden");
+      }
+      bindungen.push(v.bindung);
+    }
+    const ergebnisse = await Promise.all(bindungen.map((b) => a.ausfuehrung.fuehreAus(b)));
+    expect(ergebnisse.map((r) => r.stand)).toEqual(["erfolgreich", "erfolgreich"]);
+    expect(a.aufrufe).toHaveLength(2);
+    const p = await bereich(a.budget, "perplexity-poc");
+    expect(p).toMatchObject({ verbrauchtCent: 1000, reserviertCent: 0, buchungen: 2 });
+  });
+
+  it("ein erneuter Versuch nach Fehlschlag ist ein weiterer kostenwirksamer Aufruf", async () => {
+    const a = aufbau(new InMemoryProduktbudgetRepo());
+    a.registry.registriere(BEZAHLTE_SUCHE);
+    let runde = 0;
+    a.registry.installiereAdapter({
+      faehigkeitId: BEZAHLTE_SUCHE.id,
+      fassung: BEZAHLTE_SUCHE.fassung,
+      transport: "ersatz",
+      async fuehreAus(_eingabe, kontext) {
+        a.aufrufe.push(kontext.auftragId);
+        runde += 1;
+        return runde === 1
+          ? { status: "fehler", eintraege: [], meldung: "fiktiver Ausfall" }
+          : TREFFER;
+      },
+    });
+    const v = await a.ausfuehrung.bereiteVor(auftrag("zweimal", BEZAHLTE_SUCHE.id));
+    if (v.art !== "gebunden") {
+      throw new Error("nicht gebunden");
+    }
+    expect((await a.ausfuehrung.fuehreAus(v.bindung)).stand).toBe("fehlgeschlagen");
+    // Der Anbieter hat geantwortet: der Tarif des Aufrufs gilt als angefallen.
+    expect(await bereich(a.budget, "perplexity-poc")).toMatchObject({ verbrauchtCent: 500 });
+    const zweiter = await a.ausfuehrung.fuehreAus(v.bindung);
+    expect(zweiter.stand).toBe("erfolgreich");
+    expect(zweiter.versuch).toBe(2);
+    expect(a.aufrufe).toHaveLength(2);
+    expect(await bereich(a.budget, "perplexity-poc")).toMatchObject({
+      reserviertCent: 0,
+      verbrauchtCent: 1000,
+      verbleibendCent: 1000,
+      buchungen: 2,
+    });
   });
 
   it("Anbieterwechsel umgeht den Deckel nicht: ein anderer Empfänger bekommt dieses Budget nicht", async () => {

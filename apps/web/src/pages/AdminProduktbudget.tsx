@@ -8,15 +8,17 @@
 // rechnet keinen Rest selbst aus.
 //
 // DIE EINGABE GEHT NICHT VERLOREN (PBE-08). Der Entwurf eines Bereichs bleibt stehen, bis der
-// Server die Änderung bestätigt. Er trägt eine eigene Änderungskennung, die bei jedem erneuten
-// Speichern DIESELBE bleibt: kam die erste Antwort nie an, erkennt der Server die Wiederholung und
-// legt keinen zweiten Eintrag an. Bei einem Konflikt zeigt die Karte den neuen Stand NEBEN der
-// Eingabe; gespeichert wird erst, wenn die Person es erneut auslöst.
+// Server GENAU DIESEN Entwurf bestätigt. Beim Senden entsteht eine unveränderliche Kopie mit eigener
+// Änderungskennung (`Gesendet`): kam die Antwort nie an, trägt ein erneutes Senden derselben Werte
+// dieselbe Kennung und wirkt höchstens einmal; jede inzwischen geänderte Eingabe — auch während
+// des Speicherns getippt — ist eine neue Änderung und bleibt bei Eingang der alten Antwort stehen.
+// Bei einem Konflikt zeigt die Karte den neuen Stand NEBEN der Eingabe; gespeichert wird erst, wenn
+// die Person es erneut auslöst.
 //
 // DER FESTE SATZ unten steht sichtbar und nicht im „?"-Menü: eine Budgetänderung ist keine
 // Aufladung, keine Kontoumstellung und keine Tokenfreigabe — das muss man VOR dem Speichern lesen.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import {
@@ -42,7 +44,26 @@ interface Entwurf {
   grund: string;
   /** Die Fassung, auf der dieser Entwurf beruht — der Server prüft sie. */
   fassung: number;
-  aenderungId: string;
+}
+
+/**
+ * Ein GESENDETER Entwurf: eine unveränderliche Kopie der Werte samt ihrer Änderungskennung. Die
+ * Kennung gehört genau zu diesen Werten — nur ein erneutes Senden DERSELBEN Werte nach unklarem
+ * Ausgang trägt sie wieder; jede geänderte Eingabe bekommt eine neue.
+ */
+interface Gesendet {
+  readonly werte: Readonly<Entwurf>;
+  readonly aenderungId: string;
+}
+
+function gleicheWerte(a: Readonly<Entwurf>, b: Readonly<Entwurf>): boolean {
+  return (
+    a.betrag.trim() === b.betrag.trim() &&
+    a.waehrung === b.waehrung &&
+    a.zeitraum === b.zeitraum &&
+    a.grund.trim() === b.grund.trim() &&
+    a.fassung === b.fassung
+  );
 }
 
 type Meldung = { art: "ok" | "fehler" | "konflikt"; text: string };
@@ -82,7 +103,16 @@ function Wertzeile({
 function BereichKarte({ b, dezimal }: { b: BudgetBereich; dezimal: string }): JSX.Element {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
-  const [entwurf, setEntwurf] = useState<Entwurf | null>(null);
+  const [entwurf, setEntwurfZustand] = useState<Entwurf | null>(null);
+  // Der Spiegel des Entwurfs für die Antwortbehandlung: eine Antwort kommt an, während die Person
+  // schon weitertippt — entschieden wird gegen den Entwurf von JETZT, nicht den beim Absenden.
+  const entwurfJetzt = useRef<Entwurf | null>(null);
+  const setEntwurf = (neu: Entwurf | null): void => {
+    entwurfJetzt.current = neu;
+    setEntwurfZustand(neu);
+  };
+  // Der zuletzt gesendete, noch nicht bestätigte Entwurf (unklarer Ausgang).
+  const offen = useRef<Gesendet | null>(null);
   const [meldung, setMeldung] = useState<Meldung | null>(null);
 
   const betrag = (cent: number, waehrung: BudgetWaehrung): string =>
@@ -98,39 +128,55 @@ function BereichKarte({ b, dezimal }: { b: BudgetBereich; dezimal: string }): JS
     zeitraum: b.zeitraum,
     grund: "",
     fassung: b.fassung,
-    aenderungId: "",
   };
   const aendern = (teil: Partial<Entwurf>): void => {
     setMeldung(null);
-    setEntwurf({
-      ...aktuell,
-      ...teil,
-      aenderungId: aktuell.aenderungId === "" ? neueKennung() : aktuell.aenderungId,
-    });
+    setEntwurf({ ...aktuell, ...teil });
   };
 
   const speichern = useMutation({
-    mutationFn: (e: Entwurf) =>
+    mutationFn: (g: Gesendet) =>
       produktbudgetApi.aendere(b.bereich, {
-        betrag: e.betrag,
-        waehrung: e.waehrung,
-        zeitraum: e.zeitraum,
-        fassung: e.fassung,
-        aenderungId: e.aenderungId,
-        ...(e.grund.trim() === "" ? {} : { grund: e.grund }),
+        betrag: g.werte.betrag,
+        waehrung: g.werte.waehrung,
+        zeitraum: g.werte.zeitraum,
+        fassung: g.werte.fassung,
+        aenderungId: g.aenderungId,
+        ...(g.werte.grund.trim() === "" ? {} : { grund: g.werte.grund }),
       }),
-    onSuccess: (antwort) => {
+    onSuccess: (antwort, g) => {
       const { wiederholt, geaendert, ...stand } = antwort;
       qc.setQueryData<Produktbudgetstand>(PRODUKTBUDGET_KEY, stand);
-      setEntwurf(null);
+      if (offen.current?.aenderungId === g.aenderungId) {
+        offen.current = null;
+      }
+      // Gelöscht wird NUR der bestätigte Entwurf. Hat die Person inzwischen weitergetippt, bleibt
+      // ihre Eingabe stehen — bezogen auf die eben bestätigte eigene Fassung, nicht still verworfen.
+      const jetzt = entwurfJetzt.current;
+      const weiter = jetzt !== null && !gleicheWerte(jetzt, g.werte);
+      if (!weiter) {
+        setEntwurf(null);
+      } else if (jetzt.fassung === g.werte.fassung) {
+        const bestaetigt = stand.bereiche.find((x) => x.bereich === b.bereich)?.fassung;
+        setEntwurf({ ...jetzt, fassung: bestaetigt ?? jetzt.fassung });
+      }
       const gespeichert = geaendert || wiederholt;
       setMeldung({
         art: "ok",
-        text: t(gespeichert ? "produktbudget.gespeichert" : "produktbudget.unveraendert"),
+        text: t(
+          weiter
+            ? "produktbudget.gespeichertWeitere"
+            : gespeichert
+              ? "produktbudget.gespeichert"
+              : "produktbudget.unveraendert",
+        ),
       });
     },
     onError: (fehler) => {
       if (fehler instanceof ApiError) {
+        // Der Server hat entschieden: nichts wurde gespeichert. Ein neuer Versuch ist eine neue
+        // Änderung mit neuer Kennung.
+        offen.current = null;
         const grund = typeof fehler.details.grund === "string" ? fehler.details.grund : null;
         const neu = fehler.details.stand as Produktbudgetstand | undefined;
         if (neu && Array.isArray(neu.bereiche)) {
@@ -146,16 +192,31 @@ function BereichKarte({ b, dezimal }: { b: BudgetBereich; dezimal: string }): JS
         });
         return;
       }
-      // Kein Serverbefund (Netz, Zeitlimit): ob gespeichert wurde, ist unklar. Die Eingabe und ihre
-      // Änderungskennung bleiben — ein erneutes Speichern wirkt höchstens einmal.
+      // Kein Serverbefund (Netz, Zeitlimit): ob gespeichert wurde, ist unklar. Die Eingabe bleibt;
+      // `offen` behält den gesendeten Entwurf samt Kennung — ein erneutes Senden DIESER Werte wirkt
+      // höchstens einmal, eine geänderte Eingabe wird eine neue Änderung.
       setMeldung({ art: "fehler", text: t("produktbudget.fehler.unklar") });
     },
   });
 
+  const absenden = (): void => {
+    if (!entwurf) {
+      return;
+    }
+    const werte: Entwurf = { ...entwurf };
+    const frueher = offen.current;
+    const g: Gesendet =
+      frueher && gleicheWerte(frueher.werte, werte)
+        ? frueher
+        : { werte, aenderungId: neueKennung() };
+    offen.current = g;
+    speichern.mutate(g);
+  };
+
   // Nach einem Konflikt: die Eingabe auf den neuen Stand beziehen — ausdrücklich, per Knopf.
   const konfliktUebernehmen = (): void => {
     if (entwurf) {
-      setEntwurf({ ...entwurf, fassung: b.fassung, aenderungId: neueKennung() });
+      setEntwurf({ ...entwurf, fassung: b.fassung });
       setMeldung(null);
     }
   };
@@ -298,11 +359,7 @@ function BereichKarte({ b, dezimal }: { b: BudgetBereich; dezimal: string }): JS
         <Button
           variant="primary"
           disabled={entwurf === null || speichern.isPending}
-          onClick={() => {
-            if (entwurf) {
-              speichern.mutate(entwurf);
-            }
-          }}
+          onClick={absenden}
           data-testid={`pb-speichern-${id}`}
         >
           {t("produktbudget.speichern")}

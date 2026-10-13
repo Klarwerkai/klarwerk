@@ -56,5 +56,28 @@ Aufträge.
 ## Haltbarkeit
 
 Postgres-Betrieb: Tabelle `produktbudget` (eine Zeile je Mandant, `PRODUKTBUDGET_SCHEMA`, additiv),
-im Dump und in der Pflichtliste des Restore-Drills. Speicher- und Journalbetrieb halten den Stand
-nur bis zum Neustart.
+im Dump und in der Pflichtliste des Restore-Drills.
+
+Desktop-Journalbetrieb: eigene Journalart `produktbudget.ersetze` (`services/app/src/dev-persist.ts`).
+Jede Änderung, Reservierung und Buchung wird ERST als Zeile angehängt und erst danach im Speicher
+wirksam; scheitert das Anhängen, scheitert der Vorgang — bestätigt wird nichts ohne Zeile. Beim
+Start spielt `buildDevPersistServices` die Zeilen in derselben Reihenfolge zurück.
+
+Nur der reine Speicherbetrieb (ohne Datenbank und ohne Journal, z. B. Prüfserver) hält den Stand
+bis zum Neustart.
+
+Offen (Produktentscheidung, nicht in diesem Auftrag getroffen): der Firmenreset im Journalbetrieb
+erhält nur Konten, Firmenwörterbuch und Prüfprotokoll (`FIRMENRESET_ERHALTEN`); Produktbudgets und
+ihre Buchungen fallen dort mit weg.
+
+## Kostenidentität
+
+Eine Buchung gehört zu genau einer Ausführung: Konto, Auftragskennung (je Konto eindeutig) und
+Versuch. Dieselbe Ausführung reserviert höchstens einmal, und ihre Wiederholung wird nur mit gleichem
+Betrag und gleicher Währung bestätigt. Ein anderes Konto mit derselben Auftragskennung und jeder
+weitere Versuch (etwa nach einem Fehlschlag) sind eigene kostenwirksame Aufrufe und zählen eigens
+gegen den Deckel.
+
+Eine Einstellungsänderung wird nur dann als Wiederholung bestätigt, wenn Kennung, Konto, Bereich,
+Grundfassung und Nutzlast übereinstimmen; eine bekannte Kennung mit anderer Eingabe ergibt 409
+(`aenderung`).
