@@ -25,13 +25,15 @@
 // damaligen Befunde heute geschlossen sind, ist nicht Gegenstand.
 //
 // Die Regel ist eine reine Funktion und wird zuerst an synthetischen Archiven gegengeprüft.
-import { existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const WURZEL = fileURLToPath(new URL("../../", import.meta.url));
 const ARCHIV_PFAD = "docs/qm/pruefarchiv-sammel26-44.md";
+const KOPIEN_PFAD = "docs/qm/pruefarchiv/berichte";
 const SPURLOS = "keine versionierte Spur";
 
 interface Bericht {
@@ -152,6 +154,33 @@ function maengel(archiv: string, lesen: (pfad: string) => string | null): string
   return funde;
 }
 
+/**
+ * Prüft die gesicherten Berichtstexte. Jede Datei muss einer der 32 Berichte sein, byte-gleich
+ * (SHA-256), und das Archiv muss genau die Anzahl der gesicherten Texte nennen.
+ */
+function kopienMaengel(
+  dateien: readonly { name: string; inhalt: Buffer }[],
+  archiv: string,
+): string[] {
+  const funde: string[] = [];
+  for (const d of dateien) {
+    const b = BERICHTE.find((x) => x.datei === d.name);
+    if (!b) {
+      funde.push(`${d.name}: kein Originalbericht dieses Namens`);
+      continue;
+    }
+    if (createHash("sha256").update(d.inhalt).digest("hex") !== b.sha256) {
+      funde.push(`${d.name}: SHA-256 weicht vom Original ab`);
+    }
+  }
+  const stand = archiv.match(/Sicherungsstand: (\d+) von 32 Berichtstexten/);
+  if (!stand) funde.push("Archiv nennt keinen Sicherungsstand");
+  else if (Number(stand[1]) !== dateien.length) {
+    funde.push(`Archiv nennt ${stand[1]} gesicherte Texte, im Repository liegen ${dateien.length}`);
+  }
+  return funde;
+}
+
 function zeileFuer(b: Bericht, befund = SPURLOS, fundstellen = "—", sha = b.sha256): string {
   return `| ${b.kennung} | \`${b.datei}\` | — | — | ${befund} | — | ${fundstellen} | \`${sha}\` | 1 | 1 |`;
 }
@@ -240,7 +269,50 @@ describe("Kalibrierung der Archivregel an synthetischen Archiven", () => {
   });
 });
 
+describe("Kalibrierung der Kopienprüfung (Sicherungsstand)", () => {
+  const stand = (n: number) =>
+    `**Sicherungsstand: ${n} von 32 Berichtstexten liegen im Repository.**`;
+
+  it("keine Kopie und „0 von 32“ trägt", () => {
+    expect(kopienMaengel([], stand(0))).toEqual([]);
+  });
+
+  it("eine behauptete Sicherung ohne Datei ist rot", () => {
+    expect(kopienMaengel([], stand(32))).toEqual([
+      "Archiv nennt 32 gesicherte Texte, im Repository liegen 0",
+    ]);
+  });
+
+  it("eine veränderte Kopie, eine fremde Datei und eine fehlende Standzeile sind rot", () => {
+    const dateien = [
+      { name: "BERICHT-sammel38.md", inhalt: Buffer.from("verändert\n") },
+      { name: "BERICHT-sammel99.md", inhalt: Buffer.from("x") },
+    ];
+    expect(kopienMaengel(dateien, "kein Stand")).toEqual([
+      "BERICHT-sammel38.md: SHA-256 weicht vom Original ab",
+      "BERICHT-sammel99.md: kein Originalbericht dieses Namens",
+      "Archiv nennt keinen Sicherungsstand",
+    ]);
+  });
+
+  it("der Hash ist der SHA-256 über die rohen Bytes", () => {
+    // Bekannter Wert des leeren Inhalts: so ist belegt, dass hier kein anderer Hash rechnet.
+    expect(createHash("sha256").update(Buffer.alloc(0)).digest("hex")).toBe(
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    );
+  });
+});
+
 describe("R-2042: das echte Archiv sammel26–44", () => {
+  it("der genannte Sicherungsstand stimmt mit den Kopien im Repository überein", () => {
+    const archivText = readFileSync(join(WURZEL, ARCHIV_PFAD), "utf8");
+    const ordner = join(WURZEL, KOPIEN_PFAD);
+    const dateien = existsSync(ordner)
+      ? readdirSync(ordner).map((name) => ({ name, inhalt: readFileSync(join(ordner, name)) }))
+      : [];
+    expect(kopienMaengel(dateien, archivText)).toEqual([]);
+  });
+
   const archiv = readFileSync(join(WURZEL, ARCHIV_PFAD), "utf8");
   const lesen = (pfad: string) => {
     const voll = join(WURZEL, pfad);
@@ -273,6 +345,11 @@ describe("R-2042: das echte Archiv sammel26–44", () => {
     ]);
     expect(b34.fundstellen.map((f) => f.pfad)).toEqual(["tests/app/review-claim-recovery.test.ts"]);
     expect(archiv).toContain("32 Berichte, 19 in Reihe A und 13 in Reihe B");
+    // BEN Nacharbeit 2: die Zählzeile nannte 11 statt 10. Sie wird jetzt an der Tabelle gemessen.
+    const mitSpur = zeilen.filter((z) => z.fundstellen.length > 0).length;
+    const genannt = archiv.match(/(\d+)\s+Berichte haben versionierte Fundstellen/);
+    expect(Number(genannt?.[1])).toBe(mitSpur);
+    expect(archiv).toMatch(new RegExp(`Die übrigen ${32 - mitSpur} sind nur über`));
   });
 
   it("OFFEN.md I5 verweist aufs Archiv, behält den alten Wortlaut, nennt beide Reihen", () => {

@@ -100,9 +100,15 @@ Am heutigen Stand nachgesehen:
 | B-sammel37 | `BERICHT-sammel37.md` | Finaler Recheck Ship 8 CLOSE-9 | nicht übernommen | keine versionierte Spur | nicht übernommen | — | `346aec4969199e8741693b4b350e5e28170838f75ba0339474243cdad803ee9a` | 132 | 9886 |
 | B-sammel38 | `BERICHT-sammel38.md` | Post-Ship-Kurzcheck | nicht übernommen | keine versionierte Spur | nicht übernommen | — | `991e19e350122078d6bb959f58d00a4c2d0dcb39ebd8021cf77763d66dae8f6a` | 22 | 1646 |
 
-**Zählung:** 32 Berichte, 19 in Reihe A und 13 in Reihe B. Jeder hat einen Datei-SHA-256. 11
-Berichte haben versionierte Fundstellen: in Reihe A sammel32, 34, 37, 39, 40, 42, 43 und 44, in
-Reihe B sammel33 und 34. Die übrigen 22 sind nur über Datei und Hash verankert.
+**Zählung:** 32 Berichte, 19 in Reihe A und 13 in Reihe B. Jeder hat einen Datei-SHA-256. 10
+Berichte haben versionierte Fundstellen: 8 in Reihe A (sammel32, 34, 37, 39, 40, 42, 43, 44) und 2
+in Reihe B (sammel33, 34). Die übrigen 22 sind nur über Datei und Hash verankert. (Die Fassung aus
+Nacharbeit 1 nannte hier „11“; das war falsch, BEN Nacharbeit 2.)
+
+**Sicherungsstand: 0 von 32 Berichtstexten liegen im Repository.** Diese Zahl ist nicht frei
+geschrieben. Der Prüfstand zählt die Dateien in `docs/qm/pruefarchiv/berichte/` und verlangt, dass
+diese Zeile genau diese Zahl nennt. Jede dort liegende Datei muss Namen und SHA-256 eines der 32
+Berichte tragen. Eine fremde oder veränderte Datei ist rot.
 
 **Wiederkehrende Fehlerklasse (Lesart der Fundstellen, kein Wortlaut von ben):** Mehrere Befunde der
 Reihe A haben dieselbe Bauart. Eine zweite Wahrheit läuft neben der ersten: die eigene Rollentabelle
@@ -150,8 +156,12 @@ versionierten Text.
   Repository zu sichern. Diese Bahn kann das nicht: Ihre Datei- und Shellwerkzeuge sind auf
   Arbeitsbaum und Auftragsordner beschränkt, `_relay/ben/outbox/` liegt außerhalb. Das ist eine
   Grenze der Bahn, nicht der Quelle.
-  - Wer die 32 Dateien unverändert nach `docs/qm/pruefarchiv/berichte/` überträgt, kann sie über
-    die Datei-SHA-256 oben vollständig gegenprüfen. Der Prüfstand führt dieselben Hashes.
+  - In Nacharbeit 2 erneut versucht: Auch ein einzelner direkter Lesebefehl (`shasum` auf
+    `BERICHT-sammel38.md`) wurde ohne Freigabemöglichkeit abgelehnt. Ein anderer Zugriffsweg ist
+    dieser Bahn nicht zugänglich.
+  - Wer die 32 Dateien unverändert nach `docs/qm/pruefarchiv/berichte/` überträgt, wird vom
+    Prüfstand gegengeprüft: gleicher Name, gleicher SHA-256. Danach ist hier der Sicherungsstand
+    nachzuziehen, sonst wird der Prüfstand rot.
   - Vor dem Übertragen ist auf Geheimnisse zu prüfen. Diese Prüfung steht aus, weil die Bahn die
     Texte nicht lesen kann.
 - **Aus dem Berichtstext zu ergänzen**, sobald er gelesen werden kann:
