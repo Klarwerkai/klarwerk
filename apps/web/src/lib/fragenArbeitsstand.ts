@@ -81,6 +81,14 @@ export interface GespeicherteAntwort {
    */
   referenzpruefung?: ReferenzPruefung;
   aussageTexte?: [string, string][];
+  /**
+   * REF-04 (K5, Befund nacharbeit-2): die Passage je Fundstelle DIESER Antwort (REF-01-Bindung),
+   * damit der Wechsel Aussage → Fundstelle auch nach Neuaufbau der Seite (Rückweg von der Quelle,
+   * Wechsel der Ansicht) die Passage zeigt. Angezeigt wird sie nur an einer vom Server mit den
+   * AKTUELLEN Rechten bestätigten Prüfung (`bestaetigtFuer` in pages/Ask.tsx); eine verworfene
+   * Fundstelle steht dort nicht mehr, ihre Passage also auch nicht.
+   */
+  fundstellenAuszuege?: [string, string][];
 }
 
 /**
@@ -265,6 +273,8 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
   const beobachtet = quellenStandLesen(roh.beobachtet);
   const referenzpruefung = referenzpruefungAus(roh.referenzpruefung);
   const aussageTexte = aussageTexteAus(roh.aussageTexte);
+  // REF-04: dieselbe strenge Lesart wie die Aussagetexte — beschädigt heißt „keine Passagen".
+  const fundstellenAuszuege = aussageTexteAus(roh.fundstellenAuszuege);
   return {
     frage,
     result: result as unknown as AnswerResult,
@@ -280,6 +290,7 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
     ...(fragekontext === undefined ? {} : { fragekontext }),
     ...(referenzpruefung ? { referenzpruefung } : {}),
     ...(aussageTexte ? { aussageTexte } : {}),
+    ...(fundstellenAuszuege ? { fundstellenAuszuege } : {}),
   };
 }
 

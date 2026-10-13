@@ -766,6 +766,11 @@ export function Ask(): JSX.Element {
   const [aussageTexte, setAussageTexte] = useState<ReadonlyMap<string, string>>(
     () => new Map(anfang?.antwort?.aussageTexte ?? []),
   );
+  // REF-04 (K5, Befund nacharbeit-2): die Passage je Fundstelle — mit der Prüfung im Arbeitsstand,
+  // damit sie nach einem Neuaufbau der Seite (Rückweg, Ansichtswechsel) nicht fehlt.
+  const [fundstellenAuszuege, setFundstellenAuszuege] = useState<ReadonlyMap<string, string>>(
+    () => new Map(anfang?.antwort?.fundstellenAuszuege ?? []),
+  );
   // Ben nacharbeit-4 (K8): eine aus dem Arbeitsstand WIEDERHERGESTELLTE Prüfung ist UNBESTÄTIGT, bis
   // der Server sie mit den aktuellen Rechten, dem aktuell gewählten Prüfmodell und der aktuellen
   // Richtlinie bestätigt hat (`referenzBestaetigen`). Bis dahin wird kein Urteil gezeigt.
@@ -1034,6 +1039,7 @@ export function Ask(): JSX.Element {
       setPruefrahmen(null);
       setReferenzpruefung(null);
       setAussageTexte(new Map());
+      setFundstellenAuszuege(new Map());
       setAntwortFingerabdruck(null);
       setBestaetigtFuer(null);
       setReferenzAbgelaufen(false);
@@ -1077,6 +1083,15 @@ export function Ask(): JSX.Element {
       // REF-02: abwesend heißt „kein Prüfdienst oder keine beantwortete Frage" — dann steht nichts.
       setReferenzpruefung(r.referenzpruefung ?? null);
       setAussageTexte(new Map((r.aussagen?.aussagen ?? []).map((a) => [a.aussageId, a.text])));
+      setFundstellenAuszuege(
+        new Map(
+          (r.aussagen?.aussagen ?? []).flatMap((a) =>
+            a.teile.flatMap((teil) =>
+              teil.fundstellen.map((f): [string, string] => [f.fundstelleId, f.auszug]),
+            ),
+          ),
+        ),
+      );
       // Frisch vom Server zu GENAU dieser Antwort — keine Wiederherstellung, also bestätigt.
       setBestaetigtFuer(r.referenzpruefung?.pruefId ?? null);
       setReferenzAbgelaufen(false);
@@ -1144,18 +1159,10 @@ export function Ask(): JSX.Element {
       (referenzpruefung === null && referenzAbgelaufen),
     antwortFingerabdruck,
   });
-  // REF-04 (K5): die Passage je Fundstelle, wie diese Antwort sie mitgeliefert hat (REF-01).
-  const auszugVon = (fundstelleId: string): string | undefined => {
-    for (const a of aussagen) {
-      for (const teil of a.teile) {
-        const f = teil.fundstellen.find((x) => x.fundstelleId === fundstelleId);
-        if (f) {
-          return f.auszug;
-        }
-      }
-    }
-    return undefined;
-  };
+  // REF-04 (K5): die Passage je Fundstelle, wie diese Antwort sie mitgeliefert hat (REF-01) —
+  // aus dem Stand, der auch einen Neuaufbau der Seite übersteht (Befund nacharbeit-2).
+  const auszugVon = (fundstelleId: string): string | undefined =>
+    fundstellenAuszuege.get(fundstelleId);
   const bestaetigungAngefragt = useRef<string | null>(null);
   useEffect(() => {
     const id = referenzpruefung?.pruefId;
@@ -1241,7 +1248,13 @@ export function Ask(): JSX.Element {
               ...(antwortKontext === undefined ? {} : { fragekontext: antwortKontext }),
               // REF-02: die Prüfung dieser Antwort reist mit (Rückweg von der Fundstelle).
               ...(referenzpruefung
-                ? { referenzpruefung, aussageTexte: [...aussageTexte.entries()] }
+                ? {
+                    referenzpruefung,
+                    aussageTexte: [...aussageTexte.entries()],
+                    // REF-04 (K5, nacharbeit-2): die Passagen reisen mit — sonst fehlten sie nach
+                    // jedem Neuaufbau der Seite am Wechsel Aussage → Fundstelle.
+                    fundstellenAuszuege: [...fundstellenAuszuege.entries()],
+                  }
                 : {}),
             }
           : null,
@@ -1266,6 +1279,7 @@ export function Ask(): JSX.Element {
     antwortKontext,
     referenzpruefung,
     aussageTexte,
+    fundstellenAuszuege,
     gemerkteStartadressen,
     fragekontext,
     szenario,
@@ -1346,6 +1360,7 @@ export function Ask(): JSX.Element {
       // REF-02: die Prüfung des neuen Kontos ersetzt die alte vollständig.
       setReferenzpruefung(antwort?.referenzpruefung ?? null);
       setAussageTexte(new Map(antwort?.aussageTexte ?? []));
+      setFundstellenAuszuege(new Map(antwort?.fundstellenAuszuege ?? []));
       // Ben nacharbeit-4 (K8): wiederhergestellt heißt unbestätigt — erst der Server bestätigt.
       setBestaetigtFuer(null);
       setReferenzAbgelaufen(false);
