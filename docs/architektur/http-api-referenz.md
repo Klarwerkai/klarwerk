@@ -389,6 +389,8 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/management/profiles` | `users.manage` | — | 200 `{ categories, retirement }` | — |
 | `PUT` | `/api/management/profiles/category` | `users.manage` | Rumpf: Bereichsprofil einer Kategorie | 200 gespeichertes Profil | Dienstfehler |
 | `PUT` | `/api/management/profiles/retirement/:userId` | `users.manage` | Rumpf `{ horizonMonths }` | 200 `{ entry }` | 404 `NOT_FOUND` (unbekanntes Konto); Dienstfehler |
+| `GET` | `/api/management/lagebild-werte` | `ko.read` (je Bereich: `gesamt` immer, ein Space nur mit Leserecht an seinen Inhalten) | — | 200 `{ bereiche: [{ bereich, name, darfSchreiben, werte \| null, fakten }] }`, `cache-control: no-store` | — |
+| `PUT` | `/api/management/lagebild-werte/:bereich` | `ko.create`; `gesamt` nur `users.manage`, ein Space nur mit Schreibrecht darin (nicht archiviert) | Rumpf `{ zeitraumVon, zeitraumBis, werte, basisVersion, anfrageId }`; `werte` je Feld `hourlyRate`, `hoursSavedPerValidatedKo`, `reuseFactor` entweder `null` oder `{ wert, herkunft: eigene_eingabe \| gemessen, beleg? }` | 200 `{ eintrag, wiederholt }` (dieselbe `anfrageId` schreibt nicht doppelt) | 400 `INVALID_LAGEBILD_WERTE` mit `fehler[]`; 403 `FORBIDDEN`; 404 `NOT_FOUND` (unbekannt oder nicht lesbar, gleiche Antwort); 409 `LAGEBILD_KONFLIKT` mit `aktuell` (nichts geschrieben) |
 | `GET` | `/api/external/policy` | `ko.read` | — | 200 `{ stage }` | — |
 | `PUT` | `/api/external/policy` | `users.manage` | Rumpf `{ stage }` | 200 `{ stage }` | Dienstfehler |
 | `GET` | `/api/external/search` | `ko.read` | Abfrage `q?` | 200 Treffer; je Treffer `abgerufenAm` und der signierte `abrufbeleg` des Serverabrufs (REF-01) | 403 `EXTERNAL_SEARCH_BLOCKED`; 501 `EXTERNAL_SEARCH_DISABLED` |

@@ -100,7 +100,9 @@ Lage, Zähler, Nenner, Erhebungsbeginn und Trend. Keine Titel, keine Fragetexte.
 Antwortquote, Fragen und Aktivität beschreiben Nutzung. Die Texte sagen ausdrücklich, dass sie keine
 gemessene Zeit- oder Geldersparnis sind. Die Bewertung in `Stufe2.tsx` (Abschnitt `mgmt.valuation`,
 als Schätzmodell mit eigenen Annahmen gekennzeichnet, Grundlage validierte Objekte) ist davon
-getrennt und unverändert.
+getrennt. Seit `produkt:20261013:lagebild-reale-werte-eingabe` trägt sie die Kennzeichnung
+„Beispiel (geschätzt)“ und daneben gespeicherte reale Werte je Arbeitsbereich
+(`docs/entscheidungen/lagebild-reale-werte.md`).
 
 ## Grenzen
 

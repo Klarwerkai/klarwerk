@@ -149,6 +149,8 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte. ADDITIV,
   // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
   // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  // produkt:20261013:lagebild-reale-werte-eingabe: ein drittes `CREATE TABLE IF NOT EXISTS`
+  // (`management_lagebild_werte`) hängt hinten an — weiter ADDITIV, ohne Seed und Fremdschlüssel.
   { stufe: "MANAGEMENT_PROFILE_SCHEMA", risiko: "ADDITIV" },
   // Firmenwörterbuch: die Fassungen des Begriffskatalogs. ADDITIV, nachgezählt: ein einziges
   // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
