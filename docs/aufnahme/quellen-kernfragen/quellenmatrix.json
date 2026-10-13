@@ -1,0 +1,165 @@
+{
+  "auftrag": "aufnahme:20260922:gesamt-quellen-kernfragen",
+  "punkt": "R-1384",
+  "erhoben_am": "2026-10-13",
+  "basis": "550807b9c43e53bb0de59f01b4dd9773d09c2600",
+  "fassung_basis": "1.0.0-beta.1.954",
+  "hinweis": "Je Kernfrage stehen drei Ebenen getrennt: (1) was die Altquellen historisch belegen, (2) was damals ausdrücklich offen blieb, (3) was der Produktbaum heute an der betroffenen Stelle zeigt. Ebene 1 und 2 stammen aus dem Lesebefund der Quellenhilfe 971decb4 (fünf Altquellen, Prüfsumme je Datei). Ebene 3 ist Quelleninspektion in diesem Lauf, kein Testergebnis. Historische Entscheidungen sind nicht ausgeführt.",
+  "lesebefund": {
+    "datei": "QUELLEN-HILFE-971decb4586933f1-ALTQUELLEN.json",
+    "hilfe_id": "971decb4586933f1f041190aea3c53cb2abd90ffb9ac1216fc32c7558b431f30",
+    "erhoben_am": "2026-10-13T10:58:17.825548+00:00"
+  },
+  "quellen": {
+    "vertrag": {
+      "pfad": "03_AUFTRAEGE/planung/PLAN-PRO-W2-A276-2-Q1-Q5-SCHLIESSUNGSVERTRAG-301.md",
+      "sha256": "18372fff59403ca0292bfd8033e7f14c223112ea35947a4e2ad3294cab464649",
+      "zeilen": 216
+    },
+    "job797": {
+      "pfad": "03_AUFTRAEGE/basic_pausiert/MAKROAUFTRAG-BASIC2-JOB-797-D1-W2-Q1-Q5-QUELLENMATRIX.md",
+      "sha256": "a5544f490bb2cbe3aa8ad7c0f1e117e4228a17de751556fa0acee7cf46d6cbe5",
+      "zeilen": 38
+    },
+    "d1": {
+      "pfad": "_relay/kopf/outbox/RUECKGABE-PRO-JOB-813-D1-W2-Q1-Q5-SCHLIESSUNGSVERTRAG.md",
+      "sha256": "1be5f46e7a381c535a556b163a89137abe9055f104e206159cbfa1399af03527",
+      "zeilen": 389
+    },
+    "d2": {
+      "pfad": "_relay/kopf/outbox/RUECKGABE-PRO-JOB-813-D2-KORREKTUR.md",
+      "sha256": "7c83f3fc83df8dae131945adc9dc2ce5ec9ddf5907bc9d0158634a3210612030",
+      "zeilen": 160
+    },
+    "ben7": {
+      "pfad": "_relay/kopf/outbox/BEN7-PRUEFUNG-JOB-813-D2.md",
+      "sha256": "fccf4a32adc8abbc44ce2bf24da3315745d545fc4d40a3d08557d6ec77838b40",
+      "zeilen": 39
+    }
+  },
+  "kernfragen": [
+    {
+      "id": "Q1",
+      "gegenstand": "Wo wird der Zählervertrag durchgesetzt?",
+      "fundstellen": [
+        { "quelle": "vertrag", "zeilen": "74-85" },
+        { "quelle": "d1", "zeilen": "126-138" }
+      ],
+      "historische_aussage": "advance validiert nur den Patch; P11b mit negativem Bestand ist durch die Vorab-Patchprüfung nicht abgedeckt.",
+      "historisch_offen": "Risikoentscheidung zur DDL-Wirkung auf Bestandsdaten sowie U-1/U-2.",
+      "heutiger_stand": {
+        "art": "quelleninspektion",
+        "aussage": "Im Speicher prüft advance den zusammengeführten Lauf (pruefeImportRun(nachher), Zähler ganzzahlig und nicht negativ). Der PostgreSQL-Adapter prüft beim Fortschreiben nur den Status des Flickens und mischt ihn mit data || $2::jsonb ein. Das Schema trägt keinen CHECK auf die Zähler. Die historisch beschriebene Form ist damit an dieser Stelle unverändert sichtbar. Ob sie heute ein Fehler ist, hängt an der weiter offenen Risikoentscheidung; ein Testlauf belegt es nicht.",
+        "fundstellen": [
+          "services/library-analytics/src/repo.ts:945-953",
+          "services/library-analytics/src/repo.ts:1009-1042",
+          "services/library-analytics/src/repo-pg.ts:740-770",
+          "services/library-analytics/src/repo-pg.ts:903-940"
+        ]
+      },
+      "stand": "historisch_belegt",
+      "luecken": ["L01"]
+    },
+    {
+      "id": "Q2",
+      "gegenstand": "Woher kommt die Sieben-Felder-Projektion?",
+      "fundstellen": [
+        { "quelle": "vertrag", "zeilen": "89-100" },
+        { "quelle": "d1", "zeilen": "140-149" }
+      ],
+      "historische_aussage": "Der Snapshot ist auf sieben Felder begrenzt und nicht exportiert; PostgreSQL schreibt JSON.stringify(ref). Beide Organisationsvarianten sind technisch gleichwertig.",
+      "historisch_offen": "Keine Ownerfrage; die technische Variantenwahl ist nicht getroffen.",
+      "heutiger_stand": {
+        "art": "quelleninspektion",
+        "aussage": "importRunItemRefSnapshot begrenzt auf sieben Felder und ist weiterhin nicht exportiert. Der PostgreSQL-Adapter schreibt die Referenz weiterhin ungekürzt als JSON.stringify(ref). Eine Variante ist auch heute nicht gewählt.",
+        "fundstellen": [
+          "services/library-analytics/src/repo.ts:901-912",
+          "services/library-analytics/src/repo-pg.ts:942-956"
+        ]
+      },
+      "stand": "historisch_belegt",
+      "luecken": ["L01"]
+    },
+    {
+      "id": "Q3",
+      "gegenstand": "Lesepfad und Altzeilen",
+      "fundstellen": [
+        { "quelle": "vertrag", "zeilen": "104-115" },
+        { "quelle": "d1", "zeilen": "140-149" }
+      ],
+      "historische_aussage": "PostgreSQL schreibt und liest roh; InMemory begrenzt beide Wege. Eine reine Schreibkorrektur erfasst Altzeilen nicht.",
+      "historisch_offen": "Bestandsbereinigung als gesonderte Risikoentscheidung; U-4/U-6 ungemessen.",
+      "heutiger_stand": {
+        "art": "quelleninspektion",
+        "aussage": "Der Speicher begrenzt beim Schreiben und beim Lesen (Snapshot in appendItemRefs und listItemRefs). PostgreSQL gibt in listItemRefs und findById die gespeicherte Zeile roh zurück. Laut bestehendem Wächter ruft heute kein Produktpfad appendItemRefs auf. Ob Altzeilen im Betrieb existieren, ist nicht gemessen.",
+        "fundstellen": [
+          "services/library-analytics/src/repo.ts:1044-1069",
+          "services/library-analytics/src/repo-pg.ts:849-855",
+          "services/library-analytics/src/repo-pg.ts:958-967",
+          "tests/library/job821-w2-ist-befund.test.ts:51-65"
+        ]
+      },
+      "stand": "historisch_belegt",
+      "luecken": ["L01"]
+    },
+    {
+      "id": "Q4",
+      "gegenstand": "Wo dürfen die Gegenproben leben?",
+      "fundstellen": [
+        { "quelle": "vertrag", "zeilen": "119-132" },
+        { "quelle": "d1", "zeilen": "151-156" }
+      ],
+      "historische_aussage": "Die Paritätsbatterie liegt in einer Freeze-Datei; die Alternativen sind bestehende Freeze-Testdateien oder eine neue Testdatei.",
+      "historisch_offen": "Prozess- und Risikoentscheidung zum Prüfort und zum Freeze-Umfang.",
+      "heutiger_stand": {
+        "art": "quelleninspektion",
+        "aussage": "Die Paritätsfälle zu Importlauf und Elementreferenzen stehen weiterhin in den eingefrorenen Dateien service.test.ts und repo-pg.integration.test.ts. Die Freigabe der Integrationsdatei ist seit D5-20260817 unverändert. Eine Entscheidung zum Prüfort ist im Produktbaum nicht dokumentiert.",
+        "fundstellen": [
+          "tests/library-analytics-freeze144.test.ts:407-453",
+          "services/library-analytics/src/repo-pg.integration.test.ts:871-880"
+        ]
+      },
+      "stand": "historisch_belegt",
+      "luecken": ["L01"]
+    },
+    {
+      "id": "Q5",
+      "gegenstand": "Der Freeze selbst",
+      "fundstellen": [
+        { "quelle": "vertrag", "zeilen": "136-147" },
+        { "quelle": "d1", "zeilen": "158-168" },
+        { "quelle": "d2", "zeilen": "28-74" },
+        { "quelle": "ben7", "zeilen": "1-23" }
+      ],
+      "historische_aussage": "Die Backfallintegrität ist bestätigt, die Verlustprämisse entfallen. Die formale Freeze-Lösung zur Unterscheidung gewollter Drift bleibt getrennt. D2 schließt die Nachweisbindung ab.",
+      "historisch_offen": "Die förmliche Ownerentscheidung ist durch die Entwarnung nicht ersetzt.",
+      "heutiger_stand": {
+        "art": "quelleninspektion",
+        "aussage": "Der Wächter FREEZE-144 bindet jede Änderung an eine Freigabe mit dem autorisierten Hash. Er prüft ausdrücklich nur die Form der Freigabe, nicht ihre Autorität. Wer Freigaben zeichnet, nennt er selbst als offene Ownerfrage. Einen heutigen Integritäts- oder Wiederherstellungsnachweis liefern weder diese Stelle noch die Altquellen.",
+        "fundstellen": ["tests/library-analytics-freeze144.test.ts:2-50"]
+      },
+      "stand": "historisch_belegt",
+      "luecken": ["L01", "L02"]
+    }
+  ],
+  "historische_lieferung": {
+    "fassung": "JOB 813 D2",
+    "rueckgabe_sha256": "7c83f3fc83df8dae131945adc9dc2ce5ec9ddf5907bc9d0158634a3210612030",
+    "clone_basis": "d40097f50a428fe4ea8817434d95ba561e98337a",
+    "fundstellen": [
+      { "quelle": "d2", "zeilen": "28-74" },
+      { "quelle": "d2", "zeilen": "103-118" },
+      { "quelle": "ben7", "zeilen": "1-23" },
+      { "quelle": "ben7", "zeilen": "33-39" }
+    ],
+    "abschluss": "Historische Q5-Nachweiskorrektur: zwei D1-Mängel geschlossen, sieben Hashnachweise innerhalb der Rückgabe. Kein Produktbau, null Produktwrites.",
+    "urteile": {
+      "gesamt": "GRÜN",
+      "produkt": "GRÜN für den engen Nachweisumfang",
+      "form": "ROT: automatisch eröffnete Doppelrunde entgegen der Folgeentscheidung, ausgelassener Check und Widerspruch read-only/bauend; kein Lease-Verstoß belegt (ben7:5).",
+      "code": "ROT: leerer bauender Clone, kein Test bei Nullproduktdiff, falsche Messlatte für einen read-only Nachweis; keine unabhängige Prüfung externer Backfalldateien (ben7:9)."
+    },
+    "offen": "Die Ownerfragen zu Q1, Q3, Q4 und Q5 bleiben getrennt offen. BEN7 wiederholte keine Dateimessung und prüfte weder praktische Wiederherstellung noch semantischen Inhalt (ben7:15, 21, 33)."
+  },
+  "uebergreifende_luecken": ["L03", "L04", "L05"]
+}
