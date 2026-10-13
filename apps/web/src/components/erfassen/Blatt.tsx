@@ -547,9 +547,15 @@ export function Blatt({
     autor: string;
     imPool: boolean;
   } | null>(null);
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (nacharbeit-3): `geladenVon` wird ausdrücklich
+  // geprüft. Liefert eine Speicherantwort keine Kennung, ist `activeDraftId` zur Laufzeit
+  // `undefined`, und `geladenVon?.id === activeDraftId` wäre bei `null` wahr — der Zugriff auf
+  // `imPool` riss dann die ganze Fläche ab, statt den Entwurf schlicht nicht als fremd zu führen.
   const fremderPoolEntwurf =
     activeDraftId !== null &&
-    geladenVon?.id === activeDraftId &&
+    activeDraftId !== undefined &&
+    geladenVon !== null &&
+    geladenVon.id === activeDraftId &&
     geladenVon.imPool &&
     geladenVon.autor !== "" &&
     // Fail-closed: solange die Sitzung nicht feststeht, gilt ein Pool-Entwurf als fremd.

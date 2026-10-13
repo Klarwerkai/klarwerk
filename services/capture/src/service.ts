@@ -448,6 +448,27 @@ function normalizeInterview(value: unknown): DraftPayload["interview"] {
   };
 }
 
+// Aufnahme `gesamt-ocr` (FR-CAP-05): Deckel für die gesicherten Bildtext-Abschnitte. Bewusst
+// großzügig (ein Entwurf trägt höchstens wenige Bilder), aber endlich — wie jede andere Struktur
+// des Entwurfs. Nur Bildname und Text, beide als Zeichenkette; Leeres wird nicht gespeichert.
+const MAX_OCR_ABSCHNITTE = 20;
+const MAX_OCR_NAME_LEN = 300;
+const MAX_OCR_TEXT_LEN = 20_000;
+
+function normalizeOcrAbschnitte(value: unknown): DraftPayload["ocrAbschnitte"] {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value
+    .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
+    .map((e) => ({
+      name: cappedString(e.name, MAX_OCR_NAME_LEN) ?? "",
+      text: (cappedString(e.text, MAX_OCR_TEXT_LEN) ?? "").trim(),
+    }))
+    .filter((e) => e.text.length > 0)
+    .slice(0, MAX_OCR_ABSCHNITTE);
+}
+
 function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
   const raw = payload as Record<string, unknown>;
   // Die neuen Strukturen werden per Destrukturierung AUS dem Payload gelöst und nur normalisiert
@@ -463,6 +484,8 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
     sourceForm: _sourceForm,
     extQuery: _extQuery,
     interview: _interview,
+    // Aufnahme `gesamt-ocr`: die gesicherten Bildtext-Abschnitte laufen durch dieselbe Schleuse.
+    ocrAbschnitte: _ocrAbschnitte,
     extResults: _extResults,
     // BILDSCHIRMABLÄUFE: der Ablauf läuft durch dieselbe Schleuse (`./ablauf.ts`).
     ablauf: _ablauf,
@@ -495,6 +518,10 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
   const interview = normalizeInterview(raw.interview);
   if (interview !== undefined) {
     next.interview = interview;
+  }
+  const ocrAbschnitte = normalizeOcrAbschnitte(raw.ocrAbschnitte);
+  if (ocrAbschnitte !== undefined && ocrAbschnitte.length > 0) {
+    next.ocrAbschnitte = ocrAbschnitte;
   }
   const ablauf = normalizeAblauf(raw.ablauf);
   if (ablauf !== undefined) {
@@ -1329,9 +1356,26 @@ export class CaptureService {
    * nicht vorhanden (`findById` gibt ihn nicht heraus) — der zweite Klick auf „löschen" ergibt 404
    * und nicht still einen neuen Löschzeitpunkt.
    */
-  async deleteDraft(id: string, actor?: string): Promise<void> {
-    await this.require(id);
-    await this.repo.delete(id, actor, new Date(this.now()).toISOString());
+  async deleteDraft(id: string, actor?: string, erwarteterStand?: string): Promise<void> {
+    const draft = await this.require(id);
+    const zeitpunkt = new Date(this.now()).toISOString();
+    if (erwarteterStand === undefined) {
+      await this.repo.delete(id, actor, zeitpunkt);
+      return;
+    }
+    // Klara 05 (Nacharbeit 4): mit erwartetem Stand löscht die Ablage UNTEILBAR — Vergleich und
+    // Papierkorbvermerk in einem Schritt. Wer verliert, bekommt den gespeicherten Stand zurück.
+    if (!this.repo.deleteWennStand) {
+      throw new DraftStaleError(draft.updatedAt);
+    }
+    const geloescht = await this.repo.deleteWennStand(id, erwarteterStand, actor, zeitpunkt);
+    if (!geloescht) {
+      const jetzt = await this.repo.findById(id);
+      if (!jetzt) {
+        throw new CaptureError("NOT_FOUND", "Entwurf nicht gefunden.");
+      }
+      throw new DraftStaleError(jetzt.updatedAt);
+    }
   }
 
   /**

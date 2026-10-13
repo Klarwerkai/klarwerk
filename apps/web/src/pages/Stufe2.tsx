@@ -68,6 +68,8 @@ import { ImportLaufListe } from "../components/ImportLaufListe";
 import { ImportCockpitProvider, ImportStepperBar } from "../components/ImportStepper";
 import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
+// produkt:20261013:lagebild-reale-werte-eingabe: reale Werte der Wissensbewertung je Bereich.
+import { LagebildWerteKarte } from "../components/LagebildWerte";
 // JOB 3363: dieselbe Kennzeichnung wie auf `/wissen/:id` und in der Bibliothek — ein Baustein.
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 // FR-VAL-06: dieselbe Zuweisungsübersicht je Person wie in der Auswertung.
@@ -1086,6 +1088,9 @@ function ImportKandidatKarte({
           variante={variante}
           zeigtOriginal={zeigtOriginal}
           onUmschalten={() => setZeigtOriginal((v) => !v)}
+          onWiderspruch={(begruendung) =>
+            endpoints.lesevarianten.widerspruchKandidat(c.id, variante.lang, begruendung)
+          }
         />
       ) : null}
       {/* Der Abruf ist gescheitert (Netz, Zugriff, Serverfehler). Dann steht der ORIGINALtext da —
@@ -1629,44 +1634,63 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         <div className="mt-2 rounded-card bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text">
           {t("mgmt.valuationDisclaimer")}
         </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          <label className="text-[12px] text-muted">
-            {t("mgmt.assumeRate")}
-            <input
-              type="number"
-              value={assumptions.hourlyRate}
-              onChange={setNum("hourlyRate")}
-              className="mt-1 h-9 w-full rounded-input border border-hairline bg-page px-2 text-sm"
-            />
-          </label>
-          <label className="text-[12px] text-muted">
-            {t("mgmt.assumeHours")}
-            <input
-              type="number"
-              value={assumptions.hoursSavedPerValidatedKo}
-              onChange={setNum("hoursSavedPerValidatedKo")}
-              className="mt-1 h-9 w-full rounded-input border border-hairline bg-page px-2 text-sm"
-            />
-          </label>
-          <label className="text-[12px] text-muted">
-            {t("mgmt.assumeReuse")}
-            <input
-              type="number"
-              value={assumptions.reuseFactor}
-              onChange={setNum("reuseFactor")}
-              className="mt-1 h-9 w-full rounded-input border border-hairline bg-page px-2 text-sm"
-            />
-          </label>
+        {/* produkt:20261013:lagebild-reale-werte-eingabe (LWE-01): die Beispielrechnung ist als
+            geschätzt gekennzeichnet und sichtbar von den realen Werten darunter getrennt. Ihre
+            Eingaben werden nicht gespeichert. */}
+        <div
+          data-testid="kapital-beispielrechnung"
+          className="mt-3 rounded-card border border-dashed border-trust-warn-fill p-3"
+        >
+          <SectionLabel>{t("lagebildwerte.beispiel.titel")}</SectionLabel>
+          <p
+            data-testid="kapital-beispiel-kennzeichnung"
+            className="text-[12px] text-trust-warn-text"
+          >
+            {t("lagebildwerte.beispiel.kennzeichnung")}
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <label className="text-[12px] text-muted">
+              {t("mgmt.assumeRate")}
+              <input
+                type="number"
+                value={assumptions.hourlyRate}
+                onChange={setNum("hourlyRate")}
+                className="mt-1 h-9 w-full rounded-input border border-hairline bg-page px-2 text-sm"
+              />
+            </label>
+            <label className="text-[12px] text-muted">
+              {t("mgmt.assumeHours")}
+              <input
+                type="number"
+                value={assumptions.hoursSavedPerValidatedKo}
+                onChange={setNum("hoursSavedPerValidatedKo")}
+                className="mt-1 h-9 w-full rounded-input border border-hairline bg-page px-2 text-sm"
+              />
+            </label>
+            <label className="text-[12px] text-muted">
+              {t("mgmt.assumeReuse")}
+              <input
+                type="number"
+                value={assumptions.reuseFactor}
+                onChange={setNum("reuseFactor")}
+                className="mt-1 h-9 w-full rounded-input border border-hairline bg-page px-2 text-sm"
+              />
+            </label>
+          </div>
+          <div data-testid="kapital-beispiel-eur" className="mt-3 text-2xl font-semibold text-ink">
+            {formatEur(valuation.estimateEur)}
+          </div>
+          <div className="mt-1 font-mono text-[11px] text-muted-2">{valuation.formula}</div>
+          <div className="text-[11px] text-muted-2">
+            {t("mgmt.basis", {
+              n: snap.valuationFacts.validatedKos,
+              trust: snap.valuationFacts.avgTrust,
+            })}
+          </div>
         </div>
-        <div className="mt-3 text-2xl font-semibold text-ink">
-          {formatEur(valuation.estimateEur)}
-        </div>
-        <div className="mt-1 font-mono text-[11px] text-muted-2">{valuation.formula}</div>
-        <div className="text-[11px] text-muted-2">
-          {t("mgmt.basis", {
-            n: snap.valuationFacts.validatedKos,
-            trust: snap.valuationFacts.avgTrust,
-          })}
+        {/* Die realen, gespeicherten Werte je Arbeitsbereich (components/LagebildWerte). */}
+        <div className="mt-3">
+          <LagebildWerteKarte />
         </div>
       </Card>
 
@@ -2698,7 +2722,11 @@ export function Capital(): JSX.Element {
       <QueryState query={snapshot}>
         {(snap) =>
           snap.overview.totalKos === 0 ? (
-            <Notice textKey="mgmt.empty" />
+            <>
+              <Notice textKey="mgmt.empty" />
+              {/* Reale Werte lassen sich auch vor dem ersten Wissensobjekt erfassen. */}
+              <LagebildWerteKarte />
+            </>
           ) : (
             <CapitalDashboard snap={snap} />
           )

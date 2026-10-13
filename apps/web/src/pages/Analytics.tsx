@@ -11,9 +11,11 @@ import {
   useImpact,
   useKos,
   useLifecyclePending,
+  usePruefdauer,
   useValidationOverview,
 } from "../api/hooks";
 import type { AuditFilter } from "../api/types";
+import { PruefdauerJeWeg } from "../components/AuftraegeJePerson";
 import { leerzustandsRahmen } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
@@ -89,6 +91,7 @@ export function Analytics(): JSX.Element {
   const audit = useAudit();
   const kos = useKos();
   const overview = useValidationOverview();
+  const pruefdauer = usePruefdauer();
   const impact = useImpact();
   const gaps = useGaps();
   const conflicts = useConflicts();
@@ -477,6 +480,11 @@ export function Analytics(): JSX.Element {
                   hint={t("wkz.bestand.doneTasks")}
                 />
               </div>
+
+              {/* R-0756: die Zahlen je Person stehen in der Auswertung in der EINEN Darstellung
+                  `PersonenZeilen` weiter unten (FR-VAL-06) — hier keine zweite Tabelle. */}
+              {/* R-1655: Prüfdauer je Zuweisungsweg — die Messgrundlage des Routings. */}
+              {pruefdauer.data ? <PruefdauerJeWeg auswertung={pruefdauer.data} /> : null}
 
               <Card>
                 <SectionLabel>{t("ana.byType")}</SectionLabel>

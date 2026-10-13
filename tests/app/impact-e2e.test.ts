@@ -43,6 +43,8 @@ describe("FUNKE: /api/me/impact + idempotentes Danke (HTTP end-to-end)", () => {
       type: "best_practice",
       category: "Pumpen",
       author: anna.id,
+      // Der künstliche Beitrag soll für Vera (viewer) lesbar sein; ungeklärte Stufen sind verborgen.
+      confidentiality: "intern",
       tags: [],
     });
     return { app, services, anna, vera, koId: ko.id };

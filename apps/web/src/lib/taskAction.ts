@@ -45,6 +45,12 @@ const TASK_ACTION: Record<string, TaskActionView> = {
     tone: "neutral",
     explainKey: "task.explain.gap",
   },
+  // Autorenübergabe-Auftrag (R-0961): neuen Autor bestimmen (Mehr → Provenienz am Objekt).
+  "task.authorTransfer": {
+    actionLabelKey: "task.action.authorTransfer",
+    tone: "warn",
+    explainKey: "task.explain.authorTransfer",
+  },
 };
 
 // Defensiver Fallback für unbekannte Typen: neutral „öffnen" (keine stille Falschbehauptung).
@@ -71,6 +77,8 @@ const PHASE_BY_KEY: Record<string, KnowledgeOsPhase> = {
   "task.validation": "validate",
   "task.conflict": "validate",
   "task.revalidation": "maintain",
+  // R-0961: die Autorenübergabe hält Wissen gepflegt und erreichbar — Aktuell halten.
+  "task.authorTransfer": "maintain",
   // Start (Work-Overview-Key): gleiche Zuordnung über die vorhandenen Kategorien.
   criticalGaps: "capture",
   validation: "validate",

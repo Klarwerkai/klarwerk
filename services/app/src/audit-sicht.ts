@@ -75,6 +75,11 @@ const INHALT_JE_AKTION: Readonly<Record<string, readonly string[]>> = {
   // die Wiedererteilung gebraucht und bleibt ohne Leserecht am Objekt verborgen; während der Sperre
   // also für jeden Betrachter.
   "technische-daten.quellrechte-vorher": ["vorher"],
+  // produkt:20261009:referenzki-antwortstatus (REF-04, K6, Ben nacharbeit-3): die kurzen
+  // Prüfbegründungen der Referenzprüfung (`REFERENZ_BEGRUENDUNG_AKTION` in services/ask). Sie können
+  // Inhalt der zitierten Quellen wiedergeben — bezogen auf `koIds`, also nur für Leser, die jede
+  // zitierte Quelle jetzt öffnen dürfen; nach Papierkorb oder Endlöschung für niemanden.
+  "ask.referenzpruefung-begruendung": ["begruendungen"],
 };
 const TITELFELDER: readonly string[] = ["koTitle", "title", "titel"];
 

@@ -176,7 +176,9 @@ beforeAll(() => {
     if (ordner) {
       return ordnerSeite(url, decodeURIComponent(ordner[1] ?? ""));
     }
-    const treffer = /\/items\/([^/?]+)\?/.exec(url);
+    // gesamt-nutzerverwaltung · Nacharbeit 9: der gezielte Abruf MIT Inhaltsadresse geht ohne
+    // `$select` (Graph lässt die Annotation sonst weg) — die Einzeldatei endet dann ohne Query-Teil.
+    const treffer = /\/items\/([^/?]+)(?:\?|$)/.exec(url);
     const id = treffer ? decodeURIComponent(treffer[1] ?? "") : "";
     if (abrufGestoert.has(id)) {
       return antwort({ error: { code: "InvalidAuthenticationToken" } }, 401);

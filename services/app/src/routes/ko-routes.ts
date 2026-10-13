@@ -180,6 +180,9 @@ export interface KoRoutesDeps {
   // Berater-Konzept 04.07. (Stufe 3): Reasoner für die automatische Widerspruchs-Erkennung beim Einreichen.
   reasoner: Reasoner;
   notifyAssignment?: AssignmentNotifier; // FR-VAL-07
+  // R-1655: neue Objekte ohne benannte Prüfer an die schnellsten Prüfer ihres Themas routen.
+  // Schluckt eigene Fehler (das Objekt ist dann angelegt und bleibt offen für alle Prüfer).
+  routeNeuesObjekt?: (koId: string, user: SessionUser) => Promise<void>;
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert) + Audit für Änderungen.
   uploadLimits: UploadLimitsRepo;
   // AUFTRAG-mega14 Block E (SCRUM-421): der Object-Store, um beim Anhängen die ECHTE, GESPEICHERTE
@@ -620,6 +623,9 @@ type KoAktion =
   | "conflict"
   | "resolve-conflict"
   | "transfer-author"
+  // Autorenübergabe-Auftrag (R-0961, Peters Entscheidung 24): Autor oder Admin verlangen die
+  // Übergabe ausdrücklich. Die Aufgabe entsteht daraus; erledigt wird sie mit `transfer-author`.
+  | "request-author-transfer"
   // JOB 3667 R2 (Accountregel): überarbeiten UND freigeben in einem Vorgang (Rolle `admin`),
   // einen gebundenen Änderungsvorschlag einreichen (`ko.create`) und über einen entscheiden
   // (`users.manage`). Alle drei arbeiten AM Objekt unter `:id` — sie passieren das Tor.
@@ -725,6 +731,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   conflict: "kein-zielobjekt",
   "resolve-conflict": "kein-zielobjekt",
   "transfer-author": "tor",
+  // R-0961: der Antrag arbeitet AM Objekt unter `:id` — er passiert das Sichtbarkeitstor.
+  "request-author-transfer": "tor",
   // JOB 3667 R2: die drei Aktionen des Rückwegs arbeiten alle AM Objekt unter `:id`.
   "revise-release": "tor",
   propose: "tor",
@@ -1164,6 +1172,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     overlaps,
     lifecycle,
     notifyAssignment,
+    routeNeuesObjekt,
     uploadLimits,
     objects,
     externalPolicy,
@@ -2222,6 +2231,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           if (reviewers.length > 0) {
             await validation.assign(created.id, reviewers, user.id);
             await notifyAssignment?.(created.id, reviewers);
+          } else {
+            // R-1655: niemand benannt → an die schnellsten Prüfer des Themas routen.
+            await routeNeuesObjekt?.(created.id, user);
           }
           // WP-SUBMIT-ASYNC (Pedis Architektur-Entscheid R3, 21.07.): die KI-Prüfung blockiert
           // das Einreichen NICHT mehr (Messung: 1:28 min). Statt der früheren synchronen
@@ -2758,6 +2770,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           await followUp("notify-assignment", async () => {
             await notifyAssignment?.(created.id, reviewers);
           });
+        } else {
+          // R-1655: niemand benannt → an die schnellsten Prüfer des Themas routen. Kein eigener
+          // `followUp`-Schritt: das Routing schluckt seine Fehler selbst und ist keine Zusage.
+          await routeNeuesObjekt?.(created.id, user);
         }
         // WP-SUBMIT-ASYNC: derselbe Prüf-Job-Vermerk wie auf den beiden anderen Einreich-Wegen.
         let submitted = created;
@@ -4977,6 +4993,55 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return badRequest("newAuthor fehlt.");
             }
             reply.code(200).send(await lifecycle.transferAuthor(id, body.newAuthor, user.id));
+            return;
+          }
+          // ======================================================================================
+          // AUTORENÜBERGABE-AUFTRAG (R-0961) — DIE ÜBERGABE AUSDRÜCKLICH VERLANGEN.
+          // ======================================================================================
+          // Peters Entscheidung 24: Die wartende Übergabe entsteht auch „auf ausdrückliche
+          // Anforderung von Autor oder zuständiger Verwaltungsrolle". Verlangen darf deshalb:
+          //   · der Autor des Objekts selbst,
+          //   · wer `users.manage` trägt (Admin, die Rolle, die Konten und die Übergabe verwaltet).
+          // Alle anderen bekommen 403.
+          //
+          // Geschrieben wird NUR ein Protokolleintrag `ko.author-transfer-requested`; am Objekt
+          // ändert sich nichts. Ob die Aufgabe ansteht, rechnet `lib/autorenuebergabe.ts` aus dem
+          // Protokoll. Erledigt ist sie mit der vorhandenen Handlung `transfer-author`
+          // (`setAuthor`, Audit `ko.author-transferred`), die hier unverändert bleibt.
+          case "request-author-transfer": {
+            const user = await guards.requireUser(request, reply);
+            if (!user) {
+              return;
+            }
+            const ziel = await ko.get(id);
+            if (!ziel) {
+              reply
+                .code(404)
+                .send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
+              return;
+            }
+            if (ziel.author !== user.id && !can(user.role, "users.manage")) {
+              reply.code(403).send({
+                error: "FORBIDDEN",
+                message:
+                  "Eine Autorenübergabe können nur der Autor dieses Eintrags oder ein Administrator verlangen.",
+              });
+              return;
+            }
+            if (!audit) {
+              reply.code(503).send({
+                error: "UNAVAILABLE",
+                message: "Das Prüfprotokoll ist nicht verfügbar; der Antrag wurde nicht gespeichert.",
+              });
+              return;
+            }
+            await audit.record({
+              actor: user.id,
+              action: "ko.author-transfer-requested",
+              target: id,
+              payload: { author: ziel.author },
+            });
+            reply.code(200).send(ziel);
             return;
           }
           case "revalidate": {

@@ -175,7 +175,8 @@ beforeAll(() => {
         JSON.stringify({
           ...datei,
           // Die vorautorisierte Adresse kommt NUR beim gezielten Abruf mit — die Liste bekommt keine.
-          ...(url.includes("downloadUrl")
+          // Nacharbeit 9: und nur OHNE `$select` (Instanz-Annotation; ein Selektor lässt sie weg).
+          ...(!/[?&](\$|%24)select=/.test(url)
             ? { "@microsoft.graph.downloadUrl": `${DOWNLOAD}${encodeURIComponent(datei.id)}` }
             : {}),
         }),

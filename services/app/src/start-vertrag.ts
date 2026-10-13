@@ -347,6 +347,19 @@ const SHAREPOINT_WERTE: readonly Startwert[] = SHAREPOINT_CREDENTIAL_VARS.map((n
     "Kein SharePoint-Client. Der Import meldet den Zustand ehrlich (sharepointCredentialState) statt zu starten.",
 }));
 
+// gesamt-nutzerverwaltung · Frage 6 (Peter, 11.10.2026): die eigene Testbibliothek eines Fachkontos.
+// Gelesen in `routes/sharepoint-import-routes.ts` (`SHAREPOINT_TESTBIBLIOTHEKEN_ENV`), je Anfrage.
+const SHAREPOINT_TESTBIBLIOTHEK_WERT: Startwert = {
+  name: "KLARWERK_SHAREPOINT_TESTBIBLIOTHEKEN",
+  bereich: "SharePoint-Import",
+  pflicht: { art: "nie" },
+  geheim: false,
+  wofuer:
+    "Ordnet einem Fachkonto (ko.create, ohne Adminrecht) seine eigene SharePoint-Testbibliothek zu: <Kontokennung>=<driveId>, mehrere durch Komma. Nur gegen diese Bibliothek darf das Konto Dateien listen und übernehmen.",
+  ohneIhn:
+    "Nur Konten mit users.manage dürfen aus SharePoint importieren; ein Fachkonto bekommt 403.",
+};
+
 // ================================================================================================
 // R-0170 · DER JIRA-ZUGANG — AUS DEM MODUL, NICHT DANEBEN
 // ================================================================================================
@@ -548,6 +561,27 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer:
       "Pfad, in den die Prozesskennung NACH erfolgreichem listen geschrieben wird (Restore-Drill).",
     ohneIhn: "Keine PID-Datei. Der Restore-Drill findet den Prozess nicht.",
+  },
+  {
+    name: "KLARWERK_DOCKER_LOG_MAX_SIZE",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "nicht gesetzt; Ein-Befehl-Weg: 1m (docker-compose.prod.yml)",
+    wofuer:
+      "Dockers max-size für diesen Container. Die App schreibt damit täglich einen inhaltsfreien Füllblock, und Docker rotiert die aktive Protokolldatei selbst.",
+    ohneIhn:
+      "Kein interner Rotationsimpuls — dann muss ein Host-Connector den Impuls setzen (Coolify: externer Connector, 10m/3), sonst bleibt die aktive Docker-Protokolldatei bei wenig Ausgabe länger als 14 Tage stehen.",
+  },
+  {
+    name: "KLARWERK_LOG_DATEI",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Die Datei, in die die Standardausgabe dieses Servers geht (Insel: setzt start.command). Sie wird täglich rotiert; Protokolle in ihrem Ordner werden nach 14 Tagen gelöscht.",
+    ohneIhn:
+      "Keine Protokollpflege durch die App — die Aufbewahrung liegt dann beim Docker-Dienst bzw. der Protokollsammlung des Betreibers.",
   },
   {
     name: "KLARWERK_TRASH_SWEEP_INTERVAL_MS",
@@ -930,6 +964,37 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer: "Modellname des Transkriptionsdienstes.",
     ohneIhn: "Es gilt der eingebaute Name.",
   },
+  // Aufnahme gesamt-ocr · R-0181: Verschriftlichung auf dem eigenen Rechner, ohne Cloud
+  // (`services/media/src/transcriber.ts`, lokalerTranskriber). Ist er eingerichtet, gewinnt er
+  // vor einem Cloudschlüssel.
+  {
+    name: "KLARWERK_LOCAL_TRANSCRIBE_URL",
+    bereich: "Medien",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Adresse eines lokal betriebenen Transkriptionsdienstes (OpenAI-kompatibel, z. B. http://127.0.0.1:8000/v1).",
+    ohneIhn:
+      "Keine lokale Transkription — es bleibt der Cloud-Weg, sofern ein Schlüssel hinterlegt ist.",
+  },
+  {
+    name: "KLARWERK_LOCAL_TRANSCRIBE_MODEL",
+    bereich: "Medien",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer: "Modellname am lokalen Transkriptionsdienst.",
+    ohneIhn: "Es gilt der eingebaute Name.",
+  },
+  {
+    name: "KLARWERK_LOCAL_TRANSCRIBE_ALLOWED_ORIGINS",
+    bereich: "Medien",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Private Adressen außerhalb dieses Rechners, die als lokaler Transkriptionsdienst gelten dürfen.",
+    ohneIhn:
+      "Nur dieser Rechner (Loopback) gilt als lokal; jede andere Adresse wird wie ein externer Dienst behandelt.",
+  },
   // --------------------------------------------------------------------------------------- E-Mail
   {
     name: "SMTP_HOST",
@@ -982,6 +1047,35 @@ const GRUNDWERTE: readonly Startwert[] = [
     vorgabe: "false",
     wofuer: "TLS von der ersten Verbindung an (statt STARTTLS).",
     ohneIhn: "Es gilt false — die Verbindung beginnt unverschluesselt und wechselt per STARTTLS.",
+  },
+  // ------------------------------------------------------------------------------ Geräte-Push
+  // R-0679 / FR-VAL-07: Push-Anstoß bei einer Prüfzuweisung. Alle drei oder keiner.
+  {
+    name: "VAPID_PUBLIC_KEY",
+    bereich: "E-Mail",
+    pflicht: { art: "nie" },
+    // Fachlich öffentlich (der Browser bekommt ihn über GET /api/push/config). Als geheim geführt,
+    // weil er als Paar mit dem privaten Schlüssel erzeugt und verwaltet wird — und kein `_KEY`
+    // als harmlos durchrutschen soll (D4).
+    geheim: true,
+    wofuer: "Öffentlicher VAPID-Schlüssel (base64url) für Geräte-Push.",
+    ohneIhn: "Kein Geräte-Push; Zuweisungen erreichen Zugewiesene nur per E-Mail.",
+  },
+  {
+    name: "VAPID_PRIVATE_KEY",
+    bereich: "E-Mail",
+    pflicht: { art: "nie" },
+    geheim: true,
+    wofuer: "Privater VAPID-Schlüssel (base64url), signiert jeden Push-Anstoß.",
+    ohneIhn: "Kein Geräte-Push; Zuweisungen erreichen Zugewiesene nur per E-Mail.",
+  },
+  {
+    name: "VAPID_SUBJECT",
+    bereich: "E-Mail",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer: "Kontakt des Betreibers für die Push-Dienste (mailto: oder https:).",
+    ohneIhn: "Kein Geräte-Push; Zuweisungen erreichen Zugewiesene nur per E-Mail.",
   },
   // ------------------------------------------------------------------------------------------ SSO
   ...(
@@ -1434,6 +1528,7 @@ export const STARTVERTRAG: readonly Startwert[] = [
   ...GRUNDWERTE,
   ...CONFLUENCE_WERTE,
   ...SHAREPOINT_WERTE,
+  SHAREPOINT_TESTBIBLIOTHEK_WERT,
   ...JIRA_WERTE,
   ...SCHALTER_WERTE,
 ];

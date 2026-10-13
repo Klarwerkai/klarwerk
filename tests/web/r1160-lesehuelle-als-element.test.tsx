@@ -145,7 +145,9 @@ describe("C · die Zerlegung ist verlustfrei und bleibt ohne Tabelle unsichtbar"
 
   it("ohne Tabelle — oder ohne Lesehülle — bleibt das Markup exakt das bisherige", () => {
     const text = '<p>Nur <strong>Text</strong>.</p><div class="panel-info"><p>Hinweis</p></div>';
-    const bisher = `<div class="prose-kw">${sanitizeHtml(text)}</div>`;
+    // `dir="auto"` stammt aus R-1056 (Leserichtung des Inhalts, `SanitizedHtml.tsx`) und gehört
+    // seit der Zusammenführung zum bisherigen Markup; die Lesehülle fügt ohne Tabelle nichts hinzu.
+    const bisher = `<div class="prose-kw" dir="auto">${sanitizeHtml(text)}</div>`;
 
     expect(
       renderMarkup(
@@ -156,6 +158,6 @@ describe("C · die Zerlegung ist verlustfrei und bleibt ohne Tabelle unsichtbar"
       renderMarkup(
         createElement(SanitizedHtml, { html: `${text}${TABELLE}`, className: "prose-kw" }),
       ),
-    ).toBe(`<div class="prose-kw">${sanitizeHtml(`${text}${TABELLE}`)}</div>`);
+    ).toBe(`<div class="prose-kw" dir="auto">${sanitizeHtml(`${text}${TABELLE}`)}</div>`);
   });
 });

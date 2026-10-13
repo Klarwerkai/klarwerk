@@ -51,6 +51,20 @@ import { HOME_ROUTE } from "../../app/navigation";
 import { animationsStil } from "../../lib/assistenzAvatare";
 import { useAssistenzAnzeige, useAssistenzT } from "../../lib/assistenzProfil";
 import { internerPfad } from "../../lib/internerPfad";
+import { erkenneAuftrag, istAusfuehrungsauftrag } from "../../lib/klaraAuftragErkennung";
+// produkt:20261008:klara-eigeninitiative: Modus, Hinweise und übertragene Aufgaben.
+import {
+  type Hinweis,
+  hinweisErlaubt,
+  hinweisFuer,
+  ladeEigeninitiative,
+  legeHinweisAb,
+  merkeGezeigt,
+  useEigeninitiative,
+  verwerfeEigeninitiative,
+  warSchonGezeigt,
+  wirksamerModus,
+} from "../../lib/klaraEigeninitiative";
 import { leseobjektJetzt, useLeseobjekt } from "../../lib/leseobjekt";
 import { leserHref } from "../../lib/objektbezug";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
@@ -73,7 +87,19 @@ import {
   useAndereFlaecheOffen,
   useAndereFlaecheSchliesst,
 } from "../assistenzFlaechen";
+// produkt:20261012:klara-setup-shortcuts-umsetzung: konfigurierte Kürzel führen vorhandene Wege aus.
+import { useKlaraAktion } from "../klara-setup/KlaraKuerzelAusfuehrung";
+import { KlaraAufgaben } from "./KlaraAufgaben";
+import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
+import {
+  KlaraHinweis,
+  KlaraModusWahl,
+  KlaraUebertrageneAufgaben,
+  istOffen,
+} from "./KlaraEigeninitiative";
+import { KlaraNotizen } from "./KlaraNotizen";
+import { KlaraQualitaet } from "./KlaraQualitaet";
 import {
   type Absendeergebnis,
   KlaraAuftragKarte,
@@ -87,6 +113,7 @@ import { KlaraTutorialKarte, KlaraZeiger, type ZielTreffer, findeZiel } from "./
 import { setzeKlaraVorschauAktiv } from "./aktiv";
 import { antwortAufAuswahl, antwortAufFrage, entwurfsInhalt, kuerze } from "./antworten";
 import { VORSCHAU_PFAD, artikelPfad, demoArtikel } from "./artikel";
+import { type AuftragsUmgebung, ladeAuftraege, starteAuftrag, useAusfuehrungen } from "./auftrag";
 import {
   type KontextAktion,
   ZIELSPRACHEN,
@@ -122,6 +149,7 @@ import {
   seiteAusPfad,
   seitenErklaerung,
 } from "./kontext";
+import { legeNotiz } from "./notizen";
 import { auftrittAus, useAssistenzProfil } from "./profil";
 import {
   leseVorlesen,
@@ -164,6 +192,12 @@ const VERZOEGERUNG_MS = 700;
  * hat („Zeige mir den nächsten Schritt“ öffnet es im selben Klick). Kein vorgetäuschtes Rechnen.
  */
 const HILFE_TAKT_MS = 400;
+/**
+ * Klara 12: ein Hinweis erscheint erst, wenn die Seite eine Weile steht — nicht schon beim
+ * Durchklicken. Danach höchstens einmal je Sitzung (`lib/klaraEigeninitiative.ts`).
+ */
+const HINWEIS_VERZUG_MS = 1500;
+const HINWEIS_BREITE = 260;
 const PANEL_BREITE = 360;
 const MINI_GROESSE = 48;
 /**
@@ -336,6 +370,18 @@ export function KlaraVorschau({
     if (sitzungBeantwortet) {
       aendere((alt) => anKontoBinden(alt, kontoId));
       eingabeAnKontoBinden(kontoId);
+    }
+  }, [sitzungBeantwortet, kontoId]);
+  // Klara 12: der Unterstützungsmodus des Kontos — vom Server, nach jeder Anmeldung und jedem
+  // Neuladen neu gelesen; abgemeldet bleibt nichts davon im Browser.
+  useEffect(() => {
+    if (!sitzungBeantwortet) {
+      return;
+    }
+    if (kontoId) {
+      void ladeEigeninitiative(kontoId);
+    } else {
+      verwerfeEigeninitiative();
     }
   }, [sitzungBeantwortet, kontoId]);
   useEffect(() => {
@@ -1401,13 +1447,86 @@ export function KlaraVorschau({
       );
     });
   };
-  /** Ein gesprochener Auftrag: gesendet mit GENAU dem Ziel, das seine Karte zeigt. */
-  const auftragSenden = (text: string, ziel: SprachZiel): Promise<Absendeergebnis> =>
-    fragenSenden(text, ziel.herkunft);
+  // ---------------------------------------------------------------------------------------------
+  // Klara 05 (produkt:20261008:klara-aktionen): EIN Ausführungsweg für getippte und gesprochene
+  // Aufträge (`auftrag.ts`). Nur im echten Betrieb, nur mit gelesenem Gespräch — und nur, was die
+  // Person selbst eingibt oder als Auftrag spricht; kein Text einer Antwort oder Markierung.
+  // ---------------------------------------------------------------------------------------------
+  const ausfuehrungen = useAusfuehrungen();
+  const ausfuehrungLaeuft = ausfuehrungen.some(
+    (a) => a.phase === "pruefen" || a.phase === "laeuft",
+  );
+  const ausfuehrungBereit =
+    istEcht && Boolean(kontoId) && echt.laden === "bereit" && !ausfuehrungLaeuft;
+  const ortRef = useRef(`${location.pathname}${location.search}`);
+  ortRef.current = `${location.pathname}${location.search}`;
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const auftragsUmgebung = useCallback(
+    (): AuftragsUmgebung => ({
+      t: tRef.current,
+      navigiere: (pfad) => navigateRef.current(pfad),
+      ort: () => ortRef.current,
+    }),
+    [],
+  );
+  const ausfuehren = (
+    text: string,
+    quelle: "getippt" | "gesprochen",
+    ziel?: Herkunft,
+  ): "gestartet" | "kein_auftrag" | "belegt" => {
+    if (!istEcht || !kontoId || echt.laden !== "bereit") {
+      return "kein_auftrag";
+    }
+    const r = starteAuftrag(text, quelle, ziel ?? kontextRef.current, auftragsUmgebung());
+    if (r === "gestartet") {
+      setAnsage(t("klaraauftrag.ansage.gestartet"));
+    } else if (r === "belegt") {
+      setAnsage(t("klaraauftrag.belegt"));
+    }
+    return r;
+  };
+  // Nach Neuladen oder neuer Anmeldung: die Aufträge des eigenen Gesprächs vom Server.
+  const gespraechId = echt.gespraech?.id ?? null;
+  useEffect(() => {
+    if (istEcht && gespraechId) {
+      void ladeAuftraege(gespraechId, kontextRef.current);
+    }
+  }, [istEcht, gespraechId]);
+  const eingabeAuftrag = istEcht ? erkenneAuftrag(eingabe) : null;
+  // Klara 14: ein Verbesserungsschritt wird nur VORBEREITET — der Satz steht danach im Eingabefeld
+  // und geht erst mit „Senden“ über denselben Ausführungsweg wie ein getippter Auftrag.
+  const befundVorbereiten = (satz: string): void => {
+    setEingabe(satz);
+    setAnsage(t("klaraqualitaet.vorbereitet"));
+    document.getElementById(eingabeId)?.focus();
+  };
+
+  /**
+   * Ein gesprochener Auftrag: gesendet mit GENAU dem Ziel, das seine Karte zeigt. Ein klarer
+   * Ausführungsauftrag geht an denselben Ausführungsweg wie ein getippter (Klara 05).
+   */
+  const auftragSenden = (text: string, ziel: SprachZiel): Promise<Absendeergebnis> => {
+    const r = ausfuehren(text, "gesprochen", ziel.herkunft);
+    if (r === "gestartet") {
+      return Promise.resolve({ stand: "uebergeben", antwort: null });
+    }
+    if (r === "belegt") {
+      return Promise.resolve({ stand: "nicht_gesendet", antwort: null });
+    }
+    return fragenSenden(text, ziel.herkunft);
+  };
   const senden = (e: FormEvent): void => {
     e.preventDefault();
     const frage = eingabe.trim();
     if (!frage) {
+      return;
+    }
+    const r = ausfuehren(frage, "getippt");
+    if (r !== "kein_auftrag") {
+      if (r === "gestartet") {
+        setEingabe("");
+      }
       return;
     }
     if (istEcht && !echtSendebereit) {
@@ -1416,6 +1535,21 @@ export function KlaraVorschau({
     setEingabe("");
     void fragenSenden(frage);
   };
+  // Klara 06: der Text im Eingabefeld wird zur privaten Notiz — mit dem gewählten Bezug (Seite,
+  // Markierung oder frei) als Rücklink, OHNE an den Frageweg zu gehen. Das Feld leert sich sofort;
+  // bis der Server bestätigt, steht die Notiz als „wird gespeichert“ bzw. „Nicht gespeichert“ mit
+  // „Erneut speichern“ in „Meine Notizen“ — der Text geht dabei nicht verloren.
+  const alsNotizSpeichern = (): void => {
+    const text = eingabe.trim();
+    if (!text) {
+      return;
+    }
+    const z0 = leseZustand();
+    const objektbezug = objektbezugFuer(z0.bezug, kontextRef.current, z0.auswahl);
+    const weg = diktiertRef.current ? "diktiert" : "geschrieben";
+    setEingabe("");
+    void legeNotiz({ weg, inhalt: text, objektbezug }, t);
+  };
 
   // Klara 02: Diktieren füllt das Eingabefeld, „Auftrag sprechen“ zeigt die Karte mit Ziel.
   const objektLeer = [
@@ -1423,8 +1557,19 @@ export function KlaraVorschau({
     t("klaravorschau.objekt.keineFrage"),
     t("klaravorschau.objekt.neuerEntwurf"),
   ];
+  // Klara 06: ob das Eingabefeld (auch) diktiert wurde — eine daraus gespeicherte Notiz heisst dann
+  // „diktiert“. Ein geleertes Feld beginnt wieder als getippt.
+  const diktiertRef = useRef(false);
+  useEffect(() => {
+    if (!eingabe) {
+      diktiertRef.current = false;
+    }
+  }, [eingabe]);
   const sprechen = useKlaraSprache({
-    setzeEingabe: setEingabe,
+    setzeEingabe: (f) => {
+      diktiertRef.current = true;
+      setEingabe(f);
+    },
     ziel: (): SprachZiel => {
       const k = kontextRef.current;
       return {
@@ -1443,6 +1588,29 @@ export function KlaraVorschau({
       aufnahmeAbbrechen();
     }
   }, [panelSichtbar, aufnahmeAbbrechen]);
+
+  // produkt:20261012:klara-setup-shortcuts-umsetzung (AA-04): konfigurierte Kürzel kommen über den
+  // einen Ausführungsweg (`klara-setup/KlaraKuerzelAusfuehrung.tsx`) und laufen hier über die
+  // VORHANDENEN Wege — kein zweites Gespräch, keine eigene Aufnahme. „Klara öffnen“ ist idempotent:
+  // `oeffnen` setzt nur `offen` auf dem einen Zustand und holt den Fokus ins Gespräch; Verlauf,
+  // Eingabe und Auswahl bleiben stehen. Diktat und Auftrag öffnen das Gespräch zuerst, damit der
+  // Stopp sichtbar ist; Mikrofonfreigabe und „nicht verfügbar“ regelt `useKlaraSprache` wie beim Klick.
+  useKlaraAktion((aktion) => {
+    if (aktion === "oeffnen") {
+      oeffnen();
+    } else if (aktion === "diktieren" || aktion === "auftragSprechen") {
+      oeffnen();
+      if (!sprechen.laeuft) {
+        sprechen.starten(aktion === "diktieren" ? "diktat" : "auftrag");
+      }
+    } else if (aktion === "aufnahmeStoppen") {
+      if (sprechen.laeuft) {
+        sprechen.stoppen();
+      }
+    } else if (aktion === "vorlesenStoppen") {
+      stoppeVorlesen();
+    }
+  });
 
   // ---------------------------------------------------------------------------------------------
   // produkt:20261010:assistenz-name-avatar — der Zustand der Figur (ANIMATIONSZUSTAENDE.json), nur
@@ -1471,6 +1639,116 @@ export function KlaraVorschau({
   const figurFehlerArt =
     figurZustand === "fehler" ? (letztesErgebnis?.fehlerArt ?? "technisch") : undefined;
   const figurZustandText = t(zustandsTextSchluessel(figurZustand, figurFehlerArt));
+
+  // ---------------------------------------------------------------------------------------------
+  // Klara 12 (produkt:20261008:klara-eigeninitiative): wann sich Klara von selbst meldet.
+  //   · „Nur auf Nachfrage“ (Vorgabe): nichts erscheint von selbst.
+  //   · „Passende Hinweise anbieten“: EIN Hinweis aus dem tatsächlichen Kontext (Seite, Anleitung,
+  //     Prüfstatus des gelesenen Objekts) neben der Figur — erst wenn niemand gerade mit Klara
+  //     arbeitet, höchstens einmal je Sitzung, nicht solange er geschlossen/zurückgestellt ruht.
+  //     Der Hinweis selbst führt nichts aus; erst ein Klick auf sein Angebot öffnet die vorhandene
+  //     Hilfe (erklären bzw. nächsten Schritt zeigen — Klarwerk-Hilfe, ohne KI, ohne Änderung).
+  //   · „Ausdrücklich übertragene Aufgaben“: keine Hinweise; die selbst erteilten Aufträge
+  //     (Klara 05, vom Server) stehen sichtbar im Gespräch, offene zählt die Figur.
+  // ---------------------------------------------------------------------------------------------
+  const eigen = useEigeninitiative();
+  const unterstuetzung = wirksamerModus(eigen);
+  const offeneAufgaben = ausfuehrungen.filter(istOffen).length;
+  const hinweisKandidat = istEcht
+    ? hinweisFuer({
+        pfad: kontext.pfad,
+        koId: kontext.koId,
+        pruefstatus: kontext.pruefstatus,
+        modus: kontext.modus,
+        tutorialVorhanden: tutorial.vorhanden,
+        tutorialOffen: tutorial.offen,
+        erklaerbar: seitenErklaerung(kontext.pfad, t) !== null,
+      })
+    : null;
+  const beschaeftigt =
+    panelSichtbar ||
+    hilfeOffen ||
+    z.minimiert ||
+    z.status !== "ruhe" ||
+    ziehPos !== null ||
+    auswahlKnopf !== null ||
+    sprechen.hoert ||
+    ausfuehrungLaeuft;
+  const hinweisSchluessel = hinweisErlaubt(hinweisKandidat, eigen, {
+    beschaeftigt,
+    jetzt: Date.now(),
+  })
+    ? hinweisKandidat.schluessel
+    : null;
+  const hinweisKandidatRef = useRef<Hinweis | null>(hinweisKandidat);
+  hinweisKandidatRef.current = hinweisKandidat;
+  const [hinweis, setHinweis] = useState<Hinweis | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: der erlaubte Schlüssel ist der Auslöser.
+  useEffect(() => {
+    if (!hinweisSchluessel) {
+      setHinweis(null);
+      return;
+    }
+    setHinweis((alt) => (alt?.schluessel === hinweisSchluessel ? alt : null));
+    if (warSchonGezeigt(hinweisSchluessel)) {
+      return;
+    }
+    const uhr = window.setTimeout(() => {
+      const k = hinweisKandidatRef.current;
+      if (k?.schluessel === hinweisSchluessel) {
+        merkeGezeigt(k.schluessel);
+        setHinweis(k);
+        setAnsage(
+          tRef.current(`klarainitiative.hinweis.${k.art}.text`, {
+            seite: kontextRef.current.seitenName,
+          }),
+        );
+      }
+    }, HINWEIS_VERZUG_MS);
+    return () => window.clearTimeout(uhr);
+  }, [hinweisSchluessel]);
+  /** Das Angebot annehmen: die Person bestellt jetzt die Hilfe — vorher geschah nichts. */
+  const hinweisAnnehmen = (): void => {
+    const h = hinweis;
+    setHinweis(null);
+    oeffnen();
+    if (!h || hilfeGesperrt) {
+      return;
+    }
+    if (h.angebot === "zeige") {
+      zeige();
+    } else if (h.art === "ungeprueft") {
+      anfrage(t("klarainitiative.hinweis.ungeprueft.angebot"), "modus", () => ({
+        text: t("klarainitiative.erklaerung.ungeprueft", { objekt: kontextRef.current.objekt }),
+      }));
+    } else {
+      erklaere();
+    }
+  };
+  const hinweisAblegen = (stand: "geschlossen" | "zurueckgestellt"): void => {
+    const h = hinweis;
+    setHinweis(null);
+    setFokusZiel("figur");
+    if (!h || !kontoId) {
+      return;
+    }
+    void legeHinweisAb(kontoId, h.schluessel, stand);
+    setAnsage(
+      t(
+        stand === "geschlossen"
+          ? "klarainitiative.hinweis.ansage.geschlossen"
+          : "klarainitiative.hinweis.ansage.spaeter",
+      ),
+    );
+  };
+  // Links neben der Figur; ist dort kein Platz, rechts daneben — immer ganz im Fenster.
+  const hinweisLinks = position.x - HINWEIS_BREITE - 8;
+  const hinweisRechts = position.x + FIGUR_GROESSE + 8;
+  const hinweisMaxLinks = fenster.breite - HINWEIS_BREITE - 8;
+  const hinweisStil: CSSProperties = {
+    left: hinweisLinks >= 8 ? hinweisLinks : Math.max(8, Math.min(hinweisRechts, hinweisMaxLinks)),
+    top: Math.max(8, Math.min(position.y, fenster.hoehe - 220)),
+  };
 
   // ---------------------------------------------------------------------------------------------
   // Vollbild, Ende der Vorschau.
@@ -1668,6 +1946,16 @@ export function KlaraVorschau({
             {t("klaragespraech.betrieb.demo")}
           </span>
         ) : null}
+        {/* Klara 12: im Aufgabenmodus zeigt die Figur, wie viele übertragene Aufgaben offen sind. */}
+        {istEcht && unterstuetzung === "auftraege" && offeneAufgaben > 0 && !z.minimiert ? (
+          <span
+            data-testid="klara-figur-aufgaben"
+            data-anzahl={offeneAufgaben}
+            className="mt-1 whitespace-nowrap rounded-pill bg-ai-surface-1 px-2 py-0.5 text-klein font-semibold text-ai shadow-tile"
+          >
+            {t("klarainitiative.figur.offen", { anzahl: offeneAufgaben })}
+          </span>
+        ) : null}
         {z.geparkt && parkAbsatz ? (
           <span
             data-testid="klara-geparkt"
@@ -1684,6 +1972,19 @@ export function KlaraVorschau({
       <output data-klara="1" className="sr-only" data-testid="klara-ansage">
         {ansage}
       </output>
+
+      {/* ------------------------------------------------------------------ Klara 12: Hinweis */}
+      {hinweis && !beschaeftigt ? (
+        <KlaraHinweis
+          hinweis={hinweis}
+          ort={kontext.seitenName}
+          t={t}
+          stil={hinweisStil}
+          onAngebot={hinweisAnnehmen}
+          onSpaeter={() => hinweisAblegen("zurueckgestellt")}
+          onSchliessen={() => hinweisAblegen("geschlossen")}
+        />
+      ) : null}
 
       {/* ------------------------------------------------------------------ „Klara fragen“ */}
       {auswahlKnopf ? (
@@ -1862,6 +2163,11 @@ export function KlaraVorschau({
               </p>
             ) : null}
 
+            {/* Klara 12: im Aufgabenmodus stehen die übertragenen Aufgaben zuerst da. */}
+            {istEcht && unterstuetzung === "auftraege" ? (
+              <KlaraUebertrageneAufgaben liste={ausfuehrungen} t={t} />
+            ) : null}
+
             {/* Du bist hier */}
             <dl data-testid="klara-ort" className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
               <dt className={KLEINTITEL}>{t("klaravorschau.ort.label")}</dt>
@@ -1956,6 +2262,16 @@ export function KlaraVorschau({
                   .join(" · ") || t("klarakontext.aktionen.keine")}
               </p>
             </section>
+
+            {/* Klara 14: Befunde zum geöffneten Wissensobjekt erklären — lesend, mit Vorschlag. */}
+            {istEcht && kontext.koId ? (
+              <KlaraQualitaet
+                koId={kontext.koId}
+                titel={kontext.titel ?? kontext.objekt}
+                darfBearbeiten={kontext.darfBearbeiten === true}
+                onVorbereiten={befundVorbereiten}
+              />
+            ) : null}
 
             {/* Markierter Ausschnitt */}
             {auswahl ? (
@@ -2278,6 +2594,19 @@ export function KlaraVorschau({
               <EntwurfKarte entwurf={z.entwurf} />
             ) : null}
 
+            {/* Klara 12: wann sich Klara meldet — persönlich gespeichert. */}
+            {kontoId ? (
+              <KlaraModusWahl
+                kontoId={kontoId}
+                t={t}
+                onGewaehlt={(m, ok) =>
+                  setAnsage(
+                    ok ? t(`klarainitiative.ansage.${m}`) : t("klarainitiative.ansage.fehler"),
+                  )
+                }
+              />
+            ) : null}
+
             {/* Klara 01: Bedienhilfe zu dieser Fähigkeit — von Anfang an über Klara. */}
             <details
               data-testid="klara-bedienhilfe"
@@ -2301,6 +2630,43 @@ export function KlaraVorschau({
                 <li>{t("klaravorschlag.bedienhilfe.uebernehmen")}</li>
                 <li>{t("klaravorschlag.bedienhilfe.rueckfrage")}</li>
                 <li>{t("klaravorschlag.bedienhilfe.notiz")}</li>
+                {/* Klara 05: Aufträge ausführen, stoppen, korrigieren und rückgängig machen. */}
+                <li data-testid="klara-bedienhilfe-auftrag">
+                  {t("klaraauftrag.bedienhilfe.ausfuehren")}
+                </li>
+                <li>{t("klaraauftrag.bedienhilfe.grenze")}</li>
+                <li>{t("klaraauftrag.bedienhilfe.stoppen")}</li>
+                <li>{t("klaraauftrag.bedienhilfe.rueckgaengig")}</li>
+                <li>{t("klaraauftrag.bedienhilfe.sprechen")}</li>
+                {/* Klara 06: private Notizen anlegen, wiederfinden und als Arbeitszettel führen. */}
+                <li data-testid="klara-bedienhilfe-notiz">{t("klaranotiz.bedienhilfe.anlegen")}</li>
+                <li>{t("klaranotiz.bedienhilfe.gespraech")}</li>
+                <li>{t("klaranotiz.bedienhilfe.ausschnitt")}</li>
+                <li>{t("klaranotiz.bedienhilfe.wiederfinden")}</li>
+                <li>{t("klaranotiz.bedienhilfe.arbeitszettel")}</li>
+                <li>{t("klaranotiz.bedienhilfe.privat")}</li>
+                <li>{t("klaranotiz.bedienhilfe.fehler")}</li>
+                {/* Klara 07: persönliche Aufgaben aus Notiz und Auftrag, bearbeiten, erledigen. */}
+                <li data-testid="klara-bedienhilfe-aufgabe">
+                  {t("klaraaufgabe.bedienhilfe.auftrag")}
+                </li>
+                <li>{t("klaraaufgabe.bedienhilfe.notiz")}</li>
+                <li>{t("klaraaufgabe.bedienhilfe.bearbeiten")}</li>
+                <li>{t("klaraaufgabe.bedienhilfe.privat")}</li>
+                <li>{t("klaraaufgabe.bedienhilfe.fehler")}</li>
+                {/* Klara 12: Modi, Hinweise und übertragene Aufgaben. */}
+                <li data-testid="klara-bedienhilfe-eigeninitiative">
+                  {t("klarainitiative.bedienhilfe.modi")}
+                </li>
+                <li>{t("klarainitiative.bedienhilfe.hinweise")}</li>
+                <li>{t("klarainitiative.bedienhilfe.aufgaben")}</li>
+                {/* Klara 14: Befunde erklären, Vorschlag, Grundlage und Rechte. */}
+                <li data-testid="klara-bedienhilfe-qualitaet">
+                  {t("klaraqualitaet.bedienhilfe.erklaeren")}
+                </li>
+                <li>{t("klaraqualitaet.bedienhilfe.vorschlag")}</li>
+                <li>{t("klaraqualitaet.bedienhilfe.grundlage")}</li>
+                <li>{t("klaraqualitaet.bedienhilfe.rechte")}</li>
                 <li>{t("klaragespraech.bedienhilfe.stoppen")}</li>
                 <li>{t("klaragespraech.bedienhilfe.speichern")}</li>
                 <li>{t("klaragespraech.bedienhilfe.schritt")}</li>
@@ -2343,11 +2709,19 @@ export function KlaraVorschau({
             ) : (
               <DemoVerlauf verlauf={z.verlauf} />
             )}
+            {/* Klara 05: Ausführungsaufträge — Grenze, Schritte, Abbrechen, Rückgängig. */}
+            {istEcht ? <KlaraAusfuehrungen umgebung={auftragsUmgebung} /> : null}
+            {/* Klara 06: die privaten Notizen — anlegen, wiederfinden, öffnen, ändern. */}
+            {istEcht && kontoId ? <KlaraNotizen /> : null}
+            {/* Klara 07: die persönlichen Aufgaben — öffnen, ändern, priorisieren, erledigen. */}
+            {istEcht && kontoId ? <KlaraAufgaben /> : null}
             {/* Klara 02: der gesprochene Auftrag — erkannter Text, Ziel, Rückfragen, Ergebnis. */}
             <KlaraAuftragKarte
               s={sprechen}
               sendebereit={sprachSendebereit}
               absenden={auftragSenden}
+              {...(istEcht ? { ausfuehrbar: istAusfuehrungsauftrag } : {})}
+              ausfuehrungBereit={ausfuehrungBereit}
             />
             <div ref={endeRef} />
           </div>
@@ -2387,7 +2761,39 @@ export function KlaraVorschau({
                 }
                 className="h-9 w-full rounded-input border border-hairline bg-surface px-2.5 text-[13px] text-text outline-none placeholder:text-muted-2 focus:border-ink/30"
               />
+              {/* Klara 05: vor dem Senden sichtbar, dass dieser Text ein Ausführungsauftrag ist. */}
+              {eingabeAuftrag ? (
+                <p
+                  data-testid="klara-eingabe-auftrag"
+                  className="mt-0.5 text-[11px] leading-relaxed text-ai"
+                >
+                  {t("klaraauftrag.eingabeHinweis", {
+                    schritte: eingabeAuftrag.schritte
+                      .map((s, i) =>
+                        t("klaraauftrag.schritt", {
+                          nr: i + 1,
+                          aktion: t(`klaraauftrag.aktion.${s.aktion}`),
+                          titel: s.name,
+                        }),
+                      )
+                      .join(" · "),
+                  })}
+                </p>
+              ) : null}
             </div>
+            {/* Klara 06: getippt oder diktiert als private Notiz speichern — ohne Senden. */}
+            {istEcht ? (
+              <button
+                type="button"
+                data-testid="klara-als-notiz"
+                title={t("klaranotiz.alsNotizHilfe")}
+                disabled={!eingabe.trim() || sprechen.laeuft === "diktat"}
+                onClick={alsNotizSpeichern}
+                className={KNOPF}
+              >
+                {t("klaranotiz.alsNotiz")}
+              </button>
+            ) : null}
             {istEcht && echt.laeuftSeit !== null ? (
               <button
                 type="button"
@@ -2401,7 +2807,10 @@ export function KlaraVorschau({
               <button
                 type="submit"
                 data-testid="klara-senden"
-                disabled={!eingabe.trim() || (istEcht && !echtSendebereit)}
+                disabled={
+                  !eingabe.trim() ||
+                  (istEcht && !echtSendebereit && !(eingabeAuftrag && ausfuehrungBereit))
+                }
                 className={KNOPF_KI}
               >
                 {t("klaravorschau.eingabe.senden")}
@@ -2837,6 +3246,28 @@ function EntwurfKarte({ entwurf }: { entwurf: Entwurf }): JSX.Element {
           {t("klaravorschlag.notiz.hinweis")}
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
+          {/* Klara 06: der Ausschnitt wird zur privaten Notiz am Server — mit der markierten Stelle
+              als Rücklink. Der Entwurf geht in „Meine Notizen“ über; dort steht sein Speicherstand
+              samt „Erneut speichern“ (derselbe Vorgang, keine Doppelnotiz). */}
+          <button
+            type="button"
+            data-testid="klara-entwurf-als-notiz"
+            disabled={!entwurf.inhalt.trim()}
+            onClick={() => {
+              aendere((z) => (z.entwurf?.id === entwurf.id ? { ...z, entwurf: null } : z));
+              void legeNotiz(
+                {
+                  weg: "ausschnitt",
+                  inhalt: entwurf.inhalt,
+                  objektbezug: { ...objektbezugAus(entwurf.herkunft), bezug: "markierung" },
+                },
+                t,
+              );
+            }}
+            className={KNOPF}
+          >
+            {t("klaranotiz.entwurfAlsNotiz")}
+          </button>
           <button
             type="button"
             data-testid="klara-entwurf-verwerfen"

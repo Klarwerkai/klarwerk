@@ -96,7 +96,11 @@ Element.prototype.scrollIntoView = () => {};
 
 const DATEI = "kuenstliche-pruefkarte.png";
 const ERKANNT = "Vor der Wartung Ventil V2 schließen und den Druck ablassen.";
-const BLOCK = `[OCR: ${DATEI}]\n${ERKANNT}`;
+// Integration mit `gesamt-ocr` (FR-CAP-05, Nacharbeit 4): der erkannte Bildtext steht als
+// ABGESCHLOSSENER Abschnitt im Feld — Kopf, Text und Endzeile `[/OCR]` (`ocrAbschnittText`). Die
+// Endzeile ist die eindeutige Grenze, an der der Interviewkontext den Abschnitt erkennt. Der Wert
+// bleibt Zeichen für Zeichen festgeschrieben.
+const BLOCK = `[OCR: ${DATEI}]\n${ERKANNT}\n[/OCR]`;
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;

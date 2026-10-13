@@ -17,10 +17,16 @@
 //   · Das Sitzungstor ZÄHLT seine Fragen. So ist auch belegbar, wann NICHT gefragt wurde (Fall (e)
 //     und der Reihenfolgefall) und WOMIT gefragt wurde (letzter Block, „gefragt, nicht behauptet").
 //
-// SERVERINTERN. Diese Grenze hängt an keiner Oberfläche und bekommt in diesem Auftrag auch keine:
-// eine Route gäbe es nicht, weil `KLARA_EXTERNAL_EXECUTION_MIGRATED`
-// (`services/reasoner/src/klara-policy.ts:161`) auf `false` steht und `pruefeExterneAusfuehrung`
-// heute gar kein `erlaubt: true` liefern kann. Erst die Grenze schließen, dann öffnen.
+// SERVERINTERN. Diese Grenze hängt an keiner Oberfläche und bekam in JOB 3026 auch keine: eine
+// Route gab es damals nicht, weil `KLARA_EXTERNAL_EXECUTION_MIGRATED` auf `false` stand und
+// `pruefeExterneAusfuehrung` gar kein `erlaubt: true` liefern konnte. Erst die Grenze schließen,
+// dann öffnen.
+//
+// STAND HEUTE (Abgleich R-0510, `docs/klara/aufnahme-20260922-gesamt-externer-riegel.md`): Der
+// Schalter steht seit JOB 3079 auf `true` (`services/reasoner/src/klara-policy.ts`), und die Route
+// `POST /api/klara/sessions/{id}/zuruf` (JOB 3091, `klara-session-routes.ts`) reicht das Sitzungstor
+// an diesen Erzeuger durch. Die Fälle hier bleiben unverändert gültig; den Draht misst
+// `tests/ka6-memo-panel/memo-route.test.ts`.
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import {

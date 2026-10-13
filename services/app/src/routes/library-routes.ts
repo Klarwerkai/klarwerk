@@ -1265,7 +1265,15 @@ export function libraryRoutes(
       if (!user) {
         return;
       }
-      const kandidaten = await library.listImportCandidates();
+      // BES-01-K06: das Tor der Liste galt hier bisher nur dem Kommentar nach — Kennung und Anzahl
+      // quellbeschränkter Kandidaten standen jedem `ko.read`-Konto offen (eine verdeckte
+      // Trefferzahl). Gezählt wird jetzt dieselbe sichtbare Menge wie in der Liste.
+      const kandidaten: ImportCandidate[] = [];
+      for (const kandidat of await library.listImportCandidates()) {
+        if (await darfKandidatSehen(user, kandidat, library)) {
+          kandidaten.push(kandidat);
+        }
+      }
       reply.code(200).send(importKandidatBefunde(kandidaten, Date.now()));
     });
 
