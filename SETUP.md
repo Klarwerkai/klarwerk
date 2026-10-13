@@ -24,6 +24,7 @@ Bereits im Projektordner angelegt:
 | Service | Status | Aktion |
 |---|---|---|
 | **Git-Repo (lokal)** | ✅ | `git init` + erster Commit erledigt (`8a2ac96`, Branch `main`). |
+| **Arbeitsordner ohne Dateisync** | 🟡 | Arbeitsbäume nicht unter `~/Documents`, `~/Desktop`, iCloud Drive, Dropbox oder OneDrive — die Synchronisation legt laufend byte-identische ` 2`-Duplikate an, auch in `.git` (Nacht zum 11.08.: 30). Sicherer Ort, Prüfweg und Migration: `PROJECT_CONTEXT/12_ONBOARDING_NEUER_MITARBEITER.md`, „Wohin die Repos NICHT gehören“. Erkennen: `./tools/arbeitsordner-diagnose.sh` (läuft in `tools/check` meldend mit). |
 | **Gitea** | 🟡 | Installiert. Finalisieren nach `docs/operations/gitea-setup.md` (Org+Repo anlegen, push, Branch-Protection, Actions-Runner). |
 | **Node 20 + Abhängigkeiten** | 🟡 | `npm install` lokal. Danach `tools/check` lauffähig. |
 | **Docker Desktop** | 🟡 | Installieren, dann `docker compose up -d`. |
