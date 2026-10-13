@@ -84,6 +84,18 @@ Git-Historie gelesen werden. Belegt ist nur, dass alle drei im Basisstand `81f91
 (1.0.0-beta.1.952) enthalten sind. Der Lieferbeleg für dieses Dokument entsteht erst mit seiner
 Veröffentlichung.
 
+**Office-Beleg derzeit rot (Nacharbeit 1):** Im Prüflauf am Kandidaten `9700b66c` waren in
+`tests/office-artikel-editor/office-routes.test.ts` die Fälle O4 („zwei Nutzer gemeinsam“,
+`expected undefined to be 'direkt'`) und O10 (`expected 401 to be 200`) rot. Dieser Auftrag hat
+weder die Testdatei noch den Office- oder Sichtbarkeitscode geändert; es ist ein Fehler im
+Basisstand. Beide Fälle scheitern beim zweiten Konto `bert` (Experte, nicht Autor): Seine
+Sitzungsanfrage liefert keinen Schreibweg bzw. keine Marke. Laut Quelltext liegt nahe, dass
+`darfSehen` (`services/app/src/sichtbarkeit.ts`) ihm den Artikel verweigert. Das ist nicht
+ausgeführt nachgewiesen und gehört zum Auftrag `produkt:20261007:office-artikel-editor` bzw. zur
+Sichtbarkeitsregel. Bis dahin ist „mehrere Nutzer in einer Office-Sitzung“ am heutigen Stand **nicht
+grün belegt**; die Aussage oben stützt sich nur auf Plan und Quelltext. Der rote Bericht bleibt im
+Archiv (`HISTORIE/nacharbeit-1/PRUEFUNG`).
+
 **Nicht vorhanden:** Echtzeitbearbeitung des Artikeltexts oder eines Erfassungsentwurfs. Im Code
 gibt es keinen WebSocket, keinen Server-Sent-Event-Kanal und keine CRDT/OT-Bibliothek.
 
@@ -108,9 +120,10 @@ gibt es keinen WebSocket, keinen Server-Sent-Event-Kanal und keine CRDT/OT-Bibli
 
 ## 6 · Grenzen dieses Arbeitsgangs
 
-- Quelleninspektion an Code, Tests und Dokumenten im Basisstand. In diesem Arbeitsgang sind keine
-  Tests gelaufen; die Auswahl in `PRUEFPLAN.json` belegt die Aussagen zu Abschnitt 3 und 4 am
-  Kandidaten.
+- Quelleninspektion an Code, Tests und Dokumenten im Basisstand. Prüflauf am Kandidaten
+  `9700b66c` (Nacharbeit 1): Fundstellentest 13 von 13 grün; Konfliktschutz der Entwürfe,
+  gemeinsamer Artikelentwurf und Bearbeitungshinweis grün; Office-Routen O4/O10 rot als fremder
+  Basisfehler (siehe Abschnitt 4). Build und Format grün.
 - Nicht geprüft: echte gleichzeitige Bedienung durch zwei Menschen, der Office-Weg mit echtem
   Collabora-Dienst und die Smoke-Fälle von `artikel-gemeinsam`. Sie gehören zu den genannten
   Aufträgen.
