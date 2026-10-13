@@ -120,14 +120,34 @@ describe("R-1423 · Abgleich des Betriebscockpits", () => {
     expect(treffer).toEqual([]);
   });
 
-  it("das Dokument behauptet keine Erfüllung und hält die Entscheidung offen", () => {
+  // Bens Befund (Nacharbeit 1): der Cockpit-Quelltext ist lesbar, die Weiterverwendung beauftragt.
+  // Eine Auswahl zwischen Wegen — darunter „schließen" — wäre eine erfundene Sperre und strich K2.
+  it("das Dokument behauptet keine Erfüllung und verlangt keine Umfangsentscheidung", () => {
     const text = lies(DOKUMENT).replace(/\s+/g, " ");
     expect(text).toContain(
       "Eine Erfüllung von R-1423 oder RECHERCHE:cockpit-schema wird hier nicht behauptet",
     );
-    expect(text).toContain("eine Entscheidung des Nutzers (Pedi) zwischen A–D");
+    expect(text).toContain("Die Weiterverwendung des vorhandenen Cockpits ist beauftragt");
+    expect(text).toContain("K1 und K2 bleiben vollständig als Anforderung erhalten");
+    expect(text).not.toContain("zwischen A–D und");
+    expect(text).not.toContain("Als historische Lieferung schließen");
     for (const alternative of ["**A ·", "**B ·", "**C ·", "**D ·"]) {
-      expect(text).toContain(alternative);
+      expect(text).not.toContain(alternative);
+    }
+  });
+
+  it("die statischen K2-Befunde am lesbaren Quellstand stehen mit Datei und Hash im Dokument", () => {
+    const text = lies(DOKUMENT).replace(/\s+/g, " ");
+    for (const teil of [
+      "`klarwerk-business-backend/cockpit/app.js` | `7fa1e3a33f8a2dcb00551c7dfe1d0b99e3c2bdb90bd9e03aa2c03889b8beb485`",
+      "`klarwerk-business-backend/cockpit/scripts/serve.mjs` | `0851dd0c70f3f1e394c62a6e6da1840b85a99383f2f7b25d02d80efa6659f3af`",
+      "Gelesener `HEAD`: `25dbe922e7bf7cb172d061d7741579a30530cb98`",
+      "Ticketansicht liest `ticket_status`",
+      "liest `lifecycle.state`",
+      "am lesbaren Quellstand **bestätigt und unbehoben**",
+      "Ob die gelesenen Dateien genau diesem Stand entsprechen, ist **nicht bestätigt**",
+    ]) {
+      expect(text).toContain(teil);
     }
   });
 
