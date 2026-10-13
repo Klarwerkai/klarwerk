@@ -19,12 +19,17 @@
 //      Runde. Geprüft wird die Nennung, nicht die genaue Zeile, damit eine fremde Änderung oberhalb
 //      der Stelle diesen Prüfstand nicht rot macht.
 //   3. SPURLOS HEISST SPURLOS. Eine Zeile ohne Fundstelle muss das sagen.
+//   4. DIE BERICHTE LIEGEN IM REPOSITORY (Nacharbeit 5). Jede Kopie unter `docs/qm/pruefarchiv/
+//      berichte/` ist byte-gleich zum Original (Datei-SHA-256 der Quellenhilfe), und das Archiv
+//      nennt genau so viele gesicherte Texte, wie dort liegen.
+//   5. DIE TABELLE SAGT, WAS DER BERICHT SAGT. Gesamtverdikt und Inhalts-SHA jeder Zeile werden aus
+//      dem Berichtstext gelesen und verglichen. Die Inhalts-SHA der Markerzeile (letzte Zeile, „SHA-256
+//      … oberhalb dieser Zeile“) wird über den Inhalt davor nachgerechnet.
 //
-// WAS ER NICHT PRÜFT: den Berichtstext. Die Hashes stammen aus der Quellenhilfe
-// `QUELLEN-HILFE-09a427-ORIGINALBERICHTE.json` (13.10.2026), nicht aus einem Lesen hier. Ob die
-// damaligen Befunde heute geschlossen sind, ist nicht Gegenstand.
+// Die Datei-Hashes stammen aus der Quellenhilfe `QUELLEN-HILFE-09a427-ORIGINALBERICHTE.json`
+// (13.10.2026). Ob die damaligen Befunde heute geschlossen sind, ist nicht Gegenstand.
 //
-// Die Regel ist eine reine Funktion und wird zuerst an synthetischen Archiven gegengeprüft.
+// Jede Regel ist eine reine Funktion und wird zuerst an synthetischen Fällen gegengeprüft.
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -34,7 +39,8 @@ import { describe, expect, it } from "vitest";
 const WURZEL = fileURLToPath(new URL("../../", import.meta.url));
 const ARCHIV_PFAD = "docs/qm/pruefarchiv-sammel26-44.md";
 const KOPIEN_PFAD = "docs/qm/pruefarchiv/berichte";
-const SPURLOS = "keine versionierte Spur";
+const SPURLOS = "keine Fundstelle im Code";
+const VERDIKTE = ["GRÜN", "GELB", "ROT"] as const;
 
 interface Bericht {
   kennung: string;
@@ -88,13 +94,17 @@ interface Zeile {
   kennung: string;
   runde: number;
   datei: string;
-  befund: string;
+  verdikt: string;
+  fundstellenZelle: string;
   fundstellen: { pfad: string; zeile: number }[];
   sha256: string;
+  inhaltsSha: string;
 }
 
 const ohneTicks = (z: string) => z.replace(/`/g, "").trim();
 
+// Spalten: Kennung · Originaldatei · Gegenstand · Basis · Gesamtverdikt · Kernbefund · Folgearbeit ·
+// Fundstellen · Datei-SHA-256 · Inhalts-SHA · Zeilen · Bytes.
 function zeilenAus(archiv: string): Zeile[] {
   return archiv
     .split("\n")
@@ -102,7 +112,8 @@ function zeilenAus(archiv: string): Zeile[] {
     .map((l) => {
       const zellen = l.split("|").map((z) => z.trim());
       const kennung = zellen[1] as string;
-      const fundstellen = [...(zellen[7] ?? "").matchAll(/`([^`]+?):(\d+)`/g)].map((m) => ({
+      const fundstellenZelle = zellen[8] ?? "";
+      const fundstellen = [...fundstellenZelle.matchAll(/`([^`]+?):(\d+)`/g)].map((m) => ({
         pfad: m[1] as string,
         zeile: Number(m[2]),
       }));
@@ -110,9 +121,11 @@ function zeilenAus(archiv: string): Zeile[] {
         kennung,
         runde: Number(kennung.replace(/^[AB]-sammel/, "")),
         datei: ohneTicks(zellen[2] ?? ""),
-        befund: zellen[5] ?? "",
+        verdikt: zellen[5] ?? "",
+        fundstellenZelle,
         fundstellen,
-        sha256: ohneTicks(zellen[8] ?? ""),
+        sha256: ohneTicks(zellen[9] ?? ""),
+        inhaltsSha: ohneTicks(zellen[10] ?? ""),
       };
     });
 }
@@ -135,7 +148,10 @@ function maengel(archiv: string, lesen: (pfad: string) => string | null): string
     if (!BERICHTE.some((b) => b.kennung === z.kennung)) {
       funde.push(`${z.kennung}: kein Originalbericht dieser Kennung`);
     }
-    if (z.fundstellen.length === 0 && !z.befund.includes(SPURLOS)) {
+    if (!(VERDIKTE as readonly string[]).includes(z.verdikt)) {
+      funde.push(`${z.kennung}: Gesamtverdikt „${z.verdikt}“ ist nicht GRÜN, GELB oder ROT`);
+    }
+    if (z.fundstellen.length === 0 && !z.fundstellenZelle.includes(SPURLOS)) {
       funde.push(`${z.kennung}: ohne Fundstelle, sagt aber nicht „${SPURLOS}“`);
     }
     const marke = new RegExp(`sammel${z.runde}(?!\\d)`);
@@ -181,8 +197,74 @@ function kopienMaengel(
   return funde;
 }
 
-function zeileFuer(b: Bericht, befund = SPURLOS, fundstellen = "—", sha = b.sha256): string {
-  return `| ${b.kennung} | \`${b.datei}\` | — | — | ${befund} | — | ${fundstellen} | \`${sha}\` | 1 | 1 |`;
+/**
+ * Die Markerzeile ist die letzte Zeile des Berichts. Sie trägt die SHA-256 über alle Bytes davor
+ * („Inhalt oberhalb dieser Zeile“). Zurück kommen der angegebene und der nachgerechnete Wert.
+ */
+function inhaltsSha(inhalt: Buffer): { angegeben: string | null; gerechnet: string } {
+  let ende = inhalt.length;
+  if (ende > 0 && inhalt[ende - 1] === 0x0a) ende -= 1;
+  const start = inhalt.lastIndexOf(0x0a, ende - 1) + 1;
+  const marker = inhalt.subarray(start, ende).toString("utf8");
+  const angegeben = marker.match(/[0-9a-f]{64}/)?.[0] ?? null;
+  const gerechnet = createHash("sha256").update(inhalt.subarray(0, start)).digest("hex");
+  return { angegeben, gerechnet };
+}
+
+const VERDIKT_MUSTER =
+  /(?:GESAMTVERDIKT|Gesamtverdikt|Kurzverdikt)(?:[^\n]*?\b(GRUEN|GELB|ROT)\b|\s*\n+\s*\*\*(GRUEN|GELB|ROT)\b)/g;
+
+/** Das Gesamtverdikt, das der Berichtstext selbst nennt; `null`, wenn keins oder widersprüchlich. */
+function verdiktAus(text: string): string | null {
+  const treffer = [...text.matchAll(VERDIKT_MUSTER)];
+  const woerter = new Set(treffer.map((m) => (m[1] ?? m[2]) as string));
+  if (woerter.size !== 1) return null;
+  const wort = [...woerter][0] as string;
+  return wort === "GRUEN" ? "GRÜN" : wort;
+}
+
+/** Vergleicht jede Tabellenzeile mit dem Text ihres gesicherten Berichts. */
+function berichtMaengel(archiv: string, kopie: (datei: string) => Buffer | null): string[] {
+  const funde: string[] = [];
+  for (const z of zeilenAus(archiv)) {
+    const inhalt = kopie(z.datei);
+    if (inhalt === null) {
+      funde.push(`${z.kennung}: Bericht ${z.datei} ist nicht gesichert`);
+      continue;
+    }
+    const sha = inhaltsSha(inhalt);
+    if (sha.angegeben === null) funde.push(`${z.kennung}: keine Markerzeile mit SHA-256`);
+    else {
+      if (sha.angegeben !== sha.gerechnet) {
+        funde.push(`${z.kennung}: Inhalts-SHA der Markerzeile passt nicht zum Text`);
+      }
+      if (z.inhaltsSha !== sha.angegeben) {
+        funde.push(`${z.kennung}: Inhalts-SHA der Tabelle weicht von der Markerzeile ab`);
+      }
+    }
+    const verdikt = verdiktAus(inhalt.toString("utf8"));
+    if (verdikt !== z.verdikt) {
+      funde.push(`${z.kennung}: Tabelle sagt ${z.verdikt}, Bericht sagt ${verdikt ?? "nichts"}`);
+    }
+  }
+  return funde;
+}
+
+interface Zeilenwerte {
+  verdikt?: string;
+  fundstellen?: string;
+  sha?: string;
+  inhaltsSha?: string;
+}
+
+function zeileFuer(b: Bericht, w: Zeilenwerte = {}): string {
+  const {
+    verdikt = "ROT",
+    fundstellen = SPURLOS,
+    sha = b.sha256,
+    inhaltsSha: inh = "0".repeat(64),
+  } = w;
+  return `| ${b.kennung} | \`${b.datei}\` | — | — | ${verdikt} | x | — | ${fundstellen} | \`${sha}\` | \`${inh}\` | 1 | 1 |`;
 }
 
 function synthetisch(ausser: string[] = [], extra: string[] = []): string {
@@ -191,6 +273,7 @@ function synthetisch(ausser: string[] = [], extra: string[] = []): string {
 }
 
 const bericht = (kennung: string) => BERICHTE.find((b) => b.kennung === kennung) as Bericht;
+const sha256 = (s: string) => createHash("sha256").update(Buffer.from(s, "utf8")).digest("hex");
 
 describe("Kalibrierung der Archivregel an synthetischen Archiven", () => {
   const keineDatei = () => null;
@@ -218,19 +301,19 @@ describe("Kalibrierung der Archivregel an synthetischen Archiven", () => {
   });
 
   it("eine Zeile mit bloßer Rundennummer ohne Reihe zählt für keinen Bericht", () => {
-    const archiv = synthetisch(["A-sammel31"], [`| sammel31 | — | — | — | ${SPURLOS} | — | — |`]);
+    const ohneReihe = `| sammel31 | — | — | — | ROT | — | — | ${SPURLOS} |`;
+    const archiv = synthetisch(["A-sammel31"], [ohneReihe]);
     expect(maengel(archiv, keineDatei)).toEqual(["A-sammel31: 0 Zeilen statt genau einer"]);
   });
 
   it("eine doppelte Zeile, eine fremde Kennung und ein falscher Hash sind rot", () => {
-    const b40 = bericht("A-sammel40");
-    const b29 = bericht("B-sammel29");
+    const fremd = { kennung: "B-sammel39", datei: "BERICHT-sammel39.md", sha256: "x" };
     const archiv = synthetisch(
       ["B-sammel29"],
       [
-        zeileFuer(b40),
-        zeileFuer(b29, SPURLOS, "—", "0".repeat(64)),
-        `| B-sammel39 | \`BERICHT-sammel39.md\` | — | — | ${SPURLOS} | — | — | \`x\` | 1 | 1 |`,
+        zeileFuer(bericht("A-sammel40")),
+        zeileFuer(bericht("B-sammel29"), { sha: "0".repeat(64) }),
+        zeileFuer(fremd),
       ],
     );
     expect(maengel(archiv, keineDatei)).toEqual([
@@ -240,10 +323,21 @@ describe("Kalibrierung der Archivregel an synthetischen Archiven", () => {
     ]);
   });
 
-  it("eine Zeile ohne Fundstelle, die nicht spurlos sagt, ist rot", () => {
-    const archiv = synthetisch(["A-sammel38"], [zeileFuer(bericht("A-sammel38"), "Befund")]);
+  it("ein Verdikt außerhalb von GRÜN, GELB, ROT ist rot", () => {
+    const archiv = synthetisch(
+      ["A-sammel27"],
+      [zeileFuer(bericht("A-sammel27"), { verdikt: "nicht übernommen" })],
+    );
     expect(maengel(archiv, keineDatei)).toEqual([
-      "A-sammel38: ohne Fundstelle, sagt aber nicht „keine versionierte Spur“",
+      "A-sammel27: Gesamtverdikt „nicht übernommen“ ist nicht GRÜN, GELB oder ROT",
+    ]);
+  });
+
+  it("eine Zeile ohne Fundstelle, die nicht spurlos sagt, ist rot", () => {
+    const leer = zeileFuer(bericht("A-sammel38"), { fundstellen: "—" });
+    const archiv = synthetisch(["A-sammel38"], [leer]);
+    expect(maengel(archiv, keineDatei)).toEqual([
+      "A-sammel38: ohne Fundstelle, sagt aber nicht „keine Fundstelle im Code“",
     ]);
   });
 
@@ -251,9 +345,9 @@ describe("Kalibrierung der Archivregel an synthetischen Archiven", () => {
     const archiv = synthetisch(
       ["A-sammel32", "B-sammel33", "A-sammel34"],
       [
-        zeileFuer(bericht("A-sammel32"), "x", "`a.ts:1`"),
-        zeileFuer(bericht("B-sammel33"), "x", "`fehlt.ts:1`"),
-        zeileFuer(bericht("A-sammel34"), "x", "`b.ts:9`"),
+        zeileFuer(bericht("A-sammel32"), { fundstellen: "`a.ts:1`" }),
+        zeileFuer(bericht("B-sammel33"), { fundstellen: "`fehlt.ts:1`" }),
+        zeileFuer(bericht("A-sammel34"), { fundstellen: "`b.ts:9`" }),
       ],
     );
     const dateien: Record<string, string> = {
@@ -303,24 +397,79 @@ describe("Kalibrierung der Kopienprüfung (Sicherungsstand)", () => {
   });
 });
 
-describe("R-2042: das echte Archiv sammel26–44", () => {
-  it("der genannte Sicherungsstand stimmt mit den Kopien im Repository überein", () => {
-    const archivText = readFileSync(join(WURZEL, ARCHIV_PFAD), "utf8");
-    const ordner = join(WURZEL, KOPIEN_PFAD);
-    const dateien = existsSync(ordner)
-      ? readdirSync(ordner).map((name) => ({ name, inhalt: readFileSync(join(ordner, name)) }))
-      : [];
-    expect(kopienMaengel(dateien, archivText)).toEqual([]);
+describe("Kalibrierung der Berichtsprüfung (Verdikt und Inhalts-SHA aus dem Text)", () => {
+  const oben = "# Bericht\n\nBefund.\n\nGESAMTVERDIKT: GELB\n";
+  const echt = Buffer.from(`${oben}SHA-256: ${sha256(oben)}\n`, "utf8");
+  const b = bericht("A-sammel41");
+  const archivMit = (w: Zeilenwerte) => zeileFuer(b, w);
+
+  it("die Markerzeile wird über die Bytes oberhalb nachgerechnet, mit und ohne Schlussumbruch", () => {
+    expect(inhaltsSha(echt)).toEqual({ angegeben: sha256(oben), gerechnet: sha256(oben) });
+    const ohneUmbruch = Buffer.from(`${oben}SHA-256: ${sha256(oben)}`, "utf8");
+    expect(inhaltsSha(ohneUmbruch).gerechnet).toBe(sha256(oben));
   });
 
+  it("passender Bericht trägt", () => {
+    const archiv = archivMit({ verdikt: "GELB", inhaltsSha: sha256(oben) });
+    expect(berichtMaengel(archiv, () => echt)).toEqual([]);
+  });
+
+  it("veränderter Text, abweichende Tabellen-SHA und falsches Verdikt sind rot", () => {
+    const veraendert = Buffer.from(echt.toString("utf8").replace("Befund.", "Befund!"), "utf8");
+    const archiv = archivMit({ verdikt: "ROT", inhaltsSha: "1".repeat(64) });
+    expect(berichtMaengel(archiv, () => veraendert)).toEqual([
+      "A-sammel41: Inhalts-SHA der Markerzeile passt nicht zum Text",
+      "A-sammel41: Inhalts-SHA der Tabelle weicht von der Markerzeile ab",
+      "A-sammel41: Tabelle sagt ROT, Bericht sagt GELB",
+    ]);
+  });
+
+  it("fehlende Kopie, fehlende Markerzeile und widersprüchliche Verdikte sind rot", () => {
+    expect(berichtMaengel(archivMit({ verdikt: "GELB" }), () => null)).toEqual([
+      "A-sammel41: Bericht BERICHT-ben-sammel41-mega42.md ist nicht gesichert",
+    ]);
+    const zweiDeutig = Buffer.from("Gesamtverdikt ROT.\n\nGESAMTVERDIKT: GELB\nEnde\n", "utf8");
+    expect(berichtMaengel(archivMit({ verdikt: "GELB" }), () => zweiDeutig)).toEqual([
+      "A-sammel41: keine Markerzeile mit SHA-256",
+      "A-sammel41: Tabelle sagt GELB, Bericht sagt nichts",
+    ]);
+  });
+
+  it("die Verdiktformen der Berichte werden erkannt", () => {
+    expect(verdiktAus("## GESAMTVERDIKT\n\n**GELB.** Kein Blocker")).toBe("GELB");
+    expect(verdiktAus("## Kurzverdikt\n\n**GRUEN:** testseitig")).toBe("GRÜN");
+    expect(verdiktAus("**GESAMTVERDIKT PATCH 72: ROT / NO-GO AS-IS.**")).toBe("ROT");
+    expect(verdiktAus("Daher lautet das Gesamtverdikt GELB.\n…\nGESAMTVERDIKT: GELB")).toBe("GELB");
+    expect(verdiktAus("kein Urteil")).toBeNull();
+  });
+});
+
+describe("R-2042: das echte Archiv sammel26–44", () => {
   const archiv = readFileSync(join(WURZEL, ARCHIV_PFAD), "utf8");
+  const ordner = join(WURZEL, KOPIEN_PFAD);
+  const kopie = (datei: string) => {
+    const voll = join(ordner, datei);
+    return existsSync(voll) ? readFileSync(voll) : null;
+  };
   const lesen = (pfad: string) => {
     const voll = join(WURZEL, pfad);
     return existsSync(voll) ? readFileSync(voll, "utf8") : null;
   };
 
+  it("alle 32 Berichte liegen byte-gleich im Repository, und das Archiv sagt 32 von 32", () => {
+    const dateien = existsSync(ordner)
+      ? readdirSync(ordner).map((name) => ({ name, inhalt: readFileSync(join(ordner, name)) }))
+      : [];
+    expect(kopienMaengel(dateien, archiv)).toEqual([]);
+    expect(dateien).toHaveLength(32);
+  });
+
   it("führt jeden der 32 Berichte genau einmal mit Datei und Hash, jede Fundstelle trägt", () => {
     expect(maengel(archiv, lesen)).toEqual([]);
+  });
+
+  it("Gesamtverdikt und Inhalts-SHA jeder Zeile sind die des Berichts, nachgerechnet", () => {
+    expect(berichtMaengel(archiv, kopie)).toEqual([]);
   });
 
   it("ordnet die Fundstellen der richtigen Reihe zu und zählt so, wie es im Text steht", () => {
@@ -352,13 +501,25 @@ describe("R-2042: das echte Archiv sammel26–44", () => {
     expect(archiv).toMatch(new RegExp(`Die übrigen ${32 - mitSpur} sind nur über`));
   });
 
-  it("OFFEN.md I5 verweist aufs Archiv, behält den alten Wortlaut, nennt beide Reihen", () => {
+  it("die Verdiktzählung im Text stimmt mit der Tabelle überein", () => {
+    const zeilen = zeilenAus(archiv);
+    for (const reihe of ["A", "B"] as const) {
+      const n = (v: string) =>
+        zeilen.filter((z) => z.kennung.startsWith(`${reihe}-`) && z.verdikt === v).length;
+      expect(archiv).toContain(
+        `Reihe ${reihe} hat ${n("GRÜN")} GRÜN, ${n("GELB")} GELB und ${n("ROT")} ROT`,
+      );
+    }
+  });
+
+  it("OFFEN.md I5 verweist aufs Archiv, behält den alten Wortlaut, nennt Reihen und 32/32", () => {
     const register = readFileSync(join(WURZEL, "OFFEN.md"), "utf8");
     const i5 = register.split("\n").find((l) => l.startsWith("| I5 |"));
     expect(i5).toBeDefined();
     expect(i5).toContain("Die älteren Runden sammel26–44 stehen weiterhin aus.");
     expect(i5).toContain(ARCHIV_PFAD);
     expect(i5).toContain("32 Stück in zwei Reihen");
-    expect(i5).not.toContain("Kein einziger Inhalts-SHA ist belegt");
+    expect(i5).toContain("32 von 32 Berichtstexten");
+    expect(i5).not.toContain("0 von 32 Berichtstexten");
   });
 });
