@@ -15,7 +15,7 @@ Es heißt nicht: menschliche Freigabe oder Fehlerfreiheit.
 | Tatsächliches Antwortmodell je Anfrage | `antwortRolleVon` (Reasoner) → `AskService.antwortRolleVon` |
 | Einbindung in beide Antwortwege (Fragekonsole, Klara) | `antwortLauf` in `services/app/src/routes/ask-routes.ts` |
 | Erneute Prüfung | `POST /api/ask/referenzpruefung/:pruefId/erneut` |
-| Adminliste | `PUT /api/reasoner/config` mit `referenzpruefung: ["openai" \| "anthropic" \| "local", …]` |
+| Adminliste | `PUT /api/reasoner/config` mit `referenzpruefung: ["openai" \| "anthropic" \| "local", …]`; Einstieg REF-03: `GET`/`PUT /api/reasoner/referenzpruefung` |
 
 ## Ablauf je beantworteter Frage
 
@@ -101,6 +101,36 @@ als Hinweis ausgewiesen.
   Beide Antworten werden mit ihrer eigenen Bindung (heute: aktuelle Fassungen, damals: Fassungen
   zum Stichtag) und ihrem tatsächlichen Antwortmodell geprüft (`referenzpruefung: { heute, damals }`).
 
+## Einstieg „Referenzprüfung" in der Verwaltung (REF-03)
+
+`produkt:20261009:referenzki-adminauswahl`. Unter Verwaltung → KI → Referenzprüfung
+(`pages/AdminKiReferenz.tsx`, Detailkennung `kiReferenz`) steht die eigene Prüfrolle. Die Auswahl
+in der KI-Karte ist dorthin umgezogen; die KI-Karte verweist nur noch darauf.
+
+- **Optionen** sind die registrierten Zugänge der bestehenden Providerverwaltung (ChatGPT, Claude,
+  eigenes Modell). Es gibt keine eigene Schlüsselablage. Je Option stehen Anbieter, Modell,
+  intern/öffentlich und genau ein Zustand: `nicht_eingerichtet`, `ausgeschaltet` (nicht erlaubt),
+  `nicht_verfuegbar` (mit Sperre: KI abgeschaltet, Freigabe für externe Verarbeitung fehlt, nicht
+  erreichbar, kein Prüfmodell), `konfiguriert`, `letzte_pruefung_erfolgreich` oder
+  `letzte_pruefung_fehlgeschlagen`. „Konfiguriert" ist kein Prüfnachweis. Ein Funktionscheck gilt
+  nur für das Modell, mit dem er lief.
+- **Unabhängigkeit**: Jede Option zeigt, ob sie dasselbe Modell nutzt wie die heutige Antwort-KI.
+  Gibt es keine einsatzbereite Option mit anderem Modell, erklärt die Karte das mit nächstem
+  Schritt. Erzwungen wird es weiterhin je Anfrage in `Reasoner.referenzPruefer`.
+- **Freigabe**: Öffentliche Optionen ohne Grundfreigabe sind gesperrt und nennen den Weg zur Freigabe.
+  Vertrauliche Inhalte brauchen zusätzlich die zweite Freigabe. Space-, Nutzer- und Mandantenrechte
+  gelten je Fundstelle unverändert.
+- **Speichern**: `PUT /api/reasoner/referenzpruefung` (`users.manage`) über denselben Schreibweg wie
+  `PUT /api/reasoner/config`. Zuordnung und Freigaben bleiben so, wie der Server sie hält. Das Audit
+  `reasoner.referenzpruefung` nennt zusätzlich die Modelle vorher und nachher.
+- **Grenzen** stehen sichtbar: Zeitlimit, Antwortbudget, Posten- und Zeichendeckel, eine erneute
+  Prüfung, keine automatische Wiederholung, Preisgrundlage.
+- **Funktionscheck**: `POST /api/reasoner/referenzpruefung/funktionscheck` startet nur auf
+  ausdrücklichen Klick. Er sendet ausschließlich fiktiven Prüfstoff (einen belegten und einen
+  widersprochenen Posten) über denselben Prüfauftrag. Es gibt genau einen Aufruf und einen Lauf zur
+  Zeit. Zeit, Modell, Ergebnis, Dauer, Verbrauch und Kosten (nur mit Preisliste) stehen im Audit
+  `reasoner.referenzpruefung-funktionscheck`. Beim Seitenaufruf wird kein Modell gerufen.
+
 ## Abbruch bis zum Transport (Ben nacharbeit-3)
 
 Anfrageabbruch und Prüfzeitlimit lösen ein eigenes Abbruchsignal des Prüfdienstes aus
@@ -109,9 +139,43 @@ Anfrageabbruch und Prüfzeitlimit lösen ein eigenes Abbruchsignal des Prüfdien
 `openAiCompatibleClient` und bricht dort die laufende HTTP-Übertragung ab. Ist schon vor der
 Übertragung abgebrochen, geht nichts hinaus. Der Fehlerlauf steht mit Modell im Laufprotokoll.
 
+## Antwortstatus und Prüfprotokoll (REF-04)
+
+`produkt:20261009:referenzki-antwortstatus`. Ergänzt nur, was REF-02/REF-03 offen ließen.
+
+- **Alle Antwortwege, ein Dienst:** Fragekonsole, Klara-Zugang, Add-in (Kernaussagen),
+  Stichtagsvergleich, `POST /api/reasoner` mit `task: "ask"` und die beiden Antworten einer
+  angeforderten Zweitmeinung (`referenzpruefungZweitmeinung: { erste, zweite }`, je mit ihrem
+  tatsächlichen Antwortmodell aus `answerMitZweitmeinung`) rufen denselben `ReferenzPruefdienst`.
+- **Gesamtkennzeichnung** (`referenzGesamt`, `QuellenStatusMarke` in
+  `components/fragen/Referenzpruefung.tsx`): „Quellen geprüft" nur bei `status: geprueft`, jede
+  Aussage `belegt` mit Fundstelle, kein laufender oder gescheiterter Lauf und — soweit bekannt —
+  gleichem Antwortfingerabdruck. Sonst steht die Antwort als „Entwurf" mit dem Stand: teilweise
+  bestätigt, nicht prüfbar, Prüfung läuft, Prüfung nicht abgeschlossen, Quellenprüfung offen oder
+  Prüfung einer anderen Antwortfassung. Ohne prüfpflichtige Aussage steht „Keine prüfpflichtige
+  Aussage", ohne erfundene Quelle. Jeder Zustand trägt Zeichen und Wort, nicht nur Farbe.
+- **Fundstelle und Rückweg:** Je Aussage öffnet „Fundstelle und Begründung zeigen" den Bereich mit
+  Passage (soweit die Antwort sie mitlieferte), Fundstelle in ihrer Fassung und Begründung; Fokus
+  springt hinein, „Zurück zur Aussage" oder Escape setzt ihn zurück. Dazu der Satz „Belegt heißt:
+  die Fundstelle trägt die Aussage — nicht: garantiert wahr oder aktuell".
+- **Nächster Schritt:** Zu jedem Grund von „nicht prüfbar" steht ein konkreter nächster Schritt;
+  wo erlaubt, zusätzlich „Erneut prüfen" (aktuelle Konfiguration, neuer gebundener Lauf).
+- **Prüfprotokoll** `ask.referenzpruefung`, Fassung `referenzprotokoll-v1`: Zeitpunkt, Antwortkennung
+  und -weg, beide Rollen mit tatsächlichem Modell, Richtlinie, Fingerabdrücke, gebundene
+  Quellenfassungen und je Aussage Zustand, Grund, Belegverweise und Begründungsfingerabdruck —
+  ohne Texte (Inventar: `docs/datenschutz/pruefprotokoll-nutzdaten.md`). Die kurzen Begründungen
+  je Teilaussage stehen dauerhaft im eigenen Eintrag `ask.referenzpruefung-begruendung` desselben
+  Laufs (Ziel = Prüfkennung). Dort sind sie Inhaltsfeld der Audit-Sicht: lesbar nur, wer jede
+  zitierte Quelle jetzt öffnen darf; nach Papierkorb oder Endlöschung einer Quelle geschwärzt.
+  Abruf: `GET /api/audit?action=ask.referenzpruefung-begruendung&target=<pruefId>`.
+
 ## Offene Grenzen
 
-- Die Antworten der Zweitmeinung (eigener Auftrag) werden nicht referenzgeprüft.
+- Die Antworten der Zweitmeinung werden seit REF-04 referenzgeprüft; Abgleich und Gegenüberstellung
+  selbst bleiben Gegenstand ihres eigenen Auftrags.
+- Die Fragekonsole streamt nicht: die Antwort kommt mit ihrem Prüfergebnis. Zwischenstände sind die
+  serverseitige Bestätigung einer wiederhergestellten Antwort und die erneute Prüfung; beide stehen
+  als „Entwurf · Prüfung läuft". Klaras Panel zeigt die Prüfung nicht an (kein Klara-Ausbau).
 - Im Stichtagsvergleich lösen damalige Fundstellen aus dem Volltext nur auf, wenn die gespeicherte
   Suchprojektion dieser Fassung lesbar ist. Sonst verwirft die technische Prüfung sie sichtbar
   (`fundstelle_verworfen`).

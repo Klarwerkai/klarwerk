@@ -174,6 +174,30 @@ export function kostenEinesLaufs(
   };
 }
 
+/**
+ * produkt:20261009:referenzki-adminauswahl (REF-03): die Kosten EINES Aufrufs mit gemeldetem
+ * Verbrauch — dieselbe Rechnung wie je Versuch oben. `undefined` ohne Preisliste oder ohne Preis
+ * für genau dieses Modell; nie ein geschätzter Betrag.
+ */
+export function kostenEinesAufrufs(
+  preisliste: Preisliste | null,
+  modell: string,
+  verbrauch: { eingabe: number; ausgabe: number },
+): ModelRunKosten | undefined {
+  const preis = preisliste ? preisFuer(preisliste, modell) : undefined;
+  if (!preisliste || !preis) {
+    return undefined;
+  }
+  return {
+    betrag: runde(
+      (verbrauch.eingabe * preis.eingabeJeMillion + verbrauch.ausgabe * preis.ausgabeJeMillion) /
+        1_000_000,
+    ),
+    waehrung: preisliste.waehrung,
+    preisstand: preisliste.preisstand,
+  };
+}
+
 /** Der Lauf mit Kosten, falls berechenbar; sonst unverändert (ein vorhandenes Feld bleibt). */
 export function mitKosten(lauf: ModelRunRecord, preisliste: Preisliste | null): ModelRunRecord {
   if (lauf.kosten) {

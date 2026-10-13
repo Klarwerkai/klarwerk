@@ -215,6 +215,10 @@ export type {
   ReferenzPrueferGrund,
   ReferenzPrueferWahl,
   ReferenzRolle,
+  // produkt:20261009:referenzki-adminauswahl (REF-03): die Lage je Option für die Adminsicht.
+  ReferenzLage,
+  ReferenzOptionLage,
+  ReferenzOptionSperre,
 } from "./src/types";
 export { genannteZahlen, vergleicheAntworten } from "./src/zweitmeinung";
 // mega26 Block A: der Laufkontext ist Teil der ÖFFENTLICHEN Reasoner-Fläche — ein gebundener

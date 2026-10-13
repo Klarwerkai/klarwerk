@@ -383,6 +383,8 @@ export const MELDUNGEN: readonly string[] = [
   // reasoner-routes.ts, ask-routes.ts
   "reasoner.ki-freigabe konnte nicht protokolliert werden — Erweiterung abgelehnt",
   "reasoner.ki-freigabe (Rücknahme) konnte nicht protokolliert werden — sie gilt trotzdem",
+  // produkt:20261009:referenzki-adminauswahl (REF-03): der Funktionscheck lief, sein Beleg nicht.
+  "reasoner.referenzpruefung-funktionscheck konnte nicht protokolliert werden",
   "reasoner.ka4.dokument-consent",
   "ask.ka4.dokument-consent",
   "ask.ka4.dokumenttext",

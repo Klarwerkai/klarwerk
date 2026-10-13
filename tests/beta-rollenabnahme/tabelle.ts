@@ -475,6 +475,22 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     grund:
       "Setzt Anbieter, Modell und Schlüssel der Instanz. Eine Verstellung veränderte den KI-Status, den `GET /api/reasoner/status` und `GET /api/ai-status` in dieser Tabelle messen.",
   },
+  // produkt:20261009:referenzki-adminauswahl (REF-03): die Rechtegegenprobe dieser beiden Türen
+  // (nicht berechtigte Rolle → 403, direkt per API) misst `tests/referenzki-adminauswahl/`.
+  {
+    methode: "PUT",
+    pfad: "/api/reasoner/referenzpruefung",
+    art: "zurueckgestellt",
+    grund:
+      "Setzt die erlaubten Referenz-KIs der Instanz über denselben Schreibweg wie `PUT /api/reasoner/config`; eine Verstellung veränderte die Quellenprüfung jeder Antwort.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/reasoner/referenzpruefung/funktionscheck",
+    art: "zurueckgestellt",
+    grund:
+      "Der bewusste Funktionscheck einer Referenz-KI — ein echter, möglicherweise kostenpflichtiger Modellaufruf mit fiktivem Inhalt.",
+  },
   {
     methode: "PUT",
     pfad: "/api/reasoner/assist-presets",
@@ -3331,6 +3347,14 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/reasoner/config",
     belegstelle: "services/app/src/routes/reasoner-routes.ts:728",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "reasonerRoutes",
+    methode: "GET",
+    pfad: "/api/reasoner/referenzpruefung",
+    belegstelle: "services/app/src/routes/reasoner-routes.ts:1497",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },

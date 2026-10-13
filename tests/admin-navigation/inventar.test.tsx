@@ -121,13 +121,17 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     //
     // R-1034 / FR-I18N-02: 22 → 23. Die neue Kennung ist `uebersetzungen` — die Pflege der
     // Oberflächentexte unter „System" (`components/einstellungen/UebersetzungsPflege.tsx`).
-    expect(kennungen, `gefunden: ${kennungen.join(" · ")}`).toHaveLength(23);
+    //
+    // produkt:20261009:referenzki-adminauswahl (REF-03): 23 → 24. Die neue Kennung ist
+    // `kiReferenz` — der Einstieg Verwaltung → KI → Referenzprüfung (`pages/AdminKiReferenz.tsx`).
+    expect(kennungen, `gefunden: ${kennungen.join(" · ")}`).toHaveLength(24);
     for (const pflicht of [
       "nutzer:",
       "rolle:",
       "team:",
       "teams",
       "ki",
+      "kiReferenz",
       "demo",
       "pakete",
       "testimporte",
@@ -171,7 +175,8 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     const fehlend = statisch.filter((k) => !ziele.some((z) => z.path === adminHref(sekt(k), k)));
     // JOB 4025: 15 → 16 (die neue Kennung `sicherung`, siehe A0). ADMIN-16: 16 → 18.
     // ADMIN-06: 18 → 19 (`teams`). R-1034: 19 → 20 (die neue Kennung `uebersetzungen`, siehe A0).
-    expect(statisch, "der Griff fand keine statische Kennung").toHaveLength(20);
+    // REF-03: 20 → 21 (`kiReferenz`, siehe A0).
+    expect(statisch, "der Griff fand keine statische Kennung").toHaveLength(21);
     expect(fehlend, `kein direktes Ziel: ${fehlend.join(" · ")}`).toEqual([]);
   });
 

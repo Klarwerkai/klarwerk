@@ -1,5 +1,17 @@
-import type { FastifyPluginAsync } from "fastify";
-import type { AskService } from "../../../ask";
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+import {
+  type AskService,
+  REFERENZ_ANTWORT_MAX_TOKEN,
+  REFERENZ_EINGABE_MAX_ZEICHEN,
+  REFERENZ_ERNEUT_MAX,
+  REFERENZ_POSTEN_MAX,
+  REFERENZ_PRUEF_RICHTLINIE,
+  REFERENZ_ZEITLIMIT_MS,
+  type ReferenzFunktionscheckErgebnis,
+  type ReferenzPruefdienst,
+  referenzFunktionscheck,
+  referenzSichtFuerFragende,
+} from "../../../ask";
 import type { AuditService } from "../../../audit";
 import type { CaptureService } from "../../../capture";
 import {
@@ -14,6 +26,7 @@ import {
 // R-0088: die Suchanfrage der Interview-Recherche ist das Thema — begrenzt wie das Thema selbst.
 const MAX_INTERVIEW_QUELLEN_ANFRAGE = 200;
 import { type Confidentiality, type KoService, isConfidential } from "../../../knowledge-object";
+import type { ModelRunService } from "../../../model-runs";
 import {
   // JOB 3353 B: der EINE Fehlertyp, den der Reasoner wirft, wenn er GEMESSEN hat, dass die
   // Vertraulichkeit den Lauf ohne Anbieter gelassen hat. Nur er wird hier typisiert beantwortet.
@@ -25,6 +38,8 @@ import {
   type Reasoner,
   type ReasonerLocale,
   ReasonerPolicyLockedError,
+  type ReasonerReferenzWahl,
+  type ReferenzOptionLage,
   imBindungsrahmen,
   sperreAusleitung,
   validateDescribeImageDataUrl,
@@ -39,6 +54,8 @@ import {
 import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 import {
   type Ka4Freigabepruefer,
+  anfrageAbbruch,
+  fundstellenLeser,
   ka4Entscheidung,
   kiAbgeschaltetSenden,
   klaraBindungVorhanden,
@@ -123,6 +140,12 @@ export interface ReasonerRoutesDeps {
   // NICHT optional in der Wirkung: fehlt er, wird eine ERWEITERUNG der Freigabe abgelehnt (503),
   // statt still zu gelten. Eine Freigabe, die niemand belegen kann, ist keine.
   audit?: AuditService | undefined;
+  // REF-03: Preisgrundlage und Kosten eines Funktionschecks — dieselbe Preisliste wie im
+  // KI-Laufprotokoll. Optional: ohne sie stehen Kosten als „nicht berechenbar" da.
+  modelRuns?: Pick<ModelRunService, "kostenEinesAufrufs" | "preisgrundlage"> | undefined;
+  // produkt:20261009:referenzki-antwortstatus (REF-04, K1): derselbe gemeinsame Prüfdienst wie am
+  // Frageweg (`ask-routes.ts`). OPTIONAL wie dort: fehlt er, trägt die Antwort kein Prüffeld.
+  referenz?: ReferenzPruefdienst | undefined;
 }
 
 // JOB 2692 D1: was die Route über den Aufruf weiß, das der reinen Regel fehlt — Entwurfskennung,
@@ -390,6 +413,88 @@ function referenzStand(liste: readonly string[] | null | undefined): string[] {
   return Array.isArray(liste) ? [...new Set(liste)] : [];
 }
 
+// Der Rumpf des einen Schreibwegs der KI-Zuordnung (`PUT /api/reasoner/config`).
+type KonfigRumpf = {
+  global?: string;
+  perTask?: Record<string, string>;
+  // JOB 3549: WEGLASSEN LÄSST DIE FREIGABE UNVERÄNDERT (Vertrag §3) — die Bestands-Oberfläche
+  // speichert nur `global`/`perTask` und darf eine erteilte Freigabe dabei nicht löschen.
+  kiFreigabe?: { oeffentlicheKi?: boolean; vertraulicheInhalte?: boolean };
+  // R-0305/R-1099: das Modell der Zweitmeinung. Weglassen lässt es unverändert, `null` = aus.
+  zweitmeinung?: string | null;
+  // REF-02: die erlaubten Referenz-Prüfer in Vorzugsreihenfolge. Weglassen = unverändert,
+  // `null` oder `[]` = aus.
+  referenzpruefung?: string[] | null;
+};
+
+// ================================================================================================
+// produkt:20261009:referenzki-adminauswahl (REF-03) · ZUSTAND JE OPTION UND FUNKTIONSCHECK.
+// ================================================================================================
+//
+// Der Funktionscheck wird im vorhandenen Audit gespeichert (je Option ein Ziel), die Lage liest
+// den jüngsten Eintrag. Ein Ergebnis gilt nur für das Modell, mit dem es entstand: wechselt das
+// Modell hinter der Option, steht sie wieder auf „konfiguriert".
+const FUNKTIONSCHECK_AKTION = "reasoner.referenzpruefung-funktionscheck";
+
+interface FunktionscheckEintrag {
+  wahl: ReasonerReferenzWahl;
+  zeit: string;
+  anbieter: string;
+  modell: string | null;
+  ergebnis: "erfolgreich" | "fehlgeschlagen";
+  grund: string | null;
+  modellaufruf: boolean;
+  dauerMs: number;
+  verbrauch: { eingabe: number; ausgabe: number } | null;
+  kosten: { betrag: number; waehrung: string; preisstand: string } | null;
+  richtlinie: string;
+  fiktiv: true;
+}
+
+export type ReferenzOptionZustand =
+  | "nicht_eingerichtet"
+  | "ausgeschaltet"
+  | "nicht_verfuegbar"
+  | "konfiguriert"
+  | "letzte_pruefung_erfolgreich"
+  | "letzte_pruefung_fehlgeschlagen";
+
+/** Der eine zutreffende Zustand einer Option — „konfiguriert" ist kein Prüfnachweis. */
+export function referenzOptionZustand(
+  option: Pick<ReferenzOptionLage, "eingerichtet" | "erlaubt" | "sperre" | "modell">,
+  letzte: Pick<FunktionscheckEintrag, "modell" | "ergebnis"> | null,
+): ReferenzOptionZustand {
+  if (!option.eingerichtet) {
+    return "nicht_eingerichtet";
+  }
+  if (!option.erlaubt) {
+    return "ausgeschaltet";
+  }
+  if (option.sperre !== null) {
+    return "nicht_verfuegbar";
+  }
+  if (letzte !== null && letzte.modell !== null && letzte.modell === option.modell) {
+    return letzte.ergebnis === "erfolgreich"
+      ? "letzte_pruefung_erfolgreich"
+      : "letzte_pruefung_fehlgeschlagen";
+  }
+  return "konfiguriert";
+}
+
+/** Ein gespeicherter Funktionscheck aus der Auditnutzlast — Unlesbares zählt nicht. */
+function funktionscheckAus(payload: Record<string, unknown>): FunktionscheckEintrag | null {
+  const p = payload as Partial<Record<keyof FunktionscheckEintrag, unknown>>;
+  if (
+    (p.ergebnis !== "erfolgreich" && p.ergebnis !== "fehlgeschlagen") ||
+    typeof p.zeit !== "string" ||
+    !(REASONER_REFERENZ_WAHLEN as readonly unknown[]).includes(p.wahl) ||
+    (p.modell !== null && typeof p.modell !== "string")
+  ) {
+    return null;
+  }
+  return payload as unknown as FunktionscheckEintrag;
+}
+
 function gueltigeReferenzEingabe(wert: unknown): wert is string[] | null | undefined {
   return (
     wert === undefined ||
@@ -401,7 +506,83 @@ function gueltigeReferenzEingabe(wert: unknown): wert is string[] | null | undef
 }
 
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { reasoner, ask, externalKnowledge, ko, capture, ka4, audit, externalSearch } = deps;
+  const {
+    reasoner,
+    ask,
+    externalKnowledge,
+    ko,
+    capture,
+    ka4,
+    audit,
+    externalSearch,
+    modelRuns,
+    referenz,
+  } = deps;
+
+  // REF-03: ein Funktionscheck zur Zeit — keine parallele Steuerung, kein Stapel.
+  let funktionscheckLaeuft = false;
+
+  /** REF-03: Clientname und Modell hinter den Wahlen einer Liste — für das Protokoll. */
+  const referenzModelle = (
+    liste: readonly string[],
+  ): { wahl: string; anbieter: string | null; modell: string | null }[] => {
+    const optionen = reasoner.referenzLage().optionen;
+    return liste.map((wahl) => {
+      const option = optionen.find((o) => o.wahl === wahl);
+      return { wahl, anbieter: option?.anbieter ?? null, modell: option?.modell ?? null };
+    });
+  };
+
+  /** REF-03: der jüngste gespeicherte Funktionscheck einer Option — oder keiner. */
+  const letzterFunktionscheck = async (
+    wahl: ReasonerReferenzWahl,
+  ): Promise<FunktionscheckEintrag | null> => {
+    if (!audit) {
+      return null;
+    }
+    const seite = await audit
+      .page({ action: FUNKTIONSCHECK_AKTION, target: `${REFERENZ_ZIEL}:${wahl}`, limit: 1 })
+      .catch(() => null);
+    const eintrag = seite?.entries[0];
+    return eintrag ? funktionscheckAus(eintrag.payload) : null;
+  };
+
+  /** REF-03: die Adminsicht des Einstiegs „Referenzprüfung" — liest nur, ruft kein Modell. */
+  const referenzVerwaltung = async () => {
+    const lage = reasoner.referenzLage();
+    const status = reasoner.configStatus();
+    const optionen = await Promise.all(
+      lage.optionen.map(async (option) => {
+        const letzte = await letzterFunktionscheck(option.wahl);
+        return {
+          ...option,
+          zustand: referenzOptionZustand(option, letzte),
+          letzteFunktionspruefung: letzte,
+        };
+      }),
+    );
+    const einsatzbereit = optionen.filter((o) => o.erlaubt && o.sperre === null && o.eingerichtet);
+    return {
+      liste: referenzStand(status.taskConfig.referenzpruefung),
+      optionen,
+      antwortmodell: lage.antwortmodell,
+      freigabe: lage.freigabe,
+      // Gibt es wenigstens eine einsatzbereite Option mit ANDEREM Modell als die heutige Antwort?
+      unabhaengigVerfuegbar: einsatzbereit.some((o) => !o.gleichWieAntwortmodell),
+      policySource: status.policySource,
+      kiAbgeschaltet: status.kiAbschaltung.abgeschaltet,
+      grenzen: {
+        richtlinie: REFERENZ_PRUEF_RICHTLINIE,
+        zeitlimitMs: REFERENZ_ZEITLIMIT_MS,
+        antwortMaxToken: REFERENZ_ANTWORT_MAX_TOKEN,
+        postenMax: REFERENZ_POSTEN_MAX,
+        eingabeMaxZeichen: REFERENZ_EINGABE_MAX_ZEICHEN,
+        erneutMax: REFERENZ_ERNEUT_MAX,
+        automatischeWiederholung: false,
+      },
+      preise: modelRuns?.preisgrundlage() ?? { hinterlegt: false },
+    };
+  };
 
   // R-0088 (Bens Befund nacharbeit-6): die Quellenrecherche des geführten Interviews. Gibt die
   // abgerufenen Quellen zurück oder — ehrlich — keine: außerhalb des Fragebaums, beim Foto-Interview,
@@ -722,7 +903,30 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
               )
             : await ask.ask(text ?? "", user.id, locale, { validatedOnly: true }, grundlage);
           ask.kiSperreVorAuslieferung(kiBeginn);
-          reply.code(200).send(antwort);
+          // produkt:20261009:referenzki-antwortstatus (REF-04, K1): auch dieser Antwortweg ist
+          // wissensbezogen. Er ruft DENSELBEN Prüfdienst wie `/api/ask` — mit der Bindung GENAU
+          // dieser Antwort, ihrem tatsächlichen Antwortmodell, den aktuellen Rechten des Fragenden
+          // und dem Abbruch dieser Anfrage. Der wörtliche Weg (Klara ohne Einwilligung) ruft kein
+          // Modell und steht sichtbar „nicht prüfbar". Danach dieselbe KI-Sperrprüfung.
+          let referenzFeld: { referenzpruefung?: ReturnType<typeof referenzSichtFuerFragende> } =
+            {};
+          if (referenz && antwort.aussagen) {
+            const ergebnis = await referenz.pruefe({
+              beleg: antwort.aussagen,
+              antwortRolle: ask.antwortRolleVon(antwort),
+              akteur: user.id,
+              leser: fundstellenLeser(ko),
+              darfSehen: grundlage,
+              locale,
+              signal: anfrageAbbruch(reply),
+              modellaufrufAusgeschlossen: gebundenOhneFreigabe,
+              antwortId: antwort.answerId,
+              antwortweg: "reasoner",
+            });
+            referenzFeld = { referenzpruefung: referenzSichtFuerFragende(ergebnis) };
+            ask.kiSperreVorAuslieferung(kiBeginn);
+          }
+          reply.code(200).send({ ...antwort, ...referenzFeld });
         } catch (fehler) {
           // Die Auskunft in der angefragten Sprache — auch NL, das `normalizeLocale` für die
           // Antwort selbst (bestehend: nur DE/EN) auf DE zurückführt.
@@ -1017,38 +1221,40 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     // und eine zweite Gelegenheit, eines von beidem zu vergessen. Das Recht bleibt `users.manage`
     // wie bei jedem anderen Adminweg dieser Datei; die Prüfung steht SERVERSEITIG hier, weil eine
     // Oberfläche nichts erzwingen kann (Codex 93f857c5).
-    app.put<{
-      Body: {
-        global?: string;
-        perTask?: Record<string, string>;
-        // JOB 3549: WEGLASSEN LÄSST DIE FREIGABE UNVERÄNDERT (Vertrag §3) — die Bestands-Oberfläche
-        // speichert nur `global`/`perTask` und darf eine erteilte Freigabe dabei nicht löschen.
-        kiFreigabe?: { oeffentlicheKi?: boolean; vertraulicheInhalte?: boolean };
-        // R-0305/R-1099: das Modell der Zweitmeinung. Weglassen lässt es unverändert, `null` = aus.
-        zweitmeinung?: string | null;
-        // REF-02: die erlaubten Referenz-Prüfer in Vorzugsreihenfolge. Weglassen = unverändert,
-        // `null` oder `[]` = aus.
-        referenzpruefung?: string[] | null;
-      };
-    }>("/api/reasoner/config", async (request, reply) => {
-      const user = await guards.requirePermission("users.manage", request, reply);
-      if (!user) {
-        return;
-      }
+    // REF-03: DER EINE SCHREIBWEG DER KI-ZUORDNUNG, als Funktion. Ihn rufen der bestehende Adminweg
+    // (`PUT /api/reasoner/config`) und der Einstieg „Referenzprüfung" (`PUT
+    // /api/reasoner/referenzpruefung`) — dieselbe Prüfung, dasselbe Protokoll, kein zweiter Weg.
+    // `true`: geschrieben und wirksam, der Aufrufer antwortet. `false`: die Antwort ist gesendet.
+    const konfigurationSchreiben = async (
+      user: { id: string },
+      body: KonfigRumpf,
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ): Promise<boolean> => {
       // REF-02: ein unbekannter Wert ist ein Eingabefehler — abgewiesen vor jedem Protokoll.
-      const refEingabe: unknown = request.body.referenzpruefung;
+      const refEingabe: unknown = body.referenzpruefung;
       if (!gueltigeReferenzEingabe(refEingabe)) {
         reply.code(400).send({
           error: "BAD_REQUEST",
           message: "Ungültige Wahl für die Referenzprüfung.",
         });
-        return;
+        return false;
       }
       const refVorher = referenzStand(reasoner.configStatus().taskConfig.referenzpruefung);
       const refNachher = refEingabe === undefined ? refVorher : referenzStand(refEingabe);
       // Ein NEUER Empfänger (eine Option, die vorher nicht erlaubt war) ist belegpflichtig.
       const refNeu = refNachher.some((w) => !refVorher.includes(w));
       const refGeaendert = refVorher.join(",") !== refNachher.join(",");
+      // REF-03: das Protokoll nennt neben den Wahlen das tatsächliche Modell dahinter (vorher/
+      // nachher) — Clientname und Modellbezeichner, nie ein Schlüssel.
+      const refPayload = refGeaendert
+        ? {
+            vorher: refVorher,
+            nachher: refNachher,
+            modelleVorher: referenzModelle(refVorher),
+            modelleNachher: referenzModelle(refNachher),
+          }
+        : { vorher: refVorher, nachher: refNachher };
       const refNichtWirksam = async (): Promise<void> => {
         if (refNeu) {
           await audit
@@ -1056,14 +1262,14 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
               actor: user.id,
               action: "reasoner.referenzpruefung-nicht-wirksam",
               target: REFERENZ_ZIEL,
-              payload: { vorher: refVorher, nachher: refNachher },
+              payload: refPayload,
             })
             .catch(() => undefined);
         }
       };
       // R-0305/R-1099: ein unbekannter Wert ist ein Eingabefehler — abgewiesen, BEVOR irgendetwas
       // protokolliert oder geschrieben wird.
-      const zweitEingabe = request.body.zweitmeinung;
+      const zweitEingabe = body.zweitmeinung;
       if (
         zweitEingabe !== undefined &&
         zweitEingabe !== null &&
@@ -1071,7 +1277,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       ) {
         const meldung = "Ungültige Wahl für die Zweitmeinung.";
         reply.code(400).send({ error: "BAD_REQUEST", message: meldung });
-        return;
+        return false;
       }
       // REF-02: erst nach beiden Eingabeprüfungen, und VOR jedem anderen Beleg — scheitert er, ist
       // noch nichts protokolliert, das korrigiert werden müsste.
@@ -1083,7 +1289,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
               actor: user.id,
               action: "reasoner.referenzpruefung",
               target: REFERENZ_ZIEL,
-              payload: { vorher: refVorher, nachher: refNachher },
+              payload: refPayload,
             });
             belegt = true;
           } catch (fehler) {
@@ -1098,7 +1304,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             error: REFERENZ_NICHT_PROTOKOLLIERBAR,
             message: REFERENZ_NICHT_PROTOKOLLIERBAR_MELDUNG,
           });
-          return;
+          return false;
         }
       }
       const zweitVorher = zweitmeinungsStand(reasoner.configStatus().taskConfig.zweitmeinung);
@@ -1109,8 +1315,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       // Der VORHER-Stand, gelesen bevor irgendetwas passiert — er ist die eine Hälfte des
       // Protokolleintrags und zugleich der Vergleichspunkt für „ist das eine Erweiterung?".
       const vorher = schalterstand(reasoner.configStatus().taskConfig.kiFreigabe);
-      const nachher =
-        request.body.kiFreigabe === undefined ? vorher : schalterstand(request.body.kiFreigabe);
+      const nachher = body.kiFreigabe === undefined ? vorher : schalterstand(body.kiFreigabe);
       const erweiterung = istErweiterung(vorher, nachher);
 
       // FAIL-CLOSED VOR DEM SCHREIBEN: eine Erweiterung, die nicht belegt werden kann, findet nicht
@@ -1122,7 +1327,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             error: FREIGABE_NICHT_PROTOKOLLIERBAR,
             message: FREIGABE_NICHT_PROTOKOLLIERBAR_MELDUNG,
           });
-          return;
+          return false;
         }
         try {
           await audit.record({
@@ -1142,7 +1347,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             error: FREIGABE_NICHT_PROTOKOLLIERBAR,
             message: FREIGABE_NICHT_PROTOKOLLIERBAR_MELDUNG,
           });
-          return;
+          return false;
         }
       }
 
@@ -1182,7 +1387,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             error: ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR,
             message: ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR_MELDUNG,
           });
-          return;
+          return false;
         }
       }
 
@@ -1190,9 +1395,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // Laufzeit-Validierung übernimmt setTaskConfig (wirft bei ungültigen Werten).
         // SCRUM-525 P.5 (WP6): setTaskConfig persistiert jetzt → die Zuordnung überlebt Neustart/Deploy.
         await reasoner.setTaskConfig({
-          global: request.body.global ?? "auto",
-          perTask: request.body.perTask ?? {},
-          ...(request.body.kiFreigabe === undefined ? {} : { kiFreigabe: request.body.kiFreigabe }),
+          global: body.global ?? "auto",
+          perTask: body.perTask ?? {},
+          ...(body.kiFreigabe === undefined ? {} : { kiFreigabe: body.kiFreigabe }),
           ...(zweitEingabe === undefined ? {} : { zweitmeinung: zweitEingabe }),
           ...(refEingabe === undefined ? {} : { referenzpruefung: refEingabe }),
         } as Parameters<typeof reasoner.setTaskConfig>[0]);
@@ -1229,13 +1434,13 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // zu behandeln oder still zu übernehmen.
         if (error instanceof ReasonerPolicyLockedError) {
           reply.code(409).send({ error: "REASONER_POLICY_ENV_LOCKED", message: error.message });
-          return;
+          return false;
         }
         reply.code(400).send({
           error: "BAD_REQUEST",
           message: error instanceof Error ? error.message : "Ungültige KI-Zuordnung.",
         });
-        return;
+        return false;
       }
 
       const status = reasoner.configStatus();
@@ -1306,7 +1511,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             actor: user.id,
             action: "reasoner.referenzpruefung",
             target: REFERENZ_ZIEL,
-            payload: { vorher: refVorher, nachher: refNachher },
+            payload: refPayload,
           })
           .catch((fehler: unknown) => {
             request.log.error(
@@ -1315,8 +1520,146 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             );
           });
       }
-      reply.code(200).send(status);
+      return true;
+    };
+
+    app.put<{ Body: KonfigRumpf }>("/api/reasoner/config", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      if (await konfigurationSchreiben(user, request.body ?? {}, request, reply)) {
+        reply.code(200).send(reasoner.configStatus());
+      }
     });
+
+    // ============================================================================================
+    // produkt:20261009:referenzki-adminauswahl (REF-03) — DER EINSTIEG „REFERENZPRÜFUNG".
+    // ============================================================================================
+    //
+    // Lesen: je registriertem Zugang Anbieter, Modell, intern/öffentlich, erlaubt/Vorrang, Sperre
+    // und Zustand samt letzter Funktionsprüfung — dazu Freigabe, Antwortmodell und die geltenden
+    // Grenzen. Kein Modellaufruf beim Lesen. Schreiben: NUR die Liste, über `konfigurationSchreiben`
+    // mit der Zuordnung, die der Server JETZT hält (ein veralteter Client kann sie nicht
+    // zurückstellen). Funktionscheck: nur auf ausdrücklichen Aufruf, ein Lauf zur Zeit.
+    // Alles nur für die berechtigte Administratorrolle (`users.manage`), serverseitig geprüft.
+    app.get("/api/reasoner/referenzpruefung", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await referenzVerwaltung());
+    });
+
+    app.put<{ Body: { liste?: unknown } }>(
+      "/api/reasoner/referenzpruefung",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        const liste = request.body?.liste;
+        if (liste !== null && !Array.isArray(liste)) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: "Ungültige Wahl für die Referenzprüfung.",
+          });
+          return;
+        }
+        const jetzt = reasoner.configStatus().taskConfig;
+        const geschrieben = await konfigurationSchreiben(
+          user,
+          {
+            global: jetzt.global,
+            perTask: { ...jetzt.perTask } as Record<string, string>,
+            referenzpruefung: liste as string[] | null,
+          },
+          request,
+          reply,
+        );
+        if (geschrieben) {
+          reply.code(200).send(await referenzVerwaltung());
+        }
+      },
+    );
+
+    app.post<{ Body: { wahl?: unknown } }>(
+      "/api/reasoner/referenzpruefung/funktionscheck",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        const wahl = request.body?.wahl;
+        if (!(REASONER_REFERENZ_WAHLEN as readonly unknown[]).includes(wahl)) {
+          reply.code(400).send({ error: "BAD_REQUEST", message: "Unbekannte Referenz-KI." });
+          return;
+        }
+        // Keine parallele Steuerung: ein Funktionscheck zur Zeit, kein Wiederholen im Server.
+        if (funktionscheckLaeuft) {
+          reply.code(409).send({
+            error: "REFERENZ_FUNKTIONSCHECK_LAEUFT",
+            message: "Ein Funktionscheck läuft bereits. Bitte das Ergebnis abwarten.",
+          });
+          return;
+        }
+        const option = wahl as ReasonerReferenzWahl;
+        const wahlErgebnis = reasoner.referenzFunktionsPruefer(option);
+        if ("grund" in wahlErgebnis) {
+          // Gesperrt oder nicht eingerichtet — es geht nichts hinaus, nichts wird als Lauf gezählt.
+          reply.code(409).send({
+            error: "REFERENZ_PRUEFER_NICHT_BEREIT",
+            grund: wahlErgebnis.grund,
+            message: "Diese Referenz-KI ist derzeit nicht einsatzbereit; es wurde nichts gesendet.",
+          });
+          return;
+        }
+        funktionscheckLaeuft = true;
+        let ergebnis: ReferenzFunktionscheckErgebnis;
+        try {
+          ergebnis = await referenzFunktionscheck(wahlErgebnis.pruefer);
+        } finally {
+          funktionscheckLaeuft = false;
+        }
+        const kosten =
+          ergebnis.verbrauch && ergebnis.pruefer.modell
+            ? (modelRuns?.kostenEinesAufrufs(ergebnis.pruefer.modell, ergebnis.verbrauch) ?? null)
+            : null;
+        const eintrag: FunktionscheckEintrag = {
+          wahl: option,
+          zeit: ergebnis.zeit,
+          anbieter: ergebnis.pruefer.anbieter,
+          modell: ergebnis.pruefer.modell,
+          ergebnis: ergebnis.ergebnis,
+          grund: ergebnis.grund,
+          modellaufruf: ergebnis.modellaufruf,
+          dauerMs: ergebnis.dauerMs,
+          verbrauch: ergebnis.verbrauch,
+          kosten,
+          richtlinie: ergebnis.richtlinie,
+          fiktiv: true,
+        };
+        // Gespeichert im vorhandenen Audit: Zeit, Modell, Ergebnis — kein Prüfstoff, kein Schlüssel.
+        let gespeichert = false;
+        if (audit) {
+          try {
+            await audit.record({
+              actor: user.id,
+              action: FUNKTIONSCHECK_AKTION,
+              target: `${REFERENZ_ZIEL}:${option}`,
+              payload: { ...eintrag },
+            });
+            gespeichert = true;
+          } catch (fehler) {
+            request.log.error(
+              { err: fehler instanceof Error ? fehler.name : "unknown" },
+              "reasoner.referenzpruefung-funktionscheck konnte nicht protokolliert werden",
+            );
+          }
+        }
+        reply.code(200).send({ ...eintrag, gespeichert });
+      },
+    );
 
     // SCRUM-386: kundeneigene KI-Assist-Funktionen (Presets). Lesen darf jede angemeldete
     // Rolle (die Palette im Editor zeigt sie an); verwalten nur der Admin. Leitplanken:
