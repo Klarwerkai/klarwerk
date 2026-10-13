@@ -219,9 +219,8 @@ test("Produktbudgets · Anzeige, Speichern, Neuladen, unklarer Ausgang, Konflikt
     });
     expect(konto.status(), await konto.text()).toBe(201);
     // Ein eigener Kontext = eine eigene Sitzung; die Adresse des Servers kommt aus dem Projekt.
-    const fremderKontext = await browser.newContext({
-      baseURL: test.info().project.use.baseURL,
-    });
+    const basis = test.info().project.use.baseURL;
+    const fremderKontext = await browser.newContext(basis ? { baseURL: basis } : {});
     try {
       const login = await fremderKontext.request.post("/api/auth/login", {
         data: { email: mail, password: "Viewer-Passwort-1" },
