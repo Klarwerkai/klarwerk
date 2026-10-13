@@ -357,9 +357,10 @@ describe("JOB 2697 D7 · Fall 3 · der Lebenszyklus der Vorgangskennung", () => 
       nachErstemErfolg,
     );
     expect(aktualisiert).toHaveLength(1);
-    expect(aktualisiert[0].id).toBe("d-1");
-    expect(aktualisiert[0].payload.title).toBe("Ventil und Pumpe");
-    expect(aktualisiert[0].payload.operationId).toBeUndefined();
+    const update = aktualisiert[0];
+    expect(update?.id).toBe("d-1");
+    expect(update?.payload.title).toBe("Ventil und Pumpe");
+    expect(update && "operationId" in update.payload).toBe(false);
   });
 
   it("C4 · NEUER FACHLICHER VORGANG: nach dem Neustart-Angebot trägt der nächste Klick eine NEUE Kennung", async () => {
