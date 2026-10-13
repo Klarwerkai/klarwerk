@@ -86,6 +86,10 @@ export default {
     "lagebildwerte.form.unbekannt":
       "Ob gespeichert wurde, ist unbekannt (Verbindung oder Server). Ihre Eingabe ist erhalten. „Erneut senden“ wiederholt denselben Speichervorgang — er wird nicht doppelt angelegt.",
     "lagebildwerte.form.erneut": "Erneut senden",
+    "lagebildwerte.form.laeuft":
+      "Wird gespeichert — die Eingaben sind bis zur Antwort gesperrt, damit nichts überschrieben wird.",
+    "lagebildwerte.form.abbruchUnbekannt":
+      "Ob der letzte Speichervorgang gespeichert wurde, ist unbekannt. Oben steht der neu gelesene Stand — bitte prüfen, bevor Sie erneut eingeben.",
     "lagebildwerte.form.konflikt":
       "Inzwischen wurden die Werte geändert (Stand {{version}} vom {{zeit}}, {{wer}}). Ihre Eingabe wurde nicht gespeichert und steht unverändert im Formular.",
     "lagebildwerte.form.konfliktOhneStand":
@@ -175,6 +179,10 @@ export default {
     "lagebildwerte.form.unbekannt":
       "It is unknown whether the values were saved (connection or server). Your entry is kept. “Send again” repeats the same save — it will not be created twice.",
     "lagebildwerte.form.erneut": "Send again",
+    "lagebildwerte.form.laeuft":
+      "Saving — the inputs are locked until the answer arrives, so nothing gets overwritten.",
+    "lagebildwerte.form.abbruchUnbekannt":
+      "It is unknown whether the last save was stored. The freshly loaded state is shown above — please check it before entering values again.",
     "lagebildwerte.form.konflikt":
       "The values have been changed in the meantime (version {{version}} of {{zeit}}, {{wer}}). Your entry was not saved and remains unchanged in the form.",
     "lagebildwerte.form.konfliktOhneStand":
@@ -263,6 +271,10 @@ export default {
     "lagebildwerte.form.unbekannt":
       "Het is onbekend of er is opgeslagen (verbinding of server). Uw invoer blijft bewaard. „Opnieuw verzenden” herhaalt dezelfde opslag — die wordt niet dubbel aangemaakt.",
     "lagebildwerte.form.erneut": "Opnieuw verzenden",
+    "lagebildwerte.form.laeuft":
+      "Bezig met opslaan — de invoer is vergrendeld tot het antwoord er is, zodat niets wordt overschreven.",
+    "lagebildwerte.form.abbruchUnbekannt":
+      "Het is onbekend of de laatste opslag is opgeslagen. Hierboven staat de opnieuw geladen stand — controleer die voordat u opnieuw invoert.",
     "lagebildwerte.form.konflikt":
       "De waarden zijn intussen gewijzigd (versie {{version}} van {{zeit}}, {{wer}}). Uw invoer is niet opgeslagen en staat ongewijzigd in het formulier.",
     "lagebildwerte.form.konfliktOhneStand":

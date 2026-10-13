@@ -12,6 +12,9 @@
 //   K4 · LWE-06  Paralleler Stand (409): Eingabe bleibt im Formular, aktueller Stand wird gezeigt;
 //                überschrieben wird nur auf ausdrücklichen Klick und dann auf dem aktuellen Stand.
 //   K5 · LWE-03  Ohne Schreibrecht: nur lesen, kein Eingabeweg.
+//   K6 · LWE-06  Verzögerte Antwort: Eingaben, Abbrechen und Bereichswahl sind gesperrt; die späte
+//                Antwort verwirft keinen neueren Entwurf (Ben, Nacharbeit 3).
+//   K7 · LWE-06  Abbrechen nach unbekanntem Ausgang: der offene Ausgang bleibt in der Karte benannt.
 // Nicht gemessen: echtes Browserlayout — dafür tests-smoke/lagebild-werte-browser.spec.ts.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -63,8 +66,15 @@ function gespeichert(version: number, hourlyRate: number, vonWem = "u-ich"): Lag
 
 interface Buehne {
   bereich: LagebildBereich;
-  /** Antwort je PUT der Reihe nach; `"netz"` = Verbindungsabbruch (fetch wirft). */
-  antworten: Array<"netz" | { status: number; body: unknown }>;
+  /**
+   * Antwort je PUT der Reihe nach; `"netz"` = Verbindungsabbruch (fetch wirft); `verzoegert` = die
+   * Antwort kommt erst, wenn der Test das Versprechen einlöst (Nacharbeit 3, späte Antwort).
+   */
+  antworten: Array<
+    | "netz"
+    | { status: number; body: unknown }
+    | { verzoegert: Promise<{ status: number; body: unknown }> }
+  >;
   puts: Array<Record<string, unknown>>;
 }
 
@@ -125,10 +135,11 @@ function stelleFetch(): void {
       const methode = init?.method ?? "GET";
       if (pfad.includes("/api/management/lagebild-werte") && methode === "PUT") {
         buehne.puts.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-        const naechste = buehne.antworten.shift() ?? { status: 500, body: {} };
-        if (naechste === "netz") {
+        const eintragRoh = buehne.antworten.shift() ?? { status: 500, body: {} };
+        if (eintragRoh === "netz") {
           throw new TypeError("Failed to fetch");
         }
+        const naechste = "verzoegert" in eintragRoh ? await eintragRoh.verzoegert : eintragRoh;
         if (naechste.status === 200) {
           const eintrag = (naechste.body as { eintrag: LagebildWerte }).eintrag;
           buehne.bereich = { ...buehne.bereich, werte: eintrag, vonMir: true };
@@ -424,6 +435,80 @@ describe("Lagebild-Werte · Karte", () => {
     expect(buehne.puts[1]?.anfrageId).not.toBe(buehne.puts[0]?.anfrageId);
     expect(el(c, "lagebild-meldung").textContent).toBe(
       i18n.t("lagebildwerte.form.gespeichert", { version: 3 }),
+    );
+  });
+
+  // Ben (Nacharbeit 3, LWE-06): eine späte Antwort darf keine inzwischen getippte Korrektur
+  // verwerfen, und der laufende Ausgang darf nicht durch Abbrechen oder Bereichswechsel verschwinden.
+  it("K6 · verzögerte Antwort: während des Schreibens gesperrt, danach genau der abgesendete Stand", async () => {
+    neueBuehne();
+    stelleFetch();
+    const c = await mounten(createElement(LagebildWerteKarte));
+    await klick(c, "lagebild-bearbeiten");
+    await fuelleGueltig(c);
+    let einloesen: (a: { status: number; body: unknown }) => void = () => {};
+    buehne.antworten.push({
+      verzoegert: new Promise((fertig) => {
+        einloesen = fertig;
+      }),
+    });
+    await speichern(c);
+
+    // Der Schreibvorgang läuft: sichtbar benannt, Eingaben, Abbrechen und Bereichswahl gesperrt.
+    expect(el(c, "lagebild-form").getAttribute("data-laeuft")).toBe("ja");
+    expect(el(c, "lagebild-laeuft").textContent).toBe(i18n.t("lagebildwerte.form.laeuft"));
+    for (const testid of [
+      "lagebild-von",
+      "lagebild-bis",
+      "lagebild-eingabe-hourlyRate",
+      "lagebild-herkunft-hoursSavedPerValidatedKo",
+      "lagebild-beleg-hoursSavedPerValidatedKo",
+      "lagebild-abbrechen",
+      "lagebild-speichern",
+      "lagebild-bereich-wahl",
+    ]) {
+      expect(
+        (el(c, testid) as HTMLInputElement | HTMLButtonElement | HTMLSelectElement).disabled,
+        `${testid} ist während des Schreibens bedienbar`,
+      ).toBe(true);
+    }
+    // Ein Tippversuch und ein Abbruchversuch ändern nichts: kein neuer Entwurf, das Formular bleibt.
+    await tippe(c, "lagebild-eingabe-hourlyRate", "99");
+    expect(el<HTMLInputElement>(c, "lagebild-eingabe-hourlyRate").value).toBe("72,5");
+    await klick(c, "lagebild-abbrechen");
+    expect(c.querySelector('[data-testid="lagebild-form"]')).not.toBeNull();
+    expect(buehne.puts).toHaveLength(1);
+
+    // Die späte Antwort kommt: gespeichert ist genau der abgesendete Stand, und er wird angezeigt.
+    await act(async () => {
+      einloesen({ status: 200, body: { eintrag: gespeichert(1, 72.5), wiederholt: false } });
+      await durchlaufen();
+    });
+    await nachlaufen();
+    expect(buehne.puts[0]?.werte).toMatchObject({ hourlyRate: { wert: 72.5 } });
+    expect(c.querySelector('[data-testid="lagebild-form"]')).toBeNull();
+    expect(el(c, "lagebild-meldung").textContent).toBe(
+      i18n.t("lagebildwerte.form.gespeichert", { version: 1 }),
+    );
+    expect(
+      c.querySelector('[data-testid="lagebild-zeile"][data-feld="hourlyRate"]')?.textContent,
+    ).toContain("72,5");
+    expect((el(c, "lagebild-bereich-wahl") as HTMLSelectElement).disabled).toBe(false);
+  });
+
+  it("K7 · Abbrechen nach unbekanntem Ausgang: der offene Ausgang bleibt benannt", async () => {
+    neueBuehne();
+    stelleFetch();
+    const c = await mounten(createElement(LagebildWerteKarte));
+    await klick(c, "lagebild-bearbeiten");
+    await fuelleGueltig(c);
+    buehne.antworten.push("netz");
+    await speichern(c);
+    expect(el(c, "lagebild-unbekannt")).toBeTruthy();
+    await klick(c, "lagebild-abbrechen");
+    expect(c.querySelector('[data-testid="lagebild-form"]')).toBeNull();
+    expect(el(c, "lagebild-meldung").textContent).toBe(
+      i18n.t("lagebildwerte.form.abbruchUnbekannt"),
     );
   });
 

@@ -15,7 +15,7 @@
 //     dieselbe Kennung; war der erste Versuch erfolgreich, antwortet der Server mit diesem Stand
 //     statt einer zweiten Anlage. Eine geänderte Eingabe bekommt eine neue Kennung.
 import { useQueryClient } from "@tanstack/react-query";
-import { type ChangeEvent, useId, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
@@ -186,10 +186,14 @@ function LagebildFormular({
   bereich,
   onGespeichert,
   onAbbrechen,
+  onSchreibt,
 }: {
   bereich: LagebildBereich;
   onGespeichert: (eintrag: LagebildWerte, wiederholt: boolean) => void;
-  onAbbrechen: () => void;
+  /** `unbekannt`: der letzte Schreibausgang war offen — die Karte nennt das nach dem Schließen. */
+  onAbbrechen: (unbekannt: boolean) => void;
+  /** Meldet, ob gerade ein Schreibvorgang läuft — die Karte sperrt solange die Bereichswahl. */
+  onSchreibt: (laeuft: boolean) => void;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
@@ -198,9 +202,22 @@ function LagebildFormular({
   const [basisVersion, setBasisVersion] = useState(bereich.werte?.version ?? 0);
   const [anfrageId, setAnfrageId] = useState<string | null>(null);
   const [lage, setLage] = useState<Lage>({ art: "bereit" });
+  // Ben (Nacharbeit 3, LWE-06): solange ein Schreibvorgang läuft, ist der abgesendete Stand der
+  // einzige Entwurf. Eingaben und Abbrechen sind gesperrt; eine späte Antwort kann deshalb keine
+  // inzwischen getippte Korrektur verwerfen, und ihr Ausgang bleibt sichtbar. Der Ref schützt auch
+  // gegen Ereignisse, die zwischen Absenden und dem nächsten Rendern eintreffen.
+  const schreibtRef = useRef(false);
+  const laeuft = lage.art === "laeuft";
+  useEffect(() => {
+    onSchreibt(laeuft);
+  }, [laeuft, onSchreibt]);
+  useEffect(() => () => onSchreibt(false), [onSchreibt]);
 
   // Jede Änderung ist ein NEUER Speichervorgang — eine alte Kennung gehörte zu anderen Werten.
   const aendern = (neu: LagebildForm): void => {
+    if (schreibtRef.current) {
+      return;
+    }
     setForm(neu);
     setAnfrageId(null);
     if (lage.art === "unbekannt" || lage.art === "fehler") {
@@ -215,6 +232,9 @@ function LagebildFormular({
     };
 
   async function senden(basis: number): Promise<void> {
+    if (schreibtRef.current) {
+      return;
+    }
     const meldungen: string[] = [];
     const werte = {} as Record<LagebildFeld, LagebildWert | null>;
     for (const feld of LAGEBILD_FELDER) {
@@ -244,12 +264,15 @@ function LagebildFormular({
       basisVersion: basis,
       anfrageId: kennung,
     };
+    schreibtRef.current = true;
     setLage({ art: "laeuft" });
     try {
       const antwort = await endpoints.management.setLagebildWerte(bereich.bereich, body);
+      schreibtRef.current = false;
       await qc.invalidateQueries({ queryKey: LAGEBILD_SCHLUESSEL });
       onGespeichert(antwort.eintrag, antwort.wiederholt);
     } catch (fehler) {
+      schreibtRef.current = false;
       if (!(fehler instanceof ApiError) || fehler.status >= 500 || fehler.status === 408) {
         // Ausgang unbekannt: Kennung bleibt, damit „Erneut senden" nicht doppelt anlegt.
         setLage({ art: "unbekannt" });
@@ -270,10 +293,11 @@ function LagebildFormular({
     }
   }
 
-  const laeuft = lage.art === "laeuft";
   return (
     <form
       data-testid="lagebild-form"
+      data-laeuft={laeuft ? "ja" : "nein"}
+      aria-busy={laeuft}
       className="mt-3 space-y-3 rounded-card border border-hairline p-3"
       onSubmit={(e) => {
         e.preventDefault();
@@ -290,6 +314,7 @@ function LagebildFormular({
             data-testid="lagebild-von"
             type="date"
             value={form.zeitraumVon}
+            disabled={laeuft}
             onChange={(e) => aendern({ ...form, zeitraumVon: e.target.value })}
             className={FELD_KLASSE}
           />
@@ -301,6 +326,7 @@ function LagebildFormular({
             data-testid="lagebild-bis"
             type="date"
             value={form.zeitraumBis}
+            disabled={laeuft}
             onChange={(e) => aendern({ ...form, zeitraumBis: e.target.value })}
             className={FELD_KLASSE}
           />
@@ -329,6 +355,7 @@ function LagebildFormular({
                 data-testid={`lagebild-eingabe-${feld}`}
                 inputMode="decimal"
                 value={form.felder[feld].wert}
+                disabled={laeuft}
                 onChange={setzeFeld(feld, "wert")}
                 className={FELD_KLASSE}
               />
@@ -339,6 +366,7 @@ function LagebildFormular({
                 id={`${id}-${feld}-herkunft`}
                 data-testid={`lagebild-herkunft-${feld}`}
                 value={form.felder[feld].herkunft}
+                disabled={laeuft}
                 onChange={setzeFeld(feld, "herkunft")}
                 className={FELD_KLASSE}
               >
@@ -353,6 +381,7 @@ function LagebildFormular({
                 data-testid={`lagebild-beleg-${feld}`}
                 value={form.felder[feld].beleg}
                 maxLength={300}
+                disabled={laeuft}
                 onChange={setzeFeld(feld, "beleg")}
                 className={FELD_KLASSE}
               />
@@ -362,6 +391,11 @@ function LagebildFormular({
       ))}
       <p className="text-[11.5px] text-muted-2">{t("lagebildwerte.form.belegHilfe")}</p>
 
+      {laeuft ? (
+        <output data-testid="lagebild-laeuft" className="block text-[12.5px] text-text">
+          {t("lagebildwerte.form.laeuft")}
+        </output>
+      ) : null}
       {lage.art === "fehler" ? (
         <div
           role="alert"
@@ -409,7 +443,11 @@ function LagebildFormular({
             </>
           ) : null}
           <div className="mt-2 flex flex-wrap gap-2">
-            <Button type="button" data-testid="lagebild-uebernehmen" onClick={onAbbrechen}>
+            <Button
+              type="button"
+              data-testid="lagebild-uebernehmen"
+              onClick={() => onAbbrechen(false)}
+            >
               {t("lagebildwerte.form.uebernehmen")}
             </Button>
             <Button
@@ -431,7 +469,12 @@ function LagebildFormular({
         <Button type="submit" variant="primary" data-testid="lagebild-speichern" disabled={laeuft}>
           {laeuft ? t("lagebildwerte.form.speichert") : t("lagebildwerte.form.speichern")}
         </Button>
-        <Button type="button" data-testid="lagebild-abbrechen" onClick={onAbbrechen}>
+        <Button
+          type="button"
+          data-testid="lagebild-abbrechen"
+          disabled={laeuft}
+          onClick={() => onAbbrechen(lage.art === "unbekannt")}
+        >
           {t("lagebildwerte.form.abbrechen")}
         </Button>
       </div>
@@ -456,6 +499,10 @@ export function LagebildWerteKarte({
   const [gewaehlt, setGewaehlt] = useState(fest ?? "gesamt");
   const [bearbeiten, setBearbeiten] = useState(false);
   const [meldung, setMeldung] = useState<string | null>(null);
+  // Während ein Schreibvorgang läuft, bleibt der Bereich fest — sonst verschwände das Formular samt
+  // laufendem Ausgang (Ben, Nacharbeit 3, LWE-06).
+  const [schreibt, setSchreibt] = useState(false);
+  const meldeSchreibt = useCallback((laeuft: boolean) => setSchreibt(laeuft), []);
   const abfrage = useLagebildWerte(offen);
   const auswahlId = useId();
 
@@ -496,6 +543,7 @@ export function LagebildWerteKarte({
             id={auswahlId}
             data-testid="lagebild-bereich-wahl"
             value={gewaehlt}
+            disabled={schreibt}
             onChange={(e) => {
               setGewaehlt(e.target.value);
               setBearbeiten(false);
@@ -546,10 +594,14 @@ export function LagebildWerteKarte({
                     : "lagebildwerte.form.gespeichert";
                   setMeldung(t(schluessel, { version: eintrag.version }));
                 }}
-                onAbbrechen={() => {
+                onAbbrechen={(unbekannt) => {
                   setBearbeiten(false);
+                  // Ein offener Schreibausgang verschwindet nicht mit dem Formular: die Karte sagt es
+                  // und zeigt den neu gelesenen Stand.
+                  setMeldung(unbekannt ? t("lagebildwerte.form.abbruchUnbekannt") : null);
                   void qc.invalidateQueries({ queryKey: LAGEBILD_SCHLUESSEL });
                 }}
+                onSchreibt={meldeSchreibt}
               />
             ) : (
               <Button
