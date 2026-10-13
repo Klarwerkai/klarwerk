@@ -182,7 +182,13 @@ async function mounten(inhalt: ReturnType<typeof createElement>, route = "/kapit
         ),
       ),
     );
-    await durchlaufen();
+  });
+  // Mount und nachgeladene Karten jeweils committen, bevor deren Queries verarbeitet werden.
+  await vi.waitFor(async () => {
+    await act(async () => {
+      await durchlaufen();
+    });
+    expect(container.querySelector('[data-testid="lagebild-ergebnis"]')).not.toBeNull();
   });
   return container;
 }
@@ -195,11 +201,25 @@ function el<T extends Element = HTMLElement>(container: HTMLElement, testid: str
   return e as T;
 }
 
+/**
+ * React 18 leert Effekte und Zustandsänderungen eines `act` erst an dessen Ende. Abfragen, die erst
+ * nach dem Commit starten (Abo im Effekt, Neuladen nach dem Speichern), brauchen deshalb eine
+ * weitere Runde — dieselbe Lehre wie `tests/analytics/kapital-pruefaufgaben-mounted.test.tsx`.
+ */
+async function nachlaufen(): Promise<void> {
+  for (let runde = 0; runde < 3; runde++) {
+    await act(async () => {
+      await durchlaufen();
+    });
+  }
+}
+
 async function klick(container: HTMLElement, testid: string): Promise<void> {
   await act(async () => {
     el(container, testid).dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await durchlaufen();
   });
+  await nachlaufen();
 }
 
 async function tippe(container: HTMLElement, testid: string, wert: string): Promise<void> {
@@ -222,6 +242,7 @@ async function speichern(container: HTMLElement): Promise<void> {
     );
     await durchlaufen();
   });
+  await nachlaufen();
 }
 
 async function fuelleGueltig(container: HTMLElement): Promise<void> {
