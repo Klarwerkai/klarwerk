@@ -119,12 +119,31 @@ beauftragt.
   Base `79930092`, Abschluss `ENTSCHEIDUNG_NOETIG`. Alle gebundenen Hashes sind byte-identisch, und
   alle zwanzig prüfbaren Zeilenanker in N5 und N7 treffen. Sieben von acht Zeilen haben aufgelöste,
   hash-verifizierte Quellen.
-- **Tatsächliche Restpunkte laut JOB 894:**
-  1. **N1:** Die Platzhalter `<freeze>` und `<beleg>` aus Plan 288 §C.8 sind an kein Verzeichnis
-     gebunden. Ohne sie hat N1 keinen Gegenstand. Plan 317: „Ich setze sie nicht selbst.“ Das ist
-     eine offene Entscheidung des damaligen Kopfes. Sie wird hier nicht getroffen.
-  2. **N4:** Der Korridor enthält `apps/web/dist/word-addin/taskpane.html`. Der Pfad ist
-     gitignoriert und in keinem Clone vorhanden.
+- **Befunde der Rückgabe JOB 894** (Abschnitte 3–5, Wortlaut aus Bens Prüfprotokoll zu
+  Nacharbeit 3, `HISTORIE/nacharbeit-3/BEN/STREAM.jsonl`). D1 und der Anfang von D2 stehen nicht im
+  gelesenen Ausschnitt.
+  - **D2 · N4 enthält ein Bauartefakt.** Der Korridor nennt `apps/web/dist/word-addin/taskpane.html`.
+    Der Pfad ist gitignoriert und liegt in keinem frischen Clone. Wörtlich: „Das ist **kein Fehler
+    des Plans.** Der Auftrag hat die vier Korridordateien vorgegeben, und der Plan hat sie korrekt
+    aufgeführt. Es ist eine **Eigenschaft der Prüfzeile**, die man kennen muss, bevor man sie
+    ausführt.“ Die Rückgabe verlangt dafür *keine* Entscheidung, nur den Vermerk der
+    **Laufbedingung** „nur in einem gebauten Arbeitsbaum“ (Z1/N1). Ohne den Vermerk meldet ein
+    Prüfer im Clone ein Fehlen, das keines ist. N4 ist „bis auf das Bauartefakt messbar“.
+  - **D3 · Plan 288 ist nicht hashgebunden.** Sechs seiner Anker tragen N1, N3 und N8: `:44`, `:56`,
+    `:129`, `:171` und `:175`–`:181`. „Ohne Hashbindung lässt sich nicht sagen, ob sie noch gelten.“
+    Die drei hashgebundenen Quellen konnte JOB 894 bestätigen, Plan 288 nicht. Nach Z2/N3 gilt jeder
+    Anker ohne Hashbindung als **ungesichert**. Betroffen ist also der Umfang von N1, N3 und N8. Die
+    Belegquellen von N2, N5, N6 und N7 sind nicht betroffen.
+  - **D4 · Die Platzhalter von N1 sind weiter offen.** `<freeze>` und `<beleg>` aus Plan 288 §C.8
+    sind an kein Verzeichnis gebunden. Nach Z3 sind sie eine benannte Eingabe der Prüfung, die kein
+    Prüfer selbst setzt. Solange sie fehlen, lautet das Ergebnis von N1 „nicht adressierbar“, nicht
+    „Belegpfade fehlen“. Der Abschluss `ENTSCHEIDUNG_NOETIG` gilt „allein wegen `N1`“.
+- **Historische Vorschläge, keine offenen Entscheidungen** (Rückgabe Abschnitt 5, „falls der Kopf es
+  so hält“): Ergänzen könnte man ausschließlich die Planungsakte 317, nicht das Produkt („Keiner im
+  Produkt“). Vorgeschlagen sind drei Ergänzungen: die Laufbedingung „gebauter Arbeitsbaum“ an N4
+  (Z1), eine Hashbindung für Plan 288 an N1, N3 und N8 (Z2) und die Platzhalter als benannte Eingabe
+  an N1 (Z3). Plan 317 liegt in der verworfenen alten Steuerung. Dieser Lauf ändert ihn nicht und
+  baut die Vorschläge auch nicht im Produkt nach.
 - **Heutiger Stand der Produktanker** (Quelleninspektion am Arbeitsbaum, kein Testlauf):
   - **N4:** unverändert. `git ls-files` führt die anderen drei Korridordateien, `apps/web/dist/word-addin/taskpane.html` nicht.
     `apps/web/.gitignore:2` lautet `dist`.
@@ -147,10 +166,17 @@ beauftragt.
   und Status `SPAETER`. Die Rückgabe selbst schließt mit `ENTSCHEIDUNG_NOETIG` und nennt „Das
   Manifest hat seinen Zweck erfüllt“. Den BEN-Bericht zu D1 hat dieser Lauf nicht gesehen. Worauf
   das ROT zielt, ist deshalb nicht belegt.
-- **Rest:** die N1-Wurzelentscheidung, die N4-Korridorentscheidung (gitignorierten Pfad ersetzen
-  oder ausnehmen) und das Nachziehen der N5/N7-Anker, falls die acht Prüfungen je ausgeführt werden
-  sollen. Keine davon ist ohne Nutzerentscheidung zu treffen. Die acht Prüfungen selbst sind laut
-  Plan 317 nicht bestellt.
+- **Rest, getrennt nach Art:**
+  - **Fehlende Entscheidung, genau eine:** die Bindung der N1-Platzhalter `<freeze>` und `<beleg>`
+    (D4/Z3). Sie wird hier nicht getroffen.
+  - **Fehlender Beleg:** keine Hashbindung von Plan 288 (D3). Die Anker von N1, N3 und N8 sind
+    deshalb ungesichert.
+  - **Laufbedingung, keine Entscheidung:** N4 ist nur in einem gebauten Arbeitsbaum vollständig
+    ausführbar (D2/Z1). Heute unverändert: `git ls-files` führt den dist-Pfad nicht.
+  - **Heutige Beobachtung dieses Laufs:** Die N5/N7-Zeilenanker sind gewandert (siehe oben). Für
+    die Symbole ist das kein Bruch. Es betrifft nur eine spätere Ausführung.
+  - Die acht Prüfungen sind laut Plan 317 nicht bestellt, und keine davon wird aus diesem Abgleich
+    abgeleitet.
 
 **K5 · R-1468 Quellenwegkarte und Wächter.** Geliefert in diesem Lauf, in Nacharbeit 2 auf die
 Originalquelle bezogen.
@@ -187,9 +213,9 @@ Handlungsübersicht darf nicht von Hand nachgezogen werden, sondern muss aus dem
 („was von Disziplin abhängt, überlebt keine Nacht“). Abgleich mit dem heutigen Arbeitsweg nach
 `CLAUDE.md` (Abschnitt „Ein Ablauf“):
 
-- **Heutige Handlungsübersicht je Auftrag:** Das ist die Datei `auftragsstand.json` im
+- **Datenquelle der heutigen Handlungsübersicht:** die Datei `auftragsstand.json` im
   Auftragsordner. Sie führt `fortschritt.schritt`, `naechster_schritt`, `blockade`, `kandidat` und
-  `lieferung`.
+  `lieferung`. Angezeigt wird sie über den eigenen Anzeigeweg unten.
 - **Ihre Datenquellen:**
   - Der Auftrag selbst ist `AUFTRAG-B1.json`. Er trägt Status, Kriterien und Abschlussbeleg und
     kommt aus der Auftragsquelle mit `source_id`, `locator` und SHA-256 der Quelle
@@ -204,19 +230,44 @@ Handlungsübersicht darf nicht von Hand nachgezogen werden, sondern muss aus dem
   - Den nächsten Schritt setzt die Phasensteuerung, nicht ein Mensch. Beispiel: Revision 17 setzt
     `naechster_schritt` nach Bens Nacharbeit auf „Konkreten Fehler in bestehender Claude-Sitzung
     beheben“.
-  - Der Fall vom 31.07. war eine beantwortete Entscheidung, die weiter als offen angezeigt wurde. Er
-    entsteht so nicht, weil Anzeige und Stand dieselbe Datei sind und kein zweites, gepflegtes
-    Abbild existiert.
-- **Zuordnung:** Die von Hand gepflegte Zentrale ist durch den maschinell fortgeschriebenen
-  Auftragsstand abgelöst. Ein Erzeuger für `_relay/board/klarwerk-board.html` wäre ein Wiederaufbau
-  der verworfenen Steuerung und wird nicht gebaut.
+- **Heutiger Anzeigeweg (Erfüllungsbeleg)** — getrennt von der Datei, aber aus ihr gespeist. Die
+  Fundstellen stammen aus Bens Prüfprotokoll zu Nacharbeit 3. Die Dateien liegen unter
+  `/Users/peterkohnert/klarwerk_steuerung/register/kontrollzentrum/`, außerhalb des Arbeitsbereichs
+  dieses Laufs.
+  1. **Auftragsstand → `kurzer_weg.py`.** `_job()` (:349) liest `auftragsstand.json` des Auftrags.
+     Die Zeile wird nur gefüllt, wenn `schema == 1`, die Auftragskennung passt, `schritt` und
+     `naechster_schritt` Texte sind, `aktualisiert` ein Zeitstempel ist und `kandidat` ein voller
+     Commit ist. Sonst erscheint „Auftragsstand unvollständig oder anderer Auftrag; Stand unbekannt“.
+     Übernommen werden `schritt`, `kandidat`, `aktualisiert`, `naechster_schritt`, `blockade` und
+     `lieferung`, mit `fortschritt_quelle='Auftragsstand'`. `_jobdetails()` (:281) führt
+     `quelle='auftragsstand.json'` und den Stand. `lesen()` (:473) sammelt alle Aufträge der
+     Produktionskonfiguration und meldet eine unvollständige Zuordnung als Fehler, statt sie zu
+     überspringen.
+  2. **`kurzer_weg.py` → `/api/kurzer-weg`.** `kontrollzentrum.py` importiert `kurzer_weg` (:29),
+     `kurzer_weg()` ruft `kurzer_weg.lesen(config)` (:541–544), und die Route `/api/kurzer-weg`
+     liefert das Ergebnis aus (:691–692).
+  3. **`/api/kurzer-weg` → Board.** `ui/kontrollzentrum.html` lädt die Daten mit
+     `fetch('/api/kurzer-weg', { cache: 'no-store' })` (:3670). Die Auftragskarten zeigen unter
+     anderem `schritt`, `kandidat`, `blockade`, `naechster_schritt`, `lieferung` und `verlauf` (:3655).
+  4. **Umstellung des Boards auf diesen Weg:** `board_hauptweg_einbauen.py` (Produktionsordner)
+     setzt den Marker `board_hauptweg: {weg: 'kurzer_weg'}` erst nach einer Prüfung der Lieferungen
+     und der vorbereiteten Boarddateien. `kurzer_weg.lesen()` vollzieht die Umstellung nur bei diesem
+     ausdrücklichen Marker.
+- **Warum der Fall vom 31.07. so nicht entsteht:** Damals stand eine beantwortete Entscheidung im
+  Register richtig, auf der von Hand gepflegten Lesefläche aber weiter als offen. Heute ist die
+  Anzeige ein *Lesepfad* über den Auftragsstand, kein zweites, gepflegtes Abbild. Was das Board als
+  nächsten Schritt zeigt, ist bei jedem Abruf `fortschritt.naechster_schritt` aus der Datei. Fehlt
+  oder bricht die Quelle, sagt die Anzeige „Stand unbekannt“, statt einen alten Stand zu zeigen.
+- **Zuordnung:** R-2015 ist im heutigen Arbeitsweg erfüllt. Der Erzeuger, den I39 verlangte, ist
+  der Lesepfad Auftragsstand → `kurzer_weg.py` → `/api/kurzer-weg` → Board. Er wird hier
+  wiederverwendet und nicht neu gebaut. Ein Erzeuger für `_relay/board/klarwerk-board.html` wäre ein
+  Wiederaufbau der verworfenen Steuerung und entfällt.
 - **Grenzen, offen benannt:**
-  - Eine Gesamtübersicht über *alle* Aufträge, etwa für Pedi, und ihr Erzeuger
-    (`produkt_intake.py`, Koordinationsordner) liegen außerhalb des Arbeitsbereichs dieses Laufs.
-    Ob es sie gibt und ob sie generiert ist, ist hier nicht belegt.
-  - Eine ausdrückliche Nutzerentscheidung „Zentrale abgelöst“ ist nicht belegt. Belegt ist der von
-    Pedi freigegebene vereinfachte Ablauf in `CLAUDE.md`, Commit `f41d9073`, „docs: simplify agent
-    instructions for the approved production workflow“.
+  - Der Anzeigeweg ist Quelleninspektion aus Bens Protokoll. Dieser Lauf hat das Board nicht
+    aufgerufen und keinen Livestand gesehen.
+  - Eine ausdrückliche Nutzerentscheidung „Zentrale abgelöst“ ist nicht belegt. Belegt sind der
+    freigegebene Ablauf in `CLAUDE.md` (Commit `f41d9073`) und der Marker `board_hauptweg` als
+    technische Umstellung.
 - **Technischer Rest im Produktbaum:**
   - `tools/zentrale-drift.ts` (JOB 2065) und seine Zeile in `tools/check` messen weiterhin
     `_relay/board/klarwerk-board.html` gegen das historische `OFFEN.md`. In jedem heutigen Clone
@@ -283,8 +334,10 @@ Handlungsübersicht darf nicht von Hand nachgezogen werden, sondern muss aus dem
    **Korrektur in Nacharbeit 2:** Die Makroaufträge zu JOB 880 und 894, Plan 317, Plan 327 und die
    Rückgaben zu JOB 880 und 894 sind vorhanden. Ihr Wortlaut ist aus Bens Prüfprotokoll übernommen
    (`HISTORIE/nacharbeit-2/BEN/STREAM.jsonl`). Von den beiden Rückgaben enthält das Protokoll nur
-   den Kopf, die ersten 65 Zeilen. Spätere Abschnitte und die BEN-Berichte zu JOB 880 D5 und
-   JOB 894 D1 hat dieser Lauf nicht gesehen.
+   den Kopf, die ersten 65 Zeilen. **Nacharbeit 3:** Aus Bens Protokoll zu Nacharbeit 3 sind die
+   Abschnitte 3–5 der Rückgabe JOB 894 (Ende von D2, D3, D4, Z1–Z3, Pfad- und Testkandidaten) und
+   der Anzeigeweg des Boards ausgewertet. D1 und der Anfang von D2 sowie die BEN-Berichte zu JOB 880
+   D5 und JOB 894 D1 hat dieser Lauf nicht gesehen.
 9. **R-1467 Register gegen Rückgabe:** Das Register sagt „zuletzt D1 BEN ROT“ und `SPAETER`, die
    Rückgabe JOB 894 sagt `ENTSCHEIDUNG_NOETIG`, sieben von acht Zeilen tragen (Abschnitt 4).
 10. **R-1468 Register gegen Rückgabe:** Das Register sagt „zuletzt D5 BEN ROT (20.08.)“, die
@@ -301,8 +354,8 @@ Handlungsübersicht darf nicht von Hand nachgezogen werden, sondern muss aus dem
 | R-1351 Gleichlauf | vorhanden und um zwei Gleichläufe ergänzt. Keine Gesamterhebung. Zwei Bestandswächter melden auf der Basis rot (Abschnitt 5) | `ext-attach-gate-gleichlauf`, Karte K4/K5, Pin |
 | R-1367 Erlaubnisliste | geliefert in diesem Lauf, in Nacharbeit 2 gegen Spread und Konstanten gehärtet | Pin-Test mit Gegenproben |
 | R-1468 Quellenwegkarte | geliefert: Herkunft der Sollwerte (Plan 327, JOB 880, Freeze-Wächter) mit Abgleich. Importwege ergänzend | Kartenwächter S1–S3, K1–K7 |
-| R-1467 Betriebsbefunde N1–N8 | vorhanden (Plan 317, JOB 894), abgeglichen. Rest: N1-Wurzeln, N4-Korridor, veraltete N5/N7-Anker | Abschnitt 4, keine neue Prüfung |
-| R-2015 Erzeuger der Zentrale | abgelöst durch den maschinell fortgeschriebenen `auftragsstand.json`. Gesamtübersicht nicht belegt. Drift-Wächter wirkungslos, unverändert | Abschnitt 4 |
+| R-1467 Betriebsbefunde N1–N8 | vorhanden (Plan 317, JOB 894), abgeglichen. Offene Entscheidung nur N1-Platzhalter. Beleglücke: Plan 288 ohne Hashbindung (N1/N3/N8). N4 ist eine Laufbedingung | Abschnitt 4, keine neue Prüfung |
+| R-2015 Erzeuger der Zentrale | erfüllt im heutigen Weg: Auftragsstand → `kurzer_weg.py` → `/api/kurzer-weg` → Board. Nicht neu gebaut. Drift-Wächter wirkungslos, unverändert | Abschnitt 4 |
 
 Ob diese Lieferung die Kriterien erfüllt, steht erst nach Bens Prüfung, der Veröffentlichung und dem
 gespeicherten Abschluss fest.
