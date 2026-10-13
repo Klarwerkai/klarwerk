@@ -155,6 +155,91 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     expect(existsSync(aktiv)).toBe(true);
   });
 
+  // Ben, Nacharbeit 24: die Löschentscheidung las per Regex den ERSTEN Treffer aus 64 KiB und kannte
+  // keine Leerzeichen nach dem Doppelpunkt. Gültiges JSON in jeder Schreibweise, das Minimum aller Zeilen.
+  it("Löschentscheidung: Leerzeichen nach dem Doppelpunkt, junge erste Zeile, alte Zeile hinter 64 KiB", () => {
+    const o = protokollordner();
+    const aktiv = join(o, "server-3002.log");
+    datei(aktiv, "", JETZT);
+    writeFileSync(`${aktiv}.beginn`, `${JETZT}\n`);
+    // (a) pino-Form mit Leerzeichen, heute angelegt, Inhalt 15 Tage alt.
+    datei(
+      join(o, "pino-leerzeichen.log"),
+      `{"level": 30, "time": ${JETZT - 15 * TAG}, "msg": "x"}\n`,
+      JETZT,
+    );
+    // (b) Docker-Form mit Leerzeichen.
+    datei(
+      join(o, "docker-leerzeichen.log"),
+      `{"log": "x\\n", "stream": "stdout", "time": "${new Date(JETZT - 15 * TAG).toISOString()}"}\n`,
+      JETZT,
+    );
+    // (c) gemischt: junge ERSTE Zeile, alte spätere.
+    datei(
+      join(o, "gemischt.log"),
+      zeile(JETZT - TAG, "jung") + zeile(JETZT - 15 * TAG, "alt"),
+      JETZT,
+    );
+    // (d) die alte Zeile erst hinter 64 KiB junger Zeilen.
+    const jung = zeile(JETZT - TAG, "f".repeat(1000));
+    datei(
+      join(o, "lang.log"),
+      jung.repeat(Math.ceil((70 * 1024) / jung.length)) + zeile(JETZT - 15 * TAG, "alt"),
+      JETZT,
+    );
+    // Gegenprobe: alles jung — bleibt.
+    datei(join(o, "jung.log"), zeile(JETZT - TAG, "jung") + zeile(JETZT - 2 * TAG, "jung"), JETZT);
+
+    const ergebnis = pflegeProtokolle({ datei: aktiv, jetzt: JETZT });
+
+    expect(ergebnis.geloescht.sort()).toEqual([
+      "docker-leerzeichen.log",
+      "gemischt.log",
+      "lang.log",
+      "pino-leerzeichen.log",
+    ]);
+    expect(existsSync(join(o, "jung.log"))).toBe(true);
+  });
+
+  it("Docker-Hostlauf: gemischte Rotation (junge erste, 15 Tage alte spätere Zeile) fällt; Bericht bestätigt danach", () => {
+    const wurzel = protokollordner();
+    const id = "a1b2c3d4e5f60718293a4b5c";
+    const ordner = join(wurzel, id);
+    mkdirSync(ordner);
+    datei(join(ordner, "config.v2.json"), appKonfiguration(), JETZT);
+    const iso = (zeit: number) => new Date(zeit).toISOString();
+    const aktiv = join(ordner, `${id}-json.log`);
+    datei(aktiv, `{"log":"jetzt\\n","stream":"stdout","time":"${iso(JETZT)}"}\n`, JETZT);
+    const aktivVorher = readFileSync(aktiv);
+    // Docker-Rotation: junge erste Zeile, dann eine alte — mit Leerzeichen nach dem Doppelpunkt.
+    datei(
+      join(ordner, `${id}-json.log.1`),
+      `{"log":"jung\\n","stream":"stdout","time":"${iso(JETZT - TAG)}"}\n` +
+        `{"log": "alt\\n", "stream": "stdout", "time": "${iso(JETZT - 15 * TAG)}"}\n`,
+      JETZT,
+    );
+    const fremd = fremderContainer(
+      wurzel,
+      (zeit, text) =>
+        `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: iso(zeit) })}\n`,
+    );
+
+    const vorher = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(vorher.container.find((c) => c.id === id)?.rotationen).toMatchObject({
+      aeltesteZeileTage: 15,
+      fristBestaetigt: false,
+    });
+
+    const lauf = pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+
+    expect(lauf.container[id]?.geloescht).toEqual([`${id}-json.log.1`]);
+    // Die aktive Datei (laufend) bleibt bytegenau; fremde Container bleiben unberührt.
+    expect(readFileSync(aktiv).equals(aktivVorher)).toBe(true);
+    fremd.unberuehrt();
+    const nachher = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(nachher.container.find((c) => c.id === id)?.rotationen.fristBestaetigt).toBe(true);
+  });
+
   it("Diagnosekopie: heute kopiert, Inhalt 20 Tage alt — sie fällt nach dem INHALT, nicht dem Datum", () => {
     const o = protokollordner();
     const aktiv = join(o, "server-3002.log");

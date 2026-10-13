@@ -19,7 +19,7 @@
 //      wochenlang läuft, hält damit nie mehr als einen Tag in der aktiven Datei.
 //   2. LÖSCHEN: Jede ANDERE `.log`-Datei im Protokollordner — Archive UND Diagnosekopien, die dort
 //      abgelegt wurden — fällt, sobald ihre ÄLTESTE Zeile 14 Tage alt ist. Das Alter wird aus dem
-//      Inhalt gelesen (das `time`-Feld der ersten pino-Zeile), nicht allein aus dem Dateidatum: Eine
+//      Inhalt gelesen (das älteste `time`-Feld aller Zeilen), nicht allein aus dem Dateidatum: Eine
 //      heute angelegte Kopie eines alten Protokolls ist nicht heute entstanden. Steht keine Zeit im
 //      Inhalt, gilt das ältere von Änderungs- und Anlagedatum.
 //
@@ -27,12 +27,9 @@
 // Datei ausserhalb des Protokollordners. Sicherheits-/Auditnachweise erhalten laut Entscheidung eine
 // EIGENE Regel; diese Pflege ist sie nicht.
 import {
-  closeSync,
   copyFileSync,
   existsSync,
-  openSync,
   readFileSync,
-  readSync,
   readdirSync,
   statSync,
   truncateSync,
@@ -55,9 +52,6 @@ export const PROTOKOLL_ROTATION_MS = TAG_MS;
 
 /** So oft läuft die Pflege im laufenden Betrieb. */
 export const PROTOKOLL_PFLEGE_INTERVALL_MS = 60 * 60 * 1000;
-
-/** So viel vom Dateianfang wird nach der ersten Zeitangabe durchsucht. */
-const KOPF_BYTES = 64 * 1024;
 
 export interface ProtokollPflegeErgebnis {
   /** Der Name der Archivdatei, wenn rotiert wurde. */
@@ -88,45 +82,61 @@ function zeitstempel(ms: number): string {
 }
 
 /**
- * Die älteste Zeitangabe am Dateianfang, sonst `null`. Zwei Formen: pino schreibt `"time":<ms>`,
- * Dockers `json-file` schreibt je Zeile `"time":"<ISO-8601>"`.
+ * Die ÄLTESTE gültige Zeitangabe der GANZEN Datei, sonst `null` (Ben, Nacharbeit 24).
+ *
+ * Bis hierher las eine Regex den ERSTEN Treffer aus höchstens 64 KiB und kannte keine Leerzeichen
+ * nach dem Doppelpunkt: Eine gültige Zeile `{"time": 1700000000000}` blieb unerkannt, und eine
+ * gemischte Rotation mit junger erster und alter späterer Zeile galt als jung — beides verhinderte
+ * die Löschung. Jetzt wird jede Zeile als JSON gelesen (jede zulässige Schreibweise) und das MINIMUM
+ * genommen. Zwei Formen: pino schreibt `time` als Millisekunden, Dockers `json-file` als ISO-8601.
+ * Unlesbare Zeilen tragen keine Zeit bei; ihr Alter fällt auf das Dateidatum (`aeltesterInhalt`).
  */
-export function ersteZeitImInhalt(pfad: string): number | null {
-  let fd: number | null = null;
+export function aeltesteZeitImInhalt(pfad: string): number | null {
+  let inhalt: string;
   try {
-    fd = openSync(pfad, "r");
-    const puffer = Buffer.alloc(KOPF_BYTES);
-    const gelesen = readSync(fd, puffer, 0, KOPF_BYTES, 0);
-    for (const zeile of puffer.subarray(0, gelesen).toString("utf8").split("\n")) {
-      const roh = zeile.trim();
-      const ms = /^\{.*"time":(\d{10,})/.exec(roh);
-      if (ms?.[1]) {
-        return Number(ms[1]);
-      }
-      const iso = /^\{.*"time":"(\d{4}-\d{2}-\d{2}T[^"]+)"/.exec(roh);
-      const wert = iso?.[1] ? Date.parse(iso[1]) : Number.NaN;
-      if (Number.isFinite(wert)) {
-        return wert;
-      }
-    }
-    return null;
+    inhalt = readFileSync(pfad, "utf8");
   } catch {
     return null;
-  } finally {
-    if (fd !== null) {
-      closeSync(fd);
+  }
+  let aeltestes: number | null = null;
+  for (const zeile of inhalt.split("\n")) {
+    if (zeile.trim().length === 0) {
+      continue;
+    }
+    let wert: unknown;
+    try {
+      wert = JSON.parse(zeile);
+    } catch {
+      continue;
+    }
+    if (wert === null || typeof wert !== "object" || Array.isArray(wert)) {
+      continue;
+    }
+    const zeitWert = (wert as Record<string, unknown>).time;
+    const zeit =
+      typeof zeitWert === "number"
+        ? zeitWert
+        : typeof zeitWert === "string"
+          ? Date.parse(zeitWert)
+          : Number.NaN;
+    if (Number.isFinite(zeit)) {
+      aeltestes = aeltestes === null ? zeit : Math.min(aeltestes, zeit);
     }
   }
+  return aeltestes;
 }
 
-/** Wann der älteste Inhalt einer Datei höchstens entstand (Inhaltszeit, sonst Dateidatum). */
+/**
+ * Wann der älteste Inhalt einer Datei höchstens entstand: das Minimum aus ältester Inhaltszeit und
+ * Dateidatum. Eine erkannte alte Inhaltszeit wird so nie durch ein jüngeres Dateidatum verdeckt.
+ */
 export function aeltesterInhalt(pfad: string): number {
   const stand = statSync(pfad);
   const datum = Math.min(
     stand.mtimeMs,
     stand.birthtimeMs > 0 ? stand.birthtimeMs : Number.POSITIVE_INFINITY,
   );
-  const imInhalt = ersteZeitImInhalt(pfad);
+  const imInhalt = aeltesteZeitImInhalt(pfad);
   return imInhalt === null ? datum : Math.min(imInhalt, datum);
 }
 
