@@ -15,8 +15,10 @@
 //
 // Der Füllblock trägt keinen Inhalt (eine feste Kennung und Füllzeichen), läuft an Logger und
 // Positivliste vorbei direkt auf die Standardausgabe und kostet höchstens `max-size` (+ Zuschlag)
-// Bytes am Tag. Er wirkt nur, wenn Docker mit genau dieser `max-size` rotiert — `KLARWERK_DOCKER_LOG_MAX_SIZE`
-// muss deshalb zum `--log-opt max-size` passen (Dockerfile, docker-compose.prod.yml, Coolify-Optionen).
+// Bytes am Tag. Gesetzt wird er nur im Ein-Befehl-Weg (docker-compose.prod.yml); im Coolify-Betrieb
+// hält ein externer Host-Connector (10m/3) Impuls und Pflege, und das Abbild setzt die Variable bewusst
+// NICHT (Nacharbeit 25). Er wirkt nur, wenn Docker mit genau dieser `max-size` rotiert — `KLARWERK_DOCKER_LOG_MAX_SIZE`
+// muss deshalb zum `--log-opt max-size` desselben Weges passen (docker-compose.prod.yml: beide 1m).
 // Ohne die Variable (Insel, Entwicklung) geschieht nichts.
 import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

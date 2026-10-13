@@ -191,6 +191,9 @@ services:
       # Optionaler Supportweg dieser Installation; leer bleibt ausdrücklich nicht eingerichtet.
       KLARWERK_SUPPORT_URL: ${KLARWERK_SUPPORT_URL:-}
       KLARWERK_SUPPORT_LABEL: ${KLARWERK_SUPPORT_LABEL:-}
+      # R-0664 (Nacharbeit 25): der interne Rotationsimpuls NUR auf diesem Ein-Befehl-Weg — passend zu
+      # `max-size: "1m"` unten. Das Abbild selbst setzt ihn nicht (Coolify: externer Connector, 10m/3).
+      KLARWERK_DOCKER_LOG_MAX_SIZE: "1m"
     ports:
       # JOB 4201: containerseitig derselbe Port wie oben — sonst zeigt die Veroeffentlichung auf
       # einen Port, auf dem nichts horcht. Wirtsseitig bleibt es dieselbe Zahl; wer die Instanz
@@ -205,7 +208,7 @@ services:
     # Dateien durch. Die aktive Datei verwaltet Docker allein (Nacharbeit 15). Damit Docker sie auch
     # bei wenig Ausgabe rotiert, schreibt die App täglich einen inhaltsfreien Füllblock von `max-size`
     # Bytes (Nacharbeit 16, services/app/src/protokoll-rotationsimpuls.ts) — `max-size` HIER muss zu
-    # `KLARWERK_DOCKER_LOG_MAX_SIZE` im Dockerfile passen (beide 1m). Für Coolify
+    # `KLARWERK_DOCKER_LOG_MAX_SIZE` oben im environment-Block passen (beide 1m). Für Coolify
     # gilt diese Datei nicht (Kopf dieser Datei). Gehütet von tests/security/log-personenbezug.test.ts.
     logging:
       driver: json-file

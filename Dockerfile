@@ -88,11 +88,10 @@ EXPOSE 3001
 # Aufruf mit --auswahl de.klarwerk.protokollpflege=app) bearbeitet NUR Container mit diesem Label —
 # also nur die aus diesem Abbild, nie fremde Container auf demselben Host.
 LABEL de.klarwerk.protokollpflege=app
-# R-0664: Dockers `max-size` für diesen Container — MUSS zu `--log-opt max-size` passen
-# (docker-compose.prod.yml; Coolify: Custom Docker Options). Die App schreibt damit einmal täglich
-# einen inhaltsfreien Füllblock, und Docker rotiert die aktive Protokolldatei selbst
-# (services/app/src/protokoll-rotationsimpuls.ts).
-ENV KLARWERK_DOCKER_LOG_MAX_SIZE=1m
+# R-0664: KEIN `KLARWERK_DOCKER_LOG_MAX_SIZE` im Abbild (Nacharbeit 25). Der interne Rotationsimpuls
+# gehört allein zum Ein-Befehl-Weg (docker-compose.prod.yml setzt ihn passend zu dessen 1m/50).
+# Im Coolify-Betrieb hält der externe Host-Connector (10m/3) Impuls und Pflege; seine Schutzprüfung
+# bricht ab, wenn die App einen eigenen Impuls oder eine Dateiprotokollierung mitbringt.
 USER node
 # Ehrlicher Selbsttest: /health muss {"status":"ok"} liefern, sonst gilt der Container als krank.
 # R-2057: mit KLARWERK_TLS_CERT_FILE fragt er über HTTPS mit Zertifikatsprüfung

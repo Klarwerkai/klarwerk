@@ -355,7 +355,9 @@ async function start(): Promise<void> {
   }
   // R-0664 (Ben, Nacharbeit 16): im Docker-Betrieb rotiert Docker die aktive Protokolldatei täglich
   // selbst — angestossen durch einen inhaltsfreien Füllblock (protokoll-rotationsimpuls.ts). Wirkt
-  // nur mit gesetzter Docker-`max-size` (Dockerfile); auf der Insel ist sie nicht gesetzt.
+  // nur mit gesetzter Docker-`max-size`: im Ein-Befehl-Weg (docker-compose.prod.yml). Das Abbild und
+  // damit Coolify setzen sie nicht — dort hält der externe Host-Connector Impuls und Pflege
+  // (Nacharbeit 25); auf der Insel ist sie ebenfalls nicht gesetzt.
   const rotationsimpuls = starteRotationsimpuls({
     maxSize: leseMaxSize(process.env[DOCKER_LOG_MAX_SIZE_ENV]),
     onError: (error) => app.log.warn({ err: error }, "Rotationsimpuls übersprungen."),

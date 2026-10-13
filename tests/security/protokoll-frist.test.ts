@@ -1233,7 +1233,12 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
   });
 
   it("Dockerfile und Compose nennen dieselbe max-size wie der Rotationsimpuls", () => {
-    expect(readFileSync("Dockerfile", "utf8")).toMatch(/^ENV KLARWERK_DOCKER_LOG_MAX_SIZE=1m$/m);
+    // Nacharbeit 25: das Abbild setzt den Impuls NICHT — sonst bräche die Schutzprüfung des externen
+    // Coolify-Connectors (10m/3) ab. Gesetzt wird er nur im Ein-Befehl-Weg, passend zu dessen 1m.
+    expect(readFileSync("Dockerfile", "utf8")).not.toMatch(/^ENV\s+KLARWERK_DOCKER_LOG_MAX_SIZE/m);
+    expect(readFileSync("Dockerfile", "utf8")).not.toMatch(/^ENV\s+KLARWERK_LOG_DATEI/m);
+    const appUmgebung = readFileSync("docker-compose.prod.yml", "utf8");
+    expect(appUmgebung).toMatch(/^ {6}KLARWERK_DOCKER_LOG_MAX_SIZE: "1m"$/m);
     const compose = readFileSync("docker-compose.prod.yml", "utf8");
     const app = compose.slice(
       compose.indexOf("\n  app:\n"),

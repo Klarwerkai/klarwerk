@@ -554,11 +554,11 @@ const GRUNDWERTE: readonly Startwert[] = [
     bereich: "Betrieb",
     pflicht: { art: "nie" },
     geheim: false,
-    vorgabe: "1m (Dockerfile)",
+    vorgabe: "nicht gesetzt; Ein-Befehl-Weg: 1m (docker-compose.prod.yml)",
     wofuer:
       "Dockers max-size für diesen Container. Die App schreibt damit täglich einen inhaltsfreien Füllblock, und Docker rotiert die aktive Protokolldatei selbst.",
     ohneIhn:
-      "Kein Rotationsimpuls — bei wenig Ausgabe bleibt die aktive Docker-Protokolldatei länger als 14 Tage stehen.",
+      "Kein interner Rotationsimpuls — dann muss ein Host-Connector den Impuls setzen (Coolify: externer Connector, 10m/3), sonst bleibt die aktive Docker-Protokolldatei bei wenig Ausgabe länger als 14 Tage stehen.",
   },
   {
     name: "KLARWERK_LOG_DATEI",
