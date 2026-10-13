@@ -2743,6 +2743,14 @@ export interface AskResponse {
   // REF-02: das Ergebnis der Referenzprüfung (Spiegel von `ReferenzPruefSicht`,
   // services/ask/src/referenz-pruefung.ts). Fehlt ohne Prüfdienst oder ohne beantwortete Frage.
   referenzpruefung?: ReferenzPruefung;
+  // REF-01 (Ben nacharbeit-7): die eigenen Bindungen der beiden Zweitmeinungsantworten.
+  zweitmeinungAussagen?: { erste: AussagenBelegKurz | null; zweite: AussagenBelegKurz | null };
+  // produkt:20261009:referenzki-antwortstatus (REF-04, K1): die Referenzprüfung JEDER der beiden
+  // Zweitmeinungsantworten — nur bei einer Gegenüberstellung; `null`: diese Seite ohne Text.
+  referenzpruefungZweitmeinung?: {
+    erste: ReferenzPruefung | null;
+    zweite: ReferenzPruefung | null;
+  };
 }
 
 // ================================================================================================
@@ -2815,6 +2823,15 @@ export interface ReferenzPruefung {
   ausCache: boolean;
   messung: { dauerMs: number; modellaufrufe: 0 | 1 };
   versuch: { nummer: number; hoechstens: number };
+  // REF-04 (K7): die Bindung dieses Ergebnisses an GENAU eine Antwortfassung (ohne Prüfmodell —
+  // das steht nur im Prüfprotokoll). Ein älterer Server sendet sie nicht.
+  bindung?: {
+    antwortFingerabdruck: string;
+    belegFingerabdruck: string;
+    paketFingerabdruck: string | null;
+    richtlinie: string;
+    ergebnisFingerabdruck: string;
+  };
 }
 
 // R-1630 / R-2176: Spiegel von `services/ask/src/wissensstand-vergleich.ts` — dort stehen Regeln
@@ -4295,6 +4312,8 @@ export interface AntwortBeanstandung {
 // produkt:20261009:referenzki-quellenbelege (REF-01): Spiegel des Teils von `AussagenBeleg`
 // (services/ask/src/aussage-fundstellen.ts), den die Fragenseite für die Beanstandung braucht.
 export interface AntwortAussagenBeleg {
+  // REF-04 (K7): der Fingerabdruck des ausgelieferten Antworttexts; ein älterer Server sendet ihn nicht.
+  antwortFingerabdruck?: string;
   aussagen: {
     aussageId: string;
     text: string;

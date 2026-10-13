@@ -139,9 +139,39 @@ Anfrageabbruch und Prüfzeitlimit lösen ein eigenes Abbruchsignal des Prüfdien
 `openAiCompatibleClient` und bricht dort die laufende HTTP-Übertragung ab. Ist schon vor der
 Übertragung abgebrochen, geht nichts hinaus. Der Fehlerlauf steht mit Modell im Laufprotokoll.
 
+## Antwortstatus und Prüfprotokoll (REF-04)
+
+`produkt:20261009:referenzki-antwortstatus`. Ergänzt nur, was REF-02/REF-03 offen ließen.
+
+- **Alle Antwortwege, ein Dienst:** Fragekonsole, Klara-Zugang, Add-in (Kernaussagen),
+  Stichtagsvergleich, `POST /api/reasoner` mit `task: "ask"` und die beiden Antworten einer
+  angeforderten Zweitmeinung (`referenzpruefungZweitmeinung: { erste, zweite }`, je mit ihrem
+  tatsächlichen Antwortmodell aus `answerMitZweitmeinung`) rufen denselben `ReferenzPruefdienst`.
+- **Gesamtkennzeichnung** (`referenzGesamt`, `QuellenStatusMarke` in
+  `components/fragen/Referenzpruefung.tsx`): „Quellen geprüft" nur bei `status: geprueft`, jede
+  Aussage `belegt` mit Fundstelle, kein laufender oder gescheiterter Lauf und — soweit bekannt —
+  gleichem Antwortfingerabdruck. Sonst steht die Antwort als „Entwurf" mit dem Stand: teilweise
+  bestätigt, nicht prüfbar, Prüfung läuft, Prüfung nicht abgeschlossen, Quellenprüfung offen oder
+  Prüfung einer anderen Antwortfassung. Ohne prüfpflichtige Aussage steht „Keine prüfpflichtige
+  Aussage", ohne erfundene Quelle. Jeder Zustand trägt Zeichen und Wort, nicht nur Farbe.
+- **Fundstelle und Rückweg:** Je Aussage öffnet „Fundstelle und Begründung zeigen" den Bereich mit
+  Passage (soweit die Antwort sie mitlieferte), Fundstelle in ihrer Fassung und Begründung; Fokus
+  springt hinein, „Zurück zur Aussage" oder Escape setzt ihn zurück. Dazu der Satz „Belegt heißt:
+  die Fundstelle trägt die Aussage — nicht: garantiert wahr oder aktuell".
+- **Nächster Schritt:** Zu jedem Grund von „nicht prüfbar" steht ein konkreter nächster Schritt;
+  wo erlaubt, zusätzlich „Erneut prüfen" (aktuelle Konfiguration, neuer gebundener Lauf).
+- **Prüfprotokoll** `ask.referenzpruefung`, Fassung `referenzprotokoll-v1`: Zeitpunkt, Antwortkennung
+  und -weg, beide Rollen mit tatsächlichem Modell, Richtlinie, Fingerabdrücke, gebundene
+  Quellenfassungen und je Aussage Zustand, Grund, Belegverweise und Begründungsfingerabdruck —
+  ohne Texte (Inventar: `docs/datenschutz/pruefprotokoll-nutzdaten.md`).
+
 ## Offene Grenzen
 
-- Die Antworten der Zweitmeinung (eigener Auftrag) werden nicht referenzgeprüft.
+- Die Antworten der Zweitmeinung werden seit REF-04 referenzgeprüft; Abgleich und Gegenüberstellung
+  selbst bleiben Gegenstand ihres eigenen Auftrags.
+- Die Fragekonsole streamt nicht: die Antwort kommt mit ihrem Prüfergebnis. Zwischenstände sind die
+  serverseitige Bestätigung einer wiederhergestellten Antwort und die erneute Prüfung; beide stehen
+  als „Entwurf · Prüfung läuft". Klaras Panel zeigt die Prüfung nicht an (kein Klara-Ausbau).
 - Im Stichtagsvergleich lösen damalige Fundstellen aus dem Volltext nur auf, wenn die gespeicherte
   Suchprojektion dieser Fassung lesbar ist. Sonst verwirft die technische Prüfung sie sichtbar
   (`fundstelle_verworfen`).

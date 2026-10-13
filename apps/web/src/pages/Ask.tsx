@@ -63,7 +63,11 @@ import {
   chipPunkt,
 } from "../components/fragen/Quellenplaketten";
 // REF-02 (Ben nacharbeit-3): das Ergebnis der Referenzprüfung an der stehenden Antwort.
-import { Referenzpruefung } from "../components/fragen/Referenzpruefung";
+import {
+  QuellenStatusMarke,
+  Referenzpruefung,
+  referenzGesamt,
+} from "../components/fragen/Referenzpruefung";
 import { WissensstandVergleichBereich } from "../components/fragen/WissensstandVergleich";
 // R-0305/R-1099: die Zweitmeinung zur stehenden Antwort.
 import { Zweitmeinung } from "../components/fragen/Zweitmeinung";
@@ -781,6 +785,10 @@ export function Ask(): JSX.Element {
   // eine Beanstandung gebunden wird. Nicht im Arbeitsstand: nach dem Neuladen bleibt nur die
   // einfache Meldung — der Server prüft die Aussage ohnehin gegen den signierten Beleg.
   const [aussagen, setAussagen] = useState<AntwortAussagenBeleg["aussagen"]>([]);
+  // REF-04 (K7): der Fingerabdruck DIESER Antwortfassung, wie der Server sie gebunden hat. Eine
+  // Prüfung mit anderer Bindung erbt hier keine Bestätigung. Wie `aussagen` nicht im Arbeitsstand —
+  // dort bestätigt der Server die Prüfung ohnehin neu.
+  const [antwortFingerabdruck, setAntwortFingerabdruck] = useState<string | null>(null);
   // SCRUM-264: zuletzt gestellte Frage festhalten → für die Anzeige des Rescue-Blocks.
   const [asked, setAsked] = useState(anfang?.antwort?.frage ?? "");
   // R-0348: der Gesprächsfaden — die zuletzt beantworteten Fragen dieser Fragestrecke. Eine
@@ -1026,6 +1034,7 @@ export function Ask(): JSX.Element {
       setPruefrahmen(null);
       setReferenzpruefung(null);
       setAussageTexte(new Map());
+      setAntwortFingerabdruck(null);
       setBestaetigtFuer(null);
       setReferenzAbgelaufen(false);
       // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
@@ -1060,6 +1069,7 @@ export function Ask(): JSX.Element {
       setReceipt(r.receipt);
       setAnswerId(r.answerId ?? null);
       setAussagen(r.aussagen?.aussagen ?? []);
+      setAntwortFingerabdruck(r.aussagen?.antwortFingerabdruck ?? null);
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
       setVerschlossen(r.verschlossen ?? []);
@@ -1118,6 +1128,34 @@ export function Ask(): JSX.Element {
       setReferenzAbgelaufen(true);
     },
   });
+  // REF-04 (K2–K4/K7): die Quellenkennzeichnung an der Antwort. Läuft eine Bestätigung oder erneute
+  // Prüfung, heißt es „Prüfung läuft"; scheiterte die erneute Prüfung, „nicht abgeschlossen"; ist
+  // die gespeicherte Prüfung nicht mehr bestätigbar, ebenso. Nur ein vom Server zu GENAU dieser
+  // Antwortfassung gelieferter, vollständig belegter Stand heißt „Quellen geprüft".
+  const referenzLaeuft =
+    referenzErneut.isPending ||
+    referenzBestaetigen.isPending ||
+    (referenzpruefung !== null && bestaetigtFuer !== referenzpruefung.pruefId);
+  const quellenGesamt = referenzGesamt(referenzpruefung, {
+    laeuft: referenzLaeuft,
+    // Der Fehlschlag gilt nur für die Prüfung, zu der er gehört — eine neue Antwort beginnt frisch.
+    fehler:
+      (referenzErneut.isError && referenzErneut.variables === referenzpruefung?.pruefId) ||
+      (referenzpruefung === null && referenzAbgelaufen),
+    antwortFingerabdruck,
+  });
+  // REF-04 (K5): die Passage je Fundstelle, wie diese Antwort sie mitgeliefert hat (REF-01).
+  const auszugVon = (fundstelleId: string): string | undefined => {
+    for (const a of aussagen) {
+      for (const teil of a.teile) {
+        const f = teil.fundstellen.find((x) => x.fundstelleId === fundstelleId);
+        if (f) {
+          return f.auszug;
+        }
+      }
+    }
+    return undefined;
+  };
   const bestaetigungAngefragt = useRef<string | null>(null);
   useEffect(() => {
     const id = referenzpruefung?.pruefId;
@@ -1302,6 +1340,7 @@ export function Ask(): JSX.Element {
       // R-0293: die Kennung gehört zur aufgenommenen Antwort desselben Kontos (Altbestand: undefined).
       setAnswerId(antwort === null ? null : antwort.answerId);
       setAussagen([]);
+      setAntwortFingerabdruck(null);
       setVerschlossen(antwort?.verschlossen ?? []);
       setPruefrahmen(null);
       // REF-02: die Prüfung des neuen Kontos ersetzt die alte vollständig.
@@ -2519,6 +2558,9 @@ export function Ask(): JSX.Element {
                   <p className="m-0 flex flex-wrap items-center gap-1.5">
                     <ErgebnisStufeMarke stufe={antwortStufe} />
                     {antwortHerkunft === "ki" ? <AiGeneratedNotice /> : null}
+                    {/* REF-04 (K3/K4): die Quellenkennzeichnung — „Quellen geprüft" nur bei voller
+                      Bestätigung, sonst sichtbar Entwurf mit dem Prüfstand. */}
+                    <QuellenStatusMarke gesamt={quellenGesamt} />
                   </p>
                   {/* ==========================================================================
                     R-0287 / R-0286 — DIE WARNUNG STEHT VOLLSTÄNDIG DIREKT HINTER DER ANTWORT.
@@ -2664,6 +2706,13 @@ export function Ask(): JSX.Element {
                       }
                       onErneut={() => referenzErneut.mutate(referenzpruefung.pruefId)}
                       erneutLaeuft={referenzErneut.isPending}
+                      laeuft={referenzLaeuft}
+                      fehler={
+                        referenzErneut.isError &&
+                        referenzErneut.variables === referenzpruefung.pruefId
+                      }
+                      antwortFingerabdruck={antwortFingerabdruck}
+                      auszugVon={auszugVon}
                     />
                   ) : null}
                   {/* ==========================================================================
@@ -3151,6 +3200,9 @@ export function Ask(): JSX.Element {
                   onNeuFragen={() => submitAsk(asked)}
                   billable={deriveZweitmeinungBillable(reasonerStatus.data)}
                   titelVon={(id) => (kos.data ?? []).find((k) => k.id === id)?.title}
+                  wissenHref={(id, fassung) =>
+                    demoHref(`/wissen/${encodeURIComponent(id)}?fassung=${fassung}`, params)
+                  }
                 />
               </div>
             ) : (
