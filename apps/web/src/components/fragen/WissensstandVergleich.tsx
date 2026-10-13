@@ -11,7 +11,7 @@ import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { AiCostHint } from "../AiCostHint";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
 import { AntwortText } from "../start/AntwortText";
-import { Referenzpruefung } from "./Referenzpruefung";
+import { Referenzpruefung, auszuegeAus } from "./Referenzpruefung";
 
 // ================================================================================================
 // R-1630 / R-2176 — „DIESE FRAGE HÄTTE VOR EINEM JAHR EINE ANDERE ANTWORT GEHABT."
@@ -193,6 +193,8 @@ export function WissensstandVergleichAnzeige({
         <Referenzpruefung
           ergebnis={vergleich.referenzpruefung.damals}
           aussageTexte={aussageTexteAus(vergleich.damalsAussagen)}
+          // REF-04 (K5, Ben nacharbeit-3): die Passage der Fassung zum Stichtag.
+          auszugVon={(id) => auszuegeAus(vergleich.damalsAussagen).get(id)}
           titelVon={(id) => titelAus(vergleich, id, "damals")}
           wissenHref={(id, fassung) => mitFassung(wissenHref(id), fassung)}
           testId="ask-vergleich-referenz-damals"
@@ -203,6 +205,7 @@ export function WissensstandVergleichAnzeige({
         <Referenzpruefung
           ergebnis={vergleich.referenzpruefung.heute}
           aussageTexte={aussageTexteAus(vergleich.heuteAussagen)}
+          auszugVon={(id) => auszuegeAus(vergleich.heuteAussagen).get(id)}
           titelVon={(id) => titelAus(vergleich, id, "heute")}
           wissenHref={(id, fassung) => mitFassung(wissenHref(id), fassung)}
           testId="ask-vergleich-referenz-heute"

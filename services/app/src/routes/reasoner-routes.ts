@@ -8,7 +8,9 @@ import {
   REFERENZ_PRUEF_RICHTLINIE,
   REFERENZ_ZEITLIMIT_MS,
   type ReferenzFunktionscheckErgebnis,
+  type ReferenzPruefdienst,
   referenzFunktionscheck,
+  referenzSichtFuerFragende,
 } from "../../../ask";
 import type { AuditService } from "../../../audit";
 import type { CaptureService } from "../../../capture";
@@ -52,6 +54,8 @@ import {
 import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 import {
   type Ka4Freigabepruefer,
+  anfrageAbbruch,
+  fundstellenLeser,
   ka4Entscheidung,
   kiAbgeschaltetSenden,
   klaraBindungVorhanden,
@@ -139,6 +143,9 @@ export interface ReasonerRoutesDeps {
   // REF-03: Preisgrundlage und Kosten eines Funktionschecks — dieselbe Preisliste wie im
   // KI-Laufprotokoll. Optional: ohne sie stehen Kosten als „nicht berechenbar" da.
   modelRuns?: Pick<ModelRunService, "kostenEinesAufrufs" | "preisgrundlage"> | undefined;
+  // produkt:20261009:referenzki-antwortstatus (REF-04, K1): derselbe gemeinsame Prüfdienst wie am
+  // Frageweg (`ask-routes.ts`). OPTIONAL wie dort: fehlt er, trägt die Antwort kein Prüffeld.
+  referenz?: ReferenzPruefdienst | undefined;
 }
 
 // JOB 2692 D1: was die Route über den Aufruf weiß, das der reinen Regel fehlt — Entwurfskennung,
@@ -499,8 +506,18 @@ function gueltigeReferenzEingabe(wert: unknown): wert is string[] | null | undef
 }
 
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { reasoner, ask, externalKnowledge, ko, capture, ka4, audit, externalSearch, modelRuns } =
-    deps;
+  const {
+    reasoner,
+    ask,
+    externalKnowledge,
+    ko,
+    capture,
+    ka4,
+    audit,
+    externalSearch,
+    modelRuns,
+    referenz,
+  } = deps;
 
   // REF-03: ein Funktionscheck zur Zeit — keine parallele Steuerung, kein Stapel.
   let funktionscheckLaeuft = false;
@@ -886,7 +903,30 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
               )
             : await ask.ask(text ?? "", user.id, locale, { validatedOnly: true }, grundlage);
           ask.kiSperreVorAuslieferung(kiBeginn);
-          reply.code(200).send(antwort);
+          // produkt:20261009:referenzki-antwortstatus (REF-04, K1): auch dieser Antwortweg ist
+          // wissensbezogen. Er ruft DENSELBEN Prüfdienst wie `/api/ask` — mit der Bindung GENAU
+          // dieser Antwort, ihrem tatsächlichen Antwortmodell, den aktuellen Rechten des Fragenden
+          // und dem Abbruch dieser Anfrage. Der wörtliche Weg (Klara ohne Einwilligung) ruft kein
+          // Modell und steht sichtbar „nicht prüfbar". Danach dieselbe KI-Sperrprüfung.
+          let referenzFeld: { referenzpruefung?: ReturnType<typeof referenzSichtFuerFragende> } =
+            {};
+          if (referenz && antwort.aussagen) {
+            const ergebnis = await referenz.pruefe({
+              beleg: antwort.aussagen,
+              antwortRolle: ask.antwortRolleVon(antwort),
+              akteur: user.id,
+              leser: fundstellenLeser(ko),
+              darfSehen: grundlage,
+              locale,
+              signal: anfrageAbbruch(reply),
+              modellaufrufAusgeschlossen: gebundenOhneFreigabe,
+              antwortId: antwort.answerId,
+              antwortweg: "reasoner",
+            });
+            referenzFeld = { referenzpruefung: referenzSichtFuerFragende(ergebnis) };
+            ask.kiSperreVorAuslieferung(kiBeginn);
+          }
+          reply.code(200).send({ ...antwort, ...referenzFeld });
         } catch (fehler) {
           // Die Auskunft in der angefragten Sprache — auch NL, das `normalizeLocale` für die
           // Antwort selbst (bestehend: nur DE/EN) auf DE zurückführt.

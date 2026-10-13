@@ -2803,6 +2803,10 @@ export class Reasoner {
     // Abgleich noch in Spalte A geraten. Sie steht außerhalb des Vergleichs an der Antwort selbst.
     const ersteVerglichen = gegenueberstellbar(erste);
     const zweite = gegenueberstellbar(mitHerkunftsmarke(zweiteRoh));
+    // produkt:20261009:referenzki-antwortstatus (REF-04, K1): auch die beiden gegenübergestellten
+    // Antworten werden referenzgeprüft — jede mit dem Modell, das sie TATSÄCHLICH geschrieben hat.
+    ANTWORT_ROLLEN.set(ersteVerglichen, this.rolleVon(ersterProvider, ersteVerglichen.demo));
+    ANTWORT_ROLLEN.set(zweite, this.rolleVon(wahl.provider, zweite.demo));
     const abweichungen = vergleicheAntworten(ersteVerglichen, zweite);
     return {
       erste: ersteMitLauf,
