@@ -2,8 +2,8 @@
 
 Auftrag `aufnahme:20260922:gesamt-lehrenpflege`, Revision 1.
 
-- **Stand dieses Dokuments:** Nacharbeit 1, aufgesetzt auf den Kandidaten `d5f00bd7`
-  (Basis `b786c385`, 1.0.0-beta.1.974), 13.10.2026.
+- **Stand dieses Dokuments:** Nacharbeit 2, aufgesetzt auf den Kandidaten `32b2ac57`
+  (1.0.0-beta.1.976; Basis `b786c385`), 13.10.2026. Die B5-Änderung stammt aus Nacharbeit 1.
 - **Lieferbeleg:** Die Fassung, mit der diese Änderung ausgeliefert wird, entsteht erst mit der
   Veröffentlichung. Sie steht deshalb hier noch nicht (K2).
 
@@ -49,7 +49,7 @@ zusätzliche Wächter erhalten (siehe unten), erfüllen R-1333 aber nicht.
 | Fall | Heutige Prüfstelle | Stand |
 |---|---|---|
 | **B4** | `services/app/src/ask-routes.test.ts:95` (`body.gap.question` gleich der gestellten Frage) und `:99` (die Lücke ist über `/api/gaps` mit genau dieser Frage auffindbar). Das Produkt übernimmt `normalizeGapQuestion(question)` in `services/ask/src/service.ts:3762`. | gedeckt im Bestand, in diesem Auftrag nicht verändert. Der Originalfall `addon-principal.test.ts` prüft weiterhin nur Existenz und Anzahl; die Deckung liegt, wie in D1 belegt, in `ask-routes.test.ts`. |
-| **B5** | `services/app/src/routes/check-text-routes.test.ts`, Fall „Session, Text in range → … NULL Persistenz“, ergänzt um zwei Gegenproben (siehe unten) | **in Nacharbeit 1 ergänzt** nach der D2-Spezifikation. Der Wirkungsbeleg steht aus, solange der Lauf aussteht. |
+| **B5** | `services/app/src/routes/check-text-routes.test.ts`, Fall „Session, Text in range → … NULL Persistenz“, ergänzt um zwei Gegenproben (siehe unten) | **in Nacharbeit 1 ergänzt** nach der D2-Spezifikation. Alle drei Fälle sind grün am Kandidaten `32b2ac57` (siehe „Prüfbelege“). |
 | **B6** | `services/capture/src/service.test.ts:251` (Titel nach `POST`/`GET /api/drafts`) und `:596` (Aussage nach dem Fortschreiben). Das Produkt normalisiert das Payload in `createDraftVorgang`, `services/capture/src/service.ts:865`. | gedeckt im Bestand, in diesem Auftrag nicht verändert. `draft-empty-guard.test.ts:31–36` zählt weiterhin nur zwei Entwürfe. |
 
 Für B4 und B6 sind die historischen Mutationen am heutigen Kandidaten **nicht wiederholt**. Die
@@ -135,8 +135,8 @@ W3 prüft Abhängigkeitslisten, nicht das Laufzeitverhalten; Namen gelten je Dat
 - **D1-Nulldiff:** D1 meldete zwei verbliebene unverfolgte Testdateien
   (`tests/ask/job2536-…`, `tests/capture/job2536-…`). Im heutigen Repository liegen sie nicht. Sie
   sind kein Bestandteil der heutigen Deckung.
-- **Fehlender Beleg B5:** Ein ausgeführter Rot/Grün-Lauf für den ergänzten Test liegt noch nicht
-  vor.
+- **Beleg B5:** Grün am Kandidaten `32b2ac57`, einschließlich der Austausch-Gegenprobe. Es fehlt
+  weiterhin ein Rot-zuerst-Lauf mit der Mutation in der Route selbst.
 - **Fehlender Beleg B4/B6:** Die historischen Mutationen sind am heutigen Kandidaten nicht
   wiederholt (siehe oben). Die Deckung ruht auf den genannten Prüfstellen.
 - **R-1232:** „jetzt 351 Zeilen“ ist eine historische Zählung außerhalb des Repositorys und nicht
@@ -149,5 +149,29 @@ W3 prüft Abhängigkeitslisten, nicht das Laufzeitverhalten; Namen gelten je Dat
 - **Kandidat `d5f00bd7`:** `tests/lehrenpflege/lehren-waechter.test.ts` 14 von 14 grün, Build und
   Format grün (Archiv `HISTORIE/nacharbeit-1/PRUEFUNG`). Das belegt W1–W3 und Register L, nicht
   B4–B6.
-- **Nacharbeit 1:** In diesem Arbeitsgang ist kein Test gelaufen. Die ergänzte Datei
-  `services/app/src/routes/check-text-routes.test.ts` steht im Prüfplan.
+- **Kandidat `32b2ac57` (1.0.0-beta.1.976), Archiv `HISTORIE/nacharbeit-2/PRUEFUNG`:** Lauf von
+  `services/app/src/routes/check-text-routes.test.ts`, 60 von 66 grün. **Grün sind alle drei
+  B5-Fälle:** der ergänzte Fall „Session, Text in range → … NULL Persistenz“ und beide
+  Gegenproben. Das ist der Wirkungsbeleg für B5: Der gleichzahlige Austausch wird fachlich gemeldet,
+  während `toHaveLength(1)` grün bleibt.
+- **Sechs rote Fälle derselben Datei sind fremde Basisfehler, nicht Teil von R-1333.** Betroffen sind
+  vier Fälle in „SCRUM-491 Slice 6: Stufe 2 (want:'deep') mit injiziertem Fake-Judge“, einer in
+  „SCRUM-498 B2 (Fix)“ und „N11b: Word-Riegel mit realem KA4-Dienst · Dokumentzustimmung erteilt“.
+  - Alle scheitern an `expect(judgeDuplicate).toHaveBeenCalled()`. Der Embedder lief, der Judge
+    nicht. Der Kandidatenpool des tiefen Wegs blieb also leer, oder der Kandidat wurde
+    deterministisch entschieden.
+  - Die Fälle laufen in eigenen Fake-Aufbauten (`stage2App`, `fakeKo`, `fakeGuards`, eigenes
+    Fastify). Sie teilen keinen Zustand mit dem B5-Fall (eigenes `buildServices()`, Beobachtung nur
+    an dessen `KoService`-Instanz).
+  - Gegenüber der Basis `b786c385` ist kein Produktcode geändert (`git diff --name-only`: nur Tests,
+    Dokumente, `version.ts`, `package.json`). In dieser Datei sind nur `loggedInApp` (gibt zusätzlich
+    `services` zurück) und die B5-Fälle geändert.
+  - Die Ursache liegt damit im unveränderten Weg `check-text-routes.ts` / `check-text-detection.ts`
+    bzw. in dessen Fake-Aufbau. Der rote Originalbericht bleibt im Archiv. Dieser Auftrag ändert dort
+    weder Produktcode noch Erwartungen.
+  - Nicht belegt ist ein Lauf derselben Datei an der Basis. Dass die Fälle dort ebenso rot sind, ist
+    aus der Gleichheit des Codes geschlossen, nicht gemessen.
+- **Nacharbeit 2:** In diesem Arbeitsgang ist kein Test gelaufen; am Code hat sich nichts geändert.
+- **Nacharbeit 3:** Zur Ausführung ausgewählt sind die heutigen Prüfstellen für B4
+  (`services/app/src/ask-routes.test.ts`) und B6 (`services/capture/src/service.test.ts`). Sie
+  sind am Kandidaten bisher nicht gelaufen. Ihr Ergebnis steht im nächsten Prüfarchiv.
