@@ -759,7 +759,7 @@
         "fragen-pruefen-einstieg-browser.spec.ts › mobil-390x844 · erfahren · F1–F3 und P1 auf denselben fiktiven Aufgaben",
         "fragen-pruefen-einstieg-browser.spec.ts › mobil-390x844 · neu · F1–F3 und P1 auf denselben fiktiven Aufgaben",
         "klara-bildautomatik-setup-browser.spec.ts › OCR-03 · Setup Klara: Bildautomatik voreingestellt an, aus und wieder an bleiben nach Neuladen und wirken",
-        "klara-eigeninitiative-browser.spec.ts ›Klara 12 · Modi wählen, Hinweis anbieten und ruhen lassen, übertragene Aufgabe — über Neuladen, neue Anmeldung und Rechte",
+        "klara-eigeninitiative-browser.spec.ts › Klara 12 · Modi wählen, Hinweis anbieten und ruhen lassen, übertragene Aufgabe — über Neuladen, neue Anmeldung und Rechte",
         "klara-kontext-artikel-browser.spec.ts › Klara 03 · Artikel: Kontext, Markierung über Fokus- und Seitenwechsel, Bezug, Erklären mit Quelle und Fassung, Rechte",
         "klara-ocr-fundstelle-korrektur-browser.spec.ts › OCR-E01/E02 · Fundstellen am Original markieren, Text berichtigen, Neuladen, Rücksetzen",
         "kommunikation-browser.spec.ts › ADMIN-12 · 1280 × 800: Übersicht, Vorgabe per Tastatur, Neuladen, Protokoll und Zustellstatus",
