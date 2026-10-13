@@ -20,6 +20,7 @@ import {
   ZEITWERTE_HINWEIS,
   ablaufDurchsetzen,
   abschliessen,
+  beendigungWiederholen,
   belegPruefen,
   freigabeErteilen,
   freigabeZustand,
@@ -395,6 +396,94 @@ describe("P11-AC07 — Widerruf beendet auch bestehende Sitzungen und Jobs", () 
     if (!r.ok) return;
     expect(r.ereignis.nichtBeendet).toEqual(["job:j-1"]);
     expect(freigabeZustand(r.freigabe, T0 + MIN)).toBe("widerrufen");
+  });
+
+  it("nach dem Widerruf werden verbliebene Bindungen nachbeendet, Zugriff bleibt zu", () => {
+    // Der Job reagiert erst beim zweiten Nachbeendigungsversuch.
+    let jobVersuche = 0;
+    const beenden = (b: FreigabeBindung) => {
+      if (b.art === "sitzung") return true;
+      jobVersuche += 1;
+      if (jobVersuche < 3) throw new Error("Job reagiert nicht");
+      return true;
+    };
+    const widerruf = widerrufen({
+      freigabe: erteile({ rechte: ["lesen"] }),
+      admin: ADMIN,
+      laufend: bindungen(),
+      beenden,
+      jetzt: T0 + MIN,
+    });
+    if (!widerruf.ok) throw new Error(widerruf.fehler);
+    expect(widerruf.vollstaendig).toBe(false);
+    const gesperrt = widerruf.freigabe;
+    const offenKennungen = widerruf.ereignis.nichtBeendet ?? [];
+    const offen = bindungen().filter((b) => offenKennungen.includes(`${b.art}:${b.kennung}`));
+    expect(offen.map((b) => b.kennung)).toEqual(["j-1"]);
+
+    // Ein erneuter Widerruf bleibt abgewiesen; der Wiederholungsweg ist die Nachbeendigung.
+    const nochmal = widerrufen({
+      freigabe: gesperrt,
+      admin: ADMIN,
+      laufend: offen,
+      beenden,
+      jetzt: T0 + 2 * MIN,
+    });
+    expect(nochmal).toEqual({ ok: false, fehler: "bereits_beendet" });
+
+    const erneutRot = beendigungWiederholen({
+      freigabe: gesperrt,
+      durch: "system",
+      laufend: offen,
+      beenden,
+      jetzt: T0 + 2 * MIN,
+    });
+    expect(erneutRot).toMatchObject({
+      ok: true,
+      vollstaendig: false,
+      ereignis: {
+        art: "nachbeendet",
+        ergebnis: "widerrufen",
+        beendet: [],
+        nichtBeendet: ["job:j-1"],
+      },
+    });
+
+    const gruen = beendigungWiederholen({
+      freigabe: gesperrt,
+      durch: ADMIN.kennung,
+      laufend: offen,
+      beenden,
+      jetzt: T0 + 3 * MIN,
+    });
+    expect(gruen).toMatchObject({
+      ok: true,
+      vollstaendig: true,
+      ereignis: {
+        art: "nachbeendet",
+        durch: ADMIN.kennung,
+        beendet: ["job:j-1"],
+        nichtBeendet: [],
+      },
+    });
+    if (!gruen.ok) return;
+    expect(gruen.freigabe).toBe(gesperrt);
+    expect(gruen.freigabe.widerrufenAm).toBe(T0 + MIN);
+    expect(zugriffPruefen(gruen.freigabe, "lesen", T0 + 3 * MIN, "bedienung")).toEqual({
+      erlaubt: false,
+      grund: "widerrufen",
+    });
+  });
+
+  it("eine aktive Freigabe wird nicht über die Nachbeendigung beendet", () => {
+    const r = beendigungWiederholen({
+      freigabe: erteile(),
+      durch: "system",
+      laufend: bindungen(),
+      beenden: () => true,
+      jetzt: T0 + MIN,
+    });
+    expect(r).toEqual({ ok: false, fehler: "noch_aktiv" });
   });
 
   it("nur ein Kundenadmin widerruft, und ein Widerruf gilt nur einmal", () => {

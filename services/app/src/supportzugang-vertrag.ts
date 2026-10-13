@@ -233,7 +233,13 @@ export interface SupportBeleg {
 }
 
 export interface SupportEreignis {
-  readonly art: "erteilt" | "verlaengert" | "widerrufen" | "abgelaufen" | "abgeschlossen";
+  readonly art:
+    | "erteilt"
+    | "verlaengert"
+    | "widerrufen"
+    | "abgelaufen"
+    | "nachbeendet"
+    | "abgeschlossen";
   readonly freigabeId: string;
   readonly am: number;
   readonly durch: string;
@@ -428,7 +434,7 @@ export function widerrufen(eingabe: {
     return { ok: false, fehler: "bereits_beendet" };
   }
   // Der Widerruf gilt sofort, auch wenn eine Bindung sich nicht beenden ließ; die steht dann offen
-  // im Ereignis und macht den Widerruf unvollständig.
+  // im Ereignis, macht den Widerruf unvollständig und wird über `beendigungWiederholen` nachbeendet.
   const { beendet, nichtBeendet } = bindungenBeenden(freigabe.id, laufend, beenden);
   return {
     ok: true,
@@ -468,6 +474,45 @@ export function ablaufDurchsetzen(eingabe: {
       freigabeId: freigabe.id,
       am: jetzt,
       durch: "system",
+      ergebnis: zustand,
+      beendet,
+      nichtBeendet,
+    },
+  };
+}
+
+export type NachbeendigungsErgebnis =
+  | { ok: true; freigabe: SupportFreigabe; ereignis: SupportEreignis; vollstaendig: boolean }
+  | { ok: false; fehler: "noch_aktiv" };
+
+/**
+ * Wiederholt die Beendigung verbliebener Sitzungen und Jobs einer Freigabe, die widerrufen,
+ * abgeschlossen, abgelaufen oder inaktiv ist — so oft, bis nichts mehr läuft. `laufend` sind die
+ * noch offenen Bindungen (z. B. `nichtBeendet` des vorigen Ereignisses). Die Freigabe bleibt
+ * unverändert gesperrt: Eine Nachbeendigung gibt keinen Zugriff frei und setzt keinen Zeitpunkt
+ * zurück. Jeder Versuch wird als `nachbeendet` protokolliert, auch ein erneut erfolgloser.
+ */
+export function beendigungWiederholen(eingabe: {
+  readonly freigabe: SupportFreigabe;
+  /** Wer den Versuch auslöst: `system` oder die Kennung eines Kundenadmins. */
+  readonly durch: string;
+  readonly laufend: readonly FreigabeBindung[];
+  readonly beenden: BindungBeenden;
+  readonly jetzt: number;
+}): NachbeendigungsErgebnis {
+  const { freigabe, durch, laufend, beenden, jetzt } = eingabe;
+  const zustand = freigabeZustand(freigabe, jetzt);
+  if (zustand === "aktiv") return { ok: false, fehler: "noch_aktiv" };
+  const { beendet, nichtBeendet } = bindungenBeenden(freigabe.id, laufend, beenden);
+  return {
+    ok: true,
+    freigabe,
+    vollstaendig: nichtBeendet.length === 0,
+    ereignis: {
+      art: "nachbeendet",
+      freigabeId: freigabe.id,
+      am: jetzt,
+      durch,
       ergebnis: zustand,
       beendet,
       nichtBeendet,

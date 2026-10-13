@@ -39,7 +39,7 @@ Hintertür; er ist hier nicht enthalten.
 | P11-AC04 Getrennte Rechte | Lesen, Ändern und Export werden **einzeln** beantragt und geprüft; keines schließt ein anderes ein. Export ist standardmäßig gesperrt und braucht eigenen Zweck und Löschfrist. | `zugriffPruefen`, `freigabeErteilen` |
 | P11-AC05 Zeitwerte | 60 Minuten je Sitzung, 15 Minuten Inaktivität, höchstens 4 Stunden nur mit erneuter Freigabe — **Vorschläge, nicht beschlossen, keine SLA**. Konfigurierbar; geänderte Werte heißen `konfiguriert`, nie `beschlossen`. | `VORGESCHLAGENE_ZEITWERTE`, `zeitwerteFestlegen`, `ZEITWERTE_HINWEIS` |
 | P11-AC06 Ablauf und Inaktivität | Nach Ablaufzeit oder Inaktivität verweigert jede Zugriffsprüfung. Nur Bedienung der Person zählt als Aktivität; Hintergrundabfragen verlängern nichts. Laufende Sitzungen und Jobs werden beim Ablauf beendet. | `freigabeZustand`, `zugriffPruefen`, `ablaufDurchsetzen` |
-| P11-AC07 Widerruf | Widerruf durch den Kundenadmin gilt sofort und beendet alle unter der Freigabe laufenden Sitzungen **und** Jobs. Was sich nicht beenden ließ, steht offen im Ereignis (`vollstaendig: false`), wird nicht verschwiegen. | `widerrufen` |
+| P11-AC07 Widerruf | Widerruf durch den Kundenadmin gilt sofort und beendet alle unter der Freigabe laufenden Sitzungen **und** Jobs. Was sich nicht beenden ließ, steht offen im Ereignis (`vollstaendig: false`), wird nicht verschwiegen. Ein zweiter Widerruf ist nicht vorgesehen (`bereits_beendet`); verbliebene Sitzungen und Jobs werden über die Nachbeendigung so oft erneut beendet, bis nichts mehr läuft. Jeder Versuch wird als `nachbeendet` protokolliert, die Freigabe bleibt dabei gesperrt (auch nach Ablauf, Inaktivität oder Abschluss). | `widerrufen`, `beendigungWiederholen` |
 | P11-AC08 Verlängerung und Abschluss | Verlängerung nur durch den Kundenadmin, nur bei aktiver Freigabe, höchstens um eine Sitzungsdauer und nie über die Höchstdauer, nur mit realem Beleg (Ticket oder Adminbestätigung mit auffindbarer Kennung; Platzhalter wie `TODO`, `-`, `offen` werden abgewiesen). Abschluss nennt Ergebnis und Beleg und beendet verbliebene Bindungen. | `verlaengern`, `abschliessen`, `belegPruefen`, `SupportEreignis` |
 
 ## 4. Anschluss beim späteren Bau
@@ -53,6 +53,9 @@ Policy-System entsteht. Beim Bau nach dem PoC:
   vor jedem Schritt erneut.
 - **Ablauf:** an einem vorhandenen Lauf (z. B. derselbe Takt wie die Papierkorb-Endlöschung) ruft der
   Betrieb `ablaufDurchsetzen`; ein eigener Scheduler ist nicht vorgesehen.
+- **Unvollständige Beendigung:** Steht nach Widerruf, Ablauf oder Abschluss eine Bindung in
+  `nichtBeendet`, ruft derselbe vorhandene Lauf `beendigungWiederholen` mit genau diesen Bindungen,
+  bis das Ereignis `vollstaendig: true` meldet.
 - **Protokoll:** jedes `SupportEreignis` geht in das bestehende Prüfprotokoll.
 
 ## 5. Grenzen und offene Punkte
