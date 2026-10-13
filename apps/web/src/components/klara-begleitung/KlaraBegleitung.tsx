@@ -222,8 +222,12 @@ export function KlaraBegleitung({
       return;
     }
     const figur = document.querySelector<HTMLElement>(FIGUR);
+    // Die UNGEKÜRZTE Höhe: `scrollHeight` (Inhalt samt Polster, unabhängig von `max-height`) plus
+    // Rahmen. Die gemessene Kastenhöhe wäre nach eigener Begrenzung schon gekürzt (Nacharbeit 10).
+    const inhaltHoehe = leiste.scrollHeight + (leiste.offsetHeight - leiste.clientHeight);
     const neu = platzNebenFigur(
       leiste.getBoundingClientRect(),
+      inhaltHoehe,
       figur ? figur.getBoundingClientRect() : null,
       window.innerHeight,
     );

@@ -29,11 +29,20 @@ export interface Platz {
 }
 
 /**
- * Wo die Leiste stehen darf. `leiste` ist ihr gemessenes Rechteck (für Breite und Höhe), `figur`
- * das der Figurhülle (Figur + Namensschild) oder `null`, wenn keine sichtbar ist.
+ * Wo die Leiste stehen darf. `leiste` liefert nur die WAAGERECHTE Lage (links/rechts), `inhaltHoehe`
+ * die UNGEKÜRZTE Höhe ihres Inhalts, `figur` das Rechteck der Figurhülle (Figur + Namensschild)
+ * oder `null`, wenn keine sichtbar ist.
+ *
+ * Nacharbeit 10 (Ben): hier stand die GEMESSENE Höhe der Leiste. Die ist nach einer eigenen
+ * Begrenzung schon gekürzt — die Grundposition galt dann als frei, die Begrenzung fiel weg, die
+ * volle Höhe kollidierte wieder, und so fort: ein Pendel, das über die Messung nach jedem Rendern
+ * zur Renderschleife werden konnte. Die Entscheidung hängt jetzt nur noch an Größen, die das
+ * eigene Ergebnis nicht verändert (Inhaltshöhe, Breite, Figur, Fenster) — dieselbe Eingabe ergibt
+ * nach Anwendung des Ergebnisses wieder dasselbe Ergebnis.
  */
 export function platzNebenFigur(
-  leiste: Rechteck,
+  leiste: Pick<Rechteck, "left" | "right">,
+  inhaltHoehe: number,
   figur: Rechteck | null,
   fensterHoehe: number,
 ): Platz {
@@ -41,7 +50,7 @@ export function platzNebenFigur(
   if (!figur || figur.right - figur.left <= 0 || figur.bottom - figur.top <= 0) {
     return grund;
   }
-  const hoehe = leiste.bottom - leiste.top;
+  const hoehe = inhaltHoehe;
   // Die Leiste an ihrer Grundposition — so, wie sie ohne Ausweichen stünde.
   const grundUnten = fensterHoehe - GRUND_UNTEN;
   const grundOben = grundUnten - hoehe;

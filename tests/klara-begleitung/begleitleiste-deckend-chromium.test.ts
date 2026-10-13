@@ -161,8 +161,71 @@ const MESSEN = `() => {
   };
 }`;
 
+// ------------------------------------------------------------------------------------------------
+// NACHARBEIT 10 (Ben K3/G10): die Figur wird per Tastatur (Pfeil hoch, 16 px je Schritt)
+// so weit nach oben geschoben, dass die Leiste über ihr nicht mehr ganz Platz hat und begrenzt
+// werden MUSS. Danach wird die Lage mehrfach gelesen — sie darf nicht mehr wechseln (kein Pendel,
+// keine Renderschleife) — und Pause/Stopp müssen erreichbar sein: in den sichtbaren Bereich der
+// Leiste gerollt, oben, ohne Figur darüber, und Pause wirkt auf einen echten Mausklick.
+// ------------------------------------------------------------------------------------------------
+const FIGUR_KNOPF = '[data-testid="klara-figur"]';
+const BILD_VERSCHOBEN = "test-results/klara-begleitung/begleitleiste-figur-verschoben.png";
+
+interface Lage {
+  bottom: string;
+  maxHeight: string;
+  begrenzt: boolean;
+  figurOben: number;
+}
+
+const LAGE_LESEN = `() => {
+  const leiste = document.querySelector('${LEISTE}');
+  const cs = getComputedStyle(leiste);
+  const f = document.querySelector('${FIGUR}');
+  return {
+    bottom: cs.bottom,
+    maxHeight: cs.maxHeight,
+    begrenzt: leiste.scrollHeight > leiste.clientHeight + 1,
+    figurOben: f ? Math.round(f.getBoundingClientRect().top) : -1,
+  };
+}`;
+
+interface Knopflage {
+  name: string;
+  obenInLeiste: boolean;
+  schneidetFigur: boolean;
+  imFenster: boolean;
+  x: number;
+  y: number;
+}
+
+const KNOPF_LAGE = `(name) => {
+  const leiste = document.querySelector('${LEISTE}');
+  const knopf = [...leiste.querySelectorAll("button")].find((k) => (k.textContent || "").trim() === name);
+  if (!knopf) return { name, obenInLeiste: false, schneidetFigur: true, imFenster: false, x: 0, y: 0 };
+  knopf.scrollIntoView({ block: "nearest" });
+  const b = knopf.getBoundingClientRect();
+  const x = b.left + b.width / 2;
+  const y = b.top + b.height / 2;
+  const oben = document.elementFromPoint(x, y);
+  const f = document.querySelector('${FIGUR}');
+  const fr = f ? f.getBoundingClientRect() : null;
+  const schneidet = Boolean(fr) && fr.width > 0 && b.right > fr.left && b.left < fr.right && b.bottom > fr.top && b.top < fr.bottom;
+  return {
+    name,
+    obenInLeiste: Boolean(oben && leiste.contains(oben)),
+    schneidetFigur: schneidet,
+    imFenster: b.top >= 0 && b.bottom <= innerHeight,
+    x,
+    y,
+  };
+}`;
+
 describe("BPA-05 · Begleitleiste über dem freigegebenen Formular (gebaute App, 390 px)", () => {
   let messung: Messung;
+  let lagen: Lage[] = [];
+  let knoepfe: Knopflage[] = [];
+  let nachPause = "";
 
   beforeAll(async () => {
     await baueFrisch();
@@ -196,6 +259,44 @@ describe("BPA-05 · Begleitleiste über dem freigegebenen Formular (gebaute App,
     mkdirSync("test-results/klara-begleitung", { recursive: true });
     await page.screenshot({ path: BILD });
     console.log(`BPA-05 Nacharbeit 9 · Messung ${JSON.stringify(messung)} · Bild ${BILD}`);
+
+    // Nacharbeit 10: die Figur hochschieben, bis die Leiste begrenzt werden muss.
+    await page.evaluate(
+      fn("(s) => { const k = document.querySelector(s); if (k) k.focus(); return Boolean(k); }"),
+      FIGUR_KNOPF,
+    );
+    // In 16-px-Schritten (Pfeil hoch), bis die Figur bei y ≤ 320 steht: dort überschneidet sie die
+    // Leiste noch, und darüber ist weniger Platz als die volle Leistenhöhe — die Begrenzung greift.
+    for (let i = 0; i < 40; i += 1) {
+      const jetzt = await page.evaluate<Lage>(fn(LAGE_LESEN));
+      if (jetzt.figurOben >= 0 && jetzt.figurOben <= 320) {
+        break;
+      }
+      await page.keyboard.press("ArrowUp");
+      await page.waitForTimeout(60);
+    }
+    await page.waitForTimeout(1200);
+    lagen = [];
+    for (let i = 0; i < 5; i += 1) {
+      lagen.push(await page.evaluate<Lage>(fn(LAGE_LESEN)));
+      await page.waitForTimeout(300);
+    }
+    knoepfe = [];
+    for (const name of ["Pause", "Stopp"]) {
+      knoepfe.push(await page.evaluate<Knopflage>(fn(KNOPF_LAGE), name));
+    }
+    await page.screenshot({ path: BILD_VERSCHOBEN });
+    const pause = knoepfe[0];
+    if (pause) {
+      await page.mouse.click(pause.x, pause.y);
+      await page.waitForTimeout(300);
+    }
+    nachPause = await page.evaluate<string>(
+      fn(`() => document.querySelector('[data-testid="begleitung-zustand"]')?.textContent ?? ""`),
+    );
+    console.log(
+      `BPA-05 Nacharbeit 10 · Lagen ${JSON.stringify(lagen)} · Knöpfe ${JSON.stringify(knoepfe)} · nach Pause „${nachPause}“ · Bild ${BILD_VERSCHOBEN}`,
+    );
   }, 300_000);
 
   afterAll(async () => {
@@ -233,6 +334,30 @@ describe("BPA-05 · Begleitleiste über dem freigegebenen Formular (gebaute App,
 
   it("der Hinweistext ist lesbar: Kontrast mindestens 4,5:1", () => {
     expect(messung.kontrast).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("Nacharbeit 10: nach Verschieben der Figur ist die Leiste begrenzt — und ihre Lage bleibt stabil", () => {
+    expect(lagen).toHaveLength(5);
+    const erste = lagen[0] as Lage;
+    // Der kritische Fall ist wirklich erreicht: Figur oben genug, Leiste muss scrollen.
+    expect(erste.figurOben).toBeGreaterThanOrEqual(0);
+    expect(erste.figurOben).toBeLessThanOrEqual(320);
+    expect(erste.begrenzt).toBe(true);
+    for (const l of lagen) {
+      expect(l.bottom).toBe(erste.bottom);
+      expect(l.maxHeight).toBe(erste.maxHeight);
+      expect(l.begrenzt).toBe(true);
+    }
+  });
+
+  it("Nacharbeit 10: Pause und Stopp bleiben erreichbar, und Pause wirkt auf einen echten Klick", () => {
+    expect(knoepfe.map((k) => k.name)).toEqual(["Pause", "Stopp"]);
+    for (const k of knoepfe) {
+      expect(k.imFenster, `${k.name}: außerhalb des Fensters`).toBe(true);
+      expect(k.obenInLeiste, `${k.name}: nicht oben in der Leiste`).toBe(true);
+      expect(k.schneidetFigur, `${k.name}: von der Figur überdeckt`).toBe(false);
+    }
+    expect(nachPause).toMatch(/^Pausiert · /);
   });
 
   it("Gegenprobe: die alte Deklaration wäre durchsichtig gewesen", () => {
