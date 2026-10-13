@@ -1,0 +1,81 @@
+// produkt:20261013:produktbudget-anwender-admin — der Draht zu
+// `services/app/src/routes/produktbudget-routes.ts`.
+//
+// Die Gestalt ist die des Servers (`services/app/src/produktbudget.ts`); sie steht hier ein zweites
+// Mal, weil die Web-App keine Servertypen importiert. Geändert wird beides gemeinsam.
+import { api } from "./client";
+
+export type BudgetBereichId = "perplexity-poc" | "nr32-claude" | "nr32-chatgpt";
+export type BudgetAnbieter = "perplexity" | "anthropic" | "openai";
+export type BudgetWaehrung = "EUR" | "USD";
+export type BudgetZeitraum = "einmalig" | "offen";
+export type BudgetSperre = "zeitraum_offen" | "null_budget" | "ausgeschoepft";
+
+export const BUDGET_WAEHRUNGEN: readonly BudgetWaehrung[] = ["EUR", "USD"];
+export const BUDGET_ZEITRAEUME: readonly BudgetZeitraum[] = ["einmalig", "offen"];
+
+export interface BudgetWerte {
+  betragCent: number;
+  waehrung: BudgetWaehrung;
+  zeitraum: BudgetZeitraum;
+}
+
+export interface BudgetAenderung {
+  aenderungId: string;
+  bereich: BudgetBereichId;
+  am: string;
+  von: string;
+  vorher: BudgetWerte;
+  nachher: BudgetWerte;
+  grund: string | null;
+}
+
+export interface BudgetBereich extends BudgetWerte {
+  bereich: BudgetBereichId;
+  fassung: number;
+  geaendertAm: string | null;
+  geaendertVon: string | null;
+  anbieter: BudgetAnbieter;
+  original: string;
+  abgeloest: { betragCent: number; waehrung: BudgetWaehrung } | null;
+  verbrauchtCent: number;
+  reserviertCent: number;
+  verbleibendCent: number;
+  ueberschrittenCent: number;
+  buchungen: number;
+  sperre: BudgetSperre | null;
+  letzteAenderungen: BudgetAenderung[];
+}
+
+export interface Produktbudgetstand {
+  bereiche: BudgetBereich[];
+  gelesenAm: string;
+}
+
+export interface BudgetAenderungEingabe {
+  betrag: string;
+  waehrung: BudgetWaehrung;
+  zeitraum: BudgetZeitraum;
+  fassung: number;
+  aenderungId: string;
+  grund?: string;
+}
+
+export const PRODUKTBUDGET_KEY = ["admin", "produktbudget"] as const;
+
+export const produktbudgetApi = {
+  lies: () => api.get<Produktbudgetstand>("/admin/produktbudget"),
+  /** 409 `CONFLICT` trägt in `details.stand` den aktuellen Stand; die Eingabe bleibt beim Aufrufer. */
+  aendere: (bereich: BudgetBereichId, eingabe: BudgetAenderungEingabe) =>
+    api.put<Produktbudgetstand & { wiederholt: boolean; geaendert: boolean }>(
+      `/admin/produktbudget/${encodeURIComponent(bereich)}`,
+      eingabe,
+    ),
+};
+
+/** Cent als Betragstext mit zwei Nachkommastellen — ganzzahlig gerechnet, ohne Gleitkomma. */
+export function centAlsBetrag(cent: number, dezimal = ","): string {
+  const ganz = Math.floor(cent / 100);
+  const rest = String(cent % 100).padStart(2, "0");
+  return `${ganz}${dezimal}${rest}`;
+}

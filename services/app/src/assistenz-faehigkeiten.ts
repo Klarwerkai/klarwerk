@@ -108,6 +108,11 @@ export interface Faehigkeitsvertrag {
     readonly zeitlimitMs: number;
     /** `null`: Kosten je Aufruf sind nicht belegt — dann startet kein Aufruf. */
     readonly kostenJeAufrufCent: number | null;
+    /**
+     * produkt:20261013:produktbudget-anwender-admin (PBE-07): die Währung des belegten Tarifs. Ein
+     * Kostenbuch mit Reservierung gibt ohne passende Währung nichts frei.
+     */
+    readonly kostenWaehrung?: string;
   };
   /** Budgetzuordnung im Kostenbuch; `null` = keine geklärte Zuordnung. */
   readonly kostenzuordnung: string | null;
@@ -400,10 +405,27 @@ export interface GeheimnisQuelle {
   hole(name: string): string | null;
 }
 
+/** Eine Reservierung gegen den Deckel einer Budgetzuordnung, unmittelbar vor der Wirkung. */
+export interface KostenReservierung {
+  readonly zuordnung: string;
+  readonly cent: number;
+  readonly auftragId: string;
+  /** Anbieterkennung des Empfängers — eine Zuordnung gilt nur für ihren Anbieter. */
+  readonly anbieter: string | null;
+  /** Währung des belegten Tarifs (`grenzen.kostenWaehrung`); `null` = nicht belegt. */
+  readonly waehrung: string | null;
+}
+
 /** Persistenter Kostenstand je Budgetzuordnung (G18). */
 export interface Kostenbuch {
   rest(zuordnung: string): Promise<number | null>;
   verbuche(zuordnung: string, cent: number, auftragId: string): Promise<void>;
+  /**
+   * produkt:20261013:produktbudget-anwender-admin (PBE-06): reserviert die Kosten eines Aufrufs
+   * ATOMAR gegen den Deckel, bevor die Wirkung startet — parallele Aufrufe können den Rest so nicht
+   * beide verbrauchen. Dieselbe Auftragskennung reserviert nur einmal. `false`: keine Wirkung.
+   */
+  reserviere?(r: KostenReservierung): Promise<boolean>;
 }
 
 export type VoraussetzungArt =
@@ -1636,6 +1658,30 @@ export class FaehigkeitsAusfuehrung {
         stand: "abgebrochen",
         meldung: "Der Auftrag wurde abgebrochen, bevor er startete; es wurde nichts ausgeführt.",
       });
+    }
+    // produkt:20261013:produktbudget-anwender-admin (PBE-06/07): die Kosten dieses Aufrufs ATOMAR
+    // gegen den Deckel reservieren, gebunden an Anbieter und Tarifwährung. Ohne Reservierung keine
+    // Wirkung. Eine Reservierung bleibt nach Fehler oder Zeitlimit bestehen: ob der Anbieter
+    // abgerechnet hat, ist dann unbekannt, und Unbekanntes zählt gegen den Deckel.
+    const vorab = v.grenzen.kostenJeAufrufCent;
+    const reserviere = this.deps.kostenbuch?.reserviere?.bind(this.deps.kostenbuch);
+    if (vorab !== null && vorab > 0 && v.kostenzuordnung && reserviere) {
+      // Ein Fehler der Ablage ist kein Ja: ohne bestätigte Reservierung keine Wirkung.
+      const reserviert = await reserviere({
+        zuordnung: v.kostenzuordnung,
+        cent: vorab,
+        auftragId: bindung.auftragId,
+        anbieter: v.datenempfaenger.art === "extern" ? v.datenempfaenger.anbieter : null,
+        waehrung: v.grenzen.kostenWaehrung ?? null,
+      }).catch(() => false);
+      if (!reserviert) {
+        const text = `Für ${v.name} ist kein ausreichendes, an Anbieter und Währung gebundenes Budget vorhanden; es wurde nichts ausgeführt.`;
+        return abschluss({
+          stand: "voraussetzung_fehlt",
+          meldung: text,
+          voraussetzungen: [{ art: "budget", text }],
+        });
+      }
     }
     const steuerung = new AbortController();
     const laufSchluessel = FaehigkeitsAusfuehrung.schluessel(bindung.nutzer, bindung.auftragId);

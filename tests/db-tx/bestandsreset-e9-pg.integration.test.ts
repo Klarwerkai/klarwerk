@@ -150,6 +150,8 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
     branding_settings: "Einstellung",
     confluence_import_schalter: "Einstellung",
     assist_presets: "Einstellung",
+    // produkt:20261013:produktbudget-anwender-admin (PBE-06): bereits gebuchte Kosten bleiben.
+    produktbudget: "Einstellung und Nachweis (Produktbudgets samt Buchungen)",
     instanz_bindung: "Einstellung (Instanzbindung)",
     ui_uebersetzungen: "Einstellung (Oberflächentexte)",
     ui_sprachen: "Einstellung (angelegte Sprachen)",

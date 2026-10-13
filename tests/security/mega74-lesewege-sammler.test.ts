@@ -907,6 +907,18 @@ const REGISTER: Record<string, Eintrag> = {
     grund:
       "Admin; Dateinamen, Prüfsummen, Lauf-/Drillprotokoll, Export- und Papierkorbzähler — kein KO-Inhalt.",
   },
+  // produkt:20261013:produktbudget-anwender-admin: Beträge, Buchungssummen und Änderungsvermerke
+  // (Kontokennung, Zeitpunkt) der Produktbudgets — nur mit `users.manage`, kein KO-Inhalt.
+  "GET /api/admin/produktbudget": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Admin; Budgetbeträge, Buchungssummen und Änderungsvermerke — kein KO-Inhalt.",
+  },
+  "PUT /api/admin/produktbudget/:bereich": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Admin; ändert Betrag, Währung oder Zeitraum eines Budgetbereichs — kein KO-Inhalt.",
+  },
   "GET /api/import/confluence/zugang": {
     urteil: "KURATORENTOR",
     recht: "users.manage",

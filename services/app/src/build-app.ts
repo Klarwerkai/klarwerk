@@ -440,6 +440,13 @@ import {
   createPaarpflichtAusfuehrung,
   paarpflichtPrueferFuer,
 } from "./paarpflicht-ausfuehrung";
+// produkt:20261013:produktbudget-anwender-admin: die Produktbudgets — das persistente Kostenbuch.
+import {
+  InMemoryProduktbudgetRepo,
+  PgProduktbudgetRepo,
+  Produktbudget,
+  type ProduktbudgetRepo,
+} from "./produktbudget";
 import {
   InMemoryQuellabgleichRepo,
   PgQuellabgleichRepo,
@@ -517,6 +524,7 @@ import { officeRoutes } from "./routes/office-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
+import { produktbudgetRoutes } from "./routes/produktbudget-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
 import { pushRoutes } from "./routes/push-routes";
 // ADMIN-10: gemeinsame Ansicht auf Prüfung, Revalidierung, Konflikt, Duplikat, Lücke, Rückmeldung.
@@ -805,6 +813,11 @@ export interface AppServices {
    * (`PgAssistenzProfilRepo`), sonst die In-Memory-Ablage.
    */
   assistenzProfile: AssistenzProfilRepo;
+  /**
+   * produkt:20261013:produktbudget-anwender-admin: Einstellungen, Buchungen und Provenienz der
+   * Produktbudgets (`produktbudget.ts`) — im Postgres-Betrieb haltbar (`PgProduktbudgetRepo`).
+   */
+  produktbudget: ProduktbudgetRepo;
   /**
    * R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters (`PgEmbeddingStore`), gesetzt
    * von `buildPgServices`. Fehlt er (Speicherbetrieb), legt `buildApp` den In-Memory-Speicher an —
@@ -1408,6 +1421,8 @@ export function assembleServices(
     klaraAufgaben?: KlaraAufgabeRepo;
     // produkt:20261010:assistenz-name-avatar: gesetzt von `buildPgServices`; sonst im Speicher.
     assistenzProfile?: AssistenzProfilRepo;
+    // produkt:20261013:produktbudget-anwender-admin: gesetzt von `buildPgServices`; sonst im Speicher.
+    produktbudget?: ProduktbudgetRepo;
     // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
     // In-Memory-Speicher an.
     vektorSpeicher?: EmbeddingStore;
@@ -1876,6 +1891,8 @@ export function assembleServices(
     klaraAufgaben: opts.klaraAufgaben ?? new InMemoryKlaraAufgabeRepo(),
     // produkt:20261010:assistenz-name-avatar: die Assistenzprofile — Postgres, wenn injiziert.
     assistenzProfile: opts.assistenzProfile ?? new InMemoryAssistenzProfilRepo(),
+    // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets — Postgres, wenn injiziert.
+    produktbudget: opts.produktbudget ?? new InMemoryProduktbudgetRepo(),
     // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
     ...(opts.vektorSpeicher ? { vektorSpeicher: opts.vektorSpeicher } : {}),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
@@ -2420,6 +2437,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261010:assistenz-name-avatar: Name, Avatar und Ersteinrichtung überleben Neuladen,
       // erneute Anmeldung, zweites Gerät und Deploy (`ASSISTENZ_PROFIL_SCHEMA`, von `migrate()`).
       assistenzProfile: new PgAssistenzProfilRepo(pool),
+      // produkt:20261013:produktbudget-anwender-admin: Einstellung, Buchungen und Provenienz der
+      // Produktbudgets überleben Neustart und Deploy (`PRODUKTBUDGET_SCHEMA`, von `migrate()`).
+      produktbudget: new PgProduktbudgetRepo(pool),
       // R-0470: die Vektoren des Textprüfungs-Vorfilters überleben Neustart und Deploy
       // (`EMBEDDING_SCHEMA`, angelegt von `migrate()`); die Endlöschung entfernt die Zeile.
       vektorSpeicher: new PgEmbeddingStore(pool),
@@ -5731,6 +5751,12 @@ export function buildApp(
   };
   const faehigkeitenLesbareSpaces = async (nutzerId: string) =>
     lesbareSpaces(await services.spaces.aktuelle(), nutzerId);
+  // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets sind das Kostenbuch der
+  // Fähigkeiten (G18) — ein Stand, ein Deckel, gelesen und geschrieben über dieselbe Ablage.
+  const produktbudget = new Produktbudget({
+    repo: services.produktbudget,
+    mandant: FAEHIGKEITEN_MANDANT,
+  });
   const faehigkeiten = baueFaehigkeiten({
     reasoner: services.reasoner,
     externeWissensabfrage: services.externalKnowledge,
@@ -5739,7 +5765,9 @@ export function buildApp(
     konten: () => services.auth.listUsers(),
     wissen: faehigkeitenWissen,
     lesbareSpaces: faehigkeitenLesbareSpaces,
+    kostenbuch: produktbudget.kostenbuch(),
   });
+  app.register(produktbudgetRoutes({ dienst: produktbudget, audit: services.audit }, guards));
   services.faehigkeiten = faehigkeiten.ausfuehrung;
   app.register(
     assistenzFaehigkeitenRoutes(

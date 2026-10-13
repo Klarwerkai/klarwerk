@@ -1762,6 +1762,15 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
         behaelter: "detail-datenschutz",
         seitenPfad: "/admin",
       },
+      // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets unter „KI". Die Karte
+      // liest ihre eigene Quelle (`api/produktbudget.ts`, nicht in den sechs Seiten der Matrix V);
+      // hier steht sie für das Sprachinventar.
+      {
+        reiter: t("adm.sec.ki"),
+        zeile: '[data-testid="zeile-ki-produktbudget"]',
+        behaelter: "detail-produktbudget",
+        seitenPfad: "/admin",
+      },
       {
         reiter: "",
         zeile: '[data-testid="zeile-passwort"]',

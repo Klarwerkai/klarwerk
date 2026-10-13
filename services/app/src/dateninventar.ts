@@ -893,7 +893,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "einstellungen",
     name: "Betriebseinstellungen",
     inhalt:
-      "Schwellen, Prüferanzahl, Upload-Grenzen, KI-Zuordnung, externe Recherche, Markenwahl, Importschalter, KI-Assist-Vorgaben, Schreibstandzähler.",
+      "Schwellen, Prüferanzahl, Upload-Grenzen, KI-Zuordnung, externe Recherche, Markenwahl, Importschalter, KI-Assist-Vorgaben, Schreibstandzähler, Produktbudgets samt Buchungen und Änderungsvermerk.",
     personenbezug: "moeglich",
     personenbezugGrund:
       "Keine Angaben über Personen; einzelne Einstellungen können die Kennung der zuletzt ändernden Person tragen.",
@@ -909,6 +909,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
         "confluence_import_schalter",
         "assist_presets",
         "ko_schreibstand",
+        "produktbudget",
       ],
     },
     taetigkeit: "betrieb",

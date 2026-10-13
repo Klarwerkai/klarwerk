@@ -262,6 +262,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel,
   // keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "PUSH_ABO_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets. ADDITIV, nachgezählt: ein
+  // einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "PRODUKTBUDGET_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

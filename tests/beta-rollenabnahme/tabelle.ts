@@ -3505,6 +3505,27 @@ export const TABELLE: Zeile[] = [
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
+  // produkt:20261013:produktbudget-anwender-admin (PBE-05): die Produktbudgets — Lesen und Ändern
+  // allein mit `users.manage`. ZUSTANDSFREI GEFAHREN: der PUT trägt keinen Betrag und endet für den
+  // Admin in 400, ohne etwas zu schreiben; gemessen wird die TÜR.
+  {
+    gruppe: "produktbudgetRoutes",
+    methode: "GET",
+    pfad: "/api/admin/produktbudget",
+    belegstelle: "services/app/src/routes/produktbudget-routes.ts:38",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "produktbudgetRoutes",
+    methode: "PUT",
+    pfad: "/api/admin/produktbudget/perplexity-poc",
+    route: "/api/admin/produktbudget/:bereich",
+    belegstelle: "services/app/src/routes/produktbudget-routes.ts:51",
+    tor: "users.manage",
+    payload: { aenderungId: "rollenabnahme-probe" },
+    erwartet: NUR_ADMIN,
+  },
   {
     gruppe: "askRoutes",
     methode: "GET",

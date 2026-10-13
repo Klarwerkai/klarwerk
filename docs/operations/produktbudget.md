@@ -1,0 +1,60 @@
+# Produktbudgets (Claude, ChatGPT, Perplexity)
+
+*produkt:20261013:produktbudget-anwender-admin*
+
+## Bedienort
+
+Verwaltung › KI › **Produktbudgets** (`/admin?bereich=ki&detail=produktbudget`). Lesen und Ändern
+nur mit `users.manage` (Admin), am Server geprüft (`GET`/`PUT /api/admin/produktbudget[/:bereich]`).
+
+## Bereiche (Originalvorgaben vom 13.10.2026)
+
+| Bereich | Anbieter | Vorgabe | Zeitraum | Anschluss |
+| --- | --- | --- | --- | --- |
+| `perplexity-poc` | `perplexity` | 20,00 EUR — ersetzt die frühere Empfehlung 30 USD/Monat für diesen PoC | einmalig, ohne Erneuerung | BPA-12 (`produkt:20261011:assistenz-recherche-perplexity`) |
+| `nr32-claude` | `anthropic` | 20,00 EUR | **offen** — Aufteilung/Zeitraum gefragt, unbeantwortet | P03 (`produkt:20261011:peter-p03`) |
+| `nr32-chatgpt` | `openai` | 20,00 EUR | **offen** — wie oben | P03 (`produkt:20261011:peter-p03`) |
+
+Ein offener Zeitraum gibt nichts frei. Ihn festzulegen verlangt einen Beleg (Feld „Grund oder
+Beleg“). Einen monatlichen Zeitraum gibt es nicht: das Produkt erneuert nichts automatisch.
+
+## Regeln
+
+* **Kein zweites Kostensystem.** Die Bereiche sind die persistente Fassung des vorhandenen
+  Kostenbuchs der Fähigkeiten (`Kostenbuch`, G18, `services/app/src/assistenz-faehigkeiten.ts`).
+* **Geld ganzzahlig.** Beträge in Cent; Eingabe „20“, „20,50“ oder „20.5“; 0 erlaubt (stoppt den
+  Kostenweg), negativ/ungültig/über 10 000 wird abgewiesen.
+* **Buchungen bleiben.** Eine Änderung von Betrag, Währung oder Zeitraum bucht, löscht und setzt
+  nichts zurück. Nach einer Senkung stehen Verbrauch und „über dem Betrag“ sichtbar da. Mit
+  Buchungen ist die Währung gebunden (keine Umetikettierung). Der Bestandsreset lässt die Tabelle
+  `produktbudget` stehen.
+* **Deckel.** Vor einem kostenpflichtigen Aufruf wird atomar reserviert (Vergleich-und-Tausch auf
+  die Mandantenzeile): passender Anbieter, passende Tarifwährung, festgelegter Zeitraum, genug Rest.
+  Je Auftragskennung höchstens eine Buchung — Wiederholung und Wiederanlauf buchen nicht doppelt.
+  Nach Fehler oder Zeitlimit bleibt die Reservierung stehen (Abrechnung unbekannt).
+* **Änderungsprovenienz.** Je Änderung Kennung, Zeitpunkt, Kontokennung, vorher/nachher, Grund —
+  keine Schlüssel, keine Tokens. Dazu ein Prüfprotokolleintrag `produktbudget.geaendert`.
+* **Unklarer Ausgang, Konflikt.** Jede Änderung trägt eine Änderungskennung; dieselbe Kennung wirkt
+  höchstens einmal. Eine veraltete Fassung ergibt 409 samt aktuellem Stand; die Oberfläche behält
+  die Eingabe.
+* **Eine Budgetänderung ist keine Anbieteraufladung, keine Kontoumstellung und keine
+  Tokenfreigabe.** Anbieterfreigabe, Zugang (sicherer Credentialweg) und Adapter bleiben eigene
+  Voraussetzungen.
+
+## Anschluss eines ursprünglichen Funktionsauftrags
+
+Ein Fähigkeitsvertrag schließt an, indem er `kostenzuordnung` auf die Bereichskennung setzt und
+einen **belegten** Tarif trägt (`grenzen.kostenJeAufrufCent` > 0 und `grenzen.kostenWaehrung`).
+Ohne Tarifwährung, bei anderem Anbieter oder offenem Zeitraum gibt das Kostenbuch nichts frei.
+Wer außerhalb der Fähigkeiten bucht (z. B. die P03-Proben über den Reasoner), nutzt dieselben
+Aufrufe `reserviere`/`verbuche` des Dienstes `Produktbudget` mit derselben Bereichskennung.
+
+Heute trägt kein Vertrag eine Zuordnung: Perplexity bleibt ohne Adapter, Zugang, belegten Tarif und
+Anbieterfreigabe gesperrt. Tatsächliche Such-/Modellabschlüsse bleiben Pflicht der ursprünglichen
+Aufträge.
+
+## Haltbarkeit
+
+Postgres-Betrieb: Tabelle `produktbudget` (eine Zeile je Mandant, `PRODUKTBUDGET_SCHEMA`, additiv),
+im Dump und in der Pflichtliste des Restore-Drills. Speicher- und Journalbetrieb halten den Stand
+nur bis zum Neustart.
