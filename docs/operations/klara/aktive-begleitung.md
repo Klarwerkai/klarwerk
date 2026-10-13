@@ -67,8 +67,14 @@ dürfen sollen, ist eine Produktentscheidung, die hier nicht getroffen wird.
 ## Regeln für Pause und Ende
 
 Vor jedem Lesen, auch vor dem Taktlesen im Hintergrund, wird geprüft: aktiv, nicht abgelaufen,
-dasselbe Konto, aktuelle Berechtigung, Fenster sichtbar. Fällt eine Bedingung weg, wird pausiert,
-ohne das Formular anzufassen.
+dasselbe Konto, aktuelle Berechtigung, Fenster sichtbar und fokussiert. Fällt eine Bedingung weg,
+wird pausiert, ohne das Formular anzufassen.
+
+Die Berechtigung gilt dabei erst, wenn der Server sie für genau dieses Lesen bestätigt hat. Jede
+lokale Lesung fragt vorher `/auth/me` beim Server nach (gezielt nur diese Abfrage, etwa alle 5 s
+während einer aktiven Begleitung). Gelesen wird erst mit einer Antwort, die jünger ist als die
+Anfrage. Trägt sie eine entzogene Rolle, pausiert die Begleitung vor dem Lesen. Ein vom Host
+gemeldeter Inhalt wird nur übernommen, wenn die letzte Bestätigung höchstens 5 s alt ist.
 
 Der Sperrbildschirmmelder läuft nur, solange die Begleitung aktiv ist. Beim Start und bei jedem
 Fortsetzen, auch nach dem Neuladen, wird er aus der Geste heraus neu eingerichtet. Aktiviert wird
@@ -89,6 +95,7 @@ wenn der Melder läuft; vorher steht „wird eingerichtet“, während einer Pau
 | Sperrbildschirmmelder startet nicht (Konstruktor oder `start()` scheitert) | Pause „sperrmelder“, Fehler sichtbar, keine Zusage | nur durch den Nutzer; „Fortsetzen“ versucht den Melder erneut |
 | Kontowechsel | Pause; anderes Konto sieht nichts | nur mit demselben Konto |
 | Rechteentzug (Rolle passt nicht mehr, Konto bleibt angemeldet) | Pause, Zeitpunkt gemerkt | erst mit einer Serverbestätigung (`/auth/me`), die jünger ist als der Entzug; „Fortsetzen“ fordert sie an |
+| Server bestätigt den Zugriff nicht binnen 10 s | Pause „rechteunbestaetigt“, nichts gelesen | wie beim Entzug |
 | Neuladen | Pause; Endpunkt bleibt gleich | durch den Nutzer, frischer Kontext |
 | Endpunkt erreicht | Ende | nicht möglich; neu starten |
 | Stopp | Ende; Kontext verworfen | nicht möglich; neu starten |
@@ -110,9 +117,16 @@ Dateiänderungen über längere Zeit erkennen weiter die vorhandenen, getrennten
 SharePoint und OneDrive erkennt der Dateiquellenadapter einen geänderten Dateistand
 (`lastModifiedDateTime`) und reiht ihn als Vorgang ein. Bei Arbeitsanleitungen meldet die
 Änderungsprüfung eine neuere Quellfassung. Beides läuft am Server, ohne dass ein Fenster offen ist.
-Die Begleitung ruft diese Dienste nicht und ersetzt sie nicht. Grenze: Eine zeitgesteuerte
-Dauerüberwachung ist nicht eingerichtet (`ueberwachung: "nicht_eingerichtet"`). Geprüft wird beim
-Wiederholimport, beim Abgleich oder beim Öffnen.
+Die Begleitung ruft diese Dienste nicht und ersetzt sie nicht.
+
+Ohne geöffnetes Fenster: Der bestehende SharePoint-Dienst prüft die bereits freigegebenen Dateien
+der Instanzbibliothek im Hintergrund erneut, wenn der Betrieb `KLARWERK_SHAREPOINT_QUELLENPRUEFUNG_MS`
+setzt (mindestens 60000; ohne Wert aus). Freigegeben heißt: mit offenem oder angenommenem Vorgang
+in der Prüfung. Die Prüfung läuft über denselben Übernahmeweg (`fuehreUebernahmeAus`) in Losen.
+Eine unveränderte Datei bleibt „schon vorhanden“, ein neuerer Stand kommt als Vorgang in die
+Prüfung. Jedes Los ist ein nachlesbarer Importlauf. Es gibt kein Modell und keine stille Übernahme.
+Grenzen: Jede Prüfung ruft jede freigegebene Datei an der Gegenstelle ab. Testbibliotheken einzelner
+Fachkonten werden nicht geprüft. Die Arbeitsanleitungen prüfen weiterhin beim Öffnen.
 
 Fremder Basisbefund: Am Kandidaten `f2144738` sind in `tests/confluence-quellabgleich/abgleich.test.ts`
 die drei R-0162-Fälle zum Löschabgleich rot. Sie betreffen `services/app/src/confluence-import.ts`,

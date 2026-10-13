@@ -48,7 +48,49 @@ const FORMULAR = `
   <section id="nicht-freigegeben"><textarea name="privat">${GEHEIM[2]}</textarea></section>
 `;
 
+/** Eine STABILE Uhr: die Leiste hängt ihre Effekte daran, eine neue Funktion je Aufbau täte es nicht. */
+const UHR = (): number => uhr;
+
+/**
+ * Der Server dieser Bühne (Nacharbeit 13). `pruefSpion` spielt die Antwort auf `/auth/me`: er
+ * bestätigt die Sitzung JETZT (`geprueftAm = uhr`) mit der Rolle, die der Server gerade führt —
+ * `server.rolle`, wenn ein Fall sie entzieht, sonst die zuletzt montierte. `server.antwortet =
+ * false` ist der Server, der nicht antwortet.
+ */
+const server: { rolle: string | null | undefined; antwortet: boolean } = {
+  rolle: undefined,
+  antwortet: true,
+};
+let stand: { konto: string | null; rolle: string | null; geprueftAm: number } = {
+  konto: "u-pia",
+  rolle: "experte",
+  geprueftAm: 0,
+};
+
+function zeichne(): void {
+  root?.render(
+    createElement(KlaraBegleitung, {
+      konto: stand.konto,
+      rolle: stand.rolle,
+      rechteGeprueftAm: stand.geprueftAm,
+      pruefeRechte: pruefSpion,
+      jetzt: UHR,
+    }),
+  );
+}
+
 const pruefSpion = vi.fn();
+function serverAntwortet(): void {
+  if (!server.antwortet) {
+    return;
+  }
+  stand = {
+    ...stand,
+    rolle: server.rolle === undefined ? stand.rolle : server.rolle,
+    geprueftAm: uhr,
+  };
+  zeichne();
+}
 
 /** `rolle` und `geprueftAm` stehen für die vom Server bestätigte Sitzung (`/auth/me`). */
 function montiere(
@@ -56,19 +98,12 @@ function montiere(
   rolle: string | null = "experte",
   geprueftAm = 0,
 ): void {
+  stand = { konto, rolle, geprueftAm };
   act(() => {
     if (!root) {
       root = createRoot(wurzel);
     }
-    root.render(
-      createElement(KlaraBegleitung, {
-        konto,
-        rolle,
-        rechteGeprueftAm: geprueftAm,
-        pruefeRechte: pruefSpion,
-        jetzt: () => uhr,
-      }),
-    );
+    zeichne();
   });
 }
 
@@ -223,6 +258,9 @@ beforeEach(async () => {
   fetchSpion.mockReset();
   mikrofonSpion.mockReset();
   pruefSpion.mockReset();
+  pruefSpion.mockImplementation(serverAntwortet);
+  server.rolle = undefined;
+  server.antwortet = true;
   vi.stubGlobal("fetch", fetchSpion);
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
@@ -434,9 +472,12 @@ describe("K7 · Sperrbildschirm, Kontowechsel, Rechteentzug pausieren; Neuladen 
     // eine frische Bestätigung wird angefordert.
     uhr = T0 + 3 * MIN;
     montiere("u-pia", "experte", T0 + MIN);
+    // Seit Nacharbeit 13 fragt die Leiste den Server auch vor jedem Lesen. Gezählt wird deshalb
+    // genau dieser eine Klick: er fordert EINE frische Bestätigung an.
+    const anfragenVorher = pruefSpion.mock.calls.length;
     act(() => knopf("Fortsetzen").click());
     expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain("neu bestätigt");
-    expect(pruefSpion).toHaveBeenCalledTimes(1);
+    expect(pruefSpion.mock.calls.length - anfragenVorher).toBe(1);
     expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
 
     // Erst die nach dem Entzug bestätigte Berechtigung erlaubt das bewusste Fortsetzen.
@@ -903,5 +944,84 @@ describe("K2/K7 · Fensterwechsel bei sichtbarem Fenster: Fokus wird vor jedem L
     expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain(
       "anderes Fenster in den Vordergrund",
     );
+  });
+});
+
+// ================================================================================================
+// NACHARBEIT 13 (Ben AC07/G04, Hostprobe 91 nicht bestanden): nach serverbestätigtem Entzug las
+// die Begleitung weiter — sechs Felder und ein neuer Hinweis zum Wert 9191 —, weil sie nur die
+// zwischengespeicherte Sitzungsrolle kannte. Hier entzieht der SERVER die Rolle, während die Leiste
+// noch die alte im Speicher hat; dieselbe Eingabe 9191 folgt.
+// ================================================================================================
+describe("K7 · jede lokale Lesung braucht eine frische Serverbestätigung", () => {
+  const ENTZOGEN = "Pausiert, weil der Zugriff entzogen wurde.";
+
+  it("Entzug am Server bei weiter angemeldetem Nutzer: vor dem nächsten Lesen erkannt, nichts gelesen", () => {
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    vergeht(5000);
+    expect(q("begleitung-auskunft")?.textContent).toContain(": 2 gelesene Felder");
+
+    // Der Server entzieht die Rolle. Die Leiste hat noch „experte" im Speicher.
+    server.rolle = "viewer";
+    const lesen = vi.spyOn(document, "querySelectorAll");
+    act(() => setzeWert(leistung(), "9191"));
+    vergeht(2000);
+
+    expect(q("begleitung-grund")?.textContent).toBe(ENTZOGEN);
+    expect(q("begleitung-auskunft")?.textContent).toContain(": 0 gelesene Felder");
+    expect(q("begleitung-hinweis")).toBeNull();
+    expect(wurzel.textContent).not.toContain("9191");
+    expect(vorgangAbgefragt(lesen.mock.calls)).toBe(false);
+
+    // Die Rolle wird wiedererteilt: das allein setzt NICHT fort.
+    server.rolle = "experte";
+    vergeht(20_000);
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    expect(vorgangAbgefragt(lesen.mock.calls)).toBe(false);
+    lesen.mockRestore();
+
+    // Erstes Fortsetzen: die Leiste kennt noch die entzogene Rolle → abgelehnt, frische Bestätigung
+    // angefordert. Zweites, bewusstes Fortsetzen mit der frisch bestätigten Rolle → aktiv.
+    act(() => knopf("Fortsetzen").click());
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain("gerade nicht erlaubt");
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    vergeht(1000);
+    act(() => knopf("Fortsetzen").click());
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+    vergeht(2000);
+    expect(q("begleitung-hinweis")?.textContent).toContain("„9191“");
+    ohneLeck();
+  });
+
+  it("antwortet der Server nicht, wird nicht gelesen — nach der Frist Pause „unbestätigt“", () => {
+    server.antwortet = false;
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    // Erst ab hier: vor dem Start sucht das Angebot den Bereich legitim (ohne Feldwerte).
+    const lesen = vi.spyOn(document, "querySelectorAll");
+    act(() => setzeWert(leistung(), "250"));
+    vergeht(5000);
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+    expect(q("begleitung-auskunft")?.textContent).toContain(": 0 gelesene Felder");
+    expect(q("begleitung-hinweis")).toBeNull();
+
+    vergeht(10_000);
+    expect(q("begleitung-grund")?.textContent).toBe(
+      "Pausiert, weil der Server den Zugriff nicht rechtzeitig bestätigt hat. Nichts wurde weiter gelesen.",
+    );
+    expect(vorgangAbgefragt(lesen.mock.calls)).toBe(false);
+    lesen.mockRestore();
+
+    // Der Server antwortet wieder: Fortsetzen holt die Bestätigung (sie muss JÜNGER sein als die
+    // Pause), das zweite Fortsetzen liest.
+    server.antwortet = true;
+    vergeht(1000);
+    act(() => knopf("Fortsetzen").click());
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    vergeht(1000);
+    act(() => knopf("Fortsetzen").click());
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+    expect(q("begleitung-auskunft")?.textContent).toContain(": 2 gelesene Felder");
   });
 });

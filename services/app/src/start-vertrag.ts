@@ -360,6 +360,20 @@ const SHAREPOINT_TESTBIBLIOTHEK_WERT: Startwert = {
     "Nur Konten mit users.manage dürfen aus SharePoint importieren; ein Fachkonto bekommt 403.",
 };
 
+// produkt:20261011:assistenz-aktive-beobachtung (BPA-05-AC09): die Quellenänderungsprüfung des
+// bestehenden SharePoint-Dienstes, ohne geöffnetes Fenster. Gelesen in
+// `routes/sharepoint-import-routes.ts` (`SHAREPOINT_QUELLENPRUEFUNG_ENV`) beim Registrieren.
+const SHAREPOINT_QUELLENPRUEFUNG_WERT: Startwert = {
+  name: "KLARWERK_SHAREPOINT_QUELLENPRUEFUNG_MS",
+  bereich: "SharePoint-Import",
+  pflicht: { art: "nie" },
+  geheim: false,
+  wofuer:
+    "Abstand in Millisekunden (mindestens 60000), in dem der Server die bereits übernommenen Dateien der Instanzbibliothek erneut prüft. Ein geänderter Stand kommt über denselben Übernahmeweg als Vorgang in die Prüfung — ohne geöffnetes Fenster, ohne Modell.",
+  ohneIhn:
+    "Keine Hintergrundprüfung. Eine geänderte Datei wird erst beim Wiederholimport oder Abgleich erkannt.",
+};
+
 // ================================================================================================
 // R-0170 · DER JIRA-ZUGANG — AUS DEM MODUL, NICHT DANEBEN
 // ================================================================================================
@@ -1529,6 +1543,7 @@ export const STARTVERTRAG: readonly Startwert[] = [
   ...CONFLUENCE_WERTE,
   ...SHAREPOINT_WERTE,
   SHAREPOINT_TESTBIBLIOTHEK_WERT,
+  SHAREPOINT_QUELLENPRUEFUNG_WERT,
   ...JIRA_WERTE,
   ...SCHALTER_WERTE,
 ];

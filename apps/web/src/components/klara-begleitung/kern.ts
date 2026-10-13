@@ -62,6 +62,8 @@ export type Phase = "aus" | "aktiv" | "pausiert" | "beendet";
  *                     durch den Nutzer, der Melder wird dabei neu eingerichtet und geprüft
  *   kontowechsel    → Fortsetzen nur, wenn wieder DASSELBE Konto angemeldet ist
  *   rechteentzug    → Fortsetzen nur mit einer NACH dem Entzug vom Server bestätigten Berechtigung
+ *   rechteunbestaetigt → der Server hat die Berechtigung vor dem Lesen nicht rechtzeitig bestätigt:
+ *                     dieselbe Regel wie beim Entzug (frische Bestätigung + bewusstes Fortsetzen)
  *   neustart        → nach Neuladen: Fortsetzen nur durch den Nutzer, Endpunkt unverändert
  *   stopp           → beendet; neue Begleitung braucht einen neuen Auftrag
  *   abgelaufen      → beendet; die Freigabe wird durch nichts verlängert
@@ -74,6 +76,7 @@ export type Grund =
   | "sperrmelder"
   | "kontowechsel"
   | "rechteentzug"
+  | "rechteunbestaetigt"
   | "neustart"
   | "stopp"
   | "abgelaufen";
@@ -277,7 +280,8 @@ export function pausiere(b: Begleitung, grund: Grund, jetzt: number): Begleitung
     kontext: null,
     hinweis: null,
     ausserhalb: false,
-    rechteentzugAm: grund === "rechteentzug" ? jetzt : b.rechteentzugAm,
+    rechteentzugAm:
+      grund === "rechteentzug" || grund === "rechteunbestaetigt" ? jetzt : b.rechteentzugAm,
   };
 }
 
@@ -374,7 +378,8 @@ export type Systemereignis =
   | "verborgen"
   | "fokusverlust"
   | "kontowechsel"
-  | "rechteentzug";
+  | "rechteentzug"
+  | "rechteunbestaetigt";
 
 export function systemereignis(b: Begleitung, ereignis: Systemereignis, jetzt: number): Begleitung {
   return b.phase === "aktiv" || b.phase === "pausiert" ? pausiere(b, ereignis, jetzt) : b;

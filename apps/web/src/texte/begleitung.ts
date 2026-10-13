@@ -74,6 +74,8 @@ export default {
       "Pausiert, weil das Fenster verborgen wurde (anderes Fenster, Tab oder Bildschirm aus).",
     "begleitung.grund.fokusverlust":
       "Pausiert, weil ein anderes Fenster im Vordergrund ist. Die Rückkehr setzt nicht von selbst fort.",
+    "begleitung.grund.rechteunbestaetigt":
+      "Pausiert, weil der Server den Zugriff nicht rechtzeitig bestätigt hat. Nichts wurde weiter gelesen.",
     "begleitung.fehler.fokusBeimStart":
       "Während der Einrichtung kam ein anderes Fenster in den Vordergrund. Es wird nichts beobachtet; bitte bewusst erneut starten bzw. fortsetzen.",
     "begleitung.fehler.rechte_unbestaetigt":
@@ -177,6 +179,8 @@ export default {
       "Paused because the window was hidden (other window, tab or screen off).",
     "begleitung.grund.fokusverlust":
       "Paused because another window is in front. Returning does not resume by itself.",
+    "begleitung.grund.rechteunbestaetigt":
+      "Paused because the server did not confirm access in time. Nothing further was read.",
     "begleitung.fehler.fokusBeimStart":
       "Another window came to the front while accompanying was being set up. Nothing is observed; please start or resume again deliberately.",
     "begleitung.fehler.rechte_unbestaetigt":
@@ -280,6 +284,8 @@ export default {
       "Gepauzeerd omdat het venster verborgen werd (ander venster, tabblad of scherm uit).",
     "begleitung.grund.fokusverlust":
       "Gepauzeerd omdat een ander venster op de voorgrond staat. Terugkeren hervat niet vanzelf.",
+    "begleitung.grund.rechteunbestaetigt":
+      "Gepauzeerd omdat de server de toegang niet op tijd heeft bevestigd. Er is niets verder gelezen.",
     "begleitung.fehler.fokusBeimStart":
       "Tijdens het inrichten kwam een ander venster op de voorgrond. Er wordt niets waargenomen; start of hervat opnieuw bewust.",
     "begleitung.fehler.rechte_unbestaetigt":

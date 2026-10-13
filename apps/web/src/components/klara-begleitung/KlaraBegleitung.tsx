@@ -33,6 +33,7 @@
 // zweites Mal geprüft, weil sie sich während des asynchronen Starts geändert haben können. Die
 // Leiste sagt die Sperrerkennung erst zu, wenn der Melder läuft; scheitert er, bleibt bzw. wird
 // die Begleitung pausiert und der Fehler steht da. Während einer Pause läuft kein Melder.
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "../../app/AuthContext";
 import { useAssistenzT } from "../../lib/assistenzProfil";
@@ -76,6 +77,10 @@ const NOTIZ_PRAEFIX = "klarwerk.begleitung.notizen.";
 const TIPPPAUSE_MS = 1500;
 /** Takt für Ablauf und Seitenwechsel, auch ohne Eingabe. */
 const TAKT_MS = 5000;
+/** So lange darf eine angeforderte Rechtebestätigung ausbleiben, bevor pausiert wird. */
+const RECHTE_WARTEN_MS = 10_000;
+/** So frisch muss die Bestätigung sein, damit ein vom Host gemeldeter Inhalt übernommen wird. */
+const RECHTE_FRISCH_MS = 5000;
 // Nacharbeit 5 (Ben, Bildbeleg AKTIV-HINWEIS.png): hier stand `bg-[var(--kw-surface,#fff)]`. Die
 // Themevariable ist ein RGB-Kanaltripel („255 255 255", `styles/themes.css`), kein Farbwert — der
 // Browser verwarf die Deklaration, die Leiste war DURCHSICHTIG, und das Formular darunter schien
@@ -154,20 +159,28 @@ export interface KlaraBegleitungProps {
   readonly rolle: string | null;
   /** Zeitpunkt der letzten Serverbestätigung dieser Sitzung (`/auth/me`). */
   readonly rechteGeprueftAm?: number;
-  /** Fordert eine frische Serverbestätigung an (nach einem Entzug). */
+  /**
+   * Fordert eine frische Serverbestätigung an — vor JEDEM lokalen Lesen und nach einem Entzug.
+   * Ohne sie (nur in Bauteiltests ohne Server) liest die Leiste mit dem übergebenen Stand.
+   */
   readonly pruefeRechte?: () => void;
   readonly jetzt?: () => number;
 }
 
 /** Die Begleitung in der Hülle — Konto, Rolle und Bestätigungszeitpunkt aus der echten Sitzung. */
 export function KlaraBegleitungImProdukt(): JSX.Element | null {
-  const { user, sitzungGeprueftAm, refresh } = useSession();
+  const { user, sitzungGeprueftAm } = useSession();
+  const abfragen = useQueryClient();
+  // Nur `/auth/me` wird neu gefragt — die Antwort trägt Rolle und Zeitpunkt (`sitzungGeprueftAm`).
+  const pruefeRechte = useCallback(() => {
+    void abfragen.invalidateQueries({ queryKey: ["auth", "me"] });
+  }, [abfragen]);
   return (
     <KlaraBegleitung
       konto={user?.id ?? null}
       rolle={user?.role ?? null}
       rechteGeprueftAm={sitzungGeprueftAm ?? 0}
-      pruefeRechte={refresh}
+      pruefeRechte={pruefeRechte}
     />
   );
 }
@@ -407,6 +420,46 @@ export function KlaraBegleitung({
 
   const aktiv = b.phase === "aktiv";
 
+  // ==============================================================================================
+  // NACHARBEIT 13 (Ben AC07/G04, Hostprobe 91): DIE RECHTE GELTEN ERST, WENN DER SERVER SIE JETZT
+  // BESTÄTIGT HAT.
+  // ==============================================================================================
+  // Bis hierher prüfte `darfLesen` die zwischengespeicherte Sitzungsrolle; die Sitzung lädt sich
+  // nur alle fünf Minuten nach. Nach einem serverseitigen Entzug las die Begleitung deshalb weiter.
+  // Jetzt wird JEDES lokale Lesen erst angefordert (`fordereLesen`): die Sitzung wird beim Server
+  // nachgefragt, und gelesen wird erst, wenn eine Antwort vorliegt, die JÜNGER ist als die
+  // Anforderung (`rechteGeprueftAm`). Diese Antwort trägt die aktuelle Rolle — ist sie entzogen,
+  // pausiert der Rechte-Effekt oben, bevor gelesen wird. Kommt keine Antwort innerhalb von
+  // `RECHTE_WARTEN_MS`, pausiert die Begleitung als „unbestätigt" und verwirft den Kontext;
+  // fortgesetzt wird nur bewusst und mit frischer Bestätigung (Kernregel wie beim Entzug).
+  const lesewunsch = useRef<number | null>(null);
+  const fordereLesen = useCallback(() => {
+    if (!pruefeRechte) {
+      abtasten();
+      return;
+    }
+    if (lesewunsch.current === null) {
+      lesewunsch.current = jetzt();
+    }
+    pruefeRechte();
+  }, [pruefeRechte, abtasten, jetzt]);
+  const pruefeUnbestaetigt = useCallback(() => {
+    const seit = lesewunsch.current;
+    if (seit !== null && jetzt() - seit > RECHTE_WARTEN_MS) {
+      lesewunsch.current = null;
+      setB((alt) =>
+        alt.phase === "aktiv" ? systemereignis(alt, "rechteunbestaetigt", jetzt()) : alt,
+      );
+    }
+  }, [jetzt]);
+  useEffect(() => {
+    const seit = lesewunsch.current;
+    if (seit !== null && rechteGeprueftAm >= seit) {
+      lesewunsch.current = null;
+      abtasten();
+    }
+  }, [rechteGeprueftAm, abtasten]);
+
   // Eingaben im Bereich: erst nach der Tipppause lesen, damit kein Hinweis mitten ins Tippen fällt.
   // Beim Einschalten und nach jedem Fortsetzen wird sofort frischer Kontext gelesen.
   useEffect(() => {
@@ -418,31 +471,42 @@ export function KlaraBegleitung({
       if (zeitgeber.current !== null) {
         window.clearTimeout(zeitgeber.current);
       }
-      zeitgeber.current = window.setTimeout(() => abtasten(), TIPPPAUSE_MS + 50);
+      zeitgeber.current = window.setTimeout(() => fordereLesen(), TIPPPAUSE_MS + 50);
     };
-    const takt = window.setInterval(() => abtasten(), TAKT_MS);
-    const sicht = (): void => abtasten();
+    const takt = window.setInterval(() => {
+      pruefeUnbestaetigt();
+      fordereLesen();
+    }, TAKT_MS);
+    // Verborgen: sofort pausieren, ohne zu lesen. Wieder sichtbar: erst nach Bestätigung lesen.
+    const sicht = (): void => (document.hidden ? abtasten() : fordereLesen());
     document.addEventListener("input", beiEingabe, true);
     document.addEventListener("change", beiEingabe, true);
     document.addEventListener("visibilitychange", sicht);
-    abtasten();
+    fordereLesen();
     return () => {
       document.removeEventListener("input", beiEingabe, true);
       document.removeEventListener("change", beiEingabe, true);
       document.removeEventListener("visibilitychange", sicht);
       window.clearInterval(takt);
+      lesewunsch.current = null;
       if (zeitgeber.current !== null) {
         window.clearTimeout(zeitgeber.current);
         zeitgeber.current = null;
       }
     };
-  }, [aktiv, abtasten, jetzt]);
+  }, [aktiv, abtasten, fordereLesen, pruefeUnbestaetigt, jetzt]);
 
   // Host-Adapter (Browser, Nativanwendung) und Systemereignisse.
   useEffect(() => {
     const kontext = (e: Event): void => {
       const detail = (e as CustomEvent<KontextEreignis>).detail;
       if (detail && typeof detail === "object" && detail.quelle && Array.isArray(detail.felder)) {
+        // Ein Host-Inhalt wird nur mit FRISCH bestätigter Berechtigung übernommen; sonst wird er
+        // verworfen und eine Bestätigung angefordert (Nacharbeit 13).
+        if (pruefeRechte && jetzt() - lage.current.rechteGeprueftAm > RECHTE_FRISCH_MS) {
+          fordereLesen();
+          return;
+        }
         abtasten(detail);
       }
     };
@@ -458,7 +522,7 @@ export function KlaraBegleitung({
       window.removeEventListener(KONTEXT_EREIGNIS, kontext);
       window.removeEventListener(SYSTEM_EREIGNIS, system);
     };
-  }, [abtasten, jetzt]);
+  }, [abtasten, fordereLesen, pruefeRechte, jetzt]);
 
   // Solange nichts läuft: eingerichtete Vorgänge auf der Seite finden (Seitenwechsel, Nachladen).
   useEffect(() => {
@@ -490,8 +554,9 @@ export function KlaraBegleitung({
     const abgelehnt = (r: Extract<ReturnType<typeof fortsetzen>, { ok: false }>): void => {
       // Inzwischen gestoppt: kein Fehlersatz — der Stopp spricht für sich.
       setMeldung(r.fehler === "nicht_pausiert" ? null : t(`begleitung.fehler.${r.fehler}`));
-      if (r.fehler === "rechte_unbestaetigt") {
-        // Eine frische Serverantwort holen; Fortsetzen bleibt eine bewusste zweite Handlung.
+      if (r.fehler === "rechte_unbestaetigt" || r.fehler === "keine_rechte") {
+        // Eine frische Serverantwort holen — auch eine wiedererteilte Rolle kommt so an, statt erst
+        // mit dem Fünf-Minuten-Takt der Sitzung. Fortsetzen bleibt eine bewusste zweite Handlung.
         pruefeRechte?.();
       }
       setB(r.begleitung);

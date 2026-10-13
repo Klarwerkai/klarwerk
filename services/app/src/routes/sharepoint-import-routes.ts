@@ -172,6 +172,29 @@ export interface SharePointImportRouteDeps {
    * und die Zugangs-Auskunft kann dann keinen „zuletzt erfolgreich" belegen.
    */
   importRuns?: ImportRunRepo;
+  /**
+   * BPA-05-AC09: Abstand der Quellenänderungsprüfung in ms. Injizierbar für Tests; Standard =
+   * `leseQuellenpruefungMs()` aus der Umgebung. `null` heißt: keine Hintergrundprüfung.
+   */
+  quellenpruefungMs?: number | null;
+}
+
+/** BPA-05-AC09: der Betreiberschalter der Quellenänderungsprüfung (Startvertrag). */
+export const SHAREPOINT_QUELLENPRUEFUNG_ENV = "KLARWERK_SHAREPOINT_QUELLENPRUEFUNG_MS";
+
+/** Untergrenze des Prüfabstands — jede Prüfung kostet je Datei einen Abruf an der Gegenstelle. */
+const QUELLENPRUEFUNG_MIN_MS = 60_000;
+
+/** Der Prüfabstand aus der Umgebung, oder `null` (aus) — fail-closed bei unlesbarem oder zu kleinem Wert. */
+export function leseQuellenpruefungMs(
+  env: Record<string, string | undefined> = process.env,
+): number | null {
+  const roh = (env[SHAREPOINT_QUELLENPRUEFUNG_ENV] ?? "").trim();
+  if (roh === "") {
+    return null;
+  }
+  const ms = Number(roh);
+  return Number.isInteger(ms) && ms >= QUELLENPRUEFUNG_MIN_MS ? ms : null;
 }
 
 /**
@@ -547,6 +570,30 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
   };
 
   return async (app) => {
+    // ------------------------------------------------------------------------------------------
+    // BPA-05-AC09 · die Quellenänderungsprüfung im Hintergrund — nur mit Betreiberschalter.
+    // ------------------------------------------------------------------------------------------
+    // Läuft im App-Prozess, ohne Anfrage und ohne geöffnetes Fenster. Ein Lauf überlappt nie mit
+    // dem nächsten; beim Schließen der App endet der Zeitgeber.
+    const abstand =
+      deps.quellenpruefungMs !== undefined ? deps.quellenpruefungMs : leseQuellenpruefungMs();
+    if (abstand !== null) {
+      let laeuft = false;
+      const takt = setInterval(() => {
+        if (laeuft) {
+          return;
+        }
+        laeuft = true;
+        void pruefeQuellenaenderungen(deps, makeAdapter(), app.log).finally(() => {
+          laeuft = false;
+        });
+      }, abstand);
+      takt.unref?.();
+      app.addHook("onClose", async () => {
+        clearInterval(takt);
+      });
+    }
+
     // ------------------------------------------------------------------------------------------
     // Frage 6 · DIE AUSKUNFT FÜR DAS FACHKONTO: hat dieses Konto eine eigene Testbibliothek?
     // ------------------------------------------------------------------------------------------
@@ -1153,6 +1200,97 @@ async function fuehreUebernahmeAus(
       },
     };
   }
+}
+
+// ==================================================================================================
+// BPA-05-AC09 — DIE QUELLENÄNDERUNGSPRÜFUNG OHNE GEÖFFNETES FENSTER.
+// ==================================================================================================
+//
+// Originalkriterium: „Langfristige Änderungen einer freigegebenen Datei werden über den
+// Quellenänderungsdienst erkannt, auch ohne geöffnetes Fenster; Live-Begleitung ersetzt diesen
+// Dienst nicht." Bis hierher erkannte dieser Dienst einen neuen Dateistand nur, wenn jemand die
+// Datei erneut übernahm (Tür 2/3). Diese Prüfung schließt die Lücke INNERHALB des bestehenden
+// Dienstes — kein zweiter Dienst, kein zweiter Übernahmeweg:
+//
+//   WELCHE DATEIEN  die bereits FREIGEGEBENEN Dateien der Instanzbibliothek: zu ihnen steht ein
+//                   offener Vorgang in der Prüfung oder ein angenommener mit Wissensobjekt
+//                   (dieselbe Lesart wie `leseStaende`). Abgelehnte Vorgänge und fremde
+//                   Bibliotheken (`sourceScope` ≠ Laufwerk des Adapters) werden nicht geprüft.
+//   WIE             über `fuehreUebernahmeAus`, den einen Übernahmeweg, in Losen zu
+//                   `MAX_SHAREPOINT_IDS`. Unveränderte Dateien sind dort idempotent („schon
+//                   vorhanden"), ein höherer Quellstand (`lastModifiedDateTime`) kommt als neuer
+//                   Vorgang in die Prüfung. Jedes Los ist ein eigener, nachlesbarer Lauf.
+//   KEIN MODELL     wie alle Wege dieser Datei. Angenommen wird erst durch einen Menschen.
+//   WANN            im Abstand von `KLARWERK_SHAREPOINT_QUELLENPRUEFUNG_MS` (Betreiberschalter,
+//                   ohne Wert: aus). Ein Zeitplan ist nicht vorgeschrieben; der Betrieb entscheidet.
+const QUELLENPRUEFUNG_KONTO = "system";
+
+export interface Quellenpruefung {
+  readonly geprueft: number;
+  readonly neuEingereiht: number;
+  readonly neuerStand: readonly string[];
+  readonly importIds: readonly string[];
+}
+
+export async function pruefeQuellenaenderungen(
+  deps: SharePointImportRouteDeps,
+  adapter: SharePointSourceAdapter | undefined,
+  log: FastifyBaseLogger,
+): Promise<Quellenpruefung> {
+  const leer: Quellenpruefung = { geprueft: 0, neuEingereiht: 0, neuerStand: [], importIds: [] };
+  if (!adapter) {
+    return leer;
+  }
+  const anbieter = importProviderKey("SharePoint");
+  const ids = new Set<string>();
+  try {
+    for (const kandidat of await deps.library.listImportCandidates()) {
+      const { externalId, provider, sourceScope } = kandidat.item;
+      if (!externalId || importProviderKey(provider) !== anbieter) {
+        continue;
+      }
+      if (sourceScope !== adapter.driveId) {
+        continue;
+      }
+      const freigegeben =
+        isOpenReviewStatus(kandidat.status) ||
+        (kandidat.status === "angenommen" && kandidat.koId !== null);
+      if (freigegeben) {
+        ids.add(externalId);
+      }
+    }
+  } catch (err) {
+    warne(log, "Quellenpruefung lesen", err);
+    return leer;
+  }
+  const alle = [...ids];
+  let neuEingereiht = 0;
+  const neuerStand: string[] = [];
+  const importIds: string[] = [];
+  for (let i = 0; i < alle.length; i += MAX_SHAREPOINT_IDS) {
+    const los = alle.slice(i, i + MAX_SHAREPOINT_IDS);
+    const ausgang = await fuehreUebernahmeAus(
+      deps,
+      adapter,
+      los,
+      QUELLENPRUEFUNG_KONTO,
+      `drive:${adapter.driveId}/quellenpruefung`,
+      log,
+    );
+    if (ausgang.code !== 200) {
+      // Zugang/Gegenstelle für den ganzen Lauf gestört: kein weiteres Los mit derselben Antwort.
+      break;
+    }
+    const body = ausgang.body as { imported?: number; neuerStand?: string[]; importId?: string };
+    neuEingereiht += body.imported ?? 0;
+    neuerStand.push(...(body.neuerStand ?? []));
+    if (body.importId) {
+      importIds.push(body.importId);
+    }
+  }
+  // Kein eigenes Protokoll: jedes Los ist ein nachlesbarer Importlauf (`importIds`), und Fehler
+  // meldet `fuehreUebernahmeAus` bereits über die Positivliste.
+  return { geprueft: alle.length, neuEingereiht, neuerStand, importIds };
 }
 
 /** Ein Fehler aus dem Modul wird zur Antwort. Kein fremder Text, kein Statusdurchgriff. */
