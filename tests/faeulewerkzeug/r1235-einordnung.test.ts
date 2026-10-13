@@ -107,4 +107,25 @@ describe("R-1235 · Einordnung des Fäule-Werkzeugs", () => {
     expect(text).toContain("eine Erfüllung von R-1235 wird hier nicht behauptet");
     expect(text).toContain("Eine Pedi-Auswahl zu R-1235 ist **nicht vorhanden**");
   });
+
+  // Bens Befund (Nacharbeit 1): die Herkunft lässt den Gegenstand offen. Der Originalsatz bleibt
+  // Anforderung; Dateinamenherleitung und Zuordnung zur alten Steuerung sind nur Lesarten.
+  it("Originalsatz bleibt Anforderung; Herleitung und Steuerung bleiben Lesarten", () => {
+    const text = lies(DOKUMENT).replace(/\s+/g, " ");
+    expect(text).toContain("Ein Werkzeug spuert verfaulende Bestaende im Betrieb auf.");
+    expect(text).toContain("**Aufgenommene Anforderung**, unverändert erhalten");
+    expect(text).toContain(
+      "Dass der Satz nur aus dem Dateinamen hergeleitet sei, ist eine **unbestätigte Lesart**",
+    );
+    expect(text).toContain(
+      "Ob das Werkzeug zur damaligen Arbeitssteuerung gehörte, ist eine **unbestätigte Lesart**",
+    );
+    expect(text).toContain("Eine Zuordnung von `kw_faeule.py` folgt daraus nicht");
+    expect(text).toContain("Angenommen, `kw_faeule.py` war ein internes Werkzeug");
+    expect(text).not.toContain("Deutung des Dateinamens");
+    expect(text).not.toContain("ein internes Werkzeug der damaligen Arbeitssteuerung, kein");
+    for (const alternative of ["**A ·", "**B ·", "**C ·", "**D ·"]) {
+      expect(text).toContain(alternative);
+    }
+  });
 });

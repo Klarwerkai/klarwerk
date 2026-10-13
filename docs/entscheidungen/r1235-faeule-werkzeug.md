@@ -18,16 +18,17 @@ Datum 11.08.2026):
 
 | Angabe | Wert in der Quelle | Bedeutung |
 | --- | --- | --- |
-| Name / Satz | „Faeule-Werkzeug" — „Ein Werkzeug spuert verfaulende Bestaende im Betrieb auf." | Der Satz ist eine **Deutung des Dateinamens**; die Herkunft sagt ausdrücklich, dass der Gegenstand nicht beschrieben ist. |
-| Bereich / Kategorie | `Maschine` / `KLARWERK-intern`, `kundenrelevant: false` | ein internes Werkzeug der damaligen Arbeitssteuerung, kein Kundenmerkmal |
+| Name / Satz | „Faeule-Werkzeug" — „Ein Werkzeug spuert verfaulende Bestaende im Betrieb auf." | **Aufgenommene Anforderung**, unverändert erhalten. Welche Bestände gemeint sind, lässt die Herkunft ausdrücklich offen. Dass der Satz nur aus dem Dateinamen hergeleitet sei, ist eine **unbestätigte Lesart**. |
+| Bereich / Kategorie | `Maschine` / `KLARWERK-intern`, `kundenrelevant: false` | historisch als intern und nicht kundenrelevant eingeordnet. Ob das Werkzeug zur damaligen Arbeitssteuerung gehörte, ist eine **unbestätigte Lesart**. |
 | Altstatus | `ERLEDIGT`, Begründung „nicht dokumentiert" | historische Aussage; kein heutiger Funktionsnachweis |
 | Heutiger Stand im Register | `zustand: angedacht`, `pruefstatus: nur_altquelle`, `state: klaerung` | ungeklärt |
 | Entscheidungen | `entscheidung: null`, `entscheidungen: []`, `pedi_override: null` | **keine** Nutzerentscheidung zu R-1235 |
 
-Das Präfix `kw_` gehört zu den Skripten der alten Steuerung im damaligen Projektverzeichnis
-(`00_CONTROL`): `kw_pruefer.py` (Maschinenurteil, s. `tools/urteilslage.ts`) und
-`kw_nachtwache.py` (launchd-Dienst, `OFFEN.md`). Diese Steuerungsarchitektur ist verworfen; der
-Auftrag verbietet ihren Wiederaufbau.
+Andere Skripte mit demselben Präfix `kw_` gehörten zur alten Steuerung: `kw_pruefer.py`
+(Maschinenurteil, s. `tools/urteilslage.ts`) und `kw_nachtwache.py` (launchd-Dienst, `OFFEN.md`).
+Das ist **allenfalls ein Indiz** für die Lesart „Werkzeug der alten Steuerung“. Eine Zuordnung von
+`kw_faeule.py` folgt daraus nicht; die Quelle belegt sie nicht. Unabhängig davon gilt: Die alte
+Steuerungsarchitektur ist verworfen, der Auftrag verbietet ihren Wiederaufbau.
 
 ## 2. Abgleich mit dem heutigen Bestand (Basis `06468f05`)
 
@@ -45,7 +46,7 @@ Auftrag verbietet ihren Wiederaufbau.
 | --- | --- | --- |
 | **Veraltendes Wissen** (Objekte, deren Stand nicht mehr bestätigt ist) | Frische-Stufen `frisch / altert / faellig / veraltet`, Haltbarkeit und Halbwertszeit je Kategorie (`services/knowledge-object/src/frische.ts`), Erinnerung, Mahnung und Wochenvorlage an die verantwortliche Person in der Glocke (`services/app/src/frische-meldungen.ts`), Reiter „Erneut" (`apps/web/src/pages/Lifecycle.tsx`, `apps/web/src/lib/frische.ts`); Tests unter `tests/wissen-frische/` | gesonderter Auftrag `aufnahme:20260922:gesamt-wissen-frische` (R-0207, R-0236, R-0248, R-0266, R-0652, R-1636, FR-EXT-06). Dessen Erfüllungsstand wird **hier nicht** bewertet. |
 | **Still beschädigte Sicherungen** (Bitfäule, halbe Kopien) | Paarprüfung vor dem Ausdünnen alter Sicherungen (`scripts/backup/backup.sh`, `paar_ist_heil`), Wiederherstellungsprobe (`scripts/backup/restore-drill.sh`); Lastprobe `tests/sicherung-dauerbetrieb/lauf.ts` | Betrieb/Sicherung; nicht diesem Auftrag zugeordnet |
-| **Liegengebliebene Arbeits- oder Prüfstände** der Entwicklungssteuerung | im Produkt nichts; gehört zur verworfenen alten Steuerung | nicht wiederaufbauen |
+| **Liegengebliebene Arbeits- oder Prüfstände** der Entwicklungssteuerung (unbestätigte Lesart) | im Produkt nichts | falls zutreffend: Teil der verworfenen alten Steuerung, nicht wiederaufbauen |
 
 ## 3. Offene Geltungs-/Umfangsfrage (K1)
 
@@ -53,7 +54,7 @@ Auftrag verbietet ihren Wiederaufbau.
 
 | Alternative | Inhalt | Folge |
 | --- | --- | --- |
-| **A · Altbestand der alten Steuerung** | `kw_faeule.py` war ein internes Werkzeug der verworfenen Steuerung. | R-1235 als erledigte/obsolete Herkunft schließen; kein Produktumfang. |
+| **A · Altbestand der alten Steuerung** | Angenommen, `kw_faeule.py` war ein internes Werkzeug der verworfenen Steuerung (unbestätigt; Indiz nur das gemeinsame Präfix, s. Abschnitt 1). | Falls so entschieden: R-1235 als erledigte/obsolete Herkunft schließen; kein Produktumfang. |
 | **B · Produktfunktion „veraltetes Wissen aufspüren"** | Die Lesart des Registersatzes trifft auf Wissensobjekte. | Bereits durch den Bestand aus Abschnitt 2 abgedeckt und dem Auftrag `gesamt-wissen-frische` zugeordnet; R-1235 dort als verwandt vermerken, hier nichts bauen. |
 | **C · Betriebsfunktion „verfaulte Sicherungen erkennen"** | Lesart „Bestände" = gesicherte Daten. | Bestand in `scripts/backup/`; R-1235 dort als verwandt vermerken. |
 | **D · Eigenes neues Werkzeug** | Ein darüber hinausgehender Fäule-Bericht (welcher Bestand, welche Schwelle, wer liest ihn). | Nur mit einer **neuen, ausdrücklichen** Anforderung; heute in keiner Quelle beschrieben. |
@@ -88,10 +89,12 @@ R-1235 wird hier nicht behauptet.
 2. **„ERLEDIGT" gegen „angedacht":** Der Altstatus `ERLEDIGT` (11.08.) und der heutige Zustand
    `angedacht` / `klaerung` widersprechen sich; der Altstatus stützt sich nur auf die Listung in
    einer damaligen `CLAUDE.md`, nicht auf einen Funktionsbeleg.
-3. **Satz gegen Herkunft:** Der Registersatz beschreibt einen Gegenstand („verfaulende Bestände"),
-   den die Herkunft ausdrücklich als „nicht weiter beschrieben" bezeichnet.
-4. **„im Betrieb" mehrdeutig:** Kundenbetrieb (Wissen, Sicherungen) oder Entwicklungsbetrieb der
-   alten Steuerung — die Quelle unterscheidet nicht.
+3. **Anforderung gegen Herkunft:** Die aufgenommene Anforderung nennt einen Zweck („verfaulende
+   Bestände im Betrieb aufspüren“). Die Herkunft bezeichnet den Gegenstand des Werkzeugs ausdrücklich
+   als „nicht weiter beschrieben“. Woher der Satz stammt, ist nicht belegt; er bleibt als Anforderung
+   erhalten.
+4. **„im Betrieb" mehrdeutig:** Kundenbetrieb (Wissen, Sicherungen) oder, als unbestätigte Lesart,
+   Entwicklungsbetrieb der alten Steuerung — die Quelle unterscheidet nicht.
 5. **Fehlende Belege:** Inhalt von `kw_faeule.py`, die damalige `CLAUDE.md` und die Registerzeile
    `FUNKTIONSREGISTER.json:28369` liegen außerhalb des Produktbaums und wurden **nicht gelesen**
    (außerhalb des erlaubten Arbeitsbereichs). Der Altbeleg trägt keine Zeitangabe (`zeit: null`).
