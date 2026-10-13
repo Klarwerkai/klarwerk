@@ -26,6 +26,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import type {
+  AussagenBelegKurz,
   ReferenzAussageErgebnis,
   ReferenzFundstelle,
   ReferenzHinweis,
@@ -94,6 +95,27 @@ export function referenzGesamt(
     ergebnis.aussagen.length > 0 &&
     ergebnis.aussagen.every((a) => a.zustand === "belegt" && a.fundstellen.length > 0);
   return alleBelegt ? "quellen_geprueft" : "gemischt";
+}
+
+/**
+ * REF-04 (K5, Ben nacharbeit-3): die gebundenen Passagen je Fundstelle aus der Aussagebindung einer
+ * Antwort — für die Antwortwege mit eigener Bindung (Zweitmeinung, Stichtagsvergleich). Ohne
+ * Passagen (älterer Server) ist die Karte leer, und die Anzeige sagt das ehrlich.
+ */
+export function auszuegeAus(
+  beleg: AussagenBelegKurz | null | undefined,
+): ReadonlyMap<string, string> {
+  const karte = new Map<string, string>();
+  for (const a of beleg?.aussagen ?? []) {
+    for (const teil of a.teile ?? []) {
+      for (const f of teil.fundstellen) {
+        if (typeof f.auszug === "string" && f.auszug.length > 0) {
+          karte.set(f.fundstelleId, f.auszug);
+        }
+      }
+    }
+  }
+  return karte;
 }
 
 /** Das Zeichen je Zustand — zusätzlich zum Wort, damit der Zustand nicht nur an der Farbe hängt. */

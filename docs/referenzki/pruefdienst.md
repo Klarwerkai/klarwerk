@@ -163,7 +163,11 @@ Anfrageabbruch und Prüfzeitlimit lösen ein eigenes Abbruchsignal des Prüfdien
 - **Prüfprotokoll** `ask.referenzpruefung`, Fassung `referenzprotokoll-v1`: Zeitpunkt, Antwortkennung
   und -weg, beide Rollen mit tatsächlichem Modell, Richtlinie, Fingerabdrücke, gebundene
   Quellenfassungen und je Aussage Zustand, Grund, Belegverweise und Begründungsfingerabdruck —
-  ohne Texte (Inventar: `docs/datenschutz/pruefprotokoll-nutzdaten.md`).
+  ohne Texte (Inventar: `docs/datenschutz/pruefprotokoll-nutzdaten.md`). Die kurzen Begründungen
+  je Teilaussage stehen dauerhaft im eigenen Eintrag `ask.referenzpruefung-begruendung` desselben
+  Laufs (Ziel = Prüfkennung). Dort sind sie Inhaltsfeld der Audit-Sicht: lesbar nur, wer jede
+  zitierte Quelle jetzt öffnen darf; nach Papierkorb oder Endlöschung einer Quelle geschwärzt.
+  Abruf: `GET /api/audit?action=ask.referenzpruefung-begruendung&target=<pruefId>`.
 
 ## Offene Grenzen
 

@@ -2758,7 +2758,13 @@ export interface AskResponse {
 // ================================================================================================
 // Stufen statt Anbieter- und Modellnamen: die stehen nur im Prüfprotokoll der Adminsicht.
 export interface AussagenBelegKurz {
-  aussagen: { aussageId: string; text: string }[];
+  aussagen: {
+    aussageId: string;
+    text: string;
+    // REF-04 (K5, Ben nacharbeit-3): die gebundenen Passagen, wie der Server sie mit den Rechten
+    // dieser Anfrage mitliefert (Zweitmeinung, Stichtagsvergleich). Ein älterer Server sendet sie nicht.
+    teile?: { fundstellen: { fundstelleId: string; auszug: string }[] }[];
+  }[];
 }
 
 export type ReferenzZustand = "belegt" | "teilweise_belegt" | "widersprochen" | "nicht_pruefbar";

@@ -40,7 +40,12 @@ import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { AiCostHint } from "../AiCostHint";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
 import { AntwortText } from "../start/AntwortText";
-import { QuellenStatusMarke, Referenzpruefung, referenzGesamt } from "./Referenzpruefung";
+import {
+  QuellenStatusMarke,
+  Referenzpruefung,
+  auszuegeAus,
+  referenzGesamt,
+} from "./Referenzpruefung";
 
 /** REF-04: der Rückweg zur Quelle in ihrer Fassung, wenn die Seite keinen eigenen nennt. */
 const WISSEN_HREF = (koId: string, fassung: number): string =>
@@ -119,6 +124,8 @@ function Spalte({
                   (aussagen?.aussagen ?? []).map((a): [string, string] => [a.aussageId, a.text]),
                 )
               }
+              // REF-04 (K5, Ben nacharbeit-3): die gebundene Passage GENAU dieser Antwort.
+              auszugVon={(id) => auszuegeAus(aussagen).get(id)}
               titelVon={titelVon}
               wissenHref={wissenHref}
               testId={`${testId}-referenz`}

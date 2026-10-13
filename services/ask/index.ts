@@ -225,6 +225,7 @@ export {
   REFERENZ_ERNEUT_MAX,
   REFERENZ_POSTEN_MAX,
   // produkt:20261009:referenzki-antwortstatus (REF-04): die Fassung des Prüfprotokolls.
+  REFERENZ_BEGRUENDUNG_AKTION,
   REFERENZ_PROTOKOLL_AUSSAGEN_MAX,
   REFERENZ_PROTOKOLL_FASSUNG,
   REFERENZ_PRUEF_RICHTLINIE,
@@ -249,6 +250,7 @@ export type {
   ReferenzHinweis,
   ReferenzHinweisArt,
   ReferenzProtokollAussage,
+  ReferenzProtokollBegruendung,
   ReferenzProtokollEintrag,
   ReferenzPruefEingabe,
   ReferenzPruefErgebnis,

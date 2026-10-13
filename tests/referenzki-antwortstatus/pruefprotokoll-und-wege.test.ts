@@ -10,8 +10,10 @@
 // .spec.ts`).
 //
 //   P1 (K6) · das versionierte Prüfprotokoll bindet Antwort-/Aussagekennung, Quellenfassung,
-//             Belegverweis, Ergebnis, Begründung (als Fingerabdruck), beide Modelle, Richtlinie und
-//             Zeitpunkt — ohne Antwort-, Auszugs- oder Begründungstext
+//             Belegverweis, Ergebnis, beide Modelle, Richtlinie, Zeitpunkt und die kurze Begründung
+//             — der allgemeine Eintrag ohne Antwort-, Auszugs- oder Begründungstext
+//   P1b (K6)· Ben nacharbeit-3: die kurze Begründung steht dauerhaft im eigenen Eintrag des Laufs,
+//             berechtigt über die Protokollansicht lesbar, ohne Recht/nach Löschung geschwärzt
 //   P2 (K7) · neue Antwort, Quellenänderung, Modellwechsel und Rechteentzug erben keine
 //             Bestätigung; historische Protokolleinträge bleiben auf ihren Stand bezogen
 //   P3 (K8) · Zeitlimit: benannter Grund, kein Urteil; „erneut" nimmt die DANN erlaubte
@@ -19,8 +21,13 @@
 //   W1 (K1) · `POST /api/reasoner` (task `ask`) ruft denselben Prüfdienst
 //   W2 (K1) · die beiden Antworten einer Zweitmeinung werden je für sich geprüft
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { auditSichtFuer } from "../../services/app/src/audit-sicht";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
-import { REFERENZ_PROTOKOLL_FASSUNG, REFERENZ_PRUEF_RICHTLINIE } from "../../services/ask";
+import {
+  REFERENZ_BEGRUENDUNG_AKTION,
+  REFERENZ_PROTOKOLL_FASSUNG,
+  REFERENZ_PRUEF_RICHTLINIE,
+} from "../../services/ask";
 import type { ReferenzPruefer } from "../../services/reasoner";
 import { PRUEF_FAELLE, type PruefFall, belegDes } from "../referenzki-pruefdienst/faelle";
 import {
@@ -45,7 +52,7 @@ function fall(kennung: PruefFall["kennung"]): PruefFall {
 const BEGRUENDUNG = "Die Fundstelle nennt genau diesen Höchstdruck.";
 
 describe("REF-04 · K6 — das versionierte Prüfprotokoll", () => {
-  it("P1 · bindet Kennungen, Fassungen, Verweise, Ergebnis, Modelle, Richtlinie und Zeitpunkt — ohne Text", async () => {
+  it("P1 · bindet Kennungen, Fassungen, Verweise, Ergebnis, Modelle, Richtlinie, Zeitpunkt und Begründung", async () => {
     const p = doppelgaenger(alle("belegt", BEGRUENDUNG));
     const { dienst, protokoll } = dienstMit({ jetzt: p });
     const f = fall("korrekter_beleg");
@@ -81,7 +88,7 @@ describe("REF-04 · K6 — das versionierte Prüfprotokoll", () => {
     });
     expect(Number.isNaN(Date.parse(eintrag?.zeitpunkt ?? ""))).toBe(false);
     // Je Aussage: Kennung, Ergebnis, Belegverweis (Objekt, Fassung, Bereich) und die Begründung
-    // als Fingerabdruck — die Begründung selbst steht nur an der Antwort.
+    // als Fingerabdruck.
     const aussage = eintrag?.aussagen[0];
     expect(aussage?.aussageId).toBe(beleg.aussagen[0]?.aussageId);
     expect(aussage?.zustand).toBe("belegt");
@@ -89,9 +96,65 @@ describe("REF-04 · K6 — das versionierte Prüfprotokoll", () => {
     expect(aussage?.fundstellen[0]).toMatchObject({ koId: "ko-fiktiv-pumpe", koVersion: 2 });
     expect(typeof aussage?.fundstellen[0]?.start).toBe("number");
     expect(aussage?.begruendungFingerabdruck).toMatch(/^sha256:[0-9a-f]{64}$/);
-    const roh = JSON.stringify(protokoll);
-    expect(roh).not.toContain("Pumpe");
-    expect(roh).not.toContain(BEGRUENDUNG);
+    // Ben nacharbeit-3: die KURZE Begründung selbst ist dauerhaft an den Lauf gebunden — je
+    // Teilaussage, mit Fingerabdruck und den zitierten Quellobjekten als Bezug der Schwärzung.
+    expect(eintrag?.koIds).toEqual(["ko-fiktiv-pumpe"]);
+    const begruendung = eintrag?.begruendungen[0];
+    expect(begruendung).toMatchObject({
+      aussageId: aussage?.aussageId,
+      zustand: "belegt",
+      grund: null,
+      begruendung: BEGRUENDUNG,
+    });
+    expect(begruendung?.begruendungFingerabdruck).toMatch(/^sha256:[0-9a-f]{64}$/);
+    // Der allgemeine Teil trägt weder Quell- noch Begründungstext; Quelltext auch die Begründungen
+    // nicht (nur die Modellbegründung).
+    const { begruendungen: _b, ...allgemein } = eintrag ?? { begruendungen: [] };
+    expect(JSON.stringify(allgemein)).not.toContain(BEGRUENDUNG);
+    expect(JSON.stringify(protokoll)).not.toContain("Pumpe");
+  });
+
+  it("P1b · die Begründung steht im eigenen Eintrag, berechtigt lesbar, sonst geschwärzt", async () => {
+    const { app, services, admin, koId } = await aufbau();
+    const antwort = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: admin,
+      payload: { question: FRAGE },
+    });
+    expect(antwort.statusCode, antwort.body.slice(0, 300)).toBe(200);
+    const pruefId = antwort.json().referenzpruefung.pruefId as string;
+    await new Promise((r) => setTimeout(r, 0));
+    const [haupt] = await services.audit.list({ action: "ask.referenzpruefung" });
+    const [eintrag] = await services.audit.list({ action: REFERENZ_BEGRUENDUNG_AKTION });
+    expect(haupt?.payload.begruendungEintrag).toBe(REFERENZ_BEGRUENDUNG_AKTION);
+    expect(JSON.stringify(haupt)).not.toContain(BEGRUENDUNG_APP);
+    expect(eintrag?.target).toBe(pruefId);
+    expect(eintrag?.payload.koIds).toContain(koId);
+    expect(JSON.stringify(eintrag?.payload.begruendungen)).toContain(BEGRUENDUNG_APP);
+    expect(JSON.stringify(eintrag)).not.toContain("80 °C");
+
+    // Berechtigter Abruf über die bestehende Protokollansicht, gefiltert auf diesen Lauf.
+    const abruf = await app.inject({
+      method: "GET",
+      url: `/api/audit?action=${REFERENZ_BEGRUENDUNG_AKTION}&target=${pruefId}`,
+      headers: admin,
+    });
+    expect(abruf.statusCode, abruf.body.slice(0, 300)).toBe(200);
+    const gelesen = abruf.json() as { payload: Record<string, unknown>; geschwaerzt?: string[] }[];
+    expect(gelesen).toHaveLength(1);
+    expect(gelesen[0]?.geschwaerzt).toBeUndefined();
+    expect(JSON.stringify(gelesen[0]?.payload.begruendungen)).toContain(BEGRUENDUNG_APP);
+
+    // Bestehende Lösch-/Zugriffsregel: ist eine zitierte Quelle nicht (mehr) auflösbar, wird die
+    // Begründung für diesen Leser geschwärzt — die Kette selbst bleibt unverändert.
+    const ohneQuelle = auditSichtFuer({ id: "leser-fiktiv" } as never, {
+      get: async () => undefined,
+    });
+    const geschwaerzt = await ohneQuelle.eintrag(eintrag as NonNullable<typeof eintrag>);
+    expect(geschwaerzt.geschwaerzt).toEqual(["begruendungen"]);
+    expect(geschwaerzt.payload.begruendungen).toBeUndefined();
+    expect(geschwaerzt.payload.koIds).toContain(koId);
   });
 });
 
@@ -206,6 +269,7 @@ describe("REF-04 · K8 — Ausfall mit Grund, erneute Prüfung mit aktueller Kon
 // ------------------------------------------------------------------------------------------------
 
 const VENTIL = "Am Ventil F3 gilt eine Höchsttemperatur von 80 °C.";
+const BEGRUENDUNG_APP = "Die Fundstelle nennt genau diesen Grenzwert.";
 const FRAGE = "Welche Höchsttemperatur gilt am Ventil F3?";
 
 async function aufbau() {
@@ -242,7 +306,7 @@ async function aufbau() {
     headers: admin,
     payload: { action: "rate", verdict: "up" },
   });
-  const p = doppelgaenger(alle("belegt", "Die Fundstelle nennt genau diesen Grenzwert."));
+  const p = doppelgaenger(alle("belegt", BEGRUENDUNG_APP));
   vi.spyOn(services.reasoner, "referenzPruefer").mockImplementation(() => ({
     pruefer: p.pruefer,
   }));

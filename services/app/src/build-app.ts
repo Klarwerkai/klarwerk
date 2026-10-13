@@ -23,6 +23,7 @@ import {
   PgAnswerSnapshotRepo,
   PgGapRepo,
   PgNulltrefferRepo,
+  REFERENZ_BEGRUENDUNG_AKTION,
   ReferenzPruefdienst,
   parseConfiguredReceiptSecret,
 } from "../../ask";
@@ -5043,6 +5044,28 @@ export function buildApp(
             dauerMs: e.dauerMs,
             eingabeToken: e.verbrauch?.eingabe ?? null,
             ausgabeToken: e.verbrauch?.ausgabe ?? null,
+            // REF-04 (K6, Ben nacharbeit-3): Verweis auf die Begründungen dieses Laufs.
+            begruendungEintrag: REFERENZ_BEGRUENDUNG_AKTION,
+          },
+        });
+        // REF-04 (K6, Ben nacharbeit-3): die kurzen Prüfbegründungen dauerhaft an DENSELBEN Lauf
+        // (Ziel = Prüfkennung) gebunden. `begruendungen` ist ein Inhaltsfeld der Audit-Sicht
+        // (`audit-sicht.ts`): geschwärzt für jeden Leser, der nicht jede zitierte Quelle (`koIds`)
+        // jetzt öffnen darf, und nach Papierkorb/Endlöschung einer Quelle für alle. Abruf über die
+        // bestehende Protokollansicht (`GET /api/audit?action=…&target=<pruefId>`).
+        await services.audit.record({
+          actor: e.akteur,
+          action: REFERENZ_BEGRUENDUNG_AKTION,
+          target: e.pruefId,
+          payload: {
+            protokoll: e.protokoll,
+            zeitpunkt: e.zeitpunkt,
+            // Ohne Zahl (auch ohne `versuch`): die Leseransicht verbirgt Nutzlasten mit Zahlen ohne
+            // bekanntes Bezugsziel als Bestandsbilanz (`audit-routes.ts`). Den Lauf samt Versuch
+            // bindet `ergebnisFingerabdruck` an den Haupteintrag.
+            ergebnisFingerabdruck: e.ergebnisFingerabdruck,
+            koIds: e.koIds,
+            begruendungen: e.begruendungen,
           },
         });
       },

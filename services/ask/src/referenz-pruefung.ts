@@ -710,6 +710,8 @@ export interface ReferenzPruefdienstDeps {
  * bleiben auf ihre bezogen (das Protokoll ist append-only).
  */
 export const REFERENZ_PROTOKOLL_FASSUNG = "referenzprotokoll-v1";
+/** REF-04 (K6): die Protokollaktion der kurzen Prüfbegründungen eines Laufs (Ziel = Prüfkennung). */
+export const REFERENZ_BEGRUENDUNG_AKTION = "ask.referenzpruefung-begruendung";
 /** Höchstzahl Aussagen je Protokolleintrag — darüber steht `aussagenGekuerzt`. */
 export const REFERENZ_PROTOKOLL_AUSSAGEN_MAX = 100;
 
@@ -738,6 +740,23 @@ export interface ReferenzProtokollAussage {
   readonly fundstellen: readonly ReferenzFundstelle[];
 }
 
+/**
+ * REF-04 (K6, Ben nacharbeit-3): die KURZE Prüfbegründung je Teilaussage, dauerhaft an den Prüflauf
+ * gebunden. Sie geht NICHT in den allgemeinen Protokolleintrag, sondern in einen eigenen Eintrag
+ * (`ask.referenzpruefung-begruendung`, Kompositionswurzel). Dort ist sie ein Inhaltsfeld: die
+ * bestehende Audit-Sicht schwärzt es für jeden Leser, der nicht JEDE zitierte Quelle (`koIds`)
+ * jetzt öffnen darf — und nach Papierkorb oder Endlöschung einer Quelle für alle.
+ */
+export interface ReferenzProtokollBegruendung {
+  readonly aussageId: string;
+  readonly teilId: string;
+  readonly zustand: ReferenzZustand;
+  readonly grund: ReferenzGrund | null;
+  /** Höchstens `REFERENZ_BEGRUENDUNG_MAX` Zeichen — die kurze Begründung, kein Quelltext. */
+  readonly begruendung: string;
+  readonly begruendungFingerabdruck: string;
+}
+
 export interface ReferenzProtokollEintrag {
   readonly protokoll: typeof REFERENZ_PROTOKOLL_FASSUNG;
   /** Zeitpunkt des Prüfabschlusses (ISO). */
@@ -759,6 +778,10 @@ export interface ReferenzProtokollEintrag {
   readonly quellen: readonly { readonly koId: string; readonly koVersion: number }[];
   readonly aussagen: readonly ReferenzProtokollAussage[];
   readonly aussagenGekuerzt: boolean;
+  /** REF-04 (K6): alle zitierten Quellobjekte — Bezug der Schwärzung der Begründungen. */
+  readonly koIds: readonly string[];
+  /** REF-04 (K6): die kurzen Begründungen je Teilaussage (eigener, geschwärzter Eintrag). */
+  readonly begruendungen: readonly ReferenzProtokollBegruendung[];
   readonly zustaende: Readonly<Record<ReferenzZustand, number>>;
   readonly ausCache: boolean;
   readonly versuch: number;
@@ -1550,6 +1573,20 @@ export class ReferenzPruefdienst {
           fundstellen: a.fundstellen,
         })),
         aussagenGekuerzt: ergebnis.aussagen.length > REFERENZ_PROTOKOLL_AUSSAGEN_MAX,
+        koIds: [...new Set([...quellen.values()].map((q) => q.koId))],
+        begruendungen: ergebnis.aussagen.slice(0, REFERENZ_PROTOKOLL_AUSSAGEN_MAX).flatMap((a) =>
+          a.teile.map((t) => {
+            const begruendung = kuerze(t.begruendung, REFERENZ_BEGRUENDUNG_MAX);
+            return {
+              aussageId: a.aussageId,
+              teilId: t.teilId,
+              zustand: t.zustand,
+              grund: t.grund ?? null,
+              begruendung,
+              begruendungFingerabdruck: fingerabdruck(begruendung),
+            };
+          }),
+        ),
         zustaende,
         ausCache: ergebnis.ausCache,
         versuch: versuch.nummer,
