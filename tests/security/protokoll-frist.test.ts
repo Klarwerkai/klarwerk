@@ -9,6 +9,7 @@ import {
   readdirSync,
   renameSync,
   rmSync,
+  statSync,
   utimesSync,
   writeFileSync,
   writeSync,
