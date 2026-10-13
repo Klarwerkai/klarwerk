@@ -18,6 +18,9 @@
 // Bytes am Tag. Er wirkt nur, wenn Docker mit genau dieser `max-size` rotiert — `KLARWERK_DOCKER_LOG_MAX_SIZE`
 // muss deshalb zum `--log-opt max-size` passen (Dockerfile, docker-compose.prod.yml, Coolify-Optionen).
 // Ohne die Variable (Insel, Entwicklung) geschieht nichts.
+import { readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { startTrashSweepScheduler } from "./trash-sweep-scheduler";
 
 /** Die Umgebungsvariable mit Dockers `max-size` für diesen Container (Docker-Schreibweise). */
@@ -59,11 +62,43 @@ export function fuellblock(maxSize: number): string[] {
   return Array.from({ length: anzahl }, () => zeile);
 }
 
-/** Startet den täglichen Impuls. Ohne gültige `maxSize` geschieht nichts (`null`). */
+/**
+ * Wo der Zeitpunkt des letzten Impulses steht (Ben, Nacharbeit 18).
+ *
+ * Ein Takt von 24 Stunden allein begänne mit jedem Prozessstart neu — ein Container, der öfter als
+ * täglich neu startet, käme nie zum Impuls. Die Markierung liegt im beschreibbaren Bereich des
+ * Containers: sie übersteht `docker restart` desselben Containers (dessen Protokolldatei ebenfalls
+ * bleibt), und ein neu erstellter Container beginnt mit leerer Markierung UND neuer Protokolldatei.
+ */
+export const IMPULS_MARKIERUNG = join(tmpdir(), "klarwerk-rotationsimpuls.zeit");
+
+/** So oft wird geprüft, ob der Impuls fällig ist. */
+export const IMPULS_PRUEFTAKT_MS = 60 * 60 * 1000;
+
+function leseLetztenImpuls(datei: string): number | null {
+  try {
+    const wert = Number(readFileSync(datei, "utf8").trim());
+    return Number.isFinite(wert) && wert > 0 ? wert : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Startet den Impuls. Ohne gültige `maxSize` geschieht nichts (`null`).
+ *
+ * BEIM START UND DANN STÜNDLICH wird geprüft: Fehlt die Markierung oder ist der letzte Impuls einen
+ * Tag her, wird JETZT impulsiert und die Zeit festgehalten. So zählt die Frist über Neustarts hinweg
+ * und beginnt nicht mit jedem Start neu. Lässt sich die Markierung nicht schreiben, impulsiert jeder
+ * Start — die Abweichung geht zur früheren Löschung, nie zur späteren.
+ */
 export function starteRotationsimpuls(deps: {
   maxSize: number | null;
   schreibe?: (zeile: string) => void;
+  markierung?: string;
+  jetzt?: () => number;
   intervalMs?: number;
+  prueftaktMs?: number;
   setIntervalFn?: (callback: () => void, ms: number) => ReturnType<typeof setInterval>;
   clearIntervalFn?: (handle: ReturnType<typeof setInterval>) => void;
   onError?: (fehler: unknown) => void;
@@ -73,15 +108,30 @@ export function starteRotationsimpuls(deps: {
     return null;
   }
   const schreibe = deps.schreibe ?? ((zeile: string) => void process.stdout.write(zeile));
+  const markierung = deps.markierung ?? IMPULS_MARKIERUNG;
+  const uhr = deps.jetzt ?? Date.now;
+  const intervall = deps.intervalMs ?? ROTATIONSIMPULS_INTERVALL_MS;
+  const pruefe = async (): Promise<number> => {
+    const jetzt = uhr();
+    const letzter = leseLetztenImpuls(markierung);
+    if (letzter !== null && jetzt - letzter < intervall) {
+      return 0;
+    }
+    const zeilen = fuellblock(maxSize);
+    for (const zeile of zeilen) {
+      schreibe(zeile);
+    }
+    try {
+      writeFileSync(markierung, `${jetzt}\n`, "utf8");
+    } catch (fehler) {
+      deps.onError?.(fehler);
+    }
+    return zeilen.length;
+  };
+  pruefe().catch((fehler) => deps.onError?.(fehler));
   return startTrashSweepScheduler({
-    intervalMs: deps.intervalMs ?? ROTATIONSIMPULS_INTERVALL_MS,
-    runSweep: async () => {
-      const zeilen = fuellblock(maxSize);
-      for (const zeile of zeilen) {
-        schreibe(zeile);
-      }
-      return zeilen.length;
-    },
+    intervalMs: deps.prueftaktMs ?? IMPULS_PRUEFTAKT_MS,
+    runSweep: pruefe,
     ...(deps.setIntervalFn ? { setIntervalFn: deps.setIntervalFn } : {}),
     ...(deps.clearIntervalFn ? { clearIntervalFn: deps.clearIntervalFn } : {}),
     ...(deps.onError ? { onError: deps.onError } : {}),

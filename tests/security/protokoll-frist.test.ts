@@ -559,24 +559,78 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     }
   });
 
-  it("Rotationsimpuls: ohne max-size nichts; sonst schreibt jeder Takt den Füllblock", async () => {
-    expect(starteRotationsimpuls({ maxSize: null })).toBeNull();
-    const geschrieben: string[] = [];
-    let takt: (() => void) | null = null;
-    const handle = starteRotationsimpuls({
+  /** Ein Prozessstart wie in server.ts — mit eingespritzter Uhr, Markierung und Takt. */
+  async function prozessstart(opts: {
+    markierung: string;
+    uhr: () => number;
+    geschrieben: string[];
+  }): Promise<{ takt: () => Promise<void> }> {
+    let rueckruf: (() => void) | null = null;
+    starteRotationsimpuls({
       maxSize: 64 * 1024,
-      schreibe: (z) => geschrieben.push(z),
+      schreibe: (z) => opts.geschrieben.push(z),
+      markierung: opts.markierung,
+      jetzt: opts.uhr,
       setIntervalFn: (callback) => {
-        takt = callback;
+        rueckruf = callback;
         return 0 as unknown as ReturnType<typeof setInterval>;
       },
       clearIntervalFn: () => {},
     });
-    expect(handle).not.toBeNull();
-    expect(geschrieben).toEqual([]);
-    (takt as unknown as () => void)();
     await new Promise((fertig) => setTimeout(fertig, 0));
+    return {
+      takt: async () => {
+        (rueckruf as unknown as () => void)();
+        await new Promise((fertig) => setTimeout(fertig, 0));
+      },
+    };
+  }
+
+  it("Rotationsimpuls: ohne max-size nichts; beim ersten Start sofort, dann erst nach einem Tag", async () => {
+    expect(starteRotationsimpuls({ maxSize: null })).toBeNull();
+    const markierung = join(protokollordner(), "impuls.zeit");
+    const geschrieben: string[] = [];
+    let uhr = JETZT;
+    const lauf = await prozessstart({ markierung, uhr: () => uhr, geschrieben });
+    // Keine Markierung: der Start impulsiert sofort und hält die Zeit fest.
     expect(geschrieben).toEqual(fuellblock(64 * 1024));
+    expect(readFileSync(markierung, "utf8").trim()).toBe(String(JETZT));
+    // Stündliche Prüfung vor Ablauf eines Tages: nichts.
+    uhr = JETZT + 23 * 3_600_000;
+    await lauf.takt();
+    expect(geschrieben.length).toBe(fuellblock(64 * 1024).length);
+    // Nach einem Tag: der nächste Takt impulsiert.
+    uhr = JETZT + 24 * 3_600_000;
+    await lauf.takt();
+    expect(geschrieben.length).toBe(2 * fuellblock(64 * 1024).length);
+  });
+
+  // Ben, Nacharbeit 18: bei Neustarts vor Ablauf von 24 Stunden blieb der Impuls dauerhaft aus.
+  it("Rotationsimpuls über NEUSTARTS: die Frist zählt weiter, Kurzläufe verschieben den Impuls nicht", async () => {
+    const markierung = join(protokollordner(), "impuls.zeit");
+    const geschrieben: string[] = [];
+    const block = fuellblock(64 * 1024).length;
+    // Start 0: impulsiert (keine Markierung).
+    await prozessstart({ markierung, uhr: () => JETZT, geschrieben });
+    expect(geschrieben.length).toBe(block);
+    // Kurzläufe alle 6 Stunden — kein Lauf erlebt je einen 24-Stunden-Takt.
+    for (const stunde of [6, 12, 18]) {
+      await prozessstart({ markierung, uhr: () => JETZT + stunde * 3_600_000, geschrieben });
+    }
+    expect(geschrieben.length).toBe(block);
+    // Der Start nach 24 Stunden impulsiert sofort — über die Markierung, nicht über die Laufzeit.
+    await prozessstart({ markierung, uhr: () => JETZT + 24 * 3_600_000, geschrieben });
+    expect(geschrieben.length).toBe(2 * block);
+    // Lässt sich die Markierung nicht schreiben, impulsiert jeder Start (früher, nie später).
+    const nichtSchreibbar = join(protokollordner(), "fehlt", "impuls.zeit");
+    const zweite: string[] = [];
+    await prozessstart({ markierung: nichtSchreibbar, uhr: () => JETZT, geschrieben: zweite });
+    await prozessstart({
+      markierung: nichtSchreibbar,
+      uhr: () => JETZT + 60_000,
+      geschrieben: zweite,
+    });
+    expect(zweite.length).toBe(2 * block);
   });
 
   /**
@@ -686,6 +740,98 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     expect(readFileSync("services/app/src/protokoll-rotationsimpuls.ts", "utf8")).toContain(
       'DOCKER_LOG_MAX_SIZE_ENV = "KLARWERK_DOCKER_LOG_MAX_SIZE"',
     );
+  });
+
+  it("VOLLSTÄNDIGER WEG mit NEUSTARTS alle 6 Stunden über 20 Tage: keine Zeile 14 Tage oder älter", async () => {
+    const MAX = 64 * 1024;
+    const start = Date.now() - 21 * TAG;
+    const wurzel = protokollordner();
+    const id = "a1b2c3d4e5f60718293a4b5c";
+    mkdirSync(join(wurzel, id));
+    datei(join(wurzel, id, "config.v2.json"), appKonfiguration(), start);
+    const docker = dockerModell(join(wurzel, id), id, MAX, 50);
+    docker.schreibe("Bestand vom ersten Tag\n", start);
+    // Die Markierung liegt im Container — sie übersteht die Neustarts desselben Containers.
+    const markierung = join(protokollordner(), "impuls.zeit");
+    let hoechstalter = 0;
+    for (let stunde = 6; stunde <= 20 * 24; stunde += 6) {
+      const jetzt = start + stunde * 3_600_000;
+      // Ein Prozessstart wie in server.ts; der Lauf endet vor dem ersten Stundentakt.
+      starteRotationsimpuls({
+        maxSize: MAX,
+        schreibe: (z) => docker.schreibe(z, jetzt),
+        markierung,
+        jetzt: () => jetzt,
+        setIntervalFn: () => 0 as unknown as ReturnType<typeof setInterval>,
+        clearIntervalFn: () => {},
+      });
+      await new Promise((fertig) => setTimeout(fertig, 0));
+      pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt });
+      const zeilen = docker.lies();
+      hoechstalter = Math.max(
+        hoechstalter,
+        ...zeilen.map((z) => (jetzt - Date.parse(z.time)) / TAG),
+      );
+    }
+    expect(hoechstalter).toBeLessThan(14);
+    expect(docker.lies().some((z) => z.log.includes("Bestand vom ersten Tag"))).toBe(false);
+  });
+
+  // Ben, Nacharbeit 18: ein gestoppter App-Container schreibt keinen Impuls; seine aktive Datei blieb
+  // ohne Grenze stehen. Jetzt fallen dort die Zeilen ab 14 Tagen — nur, wenn Docker ihn als gestoppt führt.
+  it("gestoppter App-Container: überfällige Zeilen der aktiven Datei fallen, jüngere bleiben lesbar", () => {
+    const wurzel = protokollordner();
+    const dockerZeile = (zeit: number, text: string) =>
+      `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
+    const zustand = (State: Record<string, unknown>) =>
+      JSON.stringify({ ...JSON.parse(appKonfiguration()), State });
+    const inhalt =
+      dockerZeile(JETZT - 20 * TAG, "alt-20") +
+      dockerZeile(JETZT - 15 * TAG, "alt-15") +
+      dockerZeile(JETZT - 3 * TAG, "jung-3") +
+      dockerZeile(JETZT - 3_600_000, "jung-1h");
+    const anlegen = (id: string, konfiguration: string) => {
+      mkdirSync(join(wurzel, id));
+      datei(join(wurzel, id, "config.v2.json"), konfiguration, JETZT);
+      datei(join(wurzel, id, `${id}-json.log`), inhalt, JETZT);
+      return join(wurzel, id, `${id}-json.log`);
+    };
+    const gestoppt = anlegen("aaaaaaaaaaaaaaaaaaaaaaaa", zustand({ Running: false }));
+    const laufend = anlegen("bbbbbbbbbbbbbbbbbbbbbbbb", zustand({ Running: true }));
+    const pausiert = anlegen("cccccccccccccccccccccccc", zustand({ Running: false, Paused: true }));
+    // Ein FREMDER gestoppter Container (Audit-Label) — nicht ausgewählt.
+    const fremd = anlegen(
+      "dddddddddddddddddddddddd",
+      JSON.stringify({
+        Config: { Labels: { "com.example.audit": "sicherheit" } },
+        State: { Running: false },
+      }),
+    );
+
+    const lauf = pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+
+    expect(lauf.container.aaaaaaaaaaaaaaaaaaaaaaaa?.aktiveZeilenEntfernt).toBe(2);
+    const rest = readFileSync(gestoppt, "utf8");
+    // Lesbar wie mit `docker logs`: jede Zeile gültiges JSON, genau die jüngeren.
+    const zeilen = rest
+      .split("\n")
+      .filter((z) => z.length > 0)
+      .map((z) => (JSON.parse(z) as { log: string }).log.trim());
+    expect(zeilen).toEqual(["jung-3", "jung-1h"]);
+    expect(existsSync(`${gestoppt}.frist-neu`)).toBe(false);
+    // Laufend und pausiert: unberührt — dort schreibt Docker (der Lesefehler aus Nacharbeit 15).
+    expect(lauf.container.bbbbbbbbbbbbbbbbbbbbbbbb?.aktiveZeilenEntfernt).toBe(0);
+    expect(readFileSync(laufend, "utf8")).toBe(inhalt);
+    expect(readFileSync(pausiert, "utf8")).toBe(inhalt);
+    // Fremd: weder ausgewählt noch angefasst.
+    expect(Object.keys(lauf.container)).not.toContain("dddddddddddddddddddddddd");
+    expect(readFileSync(fremd, "utf8")).toBe(inhalt);
+    // Der Bericht führt den Zustand.
+    const bericht = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(bericht.container.find((c) => c.id === "aaaaaaaaaaaaaaaaaaaaaaaa")).toMatchObject({
+      gestoppt: true,
+      aktiveDatei: { aeltesteZeileTage: 3 },
+    });
   });
 
   it("Dockerfile und Compose nennen dieselbe max-size wie der Rotationsimpuls", () => {

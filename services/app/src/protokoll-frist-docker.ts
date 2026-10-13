@@ -11,14 +11,16 @@
 // `docker logs` liest die neuen Zeilen nicht mehr — der Dienst führt eigene Byte-Positionen. Docker
 // selbst warnt, diese Dateien von aussen zu bearbeiten (docs.docker.com, json-file-Treiber).
 // DESHALB GILT JETZT:
-//   · `<id>-json.log` (die aktive Datei) wird NIE geöffnet, gekürzt, umbenannt oder gelöscht.
+//   · `<id>-json.log` (die aktive Datei) eines LAUFENDEN Containers wird nie angefasst. Nur wenn
+//     Docker den Container ausdrücklich als gestoppt führt, entfernt die Pflege daraus die Zeilen ab
+//     14 Tagen (Nacharbeit 18, `kuerzeGestoppteAktiveDatei`) — dann schreibt Docker nicht hinein.
 //   · Gelöscht werden nur Dockers EIGENE, abgeschlossene Rotationen (`<id>-json.log.N`) — dieselben
 //     Dateien, die Docker beim Rotieren selbst entfernt —, sobald ihre älteste Zeile 14 Tage alt ist
 //     (Dockers `"time"` je Zeile), dazu Reste der ersten Fassung (Archive `<id>-json.<stempel>.log`
 //     nach derselben Frist, `<id>-json.log.beginn` sofort).
-//   · Dass die aktive Datei nicht über die Frist altert, leistet Dockers eigene Rotation nach Menge
-//     (`max-size`, docker-compose.prod.yml). Der Bericht weist ihr Alter GETRENNT aus; ist es ≥ 14 Tage,
-//     hat Docker in der Frist nicht rotiert, und das steht dann offen da (Runbook §8).
+//   · Dass die aktive Datei eines laufenden Containers nicht über die Frist altert, leistet Dockers
+//     eigene Rotation nach Menge (`max-size`), täglich angestossen durch den Rotationsimpuls der App
+//     (protokoll-rotationsimpuls.ts). Der Bericht weist ihr Alter GETRENNT aus (Runbook §8).
 // Optional dazu ein Diagnoseordner auf dem Host, in dem jede Datei nach derselben Frist fällt.
 //
 // NUR DIE AUSGEWÄHLTEN CONTAINER (Ben, Nacharbeit 12). Auf einem Host laufen auch fremde Container —
@@ -33,7 +35,15 @@
 //     npx tsx services/app/src/protokoll-frist-docker.ts <containerordner> --auswahl <label>=<wert> [--diagnose <ordner>]
 // Ein-Befehl-Weg: der Dienst `protokollpflege` in docker-compose.prod.yml ruft ihn stündlich.
 // Coolify: derselbe Aufruf als geplanter Lauf auf dem Host (docs/operations/monitoring-logging.md §8).
-import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -72,6 +82,65 @@ export function leseAuswahl(roh: string | undefined): ContainerAuswahl | null {
 interface DockerKonfiguration {
   Name?: unknown;
   Config?: { Image?: unknown; Labels?: Record<string, unknown> | null };
+  State?: { Running?: unknown; Paused?: unknown; Restarting?: unknown };
+}
+
+/**
+ * Steht der Container laut Docker sicher still? Nur dann schreibt Docker nicht in die aktive Datei.
+ * Im Zweifel (keine lesbare Konfiguration, fehlender Zustand, Pause, Neustart): NEIN.
+ */
+function istGestoppt(konfiguration: DockerKonfiguration | null): boolean {
+  const zustand = konfiguration?.State;
+  return (
+    zustand !== undefined &&
+    zustand.Running === false &&
+    zustand.Paused !== true &&
+    zustand.Restarting !== true
+  );
+}
+
+/**
+ * DIE AKTIVE DATEI EINES GESTOPPTEN APP-CONTAINERS (Ben, Nacharbeit 18).
+ *
+ * Ein gestoppter Container schreibt nichts — auch keinen Rotationsimpuls —, seine aktive Datei bliebe
+ * ohne Grenze stehen. Da Docker in diesem Zustand NICHT in sie schreibt, gibt es keine Schreibposition,
+ * die ein Eingriff verschieben könnte (der Lesefehler aus Nacharbeit 15 entstand am LAUFENDEN Schreiber).
+ * Die Zeilen, die die Frist noch nicht erreicht haben, kommen in eine Nachbardatei, die dann ATOMAR an
+ * die Stelle der aktiven tritt. `docker logs` liest danach genau diese jüngeren Zeilen; beim nächsten
+ * Start öffnet Docker die Datei neu und misst ihre Grösse frisch. Zeilen ohne lesbare Zeitangabe fallen
+ * mit (Docker schreibt jede Zeile mit `time`). Unmittelbar vor dem Austausch wird der Zustand erneut
+ * gelesen; läuft der Container inzwischen, unterbleibt der Austausch.
+ *
+ * Gibt die Zahl der entfernten Zeilen zurück (0: nichts überfällig, nichts geändert).
+ */
+function kuerzeGestoppteAktiveDatei(
+  verzeichnis: string,
+  aktiv: string,
+  jetzt: number,
+  fristMs: number,
+): number {
+  const zeilen = readFileSync(aktiv, "utf8").split("\n");
+  const behalten: string[] = [];
+  let entfernt = 0;
+  for (const zeile of zeilen) {
+    if (zeile.length === 0) {
+      continue;
+    }
+    const zeit = /"time":"([^"]+)"/.exec(zeile)?.[1];
+    const ms = zeit ? Date.parse(zeit) : Number.NaN;
+    if (Number.isFinite(ms) && jetzt - ms < fristMs) {
+      behalten.push(zeile);
+    } else {
+      entfernt += 1;
+    }
+  }
+  if (entfernt === 0 || !istGestoppt(leseKonfiguration(verzeichnis))) {
+    return 0;
+  }
+  const neu = `${aktiv}.frist-neu`;
+  writeFileSync(neu, behalten.length > 0 ? `${behalten.join("\n")}\n` : "", "utf8");
+  renameSync(neu, aktiv);
+  return entfernt;
 }
 
 function leseKonfiguration(verzeichnis: string): DockerKonfiguration | null {
@@ -95,6 +164,8 @@ export interface ContainerBericht {
   name: string;
   abbild: string;
   ausgewaehlt: boolean;
+  /** Laut Docker sicher gestoppt — dann kürzt die Pflege auch die aktive Datei (Nacharbeit 18). */
+  gestoppt: boolean;
   protokolldateien: number;
 }
 
@@ -177,6 +248,7 @@ export function berichteDockerProtokolle(opts: {
         name: typeof konfiguration?.Name === "string" ? konfiguration.Name : "",
         abbild: typeof konfiguration?.Config?.Image === "string" ? konfiguration.Config.Image : "",
         ausgewaehlt: opts.auswahl !== null && gehoertZurAuswahl(verzeichnis, opts.auswahl),
+        gestoppt: istGestoppt(konfiguration),
         protokolldateien: protokolle.length,
         // Die aktive Datei verwaltet Docker; ihr Alter steht GETRENNT — die Pflege fasst sie nicht an.
         aktiveDatei: aeltestes(
@@ -204,12 +276,15 @@ export function pflegeDockerProtokolle(opts: {
   auswahl: ContainerAuswahl | null;
   diagnoseordner?: string;
   jetzt?: number;
-}): { container: Record<string, ProtokollPflegeErgebnis>; diagnose: string[] } {
+}): {
+  container: Record<string, ProtokollPflegeErgebnis & { aktiveZeilenEntfernt: number }>;
+  diagnose: string[];
+} {
   const ordner = opts.ordner ?? DOCKER_CONTAINER_ORDNER;
   const zeit = opts.jetzt === undefined ? {} : { jetzt: opts.jetzt };
   const jetzt = opts.jetzt ?? Date.now();
   const fristMs = PROTOKOLL_FRIST_TAGE * 86_400_000;
-  const container: Record<string, ProtokollPflegeErgebnis> = {};
+  const container: Record<string, ProtokollPflegeErgebnis & { aktiveZeilenEntfernt: number }> = {};
   const auswahl = opts.auswahl;
   if (auswahl && existsSync(ordner)) {
     for (const id of readdirSync(ordner)) {
@@ -242,7 +317,15 @@ export function pflegeDockerProtokolle(opts: {
           geloescht.push(name);
         }
       }
-      container[id] = { rotiertNach: null, geloescht };
+      const aktiveZeilenEntfernt = istGestoppt(leseKonfiguration(verzeichnis))
+        ? kuerzeGestoppteAktiveDatei(
+            verzeichnis,
+            join(verzeichnis, `${id}-json.log`),
+            jetzt,
+            fristMs,
+          )
+        : 0;
+      container[id] = { rotiertNach: null, geloescht, aktiveZeilenEntfernt };
     }
   }
   const diagnose = opts.diagnoseordner
