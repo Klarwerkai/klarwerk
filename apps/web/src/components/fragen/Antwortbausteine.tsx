@@ -46,10 +46,19 @@ export function AntwortPlatzhalter(): JSX.Element {
 export function KiNichtVerfuegbar({
   hinweisKey,
   hinweisTestId,
+  onErneutPruefen,
+  pruefLaeuft = false,
 }: {
   hinweisKey: string;
   /** Kennung des Satzes, wo die Seite eine eigene Lage benennt (D5: `ask-ki-abgeschaltet-hinweis`). */
   hinweisTestId?: string;
+  /**
+   * produkt:20261010:poc-ki-ausfall-weiterarbeiten: bei einer STÖRUNG (nicht erreichbar, Status
+   * unbekannt) der Weg zurück — der Status wird neu gelesen; antwortet der Dienst wieder, entfällt
+   * die Sperre. Ohne Angabe kein Knopf (nicht eingerichtet, abgeschaltet).
+   */
+  onErneutPruefen?: () => void;
+  pruefLaeuft?: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
   // R-1016 (Ben R1, F7): „Ein Administrator soll einen klaren Weg zum Verbinden sehen." Nur er
@@ -67,6 +76,17 @@ export function KiNichtVerfuegbar({
       >
         {t(hinweisKey)}
       </p>
+      {onErneutPruefen ? (
+        <button
+          type="button"
+          data-testid="ask-ki-status-erneut"
+          disabled={pruefLaeuft}
+          onClick={onErneutPruefen}
+          className="mt-1.5 text-[12px] font-semibold text-brand-text underline-offset-2 hover:underline disabled:opacity-60"
+        >
+          {pruefLaeuft ? t("kiausfall.status.pruefeLaeuft") : t("kiausfall.status.erneutPruefen")}
+        </button>
+      ) : null}
       {role === "admin" ? (
         <div data-testid="ask-ki-verbinden" className="mt-1.5 text-[12px] text-muted-2">
           {t("ask.aiUnavailable.adminPfad")}{" "}
