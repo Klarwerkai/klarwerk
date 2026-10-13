@@ -1,10 +1,10 @@
 // ================================================================================================
-// AUFNAHME 20260922 · GESAMT-LEHRENPFLEGE (R-1333) — DREI GESCHRIEBENE REGELN BEKOMMEN EINEN WÄCHTER.
+// AUFNAHME 20260922 · GESAMT-LEHRENPFLEGE — REGELN AUS DEM LEHRENBUCH BEKOMMEN EINEN WÄCHTER.
 // ================================================================================================
 //
-// Das Lehrenbuch des Repositorys ist `harness/90-correction-log.md`: jede Zeile nennt Symptom,
-// Regel und Status. Drei dieser Regeln standen dort, ohne dass ein Test sie hielt (Abgleich in
-// `docs/qm/aufnahme-20260922-gesamt-lehrenpflege.md`):
+// KEINE ERFÜLLUNG VON R-1333: dessen drei Regeln sind B4/B5/B6 aus JOB 2536 (Abgleich und B5-Wächter
+// siehe `docs/qm/aufnahme-20260922-gesamt-lehrenpflege.md`). Diese Datei hält zusätzlich Regeln
+// des Lehrenbuchs `harness/90-correction-log.md` (Symptom, Regel, Status), die kein Test hielt:
 //
 //   W1  „Build-Schritt muss `npm ci` statt partiellem `npm install` nutzen" (2026-06-22).
 //       Die CI hält `tests/app/ci-check-contract.test.ts`; das Produktionsabbild (`Dockerfile`)
