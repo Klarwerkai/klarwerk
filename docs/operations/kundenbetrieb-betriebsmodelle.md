@@ -155,6 +155,9 @@ Supportzugriff auf Inhalte entsteht nur, wenn der Verwalter der Firma ein Konto 
 (`viewer`, `experte`, `controller`, `admin`). Wer Server, Datenbank, Protokolle und Sicherungen
 betreibt, sieht alles — im Hausbetrieb die Firma selbst, bei einer von KLARWERK betriebenen Instanz
 KLARWERK. Diese Betreiberrolle ist vertraglich zu regeln; das Produkt trennt sie nicht technisch.
+Wie ein künftiger, begrenzter Supportzugang (benannte Person, Zweck/Bereich/Zeit, getrennte Rechte,
+Ablauf und Widerruf) sich verhalten muss, legt `docs/operations/begrenzter-support.md` als Konzept und
+Integrationsvertrag fest; gebaut ist er nicht.
 
 ### 2.5 Grenzen des lokalen Betriebs
 
