@@ -75,8 +75,15 @@ const NOTIZ_PRAEFIX = "klarwerk.begleitung.notizen.";
 const TIPPPAUSE_MS = 1500;
 /** Takt für Ablauf und Seitenwechsel, auch ohne Eingabe. */
 const TAKT_MS = 5000;
+// Nacharbeit 5 (Ben, Bildbeleg AKTIV-HINWEIS.png): hier stand `bg-[var(--kw-surface,#fff)]`. Die
+// Themevariable ist ein RGB-Kanaltripel („255 255 255", `styles/themes.css`), kein Farbwert — der
+// Browser verwarf die Deklaration, die Leiste war DURCHSICHTIG, und das Formular darunter schien
+// durch Zweck, Hinweis und Knöpfe. `--kw-line` gab es gar nicht. Jetzt tragen die Token-Klassen
+// der App (`bg-surface`, `border-hairline`, `text-text` = `rgb(var(--kw-…))` in
+// `tailwind.config.ts`) eine deckende Fläche in jedem Theme; gemessen im echten Chromium an der
+// gebauten App (`tests/klara-begleitung/begleitleiste-deckend-chromium.test.ts`).
 const RAHMEN =
-  "fixed bottom-4 left-4 z-40 max-w-sm rounded-lg border border-[var(--kw-line,#d0d5dd)] bg-[var(--kw-surface,#fff)] p-3 text-sm shadow-lg";
+  "fixed bottom-4 left-4 z-40 max-w-sm rounded-lg border border-hairline bg-surface p-3 text-sm text-text shadow-lg";
 
 /** Verborgener Tab: der Nutzer ist nirgends im Bereich — es wird nichts gelesen. */
 function nirgends(konto: string): KontextEreignis {

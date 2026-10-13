@@ -17,6 +17,14 @@ Speicher, keinen eigenen Dienst und keine neue Schnittstelle zum Server.
 | `apps/web/src/pages/BegleitungPruefformular.tsx` | Der freigegebene, synthetische Testvorgang unter `/begleitung/pruefformular`. Einstieg: Link „Prüfformular öffnen“ auf `/klara-vorschau`. |
 | `apps/web/src/texte/begleitung.ts` | Texte auf DE, EN und NL. |
 
+## Darstellung
+
+Die Leiste ist eine deckende Fläche aus den Themetoken der App (`bg-surface`, `border-hairline`,
+`text-text`). Formularinhalte darunter scheinen nicht durch. Eine frühere Fassung nutzte
+`bg-[var(--kw-surface,#fff)]`; weil `--kw-surface` ein RGB-Kanaltripel ist, verwarf der Browser
+diese Farbe, und die Leiste war durchsichtig. Die Deckkraft wird im echten Chromium an der
+gebauten App gemessen (`tests/klara-begleitung/begleitleiste-deckend-chromium.test.ts`).
+
 ## Einen Vorgang einrichten
 
 Ein Vorgang ist nur dann begleitbar, wenn seine Fläche sich selbst kennzeichnet:
