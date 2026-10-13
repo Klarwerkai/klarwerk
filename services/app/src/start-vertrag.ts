@@ -550,6 +550,27 @@ const GRUNDWERTE: readonly Startwert[] = [
     ohneIhn: "Keine PID-Datei. Der Restore-Drill findet den Prozess nicht.",
   },
   {
+    name: "KLARWERK_DOCKER_LOG_MAX_SIZE",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "nicht gesetzt; Ein-Befehl-Weg: 1m (docker-compose.prod.yml)",
+    wofuer:
+      "Dockers max-size für diesen Container. Die App schreibt damit täglich einen inhaltsfreien Füllblock, und Docker rotiert die aktive Protokolldatei selbst.",
+    ohneIhn:
+      "Kein interner Rotationsimpuls — dann muss ein Host-Connector den Impuls setzen (Coolify: externer Connector, 10m/3), sonst bleibt die aktive Docker-Protokolldatei bei wenig Ausgabe länger als 14 Tage stehen.",
+  },
+  {
+    name: "KLARWERK_LOG_DATEI",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Die Datei, in die die Standardausgabe dieses Servers geht (Insel: setzt start.command). Sie wird täglich rotiert; Protokolle in ihrem Ordner werden nach 14 Tagen gelöscht.",
+    ohneIhn:
+      "Keine Protokollpflege durch die App — die Aufbewahrung liegt dann beim Docker-Dienst bzw. der Protokollsammlung des Betreibers.",
+  },
+  {
     name: "KLARWERK_TRASH_SWEEP_INTERVAL_MS",
     bereich: "Betrieb",
     pflicht: { art: "nie" },
