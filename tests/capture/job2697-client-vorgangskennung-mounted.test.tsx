@@ -90,6 +90,7 @@ type Antwort =
 let naechsteAntwort: Antwort = { art: "erfolg", status: 201 };
 /** Jeder abgesendete Anlage-Rumpf, in Reihenfolge. */
 let gesendet: Array<Record<string, unknown>> = [];
+let aktualisiert: Array<{ id: string; payload: Record<string, unknown> }> = [];
 let vorherigerFetch: typeof globalThis.fetch;
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot> | null = null;
@@ -194,6 +195,7 @@ const kennungen = (): Array<string | undefined> =>
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   gesendet = [];
+  aktualisiert = [];
   laufendeNummer = 0;
   naechsteAntwort = { art: "erfolg", status: 201 };
   vorherigerFetch = globalThis.fetch;
@@ -248,6 +250,26 @@ beforeEach(async () => {
         status: naechsteAntwort.status,
         statusText: "ok",
         text: async () => rumpf,
+      };
+    }
+    // Der Aktualisierungsweg liefert wie der echte Server einen Entwurf, keine Liste.
+    const updateId = url.match(/\/drafts\/([^/?]+)$/)?.[1];
+    if (methode === "PUT" && updateId) {
+      const payload = JSON.parse(String(init?.body ?? "{}"));
+      aktualisiert.push({ id: updateId, payload });
+      return {
+        ok: true,
+        status: 200,
+        statusText: "ok",
+        text: async () =>
+          JSON.stringify({
+            id: updateId,
+            payload,
+            originalAuthor: "u1",
+            lastEditor: "u1",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:01.000Z",
+          }),
       };
     }
     // Alles andere (Sitzung, Listen) antwortet leer — die Seite braucht es nicht für diesen Fall.
@@ -326,6 +348,7 @@ describe("JOB 2697 D7 · Fall 3 · der Lebenszyklus der Vorgangskennung", () => 
     naechsteAntwort = { art: "erfolg", status: 201, tippenWaehrenddessen: "Ventil und Pumpe" };
     await speichern();
 
+    expect(aktualisiert).toHaveLength(0);
     const nachErstemErfolg = gesendet.length;
     naechsteAntwort = { art: "erfolg", status: 201 };
     await speichern();
@@ -333,6 +356,10 @@ describe("JOB 2697 D7 · Fall 3 · der Lebenszyklus der Vorgangskennung", () => 
     expect(gesendet.length, "es entstand ein zweiter Anlage-Aufruf statt eines Updates").toBe(
       nachErstemErfolg,
     );
+    expect(aktualisiert).toHaveLength(1);
+    expect(aktualisiert[0].id).toBe("d-1");
+    expect(aktualisiert[0].payload.title).toBe("Ventil und Pumpe");
+    expect(aktualisiert[0].payload.operationId).toBeUndefined();
   });
 
   it("C4 · NEUER FACHLICHER VORGANG: nach dem Neustart-Angebot trägt der nächste Klick eine NEUE Kennung", async () => {
