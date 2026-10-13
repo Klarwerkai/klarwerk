@@ -199,25 +199,28 @@ services:
     # R-0664 (DS20): DIE SERVER-PROTOKOLLE SELBST SIND PERSONENBEZOGEN UND BRAUCHEN EINE GRENZE.
     # Die App schreibt nur auf die Standardausgabe; aufbewahrt wird beim Docker-Dienst. Ohne diesen
     # Block wächst `json-file` unbegrenzt — keine Zeile wird je gelöscht. Mit ihm hält der Dienst
-    # höchstens fünf Dateien zu 10 MB und löscht die älteste beim Rotieren.
+    # höchstens 50 Dateien zu 1 MB und löscht die älteste beim Rotieren.
     # GRENZE: Das ist eine MENGEN-, keine Tagesfrist; Docker kennt keine zeitbasierte Löschung.
-    # Die Frist (14 Tage, 12.10.2026) setzt der Dienst `protokollpflege` unten durch; diese Mengengrenze
-    # bleibt zusätzlich (docs/operations/monitoring-logging.md §8). Für Coolify
+    # Die Frist (14 Tage, 12.10.2026) setzt der Dienst `protokollpflege` unten an Dockers ROTIERTEN
+    # Dateien durch. Die aktive Datei verwaltet Docker allein (Nacharbeit 15) — deshalb die kleine
+    # Dateigrösse: Docker rotiert sie dann oft und von selbst, und erst danach greift die Frist. Bei
+    # sehr wenig Ausgabe (unter 1 MB in 14 Tagen) bleibt die aktive Datei länger stehen; der Bericht
+    # des Hostlaufs weist das aus (docs/operations/monitoring-logging.md §8). Für Coolify
     # gilt diese Datei nicht (Kopf dieser Datei). Gehütet von tests/security/log-personenbezug.test.ts.
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "5"
+        max-size: "1m"
+        max-file: "50"
 
   # R-0664 · ENTSCHEIDUNG 2 (12.10.2026): 14 TAGE, DANN AUTOMATISCH GELÖSCHT — AUCH HIER.
   # Docker legt die Protokolle aller Dienste dieser Datei auf dem Host unter
   # /var/lib/docker/containers/<id>/ ab und löscht nur nach Menge (oben), nie nach Alter. Dieser
   # Dienst läuft im selben Abbild wie `app` und pflegt stündlich NUR die Container mit dem Label
   # `de.klarwerk.protokollpflege=app` (setzt das Dockerfile; fremde Container bleiben unberührt)
-  # mit derselben Regel wie die
-  # Insel (services/app/src/protokoll-frist-docker.ts): aktive Datei täglich rotieren, Rotationen
-  # und Archive löschen, sobald ihre älteste Zeile 14 Tage alt ist. Diagnosekopien gehören in den
+  # (services/app/src/protokoll-frist-docker.ts): Dockers eigene, abgeschlossene Rotationen löschen,
+  # sobald ihre älteste Zeile 14 Tage alt ist. Die AKTIVE Datei fasst er nie an — sie gehört Docker,
+  # und `docker logs` bleibt lesbar (Nacharbeit 15). Diagnosekopien gehören in den
   # Ordner `diagnose-protokolle/` neben dieser Datei; dort fällt jede Datei nach derselben Frist.
   # Er braucht Schreibrecht auf den Containerordner des Hosts und läuft deshalb als root.
   # GRENZE: Linux-Host. Unter Docker Desktop (macOS/Windows) ist /var/lib/docker/containers kein

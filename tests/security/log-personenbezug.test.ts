@@ -362,8 +362,10 @@ describe("R-0664 · Löschgrenze der Server-Protokolle im Ein-Befehl-Weg", () =>
     expect(block, "kein logging-Block am Dienst app — die Protokolle wüchsen unbegrenzt").toContain(
       "driver: json-file",
     );
-    expect(block).toContain('max-size: "10m"');
-    expect(block).toContain('max-file: "5"');
+    // Nacharbeit 15: kleine Dateien, damit Docker die aktive Datei oft selbst rotiert — die Frist
+    // greift nur an Dockers rotierten Dateien. Gesamtmenge unverändert begrenzt (50 × 1 MB).
+    expect(block).toContain('max-size: "1m"');
+    expect(block).toContain('max-file: "50"');
   });
 
   it("Kalibrierung: ohne den Block findet die Regel nichts", () => {

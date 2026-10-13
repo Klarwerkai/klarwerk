@@ -292,7 +292,9 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
 
   // Ben, Nacharbeit 10: Docker/Coolify waren nicht abgedeckt. Die Containerprotokolle liegen auf dem
   // Host unter /var/lib/docker/containers/<id>/ — gemessen wird an genau dieser Ordnerform.
-  it("Docker-Hostlauf: aktive Datei, Dockers Rotationen und Diagnoseordner nach der Frist", () => {
+  // Ben, Nacharbeit 15: eine echte Docker-Probe zeigte, dass `docker logs` nach dem Kürzen der aktiven
+  // Datei neue Zeilen nicht mehr liest. Die aktive Datei gehört Docker und bleibt BYTEGENAU unberührt.
+  it("Docker-Hostlauf: aktive Datei bytegenau unberührt; alte Rotationen, Altreste und Diagnosekopien fallen", () => {
     const wurzel = protokollordner();
     const id = "a1b2c3d4e5f60718293a4b5c";
     const ordner = join(wurzel, id);
@@ -300,11 +302,19 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     const dockerZeile = (zeit: number, text: string) =>
       `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
     const aktiv = join(ordner, `${id}-json.log`);
-    // So schreibt dockerd: anhängend. Bestand 20 Tage alt, kein Beginn — der erste Lauf.
+    // So schreibt dockerd: anhängend — auch ein 20 Tage alter Bestand bleibt, er gehört Docker.
     const fd = openSync(aktiv, "a");
     writeSync(fd, dockerZeile(JETZT - 20 * TAG, "uralt"));
-    datei(join(ordner, `${id}-json.log.1`), dockerZeile(JETZT - 15 * TAG, "rotiert-alt"), JETZT);
-    datei(join(ordner, `${id}-json.log.2`), dockerZeile(JETZT - 3 * TAG, "rotiert-jung"), JETZT);
+    const aktivVorher = readFileSync(aktiv);
+    datei(join(ordner, `${id}-json.log.1`), dockerZeile(JETZT - 3 * TAG, "rotiert-jung"), JETZT);
+    datei(join(ordner, `${id}-json.log.2`), dockerZeile(JETZT - 15 * TAG, "rotiert-alt"), JETZT);
+    // Reste der ersten Fassung (copytruncate): ein altes Archiv und die Beginn-Markierung.
+    datei(
+      join(ordner, `${id}-json.20261001T000000Z.log`),
+      dockerZeile(JETZT - 16 * TAG, "x"),
+      JETZT,
+    );
+    datei(join(ordner, `${id}-json.log.beginn`), `${JETZT}\n`, JETZT);
     // Die Docker-Konfiguration des Containers — mit dem Label, das das Dockerfile setzt.
     datei(join(ordner, "config.v2.json"), appKonfiguration(), JETZT - 40 * TAG);
     // Kein Container (keine Hex-Kennung) — wird nicht angefasst.
@@ -322,23 +332,47 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
       diagnoseordner: diagnose,
       jetzt: JETZT,
     });
+    // Die aktive Datei ist BYTEGENAU dieselbe — nicht gekürzt, nicht ersetzt.
+    expect(readFileSync(aktiv).equals(aktivVorher)).toBe(true);
     writeSync(fd, dockerZeile(JETZT, "danach"));
     closeSync(fd);
 
     const ergebnis = lauf.container[id];
     expect(Object.keys(lauf.container)).toEqual([id]);
     fremd.unberuehrt();
-    expect(ergebnis?.rotiertNach).toMatch(new RegExp(`^${id}-json\\.\\d{8}T\\d{6}Z\\.log$`));
-    expect(ergebnis?.geloescht.sort()).toEqual([`${id}-json.log.1`, ergebnis?.rotiertNach].sort());
-    expect(existsSync(join(ordner, `${id}-json.log.2`))).toBe(true);
+    expect(ergebnis?.rotiertNach).toBeNull();
+    expect(ergebnis?.geloescht.sort()).toEqual(
+      [`${id}-json.20261001T000000Z.log`, `${id}-json.log.2`, `${id}-json.log.beginn`].sort(),
+    );
+    expect(existsSync(join(ordner, `${id}-json.log.1`))).toBe(true);
     expect(existsSync(join(ordner, "config.v2.json"))).toBe(true);
     expect(existsSync(join(wurzel, "kein-container", "kein-container-json.log"))).toBe(true);
     expect(lauf.diagnose).toEqual(["docker-logs-app.txt"]);
-    // Dockers aktive Datei bleibt an ihrem Pfad und nimmt weitere Zeilen an — ohne den Bestand.
-    const inhalt = readFileSync(aktiv, "utf8");
-    expect(inhalt.startsWith("{")).toBe(true);
-    expect(inhalt).toContain("danach");
-    expect(inhalt).not.toContain("uralt");
+    // Der anhängende Schreiber steht genau dort, wo er stand: alter Bestand und neue Zeile, lückenlos.
+    expect(readFileSync(aktiv, "utf8")).toBe(
+      `${aktivVorher.toString("utf8")}${dockerZeile(JETZT, "danach")}`,
+    );
+  });
+
+  it("Docker-Hostlauf fasst die aktive Datei auch dann nicht an, wenn sie die einzige und uralt ist", () => {
+    const wurzel = protokollordner();
+    const id = "a1b2c3d4e5f60718293a4b5c";
+    mkdirSync(join(wurzel, id));
+    datei(join(wurzel, id, "config.v2.json"), appKonfiguration(), JETZT);
+    const aktiv = join(wurzel, id, `${id}-json.log`);
+    datei(
+      aktiv,
+      `{"log":"x\\n","stream":"stdout","time":"${new Date(JETZT - 60 * TAG).toISOString()}"}\n`,
+      JETZT - 60 * TAG,
+    );
+    const vorher = readFileSync(aktiv);
+    const lauf = pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(lauf.container[id]?.geloescht).toEqual([]);
+    expect(readFileSync(aktiv).equals(vorher)).toBe(true);
+    // Der Bericht macht die Lücke sichtbar: Docker hat in der Frist nicht rotiert.
+    const bericht = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(bericht.container[0]?.aktiveDatei.aeltesteZeileTage).toBe(60);
+    expect(bericht.container[0]?.rotationen.aeltesteZeileTage).toBeNull();
   });
 
   it("Docker-Hostlauf OHNE Auswahl: kein Container wird bearbeitet — auch kein Klarwerk-Container", () => {
@@ -405,7 +439,8 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
       abbild: "klarwerk-app",
       ausgewaehlt: true,
     });
-    expect(app?.aeltesteZeileTage).toBeGreaterThanOrEqual(25);
+    expect(app?.rotationen.aeltesteZeileTage).toBeGreaterThanOrEqual(25);
+    expect(app?.aktiveDatei.aeltesteZeileTage).toBe(20);
     const fremde = vorher.container.filter((c) => c.id !== id);
     expect(fremde.length).toBe(2);
     expect(fremde.every((c) => !c.ausgewaehlt)).toBe(true);
@@ -427,11 +462,14 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
       diagnoseordner: diagnose,
       jetzt: JETZT,
     });
-    // Die aktive Datei ist gekürzt (leer): kein Protokollinhalt, also keine älteste Zeile.
-    expect(nachher.container.find((c) => c.id === id)).toMatchObject({
+    // Die alte Rotation ist gefallen; die aktive Datei steht unverändert — sie verwaltet Docker.
+    const appNachher = nachher.container.find((c) => c.id === id);
+    expect(appNachher?.rotationen).toEqual({
       aeltesteZeileTage: null,
       ohneZeitangabe: 0,
+      ohneZeitangabeDateidatumTage: null,
     });
+    expect(appNachher?.aktiveDatei.aeltesteZeileTage).toBe(20);
     expect(nachher.diagnose).toEqual({
       aeltesteZeileTage: null,
       ohneZeitangabe: 0,
@@ -463,8 +501,13 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     datei(join(wurzel, id, `${id}-json.log.1`), "", JETZT - 40 * TAG);
 
     const neu = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
-    expect(neu.container[0]).toMatchObject({
+    expect(neu.container[0]?.aktiveDatei).toEqual({
       aeltesteZeileTage: 0,
+      ohneZeitangabe: 0,
+      ohneZeitangabeDateidatumTage: null,
+    });
+    expect(neu.container[0]?.rotationen).toEqual({
+      aeltesteZeileTage: null,
       ohneZeitangabe: 0,
       ohneZeitangabeDateidatumTage: null,
     });
@@ -472,8 +515,8 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     // Eine Datei ohne erkennbare Zeitangabe: nicht als Inhaltsalter, sondern ausdrücklich unbekannt.
     datei(join(wurzel, id, `${id}-json.log.2`), "kein json, keine zeit\n", JETZT - 20 * TAG);
     const unbekannt = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
-    expect(unbekannt.container[0]).toMatchObject({
-      aeltesteZeileTage: 0,
+    expect(unbekannt.container[0]?.rotationen).toEqual({
+      aeltesteZeileTage: null,
       ohneZeitangabe: 1,
       ohneZeitangabeDateidatumTage: 20,
     });
@@ -481,7 +524,7 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     // Gegenprobe: Liegt im Inhalt wirklich eine alte Zeile, meldet der Bericht sie.
     datei(join(wurzel, id, `${id}-json.log.3`), dockerZeile(JETZT - 16 * TAG, "alt"), JETZT);
     const alt = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
-    expect(alt.container[0]?.aeltesteZeileTage).toBe(16);
+    expect(alt.container[0]?.rotationen.aeltesteZeileTage).toBe(16);
   });
 
   it("die Auswahl ist überall dieselbe: Dockerfile-Label, Compose-Aufruf, Coolify-Aufruf im Runbook", () => {

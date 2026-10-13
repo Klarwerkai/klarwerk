@@ -6,10 +6,20 @@
 //     /var/lib/docker/containers/<id>/<id>-json.log.1 …  Dockers eigene Rotationen (max-file)
 // Docker löscht nur nach Menge, nie nach Alter. Die App selbst kommt an diese Dateien nicht heran.
 //
-// DIESER LAUF wendet dieselbe Pflege wie auf der Insel (`pflegeProtokolle`, protokoll-frist.ts) auf
-// die Klarwerk-Container an: die aktive Datei täglich rotieren (Kopie + Kürzen; Docker hängt weiter
-// an), Rotationen und Archive löschen, sobald ihre älteste Zeile 14 Tage alt ist (Dockers `"time"` je
-// Zeile). Optional dazu ein Diagnoseordner auf dem Host, in dem jede Datei nach derselben Frist fällt.
+// DIE AKTIVE DATEI GEHÖRT DOCKER (Ben, Nacharbeit 15). Die erste Fassung kürzte sie wie auf der Insel
+// („copytruncate"). Eine echte Docker-Probe hat gezeigt: Docker schreibt danach weiter, aber
+// `docker logs` liest die neuen Zeilen nicht mehr — der Dienst führt eigene Byte-Positionen. Docker
+// selbst warnt, diese Dateien von aussen zu bearbeiten (docs.docker.com, json-file-Treiber).
+// DESHALB GILT JETZT:
+//   · `<id>-json.log` (die aktive Datei) wird NIE geöffnet, gekürzt, umbenannt oder gelöscht.
+//   · Gelöscht werden nur Dockers EIGENE, abgeschlossene Rotationen (`<id>-json.log.N`) — dieselben
+//     Dateien, die Docker beim Rotieren selbst entfernt —, sobald ihre älteste Zeile 14 Tage alt ist
+//     (Dockers `"time"` je Zeile), dazu Reste der ersten Fassung (Archive `<id>-json.<stempel>.log`
+//     nach derselben Frist, `<id>-json.log.beginn` sofort).
+//   · Dass die aktive Datei nicht über die Frist altert, leistet Dockers eigene Rotation nach Menge
+//     (`max-size`, docker-compose.prod.yml). Der Bericht weist ihr Alter GETRENNT aus; ist es ≥ 14 Tage,
+//     hat Docker in der Frist nicht rotiert, und das steht dann offen da (Runbook §8).
+// Optional dazu ein Diagnoseordner auf dem Host, in dem jede Datei nach derselben Frist fällt.
 //
 // NUR DIE AUSGEWÄHLTEN CONTAINER (Ben, Nacharbeit 12). Auf einem Host laufen auch fremde Container —
 // deren Protokolle, womöglich Sicherheits-/Auditnachweise mit eigener Regel, gehen diesen Lauf nichts
@@ -23,14 +33,15 @@
 //     npx tsx services/app/src/protokoll-frist-docker.ts <containerordner> --auswahl <label>=<wert> [--diagnose <ordner>]
 // Ein-Befehl-Weg: der Dienst `protokollpflege` in docker-compose.prod.yml ruft ihn stündlich.
 // Coolify: derselbe Aufruf als geplanter Lauf auf dem Host (docs/operations/monitoring-logging.md §8).
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  PROTOKOLL_FRIST_TAGE,
   type ProtokollPflegeErgebnis,
+  aeltesterInhalt,
   ersteZeitImInhalt,
   pflegeDiagnoseordner,
-  pflegeProtokolle,
 } from "./protokoll-frist";
 
 /** Wo der Docker-Dienst die Containerprotokolle ablegt (Vorgabe von dockerd). */
@@ -109,15 +120,19 @@ export interface InhaltsAlter {
  * DER BETRIEBSNACHWEIS (Ben, Nacharbeit 13): ändert NICHTS, sondern zeigt am echten Host, welche
  * Container die Auswahl trifft (Name, Abbild, Label) und wie alt die älteste Protokollzeile je
  * Container und im Diagnoseordner ist. Vor und nach der Einrichtung des geplanten Laufs ausgeführt,
- * belegt er Zuordnung und Löschwirkung: danach darf kein ausgewählter Container und keine
- * Diagnosekopie eine Zeile älter als 14 Tage tragen. Gemessen wird das INHALTSalter (s. `InhaltsAlter`).
+ * belegt er Zuordnung und Löschwirkung: danach darf bei keinem ausgewählten Container eine Rotation
+ * und keine Diagnosekopie eine Zeile älter als 14 Tage tragen. Die aktive Datei steht getrennt
+ * (`aktiveDatei`): sie hält Docker, nicht diese Pflege. Gemessen wird das INHALTSalter (`InhaltsAlter`).
  */
 export function berichteDockerProtokolle(opts: {
   ordner?: string;
   auswahl: ContainerAuswahl | null;
   diagnoseordner?: string;
   jetzt?: number;
-}): { container: (ContainerBericht & InhaltsAlter)[]; diagnose: InhaltsAlter } {
+}): {
+  container: (ContainerBericht & { aktiveDatei: InhaltsAlter; rotationen: InhaltsAlter })[];
+  diagnose: InhaltsAlter;
+} {
   const ordner = opts.ordner ?? DOCKER_CONTAINER_ORDNER;
   const jetzt = opts.jetzt ?? Date.now();
   const tage = (zeit: number) => Math.round(((jetzt - zeit) / 86_400_000) * 10) / 10;
@@ -144,7 +159,8 @@ export function berichteDockerProtokolle(opts: {
       ohneZeitangabeDateidatumTage: daten.length === 0 ? null : tage(Math.min(...daten)),
     };
   };
-  const container: (ContainerBericht & InhaltsAlter)[] = [];
+  const container: (ContainerBericht & { aktiveDatei: InhaltsAlter; rotationen: InhaltsAlter })[] =
+    [];
   if (existsSync(ordner)) {
     for (const id of readdirSync(ordner)) {
       const verzeichnis = join(ordner, id);
@@ -152,16 +168,23 @@ export function berichteDockerProtokolle(opts: {
         continue;
       }
       const konfiguration = leseKonfiguration(verzeichnis);
-      const protokolle = readdirSync(verzeichnis)
-        .filter((n) => n.startsWith(`${id}-json.`) && !n.endsWith(".beginn"))
-        .map((n) => join(verzeichnis, n));
+      const aktiv = `${id}-json.log`;
+      const protokolle = readdirSync(verzeichnis).filter(
+        (n) => n.startsWith(`${id}-json.`) && !n.endsWith(".beginn"),
+      );
       container.push({
         id,
         name: typeof konfiguration?.Name === "string" ? konfiguration.Name : "",
         abbild: typeof konfiguration?.Config?.Image === "string" ? konfiguration.Config.Image : "",
         ausgewaehlt: opts.auswahl !== null && gehoertZurAuswahl(verzeichnis, opts.auswahl),
         protokolldateien: protokolle.length,
-        ...aeltestes(protokolle),
+        // Die aktive Datei verwaltet Docker; ihr Alter steht GETRENNT — die Pflege fasst sie nicht an.
+        aktiveDatei: aeltestes(
+          protokolle.filter((n) => n === aktiv).map((n) => join(verzeichnis, n)),
+        ),
+        rotationen: aeltestes(
+          protokolle.filter((n) => n !== aktiv).map((n) => join(verzeichnis, n)),
+        ),
       });
     }
   }
@@ -184,27 +207,42 @@ export function pflegeDockerProtokolle(opts: {
 }): { container: Record<string, ProtokollPflegeErgebnis>; diagnose: string[] } {
   const ordner = opts.ordner ?? DOCKER_CONTAINER_ORDNER;
   const zeit = opts.jetzt === undefined ? {} : { jetzt: opts.jetzt };
+  const jetzt = opts.jetzt ?? Date.now();
+  const fristMs = PROTOKOLL_FRIST_TAGE * 86_400_000;
   const container: Record<string, ProtokollPflegeErgebnis> = {};
   const auswahl = opts.auswahl;
   if (auswahl && existsSync(ordner)) {
     for (const id of readdirSync(ordner)) {
       const verzeichnis = join(ordner, id);
-      const aktiv = join(verzeichnis, `${id}-json.log`);
       if (
         !CONTAINER_ID.test(id) ||
         !statSync(verzeichnis).isDirectory() ||
-        !existsSync(aktiv) ||
+        !existsSync(join(verzeichnis, `${id}-json.log`)) ||
         !gehoertZurAuswahl(verzeichnis, auswahl)
       ) {
         continue;
       }
-      // Dockers Rotationen (`<id>-json.log.N`) und die Archive dieser Pflege (`<id>-json.<stempel>.log`).
-      const rotation = new RegExp(`^${id}-json\\.(?:log\\.\\d+|\\d{8}T\\d{6}Z\\.log)$`);
-      container[id] = pflegeProtokolle({
-        datei: aktiv,
-        ...zeit,
-        istKandidat: (name) => rotation.test(name),
-      });
+      // Dockers eigene, abgeschlossene Rotationen und die Archive der ersten Fassung. Die aktive
+      // Datei `<id>-json.log` passt auf keines der beiden Muster — sie wird nicht angefasst.
+      const rotation = new RegExp(`^${id}-json\\.log\\.\\d+(?:\\.gz)?$`);
+      const altarchiv = new RegExp(`^${id}-json\\.\\d{8}T\\d{6}Z\\.log$`);
+      const marke = `${id}-json.log.beginn`;
+      const geloescht: string[] = [];
+      for (const name of readdirSync(verzeichnis)) {
+        const pfad = join(verzeichnis, name);
+        if (!statSync(pfad).isFile()) {
+          continue;
+        }
+        const faellig =
+          name === marke ||
+          ((rotation.test(name) || altarchiv.test(name)) &&
+            jetzt - aeltesterInhalt(pfad) >= fristMs);
+        if (faellig) {
+          unlinkSync(pfad);
+          geloescht.push(name);
+        }
+      }
+      container[id] = { rotiertNach: null, geloescht };
     }
   }
   const diagnose = opts.diagnoseordner
