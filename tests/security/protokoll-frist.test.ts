@@ -1,4 +1,5 @@
 import {
+  appendFileSync,
   closeSync,
   existsSync,
   mkdirSync,
@@ -6,6 +7,7 @@ import {
   openSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -27,6 +29,12 @@ import {
   leseAuswahl,
   pflegeDockerProtokolle,
 } from "../../services/app/src/protokoll-frist-docker";
+import {
+  FUELLKENNUNG,
+  fuellblock,
+  leseMaxSize,
+  starteRotationsimpuls,
+} from "../../services/app/src/protokoll-rotationsimpuls";
 
 // ================================================================================================
 // R-0664 · PETERS ENTSCHEIDUNG 2 (12.10.2026): 14 TAGE, DANN AUTOMATISCH GELÖSCHT —
@@ -525,6 +533,147 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     datei(join(wurzel, id, `${id}-json.log.3`), dockerZeile(JETZT - 16 * TAG, "alt"), JETZT);
     const alt = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
     expect(alt.container[0]?.rotationen.aeltesteZeileTage).toBe(16);
+  });
+
+  // Ben, Nacharbeit 16: die aktive Datei muss auch bei wenig oder ausbleibender Ausgabe nach 14 Tagen
+  // fallen — ohne dass sie von aussen angefasst wird. Docker rotiert selbst, sobald `max-size`
+  // überschritten würde; der tägliche Füllblock der App sorgt dafür, dass das täglich geschieht.
+  it("Rotationsimpuls: Füllblock überschreitet max-size, ist inhaltsfrei und zeilenweise unter 16 KiB", () => {
+    expect(leseMaxSize("1m")).toBe(1024 * 1024);
+    expect(leseMaxSize("100k")).toBe(100 * 1024);
+    expect(leseMaxSize("2048")).toBe(2048);
+    expect(leseMaxSize("1g")).toBe(1024 ** 3);
+    expect(leseMaxSize("")).toBeNull();
+    expect(leseMaxSize(undefined)).toBeNull();
+    expect(leseMaxSize("viel")).toBeNull();
+    expect(leseMaxSize("0")).toBeNull();
+    const zeilen = fuellblock(1024 * 1024);
+    const bytes = zeilen.reduce((s, z) => s + Buffer.byteLength(z), 0);
+    expect(bytes).toBeGreaterThan(1024 * 1024);
+    for (const zeile of zeilen) {
+      expect(Buffer.byteLength(zeile)).toBeLessThan(16 * 1024);
+      const objekt = JSON.parse(zeile) as Record<string, unknown>;
+      expect(Object.keys(objekt).sort()).toEqual(["fueller", FUELLKENNUNG].sort());
+      expect(String(objekt.fueller)).toMatch(/^-+$/);
+    }
+  });
+
+  it("Rotationsimpuls: ohne max-size nichts; sonst schreibt jeder Takt den Füllblock", async () => {
+    expect(starteRotationsimpuls({ maxSize: null })).toBeNull();
+    const geschrieben: string[] = [];
+    let takt: (() => void) | null = null;
+    const handle = starteRotationsimpuls({
+      maxSize: 64 * 1024,
+      schreibe: (z) => geschrieben.push(z),
+      setIntervalFn: (callback) => {
+        takt = callback;
+        return 0 as unknown as ReturnType<typeof setInterval>;
+      },
+      clearIntervalFn: () => {},
+    });
+    expect(handle).not.toBeNull();
+    expect(geschrieben).toEqual([]);
+    (takt as unknown as () => void)();
+    await new Promise((fertig) => setTimeout(fertig, 0));
+    expect(geschrieben).toEqual(fuellblock(64 * 1024));
+  });
+
+  /**
+   * Ein Modell von Dockers `json-file`-Schreiber, nach dessen dokumentiertem Verhalten: jede Zeile
+   * wird als `{"log","stream","time"}` angehängt; WÜRDE die aktive Datei dabei `max-size` übersteigen,
+   * rotiert der Dienst vorher (`.log` → `.log.1` → `.log.2` …, höchstens `max-file`). Gelesen wird
+   * wie `docker logs`: Rotationen von alt nach neu, dann die aktive Datei, jede Zeile als JSON.
+   */
+  function dockerModell(ordner: string, id: string, maxSize: number, maxFile: number) {
+    const aktiv = join(ordner, `${id}-json.log`);
+    writeFileSync(aktiv, "");
+    let groesse = 0;
+    const rotieren = () => {
+      for (let n = maxFile - 1; n >= 1; n--) {
+        const von = n === 1 ? aktiv : join(ordner, `${id}-json.log.${n - 1}`);
+        const nach = join(ordner, `${id}-json.log.${n}`);
+        if (existsSync(von)) {
+          renameSync(von, nach);
+        }
+      }
+      writeFileSync(aktiv, "");
+      groesse = 0;
+    };
+    return {
+      schreibe(text: string, zeit: number) {
+        const zeile = `${JSON.stringify({ log: text, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
+        const laenge = Buffer.byteLength(zeile);
+        if (groesse + laenge > maxSize) {
+          rotieren();
+        }
+        appendFileSync(aktiv, zeile);
+        groesse += laenge;
+      },
+      lies(): { log: string; time: string }[] {
+        const dateien = readdirSync(ordner)
+          .filter((n) => /-json\.log\.\d+$/.test(n))
+          .sort((a, b) => Number(b.split(".").pop()) - Number(a.split(".").pop()))
+          .concat(`${id}-json.log`);
+        return dateien.flatMap((n) =>
+          readFileSync(join(ordner, n), "utf8")
+            .split("\n")
+            .filter((z) => z.length > 0)
+            .map((z) => JSON.parse(z) as { log: string; time: string }),
+        );
+      },
+    };
+  }
+
+  it("VOLLSTÄNDIGER WEG über 20 Tage, ohne Nutzerausgabe: keine Zeile älter als 14 Tage, docker logs lesbar", () => {
+    const MAX = 64 * 1024;
+    // In der Vergangenheit, damit das echte Anlagedatum der Testdateien (jetzt) nach jeder simulierten
+    // Zeit liegt und das Inhaltsalter nicht überdeckt.
+    const start = Date.now() - 21 * TAG;
+    const lauf = (impuls: boolean) => {
+      const wurzel = protokollordner();
+      const id = "a1b2c3d4e5f60718293a4b5c";
+      mkdirSync(join(wurzel, id));
+      datei(join(wurzel, id, "config.v2.json"), appKonfiguration(), start);
+      const docker = dockerModell(join(wurzel, id), id, MAX, 50);
+      // Tag 0: eine einzige echte Zeile — danach schweigt die App.
+      docker.schreibe("Bestand vom ersten Tag\n", start);
+      const hoechstalter: number[] = [];
+      for (let tag = 1; tag <= 20; tag++) {
+        const jetzt = start + tag * TAG;
+        if (impuls) {
+          for (const zeile of fuellblock(MAX)) {
+            docker.schreibe(zeile, jetzt);
+          }
+        }
+        pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt });
+        const zeilen = docker.lies();
+        hoechstalter.push(Math.max(...zeilen.map((z) => (jetzt - Date.parse(z.time)) / TAG)));
+      }
+      return { hoechstalter, zeilen: docker.lies() };
+    };
+
+    const mit = lauf(true);
+    // Zu keinem Zeitpunkt eine Zeile, die 14 Tage oder älter ist — auch ohne jede Nutzerausgabe.
+    expect(Math.max(...mit.hoechstalter)).toBeLessThan(14);
+    expect(mit.zeilen.some((z) => z.log.includes("Bestand vom ersten Tag"))).toBe(false);
+    // Lesbar wie mit `docker logs`: jede Zeile ist gültiges JSON, die neueste Füllung ist da.
+    expect(mit.zeilen.length).toBeGreaterThan(0);
+    expect(mit.zeilen.at(-1)?.log).toContain(FUELLKENNUNG);
+
+    // Gegenprobe: ohne Impuls bleibt der Bestand in der aktiven Datei stehen — genau Bens Befund.
+    const ohne = lauf(false);
+    expect(Math.max(...ohne.hoechstalter)).toBeGreaterThanOrEqual(14);
+    expect(ohne.zeilen.some((z) => z.log.includes("Bestand vom ersten Tag"))).toBe(true);
+  });
+
+  it("Dockerfile und Compose nennen dieselbe max-size wie der Rotationsimpuls", () => {
+    expect(readFileSync("Dockerfile", "utf8")).toMatch(/^ENV KLARWERK_DOCKER_LOG_MAX_SIZE=1m$/m);
+    const compose = readFileSync("docker-compose.prod.yml", "utf8");
+    const app = compose.slice(
+      compose.indexOf("\n  app:\n"),
+      compose.indexOf("\n  protokollpflege:\n"),
+    );
+    expect(app).toContain('max-size: "1m"');
   });
 
   it("die Auswahl ist überall dieselbe: Dockerfile-Label, Compose-Aufruf, Coolify-Aufruf im Runbook", () => {

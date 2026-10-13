@@ -15,6 +15,11 @@ import { GedaechtnisDienst } from "./interaktionsgedaechtnis";
 import { resolveKlaraAufraeumIntervalMs, starteKlaraAufraeumen } from "./klara-aufraeumen";
 import { registerNoindexHook } from "./noindex-hook";
 import { LOG_DATEI_ENV, PROTOKOLL_FRIST_TAGE, starteProtokollPflege } from "./protokoll-frist";
+import {
+  DOCKER_LOG_MAX_SIZE_ENV,
+  leseMaxSize,
+  starteRotationsimpuls,
+} from "./protokoll-rotationsimpuls";
 import { registerSecurityHeaders } from "./security-headers";
 // JOB 3776: der Startvertrag wird am Einstiegspunkt gerufen — als erste Anweisung von `start()`,
 // damit sein Abbruch durch `start().catch(...)` läuft und als EINE lesbare Zeile erscheint.
@@ -347,6 +352,16 @@ async function start(): Promise<void> {
   });
   if (protokollPflege) {
     app.log.info(`Protokollpflege aktiv — Frist ${PROTOKOLL_FRIST_TAGE} Tage.`);
+  }
+  // R-0664 (Ben, Nacharbeit 16): im Docker-Betrieb rotiert Docker die aktive Protokolldatei täglich
+  // selbst — angestossen durch einen inhaltsfreien Füllblock (protokoll-rotationsimpuls.ts). Wirkt
+  // nur mit gesetzter Docker-`max-size` (Dockerfile); auf der Insel ist sie nicht gesetzt.
+  const rotationsimpuls = starteRotationsimpuls({
+    maxSize: leseMaxSize(process.env[DOCKER_LOG_MAX_SIZE_ENV]),
+    onError: (error) => app.log.warn({ err: error }, "Rotationsimpuls übersprungen."),
+  });
+  if (rotationsimpuls) {
+    app.log.info("Rotationsimpuls aktiv — Docker rotiert die aktive Protokolldatei täglich.");
   }
   if (klaraAufraeumLauf) {
     const klaraInterval = resolveKlaraAufraeumIntervalMs(

@@ -427,6 +427,9 @@ export const MELDUNGEN: readonly string[] = [
   "Protokollpflege aktiv — Frist {zahl} Tage.",
   "Protokollpflege: rotiert bzw. abgelaufene Protokolle gelöscht.",
   "Protokollpflege übersprungen.",
+  // server.ts — Rotationsimpuls (R-0664, protokoll-rotationsimpuls.ts).
+  "Rotationsimpuls aktiv — Docker rotiert die aktive Protokolldatei täglich.",
+  "Rotationsimpuls übersprungen.",
   // server.ts — über „Hauptstand integriert" hinzugekommen (Lückenerkennung R-1657,
   // Wissensereignisse R-0710); die Sätze stehen dort und in wissensereignisse.ts.
   "Lückenerkennung übersprungen",

@@ -550,6 +550,17 @@ const GRUNDWERTE: readonly Startwert[] = [
     ohneIhn: "Keine PID-Datei. Der Restore-Drill findet den Prozess nicht.",
   },
   {
+    name: "KLARWERK_DOCKER_LOG_MAX_SIZE",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "1m (Dockerfile)",
+    wofuer:
+      "Dockers max-size für diesen Container. Die App schreibt damit täglich einen inhaltsfreien Füllblock, und Docker rotiert die aktive Protokolldatei selbst.",
+    ohneIhn:
+      "Kein Rotationsimpuls — bei wenig Ausgabe bleibt die aktive Docker-Protokolldatei länger als 14 Tage stehen.",
+  },
+  {
     name: "KLARWERK_LOG_DATEI",
     bereich: "Betrieb",
     pflicht: { art: "nie" },
