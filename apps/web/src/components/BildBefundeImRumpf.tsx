@@ -20,6 +20,11 @@
 //   · Die Analyse gehört zum angemeldeten Konto (`useBildAnalyse`) — kein Ergebnis eines anderen
 //     Kontos wird wiederverwendet.
 //   · Unter dem Befund: Klara zu diesem Inhalt fragen (Text UND erkannte Bilder, mit Fundstelle).
+//
+// OCR-E01/E02 (produkt:20261012:klara-ocr-fundstellen-korrekturen): jedes Wort öffnet sein Bild im
+// Text mit markierter Stelle; berichtigt wird gebunden an die gespeicherte Quelle dieser Fläche
+// (`ko:<id>`/`entwurf:<id>` aus der Provenienz) und die Bildfassung — Klara fragt mit dem
+// berichtigten Text.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useImageDescribe } from "../app/ImageDescribeContext";
@@ -35,6 +40,7 @@ import {
 } from "../lib/bildAutomatik";
 import { type BildAutomatikLage, useBildAutomatikLage } from "../lib/bildAutomatikEinstellung";
 import { useBildAnalyse } from "../lib/bildAutomatikLauf";
+import { originalAusEingang } from "../lib/bildFundstelle";
 import { htmlToPlainText } from "../lib/richText";
 import { BildBefundListe } from "./BildBefundListe";
 import { KlaraBildKontextFrage } from "./KlaraBildKontextFrage";
@@ -48,7 +54,7 @@ interface Gestartet {
 
 export function BildBefundeImRumpf({ html }: { html: string }): JSX.Element | null {
   const { t } = useTranslation();
-  const { available, describe } = useImageDescribe();
+  const { available, describe, quelle } = useImageDescribe();
   // Ein Exemplar je Editor und Konto: dort werden unveränderte Bilder wiedererkannt.
   const analyse = useBildAnalyse();
   const lage = useBildAutomatikLage();
@@ -116,14 +122,21 @@ export function BildBefundeImRumpf({ html }: { html: string }): JSX.Element | nu
   if (!befund) {
     return null;
   }
+  const eingangJetzt = befund.eingang;
   return (
     <div data-testid="rumpf-bild-befunde" className="border-t border-hairline p-2">
-      <BildBefundListe befund={befund.befund} lauf={befund.lauf} />
+      <BildBefundListe
+        befund={befund.befund}
+        lauf={befund.lauf}
+        originalVon={(b) => originalAusEingang(eingangJetzt, b.fundstelle)}
+        korrekturQuelle={quelle ?? null}
+      />
       <KlaraBildKontextFrage
         kontextSchluessel={`rumpf:${befund.lauf}`}
         dokumentTextVon={dokumentTextVon}
         quellen={quellen}
         aktuell={aktuell}
+        korrekturQuelle={quelle ?? null}
       />
     </div>
   );

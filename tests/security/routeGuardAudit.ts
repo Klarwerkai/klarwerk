@@ -1172,6 +1172,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // (user.id aus der Sitzung, fremde Kennung 403).
   "GET /api/me/assistenz/tastenkuerzel": { protection: "auth" },
   "PUT /api/me/assistenz/tastenkuerzel": { protection: "auth" },
+  // produkt:20261012:klara-ocr-fundstellen-korrekturen: berichtigter Bildtext — lesen nur das eigene
+  // Konto; schreiben zusätzlich mit `ko.create` (Bearbeiten wie bei Entwürfen, `viewer` → 403).
+  "GET /api/me/assistenz/bildkorrekturen": { protection: "auth" },
+  "PUT /api/me/assistenz/bildkorrekturen": { protection: "ko.create" },
   // produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der eigenen Assistenz — Übersicht,
   // Vormerkungen und eigene Aufträge nur über das Konto der Sitzung; Vorschau und Ausführung
   // zusätzlich mit `ko.read`, weil sie Arbeitsbereichskontext aus dem Bestand laden.

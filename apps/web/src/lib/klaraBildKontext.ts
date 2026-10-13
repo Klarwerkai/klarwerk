@@ -139,7 +139,11 @@ export function klaraBildKontext(
         status: b.status,
       });
       if (text) {
-        zeilen.push(`${marke} ${t("klarabildkontext.kontext.text")}: ${text}`);
+        // OCR-E02: ein berichtigter Bildtext steht als solcher da (der Rohbefund geht nicht ein).
+        const art = b.korrektur
+          ? "bildfundstelle.kontext.textBerichtigt"
+          : "klarabildkontext.kontext.text";
+        zeilen.push(`${marke} ${t(art)}: ${text}`);
       } else if (b.status === "kein-text") {
         zeilen.push(`${marke} ${t("klarabildkontext.kontext.keinText")}`);
       } else {

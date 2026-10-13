@@ -260,6 +260,8 @@ import {
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
 import { Anfragebremse, bremsSatz } from "./anfragebremse";
+// produkt:20261012:klara-ocr-fundstellen-korrekturen: berichtigter Bildtext im Assistenzprofil.
+import { BildKorrekturDienst } from "./assistenz-bildkorrekturen";
 // produkt:20261008:klara-eigeninitiative: der persönliche Unterstützungsmodus im Assistenzprofil.
 import { EigeninitiativeDienst } from "./assistenz-eigeninitiative";
 // produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der Assistenz über die vorhandenen Dienste.
@@ -5536,6 +5538,8 @@ export function buildApp(
         eigeninitiative: new EigeninitiativeDienst({ repo: services.assistenzProfile }),
         // produkt:20261012:klara-setup-shortcuts-umsetzung: die Klara-Kürzel im selben Profil.
         tastenkuerzel: new TastenkuerzelDienst({ repo: services.assistenzProfile }),
+        // produkt:20261012:klara-ocr-fundstellen-korrekturen: berichtigter Bildtext im selben Profil.
+        bildKorrekturen: new BildKorrekturDienst({ repo: services.assistenzProfile }),
         audit: services.audit,
       },
       guards,

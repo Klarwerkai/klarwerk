@@ -69,6 +69,11 @@ export interface ImageDescribeValue {
   // und zeigt nur die deterministischen Fundstellen.
   frage?: (text: string, anweisung: string) => Promise<AssistResult>;
   frageVerfuegbar?: boolean;
+  // OCR-E02 (produkt:20261012:klara-ocr-fundstellen-korrekturen): die gespeicherte Quelle dieser
+  // Fläche — `ko:<id>` bzw. `entwurf:<id>` aus derselben Provenienz. An sie wird ein berichtigter
+  // Bildtext gebunden. Fehlt sie (noch nie gespeicherter Entwurf, Test-Naht), gibt es keine
+  // dauerhafte Berichtigung, und die Fläche sagt das.
+  quelle?: string;
 }
 
 const ImageDescribeCtx = createContext<ImageDescribeValue | null>(null);
@@ -153,6 +158,7 @@ export function ImageDescribeProvider({
           ...(koId ? { koId } : {}),
           ...(draftId ? { draftId } : {}),
         }),
+      ...(koId ? { quelle: `ko:${koId}` } : draftId ? { quelle: `entwurf:${draftId}` } : {}),
     }),
     [
       describeAi.available,

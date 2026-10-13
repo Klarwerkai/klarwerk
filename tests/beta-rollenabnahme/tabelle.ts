@@ -2335,6 +2335,29 @@ export const TABELLE: Zeile[] = [
     payload: { aktion: "gibt-es-nicht", belegung: null },
     erwartet: ANGEMELDET,
   },
+  // produkt:20261012:klara-ocr-fundstellen-korrekturen — berichtigter Bildtext im eigenen Profil.
+  // Lesen: jede Anmeldung (nur das eigene Konto). Schreiben ist Bearbeiten und fordert `ko.create`:
+  // der Gast (viewer) berichtigt nicht. ZUSTANDSFREI GEFAHREN: die Schreibtür trägt eine unbekannte
+  // Aktion und endet in 400, BEVOR etwas geschrieben wird. Die Wirkung (Speichern, Rückgängig,
+  // Zurücksetzen, Fremdkonto 403, viewer 403) misst
+  // `tests/klara-bildanalyse-ocr/korrekturen-am-server.test.ts`.
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "GET",
+    pfad: "/api/me/assistenz/bildkorrekturen",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:344",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "PUT",
+    pfad: "/api/me/assistenz/bildkorrekturen",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:362",
+    tor: "ko.create",
+    payload: { aktion: "gibt-es-nicht" },
+    erwartet: AB_EXPERTE,
+  },
   // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz. Übersicht,
   // Vormerkungen und eigene Aufträge prüfen die Anmeldung, Vorschau und Ausführung `ko.read`.
   // ZUSTANDSFREI GEFAHREN: die schreibenden Türen tragen einen unvollständigen Rumpf und enden in

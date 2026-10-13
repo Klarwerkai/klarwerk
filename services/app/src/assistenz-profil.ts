@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import type { BildKorrekturStand } from "./assistenz-bildkorrekturen";
 import type { EigeninitiativeStand } from "./assistenz-eigeninitiative";
 import type { AuftragsEintrag, FaehigkeitsVormerkung } from "./assistenz-faehigkeiten";
 import type { TastenkuerzelStand } from "./assistenz-tastenkuerzel";
@@ -91,6 +92,13 @@ export interface AssistenzProfil {
    * `schreibe` und übersteht Neuladen und Neuanmeldung.
    */
   bildAutomatik?: boolean;
+  /**
+   * produkt:20261012:klara-ocr-fundstellen-korrekturen (OCR-E02) — berichtigter Bildtext, je Quelle
+   * und Bildfassung (`assistenz-bildkorrekturen.ts`). Gehört AUSSCHLIESSLICH
+   * `schreibeBildKorrekturen`: ein Profilschreiben übernimmt den gespeicherten Stand, und eine
+   * Berichtigung ändert die Profilfassung nicht.
+   */
+  bildKorrekturen?: BildKorrekturStand;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -137,6 +145,16 @@ export interface AssistenzProfilRepo {
     alt: TastenkuerzelStand | null,
     neu: TastenkuerzelStand,
   ): Promise<boolean>;
+  /**
+   * produkt:20261012:klara-ocr-fundstellen-korrekturen — ersetzt nur die Bildberichtigungen, wenn
+   * sie noch `alt` sind (Vergleich auf den Inhalt, `null` = keine gespeichert), sonst `false`. Ohne
+   * Profil entsteht eine Zeile mit Fassung 0. Die Profilfassung bleibt unverändert.
+   */
+  schreibeBildKorrekturen(
+    kontoId: string,
+    alt: BildKorrekturStand | null,
+    neu: BildKorrekturStand,
+  ): Promise<boolean>;
 }
 
 function leeresProfil(kontoId: string, stempel: string): AssistenzProfil {
@@ -173,6 +191,7 @@ export class InMemoryAssistenzProfilRepo implements AssistenzProfilRepo {
       faehigkeitsAuftraege: _ignoriert,
       eigeninitiative: _eigen,
       tastenkuerzel: _kuerzel,
+      bildKorrekturen: _korrekturen,
       ...rest
     } = structuredClone(p);
     this.profile.set(p.kontoId, {
@@ -180,7 +199,21 @@ export class InMemoryAssistenzProfilRepo implements AssistenzProfilRepo {
       ...(alt?.faehigkeitsAuftraege ? { faehigkeitsAuftraege: alt.faehigkeitsAuftraege } : {}),
       ...(alt?.eigeninitiative ? { eigeninitiative: alt.eigeninitiative } : {}),
       ...(alt?.tastenkuerzel ? { tastenkuerzel: alt.tastenkuerzel } : {}),
+      ...(alt?.bildKorrekturen ? { bildKorrekturen: alt.bildKorrekturen } : {}),
     });
+    return Promise.resolve(true);
+  }
+
+  schreibeBildKorrekturen(
+    kontoId: string,
+    alt: BildKorrekturStand | null,
+    neu: BildKorrekturStand,
+  ): Promise<boolean> {
+    const p = this.profile.get(kontoId) ?? leeresProfil(kontoId, new Date().toISOString());
+    if (JSON.stringify(p.bildKorrekturen ?? null) !== JSON.stringify(alt)) {
+      return Promise.resolve(false);
+    }
+    this.profile.set(kontoId, { ...p, bildKorrekturen: structuredClone(neu) });
     return Promise.resolve(true);
   }
 
@@ -259,11 +292,13 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
     // der GESPEICHERTE Stand, nie der mitgebrachte (sonst überschriebe ein Namenswechsel einen
     // inzwischen abgeschlossenen Auftrag). Dasselbe gilt für den Eigeninitiative-Stand
     // (produkt:20261008:klara-eigeninitiative): er gehört allein `schreibeEigeninitiative` — und
-    // für die Tastenkürzel (produkt:20261012:klara-setup-shortcuts-umsetzung, `schreibeTastenkuerzel`).
+    // für die Tastenkürzel (produkt:20261012:klara-setup-shortcuts-umsetzung, `schreibeTastenkuerzel`)
+    // und die Bildberichtigungen (produkt:20261012:klara-ocr-fundstellen-korrekturen).
     const {
       faehigkeitsAuftraege: _ignoriert,
       eigeninitiative: _eigen,
       tastenkuerzel: _kuerzel,
+      bildKorrekturen: _korrekturen,
       ...ohneAuftraege
     } = p;
     const daten = JSON.stringify(ohneAuftraege);
@@ -283,6 +318,9 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
              || CASE WHEN assistenz_profile.data ? 'tastenkuerzel'
              THEN jsonb_build_object('tastenkuerzel', assistenz_profile.data->'tastenkuerzel')
              ELSE '{}'::jsonb END
+             || CASE WHEN assistenz_profile.data ? 'bildKorrekturen'
+             THEN jsonb_build_object('bildKorrekturen', assistenz_profile.data->'bildKorrekturen')
+             ELSE '{}'::jsonb END
          WHERE assistenz_profile.fassung = 0`,
         [p.kontoId, p.fassung, p.geaendertAm, daten],
       );
@@ -298,6 +336,9 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
            ELSE '{}'::jsonb END
            || CASE WHEN data ? 'tastenkuerzel'
            THEN jsonb_build_object('tastenkuerzel', data->'tastenkuerzel')
+           ELSE '{}'::jsonb END
+           || CASE WHEN data ? 'bildKorrekturen'
+           THEN jsonb_build_object('bildKorrekturen', data->'bildKorrekturen')
            ELSE '{}'::jsonb END
         WHERE konto_id = $1 AND fassung = $5`,
       [p.kontoId, p.fassung, p.geaendertAm, daten, p.fassung - 1],
@@ -321,6 +362,27 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
           SET data = jsonb_set(data, '{tastenkuerzel}', $3::jsonb, true)
         WHERE konto_id = $1
           AND COALESCE(data->'tastenkuerzel', 'null'::jsonb) = $2::jsonb`,
+      [kontoId, JSON.stringify(alt), JSON.stringify(neu)],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async schreibeBildKorrekturen(
+    kontoId: string,
+    alt: BildKorrekturStand | null,
+    neu: BildKorrekturStand,
+  ): Promise<boolean> {
+    const stempel = new Date().toISOString();
+    await this.pool.query(
+      `INSERT INTO assistenz_profile (konto_id, fassung, geaendert_am, data)
+       VALUES ($1, 0, $2, $3) ON CONFLICT (konto_id) DO NOTHING`,
+      [kontoId, stempel, JSON.stringify(leeresProfil(kontoId, stempel))],
+    );
+    const res = await this.pool.query(
+      `UPDATE assistenz_profile
+          SET data = jsonb_set(data, '{bildKorrekturen}', $3::jsonb, true)
+        WHERE konto_id = $1
+          AND COALESCE(data->'bildKorrekturen', 'null'::jsonb) = $2::jsonb`,
       [kontoId, JSON.stringify(alt), JSON.stringify(neu)],
     );
     return (res.rowCount ?? 0) > 0;

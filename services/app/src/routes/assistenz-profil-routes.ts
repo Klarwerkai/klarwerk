@@ -1,5 +1,11 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { AuditService } from "../../../audit";
+import { can } from "../../../rbac";
+import {
+  type BildKorrekturDienst,
+  BildKorrekturFehler,
+  type BildKorrekturStand,
+} from "../assistenz-bildkorrekturen";
 import {
   type EigeninitiativeDienst,
   EigeninitiativeFehler,
@@ -45,17 +51,41 @@ import { type Guards, sendError } from "../http";
 //   GET /api/me/assistenz/tastenkuerzel  — wirksame Belegung je Aktion (Standard, eigen, entfernt)
 //   PUT /api/me/assistenz/tastenkuerzel  — eine Aktion belegen/entfernen/zurücksetzen oder alle zurück
 // Ins Prüfprotokoll geht nur das Ereignis, nie die Kombination.
+//
+// produkt:20261012:klara-ocr-fundstellen-korrekturen (OCR-E02) — berichtigter Bildtext:
+//   GET /api/me/assistenz/bildkorrekturen  — die eigenen Berichtigungen und ob dieses Konto
+//                                            berichtigen darf (`ko.create`, wie Entwürfe bearbeiten)
+//   PUT /api/me/assistenz/bildkorrekturen  — setzen, rückgängig, auf den Rohbefund zurücksetzen;
+//                                            ohne `ko.create` 403, nichts geändert
+// Ins Prüfprotokoll geht nur das Ereignis, nie der Text, die Quelle oder die Bildkennung.
 
 export const ASSISTENZ_PROFIL_EINGERICHTET = "assistenz.profil.eingerichtet";
 export const ASSISTENZ_PROFIL_GEAENDERT = "assistenz.profil.geaendert";
 export const ASSISTENZ_EIGENINITIATIVE_GEAENDERT = "assistenz.eigeninitiative.geaendert";
 export const ASSISTENZ_TASTENKUERZEL_GEAENDERT = "assistenz.tastenkuerzel.geaendert";
+export const ASSISTENZ_BILDKORREKTUR_GEAENDERT = "assistenz.bildkorrektur.geaendert";
 
 export interface AssistenzProfilRoutenDeps {
   dienst: AssistenzProfilDienst;
   eigeninitiative: EigeninitiativeDienst;
   tastenkuerzel: TastenkuerzelDienst;
+  bildKorrekturen: BildKorrekturDienst;
   audit: AuditService;
+}
+
+/** Die Sicht nach aussen: je Berichtigung Bindung, Text und wie oft „Rückgängig“ möglich ist. */
+function korrekturSicht(s: BildKorrekturStand, darfBearbeiten: boolean) {
+  return {
+    darfBearbeiten,
+    korrekturen: s.eintraege.map((e) => ({
+      quelle: e.quelle,
+      inhaltskennung: e.inhaltskennung,
+      ort: e.ort,
+      text: e.text,
+      schritte: e.vorher.length,
+      geaendertAm: e.geaendertAm,
+    })),
+  };
 }
 
 /** Die Sicht nach aussen: jede unterstützte Aktion mit ihrer wirksamen Belegung und deren Herkunft. */
@@ -130,7 +160,7 @@ export function assistenzProfilRoutes(
   deps: AssistenzProfilRoutenDeps,
   guards: Guards,
 ): FastifyPluginAsync {
-  const { dienst, eigeninitiative, tastenkuerzel, audit } = deps;
+  const { dienst, eigeninitiative, tastenkuerzel, bildKorrekturen, audit } = deps;
 
   const eigenFehler = (reply: FastifyReply, fehler: unknown): void => {
     if (fehler instanceof EigeninitiativeFehler) {
@@ -302,6 +332,57 @@ export function assistenzProfilRoutes(
             error: fehler.status === 400 ? "VALIDATION" : "CONFLICT",
             grund: fehler.grund,
             ...(fehler.belegtVon ? { belegtVon: fehler.belegtVon } : {}),
+            message: fehler.message,
+          });
+          return;
+        }
+        sendError(reply, fehler);
+      }
+    });
+
+    // produkt:20261012:klara-ocr-fundstellen-korrekturen — berichtigter Bildtext des eigenen Kontos.
+    app.get("/api/me/assistenz/bildkorrekturen", async (request, reply) => {
+      const user = await guards.requireUser(request, reply);
+      if (!user) {
+        return;
+      }
+      if (nenntFremdesKonto(request, user.id)) {
+        fremdAbweisen(reply);
+        return;
+      }
+      try {
+        const stand = await bildKorrekturen.lies(user.id);
+        reply.header("cache-control", "no-store");
+        reply.code(200).send(korrekturSicht(stand, can(user.role, "ko.create")));
+      } catch (fehler) {
+        sendError(reply, fehler);
+      }
+    });
+
+    app.put<{ Body: unknown }>("/api/me/assistenz/bildkorrekturen", async (request, reply) => {
+      // Berichtigen ist Bearbeiten: dieselbe Rolle wie für Entwürfe (`ko.create`), sonst 403.
+      const user = await guards.requirePermission("ko.create", request, reply);
+      if (!user) {
+        return;
+      }
+      if (nenntFremdesKonto(request, user.id)) {
+        fremdAbweisen(reply);
+        return;
+      }
+      try {
+        const s = await bildKorrekturen.aendere(user.id, rumpf(request.body));
+        await audit.record({
+          actor: user.id,
+          action: ASSISTENZ_BILDKORREKTUR_GEAENDERT,
+          target: `assistenz-profil:${user.id}`,
+        });
+        reply.header("cache-control", "no-store");
+        reply.code(200).send(korrekturSicht(s, true));
+      } catch (fehler) {
+        if (fehler instanceof BildKorrekturFehler) {
+          reply.code(fehler.status).send({
+            error: fehler.status === 400 ? "VALIDATION" : "CONFLICT",
+            grund: fehler.grund,
             message: fehler.message,
           });
           return;

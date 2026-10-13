@@ -17,3 +17,7 @@ Prüfung: `tests/klara-bildanalyse-ocr/fundstellen.test.ts`.
 
 **OCR-03** (`produkt:20261012:klara-bildanalyse-ocr-kontext-setup`): Kontext für Klara und
 Setup-Schalter in [`OCR-03-KONTEXT-SETUP.md`](./OCR-03-KONTEXT-SETUP.md).
+
+**OCR-E01/E02** (`produkt:20261012:klara-ocr-fundstellen-korrekturen`): Fundstellen am Original und
+dauerhafte Textkorrekturen in
+[`OCR-E01-E02-FUNDSTELLEN-KORREKTUREN.md`](./OCR-E01-E02-FUNDSTELLEN-KORREKTUREN.md).

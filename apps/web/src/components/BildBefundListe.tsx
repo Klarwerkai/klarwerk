@@ -2,6 +2,16 @@
 // und ehrlichem Gesamtstatus. Laufende, teilweise und fehlgeschlagene Analysen erscheinen nie als
 // „vollständig gelesen" (Logik in `lib/bildAutomatik.ts`, `quellenStatus`). Je Bild stehen Text,
 // erkannte Tabelle und Bildinhalt (W02) — oder der konkrete Grund, warum etwas fehlt.
+//
+// produkt:20261012:klara-ocr-fundstellen-korrekturen:
+//   · OCR-E01 — jedes Wort des Bildtexts öffnet sein Original (`originalVon`) mit markierter Stelle
+//     (`BildFundstelleAnsicht`), per Maus und Tastatur; ohne verlässliche Position das ganze Bild.
+//   · OCR-E02 — mit `korrekturQuelle` lässt sich der Text berichtigen, rückgängig machen und auf den
+//     Rohbefund zurücksetzen (`BildTextBerichtigung`); angezeigt wird die wirksame Fassung, der
+//     Rohbefund steht daneben. `null` heißt: diese Fläche hat (noch) keine Quelle, an die eine
+//     Berichtigung gebunden werden könnte — das steht dann da. `onBerichtigt` meldet jede Änderung
+//     des wirksamen Textes eines Bildes (z. B. damit der Dateiimport seinen Text nachführt).
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   BILD_HOECHSTZAHL_JE_QUELLE,
@@ -13,6 +23,12 @@ import {
   type QuellenHinweis,
   type QuellenStatus,
 } from "../lib/bildAutomatik";
+import { markierung } from "../lib/bildFundstelle";
+import { berichtigbar, korrekturQuelleFuer, quellenMitKorrekturen } from "../lib/bildKorrektur";
+import { useBildKorrekturen } from "../lib/bildKorrekturenStand";
+import { BildFundstelleAnsicht, type FundstellenZiel } from "./BildFundstelleAnsicht";
+import { BildTextBerichtigung } from "./BildTextBerichtigung";
+import { BildTextStellen } from "./BildTextStellen";
 
 const STATUS_SCHLUESSEL: Record<BildBefundStatus, string> = {
   wartet: "bildautomatik.status.wartet",
@@ -112,12 +128,92 @@ function ohneBildinhalt(b: BildBefund): boolean {
   return !laeuft && b.bildinhalt.status !== "beschrieben";
 }
 
-/** `lauf` zählt die Eingänge dieser Fläche — ein neuer Eingang derselben Datei ist ein neuer Lauf. */
-export function BildBefundListe({ befund, lauf }: { befund: QuellenBefund; lauf?: number }) {
+function BefundTabelle({ tabelle }: { tabelle: string[][] }): JSX.Element {
   const { t } = useTranslation();
-  if (befund.status === "ohne-bilder") {
+  return (
+    <table data-testid="bild-befund-tabelle" className="mt-1 border-collapse">
+      <caption className="text-left text-muted">{t("bildautomatik.tabelle")}</caption>
+      <tbody>
+        {nummeriert(tabelle).map((zeile) => (
+          <tr key={zeile.nr}>
+            {zeile.zellen.map((zelle) => (
+              <td key={zelle.nr} className="border border-hairline px-1.5 py-0.5">
+                {zelle.text}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** Das Originalbild eines Befunds: data-URL bzw. die berechtigte Adresse, sonst `null`. */
+export type OriginalVon = (befund: BildBefund, index: number) => string | null;
+
+/** Meldet die Änderung des wirksamen Textes eines Bildes (Berichtigung gesetzt, rückgängig, zurück). */
+export type BerichtigtMelder = (neu: string, bisher: string, befund: BildBefund) => void;
+
+/** `lauf` zählt die Eingänge dieser Fläche — ein neuer Eingang derselben Datei ist ein neuer Lauf. */
+export function BildBefundListe({
+  befund: rohBefund,
+  lauf,
+  originalVon,
+  korrekturQuelle,
+  onBerichtigt,
+}: {
+  befund: QuellenBefund;
+  lauf?: number | undefined;
+  originalVon?: OriginalVon | undefined;
+  korrekturQuelle?: string | null | undefined;
+  onBerichtigt?: BerichtigtMelder | undefined;
+}) {
+  const { t } = useTranslation();
+  const korrekturen = useBildKorrekturen(typeof korrekturQuelle === "string");
+  const befund = useMemo(
+    () => quellenMitKorrekturen([rohBefund], korrekturQuelle, korrekturen.korrekturen)[0],
+    [rohBefund, korrekturQuelle, korrekturen.korrekturen],
+  );
+  const [ziel, setZiel] = useState<FundstellenZiel | null>(null);
+  const melderRef = useRef(onBerichtigt);
+  melderRef.current = onBerichtigt;
+  const bisherRef = useRef(new Map<string, string>());
+  // OCR-E02: jede Änderung des wirksamen Textes eines Bildes melden (nicht das erste Erscheinen).
+  useEffect(() => {
+    for (const b of befund?.befunde ?? []) {
+      if (!berichtigbar(b)) {
+        continue;
+      }
+      const schluessel = `${lauf ?? ""}|${b.fundstelle.bild}|${b.inhaltskennung}`;
+      const vorher = bisherRef.current.get(schluessel);
+      bisherRef.current.set(schluessel, b.textGekennzeichnet);
+      if (vorher !== undefined && vorher !== b.textGekennzeichnet) {
+        melderRef.current?.(b.textGekennzeichnet, vorher, b);
+      }
+    }
+  }, [befund, lauf]);
+  if (!befund || befund.status === "ohne-bilder") {
     return null;
   }
+  const ortText = (b: BildBefund): string => {
+    const ort = fundstelleBaustein(b.fundstelle, befund.quelle);
+    return String(t(ort.key, ort.params));
+  };
+  const zeige = (b: BildBefund, index: number, wort: number | null, text: string): void => {
+    const roh = b.korrektur && wort !== null ? (b.woerter?.[wort]?.text ?? null) : null;
+    const original = rohBefund.befunde[index] ?? b;
+    setZiel({
+      schluessel: `${lauf ?? ""}|${index}|${b.inhaltskennung ?? ""}|${wort ?? "-"}|${text}`,
+      src: originalVon ? originalVon(original, index) : null,
+      quelle: befund.quelle,
+      ort: ortText(b),
+      wort: text,
+      roh: roh !== null && roh !== text ? roh : null,
+      markierung: markierung(b, [wort]),
+    });
+  };
+  const mitText = befund.befunde.some((b) => b.textGekennzeichnet.length > 0);
+  const einBerichtigbares = befund.befunde.some(berichtigbar);
   const fertig = befund.befunde.filter(istFertig).length;
   const verloren = befund.nichtGelesen.reduce((n, x) => n + x.anzahl, 0);
   const gesamt = befund.befunde.length + verloren;
@@ -163,8 +259,29 @@ export function BildBefundListe({ befund, lauf }: { befund: QuellenBefund; lauf?
           ) : null}
         </ul>
       ) : null}
+      {mitText ? <p className="mt-1 text-muted-2">{t("bildfundstelle.text.hinweis")}</p> : null}
+      {korrekturQuelle === null && einBerichtigbares ? (
+        <p data-testid="bild-berichtigung-ohne-quelle" className="mt-1 text-muted">
+          {t("bildfundstelle.korrektur.ohneQuelle")}
+        </p>
+      ) : null}
+      {typeof korrekturQuelle === "string" && einBerichtigbares ? (
+        korrekturen.status === "laedt" ? (
+          <p data-testid="bild-berichtigung-stand" className="mt-1 text-muted">
+            {t("bildfundstelle.korrektur.laedt")}
+          </p>
+        ) : korrekturen.status === "fehler" ? (
+          <p data-testid="bild-berichtigung-stand" className="mt-1 text-trust-warn-text">
+            {t("bildfundstelle.korrektur.ladeFehler")}
+          </p>
+        ) : korrekturen.status === "bereit" && !korrekturen.darfBearbeiten ? (
+          <p data-testid="bild-berichtigung-kein-recht" className="mt-1 text-muted">
+            {t("bildfundstelle.korrektur.keinRecht")}
+          </p>
+        ) : null
+      ) : null}
       <ol className="mt-2 space-y-1.5">
-        {befund.befunde.map((b) => {
+        {befund.befunde.map((b, index) => {
           const ort = fundstelleBaustein(b.fundstelle, befund.quelle);
           return (
             <li
@@ -187,33 +304,25 @@ export function BildBefundListe({ befund, lauf }: { befund: QuellenBefund; lauf?
                 <span className="text-muted-2"> · {t("bildautomatik.wiederverwendet")}</span>
               ) : null}
               {b.textGekennzeichnet ? (
-                <pre
-                  data-testid="bild-befund-text"
-                  className="mt-0.5 whitespace-pre-wrap break-words font-sans text-text"
-                >
-                  {b.textGekennzeichnet}
-                </pre>
+                <BildTextStellen
+                  text={b.textGekennzeichnet}
+                  woerter={b.woerter}
+                  onWaehle={(stelle) => zeige(b, index, stelle.wort, stelle.text)}
+                />
               ) : null}
               {b.unsicher.length > 0 ? (
                 <p className="text-trust-warn-text">
                   {t("bildautomatik.unsicher", { n: b.unsicher.length })}
                 </p>
               ) : null}
-              {b.tabelle ? (
-                <table data-testid="bild-befund-tabelle" className="mt-1 border-collapse">
-                  <caption className="text-left text-muted">{t("bildautomatik.tabelle")}</caption>
-                  <tbody>
-                    {nummeriert(b.tabelle).map((zeile) => (
-                      <tr key={zeile.nr}>
-                        {zeile.zellen.map((zelle) => (
-                          <td key={zelle.nr} className="border border-hairline px-1.5 py-0.5">
-                            {zelle.text}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              {b.tabelle ? <BefundTabelle tabelle={b.tabelle} /> : null}
+              {typeof korrekturQuelle === "string" ? (
+                <BildTextBerichtigung
+                  befund={b}
+                  quelle={korrekturQuelleFuer(korrekturQuelle, b.fundstelle)}
+                  stand={korrekturen}
+                  ort={ortText(b)}
+                />
               ) : null}
               {b.bildinhalt.status === "beschrieben" ? (
                 <p data-testid="bild-befund-inhalt" className="mt-0.5 text-text">
@@ -229,6 +338,9 @@ export function BildBefundListe({ befund, lauf }: { befund: QuellenBefund; lauf?
           );
         })}
       </ol>
+      {ziel ? (
+        <BildFundstelleAnsicht key={ziel.schluessel} ziel={ziel} onClose={() => setZiel(null)} />
+      ) : null}
     </section>
   );
 }

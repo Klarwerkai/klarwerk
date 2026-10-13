@@ -1186,6 +1186,19 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "ändert nur die eigenen Kürzel (user.id); fremde Kennung 403, kein KO-Inhalt.",
   },
+  // produkt:20261012:klara-ocr-fundstellen-korrekturen — der eigene berichtigte Bildtext.
+  "GET /api/me/assistenz/bildkorrekturen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur die Bildberichtigungen des eigenen Assistenzprofils (assistenz-profil-routes.ts, " +
+      "user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
+  "PUT /api/me/assistenz/bildkorrekturen": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "ändert nur die eigenen Bildberichtigungen (user.id) und nur mit ko.create; fremde " +
+      "Kennung 403, kein KO-Inhalt.",
+  },
   // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz.
   "GET /api/me/faehigkeiten": {
     urteil: "EIGENER_BESTAND",

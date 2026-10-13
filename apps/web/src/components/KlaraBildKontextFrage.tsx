@@ -16,6 +16,10 @@
 //     Wechselt er, verschwindet die alte Antwort; eine verspätete Rückgabe (Erfolg, Fehler,
 //     Abschluss) einer überholten Anfrage wird verworfen. Ändert sich nur der Text derselben Quelle,
 //     bleibt die Antwort stehen, ist aber sichtbar als „vor der Änderung“ gekennzeichnet.
+//   · OCR-E02 (produkt:20261012:klara-ocr-fundstellen-korrekturen): mit `korrekturQuelle` bekommt
+//     Klara den BERICHTIGTEN Bildtext (dieselbe Bindung an Quelle und Bildfassung wie die Anzeige,
+//     `lib/bildKorrektur.ts`), gekennzeichnet als berichtigt. Ändert sich eine Berichtigung, gilt
+//     eine frühere Antwort nicht mehr (sie beruhte auf dem anderen Text).
 import { Sparkles } from "lucide-react";
 import { useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,6 +27,8 @@ import { ApiError } from "../api/client";
 import { useImageDescribeWennVorhanden } from "../app/ImageDescribeContext";
 import { useAssistenzStand } from "../lib/assistenzProfil";
 import type { BildFundstelle, BildQuelleEingang, QuellenBefund } from "../lib/bildAutomatik";
+import { korrekturFingerabdruck, quellenMitKorrekturen } from "../lib/bildKorrektur";
+import { useBildKorrekturen } from "../lib/bildKorrekturenStand";
 import {
   type Belegstelle,
   type KlaraAuftrag,
@@ -71,8 +77,9 @@ const KNOPF =
 export function KlaraBildKontextFrage({
   kontextSchluessel,
   dokumentTextVon,
-  quellen,
+  quellen: rohQuellen,
   aktuell,
+  korrekturQuelle,
 }: {
   /** Die Quelle und ihr Lauf beim Aufrufer (z. B. `datei:3`, `office:<anhang>:<fassung>`). */
   kontextSchluessel: string;
@@ -81,16 +88,27 @@ export function KlaraBildKontextFrage({
   quellen: readonly QuellenBefund[];
   /** Der Eingang, aus dem die Befunde stammen müssen (andere fallen aus dem Kontext). */
   aktuell?: readonly BildQuelleEingang[] | undefined;
+  /** OCR-E02: die Quelle der Berichtigungen (wie an `BildBefundListe`); sonst gilt der Rohbefund. */
+  korrekturQuelle?: string | null | undefined;
 }): JSX.Element | null {
   const { t } = useTranslation();
   const weg = useImageDescribeWennVorhanden();
   const kontoId = useAssistenzStand().kontoId;
+  const korrekturen = useBildKorrekturen(typeof korrekturQuelle === "string");
+  const quellen = useMemo(
+    () => quellenMitKorrekturen(rohQuellen, korrekturQuelle, korrekturen.korrekturen),
+    [rohQuellen, korrekturQuelle, korrekturen.korrekturen],
+  );
   const feldId = useId();
   const [frage, setFrage] = useState("");
   // Für welchen Kontext gerade eine Anfrage läuft — `null`: keine.
   const [laeuftFuer, setLaeuftFuer] = useState<string | null>(null);
   const [ergebnisRoh, setErgebnis] = useState<Ergebnis | null>(null);
-  const schluessel = antwortKontext(kontoId, kontextSchluessel, quellen);
+  const schluessel = antwortKontext(
+    kontoId,
+    `${kontextSchluessel}::${korrekturFingerabdruck(quellen)}`,
+    quellen,
+  );
   const schluesselRef = useRef(schluessel);
   schluesselRef.current = schluessel;
   const anfrageRef = useRef(0);

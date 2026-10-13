@@ -28,6 +28,7 @@ import {
 } from "../../lib/bildAutomatik";
 import { useBildAutomatikLage } from "../../lib/bildAutomatikEinstellung";
 import { useBildAnalyse } from "../../lib/bildAutomatikLauf";
+import { originalAusEingang } from "../../lib/bildFundstelle";
 import { objectRawHref } from "../../lib/bodyFileLink";
 import { readDocxRich, readPptxRich } from "../../lib/files";
 import { BildBefundListe } from "../BildBefundListe";
@@ -204,13 +205,20 @@ export function OfficeBildBefunde({
     <div data-testid="office-bild-befunde" className="space-y-2">
       {sichtbar.map(({ a, stand }) => (
         <div key={`${a.id}-${a.objectId}`} data-office-bild-befund={a.id}>
-          <BildBefundListe befund={stand.befund} />
+          {/* OCR-E01/E02: Fundstelle im Bild der Fassung; Berichtigungen gehören zum Anhang und
+              gelten je Bildfassung — ein unverändertes Bild einer neuen Fassung behält sie. */}
+          <BildBefundListe
+            befund={stand.befund}
+            originalVon={(b) => originalAusEingang(stand.eingang, b.fundstelle)}
+            korrekturQuelle={`office:${a.id}`}
+          />
           {stand.eingang ? (
             <KlaraBildKontextFrage
               kontextSchluessel={`office:${a.id}:${a.objectId}`}
               dokumentTextVon={() => stand.text ?? ""}
               quellen={[stand.befund]}
               aktuell={[stand.eingang]}
+              korrekturQuelle={`office:${a.id}`}
             />
           ) : null}
         </div>
