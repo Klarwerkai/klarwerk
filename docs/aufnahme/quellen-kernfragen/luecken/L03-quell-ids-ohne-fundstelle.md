@@ -1,14 +1,22 @@
-# L03 · Genannte Quell-IDs haben keine Fundstelle
+# L03 · Ein Teil der genannten Quell-IDs ist nicht ausgewertet
 
 **Betrifft:** die ganze Erhebung.
 
-R-1384 führt unter `altbestand.quell_ids` diese Kennungen: `BELEGLUECKENMANIFEST`, `QUELLENWEGKARTE`,
-`W2-Q1-Q5`, `JOB 797`, `JOB 799`, `JOB 800`, `JOB 801`, `JOB 802`, `JOB 813`, `JOB 856`.
+R-1384 führt unter `altbestand.quell_ids` zehn Kennungen.
 
-**Befund (13.10.2026):** Keine davon kommt im Produktbaum vor. Unbekannt ist auch, ob das
-„Beleglückenmanifest“ schon das Verzeichnis war, das R-1384 verlangt. Die Kennung legt es nahe. Belegt
-ist es nicht.
+**Aufgelöst über den Lesebefund der Quellenhilfe `971decb4`:**
 
-**Schließt sich durch:** Die Kennungen in der alten Ablage auflösen. Was davon zu R-1384 gehört,
-in diese Erhebung übernehmen. Was zu den getrennt geführten Themen gehört (siehe Abgrenzung in der
-`README.md`), dort lassen.
+| Kennung | Quelle |
+|---|---|
+| `W2-Q1-Q5` | `vertrag` (`PLAN-PRO-W2-A276-2-Q1-Q5-SCHLIESSUNGSVERTRAG-301.md`) |
+| `JOB 797` | `job797` (`MAKROAUFTRAG-BASIC2-JOB-797-D1-W2-Q1-Q5-QUELLENMATRIX.md`) |
+| `JOB 813` | `d1`, `d2`, `ben7` |
+
+**Nicht ausgewertet:** In diesem Lauf und im Lesebefund nicht gelesen sind `BELEGLUECKENMANIFEST`,
+`QUELLENWEGKARTE`, `JOB 799`, `JOB 800`, `JOB 801`, `JOB 802` und `JOB 856`. Dasselbe gilt für
+`PLAN-PRO-W2-Q1-Q5-QUELLENMATRIX-READONLY-334.md`, auf den `job797:5` verweist. Ob dort weitere
+Belege oder ein älteres Lückenverzeichnis zu Q1–Q5 stehen, ist offen. Das ist eine Beleglücke, keine
+Zugangshürde: Die Dateien sind nicht ausgewertet. Unzugänglich sind sie nicht.
+
+**Abgrenzung:** Was davon zum Quellenmanifest N1–N8 oder zur Quellenwegkarte des eingefrorenen
+Stands gehört, bleibt dort (`README.md`, „Abgrenzung“).
