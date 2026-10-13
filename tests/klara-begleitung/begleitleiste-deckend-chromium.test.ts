@@ -22,6 +22,12 @@
 //   4. Kontrast Hinweistext/Fläche ≥ 4,5:1 (G10, verständlich und lesbar).
 //   GEGENPROBE: dieselbe alte Deklaration `var(--kw-surface,#fff)` ergibt in derselben Seite einen
 //   durchsichtigen Hintergrund — die Messung hätte den Fehler gefunden.
+//
+// NACHARBEIT 9 (Ben G10, Bildbeleg bildbeleg-000.png): die Assistenzfigur samt Namensschild lag
+// über Hinweis und Tastaturzeile; der Mittelpunkttest sah das nicht. Jetzt: jede Textfläche wird
+// als Rechteck gegen die Figur gelegt UND als 7 × 3-Raster abgetastet. Und es wird belegt, dass
+// die Figur in diesem Aufbau wirklich da ist und die Leiste an der alten Grundposition bedeckt
+// hätte — der Fall ist nachgestellt, nicht umgangen.
 //   BILDBELEG: `test-results/klara-begleitung/begleitleiste-ueber-formular.png`.
 import { mkdirSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -31,6 +37,7 @@ import baueFrisch from "../review26-pruefen-schmal/bau";
 const ANGEBOT = '[data-testid="begleitung-angebot"]';
 const LEISTE = '[data-testid="begleitung-status"]';
 const HINWEIS = '[data-testid="begleitung-hinweis"]';
+const FIGUR = '[data-testid="klara-figur-huelle"]';
 const BILD = "test-results/klara-begleitung/begleitleiste-ueber-formular.png";
 let stand: Stand;
 
@@ -53,9 +60,17 @@ interface Messung {
   hintergrund: string;
   alpha: number;
   themaFlaeche: string;
-  stellen: { name: string; obenInLeiste: boolean; flaecheInLeiste: boolean }[];
+  stellen: {
+    name: string;
+    gefunden: boolean;
+    verdeckt: number;
+    schneidetFigur: boolean;
+    flaecheInLeiste: boolean;
+  }[];
   kontrast: number;
   gegenprobe: string;
+  figurSichtbar: boolean;
+  ohneAusweichenBedeckt: boolean;
 }
 
 const MESSEN = `() => {
@@ -89,19 +104,47 @@ const MESSEN = `() => {
     }
     return null;
   };
+  // Nacharbeit 9: die Figur samt Namensschild. Ein Mittelpunkt reicht nicht (Bens Befund) — jede
+  // Textfläche wird als RECHTECK gegen die Figur gelegt und zusätzlich als 7 × 3-Punktraster
+  // abgetastet: an JEDEM Rasterpunkt muss das oberste Element zur Leiste gehören.
+  const figurEl = document.querySelector('${FIGUR}');
+  const fr = figurEl ? figurEl.getBoundingClientRect() : null;
+  const figurSichtbar = Boolean(fr && fr.width > 0 && fr.height > 0);
+  const ueberschneiden = (a, b) => Boolean(b) && a.right > b.left && a.left < b.right && a.bottom > b.top && a.top < b.bottom;
+  // Wo die Leiste OHNE Ausweichen stünde (unten links, 16 px): hätte die Figur sie dort bedeckt?
+  const grundRect = { left: r.left, right: r.right, top: innerHeight - 16 - r.height, bottom: innerHeight - 16 };
+  const ohneAusweichenBedeckt = figurSichtbar && ueberschneiden(grundRect, fr);
   const stelle = (name, el) => {
-    if (!el) return { name, obenInLeiste: false, flaecheInLeiste: false };
+    if (!el) return { name, gefunden: false, verdeckt: 99, schneidetFigur: true, flaecheInLeiste: false };
     const b = el.getBoundingClientRect();
-    const oben = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
-    const flaeche = oben ? ersteDeckendeFlaeche(oben) : null;
-    return { name, obenInLeiste: Boolean(oben && leiste.contains(oben)), flaecheInLeiste: Boolean(flaeche && leiste.contains(flaeche)) };
+    let verdeckt = 0;
+    for (let i = 0; i < 7; i++) {
+      for (let j = 0; j < 3; j++) {
+        const x = b.left + 2 + ((b.width - 4) * i) / 6;
+        const y = b.top + 2 + ((b.height - 4) * j) / 2;
+        const oben = document.elementFromPoint(x, y);
+        if (!oben || !leiste.contains(oben)) verdeckt++;
+      }
+    }
+    const mitte = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+    const flaeche = mitte ? ersteDeckendeFlaeche(mitte) : null;
+    return {
+      name,
+      gefunden: true,
+      verdeckt,
+      schneidetFigur: figurSichtbar && ueberschneiden(b, fr),
+      flaecheInLeiste: Boolean(flaeche && leiste.contains(flaeche)),
+    };
   };
   const hinweisText = document.querySelector('${HINWEIS} p');
   const knoepfe = [...leiste.querySelectorAll("button")];
   const zweck = [...leiste.querySelectorAll("p")].find((p) => (p.textContent || "").startsWith("Zweck:"));
   const stellen = [
+    stelle("zustand", document.querySelector('[data-testid="begleitung-zustand"]')),
     stelle("zweck", zweck),
+    stelle("tastatur", document.querySelector('[data-testid="begleitung-tastatur"]')),
     stelle("hinweis", hinweisText),
+    stelle("hinweisfeld", document.querySelector('${HINWEIS}')),
     ...knoepfe.map((kn) => stelle("knopf:" + (kn.textContent || "").trim(), kn)),
   ];
 
@@ -112,7 +155,10 @@ const MESSEN = `() => {
   const schrift = kanaele(getComputedStyle(hinweisText).color) ?? { r: 255, g: 255, b: 255 };
   const [hell, dunkel] = [lum(k), lum(schrift)].sort((x, y) => y - x);
   const kontrast = (hell + 0.05) / (dunkel + 0.05);
-  return { ueberdeckteFelder, hintergrund, alpha: k.a, themaFlaeche, stellen, kontrast, gegenprobe };
+  return {
+    ueberdeckteFelder, hintergrund, alpha: k.a, themaFlaeche, stellen, kontrast, gegenprobe,
+    figurSichtbar, ohneAusweichenBedeckt,
+  };
 }`;
 
 describe("BPA-05 · Begleitleiste über dem freigegebenen Formular (gebaute App, 390 px)", () => {
@@ -144,11 +190,12 @@ describe("BPA-05 · Begleitleiste über dem freigegebenen Formular (gebaute App,
         `() => { document.getElementById("pf-anschluesse").scrollIntoView({ block: "end" }); return true; }`,
       ),
     );
-    await page.waitForTimeout(200);
+    // Die Leiste misst die Figur nach jedem Rendern und im 400-ms-Takt; danach steht sie fest.
+    await page.waitForTimeout(1000);
     messung = await page.evaluate<Messung>(fn(MESSEN));
     mkdirSync("test-results/klara-begleitung", { recursive: true });
     await page.screenshot({ path: BILD });
-    console.log(`BPA-05 Nacharbeit 5 · Messung ${JSON.stringify(messung)} · Bild ${BILD}`);
+    console.log(`BPA-05 Nacharbeit 9 · Messung ${JSON.stringify(messung)} · Bild ${BILD}`);
   }, 300_000);
 
   afterAll(async () => {
@@ -165,11 +212,22 @@ describe("BPA-05 · Begleitleiste über dem freigegebenen Formular (gebaute App,
     expect(messung.hintergrund).not.toBe("rgba(0, 0, 0, 0)");
   });
 
-  it("Zweck, Hinweis und Knöpfe liegen oben und auf der deckenden Fläche der Leiste", () => {
-    expect(messung.stellen.length).toBeGreaterThanOrEqual(4);
+  it("Zustand, Zweck, Tastaturzeile, Hinweis und Knöpfe sind an JEDEM Rasterpunkt oben und deckend", () => {
+    expect(messung.stellen.length).toBeGreaterThanOrEqual(7);
     for (const s of messung.stellen) {
-      expect(s.obenInLeiste, `${s.name}: oberstes Element gehört nicht zur Leiste`).toBe(true);
+      expect(s.gefunden, `${s.name}: nicht gefunden`).toBe(true);
+      expect(s.verdeckt, `${s.name}: Rasterpunkte von Fremdem bedeckt`).toBe(0);
       expect(s.flaecheInLeiste, `${s.name}: keine deckende Fläche der Leiste darunter`).toBe(true);
+    }
+  });
+
+  it("die Assistenzfigur überdeckt keine Textfläche der Leiste (G10, Nacharbeit 9)", () => {
+    // Die Figur ist in diesem Aufbau wirklich da, und an der alten Grundposition hätte sie die
+    // Leiste bedeckt — der Fall aus Bens Bildbeleg ist also nachgestellt, nicht umgangen.
+    expect(messung.figurSichtbar).toBe(true);
+    expect(messung.ohneAusweichenBedeckt).toBe(true);
+    for (const s of messung.stellen) {
+      expect(s.schneidetFigur, `${s.name}: überschneidet die Assistenzfigur`).toBe(false);
     }
   });
 

@@ -33,7 +33,7 @@
 // zweites Mal geprüft, weil sie sich während des asynchronen Starts geändert haben können. Die
 // Leiste sagt die Sperrerkennung erst zu, wenn der Melder läuft; scheitert er, bleibt bzw. wird
 // die Begleitung pausiert und der Fehler steht da. Während einer Pause läuft kein Melder.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "../../app/AuthContext";
 import { useAssistenzT } from "../../lib/assistenzProfil";
 import {
@@ -68,6 +68,7 @@ import {
   verwirf,
   wiederherstellen,
 } from "./kern";
+import { GRUND_UNTEN, type Platz, platzNebenFigur } from "./platz";
 
 const FREIGABE_SCHLUESSEL = "klarwerk.begleitung.freigabe";
 const NOTIZ_PRAEFIX = "klarwerk.begleitung.notizen.";
@@ -82,8 +83,16 @@ const TAKT_MS = 5000;
 // der App (`bg-surface`, `border-hairline`, `text-text` = `rgb(var(--kw-…))` in
 // `tailwind.config.ts`) eine deckende Fläche in jedem Theme; gemessen im echten Chromium an der
 // gebauten App (`tests/klara-begleitung/begleitleiste-deckend-chromium.test.ts`).
+//
+// Nacharbeit 9 (Ben G10, Bildbeleg bei 390 × 700): die Assistenzfigur lag über Hinweis und
+// Tastaturzeile. Der Abstand nach unten und die Höchsthöhe kommen jetzt aus `platz.ts` — gemessen
+// an der tatsächlichen Figur; reicht der Platz nicht, scrollt die Leiste statt überdeckt zu werden.
 const RAHMEN =
-  "fixed bottom-4 left-4 z-40 max-w-sm rounded-lg border border-hairline bg-surface p-3 text-sm text-text shadow-lg";
+  "fixed left-4 z-40 max-w-sm overflow-y-auto rounded-lg border border-hairline bg-surface p-3 text-sm text-text shadow-lg";
+/** Die Hülle der Assistenzfigur samt Namensschild (`klara-vorschau/KlaraVorschau.tsx`). */
+const FIGUR = '[data-testid="klara-figur-huelle"]';
+/** Wie oft die Lage der verschiebbaren Figur nachgemessen wird, solange die Leiste steht. */
+const PLATZ_TAKT_MS = 400;
 
 /** Verborgener Tab: der Nutzer ist nirgends im Bereich — es wird nichts gelesen. */
 function nirgends(konto: string): KontextEreignis {
@@ -201,6 +210,40 @@ export function KlaraBegleitung({
   const melderBeenden = useRef<(() => void) | null>(null);
   /** Jeder Einrichtungsversuch bekommt eine Nummer; ein überholter Versuch wirkt nicht mehr. */
   const melderVersuch = useRef(0);
+  const leisteRef = useRef<HTMLElement | null>(null);
+  const [platz, setPlatz] = useState<Platz>({ unten: GRUND_UNTEN, maxHoehe: 10_000 });
+
+  // Der Figur ausweichen (G10): nach jedem Rendern (die Leiste erscheint oder wächst), bei
+  // Größenänderung und im Takt, weil die Figur verschiebbar ist. Ohne sichtbare Leiste wird nichts
+  // gemessen; ein unveränderter Platz löst kein neues Rendern aus.
+  const messePlatz = useCallback((): void => {
+    const leiste = leisteRef.current;
+    if (!leiste) {
+      return;
+    }
+    const figur = document.querySelector<HTMLElement>(FIGUR);
+    const neu = platzNebenFigur(
+      leiste.getBoundingClientRect(),
+      figur ? figur.getBoundingClientRect() : null,
+      window.innerHeight,
+    );
+    setPlatz((alt) => (alt.unten === neu.unten && alt.maxHoehe === neu.maxHoehe ? alt : neu));
+  }, []);
+  useLayoutEffect(() => {
+    messePlatz();
+  });
+  useEffect(() => {
+    const takt = window.setInterval(messePlatz, PLATZ_TAKT_MS);
+    window.addEventListener("resize", messePlatz);
+    return () => {
+      window.clearInterval(takt);
+      window.removeEventListener("resize", messePlatz);
+    };
+  }, [messePlatz]);
+  const lageDerLeiste = {
+    ref: leisteRef,
+    style: { bottom: platz.unten, maxHeight: platz.maxHoehe },
+  };
 
   // Nur die Freigabe wird gesichert — nie Kontext, Hinweis oder Feldwerte.
   const freigabe = sicherung(b);
@@ -564,6 +607,7 @@ export function KlaraBegleitung({
     }
     return (
       <section
+        {...lageDerLeiste}
         aria-label={t("begleitung.region")}
         className={RAHMEN}
         data-testid="begleitung-angebot"
@@ -615,6 +659,7 @@ export function KlaraBegleitung({
       b.grund === "abgelaufen" ? "begleitung.beendet.abgelaufen" : "begleitung.beendet.stopp";
     return (
       <section
+        {...lageDerLeiste}
         aria-label={t("begleitung.region")}
         className={RAHMEN}
         data-testid="begleitung-beendet"
@@ -632,7 +677,12 @@ export function KlaraBegleitung({
   const f = b.freigabe as Freigabe;
   const info = auskunft(b, notizen);
   return (
-    <section aria-label={t("begleitung.region")} className={RAHMEN} data-testid="begleitung-status">
+    <section
+      {...lageDerLeiste}
+      aria-label={t("begleitung.region")}
+      className={RAHMEN}
+      data-testid="begleitung-status"
+    >
       <output aria-live="polite" className="block font-semibold" data-testid="begleitung-zustand">
         {t(aktiv ? "begleitung.status.aktiv" : "begleitung.status.pausiert", {
           bereich: f.bereich.bezeichnung,
@@ -674,7 +724,9 @@ export function KlaraBegleitung({
           {t("begleitung.knopf.stopp")}
         </button>
       </div>
-      <p className="mt-1 text-xs">{t("begleitung.tastatur")}</p>
+      <p className="mt-1 text-xs" data-testid="begleitung-tastatur">
+        {t("begleitung.tastatur")}
+      </p>
       {meldung ? (
         <p role="alert" className="mt-1 text-xs">
           {meldung}

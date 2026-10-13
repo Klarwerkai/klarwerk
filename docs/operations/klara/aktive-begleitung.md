@@ -25,6 +25,13 @@ Die Leiste ist eine deckende Fläche aus den Themetoken der App (`bg-surface`, `
 diese Farbe, und die Leiste war durchsichtig. Die Deckkraft wird im echten Chromium an der
 gebauten App gemessen (`tests/klara-begleitung/begleitleiste-deckend-chromium.test.ts`).
 
+Die Assistenzfigur ist verschiebbar und liegt eine Ebene über der Leiste. Die Leiste misst deshalb
+die Figur nach jedem Rendern, bei Größenänderung und alle 400 ms (`platz.ts`). Würde die Figur sie
+an der Grundposition unten links bedecken, rückt die Leiste über die Figur. Reicht der Platz dort
+nicht, wird ihre Höhe begrenzt, und sie scrollt. Der Chromium-Test prüft bei 390 × 700, dass keine
+Textfläche der Leiste die Figur schneidet und dass jede Textfläche auf einem 7 × 3-Punktraster
+frei ist.
+
 ## Einen Vorgang einrichten
 
 Ein Vorgang ist nur dann begleitbar, wenn seine Fläche sich selbst kennzeichnet:
