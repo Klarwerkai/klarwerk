@@ -1,0 +1,76 @@
+{
+  "zweck": "Manifest der normativen Arbeitsquellen. Der Waechter tests/normative-quellen/manifest-waechter.test.ts erhebt den normativen Bereich selbst und vergleicht ihn beidseitig mit diesen Zeilen. Eine Zeile aendert sich nur mit einer bewussten Manifestentscheidung im selben Aenderungssatz wie die Datei.",
+  "mass": "zeilen = Anzahl Zeilenumbrueche (wc -l), bytes = Dateigroesse (wc -c), gitBlob = voller Datei-Hash im Format von git hash-object (SHA-1 ueber 'blob <bytes>\\0' und den unveraenderten Dateiinhalt).",
+  "eintraege": [
+    {
+      "pfad": "AGENTS.md",
+      "rolle": "Einstieg fuer Coding-Agenten, verweist auf CLAUDE.md",
+      "zeilen": 7,
+      "bytes": 654,
+      "gitBlob": "8f7275d84970a9ebdef400a29b30855a15ebf8d9"
+    },
+    {
+      "pfad": "CLAUDE.md",
+      "rolle": "Von Pedi freigegebener Ablauf: Auftrag bis zur Lieferung",
+      "zeilen": 36,
+      "bytes": 3965,
+      "gitBlob": "2575c83bc7397eaa5350b61a52b42b682c1758c9"
+    },
+    {
+      "pfad": "harness/00-principles.md",
+      "rolle": "Grundsaetze, verwiesen von CLAUDE.md",
+      "zeilen": 8,
+      "bytes": 1066,
+      "gitBlob": "f3f1ce6dc5ff2f85f47f58ca9f0913ba59df9fdd"
+    },
+    {
+      "pfad": "harness/10-domain-glossary.md",
+      "rolle": "Fachbegriffe",
+      "zeilen": 31,
+      "bytes": 1792,
+      "gitBlob": "006114f47555c38edd357da3f08310ba4f0a18a4"
+    },
+    {
+      "pfad": "harness/20-system-architecture.md",
+      "rolle": "Systemaufbau",
+      "zeilen": 35,
+      "bytes": 2025,
+      "gitBlob": "57cb4de7840508860750965c562e1d4dc53a67e1"
+    },
+    {
+      "pfad": "harness/30-coding-guidelines.md",
+      "rolle": "Programmierregeln",
+      "zeilen": 9,
+      "bytes": 721,
+      "gitBlob": "c10aac3aee34f3a28f2effb2dc52a21b104c58cc"
+    },
+    {
+      "pfad": "harness/40-testing-strategy.md",
+      "rolle": "Pruefauswahl, verwiesen von CLAUDE.md",
+      "zeilen": 11,
+      "bytes": 1602,
+      "gitBlob": "c5d1f424b96cc10cc7e50c8e2f80fb68bab6e922"
+    },
+    {
+      "pfad": "harness/70-security-and-permissions.md",
+      "rolle": "Sicherheit und Rechte",
+      "zeilen": 8,
+      "bytes": 604,
+      "gitBlob": "b4808c47e8a830a86e7b66fa309908d02e1cd1ef"
+    },
+    {
+      "pfad": "harness/80-definition-of-done.md",
+      "rolle": "Abschluss, verwiesen von CLAUDE.md",
+      "zeilen": 12,
+      "bytes": 1082,
+      "gitBlob": "a5b852aa8d06852a94ff49ec958931a6dbb1bab8"
+    },
+    {
+      "pfad": "harness/90-correction-log.md",
+      "rolle": "Korrekturprotokoll",
+      "zeilen": 18,
+      "bytes": 3792,
+      "gitBlob": "b905b1280dfe3e93638ca91167634fc5fa2396c1"
+    }
+  ]
+}
