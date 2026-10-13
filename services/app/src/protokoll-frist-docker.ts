@@ -231,43 +231,65 @@ function istErsatzgeruest(eintrag: Record<string, unknown>): boolean {
 }
 
 /**
- * Die älteste Zeitangabe einer Zeile MIT Inhalt (für den Bericht). Geschwärzte Zeilen und Leerraum
- * zählen nicht — sie tragen nur noch ihre Zeit. `inhalt: false`: keine Zeile mit Inhalt.
+ * Das Inhaltsalter EINER Datei für den Bericht — über ALLE Zeilen (Ben, Nacharbeit 23).
+ *
+ *   zeit        die ÄLTESTE gültige Zeitangabe einer Zeile mit Inhalt (Minimum, nicht die erste —
+ *               eine junge Zeile darf eine spätere alte nicht verdecken); `null`: keine.
+ *   inhalt      ob überhaupt eine Zeile Inhalt trägt. Geschwärzte Gerüste und Leerraum zählen nicht.
+ *   ungeklaert  Inhaltsreste OHNE gültige Zeitangabe: unlesbare Zeilen, Zeilen ohne `time` und eine
+ *               unvollständige Endzeile (ohne abschliessenden Zeilenumbruch — Docker schreibt sie
+ *               womöglich gerade weiter; die Pflege lässt sie deshalb unberührt). Ihr Alter ist
+ *               unbekannt; der Bericht bestätigt die Frist dann NICHT (`fristBestaetigt`).
  */
-function aeltesteInhaltszeile(pfad: string): { zeit: number | null; inhalt: boolean } {
+function inhaltsalterDerDatei(pfad: string): {
+  zeit: number | null;
+  inhalt: boolean;
+  ungeklaert: number;
+} {
+  const zeilen = readFileSync(pfad, "utf8").split("\n");
+  // Was nach dem letzten Zeilenumbruch steht, ist eine unvollständige Endzeile.
+  const endzeile = zeilen.pop() ?? "";
+  let aeltestes: number | null = null;
   let inhalt = false;
-  for (const zeile of readFileSync(pfad, "utf8").split("\n")) {
+  let ungeklaert = 0;
+  for (const zeile of zeilen) {
     if (zeile.trim().length === 0) {
       continue;
     }
+    let eintrag: Record<string, unknown> | null = null;
     try {
       const wert: unknown = JSON.parse(zeile);
-      if (wert === null || typeof wert !== "object" || Array.isArray(wert)) {
-        inhalt = true;
-        continue;
-      }
-      const eintrag = wert as Record<string, unknown>;
-      // Nur das vollständig geprüfte Ersatzgerüst gilt als inhaltsfrei (Nacharbeit 22).
-      if (istErsatzgeruest(eintrag)) {
-        continue;
-      }
-      inhalt = true;
-      // Docker schreibt `time` als ISO-Angabe, pino (Diagnosekopien) als Millisekunden.
-      const zeitWert = eintrag.time;
-      const zeit =
-        typeof zeitWert === "string"
-          ? Date.parse(zeitWert)
-          : typeof zeitWert === "number"
-            ? zeitWert
-            : Number.NaN;
-      if (Number.isFinite(zeit)) {
-        return { zeit, inhalt };
-      }
+      eintrag =
+        wert !== null && typeof wert === "object" && !Array.isArray(wert)
+          ? (wert as Record<string, unknown>)
+          : null;
     } catch {
-      inhalt = true;
+      eintrag = null;
+    }
+    // Nur das vollständig geprüfte Ersatzgerüst gilt als inhaltsfrei (Nacharbeit 22).
+    if (eintrag !== null && istErsatzgeruest(eintrag)) {
+      continue;
+    }
+    inhalt = true;
+    // Docker schreibt `time` als ISO-Angabe, pino (Diagnosekopien) als Millisekunden.
+    const zeitWert = eintrag?.time;
+    const zeit =
+      typeof zeitWert === "string"
+        ? Date.parse(zeitWert)
+        : typeof zeitWert === "number"
+          ? zeitWert
+          : Number.NaN;
+    if (Number.isFinite(zeit)) {
+      aeltestes = aeltestes === null ? zeit : Math.min(aeltestes, zeit);
+    } else {
+      ungeklaert += 1;
     }
   }
-  return { zeit: null, inhalt };
+  if (endzeile.trim().length > 0) {
+    inhalt = true;
+    ungeklaert += 1;
+  }
+  return { zeit: aeltestes, inhalt, ungeklaert };
 }
 
 function leseKonfiguration(verzeichnis: string): DockerKonfiguration | null {
@@ -309,11 +331,18 @@ export interface ContainerBericht {
  *                       Inhaltszeitpunkt ist UNBEKANNT.
  *   ohneZeitangabeDateidatumTage  für genau diese: das Alter des älteren Dateidatums (Änderung/
  *                       Anlage) — ein Hilfswert, ausdrücklich keine Inhaltszeit.
+ *   ungeklaerteReste    Inhaltszeilen ohne gültige Zeitangabe ÜBER ALLE Dateien — unlesbar, ohne
+ *                       `time` oder eine unvollständige Endzeile —, auch wenn andere Zeilen datiert
+ *                       sind (Nacharbeit 23).
+ *   fristBestaetigt     nur wahr, wenn keine Inhaltszeile 14 Tage oder älter ist UND nichts ungeklärt
+ *                       ist (keine Datei ohne Zeitangabe, kein ungeklärter Rest).
  */
 export interface InhaltsAlter {
   aeltesteZeileTage: number | null;
   ohneZeitangabe: number;
   ohneZeitangabeDateidatumTage: number | null;
+  ungeklaerteReste: number;
+  fristBestaetigt: boolean;
 }
 
 /**
@@ -339,13 +368,16 @@ export function berichteDockerProtokolle(opts: {
   const aeltestes = (pfade: string[]): InhaltsAlter => {
     const zeilen: number[] = [];
     const daten: number[] = [];
+    let ungeklaerteReste = 0;
     for (const pfad of pfade) {
       const stand = statSync(pfad);
       if (stand.size === 0) {
         continue; // leer: kein Protokollinhalt
       }
       // Nacharbeit 20: geschwärzte Zeilen tragen nur noch ihre Zeit — sie zählen nicht als Inhalt.
-      const { zeit, inhalt } = aeltesteInhaltszeile(pfad);
+      // Nacharbeit 23: ALLE Zeilen, das Minimum, und ungeklärte Reste gesondert.
+      const { zeit, inhalt, ungeklaert } = inhaltsalterDerDatei(pfad);
+      ungeklaerteReste += ungeklaert;
       if (zeit !== null) {
         zeilen.push(zeit);
       } else if (inhalt) {
@@ -354,10 +386,16 @@ export function berichteDockerProtokolle(opts: {
         );
       }
     }
+    const aeltesteZeileTage = zeilen.length === 0 ? null : tage(Math.min(...zeilen));
     return {
-      aeltesteZeileTage: zeilen.length === 0 ? null : tage(Math.min(...zeilen)),
+      aeltesteZeileTage,
       ohneZeitangabe: daten.length,
       ohneZeitangabeDateidatumTage: daten.length === 0 ? null : tage(Math.min(...daten)),
+      ungeklaerteReste,
+      fristBestaetigt:
+        (aeltesteZeileTage === null || aeltesteZeileTage < PROTOKOLL_FRIST_TAGE) &&
+        daten.length === 0 &&
+        ungeklaerteReste === 0,
     };
   };
   const container: (ContainerBericht & { aktiveDatei: InhaltsAlter; rotationen: InhaltsAlter })[] =

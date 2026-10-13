@@ -491,12 +491,18 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
       aeltesteZeileTage: null,
       ohneZeitangabe: 0,
       ohneZeitangabeDateidatumTage: null,
+      ungeklaerteReste: 0,
+      fristBestaetigt: true,
     });
     expect(appNachher?.aktiveDatei.aeltesteZeileTage).toBe(20);
+    // Die aktive Datei (laufend, Docker hält sie) trägt noch 20 Tage alten Inhalt: NICHT bestätigt.
+    expect(appNachher?.aktiveDatei.fristBestaetigt).toBe(false);
     expect(nachher.diagnose).toEqual({
       aeltesteZeileTage: null,
       ohneZeitangabe: 0,
       ohneZeitangabeDateidatumTage: null,
+      ungeklaerteReste: 0,
+      fristBestaetigt: true,
     });
     // Die fremden Container: im Bericht unverändert, auf der Platte unberührt.
     expect(nachher.container.filter((c) => c.id !== id)).toEqual(fremde);
@@ -528,11 +534,15 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
       aeltesteZeileTage: 0,
       ohneZeitangabe: 0,
       ohneZeitangabeDateidatumTage: null,
+      ungeklaerteReste: 0,
+      fristBestaetigt: true,
     });
     expect(neu.container[0]?.rotationen).toEqual({
       aeltesteZeileTage: null,
       ohneZeitangabe: 0,
       ohneZeitangabeDateidatumTage: null,
+      ungeklaerteReste: 0,
+      fristBestaetigt: true,
     });
 
     // Eine Datei ohne erkennbare Zeitangabe: nicht als Inhaltsalter, sondern ausdrücklich unbekannt.
@@ -542,6 +552,8 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
       aeltesteZeileTage: null,
       ohneZeitangabe: 1,
       ohneZeitangabeDateidatumTage: 20,
+      ungeklaerteReste: 1,
+      fristBestaetigt: false,
     });
 
     // Gegenprobe: Liegt im Inhalt wirklich eine alte Zeile, meldet der Bericht sie.
@@ -929,11 +941,83 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     writeFileSync(aktiv, dockerZeile(JETZT - 20 * TAG, "alt") + halb.slice(0, 30));
     const docker = openSync(aktiv, "a");
     pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    // Nacharbeit 23: der Bericht bestätigt die Frist NICHT, solange der unvollständige Rest steht.
+    const mittendrin = berichteDockerProtokolle({
+      ordner: wurzel,
+      auswahl: KLARWERK,
+      jetzt: JETZT,
+    });
+    expect(mittendrin.container[0]?.aktiveDatei).toMatchObject({
+      ungeklaerteReste: 1,
+      fristBestaetigt: false,
+    });
     // Docker schreibt den Rest der Zeile weiter — sie ist danach vollständig und unverändert.
     writeSync(docker, halb.slice(30));
     closeSync(docker);
     expect(readFileSync(aktiv, "utf8").endsWith(halb)).toBe(true);
     expect(dockerLesen(aktiv).map((e) => e.log.trim())).toEqual(["", "halb"]);
+    // Jetzt vollständig: der nächste Lauf schwärzt sie, und erst dann ist die Frist bestätigt.
+    pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    const danach = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(danach.container[0]?.aktiveDatei).toMatchObject({
+      aeltesteZeileTage: null,
+      ungeklaerteReste: 0,
+      fristBestaetigt: true,
+    });
+  });
+
+  // Ben, Nacharbeit 23: der Bericht endete bei der ERSTEN datierten Inhaltszeile — eine junge Zeile
+  // verdeckte spätere alte und einen unvollständigen Enddatensatz mit 20 Tage altem Inhalt.
+  it("Bericht über ALLE Zeilen: junge Zeile verdeckt weder spätere alte noch einen unvollständigen Rest", () => {
+    const wurzel = protokollordner();
+    const dockerZeile = (zeit: number, text: string) =>
+      `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    const ordner = join(wurzel, id);
+    mkdirSync(ordner);
+    // Laufend — die Pflege schwärzt hier nichts; gemessen wird allein der Bericht.
+    writeFileSync(join(ordner, "config.v2.json"), appKonfiguration());
+    const aktiv = join(ordner, `${id}-json.log`);
+
+    // (a) genau Bens Fall: junge vollständige Zeile, dann ein unvollständiger Rest mit altem Inhalt.
+    writeFileSync(
+      aktiv,
+      dockerZeile(JETZT - TAG, "jung") + dockerZeile(JETZT - 20 * TAG, "alter Rest").slice(0, 40),
+    );
+    const a = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(a.container[0]?.aktiveDatei).toEqual({
+      aeltesteZeileTage: 1,
+      ohneZeitangabe: 0,
+      ohneZeitangabeDateidatumTage: null,
+      ungeklaerteReste: 1,
+      fristBestaetigt: false,
+    });
+
+    // (b) junge Zeile zuerst, eine ältere danach: das MINIMUM zählt, nicht die erste.
+    writeFileSync(aktiv, dockerZeile(JETZT - TAG, "jung") + dockerZeile(JETZT - 16 * TAG, "alt"));
+    const b = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(b.container[0]?.aktiveDatei).toMatchObject({
+      aeltesteZeileTage: 16,
+      ungeklaerteReste: 0,
+      fristBestaetigt: false,
+    });
+
+    // (c) datierte Zeilen und eine unlesbare dazwischen: der Rest zählt trotz gültiger Zeiten.
+    writeFileSync(
+      aktiv,
+      `${dockerZeile(JETZT - TAG, "jung")}{"log":"kaputt\n${dockerZeile(JETZT - 2 * TAG, "auch jung")}`,
+    );
+    const c = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(c.container[0]?.aktiveDatei).toMatchObject({
+      aeltesteZeileTage: 2,
+      ungeklaerteReste: 1,
+      fristBestaetigt: false,
+    });
+
+    // (d) Gegenprobe: alles jung und vollständig — erst dann bestätigt.
+    writeFileSync(aktiv, dockerZeile(JETZT - TAG, "jung") + dockerZeile(JETZT - 2 * TAG, "jung"));
+    const d = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(d.container[0]?.aktiveDatei.fristBestaetigt).toBe(true);
   });
 
   it("Schwärzen: kurze Zeilen und unlesbare Zeilen bleiben gleich lang und für Docker lesbar", () => {
