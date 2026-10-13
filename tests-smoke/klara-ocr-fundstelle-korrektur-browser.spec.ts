@@ -710,8 +710,18 @@ async function befundFertig(page: Page, bereich: string): Promise<void> {
   });
 }
 
-/** Klickt die Stelle `wort` in `zeile` und misst Bild und Markierung der Ansicht. */
-async function fundstelleIn(page: Page, zeileL: Locator, wort: string, b: GezeichnetesBild) {
+/**
+ * Klickt die Stelle `wort` in `zeile` und misst Bild und Markierung der Ansicht. `imBild` ist das
+ * Wort, wie es GEZEICHNET wurde — nach einer Berichtigung („LAGER“) liegt die Markierung auf dem
+ * ursprünglich erkannten Wort („LAGFR“).
+ */
+async function fundstelleIn(
+  page: Page,
+  zeileL: Locator,
+  wort: string,
+  b: GezeichnetesBild,
+  imBild: string = wort,
+) {
   const sicher = wort.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   await zeileL
     .getByTestId("bild-befund-stelle")
@@ -724,7 +734,7 @@ async function fundstelleIn(page: Page, zeileL: Locator, wort: string, b: Gezeic
   const markierung = await rechteck(page.getByTestId("bild-fundstelle-markierung"));
   const ergebnis = {
     gleichesBild: src.split(",")[1] === b.png.toString("base64"),
-    liegtAuf: liegtAuf(markierung, soll(bild, b, gezeichnet(b, wort), 0)),
+    liegtAuf: liegtAuf(markierung, soll(bild, b, gezeichnet(b, imBild), 0)),
   };
   await schliessen(page);
   return ergebnis;
@@ -810,7 +820,7 @@ test("OCR-E01/E02 · H06 Office im Artikel · Fundstelle und Berichtigung am Pow
     await page.reload();
     await oeffnen();
     const nachNeuladen = (await zeileL.getByTestId("bild-befund-text").textContent()) ?? "";
-    const berichtigtStelle = await fundstelleIn(page, zeileL, "LAGER", bild);
+    const berichtigtStelle = await fundstelleIn(page, zeileL, "LAGER", bild, "LAGFR");
 
     // Klara zu diesem Anhang: die Fundstelle der Frage trägt die Berichtigung.
     const panel = page.locator(bereich).getByTestId("klara-bild-kontext");
