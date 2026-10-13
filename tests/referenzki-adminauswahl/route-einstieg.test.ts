@@ -339,13 +339,13 @@ describe("REF-03 · Wirkung im tatsächlichen Prüflauf (K3/K6)", () => {
     const d = pruefer();
     waehle.mockImplementation(() => ({ pruefer: d.p }));
     vi.spyOn(services.reasoner, "externeVerarbeitungErlaubt").mockReturnValue(true);
-    const geprueft = await app.inject({
-      method: "POST",
-      url: "/api/ask",
-      headers: admin,
-      payload: { question: `${FRAGE} Bitte genau.` },
-    });
-    expect(geprueft.json().referenzpruefung.status).toBe("geprueft");
+    // Dieselbe Frage: eine abgewandelte Frage („… Bitte genau.") deckt der fiktive Bestand nicht
+    // mehr ab — sie bliebe unbeantwortet und trüge dann gar keine Referenzprüfung (Nacharbeit 2).
+    // Es gibt keinen Cachebeleg, der greifen könnte: die beiden Läufe davor waren „nicht prüfbar".
+    const geprueft = await fragen();
+    expect(geprueft.result.answered).toBe(true);
+    expect(geprueft.referenzpruefung.status).toBe("geprueft");
+    expect(d.aufrufe()).toBe(1);
   });
 });
 
