@@ -28,7 +28,11 @@ import { useImageDescribeWennVorhanden } from "../app/ImageDescribeContext";
 import { useAssistenzStand } from "../lib/assistenzProfil";
 import type { BildFundstelle, BildQuelleEingang, QuellenBefund } from "../lib/bildAutomatik";
 import { korrekturFingerabdruck, quellenMitKorrekturen } from "../lib/bildKorrektur";
-import { useBildKorrekturen } from "../lib/bildKorrekturenStand";
+import {
+  korrekturStandBestaetigt,
+  useBildKorrekturen,
+  wiederholeBildKorrekturen,
+} from "../lib/bildKorrekturenStand";
 import {
   type Belegstelle,
   type KlaraAuftrag,
@@ -135,10 +139,15 @@ export function KlaraBildKontextFrage({
     return null;
   }
   const modell = Boolean(weg?.frage) && weg?.frageVerfuegbar !== false;
+  // Nacharbeit 2 (Bens Befund „Ladestatus“): mit Korrekturquelle wird erst mit BESTÄTIGTEM
+  // Korrekturstand gefragt. Lädt er noch oder ist er fehlgeschlagen, sind Frage und Zusammenfassung
+  // gesperrt — sonst ginge unbemerkt der Rohbefund an Klara.
+  const korrekturAktiv = typeof korrekturQuelle === "string";
+  const korrekturGesperrt = korrekturAktiv && !korrekturStandBestaetigt(korrekturen);
 
   const stelle = async (auftrag: KlaraAuftrag): Promise<void> => {
     const f = frage.trim();
-    if (auftrag === "frage" && f.length === 0) {
+    if ((auftrag === "frage" && f.length === 0) || korrekturGesperrt) {
       return;
     }
     // Der Stand JETZT — die Antwort wird mit genau ihm gekennzeichnet.
@@ -238,7 +247,7 @@ export function KlaraBildKontextFrage({
         <button
           type="button"
           data-testid="klara-bild-kontext-fragen"
-          disabled={laeuft || frage.trim().length === 0}
+          disabled={laeuft || korrekturGesperrt || frage.trim().length === 0}
           onClick={() => void stelle("frage")}
           className={KNOPF}
         >
@@ -247,13 +256,37 @@ export function KlaraBildKontextFrage({
         <button
           type="button"
           data-testid="klara-bild-kontext-zusammenfassen"
-          disabled={laeuft}
+          disabled={laeuft || korrekturGesperrt}
           onClick={() => void stelle("zusammenfassung")}
           className={KNOPF}
         >
           {t("klarabildkontext.frage.zusammenfassen")}
         </button>
       </div>
+      {korrekturAktiv && korrekturen.status === "laedt" ? (
+        <output data-testid="klara-bild-kontext-korrektur-wartet" className="mt-2 block text-muted">
+          {t("bildfundstelle.klara.wartet")}
+        </output>
+      ) : null}
+      {korrekturAktiv && korrekturen.status === "fehler" ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <p
+            data-testid="klara-bild-kontext-korrektur-fehler"
+            role="alert"
+            className="text-trust-crit-text"
+          >
+            {t("bildfundstelle.klara.ladeFehler")}
+          </p>
+          <button
+            type="button"
+            data-testid="klara-bild-kontext-korrektur-erneut"
+            onClick={() => wiederholeBildKorrekturen()}
+            className={KNOPF}
+          >
+            {t("bildfundstelle.korrektur.erneutLaden")}
+          </button>
+        </div>
+      ) : null}
       {laeuft ? (
         <output className="mt-2 block text-muted">{t("klarabildkontext.frage.laeuft")}</output>
       ) : null}

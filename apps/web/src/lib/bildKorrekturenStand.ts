@@ -88,6 +88,9 @@ function istAntwort(wert: unknown): wert is BildKorrekturAntwort {
 export async function ladeBildKorrekturen(kontoId: string): Promise<void> {
   if (stand.kontoId !== kontoId) {
     setze({ ...LEER, kontoId, status: "laedt" });
+  } else if (stand.status !== "bereit") {
+    // Nacharbeit 2: ein erneuter Versuch nach einem Fehler ist wieder „lädt“ — nicht still „bereit“.
+    setze({ ...stand, status: "laedt" });
   }
   try {
     const antwort: unknown = await bildKorrekturApi.lesen();
@@ -107,6 +110,26 @@ export async function ladeBildKorrekturen(kontoId: string): Promise<void> {
       setze({ ...stand, status: stand.status === "bereit" ? "bereit" : "fehler" });
     }
   }
+}
+
+/**
+ * Nacharbeit 2 (Bens Befund „Ladestatus“): die gespeicherten Berichtigungen des angemeldeten Kontos
+ * erneut laden — der sichtbare Weg nach einem Ladefehler.
+ */
+export function wiederholeBildKorrekturen(): void {
+  const kontoId = assistenzStand().kontoId;
+  if (kontoId !== null) {
+    void ladeBildKorrekturen(kontoId);
+  }
+}
+
+/**
+ * Darf eine Fläche mit Korrekturquelle Klara jetzt fragen? Nur mit BESTÄTIGTEM Stand (`bereit`) —
+ * oder ohne angemeldetes Konto (`leer`: dann kann es keine gespeicherte Berichtigung geben). Lädt
+ * der Stand noch oder ist er fehlgeschlagen, ginge sonst unbemerkt der Rohbefund an Klara.
+ */
+export function korrekturStandBestaetigt(s: BildKorrekturStand): boolean {
+  return s.status === "bereit" || s.status === "leer";
 }
 
 /** Abmelden oder Kontowechsel: nichts vom bisherigen Konto bleibt stehen. */

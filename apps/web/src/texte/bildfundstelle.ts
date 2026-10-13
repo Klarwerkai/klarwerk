@@ -65,6 +65,11 @@ export default {
     "bildfundstelle.korrektur.gespeichert": "Berichtigung gespeichert.",
     "bildfundstelle.korrektur.zurueckgesetzt": "Rohbefund wiederhergestellt.",
     "bildfundstelle.kontext.textBerichtigt": "Bildtext (berichtigt)",
+    "bildfundstelle.korrektur.erneutLaden": "Erneut laden",
+    "bildfundstelle.klara.wartet":
+      "Gespeicherte Berichtigungen werden geladen — Klara fragt erst danach, mit dem berichtigten Text.",
+    "bildfundstelle.klara.ladeFehler":
+      "Gespeicherte Berichtigungen konnten nicht geladen werden. Klara fragt erst, wenn sie geladen sind — sonst bekäme sie den unberichtigten Text.",
   },
   en: {
     "bildfundstelle.text.hinweis":
@@ -120,6 +125,11 @@ export default {
     "bildfundstelle.korrektur.gespeichert": "Correction saved.",
     "bildfundstelle.korrektur.zurueckgesetzt": "Raw recognition result restored.",
     "bildfundstelle.kontext.textBerichtigt": "Image text (corrected)",
+    "bildfundstelle.korrektur.erneutLaden": "Load again",
+    "bildfundstelle.klara.wartet":
+      "Loading saved corrections — Klara will only answer afterwards, using the corrected text.",
+    "bildfundstelle.klara.ladeFehler":
+      "Saved corrections could not be loaded. Klara will only answer once they are loaded — otherwise she would receive the uncorrected text.",
   },
   nl: {
     "bildfundstelle.text.hinweis":
@@ -176,5 +186,10 @@ export default {
     "bildfundstelle.korrektur.gespeichert": "Correctie opgeslagen.",
     "bildfundstelle.korrektur.zurueckgesetzt": "Ruw resultaat hersteld.",
     "bildfundstelle.kontext.textBerichtigt": "Afbeeldingstekst (gecorrigeerd)",
+    "bildfundstelle.korrektur.erneutLaden": "Opnieuw laden",
+    "bildfundstelle.klara.wartet":
+      "Opgeslagen correcties worden geladen — Klara antwoordt pas daarna, met de gecorrigeerde tekst.",
+    "bildfundstelle.klara.ladeFehler":
+      "Opgeslagen correcties konden niet worden geladen. Klara antwoordt pas als ze geladen zijn — anders kreeg ze de ongecorrigeerde tekst.",
   },
 } satisfies Textmodul;

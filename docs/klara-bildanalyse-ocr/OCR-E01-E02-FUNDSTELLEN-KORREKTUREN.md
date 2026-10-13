@@ -22,11 +22,23 @@ aktive, abschaltbare Automatik ist unverändert.
 
 ### Regeln
 
-- **Bindung:** eine Berichtigung gilt für genau eine Quelle (`office:<anhang>`, `datei:<name>`,
-  Bildanhang `anhang|<name>`, Editor `ko:<id>` bzw. `entwurf:<id>` aus der vorhandenen Provenienz)
-  und genau eine Bildfassung (`sha256` der Bildbytes). Andere Quelle, anderes oder verändertes Bild:
-  keine Übertragung. Ist an derselben Stelle früher ein anderes Bild berichtigt worden, steht das
-  sichtbar da („gilt nicht für das veränderte Bild“).
+- **Bindung:** eine Berichtigung gilt für genau eine Quelle (`office:<anhang>`, Bildanhang
+  `anhang|<name>`, Editor `ko:<id>` bzw. `entwurf:<id>` aus der vorhandenen Provenienz, Dateiimport
+  `datei:sha256:<Inhalt der ganzen Datei>|<name>`) und genau eine Bildfassung (`sha256` der
+  Bildbytes). Andere Quelle, anderes oder verändertes Bild: keine Übertragung. Ist an derselben
+  Stelle früher ein anderes Bild berichtigt worden, steht das sichtbar da („gilt nicht für das
+  veränderte Bild“).
+- **Dateiimport (Nacharbeit 2):** die Quelle ist die Datei selbst, Inhalt UND Name. Zwei
+  verschiedene Dokumente gleichen Namens — auch mit denselben eingebetteten Bildern — teilen keine
+  Berichtigung; dieselbe Datei unverändert wieder eingelesen (auch nach Neuladen) trägt sie. Eine
+  umbenannte Kopie übernimmt nichts. Sind die Bytes nicht lesbar, wird nicht berichtigt.
+- **Klara erst mit bestätigtem Stand (Nacharbeit 2):** hat eine Fläche eine Korrekturquelle, sind
+  Frage und Zusammenfassung gesperrt, solange die gespeicherten Berichtigungen laden oder ihr Laden
+  fehlgeschlagen ist; das steht sichtbar da, mit „Erneut laden“. So geht nie unbemerkt der
+  Rohbefund an Klara.
+- **Zuordnung berichtigter Wörter:** ein berichtigtes Wort übernimmt die Position des erkannten nur,
+  wenn beide ähnlich sind (Lesefehler wie „Mül1er“/„Müller“, „1.5OO“/„1.500“) oder das erkannte
+  `[unleserlich]` war; ein ganz anderes Wort hat keine Position (ehrlicher Rückfall).
 - **Erneutes Lesen** derselben Bytes (automatisch, wiederverwendet oder ausdrücklich neu) ändert die
   Berichtigung nicht — sie liegt getrennt vom Rohbefund am Konto.
 - **Rückgängig** holt die vorige Berichtigung (bis zu 5 Schritte), danach den Rohbefund;
@@ -49,17 +61,27 @@ aktive, abschaltbare Automatik ist unverändert.
 | K2 | mehrere Bilder/Folien ohne Verwechslung | `fundstellen-original.test.ts` F2 (echte PPTX-Kette), Mount E1, Browser (dieselbe Zahl auf zwei Folien) |
 | K3 | gedrehte und skalierte Bilder | `fundstellen-original.test.ts` F3 (EXIF 6/8, Ansichtsmaße), Mount E2, Browser (Bildschirmlage nach Drehen und Vergrößern) |
 | K4 | ehrlicher, bedienbarer Rückfall | `fundstellen-original.test.ts` F4, Mount E3, Browser (ergänztes Wort) |
-| K5 | berichtigtes Wort in Klara-Antwort und Zusammenfassung | `korrektur-klara.test.ts` B1, Mount E4 (Inhalt der Anfrage an den assist-Weg für Frage UND Zusammenfassung), Browser (Fundstellen der Frage) |
-| K6 | Korrektur, Neuladen, erneutes Einlesen | `korrekturen-am-server.test.ts` S1, `korrekturen-pg.integration.test.ts`, `korrektur-klara.test.ts` B2, Mount E4, Browser |
+| K5 | berichtigtes Wort in Klara-Antwort und Zusammenfassung | `korrektur-klara.test.ts` B1, Mount E4 (Inhalt der Anfrage an den assist-Weg für Frage UND Zusammenfassung), Mount E7 (keine Anfrage vor bestätigtem Korrekturstand), Browser (Fundstellen der Frage), Browser `@modell` (tatsächliche Antwort und Zusammenfassung mit „LAGER“, ohne „LAGFR“) |
+| K6 | Korrektur, Neuladen, erneutes Einlesen | `korrekturen-am-server.test.ts` S1, `korrekturen-pg.integration.test.ts`, `korrektur-klara.test.ts` B2, Mount E4 und E7, `datei-quelle-mounted.test.tsx` Q1, Browser |
 | K7 | Rücksetzen → Rohbefund, Original unverändert | `korrekturen-am-server.test.ts` S2, `korrektur-klara.test.ts` B3, Mount E4, Browser |
-| K8 | keine Übertragung auf fremdes/verändertes Bild | `korrekturen-am-server.test.ts` S3, `korrektur-klara.test.ts` B4, Mount E5, Browser |
-| K9 | Nutzer-/Rollenregeln | `korrekturen-am-server.test.ts` S4, Mount E6, Browser (zweites Konto, Betrachter 403) |
+| K8 | keine Übertragung auf fremdes/verändertes Bild | `korrekturen-am-server.test.ts` S3, `korrektur-klara.test.ts` B4, Mount E5, `datei-quelle-mounted.test.tsx` Q1 (gleichnamige verschiedene Dokumente), Browser |
+| K9 | Nutzer-/Rollenregeln | `korrekturen-am-server.test.ts` S4, Mount E6 und E7 (Kontowechsel während des Ladens), Browser (zweites Konto, Betrachter 403) |
 
-Kontrollierte Fixtures (K10) dieser Lieferung: mehrere Bilder und Folien mit bekannten Wörtern an
-bekannten Stellen, gedrehte Fotos (EXIF), absichtlicher Erkennungsfehler („Mül1er“, „LAGFR“),
-dieselbe Zahl auf zwei Folien, veränderte Bildfassung. Tabellen, mehrseitige Scans, gemischte
-Dokumente, Zahlenabweichungen und Bereichsauswahl gehören zu OCR-E03 bis OCR-E06 und sind hier
-**nicht** geprüft.
+### K10/K11 — E01/E02-Wirkung in den Formaten der gemeinsamen Abnahme
+
+Geprüft ist allein die Wirkung von Fundstelle und Berichtigung; neue Funktionen von OCR-E03 bis
+OCR-E06 werden nicht vorausgesetzt.
+
+| Format | Beleg | Konkrete Grenze |
+| --- | --- | --- |
+| Mehrere Bilder/Folien | `fundstellen-original.test.ts` F2, `bildautomatik.test.ts` (Zuordnung/Reihenfolge), Browser | — |
+| Gedrehte Texte/Skalierung | `fundstellen-original.test.ts` F3, Mount E2, Browser | gebaute EXIF-Köpfe; kein echtes Handyfoto durch die echte Engine |
+| Absichtlicher Lesefehler | `korrektur-klara.test.ts` B1/B2, Mount E4, Browser (auch `@modell`) | — |
+| Tabelle | `fundstellen-formate.test.ts` W1, `bildautomatik.test.ts` (Tabellen aus Wortrahmen) | die Berichtigung wirkt im Text; die erkannte Tabelle wird nicht neu aufgebaut und bleibt als Rohbefund (bearbeitbare Tabellen: OCR-E03) |
+| Mehrseitig | `fundstellen-formate.test.ts` W2 (Seiten als Bilder einer PowerPoint: erste/letzte Seite, Teilfehler, Berichtigung) | gescannte PDF-Seiten liest der Bestand nicht (Q04/L06, OCR-E04); bei Word gibt es keine Seitenangabe (L07) |
+| Gemischtes Dokument | `fundstellen-formate.test.ts` W3, `kontext-klara.test.ts` C2 | — |
+| Tatsächliche/scheinbare Zahlenabweichung | `fundstellen-formate.test.ts` W4 (getrennte Fundstellen, lokale Berichtigung) | keine Widerspruchsbewertung (OCR-E05) |
+| Ausgewählter Bildbereich | `fundstellen-formate.test.ts` W5 (zwei Blöcke, gewählte Stelle nur in ihrem Block, stabil nach Berichtigung), F1/Mount E1 | Auswahl auf Wortebene; keine freie Bereichsauswahl und keine Bereichsfrage (OCR-E06) |
 
 ## Grenzen (offen, konkret)
 
@@ -67,7 +89,7 @@ Dokumente, Zahlenabweichungen und Bereichsauswahl gehören zu OCR-E03 bis OCR-E0
 | --- | --- |
 | PowerPoint-Host | Es gibt kein PowerPoint-Add-in (H03). Geprüft ist der Dateiweg (`.pptx` im Erfassen, Q02) im Browser; „Office im Artikel“ (H06) ist angebunden, aber nicht im Browser geprüft |
 | Word-Host | „Klara in Word“ (H02) liest weiterhin nur Text; Bilder aus Word werden erst im Editor der Web-App gelesen und berichtigt. Im Word-Host selbst nicht geprüft |
-| Echtes Modell | Im Smoke-Tor läuft kein Modell. Dass Frage und Zusammenfassung den berichtigten Text bekommen, ist am Inhalt der Anfrage gemessen (Mount E4); eine formulierte Modellantwort mit Berichtigung ist nicht gelaufen |
+| Echtes Modell | Im Smoke-Tor läuft kein Modell. Der Nachweis der tatsächlichen Antwort und Zusammenfassung mit Berichtigung ist der `@modell`-Fall in `tests-smoke/klara-ocr-fundstelle-korrektur-browser.spec.ts`; er braucht den vollen Smoke mit freigegebenem Modellzugang und ist erst belegt, wenn er dort gelaufen ist |
 | Gedrehte Fotos | Gemessen mit gebauten JPEG-Köpfen (EXIF 6/8) und der gedrehten Ansicht im Browser; ein echtes Handyfoto mit Drehangabe durch die echte Engine ist nicht gelaufen. Bei 180° (EXIF 3) und gespiegelten Fotos gibt es bewusst nur den Rückfall |
 | Editor ohne gespeicherte Quelle | Ein noch nie gespeicherter Entwurf hat keine Quelle; dort wird nicht berichtigt, und das steht da. Eine Berichtigung an `entwurf:<id>` folgt nicht automatisch zum daraus entstandenen Wissensobjekt (`ko:<id>`) |
 | Gemeinsame Berichtigungen | Berichtigungen gehören dem Konto, das sie gesetzt hat; andere Personen am selben Dokument sehen sie nicht (bewusst: keine neuen fremden Datenrechte) |

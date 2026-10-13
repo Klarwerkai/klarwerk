@@ -66,12 +66,49 @@ function kern(token: string): string {
   return (m ? (m[1] ?? "") : token).toLocaleLowerCase();
 }
 
-/** Ab dieser Größe wird nur noch exakt zugeordnet (Speicher der Ausrichtung). */
-const AUSRICHTUNG_MAX_ZELLEN = 1_000_000;
+/** Ab dieser Größe wird nur noch exakt zugeordnet (Speicher und Zeit der Ausrichtung). */
+const AUSRICHTUNG_MAX_ZELLEN = 250_000;
+
+const UNLESERLICH = "[unleserlich]";
+
+/** Editierdistanz zweier (kurzer) Wörter in Zeichen. */
+function zeichenAbstand(a: string, b: string): number {
+  if (a === b) {
+    return 0;
+  }
+  let vorher = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i += 1) {
+    const jetzt = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      const ersetzen = (vorher[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1);
+      jetzt[j] = Math.min((vorher[j] ?? 0) + 1, (jetzt[j - 1] ?? 0) + 1, ersetzen);
+    }
+    vorher = jetzt;
+  }
+  return vorher[b.length] ?? 0;
+}
 
 /**
- * Ordnet jedem Token `a[i]` ein Wort `b[j]` zu: gleiche Wörter, an derselben Stelle ersetzte Wörter
- * (Substitution) — oder `null` für Ergänztes. Kleinste Editierdistanz auf der Wortfolge.
+ * Was es kostet, `a` an die Stelle von `b` zu setzen: gleich 0; ähnlich (ein berichtigter Lesefehler
+ * wie „Mül1er“ → „Müller“, „1.5OO“ → „1.500“) oder unleserlich 1; sonst 2 — so teuer wie Weglassen
+ * und Ergänzen. Ein unähnliches Wort übernimmt deshalb nie die Position eines anderen.
+ */
+function ersetzKosten(a: string, b: string): number {
+  if (a === b) {
+    return 0;
+  }
+  if (a === UNLESERLICH) {
+    return 1;
+  }
+  const grenze = Math.max(1, Math.ceil(Math.max(a.length, b.length) / 2));
+  return zeichenAbstand(a, b) <= grenze ? 1 : 2;
+}
+
+/**
+ * Ordnet jedem Token `a[i]` ein Wort `b[j]` zu: gleiche Wörter, an derselben Stelle ersetzte
+ * ÄHNLICHE Wörter (berichtigte Lesefehler, `[unleserlich]`) — oder `null` für Ergänztes und für
+ * Unähnliches. Kleinste gewichtete Editierdistanz auf der Wortfolge (Nacharbeit 2: vorher konnte
+ * bei gleichen Kosten ein fremdes Wort die Position eines berichtigten übernehmen).
  */
 export function ausrichten(
   a: readonly string[],
@@ -106,10 +143,13 @@ export function ausrichten(
   for (let j = 0; j <= m; j += 1) {
     d[j] = j;
   }
+  // Die Ersetzungskosten einmal je Paar — sie werden beim Rückweg wieder gebraucht.
+  const kosten = new Uint8Array(n * m);
   for (let i = 1; i <= n; i += 1) {
     for (let j = 1; j <= m; j += 1) {
-      const gleich = a[i - 1] === b[j - 1] ? 0 : 1;
-      const diag = (d[(i - 1) * breite + j - 1] ?? 0) + gleich;
+      const k = ersetzKosten(a[i - 1] ?? "", b[j - 1] ?? "");
+      kosten[(i - 1) * m + j - 1] = k;
+      const diag = (d[(i - 1) * breite + j - 1] ?? 0) + k;
       const oben = (d[(i - 1) * breite + j] ?? 0) + 1;
       const links = (d[i * breite + j - 1] ?? 0) + 1;
       d[i * breite + j] = Math.min(diag, oben, links);
@@ -123,14 +163,18 @@ export function ausrichten(
   let j = m;
   while (i > 0 && j > 0) {
     const hier = d[i * breite + j] ?? 0;
-    const gleich = a[i - 1] === b[j - 1] ? 0 : 1;
-    if (hier === (d[(i - 1) * breite + j - 1] ?? 0) + gleich) {
-      aus[i - 1] = { wort: j - 1, ersetzt: gleich === 1 };
+    const k = kosten[(i - 1) * m + j - 1] ?? 2;
+    if (k < 2 && hier === (d[(i - 1) * breite + j - 1] ?? 0) + k) {
+      aus[i - 1] = { wort: j - 1, ersetzt: k > 0 };
       i -= 1;
       j -= 1;
     } else if (hier === (d[(i - 1) * breite + j] ?? 0) + 1) {
       i -= 1;
+    } else if (hier === (d[i * breite + j - 1] ?? 0) + 1) {
+      j -= 1;
     } else {
+      // Nur über eine unähnliche Ersetzung erreichbar: beide ohne Zuordnung.
+      i -= 1;
       j -= 1;
     }
   }

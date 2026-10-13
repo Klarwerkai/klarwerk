@@ -59,6 +59,7 @@ import {
   ladeAssistenzProfil,
   verwerfeAssistenzProfil,
 } from "../../apps/web/src/lib/assistenzProfil";
+import { bildInhaltskennung } from "../../apps/web/src/lib/bildAutomatik";
 import type { BildKorrekturDaten } from "../../apps/web/src/lib/bildKorrektur";
 import { verwerfeBildKorrekturen } from "../../apps/web/src/lib/bildKorrekturenStand";
 import { bildMit, bildMitMassen, dataUrl, markeAus } from "./deck";
@@ -176,6 +177,12 @@ function aendernAmServer(a: BildKorrekturAenderung): BildKorrekturAntwort {
   korrekturServer.konten.set(konto, rest);
   return sicht(konto);
 }
+
+/** Nacharbeit 2: hängende Lesezugriffe auf die gespeicherten Berichtigungen. */
+const lesenSteuerung = {
+  warten: false,
+  offen: [] as { ok: () => void; fehl: (e: Error) => void }[],
+};
 
 const describeBild = vi.fn(
   async (_src: string): Promise<DescribeImageResult> => ({ text: "Ein Dokument", demo: false }),
@@ -329,7 +336,18 @@ beforeEach(async () => {
   vi.spyOn(assistenzProfilApi, "lesen").mockImplementation(
     async (): Promise<AssistenzProfilAntwort> => ({ profil: null, einrichtungOffen: true }),
   );
-  vi.spyOn(bildKorrekturApi, "lesen").mockImplementation(async () => sicht(server.konto));
+  lesenSteuerung.warten = false;
+  lesenSteuerung.offen = [];
+  vi.spyOn(bildKorrekturApi, "lesen").mockImplementation(() => {
+    const konto = server.konto;
+    if (!lesenSteuerung.warten) {
+      return Promise.resolve(sicht(konto));
+    }
+    // Nacharbeit 2: das Lesen hängt, bis der Test es beantwortet oder scheitern lässt.
+    return new Promise<BildKorrekturAntwort>((ok, fehl) => {
+      lesenSteuerung.offen.push({ ok: () => ok(sicht(konto)), fehl });
+    });
+  });
   vi.spyOn(bildKorrekturApi, "aendern").mockImplementation(async (a) => aendernAmServer(a));
   steuerung.ocr.mockReset();
   steuerung.ocr.mockImplementation(async (src: unknown): Promise<OcrResult> => {
@@ -623,5 +641,133 @@ describe("E6 · K9 — Rollen, Konten und fehlende Quelle", () => {
     // Die Fundstelle geht trotzdem.
     await klick(stelle(1, "29"));
     expect(ansichtBild()).toBe(BILD_L);
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 2 (Bens Befund „Ladestatus“) · Klara fragt nur mit BESTÄTIGTEM Korrekturstand.
+// ================================================================================================
+
+const BERICHTIGT_R = "Herr Müller zahlt 4.250 EUR\nam 12.10.2026";
+
+/** Am Server liegt für das Rechnungsbild schon eine Berichtigung des Kontos. */
+async function gespeicherteBerichtigung(konto: string): Promise<void> {
+  const kennung = await bildInhaltskennung(bildMitMassen("R", 1000, 500));
+  korrekturServer.konten.set(konto, [
+    {
+      daten: {
+        quelle: "ko:fiktiv-1",
+        inhaltskennung: kennung ?? "",
+        ort: "b1",
+        text: BERICHTIGT_R,
+        geaendertAm: "2026-10-12T09:00:00.000Z",
+      },
+      vorher: [],
+    },
+  ]);
+}
+
+const knopf = (id: string): HTMLButtonElement | null =>
+  q(id) instanceof HTMLButtonElement ? (q(id) as HTMLButtonElement) : null;
+
+describe("E7 · K5/K6 — verzögertes und fehlgeschlagenes Laden: kein Rohtext an Klara", () => {
+  it("lädt noch → beide Aktionen gesperrt; Fehler → sichtbar mit Wiederholung; dann berichtigt", async () => {
+    await gespeicherteBerichtigung("konto-a");
+    lesenSteuerung.warten = true;
+    const frage = vi.fn(
+      async (_text: string, _anweisung: string): Promise<AssistResult> => ({
+        text: "Antwort",
+        demo: false,
+      }),
+    );
+    await profilLaden("konto-a");
+    await zeige(rumpf(), weg("ko:fiktiv-1", frage));
+    expect(lesenSteuerung.offen.length).toBeGreaterThan(0);
+
+    // Lädt: sichtbar „wartet“, beide Aktionen gesperrt — auch Eingabe per Tastatur.
+    expect(q("klara-bild-kontext-korrektur-wartet")?.textContent).toBe(
+      i18n.t("bildfundstelle.klara.wartet"),
+    );
+    await tippe(q("klara-bild-kontext-frage"), "Was zahlt Herr Müller?");
+    expect(knopf("klara-bild-kontext-fragen")?.disabled).toBe(true);
+    expect(knopf("klara-bild-kontext-zusammenfassen")?.disabled).toBe(true);
+    await taste(q("klara-bild-kontext-frage"), "Enter");
+    await klick(q("klara-bild-kontext-zusammenfassen"));
+    expect(frage).not.toHaveBeenCalled();
+
+    // Das Laden scheitert: sichtbar, mit Wiederholung; weiterhin keine Anfrage.
+    await act(async () => {
+      for (const o of lesenSteuerung.offen.splice(0)) {
+        o.fehl(new TypeError("Failed to fetch"));
+      }
+    });
+    await abwarten();
+    expect(q("klara-bild-kontext-korrektur-fehler")?.textContent).toBe(
+      i18n.t("bildfundstelle.klara.ladeFehler"),
+    );
+    expect(q("klara-bild-kontext-korrektur-fehler")?.getAttribute("role")).toBe("alert");
+    expect(q("bild-berichtigung-erneut")).not.toBeNull();
+    expect(knopf("klara-bild-kontext-zusammenfassen")?.disabled).toBe(true);
+    await taste(q("klara-bild-kontext-frage"), "Enter");
+    expect(frage).not.toHaveBeenCalled();
+    // Angezeigt wird der Rohbefund — und das steht da.
+    expect(bildText(0)).toBe(ERKANNT.R?.text);
+
+    // Wiederholen: erst „lädt“, dann der bestätigte Stand mit der gespeicherten Berichtigung.
+    await klick(q("klara-bild-kontext-korrektur-erneut"));
+    expect(q("klara-bild-kontext-korrektur-wartet")).not.toBeNull();
+    lesenSteuerung.warten = false;
+    await act(async () => {
+      for (const o of lesenSteuerung.offen.splice(0)) {
+        o.ok();
+      }
+    });
+    await abwarten();
+    expect(q("klara-bild-kontext-korrektur-fehler")).toBeNull();
+    expect(bildText(0)).toBe(BERICHTIGT_R);
+
+    await klick(q("klara-bild-kontext-fragen"));
+    await klick(q("klara-bild-kontext-zusammenfassen"));
+    expect(frage).toHaveBeenCalledTimes(2);
+    for (const [kontext] of frage.mock.calls) {
+      expect(kontext).toContain("Herr Müller zahlt 4.250 EUR");
+      expect(kontext).not.toContain("Mül1er");
+    }
+  });
+
+  it("Kontowechsel während des Ladens: die verspätete Antwort des alten Kontos gilt nicht", async () => {
+    await gespeicherteBerichtigung("konto-a");
+    lesenSteuerung.warten = true;
+    const frage = vi.fn(
+      async (_text: string, _anweisung: string): Promise<AssistResult> => ({
+        text: "Antwort",
+        demo: false,
+      }),
+    );
+    await profilLaden("konto-a");
+    await zeige(rumpf(), weg("ko:fiktiv-1", frage));
+    const altesKonto = lesenSteuerung.offen.splice(0);
+    expect(altesKonto.length).toBeGreaterThan(0);
+
+    // Wechsel zu Konto B (ohne Berichtigung); dessen Stand kommt sofort.
+    lesenSteuerung.warten = false;
+    await profilLaden("konto-b");
+    await zeige(rumpf(), weg("ko:fiktiv-1", frage));
+    // Jetzt erst kommt die Antwort für Konto A — sie darf nichts anwenden.
+    await act(async () => {
+      for (const o of altesKonto) {
+        o.ok();
+      }
+    });
+    await abwarten();
+    expect(bildText(0)).toBe(ERKANNT.R?.text);
+    await klick(q("klara-bild-kontext-zusammenfassen"));
+    expect(frage).toHaveBeenCalledTimes(1);
+    expect(frage.mock.calls[0]?.[0]).not.toContain("Herr Müller");
+
+    // Zurück zu Konto A: dessen Berichtigung gilt (bestätigt geladen).
+    await profilLaden("konto-a");
+    await zeige(rumpf(), weg("ko:fiktiv-1", frage));
+    expect(bildText(0)).toBe(BERICHTIGT_R);
   });
 });

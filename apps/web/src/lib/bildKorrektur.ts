@@ -3,7 +3,7 @@
 // ================================================================================================
 //
 // Eine Berichtigung gilt für GENAU eine Quelle und GENAU eine Bildfassung:
-//   · Quelle — die Kennung der Fläche (`korrekturQuelle`): `office:<anhang>`, `datei:<name>`,
+//   · Quelle — die Kennung der Fläche (`korrekturQuelle`): `office:<anhang>`, `datei:sha256:<hex>|<name>`,
 //     `ko:<id>`/`entwurf:<id>` im Editor. Bei einzeln bereitgestellten Bildern (Bildanhänge) kommt
 //     der Name des Bildes dazu.
 //   · Bildfassung — die Inhaltskennung (`sha256` der Bildbytes).
@@ -14,7 +14,47 @@
 // Diese Datei ist DOM-FREI und rein: sie legt eine Berichtigung über einen Befund (für Anzeige UND
 // Klaras Kontext) und hält den Rohbefund daneben. Bild und Datei werden nie angefasst.
 
-import type { BildBefund, BildFundstelle, QuellenBefund } from "./bildAutomatik";
+import {
+  type BildBefund,
+  type BildFundstelle,
+  type QuellenBefund,
+  bildInhaltskennung,
+} from "./bildAutomatik";
+
+/** Höchstlänge eines Namens in der Quelle (die ganze Quelle darf höchstens 300 Zeichen haben). */
+const NAME_MAX = 100;
+
+/** Der Dateiname ohne Steuerzeichen, gekürzt — er ist nur Teil der Bindung, keine Anzeige. */
+function nameTeil(name: string): string {
+  let aus = "";
+  for (const zeichen of name) {
+    const code = zeichen.codePointAt(0) ?? 0;
+    if (code > 0x1f && (code < 0x7f || code > 0x9f)) {
+      aus += zeichen;
+    }
+  }
+  return aus.slice(0, NAME_MAX);
+}
+
+/**
+ * Nacharbeit 2 (Bens Befund „gleichnamige Dokumente“): die Quelle einer eingelesenen DATEI ist ihr
+ * Inhalt UND ihr Name — `datei:sha256:<hex über alle Bytes>|<name>`. Zwei verschiedene Dokumente
+ * gleichen Namens (auch mit denselben eingebetteten Bildern) sind damit zwei Quellen; dieselbe,
+ * unverändert wieder eingelesene Datei ist dieselbe Quelle. Eine umbenannte Kopie übernimmt nichts.
+ * Ohne lesbare Bytes gibt es keine Quelle (`null`) — dann wird nicht berichtigt, statt still eine
+ * fremde Bindung zu treffen.
+ */
+export async function dokumentKorrekturQuelle(datei: {
+  name: string;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}): Promise<string | null> {
+  try {
+    const kennung = await bildInhaltskennung(new Uint8Array(await datei.arrayBuffer()));
+    return kennung ? `datei:${kennung}|${nameTeil(datei.name)}` : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Eine gespeicherte Berichtigung, wie der Server sie bestätigt (`/api/me/assistenz/bildkorrekturen`). */
 export interface BildKorrekturDaten {
@@ -32,7 +72,7 @@ export interface BildKorrekturDaten {
 
 /** Die Bindung einer Berichtigung an die Quelle — für Bildanhänge samt Bildname. */
 export function korrekturQuelleFuer(praefix: string, f: BildFundstelle): string {
-  return f.art === "bild" ? `${praefix}|${f.quelle}` : praefix;
+  return f.art === "bild" ? `${praefix}|${nameTeil(f.quelle)}` : praefix;
 }
 
 /** Die Stelle des Bildes in der Quelle, kurz (nur zur Anzeige; bindet nichts). */
@@ -62,9 +102,18 @@ export function findeKorrektur(
   return liste.find((k) => k.quelle === quelle && k.inhaltskennung === inhaltskennung) ?? null;
 }
 
+const DATEI_INHALT = /^datei:sha256:[0-9a-f]{64}\|/;
+
+/** Eine Dateiquelle ohne ihren Inhaltsteil — nur für den HINWEIS auf frühere Fassungen. */
+function ohneDateiInhalt(quelle: string): string {
+  return quelle.replace(DATEI_INHALT, "datei-name|");
+}
+
 /**
- * Gibt es für DIESELBE Quelle und DIESELBE Stelle eine Berichtigung einer ANDEREN Bildfassung? Dann
- * wurde das Bild verändert — die alte Berichtigung gilt nicht und wird sichtbar nicht übernommen.
+ * Gibt es für dieselbe Quelle (bei Dateien: dieselbe gleichnamige Datei in einer früheren Fassung)
+ * und DIESELBE Stelle eine Berichtigung einer ANDEREN Bildfassung? Dann wurde das Bild verändert —
+ * die alte Berichtigung gilt nicht und wird sichtbar nicht übernommen. Dient nur dem Hinweis; die
+ * Bindung selbst (`findeKorrektur`) bleibt Quelle UND Bildfassung.
  */
 export function andereFassungBerichtigt(
   liste: readonly BildKorrekturDaten[],
@@ -75,8 +124,12 @@ export function andereFassungBerichtigt(
     return false;
   }
   const ort = ortKennung(b.fundstelle);
+  const vergleich = ohneDateiInhalt(quelle);
   return liste.some(
-    (k) => k.quelle === quelle && k.ort === ort && k.inhaltskennung !== b.inhaltskennung,
+    (k) =>
+      ohneDateiInhalt(k.quelle) === vergleich &&
+      k.ort === ort &&
+      k.inhaltskennung !== b.inhaltskennung,
   );
 }
 

@@ -136,6 +136,7 @@ import { bildAutomatikAbwarten, bildAutomatikLage } from "../lib/bildAutomatikEi
 import { useBildAnalyse } from "../lib/bildAutomatikLauf";
 // produkt:20261012:klara-ocr-fundstellen-korrekturen: Fundstelle am Original, berichtigter Bildtext.
 import { originalAusEingang } from "../lib/bildFundstelle";
+import { dokumentKorrekturQuelle } from "../lib/bildKorrektur";
 import { wirksamerBefund } from "../lib/bildKorrekturenStand";
 import {
   applyBodyAssist,
@@ -1283,6 +1284,9 @@ export function CaptureArbeitsraum({
     befund: QuellenBefund;
     // OCR-03: der Eingang dieses Laufs — nur seine Befunde kommen in Klaras Kontext.
     eingang: BildQuelleEingang;
+    // OCR-E02 (Nacharbeit 2): die Quelle der Berichtigungen — der Inhalt der Datei, nicht ihr Name
+    // (`dokumentKorrekturQuelle`); `null`, wenn die Bytes nicht lesbar waren.
+    korrekturQuelle: string | null;
   } | null>(null);
   const fileBildLaufRef = useRef(0);
   // OCR-02: EINE Bildanalyse für diesen Arbeitsraum (Dateiimport und Bildanhänge) — darin werden
@@ -4862,6 +4866,7 @@ export function CaptureArbeitsraum({
   const leseDateiBilder = async (
     eingang: BildQuelleEingang,
     lauf: number,
+    quelle: Promise<string | null>,
   ): Promise<QuellenBefund | null> => {
     // Nacharbeit 4 (Bens Befund „datei-automatik“): der Lauf gehört zu DIESER Datei UND zu dem
     // Konto, unter dem er begonnen hat. Wechselt das Konto, werden seine Rückgaben verworfen.
@@ -4870,12 +4875,14 @@ export function CaptureArbeitsraum({
       fileBildLaufRef.current === lauf && assistenzStand().kontoId === kontoBeiStart;
     // OCR-03: die Einstellung des Kontos — lädt das Profil noch, wird kurz gewartet.
     const lage = await bildAutomatikAbwarten();
+    // OCR-E02: die Quelle dieser Datei (Inhaltskennung) — sie reist mit jedem Stand des Befunds.
+    const korrekturQuelle = await quelle;
     if (!aktuell()) {
       return null;
     }
     if (lage === "unbekannt") {
       const befund = einstellungUnbekannt(eingang);
-      setFileBildBefund({ lauf, befund, eingang });
+      setFileBildBefund({ lauf, befund, eingang, korrekturQuelle });
       return befund;
     }
     const ergebnis = await bildAnalyse.analysiereQuelle(eingang, {
@@ -4887,14 +4894,14 @@ export function CaptureArbeitsraum({
       automatikAus: () => bildAutomatikLage(assistenzStand()) === "aus",
       onFortschritt: (stand) => {
         if (aktuell()) {
-          setFileBildBefund({ lauf, befund: stand, eingang });
+          setFileBildBefund({ lauf, befund: stand, eingang, korrekturQuelle });
         }
       },
     });
     if (!aktuell()) {
       return null;
     }
-    setFileBildBefund({ lauf, befund: ergebnis, eingang });
+    setFileBildBefund({ lauf, befund: ergebnis, eingang, korrekturQuelle });
     return ergebnis;
   };
 
@@ -4910,6 +4917,9 @@ export function CaptureArbeitsraum({
     }
     fileBildLaufRef.current += 1;
     const bildLauf = fileBildLaufRef.current;
+    // OCR-E02 (Nacharbeit 2): die stabile Identität DIESES Dokuments für Berichtigungen — sein
+    // Inhalt. Gleichnamige verschiedene Dateien trennen sich, dieselbe Datei findet sich wieder.
+    const dokumentQuelle = dokumentKorrekturQuelle(f);
     setFileBildBefund(null);
     setFilePoints(null);
     setFileNote(null);
@@ -4942,11 +4952,12 @@ export function CaptureArbeitsraum({
         setNotice(null);
         // OCR-02: „sofort automatisch mitlesen" — der erkannte Text (mit gekennzeichneten
         // unsicheren Stellen) wird der Text dieser Datei, wie nach dem Klick auf die Erkennung.
-        void leseDateiBilder(einzelbildEingang(f.name, bildUrl), bildLauf).then((befund) => {
-          // OCR-E02: eine gespeicherte Berichtigung desselben Bildes (gleiche Bytes, gleiche Datei)
-          // gilt auch beim erneuten Einlesen — der Text dieser Datei ist dann die Berichtigung.
+        const lesen = leseDateiBilder(einzelbildEingang(f.name, bildUrl), bildLauf, dokumentQuelle);
+        void Promise.all([lesen, dokumentQuelle]).then(([befund, quelle]) => {
+          // OCR-E02: eine gespeicherte Berichtigung derselben Datei (gleicher Inhalt) gilt auch beim
+          // erneuten Einlesen — der Text dieser Datei ist dann die Berichtigung.
           const roh = befund?.befunde[0];
-          const bild = roh ? wirksamerBefund(`datei:${f.name}`, roh) : undefined;
+          const bild = roh && quelle ? wirksamerBefund(quelle, roh) : roh;
           if (bild?.status !== "gelesen") {
             return;
           }
@@ -5244,7 +5255,7 @@ export function CaptureArbeitsraum({
         bildEingang &&
         (bildEingang.vorkommen.length > 0 || (bildEingang.nichtGelesen ?? []).length > 0)
       ) {
-        void leseDateiBilder(bildEingang, bildLauf);
+        void leseDateiBilder(bildEingang, bildLauf, dokumentQuelle);
       }
     } catch (error) {
       setFileName(null);
@@ -7166,15 +7177,15 @@ export function CaptureArbeitsraum({
                   {fileBildBefund ? (
                     <div data-testid="datei-bild-befunde">
                       {/* OCR-E01/E02: Fundstelle im Original; Berichtigungen gehören zu dieser Datei
-                        (Name) und je Bildfassung. Bei einem Einzelbild folgt der Dateitext der
-                        Berichtigung, solange er nicht von Hand geändert wurde. */}
+                        (ihr Inhalt, nicht ihr Name) und je Bildfassung. Bei einem Einzelbild folgt
+                        der Dateitext der Berichtigung, solange er nicht von Hand geändert wurde. */}
                       <BildBefundListe
                         befund={fileBildBefund.befund}
                         lauf={fileBildBefund.lauf}
                         originalVon={(b) =>
                           originalAusEingang(fileBildBefund.eingang, b.fundstelle)
                         }
-                        korrekturQuelle={`datei:${fileBildBefund.eingang.quelle}`}
+                        korrekturQuelle={fileBildBefund.korrekturQuelle}
                         onBerichtigt={(neu, bisher) => {
                           if (fileImageUrl) {
                             setFileText((v) => (v === bisher ? neu : v));
@@ -7188,7 +7199,7 @@ export function CaptureArbeitsraum({
                         dokumentTextVon={() => (fileImageUrl ? "" : fileText)}
                         quellen={[fileBildBefund.befund]}
                         aktuell={[fileBildBefund.eingang]}
-                        korrekturQuelle={`datei:${fileBildBefund.eingang.quelle}`}
+                        korrekturQuelle={fileBildBefund.korrekturQuelle}
                       />
                     </div>
                   ) : null}

@@ -232,6 +232,12 @@ test("OCR-E01/E02 · Fundstellen am Original markieren, Text berichtigen, Neulad
     { titel: "Lagerliste", png: f1Veraendert.png },
     { titel: "Abnahme", png: f2.png },
   ]);
+  // Nacharbeit 2 (Bens Befund): ein ANDERES Dokument mit demselben Namen und demselben Bild auf
+  // Folie 1 — nur der Folientext unterscheidet sich.
+  const gleichnamigAnders = deckMit([
+    { titel: "Andere Lagerliste", png: f1.png },
+    { titel: "Abnahme", png: f2.png },
+  ]);
   const protokoll: Record<string, unknown> = {
     art: "Technische Probe mit fiktiven Daten und fiktiven Konten — keine Kundenabnahme, kein PowerPoint-Host (Dateiweg)",
     gezeichnet: { folie1: f1.woerter, folie2: f2.woerter },
@@ -361,11 +367,18 @@ test("OCR-E01/E02 · Fundstellen am Original markieren, Text berichtigen, Neulad
       .getAttribute("data-berichtigt");
     await einlesen(page, "andere-lagerliste-ocr-e.pptx", original);
     const andereDatei = await text(page, 0);
+    await einlesen(page, DECK, gleichnamigAnders);
+    const gleichnamigText = await text(page, 0);
+    const gleichnamigBerichtigt = await zeile(page, 0)
+      .getByTestId("bild-berichtigung")
+      .getAttribute("data-berichtigt");
     protokoll.uebertragung = {
       veraendertText,
       veraendertHinweis,
       veraendertBerichtigt,
       andereDatei,
+      gleichnamigText,
+      gleichnamigBerichtigt,
     };
 
     // ---------------------------------------------------------------- K9: Konten und Rollen
@@ -381,7 +394,7 @@ test("OCR-E01/E02 · Fundstellen am Original markieren, Text berichtigen, Neulad
     const betrachterSchreiben = await betrachter.request.put(KORREKTUREN, {
       data: {
         aktion: "setzen",
-        quelle: `datei:${DECK}`,
+        quelle: amServer.korrekturen[0]?.quelle ?? `datei:${DECK}`,
         inhaltskennung: amServer.korrekturen[0]?.inhaltskennung ?? `sha256:${"0".repeat(64)}`,
         text: "Versuch",
       },
@@ -448,14 +461,19 @@ test("OCR-E01/E02 · Fundstellen am Original markieren, Text berichtigen, Neulad
     });
     // K6: Neuladen und erneutes Einlesen behalten die Berichtigung.
     expect(nachNeuladen).toBe("LAGER 4711 GEPRUEFT");
-    expect(amServer.korrekturen.map((k) => [k.quelle, k.text])).toEqual([
-      [`datei:${DECK}`, "LAGER 4711 GEPRUEFT"],
-    ]);
-    // K8: keine Übertragung auf die veränderte Folie oder eine andere Datei.
+    // Die Quelle ist die Datei selbst (Inhalt und Name), nicht nur ihr Name.
+    expect(amServer.korrekturen.map((k) => k.text)).toEqual(["LAGER 4711 GEPRUEFT"]);
+    expect(amServer.korrekturen[0]?.quelle).toMatch(
+      /^datei:sha256:[0-9a-f]{64}\|fiktive-lagerliste-ocr-e\.pptx$/,
+    );
+    // K8: keine Übertragung auf die veränderte Folie, eine andere Datei oder ein anderes Dokument
+    // gleichen Namens mit demselben Bild.
     expect(veraendertText).not.toBe("LAGER 4711 GEPRUEFT");
     expect(veraendertHinweis).toBe(1);
     expect(veraendertBerichtigt).toBe("false");
     expect(andereDatei).toBe(rohFolie1);
+    expect(gleichnamigText).toBe(rohFolie1);
+    expect(gleichnamigBerichtigt).toBe("false");
     // K9: ein anderes Konto sieht die Berichtigung nicht (darf aber selbst berichtigen); ein
     // Betrachter darf nicht berichtigen.
     expect(expertinText).toBe(rohFolie1);
@@ -477,5 +495,174 @@ test("OCR-E01/E02 · Fundstellen am Original markieren, Text berichtigen, Neulad
         })
         .catch(() => undefined);
     }
+  }
+});
+
+// ================================================================================================
+// Nacharbeit 2 (Bens Befund K5) · DIE TATSÄCHLICHE ANTWORT UND ZUSAMMENFASSUNG MIT DER BERICHTIGUNG.
+// ================================================================================================
+//
+// Derselbe vorhandene Modellprüfweg wie `klara-bild-kontext-browser.spec.ts` (@modell, nur im
+// VOLLEN Smoke; Zugang ausschliesslich über die Betreiber-Einspeisung): ein fiktiver, „intern“
+// eingestufter Entwurf mit einem Bild, das ABSICHTLICH falsch beschriftet ist („LAGFR 4711“). Im
+// Editor wird „LAGFR“ zu „LAGER“ berichtigt; danach müssen die formulierte Antwort UND die
+// Zusammenfassung des Modells die Berichtigung tragen und dürfen den Fehler nicht enthalten. Fehlt
+// ein nutzbares Modell oder ist eine Antwort leer, ist der Fall ROT — er wird nie übersprungen.
+
+interface Zuordnung {
+  global: string;
+  perTask: Record<string, string>;
+  kiFreigabe?: { oeffentlicheKi?: boolean; vertraulicheInhalte?: boolean };
+}
+
+async function zuordnungLesen(admin: Page): Promise<Zuordnung> {
+  const antwort = await admin.request.get("/api/reasoner/config");
+  expect(antwort.status(), await antwort.text()).toBe(200);
+  return ((await antwort.json()) as { taskConfig: Zuordnung }).taskConfig;
+}
+
+async function freigabeSetzen(
+  admin: Page,
+  basis: Zuordnung,
+  kiFreigabe: { oeffentlicheKi: boolean; vertraulicheInhalte: boolean },
+): Promise<void> {
+  const antwort = await admin.request.put("/api/reasoner/config", {
+    data: { global: basis.global, perTask: basis.perTask, kiFreigabe },
+  });
+  expect(antwort.status(), await antwort.text()).toBe(200);
+}
+
+const RUMPF = "[data-testid=rumpf-bild-befunde]";
+
+test("OCR-E02 · Klara antwortet und fasst zusammen mit dem berichtigten Bildtext @modell", async ({
+  page,
+}) => {
+  test.setTimeout(600_000);
+  await ensureLoggedIn(page);
+  const vorher = await zuordnungLesen(page);
+  await freigabeSetzen(page, vorher, { oeffentlicheKi: true, vertraulicheInhalte: false });
+  let entwurfId: string | null = null;
+  const protokoll: Record<string, unknown> = {
+    art: "Modelllauf mit fiktiven Daten — keine Kundenabnahme",
+  };
+  try {
+    const statusAntwort = await page.request.get("/api/reasoner/status");
+    const status = (await statusAntwort.json()) as {
+      active?: boolean;
+      reachable?: string;
+      kiAbgeschaltet?: boolean;
+      extern?: string;
+      tasks?: { assist?: boolean };
+    };
+    protokoll.modellstatus = status;
+    expect(status.extern, "die Grundfreigabe ist nicht wirksam").toBe("frei");
+    expect(
+      status.active === true &&
+        status.tasks?.assist === true &&
+        status.kiAbgeschaltet !== true &&
+        status.reachable !== "unreachable",
+      `Kein nutzbares Modell für „assist“ (Status ${JSON.stringify(status)}).`,
+    ).toBe(true);
+
+    await page.goto("/");
+    const bild = await zeichneBild(page, 1200, 260, [{ text: "LAGFR 4711", x: 60, y: 160 }]);
+    const bodyHtml = [
+      "<h2>Lagerliste</h2>",
+      "<p>Die Bestände werden jede Woche gezählt.</p>",
+      `<figure><img src="data:image/png;base64,${bild.png.toString("base64")}"></figure>`,
+    ].join("");
+    const angelegt = await page.request.post("/api/drafts", {
+      data: {
+        title: "Fiktive Lagerliste OCR-E02",
+        statement: "Fiktiver Entwurf für die Berichtigungsprobe.",
+        type: "best_practice",
+        category: "Lager 1",
+        confidentiality: "intern",
+        bodyHtml,
+      },
+    });
+    expect(angelegt.status(), await angelegt.text()).toBe(201);
+    entwurfId = ((await angelegt.json()) as { id: string }).id;
+
+    await page.goto(`/capture/frontdoor?draft=${entwurfId}`);
+    await expect
+      .poll(
+        async () =>
+          (await page.evaluate(
+            (auswahl) => document.querySelector(auswahl)?.getAttribute("data-status") ?? null,
+            `${RUMPF} [data-testid=bild-befunde]`,
+          )) ?? "wartet",
+        { timeout: 240_000, intervals: [1_000] },
+      )
+      .not.toMatch(/^(wartet|laeuft)$/);
+    const rumpf = page.locator(RUMPF).first();
+    const zeileRumpf = rumpf.getByTestId("bild-befund").first();
+    const roh = (await zeileRumpf.getByTestId("bild-befund-text").textContent()) ?? "";
+
+    // Berichtigen: der absichtliche Fehler wird zu „LAGER“.
+    await zeileRumpf.getByTestId("bild-berichtigung-bearbeiten").click();
+    await zeileRumpf.getByTestId("bild-berichtigung-feld").fill("LAGER 4711");
+    await zeileRumpf.getByTestId("bild-berichtigung-speichern").click();
+    await expect(zeileRumpf.getByTestId("bild-befund-text")).toHaveText("LAGER 4711");
+
+    const p = rumpf.getByTestId("klara-bild-kontext");
+    const frageText = "Welches Wort und welche Nummer stehen auf dem Bild?";
+    await p.getByTestId("klara-bild-kontext-frage").fill(frageText);
+    await p.getByTestId("klara-bild-kontext-fragen").click();
+    await expect(p.getByTestId("klara-bild-kontext-antwort")).toHaveAttribute(
+      "data-auftrag",
+      "frage",
+      { timeout: 180_000 },
+    );
+    const ohneModell1 = await p.getByTestId("klara-bild-kontext-ohne-modell").count();
+    const antwort = (await p.getByTestId("klara-bild-kontext-antworttext").count())
+      ? ((await p.getByTestId("klara-bild-kontext-antworttext").textContent()) ?? "")
+      : "";
+    await p.getByTestId("klara-bild-kontext-zusammenfassen").click();
+    await expect(p.getByTestId("klara-bild-kontext-antwort")).toHaveAttribute(
+      "data-auftrag",
+      "zusammenfassung",
+      { timeout: 180_000 },
+    );
+    const ohneModell2 = await p.getByTestId("klara-bild-kontext-ohne-modell").count();
+    const zusammenfassung = (await p.getByTestId("klara-bild-kontext-antworttext").count())
+      ? ((await p.getByTestId("klara-bild-kontext-antworttext").textContent()) ?? "")
+      : "";
+    protokoll.ergebnis = { roh, antwort, zusammenfassung, ohneModell1, ohneModell2 };
+    await test.info().attach("ocr-e02-klara-modell-berichtigung.json", {
+      contentType: "application/json",
+      body: JSON.stringify(protokoll, null, 2),
+    });
+    await test.info().attach("ocr-e02-klara-modell-berichtigung.png", {
+      contentType: "image/png",
+      body: await p.screenshot(),
+    });
+
+    // Keine fehlende, leere oder ersatzweise Antwort — und beide tragen die Berichtigung.
+    expect(ohneModell1, "keine Modellantwort auf die Frage").toBe(0);
+    expect(antwort.trim().length, "leere Antwort").toBeGreaterThan(0);
+    expect(antwort).toMatch(/LAGER/i);
+    expect(antwort).toMatch(/\b4711\b/);
+    expect(antwort).not.toMatch(/LAGFR/i);
+    expect(ohneModell2, "keine Modellzusammenfassung").toBe(0);
+    expect(zusammenfassung.trim().length, "leere Zusammenfassung").toBeGreaterThan(0);
+    expect(zusammenfassung).toMatch(/LAGER/i);
+    expect(zusammenfassung).not.toMatch(/LAGFR/i);
+  } finally {
+    const rest = await korrekturenAmServer(page).catch(() => null);
+    for (const k of rest?.korrekturen ?? []) {
+      await page.request
+        .put(KORREKTUREN, {
+          data: { aktion: "zuruecksetzen", quelle: k.quelle, inhaltskennung: k.inhaltskennung },
+        })
+        .catch(() => undefined);
+    }
+    if (entwurfId) {
+      await page.request.delete(`/api/drafts/${entwurfId}`).catch(() => undefined);
+    }
+    await freigabeSetzen(page, vorher, {
+      oeffentlicheKi: vorher.kiFreigabe?.oeffentlicheKi === true,
+      vertraulicheInhalte: vorher.kiFreigabe?.vertraulicheInhalte === true,
+    });
   }
 });

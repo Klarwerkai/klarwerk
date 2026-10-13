@@ -25,7 +25,7 @@ import {
 } from "../lib/bildAutomatik";
 import { markierung } from "../lib/bildFundstelle";
 import { berichtigbar, korrekturQuelleFuer, quellenMitKorrekturen } from "../lib/bildKorrektur";
-import { useBildKorrekturen } from "../lib/bildKorrekturenStand";
+import { useBildKorrekturen, wiederholeBildKorrekturen } from "../lib/bildKorrekturenStand";
 import { BildFundstelleAnsicht, type FundstellenZiel } from "./BildFundstelleAnsicht";
 import { BildTextBerichtigung } from "./BildTextBerichtigung";
 import { BildTextStellen } from "./BildTextStellen";
@@ -272,7 +272,15 @@ export function BildBefundListe({
           </p>
         ) : korrekturen.status === "fehler" ? (
           <p data-testid="bild-berichtigung-stand" className="mt-1 text-trust-warn-text">
-            {t("bildfundstelle.korrektur.ladeFehler")}
+            {t("bildfundstelle.korrektur.ladeFehler")}{" "}
+            <button
+              type="button"
+              data-testid="bild-berichtigung-erneut"
+              onClick={() => wiederholeBildKorrekturen()}
+              className="font-semibold underline"
+            >
+              {t("bildfundstelle.korrektur.erneutLaden")}
+            </button>
           </p>
         ) : korrekturen.status === "bereit" && !korrekturen.darfBearbeiten ? (
           <p data-testid="bild-berichtigung-kein-recht" className="mt-1 text-muted">
