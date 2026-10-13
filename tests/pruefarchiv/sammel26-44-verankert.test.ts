@@ -250,6 +250,34 @@ function berichtMaengel(archiv: string, kopie: (datei: string) => Buffer | null)
   return funde;
 }
 
+const NICHT_REPRODUZIERBAR = ": Inhalts-SHA der Markerzeile passt nicht zum Text";
+
+/**
+ * Die Kennungen, deren Markerzeile das Archiv ausdrücklich als nicht reproduzierbar führt. Ein
+ * historischer Bericht wird nicht verändert; seine falsche Selbstauskunft wird benannt.
+ */
+function alsNichtReproduzierbarGefuehrt(archiv: string): string[] {
+  const zeile = archiv.match(/\*\*Markerzeile nicht reproduzierbar:\*\*([^\n]*)/);
+  return zeile ? [...(zeile[1] as string).matchAll(/[AB]-sammel\d+/g)].map((m) => m[0]) : [];
+}
+
+/**
+ * Alle Abweichungen außer den im Archiv benannten nicht reproduzierbaren Markerzeilen; dazu jede
+ * benannte, die in Wahrheit stimmt. Leer heißt: Tabelle, Archivtext und Berichte passen zusammen.
+ */
+function unerklaerteAbweichungen(
+  archiv: string,
+  kopie: (datei: string) => Buffer | null,
+): string[] {
+  const gefuehrt = alsNichtReproduzierbarGefuehrt(archiv);
+  const funde = berichtMaengel(archiv, kopie);
+  const erwartet = gefuehrt.map((k) => `${k}${NICHT_REPRODUZIERBAR}`);
+  const veraltet = erwartet
+    .filter((e) => !funde.includes(e))
+    .map((e) => `${e.split(":")[0]}: als nicht reproduzierbar geführt, passt aber`);
+  return [...funde.filter((f) => !erwartet.includes(f)), ...veraltet];
+}
+
 interface Zeilenwerte {
   verdikt?: string;
   fundstellen?: string;
@@ -435,6 +463,19 @@ describe("Kalibrierung der Berichtsprüfung (Verdikt und Inhalts-SHA aus dem Tex
     ]);
   });
 
+  it("nicht reproduzierbar: benannt trägt, unbenannt oder veraltet ist rot", () => {
+    const veraendert = Buffer.from(echt.toString("utf8").replace("Befund.", "Befund!"), "utf8");
+    const zeile = archivMit({ verdikt: "GELB", inhaltsSha: sha256(oben) });
+    const benannt = `${zeile}\n\n**Markerzeile nicht reproduzierbar:** A-sammel41.\n`;
+    expect(unerklaerteAbweichungen(benannt, () => veraendert)).toEqual([]);
+    expect(unerklaerteAbweichungen(zeile, () => veraendert)).toEqual([
+      `A-sammel41${NICHT_REPRODUZIERBAR}`,
+    ]);
+    expect(unerklaerteAbweichungen(benannt, () => echt)).toEqual([
+      "A-sammel41: als nicht reproduzierbar geführt, passt aber",
+    ]);
+  });
+
   it("die Verdiktformen der Berichte werden erkannt", () => {
     expect(verdiktAus("## GESAMTVERDIKT\n\n**GELB.** Kein Blocker")).toBe("GELB");
     expect(verdiktAus("## Kurzverdikt\n\n**GRUEN:** testseitig")).toBe("GRÜN");
@@ -469,7 +510,10 @@ describe("R-2042: das echte Archiv sammel26–44", () => {
   });
 
   it("Gesamtverdikt und Inhalts-SHA jeder Zeile sind die des Berichts, nachgerechnet", () => {
-    expect(berichtMaengel(archiv, kopie)).toEqual([]);
+    // Prüflauf Nacharbeit 6: 31 von 32 Markerzeilen rechnen sich nach, B-sammel29 nicht. Das
+    // Archiv führt sie als nicht reproduzierbar; jede weitere oder entfallene Abweichung ist rot.
+    expect(unerklaerteAbweichungen(archiv, kopie)).toEqual([]);
+    expect(alsNichtReproduzierbarGefuehrt(archiv)).toEqual(["B-sammel29"]);
   });
 
   it("ordnet die Fundstellen der richtigen Reihe zu und zählt so, wie es im Text steht", () => {

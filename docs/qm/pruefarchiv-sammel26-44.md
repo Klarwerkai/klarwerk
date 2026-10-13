@@ -126,6 +126,21 @@ Nacharbeit 1 nannte hier „11“; das war falsch, BEN Nacharbeit 2.)
 **Verdikte:** Reihe A hat 2 GRÜN, 7 GELB und 10 ROT. Reihe B hat 2 GRÜN, 1 GELB und 10 ROT; die
 Kette endet mit GO für Ship 8 (B-sammel37) und dem Post-Ship-Check (B-sammel38).
 
+**Inhalts-SHA nachgerechnet (Prüflauf Nacharbeit 6, Kandidat `81a9e91a`):** Bei 31 von 32
+Berichten stimmt die SHA-256 der Markerzeile mit den Bytes oberhalb überein.
+
+**Markerzeile nicht reproduzierbar:** B-sammel29.
+
+- Die Kopie ist byte-gleich zum Original: Datei-SHA-256 `e73d5333…` wie in der Quellenhilfe.
+- Die Markerzeile hat dasselbe Format wie B-sammel26 bis 28, deren Werte sich nachrechnen lassen.
+- Die von ben angegebene Inhalts-SHA `246388f4…b041` passt damit nicht zum archivierten Text.
+- Warum, sagt der Bericht nicht, etwa ob nach dem Hashen noch geändert wurde. Es wird hier auch
+  nicht vermutet.
+- Die Tabelle führt den angegebenen Wert unverändert. Er ist eine Aussage des Berichts, kein
+  bestätigter Hash.
+
+Der Prüfstand verlangt, dass diese Liste genau den nicht nachrechenbaren Berichten entspricht.
+
 **Sicherungsstand: 32 von 32 Berichtstexten liegen im Repository.** Diese Zahl ist nicht frei
 geschrieben. Der Prüfstand zählt die Dateien in `docs/qm/pruefarchiv/berichte/` und verlangt, dass
 diese Zeile genau diese Zahl nennt. Jede dort liegende Datei muss Namen und SHA-256 eines der 32
@@ -168,6 +183,9 @@ Berichte tragen. Eine fremde oder veränderte Datei ist rot.
   urteilt GESAMTVERDIKT GELB: „eng begrenzte, vor Auslieferung leicht beheb- und pruefbare Auflage“.
   Die Codekommentare überzeichnen das Verdikt. Sie sind nicht geändert, weil dieser Auftrag fremde
   Kommentare nicht umschreibt.
+- **B-sammel29: angegebene Inhalts-SHA gegen Text.** Der Bericht sagt, `246388f4…b041` sei die
+  SHA-256 des Inhalts oberhalb seiner letzten Zeile. Nachgerechnet stimmt das nicht. Die übrigen 31
+  Berichte bestehen dieselbe Rechnung.
 - **Gleiche Nummern, verschiedene Berichte.** sammel26–38 gibt es in beiden Reihen. Die erste
   Fassung dieses Archivs hat beide Gegenstände von sammel34 in eine Zeile gelegt. Das ist
   berichtigt.
@@ -183,9 +201,9 @@ Berichte tragen. Eine fremde oder veränderte Datei ist rot.
 
 ## Offen
 
-- **Inhalts-SHA:** Die Tabelle übernimmt den Wert aus der Markerzeile des Berichts. Der Prüfstand
-  rechnet ihn über den Inhalt oberhalb der Markerzeile nach. Diese Bahn konnte das nicht selbst
-  ausführen (Testläufe und `shasum` stehen ihr nicht zu). Das Ergebnis liefert der Prüflauf.
+- **Inhalts-SHA von B-sammel29:** Die Markerzeile ist nicht reproduzierbar (siehe „Markerzeile
+  nicht reproduzierbar“). Klären kann das nur, wer den Entstehungsweg des Berichts von 22.07.2026
+  kennt. Der Bericht selbst ist byte-gleich gesichert.
 - **Codekommentare mit „sammel33/34“** nennen keine Reihe. Die Zuordnung oben (B für
   WP-SHIP8-CLOSE, A für den Word-Kopierweg) ergibt sich aus dem Gegenstand und ist durch die
   Berichtstexte bestätigt. Die Kommentare selbst sind unverändert.
