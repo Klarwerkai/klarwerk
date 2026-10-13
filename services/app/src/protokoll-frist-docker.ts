@@ -11,9 +11,10 @@
 // `docker logs` liest die neuen Zeilen nicht mehr — der Dienst führt eigene Byte-Positionen. Docker
 // selbst warnt, diese Dateien von aussen zu bearbeiten (docs.docker.com, json-file-Treiber).
 // DESHALB GILT JETZT:
-//   · `<id>-json.log` (die aktive Datei) eines LAUFENDEN Containers wird nie angefasst. Nur wenn
-//     Docker den Container ausdrücklich als gestoppt führt, entfernt die Pflege daraus die Zeilen ab
-//     14 Tagen (Nacharbeit 18, `kuerzeGestoppteAktiveDatei`) — dann schreibt Docker nicht hinein.
+//   · `<id>-json.log` (die aktive Datei) wird nie gekürzt, umbenannt oder ersetzt. Führt Docker den
+//     Container als gestoppt oder pausiert (dann kommt kein Rotationsimpuls), werden überfällige
+//     Zeilen AN ORT UND STELLE mit gleicher Byte-Länge geschwärzt (Nacharbeit 20,
+//     `schwaerzeUeberfaelligeZeilen`) — Inode, Grösse und Dockers Positionen bleiben unverändert.
 //   · Gelöscht werden nur Dockers EIGENE, abgeschlossene Rotationen (`<id>-json.log.N`) — dieselben
 //     Dateien, die Docker beim Rotieren selbst entfernt —, sobald ihre älteste Zeile 14 Tage alt ist
 //     (Dockers `"time"` je Zeile), dazu Reste der ersten Fassung (Archive `<id>-json.<stempel>.log`
@@ -36,14 +37,16 @@
 // Ein-Befehl-Weg: der Dienst `protokollpflege` in docker-compose.prod.yml ruft ihn stündlich.
 // Coolify: derselbe Aufruf als geplanter Lauf auf dem Host (docs/operations/monitoring-logging.md §8).
 import {
+  closeSync,
   existsSync,
-  linkSync,
+  fstatSync,
+  openSync,
   readFileSync,
+  readSync,
   readdirSync,
-  renameSync,
   statSync,
   unlinkSync,
-  writeFileSync,
+  writeSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,7 +54,6 @@ import {
   PROTOKOLL_FRIST_TAGE,
   type ProtokollPflegeErgebnis,
   aeltesterInhalt,
-  ersteZeitImInhalt,
   pflegeDiagnoseordner,
 } from "./protokoll-frist";
 
@@ -100,120 +102,144 @@ function istGestoppt(konfiguration: DockerKonfiguration | null): boolean {
   );
 }
 
-/**
- * PAUSIERT (Ben, Nacharbeit 19): Der Prozess ist eingefroren, aber Docker hält den Schreiber der
- * aktiven Datei OFFEN — jeder Eingriff in die Datei verschöbe Dockers Schreibposition, genau der
- * Lesefehler aus Nacharbeit 15. Und weil der Prozess steht, kommt auch kein Rotationsimpuls.
- * Docker-verträglich liesse sich die Frist hier nur über den LEBENSZYKLUS durchsetzen (den Container
- * fortsetzen, damit Impuls und Docker-Rotation greifen, oder eine lange Pause wie einen Stopp
- * behandeln). Beides greift in den Betrieb ein und ist eine offene BETREIBER-/PRODUKTENTSCHEIDUNG.
- * Bis dahin: kein Dateieingriff, aber automatische Erkennung — der Lauf meldet einen pausierten
- * ausgewählten Container mit überfälligem Inhalt und endet mit eigenem Exit-Code (3).
- */
+/** Laut Docker pausiert: der Prozess ist eingefroren, Docker hält den Schreiber offen. */
 function istPausiert(konfiguration: DockerKonfiguration | null): boolean {
   return konfiguration?.State?.Paused === true;
 }
 
 /** Das Ergebnis je Container. */
 export interface DockerPflegeErgebnis extends ProtokollPflegeErgebnis {
-  /** Aus der aktiven Datei eines gestoppten Containers entfernte Zeilen. */
-  aktiveZeilenEntfernt: number;
-  /** Was mit einem Austausch aus dem vorigen Lauf geschah (s. `klaereAustausch`). */
-  austausch: "keiner" | "abgeschlossen" | "zurueckgenommen";
-  /** Pausiert und mit Inhalt älter als die Frist — die offene Entscheidung (s. `istPausiert`). */
-  pausiertUeberfaellig: boolean;
+  /** In der aktiven Datei eines gestoppten oder pausierten Containers geschwärzte Zeilen. */
+  aktiveZeilenGeschwaerzt: number;
 }
 
 /**
- * DIE AKTIVE DATEI EINES GESTOPPTEN APP-CONTAINERS (Ben, Nacharbeit 18).
+ * DIE AKTIVE DATEI EINES GESTOPPTEN ODER PAUSIERTEN APP-CONTAINERS (Ben, Nacharbeiten 18–20).
  *
- * Ein gestoppter Container schreibt nichts — auch keinen Rotationsimpuls —, seine aktive Datei bliebe
- * ohne Grenze stehen. Da Docker in diesem Zustand NICHT in sie schreibt, gibt es keine Schreibposition,
- * die ein Eingriff verschieben könnte (der Lesefehler aus Nacharbeit 15 entstand am LAUFENDEN Schreiber).
- * Die Zeilen, die die Frist noch nicht erreicht haben, kommen in eine Nachbardatei, die dann ATOMAR an
- * die Stelle der aktiven tritt. `docker logs` liest danach genau diese jüngeren Zeilen; beim nächsten
- * Start öffnet Docker die Datei neu und misst ihre Grösse frisch. Zeilen ohne lesbare Zeitangabe fallen
- * mit (Docker schreibt jede Zeile mit `time`). Unmittelbar vor dem Austausch wird der Zustand erneut
- * gelesen; läuft der Container inzwischen, unterbleibt der Austausch.
+ * Ein solcher Container schreibt keinen Rotationsimpuls; seine aktive Datei bliebe ohne Grenze stehen.
+ * Austausch (Umbenennen, Nacharbeit 18/19) und Kürzen (copytruncate, Nacharbeit 15) sind dabei nicht
+ * Docker-verträglich: Docker kann die Datei jederzeit offen haben (pausiert ohnehin, gestoppt beim
+ * gleichzeitigen Start) und führt eigene Byte-Positionen und eine eigene Grössenzählung.
  *
- * DER KONKURRIERENDE START (Ben, Nacharbeit 19). Startet Docker den Container genau zwischen dieser
- * Prüfung und dem Umbenennen, hält Docker die ALTE Datei offen und schreibt in sie; der Pfad zeigte
- * dann auf die neue. Eine Sperre gegen Dockers Start gibt es nicht — deshalb wird der Austausch so
- * gebaut, dass er sich ERKENNEN UND ZURÜCKNEHMEN lässt:
- *   · vor dem Austausch hält ein fester Verweis (Hardlink `….frist-alt`) die alte Datei fest, und
- *     ihre Grösse wird notiert (`….frist-pruefung`);
- *   · der NÄCHSTE Lauf (`klaereAustausch`) misst die alte Datei: Ist sie gewachsen, schreibt Docker
- *     in sie — die App schreibt beim Start sofort (Startbericht, Gesundheitsabfragen). Dann tritt sie
- *     wieder an ihren Pfad; Dockers Schreibposition stimmt damit wieder, nichts ist verloren, und die
- *     Frist greift über den Rotationsimpuls des nun laufenden Containers. Ist sie NICHT gewachsen, hat
- *     Docker sie nicht geöffnet, und der Verweis fällt.
+ * DESHALB SCHWÄRZEN AN ORT UND STELLE, GLEICHE BYTE-LÄNGE. Jede überfällige Zeile wird an ihrer Stelle
+ * durch eine inhaltsfreie JSON-Zeile genau gleicher Länge überschrieben. Datei, Inode, Grösse und jede
+ * Byte-Position bleiben, wie sie waren: Dockers Schreiber (er hängt nur am Ende an) und seine
+ * Grössenzählung bleiben gültig — gleich ob der Container steht, pausiert oder genau jetzt startet;
+ * es gibt keinen Zeitpunkt, an dem Docker eine Datei offen hätte, die der Pfad nicht mehr meint. Neue
+ * Zeilen liegen immer HINTER dem gelesenen Bereich und werden nie berührt.
  *
- * Gibt die Zahl der entfernten Zeilen zurück (0: nichts überfällig, nichts geändert).
+ * Was bleibt, ist je überfälliger Zeile ein inhaltsloses Gerüst (Zeit, Strom) — kein Protokollinhalt.
+ * Diese Gerüste verschwinden mit Dockers nächster Rotation bzw. dem Entfernen des Containers.
+ *
+ * Gibt die Zahl der geschwärzten Zeilen zurück.
  */
-function kuerzeGestoppteAktiveDatei(
-  verzeichnis: string,
-  aktiv: string,
-  jetzt: number,
-  fristMs: number,
-): number {
-  const zeilen = readFileSync(aktiv, "utf8").split("\n");
-  const behalten: string[] = [];
-  let entfernt = 0;
-  for (const zeile of zeilen) {
-    if (zeile.length === 0) {
+function schwaerzeUeberfaelligeZeilen(aktiv: string, jetzt: number, fristMs: number): number {
+  const fd = openSync(aktiv, "r+");
+  try {
+    // Gelesen wird der Stand JETZT. Was Docker danach anhängt, liegt hinter diesem Bereich und wird
+    // nicht berührt; was Docker davor schon geschrieben hatte, ist im gelesenen Bereich und wird
+    // genauso behandelt wie jede andere Zeile — es gibt keine Grössennotiz, die veralten könnte.
+    const groesse = fstatSync(fd).size;
+    const inhalt = Buffer.alloc(groesse);
+    readSync(fd, inhalt, 0, groesse, 0);
+    let geschwaerzt = 0;
+    let anfang = 0;
+    while (anfang < groesse) {
+      const ende = inhalt.indexOf(0x0a, anfang);
+      if (ende === -1) {
+        break; // eine unvollständige letzte Zeile schreibt Docker gerade — nicht anfassen
+      }
+      const laenge = ende - anfang;
+      const ersatz = ersatzZeile(
+        inhalt.subarray(anfang, ende).toString("utf8"),
+        laenge,
+        jetzt,
+        fristMs,
+      );
+      if (ersatz !== null) {
+        writeSync(fd, ersatz, 0, laenge, anfang);
+        geschwaerzt += 1;
+      }
+      anfang = ende + 1;
+    }
+    return geschwaerzt;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Die Ersatzzeile GLEICHER Byte-Länge für eine überfällige Zeile — oder `null`, wenn die Zeile bleibt
+ * (jünger als die Frist, schon geschwärzt, nur Leerraum).
+ *
+ *   überfällig, lesbar  → `{"log":"\n","stream":…,"time":…}` + Leerzeichen bis zur alten Länge.
+ *                         Die Zeitangabe bleibt — sie trägt keinen Inhalt und hält die Reihenfolge.
+ *   nicht lesbar        → nur Leerzeichen (für Dockers JSON-Leser blosser Zwischenraum). Im Zweifel
+ *                         geht die Abweichung zur Löschung, nie zum Erhalt.
+ */
+function ersatzZeile(zeile: string, laenge: number, jetzt: number, fristMs: number): Buffer | null {
+  if (zeile.trim().length === 0) {
+    return null;
+  }
+  let eintrag: { log?: unknown; stream?: unknown; time?: unknown } | null = null;
+  try {
+    eintrag = JSON.parse(zeile) as { log?: unknown; stream?: unknown; time?: unknown };
+  } catch {
+    eintrag = null;
+  }
+  const zeit = typeof eintrag?.time === "string" ? Date.parse(eintrag.time) : Number.NaN;
+  if (eintrag !== null && Number.isFinite(zeit)) {
+    if (jetzt - zeit < fristMs || istInhaltsleer(eintrag.log)) {
+      return null;
+    }
+    const huelle = JSON.stringify({
+      log: "\n",
+      stream: eintrag.stream === "stderr" ? "stderr" : "stdout",
+      time: eintrag.time,
+    });
+    if (Buffer.byteLength(huelle) <= laenge) {
+      return Buffer.from(huelle.padEnd(laenge, " "), "utf8").subarray(0, laenge);
+    }
+  }
+  return Buffer.alloc(laenge, 0x20);
+}
+
+/** Trägt ein `log`-Wert keinen Inhalt (leer oder nur der Zeilenumbruch)? */
+function istInhaltsleer(log: unknown): boolean {
+  return log === "" || log === "\n";
+}
+
+/**
+ * Die älteste Zeitangabe einer Zeile MIT Inhalt (für den Bericht). Geschwärzte Zeilen und Leerraum
+ * zählen nicht — sie tragen nur noch ihre Zeit. `inhalt: false`: keine Zeile mit Inhalt.
+ */
+function aeltesteInhaltszeile(pfad: string): { zeit: number | null; inhalt: boolean } {
+  let inhalt = false;
+  for (const zeile of readFileSync(pfad, "utf8").split("\n")) {
+    if (zeile.trim().length === 0) {
       continue;
     }
-    const zeit = /"time":"([^"]+)"/.exec(zeile)?.[1];
-    const ms = zeit ? Date.parse(zeit) : Number.NaN;
-    if (Number.isFinite(ms) && jetzt - ms < fristMs) {
-      behalten.push(zeile);
-    } else {
-      entfernt += 1;
+    try {
+      const eintrag = JSON.parse(zeile) as { log?: unknown; time?: unknown };
+      if (istInhaltsleer(eintrag.log)) {
+        continue;
+      }
+      inhalt = true;
+      // Docker schreibt `time` als ISO-Angabe, pino (Diagnosekopien) als Millisekunden.
+      const zeit =
+        typeof eintrag.time === "string"
+          ? Date.parse(eintrag.time)
+          : typeof eintrag.time === "number"
+            ? eintrag.time
+            : Number.NaN;
+      if (Number.isFinite(zeit)) {
+        return { zeit, inhalt };
+      }
+    } catch {
+      inhalt = true;
     }
   }
-  if (entfernt === 0 || !istGestoppt(leseKonfiguration(verzeichnis))) {
-    return 0;
-  }
-  const alt = `${aktiv}${ALT_ENDUNG}`;
-  linkSync(aktiv, alt);
-  writeFileSync(`${aktiv}${PRUEF_ENDUNG}`, `${statSync(alt).size}\n`, "utf8");
-  const neu = `${aktiv}.frist-neu`;
-  writeFileSync(neu, behalten.length > 0 ? `${behalten.join("\n")}\n` : "", "utf8");
-  renameSync(neu, aktiv);
-  return entfernt;
-}
-
-/** Der feste Verweis auf die abgelöste Datei und die notierte Grösse (s. oben). */
-const ALT_ENDUNG = ".frist-alt";
-const PRUEF_ENDUNG = ".frist-pruefung";
-
-/**
- * Klärt einen offenen Austausch aus dem vorigen Lauf. Ergebnis:
- *   `keiner`        — es gab keinen;
- *   `abgeschlossen` — Docker hat die alte Datei nicht beschrieben; Verweis und Notiz sind gelöscht;
- *   `zurueckgenommen` — Docker schreibt in die alte Datei; sie steht wieder an ihrem Pfad.
- */
-function klaereAustausch(aktiv: string): "keiner" | "abgeschlossen" | "zurueckgenommen" {
-  const alt = `${aktiv}${ALT_ENDUNG}`;
-  const pruefung = `${aktiv}${PRUEF_ENDUNG}`;
-  if (!existsSync(alt)) {
-    if (existsSync(pruefung)) {
-      unlinkSync(pruefung);
-    }
-    return "keiner";
-  }
-  const notiert = Number(existsSync(pruefung) ? readFileSync(pruefung, "utf8").trim() : Number.NaN);
-  // Ohne lesbare Notiz im Zweifel ZURÜCK: das bewahrt Dockers Datei und schiebt die Frist nur auf.
-  const gewachsen = !Number.isFinite(notiert) || statSync(alt).size > notiert;
-  if (gewachsen) {
-    renameSync(alt, aktiv);
-  } else {
-    unlinkSync(alt);
-  }
-  if (existsSync(pruefung)) {
-    unlinkSync(pruefung);
-  }
-  return gewachsen ? "zurueckgenommen" : "abgeschlossen";
+  return { zeit: null, inhalt };
 }
 
 function leseKonfiguration(verzeichnis: string): DockerKonfiguration | null {
@@ -237,9 +263,9 @@ export interface ContainerBericht {
   name: string;
   abbild: string;
   ausgewaehlt: boolean;
-  /** Laut Docker sicher gestoppt — dann kürzt die Pflege auch die aktive Datei (Nacharbeit 18). */
+  /** Laut Docker sicher gestoppt — dann schwärzt die Pflege überfällige Zeilen der aktiven Datei. */
   gestoppt: boolean;
-  /** Laut Docker pausiert — dann kein Dateieingriff; überfälliger Inhalt wird gemeldet (Nacharbeit 19). */
+  /** Laut Docker pausiert — ebenso (Nacharbeit 20). */
   pausiert: boolean;
   protokolldateien: number;
 }
@@ -290,13 +316,14 @@ export function berichteDockerProtokolle(opts: {
       if (stand.size === 0) {
         continue; // leer: kein Protokollinhalt
       }
-      const imInhalt = ersteZeitImInhalt(pfad);
-      if (imInhalt === null) {
+      // Nacharbeit 20: geschwärzte Zeilen tragen nur noch ihre Zeit — sie zählen nicht als Inhalt.
+      const { zeit, inhalt } = aeltesteInhaltszeile(pfad);
+      if (zeit !== null) {
+        zeilen.push(zeit);
+      } else if (inhalt) {
         daten.push(
           Math.min(stand.mtimeMs, stand.birthtimeMs > 0 ? stand.birthtimeMs : stand.mtimeMs),
         );
-      } else {
-        zeilen.push(imInhalt);
       }
     }
     return {
@@ -315,14 +342,8 @@ export function berichteDockerProtokolle(opts: {
       }
       const konfiguration = leseKonfiguration(verzeichnis);
       const aktiv = `${id}-json.log`;
-      // Die abgelöste Datei eines offenen Austauschs (`….frist-alt`) zählt mit — ihr Inhalt besteht
-      // noch; Notiz und Zwischendatei tragen keinen Protokollinhalt.
       const protokolle = readdirSync(verzeichnis).filter(
-        (n) =>
-          n.startsWith(`${id}-json.`) &&
-          !n.endsWith(".beginn") &&
-          !n.endsWith(PRUEF_ENDUNG) &&
-          !n.endsWith(".frist-neu"),
+        (n) => n.startsWith(`${id}-json.`) && !n.endsWith(".beginn"),
       );
       container.push({
         id,
@@ -399,24 +420,14 @@ export function pflegeDockerProtokolle(opts: {
           geloescht.push(name);
         }
       }
-      const aktiv = join(verzeichnis, `${id}-json.log`);
-      // Zuerst ein offener Austausch aus dem vorigen Lauf (Nacharbeit 19).
-      const austausch = klaereAustausch(aktiv);
+      // Gestoppt oder pausiert: kein Rotationsimpuls — überfällige Zeilen der aktiven Datei werden an
+      // Ort und Stelle geschwärzt (s. `schwaerzeUeberfaelligeZeilen`). Laufend: Impuls und Rotation.
       const konfiguration = leseKonfiguration(verzeichnis);
-      const aktiveZeilenEntfernt =
-        austausch !== "zurueckgenommen" && istGestoppt(konfiguration)
-          ? kuerzeGestoppteAktiveDatei(verzeichnis, aktiv, jetzt, fristMs)
+      const aktiveZeilenGeschwaerzt =
+        istGestoppt(konfiguration) || istPausiert(konfiguration)
+          ? schwaerzeUeberfaelligeZeilen(join(verzeichnis, `${id}-json.log`), jetzt, fristMs)
           : 0;
-      // Pausiert: Docker hält den Schreiber offen — kein Dateieingriff (s. `istPausiert`).
-      const pausiertUeberfaellig =
-        istPausiert(konfiguration) && jetzt - (ersteZeitImInhalt(aktiv) ?? jetzt) >= fristMs;
-      container[id] = {
-        rotiertNach: null,
-        geloescht,
-        aktiveZeilenEntfernt,
-        austausch,
-        pausiertUeberfaellig,
-      };
+      container[id] = { rotiertNach: null, geloescht, aktiveZeilenGeschwaerzt };
     }
   }
   const diagnose = opts.diagnoseordner
@@ -462,16 +473,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const ergebnisse = Object.values(lauf.container);
   const rotiert = ergebnisse.filter((e) => e.rotiertNach !== null).length;
   const geloescht = ergebnisse.reduce((summe, e) => summe + e.geloescht.length, 0);
+  const geschwaerzt = ergebnisse.reduce((summe, e) => summe + e.aktiveZeilenGeschwaerzt, 0);
   process.stdout.write(
-    `Protokollpflege (Docker): ${ergebnisse.length} Container, ${rotiert} rotiert, ${geloescht} Dateien gelöscht, ${lauf.diagnose.length} Diagnosekopien gelöscht.\n`,
+    `Protokollpflege (Docker): ${ergebnisse.length} Container, ${rotiert} rotiert, ${geloescht} Dateien gelöscht, ${geschwaerzt} Zeilen geschwärzt, ${lauf.diagnose.length} Diagnosekopien gelöscht.\n`,
   );
-  // Nacharbeit 19: ein pausierter ausgewählter Container mit überfälligem Inhalt ist eine offene
-  // Entscheidung, kein stiller Erfolg — der geplante Lauf endet sichtbar mit Exit 3.
-  const pausiert = Object.entries(lauf.container).filter(([, e]) => e.pausiertUeberfaellig);
-  if (pausiert.length > 0) {
-    process.stderr.write(
-      `Protokollpflege (Docker): ${pausiert.length} pausierte(r) Container mit Protokoll älter als die Frist — ohne Fortsetzen nicht Docker-verträglich löschbar: ${pausiert.map(([id]) => id.slice(0, 12)).join(", ")}\n`,
-    );
-    process.exit(3);
-  }
 }

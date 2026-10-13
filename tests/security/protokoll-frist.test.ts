@@ -119,6 +119,19 @@ function fremderContainer(
   };
 }
 
+/**
+ * Liest eine Docker-Protokolldatei so, wie Dockers JSON-Leser sie liest: eine Folge von JSON-Werten,
+ * Leerraum (auch ganze Leerzeichenzeilen) dazwischen wird übersprungen. Eine unlesbare Zeile wirft —
+ * genau das, was `docker logs` an dieser Stelle scheitern liesse.
+ */
+function dockerLesen(pfad: string): { log: string; stream: string; time: string }[] {
+  return readFileSync(pfad, "utf8")
+    .split("\n")
+    .map((z) => z.trim())
+    .filter((z) => z.length > 0)
+    .map((z) => JSON.parse(z) as { log: string; stream: string; time: string });
+}
+
 describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
   it("die Frist ist die entschiedene: 14 Tage", () => {
     expect(PROTOKOLL_FRIST_TAGE).toBe(14);
@@ -808,163 +821,190 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
       }),
     );
 
+    const vorher = (pfad: string) => ({ ino: statSync(pfad).ino, size: statSync(pfad).size });
+    const gestopptVorher = vorher(gestoppt);
+    const pausiertVorher = vorher(pausiert);
+
     const lauf = pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
 
-    expect(lauf.container.aaaaaaaaaaaaaaaaaaaaaaaa?.aktiveZeilenEntfernt).toBe(2);
-    const rest = readFileSync(gestoppt, "utf8");
-    // Lesbar wie mit `docker logs`: jede Zeile gültiges JSON, genau die jüngeren.
-    const zeilen = rest
-      .split("\n")
-      .filter((z) => z.length > 0)
-      .map((z) => (JSON.parse(z) as { log: string }).log.trim());
-    expect(zeilen).toEqual(["jung-3", "jung-1h"]);
-    expect(existsSync(`${gestoppt}.frist-neu`)).toBe(false);
-    // Laufend und pausiert: unberührt — dort schreibt Docker (der Lesefehler aus Nacharbeit 15).
-    expect(lauf.container.bbbbbbbbbbbbbbbbbbbbbbbb?.aktiveZeilenEntfernt).toBe(0);
+    // Nacharbeit 20: gestoppt UND pausiert — überfällige Zeilen an Ort und Stelle geschwärzt.
+    expect(lauf.container.aaaaaaaaaaaaaaaaaaaaaaaa?.aktiveZeilenGeschwaerzt).toBe(2);
+    expect(lauf.container.cccccccccccccccccccccccc?.aktiveZeilenGeschwaerzt).toBe(2);
+    for (const [pfad, stand] of [
+      [gestoppt, gestopptVorher],
+      [pausiert, pausiertVorher],
+    ] as const) {
+      // Dieselbe Datei, dieselbe Grösse — Dockers Positionen und Grössenzählung bleiben gültig.
+      expect(vorher(pfad)).toEqual(stand);
+      // Lesbar wie mit `docker logs`: jede Zeile gültiges JSON; Inhalt nur noch in den jüngeren.
+      const eintraege = dockerLesen(pfad);
+      expect(eintraege.map((e) => e.log.trim()).filter((t) => t.length > 0)).toEqual([
+        "jung-3",
+        "jung-1h",
+      ]);
+      expect(readFileSync(pfad, "utf8")).not.toContain("alt-20");
+      expect(readFileSync(pfad, "utf8")).not.toContain("alt-15");
+    }
+    // Laufend: unberührt — dort wirken Impuls und Docker-Rotation.
+    expect(lauf.container.bbbbbbbbbbbbbbbbbbbbbbbb?.aktiveZeilenGeschwaerzt).toBe(0);
     expect(readFileSync(laufend, "utf8")).toBe(inhalt);
-    expect(readFileSync(pausiert, "utf8")).toBe(inhalt);
     // Fremd: weder ausgewählt noch angefasst.
     expect(Object.keys(lauf.container)).not.toContain("dddddddddddddddddddddddd");
     expect(readFileSync(fremd, "utf8")).toBe(inhalt);
-    // Der Bericht führt den Zustand.
+    // Der Bericht: geschwärzte Zeilen zählen nicht als Inhalt — die älteste Zeile MIT Inhalt ist 3 Tage alt.
     const bericht = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
     expect(bericht.container.find((c) => c.id === "aaaaaaaaaaaaaaaaaaaaaaaa")).toMatchObject({
       gestoppt: true,
       aktiveDatei: { aeltesteZeileTage: 3 },
     });
-    // Nacharbeit 19: bis zum Folgelauf hält ein Verweis die abgelöste Datei; der Bericht zeigt das ehrlich.
-    expect(existsSync(`${gestoppt}.frist-alt`)).toBe(true);
-    const folge = pflegeDockerProtokolle({
-      ordner: wurzel,
-      auswahl: KLARWERK,
-      jetzt: JETZT + 3_600_000,
-    });
-    // Der Container stand still, die alte Datei ist nicht gewachsen: Austausch abgeschlossen.
-    expect(folge.container.aaaaaaaaaaaaaaaaaaaaaaaa?.austausch).toBe("abgeschlossen");
-    expect(existsSync(`${gestoppt}.frist-alt`)).toBe(false);
-    expect(existsSync(`${gestoppt}.frist-pruefung`)).toBe(false);
-    const nachFolge = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
-    expect(
-      nachFolge.container.find((c) => c.id === "aaaaaaaaaaaaaaaaaaaaaaaa")?.rotationen
-        .aeltesteZeileTage,
-    ).toBeNull();
-  });
-
-  // Ben, Nacharbeit 19: startet Docker den Container zwischen Prüfung und Austausch, schreibt er in
-  // die ALTE Datei. Gemessen an beiden Reihenfolgen: Docker öffnet vor bzw. nach dem Austausch.
-  it("konkurrierender Start VOR dem Austausch: erkannt und zurückgenommen — nichts verloren, Docker liest weiter", () => {
-    const wurzel = protokollordner();
-    const dockerZeile = (zeit: number, text: string) =>
-      `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
-    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
-    const ordner = join(wurzel, id);
-    mkdirSync(ordner);
-    const konfiguration = (State: Record<string, unknown>) =>
-      JSON.stringify({ ...JSON.parse(appKonfiguration()), State });
-    writeFileSync(join(ordner, "config.v2.json"), konfiguration({ Running: false }));
-    const aktiv = join(ordner, `${id}-json.log`);
-    writeFileSync(aktiv, dockerZeile(JETZT - 20 * TAG, "alt") + dockerZeile(JETZT - TAG, "jung"));
-    // Docker öffnet die Datei, BEVOR die Pflege austauscht — so wie dockerd sie beim Start öffnet.
-    const dockerFd = openSync(aktiv, "a");
-    pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
-    // Der Container läuft jetzt und schreibt sofort (Startbericht) — in die alte, abgelöste Datei.
-    writeFileSync(join(ordner, "config.v2.json"), konfiguration({ Running: true }));
-    writeSync(dockerFd, dockerZeile(JETZT, "startbericht"));
-    closeSync(dockerFd);
-
-    const folge = pflegeDockerProtokolle({
-      ordner: wurzel,
-      auswahl: KLARWERK,
-      jetzt: JETZT + 3_600_000,
-    });
-
-    expect(folge.container[id]?.austausch).toBe("zurueckgenommen");
-    // Am Pfad steht wieder Dockers Datei: alle Zeilen, auch die neue — lesbar wie mit `docker logs`.
-    const zeilen = readFileSync(aktiv, "utf8")
-      .split("\n")
-      .filter((z) => z.length > 0)
-      .map((z) => (JSON.parse(z) as { log: string }).log.trim());
-    expect(zeilen).toEqual(["alt", "jung", "startbericht"]);
-    expect(existsSync(`${aktiv}.frist-alt`)).toBe(false);
-    expect(existsSync(`${aktiv}.frist-pruefung`)).toBe(false);
-    // Laufend: kein weiterer Eingriff; die Frist greift über den Rotationsimpuls.
-    expect(folge.container[id]?.aktiveZeilenEntfernt).toBe(0);
-  });
-
-  it("Start NACH dem Austausch: Docker schreibt in die neue Datei; der Verweis fällt, die Kürzung bleibt", () => {
-    const wurzel = protokollordner();
-    const dockerZeile = (zeit: number, text: string) =>
-      `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
-    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
-    const ordner = join(wurzel, id);
-    mkdirSync(ordner);
-    const konfiguration = (State: Record<string, unknown>) =>
-      JSON.stringify({ ...JSON.parse(appKonfiguration()), State });
-    writeFileSync(join(ordner, "config.v2.json"), konfiguration({ Running: false }));
-    const aktiv = join(ordner, `${id}-json.log`);
-    writeFileSync(aktiv, dockerZeile(JETZT - 20 * TAG, "alt") + dockerZeile(JETZT - TAG, "jung"));
-    pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
-    // Docker startet erst jetzt und öffnet den PFAD — also die neue Datei.
-    writeFileSync(join(ordner, "config.v2.json"), konfiguration({ Running: true }));
-    const dockerFd = openSync(aktiv, "a");
-    writeSync(dockerFd, dockerZeile(JETZT, "startbericht"));
-    closeSync(dockerFd);
-
-    const folge = pflegeDockerProtokolle({
-      ordner: wurzel,
-      auswahl: KLARWERK,
-      jetzt: JETZT + 3_600_000,
-    });
-
-    expect(folge.container[id]?.austausch).toBe("abgeschlossen");
-    const zeilen = readFileSync(aktiv, "utf8")
-      .split("\n")
-      .filter((z) => z.length > 0)
-      .map((z) => (JSON.parse(z) as { log: string }).log.trim());
-    expect(zeilen).toEqual(["jung", "startbericht"]);
-    expect(existsSync(`${aktiv}.frist-alt`)).toBe(false);
-  });
-
-  // Ben, Nacharbeit 19: pausierte Container. Docker hält den Schreiber offen — ein Dateieingriff wäre
-  // der Lesefehler aus Nacharbeit 15. Die Durchsetzung bräuchte einen Eingriff in den Lebenszyklus
-  // (offene Entscheidung); bis dahin wird die Lage automatisch erkannt und laut gemeldet.
-  it("pausierter App-Container: kein Dateieingriff, aber überfälliger Inhalt wird erkannt und gemeldet", () => {
-    const wurzel = protokollordner();
-    const dockerZeile = (zeit: number, text: string) =>
-      `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
-    const anlegen = (id: string, zeit: number) => {
-      mkdirSync(join(wurzel, id));
-      writeFileSync(
-        join(wurzel, id, "config.v2.json"),
-        JSON.stringify({
-          ...JSON.parse(appKonfiguration()),
-          State: { Running: true, Paused: true },
-        }),
-      );
-      const aktiv = join(wurzel, id, `${id}-json.log`);
-      writeFileSync(aktiv, dockerZeile(zeit, "inhalt"));
-      return aktiv;
-    };
-    const ueberfaellig = anlegen("aaaaaaaaaaaaaaaaaaaaaaaa", JETZT - 20 * TAG);
-    const frisch = anlegen("bbbbbbbbbbbbbbbbbbbbbbbb", JETZT - TAG);
-    const vorher = readFileSync(ueberfaellig, "utf8");
-
-    const lauf = pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
-
-    expect(readFileSync(ueberfaellig, "utf8")).toBe(vorher);
-    expect(existsSync(`${ueberfaellig}.frist-alt`)).toBe(false);
-    expect(lauf.container.aaaaaaaaaaaaaaaaaaaaaaaa).toMatchObject({
-      pausiertUeberfaellig: true,
-      aktiveZeilenEntfernt: 0,
-    });
-    expect(lauf.container.bbbbbbbbbbbbbbbbbbbbbbbb?.pausiertUeberfaellig).toBe(false);
-    expect(readFileSync(frisch, "utf8")).toContain("inhalt");
-    const bericht = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
-    expect(bericht.container.find((c) => c.id === "aaaaaaaaaaaaaaaaaaaaaaaa")).toMatchObject({
+    expect(bericht.container.find((c) => c.id === "cccccccccccccccccccccccc")).toMatchObject({
       pausiert: true,
-      gestoppt: false,
-      aktiveDatei: { aeltesteZeileTage: 20 },
+      aktiveDatei: { aeltesteZeileTage: 3 },
     });
+    // Ein zweiter Lauf ändert nichts mehr.
+    const zweiter = pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(zweiter.container.aaaaaaaaaaaaaaaaaaaaaaaa?.aktiveZeilenGeschwaerzt).toBe(0);
+  });
+
+  // Ben, Nacharbeiten 19/20: Docker kann die Datei JEDERZEIT offen haben und schreiben — vor dem
+  // Lesen der Pflege, zwischen Lesen und Schwärzen, danach. Gemessen an allen drei Zeitpunkten: Docker
+  // hält einen eigenen, anhängenden Deskriptor (wie dockerd) und führt seine eigene Grössenzählung.
+  it("Schwärzen ohne Austausch: Docker schreibt vor, während und nach der Pflege — kein Verlust, Zählung stimmt", () => {
+    const wurzel = protokollordner();
+    const dockerZeile = (zeit: number, text: string) =>
+      `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    const ordner = join(wurzel, id);
+    mkdirSync(ordner);
+    writeFileSync(
+      join(ordner, "config.v2.json"),
+      JSON.stringify({ ...JSON.parse(appKonfiguration()), State: { Running: false } }),
+    );
+    const aktiv = join(ordner, `${id}-json.log`);
+    writeFileSync(aktiv, dockerZeile(JETZT - 20 * TAG, "alt") + dockerZeile(JETZT - TAG, "jung"));
+    const ino = statSync(aktiv).ino;
+    // Docker startet den Container genau jetzt: er öffnet die Datei und misst ihre Grösse.
+    const docker = openSync(aktiv, "a");
+    let dockerZaehlung = statSync(aktiv).size;
+    const dockerSchreibt = (text: string) => {
+      const zeile = dockerZeile(JETZT, text);
+      writeSync(docker, zeile);
+      dockerZaehlung += Buffer.byteLength(zeile);
+    };
+    // (1) VOR dem Lesen der Pflege — der Schreibfall, den der Hardlink-Weg nicht abdeckte.
+    dockerSchreibt("startbericht");
+    pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    // (3) NACH der Pflege.
+    dockerSchreibt("danach");
+    closeSync(docker);
+
+    // Dieselbe Datei; Dockers eigene Grössenzählung stimmt genau mit der Datei überein.
+    expect(statSync(aktiv).ino).toBe(ino);
+    expect(statSync(aktiv).size).toBe(dockerZaehlung);
+    // Lesbar wie mit `docker logs`, in Dockers Reihenfolge, nichts Neues verloren, Altes geschwärzt.
+    expect(dockerLesen(aktiv).map((e) => e.log.trim())).toEqual([
+      "",
+      "jung",
+      "startbericht",
+      "danach",
+    ]);
+    expect(readFileSync(aktiv, "utf8")).not.toContain('"alt');
+  });
+
+  it("Schwärzen WÄHREND Docker schreibt: eine unvollständige letzte Zeile bleibt unberührt", () => {
+    const wurzel = protokollordner();
+    const dockerZeile = (zeit: number, text: string) =>
+      `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    const ordner = join(wurzel, id);
+    mkdirSync(ordner);
+    writeFileSync(
+      join(ordner, "config.v2.json"),
+      JSON.stringify({ ...JSON.parse(appKonfiguration()), State: { Running: true, Paused: true } }),
+    );
+    const aktiv = join(ordner, `${id}-json.log`);
+    const halb = dockerZeile(JETZT - 20 * TAG, "halb");
+    // Docker hat eine Zeile nur zur Hälfte geschrieben (pausiert mitten im Schreiben).
+    writeFileSync(aktiv, dockerZeile(JETZT - 20 * TAG, "alt") + halb.slice(0, 30));
+    const docker = openSync(aktiv, "a");
+    pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    // Docker schreibt den Rest der Zeile weiter — sie ist danach vollständig und unverändert.
+    writeSync(docker, halb.slice(30));
+    closeSync(docker);
+    expect(readFileSync(aktiv, "utf8").endsWith(halb)).toBe(true);
+    expect(dockerLesen(aktiv).map((e) => e.log.trim())).toEqual(["", "halb"]);
+  });
+
+  it("Schwärzen: kurze Zeilen und unlesbare Zeilen bleiben gleich lang und für Docker lesbar", () => {
+    const wurzel = protokollordner();
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    const ordner = join(wurzel, id);
+    mkdirSync(ordner);
+    writeFileSync(
+      join(ordner, "config.v2.json"),
+      JSON.stringify({ ...JSON.parse(appKonfiguration()), State: { Running: false } }),
+    );
+    const aktiv = join(ordner, `${id}-json.log`);
+    const alt = new Date(JETZT - 20 * TAG).toISOString();
+    // Eine Zeile mit Zusatzfeldern (attrs), eine kaputte, eine junge.
+    const inhalt = [
+      JSON.stringify({ log: "Anna Meier\n", stream: "stderr", attrs: { tag: "x" }, time: alt }),
+      `{"log":"kaputt ${"Anna Meier"}`,
+      JSON.stringify({ log: "jung\n", stream: "stdout", time: new Date(JETZT).toISOString() }),
+      "",
+    ].join("\n");
+    writeFileSync(aktiv, inhalt);
+    const lauf = pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(lauf.container[id]?.aktiveZeilenGeschwaerzt).toBe(2);
+    const neu = readFileSync(aktiv, "utf8");
+    expect(Buffer.byteLength(neu)).toBe(Buffer.byteLength(inhalt));
+    expect(neu.split("\n").map((z) => z.length)).toEqual(inhalt.split("\n").map((z) => z.length));
+    expect(neu).not.toContain("Anna Meier");
+    expect(neu).not.toContain("attrs");
+    expect(dockerLesen(aktiv)).toEqual([
+      { log: "\n", stream: "stderr", time: alt },
+      { log: "jung\n", stream: "stdout", time: new Date(JETZT).toISOString() },
+    ]);
+  });
+
+  // Ben, Nacharbeit 20: auch während einer LANGEN Pause muss die Frist wirken — ohne Fortsetzen.
+  it("lange Pause: über 30 Tage täglich gepflegt, nie eine Inhaltszeile 14 Tage oder älter, Schreiber gültig", () => {
+    const wurzel = protokollordner();
+    const start = JETZT - 31 * TAG;
+    const dockerZeile = (zeit: number, text: string) =>
+      `${JSON.stringify({ log: `${text}\n`, stream: "stdout", time: new Date(zeit).toISOString() })}\n`;
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    const ordner = join(wurzel, id);
+    mkdirSync(ordner);
+    writeFileSync(
+      join(ordner, "config.v2.json"),
+      JSON.stringify({ ...JSON.parse(appKonfiguration()), State: { Running: true, Paused: true } }),
+    );
+    const aktiv = join(ordner, `${id}-json.log`);
+    // Bis zur Pause schrieb die App jeden Tag eine Zeile; dann friert sie ein, Docker hält die Datei offen.
+    writeFileSync(aktiv, "");
+    const docker = openSync(aktiv, "a");
+    for (let tag = 0; tag <= 5; tag++) {
+      writeSync(docker, dockerZeile(start + tag * TAG, `vor-der-pause-${tag}`));
+    }
+    const groesse = statSync(aktiv).size;
+    let hoechstalter = 0;
+    for (let tag = 6; tag <= 31; tag++) {
+      const jetzt = start + tag * TAG;
+      pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt });
+      const bericht = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt });
+      hoechstalter = Math.max(
+        hoechstalter,
+        bericht.container[0]?.aktiveDatei.aeltesteZeileTage ?? 0,
+      );
+    }
+    // Nach der Pause schreibt Docker weiter — am richtigen Ende, Grösse unverändert bis dahin.
+    expect(statSync(aktiv).size).toBe(groesse);
+    writeSync(docker, dockerZeile(JETZT, "nach-der-pause"));
+    closeSync(docker);
+    expect(hoechstalter).toBeLessThan(14);
+    expect(readFileSync(aktiv, "utf8")).not.toContain("vor-der-pause");
+    expect(dockerLesen(aktiv).at(-1)?.log).toBe("nach-der-pause\n");
   });
 
   it("Dockerfile und Compose nennen dieselbe max-size wie der Rotationsimpuls", () => {
