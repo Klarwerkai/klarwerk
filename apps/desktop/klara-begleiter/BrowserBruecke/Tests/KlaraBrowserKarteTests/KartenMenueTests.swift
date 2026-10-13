@@ -2,7 +2,7 @@
 // Ausführen auf einem Mac mit Xcode-Werkzeugen: `swift test` im Ordner `BrowserBruecke`.
 #if canImport(AppKit)
   import AppKit
-  import XCTest
+  import Testing
 
   @testable import KlaraBrowserKarte
 
@@ -16,7 +16,8 @@
   }
 
   @MainActor
-  final class KartenMenueTests: XCTestCase {
+  @Suite(.serialized)
+  struct KartenMenueTests {
     private func karte(titel: String = "Ventil V-17", url: String = "https://shop.beispiel.test/v-17")
       -> BrowserKarte
     {
@@ -38,34 +39,36 @@
 
     private func titel(_ menue: NSMenu) -> [String] { menue.items.map(\.title) }
 
-    func testGeoeffnetesMenueLeertSofortBeiEntwertung() {
+    @Test
+
+    func testGeoeffnetesMenueLeertSofortBeiEntwertung() throws {
       let ziel = Ziel()
       let abschnitt = KartenMenueAbschnitt(ziel: ziel, oeffnenAktion: #selector(Ziel.oeffnen(_:)))
       let menue = menueMitAbschnitt(abschnitt, karte())
-      XCTAssertTrue(titel(menue).contains("Browserkarte: Ventil V-17"))
-      XCTAssertTrue(titel(menue).contains("Auswahl: V-17 | 16 bar"))
+      #expect(titel(menue).contains("Browserkarte: Ventil V-17"))
+      #expect(titel(menue).contains("Auswahl: V-17 | 16 bar"))
       let alteEintraege = abschnitt.eintraege
-      let alterOeffner = try? XCTUnwrap(alteEintraege.last)
-      XCTAssertEqual(alterOeffner?.representedObject as? URL, URL(string: "https://shop.beispiel.test/v-17"))
+      let alterOeffner: NSMenuItem = try #require(alteEintraege.last)
+      #expect((alterOeffner.representedObject as? URL) == (URL(string: "https://shop.beispiel.test/v-17")))
 
       // Karte entwertet (Widerruf, Abmeldung, Sitzungswechsel) — das Menü ist noch offen.
       abschnitt.aktualisieren(karte: nil)
 
-      XCTAssertEqual(
-        titel(menue),
-        ["Reduzierte Bewegung", "", "Browserkarte: keine", "In anderen Programmen …"])
+      #expect((titel(menue)) == (["Reduzierte Bewegung", "", "Browserkarte: keine", "In anderen Programmen …"]))
       // Kein Eintrag im Menü trägt noch ein Quellziel oder eine Aktion zur alten Seite.
-      XCTAssertTrue(menue.items.allSatisfy { $0.representedObject == nil })
-      XCTAssertFalse(menue.items.contains { $0.title.contains("V-17") })
+      #expect(menue.items.allSatisfy { $0.representedObject == nil })
+      #expect(!(menue.items.contains { $0.title.contains("V-17") }))
       // Auch ein noch gehaltener alter Eintrag öffnet nichts mehr.
       for alt in alteEintraege {
-        XCTAssertNil(alt.representedObject)
-        XCTAssertNil(alt.action)
-        XCTAssertNil(alt.target)
-        XCTAssertEqual(menue.index(of: alt), -1)
+        #expect((alt.representedObject) == nil)
+        #expect((alt.action) == nil)
+        #expect((alt.target) == nil)
+        #expect((menue.index(of: alt)) == (-1))
       }
-      XCTAssertTrue(ziel.geoeffnet.isEmpty)
+      #expect(ziel.geoeffnet.isEmpty)
     }
+
+    @Test
 
     func testNeueKarteErsetztAlteAnDerselbenStelle() {
       let ziel = Ziel()
@@ -73,28 +76,32 @@
       let menue = menueMitAbschnitt(abschnitt, karte())
       abschnitt.aktualisieren(karte: karte(titel: "Ventil V-18", url: "https://shop.beispiel.test/v-18"))
       let t = titel(menue)
-      XCTAssertEqual(t.first, "Reduzierte Bewegung")
-      XCTAssertEqual(t.last, "In anderen Programmen …")
-      XCTAssertTrue(t.contains("Browserkarte: Ventil V-18"))
-      XCTAssertFalse(t.contains("Browserkarte: Ventil V-17"))
+      #expect((t.first) == ("Reduzierte Bewegung"))
+      #expect((t.last) == ("In anderen Programmen …"))
+      #expect(t.contains("Browserkarte: Ventil V-18"))
+      #expect(!(t.contains("Browserkarte: Ventil V-17")))
       let oeffner = menue.items.filter { $0.representedObject != nil }
-      XCTAssertEqual(oeffner.count, 1)
-      XCTAssertEqual(oeffner.first?.representedObject as? URL, URL(string: "https://shop.beispiel.test/v-18"))
+      #expect((oeffner.count) == (1))
+      #expect((oeffner.first?.representedObject as? URL) == (URL(string: "https://shop.beispiel.test/v-18")))
     }
+
+    @Test
 
     func testOhneKarteBeimAufbauKeinQuellziel() {
       let ziel = Ziel()
       let abschnitt = KartenMenueAbschnitt(ziel: ziel, oeffnenAktion: #selector(Ziel.oeffnen(_:)))
       let menue = menueMitAbschnitt(abschnitt, nil)
-      XCTAssertTrue(titel(menue).contains("Browserkarte: keine"))
-      XCTAssertTrue(menue.items.allSatisfy { $0.representedObject == nil })
+      #expect(titel(menue).contains("Browserkarte: keine"))
+      #expect(menue.items.allSatisfy { $0.representedObject == nil })
     }
+
+    @Test
 
     func testNichtWebSeiteBekommtKeinenOeffner() {
       let ziel = Ziel()
       let abschnitt = KartenMenueAbschnitt(ziel: ziel, oeffnenAktion: #selector(Ziel.oeffnen(_:)))
       let menue = menueMitAbschnitt(abschnitt, karte(url: "file:///etc/passwd"))
-      XCTAssertTrue(menue.items.allSatisfy { $0.representedObject == nil })
+      #expect(menue.items.allSatisfy { $0.representedObject == nil })
     }
   }
 #endif

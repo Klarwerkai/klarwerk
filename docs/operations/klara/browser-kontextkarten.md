@@ -333,8 +333,9 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
 
   *Getrennt offen:*
   - **Native Prüfung:** Host, Brücke und Swift-Tests sind in dieser Bahn weder übersetzt noch
-    ausgeführt, weil Swift und XCTest fehlen. `scripts/klara-office/begleiter-bauen.sh` bzw.
-    `swift build`/`swift test` auf dem Mac stehen aus.
+    ausgeführt, weil es hier kein Swift gibt. `scripts/klara-office/begleiter-bauen.sh` bzw.
+    `swift build` und die Kartentests (Swift Testing, Aufruf oben) auf dem Mac stehen für diese
+    Kandidatenfassung aus.
   - **Skriptrechte:** Die Bahn konnte die Skripte nicht als ausführbar markieren (`chmod`
     abgelehnt). Bis dahin startet man sie mit `bash scripts/klara-office/…`.
   - **Pins der Auslieferung:** `taskpane.html` hat einen Verweis mehr. Die Pins in
@@ -347,7 +348,18 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
     - Bei `nil` verschwinden Titel, Seite, Fassung, Auswahl und das Quellziel sofort. Alte
       Einträge verlieren Ziel, Aktion und URL.
     - Die Prüfung beim Klick bleibt.
-    - Gegenprobe: `KartenMenueTests.swift` (nicht ausgeführt, kein XCTest in dieser Bahn).
+    - Gegenprobe: `KartenMenueTests.swift`.
+  - **Native Tests auf Swift Testing (Nacharbeit 22):** Auf diesem Mac fehlt XCTest. Beide
+    Testdateien sind deshalb nach dem unabhängig geprüften Test-only-Vorschlag `1090a034`
+    (`QUELLEN-PRO-SWIFT-TESTING-V2-1090A034-20261013`) auf Swift Testing umgestellt.
+    - Erhalten sind alle 12 Szenarien (8 Sitzungsbindung, 4 Menü) mit ihren Zusicherungen und
+      Fixtures. Ein früheres `try? XCTUnwrap` ist jetzt ein hartes `try #require`.
+    - Laufzeitquellen und `Package.swift` sind unverändert.
+    - Aufruf im Ordner `BrowserBruecke`:
+      `xcrun swift test --disable-xctest --enable-swift-testing -j2`.
+    - Der Reparaturbeleg `MS365-PRUEFUNG-20261013-24` (12 grün, `#require`-Gegenprobe bricht ab)
+      galt der isolierten Vorschlagsfassung. Für die neue Kandidatenfassung ist der Lauf erneut
+      zuzuordnen.
   - **Fremde rote Wächter (Nacharbeit 20):** route-guard-audit, mega74, Rollenabnahme-Abdeckung,
     API-Referenz und word-addin-csp scheitern an Routen und Panelzeilen aus `main`, nicht an diesem
     Auftrag. Sie sind aus der Auftrags-Prüfauswahl genommen; die Berichte bleiben im Archiv.

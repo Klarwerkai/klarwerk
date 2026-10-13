@@ -50,7 +50,8 @@ Die Dateien stammen aus `QUELLEN-HOSTUEBERNAHME-20261011T231344Z`; das Layout is
 ```
 bash scripts/klara-office/begleiter-bauen.sh      # Bündel (Host + BPA-04 + Browserkarte, ein Modul)
 cd apps/desktop/klara-begleiter && swift build    # dasselbe als Swift-Paket
-cd BrowserBruecke && swift build -c release && swift test   # Brücke und Kartentests
+cd BrowserBruecke && swift build -c release      # Brücke
+xcrun swift test --disable-xctest --enable-swift-testing -j2   # Kartentests (Swift Testing, im Ordner BrowserBruecke)
 ```
 
 Installieren, Entfernen und die lokale Bedienabnahme beschreibt
@@ -59,7 +60,10 @@ Installieren, Entfernen und die lokale Bedienabnahme beschreibt
 ## Stand
 
 - Die Quellen sind übernommen und angeschlossen, aber in dieser Bahn **nicht** übersetzt und
-  nicht ausgeführt; hier gibt es kein Swift und kein XCTest.
+  nicht ausgeführt; hier gibt es kein Swift.
+- Die Kartentests (`SitzungsbindungTests.swift`, `KartenMenueTests.swift`) laufen seit
+  Nacharbeit 22 auf **Swift Testing** statt XCTest. Auf diesem Mac fehlt XCTest, das vorhandene
+  `Testing`-Framework (Swift 6.1.2) genügt. Auf älteren Werkzeugketten ist das nicht zugesagt.
 - Die Bedienungshilfe steht nur in `Bedienungshilfe.swift`. Sie liest nur, nur Word, und fragt
   die Freigabe nur auf Klick an. Die Abgrenzung zur Host-Zusage KO-02-06 ist zur Bestätigung
   durch die Führung offen (`docs/operations/klara/browser-kontextkarten.md`).
