@@ -28,6 +28,7 @@ import {
 } from "../api/spaces";
 import { ChatGespraechKnopf } from "../components/ChatGespraechKnopf";
 import { leerzustandsZeile } from "../components/EmptyStateCtas";
+import { LagebildWerteKarte } from "../components/LagebildWerte";
 import { SpaceFreigaberegel } from "../components/SpaceFreigaberegel";
 import { SpaceArchiv, SpaceBestand, SpaceZugriff } from "../components/SpaceVerwaltung";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
@@ -773,6 +774,9 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
       {/* ADMIN-09: wer hier prüfen darf, was bis zur Freigabe fehlt, und die Regel selbst. */}
       <SpaceFreigaberegel space={s} />
       <SpaceArchiv key={s.id} space={s} />
+      {/* produkt:20261013:lagebild-reale-werte-eingabe: die realen Lagebild-Werte dieses
+          Arbeitsbereichs — für Mitglieder mit Schreibrecht pflegbar, erst beim Aufklappen geladen. */}
+      {s.darfInhalteLesen ? <LagebildWerteKarte key={s.id} bereich={s.id} faltbar /> : null}
       {s.darfInhalteLesen ? (
         <Card>
           <div className="mb-3 flex flex-wrap gap-2">

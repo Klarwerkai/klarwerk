@@ -463,6 +463,48 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    // produkt:20261007:klara-notizen-aufgaben (Klara 06) — die privaten Notizen
+    // (`services/app/src/klara-notiz.ts`), eine Zeile je Notiz.
+    id: "klaranotizen",
+    name: "Private Klara-Notizen",
+    inhalt:
+      "Je Konto die eigenen Notizen und Arbeitszettel: Titel, Notiztext, offene Fragen, Weg (geschrieben, diktiert, aus dem Gespräch, aus einem Ausschnitt), Objektbezug als Rücklink (Seite, Objekt, Artikel/Absatz bzw. Wissensobjekt und Fassung, Anfang der Markierung), Kennungen der Gesprächsnachricht und der Vorgangsschlüssel des Anlegens.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; Notiztext und Fragen sind Freitext und können sensible Angaben enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["klara_notizen"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto löscht eine Notiz selbst (DELETE /api/me/klara/notizen/:id); auch Administratoren lesen fremde Notizen nicht, und keine Suche des Wissensbestands führt sie.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht seine Notizen (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
+    // produkt:20261008:klara-aufgaben (Klara 07) — die persönlichen Aufgaben
+    // (`services/app/src/klara-aufgabe.ts`), eine Zeile je Aufgabe.
+    id: "klaraaufgaben",
+    name: "Persönliche Klara-Aufgaben",
+    inhalt:
+      "Je Konto die eigenen Aufgaben: Titel, Aufgabentext, Priorität, Status (offen/erledigt) mit Zeitpunkt des Erledigens, Weg (aus einer Notiz oder einem Klara-Auftrag), Bezug (Kennung und Titel der Notiz bzw. Kennungen, Wortlaut und Art des Auftrags), Objektbezug als Rücklink und der Vorgangsschlüssel des Anlegens.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto, das zugleich zuständig ist; Titel, Text und Auftragswortlaut sind Freitext und können sensible Angaben enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["klara_aufgaben"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto löscht eine Aufgabe selbst (DELETE /api/me/klara/aufgaben/:id); auch Administratoren lesen fremde Aufgaben nicht, und keine gemeinsame Aufgabenquelle führt sie.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht seine Aufgaben (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
     id: "lernpfade",
     name: "Lernpfade und Fortschritt",
     inhalt:
@@ -521,6 +563,25 @@ export const DATENINVENTAR: readonly Datenart[] = [
     frist: BETREIBERFRIST,
     selbstauskunft: { enthalten: true },
     befund: "Beschäftigtendaten mit Bezug zur Lebensplanung — Teil der Folgenabschätzung.",
+  },
+  {
+    // produkt:20261013:lagebild-reale-werte-eingabe
+    id: "lagebild-werte",
+    name: "Reale Eingangswerte der Wissensbewertung",
+    inhalt:
+      "Je Arbeitsbereich (ganzes Unternehmen oder Space) Stundensatz, gesparte Stunden je validiertem Objekt und Wiederverwendung mit Herkunft (eigene Eingabe/gemessen) und Beleg, Geltungszeitraum, Stand, Kennung des Speichervorgangs, Änderungszeitpunkt und ändernde Kennung.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Die ändernde Kennung des letzten Stands; die Werte selbst beschreiben einen Bereich, keine Person. Ein Beleg ist Freitext und könnte einen Namen enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["management_lagebild_werte"] },
+    taetigkeit: "management",
+    loeschung: "Kein Löschweg; der Stand wird durch die nächste Eingabe überschrieben.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Betriebswerte eines Arbeitsbereichs; die Person steht nur als ändernde Kennung am jeweils letzten Stand. Noch nicht in die Auskunft aufgenommen (offen benannt).",
+    },
   },
   {
     id: "gesamtanweisungen",

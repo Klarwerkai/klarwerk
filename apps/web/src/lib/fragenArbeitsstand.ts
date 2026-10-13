@@ -22,7 +22,12 @@
 //     „kein Arbeitsstand" — dieselbe fehlertolerante Grenze wie `persistentToggle.ts`.
 //
 // DOM-frei: der Speicher wird hereingereicht, damit die Regeln ohne Browser prüfbar sind.
-import type { AnswerResult, Fragekontext, VerschlossenHinweis } from "../api/types";
+import type {
+  AnswerResult,
+  Fragekontext,
+  ReferenzPruefung,
+  VerschlossenHinweis,
+} from "../api/types";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -69,6 +74,51 @@ export interface GespeicherteAntwort {
    *                  kontextgleiche Zweitmeinung behauptet (s. `components/fragen/Zweitmeinung.tsx`).
    */
   fragekontext?: Fragekontext | null;
+  /**
+   * REF-02 (Ben nacharbeit-3): die Referenzprüfung GENAU DIESER Antwort und der Text je Aussage —
+   * damit sie auf dem Rückweg (Fundstelle öffnen, zurück) wieder an der Antwort steht. Fehlt bei
+   * Altständen und ohne Prüfdienst; dann steht ehrlich keine Prüfung.
+   */
+  referenzpruefung?: ReferenzPruefung;
+  aussageTexte?: [string, string][];
+  /**
+   * REF-04 (K5, Befund nacharbeit-2): die Passage je Fundstelle DIESER Antwort (REF-01-Bindung),
+   * damit der Wechsel Aussage → Fundstelle auch nach Neuaufbau der Seite (Rückweg von der Quelle,
+   * Wechsel der Ansicht) die Passage zeigt. Angezeigt wird sie nur an einer vom Server mit den
+   * AKTUELLEN Rechten bestätigten Prüfung (`bestaetigtFuer` in pages/Ask.tsx); eine verworfene
+   * Fundstelle steht dort nicht mehr, ihre Passage also auch nicht.
+   */
+  fundstellenAuszuege?: [string, string][];
+}
+
+/**
+ * REF-02: eine gespeicherte Referenzprüfung — nur in der Grundform gelesen (Kennung, Status,
+ * Aussagen, Hinweise, Versuch). Alles andere ist „keine Prüfung", nie eine geratene.
+ */
+function referenzpruefungAus(roh: unknown): ReferenzPruefung | undefined {
+  if (
+    !istObjekt(roh) ||
+    typeof roh.pruefId !== "string" ||
+    (roh.status !== "geprueft" && roh.status !== "nicht_pruefbar") ||
+    !Array.isArray(roh.aussagen) ||
+    !Array.isArray(roh.hinweise) ||
+    !istObjekt(roh.versuch) ||
+    !istObjekt(roh.rollen)
+  ) {
+    return undefined;
+  }
+  return roh as unknown as ReferenzPruefung;
+}
+
+function aussageTexteAus(roh: unknown): [string, string][] | undefined {
+  if (!Array.isArray(roh)) {
+    return undefined;
+  }
+  const paare = roh.filter(
+    (p): p is [string, string] =>
+      Array.isArray(p) && p.length === 2 && typeof p[0] === "string" && typeof p[1] === "string",
+  );
+  return paare.length === roh.length ? paare : undefined;
 }
 
 /**
@@ -221,6 +271,10 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
   }
   const serverQuellenStand = quellenStandLesen(roh.serverQuellenStand);
   const beobachtet = quellenStandLesen(roh.beobachtet);
+  const referenzpruefung = referenzpruefungAus(roh.referenzpruefung);
+  const aussageTexte = aussageTexteAus(roh.aussageTexte);
+  // REF-04: dieselbe strenge Lesart wie die Aussagetexte — beschädigt heißt „keine Passagen".
+  const fundstellenAuszuege = aussageTexteAus(roh.fundstellenAuszuege);
   return {
     frage,
     result: result as unknown as AnswerResult,
@@ -234,6 +288,9 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
     ...(beobachtet ? { beobachtet } : {}),
     // Fehlt oder beschädigt: das Feld fehlt auch hier — „unbekannt" hat genau eine Darstellung.
     ...(fragekontext === undefined ? {} : { fragekontext }),
+    ...(referenzpruefung ? { referenzpruefung } : {}),
+    ...(aussageTexte ? { aussageTexte } : {}),
+    ...(fundstellenAuszuege ? { fundstellenAuszuege } : {}),
   };
 }
 

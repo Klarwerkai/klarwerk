@@ -27,18 +27,33 @@
 // Rechtesystem. Diese Grenze kann eine Handlung nur VERHINDERN, nie erlauben, was der Produktweg
 // verbietet. Es gibt auch kein Ablaufdatum als Ersatz für diese Prüfung: geprüft wird je Schritt.
 
+// produkt:20261008:klara-aufgaben (Klara 07): `persoenliche_aufgabe_anlegen` legt eine persönliche
+// Aufgabe über denselben Weg an wie einen Entwurf — Grenze, Plan, Ausführung und Nachlesen am
+// Server (`klara-ausfuehrung.ts`), Ablage `/api/me/klara/aufgaben` (`klara-aufgabe.ts`). Ihr Ziel
+// heisst `neue_persoenliche_aufgabe` (noch ohne Kennung), ihr Ergebnis `persoenliche_aufgabe`.
+// Unternehmensaufgaben (`aufgabe`) bleiben davon getrennt: kein Schritt macht aus ihnen persönliche.
 export const KLARA_AKTIONEN = [
   "oeffnen",
   "entwurf_erstellen",
   "entwurf_bearbeiten",
   "aufgabe_bearbeiten",
+  "persoenliche_aufgabe_anlegen",
 ] as const;
 export type KlaraAktion = (typeof KLARA_AKTIONEN)[number];
 
-export const KLARA_ZIELARTEN = ["wissensobjekt", "entwurf", "aufgabe", "neuer_entwurf"] as const;
+export const KLARA_ZIELARTEN = [
+  "wissensobjekt",
+  "entwurf",
+  "aufgabe",
+  "neuer_entwurf",
+  "neue_persoenliche_aufgabe",
+] as const;
 export type KlaraZielArt = (typeof KLARA_ZIELARTEN)[number];
 
-const ERGEBNISARTEN = ["wissensobjekt", "entwurf", "aufgabe"] as const;
+/** Ziele, die der Schritt erst anlegt — sie haben noch keine Kennung. */
+const NEUE_ZIELARTEN: readonly KlaraZielArt[] = ["neuer_entwurf", "neue_persoenliche_aufgabe"];
+
+const ERGEBNISARTEN = ["wissensobjekt", "entwurf", "aufgabe", "persoenliche_aufgabe"] as const;
 type KlaraErgebnisArt = (typeof ERGEBNISARTEN)[number];
 
 export const KLARA_QUELLEN_DES_AUFTRAGS = ["getippt", "gesprochen"] as const;
@@ -135,7 +150,7 @@ export interface KlaraAuftragSchritt {
  * oder Wirkung ohne Antwort des Schreibwegs).
  */
 export interface KlaraSchreibwirkung {
-  readonly art: "entwurf" | "aufgabe";
+  readonly art: "entwurf" | "aufgabe" | "persoenliche_aufgabe";
   readonly id: string;
   readonly pfad: string;
   readonly stand: string | null;
@@ -347,11 +362,14 @@ export function pruefeZiel(roh: unknown, feld = "ziel"): KlaraAuftragZiel {
   const o = objekt(roh, feld);
   const art = wahl(o.art, KLARA_ZIELARTEN, `${feld}.art`);
   const id = wahlweiseText(o.id, 200, `${feld}.id`);
-  if (art === "neuer_entwurf" ? id !== null : id === null) {
+  const neu = NEUE_ZIELARTEN.includes(art);
+  if (neu ? id !== null : id === null) {
     throw eingabeFehler(
       art === "neuer_entwurf"
         ? `${feld}.id gibt es bei einem neuen Entwurf noch nicht.`
-        : `${feld}.id ist Pflicht.`,
+        : neu
+          ? `${feld}.id gibt es bei einer neuen Aufgabe noch nicht.`
+          : `${feld}.id ist Pflicht.`,
     );
   }
   return {
@@ -558,8 +576,16 @@ function pruefePlan(
     if (aktion === "aufgabe_bearbeiten" && ziel?.art !== "aufgabe") {
       throw eingabeFehler(`${feld}: eine Aufgabe braucht ein Ziel der Art aufgabe.`);
     }
+    // Klara 07: eine persönliche Aufgabe entsteht nur als NEUE — nie aus einer Unternehmensaufgabe.
+    if (aktion === "persoenliche_aufgabe_anlegen" && ziel?.art !== "neue_persoenliche_aufgabe") {
+      throw eingabeFehler(
+        `${feld}: eine persönliche Aufgabe braucht ein Ziel der Art neue_persoenliche_aufgabe.`,
+      );
+    }
     const inhalt =
-      aktion === "entwurf_erstellen" ? wahlweiseText(o.inhalt, 2_000, `${feld}.inhalt`) : null;
+      aktion === "entwurf_erstellen" || aktion === "persoenliche_aufgabe_anlegen"
+        ? wahlweiseText(o.inhalt, 2_000, `${feld}.inhalt`)
+        : null;
     const aenderung =
       aktion === "entwurf_bearbeiten" ? pruefeAenderung(o.aenderung, `${feld}.aenderung`) : null;
     const aufgabenaktion =

@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import type { EigeninitiativeStand } from "./assistenz-eigeninitiative";
 import type { AuftragsEintrag, FaehigkeitsVormerkung } from "./assistenz-faehigkeiten";
+import type { TastenkuerzelStand } from "./assistenz-tastenkuerzel";
 
 // ================================================================================================
 // produkt:20261010:assistenz-name-avatar — DAS PERSÖNLICHE ASSISTENZPROFIL JE KONTO.
@@ -76,6 +77,20 @@ export interface AssistenzProfil {
    * gespeicherten Stand, und ein Moduswechsel ändert die Profilfassung nicht.
    */
   eigeninitiative?: EigeninitiativeStand;
+  /**
+   * produkt:20261012:klara-setup-shortcuts-umsetzung — die eigenen Klara-Tastenkürzel
+   * (`assistenz-tastenkuerzel.ts`). Gehört AUSSCHLIESSLICH `schreibeTastenkuerzel`: ein
+   * Profilschreiben übernimmt den gespeicherten Stand, und ein Kürzelwechsel ändert die
+   * Profilfassung nicht.
+   */
+  tastenkuerzel?: TastenkuerzelStand;
+  /**
+   * produkt:20261012:klara-bildanalyse-ocr-kontext-setup (OCR-03) — Setup › Klara „Bilder
+   * automatisch analysieren und Text erkennen“. Fehlt das Feld, gilt die Voreinstellung „an“; nur
+   * eine bewusste Wahl wird gespeichert. Ein normales Profilfeld wie `bewegung`: es reist mit
+   * `schreibe` und übersteht Neuladen und Neuanmeldung.
+   */
+  bildAutomatik?: boolean;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -112,6 +127,16 @@ export interface AssistenzProfilRepo {
     alt: EigeninitiativeStand | null,
     neu: EigeninitiativeStand,
   ): Promise<boolean>;
+  /**
+   * produkt:20261012:klara-setup-shortcuts-umsetzung — ersetzt nur die Tastenkürzel, wenn sie noch
+   * `alt` sind (Vergleich auf den Inhalt, `null` = keine gespeichert), sonst `false`. Ohne Profil
+   * entsteht eine Zeile mit Fassung 0. Die Profilfassung bleibt unverändert.
+   */
+  schreibeTastenkuerzel(
+    kontoId: string,
+    alt: TastenkuerzelStand | null,
+    neu: TastenkuerzelStand,
+  ): Promise<boolean>;
 }
 
 function leeresProfil(kontoId: string, stempel: string): AssistenzProfil {
@@ -147,13 +172,28 @@ export class InMemoryAssistenzProfilRepo implements AssistenzProfilRepo {
     const {
       faehigkeitsAuftraege: _ignoriert,
       eigeninitiative: _eigen,
+      tastenkuerzel: _kuerzel,
       ...rest
     } = structuredClone(p);
     this.profile.set(p.kontoId, {
       ...rest,
       ...(alt?.faehigkeitsAuftraege ? { faehigkeitsAuftraege: alt.faehigkeitsAuftraege } : {}),
       ...(alt?.eigeninitiative ? { eigeninitiative: alt.eigeninitiative } : {}),
+      ...(alt?.tastenkuerzel ? { tastenkuerzel: alt.tastenkuerzel } : {}),
     });
+    return Promise.resolve(true);
+  }
+
+  schreibeTastenkuerzel(
+    kontoId: string,
+    alt: TastenkuerzelStand | null,
+    neu: TastenkuerzelStand,
+  ): Promise<boolean> {
+    const p = this.profile.get(kontoId) ?? leeresProfil(kontoId, new Date().toISOString());
+    if (JSON.stringify(p.tastenkuerzel ?? null) !== JSON.stringify(alt)) {
+      return Promise.resolve(false);
+    }
+    this.profile.set(kontoId, { ...p, tastenkuerzel: structuredClone(neu) });
     return Promise.resolve(true);
   }
 
@@ -218,8 +258,14 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
     // Die Fähigkeitsaufträge gehören allein `schreibeFaehigkeitsauftraege`: übernommen wird immer
     // der GESPEICHERTE Stand, nie der mitgebrachte (sonst überschriebe ein Namenswechsel einen
     // inzwischen abgeschlossenen Auftrag). Dasselbe gilt für den Eigeninitiative-Stand
-    // (produkt:20261008:klara-eigeninitiative): er gehört allein `schreibeEigeninitiative`.
-    const { faehigkeitsAuftraege: _ignoriert, eigeninitiative: _eigen, ...ohneAuftraege } = p;
+    // (produkt:20261008:klara-eigeninitiative): er gehört allein `schreibeEigeninitiative` — und
+    // für die Tastenkürzel (produkt:20261012:klara-setup-shortcuts-umsetzung, `schreibeTastenkuerzel`).
+    const {
+      faehigkeitsAuftraege: _ignoriert,
+      eigeninitiative: _eigen,
+      tastenkuerzel: _kuerzel,
+      ...ohneAuftraege
+    } = p;
     const daten = JSON.stringify(ohneAuftraege);
     if (p.fassung === 1) {
       const res = await this.pool.query(
@@ -234,6 +280,9 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
              || CASE WHEN assistenz_profile.data ? 'eigeninitiative'
              THEN jsonb_build_object('eigeninitiative', assistenz_profile.data->'eigeninitiative')
              ELSE '{}'::jsonb END
+             || CASE WHEN assistenz_profile.data ? 'tastenkuerzel'
+             THEN jsonb_build_object('tastenkuerzel', assistenz_profile.data->'tastenkuerzel')
+             ELSE '{}'::jsonb END
          WHERE assistenz_profile.fassung = 0`,
         [p.kontoId, p.fassung, p.geaendertAm, daten],
       );
@@ -247,8 +296,32 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
            || CASE WHEN data ? 'eigeninitiative'
            THEN jsonb_build_object('eigeninitiative', data->'eigeninitiative')
            ELSE '{}'::jsonb END
+           || CASE WHEN data ? 'tastenkuerzel'
+           THEN jsonb_build_object('tastenkuerzel', data->'tastenkuerzel')
+           ELSE '{}'::jsonb END
         WHERE konto_id = $1 AND fassung = $5`,
       [p.kontoId, p.fassung, p.geaendertAm, daten, p.fassung - 1],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async schreibeTastenkuerzel(
+    kontoId: string,
+    alt: TastenkuerzelStand | null,
+    neu: TastenkuerzelStand,
+  ): Promise<boolean> {
+    const stempel = new Date().toISOString();
+    await this.pool.query(
+      `INSERT INTO assistenz_profile (konto_id, fassung, geaendert_am, data)
+       VALUES ($1, 0, $2, $3) ON CONFLICT (konto_id) DO NOTHING`,
+      [kontoId, stempel, JSON.stringify(leeresProfil(kontoId, stempel))],
+    );
+    const res = await this.pool.query(
+      `UPDATE assistenz_profile
+          SET data = jsonb_set(data, '{tastenkuerzel}', $3::jsonb, true)
+        WHERE konto_id = $1
+          AND COALESCE(data->'tastenkuerzel', 'null'::jsonb) = $2::jsonb`,
+      [kontoId, JSON.stringify(alt), JSON.stringify(neu)],
     );
     return (res.rowCount ?? 0) > 0;
   }
@@ -310,7 +383,13 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
 // DER DIENST
 // ------------------------------------------------------------------------------------------------
 
-export type AssistenzProfilGrund = "name" | "avatar" | "bewegung" | "unvollstaendig" | "konflikt";
+export type AssistenzProfilGrund =
+  | "name"
+  | "avatar"
+  | "bewegung"
+  | "bildAutomatik"
+  | "unvollstaendig"
+  | "konflikt";
 
 export class AssistenzProfilFehler extends Error {
   constructor(
@@ -327,6 +406,8 @@ export interface AssistenzProfilEingabe {
   name?: unknown;
   avatar?: unknown;
   bewegung?: unknown;
+  /** OCR-03: Bilder automatisch analysieren und Text erkennen (`true`/`false`). */
+  bildAutomatik?: unknown;
   /** `true`: dieser Schreibvorgang schliesst die Ersteinrichtung ab (Name UND Avatar nötig). */
   einrichtungAbschliessen?: unknown;
   /** Die Fassung, die der Client zuletzt bestätigt gesehen hat — schützt vor stillem Überschreiben. */
@@ -453,6 +534,17 @@ export class AssistenzProfilDienst {
       }
       bewegung = eingabe.bewegung as AssistenzBewegung;
     }
+    let bildAutomatik = alt?.bildAutomatik;
+    if (eingabe.bildAutomatik !== undefined) {
+      if (typeof eingabe.bildAutomatik !== "boolean") {
+        throw new AssistenzProfilFehler(
+          400,
+          "bildAutomatik",
+          "bildAutomatik muss true oder false sein.",
+        );
+      }
+      bildAutomatik = eingabe.bildAutomatik;
+    }
 
     const abschliessen = eingabe.einrichtungAbschliessen === true;
     if (abschliessen && (name === null || avatar === null)) {
@@ -472,6 +564,7 @@ export class AssistenzProfilDienst {
       fassung: (alt?.fassung ?? 0) + 1,
       geaendertAm: stempel,
       ...(alt?.faehigkeiten ? { faehigkeiten: alt.faehigkeiten } : {}),
+      ...(bildAutomatik !== undefined ? { bildAutomatik } : {}),
     };
     if (!(await this.repo.schreibe(neu))) {
       throw new AssistenzProfilFehler(

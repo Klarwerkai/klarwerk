@@ -149,6 +149,8 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte. ADDITIV,
   // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
   // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  // produkt:20261013:lagebild-reale-werte-eingabe: ein drittes `CREATE TABLE IF NOT EXISTS`
+  // (`management_lagebild_werte`) hängt hinten an — weiter ADDITIV, ohne Seed und Fremdschlüssel.
   { stufe: "MANAGEMENT_PROFILE_SCHEMA", risiko: "ADDITIV" },
   // Firmenwörterbuch: die Fassungen des Begriffskatalogs. ADDITIV, nachgezählt: ein einziges
   // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
@@ -248,6 +250,20 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "MEETING_DOKUMENTBEZUG_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:klara-notizen-aufgaben: die privaten Notizen. ADDITIV, nachgezählt: ein
+  // `CREATE TABLE IF NOT EXISTS`, ein `CREATE UNIQUE INDEX IF NOT EXISTS` und ein `CREATE INDEX IF
+  // NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter
+  // Lauf ist folgenlos.
+  { stufe: "KLARA_NOTIZ_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261008:klara-aufgaben: die persönlichen Aufgaben. ADDITIV, nachgezählt: ein
+  // `CREATE TABLE IF NOT EXISTS`, ein `CREATE UNIQUE INDEX IF NOT EXISTS` und ein `CREATE INDEX IF
+  // NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter
+  // Lauf ist folgenlos.
+  { stufe: "KLARA_AUFGABE_SCHEMA", risiko: "ADDITIV" },
+  // R-0679 / FR-VAL-07: die Geräteabos für Push. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT
+  // EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel,
+  // keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "PUSH_ABO_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

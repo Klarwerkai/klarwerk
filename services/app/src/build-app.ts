@@ -23,6 +23,8 @@ import {
   PgAnswerSnapshotRepo,
   PgGapRepo,
   PgNulltrefferRepo,
+  REFERENZ_BEGRUENDUNG_AKTION,
+  ReferenzPruefdienst,
   parseConfiguredReceiptSecret,
 } from "../../ask";
 import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "../../audit";
@@ -142,6 +144,7 @@ import {
   type UploadLimitsRepo,
   type WithTx,
   anweisungFehler,
+  isConfidential,
   ohneBestandsstempel,
   responsibleOf,
 } from "../../knowledge-object";
@@ -181,10 +184,15 @@ import {
 import {
   ConsoleMailer,
   InMemoryNotificationSeenRepo,
+  InMemoryPushAboRepo,
   type Mailer,
   type NotificationSeenRepo,
   PgNotificationSeenRepo,
+  PgPushAboRepo,
+  type PushAboRepo,
+  type PushSender,
   createMailerFromEnv,
+  createPushFromEnv,
 } from "../../notifications";
 import {
   InMemoryObjectRepo,
@@ -270,6 +278,8 @@ import {
   InMemoryAssistenzProfilRepo,
   PgAssistenzProfilRepo,
 } from "./assistenz-profil";
+// produkt:20261012:klara-setup-shortcuts-umsetzung: die Klara-Tastenkürzel im Assistenzprofil.
+import { TastenkuerzelDienst } from "./assistenz-tastenkuerzel";
 import { autorenNamenAus } from "./autorennamen";
 import {
   type BearbeitungsRepo,
@@ -356,6 +366,14 @@ import {
   KiArbeitsbegleitungDienst,
   type KiCodexEinrichtung,
 } from "./ki-arbeitsbegleitung-dienst";
+// produkt:20261008:klara-aufgaben (Klara 07): die persönlichen Aufgaben — haltbar im Postgres-
+// Betrieb, im Speicher ohne Datenbank.
+import {
+  InMemoryKlaraAufgabeRepo,
+  KlaraAufgabeDienst,
+  type KlaraAufgabeRepo,
+  PgKlaraAufgabeRepo,
+} from "./klara-aufgabe";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche — haltbar im Postgres-Betrieb, im
 // Speicher ohne Datenbank.
 import {
@@ -364,6 +382,14 @@ import {
   type KlaraGespraechRepo,
   PgKlaraGespraechRepo,
 } from "./klara-gespraech";
+// produkt:20261007:klara-notizen-aufgaben (Klara 06): die privaten Notizen — haltbar im Postgres-
+// Betrieb, im Speicher ohne Datenbank.
+import {
+  InMemoryKlaraNotizRepo,
+  KlaraNotizDienst,
+  type KlaraNotizRepo,
+  PgKlaraNotizRepo,
+} from "./klara-notiz";
 // ADMIN-12: Kommunikationsregeln, persönliche Abwahl und Zustellstatus — haltbar im Postgres-
 // Betrieb, im Speicher ohne Datenbank.
 import {
@@ -399,7 +425,7 @@ import {
   nurGelisteteLogfelder,
   stapelRahmen,
 } from "./log-positivliste";
-import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
+import { entferneGeheimeEnvWerte, istPersonenFeld, sanitizeLogText } from "./log-sanitize";
 // BPA-16: Meeting-/Folienbezüge — im Postgres-Betrieb haltbar (`PgMeetingBezugAblage`).
 import {
   type MeetingBezugAblage,
@@ -463,8 +489,12 @@ import { kiArbeitsbegleitungRoutes } from "./routes/ki-arbeitsbegleitung-routes"
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
+// produkt:20261008:klara-aufgaben (Klara 07): die eigenen, serverseitig gespeicherten Aufgaben.
+import { klaraAufgabeRoutes } from "./routes/klara-aufgabe-routes";
 // produkt:20261008:klara-basis: die eigenen, serverseitig gespeicherten Klara-Gespräche.
 import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
+// produkt:20261007:klara-notizen-aufgaben (Klara 06): die eigenen, serverseitig gespeicherten Notizen.
+import { klaraNotizRoutes } from "./routes/klara-notiz-routes";
 // JOB 3110 (M2b): der Memo-Weg des Word-Panels. Die Route ist seit JOB 3091 gebaut und gemessen;
 // hier — und nur hier — bekommt sie ihren Aufrufer.
 import { type ZurufModell, klaraZurufRoutes } from "./routes/klara-session-routes";
@@ -476,7 +506,7 @@ import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { livewallRoutes } from "./routes/livewall-routes";
 import { lmsExportRoutes } from "./routes/lms-export-routes";
-import { managementRoutes } from "./routes/management-routes";
+import { lagebildBereicheFuer, managementRoutes } from "./routes/management-routes";
 import { mcpRoutes } from "./routes/mcp-routes";
 import { mediaRoutes } from "./routes/media-routes";
 import { meetingDokumentbezugRoutes } from "./routes/meeting-dokumentbezug-routes";
@@ -488,6 +518,7 @@ import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
+import { pushRoutes } from "./routes/push-routes";
 // ADMIN-10: gemeinsame Ansicht auf Prüfung, Revalidierung, Konflikt, Duplikat, Lücke, Rückmeldung.
 import { qualitaetsaufgabenRoutes } from "./routes/qualitaetsaufgaben-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
@@ -757,6 +788,18 @@ export interface AppServices {
    */
   klaraGespraeche: KlaraGespraechRepo;
   /**
+   * produkt:20261007:klara-notizen-aufgaben (Klara 06): die privaten Notizen (`klara-notiz.ts`) je
+   * Konto. Aus demselben Grund wie `klaraGespraeche` NICHT in `AppRepos` und nicht im
+   * Wissensbestand; im Postgres-Betrieb haltbar (`PgKlaraNotizRepo`), sonst im Speicher.
+   */
+  klaraNotizen: KlaraNotizRepo;
+  /**
+   * produkt:20261008:klara-aufgaben (Klara 07): die persönlichen Aufgaben (`klara-aufgabe.ts`) je
+   * Konto. Aus demselben Grund wie `klaraNotizen` NICHT in `AppRepos` und in keiner gemeinsamen
+   * Aufgabenquelle; im Postgres-Betrieb haltbar (`PgKlaraAufgabeRepo`), sonst im Speicher.
+   */
+  klaraAufgaben: KlaraAufgabeRepo;
+  /**
    * produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil (`assistenz-profil.ts`)
    * je Konto. Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
    * (`PgAssistenzProfilRepo`), sonst die In-Memory-Ablage.
@@ -922,6 +965,10 @@ export interface AppServices {
   // R-0169 (Nacharbeit 5): die interne Dokumentakte — Word-Weg und JSON ohne externalId.
   dokumente: DokumentaktenService;
   mailer: Mailer;
+  // R-0679 / FR-VAL-07: Geräte-Push. `push` fehlt ohne VAPID-Konfiguration (dann nur E-Mail);
+  // die Abos werden trotzdem geführt, damit ein später konfigurierter Betrieb sie vorfindet.
+  push?: PushSender;
+  pushAbos: PushAboRepo;
   // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke (öffentliche Modul-Schnittstelle).
   notificationSeen: NotificationSeenRepo;
   // SCRUM-414: Admin-Regler „externe Wissensabfrage" (persistiert) — direkt als schmale
@@ -994,6 +1041,8 @@ export interface AppRepos {
   modelRuns: ModelRunRepo;
   // Audit-P3 (SCRUM-397): pro Nutzer bewusst als gesehen markierte Benachrichtigungs-IDs.
   notificationSeen: NotificationSeenRepo;
+  // R-0679: die Geräteabos für Push (je Endpunkt ein Eintrag, der angemeldeten Person zugeordnet).
+  pushAbos: PushAboRepo;
   // SCRUM-386: kundeneigene KI-Assist-Presets (Admin pflegt; Palette zeigt sie allen Rollen).
   assistPresets: AssistPresetRepo;
   // SCRUM-525 P.5 (WP6): persistente KI-Zuordnung (Policy) — überlebt Neustart/Deploy.
@@ -1353,6 +1402,10 @@ export function assembleServices(
     mitgelesen?: MitgelesenRepo;
     // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     klaraGespraeche?: KlaraGespraechRepo;
+    // produkt:20261007:klara-notizen-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
+    klaraNotizen?: KlaraNotizRepo;
+    // produkt:20261008:klara-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
+    klaraAufgaben?: KlaraAufgabeRepo;
     // produkt:20261010:assistenz-name-avatar: gesetzt von `buildPgServices`; sonst im Speicher.
     assistenzProfile?: AssistenzProfilRepo;
     // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
@@ -1817,6 +1870,10 @@ export function assembleServices(
     mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
     // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
     klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
+    // produkt:20261007:klara-notizen-aufgaben: die Notizen — Postgres, wenn injiziert, sonst im Speicher.
+    klaraNotizen: opts.klaraNotizen ?? new InMemoryKlaraNotizRepo(),
+    // produkt:20261008:klara-aufgaben: die Aufgaben — Postgres, wenn injiziert, sonst im Speicher.
+    klaraAufgaben: opts.klaraAufgaben ?? new InMemoryKlaraAufgabeRepo(),
     // produkt:20261010:assistenz-name-avatar: die Assistenzprofile — Postgres, wenn injiziert.
     assistenzProfile: opts.assistenzProfile ?? new InMemoryAssistenzProfilRepo(),
     // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
@@ -2076,6 +2133,10 @@ export function assembleServices(
       // Client + Credential modul-intern, hier nicht erreichbar). Ohne Schlüssel → undefined (inaktiv).
       // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): der Chokepoint fragt dieselbe zentrale Freigabe
       // für Vertrauliches wie der Dienst — entschieden allein im Reasoner.
+      // Aufnahme gesamt-ocr · R-0181: dieselbe Factory liefert bei KLARWERK_LOCAL_TRANSCRIBE_URL den
+      // LOKALEN Transkriber (eigener Rechner, kein Ton nach draussen) — er gewinnt vor einem
+      // Cloudschlüssel. Ist seine Adresse als lokal bestätigt, trägt er `lokal: true`; dann fragt der
+      // Dienst weder die Freigabe für öffentliche KI noch sperrt er Vertrauliches.
       transcriber: createCappedTranscriberFromEnv(process.env, {
         vertraulichFreigegeben: () => reasoner.vertraulicheAusleitungFreigegeben(),
       }),
@@ -2108,6 +2169,9 @@ export function assembleServices(
     }),
     // FR-AUTH-08/FR-VAL-07: SMTP, wenn konfiguriert; sonst sammelnder Fallback ohne Versand.
     mailer: createMailerFromEnv() ?? new ConsoleMailer(),
+    // R-0679 / FR-VAL-07: Geräte-Push nur mit VAPID-Konfiguration; die Abos immer.
+    ...pushAusUmgebung(),
+    pushAbos: repos.pushAbos,
     // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke — Repo direkt (schmale Modul-API).
     notificationSeen: repos.notificationSeen,
     // SCRUM-414: Regler-Repo direkt durchreichen (Routen nutzen es + Audit).
@@ -2120,6 +2184,13 @@ export function assembleServices(
     // available() ehrlich false (Route → 503); Tests injizieren einen Fake VOR buildApp.
     slideConverter: createSofficeSlideConverter(),
   };
+}
+
+// R-0679: der Push-Versand aus der Umgebung — als Teilobjekt, damit `push` ohne Konfiguration
+// FEHLT statt `undefined` zu tragen.
+function pushAusUmgebung(): { push?: PushSender } {
+  const push = createPushFromEnv();
+  return push ? { push } : {};
 }
 
 // In-Memory-Repos als benannter Satz — von buildServices (Tests/Dev) und der Dev-Persistenz
@@ -2160,6 +2231,7 @@ export function inMemoryRepos(): AppRepos {
     dokumente: new InMemoryDokumentaktenRepo(),
     modelRuns: new InMemoryModelRunRepo(),
     notificationSeen: new InMemoryNotificationSeenRepo(),
+    pushAbos: new InMemoryPushAboRepo(),
     assistPresets: new InMemoryAssistPresetRepo(),
     reasonerPolicy: new InMemoryReasonerPolicyRepo(),
     validationSettings: new InMemoryValidationSettingsRepo(),
@@ -2251,6 +2323,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       modelRuns: new PgModelRunRepo(pool),
       // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke persistent.
       notificationSeen: new PgNotificationSeenRepo(pool),
+      // R-0679: Geräteabos für Push persistent.
+      pushAbos: new PgPushAboRepo(pool),
       // SCRUM-386: kundeneigene KI-Assist-Presets persistent.
       assistPresets: new PgAssistPresetRepo(pool),
       // SCRUM-525 P.5 (WP6): KI-Zuordnung (Policy) persistent — überlebt Neustart/Deploy.
@@ -2337,6 +2411,12 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
       // Neustart und Deploy (`KLARA_GESPRAECH_SCHEMA`, angelegt von `migrate()`).
       klaraGespraeche: new PgKlaraGespraechRepo(pool),
+      // produkt:20261007:klara-notizen-aufgaben: eine Notiz überlebt erneute Anmeldung, Neustart und
+      // Deploy (`KLARA_NOTIZ_SCHEMA`, angelegt von `migrate()`).
+      klaraNotizen: new PgKlaraNotizRepo(pool),
+      // produkt:20261008:klara-aufgaben: eine Aufgabe überlebt Neuladen, erneute Anmeldung,
+      // Neustart und Deploy (`KLARA_AUFGABE_SCHEMA`, angelegt von `migrate()`).
+      klaraAufgaben: new PgKlaraAufgabeRepo(pool),
       // produkt:20261010:assistenz-name-avatar: Name, Avatar und Ersteinrichtung überleben Neuladen,
       // erneute Anmeldung, zweites Gerät und Deploy (`ASSISTENZ_PROFIL_SCHEMA`, von `migrate()`).
       assistenzProfile: new PgAssistenzProfilRepo(pool),
@@ -2720,6 +2800,10 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "OidcUnreachableError",
   "OutputError",
   "OverlapError",
+  // R-0679: aus `services/notifications/src/push.ts` — ein unbrauchbarer VAPID-Wert beim Start.
+  // ENTSCHEIDUNG: der Name darf ins Protokoll; die Meldung nennt nur den Variablennamen, nie den
+  // Wert (und bleibt wie alle Meldungen ohnehin unterdrückt).
+  "PushKonfigurationError",
   "ReasonerPolicyLockedError",
   "ReceiptSecretError",
   // JOB 4086: der EINE Fehlertyp des SharePoint-Moduls (`services/sharepoint/src/graph-client.ts`).
@@ -2738,6 +2822,20 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   // jetzt allein, und der zweite Weg ist entfernt (Prüfpunkt 7). Der Eintrag ist deshalb mit ihr
   // gegangen: ein Name in dieser Liste, zu dem keine Klasse mehr gehört, ist eine Leiche.
   "StartvertragError",
+  // R-1372 (Aufnahme gesamt-fehlerprotokoll): der LMS-Export (`services/output/src/scorm.ts`) kam
+  // mit main ohne Eintrag hierher — der Wächter in build-app.test.ts wurde rot, wie vorgesehen.
+  // ENTSCHEIDUNG: der Name darf ins Protokoll. Er ist ein fester Klassenname ohne Nutzerdaten; die
+  // Lage steht im Code (`LmsExportCode`, ein geschlossener Literaltyp), die Meldung unterdrückt
+  // der Serializer ohnehin.
+  "LmsExportError",
+  // R-1372 (Nacharbeit 9): mit main ohne Eintrag gekommen, vom Wächter gemeldet. ENTSCHEIDUNG: die
+  // Namen dürfen ins Protokoll — feste Klassennamen ohne Nutzerdaten; die Meldung unterdrückt der
+  // Serializer. Herkunft: app/src/bestandsreset-dienst.ts, lifecycle/src/service.ts,
+  // db-tx/src/begrenzte-pruefung.ts, app/src/transport-tls.ts.
+  "BestandsresetVorschauVeraltetError",
+  "FolgepruefungStandError",
+  "HaengendeSitzungError",
+  "TransportTlsError",
   "TranscriberConfidentialError",
   "ValidationError",
   "ZurufError",
@@ -2915,6 +3013,44 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   // richtige Auskunft ist: der Aufrufer hat etwas falsch gemacht und kann es besser machen).
   "VALIDATION",
   "WEAK_PASSWORD",
+  // R-1372 (Aufnahme gesamt-fehlerprotokoll): Codes, die mit main ohne Eintrag kamen — der Wächter
+  // in build-app.test.ts meldete sie. ENTSCHEIDUNG: alle dürfen ins Protokoll. Jeder ist ein Wert
+  // eines geschlossenen Literaltyps und trägt weder Nutzertext noch Kennung; er sagt nur, WELCHER
+  // Zweig lief.
+  // LMS-Export (`LmsExportCode`, services/output/src/scorm.ts):
+  "ATTACHMENTS_NOT_INCLUDED",
+  "EXTERNAL_LINK",
+  "LINK_INTERNAL_REMOVED",
+  "MEDIA_FOREIGN",
+  "MEDIA_UNSUPPORTED",
+  "RECIPIENTS_NOT_CONFIGURED",
+  "RECIPIENT_NOT_ALLOWED",
+  "SCHUTZDATEN",
+  "SOURCE_RESTRICTED",
+  "TOO_MANY_SOURCES",
+  // Erfassung (services/capture/src/types.ts): Herabstufung der Vertraulichkeit abgewiesen.
+  "CONFIDENTIALITY_DOWNGRADE",
+  // Spaces (services/knowledge-object/src/types.ts): veralteter Space-Stand beim Schreiben.
+  "SPACE_STAND_VERALTET",
+  // R-1372 (Nacharbeit 9): mit main ohne Eintrag gekommen, vom Wächter gemeldet. ENTSCHEIDUNG: alle
+  // dürfen ins Protokoll — feste Literale ohne Nutzertext und Kennung.
+  // Chat (app/src/routes/chat-routes.ts):
+  "ANHANG_UNBEKANNT",
+  "ERWAEHNUNG_OHNE_ZUGANG",
+  "VERWEIS_UNBEKANNT",
+  // Paarpflichten (conflicts/src/paarpflichten.ts):
+  "AUSSAGE_DOPPELT",
+  // Firmenbereich und Firmenreset (app/src/firmenbereich.ts, dev-persist.ts, bestandsreset-dienst.ts):
+  "FIRMENFILTER_UNGUELTIG",
+  "FIRMENRESET_LAEUFT",
+  "VORSCHAU_VERALTET",
+  // Verantwortung (app/src/verantwortung.ts):
+  "NACHFOLGE_FEHLT",
+  "NACHFOLGE_SIEHT_BEITRAG_NICHT",
+  // Validierung und Wissensobjekte (validation/src/types.ts, knowledge-object/src/types.ts):
+  "NOT_OWNER",
+  // Vorlagen (app/src/vorlagen.ts):
+  "VORLAGE_SPACE_KONFLIKT",
   // --- Fremdcodes, namentlich ---
   // PostgreSQL: die beiden, an denen im Betrieb wirklich etwas hängt.
   "23505", // unique_violation — die Sequenz-Kollision aus JOB 2677
@@ -2981,6 +3117,33 @@ export function pfadOhneAbfrage(url: string): string {
 }
 
 /**
+ * R-0664 (Ben, Nacharbeit 6): der Pfad, wie er ins Protokoll darf — ohne Abfrageteil und JE
+ * SEGMENT durch `sanitizeLogText`.
+ *
+ * WARUM JE SEGMENT: Regel 4 von `sanitizeLogText` zählt `/` zum Token-Alphabet. Über den ganzen
+ * Pfad angewandt, würde schon `/api/knowledge-objects/<kennung>` als EIN langes Wort komplett zu
+ * `[redacted]` — die Route wäre nicht mehr lesbar. Je Segment fällt nur das Segment, das selbst
+ * verdächtig ist (Adresse, Token, lange Kennung); die Route bleibt erkennbar.
+ *
+ * Kodierte Segmente (`anna.meier%40example.org`) werden vorher dekodiert, sonst sähe die
+ * Adressregel das `@` nie. Ein nicht dekodierbares Segment wird roh bereinigt.
+ */
+export function pfadFuerProtokoll(url: string): string {
+  return pfadOhneAbfrage(String(url))
+    .split("/")
+    .map((segment) => sanitizeLogText(dekodiertOderRoh(segment)).split("/").join("%2F"))
+    .join("/");
+}
+
+function dekodiertOderRoh(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+/**
  * JOB 2661 D2 — DER ORT IM CODE, AN DEM DER FEHLER ENTSTAND. OHNE SEINEN TEXT.
  *
  * Das ist die Antwort auf „ein Fehlercode ohne Text macht die Fehlersuche schwerer". Aus dem Stack
@@ -3007,6 +3170,48 @@ export function herkunftAusStack(stack: unknown): string {
 const SENKE_MAX_TIEFE = 6;
 
 /**
+ * Was an der Tiefengrenze anstelle eines Objekts oder Arrays steht.
+ *
+ * R-0664 (Ben, Nacharbeit 3): Bis hierher gab die Senke den Teilbaum an der Grenze UNGEFILTERT
+ * zurück — ein `name` in sechster Verschachtelung kam unverändert ins Protokoll. Fail-closed: was
+ * nicht mehr geprüft wird, wird auch nicht geschrieben.
+ */
+export const SENKE_ZU_TIEF = "[unterdrueckt: zu tief verschachtelt]";
+
+/**
+ * Was anstelle eines nicht einfachen Objekts (Klasseninstanz, Map, Set, Buffer …) steht.
+ *
+ * R-0664 (Ben, Nacharbeit 4): Solche Objekte gab die Senke ungeprüft weiter. Ihre Felder lassen
+ * sich nicht zuverlässig durchsuchen — ein `toJSON` kann beliebigen Text liefern. Fail-closed.
+ */
+export const SENKE_NICHT_EINFACH = "[unterdrueckt: kein einfaches Objekt]";
+
+/** Die Felder, für die pino einen eigenen Serializer (die Erlaubnisliste) anwendet. */
+const SERIALISIERTE_FELDER: ReadonlySet<string> = new Set(["req", "res", "err"]);
+
+/**
+ * Der `err`-Serializer: vier Felder aus geschlossenen Mengen, kein freier Wert.
+ *
+ * Herausgelöst aus `baueLoggerOptionen`, damit die Senke einen Fehler, der NICHT unter `err` steht,
+ * in dieselbe Form bringt (R-0664, Ben Nacharbeit 4) — statt ihn zu verwerfen oder roh zu lassen.
+ */
+export function serialisiereFehler(fehler: Error & { code?: unknown }): {
+  type: string;
+  code: string;
+  herkunft: string;
+  message: string;
+  stack: string;
+} {
+  return {
+    type: erlaubterTyp(fehler.name),
+    code: erlaubterCode(fehler.code),
+    herkunft: herkunftAusStack(fehler.stack),
+    message: ERR_TEXT_UNTERDRUECKT,
+    stack: ERR_TEXT_UNTERDRUECKT,
+  };
+}
+
+/**
  * Domänen-Fehlercodes sind GROSSBUCHSTABEN_MIT_UNTERSTRICH — dieselbe Form, über die `http.ts:136`
  * sie als öffentliche Codes erkennt und an Clients sendet.
  *
@@ -3030,8 +3235,9 @@ function istEinfachesObjekt(wert: object): boolean {
  * vorbei. `server.ts` baut vier solche Zeilen per Textbaustein.
  *
  * WAS SIE AUSDRÜCKLICH NICHT IST: ein Schutz für Inhalte. Sie ist eine SPERRLISTE und erkennt
- * Secret-Formen — einen Namen erkennt sie nicht. Der Inhaltsschutz ruht auf der Erlaubnisliste der
- * Serializer; diese Senke ergänzt sie und ersetzt sie nicht. Genau diese Verwechslung war der
+ * Secret-Formen, E-Mail-Adressen, ausgewiesene Namen (`Name: …`) und Personenfelder (R-0664) —
+ * einen Namen OHNE Kennzeichnung erkennt sie nicht. Der Inhaltsschutz ruht auf der Erlaubnisliste
+ * der Serializer; diese Senke ergänzt sie und ersetzt sie nicht. Genau diese Verwechslung war der
  * Fehler von D1.
  */
 export function senkeUeberWert(
@@ -3042,17 +3248,46 @@ export function senkeUeberWert(
   if (typeof wert === "string") {
     return DOMAENEN_CODE.test(wert) ? wert : sanitizeLogText(wert, env);
   }
-  if (wert === null || typeof wert !== "object" || tiefe >= SENKE_MAX_TIEFE) {
+  if (wert === null || typeof wert !== "object") {
     return wert;
+  }
+  if (tiefe >= SENKE_MAX_TIEFE) {
+    return SENKE_ZU_TIEF;
   }
   if (Array.isArray(wert)) {
     return wert.map((eintrag) => senkeUeberWert(eintrag, env, tiefe + 1));
   }
+  // R-0664 (Ben, Nacharbeit 4): Bis hierher gab die Senke JEDES nicht einfache Objekt unverändert
+  // zurück — eine Klasseninstanz mit eigenen Feldern `name`/`email` lief an der Personenfeldprüfung
+  // vorbei, und pino schrieb ihre aufzählbaren Felder ins Protokoll. Jetzt gilt:
+  //   · ein Fehler als ganzes Logargument (`log.error(fehler)`) bleibt — pino reicht ihn an den
+  //     `err`-Serializer, und der gibt nur Felder aus geschlossenen Mengen aus;
+  //   · ein Fehler an jeder anderen Stelle bekommt hier dieselbe strukturierte Form;
+  //   · ein Datum wird zu seiner ISO-Angabe;
+  //   · alles andere (Klasseninstanzen, Map, Set, Buffer …) wird durch einen festen Wert ersetzt.
+  // Die Werte unter `req`/`res`/`err` reicht die Schleife unten unberührt an ihre Serializer.
+  if (wert instanceof Error) {
+    return tiefe === 0 ? wert : serialisiereFehler(wert);
+  }
+  if (wert instanceof Date) {
+    return Number.isNaN(wert.getTime()) ? SENKE_NICHT_EINFACH : wert.toISOString();
+  }
   if (!istEinfachesObjekt(wert)) {
-    return wert;
+    return SENKE_NICHT_EINFACH;
   }
   const ergebnis: Record<string, unknown> = {};
   for (const [schluessel, inhalt] of Object.entries(wert)) {
+    // R-0664 (DS20): ein Feld, das eine Person benennt (`name`, `email`, `autor` …), fällt ganz weg.
+    if (istPersonenFeld(schluessel)) {
+      continue;
+    }
+    // Die drei Felder mit eigenem Serializer: dort ist die Erlaubnisliste. Nur auf der obersten
+    // Ebene — nur dort wendet pino sie an. `FastifyRequest`/`FastifyReply` sind Klasseninstanzen
+    // und würden sonst oben durch den festen Wert ersetzt, bevor ihr Serializer sie sieht.
+    if (tiefe === 0 && SERIALISIERTE_FELDER.has(schluessel)) {
+      ergebnis[schluessel] = inhalt;
+      continue;
+    }
     // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
     // secret-benannten Env-Variablen wird auch unter einem Trace-Feldnamen entfernt.
     // arbeit:kos-anlage-500-pg: dieselbe Bauform für die Stapelrahmen des Auffangzweigs (`sendError`,
@@ -3149,9 +3384,12 @@ export function baueLoggerOptionen(vorgabe?: {
       //
       // Die Parametertypen sind bewusst die schmalstmöglichen: der Serializer darf nur sehen, was
       // er verarbeitet. Bei `FastifyRequest` läge der ganze Request offen.
+      // R-0664 (Ben, Nacharbeit 6): `req` läuft unberührt an der Senke vorbei (sonst würde die
+      // `FastifyRequest`-Instanz ersetzt) — die beiden ausgewählten Textwerte werden deshalb HIER
+      // bereinigt. Eine Adresse im Pfad (`/nutzer/anna.meier@…`) stand sonst im Protokoll.
       req: (request: { method: string; url: string }) => ({
-        methode: request.method,
-        pfad: pfadOhneAbfrage(request.url),
+        methode: sanitizeLogText(String(request.method)),
+        pfad: pfadFuerProtokoll(request.url),
       }),
       res: (reply: { statusCode: number }) => ({ status: reply.statusCode }),
       // ==========================================================================================
@@ -3168,13 +3406,7 @@ export function baueLoggerOptionen(vorgabe?: {
       // Quelltext, ohne Nutzerdaten. `code` und `type` sagen, welcher Zweig lief. `reqId` bindet
       // alle Zeilen eines Vorgangs zusammen. Und `herkunft`+`code`+`type` gruppieren gleiche
       // Ursachen zuverlässig — auch dann, wenn in der Meldung verschiedene Werte standen.
-      err: (fehler: Error & { code?: unknown }) => ({
-        type: erlaubterTyp(fehler.name),
-        code: erlaubterCode(fehler.code),
-        herkunft: herkunftAusStack(fehler.stack),
-        message: ERR_TEXT_UNTERDRUECKT,
-        stack: ERR_TEXT_UNTERDRUECKT,
-      }),
+      err: serialisiereFehler,
     },
     // Dritte Linie. Mit den Serializern oben erreichen diese Felder den Logger gar nicht erst; die
     // Liste steht für den Fall, dass eine künftige Logzeile sie selbst mitgibt. `remove` löscht das
@@ -3292,6 +3524,11 @@ export function buildApp(
   // Optional aufgerufen: Prüfaufbauten ersetzen `modelRuns` teils durch eine schmale Attrappe nur
   // mit `recent` (tests/deploy-health-commit) — die App muss auch dann entstehen.
   services.modelRuns.logAn?.((zeile) => app.log.info(zeile, "ki_lauf"));
+  // R-0679: ohne Mailserver landet jede Nachricht ersatzweise im Protokoll — Ereignis und Betreff,
+  // nie Empfänger oder Text (Begründung in `notifications/src/mailer.ts`).
+  if (services.mailer instanceof ConsoleMailer) {
+    services.mailer.logAn((zeile) => app.log.warn(zeile, "mail_ersatzzustellung"));
+  }
   const preisgrundlage = services.modelRuns.preisgrundlage?.();
   if (preisgrundlage?.fehler) {
     app.log.warn({ event: "ki_preisliste" }, preisgrundlage.fehler);
@@ -3858,10 +4095,44 @@ export function buildApp(
   // Empfänger, die es nach der EINEN Regel (`darfSehen`) sehen dürfen, mit denselben lesbaren
   // Spaces wie die Anmeldung (`makeGuards` oben). Das gilt auch für den Verzeichnisabgleich
   // (R-0571) darunter, der denselben Notifier benutzt.
-  const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer, {
-    ko: (koId) => services.ko.get(koId),
-    spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
-  });
+  // R-0679: mit VAPID-Konfiguration zusätzlich Push auf die angemeldeten Geräte — an dieselben,
+  // sichtbarkeitsgeprüften Empfänger; ein gescheiterter Anstoß erscheint im Protokoll ohne
+  // Endpunkt und ohne Person.
+  const notifyAssignment = makeAssignmentNotifier(
+    services.auth,
+    services.mailer,
+    {
+      ko: (koId) => services.ko.get(koId),
+      spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
+    },
+    services.push
+      ? {
+          abos: services.pushAbos,
+          sender: services.push,
+          fehler: (art) => app.log.warn({ event: "push_fehlgeschlagen", art }, "push"),
+        }
+      : undefined,
+  );
+  // R-1655: neue Objekte ohne benannte Prüfer an die schnellsten Prüfer ihres Themas routen.
+  // Kandidaten sind freigegebene Konten mit dem Recht zu bewerten (`ko.validate`) — nur sie
+  // können eine Zuweisung durch ihre Bewertung erledigen. Ein Fehler beim Routing kostet die
+  // Einreichung nicht: das Objekt ist angelegt, es bleibt dann offen für alle Prüfer.
+  const routeNeuesObjekt = async (koId: string, user: SessionUser): Promise<void> => {
+    try {
+      const kandidaten = (await services.auth.listUsers())
+        .filter((u) => u.approved && can(u.role, "ko.validate"))
+        .map((u) => u.id);
+      const geroutet = await services.validation.automatischZuweisen({
+        koId,
+        actor: user.id,
+        kandidaten,
+        sichtbar: sichtbarkeitsfilterFuer(user),
+      });
+      await notifyAssignment(koId, geroutet);
+    } catch (err) {
+      app.log.warn({ event: "pruefrouting_fehlgeschlagen", err }, "pruefrouting");
+    }
+  };
   // ADMIN-09 (produkt:20261009:admin-freigaberegeln): die Freigaberegel je Space — Prüfpunkt an den
   // Entscheidungswegen, Prüfbrett-Auskunft, Spacewechsel und die Verwaltungsrouten teilen EINEN Dienst.
   const freigaberegeln = new FreigabeRegelDienst({
@@ -4318,6 +4589,8 @@ export function buildApp(
         // Berater-Konzept 04.07. (Stufe 3): Reasoner für die automatische Widerspruchs-Erkennung.
         reasoner: services.reasoner,
         notifyAssignment,
+        // R-1655: Routing neuer Objekte an die schnellsten Prüfer ihres Themas.
+        routeNeuesObjekt,
         // SCRUM-421: einstellbare Upload-Grenzen + Audit für Änderungen.
         uploadLimits: services.uploadLimits,
         // AUFTRAG-mega14 Block E (SCRUM-421): DERSELBE Object-Store, in den der Upload schreibt —
@@ -4586,6 +4859,8 @@ export function buildApp(
       },
       // ADMIN-09: die Freigaberegel des führenden Space je Brettzeile.
       (kos) => freigaberegeln.auskunftFuer(kos),
+      // R-0265: Prüfer-Vorschlag — dieselbe Personenliste wie `GET /api/directory`.
+      { ko: services.ko, kanten: services.kanten, personen: () => services.auth.listUsers() },
     ),
   );
   // AUFTRAG-mega74 BLOCK D (G5): der EINE Zugang, über den die Nebenwege die Sichtbarkeit ihrer
@@ -4829,6 +5104,7 @@ export function buildApp(
       {
         ...services,
         notifyAssignment,
+        routeNeuesObjekt,
         semanticPrefilter,
         aiCheckWorker,
         // produkt:20261007:templates-default: dieselbe Einreichprüfung am Promote.
@@ -4874,6 +5150,74 @@ export function buildApp(
         return { erreichbar, namen };
       },
     },
+    // produkt:20261009:referenzki-pruefdienst (REF-02): EIN gemeinsamer Prüfdienst für beide
+    // Zugänge (Fragekonsole und Klara) — derselbe Reasoner, dieselben Freigaben, dasselbe Audit.
+    referenz: new ReferenzPruefdienst({
+      waehlePruefer: (antwort, vertraulich) =>
+        services.reasoner.referenzPruefer(antwort, vertraulich),
+      externErlaubt: (vertraulich) => services.reasoner.externeVerarbeitungErlaubt(vertraulich),
+      istVertraulich: (ko) =>
+        isConfidential(ko.confidentiality as KnowledgeObject["confidentiality"]),
+      // Das Prüfprotokoll: Kennungen, Zustandszahlen, Rollen mit tatsächlichem Anbieter und Modell,
+      // Fingerabdrücke und Messung — kein Antwort-, Aussage- oder Quellentext.
+      // REF-04 (K6): versioniert (`protokoll`), mit Zeitpunkt, Antwortkennung und -weg, gebundenen
+      // Quellenfassungen und je Aussage Zustand, Grund, Belegverweisen und Begründungsfingerabdruck.
+      protokolliere: async (e) => {
+        await services.audit.record({
+          actor: e.akteur,
+          action: "ask.referenzpruefung",
+          target: e.pruefId,
+          payload: {
+            protokoll: e.protokoll,
+            zeitpunkt: e.zeitpunkt,
+            richtlinie: e.richtlinie,
+            status: e.status,
+            grund: e.grund ?? null,
+            antwortId: e.antwortId,
+            antwortweg: e.antwortweg,
+            antwortAnbieter: e.antwort?.anbieter ?? null,
+            antwortModell: e.antwort?.modell ?? null,
+            prueferAnbieter: e.pruefer?.anbieter ?? null,
+            prueferModell: e.pruefer?.modell ?? null,
+            antwortFingerabdruck: e.antwortFingerabdruck,
+            belegFingerabdruck: e.belegFingerabdruck,
+            paketFingerabdruck: e.paketFingerabdruck,
+            ergebnisFingerabdruck: e.ergebnisFingerabdruck,
+            quellen: e.quellen,
+            aussagen: e.aussagen,
+            aussagenGekuerzt: e.aussagenGekuerzt,
+            zustaende: e.zustaende,
+            ausCache: e.ausCache,
+            versuch: e.versuch,
+            dauerMs: e.dauerMs,
+            eingabeToken: e.verbrauch?.eingabe ?? null,
+            ausgabeToken: e.verbrauch?.ausgabe ?? null,
+            // REF-04 (K6, Ben nacharbeit-3): Verweis auf die Begründungen dieses Laufs.
+            begruendungEintrag: REFERENZ_BEGRUENDUNG_AKTION,
+          },
+        });
+        // REF-04 (K6, Ben nacharbeit-3): die kurzen Prüfbegründungen dauerhaft an DENSELBEN Lauf
+        // (Ziel = Prüfkennung) gebunden. `begruendungen` ist ein Inhaltsfeld der Audit-Sicht
+        // (`audit-sicht.ts`): geschwärzt für jeden Leser, der nicht jede zitierte Quelle (`koIds`)
+        // jetzt öffnen darf, und nach Papierkorb/Endlöschung einer Quelle für alle. Abruf über die
+        // bestehende Protokollansicht (`GET /api/audit?action=…&target=<pruefId>`).
+        await services.audit.record({
+          actor: e.akteur,
+          action: REFERENZ_BEGRUENDUNG_AKTION,
+          target: e.pruefId,
+          payload: {
+            protokoll: e.protokoll,
+            zeitpunkt: e.zeitpunkt,
+            // Ohne Zahl (auch ohne `versuch`): die Leseransicht verbirgt Nutzlasten mit Zahlen ohne
+            // bekanntes Bezugsziel als Bestandsbilanz (`audit-routes.ts`). Den Lauf samt Versuch
+            // bindet `ergebnisFingerabdruck` an den Haupteintrag.
+            ergebnisFingerabdruck: e.ergebnisFingerabdruck,
+            koIds: e.koIds,
+            begruendungen: e.begruendungen,
+          },
+        });
+      },
+    }),
   };
   // R-0700: der allgemeine Frageweg bekommt das Sitzungstor NICHT mehr — er nimmt keine
   // Klara-Bindung an.
@@ -5015,7 +5359,13 @@ export function buildApp(
   // R-2183 (Nacharbeit 3): Ruhestandshorizonte nur an echten internen Konten.
   const kontoGibtEs = async (id: string) =>
     (await services.auth.listUsers()).some((u) => u.id === id);
-  app.register(managementRoutes(services.management, guards, kontoGibtEs));
+  // produkt:20261013:lagebild-reale-werte-eingabe: die Bereiche der Lagebild-Werte je Anfrage frisch
+  // aus der Space-Ablage — ein entzogenes Lese- oder Schreibrecht wirkt beim nächsten Abruf.
+  app.register(
+    managementRoutes(services.management, guards, kontoGibtEs, async (user) =>
+      lagebildBereicheFuer(await services.spaces.aktuelle(), user),
+    ),
+  );
   app.register(modelRunRoutes(services.modelRuns, guards));
   app.register(
     externalRoutes(
@@ -5121,6 +5471,8 @@ export function buildApp(
       guards,
     ),
   );
+  // R-0679 / FR-VAL-07: Geräte-Push — Konfiguration lesen, eigenes Gerät an- und abmelden.
+  app.register(pushRoutes({ push: services.push, abos: services.pushAbos }, guards));
   // Audit-P4 (SCRUM-398): Live-Wall — read-only „frisch gesichert / hat heute geholfen".
   // PMO-FEA-0003: `konten` liefert Anzeigenamen — die Route nennt davon nur zustimmende Konten.
   app.register(
@@ -5333,6 +5685,35 @@ export function buildApp(
       guards,
     ),
   );
+  // produkt:20261007:klara-notizen-aufgaben (Klara 06): die eigenen Notizen. Eine Notiz aus dem
+  // Gespräch liest Wortlaut und Bezug aus DEMSELBEN eigenen Gespräch.
+  app.register(
+    klaraNotizRoutes(
+      {
+        dienst: new KlaraNotizDienst({
+          repo: services.klaraNotizen,
+          gespraeche: services.klaraGespraeche,
+        }),
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261008:klara-aufgaben (Klara 07): die eigenen Aufgaben. Der Bezug kommt aus der
+  // EIGENEN Notiz bzw. aus einem Auftrag im EIGENEN Gespräch — der Server liest beides selbst.
+  app.register(
+    klaraAufgabeRoutes(
+      {
+        dienst: new KlaraAufgabeDienst({
+          repo: services.klaraAufgaben,
+          notizen: services.klaraNotizen,
+          gespraeche: services.klaraGespraeche,
+        }),
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
   // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil — nur das Konto der Sitzung.
   app.register(
     assistenzProfilRoutes(
@@ -5340,6 +5721,8 @@ export function buildApp(
         dienst: new AssistenzProfilDienst({ repo: services.assistenzProfile }),
         // produkt:20261008:klara-eigeninitiative: der Unterstützungsmodus liegt im selben Profil.
         eigeninitiative: new EigeninitiativeDienst({ repo: services.assistenzProfile }),
+        // produkt:20261012:klara-setup-shortcuts-umsetzung: die Klara-Kürzel im selben Profil.
+        tastenkuerzel: new TastenkuerzelDienst({ repo: services.assistenzProfile }),
         audit: services.audit,
       },
       guards,
@@ -5402,7 +5785,11 @@ export function buildApp(
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
   // (Entwurfs-Backstop: die gespeicherte Stufe eines Entwurfs hebt, senkt nie).
-  app.register(reasonerRoutes({ ...services, ka4: klaraSessions }, guards));
+  // REF-04 (K1): auch `task: "ask"` ist ein wissensbezogener Antwortweg — DERSELBE Prüfdienst wie
+  // an Fragekonsole und Klara, keine zweite Instanz.
+  app.register(
+    reasonerRoutes({ ...services, ka4: klaraSessions, referenz: antwortDeps.referenz }, guards),
+  );
   // Klara Stufe 2 (Pedi 05.07.): KI-gestuetzte Hilfe-Antwort aus Hilfe-Schnipseln (help-routes).
   app.register(helpRoutes({ reasoner: services.reasoner }, guards));
   // R-1064: der vom Betreiber festgelegte Supportweg dieser Installation (optional, kein

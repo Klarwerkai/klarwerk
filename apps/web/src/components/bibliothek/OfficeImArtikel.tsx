@@ -35,6 +35,7 @@ import {
   speicherNachricht,
 } from "../../lib/officeEditor";
 import { ExterneQuelleKennung } from "../ko/ExterneQuelleKennung";
+import { OfficeBildBefunde } from "./OfficeBildBefunde";
 
 interface Meldung {
   art: "erfolg" | "fehler" | "hinweis";
@@ -96,6 +97,10 @@ export function OfficeImArtikel({ ko }: { ko: KnowledgeObject }): JSX.Element | 
           </li>
         ))}
       </ul>
+      {/* OCR-02 (L17): die eingebetteten Bilder der aktuellen Fassung werden ohne Klick gelesen. */}
+      <OfficeBildBefunde
+        anhaenge={anhaenge.map((a) => ({ id: a.id, name: a.name, objectId: a.objectId as string }))}
+      />
       {letzteMeldung ? (
         <output data-office-letzte-meldung={letzteMeldung.art} className="block text-[12.5px]">
           {letzteMeldung.text}

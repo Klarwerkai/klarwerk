@@ -17,6 +17,7 @@ import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { PausedMarker, StaleMarker } from "../components/LoadState";
 import { MeineEinzelquellen } from "../components/MeineEinzelquellen";
+import { KlaraAufgaben } from "../components/klara-vorschau/KlaraAufgaben";
 import { KoAuthorLine } from "../components/trust";
 import { PageHeader } from "../components/ui";
 import { fallHref } from "../lib/fallAbsprung";
@@ -627,6 +628,14 @@ export function MyTasks(): JSX.Element {
             </div>
           );
         })}
+        {/* produkt:20261008:klara-aufgaben (Klara 07): die PERSÖNLICHEN Aufgaben — ein eigener
+            Abschnitt aus der eigenen Ablage (`/api/me/klara/aufgaben`), getrennt von den gemeinsamen
+            Aufgaben darüber. Sie gehen in keinen Filter und keinen Zähler dieser Seite und des
+            Kopfbands ein; keine gemeinsame Aufgabe wird hier persönlich. `?persoenlich=<id>` (der
+            Ergebnisweg eines Klara-Auftrags) öffnet genau diese Aufgabe. */}
+        <div data-testid="aufgaben-persoenlich">
+          <KlaraAufgaben offenId={params.get("persoenlich")} />
+        </div>
         {/* R-1626 (ROADMAP 1.4): die kurze persönliche Liste „Wissen, das nur bei dir liegt" —
             nur in der ungefilterten Ansicht, nur mit geladenem Bestand, und nichts, wenn es kein
             solches Thema gibt (`components/MeineEinzelquellen.tsx`). */}

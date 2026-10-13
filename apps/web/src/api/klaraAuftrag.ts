@@ -4,12 +4,20 @@
 // vorhandenen Produktwege (`endpoints.drafts`, `endpoints.ko`), die ihre Rechte selbst prüfen.
 import { api } from "./client";
 
+// produkt:20261008:klara-aufgaben (Klara 07): `persoenliche_aufgabe_anlegen` mit dem Ziel
+// `neue_persoenliche_aufgabe` und dem Ergebnis `persoenliche_aufgabe` (`/api/me/klara/aufgaben`).
 export type KlaraAktion =
   | "oeffnen"
   | "entwurf_erstellen"
   | "entwurf_bearbeiten"
-  | "aufgabe_bearbeiten";
-export type KlaraZielArt = "wissensobjekt" | "entwurf" | "aufgabe" | "neuer_entwurf";
+  | "aufgabe_bearbeiten"
+  | "persoenliche_aufgabe_anlegen";
+export type KlaraZielArt =
+  | "wissensobjekt"
+  | "entwurf"
+  | "aufgabe"
+  | "neuer_entwurf"
+  | "neue_persoenliche_aufgabe";
 export type KlaraAuftragsQuelle = "getippt" | "gesprochen";
 
 export type KlaraAuftragStand =
@@ -36,7 +44,7 @@ export interface KlaraAuftragZiel {
 }
 
 export interface KlaraAuftragErgebnis {
-  art: "wissensobjekt" | "entwurf" | "aufgabe";
+  art: "wissensobjekt" | "entwurf" | "aufgabe" | "persoenliche_aufgabe";
   id: string;
   titel: string;
   stand: string | null;
@@ -59,7 +67,7 @@ export interface KlaraAuftragSchritt {
   geprueft?: KlaraAuftragErgebnis | null;
   /** Nacharbeit 4: bestätigte Schreibwirkung, deren Nachlesen noch aussteht (Schritt ungeklärt). */
   schreibwirkung?: {
-    art: "entwurf" | "aufgabe";
+    art: "entwurf" | "aufgabe" | "persoenliche_aufgabe";
     id: string;
     pfad: string;
     /** Nacharbeit 5: der vom Schreibweg bestätigte eigene Stand (`null`: keiner bestätigt). */
@@ -93,7 +101,8 @@ export type KlaraVertragsSchluessel =
   | "aufgabe_oeffnen"
   | "aufgabe_prioritaet"
   | "aufgabe_zuweisen"
-  | "aufgabe_eskalieren";
+  | "aufgabe_eskalieren"
+  | "persoenliche_aufgabe_anlegen";
 
 /** PV-02-02: Spiegel von `KlaraErgebnisstand` — dazu `entwurf`, solange der Plan nur hier steht. */
 export type KlaraErgebnisstand =

@@ -68,7 +68,12 @@ describe("U1–U4 · der Umfang je Bereich, gebunden an Migration und Drill", ()
     expect(nach.get("assistenzprofil")?.tabellen).toEqual(["assistenz_profile"]);
     expect(nach.get("avatarmotive")).toMatchObject({ zustand: "ausgeschlossen", tabellen: [] });
     expect(nach.get("eigeneavatare")).toMatchObject({ zustand: "nicht_vorhanden", tabellen: [] });
-    expect(nach.get("aufgaben")).toMatchObject({ zustand: "nicht_vorhanden", tabellen: [] });
+    // produkt:20261008:klara-aufgaben (Klara 07): seit der eigenen Ablage liegen die persönlichen
+    // Aufgaben im Dump — vorher stand hier `nicht_vorhanden`.
+    expect(nach.get("aufgaben")).toMatchObject({
+      zustand: "im_dump",
+      tabellen: ["klara_aufgaben"],
+    });
     expect(nach.get("endgeraet")).toMatchObject({ zustand: "ausgeschlossen", tabellen: [] });
     // Dump, Anhangsbytes und private Assistenzspeicher sind drei getrennte Einträge.
     expect(nach.get("datenbank")?.art).toBe("kern");
@@ -171,6 +176,7 @@ function mitAssistenz(dbProfile = 2): Record<string, unknown> {
         ["interaktions_gedaechtnis", 0, 0],
         ["klara_sessions", 0, 0],
         ["klara_session_consents", 0, 0],
+        ["klara_aufgaben", 0, 0],
       ]),
     },
   };
@@ -237,10 +243,10 @@ describe("U5 · kein rückwirkender Sicherungsbeleg für später gelieferte Assi
     expect(a.schutzwege?.restore.zustand).toBe("erfolg");
     expect(belegVon(a, "datenbank")).toBe("belegt");
     expect(belegVon(a, "anhangsbytes")).toBe("belegt");
-    for (const id of ["assistenzprofil", "gespraeche", "gedaechtnis", "sitzungen"]) {
+    for (const id of ["assistenzprofil", "gespraeche", "gedaechtnis", "sitzungen", "aufgaben"]) {
       expect(belegVon(a, id), id).toBe("nicht_gemessen");
     }
-    for (const id of ["avatarmotive", "eigeneavatare", "aufgaben", "endgeraet"]) {
+    for (const id of ["avatarmotive", "eigeneavatare", "endgeraet"]) {
       expect(belegVon(a, id), id).toBe("kein_beleg");
     }
   });
@@ -250,7 +256,7 @@ describe("U5 · kein rückwirkender Sicherungsbeleg für später gelieferte Assi
   it("ein Protokoll mit beiden Zahlen je Assistenztabelle ist nur ein Tabellenvergleich", async () => {
     const a = await auskunftMit(mitAssistenz());
     expect(a.schutzwege?.restore.zustand).toBe("erfolg");
-    for (const id of ["assistenzprofil", "gespraeche", "gedaechtnis", "sitzungen"]) {
+    for (const id of ["assistenzprofil", "gespraeche", "gedaechtnis", "sitzungen", "aufgaben"]) {
       expect(belegVon(a, id), id).toBe("zeilen_gleich");
     }
     // Kernbereiche, deren Inhalt der Drill zurückliest, bleiben belegt.

@@ -43,6 +43,7 @@ import { AnswerMarkdown } from "./AnswerMarkdown";
 import { KlaraSpaceKontext } from "./KlaraSpaceKontext";
 import { KlaraVorlagenKontext } from "./KlaraVorlagenKontext";
 import { meldeFlaeche, useAndereFlaecheSchliesst } from "./assistenzFlaechen";
+import { useKlaraAktion } from "./klara-setup/KlaraKuerzelAusfuehrung";
 import { ErgebnisStufeMarke } from "./trust/ErgebnisStufeMarke";
 
 // Stimmwahl und Textbereinigung fürs Vorlesen stehen seit FE-003 in `lib/vorlesen.ts` — das
@@ -116,6 +117,18 @@ export function KlaraAssistant(): JSX.Element {
     };
   }, [open]);
   useAndereFlaecheSchliesst("hilfe", () => setOpen(false));
+  // produkt:20261012:klara-setup-shortcuts-umsetzung (AA-04): das Kürzel „Seitenhilfe öffnen“ öffnet
+  // dieselbe Fläche wie der Knopf; ist sie schon offen, holt es nur den Fokus hinein.
+  useKlaraAktion((aktion) => {
+    if (aktion !== "seitenhilfe") {
+      return;
+    }
+    if (open) {
+      panelRef.current?.focus();
+    } else {
+      setOpen(true);
+    }
+  });
   const [query, setQuery] = useState("");
   // PAKET 1 (D-AISTATE, Pedi 23.07.): die KI-Antwort (Reasoner-Task „answer") ohne nutzbares Modell
   // HART ausgrauen — Klaras Registry-Suche (ohne KI) bleibt davon unberührt bedienbar.

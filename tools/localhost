@@ -115,6 +115,11 @@ LOCAL_LLM_VARS=(
   KLARWERK_LOCAL_LLM_TIMEOUT_MS
   KLARWERK_LOCAL_LLM_MAX_TOKENS
   KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS
+  # Aufnahme gesamt-ocr · R-0181: der lokale Transkriptionsdienst, gelesen in
+  # services/media/src/transcriber.ts — dieselbe Regel: was der Code liest, reicht der Starter durch.
+  KLARWERK_LOCAL_TRANSCRIBE_URL
+  KLARWERK_LOCAL_TRANSCRIBE_MODEL
+  KLARWERK_LOCAL_TRANSCRIBE_ALLOWED_ORIGINS
 )
 
 # Sammelt die gesetzten UND nicht-leeren Werte als NAME=WERT-Paare. Leere Werte werden bewusst NICHT

@@ -35,13 +35,17 @@ export type KlaraVertragsSchluessel =
   | "aufgabe_oeffnen"
   | "aufgabe_prioritaet"
   | "aufgabe_zuweisen"
-  | "aufgabe_eskalieren";
+  | "aufgabe_eskalieren"
+  | "persoenliche_aufgabe_anlegen";
 
 export interface KlaraAktionsvertrag {
   readonly schluessel: KlaraVertragsSchluessel;
   readonly aktion: KlaraAktion;
-  /** `keine`: liest nur; `eigener_entwurf`: Entwurf der Person; `fachobjekt`: eine Aufgabe. */
-  readonly wirkung: "keine" | "eigener_entwurf" | "fachobjekt";
+  /**
+   * `keine`: liest nur; `eigener_entwurf`: Entwurf der Person; `fachobjekt`: eine Aufgabe;
+   * `eigene_aufgabe`: eine persönliche Aufgabe der Person (Klara 07).
+   */
+  readonly wirkung: "keine" | "eigener_entwurf" | "fachobjekt" | "eigene_aufgabe";
   readonly datenveraendernd: boolean;
   /** Die vorhandene Tür und das Recht, das dort entscheidet — kein zweites Rechtesystem. */
   readonly tuer: string;
@@ -53,7 +57,7 @@ export interface KlaraAktionsvertrag {
   /** Sieht jemand anderes die Wirkung (zugewiesene Person, Eskalationsempfänger)? */
   readonly fuerAndereSichtbar: boolean;
   /** Wo eine nicht rücknehmbare Wirkung korrigiert wird: der vorhandene Arbeitsort. */
-  readonly korrekturweg: "entwurf" | "luecke" | "konflikt" | null;
+  readonly korrekturweg: "entwurf" | "luecke" | "konflikt" | "persoenliche_aufgabe" | null;
 }
 
 type Aktionsvertraege = Readonly<Record<KlaraVertragsSchluessel, KlaraAktionsvertrag>>;
@@ -143,6 +147,21 @@ export const KLARA_AKTIONSVERTRAG: Aktionsvertraege = {
     ruecknahme: "keine",
     fuerAndereSichtbar: true,
     korrekturweg: "konflikt",
+  },
+  // produkt:20261008:klara-aufgaben (Klara 07): eine persönliche Aufgabe nur für die Person selbst.
+  // Klara nimmt die Anlage nicht zurück; geändert, erledigt oder gelöscht wird sie an ihrem Ort
+  // („Meine persönlichen Aufgaben") — dort mit Fassung und ohne Wirkung auf andere.
+  persoenliche_aufgabe_anlegen: {
+    schluessel: "persoenliche_aufgabe_anlegen",
+    aktion: "persoenliche_aufgabe_anlegen",
+    wirkung: "eigene_aufgabe",
+    datenveraendernd: true,
+    tuer: "POST /api/me/klara/aufgaben (Vorgangsschlüssel)",
+    recht: "Anmeldung; nur das eigene Konto",
+    bestaetigung: "vorhandene_regeln",
+    ruecknahme: "keine",
+    fuerAndereSichtbar: false,
+    korrekturweg: "persoenliche_aufgabe",
   },
 };
 

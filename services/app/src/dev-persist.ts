@@ -113,7 +113,16 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   overlapSettings: ["set"],
   // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte überleben den
   // Neustart. Die args tragen den fertigen Datensatz (inkl. Zeitstempel/Frist) → Replay exakt.
-  managementProfiles: ["setCategoryProfile", "setRetirement", "removeRetirement"],
+  // produkt:20261013:lagebild-reale-werte-eingabe: `setLagebildWerte` trägt Datensatz UND
+  // Bedingung (`basisVersion`) in den args — in derselben Reihenfolge trifft das Replay denselben
+  // Stand. Ein abgewiesener Aufruf (`false`) steht ebenfalls im Journal und weist beim Replay
+  // genauso ab, ohne etwas zu ändern.
+  managementProfiles: [
+    "setCategoryProfile",
+    "setRetirement",
+    "removeRetirement",
+    "setLagebildWerte",
+  ],
   // produkt:20261010:aenderungsfolgen-sichtbar: `markPending` trägt den fertigen Anlass (inkl.
   // Zeitpunkt) in seinen args → Replay exakt; `restorePending` nimmt eine gescheiterte Bestätigung
   // ohne Transaktion zurück und ist damit ebenfalls eine Mutation.
@@ -148,13 +157,16 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   modelRuns: ["append"],
   // Audit-P3 (SCRUM-397): Gelesen-Status überlebt den Neustart (Dev-Journal).
   notificationSeen: ["markSeen"],
+  // R-0679: Geräteabos für Push überleben den Neustart (args tragen das fertige Abo inkl. Zeit).
+  pushAbos: ["speichern", "entfernen"],
   // SCRUM-386: kundeneigene KI-Assist-Presets überleben den Neustart (Replace-Semantik,
   // args tragen die komplette Liste inkl. fertiger ids → Replay exakt).
   assistPresets: ["replaceAll"],
   // SCRUM-525 P.5 (WP6): die KI-Zuordnung (Policy) überlebt den Neustart (letzter Set gewinnt).
   reasonerPolicy: ["set"],
   // SCRUM-395: Standard-Prüferanzahl überlebt den Neustart (letzter Set gewinnt).
-  validationSettings: ["setDefaultNeeded"],
+  // R-1655: das persönliche Opt-out aus der automatischen Prüferzuweisung ebenso.
+  validationSettings: ["setDefaultNeeded", "setRoutingOptOut"],
   // SCRUM-414: Regler „externe Wissensabfrage" überlebt den Neustart (letzter Set gewinnt).
   externalKnowledge: ["setStage"],
   // SCRUM-421: Upload-Grenzen überleben den Neustart (letzter Set gewinnt).

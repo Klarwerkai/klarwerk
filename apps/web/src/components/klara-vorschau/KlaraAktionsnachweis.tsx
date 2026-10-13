@@ -173,6 +173,7 @@ function Inhalt({
 const KORREKTURPFAD: Readonly<Record<string, string>> = {
   luecke: "/risiko",
   konflikt: "/konflikte",
+  persoenliche_aufgabe: "/aufgaben",
 };
 
 export function KlaraSchrittNachweis({
@@ -197,14 +198,17 @@ export function KlaraSchrittNachweis({
   const vertrag = s.vertrag ?? null;
   const wirkungAm = verlaufszeit(auftrag, s.nr, WIRKUNGSEREIGNISSE);
   const zurueckAm = verlaufszeit(auftrag, s.nr, ["zurueckgenommen"]);
-  const angelegt = s.aktion === "entwurf_erstellen";
+  const angelegt = s.aktion === "entwurf_erstellen" || s.aktion === "persoenliche_aufgabe_anlegen";
   const gewirkt = s.stand === "gespeichert" || s.stand === "zurueckgenommen";
+  // Klara 07: eine angelegte persönliche Aufgabe wird an ihrem Ort korrigiert, nicht von Klara.
   const korrektur =
     vertrag === "aufgabe_prioritaet" || vertrag === "aufgabe_zuweisen"
       ? "luecke"
       : vertrag === "aufgabe_eskalieren"
         ? "konflikt"
-        : null;
+        : vertrag === "persoenliche_aufgabe_anlegen"
+          ? "persoenliche_aufgabe"
+          : null;
   const korrekturPfad = korrektur
     ? (s.ergebnis?.pfad ?? s.ziel.pfad ?? KORREKTURPFAD[korrektur] ?? null)
     : null;

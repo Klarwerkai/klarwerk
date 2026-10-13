@@ -721,6 +721,15 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "REF-01 — sichtbarkeitsfilterFuer vor jedem Auszug; sonst nur „nicht zugänglich“.",
   },
+  // REF-02: die erneute Referenzprüfung löst jede Fundstelle mit `sichtbarkeitsfilterFuer(user)`
+  // neu auf, bevor ein Auszug an den Prüfer geht; die Antwort trägt nur Kennungen, Zustände und
+  // Begründungen des Prüfers (referenz-pruefung.ts).
+  "POST /api/ask/referenzpruefung/:pruefId/erneut": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "REF-02 — sichtbarkeitsfilterFuer(user) je Fundstelle vor jedem Auszug (loeseFundstelleAuf); " +
+      "nur derselbe Nutzer, sonst 404.",
+  },
   // JOB 3091 (KA6 Memo): der Zuruf traegt Kernaussagen validierter Wissensobjekte als Belege zum
   // Modell und Titel/Version als Herkunft zurueck ans Panel. Der Erzeuger filtert an EINER Stelle,
   // bevor irgendetwas hinausgeht: nur `status === "validiert"` (zuruf.ts:384) und `dropConfidential`
@@ -952,6 +961,11 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "Zugangszustand, Admin.",
   },
   "GET /api/reasoner/config": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Admin." },
+  "GET /api/reasoner/referenzpruefung": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Admin (REF-03) — Zugänge, Modelle, Zustand; kein Wissensobjekt.",
+  },
   "GET /api/library/import/candidates": {
     urteil: "KEIN_KO_INHALT",
     grund: "Import-Kandidaten sind noch keine Wissensobjekte; DTO hält Interna zurück (:63).",
@@ -1171,6 +1185,17 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/me/assistenz/eigeninitiative/hinweise": {
     urteil: "EIGENER_BESTAND",
     grund: "legt nur eigene Hinweisschlüssel ab (user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
+  // produkt:20261012:klara-setup-shortcuts-umsetzung — die eigenen Klara-Tastenkürzel.
+  "GET /api/me/assistenz/tastenkuerzel": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur die Kürzelbelegung des eigenen Assistenzprofils (assistenz-profil-routes.ts, user.id); " +
+      "fremde Kennung 403, kein KO-Inhalt.",
+  },
+  "PUT /api/me/assistenz/tastenkuerzel": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ändert nur die eigenen Kürzel (user.id); fremde Kennung 403, kein KO-Inhalt.",
   },
   // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz.
   "GET /api/me/faehigkeiten": {
@@ -1950,6 +1975,17 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Nacharbeit 3 — Pflege eines Ruhestandshorizonts, nur mit users.manage.",
   },
+  // produkt:20261013:lagebild-reale-werte-eingabe: die Fakten je Bereich (Zähler, Ø-Vertrauen)
+  // rechnen über der Grundmenge nach `sichtbarkeitsfilterFuer`; Bereiche nur mit Leserecht.
+  "GET /api/management/lagebild-werte": {
+    urteil: "PRAEDIKAT",
+    grund: "Lagebild-Werte — Fakten je Bereich erst nach dem Trimm der Grundmenge.",
+  },
+  "PUT /api/management/lagebild-werte/:bereich": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Lagebild-Werte — die Antwort trägt nur den gespeicherten Stand der drei Eingangswerte des Bereichs (management-routes.ts, `setLagebildWerte`), keinen Inhalt eines Wissensobjekts; unlesbare Bereiche antworten 404.",
+  },
   "GET /api/ai-check/coverage-summary": { urteil: "PRAEDIKAT", grund: "Block D — vier Zähler." },
   // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): Antworten nur mit Kennungen und Zählwerten;
   // jede Aussage des Laufs geht vorher durch `darfSehen` (lokale Helfer, über ihren Rumpf erhoben).
@@ -1964,6 +2000,19 @@ const REGISTER: Record<string, Eintrag> = {
   },
   "GET /api/validation/overview": { urteil: "PRAEDIKAT", grund: "Block D — Personenzeilen." },
   "GET /api/validation/settings": { urteil: "KEIN_KO_INHALT", grund: "Einstellungen." },
+  "GET /api/validation/reviewer-suggestions": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0265 — Vorschlag nur über den sichtbaren Bestand; fremdes Zielobjekt → 404.",
+  },
+  "GET /api/validation/pruefdauer": {
+    urteil: "PRAEDIKAT",
+    grund: "R-1655 — Zähler je Weg nur über Zuweisungen auf sichtbare Objekte.",
+  },
+  "GET /api/me/pruefrouting": { urteil: "KEIN_KO_INHALT", grund: "eigenes Opt-out." },
+  "PUT /api/me/pruefrouting": { urteil: "KEIN_KO_INHALT", grund: "eigenes Opt-out." },
+  "GET /api/push/config": { urteil: "KEIN_KO_INHALT", grund: "Push eingerichtet ja/nein." },
+  "POST /api/push/abo": { urteil: "KEIN_KO_INHALT", grund: "eigenes Geräteabo." },
+  "POST /api/push/abo/entfernen": { urteil: "KEIN_KO_INHALT", grund: "eigenes Geräteabo." },
   "GET /api/duplicates/settings": { urteil: "KEIN_KO_INHALT", grund: "Schwellenwert." },
   "GET /api/upload-limits": { urteil: "KEIN_KO_INHALT", grund: "Obergrenzen." },
   "GET /api/external/policy": { urteil: "KEIN_KO_INHALT", grund: "Stufenregel." },
@@ -2118,6 +2167,9 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/reasoner/test-local": "users.manage.",
     "POST /api/reasoner/conflict-self-test": "users.manage.",
     "POST /api/reasoner/duplicate-self-test": "users.manage.",
+    // REF-03: Liste setzen und Funktionscheck mit fiktivem Inhalt — kein Wissensobjekt.
+    "PUT /api/reasoner/referenzpruefung": "users.manage.",
+    "POST /api/reasoner/referenzpruefung/funktionscheck": "users.manage.",
   }),
   // ==============================================================================================
   // JOB 4154 (WIKI-GESAMTANWEISUNG) · zehn Wege, zehn Urteile.

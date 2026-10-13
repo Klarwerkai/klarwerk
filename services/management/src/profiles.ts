@@ -1,4 +1,12 @@
 import type { Pool } from "pg";
+import {
+  LAGEBILD_WERTE_SCHEMA,
+  type LagebildWerte,
+  type LagebildWerteRepo,
+  istGleicherStand,
+  pgListLagebildWerte,
+  pgSetLagebildWerte,
+} from "./lagebild-werte";
 
 // ================================================================================================
 // R-0751 · R-1639 · R-2183 (Nacharbeit 3) — DIE FEHLENDEN DATENEINGÄNGE, GEPFLEGT STATT ERFUNDEN.
@@ -126,7 +134,9 @@ export function normalizeRetirementHorizon(raw: unknown): RetirementHorizon | nu
   throw new ManagementProfileError("horizonMonths muss 24, 36 oder null sein.");
 }
 
-export interface ManagementProfileRepo {
+// produkt:20261013:lagebild-reale-werte-eingabe: dieselbe Ablage trägt die realen Eingangswerte der
+// Wissensbewertung je Bereich (lagebild-werte.ts) — kein zweiter Speicher daneben.
+export interface ManagementProfileRepo extends LagebildWerteRepo {
   listCategoryProfiles(): Promise<CategoryProfile[]>;
   setCategoryProfile(profile: CategoryProfile): Promise<void>;
   listRetirement(): Promise<RetirementEntry[]>;
@@ -137,6 +147,23 @@ export interface ManagementProfileRepo {
 export class InMemoryManagementProfileRepo implements ManagementProfileRepo {
   private readonly profiles = new Map<string, CategoryProfile>();
   private readonly retirement = new Map<string, RetirementEntry>();
+  private readonly lagebild = new Map<string, LagebildWerte>();
+
+  listLagebildWerte(): Promise<LagebildWerte[]> {
+    return Promise.resolve(
+      [...this.lagebild.values()].sort((a, b) => a.bereich.localeCompare(b.bereich)),
+    );
+  }
+
+  // Prüfen und Setzen ohne `await` dazwischen — im Prozess damit so unteilbar wie die
+  // Pg-Anweisung. Die Bedingung steht in den Argumenten; das Dev-Journal spielt sie exakt nach.
+  setLagebildWerte(eintrag: LagebildWerte, basisVersion: number): Promise<boolean> {
+    if (!istGleicherStand(this.lagebild.get(eintrag.bereich), basisVersion)) {
+      return Promise.resolve(false);
+    }
+    this.lagebild.set(eintrag.bereich, eintrag);
+    return Promise.resolve(true);
+  }
 
   listCategoryProfiles(): Promise<CategoryProfile[]> {
     return Promise.resolve([...this.profiles.values()]);
@@ -163,6 +190,7 @@ export class InMemoryManagementProfileRepo implements ManagementProfileRepo {
 }
 
 // REIN ADDITIV UND WIEDERHOLBAR: `CREATE TABLE IF NOT EXISTS`, kein DROP, kein DELETE FROM.
+// produkt:20261013:lagebild-reale-werte-eingabe: die dritte Tabelle (Lagebild-Werte) hängt hinten an.
 export const MANAGEMENT_PROFILE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS management_category_profiles (
   category text PRIMARY KEY,
@@ -181,7 +209,7 @@ CREATE TABLE IF NOT EXISTS management_retirement_horizons (
   updated_at text NOT NULL,
   updated_by text NOT NULL
 );
-`;
+${LAGEBILD_WERTE_SCHEMA}`;
 
 interface ProfileRow {
   category: string;
@@ -204,6 +232,14 @@ interface RetirementRow {
 
 export class PgManagementProfileRepo implements ManagementProfileRepo {
   constructor(private readonly pool: Pool) {}
+
+  listLagebildWerte(): Promise<LagebildWerte[]> {
+    return pgListLagebildWerte(this.pool);
+  }
+
+  setLagebildWerte(eintrag: LagebildWerte, basisVersion: number): Promise<boolean> {
+    return pgSetLagebildWerte(this.pool, eintrag, basisVersion);
+  }
 
   async listCategoryProfiles(): Promise<CategoryProfile[]> {
     const res = await this.pool.query<ProfileRow>(

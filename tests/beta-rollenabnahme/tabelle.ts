@@ -475,6 +475,22 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     grund:
       "Setzt Anbieter, Modell und Schlüssel der Instanz. Eine Verstellung veränderte den KI-Status, den `GET /api/reasoner/status` und `GET /api/ai-status` in dieser Tabelle messen.",
   },
+  // produkt:20261009:referenzki-adminauswahl (REF-03): die Rechtegegenprobe dieser beiden Türen
+  // (nicht berechtigte Rolle → 403, direkt per API) misst `tests/referenzki-adminauswahl/`.
+  {
+    methode: "PUT",
+    pfad: "/api/reasoner/referenzpruefung",
+    art: "zurueckgestellt",
+    grund:
+      "Setzt die erlaubten Referenz-KIs der Instanz über denselben Schreibweg wie `PUT /api/reasoner/config`; eine Verstellung veränderte die Quellenprüfung jeder Antwort.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/reasoner/referenzpruefung/funktionscheck",
+    art: "zurueckgestellt",
+    grund:
+      "Der bewusste Funktionscheck einer Referenz-KI — ein echter, möglicherweise kostenpflichtiger Modellaufruf mit fiktivem Inhalt.",
+  },
   {
     methode: "PUT",
     pfad: "/api/reasoner/assist-presets",
@@ -780,6 +796,18 @@ export const TABELLE: Zeile[] = [
         },
       ],
     },
+    erwartet: NUR_LESEN,
+  },
+  // produkt:20261009:referenzki-pruefdienst (REF-02): die erneute Referenzprüfung trägt keinen
+  // Inhalt im Rumpf. Eine erfundene Prüfkennung ergibt nach dem Tor für jede Rolle die fachliche
+  // 404 „nicht (mehr) verfügbar" — die Tür ist registriert und gemessen, ohne Bestand vorauszusetzen.
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/ask/referenzpruefung/gibt-es-nicht/erneut",
+    route: "/api/ask/referenzpruefung/:pruefId/erneut",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1643",
+    tor: "ko.read",
     erwartet: NUR_LESEN,
   },
   // R-1663 / R-2178: hinter demselben Schalter wie `GET /api/analytics/expertise` (an dieser Bühne
@@ -2148,6 +2176,108 @@ export const TABELLE: Zeile[] = [
     payload: {},
     erwartet: ANGEMELDET,
   },
+  // produkt:20261007:klara-notizen-aufgaben (Klara 06) — die eigenen Notizen. Jede Tür prüft nur die
+  // Anmeldung; das Konto kommt aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Liste liefert auf der
+  // gemeinsamen Bühne die (leeren) eigenen Notizen; das Anlegen mit leerer Nutzlast scheitert am
+  // Pflichtfeld `vorgang` (400), BEVOR etwas angelegt wird; die Türen mit Kennung tragen eine
+  // erfundene und enden in 400 (Bearbeiten ohne Fassung) oder 404 des Dienstes. Die Wirkung (eigene
+  // Notiz, Fremdkonto 404) misst `tests/klara-notizen/notiz-am-server.test.ts`.
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/notizen",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:84",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/notizen",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:100",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/notizen/gibt-es-nicht",
+    route: "/api/me/klara/notizen/:id",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:125",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/notizen/gibt-es-nicht",
+    route: "/api/me/klara/notizen/:id",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:138",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "DELETE",
+    pfad: "/api/me/klara/notizen/gibt-es-nicht",
+    route: "/api/me/klara/notizen/:id",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:168",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261008:klara-aufgaben (Klara 07) — die eigenen Aufgaben. Dieselbe Tür-Regel wie die
+  // Notizen: nur Anmeldung, das Konto aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Liste liefert die
+  // (leeren) eigenen Aufgaben; das Anlegen mit leerer Nutzlast scheitert am Pflichtfeld `vorgang`
+  // (400), BEVOR etwas angelegt wird; die Türen mit Kennung tragen eine erfundene und enden in 400
+  // (Ändern ohne Fassung) oder 404 des Dienstes. Die Wirkung (eigene Aufgabe, Fremdkonto 404) misst
+  // `tests/klara-aufgaben/aufgabe-am-server.test.ts`.
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/aufgaben",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:89",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/aufgaben",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:105",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:130",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:143",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "DELETE",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:176",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
   // produkt:20261010:assistenz-name-avatar — das eigene Assistenzprofil. Beide Türen prüfen nur die
   // Anmeldung; das Konto kommt aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Lesetür liefert das
   // eigene (leere) Profil; die Schreibtür trägt ein unbekanntes Motiv und endet in 400, BEVOR etwas
@@ -2157,7 +2287,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "assistenzProfilRoutes",
     methode: "GET",
     pfad: "/api/me/assistenz",
-    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:115",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:144",
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
@@ -2165,7 +2295,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "assistenzProfilRoutes",
     methode: "PUT",
     pfad: "/api/me/assistenz",
-    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:132",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:161",
     tor: "requireUser",
     payload: { avatar: "gibt-es-nicht" },
     erwartet: ANGEMELDET,
@@ -2178,7 +2308,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "assistenzProfilRoutes",
     methode: "GET",
     pfad: "/api/me/assistenz/eigeninitiative",
-    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:166",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:195",
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
@@ -2186,7 +2316,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "assistenzProfilRoutes",
     methode: "PUT",
     pfad: "/api/me/assistenz/eigeninitiative",
-    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:183",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:212",
     tor: "requireUser",
     payload: { modus: "gibt-es-nicht" },
     erwartet: ANGEMELDET,
@@ -2195,9 +2325,30 @@ export const TABELLE: Zeile[] = [
     gruppe: "assistenzProfilRoutes",
     methode: "POST",
     pfad: "/api/me/assistenz/eigeninitiative/hinweise",
-    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:206",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:235",
     tor: "requireUser",
     payload: { schluessel: "", stand: "geschlossen" },
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261012:klara-setup-shortcuts-umsetzung — die Klara-Tastenkürzel im eigenen Profil.
+  // ZUSTANDSFREI GEFAHREN: die Schreibtür trägt eine unbekannte Aktion und endet in 400, BEVOR
+  // etwas geschrieben wird. Die Wirkung (Speichern, Doppelbelegung, Fremdkonto 403) misst
+  // `tests/klara-setup-shortcuts/tastenkuerzel-am-server.test.ts`.
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "GET",
+    pfad: "/api/me/assistenz/tastenkuerzel",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:261",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "PUT",
+    pfad: "/api/me/assistenz/tastenkuerzel",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:278",
+    tor: "requireUser",
+    payload: { aktion: "gibt-es-nicht", belegung: null },
     erwartet: ANGEMELDET,
   },
   // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz. Übersicht,
@@ -2819,7 +2970,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "managementRoutes",
     methode: "GET",
     pfad: "/api/management/snapshot",
-    belegstelle: "services/app/src/routes/management-routes.ts:19",
+    belegstelle: "services/app/src/routes/management-routes.ts:133",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
@@ -2829,7 +2980,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "managementRoutes",
     methode: "GET",
     pfad: "/api/management/risk-horizon",
-    belegstelle: "services/app/src/routes/management-routes.ts:33",
+    belegstelle: "services/app/src/routes/management-routes.ts:153",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
@@ -2837,7 +2988,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "managementRoutes",
     methode: "GET",
     pfad: "/api/management/profiles",
-    belegstelle: "services/app/src/routes/management-routes.ts:45",
+    belegstelle: "services/app/src/routes/management-routes.ts:165",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
@@ -2845,7 +2996,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "managementRoutes",
     methode: "PUT",
     pfad: "/api/management/profiles/category",
-    belegstelle: "services/app/src/routes/management-routes.ts:57",
+    belegstelle: "services/app/src/routes/management-routes.ts:177",
     tor: "users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
@@ -2855,8 +3006,30 @@ export const TABELLE: Zeile[] = [
     methode: "PUT",
     pfad: "/api/management/profiles/retirement/gibt-es-nicht",
     route: "/api/management/profiles/retirement/:userId",
-    belegstelle: "services/app/src/routes/management-routes.ts:69",
+    belegstelle: "services/app/src/routes/management-routes.ts:189",
     tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  // produkt:20261013:lagebild-reale-werte-eingabe: die realen Lagebild-Werte. Lesen jede lesende
+  // Rolle (nur sichtbare Bereiche); die Werte für das ganze Unternehmen (`gesamt`) pflegt nur die
+  // Verwaltung — das Tor `ko.create` lässt Experte und Controller durch, das Bereichsrecht weist sie
+  // mit 403 ab. Der Admin erreicht mit leerem Rumpf die Eingabeprüfung (400).
+  {
+    gruppe: "managementRoutes",
+    methode: "GET",
+    pfad: "/api/management/lagebild-werte",
+    belegstelle: "services/app/src/routes/management-routes.ts:67",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "managementRoutes",
+    methode: "PUT",
+    pfad: "/api/management/lagebild-werte/gesamt",
+    route: "/api/management/lagebild-werte/:bereich",
+    belegstelle: "services/app/src/routes/management-routes.ts:81",
+    tor: "ko.create, dazu Bereichsrecht (gesamt: users.manage)",
     payload: {},
     erwartet: NUR_ADMIN,
   },
@@ -3212,6 +3385,14 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/reasoner/config",
     belegstelle: "services/app/src/routes/reasoner-routes.ts:728",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "reasonerRoutes",
+    methode: "GET",
+    pfad: "/api/reasoner/referenzpruefung",
+    belegstelle: "services/app/src/routes/reasoner-routes.ts:1497",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
@@ -3937,5 +4118,41 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/validation-routes.ts:85",
     tor: "ko.read",
     erwartet: NUR_LESEN,
+  },
+  // R-0265: Prüfer-Vorschlag beim Einreichen — dasselbe Recht wie das Einreichen selbst.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/validation/reviewer-suggestions",
+    belegstelle: "services/app/src/routes/validation-routes.ts:304",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  // R-1655: Prüfdauer je Zuweisungsweg — dieselbe Lesehürde wie die Personenübersicht.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/validation/pruefdauer",
+    belegstelle: "services/app/src/routes/validation-routes.ts:355",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // R-1655: das eigene Opt-out aus der automatischen Zuweisung lesen.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/me/pruefrouting",
+    belegstelle: "services/app/src/routes/validation-routes.ts:367",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // R-0679: ob dieser Betrieb Geräte-Push eingerichtet hat (samt öffentlichem VAPID-Schlüssel).
+  {
+    gruppe: "pushRoutes",
+    methode: "GET",
+    pfad: "/api/push/config",
+    belegstelle: "services/app/src/routes/push-routes.ts:44",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
   },
 ];

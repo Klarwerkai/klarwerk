@@ -14,6 +14,10 @@
 //   · Entwurf bearbeiten „Ergänze im Entwurf „Wartung“: Filter prüfen“,
 //                       „Benenne den Entwurf „Alt“ in „Neu“ um“
 //   · Aufgabe bearbeiten „Bearbeite die Aufgabe „Hydraulikfilter““
+//   · persönliche Aufgabe anlegen (Klara 07, produkt:20261008:klara-aufgaben)
+//                       „Lege mir die Aufgabe „Filter bestellen“ an“, „Erstelle eine persönliche
+//                       Aufgabe „Filter bestellen““, „… mit dem Text „…““. Sie legt immer eine NEUE,
+//                       persönliche Aufgabe an — eine Unternehmensaufgabe wird dadurch nie umetikettiert.
 //
 // NIE: Text aus einer Markierung, einem Dokument oder einer Antwort. Diese Funktion bekommt nur, was
 // die Person ins Eingabefeld tippte oder als Auftrag sprach — eine Versandaufforderung in einem
@@ -26,10 +30,20 @@ export type KlaraAktion =
   | "oeffnen"
   | "entwurf_erstellen"
   | "entwurf_bearbeiten"
-  | "aufgabe_bearbeiten";
+  | "aufgabe_bearbeiten"
+  | "persoenliche_aufgabe_anlegen";
 
-/** Wonach Klara das Ziel sucht. `neu`: ein Entwurf, den der Schritt erst anlegt. */
-export type Zielsuche = "wissensobjekt" | "entwurf" | "aufgabe" | "beliebig" | "neu";
+/**
+ * Wonach Klara das Ziel sucht. `neu`: ein Entwurf, den der Schritt erst anlegt; `neue_aufgabe`: eine
+ * persönliche Aufgabe, die der Schritt erst anlegt.
+ */
+export type Zielsuche =
+  | "wissensobjekt"
+  | "entwurf"
+  | "aufgabe"
+  | "beliebig"
+  | "neu"
+  | "neue_aufgabe";
 
 export type Aenderung = { art: "ergaenzen"; text: string } | { art: "umbenennen"; titel: string };
 
@@ -47,7 +61,7 @@ export interface ErkannterSchritt {
   suche: Zielsuche;
   /** Der genannte Name des Ziels — beim Anlegen der Titel des neuen Entwurfs. */
   name: string;
-  /** Nur beim Anlegen: der genannte Inhalt (Kernaussage). */
+  /** Nur beim Anlegen: der genannte Inhalt (Kernaussage bzw. Aufgabentext). */
   inhalt?: string;
   /** Nur beim Bearbeiten eines Entwurfs: was geändert wird. */
   aenderung?: Aenderung;
@@ -175,6 +189,60 @@ function anlegen(s: string): ErkannterAuftrag | null {
       });
     }
     return { schritte };
+  }
+  return null;
+}
+
+// Klara 07: eine persönliche Aufgabe anlegen. Das Wort „Aufgabe“ (task, taak) steht direkt hinter
+// dem Verb und höchstens „mir“, Artikel, „neue“ und „persönliche“ — „Erledige die Aufgabe …“ und
+// „Bearbeite die Aufgabe …“ bleiben damit Unternehmensaufgaben (`AUFGABE` unten).
+const AUFGABE_ANLEGEN = [
+  /^(?:lege|leg)\s+(?:mir\s+)?(?:(?:eine|die)\s+)?(?:neue\s+)?(?:pers(?:ö|oe)nliche\s+)?aufgabe\s+(.+?)\s+an$/iu,
+  /^(?:erstelle|erstell)\s+(?:mir\s+)?(?:(?:eine|die)\s+)?(?:neue\s+)?(?:pers(?:ö|oe)nliche\s+)?aufgabe\s+(.+)$/iu,
+  /^(?:create|add)\s+(?:me\s+)?(?:a\s+)?(?:new\s+)?(?:personal\s+)?task\s+(.+)$/iu,
+  /^maak\s+(?:een\s+)?(?:nieuwe\s+)?(?:persoonlijke\s+)?taak\s+(.+?)(?:\s+aan)?$/iu,
+];
+
+/**
+ * Ein Rest, der mit einer Präposition beginnt („eine Aufgabe ZUR Zylinderkopfdichtung“), nennt ein
+ * THEMA, keinen Titel. Daraus legt Klara nichts an — der Satz bleibt der nicht ausgeführte
+ * Arbeitsauftrag von Klara 02, statt eine Aufgabe mit erratenem Titel zu erzeugen. Ein Titel in
+ * Anführungszeichen gilt immer so, wie er dasteht.
+ */
+const THEMA =
+  /^(?:zu|zur|zum|für|fuer|über|ueber|von|vom|mit|bei|beim|wegen|for|about|on|regarding|with|voor|over|met|bij|rond)\s/iu;
+
+function aufgabeAnlegen(s: string): ErkannterAuftrag | null {
+  for (const muster of AUFGABE_ANLEGEN) {
+    const m = muster.exec(s);
+    if (!m) {
+      continue;
+    }
+    let rest = m[1] ?? "";
+    let inhalt: string | null = null;
+    const mitInhalt = INHALT.exec(rest);
+    if (mitInhalt) {
+      inhalt = zitate(mitInhalt[1] ?? "")[0] ?? freierName(mitInhalt[1] ?? "");
+      rest = rest.slice(0, mitInhalt.index);
+    }
+    const ohneEinleitung = rest.replace(/^(?:namens|mit dem titel|titled|called|genaamd)\s+/iu, "");
+    if (zitate(ohneEinleitung).length === 0 && THEMA.test(ohneEinleitung.trim())) {
+      return null;
+    }
+    const titel = name(ohneEinleitung);
+    if (!titel || titel.length > 200) {
+      return null;
+    }
+    return {
+      schritte: [
+        {
+          aktion: "persoenliche_aufgabe_anlegen",
+          suche: "neue_aufgabe",
+          name: titel,
+          ...(inhalt ? { inhalt } : {}),
+        },
+      ],
+    };
   }
   return null;
 }
@@ -342,7 +410,14 @@ export function erkenneAuftrag(text: string): ErkannterAuftrag | null {
     return null;
   }
   const s = bereinige(roh);
-  return anlegen(s) ?? bearbeiten(s) ?? aufgabenaktion(s) ?? aufgabe(s) ?? oeffnen(s);
+  return (
+    anlegen(s) ??
+    aufgabeAnlegen(s) ??
+    bearbeiten(s) ??
+    aufgabenaktion(s) ??
+    aufgabe(s) ??
+    oeffnen(s)
+  );
 }
 
 /** Kurzform für die Oberfläche: ist dieser Text ein ausführbarer Auftrag? */

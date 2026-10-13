@@ -117,15 +117,29 @@ export function aiModelUsable(
 // gespeicherten Adminwahl für genau diese Aufgabe (`services/reasoner/src/service.ts`,
 // `kiAbschaltung()`), und nur der Antwortweg sperrt am Chokepoint (`kiSperre = task === "answer"`).
 // Für eine andere Aufgabe hiesse „abgeschaltet" etwas, was der Server nicht gesagt hat.
-export type AiSperrHinweisKey = "d5kiaus.hinweis" | "ai.statusUnknown.hint" | "ai.unavailable.hint";
+//
+// produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): eine vierte Lage — eingerichtet, aber
+// zuletzt NICHT ERREICHBAR (`reachable: "unreachable"`). Das ist eine Störung, keine fehlende
+// Einrichtung, und liest sich deshalb anders als „kein Modell aktiv". Ohne `reachable` (alter
+// Server) bleibt es beim bisherigen Satz.
+export type AiSperrHinweisKey =
+  | "d5kiaus.hinweis"
+  | "ai.statusUnknown.hint"
+  | "kiausfall.status.nichtErreichbar"
+  | "ai.unavailable.hint";
 
 export function aiSperrHinweisKey(
-  status: Pick<ReasonerStatus, "kiAbgeschaltet"> | undefined,
+  status: Pick<ReasonerStatus, "kiAbgeschaltet" | "reachable"> | undefined,
   task: ReasonerTask,
   statusUnknown: boolean,
 ): AiSperrHinweisKey {
   if (task === "answer" && status?.kiAbgeschaltet === true) {
     return "d5kiaus.hinweis";
   }
-  return statusUnknown ? "ai.statusUnknown.hint" : "ai.unavailable.hint";
+  if (statusUnknown) {
+    return "ai.statusUnknown.hint";
+  }
+  return status?.reachable === "unreachable"
+    ? "kiausfall.status.nichtErreichbar"
+    : "ai.unavailable.hint";
 }

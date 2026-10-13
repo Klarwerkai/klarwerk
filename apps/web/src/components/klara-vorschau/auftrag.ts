@@ -45,6 +45,7 @@ import { type ErkannterSchritt, erkenneAuftrag } from "../../lib/klaraAuftragErk
 import { leseobjektJetzt } from "../../lib/leseobjekt";
 import { leserHref } from "../../lib/objektbezug";
 import { isOpenGap, isUnresolvedConflict } from "../../lib/taskFilters";
+import { ladeAufgaben } from "./aufgaben";
 import { beimVergessen, gespraechFuerAuftrag, leseEcht, objektbezugAus } from "./echt";
 import type { Herkunft } from "./zustand";
 
@@ -488,6 +489,11 @@ async function kandidatenFuer(e: ErkannterSchritt): Promise<KlaraAuftragZiel[]> 
   switch (e.suche) {
     case "neu":
       return [{ art: "neuer_entwurf", id: null, titel: e.name, stand: null, pfad: null }];
+    // Klara 07: immer eine NEUE persönliche Aufgabe — nie eine vorhandene Unternehmensaufgabe.
+    case "neue_aufgabe":
+      return [
+        { art: "neue_persoenliche_aufgabe", id: null, titel: e.name, stand: null, pfad: null },
+      ];
     case "wissensobjekt":
       return wissensobjekte(e.name);
     case "entwurf":
@@ -912,7 +918,12 @@ function zielDes(a: Ausfuehrung, s: GeplanterSchritt): KlaraAuftragZiel | null {
   const quelle = a.geplant[s.erkannt.ausSchritt];
   const vorher = quelle ? serverSchritt(a, quelle.schluessel) : undefined;
   const e = vorher?.ergebnis;
-  if (!e || (vorher?.stand !== "gespeichert" && vorher?.stand !== "abgeschlossen")) {
+  // Klara 07: eine persönliche Aufgabe ist kein Ziel des Öffnen-Wegs — dieselbe Regel wie am Server.
+  if (
+    !e ||
+    e.art === "persoenliche_aufgabe" ||
+    (vorher?.stand !== "gespeichert" && vorher?.stand !== "abgeschlossen")
+  ) {
     return null;
   }
   return { art: e.art, id: e.id, titel: e.titel, stand: e.stand, pfad: e.pfad };
@@ -1024,6 +1035,11 @@ async function fuehreSchrittAus(
   // 2. Öffnen und Aufgabe: der Server hat Zielidentität und aktuelle Berechtigung bestätigt
   //    (`geprueft`). Erst jetzt wechselt der Bildschirm — und abgeschlossen wird nur dieses Ziel.
   const schritt = r.schritt;
+  // Klara 07: eine am Server gespeicherte persönliche Aufgabe steht danach auch in „Meine
+  // Aufgaben“ der Klara-Fläche — frisch vom Server gelesen, nicht aus dieser Antwort abgeleitet.
+  if (schritt.aktion === "persoenliche_aufgabe_anlegen" && schritt.stand === "gespeichert") {
+    void ladeAufgaben(t);
+  }
   // Nacharbeit 4 (Ben): gespeichert, aber das Nachlesen blieb aus — Kennung bekannt, Stand
   // ungeklärt. „Erneut versuchen“ holt mit demselben Schlüssel nur das Nachlesen nach.
   if (schritt.stand === "begonnen" && schritt.schreibwirkung && !schritt.geprueft) {

@@ -1005,6 +1005,26 @@ export interface AssignmentSummary {
   done: number;
 }
 
+// R-0265: ein Prüfer-Vorschlag (services/validation/src/pruefer-vorschlag.ts). Nur die tragenden
+// Gründe, in fester Reihenfolge; die Punktzahl ordnet, sie wird nicht angezeigt.
+export type ReviewerSuggestionReason = "autorschaft" | "pruefungen" | "netznaehe" | "schnell";
+export interface ReviewerSuggestion {
+  userId: string;
+  punkte: number;
+  gruende: ReviewerSuggestionReason[];
+  /** R-1655: Median der Prüfdauer zum Thema in Stunden, nur wenn die Person dazu geprüft hat. */
+  medianStunden?: number;
+}
+
+// R-1655: Messgrundlage je Zuweisungsweg (`GET /api/validation/pruefdauer`).
+export interface PruefdauerJeWeg {
+  erledigt: number;
+  offen: number;
+  medianStunden: number | null;
+}
+export type ZuweisungsWeg = "automatisch" | "manuell" | "einreichen";
+export type PruefdauerAuswertung = Record<ZuweisungsWeg, PruefdauerJeWeg>;
+
 // SCRUM-395: Validierungs-Einstellungen (Standard-Prüferanzahl für neue Einreichungen).
 export interface ValidationSettings {
   defaultNeededValidations: number;
@@ -1610,6 +1630,9 @@ export interface DraftPayload {
     topic?: string;
     confirmed?: boolean;
   };
+  // Aufnahme `gesamt-ocr` (FR-CAP-05): die auf Klick erkannten Bildtext-Abschnitte als Kontext
+  // des Interviews — auch für strukturierte Entwürfe, die den Rohtext nicht mehr tragen.
+  ocrAbschnitte?: { name: string; text: string }[];
   // produkt:20261007:templates-default: Vorlage und Fassung, mit der der Entwurf geschrieben wird,
   // und der gewählte Space (Spiegel von services/capture/src/types.ts). `null` = freie Eingabe.
   vorlage?: { id: string; version: number; spaceId?: string | null } | null;
@@ -2470,6 +2493,15 @@ export interface AbbruchBefund {
   zeichen: number;
 }
 
+// produkt:20261010:poc-ki-ausfall-weiterarbeiten: WORTGLEICH zu `KiErsatzGrund` in
+// `services/reasoner/src/types.ts` (hier gehalten und nicht importiert, s. `REASONER_TASKS`).
+export type KiErsatzGrund =
+  | "zeitueberschreitung"
+  | "nicht_erreichbar"
+  | "verweigert"
+  | "kontingent"
+  | "fehler";
+
 export interface AnswerResult {
   answered: boolean;
   answer: string | null;
@@ -2489,6 +2521,10 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): gesetzt NUR, wenn ein Modellversuch
+  // scheiterte und danach der regelbasierte Ersatz antwortete — Spiegel von `KiErsatzGrund` in
+  // `services/reasoner/src/types.ts`. Fehlt es (alter Server, Modellantwort), sagt die Fläche nichts.
+  ersatzGrund?: KiErsatzGrund;
   // R-1643: die Argumentationskette — je Aussage die Quelle, deren Wortlaut sie belegt (Vertrag
   // am Serverfeld `AnswerResult.argumentation`, services/reasoner/src/types.ts). Optional: ein
   // älterer Server sendet sie nicht, und das Protokoll sagt dann, dass keine Kette vorliegt.
@@ -2714,8 +2750,107 @@ export interface AskResponse {
   // nur bei beantworteter Frage. Angewandt in `lib/askResponse.ts` (`selectAnswer`).
   absaetze?: AbsatzBeleg[];
   // REF-01: je Aussage Kennung, Wortlaut und Fundstellen; nur bei beantworteter Frage. Grundlage der
-  // Beanstandung einer konkreten Aussage (produkt:20261010:antwort-beanstandung-korrektur).
+  // Beanstandung einer konkreten Aussage (produkt:20261010:antwort-beanstandung-korrektur) und der
+  // Aussagetexte der Referenzprüfungsanzeige (REF-02; `AussagenBelegKurz` ist ein Teil davon).
   aussagen?: AntwortAussagenBeleg;
+  // REF-02: das Ergebnis der Referenzprüfung (Spiegel von `ReferenzPruefSicht`,
+  // services/ask/src/referenz-pruefung.ts). Fehlt ohne Prüfdienst oder ohne beantwortete Frage.
+  referenzpruefung?: ReferenzPruefung;
+  // REF-01 (Ben nacharbeit-7): die eigenen Bindungen der beiden Zweitmeinungsantworten.
+  zweitmeinungAussagen?: { erste: AussagenBelegKurz | null; zweite: AussagenBelegKurz | null };
+  // produkt:20261009:referenzki-antwortstatus (REF-04, K1): die Referenzprüfung JEDER der beiden
+  // Zweitmeinungsantworten — nur bei einer Gegenüberstellung; `null`: diese Seite ohne Text.
+  referenzpruefungZweitmeinung?: {
+    erste: ReferenzPruefung | null;
+    zweite: ReferenzPruefung | null;
+  };
+}
+
+// ================================================================================================
+// produkt:20261009:referenzki-pruefdienst (REF-02) — Spiegel der Prüfsicht des Fragenden.
+// ================================================================================================
+// Stufen statt Anbieter- und Modellnamen: die stehen nur im Prüfprotokoll der Adminsicht.
+export interface AussagenBelegKurz {
+  aussagen: {
+    aussageId: string;
+    text: string;
+    // REF-04 (K5, Ben nacharbeit-3): die gebundenen Passagen, wie der Server sie mit den Rechten
+    // dieser Anfrage mitliefert (Zweitmeinung, Stichtagsvergleich). Ein älterer Server sendet sie nicht.
+    teile?: { fundstellen: { fundstelleId: string; auszug: string }[] }[];
+  }[];
+}
+
+export type ReferenzZustand = "belegt" | "teilweise_belegt" | "widersprochen" | "nicht_pruefbar";
+
+export interface ReferenzFundstelle {
+  fundstelleId: string;
+  koId: string;
+  koVersion: number;
+  start: number;
+  ende: number;
+}
+
+export interface ReferenzTeilErgebnis {
+  teilId: string;
+  zustand: ReferenzZustand;
+  grund?: string;
+  fundstelle: ReferenzFundstelle | null;
+  begruendung: string;
+}
+
+export interface ReferenzAussageErgebnis {
+  aussageId: string;
+  zustand: ReferenzZustand;
+  grund?: string;
+  teile: ReferenzTeilErgebnis[];
+  fundstellen: ReferenzFundstelle[];
+  begruendung: string;
+}
+
+export interface ReferenzHinweis {
+  art:
+    | "neuere_fassung"
+    | "abruf_nicht_belegt"
+    | "bekannter_konflikt"
+    | "gegenpassage"
+    | "fundstelle_verworfen"
+    | "nicht_aufgeloeste_modellangabe"
+    | "anweisungsaehnlicher_text";
+  aussageId?: string;
+  teilId?: string;
+  koId?: string;
+  fundstelleId?: string;
+  fassung?: { gebunden: number; aktuell: number; passageUnveraendert: boolean };
+  zustand?: string;
+  konfliktId?: string;
+  wert?: string;
+  hinweis: string;
+}
+
+export interface ReferenzPruefung {
+  richtlinie: string;
+  pruefId: string;
+  status: "geprueft" | "nicht_pruefbar";
+  grund?: string;
+  rollen: {
+    antwort: "cloud" | "local" | "deterministic" | null;
+    pruefer: "cloud" | "local" | "deterministic" | null;
+  };
+  aussagen: ReferenzAussageErgebnis[];
+  hinweise: ReferenzHinweis[];
+  globaleAktualitaet: "nicht_behauptet";
+  ausCache: boolean;
+  messung: { dauerMs: number; modellaufrufe: 0 | 1 };
+  versuch: { nummer: number; hoechstens: number };
+  // REF-04 (K7): die Bindung dieses Ergebnisses an GENAU eine Antwortfassung (ohne Prüfmodell —
+  // das steht nur im Prüfprotokoll). Ein älterer Server sendet sie nicht.
+  bindung?: {
+    antwortFingerabdruck: string;
+    belegFingerabdruck: string;
+    paketFingerabdruck: string | null;
+    richtlinie: string;
+    ergebnisFingerabdruck: string;
+  };
 }
 
 // R-1630 / R-2176: Spiegel von `services/ask/src/wissensstand-vergleich.ts` — dort stehen Regeln
@@ -2748,6 +2883,10 @@ export interface WissensstandVergleich {
   stichtag: string;
   heute: AnswerResult;
   damals: AnswerResult;
+  // REF-01/REF-02: die eigene Aussagebindung und Referenzprüfung je Seite (`null`: kein Text).
+  heuteAussagen?: AussagenBelegKurz | null;
+  damalsAussagen?: AussagenBelegKurz | null;
+  referenzpruefung?: { heute: ReferenzPruefung | null; damals: ReferenzPruefung | null };
   antwortGeaendert: boolean;
   quellen: VergleichsQuelle[];
 }
@@ -3102,6 +3241,42 @@ export interface RiskHorizonView {
   generatedAt: string;
   seesAll: boolean;
   areas: RiskHorizonArea[];
+}
+
+// produkt:20261013:lagebild-reale-werte-eingabe: die realen Eingangswerte der Wissensbewertung je
+// Arbeitsbereich (Spiegel von services/management/src/lagebild-werte.ts und service.ts).
+export type LagebildFeld = "hourlyRate" | "hoursSavedPerValidatedKo" | "reuseFactor";
+export type LagebildHerkunft = "eigene_eingabe" | "gemessen";
+export interface LagebildWert {
+  wert: number;
+  herkunft: LagebildHerkunft;
+  beleg: string | null;
+}
+export interface LagebildWerte {
+  bereich: string;
+  zeitraumVon: string;
+  zeitraumBis: string;
+  werte: Record<LagebildFeld, LagebildWert | null>;
+  version: number;
+  anfrageId: string;
+  geaendertAm: string;
+  geaendertVon: string;
+}
+export interface LagebildBereich {
+  bereich: string;
+  name: string | null;
+  darfSchreiben: boolean;
+  werte: LagebildWerte | null;
+  /** Ob der letzte Stand vom Betrachter selbst stammt (fremde Namen nennt die Fläche nicht). */
+  vonMir: boolean;
+  fakten: { validatedKos: number; totalKos: number; avgTrust: number; demoKos: number };
+}
+export interface LagebildWerteEingabe {
+  zeitraumVon: string;
+  zeitraumBis: string;
+  werte: Record<LagebildFeld, LagebildWert | null>;
+  basisVersion: number;
+  anfrageId: string;
 }
 
 export interface ManagementSnapshot {
@@ -3775,6 +3950,8 @@ export const MODEL_RUN_TASKS = [
   "duplicate",
   "probe",
   "gaps",
+  // produkt:20261009:referenzki-pruefdienst (REF-02): die Referenzprüfung der Quellenbelege.
+  "referenz",
 ] as const;
 
 // JOB 3134 (KI-WAHL): die beiden externen Anbieter sind eigene Auswahlwerte. Dieselbe Liste wie
@@ -3896,6 +4073,73 @@ export interface ReasonerConfigStatus {
 // "unknown" ist der EHRLICHE Rückfall für einen uneingeordneten Fehler und darf von der Fläche nicht
 // als Ursache ausgegeben werden (s. `apps/web/src/lib/kiTestBefund.ts`).
 export type ModelFailureClass = "timeout" | "http" | "network" | "parse" | "unknown";
+
+// produkt:20261009:referenzki-adminauswahl (REF-03): der Einstieg „Referenzprüfung" — wortgleich
+// zu `GET /api/reasoner/referenzpruefung` (`services/app/src/routes/reasoner-routes.ts`).
+export type ReferenzWahl = "openai" | "anthropic" | "local";
+export type ReferenzOptionZustand =
+  | "nicht_eingerichtet"
+  | "ausgeschaltet"
+  | "nicht_verfuegbar"
+  | "konfiguriert"
+  | "letzte_pruefung_erfolgreich"
+  | "letzte_pruefung_fehlgeschlagen";
+export type ReferenzOptionSperre =
+  | "ki_abgeschaltet"
+  | "keine_freigabe_externe_verarbeitung"
+  | "nicht_erreichbar"
+  | "kein_pruefmodell";
+
+export interface ReferenzFunktionscheck {
+  wahl: ReferenzWahl;
+  zeit: string;
+  anbieter: string;
+  modell: string | null;
+  ergebnis: "erfolgreich" | "fehlgeschlagen";
+  grund: string | null;
+  modellaufruf: boolean;
+  dauerMs: number;
+  verbrauch: { eingabe: number; ausgabe: number } | null;
+  kosten: { betrag: number; waehrung: string; preisstand: string } | null;
+  richtlinie: string;
+  fiktiv: true;
+  /** Nur in der Antwort des Checks: ob er im Audit gespeichert wurde. */
+  gespeichert?: boolean;
+}
+
+export interface ReferenzOption {
+  wahl: ReferenzWahl;
+  art: "intern" | "oeffentlich";
+  anbieter: string | null;
+  modell: string | null;
+  eingerichtet: boolean;
+  erlaubt: boolean;
+  rang: number | null;
+  sperre: ReferenzOptionSperre | null;
+  gleichWieAntwortmodell: boolean;
+  zustand: ReferenzOptionZustand;
+  letzteFunktionspruefung: ReferenzFunktionscheck | null;
+}
+
+export interface ReferenzVerwaltung {
+  liste: ReferenzWahl[];
+  optionen: ReferenzOption[];
+  antwortmodell: { anbieter: string; modell: string | null } | null;
+  freigabe: { oeffentlicheKi: boolean; vertraulicheInhalte: boolean };
+  unabhaengigVerfuegbar: boolean;
+  policySource: ReasonerConfigStatus["policySource"];
+  kiAbgeschaltet: boolean;
+  grenzen: {
+    richtlinie: string;
+    zeitlimitMs: number;
+    antwortMaxToken: number;
+    postenMax: number;
+    eingabeMaxZeichen: number;
+    erneutMax: number;
+    automatischeWiederholung: false;
+  };
+  preise: { hinterlegt: boolean; waehrung?: string; preisstand?: string; fehler?: string };
+}
 
 // Key-Test (Pedi 02.07.): Ergebnis des echten Mini-Modellaufrufs (ehrlich, kein Secret).
 export interface ReasonerProbeResult {
@@ -4123,6 +4367,8 @@ export interface AntwortBeanstandung {
 // produkt:20261009:referenzki-quellenbelege (REF-01): Spiegel des Teils von `AussagenBeleg`
 // (services/ask/src/aussage-fundstellen.ts), den die Fragenseite für die Beanstandung braucht.
 export interface AntwortAussagenBeleg {
+  // REF-04 (K7): der Fingerabdruck des ausgelieferten Antworttexts; ein älterer Server sendet ihn nicht.
+  antwortFingerabdruck?: string;
   aussagen: {
     aussageId: string;
     text: string;
