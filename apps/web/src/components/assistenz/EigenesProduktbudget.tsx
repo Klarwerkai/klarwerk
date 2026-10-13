@@ -9,7 +9,7 @@
 // Server hält das Unterlimit innerhalb der Zuweisung. Alles kommt vom Server
 // (`GET /api/me/produktbudget`); die Fläche rechnet keinen Rest selbst aus.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../api/client";
 import {
@@ -25,18 +25,31 @@ import { Button, Field, TextInput } from "../ui";
 function EigenerBereich({ e, dezimal }: { e: EigenesBudget; dezimal: string }): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const [eingabe, setEingabe] = useState<string | null>(null);
+  const [eingabe, setEingabeZustand] = useState<string | null>(null);
+  // Spiegel der Eingabe für die Antwortbehandlung — entschieden wird gegen die Eingabe von JETZT.
+  const eingabeJetzt = useRef<string | null>(null);
+  const setEingabe = (neu: string | null): void => {
+    eingabeJetzt.current = neu;
+    setEingabeZustand(neu);
+  };
   const [meldung, setMeldung] = useState<string | null>(null);
   const geld = (cent: number): string => `${centAlsBetrag(cent, dezimal)} ${e.waehrung}`;
   const id = e.bereich;
 
+  // PBE-08 (Ben, nacharbeit-6): der GESENDETE Vorgang — Wert und Grundfassung — steht fest. Während
+  // er läuft, ist das Feld gesperrt; die Antwort löscht nur genau diesen Wert, nie eine andere
+  // Eingabe.
   const speichern = useMutation({
-    mutationFn: (unterlimit: string | null) =>
-      produktbudgetApi.setzeUnterlimit(id, { unterlimit, fassung: e.fassung }),
-    onSuccess: (stand) => {
+    mutationFn: (g: { unterlimit: string | null; fassung: number }) =>
+      produktbudgetApi.setzeUnterlimit(id, g),
+    onSuccess: (stand, g) => {
       qc.setQueryData<EigeneBudgets>(EIGENES_PRODUKTBUDGET_KEY, stand);
-      setEingabe(null);
-      setMeldung(t("produktbudget.gespeichert"));
+      const jetzt = eingabeJetzt.current;
+      const weiter = jetzt !== null && jetzt !== g.unterlimit;
+      if (!weiter) {
+        setEingabe(null);
+      }
+      setMeldung(t(weiter ? "produktbudget.gespeichertWeitere" : "produktbudget.gespeichert"));
     },
     onError: (fehler) => {
       // Die Eingabe bleibt stehen; die Meldung nennt den Grund des Servers.
@@ -86,7 +99,11 @@ function EigenerBereich({ e, dezimal }: { e: EigenesBudget; dezimal: string }): 
             inputMode="decimal"
             className="w-28"
             value={wert}
+            disabled={speichern.isPending}
             onChange={(ev) => {
+              if (speichern.isPending) {
+                return;
+              }
               setMeldung(null);
               setEingabe(ev.target.value);
             }}
@@ -96,14 +113,14 @@ function EigenerBereich({ e, dezimal }: { e: EigenesBudget; dezimal: string }): 
         <Button
           variant="primary"
           disabled={eingabe === null || eingabe.trim() === "" || speichern.isPending}
-          onClick={() => speichern.mutate(eingabe)}
+          onClick={() => speichern.mutate({ unterlimit: eingabe, fassung: e.fassung })}
           data-testid={`eigenes-budget-speichern-${id}`}
         >
           {t("produktbudget.eigen.speichern")}
         </Button>
         <Button
           disabled={e.unterlimitCent === null || speichern.isPending}
-          onClick={() => speichern.mutate(null)}
+          onClick={() => speichern.mutate({ unterlimit: null, fassung: e.fassung })}
           data-testid={`eigenes-budget-aufheben-${id}`}
         >
           {t("produktbudget.eigen.aufheben")}

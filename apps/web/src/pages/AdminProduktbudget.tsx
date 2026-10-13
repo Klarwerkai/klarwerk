@@ -413,8 +413,18 @@ function Zuweisungen({ b, dezimal }: { b: BudgetBereich; dezimal: string }): JSX
   const { t } = useTranslation();
   const qc = useQueryClient();
   const users = useUsers();
-  const [konto, setKonto] = useState("");
-  const [betrag, setBetrag] = useState("");
+  const [konto, setKontoZustand] = useState("");
+  const [betrag, setBetragZustand] = useState("");
+  // Spiegel der Eingaben für die Antwortbehandlung (PBE-08, Ben nacharbeit-6).
+  const jetzt = useRef({ konto: "", betrag: "" });
+  const setKonto = (k: string): void => {
+    jetzt.current = { ...jetzt.current, konto: k };
+    setKontoZustand(k);
+  };
+  const setBetrag = (b: string): void => {
+    jetzt.current = { ...jetzt.current, betrag: b };
+    setBetragZustand(b);
+  };
   const [meldung, setMeldung] = useState<string | null>(null);
   const konten = b.konten ?? [];
   const id = b.bereich;
@@ -422,18 +432,24 @@ function Zuweisungen({ b, dezimal }: { b: BudgetBereich; dezimal: string }): JSX
     users.data?.find((u) => u.id === kennung)?.name ?? kennung;
   const geld = (cent: number | null, ohne: string): string =>
     cent === null ? ohne : `${centAlsBetrag(cent, dezimal)} ${b.waehrung}`;
+  /** Die Fassung der Kontogrenze, wie sie GERADE angezeigt wird — Grundlage des Absendens. */
+  const fassungVon = (k: string): number => konten.find((x) => x.konto === k)?.fassung ?? 0;
 
+  // Der GESENDETE Vorgang steht fest: Konto, Betrag und Grundfassung zum Zeitpunkt des Absendens.
+  // Während er läuft, sind Konto- und Betragsfeld gesperrt; die Antwort leert nur genau diesen
+  // Entwurf, nie eine andere Eingabe oder ein inzwischen gewähltes anderes Konto.
   const speichern = useMutation({
-    mutationFn: (e: { konto: string; zuweisung: string | null }) =>
-      produktbudgetApi.setzeZuweisung(id, e.konto, {
-        zuweisung: e.zuweisung,
-        fassung: konten.find((k) => k.konto === e.konto)?.fassung ?? 0,
-      }),
-    onSuccess: (antwort) => {
+    mutationFn: (g: { konto: string; zuweisung: string | null; fassung: number }) =>
+      produktbudgetApi.setzeZuweisung(id, g.konto, { zuweisung: g.zuweisung, fassung: g.fassung }),
+    onSuccess: (antwort, g) => {
       const { grenze: _grenze, ...stand } = antwort as Produktbudgetstand & { grenze?: unknown };
       qc.setQueryData<Produktbudgetstand>(PRODUKTBUDGET_KEY, stand);
-      setBetrag("");
-      setMeldung(t("produktbudget.gespeichert"));
+      const e = jetzt.current;
+      const bestaetigt = e.konto === g.konto && (g.zuweisung === null || e.betrag === g.zuweisung);
+      if (bestaetigt) {
+        setBetrag("");
+      }
+      setMeldung(t(bestaetigt ? "produktbudget.gespeichert" : "produktbudget.gespeichertWeitere"));
     },
     onError: (fehler) => {
       const grund =
@@ -472,7 +488,12 @@ function Zuweisungen({ b, dezimal }: { b: BudgetBereich; dezimal: string }): JSX
           <select
             className={SELECT_KLASSE}
             value={konto}
-            onChange={(e) => setKonto(e.target.value)}
+            disabled={speichern.isPending}
+            onChange={(e) => {
+              if (!speichern.isPending) {
+                setKonto(e.target.value);
+              }
+            }}
             data-testid={`pb-zuweisung-konto-${id}`}
           >
             <option value="">–</option>
@@ -488,21 +509,26 @@ function Zuweisungen({ b, dezimal }: { b: BudgetBereich; dezimal: string }): JSX
             inputMode="decimal"
             className="w-28"
             value={betrag}
-            onChange={(e) => setBetrag(e.target.value)}
+            disabled={speichern.isPending}
+            onChange={(e) => {
+              if (!speichern.isPending) {
+                setBetrag(e.target.value);
+              }
+            }}
             data-testid={`pb-zuweisung-betrag-${id}`}
           />
         </Field>
         <Button
           variant="primary"
           disabled={konto === "" || betrag.trim() === "" || speichern.isPending}
-          onClick={() => speichern.mutate({ konto, zuweisung: betrag })}
+          onClick={() => speichern.mutate({ konto, zuweisung: betrag, fassung: fassungVon(konto) })}
           data-testid={`pb-zuweisung-speichern-${id}`}
         >
           {t("produktbudget.zuweisung.speichern")}
         </Button>
         <Button
           disabled={konto === "" || speichern.isPending}
-          onClick={() => speichern.mutate({ konto, zuweisung: null })}
+          onClick={() => speichern.mutate({ konto, zuweisung: null, fassung: fassungVon(konto) })}
           data-testid={`pb-zuweisung-aufheben-${id}`}
         >
           {t("produktbudget.zuweisung.aufheben")}

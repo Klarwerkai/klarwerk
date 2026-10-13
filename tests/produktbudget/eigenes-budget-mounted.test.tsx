@@ -62,8 +62,9 @@ function stand(claude: Partial<EigenesBudget> = {}): EigeneBudgets {
   };
 }
 
+type Antwort = { status: number; body: unknown };
 let puts: Record<string, unknown>[] = [];
-let schreiben: () => { status: number; body: unknown } = () => ({ status: 200, body: stand() });
+let schreiben: () => Antwort | Promise<Antwort> = () => ({ status: 200, body: stand() });
 
 function netz(): void {
   puts = [];
@@ -78,7 +79,7 @@ function netz(): void {
         a = { status: 200, body: stand() };
       } else if (methode === "PUT" && pfad.endsWith("/api/me/produktbudget/nr32-claude")) {
         puts.push(JSON.parse(init?.body ?? "{}") as Record<string, unknown>);
-        a = schreiben();
+        a = await schreiben();
       } else {
         throw new Error(`kein Netz in diesem Prüfstand: ${methode} ${pfad}`);
       }
@@ -164,5 +165,43 @@ describe("PBE-12 · das eigene Budget", () => {
     expect(text(c, "eigenes-budget-meldung-nr32-claude")).toBe(t("produktbudget.gespeichert"));
     const feld = c.querySelector('[data-testid="eigenes-budget-unterlimit-nr32-claude"]');
     expect((feld as HTMLInputElement).value).toBe("4,00");
+  });
+
+  // Ben nacharbeit-6 (PBE-08): 4 EUR absenden, während der ausstehenden Antwort 5 EUR eingeben.
+  // Das Feld ist während des Speicherns gesperrt; die Antwort für 4 EUR bestätigt nur 4 EUR, und
+  // keine nie gesendete Eingabe wird still als „gespeichert“ gemeldet.
+  it("E4 · verzögerte Antwort: Feld gesperrt, Folgeeingabe nicht still verloren oder gemeldet", async () => {
+    let freigeben: ((a: Antwort) => void) | null = null;
+    schreiben = () =>
+      new Promise<Antwort>((ja) => {
+        freigeben = ja;
+      });
+    const c = await montieren();
+    const feld = (): HTMLInputElement =>
+      c.querySelector('[data-testid="eigenes-budget-unterlimit-nr32-claude"]') as HTMLInputElement;
+    await tippe(feld(), "4");
+    await klicke(c.querySelector('[data-testid="eigenes-budget-speichern-nr32-claude"]'));
+    expect(puts).toEqual([{ unterlimit: "4", fassung: 1 }]);
+    expect(feld().disabled, "das Feld ist während des Speicherns offen").toBe(true);
+    const speichern = c.querySelector('[data-testid="eigenes-budget-speichern-nr32-claude"]');
+    expect((speichern as HTMLButtonElement).disabled).toBe(true);
+    // Auch ein programmatischer Eingabeversuch ändert den Entwurf nicht.
+    await tippe(feld(), "5");
+    await act(async () => {
+      (freigeben as ((a: Antwort) => void) | null)?.({
+        status: 200,
+        body: stand({ unterlimitCent: 400, fassung: 2 }),
+      });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await beruhige(5);
+    expect(feld().disabled).toBe(false);
+    expect(feld().value).toBe("4,00");
+    expect(text(c, "eigenes-budget-meldung-nr32-claude")).toBe(t("produktbudget.gespeichert"));
+    expect(puts).toHaveLength(1);
+    // Die nächste Eingabe beruht auf der angezeigten, bestätigten Fassung 2.
+    await tippe(feld(), "5");
+    await klicke(c.querySelector('[data-testid="eigenes-budget-speichern-nr32-claude"]'));
+    expect(puts[1]).toEqual({ unterlimit: "5", fassung: 2 });
   });
 });

@@ -120,9 +120,17 @@ let schreiben: (rumpf: Record<string, unknown>) => Schreibantwort | Promise<Schr
     body: { ...stand(), wiederholt: false, geaendert: true },
   });
 let puts: Record<string, unknown>[] = [];
+/** Die Pfade der Schreibaufrufe — sie tragen bei der Zuweisung das Konto. */
+let putPfade: string[] = [];
+/** Fiktive Konten für die Auswahl der Zuweisungsfläche. */
+const KONTEN = [
+  { id: "u-kim", name: "Kim Fiktiv", email: "kim@beispiel.test", role: "viewer", approved: true },
+  { id: "u-lea", name: "Lea Fiktiv", email: "lea@beispiel.test", role: "viewer", approved: true },
+];
 
 function netz(): void {
   puts = [];
+  putPfade = [];
   Object.defineProperty(globalThis, "fetch", {
     configurable: true,
     writable: true,
@@ -132,9 +140,12 @@ function netz(): void {
       let a: Antwort | "netzfehler";
       if (methode === "GET" && pfad.endsWith(WEG)) {
         a = lesen();
+      } else if (methode === "GET" && pfad.endsWith("/api/users")) {
+        a = { status: 200, body: KONTEN };
       } else if (methode === "PUT" && pfad.startsWith(`${WEG}/`)) {
         const rumpf = JSON.parse(init?.body ?? "{}") as Record<string, unknown>;
         puts.push(rumpf);
+        putPfade.push(pfad);
         a = await schreiben(rumpf);
       } else {
         throw new Error(`kein Netz in diesem Prüfstand: ${methode} ${pfad}`);
@@ -461,6 +472,78 @@ describe("M4 · Konflikt", () => {
     expect(puts[1]).toMatchObject({ betrag: "27", fassung: 1 });
     expect(puts[1]?.aenderungId).not.toBe(puts[0]?.aenderungId);
     expect(text(s, "pb-betrag-perplexity-poc")).toBe("27,00 EUR");
+  });
+});
+
+/** Eine Auswahl ändern — über den NATIVEN Setter, sonst sieht React sie nicht. */
+async function waehle(feld: Element | null, wert: string): Promise<void> {
+  if (!(feld instanceof window.HTMLSelectElement)) {
+    throw new Error("Auswahlfeld nicht gefunden.");
+  }
+  const setzer = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")?.set;
+  await act(async () => {
+    setzer?.call(feld, wert);
+    feld.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  await beruhige(2);
+}
+
+describe("MZ · Zuweisung mit verzögerter Antwort (Ben, nacharbeit-6)", () => {
+  it("Konto und Betrag sind während des Speicherns gesperrt; die Antwort leert nur den gesendeten Entwurf", async () => {
+    let freigeben: ((a: Schreibantwort) => void) | null = null;
+    schreiben = () =>
+      new Promise<Schreibantwort>((ja) => {
+        freigeben = ja;
+      });
+    const s = await karte();
+    const konto = (): HTMLSelectElement =>
+      s.container.querySelector(
+        '[data-testid="pb-zuweisung-konto-nr32-chatgpt"]',
+      ) as HTMLSelectElement;
+    const betrag = (): HTMLInputElement =>
+      s.container.querySelector(
+        '[data-testid="pb-zuweisung-betrag-nr32-chatgpt"]',
+      ) as HTMLInputElement;
+    await waehle(konto(), "u-kim");
+    await tippe(betrag(), "6");
+    await klicke(s.container.querySelector('[data-testid="pb-zuweisung-speichern-nr32-chatgpt"]'));
+    expect(putPfade).toEqual([`${WEG}/nr32-chatgpt/konten/u-kim`]);
+    expect(puts).toEqual([{ zuweisung: "6", fassung: 0 }]);
+    // Während die Antwort aussteht: beide Felder gesperrt, Kontowechsel und Folgebetrag wirkungslos.
+    expect(konto().disabled).toBe(true);
+    expect(betrag().disabled).toBe(true);
+    await waehle(konto(), "u-lea");
+    await tippe(betrag(), "7");
+    const bestaetigt = stand();
+    const chatgpt = bestaetigt.bereiche.find((b) => b.bereich === "nr32-chatgpt");
+    if (chatgpt) {
+      chatgpt.konten = [
+        {
+          konto: "u-kim",
+          zuweisungCent: 600,
+          unterlimitCent: null,
+          fassung: 1,
+          belegtCent: 0,
+          grenzeCent: 600,
+        },
+      ];
+    }
+    await act(async () => {
+      (freigeben as ((a: Schreibantwort) => void) | null)?.({ status: 200, body: bestaetigt });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await beruhige(5);
+    expect(konto().disabled).toBe(false);
+    expect(konto().value, "das gesendete Konto wurde still gewechselt").toBe("u-kim");
+    expect(betrag().value).toBe("");
+    expect(text(s, "pb-konto-nr32-chatgpt-u-kim")).toContain("6,00 EUR");
+    // Ein Wechsel NACH der Antwort ist ein neuer Vorgang — mit der Fassung des anderen Kontos.
+    await waehle(konto(), "u-lea");
+    await tippe(betrag(), "7");
+    await klicke(s.container.querySelector('[data-testid="pb-zuweisung-speichern-nr32-chatgpt"]'));
+    expect(putPfade[1]).toBe(`${WEG}/nr32-chatgpt/konten/u-lea`);
+    expect(puts[1]).toEqual({ zuweisung: "7", fassung: 0 });
   });
 });
 
