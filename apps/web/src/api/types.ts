@@ -2493,6 +2493,15 @@ export interface AbbruchBefund {
   zeichen: number;
 }
 
+// produkt:20261010:poc-ki-ausfall-weiterarbeiten: WORTGLEICH zu `KiErsatzGrund` in
+// `services/reasoner/src/types.ts` (hier gehalten und nicht importiert, s. `REASONER_TASKS`).
+export type KiErsatzGrund =
+  | "zeitueberschreitung"
+  | "nicht_erreichbar"
+  | "verweigert"
+  | "kontingent"
+  | "fehler";
+
 export interface AnswerResult {
   answered: boolean;
   answer: string | null;
@@ -2512,6 +2521,10 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): gesetzt NUR, wenn ein Modellversuch
+  // scheiterte und danach der regelbasierte Ersatz antwortete — Spiegel von `KiErsatzGrund` in
+  // `services/reasoner/src/types.ts`. Fehlt es (alter Server, Modellantwort), sagt die Fläche nichts.
+  ersatzGrund?: KiErsatzGrund;
   // R-1643: die Argumentationskette — je Aussage die Quelle, deren Wortlaut sie belegt (Vertrag
   // am Serverfeld `AnswerResult.argumentation`, services/reasoner/src/types.ts). Optional: ein
   // älterer Server sendet sie nicht, und das Protokoll sagt dann, dass keine Kette vorliegt.
@@ -2743,6 +2756,14 @@ export interface AskResponse {
   // REF-02: das Ergebnis der Referenzprüfung (Spiegel von `ReferenzPruefSicht`,
   // services/ask/src/referenz-pruefung.ts). Fehlt ohne Prüfdienst oder ohne beantwortete Frage.
   referenzpruefung?: ReferenzPruefung;
+  // REF-01 (Ben nacharbeit-7): die eigenen Bindungen der beiden Zweitmeinungsantworten.
+  zweitmeinungAussagen?: { erste: AussagenBelegKurz | null; zweite: AussagenBelegKurz | null };
+  // produkt:20261009:referenzki-antwortstatus (REF-04, K1): die Referenzprüfung JEDER der beiden
+  // Zweitmeinungsantworten — nur bei einer Gegenüberstellung; `null`: diese Seite ohne Text.
+  referenzpruefungZweitmeinung?: {
+    erste: ReferenzPruefung | null;
+    zweite: ReferenzPruefung | null;
+  };
 }
 
 // ================================================================================================
@@ -2750,7 +2771,13 @@ export interface AskResponse {
 // ================================================================================================
 // Stufen statt Anbieter- und Modellnamen: die stehen nur im Prüfprotokoll der Adminsicht.
 export interface AussagenBelegKurz {
-  aussagen: { aussageId: string; text: string }[];
+  aussagen: {
+    aussageId: string;
+    text: string;
+    // REF-04 (K5, Ben nacharbeit-3): die gebundenen Passagen, wie der Server sie mit den Rechten
+    // dieser Anfrage mitliefert (Zweitmeinung, Stichtagsvergleich). Ein älterer Server sendet sie nicht.
+    teile?: { fundstellen: { fundstelleId: string; auszug: string }[] }[];
+  }[];
 }
 
 export type ReferenzZustand = "belegt" | "teilweise_belegt" | "widersprochen" | "nicht_pruefbar";
@@ -2815,6 +2842,15 @@ export interface ReferenzPruefung {
   ausCache: boolean;
   messung: { dauerMs: number; modellaufrufe: 0 | 1 };
   versuch: { nummer: number; hoechstens: number };
+  // REF-04 (K7): die Bindung dieses Ergebnisses an GENAU eine Antwortfassung (ohne Prüfmodell —
+  // das steht nur im Prüfprotokoll). Ein älterer Server sendet sie nicht.
+  bindung?: {
+    antwortFingerabdruck: string;
+    belegFingerabdruck: string;
+    paketFingerabdruck: string | null;
+    richtlinie: string;
+    ergebnisFingerabdruck: string;
+  };
 }
 
 // R-1630 / R-2176: Spiegel von `services/ask/src/wissensstand-vergleich.ts` — dort stehen Regeln
@@ -4002,6 +4038,73 @@ export interface ReasonerConfigStatus {
 // als Ursache ausgegeben werden (s. `apps/web/src/lib/kiTestBefund.ts`).
 export type ModelFailureClass = "timeout" | "http" | "network" | "parse" | "unknown";
 
+// produkt:20261009:referenzki-adminauswahl (REF-03): der Einstieg „Referenzprüfung" — wortgleich
+// zu `GET /api/reasoner/referenzpruefung` (`services/app/src/routes/reasoner-routes.ts`).
+export type ReferenzWahl = "openai" | "anthropic" | "local";
+export type ReferenzOptionZustand =
+  | "nicht_eingerichtet"
+  | "ausgeschaltet"
+  | "nicht_verfuegbar"
+  | "konfiguriert"
+  | "letzte_pruefung_erfolgreich"
+  | "letzte_pruefung_fehlgeschlagen";
+export type ReferenzOptionSperre =
+  | "ki_abgeschaltet"
+  | "keine_freigabe_externe_verarbeitung"
+  | "nicht_erreichbar"
+  | "kein_pruefmodell";
+
+export interface ReferenzFunktionscheck {
+  wahl: ReferenzWahl;
+  zeit: string;
+  anbieter: string;
+  modell: string | null;
+  ergebnis: "erfolgreich" | "fehlgeschlagen";
+  grund: string | null;
+  modellaufruf: boolean;
+  dauerMs: number;
+  verbrauch: { eingabe: number; ausgabe: number } | null;
+  kosten: { betrag: number; waehrung: string; preisstand: string } | null;
+  richtlinie: string;
+  fiktiv: true;
+  /** Nur in der Antwort des Checks: ob er im Audit gespeichert wurde. */
+  gespeichert?: boolean;
+}
+
+export interface ReferenzOption {
+  wahl: ReferenzWahl;
+  art: "intern" | "oeffentlich";
+  anbieter: string | null;
+  modell: string | null;
+  eingerichtet: boolean;
+  erlaubt: boolean;
+  rang: number | null;
+  sperre: ReferenzOptionSperre | null;
+  gleichWieAntwortmodell: boolean;
+  zustand: ReferenzOptionZustand;
+  letzteFunktionspruefung: ReferenzFunktionscheck | null;
+}
+
+export interface ReferenzVerwaltung {
+  liste: ReferenzWahl[];
+  optionen: ReferenzOption[];
+  antwortmodell: { anbieter: string; modell: string | null } | null;
+  freigabe: { oeffentlicheKi: boolean; vertraulicheInhalte: boolean };
+  unabhaengigVerfuegbar: boolean;
+  policySource: ReasonerConfigStatus["policySource"];
+  kiAbgeschaltet: boolean;
+  grenzen: {
+    richtlinie: string;
+    zeitlimitMs: number;
+    antwortMaxToken: number;
+    postenMax: number;
+    eingabeMaxZeichen: number;
+    erneutMax: number;
+    automatischeWiederholung: false;
+  };
+  preise: { hinterlegt: boolean; waehrung?: string; preisstand?: string; fehler?: string };
+}
+
 // Key-Test (Pedi 02.07.): Ergebnis des echten Mini-Modellaufrufs (ehrlich, kein Secret).
 export interface ReasonerProbeResult {
   ok: boolean;
@@ -4228,6 +4331,8 @@ export interface AntwortBeanstandung {
 // produkt:20261009:referenzki-quellenbelege (REF-01): Spiegel des Teils von `AussagenBeleg`
 // (services/ask/src/aussage-fundstellen.ts), den die Fragenseite für die Beanstandung braucht.
 export interface AntwortAussagenBeleg {
+  // REF-04 (K7): der Fingerabdruck des ausgelieferten Antworttexts; ein älterer Server sendet ihn nicht.
+  antwortFingerabdruck?: string;
   aussagen: {
     aussageId: string;
     text: string;

@@ -39,6 +39,8 @@ const HINWEIS_SCHLUESSEL: Record<QuellenHinweis, string> = {
   "pptx-layout-nicht-erfasst": "bildautomatik.hinweis.pptxLayout",
   "grenze-erreicht": "bildautomatik.hinweis.grenze",
   ladefrist: "bildautomatik.hinweis.ladefrist",
+  // OCR-03: das Profil des Kontos war nicht lesbar — nicht automatisch gelesen.
+  "einstellung-unbekannt": "klarabildkontext.hinweis.einstellungUnbekannt",
 };
 
 /** Warum der Bildinhalt fehlt — je Zustand ein eigener Satz. */
@@ -175,6 +177,12 @@ export function BildBefundListe({ befund, lauf }: { befund: QuellenBefund; lauf?
               <span className="font-semibold text-text">{t(ort.key, ort.params)}</span>
               {" · "}
               <span className="text-muted">{t(STATUS_SCHLUESSEL[b.status])}</span>
+              {b.grund === "automatik-aus" ? (
+                <span data-testid="bild-befund-automatik-aus" className="text-muted-2">
+                  {" · "}
+                  {t("klarabildkontext.grund.automatikAus")}
+                </span>
+              ) : null}
               {b.wiederverwendet ? (
                 <span className="text-muted-2"> · {t("bildautomatik.wiederverwendet")}</span>
               ) : null}

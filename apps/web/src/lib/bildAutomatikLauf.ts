@@ -3,6 +3,8 @@
 // darin werden unveränderte Bilder über alle Eingänge dieser Fläche wiedererkannt und nicht erneut
 // gelesen. Die Texterkennung läuft im Browser; die Bildbeschreibung (W02) reicht die Fläche je Lauf
 // mit ihrer eigenen Herkunft herein.
+import { useRef } from "react";
+import { useAssistenzStand } from "./assistenzProfil";
 import { type BildAnalyse, createBildAnalyse } from "./bildAutomatik";
 import { runImageOcr } from "./files";
 
@@ -38,4 +40,18 @@ export async function ladeObjektBild(src: string, signal?: AbortSignal): Promise
 
 export function neueBildAnalyse(): BildAnalyse {
   return createBildAnalyse({ erkenne: (src) => runImageOcr(src), ladeBild: ladeObjektBild });
+}
+
+/**
+ * OCR-03 · Die Analyse einer Fläche, gebunden an das angemeldete Konto. Wechselt das Konto im
+ * bestätigten Browserstand (`lib/assistenzProfil.ts`), entsteht eine NEUE, leere Analyse: gemerkte
+ * Ergebnisse eines anderen Menschen werden nie wiederverwendet — auch nicht für dieselben Bildbytes.
+ */
+export function useBildAnalyse(): BildAnalyse {
+  const kontoId = useAssistenzStand().kontoId;
+  const ref = useRef<{ kontoId: string | null; analyse: BildAnalyse } | null>(null);
+  if (ref.current === null || ref.current.kontoId !== kontoId) {
+    ref.current = { kontoId, analyse: neueBildAnalyse() };
+  }
+  return ref.current.analyse;
 }

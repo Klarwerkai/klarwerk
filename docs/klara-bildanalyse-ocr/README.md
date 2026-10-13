@@ -14,3 +14,6 @@ Prüfung: `tests/klara-bildanalyse-ocr/fundstellen.test.ts`.
 
 **OCR-02** (`produkt:20261012:klara-bildanalyse-ocr-automatik`): Lieferung und offene Punkte in
 [`OCR-02-AUTOMATIK.md`](./OCR-02-AUTOMATIK.md).
+
+**OCR-03** (`produkt:20261012:klara-bildanalyse-ocr-kontext-setup`): Kontext für Klara und
+Setup-Schalter in [`OCR-03-KONTEXT-SETUP.md`](./OCR-03-KONTEXT-SETUP.md).

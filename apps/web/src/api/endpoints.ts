@@ -133,7 +133,10 @@ import type {
   ReasonerKiLage,
   ReasonerProbeResult,
   ReasonerStatus,
+  ReferenzFunktionscheck,
   ReferenzPruefung,
+  ReferenzVerwaltung,
+  ReferenzWahl,
   RetirementEntry,
   RetirementHorizon,
   RevalidierungBestaetigt,
@@ -1310,6 +1313,15 @@ export const endpoints = {
     // KI-Verwaltung v1: Zuordnung setzen (nur Admin; Antwort = frischer configStatus).
     updateConfig: (cfg: { global: string; perTask: Record<string, string> }) =>
       api.put<ReasonerConfigStatus>("/reasoner/config", cfg),
+    // produkt:20261009:referenzki-adminauswahl (REF-03): der Einstieg „Referenzprüfung" (nur
+    // Admin). Lesen ruft kein Modell; der Funktionscheck nur auf ausdrücklichen Klick.
+    referenzpruefung: () => api.get<ReferenzVerwaltung>("/reasoner/referenzpruefung"),
+    setzeReferenzpruefung: (liste: readonly ReferenzWahl[]) =>
+      api.put<ReferenzVerwaltung>("/reasoner/referenzpruefung", {
+        liste: liste.length > 0 ? [...liste] : null,
+      }),
+    referenzFunktionscheck: (wahl: ReferenzWahl) =>
+      api.post<ReferenzFunktionscheck>("/reasoner/referenzpruefung/funktionscheck", { wahl }),
     // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf (nur Admin, ehrliches Ergebnis).
     test: () => api.post<ReasonerProbeResult>("/reasoner/test"),
     // SCRUM-428: Key-Test für den eigenen lokalen LLM (echter Mini-Aufruf über den Tunnel).

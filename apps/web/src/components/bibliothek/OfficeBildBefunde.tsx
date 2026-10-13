@@ -10,22 +10,28 @@
 // unveränderte Bilder darin werden wiedererkannt und nicht erneut gelesen.
 //
 // Excel (`.xlsx`) hat keinen Leser (Q08) — dort wird nichts behauptet.
+//
+// OCR-03: die Einstellung Setup › Klara wirkt auch hier (aus → nichts neu auswerten, Profil lädt →
+// warten); die Analyse gehört zum Konto; unter dem Befund fragt man Klara zu Text UND Bildern der
+// Datei, mit Folie/Bild als Fundstelle.
 import { useEffect, useMemo, useState } from "react";
 import { useImageDescribeWennVorhanden } from "../../app/ImageDescribeContext";
 import {
-  BILD_AUTOMATIK_VOREINSTELLUNG,
   BILD_LADEFRIST_MS,
   type BildQuelleEingang,
   type QuellenBefund,
   bildBeschreiberAus,
   docxBildEingang,
+  einstellungUnbekannt,
   mitFrist,
   pptxBildEingang,
 } from "../../lib/bildAutomatik";
-import { neueBildAnalyse } from "../../lib/bildAutomatikLauf";
+import { useBildAutomatikLage } from "../../lib/bildAutomatikEinstellung";
+import { useBildAnalyse } from "../../lib/bildAutomatikLauf";
 import { objectRawHref } from "../../lib/bodyFileLink";
 import { readDocxRich, readPptxRich } from "../../lib/files";
 import { BildBefundListe } from "../BildBefundListe";
+import { KlaraBildKontextFrage } from "../KlaraBildKontextFrage";
 
 export interface OfficeBildAnhang {
   id: string;
@@ -52,6 +58,20 @@ export async function officeBildEingang(
   laden: (href: string, signal?: AbortSignal) => Promise<Blob | null>,
   ladefristMs: number = BILD_LADEFRIST_MS,
 ): Promise<BildQuelleEingang | null | "frist"> {
+  const q = await officeBildQuelle(anhang, art, laden, ladefristMs);
+  return q && q !== "frist" ? q.eingang : q;
+}
+
+/**
+ * OCR-03: derselbe Lesevorgang wie `officeBildEingang`, dazu der Text der Datei (Folien- bzw.
+ * Dokumenttext) — Klara bekommt ihn neben den Bildbefunden. Gelesen wird nur.
+ */
+export async function officeBildQuelle(
+  anhang: OfficeBildAnhang,
+  art: Art,
+  laden: (href: string, signal?: AbortSignal) => Promise<Blob | null>,
+  ladefristMs: number = BILD_LADEFRIST_MS,
+): Promise<{ eingang: BildQuelleEingang; text: string } | null | "frist"> {
   const href = objectRawHref(anhang.objectId);
   if (!href) {
     return null;
@@ -68,10 +88,13 @@ export async function officeBildEingang(
   const datei = new File([blob], anhang.name, { type: blob.type });
   if (art === "pptx") {
     const pptx = await readPptxRich(datei, "");
-    return pptxBildEingang(anhang.name, pptx.html, pptx);
+    return { eingang: pptxBildEingang(anhang.name, pptx.html, pptx), text: pptx.text };
   }
   const docx = await readDocxRich(datei, "");
-  return docxBildEingang(anhang.name, docx.html, docx.droppedImages);
+  return {
+    eingang: docxBildEingang(anhang.name, docx.html, docx.droppedImages),
+    text: docx.text,
+  };
 }
 
 /** Abruf und Antwortkörper hängen am selben Abbruchsignal (die Frist setzt `officeBildEingang`). */
@@ -97,14 +120,23 @@ export function wirdGeladen(name: string, art: Art): QuellenBefund {
   return { quelle: name, art, status: "laeuft", befunde: [], nichtGelesen: [], hinweise: [] };
 }
 
+interface OfficeStand {
+  befund: QuellenBefund;
+  /** OCR-03: der gelesene Eingang und der Text der Datei — für Klaras Kontext. */
+  eingang?: BildQuelleEingang;
+  text?: string;
+}
+
 export function OfficeBildBefunde({
   anhaenge,
 }: {
   anhaenge: OfficeBildAnhang[];
 }): JSX.Element | null {
   const weg = useImageDescribeWennVorhanden();
-  const [analyse] = useState(neueBildAnalyse);
-  const [befunde, setBefunde] = useState<Record<string, QuellenBefund>>({});
+  // OCR-03: eine Analyse je Fläche UND Konto; dazu die Einstellung Setup › Klara.
+  const analyse = useBildAnalyse();
+  const lage = useBildAutomatikLage();
+  const [befunde, setBefunde] = useState<Record<string, OfficeStand>>({});
   const beschreibe = useMemo(() => (weg ? bildBeschreiberAus(weg) : undefined), [weg]);
   const lesbar = anhaenge.filter((a) => officeBildArt(a.name) !== null);
   // Der Schlüssel ist die FASSUNG (Objektkennung): eine neue Fassung startet einen neuen Lauf.
@@ -112,6 +144,9 @@ export function OfficeBildBefunde({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `schluessel` bündelt Anhang und Fassung.
   useEffect(() => {
+    if (lage === "laedt") {
+      return; // Die Einstellung des Kontos kommt gleich — bis dahin wird nichts gestartet.
+    }
     let aktiv = true;
     for (const anhang of lesbar) {
       const art = officeBildArt(anhang.name);
@@ -119,28 +154,35 @@ export function OfficeBildBefunde({
         continue;
       }
       // Sofort sichtbar: der Anhang wird geladen — schon vor dem ersten Byte.
-      setBefunde((b) => ({ ...b, [anhang.objectId]: wirdGeladen(anhang.name, art) }));
+      setBefunde((b) => ({ ...b, [anhang.objectId]: { befund: wirdGeladen(anhang.name, art) } }));
       void (async () => {
-        let eingang: BildQuelleEingang | null | "frist" = null;
+        let quelle: { eingang: BildQuelleEingang; text: string } | null | "frist" = null;
         try {
-          eingang = await officeBildEingang(anhang, art, ladeAnhang);
+          quelle = await officeBildQuelle(anhang, art, ladeAnhang);
         } catch {
-          eingang = null;
+          quelle = null;
         }
         if (!aktiv) {
           return;
         }
-        if (!eingang || eingang === "frist") {
-          const befund = ohneZugriff(anhang.name, art, eingang === "frist");
-          setBefunde((b) => ({ ...b, [anhang.objectId]: befund }));
+        if (!quelle || quelle === "frist") {
+          const befund = ohneZugriff(anhang.name, art, quelle === "frist");
+          setBefunde((b) => ({ ...b, [anhang.objectId]: { befund } }));
+          return;
+        }
+        const { eingang, text } = quelle;
+        if (lage === "unbekannt") {
+          const befund = einstellungUnbekannt(eingang);
+          setBefunde((b) => ({ ...b, [anhang.objectId]: { befund, eingang, text } }));
           return;
         }
         await analyse.analysiereQuelle(eingang, {
-          automatik: BILD_AUTOMATIK_VOREINSTELLUNG,
+          automatik: lage === "an",
           beschreibe,
+          abbrechen: () => !aktiv,
           onFortschritt: (stand) => {
             if (aktiv) {
-              setBefunde((b) => ({ ...b, [anhang.objectId]: stand }));
+              setBefunde((b) => ({ ...b, [anhang.objectId]: { befund: stand, eingang, text } }));
             }
           },
         });
@@ -149,20 +191,28 @@ export function OfficeBildBefunde({
     return () => {
       aktiv = false;
     };
-  }, [schluessel, analyse, beschreibe]);
+  }, [schluessel, analyse, beschreibe, lage]);
 
   const sichtbar = lesbar.flatMap((a) => {
-    const befund = befunde[a.objectId];
-    return befund ? [{ a, befund }] : [];
+    const stand = befunde[a.objectId];
+    return stand ? [{ a, stand }] : [];
   });
   if (sichtbar.length === 0) {
     return null;
   }
   return (
     <div data-testid="office-bild-befunde" className="space-y-2">
-      {sichtbar.map(({ a, befund }) => (
+      {sichtbar.map(({ a, stand }) => (
         <div key={`${a.id}-${a.objectId}`} data-office-bild-befund={a.id}>
-          <BildBefundListe befund={befund} />
+          <BildBefundListe befund={stand.befund} />
+          {stand.eingang ? (
+            <KlaraBildKontextFrage
+              kontextSchluessel={`office:${a.id}:${a.objectId}`}
+              dokumentTextVon={() => stand.text ?? ""}
+              quellen={[stand.befund]}
+              aktuell={[stand.eingang]}
+            />
+          ) : null}
         </div>
       ))}
     </div>

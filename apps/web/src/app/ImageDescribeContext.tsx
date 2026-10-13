@@ -1,7 +1,7 @@
 import { type ReactNode, createContext, useContext, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { type ReasonerProvenance, endpoints } from "../api/endpoints";
-import type { DescribeImageResult } from "../api/types";
+import type { AssistResult, DescribeImageResult } from "../api/types";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { draftProvenance } from "../lib/reasonerProvenance";
 import { useAiAvailable } from "../lib/useAiAvailable";
@@ -62,6 +62,13 @@ export interface ImageDescribeValue {
   // Der EINE describe-Aufruf. Zweites Argument ist der umgebende Klartext-Kontext (WP-BILD-1f), der
   // im selben Request und damit über dieselbe Vertraulichkeits-/Egress-Stelle reist wie das Bild.
   describe: (dataUrl: string, context?: string) => Promise<DescribeImageResult>;
+  // OCR-03 (produkt:20261012:klara-bildanalyse-ocr-kontext-setup): Klara zu diesem Inhalt fragen —
+  // der VORHANDENE assist-Weg (`/api/reasoner`, task „assist“) mit DERSELBEN Provenienz wie die
+  // Bildbeschreibung dieser Fläche, also unter derselben Vertraulichkeitsregel. OPTIONAL wie
+  // `billable`: fehlt er (Test-Naht, Fläche ohne Provider), bietet die Fläche keine Modellantwort an
+  // und zeigt nur die deterministischen Fundstellen.
+  frage?: (text: string, anweisung: string) => Promise<AssistResult>;
+  frageVerfuegbar?: boolean;
 }
 
 const ImageDescribeCtx = createContext<ImageDescribeValue | null>(null);
@@ -111,10 +118,13 @@ export function ImageDescribeProvider({
   const describeAi = useAiAvailable("describe");
   // AUFTRAG-mega67 Block G: dieselbe Quelle, andere Frage — nutzbar ist nicht dasselbe wie teuer.
   const describeBillable = useAiBillable("describe");
+  // OCR-03: dieselbe Verfügbarkeitsquelle für Klaras Antwort auf eine Frage zum Inhalt.
+  const assistAi = useAiAvailable("assist");
   const locale = toReasonerLocale(i18n.language);
   // JOB 2692 D2: `draftId` reist mit — die Kennung des gespeicherten Entwurfs, damit der Server
   // die gespeicherte Stufe als Backstop laden kann. Primitives Feld wie die anderen (Memo unten).
-  const { source, confidentiality, koId, draftId } = provenance ?? VORGABE_PROVENIENZ;
+  const { source, confidentiality, koId, draftId, nichtEingestuft } =
+    provenance ?? VORGABE_PROVENIENZ;
 
   // Auf den PRIMITIVEN Feldern gemerkt, nicht auf der Objektidentität: `draftProvenance(...)` baut
   // bei jedem Render ein neues Objekt, sonst wechselte der Wert grundlos bei jedem Tastendruck.
@@ -134,8 +144,27 @@ export function ImageDescribeProvider({
           },
           context,
         ),
+      frageVerfuegbar: assistAi.available,
+      frage: (text, anweisung) =>
+        endpoints.reasoner.assist(text, locale, anweisung, {
+          source,
+          confidentiality,
+          ...(nichtEingestuft === true ? { nichtEingestuft } : {}),
+          ...(koId ? { koId } : {}),
+          ...(draftId ? { draftId } : {}),
+        }),
     }),
-    [describeAi.available, describeBillable, locale, source, confidentiality, koId, draftId],
+    [
+      describeAi.available,
+      describeBillable,
+      assistAi.available,
+      locale,
+      source,
+      confidentiality,
+      nichtEingestuft,
+      koId,
+      draftId,
+    ],
   );
 
   return <ImageDescribeCtx.Provider value={value}>{children}</ImageDescribeCtx.Provider>;

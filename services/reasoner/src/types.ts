@@ -196,7 +196,24 @@ export interface AnswerResult {
   // daneben die Liste der herangezogenen Fundstellen und ist KEINE Begründung. Fehlt das Feld, gibt
   // es keine belegte Kette (keine Antwort, älterer Weg) — weggelassen, nie leer erfunden.
   argumentation?: ArgumentationsGlied[];
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): WARUM der regelbasierte Ersatz diese
+  // Antwort geliefert hat. Gesetzt NUR, wenn in diesem Lauf ein Modell versucht wurde, scheiterte
+  // und danach der deterministische Ersatz antwortete (`Reasoner.answer`). Ohne Modellversuch (keins
+  // eingerichtet) oder bei einer Modellantwort fehlt das Feld. Nur die Klasse — kein Anbietername,
+  // kein Status, keine Meldung, kein Schlüssel.
+  ersatzGrund?: KiErsatzGrund;
 }
+
+/**
+ * PV-03-01: die nutzerverständliche Ursache eines gescheiterten Modellversuchs, aus dem Fehler
+ * ABGELEITET (`ersatzGrundAus`, model-errors.ts) — nie aus Meldungstext an die Fläche gereicht.
+ */
+export type KiErsatzGrund =
+  | "zeitueberschreitung"
+  | "nicht_erreichbar"
+  | "verweigert"
+  | "kontingent"
+  | "fehler";
 
 /** R-1643: ein Glied der Argumentationskette. */
 export interface ArgumentationsGlied {
@@ -708,6 +725,48 @@ export interface ReferenzPruefer {
 export type ReferenzPrueferWahl =
   | { readonly pruefer: ReferenzPruefer }
   | { readonly grund: ReferenzPrueferGrund };
+
+// ================================================================================================
+// produkt:20261009:referenzki-adminauswahl (REF-03) · DIE LAGE JE REFERENZ-OPTION FÜR DIE ADMINSICHT.
+// ================================================================================================
+//
+// Was die Verwaltung je Option zeigen muss: Anbieter, Modell, intern/öffentlich, ob eingerichtet,
+// ob erlaubt (mit Vorrang) und — nur für erlaubte, eingerichtete Optionen — was ihren Einsatz
+// gerade sperrt. Abgeleitet aus DENSELBEN Prüfungen wie `referenzPruefer`; nichts davon wird
+// gespeichert. Ob die letzte Funktionsprüfung gelang, steht nicht hier, sondern im Audit.
+//   · ki_abgeschaltet                       — die KI ist administrativ abgeschaltet (D5);
+//   · keine_freigabe_externe_verarbeitung   — öffentliche Option ohne Grundfreigabe;
+//   · nicht_erreichbar                      — verdrahtet, aber gerade nicht verfügbar;
+//   · kein_pruefmodell                      — der Zugang nennt kein Modell oder prüft nicht.
+export type ReferenzOptionSperre =
+  | "ki_abgeschaltet"
+  | "keine_freigabe_externe_verarbeitung"
+  | "nicht_erreichbar"
+  | "kein_pruefmodell";
+
+export interface ReferenzOptionLage {
+  readonly wahl: ReasonerReferenzWahl;
+  /** `intern`: eigener lokaler Zugang · `oeffentlich`: externer Anbieter. */
+  readonly art: "intern" | "oeffentlich";
+  /** Clientname des Zugangs (kein Schlüssel) — `null`, wenn nicht eingerichtet. */
+  readonly anbieter: string | null;
+  /** Reiner Modellbezeichner — `null`, wenn nicht eingerichtet oder nicht genannt. */
+  readonly modell: string | null;
+  readonly eingerichtet: boolean;
+  readonly erlaubt: boolean;
+  /** Vorrang in der erlaubten Liste (1 = zuerst) — `null`, wenn nicht erlaubt. */
+  readonly rang: number | null;
+  readonly sperre: ReferenzOptionSperre | null;
+  /** Dasselbe tatsächliche Modell wie die heute gewählte Antwort-KI — dann nie ihr Prüfer. */
+  readonly gleichWieAntwortmodell: boolean;
+}
+
+export interface ReferenzLage {
+  readonly optionen: readonly ReferenzOptionLage[];
+  /** Das Modell, das Antworten heute zuerst schreibt — `null` ohne Modell (Ersatzmodus). */
+  readonly antwortmodell: { readonly anbieter: string; readonly modell: string | null } | null;
+  readonly freigabe: { readonly oeffentlicheKi: boolean; readonly vertraulicheInhalte: boolean };
+}
 
 // ================================================================================================
 // AUFNAHME 20260922 (R-0305, R-1099) · DAS ERGEBNIS EINER ZWEITMEINUNG.
