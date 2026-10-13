@@ -87,6 +87,9 @@ import {
   useAndereFlaecheOffen,
   useAndereFlaecheSchliesst,
 } from "../assistenzFlaechen";
+// produkt:20261012:klara-setup-shortcuts-umsetzung: konfigurierte Kürzel führen vorhandene Wege aus.
+import { useKlaraAktion } from "../klara-setup/KlaraKuerzelAusfuehrung";
+import { KlaraAufgaben } from "./KlaraAufgaben";
 import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
 import {
@@ -1586,6 +1589,29 @@ export function KlaraVorschau({
     }
   }, [panelSichtbar, aufnahmeAbbrechen]);
 
+  // produkt:20261012:klara-setup-shortcuts-umsetzung (AA-04): konfigurierte Kürzel kommen über den
+  // einen Ausführungsweg (`klara-setup/KlaraKuerzelAusfuehrung.tsx`) und laufen hier über die
+  // VORHANDENEN Wege — kein zweites Gespräch, keine eigene Aufnahme. „Klara öffnen“ ist idempotent:
+  // `oeffnen` setzt nur `offen` auf dem einen Zustand und holt den Fokus ins Gespräch; Verlauf,
+  // Eingabe und Auswahl bleiben stehen. Diktat und Auftrag öffnen das Gespräch zuerst, damit der
+  // Stopp sichtbar ist; Mikrofonfreigabe und „nicht verfügbar“ regelt `useKlaraSprache` wie beim Klick.
+  useKlaraAktion((aktion) => {
+    if (aktion === "oeffnen") {
+      oeffnen();
+    } else if (aktion === "diktieren" || aktion === "auftragSprechen") {
+      oeffnen();
+      if (!sprechen.laeuft) {
+        sprechen.starten(aktion === "diktieren" ? "diktat" : "auftrag");
+      }
+    } else if (aktion === "aufnahmeStoppen") {
+      if (sprechen.laeuft) {
+        sprechen.stoppen();
+      }
+    } else if (aktion === "vorlesenStoppen") {
+      stoppeVorlesen();
+    }
+  });
+
   // ---------------------------------------------------------------------------------------------
   // produkt:20261010:assistenz-name-avatar — der Zustand der Figur (ANIMATIONSZUSTAENDE.json), nur
   // aus echten Ereignissen: Mikrofon aktiv, Sprachausgabe spielt, Anfrage läuft, Entscheidung nötig,
@@ -2620,6 +2646,14 @@ export function KlaraVorschau({
                 <li>{t("klaranotiz.bedienhilfe.arbeitszettel")}</li>
                 <li>{t("klaranotiz.bedienhilfe.privat")}</li>
                 <li>{t("klaranotiz.bedienhilfe.fehler")}</li>
+                {/* Klara 07: persönliche Aufgaben aus Notiz und Auftrag, bearbeiten, erledigen. */}
+                <li data-testid="klara-bedienhilfe-aufgabe">
+                  {t("klaraaufgabe.bedienhilfe.auftrag")}
+                </li>
+                <li>{t("klaraaufgabe.bedienhilfe.notiz")}</li>
+                <li>{t("klaraaufgabe.bedienhilfe.bearbeiten")}</li>
+                <li>{t("klaraaufgabe.bedienhilfe.privat")}</li>
+                <li>{t("klaraaufgabe.bedienhilfe.fehler")}</li>
                 {/* Klara 12: Modi, Hinweise und übertragene Aufgaben. */}
                 <li data-testid="klara-bedienhilfe-eigeninitiative">
                   {t("klarainitiative.bedienhilfe.modi")}
@@ -2679,6 +2713,8 @@ export function KlaraVorschau({
             {istEcht ? <KlaraAusfuehrungen umgebung={auftragsUmgebung} /> : null}
             {/* Klara 06: die privaten Notizen — anlegen, wiederfinden, öffnen, ändern. */}
             {istEcht && kontoId ? <KlaraNotizen /> : null}
+            {/* Klara 07: die persönlichen Aufgaben — öffnen, ändern, priorisieren, erledigen. */}
+            {istEcht && kontoId ? <KlaraAufgaben /> : null}
             {/* Klara 02: der gesprochene Auftrag — erkannter Text, Ziel, Rückfragen, Ergebnis. */}
             <KlaraAuftragKarte
               s={sprechen}

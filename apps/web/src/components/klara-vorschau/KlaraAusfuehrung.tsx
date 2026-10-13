@@ -113,6 +113,16 @@ function nachgelesenText(stand: string | null, t: TFunction): string {
   const trenner = roh.indexOf(":");
   const art = trenner < 0 ? roh : roh.slice(0, trenner);
   const wert = trenner < 0 ? "" : roh.slice(trenner + 1);
+  // Klara 07: eine persönliche Aufgabe meldet „status:offen prioritaet:mittel“ — beides in Worten.
+  if (art === "status") {
+    const [statusTeil = "", ...rest] = roh.split(" ");
+    const status = statusTeil.slice("status:".length);
+    const wort = t(`klaraaufgabe.statusWort.${status}`, { defaultValue: status });
+    return [
+      t("klaraauftrag.nachgelesen.status", { status: wort }),
+      ...rest.map((teil) => nachgelesenText(teil, t)),
+    ].join(" · ");
+  }
   if (art === "prioritaet") {
     return t("klaraauftrag.nachgelesen.prioritaet", { wert: t(`klaraauftrag.prioritaet.${wert}`) });
   }
@@ -410,13 +420,18 @@ function AusfuehrungKarte({
             // Nacharbeit 4: eine ausgeführte Aufgabenaktion zeigt, was am Server nachgelesen wurde.
             const aufgabeAusgefuehrt =
               s?.stand === "gespeichert" && s.aktion === "aufgabe_bearbeiten";
-            const standText = aufgabeAusgefuehrt
-              ? t("klaraauftrag.schrittStand.ausgefuehrt", {
-                  stand: nachgelesenText(s.ergebnis?.stand ?? null, t),
-                })
-              : s?.stand === "abgeschlossen" && UNWIDERRUFLICH.includes(s.aktion)
-                ? t(`klaraauftrag.schrittStand.geoeffnet.${s.aktion}`)
-                : t(`klaraauftrag.schrittStand.${sichtbar}`);
+            // Klara 07: eine angelegte persönliche Aufgabe zeigt den am Server NACHGELESENEN Status
+            // und die Priorität — nicht, was der Auftrag wollte.
+            const persoenlicheAufgabe =
+              s?.stand === "gespeichert" && s.aktion === "persoenliche_aufgabe_anlegen";
+            const standText =
+              aufgabeAusgefuehrt || persoenlicheAufgabe
+                ? t("klaraauftrag.schrittStand.ausgefuehrt", {
+                    stand: nachgelesenText(s?.ergebnis?.stand ?? null, t),
+                  })
+                : s?.stand === "abgeschlossen" && UNWIDERRUFLICH.includes(s.aktion)
+                  ? t(`klaraauftrag.schrittStand.geoeffnet.${s.aktion}`)
+                  : t(`klaraauftrag.schrittStand.${sichtbar}`);
             // Ungeklärt, aber die Kennung des Gespeicherten ist bekannt: der Weg dorthin bleibt da.
             const bekannteWirkung =
               sichtbar === "unklar" && s?.schreibwirkung && !ergebnisOffen
@@ -498,6 +513,14 @@ function AusfuehrungKarte({
                     className="mt-0.5 text-[11px] text-muted-2"
                   >
                     {t("klaraauftrag.nichtRuecknehmbar.aufgabe")}
+                  </p>
+                ) : null}
+                {persoenlicheAufgabe ? (
+                  <p
+                    data-testid="klara-ausfuehrung-schritt-nicht-ruecknehmbar"
+                    className="mt-0.5 text-[11px] text-muted-2"
+                  >
+                    {t("klaraauftrag.nichtRuecknehmbar.persoenlicheAufgabe")}
                   </p>
                 ) : null}
                 {s?.stand === "zurueckgenommen" ? (

@@ -3246,6 +3246,8 @@ export class Reasoner {
     // R-1624: optionaler, vom Menschen bestätigter Bildbefund → Foto-Fragenfolge.
     imageContext?: string,
     // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum / Lücken-Thema (ohne Angabe wie bisher).
+    // Aufnahme `gesamt-ocr` (FR-CAP-05): `options.context` = im Bild erkannter Text als Kontext —
+    // dieselbe Kette, dieselbe Vertraulichkeit wie die Antworten.
     options: InterviewOptions = {},
   ): Promise<InterviewResult> {
     const result = await this.runTask(

@@ -2227,6 +2227,57 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // produkt:20261008:klara-aufgaben (Klara 07) — die eigenen Aufgaben. Dieselbe Tür-Regel wie die
+  // Notizen: nur Anmeldung, das Konto aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Liste liefert die
+  // (leeren) eigenen Aufgaben; das Anlegen mit leerer Nutzlast scheitert am Pflichtfeld `vorgang`
+  // (400), BEVOR etwas angelegt wird; die Türen mit Kennung tragen eine erfundene und enden in 400
+  // (Ändern ohne Fassung) oder 404 des Dienstes. Die Wirkung (eigene Aufgabe, Fremdkonto 404) misst
+  // `tests/klara-aufgaben/aufgabe-am-server.test.ts`.
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/aufgaben",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:89",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/aufgaben",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:105",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:130",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:143",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "DELETE",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:176",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
   // produkt:20261010:assistenz-name-avatar — das eigene Assistenzprofil. Beide Türen prüfen nur die
   // Anmeldung; das Konto kommt aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Lesetür liefert das
   // eigene (leere) Profil; die Schreibtür trägt ein unbekanntes Motiv und endet in 400, BEVOR etwas
@@ -2236,7 +2287,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "assistenzProfilRoutes",
     methode: "GET",
     pfad: "/api/me/assistenz",
-    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:115",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:144",
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
@@ -2244,7 +2295,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "assistenzProfilRoutes",
     methode: "PUT",
     pfad: "/api/me/assistenz",
-    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:132",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:161",
     tor: "requireUser",
     payload: { avatar: "gibt-es-nicht" },
     erwartet: ANGEMELDET,
@@ -2257,7 +2308,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "assistenzProfilRoutes",
     methode: "GET",
     pfad: "/api/me/assistenz/eigeninitiative",
-    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:166",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:195",
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
@@ -2265,7 +2316,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "assistenzProfilRoutes",
     methode: "PUT",
     pfad: "/api/me/assistenz/eigeninitiative",
-    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:183",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:212",
     tor: "requireUser",
     payload: { modus: "gibt-es-nicht" },
     erwartet: ANGEMELDET,
@@ -2274,9 +2325,30 @@ export const TABELLE: Zeile[] = [
     gruppe: "assistenzProfilRoutes",
     methode: "POST",
     pfad: "/api/me/assistenz/eigeninitiative/hinweise",
-    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:206",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:235",
     tor: "requireUser",
     payload: { schluessel: "", stand: "geschlossen" },
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261012:klara-setup-shortcuts-umsetzung — die Klara-Tastenkürzel im eigenen Profil.
+  // ZUSTANDSFREI GEFAHREN: die Schreibtür trägt eine unbekannte Aktion und endet in 400, BEVOR
+  // etwas geschrieben wird. Die Wirkung (Speichern, Doppelbelegung, Fremdkonto 403) misst
+  // `tests/klara-setup-shortcuts/tastenkuerzel-am-server.test.ts`.
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "GET",
+    pfad: "/api/me/assistenz/tastenkuerzel",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:261",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "PUT",
+    pfad: "/api/me/assistenz/tastenkuerzel",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:278",
+    tor: "requireUser",
+    payload: { aktion: "gibt-es-nicht", belegung: null },
     erwartet: ANGEMELDET,
   },
   // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz. Übersicht,

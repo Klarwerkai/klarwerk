@@ -85,6 +85,13 @@ export default {
     "assistenzverlauf.vertrag.aufgabe_eskalieren.recht": "Konflikte bearbeiten (conflict.resolve)",
     "assistenzverlauf.vertrag.aufgabe_eskalieren.ruecknahme":
       "Nicht rücknehmbar durch Klara: die Eskalation ist bei den Verantwortlichen angekommen. Weiter geht es am Konflikt.",
+    "assistenzverlauf.vertrag.persoenliche_aufgabe_anlegen.wirkung":
+      "Legt eine persönliche Aufgabe an, die nur du siehst.",
+    "assistenzverlauf.vertrag.persoenliche_aufgabe_anlegen.recht":
+      "Anmeldung – nur dein eigenes Konto",
+    "assistenzverlauf.vertrag.persoenliche_aufgabe_anlegen.ruecknahme":
+      "Nicht rücknehmbar durch Klara: ändern, erledigen oder löschen kannst du die Aufgabe selbst.",
+    "assistenzverlauf.korrigieren.persoenliche_aufgabe": "Zur Aufgabe",
     "assistenzverlauf.hinderung.fremdstand":
       "Nicht rücknehmbar: der Entwurf wurde nach Klaras Änderung weiter geändert. Korrigiere im Entwurf selbst.",
     "assistenzverlauf.hinderung.nicht_gespeichert":
@@ -186,6 +193,13 @@ export default {
     "assistenzverlauf.vertrag.aufgabe_eskalieren.recht": "Work on conflicts (conflict.resolve)",
     "assistenzverlauf.vertrag.aufgabe_eskalieren.ruecknahme":
       "Klara cannot undo this: the escalation has reached the people responsible. Continue at the conflict.",
+    "assistenzverlauf.vertrag.persoenliche_aufgabe_anlegen.wirkung":
+      "Creates a personal task that only you can see.",
+    "assistenzverlauf.vertrag.persoenliche_aufgabe_anlegen.recht":
+      "Signed in – only your own account",
+    "assistenzverlauf.vertrag.persoenliche_aufgabe_anlegen.ruecknahme":
+      "Klara cannot undo this: you can change, complete or delete the task yourself.",
+    "assistenzverlauf.korrigieren.persoenliche_aufgabe": "Go to the task",
     "assistenzverlauf.hinderung.fremdstand":
       "Cannot be undone: the draft was changed further after Klara's change. Correct it in the draft itself.",
     "assistenzverlauf.hinderung.nicht_gespeichert":
@@ -288,6 +302,13 @@ export default {
     "assistenzverlauf.vertrag.aufgabe_eskalieren.recht": "Conflicten behandelen (conflict.resolve)",
     "assistenzverlauf.vertrag.aufgabe_eskalieren.ruecknahme":
       "Klara kan dit niet terugdraaien: de escalatie is bij de verantwoordelijken aangekomen. Verder gaat het bij het conflict.",
+    "assistenzverlauf.vertrag.persoenliche_aufgabe_anlegen.wirkung":
+      "Maakt een persoonlijke taak aan die alleen jij ziet.",
+    "assistenzverlauf.vertrag.persoenliche_aufgabe_anlegen.recht":
+      "Aangemeld – alleen je eigen account",
+    "assistenzverlauf.vertrag.persoenliche_aufgabe_anlegen.ruecknahme":
+      "Klara kan dit niet terugdraaien: wijzigen, afronden of verwijderen doe je zelf bij de taak.",
+    "assistenzverlauf.korrigieren.persoenliche_aufgabe": "Naar de taak",
     "assistenzverlauf.hinderung.fremdstand":
       "Niet terug te draaien: het concept is na Klara's wijziging verder gewijzigd. Corrigeer in het concept zelf.",
     "assistenzverlauf.hinderung.nicht_gespeichert":

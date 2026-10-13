@@ -48,6 +48,11 @@ export function assistenzStand(): AssistenzStand {
   return stand;
 }
 
+/** OCR-03: für Abläufe ausserhalb von React, die auf den bestätigten Stand warten müssen. */
+export function abonniereAssistenzStand(h: () => void): () => void {
+  return abonniere(h);
+}
+
 /** Nur eine Antwort in der vereinbarten Form wird zum bestätigten Stand. */
 function istAntwort(wert: unknown): wert is AssistenzProfilAntwort {
   if (typeof wert !== "object" || wert === null || Array.isArray(wert)) {

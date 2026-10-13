@@ -27,7 +27,7 @@
 // die Tabelle heute im Dump liegt (`belegFuer`).
 //
 // NICHT VORHANDEN IST NICHT GESICHERT: Für Bereiche, die das Produkt in dieser Fassung gar nicht
-// speichert (eigene oder generierte Avatarbilder, persönliche Aufgabenlisten), steht ausdrücklich
+// speichert (eigene oder generierte Avatarbilder), steht ausdrücklich
 // `nicht_vorhanden` — keine Tabelle, kein Beleg, keine Behauptung.
 
 /** Wo der Bereich liegt — und damit, ob ein Dump ihn überhaupt enthalten kann. */
@@ -81,8 +81,9 @@ export const SICHERUNGSUMFANG: readonly UmfangBereich[] = [
   { id: "avatarmotive", art: "assistenz", zustand: "ausgeschlossen", tabellen: [] },
   // Eigene, hochgeladene oder generierte Avatarbilder: in dieser Fassung nicht gebaut.
   { id: "eigeneavatare", art: "assistenz", zustand: "nicht_vorhanden", tabellen: [] },
-  // Persönliche Aufgabenlisten: keine eigene Ablage in dieser Fassung.
-  { id: "aufgaben", art: "assistenz", zustand: "nicht_vorhanden", tabellen: [] },
+  // produkt:20261008:klara-aufgaben (Klara 07) — persönliche Aufgaben je Konto. Bis dahin
+  // `nicht_vorhanden`; seit der eigenen Ablage liegen sie als Tabelle im Dump.
+  { id: "aufgaben", art: "assistenz", zustand: "im_dump", tabellen: ["klara_aufgaben"] },
   // Browser-Speicher der Person (Sitzungscookie, lokale Einstellungen).
   { id: "endgeraet", art: "assistenz", zustand: "ausgeschlossen", tabellen: [] },
 ];

@@ -1237,6 +1237,8 @@ export const endpoints = {
     // SCRUM-132: reasoner-getriebenes Interview, stateless.
     // AUFNAHME 20260922 · WISSEN-INTERVIEW: `guide.tree` schaltet den Fragebaum mit Restlückenwert
     // zu, `guide.topic` das Lücken-Interview (drei Fragen zu einem festen Thema).
+    // Aufnahme `gesamt-ocr` (FR-CAP-05): optional `context` = der auf Klick im Bild erkannte Text —
+    // im selben Request, also unter derselben Provenienz/Vertraulichkeit wie die Antworten.
     interview: (
       answers: string[],
       locale: ReasonerLocale | undefined,
@@ -1251,6 +1253,7 @@ export const endpoints = {
         // R-0088: ausdrücklicher Wunsch nach Quellenrecherche (Knopf „Zum Thema recherchieren").
         recherchieren?: boolean;
       },
+      context?: string,
     ) =>
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
@@ -1261,6 +1264,7 @@ export const endpoints = {
         ...(guide?.topic?.trim() ? { topic: guide.topic.trim() } : {}),
         ...(guide?.research && guide.research.length > 0 ? { research: guide.research } : {}),
         ...(guide?.recherchieren ? { recherchieren: true } : {}),
+        ...(context?.trim() ? { context: context.trim() } : {}),
         ...provenanceFields(provenance),
       }),
     // WP-BILD-1c/1f: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). EIGENE

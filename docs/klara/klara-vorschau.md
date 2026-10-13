@@ -156,6 +156,28 @@ Grenzen: Aufgaben, gemeinsames Wissen (Übernahme in Artikel oder Space) und Pr�
 Folgeaufträge (Klara 07–09). Die Notizen sind noch kein eigener Bereich der Selbstauskunft und der
 Sicherungsübersicht (sie liegen im Datenbank-Dump und im Restore-Drill-Pflichtsatz).
 
+## Persönliche Aufgaben verwalten (Klara 07, `produkt:20261008:klara-aufgaben`)
+
+Nur im echten Betrieb und nur für die angemeldete Person. Ablage am Server
+(`services/app/src/klara-aufgabe.ts`, Tabelle `klara_aufgaben`, Türen `/api/me/klara/aufgaben` in
+`routes/klara-aufgabe-routes.ts`), Oberfläche „Meine persönlichen Aufgaben“ in Klaras Fläche und als
+eigener Abschnitt auf „Meine Aufgaben“ (`klara-vorschau/KlaraAufgaben.tsx`, Abläufe in
+`aufgaben.ts`, Texte `texte/klaraaufgabe.ts`).
+
+| Fähigkeit | Wie es tatsächlich geht |
+| --- | --- |
+| Aus einer Notiz | „Als Aufgabe“ an einer geöffneten Notiz. Der Server liest die EIGENE Notiz: Titel, Text und Rücklink werden Vorgabe, der Bezug nennt Notizkennung und -titel. Für dieselbe Notiz ist es derselbe Vorgang — zweimal gedrückt ergibt eine Aufgabe. |
+| Aus einem Auftrag | Getippt oder über „Auftrag sprechen“: „Lege mir die Aufgabe „…“ an“, „Erstelle eine persönliche Aufgabe „…“ (mit dem Text „…“)“ — EN „Create a task …“, NL „Maak een taak … aan“. Derselbe Aktionsweg wie Klara 05: Grenze und Plan am Server, Ausführung `persoenliche_aufgabe_anlegen` mit der Aktionskennung als Vorgangsschlüssel, danach Nachlesen. Die Ablage nimmt den Auftrag nur an, wenn er im EIGENEN Gespräch steht und sein Plan genau diese Anlage vorsieht; Wortlaut und Art (getippt/gesprochen) stehen am Bezug. |
+| Öffnen, Bearbeiten, Priorisieren, Erledigen | Je Aufgabe Titel, Text (aufklappbar), Priorität (hoch/mittel/niedrig, dieselben Stufen wie an einer Lücke), „Erledigt“/„Wieder öffnen“. Jede Änderung trägt die gesehene Fassung; eine anderswo geänderte Aufgabe wird nicht still überschrieben (409). Liste: offene vor erledigten, dann Priorität, dann zuletzt geändert. |
+| Zuständigkeit und Geltungsbereich | Jede Aufgabe ist `persoenlich`, zuständig ist die Person selbst („Zuständig: du · Persönlich“). Gemeinsame Aufgaben (Prüfung, Konflikt, Lücke, Rückgabe, Übergabe) bleiben in ihren Quellen; persönliche gehen in keinen ihrer Filter oder Zähler, und kein Weg macht aus einer Unternehmensaufgabe eine persönliche (`bereich` ≠ `persoenlich` → 400; „Erledige die Aufgabe …“ bleibt die Unternehmensaufgabe). |
+| Status in Klara | Die Auftragskarte zeigt nach dem Nachlesen den Status vom Server („Aufgabe offen · Priorität mittel“); ohne Bestätigung steht „Ergebnis unklar“. Die Liste wird danach frisch gelesen. Das Anlegen nimmt Klara nicht zurück (Vertrag `persoenliche_aufgabe_anlegen`, Korrekturweg „Zur Aufgabe“). |
+| Fehler und Wiederholung | Scheitert das Anlegen aus der Notiz, steht „Nicht gespeichert: Grund“ mit „Erneut speichern“ (derselbe Vorgang) da. Scheitert eine Änderung, steht der Grund an GENAU dieser Aufgabe; „Erneut speichern“ schickt dieselbe Änderung mit derselben Fassung — kam sie schon an, gibt es keine zweite Fassung. Ein Doppelklick während eines laufenden Versuchs ist keine zweite Änderung. |
+| Privatheit | Fremd und unbekannt antworten gleich (404), auch für Administratoren. Das Prüfprotokoll (`klara.aufgabe.angelegt/geaendert/geloescht`) trägt Kennung, Weg, Priorität, Status und Fassung — nie Titel, Text oder Wortlaut. Im Dump und im Restore-Drill (Kategorie `assistenz`). |
+
+Grenzen: Keine Fälligkeit oder Erinnerung (Klara 10/11), keine Weitergabe an andere Personen. Bearbeiten,
+Priorisieren und Erledigen per gesprochenem Satz sind nicht Teil dieses Schritts — „Erledige die
+Aufgabe …“ meint weiterhin die gemeinsame Aufgabe (Klara 05).
+
 ## Verlauf, Nachweis und Rücknahme je Aktion (PV-02, `produkt:20261010:assistenz-aktionen-verlauf-ruecknahme`)
 
 Baut nichts von Klara 05 oder ADMIN-03 neu. Es verbindet Gespräch, Aktionskennung, Prüfprotokoll
@@ -249,6 +271,10 @@ Person selbst sieht ihre Einträge im Nachweis.
   Server (`notiz-am-server.test.ts`), PostgreSQL mit Neustart und gleichzeitigen Versuchen
   (`notiz-pg.integration.test.ts`), die echte Klara gegen den echten Server
   (`notizen-am-server.test.tsx`)
+- `tests/klara-aufgaben/` — Klara 07: Ablage, Bezug, Rechte, Fassung und Wiederholung am Server samt
+  Aktionsweg (`aufgabe-am-server.test.ts`), Erkennung (`erkennung-aufgabe.test.ts`), PostgreSQL mit
+  Neustart und gleichzeitigen Versuchen (`aufgabe-pg.integration.test.ts`), die echte Klara und
+  „Meine Aufgaben“ gegen den echten Server (`aufgaben-am-server.test.tsx`)
 - `tests/klara-aktionen/` — Klara 05: Erkennung (`erkennung.test.ts`), Auftragsgrenze am Server
   (`auftragsgrenze-am-server.test.ts`), Aufgabenaktionen, ausbleibendes Nachlesen und unteilbares
   Löschen (`aufgabenaktion-und-nachlesen.test.ts`) und der ganze Weg getippt/gesprochen → Grenze → Ausführung →

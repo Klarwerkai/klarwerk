@@ -71,6 +71,8 @@ import { INSTANZBINDUNG_SCHEMA } from "./instanzbindung";
 import { GEDAECHTNIS_SCHEMA } from "./interaktionsgedaechtnis";
 // Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen.
 import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
+// produkt:20261008:klara-aufgaben: die persönlichen Aufgaben (eine Zeile je Aufgabe und Konto).
+import { KLARA_AUFGABE_SCHEMA } from "./klara-aufgabe";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (eine Zeile je Gespräch und Konto).
 import { KLARA_GESPRAECH_SCHEMA } from "./klara-gespraech";
 import { KLARA_NOTIZ_SCHEMA } from "./klara-notiz";
@@ -392,6 +394,10 @@ export const schemas = [
   // wiederholbar (CREATE TABLE/UNIQUE INDEX/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne
   // Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   KLARA_NOTIZ_SCHEMA,
+  // produkt:20261008:klara-aufgaben (Klara 07): die persönlichen Aufgaben je Konto. Additiv und
+  // wiederholbar (CREATE TABLE/UNIQUE INDEX/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne
+  // Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  KLARA_AUFGABE_SCHEMA,
   // R-0679 / FR-VAL-07: die Geräteabos für Push. Additiv und wiederholbar (CREATE TABLE/INDEX IF
   // NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
   // Ordnung ist.

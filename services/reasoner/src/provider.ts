@@ -156,6 +156,9 @@ export interface ReasonerProvider {
   // Lösung); das Bild selbst reist hier NICHT mit, nur dieser Klartext.
   // AUFNAHME 20260922 · WISSEN-INTERVIEW: `options` schaltet Fragebaum und Lücken-Thema zu;
   // ohne sie (und ohne Bildbefund) bleibt die bisherige Fragenfolge.
+  // Aufnahme `gesamt-ocr` (FR-CAP-05): `options.context` = ausdrücklich im Bild erkannter Text. Nur
+  // das Modell nutzt ihn für die Formulierung der Frage; der Entwurf entsteht weiter allein aus den
+  // Antworten. Der deterministische Fallback ignoriert ihn (er formuliert nichts um).
   interview(
     answers: readonly string[],
     locale?: ReasonerLocale,

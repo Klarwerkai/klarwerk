@@ -1630,6 +1630,9 @@ export interface DraftPayload {
     topic?: string;
     confirmed?: boolean;
   };
+  // Aufnahme `gesamt-ocr` (FR-CAP-05): die auf Klick erkannten Bildtext-Abschnitte als Kontext
+  // des Interviews — auch für strukturierte Entwürfe, die den Rohtext nicht mehr tragen.
+  ocrAbschnitte?: { name: string; text: string }[];
   // produkt:20261007:templates-default: Vorlage und Fassung, mit der der Entwurf geschrieben wird,
   // und der gewählte Space (Spiegel von services/capture/src/types.ts). `null` = freie Eingabe.
   vorlage?: { id: string; version: number; spaceId?: string | null } | null;

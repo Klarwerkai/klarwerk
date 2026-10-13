@@ -1180,6 +1180,17 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "legt nur eigene Hinweisschlüssel ab (user.id); fremde Kennung 403, kein KO-Inhalt.",
   },
+  // produkt:20261012:klara-setup-shortcuts-umsetzung — die eigenen Klara-Tastenkürzel.
+  "GET /api/me/assistenz/tastenkuerzel": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur die Kürzelbelegung des eigenen Assistenzprofils (assistenz-profil-routes.ts, user.id); " +
+      "fremde Kennung 403, kein KO-Inhalt.",
+  },
+  "PUT /api/me/assistenz/tastenkuerzel": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ändert nur die eigenen Kürzel (user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
   // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz.
   "GET /api/me/faehigkeiten": {
     urteil: "EIGENER_BESTAND",
