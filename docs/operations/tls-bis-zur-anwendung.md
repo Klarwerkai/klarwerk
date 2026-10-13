@@ -132,6 +132,30 @@ Labels und die vier Umgebungswerte aus Schritt 2 entfernen, `KLARWERK_TLS_PFLICH
 ausrollen. Die Anwendung spricht dann wieder Klartext, mit Warnung im Protokoll. Die Dateien aus
 Schritt 1 dürfen liegen bleiben; ohne Labels wirken sie nicht.
 
+## Öffentlicher Weg: Vermittler, Zertifikat und Word-Zusatz (R-0816 / R-0822)
+
+Der Nachweis oben misst die Strecke Vermittler → Anwendung. Was der Vermittler nach außen
+ausliefert — Zertifikat, Umleitung des Klartexts, den Startweg des Word-Zusatzes — misst
+`scripts/betrieb/tls-oeffentlich-nachweis.mjs`. Nur lesend, ohne root, Docker oder Geheimnis, von
+jedem Rechner mit Node:
+
+```sh
+node <repo>/scripts/betrieb/tls-oeffentlich-nachweis.mjs            # klarwerk.ai und app.klarwerk.ai
+```
+
+| Probe | Erwartung |
+| --- | --- |
+| O1 | TLS-Handschlag gegen den Vertrauensspeicher des Systems mit Namensprüfung, mindestens TLS 1.2, Restlaufzeit mindestens 14 Tage. Aussteller und Laufzeit stehen im Beleg. |
+| O2 | `http://<host>/word-addin/taskpane.html` und `http://<host>/health` leiten auf `https://` um; jede andere Klartext-Antwort ist durchgefallen. |
+| O3 | `https://<host>/word-addin/taskpane.html` antwortet 200 mit HSTS von mindestens einem Jahr. |
+
+Ausgänge wie oben: bestanden, durchgefallen, ungeklärt; Exitcode 0 nur, wenn alles bestanden ist.
+Gegengeprüft an echten Sockets in `tests/security/tls-oeffentlich-nachweis.test.ts`.
+
+Grenze: Die Probe sieht, was der Vermittler ausliefert, nicht seine Konfiguration. Dass er das
+Zertifikat selbst erneuert, belegen zwei Läufe im Abstand einer Erneuerung (Aussteller gleich,
+`gueltig_bis` später). Bis ein solcher Beleg vorliegt, bleibt `OFFEN.md` I11-U3 UNBELEGT.
+
 ## Zertifikatswechsel
 
 Das Serverzertifikat gilt 397 Tage. `tls-intern-einrichten.sh` stellt es neu aus, wenn es in weniger
