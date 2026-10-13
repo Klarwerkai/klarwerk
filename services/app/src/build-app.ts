@@ -23,6 +23,7 @@ import {
   PgAnswerSnapshotRepo,
   PgGapRepo,
   PgNulltrefferRepo,
+  REFERENZ_BEGRUENDUNG_AKTION,
   ReferenzPruefdienst,
   parseConfiguredReceiptSecret,
 } from "../../ask";
@@ -5011,28 +5012,60 @@ export function buildApp(
         isConfidential(ko.confidentiality as KnowledgeObject["confidentiality"]),
       // Das Prüfprotokoll: Kennungen, Zustandszahlen, Rollen mit tatsächlichem Anbieter und Modell,
       // Fingerabdrücke und Messung — kein Antwort-, Aussage- oder Quellentext.
+      // REF-04 (K6): versioniert (`protokoll`), mit Zeitpunkt, Antwortkennung und -weg, gebundenen
+      // Quellenfassungen und je Aussage Zustand, Grund, Belegverweisen und Begründungsfingerabdruck.
       protokolliere: async (e) => {
         await services.audit.record({
           actor: e.akteur,
           action: "ask.referenzpruefung",
           target: e.pruefId,
           payload: {
+            protokoll: e.protokoll,
+            zeitpunkt: e.zeitpunkt,
             richtlinie: e.richtlinie,
             status: e.status,
             grund: e.grund ?? null,
+            antwortId: e.antwortId,
+            antwortweg: e.antwortweg,
             antwortAnbieter: e.antwort?.anbieter ?? null,
             antwortModell: e.antwort?.modell ?? null,
             prueferAnbieter: e.pruefer?.anbieter ?? null,
             prueferModell: e.pruefer?.modell ?? null,
             antwortFingerabdruck: e.antwortFingerabdruck,
+            belegFingerabdruck: e.belegFingerabdruck,
             paketFingerabdruck: e.paketFingerabdruck,
             ergebnisFingerabdruck: e.ergebnisFingerabdruck,
+            quellen: e.quellen,
+            aussagen: e.aussagen,
+            aussagenGekuerzt: e.aussagenGekuerzt,
             zustaende: e.zustaende,
             ausCache: e.ausCache,
             versuch: e.versuch,
             dauerMs: e.dauerMs,
             eingabeToken: e.verbrauch?.eingabe ?? null,
             ausgabeToken: e.verbrauch?.ausgabe ?? null,
+            // REF-04 (K6, Ben nacharbeit-3): Verweis auf die Begründungen dieses Laufs.
+            begruendungEintrag: REFERENZ_BEGRUENDUNG_AKTION,
+          },
+        });
+        // REF-04 (K6, Ben nacharbeit-3): die kurzen Prüfbegründungen dauerhaft an DENSELBEN Lauf
+        // (Ziel = Prüfkennung) gebunden. `begruendungen` ist ein Inhaltsfeld der Audit-Sicht
+        // (`audit-sicht.ts`): geschwärzt für jeden Leser, der nicht jede zitierte Quelle (`koIds`)
+        // jetzt öffnen darf, und nach Papierkorb/Endlöschung einer Quelle für alle. Abruf über die
+        // bestehende Protokollansicht (`GET /api/audit?action=…&target=<pruefId>`).
+        await services.audit.record({
+          actor: e.akteur,
+          action: REFERENZ_BEGRUENDUNG_AKTION,
+          target: e.pruefId,
+          payload: {
+            protokoll: e.protokoll,
+            zeitpunkt: e.zeitpunkt,
+            // Ohne Zahl (auch ohne `versuch`): die Leseransicht verbirgt Nutzlasten mit Zahlen ohne
+            // bekanntes Bezugsziel als Bestandsbilanz (`audit-routes.ts`). Den Lauf samt Versuch
+            // bindet `ergebnisFingerabdruck` an den Haupteintrag.
+            ergebnisFingerabdruck: e.ergebnisFingerabdruck,
+            koIds: e.koIds,
+            begruendungen: e.begruendungen,
           },
         });
       },
@@ -5598,7 +5631,11 @@ export function buildApp(
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
   // (Entwurfs-Backstop: die gespeicherte Stufe eines Entwurfs hebt, senkt nie).
-  app.register(reasonerRoutes({ ...services, ka4: klaraSessions }, guards));
+  // REF-04 (K1): auch `task: "ask"` ist ein wissensbezogener Antwortweg — DERSELBE Prüfdienst wie
+  // an Fragekonsole und Klara, keine zweite Instanz.
+  app.register(
+    reasonerRoutes({ ...services, ka4: klaraSessions, referenz: antwortDeps.referenz }, guards),
+  );
   // Klara Stufe 2 (Pedi 05.07.): KI-gestuetzte Hilfe-Antwort aus Hilfe-Schnipseln (help-routes).
   app.register(helpRoutes({ reasoner: services.reasoner }, guards));
   // R-1064: der vom Betreiber festgelegte Supportweg dieser Installation (optional, kein

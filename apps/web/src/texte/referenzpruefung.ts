@@ -93,6 +93,68 @@ export default {
     "referenzpruefung.erneut.fehler": "Die erneute Prüfung ist nicht möglich.",
     "referenzpruefung.vergleich.heute": "Quellenprüfung der heutigen Antwort",
     "referenzpruefung.vergleich.damals": "Quellenprüfung der Antwort zum Stichtag",
+    // REF-04: Gesamtkennzeichnung, Bedeutung, Fundstellenwechsel und nächster Schritt.
+    "referenzpruefung.gesamt.quellen_geprueft": "Quellen geprüft",
+    "referenzpruefung.gesamt.gemischt": "Entwurf · Quellen nur teilweise bestätigt",
+    "referenzpruefung.gesamt.nicht_pruefbar": "Entwurf · Quellen nicht prüfbar",
+    "referenzpruefung.gesamt.nicht_abgeschlossen": "Entwurf · Prüfung nicht abgeschlossen",
+    "referenzpruefung.gesamt.laeuft": "Entwurf · Prüfung läuft",
+    "referenzpruefung.gesamt.offen": "Entwurf · Quellenprüfung offen",
+    "referenzpruefung.gesamt.fremde_fassung":
+      "Entwurf · Prüfung gehört zu einer anderen Antwortfassung",
+    "referenzpruefung.gesamt.keine_aussage": "Keine prüfpflichtige Aussage",
+    "referenzpruefung.entwurfHinweis":
+      "Diese Antwort ist nicht als Ganzes durch Quellen bestätigt. Sie bleibt sichtbar, ist aber keine Quellenfreigabe.",
+    "referenzpruefung.bedeutung":
+      "„Belegt“ heißt: Die genannte Fundstelle trägt die Aussage. Es heißt nicht: garantiert wahr oder aktuell.",
+    "referenzpruefung.detail.oeffnen": "Fundstelle und Begründung zeigen",
+    "referenzpruefung.detail.schliessen": "Fundstelle und Begründung schließen",
+    "referenzpruefung.detail.titel": "Fundstelle und Prüfbegründung",
+    "referenzpruefung.detail.passageOhne":
+      "Die Passage liegt dieser Ansicht nicht vor. Öffnen Sie die Quelle in der geprüften Fassung.",
+    "referenzpruefung.detail.keineFundstelle":
+      "Zu dieser Aussage gibt es keine zugängliche Fundstelle.",
+    "referenzpruefung.detail.begruendung": "Begründung:",
+    "referenzpruefung.detail.zurueck": "Zurück zur Aussage",
+    "referenzpruefung.naechster.label": "Nächster Schritt:",
+    "referenzpruefung.naechster.erneut": "Sie können die Prüfung einmal erneut anstoßen.",
+    "referenzpruefung.naechster.unbekannt":
+      "Stellen Sie die Frage erneut. Bleibt der Zustand, melden Sie ihn der Verwaltung.",
+    "referenzpruefung.naechster.keine_aussage":
+      "Nichts zu tun. Die Antwort enthält keine Tatsachenaussage, die eine Quelle bräuchte.",
+    "referenzpruefung.naechster.keine_fundstelle":
+      "Prüfen Sie die Aussage selbst an einer Quelle oder melden Sie die fehlende Quelle über die Meldefunktion der Antwort.",
+    "referenzpruefung.naechster.fundstelle_nicht_aufgeloest":
+      "Die Quelle ist für Sie nicht (mehr) zugänglich oder wurde geändert. Stellen Sie die Frage erneut.",
+    "referenzpruefung.naechster.keine_freigabe_externe_verarbeitung":
+      "Die Verwaltung kann die Freigabe für externe Verarbeitung erteilen oder eine interne Referenz-KI erlauben (Verwaltung → KI → Referenzprüfung).",
+    "referenzpruefung.naechster.pruefer_nicht_eingerichtet":
+      "Die Verwaltung erlaubt eine Referenz-KI unter Verwaltung → KI → Referenzprüfung. Stellen Sie die Frage danach erneut.",
+    "referenzpruefung.naechster.pruefer_nicht_verfuegbar":
+      "Die Verwaltung richtet eine erlaubte Referenz-KI unter KI-Zugänge ein. Stellen Sie die Frage danach erneut.",
+    "referenzpruefung.naechster.pruefer_nicht_freigegeben":
+      "Die Verwaltung erteilt die Freigabe oder hebt die KI-Abschaltung auf (Verwaltung → KI).",
+    "referenzpruefung.naechster.pruefer_nicht_unabhaengig":
+      "Die Verwaltung erlaubt zusätzlich eine Referenz-KI mit einem anderen Modell als die Antwort-KI.",
+    "referenzpruefung.naechster.antwortmodell_unbekannt":
+      "Stellen Sie die Frage erneut. Erst mit festgehaltenem Antwortmodell ist eine unabhängige Prüfung möglich.",
+    "referenzpruefung.naechster.zeitlimit": "Versuchen Sie es in einem Moment noch einmal.",
+    "referenzpruefung.naechster.abgebrochen":
+      "Stellen Sie die Frage erneut, um sie prüfen zu lassen.",
+    "referenzpruefung.naechster.budget_erschoepft":
+      "Stellen Sie eine engere Frage. Bleibt das Budget erschöpft, wenden Sie sich an die Verwaltung.",
+    "referenzpruefung.naechster.ki_abgeschaltet":
+      "Die Verwaltung hebt die KI-Abschaltung auf. Bis dahin bleibt die Antwort ungeprüft.",
+    "referenzpruefung.naechster.ungueltige_pruefausgabe":
+      "Versuchen Sie es noch einmal. Bleibt die Ausgabe ungültig, prüft die Verwaltung die Referenz-KI mit dem Funktionscheck.",
+    "referenzpruefung.naechster.pruefer_fehler":
+      "Versuchen Sie es noch einmal. Fällt die Referenz-KI weiter aus, prüft die Verwaltung den Zugang.",
+    "referenzpruefung.naechster.modellaufruf_ausgeschlossen":
+      "Auf diesem Weg ist das so vorgesehen. Für eine geprüfte Antwort stellen Sie die Frage auf der Fragenseite.",
+    "referenzpruefung.naechster.bestaetigung_abgelaufen":
+      "Stellen Sie die Frage erneut, damit die aktuelle Fassung mit den aktuellen Rechten geprüft wird.",
+    "referenzpruefung.naechster.kein_urteil": "Prüfen Sie die Aussage selbst an der Fundstelle.",
+    "referenzpruefung.zweitmeinung.titel": "Quellenprüfung dieser Antwort",
     "referenzpruefung.admin.titel": "Referenz-KI für die Quellenprüfung",
     "referenzpruefung.admin.text":
       "Die Referenz-KI prüft ausschließlich, ob die Fundstellen einer Antwort deren Aussagen tragen. Je Frage wird die erste erlaubte Option gewählt, die ein anderes Modell nutzt als die Antwort.",
@@ -262,6 +324,64 @@ export default {
     "referenzpruefung.erneut.fehler": "Checking again is not possible.",
     "referenzpruefung.vergleich.heute": "Source check of today's answer",
     "referenzpruefung.vergleich.damals": "Source check of the answer at the reference date",
+    "referenzpruefung.gesamt.quellen_geprueft": "Sources checked",
+    "referenzpruefung.gesamt.gemischt": "Draft · sources only partly confirmed",
+    "referenzpruefung.gesamt.nicht_pruefbar": "Draft · sources not checkable",
+    "referenzpruefung.gesamt.nicht_abgeschlossen": "Draft · check not completed",
+    "referenzpruefung.gesamt.laeuft": "Draft · check running",
+    "referenzpruefung.gesamt.offen": "Draft · source check open",
+    "referenzpruefung.gesamt.fremde_fassung": "Draft · check belongs to another answer version",
+    "referenzpruefung.gesamt.keine_aussage": "No statement to check",
+    "referenzpruefung.entwurfHinweis":
+      "This answer is not confirmed by sources as a whole. It stays visible but is not a source approval.",
+    "referenzpruefung.bedeutung":
+      "“Supported” means: the cited passage supports the statement. It does not mean: guaranteed true or current.",
+    "referenzpruefung.detail.oeffnen": "Show passage and reasoning",
+    "referenzpruefung.detail.schliessen": "Close passage and reasoning",
+    "referenzpruefung.detail.titel": "Passage and check reasoning",
+    "referenzpruefung.detail.passageOhne":
+      "The passage is not available in this view. Open the source in the checked version.",
+    "referenzpruefung.detail.keineFundstelle": "There is no accessible passage for this statement.",
+    "referenzpruefung.detail.begruendung": "Reasoning:",
+    "referenzpruefung.detail.zurueck": "Back to the statement",
+    "referenzpruefung.naechster.label": "Next step:",
+    "referenzpruefung.naechster.erneut": "You can trigger the check once more.",
+    "referenzpruefung.naechster.unbekannt":
+      "Ask the question again. If the state remains, report it to the administration.",
+    "referenzpruefung.naechster.keine_aussage":
+      "Nothing to do. The answer contains no factual statement that needs a source.",
+    "referenzpruefung.naechster.keine_fundstelle":
+      "Check the statement yourself against a source or report the missing source via the answer's report function.",
+    "referenzpruefung.naechster.fundstelle_nicht_aufgeloest":
+      "The source is not (or no longer) accessible to you or has changed. Ask the question again.",
+    "referenzpruefung.naechster.keine_freigabe_externe_verarbeitung":
+      "The administration can grant approval for external processing or allow an internal reference AI (Administration → AI → Reference check).",
+    "referenzpruefung.naechster.pruefer_nicht_eingerichtet":
+      "The administration allows a reference AI under Administration → AI → Reference check. Then ask the question again.",
+    "referenzpruefung.naechster.pruefer_nicht_verfuegbar":
+      "The administration sets up an allowed reference AI under AI accesses. Then ask the question again.",
+    "referenzpruefung.naechster.pruefer_nicht_freigegeben":
+      "The administration grants approval or lifts the AI switch-off (Administration → AI).",
+    "referenzpruefung.naechster.pruefer_nicht_unabhaengig":
+      "The administration also allows a reference AI with a different model than the answering AI.",
+    "referenzpruefung.naechster.antwortmodell_unbekannt":
+      "Ask the question again. An independent check needs the answer model to be recorded.",
+    "referenzpruefung.naechster.zeitlimit": "Try again in a moment.",
+    "referenzpruefung.naechster.abgebrochen": "Ask the question again to have it checked.",
+    "referenzpruefung.naechster.budget_erschoepft":
+      "Ask a narrower question. If the budget stays exhausted, contact the administration.",
+    "referenzpruefung.naechster.ki_abgeschaltet":
+      "The administration lifts the AI switch-off. Until then the answer stays unchecked.",
+    "referenzpruefung.naechster.ungueltige_pruefausgabe":
+      "Try again. If the output stays invalid, the administration checks the reference AI with the function check.",
+    "referenzpruefung.naechster.pruefer_fehler":
+      "Try again. If the reference AI keeps failing, the administration checks the access.",
+    "referenzpruefung.naechster.modellaufruf_ausgeschlossen":
+      "This is intended on this path. For a checked answer, ask on the questions page.",
+    "referenzpruefung.naechster.bestaetigung_abgelaufen":
+      "Ask the question again so that the current version is checked with your current rights.",
+    "referenzpruefung.naechster.kein_urteil": "Check the statement yourself against the passage.",
+    "referenzpruefung.zweitmeinung.titel": "Source check of this answer",
     "referenzpruefung.admin.titel": "Reference AI for the source check",
     "referenzpruefung.admin.text":
       "The reference AI only checks whether an answer's passages support its statements. For each question the first allowed option using a different model than the answer is chosen.",
@@ -429,6 +549,66 @@ export default {
     "referenzpruefung.erneut.fehler": "Opnieuw controleren is niet mogelijk.",
     "referenzpruefung.vergleich.heute": "Broncontrole van het antwoord van vandaag",
     "referenzpruefung.vergleich.damals": "Broncontrole van het antwoord op de peildatum",
+    "referenzpruefung.gesamt.quellen_geprueft": "Bronnen gecontroleerd",
+    "referenzpruefung.gesamt.gemischt": "Concept · bronnen slechts deels bevestigd",
+    "referenzpruefung.gesamt.nicht_pruefbar": "Concept · bronnen niet controleerbaar",
+    "referenzpruefung.gesamt.nicht_abgeschlossen": "Concept · controle niet afgerond",
+    "referenzpruefung.gesamt.laeuft": "Concept · controle loopt",
+    "referenzpruefung.gesamt.offen": "Concept · broncontrole open",
+    "referenzpruefung.gesamt.fremde_fassung":
+      "Concept · controle hoort bij een andere antwoordversie",
+    "referenzpruefung.gesamt.keine_aussage": "Geen uitspraak om te controleren",
+    "referenzpruefung.entwurfHinweis":
+      "Dit antwoord is niet als geheel door bronnen bevestigd. Het blijft zichtbaar, maar is geen bronvrijgave.",
+    "referenzpruefung.bedeutung":
+      "„Onderbouwd” betekent: de genoemde vindplaats draagt de uitspraak. Het betekent niet: gegarandeerd waar of actueel.",
+    "referenzpruefung.detail.oeffnen": "Vindplaats en onderbouwing tonen",
+    "referenzpruefung.detail.schliessen": "Vindplaats en onderbouwing sluiten",
+    "referenzpruefung.detail.titel": "Vindplaats en controle-onderbouwing",
+    "referenzpruefung.detail.passageOhne":
+      "De passage is in deze weergave niet beschikbaar. Open de bron in de gecontroleerde versie.",
+    "referenzpruefung.detail.keineFundstelle":
+      "Voor deze uitspraak is er geen toegankelijke vindplaats.",
+    "referenzpruefung.detail.begruendung": "Onderbouwing:",
+    "referenzpruefung.detail.zurueck": "Terug naar de uitspraak",
+    "referenzpruefung.naechster.label": "Volgende stap:",
+    "referenzpruefung.naechster.erneut": "U kunt de controle nog één keer starten.",
+    "referenzpruefung.naechster.unbekannt":
+      "Stel de vraag opnieuw. Blijft de toestand, meld die dan aan het beheer.",
+    "referenzpruefung.naechster.keine_aussage":
+      "Niets te doen. Het antwoord bevat geen feitelijke uitspraak die een bron nodig heeft.",
+    "referenzpruefung.naechster.keine_fundstelle":
+      "Controleer de uitspraak zelf aan een bron of meld de ontbrekende bron via de meldfunctie van het antwoord.",
+    "referenzpruefung.naechster.fundstelle_nicht_aufgeloest":
+      "De bron is voor u niet (meer) toegankelijk of is gewijzigd. Stel de vraag opnieuw.",
+    "referenzpruefung.naechster.keine_freigabe_externe_verarbeitung":
+      "Het beheer kan de vrijgave voor externe verwerking verlenen of een interne referentie-AI toestaan (Beheer → AI → Referentiecontrole).",
+    "referenzpruefung.naechster.pruefer_nicht_eingerichtet":
+      "Het beheer staat een referentie-AI toe onder Beheer → AI → Referentiecontrole. Stel de vraag daarna opnieuw.",
+    "referenzpruefung.naechster.pruefer_nicht_verfuegbar":
+      "Het beheer richt een toegestane referentie-AI in onder AI-toegangen. Stel de vraag daarna opnieuw.",
+    "referenzpruefung.naechster.pruefer_nicht_freigegeben":
+      "Het beheer verleent de vrijgave of heft de AI-uitschakeling op (Beheer → AI).",
+    "referenzpruefung.naechster.pruefer_nicht_unabhaengig":
+      "Het beheer staat daarnaast een referentie-AI toe met een ander model dan de antwoord-AI.",
+    "referenzpruefung.naechster.antwortmodell_unbekannt":
+      "Stel de vraag opnieuw. Een onafhankelijke controle vraagt een vastgelegd antwoordmodel.",
+    "referenzpruefung.naechster.zeitlimit": "Probeer het zo meteen nog eens.",
+    "referenzpruefung.naechster.abgebrochen": "Stel de vraag opnieuw om haar te laten controleren.",
+    "referenzpruefung.naechster.budget_erschoepft":
+      "Stel een engere vraag. Blijft het budget op, neem dan contact op met het beheer.",
+    "referenzpruefung.naechster.ki_abgeschaltet":
+      "Het beheer heft de AI-uitschakeling op. Tot dan blijft het antwoord ongecontroleerd.",
+    "referenzpruefung.naechster.ungueltige_pruefausgabe":
+      "Probeer het nog eens. Blijft de uitvoer ongeldig, dan controleert het beheer de referentie-AI met de functiecheck.",
+    "referenzpruefung.naechster.pruefer_fehler":
+      "Probeer het nog eens. Valt de referentie-AI blijvend uit, dan controleert het beheer de toegang.",
+    "referenzpruefung.naechster.modellaufruf_ausgeschlossen":
+      "Op deze weg is dat zo bedoeld. Voor een gecontroleerd antwoord stelt u de vraag op de vragenpagina.",
+    "referenzpruefung.naechster.bestaetigung_abgelaufen":
+      "Stel de vraag opnieuw, zodat de huidige versie met uw huidige rechten wordt gecontroleerd.",
+    "referenzpruefung.naechster.kein_urteil": "Controleer de uitspraak zelf aan de vindplaats.",
+    "referenzpruefung.zweitmeinung.titel": "Broncontrole van dit antwoord",
     "referenzpruefung.admin.titel": "Referentie-AI voor de broncontrole",
     "referenzpruefung.admin.text":
       "De referentie-AI controleert uitsluitend of de vindplaatsen van een antwoord de uitspraken dragen. Per vraag wordt de eerste toegestane optie gekozen die een ander model gebruikt dan het antwoord.",
