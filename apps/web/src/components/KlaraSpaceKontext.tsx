@@ -63,7 +63,7 @@ export function KlaraSpaceKontext({ pfad }: { pfad: string }): JSX.Element | nul
   }
   return (
     <div data-testid="klara-space-kontext">
-      <div className="mb-1 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="mb-1 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("spaces.klara.label")}
       </div>
       {zeilen.map((z) => (

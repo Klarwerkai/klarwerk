@@ -14,6 +14,12 @@ import { bindeInstanzVorMigration } from "./instanzbindung";
 import { GedaechtnisDienst } from "./interaktionsgedaechtnis";
 import { resolveKlaraAufraeumIntervalMs, starteKlaraAufraeumen } from "./klara-aufraeumen";
 import { registerNoindexHook } from "./noindex-hook";
+import { LOG_DATEI_ENV, PROTOKOLL_FRIST_TAGE, starteProtokollPflege } from "./protokoll-frist";
+import {
+  DOCKER_LOG_MAX_SIZE_ENV,
+  leseMaxSize,
+  starteRotationsimpuls,
+} from "./protokoll-rotationsimpuls";
 import { registerSecurityHeaders } from "./security-headers";
 // JOB 3776: der Startvertrag wird am Einstiegspunkt gerufen — als erste Anweisung von `start()`,
 // damit sein Abbruch durch `start().catch(...)` läuft und als EINE lesbare Zeile erscheint.
@@ -329,6 +335,36 @@ async function start(): Promise<void> {
       app.log.warn({ err: error }, "Periodischer Papierkorb-Sweep der Entwürfe übersprungen"),
   });
   app.log.info(`Papierkorb-Sweep aktiv — Intervall ${Math.round(sweepInterval / 60000)} min.`);
+  // R-0664 · Peters Entscheidung 2 (12.10.2026): Serverprotokolle 14 Tage, dann automatisch gelöscht
+  // — am tatsächlichen Speicherort, einschliesslich Diagnosekopien im Protokollordner. Wirkt, wo
+  // `start.command` die Ausgabedatei nennt (Insel); im Docker-Betrieb ist sie nicht gesetzt.
+  const protokollPflege = starteProtokollPflege({
+    datei: process.env[LOG_DATEI_ENV],
+    onGepflegt: (ergebnis) =>
+      app.log.info(
+        {
+          rotiert: ergebnis.rotiertNach !== null,
+          geloescht: ergebnis.geloescht.length,
+        },
+        "Protokollpflege: rotiert bzw. abgelaufene Protokolle gelöscht.",
+      ),
+    onError: (error) => app.log.warn({ err: error }, "Protokollpflege übersprungen."),
+  });
+  if (protokollPflege) {
+    app.log.info(`Protokollpflege aktiv — Frist ${PROTOKOLL_FRIST_TAGE} Tage.`);
+  }
+  // R-0664 (Ben, Nacharbeit 16): im Docker-Betrieb rotiert Docker die aktive Protokolldatei täglich
+  // selbst — angestossen durch einen inhaltsfreien Füllblock (protokoll-rotationsimpuls.ts). Wirkt
+  // nur mit gesetzter Docker-`max-size`: im Ein-Befehl-Weg (docker-compose.prod.yml). Das Abbild und
+  // damit Coolify setzen sie nicht — dort hält der externe Host-Connector Impuls und Pflege
+  // (Nacharbeit 25); auf der Insel ist sie ebenfalls nicht gesetzt.
+  const rotationsimpuls = starteRotationsimpuls({
+    maxSize: leseMaxSize(process.env[DOCKER_LOG_MAX_SIZE_ENV]),
+    onError: (error) => app.log.warn({ err: error }, "Rotationsimpuls übersprungen."),
+  });
+  if (rotationsimpuls) {
+    app.log.info("Rotationsimpuls aktiv — Docker rotiert die aktive Protokolldatei täglich.");
+  }
   if (klaraAufraeumLauf) {
     const klaraInterval = resolveKlaraAufraeumIntervalMs(
       process.env.KLARWERK_KLARA_AUFRAEUM_INTERVAL_MS,
@@ -379,6 +415,24 @@ async function start(): Promise<void> {
       `Wiederanlauf ${wiederanlauf.kennung}: Außenaktionen gestoppt (${GESTOPPTE_AUSSENAKTIONEN.map((a) => a.id).join(", ")}). Nach der Freigabe ohne ${WIEDERANLAUF_ENV} neu starten.`,
     );
     return;
+  }
+  // produkt:20261011:assistenz-skills-werkzeuge: wartende und durch einen Neustart unterbrochene
+  // Fähigkeitsaufträge aus dem Assistenzprofil wieder aufnehmen — unter derselben Auftragskennung,
+  // mit der DANN gültigen Lage und den DANN gültigen Rechten. Beim Start und im Takt des
+  // Papierkorb-Sweeps; im Wiederanlauf nicht (oben beendet: eine Fähigkeit kann nach außen wirken).
+  const faehigkeiten = services.faehigkeiten;
+  if (faehigkeiten) {
+    const aufnehmen = async (): Promise<number> =>
+      (await faehigkeiten.arbeiteWarteschlangeAb()).length;
+    aufnehmen().catch((error) =>
+      app.log.warn({ err: error }, "Fähigkeitsaufträge: Wiederaufnahme übersprungen"),
+    );
+    startTrashSweepScheduler({
+      intervalMs: sweepInterval,
+      runSweep: aufnehmen,
+      onError: (error) =>
+        app.log.warn({ err: error }, "Fähigkeitsaufträge: Abarbeitung übersprungen"),
+    });
   }
   // R-1657 (Nacharbeit 2): „KLARWERK analysiert regelmäßig …" — die Lückenerkennung über den
   // Reasoner läuft im eigenen Takt über die vorgemerkten Betrachtersichten (services/management,

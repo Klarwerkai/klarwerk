@@ -86,6 +86,40 @@ const ERLAUBTE_AUSNAHMEN = [
     file: "klara-basis-browser.spec.ts",
     title: "Klara 01 · tatsächliche Modellantwort in der beweglichen Klara @modell",
   },
+  // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13, Ben Nacharbeit 5): AC10 verlangt einen
+  // REALEN Anbieterlauf mit gemeldetem Verbrauch. Ohne Modell kann der Fall im Tor im Prinzip
+  // nicht laufen — dieselbe Lage wie die Einträge darüber. Er läuft im vollen Smoke.
+  // INTEGRATION mit main 7e5c549e (klara-aktionen): beide Aufträge haben je eine weitere Ausnahme
+  // begründet; zusammen sind es SECHS benannte Fälle.
+  {
+    file: "ki-arbeitsweg-modell.spec.ts",
+    title: "KI-Arbeitsweg: realer gebundener Anbieterlauf mit Verbrauchsbeleg @modell",
+  },
+  // produkt:20261008:klara-aktionen (Nacharbeit 6) — FÜNFTE Ausnahme, derselbe Grund: AW10-K01 (S06)
+  // verlangt eine TATSÄCHLICHE Modellzusammenfassung; ohne Modell kann der Fall im Tor nicht laufen.
+  // Alles ohne Modell Nachweisbare (kein Versand, kein Auftrag, keine Befugnis; die Absicht erreicht
+  // den Frageweg) misst `tests/klara-aktionen/auftrag-am-server.test.tsx` (U10).
+  {
+    file: "klara-aktionen-s06-modell.spec.ts",
+    title:
+      "AW10-K01 S06: tatsächliche Modellzusammenfassung, kein Versand, keine neue Befugnis @modell",
+  },
+  // produkt:20261009:referenzki-adminauswahl (REF-03) — derselbe Grund: der Lieferbeleg verlangt
+  // einen TATSÄCHLICHEN Modellaufruf des Funktionschecks. Ohne Modell kann der Fall im Tor nicht
+  // laufen; alles ohne Modell Nachweisbare misst `tests/referenzki-adminauswahl/`.
+  {
+    file: "referenzki-funktionscheck-modell.spec.ts",
+    title:
+      "REF-03 · Referenzprüfung: Auswahl nach Neuladen und Funktionscheck mit echtem Modell @modell",
+  },
+  // produkt:20261009:referenzki-antwortstatus (REF-04) — derselbe Grund: der Lieferbeleg verlangt
+  // eine durchgängige Antwort mit TATSÄCHLICHEM Prüfmodell. Ohne Modell kann der Fall im Tor nicht
+  // laufen; alles ohne Modell Nachweisbare misst `tests/referenzki-antwortstatus/`.
+  {
+    file: "referenzki-antwortstatus-modell.spec.ts",
+    title:
+      "REF-04 · Antwort → Prüfmodell → Aussagezustand → Fundstelle → Rückweg mit echtem Prüfmodell @modell",
+  },
 ] as const;
 
 /** Das npm-Skript, dessen Aufrufzeile das Tor in `tools/check` fährt. */

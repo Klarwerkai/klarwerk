@@ -52,6 +52,15 @@ function sichtbarerZaehler(badge: NavBadge | undefined, online: boolean): number
   return badge.count;
 }
 
+/**
+ * R-0961: die Zähler des Kopfbands — für die Verwaltung (Admin) samt der wartenden
+ * Autorenübergaben. Die Rolle kommt aus derselben Quelle wie die sichtbaren Punkte (`useRole`).
+ */
+function useKopfbandZaehler(): Record<string, NavBadge> {
+  const { role } = useRole();
+  return useNavBadges(role === "admin");
+}
+
 /** Die Kopfband-Punkte, die diese Rolle sieht — Bildreihenfolge des Mockups. */
 function useSichtbareKopfbandPunkte(): NavItem[] {
   const { role, stufe2 } = useRole();
@@ -151,7 +160,7 @@ function KopfbandPunkt({
         item,
         badges,
         online,
-        "kw-kopfband-zaehler rounded-[999px] bg-hairline px-1.5 py-px text-[10.5px] font-bold leading-normal text-ink",
+        "kw-kopfband-zaehler rounded-[999px] bg-hairline px-1.5 py-px text-zaehler font-bold leading-normal text-ink",
       )}
     </GuardedLink>
   );
@@ -175,7 +184,7 @@ export function KopfbandPunkte({
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const punkte = useSichtbareKopfbandPunkte();
-  const badges = useNavBadges();
+  const badges = useKopfbandZaehler();
   const online = useOnline();
   return (
     <nav
@@ -246,7 +255,7 @@ export function KopfbandPunkteListe(): JSX.Element {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const punkte = useSichtbareKopfbandPunkte();
-  const badges = useNavBadges();
+  const badges = useKopfbandZaehler();
   const online = useOnline();
   return (
     <>
@@ -260,7 +269,7 @@ export function KopfbandPunkteListe(): JSX.Element {
             item,
             badges,
             online,
-            "rounded-full bg-hairline px-1.5 py-px text-[10.5px] font-bold text-ink",
+            "rounded-full bg-hairline px-1.5 py-px text-zaehler font-bold text-ink",
           )}
         >
           {t(anzeigeNameKey(item))}
@@ -283,7 +292,7 @@ export function WeitereBereicheZeilen(): JSX.Element {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const bereiche = useSichtbareWeitereBereiche();
-  const badges = useNavBadges();
+  const badges = useKopfbandZaehler();
   const online = useOnline();
   return (
     <>
@@ -301,8 +310,8 @@ export function WeitereBereicheZeilen(): JSX.Element {
                 badges,
                 online,
                 item.badgeTone === "crit"
-                  ? "rounded-full bg-trust-crit-bg px-1.5 py-px text-[10.5px] font-bold text-trust-crit-text"
-                  : "rounded-full bg-hairline px-1.5 py-px text-[10.5px] font-bold text-ink",
+                  ? "rounded-full bg-trust-crit-bg px-1.5 py-px text-zaehler font-bold text-trust-crit-text"
+                  : "rounded-full bg-hairline px-1.5 py-px text-zaehler font-bold text-ink",
               )}
             >
               {t(anzeigeNameKey(item))}

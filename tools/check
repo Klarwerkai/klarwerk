@@ -27,6 +27,15 @@ echo "▶ modalgrenze";  ./tools/modalgrenze.sh || { echo "✖ Modalgrenze verle
 # da, nichts gemessen" — der Normalfall in jedem Clone, denn `_relay/` steht in `.gitignore:25`.
 echo "▶ zentrale-drift"; zentrale_rc=0; ./tools/zentrale-drift.sh || zentrale_rc=$?
 if [ "$zentrale_rc" = "1" ]; then echo "✖ Drift an einer aenderbaren Lesefläche"; exit 1; fi
+# Aufnahme 20260922 · R-1303/R-1982 (N6)/R-2190: liegt dieser Arbeitsbaum unter einer Dateisync?
+# Erkannt an der WIRKUNG (byte-identische ` 2`-Duplikate, auch in `.git`; ausgelagerte Dateien),
+# nie am Pfad — s. tools/arbeitsordner-diagnose.ts. Zugriffsfehler und freier Platz stehen mit da.
+#
+# ER MELDET UND SPERRT NIE. Die Abhilfe ist ein Umzug des Arbeitsbaums, und den entscheidet der
+# Mensch („nichts geschieht von selbst“, Onboarding). Ein Tor, das deswegen rot wird, hielte jede
+# Bahn auf dem betroffenen Rechner an, ohne dass sie es beheben darf — derselbe Fehler wie
+# zentrale-drift D4. Der Befund steht deshalb laut in der Torausgabe, der Rueckgabewert nicht im Tor.
+echo "▶ arbeitsordner-diagnose"; bash tools/arbeitsordner-diagnose.sh || echo "  ⓘ gemeldet, nicht gesperrt"
 # R-1420 (F-1420, secrets-management.md §10): Zugangsdaten gelangen nicht unbemerkt in den
 # Quellcode. Gelesen wird alles, was uebernommen werden kann (versioniert UND neu, nicht ignoriert).
 # Jeder Fund sperrt; ausgegeben wird er nur maskiert. Eng gefasste Formate — s. tools/geheimnis-scan.ts.

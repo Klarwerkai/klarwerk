@@ -19,7 +19,7 @@ const en: typeof de = {
   "extpage.help.scope.body":
     "External hits are research support, not verified knowledge: nothing is imported automatically or validated by colleagues. If the admin has disabled external lookup, the area stays empty.",
   "app.name": "KLARWERK",
-  "app.subtitle": "Reasoning System",
+  "app.subtitle": "Knowledge OS",
   "app.staleBundle":
     "A new version of the app is available — please reload the page (Cmd+R or Ctrl+R).",
   "version.neu.hinweis": "New version available",
@@ -710,6 +710,14 @@ const en: typeof de = {
   "task.filter.conflict": "Conflicts",
   "task.filter.gap": "Knowledge gaps",
   "task.filter.revalidation": "Revalidation",
+  "task.filter.authorTransfer": "Author handover",
+  "task.authorTransfer": "Author handover",
+  "task.authorTransfer.grund.konto-geloescht": "Author account deleted",
+  "task.authorTransfer.grund.ausgeschieden": "Author has left",
+  "task.authorTransfer.grund.angefordert": "Handover requested",
+  "task.action.authorTransfer": "Choose new author",
+  "task.explain.authorTransfer":
+    "This knowledge needs a reachable author. Open the entry, choose the new author under “More” → “Provenance” and transfer. The task is then done; the original author stays on record.",
   "task.conflict": "Conflict",
   "task.validation": "Validation",
   "task.revalidation": "Re-validation",
@@ -2908,6 +2916,10 @@ const en: typeof de = {
   "ko.transferPick": "Choose new author …",
   "ko.transfer": "Transfer",
   "ko.transferDone": "Author transferred. Original author stays visible.",
+  "ko.transferRequest": "Request handover",
+  "ko.transferRequestHint":
+    "Administration gets a pending “Author handover” task and chooses a new author.",
+  "ko.transferRequestDone": "Handover requested. Administration sees it under “Open tasks”.",
   "ko.history": "Versions",
   "ko.evidenceTitle": "Evidence",
   // JOB 3384 · UX-26 — s. die Begründung im deutschen Block: der Belegdatensatz und die Sache,
@@ -3811,6 +3823,8 @@ const en: typeof de = {
   "imp.gallery.unconfigured": "not configured",
   "imp.gallery.hintUnconfigured":
     "Present, but not usable: no service is configured for transcription. An administrator can set one up in the admin area.",
+  "imp.gallery.hintAvtranscriptActive":
+    "The transcription service is set up. In Capture, add the recording via “Attach file or image” and click “Transcribe” under “Documents (context / attachment)”. This tile does not upload anything itself.",
   "imp.gallery.elsewhere": "in Capture",
   "imp.gallery.hintElsewhere":
     "This format is already being read in — not on this page, but in Capture Knowledge. This page itself imports JSON only.",

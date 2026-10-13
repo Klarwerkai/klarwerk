@@ -26,11 +26,22 @@
   // Klara 04 (produkt:20261008:klara-vorschlaege): `uebernahme-logik.test.ts` prüft
   // `apps/web/src/lib/klaraUebernahme.ts`, das DOMParser/TreeWalker benutzt — Typcheck daher mit
   // DOM-lib in `tsconfig.tests-tsx.json`, nicht hier.
+  // Klara 05 (produkt:20261008:klara-aktionen): `zusammenfassen-zitatdeckung.test.ts` prüft den
+  // Frage-Rahmen über `apps/web/src/components/klara-vorschau/bezug.ts`, das DOMParser benutzt —
+  // aus demselben Grund dort geprüft, nicht hier.
+  // Die OCR-Engine-Probe importiert files.ts mit FileReader/Image/document und gehört ebenfalls
+  // in den bestehenden DOM-Typecheck (tsconfig.tests-tsx.json).
+  // OCR-03 (produkt:20261012:klara-bildanalyse-ocr-kontext-setup): `kontext-klara.test.ts` importiert
+  // `components/BildBefundListe.tsx` (jsx) und über `lib/bildAutomatikEinstellung.ts` den Browser-
+  // stand `lib/assistenzProfil.ts` (window) — aus demselben Grund dort geprüft, nicht hier.
   "exclude": [
     "node_modules",
     "dist",
     "tests/**/*.tsx",
     "tests/types",
-    "tests/klara-vorschlaege/uebernahme-logik.test.ts"
+    "tests/klara-vorschlaege/uebernahme-logik.test.ts",
+    "tests/klara-aktionen/zusammenfassen-zitatdeckung.test.ts",
+    "tests/capture/ocr-engine-gleiche-herkunft.test.ts",
+    "tests/klara-bildanalyse-ocr/kontext-klara.test.ts"
   ]
 }

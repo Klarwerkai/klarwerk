@@ -289,6 +289,28 @@ export async function tastaturAusloesen(seite: Seite, text: string): Promise<num
 }
 
 /**
+ * Derselbe eine Tastaturweg — aber zu GENAU EINEM Element statt zu einer Beschriftung.
+ *
+ * gesamt-nutzerverwaltung · Nacharbeit 13: Eine Beschriftung ist nur dann ein Ziel, wenn sie auf
+ * der Seite einmal vorkommt. „Liste neu laden" steht auf `/import` seit der Importliste
+ * (`ImportLaufListe`, `integrationen.liste.neuLaden`) ZWEIMAL; ist der SharePoint-Knopf beim Tabben
+ * gerade gesperrt, traf `tastaturAusloesen` stillschweigend den zweiten, und der Fall wartete
+ * danach auf eine Folge, die nie ausgelöst worden war. Hier gibt es keinen zweiten Treffer: entweder
+ * genau dieses Element bekommt per Tab den Fokus — oder der Fall scheitert mit dieser Meldung.
+ * Fokus vom Dokumentanfang, sichtbarer Fokus nachgemessen, dann Enter — wie oben.
+ */
+export async function tastaturAusloesenAn(
+  seite: Seite,
+  selektor: string,
+  was: string,
+): Promise<number> {
+  const schritte = await tabBisZu(seite, selektor, 150, true);
+  await fokusMussSichtbarSein(seite, was);
+  await seite.keyboard.press("Enter");
+  return schritte;
+}
+
+/**
  * Die Sichtbarkeitsprüfung des Fokus, an EINER Stelle.
  *
  * Die Diagnose wird VOR der Zusicherung geholt und in ihre Meldung gelegt: ein „expected false to

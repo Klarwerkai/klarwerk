@@ -93,7 +93,7 @@ export function MeldungenMenue({ zustand }: { zustand: MeldungenZustand }): JSX.
             <span
               aria-hidden="true"
               data-testid="meldungen-zahl"
-              className="kw-kopfband-meldungen-zahl absolute -right-2 -top-2 min-w-[16px] rounded-[999px] bg-brand px-1 text-center text-[10px] font-bold leading-[16px] text-ink"
+              className="kw-kopfband-meldungen-zahl absolute -right-2 -top-2 min-w-[16px] rounded-[999px] bg-brand px-1 text-center text-zaehler font-bold leading-[16px] text-ink"
             >
               {ungelesen > 99 ? "99+" : ungelesen}
             </span>

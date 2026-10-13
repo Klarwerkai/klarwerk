@@ -183,6 +183,12 @@ export interface AnswerResult {
   // Deckungsrückfall stattdessen den Wortlaut einer Quelle aus (JOB 2659/3353/3365), fehlt das Feld:
   // dieser Text ist vollständig, und ein Unvollständigkeits-Hinweis daran wäre eine Falschaussage.
   abgeschnitten?: AbbruchBefund;
+  // ANTWORTBELEG (R-0317): die Kennung des Laufprotokoll-Datensatzes (`ModelRunRecord.id`), der
+  // GENAU DIESE Antwort protokolliert hat — mit Anbieter und tatsächlich gerufener Modellfassung.
+  // Gesetzt nur, wenn ein Laufprotokoll verdrahtet ist und der Datensatz vor der Rückgabe
+  // geschrieben wurde (`Reasoner.answer`). Eine interne Referenz, kein Anbietername: der Fragedienst
+  // bindet sie in den Antwortbeleg und gibt sie NICHT an die Antwortfläche weiter.
+  modelRunId?: string;
   // R-1643 (Entscheidungs-Protokoll): die ARGUMENTATIONSKETTE dieser Antwort — Aussage für Aussage,
   // mit der Quelle, deren Wortlaut sie belegt. Sie ist kein neu erzeugter Text: es ist genau das,
   // was `pruefeDeckung` (provider-model.ts) ohnehin prüft, bevor ein Modelltext hinausgeht, bzw.
@@ -190,7 +196,24 @@ export interface AnswerResult {
   // daneben die Liste der herangezogenen Fundstellen und ist KEINE Begründung. Fehlt das Feld, gibt
   // es keine belegte Kette (keine Antwort, älterer Weg) — weggelassen, nie leer erfunden.
   argumentation?: ArgumentationsGlied[];
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): WARUM der regelbasierte Ersatz diese
+  // Antwort geliefert hat. Gesetzt NUR, wenn in diesem Lauf ein Modell versucht wurde, scheiterte
+  // und danach der deterministische Ersatz antwortete (`Reasoner.answer`). Ohne Modellversuch (keins
+  // eingerichtet) oder bei einer Modellantwort fehlt das Feld. Nur die Klasse — kein Anbietername,
+  // kein Status, keine Meldung, kein Schlüssel.
+  ersatzGrund?: KiErsatzGrund;
 }
+
+/**
+ * PV-03-01: die nutzerverständliche Ursache eines gescheiterten Modellversuchs, aus dem Fehler
+ * ABGELEITET (`ersatzGrundAus`, model-errors.ts) — nie aus Meldungstext an die Fläche gereicht.
+ */
+export type KiErsatzGrund =
+  | "zeitueberschreitung"
+  | "nicht_erreichbar"
+  | "verweigert"
+  | "kontingent"
+  | "fehler";
 
 /** R-1643: ein Glied der Argumentationskette. */
 export interface ArgumentationsGlied {
@@ -334,6 +357,10 @@ export interface InterviewOptions {
   // Route, nach Stufen- und Vertraulichkeitsprüfung. Ohne Quellen gibt es keine Recherche — das
   // Modell leitet Prüfpunkte nur aus ihnen ab, nie aus eigenem Wissen.
   sources?: unknown;
+  // Aufnahme `gesamt-ocr` (FR-CAP-05): der auf Klick im Bild erkannte Text als Kontext. Er reist
+  // über dieselbe Kette und Vertraulichkeit wie die Antworten; nur das Modell nutzt ihn für die
+  // Formulierung der Frage, der Entwurf entsteht weiter allein aus den Antworten.
+  context?: string;
 }
 
 // PMO-FEA-0006: ein aus einem Dokument extrahierter Wissenspunkt. sourceExcerpt ist die
@@ -613,6 +640,19 @@ export interface ReasonerKiFreigabe {
 export const REASONER_ZWEITMEINUNG_WAHLEN = [...REASONER_CLOUD_ANBIETER, "local"] as const;
 export type ReasonerZweitmeinungWahl = (typeof REASONER_ZWEITMEINUNG_WAHLEN)[number];
 
+// ================================================================================================
+// produkt:20261009:referenzki-pruefdienst (REF-02) · DIE ADMINISTRATIV ERLAUBTEN REFERENZ-PRÜFER.
+// ================================================================================================
+//
+// Die Referenz-KI prüft AUSSCHLIESSLICH, ob genannte Fundstellen die Aussagen einer Antwort tragen.
+// Wer das sein darf, legt der Administrator fest — als GEORDNETE Liste erlaubter Optionen, nicht als
+// Vorzugsregel. Gewählt wird je Anfrage die erste Option, die eingerichtet, freigegeben und mit einem
+// ANDEREN tatsächlichen Modell als die Antwort besetzt ist (K7). Ohne Liste gibt es keine
+// Referenzprüfung und damit keinen zusätzlichen Empfänger. Eigene Liste, keine Kopplung an die
+// Zweitmeinung (eigener Auftrag): dieselben Werte, aber eine unabhängige Entscheidung.
+export const REASONER_REFERENZ_WAHLEN = [...REASONER_CLOUD_ANBIETER, "local"] as const;
+export type ReasonerReferenzWahl = (typeof REASONER_REFERENZ_WAHLEN)[number];
+
 // Die WIRKSAME Zuordnung: nach der Normalisierung stehen hier nur noch aktive Werte — kein
 // `cloud`, kein `model` (JOB 3134, s. ReasonerLegacyChoice).
 export interface ReasonerTaskConfig {
@@ -624,6 +664,108 @@ export interface ReasonerTaskConfig {
   kiFreigabe?: ReasonerKiFreigabe;
   // R-0305/R-1099: das Modell der Zweitmeinung. Fehlt es, ist die Zweitmeinung aus.
   zweitmeinung?: ReasonerZweitmeinungWahl;
+  // REF-02: die erlaubten Referenz-Prüfer in Vorzugsreihenfolge, ohne Doppelungen. Fehlt das Feld,
+  // ist die Referenzprüfung aus (nach der Normalisierung nie eine leere Liste).
+  referenzpruefung?: readonly ReasonerReferenzWahl[];
+}
+
+// ================================================================================================
+// REF-02 · DIE ROLLEN EINER REFERENZPRÜFUNG — TATSÄCHLICHER ANBIETER UND TATSÄCHLICHES MODELL.
+// ================================================================================================
+//
+// `anbieter` ist der Clientname (`cloud:openai:…`, `anthropic:…`, `local:…`, `deterministic`),
+// `modell` der reine Modellbezeichner — `null`, wenn kein Modell gearbeitet hat (deterministischer
+// Weg) oder der Client keinen nennt. Beides sind Infrastrukturangaben (WP-VIP2-GATE-2): sie gehen ins
+// Prüfprotokoll, an den Fragenden nur die Stufe.
+export interface ReferenzRolle {
+  readonly anbieter: string;
+  readonly modell: string | null;
+  readonly stufe: ZweitmeinungStufe;
+}
+
+// Warum für DIESE Anfrage kein Referenz-Prüfer bereitsteht — jeder Grund benannt:
+//   · nicht_eingerichtet  — keine Referenz-Option administrativ erlaubt;
+//   · nicht_verfuegbar    — keine erlaubte Option ist eingerichtet bzw. nennt ein Modell;
+//   · nicht_freigegeben   — für die erlaubten externen Optionen fehlt die Adminfreigabe bzw. eine
+//                           Anbieterbindung lässt sie nicht zu;
+//   · nicht_unabhaengig   — jede verbleibende Option ist mit dem Antwortmodell identisch;
+//   · antwortmodell_unbekannt — das tatsächliche Antwortmodell dieser Anfrage ist nicht festgehalten,
+//                           die Unabhängigkeit ist deshalb nicht nachweisbar.
+export type ReferenzPrueferGrund =
+  | "nicht_eingerichtet"
+  | "nicht_verfuegbar"
+  | "nicht_freigegeben"
+  | "nicht_unabhaengig"
+  | "antwortmodell_unbekannt";
+
+/** Das Ergebnis EINES Referenz-Prüfaufrufs — Rohtext, Dauer und gemeldeter Verbrauch. */
+export interface ReferenzAufrufErgebnis {
+  readonly text: string;
+  readonly dauerMs: number;
+  /** Tokenverbrauch, wie der Anbieter ihn meldet — fehlt, wenn keiner gemeldet wurde. */
+  readonly verbrauch?: { readonly eingabe: number; readonly ausgabe: number };
+}
+
+/** Ein für eine konkrete Anfrage gewählter Referenz-Prüfer. Er kann nur prüfen, sonst nichts. */
+export interface ReferenzPruefer {
+  readonly rolle: ReferenzRolle;
+  /** `true`: die Inhalte verlassen das Haus (Cloud oder nicht bestätigter lokaler Endpunkt). */
+  readonly extern: boolean;
+  /** Genau EIN Modellaufruf — kein Wiederholen, kein Ausweichen auf ein anderes Glied. */
+  pruefe(
+    system: string,
+    user: string,
+    vertraulich: boolean,
+    maxTokens: number,
+    // Ben nacharbeit-3: Anfrageabbruch UND Prüfzeitlimit — beendet die laufende Übertragung.
+    signal?: AbortSignal,
+  ): Promise<ReferenzAufrufErgebnis>;
+}
+
+export type ReferenzPrueferWahl =
+  | { readonly pruefer: ReferenzPruefer }
+  | { readonly grund: ReferenzPrueferGrund };
+
+// ================================================================================================
+// produkt:20261009:referenzki-adminauswahl (REF-03) · DIE LAGE JE REFERENZ-OPTION FÜR DIE ADMINSICHT.
+// ================================================================================================
+//
+// Was die Verwaltung je Option zeigen muss: Anbieter, Modell, intern/öffentlich, ob eingerichtet,
+// ob erlaubt (mit Vorrang) und — nur für erlaubte, eingerichtete Optionen — was ihren Einsatz
+// gerade sperrt. Abgeleitet aus DENSELBEN Prüfungen wie `referenzPruefer`; nichts davon wird
+// gespeichert. Ob die letzte Funktionsprüfung gelang, steht nicht hier, sondern im Audit.
+//   · ki_abgeschaltet                       — die KI ist administrativ abgeschaltet (D5);
+//   · keine_freigabe_externe_verarbeitung   — öffentliche Option ohne Grundfreigabe;
+//   · nicht_erreichbar                      — verdrahtet, aber gerade nicht verfügbar;
+//   · kein_pruefmodell                      — der Zugang nennt kein Modell oder prüft nicht.
+export type ReferenzOptionSperre =
+  | "ki_abgeschaltet"
+  | "keine_freigabe_externe_verarbeitung"
+  | "nicht_erreichbar"
+  | "kein_pruefmodell";
+
+export interface ReferenzOptionLage {
+  readonly wahl: ReasonerReferenzWahl;
+  /** `intern`: eigener lokaler Zugang · `oeffentlich`: externer Anbieter. */
+  readonly art: "intern" | "oeffentlich";
+  /** Clientname des Zugangs (kein Schlüssel) — `null`, wenn nicht eingerichtet. */
+  readonly anbieter: string | null;
+  /** Reiner Modellbezeichner — `null`, wenn nicht eingerichtet oder nicht genannt. */
+  readonly modell: string | null;
+  readonly eingerichtet: boolean;
+  readonly erlaubt: boolean;
+  /** Vorrang in der erlaubten Liste (1 = zuerst) — `null`, wenn nicht erlaubt. */
+  readonly rang: number | null;
+  readonly sperre: ReferenzOptionSperre | null;
+  /** Dasselbe tatsächliche Modell wie die heute gewählte Antwort-KI — dann nie ihr Prüfer. */
+  readonly gleichWieAntwortmodell: boolean;
+}
+
+export interface ReferenzLage {
+  readonly optionen: readonly ReferenzOptionLage[];
+  /** Das Modell, das Antworten heute zuerst schreibt — `null` ohne Modell (Ersatzmodus). */
+  readonly antwortmodell: { readonly anbieter: string; readonly modell: string | null } | null;
+  readonly freigabe: { readonly oeffentlicheKi: boolean; readonly vertraulicheInhalte: boolean };
 }
 
 // ================================================================================================
@@ -700,6 +842,8 @@ export interface ReasonerTaskConfigEingabe {
   // `null` schaltet die Zweitmeinung aus. So kann ein Speichern der Zuordnung, das von diesem Feld
   // nichts weiß, keinen zweiten Empfänger beiläufig löschen oder hinzufügen.
   zweitmeinung?: ReasonerZweitmeinungWahl | null;
+  // REF-02: dieselbe Regel — WEGLASSEN lässt die Liste unverändert, `null` oder `[]` schaltet aus.
+  referenzpruefung?: readonly ReasonerReferenzWahl[] | null;
 }
 
 export interface ReasonerConfigStatus {

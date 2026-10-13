@@ -105,10 +105,16 @@ export function capitalScore(input: MetricsInput): CapitalScore {
 }
 
 export function valuationFacts(input: MetricsInput): ValuationFacts {
+  return valuationFactsOf(input.kos);
+}
+
+// produkt:20261013:lagebild-reale-werte-eingabe: dieselben Fakten über einer beliebigen (bereits
+// sichtbarkeitsgefilterten) Grundmenge — für die Lagebild-Werte je Arbeitsbereich.
+export function valuationFactsOf(kos: readonly KnowledgeObject[]): ValuationFacts {
   return {
-    validatedKos: input.kos.filter((k) => k.status === "validiert").length,
-    totalKos: input.kos.length,
-    avgTrust: avgTrustOf(input.kos),
+    validatedKos: kos.filter((k) => k.status === "validiert").length,
+    totalKos: kos.length,
+    avgTrust: avgTrustOf(kos),
   };
 }
 

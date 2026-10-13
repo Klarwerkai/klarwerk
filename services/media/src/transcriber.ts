@@ -23,6 +23,9 @@ export function cappedTranscriber(
   };
   return {
     name: inner.name,
+    // R-0181: die Auskunft „bestätigt lokal" reist durch den Wächter — der Dienst entscheidet daran,
+    // ob eine Freigabe für ÖFFENTLICHE KI überhaupt gefragt ist.
+    ...(inner.lokal === true ? { lokal: true } : {}),
     transcribe: (bytes, mime, locale, confidential) => {
       if (opts.rejectsConfidential && confidential && !freigegeben()) {
         return Promise.reject(new TranscriberConfidentialError());
@@ -113,6 +116,113 @@ export function whisperClient(config: WhisperConfig): Transcriber {
   };
 }
 
+// ================================================================================================
+// Aufnahme `gesamt-ocr` · R-0181 — VERSCHRIFTLICHUNG AUF DEM EIGENEN RECHNER, OHNE CLOUD.
+// ================================================================================================
+//
+// Bis hierher gab es nur den Cloud-Client oben; „später on-prem" stand allein als Kommentar am
+// Wächter. Jetzt gibt es den lokalen Weg über DENSELBEN Transcriber-Vertrag: ein Sprach-zu-Text-
+// Dienst auf dem eigenen Rechner mit der verbreiteten OpenAI-kompatiblen Schnittstelle
+// (`POST <basis>/audio/transcriptions`, multipart: model, language, file) — so sprechen z. B.
+// faster-whisper-server/Speaches und der whisper.cpp-Server. WELCHER Dienst dort läuft, legt
+// dieses Modul nicht fest; es spricht nur die Schnittstelle.
+//
+// EINGERICHTET über die Umgebung, wie der lokale Sprachdienst des Reasoners (KLARWERK_LOCAL_LLM_*):
+//   KLARWERK_LOCAL_TRANSCRIBE_URL              z. B. http://127.0.0.1:8000/v1
+//   KLARWERK_LOCAL_TRANSCRIBE_MODEL            optional, Modellname des lokalen Dienstes
+//   KLARWERK_LOCAL_TRANSCRIBE_ALLOWED_ORIGINS  optional, kommagetrennte private Origins
+//
+// „LOKAL" IST TECHNISCH BEGRENZT, NICHT NUR EIN NAME — dieselbe Regel wie
+// `isConfirmedLocalOrigin` des Reasoners (`services/reasoner/src/model-client.ts`), hier ohne
+// Modulkopplung nachgebildet: bestätigt lokal ist nur eine Loopback-Adresse (localhost,
+// 127.0.0.0/8, ::1) oder eine ausdrücklich freigegebene Origin. Nur dann trägt der Transkriber
+// `lokal: true` — der Ton verlässt den Rechner nicht, und vertrauliche Medien dürfen bedient
+// werden (`rejectsConfidential: false`, die am Wächter oben seit SCRUM-502 vorgesehene Stellung).
+// Eine andere Adresse wird wie ein EXTERNER Dienst behandelt: Wächter scharf, alle Freigaben gelten.
+export function istBestaetigtLokaleAdresse(
+  basisUrl: string,
+  freigegebeneOrigins?: string,
+): boolean {
+  let url: URL;
+  try {
+    url = new URL(basisUrl);
+  } catch {
+    return false;
+  }
+  const host = url.hostname.toLowerCase();
+  const loopback =
+    host === "localhost" ||
+    host === "::1" ||
+    host === "[::1]" ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+  if (loopback) {
+    return true;
+  }
+  return (freigegebeneOrigins ?? "")
+    .split(",")
+    .map((eintrag) => eintrag.trim())
+    .filter((eintrag) => eintrag.length > 0)
+    .some((eintrag) => {
+      try {
+        return new URL(eintrag).origin === url.origin;
+      } catch {
+        return false;
+      }
+    });
+}
+
+export interface LokalerTranskriberConfig {
+  /** Basisadresse der Schnittstelle, z. B. `http://127.0.0.1:8000/v1`. */
+  basisUrl: string;
+  model?: string | undefined;
+  /** Ergebnis von `istBestaetigtLokaleAdresse` — nur `true` macht den Weg zum lokalen. */
+  lokal: boolean;
+  fetchFn?: typeof fetch | undefined;
+}
+
+/** Der Client für einen Sprach-zu-Text-Dienst auf dem eigenen Rechner (kein Schlüssel). */
+export function lokalerTranskriber(config: LokalerTranskriberConfig): Transcriber {
+  const fetchFn = config.fetchFn ?? fetch;
+  const basis = config.basisUrl.replace(/\/+$/, "");
+  const model = config.model?.trim() || "whisper-1";
+  return {
+    name: `local:${model}`,
+    ...(config.lokal ? { lokal: true } : {}),
+    async transcribe(
+      bytes: Buffer,
+      mime: string,
+      locale: "de" | "en",
+      _confidential: boolean,
+    ): Promise<string> {
+      const form = new FormData();
+      form.append("model", model);
+      form.append("language", locale);
+      form.append("file", new Blob([new Uint8Array(bytes)], { type: mime }), uploadDateiname(mime));
+      const res = await fetchFn(`${basis}/audio/transcriptions`, { method: "POST", body: form });
+      if (!res.ok) {
+        throw new Error(`Lokaler Transkriptionsdienst antwortete mit ${res.status}`);
+      }
+      const data = (await res.json()) as { text?: string };
+      return data.text ?? "";
+    },
+  };
+}
+
+// Aus der Umgebung: KLARWERK_LOCAL_TRANSCRIBE_URL. Ohne Eintrag → undefined (kein lokaler Weg).
+function createLocalTranscriberFromEnv(
+  env: Record<string, string | undefined>,
+): Transcriber | undefined {
+  const basisUrl = env.KLARWERK_LOCAL_TRANSCRIBE_URL?.trim();
+  if (!basisUrl) {
+    return undefined;
+  }
+  return lokalerTranskriber({
+    basisUrl,
+    model: env.KLARWERK_LOCAL_TRANSCRIBE_MODEL,
+    lokal: istBestaetigtLokaleAdresse(basisUrl, env.KLARWERK_LOCAL_TRANSCRIBE_ALLOWED_ORIGINS),
+  });
+}
+
 // Aus der Umgebung: MEDIA_TRANSCRIBE_API_KEY (dediziert) oder OPENAI_API_KEY.
 // Ohne Schlüssel → undefined → ehrlicher Inaktiv-Zustand (kein Fake-Transkript).
 export function createTranscriberFromEnv(
@@ -130,10 +240,22 @@ export function createTranscriberFromEnv(
 // API_KEY/OPENAI_API_KEY) bleiben modul-intern und werden NICHT re-exportiert; nach außen wird
 // ausschließlich der GECAPPTE Cloud-Transkriber gereicht — mit zwingendem Egress-Wächter
 // (rejectsConfidential=true). Ohne Schlüssel → undefined (ehrlicher Inaktiv-Zustand, kein Fake).
+//
+// Aufnahme `gesamt-ocr` · R-0181: ist ein lokaler Dienst eingerichtet, GEWINNT er — wer ihn
+// einrichtet, will, dass der Ton im Haus bleibt; ein zusätzlich hinterlegter Cloudschlüssel wird
+// dann nicht benutzt. Auch der lokale Weg läuft durch den Wächter: bestätigt lokal ohne Sperre für
+// Vertrauliches, sonst wie ein externer Dienst.
 export function createCappedTranscriberFromEnv(
   env: Record<string, string | undefined> = process.env,
   freigabe: { vertraulichFreigegeben?: (() => boolean) | undefined } = {},
 ): Transcriber | undefined {
+  const lokal = createLocalTranscriberFromEnv(env);
+  if (lokal) {
+    return cappedTranscriber(lokal, {
+      rejectsConfidential: lokal.lokal !== true,
+      vertraulichFreigegeben: freigabe.vertraulichFreigegeben,
+    });
+  }
   const raw = createTranscriberFromEnv(env);
   return raw
     ? cappedTranscriber(raw, {

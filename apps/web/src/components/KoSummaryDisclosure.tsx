@@ -14,6 +14,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type KoPreviewSource, koPreviewText } from "../lib/koPreview";
 import { useLesevariante } from "../lib/lesevariante";
+import { bindungsText } from "./LesevarianteHinweis";
 import { cx } from "./ui";
 
 export function KoSummaryDisclosure({
@@ -47,6 +48,13 @@ export function KoSummaryDisclosure({
       : override && override.length > 0
         ? override
         : koPreviewText(source);
+  // Peter Nr. 20: „Maschinelle Lesehilfe" steht sichtbar daneben; Originalquelle und Fassung trägt
+  // der Werkzeugtipp (`bindungsText`) — dieselben Wortlaute wie im vollen Baustein.
+  const kennzeichnung = variante
+    ? t("lesevariante.badge.uebersetzung", {
+        sprache: t(`lesevariante.sprache.${variante.originalLanguage}`),
+      })
+    : "";
   // Keine Kernaussage vorhanden → gar kein Aufklapper (kein Layout-Bruch, keine leere Vorschau).
   if (preview.length === 0) {
     return null;
@@ -69,17 +77,16 @@ export function KoSummaryDisclosure({
       </button>
       {open ? (
         <div className="mt-1 rounded-card border border-hairline bg-page px-3 py-2">
-          <span className="mb-0.5 block font-mono text-[9.5px] font-semibold uppercase tracking-wide text-muted-2">
+          <span className="mb-0.5 block font-mono text-klein font-semibold uppercase tracking-wide text-muted-2">
             {t("ko.preview.label")}
           </span>
           {uebersetzt.length > 0 && variante ? (
             <span
               data-testid="ko-preview-uebersetzung"
-              className="mb-0.5 block text-[10.5px] font-semibold text-muted-2"
+              title={bindungsText(variante, t)}
+              className="mb-0.5 block text-klein font-semibold text-muted-2"
             >
-              {t("lesevariante.badge.uebersetzung", {
-                sprache: t(`lesevariante.sprache.${variante.originalLanguage}`),
-              })}
+              {kennzeichnung} · {t("lesevariante.kurzMaschinell")}
             </span>
           ) : null}
           <p className="text-[12.5px] leading-relaxed text-muted">{preview}</p>

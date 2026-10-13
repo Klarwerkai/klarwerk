@@ -15,6 +15,9 @@
 // · `einstieg.formular.*` — die Rückfrage, wenn das Blatt ungesichert vom gesicherten Stand abweicht
 //   und der Mensch ins Expertenformular wechselt (N-0068, Bens Befund BEN-1; `Blatt.tsx`,
 //   `formularOeffnen`).
+// · Antwort 54 (Peter, 11.10.2026): die Aktion heisst „Als Entwurf speichern“, der Wissensstatus
+//   „Fachlich bestätigt“. Die deutschen Rückfragen und Knopfbeschreibungen sprechen deshalb von
+//   „speichern“/„gespeichert“ statt „sichern“/„gesichert“; die Schlüsselnamen bleiben.
 import type { Textmodul } from "./intern/pruefung";
 
 export default {
@@ -28,19 +31,19 @@ export default {
     "einstieg.fehler.frist":
       "Die Antwort des Servers kam nicht rechtzeitig. Er arbeitet vielleicht noch — prüfe Bibliothek oder Entwürfe, bevor du es erneut versuchst.",
     "einstieg.knopf.entwurf":
-      "Entwurf sichern: Dein Stand wird gespeichert und bleibt privat. Niemand sonst sieht ihn; du findest ihn unter „Mehr“ → Entwürfe.",
+      "Als Entwurf speichern: Dein Stand wird gespeichert und bleibt privat. Niemand sonst sieht ihn; du findest ihn unter „Mehr“ → Entwürfe.",
     "einstieg.knopf.einreichen":
-      "Einreichen: Dein Eintrag geht zur Prüfung an Kollegen und ist ab dann für andere sichtbar — als „in Prüfung“ markiert, nicht als gesichert.",
+      "Einreichen: Dein Eintrag geht zur Prüfung an Kollegen und ist ab dann für andere sichtbar — als „in Prüfung“ markiert, nicht als fachlich bestätigt.",
     "einstieg.beispiel.frage": "Das sind Beispieldaten. Wirklich als echtes Wissen einreichen?",
     "einstieg.beispiel.bestaetigen": "Ja, Beispiel einreichen",
     "einstieg.formular.sichernFrage":
-      "Das Formular arbeitet mit dem gesicherten Stand. Deine ungesicherten Änderungen jetzt als Entwurf sichern und im Formular weiterarbeiten? Abbrechen: Du bleibst auf dem Blatt, nichts geht verloren.",
+      "Das Formular arbeitet mit dem gespeicherten Stand. Deine ungespeicherten Änderungen jetzt als Entwurf speichern und im Formular weiterarbeiten? Abbrechen: Du bleibst auf dem Blatt, nichts geht verloren.",
     "einstieg.formular.nachtragFrage":
-      "Während des Sicherns hast du auf dem Blatt weitergeschrieben. Das Formular kennt nur den gerade gesicherten Stand. Auch die neuen Änderungen sichern und dann ins Formular wechseln? Abbrechen: Du bleibst auf dem Blatt, nichts geht verloren.",
+      "Während des Speicherns hast du auf dem Blatt weitergeschrieben. Das Formular kennt nur den gerade gespeicherten Stand. Auch die neuen Änderungen als Entwurf speichern und dann ins Formular wechseln? Abbrechen: Du bleibst auf dem Blatt, nichts geht verloren.",
     "einstieg.formular.vorschlagOffen":
-      "Auf dem Blatt steht noch ein offener KI-Vorschlag. Das Formular kennt ihn nicht, und Sichern übernimmt ihn nicht. Übernimm oder verwirf den Vorschlag zuerst auf dem Blatt, dann wechsle ins Formular. Du bleibst auf dem Blatt; der Vorschlag und dein Text bleiben stehen.",
+      "Auf dem Blatt steht noch ein offener KI-Vorschlag. Das Formular kennt ihn nicht, und Speichern übernimmt ihn nicht. Übernimm oder verwirf den Vorschlag zuerst auf dem Blatt, dann wechsle ins Formular. Du bleibst auf dem Blatt; der Vorschlag und dein Text bleiben stehen.",
     "einstieg.formular.ohneSichernFrage":
-      "Deine Änderungen auf dem Blatt lassen sich gerade nicht sichern. Das Formular zeigt deshalb den zuletzt gesicherten Stand — oder ein leeres Formular, wenn noch nichts gesichert ist. Dein Blatt bleibt unverändert und ist beim Zurückkehren wieder da. Trotzdem zum Formular wechseln?",
+      "Deine Änderungen auf dem Blatt lassen sich gerade nicht speichern. Das Formular zeigt deshalb den zuletzt gespeicherten Stand — oder ein leeres Formular, wenn noch nichts gespeichert ist. Dein Blatt bleibt unverändert und ist beim Zurückkehren wieder da. Trotzdem zum Formular wechseln?",
   },
   en: {
     "einstieg.fehler.form":

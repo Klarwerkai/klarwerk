@@ -157,4 +157,88 @@ describe("R-2055 / NFR-MNT-03: die Instanz ist die Mandantengrenze", () => {
     });
     expect(nochmalA.json().taskConfig.global).toBe("deterministic");
   });
+
+  // produkt:20261013:lagebild-reale-werte-eingabe (LWE-03/LWE-07): die realen Lagebild-Werte samt
+  // Herkunft und Beleg bleiben in ihrer Instanz — weder lesbar noch schreibbar von der anderen.
+  // Alle Werte und Belege sind erfundene Testdaten.
+  it("M4 · Lagebild-Werte und ihre Herkunft von Kunde A sind bei Kunde B weder lesbar noch schreibbar", async () => {
+    const kundeA = await kundenInstanz("admin@kunde-a.example", "kunde-a-geheim-1");
+    const kundeB = await kundenInstanz("admin@kunde-b.example", "kunde-b-geheim-1");
+    const URL = "/api/management/lagebild-werte";
+    const BELEG_A = "Zeiterfassung Kunde A Q3 (erfunden)";
+    const eingabe = (stundensatz: number, beleg: string, anfrageId: string) => ({
+      zeitraumVon: "2025-07-01",
+      zeitraumBis: "2025-09-30",
+      werte: {
+        hourlyRate: { wert: stundensatz, herkunft: "eigene_eingabe" },
+        hoursSavedPerValidatedKo: { wert: 1.5, herkunft: "gemessen", beleg },
+        reuseFactor: { wert: 4, herkunft: "eigene_eingabe" },
+      },
+      basisVersion: 0,
+      anfrageId,
+    });
+    type Bereich = {
+      bereich: string;
+      werte: null | {
+        version: number;
+        werte: { hourlyRate: { wert: number }; hoursSavedPerValidatedKo: { beleg: string } };
+      };
+    };
+    const gesamtVon = async (kunde: Kunde) => {
+      const res = await kunde.app.inject({ method: "GET", url: URL, headers: kunde.headers });
+      expect(res.statusCode, res.body).toBe(200);
+      return {
+        roh: res.body,
+        gesamt: (res.json().bereiche as Bereich[]).find((b) => b.bereich === "gesamt"),
+      };
+    };
+
+    const beiAGesetzt = await kundeA.app.inject({
+      method: "PUT",
+      url: `${URL}/gesamt`,
+      headers: kundeA.headers,
+      payload: eingabe(72.5, BELEG_A, "mandant-a-0001"),
+    });
+    expect(beiAGesetzt.statusCode, beiAGesetzt.body).toBe(200);
+    // KALIBRIERUNG: bei A ist der Stand samt Herkunft wirklich gespeichert.
+    const a = await gesamtVon(kundeA);
+    expect(a.gesamt?.werte?.version).toBe(1);
+    expect(a.gesamt?.werte?.werte.hoursSavedPerValidatedKo.beleg).toBe(BELEG_A);
+
+    // B liest nichts von A — weder Wert noch Beleg.
+    const b = await gesamtVon(kundeB);
+    expect(b.gesamt?.werte).toBeNull();
+    expect(b.roh).not.toContain(BELEG_A);
+    expect(b.roh).not.toContain("mandant-a-0001");
+
+    // Die Sitzung von A öffnet bei B weder Lesen noch Schreiben.
+    const fremdLesen = await kundeB.app.inject({
+      method: "GET",
+      url: URL,
+      headers: kundeA.headers,
+    });
+    expect(fremdLesen.statusCode).toBe(401);
+    const fremdSchreiben = await kundeB.app.inject({
+      method: "PUT",
+      url: `${URL}/gesamt`,
+      headers: kundeA.headers,
+      payload: eingabe(99, "Fremdschreibversuch (erfunden)", "mandant-a-0002"),
+    });
+    expect(fremdSchreiben.statusCode).toBe(401);
+    expect((await gesamtVon(kundeB)).gesamt?.werte).toBeNull();
+
+    // B pflegt eigene Werte: eigener Stand 1, unberührt vom Stand bei A — und A bleibt, wie er war.
+    const beiBGesetzt = await kundeB.app.inject({
+      method: "PUT",
+      url: `${URL}/gesamt`,
+      headers: kundeB.headers,
+      payload: eingabe(55, "Auswertung Kunde B (erfunden)", "mandant-b-0001"),
+    });
+    expect(beiBGesetzt.statusCode, beiBGesetzt.body).toBe(200);
+    expect(beiBGesetzt.json().eintrag.version).toBe(1);
+    const aNachher = await gesamtVon(kundeA);
+    expect(aNachher.gesamt?.werte?.werte.hourlyRate.wert).toBe(72.5);
+    expect(aNachher.gesamt?.werte?.werte.hoursSavedPerValidatedKo.beleg).toBe(BELEG_A);
+    expect(aNachher.roh).not.toContain("Auswertung Kunde B");
+  });
 });

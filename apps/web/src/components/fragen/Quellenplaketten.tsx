@@ -33,7 +33,7 @@ export const VERWENDUNG_HINWEIS: Record<Verwendung, string> = {
   unbekannt: "ask.attribution.unclear.hint",
 };
 
-const PLAKETTE = "shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase";
+const PLAKETTE = "shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-klein font-semibold uppercase";
 const TON_TRAGEND = "bg-trust-pos-bg text-trust-pos-text";
 const TON_ANGESEHEN = "bg-hairline-soft text-muted-2";
 const TON_UNKLAR = "bg-page text-muted-2";

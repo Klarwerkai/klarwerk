@@ -22,7 +22,12 @@
 //     „kein Arbeitsstand" — dieselbe fehlertolerante Grenze wie `persistentToggle.ts`.
 //
 // DOM-frei: der Speicher wird hereingereicht, damit die Regeln ohne Browser prüfbar sind.
-import type { AnswerResult, Fragekontext, VerschlossenHinweis } from "../api/types";
+import type {
+  AnswerResult,
+  Fragekontext,
+  ReferenzPruefung,
+  VerschlossenHinweis,
+} from "../api/types";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -39,6 +44,18 @@ export interface GespeicherteAntwort {
   gapId: string | null;
   /** Zeitpunkt der Antwort (ISO) — die Fläche nennt ihn, damit niemand sie für frisch hält. */
   angezeigtAm: string;
+  /**
+   * R-0293 / R-0317: die Kennung des dauerhaften Antwortbelegs DIESER Antwort — der Schlüssel zu
+   * „Wie kam diese Antwort zustande?". Sie reist mit der Antwort im Stand desselben Kontos, damit
+   * der Erklärweg nach Neuladen und Wiederaufnahme bleibt.
+   *
+   * DREI LAGEN, bewusst unterschieden:
+   *   · fehlt das Feld  -> ALTBESTAND: der Eintrag stammt von vor dieser Regel; eine Kennung wurde
+   *                        nie gemerkt. Die Fläche bietet dann keine Erklärung an, statt zu raten.
+   *   · `null`          -> der Server hat zu dieser Antwort keinen Beleg geschrieben.
+   *   · Zeichenkette    -> die Kennung des Belegs.
+   */
+  answerId?: string | null;
   /**
    * R-0338: die Fassung jeder herangezogenen Quelle, wie der SERVER sie zu dieser Antwort meldete
    * (`AskResponse.quellenStand`) — Grundlage des Auffrischen-Vertrags (`antwortFrische`). Eigener
@@ -57,6 +74,51 @@ export interface GespeicherteAntwort {
    *                  kontextgleiche Zweitmeinung behauptet (s. `components/fragen/Zweitmeinung.tsx`).
    */
   fragekontext?: Fragekontext | null;
+  /**
+   * REF-02 (Ben nacharbeit-3): die Referenzprüfung GENAU DIESER Antwort und der Text je Aussage —
+   * damit sie auf dem Rückweg (Fundstelle öffnen, zurück) wieder an der Antwort steht. Fehlt bei
+   * Altständen und ohne Prüfdienst; dann steht ehrlich keine Prüfung.
+   */
+  referenzpruefung?: ReferenzPruefung;
+  aussageTexte?: [string, string][];
+  /**
+   * REF-04 (K5, Befund nacharbeit-2): die Passage je Fundstelle DIESER Antwort (REF-01-Bindung),
+   * damit der Wechsel Aussage → Fundstelle auch nach Neuaufbau der Seite (Rückweg von der Quelle,
+   * Wechsel der Ansicht) die Passage zeigt. Angezeigt wird sie nur an einer vom Server mit den
+   * AKTUELLEN Rechten bestätigten Prüfung (`bestaetigtFuer` in pages/Ask.tsx); eine verworfene
+   * Fundstelle steht dort nicht mehr, ihre Passage also auch nicht.
+   */
+  fundstellenAuszuege?: [string, string][];
+}
+
+/**
+ * REF-02: eine gespeicherte Referenzprüfung — nur in der Grundform gelesen (Kennung, Status,
+ * Aussagen, Hinweise, Versuch). Alles andere ist „keine Prüfung", nie eine geratene.
+ */
+function referenzpruefungAus(roh: unknown): ReferenzPruefung | undefined {
+  if (
+    !istObjekt(roh) ||
+    typeof roh.pruefId !== "string" ||
+    (roh.status !== "geprueft" && roh.status !== "nicht_pruefbar") ||
+    !Array.isArray(roh.aussagen) ||
+    !Array.isArray(roh.hinweise) ||
+    !istObjekt(roh.versuch) ||
+    !istObjekt(roh.rollen)
+  ) {
+    return undefined;
+  }
+  return roh as unknown as ReferenzPruefung;
+}
+
+function aussageTexteAus(roh: unknown): [string, string][] | undefined {
+  if (!Array.isArray(roh)) {
+    return undefined;
+  }
+  const paare = roh.filter(
+    (p): p is [string, string] =>
+      Array.isArray(p) && p.length === 2 && typeof p[0] === "string" && typeof p[1] === "string",
+  );
+  return paare.length === roh.length ? paare : undefined;
 }
 
 /**
@@ -184,9 +246,16 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
   if (!istObjekt(roh)) {
     return null;
   }
-  const { frage, result, receipt, verschlossen, gapId, angezeigtAm } = roh;
+  const { frage, result, receipt, verschlossen, gapId, angezeigtAm, answerId } = roh;
+  // R-0293: eine VORHANDENE Kennung muss eine Kennung oder `null` sein; ein anderer Wert ist ein
+  // beschädigter Eintrag. Eine FEHLENDE ist Altbestand und kein Fehler.
+  const kennungGueltig =
+    !("answerId" in roh) ||
+    answerId === null ||
+    (typeof answerId === "string" && answerId.trim() !== "");
   const fragekontext = fragekontextAus(roh.fragekontext);
   if (
+    !kennungGueltig ||
     typeof frage !== "string" ||
     frage.trim() === "" ||
     !istObjekt(result) ||
@@ -202,6 +271,10 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
   }
   const serverQuellenStand = quellenStandLesen(roh.serverQuellenStand);
   const beobachtet = quellenStandLesen(roh.beobachtet);
+  const referenzpruefung = referenzpruefungAus(roh.referenzpruefung);
+  const aussageTexte = aussageTexteAus(roh.aussageTexte);
+  // REF-04: dieselbe strenge Lesart wie die Aussagetexte — beschädigt heißt „keine Passagen".
+  const fundstellenAuszuege = aussageTexteAus(roh.fundstellenAuszuege);
   return {
     frage,
     result: result as unknown as AnswerResult,
@@ -209,10 +282,15 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
     verschlossen: verschlossen as VerschlossenHinweis[],
     gapId,
     angezeigtAm,
+    // Altbestand bleibt Altbestand: ohne Feld im Speicher entsteht hier auch keins.
+    ...("answerId" in roh ? { answerId: answerId as string | null } : {}),
     ...(serverQuellenStand ? { serverQuellenStand } : {}),
     ...(beobachtet ? { beobachtet } : {}),
     // Fehlt oder beschädigt: das Feld fehlt auch hier — „unbekannt" hat genau eine Darstellung.
     ...(fragekontext === undefined ? {} : { fragekontext }),
+    ...(referenzpruefung ? { referenzpruefung } : {}),
+    ...(aussageTexte ? { aussageTexte } : {}),
+    ...(fundstellenAuszuege ? { fundstellenAuszuege } : {}),
   };
 }
 

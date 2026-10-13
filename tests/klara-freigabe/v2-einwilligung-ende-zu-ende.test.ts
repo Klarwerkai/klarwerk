@@ -459,6 +459,46 @@ describe("JOB 3079 · V2 · die Einwilligung wirkt bis zum Anbieter", () => {
   });
 
   // ----------------------------------------------------------------------------------------------
+  // P05 (Ben, Nacharbeit 8) — URSACHENEINGRENZUNG zu V2-E1 („error" statt „answered").
+  // ----------------------------------------------------------------------------------------------
+  // Getrennt gemessen, was V2-E1 zusammen misst: (a) der SERVER über denselben Draht ohne Panel —
+  // Status, Rumpf, Quelle, Kennzeichnung, und ausdrücklich KEINE P05-Auslieferungssperre;
+  // (b) die SANDBOX des Falls: der ausgeschnittene `performAsk` ruft `askAbsaetzeLesen` (R-0310),
+  // das AUSSERHALB der drei ausgeschnittenen Blöcke steht. Ohne diese Funktion wirft der Erfolgszweig
+  // eine ReferenceError, und der Fangzweig von `performAsk` meldet `{ kind: "error" }` — genau der
+  // Zustand aus V2-E1, und nur bei einer 200-Antwort. V2-E1 selbst bleibt unverändert.
+  it("V2-E1u · Ursache: Server antwortet 200 mit Quelle; der Panel-Ausschnitt kennt `askAbsaetzeLesen` nicht", async () => {
+    const k = await ketteAufbauen();
+    expect((await zustimmen(k)).statusCode).toBe(200);
+
+    const res = await fragen(k);
+    expect(res.statusCode, `HTTP-Rumpf: ${res.body}`).toBe(200);
+    const rumpf = res.json() as {
+      error?: string;
+      result: { answered: boolean; answer: string; sources: string[]; aiGenerated?: unknown };
+    };
+    expect(rumpf.error).not.toBe("QUELLRECHTE_GEAENDERT");
+    expect(rumpf.result.answered).toBe(true);
+    expect(rumpf.result.answer).toContain(MODELLANTWORT);
+    expect(rumpf.result.sources).toContain(k.koId);
+    expect(rumpf.result.aiGenerated).toBeTruthy();
+
+    const ausgeschnitten = [
+      schnitt("// KW-KLARA-AI-MARK-START", "// KW-KLARA-AI-MARK-END"),
+      schnitt("// KW-KLARA-AI-NOTICE-START", "// KW-KLARA-AI-NOTICE-END"),
+      schnitt("// KW-KLARA-ASK-FETCH-START", "// KW-KLARA-ASK-FETCH-END"),
+    ].join("\n");
+    expect(ausgeschnitten).toContain("askAbsaetzeLesen(body, cited)");
+    expect(ausgeschnitten).not.toContain("function askAbsaetzeLesen");
+    expect(HTML).toContain("function askAbsaetzeLesen");
+
+    const ausgang = await panelAsk(k.app, k.bindung).fragen();
+    expect(ausgang.kind).toBe("error");
+    expect(String((ausgang as { detail?: unknown }).detail)).toContain("askAbsaetzeLesen");
+    await k.app.close();
+  });
+
+  // ----------------------------------------------------------------------------------------------
   // BEN-KORREKTURPFLICHT 2 — Zustimmung über HTTP, echte Antwort, sichtbarer Beleg.
   // ----------------------------------------------------------------------------------------------
   it("V2-E1 · MIT Zustimmung über HTTP: die Antwort kommt vom Anbieter und trägt seinen Beleg", async () => {

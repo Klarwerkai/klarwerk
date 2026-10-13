@@ -67,7 +67,13 @@ import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useAnalytics, useAuditSeite, useUsers, useValidationBoard } from "../api/hooks";
+import {
+  useAnalytics,
+  useAuditSeite,
+  useUsers,
+  useValidationBoard,
+  useValidationOverview,
+} from "../api/hooks";
 import type { PublicUser } from "../api/types";
 import { UNTERNEHMEN_PFAD } from "../api/unternehmen";
 import { type KontoVerantwortung, verantwortungApi } from "../api/verantwortung";
@@ -106,6 +112,7 @@ import {
 import { nurWartendeKonten, wartendeKonten } from "../lib/adminUebersicht";
 import { aiAccessRows, anbieterUndModell } from "../lib/aiOverview";
 import { ANALYTICS_AUDIT_PATH } from "../lib/analyticsSections";
+import { auftraegeJePerson } from "../lib/auftraegeJePerson";
 import {
   type KontenFilter,
   type KontoZugang,
@@ -136,7 +143,9 @@ import {
   KiFunktionenDetail,
   KiGrenzenDetail,
   KiZugaengeDetail,
+  referenzAus,
 } from "./AdminKiDetails";
+import { KiReferenzDetail } from "./AdminKiReferenz";
 import {
   AnsichtAlsRolleDetail,
   NutzerAnlegenDetail,
@@ -145,6 +154,7 @@ import {
   lesbarerAblauf,
 } from "./AdminKontenDetails";
 import { Sammelbearbeitung } from "./AdminKontenSammel";
+import { ProduktbudgetDetail } from "./AdminProduktbudget";
 import {
   BereitschaftDetail,
   DatenschutzDetail,
@@ -473,6 +483,11 @@ export function Admin(): JSX.Element {
 
   const analytics = useAnalytics();
   const board = useValidationBoard();
+  // R-0756: Prüfaufträge je Person (Namen aus derselben Kontenliste wie die Nutzerzeilen).
+  const pruefOverview = useValidationOverview();
+  const auftragsZeilen = auftraegeJePerson(pruefOverview.data ?? [], users.data ?? []);
+  const auftragsWert = (offen: number, erledigt: number): string =>
+    `${t("prueferzuweisung.person.offen")} ${offen} · ${t("prueferzuweisung.person.erledigt")} ${erledigt}`;
   const aiConfig = useQuery({ queryKey: ["reasonerConfig"], queryFn: endpoints.reasoner.config });
   const presets = useQuery({
     queryKey: ["reasoner", "assistPresets"],
@@ -643,6 +658,8 @@ export function Admin(): JSX.Element {
         return <AnsichtAlsRolleDetail onZurueck={zurueck} />;
       case "ki":
         return <KiDetail onZurueck={zurueck} />;
+      case "kiReferenz":
+        return <KiReferenzDetail onZurueck={zurueck} />;
       case "kiZugaenge":
         return <KiZugaengeDetail onZurueck={zurueck} />;
       case "kiFunktionen":
@@ -653,6 +670,9 @@ export function Admin(): JSX.Element {
         return <KiExternDetail onZurueck={zurueck} />;
       case "kiDup":
         return <KiDupDetail onZurueck={zurueck} />;
+      // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets.
+      case "produktbudget":
+        return <ProduktbudgetDetail onZurueck={zurueck} />;
       case "demo":
         return <DemodatenDetail onZurueck={zurueck} />;
       // ADMIN-16: bis hierher Kästen auf der Importseite — jetzt eigene Karten unter Vorführdaten.
@@ -926,6 +946,7 @@ export function Admin(): JSX.Element {
                     key={u.id}
                     label={u.name}
                     wert={nutzerWert(u)}
+                    schmalUntereinander
                     onOeffnen={() => geheZu("konten", `nutzer:${u.id}`)}
                   />
                 ))}
@@ -990,6 +1011,27 @@ export function Admin(): JSX.Element {
                   />
                 ))}
               </Zeilenkarte>
+              {/* R-0756: offene und erledigte Prüfaufträge je Person — dieselbe Ableitung wie in
+                  der Auswertung (`auftraegeJePerson`). Erst sichtbar, wenn die Übersicht antwortet. */}
+              {pruefOverview.data ? (
+                <>
+                  <Kicker>{t("prueferzuweisung.person.titel")}</Kicker>
+                  <Zeilenkarte testId="flaeche-pruefauftraege">
+                    {auftragsZeilen.length === 0 ? (
+                      <Zeile label={t("prueferzuweisung.person.leer")} />
+                    ) : (
+                      auftragsZeilen.map((z) => (
+                        <Zeile
+                          key={z.userId}
+                          label={z.name ?? t("prueferzuweisung.person.unbekannt")}
+                          wert={auftragsWert(z.open, z.done)}
+                          testId={`zeile-pruefauftraege-${z.userId}`}
+                        />
+                      ))
+                    )}
+                  </Zeilenkarte>
+                </>
+              ) : null}
             </>
           ) : null}
 
@@ -1012,6 +1054,24 @@ export function Admin(): JSX.Element {
                 )}
                 onOeffnen={() => geheZu("ki", "ki")}
                 testId="zeile-ki"
+              />
+              {/* REF-03: die Referenz-KI als eigene Prüfrolle. Der Wert kommt aus derselben
+                  Konfiguration wie die KI-Zeile — „erlaubt" ist kein Prüfnachweis; den Zustand je
+                  Option nennt erst die Karte. */}
+              <Zeile
+                label={t("referenzpruefung.einstieg.titel")}
+                wert={wert(
+                  aiConfig,
+                  aiConfig.data
+                    ? referenzAus(aiConfig.data).length > 0
+                      ? t("referenzpruefung.einstieg.wert", {
+                          anzahl: referenzAus(aiConfig.data).length,
+                        })
+                      : t("referenzpruefung.einstieg.aus")
+                    : null,
+                )}
+                onOeffnen={() => geheZu("ki", "kiReferenz")}
+                testId="zeile-ki-referenz"
               />
               <Zeile
                 label={t("adm.ai.accessTitle")}
@@ -1071,6 +1131,13 @@ export function Admin(): JSX.Element {
                 )}
                 onOeffnen={() => geheZu("ki", "kiDup")}
                 testId="zeile-ki-dup"
+              />
+              {/* produkt:20261013:produktbudget-anwender-admin: ohne eigenen Zeilenwert — Beträge,
+                  Verbrauch und Stand stehen erst in der Karte, aus genau einer Abfrage. */}
+              <Zeile
+                label={t("produktbudget.titel")}
+                onOeffnen={() => geheZu("ki", "produktbudget")}
+                testId="zeile-ki-produktbudget"
               />
             </Zeilenkarte>
           ) : null}

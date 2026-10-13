@@ -1,0 +1,978 @@
+{
+  "auftrag": "produkt:20261012:klara-setup-shortcuts-bestand",
+  "quelle": "PO-KLARA-SETUP-SHORTCUTS-20261012-v1 · AA-01",
+  "basis": "25f2ea02caa08b057f62b319e442721a53835252",
+  "erhoben_am": "2026-10-12",
+  "hinweis": "Jeder Eintrag mit stand=geliefert ist im Arbeitsbaum dieser Basis per Datei und wörtlichem Anker belegt (tests/klara-setup-shortcuts/fundstellen.test.ts). Kandidaten liegen nur auf ihrem Zweig; beauftragte Pakete haben noch keinen Code.",
+  "eintraege": [
+    {
+      "id": "E01",
+      "art": "einstellung",
+      "name": "Name der persönlichen Assistenz",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "konto",
+      "speicher": "Server · Tabelle assistenz_profile (eine Zeile je Konto, JSON) über GET/PUT /api/me/assistenz",
+      "recht": "angemeldet (requireUser), nur eigenes Konto; fremde Kontokennung → 403",
+      "ort_heute": "Zahnrad › Persönliche Einstellungen (/profil) › Meine Assistenz; zusätzlich Ersteinrichtung",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/pages/Profile.tsx",
+          "anker": "function MeineAssistenzDetail"
+        },
+        {
+          "pfad": "apps/web/src/components/assistenz/AssistenzFormular.tsx",
+          "anker": "data-testid=\"assistenz-name\""
+        },
+        {
+          "pfad": "apps/web/src/api/assistenzProfil.ts",
+          "anker": "api.put<AssistenzProfilAntwort>(\"/me/assistenz\", aenderung)"
+        },
+        {
+          "pfad": "services/app/src/routes/assistenz-profil-routes.ts",
+          "anker": "app.put<{ Body: unknown }>(\"/api/me/assistenz\","
+        },
+        {
+          "pfad": "services/app/src/assistenz-profil.ts",
+          "anker": "CREATE TABLE IF NOT EXISTS assistenz_profile ("
+        }
+      ]
+    },
+    {
+      "id": "E02",
+      "art": "einstellung",
+      "name": "Motiv (Avatar) der persönlichen Assistenz",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "konto",
+      "speicher": "Server · assistenz_profile.data.avatar (stabile Kennung aus 13 freigegebenen Motiven)",
+      "recht": "wie E01",
+      "ort_heute": "wie E01",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/pages/Profile.tsx",
+          "anker": "<AssistenzFormular modus=\"aendern\" />"
+        },
+        {
+          "pfad": "services/app/src/assistenz-profil.ts",
+          "anker": "export const ASSISTENZ_AVATARE = ["
+        }
+      ]
+    },
+    {
+      "id": "E03",
+      "art": "einstellung",
+      "name": "Reduzierte Bewegung der Figur",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "konto",
+      "speicher": "Server · assistenz_profile.data.bewegung (standard | reduziert)",
+      "recht": "wie E01",
+      "ort_heute": "wie E01",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/assistenz/AssistenzFormular.tsx",
+          "anker": "data-testid=\"assistenz-bewegung\""
+        },
+        {
+          "pfad": "services/app/src/assistenz-profil.ts",
+          "anker": "export type AssistenzBewegung = \"standard\" | \"reduziert\";"
+        }
+      ]
+    },
+    {
+      "id": "E04",
+      "art": "einstellung",
+      "name": "Abschluss der Ersteinrichtung (einrichtungOffen)",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "konto",
+      "speicher": "Server · assistenz_profile.data.eingerichtetAm; „Später“ nur für die Sitzung",
+      "recht": "wie E01",
+      "ort_heute": "Band der Ersteinrichtung in der App-Hülle (nicht modal)",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/shell/AppShell.tsx",
+          "anker": "<AssistenzEinrichtung />"
+        },
+        {
+          "pfad": "apps/web/src/components/assistenz/AssistenzEinrichtung.tsx",
+          "anker": "einrichtungOffen"
+        },
+        {
+          "pfad": "apps/web/src/api/assistenzProfil.ts",
+          "anker": "einrichtungAbschliessen?: boolean;"
+        }
+      ]
+    },
+    {
+      "id": "E05",
+      "art": "einstellung",
+      "name": "Unterstützungsmodus / Eigeninitiative (nur auf Nachfrage · passende Hinweise · ausdrücklich übertragene Aufgaben)",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "konto",
+      "speicher": "Server · assistenz_profile.data.eigeninitiative über GET/PUT /api/me/assistenz/eigeninitiative",
+      "recht": "wie E01",
+      "ort_heute": "nur im geöffneten Assistenzgespräch (KlaraModusWahl), nicht in /profil",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraEigeninitiative.tsx",
+          "anker": "export function KlaraModusWahl("
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "<KlaraModusWahl"
+        },
+        {
+          "pfad": "services/app/src/routes/assistenz-profil-routes.ts",
+          "anker": "app.put<{ Body: unknown }>(\"/api/me/assistenz/eigeninitiative\""
+        },
+        {
+          "pfad": "services/app/src/assistenz-profil.ts",
+          "anker": "eigeninitiative?: EigeninitiativeStand;"
+        }
+      ]
+    },
+    {
+      "id": "E06",
+      "art": "einstellung",
+      "name": "Hinweise „Später“ / „Nicht mehr anbieten“",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "konto",
+      "speicher": "Server · assistenz_profile.data.eigeninitiative.hinweise über POST /api/me/assistenz/eigeninitiative/hinweise",
+      "recht": "wie E01",
+      "ort_heute": "am einzelnen Hinweis neben der Figur; keine Übersicht",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/api/assistenzEigeninitiative.ts",
+          "anker": "\"/me/assistenz/eigeninitiative/hinweise\""
+        },
+        {
+          "pfad": "services/app/src/routes/assistenz-profil-routes.ts",
+          "anker": "POST /api/me/assistenz/eigeninitiative/hinweise"
+        }
+      ]
+    },
+    {
+      "id": "E07",
+      "art": "einstellung",
+      "name": "Fähigkeiten: Favoriten und bestätigte Routinen",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "konto",
+      "speicher": "Server · assistenz_profile.data.faehigkeiten über /api/me/faehigkeiten/vormerkungen",
+      "recht": "angemeldet, nur eigenes Konto; Ausführbarkeit zusätzlich durch O01/O02 und ko.read",
+      "ort_heute": "Zahnrad › Persönliche Einstellungen › Meine Assistenz (FaehigkeitenBereich)",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/pages/Profile.tsx",
+          "anker": "<FaehigkeitenBereich />"
+        },
+        {
+          "pfad": "apps/web/src/components/assistenz/FaehigkeitenBereich.tsx",
+          "anker": "assistenz.faehigkeiten.favorit"
+        },
+        {
+          "pfad": "services/app/src/routes/assistenz-faehigkeiten-routes.ts",
+          "anker": "\"/api/me/faehigkeiten/vormerkungen\""
+        },
+        {
+          "pfad": "services/app/src/assistenz-profil.ts",
+          "anker": "faehigkeiten?: readonly FaehigkeitsVormerkung[];"
+        }
+      ]
+    },
+    {
+      "id": "E08",
+      "art": "einstellung",
+      "name": "Sprachausgabe: Antworten automatisch vorlesen, Vorlesetempo",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "geraet",
+      "speicher": "Browser · localStorage „klarwerk.klara.sprachausgabe“ (je Browserprofil, NICHT am Konto)",
+      "recht": "keine Serverprüfung (Bedienvorliebe im Browser)",
+      "ort_heute": "im Assistenzgespräch, aufklappbar „Sprachausgabe“",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/vorlesen.ts",
+          "anker": "const SPEICHER = \"klarwerk.klara.sprachausgabe\";"
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraSprache.tsx",
+          "anker": "data-testid=\"klara-vorlesen-auto\""
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraSprache.tsx",
+          "anker": "data-testid=\"klara-vorlesen-tempo\""
+        }
+      ]
+    },
+    {
+      "id": "E09",
+      "art": "bedienzustand",
+      "name": "Figurposition, Andocken, Parken, Ansicht (kompakt/Vollbild), offen/minimiert",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "sitzung",
+      "speicher": "Browser · sessionStorage „klarwerk.klaraVorschau.zustand“ (endet mit dem Tab)",
+      "recht": "keine Serverprüfung",
+      "ort_heute": "direkt an Figur und Gespräch",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/zustand.ts",
+          "anker": "const SITZUNG = \"klarwerk.klaraVorschau.zustand\";"
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "data-testid=\"klara-andocken\""
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "data-testid=\"klara-vollbild\""
+        }
+      ]
+    },
+    {
+      "id": "E10",
+      "art": "bedienzustand",
+      "name": "Klara-Vorschau (Demo-Betrieb) ein/aus",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "sitzung",
+      "speicher": "Browser · sessionStorage „klarwerk.klaraVorschau.aktiv“; Einstieg /klara-vorschau",
+      "recht": "ohne Serverabruf (nur Demodaten)",
+      "ort_heute": "Adresse /klara-vorschau, „Vorschau beenden“ im Gespräch",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/aktiv.ts",
+          "anker": "const SCHLUESSEL = \"klarwerk.klaraVorschau.aktiv\";"
+        },
+        {
+          "pfad": "apps/web/src/routes.tsx",
+          "anker": "path=\"/klara-vorschau\""
+        }
+      ]
+    },
+    {
+      "id": "O01",
+      "art": "einstellung",
+      "name": "KI-Freigabe, KI-Abschaltung und Modellzuordnung (wirkt auf Assistenzgespräch und Fähigkeiten)",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "organisation",
+      "speicher": "Server · Reasoner-Konfiguration über GET/PUT /api/reasoner/config",
+      "recht": "users.manage (nur admin)",
+      "ort_heute": "Zahnrad › Einstellungen (/admin) › KI",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/pages/AdminKiDetails.tsx",
+          "anker": "kiFreigabe"
+        },
+        {
+          "pfad": "services/app/src/routes/reasoner-routes.ts",
+          "anker": "}>(\"/api/reasoner/config\", async (request, reply) => {"
+        },
+        {
+          "pfad": "services/app/src/routes/reasoner-routes.ts",
+          "anker": "requirePermission(\"users.manage\""
+        },
+        {
+          "pfad": "services/app/src/assistenz-faehigkeiten-anbindung.ts",
+          "anker": "reasoner.kiAbschaltung()"
+        }
+      ]
+    },
+    {
+      "id": "O02",
+      "art": "einstellung",
+      "name": "Stufe der externen Wissensabfrage (gibt die Fähigkeit Wikipedia-Suche frei oder nicht)",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "organisation",
+      "speicher": "Server · external_knowledge_policy über PUT /api/external/policy",
+      "recht": "users.manage (nur admin)",
+      "ort_heute": "Admin-Bereich",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/routes/external-routes.ts",
+          "anker": "app.put<{ Body: { stage?: string } }>(\"/api/external/policy\""
+        },
+        {
+          "pfad": "services/app/src/assistenz-faehigkeiten-anbindung.ts",
+          "anker": "external_knowledge_policy"
+        }
+      ]
+    },
+    {
+      "id": "O03",
+      "art": "einstellung",
+      "name": "Betriebsschalter KLARWERK_ADDON_API für das ältere Office-Add-in-Bündel (/addin/*)",
+      "stand": "geliefert",
+      "host": ["office"],
+      "geltung": "betrieb",
+      "speicher": "Umgebungsvariable des Servers; keine Oberfläche",
+      "recht": "Betreiber, nicht in der App",
+      "ort_heute": "keine Bedienfläche",
+      "fundstellen": [
+        {
+          "pfad": "services/app/addin-static/REGENERATE.md",
+          "anker": "KLARWERK_ADDON_API"
+        }
+      ]
+    },
+    {
+      "id": "A01",
+      "art": "aktion",
+      "name": "Persönliche Assistenz öffnen/schließen („Klara öffnen“)",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "keine",
+      "speicher": "Zustand E09",
+      "recht": "angemeldet; Gespräch selbst über ko.read",
+      "ort_heute": "Klick, Eingabe oder Leertaste auf der Figur; Escape schließt",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/shell/AppShell.tsx",
+          "anker": "<KlaraVorschau betriebsart=\"produkt\" />"
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "const oeffnen = useCallback((ziel: \"panel\" | \"auswahl\" = \"panel\") => {"
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "data-testid=\"klara-minimieren\""
+        }
+      ]
+    },
+    {
+      "id": "A02",
+      "art": "aktion",
+      "name": "Seitenhilfe (?-Knopf) öffnen und Element zeigen (Zeige-Modus)",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "keine",
+      "speicher": "keiner",
+      "recht": "angemeldet",
+      "ort_heute": "schwebender ?-Knopf; nie zugleich mit A01 offen",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/shell/AppShell.tsx",
+          "anker": "<KlaraAssistant />"
+        },
+        {
+          "pfad": "apps/web/src/components/KlaraAssistant.tsx",
+          "anker": "document.body.classList.add(\"klara-inspect\");"
+        },
+        {
+          "pfad": "apps/web/src/components/assistenzFlaechen.ts",
+          "anker": "const EREIGNIS = \"klarwerk:assistenzflaeche\";"
+        }
+      ]
+    },
+    {
+      "id": "A03",
+      "art": "aktion",
+      "name": "Figur bewegen, andocken, Position zurücksetzen, Vollbild",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "keine",
+      "speicher": "Zustand E09",
+      "recht": "keine",
+      "ort_heute": "Figur (Pfeiltasten, Home) und Knöpfe im Gespräch",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "const beiFigurTaste = (e: KeyboardEvent<HTMLButtonElement>): void => {"
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "data-testid=\"klara-zuruecksetzen\""
+        }
+      ]
+    },
+    {
+      "id": "A04",
+      "art": "aktion",
+      "name": "Frage/Auftrag senden; Modi Erkläre · Zeige · Begleite",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "keine",
+      "speicher": "Gesprächsverlauf serverseitig (klara_gespraeche)",
+      "recht": "ko.read, Einwilligung und zentrale KI-Freigaben (O01)",
+      "ort_heute": "Eingabeformular im Gespräch",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "data-testid=\"klara-eingabe-form\""
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "data-testid=\"klara-modus-erklaere\""
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "data-testid=\"klara-modus-begleite\""
+        }
+      ]
+    },
+    {
+      "id": "A05",
+      "art": "aktion",
+      "name": "Auswahl-Aktionen: übersetzen, umformulieren, als Notiz, als Nachricht entwerfen",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "keine",
+      "speicher": "je Aktion im vorhandenen Fachspeicher",
+      "recht": "Rechte der Person am Objekt",
+      "ort_heute": "Auswahlkarte im Gespräch",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "data-testid=\"klara-aktion-uebersetzen\""
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "data-testid=\"klara-aktion-umformulieren\""
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "data-testid=\"klara-aktion-notiz\""
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "data-testid=\"klara-aktion-nachricht\""
+        }
+      ]
+    },
+    {
+      "id": "A06",
+      "art": "aktion",
+      "name": "Private Notizen und persönliche Aufgaben (Klara 06/07)",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "keine",
+      "speicher": "Server · klara_notizen, klara_aufgaben",
+      "recht": "angemeldet, eigenes Konto, echter Betrieb",
+      "ort_heute": "im Gespräch",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "<KlaraNotizen />"
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "<KlaraAufgaben />"
+        }
+      ]
+    },
+    {
+      "id": "A07",
+      "art": "aktion",
+      "name": "Fähigkeit mit Vorschau ausführen",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "keine",
+      "speicher": "Server · assistenz_profile.data.faehigkeitsAuftraege",
+      "recht": "angemeldet, ko.read, O01/O02",
+      "ort_heute": "Meine Assistenz › Fähigkeiten",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/assistenz/FaehigkeitenBereich.tsx",
+          "anker": "data-testid=\"faehigkeit-ausfuehren\""
+        }
+      ]
+    },
+    {
+      "id": "A08",
+      "art": "aktion",
+      "name": "Browser-Seitenleiste öffnen; markierten Text „In Klarwerk übernehmen“",
+      "stand": "geliefert",
+      "host": ["browser-erweiterung"],
+      "geltung": "keine",
+      "speicher": "chrome.storage.session (Arbeitsstand, Anmeldung)",
+      "recht": "Anmeldung an app.klarwerk.ai in der Leiste",
+      "ort_heute": "Symbol in der Chrome-Leiste, Kontextmenü",
+      "fundstellen": [
+        {
+          "pfad": "extensions/klara-browser/manifest.json",
+          "anker": "\"side_panel\": { \"default_path\": \"panel.html\" }"
+        },
+        {
+          "pfad": "extensions/klara-browser/worker.js",
+          "anker": "chrome.action.onClicked.addListener((tab) => {"
+        },
+        {
+          "pfad": "extensions/klara-browser/worker.js",
+          "anker": "chrome.contextMenus.create({"
+        }
+      ]
+    },
+    {
+      "id": "A09",
+      "art": "aktion",
+      "name": "Klara in Word: Frage stellen, Markierung als Entwurf senden",
+      "stand": "geliefert",
+      "host": ["office"],
+      "geltung": "keine",
+      "speicher": "Frage und Antwort werden im Add-in nicht dauerhaft abgelegt; Sitzungen serverseitig klara_sessions; Dokumentkennung siehe W05",
+      "recht": "ko.read (/api/klara/*)",
+      "ort_heute": "Word-Aufgabenbereich „Klara“",
+      "fundstellen": [
+        {
+          "pfad": "docs/word-addin/klara-manifest.xml",
+          "anker": "<Host Name=\"Document\" />"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "kein localStorage, kein sessionStorage"
+        },
+        {
+          "pfad": "services/app/src/routes/klara-ai-routes.ts",
+          "anker": "app.get(\"/api/klara/ai-status\", async (request, reply) => {"
+        },
+        {
+          "pfad": "services/app/src/routes/klara-ai-routes.ts",
+          "anker": "requirePermission(\"ko.read\""
+        }
+      ]
+    },
+    {
+      "id": "T01",
+      "art": "kuerzel",
+      "name": "⌘K / Strg+K „Seite finden“ (Befehlspalette) — kein Klara-Kürzel, aber Konfliktgrenze",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "keine",
+      "speicher": "fest im Code",
+      "recht": "keine",
+      "ort_heute": "global in der Web-App; prüft nur metaKey ODER ctrlKey plus K, andere Modifikatoren werden nicht ausgeschlossen",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/shell/CommandPalette.tsx",
+          "anker": "if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === \"k\") {"
+        },
+        {
+          "pfad": "apps/web/src/lib/tastenkuerzel.ts",
+          "anker": "export function kuerzelText(taste: string, sprache: string, plattform: Plattform): string {"
+        }
+      ]
+    },
+    {
+      "id": "T02",
+      "art": "kuerzel",
+      "name": "Escape schließt Gespräch, Seitenhilfe und Zeige-Modus",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "keine",
+      "speicher": "fest im Code",
+      "recht": "keine",
+      "ort_heute": "Gespräch, Figur, Seitenhilfe",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/KlaraAssistant.tsx",
+          "anker": "if (event.key === \"Escape\") {"
+        },
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "if (e.key === \"Escape\" && panelSichtbar) {"
+        }
+      ]
+    },
+    {
+      "id": "T03",
+      "art": "kuerzel",
+      "name": "Figur: Pfeiltasten (mit Umschalt größere Schritte), Home = Position zurücksetzen",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "keine",
+      "speicher": "fest im Code",
+      "recht": "keine",
+      "ort_heute": "nur bei Fokus auf der Figur",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx",
+          "anker": "if (e.key === \"Home\") {"
+        }
+      ]
+    },
+    {
+      "id": "T04",
+      "art": "kuerzel",
+      "name": "Eingabe sendet (Web-Formular; Word: Enter sendet, Umschalt+Enter Zeilenumbruch)",
+      "stand": "geliefert",
+      "host": ["web", "office"],
+      "geltung": "keine",
+      "speicher": "fest im Code",
+      "recht": "keine",
+      "ort_heute": "Eingabefelder",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "if (ev.key === \"Enter\" && !ev.shiftKey) {"
+        }
+      ]
+    },
+    {
+      "id": "T05",
+      "art": "kuerzel",
+      "name": "Alt+Shift+K öffnet die Browser-Seitenleiste (_execute_action, Vorschlag; in Chrome umbelegbar)",
+      "stand": "geliefert",
+      "host": ["browser-erweiterung"],
+      "geltung": "browser",
+      "speicher": "Chrome verwaltet die Belegung (chrome://extensions/shortcuts); nicht in Klarwerk",
+      "recht": "keine",
+      "ort_heute": "Chrome, solange ein Chrome-Fenster aktiv ist",
+      "fundstellen": [
+        {
+          "pfad": "extensions/klara-browser/manifest.json",
+          "anker": "\"suggested_key\": { \"default\": \"Alt+Shift+K\" }"
+        }
+      ]
+    },
+    {
+      "id": "H01",
+      "art": "host",
+      "name": "Web-App (SPA) mit KlaraEbene in der App-Hülle",
+      "stand": "geliefert",
+      "host": ["web"],
+      "geltung": "keine",
+      "speicher": "Server + Browser (siehe E-Einträge)",
+      "recht": "Rollen viewer/experte/controller/admin; persönliche Einstellungen für alle Rollen",
+      "ort_heute": "Zahnrad „Einstellungen und Hilfe“: Persönliche Einstellungen (alle), Einstellungen (/admin, nur admin)",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/shell/ZahnradMenue.tsx",
+          "anker": "testid=\"zahnrad-persoenlich\""
+        },
+        {
+          "pfad": "apps/web/src/shell/ZahnradMenue.tsx",
+          "anker": "testid=\"zahnrad-einstellungen\""
+        },
+        {
+          "pfad": "services/rbac/src/policy.ts",
+          "anker": "viewer: [\"ko.read\"],"
+        }
+      ]
+    },
+    {
+      "id": "H02",
+      "art": "host",
+      "name": "Chrome-Erweiterung „Klara im Browser“ (MV3, Seitenleiste)",
+      "stand": "geliefert",
+      "host": ["browser-erweiterung"],
+      "geltung": "browser",
+      "speicher": "chrome.storage.local nur Sprache; chrome.storage.session Arbeitsstand",
+      "recht": "eigene Anmeldung in der Leiste",
+      "ort_heute": "Sprachumschalter oben in der Leiste; sonst keine Einstellungen",
+      "fundstellen": [
+        {
+          "pfad": "extensions/klara-browser/panel.js",
+          "anker": "void chrome.storage.local.set({ language: value });"
+        }
+      ]
+    },
+    {
+      "id": "H03",
+      "art": "host",
+      "name": "Word-Add-in „Klara“ (Aufgabenbereich, Sideload)",
+      "stand": "geliefert",
+      "host": ["office"],
+      "geltung": "keine",
+      "speicher": "Panelschalter W01–W03 nur in der Panelinstanz; Zustimmung W04 am Server; Dokumentkennung W05 dauerhaft in den Einstellungen des Word-Dokuments; Anmeldeschlüssel nur im Arbeitsspeicher des Panels (kein localStorage, kein Cookie)",
+      "recht": "ko.read",
+      "ort_heute": "eigene Einstellungsfläche im Aufgabenbereich (kw-einstellungen) mit W01–W04, Gruppe „Vom Admin eingestellt“ (O01 nur lesbar) und Konto; Manifest ohne Tastenkürzel",
+      "fundstellen": [
+        {
+          "pfad": "docs/word-addin/klara-manifest.xml",
+          "anker": "<DisplayName DefaultValue=\"Klara\" />"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.html",
+          "anker": "<div id=\"kw-einstellungen\" class=\"hidden\">"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "var officeSchluessel = null;"
+        }
+      ]
+    },
+    {
+      "id": "W01",
+      "art": "einstellung",
+      "name": "Word: Sprache des Aufgabenbereichs (Deutsch, English, Nederlands)",
+      "stand": "geliefert",
+      "host": ["office"],
+      "geltung": "panelinstanz",
+      "speicher": "nur Arbeitsspeicher der Panelinstanz (Start „de“); nicht am Konto, nicht im Dokument",
+      "recht": "keine Serverprüfung",
+      "ort_heute": "Word › Klara › Einstellungen › Sprache",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.html",
+          "anker": "id=\"einst-sprache-zeile\""
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "var lang = \"de\";"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "function setLang(next) {"
+        }
+      ]
+    },
+    {
+      "id": "W02",
+      "art": "einstellung",
+      "name": "Word: Text in Word mitlesen (Markierung als Fragegrundlage)",
+      "stand": "geliefert",
+      "host": ["office"],
+      "geltung": "panelinstanz",
+      "speicher": "nur Arbeitsspeicher der Panelinstanz; Voreinstellung an",
+      "recht": "keine Serverprüfung",
+      "ort_heute": "Word › Klara › Einstellungen › Schalter „Mitlesen“",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.html",
+          "anker": "id=\"einst-mitlesen\""
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "var askMitlesen = true;"
+        }
+      ]
+    },
+    {
+      "id": "W03",
+      "art": "einstellung",
+      "name": "Word: Absatzblick (Bestandsblick beim Absatzwechsel nur nach bewusstem Ja)",
+      "stand": "geliefert",
+      "host": ["office"],
+      "geltung": "panelinstanz",
+      "speicher": "nur Arbeitsspeicher der Panelinstanz; Voreinstellung aus",
+      "recht": "keine Serverprüfung",
+      "ort_heute": "Word › Klara › Einstellungen › Schalter „Absatzblick“",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.html",
+          "anker": "id=\"einst-absatzblick\""
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "var ka3AbsatzAn = false, ka3AbsatzRunde = 0;"
+        }
+      ]
+    },
+    {
+      "id": "W04",
+      "art": "einstellung",
+      "name": "Word: Zustimmung zur externen KI für diese Klara-Sitzung (erteilen/widerrufen) und Ablehnung je Dokument",
+      "stand": "geliefert",
+      "host": ["office"],
+      "geltung": "sitzung",
+      "speicher": "Zustimmung am Server (klara_session_consents) über POST/DELETE /api/klara/sessions/:sessionId/consent; ein „Nein“ je Dokument nur im Arbeitsspeicher der Panelinstanz",
+      "recht": "ko.read; der Server entscheidet über Bedarf und Wirkung (O01), das Panel nicht",
+      "ort_heute": "Word › Klara › Einstellungen, sichtbar nur wenn der Server die Zustimmung verlangt oder sie erteilt ist",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.html",
+          "anker": "id=\"klara-consent-grant\""
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.html",
+          "anker": "id=\"klara-consent-revoke\""
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "function klaraS4Zustimmen() {"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "function ka4Ablehnen() {"
+        },
+        {
+          "pfad": "services/app/src/routes/klara-ai-routes.ts",
+          "anker": "\"/api/klara/sessions/:sessionId/consent\","
+        }
+      ]
+    },
+    {
+      "id": "W05",
+      "art": "dokumentzustand",
+      "name": "Word: Klarwerk-Dokumentkennung klarwerkDokumentId (keine Nutzereinstellung, keine Anmeldung)",
+      "stand": "geliefert",
+      "host": ["office"],
+      "geltung": "dokument",
+      "speicher": "dauerhaft in den Einstellungen DIESES Word-Dokuments (Office.context.document.settings, saveAsync); reist mit der Datei; vom Server vergeben; bis zur bestätigten Speicherung nur als ungesicherte Kennung im Panel",
+      "recht": "vom Server beim Senden vergeben; vom Anwender nicht einstellbar",
+      "ort_heute": "keine Bedienfläche; Warnung, wenn die Speicherung im Dokument scheitert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "var WORD_ADDIN_DOKUMENT_SETTING = \"klarwerkDokumentId\";"
+        },
+        {
+          "pfad": "apps/web/public/word-addin/taskpane.js",
+          "anker": "einstellungen.saveAsync(function (ergebnis) {"
+        },
+        {
+          "pfad": "apps/web/src/lib/wordAddin.ts",
+          "anker": "export const WORD_ADDIN_DOKUMENT_SETTING = \"klarwerkDokumentId\";"
+        }
+      ]
+    },
+    {
+      "id": "H04",
+      "art": "host",
+      "name": "„KLARWERK App.app“ — Bash-Starter, öffnet den Browser; kein nativer Fensterhost",
+      "stand": "geliefert",
+      "host": ["mac"],
+      "geltung": "keine",
+      "speicher": "Schlüssel nur im macOS-Schlüsselbund (nicht Teil dieses Auftrags)",
+      "recht": "lokal",
+      "ort_heute": "Doppelklick; LSUIElement (kein Dock-Symbol)",
+      "fundstellen": [
+        {
+          "pfad": "desktop-app/KLARWERK App.app/Contents/Info.plist",
+          "anker": "<key>LSUIElement</key><true/>"
+        },
+        {
+          "pfad": "desktop-app/KLARWERK App.app/Contents/MacOS/KLARWERK_App",
+          "anker": "Desktop-Starter"
+        }
+      ]
+    },
+    {
+      "id": "C01",
+      "art": "kandidat",
+      "name": "Native Mac-Begleitapp „Klara Begleiter“ (Swift/AppKit, WKWebView auf /begleiter) mit globalem Kürzel Control-Option-K „Figur wiederfinden“",
+      "stand": "kandidat",
+      "host": ["mac", "web", "office"],
+      "zweig": "codex/auftrag-08abbc8ce7113845b115",
+      "commit": "5b836e73b",
+      "auftrag_id": "produkt:20261011:assistenz-minimalistische-oberflaeche",
+      "revision": 1,
+      "titel": "Assistenz im Mac-Begleiter und Web minimalistisch und situationsbezogen bedienen (1.0.0-beta.1.945)",
+      "kandidat_fundstellen": [
+        "apps/desktop/klara-begleiter/Sources/Steuerung.swift · registriereHotKey() · RegisterEventHotKey(kVK_ANSI_K, controlKey | optionKey)",
+        "docs/operations/klara-office/begleitapp-mac.md · Abnahmeprotokoll „Ergebnis: offen“, Signatur nur ad hoc, keine Notarisierung",
+        "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx · +1440 Zeilen"
+      ]
+    },
+    {
+      "id": "C02",
+      "art": "kandidat",
+      "name": "Eigene Avatare im Setup und in Meine Assistenz generieren",
+      "stand": "kandidat",
+      "host": ["web"],
+      "zweig": "codex/auftrag-f592e61e001e4eccfde7",
+      "commit": "7713702f5",
+      "auftrag_id": "produkt:20261010:assistenz-avatar-generieren",
+      "revision": 2,
+      "titel": "Eigene Avatare im Setup und in Meine Assistenz generieren (1.0.0-beta.1.941)",
+      "kandidat_fundstellen": [
+        "services/app/src/routes/assistenz-profil-routes.ts · geändert",
+        "services/app/src/assistenz-profil.ts · geändert",
+        "services/app/src/routes/assistenz-avatar-routes.ts · neu"
+      ]
+    },
+    {
+      "id": "C03",
+      "art": "kandidat",
+      "name": "Besprechungsassistenz (BPA-15) als neue Zeile in Persönliche Einstellungen",
+      "stand": "kandidat",
+      "host": ["web"],
+      "zweig": "codex/auftrag-97d57ecfa8c8bd7d3426",
+      "commit": "0dac2221a",
+      "auftrag_id": "produkt:20261011:assistenz-meeting-teilnahme",
+      "revision": 1,
+      "titel": "Als sichtbare Assistenz an Teams Zoom und weiteren Meetings mitwirken · BPA-Ergänzung (1.0.0-beta.1.943)",
+      "kandidat_fundstellen": [
+        "apps/web/src/pages/Profile.tsx · neue Zeile testId=\"zeile-meeting-assistenz\", Direktweg /profil?bereich=meeting",
+        "apps/web/src/components/meeting/MeetingAssistenzDetail.tsx · neu"
+      ]
+    },
+    {
+      "id": "C04",
+      "art": "kandidat",
+      "name": "Klara 10 · Erinnerungen verwalten und zustellen",
+      "stand": "kandidat",
+      "host": ["web"],
+      "zweig": "codex/auftrag-71c74841eea80f27c7b3",
+      "commit": "fb5766f0a",
+      "auftrag_id": "produkt:20261007:klara-erinnerungen-kalender",
+      "revision": 5,
+      "titel": "Klara 10 · Erinnerungen zuverlässig verwalten und zustellen (1.0.0-beta.1.945)",
+      "kandidat_fundstellen": [
+        "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx · geändert",
+        "apps/web/src/components/klara-vorschau/KlaraErinnerungen.tsx · neu"
+      ]
+    },
+    {
+      "id": "C05",
+      "art": "kandidat",
+      "name": "Klara 08 · Persönliches bewusst in Artikel oder Space übernehmen",
+      "stand": "kandidat",
+      "host": ["web"],
+      "zweig": "codex/auftrag-a9f1916ab14978df76b8",
+      "commit": "bf41ae240",
+      "auftrag_id": "produkt:20261008:klara-gemeinsames-wissen",
+      "revision": 3,
+      "titel": "Klara 08 · Persönliches bewusst in Artikel oder Space übernehmen (1.0.0-beta.1.945)",
+      "kandidat_fundstellen": [
+        "apps/web/src/components/klara-vorschau/KlaraVorschau.tsx · geändert",
+        "apps/web/src/components/klara-vorschau/KlaraUebernahme.tsx · neu"
+      ]
+    },
+    {
+      "id": "C06",
+      "art": "kandidat",
+      "name": "Eigener persönlicher Kalender (produkt:20261010:klara-eigener-kalender) mit Sichtwahl als persönlicher Einstellung und Word-Block „Mein Kalender“",
+      "stand": "kandidat",
+      "host": ["web", "office"],
+      "zweig": "codex/auftrag-037bbf78aabef05890d7",
+      "commit": "0b88f41b2",
+      "auftrag_id": "produkt:20261010:klara-eigener-kalender",
+      "revision": 1,
+      "titel": "Eigenen persönlichen Kalender ohne externen Dienst nutzbar machen (1.0.0-beta.1.883)",
+      "kandidat_fundstellen": [
+        "apps/web/src/routes.tsx · neue Route /kalender",
+        "apps/web/src/shell/KontoMenue.tsx · Einstieg über das Konto-Menü",
+        "services/app/src/routes/eigener-kalender-routes.ts · PUT /api/me/kalender/einstellungen (Sichtwahl eigen | vorhanden | beide)",
+        "apps/web/public/word-addin/taskpane.html · Block #kalender-block (4 Zeilen geändert)",
+        "docs/operations/klara/eigener-kalender.md · Stand Nacharbeit 2"
+      ]
+    },
+    {
+      "id": "B02",
+      "art": "beauftragt",
+      "name": "AA-02 · Eigener Bereich „Klara“ im Setup",
+      "stand": "beauftragt",
+      "aa": "AA-02"
+    },
+    {
+      "id": "B03",
+      "art": "beauftragt",
+      "name": "AA-03 · Tastenkürzel konfigurieren und dauerhaft speichern",
+      "stand": "beauftragt",
+      "aa": "AA-03"
+    },
+    {
+      "id": "B04",
+      "art": "beauftragt",
+      "name": "AA-04 · Ausführung und Konfliktbehandlung",
+      "stand": "beauftragt",
+      "aa": "AA-04"
+    },
+    {
+      "id": "B05",
+      "art": "beauftragt",
+      "name": "AA-05 · Nutzerwege prüfen, Hostnachweis, reguläre Integration",
+      "stand": "beauftragt",
+      "aa": "AA-05"
+    }
+  ]
+}

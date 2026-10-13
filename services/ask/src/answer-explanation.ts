@@ -16,16 +16,22 @@
 //
 // WAS HIER AUSDRUECKLICH NICHT GESCHIEHT: kein Modellaufruf, kein Egress, keine zweite
 // Provenienz-Domaene, kein Chain-of-Thought und keine internen Prompts (KW-W3-18, No-Gos).
+import type { AnswerCheckState } from "./answer-evidence";
 import {
   type AnswerEvidenceRef,
   type AnswerEvidenceSnapshot,
+  type AnswerGenerationMode,
   type AnswerIntegrityContext,
   type AnswerIntegrityState,
+  type AnswerNullReason,
+  type AnswerPrimaryResolutionFailure,
   type AnswerRecord,
   type AnswerSnapshotStatus,
   type AnswerValidationDecisionRef,
+  BEKANNTE_PRIMAERURSACHEN,
   type ValidationReferenceAbsenceReason,
   answerSnapshotIntegrity,
+  hashAnswerSnapshot,
   legacyValidationZuordnung,
 } from "./types";
 
@@ -47,6 +53,32 @@ export interface AnswerExplanationEvidence {
    */
   readonly validationDecisionRef: AnswerValidationDecisionRef | null;
   readonly validationReferenceAbsenceReason: ValidationReferenceAbsenceReason | null;
+  /**
+   * R-0293 / R-0317 — QUELLE UND FUNDSTELLE, wie der Beleg sie festhielt. Ist ein Feld leer, steht
+   * daneben sein maschinenlesbarer Grund aus dem Snapshot — nie ein leeres Feld ohne Grund.
+   */
+  readonly sourceRecordId: string | null;
+  readonly sourceRecordIdReason: AnswerNullReason | null;
+  readonly locator: string | null;
+  readonly locatorReason: AnswerNullReason | null;
+  /** R-0317: die Rechtelage zum Ausfuehrungszeitpunkt (`null`: keine Stufe oder nicht erfasst). */
+  readonly confidentialityAtExecution: string | null;
+  /** R-0340: die damalige Zustaendigkeit (`null`: Altbestand ohne erfasste Zustaendigkeit). */
+  readonly responsibleAtExecution: string | null;
+  readonly responsibleKindAtExecution: "owner" | "author-fallback" | null;
+  /**
+   * R-0293 (Ben, Nacharbeit 7): der Pruef-Lauf zum Antwortzeitpunkt — getrennt von der Freigabe
+   * (`validationDecisionRef`). `null`: geschwaerzt oder ein Beleg von vor dieser Regel.
+   */
+  readonly checkStateAtExecution: AnswerCheckState | null;
+  /**
+   * R-0293 — IST HEUTE EIN WIDERSPRUCH ZU DIESER WISSENSEINHEIT OFFEN?
+   *
+   * Eine Aussage von HEUTE, keine historische: der Beleg hielt keine Konfliktlage fest, und eine
+   * erfundene waere schlimmer als eine benannte Gegenwart. `null` heisst UNBEKANNT (Abruf nicht
+   * moeglich) — ausdruecklich nicht „kein Widerspruch".
+   */
+  readonly openConflictToday: boolean | null;
   /** `true`, wenn dieser Beleg fuer DIESEN Leser gesperrt ist. Dann sind die Felder oben leer. */
   readonly redacted: boolean;
 }
@@ -59,6 +91,49 @@ export interface AnswerExplanationView {
   readonly snapshotRevision: number;
   /** Der AKTUELLE Lesezustand. Er wird bei jedem Lesen neu ermittelt. */
   readonly integrity: AnswerIntegrityState;
+  /**
+   * R-0276 — WARUM DER HAUPTBELEG NICHT AUFLOEST: genau einer der fuenf Gruende, oder `null`.
+   *
+   * `null` heisst nur dann „loest auf", wenn `integrity` nicht `INVALIDATED` ist. Ein entwerteter
+   * Beleg OHNE Grund ist genau der Fall „Grund fehlt -> entwertet" aus KW-W3-21 — er wird nicht
+   * nachtraeglich mit einem geratenen Grund versehen.
+   */
+  readonly primaryResolutionFailure: AnswerPrimaryResolutionFailure | null;
+  /**
+   * R-0293 — SIND DIE TRAGENDEN QUELLEN FREIGEGEBEN? Ja genau dann, wenn jede tragende Evidence
+   * eine wirksame Freigabereferenz (`auditSeq`/`auditHash`) traegt. Das ist NUR die Freigabe, keine
+   * Aussage ueber den Pruef-Lauf (dafuer `carryingSourcesChecked`). Gibt es keine tragende
+   * Evidence, ist das KEIN Ja. `null` heisst: fuer DIESEN Leser nicht feststellbar — der Beleg ist
+   * entwertet, oder eine tragende Zeile ist ihm geschwaerzt (sonst verriete die Gesamtaussage, was
+   * die Zeile verschweigt).
+   */
+  readonly carryingSourcesValidated: boolean | null;
+  /**
+   * R-0293 (Ben, Nacharbeit 7) — SIND DIE TRAGENDEN QUELLEN VOLLSTAENDIG GEPRUEFT?
+   *
+   * Eine EIGENE Aussage neben der Freigabe: ja genau dann, wenn jede tragende Evidence beim
+   * Antworten einen vollstaendig belegten Pruef-Lauf trug (`checkStateAtExecution === "proven"`,
+   * dieselbe Regel wie der Pruefvorbehalt der Antwort). Eine Freigabereferenz allein begruendet
+   * KEINE vollstaendige Pruefung. `null`: entwertet, eine tragende Zeile geschwaerzt, oder ein Beleg
+   * von vor dieser Regel (der Zustand wurde nie festgehalten — er wird nicht nachgeraten).
+   */
+  readonly carryingSourcesChecked: boolean | null;
+  /**
+   * R-0293 — IST HEUTE EIN WIDERSPRUCH ZU EINER TRAGENDEN QUELLE OFFEN? `null` = unbekannt.
+   * Ueber geschwaerzte Zeilen wird hier nichts verraten, was die Zeile selbst verschweigt — und
+   * fuer sie auch keine Konfliktfreiheit behauptet: ist eine tragende Zeile geschwaerzt und keine
+   * sichtbare meldet einen Widerspruch, ist die Gesamtaussage `null` (s. `gesamtKonflikt`).
+   */
+  readonly openConflictToday: boolean | null;
+  /** R-0317: Erzeugungsart des Antworttextes; `null` bei Belegen von vor R-0317. */
+  readonly generationMode: AnswerGenerationMode | null;
+  /**
+   * R-0317: die Referenz auf den Laufprotokoll-Datensatz (Modellfassung) — nur die Kennung, kein
+   * Anbieter- oder Modellname. Die Auflösung geschieht über `GET /api/model-runs` mit dessen Rechten.
+   * `null` mit Grund, oder `null` ohne Grund bei Belegen von vor dieser Regel.
+   */
+  readonly modelRunId: string | null;
+  readonly modelRunIdReason: AnswerNullReason | null;
   readonly evidence: readonly AnswerExplanationEvidence[];
   /**
    * Wie viele Belege der Snapshot fuehrt — auch dann, wenn keiner davon sichtbar ist.
@@ -90,6 +165,11 @@ export interface AnswerExplanationSicht extends AnswerIntegrityContext {
    * heutigen Bestand — hier wird nichts nachgeschlagen.
    */
   readonly gesperrteObjekte?: ReadonlySet<string>;
+  /**
+   * R-0293: die Wissenseinheiten, zu denen HEUTE ein Widerspruch offen ist — `null`, wenn der
+   * Aufrufer das nicht feststellen konnte. Fehlt das Feld, ist die Konfliktlage ebenso unbekannt.
+   */
+  readonly offeneKonflikte?: ReadonlySet<string> | null;
 }
 
 /**
@@ -112,12 +192,16 @@ export function baueAnswerExplanation(
   const integrity = answerSnapshotIntegrity(snapshot, sicht);
   const legacy = legacyValidationZuordnung(snapshot);
   const gesperrt = sicht.gesperrteObjekte ?? new Set<string>();
+  const konflikte = sicht.offeneKonflikte ?? null;
   // Bei `INVALIDATED` steht die Zahl, aber kein Detail: ein manipulierter Beleg soll nicht
   // aussehen, als truege er noch Aussagen.
   const zeilen: AnswerExplanationEvidence[] =
     integrity === "INVALIDATED"
       ? []
-      : snapshot.evidence.map((ref) => zeile(ref, legacy, gesperrt.has(ref.knowledgeObjectId)));
+      : snapshot.evidence.map((ref) =>
+          zeile(ref, legacy, gesperrt.has(ref.knowledgeObjectId), konflikte),
+        );
+  const tragend = zeilen.filter((z) => z.evidenceRole === "carrying");
   return {
     kind: "OK",
     view: {
@@ -126,26 +210,112 @@ export function baueAnswerExplanation(
       snapshotStatus: snapshot.status,
       snapshotRevision: snapshot.snapshotRevision,
       integrity,
+      primaryResolutionFailure: aufloesungsgrund(snapshot, sicht, gesperrt),
+      carryingSourcesValidated:
+        integrity === "INVALIDATED" || tragend.some((z) => z.redacted)
+          ? null
+          : tragend.length > 0 && tragend.every((z) => z.validationDecisionRef !== null),
+      carryingSourcesChecked:
+        integrity === "INVALIDATED" ||
+        tragend.some((z) => z.redacted || z.checkStateAtExecution === null)
+          ? null
+          : tragend.length > 0 && tragend.every((z) => z.checkStateAtExecution === "proven"),
+      openConflictToday: gesamtKonflikt(integrity, konflikte, tragend),
+      generationMode: snapshot.generationMode ?? null,
+      // Ein entwerteter Beleg gibt auch diese Referenz nicht heraus — sie wäre nicht mehr belastbar.
+      modelRunId: integrity === "INVALIDATED" ? null : (snapshot.modelRunId ?? null),
+      modelRunIdReason: integrity === "INVALIDATED" ? null : (snapshot.modelRunIdReason ?? null),
       evidence: zeilen,
       evidenceCount: snapshot.evidence.length,
     },
   };
 }
 
+/**
+ * R-0293 / R-0618 — IST HEUTE EIN WIDERSPRUCH ZU EINER TRAGENDEN QUELLE OFFEN?
+ *
+ *   entwertet oder Konfliktlage unbekannt        -> `null`
+ *   eine SICHTBARE tragende Zeile hat Widerspruch -> `true`
+ *   eine tragende Zeile ist geschwaerzt           -> `null` (die Sicht ist unvollstaendig; ein
+ *                                                   `false` behauptete Konfliktfreiheit auch fuer die
+ *                                                   Zeile, die dieser Leser nicht sehen darf — und
+ *                                                   ein `true` aus ihr verriete, was sie verschweigt)
+ *   sonst                                         -> `false`
+ */
+function gesamtKonflikt(
+  integrity: AnswerIntegrityState,
+  konflikte: ReadonlySet<string> | null,
+  tragend: readonly AnswerExplanationEvidence[],
+): boolean | null {
+  if (integrity === "INVALIDATED" || konflikte === null) {
+    return null;
+  }
+  if (tragend.some((z) => !z.redacted && z.openConflictToday === true)) {
+    return true;
+  }
+  return tragend.some((z) => z.redacted) ? null : false;
+}
+
+/**
+ * R-0276 — DER EINE GRUND, WARUM DER HAUPTBELEG NICHT AUFLOEST (KW-W3-21 B, KW-W3-22).
+ *
+ * Die Reihenfolge folgt der Prioritaetsleiter in `answerSnapshotIntegrity`: zuerst die eigene
+ * Unversehrtheit des Belegs, dann der Aufloesungsversuch des Aufrufers, zuletzt das Leserecht.
+ *
+ *   Hash stimmt nicht                     -> `DAMAGED_REFERENCE`
+ *   Aufloesung gescheitert, Grund bekannt -> genau dieser Grund
+ *   Aufloesung gescheitert, Grund fehlt
+ *     oder ist fremd / widerspruechlich   -> `null` (der Beleg ist entwertet, ein Grund wird NICHT
+ *                                            geraten — `integrity` traegt das `INVALIDATED`)
+ *   eine tragende Quelle ist gesperrt     -> `ACCESS_DENIED`
+ *   sonst                                 -> `null` (loest auf)
+ */
+function aufloesungsgrund(
+  snapshot: AnswerEvidenceSnapshot,
+  sicht: AnswerExplanationSicht,
+  gesperrt: ReadonlySet<string>,
+): AnswerPrimaryResolutionFailure | null {
+  if (snapshot.integrityHash !== hashAnswerSnapshot(snapshot)) {
+    return "DAMAGED_REFERENCE";
+  }
+  const ursache = sicht.primaryResolutionFailure;
+  if (!sicht.primaryResolvable) {
+    return ursache !== undefined && BEKANNTE_PRIMAERURSACHEN.includes(ursache) ? ursache : null;
+  }
+  if (ursache !== undefined) {
+    return null;
+  }
+  const tragendGesperrt = snapshot.evidence.some(
+    (ref) => ref.evidenceRole === "carrying" && gesperrt.has(ref.knowledgeObjectId),
+  );
+  return tragendGesperrt ? "ACCESS_DENIED" : null;
+}
+
 function zeile(
   ref: AnswerEvidenceRef,
   legacy: ReadonlyMap<string, AnswerValidationDecisionRef>,
   redacted: boolean,
+  konflikte: ReadonlySet<string> | null,
 ): AnswerExplanationEvidence {
   if (redacted) {
-    // GESCHWAERZT HEISST GESCHWAERZT: keine Kennung, keine Fassung, keine Referenz. Die Rolle
-    // bleibt, weil sie nichts ueber den Inhalt verraet — nur darueber, DASS etwas beigetragen hat.
+    // GESCHWAERZT HEISST GESCHWAERZT: keine Kennung, keine Fassung, keine Referenz, keine Fundstelle,
+    // keine Zustaendigkeit und keine Konfliktlage (R-0618). Die Rolle bleibt, weil sie nichts ueber
+    // den Inhalt verraet — nur darueber, DASS etwas beigetragen hat.
     return {
       knowledgeObjectId: "",
       knowledgeObjectVersion: null,
       evidenceRole: ref.evidenceRole,
       validationDecisionRef: null,
       validationReferenceAbsenceReason: null,
+      sourceRecordId: null,
+      sourceRecordIdReason: null,
+      locator: null,
+      locatorReason: null,
+      confidentialityAtExecution: null,
+      responsibleAtExecution: null,
+      responsibleKindAtExecution: null,
+      checkStateAtExecution: null,
+      openConflictToday: null,
       redacted: true,
     };
   }
@@ -155,6 +325,15 @@ function zeile(
     evidenceRole: ref.evidenceRole,
     validationDecisionRef: ref.validationDecisionRef ?? legacy.get(ref.knowledgeObjectId) ?? null,
     validationReferenceAbsenceReason: ref.validationReferenceAbsenceReason ?? null,
+    sourceRecordId: ref.sourceRecordId,
+    sourceRecordIdReason: ref.sourceRecordIdReason,
+    locator: ref.locator,
+    locatorReason: ref.locatorReason,
+    confidentialityAtExecution: ref.confidentialityAtExecution ?? null,
+    responsibleAtExecution: ref.responsibleAtExecution ?? null,
+    responsibleKindAtExecution: ref.responsibleKindAtExecution ?? null,
+    checkStateAtExecution: ref.checkStateAtExecution ?? null,
+    openConflictToday: konflikte === null ? null : konflikte.has(ref.knowledgeObjectId),
     redacted: false,
   };
 }

@@ -424,7 +424,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "assistenzprofil",
     name: "Persönliches Assistenzprofil",
     inhalt:
-      "Je Konto der selbst gewählte Anzeigename der Assistenz, die Kennung des gewählten Motivs, die Bewegungseinstellung und der Zeitpunkt der abgeschlossenen Ersteinrichtung.",
+      "Je Konto der selbst gewählte Anzeigename der Assistenz, die Kennung des gewählten Motivs, die Bewegungseinstellung und der Zeitpunkt der abgeschlossenen Ersteinrichtung. Dazu (produkt:20261011:assistenz-skills-werkzeuge) die eigenen Fähigkeits-Favoriten und bestätigten Routinen sowie die eigenen Fähigkeitsaufträge: Bindung (Fähigkeit, Fassung, Eingabe, Kennung und Fassung der Kontextobjekte, nie deren Text), Stand und Ergebnis mit Herkunft; je Konto höchstens 30 abgeschlossene Aufträge, ältere fallen beim nächsten Auftrag heraus. Keine Zugangswerte.",
     personenbezug: "ja",
     personenbezugGrund:
       "Gehört genau einem Konto; der Anzeigename ist Freitext der Person und kann Persönliches enthalten.",
@@ -460,6 +460,48 @@ export const DATENINVENTAR: readonly Datenart[] = [
       enthalten: false,
       grund:
         "Nur das Konto selbst sieht seine Gespräche (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
+    // produkt:20261007:klara-notizen-aufgaben (Klara 06) — die privaten Notizen
+    // (`services/app/src/klara-notiz.ts`), eine Zeile je Notiz.
+    id: "klaranotizen",
+    name: "Private Klara-Notizen",
+    inhalt:
+      "Je Konto die eigenen Notizen und Arbeitszettel: Titel, Notiztext, offene Fragen, Weg (geschrieben, diktiert, aus dem Gespräch, aus einem Ausschnitt), Objektbezug als Rücklink (Seite, Objekt, Artikel/Absatz bzw. Wissensobjekt und Fassung, Anfang der Markierung), Kennungen der Gesprächsnachricht und der Vorgangsschlüssel des Anlegens.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; Notiztext und Fragen sind Freitext und können sensible Angaben enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["klara_notizen"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto löscht eine Notiz selbst (DELETE /api/me/klara/notizen/:id); auch Administratoren lesen fremde Notizen nicht, und keine Suche des Wissensbestands führt sie.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht seine Notizen (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
+    // produkt:20261008:klara-aufgaben (Klara 07) — die persönlichen Aufgaben
+    // (`services/app/src/klara-aufgabe.ts`), eine Zeile je Aufgabe.
+    id: "klaraaufgaben",
+    name: "Persönliche Klara-Aufgaben",
+    inhalt:
+      "Je Konto die eigenen Aufgaben: Titel, Aufgabentext, Priorität, Status (offen/erledigt) mit Zeitpunkt des Erledigens, Weg (aus einer Notiz oder einem Klara-Auftrag), Bezug (Kennung und Titel der Notiz bzw. Kennungen, Wortlaut und Art des Auftrags), Objektbezug als Rücklink und der Vorgangsschlüssel des Anlegens.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto, das zugleich zuständig ist; Titel, Text und Auftragswortlaut sind Freitext und können sensible Angaben enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["klara_aufgaben"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto löscht eine Aufgabe selbst (DELETE /api/me/klara/aufgaben/:id); auch Administratoren lesen fremde Aufgaben nicht, und keine gemeinsame Aufgabenquelle führt sie.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht seine Aufgaben (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
     },
   },
   {
@@ -521,6 +563,25 @@ export const DATENINVENTAR: readonly Datenart[] = [
     frist: BETREIBERFRIST,
     selbstauskunft: { enthalten: true },
     befund: "Beschäftigtendaten mit Bezug zur Lebensplanung — Teil der Folgenabschätzung.",
+  },
+  {
+    // produkt:20261013:lagebild-reale-werte-eingabe
+    id: "lagebild-werte",
+    name: "Reale Eingangswerte der Wissensbewertung",
+    inhalt:
+      "Je Arbeitsbereich (ganzes Unternehmen oder Space) Stundensatz, gesparte Stunden je validiertem Objekt und Wiederverwendung mit Herkunft (eigene Eingabe/gemessen) und Beleg, Geltungszeitraum, Stand, Kennung des Speichervorgangs, Änderungszeitpunkt und ändernde Kennung.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Die ändernde Kennung des letzten Stands; die Werte selbst beschreiben einen Bereich, keine Person. Ein Beleg ist Freitext und könnte einen Namen enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["management_lagebild_werte"] },
+    taetigkeit: "management",
+    loeschung: "Kein Löschweg; der Stand wird durch die nächste Eingabe überschrieben.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Betriebswerte eines Arbeitsbereichs; die Person steht nur als ändernde Kennung am jeweils letzten Stand. Noch nicht in die Auskunft aufgenommen (offen benannt).",
+    },
   },
   {
     id: "gesamtanweisungen",
@@ -599,6 +660,23 @@ export const DATENINVENTAR: readonly Datenart[] = [
     selbstauskunft: {
       enthalten: false,
       grund: "Arbeitsstand eines Dokuments, am Artikel als gesicherter Stand sichtbar.",
+    },
+  },
+  {
+    id: "meeting-dokumentbezuege",
+    name: "Meetingbezüge: Folien und Gesprächsstellen",
+    inhalt:
+      "Je Meetingbezug: Titel, Kennung des Eigners und der Teilnehmer, verbundene Präsentationsfassungen (Dateikennung, Fassung, Folienkennung, Folientitel, Sprechernotiz), Folienwechsel, verbundene Mitschriften (Zeitstelle, Sprecherbezeichnung, Gesprächstext), Rückmeldungen mit Zuordnungshistorie und Änderungsobjekte.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennungen von Eigner und Teilnehmern, Sprecherbezeichnungen und Gesprächstext der Mitschrift.",
+    ablage: { ort: DATENBANK, tabellen: ["meeting_dokumentbezuege"] },
+    taetigkeit: "wissen",
+    loeschung: "Mit dem Bestandsreset; kein eigener Löschweg in dieser Fassung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Im Meetingbezug selbst für Eigner und Teilnehmer einsehbar.",
     },
   },
   {
@@ -693,9 +771,10 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "spaces",
     name: "Arbeitsräume (Spaces)",
     inhalt:
-      "Fassungen der Arbeitsräume mit Name, Zweck, zuständiger Person, Mitgliedern samt Recht, Ansichten, anlegender und ändernder Kennung.",
+      "Fassungen der Arbeitsräume mit Name, Zweck, zuständiger Person, Mitgliedern samt Recht, Ansichten, Firmenkontext (eigene Firma, Partner, öffentlich) samt Namen des Partners, Konten mit Existenzrecht, anlegender und ändernder Kennung.",
     personenbezug: "ja",
-    personenbezugGrund: "Kennungen der zuständigen Person, der Mitglieder und der Bearbeiter.",
+    personenbezugGrund:
+      "Kennungen der zuständigen Person, der Mitglieder, der Konten mit Existenzrecht und der Bearbeiter.",
     ablage: { ort: DATENBANK, tabellen: ["spaces_fassungen"] },
     taetigkeit: "wissen",
     loeschung: "Kein Löschweg — jede Fassung bleibt zuordenbar.",
@@ -833,7 +912,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "einstellungen",
     name: "Betriebseinstellungen",
     inhalt:
-      "Schwellen, Prüferanzahl, Upload-Grenzen, KI-Zuordnung, externe Recherche, Markenwahl, Importschalter, KI-Assist-Vorgaben, Schreibstandzähler.",
+      "Schwellen, Prüferanzahl, Upload-Grenzen, KI-Zuordnung, externe Recherche, Markenwahl, Importschalter, KI-Assist-Vorgaben, Schreibstandzähler, Produktbudgets samt Buchungen und Änderungsvermerk.",
     personenbezug: "moeglich",
     personenbezugGrund:
       "Keine Angaben über Personen; einzelne Einstellungen können die Kennung der zuletzt ändernden Person tragen.",
@@ -849,6 +928,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
         "confluence_import_schalter",
         "assist_presets",
         "ko_schreibstand",
+        "produktbudget",
       ],
     },
     taetigkeit: "betrieb",

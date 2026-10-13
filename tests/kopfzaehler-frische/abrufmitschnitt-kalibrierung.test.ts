@@ -78,7 +78,7 @@ afterEach(() => {
   }
 });
 
-/** Die Seite holt einmal alle fünf Zählquellen erfolgreich — der Stand „vorher". */
+/** Die Seite holt einmal alle Zählquellen erfolgreich — der Stand „vorher". */
 async function grundstand(): Promise<{
   gestartet: Record<string, number>;
   bestaetigt: ReturnType<typeof herkunft>;
@@ -121,7 +121,9 @@ describe("Kalibrierung · der Mitschnitt sieht jeden zusätzlichen Abruf einer Z
     await ruhe();
     expect(anfragenJeQuelle(seite().__anfragen)["/api/conflicts"]).toBe(2);
     expect(anfragenJeQuelle(seite().__anfragen)).not.toEqual(vorher.gestartet);
-    expect(seite().__abrufe, "ohne Antwort gibt es noch keinen Antworteintrag").toHaveLength(5);
+    expect(seite().__abrufe, "ohne Antwort gibt es noch keinen Antworteintrag").toHaveLength(
+      ZAEHLQUELLEN.length,
+    );
   });
 
   it("K3 · zusätzlicher Abruf mit Netzfehler: Start gezählt, Antwort als Status 0, Fehler geht weiter", async () => {

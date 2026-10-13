@@ -31,15 +31,18 @@ import {
   type KnowledgeRef,
   type Reasoner,
   type ReasonerLocale,
+  type ReferenzRolle,
   type Relevanztext,
   type ZuordnungsPaar,
   type ZweitmeinungErgebnis,
+  antwortRolleVon,
   decktAlleFragebegriffe,
   queryTokens,
   waehleKandidaten,
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
 import { type AnsprechpartnerAuskunft, leiteAnsprechpartnerAb } from "./ansprechpartner";
+import { answerCheckState } from "./answer-evidence";
 import {
   BEANSTANDUNG_FRAGE,
   type BeanstandungEingabe,
@@ -100,12 +103,14 @@ import {
   vorgangsphase,
   zurueckweisungMeldungId,
 } from "./gap-vorgang";
+import { gegenpositionOhneModell } from "./gegenposition-ohne-modell";
 import { aussageFingerabdruck, signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
 import { type AnswerSnapshotRepo, type GapRepo, gleicherLueckenstand } from "./repo";
 import {
   ANSWER_SNAPSHOT_SCHEMA_VERSION,
   type AnswerEvidenceRef,
   type AnswerEvidenceSnapshot,
+  type AnswerNullReason,
   type AskCaller,
   AskError,
   type Gap,
@@ -132,6 +137,59 @@ import {
 } from "./wissensstand-vergleich";
 
 const HELPFUL_TRUST_STEP = 2;
+
+/**
+ * ================================================================================================
+ * ANTWORTBELEG (R-0293 / R-0317) — QUELLFASSUNG UND FUNDSTELLE AUS DEM QUELLENANKER.
+ * ================================================================================================
+ *
+ * Bis hierher schrieb der Belegweg beide Felder ausnahmslos leer, mit Gruenden aus der Zeit, als
+ * niemand Quellrevisionen schrieb. Das stimmt seit R-0169 nicht mehr: die Importwege legen die
+ * festgeschriebene Quellfassung (`KoSource.sourceRecordId`) an den Quellenanker, und der Anker
+ * reist im Versionsschnappschuss des Objekts mit. Gebunden wird deshalb, was das Objekt IN DER HAND
+ * DIESES LAUFS trug — kein Nachschlagen, keine Neusuche.
+ *
+ * DIE EINE REGEL GEGEN DAS RATEN: Die Antwort zitiert eine Wissenseinheit, nicht einen ihrer Anker.
+ * Traegt das Objekt GENAU EINEN Anker, ist er die Quelle; traegt es mehrere, ist nicht belegt,
+ * welcher die Antwort trug — dann bleiben beide Felder leer, mit `multiple_source_anchors`, statt
+ * den ersten oder letzten zu nehmen.
+ *
+ * Die Fundstelle ist die woertliche Belegstelle des Ankers (`excerpt`) — genau die Textstelle, auf
+ * die sich die Aussage der Wissenseinheit stuetzt.
+ */
+type Quellbindung = Pick<
+  AnswerEvidenceRef,
+  "sourceRecordId" | "sourceRecordIdReason" | "locator" | "locatorReason"
+>;
+
+function quellbindung(ko: KnowledgeObject | undefined): Quellbindung {
+  const leer = (grund: AnswerNullReason): Quellbindung => ({
+    sourceRecordId: null,
+    sourceRecordIdReason: grund,
+    locator: null,
+    locatorReason: grund,
+  });
+  if (ko === undefined) {
+    return leer("ko_not_in_execution");
+  }
+  // `?? []`: Altbestand im JSONB kann das Feld trotz Typ entbehren.
+  const anker = ko.sources ?? [];
+  if (anker.length === 0) {
+    return leer("no_source_anchor");
+  }
+  const [einziger, ...weitere] = anker;
+  if (einziger === undefined || weitere.length > 0) {
+    return leer("multiple_source_anchors");
+  }
+  const fassung = einziger.sourceRecordId?.trim() ? einziger.sourceRecordId : null;
+  const stelle = einziger.excerpt?.trim() ? einziger.excerpt : null;
+  return {
+    sourceRecordId: fassung,
+    sourceRecordIdReason: fassung === null ? "anchor_without_source_record" : null,
+    locator: stelle,
+    locatorReason: stelle === null ? "anchor_without_excerpt" : null,
+  };
+}
 
 /**
  * produkt:20261010:wissenskreislauf-schliessen: wie oft ein Vorgangsschritt am frischen Stand neu
@@ -869,7 +927,47 @@ function aufruferBeschriftung(aufrufer: AskCaller): string {
   return aufrufer.kind === "system" ? SYSTEM_ACTOR : aufrufer.userId;
 }
 
+// produkt:20261009:referenzki-pruefdienst (REF-02): das tatsächliche Antwortmodell GENAU DIESER
+// Frage — gebunden an das zurückgegebene Ergebnisobjekt, nicht als Feld darin. Anbieter und Modell
+// sind Adminangaben (WP-VIP2-GATE-2); ein Feld im Ergebnis ginge über `...out` an jeden Fragenden.
+const FRAGE_ROLLEN = new WeakMap<object, ReferenzRolle>();
+// Dasselbe für die beiden Seiten eines Stichtagsvergleichs (Ben nacharbeit-3).
+const VERGLEICH_ROLLEN = new WeakMap<
+  object,
+  { heute: ReferenzRolle | undefined; damals: ReferenzRolle | undefined }
+>();
+
+function mitAntwortRolle<T extends object>(ergebnis: T, rolle: ReferenzRolle | undefined): T {
+  if (rolle) {
+    FRAGE_ROLLEN.set(ergebnis, rolle);
+  }
+  return ergebnis;
+}
+
 export class AskService {
+  /**
+   * REF-02: das Modell, das die Antwort dieses Ergebnisses geschrieben hat — `undefined`, wenn es
+   * nicht festgehalten ist (Rückgabe ohne Antwortlauf, Test-Doppelgänger). Nie geraten.
+   */
+  antwortRolleVon(ergebnis: AskResult): ReferenzRolle | undefined {
+    return FRAGE_ROLLEN.get(ergebnis);
+  }
+
+  /**
+   * produkt:20261009:referenzki-antwortstatus (REF-04, K1): die tatsächlichen Modelle der beiden
+   * ausgelieferten Zweitmeinungsantworten — die Rolle hängt der Reasoner an genau diese Objekte
+   * (`answerMitZweitmeinung`). Nicht festgehalten heißt `undefined`, nie geraten.
+   */
+  antwortRollenDerZweitmeinung(ergebnis: AskResult): {
+    erste: ReferenzRolle | undefined;
+    zweite: ReferenzRolle | undefined;
+  } {
+    const z = ergebnis.zweitmeinung;
+    return z?.status === "verglichen"
+      ? { erste: antwortRolleVon(z.erste), zweite: antwortRolleVon(z.zweite) }
+      : { erste: undefined, zweite: undefined };
+  }
+
   private readonly reasoner: Reasoner;
   private readonly koService: KoService;
   private readonly gaps: GapRepo;
@@ -1409,7 +1507,7 @@ export class AskService {
       zweitmeinungFeld.zweitmeinung = beide.zweitmeinung;
       return beide.erste;
     };
-    const rawResult = await this.mitUebertragungssperre(() =>
+    const rawMitLauf = await this.mitUebertragungssperre(() =>
       opts?.retrievalOnly
         ? // JOB 3049: TOR 2, Weg des Add-ins — derselbe Relevanztext wie an Tor 1. Ohne ihn hier
           // wäre genau der Klara-Weg der eine, der die Zusage nicht einlöst.
@@ -1431,6 +1529,27 @@ export class AskService {
             dokumenttext,
           ),
     );
+    // REF-02: wer GENAU DIESE Antwort geschrieben hat. Der wörtliche Weg des Add-ins ist der
+    // deterministische Ersatz ohne Modell — auch das ist eine festgehaltene Rolle, keine Lücke.
+    // Nachgeschlagen am Ergebnisobjekt des Reasoners selbst (`rawMitLauf`): die Abtrennung der
+    // Laufkennung unten erzeugt ein neues Objekt. Die Gegenposition entsteht nur an einer Antwort
+    // des deterministischen Ersatzes und ändert die Rolle daher nicht.
+    const antwortRolle: ReferenzRolle | undefined = opts?.retrievalOnly
+      ? { anbieter: "deterministic", modell: null, stufe: "deterministic" }
+      : antwortRolleVon(rawMitLauf);
+    // ANTWORTBELEG (R-0317): die Laufprotokoll-Kennung geht in den Beleg, NICHT an die Antwortfläche.
+    // Sie wird hier abgetrennt, damit alles Weitere (Antwort, Wissenslücke, Ausgabe) feldgleich bleibt.
+    const { modelRunId: modelllauf, ...antwortwegErgebnis } = rawMitLauf;
+    // P05-AC08 (B-02/B-05): ohne Modell keine Widerspruchsprüfung — trägt eine weitere bestätigte
+    // Quelle derselben Auswahl einen anderen Wortlaut, wird nicht still gewählt, sondern beide
+    // genannt und gezielt nach dem Geltungsfall gefragt (Regel und Grenzen im Modul). Der wörtliche
+    // Add-in-Weg bleibt unberührt. Zusammenführung mit R-0317: die Gegenposition wirkt auf das
+    // Ergebnis OHNE Laufkennung — die Kennung reist unverändert über `modelllauf` in den Beleg.
+    const gegenposition =
+      opts?.retrievalOnly === true
+        ? null
+        : gegenpositionOhneModell(antwortwegErgebnis, candidates, locale);
+    const rawResult = gegenposition ?? antwortwegErgebnis;
     // D5: danach werden Beleg, Wissenslücke und (in der Route) die Quellobjekte der Einstufung
     // geschrieben bzw. gelesen. Ist inzwischen abgeschaltet, wird nichts davon mehr ausgeliefert.
     this.pruefeKiSperre("ergebnis", kiBeginn);
@@ -1589,7 +1708,13 @@ export class AskService {
     // Identitaet, und keiner kann sie stillschweigend verlieren.
     // D5: nach dem Warten auf die Volltext-Blicke oben — vor dem Beleg, der die Antwort ablegt.
     this.pruefeKiSperre("ergebnis", kiBeginn);
-    const answerId = await this.schreibeAntwortbeleg(result, prefiltered, aufrufer, kiBeginn);
+    const answerId = await this.schreibeAntwortbeleg(
+      result,
+      prefiltered,
+      aufrufer,
+      kiBeginn,
+      modelllauf,
+    );
     // REF-01: die Aussage-zu-Passagen-Bindung. Grundlage ist der VOLLSTÄNDIG AUSGELIEFERTE Text —
     // samt der Wörterbucherklärungen des Zuschnitts. Sie sind Teil der Antwort; was keine Fundstelle
     // in einer tragenden Quelle hat, steht ausdrücklich als Deckungslücke da, und eine geänderte
@@ -1768,10 +1893,29 @@ export class AskService {
         () => this.pruefeKiSperre("ergebnis", kiBeginn),
         belegbedarf,
       );
-      return {
+      return mitAntwortRolle<AskResult>(
+        {
+          result,
+          answerId,
+          gap,
+          receipt,
+          quellenStand,
+          ...ungeprueftFeld,
+          ...verschlossenFeld,
+          ...zweitmeinungFeld,
+          ...zweitmeinungAussagenFeld,
+          ...geltungFeld,
+          ...zuschnittFeld,
+          pruefrahmen,
+        },
+        antwortRolle,
+      );
+    }
+    return mitAntwortRolle<AskResult>(
+      {
         result,
         answerId,
-        gap,
+        gap: null,
         receipt,
         quellenStand,
         ...ungeprueftFeld,
@@ -1780,24 +1924,11 @@ export class AskService {
         ...zweitmeinungAussagenFeld,
         ...geltungFeld,
         ...zuschnittFeld,
+        ...aussagenFeld,
         pruefrahmen,
-      };
-    }
-    return {
-      result,
-      answerId,
-      gap: null,
-      receipt,
-      quellenStand,
-      ...ungeprueftFeld,
-      ...verschlossenFeld,
-      ...zweitmeinungFeld,
-      ...zweitmeinungAussagenFeld,
-      ...geltungFeld,
-      ...zuschnittFeld,
-      ...aussagenFeld,
-      pruefrahmen,
-    };
+      },
+      antwortRolle,
+    );
   }
 
   /**
@@ -1946,7 +2077,7 @@ export class AskService {
         antwortGeaendert: geaendert,
       },
     });
-    return {
+    const vergleich: WissensstandVergleich = {
       stichtag: new Date(stichtagMs).toISOString(),
       heute: heute.antwort,
       damals: damals.antwort,
@@ -1955,6 +2086,20 @@ export class AskService {
       antwortGeaendert: geaendert,
       quellen,
     };
+    // REF-02: die Rollen beider Seiten neben dem Ergebnis, nicht darin (s. `FRAGE_ROLLEN`).
+    VERGLEICH_ROLLEN.set(vergleich, { heute: heute.rolle, damals: damals.rolle });
+    return vergleich;
+  }
+
+  /**
+   * REF-02 (Ben nacharbeit-3): die tatsächlichen Antwortmodelle beider Seiten eines Stichtags-
+   * vergleichs — je `undefined`, wenn nicht festgehalten. Nie geraten.
+   */
+  antwortRollenDesVergleichs(vergleich: WissensstandVergleich): {
+    heute: ReferenzRolle | undefined;
+    damals: ReferenzRolle | undefined;
+  } {
+    return VERGLEICH_ROLLEN.get(vergleich) ?? { heute: undefined, damals: undefined };
   }
 
   /**
@@ -1970,7 +2115,11 @@ export class AskService {
     relevanz: Relevanztext,
     actor: string,
     kiBeginn: number | undefined,
-  ): Promise<{ antwort: AnswerResult; aussagen: AussagenBeleg | null }> {
+  ): Promise<{
+    antwort: AnswerResult;
+    aussagen: AussagenBeleg | null;
+    rolle: ReferenzRolle | undefined;
+  }> {
     const jetzt = new Date(this.now()).toISOString();
     // REF-01 (nacharbeit-7, K1): die Bindungsquellen in GENAU den übergebenen Fassungen — derselbe
     // Volltext, den der Antwortweg dieser Seite gelesen hat.
@@ -2016,7 +2165,12 @@ export class AskService {
       roh.answered && roh.sources.length === 0
         ? { ...ohneAbbruch, answered: false, answer: null, citedSources: [] }
         : roh;
-    return { antwort, aussagen: bindeAntworttext(antwort, bindungsQuellen) ?? null };
+    // REF-02 (Ben nacharbeit-3): das tatsächliche Modell GENAU DIESER Seite des Vergleichs.
+    return {
+      antwort,
+      aussagen: bindeAntworttext(antwort, bindungsQuellen) ?? null,
+      rolle: antwortRolleVon(roh),
+    };
   }
 
   /**
@@ -2031,11 +2185,12 @@ export class AskService {
    * Client-Evidence, kein Nachschlagen einer Validierungsentscheidung. Der Schreibweg liest
    * NICHTS — er schreibt nur nieder, was der Antwortlauf ohnehin schon in der Hand hat.
    *
-   * DIE DREI LEEREN FELDER SIND DER EHRLICHE TEIL. `resolutionId` bleibt leer, weil der
-   * Antwortweg W1 nicht beruehrt; `sourceRecordId`, weil niemand Quellrevisionen schreibt; und
-   * `validationDecisionRef`, weil es zwischen Bewertung und Antwort keinen Traeger gibt
-   * (Prewrite 72 §2). Jedes davon traegt seinen maschinenlesbaren Grund — ein leeres Feld ohne
-   * Grund waere ein Schweigen, das wie eine Aussage aussieht.
+   * LEERE FELDER SIND DER EHRLICHE TEIL. `resolutionId` bleibt leer, weil der Antwortweg W1 nicht
+   * beruehrt. Quellfassung und Fundstelle werden aus dem Quellenanker gebunden und bleiben nur leer,
+   * wo der Anker sie nicht traegt (`quellbindung`, Antwortbeleg-Nacharbeit 3). Die
+   * Validierungsreferenz steht je Evidence (KW-W3-23). Jedes leere Feld traegt seinen
+   * maschinenlesbaren Grund — ein leeres Feld ohne Grund waere ein Schweigen, das wie eine Aussage
+   * aussieht.
    *
    * FEHLER HIER DUERFEN DIE ANTWORT NICHT VERSCHLUCKEN: der Beleg ist eine Zugabe, keine
    * Vorbedingung. Schlaegt das Schreiben fehl, bekommt der Fragende trotzdem seine Antwort —
@@ -2048,6 +2203,9 @@ export class AskService {
     // ein Konto meint. Jetzt kommt die Entscheidung fertig an — der Schreibweg trifft sie nicht mehr.
     aufrufer: AskCaller,
     kiBeginn: number | undefined,
+    // R-0317: die Kennung des Laufprotokoll-Datensatzes dieser Antwort (Reasoner.answer) — fehlt
+    // auf dem Retrieval-Weg ohne Modelllauf und ohne verdrahtetes Laufprotokoll.
+    modelllauf: string | undefined,
   ): Promise<string | null> {
     const repo = this.answerSnapshots;
     if (!repo) {
@@ -2080,10 +2238,8 @@ export class AskService {
         knowledgeObjectId: koId,
         knowledgeObjectVersion: ko?.version ?? null,
         evidenceRole: tragend ? "carrying" : "consulted",
-        sourceRecordId: null,
-        sourceRecordIdReason: "w2a_not_wired",
-        locator: null,
-        locatorReason: "no_locator_from_import",
+        // R-0293 / R-0317: Quellfassung und Fundstelle aus dem Quellenanker, den der Lauf hielt.
+        ...quellbindung(ko),
         // KW-W3-23 §2: GENAU EINES von beidem. Traegt das Objekt eine Entscheidung, steht sie hier;
         // sonst der Grund, warum nicht — und der haengt an der ROLLE: eine tragende Quelle SOLL
         // eine Entscheidung haben (`NOT_AVAILABLE_AT_EXECUTION` ist dann eine echte Luecke), eine
@@ -2095,6 +2251,20 @@ export class AskService {
                 ? ("NOT_AVAILABLE_AT_EXECUTION" as const)
                 : ("NOT_REQUIRED" as const),
             }),
+        // R-0317 / R-0340: Rechtelage und Zustaendigkeit, wie sie DIESER Lauf am Objekt vorfand.
+        // Dieselbe Regel wie bei der Fassung: abgeschrieben aus `herangezogen`, nicht nachgeschlagen.
+        // Fehlt das Objekt, fehlen auch diese Angaben — erfunden wird nichts.
+        ...(ko !== undefined
+          ? {
+              confidentialityAtExecution: ko.confidentiality ?? null,
+              responsibleAtExecution: responsibleOf(ko),
+              responsibleKindAtExecution: responsibleKindOf(ko),
+            }
+          : {}),
+        // R-0293 (Ben, Nacharbeit 7): der Pruef-Lauf, wie ihn die Antwort fuer ihren Pruefvorbehalt
+        // liest (`answerCheckState`) — getrennt von der Freigabe oben. Ein Objekt, das der Lauf nicht
+        // hielt, ist `unknown`, genau wie in der Antwortbewertung.
+        checkStateAtExecution: answerCheckState(ko),
       };
     });
     const roh: AnswerEvidenceSnapshot = {
@@ -2114,6 +2284,15 @@ export class AskService {
       validationDecisionRefReason: "w3_23_ref_liegt_je_evidence",
       status: "PENDING_EVIDENCE",
       integrityHash: "",
+      // R-0317: die Erzeugungsart aus der KI-Kennzeichnung; ohne Kennzeichnung aus `demo`, demselben
+      // Marker, aus dem die Kennzeichnung selbst entsteht (model-runs/src/types.ts, aiGeneratedMark).
+      generationMode: result.aiGenerated?.mode ?? (result.demo ? "deterministic" : "model"),
+      // R-0317 (Ben, Nacharbeit 3): WELCHE Modellfassung — als unveränderliche interne Referenz auf
+      // den Laufprotokoll-Datensatz, der Anbieter und tatsächlich gerufenes Modell trägt. Der Beleg
+      // selbst trägt keinen Anbieternamen; gelesen wird der Datensatz über das Laufprotokoll mit
+      // dessen eigenen Rechten. Fehlt er, steht der Grund daneben.
+      modelRunId: modelllauf ?? null,
+      modelRunIdReason: modelllauf === undefined ? "no_model_run_recorded" : null,
     };
     const mitStatus: AnswerEvidenceSnapshot = { ...roh, status: answerSnapshotStatus(roh) };
     const snapshot: AnswerEvidenceSnapshot = {

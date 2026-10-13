@@ -18,7 +18,7 @@ const de = {
   "extpage.help.scope.body":
     "Externe Treffer sind Recherchehilfe, kein geprüftes Wissen: nichts wird automatisch importiert oder von Kolleg:innen validiert. Ist die externe Abfrage vom Admin gesperrt, bleibt der Bereich leer.",
   "app.name": "KLARWERK",
-  "app.subtitle": "Reasoning System",
+  "app.subtitle": "Knowledge OS",
   "app.staleBundle":
     "Eine neue Version der App ist verfügbar — bitte die Seite neu laden (Cmd+R bzw. Strg+R).",
   // JOB 3268 (D1-R): ZWEI verschiedene Zustände, zwei verschiedene Sätze. Der Satz darüber gehört
@@ -453,7 +453,7 @@ const de = {
   "status.konflikt": "Konflikt",
   "quality.preliminary": "Vorläufig",
   "quality.reliable": "Belastbar",
-  "quality.assured": "Gesichert",
+  "quality.assured": "Fachlich bestätigt",
   "evidence.percentSure": "Prüfstand: {{pct}} %",
   // AUFTRAG-mega51 BLOCK D1: der Balken sagt jetzt, WAS er zeigt (title + aria-label).
   "evidence.confidenceLabel": "Prüfstand: {{pct}} von 100",
@@ -865,7 +865,7 @@ const de = {
   "kg.ask.title": "Antworten sind quellengebunden",
   "kg.ask.body":
     "Die Fragen-Seite nutzt den Wissensbestand; offene oder ungeprüfte Quellen werden markiert und zur Validierung geführt.",
-  "kg.secured.label": "Gesichert",
+  "kg.secured.label": "Fachlich bestätigt",
   "kg.secured.body":
     "Validiertes Wissen ist nutzbar und bleibt über Quellen, Vertrauen und Version nachvollziehbar.",
   "kg.review.label": "Zu prüfen",
@@ -978,6 +978,14 @@ const de = {
   "task.filter.conflict": "Konflikte",
   "task.filter.gap": "Wissenslücken",
   "task.filter.revalidation": "Revalidierung",
+  "task.filter.authorTransfer": "Autorenübergabe",
+  "task.authorTransfer": "Autorenübergabe",
+  "task.authorTransfer.grund.konto-geloescht": "Autorenkonto gelöscht",
+  "task.authorTransfer.grund.ausgeschieden": "Autor ausgeschieden",
+  "task.authorTransfer.grund.angefordert": "Übergabe angefordert",
+  "task.action.authorTransfer": "Neuen Autor bestimmen",
+  "task.explain.authorTransfer":
+    "Dieses Wissen braucht einen erreichbaren Autor. Öffne den Eintrag, wähle unter „Mehr“ → „Provenienz“ den neuen Autor und übertrage. Danach ist die Aufgabe erledigt; der Originalautor bleibt vermerkt.",
   "task.conflict": "Konflikt",
   "task.validation": "Validierung",
   "task.revalidation": "Re-Validierung",
@@ -2843,7 +2851,7 @@ const de = {
     "Zeigt, ob Antworten über ein konfiguriertes Modell oder den regelbasierten Fallback laufen. Quellen und Validierung bleiben gleich.",
   "ask.fromValidated": "Aus quellengebundenem Wissen",
   "ask.evidence": "Evidenz",
-  "ask.knowledgeClass.gesichert": "Gesichert",
+  "ask.knowledgeClass.gesichert": "Fachlich bestätigt",
   "ask.knowledgeClass.ungeprueft": "Ungeprüft",
   "ask.knowledgeClass.meinung": "Meinung/Erfahrung",
   "ask.knowledgeClass.extern": "Externe Quelle",
@@ -2951,7 +2959,7 @@ const de = {
   "ask.aiUnavailable.toCapture": "Wissen erfassen",
   "ask.helpful": "Hat geholfen",
   "ask.thanked": "Danke!",
-  "ask.status.verified": "Gesichert",
+  "ask.status.verified": "Fachlich bestätigt",
   "ask.status.unverified": "Noch ungeprüft",
   "ask.reviewGuard.openLabel": "Noch nicht als gesichertes Wissen nutzen",
   "ask.reviewGuard.openHint":
@@ -3784,6 +3792,12 @@ const de = {
   "ko.transferPick": "Neuen Autor wählen …",
   "ko.transfer": "Übergeben",
   "ko.transferDone": "Autor übergeben. Originalautor bleibt sichtbar.",
+  // Autorenübergabe-Auftrag (R-0961): die Übergabe ausdrücklich verlangen (Autor oder Admin).
+  "ko.transferRequest": "Übergabe anfordern",
+  "ko.transferRequestHint":
+    "Die Verwaltung bekommt eine wartende Aufgabe „Autorenübergabe“ und bestimmt einen neuen Autor.",
+  "ko.transferRequestDone":
+    "Übergabe angefordert. Die Verwaltung sieht sie unter „Offene Aufgaben“.",
   "ko.history": "Versionen",
   "ko.evidenceTitle": "Evidenz",
   // ================================================================================================
@@ -4980,6 +4994,10 @@ const de = {
   "imp.gallery.unconfigured": "nicht konfiguriert",
   "imp.gallery.hintUnconfigured":
     "Vorhanden, aber nicht nutzbar: für die Transkription ist kein Dienst hinterlegt. Ein Administrator kann ihn in der Verwaltung einrichten.",
+  // Aufnahme `gesamt-ocr` (R-0121, Nacharbeit 6): bei eingerichtetem Dienst nennt die Kachel den
+  // vorhandenen Weg — sie lädt selbst nichts hoch.
+  "imp.gallery.hintAvtranscriptActive":
+    "Der Transkriptionsdienst ist eingerichtet. Im Erfassen die Aufnahme über „Datei oder Bild beifügen“ anhängen und unter „Dokumente (Kontext / Anhang)“ auf „Transkribieren“ klicken. Diese Kachel lädt selbst nichts hoch.",
   // JOB 3190 (UX-18): „bald" war für Word und PDF schlicht falsch — dieselbe Datei wird im Erfassen
   // längst eingelesen. Der Text sagt beides: dass es die Funktion GIBT und WO sie liegt.
   "imp.gallery.elsewhere": "im Erfassen",
@@ -7053,7 +7071,7 @@ const de = {
   "fd.author": "Autor",
   "fd.whatOnSave": "Was beim Speichern passiert",
   "fd.whatOnSaveBody":
-    "Wird als Entwurf gesichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn du „Einreichen“ wählst; nichts wird automatisch validiert.",
+    "Wird als Entwurf gespeichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn du „Einreichen“ wählst; nichts wird automatisch validiert.",
   "fd.moreWays": "Mehr Erfassungswege",
   "fd.moreWaysBody":
     "Brauchst du das klassische Formular, Diktat oder das geführte Interview? Der vollständige Erfassen-Bereich hat alle Wege — diese Fläche hier ist der schnelle Einstieg.",
@@ -7072,7 +7090,8 @@ const de = {
   // JOB 3106 (UX-01): die bleibende Bestätigung unter den Knöpfen. Sie sagt genau das, was der
   // Server quittiert hat — der Entwurf liegt unter diesem Titel, und das Blatt schreibt in ihn
   // weiter (die Adresse trägt seine Kennung). Keine Zusage über die Entwurfsliste daneben.
-  "fd.saved.line": "Entwurf gesichert: {{titel}} — du schreibst hier in diesem Entwurf weiter.",
+  "fd.saved.line":
+    "Als Entwurf gespeichert: {{titel}} — du schreibst hier in diesem Entwurf weiter.",
   "fd.saved.toDrafts": "Meine Entwürfe",
   "fd.toastSubmitted": "Zur Prüfung eingereicht.",
   "fd.confirmDiscard": "Eingabe verwerfen? Nicht gespeicherte Inhalte gehen verloren.",
@@ -7141,7 +7160,7 @@ const de = {
   "erfassen.beispiel.keins": "Im Bestand liegt noch kein passendes Beispiel.",
   "erfassen.platzhalter.titel": "Titel",
   "erfassen.platzhalter.text": "Text",
-  "erfassen.entwurfSichern": "Entwurf sichern",
+  "erfassen.entwurfSichern": "Als Entwurf speichern",
   "erfassen.einreichen": "Einreichen",
   "erfassen.eingereicht": "Eingereicht:",
   "erfassen.live.aehnlich": "Ähnlich:",

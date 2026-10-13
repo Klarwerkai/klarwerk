@@ -421,10 +421,47 @@ interface KiStand {
   // R-0305/R-1099: das Modell der Zweitmeinung — oder „aus". Gehört aus demselben Grund zum Stand
   // wie die Freigabe: es wird über denselben Schreibweg gesetzt.
   readonly zweitmeinung: string;
+  // REF-02 (Ben nacharbeit-3): die erlaubten Referenz-KIs in Vorzugsreihenfolge — leer heißt „aus".
+  readonly referenzpruefung: readonly string[];
 }
 
 /** R-0305/R-1099: die gültigen Wahlen der Zweitmeinung — alles andere liest die Karte als „aus". */
 const ZWEITMEINUNG_WAHLEN = ["openai", "anthropic", "local"] as const;
+
+/**
+ * REF-02: die Liste der erlaubten Referenz-KIs aus einer Serverantwort — nur bekannte Werte, ohne
+ * Doppelungen, in der gemeldeten Reihenfolge. Ein älterer Server schickt das Feld nicht: dann leer.
+ */
+export function referenzAus(konfig: ReasonerConfigStatus | undefined): string[] {
+  const taskConfig: Record<string, unknown> | undefined = konfig?.taskConfig;
+  const roh = taskConfig?.referenzpruefung;
+  if (!Array.isArray(roh)) {
+    return [];
+  }
+  const liste: string[] = [];
+  for (const wert of roh) {
+    if (ZWEITMEINUNG_WAHLEN.some((w) => w === wert) && !liste.includes(wert as string)) {
+      liste.push(wert as string);
+    }
+  }
+  return liste;
+}
+
+/** REF-02: eine Option ein- bzw. ausschalten; neu Erlaubtes kommt ans Ende der Vorzugsreihe. */
+export function referenzUmschalten(liste: readonly string[], wahl: string): string[] {
+  return liste.includes(wahl) ? liste.filter((w) => w !== wahl) : [...liste, wahl];
+}
+
+/** REF-02: eine erlaubte Option um eine Stelle nach vorn. */
+export function referenzVorziehen(liste: readonly string[], wahl: string): string[] {
+  const i = liste.indexOf(wahl);
+  if (i <= 0) {
+    return [...liste];
+  }
+  const neu = [...liste];
+  [neu[i - 1], neu[i]] = [neu[i] as string, neu[i - 1] as string];
+  return neu;
+}
 
 /**
  * R-0305/R-1099: die Wahl der Zweitmeinung aus einer Serverantwort. Gelesen aus `unknown` wie die
@@ -476,6 +513,7 @@ function standAus(konfig: ReasonerConfigStatus | undefined): KiStand {
     perTask: konfig?.taskConfig.perTask ?? KEINE_AUFGABEN,
     freigabe: freigabeAus(konfig),
     zweitmeinung: zweitmeinungAus(konfig),
+    referenzpruefung: referenzAus(konfig),
   };
 }
 
@@ -504,7 +542,8 @@ function gleicherStand(a: KiStand, b: KiStand): boolean {
     a.global === b.global &&
     gleichePerTask(a.perTask, b.perTask) &&
     gleicheFreigabe(a.freigabe, b.freigabe) &&
-    a.zweitmeinung === b.zweitmeinung
+    a.zweitmeinung === b.zweitmeinung &&
+    a.referenzpruefung.join(",") === b.referenzpruefung.join(",")
   );
 }
 
@@ -782,6 +821,10 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
     }
     zweitmeinungSpeichern.mutate({ wahl, nummer });
   };
+  // REF-03: die erlaubten Referenz-KIs werden seit dem Einstieg „Referenzprüfung"
+  // (`pages/AdminKiReferenz.tsx`) dort gesetzt — über denselben Schreibweg am Server. Diese Karte
+  // liest die Liste weiter in ihren bestätigten Stand (`KiStand.referenzpruefung`), schreibt sie
+  // aber nicht mehr.
   // Gescheitertes Nachladen heißt: die Karte kennt den geltenden Stand nicht mehr sicher. Dann wird
   // nicht geraten, sondern gesperrt (Auftrag §7c) — die Hülle hält die Daten daneben sichtbar.
   const nachladenGescheitert = aiConfig.isError;
@@ -1161,6 +1204,18 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 </p>
               ) : null}
             </div>
+            {/* REF-03: DIE REFERENZ-KI hat ihren eigenen Einstieg (Verwaltung → KI →
+              Referenzprüfung). Hier steht nur noch, wo sie zu finden ist — eine zweite Auswahl
+              neben der dortigen wäre ein zweiter Bedienort für dieselbe Entscheidung. */}
+            <div className="space-y-1.5 border-t border-hairline pt-2.5">
+              <p className="text-[12.5px] font-semibold text-text">
+                {t("referenzpruefung.admin.titel")}
+              </p>
+              <p className="text-[12px] text-muted-2">{t("referenzpruefung.admin.text")}</p>
+              <p data-testid="ki-referenzpruefung-verweis" className="text-[12px] text-muted">
+                {t("referenzpruefung.admin.verweis")}
+              </p>
+            </div>
             {/* JOB 3134: ein abgelöster Wert (`cloud`/`model`) aus dem Bestand wurde beim Laden auf
               einen Anbieter überführt — sichtbar, nicht still; „übernehmen" schreibt den neuen Wert. */}
             {konfig.migration ? (
@@ -1240,7 +1295,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
               <span className="text-[12.5px] font-semibold text-text">
                 {t("adm.ai.detail")}
                 {Object.keys(effPerTask).length > 0 ? (
-                  <span className="ml-1.5 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold text-muted-2">
+                  <span className="ml-1.5 rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold text-muted-2">
                     {Object.keys(effPerTask).length}
                   </span>
                 ) : null}
@@ -1254,7 +1309,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                     <span className="inline-flex items-center gap-1.5">
                       {t(`adm.ai.task.${task}`)}
                       <span
-                        className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${
+                        className={`rounded-pill px-1.5 py-0.5 font-mono text-klein font-semibold uppercase ${
                           aiConfig.data?.effective[task] === "model"
                             ? "bg-ai-surface-1 text-ai"
                             : "bg-page text-muted-2"
@@ -1351,7 +1406,7 @@ export function KiZugaengeDetail({ onZurueck }: { onZurueck: () => void }): JSX.
                     <span className="font-mono text-[11px] text-muted-2">{row.detail}</span>
                   ) : null}
                   <span
-                    className={`ml-auto rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${ACCESS_STATE_TONE[row.state]}`}
+                    className={`ml-auto rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${ACCESS_STATE_TONE[row.state]}`}
                   >
                     {t(`adm.ai.state.${row.state}`)}
                   </span>

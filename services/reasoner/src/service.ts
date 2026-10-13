@@ -37,6 +37,7 @@ import {
   ModelTimeoutError,
   ReasonerMeldungFehler,
   classifyModelFailure,
+  ersatzGrundAus,
 } from "./model-errors";
 import type { ModelFailureInfo } from "./model-errors";
 import {
@@ -91,6 +92,7 @@ import type {
   ReasonerPolicySource,
   ReasonerProbeResult,
   ReasonerReachability,
+  ReasonerReferenzWahl,
   ReasonerStatus,
   ReasonerTask,
   ReasonerTaskChoice,
@@ -99,6 +101,14 @@ import type {
   ReasonerTaskMap,
   ReasonerWahlMigration,
   ReasonerZweitmeinungWahl,
+  ReferenzAufrufErgebnis,
+  ReferenzLage,
+  ReferenzOptionLage,
+  ReferenzOptionSperre,
+  ReferenzPruefer,
+  ReferenzPrueferGrund,
+  ReferenzPrueferWahl,
+  ReferenzRolle,
   Relevanztext,
   StructureResult,
   ZweitmeinungAntwort,
@@ -110,6 +120,7 @@ import type {
 import {
   REASONER_CLOUD_ANBIETER,
   REASONER_CLOUD_ANBIETER_NAME,
+  REASONER_REFERENZ_WAHLEN,
   REASONER_ZWEITMEINUNG_WAHLEN,
 } from "./types";
 // R-0305/R-1099: der reine Abgleich zweier Antworten.
@@ -354,6 +365,8 @@ function erzeugnisAus(task: ModelRunTask, ergebnis: unknown): ModelRunErzeugnis 
       break;
     case "conflict":
     case "duplicate":
+    // REF-02: ein Prüfurteil über eine Antwort.
+    case "referenz":
       [art, anzahl] = ["urteil", 1];
       break;
     // R-1657: ein Urteil je beurteiltem Bereich.
@@ -556,12 +569,62 @@ function clone(config: ReasonerTaskConfig): ReasonerTaskConfig {
     ...(config.kiFreigabe ? { kiFreigabe: { ...config.kiFreigabe } } : {}),
     // R-0305/R-1099: die Wahl der Zweitmeinung reist aus demselben Grund mit.
     ...(config.zweitmeinung ? { zweitmeinung: config.zweitmeinung } : {}),
+    // REF-02: die erlaubten Referenz-Prüfer reisen ebenso mit (als Kopie).
+    ...(config.referenzpruefung ? { referenzpruefung: [...config.referenzpruefung] } : {}),
   };
 }
 
 // R-0305/R-1099: nur die benannten Wahlen zählen; alles andere ist ein Eingabefehler, kein „aus".
 function istZweitmeinungWahl(wert: unknown): wert is ReasonerZweitmeinungWahl {
   return (REASONER_ZWEITMEINUNG_WAHLEN as readonly unknown[]).includes(wert);
+}
+
+/**
+ * REF-02: die Liste der erlaubten Referenz-Prüfer normalisieren. `undefined` = keine Liste (aus),
+ * eine Liste ohne Doppelungen in der angegebenen Reihenfolge, oder ein Wurf bei unbekanntem Wert —
+ * ein Tippfehler darf nicht still einen Empfänger weglassen oder hinzufügen.
+ */
+function normalisiereReferenzWahl(
+  eingabe: readonly unknown[] | null,
+): ReasonerReferenzWahl[] | undefined {
+  if (eingabe === null) {
+    return undefined;
+  }
+  if (!Array.isArray(eingabe)) {
+    throw new Error("Ungültige Liste der Referenz-Prüfer.");
+  }
+  const liste: ReasonerReferenzWahl[] = [];
+  for (const wert of eingabe) {
+    if (!(REASONER_REFERENZ_WAHLEN as readonly unknown[]).includes(wert)) {
+      throw new Error("Ungültige Wahl für die Referenzprüfung.");
+    }
+    const wahl = wert as ReasonerReferenzWahl;
+    if (!liste.includes(wahl)) {
+      liste.push(wahl);
+    }
+  }
+  return liste.length > 0 ? liste : undefined;
+}
+
+/** REF-02: Modellbezeichner vergleichen — Groß-/Kleinschreibung und Rand zählen nicht. */
+function gleichesModell(a: string | null, b: string | null): boolean {
+  return a !== null && b !== null && a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+// ================================================================================================
+// REF-02 · DAS TATSÄCHLICHE ANTWORTMODELL EINER ANFRAGE — NEBEN DER ANTWORT, NICHT IN IHR.
+// ================================================================================================
+//
+// Die Unabhängigkeit der Referenzprüfung (K7) ist nur nachweisbar, wenn das Modell bekannt ist, das
+// GENAU DIESE Antwort geschrieben hat — bei dynamischer Modellwahl je Anfrage verschieden. Die Rolle
+// wird deshalb an das Ergebnisobjekt gebunden, das `answer` zurückgibt, und reist NICHT im
+// Antwortvertrag mit: Anbieter und Modell sind Adminangaben (WP-VIP2-GATE-2), und ein Feld im
+// Ergebnis ginge an jeden Fragenden. Ein schwacher Verweis, damit nichts im Speicher hängen bleibt.
+const ANTWORT_ROLLEN = new WeakMap<object, ReferenzRolle>();
+
+/** Die Rolle, die eine Antwort dieses Reasoners geschrieben hat — `undefined`, wenn unbekannt. */
+export function antwortRolleVon(ergebnis: object): ReferenzRolle | undefined {
+  return ANTWORT_ROLLEN.get(ergebnis);
 }
 
 // ================================================================================================
@@ -1362,6 +1425,8 @@ export class Reasoner {
     bisher?: ReasonerKiFreigabe | undefined,
     // R-0305/R-1099: die bisherige Wahl der Zweitmeinung — dieselbe Regel wie `bisher`.
     bisherZweitmeinung?: ReasonerZweitmeinungWahl | undefined,
+    // REF-02: die bisherige Liste der Referenz-Prüfer — dieselbe Regel.
+    bisherReferenz?: readonly ReasonerReferenzWahl[] | undefined,
   ): {
     config: ReasonerTaskConfig;
     migration: ReasonerPolicyMigration | undefined;
@@ -1407,12 +1472,20 @@ export class Reasoner {
     if (next.zweitmeinung !== undefined) {
       zweitmeinung = next.zweitmeinung ?? undefined;
     }
+    // REF-02: weglassen = unverändert, `null`/`[]` = aus, sonst nur benannte Werte.
+    const referenzpruefung =
+      next.referenzpruefung === undefined
+        ? bisherReferenz && bisherReferenz.length > 0
+          ? [...bisherReferenz]
+          : undefined
+        : normalisiereReferenzWahl(next.referenzpruefung);
     return {
       config: {
         global: global.wahl,
         perTask,
         ...(kiFreigabe ? { kiFreigabe } : {}),
         ...(zweitmeinung ? { zweitmeinung } : {}),
+        ...(referenzpruefung ? { referenzpruefung } : {}),
       },
       migration: migriert ? migration : undefined,
     };
@@ -1438,6 +1511,7 @@ export class Reasoner {
       next,
       this.taskConfig.kiFreigabe,
       this.taskConfig.zweitmeinung,
+      this.taskConfig.referenzpruefung,
     ); // wirft bei Ungültigem, bevor irgendetwas passiert
     await this.policyRepo.set(normalized.config); // ZUERST persistieren …
     this.taskConfig = normalized.config; // … Laufzeit erst nach erfolgreichem Write
@@ -1569,7 +1643,15 @@ export class Reasoner {
     lenkung?: {
       kette?: readonly ReasonerProvider[];
       beantwortetVon?: (provider: ReasonerProvider) => void;
+      // PV-03-01: jeder gescheiterte Versuch, nach dem die Kette weiterläuft — der Aufrufer leitet
+      // daraus die Ursache des Ersatzwegs ab. Auslastung und Abschaltung brechen ab und melden nicht.
+      fehlversuch?: (fehler: unknown) => void;
     },
+    // ANTWORTBELEG (R-0317): die vom Aufrufer vergebene Kennung des ERFOLGSdatensatzes. So kann der
+    // Aufrufer genau den Laufprotokoll-Eintrag benennen, der sein Ergebnis belegt. Ohne sie vergibt
+    // `recordRun` wie bisher selbst eine Kennung. Hinter `lenkung`, damit deren Aufrufer
+    // unverändert bleiben.
+    erfolgsLaufId?: string,
   ): Promise<T> {
     const startedAt = new Date().toISOString();
     // D5: die Abschalt-Epoche beim Start dieses Laufs — vor jedem Warten (s. `kiAbschaltStand`).
@@ -1729,6 +1811,7 @@ export class Reasoner {
           startedAt,
           "success",
           {
+            ...(erfolgsLaufId ? { id: erfolgsLaufId } : {}),
             fallback: i > 0,
             demo: result.demo,
             provider: provider.name,
@@ -1790,6 +1873,7 @@ export class Reasoner {
           throw err;
         }
         lastError = err;
+        lenkung?.fehlversuch?.(err);
         // JOB 3036 R2: auch hier zählt nur der wirklich erfolgte Aufruf. Ein Provider, der vor dem
         // Client-Aufruf an etwas anderem gescheitert ist, hat kein Modell versucht.
         const versuchsModell = spur.gerufen ? provider.modelName?.() : undefined;
@@ -1889,6 +1973,8 @@ export class Reasoner {
     startedAt: string,
     status: ModelRunStatus,
     extra: {
+      // ANTWORTBELEG (R-0317): vom Aufrufer vergebene Kennung (s. `runTask`); sonst eine neue.
+      id?: string;
       fallback: boolean;
       demo: boolean;
       provider: string;
@@ -1911,7 +1997,7 @@ export class Reasoner {
     }
     const runContext = sanitizeModelRunContext(context);
     await this.modelRuns.append({
-      id: randomUUID(),
+      id: extra.id ?? randomUUID(),
       task,
       provider: extra.provider,
       demo: extra.demo,
@@ -2572,7 +2658,14 @@ export class Reasoner {
     // bisherige.
     dokumenttext?: string,
   ): Promise<AnswerResult> {
-    const result = await this.runTask(
+    // REF-02: das Glied, das GENAU DIESE Antwort geliefert hat (s. `ANTWORT_ROLLEN`).
+    // PV-03-01: dazu der letzte gescheiterte Versuch davor (s. `mitErsatzGrund`).
+    const lauf: { provider?: ReasonerProvider; fehler?: unknown } = {};
+    // ANTWORTBELEG (R-0317): die Kennung des Laufprotokoll-Datensatzes, der diese Antwort belegt —
+    // hier vergeben, damit sie dem Ergebnis mitgegeben werden kann. `runTask` schreibt den
+    // Erfolgsdatensatz VOR der Rückgabe; kehrt der Aufruf zurück, steht der Datensatz.
+    const laufId = randomUUID();
+    const roh = await this.runTask(
       "answer",
       locale,
       (p) =>
@@ -2581,14 +2674,71 @@ export class Reasoner {
           : p.answer(question, context, locale, confidential, relevanz, dokumenttext),
       confidential,
       runContext,
+      {
+        beantwortetVon: (p) => {
+          lauf.provider = p;
+        },
+        fehlversuch: (fehler) => {
+          lauf.fehler = fehler;
+        },
+      },
+      laufId,
     );
+    const result = this.mitErsatzGrund(roh, lauf);
     // AUFTRAG-mega61 Block F: die Kennzeichnung wird HIER gesetzt und nicht in den Providern —
     // es gibt drei Provider-Wege zu einer Antwort (Cloud, lokal, deterministisch), und drei
     // Stellen wären drei Gelegenheiten, sie zu vergessen.
     // R-0604 (G22, mega83 A): gesetzt wird sie aber nur, wenn wirklich ein Modell geantwortet hat.
     // Der deterministische Rückfall stellt Sätze aus geprüftem Wissen regelbasiert zusammen — ihn
     // „von KI erzeugt" zu nennen, war genau die Falschaussage aus G22.
-    return mitHerkunftsmarke(result);
+    // REF-02 + R-0317: die Rolle wird an das AUSGELIEFERTE Objekt gebunden — `mitLaufkennung`
+    // erzeugt ein neues Objekt, deshalb zuletzt.
+    return this.mitAntwortRolle(
+      this.mitLaufkennung(mitHerkunftsmarke(result), laufId),
+      lauf.provider,
+    );
+  }
+
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): hat der deterministische Ersatz
+  // geantwortet, NACHDEM ein Modellversuch gescheitert ist, trägt die Antwort die Klasse dieses
+  // Scheiterns. Antwortete ein Modell (auch ein späteres Glied) oder wurde gar keins versucht, bleibt
+  // das Ergebnis unverändert — „nicht eingerichtet" sagt der Status, nicht die Antwort.
+  private mitErsatzGrund(
+    ergebnis: AnswerResult,
+    lauf: { provider?: ReasonerProvider; fehler?: unknown },
+  ): AnswerResult {
+    if (lauf.provider !== this.fallback || lauf.fehler === undefined) {
+      return ergebnis;
+    }
+    return { ...ergebnis, ersatzGrund: ersatzGrundAus(lauf.fehler) };
+  }
+
+  // ANTWORTBELEG (R-0317): die Laufprotokoll-Kennung an das Ergebnis — nur mit Laufprotokoll; ohne
+  // es gibt keinen Datensatz und damit auch keine Kennung, die auf ihn zeigte.
+  private mitLaufkennung(result: AnswerResult, laufId: string): AnswerResult {
+    return this.modelRuns ? { ...result, modelRunId: laufId } : result;
+  }
+
+  // REF-02: bindet die Rolle des liefernden Glieds an das ausgelieferte Ergebnisobjekt. Ohne Glied
+  // (nicht erwartbar) bleibt die Rolle unbekannt — sie wird nie geraten.
+  private mitAntwortRolle(ergebnis: AnswerResult, provider: ReasonerProvider | undefined) {
+    if (provider) {
+      ANTWORT_ROLLEN.set(ergebnis, this.rolleVon(provider, ergebnis.demo));
+    }
+    return ergebnis;
+  }
+
+  // REF-02: Anbieter (Clientname), reiner Modellbezeichner und Stufe eines Glieds. Hat der
+  // deterministische Weg geantwortet, gibt es kein Modell — `modell: null`, nie ein Ersatzname.
+  private rolleVon(provider: ReasonerProvider, demo = false): ReferenzRolle {
+    if (provider === this.fallback || demo) {
+      return { anbieter: this.fallback.name, modell: null, stufe: "deterministic" };
+    }
+    return {
+      anbieter: provider.name,
+      modell: provider.modelName?.() ?? null,
+      stufe: this.stufeVon(provider),
+    };
   }
 
   // ==============================================================================================
@@ -2623,18 +2773,40 @@ export class Reasoner {
         : p.answer(question, context, locale, confidential, relevanz, dokumenttext);
     // Ein Behälter statt `let`: die Zuweisung geschieht im Rückruf, und eine Variable verengte der
     // Typprüfer danach fälschlich auf `undefined`.
-    const ersterLauf: { provider?: ReasonerProvider } = {};
-    const ersteRoh = await this.runTask("answer", locale, frage, confidential, runContext, {
-      beantwortetVon: (p) => {
-        ersterLauf.provider = p;
+    const ersterLauf: { provider?: ReasonerProvider; fehler?: unknown } = {};
+    // ANTWORTBELEG (R-0317): auch die Antwort mit Zweitmeinung belegt, welcher Laufprotokoll-Eintrag
+    // sie getragen hat — dieselbe Kennungsvergabe wie in `answer`.
+    const laufId = randomUUID();
+    const ersteRoh = await this.runTask(
+      "answer",
+      locale,
+      frage,
+      confidential,
+      runContext,
+      {
+        beantwortetVon: (p) => {
+          ersterLauf.provider = p;
+        },
+        fehlversuch: (fehler) => {
+          ersterLauf.fehler = fehler;
+        },
       },
-    });
+      laufId,
+    );
     const ersterProvider = ersterLauf.provider;
     // Ben (Nacharbeit 17): dieselbe Regel wie `answer` (R-0604) — die KI-Marke NUR, wenn wirklich
     // ein Modell geantwortet hat; der deterministische Rückfall wird nicht „von KI erzeugt" genannt.
     const erste = mitHerkunftsmarke(ersteRoh);
+    // Die Kennung reist NUR an der ausgelieferten ersten Antwort, nicht in Vergleich und
+    // Gegenüberstellung (`ersteVerglichen` unten bleibt ohne sie).
+    // REF-02: die tatsächliche Rolle hängt am ausgelieferten Objekt, also an diesem.
+    // PV-03-01: die Ursache eines Ersatzwegs nur an der ausgelieferten Antwort, nicht im Vergleich.
+    const ersteMitLauf = this.mitAntwortRolle(
+      this.mitLaufkennung(this.mitErsatzGrund(erste, ersterLauf), laufId),
+      ersterProvider,
+    );
     const nicht = (grund: ZweitmeinungGrund) => ({
-      erste,
+      erste: ersteMitLauf,
       zweitmeinung: { status: "nicht_moeglich" as const, grund },
     });
     const wahl = this.zweitmeinungsModell(confidential);
@@ -2662,9 +2834,13 @@ export class Reasoner {
     // Abgleich noch in Spalte A geraten. Sie steht außerhalb des Vergleichs an der Antwort selbst.
     const ersteVerglichen = gegenueberstellbar(erste);
     const zweite = gegenueberstellbar(mitHerkunftsmarke(zweiteRoh));
+    // produkt:20261009:referenzki-antwortstatus (REF-04, K1): auch die beiden gegenübergestellten
+    // Antworten werden referenzgeprüft — jede mit dem Modell, das sie TATSÄCHLICH geschrieben hat.
+    ANTWORT_ROLLEN.set(ersteVerglichen, this.rolleVon(ersterProvider, ersteVerglichen.demo));
+    ANTWORT_ROLLEN.set(zweite, this.rolleVon(wahl.provider, zweite.demo));
     const abweichungen = vergleicheAntworten(ersteVerglichen, zweite);
     return {
-      erste,
+      erste: ersteMitLauf,
       zweitmeinung: {
         status: "verglichen",
         ersteStufe: this.stufeVon(ersterProvider),
@@ -2718,6 +2894,255 @@ export class Reasoner {
       return "deterministic";
     }
     return this.anbieterVon(provider) === undefined ? "local" : "cloud";
+  }
+
+  // ==============================================================================================
+  // produkt:20261009:referenzki-pruefdienst (REF-02) — DER REFERENZ-PRÜFER EINER KONKRETEN ANFRAGE.
+  // ==============================================================================================
+  //
+  // Gewählt wird AUSSCHLIESSLICH aus der administrativ erlaubten Liste (`referenzpruefung`), in ihrer
+  // Reihenfolge: die erste Option, die eingerichtet ist, ihre Freigaben trägt (dieselben Prüfungen
+  // wie Kettenbau und Zweitmeinung) und deren TATSÄCHLICHER Modellbezeichner sich vom Modell der
+  // konkreten Antwort unterscheidet (K7). Kein Ersatzmodus, kein „irgendein anderes Modell": findet
+  // sich keine Option, bleibt der unabhängige Nachweis offen und der Grund steht da.
+  //
+  // `vertraulich`: ob das Prüfpaket vertrauliche Inhalte tragen kann — dann gelten für externe
+  // Prüfer die zweite Freigabe und die Egress-Regel des Kettenbaus.
+  referenzPruefer(antwort: ReferenzRolle | undefined, vertraulich: boolean): ReferenzPrueferWahl {
+    const liste = this.taskConfig.referenzpruefung;
+    if (!liste || liste.length === 0) {
+      return { grund: "nicht_eingerichtet" };
+    }
+    if (antwort === undefined) {
+      return { grund: "antwortmodell_unbekannt" };
+    }
+    // D5: eine administrative KI-Abschaltung gilt auch für die Referenzprüfung.
+    if (this.kiAbschaltung().abgeschaltet) {
+      return { grund: "nicht_freigegeben" };
+    }
+    // Der aussagekräftigste Grund gewinnt: „nur dasselbe Modell" sagt mehr als „nicht freigegeben",
+    // und das mehr als „nicht eingerichtet".
+    const rang: Record<ReferenzPrueferGrund, number> = {
+      nicht_eingerichtet: 0,
+      antwortmodell_unbekannt: 0,
+      nicht_verfuegbar: 1,
+      nicht_freigegeben: 2,
+      nicht_unabhaengig: 3,
+    };
+    // Ein Behälter statt `let`: die Zuweisung geschieht im Rückruf (s. `answerMitZweitmeinung`).
+    const stand: { grund: ReferenzPrueferGrund } = { grund: "nicht_verfuegbar" };
+    const merke = (g: ReferenzPrueferGrund): void => {
+      if (rang[g] > rang[stand.grund]) {
+        stand.grund = g;
+      }
+    };
+    const gebunden = vertraulich ? undefined : gebundenerAnbieter();
+    for (const wahl of liste) {
+      const option = this.referenzOption(wahl, vertraulich, gebunden);
+      if ("grund" in option) {
+        merke(option.grund);
+        continue;
+      }
+      if (gleichesModell(option.modell, antwort.modell)) {
+        merke("nicht_unabhaengig");
+        continue;
+      }
+      return { pruefer: this.referenzPrueferAus(option.provider, option.modell) };
+    }
+    return { grund: stand.grund };
+  }
+
+  // REF-02/REF-03: ob EINE Option für einen Prüfaufruf bereitsteht — eingerichtet, freigegeben, mit
+  // Modellbezeichner und Prüffähigkeit. Dieselbe Prüfung für die Wahl je Anfrage und für den
+  // bewussten Funktionscheck der Verwaltung; die Unabhängigkeit prüft der Aufrufer.
+  private referenzOption(
+    wahl: ReasonerReferenzWahl,
+    vertraulich: boolean,
+    gebunden: ReturnType<typeof gebundenerAnbieter>,
+  ): { provider: ReasonerProvider; modell: string } | { grund: ReferenzPrueferGrund } {
+    let provider: ReasonerProvider | undefined;
+    if (wahl === "local") {
+      if (!this.usingSecondary()) {
+        return { grund: "nicht_verfuegbar" };
+      }
+      if (
+        (vertraulich && this.secondary.rejectsConfidential?.() === true) ||
+        gebunden !== undefined
+      ) {
+        return { grund: "nicht_freigegeben" };
+      }
+      provider = this.secondary;
+    } else {
+      provider = this.cloudProvider(wahl);
+      if (!provider) {
+        return { grund: "nicht_verfuegbar" };
+      }
+      if (
+        !this.oeffentlicheKiErlaubt(vertraulich) ||
+        !anbieterZugelassen(wahl) ||
+        (gebunden !== undefined && gebunden !== wahl)
+      ) {
+        return { grund: "nicht_freigegeben" };
+      }
+    }
+    // Ohne Modellbezeichner ist die Unabhängigkeit nicht nachweisbar — keine Option.
+    const modell = provider.modelName?.()?.trim() || null;
+    if (modell === null || typeof provider.pruefeQuellenbeleg !== "function") {
+      return { grund: "nicht_verfuegbar" };
+    }
+    return { provider, modell };
+  }
+
+  private referenzPrueferAus(provider: ReasonerProvider, modell: string): ReferenzPruefer {
+    const extern =
+      this.anbieterVon(provider) !== undefined || provider.rejectsConfidential?.() === true;
+    return this.baueReferenzPruefer(
+      provider,
+      { anbieter: provider.name, modell, stufe: this.stufeVon(provider) },
+      extern,
+    );
+  }
+
+  // ==============================================================================================
+  // produkt:20261009:referenzki-adminauswahl (REF-03) — DIE LAGE JE OPTION UND DER FUNKTIONSCHECK.
+  // ==============================================================================================
+  //
+  // `referenzLage` beantwortet die KONFIGURATIONSfrage der Verwaltung: welche registrierten Zugänge
+  // gibt es, welches Modell steht dahinter, intern oder öffentlich, erlaubt mit welchem Vorrang —
+  // und was den Einsatz einer erlaubten Option gerade sperrt. Sie ruft kein Modell. „Erlaubt und
+  // ohne Sperre" heißt nur „konfiguriert": ob eine Prüfung gelingt, belegt erst ein Lauf.
+  referenzLage(): ReferenzLage {
+    const liste = this.taskConfig.referenzpruefung ?? [];
+    const abgeschaltet = this.kiAbschaltung().abgeschaltet;
+    const antwortGlied = this.chainForChoice(this.choiceFor("answer"), false, {
+      fuerAnzeige: true,
+    })[0];
+    const antwortmodell =
+      antwortGlied && antwortGlied !== this.fallback
+        ? { anbieter: antwortGlied.name, modell: antwortGlied.modelName?.()?.trim() || null }
+        : null;
+    const optionen = REASONER_REFERENZ_WAHLEN.map((wahl): ReferenzOptionLage => {
+      // Eingerichtet = verdrahtet (registrierter Zugang), auch wenn er gerade nicht erreichbar ist.
+      const verdrahtet: ReasonerProvider | undefined =
+        wahl === "local" ? this.secondary : this.cloud[wahl];
+      const zugang = verdrahtet !== undefined && verdrahtet !== this.fallback ? verdrahtet : null;
+      const modell = zugang?.modelName?.()?.trim() || null;
+      const rang = liste.indexOf(wahl);
+      let sperre: ReferenzOptionSperre | null = null;
+      if (zugang) {
+        if (abgeschaltet) {
+          sperre = "ki_abgeschaltet";
+        } else if (wahl !== "local" && !this.oeffentlicheKiErlaubt(false)) {
+          sperre = "keine_freigabe_externe_verarbeitung";
+        } else if (!zugang.isAvailable()) {
+          sperre = "nicht_erreichbar";
+        } else if (modell === null || typeof zugang.pruefeQuellenbeleg !== "function") {
+          sperre = "kein_pruefmodell";
+        }
+      }
+      return {
+        wahl,
+        art: wahl === "local" ? "intern" : "oeffentlich",
+        anbieter: zugang ? zugang.name : null,
+        modell,
+        eingerichtet: zugang !== null,
+        erlaubt: rang >= 0,
+        rang: rang >= 0 ? rang + 1 : null,
+        sperre,
+        gleichWieAntwortmodell: gleichesModell(modell, antwortmodell?.modell ?? null),
+      };
+    });
+    const freigabe = this.taskConfig.kiFreigabe;
+    return {
+      optionen,
+      antwortmodell,
+      freigabe: {
+        oeffentlicheKi: freigabe?.oeffentlicheKi === true,
+        vertraulicheInhalte: freigabe?.vertraulicheInhalte === true,
+      },
+    };
+  }
+
+  // REF-03: der Prüfer GENAU EINER Option für den bewussten Funktionscheck mit fiktivem, nicht
+  // vertraulichem Inhalt. Dieselben Sperren wie im Betrieb (Abschaltung, Freigabe, Bindung,
+  // Modellbezeichner); die Option muss NICHT erlaubt sein — geprüft wird, ob sie einsatzfähig wäre.
+  // Ein Aufruf über dasselbe Laufbuch wie jede Referenzprüfung (Laufart `referenz`).
+  referenzFunktionsPruefer(wahl: ReasonerReferenzWahl): ReferenzPrueferWahl {
+    if (this.kiAbschaltung().abgeschaltet) {
+      return { grund: "nicht_freigegeben" };
+    }
+    const option = this.referenzOption(wahl, false, gebundenerAnbieter());
+    if ("grund" in option) {
+      return option;
+    }
+    return { pruefer: this.referenzPrueferAus(option.provider, option.modell) };
+  }
+
+  /**
+   * REF-02: Freigabe für externe Verarbeitung — dieselbe zentrale Regel wie für jeden Cloudweg.
+   * Nicht vertrauliche Inhalte brauchen die Grundfreigabe, vertrauliche zusätzlich die zweite.
+   */
+  externeVerarbeitungErlaubt(vertraulich: boolean): boolean {
+    return this.oeffentlicheKiErlaubt(vertraulich);
+  }
+
+  // REF-02: genau EIN Aufruf über das Laufbuch — Freigabe- und Vertraulichkeitsprüfung frisch am
+  // Chokepoint, ein Datensatz `referenz` mit Modell, Verbrauch und Dauer (Kosten rechnet das
+  // Laufprotokoll mit der Preisliste des Betreibers). Kein zweiter Versuch, kein anderes Glied.
+  private baueReferenzPruefer(
+    provider: ReasonerProvider,
+    rolle: ReferenzRolle,
+    extern: boolean,
+  ): ReferenzPruefer {
+    return {
+      rolle,
+      extern,
+      pruefe: async (
+        system,
+        user,
+        vertraulich,
+        maxTokens,
+        signal,
+      ): Promise<ReferenzAufrufErgebnis> => {
+        const pruefen = provider.pruefeQuellenbeleg?.bind(provider);
+        if (!pruefen) {
+          throw new Error("Dieses Modell bietet keine Referenzprüfung an.");
+        }
+        const startedAt = new Date().toISOString();
+        const beginn = Date.now();
+        const lb = new Laufbuch();
+        try {
+          const text = await lb.versuch(
+            provider,
+            // Ben nacharbeit-3: das Signal reist bis zum Transport — ein Abbruch beendet die
+            // Übertragung selbst, nicht nur das Warten des Prüfdienstes.
+            () => pruefen(system, user, vertraulich, maxTokens, signal),
+            this.pruefungenFuer(provider, vertraulich),
+          );
+          await this.protokolliereLaufbuch("referenz", undefined, startedAt, lb, {
+            status: "success",
+            erzeugt: { art: "urteil", anzahl: 1 },
+          });
+          return {
+            text,
+            dauerMs: Math.max(0, Date.now() - beginn),
+            ...(lb.verbrauch
+              ? {
+                  verbrauch: {
+                    eingabe: lb.verbrauch.eingabeToken,
+                    ausgabe: lb.verbrauch.ausgabeToken,
+                  },
+                }
+              : {}),
+          };
+        } catch (fehler) {
+          await this.protokolliereLaufbuch("referenz", undefined, startedAt, lb, {
+            status: "error",
+          });
+          throw fehler;
+        }
+      },
+    };
   }
 
   // SCRUM-490 R2 (B1): RETRIEVAL-ONLY-Antwort für den Add-on-Pfad (Klara). Der Eingabetext ist der
@@ -2856,6 +3281,8 @@ export class Reasoner {
     // R-1624: optionaler, vom Menschen bestätigter Bildbefund → Foto-Fragenfolge.
     imageContext?: string,
     // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum / Lücken-Thema (ohne Angabe wie bisher).
+    // Aufnahme `gesamt-ocr` (FR-CAP-05): `options.context` = im Bild erkannter Text als Kontext —
+    // dieselbe Kette, dieselbe Vertraulichkeit wie die Antworten.
     options: InterviewOptions = {},
   ): Promise<InterviewResult> {
     const result = await this.runTask(

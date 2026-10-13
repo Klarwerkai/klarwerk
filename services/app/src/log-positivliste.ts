@@ -172,6 +172,11 @@ export const LOGFELDER: Readonly<Record<string, Logregel>> = {
   seiten: "zahl",
   // Gründe und Arten aus festen Mengen (csrf.ts, slides-routes.ts).
   grund: "wert",
+  // R-0679 (gesamt-pruefer-zuweisung): Ersatzzustellung ohne Mailserver (`mail_ersatzzustellung`,
+  // notifications/src/mailer.ts). Der Betreff ist ein fester Satz aus dem Quelltext
+  // (`app/src/notify.ts`, `auth/src/routes.ts`) — nie Empfänger, nie Text. `art` trägt beim
+  // Push-Ausfall (`push_fehlgeschlagen`) nur „abgelehnt"/„ausfall".
+  betreff: "satz",
   art: "wert",
   reason: "fehlertyp",
   // Kennungen (ko-routes.ts, ask-routes.ts, auth/routes.ts).
@@ -181,6 +186,9 @@ export const LOGFELDER: Readonly<Record<string, Logregel>> = {
   konto: "wert",
   restVorhanden: "wert",
   restFreigegeben: "wert",
+  // server.ts — Protokollpflege (R-0664, protokoll-frist.ts): ob rotiert wurde, wie viele Dateien fielen.
+  rotiert: "wert",
+  geloescht: "zahl",
   // support-routes.ts
   supportkontakt: "wert",
   // slides-routes.ts — nur Metriken.
@@ -350,6 +358,10 @@ export const MELDUNGEN: readonly string[] = [
   "KLARWERK Startbericht",
   "Bestandsabfrage gescheitert: {wert}",
   "KLARWERK_TRUST_PROXY ist eine Hop-Anzahl und wird nicht mehr beachtet (GHSA-3m5p-2c4r-xxw2) — die IP-Adresse(n) des Proxys eintragen.",
+  // build-app.ts — Prüfzuweisung (R-0679 Ersatzzustellung und Geräte-Push, R-1655 Routing).
+  "mail_ersatzzustellung",
+  "push",
+  "pruefrouting",
   // model-runs/src/preisliste.ts (über build-app.ts `ki_preisliste`)
   "KLARWERK_KI_PREISLISTE ist kein gültiges JSON.",
   "KLARWERK_KI_PREISLISTE braucht `waehrung` und `preisstand` (je kurzer Text).",
@@ -371,6 +383,8 @@ export const MELDUNGEN: readonly string[] = [
   // reasoner-routes.ts, ask-routes.ts
   "reasoner.ki-freigabe konnte nicht protokolliert werden — Erweiterung abgelehnt",
   "reasoner.ki-freigabe (Rücknahme) konnte nicht protokolliert werden — sie gilt trotzdem",
+  // produkt:20261009:referenzki-adminauswahl (REF-03): der Funktionscheck lief, sein Beleg nicht.
+  "reasoner.referenzpruefung-funktionscheck konnte nicht protokolliert werden",
   "reasoner.ka4.dokument-consent",
   "ask.ka4.dokument-consent",
   "ask.ka4.dokumenttext",
@@ -411,10 +425,20 @@ export const MELDUNGEN: readonly string[] = [
   "Klara-Aufräumlauf aktiv — Intervall {zahl} min.",
   "Gedächtnis aufgeräumt ({wert}): {zahl} abgelaufene Einträge gelöscht.",
   "Gedächtnis-Aufräumlauf übersprungen",
+  // server.ts — Protokollpflege (R-0664, protokoll-frist.ts).
+  "Protokollpflege aktiv — Frist {zahl} Tage.",
+  "Protokollpflege: rotiert bzw. abgelaufene Protokolle gelöscht.",
+  "Protokollpflege übersprungen.",
+  // server.ts — Rotationsimpuls (R-0664, protokoll-rotationsimpuls.ts).
+  "Rotationsimpuls aktiv — Docker rotiert die aktive Protokolldatei täglich.",
+  "Rotationsimpuls übersprungen.",
   // server.ts — über „Hauptstand integriert" hinzugekommen (Lückenerkennung R-1657,
   // Wissensereignisse R-0710); die Sätze stehen dort und in wissensereignisse.ts.
   "Lückenerkennung übersprungen",
   "Lückenerkennung über den Reasoner aktiv — Takt {zahl} min.",
+  // produkt:20261011:assistenz-skills-werkzeuge — Wiederaufnahme der Fähigkeitsaufträge (server.ts).
+  "Fähigkeitsaufträge: Wiederaufnahme übersprungen",
+  "Fähigkeitsaufträge: Abarbeitung übersprungen",
   "Wissensereignis-Abgleich übersprungen",
   "Wissensereignis-Meldungen aktiv — {zahl} Ziel(e), Takt {zahl} s.",
   "Webhook-Ziel verworfen: KLARWERK_WEBHOOKS ist kein gültiges JSON.",

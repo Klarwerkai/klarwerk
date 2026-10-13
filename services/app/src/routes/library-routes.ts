@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import {
   NULLTREFFER_DECKEL,
   type NulltrefferRepo,
@@ -38,7 +38,27 @@ import {
   runWithTimeout,
 } from "../ai-check-worker";
 import type { SemanticPrefilter } from "../duplicate-detection";
+import {
+  EXISTENZ_BEGRIFF,
+  type ExistenzbereichQuelle,
+  type Existenzhinweis,
+  bereichsTrim,
+  bereichsblick,
+} from "../existenzhinweis";
 import { schalterAn } from "../feature-flags";
+import {
+  type Bereichsmarken,
+  type BereichsmarkenQuelle,
+  type Firmenfilter,
+  type FirmenfilterAbfrage,
+  FirmenfilterFehler,
+  KEINE_BEREICHSMARKEN,
+  firmenTrim,
+  firmenbereichVon,
+  imFirmenfilter,
+  leseFirmenfilter,
+  ohneFirmenfilter,
+} from "../firmenbereich";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { importKandidatBefunde } from "../import-befunde";
 import {
@@ -590,7 +610,8 @@ function bildsucheLimit(raw: string | undefined): number {
 
 // aufnahme:20260922:gesamt-wissen-export (R-0681 / FR-LIB-02): die Abfrage des Exports. `ids` ist
 // eine kommagetrennte Kennungsliste (oder der wiederholte Parameter, wie Fastify ihn liefert).
-interface ExportAbfrage {
+// produkt:20261011:peter-p14 — der Firmenfilter grenzt wie `ids` nur ein.
+interface ExportAbfrage extends FirmenfilterAbfrage {
   format?: string;
   ids?: string | string[];
 }
@@ -778,7 +799,35 @@ export function libraryRoutes(
   nulltreffer?: NulltrefferRepo,
   // produkt:20261010:poc-wiederherstellung-export: optional — ohne Quellen kein Format `paket`.
   paket?: WissenspaketQuellen,
+  // produkt:20261011:peter-p14: optional — ohne Quelle gibt es keine Bereichsmarke (verengt nur).
+  bereichsmarken?: BereichsmarkenQuelle,
+  // P14 · Existenzrecht: optional — ohne Quelle hat niemand ein Existenzrecht (Antwort leer).
+  existenzbereiche?: ExistenzbereichQuelle,
 ): FastifyPluginAsync {
+  /**
+   * P14: der Firmenfilter einer Anfrage samt den aktuellen Bereichsmarken — oder `null`, wenn die
+   * Angabe ungültig war (dann ist die 400 bereits gesendet, bevor irgendetwas gelesen wurde).
+   */
+  async function firmaAus(
+    abfrage: FirmenfilterAbfrage,
+    reply: FastifyReply,
+  ): Promise<{ filter: Firmenfilter; marken: Bereichsmarken } | undefined | null> {
+    let filter: Firmenfilter | undefined;
+    try {
+      filter = leseFirmenfilter(abfrage);
+    } catch (fehler) {
+      if (fehler instanceof FirmenfilterFehler) {
+        reply.code(400).send({ error: fehler.code, message: fehler.message });
+        return null;
+      }
+      throw fehler;
+    }
+    if (!filter) {
+      return undefined;
+    }
+    return { filter, marken: (await bereichsmarken?.()) ?? KEINE_BEREICHSMARKEN };
+  }
+
   return async (app) => {
     // R-0773: die EIGENEN Suchen ohne Treffer. Nur die eigene Liste — ein Suchbegriff ist Freitext
     // derselben Art wie der Fragetext einer Lücke (R-0585), fremde Suchen liest hier niemand.
@@ -791,14 +840,20 @@ export function libraryRoutes(
       reply.code(200).send(eigene);
     });
 
-    app.get<{ Querystring: KoFilter & { q?: string } }>(
+    app.get<{ Querystring: KoFilter & FirmenfilterAbfrage & { q?: string } }>(
       "/api/library/search",
       async (request, reply) => {
         const user = await guards.requirePermission("ko.read", request, reply);
         if (!user) {
           return;
         }
-        const { q, ...filter } = request.query;
+        // produkt:20261011:peter-p14: der Firmenfilter — geprüft vor der Suche, als UND im Trim (vor
+        // dem Trefferdeckel) und noch einmal vor der Ausgabe.
+        const firma = await firmaAus(request.query, reply);
+        if (firma === null) {
+          return;
+        }
+        const { q, ...filter } = ohneFirmenfilter(request.query);
         // WP-BILD-1f/1g (bens P4 + sammel14-ROT): die Trefferliste transportiert KEINE Bilddaten —
         // die Suche arbeitet bereits auf der bodyHtml-freien Datenquellen-Projektion; die
         // durchsuchbaren Bild-Fußnoten reisen als kleines persistiertes captionTexts-Feld mit
@@ -828,10 +883,13 @@ export function libraryRoutes(
         // (etwa in einem zweiten Aufbau) nicht anwendet, findet hier weiterhin das Tor vor, das
         // seit mega74 hier steht. Die Zusage der Route ändert sich damit nicht — sie wird nur
         // billiger und, was mehr zählt, paginierbar.
+        const trim = sqlSichtbarkeitFuer(user);
         const treffer = sichtbareFuer(
           user,
-          await library.search(q ?? "", filter, { trim: sqlSichtbarkeitFuer(user) }),
-        );
+          await library.search(q ?? "", filter, {
+            trim: firma ? firmenTrim(trim, firma.filter, firma.marken) : trim,
+          }),
+        ).filter((ko) => !firma || imFirmenfilter(ko, firma.filter, firma.marken));
         // R-0773: eine Suche OHNE Treffer wird für den Suchenden vermerkt — nur mit nicht-leerem
         // Begriff und gemessen an DIESER, schon sichtbarkeitsgeschnittenen Liste. Eine gefilterte
         // Suche wird MIT ihrer Eingrenzung vermerkt (BEN, Nacharbeit 3): sie sagt nur etwas über
@@ -839,7 +897,9 @@ export function libraryRoutes(
         // bereits verlassen und wird nie als Nulltreffer gezählt. Ein Fehler beim Vermerken nimmt
         // dem Suchenden sein (leeres) Ergebnis nicht.
         const begriff = nulltrefferBegriff(q ?? "");
-        if (nulltreffer && treffer.length === 0 && begriff) {
+        // P14: eine Suche mit Firmenfilter wird NICHT vermerkt — die Eingrenzung kennt den Bereich
+        // nicht, und der Vermerk behauptete sonst eine Suche im ganzen sichtbaren Bestand.
+        if (nulltreffer && !firma && treffer.length === 0 && begriff) {
           try {
             await nulltreffer.erfasse({
               userId: user.id,
@@ -851,7 +911,44 @@ export function libraryRoutes(
             request.log.warn({ err: fehler }, "Nulltreffer-Suche konnte nicht vermerkt werden");
           }
         }
-        reply.code(200).send(treffer);
+        const antwort = firma
+          ? treffer.map((ko) => ({ ...ko, firmenbereich: firmenbereichVon(ko, firma.marken) }))
+          : treffer;
+        reply.code(200).send(antwort);
+      },
+    );
+
+    // P14 · Bens Befund 3 — DIE EXISTENZHINWEISE (Regel und Grenzen: `existenzhinweis.ts`). Die Form
+    // der Anfrage wird VOR jedem Lesen geprüft, gleich für jedes Konto. Ohne Existenzrecht ist die
+    // Antwort `{hinweise: []}` — dieselbe wie ohne passenden Treffer.
+    app.get<{ Querystring: { q?: string } }>(
+      "/api/library/existenzhinweise",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const q = typeof request.query.q === "string" ? request.query.q.trim() : "";
+        if (q.length < EXISTENZ_BEGRIFF.min || q.length > EXISTENZ_BEGRIFF.max) {
+          reply.code(400).send({
+            error: "BEGRIFF_UNGUELTIG",
+            message: "Der Suchbegriff hat 3 bis 200 Zeichen.",
+          });
+          return;
+        }
+        const hinweise: Existenzhinweis[] = [];
+        for (const bereich of (await existenzbereiche?.(user.id)) ?? []) {
+          // Derselbe Mensch, als läse er GENAU diesen Space: Stufe und Quellleser gelten weiter.
+          const blick = bereichsblick(user, bereich.id);
+          const trim = bereichsTrim(sqlSichtbarkeitFuer(blick), bereich.id);
+          const treffer = (await library.search(q, {}, { trim })).some(
+            (ko) => ko.spaceId === bereich.id && darfSehen(blick, ko),
+          );
+          if (treffer) {
+            hinweise.push({ spaceId: bereich.id, spaceName: bereich.name });
+          }
+        }
+        reply.code(200).send({ hinweise });
       },
     );
 
@@ -988,7 +1085,17 @@ export function libraryRoutes(
       // `/api/graph`), damit die Entscheidung an der Route selbst ausgeführt wird.
       // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): damit öffnet `ko.validate` allein auch
       // nicht mehr jede Stufe — persönliches Freigabeniveau und ungeklärte Stufen gelten mit.
-      const sichtbar = sichtbarkeitsfilterFuer(user);
+      //
+      // produkt:20261011:peter-p14: der Firmenfilter tritt als UND hinter dieselbe Sichtregel — er
+      // grenzt die Exportmenge ein, er erweitert sie nie (Exportmenge ⊆ Lesemenge bleibt).
+      const firma = await firmaAus(request.query, reply);
+      if (firma === null) {
+        return;
+      }
+      const sichtbar = sichtbarkeitsfilterFuer(
+        user,
+        firma ? (ko) => imFirmenfilter(ko, firma.filter, firma.marken) : undefined,
+      );
       const opts = (format: "json" | "markdown" | "mediawiki" | "html" | "paket") => ({
         includeConfidential,
         sichtbar,
@@ -1158,7 +1265,15 @@ export function libraryRoutes(
       if (!user) {
         return;
       }
-      const kandidaten = await library.listImportCandidates();
+      // BES-01-K06: das Tor der Liste galt hier bisher nur dem Kommentar nach — Kennung und Anzahl
+      // quellbeschränkter Kandidaten standen jedem `ko.read`-Konto offen (eine verdeckte
+      // Trefferzahl). Gezählt wird jetzt dieselbe sichtbare Menge wie in der Liste.
+      const kandidaten: ImportCandidate[] = [];
+      for (const kandidat of await library.listImportCandidates()) {
+        if (await darfKandidatSehen(user, kandidat, library)) {
+          kandidaten.push(kandidat);
+        }
+      }
       reply.code(200).send(importKandidatBefunde(kandidaten, Date.now()));
     });
 

@@ -34,8 +34,11 @@
 import { describe, expect, it } from "vitest";
 
 import i18n from "../../apps/web/src/i18n";
-import { FILE_SOURCES, SYSTEM_SOURCES } from "../../apps/web/src/lib/importSourceGallery";
+import { SYSTEM_SOURCES, fileSourcesForSurface } from "../../apps/web/src/lib/importSourceGallery";
 import { kernDesNamens } from "./kern";
+
+// Die Dateiliste der Import-Galerie ohne gemeldeten Mediendienst (frühere Konstante FILE_SOURCES).
+const FILE_SOURCES = fileSourcesForSurface("import");
 
 // Die gefuehrten Sprachen — aus der echten Instanz, nicht getippt.
 const SPRACHEN: string[] = Object.keys(
