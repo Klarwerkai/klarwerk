@@ -159,6 +159,15 @@ versionierten Text.
   - In Nacharbeit 2 erneut versucht: Auch ein einzelner direkter Lesebefehl (`shasum` auf
     `BERICHT-sammel38.md`) wurde ohne Freigabemöglichkeit abgelehnt. Ein anderer Zugriffsweg ist
     dieser Bahn nicht zugänglich.
+  - Nacharbeit 3: Eine technische Übergabe der Quellen hat nicht stattgefunden. Im Auftragsordner
+    und im Arbeitsbaum liegt keiner der 32 Berichte. Lesbar ist für diese Bahn nur einer der
+    beiden Übergabeorte:
+    - der Auftragsordner, etwa als Unterordner `QUELLEN-ORIGINALBERICHTE/` neben
+      `QUELLEN-HILFE-09a427-ORIGINALBERICHTE.json`;
+    - oder direkt `docs/qm/pruefarchiv/berichte/` im Arbeitsbaum.
+
+    Die Übergabe selbst ist ein Schritt des Betreibers oder Adapters. Diese Bahn kann sie nicht
+    auslösen.
   - Wer die 32 Dateien unverändert nach `docs/qm/pruefarchiv/berichte/` überträgt, wird vom
     Prüfstand gegengeprüft: gleicher Name, gleicher SHA-256. Danach ist hier der Sicherungsstand
     nachzuziehen, sonst wird der Prüfstand rot.
