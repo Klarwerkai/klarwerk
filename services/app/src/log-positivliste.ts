@@ -186,6 +186,9 @@ export const LOGFELDER: Readonly<Record<string, Logregel>> = {
   konto: "wert",
   restVorhanden: "wert",
   restFreigegeben: "wert",
+  // server.ts — Protokollpflege (R-0664, protokoll-frist.ts): ob rotiert wurde, wie viele Dateien fielen.
+  rotiert: "wert",
+  geloescht: "zahl",
   // support-routes.ts
   supportkontakt: "wert",
   // slides-routes.ts — nur Metriken.
@@ -422,6 +425,13 @@ export const MELDUNGEN: readonly string[] = [
   "Klara-Aufräumlauf aktiv — Intervall {zahl} min.",
   "Gedächtnis aufgeräumt ({wert}): {zahl} abgelaufene Einträge gelöscht.",
   "Gedächtnis-Aufräumlauf übersprungen",
+  // server.ts — Protokollpflege (R-0664, protokoll-frist.ts).
+  "Protokollpflege aktiv — Frist {zahl} Tage.",
+  "Protokollpflege: rotiert bzw. abgelaufene Protokolle gelöscht.",
+  "Protokollpflege übersprungen.",
+  // server.ts — Rotationsimpuls (R-0664, protokoll-rotationsimpuls.ts).
+  "Rotationsimpuls aktiv — Docker rotiert die aktive Protokolldatei täglich.",
+  "Rotationsimpuls übersprungen.",
   // server.ts — über „Hauptstand integriert" hinzugekommen (Lückenerkennung R-1657,
   // Wissensereignisse R-0710); die Sätze stehen dort und in wissensereignisse.ts.
   "Lückenerkennung übersprungen",

@@ -242,6 +242,8 @@ addExternal, logAction, toggleLearned, login/logout, resetDemo/prepareDemo/setSc
 - **Charts** (Demo-spezifische Diagramme).
 - **Entscheidung nötig:** Gehört etwas davon ins Produkt (z. B. „Lite"-Modus, Boardroom-Ansicht) oder ist es reines Pitch-Material?
 
+> Stand 13.10.2026 (R-1058): weiterhin unentschieden; nichts davon ist im Produkt gebaut. Alternativen, heutiger Bestand und offene Belege: [`docs/entscheidungen/r1058-klarwerk-lite.md`](docs/entscheidungen/r1058-klarwerk-lite.md).
+
 ---
 
 ## 10. Querschnitt / nicht-funktionale Anforderungen
@@ -286,7 +288,7 @@ addExternal, logAction, toggleLearned, login/logout, resetDemo/prepareDemo/setSc
 ## 12. Offene Entscheidungen für den Neubau (bitte beantworten)
 
 1. **Scope:** Wirklich **alle** ~30 Control-Room-Seiten + Mobile + alle Wert-/Kapital-Sichten? Oder Priorisierung in Wellen?
-2. **„Lite"-Variante & Boardroom/Pitch-Seiten:** ins Produkt übernehmen oder weglassen?
+2. **„Lite"-Variante & Boardroom/Pitch-Seiten:** ins Produkt übernehmen oder weglassen? *(Stand 13.10.2026: offen, Vorlage in `docs/entscheidungen/r1058-klarwerk-lite.md`.)*
 3. **Design:** bestehendes Look-and-feel/`ui.jsx`-Designsystem **übernehmen** oder neu/aktualisiert?
 4. **Tech-Stack Frontend:** React (wie Alt) + welches State-Mgmt (Context wie Alt, oder Redux/Zustand/TanStack-Query)? Router, Build (Vite)?
 5. **KI-Anbindung:** Reasoner ausschließlich über das neue Backend (Key serverseitig) — bestätigt.
