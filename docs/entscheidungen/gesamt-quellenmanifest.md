@@ -83,7 +83,9 @@ abgeschlossen. Dieser Lauf wiederholt ihn nicht.
 geführte Blöcke: `tests/structure/kd-capture-doppelungen.test.ts` (JOB 2445, 2454, 2467),
 `tests/structure/fremddoppelungen-kd-capture.test.ts` (JOB 2476, 2498) mit der gemeinsamen Erhebung
 `tests/structure/doppelungs-erhebung.ts`, dazu `tests/app/ext-attach-gate-gleichlauf.test.ts`
-(JOB 2433). Neu in diesem Lauf sind zwei weitere Gleichläufe: die Karte gegen die Dateiliste von
+(JOB 2433). Die beiden Doppelungswächter sind im Prüflauf zu `be1bfe44` auf unveränderter Basis
+rot. Ihre Register sind veraltet (Abschnitt 5). Sie *melden* die Drift also, wie R-1351 es verlangt.
+Behoben ist sie nicht. Grün im selben Lauf: `ext-attach-gate-gleichlauf`. Neu in diesem Lauf sind zwei weitere Gleichläufe: die Karte gegen die Dateiliste von
 FREEZE-144 (K4, K5 der Kartenprüfung) und die zwei Kopien von `ALLOWED_DIV_CLASSES`. Eine Erhebung
 *aller* doppelt gepflegten Stellen im Repository gibt es nicht. JOB 2453 („vierzehn Testdateien
 lesen dasselbe Werkzeug“) und JOB 2506 sind im Baum nicht namentlich auffindbar. Der Inhalt von
@@ -127,6 +129,22 @@ Nutzerentscheidung dazu ist nicht belegt.
 
 - **Freeze-144 selbst** (`tests/library-analytics-freeze144.test.ts`, Hash und Freigabe je Datei)
   ist bestehender Bestand. Er wurde nicht geändert. Die Karte liest seine Dateiliste nur.
+- **Rote Bestandswächter auf der unveränderten Basis** (Prüflauf zu Kandidat `be1bfe44`, Nacharbeit
+  1). Dieser Lauf hat keine der betroffenen Dateien berührt. Bytezahl und SHA-256 im Kandidaten
+  stimmen mit dem Arbeitsbaum der Basis überein.
+  - `tests/library-analytics-freeze144.test.ts`, Fälle „der Freeze hält“ und „KALIBRIERUNG“: Vier
+    eingefrorene Dateien tragen nicht mehr ihren Sollhash. Betroffen sind `index.ts` (gemessen
+    `f8afce97…`), `src/repo.ts`, `src/repo-pg.ts` und `src/repo-pg.integration.test.ts`. Eine neue
+    Freigabe je Datei gehört zur offenen Ownerfrage des Freeze. Sie wird hier weder erteilt noch
+    erraten.
+  - `tests/structure/kd-capture-doppelungen.test.ts` G1/G2 und
+    `tests/structure/fremddoppelungen-kd-capture.test.ts` D1/F1: Die Register `PAARE`, `AUSNAHMEN`
+    und `FREMDE` stimmen nicht mehr mit `Capture.tsx`, `BibliothekLesen.tsx`, `MehrAbschnitte.tsx`
+    und weiteren Seiten überein. Ob eine Seite nachgezogen oder ein Registereintrag mit Grund
+    aufgenommen wird, ist eine fachliche Entscheidung an fremden Flächen. Dieser Lauf trifft sie
+    nicht und schwächt keinen Sollwert ab.
+  - Die Wächter sind deshalb nicht in der Prüfauswahl dieses Auftrags. Sie bleiben im globalen Tor
+    unverändert und rot sichtbar.
 - **Quellen zu den Kernfragen** (`docs/aufnahme/quellen-kernfragen/`, Auftrag
   `gesamt-quellen-kernfragen`, R-1384) ist ein gesonderter Auftrag. Er nennt Quellenmanifest N1–N8
   und Quellenwegkarte ausdrücklich als getrennt geführt.
@@ -169,7 +187,7 @@ Nutzerentscheidung dazu ist nicht belegt.
 | R-1247 Manifest-Wächter | geliefert in diesem Lauf, mit benannter Grenze | Manifest-Wächter Fall 1, G1–G10 |
 | R-1821 / R-1825 ROT-Punkte und Recheckfragen | geliefert, soweit nicht alte Steuerung (Abschnitt 3) | Manifest-Wächter G4, G6, G7, Fall 1 |
 | R-2002 I53 | geliefert in heutiger Form | Manifest-Wächter G6, G7 |
-| R-1351 Gleichlauf | vorhanden und um zwei Gleichläufe ergänzt. Keine Gesamterhebung | Bestandstests, Karte K4/K5, Pin |
+| R-1351 Gleichlauf | vorhanden und um zwei Gleichläufe ergänzt. Keine Gesamterhebung. Zwei Bestandswächter melden auf der Basis rot (Abschnitt 5) | `ext-attach-gate-gleichlauf`, Karte K4/K5, Pin |
 | R-1367 Erlaubnisliste | geliefert in diesem Lauf | Pin-Test |
 | R-1468 Quellenwegkarte | geliefert in diesem Lauf, ohne transitive Hülle | Kartenwächter |
 | R-1467 Betriebsbefunde N1–N8 | offen, Quelle fehlt | — |
