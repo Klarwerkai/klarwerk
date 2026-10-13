@@ -1,0 +1,191 @@
+{
+  "zweck": "Quellenwegkarte zum eingefrorenen Stand FREEZE-144 (R-1468). Je eingefrorener Datei steht, aus welchen Modulen sie Inhalte bezieht. Der Waechter tests/freeze144-quellenwege/quellenwegkarte.test.ts erhebt die Wege aus dem Syntaxbaum und meldet jede Abweichung in beide Richtungen.",
+  "arten": {
+    "eingefroren": "Ziel steht selbst im FREEZE-144-Manifest und ist per Hash gesichert.",
+    "modul": "Ziel liegt in services/library-analytics, ist aber nicht eingefroren.",
+    "nachbarmodul": "Ziel liegt in einem anderen Dienst des Repositorys und ist nicht eingefroren.",
+    "paket": "Externes Paket aus package.json; Stand durch package-lock.json bestimmt."
+  },
+  "dateien": [
+    {
+      "pfad": "services/library-analytics/index.ts",
+      "quellwege": [
+        {
+          "von": "./src/explore",
+          "ziel": "services/library-analytics/src/explore.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/grouping",
+          "ziel": "services/library-analytics/src/grouping.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/repo",
+          "ziel": "services/library-analytics/src/repo.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./src/repo-pg",
+          "ziel": "services/library-analytics/src/repo-pg.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./src/search-captions",
+          "ziel": "services/library-analytics/src/search-captions.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/select",
+          "ziel": "services/library-analytics/src/select.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/service",
+          "ziel": "services/library-analytics/src/service.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/text-codec",
+          "ziel": "services/library-analytics/src/text-codec.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/themes",
+          "ziel": "services/library-analytics/src/themes.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/types",
+          "ziel": "services/library-analytics/src/types.ts",
+          "art": "eingefroren"
+        }
+      ]
+    },
+    {
+      "pfad": "services/library-analytics/src/types.ts",
+      "quellwege": [
+        {
+          "von": "../../knowledge-object",
+          "ziel": "services/knowledge-object/index.ts",
+          "art": "nachbarmodul"
+        }
+      ]
+    },
+    {
+      "pfad": "services/library-analytics/src/repo.ts",
+      "quellwege": [
+        {
+          "von": "./types",
+          "ziel": "services/library-analytics/src/types.ts",
+          "art": "eingefroren"
+        }
+      ]
+    },
+    {
+      "pfad": "services/library-analytics/src/repo-pg.ts",
+      "quellwege": [
+        {
+          "von": "./repo",
+          "ziel": "services/library-analytics/src/repo.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./types",
+          "ziel": "services/library-analytics/src/types.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "pg",
+          "ziel": "pg",
+          "art": "paket"
+        }
+      ]
+    },
+    {
+      "pfad": "services/library-analytics/src/service.test.ts",
+      "quellwege": [
+        {
+          "von": "../../audit",
+          "ziel": "services/audit/index.ts",
+          "art": "nachbarmodul"
+        },
+        {
+          "von": "../../knowledge-object",
+          "ziel": "services/knowledge-object/index.ts",
+          "art": "nachbarmodul"
+        },
+        {
+          "von": "./repo",
+          "ziel": "services/library-analytics/src/repo.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./repo-pg",
+          "ziel": "services/library-analytics/src/repo-pg.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./service",
+          "ziel": "services/library-analytics/src/service.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./types",
+          "ziel": "services/library-analytics/src/types.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "pg",
+          "ziel": "pg",
+          "art": "paket"
+        },
+        {
+          "von": "vitest",
+          "ziel": "vitest",
+          "art": "paket"
+        }
+      ]
+    },
+    {
+      "pfad": "services/library-analytics/src/repo-pg.integration.test.ts",
+      "quellwege": [
+        {
+          "von": "../../db-tx",
+          "ziel": "services/db-tx/index.ts",
+          "art": "nachbarmodul"
+        },
+        {
+          "von": "./repo",
+          "ziel": "services/library-analytics/src/repo.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./repo-pg",
+          "ziel": "services/library-analytics/src/repo-pg.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./types",
+          "ziel": "services/library-analytics/src/types.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "pg",
+          "ziel": "pg",
+          "art": "paket"
+        },
+        {
+          "von": "testcontainers",
+          "ziel": "testcontainers",
+          "art": "paket"
+        },
+        {
+          "von": "vitest",
+          "ziel": "vitest",
+          "art": "paket"
+        }
+      ]
+    }
+  ]
+}
