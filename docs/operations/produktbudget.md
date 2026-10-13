@@ -66,9 +66,14 @@ Start spielt `buildDevPersistServices` die Zeilen in derselben Reihenfolge zurü
 Nur der reine Speicherbetrieb (ohne Datenbank und ohne Journal, z. B. Prüfserver) hält den Stand
 bis zum Neustart.
 
-Offen (Produktentscheidung, nicht in diesem Auftrag getroffen): der Firmenreset im Journalbetrieb
-erhält nur Konten, Firmenwörterbuch und Prüfprotokoll (`FIRMENRESET_ERHALTEN`); Produktbudgets und
-ihre Buchungen fallen dort mit weg.
+Der Firmenreset im Journalbetrieb erhält die Produktbudget-Zeilen (`FIRMENRESET_ERHALTEN`):
+Einstellungen, Provenienz, Verbrauch und Reservierungen bleiben, der verbliebene Deckel gilt nach
+dem Wiederöffnen weiter (PBE-06).
+
+Die Antwort einer Änderung trägt `bestaetigteFassung` — die Fassung, die genau diese Änderung im
+atomaren Vorgang hergestellt hat. Der mitgelieferte Stand ist danach gelesen und kann schon fremde
+Änderungen enthalten; eine Folgeeingabe beruht deshalb auf `bestaetigteFassung`, und eine
+zwischenzeitliche Fremdänderung ergibt beim nächsten Speichern 409.
 
 ## Kostenidentität
 

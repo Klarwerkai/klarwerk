@@ -61,13 +61,24 @@ export interface BudgetAenderungEingabe {
   grund?: string;
 }
 
+export interface Aenderungsantwort {
+  wiederholt: boolean;
+  geaendert: boolean;
+  /**
+   * Die Fassung, die GENAU diese Änderung hergestellt hat. Der mitgelieferte Stand ist danach
+   * gelesen und kann schon fremde Änderungen enthalten — Grundlage einer Folgeeingabe ist allein
+   * diese Zahl. `null` nur bei Altvermerken ohne Grundfassung.
+   */
+  bestaetigteFassung: number | null;
+}
+
 export const PRODUKTBUDGET_KEY = ["admin", "produktbudget"] as const;
 
 export const produktbudgetApi = {
   lies: () => api.get<Produktbudgetstand>("/admin/produktbudget"),
   /** 409 `CONFLICT` trägt in `details.stand` den aktuellen Stand; die Eingabe bleibt beim Aufrufer. */
   aendere: (bereich: BudgetBereichId, eingabe: BudgetAenderungEingabe) =>
-    api.put<Produktbudgetstand & { wiederholt: boolean; geaendert: boolean }>(
+    api.put<Produktbudgetstand & Aenderungsantwort>(
       `/admin/produktbudget/${encodeURIComponent(bereich)}`,
       eingabe,
     ),

@@ -84,6 +84,7 @@ export function produktbudgetRoutes(
             ...ergebnis.sicht,
             wiederholt: ergebnis.wiederholt,
             geaendert: ergebnis.geaendert,
+            bestaetigteFassung: ergebnis.bestaetigteFassung,
           });
         } catch (fehler) {
           if (fehler instanceof ProduktbudgetFehler) {

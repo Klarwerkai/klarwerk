@@ -107,7 +107,7 @@ describe("S1 · der Admin liest und ändert", () => {
     const res = await put(app, admin, "perplexity-poc", GUELTIG);
     expect(res.statusCode, res.body).toBe(200);
     const body = res.json() as { bereiche: Bereich[]; geaendert: boolean; wiederholt: boolean };
-    expect(body).toMatchObject({ geaendert: true, wiederholt: false });
+    expect(body).toMatchObject({ geaendert: true, wiederholt: false, bestaetigteFassung: 1 });
     const p = body.bereiche.find((b) => b.bereich === "perplexity-poc");
     expect(p).toMatchObject({ betragCent: 2400, fassung: 1 });
     expect(p?.geaendertVon).toMatch(/\S/);

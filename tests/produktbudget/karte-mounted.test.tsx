@@ -331,6 +331,7 @@ describe("M3c · Eingabe während des Speicherns", () => {
           ...stand({ betragCent: 2500, fassung: 1 }),
           wiederholt: false,
           geaendert: true,
+          bestaetigteFassung: 1,
         },
       });
       await new Promise((r) => setTimeout(r, 0));
@@ -345,6 +346,63 @@ describe("M3c · Eingabe während des Speicherns", () => {
     expect(puts[1]).toMatchObject({ betrag: "30", fassung: 1 });
     expect(puts[1]?.aenderungId).not.toBe(puts[0]?.aenderungId);
     expect(text(s, "pb-betrag-perplexity-poc")).toBe("30,00 EUR");
+  });
+});
+
+describe("M3d · fremde Änderung zwischen eigener Speicherung und Antwort (Ben, nacharbeit-3)", () => {
+  it("die Folgeeingabe beruht auf der EIGENEN bestätigten Fassung — die fremde löst 409 aus", async () => {
+    let freigeben: ((a: Schreibantwort) => void) | null = null;
+    schreiben = (rumpf) =>
+      rumpf.betrag === "25"
+        ? new Promise<Schreibantwort>((ja) => {
+            freigeben = ja;
+          })
+        : {
+            // Der Server prüft die Fassung: die Folgeeingabe trägt die eigene (1), der Stand ist 2.
+            status: rumpf.fassung === 2 ? 200 : 409,
+            body:
+              rumpf.fassung === 2
+                ? {
+                    ...stand({ betragCent: 3000, fassung: 3 }),
+                    wiederholt: false,
+                    geaendert: true,
+                  }
+                : {
+                    error: "CONFLICT",
+                    grund: "konflikt",
+                    message: "geändert",
+                    stand: stand({ betragCent: 1800, fassung: 2 }),
+                  },
+          };
+    const s = await karte();
+    await tippe(eingabe(s, "perplexity-poc"), "25");
+    await klicke(s.container.querySelector('[data-testid="pb-speichern-perplexity-poc"]'));
+    await tippe(eingabe(s, "perplexity-poc"), "30");
+    // Die eigene Änderung stellte Fassung 1 her; bis zum Lesen des Antwortstands hat eine andere
+    // Person schon Fassung 2 (18,00 EUR) gespeichert.
+    await act(async () => {
+      (freigeben as ((a: Schreibantwort) => void) | null)?.({
+        status: 200,
+        body: {
+          ...stand({ betragCent: 1800, fassung: 2 }),
+          wiederholt: false,
+          geaendert: true,
+          bestaetigteFassung: 1,
+        },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await beruhige(5);
+    expect(eingabe(s, "perplexity-poc").value).toBe("30");
+    await klicke(s.container.querySelector('[data-testid="pb-speichern-perplexity-poc"]'));
+    expect(puts).toHaveLength(2);
+    expect(puts[1], "die fremde Fassung 2 wurde still als Grundlage übernommen").toMatchObject({
+      betrag: "30",
+      fassung: 1,
+    });
+    expect(text(s, "pb-meldung-perplexity-poc")).toBe(t("produktbudget.fehler.konflikt"));
+    expect(text(s, "pb-betrag-perplexity-poc")).toBe("18,00 EUR");
+    expect(eingabe(s, "perplexity-poc").value).toBe("30");
   });
 });
 

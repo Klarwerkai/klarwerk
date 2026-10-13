@@ -505,7 +505,13 @@ export class Produktbudget {
     von: string,
     bereichRoh: string,
     eingabe: BudgetEingabe,
-  ): Promise<{ sicht: ProduktbudgetSicht; wiederholt: boolean; geaendert: boolean }> {
+  ): Promise<{
+    sicht: ProduktbudgetSicht;
+    wiederholt: boolean;
+    geaendert: boolean;
+    /** Die von GENAU dieser Änderung hergestellte Fassung; `null` nur bei Altvermerken. */
+    bestaetigteFassung: number | null;
+  }> {
     if (!istBereich(bereichRoh)) {
       throw new ProduktbudgetFehler(404, "bereich", "Diesen Budgetbereich gibt es nicht.");
     }
@@ -564,8 +570,11 @@ export class Produktbudget {
       zeitraum: zeitraum as BudgetZeitraum,
     };
 
+    // `fassung`: die Fassung, die GENAU DIESE Änderung im atomaren Vorgang hergestellt (bzw. bei
+    // „unverändert" vorgefunden) hat — nicht die eines später gelesenen Stands, der schon eine
+    // fremde Änderung enthalten kann (Ben nacharbeit-3).
     type Ausgang =
-      | { art: "wiederholt" | "unveraendert" | "geaendert" }
+      | { art: "wiederholt" | "unveraendert" | "geaendert"; fassung: number | null }
       | { art: "fehler"; f: ProduktbudgetFehler };
     const ergebnis = await this.aendereStand<Ausgang>((stand) => {
       // Dieselbe Änderung kam schon an (unklarer Ausgang, erneutes Senden): kein zweiter Eintrag.
@@ -583,7 +592,8 @@ export class Produktbudget {
           frueher.nachher.zeitraum === nachher.zeitraum &&
           frueher.grund === grund;
         if (gleich) {
-          return { neu: null, wert: { art: "wiederholt" } };
+          const bestaetigt = frueher.basisFassung === undefined ? null : frueher.basisFassung + 1;
+          return { neu: null, wert: { art: "wiederholt", fassung: bestaetigt } };
         }
         return {
           neu: null,
@@ -646,7 +656,7 @@ export class Produktbudget {
         alt.waehrung === nachher.waehrung &&
         alt.zeitraum === nachher.zeitraum
       ) {
-        return { neu: null, wert: { art: "unveraendert" } };
+        return { neu: null, wert: { art: "unveraendert", fassung: alt.fassung } };
       }
       const am = this.stempel();
       const neuE: BudgetEinstellung = {
@@ -679,16 +689,19 @@ export class Produktbudget {
             },
           ].slice(-MAX_AENDERUNGEN),
         },
-        wert: { art: "geaendert" },
+        wert: { art: "geaendert", fassung: neuE.fassung },
       };
     });
     if (ergebnis.art === "fehler") {
       throw ergebnis.f;
     }
     return {
+      // Die Sicht wird danach gelesen und kann schon fremde Änderungen enthalten; als Grundlage
+      // einer Folgeeingabe gilt allein `bestaetigteFassung`.
       sicht: await this.lies(),
       wiederholt: ergebnis.art === "wiederholt",
       geaendert: ergebnis.art === "geaendert",
+      bestaetigteFassung: ergebnis.fassung,
     };
   }
 

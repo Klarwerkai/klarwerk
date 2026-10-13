@@ -306,6 +306,55 @@ describe("B4 · unklarer Schreibausgang und konkurrierende Änderung", () => {
     expect((await d.aendere(ADMIN, "perplexity-poc", erste)).wiederholt).toBe(true);
   });
 
+  it("bestaetigteFassung ist die eigene Fassung — auch wenn der nachgelesene Stand schon fremd ist", async () => {
+    const innen = new InMemoryProduktbudgetRepo();
+    let fremdNachEigenem = false;
+    // Zwischen dem atomaren Schreiben und dem Nachlesen ändert eine andere Person (Ben, nacharbeit-3).
+    const repo: ProduktbudgetRepo = {
+      hole: (m) => innen.hole(m),
+      ersetze: async (m, alt, neu) => {
+        const ok = await innen.ersetze(m, alt, neu);
+        if (ok && fremdNachEigenem) {
+          fremdNachEigenem = false;
+          await dienst(innen).aendere("konto-fremd", "perplexity-poc", {
+            betrag: "18",
+            waehrung: "EUR",
+            zeitraum: "einmalig",
+            fassung: 1,
+            aenderungId: aenderungId(),
+          });
+        }
+        return ok;
+      },
+    };
+    const d = dienst(repo);
+    fremdNachEigenem = true;
+    const eigene = {
+      betrag: "25",
+      waehrung: "EUR",
+      zeitraum: "einmalig",
+      fassung: 0,
+      aenderungId: aenderungId(),
+    };
+    const r = await d.aendere(ADMIN, "perplexity-poc", eigene);
+    expect(r.geaendert).toBe(true);
+    expect(r.bestaetigteFassung).toBe(1);
+    const gelesen = r.sicht.bereiche.find((b) => b.bereich === "perplexity-poc");
+    expect(gelesen).toMatchObject({ fassung: 2, betragCent: 1800 });
+    // Die Folgeeingabe auf der EIGENEN Fassung trifft die fremde Änderung als Konflikt.
+    await expect(
+      d.aendere(ADMIN, "perplexity-poc", {
+        ...eigene,
+        betrag: "30",
+        fassung: r.bestaetigteFassung as number,
+        aenderungId: aenderungId(),
+      }),
+    ).rejects.toMatchObject({ status: 409, grund: "konflikt" });
+    // Die Wiederholung derselben Änderung nennt dieselbe eigene Fassung, nicht die fremde.
+    expect((await d.aendere(ADMIN, "perplexity-poc", eigene)).bestaetigteFassung).toBe(1);
+    expect((await bereich(d, "perplexity-poc")).betragCent).toBe(1800);
+  });
+
   it("zwei Personen auf derselben Fassung: die zweite bekommt 409 samt neuem Stand", async () => {
     const d = dienst();
     await d.aendere("konto-a", "perplexity-poc", {

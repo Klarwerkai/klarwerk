@@ -770,11 +770,20 @@ export function journaledRepos(
 /** Die Journalart des Firmenwörterbuchs (nicht in `AppRepos`, s. build-app.ts `begriffe`). */
 export const BEGRIFFE_ZEILE = { repo: "begriffe", method: "lege" } as const;
 
+/**
+ * produkt:20261013:produktbudget-anwender-admin (PBE-06/08): die Journalart der Produktbudgets —
+ * Einstellungen, Provenienz, Buchungen und Reservierungen einer Mandantenzeile. Wie das
+ * Firmenwörterbuch nicht in `AppRepos`; `replayJournal` übergeht sie, `buildDevPersistServices`
+ * spielt sie getrennt zurück.
+ */
+export const PRODUKTBUDGET_ZEILE = { repo: "produktbudget", method: "ersetze" } as const;
+
 /** Die Spur des Firmenresets im neuen Journal. Kein Repo trägt diesen Namen; das Replay übergeht sie. */
 export const FIRMENRESET_ZEILE = { repo: "journal", method: "firmenreset" } as const;
 
 /**
- * Was ein Firmenreset erhält: Konten (samt zweitem Faktor), Firmenwörterbuch und Prüfprotokoll.
+ * Was ein Firmenreset erhält: Konten (samt zweitem Faktor), Firmenwörterbuch, Prüfprotokoll und die
+ * Produktbudgets samt Buchungen.
  * Eine Liste und kein `new Set(...)`: diese Datei lädt `build-app`, und eine Erzeugung auf Modulebene
  * machte sie für den Einstiegspunkt-Wächter (tests/demo-zugang-start/vertrag-am-einstiegspunkt.test.ts)
  * zum Prozessstart.
@@ -784,6 +793,11 @@ export const FIRMENRESET_ERHALTEN: readonly string[] = [
   "secondFactors",
   "auditRepo",
   BEGRIFFE_ZEILE.repo,
+  // produkt:20261013:produktbudget-anwender-admin (PBE-06): bereits angefallene Kosten,
+  // Reservierungen, Einstellungen und ihre Provenienz bleiben — sonst gälten nach dem Reset wieder
+  // unverbrauchte Originalbudgets. Die Zeilen bleiben in ihrer Reihenfolge; das Replay erreicht
+  // damit denselben Stand.
+  PRODUKTBUDGET_ZEILE.repo,
 ];
 
 /** Ein Schreibvorgang traf auf einen laufenden Firmenreset. Fester Satz, keine Kennung. */
@@ -871,14 +885,6 @@ function journaledBegriffe(
     },
   };
 }
-
-/**
- * produkt:20261013:produktbudget-anwender-admin (PBE-06/08): die Journalart der Produktbudgets —
- * Einstellungen, Provenienz, Buchungen und Reservierungen einer Mandantenzeile. Wie das
- * Firmenwörterbuch nicht in `AppRepos`; `replayJournal` übergeht sie, `buildDevPersistServices`
- * spielt sie getrennt zurück.
- */
-export const PRODUKTBUDGET_ZEILE = { repo: "produktbudget", method: "ersetze" } as const;
 
 /**
  * Die Produktbudgets mit Journal: ERST die Zeile, DANN die Ablage. Scheitert das Anhängen (Sperre,

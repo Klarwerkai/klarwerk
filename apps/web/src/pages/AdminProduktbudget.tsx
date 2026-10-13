@@ -145,20 +145,22 @@ function BereichKarte({ b, dezimal }: { b: BudgetBereich; dezimal: string }): JS
         ...(g.werte.grund.trim() === "" ? {} : { grund: g.werte.grund }),
       }),
     onSuccess: (antwort, g) => {
-      const { wiederholt, geaendert, ...stand } = antwort;
+      const { wiederholt, geaendert, bestaetigteFassung, ...stand } = antwort;
       qc.setQueryData<Produktbudgetstand>(PRODUKTBUDGET_KEY, stand);
       if (offen.current?.aenderungId === g.aenderungId) {
         offen.current = null;
       }
       // Gelöscht wird NUR der bestätigte Entwurf. Hat die Person inzwischen weitergetippt, bleibt
-      // ihre Eingabe stehen — bezogen auf die eben bestätigte eigene Fassung, nicht still verworfen.
+      // ihre Eingabe stehen — bezogen auf die Fassung, die GENAU DIESE eigene Änderung hergestellt
+      // hat (`bestaetigteFassung` aus dem atomaren Vorgang). Nicht die Fassung des nachgelesenen
+      // Stands: enthielte der schon eine fremde Änderung, überschriebe die Folgeeingabe sie ohne
+      // Konflikt. So löst eine zwischenzeitliche Fremdänderung beim nächsten Speichern 409 aus.
       const jetzt = entwurfJetzt.current;
       const weiter = jetzt !== null && !gleicheWerte(jetzt, g.werte);
       if (!weiter) {
         setEntwurf(null);
-      } else if (jetzt.fassung === g.werte.fassung) {
-        const bestaetigt = stand.bereiche.find((x) => x.bereich === b.bereich)?.fassung;
-        setEntwurf({ ...jetzt, fassung: bestaetigt ?? jetzt.fassung });
+      } else if (jetzt.fassung === g.werte.fassung && typeof bestaetigteFassung === "number") {
+        setEntwurf({ ...jetzt, fassung: bestaetigteFassung });
       }
       const gespeichert = geaendert || wiederholt;
       setMeldung({

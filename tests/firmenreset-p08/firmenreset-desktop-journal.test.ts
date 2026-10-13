@@ -38,6 +38,7 @@ import {
   readJournalLines,
 } from "../../services/app/src/dev-persist";
 import { waehleWerksreset } from "../../services/app/src/firmenreset-journal";
+import { Produktbudget } from "../../services/app/src/produktbudget";
 
 const TESTFIRMA = "P08-Testfirma Klarwerk Probe GmbH (fiktiv)";
 const ADMIN = {
@@ -276,6 +277,72 @@ describe("P08 · K3 · K8 · Konten und Wörterbuch bleiben, nur die eigene Test
     const f = await testfirma();
     const neu = await neustart(f.journal);
     expect((await neu.begriffe.aktuelle()).map((b) => b.version)).toEqual([1]);
+  });
+});
+
+// produkt:20261013:produktbudget-anwender-admin (PBE-06/08, Ben nacharbeit-3): der Firmenreset
+// löscht keine Produktbudgets — Einstellung, Provenienz, Verbrauch und Reservierungen überstehen
+// Reset UND Wiederöffnen, und der verbliebene Deckel gilt danach weiter.
+describe("Produktbudget · der Firmenreset lässt Budgets und angefallene Kosten stehen", () => {
+  it("Reset + Neustart: Einstellung, Provenienz, Verbrauch und Reservierung bleiben; der Deckel zählt weiter", async () => {
+    const f = await testfirma();
+    const put = await f.app.inject({
+      method: "PUT",
+      url: "/api/admin/produktbudget/perplexity-poc",
+      headers: f.admin,
+      payload: {
+        betrag: "15",
+        waehrung: "EUR",
+        zeitraum: "einmalig",
+        fassung: 0,
+        aenderungId: "p08-budget-0001",
+        grund: `${TESTFIRMA}: fiktive Vorgabe`,
+      },
+    });
+    expect(put.statusCode, put.body).toBe(200);
+    const vorher = new Produktbudget({ repo: f.services.produktbudget, mandant: "instanz" });
+    const reservierung = (auftragId: string, cent: number) => ({
+      zuordnung: "perplexity-poc",
+      cent,
+      nutzer: f.adminId,
+      auftragId,
+      versuch: 1,
+      anbieter: "perplexity",
+      waehrung: "EUR",
+    });
+    expect(await vorher.reserviere(reservierung("p08-auftrag-1", 500))).toBe(true);
+    expect(await vorher.reserviere(reservierung("p08-auftrag-2", 500))).toBe(true);
+    const herkunft = { nutzer: f.adminId, versuch: 1 };
+    await vorher.verbuche("perplexity-poc", 400, "p08-auftrag-2", herkunft);
+
+    const ok = await ausfuehren(f, gueltig(await kennung(f)));
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(f.beendet()).toBe(1);
+
+    // Wiederöffnen: frische Komposition aus derselben Datei, wie die Desktop-App nach dem Reset.
+    const neu = await neustart(f.journal);
+    expect(await neu.ko.listEinschliesslichPapierkorb()).toEqual([]);
+    const nachher = new Produktbudget({ repo: neu.produktbudget, mandant: "instanz" });
+    const p = (await nachher.lies()).bereiche.find((b) => b.bereich === "perplexity-poc");
+    expect(p).toMatchObject({
+      betragCent: 1500,
+      fassung: 1,
+      verbrauchtCent: 400,
+      reserviertCent: 500,
+      verbleibendCent: 600,
+      buchungen: 2,
+    });
+    expect(p?.letzteAenderungen.map((a) => a.aenderungId)).toEqual(["p08-budget-0001"]);
+    // Der verbliebene Deckel: mehr als der Rest wird nicht frei, der Rest schon.
+    expect(await nachher.reserviere(reservierung("p08-auftrag-3", 700))).toBe(false);
+    expect(await nachher.reserviere(reservierung("p08-auftrag-4", 600))).toBe(true);
+    // Und auch das überlebt das nächste Wiederöffnen.
+    const nochmal = new Produktbudget({
+      repo: (await neustart(f.journal)).produktbudget,
+      mandant: "instanz",
+    });
+    const q = (await nochmal.lies()).bereiche.find((b) => b.bereich === "perplexity-poc");
+    expect(q).toMatchObject({ verbleibendCent: 0, reserviertCent: 1100, verbrauchtCent: 400 });
   });
 });
 
