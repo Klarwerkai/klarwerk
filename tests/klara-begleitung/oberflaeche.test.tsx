@@ -764,11 +764,144 @@ describe("K7 · Sperrbildschirmmelder: tatsächlicher Zustand, Ausfall, Wiederau
     expect(q("begleitung-sperrerkennung")?.textContent).toBe(ERKANNT);
   });
 
+  it("Fokusverlust während des Erststarts: die verspätete Antwort aktiviert auch nach Rückkehr nicht", async () => {
+    const probe = idleAttrappe("haelt");
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    await flush();
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain(
+      "anderes Fenster in den Vordergrund",
+    );
+    act(() => probe.freigeben[0]?.());
+    await flush();
+    expect(probe.signale[0]?.aborted).toBe(true);
+    expect(q("begleitung-zustand")).toBeNull();
+    expect(q("begleitung-angebot")).not.toBeNull();
+  });
+
+  it("Fokusverlust während des Fortsetzens: bleibt pausiert, die Rückkehr setzt nicht fort", async () => {
+    const probe = idleAttrappe("ok");
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    await flush();
+    act(() => knopf("Pause").click());
+    probe.art = "haelt";
+    act(() => knopf("Fortsetzen").click());
+    await flush();
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    act(() => probe.freigeben[0]?.());
+    await flush();
+    expect(probe.signale[1]?.aborted).toBe(true);
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    expect(q("begleitung-grund")?.textContent).toBe(
+      "Pausiert, weil ein anderes Fenster im Vordergrund ist. Die Rückkehr setzt nicht von selbst fort.",
+    );
+  });
+
   it("ohne Idle Detection bleibt es ehrlich beim Fenstersignal", () => {
     montiere();
     starte("Produktrecherche, 30 Minuten");
     expect(q("begleitung-sperrerkennung")?.textContent).toBe(
       "Sperrbildschirm wird hier nur über das verborgene Fenster erkannt.",
+    );
+  });
+});
+
+// ================================================================================================
+// NACHARBEIT 12 (Ben AC02, Hostprobe 84 nicht bestanden): ein SICHTBARES, aber unfokussiertes
+// Fenster. Beim Wechsel in ein separates oder privates Fenster bleibt dieses Fenster sichtbar —
+// `document.hidden` bleibt `false`, es feuert nur `blur`. Genau so wird es hier gestellt.
+// ================================================================================================
+describe("K2/K7 · Fensterwechsel bei sichtbarem Fenster: Fokus wird vor jedem Lesen geprüft", () => {
+  const FOKUS =
+    "Pausiert, weil ein anderes Fenster im Vordergrund ist. Die Rückkehr setzt nicht von selbst fort.";
+
+  it("anderes Fenster vorn: sofort Pause, Kontext verworfen, kein Lesen — Rückkehr setzt nicht fort", () => {
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    vergeht(5000);
+    expect(q("begleitung-auskunft")?.textContent).toContain(": 2 gelesene Felder");
+    expect(document.hidden).toBe(false);
+
+    const lesen = vi.spyOn(document, "querySelectorAll");
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    expect(document.hidden).toBe(false);
+    expect(q("begleitung-grund")?.textContent).toBe(FOKUS);
+    expect(q("begleitung-auskunft")?.textContent).toContain(": 0 gelesene Felder");
+
+    // Eingaben im Formular während das andere Fenster vorn ist: nichts wird gelesen.
+    act(() => setzeWert(leistung(), "250"));
+    vergeht(10_000);
+    expect(q("begleitung-hinweis")).toBeNull();
+    expect(vorgangAbgefragt(lesen.mock.calls)).toBe(false);
+
+    // Zurück ins Fenster: die Rückkehr allein setzt NICHT fort.
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    vergeht(10_000);
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    expect(vorgangAbgefragt(lesen.mock.calls)).toBe(false);
+    lesen.mockRestore();
+
+    // Erst das bewusste Fortsetzen liest wieder — frischen Kontext.
+    act(() => knopf("Fortsetzen").click());
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+    vergeht(2000);
+    expect(q("begleitung-hinweis")?.textContent).toContain("„Leistung“");
+    ohneLeck();
+  });
+
+  it("privates Fenster vorn: kein Inhalt aus ihm, keine Übermittlung, auch nicht über den Host-Weg", () => {
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    // Selbst wenn ein Host-Adapter Inhalt eines privaten Fensters meldete: er wird nicht übernommen.
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(KONTEXT_EREIGNIS, {
+          detail: {
+            quelle: { art: "domain", kennung: "privat.example", privat: true },
+            konto: "u-pia",
+            felder: [{ name: "x", bezeichnung: "x", wert: GEHEIM[3] }],
+          },
+        }),
+      );
+    });
+    vergeht(10_000);
+    expect(q("begleitung-grund")?.textContent).toBe(FOKUS);
+    expect(q("begleitung-auskunft")?.textContent).toContain(": 0 gelesene Felder");
+    ohneLeck();
+  });
+
+  it("Fortsetzen, während ein anderes Fenster vorn ist, aktiviert nicht", () => {
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    act(() => knopf("Pause").click());
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    // z. B. per Tastenkürzel aus einem anderen Fenster ausgelöst, ohne dass dieses Fenster vorn ist
+    taste("KeyP");
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    expect(q("begleitung-grund")?.textContent).toBe(FOKUS);
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain(
+      "anderes Fenster in den Vordergrund",
     );
   });
 });

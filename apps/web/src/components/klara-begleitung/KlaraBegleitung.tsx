@@ -207,6 +207,12 @@ export function KlaraBegleitung({
   const aktuell = useRef(b);
   aktuell.current = b;
   const zeitgeber = useRef<number | null>(null);
+  // Nacharbeit 12 (Ben AC02, Hostprobe 84): `document.hidden` erfasst ein SICHTBARES, aber
+  // unfokussiertes Fenster nicht — beim Wechsel in ein anderes oder privates Fenster blieb die
+  // Begleitung aktiv. Der Fensterfokus wird deshalb über `blur`/`focus` des Fensters verfolgt und
+  // vor JEDEM lokalen Lesen geprüft. Gezählt werden die Ereignisse selbst, nicht `hasFocus()`: der
+  // Wert vor dem ersten Ereignis ist „fokussiert", denn gestartet wird stets per Klick in diese Seite.
+  const fokusVerloren = useRef(false);
   const melderBeenden = useRef<(() => void) | null>(null);
   /** Jeder Einrichtungsversuch bekommt eine Nummer; ein überholter Versuch wirkt nicht mehr. */
   const melderVersuch = useRef(0);
@@ -270,9 +276,9 @@ export function KlaraBegleitung({
         const lageJetzt = { ...lage.current, jetzt: zeit };
         let neu = pruefeAblauf(alt, zeit);
         if (neu.phase === "aktiv" && neu.freigabe) {
-          if (!ereignis && document.hidden) {
-            // Verborgenes Fenster: pausieren, OHNE vorher zu lesen.
-            neu = systemereignis(neu, "verborgen", zeit);
+          if (!ereignis && (document.hidden || fokusVerloren.current)) {
+            // Verborgenes oder unfokussiertes Fenster: pausieren, OHNE vorher zu lesen.
+            neu = systemereignis(neu, document.hidden ? "verborgen" : "fokusverlust", zeit);
           } else {
             // Erst prüfen, dann lesen: ohne aktuelle Berechtigung wird das Dokument nicht angefasst,
             // und `nimmKontext` pausiert mit dem passenden Grund.
@@ -341,7 +347,19 @@ export function KlaraBegleitung({
         }
         setB((alt) => systemereignis(alt, "sperrbildschirm", jetzt()));
       };
+      // Nacharbeit 12: Fokusverlust WÄHREND der Einrichtung entwertet den Versuch genauso — auch
+      // wenn das Fenster vor der Antwort wieder fokussiert ist. Die Rückkehr allein aktiviert nichts.
+      const beiFokusverlust = (): void => {
+        if (!entschieden && versuch === melderVersuch.current) {
+          beendeMelder();
+          setMelder("nur_fenster");
+          setMeldung(t("begleitung.fehler.fokusBeimStart"));
+          setB((alt) => systemereignis(alt, "fokusverlust", jetzt()));
+        }
+      };
+      window.addEventListener("blur", beiFokusverlust);
       void starteSperrmelder(beiSperre).then((r) => {
+        window.removeEventListener("blur", beiFokusverlust);
         if (versuch !== melderVersuch.current) {
           if (r.zustand === "laeuft") {
             r.beenden();
@@ -368,6 +386,24 @@ export function KlaraBegleitung({
     }
   }, [b.phase, beendeMelder]);
   useEffect(() => beendeMelder, [beendeMelder]);
+
+  // Fensterfokus (Nacharbeit 12): ein anderes — auch privates — Fenster im Vordergrund pausiert die
+  // Begleitung sofort und verwirft den flüchtigen Kontext; die Rückkehr setzt NICHT fort.
+  useEffect(() => {
+    const weg = (): void => {
+      fokusVerloren.current = true;
+      setB((alt) => (alt.phase === "aktiv" ? systemereignis(alt, "fokusverlust", jetzt()) : alt));
+    };
+    const zurueck = (): void => {
+      fokusVerloren.current = false;
+    };
+    window.addEventListener("blur", weg);
+    window.addEventListener("focus", zurueck);
+    return () => {
+      window.removeEventListener("blur", weg);
+      window.removeEventListener("focus", zurueck);
+    };
+  }, [jetzt]);
 
   const aktiv = b.phase === "aktiv";
 
@@ -476,6 +512,13 @@ export function KlaraBegleitung({
         abgelehnt(r);
         return;
       }
+      if (fokusVerloren.current || document.hidden) {
+        // Im Moment der Entscheidung ist ein anderes Fenster vorn: nicht aktivieren.
+        beendeMelder();
+        setB(pausiere(jetztStand, "fokusverlust", jetzt()));
+        setMeldung(t("begleitung.fehler.fokusBeimStart"));
+        return;
+      }
       if (zustand === "ausgefallen") {
         setB(pausiere(jetztStand, "sperrmelder", jetzt()));
         setMeldung(t("begleitung.fehler.sperrmelder"));
@@ -552,6 +595,11 @@ export function KlaraBegleitung({
       if (!darf(gewaehlt, rolleJetzt.current)) {
         beendeMelder();
         setMeldung(t("begleitung.fehler.keine_rechte"));
+        return;
+      }
+      if (fokusVerloren.current || document.hidden) {
+        beendeMelder();
+        setMeldung(t("begleitung.fehler.fokusBeimStart"));
         return;
       }
       setSatz("");

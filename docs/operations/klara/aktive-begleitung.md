@@ -84,6 +84,7 @@ wenn der Melder läuft; vorher steht „wird eingerichtet“, während einer Pau
 |---|---|---|
 | Pause durch Nutzer | Kontext wird verworfen | jederzeit bis zum Endpunkt |
 | Fenster verborgen (anderes Fenster, Tab, Bildschirm aus) | Pause „verborgen“ | nur durch den Nutzer |
+| Anderes, auch privates Fenster im Vordergrund, dieses bleibt sichtbar (`blur`) | Pause „fokusverlust“; Kontext verworfen; vor jedem Lesen geprüft | nur durch den Nutzer; die Rückkehr allein setzt nicht fort; auch ausstehende Starts und Fortsetzungen werden entwertet |
 | Sperrbildschirm (Idle Detection, Chrome, nach Erlaubnis) | Pause | nur durch den Nutzer; der Melder wird dabei neu eingerichtet |
 | Sperrbildschirmmelder startet nicht (Konstruktor oder `start()` scheitert) | Pause „sperrmelder“, Fehler sichtbar, keine Zusage | nur durch den Nutzer; „Fortsetzen“ versucht den Melder erneut |
 | Kontowechsel | Pause; anderes Konto sieht nichts | nur mit demselben Konto |

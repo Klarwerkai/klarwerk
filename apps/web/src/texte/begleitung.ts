@@ -72,6 +72,10 @@ export default {
     "begleitung.nein": "nein",
     "begleitung.grund.verborgen":
       "Pausiert, weil das Fenster verborgen wurde (anderes Fenster, Tab oder Bildschirm aus).",
+    "begleitung.grund.fokusverlust":
+      "Pausiert, weil ein anderes Fenster im Vordergrund ist. Die Rückkehr setzt nicht von selbst fort.",
+    "begleitung.fehler.fokusBeimStart":
+      "Während der Einrichtung kam ein anderes Fenster in den Vordergrund. Es wird nichts beobachtet; bitte bewusst erneut starten bzw. fortsetzen.",
     "begleitung.fehler.rechte_unbestaetigt":
       "Der Zugriff wird gerade neu bestätigt. Bitte danach erneut „Fortsetzen“ wählen.",
     "begleitung.status.sperreBildschirm": "Sperrbildschirm wird erkannt und pausiert.",
@@ -171,6 +175,10 @@ export default {
     "begleitung.nein": "no",
     "begleitung.grund.verborgen":
       "Paused because the window was hidden (other window, tab or screen off).",
+    "begleitung.grund.fokusverlust":
+      "Paused because another window is in front. Returning does not resume by itself.",
+    "begleitung.fehler.fokusBeimStart":
+      "Another window came to the front while accompanying was being set up. Nothing is observed; please start or resume again deliberately.",
     "begleitung.fehler.rechte_unbestaetigt":
       "Access is being confirmed again. Please choose “Resume” once more afterwards.",
     "begleitung.status.sperreBildschirm": "A locked screen is detected and pauses.",
@@ -270,6 +278,10 @@ export default {
     "begleitung.nein": "nee",
     "begleitung.grund.verborgen":
       "Gepauzeerd omdat het venster verborgen werd (ander venster, tabblad of scherm uit).",
+    "begleitung.grund.fokusverlust":
+      "Gepauzeerd omdat een ander venster op de voorgrond staat. Terugkeren hervat niet vanzelf.",
+    "begleitung.fehler.fokusBeimStart":
+      "Tijdens het inrichten kwam een ander venster op de voorgrond. Er wordt niets waargenomen; start of hervat opnieuw bewust.",
     "begleitung.fehler.rechte_unbestaetigt":
       "De toegang wordt opnieuw bevestigd. Kies daarna nogmaals „Hervatten”.",
     "begleitung.status.sperreBildschirm": "Een vergrendeld scherm wordt herkend en pauzeert.",

@@ -56,6 +56,8 @@ export type Phase = "aus" | "aktiv" | "pausiert" | "beendet";
  *   nutzer          → Fortsetzen jederzeit, solange die Freigabe läuft
  *   sperrbildschirm → Fortsetzen nur durch den Nutzer, nie von selbst
  *   verborgen       → Fenster/Tab verborgen (anderes Fenster, Bildschirm aus): wie Sperrbildschirm
+ *   fokusverlust    → Fenster sichtbar, aber ein anderes (auch privates) Fenster hat den Fokus:
+ *                     wie Sperrbildschirm — die Rückkehr allein setzt NICHT fort
  *   sperrmelder     → der erlaubte Sperrbildschirmmelder ließ sich nicht starten: Fortsetzen nur
  *                     durch den Nutzer, der Melder wird dabei neu eingerichtet und geprüft
  *   kontowechsel    → Fortsetzen nur, wenn wieder DASSELBE Konto angemeldet ist
@@ -68,6 +70,7 @@ export type Grund =
   | "nutzer"
   | "sperrbildschirm"
   | "verborgen"
+  | "fokusverlust"
   | "sperrmelder"
   | "kontowechsel"
   | "rechteentzug"
@@ -366,7 +369,12 @@ export function fortsetzen(b: Begleitung, lage: Lage): FortsetzenErgebnis {
   };
 }
 
-export type Systemereignis = "sperrbildschirm" | "verborgen" | "kontowechsel" | "rechteentzug";
+export type Systemereignis =
+  | "sperrbildschirm"
+  | "verborgen"
+  | "fokusverlust"
+  | "kontowechsel"
+  | "rechteentzug";
 
 export function systemereignis(b: Begleitung, ereignis: Systemereignis, jetzt: number): Begleitung {
   return b.phase === "aktiv" || b.phase === "pausiert" ? pausiere(b, ereignis, jetzt) : b;

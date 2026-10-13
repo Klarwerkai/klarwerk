@@ -37,6 +37,7 @@ export function istSystemereignis(wert: unknown): wert is Systemereignis {
   return (
     wert === "sperrbildschirm" ||
     wert === "verborgen" ||
+    wert === "fokusverlust" ||
     wert === "kontowechsel" ||
     wert === "rechteentzug"
   );
