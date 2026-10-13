@@ -23,6 +23,8 @@ import {
 // ASSISTENZ IM PRODUKT (produkt:20261010:assistenz-produkteinstieg): ohne Vorschau steht dieselbe
 // gelieferte Oberfläche im Produktbetrieb da — echtes Gespräch, kein Demo — neben dem Hilfeknopf.
 // Die Figur wird nachgeladen, damit sie den ersten Seitenaufbau nicht aufhält.
+// produkt:20261012:klara-setup-shortcuts-umsetzung (AA-04): der eine Ausführungsweg der Klara-Kürzel.
+import { KlaraKuerzelAusfuehrung } from "../components/klara-setup/KlaraKuerzelAusfuehrung";
 import { useKlaraVorschauAktiv } from "../components/klara-vorschau/aktiv";
 // AUFTRAG-mega61 Block A/B: Hinweisbanner auf derselben Ebene wie Kopfband und Meldungsfläche —
 // bewusst NICHT im Torwächter, damit der Anmeldeweg unberührt bleibt. Der Fußbereich (LegalFooter)
@@ -59,6 +61,7 @@ function KlaraEbene(): JSX.Element {
   if (!vorschau) {
     return (
       <>
+        <KlaraKuerzelAusfuehrung />
         <KlaraAssistant />
         <Suspense fallback={null}>
           <KlaraVorschau betriebsart="produkt" />
@@ -67,9 +70,12 @@ function KlaraEbene(): JSX.Element {
     );
   }
   return (
-    <Suspense fallback={null}>
-      <KlaraVorschau betriebsart="vorschau" />
-    </Suspense>
+    <>
+      <KlaraKuerzelAusfuehrung />
+      <Suspense fallback={null}>
+        <KlaraVorschau betriebsart="vorschau" />
+      </Suspense>
+    </>
   );
 }
 

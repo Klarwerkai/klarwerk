@@ -1193,6 +1193,10 @@ export function BibliothekLesen({
     void qc.invalidateQueries({ queryKey: ["library"] });
     void qc.invalidateQueries({ queryKey: ["conflicts"] });
     void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+    // Autorenübergabe-Auftrag K3 (Nacharbeit 4): Eine Überarbeitung (`ko.revised`) beendet eine
+    // Rückgabe. Liste und Zahl der an MICH zurückgegebenen Entwürfe dürfen sie dann nicht bis zum
+    // Ablauf der Frischefrist weiterführen — dieselbe Lücke wie bei der Übergabe in MehrAbschnitte.
+    void qc.invalidateQueries({ queryKey: ["me", "returned-tasks"] });
   };
 
   const act = useMutation({
@@ -3871,6 +3875,9 @@ export function BibliothekLesen({
                 variante={lesevariante}
                 zeigtOriginal={zeigtOriginal}
                 onUmschalten={() => setZeigtOriginal((v) => !v)}
+                onWiderspruch={(begruendung) =>
+                  endpoints.lesevarianten.widerspruchKo(koId, lesevariante.lang, begruendung)
+                }
               />
             ) : null}
             {/* Der Abruf ist gescheitert (Netz, Zugriff, Serverfehler). Dann steht das ORIGINAL da —

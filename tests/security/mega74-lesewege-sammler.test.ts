@@ -224,6 +224,17 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "JOB 3326 — sichtbareFuer + sqlSichtbarkeitFuer über der Grundmenge.",
   },
+  // Peter Nr. 20: die Widerspruchsmeldung fährt dasselbe Prädikat wie der Abruf (`darfSehen`, 404
+  // statt Meldung). Ihre Antwort trägt nur Kennung, Sprache und Protokollnummer.
+  "POST /api/kos/:id/lesevariante/:lang/widerspruch": {
+    urteil: "PRAEDIKAT",
+    grund: "Peter Nr. 20 — darfSehen am Objekt, 404 statt Meldung; Antwort ohne KO-Inhalt.",
+  },
+  "POST /api/library/import/candidates/:id/lesevariante/:lang/widerspruch": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Peter Nr. 20 — Meldung zum Kandidaten (keine koId); Antwort trägt nur Kennung, Sprache, Protokollnummer.",
+  },
   // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 10): das frühere Urteil KEIN_KO_INHALT
   // stimmte nicht — die Bilanz nannte Objektkennungen (`textGeaendert`, `originalGeaendert`) und
   // zählte unsichtbare Objekte mit. Jetzt zählt und nennt sie nur, was der Admin sehen darf.
@@ -710,6 +721,15 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "REF-01 — sichtbarkeitsfilterFuer vor jedem Auszug; sonst nur „nicht zugänglich“.",
   },
+  // REF-02: die erneute Referenzprüfung löst jede Fundstelle mit `sichtbarkeitsfilterFuer(user)`
+  // neu auf, bevor ein Auszug an den Prüfer geht; die Antwort trägt nur Kennungen, Zustände und
+  // Begründungen des Prüfers (referenz-pruefung.ts).
+  "POST /api/ask/referenzpruefung/:pruefId/erneut": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "REF-02 — sichtbarkeitsfilterFuer(user) je Fundstelle vor jedem Auszug (loeseFundstelleAuf); " +
+      "nur derselbe Nutzer, sonst 404.",
+  },
   // JOB 3091 (KA6 Memo): der Zuruf traegt Kernaussagen validierter Wissensobjekte als Belege zum
   // Modell und Titel/Version als Herkunft zurueck ans Panel. Der Erzeuger filtert an EINER Stelle,
   // bevor irgendetwas hinausgeht: nur `status === "validiert"` (zuruf.ts:384) und `dropConfidential`
@@ -1029,6 +1049,27 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "requireVisibleDraft + canSeeDraft je Treffer (capture-routes.ts).",
   },
   "GET /api/me/impact": { urteil: "EIGENER_BESTAND", grund: "vier eigene Zähler (impact.ts:88)." },
+  // Autorenübergabe-Auftrag K3: Zahl der an mich zurückgegebenen Entwürfe, über derselben
+  // sichtbaren Grundmenge wie `GET /api/kos` gerechnet.
+  "GET /api/me/returned-tasks/summary": {
+    urteil: "PRAEDIKAT",
+    grund: "K3 — sichtbareFuer + sqlSichtbarkeitFuer über der Grundmenge, nur die Zahl.",
+  },
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Übergaben — Kennung, Grund, Dringlichkeit.
+  "GET /api/me/author-transfers": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "R-0961 — wartende Autorenübergaben (koId, grund, kritisch); Admin.",
+  },
+  "GET /api/me/author-transfers/summary": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "R-0961 — nur die Zahl der wartenden Autorenübergaben; Admin.",
+  },
+  "GET /api/me/returned-tasks": {
+    urteil: "PRAEDIKAT",
+    grund: "K3 — dieselbe Auswahl als Liste { koId, at, verdict }, nur eigene sichtbare Objekte.",
+  },
   // Betroffenenrechte (datenschutz-routes.ts). Die Auskunft gibt die EIGENEN Beiträge immer aus
   // (Kommentartext, Fragetext, Entwurf) — den TITEL eines Objekts nur, wenn der Betrachter es heute
   // sehen darf: `sichtbarkeitsfilterFuer` des Betrachters geht unbedingt in die Zusammenstellung.
@@ -1118,6 +1159,32 @@ const REGISTER: Record<string, Eintrag> = {
   "PUT /api/me/assistenz": {
     urteil: "EIGENER_BESTAND",
     grund: "ändert nur das eigene Assistenzprofil (user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
+  // produkt:20261008:klara-eigeninitiative — Unterstützungsmodus und ruhende Hinweise.
+  "GET /api/me/assistenz/eigeninitiative": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur Modus und Hinweisschlüssel des eigenen Assistenzprofils (assistenz-profil-routes.ts, " +
+      "user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
+  "PUT /api/me/assistenz/eigeninitiative": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ändert nur den eigenen Modus (user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
+  "POST /api/me/assistenz/eigeninitiative/hinweise": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt nur eigene Hinweisschlüssel ab (user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
+  // produkt:20261012:klara-setup-shortcuts-umsetzung — die eigenen Klara-Tastenkürzel.
+  "GET /api/me/assistenz/tastenkuerzel": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur die Kürzelbelegung des eigenen Assistenzprofils (assistenz-profil-routes.ts, user.id); " +
+      "fremde Kennung 403, kein KO-Inhalt.",
+  },
+  "PUT /api/me/assistenz/tastenkuerzel": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ändert nur die eigenen Kürzel (user.id); fremde Kennung 403, kein KO-Inhalt.",
   },
   // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz.
   "GET /api/me/faehigkeiten": {
@@ -1237,6 +1304,100 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/klara/programme/bedienungshilfe": {
     urteil: "EIGENER_BESTAND",
     grund: "Gibt nur die eingereichte Markierung und eigenen, gesiegelten Kontext zurück.",
+  },
+  // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): die KI-Aufträge lesen Titel und
+  // Inhalt von Wissensobjekten in Paket und Prompt. Jede Registrierung bildet dafür die EINE
+  // Entscheidung (`sichtbarkeitsfilterFuer(user)`) und reicht sie an den Dienst; der Prompt geht
+  // nur hinaus, solange die frische Prüfung des Pakets trägt (ki-arbeitsbegleitung-dienst.ts).
+  "GET /api/me/klara/ki-faehigkeiten": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "nur Fähigkeiten, Adapter und Freigabelage (ki-arbeitsbegleitung-routes.ts), kein KO.",
+  },
+  "POST /api/me/klara/ki-verbindung/:anbieter/pruefen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Anbieterprobe ohne Wissensobjekt; Antwort nur ok und Probendetail.",
+  },
+  "GET /api/me/klara/gespraeche/:id/ki-auftraege": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — sichtbarkeitsfilterFuer je Quelle; Prompt nur bei aktuellem Paket.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Paket nur aus Quellen, die sichtbarkeitsfilterFuer zulässt.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/uebergabe": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — vor jeder Übergabe frische Prüfung mit sichtbarkeitsfilterFuer.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/ergebnis": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Sicht des Auftrags mit sichtbarkeitsfilterFuer neu geprüft.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/unterbrechen": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Sicht des Auftrags mit sichtbarkeitsfilterFuer neu geprüft.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/stopp": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Sicht des Auftrags mit sichtbarkeitsfilterFuer neu geprüft.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/freigabe-schliessen": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Sicht des Auftrags mit sichtbarkeitsfilterFuer neu geprüft.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/neu-binden": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — neues Paket nur aus Quellen, die sichtbarkeitsfilterFuer zulässt.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/codex": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Codex-Wirkung erst nach frischer Prüfung mit sichtbarkeitsfilterFuer.",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-vergleich": {
+    urteil: "PRAEDIKAT",
+    grund: "BPA-13 — Vergleich nur über eigene Aufträge; Sicht mit sichtbarkeitsfilterFuer.",
+  },
+  // produkt:20261008:klara-aktionen (Klara 05): die Aufträge liegen IM eigenen Gespräch. Titel und
+  // Kennungen darin hat die Person selbst auf ihrem Bildschirm gewählt; kein Weg liest ein Objekt.
+  "GET /api/me/klara/gespraeche/:id/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur die Aufträge eines eigenen Gesprächs (user.id), fremd und unbekannt 404.",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt einen Auftrag im eigenen Gespräch an; Antwort ist dieser Auftrag.",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/fassungen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "engt die Grenze eines eigenen Auftrags ein; fremd und unbekannt 404.",
+  },
+  "PUT /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel": {
+    urteil: "EIGENER_BESTAND",
+    grund: "meldet einen Schritt eines eigenen Auftrags; liest kein Wissensobjekt.",
+  },
+  "PUT /api/me/klara/gespraeche/:id/auftraege/:auftragId/abbruch": {
+    urteil: "EIGENER_BESTAND",
+    grund: "bricht einen eigenen Auftrag ab; fremd und unbekannt 404.",
+  },
+  // Nacharbeit 2: der Server führt den Planschritt über die vorhandenen Türen mit der Anmeldung der
+  // Person aus (klara-ausfuehrung.ts). Die Antwort trägt nur den eigenen Auftrag: Kennungen, Stände
+  // und die Titel, die die Person im Auftrag selbst gewählt hat — kein neu gelesener Objektinhalt.
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ausfuehrung": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "führt einen eigenen Planschritt aus; Antwort ist der eigene Auftrag (klara-ausfuehrung.ts).",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ruecknahme": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nimmt einen eigenen gespeicherten Schritt mit Standvergleich zurück; Antwort eigener Auftrag.",
+  },
+  // produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: die eigenen Protokolleinträge EINES
+  // eigenen Auftrags — Kennungen, Aktionen, Stände (Fassungszeiten); nie Titel oder Inhalt.
+  "GET /api/me/klara/gespraeche/:id/auftraege/:auftragId/protokoll": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur Einträge des eigenen Kontos zum eigenen Auftrag (klara-auftrag:<id>); fremd/unbekannt 404.",
   },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
@@ -1730,6 +1891,8 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/auth/second-factor/confirm": "bestätigt den eigenen zweiten Faktor.",
     "POST /api/auth/second-factor/disable": "schaltet den eigenen zweiten Faktor ab.",
     "DELETE /api/users/:id/second-factor": "setzt den zweiten Faktor eines Kontos zurück (Admin).",
+    // R-0961: Antwort sind Kontokennung, Vertretung und die Kennungen übertragener Vorgänge.
+    "POST /api/users/:id/ausscheiden": "setzt den Status „Ausgeschieden“ eines Kontos (Admin).",
     "GET /api/auth/saml/start": "SAML-Start (Weiterleitung an den Anbieter).",
     "GET /api/auth/saml/metadata": "SAML-Metadaten des Dienstes, keine Nutzerdaten.",
     "POST /api/auth/saml/acs": "SAML-Rücksprung des Anbieters; Weiterleitung mit Abschlusscode.",
@@ -1868,6 +2031,19 @@ const REGISTER: Record<string, Eintrag> = {
   },
   "GET /api/validation/overview": { urteil: "PRAEDIKAT", grund: "Block D — Personenzeilen." },
   "GET /api/validation/settings": { urteil: "KEIN_KO_INHALT", grund: "Einstellungen." },
+  "GET /api/validation/reviewer-suggestions": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0265 — Vorschlag nur über den sichtbaren Bestand; fremdes Zielobjekt → 404.",
+  },
+  "GET /api/validation/pruefdauer": {
+    urteil: "PRAEDIKAT",
+    grund: "R-1655 — Zähler je Weg nur über Zuweisungen auf sichtbare Objekte.",
+  },
+  "GET /api/me/pruefrouting": { urteil: "KEIN_KO_INHALT", grund: "eigenes Opt-out." },
+  "PUT /api/me/pruefrouting": { urteil: "KEIN_KO_INHALT", grund: "eigenes Opt-out." },
+  "GET /api/push/config": { urteil: "KEIN_KO_INHALT", grund: "Push eingerichtet ja/nein." },
+  "POST /api/push/abo": { urteil: "KEIN_KO_INHALT", grund: "eigenes Geräteabo." },
+  "POST /api/push/abo/entfernen": { urteil: "KEIN_KO_INHALT", grund: "eigenes Geräteabo." },
   "GET /api/duplicates/settings": { urteil: "KEIN_KO_INHALT", grund: "Schwellenwert." },
   "GET /api/upload-limits": { urteil: "KEIN_KO_INHALT", grund: "Obergrenzen." },
   "GET /api/external/policy": { urteil: "KEIN_KO_INHALT", grund: "Stufenregel." },

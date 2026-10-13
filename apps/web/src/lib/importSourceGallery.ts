@@ -15,8 +15,8 @@
 // unterstuetzte Art, dann ist dieser Typ wirklich einlesbar — im Erfassen als "active", auf der
 // Import-Flaeche als "elsewhere". VON HAND steht nur, was die Weiche grundsaetzlich nicht messen
 // kann: die ausdrueckliche Aktiv-Zusage der Import-Flaeche fuer JSON (dort laeuft der eine echte
-// Upload dieser Seite), der echte Planwert fuer Excel (kein Extraktionsweg) und `fixedState` fuer
-// das Audio-/Video-Transkript (gebaut, aber ohne Dienst). Alles andere von Hand zu setzen hiesse,
+// Upload dieser Seite), der echte Planwert fuer Excel (kein Extraktionsweg) und fuer das
+// Audio-/Video-Transkript der GEMELDETE Dienststand (`GET /api/media/status`, Nacharbeit 6). Alles andere von Hand zu setzen hiesse,
 // eine zweite Wahrheit neben die messbare zu stellen — genau der Fehler, den UX-18 abgeloest hat.
 //
 // AUFTRAG-mega15 Block D (SCRUM-382, Pedis Entscheidung): „unconfigured" ist wegen des
@@ -56,10 +56,19 @@ export interface GallerySource {
   /**
    * ADMIN-02: der Zustand DIESER Installation aus der Zugangsauskunft — nur bei Anbindungen, für
    * die eine Auskunft vorliegt. Er ersetzt dann Abzeichen und Hinweis des statischen Zustands.
+   *
+   * Aufnahme `gesamt-ocr` (R-0121, Nacharbeit 6): denselben `hintKey` traegt auch das
+   * Audio-/Video-Transkript bei aktivem Dienst — „im Erfassen" allgemein waere dort falsch, denn der
+   * Weg ist nicht der Dateiimport, sondern das Beifuegen der Aufnahme und der Knopf „Transkribieren".
    */
   readonly status?: IntegrationStatus;
   readonly badgeKey?: string;
   readonly hintKey?: string;
+}
+
+/** Der Stand des Transkriptionsdienstes, wie ihn `GET /api/media/status` meldet. */
+export interface MediendienstZustand {
+  readonly active: boolean;
 }
 
 // Reihenfolge der Zustaende: aktiv zuerst, dann anderswo verfuegbar, dann vorhanden-aber-
@@ -150,6 +159,11 @@ export function systemKachelMitStatus(
 /** i18n-Schluessel des ehrlichen Hinweises fuer einen Zustand; null fuer "active" (kein Hinweis). */
 export function hintKeyFor(state: SourceState): string | null {
   return state === "active" ? null : STATE_HINT_KEY[state];
+}
+
+/** Der Hinweis EINER Kachel: ihr eigener, wenn sie einen traegt, sonst der ihres Zustands. */
+export function hintKeyForSource(source: GallerySource): string | null {
+  return source.hintKey ?? hintKeyFor(source.state);
 }
 
 // ================================================================================================
@@ -330,12 +344,16 @@ interface FileSourceDef {
   readonly accept: string | null;
   // Repräsentative Datei, an der detectFileKind die reale Erfassen-Fähigkeit misst.
   readonly sample: { name: string; type?: string };
-  // AUFTRAG-mega15 Block D (SCRUM-382): fester, auf BEIDEN Oberflächen geltender Zustand für
-  // Kacheln, deren Wahrheit die Text-Extraktionsweiche gar nicht messen kann. Die Weiche kennt nur
-  // „extrahiert diese Oberfläche Text daraus" — sie kann nicht zwischen „nie gebaut" und „gebaut,
-  // aber kein Dienst hinterlegt" unterscheiden. Ohne diese Ausnahme müsste die Kachel weiter eine
-  // der beiden Wahrheiten falsch behaupten.
-  readonly fixedState?: SourceState;
+  // AUFTRAG-mega15 Block D (SCRUM-382): Kacheln, deren Wahrheit die Text-Extraktionsweiche gar
+  // nicht messen kann. Die Weiche kennt nur „extrahiert diese Oberfläche Text daraus" — sie kann
+  // nicht zwischen „nie gebaut" und „gebaut, aber kein Dienst hinterlegt" unterscheiden.
+  //
+  // Aufnahme `gesamt-ocr` (R-0121, Nacharbeit 6): bis hierher stand hier ein FESTER Zustand
+  // `unconfigured`. Er galt auch dann, wenn der Dienst eingerichtet war — die Kachel sagte „kein
+  // Dienst hinterlegt", während die Transkription im Erfassen funktionierte (Bens Browserbeleg:
+  // `active=true` und erfolgreiche Transkription über den Anhangsweg). Jetzt hängt die Kachel am
+  // GEMELDETEN Dienststand (`mediendienstZustand`); der Weg selbst bleibt, wie er ist.
+  readonly mediendienst?: true;
 }
 
 // Typgerechte accept-Fragmente — je Fragment genau EIN Format-Cluster. Die Union der aktiven Kacheln
@@ -401,9 +419,26 @@ const FILE_SOURCE_DEFS: readonly FileSourceDef[] = [
     // Aussage wird richtig — der Weg bleibt genau, wie er ist (Pedis Entscheidung zu SCRUM-382).
     accept: null,
     sample: { name: "a.mp4", type: "video/mp4" },
-    fixedState: "unconfigured",
+    mediendienst: true,
   },
 ];
+
+/** Der Hinweis der Transkript-Kachel bei eingerichtetem Dienst: der vorhandene Weg beim Namen. */
+export const AVTRANSCRIPT_ACTIVE_HINT_KEY = "imp.gallery.hintAvtranscriptActive";
+
+/**
+ * Zustand und Hinweis einer dienstgebundenen Kachel. Nur ein ausdrücklich GEMELDETER aktiver Dienst
+ * macht sie verfügbar — „im Erfassen" (`elsewhere`), weil dort der Weg liegt: Aufnahme beifügen,
+ * „Transkribieren" klicken. Unbekannt (noch nicht geladen, nicht abfragbar) oder inaktiv bleibt
+ * `unconfigured`: eine Zusage, die der Dienst nicht bestätigt hat, wird nicht gegeben.
+ */
+function mediendienstKachel(
+  zustand: MediendienstZustand | null,
+): Pick<GallerySource, "state" | "hintKey"> {
+  return zustand?.active === true
+    ? { state: "elsewhere", hintKey: AVTRANSCRIPT_ACTIVE_HINT_KEY }
+    : { state: "unconfigured" };
+}
 
 export type ImportSurface = "capture" | "import";
 
@@ -423,7 +458,7 @@ export type ImportSurface = "capture" | "import";
 //     auch Excel (`lib/xlsxImport.ts`). Die Weiche des Erfassens kennt Excel weiterhin nicht
 //     (`accept: null` unten bleibt), dort bleibt die Kachel deshalb „geplant".
 // `avtranscript` steht bewusst NICHT hier: sein Zustand ist auf beiden Oberflaechen derselbe und
-// kommt aus `fixedState` (SCRUM-382).
+// kommt aus dem gemeldeten Dienststand (`mediendienst`, SCRUM-382 / gesamt-ocr Nacharbeit 6).
 //
 // Alles Uebrige leitet `fileSourcesForSurface` unten aus derselben Weiche ab, die das Erfassen
 // benutzt. Wer hier wieder einen messbaren Typ von Hand eintraegt, macht
@@ -462,19 +497,24 @@ function importState(def: FileSourceDef): SourceState {
 // Die Datei-Galerie EINER Oberfläche — Zustand pro Oberfläche aus derselben Weiche abgeleitet
 // (Erfassen: hier nutzbar → „aktiv"; Import-Review: dort nutzbar → „anderswo"), Reihenfolge
 // aktiv→anderswo→nicht konfiguriert→bald→geplant.
-export function fileSourcesForSurface(surface: ImportSurface): GallerySource[] {
+//
+// Aufnahme `gesamt-ocr` (R-0121, Nacharbeit 6): `mediendienst` ist der gemeldete Stand des
+// Transkriptionsdienstes. Fehlt er (`null`, Voreinstellung), bleibt die Transkript-Kachel
+// `unconfigured` — dieselbe Aussage wie bisher, nur nicht mehr unabhängig vom Dienst.
+export function fileSourcesForSurface(
+  surface: ImportSurface,
+  mediendienst: MediendienstZustand | null = null,
+): GallerySource[] {
   return orderByState(
-    FILE_SOURCE_DEFS.map((def) => ({
-      id: def.id,
-      labelKey: def.labelKey,
-      state:
-        def.fixedState ??
-        (surface === "capture"
-          ? captureSupports(def)
-            ? ("active" as const)
-            : ("planned" as const)
-          : importState(def)),
-    })),
+    FILE_SOURCE_DEFS.map((def) => {
+      const basis = { id: def.id, labelKey: def.labelKey };
+      if (def.mediendienst) {
+        return { ...basis, ...mediendienstKachel(mediendienst) };
+      }
+      const state: SourceState =
+        surface === "capture" ? (captureSupports(def) ? "active" : "planned") : importState(def);
+      return { ...basis, state };
+    }),
   );
 }
 
@@ -503,5 +543,6 @@ export function openCaptureFileDialog(
 
 // PAKET 2 — Dateien der IC-7 Import-Review. JOB 3190: JSON aktiv (der echte Upload dieser Fläche);
 // Word/PDF/PowerPoint/Text-CSV/OCR „anderswo verfügbar" (im Erfassen wirklich einlesbar);
-// Transkript nicht konfiguriert; Excel geplant.
-export const FILE_SOURCES: readonly GallerySource[] = fileSourcesForSurface("import");
+// Transkript nach gemeldetem Mediendienst; Excel geplant. Seit gesamt-ocr Nacharbeit 6 leitet die
+// Galerie die Liste je Dienststand mit `fileSourcesForSurface("import", mediendienst)` ab; eine
+// feste Konstante ohne Dienststand hätte keinen Aufrufer mehr (Aufrufer-Wächter, Nacharbeit 14).

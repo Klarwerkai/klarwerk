@@ -136,6 +136,9 @@ export function lesevariantenRoutes(
             // Detailansicht steht, fehlt genau dort, wo man sie zuerst braucht.
             quellabgleich: sicht.quellabgleich,
             updatedAt: sicht.updatedAt,
+            // Peter Nr. 20: Originalquelle und belegte Fassung reisen ebenso mit.
+            originalquelle: sicht.originalquelle,
+            fassung: sicht.fassung,
           };
         })
         .filter((e): e is NonNullable<typeof e> => e !== undefined);
@@ -205,6 +208,8 @@ export function lesevariantenRoutes(
           herkunft: variante.herkunft,
           status: variante.status,
           quellabgleich: variante.quellabgleich,
+          originalquelle: variante.originalquelle,
+          fassung: variante.fassung,
         });
       },
     );
@@ -238,5 +243,200 @@ export function lesevariantenRoutes(
       );
       reply.code(200).send(bilanz);
     });
+
+    // ============================================================================================
+    // PETER NR. 20 (12.10.2026) — „ÜBERSETZUNGSWIDERSPRÜCHE MELDEN, KEINE AUTOMATISCHE FACHLICHE
+    // FREIGABE".
+    // ============================================================================================
+    //
+    // Wer liest, dass die Übersetzung etwas anderes sagt als das Original, meldet es HIER — mit
+    // Bezug auf GENAU diese Übersetzung (Abdruck der Übersetzung) und GENAU dieses Original
+    // (Abdruck, Version, Anker). Die Meldung ist ein Eintrag im Prüfprotokoll mit dem Objekt als
+    // Ziel; die Herkunftskette des Objekts zeigt ihn (`koAuditEvents`, Ziel = KO-Kennung).
+    //
+    // WAS SIE NICHT TUT: Sie ändert weder das Wissensobjekt noch die Übersetzung, verschiebt keinen
+    // Prüfstatus, löst keinen Konflikt aus und gibt nichts frei. Dasselbe Recht wie das Lesen
+    // (`ko.read`) und dieselbe Sichtbarkeit (`darfSehen`): melden kann, wer die Übersetzung sehen
+    // kann — und niemand sonst erfährt über diese Tür, ob es das Objekt gibt.
+    app.post<{ Params: { id: string; lang: string }; Body: WiderspruchBody }>(
+      "/api/kos/:id/lesevariante/:lang/widerspruch",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const item = await ko.get(request.params.id);
+        if (!item || !darfSehen(user, item)) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
+          return;
+        }
+        const variante = await lesevarianten.get(item.id, request.params.lang);
+        if (!variante) {
+          reply.code(404).send({
+            error: "NO_LESEVARIANTE",
+            message: "Für dieses Objekt gibt es keine Lesevariante in dieser Sprache.",
+          });
+          return;
+        }
+        const begruendung = begruendungAus(request.body);
+        if (!begruendung.ok) {
+          reply.code(400).send(begruendung.fehler);
+          return;
+        }
+        if (!deps.audit) {
+          reply.code(503).send({
+            error: "AUDIT_UNAVAILABLE",
+            message: "Das Prüfprotokoll ist nicht verfügbar; die Meldung wurde nicht gespeichert.",
+          });
+          return;
+        }
+        const sicht = mitAenderungsauskunft(variante, item);
+        const eintrag = await deps.audit.record({
+          actor: user.id,
+          action: WIDERSPRUCH_AKTION,
+          target: item.id,
+          // Bezug, keine Kopie: Abdrücke, Version und Anker — der übersetzte Text selbst geht NICHT
+          // ins Protokoll (die Variante bleibt ausserhalb aller Wahrheitswege).
+          payload: {
+            gegenstand: "wissensobjekt",
+            lang: sicht.lang,
+            originalLanguage: sicht.originalLanguage,
+            herkunft: sicht.herkunft,
+            uebersetzungSha256: sicht.uebersetzungSha256,
+            originalSha256: sicht.originalSha256,
+            originalGeaendert: sicht.originalGeaendert,
+            quellabgleich: sicht.quellabgleich,
+            koVersion: item.version,
+            fassung: sicht.fassung,
+            originalquelle: sicht.originalquelle
+              ? {
+                  provider: sicht.originalquelle.provider,
+                  kennung: sicht.originalquelle.kennung,
+                  quellfassung: sicht.originalquelle.quellfassung,
+                }
+              : null,
+            begruendung: begruendung.text,
+          },
+        });
+        reply.code(201).send({
+          gemeldet: true,
+          gegenstand: "wissensobjekt",
+          ziel: item.id,
+          lang: sicht.lang,
+          seq: eintrag.seq,
+        });
+      },
+    );
+
+    // Dasselbe für die Prüfkarte (JOB 3363): ein noch NICHT angenommener Kandidat. Ziel des
+    // Protokolleintrags ist die Kandidaten-Kennung — es gibt kein Wissensobjekt, und es entsteht
+    // auch keins. Der Kandidat bleibt, wie er ist (Status, `koId`). DIESELBE Sichtbarkeitsgrenze wie
+    // der Abruf darüber (confluence-import-rechte, `darfKandidatSehen`): wer den Kandidaten nicht
+    // sehen darf, kann ihn auch nicht beanstanden — und erfährt über diese Tür nicht, dass es ihn gibt.
+    app.post<{ Params: { id: string; lang: string }; Body: WiderspruchBody }>(
+      "/api/library/import/candidates/:id/lesevariante/:lang/widerspruch",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const gefunden = await kandidaten.findById(request.params.id);
+        const traegtQuellrechte =
+          gefunden !== undefined && Object.hasOwn(gefunden.item as object, "quellrechte");
+        const sichtbar =
+          gefunden === undefined
+            ? false
+            : deps.kandidatenRechte
+              ? await darfKandidatSehen(user, gefunden, deps.kandidatenRechte)
+              : !traegtQuellrechte;
+        const kandidat = sichtbar ? gefunden : undefined;
+        if (!kandidat) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Kandidat nicht gefunden." });
+          return;
+        }
+        const variante = kandidatenLesevariante(request.params.lang, kandidat.item, kandidat.item);
+        if (!variante) {
+          reply.code(404).send({
+            error: "NO_LESEVARIANTE",
+            message: "Für diesen Kandidaten gibt es keine Lesevariante in dieser Sprache.",
+          });
+          return;
+        }
+        const begruendung = begruendungAus(request.body);
+        if (!begruendung.ok) {
+          reply.code(400).send(begruendung.fehler);
+          return;
+        }
+        if (!deps.audit) {
+          reply.code(503).send({
+            error: "AUDIT_UNAVAILABLE",
+            message: "Das Prüfprotokoll ist nicht verfügbar; die Meldung wurde nicht gespeichert.",
+          });
+          return;
+        }
+        const eintrag = await deps.audit.record({
+          actor: user.id,
+          action: WIDERSPRUCH_AKTION,
+          target: kandidat.id,
+          payload: {
+            gegenstand: "kandidat",
+            lang: variante.lang,
+            originalLanguage: variante.originalLanguage,
+            herkunft: variante.herkunft,
+            quellabgleich: variante.quellabgleich,
+            fassung: variante.fassung,
+            originalquelle: {
+              provider: variante.originalquelle.provider,
+              kennung: variante.originalquelle.kennung,
+              quellfassung: variante.originalquelle.quellfassung,
+            },
+            begruendung: begruendung.text,
+          },
+        });
+        reply.code(201).send({
+          gemeldet: true,
+          gegenstand: "kandidat",
+          ziel: kandidat.id,
+          lang: variante.lang,
+          seq: eintrag.seq,
+        });
+      },
+    );
   };
+}
+
+/** Der Protokollcode der Meldung — `audit.action.lesevariante_widerspruch` beschriftet ihn. */
+export const WIDERSPRUCH_AKTION = "lesevariante.widerspruch";
+
+/** Obergrenze der Begründung: eine Meldung ist ein Hinweis, kein zweiter Artikel. */
+export const WIDERSPRUCH_MAX_ZEICHEN = 2000;
+
+interface WiderspruchBody {
+  begruendung?: unknown;
+}
+
+type Begruendung =
+  | { ok: true; text: string }
+  | { ok: false; fehler: { error: string; message: string } };
+
+/** Ohne Begründung keine Meldung — sonst wüsste niemand, WAS der Widerspruch ist. */
+function begruendungAus(body: WiderspruchBody | undefined): Begruendung {
+  const roh = body?.begruendung;
+  const text = typeof roh === "string" ? roh.trim() : "";
+  if (text.length === 0) {
+    return {
+      ok: false,
+      fehler: { error: "MISSING_REASON", message: "Bitte beschreiben, was sich widerspricht." },
+    };
+  }
+  if (text.length > WIDERSPRUCH_MAX_ZEICHEN) {
+    return {
+      ok: false,
+      fehler: {
+        error: "REASON_TOO_LONG",
+        message: `Die Begründung ist länger als ${WIDERSPRUCH_MAX_ZEICHEN} Zeichen.`,
+      },
+    };
+  }
+  return { ok: true, text };
 }

@@ -12,6 +12,7 @@ import {
   GESPRAECHSFADEN_MAX_FRAGEN,
   GapAbschlussVerweigert,
   type GapBeteiligter,
+  type ReferenzPruefdienst,
   type ZuschnittBegriff,
   answerEvidence,
   antwortBelastbarkeit,
@@ -24,6 +25,7 @@ import {
   leseFundstellenAnfrage,
   loeseFundstelleAuf,
   redactGapForViewer,
+  referenzSichtFuerFragende,
   stichtagAus,
 } from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
@@ -322,6 +324,13 @@ export interface AskRouteDeps {
    * Quelle oder scheitert sie, wird nichts erklärt.
    */
   begriffe?: (() => Promise<readonly WoerterbuchEintrag[]>) | undefined;
+  /**
+   * produkt:20261009:referenzki-pruefdienst (REF-02): der gemeinsame lesende Referenz-Prüfdienst.
+   * OPTIONAL: fehlt er, gibt es keine Referenzprüfung und kein Feld `referenzpruefung`. Ist er da,
+   * prüft er JEDE beantwortete Frage beider Zugänge (Fragekonsole und Klara) — ob ein Prüfer
+   * bereitsteht, entscheidet die Adminliste; ohne sie steht „nicht prüfbar" mit Grund da.
+   */
+  referenz?: ReferenzPruefdienst | undefined;
   /**
    * produkt:20261010:wissenskreislauf-schliessen — IST DIESE PERSON HEUTE EINE BERECHTIGTE
    * FACHZUSTÄNDIGKEIT? Gefragt bei jeder Zuordnung und Übergabe (Ziel muss berechtigt sein) und bei
@@ -1053,6 +1062,15 @@ async function antwortLauf(
     // Anfrage an ein Word-Dokument gebunden ist — Klaras Zugang immer; sonst `frage`. Bewusst NICHT
     // die bloße Markierung (KA5-R2).
     readonly anlass: FrageAnlass;
+    /**
+     * P05 (B-10, RF-10): die Anmeldung des Fragenden UNMITTELBAR vor der Auslieferung erneut
+     * prüfen — mit demselben Guard wie am Eingang. Wurde das Konto während der Verarbeitung lokal
+     * gesperrt (Befristung abgelaufen, Verzeichnis-Austritt) oder hat es das Leserecht verloren,
+     * hat der Guard bereits 401/403 gesendet, und die fertige Antwort verlässt den Server nicht.
+     * Nur auf Sitzungswegen gesetzt; der Schlüsselweg hat keine Sitzung. Liefert den FRISCH
+     * aufgelösten Nutzer — mit ihm wird danach das Leserecht an jeder Quelle geprüft.
+     */
+    readonly nachpruefung?: () => Promise<SessionUser | undefined>;
     /** P14: der Firmenfilter dieser Frage — tritt als UND hinter die Grundlage, nie an ihre Stelle. */
     readonly bereich?: Sichtbarkeitsfilter;
   },
@@ -1083,6 +1101,7 @@ async function antwortLauf(
   let out: Awaited<ReturnType<AskService["ask"]>>;
   let evidence: ReturnType<typeof answerEvidence>;
   let belastbarkeit: AntwortBelastbarkeit;
+  let referenzFeld: { referenzpruefung?: ReturnType<typeof referenzSichtFuerFragende> } = {};
   // Die Sicht folgt dem Anmeldeweg dieser Anfrage — der Add-on-Principal hat keinen
   // `SessionUser` und bekommt die enge Sicht (Begründung an `belastbarkeitsSicht`).
   const sicht = belastbarkeitsSicht(
@@ -1126,6 +1145,32 @@ async function antwortLauf(
       angehaengteBegriffe(out.antwortZuschnitt),
     ));
     pruefen();
+    // produkt:20261009:referenzki-pruefdienst (REF-02): die Referenzprüfung GENAU der Bindung, die
+    // dieser Fragende bekommt (Add-on: nur Kernaussagen), mit SEINER Sicht als Recht, dem
+    // tatsächlichen Antwortmodell dieser Anfrage und dem Abbruch dieser Anfrage. Danach dieselbe
+    // KI-Sperrprüfung wie vor jeder Auslieferung.
+    const pruefBeleg =
+      out.aussagen && request.authContext?.authKind === "addon"
+        ? aufKernaussagenBeschraenkt(out.aussagen)
+        : out.aussagen;
+    if (deps.referenz && pruefBeleg) {
+      const ergebnis = await deps.referenz.pruefe({
+        beleg: pruefBeleg,
+        antwortRolle: ask.antwortRolleVon(out),
+        akteur: lauf.actorId,
+        leser: fundstellenLeser(deps.ko),
+        darfSehen: grundlage,
+        bekannteKonflikte: belastbarkeit.konflikte.map((k) => ({
+          konfliktId: k.konfliktId,
+          koIds: k.seiten.flatMap((s) => (s.einsehbar ? [s.koId] : [])),
+        })),
+        locale: lauf.locale,
+        signal: anfrageAbbruch(reply),
+        modellaufrufAusgeschlossen: optionen?.retrievalOnly === true,
+      });
+      referenzFeld = { referenzpruefung: referenzSichtFuerFragende(ergebnis) };
+      pruefen();
+    }
   } catch (fehler) {
     // D5: beide Zugänge laufen hier durch — die Abschaltauskunft ist überall dieselbe.
     if (kiAbgeschaltetSenden(reply, fehler, lauf.locale)) {
@@ -1145,6 +1190,45 @@ async function antwortLauf(
     out.aussagen && request.authContext?.authKind === "addon"
       ? { aussagen: aufKernaussagenBeschraenkt(out.aussagen) }
       : {};
+  // P05 (B-10): nach dem letzten Warten der Antwort, vor der Auslieferung — die Anmeldung erneut.
+  let sichtJetzt = grundlage;
+  if (lauf.nachpruefung) {
+    const frisch = await lauf.nachpruefung();
+    if (!frisch) {
+      return;
+    }
+    // Zusammenführung mit P14: dieselbe Entscheidung wie am Eingang — samt Firmenfilter.
+    sichtJetzt = sichtbarkeitsfilterFuer(frisch, lauf.bereich);
+  }
+  // P05-AC03 (Ben, Nacharbeit 4): LESERECHTSENTZUG WÄHREND DER VERARBEITUNG. Die Antwort entstand
+  // aus Quellen, die der Fragende beim Eingang sehen durfte. Wurde ihm inzwischen das Leserecht an
+  // einer davon entzogen (Hochstufung auf vertraulich, Space-/Rollenentzug), verlässt die fertige
+  // Antwort den Server nicht: jede herangezogene Quelle wird mit dem AKTUELLEN Stand des Objekts und
+  // des Nutzers gegen dieselbe Sichtregel gehalten, Vertrauliches fällt wie im Fragedienst immer
+  // heraus. Die Absage nennt keine Quelle und keinen Inhalt.
+  // Nacharbeit 6 (Ben): auch eine WÄHREND der Verarbeitung verschwundene Wissenskopie sperrt — in
+  // den Papierkorb gelegt (`ko.get` liefert dann nichts) oder endgelöscht, etwa durch eine gesonderte
+  // personenbezogene oder Lizenzlöschung (P05-AC06). Davon zu unterscheiden ist die nur
+  // UNERREICHBARE externe Quelle einer gewöhnlichen Quellenlöschung (P05-AC01/AC02): dort bleibt die
+  // Kopie bestehen, trägt nur den Vermerk `sourceRemovedAt` am Anker und wird weiter ausgeliefert.
+  // Grenze, benannt: zwischen dieser Lesung und dem Senden liegt kein weiteres Warten; ein Entzug
+  // NACH dem Senden wirkt auf die nächste Anfrage (Beleg- und Frageweg prüfen am Eingang).
+  const herangezogen = [...new Set([...out.result.sources, ...out.result.citedSources])];
+  for (const id of herangezogen) {
+    const jetzt = await deps.ko.get(id);
+    if (!jetzt || isConfidential(jetzt.confidentiality) || !sichtJetzt(jetzt)) {
+      reply.code(409).send({
+        error: "QUELLRECHTE_GEAENDERT",
+        message:
+          lauf.locale === "en"
+            ? "Access to a source used for this answer changed while it was being prepared. Please ask again."
+            : lauf.locale === "nl"
+              ? "De toegang tot een bron voor dit antwoord is tijdens het opstellen gewijzigd. Stel de vraag opnieuw."
+              : "Der Zugriff auf eine herangezogene Quelle hat sich während der Antwort geändert. Bitte erneut fragen.",
+      });
+      return;
+    }
+  }
   // AUFNAHME 20260922: `belastbarkeit` steht NEBEN `evidence`, nicht darin — die Einstufung
   // bleibt der unveränderte Vertrag, den Word und die Paritätstafel lesen.
   reply.code(200).send({
@@ -1152,8 +1236,27 @@ async function antwortLauf(
     ...aussagenFeld,
     result: { ...out.result, evidence, belastbarkeit },
     ...(absaetze ? { absaetze } : {}),
+    ...referenzFeld,
     ...(lauf.beilage ? lauf.beilage(out) : {}),
   });
+}
+
+/**
+ * REF-02: ein Abbruchsignal, das genau dann auslöst, wenn die Verbindung endet, BEVOR die Antwort
+ * vollständig geschrieben ist (Nutzer bricht ab, Netz reißt). `writableFinished` unterscheidet das
+ * vom regulären Ende — das `close` nach einer fertigen Antwort ist kein Abbruch.
+ */
+function anfrageAbbruch(reply: FastifyReply): AbortSignal {
+  const steuerung = new AbortController();
+  const roh = reply.raw;
+  if (roh && typeof roh.once === "function") {
+    roh.once("close", () => {
+      if (!roh.writableFinished) {
+        steuerung.abort();
+      }
+    });
+  }
+  return steuerung.signal;
 }
 
 /** Die Abschalt-Epoche beim Eingang festhalten — nur, wo `buildApp` es nicht schon getan hat. */
@@ -1329,6 +1432,10 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             // R-0346: hier kommt eine Klara-Bindung nur noch mit einem Dienst-Schlüssel an (R-0688,
             // Abweisung oben); dann gilt wie bisher der Anlass `dokument`.
             anlass: klaraBindungVorhanden(request.headers) ? "dokument" : "frage",
+            // P05 (B-10): nur der Sitzungsweg — der Schlüsselweg hat keine Sitzung zum Nachprüfen.
+            ...(request.authContext?.authKind === "addon"
+              ? {}
+              : { nachpruefung: () => guards.requirePermission("ko.read", request, reply) }),
           });
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
@@ -1520,7 +1627,46 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             sichtbarkeitsfilterFuer(user),
           );
           ask.kiSperreVorAuslieferung(kiBeginn);
-          reply.code(200).send(vergleich);
+          // produkt:20261009:referenzki-pruefdienst (REF-02, Ben nacharbeit-3): auch die beiden
+          // Antworten des Stichtagsvergleichs sind wissensbezogen. Jede wird mit IHRER Aussagebindung
+          // (heute: aktuelle Fassungen, damals: Fassungen zum Stichtag) und IHREM tatsächlichen
+          // Antwortmodell an denselben Prüfdienst gebunden — mit der Sicht dieses Nutzers und dem
+          // Abbruch dieser Anfrage. Eine Seite ohne beantworteten Text hat nichts zu prüfen (`null`).
+          let referenzFeld: {
+            referenzpruefung?: {
+              heute: ReturnType<typeof referenzSichtFuerFragende> | null;
+              damals: ReturnType<typeof referenzSichtFuerFragende> | null;
+            };
+          } = {};
+          if (deps.referenz) {
+            const dienst = deps.referenz;
+            const rollen = ask.antwortRollenDesVergleichs(vergleich);
+            const abbruch = anfrageAbbruch(reply);
+            const pruefeSeite = async (
+              beleg: typeof vergleich.heuteAussagen,
+              rolle: typeof rollen.heute,
+            ) =>
+              beleg
+                ? referenzSichtFuerFragende(
+                    await dienst.pruefe({
+                      beleg,
+                      antwortRolle: rolle,
+                      akteur: user.id,
+                      leser: fundstellenLeser(deps.ko),
+                      darfSehen: sichtbarkeitsfilterFuer(user),
+                      locale,
+                      signal: abbruch,
+                    }),
+                  )
+                : null;
+            const [heute, damals] = await Promise.all([
+              pruefeSeite(vergleich.heuteAussagen, rollen.heute),
+              pruefeSeite(vergleich.damalsAussagen, rollen.damals),
+            ]);
+            referenzFeld = { referenzpruefung: { heute, damals } };
+            ask.kiSperreVorAuslieferung(kiBeginn);
+          }
+          reply.code(200).send({ ...vergleich, ...referenzFeld });
         } catch (fehler) {
           if (kiAbgeschaltetSenden(reply, fehler, locale)) {
             return;
@@ -1653,6 +1799,63 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
       );
       reply.code(200).send({ fundstellen });
     });
+
+    // produkt:20261009:referenzki-pruefdienst (REF-02) — EINE AUSDRÜCKLICH ANGESTOSSENE ERNEUTE
+    // REFERENZPRÜFUNG, BEGRENZT UND SICHTBAR.
+    //
+    // Kein Inhalt im Rumpf: geprüft wird der serverseitig festgehaltene Prüfkontext (Bindung und
+    // tatsächliches Antwortmodell der ursprünglichen Antwort) — nie ein Text, den der Client
+    // nachreicht. Nur derselbe Nutzer, mit seinen JETZT gültigen Rechten; höchstens
+    // `REFERENZ_ERNEUT_MAX` mal (danach 409 mit der Höchstzahl). Unbekannt, abgelaufen und fremd
+    // sehen gleich aus (404). Die Route zählt in die KI-Anfragebremse (`ki-anfragebremse.ts`).
+    //
+    // Ben nacharbeit-4 (K8): mit Rumpf `{ bestaetigen: true }` BESTÄTIGT dieselbe Tür eine im
+    // Browser gespeicherte Anzeige, bevor sie gilt — aktuelle Rechte, aktuell gewählter Prüfer,
+    // aktuelle Richtlinie, und nur ein exakt passender gültiger Cachebeleg. Kein Modellaufruf,
+    // kein gezählter Versuch; ohne passenden Beleg „nicht prüfbar" (`bestaetigung_abgelaufen`).
+    app.post<{ Params: { pruefId: string }; Body: { bestaetigen?: unknown } | null }>(
+      "/api/ask/referenzpruefung/:pruefId/erneut",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const nichtGefunden = (): void => {
+          reply.code(404).send({
+            error: "NOT_FOUND",
+            message: "Diese Referenzprüfung ist nicht (mehr) verfügbar.",
+          });
+        };
+        if (!deps.referenz) {
+          nichtGefunden();
+          return;
+        }
+        const nurBestaetigen = request.body?.bestaetigen === true;
+        const ausgang = await deps.referenz.erneut(
+          request.params.pruefId,
+          user.id,
+          {
+            leser: fundstellenLeser(deps.ko),
+            darfSehen: sichtbarkeitsfilterFuer(user),
+            signal: anfrageAbbruch(reply),
+          },
+          { nurBestaetigen },
+        );
+        if ("fehlt" in ausgang) {
+          nichtGefunden();
+          return;
+        }
+        if ("ausgeschoepft" in ausgang) {
+          reply.code(409).send({
+            error: "REFERENZPRUEFUNG_AUSGESCHOEPFT",
+            message: "Diese Antwort wurde bereits so oft geprüft wie erlaubt.",
+            hoechstens: ausgang.hoechstens,
+          });
+          return;
+        }
+        reply.code(200).send({ referenzpruefung: referenzSichtFuerFragende(ausgang.ergebnis) });
+      },
+    );
 
     // FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler — KEIN Fragetext. Die Startseite
     // nutzt AUSSCHLIESSLICH diesen Endpunkt (kein Volltext-Fetch der Lücken mehr auf /start).
@@ -2188,6 +2391,8 @@ export function klaraAusfuehrungRoutes(
             ...(zusatz ? { zusatz } : {}),
             // R-0346: Klaras Zugang ist immer an ein Word-Dokument gebunden.
             anlass: "dokument",
+            // P05 (B-10): Klaras Zugang ist immer ein Sitzungsweg.
+            nachpruefung: () => guards.requirePermission("ko.read", request, reply),
           });
         };
         if (freigegeben) {

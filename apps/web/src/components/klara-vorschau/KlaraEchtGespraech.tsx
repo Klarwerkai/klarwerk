@@ -24,6 +24,7 @@ import { leserHref } from "../../lib/objektbezug";
 import { useAiAvailable } from "../../lib/useAiAvailable";
 import { type ExternStand, externStand } from "../../shell/ExternStatus";
 import { AnswerMarkdown } from "../AnswerMarkdown";
+import { KiArbeitsweg } from "./KiArbeitsweg";
 import { VorlesenKnopf } from "./KlaraSprache";
 import {
   type EchtNachricht,
@@ -34,6 +35,7 @@ import {
   schrittUnterbrochen,
   useEchtGespraech,
 } from "./echt";
+import { legeNotiz } from "./notizen";
 
 const KNOPF =
   "inline-flex h-8 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-text hover:border-ink/30 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
@@ -152,9 +154,12 @@ function QuellenZeile({ n }: { n: EchtNachricht }): JSX.Element {
 function NachrichtEcht({
   n,
   sprecher,
+  gespraechId,
 }: {
   n: EchtNachricht;
   sprecher?: string | undefined;
+  /** Klara 06: das gespeicherte Gespräch, aus dem eine Nachricht zur Notiz werden kann. */
+  gespraechId: string | null;
 }): JSX.Element {
   // produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
   const { t } = useAssistenzT();
@@ -165,6 +170,12 @@ function NachrichtEcht({
   const istAntwort = n.modus === "ki" || n.modus === "ohne_ki";
   // Klara 03 · K3: eine Antwort ohne jede Quelle hat keine Grundlage — das steht als Kennzeichen da.
   const ohneGrundlage = n.modus === "ohne_ki" && n.quellen.length === 0;
+  // Klara 06: nur eine vom Server bestätigte Nachricht mit Inhalt (kein Fehler, kein Stopp).
+  const notizFaehig =
+    gespraechId !== null &&
+    n.gespeichert === "ja" &&
+    n.modus !== "fehler" &&
+    n.modus !== "abgebrochen";
   return (
     <li
       data-testid="klara-nachricht"
@@ -248,10 +259,28 @@ function NachrichtEcht({
       )}
       {/* Klara 03: Quellen mit Titel, Fassung und Prüfstatus (ersetzt die blossen [n]-Verweise). */}
       {istAntwort && n.quellen.length > 0 ? <QuellenZeile n={n} /> : null}
-      {/* Klara 02: jede Antwort und jeder Hilfetext kann vorgelesen werden — nur auf Klick. */}
-      {n.von === "klara" && n.text ? (
-        <div className="mt-1">
-          <VorlesenKnopf id={n.id} text={n.text} />
+      {/* Klara 02: jede Antwort und jeder Hilfetext kann vorgelesen werden — nur auf Klick.
+          Klara 06: eine GESPEICHERTE Nachricht kann zur privaten Notiz werden; der Server übernimmt
+          Wortlaut und Ort aus dem eigenen Gespräch. Derselbe Vorgang je Nachricht: keine Doppelnotiz. */}
+      {(n.von === "klara" && n.text) || notizFaehig ? (
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          {n.von === "klara" && n.text ? <VorlesenKnopf id={n.id} text={n.text} /> : null}
+          {notizFaehig && gespraechId ? (
+            <button
+              type="button"
+              data-testid="klara-nachricht-als-notiz"
+              onClick={() =>
+                void legeNotiz(
+                  { weg: "gespraech", quelle: { gespraechId, nachrichtId: n.id } },
+                  t,
+                  `gespraech-${n.id}`,
+                )
+              }
+              className={KNOPF}
+            >
+              {t("klaranotiz.nachrichtAlsNotiz")}
+            </button>
+          ) : null}
         </div>
       ) : null}
       {n.gespeichert === "laeuft" ? (
@@ -509,11 +538,14 @@ export function KlaraEchtGespraech({
         ) : (
           <ol className="mt-1 space-y-2">
             {e.nachrichten.map((n) => (
-              <NachrichtEcht key={n.id} n={n} sprecher={sprecher} />
+              <NachrichtEcht key={n.id} n={n} sprecher={sprecher} gespraechId={g?.id ?? null} />
             ))}
           </ol>
         )}
       </section>
+
+      {/* BPA-13: mit einer ausgewählten KI arbeiten — am eigenen, gespeicherten Gespräch. */}
+      {g ? <KiArbeitsweg gespraechId={g.id} kontext={kontext} /> : null}
 
       {g ? (
         <div className="flex flex-wrap gap-1.5">

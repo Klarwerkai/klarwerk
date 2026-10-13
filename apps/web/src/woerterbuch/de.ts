@@ -978,6 +978,14 @@ const de = {
   "task.filter.conflict": "Konflikte",
   "task.filter.gap": "Wissenslücken",
   "task.filter.revalidation": "Revalidierung",
+  "task.filter.authorTransfer": "Autorenübergabe",
+  "task.authorTransfer": "Autorenübergabe",
+  "task.authorTransfer.grund.konto-geloescht": "Autorenkonto gelöscht",
+  "task.authorTransfer.grund.ausgeschieden": "Autor ausgeschieden",
+  "task.authorTransfer.grund.angefordert": "Übergabe angefordert",
+  "task.action.authorTransfer": "Neuen Autor bestimmen",
+  "task.explain.authorTransfer":
+    "Dieses Wissen braucht einen erreichbaren Autor. Öffne den Eintrag, wähle unter „Mehr“ → „Provenienz“ den neuen Autor und übertrage. Danach ist die Aufgabe erledigt; der Originalautor bleibt vermerkt.",
   "task.conflict": "Konflikt",
   "task.validation": "Validierung",
   "task.revalidation": "Re-Validierung",
@@ -3784,6 +3792,12 @@ const de = {
   "ko.transferPick": "Neuen Autor wählen …",
   "ko.transfer": "Übergeben",
   "ko.transferDone": "Autor übergeben. Originalautor bleibt sichtbar.",
+  // Autorenübergabe-Auftrag (R-0961): die Übergabe ausdrücklich verlangen (Autor oder Admin).
+  "ko.transferRequest": "Übergabe anfordern",
+  "ko.transferRequestHint":
+    "Die Verwaltung bekommt eine wartende Aufgabe „Autorenübergabe“ und bestimmt einen neuen Autor.",
+  "ko.transferRequestDone":
+    "Übergabe angefordert. Die Verwaltung sieht sie unter „Offene Aufgaben“.",
   "ko.history": "Versionen",
   "ko.evidenceTitle": "Evidenz",
   // ================================================================================================
@@ -4980,6 +4994,10 @@ const de = {
   "imp.gallery.unconfigured": "nicht konfiguriert",
   "imp.gallery.hintUnconfigured":
     "Vorhanden, aber nicht nutzbar: für die Transkription ist kein Dienst hinterlegt. Ein Administrator kann ihn in der Verwaltung einrichten.",
+  // Aufnahme `gesamt-ocr` (R-0121, Nacharbeit 6): bei eingerichtetem Dienst nennt die Kachel den
+  // vorhandenen Weg — sie lädt selbst nichts hoch.
+  "imp.gallery.hintAvtranscriptActive":
+    "Der Transkriptionsdienst ist eingerichtet. Im Erfassen die Aufnahme über „Datei oder Bild beifügen“ anhängen und unter „Dokumente (Kontext / Anhang)“ auf „Transkribieren“ klicken. Diese Kachel lädt selbst nichts hoch.",
   // JOB 3190 (UX-18): „bald" war für Word und PDF schlicht falsch — dieselbe Datei wird im Erfassen
   // längst eingelesen. Der Text sagt beides: dass es die Funktion GIBT und WO sie liegt.
   "imp.gallery.elsewhere": "im Erfassen",

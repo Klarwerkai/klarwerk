@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import {
+  useAuthorTransfersSummary,
   useConflicts,
   useDuplicates,
   useGapsSummary,
   useLifecyclePending,
+  useReturnedTasksSummary,
   useValidationBoard,
 } from "../api/hooks";
 import {
@@ -58,7 +60,10 @@ export interface NavBadge {
 // FUNKE-FIX3 P0 (bens Blocker A): die Sidebar ist auf JEDER Seite gemountet — der Aufgaben-Zähler
 // speist sich deshalb aus der TEXTFREIEN aggregierten Quelle (useGapsSummary → GET /api/gaps/summary,
 // nur Zahlen). Der Gap-Volltextpfad (useGaps → GET /api/gaps) darf in der Shell NIE geladen werden.
-export function useNavBadges(): Record<string, NavBadge> {
+// R-0961: `verwaltung` — zählt die Verwaltung (Admin) die wartenden Autorenübergaben mit? Der
+// Aufrufer entscheidet es aus der Rolle (`shell/KopfbandPunkte.tsx`); ohne Angabe gibt es die Quelle
+// nicht. Dieses Modul liest selbst keinen React-Kontext (Node-Prüfungen, TS6142).
+export function useNavBadges(verwaltung = false): Record<string, NavBadge> {
   const board = useValidationBoard();
   const conflicts = useConflicts();
   const duplicates = useDuplicates();
@@ -67,6 +72,16 @@ export function useNavBadges(): Record<string, NavBadge> {
   // Id-Liste (`api/endpoints.ts:573`) — textfrei, also FUNKE-FIX3 P0 gewahrt: die Shell holt
   // keinen Volltext, nur eine Länge.
   const lifecycle = useLifecyclePending();
+  // Autorenübergabe-Auftrag K3 (Ben, Nacharbeit 1): die SECHSTE Aufgabenquelle, die an mich
+  // zurückgegebenen Entwürfe. Die Seite holt sie als Liste (`GET /api/me/returned-tasks`), die Shell
+  // nur die Zahl (`/summary`). Beide rechnet der Server mit DERSELBEN Auswahl
+  // (`services/app/src/routes/aufgaben-zaehler-routes.ts`).
+  const zurueckgegeben = useReturnedTasksSummary();
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Autorenübergaben. Sie gibt es nur für die
+  // Verwaltung; für alle anderen ist die Quelle `null` und steht weder im Summanden noch in der
+  // Ladezustandsliste — sonst hielte eine nie gestellte Abfrage den Zähler im Ladezustand.
+  const uebergaben = useAuthorTransfersSummary(verwaltung);
+  const uebergabenQuellen = uebergaben ? [uebergaben] : [];
   // ==============================================================================================
   // JOB 3113 H1b — DIE UHR, DIE GENAU EINMAL SCHLÄGT.
   // ==============================================================================================
@@ -79,7 +94,15 @@ export function useNavBadges(): Record<string, NavBadge> {
   // Stand aufgeräumt (kein Leck, kein zweiter Timer). Ist nichts mehr zu befristen (noch kein
   // Erfolg, oder alles bereits abgelaufen), läuft gar kein Timer.
   const jetzt = Date.now();
-  const quellen = [board, conflicts, duplicates, gaps, lifecycle];
+  const quellen = [
+    board,
+    conflicts,
+    duplicates,
+    gaps,
+    lifecycle,
+    zurueckgegeben,
+    ...uebergabenQuellen,
+  ];
   const naechsterAblauf = naechsterFristablauf(quellen, jetzt);
   const [, neuZeichnen] = useState(0);
   useEffect(() => {
@@ -114,21 +137,32 @@ export function useNavBadges(): Record<string, NavBadge> {
     conflicts.data as { status: string }[] | undefined,
   );
   const lifecycleCount = lifecycle.data?.length ?? 0;
+  const zurueckgegebenCount = zurueckgegeben.data?.open ?? 0;
+  const uebergabenCount = uebergaben?.data?.open ?? 0;
   return {
-    // JOB 690 D-019: vier Quellen statt zwei — Board, offene Lücken, UNGELÖSTE Konflikte,
-    // Lebenszyklus-Fällige. Die zurückgegebenen Entwürfe fehlen weiterhin (sie bräuchten zwei
-    // Volltextquellen, s. Kommentar zu FUNKE-FIX3 P0 oben); der Badge behauptet deshalb KEINE
-    // vollständige Übereinstimmung mit der Seitenzahl. Im Demo-Bestand sind es null.
+    // JOB 690 D-019: Board, offene Lücken, UNGELÖSTE Konflikte, Lebenszyklus-Fällige.
+    // Autorenübergabe-Auftrag K3: dazu die an mich zurückgegebenen Entwürfe. Bis hierher fehlten
+    // sie, und ein eigener zurückgegebener Entwurf ergab Liste=1, Badge=0. Damit zählt der Badge
+    // dieselben fünf Aufgabenarten wie die Seite.
     //
-    // ALLE VIER QUELLEN STEHEN AUCH IN DER LADEZUSTANDSLISTE, nicht nur im Summanden. Das ist
+    // ALLE QUELLEN STEHEN AUCH IN DER LADEZUSTANDSLISTE, nicht nur im Summanden. Das ist
     // kein Beiwerk: ohne sie zeigte der Badge eine zu kleine Zahl, während zwei Quellen noch
     // laden — eine stille Falschaussage statt eines ehrlichen Ladepunkts (mega2 Block C).
+    // R-0961: für die Verwaltung dazu die wartenden Autorenübergaben — dieselbe Serverregel wie die
+    // Liste der Aufgabenseite (`GET /api/me/author-transfers`).
     tasks: badge(
-      boardCount + (gaps.data?.open ?? 0) + offeneKonflikte + lifecycleCount,
+      boardCount +
+        (gaps.data?.open ?? 0) +
+        offeneKonflikte +
+        lifecycleCount +
+        zurueckgegebenCount +
+        uebergabenCount,
       board,
       gaps,
       conflicts,
       lifecycle,
+      zurueckgegeben,
+      ...uebergabenQuellen,
     ),
     validation: badge(boardCount, board),
     // JOB 690 D-019: derselbe Helfer — ein GELÖSTER Konflikt ist keine offene Arbeit und zählt

@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import cors, { type FastifyCorsOptions } from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, {
@@ -21,6 +23,7 @@ import {
   PgAnswerSnapshotRepo,
   PgGapRepo,
   PgNulltrefferRepo,
+  ReferenzPruefdienst,
   parseConfiguredReceiptSecret,
 } from "../../ask";
 import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "../../audit";
@@ -140,6 +143,7 @@ import {
   type UploadLimitsRepo,
   type WithTx,
   anweisungFehler,
+  isConfidential,
   ohneBestandsstempel,
   responsibleOf,
 } from "../../knowledge-object";
@@ -179,10 +183,15 @@ import {
 import {
   ConsoleMailer,
   InMemoryNotificationSeenRepo,
+  InMemoryPushAboRepo,
   type Mailer,
   type NotificationSeenRepo,
   PgNotificationSeenRepo,
+  PgPushAboRepo,
+  type PushAboRepo,
+  type PushSender,
   createMailerFromEnv,
+  createPushFromEnv,
 } from "../../notifications";
 import {
   InMemoryObjectRepo,
@@ -213,9 +222,11 @@ import {
   type ReasonerPolicyRepo,
   anbieterZugelassen,
   ausgangspruefungAusEnv,
+  bindeAnbieter,
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
   createLocalEmbeddingClientFromEnv,
+  imBindungsrahmen,
   setzeAusgangspruefung,
 } from "../../reasoner";
 import {
@@ -249,6 +260,8 @@ import {
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
 import { Anfragebremse, bremsSatz } from "./anfragebremse";
+// produkt:20261008:klara-eigeninitiative: der persönliche Unterstützungsmodus im Assistenzprofil.
+import { EigeninitiativeDienst } from "./assistenz-eigeninitiative";
 // produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der Assistenz über die vorhandenen Dienste.
 import type { FaehigkeitsAusfuehrung } from "./assistenz-faehigkeiten";
 import {
@@ -264,6 +277,8 @@ import {
   InMemoryAssistenzProfilRepo,
   PgAssistenzProfilRepo,
 } from "./assistenz-profil";
+// produkt:20261012:klara-setup-shortcuts-umsetzung: die Klara-Tastenkürzel im Assistenzprofil.
+import { TastenkuerzelDienst } from "./assistenz-tastenkuerzel";
 import { autorenNamenAus } from "./autorennamen";
 import {
   type BearbeitungsRepo,
@@ -343,6 +358,21 @@ import {
   PgKenntnisnahmeRepo,
 } from "./kenntnisnahme";
 import { kiGrenzeAusEnv, registriereKiAnfragebremse } from "./ki-anfragebremse";
+// produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): der Arbeitsweg mit einer ausgewählten
+// KI — am eigenen Klara-Gespräch, mit frischen Rechten, gebundenem Anbieter und echtem Laufbeleg.
+import {
+  type KiApiErgebnis,
+  KiArbeitsbegleitungDienst,
+  type KiCodexEinrichtung,
+} from "./ki-arbeitsbegleitung-dienst";
+// produkt:20261008:klara-aufgaben (Klara 07): die persönlichen Aufgaben — haltbar im Postgres-
+// Betrieb, im Speicher ohne Datenbank.
+import {
+  InMemoryKlaraAufgabeRepo,
+  KlaraAufgabeDienst,
+  type KlaraAufgabeRepo,
+  PgKlaraAufgabeRepo,
+} from "./klara-aufgabe";
 // produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal der Begleitapp (nur Arbeitsspeicher).
 import { BegleiterKanal } from "./klara-begleiter";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche — haltbar im Postgres-Betrieb, im
@@ -353,6 +383,14 @@ import {
   type KlaraGespraechRepo,
   PgKlaraGespraechRepo,
 } from "./klara-gespraech";
+// produkt:20261007:klara-notizen-aufgaben (Klara 06): die privaten Notizen — haltbar im Postgres-
+// Betrieb, im Speicher ohne Datenbank.
+import {
+  InMemoryKlaraNotizRepo,
+  KlaraNotizDienst,
+  type KlaraNotizRepo,
+  PgKlaraNotizRepo,
+} from "./klara-notiz";
 // ADMIN-12: Kommunikationsregeln, persönliche Abwahl und Zustellstatus — haltbar im Postgres-
 // Betrieb, im Speicher ohne Datenbank.
 import {
@@ -420,7 +458,9 @@ import { assistenzFaehigkeitenRoutes } from "./routes/assistenz-faehigkeiten-rou
 // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil (Name, Avatar, Ersteinrichtung).
 import { assistenzProfilRoutes } from "./routes/assistenz-profil-routes";
 import { auditRoutes, ketteneinsichtKonten } from "./routes/audit-routes";
+import { aufgabenZaehlerRoutes } from "./routes/aufgaben-zaehler-routes";
 import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
+import { ausscheidenRoutes } from "./routes/ausscheiden-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 import { begriffeRoutes } from "./routes/begriffe-routes";
 import { brandingRoutes } from "./routes/branding-routes";
@@ -448,13 +488,18 @@ import { importLaufListeRoutes, importRunRoutes } from "./routes/import-run-rout
 import { jiraImportRoutes } from "./routes/jira-import-routes";
 import { kantenRoutes } from "./routes/kanten-routes";
 import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
+import { kiArbeitsbegleitungRoutes } from "./routes/ki-arbeitsbegleitung-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
+// produkt:20261008:klara-aufgaben (Klara 07): die eigenen, serverseitig gespeicherten Aufgaben.
+import { klaraAufgabeRoutes } from "./routes/klara-aufgabe-routes";
 // produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal zwischen Word und Begleitapp.
 import { klaraBegleiterRoutes } from "./routes/klara-begleiter-routes";
 // produkt:20261008:klara-basis: die eigenen, serverseitig gespeicherten Klara-Gespräche.
 import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
+// produkt:20261007:klara-notizen-aufgaben (Klara 06): die eigenen, serverseitig gespeicherten Notizen.
+import { klaraNotizRoutes } from "./routes/klara-notiz-routes";
 // JOB 3110 (M2b): der Memo-Weg des Word-Panels. Die Route ist seit JOB 3091 gebaut und gemessen;
 // hier — und nur hier — bekommt sie ihren Aufrufer.
 import { type ZurufModell, klaraZurufRoutes } from "./routes/klara-session-routes";
@@ -479,6 +524,7 @@ import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
 import { programmadapterRoutes } from "./routes/programmadapter-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
+import { pushRoutes } from "./routes/push-routes";
 // ADMIN-10: gemeinsame Ansicht auf Prüfung, Revalidierung, Konflikt, Duplikat, Lücke, Rückmeldung.
 import { qualitaetsaufgabenRoutes } from "./routes/qualitaetsaufgaben-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
@@ -748,6 +794,18 @@ export interface AppServices {
    */
   klaraGespraeche: KlaraGespraechRepo;
   /**
+   * produkt:20261007:klara-notizen-aufgaben (Klara 06): die privaten Notizen (`klara-notiz.ts`) je
+   * Konto. Aus demselben Grund wie `klaraGespraeche` NICHT in `AppRepos` und nicht im
+   * Wissensbestand; im Postgres-Betrieb haltbar (`PgKlaraNotizRepo`), sonst im Speicher.
+   */
+  klaraNotizen: KlaraNotizRepo;
+  /**
+   * produkt:20261008:klara-aufgaben (Klara 07): die persönlichen Aufgaben (`klara-aufgabe.ts`) je
+   * Konto. Aus demselben Grund wie `klaraNotizen` NICHT in `AppRepos` und in keiner gemeinsamen
+   * Aufgabenquelle; im Postgres-Betrieb haltbar (`PgKlaraAufgabeRepo`), sonst im Speicher.
+   */
+  klaraAufgaben: KlaraAufgabeRepo;
+  /**
    * produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil (`assistenz-profil.ts`)
    * je Konto. Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
    * (`PgAssistenzProfilRepo`), sonst die In-Memory-Ablage.
@@ -913,6 +971,10 @@ export interface AppServices {
   // R-0169 (Nacharbeit 5): die interne Dokumentakte — Word-Weg und JSON ohne externalId.
   dokumente: DokumentaktenService;
   mailer: Mailer;
+  // R-0679 / FR-VAL-07: Geräte-Push. `push` fehlt ohne VAPID-Konfiguration (dann nur E-Mail);
+  // die Abos werden trotzdem geführt, damit ein später konfigurierter Betrieb sie vorfindet.
+  push?: PushSender;
+  pushAbos: PushAboRepo;
   // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke (öffentliche Modul-Schnittstelle).
   notificationSeen: NotificationSeenRepo;
   // SCRUM-414: Admin-Regler „externe Wissensabfrage" (persistiert) — direkt als schmale
@@ -985,6 +1047,8 @@ export interface AppRepos {
   modelRuns: ModelRunRepo;
   // Audit-P3 (SCRUM-397): pro Nutzer bewusst als gesehen markierte Benachrichtigungs-IDs.
   notificationSeen: NotificationSeenRepo;
+  // R-0679: die Geräteabos für Push (je Endpunkt ein Eintrag, der angemeldeten Person zugeordnet).
+  pushAbos: PushAboRepo;
   // SCRUM-386: kundeneigene KI-Assist-Presets (Admin pflegt; Palette zeigt sie allen Rollen).
   assistPresets: AssistPresetRepo;
   // SCRUM-525 P.5 (WP6): persistente KI-Zuordnung (Policy) — überlebt Neustart/Deploy.
@@ -1344,6 +1408,10 @@ export function assembleServices(
     mitgelesen?: MitgelesenRepo;
     // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     klaraGespraeche?: KlaraGespraechRepo;
+    // produkt:20261007:klara-notizen-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
+    klaraNotizen?: KlaraNotizRepo;
+    // produkt:20261008:klara-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
+    klaraAufgaben?: KlaraAufgabeRepo;
     // produkt:20261010:assistenz-name-avatar: gesetzt von `buildPgServices`; sonst im Speicher.
     assistenzProfile?: AssistenzProfilRepo;
     // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
@@ -1808,6 +1876,10 @@ export function assembleServices(
     mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
     // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
     klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
+    // produkt:20261007:klara-notizen-aufgaben: die Notizen — Postgres, wenn injiziert, sonst im Speicher.
+    klaraNotizen: opts.klaraNotizen ?? new InMemoryKlaraNotizRepo(),
+    // produkt:20261008:klara-aufgaben: die Aufgaben — Postgres, wenn injiziert, sonst im Speicher.
+    klaraAufgaben: opts.klaraAufgaben ?? new InMemoryKlaraAufgabeRepo(),
     // produkt:20261010:assistenz-name-avatar: die Assistenzprofile — Postgres, wenn injiziert.
     assistenzProfile: opts.assistenzProfile ?? new InMemoryAssistenzProfilRepo(),
     // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
@@ -2067,6 +2139,10 @@ export function assembleServices(
       // Client + Credential modul-intern, hier nicht erreichbar). Ohne Schlüssel → undefined (inaktiv).
       // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): der Chokepoint fragt dieselbe zentrale Freigabe
       // für Vertrauliches wie der Dienst — entschieden allein im Reasoner.
+      // Aufnahme gesamt-ocr · R-0181: dieselbe Factory liefert bei KLARWERK_LOCAL_TRANSCRIBE_URL den
+      // LOKALEN Transkriber (eigener Rechner, kein Ton nach draussen) — er gewinnt vor einem
+      // Cloudschlüssel. Ist seine Adresse als lokal bestätigt, trägt er `lokal: true`; dann fragt der
+      // Dienst weder die Freigabe für öffentliche KI noch sperrt er Vertrauliches.
       transcriber: createCappedTranscriberFromEnv(process.env, {
         vertraulichFreigegeben: () => reasoner.vertraulicheAusleitungFreigegeben(),
       }),
@@ -2099,6 +2175,9 @@ export function assembleServices(
     }),
     // FR-AUTH-08/FR-VAL-07: SMTP, wenn konfiguriert; sonst sammelnder Fallback ohne Versand.
     mailer: createMailerFromEnv() ?? new ConsoleMailer(),
+    // R-0679 / FR-VAL-07: Geräte-Push nur mit VAPID-Konfiguration; die Abos immer.
+    ...pushAusUmgebung(),
+    pushAbos: repos.pushAbos,
     // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke — Repo direkt (schmale Modul-API).
     notificationSeen: repos.notificationSeen,
     // SCRUM-414: Regler-Repo direkt durchreichen (Routen nutzen es + Audit).
@@ -2111,6 +2190,13 @@ export function assembleServices(
     // available() ehrlich false (Route → 503); Tests injizieren einen Fake VOR buildApp.
     slideConverter: createSofficeSlideConverter(),
   };
+}
+
+// R-0679: der Push-Versand aus der Umgebung — als Teilobjekt, damit `push` ohne Konfiguration
+// FEHLT statt `undefined` zu tragen.
+function pushAusUmgebung(): { push?: PushSender } {
+  const push = createPushFromEnv();
+  return push ? { push } : {};
 }
 
 // In-Memory-Repos als benannter Satz — von buildServices (Tests/Dev) und der Dev-Persistenz
@@ -2151,6 +2237,7 @@ export function inMemoryRepos(): AppRepos {
     dokumente: new InMemoryDokumentaktenRepo(),
     modelRuns: new InMemoryModelRunRepo(),
     notificationSeen: new InMemoryNotificationSeenRepo(),
+    pushAbos: new InMemoryPushAboRepo(),
     assistPresets: new InMemoryAssistPresetRepo(),
     reasonerPolicy: new InMemoryReasonerPolicyRepo(),
     validationSettings: new InMemoryValidationSettingsRepo(),
@@ -2242,6 +2329,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       modelRuns: new PgModelRunRepo(pool),
       // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke persistent.
       notificationSeen: new PgNotificationSeenRepo(pool),
+      // R-0679: Geräteabos für Push persistent.
+      pushAbos: new PgPushAboRepo(pool),
       // SCRUM-386: kundeneigene KI-Assist-Presets persistent.
       assistPresets: new PgAssistPresetRepo(pool),
       // SCRUM-525 P.5 (WP6): KI-Zuordnung (Policy) persistent — überlebt Neustart/Deploy.
@@ -2328,6 +2417,12 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
       // Neustart und Deploy (`KLARA_GESPRAECH_SCHEMA`, angelegt von `migrate()`).
       klaraGespraeche: new PgKlaraGespraechRepo(pool),
+      // produkt:20261007:klara-notizen-aufgaben: eine Notiz überlebt erneute Anmeldung, Neustart und
+      // Deploy (`KLARA_NOTIZ_SCHEMA`, angelegt von `migrate()`).
+      klaraNotizen: new PgKlaraNotizRepo(pool),
+      // produkt:20261008:klara-aufgaben: eine Aufgabe überlebt Neuladen, erneute Anmeldung,
+      // Neustart und Deploy (`KLARA_AUFGABE_SCHEMA`, angelegt von `migrate()`).
+      klaraAufgaben: new PgKlaraAufgabeRepo(pool),
       // produkt:20261010:assistenz-name-avatar: Name, Avatar und Ersteinrichtung überleben Neuladen,
       // erneute Anmeldung, zweites Gerät und Deploy (`ASSISTENZ_PROFIL_SCHEMA`, von `migrate()`).
       assistenzProfile: new PgAssistenzProfilRepo(pool),
@@ -2711,6 +2806,10 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "OidcUnreachableError",
   "OutputError",
   "OverlapError",
+  // R-0679: aus `services/notifications/src/push.ts` — ein unbrauchbarer VAPID-Wert beim Start.
+  // ENTSCHEIDUNG: der Name darf ins Protokoll; die Meldung nennt nur den Variablennamen, nie den
+  // Wert (und bleibt wie alle Meldungen ohnehin unterdrückt).
+  "PushKonfigurationError",
   "ReasonerPolicyLockedError",
   "ReceiptSecretError",
   // JOB 4086: der EINE Fehlertyp des SharePoint-Moduls (`services/sharepoint/src/graph-client.ts`).
@@ -3229,6 +3328,12 @@ export function buildApp(
     hintergrundpruefung?: (lauf: () => Promise<HintergrundlaufBericht | null>) => void;
     /** R-0571: Wartezeit bis zur Wiederholung eines unvollständigen Verzeichnisabgleichs. */
     verzeichnisAbgleichWiederholungMs?: number;
+    /**
+     * BPA-13 · AC06: der Basisordner der SYNTHETISCHEN Codex-Arbeitsbereiche (je Auftrag ein
+     * Unterordner). Ohne Angabe ein eigener Ordner im System-Temp-Verzeichnis — bewusst kein
+     * Projektordner. Tests setzen einen eigenen Ordner.
+     */
+    kiCodexBasis?: string;
   } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
@@ -3277,6 +3382,11 @@ export function buildApp(
   // Optional aufgerufen: Prüfaufbauten ersetzen `modelRuns` teils durch eine schmale Attrappe nur
   // mit `recent` (tests/deploy-health-commit) — die App muss auch dann entstehen.
   services.modelRuns.logAn?.((zeile) => app.log.info(zeile, "ki_lauf"));
+  // R-0679: ohne Mailserver landet jede Nachricht ersatzweise im Protokoll — Ereignis und Betreff,
+  // nie Empfänger oder Text (Begründung in `notifications/src/mailer.ts`).
+  if (services.mailer instanceof ConsoleMailer) {
+    services.mailer.logAn((zeile) => app.log.warn(zeile, "mail_ersatzzustellung"));
+  }
   const preisgrundlage = services.modelRuns.preisgrundlage?.();
   if (preisgrundlage?.fehler) {
     app.log.warn({ event: "ki_preisliste" }, preisgrundlage.fehler);
@@ -3843,10 +3953,44 @@ export function buildApp(
   // Empfänger, die es nach der EINEN Regel (`darfSehen`) sehen dürfen, mit denselben lesbaren
   // Spaces wie die Anmeldung (`makeGuards` oben). Das gilt auch für den Verzeichnisabgleich
   // (R-0571) darunter, der denselben Notifier benutzt.
-  const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer, {
-    ko: (koId) => services.ko.get(koId),
-    spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
-  });
+  // R-0679: mit VAPID-Konfiguration zusätzlich Push auf die angemeldeten Geräte — an dieselben,
+  // sichtbarkeitsgeprüften Empfänger; ein gescheiterter Anstoß erscheint im Protokoll ohne
+  // Endpunkt und ohne Person.
+  const notifyAssignment = makeAssignmentNotifier(
+    services.auth,
+    services.mailer,
+    {
+      ko: (koId) => services.ko.get(koId),
+      spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
+    },
+    services.push
+      ? {
+          abos: services.pushAbos,
+          sender: services.push,
+          fehler: (art) => app.log.warn({ event: "push_fehlgeschlagen", art }, "push"),
+        }
+      : undefined,
+  );
+  // R-1655: neue Objekte ohne benannte Prüfer an die schnellsten Prüfer ihres Themas routen.
+  // Kandidaten sind freigegebene Konten mit dem Recht zu bewerten (`ko.validate`) — nur sie
+  // können eine Zuweisung durch ihre Bewertung erledigen. Ein Fehler beim Routing kostet die
+  // Einreichung nicht: das Objekt ist angelegt, es bleibt dann offen für alle Prüfer.
+  const routeNeuesObjekt = async (koId: string, user: SessionUser): Promise<void> => {
+    try {
+      const kandidaten = (await services.auth.listUsers())
+        .filter((u) => u.approved && can(u.role, "ko.validate"))
+        .map((u) => u.id);
+      const geroutet = await services.validation.automatischZuweisen({
+        koId,
+        actor: user.id,
+        kandidaten,
+        sichtbar: sichtbarkeitsfilterFuer(user),
+      });
+      await notifyAssignment(koId, geroutet);
+    } catch (err) {
+      app.log.warn({ event: "pruefrouting_fehlgeschlagen", err }, "pruefrouting");
+    }
+  };
   // ADMIN-09 (produkt:20261009:admin-freigaberegeln): die Freigaberegel je Space — Prüfpunkt an den
   // Entscheidungswegen, Prüfbrett-Auskunft, Spacewechsel und die Verwaltungsrouten teilen EINEN Dienst.
   const freigaberegeln = new FreigabeRegelDienst({
@@ -4303,6 +4447,8 @@ export function buildApp(
         // Berater-Konzept 04.07. (Stufe 3): Reasoner für die automatische Widerspruchs-Erkennung.
         reasoner: services.reasoner,
         notifyAssignment,
+        // R-1655: Routing neuer Objekte an die schnellsten Prüfer ihres Themas.
+        routeNeuesObjekt,
         // SCRUM-421: einstellbare Upload-Grenzen + Audit für Änderungen.
         uploadLimits: services.uploadLimits,
         // AUFTRAG-mega14 Block E (SCRUM-421): DERSELBE Object-Store, in den der Upload schreibt —
@@ -4571,6 +4717,8 @@ export function buildApp(
       },
       // ADMIN-09: die Freigaberegel des führenden Space je Brettzeile.
       (kos) => freigaberegeln.auskunftFuer(kos),
+      // R-0265: Prüfer-Vorschlag — dieselbe Personenliste wie `GET /api/directory`.
+      { ko: services.ko, kanten: services.kanten, personen: () => services.auth.listUsers() },
     ),
   );
   // AUFTRAG-mega74 BLOCK D (G5): der EINE Zugang, über den die Nebenwege die Sichtbarkeit ihrer
@@ -4814,6 +4962,7 @@ export function buildApp(
       {
         ...services,
         notifyAssignment,
+        routeNeuesObjekt,
         semanticPrefilter,
         aiCheckWorker,
         // produkt:20261007:templates-default: dieselbe Einreichprüfung am Promote.
@@ -4859,6 +5008,42 @@ export function buildApp(
         return { erreichbar, namen };
       },
     },
+    // produkt:20261009:referenzki-pruefdienst (REF-02): EIN gemeinsamer Prüfdienst für beide
+    // Zugänge (Fragekonsole und Klara) — derselbe Reasoner, dieselben Freigaben, dasselbe Audit.
+    referenz: new ReferenzPruefdienst({
+      waehlePruefer: (antwort, vertraulich) =>
+        services.reasoner.referenzPruefer(antwort, vertraulich),
+      externErlaubt: (vertraulich) => services.reasoner.externeVerarbeitungErlaubt(vertraulich),
+      istVertraulich: (ko) =>
+        isConfidential(ko.confidentiality as KnowledgeObject["confidentiality"]),
+      // Das Prüfprotokoll: Kennungen, Zustandszahlen, Rollen mit tatsächlichem Anbieter und Modell,
+      // Fingerabdrücke und Messung — kein Antwort-, Aussage- oder Quellentext.
+      protokolliere: async (e) => {
+        await services.audit.record({
+          actor: e.akteur,
+          action: "ask.referenzpruefung",
+          target: e.pruefId,
+          payload: {
+            richtlinie: e.richtlinie,
+            status: e.status,
+            grund: e.grund ?? null,
+            antwortAnbieter: e.antwort?.anbieter ?? null,
+            antwortModell: e.antwort?.modell ?? null,
+            prueferAnbieter: e.pruefer?.anbieter ?? null,
+            prueferModell: e.pruefer?.modell ?? null,
+            antwortFingerabdruck: e.antwortFingerabdruck,
+            paketFingerabdruck: e.paketFingerabdruck,
+            ergebnisFingerabdruck: e.ergebnisFingerabdruck,
+            zustaende: e.zustaende,
+            ausCache: e.ausCache,
+            versuch: e.versuch,
+            dauerMs: e.dauerMs,
+            eingabeToken: e.verbrauch?.eingabe ?? null,
+            ausgabeToken: e.verbrauch?.ausgabe ?? null,
+          },
+        });
+      },
+    }),
   };
   // R-0700: der allgemeine Frageweg bekommt das Sitzungstor NICHT mehr — er nimmt keine
   // Klara-Bindung an.
@@ -5106,6 +5291,8 @@ export function buildApp(
       guards,
     ),
   );
+  // R-0679 / FR-VAL-07: Geräte-Push — Konfiguration lesen, eigenes Gerät an- und abmelden.
+  app.register(pushRoutes({ push: services.push, abos: services.pushAbos }, guards));
   // Audit-P4 (SCRUM-398): Live-Wall — read-only „frisch gesichert / hat heute geholfen".
   // PMO-FEA-0003: `konten` liefert Anzeigenamen — die Route nennt davon nur zustimmende Konten.
   app.register(
@@ -5121,6 +5308,25 @@ export function buildApp(
   );
   // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler aus eigenen KOs + Audits.
   app.register(impactRoutes({ ko: services.ko, audit: services.audit }, guards));
+  // Autorenübergabe-Auftrag K3: textfreier Zähler der an mich zurückgegebenen Entwürfe (Kopfband).
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Übergaben brauchen die Konten (gelöscht,
+  // ausgeschieden) und die gepflegten Bereichsprofile (Kritikalität → Priorität „Kritisch").
+  app.register(
+    aufgabenZaehlerRoutes(
+      {
+        ko: services.ko,
+        audit: services.audit,
+        konten: () => services.auth.listUsers(),
+        bereiche: () => services.management.listCategoryProfiles(),
+      },
+      guards,
+    ),
+  );
+  // R-0961, Peters Entscheidung 1 (12.10.2026): der Status „Ausgeschieden“. Offene Aufgaben gehen
+  // über dieselbe Wissensübergabe an die Vertretung wie in der Verantwortungsübergabe.
+  app.register(
+    ausscheidenRoutes({ auth: services.auth, vorgaenge: services.wissensuebergabe }, guards),
+  );
   // R-0466: das eigene Interaktionsgedächtnis. Die Herkunft „antwort" wird gegen DIESELBE
   // Antwortablage geprüft, die auch die Erklärroute liest.
   app.register(
@@ -5137,12 +5343,191 @@ export function buildApp(
   );
   // produkt:20261008:klara-basis: die eigenen Klara-Gespräche. Eine Antwort aus dem Frageweg wird
   // gegen DIESELBE Antwortablage geprüft wie die Herkunft im Gedächtnis.
+  // BPA-13: DIESELBE Dienstinstanz trägt auch die KI-Aufträge des Gesprächs (kein zweiter Verlauf).
+  const klaraGespraechDienst = new KlaraGespraechDienst({
+    repo: services.klaraGespraeche,
+    antworten: services.answerSnapshots,
+  });
   app.register(
-    klaraGespraechRoutes(
+    klaraGespraechRoutes({ dienst: klaraGespraechDienst, audit: services.audit }, guards),
+  );
+  // ================================================================================================
+  // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13) — DER ARBEITSWEG MIT EINER GEWÄHLTEN KI.
+  // ================================================================================================
+  //
+  // Nichts davon ist eine neue Entscheidung; alles wird frisch je Aufruf aus dem Bestand gelesen:
+  //   · „Keine KI" = die administrative KI-Abschaltung (`kiAbschaltung`), öffentliche KI = die
+  //     zentrale Adminfreigabe (`kiFreigabe.oeffentlicheKi === true`), Vertrauliches = die zweite
+  //     Freigabe (`vertraulicheAusleitungFreigegeben`).
+  //   · ERLAUBTE ANBIETER = die beiden externen Anbieter des Reasoners, die P04 als erste nennt
+  //     (Claude = `anthropic`, ChatGPT = `openai`). Keine automatische Erweiterung.
+  //   · API-WEG = `assistText` des Reasoners IM BINDUNGSRAHMEN: `bindeAnbieter` lässt in der Kette nur
+  //     den gewählten Anbieter zu; scheitert er, endet der Lauf ohne Ausweichweg
+  //     (`KlaraAusweichwegGesperrtFehler`). Die zentrale Freigabe und die Vertraulichkeitssperre
+  //     des Reasoners wirken unverändert dahinter.
+  //   · BELEG = der Eintrag im Modelllauf-Protokoll, der in genau diesem Zeitfenster für `assist`
+  //     entstand — nur wenn es GENAU EINER ist. Sonst kein Beleg statt eines geratenen.
+  //   · CODEX = ein synthetischer Arbeitsbereich je Auftrag; geschrieben wird nur, was
+  //     `wendeCodexAenderungenAn` annimmt.
+  const KI_P04_ANBIETER = ["anthropic", "openai"] as const;
+  type KiP04Anbieter = (typeof KI_P04_ANBIETER)[number];
+  const istP04Anbieter = (a: unknown): a is KiP04Anbieter =>
+    typeof a === "string" && (KI_P04_ANBIETER as readonly string[]).includes(a);
+  const kiProben = new Map<string, string>();
+  const kiLage = () => {
+    const config = services.reasoner.configStatus();
+    return {
+      keineKi: services.reasoner.kiAbschaltung().abgeschaltet,
+      oeffentlicheKiFreigegeben: config.taskConfig.kiFreigabe?.oeffentlicheKi === true,
+      vertraulichFreigegeben: services.reasoner.vertraulicheAusleitungFreigegeben(),
+      erlaubteAnbieter: [...KI_P04_ANBIETER],
+    };
+  };
+  const kiCodexEinrichtung = ((): KiCodexEinrichtung | undefined => {
+    const basis = opts.kiCodexBasis ?? join(tmpdir(), "klarwerk-ki-codex");
+    try {
+      mkdirSync(basis, { recursive: true });
+    } catch {
+      // Nicht beschreibbar: dann ist der Codex-Weg ehrlich „nicht eingerichtet".
+      return undefined;
+    }
+    return {
+      basis,
+      erlaubtePfade: ["src", "tests", "docs"],
+      anbieter: "openai",
+      version: "codex-uebergabe+arbeitsbereich-1",
+      geprueftAm: new Date().toISOString(),
+    };
+  })();
+  app.register(
+    kiArbeitsbegleitungRoutes(
       {
-        dienst: new KlaraGespraechDienst({
-          repo: services.klaraGespraeche,
-          antworten: services.answerSnapshots,
+        dienst: new KiArbeitsbegleitungDienst({
+          gespraeche: klaraGespraechDienst,
+          ko: services.ko,
+          lage: kiLage,
+          mcpAktiv: () => dienstLage.schluessel.length > 0,
+          codex: kiCodexEinrichtung,
+          api: {
+            bindung: () => {
+              const config = services.reasoner.configStatus();
+              const wirksam = config.effectiveAnbieter.assist;
+              const lage = kiLage();
+              if (!istP04Anbieter(wirksam)) {
+                return {
+                  ausfuehrbar: false,
+                  anbieter: null,
+                  modell: null,
+                  sperrgrund: `assist=${wirksam ?? "unbekannt"}`,
+                };
+              }
+              const sperrgrund = lage.keineKi
+                ? "keine_ki"
+                : !lage.oeffentlicheKiFreigegeben
+                  ? "oeffentliche_ki_nicht_freigegeben"
+                  : null;
+              return {
+                ausfuehrbar: sperrgrund === null,
+                anbieter: wirksam,
+                modell: config.cloudProviders[wirksam].model ?? null,
+                sperrgrund,
+              };
+            },
+            adapter: () => {
+              const config = services.reasoner.configStatus();
+              return KI_P04_ANBIETER.filter((a) => config.cloudProviders[a].configured).map((a) => {
+                const geprueftAm = kiProben.get(a);
+                return {
+                  faehigkeit: "api" as const,
+                  anbieter: a,
+                  version: config.cloudProviders[a].model ?? config.cloudProviders[a].name ?? a,
+                  ...(geprueftAm ? { geprueftAm } : {}),
+                };
+              });
+            },
+            pruefe: async (anbieter) => {
+              if (!istP04Anbieter(anbieter)) {
+                return { ok: false, detail: "Kein freigegebener Anbieter." };
+              }
+              const probe = await services.reasoner.probe(anbieter);
+              const ok = probe.ok && probe.mode === "model" && probe.anbieter === anbieter;
+              if (ok) {
+                kiProben.set(anbieter, probe.at);
+              }
+              return { ok, detail: probe.detail };
+            },
+            fuehreAus: (prompt, anbieter, vertraulich) =>
+              imBindungsrahmen(async (): Promise<KiApiErgebnis> => {
+                if (!bindeAnbieter(anbieter)) {
+                  throw new Error("Die Anbieterbindung ließ sich nicht herstellen.");
+                }
+                const von = new Date().toISOString();
+                const ergebnis = await services.reasoner.assistText(
+                  prompt,
+                  "de",
+                  "Bearbeite die im Text beschriebene Aufgabe ausschließlich mit den dort " +
+                    "genannten Quellen und gib nur das verlangte Ergebnis zurück.",
+                  vertraulich,
+                );
+                if (ergebnis.demo) {
+                  throw new Error(
+                    "Kein Modellergebnis — der gewählte Anbieter hat nicht geantwortet.",
+                  );
+                }
+                const bis = new Date(Date.now() + 1).toISOString();
+                const laeufe = (await services.modelRuns.recent(200)).filter(
+                  (l) =>
+                    l.task === "assist" &&
+                    l.status === "success" &&
+                    !l.demo &&
+                    l.startedAt >= von &&
+                    l.startedAt < bis,
+                );
+                const lauf = laeufe.length === 1 ? laeufe[0] : undefined;
+                if (lauf) {
+                  kiProben.set(anbieter, lauf.finishedAt);
+                }
+                return {
+                  inhalt: ergebnis.text,
+                  laufId: lauf?.id ?? null,
+                  modell: lauf?.model ?? null,
+                  verbrauch: lauf?.verbrauch
+                    ? {
+                        einheit: "token",
+                        menge: lauf.verbrauch.eingabeToken + lauf.verbrauch.ausgabeToken,
+                      }
+                    : null,
+                };
+              }),
+          },
+        }),
+      },
+      guards,
+    ),
+  );
+  // produkt:20261007:klara-notizen-aufgaben (Klara 06): die eigenen Notizen. Eine Notiz aus dem
+  // Gespräch liest Wortlaut und Bezug aus DEMSELBEN eigenen Gespräch.
+  app.register(
+    klaraNotizRoutes(
+      {
+        dienst: new KlaraNotizDienst({
+          repo: services.klaraNotizen,
+          gespraeche: services.klaraGespraeche,
+        }),
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261008:klara-aufgaben (Klara 07): die eigenen Aufgaben. Der Bezug kommt aus der
+  // EIGENEN Notiz bzw. aus einem Auftrag im EIGENEN Gespräch — der Server liest beides selbst.
+  app.register(
+    klaraAufgabeRoutes(
+      {
+        dienst: new KlaraAufgabeDienst({
+          repo: services.klaraAufgaben,
+          notizen: services.klaraNotizen,
+          gespraeche: services.klaraGespraeche,
         }),
         audit: services.audit,
       },
@@ -5154,6 +5539,10 @@ export function buildApp(
     assistenzProfilRoutes(
       {
         dienst: new AssistenzProfilDienst({ repo: services.assistenzProfile }),
+        // produkt:20261008:klara-eigeninitiative: der Unterstützungsmodus liegt im selben Profil.
+        eigeninitiative: new EigeninitiativeDienst({ repo: services.assistenzProfile }),
+        // produkt:20261012:klara-setup-shortcuts-umsetzung: die Klara-Kürzel im selben Profil.
+        tastenkuerzel: new TastenkuerzelDienst({ repo: services.assistenzProfile }),
         audit: services.audit,
       },
       guards,

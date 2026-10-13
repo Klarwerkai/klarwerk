@@ -941,6 +941,10 @@ export interface CaptureRoutesDeps {
   // SCRUM-395: Prüfer-Vorschlag beim Promote (Zuweisung + Benachrichtigung wie im Board).
   validation: ValidationService;
   notifyAssignment?: AssignmentNotifier;
+  // R-1655: ohne benannte Prüfer an die schnellsten Prüfer des Themas routen (schluckt eigene
+  // Fehler; routet nur ein Objekt, das noch gar keine Zuweisung hat — also auch bei Wiederholung
+  // desselben Vorgangs höchstens einmal).
+  routeNeuesObjekt?: (koId: string, user: SessionUser) => Promise<void>;
   // Weg 3 (Feature-Flag): semantischer Vorfilter der Duplikat-Erkennung. Nur gesetzt, wenn aktiviert.
   semanticPrefilter?: SemanticPrefilter | undefined;
   // WP-SUBMIT-ASYNC (Pedis R3): die frühere synchrone Erkennung (conflicts/overlaps/reasoner-Deps)
@@ -1072,7 +1076,15 @@ function antwortBeiVeraltetemStand(reply: FastifyReply, error: unknown): boolean
 }
 
 export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { capture, ko, validation, notifyAssignment, semanticPrefilter, aiCheckWorker } = deps;
+  const {
+    capture,
+    ko,
+    validation,
+    notifyAssignment,
+    routeNeuesObjekt,
+    semanticPrefilter,
+    aiCheckWorker,
+  } = deps;
   // R-0169 (Nacharbeit 5): die interne Dokumentakte des Word-Wegs (optional, s. Deps).
   const dokumente = deps.dokumente;
   // JOB 2671 D2: EINE Entscheidung, beim Aufbau getroffen — nicht bei jeder Anfrage neu.
@@ -1887,28 +1899,45 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       },
     );
 
-    app.delete<{ Params: { id: string } }>("/api/drafts/:id", async (request, reply) => {
+    type LoeschAnfrage = { Params: { id: string }; Querystring: { expectedUpdatedAt?: unknown } };
+    app.delete<LoeschAnfrage>("/api/drafts/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
         return;
       }
       try {
         // Pool-Auftrag (297afc57): Löschen bleibt beim Autor, auch bei einem Pool-Entwurf.
-        if (
-          !(await requireVisibleDraft(capture, request.params.id, user, reply, request, {
+        const sichtbar = await requireVisibleDraft(
+          capture,
+          request.params.id,
+          user,
+          reply,
+          request,
+          {
             nurAutor: true,
-          }))
-        ) {
+          },
+        );
+        if (!sichtbar) {
           return;
         }
+        // produkt:20261008:klara-aktionen (Nacharbeit 2): wahlweise derselbe Standvergleich wie beim
+        // Speichern. Wer den gesehenen Stand mitgibt (Klaras Rückgängig), löscht nichts, was
+        // inzwischen geändert wurde — 409 DRAFT_STALE, der Entwurf bleibt. Ohne Angabe wie bisher.
+        // Nacharbeit 4 (Ben): der Vergleich läuft UNTEILBAR in der Ablage (`deleteWennStand`), nicht
+        // hier vorab — eine Änderung zwischen Prüfung und Löschen kann so nicht mehr durchrutschen.
+        const erwartet = erwarteterStand(request.query?.expectedUpdatedAt);
         // JOB 3668: DERSELBE ENDPUNKT, NEUE BEDEUTUNG — er legt den Entwurf in den Papierkorb,
         // statt ihn zu vernichten. Die Antwort bleibt 204, der Aufrufer merkt keinen Unterschied:
         // der Entwurf verschwindet aus `GET /api/drafts` wie zuvor. Geprüfte Aufrufer stehen in
         // der Rückgabe dieses Jobs. `user.id` reist mit, damit der Papierkorb sagen kann, WER
         // gelöscht hat — bis hierher wusste das niemand.
-        await capture.deleteDraft(request.params.id, user.id);
+        await capture.deleteDraft(request.params.id, user.id, erwartet);
         reply.code(204).send();
       } catch (error) {
+        // Verlorener Standvergleich: 409 DRAFT_STALE mit dem gespeicherten Stand, der Entwurf bleibt.
+        if (antwortBeiVeraltetemStand(reply, error)) {
+          return;
+        }
         sendError(reply, error);
       }
     });
@@ -2050,6 +2079,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
               await notifyAssignment?.(koId, [prueferin]);
               await validation.benachrichtigungErledigt(koId, prueferin);
             }
+          } else {
+            // R-1655: niemand benannt → an die schnellsten Prüfer des Themas routen.
+            await routeNeuesObjekt?.(koId, user);
           }
           // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
           // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker
