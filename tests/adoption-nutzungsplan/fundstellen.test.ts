@@ -12,7 +12,9 @@
 //   P4  Fehlende Belege und Widersprüche sind benannt (K4).
 //   P5  R-1925: SCRUM-475–481 sind einzeln gegen den Originalexport abgeglichen — Konzeptergebnis,
 //       Bestand mit Fassung und Beleg, offener Rest; 475 gegen R-1050 abgegrenzt, 477 mit der
-//       Konzeptantwort vom 17.07. und SCRUM-518, 481 geparkt (K2, K3, K4).
+//       Konzeptantwort vom 17.07. und SCRUM-518, 481 geparkt (K2, K3, K4). Der Abgleich ist im
+//       Auftrag abgeschlossen statt auf eine neue Beauftragung vertagt; 476 „Eingeben = Freizeit“
+//       und die Begleiter-Kette aus 477 (erfassen, dann nach Relevanz fragen) sind eingeordnet.
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { repoPfad } from "../support/repoPfad";
@@ -150,7 +152,35 @@ describe("P5 · R-1925: die sieben Konzeptvorgänge einzeln abgeglichen", () => 
       }
     }
     expect(abgleich).toContain("jira-SCRUM.json");
-    expect(abgleich).toContain("1.0.0-beta.1.956");
+    expect(abgleich).toContain("1.0.0-beta.1.962");
+  });
+
+  it("Abgleich im Auftrag abgeschlossen; nichts auf neue Beauftragung vertagt", () => {
+    expect(abgleich).toContain("**in diesem Auftrag abgeschlossen**");
+    const vertagungen = ["ohne zugeordneten Auftrag", "kein zugeordneter Auftrag", "bis jemand"];
+    for (const vertagt of vertagungen) {
+      expect(abgleich, vertagt).not.toContain(vertagt);
+    }
+    const offen = readFileSync(repoPfad("OFFEN.md"), "utf8")
+      .split("\n")
+      .find((z) => z.startsWith("| K4 |"));
+    const abgeschlossen =
+      "Der konzeptionelle Abgleich ist für alle sieben in diesem Auftrag abgeschlossen";
+    expect(offen).toContain(abgeschlossen);
+    expect(offen).not.toContain("Ideen ohne Auftrag");
+  });
+
+  it("476 ordnet „Eingeben = Freizeit“ ein; 477 ordnet die Begleiter-Kette ein", () => {
+    expect(zeile("SCRUM-476")).toContain("**Eingeben = Freizeit / früher in Rente:**");
+    expect(zeile("SCRUM-476")).toContain("kein Produktumfang");
+    expect(zeile("SCRUM-477")).toContain(
+      "**Nicht-invasiver Begleiter (erfassen, dann nach Relevanz fragen):**",
+    );
+    const kette = zeile("SCRUM-477");
+    expect(kette).toContain("Eine Relevanznachfrage des Begleiters gibt es heute nicht");
+    // Die Einordnung stützt sich auf den tatsächlichen Hinweisbestand des Begleiters.
+    const begleiter = readFileSync(repoPfad("apps/web/src/lib/klaraEigeninitiative.ts"), "utf8");
+    expect(begleiter).toContain('export type HinweisArt = "tutorial" | "ungeprueft" | "seite";');
   });
 
   it("die genannten Fundstellen und Belege existieren", () => {
