@@ -162,9 +162,13 @@ describe("REF-04 · Antwortstatus, bedient in Chromium", () => {
     await stand?.app.close();
   }, 60_000);
 
+  // Nacharbeit-1: jede Frage besteht nur aus Begriffen, die der fiktive Bestand des Harness trägt
+  // („Halterungen und Profile sind ohne waagerechte Oberseiten auszuführen", Titel mit
+  // „bevorzugen"). Wörter ohne Deckung („nutzen", „warum") ergaben eine Wissenslücke statt einer
+  // Antwort — dann gibt es nichts zu prüfen, und das Warten auf das Prüfergebnis lief ins Leere.
   const ansichten = [
     [1280, 800, "Welche Profile sind zu bevorzugen?", "ref04-fiktiv-1"],
-    [390, 844, "Welche Profile sind zu bevorzugen und zu nutzen?", "ref04-fiktiv-2"],
+    [390, 844, "Welche Profile sind zu bevorzugen und auszuführen?", "ref04-fiktiv-2"],
   ] as const;
   for (const [breite, hoehe, frage, modell] of ansichten) {
     it(`C1 · ${breite} × ${hoehe}: Antwort → Prüfung → Aussage → Fundstelle → Rückweg, nur Tastatur`, async () => {
@@ -207,7 +211,7 @@ describe("REF-04 · Antwortstatus, bedient in Chromium", () => {
     await s.seite.setViewportSize({ width: 390, height: 844 });
     pruefer = machePruefer("ref04-fiktiv-3");
     modus = "ausfall";
-    await fragen(s, "Welche Profile sind zu bevorzugen und warum?");
+    await fragen(s, "Welche Halterungen und Profile sind zu bevorzugen?");
     await s.seite.waitForFunction(DA, NICHT_PRUEFBAR, { timeout: 45_000 });
     expect(await s.seite.evaluate<string | null>(MARKE)).toBe("nicht_abgeschlossen");
     const naechster = await s.seite.evaluate<string>(NAECHSTER);

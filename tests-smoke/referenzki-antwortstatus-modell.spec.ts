@@ -6,8 +6,13 @@
 // Quellenpassage → Rückweg auf Desktop und 390 × 844 sowie per Tastatur". Die Sonde fährt am
 // laufenden Smoke-Server:
 //   1. Fiktive, interne Testquelle anlegen und bestätigen (eindeutige Marke je Lauf).
-//   2. Antwortweg: die Aufgabe „answer" auf den internen deterministischen Weg; Referenz-KI: Claude
-//      (Anthropic) über den vorhandenen Adminweg; Grundfreigabe öffentlicher KI.
+//   2. Antwortweg: die Aufgabe „answer" auf „local" (internes Modell verlangt). Ist im Smoke kein
+//      lokales Modell verdrahtet, trägt der ehrliche deterministische Ersatz die Antwort
+//      (`chainForChoice`) — die Antwortrolle ist dann festgehalten „deterministisch", ohne Modell.
+//      NICHT „deterministic": diese gespeicherte Adminwahl IST die KI-Abschaltung des Fragewegs
+//      (`Reasoner.kiAbschaltung`, D5) und beantwortet die Frage zu Recht mit 503 KI_ABGESCHALTET
+//      (Befund nacharbeit-1). Referenz-KI: Claude (Anthropic) über den vorhandenen Adminweg;
+//      Grundfreigabe öffentlicher KI.
 //      WARUM NICHT CLAUDE ALS ANTWORT-KI: der volle Smoke bietet genau EIN Modell. Ein Modell prüft
 //      sich nicht selbst (Unabhängigkeit, `Reasoner.referenzPruefer`) — mit Claude als Antwort-KI
 //      wäre der Prüfstatus zu Recht „nicht prüfbar". Das belegt Schritt 6 als Gegenprobe.
@@ -54,6 +59,7 @@ interface Pruefung {
   aussagen: Aussage[];
   messung: { modellaufrufe: number };
   bindung?: { antwortFingerabdruck: string };
+  rollen?: { antwort: string | null; pruefer: string | null };
 }
 
 interface Antwort {
@@ -123,7 +129,7 @@ test("REF-04 · Antwort → Prüfmodell → Aussagezustand → Fundstelle → R�
     const zuordnung = await page.request.put("/api/reasoner/config", {
       data: {
         global: vorher.global,
-        perTask: { ...vorher.perTask, answer: "deterministic" },
+        perTask: { ...vorher.perTask, answer: "local" },
         kiFreigabe: {
           oeffentlicheKi: true,
           vertraulicheInhalte: vorher.kiFreigabe?.vertraulicheInhalte === true,
@@ -164,6 +170,9 @@ test("REF-04 · Antwort → Prüfmodell → Aussagezustand → Fundstelle → R�
     expect(ref, "die Antwort trägt eine Referenzprüfung").toBeDefined();
     expect(ref.status, `Prüfstatus ${ref.status} (${ref.grund ?? "-"})`).toBe("geprueft");
     expect(ref.messung.modellaufrufe, "tatsächlicher Aufruf des Prüfmodells").toBe(1);
+    // Die Antwort kam aus dem Haus (lokal oder deterministischer Ersatz), geprüft hat Claude extern.
+    expect(ref.rollen?.antwort).not.toBe("cloud");
+    expect(ref.rollen?.pruefer).toBe("cloud");
     expect(ref.bindung?.antwortFingerabdruck).toBe(body.aussagen?.antwortFingerabdruck);
     expect(ref.aussagen.length).toBeGreaterThan(0);
     for (const a of ref.aussagen) {
