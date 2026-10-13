@@ -794,3 +794,42 @@ describe("ADMIN-11 · W5 · Rechte an Tür, Zahl und Detail", () => {
     expect(res.body).not.toMatch(/ersparnis|gespart|saving|stunden|euro|roi/i);
   });
 });
+
+// PETER-20261011-P13 (produkt:20261011:peter-p13) · K5 — Klärbedarf mit zuständiger nächster
+// Handlung. Die Zuständigkeit ist dieselbe wie in ADMIN-10; fehlt sie dort, steht sie leer da und
+// wird nicht erfunden.
+describe("P13 · K5 · jeder offene Vorgang nennt seine Zuständigkeit aus ADMIN-10", () => {
+  it("zugewiesene Prüfung nennt die Person, eine unzugewiesene bleibt ausdrücklich leer", async () => {
+    const a = await setup();
+    const zugewiesen = await anlegen(a.app, a.autorin, TITEL_A);
+    const offen = await anlegen(a.app, a.autorin, TITEL_B);
+    await a.services.validation.assign(zugewiesen, [a.admin.id], a.admin.id);
+
+    const res = await a.app.inject({
+      method: "GET",
+      url: "/api/wissenskennzahlen?tage=7",
+      headers: a.admin.headers,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const k = res.json() as Wissenskennzahlen;
+    const eintraege = zahl(k, "pruefung").eintraege ?? [];
+    const von = (id: string) => eintraege.find((e) => e.schluessel === `pruefung:${id}`);
+    expect(von(zugewiesen)?.zustaendig).toEqual([
+      { id: a.admin.id, name: "Ada Verwaltung", art: "pruefer" },
+    ]);
+    expect(von(offen)?.zustaendig).toEqual([]);
+
+    // Dieselbe Zuständigkeit wie in der Arbeitsliste — keine zweite Quelle.
+    const qa = await a.app.inject({
+      method: "GET",
+      url: "/api/qualitaetsaufgaben",
+      headers: a.admin.headers,
+    });
+    expect(qa.statusCode, qa.body).toBe(200);
+    const vorgaenge = qa.json().vorgaenge as { schluessel: string; zustaendig: unknown }[];
+    for (const e of eintraege) {
+      const quelle = vorgaenge.find((v) => v.schluessel === e.schluessel);
+      expect(e.zustaendig, e.schluessel).toEqual(quelle?.zustaendig);
+    }
+  });
+});

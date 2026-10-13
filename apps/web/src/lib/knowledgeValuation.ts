@@ -1,3 +1,7 @@
+// ABGELÖST durch PETER-20261011-P13 (`lib/lagebild.ts`): keine Oberfläche bindet dieses Modul mehr
+// ein. Es rechnet Euro aus der Zahl validierter Objekte mit Vorgabewerten — genau das schliesst
+// Entscheidung 50 aus. Die Datei bleibt nur stehen, bis sie samt Test entfernt wird.
+//
 // Reine, DOM-freie Wissens-Valuation (FE-MGMT-04). KEINE Bilanzbewertung —
 // ein transparentes Schätzmodell aus echten Fakten × offengelegten Annahmen.
 // Der Nutzer sieht/ändert die Annahmen im UI; die Formel ist sichtbar.

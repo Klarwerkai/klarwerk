@@ -68,6 +68,8 @@ import { ImportLaufListe } from "../components/ImportLaufListe";
 import { ImportCockpitProvider, ImportStepperBar } from "../components/ImportStepper";
 import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
+// PETER-20261011-P13: Geldwert nur aus gemessenen Fällen, Reifegrad nur je Arbeitsweg aus Belegen.
+import { LagebildGeldwert, LagebildReifegrad } from "../components/LagebildKapital";
 // JOB 3363: dieselbe Kennzeichnung wie auf `/wissen/:id` und in der Bibliothek — ein Baustein.
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 // FR-VAL-06: dieselbe Zuweisungsübersicht je Person wie in der Auswertung.
@@ -132,12 +134,6 @@ import { importQuellangabe, importVolltextBefund } from "../lib/importTextVollte
 import { knowledgeHealth } from "../lib/knowledgeHealth";
 import { buildKnowledgeOsHints } from "../lib/knowledgeOsHints";
 import { buildKnowledgeOsReadiness } from "../lib/knowledgeOsReadiness";
-import {
-  DEFAULT_ASSUMPTIONS,
-  type ValuationAssumptions,
-  estimateValuation,
-  formatEur,
-} from "../lib/knowledgeValuation";
 import { formatKoTimestamp } from "../lib/koDates";
 import { koLabel } from "../lib/koLabel";
 // JOB 3363: die Leseübersetzung eines noch NICHT angenommenen Kandidaten — live über die echte
@@ -1535,15 +1531,14 @@ function MgmtKpi({ label, value }: { label: string; value: string | number }): J
 }
 
 // SCRUM-120/114 / FE-MGMT: echte, datenbasierte Management-/Wissenskapital-Sichten.
-// Alle Zahlen aus dem Live-Snapshot; Valuation ist ein transparentes Schätzmodell.
+// Alle Zahlen aus dem Live-Snapshot. PETER-20261011-P13: kein Geldwert aus dem Bestand und kein
+// firmenweiter Reifegrad (components/LagebildKapital); ohne Bestand kein Kapitalwert und keine Anteile.
 function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
   const { t } = useTranslation();
-  const [assumptions, setAssumptions] = useState<ValuationAssumptions>({ ...DEFAULT_ASSUMPTIONS });
-  const valuation = estimateValuation(snap.valuationFacts, assumptions);
-  const setNum = (k: keyof ValuationAssumptions) => (e: ChangeEvent<HTMLInputElement>) =>
-    setAssumptions((a) => ({ ...a, [k]: Number(e.target.value) || 0 }));
-
   const o = snap.overview;
+  // Über eine leere Grundmenge gibt es keinen Wert: der Server rechnet dann 0 bzw. 100 % für die
+  // invertierten Anteile — beides wäre eine erfundene Aussage.
+  const ohneBestand = o.totalKos === 0;
   return (
     <div className="space-y-4">
       {/* SCRUM-227: Sprungmarken zu den konsolidierten Alt-App-Management-Sektionen. */}
@@ -1598,79 +1593,49 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       <Card id={sectionAnchor("capital")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.capital")}</SectionLabel>
         <HelpTip title={t("mgmt.capital")} body={t("shelp.mgmt.capital")} />
-        <div className="mt-2 flex items-baseline gap-2">
-          <span className={`text-4xl font-bold ${BAND_TEXT[snap.capital.band] ?? "text-ink"}`}>
-            {snap.capital.score}
-          </span>
-          <span className="text-sm text-muted">/ 100 · {t(`mgmt.band.${snap.capital.band}`)}</span>
-        </div>
+        {ohneBestand ? (
+          <p data-testid="kapital-ohne-bestand" className="mt-2 text-[12.5px] text-muted">
+            {t("lagebild.kapital.leer")}
+          </p>
+        ) : (
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className={`text-4xl font-bold ${BAND_TEXT[snap.capital.band] ?? "text-ink"}`}>
+              {snap.capital.score}
+            </span>
+            <span className="text-sm text-muted">
+              / 100 · {t(`mgmt.band.${snap.capital.band}`)}
+            </span>
+          </div>
+        )}
         {/* R-0755: der Wert ist eine gewichtete Formel über die Anteile darunter, kein Messwert. */}
         <p data-testid="kapital-index-hinweis" className="mt-1 text-[11px] text-muted-2">
           {t("kennzahlen.kapital.index")}
         </p>
         <div className="mt-3 space-y-1.5">
           {snap.capital.parts.map((p) => (
-            <div key={p.key} className="flex items-center gap-2">
+            <div key={p.key} data-testid="kapital-anteil" className="flex items-center gap-2">
               <span className="w-40 shrink-0 text-[12px] text-muted">
                 {t(`mgmt.part.${p.key}`)}
               </span>
               <div className="h-2 flex-1 rounded-pill bg-page">
-                <div className="h-2 rounded-pill bg-ink" style={{ width: `${p.value}%` }} />
+                {ohneBestand ? null : (
+                  <div className="h-2 rounded-pill bg-ink" style={{ width: `${p.value}%` }} />
+                )}
               </div>
               <span className="w-14 shrink-0 text-right font-mono text-[11px] text-muted-2">
-                {p.value} · {Math.round(p.weight * 100)}%
+                {ohneBestand ? t("lagebild.kapital.anteilLeer") : p.value} ·{" "}
+                {Math.round(p.weight * 100)}%
               </span>
             </div>
           ))}
         </div>
       </Card>
 
-      {/* FE-MGMT-04: Valuation als Schätzmodell */}
+      {/* FE-MGMT-04 → PETER-20261011-P13: Geldwert nur aus gemessenen Fällen. */}
       <Card id={sectionAnchor("valuation")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.valuation")}</SectionLabel>
         <HelpTip title={t("mgmt.valuation")} body={t("shelp.mgmt.valuation")} />
-        <div className="mt-2 rounded-card bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text">
-          {t("mgmt.valuationDisclaimer")}
-        </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          <label className="text-[12px] text-muted">
-            {t("mgmt.assumeRate")}
-            <input
-              type="number"
-              value={assumptions.hourlyRate}
-              onChange={setNum("hourlyRate")}
-              className="mt-1 h-9 w-full rounded-input border border-hairline bg-page px-2 text-sm"
-            />
-          </label>
-          <label className="text-[12px] text-muted">
-            {t("mgmt.assumeHours")}
-            <input
-              type="number"
-              value={assumptions.hoursSavedPerValidatedKo}
-              onChange={setNum("hoursSavedPerValidatedKo")}
-              className="mt-1 h-9 w-full rounded-input border border-hairline bg-page px-2 text-sm"
-            />
-          </label>
-          <label className="text-[12px] text-muted">
-            {t("mgmt.assumeReuse")}
-            <input
-              type="number"
-              value={assumptions.reuseFactor}
-              onChange={setNum("reuseFactor")}
-              className="mt-1 h-9 w-full rounded-input border border-hairline bg-page px-2 text-sm"
-            />
-          </label>
-        </div>
-        <div className="mt-3 text-2xl font-semibold text-ink">
-          {formatEur(valuation.estimateEur)}
-        </div>
-        <div className="mt-1 font-mono text-[11px] text-muted-2">{valuation.formula}</div>
-        <div className="text-[11px] text-muted-2">
-          {t("mgmt.basis", {
-            n: snap.valuationFacts.validatedKos,
-            trust: snap.valuationFacts.avgTrust,
-          })}
-        </div>
+        <LagebildGeldwert />
       </Card>
 
       {/* FE-MGMT-05: Knowledge Statement */}
@@ -1692,22 +1657,12 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         </div>
       </Card>
 
-      {/* FE-MGMT-06: Maturity Journey */}
+      {/* FE-MGMT-06 → PETER-20261011-P13: Reifegrad je Arbeitsweg aus Belegen, nicht firmenweit
+          aus der Validierungsquote (`snap.maturity` wird deshalb nicht mehr angezeigt). */}
       <Card id={sectionAnchor("maturity")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.maturity")}</SectionLabel>
         <HelpTip title={t("mgmt.maturity")} body={t("shelp.mgmt.maturity")} />
-        <div className="mt-2 flex items-center gap-2">
-          <span className="text-sm font-semibold text-ink">
-            {t("mgmt.stage")} {snap.maturity.stage}/5 ·{" "}
-            {t(`mgmt.stageName.${snap.maturity.stageKey}`)}
-          </span>
-        </div>
-        <div className="mt-2 h-2 rounded-pill bg-page">
-          <div
-            className="h-2 rounded-pill bg-ink"
-            style={{ width: `${snap.maturity.progressPct}%` }}
-          />
-        </div>
+        <LagebildReifegrad />
       </Card>
 
       {/* FE-MGMT-08 / FR-EXT-05: Knowledge House — Stockwerke je Fachgebiet, Import → Haus → Ausgabe

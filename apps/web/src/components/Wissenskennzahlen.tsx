@@ -10,6 +10,7 @@
 // Zahl, Detailliste und Export lesen DIESELBE Antwort. Die Auswahl steht in der Adresse
 // (`lib/wissenskennzahlen.ts`), deshalb führt Zurück aus einer Arbeitsliste auf genau diese Sicht.
 import { useQuery } from "@tanstack/react-query";
+import type { TFunction } from "i18next";
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -17,6 +18,7 @@ import { ApiError } from "../api/client";
 import {
   type Wissenskennzahlen as Antwort,
   type Kennzahl,
+  type KennzahlEintrag,
   ZEITRAEUME,
   wissenskennzahlenApi,
   wissenskennzahlenKey,
@@ -394,6 +396,27 @@ function KennzahlKarte({ k, daten }: { k: Kennzahl; daten: Antwort }): JSX.Eleme
               ) : null}
             </dd>
           </div>
+          {/* PETER-20261011-P13 (K2, K3): Kontext, Quellenstand und Messart je Kennzahl. */}
+          <div>
+            <dt className="font-semibold text-muted-2">{t("lagebild.wkz.kontext")}</dt>
+            <dd data-testid="wkz-kontext">{kontextText(daten, t)}</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-muted-2">{t("lagebild.wkz.quellenstand")}</dt>
+            <dd data-testid="wkz-quellenstand">
+              {t(k.lage === "unbekannt" ? "lagebild.wkz.quelle.fehler" : "lagebild.wkz.quelle.ok")}
+            </dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-muted-2">{t("lagebild.wkz.messart")}</dt>
+            <dd data-testid="wkz-messart">
+              {t(
+                k.art === "zeitraum"
+                  ? "lagebild.wkz.messart.nutzung"
+                  : "lagebild.wkz.messart.bestand",
+              )}
+            </dd>
+          </div>
         </dl>
       </details>
 
@@ -412,6 +435,48 @@ function KennzahlKarte({ k, daten }: { k: Kennzahl; daten: Antwort }): JSX.Eleme
   );
 }
 
+/** Die gewählte Auswahl in Worten — ohne Filter ist es der ganze lesbare Bestand. */
+function kontextText(daten: Antwort, t: TFunction): string {
+  const { space, team } = daten.anfrage;
+  const teile: string[] = [];
+  if (space !== null) {
+    const name = daten.filterwerte.spaces.find((s) => s.id === space)?.name ?? space;
+    teile.push(t("lagebild.wkz.kontext.space", { name }));
+  }
+  if (team !== null) {
+    const name = daten.filterwerte.teams.find((x) => x.id === team)?.name ?? team;
+    teile.push(t("lagebild.wkz.kontext.team", { name }));
+  }
+  return teile.length === 0 ? t("lagebild.wkz.kontext.alle") : teile.join(" · ");
+}
+
+/**
+ * PETER-20261011-P13 (K5): wer die nächste Handlung trägt. Nur für noch offene Vorgänge; ohne Feld
+ * (älterer Server) bleibt die Zeile weg, bei `null` heisst es „unbekannt", nie „niemand".
+ */
+function ZustaendigZeile({ e }: { e: KennzahlEintrag }): JSX.Element | null {
+  const { t } = useTranslation();
+  if (e.zustand === "erledigt" || e.zustaendig === undefined) {
+    return null;
+  }
+  let text = t("lagebild.wkz.quelle.fehler");
+  if (e.zustaendig !== null) {
+    const namen = e.zustaendig.map((z) => {
+      const name = z.name ?? t("lagebild.wkz.zustaendig.unbekannt");
+      return `${name} (${t(`lagebild.wkz.zustaendig.art.${z.art}`)})`;
+    });
+    text =
+      namen.length === 0
+        ? t("lagebild.wkz.zustaendig.niemand")
+        : t("lagebild.wkz.zustaendig", { namen: namen.join(", ") });
+  }
+  return (
+    <span data-testid="wkz-zustaendig" className="w-full text-[12px] text-muted-2">
+      {text}
+    </span>
+  );
+}
+
 function Detailliste({
   k,
   eintraege,
@@ -419,12 +484,23 @@ function Detailliste({
   k: Kennzahl;
   eintraege: NonNullable<Kennzahl["eintraege"]>;
 }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // Der älteste noch offene Fall — Klärbedarf heisst auch: wie lange schon.
+  const aeltester = eintraege
+    .flatMap((e) => (e.zustand !== "erledigt" && e.seit !== null ? [e.seit] : []))
+    .sort()[0];
   return (
     <details className="mt-2 text-[12.5px]">
       <summary data-testid="wkz-liste" className="cursor-pointer font-semibold text-text">
         {t("wkz.liste.zusammenfassung", { anzahl: eintraege.length })}
       </summary>
+      {aeltester !== undefined ? (
+        <p data-testid="wkz-aeltester" className="mt-1 text-[12px] text-muted-2">
+          {t("lagebild.wkz.aeltester", {
+            datum: formatKoTimestamp(aeltester, i18n.language) ?? aeltester,
+          })}
+        </p>
+      ) : null}
       {eintraege.length === 0 ? (
         <p className="mt-1 text-muted-2">{t("wkz.liste.leer")}</p>
       ) : (
@@ -454,6 +530,7 @@ function Detailliste({
                   {t("wkz.liste.oeffnen")}
                   <ChevronRight size={12} strokeWidth={2} aria-hidden="true" />
                 </Link>
+                <ZustaendigZeile e={e} />
               </li>
             );
           })}

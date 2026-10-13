@@ -4,7 +4,7 @@
 // Die Gestalt ist die des Servers (`services/app/src/wissenskennzahlen.ts`); sie steht hier ein
 // zweites Mal, weil die Web-App keine Servertypen importiert. Geändert wird beides gemeinsam.
 import { api } from "./client";
-import type { VorgangTyp, VorgangZustand } from "./qualitaetsaufgaben";
+import type { VorgangTyp, VorgangZustand, Zustaendig } from "./qualitaetsaufgaben";
 
 export const ZEITRAEUME = [7, 30, 90] as const;
 export type Zeitraum = (typeof ZEITRAEUME)[number];
@@ -35,6 +35,11 @@ export interface KennzahlEintrag {
   spaces: string[];
   seit: string | null;
   ueberfaellig: boolean;
+  /**
+   * PETER-20261011-P13: Zuständigkeit aus ADMIN-10. Leer = keine hinterlegt; `null` = Quelle hat
+   * nicht geliefert; fehlt das Feld (älterer Server), sagt die Oberfläche nichts dazu.
+   */
+  zustaendig?: Zustaendig[] | null;
 }
 
 export interface Kennzahl {
