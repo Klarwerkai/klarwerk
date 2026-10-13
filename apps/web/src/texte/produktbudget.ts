@@ -49,7 +49,33 @@ export default {
     "produktbudget.abgeloest":
       "Ersetzt die frühere Empfehlung {{betrag}} pro Monat für diesen PoC.",
     "produktbudget.frageOffen":
-      "Aufteilung und Zeitraum sind gefragt und noch nicht beantwortet. Bis dahin gibt dieses Budget nichts frei.",
+      "Zeitraum offen: dieses Budget gibt nichts frei, bis die Verwaltung einen Zeitraum festlegt.",
+    "produktbudget.vonVorgabe": "Vorgabe Peter 13.10.2026",
+    "produktbudget.zuweisung.titel": "Zuweisungen je Konto",
+    "produktbudget.zuweisung.keine":
+      "Kein Konto mit eigener Zuweisung oder Belegung — für alle gilt der Gesamtbetrag.",
+    "produktbudget.zuweisung.zeile":
+      "{{konto}}: Zuweisung {{zuweisung}} · eigenes Unterlimit {{unterlimit}} · belegt {{belegt}}",
+    "produktbudget.zuweisung.ohne": "keine (Gesamtbetrag)",
+    "produktbudget.zuweisung.konto": "Konto",
+    "produktbudget.zuweisung.betrag": "Zuweisung",
+    "produktbudget.zuweisung.speichern": "Zuweisung speichern",
+    "produktbudget.zuweisung.aufheben": "Zuweisung aufheben",
+    "produktbudget.unterlimit.ohne": "keins",
+    "produktbudget.eigen.titel": "Mein Budget für kostenpflichtige Aufrufe",
+    "produktbudget.eigen.hinweis":
+      "Dein Unterlimit gilt nur für dich und höchstens bis zur erlaubten Zuweisung. Gesamtbudget und Zuweisungen ändert die Verwaltung.",
+    "produktbudget.eigen.kopf": "{{bereich}} · {{betrag}} · {{zeitraum}}",
+    "produktbudget.eigen.zuweisung": "Erlaubte Zuweisung",
+    "produktbudget.eigen.belegt": "Von mir belegt",
+    "produktbudget.eigen.verbleibend": "Für mich verbleibend",
+    "produktbudget.eigen.unterlimit": "Mein Unterlimit",
+    "produktbudget.eigen.speichern": "Unterlimit speichern",
+    "produktbudget.eigen.aufheben": "Unterlimit aufheben",
+    "produktbudget.fehler.konto": "Dieses Konto gibt es nicht.",
+    "produktbudget.fehler.zuweisung": "Die Zuweisung darf höchstens den Gesamtbetrag erreichen.",
+    "produktbudget.fehler.unterlimit":
+      "Das Unterlimit darf höchstens die erlaubte Zuweisung erreichen.",
     "produktbudget.speichern": "Speichern",
     "produktbudget.gespeichert": "Gespeichert.",
     "produktbudget.gespeichertWeitere":
@@ -112,7 +138,32 @@ export default {
     "produktbudget.abgeloest":
       "Replaces the earlier recommendation of {{betrag}} per month for this PoC.",
     "produktbudget.frageOffen":
-      "Split and period have been asked about and are not yet answered. Until then this budget releases nothing.",
+      "Period open: this budget releases nothing until the administration sets a period.",
+    "produktbudget.vonVorgabe": "Peter's instruction of 13 Oct 2026",
+    "produktbudget.zuweisung.titel": "Allocations per account",
+    "produktbudget.zuweisung.keine":
+      "No account with its own allocation or usage — the total amount applies to everyone.",
+    "produktbudget.zuweisung.zeile":
+      "{{konto}}: allocation {{zuweisung}} · own sub-limit {{unterlimit}} · used {{belegt}}",
+    "produktbudget.zuweisung.ohne": "none (total amount)",
+    "produktbudget.zuweisung.konto": "Account",
+    "produktbudget.zuweisung.betrag": "Allocation",
+    "produktbudget.zuweisung.speichern": "Save allocation",
+    "produktbudget.zuweisung.aufheben": "Remove allocation",
+    "produktbudget.unterlimit.ohne": "none",
+    "produktbudget.eigen.titel": "My budget for paid calls",
+    "produktbudget.eigen.hinweis":
+      "Your sub-limit applies only to you and at most up to the allowed allocation. The administration changes the total budget and allocations.",
+    "produktbudget.eigen.kopf": "{{bereich}} · {{betrag}} · {{zeitraum}}",
+    "produktbudget.eigen.zuweisung": "Allowed allocation",
+    "produktbudget.eigen.belegt": "Used by me",
+    "produktbudget.eigen.verbleibend": "Remaining for me",
+    "produktbudget.eigen.unterlimit": "My sub-limit",
+    "produktbudget.eigen.speichern": "Save sub-limit",
+    "produktbudget.eigen.aufheben": "Remove sub-limit",
+    "produktbudget.fehler.konto": "This account does not exist.",
+    "produktbudget.fehler.zuweisung": "The allocation may at most reach the total amount.",
+    "produktbudget.fehler.unterlimit": "The sub-limit may at most reach the allowed allocation.",
     "produktbudget.speichern": "Save",
     "produktbudget.gespeichert": "Saved.",
     "produktbudget.gespeichertWeitere":
@@ -174,7 +225,33 @@ export default {
     "produktbudget.abgeloest":
       "Vervangt de eerdere aanbeveling van {{betrag}} per maand voor deze PoC.",
     "produktbudget.frageOffen":
-      "Verdeling en periode zijn gevraagd en nog niet beantwoord. Tot dan geeft dit budget niets vrij.",
+      "Periode open: dit budget geeft niets vrij totdat het beheer een periode vastlegt.",
+    "produktbudget.vonVorgabe": "Opdracht Peter 13-10-2026",
+    "produktbudget.zuweisung.titel": "Toewijzingen per account",
+    "produktbudget.zuweisung.keine":
+      "Geen account met eigen toewijzing of gebruik — voor iedereen geldt het totaalbedrag.",
+    "produktbudget.zuweisung.zeile":
+      "{{konto}}: toewijzing {{zuweisung}} · eigen sublimiet {{unterlimit}} · gebruikt {{belegt}}",
+    "produktbudget.zuweisung.ohne": "geen (totaalbedrag)",
+    "produktbudget.zuweisung.konto": "Account",
+    "produktbudget.zuweisung.betrag": "Toewijzing",
+    "produktbudget.zuweisung.speichern": "Toewijzing opslaan",
+    "produktbudget.zuweisung.aufheben": "Toewijzing opheffen",
+    "produktbudget.unterlimit.ohne": "geen",
+    "produktbudget.eigen.titel": "Mijn budget voor betaalde aanroepen",
+    "produktbudget.eigen.hinweis":
+      "Je sublimiet geldt alleen voor jou en hoogstens tot de toegestane toewijzing. Het beheer wijzigt totaalbudget en toewijzingen.",
+    "produktbudget.eigen.kopf": "{{bereich}} · {{betrag}} · {{zeitraum}}",
+    "produktbudget.eigen.zuweisung": "Toegestane toewijzing",
+    "produktbudget.eigen.belegt": "Door mij gebruikt",
+    "produktbudget.eigen.verbleibend": "Voor mij resterend",
+    "produktbudget.eigen.unterlimit": "Mijn sublimiet",
+    "produktbudget.eigen.speichern": "Sublimiet opslaan",
+    "produktbudget.eigen.aufheben": "Sublimiet opheffen",
+    "produktbudget.fehler.konto": "Dit account bestaat niet.",
+    "produktbudget.fehler.zuweisung": "De toewijzing mag hoogstens het totaalbedrag bereiken.",
+    "produktbudget.fehler.unterlimit":
+      "De sublimiet mag hoogstens de toegestane toewijzing bereiken.",
     "produktbudget.speichern": "Opslaan",
     "produktbudget.gespeichert": "Opgeslagen.",
     "produktbudget.gespeichertWeitere":

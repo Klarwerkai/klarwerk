@@ -142,6 +142,42 @@ describe("Produktbudgets im Journalbetrieb", () => {
     await app2.close();
   });
 
+  it("J4 · PBE-12: die Übernahme der Gesamtperiode steht im Journal und gilt nach dem Neustart", async () => {
+    const datei = neuesJournal();
+    const services = await buildDevPersistServices(datei);
+    // Ein Stand wie vor PBE-12 — über die journalierte Ablage geschrieben.
+    const alt = {
+      einstellungen: (["perplexity-poc", "nr32-claude", "nr32-chatgpt"] as const).map((id) => ({
+        bereich: id,
+        betragCent: 2000,
+        waehrung: "EUR" as const,
+        zeitraum: id === "perplexity-poc" ? ("einmalig" as const) : ("offen" as const),
+        fassung: 0,
+        geaendertAm: null,
+        geaendertVon: null,
+      })),
+      buchungen: {},
+      aenderungen: [],
+    };
+    expect(await services.produktbudget.ersetze(MANDANT, 0, alt)).toBe(true);
+    const erste = new Produktbudget({ repo: services.produktbudget, mandant: MANDANT });
+    expect((await erste.lies()).bereiche.map((b) => b.zeitraum)).toEqual([
+      "einmalig",
+      "einmalig",
+      "einmalig",
+    ]);
+    // Neustart: die Übernahme kommt aus dem Journal, nicht erneut aus dem Lesen.
+    const neu = await buildDevPersistServices(datei);
+    const gespeichert = await neu.produktbudget.hole(MANDANT);
+    expect(gespeichert?.version).toBe(2);
+    expect(gespeichert?.stand.uebernahmen).toEqual(["pbe12-gesamtperiode-20261013"]);
+    expect(gespeichert?.stand.einstellungen.map((e) => e.zeitraum)).toEqual([
+      "einmalig",
+      "einmalig",
+      "einmalig",
+    ]);
+  });
+
   it("J3 · gesperrtes Journal: die Änderung und die Reservierung scheitern, nichts gilt", async () => {
     const datei = neuesJournal();
     const sperre = new JournalSchreibsperre();

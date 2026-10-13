@@ -101,8 +101,8 @@ describe("S1 · der Admin liest und ändert", () => {
     const vorher = await lies(app, admin);
     expect(vorher.map((b) => [b.bereich, b.betragCent, b.waehrung, b.zeitraum])).toEqual([
       ["perplexity-poc", 2000, "EUR", "einmalig"],
-      ["nr32-claude", 2000, "EUR", "offen"],
-      ["nr32-chatgpt", 2000, "EUR", "offen"],
+      ["nr32-claude", 2000, "EUR", "einmalig"],
+      ["nr32-chatgpt", 2000, "EUR", "einmalig"],
     ]);
     const res = await put(app, admin, "perplexity-poc", GUELTIG);
     expect(res.statusCode, res.body).toBe(200);
@@ -185,17 +185,102 @@ describe("S3 · der Server prüft Bindung und Grenzen", () => {
     expect(v.stand.bereiche.find((b) => b.bereich === "perplexity-poc")?.betragCent).toBe(2400);
   });
 
-  it("Nr. 32: Zeitraum festlegen nur mit Beleg; ohne Beleg bleibt er offen", async () => {
+  it("ein bewusst offener Zeitraum: Festlegen nur mit Beleg; ohne Beleg bleibt er offen", async () => {
     const { app, admin } = await instanz();
+    const offen = await put(app, admin, "nr32-claude", {
+      ...GUELTIG,
+      betrag: "20",
+      zeitraum: "offen",
+      aenderungId: "nr32-oeffnen-01",
+    });
+    expect(offen.statusCode, offen.body).toBe(200);
     const ohne = await put(app, admin, "nr32-claude", {
       ...GUELTIG,
       betrag: "20",
+      fassung: 1,
       aenderungId: "nr32-ohne-beleg",
     });
     expect(ohne.statusCode).toBe(400);
     expect((ohne.json() as { grund: string }).grund).toBe("grund");
     const claude = (await lies(app, admin)).find((b) => b.bereich === "nr32-claude");
     expect(claude).toMatchObject({ zeitraum: "offen", sperre: "zeitraum_offen" });
+  });
+});
+
+describe("S7 · PBE-12: Zuweisung durch die Verwaltung, Unterlimit durch das eigene Konto", () => {
+  it("Admin weist zu; der Anwender setzt sein Unterlimit innerhalb; fremde Wege sind zu", async () => {
+    const { app, services, admin } = await instanz();
+    const viewer = await konto(app, admin, "viewer", "viewer.pbe12@beispiel.test");
+    const konten = await services.auth.listUsers();
+    const viewerId = konten.find((u) => u.email === "viewer.pbe12@beispiel.test")?.id ?? "";
+    expect(viewerId).not.toBe("");
+    const zuweisen = (kopf: Kopf, konto: string, zuweisung: unknown, fassung = 0) =>
+      app.inject({
+        method: "PUT",
+        url: `/api/admin/produktbudget/nr32-chatgpt/konten/${konto}`,
+        headers: kopf,
+        payload: { zuweisung, fassung },
+      });
+    const unterlimit = (kopf: Kopf, payload: Record<string, unknown>) =>
+      app.inject({
+        method: "PUT",
+        url: "/api/me/produktbudget/nr32-chatgpt",
+        headers: kopf,
+        payload,
+      });
+
+    // Nur die Verwaltung weist zu — der Anwender nicht, auch nicht sich selbst.
+    expect((await zuweisen(viewer, viewerId, "20")).statusCode).toBe(403);
+    expect((await zuweisen(admin, "gibt-es-nicht", "5")).statusCode).toBe(404);
+    expect((await zuweisen(admin, viewerId, "20,01")).statusCode).toBe(400);
+    const ok = await zuweisen(admin, viewerId, "6");
+    expect(ok.statusCode, ok.body).toBe(200);
+
+    // Der Anwender sieht seine Zuweisung und setzt sein Unterlimit — innerhalb.
+    const eigen = await app.inject({
+      method: "GET",
+      url: "/api/me/produktbudget",
+      headers: viewer,
+    });
+    expect(eigen.statusCode).toBe(200);
+    type Eigen = {
+      bereich: string;
+      zuweisungCent: number;
+      unterlimitCent: number | null;
+      fassung: number;
+    };
+    const chatgpt = (eigen.json() as { bereiche: Eigen[] }).bereiche.find(
+      (b) => b.bereich === "nr32-chatgpt",
+    );
+    expect(chatgpt).toMatchObject({ zuweisungCent: 600, unterlimitCent: null, fassung: 1 });
+    const zuHoch = await unterlimit(viewer, { unterlimit: "6,01", fassung: 1 });
+    expect(zuHoch.statusCode).toBe(400);
+    expect((zuHoch.json() as { grund: string }).grund).toBe("unterlimit");
+    // Gesamtbetrag, Zuweisung oder ein fremdes Konto über den eigenen Weg: 403.
+    for (const fremd of [{ zuweisung: "20" }, { betrag: "99" }, { konto: "x" }, { mandant: "m" }]) {
+      const res = await unterlimit(viewer, { unterlimit: "1", fassung: 1, ...fremd });
+      expect(res.statusCode, JSON.stringify(fremd)).toBe(403);
+    }
+    const gesetzt = await unterlimit(viewer, { unterlimit: "4", fassung: 1 });
+    expect(gesetzt.statusCode, gesetzt.body).toBe(200);
+    // Der Viewer hat das globale Limit nicht geändert; die Verwaltung sieht Zuweisung und Unterlimit.
+    expect((await put(app, viewer, "nr32-chatgpt", { ...GUELTIG })).statusCode).toBe(403);
+    const b = (await lies(app, admin)).find((x) => x.bereich === "nr32-chatgpt") as Bereich & {
+      konten: {
+        konto: string;
+        zuweisungCent: number;
+        unterlimitCent: number;
+        grenzeCent: number;
+      }[];
+    };
+    expect(b.betragCent).toBe(2000);
+    expect(b.konten.find((k) => k.konto === viewerId)).toMatchObject({
+      zuweisungCent: 600,
+      unterlimitCent: 400,
+      grenzeCent: 400,
+    });
+    const anonym = await app.inject({ method: "GET", url: "/api/me/produktbudget" });
+    expect(anonym.statusCode).toBe(401);
   });
 });
 

@@ -21,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
+import { useUsers } from "../api/hooks";
 import {
   BUDGET_WAEHRUNGEN,
   BUDGET_ZEITRAEUME,
@@ -388,7 +389,8 @@ function BereichKarte({ b, dezimal }: { b: BudgetBereich; dezimal: string }): JS
             <li key={a.aenderungId}>
               {t("produktbudget.verlaufZeile", {
                 datum: datum(a.am),
-                von: a.von,
+                // PBE-12: die Übernahme von Peters bestätigter Gesamtperiode trägt kein Konto.
+                von: a.von.startsWith("vorgabe:") ? t("produktbudget.vonVorgabe") : a.von,
                 vorher: werte(a.vorher),
                 nachher: werte(a.nachher),
               })}
@@ -397,7 +399,119 @@ function BereichKarte({ b, dezimal }: { b: BudgetBereich; dezimal: string }): JS
           ))}
         </ul>
       ) : null}
+      <Zuweisungen b={b} dezimal={dezimal} />
     </section>
+  );
+}
+
+/**
+ * PBE-12: die Zuweisungen je Konto. Nur hier, in der Verwaltung — das eigene Unterlimit setzt jedes
+ * Konto selbst (`components/assistenz/EigenesProduktbudget.tsx`). Der Server hält Zuweisung ≤
+ * Gesamtbetrag und Unterlimit ≤ Zuweisung; diese Fläche zeigt nur, was er sagt.
+ */
+function Zuweisungen({ b, dezimal }: { b: BudgetBereich; dezimal: string }): JSX.Element {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const users = useUsers();
+  const [konto, setKonto] = useState("");
+  const [betrag, setBetrag] = useState("");
+  const [meldung, setMeldung] = useState<string | null>(null);
+  const konten = b.konten ?? [];
+  const id = b.bereich;
+  const name = (kennung: string): string =>
+    users.data?.find((u) => u.id === kennung)?.name ?? kennung;
+  const geld = (cent: number | null, ohne: string): string =>
+    cent === null ? ohne : `${centAlsBetrag(cent, dezimal)} ${b.waehrung}`;
+
+  const speichern = useMutation({
+    mutationFn: (e: { konto: string; zuweisung: string | null }) =>
+      produktbudgetApi.setzeZuweisung(id, e.konto, {
+        zuweisung: e.zuweisung,
+        fassung: konten.find((k) => k.konto === e.konto)?.fassung ?? 0,
+      }),
+    onSuccess: (antwort) => {
+      const { grenze: _grenze, ...stand } = antwort as Produktbudgetstand & { grenze?: unknown };
+      qc.setQueryData<Produktbudgetstand>(PRODUKTBUDGET_KEY, stand);
+      setBetrag("");
+      setMeldung(t("produktbudget.gespeichert"));
+    },
+    onError: (fehler) => {
+      const grund =
+        fehler instanceof ApiError && typeof fehler.details.grund === "string"
+          ? fehler.details.grund
+          : null;
+      setMeldung(
+        grund
+          ? t(`produktbudget.fehler.${grund}`, { defaultValue: fehler.message })
+          : t("produktbudget.fehler.unklar"),
+      );
+    },
+  });
+
+  return (
+    <div data-testid={`pb-zuweisungen-${id}`} className="space-y-2 border-t border-hairline pt-3">
+      <h4 className="text-[13px] font-semibold text-text">{t("produktbudget.zuweisung.titel")}</h4>
+      {konten.length === 0 ? (
+        <p className="text-[12px] text-muted-2">{t("produktbudget.zuweisung.keine")}</p>
+      ) : (
+        <ul className="space-y-1 text-[12px] text-text">
+          {konten.map((k) => (
+            <li key={k.konto} data-testid={`pb-konto-${id}-${k.konto}`}>
+              {t("produktbudget.zuweisung.zeile", {
+                konto: name(k.konto),
+                zuweisung: geld(k.zuweisungCent, t("produktbudget.zuweisung.ohne")),
+                unterlimit: geld(k.unterlimitCent, t("produktbudget.unterlimit.ohne")),
+                belegt: geld(k.belegtCent, "–"),
+              })}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label={t("produktbudget.zuweisung.konto")}>
+          <select
+            className={SELECT_KLASSE}
+            value={konto}
+            onChange={(e) => setKonto(e.target.value)}
+            data-testid={`pb-zuweisung-konto-${id}`}
+          >
+            <option value="">–</option>
+            {(users.data ?? []).map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label={t("produktbudget.zuweisung.betrag")}>
+          <TextInput
+            inputMode="decimal"
+            className="w-28"
+            value={betrag}
+            onChange={(e) => setBetrag(e.target.value)}
+            data-testid={`pb-zuweisung-betrag-${id}`}
+          />
+        </Field>
+        <Button
+          variant="primary"
+          disabled={konto === "" || betrag.trim() === "" || speichern.isPending}
+          onClick={() => speichern.mutate({ konto, zuweisung: betrag })}
+          data-testid={`pb-zuweisung-speichern-${id}`}
+        >
+          {t("produktbudget.zuweisung.speichern")}
+        </Button>
+        <Button
+          disabled={konto === "" || speichern.isPending}
+          onClick={() => speichern.mutate({ konto, zuweisung: null })}
+          data-testid={`pb-zuweisung-aufheben-${id}`}
+        >
+          {t("produktbudget.zuweisung.aufheben")}
+        </Button>
+      </div>
+      <output aria-live="polite" className="block text-[12px] text-muted-2">
+        {meldung ?? ""}
+      </output>
+    </div>
   );
 }
 

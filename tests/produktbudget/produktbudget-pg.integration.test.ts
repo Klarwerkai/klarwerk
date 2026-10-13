@@ -93,7 +93,7 @@ describe("Produktbudgets gegen echtes PostgreSQL", () => {
     const m = mandant();
     const d = server(m);
     expect((await bereich(d, "perplexity-poc")).betragCent).toBe(2000);
-    expect((await bereich(d, "nr32-claude")).zeitraum).toBe("offen");
+    expect((await bereich(d, "nr32-claude")).zeitraum).toBe("einmalig");
     const n = await neuePool().query<{ n: number }>(
       "SELECT count(*)::int AS n FROM produktbudget WHERE mandant = $1",
       [m],
@@ -181,6 +181,89 @@ describe("Produktbudgets gegen echtes PostgreSQL", () => {
     expect((await server(m).aendere(ADMIN, "perplexity-poc", eingabe)).geaendert).toBe(true);
     expect((await server(m).aendere(ADMIN, "perplexity-poc", eingabe)).wiederholt).toBe(true);
     expect((await bereich(server(m), "perplexity-poc")).letzteAenderungen).toHaveLength(1);
+  });
+
+  it("P7 · PBE-12: ein gespeicherter offener Stand wird übernommen und in der Zeile gespeichert", async () => {
+    const m = mandant();
+    const repo = new PgProduktbudgetRepo(neuePool());
+    // Ein Stand wie vor PBE-12: Claude/ChatGPT offen, ChatGPT mit einer Buchung.
+    const alt = {
+      einstellungen: (["perplexity-poc", "nr32-claude", "nr32-chatgpt"] as const).map((id) => ({
+        bereich: id,
+        betragCent: 2000,
+        waehrung: "EUR" as const,
+        zeitraum: id === "perplexity-poc" ? ("einmalig" as const) : ("offen" as const),
+        fassung: 0,
+        geaendertAm: null,
+        geaendertVon: null,
+      })),
+      buchungen: {
+        "nr32-chatgpt": [
+          {
+            nutzer: null,
+            auftragId: "pg-alt",
+            versuch: null,
+            art: "verbucht" as const,
+            cent: 700,
+            waehrung: "EUR" as const,
+            am: "2026-10-13T10:00:00.000Z",
+          },
+        ],
+      },
+      aenderungen: [],
+    };
+    expect(await repo.ersetze(m, 0, alt)).toBe(true);
+
+    const chatgpt = await bereich(server(m), "nr32-chatgpt");
+    expect(chatgpt).toMatchObject({
+      zeitraum: "einmalig",
+      fassung: 1,
+      verbrauchtCent: 700,
+      verbleibendCent: 1300,
+    });
+    const zeile = await neuePool().query<{ version: number; data: { uebernahmen?: string[] } }>(
+      "SELECT version, data FROM produktbudget WHERE mandant = $1",
+      [m],
+    );
+    expect(zeile.rows[0]?.version).toBe(2);
+    expect(zeile.rows[0]?.data.uebernahmen).toEqual(["pbe12-gesamtperiode-20261013"]);
+    // Ein weiterer Prozess liest dieselbe Periode und schreibt nichts mehr.
+    expect((await bereich(server(m), "nr32-claude")).zeitraum).toBe("einmalig");
+    const danach = await neuePool().query<{ version: number }>(
+      "SELECT version FROM produktbudget WHERE mandant = $1",
+      [m],
+    );
+    expect(danach.rows[0]?.version).toBe(2);
+  });
+
+  it("P8 · PBE-12: das Unterlimit hält auch gegen parallele Reservierungen zweier Prozesse", async () => {
+    const m = mandant();
+    await server(m).setzeKontogrenze("konto-pg", {
+      art: "unterlimit",
+      bereich: "nr32-claude",
+      konto: "konto-pg",
+      betrag: "10",
+      fassung: 0,
+    });
+    const a = server(m);
+    const b = server(m);
+    const ergebnisse = await Promise.all(
+      Array.from({ length: 8 }, (_, i) =>
+        (i % 2 === 0 ? a : b).reserviere({
+          zuordnung: "nr32-claude",
+          cent: 300,
+          nutzer: "konto-pg",
+          auftragId: `pg-unterlimit-${i}`,
+          versuch: 1,
+          anbieter: "anthropic",
+          waehrung: "EUR",
+        }),
+      ),
+    );
+    // 10 EUR Unterlimit / 3 EUR je Aufruf: genau drei.
+    expect(ergebnisse.filter(Boolean)).toHaveLength(3);
+    const claude = await bereich(server(m), "nr32-claude");
+    expect(claude).toMatchObject({ reserviertCent: 900, verbleibendCent: 1100 });
   });
 
   it("P6 · nach einer Buchung bleibt die Währung gebunden", async () => {

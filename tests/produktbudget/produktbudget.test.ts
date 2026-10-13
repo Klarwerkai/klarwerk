@@ -6,7 +6,10 @@
 // ist ein Ersatztransport. Belegt werden Einstellung, Geld, Persistenz über eine neue Instanz,
 // Wiederholung, Konflikt und der Deckel unter parallelen Aufrufen — NICHT eine reale Anbieterwirkung.
 //
-//   B1  Originalvorgaben: Perplexity 20 EUR einmalig (ersetzt 30 USD/Monat), Nr. 32 je 20 EUR offen
+//   B1  Originalvorgaben (PBE-12): je 20 EUR einmalig für Perplexity (ersetzt 30 USD/Monat), Claude
+//       und ChatGPT; gespeicherte offene Stände werden einmal nachvollziehbar übernommen
+//   B9  PBE-12: Zuweisung (Verwaltung) und Anwender-Unterlimit, gemeinsam mit dem Gesamtdeckel;
+//       keine Erneuerung über Monatswechsel, Neustart und einen weiteren Prozess
 //   B2  Geld exakt in Cent; 0 erlaubt (stoppt), negativ/ungültig/zu hoch abgewiesen
 //   B3  Speichern, neu lesen, neue Instanz (Neustart) — derselbe Stand, Provenienz ohne Geheimnis
 //   B4  Wiederholung derselben Änderung: kein zweiter Eintrag; veraltete Fassung: 409 mit Stand
@@ -56,7 +59,19 @@ async function bereich(d: Produktbudget, id: string) {
   return b;
 }
 
-/** Legt den Zeitraum eines Nr.-32-Bereichs mit Beleg fest — wie es die berechtigte Person täte. */
+/** Setzt den Zeitraum eines Bereichs BEWUSST auf offen — eine Entscheidung der Verwaltung. */
+async function oeffnen(d: Produktbudget, id: string): Promise<void> {
+  const b = await bereich(d, id);
+  await d.aendere(ADMIN, id, {
+    betrag: String(b.betragCent / 100),
+    waehrung: b.waehrung,
+    zeitraum: "offen",
+    fassung: b.fassung,
+    aenderungId: aenderungId(),
+  });
+}
+
+/** Legt einen offenen Zeitraum mit Beleg fest — wie es die berechtigte Person täte. */
 async function festlegen(d: Produktbudget, id: string, betrag = "20"): Promise<void> {
   const b = await bereich(d, id);
   await d.aendere(ADMIN, id, {
@@ -70,7 +85,7 @@ async function festlegen(d: Produktbudget, id: string, betrag = "20"): Promise<v
 }
 
 describe("B1 · Originalvorgaben vom 13.10.2026", () => {
-  it("Perplexity 20 EUR einmalig, ersetzt 30 USD/Monat; Claude und ChatGPT je 20 EUR, Zeitraum offen", async () => {
+  it("je 20 EUR einmalig für Perplexity (ersetzt 30 USD/Monat), Claude und ChatGPT", async () => {
     const d = dienst();
     const s = await d.lies();
     expect(s.bereiche.map((b) => b.bereich)).toEqual([
@@ -97,26 +112,147 @@ describe("B1 · Originalvorgaben vom 13.10.2026", () => {
       expect(b).toMatchObject({
         betragCent: 2000,
         waehrung: "EUR",
-        zeitraum: "offen",
-        sperre: "zeitraum_offen",
+        zeitraum: "einmalig",
+        fassung: 0,
+        sperre: null,
+        verbleibendCent: 2000,
         abgeloest: null,
         original: "produkt:20261011:peter-p03",
       });
     }
     expect((await bereich(d, "nr32-claude")).anbieter).toBe("anthropic");
     expect((await bereich(d, "nr32-chatgpt")).anbieter).toBe("openai");
-    // Kein monatlicher Zeitraum existiert überhaupt — keine Vorgabe kann ihn tragen.
-    expect(BUDGET_VORGABEN.every((v) => v.zeitraum === "einmalig" || v.zeitraum === "offen")).toBe(
-      true,
-    );
+    // Die Vorgaben selbst: alle drei einmalig — kein monatlicher, kein offener Zeitraum.
+    expect(BUDGET_VORGABEN.map((v) => [v.id, v.betragCent, v.waehrung, v.zeitraum])).toEqual([
+      ["perplexity-poc", 2000, "EUR", "einmalig"],
+      ["nr32-claude", 2000, "EUR", "einmalig"],
+      ["nr32-chatgpt", 2000, "EUR", "einmalig"],
+    ]);
   });
 
-  it("Nr. 32 gibt mit offenem Zeitraum keinen Rest frei — auch nicht 0", async () => {
-    const kb = dienst().kostenbuch();
-    expect(await kb.rest("nr32-claude")).toBeNull();
-    expect(await kb.rest("nr32-chatgpt")).toBeNull();
+  it("alle drei Bereiche geben ihren Rest frei; ein bewusst offener Zeitraum gibt nichts frei", async () => {
+    const d = dienst();
+    const kb = d.kostenbuch();
+    expect(await kb.rest("nr32-claude")).toBe(2000);
+    expect(await kb.rest("nr32-chatgpt")).toBe(2000);
     expect(await kb.rest("perplexity-poc")).toBe(2000);
     expect(await kb.rest("unbekannt")).toBeNull();
+    await oeffnen(d, "nr32-claude");
+    expect(await kb.rest("nr32-claude")).toBeNull();
+  });
+
+  it("ein gespeicherter Stand mit offenen Claude/ChatGPT-Zeiträumen wird einmal übernommen und gespeichert", async () => {
+    const repo = new InMemoryProduktbudgetRepo();
+    // Ein Stand wie vor PBE-12: Claude unverändert offen, ChatGPT von der Verwaltung auf 15 EUR
+    // gesetzt und offen; dazu Buchungen, eine Reservierung und ein Änderungsvermerk.
+    const alt = {
+      einstellungen: [
+        {
+          bereich: "perplexity-poc" as const,
+          betragCent: 2000,
+          waehrung: "EUR" as const,
+          zeitraum: "einmalig" as const,
+          fassung: 0,
+          geaendertAm: null,
+          geaendertVon: null,
+        },
+        {
+          bereich: "nr32-claude" as const,
+          betragCent: 2000,
+          waehrung: "EUR" as const,
+          zeitraum: "offen" as const,
+          fassung: 0,
+          geaendertAm: null,
+          geaendertVon: null,
+        },
+        {
+          bereich: "nr32-chatgpt" as const,
+          betragCent: 1500,
+          waehrung: "EUR" as const,
+          zeitraum: "offen" as const,
+          fassung: 1,
+          geaendertAm: "2026-10-13T10:00:00.000Z",
+          geaendertVon: ADMIN,
+        },
+      ],
+      buchungen: {
+        "nr32-chatgpt": [
+          {
+            nutzer: null,
+            auftragId: "alt-direkt",
+            versuch: null,
+            art: "verbucht" as const,
+            cent: 300,
+            waehrung: "EUR" as const,
+            am: "2026-10-13T10:05:00.000Z",
+          },
+        ],
+        "perplexity-poc": [
+          {
+            nutzer: "konto-a",
+            auftragId: "alt-res",
+            versuch: 1,
+            art: "reserviert" as const,
+            cent: 500,
+            waehrung: "EUR" as const,
+            am: "2026-10-13T10:06:00.000Z",
+          },
+        ],
+      },
+      aenderungen: [
+        {
+          aenderungId: "alt-aenderung-1",
+          bereich: "nr32-chatgpt" as const,
+          am: "2026-10-13T10:00:00.000Z",
+          von: ADMIN,
+          vorher: { betragCent: 2000, waehrung: "EUR" as const, zeitraum: "offen" as const },
+          nachher: { betragCent: 1500, waehrung: "EUR" as const, zeitraum: "offen" as const },
+          grund: null,
+          basisFassung: 0,
+        },
+      ],
+    };
+    expect(await repo.ersetze(MANDANT, 0, alt)).toBe(true);
+
+    const d = dienst(repo);
+    const claude = await bereich(d, "nr32-claude");
+    const chatgpt = await bereich(d, "nr32-chatgpt");
+    expect(claude).toMatchObject({
+      zeitraum: "einmalig",
+      betragCent: 2000,
+      fassung: 1,
+      geaendertVon: "vorgabe:peter-20261013",
+      verbleibendCent: 2000,
+    });
+    // Die berechtigte Änderung der Verwaltung (15 EUR) und der Verbrauch bleiben.
+    expect(chatgpt).toMatchObject({
+      zeitraum: "einmalig",
+      betragCent: 1500,
+      fassung: 2,
+      verbrauchtCent: 300,
+      verbleibendCent: 1200,
+    });
+    expect(chatgpt.letzteAenderungen.map((a) => [a.aenderungId, a.von])).toEqual([
+      ["pbe12-gesamtperiode-20261013:nr32-chatgpt", "vorgabe:peter-20261013"],
+      ["alt-aenderung-1", ADMIN],
+    ]);
+    expect((await bereich(d, "perplexity-poc")).reserviertCent).toBe(500);
+
+    // Gespeichert — nicht nur gelesen: die Ablage selbst trägt die Übernahme genau einmal.
+    const gespeichert = await repo.hole(MANDANT);
+    expect(gespeichert?.version).toBe(2);
+    expect(gespeichert?.stand.uebernahmen).toEqual(["pbe12-gesamtperiode-20261013"]);
+    expect(gespeichert?.stand.einstellungen.map((e) => e.zeitraum)).toEqual([
+      "einmalig",
+      "einmalig",
+      "einmalig",
+    ]);
+    // Weiteres Lesen (auch ein anderer Prozess) schreibt nichts mehr.
+    await dienst(repo).lies();
+    expect((await repo.hole(MANDANT))?.version).toBe(2);
+    // Eine spätere bewusste Entscheidung der Verwaltung wird nie wieder überschrieben.
+    await oeffnen(d, "nr32-claude");
+    expect((await bereich(dienst(repo), "nr32-claude")).zeitraum).toBe("offen");
   });
 });
 
@@ -399,15 +535,16 @@ describe("B4 · unklarer Schreibausgang und konkurrierende Änderung", () => {
   });
 });
 
-describe("B5 · offener Zeitraum (Nr. 32)", () => {
-  it("einen offenen Zeitraum festlegen verlangt einen Beleg", async () => {
+describe("B5 · bewusst offener Zeitraum", () => {
+  it("einen offenen Zeitraum wieder festlegen verlangt einen Beleg", async () => {
     const d = dienst();
+    await oeffnen(d, "nr32-claude");
     await expect(
       d.aendere(ADMIN, "nr32-claude", {
         betrag: "20",
         waehrung: "EUR",
         zeitraum: "einmalig",
-        fassung: 0,
+        fassung: 1,
         aenderungId: aenderungId(),
       }),
     ).rejects.toMatchObject({ status: 400, grund: "grund" });
@@ -417,13 +554,13 @@ describe("B5 · offener Zeitraum (Nr. 32)", () => {
       betrag: "15",
       waehrung: "EUR",
       zeitraum: "offen",
-      fassung: 0,
+      fassung: 1,
       aenderungId: aenderungId(),
     });
     expect(await d.kostenbuch().rest("nr32-claude")).toBeNull();
     await festlegen(d, "nr32-claude", "15");
     expect(await d.kostenbuch().rest("nr32-claude")).toBe(1500);
-    expect(await d.kostenbuch().rest("nr32-chatgpt")).toBeNull();
+    expect(await d.kostenbuch().rest("nr32-chatgpt")).toBe(2000);
   });
 });
 
@@ -463,12 +600,11 @@ describe("B6 · Buchungen bleiben, Währung ist gebunden", () => {
 
   it("mit Buchungen keine Währungsumetikettierung (409), ohne Buchungen ist die Wahl frei", async () => {
     const d = dienst();
-    await festlegen(d, "nr32-chatgpt");
     await d.aendere(ADMIN, "nr32-chatgpt", {
       betrag: "20",
       waehrung: "USD",
       zeitraum: "einmalig",
-      fassung: 1,
+      fassung: 0,
       aenderungId: aenderungId(),
     });
     expect((await bereich(d, "nr32-chatgpt")).waehrung).toBe("USD");
@@ -562,10 +698,13 @@ describe("B7 · Reservierung gegen den Deckel", () => {
     expect(await d.reserviere({ ...anfrage("a4"), waehrung: null })).toBe(false);
     expect(await d.reserviere({ ...anfrage("a5"), cent: 0 })).toBe(false);
     expect(await d.reserviere({ ...anfrage("a6"), cent: 1.5 })).toBe(false);
+    // Ein bewusst offener Zeitraum gibt auch mit passendem Anbieter nichts frei.
+    await oeffnen(d, "nr32-claude");
     expect(
       await d.reserviere({ ...anfrage("a7"), zuordnung: "nr32-claude", anbieter: "anthropic" }),
     ).toBe(false);
     expect((await bereich(d, "perplexity-poc")).buchungen).toBe(0);
+    expect((await bereich(d, "nr32-claude")).buchungen).toBe(0);
   });
 
   it("Reservierungen überstehen den Neustart und zählen danach weiter gegen den Deckel", async () => {
@@ -576,6 +715,155 @@ describe("B7 · Reservierung gegen den Deckel", () => {
     expect(await nach.reserviere(anfrage("vor-neustart", 1500))).toBe(true);
     expect(await nach.reserviere(anfrage("klein", 500))).toBe(true);
     expect((await bereich(nach, "perplexity-poc")).verbleibendCent).toBe(0);
+  });
+});
+
+describe("B9 · PBE-12: Zuweisung, Anwender-Unterlimit und Gesamtperiode", () => {
+  const anfrage = (konto: string, auftragId: string, cent: number) => ({
+    zuordnung: "nr32-claude",
+    cent,
+    nutzer: konto,
+    auftragId,
+    versuch: 1,
+    anbieter: "anthropic",
+    waehrung: "EUR",
+  });
+  const grenze = (
+    d: Produktbudget,
+    art: "zuweisung" | "unterlimit",
+    konto: string,
+    betrag: unknown,
+  ) =>
+    d.lies().then((s) => {
+      const k = s.bereiche
+        .find((b) => b.bereich === "nr32-claude")
+        ?.konten.find((x) => x.konto === konto);
+      return d.setzeKontogrenze(art === "zuweisung" ? ADMIN : konto, {
+        art,
+        bereich: "nr32-claude",
+        konto,
+        betrag,
+        fassung: k?.fassung ?? 0,
+      });
+    });
+
+  it("Unterlimit, Zuweisung und Gesamtdeckel gelten gemeinsam", async () => {
+    const d = dienst();
+    await grenze(d, "zuweisung", "konto-a", "8");
+    await grenze(d, "unterlimit", "konto-a", "5");
+    // konto-a: Unterlimit 5 EUR innerhalb der Zuweisung 8 EUR.
+    expect(await d.reserviere(anfrage("konto-a", "a1", 400))).toBe(true);
+    expect(await d.reserviere(anfrage("konto-a", "a2", 200))).toBe(false);
+    expect(await d.reserviere(anfrage("konto-a", "a3", 100))).toBe(true);
+    // konto-b ohne eigene Grenzen: nur der Gesamtdeckel (20 EUR − 5 EUR belegt).
+    expect(await d.reserviere(anfrage("konto-b", "b1", 1500))).toBe(true);
+    expect(await d.reserviere(anfrage("konto-b", "b2", 1))).toBe(false);
+    // Unterlimit aufheben: jetzt gilt die Zuweisung — aber der Gesamtdeckel ist ausgeschöpft.
+    await grenze(d, "unterlimit", "konto-a", null);
+    expect(await d.reserviere(anfrage("konto-a", "a4", 100))).toBe(false);
+    const claude = await bereich(d, "nr32-claude");
+    expect(claude).toMatchObject({ reserviertCent: 2000, verbleibendCent: 0 });
+    expect(claude.konten.find((k) => k.konto === "konto-a")).toMatchObject({
+      zuweisungCent: 800,
+      unterlimitCent: null,
+      belegtCent: 500,
+      grenzeCent: 800,
+    });
+    // Die eigene Sicht nennt nur eigene Werte.
+    const eigen = (await d.eigene("konto-a")).bereiche.find((b) => b.bereich === "nr32-claude");
+    expect(eigen).toMatchObject({
+      zuweisungCent: 800,
+      zuweisungGesetzt: true,
+      unterlimitCent: null,
+      belegtCent: 500,
+      eigenVerbleibendCent: 0,
+      gesamtVerbleibendCent: 0,
+    });
+    expect(JSON.stringify(await d.eigene("konto-a"))).not.toContain("konto-b");
+  });
+
+  it("Grenzen der Grenzen: Unterlimit ≤ Zuweisung, Zuweisung ≤ Gesamtbetrag, Fassung, Kontokennung", async () => {
+    const d = dienst();
+    await expect(grenze(d, "zuweisung", "konto-a", "20,01")).rejects.toMatchObject({
+      status: 400,
+      grund: "zuweisung",
+    });
+    await grenze(d, "zuweisung", "konto-a", "8");
+    await expect(grenze(d, "unterlimit", "konto-a", "8,01")).rejects.toMatchObject({
+      status: 400,
+      grund: "unterlimit",
+    });
+    // Ohne Zuweisung ist der Gesamtbetrag die erlaubte Zuweisung.
+    await expect(grenze(d, "unterlimit", "konto-b", "20,01")).rejects.toMatchObject({
+      status: 400,
+      grund: "unterlimit",
+    });
+    await grenze(d, "unterlimit", "konto-b", "20");
+    await expect(grenze(d, "unterlimit", "konto-b", "-1")).rejects.toMatchObject({ status: 400 });
+    await expect(
+      d.setzeKontogrenze("konto-a", {
+        art: "unterlimit",
+        bereich: "nr32-claude",
+        konto: "konto-a",
+        betrag: "3",
+        fassung: 0,
+      }),
+    ).rejects.toMatchObject({ status: 409, grund: "konflikt" });
+    for (const falsch of ["__proto__", "", "konto mit leerzeichen"]) {
+      await expect(
+        d.setzeKontogrenze(ADMIN, {
+          art: "zuweisung",
+          bereich: "nr32-claude",
+          konto: falsch,
+          betrag: "1",
+          fassung: 0,
+        }),
+      ).rejects.toMatchObject({ status: 400, grund: "konto" });
+    }
+    // Senkt die Verwaltung die Zuweisung unter ein Unterlimit, gilt das kleinere.
+    await grenze(d, "unterlimit", "konto-a", "6");
+    await grenze(d, "zuweisung", "konto-a", "4");
+    const k = (await bereich(d, "nr32-claude")).konten.find((x) => x.konto === "konto-a");
+    expect(k).toMatchObject({ zuweisungCent: 400, unterlimitCent: 600, grenzeCent: 400 });
+    expect(await d.reserviere(anfrage("konto-a", "c1", 500))).toBe(false);
+    expect(await d.reserviere(anfrage("konto-a", "c2", 400))).toBe(true);
+  });
+
+  it("die Gesamtperiode erneuert sich weder über Monatswechsel noch Neustart noch weiteren Prozess", async () => {
+    const repo = new InMemoryProduktbudgetRepo();
+    const oktober = new Produktbudget({
+      repo,
+      mandant: MANDANT,
+      jetzt: () => Date.parse("2026-10-31T23:59:00.000Z"),
+    });
+    await grenze(oktober, "zuweisung", "konto-a", "12");
+    expect(await oktober.reserviere(anfrage("konto-a", "okt-1", 1000))).toBe(true);
+    await oktober.verbuche("nr32-claude", 1000, "okt-1", { nutzer: "konto-a", versuch: 1 });
+    // Neustart im November, dazu ein zweiter Prozess an derselben Ablage.
+    const november = new Produktbudget({
+      repo,
+      mandant: MANDANT,
+      jetzt: () => Date.parse("2026-11-01T00:01:00.000Z"),
+    });
+    const zweiterProzess = new Produktbudget({
+      repo,
+      mandant: MANDANT,
+      jetzt: () => Date.parse("2026-11-02T08:00:00.000Z"),
+    });
+    for (const d of [november, zweiterProzess]) {
+      expect(await bereich(d, "nr32-claude")).toMatchObject({
+        zeitraum: "einmalig",
+        betragCent: 2000,
+        verbrauchtCent: 1000,
+        verbleibendCent: 1000,
+      });
+    }
+    // Die Zuweisung zählt den Oktober-Verbrauch weiter mit: 12 EUR − 10 EUR = 2 EUR.
+    expect(await november.reserviere(anfrage("konto-a", "nov-1", 300))).toBe(false);
+    expect(await zweiterProzess.reserviere(anfrage("konto-a", "nov-2", 200))).toBe(true);
+    expect(await zweiterProzess.reserviere(anfrage("konto-b", "nov-3", 900))).toBe(false);
+    expect(await november.reserviere(anfrage("konto-b", "nov-4", 800))).toBe(true);
+    expect(await bereich(dienst(repo), "nr32-claude")).toMatchObject({ verbleibendCent: 0 });
   });
 });
 
@@ -766,6 +1054,32 @@ describe("B8 · der Deckel am Ausführungsweg der Fähigkeiten", () => {
       verbleibendCent: 1000,
       buchungen: 2,
     });
+  });
+
+  it("PBE-12 am Ausführungsweg: das Unterlimit stoppt nur das eigene Konto", async () => {
+    const a = aufbau(new InMemoryProduktbudgetRepo());
+    a.registry.registriere(BEZAHLTE_SUCHE);
+    a.registry.installiereAdapter(a.adapter(BEZAHLTE_SUCHE));
+    await a.budget.setzeKontogrenze("konto-sparsam", {
+      art: "unterlimit",
+      bereich: "perplexity-poc",
+      konto: "konto-sparsam",
+      betrag: "5",
+      fassung: 0,
+    });
+    const lauf = async (id: string, konto: string) => {
+      const v = await a.ausfuehrung.bereiteVor(auftrag(id, BEZAHLTE_SUCHE.id, konto));
+      if (v.art !== "gebunden") {
+        throw new Error("nicht gebunden");
+      }
+      return a.ausfuehrung.fuehreAus(v.bindung);
+    };
+    expect((await lauf("s1", "konto-sparsam")).stand).toBe("erfolgreich");
+    const zweiter = await lauf("s2", "konto-sparsam");
+    expect(zweiter.stand).toBe("voraussetzung_fehlt");
+    expect(zweiter.voraussetzungen.map((x) => x.art)).toContain("budget");
+    expect((await lauf("f1", "konto-frei")).stand).toBe("erfolgreich");
+    expect(a.aufrufe).toEqual(["s1", "f1"]);
   });
 
   it("Anbieterwechsel umgeht den Deckel nicht: ein anderer Empfänger bekommt dieses Budget nicht", async () => {

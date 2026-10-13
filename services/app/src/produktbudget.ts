@@ -15,9 +15,16 @@ import type { KostenReservierung, Kostenbuch } from "./assistenz-faehigkeiten";
 // DIE BEREICHE SIND FEST, NICHT FREI ANLEGBAR. Peters Vorgaben vom 13.10.2026:
 //   · `perplexity-poc` — 20 EUR für Perplexity im PoC. Ersetzt die frühere Produktbudgetempfehlung
 //     30 USD/Monat für diesen PoC (PBE-03). Einmalig, ohne Erneuerung.
-//   · `nr32-claude`, `nr32-chatgpt` — je 20 EUR für die Claude-/ChatGPT-Proben zu Nr. 32 (PBE-04).
-//     Aufteilung und Zeitraum sind dort gefragt und unbeantwortet: Zeitraum `offen`, also KEIN
-//     Kostenweg, bis eine berechtigte Person den Zeitraum mit Beleg bestätigt.
+//   · `nr32-claude`, `nr32-chatgpt` — je 20 EUR für Claude und ChatGPT (PBE-04). Peter hat am
+//     13.10.2026 die Aufteilung bestätigt (PBE-12): je 20 EUR als EINMALIGES PoC-Gesamtbudget, ohne
+//     Erneuerung durch Monatswechsel, Neustart oder einen anderen Prozess. Gespeicherte Stände, die
+//     diese Bereiche noch mit Zeitraum `offen` führen, werden einmal nachvollziehbar übernommen
+//     (`uebernehmeGesamtperiode`) — Betrag, Buchungen und Provenienz bleiben.
+//
+// ANWENDER-UNTERLIMITS (PBE-12): Die Verwaltung kann je Bereich und Konto eine Zuweisung setzen;
+// ohne sie gilt für das Konto der Gesamtdeckel. Innerhalb dieser Zuweisung setzt jedes Konto sein
+// eigenes Unterlimit. Die Kostenprüfung (`reserviere`) hält Unterlimit, Zuweisung und Gesamtdeckel
+// GEMEINSAM ein. Den Gesamtbetrag und die Zuweisungen ändert nur die Verwaltung (`users.manage`).
 //
 // WAS EINE ÄNDERUNG NICHT IST (PBE-02): keine Anbieteraufladung, keine Kontoumstellung, keine neue
 // Tokenfreigabe. Sie ändert Betrag, Währung oder Zeitraum DIESES Bereichs — sonst nichts. Buchungen
@@ -73,7 +80,7 @@ export const BUDGET_VORGABEN: readonly BudgetVorgabe[] = [
     original: "produkt:20261011:peter-p03",
     betragCent: 2000,
     waehrung: "EUR",
-    zeitraum: "offen",
+    zeitraum: "einmalig",
     abgeloest: null,
   },
   {
@@ -82,10 +89,17 @@ export const BUDGET_VORGABEN: readonly BudgetVorgabe[] = [
     original: "produkt:20261011:peter-p03",
     betragCent: 2000,
     waehrung: "EUR",
-    zeitraum: "offen",
+    zeitraum: "einmalig",
     abgeloest: null,
   },
 ];
+
+/** Kennung der Übernahme von Peters bestätigter Gesamtperiode (PBE-12) — einmal je Stand. */
+export const UEBERNAHME_GESAMTPERIODE = "pbe12-gesamtperiode-20261013";
+/** Wer die Übernahme im Änderungsvermerk trägt — eine Vorgabe, kein Konto. */
+export const VORGABE_PETER_20261013 = "vorgabe:peter-20261013";
+const GRUND_GESAMTPERIODE =
+  "Peter, 13.10.2026: je 20 EUR für Claude, ChatGPT und Perplexity als einmaliges PoC-Gesamtbudget bestätigt.";
 
 /** Höchster einstellbarer Betrag je Bereich: 10 000,00 in der Währung des Bereichs. */
 export const BUDGET_MAX_CENT = 1_000_000;
@@ -143,14 +157,120 @@ export interface BudgetAenderung {
   readonly basisFassung?: number;
 }
 
+/**
+ * Die Grenzen EINES Kontos in einem Bereich (PBE-12). `zuweisungCent` setzt die Verwaltung —
+ * `null`: keine eigene Zuweisung, es gilt der Gesamtdeckel. `unterlimitCent` setzt das Konto selbst,
+ * höchstens bis zur Zuweisung — `null`: kein eigenes Unterlimit.
+ */
+export interface KontoGrenze {
+  readonly zuweisungCent: number | null;
+  readonly unterlimitCent: number | null;
+  /** Fassung dieser Kontogrenze; schützt vor stillem Überschreiben. */
+  readonly fassung: number;
+  readonly geaendertAm: string | null;
+  readonly geaendertVon: string | null;
+}
+
+/** Vermerk einer Zuweisungs- oder Unterlimitänderung — Kennungen und Beträge, keine Geheimnisse. */
+export interface GrenzAenderung {
+  readonly art: "zuweisung" | "unterlimit";
+  readonly bereich: BudgetBereichId;
+  readonly konto: string;
+  readonly am: string;
+  readonly von: string;
+  readonly vorherCent: number | null;
+  readonly nachherCent: number | null;
+}
+
 export interface ProduktbudgetStand {
   readonly einstellungen: readonly BudgetEinstellung[];
   readonly buchungen: Readonly<Record<string, readonly BudgetBuchung[]>>;
   readonly aenderungen: readonly BudgetAenderung[];
+  /** Je Bereich, je Konto: Zuweisung und Unterlimit (PBE-12). Fehlt bei älteren Ständen. */
+  readonly konten?: Readonly<Record<string, Readonly<Record<string, KontoGrenze>>>>;
+  readonly grenzAenderungen?: readonly GrenzAenderung[];
+  /** Bereits angewandte Übernahmen bestätigter Vorgaben (z. B. `UEBERNAHME_GESAMTPERIODE`). */
+  readonly uebernahmen?: readonly string[];
 }
 
 /** Höchstzahl gespeicherter Provenienzeinträge; ältere fallen weg, Buchungen nie. */
 const MAX_AENDERUNGEN = 200;
+
+/** Die Grenze eines Kontos — nur eigene Einträge, nie ein geerbter Objektschlüssel. */
+function kontoGrenze(
+  stand: ProduktbudgetStand,
+  bereich: string,
+  konto: string,
+): KontoGrenze | null {
+  const konten = stand.konten;
+  const jeBereich = konten && Object.hasOwn(konten, bereich) ? konten[bereich] : null;
+  return jeBereich && Object.hasOwn(jeBereich, konto) ? (jeBereich[konto] ?? null) : null;
+}
+
+/** Was ein Konto in einem Bereich schon belegt (verbucht + reserviert). */
+function belegtVonKonto(stand: ProduktbudgetStand, bereich: string, konto: string): number {
+  return (stand.buchungen[bereich] ?? [])
+    .filter((b) => b.nutzer === konto)
+    .reduce((s, b) => s + b.cent, 0);
+}
+
+/**
+ * Die wirksame Kontogrenze: das kleinere aus Zuweisung und Unterlimit — `null`, wenn keins gesetzt
+ * ist (dann gilt nur der Gesamtdeckel).
+ */
+function wirksameKontogrenze(g: KontoGrenze | null): number | null {
+  const werte = [g?.zuweisungCent ?? null, g?.unterlimitCent ?? null].filter(
+    (w): w is number => w !== null,
+  );
+  return werte.length === 0 ? null : Math.min(...werte);
+}
+
+/**
+ * PBE-12: Peters bestätigte einmalige Gesamtperiode für einen gespeicherten Stand übernehmen —
+ * GENAU EINMAL (Kennung in `uebernahmen`). Claude/ChatGPT-Bereiche mit Zeitraum `offen` werden
+ * `einmalig`; Betrag, Währung, Buchungen und Provenienz bleiben, die Übernahme steht als eigener
+ * Änderungsvermerk da. Eine spätere bewusste Änderung durch die Verwaltung (auch zurück auf `offen`)
+ * wird danach nie wieder überschrieben. `null`: nichts zu tun.
+ */
+export function uebernehmeGesamtperiode(
+  stand: ProduktbudgetStand,
+  am: string,
+): ProduktbudgetStand | null {
+  if (stand.uebernahmen?.includes(UEBERNAHME_GESAMTPERIODE)) {
+    return null;
+  }
+  const neu: BudgetAenderung[] = [];
+  const einstellungen = stand.einstellungen.map((e) => {
+    if ((e.bereich !== "nr32-claude" && e.bereich !== "nr32-chatgpt") || e.zeitraum !== "offen") {
+      return e;
+    }
+    neu.push({
+      aenderungId: `${UEBERNAHME_GESAMTPERIODE}:${e.bereich}`,
+      bereich: e.bereich,
+      am,
+      von: VORGABE_PETER_20261013,
+      vorher: { betragCent: e.betragCent, waehrung: e.waehrung, zeitraum: e.zeitraum },
+      nachher: { betragCent: e.betragCent, waehrung: e.waehrung, zeitraum: "einmalig" },
+      grund: GRUND_GESAMTPERIODE,
+      basisFassung: e.fassung,
+    });
+    return {
+      ...e,
+      zeitraum: "einmalig" as const,
+      fassung: e.fassung + 1,
+      geaendertAm: am,
+      geaendertVon: VORGABE_PETER_20261013,
+    };
+  });
+  return {
+    ...stand,
+    einstellungen,
+    // Buchungen und Reservierungen unverändert — die Übernahme bucht, löscht und erneuert nichts.
+    buchungen: stand.buchungen,
+    aenderungen: [...stand.aenderungen, ...neu].slice(-MAX_AENDERUNGEN),
+    uebernahmen: [...(stand.uebernahmen ?? []), UEBERNAHME_GESAMTPERIODE],
+  };
+}
 
 function vorgabeStand(): ProduktbudgetStand {
   return {
@@ -165,6 +285,8 @@ function vorgabeStand(): ProduktbudgetStand {
     })),
     buchungen: {},
     aenderungen: [],
+    // Die Vorgaben tragen Peters bestätigte Gesamtperiode bereits — es gibt nichts zu übernehmen.
+    uebernahmen: [UEBERNAHME_GESAMTPERIODE],
   };
 }
 
@@ -307,6 +429,36 @@ export interface BudgetBereichSicht extends BudgetEinstellung {
   readonly buchungen: number;
   readonly sperre: BudgetSperre | null;
   readonly letzteAenderungen: readonly BudgetAenderung[];
+  /** PBE-12: Konten mit Zuweisung, Unterlimit oder Buchungen in diesem Bereich (Verwaltungssicht). */
+  readonly konten: readonly KontoSicht[];
+}
+
+export interface KontoSicht extends KontoGrenze {
+  readonly konto: string;
+  /** Verbucht + reserviert durch dieses Konto. */
+  readonly belegtCent: number;
+  /** Das kleinere aus Zuweisung und Unterlimit; `null`: es gilt nur der Gesamtdeckel. */
+  readonly grenzeCent: number | null;
+}
+
+/** Die Sicht EINES Kontos auf einen Bereich — eigene Grenzen und eigene Belegung, nichts Fremdes. */
+export interface EigeneBudgetSicht {
+  readonly bereich: BudgetBereichId;
+  readonly anbieter: BudgetAnbieter;
+  readonly betragCent: number;
+  readonly waehrung: BudgetWaehrung;
+  readonly zeitraum: BudgetZeitraum;
+  readonly sperre: BudgetSperre | null;
+  /** Rest des Gesamtdeckels. */
+  readonly gesamtVerbleibendCent: number;
+  /** Die erlaubte Zuweisung: von der Verwaltung gesetzt, sonst der Gesamtbetrag. */
+  readonly zuweisungCent: number;
+  readonly zuweisungGesetzt: boolean;
+  readonly unterlimitCent: number | null;
+  readonly belegtCent: number;
+  /** Was dieses Konto noch auslösen darf — Unterlimit, Zuweisung UND Gesamtdeckel zusammen. */
+  readonly eigenVerbleibendCent: number;
+  readonly fassung: number;
 }
 
 export interface ProduktbudgetSicht {
@@ -371,7 +523,10 @@ export type ProduktbudgetGrund =
   | "zeitraum"
   | "grund"
   | "aenderung"
-  | "konflikt";
+  | "konflikt"
+  | "konto"
+  | "zuweisung"
+  | "unterlimit";
 
 export class ProduktbudgetFehler extends Error {
   constructor(
@@ -398,6 +553,8 @@ export interface BudgetEingabe {
 }
 
 const AENDERUNG_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,63}$/;
+/** Eine Kontokennung — beginnt nie mit `_` (kein `__proto__`), nie leer. */
+const KONTO_KENNUNG = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$/;
 const GRUND_MAX = 200;
 
 function istBereich(id: string): id is BudgetBereichId {
@@ -436,11 +593,33 @@ export class Produktbudget {
     return new Date(this.jetzt()).toISOString();
   }
 
+  /**
+   * Liest den Stand. Trägt ein GESPEICHERTER Stand Peters bestätigte Gesamtperiode noch nicht
+   * (PBE-12), wird sie hier übernommen und SOFORT gespeichert (Vergleich-und-Tausch, im Journal als
+   * eigene Zeile) — erst danach gilt der Stand. Scheitert das Speichern, scheitert das Lesen; ein
+   * nur im Speicher übernommener Zeitraum gäbe keine Kosten frei. Ohne gespeicherte Zeile gelten
+   * die Vorgaben, die die Gesamtperiode schon tragen — dann wird nichts geschrieben.
+   */
   private async lade(): Promise<{ stand: ProduktbudgetStand; version: number }> {
-    const z = await this.deps.repo.hole(this.deps.mandant);
-    return z
-      ? { stand: vervollstaendige(z.stand), version: z.version }
-      : { stand: vorgabeStand(), version: 0 };
+    for (let versuch = 0; versuch < 32; versuch++) {
+      const z = await this.deps.repo.hole(this.deps.mandant);
+      if (!z) {
+        return { stand: vorgabeStand(), version: 0 };
+      }
+      const stand = vervollstaendige(z.stand);
+      const uebernommen = uebernehmeGesamtperiode(stand, this.stempel());
+      if (uebernommen === null) {
+        return { stand, version: z.version };
+      }
+      if (await this.deps.repo.ersetze(this.deps.mandant, z.version, uebernommen)) {
+        return { stand: uebernommen, version: z.version + 1 };
+      }
+    }
+    throw new ProduktbudgetFehler(
+      409,
+      "konflikt",
+      "Das Produktbudget wird gerade an anderer Stelle geändert. Bitte erneut versuchen.",
+    );
   }
 
   /**
@@ -487,13 +666,166 @@ export class Produktbudget {
             .filter((a) => a.bereich === e.bereich)
             .slice(-10)
             .reverse(),
+          konten: this.kontoSichten(stand, e.bereich),
         };
       }),
     };
   }
 
+  private kontoSichten(stand: ProduktbudgetStand, bereich: BudgetBereichId): KontoSicht[] {
+    const jeBereich =
+      stand.konten && Object.hasOwn(stand.konten, bereich) ? (stand.konten[bereich] ?? {}) : {};
+    const namen = new Set<string>(Object.keys(jeBereich));
+    for (const b of stand.buchungen[bereich] ?? []) {
+      if (typeof b.nutzer === "string") {
+        namen.add(b.nutzer);
+      }
+    }
+    return [...namen].sort().map((konto) => {
+      const g = kontoGrenze(stand, bereich, konto);
+      return {
+        konto,
+        zuweisungCent: g?.zuweisungCent ?? null,
+        unterlimitCent: g?.unterlimitCent ?? null,
+        fassung: g?.fassung ?? 0,
+        geaendertAm: g?.geaendertAm ?? null,
+        geaendertVon: g?.geaendertVon ?? null,
+        belegtCent: belegtVonKonto(stand, bereich, konto),
+        grenzeCent: wirksameKontogrenze(g),
+      };
+    });
+  }
+
   async lies(): Promise<ProduktbudgetSicht> {
     return this.sicht((await this.lade()).stand);
+  }
+
+  /** PBE-12: die Sicht EINES Kontos — eigene Zuweisung, eigenes Unterlimit, eigene Belegung. */
+  async eigene(konto: string): Promise<{ bereiche: EigeneBudgetSicht[]; gelesenAm: string }> {
+    const { stand } = await this.lade();
+    return { gelesenAm: this.stempel(), bereiche: this.eigeneSichten(stand, konto) };
+  }
+
+  private eigeneSichten(stand: ProduktbudgetStand, konto: string): EigeneBudgetSicht[] {
+    return stand.einstellungen.map((e) => {
+      const r = rechne(stand, e);
+      const g = kontoGrenze(stand, e.bereich, konto);
+      const zuweisung = g?.zuweisungCent ?? null;
+      const zuweisungCent = zuweisung ?? e.betragCent;
+      const belegt = belegtVonKonto(stand, e.bereich, konto);
+      const eigeneGrenze = Math.min(zuweisungCent, g?.unterlimitCent ?? zuweisungCent);
+      return {
+        bereich: e.bereich,
+        anbieter: vorgabe(e.bereich).anbieter,
+        betragCent: e.betragCent,
+        waehrung: e.waehrung,
+        zeitraum: e.zeitraum,
+        sperre: r.sperre,
+        gesamtVerbleibendCent: r.verbleibend,
+        zuweisungCent,
+        zuweisungGesetzt: zuweisung !== null,
+        unterlimitCent: g?.unterlimitCent ?? null,
+        belegtCent: belegt,
+        eigenVerbleibendCent: Math.max(0, Math.min(eigeneGrenze - belegt, r.verbleibend)),
+        fassung: g?.fassung ?? 0,
+      };
+    });
+  }
+
+  /**
+   * PBE-12: eine Kontogrenze setzen — `art: "zuweisung"` NUR durch die Verwaltung (die Route prüft
+   * `users.manage`), `art: "unterlimit"` nur für das EIGENE Konto (die Route nimmt das Konto aus der
+   * Sitzung). Eine Zuweisung liegt höchstens beim Gesamtbetrag, ein Unterlimit höchstens bei der
+   * wirksamen Zuweisung. `null` hebt die Grenze auf. Buchungen bleiben unberührt.
+   */
+  async setzeKontogrenze(
+    von: string,
+    eingabe: {
+      art: "zuweisung" | "unterlimit";
+      bereich: string;
+      konto: string;
+      betrag: unknown;
+      fassung: unknown;
+    },
+  ): Promise<{ grenze: KontoGrenze; unveraendert: boolean }> {
+    if (!istBereich(eingabe.bereich)) {
+      throw new ProduktbudgetFehler(404, "bereich", "Diesen Budgetbereich gibt es nicht.");
+    }
+    const bereich = eingabe.bereich;
+    const konto = eingabe.konto;
+    if (!KONTO_KENNUNG.test(konto)) {
+      throw new ProduktbudgetFehler(400, "konto", "Die Kontokennung ist ungültig.");
+    }
+    const cent = eingabe.betrag === null ? null : betragInCent(eingabe.betrag);
+    if (eingabe.betrag !== null && cent === null) {
+      throw new ProduktbudgetFehler(
+        400,
+        eingabe.art,
+        "Der Betrag muss eine Zahl ab 0 mit höchstens zwei Nachkommastellen sein.",
+      );
+    }
+    const fassung = eingabe.fassung;
+    if (typeof fassung !== "number" || !Number.isSafeInteger(fassung) || fassung < 0) {
+      throw new ProduktbudgetFehler(400, "konflikt", "fassung muss eine ganze Zahl sein.");
+    }
+    type Ausgang =
+      | { art: "ok"; grenze: KontoGrenze; unveraendert: boolean }
+      | { art: "fehler"; f: ProduktbudgetFehler };
+    const ergebnis = await this.aendereStand<Ausgang>((stand) => {
+      const e = stand.einstellungen.find((x) => x.bereich === bereich) as BudgetEinstellung;
+      const alt = kontoGrenze(stand, bereich, konto);
+      const fehler = (status: 400 | 409, grund: ProduktbudgetGrund, text: string) => ({
+        neu: null,
+        wert: { art: "fehler" as const, f: new ProduktbudgetFehler(status, grund, text) },
+      });
+      if ((alt?.fassung ?? 0) !== fassung) {
+        return fehler(409, "konflikt", "Diese Grenze wurde inzwischen geändert. Bitte neu laden.");
+      }
+      if (cent !== null && eingabe.art === "zuweisung" && cent > e.betragCent) {
+        return fehler(400, "zuweisung", "Die Zuweisung liegt über dem Gesamtbetrag des Bereichs.");
+      }
+      const erlaubt = alt?.zuweisungCent ?? e.betragCent;
+      if (cent !== null && eingabe.art === "unterlimit" && cent > erlaubt) {
+        return fehler(400, "unterlimit", "Das Unterlimit liegt über der erlaubten Zuweisung.");
+      }
+      const vorher =
+        eingabe.art === "zuweisung" ? (alt?.zuweisungCent ?? null) : (alt?.unterlimitCent ?? null);
+      const basis: KontoGrenze = alt ?? {
+        zuweisungCent: null,
+        unterlimitCent: null,
+        fassung: 0,
+        geaendertAm: null,
+        geaendertVon: null,
+      };
+      if (vorher === cent) {
+        return { neu: null, wert: { art: "ok", grenze: basis, unveraendert: true } };
+      }
+      const am = this.stempel();
+      const neu: KontoGrenze = {
+        ...basis,
+        ...(eingabe.art === "zuweisung" ? { zuweisungCent: cent } : { unterlimitCent: cent }),
+        fassung: basis.fassung + 1,
+        geaendertAm: am,
+        geaendertVon: von,
+      };
+      const jeBereich =
+        stand.konten && Object.hasOwn(stand.konten, bereich) ? (stand.konten[bereich] ?? {}) : {};
+      return {
+        neu: {
+          ...stand,
+          konten: { ...(stand.konten ?? {}), [bereich]: { ...jeBereich, [konto]: neu } },
+          grenzAenderungen: [
+            ...(stand.grenzAenderungen ?? []),
+            { art: eingabe.art, bereich, konto, am, von, vorherCent: vorher, nachherCent: cent },
+          ].slice(-MAX_AENDERUNGEN),
+        },
+        wert: { art: "ok", grenze: neu, unveraendert: false },
+      };
+    });
+    if (ergebnis.art === "fehler") {
+      throw ergebnis.f;
+    }
+    return { grenze: ergebnis.grenze, unveraendert: ergebnis.unveraendert };
   }
 
   /**
@@ -646,7 +978,7 @@ export class Produktbudget {
             f: new ProduktbudgetFehler(
               400,
               "grund",
-              "Wer einen offenen Zeitraum festlegt, nennt den Beleg dafür (z. B. die Antwort zur Aufteilung).",
+              "Wer einen offenen Zeitraum festlegt, nennt den Beleg dafür (z. B. die Entscheidung zum Zeitraum).",
             ),
           },
         };
@@ -668,6 +1000,8 @@ export class Produktbudget {
       };
       return {
         neu: {
+          // Kontogrenzen und Übernahmen reisen unverändert mit.
+          ...stand,
           einstellungen: stand.einstellungen.map((e) => (e.bereich === bereich ? neuE : e)),
           // Buchungen unverändert — eine Budgetänderung bucht, löscht und setzt nichts zurück.
           buchungen: stand.buchungen,
@@ -768,6 +1102,13 @@ export class Produktbudget {
         return { neu: null, wert: false };
       }
       if (rechne(stand, e).verbleibend < r.cent) {
+        return { neu: null, wert: false };
+      }
+      // PBE-12: Unterlimit und Zuweisung des Kontos — GEMEINSAM mit dem Gesamtdeckel oben, im
+      // selben atomaren Schritt.
+      const kontogrenze = wirksameKontogrenze(kontoGrenze(stand, zuordnung, r.nutzer));
+      const vomKonto = belegtVonKonto(stand, zuordnung, r.nutzer);
+      if (kontogrenze !== null && vomKonto + r.cent > kontogrenze) {
         return { neu: null, wert: false };
       }
       const b: BudgetBuchung = {

@@ -79,19 +79,29 @@ function stand(perplexity: Partial<BudgetBereich> = {}): Produktbudgetstand {
         buchungen: 2,
         ...perplexity,
       }),
+      // PBE-12: Claude und ChatGPT nach der Übernahme von Peters bestätigter Gesamtperiode.
       bereich({
         bereich: "nr32-claude",
         anbieter: "anthropic",
         original: "produkt:20261011:peter-p03",
-        zeitraum: "offen",
-        sperre: "zeitraum_offen",
+        fassung: 1,
+        geaendertAm: "2026-10-13T13:50:00.000Z",
+        geaendertVon: "vorgabe:peter-20261013",
+        konten: [
+          {
+            konto: "u-kim",
+            zuweisungCent: 800,
+            unterlimitCent: 500,
+            fassung: 2,
+            belegtCent: 300,
+            grenzeCent: 500,
+          },
+        ],
       }),
       bereich({
         bereich: "nr32-chatgpt",
         anbieter: "openai",
         original: "produkt:20261011:peter-p03",
-        zeitraum: "offen",
-        sperre: "zeitraum_offen",
       }),
     ],
   };
@@ -202,11 +212,16 @@ describe("M1 · Weg und Anzeige", () => {
     expect(text(s, "pb-stand-perplexity-poc")).toBe(t("produktbudget.stand.vorgabe"));
     expect(text(s, "pb-abgeloest-perplexity-poc")).toContain("30,00 USD");
 
+    // PBE-12: alle drei einmalig; keine überholte „offene Frage“ mehr.
     for (const id of ["nr32-claude", "nr32-chatgpt"]) {
-      expect(text(s, `pb-zeitraum-${id}`)).toBe(t("produktbudget.zeitraum.offen"));
-      expect(text(s, `pb-kostenweg-${id}`)).toBe(t("produktbudget.sperre.zeitraum_offen"));
-      expect(text(s, `pb-frage-${id}`)).toBe(t("produktbudget.frageOffen"));
+      expect(text(s, `pb-zeitraum-${id}`)).toBe(t("produktbudget.zeitraum.einmalig"));
+      expect(text(s, `pb-kostenweg-${id}`)).toBe(t("produktbudget.kostenweg.offen"));
+      expect(s.container.querySelector(`[data-testid="pb-frage-${id}"]`)).toBeNull();
     }
+    // Zuweisungen je Konto stehen in der Verwaltungskarte.
+    expect(text(s, "pb-konto-nr32-claude-u-kim")).toContain("8,00 EUR");
+    expect(text(s, "pb-konto-nr32-claude-u-kim")).toContain("5,00 EUR");
+    expect(text(s, "pb-zuweisungen-nr32-chatgpt")).toContain(t("produktbudget.zuweisung.keine"));
     expect(text(s, "pb-anbieter-nr32-claude")).toBe(t("produktbudget.anbieter.anthropic"));
     expect(text(s, "pb-anbieter-nr32-chatgpt")).toBe(t("produktbudget.anbieter.openai"));
     expect(text(s, "produktbudget-ehrlichkeit")).toBe(t("produktbudget.ehrlichkeit"));

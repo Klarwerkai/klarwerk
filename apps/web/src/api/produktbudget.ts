@@ -45,7 +45,42 @@ export interface BudgetBereich extends BudgetWerte {
   buchungen: number;
   sperre: BudgetSperre | null;
   letzteAenderungen: BudgetAenderung[];
+  /** PBE-12: Konten mit Zuweisung, Unterlimit oder Belegung. Fehlt bei älteren Servern. */
+  konten?: KontoSicht[];
 }
+
+export interface KontoSicht {
+  konto: string;
+  zuweisungCent: number | null;
+  unterlimitCent: number | null;
+  fassung: number;
+  belegtCent: number;
+  grenzeCent: number | null;
+}
+
+/** PBE-12: die eigene Sicht eines Kontos (`GET /api/me/produktbudget`). */
+export interface EigenesBudget {
+  bereich: BudgetBereichId;
+  anbieter: BudgetAnbieter;
+  betragCent: number;
+  waehrung: BudgetWaehrung;
+  zeitraum: BudgetZeitraum;
+  sperre: BudgetSperre | null;
+  gesamtVerbleibendCent: number;
+  zuweisungCent: number;
+  zuweisungGesetzt: boolean;
+  unterlimitCent: number | null;
+  belegtCent: number;
+  eigenVerbleibendCent: number;
+  fassung: number;
+}
+
+export interface EigeneBudgets {
+  bereiche: EigenesBudget[];
+  gelesenAm: string;
+}
+
+export const EIGENES_PRODUKTBUDGET_KEY = ["me", "produktbudget"] as const;
 
 export interface Produktbudgetstand {
   bereiche: BudgetBereich[];
@@ -82,6 +117,22 @@ export const produktbudgetApi = {
       `/admin/produktbudget/${encodeURIComponent(bereich)}`,
       eingabe,
     ),
+  /** PBE-12: Zuweisung eines Kontos — nur Verwaltung. `zuweisung: null` hebt sie auf. */
+  setzeZuweisung: (
+    bereich: BudgetBereichId,
+    konto: string,
+    eingabe: { zuweisung: string | null; fassung: number },
+  ) =>
+    api.put<Produktbudgetstand>(
+      `/admin/produktbudget/${encodeURIComponent(bereich)}/konten/${encodeURIComponent(konto)}`,
+      eingabe,
+    ),
+  eigene: () => api.get<EigeneBudgets>("/me/produktbudget"),
+  /** PBE-12: das eigene Unterlimit — höchstens die erlaubte Zuweisung. */
+  setzeUnterlimit: (
+    bereich: BudgetBereichId,
+    eingabe: { unterlimit: string | null; fassung: number },
+  ) => api.put<EigeneBudgets>(`/me/produktbudget/${encodeURIComponent(bereich)}`, eingabe),
 };
 
 /** Cent als Betragstext mit zwei Nachkommastellen — ganzzahlig gerechnet, ohne Gleitkomma. */

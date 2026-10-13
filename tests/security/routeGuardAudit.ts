@@ -1627,6 +1627,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Admin, am Server geprüft (PBE-05).
   "GET /api/admin/produktbudget": { protection: "users.manage" },
   "PUT /api/admin/produktbudget/:bereich": { protection: "users.manage" },
+  // PBE-12: Zuweisung je Konto allein die Verwaltung; das eigene Unterlimit jedes lesende Konto für
+  // sich (Konto aus der Sitzung).
+  "PUT /api/admin/produktbudget/:bereich/konten/:konto": { protection: "users.manage" },
+  "GET /api/me/produktbudget": { protection: "ko.read" },
+  "PUT /api/me/produktbudget/:bereich": { protection: "ko.read" },
   // ==============================================================================================
   // JOB 4154 (WIKI-GESAMTANWEISUNG) · die zehn Wege der zusammengesetzten Anweisung.
   // ==============================================================================================

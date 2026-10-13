@@ -5773,7 +5773,17 @@ export function buildApp(
     lesbareSpaces: faehigkeitenLesbareSpaces,
     kostenbuch: produktbudget.kostenbuch(),
   });
-  app.register(produktbudgetRoutes({ dienst: produktbudget, audit: services.audit }, guards));
+  app.register(
+    produktbudgetRoutes(
+      {
+        dienst: produktbudget,
+        audit: services.audit,
+        kontoBekannt: async (konto) =>
+          (await services.auth.listUsers()).some((u) => u.id === konto),
+      },
+      guards,
+    ),
+  );
   services.faehigkeiten = faehigkeiten.ausfuehrung;
   app.register(
     assistenzFaehigkeitenRoutes(

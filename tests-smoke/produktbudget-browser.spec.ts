@@ -99,12 +99,19 @@ test("Produktbudgets · Anzeige, Speichern, Neuladen, unklarer Ausgang, Konflikt
     await expect(page.getByTestId("pb-verbraucht-perplexity-poc")).toBeVisible();
     await expect(page.getByTestId("pb-verbleibend-perplexity-poc")).toBeVisible();
     await expect(page.getByTestId("pb-stand-perplexity-poc")).toBeVisible();
+    // PBE-12: Peters bestätigte Gesamtperiode — gespeichert gelesen, nicht aus Beispielen.
+    const gespeichert = await lies(page);
+    expect(gespeichert.map((b) => [b.bereich, b.betragCent, b.waehrung, b.zeitraum])).toEqual([
+      ["perplexity-poc", start.betragCent, "EUR", "einmalig"],
+      ["nr32-claude", 2000, "EUR", "einmalig"],
+      ["nr32-chatgpt", 2000, "EUR", "einmalig"],
+    ]);
     for (const id of ["nr32-claude", "nr32-chatgpt"]) {
-      await expect(page.getByTestId(`pb-zeitraum-${id}`)).toHaveText(
-        "offen — noch nicht festgelegt",
+      await expect(page.getByTestId(`pb-zeitraum-${id}`)).toHaveText("einmalig, ohne Erneuerung");
+      await expect(page.getByTestId(`pb-kostenweg-${id}`)).toHaveText(
+        "möglich im Rahmen des Rests",
       );
-      await expect(page.getByTestId(`pb-kostenweg-${id}`)).toHaveText("gesperrt — Zeitraum offen");
-      await expect(page.getByTestId(`pb-frage-${id}`)).toBeVisible();
+      await expect(page.getByTestId(`pb-frage-${id}`)).toHaveCount(0);
     }
     await expect(page.getByTestId("produktbudget-ehrlichkeit")).toContainText(
       "keine Aufladung beim Anbieter",
@@ -240,6 +247,47 @@ test("Produktbudgets · Anzeige, Speichern, Neuladen, unklarer Ausgang, Konflikt
         },
       });
       expect(versuch.status()).toBe(403);
+
+      // ---- B7 · PBE-12: Zuweisung durch die Verwaltung (in der Karte), Unterlimit am Server ----
+      type Konto = { id: string; email: string };
+      const roh = (await (await page.request.get("/api/users")).json()) as unknown;
+      const nutzer: Konto[] = Array.isArray(roh)
+        ? (roh as Konto[])
+        : ((roh as { users?: Konto[] }).users ?? []);
+      const viewerId = nutzer.find((u) => u.email === mail)?.id ?? "";
+      expect(viewerId).not.toBe("");
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await karteOeffnen(page);
+      await page.getByTestId("pb-zuweisung-konto-nr32-chatgpt").selectOption(viewerId);
+      await page.getByTestId("pb-zuweisung-betrag-nr32-chatgpt").fill("6");
+      await page.getByTestId("pb-zuweisung-speichern-nr32-chatgpt").click();
+      await expect(page.getByTestId(`pb-konto-nr32-chatgpt-${viewerId}`)).toContainText("6,00 EUR");
+      await bild(page, "produktbudget-zuweisung");
+
+      const eigen = await fremderKontext.request.get("/api/me/produktbudget", { headers: kopf });
+      expect(eigen.status()).toBe(200);
+      const eigenJson = (await eigen.json()) as { bereiche: Record<string, unknown>[] };
+      const chatgpt = eigenJson.bereiche.find((b) => b.bereich === "nr32-chatgpt");
+      expect(chatgpt).toMatchObject({ zeitraum: "einmalig", zuweisungCent: 600, fassung: 1 });
+      const meinWeg = "/api/me/produktbudget/nr32-chatgpt";
+      const zuHoch = await fremderKontext.request.put(meinWeg, {
+        headers: kopf,
+        data: { unterlimit: "6,01", fassung: 1 },
+      });
+      expect(zuHoch.status()).toBe(400);
+      const innerhalb = await fremderKontext.request.put(meinWeg, {
+        headers: kopf,
+        data: { unterlimit: "4", fassung: 1 },
+      });
+      expect(innerhalb.status(), await innerhalb.text()).toBe(200);
+      // Die globale Zuweisung bleibt der Verwaltung vorbehalten.
+      const fremdeZuweisung = await fremderKontext.request.put(
+        `${WEG}/nr32-chatgpt/konten/${viewerId}`,
+        { headers: kopf, data: { zuweisung: "20", fassung: 2 } },
+      );
+      expect(fremdeZuweisung.status()).toBe(403);
+      await karteOeffnen(page);
+      await expect(page.getByTestId(`pb-konto-nr32-chatgpt-${viewerId}`)).toContainText("4,00 EUR");
     } finally {
       await fremderKontext.close();
     }

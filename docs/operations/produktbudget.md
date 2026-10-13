@@ -4,19 +4,43 @@
 
 ## Bedienort
 
-Verwaltung › KI › **Produktbudgets** (`/admin?bereich=ki&detail=produktbudget`). Lesen und Ändern
-nur mit `users.manage` (Admin), am Server geprüft (`GET`/`PUT /api/admin/produktbudget[/:bereich]`).
+Verwaltung › KI › **Produktbudgets** (`/admin?bereich=ki&detail=produktbudget`). Gesamtbetrag und
+Zuweisungen je Konto nur mit `users.manage` (Admin), am Server geprüft
+(`GET`/`PUT /api/admin/produktbudget[/:bereich[/konten/:konto]]`).
 
-## Bereiche (Originalvorgaben vom 13.10.2026)
+Profil › Meine Assistenz › Fähigkeiten › **Mein Budget für kostenpflichtige Aufrufe**: jedes Konto
+mit `ko.read` sieht seine Zuweisung, seine Belegung und seinen Rest und setzt sein eigenes
+Unterlimit (`GET /api/me/produktbudget`, `PUT /api/me/produktbudget/:bereich`).
+
+## Bereiche (Originalvorgaben vom 13.10.2026, PBE-12)
+
+Peter hat am 13.10.2026 bestätigt: je 20 EUR für Claude, ChatGPT und Perplexity als **einmaliges
+PoC-Gesamtbudget**. Die frühere Budget32-Frage ist damit beantwortet.
 
 | Bereich | Anbieter | Vorgabe | Zeitraum | Anschluss |
 | --- | --- | --- | --- | --- |
 | `perplexity-poc` | `perplexity` | 20,00 EUR — ersetzt die frühere Empfehlung 30 USD/Monat für diesen PoC | einmalig, ohne Erneuerung | BPA-12 (`produkt:20261011:assistenz-recherche-perplexity`) |
-| `nr32-claude` | `anthropic` | 20,00 EUR | **offen** — Aufteilung/Zeitraum gefragt, unbeantwortet | P03 (`produkt:20261011:peter-p03`) |
-| `nr32-chatgpt` | `openai` | 20,00 EUR | **offen** — wie oben | P03 (`produkt:20261011:peter-p03`) |
+| `nr32-claude` | `anthropic` | 20,00 EUR | einmalig, ohne Erneuerung | P03 (`produkt:20261011:peter-p03`) |
+| `nr32-chatgpt` | `openai` | 20,00 EUR | einmalig, ohne Erneuerung | P03 (`produkt:20261011:peter-p03`) |
 
-Ein offener Zeitraum gibt nichts frei. Ihn festzulegen verlangt einen Beleg (Feld „Grund oder
-Beleg“). Einen monatlichen Zeitraum gibt es nicht: das Produkt erneuert nichts automatisch.
+**Übernahme gespeicherter Stände.** Ein gespeicherter Stand, der Claude/ChatGPT noch mit Zeitraum
+`offen` führt, wird beim ersten Lesen genau einmal auf `einmalig` übernommen und sofort gespeichert
+(Postgres, Journal). Betrag, Währung, Buchungen und Reservierungen bleiben; die Übernahme steht als
+eigener Änderungsvermerk „Vorgabe Peter 13.10.2026“ da (`uebernahmen` im Stand verhindert eine
+Wiederholung — eine spätere bewusste Änderung der Verwaltung bleibt). Kein Monatswechsel, kein
+Neustart und kein anderer Prozess erneuert die Periode; es gibt keinen monatlichen Zeitraum.
+
+Ein offener Zeitraum (nur noch, wenn die Verwaltung ihn bewusst setzt) gibt nichts frei. Ihn
+festzulegen verlangt einen Beleg (Feld „Grund oder Beleg“).
+
+## Zuweisung und Anwender-Unterlimit (PBE-12)
+
+* Die Verwaltung setzt je Bereich und Konto eine **Zuweisung** (höchstens der Gesamtbetrag). Ohne
+  Zuweisung gilt für das Konto der Gesamtbetrag.
+* Jedes Konto setzt sein **Unterlimit** selbst, höchstens bis zur erlaubten Zuweisung.
+* Die Kostenprüfung (`reserviere`) hält im selben atomaren Schritt Unterlimit, Zuweisung UND
+  Gesamtdeckel ein; gezählt wird, was das Konto in diesem Bereich verbucht und reserviert hat.
+* Senkt die Verwaltung eine Zuweisung unter ein bestehendes Unterlimit, gilt das kleinere.
 
 ## Regeln
 

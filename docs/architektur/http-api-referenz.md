@@ -460,6 +460,9 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/admin/factory-reset` | `users.manage` | Rumpf `{ password }` (erneute Bestätigung) | 200 `{ ok: true }`, danach endet der Prozess | 403 `FORBIDDEN` (nicht verfügbar); 401 `INVALID_PASSWORD` |
 | `GET` | `/api/admin/sicherungen` | `users.manage` | — | 200 `{ zustand, verzeichnis, gelesenUtc, sicherungen? }` | — |
 | `GET` | `/api/admin/produktbudget` | `users.manage` | — | 200 `{ bereiche[], gelesenAm }` (Betrag, Währung, Zeitraum, Verbrauch, Reservierung, Rest, Sperre, letzte Änderungen) | — |
+| `PUT` | `/api/admin/produktbudget/:bereich/konten/:konto` | `users.manage` | Rumpf `{ zuweisung: string \| null, fassung }` | 200 Stand samt `grenze` | 400 `VALIDATION` (`zuweisung`); 403 fremde Angabe; 404 Bereich/Konto; 409 `CONFLICT` |
+| `GET` | `/api/me/produktbudget` | `ko.read` | — | 200 `{ bereiche[], gelesenAm }` (eigene Zuweisung, Unterlimit, Belegung, Rest) | — |
+| `PUT` | `/api/me/produktbudget/:bereich` | `ko.read` | Rumpf `{ unterlimit: string \| null, fassung }` (Konto aus der Sitzung) | 200 eigene Sicht | 400 `VALIDATION` (`unterlimit`); 403 fremde Angabe oder Betrag/Zuweisung/Zeitraum; 404 Bereich; 409 `CONFLICT` |
 | `PUT` | `/api/admin/produktbudget/:bereich` | `users.manage` | Rumpf `{ betrag, waehrung, zeitraum, fassung, aenderungId, grund? }` | 200 Stand samt `{ wiederholt, geaendert, bestaetigteFassung }` | 400 `VALIDATION` (`grund`); 403 fremde Mandanten-/Kontoangabe; 404 Bereich; 409 `CONFLICT` (`konflikt` \| `waehrung_gebunden`, mit `stand`) |
 | `GET` | `/api/import/confluence/zugang` | `users.manage` | — | 200 Zugangszustand | — |
 | `PUT` | `/api/import/confluence/schalter` | `users.manage` | Rumpf `{ an: true \| false }` | 200 neuer Schalterstand | 400 `BAD_REQUEST`; 409 `IMPORT_NOT_RELEASED`; 503 `SWITCH_UNAVAILABLE` |
