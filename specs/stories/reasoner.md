@@ -71,5 +71,10 @@ Keine eigene Persistenz außer Konfiguration + KI-Kosten-/Nutzungs-Logging (NFR-
 ## Nicht-Ziele (v1)
 Fine-Tuning eigener Modelle; Client-seitige Inferenz.
 
+Klärung zur clientseitigen Inferenz (R-0719): `docs/entscheidungen/browser-inferenz.md`. Dort
+stehen die offene Umfangsfrage (gilt das Nicht-Ziel nur für den Reasoner oder auch für die
+Bild-Texterkennung im Browser?), die Alternativen und die noch nötige Entscheidung. Zum
+Fine-Tuning: `docs/operations/fine-tuning-decision.md`.
+
 ## Offene Fragen
 On-Premises-Modell/Hardware (Pflichtenheft §7) · Default-Modell je Deployment-Modell · Embedding-Quelle für semantische Suche.
