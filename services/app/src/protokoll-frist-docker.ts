@@ -181,15 +181,20 @@ function ersatzZeile(zeile: string, laenge: number, jetzt: number, fristMs: numb
   if (zeile.trim().length === 0) {
     return null;
   }
-  let eintrag: { log?: unknown; stream?: unknown; time?: unknown } | null = null;
+  let eintrag: Record<string, unknown> | null = null;
   try {
-    eintrag = JSON.parse(zeile) as { log?: unknown; stream?: unknown; time?: unknown };
+    const wert: unknown = JSON.parse(zeile);
+    eintrag =
+      wert !== null && typeof wert === "object" && !Array.isArray(wert)
+        ? (wert as Record<string, unknown>)
+        : null;
   } catch {
     eintrag = null;
   }
-  const zeit = typeof eintrag?.time === "string" ? Date.parse(eintrag.time) : Number.NaN;
+  const zeitRoh = eintrag?.time;
+  const zeit = typeof zeitRoh === "string" ? Date.parse(zeitRoh) : Number.NaN;
   if (eintrag !== null && Number.isFinite(zeit)) {
-    if (jetzt - zeit < fristMs || istInhaltsleer(eintrag.log)) {
+    if (jetzt - zeit < fristMs || istErsatzgeruest(eintrag)) {
       return null;
     }
     const huelle = JSON.stringify({
@@ -204,9 +209,25 @@ function ersatzZeile(zeile: string, laenge: number, jetzt: number, fristMs: numb
   return Buffer.alloc(laenge, 0x20);
 }
 
-/** Trägt ein `log`-Wert keinen Inhalt (leer oder nur der Zeilenumbruch)? */
-function istInhaltsleer(log: unknown): boolean {
-  return log === "" || log === "\n";
+/**
+ * Ist das GENAU das Ersatzgerüst, das `ersatzZeile` schreibt? (Ben, Nacharbeit 22)
+ *
+ * Nur dann gilt eine Zeile als bereits geschwärzt — vollständig geprüft: genau die drei Schlüssel
+ * `log`, `stream`, `time`, `log` ist nur der Zeilenumbruch, `stream` ist `stdout`/`stderr`, `time`
+ * eine Zeichenkette. Ein leerer `log` neben weiteren Feldern (etwa `attrs` mit Personenangaben) ist
+ * KEIN Gerüst, sondern Inhalt — und wird geschwärzt wie jede andere überfällige Zeile.
+ */
+function istErsatzgeruest(eintrag: Record<string, unknown>): boolean {
+  const schluessel = Object.keys(eintrag).sort();
+  return (
+    schluessel.length === 3 &&
+    schluessel[0] === "log" &&
+    schluessel[1] === "stream" &&
+    schluessel[2] === "time" &&
+    eintrag.log === "\n" &&
+    (eintrag.stream === "stdout" || eintrag.stream === "stderr") &&
+    typeof eintrag.time === "string"
+  );
 }
 
 /**
@@ -220,17 +241,24 @@ function aeltesteInhaltszeile(pfad: string): { zeit: number | null; inhalt: bool
       continue;
     }
     try {
-      const eintrag = JSON.parse(zeile) as { log?: unknown; time?: unknown };
-      if (istInhaltsleer(eintrag.log)) {
+      const wert: unknown = JSON.parse(zeile);
+      if (wert === null || typeof wert !== "object" || Array.isArray(wert)) {
+        inhalt = true;
+        continue;
+      }
+      const eintrag = wert as Record<string, unknown>;
+      // Nur das vollständig geprüfte Ersatzgerüst gilt als inhaltsfrei (Nacharbeit 22).
+      if (istErsatzgeruest(eintrag)) {
         continue;
       }
       inhalt = true;
       // Docker schreibt `time` als ISO-Angabe, pino (Diagnosekopien) als Millisekunden.
+      const zeitWert = eintrag.time;
       const zeit =
-        typeof eintrag.time === "string"
-          ? Date.parse(eintrag.time)
-          : typeof eintrag.time === "number"
-            ? eintrag.time
+        typeof zeitWert === "string"
+          ? Date.parse(zeitWert)
+          : typeof zeitWert === "number"
+            ? zeitWert
             : Number.NaN;
       if (Number.isFinite(zeit)) {
         return { zeit, inhalt };

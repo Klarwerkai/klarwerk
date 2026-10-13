@@ -968,6 +968,61 @@ describe("R-0664 · Löschfrist der Serverprotokolle am Speicherort", () => {
     ]);
   });
 
+  // Ben, Nacharbeit 22: ein leerer `log` galt pauschal als geschwärzt — Personenangaben in `attrs`
+  // überlebten, und der Bericht meldete den Bestand als beseitigt.
+  it("leerer log mit Zusatzfeldern ist KEIN Gerüst: attrs fallen, nur das echte Gerüst bleibt stehen", () => {
+    const wurzel = protokollordner();
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    const ordner = join(wurzel, id);
+    mkdirSync(ordner);
+    writeFileSync(
+      join(ordner, "config.v2.json"),
+      JSON.stringify({ ...JSON.parse(appKonfiguration()), State: { Running: false } }),
+    );
+    const aktiv = join(ordner, `${id}-json.log`);
+    const alt = new Date(JETZT - 20 * TAG).toISOString();
+    const gerust = JSON.stringify({ log: "\n", stream: "stdout", time: alt });
+    const inhalt = [
+      JSON.stringify({ log: "", stream: "stdout", attrs: { name: "Anna Meier" }, time: alt }),
+      JSON.stringify({
+        log: "\n",
+        stream: "stderr",
+        attrs: { email: "anna@klinik.de" },
+        time: alt,
+      }),
+      JSON.stringify({ log: "\n", stream: "stdout", partial: "Anna Meier", time: alt }),
+      // Bereits ein echtes Gerüst — bleibt bytegenau stehen.
+      gerust,
+      "",
+    ].join("\n");
+    writeFileSync(aktiv, inhalt);
+
+    // Vorher: der Bericht zählt diese Zeilen als INHALT (20 Tage), nicht als beseitigt.
+    const vorher = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(vorher.container[0]?.aktiveDatei.aeltesteZeileTage).toBe(20);
+
+    const lauf = pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+
+    expect(lauf.container[id]?.aktiveZeilenGeschwaerzt).toBe(3);
+    const neu = readFileSync(aktiv, "utf8");
+    expect(neu.split("\n").map((z) => z.length)).toEqual(inhalt.split("\n").map((z) => z.length));
+    expect(neu).not.toContain("Anna Meier");
+    expect(neu).not.toContain("anna@klinik.de");
+    expect(neu).not.toContain("attrs");
+    expect(neu).not.toContain("partial");
+    expect(neu.split("\n")[3]).toBe(gerust);
+    // Lesbar wie mit `docker logs`; jede verbliebene Zeile ist exakt ein Gerüst oder Leerraum.
+    for (const eintrag of dockerLesen(aktiv)) {
+      expect(Object.keys(eintrag).sort()).toEqual(["log", "stream", "time"]);
+      expect(eintrag.log).toBe("\n");
+    }
+    // Nachher: kein Inhalt mehr — und ein zweiter Lauf ändert nichts.
+    const nachher = berichteDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(nachher.container[0]?.aktiveDatei.aeltesteZeileTage).toBeNull();
+    const zweiter = pflegeDockerProtokolle({ ordner: wurzel, auswahl: KLARWERK, jetzt: JETZT });
+    expect(zweiter.container[id]?.aktiveZeilenGeschwaerzt).toBe(0);
+  });
+
   // Ben, Nacharbeit 20: auch während einer LANGEN Pause muss die Frist wirken — ohne Fortsetzen.
   it("lange Pause: über 30 Tage täglich gepflegt, nie eine Inhaltszeile 14 Tage oder älter, Schreiber gültig", () => {
     const wurzel = protokollordner();
