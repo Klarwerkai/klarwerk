@@ -4,6 +4,7 @@
 // hier bleibt zusätzlich robust gegen fremde/injizierte Clients (Tests, künftige Provider), die nur
 // generische Errors mit den etablierten Meldungen werfen — dann greifen Meldungs-Heuristiken.
 // Es wird NIE Prompt-/Antwortinhalt transportiert: nur Klasse, optionaler HTTP-Status, Meldung.
+import type { KiErsatzGrund } from "./types";
 
 // AUFTRAG-mega4 Block D (bens Sammel-Review 4): „unknown" ist der ehrliche Rückfall für einen
 // uneingeordneten geworfenen Fehler. Er darf NICHT als „network" verkleidet werden — sonst meldet die
@@ -89,6 +90,41 @@ export class ReasonerMeldungFehler extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ReasonerMeldungFehler";
+  }
+}
+
+// produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): die Ursache, die der Fragende am
+// regelbasierten Ersatz liest. Dieselbe Lesart wie `reasonFromModelFailure`
+// (services/app/src/conflict-detection.ts): Zeitlimit, Netz/5xx = nicht erreichbar, 429 = Kontingent.
+// Dazu: 401/402/403/451 und die eigenen Datenschutz-/Ausgangssperren = verweigerte Verarbeitung;
+// 402 zählt zum Kontingent. Alles Uneingeordnete bleibt ehrlich „fehler" — nie „nicht erreichbar"
+// ohne Netzbeleg (AUFTRAG-mega4 Block D).
+export function ersatzGrundAus(err: unknown): KiErsatzGrund {
+  const name = err instanceof Error ? err.name : "";
+  if (name === "ConfidentialEgressError" || name === "AusgangAbgelehntFehler") {
+    return "verweigert";
+  }
+  const info = classifyModelFailure(err);
+  switch (info.failureClass) {
+    case "timeout":
+      return "zeitueberschreitung";
+    case "network":
+      return "nicht_erreichbar";
+    case "http": {
+      const s = info.status;
+      if (s === 429 || s === 402) {
+        return "kontingent";
+      }
+      if (s === 401 || s === 403 || s === 451) {
+        return "verweigert";
+      }
+      if (typeof s === "number" && s >= 500 && s <= 599) {
+        return "nicht_erreichbar";
+      }
+      return "fehler";
+    }
+    default:
+      return "fehler";
   }
 }
 
