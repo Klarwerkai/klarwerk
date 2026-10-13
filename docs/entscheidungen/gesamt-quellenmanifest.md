@@ -15,8 +15,9 @@ Abgrenzung.
 |---|---|---|
 | Manifest der normativen Quellen: je Datei Zeilen, Bytes, voller Datei-Hash | `docs/normative-quellen/manifest.json` | K1, K6, K7, K8 |
 | Manifest-Wächter: erhebt den normativen Bereich selbst, vergleicht beidseitig, berechnet die Zahl, mit zehn Gegenproben | `tests/normative-quellen/manifest-waechter.test.ts` | K1, K6, K7, K8 |
-| Quellenwegkarte zu FREEZE-144 | `docs/freeze144/quellenwegkarte.json` | K5 |
-| Wächter der Karte, mit Gleichlauf zur Dateiliste des Freeze-Manifests | `tests/freeze144-quellenwege/quellenwegkarte.test.ts` | K5, K2 |
+| Quellenwegkarte zu FREEZE-144: Herkunft von Dateiliste und Sollwerten (Plan 327, JOB 880, heute), ergänzend Importwege | `docs/freeze144/quellenwegkarte.json` | K5 |
+| Wächter der Karte: Sollwert je Datei gegen den Freeze-Wächter, Gleichlauf der Dateiliste, Importwege | `tests/freeze144-quellenwege/quellenwegkarte.test.ts` | K5, K2 |
+| Abgleich des vorhandenen N1–N8-Manifests (Plan 317, JOB 894) und Ablösung der Zentrale | dieses Dokument, Abschnitt 4 | K4, K9 |
 | Voller Pin von `ALLOWED_DIV_CLASSES` an beiden Kopien (Oberfläche und Server) | `tests/web/blockklassen-erlaubnisliste-gepinnt.test.ts` | K3, K2 |
 
 Produktcode, eingefrorene Dateien und die normativen Quellen selbst sind unverändert.
@@ -95,43 +96,143 @@ JOB 2667 (ROT) ist nicht belegt.
 und JOB 2442 (`d037-blockklassen-reichweite`) melden nur den Wegfall einer gebrauchten Klasse. Eine
 Aufnahme blieb dort bewusst grün. Der neue Pin hält den vollen Inhalt beider Kopien fest, in ihrer
 Reihenfolge. Jede Aufnahme und jede Streichung ist jetzt rot, bis die gepinnte Liste im selben Diff
-angepasst wird.
+angepasst wird. **Nacharbeit 2 (Bens Befund):** Die erste Fassung filterte alle Elemente außer
+String-Literalen heraus, sodass eine Aufnahme über `...["x"]` oder eine Konstante unsichtbar blieb.
+Jetzt wird jedes andere Element als `UNBEKANNT: <Quelltext>` mitgeführt. Auch ein Initialisierer,
+der kein `new Set([...])` mit genau einem Array ist, ergibt `UNBEKANNT`. Beides weicht vom Pin ab und
+ist rot. Die Gegenproben decken Spread, Konstante, fremden Initialisierer und ein zweites Argument ab.
 
-**K4 · R-1467 Quellenmanifest zu den acht Betriebsbefunden.** Offen, Quelle fehlt. Die acht
-Befunde N1–N8 sind weder im Produktbaum noch in `QUELLEN.json` ausgeschrieben. Die Registerzeile
-nennt nur den Makroauftrag
-`03_AUFTRAEGE/basic_pausiert/MAKROAUFTRAG-BASIC5-JOB-894-D1-N1-N8-QUELLENMANIFEST.md` (JOB 894,
-zuletzt D1 BEN ROT, 14.08.). Er liegt außerhalb des erlaubten Arbeitsbereichs und wurde nicht
-gelesen. Ein Manifest ohne die Befunde wäre erfunden. Nötig ist die Vorlage der acht Befunde mit
-ihren Aussagen.
+**K4 · R-1467 Quellenmanifest zu den acht Betriebsbefunden.** Vorhanden (historisch), abgeglichen
+in diesem Lauf. Die erste Fassung dieser Datei behauptete, die Quelle fehle. Das war falsch: Ben hat
+die Quellen gelesen, und sein Prüfprotokoll (`HISTORIE/nacharbeit-2/BEN/STREAM.jsonl`) enthält sie
+wörtlich. Der Inhalt unten stammt aus diesem Protokoll. Die Dateien selbst liegen außerhalb des
+Arbeitsbereichs dieses Laufs. Es wurde nichts neu erhoben und keine historische Prüfung neu
+beauftragt.
 
-**K5 · R-1468 Quellenwegkarte und Wächter.** Geliefert in diesem Lauf. Die Karte nennt je
-eingefrorener Datei die direkten Quellwege (Import, Re-Export, `import()`, Import-Typ). Jedes Ziel
-ist eingeordnet: `eingefroren`, `modul`, `nachbarmodul` oder `paket`. Der Wächter erhebt die Wege aus
-dem Syntaxbaum und meldet neue, entfallene und umgeordnete Wege. Er meldet auch, wenn Karte und
-Freeze-Dateiliste auseinanderlaufen. **Grenze:** keine transitive Hülle. Änderungen *innerhalb*
-nicht eingefrorener Ziele (`service.ts`, `explore.ts`, `knowledge-object` …) meldet die Karte nicht.
-Sie macht nur sichtbar, dass dieser Teil des eingefrorenen Stands nicht vom Freeze gedeckt ist. Ob
-JOB 880 (D5 BEN ROT, 20.08.) genau diese Form meinte, ist nicht belegt. Die Auftragsdatei lag
-außerhalb des Arbeitsbereichs.
+- **Das Manifest gibt es.** Fassung: `Projekt_klarwerk/03_AUFTRAEGE/planung/PLAN-BASIC-W1-N1-N8-READONLY-QUELLENMANIFEST-317.md`,
+  BASIC 317 vom 04.08.2026, 148 Zeilen. SHA-256 `164e538a2519f40a2a27f7476d93e12b6677c30b5fd53976c034fcf1698657b2`,
+  gemessen von JOB 894. Je Befund N1–N8 führt es Quellpfad, Zeilenanker, zulässigen reinen
+  Lesezugriff, erwartete belegbare Aussage und Abbruchgrenze. Damit ist die Anforderung von R-1467
+  („welche Quelle jede einzelne Aussage trägt“) im Bestand erfüllt. Ausdrücklich entscheidungsneutral:
+  „`N1`–`N8` bleiben fail-closed offen“.
+- **Das Ergebnis dazu gibt es.** Fassung: `_relay/kopf/outbox/RUECKGABE-BASIC5-JOB-894-D1-N1-N8-QUELLENMANIFEST.md`,
+  Base `79930092`, Abschluss `ENTSCHEIDUNG_NOETIG`. Alle gebundenen Hashes sind byte-identisch, und
+  alle zwanzig prüfbaren Zeilenanker in N5 und N7 treffen. Sieben von acht Zeilen haben aufgelöste,
+  hash-verifizierte Quellen.
+- **Tatsächliche Restpunkte laut JOB 894:**
+  1. **N1:** Die Platzhalter `<freeze>` und `<beleg>` aus Plan 288 §C.8 sind an kein Verzeichnis
+     gebunden. Ohne sie hat N1 keinen Gegenstand. Plan 317: „Ich setze sie nicht selbst.“ Das ist
+     eine offene Entscheidung des damaligen Kopfes. Sie wird hier nicht getroffen.
+  2. **N4:** Der Korridor enthält `apps/web/dist/word-addin/taskpane.html`. Der Pfad ist
+     gitignoriert und in keinem Clone vorhanden.
+- **Heutiger Stand der Produktanker** (Quelleninspektion am Arbeitsbaum, kein Testlauf):
+  - **N4:** unverändert. `git ls-files` führt die anderen drei Korridordateien, `apps/web/dist/word-addin/taskpane.html` nicht.
+    `apps/web/.gitignore:2` lautet `dist`.
+  - **N5:** Alle Symbole aus `services/app/src/security-headers.ts` bestehen noch, aber auf anderen
+    Zeilen. `fastifyHelmet` steht auf :1 wie damals. `WORD_ADDIN_CSP_PATHS` steht jetzt auf :26
+    (damals :14), `WORD_ADDIN_CSP` auf :56 (:27), `UPGRADE_INSECURE_REQUESTS` auf :72 (:53),
+    `isHttpsRequest` auf :84 (:65), `withUpgradeInsecureRequests` auf :89 (:70),
+    `isWordAddinCspPath` auf :102 (:83). Die helmet-Registrierung beginnt auf :175 (:88).
+  - **N7:** In `web-static.ts` steht `isAssetRequest` jetzt auf :11 (damals :8), `registerWebStatic`
+    auf :80 (:20), `app.register(fastifyStatic` auf :109 (:21), der `/word-addin/`-Präfixvergleich
+    auf :142 (:54) und `setNotFoundHandler` auf :152 (:64). In `server.ts` stehen Import und Aufruf
+    jetzt auf :31 und :109 (damals :14 und :63).
+  - **Folge:** Die Zeilenanker von N5 und N7 und die damals gebundenen Datei-Hashes
+    (`960cd7f7…`, `65aac5c5…`) sind veraltet. Die Symbole tragen weiter. Der Hash wurde in diesem
+    Lauf nicht gemessen; dass die Dateien gewachsen sind, belegen die Zeilennummern.
+  - **N2, N3, N6, N8 und N1** zeigen auf `_relay/pruefmittel/klara-snapshot-origin-290.mjs` oder auf
+    Plan 288. Beides gehört zur alten Steuerung und liegt nicht im Produktbaum. Ihr heutiger Stand
+    ist hier nicht prüfbar.
+- **Quellenwidersprüche:** Das Register (R-1467) führt JOB 894 als „zuletzt D1 BEN ROT (14.08.)“
+  und Status `SPAETER`. Die Rückgabe selbst schließt mit `ENTSCHEIDUNG_NOETIG` und nennt „Das
+  Manifest hat seinen Zweck erfüllt“. Den BEN-Bericht zu D1 hat dieser Lauf nicht gesehen. Worauf
+  das ROT zielt, ist deshalb nicht belegt.
+- **Rest:** die N1-Wurzelentscheidung, die N4-Korridorentscheidung (gitignorierten Pfad ersetzen
+  oder ausnehmen) und das Nachziehen der N5/N7-Anker, falls die acht Prüfungen je ausgeführt werden
+  sollen. Keine davon ist ohne Nutzerentscheidung zu treffen. Die acht Prüfungen selbst sind laut
+  Plan 317 nicht bestellt.
 
-**K9 · R-2015 / I39 Erzeuger der Zentrale.** Nicht gebaut, gehört zur alten Steuerung. Die Zentrale
-ist `_relay/board/klarwerk-board.html`, ihr Register war `_relay/kopf/offen-seite.py`. Beides ist
-Teil der verworfenen Steuerungsarchitektur und liegt nicht im Produktbaum. Ein Erzeuger dafür wäre
-ihr Wiederaufbau. Vorhanden und unverändert ist der Drift-Wächter aus JOB 2065:
-`tools/zentrale-drift.ts`, aufgerufen in `tools/check`, mit dem Test
-`tests/structure/job2065-zentrale-drift.test.ts`. Ohne Lesefläche meldet er „nichts gemessen“. Die
-Behebung der sechs Fundstellen W12, A20, B27 und S7 lag bei Pedi und betrifft dieselbe alte
-Lesefläche. Dass dort keine Handlungsseite mehr gepflegt wird, ist eine Lesart. Eine
-Nutzerentscheidung dazu ist nicht belegt.
+**K5 · R-1468 Quellenwegkarte und Wächter.** Geliefert in diesem Lauf, in Nacharbeit 2 auf die
+Originalquelle bezogen.
+
+- **Originalquelle abgeglichen** (Inhalt aus Bens Prüfprotokoll, siehe K4):
+  - Plan `PLAN-PRO-W2-Q5-FREEZE144-QUELLENWEGKARTE-327.md` (PRO 327, 04.08.2026) ist eine Karte von
+    Wegen zu Akten, aus denen Dateiliste und historische Sollhashes von Freeze 144 stammen. Sie
+    nennt sechs Wege W-1 bis W-6, darunter das Manifest `KW-W2A-FREEZE144-200/MANIFEST.txt`. Gesucht
+    waren die zwei in PRO 325 unbenannten Dateien.
+  - `RUECKGABE-PRO5-JOB-880-D1-FREEZE144-QUELLENWEGKARTE.md` (Base `79930092`) schließt mit
+    `BAUBEREIT`. Beide Namen sind gefunden, die historischen Sollhashes bestätigt, alle sechs
+    Dateien waren damals SOLL = IST. Ihr Befund: Im Produktbaum fehlte jeder maschinelle Wächter zu
+    Freeze 144.
+- **Heute:** Diesen Wächter gibt es (`tests/library-analytics-freeze144.test.ts`). Er ist der
+  heutige Träger von Dateiliste, Sollhash und Freigabe je Datei.
+- **Teil A der Karte (Herkunft):** `docs/freeze144/quellenwegkarte.json` führt die Kette
+  Plan 327 → JOB 880 → heutiger Wächter. Je Datei stehen die Herkunft des Namens und der heute
+  gültige Sollhash mit seiner Freigabe. Die Herkunft der Namen ist abgeleitet: PRO 325 nannte vier
+  Dateien, also stammen `index.ts` und `types.ts` aus JOB 880.
+- **Wächter zu Teil A:** Setzt jemand im Freeze-Wächter einen Sollhash oder eine Freigabe neu, ohne
+  die Karte nachzuziehen, meldet der Kartenwächter `SOLLWERT` (Gegenproben S1–S3).
+- **Teil B (Importwege):** ist ein ergänzender Teilumfang. Er zeigt, welche Inhalte des
+  eingefrorenen Stands aus nicht eingefrorenen Modulen kommen. Grenze: keine transitive Hülle.
+- **Unterschied zu JOB 880:** Die damaligen historischen Sollhashes sind heute durch neue,
+  ausgewiesene Freigaben abgelöst. Die verbrauchten Freigaben stehen in `WIDERRUFENE_FREIGABEN`.
+  Ob die Dateien ihren Sollhash heute tragen, prüft allein der Freeze-Wächter. Er ist auf der Basis
+  rot (Abschnitt 5). Die Karte meldet das nicht, sie bildet nur die Herkunft der Sollwerte ab.
+- **Nicht geöffnet und offen:** Die Rollenfrage zu W-1 (`AB-5`) und die BASIC/BEN-Wege W-5/W-6 hat
+  schon JOB 880 nicht geöffnet. Sie bleiben auch hier offen. Ebenfalls nicht gesehen wurde der
+  spätere Stand „D5 BEN ROT (20.08.)“ laut Register.
+
+**K9 · R-2015 / I39 Erzeuger der Zentrale.** Die noch gültige Anforderung lautet: Eine
+Handlungsübersicht darf nicht von Hand nachgezogen werden, sondern muss aus dem Register entstehen
+(„was von Disziplin abhängt, überlebt keine Nacht“). Abgleich mit dem heutigen Arbeitsweg nach
+`CLAUDE.md` (Abschnitt „Ein Ablauf“):
+
+- **Heutige Handlungsübersicht je Auftrag:** Das ist die Datei `auftragsstand.json` im
+  Auftragsordner. Sie führt `fortschritt.schritt`, `naechster_schritt`, `blockade`, `kandidat` und
+  `lieferung`.
+- **Ihre Datenquellen:**
+  - Der Auftrag selbst ist `AUFTRAG-B1.json`. Er trägt Status, Kriterien und Abschlussbeleg und
+    kommt aus der Auftragsquelle mit `source_id`, `locator` und SHA-256 der Quelle
+    (`QUELLEN.json`).
+  - Die Prüfergebnisse sind die Quittungen der Phasen aus `PLAN.json`: `claude`, `kandidat`,
+    `pruefung`, `ben`, `auslieferung`.
+- **Belege für die automatische Übernahme** (Inspektion dieses Auftragsordners, 13.10.2026):
+  - `auftragsstand.json` trägt `schema: 1` und `revision: 18`. Jede Änderung ist ein `verlauf`-Eintrag
+    mit `operation_id`, etwa `…:pruefung:be1bfe44…:fehler:6` oder `nacharbeit:g2`, und mit Zeitstempel.
+  - Jede Prüfung verweist auf ihre Quittung oder ihr Archiv, etwa
+    `HISTORIE/nacharbeit-2/ARCHIV.json`.
+  - Den nächsten Schritt setzt die Phasensteuerung, nicht ein Mensch. Beispiel: Revision 17 setzt
+    `naechster_schritt` nach Bens Nacharbeit auf „Konkreten Fehler in bestehender Claude-Sitzung
+    beheben“.
+  - Der Fall vom 31.07. war eine beantwortete Entscheidung, die weiter als offen angezeigt wurde. Er
+    entsteht so nicht, weil Anzeige und Stand dieselbe Datei sind und kein zweites, gepflegtes
+    Abbild existiert.
+- **Zuordnung:** Die von Hand gepflegte Zentrale ist durch den maschinell fortgeschriebenen
+  Auftragsstand abgelöst. Ein Erzeuger für `_relay/board/klarwerk-board.html` wäre ein Wiederaufbau
+  der verworfenen Steuerung und wird nicht gebaut.
+- **Grenzen, offen benannt:**
+  - Eine Gesamtübersicht über *alle* Aufträge, etwa für Pedi, und ihr Erzeuger
+    (`produkt_intake.py`, Koordinationsordner) liegen außerhalb des Arbeitsbereichs dieses Laufs.
+    Ob es sie gibt und ob sie generiert ist, ist hier nicht belegt.
+  - Eine ausdrückliche Nutzerentscheidung „Zentrale abgelöst“ ist nicht belegt. Belegt ist der von
+    Pedi freigegebene vereinfachte Ablauf in `CLAUDE.md`, Commit `f41d9073`, „docs: simplify agent
+    instructions for the approved production workflow“.
+- **Technischer Rest im Produktbaum:**
+  - `tools/zentrale-drift.ts` (JOB 2065) und seine Zeile in `tools/check` messen weiterhin
+    `_relay/board/klarwerk-board.html` gegen das historische `OFFEN.md`. In jedem heutigen Clone
+    endet der Lauf mit „nichts gemessen“ (Code 2, kein Abbruch des Tors). Der Wächter ist damit
+    wirkungslos, aber unschädlich.
+  - Ob er entfernt wird, ist eine Entscheidung über einen gelieferten und von BEN geprüften
+    Bestand. Dieser Lauf trifft sie nicht und lässt Wächter und Test unverändert.
 
 ## 5. Abgrenzung
 
 - **Freeze-144 selbst** (`tests/library-analytics-freeze144.test.ts`, Hash und Freigabe je Datei)
   ist bestehender Bestand. Er wurde nicht geändert. Die Karte liest seine Dateiliste nur.
 - **Rote Bestandswächter auf der unveränderten Basis** (Prüflauf zu Kandidat `be1bfe44`, Nacharbeit
-  1). Dieser Lauf hat keine der betroffenen Dateien berührt. Bytezahl und SHA-256 im Kandidaten
-  stimmen mit dem Arbeitsbaum der Basis überein.
+  1). Dieser Lauf hat keine der betroffenen Dateien berührt. Die Bytezahlen im Kandidaten
+  (`FASSUNG-QUELLE.json`) stimmen mit dem unveränderten Arbeitsbaum der Basis überein, für
+  `index.ts` zusätzlich der SHA-256. Ein Commit-Diff konnte in jenem Lauf nicht ausgeführt werden.
   - `tests/library-analytics-freeze144.test.ts`, Fälle „der Freeze hält“ und „KALIBRIERUNG“: Vier
     eingefrorene Dateien tragen nicht mehr ihren Sollhash. Betroffen sind `index.ts` (gemessen
     `f8afce97…`), `src/repo.ts`, `src/repo-pg.ts` und `src/repo-pg.integration.test.ts`. Eine neue
@@ -177,8 +278,18 @@ Nutzerentscheidung dazu ist nicht belegt.
    aber `pedi_override: null` und keine Entscheidung. Eine Pedi-Auswahl ist nicht vorhanden.
 8. **Nicht gelesen** (außerhalb des Arbeitsbereichs): `FUNKTIONSREGISTER.json`, `dev_Klarwerk/OFFEN.md`,
    `manifest-waechter.py`, `AUFTRAG-ben-sammel98-fundament-2f.md`, bens Bericht `sammel100` und die
-   Makroaufträge zu JOB 880, 894, 2453 und 2461. Ihre Inhalte sind nur so weit verwendet, wie
-   `QUELLEN.json` sie wörtlich zitiert. Die Altbelege tragen keine Zeitangabe (`zeit: null`).
+   Makroaufträge zu JOB 2453 und 2461. Ihre Inhalte sind nur so weit verwendet, wie `QUELLEN.json`
+   sie wörtlich zitiert. Die Altbelege tragen keine Zeitangabe (`zeit: null`).
+   **Korrektur in Nacharbeit 2:** Die Makroaufträge zu JOB 880 und 894, Plan 317, Plan 327 und die
+   Rückgaben zu JOB 880 und 894 sind vorhanden. Ihr Wortlaut ist aus Bens Prüfprotokoll übernommen
+   (`HISTORIE/nacharbeit-2/BEN/STREAM.jsonl`). Von den beiden Rückgaben enthält das Protokoll nur
+   den Kopf, die ersten 65 Zeilen. Spätere Abschnitte und die BEN-Berichte zu JOB 880 D5 und
+   JOB 894 D1 hat dieser Lauf nicht gesehen.
+9. **R-1467 Register gegen Rückgabe:** Das Register sagt „zuletzt D1 BEN ROT“ und `SPAETER`, die
+   Rückgabe JOB 894 sagt `ENTSCHEIDUNG_NOETIG`, sieben von acht Zeilen tragen (Abschnitt 4).
+10. **R-1468 Register gegen Rückgabe:** Das Register sagt „zuletzt D5 BEN ROT (20.08.)“, die
+    D1-Rückgabe sagt `BAUBEREIT`. Ihr Hauptbefund, der fehlende Wächter, ist heute durch den
+    Freeze-Wächter überholt.
 
 ## 7. Stand je Anliegen
 
@@ -188,10 +299,10 @@ Nutzerentscheidung dazu ist nicht belegt.
 | R-1821 / R-1825 ROT-Punkte und Recheckfragen | geliefert, soweit nicht alte Steuerung (Abschnitt 3) | Manifest-Wächter G4, G6, G7, Fall 1 |
 | R-2002 I53 | geliefert in heutiger Form | Manifest-Wächter G6, G7 |
 | R-1351 Gleichlauf | vorhanden und um zwei Gleichläufe ergänzt. Keine Gesamterhebung. Zwei Bestandswächter melden auf der Basis rot (Abschnitt 5) | `ext-attach-gate-gleichlauf`, Karte K4/K5, Pin |
-| R-1367 Erlaubnisliste | geliefert in diesem Lauf | Pin-Test |
-| R-1468 Quellenwegkarte | geliefert in diesem Lauf, ohne transitive Hülle | Kartenwächter |
-| R-1467 Betriebsbefunde N1–N8 | offen, Quelle fehlt | — |
-| R-2015 Erzeuger der Zentrale | nicht gebaut (alte Steuerung). Drift-Wächter vorhanden | `tools/zentrale-drift.ts` |
+| R-1367 Erlaubnisliste | geliefert in diesem Lauf, in Nacharbeit 2 gegen Spread und Konstanten gehärtet | Pin-Test mit Gegenproben |
+| R-1468 Quellenwegkarte | geliefert: Herkunft der Sollwerte (Plan 327, JOB 880, Freeze-Wächter) mit Abgleich. Importwege ergänzend | Kartenwächter S1–S3, K1–K7 |
+| R-1467 Betriebsbefunde N1–N8 | vorhanden (Plan 317, JOB 894), abgeglichen. Rest: N1-Wurzeln, N4-Korridor, veraltete N5/N7-Anker | Abschnitt 4, keine neue Prüfung |
+| R-2015 Erzeuger der Zentrale | abgelöst durch den maschinell fortgeschriebenen `auftragsstand.json`. Gesamtübersicht nicht belegt. Drift-Wächter wirkungslos, unverändert | Abschnitt 4 |
 
 Ob diese Lieferung die Kriterien erfüllt, steht erst nach Bens Prüfung, der Veröffentlichung und dem
 gespeicherten Abschluss fest.

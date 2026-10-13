@@ -2,13 +2,23 @@
 // QUELLENWEGKARTE ZUM EINGEFRORENEN STAND — R-1468 (FREEZE144-QUELLENWEGKARTE, FREEZE144-WAECHTER).
 // ================================================================================================
 //
-// WOZU. `tests/library-analytics-freeze144.test.ts` sichert sechs Dateien per Hash. Was der Hash
-// nicht zeigt: woher der eingefrorene Stand seine Inhalte bezieht. `index.ts` leitet etwa Funktionen
-// aus `service.ts`, `explore.ts` und weiteren Dateien aus, die NICHT eingefroren sind, und
-// `types.ts` bezieht Typen aus `knowledge-object`. Die Karte `docs/freeze144/quellenwegkarte.json`
-// nennt diese Wege je Datei und ordnet jedes Ziel ein (eingefroren / modul / nachbarmodul / paket).
+// WOZU. `tests/library-analytics-freeze144.test.ts` sichert sechs Dateien per Hash. Die Karte
+// `docs/freeze144/quellenwegkarte.json` haelt zwei Dinge fest:
+//
+//   A · HERKUNFT VON DATEILISTE UND SOLLWERTEN — das ist der Gegenstand der Originalquelle (Plan
+//       PRO 327, JOB 880): welche Akte die sechs Namen und ihre Sollhashes traegt. Heute ist der
+//       Traeger der Freeze-Waechter selbst. Die Karte fuehrt je Datei den dort gueltigen Sollhash und
+//       die Freigabe, die ihn autorisiert. Wird im Freeze-Waechter ein Sollhash oder eine Freigabe
+//       neu gesetzt, ohne dass die Karte nachzieht, meldet dieser Waechter SOLLWERT.
+//   B · QUELLWEGE DES CODES (ergaenzend) — `index.ts` leitet etwa Funktionen aus `service.ts` und
+//       `explore.ts` aus, die NICHT eingefroren sind, `types.ts` bezieht Typen aus `knowledge-object`.
+//       Je Datei steht jeder Weg mit Einordnung (eingefroren / modul / nachbarmodul / paket).
+//
+// Ob die Dateien ihren Sollhash heute TRAGEN, prueft weiterhin allein der Freeze-Waechter. Die Karte
+// gleicht nur ab, woher der Sollwert kommt.
 //
 // WAS DER WAECHTER MELDET.
+//   · SOLLWERT           Sollhash oder Freigabe einer Datei weichen vom Freeze-Waechter ab.
 //   · NEUER QUELLWEG     die Datei bezieht aus einer Stelle, die die Karte nicht nennt.
 //   · ENTFALLENER WEG    die Karte nennt einen Weg, den die Datei nicht mehr hat.
 //   · ABWEICHUNG         Ziel oder Einordnung eines Wegs stimmen nicht mehr.
@@ -38,8 +48,14 @@ interface Quellweg {
   readonly art: Art;
 }
 
+interface Sollwert {
+  readonly hash: string;
+  readonly freigabe: string;
+}
+
 interface KartenDatei {
   readonly pfad: string;
+  readonly sollwert?: Sollwert;
   readonly quellwege: Quellweg[];
 }
 
@@ -63,6 +79,34 @@ const echterLeser: Leser = (pfad) => {
 function eingefroreneDateien(leser: Leser): string[] {
   const quelle = leser(FREEZE_WAECHTER) ?? "";
   return [...quelle.matchAll(/^ {4}pfad: "([^"]+)",$/gm)].map((m) => m[1] as string);
+}
+
+/**
+ * Sollhash und Freigabe je Datei, gelesen aus `FREEZE_MANIFEST` im Freeze-Waechter. Gelesen wird
+ * nur der Block von `const FREEZE_MANIFEST` bis zur schliessenden `];` in Spalte 0.
+ */
+function sollwerteImFreeze(leser: Leser): Map<string, Sollwert> {
+  const quelle = leser(FREEZE_WAECHTER) ?? "";
+  const anfang = quelle.indexOf("const FREEZE_MANIFEST");
+  const ende = anfang < 0 ? -1 : quelle.indexOf("\n];", anfang);
+  const block = anfang < 0 || ende < 0 ? "" : quelle.slice(anfang, ende);
+  const werte = new Map<string, Sollwert>();
+  let pfad: string | undefined;
+  let hash = "";
+  for (const zeile of block.split("\n")) {
+    const p = zeile.match(/^ {4}pfad: "([^"]+)",$/);
+    const h = zeile.match(/^ {4}hash: "([0-9a-f]{64})",$/);
+    const f = zeile.match(/^ {6}id: "([^"]+)",$/);
+    if (p) {
+      pfad = p[1];
+      hash = "";
+    } else if (h) {
+      hash = h[1] as string;
+    } else if (f && pfad) {
+      werte.set(pfad, { hash, freigabe: f[1] as string });
+    }
+  }
+  return werte;
 }
 
 /** Alle Modulangaben einer Datei aus dem Syntaxbaum: Import, Re-Export, import(), import-Typ. */
@@ -159,6 +203,23 @@ function vergleiche(gespeichert: Karte, leser: Leser): string[] {
   for (const pfad of soll.keys()) {
     if (!ist.has(pfad)) {
       meldungen.push(`GLEICHLAUF  ${pfad} steht in der Karte, ist aber nicht eingefroren`);
+    }
+  }
+  const sollwerte = sollwerteImFreeze(leser);
+  for (const d of gespeichert.dateien) {
+    const imFreeze = sollwerte.get(d.pfad);
+    if (!imFreeze || !ist.has(d.pfad)) {
+      continue;
+    }
+    const karte = d.sollwert ? `${d.sollwert.hash} / ${d.sollwert.freigabe}` : "keiner";
+    const freeze = `${imFreeze.hash} / ${imFreeze.freigabe}`;
+    if (karte !== freeze) {
+      meldungen.push(`SOLLWERT  ${d.pfad}: Karte ${karte}, Freeze-Waechter ${freeze}`);
+    }
+  }
+  for (const pfad of ist.keys()) {
+    if (!sollwerte.has(pfad)) {
+      meldungen.push(`SOLLWERT  ${pfad}: im Freeze-Waechter ohne lesbaren Sollhash und Freigabe`);
     }
   }
   for (const [pfad, istDatei] of ist) {
@@ -275,6 +336,35 @@ describe("Freeze-144 · Quellenwegkarte · Gegenproben", () => {
   it("K6 · ein Freeze-Waechter ohne lesbare Dateiliste schaltet die Karte nicht still ab", () => {
     const leser = mitErsatz({ [FREEZE_WAECHTER]: "" });
     expect(vergleiche(liesKarte(), leser).join("\n")).toContain("keine eingefrorene Datei");
+  });
+
+  it("S1 · ein im Freeze-Waechter neu gesetzter Sollhash ohne Kartenzeile wird gemeldet", () => {
+    const freeze = echterLeser(FREEZE_WAECHTER) ?? "";
+    const alt = "c32706a1a792a39e209f90947850f1d207dc1c3428e263eeff57ff923c81175f";
+    const neu = `${alt.slice(0, 63)}0`;
+    const leser = mitErsatz({ [FREEZE_WAECHTER]: freeze.replaceAll(alt, neu) });
+    const text = vergleiche(liesKarte(), leser).join("\n");
+    expect(text).toContain(`SOLLWERT  ${INDEX}: Karte ${alt}`);
+  });
+
+  it("S2 · eine abweichende Freigabe in der Karte wird gemeldet", () => {
+    const karte = liesKarte();
+    const dateien = karte.dateien.map((d) =>
+      d.pfad === INDEX && d.sollwert ? { ...d, sollwert: { ...d.sollwert, freigabe: "X" } } : d,
+    );
+    expect(vergleiche({ ...karte, dateien }, echterLeser).join("\n")).toContain(
+      `SOLLWERT  ${INDEX}: Karte`,
+    );
+  });
+
+  it("S3 · der Freeze-Waechter liefert fuer jede eingefrorene Datei Sollhash und Freigabe", () => {
+    const sollwerte = sollwerteImFreeze(echterLeser);
+    const dateien = eingefroreneDateien(echterLeser);
+    expect([...sollwerte.keys()]).toEqual(dateien);
+    for (const w of sollwerte.values()) {
+      expect(w.hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(w.freigabe).toMatch(/^FREEZE-144\//);
+    }
   });
 
   it("K7 · import(), import-Typ und Re-Export werden erhoben", () => {
