@@ -47,10 +47,15 @@ Die Grenze ist damit heute eingehalten: Kennzahlen verlassen KLARWERK nur als vo
 ausgelöste Datei. Der Wissensexport über Dienst-Schlüssel ist eine bereits gelieferte
 Integrationsschnittstelle für Inhalte, keine BI-Anbindung; er gehört nicht zu diesem Auftrag.
 
-Gehalten wird die Grenze von vorhandenen Tests:
-`tests/security/rechte-schalter-inventar.test.ts` legt je Dienst-Recht genau seine Routen fest (eine
-zusätzliche Auswertungsroute für Schlüssel fiele dort auf), `tests/admin-wissenskennzahlen/anzeige-und-export.test.ts`
-prüft den CSV-Export der eigenen Auswertung, `tests/library/library-export.test.ts` die Exportformate.
+Gehalten wird die Grenze von `tests/bi-anbindung/keine-bi-anbindung.test.ts` (kein Dienst-Recht,
+keine Dienst-Route, kein Vertragseintrag und kein MCP-Werkzeug für Auswertungen; kein fremdes
+BI-Produkt in `services/` und `apps/web/src/`; Klarstellung in Seite und Modulbeschreibung).
+`tests/admin-wissenskennzahlen/anzeige-und-export.test.ts` prüft den CSV-Export der eigenen
+Auswertung, `tests/library/library-export.test.ts` die Exportformate. Zusätzlich legt
+`tests/security/rechte-schalter-inventar.test.ts` je Dienst-Recht genau seine Routen fest; dieselbe
+Datei ist auf der Basis `81f9152d1` in ihrem unabhängigen Abschnitt R-1136 (Funktionsschalter
+`KLARWERK_VORFUEHRUNG_ANONYM`, `KLARWERK_TLS_PFLICHT` nicht verzeichnet) rot — ein fremder,
+von dieser Lieferung unveränderter Basisfehler.
 
 ## Die offene Umfangsfrage (K1)
 
