@@ -37,6 +37,7 @@
 // Coolify: derselbe Aufruf als geplanter Lauf auf dem Host (docs/operations/monitoring-logging.md §8).
 import {
   existsSync,
+  linkSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -100,6 +101,30 @@ function istGestoppt(konfiguration: DockerKonfiguration | null): boolean {
 }
 
 /**
+ * PAUSIERT (Ben, Nacharbeit 19): Der Prozess ist eingefroren, aber Docker hält den Schreiber der
+ * aktiven Datei OFFEN — jeder Eingriff in die Datei verschöbe Dockers Schreibposition, genau der
+ * Lesefehler aus Nacharbeit 15. Und weil der Prozess steht, kommt auch kein Rotationsimpuls.
+ * Docker-verträglich liesse sich die Frist hier nur über den LEBENSZYKLUS durchsetzen (den Container
+ * fortsetzen, damit Impuls und Docker-Rotation greifen, oder eine lange Pause wie einen Stopp
+ * behandeln). Beides greift in den Betrieb ein und ist eine offene BETREIBER-/PRODUKTENTSCHEIDUNG.
+ * Bis dahin: kein Dateieingriff, aber automatische Erkennung — der Lauf meldet einen pausierten
+ * ausgewählten Container mit überfälligem Inhalt und endet mit eigenem Exit-Code (3).
+ */
+function istPausiert(konfiguration: DockerKonfiguration | null): boolean {
+  return konfiguration?.State?.Paused === true;
+}
+
+/** Das Ergebnis je Container. */
+export interface DockerPflegeErgebnis extends ProtokollPflegeErgebnis {
+  /** Aus der aktiven Datei eines gestoppten Containers entfernte Zeilen. */
+  aktiveZeilenEntfernt: number;
+  /** Was mit einem Austausch aus dem vorigen Lauf geschah (s. `klaereAustausch`). */
+  austausch: "keiner" | "abgeschlossen" | "zurueckgenommen";
+  /** Pausiert und mit Inhalt älter als die Frist — die offene Entscheidung (s. `istPausiert`). */
+  pausiertUeberfaellig: boolean;
+}
+
+/**
  * DIE AKTIVE DATEI EINES GESTOPPTEN APP-CONTAINERS (Ben, Nacharbeit 18).
  *
  * Ein gestoppter Container schreibt nichts — auch keinen Rotationsimpuls —, seine aktive Datei bliebe
@@ -110,6 +135,18 @@ function istGestoppt(konfiguration: DockerKonfiguration | null): boolean {
  * Start öffnet Docker die Datei neu und misst ihre Grösse frisch. Zeilen ohne lesbare Zeitangabe fallen
  * mit (Docker schreibt jede Zeile mit `time`). Unmittelbar vor dem Austausch wird der Zustand erneut
  * gelesen; läuft der Container inzwischen, unterbleibt der Austausch.
+ *
+ * DER KONKURRIERENDE START (Ben, Nacharbeit 19). Startet Docker den Container genau zwischen dieser
+ * Prüfung und dem Umbenennen, hält Docker die ALTE Datei offen und schreibt in sie; der Pfad zeigte
+ * dann auf die neue. Eine Sperre gegen Dockers Start gibt es nicht — deshalb wird der Austausch so
+ * gebaut, dass er sich ERKENNEN UND ZURÜCKNEHMEN lässt:
+ *   · vor dem Austausch hält ein fester Verweis (Hardlink `….frist-alt`) die alte Datei fest, und
+ *     ihre Grösse wird notiert (`….frist-pruefung`);
+ *   · der NÄCHSTE Lauf (`klaereAustausch`) misst die alte Datei: Ist sie gewachsen, schreibt Docker
+ *     in sie — die App schreibt beim Start sofort (Startbericht, Gesundheitsabfragen). Dann tritt sie
+ *     wieder an ihren Pfad; Dockers Schreibposition stimmt damit wieder, nichts ist verloren, und die
+ *     Frist greift über den Rotationsimpuls des nun laufenden Containers. Ist sie NICHT gewachsen, hat
+ *     Docker sie nicht geöffnet, und der Verweis fällt.
  *
  * Gibt die Zahl der entfernten Zeilen zurück (0: nichts überfällig, nichts geändert).
  */
@@ -137,10 +174,46 @@ function kuerzeGestoppteAktiveDatei(
   if (entfernt === 0 || !istGestoppt(leseKonfiguration(verzeichnis))) {
     return 0;
   }
+  const alt = `${aktiv}${ALT_ENDUNG}`;
+  linkSync(aktiv, alt);
+  writeFileSync(`${aktiv}${PRUEF_ENDUNG}`, `${statSync(alt).size}\n`, "utf8");
   const neu = `${aktiv}.frist-neu`;
   writeFileSync(neu, behalten.length > 0 ? `${behalten.join("\n")}\n` : "", "utf8");
   renameSync(neu, aktiv);
   return entfernt;
+}
+
+/** Der feste Verweis auf die abgelöste Datei und die notierte Grösse (s. oben). */
+const ALT_ENDUNG = ".frist-alt";
+const PRUEF_ENDUNG = ".frist-pruefung";
+
+/**
+ * Klärt einen offenen Austausch aus dem vorigen Lauf. Ergebnis:
+ *   `keiner`        — es gab keinen;
+ *   `abgeschlossen` — Docker hat die alte Datei nicht beschrieben; Verweis und Notiz sind gelöscht;
+ *   `zurueckgenommen` — Docker schreibt in die alte Datei; sie steht wieder an ihrem Pfad.
+ */
+function klaereAustausch(aktiv: string): "keiner" | "abgeschlossen" | "zurueckgenommen" {
+  const alt = `${aktiv}${ALT_ENDUNG}`;
+  const pruefung = `${aktiv}${PRUEF_ENDUNG}`;
+  if (!existsSync(alt)) {
+    if (existsSync(pruefung)) {
+      unlinkSync(pruefung);
+    }
+    return "keiner";
+  }
+  const notiert = Number(existsSync(pruefung) ? readFileSync(pruefung, "utf8").trim() : Number.NaN);
+  // Ohne lesbare Notiz im Zweifel ZURÜCK: das bewahrt Dockers Datei und schiebt die Frist nur auf.
+  const gewachsen = !Number.isFinite(notiert) || statSync(alt).size > notiert;
+  if (gewachsen) {
+    renameSync(alt, aktiv);
+  } else {
+    unlinkSync(alt);
+  }
+  if (existsSync(pruefung)) {
+    unlinkSync(pruefung);
+  }
+  return gewachsen ? "zurueckgenommen" : "abgeschlossen";
 }
 
 function leseKonfiguration(verzeichnis: string): DockerKonfiguration | null {
@@ -166,6 +239,8 @@ export interface ContainerBericht {
   ausgewaehlt: boolean;
   /** Laut Docker sicher gestoppt — dann kürzt die Pflege auch die aktive Datei (Nacharbeit 18). */
   gestoppt: boolean;
+  /** Laut Docker pausiert — dann kein Dateieingriff; überfälliger Inhalt wird gemeldet (Nacharbeit 19). */
+  pausiert: boolean;
   protokolldateien: number;
 }
 
@@ -240,8 +315,14 @@ export function berichteDockerProtokolle(opts: {
       }
       const konfiguration = leseKonfiguration(verzeichnis);
       const aktiv = `${id}-json.log`;
+      // Die abgelöste Datei eines offenen Austauschs (`….frist-alt`) zählt mit — ihr Inhalt besteht
+      // noch; Notiz und Zwischendatei tragen keinen Protokollinhalt.
       const protokolle = readdirSync(verzeichnis).filter(
-        (n) => n.startsWith(`${id}-json.`) && !n.endsWith(".beginn"),
+        (n) =>
+          n.startsWith(`${id}-json.`) &&
+          !n.endsWith(".beginn") &&
+          !n.endsWith(PRUEF_ENDUNG) &&
+          !n.endsWith(".frist-neu"),
       );
       container.push({
         id,
@@ -249,6 +330,7 @@ export function berichteDockerProtokolle(opts: {
         abbild: typeof konfiguration?.Config?.Image === "string" ? konfiguration.Config.Image : "",
         ausgewaehlt: opts.auswahl !== null && gehoertZurAuswahl(verzeichnis, opts.auswahl),
         gestoppt: istGestoppt(konfiguration),
+        pausiert: istPausiert(konfiguration),
         protokolldateien: protokolle.length,
         // Die aktive Datei verwaltet Docker; ihr Alter steht GETRENNT — die Pflege fasst sie nicht an.
         aktiveDatei: aeltestes(
@@ -277,14 +359,14 @@ export function pflegeDockerProtokolle(opts: {
   diagnoseordner?: string;
   jetzt?: number;
 }): {
-  container: Record<string, ProtokollPflegeErgebnis & { aktiveZeilenEntfernt: number }>;
+  container: Record<string, DockerPflegeErgebnis>;
   diagnose: string[];
 } {
   const ordner = opts.ordner ?? DOCKER_CONTAINER_ORDNER;
   const zeit = opts.jetzt === undefined ? {} : { jetzt: opts.jetzt };
   const jetzt = opts.jetzt ?? Date.now();
   const fristMs = PROTOKOLL_FRIST_TAGE * 86_400_000;
-  const container: Record<string, ProtokollPflegeErgebnis & { aktiveZeilenEntfernt: number }> = {};
+  const container: Record<string, DockerPflegeErgebnis> = {};
   const auswahl = opts.auswahl;
   if (auswahl && existsSync(ordner)) {
     for (const id of readdirSync(ordner)) {
@@ -317,15 +399,24 @@ export function pflegeDockerProtokolle(opts: {
           geloescht.push(name);
         }
       }
-      const aktiveZeilenEntfernt = istGestoppt(leseKonfiguration(verzeichnis))
-        ? kuerzeGestoppteAktiveDatei(
-            verzeichnis,
-            join(verzeichnis, `${id}-json.log`),
-            jetzt,
-            fristMs,
-          )
-        : 0;
-      container[id] = { rotiertNach: null, geloescht, aktiveZeilenEntfernt };
+      const aktiv = join(verzeichnis, `${id}-json.log`);
+      // Zuerst ein offener Austausch aus dem vorigen Lauf (Nacharbeit 19).
+      const austausch = klaereAustausch(aktiv);
+      const konfiguration = leseKonfiguration(verzeichnis);
+      const aktiveZeilenEntfernt =
+        austausch !== "zurueckgenommen" && istGestoppt(konfiguration)
+          ? kuerzeGestoppteAktiveDatei(verzeichnis, aktiv, jetzt, fristMs)
+          : 0;
+      // Pausiert: Docker hält den Schreiber offen — kein Dateieingriff (s. `istPausiert`).
+      const pausiertUeberfaellig =
+        istPausiert(konfiguration) && jetzt - (ersteZeitImInhalt(aktiv) ?? jetzt) >= fristMs;
+      container[id] = {
+        rotiertNach: null,
+        geloescht,
+        aktiveZeilenEntfernt,
+        austausch,
+        pausiertUeberfaellig,
+      };
     }
   }
   const diagnose = opts.diagnoseordner
@@ -374,4 +465,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   process.stdout.write(
     `Protokollpflege (Docker): ${ergebnisse.length} Container, ${rotiert} rotiert, ${geloescht} Dateien gelöscht, ${lauf.diagnose.length} Diagnosekopien gelöscht.\n`,
   );
+  // Nacharbeit 19: ein pausierter ausgewählter Container mit überfälligem Inhalt ist eine offene
+  // Entscheidung, kein stiller Erfolg — der geplante Lauf endet sichtbar mit Exit 3.
+  const pausiert = Object.entries(lauf.container).filter(([, e]) => e.pausiertUeberfaellig);
+  if (pausiert.length > 0) {
+    process.stderr.write(
+      `Protokollpflege (Docker): ${pausiert.length} pausierte(r) Container mit Protokoll älter als die Frist — ohne Fortsetzen nicht Docker-verträglich löschbar: ${pausiert.map(([id]) => id.slice(0, 12)).join(", ")}\n`,
+    );
+    process.exit(3);
+  }
 }
