@@ -1,0 +1,51 @@
+{
+  "auftrag": "aufnahme:20260922:gesamt-quellen-kernfragen",
+  "punkt": "R-1384",
+  "erhoben_am": "2026-10-13",
+  "basis": "550807b9c43e53bb0de59f01b4dd9773d09c2600",
+  "fassung_basis": "1.0.0-beta.1.954",
+  "hinweis": "Erhebung am Produktbaum und an QUELLEN.json des Auftrags. Der Wortlaut der fünf Kernfragen steht in keiner davon (L01). Deshalb ist für keine Frage eine beantwortende Quelle erhoben. Die Zeilen tragen den Stand, nicht eine Vermutung.",
+  "kernfragen": [
+    {
+      "id": "Q1",
+      "frage": null,
+      "frage_quelle": "Altquelle MAKROAUFTRAG-BASIC2-JOB-797-D1-W2-Q1-Q5-QUELLENMATRIX.md (14.08.2026), nicht nachgelesen",
+      "antwort_quelle": null,
+      "stand": "luecke",
+      "luecken": ["L01", "L02"]
+    },
+    {
+      "id": "Q2",
+      "frage": null,
+      "frage_quelle": "Altquelle MAKROAUFTRAG-BASIC2-JOB-797-D1-W2-Q1-Q5-QUELLENMATRIX.md (14.08.2026), nicht nachgelesen",
+      "antwort_quelle": null,
+      "stand": "luecke",
+      "luecken": ["L01", "L02"]
+    },
+    {
+      "id": "Q3",
+      "frage": null,
+      "frage_quelle": "Altquelle MAKROAUFTRAG-BASIC2-JOB-797-D1-W2-Q1-Q5-QUELLENMATRIX.md (14.08.2026), nicht nachgelesen",
+      "antwort_quelle": null,
+      "stand": "luecke",
+      "luecken": ["L01", "L02"]
+    },
+    {
+      "id": "Q4",
+      "frage": null,
+      "frage_quelle": "Altquelle MAKROAUFTRAG-BASIC2-JOB-797-D1-W2-Q1-Q5-QUELLENMATRIX.md (14.08.2026), nicht nachgelesen",
+      "antwort_quelle": null,
+      "stand": "luecke",
+      "luecken": ["L01", "L02"]
+    },
+    {
+      "id": "Q5",
+      "frage": null,
+      "frage_quelle": "Altquelle MAKROAUFTRAG-BASIC2-JOB-797-D1-W2-Q1-Q5-QUELLENMATRIX.md (14.08.2026), nicht nachgelesen",
+      "antwort_quelle": null,
+      "stand": "luecke",
+      "luecken": ["L01", "L02"]
+    }
+  ],
+  "uebergreifende_luecken": ["L03", "L04", "L05"]
+}
