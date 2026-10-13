@@ -506,7 +506,7 @@ import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { livewallRoutes } from "./routes/livewall-routes";
 import { lmsExportRoutes } from "./routes/lms-export-routes";
-import { managementRoutes } from "./routes/management-routes";
+import { lagebildBereicheFuer, managementRoutes } from "./routes/management-routes";
 import { mcpRoutes } from "./routes/mcp-routes";
 import { mediaRoutes } from "./routes/media-routes";
 import { meetingDokumentbezugRoutes } from "./routes/meeting-dokumentbezug-routes";
@@ -5359,7 +5359,13 @@ export function buildApp(
   // R-2183 (Nacharbeit 3): Ruhestandshorizonte nur an echten internen Konten.
   const kontoGibtEs = async (id: string) =>
     (await services.auth.listUsers()).some((u) => u.id === id);
-  app.register(managementRoutes(services.management, guards, kontoGibtEs));
+  // produkt:20261013:lagebild-reale-werte-eingabe: die Bereiche der Lagebild-Werte je Anfrage frisch
+  // aus der Space-Ablage — ein entzogenes Lese- oder Schreibrecht wirkt beim nächsten Abruf.
+  app.register(
+    managementRoutes(services.management, guards, kontoGibtEs, async (user) =>
+      lagebildBereicheFuer(await services.spaces.aktuelle(), user),
+    ),
+  );
   app.register(modelRunRoutes(services.modelRuns, guards));
   app.register(
     externalRoutes(

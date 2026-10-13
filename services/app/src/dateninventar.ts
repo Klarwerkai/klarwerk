@@ -565,6 +565,25 @@ export const DATENINVENTAR: readonly Datenart[] = [
     befund: "Beschäftigtendaten mit Bezug zur Lebensplanung — Teil der Folgenabschätzung.",
   },
   {
+    // produkt:20261013:lagebild-reale-werte-eingabe
+    id: "lagebild-werte",
+    name: "Reale Eingangswerte der Wissensbewertung",
+    inhalt:
+      "Je Arbeitsbereich (ganzes Unternehmen oder Space) Stundensatz, gesparte Stunden je validiertem Objekt und Wiederverwendung mit Herkunft (eigene Eingabe/gemessen) und Beleg, Geltungszeitraum, Stand, Kennung des Speichervorgangs, Änderungszeitpunkt und ändernde Kennung.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Die ändernde Kennung des letzten Stands; die Werte selbst beschreiben einen Bereich, keine Person. Ein Beleg ist Freitext und könnte einen Namen enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["management_lagebild_werte"] },
+    taetigkeit: "management",
+    loeschung: "Kein Löschweg; der Stand wird durch die nächste Eingabe überschrieben.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Betriebswerte eines Arbeitsbereichs; die Person steht nur als ändernde Kennung am jeweils letzten Stand. Noch nicht in die Auskunft aufgenommen (offen benannt).",
+    },
+  },
+  {
     id: "gesamtanweisungen",
     name: "Gesamtanweisungen",
     inhalt:

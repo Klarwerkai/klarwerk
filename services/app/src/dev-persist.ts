@@ -113,7 +113,16 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   overlapSettings: ["set"],
   // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte überleben den
   // Neustart. Die args tragen den fertigen Datensatz (inkl. Zeitstempel/Frist) → Replay exakt.
-  managementProfiles: ["setCategoryProfile", "setRetirement", "removeRetirement"],
+  // produkt:20261013:lagebild-reale-werte-eingabe: `setLagebildWerte` trägt Datensatz UND
+  // Bedingung (`basisVersion`) in den args — in derselben Reihenfolge trifft das Replay denselben
+  // Stand. Ein abgewiesener Aufruf (`false`) steht ebenfalls im Journal und weist beim Replay
+  // genauso ab, ohne etwas zu ändern.
+  managementProfiles: [
+    "setCategoryProfile",
+    "setRetirement",
+    "removeRetirement",
+    "setLagebildWerte",
+  ],
   // produkt:20261010:aenderungsfolgen-sichtbar: `markPending` trägt den fertigen Anlass (inkl.
   // Zeitpunkt) in seinen args → Replay exakt; `restorePending` nimmt eine gescheiterte Bestätigung
   // ohne Transaktion zurück und ist damit ebenfalls eine Mutation.

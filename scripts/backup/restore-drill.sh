@@ -533,6 +533,7 @@ PFLICHTTABELLEN=(
   ask_nulltreffer
   management_category_profiles
   management_retirement_horizons
+  management_lagebild_werte
   verantwortung_nachfolge
   assistenz_profile
   kommunikationsregel_fassungen

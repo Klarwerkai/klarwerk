@@ -1969,6 +1969,17 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Nacharbeit 3 — Pflege eines Ruhestandshorizonts, nur mit users.manage.",
   },
+  // produkt:20261013:lagebild-reale-werte-eingabe: die Fakten je Bereich (Zähler, Ø-Vertrauen)
+  // rechnen über der Grundmenge nach `sichtbarkeitsfilterFuer`; Bereiche nur mit Leserecht.
+  "GET /api/management/lagebild-werte": {
+    urteil: "PRAEDIKAT",
+    grund: "Lagebild-Werte — Fakten je Bereich erst nach dem Trimm der Grundmenge.",
+  },
+  "PUT /api/management/lagebild-werte/:bereich": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Lagebild-Werte — die Antwort trägt nur den gespeicherten Stand der drei Eingangswerte des Bereichs (management-routes.ts, `setLagebildWerte`), keinen Inhalt eines Wissensobjekts; unlesbare Bereiche antworten 404.",
+  },
   "GET /api/ai-check/coverage-summary": { urteil: "PRAEDIKAT", grund: "Block D — vier Zähler." },
   // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): Antworten nur mit Kennungen und Zählwerten;
   // jede Aussage des Laufs geht vorher durch `darfSehen` (lokale Helfer, über ihren Rumpf erhoben).

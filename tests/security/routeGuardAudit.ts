@@ -1080,6 +1080,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/management/profiles": { protection: "users.manage" },
   "PUT /api/management/profiles/category": { protection: "users.manage" },
   "PUT /api/management/profiles/retirement/:userId": { protection: "users.manage" },
+  // produkt:20261013:lagebild-reale-werte-eingabe: Lesen mit getrimmter Grundmenge; Schreiben mit
+  // `ko.create` und danach dem Bereichsrecht aus der Space-Ablage (`gesamt`: users.manage).
+  "GET /api/management/lagebild-werte": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "PUT /api/management/lagebild-werte/:bereich": { protection: "ko.create" },
   "GET /api/model-runs": { protection: "ko.read" },
   // Aufnahme gesamt-ki-laufprotokoll: Zeitraum-Auswertung (nur Summen) — dieselbe Lesestufe.
   "GET /api/model-runs/auswertung": { protection: "ko.read" },
