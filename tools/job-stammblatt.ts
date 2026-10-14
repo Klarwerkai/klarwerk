@@ -324,32 +324,72 @@ export function alsText(b: Stammblatt): string {
   return zeilen.join("\n");
 }
 
-function gitLogVon(wurzel: string, ref: string): string | null {
+/**
+ * Der Gitstand, an dem Integrations- und Fassungscommits gelesen werden.
+ *
+ * NACHARBEIT 3 (Ben): Bis dahin war die Vorgabe der lokale Verweis `main`. Im Produktbaum stand er
+ * veraltet auf `ee2f01b9` (Fassung .605). Am Echtbestand blieben deshalb die Integrationslisten
+ * leer, obwohl `e0e1419d` und `160b09fb` im Verlauf des Kandidaten lagen. Die Vorgabe ist jetzt
+ * `HEAD` des Produktbaums, also genau der Stand, aus dem das Werkzeug selbst stammt. Ein anderer
+ * Stand wird ausdrücklich mit `--ref`/`--repo` gewählt. Der aufgelöste Commit steht in jeder
+ * Ausgabe, damit erkennbar ist, woran gelesen wurde.
+ */
+export const STANDARD_REF = "HEAD";
+
+export interface GitStand {
+  repo: string;
+  ref: string;
+  /** Der vollständige Commit hinter `ref`; `null`, wenn er nicht auflösbar ist. */
+  commit: string | null;
+}
+
+function git(repo: string, argumente: readonly string[]): string | null {
   try {
-    return execFileSync("git", ["-C", wurzel, "log", "--format=%H%x09%s", ref], {
+    return execFileSync("git", ["-C", repo, ...argumente], {
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
     });
   } catch {
     return null;
   }
 }
 
+/** Gitstand und Verlauf `%H<TAB>%s` an genau dem aufgelösten Commit. */
+export function gitStandVon(
+  repo: string = WURZEL,
+  ref: string = STANDARD_REF,
+): { stand: GitStand; log: string | null } {
+  const commit = git(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`])?.trim() || null;
+  const log = commit === null ? null : git(repo, ["log", "--format=%H%x09%s", commit]);
+  return { stand: { repo, ref, commit }, log };
+}
+
+function wertNach(argumente: readonly string[], schalter: string): string | undefined {
+  const stelle = argumente.indexOf(schalter);
+  return stelle >= 0 ? argumente[stelle + 1] : undefined;
+}
+
+const AUFRUF =
+  "Aufruf: node tools/job-stammblatt.ts <auftraege-wurzel> [--json] [--ref HEAD] [--repo <produktbaum>]";
+
 /**
  * Der Direktaufruf ohne Prozessende: gibt aus und liefert den Exitcode zurück.
  *
  * NACHARBEIT 1 (Ben, Echtbestand 14.10.2026): Vorher stand hier ein Aufruf von `process.exit`
  * direkt nach der Ausgabe. In eine Pipe schreibt Node asynchron; `process.exit` beendet den
- * Prozess, bevor der Puffer geleert ist. Über die Pipe kamen von 2.153.824 Bytes (389 Blätter) nur 65.536 an, als
- * ungültiges JSON und mit Exit 0. Deshalb setzt der Aufrufer nur `process.exitCode`; Node beendet
- * sich erst, wenn die Ausgabe vollständig geschrieben ist.
+ * Prozess, bevor der Puffer geleert ist. Über die Pipe kamen von 2.153.824 Bytes (389 Blätter)
+ * nur 65.536 an, als ungültiges JSON und mit Exit 0. Deshalb setzt der Aufrufer nur
+ * `process.exitCode`; Node beendet sich erst, wenn die Ausgabe vollständig geschrieben ist.
  */
 export function direktaufruf(argumente: readonly string[]): number {
-  const refStelle = argumente.indexOf("--ref");
-  const ref = refStelle >= 0 ? (argumente[refStelle + 1] ?? "main") : "main";
-  const wurzel = argumente.find((a, i) => !a.startsWith("--") && argumente[i - 1] !== "--ref");
+  const ref = wertNach(argumente, "--ref") ?? STANDARD_REF;
+  const repo = wertNach(argumente, "--repo") ?? WURZEL;
+  const wurzel = argumente.find(
+    (a, i) => !a.startsWith("--") && argumente[i - 1] !== "--ref" && argumente[i - 1] !== "--repo",
+  );
   if (wurzel === undefined) {
-    console.log("Aufruf: node tools/job-stammblatt.ts <auftraege-wurzel> [--json] [--ref main]");
+    console.log(AUFRUF);
     return 2;
   }
   const ordner = existsSync(join(wurzel, "AUFTRAG.json")) ? [wurzel] : auftragsordnerUnter(wurzel);
@@ -357,21 +397,21 @@ export function direktaufruf(argumente: readonly string[]): number {
     console.log(`KEINE AUSKUNFT: unter ${wurzel} liegt kein Auftragsordner.`);
     return 2;
   }
-  const gitLog = gitLogVon(WURZEL, ref);
-  const blaetter = ordner.map((o) => stammblattVon(o, gitLog));
+  const { stand, log } = gitStandVon(repo, ref);
+  const blaetter = ordner.map((o) => stammblattVon(o, log));
   const funde = doppelvergaben(blaetter);
   if (argumente.includes("--json")) {
-    console.log(JSON.stringify({ blaetter, doppelvergaben: funde }, null, 2));
+    console.log(JSON.stringify({ gitStand: stand, blaetter, doppelvergaben: funde }, null, 2));
   } else {
+    console.log(`GITSTAND: ${stand.ref} = ${stand.commit ?? "nicht auflösbar"} (${stand.repo})\n`);
     console.log(blaetter.map(alsText).join("\n\n"));
     console.log(`\nDOPPELVERGABEN: ${funde.length === 0 ? "keine" : funde.length}`);
     for (const f of funde) console.log(`  ${f.art} ${f.wert}: ${f.ordner.join(", ")}`);
-    if (gitLog === null) console.log(`\nGitverlauf ${ref} unter ${WURZEL} nicht lesbar.`);
   }
   return funde.length > 0 ? 1 : 0;
 }
 
-// Direktaufruf: `node tools/job-stammblatt.ts <auftraege-wurzel> [--json] [--ref main]`.
+// Direktaufruf: `node tools/job-stammblatt.ts <auftraege-wurzel> [--json] [--ref HEAD] [--repo …]`.
 // Beim Import passiert hier nichts. Kein `process.exit` — siehe `direktaufruf`.
 if (process.argv[1]?.endsWith("job-stammblatt.ts")) {
   process.exitCode = direktaufruf(process.argv.slice(2));

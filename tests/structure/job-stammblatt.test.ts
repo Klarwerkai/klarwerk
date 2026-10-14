@@ -10,6 +10,7 @@
 //   · I   Integration nur bei vollständigem Titel, kein Präfixtreffer;
 //   · D   R-1393: Doppelvergaben von Auftrags-ID, Kennung, Branch und Commit-Titel;
 //   · P   der Direktaufruf liefert große Ausgaben über eine Pipe vollständig (Nacharbeit 1);
+//   · G   der Gitstand ist gebunden: Vorgabe HEAD, gebundener Commit in der Ausgabe (Nacharbeit 3);
 //   · B   der Bestandsabgleich nennt beide Kriterien und nur vorhandene Dateien.
 //
 // WAS DIESE DATEI NICHT BELEGT: die echten Ordner der Produktionskoordination und deren Vergabe
@@ -18,12 +19,14 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  STANDARD_REF,
   alsText,
   auftragsordnerUnter,
   benurteilAus,
   doppelvergaben,
+  gitStandVon,
   integrationAus,
   stammblattVon,
 } from "../../tools/job-stammblatt";
@@ -287,6 +290,97 @@ describe("Job-Stammblatt · Direktaufruf über eine Pipe", () => {
 
   it("P3: das Werkzeug beendet sich nirgends mit process.exit", () => {
     expect(readFileSync("tools/job-stammblatt.ts", "utf8")).not.toMatch(/process\.exit\(/);
+  });
+});
+
+// Nacharbeit 3 (Ben): Die Vorgabe `--ref main` las einen veralteten lokalen Verweis; am Echtbestand
+// blieben die Integrationslisten leer, obwohl die Commits im Kandidatenverlauf lagen. Hier steht ein
+// echtes Gitarchiv mit einem veralteten Zweig und einem aktuellen HEAD.
+describe("Job-Stammblatt · Gitstand gebunden", () => {
+  const repo = mkdtempSync(join(tmpdir(), "job-stammblatt-git-"));
+  afterAll(() => rmSync(repo, { recursive: true, force: true }));
+  const g = (...argumente: string[]): string => {
+    const r = spawnSync(
+      "git",
+      [
+        "-C",
+        repo,
+        "-c",
+        "user.name=Stammblatt",
+        "-c",
+        "user.email=stammblatt@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        ...argumente,
+      ],
+      { encoding: "utf8" },
+    );
+    if (r.status !== 0) throw new Error(`git ${argumente.join(" ")}: ${r.stderr}`);
+    return r.stdout.trim();
+  };
+  let basis = "";
+  let integriert = "";
+  let fassung = "";
+
+  beforeAll(() => {
+    g("init", "-q");
+    g("commit", "-q", "--allow-empty", "-m", "Basis");
+    basis = g("rev-parse", "HEAD");
+    g("branch", "veraltet");
+    g("commit", "-q", "--allow-empty", "-m", "Titel A (Arbeitssicherung)");
+    g("commit", "-q", "--allow-empty", "-m", "Titel A (Hauptstand integriert)");
+    integriert = g("rev-parse", "HEAD");
+    g("commit", "-q", "--allow-empty", "-m", "Titel A (1.0.0-beta.1.981)");
+    fassung = g("rev-parse", "HEAD");
+  });
+
+  it("G1: die Vorgabe ist HEAD; Integrations- und Fassungscommit werden gefunden", () => {
+    expect(STANDARD_REF).toBe("HEAD");
+    const { stand, log } = gitStandVon(repo);
+    expect(stand).toEqual({ repo, ref: "HEAD", commit: fassung });
+    expect(integrationAus(log ?? "", "Titel A")).toEqual({
+      integriert: [integriert],
+      fassungen: [{ commit: fassung, fassung: "1.0.0-beta.1.981" }],
+    });
+  });
+
+  it("G2: ein ausdrücklich gewählter veralteter Verweis ist am gebundenen Commit erkennbar", () => {
+    const { stand, log } = gitStandVon(repo, "veraltet");
+    expect(stand.commit).toBe(basis);
+    expect(integrationAus(log ?? "", "Titel A")).toEqual({ integriert: [], fassungen: [] });
+  });
+
+  it("G3: ein unbekannter Verweis ergibt keinen Commit und keinen Verlauf", () => {
+    expect(gitStandVon(repo, "gibt-es-nicht")).toEqual({
+      stand: { repo, ref: "gibt-es-nicht", commit: null },
+      log: null,
+    });
+  });
+
+  it("G4: der Direktaufruf ohne --ref liest HEAD und nennt den gebundenen Gitstand", () => {
+    const r = spawnSync(
+      "node",
+      [
+        "--import",
+        "tsx",
+        "tools/job-stammblatt.ts",
+        join(wurzel, "auftrag-aaa"),
+        "--json",
+        "--repo",
+        repo,
+      ],
+      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    const daten = JSON.parse(r.stdout) as {
+      gitStand: { ref: string; commit: string | null };
+      blaetter: Array<{ integration: { integriert: string[]; fassungen: unknown[] } | null }>;
+    };
+    expect(daten.gitStand).toMatchObject({ ref: "HEAD", commit: fassung });
+    expect(daten.blaetter[0]?.integration).toEqual({
+      integriert: [integriert],
+      fassungen: [{ commit: fassung, fassung: "1.0.0-beta.1.981" }],
+    });
+    expect(r.status).toBe(0);
   });
 });
 

@@ -56,7 +56,9 @@ Auftrags) entstehen an derselben Stelle. Der Auftragsordner wird aus demselben H
 ## Geliefert
 
 - `tools/job-stammblatt.ts`: ein reines Lesewerkzeug ohne Schreib- oder Steuerwirkung.
-  Aufruf: `node tools/job-stammblatt.ts <auftraege-wurzel> [--json] [--ref main]`.
+  Aufruf: `node tools/job-stammblatt.ts <auftraege-wurzel> [--json] [--ref HEAD] [--repo <produktbaum>]`.
+  Gelesen wird der Gitstand `HEAD` des Produktbaums, aus dem das Werkzeug stammt (`STANDARD_REF`).
+  Jede Ausgabe nennt den gebundenen Commit (`gitStand` bzw. `GITSTAND:`).
   - `stammblattVon`: das Blatt je Auftragsordner.
   - `doppelvergaben`: die Wache.
   - `integrationAus`: liest Integrations- und Fassungscommits aus dem Gitverlauf.
@@ -64,11 +66,18 @@ Auftrags) entstehen an derselben Stelle. Der Auftragsordner wird aus demselben H
   - Exit 1 bei einer Doppelvergabe, Exit 2 ohne Auftragsordner.
   - **Nacharbeit 1:** Der Direktaufruf setzt den Exitcode jetzt über `process.exitCode`, statt den
     Prozess mit `process.exit` zu beenden (`direktaufruf`). Die Ausgabe läuft vollständig aus.
+  - **Nacharbeit 3:** Die Vorgabe `--ref main` ist ersetzt durch `HEAD`, gebunden über `gitStandVon`
+    (`rev-parse` auf den Commit, Verlauf genau an diesem Commit). Mit `--repo` wird der Produktbaum
+    gewählt. Ein nicht auflösbarer Verweis ergibt „nicht auflösbar“, keine leere Liste ohne Hinweis.
 - `tests/structure/job-stammblatt.test.ts`:
   - Fälle S1–S5, U, I, D1–D4 und B an nachgebauten Ordnern und an einem Gitverlauf.
   - Seit Nacharbeit 1 auch P1–P3: der echte Direktaufruf als Kindprozess über eine Pipe, mit mehr
     als 256 KiB JSON, mit und ohne Doppelvergabe; dazu der Ausschluss von `process.exit` im
     Werkzeug.
+  - Seit Nacharbeit 3 auch G1–G4 an einem echten temporären Gitarchiv mit veraltetem Zweig und
+    aktuellem `HEAD`. Geprüft werden: Vorgabe `HEAD`; Integrations- und Fassungscommit gefunden; ein
+    veralteter Verweis ist am gebundenen Commit erkennbar; ein unbekannter Verweis ergibt keinen
+    Commit; der Direktaufruf ohne `--ref` liefert den Integrationscommit und nennt `gitStand`.
 - Dieses Dokument.
 
 ### K1 · R-1393 — Schlüsselprotokoll gegen doppelte Job-Nummern
@@ -123,7 +132,7 @@ Auftrags) entstehen an derselben Stelle. Der Auftragsordner wird aus demselben H
   | Gegenstand | `AUFTRAG-B1.json` `title` (sonst `AUFTRAG.json` `title`), dazu `id`, `revision`, `status` |
   | Welle oder Scheibe | `AUFTRAG-B1.json` `milestones` und `priority` |
   | Durchgangsgeschichte mit Urteilen | `HISTORIE/nacharbeit-<n>` numerisch geordnet, danach `aktuell`; je Durchgang Prüfbericht vorhanden ja/nein und Benurteil |
-  | Integrations-Commit | Gitverlauf (`--ref`, Vorgabe `main`): exakter Betreff `<commit_title> (Hauptstand integriert)` und `<commit_title> (<Fassung>)` |
+  | Integrations-Commit | Gitverlauf am gebundenen Commit (`--ref`, Vorgabe `HEAD` des Produktbaums): exakter Betreff `<commit_title> (Hauptstand integriert)` und `<commit_title> (<Fassung>)` |
 
 - **Benurteil (Schema jetzt belegt):** `benurteil.py` (Z. 1–39) legt `benurteil_v2` fest.
   - Pflichtfeld `urteil` mit den Werten `erfuellt`, `nacharbeit` oder `offen`, bei
@@ -152,16 +161,21 @@ Auftrags) entstehen an derselben Stelle. Der Auftragsordner wird aus demselben H
     Pipe-Ausgabe mit Exit 0 bzw. Exit 1; 14 von 15 Fällen bestanden. P3 war rot, weil ein Kommentar
     im Werkzeug `process.exit` mit Klammer zitierte. In Nacharbeit 2 ist der Kommentar umformuliert;
     der Test bleibt unverändert. Der Exit 0 der alten Pipe-Ausgabe war kein bestandener Lauf.
-- **Offene Beobachtung zum Integrations-Commit:**
-  - In beiden Stichproben ist `integration` leer (`integriert: []`, `fassungen: []`).
-  - Im Verlauf dieses Kandidaten stehen aber `e0e1419d` „Aktive Begleitung … · BPA-Ergänzung
+  - Prüflauf am Kandidaten `c1814599` (`HISTORIE/nacharbeit-3`): alle 15 Fälle grün, auch P3.
+- **Fehler beim Integrations-Commit am Kandidaten `c1814599` — in Nacharbeit 3 behoben, Wirkung am
+  Echtbestand noch zu belegen:**
+  - In beiden Stichproben war `integration` leer (`integriert: []`, `fassungen: []`).
+  - Im Verlauf des Kandidaten stehen aber `e0e1419d` „Aktive Begleitung … · BPA-Ergänzung
     (Hauptstand integriert)“ und `160b09fb` „… (1.0.0-beta.1.981)“, ebenso `6b154bb4`
     „Kunden- und Pilotbereitschaft … (1.0.0-beta.1.980)“.
-  - Naheliegend ist ein veralteter lokaler Verweis `main` im Arbeitsbaum, in dem der Lauf stattfand
-    (`--ref main`). **Belegt ist diese Ursache nicht**; dieser Durchgang durfte keinen Gitbefehl
-    ausführen.
-  - Ein Integrationscommit am Echtbestand ist damit noch **nicht belegt**. Mit `--ref` lässt sich
-    der Verweis wählen, an dem gelesen wird.
+  - **Ursache (von Ben belegt):** Die Vorgabe `--ref main` las den lokalen Verweis `main`. Der
+    stand veraltet auf `ee2f01b9` (Fassung .605). R-1492 war im vorgesehenen Standardaufruf damit
+    nicht erfüllt.
+  - **Korrektur:** Vorgabe `HEAD` des Produktbaums, gebunden über `gitStandVon`. Der gebundene
+    Commit steht in jeder Ausgabe. Abgesichert ist die Zuordnung durch G1–G4 an einem echten
+    Gitarchiv.
+  - Ein neuer Lauf gegen den Echtbestand mit der Vorgabe liegt nicht vor. Dieser Durchgang durfte
+    keine Befehle ausführen.
 - Weitere Grenzen:
   - **Welle oder Scheibe** hat im heutigen Weg kein eigenes Feld. `milestones` ist das nächste
     Gegenstück; an diesem Auftrag ist es leer, bei `5ac77523` gefüllt.
@@ -169,8 +183,9 @@ Auftrags) entstehen an derselben Stelle. Der Auftragsordner wird aus demselben H
     „Durchgang n = Nacharbeit n“.
 - Bewertung: **teilweise.**
   - Gegenstand, Welle/Scheibe und Durchgänge mit Urteilen sind am Echtbestand belegt.
-  - Die vollständige Pipe-Ausgabe ist durch P1 und P2 belegt; P3 folgt im nächsten Prüflauf.
-  - Der Integrations-Commit ist am Echtbestand nicht belegt, siehe oben.
+  - Die vollständige Pipe-Ausgabe ist durch P1–P3 belegt (`c1814599`).
+  - Der Integrations-Commit ist im Standardaufruf jetzt an `HEAD` gebunden (G1–G4, Prüflauf
+    ausstehend). Am Echtbestand ist er mit der neuen Vorgabe noch nicht belegt.
 
 ### K3 — Lieferbeleg, Abgrenzung, Widersprüche
 
@@ -214,8 +229,9 @@ Auftrags) entstehen an derselben Stelle. Der Auftragsordner wird aus demselben H
 - **Fehlende Belege:**
   - Die `GRUND.txt` vom 28.08. und `kw_naechster_durchgang.py` liegen nur als Altquellenverweis
     vor.
-  - Die vollständige Pipe-Ausgabe nach der Korrektur ist durch P1/P2 belegt (`a48fae23`); P3
-    steht nach Nacharbeit 2 noch aus.
-  - Noch nicht belegt ist ein Integrations-Commit am Echtbestand (siehe K2).
+  - Ein Echtbestandslauf mit der Vorgabe `HEAD` fehlt; der Integrations-Commit ist dort damit
+    noch nicht belegt (siehe K2).
+  - **Überholt seit Nacharbeit 3:** Die vollständige Pipe-Ausgabe ist durch P1–P3 belegt
+    (`c1814599`, 15/15). Die Ursache der leeren Integrationslisten ist belegt (veraltetes `main`).
   - **Überholt seit Nacharbeit 1:** Vergabestelle und Benschema sind nicht mehr unbelegt; die
     Echtbestandsausgabe liegt als Dateiausgabe vor.
