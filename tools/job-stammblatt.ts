@@ -338,9 +338,9 @@ function gitLogVon(wurzel: string, ref: string): string | null {
 /**
  * Der Direktaufruf ohne Prozessende: gibt aus und liefert den Exitcode zurück.
  *
- * NACHARBEIT 1 (Ben, Echtbestand 14.10.2026): Vorher stand hier `process.exit(…)` direkt nach der
- * Ausgabe. In eine Pipe schreibt Node asynchron; `process.exit` beendet den Prozess, bevor der
- * Puffer geleert ist. Über die Pipe kamen von 2.153.824 Bytes (389 Blätter) nur 65.536 an, als
+ * NACHARBEIT 1 (Ben, Echtbestand 14.10.2026): Vorher stand hier ein Aufruf von `process.exit`
+ * direkt nach der Ausgabe. In eine Pipe schreibt Node asynchron; `process.exit` beendet den
+ * Prozess, bevor der Puffer geleert ist. Über die Pipe kamen von 2.153.824 Bytes (389 Blätter) nur 65.536 an, als
  * ungültiges JSON und mit Exit 0. Deshalb setzt der Aufrufer nur `process.exitCode`; Node beendet
  * sich erst, wenn die Ausgabe vollständig geschrieben ist.
  */

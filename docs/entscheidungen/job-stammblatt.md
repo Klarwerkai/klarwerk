@@ -148,8 +148,10 @@ Auftrags) entstehen an derselben Stelle. Der Auftragsordner wird aus demselben H
     65.199), und das mit Exit 0.
   - Ursache: `process.exit` direkt nach der Ausgabe.
   - Behoben durch `process.exitCode` in `direktaufruf`; abgesichert durch die Fälle P1–P3.
-  - Bis der Prüflauf P1–P3 grün meldet, gilt die Pipe-Ausgabe als **nicht belegt**. Der Exit 0
-    der alten Pipe-Ausgabe war kein bestandener Lauf.
+  - Prüflauf am Kandidaten `a48fae23` (`HISTORIE/nacharbeit-2`): P1 und P2 grün, also vollständige
+    Pipe-Ausgabe mit Exit 0 bzw. Exit 1; 14 von 15 Fällen bestanden. P3 war rot, weil ein Kommentar
+    im Werkzeug `process.exit` mit Klammer zitierte. In Nacharbeit 2 ist der Kommentar umformuliert;
+    der Test bleibt unverändert. Der Exit 0 der alten Pipe-Ausgabe war kein bestandener Lauf.
 - **Offene Beobachtung zum Integrations-Commit:**
   - In beiden Stichproben ist `integration` leer (`integriert: []`, `fassungen: []`).
   - Im Verlauf dieses Kandidaten stehen aber `e0e1419d` „Aktive Begleitung … · BPA-Ergänzung
@@ -167,7 +169,7 @@ Auftrags) entstehen an derselben Stelle. Der Auftragsordner wird aus demselben H
     „Durchgang n = Nacharbeit n“.
 - Bewertung: **teilweise.**
   - Gegenstand, Welle/Scheibe und Durchgänge mit Urteilen sind am Echtbestand belegt.
-  - Die vollständige Pipe-Ausgabe hängt an P1–P3.
+  - Die vollständige Pipe-Ausgabe ist durch P1 und P2 belegt; P3 folgt im nächsten Prüflauf.
   - Der Integrations-Commit ist am Echtbestand nicht belegt, siehe oben.
 
 ### K3 — Lieferbeleg, Abgrenzung, Widersprüche
@@ -212,7 +214,8 @@ Auftrags) entstehen an derselben Stelle. Der Auftragsordner wird aus demselben H
 - **Fehlende Belege:**
   - Die `GRUND.txt` vom 28.08. und `kw_naechster_durchgang.py` liegen nur als Altquellenverweis
     vor.
-  - Noch nicht belegt ist die vollständige Pipe-Ausgabe nach der Korrektur (P1–P3 im Prüflauf).
+  - Die vollständige Pipe-Ausgabe nach der Korrektur ist durch P1/P2 belegt (`a48fae23`); P3
+    steht nach Nacharbeit 2 noch aus.
   - Noch nicht belegt ist ein Integrations-Commit am Echtbestand (siehe K2).
   - **Überholt seit Nacharbeit 1:** Vergabestelle und Benschema sind nicht mehr unbelegt; die
     Echtbestandsausgabe liegt als Dateiausgabe vor.
