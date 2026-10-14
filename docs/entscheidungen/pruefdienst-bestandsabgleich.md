@@ -172,14 +172,21 @@ Legende: **erfüllt (heutiger Weg)** — der Originalzweck ist an der genannten 
 - Heute (`dienst.py` `reihenfolge`, Z. 396–415): erstens Priorität (zentraler Intake oder
   aufgenommener Vertrag, `prioritaet` Z. 603–613), zweitens lieferbereit vor fortsetzungsbereit vor
   sonstigen, drittens nie Gestartetes vor dem am längsten Wartenden (`wartefolge`, Z. 111–123).
-- Bewertung: **teilweise, mit offener Entscheidung.**
-  - Der Kernmangel ist behoben: Die Auftragsnummer spielt keine Rolle, und ein fertiger Stand wird
-    bei gleicher Priorität vor neuen Aufträgen eingeordnet.
-  - „Herstellbarkeit“ entspricht ungefähr „lieferbereit/bereit“. „Produktnähe“ und „Tests“ sind
-    keine Ordnungsschlüssel.
-  - Vorrangig gilt heute eine zentrale Priorität, die der Originalpunkt nicht kennt.
-  - In den ausgewerteten Quellen gibt es keine Entscheidung, ob diese Priorität R-1380 ersetzt
-    oder um Produktnähe und Tests zu ergänzen ist. **Das entscheide ich nicht selbst.**
+- Bewertung: **teilweise erfüllt, technische Restanforderung offen.**
+  - Anerkannte Teilerfüllung: Die Auftragsnummer spielt keine Rolle, und ein fertiger Stand wird
+    bei gleicher Priorität vor neuen Aufträgen eingeordnet. Der Mangel „jeder neue Auftrag schiebt
+    einen fertigen Stand nach hinten“ besteht damit nicht mehr.
+  - „Herstellbarkeit“ entspricht ungefähr „lieferbereit/bereit“.
+  - **Es fehlen die Ordnungsschlüssel „Produktnähe“ und „Tests“.** Die beauftragte Reihenfolge
+    Herstellbarkeit → Produktnähe → Tests ist damit nicht vollständig umgesetzt.
+  - Die zentrale Priorität, die heute an erster Stelle steht, löst R-1380 **nicht** ab. In den
+    ausgewerteten Belegen gibt es keine jüngere Entscheidung, die das tut. Die Sortierung bleibt
+    daher eine beauftragte technische Anforderung; eine neue Produktentscheidung ist dafür nicht
+    nötig.
+  - **Zuständigkeitsgrenze:** Die Sortierung steht in `dienst.py` (`reihenfolge`, Z. 396–415). Die
+    Datei liegt außerhalb des Produktarbeitsbaums und der `allowed_paths` dieses Auftrags
+    (`AUFTRAG.json`). Aus der Lesekopie in der Quellenführung folgt keine Schreibfreigabe. Die
+    Restanforderung lässt sich deshalb in diesem Auftrag nicht umsetzen.
 
 ### K10 · R-1414 — Code-Urteil und Prüferurteil eichen
 
@@ -284,11 +291,11 @@ Drei Teile, getrennt bewertet:
 | K1 | Kein Alarm „Stände warten, seit über 1 h kein echtes Urteil“; Anzeigeort von `DIENST.json` nicht belegt | technische Lücke in der Koordination |
 | K2 | Vollständigkeit der Ben-Belegpfade nur über `benfortsetzung` belegbar | Beleglücke (Modul nicht in der Quellenführung) |
 | K4 | Kein Fallbeleg, dass eine neu rote Assertion in einer bereits roten Datei als Befund ausgewiesen wurde | Beleglücke |
-| K9 | Produktnähe und Tests nicht in der Reihenfolge; die zentrale Priorität allein belegt keine Ablösung von R-1380 | **offene Produktentscheidung** |
+| K9 | Ordnungsschlüssel Produktnähe und Tests fehlen in `dienst.py` `reihenfolge`; die zentrale Priorität allein belegt keine Ablösung von R-1380 | technische Lücke in der Koordination |
 | K10 | Keine Messung der Übereinstimmung von Maschinen- und Benurteil | technische Lücke in der Koordination |
 | K14 | Auftragsart-Erkennung mit ausdrücklichem Feld und Standardfall im heutigen Weg nicht belegt | ungeklärt |
 | K15 | Parallelität der Gegenprüfung zur weiterarbeitenden Hand nicht belegt; keine ablösende Entscheidung | ungeklärt |
 
-Die technischen Lücken (K1, K10) betreffen `dienst.py`, `befund.py` und `produkt.py`. Diese Dateien liegen
+Die technischen Lücken (K1, K9, K10) betreffen `dienst.py` (K1, K9), `befund.py` und `produkt.py` (K10). Diese Dateien liegen
 nicht in den `allowed_paths` dieses Auftrags (`AUFTRAG.json`). Diese Grenze ist konkret belegt.
 Ein fehlender Zugang wird damit nicht behauptet.

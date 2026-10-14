@@ -9,7 +9,8 @@
 //   · F   die tragenden Namen der Produkt-Leseregel stehen in der genannten Datei;
 //   · K   jeder Originalpunkt K1–K16 hat einen eigenen Abschnitt mit seiner R-Nummer;
 //   · Q   die sieben ausgewerteten Koordinationsmodule sind mit SHA-256 an ihre Fassung gebunden;
-//   · G   das Dokument behauptet keine Gesamterfüllung und wählt die offene Entscheidung nicht.
+//   · G   das Dokument behauptet keine Gesamterfüllung und stellt beauftragte Restanforderungen
+//         nicht als offene Produktentscheidung zurück.
 //
 // WAS DIESE DATEI NICHT BELEGT: das Verhalten der Koordinationsmodule. Sie liegen außerhalb des
 // Produktbaums; ihre Fundstellen belegt die Quellenführung, nicht dieser Test.
@@ -81,11 +82,12 @@ describe("Gesamt-Prüfdienst · Bestandsabgleich", () => {
     }
   });
 
-  it("G: keine Gesamterfüllung, offene Entscheidung bleibt offen, Abgrenzung benannt", () => {
+  it("G: keine Gesamterfüllung, Abgrenzung benannt, keine zurückgestellte Entscheidung", () => {
     const text = flach(DOKUMENT);
     expect(text).toContain("eine Erfüllungsbehauptung für alle 16 Kriterien");
-    expect(text).toContain("**offene Produktentscheidung**");
-    expect(text).toContain("**Das entscheide ich nicht selbst.**");
+    // Nacharbeit 8 (Ben): Beauftragte Restanforderungen sind keine offenen Produktentscheidungen.
+    expect(text).not.toContain("**offene Produktentscheidung**");
+    expect(text).not.toContain("Das entscheide ich nicht selbst");
     for (const abgeschlossen of ["**R-1216**", "**R-1238**", "**R-1301**", "**R-1235**"]) {
       expect(text).toContain(abgeschlossen);
     }
@@ -115,6 +117,26 @@ describe("Gesamt-Prüfdienst · Bestandsabgleich", () => {
     expect(k15).toContain("**Parallelität zur weiterarbeitenden Hand: ungeklärt.**");
     expect(k15).not.toContain("durch R-1362 ersetzt");
     expect(flach(DOKUMENT)).not.toContain("R-2021 gegen R-1362 (K15) sind oben eingeordnet");
+  });
+
+  it("K9: teilweise erfüllt, technische Restanforderung und Zuständigkeitsgrenze benannt", () => {
+    const k9 = abschnitt("### K9 · R-1380 — ");
+    expect(k9).toContain("Bewertung: **teilweise erfüllt, technische Restanforderung offen.**");
+    expect(k9).toContain("**Es fehlen die Ordnungsschlüssel „Produktnähe“ und „Tests“.**");
+    expect(k9).toContain(
+      "Die zentrale Priorität, die heute an erster Stelle steht, löst R-1380 **nicht** ab.",
+    );
+    expect(k9).toContain("**Zuständigkeitsgrenze:** Die Sortierung steht in `dienst.py`");
+    expect(k9).toContain("`allowed_paths` dieses Auftrags");
+    expect(k9).not.toContain("offener Entscheidung");
+    // Gezielt die K9-Zeile der Resttabelle, damit eine andere technische Lücke nicht genügt.
+    const zeile = lies(DOKUMENT)
+      .split("\n")
+      .find((z) => z.startsWith("| K9 |"));
+    expect(zeile).toBeDefined();
+    expect(zeile).toContain("Produktnähe und Tests");
+    expect(zeile).toContain("| technische Lücke in der Koordination |");
+    expect(flach(DOKUMENT)).toContain("betreffen `dienst.py` (K1, K9)");
   });
 
   it("K4: Ergebnis am vorhandenen Weg, Beleglücke statt erfundener Vergleichspflicht", () => {
