@@ -32,9 +32,55 @@
  * WAS DIESE REGEL NICHT KANN: Sie liest den HEUTIGEN Text. Ob ein Bericht früher etwas anderes
  * sagte, steht in keiner Datei — dafür ist `hatSichGeaendert` da, und auch das nur, wenn ein
  * Auftrag den SHA-256 des Berichts nennt.
+ *
+ * HÄRTUNGEN (Auftrag aufnahme:20260922:gesamt-pruefdienst, R-1231/R-1362/R-1379/R-1440):
+ *
+ *   (a) NUR DIE ZEILE `GESAMTURTEIL: GRÜN|ROT` BELEGT EIN URTEIL. Vorher genügte das Wort
+ *       `GESAMTURTEIL` irgendwo im Text — auch „GESAMTURTEIL fehlt" oder eine Erwähnung in der
+ *       Prosa. Eine Dimensionszeile (`PRODUKT:`, `FORM:` …) ersetzt ein fehlendes Gesamturteil
+ *       nicht (R-1231, R-1379: „165 Dateien heissen wie ein Urteil und enthalten keines").
+ *   (b) MARKDOWN-CODEBLÖCKE ZÄHLEN NICHT. Ein Bericht, der ein fremdes Urteil oder eine Vorlage
+ *       in ``` zitiert, urteilt damit nicht selbst — weder als Urteil noch als Sperre (R-1231).
+ *   (c) DAS URTEILSFELD SELBST WIRD GELESEN. Beginnt der Wert mit NICHT oder KEIN
+ *       (`GESAMTURTEIL: KEIN SACHURTEIL …`), bezeichnet der Bericht sich als Zustellsperre und ist
+ *       kein Urteil (R-1362, Messmethode vom 27.08.).
+ *   (d) MASCHINENURTEILE unter dem Zielnamen `CODE-PRUEFUNG-…` sind ebenso Teilurteile wie die
+ *       alten `-CODE.md` (R-1440). Die Umbenennung selbst geschieht im Prüfwerkzeug, nicht hier.
  */
 
 import { createHash } from "node:crypto";
+
+/** Ein Markdown-Codeblock: Zaun aus drei oder mehr Backticks oder Tilden bis zum gleichen Zaun. */
+const CODEBLOCK = /^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t]*\1[ \t]*$|(?![\s\S]))/gm;
+
+/** Der Text ohne Markdown-Codeblöcke — was darin steht, ist zitiert, nicht geurteilt. */
+export function ohneCodebloecke(text: string): string {
+  return text.replace(CODEBLOCK, "");
+}
+
+/**
+ * Die Gesamturteilszeile: das Feld eröffnet die Zeile (Hervorhebung `**`/`#`/Aufzählung erlaubt),
+ * der Wert folgt dahinter.
+ */
+const GESAMTURTEILSZEILE =
+  /^[ \t]*(?:[-*>#]+[ \t]*)?(?:\*\*)?GESAMTURTEIL:?(?:\*\*)?:?[ \t]*(.*)$/m;
+
+export type Gesamturteil = "GRÜN" | "ROT";
+
+/**
+ * Das Gesamturteil eines Berichts — oder `null`, wenn er keines trägt.
+ *
+ * `null` heißt ausdrücklich NICHT „rot": Ein Bericht ohne Gesamturteilszeile, mit einem Feldwert,
+ * der mit NICHT/KEIN beginnt, oder mit einem Urteil nur im Codeblock hat nicht geurteilt.
+ */
+export function gesamturteil(text: string): Gesamturteil | null {
+  const zeile = GESAMTURTEILSZEILE.exec(ohneCodebloecke(text));
+  const wert = (zeile?.[1] ?? "").replace(/^[*_`\s]+/, "");
+  if (/^(NICHT|KEIN)\b/.test(wert)) return null;
+  if (/^(GRÜN|GRUEN)\b/.test(wert)) return "GRÜN";
+  if (/^ROT\b/.test(wert)) return "ROT";
+  return null;
+}
 
 /** Die fünf Formularwörter, mit denen ein Prüfer die Sache ausdrücklich offen lässt. */
 const SPERRWORT =
@@ -55,7 +101,7 @@ const ZEILENANFANG = 26;
  */
 export function sperrzeilen(text: string): string[] {
   const treffer: string[] = [];
-  for (const roh of text.split("\n")) {
+  for (const roh of ohneCodebloecke(text).split("\n")) {
     const zeile = roh.trim();
     if (OHNE_URTEILSWIRKUNG.test(zeile)) continue;
     if (!SPERRWORT.test(zeile)) continue;
@@ -74,9 +120,10 @@ export function hatZustellsperre(text: string): boolean {
 /**
  * Ein `-CODE.md` stammt von `kw_pruefer.py` — ein Skript, kein Prüfer. Es trägt zwar ein
  * `GESAMTURTEIL`, ist aber ein Teilurteil über den Code und nie ein Sachurteil über das Produkt.
+ * Der angenommene neue Name `CODE-PRUEFUNG-…` (R-1440) gilt ebenso.
  */
 export function istTeilurteil(dateiname: string): boolean {
-  return /-CODE\.md$/.test(dateiname);
+  return /-CODE\.md$/.test(dateiname) || /^CODE-PRUEFUNG-/.test(dateiname);
 }
 
 /**
@@ -88,7 +135,7 @@ export function istTeilurteil(dateiname: string): boolean {
  */
 export function hatSachurteil(dateiname: string, text: string): boolean {
   if (istTeilurteil(dateiname)) return false;
-  if (!/GESAMTURTEIL/.test(text)) return false;
+  if (gesamturteil(text) === null) return false;
   return !hatZustellsperre(text);
 }
 

@@ -71,7 +71,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { hatZustellsperre, istTeilurteil } from "./urteilslage";
+import { gesamturteil, hatZustellsperre, istTeilurteil, ohneCodebloecke } from "./urteilslage";
 
 /** Wo die Rueckgaben und Pruefberichte liegen. Ueberschreibbar, damit das Werkzeug ohne KLARWERK laeuft. */
 export const OUTBOX =
@@ -105,14 +105,26 @@ export function istNeuZeile(zeile: string): boolean {
 }
 
 /**
+ * Eine ausdrueckliche `PRODUKTWRITES: <n>`-Zeile: das Feld eroeffnet die Zeile (Hervorhebung und
+ * Aufzaehlung erlaubt), hinter der Zahl folgt das Zeilenende oder ein Trenner — kein Fliesstext.
+ */
+const PRODUKTWRITES_ZEILE =
+  /^[ \t]*(?:[-*>#|]+[ \t]*)?(?:\*\*)?PRODUKTWRITES:?(?:\*\*)?:?[ \t]*\*{0,2}[ \t]*(\d+)\*{0,2}[ \t]*(?:$|[—–(;,.|-])/gm;
+
+/**
  * SCHAERFE (4): Erklaert die Rueckgabe selbst, dass sie nichts geschrieben hat?
  *
- * Traegt JEDE `PRODUKTWRITES: <n>`-Angabe des Dokuments n = 0, sind es null Writes. Steht
+ * Traegt JEDE `PRODUKTWRITES: <n>`-Zeile des Dokuments n = 0, sind es null Writes. Steht
  * irgendwo eine Zahl groesser null, wird normal erhoben — eine Rueckgabe kann fremde Nullwrites
  * zitieren, und dann darf ihre eigene Zahl nicht davon verdeckt werden.
+ *
+ * SCHAERFE (6) [R-1248/R-1486]: Gelesen wird NUR die ausdrueckliche Feldzeile. Der Satz
+ * „PRODUKTWRITES: 0 ist hier ausdruecklich das Versagen" ist Fliesstext und erklaert nichts;
+ * Erwaehnungen mitten im Satz oder in Markdown-Codebloecken ebenso wenig. Fehlt die Zeile, gilt
+ * die Rueckgabe als bauend und ihre Writes werden erhoben.
  */
 export function erklaertNullWrites(text: string): boolean {
-  const zahlen = [...text.matchAll(/PRODUKTWRITES:?\s*\*{0,2}\s*(\d+)/g)].map((m) => Number(m[1]));
+  const zahlen = [...ohneCodebloecke(text).matchAll(PRODUKTWRITES_ZEILE)].map((m) => Number(m[1]));
   return zahlen.length > 0 && zahlen.every((n) => n === 0);
 }
 
@@ -179,15 +191,19 @@ export interface Urteil {
  *
  * SCHAERFE (5): „Zustellsperre" wird von `hatZustellsperre` entschieden, nicht mehr von einem
  * Raster in dieser Datei. Der Unterschied ist nicht kosmetisch — er betraegt 313 Berichte.
+ *
+ * Ob und welches Gesamturteil vorliegt, entscheidet ebenfalls nur `gesamturteil` — dieselbe
+ * Funktion fuer jeden Leser (R-1231). Eine `PRODUKT:`-Zeile ersetzt kein fehlendes Gesamturteil.
  */
 export function urteilVon(dateiname: string, text: string): Urteil {
-  if (istTeilurteil(dateiname) || !/GESAMTURTEIL/i.test(text) || hatZustellsperre(text)) {
+  const spruch = gesamturteil(text);
+  if (istTeilurteil(dateiname) || spruch === null || hatZustellsperre(text)) {
     return { sachurteil: false, spruch: null, produkt: null };
   }
   return {
     sachurteil: true,
-    spruch: /GESAMTURTEIL:?\s*([A-ZÄÖÜ]+)/.exec(text)?.[1] ?? null,
-    produkt: /^PRODUKT:?\s*([A-ZÄÖÜ]+)/m.exec(text)?.[1] ?? null,
+    spruch,
+    produkt: /^PRODUKT:?\s*([A-ZÄÖÜ]+)/m.exec(ohneCodebloecke(text))?.[1] ?? null,
   };
 }
 
