@@ -87,7 +87,11 @@ function serverAntwortet(): void {
   stand = {
     ...stand,
     rolle: server.rolle === undefined ? stand.rolle : server.rolle,
-    geprueftAm: uhr,
+    // Jede Serverantwort ist eine NEUE Antwort mit eigenem, späterem Zeitpunkt — wie im Produkt
+    // `dataUpdatedAt` der `/auth/me`-Abfrage. Ohne das `+ 1` trüge eine zweite Antwort bei
+    // unveränderter Testuhr denselben Wert wie die vorige, und die Leiste sähe keine neue
+    // Bestätigung (Nacharbeit 17: genau daran blieben wartende Lese- und Fortsetzwünsche hängen).
+    geprueftAm: Math.max(uhr, stand.geprueftAm + 1),
   };
   zeichne();
 }
