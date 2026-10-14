@@ -101,15 +101,23 @@ Legende: **erfüllt (heutiger Weg)** — der Originalzweck ist an der genannten 
   laut Nutzerregel 24 Plätze freigegeben. **Erfüllt.**
 - Arbeitsordner unter nur einem Namensmuster gesucht: heute fester Pfad
   `W = P / 'arbeitsbereich'` (`produkt.py` Z. 9–10); es wird nicht gesucht. **Erfüllt.**
-- Read-only, sobald „PRODUKTWRITES: 0“ im Fließtext steht: siehe K14. **Erfüllt.**
+- Read-only, sobald „PRODUKTWRITES: 0“ im Fließtext steht: siehe K14. **Teilweise:** Belegt
+  sind die Fließtext-Härtung im Produktbaum und die Erfassung neuer Dateien einzeln; die
+  Auftragsart-Erkennung des heutigen Wegs ist ungeklärt.
 - Kein biome: heute `formatieren` und eine `biome check`-Prüfung im Plan. `befund._biome_diagnosen`
   (Z. 298–350) macht daraus konkrete Datei-Befunde. **Erfüllt.**
-- Verschlechterung bereits roter Testdateien nicht gezählt: Heute wird jede ausgewählte Suite
-  assertion-genau aus dem nativen Vitest-JSON ausgewertet; jede rote Assertion ist ein Befund
-  (`befund.py` Z. 543–680). Rote Vollchecks gehen an Ben zur Einordnung „verursacht oder
-  unveränderte Basis“ (Z. 786–790; Prompt in `benurteil.prompt`). **Teilweise:** Ein
-  automatischer Vergleich Basis gegen Kandidat je Testdatei ist in den Modulen nicht vorhanden.
-  Die Einordnung beruht auf Bens Urteil.
+- Verschlechterung bereits roter Testdateien nicht gezählt. Der damalige Fehler war die Zählung
+  auf Dateiebene: Eine schon rote Datei konnte nicht „noch röter“ werden. Heute wird jede
+  ausgewählte Suite assertion-genau aus dem nativen Vitest-JSON ausgewertet. Jede rote Assertion
+  wird einzeln gezählt und ist ein eigener Befund mit Datei und Fall (`befund.py` Z. 543–680, Zähler
+  je Assertion Z. 567–580). Eine zusätzlich rote Assertion in einer bereits roten Datei erscheint
+  damit als weiterer Befund. Ob ein Fehler verursacht ist oder zur unveränderten Basis gehört, ordnet
+  Ben ein (Z. 786–790; Prompt in `benurteil.prompt`: „Verursachte Fehler prüfen, fremde
+  unveränderte Basisfehler getrennt benennen“). R-1248 verlangt die Erfassung, nicht eine
+  bestimmte Vergleichsimplementierung.
+  **Teilweise belegt:** Der Weg erfasst Verschlechterungen nach seinem Aufbau. Es fehlt ein
+  konkreter Fallbeleg, also ein Prüflauf, in dem eine neu rote Assertion in einer bereits roten
+  Datei tatsächlich als Befund ausgewiesen wurde. Das ist eine Beleglücke, keine fehlende Funktion.
 
 ### K5 · R-1258 — kein Paket, rotes Schein-Urteil, falscher Pfad
 
@@ -218,28 +226,42 @@ Legende: **erfüllt (heutiger Weg)** — der Originalzweck ist an der genannten 
 
 ### K14 · R-1486 — Auftragsart aus ausdrücklicher Zeile
 
-- Heute: Die Auftragsart steht in strukturierten Feldern von `AUFTRAG.json` (`allowed_paths`,
-  `checks`, `browser`, `postgres`); Fließtext wird nicht ausgewertet. `produkt.py` `kandidat`
-  (Z. 737–738) verlangt eine Produktänderung („Keine Produktänderung geliefert“). Ohne
-  ausdrückliche Ausnahme gilt der Auftrag also als bauend.
-- Zweiter Messfehler (`git status` ohne `-uall`): Heute werden neue Dateien einzeln über
-  `git ls-files --others --exclude-standard` erhoben (Z. 737).
-- Produktbaum: `tools/schon-eingebaut.ts` `erklaertNullWrites` liest nur eine ausdrückliche
-  `PRODUKTWRITES`-Zeile.
-- Bewertung: **erfüllt.**
+- **Belegt: Fließtext-Härtung im Produktbaum.** `tools/schon-eingebaut.ts` `erklaertNullWrites`
+  liest nur eine ausdrückliche `PRODUKTWRITES`-Zeile. Der Originalsatz „PRODUKTWRITES: 0 ist hier
+  ausdruecklich das Versagen“ im Fließtext erklärt nichts; fehlt die Zeile, wird die Rückgabe als
+  bauend erhoben. Gegenproben stehen in `tests/structure/pruefdienst-urteilsregel-haertung.test.ts`.
+- **Belegt: Erfassung neuer Dateien einzeln (zweiter Messfehler).** Statt `git status` ohne
+  `-uall` erhebt `produkt.py` `kandidat` neue Dateien einzeln über
+  `git ls-files --others --exclude-standard` (Z. 737).
+- **Ungeklärt: Auftragsart-Erkennung des heutigen Wegs.** In den sieben ausgewerteten Modulen gibt
+  es kein ausdrückliches Feld für die Auftragsart und keine Erkennung eines ausdrücklich lesenden
+  Auftrags. Die Felder `allowed_paths`, `checks`, `browser` und `postgres` in `AUFTRAG.json`
+  bestimmen keine Auftragsart. Die Änderungsprüfung in `produkt.py` (Z. 737–742) ist keine
+  Auftragsart-Erkennung: Sie lässt `merge_commit` und `build_origin_file` als Alternativen zu einer
+  Änderung zu. Ob es die Unterscheidung „lesend/bauend“ im heutigen Weg gibt und welcher Standard
+  dort gilt, ist nicht belegt.
+- Bewertung: **teilweise.** Anerkannt sind nur die beiden belegten Teile; die Auftragsart-Erkennung
+  mit ausdrücklichem Feld und Standardfall bleibt **ungeklärt**.
 
 ### K15 · R-2021 — Ben wird nicht ausgelassen, läuft parallel
 
-- Heute: Ben ist eine Pflichtphase vor der Auslieferung (`ben`, `ben_vor_lieferabschluss`,
-  `produkt.py` Z. 957–1060, 1176). Er läuft auf dem eingefrorenen Commit (`HEAD == SHA`, sauberer
-  Baum) in einer schreibgeschützten Sandbox (`--sandbox read-only`, Z. 975, 1020). Das entspricht
-  „andere Fläche, eingefrorener Commit“. Ausgelassen wird er nicht.
-- Unterschied: Innerhalb eines Auftrags läuft Ben nach der maschinellen Prüfung, nicht gleichzeitig
-  zur Bearbeitung. Gleichzeitig laufen die Bens verschiedener Aufträge. R-2021 (30.07.: „parallel,
-  keine Wartezeit“) und R-1362 (21.08.: „jetzt wartet die Prüfung“) widersprechen sich hier. Der
-  jüngere Punkt R-1362 legt das Warten ausdrücklich fest; der heutige Weg folgt ihm.
-- Bewertung: **erfüllt im Zweck (Ben nie ausgelassen, eigene Fläche).** Die Gleichzeitigkeit
-  innerhalb eines Auftrags ist durch R-1362 ersetzt.
+Drei Teile, getrennt bewertet:
+
+- **Pflichtprüfung, „ben wird nicht ausgelassen“: erfüllt.** Ben ist eine Phase vor der
+  Auslieferung. Ohne `erfuellt` wird nicht geliefert (`produkt.py` `ben`, Z. 957–1060, Annahme
+  Z. 1057; `ben_vor_lieferabschluss`, Z. 1176).
+- **Eingefrorener Stand, andere Fläche: erfüllt.** Ben prüft nur bei `HEAD == SHA` und sauberem
+  Baum (Z. 975) und läuft in einer schreibgeschützten Sandbox (`--sandbox read-only`, Z. 1020).
+- **Parallelität zur weiterarbeitenden Hand: ungeklärt.**
+  - R-2021 verlangt, dass Ben gleichzeitig zur weiterarbeitenden Hand gegenprüft. R-1362 verlangt,
+    dass die Prüfung die Maschinenprüfung **desselben geprüften Standes** abwartet. Beides kann
+    zugleich gelten; R-1362 hebt R-2021 nicht auf.
+  - In den ausgewerteten Quellen ist weder belegt, dass die Hand während Bens Prüfung am Auftrag
+    weiterarbeitet, noch gibt es eine Entscheidung, die R-2021 ablöst.
+  - Belegt ist nur, dass die Bens verschiedener Aufträge gleichzeitig laufen (K12). Das ist nicht
+    die in R-2021 gemeinte Parallelität.
+- Bewertung: **teilweise.** Pflichtprüfung und eingefrorener Stand sind erfüllt; die Parallelität
+  ist ausdrücklich **ungeklärt**.
 
 ### K16 — Lieferbeleg, Abgrenzung, Widersprüche
 
@@ -250,7 +272,8 @@ Legende: **erfüllt (heutiger Weg)** — der Originalzweck ist an der genannten 
   **R-1238** (Abnahmemodell K-E5), **R-1301** (Zweitinstanz-Prüfung).
 - Gesonderter Auftrag: **R-1235** (Fäule-Werkzeug), siehe
   `docs/entscheidungen/r1235-faeule-werkzeug.md`. Es gehört nicht zu diesem Auftrag.
-- Quellenwidersprüche: R-1478 (K13) und R-2021 gegen R-1362 (K15) sind oben eingeordnet.
+- Quellenwidersprüche: R-1478 (K13) ist oben eingeordnet. Zwischen R-2021 und R-1362 besteht kein
+  Widerspruch (K15); offen ist dort nur, ob die Parallelität belegt ist.
   Außerdem: Der Altbestand führt R-1201, R-1202, R-1231, R-1248 und R-1258 als `ERLEDIGT`, nennt
   aber jeweils offene Reste. Maßgeblich sind die Reste, bewertet am heutigen Weg.
 
@@ -260,10 +283,12 @@ Legende: **erfüllt (heutiger Weg)** — der Originalzweck ist an der genannten 
 | --- | --- | --- |
 | K1 | Kein Alarm „Stände warten, seit über 1 h kein echtes Urteil“; Anzeigeort von `DIENST.json` nicht belegt | technische Lücke in der Koordination |
 | K2 | Vollständigkeit der Ben-Belegpfade nur über `benfortsetzung` belegbar | Beleglücke (Modul nicht in der Quellenführung) |
-| K4 | Kein automatischer Vergleich roter Tests zwischen Basis und Kandidat | technische Lücke; heute Bens Einordnung |
-| K9 | Produktnähe und Tests nicht in der Reihenfolge; Verhältnis zur zentralen Priorität | **offene Produktentscheidung** |
+| K4 | Kein Fallbeleg, dass eine neu rote Assertion in einer bereits roten Datei als Befund ausgewiesen wurde | Beleglücke |
+| K9 | Produktnähe und Tests nicht in der Reihenfolge; die zentrale Priorität allein belegt keine Ablösung von R-1380 | **offene Produktentscheidung** |
 | K10 | Keine Messung der Übereinstimmung von Maschinen- und Benurteil | technische Lücke in der Koordination |
+| K14 | Auftragsart-Erkennung mit ausdrücklichem Feld und Standardfall im heutigen Weg nicht belegt | ungeklärt |
+| K15 | Parallelität der Gegenprüfung zur weiterarbeitenden Hand nicht belegt; keine ablösende Entscheidung | ungeklärt |
 
-Die technischen Lücken betreffen `dienst.py`, `befund.py` und `produkt.py`. Diese Dateien liegen
+Die technischen Lücken (K1, K10) betreffen `dienst.py`, `befund.py` und `produkt.py`. Diese Dateien liegen
 nicht in den `allowed_paths` dieses Auftrags (`AUFTRAG.json`). Diese Grenze ist konkret belegt.
 Ein fehlender Zugang wird damit nicht behauptet.

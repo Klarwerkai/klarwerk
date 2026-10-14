@@ -90,4 +90,39 @@ describe("Gesamt-Prüfdienst · Bestandsabgleich", () => {
       expect(text).toContain(abgeschlossen);
     }
   });
+
+  // Bens Befunde (Nacharbeit 7): nur Belegtes anerkennen, Ungeklärtes als ungeklärt führen,
+  // keine Lieferpflicht ohne Quellenanforderung erfinden.
+  const abschnitt = (kopf: string): string => {
+    const text = lies(DOKUMENT);
+    const start = text.indexOf(kopf);
+    const ende = text.indexOf("\n### ", start + kopf.length);
+    return text.slice(start, ende === -1 ? undefined : ende).replace(/\s+/g, " ");
+  };
+
+  it("K14: nur Fließtext-Härtung und Einzeldateierfassung anerkannt, Erkennung ungeklärt", () => {
+    const k14 = abschnitt("### K14 · R-1486 — ");
+    expect(k14).toContain("**Belegt: Fließtext-Härtung im Produktbaum.**");
+    expect(k14).toContain("**Belegt: Erfassung neuer Dateien einzeln (zweiter Messfehler).**");
+    expect(k14).toContain("**Ungeklärt: Auftragsart-Erkennung des heutigen Wegs.**");
+    expect(k14).toContain("bestimmen keine Auftragsart");
+    expect(k14).not.toContain("Bewertung: **erfüllt.**");
+  });
+
+  it("K15: keine Ablösung durch R-1362; Parallelität getrennt und ungeklärt", () => {
+    const k15 = abschnitt("### K15 · R-2021 — ");
+    expect(k15).toContain("R-1362 hebt R-2021 nicht auf");
+    expect(k15).toContain("**Parallelität zur weiterarbeitenden Hand: ungeklärt.**");
+    expect(k15).not.toContain("durch R-1362 ersetzt");
+    expect(flach(DOKUMENT)).not.toContain("R-2021 gegen R-1362 (K15) sind oben eingeordnet");
+  });
+
+  it("K4: Ergebnis am vorhandenen Weg, Beleglücke statt erfundener Vergleichspflicht", () => {
+    const k4 = abschnitt("### K4 · R-1248 — ");
+    expect(k4).toContain(
+      "R-1248 verlangt die Erfassung, nicht eine bestimmte Vergleichsimplementierung",
+    );
+    expect(k4).toContain("Das ist eine Beleglücke, keine fehlende Funktion.");
+    expect(flach(DOKUMENT)).not.toContain("Kein automatischer Vergleich roter Tests");
+  });
 });
