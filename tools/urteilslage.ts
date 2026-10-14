@@ -65,27 +65,6 @@ const LEER = /^[ \t]*$/;
 /** Ein einzelner Blockzitat-Marker am Zeilenanfang. */
 const ZITATMARKER = /^ {0,3}> ?/;
 
-/**
- * Wie tief die Zeile zitiert ist, und was nach den Zitatmarkern steht.
- *
- * `hoechstens` begrenzt, wie viele Marker abgenommen werden. In einem offenen Codeblock ist das
- * die Zitattiefe des Blocks: Weitere `>` sind Codeinhalt, kein neues Zitat (Nacharbeit 3).
- */
-function zitatlage(
-  zeile: string,
-  hoechstens = Number.POSITIVE_INFINITY,
-): { tiefe: number; inhalt: string } {
-  let tiefe = 0;
-  let inhalt = zeile;
-  while (tiefe < hoechstens) {
-    const marker = ZITATMARKER.exec(inhalt);
-    if (!marker) break;
-    inhalt = inhalt.slice(marker[0].length);
-    tiefe += 1;
-  }
-  return { tiefe, inhalt };
-}
-
 /** Ein Listenmarker (`-`, `+`, `*`, `1.`, `1)`) mit bis drei Leerzeichen Einzug davor. */
 const LISTENMARKER = /^( {0,3})([-+*]|\d{1,9}[.)])( +|$)/;
 
@@ -102,6 +81,38 @@ function ausgerollt(zeile: string): string {
 
 function einzugVon(zeile: string): number {
   return /^ */.exec(zeile)?.[0].length ?? 0;
+}
+
+/** Ein offener Behälter: ein Blockzitat oder ein Listenpunkt mit dem Einzug seines Inhalts. */
+type Behaelter = { art: "zitat" } | { art: "liste"; breite: number };
+
+/**
+ * Setzt die Zeile den Behälter fort? Dann der Rest hinter seinem Marker bzw. Einzug, sonst `null`.
+ * Ein Zitat verlangt sein `>`, ein Listenpunkt seinen Einzug; eine Leerzeile setzt nur den
+ * Listenpunkt fort.
+ */
+function fortsetzung(behaelter: Behaelter, rest: string): string | null {
+  const zeile = ausgerollt(rest);
+  if (behaelter.art === "zitat") {
+    const marker = ZITATMARKER.exec(zeile);
+    return marker ? zeile.slice(marker[0].length) : null;
+  }
+  if (LEER.test(zeile)) return "";
+  return einzugVon(zeile) >= behaelter.breite ? zeile.slice(behaelter.breite) : null;
+}
+
+/** Öffnet die Zeile einen neuen Behälter? Dann dieser und der Rest dahinter, sonst `null`. */
+function neuerBehaelter(rest: string): { behaelter: Behaelter; rest: string } | null {
+  const zeile = ausgerollt(rest);
+  const zitat = ZITATMARKER.exec(zeile);
+  if (zitat) return { behaelter: { art: "zitat" }, rest: zeile.slice(zitat[0].length) };
+  const marker = LISTENMARKER.exec(zeile);
+  if (!marker) return null;
+  const vor = (marker[1] ?? "").length + (marker[2] ?? "").length;
+  const abstand = (marker[3] ?? "").length;
+  // Ohne Inhalt oder mit fünf und mehr Leerzeichen zählt genau eines zum Marker.
+  const breite = vor + (abstand === 0 || abstand > 4 ? 1 : abstand);
+  return { behaelter: { art: "liste", breite }, rest: zeile.slice(breite) };
 }
 
 /**
@@ -125,76 +136,63 @@ function einzugVon(zeile: string): number {
  * diesem Inhalt gelesen, ein neuer Listenpunkt beginnt wie ein Textanfang. Eine nicht leere Zeile
  * mit weniger Einzug beendet den Listenpunkt — und einen darin geöffneten Zaun; sie wird selbst
  * normal gelesen. Im offenen Block wird nur dessen eigener Einzug abgenommen.
+ *
+ * VERSCHACHTELUNG (Nacharbeit 5): Zitate und Listenpunkte stehen auf EINEM Stapel in der
+ * Reihenfolge, in der sie geöffnet wurden — `- > ```` ist ein Zitat im Listenpunkt, `> - ```` ein
+ * Listenpunkt im Zitat. Jede Zeile wird Behälter für Behälter von außen nach innen fortgesetzt
+ * (Zitat: sein `>`, Listenpunkt: sein Einzug). Im offenen Codeblock werden nur die Behälter des
+ * Blocks abgenommen und keine neuen geöffnet; setzt die Zeile nicht alle fort, endet der Block, und
+ * die Zeile wird normal gelesen.
  */
 export function ohneCodebloecke(text: string): string {
   const behalten: string[] = [];
-  let zaun: { zeichen: string; laenge: number; tiefe: number; einzug: number } | null = null;
+  let zaun: { zeichen: string; laenge: number } | null = null;
   let eingerueckt = false;
   let vorherLeer = true;
-  let vorherTiefe = 0;
-  /** Inhaltseinzüge der offenen Listenpunkte, innen zuletzt (Spalten hinter den Zitatmarkern). */
-  let listen: number[] = [];
+  /** Die offenen Behälter, außen zuerst. Im offenen Codeblock genau die des Blocks. */
+  let stapel: Behaelter[] = [];
   const teile = text.split("\n");
   for (const [i, teil] of teile.entries()) {
     const roh = i < teile.length - 1 ? `${teil}\n` : teil;
-    const ohneCr = teil.replace(/\r$/, "");
+    let rest = teil.replace(/\r$/, "");
+    let passend = 0;
+    for (const behaelter of stapel) {
+      const weiter = fortsetzung(behaelter, rest);
+      if (weiter === null) break;
+      rest = weiter;
+      passend += 1;
+    }
     if (zaun !== null) {
-      // Im offenen Block nur dessen eigenen Zitatkontext abnehmen — `> ```` darin ist Code.
-      const imBlock = zitatlage(ohneCr, zaun.tiefe);
-      const imZitat = imBlock.tiefe >= zaun.tiefe;
-      const zeileImBlock = ausgerollt(imBlock.inhalt);
-      // Ebenso nur den Einzug des Listenpunkts, in dem der Block steht.
-      const imListenpunkt = LEER.test(zeileImBlock) || einzugVon(zeileImBlock) >= zaun.einzug;
-      if (imZitat && imListenpunkt) {
-        const zu = ZAUN_ZU.exec(zeileImBlock.slice(zaun.einzug));
+      if (passend === stapel.length) {
+        // Im Block: Weitere `>` oder Listenmarker sind Codeinhalt, nur ein Schlusszaun zählt.
+        const zu = ZAUN_ZU.exec(ausgerollt(rest));
         if (zu?.[1] && zu[1][0] === zaun.zeichen && zu[1].length >= zaun.laenge) {
           zaun = null;
           vorherLeer = true;
         }
         continue;
       }
-      // Zitat oder Listenpunkt des Blocks enden hier, und mit ihnen der Block; die Zeile wird
-      // normal gelesen.
+      // Ein Behälter des Blocks endet hier, und mit ihm der Block; die Zeile wird normal gelesen.
       zaun = null;
     }
-    const lage = zitatlage(ohneCr);
-    const tiefe = lage.tiefe;
-    if (tiefe !== vorherTiefe) {
-      // Ein neuer Zitatbehälter beginnt wie ein Textanfang; ein verlassener beendet seinen Block.
+    if (passend < stapel.length) {
+      // Ein verlassener Behälter beendet seinen eingerückten Block.
+      stapel = stapel.slice(0, passend);
       eingerueckt = false;
-      listen = [];
-      if (tiefe > vorherTiefe) vorherLeer = true;
-      vorherTiefe = tiefe;
     }
-    const hinterZitat = ausgerollt(lage.inhalt);
-    let basis = 0;
-    if (!LEER.test(hinterZitat)) {
-      const einzug = einzugVon(hinterZitat);
-      while (listen.length > 0 && (listen[listen.length - 1] ?? 0) > einzug) {
-        listen.pop();
-        eingerueckt = false;
-      }
-      basis = listen[listen.length - 1] ?? 0;
+    // Neue Behälter, in der Reihenfolge der Zeile (`- > ```, `> - ```, `- 1. ```).
+    for (let neu = neuerBehaelter(rest); neu; neu = neuerBehaelter(rest)) {
+      stapel.push(neu.behaelter);
+      rest = neu.rest;
+      // Ein neuer Behälter beginnt wie ein Textanfang.
+      eingerueckt = false;
+      vorherLeer = true;
     }
-    let zeile = hinterZitat.slice(Math.min(basis, einzugVon(hinterZitat)));
-    if (!(EINGERUECKT.test(zeile) && (eingerueckt || vorherLeer))) {
-      // Neue Listenpunkte, auch mehrere in einer Zeile (`- 1. ```).
-      for (let marker = LISTENMARKER.exec(zeile); marker; marker = LISTENMARKER.exec(zeile)) {
-        const vor = (marker[1] ?? "").length + (marker[2] ?? "").length;
-        const abstand = (marker[3] ?? "").length;
-        // Ohne Inhalt oder mit fünf und mehr Leerzeichen zählt genau eines zum Marker.
-        const breite = vor + (abstand === 0 || abstand > 4 ? 1 : abstand);
-        basis += breite;
-        listen.push(basis);
-        zeile = zeile.slice(breite);
-        eingerueckt = false;
-        vorherLeer = true;
-      }
-    }
+    const zeile = ausgerollt(rest);
     const auf = ZAUN_AUF.exec(zeile);
     // Ein Backtick-Zaun darf in seiner Info-Zeichenkette keinen Backtick tragen (CommonMark).
     if (auf?.[1] && !(auf[1][0] === "`" && (auf[2] ?? "").includes("`"))) {
-      zaun = { zeichen: auf[1][0] as string, laenge: auf[1].length, tiefe, einzug: basis };
+      zaun = { zeichen: auf[1][0] as string, laenge: auf[1].length };
       eingerueckt = false;
       continue;
     }
