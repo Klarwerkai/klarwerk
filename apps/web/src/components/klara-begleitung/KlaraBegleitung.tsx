@@ -339,6 +339,36 @@ export function KlaraBegleitung({
     melderBeenden.current = null;
   }, []);
 
+  /** Ein bewusstes Fortsetzen, das noch auf Melderzustand und frische Rechtebestätigung wartet. */
+  const wiederaufnahme = useRef<Wiederaufnahme | null>(null);
+
+  /**
+   * Nacharbeit 18 (Ben): eine Unterbrechung WÄHREND ein Fortsetzen wartet — Fokusverlust,
+   * verborgenes Fenster, Sperrbildschirm — entwertet den Auftrag DAUERHAFT. Sein Melder wird
+   * freigegeben, und weder die Rückkehr noch eine verspätete Serverbestätigung aktivieren ihn noch.
+   * Es braucht einen neuen, bewussten Klick. Gibt zurück, ob ein Auftrag entwertet wurde.
+   */
+  const entwerteWiederaufnahme = useCallback(
+    (grund: "fokusverlust" | "verborgen" | "sperrbildschirm"): boolean => {
+      if (wiederaufnahme.current === null) {
+        return false;
+      }
+      wiederaufnahme.current = null;
+      beendeMelder();
+      setMelder("nur_fenster");
+      setMeldung(
+        t(
+          grund === "sperrbildschirm"
+            ? "begleitung.fehler.gesperrtBeimStart"
+            : "begleitung.fehler.fokusBeimStart",
+        ),
+      );
+      setB((alt) => systemereignis(alt, grund, jetzt()));
+      return true;
+    },
+    [beendeMelder, jetzt, t],
+  );
+
   /**
    * Richtet den Melder neu ein — synchron aus der Geste (Erlaubnisanfrage vor dem ersten `await`).
    * `weiter` bekommt den tatsächlichen Zustand; ein überholter Versuch ruft `weiter` nie und gibt
@@ -365,6 +395,9 @@ export function KlaraBegleitung({
           setMelder("nur_fenster");
           setMeldung(t("begleitung.fehler.gesperrtBeimStart"));
         }
+        // Nacharbeit 18: auch NACH dem Melderstart, solange das Fortsetzen noch auf die
+        // Rechtebestätigung wartet, entwertet eine Sperre den Auftrag.
+        entwerteWiederaufnahme("sperrbildschirm");
         setB((alt) => systemereignis(alt, "sperrbildschirm", jetzt()));
       };
       // Nacharbeit 12: Fokusverlust WÄHREND der Einrichtung entwertet den Versuch genauso — auch
@@ -394,7 +427,7 @@ export function KlaraBegleitung({
         weiter(r.zustand);
       });
     },
-    [beendeMelder, jetzt, t],
+    [beendeMelder, entwerteWiederaufnahme, jetzt, t],
   );
 
   // Außerhalb von „aktiv" läuft kein Melder: Pause, Stopp, Ablauf und Abbau geben ihn frei.
@@ -412,18 +445,29 @@ export function KlaraBegleitung({
   useEffect(() => {
     const weg = (): void => {
       fokusVerloren.current = true;
+      // Nacharbeit 18: ein wartendes Fortsetzen ist damit endgültig hinfällig.
+      entwerteWiederaufnahme("fokusverlust");
       setB((alt) => (alt.phase === "aktiv" ? systemereignis(alt, "fokusverlust", jetzt()) : alt));
     };
     const zurueck = (): void => {
       fokusVerloren.current = false;
     };
+    // Verborgen, während ein Fortsetzen wartet (die Sichtprüfung des Lesens läuft nur bei aktiver
+    // Begleitung): ebenfalls dauerhaft entwerten.
+    const sicht = (): void => {
+      if (document.hidden) {
+        entwerteWiederaufnahme("verborgen");
+      }
+    };
     window.addEventListener("blur", weg);
     window.addEventListener("focus", zurueck);
+    document.addEventListener("visibilitychange", sicht);
     return () => {
       window.removeEventListener("blur", weg);
       window.removeEventListener("focus", zurueck);
+      document.removeEventListener("visibilitychange", sicht);
     };
-  }, [jetzt]);
+  }, [entwerteWiederaufnahme, jetzt]);
 
   const aktiv = b.phase === "aktiv";
 
@@ -520,6 +564,9 @@ export function KlaraBegleitung({
     const system = (e: Event): void => {
       const art = (e as CustomEvent<{ ereignis?: unknown }>).detail?.ereignis;
       if (istSystemereignis(art)) {
+        if (art === "sperrbildschirm" || art === "verborgen" || art === "fokusverlust") {
+          entwerteWiederaufnahme(art);
+        }
         setB((alt) => systemereignis(alt, art, jetzt()));
       }
     };
@@ -529,7 +576,7 @@ export function KlaraBegleitung({
       window.removeEventListener(KONTEXT_EREIGNIS, kontext);
       window.removeEventListener(SYSTEM_EREIGNIS, system);
     };
-  }, [abtasten, fordereLesen, pruefeRechte, jetzt]);
+  }, [abtasten, entwerteWiederaufnahme, fordereLesen, pruefeRechte, jetzt]);
 
   // Solange nichts läuft: eingerichtete Vorgänge auf der Seite finden (Seitenwechsel, Nachladen).
   useEffect(() => {
@@ -564,7 +611,6 @@ export function KlaraBegleitung({
   //      Grund da. Bleibt die Bestätigung aus, steht „unbestätigt" da und nichts wird aktiviert.
   //   4. Eine Zugriffsmeldung, die eine spätere Bestätigung mit gültigem Recht überholt, wird
   //      entfernt — ohne dass dadurch von selbst fortgesetzt würde.
-  const wiederaufnahme = useRef<Wiederaufnahme | null>(null);
   const meldungRechte = useRef(false);
 
   const entscheideWiederaufnahme = useCallback(() => {

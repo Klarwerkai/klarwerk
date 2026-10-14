@@ -96,6 +96,7 @@ wenn der Melder läuft; vorher steht „wird eingerichtet“, während einer Pau
 | Kontowechsel | Pause; anderes Konto sieht nichts | nur mit demselben Konto |
 | Rechteentzug (Rolle passt nicht mehr, Konto bleibt angemeldet) | Pause, Zeitpunkt gemerkt | ein bewusster Klick auf „Fortsetzen“: er holt eine frische Serverbestätigung (`/auth/me`), wartet darauf („Zugriff wird bestätigt …“) und prüft dann Konto, Rolle, Frist und Hostzustand. Bei gültiger Bestätigung setzt er fort, ohne Neuladen; sonst nennt er den tatsächlichen Grund. Eine überholte Zugriffsmeldung verschwindet mit der nächsten gültigen Bestätigung, ohne von selbst fortzusetzen |
 | Server bestätigt den Zugriff nicht binnen 10 s | Pause „rechteunbestaetigt“, nichts gelesen | wie beim Entzug |
+| Fokusverlust, verborgenes Fenster oder Sperre, während ein Fortsetzen noch auf die Bestätigung wartet | das wartende Fortsetzen wird endgültig verworfen, sein Melder freigegeben; Pause mit dem Grund der Unterbrechung | nur durch einen neuen Klick; weder die Rückkehr noch eine verspätete Serverbestätigung setzen fort |
 | Neuladen | Pause; Endpunkt bleibt gleich | durch den Nutzer, frischer Kontext |
 | Endpunkt erreicht | Ende | nicht möglich; neu starten |
 | Stopp | Ende; Kontext verworfen | nicht möglich; neu starten |

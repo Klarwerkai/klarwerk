@@ -1045,3 +1045,148 @@ describe("K7 · jede lokale Lesung braucht eine frische Serverbestätigung", () 
     expect(q("begleitung-auskunft")?.textContent).toContain(": 2 gelesene Felder");
   });
 });
+
+// ================================================================================================
+// NACHARBEIT 18 (Ben): eine Unterbrechung, WÄHREND das Fortsetzen auf die verzögerte
+// Serverbestätigung wartet. Der Melder ist dann schon fertig eingerichtet — seine eigenen
+// Start-Wächter greifen nicht mehr. Vorher setzte die verspätete Bestätigung nach der Rückkehr
+// trotzdem fort. Jetzt entwertet die Unterbrechung den wartenden Auftrag dauerhaft: der Melder
+// wird freigegeben, Rückkehr und späte Bestätigung lassen die Begleitung pausiert.
+// ================================================================================================
+describe("K7/K2/K3 · Unterbrechung während das Fortsetzen auf die Bestätigung wartet", () => {
+  const FOKUS =
+    "Pausiert, weil ein anderes Fenster im Vordergrund ist. Die Rückkehr setzt nicht von selbst fort.";
+  const SPERRE = "Pausiert, weil der Bildschirm gesperrt wurde.";
+
+  function verberge(hidden: boolean): void {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+  }
+
+  /** Start, Pause, Fortsetzen bei schweigendem Server; der Melder (falls da) ist danach fertig. */
+  async function fortsetzenWartet(probe: Melderprobe | null): Promise<void> {
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    await flush();
+    act(() => knopf("Pause").click());
+    server.antwortet = false;
+    act(() => knopf("Fortsetzen").click());
+    await flush();
+    if (probe) {
+      expect(probe.signale.length).toBe(2);
+      expect(probe.signale[1]?.aborted).toBe(false);
+    }
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain(
+      "Der Zugriff wird beim Server bestätigt",
+    );
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+  }
+
+  /** Die verzögerte Serverantwort kommt — mit unverändert gültigen Rechten. */
+  function spaeteBestaetigung(): void {
+    server.antwortet = true;
+    vergeht(1000);
+    act(() => serverAntwortet());
+  }
+
+  /** Bleibt pausiert, liest nichts; auch nach Ablauf der Wartefrist; erst ein Klick setzt fort. */
+  async function bleibtPausiertBisZumKlick(
+    grund: string,
+    probe: Melderprobe | null,
+  ): Promise<void> {
+    const lesen = vi.spyOn(document, "querySelectorAll");
+    act(() => setzeWert(leistung(), "250"));
+    vergeht(11_000);
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    expect(q("begleitung-grund")?.textContent).toBe(grund);
+    expect(q("begleitung-hinweis")).toBeNull();
+    expect(vorgangAbgefragt(lesen.mock.calls)).toBe(false);
+    lesen.mockRestore();
+    if (probe) {
+      expect(probe.signale[1]?.aborted).toBe(true);
+    }
+    ohneLeck();
+
+    act(() => knopf("Fortsetzen").click());
+    await flush();
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+  }
+
+  it("Fokusverlust und Rückkehr: die verspätete Bestätigung setzt nicht fort, der Melder ist frei", async () => {
+    const probe = idleAttrappe("ok");
+    await fortsetzenWartet(probe);
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain(
+      "anderes Fenster in den Vordergrund",
+    );
+    spaeteBestaetigung();
+    await bleibtPausiertBisZumKlick(FOKUS, probe);
+  });
+
+  it("Fokusverlust ohne Idle Detection: ebenso pausiert nach Rückkehr und später Bestätigung", async () => {
+    await fortsetzenWartet(null);
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    spaeteBestaetigung();
+    await bleibtPausiertBisZumKlick(FOKUS, null);
+  });
+
+  it("Fenster verborgen und wieder sichtbar: die verspätete Bestätigung setzt nicht fort", async () => {
+    const probe = idleAttrappe("ok");
+    await fortsetzenWartet(probe);
+    try {
+      verberge(true);
+      verberge(false);
+    } finally {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    }
+    expect(q("begleitung-grund")?.textContent).toContain("Fenster verborgen");
+    spaeteBestaetigung();
+    const grund = q("begleitung-grund")?.textContent ?? "";
+    expect(grund).toContain("Fenster verborgen");
+    await bleibtPausiertBisZumKlick(grund, probe);
+  });
+
+  it("Sperre über den fertig eingerichteten Melder: die verspätete Bestätigung setzt nicht fort", async () => {
+    const probe = idleAttrappe("ok");
+    await fortsetzenWartet(probe);
+    sperreBildschirm(probe);
+    expect(q("begleitung-grund")?.textContent).toBe(SPERRE);
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain(
+      "während die Begleitung eingerichtet wurde",
+    );
+    spaeteBestaetigung();
+    await bleibtPausiertBisZumKlick(SPERRE, probe);
+  });
+
+  it("Sperre vom Host-Adapter: die verspätete Bestätigung setzt nicht fort", async () => {
+    await fortsetzenWartet(null);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(SYSTEM_EREIGNIS, { detail: { ereignis: "sperrbildschirm" } }),
+      );
+    });
+    spaeteBestaetigung();
+    await bleibtPausiertBisZumKlick(SPERRE, null);
+  });
+
+  it("ohne Unterbrechung setzt dieselbe verspätete Bestätigung fort (Gegenprobe)", async () => {
+    const probe = idleAttrappe("ok");
+    await fortsetzenWartet(probe);
+    spaeteBestaetigung();
+    await flush();
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+    expect(probe.signale[1]?.aborted).toBe(false);
+  });
+});
