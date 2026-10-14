@@ -40,7 +40,8 @@
  *       Prosa. Eine Dimensionszeile (`PRODUKT:`, `FORM:` …) ersetzt ein fehlendes Gesamturteil
  *       nicht (R-1231, R-1379: „165 Dateien heissen wie ein Urteil und enthalten keines").
  *   (b) MARKDOWN-CODEBLÖCKE ZÄHLEN NICHT. Ein Bericht, der ein fremdes Urteil oder eine Vorlage
- *       in ``` zitiert, urteilt damit nicht selbst — weder als Urteil noch als Sperre (R-1231).
+ *       umzäunt (```/~~~) oder eingerückt zitiert, urteilt damit nicht selbst — weder als Urteil
+ *       noch als Sperre (R-1231).
  *   (c) DAS URTEILSFELD SELBST WIRD GELESEN. Beginnt der Wert mit NICHT oder KEIN
  *       (`GESAMTURTEIL: KEIN SACHURTEIL …`), bezeichnet der Bericht sich als Zustellsperre und ist
  *       kein Urteil (R-1362, Messmethode vom 27.08.).
@@ -50,20 +51,76 @@
 
 import { createHash } from "node:crypto";
 
-/** Ein Markdown-Codeblock: Zaun aus drei oder mehr Backticks oder Tilden bis zum gleichen Zaun. */
-const CODEBLOCK = /^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t]*\1[ \t]*$|(?![\s\S]))/gm;
+/** Öffnender Zaun: bis drei Leerzeichen Einzug, drei oder mehr Backticks oder Tilden. */
+const ZAUN_AUF = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
-/** Der Text ohne Markdown-Codeblöcke — was darin steht, ist zitiert, nicht geurteilt. */
+/** Schließender Zaun: bis drei Leerzeichen Einzug, nur Zaunzeichen, danach nur Leerraum. */
+const ZAUN_ZU = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
+
+/** Eingerückter Codeblock: vier Leerzeichen oder ein Tab vor dem Inhalt. */
+const EINGERUECKT = /^( {4}|\t)/;
+
+const LEER = /^[ \t]*$/;
+
+/**
+ * Der Text ohne Markdown-Codeblöcke — was darin steht, ist zitiert, nicht geurteilt.
+ *
+ * Erkannt werden beide Arten nach CommonMark:
+ *   - UMZÄUNT: Der Block endet erst an einem Zaun DERSELBEN Zeichenart, der MINDESTENS so lang ist
+ *     wie der öffnende (```` schließt ```, ``` schließt ```` nicht). Ohne Schlusszaun reicht er
+ *     bis zum Textende.
+ *   - EINGERÜCKT: Zeilen mit vier Leerzeichen oder Tab Einzug nach einer Leerzeile oder am
+ *     Textanfang; Leerzeilen dazwischen gehören zum Block. Direkt an einen Absatz angehängt ist
+ *     eine solche Zeile Absatzfortsetzung — als Urteilsfeld zählt sie trotzdem nicht, weil
+ *     `GESAMTURTEILSZEILE` höchstens drei Leerzeichen Einzug zulässt.
+ */
 export function ohneCodebloecke(text: string): string {
-  return text.replace(CODEBLOCK, "");
+  const behalten: string[] = [];
+  let zaun: { zeichen: string; laenge: number } | null = null;
+  let eingerueckt = false;
+  let vorherLeer = true;
+  const teile = text.split("\n");
+  for (const [i, teil] of teile.entries()) {
+    const roh = i < teile.length - 1 ? `${teil}\n` : teil;
+    const zeile = teil.replace(/\r$/, "");
+    if (zaun !== null) {
+      const zu = ZAUN_ZU.exec(zeile);
+      if (zu?.[1] && zu[1][0] === zaun.zeichen && zu[1].length >= zaun.laenge) {
+        zaun = null;
+        vorherLeer = true;
+      }
+      continue;
+    }
+    const auf = ZAUN_AUF.exec(zeile);
+    // Ein Backtick-Zaun darf in seiner Info-Zeichenkette keinen Backtick tragen (CommonMark).
+    if (auf?.[1] && !(auf[1][0] === "`" && (auf[2] ?? "").includes("`"))) {
+      zaun = { zeichen: auf[1][0] as string, laenge: auf[1].length };
+      eingerueckt = false;
+      continue;
+    }
+    if (LEER.test(zeile)) {
+      vorherLeer = true;
+      if (!eingerueckt) behalten.push(roh);
+      continue;
+    }
+    if (EINGERUECKT.test(zeile) && (eingerueckt || vorherLeer)) {
+      eingerueckt = true;
+      vorherLeer = false;
+      continue;
+    }
+    eingerueckt = false;
+    vorherLeer = false;
+    behalten.push(roh);
+  }
+  return behalten.join("");
 }
 
 /**
  * Die Gesamturteilszeile: das Feld eröffnet die Zeile (Hervorhebung `**`/`#`/Aufzählung erlaubt),
- * der Wert folgt dahinter.
+ * der Wert folgt dahinter. Höchstens drei Leerzeichen Einzug — ab vier ist es Code oder Fortsetzung.
  */
 const GESAMTURTEILSZEILE =
-  /^[ \t]*(?:[-*>#]+[ \t]*)?(?:\*\*)?GESAMTURTEIL:?(?:\*\*)?:?[ \t]*(.*)$/m;
+  /^ {0,3}(?:[-*>#]+[ \t]*)?(?:\*\*)?GESAMTURTEIL:?(?:\*\*)?:?[ \t]*(.*)$/m;
 
 export type Gesamturteil = "GRÜN" | "ROT";
 

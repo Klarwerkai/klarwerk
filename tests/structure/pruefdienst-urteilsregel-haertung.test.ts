@@ -83,6 +83,59 @@ describe("R-1231 (b) — Urteilswörter in Markdown-Codeblöcken zählen nicht",
   it("ein nicht geschlossener Codeblock reicht bis zum Textende", () => {
     expect(ohneCodebloecke("vor\n```\nGESAMTURTEIL: ROT\n")).toBe("vor\n");
   });
+
+  // Nacharbeit 1 (Ben, tools/urteilslage.ts:54): eingerückte Blöcke und längere Schlusszäune.
+  it.each([
+    ["nach Leerzeile, vier Leerzeichen", "Vorlage:\n\n    GESAMTURTEIL: GRÜN\n    PRODUKT: GRÜN"],
+    ["am Textanfang", "    GESAMTURTEIL: GRÜN"],
+    ["mit Tab", "\tGESAMTURTEIL: ROT"],
+    ["als Absatzfortsetzung", "Zitat aus dem Vorbericht:\n    GESAMTURTEIL: GRÜN"],
+  ])("ein eingerücktes Urteil (%s) ist kein Urteil", (_fall, text) => {
+    expect(gesamturteil(text)).toBeNull();
+    expect(urteilVon("BEN-PRUEFUNG-JOB-8-D1.md", text).sachurteil).toBe(false);
+  });
+
+  it("ein eingerückt zitiertes ROT verdrängt das eigene GRÜN dahinter nicht", () => {
+    const text = "Vorlage:\n\n    GESAMTURTEIL: ROT\n\nGESAMTURTEIL: GRÜN\nPRODUKT: GRÜN";
+    expect(urteilVon("BEN-PRUEFUNG-JOB-8-D2.md", text)).toEqual({
+      sachurteil: true,
+      spruch: "GRÜN",
+      produkt: "GRÜN",
+    });
+  });
+
+  it("bis drei Leerzeichen Einzug bleibt die Zeile ein Urteilsfeld", () => {
+    expect(gesamturteil("   GESAMTURTEIL: ROT")).toBe("ROT");
+  });
+
+  it("eine eingerückt zitierte Sperre sperrt nicht", () => {
+    const text = [
+      "GESAMTURTEIL: ROT",
+      "PRODUKT: ROT — Der Fehler besteht fort.",
+      "",
+      "    PRODUKT: ROT — KEIN SACHURTEIL: Paket fehlt.",
+    ].join("\n");
+    expect(sperrzeilen(text)).toEqual([]);
+    expect(urteilVon("BEN-PRUEFUNG-JOB-8-D3.md", text).sachurteil).toBe(true);
+  });
+
+  it("ein längerer Schlusszaun schließt — das echte Urteil danach bleibt erhalten", () => {
+    const zeilen = ["```", "GESAMTURTEIL: ROT", "`````", "GESAMTURTEIL: GRÜN", "PRODUKT: GRÜN"];
+    const text = zeilen.join("\n");
+    expect(gesamturteil(text)).toBe("GRÜN");
+    expect(urteilVon("BEN-PRUEFUNG-JOB-9-D1.md", text)).toEqual({
+      sachurteil: true,
+      spruch: "GRÜN",
+      produkt: "GRÜN",
+    });
+  });
+
+  it("ein kürzerer oder andersartiger Zaun schließt nicht", () => {
+    const kuerzer = ["````", "```", "GESAMTURTEIL: GRÜN", "````", "GESAMTURTEIL: ROT"].join("\n");
+    const andersartig = ["~~~", "```", "GESAMTURTEIL: GRÜN", "~~~", "GESAMTURTEIL: ROT"].join("\n");
+    expect(gesamturteil(kuerzer)).toBe("ROT");
+    expect(gesamturteil(andersartig)).toBe("ROT");
+  });
 });
 
 describe("R-1362 — ein Urteil, das sich selbst als Zustellsperre bezeichnet, zählt nicht", () => {
