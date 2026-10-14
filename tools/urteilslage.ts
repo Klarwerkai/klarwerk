@@ -62,13 +62,28 @@ const EINGERUECKT = /^( {4}|\t)/;
 
 const LEER = /^[ \t]*$/;
 
-/** Blockzitat-Marker am Zeilenanfang, auch verschachtelt (`>`, `> >`, `>>`). */
-const ZITATMARKER = /^(?: {0,3}> ?)*/;
+/** Ein einzelner Blockzitat-Marker am Zeilenanfang. */
+const ZITATMARKER = /^ {0,3}> ?/;
 
-/** Wie tief die Zeile zitiert ist, und was nach den Zitatmarkern steht. */
-function zitatlage(zeile: string): { tiefe: number; inhalt: string } {
-  const marker = ZITATMARKER.exec(zeile)?.[0] ?? "";
-  return { tiefe: marker.split(">").length - 1, inhalt: zeile.slice(marker.length) };
+/**
+ * Wie tief die Zeile zitiert ist, und was nach den Zitatmarkern steht.
+ *
+ * `hoechstens` begrenzt, wie viele Marker abgenommen werden. In einem offenen Codeblock ist das
+ * die Zitattiefe des Blocks: Weitere `>` sind Codeinhalt, kein neues Zitat (Nacharbeit 3).
+ */
+function zitatlage(
+  zeile: string,
+  hoechstens = Number.POSITIVE_INFINITY,
+): { tiefe: number; inhalt: string } {
+  let tiefe = 0;
+  let inhalt = zeile;
+  while (tiefe < hoechstens) {
+    const marker = ZITATMARKER.exec(inhalt);
+    if (!marker) break;
+    inhalt = inhalt.slice(marker[0].length);
+    tiefe += 1;
+  }
+  return { tiefe, inhalt };
 }
 
 /**
@@ -96,23 +111,27 @@ export function ohneCodebloecke(text: string): string {
   const teile = text.split("\n");
   for (const [i, teil] of teile.entries()) {
     const roh = i < teile.length - 1 ? `${teil}\n` : teil;
-    const { tiefe, inhalt: zeile } = zitatlage(teil.replace(/\r$/, ""));
+    const ohneCr = teil.replace(/\r$/, "");
+    if (zaun !== null) {
+      // Im offenen Block nur dessen eigenen Zitatkontext abnehmen — `> ```` darin ist Code.
+      const imBlock = zitatlage(ohneCr, zaun.tiefe);
+      if (imBlock.tiefe >= zaun.tiefe) {
+        const zu = ZAUN_ZU.exec(imBlock.inhalt);
+        if (zu?.[1] && zu[1][0] === zaun.zeichen && zu[1].length >= zaun.laenge) {
+          zaun = null;
+          vorherLeer = true;
+        }
+        continue;
+      }
+      // Das Zitat des Blocks endet hier, und mit ihm der Block; die Zeile wird normal gelesen.
+      zaun = null;
+    }
+    const { tiefe, inhalt: zeile } = zitatlage(ohneCr);
     if (tiefe !== vorherTiefe) {
       // Ein neuer Zitatbehälter beginnt wie ein Textanfang; ein verlassener beendet seinen Block.
       eingerueckt = false;
       if (tiefe > vorherTiefe) vorherLeer = true;
       vorherTiefe = tiefe;
-    }
-    if (zaun !== null && tiefe < zaun.tiefe) {
-      zaun = null;
-    }
-    if (zaun !== null) {
-      const zu = ZAUN_ZU.exec(zeile);
-      if (zu?.[1] && zu[1][0] === zaun.zeichen && zu[1].length >= zaun.laenge) {
-        zaun = null;
-        vorherLeer = true;
-      }
-      continue;
     }
     const auf = ZAUN_AUF.exec(zeile);
     // Ein Backtick-Zaun darf in seiner Info-Zeichenkette keinen Backtick tragen (CommonMark).

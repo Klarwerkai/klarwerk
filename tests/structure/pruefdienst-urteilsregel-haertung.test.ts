@@ -163,6 +163,25 @@ describe("R-1231 (b) — Urteilswörter in Markdown-Codeblöcken zählen nicht",
     expect(urteilVon("BEN-PRUEFUNG-JOB-10-D3.md", text).sachurteil).toBe(true);
   });
 
+  // Nacharbeit 3 (Ben, tools/urteilslage.ts:99): Zitatmarker INNERHALB eines Codeblocks.
+  it.each([
+    ["> ``` im ungezitierten Block (Bens Fall)", "```\n> ```\nGESAMTURTEIL: GRÜN\n```"],
+    ["> ~~~ im Tildenblock", "~~~\n> ~~~\nGESAMTURTEIL: GRÜN\n~~~"],
+    ["> > ``` im zitierten Block", "> ```\n> > ```\n> GESAMTURTEIL: GRÜN\n> ```"],
+  ])("zusätzliche Zitatmarker im Code schließen keinen Block (%s)", (_fall, text) => {
+    expect(gesamturteil(text)).toBeNull();
+    expect(urteilVon("BEN-PRUEFUNG-JOB-11-D1.md", text).sachurteil).toBe(false);
+  });
+
+  it("nach dem echten Schlusszaun zählt das eigene Urteil wieder", () => {
+    const text = "```\n> ```\nGESAMTURTEIL: GRÜN\n```\nGESAMTURTEIL: ROT\nPRODUKT: ROT";
+    expect(urteilVon("BEN-PRUEFUNG-JOB-11-D2.md", text)).toEqual({
+      sachurteil: true,
+      spruch: "ROT",
+      produkt: "ROT",
+    });
+  });
+
   it("ein zitiertes Urteil außerhalb eines Codeblocks bleibt lesbar wie bisher", () => {
     expect(gesamturteil("> GESAMTURTEIL: ROT")).toBe("ROT");
   });
