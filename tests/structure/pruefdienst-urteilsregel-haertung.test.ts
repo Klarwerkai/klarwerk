@@ -130,6 +130,43 @@ describe("R-1231 (b) — Urteilswörter in Markdown-Codeblöcken zählen nicht",
     });
   });
 
+  // Nacharbeit 2 (Ben, tools/urteilslage.ts:55): Codeblöcke im Blockzitat.
+  it.each([
+    ["Zaun im Zitat (Bens Fall)", "> ```\n> GESAMTURTEIL: GRÜN\n> ```"],
+    ["Tildenzaun im Zitat", "> ~~~\n> GESAMTURTEIL: GRÜN\n> ~~~"],
+    ["verschachteltes Zitat", "> > ```\n> > GESAMTURTEIL: GRÜN\n> > ```"],
+    ["eingerückter Block im Zitat", "Vorlage:\n\n>     GESAMTURTEIL: GRÜN"],
+    ["eingerückte Fortsetzung im Zitat", "> Vorbericht:\n>     GESAMTURTEIL: GRÜN"],
+  ])("ein Urteil im zitierten Codeblock (%s) ist kein Urteil", (_fall, text) => {
+    expect(gesamturteil(text)).toBeNull();
+    expect(urteilVon("BEN-PRUEFUNG-JOB-10-D1.md", text).sachurteil).toBe(false);
+  });
+
+  it("ein zitierter Zaun endet mit dem Zitat — das eigene Urteil danach bleibt", () => {
+    const text = "> ```\n> GESAMTURTEIL: ROT\n\nGESAMTURTEIL: GRÜN\nPRODUKT: GRÜN";
+    expect(urteilVon("BEN-PRUEFUNG-JOB-10-D2.md", text)).toEqual({
+      sachurteil: true,
+      spruch: "GRÜN",
+      produkt: "GRÜN",
+    });
+  });
+
+  it("eine zitierte Sperre im Codeblock sperrt nicht", () => {
+    const text = [
+      "GESAMTURTEIL: ROT",
+      "PRODUKT: ROT — Der Fehler besteht fort.",
+      "> ```",
+      "> PRODUKT: ROT — KEIN SACHURTEIL: Paket fehlt.",
+      "> ```",
+    ].join("\n");
+    expect(sperrzeilen(text)).toEqual([]);
+    expect(urteilVon("BEN-PRUEFUNG-JOB-10-D3.md", text).sachurteil).toBe(true);
+  });
+
+  it("ein zitiertes Urteil außerhalb eines Codeblocks bleibt lesbar wie bisher", () => {
+    expect(gesamturteil("> GESAMTURTEIL: ROT")).toBe("ROT");
+  });
+
   it("ein kürzerer oder andersartiger Zaun schließt nicht", () => {
     const kuerzer = ["````", "```", "GESAMTURTEIL: GRÜN", "````", "GESAMTURTEIL: ROT"].join("\n");
     const andersartig = ["~~~", "```", "GESAMTURTEIL: GRÜN", "~~~", "GESAMTURTEIL: ROT"].join("\n");

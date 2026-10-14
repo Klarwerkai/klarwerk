@@ -62,6 +62,15 @@ const EINGERUECKT = /^( {4}|\t)/;
 
 const LEER = /^[ \t]*$/;
 
+/** Blockzitat-Marker am Zeilenanfang, auch verschachtelt (`>`, `> >`, `>>`). */
+const ZITATMARKER = /^(?: {0,3}> ?)*/;
+
+/** Wie tief die Zeile zitiert ist, und was nach den Zitatmarkern steht. */
+function zitatlage(zeile: string): { tiefe: number; inhalt: string } {
+  const marker = ZITATMARKER.exec(zeile)?.[0] ?? "";
+  return { tiefe: marker.split(">").length - 1, inhalt: zeile.slice(marker.length) };
+}
+
 /**
  * Der Text ohne Markdown-Codeblöcke — was darin steht, ist zitiert, nicht geurteilt.
  *
@@ -73,16 +82,30 @@ const LEER = /^[ \t]*$/;
  *     Textanfang; Leerzeilen dazwischen gehören zum Block. Direkt an einen Absatz angehängt ist
  *     eine solche Zeile Absatzfortsetzung — als Urteilsfeld zählt sie trotzdem nicht, weil
  *     `GESAMTURTEILSZEILE` höchstens drei Leerzeichen Einzug zulässt.
+ *
+ * BLOCKZITATE (Nacharbeit 2): Beide Arten werden auch innerhalb von `>`-Zitaten erkannt — Zaun und
+ * Einzug werden HINTER den Zitatmarkern gelesen. Ein im Zitat geöffneter Zaun endet spätestens mit
+ * dem Zitat: Eine Zeile mit geringerer Zitattiefe schließt ihn und wird selbst normal gelesen.
  */
 export function ohneCodebloecke(text: string): string {
   const behalten: string[] = [];
-  let zaun: { zeichen: string; laenge: number } | null = null;
+  let zaun: { zeichen: string; laenge: number; tiefe: number } | null = null;
   let eingerueckt = false;
   let vorherLeer = true;
+  let vorherTiefe = 0;
   const teile = text.split("\n");
   for (const [i, teil] of teile.entries()) {
     const roh = i < teile.length - 1 ? `${teil}\n` : teil;
-    const zeile = teil.replace(/\r$/, "");
+    const { tiefe, inhalt: zeile } = zitatlage(teil.replace(/\r$/, ""));
+    if (tiefe !== vorherTiefe) {
+      // Ein neuer Zitatbehälter beginnt wie ein Textanfang; ein verlassener beendet seinen Block.
+      eingerueckt = false;
+      if (tiefe > vorherTiefe) vorherLeer = true;
+      vorherTiefe = tiefe;
+    }
+    if (zaun !== null && tiefe < zaun.tiefe) {
+      zaun = null;
+    }
     if (zaun !== null) {
       const zu = ZAUN_ZU.exec(zeile);
       if (zu?.[1] && zu[1][0] === zaun.zeichen && zu[1].length >= zaun.laenge) {
@@ -94,7 +117,7 @@ export function ohneCodebloecke(text: string): string {
     const auf = ZAUN_AUF.exec(zeile);
     // Ein Backtick-Zaun darf in seiner Info-Zeichenkette keinen Backtick tragen (CommonMark).
     if (auf?.[1] && !(auf[1][0] === "`" && (auf[2] ?? "").includes("`"))) {
-      zaun = { zeichen: auf[1][0] as string, laenge: auf[1].length };
+      zaun = { zeichen: auf[1][0] as string, laenge: auf[1].length, tiefe };
       eingerueckt = false;
       continue;
     }
@@ -118,9 +141,10 @@ export function ohneCodebloecke(text: string): string {
 /**
  * Die Gesamturteilszeile: das Feld eröffnet die Zeile (Hervorhebung `**`/`#`/Aufzählung erlaubt),
  * der Wert folgt dahinter. Höchstens drei Leerzeichen Einzug — ab vier ist es Code oder Fortsetzung.
+ * Das gilt auch hinter Blockzitat-Markern: `> GESAMTURTEIL: …` ja, `>     GESAMTURTEIL: …` nein.
  */
 const GESAMTURTEILSZEILE =
-  /^ {0,3}(?:[-*>#]+[ \t]*)?(?:\*\*)?GESAMTURTEIL:?(?:\*\*)?:?[ \t]*(.*)$/m;
+  /^(?: {0,3}> ?)* {0,3}(?:[-*#]+[ \t]*)?(?:\*\*)?GESAMTURTEIL:?(?:\*\*)?:?[ \t]*(.*)$/m;
 
 export type Gesamturteil = "GRÜN" | "ROT";
 
