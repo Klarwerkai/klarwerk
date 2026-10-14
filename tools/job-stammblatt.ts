@@ -21,10 +21,10 @@
 //   · Gitverlauf            Commits `<commit_title> (Hauptstand integriert)` und
 //                           `<commit_title> (<Fassung>)`
 //
-// DAS BENURTEIL: Der Feldname im Schema `benurteil_v2` liegt außerhalb des Lesebereichs dieses
-// Auftrags. Deshalb sucht `benurteilAus` keinen festen Schlüssel. Es nimmt das Urteil nur an, wenn
-// genau ein Feld der obersten Ebene einen der drei Urteilswerte trägt. Kein Treffer oder mehrere
-// verschiedene ergeben „kein Urteil lesbar“ mit Grund, nie ein geratenes Urteil.
+// DAS BENURTEIL: `benurteilAus` nimmt das Urteil nur an, wenn genau ein Feld der obersten Ebene
+// einen der drei Urteilswerte trägt. Kein Treffer oder mehrere verschiedene ergeben „kein Urteil
+// lesbar“ mit Grund, nie ein geratenes Urteil. Im Schema `benurteil_v2` (Nacharbeit 1 belegt) ist
+// das genau das Pflichtfeld `urteil`; ältere, nicht schemagerechte Antworten bleiben unlesbar.
 //
 // R-1393 („ein Protokoll soll verhindern, dass dieselbe Auftragsnummer zweimal vergeben wird"):
 // Vergeben werden Kennungen in der Koordination, außerhalb des Produktbaums. Hier steht die Wache,
@@ -335,21 +335,27 @@ function gitLogVon(wurzel: string, ref: string): string | null {
   }
 }
 
-// Direktaufruf: `node tools/job-stammblatt.ts <auftraege-wurzel> [--json] [--ref main]`.
-// Beim Import passiert hier nichts.
-if (process.argv[1]?.endsWith("job-stammblatt.ts")) {
-  const argumente = process.argv.slice(2);
+/**
+ * Der Direktaufruf ohne Prozessende: gibt aus und liefert den Exitcode zurück.
+ *
+ * NACHARBEIT 1 (Ben, Echtbestand 14.10.2026): Vorher stand hier `process.exit(…)` direkt nach der
+ * Ausgabe. In eine Pipe schreibt Node asynchron; `process.exit` beendet den Prozess, bevor der
+ * Puffer geleert ist. Über die Pipe kamen von 2.153.824 Bytes (389 Blätter) nur 65.536 an, als
+ * ungültiges JSON und mit Exit 0. Deshalb setzt der Aufrufer nur `process.exitCode`; Node beendet
+ * sich erst, wenn die Ausgabe vollständig geschrieben ist.
+ */
+export function direktaufruf(argumente: readonly string[]): number {
   const refStelle = argumente.indexOf("--ref");
   const ref = refStelle >= 0 ? (argumente[refStelle + 1] ?? "main") : "main";
   const wurzel = argumente.find((a, i) => !a.startsWith("--") && argumente[i - 1] !== "--ref");
   if (wurzel === undefined) {
     console.log("Aufruf: node tools/job-stammblatt.ts <auftraege-wurzel> [--json] [--ref main]");
-    process.exit(2);
+    return 2;
   }
   const ordner = existsSync(join(wurzel, "AUFTRAG.json")) ? [wurzel] : auftragsordnerUnter(wurzel);
   if (ordner.length === 0) {
     console.log(`KEINE AUSKUNFT: unter ${wurzel} liegt kein Auftragsordner.`);
-    process.exit(2);
+    return 2;
   }
   const gitLog = gitLogVon(WURZEL, ref);
   const blaetter = ordner.map((o) => stammblattVon(o, gitLog));
@@ -362,5 +368,11 @@ if (process.argv[1]?.endsWith("job-stammblatt.ts")) {
     for (const f of funde) console.log(`  ${f.art} ${f.wert}: ${f.ordner.join(", ")}`);
     if (gitLog === null) console.log(`\nGitverlauf ${ref} unter ${WURZEL} nicht lesbar.`);
   }
-  process.exit(funde.length > 0 ? 1 : 0);
+  return funde.length > 0 ? 1 : 0;
+}
+
+// Direktaufruf: `node tools/job-stammblatt.ts <auftraege-wurzel> [--json] [--ref main]`.
+// Beim Import passiert hier nichts. Kein `process.exit` — siehe `direktaufruf`.
+if (process.argv[1]?.endsWith("job-stammblatt.ts")) {
+  process.exitCode = direktaufruf(process.argv.slice(2));
 }

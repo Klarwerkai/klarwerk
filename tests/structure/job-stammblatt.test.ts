@@ -9,10 +9,12 @@
 //   · U   das Benurteil wird nur eindeutig gelesen, nie geraten;
 //   · I   Integration nur bei vollständigem Titel, kein Präfixtreffer;
 //   · D   R-1393: Doppelvergaben von Auftrags-ID, Kennung, Branch und Commit-Titel;
+//   · P   der Direktaufruf liefert große Ausgaben über eine Pipe vollständig (Nacharbeit 1);
 //   · B   der Bestandsabgleich nennt beide Kriterien und nur vorhandene Dateien.
 //
 // WAS DIESE DATEI NICHT BELEGT: die echten Ordner der Produktionskoordination und deren Vergabe
 // von Kennungen. Beide liegen außerhalb des Produktbaums.
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -223,6 +225,68 @@ describe("Job-Stammblatt · Wache gegen Doppelvergabe (R-1393)", () => {
 
   it("D4: ohne Doppelvergabe meldet die Wache nichts", () => {
     expect(doppelvergaben(blaetter.slice(0, 1))).toEqual([]);
+  });
+});
+
+// Nacharbeit 1 (Ben): Am Echtbestand kamen über eine Pipe nur 65.536 von 2.153.824 Bytes an, mit
+// Exit 0 und ungültigem JSON — `process.exit` direkt nach der Ausgabe. Hier läuft der echte
+// Direktaufruf als Kindprozess mit Pipe und einer Ausgabe weit über 64 KiB.
+describe("Job-Stammblatt · Direktaufruf über eine Pipe", () => {
+  const gross = mkdtempSync(join(tmpdir(), "job-stammblatt-pipe-"));
+  afterAll(() => rmSync(gross, { recursive: true, force: true }));
+  const ANZAHL = 120;
+  const FUELLUNG = "x".repeat(4_000);
+  for (let i = 0; i < ANZAHL; i += 1) {
+    const k = `auftrag-${String(i).padStart(4, "0")}`;
+    const ordner = join(gross, k);
+    mkdirSync(ordner, { recursive: true });
+    writeFileSync(
+      join(ordner, "AUFTRAG.json"),
+      JSON.stringify({ kennung: k, branch: `codex/${k}`, commit_title: `Titel ${i}` }),
+    );
+    writeFileSync(join(ordner, "AUFTRAG-B1.json"), JSON.stringify({ id: `aufnahme:pipe:${i}` }));
+    writeFileSync(
+      join(ordner, "auftragsstand.json"),
+      JSON.stringify({ fortschritt: { schritt: "fertig", lieferung: { scope: FUELLUNG } } }),
+    );
+  }
+
+  const lauf = (wurzelPfad: string) =>
+    spawnSync(
+      "node",
+      ["--import", "tsx", "tools/job-stammblatt.ts", wurzelPfad, "--json", "--ref", "HEAD"],
+      { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] },
+    );
+
+  it("P1: große Ausgabe kommt vollständig als gültiges JSON an, Exit 0", () => {
+    const r = lauf(gross);
+    expect(r.error).toBeUndefined();
+    expect(Buffer.byteLength(r.stdout, "utf8")).toBeGreaterThan(4 * 65_536);
+    const daten = JSON.parse(r.stdout) as { blaetter: unknown[]; doppelvergaben: unknown[] };
+    expect(daten.blaetter).toHaveLength(ANZAHL);
+    expect(daten.doppelvergaben).toEqual([]);
+    expect(r.status).toBe(0);
+  });
+
+  it("P2: mit Doppelvergabe bleibt die Ausgabe vollständig, Exit 1", () => {
+    const k = "auftrag-doppelt";
+    mkdirSync(join(gross, k), { recursive: true });
+    writeFileSync(join(gross, k, "AUFTRAG.json"), JSON.stringify({ kennung: k }));
+    writeFileSync(join(gross, k, "AUFTRAG-B1.json"), JSON.stringify({ id: "aufnahme:pipe:0" }));
+    const r = lauf(gross);
+    const daten = JSON.parse(r.stdout) as {
+      blaetter: unknown[];
+      doppelvergaben: Array<{ art: string; wert: string }>;
+    };
+    expect(daten.blaetter).toHaveLength(ANZAHL + 1);
+    expect(daten.doppelvergaben).toEqual([
+      expect.objectContaining({ art: "auftrag-id", wert: "aufnahme:pipe:0" }),
+    ]);
+    expect(r.status).toBe(1);
+  });
+
+  it("P3: das Werkzeug beendet sich nirgends mit process.exit", () => {
+    expect(readFileSync("tools/job-stammblatt.ts", "utf8")).not.toMatch(/process\.exit\(/);
   });
 });
 
