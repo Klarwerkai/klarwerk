@@ -182,6 +182,57 @@ describe("R-1231 (b) — Urteilswörter in Markdown-Codeblöcken zählen nicht",
     });
   });
 
+  // Nacharbeit 4 (Ben, tools/urteilslage.ts:136): Codeblöcke in Listenpunkten.
+  it.each([
+    ["Zaun im Listenpunkt (Bens Fall)", "- ```\n  GESAMTURTEIL: GRÜN\n  ```"],
+    ["Tildenzaun mit +", "+ ~~~\n  GESAMTURTEIL: GRÜN\n  ~~~"],
+    ["nummerierte Liste", "1. ```\n   GESAMTURTEIL: GRÜN\n   ```"],
+    ["verschachtelte Liste", "- Punkt\n  - ```\n    GESAMTURTEIL: GRÜN\n    ```"],
+    ["zwei Marker in einer Zeile", "- 1. ```\n     GESAMTURTEIL: GRÜN\n     ```"],
+    ["Liste im Zitat", "> - ```\n>   GESAMTURTEIL: GRÜN\n>   ```"],
+    ["Zaun im Folgeabsatz des Listenpunkts", "- Punkt\n\n  ```\n  GESAMTURTEIL: GRÜN\n  ```"],
+    ["eingerückter Block im Listenpunkt", "-     GESAMTURTEIL: GRÜN"],
+    ["Zaun ohne Schluss im Listenpunkt", "- ```\n  GESAMTURTEIL: GRÜN"],
+  ])("ein Urteil im Codeblock eines Listenpunkts (%s) ist kein Urteil", (_fall, text) => {
+    expect(gesamturteil(text)).toBeNull();
+    expect(urteilVon("BEN-PRUEFUNG-JOB-12-D1.md", text).sachurteil).toBe(false);
+  });
+
+  it("ein Listenpunkt endet mit geringerem Einzug — das eigene Urteil danach bleibt", () => {
+    const text = "- ```\n  GESAMTURTEIL: ROT\nGESAMTURTEIL: GRÜN\nPRODUKT: GRÜN";
+    expect(urteilVon("BEN-PRUEFUNG-JOB-12-D2.md", text)).toEqual({
+      sachurteil: true,
+      spruch: "GRÜN",
+      produkt: "GRÜN",
+    });
+  });
+
+  it("nach dem Schlusszaun im Listenpunkt zählt das eigene Urteil wieder", () => {
+    const text = "- ```\n  GESAMTURTEIL: GRÜN\n  ```\n\nGESAMTURTEIL: ROT\nPRODUKT: ROT";
+    expect(urteilVon("BEN-PRUEFUNG-JOB-12-D3.md", text)).toEqual({
+      sachurteil: true,
+      spruch: "ROT",
+      produkt: "ROT",
+    });
+  });
+
+  it("eine Sperre im Codeblock eines Listenpunkts sperrt nicht", () => {
+    const text = [
+      "GESAMTURTEIL: ROT",
+      "PRODUKT: ROT — Der Fehler besteht fort.",
+      "- ```",
+      "  PRODUKT: ROT — KEIN SACHURTEIL: Paket fehlt.",
+      "  ```",
+    ].join("\n");
+    expect(sperrzeilen(text)).toEqual([]);
+    expect(urteilVon("BEN-PRUEFUNG-JOB-12-D4.md", text).sachurteil).toBe(true);
+  });
+
+  it("ein Urteil als Listenpunkt außerhalb eines Codeblocks bleibt lesbar wie bisher", () => {
+    expect(gesamturteil("- GESAMTURTEIL: ROT")).toBe("ROT");
+    expect(gesamturteil("**GESAMTURTEIL:** GRÜN")).toBe("GRÜN");
+  });
+
   it("ein zitiertes Urteil außerhalb eines Codeblocks bleibt lesbar wie bisher", () => {
     expect(gesamturteil("> GESAMTURTEIL: ROT")).toBe("ROT");
   });
