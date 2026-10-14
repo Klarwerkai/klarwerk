@@ -76,6 +76,8 @@ export default {
       "Pausiert, weil ein anderes Fenster im Vordergrund ist. Die Rückkehr setzt nicht von selbst fort.",
     "begleitung.grund.rechteunbestaetigt":
       "Pausiert, weil der Server den Zugriff nicht rechtzeitig bestätigt hat. Nichts wurde weiter gelesen.",
+    "begleitung.status.rechteWerdenBestaetigt":
+      "Der Zugriff wird beim Server bestätigt … Danach wird fortgesetzt oder der Grund genannt.",
     "begleitung.fehler.fokusBeimStart":
       "Während der Einrichtung kam ein anderes Fenster in den Vordergrund. Es wird nichts beobachtet; bitte bewusst erneut starten bzw. fortsetzen.",
     "begleitung.fehler.rechte_unbestaetigt":
@@ -181,6 +183,8 @@ export default {
       "Paused because another window is in front. Returning does not resume by itself.",
     "begleitung.grund.rechteunbestaetigt":
       "Paused because the server did not confirm access in time. Nothing further was read.",
+    "begleitung.status.rechteWerdenBestaetigt":
+      "Access is being confirmed by the server … Then it resumes or the reason is shown.",
     "begleitung.fehler.fokusBeimStart":
       "Another window came to the front while accompanying was being set up. Nothing is observed; please start or resume again deliberately.",
     "begleitung.fehler.rechte_unbestaetigt":
@@ -286,6 +290,8 @@ export default {
       "Gepauzeerd omdat een ander venster op de voorgrond staat. Terugkeren hervat niet vanzelf.",
     "begleitung.grund.rechteunbestaetigt":
       "Gepauzeerd omdat de server de toegang niet op tijd heeft bevestigd. Er is niets verder gelezen.",
+    "begleitung.status.rechteWerdenBestaetigt":
+      "De toegang wordt door de server bevestigd … Daarna wordt hervat of de reden genoemd.",
     "begleitung.fehler.fokusBeimStart":
       "Tijdens het inrichten kwam een ander venster op de voorgrond. Er wordt niets waargenomen; start of hervat opnieuw bewust.",
     "begleitung.fehler.rechte_unbestaetigt":

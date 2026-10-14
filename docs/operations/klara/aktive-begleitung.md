@@ -94,7 +94,7 @@ wenn der Melder läuft; vorher steht „wird eingerichtet“, während einer Pau
 | Sperrbildschirm (Idle Detection, Chrome, nach Erlaubnis) | Pause | nur durch den Nutzer; der Melder wird dabei neu eingerichtet |
 | Sperrbildschirmmelder startet nicht (Konstruktor oder `start()` scheitert) | Pause „sperrmelder“, Fehler sichtbar, keine Zusage | nur durch den Nutzer; „Fortsetzen“ versucht den Melder erneut |
 | Kontowechsel | Pause; anderes Konto sieht nichts | nur mit demselben Konto |
-| Rechteentzug (Rolle passt nicht mehr, Konto bleibt angemeldet) | Pause, Zeitpunkt gemerkt | erst mit einer Serverbestätigung (`/auth/me`), die jünger ist als der Entzug; „Fortsetzen“ fordert sie an |
+| Rechteentzug (Rolle passt nicht mehr, Konto bleibt angemeldet) | Pause, Zeitpunkt gemerkt | ein bewusster Klick auf „Fortsetzen“: er holt eine frische Serverbestätigung (`/auth/me`), wartet darauf („Zugriff wird bestätigt …“) und prüft dann Konto, Rolle, Frist und Hostzustand. Bei gültiger Bestätigung setzt er fort, ohne Neuladen; sonst nennt er den tatsächlichen Grund. Eine überholte Zugriffsmeldung verschwindet mit der nächsten gültigen Bestätigung, ohne von selbst fortzusetzen |
 | Server bestätigt den Zugriff nicht binnen 10 s | Pause „rechteunbestaetigt“, nichts gelesen | wie beim Entzug |
 | Neuladen | Pause; Endpunkt bleibt gleich | durch den Nutzer, frischer Kontext |
 | Endpunkt erreicht | Ende | nicht möglich; neu starten |

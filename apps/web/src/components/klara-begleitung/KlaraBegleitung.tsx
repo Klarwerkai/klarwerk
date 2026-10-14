@@ -132,6 +132,13 @@ function ladeNotizen(konto: string | null): Notiz[] {
 /** Anzeige des Sperrbildschirmmelders: noch nicht entschieden, läuft, oder nur Fenstersignal. */
 type MelderAnzeige = "startet" | "laeuft" | "nur_fenster";
 
+/** Ein laufendes, bewusstes Fortsetzen: es wartet auf Melderzustand UND frische Bestätigung. */
+interface Wiederaufnahme {
+  readonly seit: number;
+  melder: MelderErgebnis["zustand"] | null;
+  bestaetigt: boolean;
+}
+
 /** Die Zusage „wird erkannt" steht NUR, wenn die Begleitung aktiv ist UND der Melder läuft. */
 function sperreSchluessel(phase: Begleitung["phase"], melder: MelderAnzeige): string {
   if (melder === "startet") {
@@ -541,9 +548,76 @@ export function KlaraBegleitung({
     return () => beobachter.disconnect();
   }, [b.phase]);
 
+  // ==============================================================================================
+  // NACHARBEIT 16 (Ben G10/G12, Hostprobe 95): DAS BEWUSSTE FORTSETZEN WARTET AUF DIE FRISCHE
+  // RECHTEBESTÄTIGUNG — UND ENTSCHEIDET ERST DANN.
+  // ==============================================================================================
+  // Bis hierher bewertete der Klick zuerst die zwischengespeicherte Rolle, zeigte „Zugriff nicht
+  // erlaubt" und holte die Bestätigung erst danach — nach exakter Wiederherstellung der Rolle blieb
+  // die Begleitung so mit einer falschen Meldung pausiert, bis jemand neu lud. Jetzt:
+  //   1. Ein Sperrgrund, der NICHT an den Rechten hängt (Frist abgelaufen, anderes Konto, nicht
+  //      pausiert), wird sofort und ehrlich gemeldet — dafür braucht es keinen Server.
+  //   2. Sonst fordert der Klick die Bestätigung an (Hinweis „wird bestätigt") und richtet
+  //      zugleich — aus der Geste — die Hostüberwachung ein.
+  //   3. Erst wenn BEIDES vorliegt, werden Konto, Bereich/Rolle, Frist und Hostzustand mit dem
+  //      dann aktuellen Stand geprüft. Nur dann wird fortgesetzt; sonst steht der TATSÄCHLICHE
+  //      Grund da. Bleibt die Bestätigung aus, steht „unbestätigt" da und nichts wird aktiviert.
+  //   4. Eine Zugriffsmeldung, die eine spätere Bestätigung mit gültigem Recht überholt, wird
+  //      entfernt — ohne dass dadurch von selbst fortgesetzt würde.
+  const wiederaufnahme = useRef<Wiederaufnahme | null>(null);
+  const meldungRechte = useRef(false);
+
+  const entscheideWiederaufnahme = useCallback(() => {
+    const w = wiederaufnahme.current;
+    if (!w || w.melder === null || !w.bestaetigt) {
+      return;
+    }
+    wiederaufnahme.current = null;
+    const jetztStand = aktuell.current;
+    const r = fortsetzen(jetztStand, { ...lage.current, jetzt: jetzt() });
+    if (!r.ok) {
+      beendeMelder();
+      meldungRechte.current = r.fehler === "keine_rechte" || r.fehler === "rechte_unbestaetigt";
+      // Inzwischen gestoppt: kein Fehlersatz — der Stopp spricht für sich.
+      setMeldung(r.fehler === "nicht_pausiert" ? null : t(`begleitung.fehler.${r.fehler}`));
+      setB(r.begleitung);
+      return;
+    }
+    meldungRechte.current = false;
+    if (fokusVerloren.current || document.hidden) {
+      // Im Moment der Entscheidung ist ein anderes Fenster vorn: nicht aktivieren.
+      beendeMelder();
+      setB(pausiere(jetztStand, "fokusverlust", jetzt()));
+      setMeldung(t("begleitung.fehler.fokusBeimStart"));
+      return;
+    }
+    if (w.melder === "ausgefallen") {
+      setB(pausiere(jetztStand, "sperrmelder", jetzt()));
+      setMeldung(t("begleitung.fehler.sperrmelder"));
+      return;
+    }
+    setMeldung(null);
+    setB(r.begleitung);
+  }, [jetzt, t, beendeMelder]);
+
+  // Die Bestätigung ist da: das wartende Fortsetzen entscheiden, eine überholte Zugriffsmeldung
+  // zurücknehmen.
+  useEffect(() => {
+    const w = wiederaufnahme.current;
+    if (w && !w.bestaetigt && rechteGeprueftAm >= w.seit) {
+      w.bestaetigt = true;
+      entscheideWiederaufnahme();
+    }
+    if (meldungRechte.current && darfBegleiten && wiederaufnahme.current === null) {
+      meldungRechte.current = false;
+      setMeldung(null);
+    }
+  }, [rechteGeprueftAm, darfBegleiten, entscheideWiederaufnahme]);
+
   const pauseOderFortsetzen = useCallback(() => {
     const alt = aktuell.current;
     if (alt.phase === "aktiv") {
+      wiederaufnahme.current = null;
       setMeldung(null);
       setB(pausiere(alt, "nutzer", jetzt()));
       return;
@@ -551,47 +625,37 @@ export function KlaraBegleitung({
     if (alt.phase !== "pausiert") {
       return;
     }
-    const abgelehnt = (r: Extract<ReturnType<typeof fortsetzen>, { ok: false }>): void => {
-      // Inzwischen gestoppt: kein Fehlersatz — der Stopp spricht für sich.
-      setMeldung(r.fehler === "nicht_pausiert" ? null : t(`begleitung.fehler.${r.fehler}`));
-      if (r.fehler === "rechte_unbestaetigt" || r.fehler === "keine_rechte") {
-        // Eine frische Serverantwort holen — auch eine wiedererteilte Rolle kommt so an, statt erst
-        // mit dem Fünf-Minuten-Takt der Sitzung. Fortsetzen bleibt eine bewusste zweite Handlung.
-        pruefeRechte?.();
-      }
-      setB(r.begleitung);
-    };
     const vorab = fortsetzen(alt, { ...lage.current, jetzt: jetzt() });
-    if (!vorab.ok) {
-      abgelehnt(vorab);
+    const wartetAufRechte =
+      !vorab.ok && (vorab.fehler === "keine_rechte" || vorab.fehler === "rechte_unbestaetigt");
+    if (!vorab.ok && !wartetAufRechte) {
+      setMeldung(vorab.fehler === "nicht_pausiert" ? null : t(`begleitung.fehler.${vorab.fehler}`));
+      setB(vorab.begleitung);
       return;
     }
-    setMeldung(null);
-    // Die Hostüberwachung neu herstellen und ihren Zustand prüfen, BEVOR wieder beobachtet wird.
+    const w: Wiederaufnahme = { seit: jetzt(), melder: null, bestaetigt: !pruefeRechte };
+    wiederaufnahme.current = w;
+    meldungRechte.current = false;
+    setMeldung(pruefeRechte ? t("begleitung.status.rechteWerdenBestaetigt") : null);
+    // Die Hostüberwachung neu herstellen — synchron aus der Geste —, und die Rechte frisch holen.
     richteMelderEin((zustand) => {
-      const jetztStand = aktuell.current;
-      // Zweite Prüfung am aktuellen Stand: Ablauf, Stopp, Konto und Rechte während des Starts.
-      const r = fortsetzen(jetztStand, { ...lage.current, jetzt: jetzt() });
-      if (!r.ok) {
+      if (wiederaufnahme.current !== w) {
         beendeMelder();
-        abgelehnt(r);
         return;
       }
-      if (fokusVerloren.current || document.hidden) {
-        // Im Moment der Entscheidung ist ein anderes Fenster vorn: nicht aktivieren.
-        beendeMelder();
-        setB(pausiere(jetztStand, "fokusverlust", jetzt()));
-        setMeldung(t("begleitung.fehler.fokusBeimStart"));
-        return;
-      }
-      if (zustand === "ausgefallen") {
-        setB(pausiere(jetztStand, "sperrmelder", jetzt()));
-        setMeldung(t("begleitung.fehler.sperrmelder"));
-        return;
-      }
-      setB(r.begleitung);
+      w.melder = zustand;
+      entscheideWiederaufnahme();
     });
-  }, [jetzt, t, pruefeRechte, richteMelderEin, beendeMelder]);
+    pruefeRechte?.();
+    window.setTimeout(() => {
+      if (wiederaufnahme.current === w && !w.bestaetigt) {
+        wiederaufnahme.current = null;
+        beendeMelder();
+        meldungRechte.current = true;
+        setMeldung(t("begleitung.fehler.rechte_unbestaetigt"));
+      }
+    }, RECHTE_WARTEN_MS);
+  }, [jetzt, t, pruefeRechte, richteMelderEin, beendeMelder, entscheideWiederaufnahme]);
 
   const stopp = useCallback(() => {
     setMeldung(null);

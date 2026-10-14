@@ -468,23 +468,19 @@ describe("K7 · Sperrbildschirm, Kontowechsel, Rechteentzug pausieren; Neuladen 
     act(() => knopf("Fortsetzen").click());
     expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain("gerade nicht erlaubt");
 
-    // Die Rolle passt wieder, aber die Serverbestätigung stammt von VOR dem Entzug: gesperrt, und
-    // eine frische Bestätigung wird angefordert.
+    // Die Rolle ist wieder zugelassen, die gespeicherte Bestätigung stammt aber von VOR dem Entzug.
+    // Nacharbeit 16: die alte Zugriffsmeldung ist damit überholt und verschwindet; das allein setzt
+    // nicht fort. Der bewusste Klick holt eine FRISCHE Bestätigung und setzt dann in EINEM Schritt
+    // fort — ohne Neuladen, ohne zweiten Klick, ohne falsche Zwischenmeldung.
     uhr = T0 + 3 * MIN;
     montiere("u-pia", "experte", T0 + MIN);
-    // Seit Nacharbeit 13 fragt die Leiste den Server auch vor jedem Lesen. Gezählt wird deshalb
-    // genau dieser eine Klick: er fordert EINE frische Bestätigung an.
+    expect(wurzel.querySelector('[role="alert"]')).toBeNull();
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
     const anfragenVorher = pruefSpion.mock.calls.length;
     act(() => knopf("Fortsetzen").click());
-    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain("neu bestätigt");
-    expect(pruefSpion.mock.calls.length - anfragenVorher).toBe(1);
-    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
-
-    // Erst die nach dem Entzug bestätigte Berechtigung erlaubt das bewusste Fortsetzen.
-    montiere("u-pia", "experte", T0 + 3 * MIN);
-    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
-    act(() => knopf("Fortsetzen").click());
+    expect(pruefSpion.mock.calls.length).toBeGreaterThan(anfragenVorher);
     expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+    expect(wurzel.querySelector('[role="alert"]')).toBeNull();
   });
 
   it("Rechteentzug bei weiter angemeldetem Nutzer: sofort pausiert, ohne das Formular zu lesen", () => {
@@ -974,24 +970,47 @@ describe("K7 · jede lokale Lesung braucht eine frische Serverbestätigung", () 
     expect(wurzel.textContent).not.toContain("9191");
     expect(vorgangAbgefragt(lesen.mock.calls)).toBe(false);
 
-    // Die Rolle wird wiedererteilt: das allein setzt NICHT fort.
+    // Noch entzogen: der Klick wartet auf die frische Bestätigung und nennt dann den TATSÄCHLICHEN
+    // Grund (Nacharbeit 16).
+    act(() => knopf("Fortsetzen").click());
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain("gerade nicht erlaubt");
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+
+    // Hostprobe 95: die Rolle wird exakt wiederhergestellt. Eine spätere Serverbestätigung nimmt
+    // die überholte Zugriffsmeldung zurück — fortgesetzt wird dadurch NICHT.
     server.rolle = "experte";
     vergeht(20_000);
+    act(() => serverAntwortet());
+    expect(wurzel.querySelector('[role="alert"]')).toBeNull();
     expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
     expect(vorgangAbgefragt(lesen.mock.calls)).toBe(false);
     lesen.mockRestore();
 
-    // Erstes Fortsetzen: die Leiste kennt noch die entzogene Rolle → abgelehnt, frische Bestätigung
-    // angefordert. Zweites, bewusstes Fortsetzen mit der frisch bestätigten Rolle → aktiv.
-    act(() => knopf("Fortsetzen").click());
-    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain("gerade nicht erlaubt");
-    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
-    vergeht(1000);
+    // Bewusstes Fortsetzen: EIN Klick, ohne Neuladen, mit frischer Bestätigung und derselben Frist.
+    const fristVorher = q("begleitung-zustand")?.textContent?.split(" · bis ")[1];
     act(() => knopf("Fortsetzen").click());
     expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
+    expect(q("begleitung-zustand")?.textContent?.split(" · bis ")[1]).toBe(fristVorher);
+    expect(wurzel.querySelector('[role="alert"]')).toBeNull();
     vergeht(2000);
     expect(q("begleitung-hinweis")?.textContent).toContain("„9191“");
     ohneLeck();
+  });
+
+  it("Fortsetzen wartet auf die Bestätigung: Hinweis während des Wartens, ohne Antwort „unbestätigt“", () => {
+    montiere();
+    starte("Produktrecherche, 30 Minuten");
+    act(() => knopf("Pause").click());
+    server.antwortet = false;
+    act(() => knopf("Fortsetzen").click());
+    // Kein vorschneller Zugriffsfehler aus dem Zwischenspeicher — sondern ehrlich: es wird bestätigt.
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain(
+      "Der Zugriff wird beim Server bestätigt",
+    );
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    vergeht(11_000);
+    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
+    expect(wurzel.querySelector('[role="alert"]')?.textContent).toContain("neu bestätigt");
   });
 
   it("antwortet der Server nicht, wird nicht gelesen — nach der Frist Pause „unbestätigt“", () => {
@@ -1013,12 +1032,9 @@ describe("K7 · jede lokale Lesung braucht eine frische Serverbestätigung", () 
     expect(vorgangAbgefragt(lesen.mock.calls)).toBe(false);
     lesen.mockRestore();
 
-    // Der Server antwortet wieder: Fortsetzen holt die Bestätigung (sie muss JÜNGER sein als die
-    // Pause), das zweite Fortsetzen liest.
+    // Der Server antwortet wieder: EIN bewusster Klick holt die Bestätigung (jünger als die Pause)
+    // und setzt fort — ohne Neuladen (Nacharbeit 16).
     server.antwortet = true;
-    vergeht(1000);
-    act(() => knopf("Fortsetzen").click());
-    expect(q("begleitung-zustand")?.textContent).toMatch(/^Pausiert · /);
     vergeht(1000);
     act(() => knopf("Fortsetzen").click());
     expect(q("begleitung-zustand")?.textContent).toMatch(/^Begleiten · /);
