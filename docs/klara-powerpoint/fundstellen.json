@@ -469,7 +469,24 @@
       "abgleich": {
         "job_eingerichtet": true,
         "auftragsordner": "auftrag-ae98566ac0b1b4c7d2b2",
-        "ordner_vorhanden": true
+        "ordner_vorhanden": true,
+        "erhoben_am": "2026-10-15T10:11:59Z",
+        "prozesse": { "wrapper": "exited", "wrapper_nativ": "dead", "runner_nativ": "dead" },
+        "claude": { "status": "completed", "nativ": "dead", "beendet_am": "2026-10-13T03:21:42Z" },
+        "ben": {
+          "status": "completed",
+          "nativ": "dead",
+          "kandidat": "120e35c245104418b05889f27ad215da0b6b95b3",
+          "beendet_am": "2026-10-13T03:32:10Z"
+        },
+        "phase": "ben",
+        "kandidat": "120e35c245104418b05889f27ad215da0b6b95b3",
+        "arbeitsbaum": {
+          "vorhanden": true,
+          "head": "120e35c245104418b05889f27ad215da0b6b95b3",
+          "status": "",
+          "merge_head": null
+        }
       },
       "pp_bezug": ["PP-04"]
     },

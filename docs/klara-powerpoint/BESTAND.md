@@ -161,7 +161,7 @@ entstanden. Aktueller Kandidat ist `f9f470d4`.
 | ID | Zentralstand | Job eingerichtet | Auftragsordner | Lieferung (Commit · Version · abgeschlossen) | Bewertung für Doppelstarts |
 | --- | --- | --- | --- | --- | --- |
 | A01 | offen, Rev. 4 | nein | `auftrag-c0b296aed8b96278e17b` fehlt | — | kein laufender Arbeitsbaum; der Host-Bau ist offener Vertrag von A01 und wird nicht von PP gestartet |
-| A02 | offen, Rev. 1 | **ja** | `auftrag-ae98566ac0b1b4c7d2b2` vorhanden | — | **einziger eingerichteter offener Fremdauftrag**; Arbeitsbaum und Sitzung als möglicherweise laufend schützen, W03/W04-Dateien (7.1) nicht ändern |
+| A02 | offen, Rev. 1 | **ja** | `auftrag-ae98566ac0b1b4c7d2b2` vorhanden | — | **einziger eingerichteter offener Fremdauftrag**; zum Erhebungszeitpunkt (15.10.2026 10:11 UTC) alle Prozesse beendet, Claude- und Ben-Sitzung abgeschlossen (13.10.2026), Phase `ben`, Kandidat `120e35c2`, Arbeitsbaum sauber auf `120e35c2` erhalten; Originalauftrag offen und geschützt, W03/W04-Dateien (7.1) nicht ändern |
 | A03 | offen, Rev. 1 | nein | `auftrag-1fbf36bf64cd31389769` fehlt | — | kein laufender Arbeitsbaum; Start nur über A03 selbst |
 | A04 | offen, Rev. 1 | nein | `auftrag-00953a8791b24fc7aa54` fehlt | — | kein laufender Arbeitsbaum; Start nur über A04 selbst |
 | A05 | offen, Rev. 1 | nein | `auftrag-92d34d612bb390b0c816` fehlt | — | kein laufender Arbeitsbaum; Start nur über A05 selbst |
@@ -173,15 +173,30 @@ entstanden. Aktueller Kandidat ist `f9f470d4`.
 | A11 | abgeschlossen, Rev. 3 | ja | `auftrag-2463c7081c607ea620ed` vorhanden | `674c37a2` · 1.0.0-beta.1.931 · 11.10.2026 | geliefert; nicht neu öffnen |
 | A12 | abgeschlossen, Rev. 3 | ja | `auftrag-617ee901dad796bab624` vorhanden | `aa4016b5` · 1.0.0-beta.1.929 · 11.10.2026 | geliefert; nicht neu öffnen |
 
-**Ergebnis.** Laufende Fremdarbeit mit eigenem Arbeitsbaum kann nur bei A02 bestehen. A07 bis A12
+**A02 im Einzelnen** (Zulieferung, Zeile A02, erhoben 15.10.2026 10:11:59 UTC):
+
+- Prozesse: Wrapper `exited`, Wrapper- und Runner-Prozess `dead` (beendet).
+- Claude-Sitzung: `completed`, Prozess beendet, Ende 13.10.2026 03:21 UTC.
+- Ben-Sitzung: `completed` am Kandidaten `120e35c245104418b05889f27ad215da0b6b95b3`, Prozess beendet,
+  Ende 13.10.2026 03:32 UTC.
+- Auftragsstand: Phase `ben`, Kandidat `120e35c2…`, keine Lieferung; zentral weiterhin `offen`.
+- Arbeitsbaum: vorhanden, `HEAD` = `120e35c2…`, Status leer (sauber), kein Merge im Gang.
+
+„Completed“ der Sitzungen ist kein Lieferabschluss. Der Originalauftrag bleibt offen, Arbeitsbaum und
+Kandidat bleiben erhalten; das PowerPoint-Paket ändert dort nichts und startet A02 nicht.
+
+**Ergebnis.** Zum Erhebungszeitpunkt läuft bei keinem der Aufträge A01 bis A12 ein Prozess: A02 und
+A07 bis A12 melden Wrapper `exited` und alle Prozesse `dead`; A07 bis A12 stehen jeweils mit sauberem
+Arbeitsbaum auf ihrem Liefercommit; A01 und A03 bis A06 haben keinen Job. Erhaltene offene
+Fremdarbeit mit eigenem Arbeitsbaum gibt es nur bei A02. A07 bis A12
 sind zentral abgeschlossen; ihr Code ist Basis der Wege in Abschnitt 2. Eine Erweiterung läuft über
 einen neuen regulären Auftrag (PP-02 ff.), nicht über ein Wiederöffnen. A01 und A03 bis A06 sind
 offene Verträge ohne eingerichteten Job; sie werden über ihren eigenen Auftrag gestartet, nie durch
 das PowerPoint-Paket. Damit entsteht kein Doppelstart.
 
 **Grenzen.**
-- Die Zulieferung nennt keinen Prozess- oder Sitzungsstatus und keinen Kandidaten-Commit des offenen
-  Auftrags A02. Ob dort gerade eine Sitzung läuft, ist nicht belegt; deshalb gilt A02 als geschützt.
+- Die Zustände gelten zum Erhebungszeitpunkt 15.10.2026 10:11 UTC. Ein späterer Neustart von A02 ist
+  damit nicht ausgeschlossen; deshalb vor jedem PP-Bau frisch abgleichen (unten).
 - Dass die Liefercommits von A07 bis A12 Vorfahren der Arbeitsbasis `e3b86aec` (1.0.0-beta.1.982)
   sind, ist nicht mit Git geprüft. Die Versionsfolge spricht dafür; die Codefundstellen in
   `fundstellen.json` belegen die Wege im Hauptstand.

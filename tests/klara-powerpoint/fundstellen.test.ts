@@ -22,7 +22,9 @@
 //   F7  Nacharbeit 4: der Abgleich A01–A12 folgt der kandidatgebundenen Zulieferung der Führung:
 //       Zentralstand, Revision, eingerichteter Job, Auftragsordner und Lieferung je Auftrag stehen
 //       gleich in fundstellen.json und BESTAND.md 7.2; nur A02 ist offen mit Job und wird
-//       geschützt; nicht Belegtes (Sitzungsstatus A02) bleibt als Grenze benannt (K1, K3).
+//       geschützt. Nacharbeit 5 (Bens Befund): die gelieferten A02-Zustände — Erhebungszeitpunkt,
+//       Prozesse beendet, Claude/Ben abgeschlossen, Originalauftrag offen, sauberer Arbeitsbaum auf
+//       dem erhaltenen Kandidaten — sind übernommen statt als „nicht belegt“ geführt (K1, K3).
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { type EditorNachricht, auswahlVomEditor } from "../../apps/web/src/lib/officeEditor";
@@ -50,6 +52,18 @@ interface Eintrag {
     auftragsordner: string;
     ordner_vorhanden: boolean;
     lieferung?: { commit: string; version: string; abgeschlossen_am: string };
+    erhoben_am?: string;
+    prozesse?: { wrapper: string; wrapper_nativ: string; runner_nativ: string };
+    claude?: { status: string; nativ: string; beendet_am: string };
+    ben?: { status: string; nativ: string; kandidat: string; beendet_am: string };
+    phase?: string;
+    kandidat?: string;
+    arbeitsbaum?: {
+      vorhanden: boolean;
+      head: string;
+      status: string;
+      merge_head: string | null;
+    };
   };
 }
 
@@ -397,7 +411,50 @@ describe("F7 · Nacharbeit 4: Abgleich A01–A12 aus der Zulieferung der Führun
     expect(offenMitJob).toEqual(["A02"]);
     expect(zeile72("A02")).toContain("**einziger eingerichteter offener Fremdauftrag**");
     expect(ab72).toContain("Damit entsteht kein Doppelstart.");
-    // Was die Zulieferung nicht trägt, bleibt als Grenze benannt.
-    expect(ab72).toContain("Ob dort gerade eine Sitzung läuft, ist nicht belegt");
+  });
+
+  it("A02: gelieferte Prozess-, Sitzungs- und Arbeitsbaumzustände übernommen", () => {
+    const a02 = eintrag("A02");
+    const g = a02.abgleich;
+    const kandidat = "120e35c245104418b05889f27ad215da0b6b95b3";
+    // Erhebungszeitpunkt und Originalauftrag
+    expect(g?.erhoben_am).toBe("2026-10-15T10:11:59Z");
+    expect(a02.auftragsstand).toBe("offen");
+    expect(g?.lieferung).toBeUndefined();
+    // Prozesse beendet, Sitzungen abgeschlossen
+    expect(g?.prozesse).toEqual({
+      wrapper: "exited",
+      wrapper_nativ: "dead",
+      runner_nativ: "dead",
+    });
+    expect(g?.claude?.status).toBe("completed");
+    expect(g?.claude?.nativ).toBe("dead");
+    expect(g?.ben?.status).toBe("completed");
+    expect(g?.ben?.nativ).toBe("dead");
+    expect(g?.ben?.kandidat).toBe(kandidat);
+    // Kandidat und sauberer erhaltener Arbeitsbaum
+    expect(g?.phase).toBe("ben");
+    expect(g?.kandidat).toBe(kandidat);
+    expect(g?.arbeitsbaum).toEqual({
+      vorhanden: true,
+      head: kandidat,
+      status: "",
+      merge_head: null,
+    });
+    // BESTAND.md gibt dieselben Zustände wieder; die frühere Falschaussage ist entfernt.
+    const z = zeile72("A02");
+    for (const teil of [
+      "zum Erhebungszeitpunkt (15.10.2026 10:11 UTC) alle Prozesse beendet",
+      "Claude- und Ben-Sitzung abgeschlossen",
+      "Kandidat `120e35c2`",
+      "Arbeitsbaum sauber auf `120e35c2` erhalten",
+      "Originalauftrag offen und geschützt",
+    ]) {
+      expect(z, teil).toContain(teil);
+    }
+    expect(ab72).toContain(`\`${kandidat}\``);
+    expect(ab72).toContain("„Completed“ der Sitzungen ist kein Lieferabschluss.");
+    expect(bestand).not.toContain("ist nicht belegt; deshalb gilt A02 als geschützt");
+    expect(bestand).not.toContain("Die Zulieferung nennt keinen Prozess- oder Sitzungsstatus");
   });
 });
