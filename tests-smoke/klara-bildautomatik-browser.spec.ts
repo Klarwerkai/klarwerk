@@ -22,6 +22,7 @@
 //
 // DAS PROTOKOLL hängt als Anhang am Bericht, gleich wie es ausgeht: Befunde je Bild mit Status und
 // erkanntem Text, Zeitpunkte, CSP-Meldungen.
+import { createHash } from "node:crypto";
 import { type Locator, type Page, expect, test } from "@playwright/test";
 import { ensureLoggedIn } from "./support/auth";
 
@@ -582,4 +583,328 @@ test("OCR-02 · Handschrift, unleserliche Stelle und bildhafte Tabelle werden au
       expect(zellen[n]?.[s], `Zelle ${n + 1}/${s + 1}`).toContain(zelle);
     });
   });
+});
+
+// ================================================================================================
+// Basisreparatur 58→53 (produkt:20261015:ocr-basis-erkannter-genauigkeitsfehler, OBG-K02/K03)
+// ================================================================================================
+//
+// DER BEFUND: Die OCR-04-Genauigkeitsprobe (Kandidat 003c409a, `klara-bild-ocr04-abnahme-browser.
+// spec.ts`, Z. 595) las das klar lesbare Textbild „Schlüssel 58 / Füllstand 93“ als „Schlüssel 53“ —
+// ohne Unsicherheitsmarke. Diese Datei steht nicht auf main; sie gehört zum OCR-04-Auftrag und wird
+// hier nicht übernommen. Die Vorlagen unten sind aus ihr WORTGLEICH übernommen (Maße, Schrift,
+// Farben, Text, Drehung, Zeichenweg) und werden nicht abgeschwächt; der Maßstab ebenso:
+//   · bekannte Begriffe wörtlich, `[?wort]` zählt als gelesen, `[unleserlich]` nicht,
+//   · schwierige Vorlagen gelesen oder „kein Text“ — kein ungekennzeichnet falsches Wort.
+// Zusätzlich gilt für das Textbild, dass KEIN Wort ungekennzeichnet falsch ist (eine „53“ ohne
+// Marke fällt auch dann durch, wenn daneben „58“ stünde). Die PNG-Bytes der Vorlage hängen mit
+// SHA-256 am Bericht, zum Abgleich mit dem Originalanhang `ocr04-vorlage-textbild.png`.
+//
+// Die PowerPoint mit vier Bildern auf drei Folien (Umlaute, ß) ist ebenfalls die der OCR-04-Probe.
+// Die Bilder laufen nacheinander durch denselben Dateiimport — jeder Eingang ist eine neue Quelle
+// (Quellwechsel); ein Befund trägt nie den Text eines anderen Bildes.
+
+interface OcrZeile {
+  text: string;
+  x: number;
+  y: number;
+  schrift: string;
+  farbe: string;
+}
+
+interface Vorlage {
+  breite: number;
+  hoehe: number;
+  hintergrund: string;
+  /** Flächen ohne Text — Fensterleiste, Seitenleiste, Knopf eines Screenshots. */
+  flaechen?: { x: number; y: number; b: number; h: number; farbe: string }[];
+  zeilen: OcrZeile[];
+  /** Drehung des Textes in Grad um die Bildmitte. */
+  drehung?: number;
+}
+
+interface Farben {
+  hintergrund: string;
+  schrift: string;
+}
+
+const FETT = "bold 80px Arial, Helvetica, sans-serif";
+const NORMAL = "48px Arial, sans-serif";
+const SCHWARZ_AUF_WEISS: Farben = { hintergrund: "#ffffff", schrift: "#000000" };
+/** Hellgrau auf Grau — schwacher Kontrast. */
+const GRAU_AUF_GRAU: Farben = { hintergrund: "#c4c4c4", schrift: "#a6a6a6" };
+
+/** Zwei Textzeilen in fetter Schrift — Grundform von Textbild, gedrehtem Text und Kontrastbild. */
+function zweiZeilen(oben: string, unten: string, farben = SCHWARZ_AUF_WEISS): Vorlage {
+  return {
+    breite: 1200,
+    hoehe: 380,
+    hintergrund: farben.hintergrund,
+    zeilen: [
+      { text: oben, x: 100, y: 150, schrift: FETT, farbe: farben.schrift },
+      { text: unten, x: 100, y: 290, schrift: FETT, farbe: farben.schrift },
+    ],
+  };
+}
+
+const SCREENSHOT: Vorlage = {
+  breite: 1280,
+  hoehe: 720,
+  hintergrund: "#eef1f5",
+  flaechen: [
+    { x: 0, y: 0, b: 1280, h: 64, farbe: "#2b3a55" },
+    { x: 0, y: 64, b: 240, h: 656, farbe: "#d9dee7" },
+    { x: 280, y: 110, b: 940, h: 540, farbe: "#ffffff" },
+    { x: 320, y: 520, b: 280, h: 76, farbe: "#1f6feb" },
+  ],
+  zeilen: [
+    { text: "Auftrag 4711", x: 330, y: 200, schrift: NORMAL, farbe: "#111111" },
+    { text: "Fällig 15.11.2026", x: 330, y: 290, schrift: NORMAL, farbe: "#111111" },
+    { text: "Prüfung offen", x: 330, y: 380, schrift: NORMAL, farbe: "#111111" },
+    { text: "Speichern", x: 350, y: 570, schrift: "36px Arial, sans-serif", farbe: "#ffffff" },
+  ],
+};
+const SCREENSHOT_BEGRIFFE = ["Auftrag", "4711", "Fällig", "15.11.2026", "Prüfung", "offen"];
+
+const TEXTBILD = zweiZeilen("Schlüssel 58", "Füllstand 93");
+const TEXTBILD_VORLAGE = ["Schlüssel 58", "Füllstand 93"];
+const TEXTBILD_BEGRIFFE = ["Schlüssel", "58", "Füllstand", "93"];
+
+const GEDREHT: Vorlage = { ...zweiZeilen("VENTIL 38", "DRUCK 72"), drehung: 6 };
+const GEDREHT_VORLAGE = ["VENTIL 38", "DRUCK 72"];
+
+const KONTRAST = zweiZeilen("LAGER 54", "PUMPE 16", GRAU_AUF_GRAU);
+const KONTRAST_VORLAGE = ["LAGER 54", "PUMPE 16"];
+
+/** Ein Bild mit einer Zeile — für die eingebetteten Bilder der PowerPoint. */
+const einzeilig = (text: string): Vorlage => ({
+  breite: 1200,
+  hoehe: 230,
+  hintergrund: "#ffffff",
+  zeilen: [{ text, x: 60, y: 140, schrift: FETT, farbe: "#000000" }],
+});
+
+/** Die PowerPoint der OCR-04-Probe: je eingebettetem Bild Folie, Position und Text. */
+const DECK_BILDER = [
+  { folie: 1, bild: 1, text: "Prüfstand 47", begriffe: ["Prüfstand", "47"] },
+  { folie: 2, bild: 1, text: "Ölwechsel 83", begriffe: ["Ölwechsel", "83"] },
+  { folie: 2, bild: 2, text: "Größe 29", begriffe: ["Größe", "29"] },
+  { folie: 3, bild: 1, text: "Übergabe 61", begriffe: ["Übergabe", "61"] },
+] as const;
+const FOLIENTITEL = ["Wartungsplan", "Anlage", "Abschluss"];
+
+/** Zeichnet die Vorlage im Browser und gibt die PNG-Bytes zurück (Zeichenweg wie OCR-04). */
+async function zeichne(page: Page, v: Vorlage): Promise<Buffer> {
+  const b64 = await page.evaluate((vorlage) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = vorlage.breite;
+    canvas.height = vorlage.hoehe;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("kein Canvas");
+    }
+    ctx.fillStyle = vorlage.hintergrund;
+    ctx.fillRect(0, 0, vorlage.breite, vorlage.hoehe);
+    for (const f of vorlage.flaechen ?? []) {
+      ctx.fillStyle = f.farbe;
+      ctx.fillRect(f.x, f.y, f.b, f.h);
+    }
+    if (vorlage.drehung) {
+      ctx.translate(vorlage.breite / 2, vorlage.hoehe / 2);
+      ctx.rotate((vorlage.drehung * Math.PI) / 180);
+      ctx.translate(-vorlage.breite / 2, -vorlage.hoehe / 2);
+    }
+    for (const z of vorlage.zeilen) {
+      ctx.font = z.schrift;
+      ctx.fillStyle = z.farbe;
+      ctx.fillText(z.text, z.x, z.y);
+    }
+    return canvas.toDataURL("image/png").split(",")[1] ?? "";
+  }, v);
+  return Buffer.from(b64, "base64");
+}
+
+/** Eine PowerPoint mit beliebig vielen Folien und Bildern (gleiche Bausteine wie `deck`). */
+function deckMitFolien(folien: readonly { titel: string; bilder: Buffer[] }[]): Buffer {
+  const ids = folien.map((_, i) => `<p:sldId id="${256 + i}" r:id="rId${i + 1}"/>`).join("");
+  const ziele = folien
+    .map((_, i) => {
+      const ziel = `slides/slide${i + 1}.xml`;
+      return `<Relationship Id="rId${i + 1}" Type="${URI_R}/slide" Target="${ziel}"/>`;
+    })
+    .join("");
+  const eintraege: Record<string, Uint8Array> = {
+    "[Content_Types].xml": enc(
+      `${KOPF}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/></Types>`,
+    ),
+    "_rels/.rels": enc(
+      `${KOPF}<Relationships xmlns="${URI_PKG_R}"><Relationship Id="rId1" Type="${URI_R}/officeDocument" Target="ppt/presentation.xml"/></Relationships>`,
+    ),
+    "ppt/presentation.xml": enc(
+      `${KOPF}<p:presentation xmlns:p="${URI_P}" xmlns:a="${URI_A}" xmlns:r="${URI_R}"><p:sldIdLst>${ids}</p:sldIdLst></p:presentation>`,
+    ),
+    "ppt/_rels/presentation.xml.rels": enc(
+      `${KOPF}<Relationships xmlns="${URI_PKG_R}">${ziele}</Relationships>`,
+    ),
+  };
+  let medien = 0;
+  folien.forEach((f, i) => {
+    const ziel = f.bilder.map((bytes, j) => {
+      medien += 1;
+      const datei = `bild${medien}.png`;
+      eintraege[`ppt/media/${datei}`] = new Uint8Array(bytes);
+      return { rid: `rId${10 + j}`, datei };
+    });
+    eintraege[`ppt/slides/slide${i + 1}.xml`] = enc(
+      folie(
+        f.titel,
+        ziel.map((z) => z.rid),
+      ),
+    );
+    eintraege[`ppt/slides/_rels/slide${i + 1}.xml.rels`] = enc(rels(ziel));
+  });
+  return zipOhneKompression(eintraege);
+}
+
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Steht der Begriff als eigenes Wort im Text? `[?wort]` zählt als gelesen (Maßstab wie OCR-04). */
+function enthaeltBegriff(text: string, begriff: string): boolean {
+  const muster = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(begriff)}(?![\\p{L}\\p{N}])`, "iu");
+  return muster.test(text.replace(/\[\?([^\]]*)\]/g, "$1").replace(/\s+/g, " "));
+}
+
+/** Wörter, die UNGEKENNZEICHNET im Text stehen, aber nicht in der Vorlage (Maßstab wie OCR-04). */
+function erfundeneWoerter(text: string, vorlage: readonly string[]): string[] {
+  const wort = /[\p{L}\p{N}]+/gu;
+  const bekannt = new Set(vorlage.flatMap((z) => z.toLowerCase().match(wort) ?? []));
+  const ungekennzeichnet = text.replace(/\[[^\]]*\]/g, " ");
+  return (ungekennzeichnet.toLowerCase().match(wort) ?? []).filter((w) => !bekannt.has(w));
+}
+
+const fehlend = (begriffe: readonly string[], text: string): string[] =>
+  begriffe.filter((w) => !enthaeltBegriff(text, w));
+
+test("OCR-Basis 58→53 · die unveränderte OCR-04-Vorlage wird richtig gelesen; Screenshot, gedrehter Text, schwacher Kontrast und PowerPoint ohne ungekennzeichnet falsche Angabe", async ({
+  page,
+}) => {
+  test.setTimeout(900_000);
+  await ensureLoggedIn(page);
+  await page.goto("/erfassen?weg=datei");
+  const eingang = page.locator('input[type="file"][accept*=".pptx"][accept*="image/*"]').first();
+  await expect(eingang, "Dateiimport des Erfassens ist nicht da").toBeAttached({ timeout: 20_000 });
+  const panel = page.locator(DATEI_BEFUND).first();
+  let lauf = 0;
+  const lies = async (name: string, mimeType: string, buffer: Buffer) => {
+    await eingang.setInputFiles({ name, mimeType, buffer });
+    const stand = await wartenBisFertig(page, lauf);
+    lauf = stand.lauf;
+    return { ...stand, befunde: await befundeAblesen(panel) };
+  };
+  const sha256 = (b: Buffer): string => createHash("sha256").update(b).digest("hex");
+
+  const textbild = await zeichne(page, TEXTBILD);
+  const screenshot = await zeichne(page, SCREENSHOT);
+  const gedreht = await zeichne(page, GEDREHT);
+  const kontrast = await zeichne(page, KONTRAST);
+  const deckBilder: Buffer[] = [];
+  for (const b of DECK_BILDER) {
+    deckBilder.push(await zeichne(page, einzeilig(b.text)));
+  }
+  const folien = FOLIENTITEL.map((titel, i) => ({
+    titel,
+    bilder: deckBilder.filter((_, n) => DECK_BILDER[n]?.folie === i + 1),
+  }));
+  const pptx = deckMitFolien(folien);
+  await test.info().attach("ocr-basis-vorlage-textbild.png", {
+    contentType: "image/png",
+    body: textbild,
+  });
+
+  const tb = await lies("fiktives-textbild-ocr04.png", "image/png", textbild);
+  const s = await lies("fiktiver-screenshot-ocr04.png", "image/png", screenshot);
+  const g = await lies("fiktiv-gedreht-ocr04.png", "image/png", gedreht);
+  const k = await lies("fiktiv-kontrast-ocr04.png", "image/png", kontrast);
+  const d = await lies(
+    "fiktive-wartung-ocr04.pptx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    pptx,
+  );
+  const textbildText = tb.befunde[0]?.text ?? "";
+  const schwierig = [
+    { name: "gedreht", lauf: g, vorlage: GEDREHT_VORLAGE },
+    { name: "schwacher Kontrast", lauf: k, vorlage: KONTRAST_VORLAGE },
+  ];
+  await test.info().attach("ocr-basis-genauigkeit.json", {
+    contentType: "application/json",
+    body: JSON.stringify(
+      {
+        art: "Genauigkeitsprobe der Basisreparatur mit den unveränderten, fiktiven OCR-04-Vorlagen — keine Kundenabnahme",
+        textbild: {
+          vorlage: TEXTBILD_VORLAGE,
+          pngSha256: sha256(textbild),
+          pngBytes: textbild.length,
+          befund: tb,
+          fehlend: fehlend(TEXTBILD_BEGRIFFE, textbildText),
+          ungekennzeichnetFalsch: erfundeneWoerter(textbildText, TEXTBILD_VORLAGE),
+        },
+        screenshot: {
+          pngSha256: sha256(screenshot),
+          befund: s,
+          fehlend: fehlend(SCREENSHOT_BEGRIFFE, s.befunde[0]?.text ?? ""),
+        },
+        schwierig: schwierig.map((x) => ({
+          name: x.name,
+          befund: x.lauf,
+          ungekennzeichnetFalsch: erfundeneWoerter(x.lauf.befunde[0]?.text ?? "", x.vorlage),
+        })),
+        powerpoint: { bilder: DECK_BILDER, folientitel: FOLIENTITEL, befund: d },
+      },
+      null,
+      2,
+    ),
+  });
+
+  // OBG-K02 · klar lesbares Textbild: jeder Begriff wörtlich, kein Wort ungekennzeichnet falsch.
+  expect(tb.befunde).toHaveLength(1);
+  expect(tb.befunde[0]?.status).toBe("gelesen");
+  expect(fehlend(TEXTBILD_BEGRIFFE, textbildText), `Textbild: „${textbildText}“`).toEqual([]);
+  expect(
+    erfundeneWoerter(textbildText, TEXTBILD_VORLAGE),
+    `Textbild ungekennzeichnet falsch: „${textbildText}“`,
+  ).toEqual([]);
+
+  // OBG-K03 · Screenshot unverändert wörtlich (Zahlen, Datum, Umlaute).
+  expect(s.befunde).toHaveLength(1);
+  expect(s.befunde[0]?.status).toBe("gelesen");
+  expect(fehlend(SCREENSHOT_BEGRIFFE, s.befunde[0]?.text ?? ""), "Screenshot").toEqual([]);
+
+  // OBG-K03 · schwierig: gelesen oder ehrlich „kein Text“ — nichts Falsches ohne Kennzeichnung.
+  for (const { name, lauf: l, vorlage } of schwierig) {
+    expect(l.befunde, name).toHaveLength(1);
+    expect(["gelesen", "kein-text"], name).toContain(l.befunde[0]?.status);
+    expect(
+      erfundeneWoerter(l.befunde[0]?.text ?? "", vorlage),
+      `${name}: ungekennzeichnet falscher Text`,
+    ).toEqual([]);
+  }
+
+  // OBG-K03 · PowerPoint: jedes Bild an seiner Folie mit SEINEM Text; kein fremder Text, keine
+  // verlorene Fundstelle; Bildtext steht nicht im Folientext.
+  expect(d.befunde).toHaveLength(DECK_BILDER.length);
+  DECK_BILDER.forEach((soll, i) => {
+    const b = d.befunde[i];
+    expect(b?.zeile, `Bild ${i + 1}`).toContain(`Folie ${soll.folie}, Bild ${soll.bild}`);
+    expect(b?.status, `Bild ${i + 1}`).toBe("gelesen");
+    expect(fehlend(soll.begriffe, b?.text ?? ""), soll.text).toEqual([]);
+    for (const fremd of DECK_BILDER.filter((_, j) => j !== i)) {
+      const fremderText = enthaeltBegriff(b?.text ?? "", fremd.begriffe[1]);
+      expect(fremderText, `${soll.text} trägt „${fremd.text}“`).toBe(false);
+    }
+  });
+  for (const titel of FOLIENTITEL) {
+    for (const b of DECK_BILDER) {
+      expect(enthaeltBegriff(titel, b.begriffe[0])).toBe(false);
+    }
+  }
 });
