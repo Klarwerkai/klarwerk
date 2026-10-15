@@ -2493,6 +2493,15 @@ export interface AbbruchBefund {
   zeichen: number;
 }
 
+// produkt:20261010:poc-ki-ausfall-weiterarbeiten: WORTGLEICH zu `KiErsatzGrund` in
+// `services/reasoner/src/types.ts` (hier gehalten und nicht importiert, s. `REASONER_TASKS`).
+export type KiErsatzGrund =
+  | "zeitueberschreitung"
+  | "nicht_erreichbar"
+  | "verweigert"
+  | "kontingent"
+  | "fehler";
+
 export interface AnswerResult {
   answered: boolean;
   answer: string | null;
@@ -2512,6 +2521,10 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): gesetzt NUR, wenn ein Modellversuch
+  // scheiterte und danach der regelbasierte Ersatz antwortete — Spiegel von `KiErsatzGrund` in
+  // `services/reasoner/src/types.ts`. Fehlt es (alter Server, Modellantwort), sagt die Fläche nichts.
+  ersatzGrund?: KiErsatzGrund;
   // R-1643: die Argumentationskette — je Aussage die Quelle, deren Wortlaut sie belegt (Vertrag
   // am Serverfeld `AnswerResult.argumentation`, services/reasoner/src/types.ts). Optional: ein
   // älterer Server sendet sie nicht, und das Protokoll sagt dann, dass keine Kette vorliegt.
@@ -3228,6 +3241,42 @@ export interface RiskHorizonView {
   generatedAt: string;
   seesAll: boolean;
   areas: RiskHorizonArea[];
+}
+
+// produkt:20261013:lagebild-reale-werte-eingabe: die realen Eingangswerte der Wissensbewertung je
+// Arbeitsbereich (Spiegel von services/management/src/lagebild-werte.ts und service.ts).
+export type LagebildFeld = "hourlyRate" | "hoursSavedPerValidatedKo" | "reuseFactor";
+export type LagebildHerkunft = "eigene_eingabe" | "gemessen";
+export interface LagebildWert {
+  wert: number;
+  herkunft: LagebildHerkunft;
+  beleg: string | null;
+}
+export interface LagebildWerte {
+  bereich: string;
+  zeitraumVon: string;
+  zeitraumBis: string;
+  werte: Record<LagebildFeld, LagebildWert | null>;
+  version: number;
+  anfrageId: string;
+  geaendertAm: string;
+  geaendertVon: string;
+}
+export interface LagebildBereich {
+  bereich: string;
+  name: string | null;
+  darfSchreiben: boolean;
+  werte: LagebildWerte | null;
+  /** Ob der letzte Stand vom Betrachter selbst stammt (fremde Namen nennt die Fläche nicht). */
+  vonMir: boolean;
+  fakten: { validatedKos: number; totalKos: number; avgTrust: number; demoKos: number };
+}
+export interface LagebildWerteEingabe {
+  zeitraumVon: string;
+  zeitraumBis: string;
+  werte: Record<LagebildFeld, LagebildWert | null>;
+  basisVersion: number;
+  anfrageId: string;
 }
 
 export interface ManagementSnapshot {

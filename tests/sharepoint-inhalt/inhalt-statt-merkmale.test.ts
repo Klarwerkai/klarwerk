@@ -121,6 +121,8 @@ function alsQuelle(datei: typeof TEXTDATEI | typeof WORDDATEI) {
 // ER SIEHT, WAS DER ECHTE TRANSPORT SIEHT: die Adresse, auf die gebunden wurde. Der Sicherheitsfall
 // prüft sie, statt sie zu glauben.
 let gebundeneAdressen: string[] = [];
+/** Nacharbeit 9: jede Adresse, die an Graph ging — der Fall unten liest ihre Form nach. */
+let graphAbrufe: string[] = [];
 const transportDouble: SharePointInhaltsTransport = async (url, optionen) => {
   downloadKoepfe.push({ accept: optionen.akzeptiert });
   gebundeneAdressen.push(optionen.adresse);
@@ -149,6 +151,7 @@ globalThis.fetch = (async (eingabe: string | URL, init?: RequestInit) => {
     fremdeAufrufe.push(url);
     throw new Error("fremder Host");
   }
+  graphAbrufe.push(url);
 
   const dateien = [TEXTDATEI, WORDDATEI];
   const treffer = /\/items\/([^/?]+)/.exec(url);
@@ -159,7 +162,9 @@ globalThis.fetch = (async (eingabe: string | URL, init?: RequestInit) => {
     }
     // Die vorautorisierte Adresse liefert Graph NUR beim gezielten Abruf mit — sie steht nie in der
     // Liste (sie ist ein Schlüssel auf Zeit, und eine Liste voller Schlüssel wäre eine Halde).
-    const mitAdresse = url.includes("downloadUrl");
+    // Nacharbeit 9: und NUR ohne `$select`. Sie ist eine Instanz-Annotation; ein Selektor — auch
+    // einer, der sie nennt — lässt sie weg. So antwortet Graph belegt, und so antwortet dieses Double.
+    const mitAdresse = !/[?&](\$|%24)select=/.test(url);
     return new Response(
       JSON.stringify({
         ...alsQuelle(datei),
@@ -184,6 +189,7 @@ beforeEach(() => {
   fremdeAufrufe = [];
   downloadKoepfe = [];
   gebundeneAdressen = [];
+  graphAbrufe = [];
   ohneMedientyp = false;
   groesse = Buffer.byteLength(TEXT, "utf8");
   downloadAdresse = null;
@@ -456,6 +462,52 @@ describe("JOB 4232 · C1: eine Textdatei trägt ihren Text bis ins ImportItem", 
     // Auf dem Ausgangsstand stand hier der Dateiname (`mapper.ts:99`) — Merkmal statt Aussage.
     expect(eintrag?.item.statement).toBe("ZEILE EINS ZEILE ZWEI");
     expect(eintrag?.item.statement).not.toBe(TEXTDATEI.name);
+  });
+});
+
+// ================================================================================================
+// gesamt-nutzerverwaltung · NACHARBEIT 9 — DER INHALTSABRUF OHNE `$select`.
+// ================================================================================================
+//
+// Bens Befund: Der gezielte Abruf forderte die Downloadadresse per `$select` an. Graph liefert die
+// Annotation `@microsoft.graph.downloadUrl` dann NICHT — jede Textdatei endete als `unlesbar`. Das
+// Double oben antwortet jetzt wie Graph (Adresse nur ohne Selektor). C1 belegt damit den
+// zeichengleichen Text über den PRODUKTIVEN Weg (`holeItem` → `holeDatei` → `holeTextInhalt`).
+// Dieser Fall hält die Abrufform selbst fest.
+const MIT_SELEKTOR = /[?&](\$|%24)select=/;
+
+describe("Nacharbeit 9 · der gezielte Inhaltsabruf geht ohne `$select`", () => {
+  it("Inhaltsabruf ohne Selektor, Liste und Merkmalsabruf mit Selektor — der Text kommt zeichengleich", async () => {
+    const quelle = adapter();
+    await quelle.listeDateien();
+    const eintrag = await quelle.holeItem(TEXTDATEI.id);
+    expect(eintrag?.inhalt).toEqual({ art: "text", text: TEXT });
+
+    const einzeln = graphAbrufe.filter((u) => u.includes(`/items/${TEXTDATEI.id}`));
+    expect(einzeln, "genau ein gezielter Abruf der Textdatei").toHaveLength(1);
+    expect(einzeln[0] ?? "", "der Inhaltsabruf trägt keinen Selektor").not.toMatch(MIT_SELEKTOR);
+    const liste = graphAbrufe.filter((u) => u.includes("children"));
+    expect(liste.length).toBeGreaterThan(0);
+    expect(
+      liste.every((u) => MIT_SELEKTOR.test(u)),
+      "die Liste bleibt begrenzt",
+    ).toBe(true);
+    // Die Liste trägt nie eine Inhaltsadresse — und der Download ging an die geprüfte Adresse.
+    expect(gebundeneAdressen).toEqual(["93.184.216.34"]);
+    expect(fremdeAufrufe).toEqual([]);
+  });
+
+  it("der Merkmalsabruf EINER Datei bleibt auf den Selektor begrenzt und holt keine Adresse", async () => {
+    const roh = await new SharePointGraphClient({
+      baseUrl: GRAPH,
+      accessToken: UMGEBUNG.KLARWERK_SHAREPOINT_TOKEN,
+      driveId: DRIVE,
+      inhaltsTransport: transportDouble,
+      aufloeseFn: async () => ["93.184.216.34"],
+    }).holeDatei(TEXTDATEI.id);
+    expect(roh["@microsoft.graph.downloadUrl"]).toBeUndefined();
+    expect(graphAbrufe.at(-1) ?? "").toMatch(MIT_SELEKTOR);
+    expect(gebundeneAdressen, "ohne Inhaltsadresse kein Download").toEqual([]);
   });
 });
 

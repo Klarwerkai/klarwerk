@@ -70,6 +70,8 @@ import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 // PETER-20261011-P13: Geldwert nur aus gemessenen Fällen, Reifegrad nur je Arbeitsweg aus Belegen.
 import { LagebildGeldwert, LagebildReifegrad } from "../components/LagebildKapital";
+// produkt:20261013:lagebild-reale-werte-eingabe: reale Werte der Wissensbewertung je Bereich.
+import { LagebildWerteKarte } from "../components/LagebildWerte";
 // JOB 3363: dieselbe Kennzeichnung wie auf `/wissen/:id` und in der Bibliothek — ein Baustein.
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 // FR-VAL-06: dieselbe Zuweisungsübersicht je Person wie in der Auswertung.
@@ -134,6 +136,12 @@ import { importQuellangabe, importVolltextBefund } from "../lib/importTextVollte
 import { knowledgeHealth } from "../lib/knowledgeHealth";
 import { buildKnowledgeOsHints } from "../lib/knowledgeOsHints";
 import { buildKnowledgeOsReadiness } from "../lib/knowledgeOsReadiness";
+import {
+  DEFAULT_ASSUMPTIONS,
+  type ValuationAssumptions,
+  estimateValuation,
+  formatEur,
+} from "../lib/knowledgeValuation";
 import { formatKoTimestamp } from "../lib/koDates";
 import { koLabel } from "../lib/koLabel";
 // JOB 3363: die Leseübersetzung eines noch NICHT angenommenen Kandidaten — live über die echte
@@ -1531,11 +1539,18 @@ function MgmtKpi({ label, value }: { label: string; value: string | number }): J
 }
 
 // SCRUM-120/114 / FE-MGMT: echte, datenbasierte Management-/Wissenskapital-Sichten.
-// Alle Zahlen aus dem Live-Snapshot. PETER-20261011-P13: kein Geldwert aus dem Bestand und kein
-// firmenweiter Reifegrad (components/LagebildKapital). Ohne Bestand wird diese Sicht gar nicht
-// gezeigt (`Capital`: Hinweis „mgmt.empty“) — also auch kein Kapitalwert und keine Anteile.
+// Alle Zahlen aus dem Live-Snapshot. Die Wissensbewertung trägt drei getrennte Teile: die als
+// „Beispiel (geschätzt)“ gekennzeichnete Rechnung und die gespeicherten realen Werte je Bereich
+// (produkt:20261013:lagebild-reale-werte-eingabe) sowie den Geldwert nur aus gemessenen Fällen
+// (PETER-20261011-P13, components/LagebildKapital). Kein firmenweiter Reifegrad. Ohne Bestand wird
+// diese Sicht gar nicht gezeigt (`Capital`: Hinweis „mgmt.empty“).
 function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
   const { t } = useTranslation();
+  const [assumptions, setAssumptions] = useState<ValuationAssumptions>({ ...DEFAULT_ASSUMPTIONS });
+  const valuation = estimateValuation(snap.valuationFacts, assumptions);
+  const setNum = (k: keyof ValuationAssumptions) => (e: ChangeEvent<HTMLInputElement>) =>
+    setAssumptions((a) => ({ ...a, [k]: Number(e.target.value) || 0 }));
+
   const o = snap.overview;
   return (
     <div className="space-y-4">
@@ -1618,11 +1633,76 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         </div>
       </Card>
 
-      {/* FE-MGMT-04 → PETER-20261011-P13: Geldwert nur aus gemessenen Fällen. */}
+      {/* FE-MGMT-04: Beispielrechnung (gekennzeichnet), reale Werte je Bereich, Geldwert aus
+          gemessenen Fällen (PETER-20261011-P13) — drei getrennte Teile. */}
       <Card id={sectionAnchor("valuation")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.valuation")}</SectionLabel>
         <HelpTip title={t("mgmt.valuation")} body={t("shelp.mgmt.valuation")} />
-        <LagebildGeldwert />
+        <div className="mt-2 rounded-card bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text">
+          {t("mgmt.valuationDisclaimer")}
+        </div>
+        {/* produkt:20261013:lagebild-reale-werte-eingabe (LWE-01): die Beispielrechnung ist als
+            geschätzt gekennzeichnet und sichtbar von den realen Werten darunter getrennt. Ihre
+            Eingaben werden nicht gespeichert. */}
+        <div
+          data-testid="kapital-beispielrechnung"
+          className="mt-3 rounded-card border border-dashed border-trust-warn-fill p-3"
+        >
+          <SectionLabel>{t("lagebildwerte.beispiel.titel")}</SectionLabel>
+          <p
+            data-testid="kapital-beispiel-kennzeichnung"
+            className="text-[12px] text-trust-warn-text"
+          >
+            {t("lagebildwerte.beispiel.kennzeichnung")}
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <label className="text-[12px] text-muted">
+              {t("mgmt.assumeRate")}
+              <input
+                type="number"
+                value={assumptions.hourlyRate}
+                onChange={setNum("hourlyRate")}
+                className="mt-1 h-9 w-full rounded-input border border-hairline bg-page px-2 text-sm"
+              />
+            </label>
+            <label className="text-[12px] text-muted">
+              {t("mgmt.assumeHours")}
+              <input
+                type="number"
+                value={assumptions.hoursSavedPerValidatedKo}
+                onChange={setNum("hoursSavedPerValidatedKo")}
+                className="mt-1 h-9 w-full rounded-input border border-hairline bg-page px-2 text-sm"
+              />
+            </label>
+            <label className="text-[12px] text-muted">
+              {t("mgmt.assumeReuse")}
+              <input
+                type="number"
+                value={assumptions.reuseFactor}
+                onChange={setNum("reuseFactor")}
+                className="mt-1 h-9 w-full rounded-input border border-hairline bg-page px-2 text-sm"
+              />
+            </label>
+          </div>
+          <div data-testid="kapital-beispiel-eur" className="mt-3 text-2xl font-semibold text-ink">
+            {formatEur(valuation.estimateEur)}
+          </div>
+          <div className="mt-1 font-mono text-[11px] text-muted-2">{valuation.formula}</div>
+          <div className="text-[11px] text-muted-2">
+            {t("mgmt.basis", {
+              n: snap.valuationFacts.validatedKos,
+              trust: snap.valuationFacts.avgTrust,
+            })}
+          </div>
+        </div>
+        {/* Die realen, gespeicherten Werte je Arbeitsbereich (components/LagebildWerte). */}
+        <div className="mt-3">
+          <LagebildWerteKarte />
+        </div>
+        {/* PETER-20261011-P13: Geldwert nur aus gemessenen Fällen, getrennt von beidem darüber. */}
+        <div className="mt-3">
+          <LagebildGeldwert />
+        </div>
       </Card>
 
       {/* FE-MGMT-05: Knowledge Statement */}
@@ -2643,7 +2723,11 @@ export function Capital(): JSX.Element {
       <QueryState query={snapshot}>
         {(snap) =>
           snap.overview.totalKos === 0 ? (
-            <Notice textKey="mgmt.empty" />
+            <>
+              <Notice textKey="mgmt.empty" />
+              {/* Reale Werte lassen sich auch vor dem ersten Wissensobjekt erfassen. */}
+              <LagebildWerteKarte />
+            </>
           ) : (
             <CapitalDashboard snap={snap} />
           )

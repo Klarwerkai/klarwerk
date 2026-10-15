@@ -94,13 +94,13 @@ export function LagebildGeldwert(): JSX.Element {
   const eur = (n: number): string => formatEur(n, i18n.language);
 
   return (
-    <div data-testid="lagebild-geldwert">
+    <div data-testid="p13-geldwert">
       <p className="mt-2 text-[12px] text-muted">{t("lagebild.geld.regel")}</p>
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
         <label className="text-[12px] text-muted">
           {t("lagebild.geld.messart")}
           <select
-            data-testid="lagebild-messart"
+            data-testid="p13-messart"
             value={messart}
             onChange={(e) => setMessart(e.target.value as typeof messart)}
             className={FELD_KLASSE}
@@ -113,7 +113,7 @@ export function LagebildGeldwert(): JSX.Element {
         <label className="text-[12px] text-muted">
           {t("lagebild.geld.kostensatz")}
           <input
-            data-testid="lagebild-kostensatz"
+            data-testid="p13-kostensatz"
             type="number"
             min={0}
             inputMode="decimal"
@@ -125,7 +125,7 @@ export function LagebildGeldwert(): JSX.Element {
         <label className="text-[12px] text-muted">
           {t("lagebild.geld.zusatzkosten")}
           <input
-            data-testid="lagebild-zusatzkosten"
+            data-testid="p13-zusatzkosten"
             type="number"
             min={0}
             inputMode="decimal"
@@ -142,11 +142,11 @@ export function LagebildGeldwert(): JSX.Element {
         </legend>
         <div className="space-y-2">
           {zeilen.map((z, i) => (
-            <div key={z.nr} data-testid="lagebild-fall" className={ZEILE_KLASSE}>
+            <div key={z.nr} data-testid="p13-fall" className={ZEILE_KLASSE}>
               <label className="text-[12px] text-muted">
                 {t("lagebild.geld.fall.id")}
                 <input
-                  data-testid="lagebild-fall-id"
+                  data-testid="p13-fall-id"
                   value={z.id}
                   onChange={(e) => setzeZeile(z.nr, { id: e.target.value })}
                   className={FELD_KLASSE}
@@ -155,7 +155,7 @@ export function LagebildGeldwert(): JSX.Element {
               <label className="text-[12px] text-muted">
                 {t("lagebild.geld.fall.ohne")}
                 <input
-                  data-testid="lagebild-fall-ohne"
+                  data-testid="p13-fall-ohne"
                   type="number"
                   min={0}
                   value={z.ohne}
@@ -166,7 +166,7 @@ export function LagebildGeldwert(): JSX.Element {
               <label className="text-[12px] text-muted">
                 {t("lagebild.geld.fall.mit")}
                 <input
-                  data-testid="lagebild-fall-mit"
+                  data-testid="p13-fall-mit"
                   type="number"
                   min={0}
                   value={z.mit}
@@ -176,7 +176,7 @@ export function LagebildGeldwert(): JSX.Element {
               </label>
               <label className="flex items-center gap-2 pb-2 text-[12px] text-muted">
                 <input
-                  data-testid="lagebild-fall-vergleichbar"
+                  data-testid="p13-fall-vergleichbar"
                   type="checkbox"
                   checked={z.vergleichbar}
                   onChange={(e) => setzeZeile(z.nr, { vergleichbar: e.target.checked })}
@@ -195,7 +195,7 @@ export function LagebildGeldwert(): JSX.Element {
         </div>
         <button
           type="button"
-          data-testid="lagebild-fall-hinzufuegen"
+          data-testid="p13-fall-hinzufuegen"
           onClick={hinzufuegen}
           className={`mt-2 ${KNOPF_KLASSE}`}
         >
@@ -203,13 +203,13 @@ export function LagebildGeldwert(): JSX.Element {
         </button>
       </fieldset>
 
-      <output data-testid="lagebild-ergebnis" data-lage={ergebnis.lage} className="mt-3 block">
+      <output data-testid="p13-ergebnis" data-lage={ergebnis.lage} className="mt-3 block">
         {ergebnis.lage === "nicht_berechenbar" ? (
           <>
             <span className="block text-2xl font-semibold text-muted-2">
               {t("lagebild.geld.kein")}
             </span>
-            <span data-testid="lagebild-grund" className="block text-[12px] text-muted">
+            <span data-testid="p13-grund" className="block text-[12px] text-muted">
               {messart === ""
                 ? t("lagebild.geld.messartFehlt")
                 : t(`lagebild.geld.grund.${ergebnis.grund}`)}
@@ -218,13 +218,13 @@ export function LagebildGeldwert(): JSX.Element {
         ) : (
           <>
             <span
-              data-testid="lagebild-netto"
+              data-testid="p13-netto"
               className={`block text-2xl font-semibold ${ergebnis.nettoEur < 0 ? NEGATIV : "text-ink"}`}
             >
               {t("lagebild.geld.netto")} {eur(ergebnis.nettoEur)}
             </span>
             <span
-              data-testid="lagebild-formel"
+              data-testid="p13-formel"
               className="block font-mono text-[11px] text-muted-2"
             >
               {t("lagebild.geld.formel", {
@@ -237,7 +237,7 @@ export function LagebildGeldwert(): JSX.Element {
             </span>
             {ergebnis.faelleMitMehraufwand > 0 ? (
               <span
-                data-testid="lagebild-mehraufwand"
+                data-testid="p13-mehraufwand"
                 className="block text-[12px] text-trust-warn-text"
               >
                 {t("lagebild.geld.mehraufwand", { count: ergebnis.faelleMitMehraufwand })}
@@ -249,7 +249,7 @@ export function LagebildGeldwert(): JSX.Element {
               </span>
             ) : null}
             <span
-              data-testid="lagebild-messart-hinweis"
+              data-testid="p13-messart-hinweis"
               data-messart={ergebnis.messart}
               className={`mt-1 block rounded-card px-3 py-2 text-[12px] ${HINWEIS_TON[ergebnis.messart]}`}
             >
@@ -275,7 +275,7 @@ export function LagebildGeldwert(): JSX.Element {
 export function LagebildReifegrad(): JSX.Element {
   const { t } = useTranslation();
   return (
-    <div data-testid="lagebild-reifegrad">
+    <div data-testid="p13-reifegrad">
       <p className="mt-2 text-[12px] text-muted">{t("lagebild.reife.regel")}</p>
       <table className="mt-2 w-full text-left text-[12px]">
         <thead>
@@ -288,7 +288,7 @@ export function LagebildReifegrad(): JSX.Element {
           {REIFESTUFEN.map((s) => (
             <tr
               key={s}
-              data-testid="lagebild-stufe"
+              data-testid="p13-stufe"
               data-stufe={s}
               className="border-t border-hairline-soft"
             >
@@ -300,7 +300,7 @@ export function LagebildReifegrad(): JSX.Element {
           ))}
         </tbody>
       </table>
-      <p data-testid="lagebild-keine-belege" className="mt-2 text-[12px] text-muted-2">
+      <p data-testid="p13-keine-belege" className="mt-2 text-[12px] text-muted-2">
         {t("lagebild.reife.keineBelege")}
       </p>
     </div>

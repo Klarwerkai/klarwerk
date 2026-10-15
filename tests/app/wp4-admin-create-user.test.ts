@@ -83,6 +83,49 @@ describe("SCRUM-463 WP4: Admin 'Nutzer anlegen'", () => {
     expect(res.statusCode).toBe(400);
   });
 
+  // gesamt-nutzerverwaltung (R-0518 / FR-RBAC-02): Anlage und Rollenänderung über HTTP stehen je
+  // mit dem Admin als Handelndem und dem Konto als Ziel im Protokoll — gelesen über GET /api/audit.
+  it("Anlage und Rollenänderung am Draht: je ein Protokolleintrag mit dem Admin als Handelndem", async () => {
+    const { app, headers } = await adminApp();
+    const ich = await app.inject({ method: "GET", url: "/api/auth/me", headers });
+    expect(ich.statusCode).toBe(200);
+    const adminId = ich.json().id as string;
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/users",
+      headers,
+      payload: { name: "Pro", email: "pro@x.de", password: "propass12", role: "experte" },
+    });
+    expect(res.statusCode).toBe(201);
+    const neuId = res.json().id as string;
+    const protokoll = async (action: string) =>
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/audit?action=${action}&target=${neuId}`,
+          headers,
+        })
+      ).json() as { actor: string; payload: Record<string, unknown> }[];
+
+    const anlage = await protokoll("user.created");
+    expect(anlage).toHaveLength(1);
+    expect(anlage[0]?.actor).toBe(adminId);
+    expect(anlage[0]?.payload.via).toBe("admin");
+
+    const rolle = await app.inject({
+      method: "PUT",
+      url: `/api/users/${neuId}`,
+      headers,
+      payload: { role: "controller" },
+    });
+    expect(rolle.statusCode, rolle.body).toBeLessThan(300);
+    const wechsel = await protokoll("user.role-change");
+    expect(wechsel).toHaveLength(1);
+    expect(wechsel[0]?.actor).toBe(adminId);
+    expect(wechsel[0]?.payload.role).toBe("controller");
+  });
+
   it("Nicht-Admin → abgelehnt", async () => {
     const app = buildApp(buildServices());
     const res = await app.inject({

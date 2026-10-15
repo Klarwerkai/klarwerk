@@ -5,8 +5,9 @@
 //
 // Gefahren wird die echte Seite gegen einen ersetzten Draht (fetch an der Netzgrenze). Alle Zahlen,
 // Fälle und Kennungen sind erfunden — eine Agentenprüfung, keine Messung mit realen Anwendern.
-//   G1  K6  kein Geldwert aus dem Bestand: die frühere Schätzung (validierte Objekte × Vorgabewerte)
-//           steht nicht mehr da; ohne gemessene Fälle heisst es „Kein Geldwert“ mit Grund
+//   G1  K6  kein Geldwert aus dem Bestand: die Schätzung (validierte Objekte × Vorgabewerte) steht
+//           nur als gekennzeichnetes Beispiel getrennt daneben (lagebild-reale-werte-eingabe); ohne
+//           gemessene Fälle heisst es „Kein Geldwert“ mit Grund
 //   G2  K6/K7  eingetragene Fälle: Formel mit offengelegten Annahmen; Mehraufwand und
 //           Zusatzkosten bleiben in der Rechnung, auch unter null
 //   G3  K2  eine Agentenprüfung ist als Simulation gekennzeichnet — kein realer Kapitalwert
@@ -187,14 +188,14 @@ function fallEintragen(
   nr: number,
   f: { id: string; ohne: string; mit: string; vergleichbar: boolean },
 ): void {
-  const zeile = geld.querySelectorAll<HTMLElement>('[data-testid="lagebild-fall"]')[nr];
+  const zeile = geld.querySelectorAll<HTMLElement>('[data-testid="p13-fall"]')[nr];
   if (!zeile) {
     throw new Error(`Fallzeile ${nr} fehlt`);
   }
-  tippe(element(zeile, "lagebild-fall-id"), f.id);
-  tippe(element(zeile, "lagebild-fall-ohne"), f.ohne);
-  tippe(element(zeile, "lagebild-fall-mit"), f.mit);
-  const haken = element(zeile, "lagebild-fall-vergleichbar") as HTMLInputElement;
+  tippe(element(zeile, "p13-fall-id"), f.id);
+  tippe(element(zeile, "p13-fall-ohne"), f.ohne);
+  tippe(element(zeile, "p13-fall-mit"), f.mit);
+  const haken = element(zeile, "p13-fall-vergleichbar") as HTMLInputElement;
   if (haken.checked !== f.vergleichbar) {
     klick(haken);
   }
@@ -203,73 +204,82 @@ function fallEintragen(
 describe("P13 · Kapitalsicht: Geldwert nur aus gemessenen Fällen", () => {
   it("G1 · K6: kein Euro aus dem Bestand, keine Vorgabewerte — „Kein Geldwert“ mit Grund", async () => {
     const container = await mounten();
-    const geld = element(container, "lagebild-geldwert");
-    expect(element(geld, "lagebild-ergebnis").dataset.lage).toBe("nicht_berechenbar");
+    const geld = element(container, "p13-geldwert");
+    expect(element(geld, "p13-ergebnis").dataset.lage).toBe("nicht_berechenbar");
     expect(geld.textContent).toContain(de("lagebild.geld.kein"));
-    expect(element(geld, "lagebild-grund").textContent).toBe(de("lagebild.geld.messartFehlt"));
-    // Die frühere Schätzung aus 3 validierten Objekten ist weg — weder Betrag noch Formel.
-    expect(container.textContent).not.toMatch(/756/);
-    expect(container.textContent).not.toContain("validierte Objekte ×");
+    expect(element(geld, "p13-grund").textContent).toBe(de("lagebild.geld.messartFehlt"));
+    // Der Geldwert rechnet nicht aus dem Bestand: weder der Betrag der Schätzung aus 3 validierten
+    // Objekten (756 €) noch ihre Formel stehen in dieser Karte.
+    expect(geld.textContent).not.toMatch(/756/);
+    expect(geld.textContent).not.toContain("validierte Objekte ×");
+    // Die Schätzung aus validierten Objekten gibt es nur als gekennzeichnetes Beispiel
+    // (produkt:20261013:lagebild-reale-werte-eingabe) — getrennt von dieser Karte, nie darin.
+    const beispiel = element(container, "kapital-beispielrechnung");
+    expect(element(beispiel, "kapital-beispiel-kennzeichnung").textContent).toBe(
+      de("lagebildwerte.beispiel.kennzeichnung"),
+    );
+    expect(beispiel.contains(geld)).toBe(false);
+    expect(geld.contains(beispiel)).toBe(false);
     // Keine Vorgabewerte in den Annahmen.
-    expect((element(geld, "lagebild-kostensatz") as HTMLInputElement).value).toBe("");
-    expect((element(geld, "lagebild-zusatzkosten") as HTMLInputElement).value).toBe("");
+    expect((element(geld, "p13-kostensatz") as HTMLInputElement).value).toBe("");
+    expect((element(geld, "p13-zusatzkosten") as HTMLInputElement).value).toBe("");
 
     // Messart gewählt, aber noch kein Fall: der Grund ändert sich, ein Wert entsteht nicht.
-    tippe(element(geld, "lagebild-messart"), "mensch");
-    expect(element(geld, "lagebild-grund").textContent).toBe(
+    tippe(element(geld, "p13-messart"), "mensch");
+    expect(element(geld, "p13-grund").textContent).toBe(
       de("lagebild.geld.grund.keine_faelle"),
     );
   });
 
   it("G2 · K6/K7: Formel mit Annahmen; Mehraufwand und Zusatzkosten bleiben in der Rechnung", async () => {
     const container = await mounten();
-    const geld = element(container, "lagebild-geldwert");
-    tippe(element(geld, "lagebild-messart"), "mensch");
+    const geld = element(container, "p13-geldwert");
+    tippe(element(geld, "p13-messart"), "mensch");
     fallEintragen(geld, 0, { id: "F-1", ohne: "20", mit: "50", vergleichbar: true });
-    klick(element(geld, "lagebild-fall-hinzufuegen"));
+    klick(element(geld, "p13-fall-hinzufuegen"));
     fallEintragen(geld, 1, { id: "F-2", ohne: "40", mit: "20", vergleichbar: true });
     // Ohne Kostensatz kein Wert — auch nicht mit Fällen.
-    expect(element(geld, "lagebild-grund").textContent).toBe(
+    expect(element(geld, "p13-grund").textContent).toBe(
       de("lagebild.geld.grund.kostensatz_fehlt"),
     );
-    tippe(element(geld, "lagebild-kostensatz"), "60");
+    tippe(element(geld, "p13-kostensatz"), "60");
     // Ohne Angabe der Zusatzkosten kein Wert — sie fallen nicht still weg.
-    expect(element(geld, "lagebild-grund").textContent).toBe(
+    expect(element(geld, "p13-grund").textContent).toBe(
       de("lagebild.geld.grund.zusatzkosten_fehlt"),
     );
-    tippe(element(geld, "lagebild-zusatzkosten"), "15");
+    tippe(element(geld, "p13-zusatzkosten"), "15");
 
     // (20 − 50) + (40 − 20) = −10 Minuten → −10 € brutto, −25 € netto.
-    expect(element(geld, "lagebild-ergebnis").dataset.lage).toBe("berechnet");
-    const netto = element(geld, "lagebild-netto").textContent ?? "";
+    expect(element(geld, "p13-ergebnis").dataset.lage).toBe("berechnet");
+    const netto = element(geld, "p13-netto").textContent ?? "";
     expect(netto).toContain("25");
     expect(netto).toMatch(/[-−]\s?25/);
-    const formel = element(geld, "lagebild-formel").textContent ?? "";
+    const formel = element(geld, "p13-formel").textContent ?? "";
     expect(formel).toContain("2 Fälle");
     expect(formel).toContain("-10 Minuten");
     expect(formel).toMatch(/15/);
-    expect(element(geld, "lagebild-mehraufwand").textContent).toBe(
+    expect(element(geld, "p13-mehraufwand").textContent).toBe(
       de("lagebild.geld.mehraufwand", { count: 1 }),
     );
-    expect(element(geld, "lagebild-messart-hinweis").textContent).toBe(de("lagebild.geld.echt"));
+    expect(element(geld, "p13-messart-hinweis").textContent).toBe(de("lagebild.geld.echt"));
     expect(geld.textContent).toContain(de("lagebild.geld.keinUmsatz"));
     expect(geld.textContent).toContain(BERECHNUNGSVERSION);
 
     // Ein Fall ohne vergleichbare Qualität verhindert den Wert für alle.
     fallEintragen(geld, 1, { id: "F-2", ohne: "40", mit: "20", vergleichbar: false });
-    expect(element(geld, "lagebild-grund").textContent).toBe(
+    expect(element(geld, "p13-grund").textContent).toBe(
       de("lagebild.geld.grund.qualitaet_nicht_vergleichbar"),
     );
   });
 
   it("G3 · K2: eine Agentenprüfung ist als Simulation gekennzeichnet", async () => {
     const container = await mounten();
-    const geld = element(container, "lagebild-geldwert");
-    tippe(element(geld, "lagebild-messart"), "agent");
+    const geld = element(container, "p13-geldwert");
+    tippe(element(geld, "p13-messart"), "agent");
     fallEintragen(geld, 0, { id: "RF-fiktiv-1", ohne: "30", mit: "10", vergleichbar: true });
-    tippe(element(geld, "lagebild-kostensatz"), "60");
-    tippe(element(geld, "lagebild-zusatzkosten"), "0");
-    const hinweis = element(geld, "lagebild-messart-hinweis");
+    tippe(element(geld, "p13-kostensatz"), "60");
+    tippe(element(geld, "p13-zusatzkosten"), "0");
+    const hinweis = element(geld, "p13-messart-hinweis");
     expect(hinweis.dataset.messart).toBe("agent");
     expect(hinweis.textContent).toBe(de("lagebild.geld.simulation"));
     expect(hinweis.textContent).not.toBe(de("lagebild.geld.echt"));
@@ -279,14 +289,14 @@ describe("P13 · Kapitalsicht: Geldwert nur aus gemessenen Fällen", () => {
 describe("P13 · Kapitalsicht: Reifegrad und leerer Bestand", () => {
   it("G4 · K1: Stufen mit Nachweisen je Arbeitsweg, kein firmenweiter Reifegrad", async () => {
     const container = await mounten();
-    const reife = element(container, "lagebild-reifegrad");
-    const stufen = [...reife.querySelectorAll<HTMLElement>('[data-testid="lagebild-stufe"]')];
+    const reife = element(container, "p13-reifegrad");
+    const stufen = [...reife.querySelectorAll<HTMLElement>('[data-testid="p13-stufe"]')];
     expect(stufen.map((s) => s.dataset.stufe)).toEqual([...REIFESTUFEN]);
     for (const s of stufen) {
       const stufe = s.dataset.stufe ?? "";
       expect(s.textContent).toContain(de(`lagebild.reife.text.${stufe}`));
     }
-    expect(element(reife, "lagebild-keine-belege").textContent).toBe(
+    expect(element(reife, "p13-keine-belege").textContent).toBe(
       de("lagebild.reife.keineBelege"),
     );
     // Der Snapshot meldet „Stufe 3/5 · Validieren“ — die Karte gibt das nicht mehr aus.
@@ -323,7 +333,7 @@ describe("P13 · Kapitalsicht: Reifegrad und leerer Bestand", () => {
     expect(container.textContent).toContain(de("mgmt.empty"));
     expect(container.querySelectorAll('[data-testid="kapital-anteil"]')).toHaveLength(0);
     expect(container.querySelector('[data-testid="kapital-index-hinweis"]')).toBeNull();
-    expect(container.querySelector('[data-testid="lagebild-geldwert"]')).toBeNull();
+    expect(container.querySelector('[data-testid="p13-geldwert"]')).toBeNull();
     expect(container.textContent).not.toContain(`/ 100 · ${de("mgmt.band.kritisch")}`);
     expect(container.textContent).not.toMatch(/\b(0|100) · (30|15)%/);
   });

@@ -3,7 +3,19 @@
 // die gepflegten Bereichsprofile und Ruhestandshorizonte (profiles.ts, über `deps.profiles`).
 import type { KnowledgeObject, KoService } from "../../knowledge-object";
 import { type RiskHorizonView, riskHorizon } from "./horizon";
-import { bereichsSignale, computeSnapshot, gapSignal, signalSignatur } from "./metrics";
+import {
+  LAGEBILD_GESAMT,
+  LagebildKonflikt,
+  type LagebildWerte,
+  normalizeLagebildEingabe,
+} from "./lagebild-werte";
+import {
+  bereichsSignale,
+  computeSnapshot,
+  gapSignal,
+  signalSignatur,
+  valuationFactsOf,
+} from "./metrics";
 import {
   type CategoryProfile,
   type ManagementProfileRepo,
@@ -19,7 +31,32 @@ import type {
   GapVerdictEntry,
   ManagementSnapshot,
   MetricsInput,
+  ValuationFacts,
 } from "./types";
+
+/** Ein Bereich, den der Betrachter sehen darf — samt seinem heutigen Schreibrecht (Route). */
+export interface LagebildBereichRecht {
+  bereich: string;
+  /** Name des Space; `null` bei `gesamt`. */
+  name: string | null;
+  darfSchreiben: boolean;
+}
+
+/** Die Lagebild-Werte eines Bereichs, wie sie die Fläche bekommt. */
+export interface LagebildBereichSicht extends LagebildBereichRecht {
+  /** `null` = für diesen Bereich ist noch nichts erfasst. */
+  werte: LagebildWerte | null;
+  /** Ob der letzte Stand vom Betrachter selbst stammt — die Fläche nennt keine fremden Namen. */
+  vonMir: boolean;
+  /** Die Fakten der bestehenden Bewertung über den SICHTBAREN Bestand dieses Bereichs. */
+  fakten: ValuationFacts & { demoKos: number };
+}
+
+export interface LagebildSpeicherErgebnis {
+  eintrag: LagebildWerte;
+  /** `true` = dieselbe Anfrage war schon gespeichert; nichts wurde erneut geschrieben. */
+  wiederholt: boolean;
+}
 
 /** Höchstzahl der Betrachtersichten, die die regelmäßige Analyse führt. */
 export const MAX_SICHTEN = 50;
@@ -332,6 +369,79 @@ export class ManagementService {
     };
     await this.ablage().setRetirement(eintrag);
     return eintrag;
+  }
+
+  // ==============================================================================================
+  // produkt:20261013:lagebild-reale-werte-eingabe — DIE REALEN EINGANGSWERTE JE BEREICH.
+  // ==============================================================================================
+  // Gelesen werden NUR die Bereiche, die die Route als sichtbar übergibt; die Werte und die Herkunft
+  // eines anderen Bereichs verlassen diese Methode nie (LWE-03). Die Fakten sind dieselbe Rechnung
+  // wie `valuationFacts` des Snapshots, über dem sichtbaren Bestand des Bereichs — `gesamt` ist der
+  // ganze sichtbare Bestand.
+  async lagebildUebersicht(opts: {
+    sichtbar: (ko: KnowledgeObject) => boolean;
+    bereiche: readonly LagebildBereichRecht[];
+    betrachter: string;
+  }): Promise<LagebildBereichSicht[]> {
+    const [alle, gespeichert] = await Promise.all([
+      this.deps.koService.list({}),
+      this.deps.profiles ? this.deps.profiles.listLagebildWerte() : Promise.resolve([]),
+    ]);
+    const kos = alle.filter(opts.sichtbar);
+    const nachBereich = new Map(gespeichert.map((w) => [w.bereich, w]));
+    return opts.bereiche.map((b) => {
+      const grundmenge =
+        b.bereich === LAGEBILD_GESAMT ? kos : kos.filter((k) => k.spaceId === b.bereich);
+      const werte = nachBereich.get(b.bereich) ?? null;
+      return {
+        ...b,
+        werte,
+        vonMir: werte?.geaendertVon === opts.betrachter,
+        fakten: {
+          ...valuationFactsOf(grundmenge),
+          demoKos: grundmenge.filter((k) => k.demoSeed === true).length,
+        },
+      };
+    });
+  }
+
+  /**
+   * Speichert die Werte EINES Bereichs. Das Recht hat die Route geprüft. Wirft
+   * `LagebildWerteFehler` (400) und `LagebildKonflikt` (409, nichts geschrieben).
+   *
+   * Wiederholung (LWE-06): trägt der gespeicherte Stand schon diese `anfrageId`, war genau dieser
+   * Speichervorgang erfolgreich — er wird zurückgegeben, nicht ein zweites Mal geschrieben.
+   */
+  async setLagebildWerte(
+    bereich: string,
+    input: unknown,
+    actor: string,
+  ): Promise<LagebildSpeicherErgebnis> {
+    const jetzt = new Date(this.now());
+    const eingabe = normalizeLagebildEingabe(input, jetzt.toISOString().slice(0, 10));
+    const ablage = this.ablage();
+    const vorher = (await ablage.listLagebildWerte()).find((w) => w.bereich === bereich);
+    if (vorher && vorher.anfrageId === eingabe.anfrageId) {
+      return { eintrag: vorher, wiederholt: true };
+    }
+    const eintrag: LagebildWerte = {
+      bereich,
+      zeitraumVon: eingabe.zeitraumVon,
+      zeitraumBis: eingabe.zeitraumBis,
+      werte: eingabe.werte,
+      version: eingabe.basisVersion + 1,
+      anfrageId: eingabe.anfrageId,
+      geaendertAm: jetzt.toISOString(),
+      geaendertVon: actor,
+    };
+    if (await ablage.setLagebildWerte(eintrag, eingabe.basisVersion)) {
+      return { eintrag, wiederholt: false };
+    }
+    const aktuell = (await ablage.listLagebildWerte()).find((w) => w.bereich === bereich) ?? null;
+    if (aktuell && aktuell.anfrageId === eingabe.anfrageId) {
+      return { eintrag: aktuell, wiederholt: true };
+    }
+    throw new LagebildKonflikt(aktuell);
   }
 
   private ablage(): ManagementProfileRepo {

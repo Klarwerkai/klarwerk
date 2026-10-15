@@ -158,17 +158,12 @@ for (const pfad of mitgelieferteFremdquellen) {
   }
 }
 
-const serverPath = join(releaseDir, "services", "app", "src", "server.ts");
-let serverTs = readFileSync(serverPath, "utf8");
-serverTs = serverTs.replace(
-  "defaultSrc: [\"'self'\"],",
-  "defaultSrc: [\"'self'\"],\n        upgradeInsecureRequests: null,",
-);
-serverTs = serverTs.replace(
-  "hsts: { maxAge: 31_536_000, includeSubDomains: true, preload: true },",
-  "hsts: false,",
-);
-writeFileSync(serverPath, serverTs);
+// Aufnahme `gesamt-tls-betrieb` · R-0837 (KLLM-73): KEIN EINGRIFF MEHR IN DEN SERVERQUELLTEXT.
+// Hier schaltete der Bauer frueher HSTS und die CSP-Direktive `upgrade-insecure-requests` in der
+// Kopie von `server.ts` ab, damit eine Insel ohne Zertifikat keine weisse Seite zeigt. Das Paket wich
+// damit vom Quellstand ab (und griff seit dem Umzug der Registrierung ins Leere). Die Regel steht
+// jetzt allein in `services/app/src/security-headers.ts`: die Direktive nur auf echtem HTTPS, HSTS
+// auf jeder Antwort (auf plain HTTP verwirft ihn der Browser) — EIN Quellstand, kein Patch im Paket.
 
 const indexPath = join(releaseDir, "apps", "web", "dist", "index.html");
 if (!existsSync(indexPath)) {

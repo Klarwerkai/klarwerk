@@ -182,7 +182,26 @@ function satzKey(karte: Record<string, string>, befund: string | null | undefine
 // `api.ts` bei den übrigen Feldern der Antwort, und es gibt dafür EINE Stelle statt zwei. Die Fläche
 // liest ab hier direkt `SharePointUebernahme`.
 
-export function SharePointImportBereich(): JSX.Element | null {
+// ================================================================================================
+// gesamt-nutzerverwaltung · Frage 6 — ZWEI EINHÄNGESTELLEN, ZWEI WEGE, EINE FLÄCHE.
+// ================================================================================================
+//
+//   VERWALTUNG (`pages/Stufe2.tsx`, ohne Prop)          → wie bisher: nur Admin, Instanzbibliothek,
+//                                                         Zugangskarte.
+//   ERFASSEN (`pages/Capture.tsx`, `nurTestbibliothek`) → nur ein Fachkonto, dem der Betreiber eine
+//                                                         eigene Testbibliothek zugeordnet hat. Die
+//                                                         Auskunft dazu (`/import/sharepoint/
+//                                                         testbibliothek`) ist zwei Ja/Nein; ohne
+//                                                         Zuordnung erscheint hier GAR NICHTS — kein
+//                                                         403-Rauschen, kein Satz für ein Konto, das
+//                                                         daran nichts ändern kann.
+//
+// Liste, Messung und Übernahme sind in BEIDEN Wegen dieselben Adressen; welche Bibliothek gilt,
+// entscheidet allein der Server (`bibliothekFuer` in `sharepoint-import-routes.ts`). Die Fläche
+// kann die Grenze nicht weiten — sie zeigt nur, was der Server für DIESES Konto liefert.
+export function SharePointImportBereich({
+  nurTestbibliothek = false,
+}: { nurTestbibliothek?: boolean } = {}): JSX.Element | null {
   const { t, i18n } = useTranslation();
   const { role } = useRole();
   const qc = useQueryClient();
@@ -191,20 +210,34 @@ export function SharePointImportBereich(): JSX.Element | null {
 
   // Die Routen verlangen `users.manage`. Wer es nicht trägt, fragt gar nicht erst.
   const istVerwalter = role === "admin";
+  const verwaltungsweg = !nurTestbibliothek && istVerwalter;
+  // Frage 6: nur auf der Erfassungsseite und nur für eine Rolle mit `ko.create` (nicht `viewer`).
+  // Der Admin hat seinen Weg in der Verwaltung; hier fragt er nicht.
+  const testbibliothekFrage = nurTestbibliothek && !istVerwalter && role !== "viewer";
   const zugang = useQuery({
     queryKey: ["sharepoint-zugang"],
     queryFn: sharepointApi.zugang,
-    enabled: istVerwalter,
+    enabled: verwaltungsweg,
     retry: false,
   });
+  const eigene = useQuery({
+    queryKey: ["sharepoint-testbibliothek"],
+    queryFn: () => sharepointApi.testbibliothek(),
+    enabled: testbibliothekFrage,
+    retry: false,
+  });
+  const testbibliothekWeg = testbibliothekFrage && eigene.data?.zugeordnet === true;
+  const darf = verwaltungsweg || testbibliothekWeg;
 
-  const benutzbar = zugang.data?.enabled === true && zugang.data.credentialsUsable === true;
+  const benutzbar = verwaltungsweg
+    ? zugang.data?.enabled === true && zugang.data.credentialsUsable === true
+    : testbibliothekWeg && eigene.data?.benutzbar === true;
   const liste = useQuery({
     queryKey: ["sharepoint-dateien"],
     queryFn: () => sharepointApi.dateien(),
     // Erst fragen, wenn die Auskunft sagt, dass es etwas zu fragen gibt. Ein Abruf „auf Verdacht"
     // wäre genau der 503 als Bedienweg, den die Zugangs-Auskunft abgelöst hat.
-    enabled: istVerwalter && benutzbar,
+    enabled: darf && benutzbar,
     retry: false,
   });
 
@@ -241,7 +274,7 @@ export function SharePointImportBereich(): JSX.Element | null {
   const probe = useQuery({
     queryKey: ["sharepoint-inhalte", messSchluessel],
     queryFn: () => sharepointApi.inhalte(auswahlSchluessel),
-    enabled: istVerwalter && benutzbar && auswahlSchluessel.length > 0,
+    enabled: darf && benutzbar && auswahlSchluessel.length > 0,
     retry: false,
   });
 
@@ -264,7 +297,9 @@ export function SharePointImportBereich(): JSX.Element | null {
   // OHNE VERWALTERRECHT BLEIBT ES BEI NICHTS. Das ist kein Fehler, sondern eine Zuständigkeit: die
   // Routen verlangen `users.manage`, und wer es nicht trägt, kann an diesem Zustand ohnehin nichts
   // ändern. Ein Fehlersatz wäre hier Rauschen.
-  if (!istVerwalter) {
+  // Frage 6: dasselbe gilt auf der Erfassungsseite für ein Fachkonto OHNE eigene Testbibliothek —
+  // und solange die Auskunft dazu läuft oder gescheitert ist, steht ebenfalls nichts da.
+  if (!darf) {
     return null;
   }
 
@@ -283,7 +318,8 @@ export function SharePointImportBereich(): JSX.Element | null {
   //
   // KEIN ZWEITER FEHLERSATZKATALOG: der Satz kommt aus `fehlerlagen.ts` — derselben Abbildung, aus
   // der Liste und Übernahme ihre Sätze holen.
-  const zugangFehler = zugang.isError ? t(sharepointFehlertextKey(fehlercode(zugang.error))) : null;
+  const zugangFehler =
+    verwaltungsweg && zugang.isError ? t(sharepointFehlertextKey(fehlercode(zugang.error))) : null;
   if (zugangFehler !== null) {
     return (
       <Card id={SHAREPOINT_BEREICH_ANKER} className="mb-5 scroll-mt-4">
@@ -313,7 +349,7 @@ export function SharePointImportBereich(): JSX.Element | null {
 
   // ZUGANG UNBEKANNT (die Auskunft läuft noch, ohne Fehler): nichts. Eine Fläche, die „unbekannt"
   // anzeigt, ist Rauschen — unverändert die Regel aus JOB 4086.
-  if (!zugang.data) {
+  if (verwaltungsweg && !zugang.data) {
     return null;
   }
 
@@ -396,9 +432,17 @@ export function SharePointImportBereich(): JSX.Element | null {
   const bilanz = ergebnis !== null ? uebernahmeBilanz(ergebnis) : null;
 
   return (
-    <Card id={SHAREPOINT_BEREICH_ANKER} className="mb-5 scroll-mt-4">
-      <SectionLabel>{t("imp.sharepoint.titel")}</SectionLabel>
-      <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{t("imp.sharepoint.was")}</p>
+    <Card
+      id={SHAREPOINT_BEREICH_ANKER}
+      data-testid={testbibliothekWeg ? "sharepoint-testbibliothek" : "sharepoint-verwaltung"}
+      className="mb-5 scroll-mt-4"
+    >
+      <SectionLabel>
+        {testbibliothekWeg ? t("testbibliothek.titel") : t("imp.sharepoint.titel")}
+      </SectionLabel>
+      <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+        {testbibliothekWeg ? t("testbibliothek.hinweis") : t("imp.sharepoint.was")}
+      </p>
       {/* EHRLICHKEIT VOR OPTIK — UND SEIT JOB 4232 EINE ANDERE WAHRHEIT ALS VORHER. Bis hierher
           stand hier „Der Inhalt der Datei wird dabei nicht gelesen" (`imp.sharepoint.ohneInhalt`).
           Für Textdateien ist dieser Satz seit dieser Runde FALSCH — und ein falscher Satz vor dem
@@ -411,9 +455,22 @@ export function SharePointImportBereich(): JSX.Element | null {
         {t("imp.sharepoint.inhaltRegel")}
       </p>
 
-      <div className="mt-3">
-        <SharePointZugangKarte zugang={zugang.data} />
-      </div>
+      {/* Die Zugangskarte ist Verwaltungswissen (Zugangsdaten, Verbindungstest) — sie steht nur im
+          Verwaltungsweg. Das Fachkonto bekommt stattdessen genau einen Satz, wenn seine Bibliothek
+          zugeordnet ist, der Zugang der Instanz sie aber gerade nicht trägt. */}
+      {verwaltungsweg && zugang.data ? (
+        <div className="mt-3">
+          <SharePointZugangKarte zugang={zugang.data} />
+        </div>
+      ) : null}
+      {testbibliothekWeg && !benutzbar ? (
+        <p
+          data-testid="sharepoint-testbibliothek-nicht-bereit"
+          className="mt-2 text-[12.5px] text-muted"
+        >
+          {t("testbibliothek.nichtBereit")}
+        </p>
+      ) : null}
 
       {benutzbar ? (
         <>

@@ -91,6 +91,8 @@ import { LOESCHANTRAG_SCHEMA } from "./loeschantraege";
 import { MEETING_DOKUMENTBEZUG_SCHEMA } from "./meeting-dokumentbezug-ablage";
 // Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände.
 import { OFFICE_ABLAGE_SCHEMA } from "./office-ablage";
+// produkt:20261013:produktbudget-anwender-admin: die Produktbudgets (eine Zeile je Mandant).
+import { PRODUKTBUDGET_SCHEMA } from "./produktbudget";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 // produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
 // Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
@@ -402,6 +404,10 @@ export const schemas = [
   // NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
   // Ordnung ist.
   PUSH_ABO_SCHEMA,
+  // produkt:20261013:produktbudget-anwender-admin: Einstellungen, Buchungen und Provenienz der
+  // Produktbudgets. Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel,
+  // ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  PRODUKTBUDGET_SCHEMA,
 ];
 
 // ================================================================================================

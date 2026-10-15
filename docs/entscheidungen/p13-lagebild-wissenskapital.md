@@ -13,16 +13,27 @@ Wissenskennzahlen oben auf `/analytics` (ADMIN-11). Die Regeln stehen rein und D
 
 | Fläche | Vorher | Problem |
 |---|---|---|
-| Wissensbewertung | validierte Objekte × 60 €/h × 2 h × 3 × Ø-Vertrauen | Euro aus Objektzahl mit Vorgabewerten |
+| Wissensbewertung | validierte Objekte × 60 €/h × 2 h × 3 × Ø-Vertrauen, ungekennzeichnet | Euro aus Objektzahl mit Vorgabewerten (heute: als Beispiel gekennzeichnet, s. unten) |
 | Reifegrad-Pfad | „Stufe n/5“ firmenweit aus der Validierungsquote | kein Beleg, kein Arbeitsweg |
 
 Bei leerem Bestand zeigt `Capital` schon im Bestand nur den Hinweis „mgmt.empty“ statt der
 Kapitalsicht — der vom Server gerechnete Wert 0/100 und die Anteile erscheinen dort nicht. Das
 bleibt so und ist mit einer Gegenprobe belegt.
 
-`lib/knowledgeValuation.ts` ist nicht mehr eingebunden. Die Datei und ihr Test
-`tests/management/knowledge-valuation.test.ts` bleiben vorerst stehen (Entfernen war in der
-Bearbeitungssitzung nicht freigegeben) und gehören bei nächster Gelegenheit gelöscht.
+## Zusammenführung mit `produkt:20261013:lagebild-reale-werte-eingabe`
+
+Parallel hat Peter am 13.10. entschieden („verwende beispielwerte, wir brauchen dort eine
+eingabemoeglichkeit der echten werte“). Dieser Auftrag hat die Beispielrechnung
+(`lib/knowledgeValuation.ts`) als „Beispiel (geschätzt)“ gekennzeichnet behalten und daneben
+gespeicherte reale Werte je Bereich ergänzt (`components/LagebildWerte.tsx`,
+`docs/entscheidungen/lagebild-reale-werte.md`). Beide Teile bleiben unverändert. Der Geldwert aus
+gemessenen Fällen dieses Auftrags steht darunter als dritter, getrennter Teil.
+
+Offene Produktentscheidung, hier nicht getroffen: Die Beispielrechnung und die realen Werte je
+Bereich rechnen Euro aus der Zahl validierter Objekte × eingegebener Annahmen. Entscheidung 50
+(„Wissenskapital nicht aus Textmenge monetarisieren“, Geldwert nur aus gemessenen Fällen) und die
+Entscheidung vom 13.10. stehen sich dabei gegenüber. Welche Rechnung künftig gilt, entscheidet
+Peter.
 
 ## Reifegrad je Arbeitsweg (K1, K2)
 

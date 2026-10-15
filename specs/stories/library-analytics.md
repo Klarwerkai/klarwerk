@@ -45,6 +45,8 @@ prüfbar sind (tamper-evident).
 
 ## Nicht-Ziele (v1)
 Erweiterte BI/Drittanbieter-Dashboards (Out of Scope §6).
+Ausgeschlossen ist die Anbindung fremder Werkzeuge, nicht die eigene Auswertung; der Datei-Export
+bleibt der offene Weg nach außen. Stand und offene Frage nach v1: `docs/entscheidungen/bi-anbindung.md`.
 
 ## Offene Fragen
 PDF-Renderer · Append-only technisch erzwingen (DB-Trigger/Hash-Kette) · Graph-Bibliothek.

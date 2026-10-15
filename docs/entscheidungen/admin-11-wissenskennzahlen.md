@@ -104,9 +104,13 @@ Lage, Zähler, Nenner, Erhebungsbeginn und Trend. Keine Titel, keine Fragetexte.
 ## Wortwahl
 
 Antwortquote, Fragen und Aktivität beschreiben Nutzung. Die Texte sagen ausdrücklich, dass sie keine
-gemessene Zeit- oder Geldersparnis sind. Die frühere Bewertung in `Stufe2.tsx` (Abschnitt
-`mgmt.valuation`, Schätzmodell aus validierten Objekten) ist durch PETER-20261011-P13 abgelöst:
-ein Geldwert entsteht dort nur noch aus eingetragenen gemessenen Fällen.
+gemessene Zeit- oder Geldersparnis sind. Die Bewertung in `Stufe2.tsx` (Abschnitt `mgmt.valuation`,
+als Schätzmodell mit eigenen Annahmen gekennzeichnet, Grundlage validierte Objekte) ist davon
+getrennt. Seit `produkt:20261013:lagebild-reale-werte-eingabe` trägt sie die Kennzeichnung
+„Beispiel (geschätzt)“ und daneben gespeicherte reale Werte je Arbeitsbereich
+(`docs/entscheidungen/lagebild-reale-werte.md`). Darunter steht seit PETER-20261011-P13 ein
+eigener Geldwert, der nur aus eingetragenen gemessenen Fällen entsteht
+(`docs/entscheidungen/p13-lagebild-wissenskapital.md`).
 
 ## Grenzen
 

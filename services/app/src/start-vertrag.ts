@@ -347,6 +347,33 @@ const SHAREPOINT_WERTE: readonly Startwert[] = SHAREPOINT_CREDENTIAL_VARS.map((n
     "Kein SharePoint-Client. Der Import meldet den Zustand ehrlich (sharepointCredentialState) statt zu starten.",
 }));
 
+// gesamt-nutzerverwaltung · Frage 6 (Peter, 11.10.2026): die eigene Testbibliothek eines Fachkontos.
+// Gelesen in `routes/sharepoint-import-routes.ts` (`SHAREPOINT_TESTBIBLIOTHEKEN_ENV`), je Anfrage.
+const SHAREPOINT_TESTBIBLIOTHEK_WERT: Startwert = {
+  name: "KLARWERK_SHAREPOINT_TESTBIBLIOTHEKEN",
+  bereich: "SharePoint-Import",
+  pflicht: { art: "nie" },
+  geheim: false,
+  wofuer:
+    "Ordnet einem Fachkonto (ko.create, ohne Adminrecht) seine eigene SharePoint-Testbibliothek zu: <Kontokennung>=<driveId>, mehrere durch Komma. Nur gegen diese Bibliothek darf das Konto Dateien listen und übernehmen.",
+  ohneIhn:
+    "Nur Konten mit users.manage dürfen aus SharePoint importieren; ein Fachkonto bekommt 403.",
+};
+
+// produkt:20261011:assistenz-aktive-beobachtung (BPA-05-AC09): die Quellenänderungsprüfung des
+// bestehenden SharePoint-Dienstes, ohne geöffnetes Fenster. Gelesen in
+// `routes/sharepoint-import-routes.ts` (`SHAREPOINT_QUELLENPRUEFUNG_ENV`) beim Registrieren.
+const SHAREPOINT_QUELLENPRUEFUNG_WERT: Startwert = {
+  name: "KLARWERK_SHAREPOINT_QUELLENPRUEFUNG_MS",
+  bereich: "SharePoint-Import",
+  pflicht: { art: "nie" },
+  geheim: false,
+  wofuer:
+    "Abstand in Millisekunden (mindestens 60000), in dem der Server die bereits übernommenen Dateien der Instanzbibliothek erneut prüft. Ein geänderter Stand kommt über denselben Übernahmeweg als Vorgang in die Prüfung — ohne geöffnetes Fenster, ohne Modell.",
+  ohneIhn:
+    "Keine Hintergrundprüfung. Eine geänderte Datei wird erst beim Wiederholimport oder Abgleich erkannt.",
+};
+
 // ================================================================================================
 // R-0170 · DER JIRA-ZUGANG — AUS DEM MODUL, NICHT DANEBEN
 // ================================================================================================
@@ -548,6 +575,27 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer:
       "Pfad, in den die Prozesskennung NACH erfolgreichem listen geschrieben wird (Restore-Drill).",
     ohneIhn: "Keine PID-Datei. Der Restore-Drill findet den Prozess nicht.",
+  },
+  {
+    name: "KLARWERK_DOCKER_LOG_MAX_SIZE",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "nicht gesetzt; Ein-Befehl-Weg: 1m (docker-compose.prod.yml)",
+    wofuer:
+      "Dockers max-size für diesen Container. Die App schreibt damit täglich einen inhaltsfreien Füllblock, und Docker rotiert die aktive Protokolldatei selbst.",
+    ohneIhn:
+      "Kein interner Rotationsimpuls — dann muss ein Host-Connector den Impuls setzen (Coolify: externer Connector, 10m/3), sonst bleibt die aktive Docker-Protokolldatei bei wenig Ausgabe länger als 14 Tage stehen.",
+  },
+  {
+    name: "KLARWERK_LOG_DATEI",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Die Datei, in die die Standardausgabe dieses Servers geht (Insel: setzt start.command). Sie wird täglich rotiert; Protokolle in ihrem Ordner werden nach 14 Tagen gelöscht.",
+    ohneIhn:
+      "Keine Protokollpflege durch die App — die Aufbewahrung liegt dann beim Docker-Dienst bzw. der Protokollsammlung des Betreibers.",
   },
   {
     name: "KLARWERK_TRASH_SWEEP_INTERVAL_MS",
@@ -1494,6 +1542,8 @@ export const STARTVERTRAG: readonly Startwert[] = [
   ...GRUNDWERTE,
   ...CONFLUENCE_WERTE,
   ...SHAREPOINT_WERTE,
+  SHAREPOINT_TESTBIBLIOTHEK_WERT,
+  SHAREPOINT_QUELLENPRUEFUNG_WERT,
   ...JIRA_WERTE,
   ...SCHALTER_WERTE,
 ];

@@ -1080,6 +1080,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/management/profiles": { protection: "users.manage" },
   "PUT /api/management/profiles/category": { protection: "users.manage" },
   "PUT /api/management/profiles/retirement/:userId": { protection: "users.manage" },
+  // produkt:20261013:lagebild-reale-werte-eingabe: Lesen mit getrimmter Grundmenge; Schreiben mit
+  // `ko.create` und danach dem Bereichsrecht aus der Space-Ablage (`gesamt`: users.manage).
+  "GET /api/management/lagebild-werte": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "PUT /api/management/lagebild-werte/:bereich": { protection: "ko.create" },
   "GET /api/model-runs": { protection: "ko.read" },
   // Aufnahme gesamt-ki-laufprotokoll: Zeitraum-Auswertung (nur Summen) — dieselbe Lesestufe.
   "GET /api/model-runs/auswertung": { protection: "ko.read" },
@@ -1569,11 +1576,22 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Import-Vertrags). `users.manage` wie JEDE Import-Route; nur bei aktivem
   // `KLARWERK_SHAREPOINT_IMPORT` registriert. `files` ist READ-ONLY (Dateiliste der Bibliothek),
   // `apply` stellt die gewählten Dateien in die Review-Queue — nie ein Wissensobjekt.
-  "POST /api/admin/import/sharepoint/files": { protection: "users.manage" },
-  "POST /api/admin/import/sharepoint/apply": { protection: "users.manage" },
+  //
+  // gesamt-nutzerverwaltung · FRAGE 6 (Peter, 11.10.2026): „Normale Fachrolle mit begrenzten
+  // Importrechten auf eigene Testbibliothek." Das ROUTENRECHT dieser drei Türen ist deshalb
+  // `ko.create`; dahinter steht eine zweite, engere Schranke (`bibliothekFuer` in
+  // sharepoint-import-routes.ts): `users.manage` arbeitet wie bisher gegen die Instanzbibliothek,
+  // jedes andere Konto NUR, wenn ihm `KLARWERK_SHAREPOINT_TESTBIBLIOTHEKEN` eine eigene Bibliothek
+  // zuordnet — und dann ausschliesslich gegen diese. Ohne Zuordnung bleibt es beim 403 wie vorher
+  // (gemessen in tests/demo-testbibliothek/fachkonto-import-und-word-am-draht.test.ts).
+  // Frage 6: die Auskunft der Erfassungsseite, ob DIESES Konto eine eigene Testbibliothek hat —
+  // zwei Ja/Nein, kein Graph-Abruf, keine Laufwerkskennung. Dasselbe Routenrecht wie die Türen.
+  "GET /api/import/sharepoint/testbibliothek": { protection: "ko.create" },
+  "POST /api/admin/import/sharepoint/files": { protection: "ko.create" },
+  "POST /api/admin/import/sharepoint/apply": { protection: "ko.create" },
   // R-0145/R-0190: die dritte Tür — einen ganzen Ordner in Losen übernehmen, ein Los je Aufruf.
   // Derselbe Übernahmeweg wie `apply`, also dieselbe Schranke.
-  "POST /api/admin/import/sharepoint/folder-apply": { protection: "users.manage" },
+  "POST /api/admin/import/sharepoint/folder-apply": { protection: "ko.create" },
   // R-0170: der Jira-Import — Zugangsauskunft VOR dem Schalter, dazu die drei Türen hinter
   // `KLARWERK_JIRA_IMPORT`. `issues` ist READ-ONLY (Vorgangsliste des Projekts); `apply` und
   // `project-apply` stellen Vorgänge in die Review-Queue — nie ein Wissensobjekt.
@@ -1616,6 +1634,15 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Instanz. Geschrieben wird über diesen Weg nichts (kein Auslösen, kein Löschen, kein
   // Herunterladen, Auftrag §10), deshalb steht hier nur GET und keine mutierende Zwillingszeile.
   "GET /api/admin/sicherungen": { protection: "users.manage" },
+  // produkt:20261013:produktbudget-anwender-admin: Produktbudgets lesen und ändern — allein der
+  // Admin, am Server geprüft (PBE-05).
+  "GET /api/admin/produktbudget": { protection: "users.manage" },
+  "PUT /api/admin/produktbudget/:bereich": { protection: "users.manage" },
+  // PBE-12: Zuweisung je Konto allein die Verwaltung; das eigene Unterlimit jedes lesende Konto für
+  // sich (Konto aus der Sitzung).
+  "PUT /api/admin/produktbudget/:bereich/konten/:konto": { protection: "users.manage" },
+  "GET /api/me/produktbudget": { protection: "ko.read" },
+  "PUT /api/me/produktbudget/:bereich": { protection: "ko.read" },
   // ==============================================================================================
   // JOB 4154 (WIKI-GESAMTANWEISUNG) · die zehn Wege der zusammengesetzten Anweisung.
   // ==============================================================================================
