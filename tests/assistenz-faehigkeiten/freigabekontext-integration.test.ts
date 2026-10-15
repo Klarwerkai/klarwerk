@@ -182,11 +182,12 @@ describe("F1 · ausdrücklich auf intern begrenzte Freigabe sperrt vertraulichen
     const k = produktKontextPruefung(deps());
     expect((await k.pruefe("carla", KONTEXT, "ausfuehrung"))?.art).toBe("kontextrecht");
     expect((await k.pruefe("carla", KONTEXT, "rueckgabe"))?.art).toBe("kontextrecht");
-    expect(await k.lade("carla", KONTEXT)).toBeNull();
+    // `lade` ist am Interface optional; fehlte es, wäre das Ergebnis `undefined` und nicht `null`.
+    expect(await k.lade?.("carla", KONTEXT)).toBeNull();
     // Gegenprobe ohne die Begrenzung: dieselbe Rolle sieht es über den Rollenstandard.
     setzeFreigabe(undefined);
     expect(await k.pruefe("carla", KONTEXT, "ausfuehrung")).toBeNull();
-    expect((await k.lade("carla", KONTEXT))?.[0]?.text).toBe(
+    expect((await k.lade?.("carla", KONTEXT))?.[0]?.text).toBe(
       "Liefervertrag\nKonditionen Lieferant Nord",
     );
   });
@@ -281,6 +282,6 @@ describe("F3 · ohne persönlichen Wert gilt der Rollenstandard", () => {
     konten = [{ id: "carla", role: "admin", approved: false, freigabe: "streng_vertraulich" }];
     const k = produktKontextPruefung(deps());
     expect((await k.pruefe("carla", KONTEXT, "rueckgabe"))?.art).toBe("kontextrecht");
-    expect(await k.lade("carla", KONTEXT)).toBeNull();
+    expect(await k.lade?.("carla", KONTEXT)).toBeNull();
   });
 });
