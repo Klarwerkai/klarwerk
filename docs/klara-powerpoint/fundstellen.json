@@ -1,0 +1,600 @@
+{
+  "auftrag": "produkt:20261015:klara-powerpoint-bestand",
+  "revision": 1,
+  "quelle": "20261015-direktauftrag-v1 · PRODUKTPAKET.txt Version 1.0 · PP-01",
+  "basis": "e3b86aec88feacb92a046abf6fa1af2400207ca0",
+  "erhoben_am": "2026-10-15",
+  "hinweis": "Quelleninspektion der Arbeitsbasis, keine Host- oder Bedienabnahme. Jeder Eintrag mit fundstellen ist per Datei und wörtlichem Anker belegt (tests/klara-powerpoint/fundstellen.test.ts). stand=geliefert: im Hauptstand vorhanden. stand=fehlt: im Hauptstand nicht vorhanden; die Fundstellen belegen dann die Grenze. Einträge art=auftrag geben den Auftragsstand nur so wieder, wie er in der Auftragsquelle bzw. im Repository steht.",
+  "eintraege": [
+    {
+      "id": "H01",
+      "art": "host",
+      "name": "Native PowerPoint-App (Mac/Windows) mit Klara-Add-in",
+      "stand": "fehlt",
+      "grenze": "Das einzige Office-Manifest nennt nur den Host Document (Word). Das statische Add-in-Bundle bricht außerhalb von Word ab. Es gibt keinen Lese-, Schreib- oder Auswahlweg in der laufenden PowerPoint-App.",
+      "fundstellen": [
+        { "pfad": "docs/word-addin/klara-manifest.xml", "anker": "<Host Name=\"Document\" />" },
+        {
+          "pfad": "services/app/addin-static/taskpane.js",
+          "anker": "if (info.host !== Office.HostType.Word) {"
+        }
+      ]
+    },
+    {
+      "id": "H02",
+      "art": "host",
+      "name": "PowerPoint für das Web (Microsoft 365) mit Klara-Add-in oder als eingebetteter Editor",
+      "stand": "fehlt",
+      "grenze": "Kein Add-in für PowerPoint (gleiches Word-Manifest wie H01). Microsoft 365 als eingebetteter Editor braucht eine CSPP-Zulassung, die nicht vorliegt.",
+      "fundstellen": [
+        { "pfad": "docs/word-addin/klara-manifest.xml", "anker": "<Host Name=\"Document\" />" },
+        {
+          "pfad": "docs/entscheidungen/office-im-artikel-integrationsweg.md",
+          "anker": "**CSPP-Zulassung durch Microsoft**"
+        }
+      ]
+    },
+    {
+      "id": "H03",
+      "art": "host",
+      "name": "Importierte Präsentationsdatei (.pptx) im Erfassen der Web-App",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/pages/Capture.tsx",
+          "anker": "const pptx = await readPptxRich(f, t(CAPTURE_FILE_TEXT.imageCaptionPlaceholder));"
+        },
+        {
+          "pfad": "apps/web/src/lib/captureFromFile.ts",
+          "anker": ".docx,.pdf,application/pdf,.pptx"
+        }
+      ]
+    },
+    {
+      "id": "H04",
+      "art": "host",
+      "name": "PowerPoint-Datei als Office-Anhang im Artikel, bearbeitet im selbst betriebenen WOPI-Editor (Collabora)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/office-wopi.ts",
+          "anker": "export type OfficeAnwendung = \"word\" | \"excel\" | \"powerpoint\";"
+        },
+        {
+          "pfad": "apps/web/src/components/bibliothek/OfficeImArtikel.tsx",
+          "anker": "// OFFICE IM ARTIKEL · Word, Excel und PowerPoint direkt am Artikel bearbeiten."
+        },
+        {
+          "pfad": "apps/web/src/components/bibliothek/MehrAbschnitte.tsx",
+          "anker": "<OfficeImArtikel ko={ko} />"
+        }
+      ]
+    },
+    {
+      "id": "H05",
+      "art": "host",
+      "name": "Foliensatz einer Besprechung (Meeting-Dokumentbezug)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/meeting-dokumentbezug.ts",
+          "anker": "export async function foliensatzLesen("
+        }
+      ]
+    },
+    {
+      "id": "H06",
+      "art": "host",
+      "name": "Klara-Ergebnis als PowerPoint-Datei weitergeben (Export)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/antwortDateien.ts",
+          "anker": "export function buildAnswerPptx(input: AnswerExportInput): Uint8Array {"
+        }
+      ]
+    },
+    {
+      "id": "H07",
+      "art": "host",
+      "name": "Nativer Mac-Host (KLARWERK App)",
+      "stand": "fehlt",
+      "grenze": "Die Mac-App startet Server und Browser. Sie hat keinen Zugriff auf PowerPoint, Auswahl oder Bildschirm.",
+      "fundstellen": [
+        {
+          "pfad": "desktop-app/KLARWERK App.app/Contents/MacOS/KLARWERK_App",
+          "anker": "# KLARWERK App – Desktop-Starter (Team 1)"
+        }
+      ]
+    },
+    {
+      "id": "W01",
+      "art": "weg",
+      "name": "Lesen: PPTX-Leser – Folientext als HTML, eingebettete Bilder als figure mit Folie",
+      "stand": "geliefert",
+      "fundstellen": [
+        { "pfad": "apps/web/src/lib/pptx.ts", "anker": "export async function extractPptxRich(" }
+      ]
+    },
+    {
+      "id": "W02",
+      "art": "weg",
+      "name": "Lesegrenze: nur presentation.xml, Folien, Folien-Beziehungen und Medien werden entpackt",
+      "stand": "geliefert",
+      "fundstellen": [
+        { "pfad": "apps/web/src/lib/pptx.ts", "anker": "export const PPTX_NEEDED_ENTRY_RE =" }
+      ]
+    },
+    {
+      "id": "W03",
+      "art": "weg",
+      "name": "Lesen: automatische Bildanalyse/OCR einer PPTX mit Folie und Position (OCR-02)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/bildAutomatik.ts",
+          "anker": "export function pptxBildEingang("
+        },
+        {
+          "pfad": "apps/web/src/components/bibliothek/OfficeBildBefunde.tsx",
+          "anker": "// OCR-02 · Office im Artikel (H06, Lücke L17)"
+        }
+      ]
+    },
+    {
+      "id": "W04",
+      "art": "weg",
+      "name": "Auswahl/Frage: „Klara zu diesem Inhalt fragen“ mit deterministischen Fundstellen (OCR-03)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/KlaraBildKontextFrage.tsx",
+          "anker": "export function KlaraBildKontextFrage({"
+        },
+        { "pfad": "apps/web/src/lib/klaraBildKontext.ts", "anker": "export function belegstellen(" }
+      ]
+    },
+    {
+      "id": "W05",
+      "art": "weg",
+      "name": "Lesen: Folienansicht – jede Folie als Bild (LibreOffice), per Betreiberschalter",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/routes/slides-routes.ts",
+          "anker": "const flag = process.env.KLARWERK_SLIDES_ENABLED;"
+        }
+      ]
+    },
+    {
+      "id": "W06",
+      "art": "weg",
+      "name": "Schreiben: belegte Nachbearbeitung einer PPTX-Anlage (Text einzelner Läufe, Sprechernotiz, Handout) mit Zahlenbeleg",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/routes/office-routes.ts",
+          "anker": "\"/api/kos/:id/office/:anhangId/nachbearbeitung\","
+        },
+        {
+          "pfad": "services/app/src/office-nachbearbeitung.ts",
+          "anker": "Diagramm- und Datenreihenänderungen sind über diesen Weg nicht unterstützt; nichts geändert."
+        }
+      ]
+    },
+    {
+      "id": "W07",
+      "art": "weg",
+      "name": "Rücknahme: frühere Fassung eines Office-Anhangs zurückholen",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/routes/office-routes.ts",
+          "anker": "\"/api/kos/:id/office/:anhangId/zurueckholen\""
+        }
+      ]
+    },
+    {
+      "id": "W08",
+      "art": "weg",
+      "name": "Schreiben: Speichern im WOPI-Editor als neue Fassung (Fassungsprüfung gegen Basis)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/knowledge-object/src/service.ts",
+          "anker": "async uebernimmOfficeFassung("
+        }
+      ]
+    },
+    {
+      "id": "W09",
+      "art": "weg",
+      "name": "Auswahl im eingebetteten Editor: wird nicht an Klara übergeben (immer null)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/officeEditor.ts",
+          "anker": "export function auswahlVomEditor(_nachricht: EditorNachricht): string | null {"
+        }
+      ]
+    },
+    {
+      "id": "W10",
+      "art": "weg",
+      "name": "Folienidentität: p:sldId mit Dateikennung und Fassung (SHA-256), Inhaltsvergleich rekursiv",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/meeting-dokumentbezug.ts",
+          "anker": "// DIE IDENTITÄT EINER FOLIE ist `p:sldId/@id` aus `ppt/presentation.xml` zusammen mit der"
+        }
+      ]
+    },
+    {
+      "id": "W11",
+      "art": "weg",
+      "name": "Schreiben: Antwortexport als neue .pptx – eine Folie, Master/Layout/Thema in kleinster gültiger Form",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/antwortDateien.ts",
+          "anker": "// .pptx — eine Folie, Titel und Text; Master, Layout und Thema in kleinster gültiger Form."
+        }
+      ]
+    },
+    {
+      "id": "V01",
+      "art": "regel",
+      "name": "Fachstatus je Wissensobjekt offen|validiert und abgeleiteter Anzeigestatus (Prüfung, Revalidierung, Konflikt)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/knowledge-object/src/types.ts",
+          "anker": "export type KoStatus = \"offen\" | \"validiert\";"
+        },
+        {
+          "pfad": "services/knowledge-object/src/display-status.ts",
+          "anker": "export function displayStatus("
+        }
+      ]
+    },
+    {
+      "id": "V02",
+      "art": "regel",
+      "name": "Prüfnachweis an seine Basis gebunden (Fassung, Quellen, Anhänge, Kontext); Änderung macht ihn überholt",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/knowledge-object/src/pruefbasis.ts",
+          "anker": "export function aiCheckUeberholt("
+        }
+      ]
+    },
+    {
+      "id": "V03",
+      "art": "regel",
+      "name": "Aktualität: Frische (frisch, altert, fällig, veraltet), Haltbarkeit, Freigabe in erzeugte Dokumente",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/knowledge-object/src/frische.ts",
+          "anker": "//   · wie frisch ist es (frisch, altert, fällig, veraltet),"
+        }
+      ]
+    },
+    {
+      "id": "V04",
+      "art": "regel",
+      "name": "Fundstelle: Stellenanker an Absatz, Tabelle oder Bild einer bestimmten Fassung",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/knowledge-object/src/stellen-anker.ts",
+          "anker": "export const STELLE_TEXT_MAX = 300;"
+        }
+      ]
+    },
+    {
+      "id": "V05",
+      "art": "regel",
+      "name": "Office-Schreibweg aus vorhandenen Rechten: direkt, vorschlag (validierter Artikel), nur-lesen, kein-zugang",
+      "stand": "geliefert",
+      "fundstellen": [
+        { "pfad": "services/app/src/office-wopi.ts", "anker": "export function officeSchreibweg(" }
+      ]
+    },
+    {
+      "id": "V06",
+      "art": "regel",
+      "name": "Zahlenbeleg und Rechenprüfung (Summe, Differenz, Anteil in Prozent) – nur im Nachbearbeitungsauftrag",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/app/src/office-nachbearbeitung.ts",
+          "anker": "function rechne(b: NonNullable<Zahlenbeleg[\"berechnung\"]>): number {"
+        }
+      ]
+    },
+    {
+      "id": "V07",
+      "art": "regel",
+      "name": "Schutzstufe je Wissensobjekt (intern, vertraulich, streng vertraulich)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/knowledge-object/src/types.ts",
+          "anker": "export type Confidentiality = \"intern\" | \"vertraulich\" | \"streng_vertraulich\";"
+        }
+      ]
+    },
+    {
+      "id": "V08",
+      "art": "regel",
+      "name": "Geltung einer Aussage für eine Frage (Geltungsbereich, Passung)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/knowledge-object/src/geltung.ts",
+          "anker": "export function geltungFuerFrage("
+        }
+      ]
+    },
+    {
+      "id": "D01",
+      "art": "datenquelle",
+      "name": "Wissensobjekte der Bibliothek mit Quellen, Anhängen und Fassungen",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "services/knowledge-object/src/pruefbasis.ts",
+          "anker": "\"version\" | \"sources\" | \"attachments\" | \"category\" | \"tags\" | \"asset\" | \"confidentiality\""
+        }
+      ]
+    },
+    {
+      "id": "D02",
+      "art": "datenquelle",
+      "name": "Excel (.xlsx) als Importquelle für Wissenseinträge – gespeicherte Werte, Formeln nicht ausgewertet",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/xlsxImport.ts",
+          "anker": "Formeln werden nicht ausgewertet, es zählt der"
+        }
+      ]
+    },
+    {
+      "id": "D03",
+      "art": "datenquelle",
+      "name": "Bildbefunde (OCR-Text) einer Präsentation – nur in der Sitzung der Fläche, nicht am Wissensobjekt gespeichert",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "docs/klara-bildanalyse-ocr/OCR-03-KONTEXT-SETUP.md",
+          "anker": "erkannter Bildtext wird NICHT am Wissensobjekt gespeichert"
+        }
+      ]
+    },
+    {
+      "id": "S01",
+      "art": "setup",
+      "name": "Setup › Klara (Persönliche Einstellungen, /profil?bereich=klara)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/pages/Profile.tsx",
+          "anker": "suche.get(\"bereich\") === \"klara\""
+        },
+        {
+          "pfad": "services/app/src/assistenz-profil.ts",
+          "anker": "CREATE TABLE IF NOT EXISTS assistenz_profile ("
+        }
+      ]
+    },
+    {
+      "id": "S02",
+      "art": "setup",
+      "name": "Schalter „Bilder automatisch analysieren und Text erkennen“ (Voreinstellung an)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/components/klara-setup/KlaraSetup.tsx",
+          "anker": "export function KlaraBildAutomatikGruppe(): JSX.Element {"
+        }
+      ]
+    },
+    {
+      "id": "S03",
+      "art": "setup",
+      "name": "Tastenkürzel für vorhandene Klara-Aktionen mit Konfliktregeln (nur im Klarwerk-Fenster)",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/klaraTastenkuerzel.ts",
+          "anker": "export function pruefeBelegung("
+        }
+      ]
+    },
+    {
+      "id": "A01",
+      "art": "auftrag",
+      "name": "Excel und PowerPoint auf Desktop und im Web anschließen (KO-04-01 bis KO-04-07)",
+      "auftrag_id": "aufnahme:20260922:excel-erster-weg",
+      "revision": 4,
+      "auftragsstand": "offen",
+      "herkunft": "QUELLEN.json, linked_originals",
+      "pp_bezug": ["H01", "H02"]
+    },
+    {
+      "id": "A02",
+      "art": "auftrag",
+      "name": "OCR-E01/E02 · Fundstellen am Original und dauerhafte Textkorrekturen",
+      "auftrag_id": "produkt:20261012:klara-ocr-fundstellen-korrekturen",
+      "revision": 1,
+      "auftragsstand": "offen",
+      "herkunft": "QUELLEN.json, linked_originals",
+      "pp_bezug": ["PP-04"]
+    },
+    {
+      "id": "A03",
+      "art": "auftrag",
+      "name": "OCR-E03 · Bildhafte Tabellen als bearbeitbare Tabellen",
+      "auftrag_id": "produkt:20261012:klara-ocr-tabellen",
+      "revision": 1,
+      "auftragsstand": "offen",
+      "herkunft": "QUELLEN.json, linked_originals",
+      "pp_bezug": ["PP-04", "PP-05"]
+    },
+    {
+      "id": "A04",
+      "art": "auftrag",
+      "name": "OCR-E04 · Mehrseitige Scans automatisch lesen",
+      "auftrag_id": "produkt:20261012:klara-ocr-mehrseitige-scans",
+      "revision": 1,
+      "auftragsstand": "offen",
+      "herkunft": "QUELLEN.json, linked_originals",
+      "pp_bezug": ["PP-04"]
+    },
+    {
+      "id": "A05",
+      "art": "auftrag",
+      "name": "OCR-E05 · Widersprüche zwischen Bild- und Dokumenttext",
+      "auftrag_id": "produkt:20261012:klara-ocr-widersprueche",
+      "revision": 1,
+      "auftragsstand": "offen",
+      "herkunft": "QUELLEN.json, linked_originals",
+      "pp_bezug": ["PP-03", "PP-04"]
+    },
+    {
+      "id": "A06",
+      "art": "auftrag",
+      "name": "OCR-E06 · „Klara, was steht hier?“ für Bild oder Bereich",
+      "auftrag_id": "produkt:20261012:klara-ocr-bereichsfrage",
+      "revision": 1,
+      "auftragsstand": "offen",
+      "herkunft": "QUELLEN.json, linked_originals",
+      "pp_bezug": ["PP-04"]
+    },
+    {
+      "id": "A07",
+      "art": "auftrag",
+      "name": "OCR-02 · Bilder automatisch analysieren",
+      "auftrag_id": "produkt:20261012:klara-bildanalyse-ocr-automatik",
+      "auftragsstand": "Code im Hauptstand; Auftragsstand hier nicht erhoben",
+      "herkunft": "docs/klara-bildanalyse-ocr/OCR-02-AUTOMATIK.md",
+      "pp_bezug": ["PP-04"]
+    },
+    {
+      "id": "A08",
+      "art": "auftrag",
+      "name": "OCR-03 · Kontext für Klara und Setup-Schalter",
+      "auftrag_id": "produkt:20261012:klara-bildanalyse-ocr-kontext-setup",
+      "auftragsstand": "Code im Hauptstand; Auftragsstand hier nicht erhoben",
+      "herkunft": "docs/klara-bildanalyse-ocr/OCR-03-KONTEXT-SETUP.md",
+      "pp_bezug": ["PP-04", "Setup"]
+    },
+    {
+      "id": "A09",
+      "art": "auftrag",
+      "name": "AA-02 bis AA-04 · Bereich Klara im Setup und Tastenkürzel",
+      "auftrag_id": "produkt:20261012:klara-setup-shortcuts-umsetzung",
+      "revision": 2,
+      "auftragsstand": "Code im Hauptstand; Auftragsstand hier nicht erhoben",
+      "herkunft": "docs/klara-setup-shortcuts/UMSETZUNG.md",
+      "pp_bezug": ["Setup"]
+    },
+    {
+      "id": "A10",
+      "art": "auftrag",
+      "name": "Office im Artikel (WOPI-Editor) und Machbarkeit",
+      "auftrag_id": "produkt:20261007:office-artikel-editor",
+      "auftragsstand": "Code im Hauptstand; Auftragsstand hier nicht erhoben",
+      "herkunft": "apps/web/src/lib/officeEditor.ts",
+      "pp_bezug": ["H04"]
+    },
+    {
+      "id": "A11",
+      "art": "auftrag",
+      "name": "BPA-17 · Präsentation nach der Besprechung nachbearbeiten",
+      "auftrag_id": "produkt:20261011:assistenz-dokumentnachbearbeitung",
+      "auftragsstand": "Code im Hauptstand; Auftragsstand hier nicht erhoben",
+      "herkunft": "docs/operations/klara/praesentation-nachbearbeitung.md",
+      "pp_bezug": ["PP-05", "PP-07", "PP-08"]
+    },
+    {
+      "id": "A12",
+      "art": "auftrag",
+      "name": "BPA-16 · Gesprächsaussagen mit Folien und Dokumentstellen verbinden",
+      "auftrag_id": "produkt:20261011:assistenz-meeting-dokumentbezug",
+      "auftragsstand": "Code im Hauptstand; Auftragsstand hier nicht erhoben",
+      "herkunft": "docs/operations/klara/meeting-dokumentbezug.md",
+      "pp_bezug": ["PP-07", "PP-08"]
+    }
+  ],
+  "luecken": [
+    {
+      "id": "L01",
+      "name": "Kein Klara-Add-in für PowerPoint: in der nativen App (H01) und im Web (H02) gibt es keinen Lese-, Schreib- oder Auswahlweg. Gehört zu KO-04-01/04/05/07 (A01)."
+    },
+    {
+      "id": "L02",
+      "name": "Microsoft PowerPoint für das Web ist nicht eingebettet (CSPP fehlt). Der eingebettete Editor ist Collabora; dessen Darstellungstreue für PowerPoint-Folien und die Anzeige angefügter Notizen in Microsoft PowerPoint sind nicht belegt."
+    },
+    {
+      "id": "L03",
+      "name": "Der PPTX-Leser (W01/W02) liest keine Sprechernotizen, Diagrammdaten (ppt/charts), SmartArt (ppt/diagrams), Layouts und Master. Tabellen und Diagramme einer Folie sind deshalb keine verwertbaren Daten."
+    },
+    {
+      "id": "L04",
+      "name": "Kein gemeinsames Daten-/Aussagenobjekt mit Wert, Einheit, Bezugszeitraum, Quellfassung, Erfassungsart (direkt, OCR, manuell, berechnet, prognostiziert), Rechenweg und Bindung an Folie und Element. Der Zahlenbeleg (V06) ist nur Eingabe eines Nachbearbeitungsauftrags, keine gespeicherte Bindung. (PP-02)"
+    },
+    {
+      "id": "L05",
+      "name": "Fachstatus und Prüfnachweis gelten je Wissensobjekt (V01, V02), nicht je Zahl oder Aussage. Die Prüfdimensionen Erkennung, Struktur, Berechnung, Konsistenz, Aktualität und fachliche Freigabe sind nicht getrennt ausgewiesen. (PP-03)"
+    },
+    {
+      "id": "L06",
+      "name": "OCR-Text einer Präsentation (D03) ist nicht am Wissensobjekt gespeichert und kein Prüfgegenstand; Korrekturen und Fundstellen am Original gehören zu A02."
+    },
+    {
+      "id": "L07",
+      "name": "Kein Folienaufbau aus Daten: der Export (W11) erzeugt eine Folie ohne Vorlage/Design; die Nachbearbeitung (W06) ändert nur Text einzelner Läufe, Diagramme und Datenreihen werden zur Klärung. (PP-05)"
+    },
+    {
+      "id": "L08",
+      "name": "Keine Datenergänzung mit Herkunft und Prüfstatus und keine getrennte Szenario-/Prognosebehandlung an Folienwerten. (PP-06)"
+    },
+    {
+      "id": "L09",
+      "name": "Keine Wirkungsübersicht von einer Quellenänderung auf gebundene Folienwerte, Diagramme, Aussagen und Notizen; keine Haupt-/Detail- oder Kurz-/Langfassungen aus derselben Datenbasis. W10 erkennt geänderte Folien, nicht geänderte Daten. (PP-07)"
+    },
+    {
+      "id": "L10",
+      "name": "Kein Probevortrag, keine Dauerschätzung, keine simulierten Rückfragen; Live- und Audiounterstützung in PowerPoint gibt es nicht. (PP-08)"
+    },
+    {
+      "id": "L11",
+      "name": "Setup › Klara hat keine PowerPoint-Einstellungen (Vorlage/Design, Zielgruppe, Vortragsdauer), keine Einstellung zur Darstellung von Prüfstatus und offenen Datenpunkten und keine Quellaktualisierungsvorschau. Kürzel wirken nur im Klarwerk-Fenster, nicht in PowerPoint (S03)."
+    },
+    {
+      "id": "L12",
+      "name": "Klara erhält keine Auswahl aus dem eingebetteten Editor (W09); Fragen dort beziehen sich auf die ganze Datei und ihre Bildbefunde, nicht auf eine markierte Stelle."
+    },
+    {
+      "id": "L13",
+      "name": "Die Nachbearbeitung (W06) hat keine Oberfläche; sie ist nur über die API erreichbar, ihr Laufgedächtnis gilt je Prozess."
+    },
+    {
+      "id": "L14",
+      "name": "Excel (D02) liefert nur Wissenseinträge im JSON-Feldformat; Formeln werden nicht ausgewertet, es gibt keine Tabellenbereiche als Datenquelle für Folien. Excel-Arbeitsweg gehört zu A01."
+    },
+    {
+      "id": "L15",
+      "name": "Für keinen PowerPoint-Weg liegt eine echte Host-, Bedien-, Tastatur-/Screenreader- oder Hell/Dunkel-Prüfung nach UI-04 bis UI-08 vor; Audio- und Exportwege (Empfängersicht) sind nicht geprüft."
+    },
+    {
+      "id": "L16",
+      "name": "Kein nativer Mac-Host (H07); Klara kann PowerPoint auf dem Mac weder lesen noch steuern."
+    }
+  ]
+}
