@@ -1038,4 +1038,104 @@ describe("PP-02 · Datenherkunft und Bindung an Folien", () => {
       expect(r.status, falsch).toBe(400);
     }
   });
+
+  it("D11 · Quellenänderung hinter unveränderter Zwischenstufe hebt den Status abgeleiteter Werte auf", async () => {
+    // Nacharbeit 4 (Bens Befund): Quelle Q → A (direkt) → B = A + M → C = B + M.
+    const q = await w.ko.create({
+      title: "Preisliste 2025 (fiktiv)",
+      statement: "Stückpreis 2025: 12 € je Stück.",
+      type: "best_practice",
+      category: "Testbestand",
+      author: "anna",
+      confidentiality: "intern",
+    });
+    const erfasse = async (rumpf: Record<string, unknown>) => {
+      const r = await rufe(w, "anna", "POST", `/api/kos/${koId}/datenpunkte`, rumpf);
+      expect(r.status, JSON.stringify(r.body)).toBe(201);
+      return r.body.id as string;
+    };
+    const a = await erfasse({
+      art: "zahl",
+      wert: "12 €",
+      waehrung: "EUR",
+      zeitraum: "2025",
+      erfassung: "direkt",
+      quelleKoId: q.id,
+      zitat: "Stückpreis 2025: 12 €",
+    });
+    const m = await erfasse({ art: "zahl", wert: "100", erfassung: "manuell" });
+    const b = await erfasse({
+      art: "zahl",
+      wert: "112",
+      erfassung: "berechnet",
+      rechenweg: { art: "summe", eingaben: [a, m], stellen: 0 },
+    });
+    const c = await erfasse({
+      art: "zahl",
+      wert: "212",
+      erfassung: "berechnet",
+      rechenweg: { art: "summe", eingaben: [b, m], stellen: 0 },
+    });
+    const lies = async (id: string) =>
+      (await rufe(w, "anna", "GET", `/api/datenpunkte/${id}`)).body;
+
+    // Aktualität gilt auch für berechnete Werte (die Herkunft ihrer Eingaben).
+    expect((await lies(b)).pruefstand.erforderlich).toContain("aktualitaet");
+    // B vollständig geprüft → validiert für Fassung 1.
+    for (const [wer, dimension] of [
+      ["anna", "struktur"],
+      ["anna", "konsistenz"],
+      ["anna", "aktualitaet"],
+      ["chef", "fachliche_freigabe"],
+    ] as const) {
+      const r = await rufe(w, wer, "POST", `/api/datenpunkte/${b}/pruefungen`, {
+        dimension,
+        ergebnis: "bestanden",
+        grund: `${dimension} geprüft (fiktiv)`,
+        fassung: 1,
+      });
+      expect(r.status, dimension).toBe(200);
+    }
+    expect((await lies(b)).pruefstand.zustand).toBe("validiert");
+
+    // Die Originalquelle ändert sich; A erhält KEINE neue Datenfassung.
+    await w.ko.revise(q.id, { statement: "Stückpreis 2025: 13 € je Stück." }, "anna");
+    const aNach = await lies(a);
+    expect(aNach.fassung).toBe(1);
+    expect(dimension(aNach, "aktualitaet").stand).toBe("ueberholt");
+
+    const bNach = await lies(b);
+    expect(bNach.fassung).toBe(1);
+    expect(bNach.pruefstand.zustand).toBe("ueberpruefung_noetig");
+    expect(dimension(bNach, "aktualitaet").stand).toBe("ueberholt");
+    expect(dimension(bNach, "aktualitaet").grund).toContain("Über die Eingabe „12 €“");
+    expect(dimension(bNach, "aktualitaet").grund).toContain("Quellfassung");
+    // Die frühere Prüfung bleibt sichtbar, trägt aber keinen Status mehr.
+    expect(dimension(bNach, "aktualitaet").pruefung.von).toBe("anna");
+    expect(bNach.pruefstand.naechsteArbeit.join(" ")).toContain(
+      "Eingabe an ihrer aktuellen Herkunft",
+    );
+
+    // Zwei Stufen tiefer: C rechnet mit unverändertem B, dahinter liegt die geänderte Quelle.
+    const cNach = await lies(c);
+    expect(cNach.pruefstand.zustand).toBe("ueberpruefung_noetig");
+    expect(dimension(cNach, "aktualitaet").grund).toContain(
+      "Über die Eingabe „112“: Über die Eingabe „12 €“",
+    );
+
+    // Mehrstufige Eingabeänderung: A erhält eine neue Datenfassung, B wird NICHT neu berechnet.
+    const korrigiert = await rufe(w, "anna", "POST", `/api/datenpunkte/${a}/korrektur`, {
+      fassung: 1,
+      wert: "13 €",
+      grund: "Neuer Stückpreis laut Preisliste",
+    });
+    expect(korrigiert.status).toBe(200);
+    expect(dimension(await lies(b), "berechnung").stand).toBe("ueberholt");
+    const cTiefer = await lies(c);
+    expect(cTiefer.fassung).toBe(1);
+    expect(cTiefer.pruefstand.zustand).toBe("ueberpruefung_noetig");
+    expect(dimension(cTiefer, "aktualitaet").grund).toContain(
+      "Über die Eingabe „112“: Eingabe „12 €“ hat jetzt Fassung 2 (gerechnet mit 1)",
+    );
+  });
 });

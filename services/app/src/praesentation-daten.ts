@@ -1532,7 +1532,9 @@ export function erforderlich(d: Inhalt): Dimension[] {
       case "berechnung":
         return d.rechenweg !== undefined;
       case "aktualitaet":
-        return d.quelle !== undefined;
+        // Nacharbeit 4: auch ein berechneter Wert hat eine Herkunft mit Fassungen — die seiner
+        // Eingaben. Ihre Aktualität gilt für ihn mit.
+        return d.quelle !== undefined || d.rechenweg !== undefined;
       default:
         return true;
     }
@@ -1547,7 +1549,7 @@ const NICHT_ZUTREFFEND: Record<Dimension, (d: Inhalt) => string> = {
   struktur: () => "",
   berechnung: () => "Kein Rechenweg.",
   konsistenz: () => "",
-  aktualitaet: () => "Keine Quelle mit Fassung (Eingabe bzw. Rechenweg).",
+  aktualitaet: () => "Keine Quelle mit Fassung und kein Rechenweg (manuelle Eingabe).",
   fachliche_freigabe: () => "",
 };
 
@@ -1571,7 +1573,9 @@ function offenGrund(dim: Dimension, d: Inhalt): string {
     case "konsistenz":
       return "Noch nicht mit anderen Angaben zum selben Sachverhalt abgeglichen.";
     case "aktualitaet":
-      return "Ob die Quellfassung zum Verwendungszeitpunkt passt, ist noch nicht geprüft.";
+      return d.quelle
+        ? "Ob die Quellfassung zum Verwendungszeitpunkt passt, ist noch nicht geprüft."
+        : "Ob die Quellfassungen der Eingaben zum Verwendungszeitpunkt passen, ist noch nicht geprüft.";
     case "fachliche_freigabe":
       return "Keine fachliche Freigabe für diese Datenfassung.";
   }
@@ -1596,6 +1600,77 @@ const FELDNAME: Record<string, string> = {
   fundstelle: "Fundstelle",
 };
 
+/** Ist die verwendete Quellfassung heute noch die aktuelle? Sonst der Grund. */
+async function quellGrund(quelle: Quellbezug, u: DatenUmgebung): Promise<string | undefined> {
+  const meta = await u.meta(quelle.koId);
+  if (!meta) {
+    return "Die Quelle gibt es nicht mehr.";
+  }
+  if (quelle.anhangId) {
+    const jetzt = meta.anhaenge.find((a) => a.id === quelle.anhangId)?.objectId;
+    if (jetzt !== quelle.objectId) {
+      return jetzt
+        ? "Das Quelldokument hat inzwischen eine neue Fassung."
+        : "Das Quelldokument hängt nicht mehr am Artikel.";
+    }
+  }
+  if (meta.version !== quelle.koFassung) {
+    return `Verwendet wurde Quellfassung ${quelle.koFassung}; die Quelle steht jetzt bei Fassung ${meta.version}.`;
+  }
+  return undefined;
+}
+
+/**
+ * Nacharbeit 4 (Bens Befund) — DIE TATSÄCHLICH VERWENDETE HERKUNFT, REKURSIV.
+ *
+ * Eine Berechnung rechnet mit bestimmten Fassungen ihrer Eingaben; diese hängen ihrerseits an
+ * Quellfassungen und Eingabefassungen. Ändert sich irgendwo darunter die Quelle oder erhält eine
+ * tiefere Eingabe eine neue Fassung, ist auch das Ergebnis oben nicht mehr aktuell — selbst wenn
+ * seine unmittelbaren Eingaben noch dieselbe Fassung tragen (Quelle → A → B). Geprüft wird die
+ * Herkunft in der VERWENDETEN Fassung (`inFassung`), nicht der heutige Stand der Zwischenstufen.
+ * Ergebnis: der erste konkrete Grund mit dem Weg dorthin, oder `undefined`.
+ */
+async function herkunftsGrund(
+  dp: Datenpunkt,
+  u: DatenUmgebung,
+  tiefe: number,
+): Promise<string | undefined> {
+  if (dp.quelle) {
+    const grund = await quellGrund(dp.quelle, u);
+    if (grund) {
+      return grund;
+    }
+  }
+  for (const e of dp.rechenweg?.eingaben ?? []) {
+    const grund = await eingabeGrund(e, u, tiefe);
+    if (grund) {
+      return grund;
+    }
+  }
+  return undefined;
+}
+
+/** Ob eine verwendete Eingabe (samt ihrer Herkunft) heute noch so gilt, wie mit ihr gerechnet wurde. */
+async function eingabeGrund(
+  e: RechenwegEingabe,
+  u: DatenUmgebung,
+  tiefe: number,
+): Promise<string | undefined> {
+  const jetzt = await u.datenpunkt(e.datenpunktId);
+  if (!jetzt) {
+    return `Eingabe „${e.wert}“ gibt es nicht mehr.`;
+  }
+  if (jetzt.fassung !== e.fassung) {
+    return `Eingabe „${e.wert}“ hat jetzt Fassung ${jetzt.fassung} (gerechnet mit ${e.fassung}).`;
+  }
+  if (tiefe <= 0) {
+    return `Die Herkunft von „${e.wert}“ ist nicht bis zum Ende prüfbar.`; // fail-closed
+  }
+  const damals = inFassung(jetzt, e.fassung) ?? jetzt;
+  const tiefer = await herkunftsGrund(damals, u, tiefe - 1);
+  return tiefer ? `Über die Eingabe „${e.wert}“: ${tiefer}` : undefined;
+}
+
 /** Lebendige Gründe, aus denen eine Dimension überholt ist, obwohl der Datenpunkt gleich blieb. */
 async function lebendigUeberholt(
   dp: Datenpunkt,
@@ -1603,18 +1678,23 @@ async function lebendigUeberholt(
 ): Promise<Partial<Record<Dimension, string>>> {
   const gruende: Partial<Record<Dimension, string>> = {};
   if (dp.quelle) {
-    const meta = await u.meta(dp.quelle.koId);
-    if (!meta) {
-      gruende.aktualitaet = "Die Quelle gibt es nicht mehr.";
-    } else if (meta.version !== dp.quelle.koFassung) {
-      gruende.aktualitaet = `Verwendet wurde Quellfassung ${dp.quelle.koFassung}; die Quelle steht jetzt bei Fassung ${meta.version}.`;
+    const grund = await quellGrund(dp.quelle, u);
+    if (grund) {
+      gruende.aktualitaet = grund;
     }
-    if (meta && dp.quelle.anhangId) {
-      const jetzt = meta.anhaenge.find((a) => a.id === dp.quelle?.anhangId)?.objectId;
-      if (jetzt !== dp.quelle.objectId) {
-        gruende.aktualitaet = jetzt
-          ? "Das Quelldokument hat inzwischen eine neue Fassung."
-          : "Das Quelldokument hängt nicht mehr am Artikel.";
+  }
+  if (dp.rechenweg && !gruende.aktualitaet) {
+    // Eingaben mit unveränderter Fassung: ist IHRE verwendete Herkunft noch aktuell (rekursiv)?
+    // Eingaben mit neuer Fassung meldet unten die Berechnung.
+    for (const e of dp.rechenweg.eingaben) {
+      const jetzt = await u.datenpunkt(e.datenpunktId);
+      if (!jetzt || jetzt.fassung !== e.fassung) {
+        continue;
+      }
+      const grund = await eingabeGrund(e, u, KETTENTIEFE);
+      if (grund) {
+        gruende.aktualitaet = grund;
+        break;
       }
     }
   }
@@ -1700,7 +1780,9 @@ export async function pruefstand(dp: Datenpunkt, u: DatenUmgebung): Promise<Prue
       d.dimension === "berechnung" && lebendig.berechnung
         ? "Neu berechnen und den Rechenweg erneut prüfen."
         : d.dimension === "aktualitaet" && lebendig.aktualitaet
-          ? "Wert an der aktuellen Quellfassung neu lesen bzw. bestätigen."
+          ? dp.quelle
+            ? "Wert an der aktuellen Quellfassung neu lesen bzw. bestätigen."
+            : "Die betroffene Eingabe an ihrer aktuellen Herkunft aktualisieren, dann neu berechnen."
           : `${DIMENSIONSNAME[d.dimension]} für Fassung ${dp.fassung} erneut prüfen.`,
     ),
     ...klaerung.map((d) => `Klärung zu ${DIMENSIONSNAME[d.dimension]}: ${d.grund}`),

@@ -57,6 +57,11 @@ getrennt, je mit Stand (bestanden, Klärungsbedarf, offen, überholt, trifft nic
   alte Prüfung sichtbar, gilt aber als **überholt**.
 - Eine neue Quell- oder Dateifassung macht die Aktualität überholt; eine neue Fassung einer Eingabe
   macht die Berechnung überholt. Daraus wird **„Überprüfung nötig“**.
+- Nacharbeit 4: Die Aktualität eines berechneten Werts folgt der **tatsächlich verwendeten Herkunft,
+  rekursiv** — Quelle → A → B → C. Ändert sich die Quelle hinter einer unveränderten Zwischenstufe
+  oder erhält eine tiefere Eingabe eine neue Fassung, zeigen alle abgeleiteten Werte
+  „Überprüfung nötig“ mit dem Weg zur Ursache („Über die Eingabe „112“: Über die Eingabe „12 €“: …“).
+  Aktualität ist deshalb auch für berechnete Werte eine erforderliche Dimension.
 - Erkennung: Direkt übernommene Werte prüft der Server maschinell (der Wert steht an der Fundstelle);
   OCR-Werte sind **nie** maschinell bestätigt. Eine solche Teilprüfung validiert nicht.
 - **Validiert** heißt: alle für diese Datenfassung erforderlichen Dimensionen bestanden, einschließlich
