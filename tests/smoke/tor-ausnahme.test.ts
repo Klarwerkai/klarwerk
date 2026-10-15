@@ -120,6 +120,16 @@ const ERLAUBTE_AUSNAHMEN = [
     title:
       "REF-04 · Antwort → Prüfmodell → Aussagezustand → Fundstelle → Rückweg mit echtem Prüfmodell @modell",
   },
+  // produkt:20261012:klara-ocr-fundstellen-korrekturen (OCR-E02, K5) — derselbe Grund: das Kriterium
+  // verlangt, dass eine TATSÄCHLICHE Klara-Antwort und Zusammenfassung die berichtigte Fassung
+  // verwenden. Ohne Modell kann der Fall im Tor nicht laufen; er läuft im vollen Smoke. Alles ohne
+  // Modell Nachweisbare (Kontext, Anweisung und Belege mit der Berichtigung) messen
+  // `tests/klara-bildanalyse-ocr/korrektur-klara.test.ts` und `fundstelle-korrektur-mounted.test.tsx`
+  // sowie die übrigen Fälle derselben Spec im Tor.
+  {
+    file: "klara-ocr-fundstelle-korrektur-browser.spec.ts",
+    title: "OCR-E02 · Klara antwortet und fasst zusammen mit dem berichtigten Bildtext @modell",
+  },
 ] as const;
 
 /** Das npm-Skript, dessen Aufrufzeile das Tor in `tools/check` fährt. */
