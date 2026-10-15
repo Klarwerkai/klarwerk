@@ -17,3 +17,7 @@ Prüfung: `tests/klara-bildanalyse-ocr/fundstellen.test.ts`.
 
 **OCR-03** (`produkt:20261012:klara-bildanalyse-ocr-kontext-setup`): Kontext für Klara und
 Setup-Schalter in [`OCR-03-KONTEXT-SETUP.md`](./OCR-03-KONTEXT-SETUP.md).
+
+**Basisreparatur 58→53** (`produkt:20261015:ocr-basis-erkannter-genauigkeitsfehler`): Ursache,
+Korrektur im gemeinsamen Engineweg und Prüfstand in
+[`OCR-BASIS-GENAUIGKEIT.md`](./OCR-BASIS-GENAUIGKEIT.md).

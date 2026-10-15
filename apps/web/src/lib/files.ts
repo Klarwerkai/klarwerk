@@ -424,12 +424,69 @@ export async function ocrSprachdatenVorhanden(
   }
 }
 
+/** Größte Seitenlänge des verkleinerten Bildes — darüber bleibt es bei der ersten Lesung. */
+const OCR_SKALIERT_HOECHSTENS_PX = 8000;
+
+/**
+ * Basisreparatur 58→53 (s. `lib/ocr.ts`): zeichnet das Bild verkleinert auf ein Canvas und gibt es
+ * als PNG-data-URL an dieselbe Engine. Das Original bleibt unverändert; das verkleinerte Bild
+ * existiert nur für diese Lesung. Geladen wird ohne Netz (Datei) bzw. wie ein gewöhnliches Bild
+ * (data-URL oder eigene Herkunft, `img-src`) — kein `fetch`, keine neue Freigabe in der CSP.
+ */
+async function ocrBildVerkleinern(input: unknown, faktor: number): Promise<string | null> {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  let quelle: CanvasImageSource;
+  let breite: number;
+  let hoehe: number;
+  if (typeof input === "string") {
+    const bild = new Image();
+    bild.decoding = "async";
+    bild.src = input;
+    await bild.decode();
+    quelle = bild;
+    breite = bild.naturalWidth;
+    hoehe = bild.naturalHeight;
+  } else if (input instanceof Blob && typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(input);
+    quelle = bitmap;
+    breite = bitmap.width;
+    hoehe = bitmap.height;
+  } else {
+    return null;
+  }
+  try {
+    const b = Math.round(breite * faktor);
+    const h = Math.round(hoehe * faktor);
+    if (b < 1 || h < 1 || Math.max(b, h) > OCR_SKALIERT_HOECHSTENS_PX) {
+      return null;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = b;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return null;
+    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(quelle, 0, 0, b, h);
+    return canvas.toDataURL("image/png");
+  } finally {
+    if (typeof ImageBitmap !== "undefined" && quelle instanceof ImageBitmap) {
+      quelle.close();
+    }
+  }
+}
+
 // SCRUM-123: optionale Bild-OCR (lazy tesseract.js@5, Worker/WASM). Engine nicht ladbar
 // → ehrlich „unavailable", kein Vortäuschen. Nur auf explizite Nutzeraktion aufrufen.
 // OCR-02 (Klara-Bildanalyse, 12.10.2026): Diese Regel ist für bereitgestellte Bilder abgelöst —
 // Peter: „sofort automatisch mitlesen". Die Automatik (`lib/bildAutomatik.ts`) ruft dieselbe
 // Funktion beim Eingang eines Bildes oder Dokuments auf, solange sie eingeschaltet ist; der Klick
 // bleibt als manueller Weg.
+// Basisreparatur 58→53: übergroße Schrift liest dieselbe Engine verkleinert nach (`lib/ocr.ts`).
 export async function runImageOcr(input: File | string, lang = "deu+eng"): Promise<OcrResult> {
   try {
     if (!(await ocrSprachdatenVorhanden(lang))) {
@@ -440,9 +497,11 @@ export async function runImageOcr(input: File | string, lang = "deu+eng"): Promi
     };
     const tesseract = mod.default ?? mod;
     const optionen = ocrEngineOptionen();
-    return recognizeImage(input, {
-      recognize: (img) => tesseract.recognize(img, lang, optionen),
-    });
+    return recognizeImage(
+      input,
+      { recognize: (img) => tesseract.recognize(img, lang, optionen) },
+      ocrBildVerkleinern,
+    );
   } catch {
     return { status: "unavailable", text: "" };
   }
