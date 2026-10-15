@@ -156,26 +156,39 @@ Eine Evaluation ist **kein Trainingsauftrag**. Sie prüft nur, ob ein Adapter f�
 
 | Nr. | Bedingung (§9) | Prüfbar als | Stand 13.10.2026 |
 | --- | --- | --- | --- |
-| E1 | Das gemessene Defizit liegt **nur** in Stil/Struktur | Prüfstand-Fälle scheitern wiederholt nur an Form-Checks (`json`, `jsonFeld`, `istFrage`). Sie scheitern nicht an `enthaelt`, `belegstelleImText`, `ehrlichLeer` oder `ehrlichUnwissend`. | offen — keine Messreihe im Repository |
+| E1 | Das gemessene Defizit liegt **nur** in Stil/Struktur | Prüfstand-Fälle scheitern wiederholt nur an **Formfehlern** (Abgrenzung siehe unten). Sie scheitern nicht an einem **Inhaltsfehler**: nicht an `enthaelt`, `belegstelleImText`, `ehrlichLeer` oder `ehrlichUnwissend` und nicht an einem falschen fachlichen Wert in `jsonFeld`. | offen — keine Messreihe im Repository |
 | E2 | Die günstigeren Ebenen sind ausgeschöpft | Für jeden betroffenen Fall sind Antwort-Kontrakt/System-Prompt, Few-Shot und Guardrail (Regelkreis-Ebenen 2–4) erprobt. Das Prüfstand-Delta ist ohne Erfolg gemessen. | offen |
 | E3 | Retrieval ist etabliert | Der Antwortweg wählt produktiv semantisch oder hybrid aus, und das Defizit bleibt trotzdem bestehen. | nicht erfüllt (§13) |
 | E4 | Es gibt eine Baseline | Prüfstand-Lauf je Zielmodell auf der Zielhardware und B1–B4 sind dokumentiert. | teilweise — KWN-2 hat nur Referenzspalten von anderer Hardware, die Messung auf dem Zielgerät ist offen |
 | E5 | Die Trainingsbeispiele sind faktenfrei | Die Beispiele zeigen nur Form (Gliederung, Tonalität, JSON-Form). Die Inhalte sind synthetisch: keine KO-Inhalte, keine Firmen- oder Kundenfakten, keine personenbezogenen Daten. | offen |
 | E6 | Der Datenschutzpfad ist geklärt | DSFA/VVT, AVV oder Self-Hosting sind geklärt. Fine-Tuning ist ein DSFA-Auslöser nach `docs/compliance/data-protection-requirements.md`. | offen |
 | E7 | Es gibt einen Abschaltweg | Der Adapter ist eine eigene, abwählbare Wahl in der vorhandenen KI-Zuordnung (§16). Abschalten heißt zurück auf das Basismodell oder auf „deterministisch", ohne Neuaufbau und ohne Datenverlust. | Die Mechanik für die Modellwahl ist vorhanden, ein Adapter nicht |
+| E8 | Es gibt einen kuratierten, validierten Beispielkorpus (§5, §9.1) | Ein versioniertes Korpusverzeichnis belegt drei Dinge. **Umfang:** Zahl der Beispiele insgesamt und je Stil-/Strukturfall, mit Versionsstand. **Abdeckung:** Jeder unter E1 benannte Formfehler ist nach Aufgabe (z. B. `structure`, `conflict`, `dedupe`, `interview`) und Formart (JSON-Form, Feldstruktur, Gliederung, Rückfrageform, Tonalität) durch Beispiele abgedeckt; nicht abgedeckte Fälle sind ausdrücklich genannt. **Validierungsnachweis:** Jedes Beispiel ist geprüft auf korrekte Zielform, Faktenfreiheit nach E5 (synthetisch, keine KO-, Firmen-, Kunden- oder Personendaten) und Abstand zum Prüfstand. Kein Prüfstand-Fall und keine Paraphrase davon gehört in den Korpus (Train/Eval-Trennung, §10). Prüfer und Datum sind festgehalten. | offen — kein Korpus vorhanden |
+
+**Formfehler und Inhaltsfehler (für E1 und R1).** Die Prüfstand-Checks prüfen teils Form, teils Inhalt. `jsonFeld` prüft beides (`VERTRAG-PRUEFSTAND-ARTEFAKTE.md`, „checks“):
+- **Formfehler**, nur diese zählen für E1 und R1:
+  - `json` scheitert, die Antwort ist also kein parsebares JSON;
+  - das von `jsonFeld` verlangte Feld fehlt in der Antwort oder steht nicht auf oberster Ebene;
+  - `istFrage` scheitert, die Antwort hat also keine Frageform.
+- **Inhaltsfehler**, diese sind von E1 und R1 ausgeschlossen:
+  - das Feld ist vorhanden, trägt aber den falschen fachlichen Wert. Beispiele: `widerspruch` true statt false, falscher `kandidat`, falsche `beziehung`;
+  - alle Fehler an `enthaelt`, `enthaeltNicht`, `enthaeltEines`, `belegstelleImText`, `ehrlichLeer` und `ehrlichUnwissend`.
+
+  Scheitert ein Fall an einem Inhaltsfehler, begründet er keine Stil-/Struktur-Evaluation. Das gilt auch, wenn er zusätzlich einen Formfehler hat.
+- **Ehrlich-Fälle mit `jsonFeld`** (`widerspruch`=false, `beziehung`=eigenstaendig) bleiben Ehrlich-Fälle im Sinne von R2. Ein falscher Wert dort ist ein Ehrlichkeitsfehler, kein Formfehler.
 
 ### 15.2 Bewertungsregeln (vorher/nachher, gleiche Fälle, gleiche Hardware)
 
 | Nr. | Regel | Folge bei Verstoß |
 | --- | --- | --- |
-| R1 | Die Form-Checks aus E1 verbessern sich in genau den benannten Fällen messbar. | keine Empfehlung |
-| R2 | Bei den Ehrlich-Fällen und beim Belegstellen-Check gibt es keinen Rückgang. | Abbruch |
+| R1 | Die **Formfehler** aus E1 nehmen in genau den benannten Fällen messbar ab. Eine Änderung fachlicher `jsonFeld`-Werte oder anderer Inhaltschecks zählt **nicht** als Verbesserung. | keine Empfehlung |
+| R2 | Bei den Ehrlich-Fällen (einschließlich `jsonFeld` mit `widerspruch`=false oder `beziehung`=eigenstaendig) und beim Belegstellen-Check gibt es keinen Rückgang. | Abbruch |
 | R3 | Fakten-Leck-Probe: Fragen zu Firmenfakten ohne passendes KO enden weiter als Wissenslücke (B2/B4). Eine inhaltliche Antwort aus den Gewichten ist ein Leck. | Abbruch |
 | R4 | Löschprobe: Nach dem Löschen eines KO beantwortet das System die zugehörige Frage auch mit Adapter nicht mehr. | Abbruch |
 | R5 | Der gesamte Prüfstand ist das Regressions-Gate (Regelkreis Schritt 6). Kein anderer Fall darf sich verschlechtern. | Abbruch |
 | R6 | Das Ergebnis wird versioniert dokumentiert: Adapter-, Basismodell- und Beispielsatz-Version sowie die Hardware. | ohne Dokumentation kein Einsatz |
 
-Zahlenschwellen (Mindestverbesserung, Zahl der Wiederholungsläufe) sind **bewusst nicht festgelegt**. Sie gehören zur Entscheidung in §14.
+Zahlenschwellen (Mindestverbesserung, Zahl der Wiederholungsläufe, Mindestumfang des Beispielkorpus je Fall) sind **bewusst nicht festgelegt**. Sie gehören zur Entscheidung in §14.
 
 ---
 

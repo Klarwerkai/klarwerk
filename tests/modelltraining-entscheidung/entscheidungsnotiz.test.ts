@@ -49,7 +49,7 @@ describe("Modelltraining-Entscheidung · Notiz gegen Bestand", () => {
 
   it("K2 · Kriterien nur für Stil/Struktur, kein Trainingsauftrag, keine erfundenen Schwellen", () => {
     const kriterien = abschnitt(dok, "## 15. Kriterien");
-    for (const nr of ["E1", "E2", "E3", "E4", "E5", "E6", "E7"]) {
+    for (const nr of ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8"]) {
       expect(kriterien, nr).toContain(`| ${nr} |`);
     }
     for (const nr of ["R1", "R2", "R3", "R4", "R5", "R6"]) {
@@ -73,6 +73,52 @@ describe("Modelltraining-Entscheidung · Notiz gegen Bestand", () => {
       expect(kriterien, check).toContain(`\`${check}\``);
       expect(vertrag, check).toContain(`\`${check}`);
     }
+  });
+
+  it("K2 · ein falscher fachlicher jsonFeld-Wert begründet weder E1 noch R1", () => {
+    const kriterien = abschnitt(dok, "## 15. Kriterien");
+    const zeilen = kriterien.split("\n");
+    const zeile = (nr: string) => zeilen.find((z) => z.startsWith(`| ${nr} |`)) ?? "";
+    // E1 zählt jsonFeld nicht mehr pauschal zur Form, sondern schließt falsche Werte aus.
+    expect(zeile("E1")).toContain("nicht an einem falschen fachlichen Wert in `jsonFeld`");
+    expect(zeile("E1")).not.toMatch(/Form-Checks \(`json`, `jsonFeld`/);
+    expect(zeile("R1")).toContain("zählt **nicht** als Verbesserung");
+    // Ehrlichkeits- und Regressionsschutz bleiben erhalten.
+    expect(zeile("R2")).toContain("`widerspruch`=false");
+    expect(zeile("R2")).toContain("`beziehung`=eigenstaendig");
+    expect(zeile("R5")).toContain("Kein anderer Fall darf sich verschlechtern");
+    const abgrenzung = abschnitt(kriterien, "**Formfehler und Inhaltsfehler (für E1 und R1).**");
+    // Jedes Feld, das die Prüfstand-Fälle per jsonFeld prüfen, ist als fachlicher Wert benannt.
+    const faelle = JSON.parse(lies("docs/team2-austausch/PRUEFSTAND-FAELLE-v2.json")) as {
+      faelle: { checks: { jsonFeld?: { feld: string; wert: unknown } } }[];
+    };
+    const felder = new Set(
+      faelle.faelle.flatMap((f) => (f.checks.jsonFeld ? [f.checks.jsonFeld.feld] : [])),
+    );
+    expect([...felder].sort()).toEqual(["beziehung", "kandidat", "widerspruch"]);
+    for (const feld of felder) {
+      expect(abgrenzung, feld).toContain(`\`${feld}\``);
+    }
+    // Die Ehrlich-Fälle mit jsonFeld, die R2 schützt, gibt es im Bestand wirklich.
+    const ehrlich = faelle.faelle.filter(
+      (f) => f.checks.jsonFeld?.wert === false || f.checks.jsonFeld?.wert === "eigenstaendig",
+    );
+    expect(ehrlich.length).toBeGreaterThan(0);
+    expect(abgrenzung).toContain("Ehrlichkeitsfehler, kein Formfehler");
+  });
+
+  it("K2 · E8: Beispielkorpus mit Umfang, Abdeckung und Validierung, Mindestmengen offen", () => {
+    const kriterien = abschnitt(dok, "## 15. Kriterien");
+    const e8 = kriterien.split("\n").find((z) => z.startsWith("| E8 |")) ?? "";
+    for (const teil of ["**Umfang:**", "**Abdeckung:**", "**Validierungsnachweis:**"]) {
+      expect(e8, teil).toContain(teil);
+    }
+    expect(e8).toContain("Faktenfreiheit nach E5");
+    expect(e8).toContain("Kein Prüfstand-Fall");
+    expect(e8).toContain("offen — kein Korpus vorhanden");
+    expect(kriterien).toContain(
+      "Mindestumfang des Beispielkorpus je Fall) sind **bewusst nicht festgelegt**",
+    );
   });
 
   it("K3 · die beschriebene Abschaltbarkeit ist die des Codes", () => {
