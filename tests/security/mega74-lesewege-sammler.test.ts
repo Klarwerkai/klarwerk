@@ -1833,6 +1833,11 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund: "statische Seite aus dem Build mit Fassungsstempel (web-static.ts), kein Bestand.",
   },
+  // aufnahme:20260922:excel-erster-weg: dieselbe Bauform für das Excel-/PowerPoint-Fenster.
+  "GET /office-addin/taskpane.html": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "statische Seite aus dem Build mit Fassungsstempel (web-static.ts), kein Bestand.",
+  },
   // --- R-1175 (R1): Anmeldung und Konten (services/auth/src/routes.ts) ------------------------
   // Bis hierher „nicht Gegenstand" per Urteil im Kopf; jetzt Funde der Erhebung und deshalb je
   // ein Urteil. Keiner dieser Wege liest den Bestand: Antworten tragen Sitzung, Konto (ohne

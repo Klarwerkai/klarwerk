@@ -404,6 +404,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
       "Statische Seite des Word-Aufgabenfensters aus dem Build, nur mit Fassungsstempel; keine " +
       "Nutzer-/Wissensdaten. Das Manifest zeigt vor jeder Anmeldung auf diese Adresse.",
   },
+  // aufnahme:20260922:excel-erster-weg: dieselbe Bauform für das Excel-/PowerPoint-Fenster.
+  "GET /office-addin/taskpane.html": {
+    protection: "public",
+    reason:
+      "Statische Seite des Excel-/PowerPoint-Aufgabenfensters aus dem Build, nur mit " +
+      "Fassungsstempel; keine Nutzer-/Wissensdaten. Beide Manifeste zeigen vor jeder Anmeldung " +
+      "auf diese Adresse.",
+  },
   // SCRUM-510 WP2: Admin-Trigger Confluence-Space-Import (Source-Datei immer gescannt; Route nur bei
   // KLARWERK_CONFLUENCE_IMPORT registriert). Echte Admin-Auth via requirePermission("users.manage").
   "POST /api/admin/import/confluence": { protection: "users.manage" },

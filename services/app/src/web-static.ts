@@ -127,6 +127,27 @@ export async function registerWebStatic(
     },
   });
 
+  // aufnahme:20260922:excel-erster-weg (KO-04-01): die Seite des Excel-/PowerPoint-Fensters,
+  // nach demselben Vertrag wie die Word-Seite oben (gestempelte Fassung, Validator über den
+  // gesendeten Körper, `no-cache`, lautes 404). Die exakte Route hat Vorrang vor dem Wildcard des
+  // Static-Plugins, gleich in welcher Reihenfolge registriert (find-my-way).
+  app.get(KLARA_OFFICE_TASKPANE_PFAD, async (_request, reply) => {
+    let roh: string;
+    try {
+      roh = await readFile(join(dist, "office-addin", "taskpane.html"), "utf8");
+    } catch {
+      reply.code(404).type("text/plain").send("Not Found");
+      return;
+    }
+    const koerper = stempleFassung(roh, KLARA_OFFICE_TASKPANE_FASSUNG);
+    reply
+      .header("Cache-Control", "no-cache")
+      .header(KLARA_FASSUNG_KOPF, KLARA_OFFICE_TASKPANE_FASSUNG)
+      .header("ETag", `"${createHash("sha256").update(koerper).digest("hex").slice(0, 32)}"`)
+      .type("text/html; charset=utf-8")
+      .send(koerper);
+  });
+
   // AUFTRAG-mega69 Block D: die Auslieferungszusage für Klaras eine Datei — DURCHGESETZT, nicht nur
   // beabsichtigt. onSend läuft nach dem Static-Plugin und gewinnt damit gegen dessen Default.
   // NUR /word-addin/* (die Fläche, die ein installiertes Add-in per stabiler URL abruft): der
@@ -139,7 +160,9 @@ export async function registerWebStatic(
   // in routes/addin-static-routes.ts:130 ff., am Draht gepinnt in tests/app/mega71-onsend-synchron).
   app.addHook("onSend", (request, reply, payload, done) => {
     const path = request.url.split(/[?#]/, 1)[0] ?? request.url;
-    if (path.startsWith("/word-addin/")) {
+    // aufnahme:20260922:excel-erster-weg: das Excel-/PowerPoint-Fenster lädt seine Skripte über
+    // dieselbe stabile Adresse und braucht dieselbe Zusage.
+    if (path.startsWith("/word-addin/") || path.startsWith("/office-addin/")) {
       reply.header("Cache-Control", "no-cache");
     }
     done(null, payload);
@@ -163,3 +186,17 @@ export async function registerWebStatic(
     return reply.sendFile("index.html");
   });
 }
+
+// aufnahme:20260922:excel-erster-weg (KO-04-01): das Aufgabenfenster für Excel und PowerPoint.
+// Beide Manifeste (`docs/office-addin/klara-excel-manifest.xml`, `…/klara-powerpoint-manifest.xml`)
+// zeigen auf diese EINE Seite; welcher Host sie geöffnet hat, sagt Office zur Laufzeit. Eigene
+// Fassung, weil das Word-Manifest und die Office-Manifeste getrennt versioniert sind. Wer
+// `<Version>` in den Office-Manifesten hebt, hebt diese Zahl mit (`tests/office-addin/manifeste.test.ts`).
+// Die Konstanten stehen bewusst HIER unten: die Zeilen oberhalb der Static-Registrierung sind von
+// `tests/produktionsabhaengigkeiten/statische-auslieferung-bleibt-laut.test.ts` gezählt.
+
+/** Die Adresse, auf die die Excel- und PowerPoint-Manifeste zeigen. */
+export const KLARA_OFFICE_TASKPANE_PFAD = "/office-addin/taskpane.html";
+
+/** Die ausgelieferte Fassung des Excel-/PowerPoint-Fensters — dieselbe Zahl wie `<Version>`. */
+export const KLARA_OFFICE_TASKPANE_FASSUNG = "1.0.0.0";
