@@ -29,7 +29,7 @@ für einen Host ohne Beleg.
 | --- | --- | --- | --- |
 | H01 Native App | keine | L01, L11, L15, L16 | nach A01: Auswahl einer Folie bzw. eines Textbereichs an PP-02/PP-03; vorher **nicht angeboten** |
 | H02 Web | keine | L01, L02, L15 | nach A01 wie H01, mit eigener Abnahme; vorher **nicht angeboten** |
-| H03 Importierte Datei | Lesen W01, OCR W03, Frage W04, Folienbilder W05 | L03, L04, L05, L06, L15 | PP-02 bis PP-04 (Herkunft, Prüfung, OCR an Folien) |
+| H03 Importierte Datei | Lesen W01, Folientabellen als Text W12, OCR W03, Frage W04, Folienbilder W05 | L03, L04, L05, L06, L15, L17 | PP-02 bis PP-04 (Herkunft, Prüfung, OCR an Folien) |
 | H04 Anhang im Artikel | OCR W03, Frage W04, Speichern W08, Nachbearbeitung W06, Rücknahme W07, Rechte V05 | L02, L03, L07, L12, L13, L15 | PP-02 bis PP-07 (Bindung, Prüfung, Folienänderung mit Vorschau und Rücknahme) |
 | H05 Besprechung | Folienidentität W10 | L09, L10 | PP-07, PP-08 (Änderungswirkung, Nachbereitung) |
 | H06 Export | neue .pptx W11 | L07, L15 | PP-05 (bearbeitbare Ausgabe mit Belegfolie); nie als live synchron |
@@ -42,6 +42,9 @@ für einen Host ohne Beleg.
   (direkt, OCR, manuell, berechnet, prognostiziert) und Rechenweg.
 - **Bindung an die Folie** über die vorhandene Folienidentität W10 (`p:sldId` + Dateikennung +
   Fassung), nie über die Foliennummer. Das Element wird zusätzlich über seine Shape-Kennung gebunden.
+- **Folientabellen:** W12 liefert native Tabellen schon als Zeilen und Zellen. PP-02 setzt dort an
+  und ergänzt Zellkennung, Kopfzeilen, Wert/Einheit/Zeitraum und die Bindung (schließt L17). Ein
+  zweiter Tabellenleser entsteht nicht. Diagrammdaten (L03) bleiben ein eigener offener Schritt.
 - **Rechenweg:** die Berechnungsarten aus V06 werden aus dem Auftragsrumpf in das Datenobjekt
   übernommen, nicht neu erfunden.
 - **Rechte:** Lesen nur mit `ko.read` und Sichtbarkeit der Quelle; Schutzstufe V07 der strengsten
@@ -131,7 +134,7 @@ Kürzel für PowerPoint-Aktionen erst, wenn A01 einen Host liefert; S03 wirkt nu
 | PP-ID | Original / Revision | Stand | Implementierung / Integration | Belege | Rest |
 | --- | --- | --- | --- | --- | --- |
 | PP-01 | `produkt:20261015:klara-powerpoint-bestand` · 1 | im Bau (dieser Kandidat) | `docs/klara-powerpoint/` | Quelleninspektion, `tests/klara-powerpoint/fundstellen.test.ts` | unabhängige Prüfung, Lieferung |
-| PP-02 | Paket PP-02 | vorbereitet | — | — | L04 |
+| PP-02 | Paket PP-02 | vorbereitet | W12 (Tabellentext) vorhanden | — | L04, L17 |
 | PP-03 | Paket PP-03 | vorbereitet | — | — | L05 |
 | PP-04 | Paket PP-04, mit A02 bis A06 | vorbereitet | W03, W04 vorhanden | OCR-02/OCR-03 im Hauptstand | L03, L06; A02 bis A06 offen |
 | PP-05 | Paket PP-05 | vorbereitet | W06, W08, W11 vorhanden | — | L07 |

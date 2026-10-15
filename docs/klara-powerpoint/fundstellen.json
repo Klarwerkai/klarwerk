@@ -110,7 +110,7 @@
     {
       "id": "W01",
       "art": "weg",
-      "name": "Lesen: PPTX-Leser – Folientext als HTML, eingebettete Bilder als figure mit Folie",
+      "name": "Lesen: PPTX-Leser – Folientext als HTML, native Tabellen (W12), eingebettete Bilder als figure mit Folie",
       "stand": "geliefert",
       "fundstellen": [
         { "pfad": "apps/web/src/lib/pptx.ts", "anker": "export async function extractPptxRich(" }
@@ -239,6 +239,26 @@
         {
           "pfad": "apps/web/src/lib/antwortDateien.ts",
           "anker": "// .pptx — eine Folie, Titel und Text; Master, Layout und Thema in kleinster gültiger Form."
+        }
+      ]
+    },
+    {
+      "id": "W12",
+      "art": "weg",
+      "name": "Lesen: native Folientabellen (a:tbl) Best-Effort als HTML-Tabelle und Klartext, gezählt in tableCount",
+      "stand": "geliefert",
+      "fundstellen": [
+        {
+          "pfad": "apps/web/src/lib/pptx.ts",
+          "anker": "// WP-D5b (GELB-Fix 4): Tabelle (a:tbl) Best-Effort → einfache <table> (Zeilen a:tr, Zellen a:tc). Der"
+        },
+        {
+          "pfad": "apps/web/src/lib/pptx.ts",
+          "anker": "items.push({ kind: \"table\", html: table.html, text: table.text });"
+        },
+        {
+          "pfad": "apps/web/src/lib/pptx.ts",
+          "anker": "): { html: string; text: string; imageCount: number; tableCount: number } {"
         }
       ]
     },
@@ -542,7 +562,7 @@
     },
     {
       "id": "L03",
-      "name": "Der PPTX-Leser (W01/W02) liest keine Sprechernotizen, Diagrammdaten (ppt/charts), SmartArt (ppt/diagrams), Layouts und Master. Tabellen und Diagramme einer Folie sind deshalb keine verwertbaren Daten."
+      "name": "Der PPTX-Leser (W01/W02) liest keine Sprechernotizen, Diagrammdaten (ppt/charts), SmartArt (ppt/diagrams), Layouts und Master. Diagrammwerte einer Folie sind deshalb nicht verfügbar; native Folientabellen liest W12 (L17)."
     },
     {
       "id": "L04",
@@ -595,6 +615,10 @@
     {
       "id": "L16",
       "name": "Kein nativer Mac-Host (H07); Klara kann PowerPoint auf dem Mac weder lesen noch steuern."
+    },
+    {
+      "id": "L17",
+      "name": "Native Folientabellen (W12) kommen nur als Zellentext an: keine Zahlen-, Einheiten- oder Zeitraumerkennung, keine Zeilen-/Spaltenköpfe, keine Zell- oder Tabellenkennung, keine Bindung an Quelle und Folienelement. Die strukturierte Datenbindung gehört zu PP-02 (L04)."
     }
   ]
 }

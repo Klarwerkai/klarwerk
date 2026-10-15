@@ -16,10 +16,14 @@
 //   F5  Der Plan setzt nur erfasste IDs voraus, baut nur auf gelieferten Wegen auf, nutzt den
 //       vorhandenen Setup-Ort und führt je PP-ID Original, Stand, Implementierung, Belege und
 //       Rest; PP-02 bis PP-09 sind nicht als geliefert ausgegeben (K3, K4).
+//   F6  Nacharbeit 1 (Bens Befunde): native Folientabellen sind ein vorhandener Leseweg (W12) am
+//       echten Leser, getrennt von fehlenden Diagrammdaten (L03) und fehlender Datenbindung (L17);
+//       der Auftragsabgleich nennt Überschneidungen und Zuständigkeiten und führt den nicht
+//       erhobenen Sitzungs-/Arbeitsbaumstand fremder Aufträge offen statt als erledigt (K1, K2).
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { type EditorNachricht, auswahlVomEditor } from "../../apps/web/src/lib/officeEditor";
-import { PPTX_NEEDED_ENTRY_RE } from "../../apps/web/src/lib/pptx";
+import { PPTX_NEEDED_ENTRY_RE, slideToHtml } from "../../apps/web/src/lib/pptx";
 import { repoPfad } from "../support/repoPfad";
 
 interface Fundstelle {
@@ -261,6 +265,67 @@ describe("F5 · der Plan baut auf dem Bestand auf und führt den Stand je PP-ID"
         expect(s[2], pp).toBe("vorbereitet");
         expect(s[5], pp).not.toBe("—");
       }
+    }
+  });
+});
+
+describe("F6 · Nacharbeit 1: Folientabellen und Auftragsabgleich", () => {
+  const bestand = lies("BESTAND.md");
+  const plan = lies("INTEGRATIONSPLAN.md");
+  const luecke = (id: string): string => liste.luecken.find((l) => l.id === id)?.name ?? "";
+
+  it("der echte Leser übernimmt eine native Folientabelle als Tabelle und Klartext (W12)", () => {
+    const zelle = (t: string): string =>
+      `<a:tc><a:txBody><a:p><a:r><a:t>${t}</a:t></a:r></a:p></a:txBody></a:tc>`;
+    const tabellenzeile = `<a:tr>${zelle("Umsatz")}${zelle("1.500 €")}</a:tr>`;
+    const tabelle = `<p:graphicFrame><a:graphic><a:graphicData><a:tbl>${tabellenzeile}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+    const folie = `<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree>${tabelle}</p:spTree></p:cSld></p:sld>`;
+    const { html, text, tableCount } = slideToHtml(folie, { slideNumber: 1, slideLabel: "Folie" });
+    expect(tableCount).toBe(1);
+    expect(html).toContain("<table><tr><td>Umsatz</td><td>1.500 €</td></tr></table>");
+    expect(text).toContain("Umsatz | 1.500 €");
+    // Zellentext, keine Datenstruktur: keine Kopfzeile, keine Zell- oder Tabellenkennung (L17).
+    expect(html).not.toMatch(/<th\b|data-/);
+  });
+
+  it("W12 steht als gelieferter Weg an W01 und H03; Lücken sind getrennt", () => {
+    expect(eintrag("W12").stand).toBe("geliefert");
+    expect(eintrag("W01").name).toContain("native Tabellen (W12)");
+    expect(zeile(bestand, "W12")).toContain("`tableCount`");
+    expect(zeile(bestand, "H03")).toContain(
+      "native Folientabellen als HTML-Tabelle und Klartext (W12)",
+    );
+    expect(plan).toMatch(/^\| H03 Importierte Datei \| [^|]*W12[^|]* \| [^|]*L17/m);
+    // L03 behauptet keine fehlenden Tabellen mehr, nur fehlende Diagrammdaten.
+    expect(luecke("L03")).not.toMatch(/Tabellen und Diagramme einer Folie sind deshalb keine/);
+    expect(luecke("L03")).toContain("Diagrammwerte");
+    expect(luecke("L17")).toContain("keine Bindung an Quelle und Folienelement");
+    expect(zeile(plan, "PP-02")).toContain("L17");
+  });
+
+  it("der Abgleich nennt Überschneidungen und Zuständigkeiten je Datei", () => {
+    expect(bestand).toContain("### 7.1 Überschneidungen und Zuständigkeiten");
+    for (const datei of [
+      "`docs/word-addin/klara-manifest.xml`",
+      "`apps/web/src/lib/bildAutomatik.ts`",
+      "`apps/web/src/lib/pptx.ts`",
+      "`apps/web/src/components/klara-setup/KlaraSetup.tsx`",
+      "`services/app/src/office-nachbearbeitung.ts`",
+      "`services/app/src/meeting-dokumentbezug.ts`",
+    ]) {
+      const z = bestand.split("\n").find((x) => x.startsWith(`| ${datei}`)) ?? "";
+      expect(z, datei).not.toBe("");
+      expect(spalten(z).length, datei).toBe(5);
+      expect(z, datei).toMatch(/\bA\d{2}\b/);
+    }
+  });
+
+  it("der nicht erhobene Sitzungs-/Arbeitsbaumstand bleibt offen, nicht als erledigt", () => {
+    expect(bestand).toContain("### 7.2 Erhebungsstand zu Sitzungen und Arbeitsbäumen");
+    expect(bestand).toContain("**Nicht erhoben:** die laufenden Sitzungen");
+    expect(bestand).toContain("eine **offene Beleglücke**, keine fehlende Implementierung");
+    for (const a of eintraege.filter((x) => x.art === "auftrag" && x.auftragsstand !== "offen")) {
+      expect(a.auftragsstand, a.id).toContain("nicht erhoben");
     }
   });
 });
