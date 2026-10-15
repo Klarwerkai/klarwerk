@@ -1155,6 +1155,12 @@ const en: typeof de = {
   "adm.ai.choice.local": "Internal · own LLM (on-prem)",
   "adm.ai.choice.localUnavailable": "Internal · own LLM (not connected)",
   "adm.ai.choice.deterministic": "Deterministic (no model)",
+  "adm.ai.stufe.titel": "AI per confidentiality level",
+  "adm.ai.stufe.text":
+    "For texts of a level, this choice applies instead of the task choice. “No AI” keeps every text of that level away from every model — in the background too. A level rule releases nothing that the approvals above block.",
+  "adm.ai.stufe.wieAufgabe": "Same as the task choice",
+  "adm.ai.stufe.keineKi": "No AI",
+  "adm.ai.stufe.gespeichert": "AI per confidentiality level saved.",
   "adm.ai.envLocked":
     "The AI mapping is fixed by the deployment configuration (KLARWERK_REASONER_POLICY) and cannot be changed here.",
   "adm.ai.migrated":
@@ -2167,6 +2173,15 @@ const en: typeof de = {
   "capture.ivModel": "AI model",
   // JOB 3276: s. die deutsche Fassung — Alltagssprache statt „Deterministic fallback".
   "capture.ivFallback": "Fixed backup questions, no AI answer",
+  "capture.ivErsatzGrundKeinModell":
+    "AI is currently not set up, switched off or not cleared for this task.",
+  "capture.ivErsatzGrundZeit": "The AI did not answer in time.",
+  "capture.ivErsatzGrundFehler": "The AI reported an error or could not be reached.",
+  "capture.ivErsatzGrundVertraulich":
+    "The text is classified as confidential — the cloud AI is excluded for it, and no internal model is available.",
+  "capture.ivErsatzGrundUnbekannt": "Why the AI did not answer this time is not known here.",
+  "capture.ivErsatzWeiter":
+    "You can keep answering — your answers become your draft. Each answer asks the AI again. Administrators can check AI access under AI management (“Test key”).",
   "capture.ivQ.title": "What is it about? Write a short core statement.",
   "capture.ivQ.statement": "Describe the experience/statement in more detail.",
   "capture.ivQ.conditions": "Under which conditions does it apply? One per line.",
@@ -5657,6 +5672,17 @@ const en: typeof de = {
   "erfassen.weg.interview": "Run interview",
   "erfassen.weg.formular": "Form (experts)",
   "erfassen.ki.struktur": "Suggest structure",
+  "erfassen.ki.ausfuehrer": "Runs on: {{wer}}",
+  "erfassen.ki.ausfuehrerUnbekannt": "not known here (visible in AI management)",
+  "erfassen.ki.verfuegbar": "available",
+  "erfassen.ki.nichtVerfuegbar": "currently unavailable",
+  "erfassen.ki.einschraenkung.freigabe_fehlt": "public AI not cleared",
+  "erfassen.ki.einschraenkung.vertraulich_ohne_cloud": "confidential texts without cloud AI",
+  "erfassen.ki.einschraenkung.ki_abgeschaltet": "AI switched off by the administrator",
+  "erfassen.ki.einschraenkung.nicht_erreichbar": "recently unreachable",
+  "erfassen.ki.keineKiFuer": "no AI for",
+  "erfassen.ki.jeStufe": "per confidentiality level:",
+  "erfassen.ki.wirksam": "actually runs:",
   "erfassen.ki.pille": "AI",
   "erfassen.mehr.entwuerfe": "Drafts",
   "erfassen.mehr.anhaenge": "Attachments",

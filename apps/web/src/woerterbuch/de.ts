@@ -1560,6 +1560,12 @@ const de = {
   "adm.ai.choice.local": "Intern · eigener LLM (On-Prem)",
   "adm.ai.choice.localUnavailable": "Intern · eigener LLM (nicht verbunden)",
   "adm.ai.choice.deterministic": "Deterministisch (ohne Modell)",
+  "adm.ai.stufe.titel": "KI je Vertraulichkeitsstufe",
+  "adm.ai.stufe.text":
+    "Für Texte einer Stufe gilt diese Wahl statt der Aufgabenwahl. „Keine KI“ hält jeden Text dieser Stufe von jedem Modell fern — auch im Hintergrund. Eine Stufenregel gibt nichts frei, was die Freigaben oben sperren.",
+  "adm.ai.stufe.wieAufgabe": "Wie die Aufgabenwahl",
+  "adm.ai.stufe.keineKi": "Keine KI",
+  "adm.ai.stufe.gespeichert": "KI je Vertraulichkeitsstufe gespeichert.",
   "adm.ai.envLocked":
     "Die KI-Zuordnung ist per Deploy-Konfiguration (KLARWERK_REASONER_POLICY) festgelegt und kann hier nicht geändert werden.",
   "adm.ai.migrated":
@@ -2766,6 +2772,18 @@ const de = {
   // genaue Grund (Statuscode, finish_reason, leere Antwort) steht serverseitig im Laufprotokoll,
   // die Antwort des Servers trägt ihn nicht mit.
   "capture.ivFallback": "Feste Ersatzfragen, ohne Antwort der KI",
+  // KI-WAHL-BETRIEBSABNAHME · N-0087: der Grund (soweit der Server ihn kennt) und der sichere nächste
+  // Schritt — unter der Beschriftung, in Alltagssprache, ohne Fachwort.
+  "capture.ivErsatzGrundKeinModell":
+    "Die KI ist für diese Aufgabe gerade nicht eingerichtet, abgeschaltet oder nicht freigegeben.",
+  "capture.ivErsatzGrundZeit": "Die KI hat nicht rechtzeitig geantwortet.",
+  "capture.ivErsatzGrundFehler": "Die KI hat einen Fehler gemeldet oder war nicht erreichbar.",
+  "capture.ivErsatzGrundVertraulich":
+    "Der Text ist als vertraulich eingestuft — die Cloud-KI ist dafür ausgeschlossen, und kein internes Modell steht bereit.",
+  "capture.ivErsatzGrundUnbekannt":
+    "Warum die KI diesmal nicht geantwortet hat, ist hier nicht bekannt.",
+  "capture.ivErsatzWeiter":
+    "Du kannst trotzdem weiter antworten — daraus entsteht dein Entwurf. Mit jeder Antwort wird die KI erneut gefragt. Den KI-Zugang prüft die Administration unter KI-Verwaltung („Key testen“).",
   "capture.ivQ.title": "Worum geht es? Formuliere eine kurze Kernaussage.",
   "capture.ivQ.statement": "Beschreibe die Erfahrung/Aussage genauer.",
   "capture.ivQ.conditions": "Unter welchen Bedingungen gilt das? Eine pro Zeile.",
@@ -7145,6 +7163,20 @@ const de = {
   "erfassen.weg.interview": "Interview führen",
   "erfassen.weg.formular": "Formular (Experten)",
   "erfassen.ki.struktur": "Struktur vorschlagen",
+  // KI-WAHL-BETRIEBSABNAHME · N-0070: wer die Aufgabe ausführt — vor dem Klick, in der Palette.
+  "erfassen.ki.ausfuehrer": "Führt aus: {{wer}}",
+  // Ohne Adminsicht gibt es keine aufgabenbezogene Auskunft — dann nicht die hausweite Stufe raten.
+  "erfassen.ki.ausfuehrerUnbekannt": "hier nicht bekannt (einsehbar in der KI-Verwaltung)",
+  // Antwort 13: Verfügbarkeit und Einschränkungen des tatsächlich arbeitenden Dienstes.
+  "erfassen.ki.verfuegbar": "verfügbar",
+  "erfassen.ki.nichtVerfuegbar": "derzeit nicht verfügbar",
+  "erfassen.ki.einschraenkung.freigabe_fehlt": "öffentliche KI nicht freigegeben",
+  "erfassen.ki.einschraenkung.vertraulich_ohne_cloud": "vertrauliche Texte ohne Cloud-KI",
+  "erfassen.ki.einschraenkung.ki_abgeschaltet": "KI vom Administrator abgeschaltet",
+  "erfassen.ki.einschraenkung.nicht_erreichbar": "zuletzt nicht erreichbar",
+  "erfassen.ki.keineKiFuer": "keine KI für",
+  "erfassen.ki.jeStufe": "je Schutzstufe:",
+  "erfassen.ki.wirksam": "arbeitet tatsächlich:",
   "erfassen.ki.pille": "KI",
   "erfassen.mehr.entwuerfe": "Entwürfe",
   "erfassen.mehr.anhaenge": "Anhänge",

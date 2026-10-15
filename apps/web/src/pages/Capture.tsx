@@ -283,10 +283,12 @@ import {
 import { type FotoAnker, applyFotoAnker, applyFotoArtikel } from "../lib/fotoInterview";
 import {
   CLEARED_DRAFT_INTERVIEW,
+  INTERVIEW_ERSATZ_WEITER_KEY,
   SKIPPED_ANSWER,
   appendAnswer,
   interviewCanConfirm,
   interviewDepthSections,
+  interviewErsatzGrundKey,
   interviewForDraft,
   interviewFromDraft,
   interviewNodeKey,
@@ -6916,6 +6918,18 @@ export function CaptureArbeitsraum({
                       ) : null}
                       {ivLueckenwert}
                     </div>
+                    {/* KI-WAHL-BETRIEBSABNAHME · N-0087: bei festen Ersatzfragen steht unter der
+                      Beschriftung, WARUM (soweit der Server es gemessen hat) und was jetzt sicher
+                      geht. Ohne Ersatz (`demo: false`) liefert der Schlüssel `null` — nichts steht da. */}
+                    {ivResult && !interview.isPending && interviewErsatzGrundKey(ivResult) ? (
+                      <p
+                        data-testid="iv-ersatz-erklaerung"
+                        className="rounded-btn bg-trust-warn-bg px-2.5 py-1.5 text-[12px] leading-relaxed text-trust-warn-text"
+                      >
+                        {t(interviewErsatzGrundKey(ivResult) ?? "")}{" "}
+                        {t(INTERVIEW_ERSATZ_WEITER_KEY)}
+                      </p>
+                    ) : null}
                     {/* R-1624: der Kontext, auf den sich die Rückfragen beziehen — sichtbar, nicht
                       nur im Prompt. */}
                     {ivBefund ? <p className="text-[12px] text-muted">{ivBefund}</p> : null}

@@ -39,8 +39,11 @@ import {
   type ReasonerLocale,
   ReasonerPolicyLockedError,
   type ReasonerReferenzWahl,
+  type ReasonerSchutzstufe,
   type ReferenzOptionLage,
   imBindungsrahmen,
+  imSchutzstufenRahmen,
+  setzeSchutzstufe,
   sperreAusleitung,
   validateDescribeImageDataUrl,
 } from "../../../reasoner";
@@ -61,9 +64,23 @@ import {
   klaraBindungVorhanden,
 } from "./ask-routes";
 
-// FR-I18N-01: nur DE/EN; alles andere/ungültige normalisiert sauber auf "de" (keine 400).
+// FR-I18N-01: DE/EN/NL; alles andere/ungültige normalisiert sauber auf "de" (keine 400).
+//
+// KI-WAHL-BETRIEBSABNAHME (K3, der nl-NL-Hinweis) — NIEDERLÄNDISCH KOMMT AUCH HIER AN. Hier stand
+// `value === "en" ? "en" : "de"`, dieselbe Zeile, die JOB 3980 in `help-routes.ts:22` schon
+// ersetzt hat: Der Client schickt seit AUFTRAG-mega52 D1 `"nl"` (`apps/web/src/lib/reasonerLocale.ts`,
+// `nl-NL` → `nl`), der Reasoner kennt `nl` (`ReasonerLocale`, `outputLanguageRule`), und nur diese
+// Route machte still `"de"` daraus — das Modell bekam für eine niederländische Fläche die deutsche
+// Sprachregel. Reihenfolge wie dort und aus demselben Grund: bekannte Sprache zuerst, Deutsch
+// zuletzt, damit eine vierte Oberflächensprache auf dem sicheren Default landet.
 function normalizeLocale(value: unknown): ReasonerLocale {
-  return value === "en" ? "en" : "de";
+  if (value === "en") {
+    return "en";
+  }
+  if (value === "nl") {
+    return "nl";
+  }
+  return "de";
 }
 
 // N11b: Nicht eingestufter draft/transient-document-Text erreicht die Cloud nur mit bestätigter
@@ -234,11 +251,11 @@ export type VertraulichGrund = "unsaved_draft" | "declared" | "backstop" | "prov
 /**
  * Der anzeigbare Satz je Grund, in der Sprache des Requests. Kein Nutzertext, keine Kennung.
  *
- * DE UND EN, und das ist vollständig: diese Route normalisiert JEDE Sprachangabe auf genau diese
- * zwei (`normalizeLocale`, Zeile 27 — „FR-I18N-01: nur DE/EN"). Ein niederländischer Satz stünde
- * hier als Zweig, den kein Aufruf erreichen kann; er sähe nach Abdeckung aus und wäre keine. Öffnet
- * FR-I18N-01 die Route eines Tages für „nl", gehört er hierher — zusammen mit dem Aufruf, der ihn
- * auslöst.
+ * DE, EN UND NL, und das ist vollständig: diese Route normalisiert JEDE Sprachangabe auf genau
+ * diese drei (`normalizeLocale` am Dateikopf). Bis zur KI-WAHL-Betriebsabnahme kannte sie nur DE/EN,
+ * und hier stand deshalb bewusst kein niederländischer Satz — „Öffnet FR-I18N-01 die Route eines
+ * Tages für ‚nl', gehört er hierher, zusammen mit dem Aufruf, der ihn auslöst." Beides ist jetzt
+ * geschehen; der auslösende Aufruf steht in `reasoner-routes.test.ts` (B2, `locale: "nl"`).
  *
  * JEDER DER DREI SÄTZE NENNT DIE EINSTUFUNG, auch der des nicht gesicherten Entwurfs (Runde 3,
  * gemessen an reasoner-egress.test.ts:66). Das ist keine Rücksicht auf einen Test, sondern die Sache
@@ -264,6 +281,13 @@ function cloudGesperrtMeldung(locale: ReasonerLocale, grund: VertraulichGrund): 
       : grund === "backstop"
         ? "The saved entry is classified as confidential, so the cloud AI cannot process this text. Change the classification of the saved entry, or choose the local AI."
         : "This text is classified as confidential, so the cloud AI cannot process it. Change the classification here, or choose the local AI.";
+  }
+  if (locale === "nl") {
+    return grund === "unsaved_draft"
+      ? "Niet opgeslagen concept: zonder opgeslagen versie geldt deze tekst als vertrouwelijk, dus de cloud-AI mag hem niet verwerken. Sla het concept op (de classificatie wordt dan gecontroleerd) of kies de lokale AI."
+      : grund === "backstop"
+        ? "Het opgeslagen item is als vertrouwelijk geclassificeerd, dus de cloud-AI mag deze tekst niet verwerken. Wijzig de classificatie van het opgeslagen item of kies de lokale AI."
+        : "Deze tekst is als vertrouwelijk geclassificeerd, dus de cloud-AI mag hem niet verwerken. Wijzig hier de classificatie of kies de lokale AI.";
   }
   return grund === "unsaved_draft"
     ? "Nicht gesicherter Entwurf: ohne gesicherten Stand gilt der Text als vertraulich eingestuft — die Cloud-KI darf ihn nicht bearbeiten. Entwurf sichern (die Einstufung wird dann geprüft) oder lokale KI wählen."
@@ -343,6 +367,19 @@ const FREIGABE_NICHT_PROTOKOLLIERBAR_MELDUNG =
 // Das Ziel der Auditzeilen — eine Einstellung, kein Datensatz; deshalb ein fester, sprechender Name.
 const FREIGABE_ZIEL = "reasoner.kiFreigabe";
 
+// KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Felder, die `PUT /api/reasoner/config` versteht. Jedes
+// andere ist ein 400 — ein still verworfenes Feld mit Antwort 200 wäre eine falsche Erfolgsmeldung.
+const CONFIG_FELDER: ReadonlySet<string> = new Set([
+  "global",
+  "perTask",
+  "kiFreigabe",
+  "proSchutzstufe",
+  // R-0305/R-1099: das Modell der Zweitmeinung.
+  "zweitmeinung",
+  // REF-02: die erlaubten Referenz-Prüfer.
+  "referenzpruefung",
+]);
+
 // Der WIRKSAME Schalterstand einer Freigabe: zwei Booleans, keine Zwischentöne.
 //
 // Das ist KEINE zweite Entscheidung darüber, ob etwas hinausdarf — die fällt allein in
@@ -420,6 +457,9 @@ type KonfigRumpf = {
   // JOB 3549: WEGLASSEN LÄSST DIE FREIGABE UNVERÄNDERT (Vertrag §3) — die Bestands-Oberfläche
   // speichert nur `global`/`perTask` und darf eine erteilte Freigabe dabei nicht löschen.
   kiFreigabe?: { oeffentlicheKi?: boolean; vertraulicheInhalte?: boolean };
+  // KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Wahl je Schutzstufe — wie `kiFreigabe`: weglassen
+  // lässt sie unverändert, `null`/`{}` löscht sie.
+  proSchutzstufe?: Record<string, unknown> | null;
   // R-0305/R-1099: das Modell der Zweitmeinung. Weglassen lässt es unverändert, `null` = aus.
   zweitmeinung?: string | null;
   // REF-02: die erlaubten Referenz-Prüfer in Vorzugsreihenfolge. Weglassen = unverändert,
@@ -754,6 +794,23 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         : nurAnbieter
           ? "provider_mismatch"
           : "declared";
+    // KI-WAHL-BETRIEBSABNAHME · Antwort 29: die STUFE dieses Laufs — aus denselben Fakten, die
+    // oben entschieden haben, nichts zweitgerechnet. Nicht vertraulich heisst „intern" (auch, wenn
+    // eine Dokumentzustimmung den Text dazu gemacht hat). Vertraulich mit benennbarer Stufe (aus
+    // Deklaration oder gespeichertem Stand, die höhere gewinnt) trägt genau diese. Vertraulich OHNE
+    // benennbare Stufe (fehlender Anker, Klara-Riegel) bleibt offen — dann entscheidet im Reasoner
+    // das Bit, fail-safe mit der strengeren vertraulichen Regel.
+    const deklariert: Confidentiality | null =
+      declared === "intern" || declared === "vertraulich" || declared === "streng_vertraulich"
+        ? declared
+        : null;
+    const hoechste = hoehereStufe(deklariert, backstop.level ?? null);
+    const stufe: ReasonerSchutzstufe | null = !confidential
+      ? "intern"
+      : hoechste === "vertraulich" || hoechste === "streng_vertraulich"
+        ? hoechste
+        : null;
+    setzeSchutzstufe(stufe);
     return {
       confidential,
       ...(subject ? { subject } : {}),
@@ -775,7 +832,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     // (`services/reasoner/src/anbieterbindung.ts`) — das Tor hält sein Ergebnis darin fest, der
     // Reasoner liest es beim Kettenbau. `run(…, done)` ist das Muster von `@fastify/request-context`.
     app.addHook("onRequest", (_request, _reply, done) => {
-      imBindungsrahmen(() => done());
+      // KI-WAHL-BETRIEBSABNAHME · Antwort 29: im selben Atemzug der Rahmen für die Schutzstufe —
+      // `resolveProvenance` trägt sie ein, der Reasoner liest sie vor jeder Kettenbildung.
+      imBindungsrahmen(() => imSchutzstufenRahmen(() => done()));
     });
     // WP-BILD-1f (bens P2): der Text-Dispatcher behält die KLEINE Parsergrenze (globaler
     // 1-MiB-Fastify-Default) — NUR der Bild-Task (eigene Route /api/reasoner/describe unten)
@@ -791,7 +850,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         research?: unknown;
         // R-0088: der ausdrückliche Wunsch nach Quellenrecherche zu diesem Turn.
         recherchieren?: unknown;
-        locale?: "de" | "en";
+        locale?: ReasonerLocale;
         // SCRUM-312: optionale Bearbeitungs-Anweisung für 'assist' (klarer/strukturieren/… oder frei).
         instruction?: string;
         // PMO-FEA-0006: optionaler Suchauftrag des Experten für 'extract' (wonach suchen?).
@@ -928,8 +987,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           }
           reply.code(200).send({ ...antwort, ...referenzFeld });
         } catch (fehler) {
-          // Die Auskunft in der angefragten Sprache — auch NL, das `normalizeLocale` für die
-          // Antwort selbst (bestehend: nur DE/EN) auf DE zurückführt.
+          // Die Auskunft in der angefragten Sprache (DE/EN/NL, wie `normalizeLocale`).
           if (!kiAbgeschaltetSenden(reply, fehler, String(request.body.locale ?? locale))) {
             throw fehler;
           }
@@ -1100,7 +1158,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     app.post<{
       Body: {
         dataUrl?: string;
-        locale?: "de" | "en";
+        locale?: ReasonerLocale;
         // Bild-Einstufungen bleiben fail-closed: Dokumentzustimmung hebt hier weder eine
         // fehlende Stufe noch den Textmarker; ausdrückliches intern behält den KA4-Riegel.
         source?: "draft" | "transient-document";
@@ -1175,7 +1233,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     // Zwei Gates: (1) Schreibberechtigung (ko.create); (2) der Admin-Regler „externe
     // Wissensabfrage" muss auf „offen" stehen (publicAiEnrichmentAllowed) — sonst 403.
     // Ergebnis ist extern/ungeprüft; die UI kennzeichnet das und übernimmt nur bewusst.
-    app.post<{ Body: { query?: string; locale?: "de" | "en" } }>(
+    app.post<{ Body: { query?: string; locale?: ReasonerLocale } }>(
       "/api/reasoner/enrich",
       async (request, reply) => {
         const user = await guards.requirePermission("ko.create", request, reply);
@@ -1211,6 +1269,19 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         return;
       }
       reply.code(200).send(reasoner.configStatus());
+    });
+
+    // KI-WAHL-BETRIEBSABNAHME · Antwort 13 (BEN, Nacharbeit 7): wer für JEDE Aufgabe tatsächlich
+    // arbeitet, ob er verfügbar ist und welche Einschränkungen gelten — für jeden Angemeldeten mit
+    // Leserecht, nicht nur für Admins. Geheimnisfrei (`Reasoner.ausfuehrung`: Anbieterkennung,
+    // Booleans, Codes — kein Schlüssel, keine Adresse, keine Modellkennung). Die Admin-Sicht mit
+    // Modellnamen bleibt `GET /api/reasoner/config`; der öffentliche Status bleibt abstrakt.
+    app.get("/api/reasoner/ausfuehrung", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send({ aufgaben: reasoner.ausfuehrung() });
     });
 
     // KI-Verwaltung v1 (02.07.2026, Teil-Slice): Zuordnung global + je Aufgabe setzen.
@@ -1398,6 +1469,8 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           global: body.global ?? "auto",
           perTask: body.perTask ?? {},
           ...(body.kiFreigabe === undefined ? {} : { kiFreigabe: body.kiFreigabe }),
+          // Antwort 29: ungültige Stufen oder Werte wirft `setTaskConfig` (→ 400 unten).
+          ...(body.proSchutzstufe === undefined ? {} : { proSchutzstufe: body.proSchutzstufe }),
           ...(zweitEingabe === undefined ? {} : { zweitmeinung: zweitEingabe }),
           ...(refEingabe === undefined ? {} : { referenzpruefung: refEingabe }),
         } as Parameters<typeof reasoner.setTaskConfig>[0]);
@@ -1526,6 +1599,17 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     app.put<{ Body: KonfigRumpf }>("/api/reasoner/config", async (request, reply) => {
       const user = await guards.requirePermission("users.manage", request, reply);
       if (!user) {
+        return;
+      }
+      // KI-WAHL-BETRIEBSABNAHME · Antwort 29 (BEN, Nacharbeit 7): NICHTS WIRD STILL VERWORFEN. Ein
+      // unbekanntes Feld — etwa eine falsch benannte Wahl je Schutzstufe — ist ein 400, BEVOR
+      // irgendetwas protokolliert oder geschrieben wird; eine Antwort 200 hieße sonst „gespeichert".
+      const unbekannt = Object.keys(request.body ?? {}).filter((feld) => !CONFIG_FELDER.has(feld));
+      if (unbekannt.length > 0) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: `Nicht unterstützte Angaben in der KI-Zuordnung: ${unbekannt.join(", ")}.`,
+        });
         return;
       }
       if (await konfigurationSchreiben(user, request.body ?? {}, request, reply)) {
