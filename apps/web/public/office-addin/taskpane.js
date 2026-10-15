@@ -50,6 +50,12 @@
     lage: null,
     bewertung: null,
     kontextText: "",
+    // Ben-Befund (Nacharbeit 2): der Schlüssel der zuletzt gelesenen Lage und ob sie noch gilt.
+    // Eine Auswahländerung macht sie ungültig, bis neu gelesen ist.
+    kontextBindung: null,
+    kontextGueltig: false,
+    // Jede Frage bekommt eine Laufnummer; eine ältere Antwort überschreibt nie eine neuere.
+    frageLauf: 0,
     antwort: null,
     plan: null,
     letzte: null,
@@ -207,8 +213,13 @@
     return kontextLesen();
   }
 
-  /** Jede Auswahländerung verwirft eine vorbereitete Rückgabe — ihr Ziel war die alte Lage. */
+  /**
+   * Jede Auswahländerung verwirft eine vorbereitete Rückgabe — ihr Ziel war die alte Lage — und
+   * sperrt die Antwort für Rückgaben, bis neu gelesen ist und die Lage wieder zur Antwort passt.
+   */
   function auswahlGeaendert() {
+    z.kontextGueltig = false;
+    kontrollen();
     if (z.plan) {
       z.plan = null;
       zeigen("plan", false);
@@ -385,6 +396,8 @@
       function (fehler) {
         z.kontext = null;
         z.kontextText = "";
+        z.kontextBindung = null;
+        z.kontextGueltig = false;
         var satz = fehler && /InvalidSelection|multiple/i.test(String(fehler.code || fehler.message))
           ? "Mehrere Bereiche markiert – diese Excel-Fassung liest nur einen zusammenhängenden Bereich (ExcelApi 1.9 fehlt)."
           : "Die Auswahl konnte nicht gelesen werden" + (fehler && fehler.code ? " (" + fehler.code + ")" : "") + ".";
@@ -541,6 +554,11 @@
     z.lage = ergebnis.lage || null;
     z.bewertung = ergebnis.bewertung;
     z.kontextText = ergebnis.bewertung.zustand === "leer" ? "" : ergebnis.text;
+    z.kontextBindung = K.kontextBindung(z.host, z.kontext);
+    z.kontextGueltig = true;
+    if (z.antwort && !antwortNutzbar()) {
+      meldung("frage-meldung", "Die Antwort gehört zur vorherigen Auswahl. Sie bleibt sichtbar, wird aber nicht zurückgegeben – bitte zur aktuellen Auswahl erneut fragen.");
+    }
     var zeile = K.kontextZeile(z.host, z.kontext);
     text("kontext-zeile", zeile);
     // KO-04-06: die gemeinsame Begleitfigur liest denselben Stand — als Eigenschaft und als Ereignis.
@@ -580,6 +598,32 @@
       meldung("frage-meldung", "Das Dokument hat gewechselt (zum Beispiel durch Speichern unter). Klara beginnt eine neue Sitzung; bitte erneut fragen.");
       return sitzungStarten().then(kontextLesen);
     }
+    // Ben-Befund (Nacharbeit 2): gefragt wird nur zu einer frisch gelesenen Lage. Steht nach einer
+    // Auswahländerung das Neulesen noch aus, wird zuerst gelesen.
+    if (!z.kontextGueltig) {
+      return kontextLesen().then(function () {
+        if (!z.kontextGueltig) {
+          meldung("frage-meldung", "Die aktuelle Auswahl konnte nicht gelesen werden; ohne sie fragt Klara nicht.");
+          return null;
+        }
+        return frageSenden(frage);
+      });
+    }
+    return frageSenden(frage);
+  }
+
+  /** Antwort gilt für Rückgaben nur zur gerade gültigen, frisch gelesenen Lage. */
+  function antwortPruefung() {
+    return K.antwortBindungPruefen(z.antwort, z.kontextGueltig ? z.kontextBindung : null);
+  }
+
+  function antwortNutzbar() { return antwortPruefung().ok; }
+
+  function frageSenden(frage) {
+    z.frageLauf += 1;
+    var lauf = z.frageLauf;
+    // Die Bindung DIESER Frage: genau die Lage, deren Kontext jetzt mitgeht.
+    var bindung = z.kontextBindung;
     z.beschaeftigt = true;
     kontrollen();
     meldung("frage-meldung", "");
@@ -605,18 +649,25 @@
         return res.json();
       })
       .then(function (body) {
+        // Eine neuere Frage läuft schon: diese Antwort überschreibt nichts.
+        if (lauf !== z.frageLauf) { return; }
         var ergebnis = body && body.result ? body.result : {};
         var antwort = typeof ergebnis.answer === "string" ? ergebnis.answer.trim() : "";
         var quellen = Array.isArray(ergebnis.sources)
           ? ergebnis.sources.filter(function (q) { return typeof q === "string" && q.trim().length > 0; })
           : [];
-        z.antwort = antwort.length > 0 ? { text: antwort, quellen: quellen, frage: frage } : null;
+        z.antwort = antwort.length > 0 ? { text: antwort, quellen: quellen, frage: frage, bindung: bindung } : null;
+        if (z.antwort && !antwortNutzbar()) {
+          // Verspätet: die Auswahl oder ihr Inhalt hat sich geändert, während Klara antwortete.
+          meldung("frage-meldung", "Die Antwort kam nach einem Auswahlwechsel an. Sie bleibt sichtbar, wird aber nicht zurückgegeben – bitte zur aktuellen Auswahl erneut fragen.");
+        }
         zeigen("antwort", true);
         text("antwort-text", antwort.length > 0 ? antwort : "Klara hat dazu kein geprüftes Wissen gefunden.");
         text("antwort-quellen", quellen.length > 0
           ? "Quellen: " + quellen.map(function (q) { return window.location.origin + "/wissen/" + encodeURIComponent(q); }).join(", ")
           : "Ohne geprüfte Quelle.");
       }, function (fehler) {
+        if (lauf !== z.frageLauf) { return; }
         meldung("frage-meldung", fehler && fehler.name === "AbortError" ? "Keine Antwort in der Frist." : (fehler && fehler.message) || "Fehler.");
       })
       .then(function () { z.beschaeftigt = false; kontrollen(); });
@@ -670,18 +721,22 @@
   }
 
   function zelltextVorbereiten() {
-    if (!z.antwort) { meldung("rueckgabe-meldung", "Erst fragen – dann kann Klara die Antwort zurückgeben."); return Promise.resolve(); }
+    var bezug = antwortPruefung();
+    if (!bezug.ok) { meldung("rueckgabe-meldung", K.grundSatz(bezug.grund)); return Promise.resolve(); }
     var adresse = (el("ziel-zelle").value || "").trim().toUpperCase();
     if (!K.istEinzelzelle(adresse)) { meldung("rueckgabe-meldung", K.grundSatz("zielUngueltig")); return Promise.resolve(); }
+    var antwort = z.antwort;
     return excelZielLesen(adresse).then(function (ziel) {
-      var plan = excelPlanBasis("zelltext", adresse, z.antwort.text, ziel);
-      planZeigen(plan, "Ziel: " + plan.blatt + "!" + adresse + " · neu: die Antwort als Text (" + z.antwort.text.length + " Zeichen)." +
+      var plan = excelPlanBasis("zelltext", adresse, antwort.text, ziel);
+      plan.antwortBindung = antwort.bindung;
+      planZeigen(plan, "Ziel: " + plan.blatt + "!" + adresse + " · neu: die Antwort als Text (" + antwort.text.length + " Zeichen)." +
         (belegt(ziel) ? " Achtung: Die Zelle ist nicht leer." : ""));
     }, function () { meldung("rueckgabe-meldung", "Die Zielzelle konnte nicht gelesen werden."); });
   }
 
   function formtextVorbereiten() {
-    if (!z.antwort) { meldung("rueckgabe-meldung", "Erst fragen – dann kann Klara die Antwort zurückgeben."); return Promise.resolve(); }
+    var bezug = antwortPruefung();
+    if (!bezug.ok) { meldung("rueckgabe-meldung", K.grundSatz(bezug.grund)); return Promise.resolve(); }
     if (!z.bewertung || z.bewertung.zustand !== "form" || !z.bewertung.rueckgabeMoeglich) {
       meldung("rueckgabe-meldung", (z.bewertung && z.bewertung.ausweg) || "Markiere genau ein Textfeld.");
       return Promise.resolve();
@@ -702,6 +757,7 @@
       zielAbdruck: K.abdruck(form.text),
       position: { links: form.links, oben: form.oben, breite: form.breite, hoehe: form.hoehe },
       inhalt: z.antwort.text,
+      antwortBindung: z.antwort.bindung,
       erstelltMs: Date.now(),
     };
     planZeigen(plan, "Ziel: Folie " + folie.nummer + " · Textfeld „" + (form.name || form.id) + "“ · bisher: „" +
@@ -712,6 +768,18 @@
   function ausfuehren() {
     var plan = z.plan;
     if (!plan || !K.rueckgabeErlaubt(z.host, plan.art)) { return Promise.resolve(); }
+    // Eine Antwort-Rückgabe wird unmittelbar vor dem Schreiben erneut an ihren Bezug gebunden:
+    // dieselbe Antwort, dieselbe gültige Lage wie bei der Vorbereitung.
+    if (plan.antwortBindung !== undefined) {
+      var bezug = antwortPruefung();
+      if (!bezug.ok || z.antwort.bindung !== plan.antwortBindung || z.antwort.text !== plan.inhalt) {
+        z.plan = null;
+        zeigen("plan", false);
+        meldung("rueckgabe-meldung", K.grundSatz(bezug.ok ? "antwortVeraltet" : bezug.grund));
+        kontrollen();
+        return Promise.resolve();
+      }
+    }
     z.beschaeftigt = true;
     kontrollen();
     var weg = z.host === "excel" ? excelSchreiben(plan) : pptSchreiben(plan);
@@ -789,6 +857,11 @@
     });
   }
 
+  /** Lage und Größe einer gelesenen Form in der Sprache des Plans — oder null. */
+  function positionVon(form) {
+    return form ? { links: form.left, oben: form.top, breite: form.width, hoehe: form.height } : null;
+  }
+
   function pptSchreiben(plan) {
     return ansichtLesen().then(function (ansicht) {
       return PowerPoint.run(function (ctx) {
@@ -802,21 +875,36 @@
             formVorhanden: !!ziel.form,
             formTyp: ziel.form ? ziel.form.type : null,
             formText: ziel.tr ? ziel.tr.text : null,
+            // Ben-Befund (Nacharbeit 2): die FRISCH gelesene Lage und Größe geht in die Prüfung VOR
+            // dem Schreiben ein — eine verschobene Form wird nicht überschrieben.
+            position: positionVon(ziel.form),
           };
           var pruefung = K.pptZielPruefen(plan, lage);
           if (!pruefung.ok) { return { ok: false, grund: pruefung.grund }; }
           ziel.tr.text = plan.inhalt;
           return ctx.sync().then(function () { return folieUndForm(ctx, plan.folieId, plan.formId); }).then(function (nach) {
-            var f = nach.form;
-            var gleichePosition = f && f.left === plan.position.links && f.top === plan.position.oben;
+            // Das zurückgelesene Ergebnis — Text UND Position — gegen die beabsichtigte Änderung.
+            var ergebnis = K.pptErgebnisPruefen(plan, {
+              formVorhanden: !!nach.tr,
+              text: nach.tr ? nach.tr.text : null,
+              position: positionVon(nach.form),
+            });
+            var abweichung = {
+              formFehlt: "das Textfeld ist nicht mehr lesbar",
+              textAbweichend: "der gelesene Text entspricht nicht der Antwort",
+              positionAbweichend: "Lage oder Größe des Textfelds weichen ab",
+            };
             return {
               ok: true,
               vorher: lage.formText,
               geschrieben: nach.tr ? nach.tr.text : null,
-              warnung: !gleichePosition,
+              warnung: !ergebnis.ok,
               satz: "Geschrieben in Folie " + plan.folieNummer + ", Textfeld „" + (plan.formName || plan.formId) + "“ (" +
                 (nach.tr ? nach.tr.text.length : 0) + " Zeichen gelesen)." +
-                (gleichePosition ? " Position unverändert." : " Achtung: Die Position des Textfelds weicht ab."),
+                (ergebnis.ok
+                  ? " Text wie beabsichtigt, Position unverändert."
+                  : " Achtung: " + ergebnis.abweichungen.map(function (a) { return abweichung[a] || a; }).join(", ") +
+                    ". Bitte prüfen und gegebenenfalls zurücknehmen."),
             };
           });
         });
@@ -904,9 +992,11 @@
     aktiv("frage-senden", z.officeBereit && !!z.sitzung && frei);
     var excel = z.host === "excel" && z.api && z.api.faehigkeiten.bereichSchreiben;
     aktiv("summe-vorbereiten", frei && excel && gelesen && z.bewertung.zustand === "ok");
-    aktiv("zelltext-vorbereiten", frei && excel && !!z.antwort);
+    // Ben-Befund (Nacharbeit 2): zurückgeben lässt sich nur eine Antwort zur gültigen Lage.
+    var antwortGilt = antwortNutzbar();
+    aktiv("zelltext-vorbereiten", frei && excel && antwortGilt);
     aktiv("entwurf-senden", frei && z.host === "excel" && gelesen && z.angemeldet);
-    aktiv("formtext-vorbereiten", frei && z.host === "powerpoint" && !!z.antwort && !!z.bewertung && z.bewertung.rueckgabeMoeglich === true);
+    aktiv("formtext-vorbereiten", frei && z.host === "powerpoint" && antwortGilt && !!z.bewertung && z.bewertung.rueckgabeMoeglich === true);
     aktiv("plan-ausfuehren", frei && !!z.plan);
   }
 

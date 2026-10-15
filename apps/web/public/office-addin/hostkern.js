@@ -676,6 +676,87 @@
     if (!lage.formVorhanden) { return nein("formFehlt"); }
     if (!istTextform(lage.formTyp)) { return nein("keinTextfeld"); }
     if (abdruck(lage.formText) !== plan.zielAbdruck) { return nein("zielGeaendert"); }
+    // Ben-Befund (Nacharbeit 2): auch eine Verschiebung oder Größenänderung durch einen Koautor ist
+    // eine Zieländerung — sie wird VOR dem Schreiben erkannt, nicht erst danach gemeldet.
+    if (!gleichePosition(plan.position, lage.position)) { return nein("zielVerschoben"); }
+    return { ok: true, grund: null };
+  }
+
+  var POSITION_FELDER = ["links", "oben", "breite", "hoehe"];
+  var POSITION_TOLERANZ = 0.01;
+
+  /** Gleiche Lage und Größe einer Form; fehlt eine Angabe, ist sie NICHT gleich (fail-closed). */
+  function gleichePosition(a, b) {
+    if (!a || !b) { return false; }
+    for (var i = 0; i < POSITION_FELDER.length; i += 1) {
+      var f = POSITION_FELDER[i];
+      if (typeof a[f] !== "number" || typeof b[f] !== "number" || Math.abs(a[f] - b[f]) > POSITION_TOLERANZ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** PowerPoint liefert Zeilenumbrüche als \r oder \v zurück; verglichen wird der Inhalt. */
+  function textNormal(text) {
+    return String(text === null || text === undefined ? "" : text).replace(/\r\n|\r|\n|\u000b/g, "\n");
+  }
+
+  /**
+   * DIE ERGEBNISPRÜFUNG NACH DEM SCHREIBEN (KO-04-05): das zurückgelesene Textfeld muss genau den
+   * beabsichtigten Text tragen und an derselben Stelle in derselben Größe stehen.
+   */
+  function pptErgebnisPruefen(plan, nachher) {
+    var abweichungen = [];
+    if (!nachher || !nachher.formVorhanden) {
+      abweichungen.push("formFehlt");
+    } else {
+      if (textNormal(nachher.text) !== textNormal(plan.inhalt)) { abweichungen.push("textAbweichend"); }
+      if (!gleichePosition(plan.position, nachher.position)) { abweichungen.push("positionAbweichend"); }
+    }
+    return { ok: abweichungen.length === 0, abweichungen: abweichungen };
+  }
+
+  // ----------------------------------------------------------------------------------------------
+  // DIE BINDUNG EINER ANTWORT AN DOKUMENT, AUSWAHL UND INHALTSSTAND (Ben-Befund, Nacharbeit 2)
+  // ----------------------------------------------------------------------------------------------
+
+  /**
+   * Ein Schlüssel für genau die gelesene Lage: Host, Dokument und — je Host — Blatt, Bereiche mit
+   * Werten und Formeln bzw. Folien, Formen mit Text und markierter Text. Jede Änderung davon ergibt
+   * einen anderen Schlüssel. Ohne gelesenen Kontext gibt es keinen Schlüssel.
+   */
+  function kontextBindung(host, kontext) {
+    if (!kontext) { return null; }
+    var teile;
+    if (host === "excel") {
+      teile = {
+        dokument: kontext.dokument,
+        blatt: kontext.blatt,
+        bereiche: (kontext.bereiche || []).map(function (b) {
+          return { adresse: b.adresse, werte: b.werte, formeln: b.formeln };
+        }),
+      };
+    } else {
+      teile = {
+        dokument: kontext.dokument,
+        folien: (kontext.folien || []).map(function (f) { return f.id; }),
+        formen: (kontext.formen || []).map(function (f) { return { id: f.id, text: f.text }; }),
+        textAuswahl: kontext.textAuswahl || "",
+      };
+    }
+    return host + ":" + abdruck(teile);
+  }
+
+  /**
+   * Darf diese Antwort jetzt zurückgegeben werden? Nur, wenn sie zu genau der Lage gehört, die
+   * gerade gilt. Eine Antwort zu Textfeld A wird so nie zur Änderung von Textfeld B.
+   */
+  function antwortBindungPruefen(antwort, aktuelleBindung) {
+    if (!antwort) { return nein("keineAntwort"); }
+    if (!antwort.bindung || !aktuelleBindung || antwort.bindung !== aktuelleBindung) {
+      return nein("antwortVeraltet");
+    }
     return { ok: true, grund: null };
   }
 
@@ -722,6 +803,9 @@
     folieFehlt: "Die Folie gibt es nicht mehr. Nichts wurde geschrieben.",
     formFehlt: "Die Form gibt es nicht mehr. Nichts wurde geschrieben.",
     keinTextfeld: "Das Ziel ist kein Textfeld. Nichts wurde geschrieben.",
+    zielVerschoben: "Das Textfeld wurde seit der Vorbereitung verschoben oder in der Größe geändert (eigene Bearbeitung oder Koautor). Nichts wurde geschrieben.",
+    keineAntwort: "Erst fragen – dann kann Klara die Antwort zurückgeben.",
+    antwortVeraltet: "Die Antwort gehört zu einer früheren Auswahl oder einem früheren Inhalt. Bitte zur aktuellen Auswahl erneut fragen; nichts wurde geschrieben.",
     keineEinzelspalte: "Summe einfügen geht für genau eine Spalte.",
     keineZahlen: "In der Auswahl stehen keine Zahlen.",
     textInSpalte: "In der Spalte steht auch Text. Markiere nur die Zahlen.",
@@ -764,6 +848,10 @@
     pptKontextText: pptKontextText,
     pptZielPruefen: pptZielPruefen,
     rueckgabeErlaubt: rueckgabeErlaubt,
+    gleichePosition: gleichePosition,
+    pptErgebnisPruefen: pptErgebnisPruefen,
+    kontextBindung: kontextBindung,
+    antwortBindungPruefen: antwortBindungPruefen,
     kontextZeile: kontextZeile,
     grundSatz: grundSatz,
   };

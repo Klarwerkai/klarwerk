@@ -260,6 +260,31 @@ describe("KO-04-03 · Antwort als Text in eine Zelle — bleibt Text", () => {
     expect(textVon("rueckgabe-meldung")).toContain("Antwort als Text in Tabelle1!D2");
   });
 
+  it("Ben-Befund · nach Auswahl- oder Inhaltswechsel wird die alte Antwort nicht geschrieben", async () => {
+    const stand = mappe();
+    const { fenster } = await starte(EXCEL_MAC, { excel: stand });
+    knoten("frage-text").value = "Welche Position ist am höchsten?";
+    await fenster.fragen();
+    knoten("ziel-zelle").value = "D2";
+    await fenster.zelltextVorbereiten();
+    expect(knoten("plan").hidden).toBe(false);
+
+    // Ein Koautor ändert einen gelesenen Wert; das Fenster liest die Auswahl neu.
+    zellen(stand).B2 = { wert: 5000, formel: null, text: "5.000 €" };
+    fenster.auswahlGeaendert();
+    await new Promise((r) => setTimeout(r, 450));
+    await warte();
+    expect(knoten("zelltext-vorbereiten").disabled).toBe(true);
+    await fenster.ausfuehren();
+    await fenster.zelltextVorbereiten();
+    expect(textVon("rueckgabe-meldung")).toContain("früheren Auswahl");
+    expect(zellen(stand).D2).toBeUndefined();
+
+    // Eine neue Frage zur aktuellen Lage gibt die Rückgabe wieder frei.
+    await fenster.fragen();
+    expect(knoten("zelltext-vorbereiten").disabled).toBe(false);
+  });
+
   it("ohne Antwort oder mit ungültigem Ziel wird nichts vorbereitet", async () => {
     const { fenster } = await starte(EXCEL_MAC, { excel: mappe() });
     await fenster.zelltextVorbereiten();

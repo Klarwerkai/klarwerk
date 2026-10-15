@@ -12,14 +12,17 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   ANTWORT,
+  type Abruf,
   type OfficeOptionen,
   type PptForm,
   type PptStand,
+  type Regelantwort,
   abbauen,
   figurKontext,
   knoten,
   starte,
   textVon,
+  warte,
 } from "./buehne";
 
 const URL_PRAESENTATION = "https://fiktiv-my.sharepoint.com/personal/test/Quartal-fiktiv.pptx";
@@ -185,6 +188,71 @@ describe("KO-04-05 · Frage und gezielte Textrückgabe in das markierte Textfeld
     }
     await fenster.ausfuehren();
     expect(textVon("rueckgabe-meldung")).toContain("Die Form gibt es nicht mehr");
+  });
+});
+
+describe("Ben-Befund · Antwort und Ziel bleiben an Auswahl, Inhalt und Position gebunden", () => {
+  it("eine Antwort zu Textfeld A wird nach dem Wechsel zu Textfeld B nicht zurückgegeben", async () => {
+    const stand = praesentation(["11"]);
+    const { fenster } = await starte(PPT_WEB, { powerpoint: stand });
+    knoten("frage-text").value = "Was steht in Textfeld A?";
+    await fenster.fragen();
+    expect(knoten("formtext-vorbereiten").disabled).toBe(false);
+    stand.auswahlFormen = ["10"];
+    fenster.auswahlGeaendert();
+    expect(knoten("formtext-vorbereiten").disabled).toBe(true);
+    await new Promise((r) => setTimeout(r, 450));
+    await warte();
+    expect(textVon("kontext-zeile")).toContain("Titel 1");
+    expect(knoten("formtext-vorbereiten").disabled).toBe(true);
+    expect(textVon("frage-meldung")).toContain("gehört zur vorherigen Auswahl");
+    await fenster.formtextVorbereiten();
+    expect(knoten("plan").hidden).toBe(true);
+    expect(textVon("rueckgabe-meldung")).toContain("früheren Auswahl");
+    await fenster.ausfuehren();
+    expect(formVon(stand, "10")?.text).toBe("Quartalsbericht (fiktiv)");
+    expect(formVon(stand, "11")?.text).toBe("Umsatz Q3: 1,2 Mio. € (fiktiv)");
+  });
+
+  it("eine verspätete Antwort nach Auswahlwechsel wird angezeigt, aber für Rückgaben gesperrt", async () => {
+    const stand = praesentation(["11"]);
+    let freigeben: (wert?: unknown) => void = () => {};
+    const tor = new Promise((r) => {
+      freigeben = r;
+    });
+    const spaet = (a: Abruf): Regelantwort | undefined =>
+      a.url === "/api/klara/sessions/s-1/execute"
+        ? { status: 200, body: { result: { answer: ANTWORT, sources: ["ko-1"] } }, warten: tor }
+        : undefined;
+    const { fenster } = await starte(PPT_WEB, { powerpoint: stand }, [spaet]);
+    knoten("frage-text").value = "Was steht in Textfeld A?";
+    const lauf = fenster.fragen();
+    stand.auswahlFormen = ["10"];
+    await fenster.kontextLesen();
+    freigeben();
+    await lauf;
+    expect(textVon("antwort-text")).toBe(ANTWORT);
+    expect(textVon("frage-meldung")).toContain("nach einem Auswahlwechsel");
+    expect(knoten("formtext-vorbereiten").disabled).toBe(true);
+    await fenster.formtextVorbereiten();
+    expect(knoten("plan").hidden).toBe(true);
+    expect(formVon(stand, "10")?.text).toBe("Quartalsbericht (fiktiv)");
+  });
+
+  it("eine nach der Vorbereitung verschobene Form wird nicht überschrieben", async () => {
+    const stand = praesentation();
+    const { fenster } = await starte(PPT_WEB, { powerpoint: stand });
+    knoten("frage-text").value = "Frage";
+    await fenster.fragen();
+    await fenster.formtextVorbereiten();
+    const ziel = formVon(stand, "11");
+    if (ziel) {
+      ziel.left = 200;
+    }
+    await fenster.ausfuehren();
+    expect(formVon(stand, "11")?.text).toBe("Umsatz Q3: 1,2 Mio. € (fiktiv)");
+    expect(textVon("rueckgabe-meldung")).toContain("verschoben oder in der Größe geändert");
+    expect(knoten("ruecknahme").hidden).toBe(true);
   });
 });
 

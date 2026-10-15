@@ -86,7 +86,14 @@ export interface Abruf {
   body: string | undefined;
 }
 
-export type Antwortregel = (abruf: Abruf) => { status: number; body?: unknown } | undefined;
+/** `warten`: die Antwort kommt erst, wenn dieses Versprechen erfüllt ist (verspätete Antwort). */
+export interface Regelantwort {
+  status: number;
+  body?: unknown;
+  warten?: Promise<unknown>;
+}
+
+export type Antwortregel = (abruf: Abruf) => Regelantwort | undefined;
 
 /** Die belegte Antwort der Grundversorgung — erfunden. */
 export const ANTWORT = "Die höchste Position ist Miete (fiktiv).";
@@ -138,7 +145,7 @@ function fakeFetch(regeln: Antwortregel[], abrufe: Abruf[]) {
       body: init?.body,
     };
     abrufe.push(abruf);
-    let antwort: { status: number; body?: unknown } | undefined;
+    let antwort: Regelantwort | undefined;
     for (const regel of regeln) {
       antwort = regel(abruf);
       if (antwort) {
@@ -147,12 +154,12 @@ function fakeFetch(regeln: Antwortregel[], abrufe: Abruf[]) {
     }
     const status = antwort?.status ?? 404;
     const body = antwort?.body ?? {};
-    return Promise.resolve({
+    return (antwort?.warten ?? Promise.resolve()).then(() => ({
       ok: status >= 200 && status < 300,
       status,
       headers: { get: () => null },
       json: async () => body,
-    });
+    }));
   };
 }
 

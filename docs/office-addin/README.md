@@ -93,6 +93,13 @@ benanntem Grund, wenn:
   Bearbeitung oder Koautor);
 - die Zielzelle belegt ist und das Überschreiben nicht ausdrücklich angehakt wurde;
 - Folie oder Form nicht mehr existieren oder PowerPoint in der Leseansicht ist;
+- die Form seit der Vorbereitung verschoben oder in der Größe geändert wurde (Lage und Größe werden
+  vor dem Schreiben frisch gelesen; nach dem Schreiben werden Text und Position zurückgelesen und
+  gegen die beabsichtigte Änderung geprüft);
+- die Antwort nicht zur aktuellen Lage gehört: jede Antwort ist an Dokument, Auswahl und
+  Inhaltsstand gebunden, zu denen gefragt wurde. Ein Auswahl- oder Inhaltswechsel sperrt sie für
+  Rückgaben; eine verspätet eintreffende Antwort wird gegen diese Bindung geprüft und nur angezeigt;
+  unmittelbar vor dem Schreiben wird der Antwortbezug erneut geprüft;
 - die Vorbereitung älter als fünf Minuten ist oder sich die Auswahl inzwischen geändert hat
   (Unterbrechung).
 

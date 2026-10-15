@@ -26,6 +26,7 @@ interface Bereich {
   zellenGelesen: number;
   gekuerzt: boolean;
   zellen: Zelle[];
+  werte: unknown[][];
 }
 
 interface Bewertung {
@@ -91,6 +92,9 @@ interface Hostkern {
   pptLageBewerten(lage: Daten): PptLage;
   pptKontextText(kontext: Daten): string;
   pptZielPruefen(plan: Daten, lage: Daten): Pruefung;
+  pptErgebnisPruefen(plan: Daten, nachher: Daten | null): { ok: boolean; abweichungen: string[] };
+  kontextBindung(host: string, kontext: Daten | null): string | null;
+  antwortBindungPruefen(antwort: Daten | null, aktuelleBindung: string | null): Pruefung;
   rueckgabeErlaubt(host: string, art: string): boolean;
   kontextZeile(host: string, kontext: unknown): string;
   grundSatz(grund: string): string;
@@ -432,11 +436,14 @@ describe("KO-04-04 · KO-04-05 · PowerPoint: Lage, Ausweg und Zielprüfung", ()
     expect(text).not.toContain("Bild 3");
   });
 
+  const position = { links: 40, oben: 120, breite: 600, hoehe: 80 };
+
   it("schreibt nur in dieselbe, unveränderte Form derselben Präsentation in Bearbeitung", () => {
     const plan = {
       art: "formtext",
       dokument: "d",
       zielAbdruck: K.abdruck("Umsatz (fiktiv)"),
+      position,
       erstelltMs: 0,
     };
     const lage = {
@@ -448,6 +455,7 @@ describe("KO-04-04 · KO-04-05 · PowerPoint: Lage, Ausweg und Zielprüfung", ()
       formVorhanden: true,
       formTyp: "TextBox",
       formText: "Umsatz (fiktiv)",
+      position: { ...position },
     };
     expect(K.pptZielPruefen(plan, lage).ok).toBe(true);
     const faelle: [string, Daten][] = [
@@ -457,11 +465,66 @@ describe("KO-04-04 · KO-04-05 · PowerPoint: Lage, Ausweg und Zielprüfung", ()
       ["keinTextfeld", { formTyp: "Image" }],
       ["leseansicht", { ansicht: "read" }],
       ["dokumentGewechselt", { dokument: "e" }],
+      ["zielVerschoben", { position: { ...position, links: 41 } }],
+      ["zielVerschoben", { position: { ...position, hoehe: 120 } }],
+      ["zielVerschoben", { position: null }],
     ];
     for (const [grund, aenderung] of faelle) {
       expect(K.pptZielPruefen(plan, { ...lage, ...aenderung }).grund).toBe(grund);
     }
     expect(K.pptZielPruefen({ ...plan, art: "bild" }, lage).grund).toBe("artNichtErlaubt");
+    expect(K.pptZielPruefen({ ...plan, position: undefined }, lage).grund).toBe("zielVerschoben");
+  });
+
+  it("prüft das zurückgelesene Ergebnis: Text wie beabsichtigt, Lage und Größe unverändert", () => {
+    const plan = { inhalt: "Zeile 1\nZeile 2", position };
+    const gut = { formVorhanden: true, text: "Zeile 1\rZeile 2", position: { ...position } };
+    expect(K.pptErgebnisPruefen(plan, gut)).toEqual({ ok: true, abweichungen: [] });
+    const falsch = { formVorhanden: true, text: "anders", position: { ...position, oben: 0 } };
+    expect(K.pptErgebnisPruefen(plan, falsch).abweichungen).toEqual([
+      "textAbweichend",
+      "positionAbweichend",
+    ]);
+    expect(K.pptErgebnisPruefen(plan, null).abweichungen).toEqual(["formFehlt"]);
+  });
+});
+
+describe("Ben-Befund · eine Antwort gilt nur für Dokument, Auswahl und Inhalt, zu denen sie kam", () => {
+  const folie = [{ id: "256#", nummer: 1 }];
+  const formA = { id: "11", name: "Textfeld 2", typ: "TextBox", text: "Umsatz (fiktiv)" };
+  const formB = { id: "10", name: "Titel 1", typ: "Placeholder", text: "Titel (fiktiv)" };
+  const lageA = { dokument: "d", folien: folie, formen: [formA] };
+
+  it("andere Form, anderer Text, anderes Dokument ergeben einen anderen Schlüssel", () => {
+    const a = K.kontextBindung("powerpoint", lageA);
+    expect(a).toMatch(/^powerpoint:/);
+    expect(K.kontextBindung("powerpoint", { ...lageA })).toBe(a);
+    expect(K.kontextBindung("powerpoint", { ...lageA, formen: [formB] })).not.toBe(a);
+    const neuerText = { ...lageA, formen: [{ ...formA, text: "Koautor" }] };
+    expect(K.kontextBindung("powerpoint", neuerText)).not.toBe(a);
+    expect(K.kontextBindung("powerpoint", { ...lageA, dokument: "e" })).not.toBe(a);
+    expect(K.kontextBindung("powerpoint", null)).toBeNull();
+    const excel = { dokument: "d", blatt: "Tabelle1", bereiche: [haushalt()] };
+    const x = K.kontextBindung("excel", excel);
+    const zelle = haushalt();
+    const erste = zelle.werte[0];
+    if (erste) {
+      erste[0] = 999;
+    }
+    expect(K.kontextBindung("excel", { ...excel, bereiche: [zelle] })).not.toBe(x);
+    expect(K.kontextBindung("excel", { ...excel, blatt: "Tabelle2" })).not.toBe(x);
+  });
+
+  it("nur die Antwort zur gerade gültigen Lage darf zurückgegeben werden", () => {
+    const a = K.kontextBindung("powerpoint", lageA);
+    const b = K.kontextBindung("powerpoint", { ...lageA, formen: [formB] });
+    const antwort = { text: "Antwort (fiktiv)", bindung: a };
+    expect(K.antwortBindungPruefen(antwort, a)).toEqual({ ok: true, grund: null });
+    expect(K.antwortBindungPruefen(antwort, b).grund).toBe("antwortVeraltet");
+    expect(K.antwortBindungPruefen(antwort, null).grund).toBe("antwortVeraltet");
+    expect(K.antwortBindungPruefen({ text: "ohne Bindung" }, a).grund).toBe("antwortVeraltet");
+    expect(K.antwortBindungPruefen(null, a).grund).toBe("keineAntwort");
+    expect(K.grundSatz("antwortVeraltet")).toContain("früheren Auswahl");
   });
 });
 
