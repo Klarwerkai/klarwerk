@@ -88,6 +88,7 @@ import type { TitelMitQuelle } from "../../lib/titelRangfolge";
 import { useAiBillable } from "../../lib/useAiBillable";
 import { umfangKurz } from "../../lib/vorschauUmfang";
 import { AiAssistInstructions } from "../AiAssistBox";
+import { AiAusfuehrerZeile } from "../AiAusfuehrerZeile";
 import { AiCostHint } from "../AiCostHint";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
 import { Begriffshinweise } from "../Begriffshinweise";
@@ -311,6 +312,10 @@ type LetzteAktion =
 // NUR DIESE EINE KENNUNG. Jeder andere Fehler — Zeitlimit, Modellstörung, Netz — behält seinen
 // bisherigen Satz; die Fläche deutet nichts um, was der Server nicht ausdrücklich benannt hat.
 const CLOUD_GESPERRT_CODE = "CONFIDENTIAL_CLOUD_BLOCKED";
+
+// KI-WAHL-BETRIEBSABNAHME · N-0070: die Aufgaben, die die KI-Palette des Blattes auslöst —
+// Strukturieren und alle Umformulier-Wege (Werksaktionen, freie Anweisung, Vorlagen).
+const KI_PALETTE_AUFGABEN = ["structure", "assist"] as const;
 
 // Aufnahme gesamt-integrations-api (R-0842): die ZWEITE ausdrücklich benannte Kennung. Hat die
 // KI-Bremse des Servers abgewiesen (`KI_ANFRAGEN_GEBREMST`), steht ihr Satz mit Wartezeit da —
@@ -2975,6 +2980,12 @@ export function Blatt({
               assist.mutate({ instruction });
             }}
           />
+          {/* KI-WAHL-BETRIEBSABNAHME · N-0070: wer das ausführt — Strukturieren (`structure`) und
+              alle Umformulier-Wege samt freier Anweisung und Vorlagen (`assist`). Sie steht beim
+              Öffnen der Palette da, also vor jedem Ausführen, aber UNTER Eingabe und Knopf: jede
+              Zeile darüber schob am 390-px-Telefon die freie Eingabe unter den Rand (gemessen,
+              `ki-palette-390px-chromium.test.ts` B5a, 31,3 px). Begründung in `AiAusfuehrerZeile.tsx`. */}
+          <AiAusfuehrerZeile tasks={KI_PALETTE_AUFGABEN} />
         </MenueFlaeche>
       </Menue>
 

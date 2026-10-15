@@ -60,6 +60,17 @@ export function RoleProvider({ children }: { children: ReactNode }): JSX.Element
   return <RoleCtx.Provider value={value}>{children}</RoleCtx.Provider>;
 }
 
+/**
+ * Die Rolle, wenn ein `RoleProvider` darüber steht — sonst `null`, statt zu werfen.
+ *
+ * KI-WAHL-BETRIEBSABNAHME · N-0070: für reine ANZEIGEN in Flächen, die auch ausserhalb der
+ * App-Hülle gerendert werden (das Blatt in seinen Einzeltests). Wer nach der Rolle ENTSCHEIDET,
+ * nimmt weiter `useRole` und bekommt den lauten Fehler.
+ */
+export function useRoleOptional(): RoleState | null {
+  return useContext(RoleCtx);
+}
+
 export function useRole(): RoleState {
   const ctx = useContext(RoleCtx);
   if (!ctx) {

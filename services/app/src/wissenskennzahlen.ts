@@ -45,6 +45,7 @@ import {
   type QualitaetsVorgang,
   type VorgangTyp,
   type VorgangZustand,
+  type Zustaendig,
   ladeQualitaetsaufgaben,
 } from "./qualitaetsaufgaben";
 import type { Sichtbarkeitsfilter } from "./sichtbarkeit";
@@ -87,6 +88,13 @@ export interface KennzahlEintrag {
   spaces: string[];
   seit: string | null;
   ueberfaellig: boolean;
+  /**
+   * PETER-20261011-P13 (K5): wer die nächste Handlung trägt — genau die Zuständigkeit aus ADMIN-10,
+   * hinter demselben Recht. Leer heisst: im Bestand keine hinterlegt (z. B. Konflikte); die
+   * Oberfläche sagt das, statt jemanden zu raten. `null` = nicht bekannt, weil die Vorgangsquelle
+   * für diesen Eintrag nicht geliefert hat — nie als „niemand" auszugeben.
+   */
+  zustaendig: Zustaendig[] | null;
 }
 
 export const HANDLUNGSBEDARF = [
@@ -268,6 +276,7 @@ function eintragVon(v: QualitaetsVorgang): KennzahlEintrag {
     spaces: v.spaces,
     seit: v.seit,
     ueberfaellig: v.ueberfaellig,
+    zustaendig: v.zustaendig.map((z) => ({ id: z.id, name: z.name, art: z.art })),
   };
 }
 
@@ -468,6 +477,15 @@ export async function ladeWissenskennzahlen(
     (luecken ?? []).filter((g) => imZeitraum(g.createdAt, a, b)).length;
   // Nacharbeit 3 (Ben): die Detailmenge ist GENAU die gezählte — Zeitraum und Status (offen wie
   // geschlossen) wie die Zahl. Jeder Eintrag öffnet die Lücke im Risikobereich, der beide führt.
+  // P13 (K5): die Zuständigkeit kommt aus demselben ADMIN-10-Vorgang; eine geschlossene Lücke hat
+  // keine nächste Handlung mehr und trägt deshalb keine. Fehlt der Vorgang (Quelle ausgefallen),
+  // ist sie unbekannt — nicht „niemand".
+  const zustaendigNach = new Map<string, Zustaendig[]>();
+  for (const v of uebersicht?.vorgaenge ?? []) {
+    zustaendigNach.set(v.schluessel, eintragVon(v).zustaendig ?? []);
+  }
+  const lueckenZustaendig = (id: string, offen: boolean): Zustaendig[] | null =>
+    offen ? (zustaendigNach.get(`luecke:${id}`) ?? null) : [];
   const neueLuecken = (luecken ?? [])
     .filter((g) => imZeitraum(g.createdAt, von, bis))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
@@ -486,6 +504,7 @@ export async function ladeWissenskennzahlen(
         spaces: [],
         seit: g.createdAt,
         ueberfaellig: false,
+        zustaendig: lueckenZustaendig(g.id, g.status === "offen"),
       };
     });
   const neueLueckenZahl = anzahlKennzahl(

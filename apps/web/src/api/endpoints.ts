@@ -132,6 +132,7 @@ import type {
   OverlapSettings,
   PruefdauerAuswertung,
   PublicUser,
+  ReasonerAusfuehrungAntwort,
   ReasonerConfigStatus,
   ReasonerKiLage,
   ReasonerProbeResult,
@@ -1313,9 +1314,15 @@ export const endpoints = {
     kiLage: () => api.get<ReasonerKiLage>("/ki-lage"),
     // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten).
     config: () => api.get<ReasonerConfigStatus>("/reasoner/config"),
+    // KI-WAHL-BETRIEBSABNAHME · Antwort 13: wer je Aufgabe tatsächlich arbeitet (alle Angemeldeten).
+    ausfuehrung: () => api.get<ReasonerAusfuehrungAntwort>("/reasoner/ausfuehrung"),
     // KI-Verwaltung v1: Zuordnung setzen (nur Admin; Antwort = frischer configStatus).
-    updateConfig: (cfg: { global: string; perTask: Record<string, string> }) =>
-      api.put<ReasonerConfigStatus>("/reasoner/config", cfg),
+    // Antwort 29: optional die Wahl je Schutzstufe — weglassen lässt sie unverändert, `null` löscht.
+    updateConfig: (cfg: {
+      global: string;
+      perTask: Record<string, string>;
+      proSchutzstufe?: ReasonerConfigStatus["taskConfig"]["proSchutzstufe"] | null;
+    }) => api.put<ReasonerConfigStatus>("/reasoner/config", cfg),
     // produkt:20261009:referenzki-adminauswahl (REF-03): der Einstieg „Referenzprüfung" (nur
     // Admin). Lesen ruft kein Modell; der Funktionscheck nur auf ausdrücklichen Klick.
     referenzpruefung: () => api.get<ReferenzVerwaltung>("/reasoner/referenzpruefung"),

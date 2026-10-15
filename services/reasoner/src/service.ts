@@ -55,6 +55,8 @@ import {
 } from "./provider";
 import { ModelProvider, outputLanguageRule } from "./provider-model";
 import { InMemoryReasonerPolicyRepo, type ReasonerPolicyRepo } from "./reasoner-policy";
+// KI-WAHL-BETRIEBSABNAHME · Antwort 29: die serverseitig bestimmte Schutzstufe des laufenden Aufrufs.
+import { aktuelleSchutzstufe } from "./schutzstufe-kontext";
 // JOB 1164 D1: die reine Ableitung des Titelvorschlags (kein Modell, kein Netz, kein Zustand).
 import { titelVorschlag } from "./titel-vorschlag";
 
@@ -78,6 +80,9 @@ import type {
   LueckenBereich,
   LueckenUrteilOutcome,
   ReasonerAktiveWahl,
+  ReasonerAusfuehrer,
+  ReasonerAusfuehrung,
+  ReasonerAusfuehrungsEinschraenkung,
   ReasonerBetreiberKarte,
   ReasonerCloudAnbieter,
   ReasonerCloudAnbieterStatus,
@@ -93,6 +98,8 @@ import type {
   ReasonerProbeResult,
   ReasonerReachability,
   ReasonerReferenzWahl,
+  ReasonerSchutzstufe,
+  ReasonerSchutzstufenWahl,
   ReasonerStatus,
   ReasonerTask,
   ReasonerTaskChoice,
@@ -117,10 +124,12 @@ import type {
   ZweitmeinungStufe,
 } from "./types";
 // JOB 3134 (KI-WAHL): die beiden externen Anbieter als Aufzählung und ihr lesbarer Name.
+// KI-WAHL-BETRIEBSABNAHME · Antwort 29: dazu die Schutzstufen.
 import {
   REASONER_CLOUD_ANBIETER,
   REASONER_CLOUD_ANBIETER_NAME,
   REASONER_REFERENZ_WAHLEN,
+  REASONER_SCHUTZSTUFEN,
   REASONER_ZWEITMEINUNG_WAHLEN,
 } from "./types";
 // R-0305/R-1099: der reine Abgleich zweier Antworten.
@@ -567,6 +576,8 @@ function clone(config: ReasonerTaskConfig): ReasonerTaskConfig {
     // tragen bewusst KEINE Freigabe; dass sie hier trotzdem kopiert würde, ist die Zusage für jeden
     // anderen Aufrufer und nicht der Weg, auf dem eine Vorgabe hereinkäme.
     ...(config.kiFreigabe ? { kiFreigabe: { ...config.kiFreigabe } } : {}),
+    // Antwort 29: die Wahl je Schutzstufe reist ebenso mit — kopiert, nicht geteilt.
+    ...(config.proSchutzstufe ? { proSchutzstufe: { ...config.proSchutzstufe } } : {}),
     // R-0305/R-1099: die Wahl der Zweitmeinung reist aus demselben Grund mit.
     ...(config.zweitmeinung ? { zweitmeinung: config.zweitmeinung } : {}),
     // REF-02: die erlaubten Referenz-Prüfer reisen ebenso mit (als Kopie).
@@ -1420,9 +1431,43 @@ export class Reasoner {
   // „Weglassen lässt die Freigabe unverändert". Die beiden Ladewege (Datenbank, Deploy-ENV) reichen
   // hier bewusst NICHTS herein: sie ERSETZEN den Zustand, und was die Quelle nicht trägt, ist nicht
   // freigegeben. Nur der Admin-Schreibweg (`setTaskConfig`) reicht den bisherigen Wert durch.
+  // KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Wahl JE SCHUTZSTUFE, geprüft wie jede andere Wahl.
+  // `undefined` heisst „unverändert" (es gilt `bisher`), `null`/`{}` heisst „keine Stufenregel".
+  // Eine unbekannte Stufe oder ein unbekannter Wert WIRFT — vorher wurde ein solches Feld vom
+  // Schreibweg still verworfen und die Antwort sah trotzdem wie ein Erfolg aus (BEN, Nacharbeit 7).
+  private normalisiereSchutzstufenWahl(
+    eingabe: ReasonerTaskConfigEingabe["proSchutzstufe"],
+    bisher: ReasonerSchutzstufenWahl | undefined,
+  ): ReasonerSchutzstufenWahl | undefined {
+    if (eingabe === undefined) {
+      return bisher && Object.keys(bisher).length > 0 ? { ...bisher } : undefined;
+    }
+    if (eingabe === null) {
+      return undefined;
+    }
+    if (typeof eingabe !== "object" || Array.isArray(eingabe)) {
+      throw new Error("Ungültige KI-Zuordnung je Schutzstufe.");
+    }
+    const wahl: ReasonerSchutzstufenWahl = {};
+    for (const [stufe, wert] of Object.entries(eingabe)) {
+      if (!(REASONER_SCHUTZSTUFEN as readonly string[]).includes(stufe)) {
+        throw new Error(`Unbekannte Schutzstufe '${stufe}' in der KI-Zuordnung.`);
+      }
+      if (wert === undefined) {
+        continue;
+      }
+      if (typeof wert !== "string" || !isValidReasonerChoice(wert)) {
+        throw new Error(`Ungültige KI-Zuordnung für Schutzstufe '${stufe}'.`);
+      }
+      wahl[stufe as ReasonerSchutzstufe] = this.migriereWahl(wert).wahl;
+    }
+    return Object.keys(wahl).length > 0 ? wahl : undefined;
+  }
+
   private normalizeTaskConfig(
     next: ReasonerTaskConfigEingabe,
     bisher?: ReasonerKiFreigabe | undefined,
+    bisherSchutzstufe?: ReasonerSchutzstufenWahl | undefined,
     // R-0305/R-1099: die bisherige Wahl der Zweitmeinung — dieselbe Regel wie `bisher`.
     bisherZweitmeinung?: ReasonerZweitmeinungWahl | undefined,
     // REF-02: die bisherige Liste der Referenz-Prüfer — dieselbe Regel.
@@ -1460,6 +1505,10 @@ export class Reasoner {
       next.kiFreigabe === undefined
         ? normalisiereKiFreigabe(bisher)
         : normalisiereKiFreigabe(next.kiFreigabe);
+    const proSchutzstufe = this.normalisiereSchutzstufenWahl(
+      next.proSchutzstufe,
+      bisherSchutzstufe,
+    );
     // R-0305/R-1099: weglassen = unverändert, `null` = aus, sonst nur eine benannte Wahl.
     if (
       next.zweitmeinung !== undefined &&
@@ -1484,6 +1533,7 @@ export class Reasoner {
         global: global.wahl,
         perTask,
         ...(kiFreigabe ? { kiFreigabe } : {}),
+        ...(proSchutzstufe ? { proSchutzstufe } : {}),
         ...(zweitmeinung ? { zweitmeinung } : {}),
         ...(referenzpruefung ? { referenzpruefung } : {}),
       },
@@ -1506,10 +1556,12 @@ export class Reasoner {
     }
     // JOB 3549: der bisherige Freigabestand wird durchgereicht — ein Speichern der ZUORDNUNG ohne
     // Rumpf-Feld `kiFreigabe` lässt die Freigabe, wie sie war (weder gelöscht noch erteilt).
+    // Antwort 29: ebenso die Wahl je Schutzstufe — ohne Rumpf-Feld bleibt sie, wie sie war.
     // R-0305/R-1099: ebenso die Wahl der Zweitmeinung.
     const normalized = this.normalizeTaskConfig(
       next,
       this.taskConfig.kiFreigabe,
+      this.taskConfig.proSchutzstufe,
       this.taskConfig.zweitmeinung,
       this.taskConfig.referenzpruefung,
     ); // wirft bei Ungültigem, bevor irgendetwas passiert
@@ -1603,6 +1655,84 @@ export class Reasoner {
     return this.taskConfig.perTask[task] ?? this.taskConfig.global;
   }
 
+  // ==============================================================================================
+  // KI-WAHL-BETRIEBSABNAHME · Antwort 29 — DIE WAHL JE SCHUTZSTUFE GEHT DER AUFGABENWAHL VOR.
+  // ==============================================================================================
+  //
+  // `basis` ist die Wahl, die ohne Stufenregel gälte (Aufgabe bzw. global). Trägt der Lauf eine
+  // Schutzstufe (`setzeSchutzstufe`, gesetzt von der Route aus der serverseitig bestimmten Einstufung)
+  // und hat der Administrator für sie eine Wahl getroffen, gilt diese — „Keine KI" (`deterministic`)
+  // nimmt jedes Modell aus der Kette. Die übrigen Riegel (Grundfreigabe, Vertraulichkeit,
+  // KI-Aus) bleiben unberührt dahinter: eine Stufenregel kann sperren, aber nichts freigeben, was
+  // sonst gesperrt wäre.
+  //
+  // OHNE GESETZTE STUFE (Hintergrundwege wie Konflikt-/Dublettenurteil, Anreicherung, fremde
+  // Aufrufer) entscheidet das Bit FAIL-SAFE: nicht vertraulich → die Wahl für „intern";
+  // vertraulich → die für „streng_vertraulich", sonst „vertraulich", und „Keine KI" aus einer der
+  // beiden gewinnt immer. Widerspricht eine gesetzte Stufe dem Bit (Stufe „intern", Lauf aber
+  // vertraulich, etwa durch einen Riegel), zählt das Bit.
+  //
+  // NUR FÜR LÄUFE: Anzeige- und Statuswege (`configStatus`, `publicStatus`) lesen weiter die
+  // Aufgabenwahl — eine Stufenregel ändert, was mit einem Text DIESER Stufe geschieht, nicht, was
+  // für die Aufgabe eingerichtet ist.
+  private wahlFuerLauf(basis: ReasonerAktiveWahl, confidential: boolean): ReasonerAktiveWahl {
+    return this.wahlFuerStufe(basis, confidential, aktuelleSchutzstufe());
+  }
+
+  // Dieselbe Auflösung mit AUSDRÜCKLICH genannter Stufe — der eine Kern, den Lauf (`wahlFuerLauf`,
+  // Stufe aus dem Anfragerahmen) und Ausführungsauskunft (`ausfuehrung`, je Stufe) teilen. So kann
+  // die Auskunft nie einen anderen Anbieter nennen als den, den ein Lauf dieser Stufe wirklich ruft
+  // (BEN, Nacharbeit 10).
+  private wahlFuerStufe(
+    basis: ReasonerAktiveWahl,
+    confidential: boolean,
+    gesetzt: ReasonerSchutzstufe | undefined,
+  ): ReasonerAktiveWahl {
+    const regel = this.taskConfig.proSchutzstufe;
+    if (!regel) {
+      return basis;
+    }
+    const stufe: ReasonerSchutzstufe | undefined =
+      gesetzt !== undefined && !(confidential && gesetzt === "intern") ? gesetzt : undefined;
+    if (stufe !== undefined) {
+      return regel[stufe] ?? basis;
+    }
+    if (!confidential) {
+      return regel.intern ?? basis;
+    }
+    if (regel.streng_vertraulich === "deterministic" || regel.vertraulich === "deterministic") {
+      return "deterministic";
+    }
+    return regel.streng_vertraulich ?? regel.vertraulich ?? basis;
+  }
+
+  /**
+   * Die Wahl, die ein LAUF dieser Aufgabe jetzt hätte — mit Schutzstufenregel (Antwort 29).
+   *
+   * Für die eine Stelle, die außerhalb des Reasoners einen Anbieter direkt anspricht (der
+   * Zuruf-Formulierer in `build-app.ts`): auch dort muss „Keine KI" für die Stufe des Laufs greifen.
+   */
+  laufWahlFuer(task: ReasonerTask, confidential: boolean): ReasonerAktiveWahl {
+    return this.wahlFuerLauf(this.choiceFor(task), confidential);
+  }
+
+  // Die Kette, mit der ein LAUF dieser Aufgabe wirklich Modelle ruft — mit Schutzstufenregel.
+  // Anzeigewege bleiben bei `providerChain`.
+  private laufKette(task: ReasonerTask, confidential = false): ReasonerProvider[] {
+    return this.chainForChoice(this.wahlFuerLauf(this.choiceFor(task), confidential), confidential);
+  }
+
+  // Die Kette, die ein Lauf dieser Aufgabe mit einem Text GENAU DIESER Stufe hätte: dieselbe
+  // Auflösung wie `laufKette` mit gesetzter Stufe; „intern" ist nicht vertraulich, beide anderen
+  // Stufen sind es (dieselbe Abbildung wie `resolveProvenance` in der Route).
+  private laufKetteFuerStufe(task: ReasonerTask, stufe: ReasonerSchutzstufe): ReasonerProvider[] {
+    const confidential = stufe !== "intern";
+    return this.chainForChoice(
+      this.wahlFuerStufe(this.choiceFor(task), confidential, stufe),
+      confidential,
+    );
+  }
+
   // Effektiver Modus je Aufgabe — ehrlich: "model" nur, wenn ein echtes Modell (Cloud ODER
   // lokal) zuerst arbeitet. SCRUM-424: leitet sich aus der Provider-Kette ab.
   private effectiveFor(task: ReasonerTask): "model" | "deterministic" {
@@ -1656,7 +1786,9 @@ export class Reasoner {
     const startedAt = new Date().toISOString();
     // D5: die Abschalt-Epoche beim Start dieses Laufs — vor jedem Warten (s. `kiAbschaltStand`).
     const kiBeginn = this.kiAbschaltEpoche;
-    const chain = lenkung?.kette ? [...lenkung.kette] : this.providerChain(task, confidential);
+    // Antwort 29: die Kette DES LAUFS — mit der Wahl je Schutzstufe. Eine gelenkte Kette
+    // (R-0305/R-1099, Zweitmeinung) ersetzt sie durch genau ihre Glieder.
+    const chain = lenkung?.kette ? [...lenkung.kette] : this.laufKette(task, confidential);
     let lastError: unknown;
     // JOB 3036: das zuletzt WIRKLICH GERUFENE Modell. Nur der Fehler-Datensatz unten liest es — ein
     // gescheiterter Lauf soll sagen, an welchem Modell er gescheitert ist, statt von einem rein
@@ -2055,7 +2187,12 @@ export class Reasoner {
   // KEIN ZWEITER RIEGEL: diese Zeile lässt nichts hinaus. Sie wird ausschließlich gelesen, nachdem
   // die Kette (die durch den Riegel ging) ohne Ergebnis geblieben ist.
   private cloudExcludedByConfidentiality(task: ReasonerTask, confidential: boolean): boolean {
-    return confidential && this.cloudFuerWahl(this.choiceFor(task)) !== undefined;
+    // Antwort 29: gemessen an der Wahl DES LAUFS — hat die Schutzstufenregel „Keine KI" gesetzt, war
+    // es die Regel und nicht die Vertraulichkeit, die die Cloud aus der Kette nahm.
+    return (
+      confidential &&
+      this.cloudFuerWahl(this.wahlFuerLauf(this.choiceFor(task), confidential)) !== undefined
+    );
   }
 
   // JOB 3134 R3 (bens Korrekturpflicht 1): die aufgabenlosen Wege (Konflikt-/Dublettenurteil,
@@ -2066,9 +2203,12 @@ export class Reasoner {
   // den Pflichtlieferung 5 ausschließt. Jetzt gibt es EINEN Auswahlweg (`chainForChoice`): fehlt
   // der gewählte Anbieter, bleibt die Kette ohne externen Anbieter, und der Ausgang sagt „no-model".
   private globaleKette(confidential = false): ReasonerProvider[] {
-    return this.chainForChoice(this.taskConfig.global, confidential).filter(
-      (provider) => provider !== this.fallback,
-    );
+    // Antwort 29: auch die aufgabenlosen Wege (Konflikt-/Dublettenurteil, Anreicherung) gehen durch
+    // die Wahl je Schutzstufe — „Keine KI" erreicht so auch die Hintergrundaufrufe dieser Stufe.
+    return this.chainForChoice(
+      this.wahlFuerLauf(this.taskConfig.global, confidential),
+      confidential,
+    ).filter((provider) => provider !== this.fallback);
   }
 
   // JOB 3549 R2 · DIE EINE DEFINITION VON „WEGEN DER VERTRAULICHKEIT AUSGESCHLOSSEN".
@@ -2136,7 +2276,13 @@ export class Reasoner {
   // false (die Kette dieser Task enthält NUR die Cloud). Bewusst nur ein Boolean — kein Provider-/
   // Modellname (Sicherheitsvertrag vip2-gate).
   private taskModelUsable(task: ReasonerTask): boolean {
-    const chainModels = this.providerChain(task).filter((p) => p !== this.fallback);
+    return this.ketteModellNutzbar(this.providerChain(task));
+  }
+
+  // Steht in DIESER Kette ein Modell, das nicht als unerreichbar bekannt ist? Gemeinsamer Kern von
+  // `taskModelUsable` (Aufgabenkette) und der Ausführungsauskunft (Stufenkette, Nacharbeit 11).
+  private ketteModellNutzbar(kette: readonly ReasonerProvider[]): boolean {
+    const chainModels = kette.filter((p) => p !== this.fallback);
     if (chainModels.length === 0) {
       return false; // Aufgabe bewusst deterministisch gestellt bzw. kein Modell verdrahtet
     }
@@ -2344,6 +2490,91 @@ export class Reasoner {
     };
   }
 
+  // ==============================================================================================
+  // KI-WAHL-BETRIEBSABNAHME · Antwort 13 — WER ARBEITET FÜR DIESE AUFGABE, FÜR JEDEN ANGEMELDETEN.
+  // ==============================================================================================
+  //
+  // DIE ENTSCHEIDUNG (Antwort 13, über BEN, Nacharbeit 7): normale Anwender sollen den tatsächlich
+  // arbeitenden Dienst, seine Verfügbarkeit und seine Einschränkungen erkennen können. Der
+  // öffentliche Status (`publicStatus`) bleibt dabei unverändert abstrakt — er ist ohne Anmeldung
+  // lesbar (vip2-gate). Diese Auskunft ist ein EIGENER Weg für Angemeldete (Route mit `ko.read`).
+  //
+  // JE AUFGABE, nie die globale Wahl als Ersatz: `ausfuehrer` ist das erste Glied der GEGATETEN
+  // Kette DIESER Aufgabe (mit Grundfreigabe, ohne Vertraulichkeit) — wer bei einem gewöhnlichen
+  // Text wirklich rechnet. `gewaehlt` ist die Aufgabenwahl ohne Freigaberiegel; weichen beide ab,
+  // nennt `einschraenkungen` den Grund.
+  //
+  // GEHEIMNISFREI: Anbieterkennung (`openai`/`anthropic`/`local`/`deterministic`), Booleans und
+  // Codes — kein Schlüssel, keine Adresse, keine Modellkennung.
+  //
+  // JE SCHUTZSTUFE (BEN, Nacharbeit 10): Die Auskunft hat keinen Inhaltskontext — welcher Text
+  // kommt, weiß sie nicht. Sie behauptet deshalb keinen einzelnen Ausführer, sondern nennt für
+  // jede Stufe das erste Glied genau der Kette, die ein Lauf mit einem Text dieser Stufe ruft
+  // (`laufKetteFuerStufe` — dieselbe Auflösung wie `laufKette`, einschliesslich Stufenregel,
+  // Grundfreigabe und Vertraulichkeitsriegel). `ausfuehrer` ist der Eintrag für „intern" (ein
+  // gewöhnlicher, nicht vertraulicher Text); `stufenAbweichend` sagt, ob die Stufen auseinandergehen.
+  ausfuehrung(): Record<ReasonerTask, ReasonerAusfuehrung> {
+    const abgeschaltet = this.kiAbschaltung().abgeschaltet;
+    const freigabe = this.taskConfig.kiFreigabe;
+    const keineKiFuer = REASONER_SCHUTZSTUFEN.filter(
+      (stufe) => this.taskConfig.proSchutzstufe?.[stufe] === "deterministic",
+    );
+    const alsAusfuehrer = (p: ReasonerProvider | undefined): ReasonerAusfuehrer => {
+      if (!p || p === this.fallback) {
+        return "deterministic";
+      }
+      if (p === this.secondary && this.usingSecondary()) {
+        return "local";
+      }
+      return this.anbieterVon(p) ?? "deterministic";
+    };
+    const istCloud = (a: ReasonerAusfuehrer): boolean => a === "openai" || a === "anthropic";
+    const ergebnis = {} as Record<ReasonerTask, ReasonerAusfuehrung>;
+    for (const task of REASONER_TASKS) {
+      const gewaehlt = this.effectiveAnbieterFor(task);
+      const jeStufe = {} as Record<ReasonerSchutzstufe, ReasonerAusfuehrer>;
+      // BEN, Nacharbeit 11: die Verfügbarkeit kommt aus DERSELBEN Stufenkette wie der Ausführer —
+      // nicht aus `taskModelUsable`, das die Aufgabenkette ohne Stufenregel liest (bei
+      // assist=deterministic und intern=lokal hieß es dort „kein Modell", obwohl lokal arbeitet).
+      const verfuegbarJeStufe = {} as Record<ReasonerSchutzstufe, boolean>;
+      const nutzbarJeStufe = {} as Record<ReasonerSchutzstufe, boolean>;
+      for (const stufe of REASONER_SCHUTZSTUFEN) {
+        const kette = this.laufKetteFuerStufe(task, stufe);
+        jeStufe[stufe] = alsAusfuehrer(kette[0]);
+        nutzbarJeStufe[stufe] = this.ketteModellNutzbar(kette);
+        verfuegbarJeStufe[stufe] =
+          jeStufe[stufe] !== "deterministic" && nutzbarJeStufe[stufe] && !abgeschaltet;
+      }
+      const ausfuehrer = jeStufe.intern;
+      const stufenAbweichend = REASONER_SCHUTZSTUFEN.some((s) => jeStufe[s] !== ausfuehrer);
+      const nutzbar = nutzbarJeStufe.intern;
+      const einschraenkungen: ReasonerAusfuehrungsEinschraenkung[] = [];
+      if (abgeschaltet) {
+        einschraenkungen.push("ki_abgeschaltet");
+      }
+      if (istCloud(gewaehlt) && ausfuehrer !== gewaehlt && freigabe?.oeffentlicheKi !== true) {
+        einschraenkungen.push("freigabe_fehlt");
+      }
+      if (istCloud(ausfuehrer) && freigabe?.vertraulicheInhalte !== true) {
+        einschraenkungen.push("vertraulich_ohne_cloud");
+      }
+      if (ausfuehrer !== "deterministic" && !nutzbar) {
+        einschraenkungen.push("nicht_erreichbar");
+      }
+      ergebnis[task] = {
+        ausfuehrer,
+        gewaehlt,
+        verfuegbar: verfuegbarJeStufe.intern,
+        einschraenkungen,
+        keineKiFuer: [...keineKiFuer],
+        jeStufe,
+        verfuegbarJeStufe,
+        stufenAbweichend,
+      };
+    }
+    return ergebnis;
+  }
+
   // SCRUM-166: read-only Provider-/Model-Konfiguration. Nur Metadaten — keine Secrets,
   // keine Prompt-/Antwortinhalte. Ohne konfiguriertes Modell ehrlich Demo-Modus.
   // JOB 3134: was die Fläche über EINEN externen Anbieter erfährt — eingerichtet (Clientname und
@@ -2428,9 +2659,7 @@ export class Reasoner {
     locale: ReasonerLocale = "de",
     confidential = false,
   ): Promise<GroupCandidatesResult> {
-    const hadModelInChain = this.providerChain("group", confidential).some(
-      (p) => p !== this.fallback,
-    );
+    const hadModelInChain = this.laufKette("group", confidential).some((p) => p !== this.fallback);
     const failureBox: { current: { err: unknown; provider: string; elapsedMs: number } | null } = {
       current: null,
     };
@@ -2484,7 +2713,7 @@ export class Reasoner {
     // wie das Bild selbst. Vertraulich → Cloud aus der Kette → weder Bild noch Kontext egress.
     context?: string,
   ): Promise<DescribeImageResult> {
-    const hadModelInChain = this.providerChain("describe", confidential).some(
+    const hadModelInChain = this.laufKette("describe", confidential).some(
       (p) => p !== this.fallback,
     );
     // Box statt let (siehe structure): TS-Narrowing über Closure-Zuweisungen bleibt korrekt.
@@ -2547,7 +2776,7 @@ export class Reasoner {
     // WP-D8 (Pedis Live-ROT B): VOR dem Lauf festhalten, ob überhaupt ein Modell in der Kette steht —
     // damit ein demo-Ergebnis hinterher EHRLICH begründet werden kann (kein Modell konfiguriert/aktiv
     // vs. Modell versucht, aber gescheitert). Die UI zeigt die Ursache statt nur eines FALLBACK-Badges.
-    const hadModelInChain = this.providerChain("structure", confidential).some(
+    const hadModelInChain = this.laufKette("structure", confidential).some(
       (p) => p !== this.fallback,
     );
     // WP-D10 (Fix 3): den LETZTEN Modellfehler der Kette samt Dauer festhalten (gleiches Muster wie
@@ -2862,6 +3091,13 @@ export class Reasoner {
     if (wahl === undefined) {
       return { grund: "nicht_eingerichtet" };
     }
+    // KI-WAHL-BETRIEBSABNAHME · Antwort 29: hat der Administrator für die Schutzstufe DIESES Laufs
+    // „Keine KI" gewählt, darf auch kein zweites Modell den Text sehen. Die gelenkte Kette
+    // (`lenkung.kette`) umginge sonst die Stufenregel, die `laufKette` für den ersten Lauf anwendet.
+    // Basis `auto`: `deterministic` kann hier nur aus der Stufenregel selbst stammen.
+    if (this.wahlFuerLauf("auto", confidential) === "deterministic") {
+      return { grund: "nicht_freigegeben" };
+    }
     // Eine Klara-Anbieterbindung lässt nur ihren Anbieter zu — jedes andere Glied wäre ein
     // Ausweichweg, den niemand freigegeben hat (`runTask`, R-0590).
     const gebunden = confidential ? undefined : gebundenerAnbieter();
@@ -2918,6 +3154,13 @@ export class Reasoner {
     }
     // D5: eine administrative KI-Abschaltung gilt auch für die Referenzprüfung.
     if (this.kiAbschaltung().abgeschaltet) {
+      return { grund: "nicht_freigegeben" };
+    }
+    // KI-WAHL-BETRIEBSABNAHME · Antwort 29 (Integration Nacharbeit 13): „Keine KI" für die
+    // Schutzstufe dieses Laufs gilt auch für den Referenz-Prüfer — er bekäme sonst Aussagen und
+    // Quellauszüge dieser Stufe zu sehen. Dieselbe Prüfung wie bei der Zweitmeinung
+    // (`zweitmeinungsModell`): Basis `auto`, `deterministic` kann nur aus der Stufenregel stammen.
+    if (this.wahlFuerLauf("auto", vertraulich) === "deterministic") {
       return { grund: "nicht_freigegeben" };
     }
     // Der aussagekräftigste Grund gewinnt: „nur dasselbe Modell" sagt mehr als „nicht freigegeben",
@@ -3285,15 +3528,46 @@ export class Reasoner {
     // dieselbe Kette, dieselbe Vertraulichkeit wie die Antworten.
     options: InterviewOptions = {},
   ): Promise<InterviewResult> {
+    // KI-WAHL-BETRIEBSABNAHME · N-0087: „In Alltagssprache erklären, dass gerade feste Ersatzfragen
+    // genutzt werden; Anbieter-/Fehlergrund soweit bekannt und sicheren nächsten Schritt anzeigen."
+    // Bis hierher trug das Interview nur `demo: true` — die Fläche konnte „feste Ersatzfragen" sagen
+    // (JOB 3276), aber nicht WARUM. Jetzt dieselbe Ursachen-Unterscheidung wie `structure` (WP-D8/
+    // WP-D10/WP-SHIP9-S2, darüber): VOR dem Lauf festhalten, ob ein Modell in der Kette steht, und
+    // den letzten Modellfehler mitschreiben. PII-frei: nur die Klasse, nie Antwort- oder Modelltext.
+    const hadModelInChain = this.laufKette("interview", confidential).some(
+      (p) => p !== this.fallback,
+    );
+    const failureBox: { current: unknown } = { current: null };
     const result = await this.runTask(
       "interview",
       locale,
-      (p) => p.interview(answers, locale, confidential, imageContext, options),
+      async (p) => {
+        if (p === this.fallback) {
+          return p.interview(answers, locale, confidential, imageContext, options);
+        }
+        try {
+          return await p.interview(answers, locale, confidential, imageContext, options);
+        } catch (err) {
+          failureBox.current = err;
+          throw err;
+        }
+      },
       confidential,
     );
     // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet. R-0604: nur, wenn ein
     // Modell sie erzeugt hat; die festen Fragen des deterministischen Rückfalls sind keine KI.
-    return result.demo ? result : { ...result, aiGenerated: aiGeneratedMark("interview", false) };
+    if (!result.demo) {
+      return { ...result, aiGenerated: aiGeneratedMark("interview", false) };
+    }
+    const fallbackReason = !hadModelInChain
+      ? this.cloudExcludedByConfidentiality("interview", confidential)
+        ? ("confidential" as const)
+        : ("no-model" as const)
+      : failureBox.current !== null &&
+          classifyModelFailure(failureBox.current).failureClass === "timeout"
+        ? ("model-timeout" as const)
+        : ("model-error" as const);
+    return { ...result, fallbackReason };
   }
 
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).
@@ -3393,7 +3667,7 @@ export class Reasoner {
     }
     const startedAt = new Date().toISOString();
     // Der Auswahl-Task nutzt die „select"-Zuordnung; nur ein echtes Modell darf ableiten.
-    const chain = this.providerChain("select", confidential);
+    const chain = this.laufKette("select", confidential);
     const model = chain.find(
       (p): p is ModelProvider =>
         p !== this.fallback && p instanceof ModelProvider && p.isAvailable(),

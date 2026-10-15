@@ -65,7 +65,13 @@ Lücken mit ihrem vorhandenen Vorgang (`luecke:<id>`, `/risiko?fall=<id>`). Hier
 
 `GET /api/wissenskennzahlen` fordert `users.manage`. Die Vorgänge laufen durch denselben
 Sichtbarkeitsfilter wie ADMIN-10. Fragetexte stehen nur nach `redactGapForViewer`; die Auswertung
-nennt keine fragenden Personen und keine Namen von Zugeordneten.
+nennt keine fragenden Personen. Der Fragebedarf nennt weiterhin keine Namen von Zugeordneten.
+
+Ergänzung PETER-20261011-P13 (K5): jeder Eintrag einer Detailliste trägt `zustaendig` — genau die
+Zuständigkeit desselben ADMIN-10-Vorgangs (Name und Art), hinter demselben Recht `users.manage`,
+das die Arbeitsliste mit denselben Namen schon zeigt. Leer heißt „keine Zuständigkeit hinterlegt“
+(Konflikte und Duplikate führen im Bestand keine), `null` heißt „Quelle nicht abrufbar“. Siehe
+`docs/entscheidungen/p13-lagebild-wissenskapital.md`.
 
 ## Suchen ohne Treffer (Nacharbeit 3)
 
@@ -102,7 +108,9 @@ gemessene Zeit- oder Geldersparnis sind. Die Bewertung in `Stufe2.tsx` (Abschnit
 als Schätzmodell mit eigenen Annahmen gekennzeichnet, Grundlage validierte Objekte) ist davon
 getrennt. Seit `produkt:20261013:lagebild-reale-werte-eingabe` trägt sie die Kennzeichnung
 „Beispiel (geschätzt)“ und daneben gespeicherte reale Werte je Arbeitsbereich
-(`docs/entscheidungen/lagebild-reale-werte.md`).
+(`docs/entscheidungen/lagebild-reale-werte.md`). Darunter steht seit PETER-20261011-P13 ein
+eigener Geldwert, der nur aus eingetragenen gemessenen Fällen entsteht
+(`docs/entscheidungen/p13-lagebild-wissenskapital.md`).
 
 ## Grenzen
 

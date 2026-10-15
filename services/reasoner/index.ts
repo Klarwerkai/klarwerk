@@ -196,6 +196,9 @@ export type {
   ReasonerTask,
   // SCRUM-525 P.5 (WP-C): Herkunft der aktiven Policy (env|db|default) — Teil von ReasonerConfigStatus.
   ReasonerPolicySource,
+  // KI-WAHL-BETRIEBSABNAHME · Antwort 29/13: Schutzstufen und die Ausführungsauskunft je Aufgabe.
+  ReasonerSchutzstufe,
+  ReasonerAusfuehrung,
   // R-0305/R-1099: die Zweitmeinung — `services/ask` reicht ihr Ergebnis an die Route weiter.
   ReasonerZweitmeinungWahl,
   ZweitmeinungAbweichung,
@@ -204,6 +207,9 @@ export type {
   ZweitmeinungGrund,
   ZweitmeinungStufe,
 } from "./src/types";
+// KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Route setzt die serverseitig bestimmte Schutzstufe eines
+// Laufs; der Reasoner liest sie direkt vor der Kettenbildung (`schutzstufe-kontext.ts`).
+export { imSchutzstufenRahmen, setzeSchutzstufe } from "./src/schutzstufe-kontext";
 // R-0305/R-1099: die benannten Wahlen (Schreibweg) und der reine Abgleich.
 export { REASONER_ZWEITMEINUNG_WAHLEN } from "./src/types";
 // produkt:20261009:referenzki-pruefdienst (REF-02): die erlaubten Referenz-Prüfer und die Rollen.
