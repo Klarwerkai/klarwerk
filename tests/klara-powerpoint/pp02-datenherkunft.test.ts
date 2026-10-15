@@ -208,6 +208,9 @@ async function artikelMitDeck(w: Welt, autor = "anna") {
     type: "best_practice",
     category: "Testbestand",
     author: autor,
+    // Ausdrücklich „intern“: ohne Stufe behandelt `darfSehen` (schutzrang) ein Objekt wie
+    // „vertraulich“ — dann läse es die Rolle `viewer` gar nicht (Befund Nacharbeit 1, D1–D9).
+    confidentiality: "intern",
   });
   const mit = await w.ko.addAttachment(ko.id, autor, {
     name: "Quartal.pptx",

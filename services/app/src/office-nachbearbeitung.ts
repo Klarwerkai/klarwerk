@@ -488,9 +488,7 @@ function zahlen(t: string): string[] {
 }
 
 /** Die Rechenprüfung V06 — dieselbe Rechnung für Nachbearbeitung und Datenobjekte (PP-02). */
-export function rechne(
-  b: Pick<NonNullable<Zahlenbeleg["berechnung"]>, "art" | "eingaben">,
-): number {
+export function rechne(b: NonNullable<Zahlenbeleg["berechnung"]>): number {
   const [erste = 0, ...rest] = b.eingaben;
   switch (b.art) {
     case "summe":

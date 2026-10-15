@@ -904,7 +904,8 @@ async function rechenwegBauen(
     }
     eingaben.push({ datenpunktId: dp.id, fassung: dp.fassung, wert: dp.wert, zahl: dp.zahl });
   }
-  const roh = rechne({ art: r.art, eingaben: eingaben.map((e) => e.zahl) });
+  // V06 unverändert: `ergebnis` wertet `rechne` nicht aus, es gehört nur zur Form des Zahlenbelegs.
+  const roh = rechne({ art: r.art, eingaben: eingaben.map((e) => e.zahl), ergebnis: "" });
   if (!Number.isFinite(roh)) {
     throw new DatenFehler("ungueltig", "Der Rechenweg ergibt keinen Wert (Basis 0?).");
   }
