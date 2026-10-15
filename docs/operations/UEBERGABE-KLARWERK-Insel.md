@@ -118,6 +118,8 @@ BACKEND=ollama bash /Applications/KLARWERK-App/START-KLARWERK-App.command
 
 **Sauberer Weg (KLLM-73, für Repo/Paul):** diese Header **konditional** machen (nur bei echtem HTTPS/Produktion, z. B. an `COOKIE_SECURE`/`HTTPS`-Flag gekoppelt) — dann läuft **ein** Build on-prem (HTTP) und in Produktion (HTTPS) ohne Bundle-Patch.
 
+**Nachtrag 13.10.2026 (R-0837, Aufnahme `gesamt-tls-betrieb`):** Der Bundle-Patch ist aus `scripts/insel/build-current-release.mjs` entfernt; er griff seit dem Umzug der Helmet-Registrierung nach `services/app/src/security-headers.ts` ohnehin ins Leere. `upgrade-insecure-requests` steht dort nur auf echten HTTPS-Antworten (Socket-TLS oder vertrauter Proxy). HSTS bleibt auf jeder Antwort: Browser verwerfen den Kopf auf plain HTTP (RFC 6797 §8.1), in der Produktion muss er greifen. Beleg: `tests/app/csp-upgrade-insecure-requests.test.ts`. Die Aussagen oben zu Ursache und Notbehelf sind der Stand vom 06.07.2026.
+
 ---
 
 ## 7. Offene Punkte (mit genauem nächstem Schritt)

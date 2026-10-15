@@ -7,6 +7,7 @@ import { Splash } from "./components/Splash";
 // WP-UX-WOW-1 U9: erklärende Karte statt stiller Stufe-2-Umleitung.
 // AUFTRAG-mega70 BLOCK A: dieselbe Behandlung für den Rollenfall (RoleNotice, gleicher Rahmen).
 import { RoleNotice, Stage2Notice } from "./components/Stage2Notice";
+import { PRUEFFORMULAR_PFAD } from "./components/klara-begleitung/pfad";
 import { CAPTURE_FRONT_DOOR_ROUTE } from "./lib/captureFrontDoor";
 
 // ================================================================================================
@@ -146,6 +147,10 @@ const ImportLauf = lazy(() =>
 // KLARA-VORSCHAU (produkt:20261007:klara-vorschau): der dokumentierte Einstieg `/klara-vorschau`.
 const KlaraVorschauSeite = lazy(() =>
   import("./pages/KlaraVorschau").then((m) => ({ default: m.KlaraVorschauSeite })),
+);
+// AKTIVE BEGLEITUNG (BPA-05): der freigegebene, synthetische Testvorgang.
+const BegleitungPruefformular = lazy(() =>
+  import("./pages/BegleitungPruefformular").then((m) => ({ default: m.BegleitungPruefformular })),
 );
 const KnowledgeDetail = lazy(() =>
   import("./pages/KnowledgeDetail").then((m) => ({ default: m.KnowledgeDetail })),
@@ -397,6 +402,16 @@ export function AppRoutes(): JSX.Element {
           element={
             <ErrorBoundary key="klara-vorschau">
               <KlaraVorschauSeite />
+            </ErrorBoundary>
+          }
+        />
+        {/* AKTIVE BEGLEITUNG (BPA-05): synthetischer Testvorgang, kein Serverabruf. Wer begleiten
+            lassen darf, entscheiden die Rollen AM Vorgang — nicht ein Routenwächter. */}
+        <Route
+          path={PRUEFFORMULAR_PFAD}
+          element={
+            <ErrorBoundary key="begleitung-pruefformular">
+              <BegleitungPruefformular />
             </ErrorBoundary>
           }
         />

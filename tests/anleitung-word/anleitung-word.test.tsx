@@ -1163,6 +1163,130 @@ describe("C · Einfügen an der tatsächlichen Cursorposition", () => {
 });
 
 // ================================================================================================
+// W — WORD LEHNT AB (Auftrag Nutzerverwaltung, Nacharbeit 16: Bens Befund am echten Word für Mac)
+// ================================================================================================
+//
+// Der echte Rückgabeversuch („Dokument erzeugen und einfügen" mit der geprüften Quelle
+// Abnahme-Text.txt) endete mit „Word hat nicht geantwortet – nichts geändert"; der Dokumenttext
+// blieb unverändert, die Ursache war nicht sichtbar. Unverändert heißt: Word brach VOR dem ersten
+// Einfügeschritt ab — beim Lesen der Auswahl oder beim (nur lesenden) Vorbereiten des Teilens
+// (`expandTo`/`getOoxml`). Diese Fälle legen fest, was das Panel dann tut. Die Attrappe lehnt mit
+// einem Fehler in der Form von `OfficeExtension.Error` (`code`, `debugInfo.errorLocation`) ab.
+// Welcher Schritt im echten Word scheitert, belegt nur die Bedienung im echten Host — die Meldung
+// nennt ihn jetzt.
+
+function officeFehler(code: string, ort: string, nachricht = "Office-Fehler"): Error {
+  return Object.assign(new Error(nachricht), { code, debugInfo: { errorLocation: ort } });
+}
+
+/** Word, das im `lauf`-ten `Word.run` beim `sync`-ten Abgleich mit `fehler` ablehnt. */
+function wordLehntAb(ablehnung: (lauf: number, sync: number) => Error | null): { laeufe: number } {
+  const echtesWord = g.Word as { run(a: (k: unknown) => unknown): Promise<unknown> };
+  const zaehler = { laeufe: 0 };
+  g.Word = {
+    run(arbeit: (k: unknown) => unknown) {
+      zaehler.laeufe += 1;
+      const lauf = zaehler.laeufe;
+      return echtesWord.run((kontext) => {
+        const k = kontext as { sync: () => Promise<void> };
+        let syncs = 0;
+        const echt = k.sync;
+        k.sync = () => {
+          syncs += 1;
+          const fehler = ablehnung(lauf, syncs);
+          return fehler ? Promise.reject(fehler) : echt();
+        };
+        return arbeit(k);
+      });
+    },
+  };
+  return zaehler;
+}
+
+describe("W · Word lehnt ab — die Meldung sagt wo, und nur Wahres über das Dokument", () => {
+  it("W1: scheitert nur das Vorbereiten des Teilens, kommt das Dokument hinter den Absatz — mit Grund", async () => {
+    dokument = [{ text: "Einleitung. Schluss.", stil: "Standard" }];
+    cursorVersatz = "Einleitung. ".length;
+    panelStarten();
+    await quellenLaden();
+    el<HTMLSelectElement>("anleitung-art").value = "faq";
+    quelleAnhaken("ko-ventil");
+    const word = wordLehntAb((lauf, sync) =>
+      lauf === 1 && sync === 2 ? officeFehler("InvalidArgument", "Range.expandTo") : null,
+    );
+    await klick("anleitung-erzeugen-btn");
+    // Der Absatz am Cursor ist unangetastet (nicht geteilt), das GANZE Ergebnis steht dahinter.
+    expect(word.laeufe).toBe(2);
+    expect(dokument[0]).toEqual({ text: "Einleitung. Schluss.", stil: "Standard" });
+    expect(dokument[1]).toEqual({ text: "FAQ", stil: "Überschrift 1" });
+    const sollZeilen = (letzteErzeugung?.markdown ?? "").split("\n").filter((z) => /\S/.test(z));
+    expect(eingefuegt()).toHaveLength(sollZeilen.length);
+    expect(text("anleitung-stand")).toBe(
+      "Eingefügt: „FAQ“ (keine Zielrolle) aus 1 Quelle(n) – mit Herkunftsnachweis. Hinter den Absatz am Cursor gesetzt – Word konnte den Absatz nicht teilen (InvalidArgument @ Range.expandTo [teilen]).",
+    );
+  });
+
+  it("W2: lehnt Word schon das Lesen der Auswahl ab, bleibt alles stehen — „nichts geändert“ mit Code, ohne Dokumenttext", async () => {
+    dokument = [{ text: "Einleitung. Schluss.", stil: "Standard" }];
+    cursorVersatz = "Einleitung. ".length;
+    panelStarten();
+    await quellenLaden();
+    el<HTMLSelectElement>("anleitung-art").value = "faq";
+    quelleAnhaken("ko-ventil");
+    // Die Fehlernachricht trägt absichtlich Dokumenttext — er darf NICHT in die Meldung.
+    const word = wordLehntAb(() =>
+      officeFehler("AccessDenied", "Document.getSelection", "Einleitung. Schluss."),
+    );
+    await klick("anleitung-erzeugen-btn");
+    expect(word.laeufe).toBe(1);
+    expect(dokument).toEqual([{ text: "Einleitung. Schluss.", stil: "Standard" }]);
+    expect(text("anleitung-stand")).toBe(
+      "Word hat abgelehnt, bevor etwas eingefügt wurde – nichts geändert. Word meldet: AccessDenied @ Document.getSelection [auswahl].",
+    );
+  });
+
+  it("W3: bricht Word beim Einfügen selbst ab, behauptet die Meldung NICHT „nichts geändert“", async () => {
+    dokument = [{ text: "Nur dieser Satz.", stil: "Standard" }];
+    cursorVersatz = null;
+    panelStarten();
+    await bausteinWaehlen("ko-wackelig");
+    // Lauf 1: Auswahl (1), Teilen vorbereiten (2), Einfügen (3) — der dritte Abgleich scheitert.
+    const word = wordLehntAb((lauf, sync) =>
+      lauf === 1 && sync === 3
+        ? officeFehler("GeneralException", "Paragraph.insertParagraph")
+        : null,
+    );
+    await klick("anleitung-baustein-btn");
+    expect(word.laeufe).toBe(1);
+    expect(text("anleitung-stand")).toBe(
+      "Word hat das Einfügen abgebrochen – bitte das Dokument ansehen, Teile können bereits darin stehen. Word meldet: GeneralException @ Paragraph.insertParagraph [einfuegen].",
+    );
+    expect(text("anleitung-stand")).not.toContain("nichts geändert");
+  });
+
+  it("W4: scheitert auch der Ausweichweg vor dem Einfügen, nennt die Meldung beide Gründe — nichts geändert", async () => {
+    dokument = [{ text: "Einleitung. Schluss.", stil: "Standard" }];
+    cursorVersatz = "Einleitung. ".length;
+    panelStarten();
+    await bausteinWaehlen("ko-ventil");
+    const word = wordLehntAb((lauf, sync) => {
+      if (lauf === 1 && sync === 2) {
+        return officeFehler("GeneralException", "Range.getOoxml");
+      }
+      return lauf === 2 && sync === 1
+        ? officeFehler("AccessDenied", "Document.getSelection")
+        : null;
+    });
+    await klick("anleitung-baustein-btn");
+    expect(word.laeufe).toBe(2);
+    expect(dokument).toEqual([{ text: "Einleitung. Schluss.", stil: "Standard" }]);
+    expect(text("anleitung-stand")).toBe(
+      "Word hat abgelehnt, bevor etwas eingefügt wurde – nichts geändert. Word meldet: GeneralException @ Range.getOoxml [teilen]; AccessDenied @ Document.getSelection [auswahl].",
+    );
+  });
+});
+
+// ================================================================================================
 // F — DER GESPRÄCHSFADEN: VORHABEN → RECHERCHE → ENTWURF (Nacharbeit 5, Befund 4: R-0349, R-0350,
 // R-0426) — samt KI-Entwurf über den bestehenden Zuruf-Weg (KA6), gekennzeichnet.
 // ================================================================================================
