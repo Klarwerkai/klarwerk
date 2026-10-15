@@ -26,10 +26,17 @@ import {
   verkleinerungsFaktor,
 } from "../../apps/web/src/lib/ocr";
 
-const wort = (text: string, confidence: number, y0: number, hoehe: number, x0 = 0): OcrWort => ({
+const wort = (
+  text: string,
+  confidence: number,
+  y0: number,
+  hoehe: number,
+  x0 = 0,
+  breite = 100,
+): OcrWort => ({
   text,
   confidence,
-  bbox: { x0, y0, x1: x0 + 100, y1: y0 + hoehe },
+  bbox: { x0, y0, x1: x0 + breite, y1: y0 + hoehe },
 });
 
 interface Lesung {
@@ -62,13 +69,14 @@ const ORIGINAL: Lesung = {
 };
 const FAKTOR = OCR_ZIEL_WORTHOEHE / GROSS;
 const k = (v: number): number => v * FAKTOR;
+// Auch die Wortbreite wird skaliert: Die Nachlesung liefert Rahmen im verkleinerten Bild.
 const VERKLEINERT: Lesung = {
   text: "Druck 72\nPumpe 93",
   words: [
-    wort("Druck", 95, k(80), k(GROSS)),
-    wort("72", 90, k(80), k(GROSS), k(300)),
-    wort("Pumpe", 96, k(220), k(GROSS)),
-    wort("93", 95, k(220), k(GROSS), k(300)),
+    wort("Druck", 95, k(80), k(GROSS), 0, k(100)),
+    wort("72", 90, k(80), k(GROSS), k(300), k(100)),
+    wort("Pumpe", 96, k(220), k(GROSS), 0, k(100)),
+    wort("93", 95, k(220), k(GROSS), k(300), k(100)),
   ],
 };
 const skaliereZu = (ziel: string) => vi.fn(async (_input: unknown, _faktor: number) => ziel);
