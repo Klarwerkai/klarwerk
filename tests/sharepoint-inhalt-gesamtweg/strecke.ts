@@ -59,6 +59,7 @@ import { expect } from "vitest";
 import { buildApp, buildPgServices, buildServices } from "../../services/app/src/build-app";
 import { makeGuards } from "../../services/app/src/http";
 import { sharepointImportRoutes } from "../../services/app/src/routes/sharepoint-import-routes";
+import { lesbareSpaces } from "../../services/app/src/spaces";
 import {
   type SharePointInhaltsTransport,
   SharePointSourceAdapter,
@@ -73,6 +74,7 @@ import {
   mitFlaeche,
   profil,
   tastaturAusloesen,
+  tastaturAusloesenAn,
   tippeMitTastatur,
   warte,
 } from "../gast-nutzerweg/browserweg";
@@ -263,7 +265,8 @@ export function spanneNetzAuf(): void {
         JSON.stringify({
           ...mitStand(datei),
           // Die vorautorisierte Adresse kommt NUR beim gezielten Abruf mit — die Liste bekommt keine.
-          ...(url.includes("downloadUrl")
+          // Nacharbeit 9: und nur OHNE `$select` (Instanz-Annotation; ein Selektor lässt sie weg).
+          ...(!/[?&](\$|%24)select=/.test(url)
             ? { "@microsoft.graph.downloadUrl": `${DOWNLOAD}${encodeURIComponent(datei.id)}` }
             : {}),
         }),
@@ -323,10 +326,25 @@ export async function starteAnwendung(opts: { pool?: Pool } = {}): Promise<Strec
   const app = buildApp(services);
   process.env.KLARWERK_SHAREPOINT_IMPORT = "1";
 
+  // gesamt-nutzerverwaltung · Nacharbeit 15 — DIESELBEN GUARDS WIE `buildApp`, NICHT EIGENE.
+  //
+  // Seit produkt:20261011:peter-p14 trägt jede angemeldete Antwort den Rechtekontext als Stempel
+  // (`services/app/src/rechtekontext.ts`: Konto, Rolle, lesbare Spaces, Freigabeniveau), und die
+  // Fläche setzt bei JEDEM Stempelwechsel alle Inhaltsabfragen zurück (`RechtekontextWache`,
+  // `apps/web/src/lib/rechtekontext.ts`). Ein `makeGuards(services.auth)` OHNE `spaceLesbar` stempelt
+  // `spaces = null`, die Routen von `buildApp` stempeln die erhobenen Spaces — für DASSELBE Konto
+  // zwei verschiedene Stempel. Zugangsauskunft (aus `buildApp`) und Dateiliste (von hier) setzten
+  // einander damit fortlaufend zurück, und die Liste kam nie zur Anzeige (Nacharbeit 15: „die
+  // SharePoint-Dateiliste ist sichtbar — nicht eingetreten", kein einziger Graph-Abruf). Im Betrieb
+  // registriert `buildApp` diese Routen mit SEINEN Guards (`build-app.ts`, `makeGuards(… spaceLesbar)`);
+  // genau so steht es jetzt auch hier.
+  const guards = makeGuards(services.auth, {
+    spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
+  });
   app.register(
     sharepointImportRoutes({
       library: services.library,
-      guards: makeGuards(services.auth),
+      guards,
       importRuns: services.importRuns,
       makeAdapter: () =>
         new SharePointSourceAdapter(
@@ -597,21 +615,58 @@ export function warteAufSichtbar(
 }
 
 /** Warten, bis dieser SATZ sichtbar dasteht — Wortlaut und Darstellung in einem. */
-export function warteAufSichtbarenSatz(
+export async function warteAufSichtbarenSatz(
   seite: Seite,
   selektor: string,
   soll: string,
   was: string,
   frist = 60_000,
 ): Promise<void> {
-  return warte(
-    seite,
-    SICHTBAR_MIT_SATZ,
-    `${was} steht sichtbar da („${soll}")`,
-    [selektor, soll],
-    frist,
-  );
+  try {
+    await warte(
+      seite,
+      SICHTBAR_MIT_SATZ,
+      `${was} steht sichtbar da („${soll}")`,
+      [selektor, soll],
+      frist,
+    );
+  } catch (fehler) {
+    // gesamt-nutzerverwaltung · Nacharbeit 12 — DIE LAUFDIAGNOSE, NICHT EINE WEICHERE BEDINGUNG.
+    // Frist, Bedingung und Sollwert bleiben unverändert. `warte` legt nur die ersten 1600 Zeichen des
+    // Seitentexts bei; auf `/import` endet das vor dem SharePoint-Bereich, und zweimal blieb offen,
+    // WARUM der Satz zur Lage 403 nicht kam. Diese Zeilen legen genau das bei, was die Frage
+    // beantwortet: den Sichtbefund des gesuchten Knotens, den Text des SharePoint-Bereichs, das
+    // aktive Element, die Lage des Graph-Doubles und seine letzten Abrufe.
+    const lies = <T>(quelle: string, arg?: unknown): Promise<T | null> =>
+      seite.evaluate<T>(fn(quelle), arg).catch(() => null);
+    const befund = await lies<Sichtbefund>(SICHTBARKEIT, selektor);
+    const bereich = (await lies<string>(SHAREPOINT_BEREICH_TEXT)) ?? "<nicht lesbar>";
+    const aktiv = (await lies<string>(AKTIVES_ELEMENT)) ?? "<nicht lesbar>";
+    const diagnose = [
+      `Sichtbefund ${selektor}: ${JSON.stringify(befund)}`,
+      `Aktives Element: ${aktiv}`,
+      `Graph-Lage: ${doppel.lage} · letzte Graph-Abrufe: ${JSON.stringify(doppel.graphAufrufe.slice(-6))}`,
+      `SharePoint-Bereich:\n${bereich}`,
+    ].join("\n");
+    const ursprung = fehler instanceof Error ? fehler.message : String(fehler);
+    throw new Error(`${ursprung}\n\nDIAGNOSE (Nacharbeit 12):\n${diagnose}`);
+  }
 }
+
+/** Der ganze Text der Karte, die „Liste neu laden“ trägt — der SharePoint-Bereich auf `/import`. */
+const SHAREPOINT_BEREICH_TEXT = `() => {
+  const knopf = document.querySelector('[data-testid="sharepoint-neu-laden"]');
+  const karte = knopf ? knopf.closest("[id]") : null;
+  return karte ? (karte.innerText || "").slice(0, 3000) : "<kein SharePoint-Bereich mit Neu-laden-Knopf>";
+}`;
+
+/** Welches Element gerade den Fokus hat — mit Kennung und Text, gekürzt. */
+const AKTIVES_ELEMENT = `() => {
+  const a = document.activeElement;
+  if (!a) { return "(nichts)"; }
+  const id = a.getAttribute("data-testid") || a.id || "";
+  return "<" + a.tagName.toLowerCase() + "> " + id + " " + (a.textContent || "").trim().slice(0, 80);
+}`;
 
 /**
  * Wie viele Prüfkarten tragen diesen Titel SICHTBAR? Die Frage aus Lieferung 3 (f).
@@ -1218,7 +1273,7 @@ async function fahreDieZustaende(
   // ── A. Erfolgreich leer. ──────────────────────────────────────────────────────────────────
   doppel.leer = true;
   await bereitZumNeuLaden(seite);
-  tastatur.neuLaden_leer = await tastaturAusloesen(seite, t("imp.sharepoint.neuLaden"));
+  tastatur.neuLaden_leer = await neuLadenPerTastatur(seite, t);
   await warteAufSichtbarenSatz(
     seite,
     testid("sharepoint-leer"),
@@ -1241,7 +1296,7 @@ async function fahreDieZustaende(
   // ── Zurück zum Bestand, damit Zustand B eine ALTE Liste hat. ──────────────────────────────
   doppel.leer = false;
   await bereitZumNeuLaden(seite);
-  tastatur.neuLaden_zurueckVonLeer = await tastaturAusloesen(seite, t("imp.sharepoint.neuLaden"));
+  tastatur.neuLaden_zurueckVonLeer = await neuLadenPerTastatur(seite, t);
   await warteAufSichtbar(
     seite,
     testid(`sharepoint-datei-${NOTIZ.id}`),
@@ -1257,7 +1312,7 @@ async function fahreDieZustaende(
   let alteListeBleibtSichtbar = false;
   try {
     await bereitZumNeuLaden(seite);
-    tastatur.neuLaden_angehalten = await tastaturAusloesen(seite, t("imp.sharepoint.neuLaden"));
+    tastatur.neuLaden_angehalten = await neuLadenPerTastatur(seite, t);
     await warteAufSichtbarenSatz(
       seite,
       testid("sharepoint-nicht-frisch"),
@@ -1679,6 +1734,19 @@ async function liesDenStandInDenAnderenSprachen(a: {
  * ohne diese Vorbedingung scheiterte der Tastaturweg an einer laufenden Auffrischung und die
  * Meldung zeigte auf den falschen Schuldigen.
  */
+/**
+ * „Liste neu laden" DES SHAREPOINT-BEREICHS per Tastatur — Ziel ist der Knopf, nicht die Beschriftung.
+ *
+ * gesamt-nutzerverwaltung · Nacharbeit 13: Dieselbe Beschriftung trägt auf `/import` seit dem
+ * 09.10. auch die Importliste (`ImportLaufListe`). Der Weg über die Beschriftung konnte deshalb den
+ * falschen Knopf auslösen; die Diagnose aus Nacharbeit 12 zeigte genau diese Spur (kein
+ * SharePoint-Abruf nach dem Auslösen, Fokus auf `body`, kein Fehlersatz). Gemessen wird weiter per
+ * Tab mit sichtbarem Fokus und Enter — nur an genau diesem Element.
+ */
+function neuLadenPerTastatur(seite: Seite, t: Uebersetzer): Promise<number> {
+  return tastaturAusloesenAn(seite, testid("sharepoint-neu-laden"), t("imp.sharepoint.neuLaden"));
+}
+
 function bereitZumNeuLaden(seite: Seite): Promise<void> {
   return warte(
     seite,
@@ -1715,7 +1783,7 @@ async function fahreDieFehlerlagen(
   for (const { lage, schluessel } of lagen) {
     doppel.lage = lage;
     await bereitZumNeuLaden(seite);
-    tastatur[`neuLaden_${lage}`] = await tastaturAusloesen(seite, t("imp.sharepoint.neuLaden"));
+    tastatur[`neuLaden_${lage}`] = await neuLadenPerTastatur(seite, t);
     // KALIBRIERT (BENs Korrekturpflicht 1): Ein Fehlersatz, der nur im Baum steht, ist für den
     // Menschen kein Fehlersatz. Gewartet wird auf Sichtbarkeit UND Wortlaut zugleich.
     await warteAufSichtbarenSatz(
@@ -1746,7 +1814,7 @@ async function fahreDieFehlerlagen(
   // dann nichts über den Inhalt und lässt auch nichts übernehmen.
   doppel.lage = "normal";
   await bereitZumNeuLaden(seite);
-  tastatur.neuLaden_zurueck = await tastaturAusloesen(seite, t("imp.sharepoint.neuLaden"));
+  tastatur.neuLaden_zurueck = await neuLadenPerTastatur(seite, t);
   await warteAufSichtbar(
     seite,
     testid(`sharepoint-datei-${NOTIZ.id}`),

@@ -122,8 +122,20 @@ export interface SharePointUebernahme {
   importId?: string;
 }
 
+/**
+ * Frage 6 — die Auskunft über die EIGENE Testbibliothek eines Fachkontos. Zwei Ja/Nein, sonst
+ * nichts: `zugeordnet` (der Betreiber hat diesem Konto eine Bibliothek zugeordnet) und `benutzbar`
+ * (der Zugang der Instanz lässt einen Adapter auf genau diese Bibliothek zu).
+ */
+export interface SharePointTestbibliothek {
+  zugeordnet: boolean;
+  benutzbar: boolean;
+}
+
 export const sharepointApi = {
   zugang: (): Promise<SharePointZugang> => api.get("/import/sharepoint/zugang"),
+  testbibliothek: (): Promise<SharePointTestbibliothek> =>
+    api.get("/import/sharepoint/testbibliothek"),
   /**
    * ADMIN-02: der bewusst gestartete Verbindungstest. Liest eine Listenseite (nur Merkmale) und
    * hält das Ergebnis fest — er importiert nichts und verändert keine Beiträge.

@@ -40,7 +40,7 @@ Klarwerk stellt eine **interne, auth-geschützte REST-API** (`/api/*`, Fastify) 
 - **Session-Bearer-Token:** `POST /api/auth/login` → **opakes Session-Token**; Folgeaufrufe mit `Authorization: Bearer <token>`. Extraktion in `services/app/src/http.ts` (`tokenFromRequest` → `auth.authenticate`).
 - **Guards:** `requireUser` → **401 `UNAUTHENTICATED`** ohne gültige Session; `requirePermission(perm)` → **403 `FORBIDDEN`** bei fehlendem Recht. RBAC-Rollen Viewer/Experte/Controller/Admin (SCRUM-212).
 - **SSO/OIDC** (PKCE) zusätzlich verfügbar.
-- **Security-Header/Transport (App-Ebene, `server.ts`):** `@fastify/helmet` (**HSTS** `maxAge=1J, includeSubDomains, preload`; **CSP** `default-src 'self'`…), **HTTPS-Kanonik-Redirect** (`app.<domain>` → `https://<domain>`), `X-Robots-Tag: noindex`.
+- **Security-Header/Transport (App-Ebene, `services/app/src/security-headers.ts`):** `@fastify/helmet` (**HSTS** `maxAge=1J, includeSubDomains, preload`; **CSP** `default-src 'self'`…; `upgrade-insecure-requests` nur auf echten HTTPS-Antworten, ein Quellstand für Insel und Produktion ohne Paket-Patch — R-0837, `tests/app/csp-upgrade-insecure-requests.test.ts`), **HTTPS-Kanonik-Redirect** (`app.<domain>` → `https://<domain>`), `X-Robots-Tag: noindex`.
 - **Kein CORS** registriert → **same-origin** (keine Cross-Origin-/Browser-Drittnutzung konfiguriert).
 
 ---
@@ -80,7 +80,7 @@ Klarwerk stellt eine **interne, auth-geschützte REST-API** (`/api/*`, Fastify) 
 
 ## 6. TLS / HTTPS / Reverse-Proxy — Verantwortungsteilung
 
-- **App-Ebene:** erzwingt Security-Header (HSTS/CSP) und **leitet** auf HTTPS-Kanonik um — **terminiert TLS aber NICHT selbst**.
+- **App-Ebene:** setzt Security-Header (HSTS/CSP) und **leitet** auf HTTPS-Kanonik um — **terminiert öffentliches TLS NICHT selbst**. Für die Strecke Proxy → Anwendung kann sie seit R-2057 ein internes Zertifikat annehmen (`docs/operations/tls-bis-zur-anwendung.md`).
 - **Betriebs-/Ops-Ebene:** **TLS-Terminierung erfolgt über Coolify/Reverse-Proxy** (Let's Encrypt) auf Hetzner (`deploy-hetzner.md`). „API über HTTPS erreichbar" ist damit eine **Deploy-/Ops-Eigenschaft** (Coolify), **nicht** im App-Prozess provisioniert.
 
 > **Folge für das Jira-Kriterium:** Der **Auth-Teil** ist real, getestet und Smoke-belegt. Der **HTTPS-Teil** hängt am korrekt konfigurierten Coolify-Proxy (deploy-ready, aber Ops-Verantwortung) — in **diesem** Item wurde **keine** Domain/kein Proxy provisioniert.

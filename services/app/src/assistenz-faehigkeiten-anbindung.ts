@@ -15,6 +15,7 @@ import {
   type GeheimnisQuelle,
   type KontextPruefung,
   type KontextTeil,
+  type Kostenbuch,
   type LageQuelle,
   PERPLEXITY_SUCHE,
   ProfilFaehigkeitsAblage,
@@ -64,6 +65,12 @@ export interface FaehigkeitenAnbindungDeps {
     get(id: string): Promise<(SichtbarkeitsFakten & { version: number }) | undefined>;
   };
   readonly lesbareSpaces: (nutzerId: string) => Promise<ReadonlySet<string>>;
+  /**
+   * produkt:20261013:produktbudget-anwender-admin: das persistente Kostenbuch der Produktbudgets
+   * (`produktbudget.ts`). Es gibt nur frei, was eine Fähigkeit mit belegtem Tarif, passender
+   * Zuordnung, Anbieter und Währung anfragt — die heutigen Verträge tragen keine Zuordnung.
+   */
+  readonly kostenbuch?: Kostenbuch;
   readonly protokoll?: (zeile: string) => void;
 }
 
@@ -201,6 +208,7 @@ export function baueFaehigkeiten(deps: FaehigkeitenAnbindungDeps): Faehigkeiten 
     ablage: new ProfilFaehigkeitsAblage(deps.profile),
     vormerkungen,
     kontext: produktKontextPruefung(deps),
+    ...(deps.kostenbuch ? { kostenbuch: deps.kostenbuch } : {}),
     ...(deps.protokoll ? { protokoll: deps.protokoll } : {}),
   });
   return { registry, vormerkungen, ausfuehrung };

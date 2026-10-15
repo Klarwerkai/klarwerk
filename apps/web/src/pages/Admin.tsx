@@ -154,6 +154,7 @@ import {
   lesbarerAblauf,
 } from "./AdminKontenDetails";
 import { Sammelbearbeitung } from "./AdminKontenSammel";
+import { ProduktbudgetDetail } from "./AdminProduktbudget";
 import {
   BereitschaftDetail,
   DatenschutzDetail,
@@ -669,6 +670,9 @@ export function Admin(): JSX.Element {
         return <KiExternDetail onZurueck={zurueck} />;
       case "kiDup":
         return <KiDupDetail onZurueck={zurueck} />;
+      // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets.
+      case "produktbudget":
+        return <ProduktbudgetDetail onZurueck={zurueck} />;
       case "demo":
         return <DemodatenDetail onZurueck={zurueck} />;
       // ADMIN-16: bis hierher Kästen auf der Importseite — jetzt eigene Karten unter Vorführdaten.
@@ -942,6 +946,7 @@ export function Admin(): JSX.Element {
                     key={u.id}
                     label={u.name}
                     wert={nutzerWert(u)}
+                    schmalUntereinander
                     onOeffnen={() => geheZu("konten", `nutzer:${u.id}`)}
                   />
                 ))}
@@ -1126,6 +1131,13 @@ export function Admin(): JSX.Element {
                 )}
                 onOeffnen={() => geheZu("ki", "kiDup")}
                 testId="zeile-ki-dup"
+              />
+              {/* produkt:20261013:produktbudget-anwender-admin: ohne eigenen Zeilenwert — Beträge,
+                  Verbrauch und Stand stehen erst in der Karte, aus genau einer Abfrage. */}
+              <Zeile
+                label={t("produktbudget.titel")}
+                onOeffnen={() => geheZu("ki", "produktbudget")}
+                testId="zeile-ki-produktbudget"
               />
             </Zeilenkarte>
           ) : null}

@@ -1,0 +1,244 @@
+{
+  "zweck": "Quellenwegkarte zum eingefrorenen Stand FREEZE-144 (R-1468). Teil A: woher Dateiliste und Sollwerte des Freezes stammen (Plan PRO 327, JOB 880, heutiger Freeze-Waechter), je Datei mit dem heute gueltigen Sollhash und seiner Freigabe. Teil B, ergaenzend: aus welchen Modulen jede eingefrorene Datei Inhalte bezieht. Der Waechter tests/freeze144-quellenwege/quellenwegkarte.test.ts gleicht beide Teile mit dem Bestand ab und meldet jede Abweichung in beide Richtungen.",
+  "herkunft": {
+    "plan_327": {
+      "quelle": "Projekt_klarwerk/03_AUFTRAEGE/planung/PLAN-PRO-W2-Q5-FREEZE144-QUELLENWEGKARTE-327.md (PRO 327, 04.08.2026, 195 Zeilen)",
+      "aussage": "Karte aus Verzeichniseintraegen ohne Inhaltslektuere: sechs Wege W-1 bis W-6, 23 Namen. Gesucht: die zwei von sechs Freeze-Dateien, die PRO 325 nicht benannte, und ihre historischen Sollhashes. Namentlich mit Sollhash gefuehrt waren repo.ts, repo-pg.ts, service.test.ts und repo-pg.integration.test.ts.",
+      "wege": {
+        "W-1": "03_AUFTRAEGE/backfall/KW-W2A-FREEZE144-200/MANIFEST.txt, Manifest KW-W2A-FREEZE144-200 (laut PRO 301 §8 gemessen e863dc1cbd812e56514225ad543897e22e1817dc558ad60fa6ef86039099d27c); Rolle ungeklaert, nicht geoeffnet",
+        "W-2": "PRO 149 FREEZE144-APP-HANDOFF, vier Akten",
+        "W-3": "PRO 144 LAUFDOMAENE-PERSISTENZ-PRODUCTWRITE, vier Akten; Bezug zu Freeze 144 nur Namensbeobachtung",
+        "W-4": "02_FREEZE_BACKFALL/freeze_manifest_current.md, freeze_manifest_template.md, 00_regeln.md",
+        "W-5": "BASIC 200 FREEZE144-BACKFALL-SICHERUNG und BASIC 195 QUARANTAENE-INVARIANTEN, acht Akten; unter 327 Abbruch",
+        "W-6": "BEN 147 LAUFDOMAENE-PERSISTENZ-FREEZE144-NACHPRUEFUNG, vier Akten; unter 327 Abbruch"
+      }
+    },
+    "job_880": {
+      "quelle": "Projekt_klarwerk/_relay/kopf/outbox/RUECKGABE-PRO5-JOB-880-D1-FREEZE144-QUELLENWEGKARTE.md (PRO5, D1, Base 79930092b57c07f75cd86b5b856ba4e58ac21b44)",
+      "aussage": "ABSCHLUSS BAUBEREIT: Q5 geschlossen, die zwei fehlenden Dateinamen mit vollem Modulpfad gefunden, historische Sollhashes zeichengleich bestaetigt, alle sechs Dateien damals SOLL = IST gegen zwei unabhaengige Traeger. W-1, W-5 und W-6 nicht geoeffnet. Befund: im Produktbaum gab es zu Freeze 144 keine maschinelle Pruefung.",
+      "spaeter": "Zuletzt D5 BEN ROT (20.08.) laut Register R-1468."
+    },
+    "heute": {
+      "quelle": "tests/library-analytics-freeze144.test.ts, FREEZE_MANIFEST",
+      "aussage": "Der damals fehlende Waechter besteht: sechs Dateien, je Sollhash und eigener Freigabe, die genau diesen Hash autorisiert. Die Sollhashes wurden seitdem mit jeder ausgewiesenen Aenderung neu gesetzt; die verbrauchten Freigaben stehen in WIDERRUFENE_FREIGABEN. Die historischen Werte aus JOB 880 sind damit abgeloest, nicht verloren: die Kette steht in den Kommentaren am jeweiligen Eintrag."
+    }
+  },
+  "arten": {
+    "eingefroren": "Ziel steht selbst im FREEZE-144-Manifest und ist per Hash gesichert.",
+    "modul": "Ziel liegt in services/library-analytics, ist aber nicht eingefroren.",
+    "nachbarmodul": "Ziel liegt in einem anderen Dienst des Repositorys und ist nicht eingefroren.",
+    "paket": "Externes Paket aus package.json; Stand durch package-lock.json bestimmt."
+  },
+  "dateien": [
+    {
+      "pfad": "services/library-analytics/index.ts",
+      "herkunft_name": "JOB 880 (in PRO 325 unbenannt)",
+      "sollwert": {
+        "hash": "c32706a1a792a39e209f90947850f1d207dc1c3428e263eeff57ff923c81175f",
+        "freigabe": "FREEZE-144/MAIN-c2aed83d-20261004/index"
+      },
+      "quellwege": [
+        {
+          "von": "./src/explore",
+          "ziel": "services/library-analytics/src/explore.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/grouping",
+          "ziel": "services/library-analytics/src/grouping.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/repo",
+          "ziel": "services/library-analytics/src/repo.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./src/repo-pg",
+          "ziel": "services/library-analytics/src/repo-pg.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./src/search-captions",
+          "ziel": "services/library-analytics/src/search-captions.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/select",
+          "ziel": "services/library-analytics/src/select.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/service",
+          "ziel": "services/library-analytics/src/service.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/text-codec",
+          "ziel": "services/library-analytics/src/text-codec.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/themes",
+          "ziel": "services/library-analytics/src/themes.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./src/types",
+          "ziel": "services/library-analytics/src/types.ts",
+          "art": "eingefroren"
+        }
+      ]
+    },
+    {
+      "pfad": "services/library-analytics/src/types.ts",
+      "herkunft_name": "JOB 880 (in PRO 325 unbenannt)",
+      "sollwert": {
+        "hash": "09cf2bd105300441a52aa55724251f149d99c9f53ac30bf3e2a899d7f4d62574",
+        "freigabe": "FREEZE-144/MAIN-c2aed83d-20261004/types"
+      },
+      "quellwege": [
+        {
+          "von": "../../knowledge-object",
+          "ziel": "services/knowledge-object/index.ts",
+          "art": "nachbarmodul"
+        }
+      ]
+    },
+    {
+      "pfad": "services/library-analytics/src/repo.ts",
+      "herkunft_name": "PRO 325, namentlich mit Sollhash",
+      "sollwert": {
+        "hash": "549edfb36cf1db21f2bacd43c812837ffe75087e68967539e91f91ef560c8c04",
+        "freigabe": "FREEZE-144/GIA2-R3-20261001/repo"
+      },
+      "quellwege": [
+        {
+          "von": "./types",
+          "ziel": "services/library-analytics/src/types.ts",
+          "art": "eingefroren"
+        }
+      ]
+    },
+    {
+      "pfad": "services/library-analytics/src/repo-pg.ts",
+      "herkunft_name": "PRO 325, namentlich mit Sollhash",
+      "sollwert": {
+        "hash": "7ebdbd023059b12d2f864b9464a143d53094b0514f2dc8485df5cd3245ecc3c6",
+        "freigabe": "FREEZE-144/GIA2-R3-20261001/repo-pg"
+      },
+      "quellwege": [
+        {
+          "von": "./repo",
+          "ziel": "services/library-analytics/src/repo.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./types",
+          "ziel": "services/library-analytics/src/types.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "pg",
+          "ziel": "pg",
+          "art": "paket"
+        }
+      ]
+    },
+    {
+      "pfad": "services/library-analytics/src/service.test.ts",
+      "herkunft_name": "PRO 325, namentlich mit Sollhash",
+      "sollwert": {
+        "hash": "14d15fc3fa5cffc52153bb9ca3115a2552a499c9c1d6f59a1b2477f3093262f5",
+        "freigabe": "FREEZE-144/N11-20261003/service-test"
+      },
+      "quellwege": [
+        {
+          "von": "../../audit",
+          "ziel": "services/audit/index.ts",
+          "art": "nachbarmodul"
+        },
+        {
+          "von": "../../knowledge-object",
+          "ziel": "services/knowledge-object/index.ts",
+          "art": "nachbarmodul"
+        },
+        {
+          "von": "./repo",
+          "ziel": "services/library-analytics/src/repo.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./repo-pg",
+          "ziel": "services/library-analytics/src/repo-pg.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./service",
+          "ziel": "services/library-analytics/src/service.ts",
+          "art": "modul"
+        },
+        {
+          "von": "./types",
+          "ziel": "services/library-analytics/src/types.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "pg",
+          "ziel": "pg",
+          "art": "paket"
+        },
+        {
+          "von": "vitest",
+          "ziel": "vitest",
+          "art": "paket"
+        }
+      ]
+    },
+    {
+      "pfad": "services/library-analytics/src/repo-pg.integration.test.ts",
+      "herkunft_name": "PRO 325, namentlich mit Sollhash",
+      "sollwert": {
+        "hash": "d415952ea7cffc493e33adec0d5e736374a524c0883a0ef2191cebd29bb2e5e4",
+        "freigabe": "FREEZE-144/D5-20260817/repo-pg-integration"
+      },
+      "quellwege": [
+        {
+          "von": "../../db-tx",
+          "ziel": "services/db-tx/index.ts",
+          "art": "nachbarmodul"
+        },
+        {
+          "von": "./repo",
+          "ziel": "services/library-analytics/src/repo.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./repo-pg",
+          "ziel": "services/library-analytics/src/repo-pg.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "./types",
+          "ziel": "services/library-analytics/src/types.ts",
+          "art": "eingefroren"
+        },
+        {
+          "von": "pg",
+          "ziel": "pg",
+          "art": "paket"
+        },
+        {
+          "von": "testcontainers",
+          "ziel": "testcontainers",
+          "art": "paket"
+        },
+        {
+          "von": "vitest",
+          "ziel": "vitest",
+          "art": "paket"
+        }
+      ]
+    }
+  ]
+}

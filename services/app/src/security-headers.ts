@@ -71,6 +71,19 @@ export const WORD_ADDIN_CSP = wordAddinCsp();
 // deshalb auch dort, wo niemand einen Proxy einrichtet.
 export const UPGRADE_INSECURE_REQUESTS = "upgrade-insecure-requests";
 
+// Aufnahme `gesamt-tls-betrieb` · R-0837 (KLLM-73): EIN QUELLSTAND FÜR INSEL UND PRODUKTION.
+//
+// Der Inselbauer (`scripts/insel/build-current-release.mjs`) schrieb früher im ausgelieferten Paket
+// `hsts: false` und `upgradeInsecureRequests: null` in `server.ts` — ein Eingriff, der vom
+// Quellstand abwich und seit dem Umzug der Registrierung hierher ins Leere griff. Er ist entfernt.
+// Was lokal ohne Zertifikat die weiße Seite erzeugte, ist die Direktive oben; sie steht nur noch
+// auf echtem HTTPS. HSTS bleibt bewusst auf jeder Antwort: ein Browser wertet den Kopf nur aus,
+// wenn er ihn über eine fehlerfreie HTTPS-Verbindung erhält (RFC 6797 §8.1), auf plain HTTP greift
+// er also nicht. An `isHttpsRequest` gekoppelt fiele er in der Produktion weg, solange der Proxy
+// weder vertraut (`KLARWERK_TRUST_PROXY`) noch per TLS angebunden ist (R-2057) — dort aber muss er
+// greifen. Die Insel startet ebenfalls mit NODE_ENV=production; NODE_ENV trennt die Wege nicht.
+// Belegt in `tests/app/csp-upgrade-insecure-requests.test.ts` (R-0837).
+
 // Ist DIESE Antwort wirklich über HTTPS unterwegs?
 //
 // `request.protocol` ist Fastifys eigene Auskunft. Ohne Proxy liest sie den TLS-Zustand des Sockets

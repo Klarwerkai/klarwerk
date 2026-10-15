@@ -103,6 +103,9 @@ import type {
   KoVersionSnapshot,
   KuratierteKanteAnsicht,
   KuratierteKanten,
+  LagebildBereich,
+  LagebildWerte,
+  LagebildWerteEingabe,
   LearningPath,
   Lesevariante,
   LesevariantenLadeBilanz,
@@ -1531,6 +1534,13 @@ export const endpoints = {
       api.put<{ entry: RetirementEntry | null }>(
         `/management/profiles/retirement/${encodeURIComponent(userId)}`,
         { horizonMonths },
+      ),
+    // produkt:20261013:lagebild-reale-werte-eingabe: reale Eingangswerte je sichtbarem Bereich.
+    lagebildWerte: () => api.get<{ bereiche: LagebildBereich[] }>("/management/lagebild-werte"),
+    setLagebildWerte: (bereich: string, body: LagebildWerteEingabe) =>
+      api.put<{ eintrag: LagebildWerte; wiederholt: boolean }>(
+        `/management/lagebild-werte/${encodeURIComponent(bereich)}`,
+        body,
       ),
   },
   // SCRUM-165: read-only Einsicht in jüngste ModelRuns (nur Metadaten).

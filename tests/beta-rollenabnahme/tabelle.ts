@@ -2489,16 +2489,32 @@ export const TABELLE: Zeile[] = [
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
+  // Frage 6 · die Auskunft der Erfassungsseite über die EIGENE Testbibliothek. Ab `ko.create`; die
+  // Bühne setzt keine Zuordnung, also antwortet sie jedem berechtigten Konto 200 mit
+  // `zugeordnet: false` — ohne Abruf an eine Gegenstelle.
+  {
+    gruppe: "sharepointImportRoutes",
+    methode: "GET",
+    pfad: "/api/import/sharepoint/testbibliothek",
+    belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:558",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
   // JOB 4086 · die zwei Türen des SharePoint-Imports. Sie stehen hier VOLLSTÄNDIG in der Abnahme
   // und nicht in der Restliste, und das geht, weil beide OHNE hinterlegte Zugangsdaten gar nichts
   // anrichten: der Adapter kommt nicht zustande, die Antwort ist ein 503 vor jedem Effekt. Die
   // Bühne misst damit genau das, was sie messen soll — das Rechtetor.
+  //
+  // Frage 6 (11.10.2026): das Routenrecht ist jetzt `ko.create`, dahinter die eigene Testbibliothek
+  // des Kontos. Diese Bühne setzt KEINE Zuordnung (`KLARWERK_SHAREPOINT_TESTBIBLIOTHEKEN`), also
+  // bleibt das Soll unverändert NUR_ADMIN — ein Fachkonto ohne zugeordnete Bibliothek kommt nicht
+  // hinein. Der Weg MIT Zuordnung steht in `tests/demo-testbibliothek/`.
   {
     gruppe: "sharepointImportRoutes",
     methode: "POST",
     pfad: "/api/admin/import/sharepoint/files",
     belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:190",
-    tor: "users.manage",
+    tor: "ko.create + eigene Testbibliothek, sonst users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
   },
@@ -2507,7 +2523,7 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/admin/import/sharepoint/apply",
     belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:229",
-    tor: "users.manage",
+    tor: "ko.create + eigene Testbibliothek, sonst users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
   },
@@ -2517,7 +2533,7 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/admin/import/sharepoint/folder-apply",
     belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:554",
-    tor: "users.manage",
+    tor: "ko.create + eigene Testbibliothek, sonst users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
   },
@@ -2954,7 +2970,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "managementRoutes",
     methode: "GET",
     pfad: "/api/management/snapshot",
-    belegstelle: "services/app/src/routes/management-routes.ts:19",
+    belegstelle: "services/app/src/routes/management-routes.ts:133",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
@@ -2964,7 +2980,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "managementRoutes",
     methode: "GET",
     pfad: "/api/management/risk-horizon",
-    belegstelle: "services/app/src/routes/management-routes.ts:33",
+    belegstelle: "services/app/src/routes/management-routes.ts:153",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
@@ -2972,7 +2988,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "managementRoutes",
     methode: "GET",
     pfad: "/api/management/profiles",
-    belegstelle: "services/app/src/routes/management-routes.ts:45",
+    belegstelle: "services/app/src/routes/management-routes.ts:165",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
@@ -2980,7 +2996,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "managementRoutes",
     methode: "PUT",
     pfad: "/api/management/profiles/category",
-    belegstelle: "services/app/src/routes/management-routes.ts:57",
+    belegstelle: "services/app/src/routes/management-routes.ts:177",
     tor: "users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
@@ -2990,8 +3006,30 @@ export const TABELLE: Zeile[] = [
     methode: "PUT",
     pfad: "/api/management/profiles/retirement/gibt-es-nicht",
     route: "/api/management/profiles/retirement/:userId",
-    belegstelle: "services/app/src/routes/management-routes.ts:69",
+    belegstelle: "services/app/src/routes/management-routes.ts:189",
     tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  // produkt:20261013:lagebild-reale-werte-eingabe: die realen Lagebild-Werte. Lesen jede lesende
+  // Rolle (nur sichtbare Bereiche); die Werte für das ganze Unternehmen (`gesamt`) pflegt nur die
+  // Verwaltung — das Tor `ko.create` lässt Experte und Controller durch, das Bereichsrecht weist sie
+  // mit 403 ab. Der Admin erreicht mit leerem Rumpf die Eingabeprüfung (400).
+  {
+    gruppe: "managementRoutes",
+    methode: "GET",
+    pfad: "/api/management/lagebild-werte",
+    belegstelle: "services/app/src/routes/management-routes.ts:67",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "managementRoutes",
+    methode: "PUT",
+    pfad: "/api/management/lagebild-werte/gesamt",
+    route: "/api/management/lagebild-werte/:bereich",
+    belegstelle: "services/app/src/routes/management-routes.ts:81",
+    tor: "ko.create, dazu Bereichsrecht (gesamt: users.manage)",
     payload: {},
     erwartet: NUR_ADMIN,
   },
@@ -3504,6 +3542,58 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/admin-routes.ts:443",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
+  },
+  // produkt:20261013:produktbudget-anwender-admin (PBE-05): die Produktbudgets — Lesen und Ändern
+  // allein mit `users.manage`. ZUSTANDSFREI GEFAHREN: der PUT trägt keinen Betrag und endet für den
+  // Admin in 400, ohne etwas zu schreiben; gemessen wird die TÜR.
+  {
+    gruppe: "produktbudgetRoutes",
+    methode: "GET",
+    pfad: "/api/admin/produktbudget",
+    belegstelle: "services/app/src/routes/produktbudget-routes.ts:78",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "produktbudgetRoutes",
+    methode: "PUT",
+    pfad: "/api/admin/produktbudget/perplexity-poc",
+    route: "/api/admin/produktbudget/:bereich",
+    belegstelle: "services/app/src/routes/produktbudget-routes.ts:91",
+    tor: "users.manage",
+    payload: { aenderungId: "rollenabnahme-probe" },
+    erwartet: NUR_ADMIN,
+  },
+  // PBE-12: die Zuweisung eines Kontos (nur Verwaltung) und das eigene Unterlimit (jedes Konto mit
+  // `ko.read`, nur für sich). ZUSTANDSFREI: die Zuweisung zielt auf ein unbekanntes Konto (Admin
+  // 404), das Unterlimit trägt keinen Betrag (400) — gemessen wird die TÜR.
+  {
+    gruppe: "produktbudgetRoutes",
+    methode: "PUT",
+    pfad: "/api/admin/produktbudget/perplexity-poc/konten/gibt-es-nicht",
+    route: "/api/admin/produktbudget/:bereich/konten/:konto",
+    belegstelle: "services/app/src/routes/produktbudget-routes.ts:132",
+    tor: "users.manage",
+    payload: { zuweisung: "5", fassung: 0 },
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "produktbudgetRoutes",
+    methode: "GET",
+    pfad: "/api/me/produktbudget",
+    belegstelle: "services/app/src/routes/produktbudget-routes.ts:175",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "produktbudgetRoutes",
+    methode: "PUT",
+    pfad: "/api/me/produktbudget/perplexity-poc",
+    route: "/api/me/produktbudget/:bereich",
+    belegstelle: "services/app/src/routes/produktbudget-routes.ts:188",
+    tor: "ko.read",
+    payload: { fassung: 0 },
+    erwartet: NUR_LESEN,
   },
   {
     gruppe: "askRoutes",
