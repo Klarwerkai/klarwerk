@@ -595,6 +595,77 @@ export async function vollLesbar(
   return true;
 }
 
+/** Alle Eingaben eines Datenpunkts — aus dem Rechenweg UND aus früheren Rechenwegen der Historie. */
+function eingabeKennungen(dp: Datenpunkt): Set<string> {
+  const ids = new Set<string>();
+  const von = (r: unknown) => {
+    if (istObjekt(r) && Array.isArray(r.eingaben)) {
+      for (const e of r.eingaben) {
+        if (istObjekt(e) && typeof e.datenpunktId === "string") {
+          ids.add(e.datenpunktId);
+        }
+      }
+    }
+  };
+  von(dp.rechenweg);
+  for (const k of dp.korrekturen) {
+    von(k.vorher.rechenweg);
+  }
+  return ids;
+}
+
+/**
+ * Die Tiefe der Herkunftskette — dieselbe Zählung wie `vollLesbar`: 0 ohne Eingaben, sonst 1 plus
+ * die größte Tiefe der Eingaben (auch der Historie). Gezählt wird höchstens bis `grenze + 1`; mehr
+ * braucht die Entscheidung nicht.
+ */
+export async function kettentiefe(
+  dp: Datenpunkt,
+  u: DatenUmgebung,
+  grenze = KETTENTIEFE + 1,
+): Promise<number> {
+  const ids = eingabeKennungen(dp);
+  if (ids.size === 0) {
+    return 0;
+  }
+  if (grenze <= 0) {
+    return 1;
+  }
+  let tiefste = 0;
+  for (const id of ids) {
+    const ein = await u.datenpunkt(id);
+    if (ein) {
+      tiefste = Math.max(tiefste, await kettentiefe(ein, u, grenze - 1));
+    }
+  }
+  return 1 + tiefste;
+}
+
+/**
+ * Nacharbeit 5 (Bens Befund) — DER ENTSTEHENDE GESAMTGRAPH WIRD VOR DEM SCHREIBEN GEPRÜFT.
+ *
+ * Jede Eingabe für sich kann lesbar sein und der neue Datenpunkt trotzdem eine Stufe zu tief hängen:
+ * X9 = X8 + Z mit X8 bereits 8 Stufen tief. Gespeichert wäre X9 danach für niemanden erreichbar
+ * (Abruf 404, kein Listeneintrag), weil Lesen und Status die Herkunft nur bis `KETTENTIEFE` verfolgen.
+ * Deshalb prüfen Erfassen und Korrigieren den fertigen Datenpunkt — mit Historie — vor jeder
+ * Speicherung: zu tief → verständlich abgelehnt, nichts geschrieben; danach muss er für den
+ * Handelnden vollständig lesbar sein, sonst ebenfalls keine Speicherung.
+ */
+export async function pruefeHerkunftsgraph(dp: Datenpunkt, u: DatenUmgebung): Promise<void> {
+  if ((await kettentiefe(dp, u)) > KETTENTIEFE) {
+    throw new DatenFehler(
+      "ungueltig",
+      `Die Herkunftskette wäre tiefer als ${KETTENTIEFE} Stufen (Rechenweg auf Rechenweg). Unterstützt sind höchstens ${KETTENTIEFE}; nichts wurde gespeichert. Bitte mit weniger tief abgeleiteten Eingaben rechnen.`,
+    );
+  }
+  if (!(await vollLesbar(dp, u))) {
+    throw new DatenFehler(
+      "ungueltig",
+      "Die entstehende Herkunft wäre für dich nicht vollständig lesbar; nichts wurde gespeichert.",
+    );
+  }
+}
+
 /**
  * Nacharbeit 2 (Bens Befund 2) — EINE FRÜHERE DATENFASSUNG, aus der Korrekturhistorie zurückgerechnet.
  * Jede Korrektur hält den Stand VOR ihr fest (`vorher`, `null` = Angabe fehlte); rückwärts angewandt
@@ -1217,7 +1288,7 @@ export async function erfasse(
     ...opt("annahmen", auftrag.annahmen),
     ...opt("modellbezug", auftrag.modellbezug),
   };
-  return {
+  const neu: Datenpunkt = {
     ...inhalt,
     id: h.kennung(),
     heimatKoId: heimat.id,
@@ -1229,6 +1300,8 @@ export async function erfasse(
     bindungen: ortLage ? [bindungAus(ortLage, heimat, 1, h)] : [],
     korrekturen: [],
   };
+  await pruefeHerkunftsgraph(neu, u);
+  return neu;
 }
 
 /**
@@ -1491,7 +1564,13 @@ export async function korrigiere(
       ),
     );
   }
-  return { ...ergebnis, pruefungen: [...dp.pruefungen, ...maschinelleNeu] };
+  const korrigiert: Datenpunkt = {
+    ...ergebnis,
+    pruefungen: [...dp.pruefungen, ...maschinelleNeu],
+  };
+  // Nacharbeit 5: auch eine Korrektur oder Neuberechnung speichert nur einen tragfähigen Graphen.
+  await pruefeHerkunftsgraph(korrigiert, u);
+  return korrigiert;
 }
 
 // ------------------------------------------------------------------------------------------------

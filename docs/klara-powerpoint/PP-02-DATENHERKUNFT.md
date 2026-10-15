@@ -62,6 +62,10 @@ getrennt, je mit Stand (bestanden, Klärungsbedarf, offen, überholt, trifft nic
   oder erhält eine tiefere Eingabe eine neue Fassung, zeigen alle abgeleiteten Werte
   „Überprüfung nötig“ mit dem Weg zur Ursache („Über die Eingabe „112“: Über die Eingabe „12 €“: …“).
   Aktualität ist deshalb auch für berechnete Werte eine erforderliche Dimension.
+- Nacharbeit 5: Herkunftsketten sind auf **8 Stufen** (Rechenweg auf Rechenweg) begrenzt — dieselbe
+  Tiefe, bis zu der Rechte und Aktualität verfolgt werden. Erfassen, Korrektur und Neuberechnung prüfen
+  den entstehenden Gesamtgraphen samt Historie **vor** dem Speichern; eine tiefere Kette wird
+  verständlich abgelehnt, es wird nichts gespeichert, der Bestand bleibt unverändert.
 - Erkennung: Direkt übernommene Werte prüft der Server maschinell (der Wert steht an der Fundstelle);
   OCR-Werte sind **nie** maschinell bestätigt. Eine solche Teilprüfung validiert nicht.
 - **Validiert** heißt: alle für diese Datenfassung erforderlichen Dimensionen bestanden, einschließlich

@@ -1138,4 +1138,72 @@ describe("PP-02 · Datenherkunft und Bindung an Folien", () => {
       "Über die Eingabe „112“: Eingabe „12 €“ hat jetzt Fassung 2 (gerechnet mit 1)",
     );
   });
+
+  it("D12 · der entstehende Gesamtgraph wird vor dem Speichern geprüft: Grenze 8 erreichbar, Stufe 9 abgelehnt", async () => {
+    // Nacharbeit 5 (Bens Befund): X0 und Z manuell, X1 = X0 + Z, …, Xn = X(n-1) + Z.
+    const neu = async (rumpf: Record<string, unknown>) =>
+      rufe(w, "anna", "POST", `/api/kos/${koId}/datenpunkte`, rumpf);
+    const liste = async () =>
+      (await rufe(w, "anna", "GET", `/api/kos/${koId}/datenpunkte`)).body.datenpunkte.map(
+        (d: Koerper) => d.id,
+      ) as string[];
+    const z = (await neu({ art: "zahl", wert: "1", erfassung: "manuell" })).body.id as string;
+    const kette: string[] = [
+      (await neu({ art: "zahl", wert: "1", erfassung: "manuell" })).body.id as string,
+    ];
+    for (let n = 1; n <= 8; n += 1) {
+      const r = await neu({
+        art: "zahl",
+        wert: String(n + 1),
+        erfassung: "berechnet",
+        rechenweg: { art: "summe", eingaben: [kette[n - 1], z], stellen: 0 },
+      });
+      expect(r.status, `Stufe ${n}`).toBe(201);
+      kette.push(r.body.id as string);
+    }
+    // Stufe 8 (die Grenze) ist unterstützt: abrufbar, mit ganzer Eingabekette, in der Liste.
+    const x8 = kette[8] as string;
+    const abruf = await rufe(w, "anna", "GET", `/api/datenpunkte/${x8}`);
+    expect(abruf.status).toBe(200);
+    let tiefe = 0;
+    for (let s = abruf.body; s.rechenweg; s = s.rechenweg.eingaben[0].datenpunkt) {
+      expect(s.rechenweg.eingaben[0].lesbar).toBe(true);
+      tiefe += 1;
+    }
+    expect(tiefe).toBe(8);
+    const vorher = await liste();
+    expect(vorher).toContain(x8);
+
+    // Stufe 9 wird VOR dem Speichern abgelehnt — verständlich, ohne Objekt, Bestand unverändert.
+    const x9 = await neu({
+      art: "zahl",
+      wert: "10",
+      erfassung: "berechnet",
+      rechenweg: { art: "summe", eingaben: [x8, z], stellen: 0 },
+    });
+    expect(x9.status).toBe(400);
+    expect(x9.body.message).toContain("höchstens 8");
+    expect(x9.body.message).toContain("nichts wurde gespeichert");
+    expect(await liste()).toEqual(vorher);
+    expect((await rufe(w, "anna", "GET", `/api/datenpunkte/${x8}`)).status).toBe(200);
+
+    // Korrektur und Neuberechnung an der Grenze bleiben möglich und erreichbar.
+    const neuBerechnet = await rufe(w, "anna", "POST", `/api/datenpunkte/${x8}/korrektur`, {
+      fassung: 1,
+      neuBerechnen: true,
+      grund: "Neuberechnung an der Grenze",
+    });
+    expect(neuBerechnet.status).toBe(200);
+    expect(neuBerechnet.body.wert).toBe("9");
+    expect(neuBerechnet.body.fassung).toBe(2);
+    const zeitraum = await rufe(w, "anna", "POST", `/api/datenpunkte/${x8}/korrektur`, {
+      fassung: 2,
+      zeitraum: "2025",
+      grund: "Zeitraum ergänzt",
+    });
+    expect(zeitraum.status).toBe(200);
+    expect(zeitraum.body.fassung).toBe(3);
+    expect((await rufe(w, "anna", "GET", `/api/datenpunkte/${x8}`)).status).toBe(200);
+    expect(await liste()).toEqual(vorher);
+  });
 });
