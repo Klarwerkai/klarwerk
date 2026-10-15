@@ -226,9 +226,7 @@ describe("P13 · Kapitalsicht: Geldwert nur aus gemessenen Fällen", () => {
 
     // Messart gewählt, aber noch kein Fall: der Grund ändert sich, ein Wert entsteht nicht.
     tippe(element(geld, "p13-messart"), "mensch");
-    expect(element(geld, "p13-grund").textContent).toBe(
-      de("lagebild.geld.grund.keine_faelle"),
-    );
+    expect(element(geld, "p13-grund").textContent).toBe(de("lagebild.geld.grund.keine_faelle"));
   });
 
   it("G2 · K6/K7: Formel mit Annahmen; Mehraufwand und Zusatzkosten bleiben in der Rechnung", async () => {
@@ -239,9 +237,7 @@ describe("P13 · Kapitalsicht: Geldwert nur aus gemessenen Fällen", () => {
     klick(element(geld, "p13-fall-hinzufuegen"));
     fallEintragen(geld, 1, { id: "F-2", ohne: "40", mit: "20", vergleichbar: true });
     // Ohne Kostensatz kein Wert — auch nicht mit Fällen.
-    expect(element(geld, "p13-grund").textContent).toBe(
-      de("lagebild.geld.grund.kostensatz_fehlt"),
-    );
+    expect(element(geld, "p13-grund").textContent).toBe(de("lagebild.geld.grund.kostensatz_fehlt"));
     tippe(element(geld, "p13-kostensatz"), "60");
     // Ohne Angabe der Zusatzkosten kein Wert — sie fallen nicht still weg.
     expect(element(geld, "p13-grund").textContent).toBe(
@@ -296,9 +292,7 @@ describe("P13 · Kapitalsicht: Reifegrad und leerer Bestand", () => {
       const stufe = s.dataset.stufe ?? "";
       expect(s.textContent).toContain(de(`lagebild.reife.text.${stufe}`));
     }
-    expect(element(reife, "p13-keine-belege").textContent).toBe(
-      de("lagebild.reife.keineBelege"),
-    );
+    expect(element(reife, "p13-keine-belege").textContent).toBe(de("lagebild.reife.keineBelege"));
     // Der Snapshot meldet „Stufe 3/5 · Validieren“ — die Karte gibt das nicht mehr aus.
     const karte = reife.parentElement as HTMLElement;
     expect(karte.textContent).not.toContain("3/5");

@@ -223,10 +223,7 @@ export function LagebildGeldwert(): JSX.Element {
             >
               {t("lagebild.geld.netto")} {eur(ergebnis.nettoEur)}
             </span>
-            <span
-              data-testid="p13-formel"
-              className="block font-mono text-[11px] text-muted-2"
-            >
+            <span data-testid="p13-formel" className="block font-mono text-[11px] text-muted-2">
               {t("lagebild.geld.formel", {
                 fallzahl: ergebnis.fallzahl,
                 minuten: ergebnis.minutenDifferenz,
