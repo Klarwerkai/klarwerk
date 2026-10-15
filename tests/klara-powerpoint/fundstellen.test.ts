@@ -285,6 +285,13 @@ describe("F5 · der Plan baut auf dem Bestand auf und führt den Stand je PP-ID"
       if (n === 1) {
         expect(s[1], pp).toContain("`produkt:20261015:klara-powerpoint-bestand` · 1");
         expect(s[2], pp).not.toMatch(/geliefert|geprüft/);
+      } else if (n === 2) {
+        // PP-02 ist ein eigener Produktionsauftrag (produkt:20261015:klara-powerpoint-datenherkunft);
+        // sein Stand nennt Original und Revision, nie „geliefert“ oder „geprüft“ vor Ben und Lieferung.
+        expect(s[1], pp).toContain("`produkt:20261015:klara-powerpoint-datenherkunft` · 1");
+        expect(s[2], pp).toMatch(/^im Bau/);
+        expect(s[2], pp).not.toMatch(/geliefert|geprüft/);
+        expect(s[5], pp).not.toBe("—");
       } else {
         expect(s[2], pp).toBe("vorbereitet");
         expect(s[5], pp).not.toBe("—");

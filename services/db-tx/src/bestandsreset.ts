@@ -133,6 +133,9 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   "office_sitzungen",
   //   BPA-16: Meetingbezüge — an Dateiobjekte (`objects`, unten) gebunden, fallen mit ihnen.
   "meeting_dokumentbezuege",
+  //   PP-02: Datenpunkte mit Herkunft und Folienbindung — an Artikel und Anhänge gebunden, fallen
+  //   mit dem Wissen.
+  "praesentation_datenpunkte",
   //   Zustellungen einer Veröffentlichung:
   "veroeffentlichung_zustellungen",
   "meldung_zustellstatus",

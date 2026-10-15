@@ -1187,6 +1187,77 @@ export const TABELLE: Zeile[] = [
     tor: "ko.create",
     erwartet: AB_EXPERTE,
   },
+  // produkt:20261015:klara-powerpoint-datenherkunft (PP-02) · Datenherkunft und Bindung an Folien.
+  // Lesen mit `ko.read` (wie die Lage am Office-Anhang), Erfassen, Binden, Prüfen und Korrigieren mit
+  // `ko.create`; die fachliche Freigabe verlangt im Handler zusätzlich `ko.validate`. Die erfundenen
+  // Kennungen enden hinter dem Tor im 404, BEVOR der Rumpf gelesen wird — es entsteht nichts.
+  {
+    gruppe: "praesentationDatenRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/folien-daten",
+    route: "/api/kos/:id/office/:anhangId/folien-daten",
+    belegstelle: "services/app/src/routes/praesentation-daten-routes.ts:217",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "praesentationDatenRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/datenpunkte",
+    route: "/api/kos/:id/datenpunkte",
+    belegstelle: "services/app/src/routes/praesentation-daten-routes.ts:257",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "praesentationDatenRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/datenpunkte",
+    route: "/api/kos/:id/datenpunkte",
+    belegstelle: "services/app/src/routes/praesentation-daten-routes.ts:273",
+    tor: "ko.create",
+    payload: { art: "zahl", wert: "1", erfassung: "manuell" },
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "praesentationDatenRoutes",
+    methode: "GET",
+    pfad: "/api/datenpunkte/gibt-es-nicht",
+    route: "/api/datenpunkte/:dpId",
+    belegstelle: "services/app/src/routes/praesentation-daten-routes.ts:296",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "praesentationDatenRoutes",
+    methode: "POST",
+    pfad: "/api/datenpunkte/gibt-es-nicht/bindungen",
+    route: "/api/datenpunkte/:dpId/bindungen",
+    belegstelle: "services/app/src/routes/praesentation-daten-routes.ts:311",
+    tor: "ko.create",
+    payload: { koId: "gibt-es-nicht" },
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "praesentationDatenRoutes",
+    methode: "POST",
+    pfad: "/api/datenpunkte/gibt-es-nicht/pruefungen",
+    route: "/api/datenpunkte/:dpId/pruefungen",
+    belegstelle: "services/app/src/routes/praesentation-daten-routes.ts:344",
+    tor: "ko.create",
+    payload: { dimension: "struktur", ergebnis: "bestanden", fassung: 1 },
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "praesentationDatenRoutes",
+    methode: "POST",
+    pfad: "/api/datenpunkte/gibt-es-nicht/korrektur",
+    route: "/api/datenpunkte/:dpId/korrektur",
+    belegstelle: "services/app/src/routes/praesentation-daten-routes.ts:391",
+    tor: "ko.create",
+    payload: { grund: "Probe", fassung: 1 },
+    erwartet: AB_EXPERTE,
+  },
   // Die WOPI-Türen spricht der Office-Editor SERVER-ZU-SERVER an, ohne Klarwerk-Sitzung. Ihr Tor
   // ist die signierte Zugangsmarke je Anhang, geprüft VOR dem Parsen (`markenRiegel`), danach die
   // frisch gelesenen Rechte des Markeninhabers. Eine Sitzungsrolle entscheidet hier nichts.

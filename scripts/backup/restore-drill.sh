@@ -542,6 +542,7 @@ PFLICHTTABELLEN=(
   verstaendnis_fragensaetze
   verstaendnis_versuche
   meeting_dokumentbezuege
+  praesentation_datenpunkte
   klara_notizen
   klara_aufgaben
   produktbudget

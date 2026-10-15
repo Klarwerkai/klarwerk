@@ -35,6 +35,7 @@ import {
   speicherNachricht,
 } from "../../lib/officeEditor";
 import { ExterneQuelleKennung } from "../ko/ExterneQuelleKennung";
+import { FolienDaten } from "./FolienDaten";
 import { OfficeBildBefunde } from "./OfficeBildBefunde";
 
 interface Meldung {
@@ -323,6 +324,9 @@ function OfficeAnhangFlaeche({
           angefragtGeschlossen={angefragtGeschlossen}
         />
       ) : null}
+
+      {/* PP-02: Zahlen und Aussagen dieser Präsentation mit ihrer Herkunft (nur .pptx). */}
+      {d?.endung === "pptx" ? <FolienDaten koId={ko.id} anhangId={anhangId} /> : null}
 
       {d ? <Verlauf lage={d} datum={datum} /> : null}
 
