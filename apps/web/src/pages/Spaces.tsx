@@ -13,10 +13,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   type ArtikelZeile,
+  type Loeschvorschau,
+  SPACE_KONTEXTE,
   type SpaceEingabe,
+  type SpaceKontext,
   type SpaceRecht,
   type SpaceSicht,
   type SpaceZugang,
@@ -41,6 +44,7 @@ function leereEingabe(): SpaceEingabe {
     zugang: "mitglieder",
     mitglieder: [],
     ansichten: [],
+    kontext: "firma",
   };
 }
 
@@ -55,7 +59,26 @@ function eingabeAus(s: SpaceSicht): SpaceEingabe {
     teams: (s.teams ?? []).map((b) => ({ team: b.team, recht: b.recht })),
     gruppe: s.gruppe ?? "",
     regeln: s.regeln ?? "",
+    kontext: s.kontext,
+    ...(s.partner ? { partner: s.partner } : {}),
   };
+}
+
+/**
+ * Firmenfilter (Frage 51): beim Wechsel des Kontexts den einzig zulässigen Zugang mitsetzen —
+ * Partnerbereich nur für Mitglieder, öffentliche Quellen für alle. Der Server prüft dasselbe.
+ */
+function mitKontext(form: SpaceEingabe, kontext: SpaceKontext): SpaceEingabe {
+  const { partner: _alt, ...ohnePartner } = form;
+  const basis =
+    kontext === "partner" ? { ...ohnePartner, partner: form.partner ?? "" } : ohnePartner;
+  if (kontext === "partner") {
+    return { ...basis, kontext, zugang: "mitglieder" };
+  }
+  if (kontext === "oeffentlich") {
+    return { ...basis, kontext, zugang: "alle" };
+  }
+  return { ...basis, kontext };
 }
 
 function SpaceFormular({
@@ -154,17 +177,48 @@ function SpaceFormular({
           onChange={(e) => setForm({ ...form, regeln: e.target.value })}
         />
       </Field>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label={t("spaces.feld.kontext")}>
+          <select
+            data-testid="space-kontext"
+            className={FELD}
+            value={form.kontext}
+            onChange={(e) => setForm(mitKontext(form, e.target.value as SpaceKontext))}
+          >
+            {SPACE_KONTEXTE.map((k) => (
+              <option key={k} value={k}>
+                {t(`spaces.kontext.${k}`)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {form.kontext === "partner" ? (
+          <Field label={t("spaces.feld.partner")}>
+            <TextInput
+              data-testid="space-partner"
+              value={form.partner ?? ""}
+              onChange={(e) => setForm({ ...form, partner: e.target.value })}
+            />
+          </Field>
+        ) : null}
+      </div>
       <Field label={t("spaces.feld.zugang")}>
         <select
           data-testid="space-zugang"
           className={FELD}
           value={form.zugang}
+          disabled={form.kontext !== "firma"}
           onChange={(e) => setForm({ ...form, zugang: e.target.value as SpaceZugang })}
         >
           <option value="mitglieder">{t("spaces.feld.zugangMitglieder")}</option>
           <option value="alle">{t("spaces.feld.zugangAlle")}</option>
         </select>
       </Field>
+      {form.kontext !== "firma" ? (
+        <p className="text-[12px] text-muted-2" data-testid="space-kontext-hinweis">
+          {t(`spaces.kontextHinweis.${form.kontext}`)}
+        </p>
+      ) : null}
       <fieldset className="space-y-2 rounded-btn border border-hairline p-3">
         <legend className="px-1 text-[12.5px] font-semibold text-ink">
           {t("spaces.feld.mitglieder")}
@@ -417,6 +471,11 @@ function SpaceKopf({ s }: { s: SpaceSicht }): JSX.Element {
       <p className="text-[12.5px] text-muted" data-testid="space-zustaendig">
         {t("spaces.detail.zustaendig", { name: s.verantwortlichName ?? s.verantwortlich })}
       </p>
+      <p className="text-[12px] text-muted-2" data-testid="space-kontext-anzeige">
+        {s.kontext === "partner" && s.partner
+          ? t("spaces.kontextPartnerName", { partner: s.partner })
+          : t(`spaces.kontext.${s.kontext}`)}
+      </p>
       <p className="text-[12px] text-muted-2">
         {t(`spaces.zugang.${s.zugang}`)} · {t(`spaces.eigenesRecht.${s.eigenesRecht}`)} ·{" "}
         <span data-testid="space-mitgliederzahl">
@@ -499,11 +558,112 @@ function Artikelliste({ artikel }: { artikel: ArtikelZeile[] }): JSX.Element {
   );
 }
 
+// aufnahme:20260922:gesamt-wissensprojekte — Löschen erst nach der Vorschau der Folgen. Trägt
+// noch ein Artikel den Space, bleibt der Knopf gesperrt und die Vorschau nennt, was vorher zu
+// verschieben ist (über die Spacezeile am Artikel, mit Rechtevorschau). Der Server prüft dasselbe.
+function SpaceLoeschen({ id, onAbbrechen }: { id: string; onAbbrechen: () => void }): JSX.Element {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const vorschau = useQuery({
+    queryKey: ["space", id, "loeschung"],
+    queryFn: () => spacesApi.loeschVorschau(id),
+    staleTime: 0,
+  });
+  const loeschen = useMutation({
+    mutationFn: (v: Loeschvorschau) => spacesApi.loeschen(v),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["spaces"] });
+      qc.removeQueries({ queryKey: ["space", id] });
+      navigate("/spaces?geloescht=1");
+    },
+    onError: async () => {
+      await vorschau.refetch();
+    },
+  });
+  const v = vorschau.data;
+  return (
+    <Card className="mb-4" data-testid="space-loeschen">
+      <SectionLabel>{t("spaces.loeschen.titel")}</SectionLabel>
+      {vorschau.isPending ? <p className="text-sm text-muted">{t("spaces.seite.laedt")}</p> : null}
+      {vorschau.isError ? (
+        <p role="alert" className="text-[12.5px] text-muted">
+          {t(spaceFehlerSchluessel(vorschau.error))}
+        </p>
+      ) : null}
+      {v ? (
+        <div className="space-y-2 text-[13px] text-text">
+          <p data-testid="space-loeschen-folgen">
+            {t("spaces.loeschen.folgen", { ansichten: v.ansichten, mitglieder: v.mitglieder })}
+          </p>
+          <p className="text-[12px] text-muted-2">{t("spaces.loeschen.bleibt")}</p>
+          {v.darfLoeschen ? (
+            <p data-testid="space-loeschen-leer">{t("spaces.loeschen.leer")}</p>
+          ) : v.grund === "EXISTENZRECHT_FEHLT" ? (
+            <output data-testid="space-loeschen-existenzrecht" className="block">
+              {t("spaces.loeschen.existenzrecht")}
+            </output>
+          ) : (
+            <output data-testid="space-loeschen-gesperrt" className="block space-y-1">
+              <p className="font-semibold text-ink">{t("spaces.loeschen.nichtLeer")}</p>
+              {v.artikel.length > 0 ? (
+                <ul className="space-y-1">
+                  {v.artikel.map((a) => (
+                    <li key={a.id} data-testid="space-loeschen-artikel" data-ko={a.id}>
+                      <Link
+                        to={`/wissen/${encodeURIComponent(a.id)}`}
+                        className="text-brand-text hover:underline"
+                      >
+                        {a.title}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {v.imPapierkorb > 0 ? (
+                <p data-testid="space-loeschen-papierkorb">
+                  {t("spaces.loeschen.papierkorb", { anzahl: v.imPapierkorb })}
+                </p>
+              ) : null}
+              <p className="text-[12px] text-muted-2">{t("spaces.loeschen.weg")}</p>
+            </output>
+          )}
+        </div>
+      ) : null}
+      {loeschen.isError ? (
+        <p
+          role="alert"
+          data-testid="space-loeschen-fehler"
+          className="mt-2 text-[12.5px] text-trust-crit-text"
+        >
+          {t(spaceFehlerSchluessel(loeschen.error))}
+        </p>
+      ) : null}
+      <div className="mt-3 flex gap-2">
+        <Button
+          variant="primary"
+          data-testid="space-loeschen-bestaetigen"
+          disabled={!v?.darfLoeschen || loeschen.isPending}
+          onClick={() => {
+            if (v) {
+              loeschen.mutate(v);
+            }
+          }}
+        >
+          {t("spaces.loeschen.bestaetigen")}
+        </Button>
+        <Button onClick={onAbbrechen}>{t("spaces.formular.abbrechen")}</Button>
+      </div>
+    </Card>
+  );
+}
+
 function SpaceDetail({ id }: { id: string }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [parameter, setParameter] = useSearchParams();
   const ansicht = parameter.get("ansicht") ?? undefined;
   const [bearbeiten, setBearbeiten] = useState(false);
+  const [loeschen, setLoeschen] = useState(false);
   const [verlauf, setVerlauf] = useState(false);
   const eintrag = useQuery({ queryKey: ["space", id], queryFn: () => spacesApi.eintrag(id) });
   const artikel = useQuery({
@@ -543,9 +703,15 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
                 {t("spaces.seite.bearbeiten")}
               </Button>
             ) : null}
+            {s.darfBearbeiten && !loeschen ? (
+              <Button data-testid="space-loeschen-knopf" onClick={() => setLoeschen(true)}>
+                {t("spaces.loeschen.knopf")}
+              </Button>
+            ) : null}
           </>
         }
       />
+      {loeschen ? <SpaceLoeschen id={s.id} onAbbrechen={() => setLoeschen(false)} /> : null}
       {bearbeiten ? (
         <Card className="mb-4" data-testid="space-pflege">
           <SectionLabel>{t("spaces.seite.bearbeiten")}</SectionLabel>
@@ -646,6 +812,46 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
   );
 }
 
+// Firmenfilter (Frage 51) — die Artikel eines Kontexts. Was erscheint, entscheidet der Server je
+// Artikel (`GET /api/spaces/artikel`); diese Fläche filtert nichts selbst nach.
+function KontextArtikel({ kontext }: { kontext: SpaceKontext }): JSX.Element {
+  const { t } = useTranslation();
+  const [partner, setPartner] = useState("");
+  const daten = useQuery({
+    queryKey: ["spaces", "kontext-artikel", kontext, partner],
+    queryFn: () => spacesApi.kontextArtikel(kontext, partner || undefined),
+  });
+  return (
+    <Card className="mb-4" data-testid="space-kontext-artikel" data-kontext={kontext}>
+      <SectionLabel>
+        {t("spaces.firmenfilter.artikel", { kontext: t(`spaces.kontext.${kontext}`) })}
+      </SectionLabel>
+      {kontext === "partner" && (daten.data?.partnerBereiche.length ?? 0) > 0 ? (
+        <select
+          aria-label={t("spaces.feld.partner")}
+          data-testid="space-filter-partner"
+          className={`${FELD} mb-3`}
+          value={partner}
+          onChange={(e) => setPartner(e.target.value)}
+        >
+          <option value="">{t("spaces.firmenfilter.allePartner")}</option>
+          {(daten.data?.partnerBereiche ?? []).map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+      ) : null}
+      {daten.isError ? (
+        <p role="alert" className="text-[12.5px] text-muted">
+          {t(spaceFehlerSchluessel(daten.error))}
+        </p>
+      ) : null}
+      {daten.isSuccess ? <Artikelliste artikel={daten.data.artikel} /> : null}
+    </Card>
+  );
+}
+
 type StatusFilter = "aktiv" | "archiviert" | "alle";
 
 /** ADMIN-07 (K1): Suche über Name, Zweck, Zuständigkeit, Gruppe und Regeln — ohne Gross/klein. */
@@ -696,9 +902,15 @@ function SpaceKarte({ s }: { s: SpaceSicht }): JSX.Element {
 function SpaceUebersicht(): JSX.Element {
   const { t } = useTranslation();
   const [neu, setNeu] = useState(false);
-  const liste = useQuery({ queryKey: ["spaces"], queryFn: spacesApi.liste });
   // Filter stehen in der Adresse: Neuladen und Rückweg behalten sie.
   const [parameter, setParameter] = useSearchParams();
+  // Firmenfilter (Frage 51): der Kontext grenzt serverseitig ein — Liste und Artikel.
+  const roh = parameter.get("kontext");
+  const kontext = SPACE_KONTEXTE.find((k) => k === roh);
+  const liste = useQuery({
+    queryKey: ["spaces", "liste", kontext ?? "alle"],
+    queryFn: () => spacesApi.liste(kontext),
+  });
   const suche = parameter.get("q") ?? "";
   const status = (parameter.get("status") as StatusFilter | null) ?? "aktiv";
   const zugang = parameter.get("zugang") ?? "";
@@ -749,12 +961,45 @@ function SpaceUebersicht(): JSX.Element {
       <p data-testid="spaces-art-hinweis" className="mb-4 text-[12px] text-muted-2">
         {t("spaces.art.hinweis")}
       </p>
+      {parameter.get("geloescht") ? (
+        <output data-testid="space-geloescht" className="mb-4 block text-[12.5px] text-text">
+          {t("spaces.loeschen.erfolg")}
+        </output>
+      ) : null}
       {neu ? (
         <Card className="mb-4" data-testid="space-pflege">
           <SectionLabel>{t("spaces.seite.neu")}</SectionLabel>
           <SpaceFormular vorlage={null} onFertig={() => setNeu(false)} />
         </Card>
       ) : null}
+      <fieldset className="mb-4" data-testid="space-filter">
+        <legend className="mb-2 text-[12.5px] font-semibold text-ink">
+          {t("spaces.firmenfilter.titel")}
+        </legend>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            data-testid="space-filter-alle"
+            aria-pressed={kontext === undefined}
+            variant={kontext === undefined ? "primary" : "outline"}
+            onClick={() => setze("kontext", "")}
+          >
+            {t("spaces.firmenfilter.alle")}
+          </Button>
+          {SPACE_KONTEXTE.map((k) => (
+            <Button
+              key={k}
+              data-testid="space-filter-kontext"
+              data-kontext={k}
+              aria-pressed={kontext === k}
+              variant={kontext === k ? "primary" : "outline"}
+              onClick={() => setze("kontext", k)}
+            >
+              {t(`spaces.kontext.${k}`)}
+            </Button>
+          ))}
+        </div>
+      </fieldset>
+      {kontext ? <KontextArtikel key={kontext} kontext={kontext} /> : null}
       {liste.isPending ? <p className="text-sm text-muted">{t("spaces.seite.laedt")}</p> : null}
       {liste.isError ? (
         <p role="alert" className="text-sm text-muted">

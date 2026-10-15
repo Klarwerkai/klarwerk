@@ -13,6 +13,7 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+import { BESPRECHUNGEN_PFAD } from "../api/besprechungen";
 import { Button, Card, PageHeader, SectionLabel, cx } from "../components/ui";
 import { extractDocxRich } from "../lib/docx";
 import {
@@ -175,12 +176,23 @@ export function Dokumentfragen(): JSX.Element {
         lead={t("dokumentfragen.lead")}
         pageKey="dokumentfragen"
         actions={
-          <Link
-            to="/fragen"
-            className="text-[12.5px] font-semibold text-brand-text underline-offset-2 hover:underline"
-          >
-            {t("dokumentfragen.zurueck")}
-          </Link>
+          <div className="flex flex-col items-end gap-1">
+            <Link
+              to="/fragen"
+              className="text-[12.5px] font-semibold text-brand-text underline-offset-2 hover:underline"
+            >
+              {t("dokumentfragen.zurueck")}
+            </Link>
+            {/* BPA-16: von hier zu den Präsentationen einer Besprechung — Rückmeldungen aus Folie
+                und Gesprächsstelle öffnen (`pages/Besprechungen.tsx`). */}
+            <Link
+              to={BESPRECHUNGEN_PFAD}
+              data-testid="dokumentfragen-besprechungen"
+              className="text-[12.5px] font-semibold text-brand-text underline-offset-2 hover:underline"
+            >
+              {t("besprechungen.einstieg")}
+            </Link>
+          </div>
         }
       />
       <p

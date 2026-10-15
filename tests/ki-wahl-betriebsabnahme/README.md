@@ -147,6 +147,12 @@ und „nicht erreichbar“ kommen aus derselben Stufenkette wie der Ausführer (
 Server: S8 mit `assist` regelbasiert und „intern“ lokal (verfügbar, nicht „nicht erreichbar“, 1/0
 Modellaufrufe).
 
+**Integration mit main (Nacharbeit 13):** main brachte die Referenzprüfung (REF-02/REF-03) mit dem
+Feld `referenzpruefung` und zog den Adminschreibweg in `konfigurationSchreiben`. Aufgelöst: der
+Rumpf trägt `proSchutzstufe` weiter, die 400-Prüfung unbekannter Felder kennt `referenzpruefung`, die
+Adminkarte hält Schutzstufen und Referenzliste im bestätigten Stand. Konkrete Auswirkung geschlossen:
+`referenzPruefer` sperrt bei „Keine KI“ der Stufe des Laufs (Beleg S9).
+
 **Integration mit main (Nacharbeit 8):** main brachte parallel die Zweitmeinung (R-0305/R-1099) mit
 eigenem Konfigurationsfeld `zweitmeinung` und gelenkter Kette (`lenkung.kette`), den Wissens-Fragebaum
 im Interview (`imageContext`, `options`, R-0604-Kennzeichnung) und die KI-Bremse im Blatt. Aufgelöst

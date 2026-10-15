@@ -23,6 +23,8 @@
 //   S5 · Zurücknehmen (`proSchutzstufe: null`) gibt die vertrauliche Stufe wieder frei.
 //   S7 · (Nacharbeit 8, nach der Integration der Zweitmeinung aus main) „Keine KI" sperrt auch den
 //        gelenkten zweiten Lauf; nicht vertraulich wird weiter gefragt.
+//   S9 · (Nacharbeit 13, nach der Integration der Referenzprüfung aus main) „Keine KI" sperrt auch
+//        den Referenz-Prüfer für vertrauliche Prüfpakete; ohne Regel und nicht vertraulich nicht.
 // ENTSCHEIDUNG Antwort 13 (über BEN): normale Anwender sehen den tatsächlich arbeitenden Dienst je
 // Aufgabe, seine Verfügbarkeit und Einschränkungen:
 //   S6 · `GET /api/reasoner/ausfuehrung` für einen Angemeldeten OHNE Adminrecht: je Aufgabe der
@@ -282,6 +284,40 @@ describe("Antwort 29 · Anbieterwahl je Schutzstufe — gespeichert, wiedergeles
     const grund = zweit.status === "nicht_moeglich" ? zweit.grund : null;
     const hinweis = "GEGENPROBE: die Sperre griff auch ohne „Keine KI“";
     expect(grund, hinweis).not.toBe("nicht_freigegeben");
+  });
+
+  it("S9 · „Keine KI“ sperrt auch den Referenz-Prüfer (REF-02 aus main): vertraulich keiner, nicht vertraulich der lokale", async () => {
+    // Nach der Integration mit main (Nacharbeit 13): der Referenz-Prüfer bekommt Antwortaussagen
+    // und Quellauszüge zu sehen — ein weiterer Empfänger neben Antwort- und Zweitmodell. Ohne eigene
+    // Prüfung erreichte ein vertrauliches Prüfpaket ihn trotz „Keine KI“ für „vertraulich“.
+    const gespeichert = await zuordnen({
+      global: "local",
+      perTask: {},
+      proSchutzstufe: KEINE_KI_VERTRAULICH,
+      referenzpruefung: ["local"],
+    });
+    expect(gespeichert.statusCode, gespeichert.body).toBe(200);
+    // Die Antwort kam (angenommen) von einem ANDEREN Modell — sonst wäre „nicht unabhängig“ der Grund.
+    const antwort = {
+      anbieter: "anderer-dienst",
+      modell: "anderes-modell",
+      stufe: "cloud" as const,
+    };
+
+    const vertraulich = services.reasoner.referenzPruefer(antwort, true);
+    const sperrHinweis = "ein vertrauliches Prüfpaket bekäme trotz „Keine KI“ einen Prüfer";
+    expect(vertraulich, sperrHinweis).toEqual({ grund: "nicht_freigegeben" });
+    const offen = services.reasoner.referenzPruefer(antwort, false);
+    expect("pruefer" in offen, `GEGENPROBE nicht vertraulich: ${JSON.stringify(offen)}`).toBe(true);
+
+    // GEGENPROBE: ohne Stufenregel bekommt auch das vertrauliche Prüfpaket den lokalen Prüfer —
+    // gesperrt hat also die Regel, nicht etwas anderes.
+    const zurueck = await zuordnen({ global: "local", perTask: {}, proSchutzstufe: null });
+    expect(zurueck.statusCode, zurueck.body).toBe(200);
+    const ohneRegel = services.reasoner.referenzPruefer(antwort, true);
+    expect("pruefer" in ohneRegel, `ohne Regel: ${JSON.stringify(ohneRegel)}`).toBe(true);
+    // In keinem Fall wurde dabei ein Modell gerufen — die Wahl des Prüfers ruft nichts.
+    expect(modellRufe.filter((u) => u === LOKAL_URL)).toHaveLength(0);
   });
 });
 

@@ -24,7 +24,10 @@ export type ModelRunTask =
   | "conflict"
   | "duplicate"
   | "probe"
-  | "gaps";
+  | "gaps"
+  | "referenz";
+// produkt:20261009:referenzki-pruefdienst (REF-02): `referenz` ist die Referenzprüfung der
+// Quellenbelege (bewusst kein Kommentar IN der Union — der Wächter der Laufarten liest sie als Text).
 export type ModelRunStatus = "success" | "error";
 
 // ================================================================================================

@@ -33,6 +33,63 @@ export const useLibrarySearch = (params: KoFilter & { q?: string }, enabled = tr
 // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler.
 export const useMyImpact = () =>
   useQuery({ queryKey: ["me", "impact"], queryFn: () => endpoints.me.impact() });
+// Autorenübergabe-Auftrag K3: textfreier Zähler der an mich zurückgegebenen Entwürfe — die sechste
+// Quelle des Aufgaben-Badges. Lazy wie `useConflicts`: ein Testbestand, der den Endpunkt nicht
+// kennt, reißt beim bloßen Rendern nicht ab.
+export const useReturnedTasksSummary = () =>
+  useQuery({
+    queryKey: ["me", "returned-tasks", "summary"],
+    queryFn: () => endpoints.me.returnedSummary(),
+  });
+// Dieselbe Auswahl als Liste für die Aufgabenseite (`pages/MyTasks.tsx`). Beide Schlüssel liegen
+// unter `["me", "returned-tasks"]`: wer diesen Präfix entwertet, frischt Liste und Zahl gemeinsam auf.
+export const useReturnedTasks = () =>
+  useQuery({
+    queryKey: ["me", "returned-tasks", "list"],
+    queryFn: () => endpoints.me.returnedTasks(),
+  });
+
+// ================================================================================================
+// AUTORENÜBERGABE-AUFTRAG (R-0961) — DIE WARTENDEN AUTORENÜBERGABEN, NUR FÜR DIE VERWALTUNG.
+// ================================================================================================
+//
+// Angezeigt werden sie nur Admins (`users.manage`): Nur sie dürfen übergeben, und nur ihnen
+// antwortet der Server (`aufgaben-zaehler-routes.ts`). Für alle anderen gibt es diese Quelle NICHT
+// (`null`), statt einer Abfrage, die mit 403 scheitert oder als abgeschaltete Abfrage ewig „lädt".
+// Beides hielte den Aufgaben-Zähler und die Seite in einem falschen Lade- oder Fehlerzustand.
+//
+// OB die Verwaltung fragt, entscheidet der AUFRUFER (`verwaltung`, aus Sitzung bzw. Rolle). Dieses
+// Modul importiert bewusst keinen React-Kontext: es wird auch aus Node-Prüfungen erreicht, die kein
+// JSX übersetzen (Nacharbeit 7, TS6142).
+//
+// DER SCHLÜSSEL TRÄGT DIE ENTSCHEIDUNG MIT. Die Rolle steht erst fest, wenn die Sitzung geladen
+// ist. Wechselt `verwaltung` dann auf wahr, ist es ein NEUER Schlüssel und damit ein neuer Abruf.
+// Das gilt auch für Flächen, die schon vor der Sitzung montiert waren. Mit einem festen Schlüssel
+// und nur umspringendem `enabled` blieben genau diese Flächen ohne Daten (Nacharbeit 7: Kopfband und
+// Aufgabenseite zählten die Übergaben nicht, solange sie vor der Sitzung montiert waren). Beide
+// Schlüssel liegen weiter unter `["me", "author-transfers"]`; wer diesen Präfix entwertet, frischt
+// Liste und Zahl gemeinsam auf.
+function verwaltungsSchluessel(verwaltung: boolean): string {
+  return verwaltung ? "verwaltung" : "keine";
+}
+
+export function useAuthorTransfers(verwaltung: boolean) {
+  const abfrage = useQuery({
+    queryKey: ["me", "author-transfers", "list", verwaltungsSchluessel(verwaltung)],
+    queryFn: () => endpoints.me.authorTransfers(),
+    enabled: verwaltung,
+  });
+  return verwaltung ? abfrage : null;
+}
+
+export function useAuthorTransfersSummary(verwaltung: boolean) {
+  const abfrage = useQuery({
+    queryKey: ["me", "author-transfers", "summary", verwaltungsSchluessel(verwaltung)],
+    queryFn: () => endpoints.me.authorTransfersSummary(),
+    enabled: verwaltung,
+  });
+  return verwaltung ? abfrage : null;
+}
 export const useImportCandidates = () =>
   useQuery({
     queryKey: ["import-candidates"],
@@ -135,11 +192,28 @@ export const useValidationBoard = (f?: KoFilter) =>
   useQuery({ queryKey: ["validation", "board", f], queryFn: () => endpoints.validation.board(f) });
 // FR-VAL-06: LAZY wie `useConflicts` — die Übersicht hängt jetzt auch in der Management-Sicht, und
 // eine Fläche, deren Endpunktgrenze sie nicht kennt, darf daran nicht schon beim Rendern reißen.
+// R-0756: der Adminbereich zeigt die Zahlen je Person ebenfalls.
 export const useValidationOverview = () =>
   useQuery({
     queryKey: ["validation", "overview"],
     queryFn: () => endpoints.validation.overview(),
   });
+// R-1655: Prüfdauer je Zuweisungsweg. LAZY wie die Übersicht darüber.
+export const usePruefdauer = () =>
+  useQuery({
+    queryKey: ["validation", "pruefdauer"],
+    queryFn: () => endpoints.validation.pruefdauer(),
+  });
+// R-0265: Prüfer-Vorschlag zum Thema des Formulars. Ohne Kategorie und Schlagwort gibt es kein
+// Thema — dann wird gar nicht gefragt.
+export const useReviewerSuggestions = (category: string, tags: readonly string[]) => {
+  const thema = category.trim();
+  return useQuery({
+    queryKey: ["validation", "reviewer-suggestions", thema, [...tags]],
+    queryFn: () => endpoints.validation.reviewerSuggestions({ category: thema, tags }),
+    enabled: thema.length > 0 || tags.length > 0,
+  });
+};
 // AUFTRAG-mega29 C2: die Abdeckungs-Zusammenfassung für die LEEREN Konflikt-/Duplikat-Boards.
 export const useAiCheckCoverageSummary = () =>
   useQuery({
@@ -317,8 +391,11 @@ export const useLearningProgress = (pathId: string | undefined) =>
     enabled: !!pathId,
   });
 export const useUsers = () => useQuery({ queryKey: ["users"], queryFn: endpoints.users.list });
+// R-0756: LAZY wie `useConflicts` — seit die Auswertung die Namen der Prüfaufträge je Person
+// braucht, rendert der Hook auch auf Flächen, deren Prüfungen das Endpunkt-Objekt nur teilweise
+// setzen.
 export const useDirectory = () =>
-  useQuery({ queryKey: ["directory"], queryFn: endpoints.directory.list });
+  useQuery({ queryKey: ["directory"], queryFn: () => endpoints.directory.list() });
 export const useGraph = () => useQuery({ queryKey: ["graph"], queryFn: endpoints.library.graph });
 // AUFTRAG-mega68: Nachbarschaft eines Objekts — je Mitte ein eigener Cache-Eintrag (die Fläche
 // wandert per Klick durch das Netz, der Rückweg trifft dann den warmen Cache).
@@ -481,3 +558,10 @@ export const useExternalPolicy = () =>
 // der Hinweis zeigt dann nichts.
 export const useUploadLimits = () =>
   useQuery({ queryKey: ["upload-limits"], queryFn: () => endpoints.uploadLimits.get() });
+
+// Aufnahme `gesamt-ocr` (R-0121, Nacharbeit 6): der gemeldete Stand des Transkriptionsdienstes
+// (`GET /api/media/status`) — die Transkript-Kachel der Dateigalerien hängt daran. Der Zugriff auf
+// den Endpunkt steht IN der Abfragefunktion: fehlt er (Testaufbauten ohne Mediendienst), scheitert
+// nur diese Abfrage, nicht das Rendern.
+export const useMediaStatus = () =>
+  useQuery({ queryKey: ["media", "status"], queryFn: () => endpoints.media.status() });

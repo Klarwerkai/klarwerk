@@ -11,9 +11,11 @@ import {
   useImpact,
   useKos,
   useLifecyclePending,
+  usePruefdauer,
   useValidationOverview,
 } from "../api/hooks";
 import type { AuditFilter } from "../api/types";
+import { PruefdauerJeWeg } from "../components/AuftraegeJePerson";
 import { leerzustandsRahmen } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
@@ -89,6 +91,7 @@ export function Analytics(): JSX.Element {
   const audit = useAudit();
   const kos = useKos();
   const overview = useValidationOverview();
+  const pruefdauer = usePruefdauer();
   const impact = useImpact();
   const gaps = useGaps();
   const conflicts = useConflicts();
@@ -244,7 +247,7 @@ export function Analytics(): JSX.Element {
         {healthUnknown ? (
           <Card data-testid="health-unknown" className="flex items-center gap-4">
             <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-card bg-page">
-              <span className="font-mono text-[10px] font-semibold uppercase text-muted-2">
+              <span className="font-mono text-klein font-semibold uppercase text-muted-2">
                 {t("health.unknown")}
               </span>
             </div>
@@ -255,7 +258,7 @@ export function Analytics(): JSX.Element {
             <div className="flex items-center gap-4">
               <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-card bg-page">
                 <span className="text-2xl font-semibold text-ink">{health.score}</span>
-                <span className="font-mono text-[9px] uppercase text-muted-2">/100</span>
+                <span className="font-mono text-klein uppercase text-muted-2">/100</span>
               </div>
               <div className="min-w-0 flex-1">
                 {/* AUFTRAG-mega33 B3: solange der Konfliktanteil unbelegt ist, gibt es KEIN Band.
@@ -477,6 +480,11 @@ export function Analytics(): JSX.Element {
                   hint={t("wkz.bestand.doneTasks")}
                 />
               </div>
+
+              {/* R-0756: die Zahlen je Person stehen in der Auswertung in der EINEN Darstellung
+                  `PersonenZeilen` weiter unten (FR-VAL-06) — hier keine zweite Tabelle. */}
+              {/* R-1655: Prüfdauer je Zuweisungsweg — die Messgrundlage des Routings. */}
+              {pruefdauer.data ? <PruefdauerJeWeg auswertung={pruefdauer.data} /> : null}
 
               <Card>
                 <SectionLabel>{t("ana.byType")}</SectionLabel>

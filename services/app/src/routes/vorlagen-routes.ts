@@ -22,6 +22,7 @@ import {
   darfSpaceBearbeiten,
   darfSpaceSehen,
   istArchiviert,
+  istGeloescht,
 } from "../spaces";
 import {
   type BegriffEintrag,
@@ -655,7 +656,11 @@ export function vorlagenRoutes(dienste: VorlagenRouteDienste, guards: Guards): F
           if (a.vorgang !== "ausmustern") {
             for (const sid of [...new Set(p.ansichten.map((x) => x.spaceId))]) {
               const aktuellerSpace = (await dienste.spaces.fassungen(sid)).at(-1);
-              if (!aktuellerSpace || istArchiviert(aktuellerSpace)) {
+              if (
+                !aktuellerSpace ||
+                istGeloescht(aktuellerSpace) ||
+                istArchiviert(aktuellerSpace)
+              ) {
                 ansichtenUnveraendert.push(sid);
                 continue;
               }
@@ -704,7 +709,8 @@ export function vorlagenRoutes(dienste: VorlagenRouteDienste, guards: Guards): F
               const space = (await dienste.spaces.fassungen(z.spaceId)).at(-1);
               const stand = await ablage.fassungen<SpaceVorgabe>("space-vorgabe", z.spaceId);
               const vorher = stand.at(-1);
-              if (!space || istArchiviert(space)) {
+              // Ein gelöschter Space nimmt so wenig eine Änderung an wie ein archivierter.
+              if (!space || istGeloescht(space) || istArchiviert(space)) {
                 ueberspringe(z, "archiviert");
                 continue;
               }

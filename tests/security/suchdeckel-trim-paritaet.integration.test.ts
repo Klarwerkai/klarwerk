@@ -156,8 +156,9 @@ const BESTAND: readonly Saat[] = [
  * DIE VON HAND AUFGESCHRIEBENEN ERWARTUNGEN — die dritte, vom Produkt unabhängige Stufe.
  *
  * Sie stehen als Markenfolge da, in genau der Reihenfolge der Ausgabeordnung. Wer sie nachrechnen
- * will, braucht nur den Saatplan oben und `darfSehen`: nicht vertraulich → jeder; vertraulich oder
- * streng_vertraulich → `ko.validate` (controller/admin) oder der Autor selbst; Papierkorb nie.
+ * will, braucht nur den Saatplan oben und `darfSehen`: intern → jeder; vertraulich → Freigaberang 1
+ * (`ko.validate` ohne Niveau) oder der Autor; streng_vertraulich → Rang 2 (persönliches Niveau)
+ * oder der Autor (Variante B, aufnahme:20260922:gesamt-leserechte); Papierkorb nie.
  */
 const SICHTBAR_ANNA_OHNE_RECHT = [
   "ziel",
@@ -182,7 +183,42 @@ const SICHTBAR_BERT_OHNE_RECHT = [
   "internOffen",
 ] as const;
 
-/** Mit `ko.validate` fällt die Stufengrenze — es bleibt der Papierkorb (und nur er). */
+/**
+ * aufnahme:20260922:gesamt-leserechte (Variante B, Entscheidung 15): `ko.validate` ohne persönliches
+ * Niveau ist Freigaberang 1 — vertraulich ja, „streng vertraulich“ nur als Autor. Je Betrachter
+ * fällt deshalb genau der FREMDE strenge Eintrag weg.
+ */
+const SICHTBAR_ANNA_RANG_1 = [
+  "vertraulichBert1",
+  "vertraulichBert2",
+  "vertraulichCarl1",
+  "vertraulichCarl2",
+  "ziel",
+  "eigenVertraulich",
+  "eigenStreng",
+  "hochstufung",
+  "internBert1",
+  "internBert2",
+  "internCarl",
+  "internOffen",
+] as const;
+
+const SICHTBAR_BERT_RANG_1 = [
+  "vertraulichBert1",
+  "vertraulichBert2",
+  "vertraulichCarl1",
+  "vertraulichCarl2",
+  "strengBert",
+  "ziel",
+  "eigenVertraulich",
+  "hochstufung",
+  "internBert1",
+  "internBert2",
+  "internCarl",
+  "internOffen",
+] as const;
+
+/** Mit Freigaberang 2 (persönliches Niveau) fällt die Stufengrenze — es bleibt der Papierkorb. */
 const SICHTBAR_MIT_RECHT = [
   "vertraulichBert1",
   "vertraulichBert2",
@@ -555,10 +591,18 @@ describe("JOB 4359 · Suchdeckel und darfSehen an der 4303-Naht — Speicher geg
       { user: { id: ANNA, role: "experte" }, soll: SICHTBAR_ANNA_OHNE_RECHT },
       { user: { id: BERT, role: "viewer" }, soll: SICHTBAR_BERT_OHNE_RECHT },
       { user: { id: BERT, role: "experte" }, soll: SICHTBAR_BERT_OHNE_RECHT },
-      { user: { id: ANNA, role: "controller" }, soll: SICHTBAR_MIT_RECHT },
-      { user: { id: ANNA, role: "admin" }, soll: SICHTBAR_MIT_RECHT },
-      { user: { id: BERT, role: "controller" }, soll: SICHTBAR_MIT_RECHT },
-      { user: { id: BERT, role: "admin" }, soll: SICHTBAR_MIT_RECHT },
+      { user: { id: ANNA, role: "controller" }, soll: SICHTBAR_ANNA_RANG_1 },
+      { user: { id: ANNA, role: "admin" }, soll: SICHTBAR_ANNA_RANG_1 },
+      { user: { id: BERT, role: "controller" }, soll: SICHTBAR_BERT_RANG_1 },
+      { user: { id: BERT, role: "admin" }, soll: SICHTBAR_BERT_RANG_1 },
+      {
+        user: { id: ANNA, role: "controller", freigabe: "streng_vertraulich" },
+        soll: SICHTBAR_MIT_RECHT,
+      },
+      {
+        user: { id: BERT, role: "admin", freigabe: "streng_vertraulich" },
+        soll: SICHTBAR_MIT_RECHT,
+      },
     ];
     for (const fall of faelle) {
       const lage = `${fall.user.role}/${fall.user.id}`;
@@ -593,7 +637,7 @@ describe("JOB 4359 · Suchdeckel und darfSehen an der 4303-Naht — Speicher geg
       {
         user: { id: ANNA, role: "controller" },
         eins: "vertraulichBert1",
-        fuenf: SICHTBAR_MIT_RECHT.slice(0, 5),
+        fuenf: SICHTBAR_ANNA_RANG_1.slice(0, 5),
       },
     ];
     for (const fall of faelle) {

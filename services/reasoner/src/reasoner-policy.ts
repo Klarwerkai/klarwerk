@@ -27,6 +27,10 @@ function clone(config: ReasonerTaskConfig): ReasonerTaskConfig {
     ...(config.proSchutzstufe ? { proSchutzstufe: { ...config.proSchutzstufe } } : {}),
     // R-0305/R-1099: die Wahl der Zweitmeinung muss den Neustart ebenso überleben wie die Freigabe.
     ...(config.zweitmeinung ? { zweitmeinung: config.zweitmeinung } : {}),
+    // REF-02: ebenso die erlaubten Referenz-Prüfer — als Kopie, nicht als geteilte Liste.
+    ...(config.referenzpruefung && config.referenzpruefung.length > 0
+      ? { referenzpruefung: [...config.referenzpruefung] }
+      : {}),
   };
 }
 

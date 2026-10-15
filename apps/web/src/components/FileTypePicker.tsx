@@ -25,7 +25,7 @@ import {
   type GallerySource,
   STATE_BADGE_KEY,
   type SourceState,
-  hintKeyFor,
+  hintKeyForSource,
   stepsKeyFor,
 } from "../lib/importSourceGallery";
 import { usePersistentDisclosure } from "../lib/usePersistentDisclosure";
@@ -64,11 +64,11 @@ const FILE_ICONS: Record<string, ReactNode> = {
   json: <FileJson size={16} />,
   docx: <FileType size={16} />,
   "word-sys": <FileType size={16} />,
-  pdf: <FileText size={16} />,
-  "pdf-sys": <FileText size={16} />,
+  pdf: <FileText size={16} strokeWidth={1.8} />,
+  "pdf-sys": <FileText size={16} strokeWidth={1.8} />,
   xlsx: <FileSpreadsheet size={16} />,
   pptx: <Presentation size={16} />,
-  csv: <FileText size={16} />,
+  csv: <FileText size={16} strokeWidth={1.8} />,
   ocr: <ScanLine size={16} />,
   avtranscript: <FileAudio size={16} />,
 };
@@ -127,7 +127,7 @@ function TileInhalt({ source, icon }: { source: GallerySource; icon: ReactNode }
         {/* Zustand als TEXT im Badge (nicht nur Farbe) — barrierearm. */}
         <span
           data-tile-badge
-          className={`shrink-0 rounded-pill px-1.5 py-0.5 text-[10px] font-medium ${BADGE_CLASS[source.state]}`}
+          className={`shrink-0 rounded-pill px-1.5 py-0.5 text-klein font-medium ${BADGE_CLASS[source.state]}`}
         >
           {/* ADMIN-02: trägt die Kachel den Zustand dieser Installation, sagt das Abzeichen ihn. */}
           {t(source.badgeKey ?? STATE_BADGE_KEY[source.state])}
@@ -176,7 +176,8 @@ function Tile({
     // Das Badge sagt in zwei Woertern, WO es weitergeht; der ausgeschriebene Satz steht am Link.
     // Er ist derselbe, den eine Kachel OHNE Ziel als Hinweis zeigt (`hintKeyFor`) — ein Text, zwei
     // Tueren, keine zweite Formulierung derselben Wahrheit.
-    const hinweis = source.hintKey ?? hintKeyFor(source.state);
+    // ADMIN-02 / gesamt-ocr: der eigene Hinweis der Kachel gewinnt (`hintKeyForSource`).
+    const hinweis = hintKeyForSource(source);
     return (
       <a
         href={href}
@@ -302,10 +303,13 @@ export function FileTypePicker({
     // `setHint((prev) => …)` liefe im StrictMode zweimal und meldete den Hinweis doppelt nach oben.
     const naechster = hint?.id === source.id ? null : source;
     setHint(naechster);
-    onHintChange?.(naechster ? (naechster.hintKey ?? hintKeyFor(naechster.state)) : null);
+    // ADMIN-02 / Aufnahme `gesamt-ocr` (Nacharbeit 6): der Hinweis der KACHEL, nicht nur der ihres
+    // Zustands — Anbindungen mit Zugangsauskunft und die Transkript-Kachel bei aktivem Dienst nennen
+    // ihren eigenen. Dieselbe Regel wie `source.hintKey ?? hintKeyFor(source.state)`, an EINER Stelle.
+    onHintChange?.(naechster ? hintKeyForSource(naechster) : null);
   };
 
-  const hintKey = hint ? (hint.hintKey ?? hintKeyFor(hint.state)) : null;
+  const hintKey = hint ? hintKeyForSource(hint) : null;
   // Die Reihenfolge innerhalb beider Mengen bleibt die von orderByState — hier wird nur GETRENNT,
   // nicht neu sortiert.
   const visible = collapsePlanned ? sources.filter((s) => s.state !== "planned") : sources;

@@ -129,7 +129,7 @@ export function SharePointZugangKarte({ zugang }: { zugang: SharePointZugang }):
   const schrittKey = naechsterSchrittKey("sharepoint", status, test);
   return (
     <Card className="mb-4">
-      <div className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("imp.access.title")} · {t("imp.gallery.src.sharepoint")}
       </div>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -137,7 +137,7 @@ export function SharePointZugangKarte({ zugang }: { zugang: SharePointZugang }):
           data-testid="sharepoint-zugang-state"
           data-state={state}
           data-status={status}
-          className={`inline-flex items-center rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold ${TONE_CLASS[statusText.tone]}`}
+          className={`inline-flex items-center rounded-pill px-2 py-0.5 font-mono text-klein font-semibold ${TONE_CLASS[statusText.tone]}`}
         >
           {t(statusText.key)}
         </span>
@@ -165,7 +165,7 @@ export function SharePointZugangKarte({ zugang }: { zugang: SharePointZugang }):
       </p>
 
       {/* 1 — WAS DIE ANBINDUNG KANN. Produktfähigkeit, unabhängig von dieser Installation. */}
-      <div className="mt-3 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="mt-3 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("integrationen.faehigkeit.titel")}
       </div>
       <ul data-testid="sharepoint-faehigkeiten" className="mt-1 space-y-0.5">
@@ -177,7 +177,7 @@ export function SharePointZugangKarte({ zugang }: { zugang: SharePointZugang }):
       </ul>
 
       {/* 2 — FREISCHALTUNG IN DIESER INSTALLATION. */}
-      <div className="mt-3 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="mt-3 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("integrationen.freischaltung.titel")}
       </div>
       {zugang.enabled ? (
@@ -199,7 +199,7 @@ export function SharePointZugangKarte({ zugang }: { zugang: SharePointZugang }):
       )}
 
       {/* 3 — ANGABEN. Namen und Ja/Nein, nie ein Wert. */}
-      <div className="mt-3 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="mt-3 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("imp.access.varsTitle")}
       </div>
       <ul className="mt-1 space-y-1">
@@ -213,7 +213,7 @@ export function SharePointZugangKarte({ zugang }: { zugang: SharePointZugang }):
             <span
               data-testid={`sharepoint-zugang-var-${c.name}`}
               data-present={c.present ? "yes" : "no"}
-              className={`font-mono text-[10px] font-semibold ${
+              className={`font-mono text-klein font-semibold ${
                 c.present ? "text-trust-pos-text" : "text-muted-2"
               }`}
             >
@@ -224,7 +224,7 @@ export function SharePointZugangKarte({ zugang }: { zugang: SharePointZugang }):
       </ul>
 
       {/* 4 — LETZTER VERBINDUNGSTEST. Bewusst gestartet, mit erklärter Wirkung. */}
-      <div className="mt-3 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="mt-3 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("integrationen.test.titel")}
       </div>
       <div data-testid="sharepoint-verbindungstest" aria-live="polite">
@@ -284,7 +284,7 @@ export function SharePointZugangKarte({ zugang }: { zugang: SharePointZugang }):
           Inhalt hängt vom Bestand ab. Eine fehlende Zeile läse sich wie „nie verbunden", und das wäre
           eine Behauptung. Der Wertfall nennt den Zeitpunkt RÜCKBLICKEND: ob die Verbindung JETZT
           steht, sagt nur der Verbindungstest darüber. */}
-      <div className="mt-3 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="mt-3 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("integrationen.historie.titel")}
       </div>
       <p
@@ -297,7 +297,7 @@ export function SharePointZugangKarte({ zugang }: { zugang: SharePointZugang }):
       </p>
 
       {/* ZUSTÄNDIGKEIT — wer den Zustand ändern kann und wo. Nicht geheim, ohne einen einzigen Wert. */}
-      <div className="mt-3 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="mt-3 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("integrationen.zustaendig.titel")}
       </div>
       <div data-testid="sharepoint-zustaendigkeit">

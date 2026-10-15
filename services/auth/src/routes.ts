@@ -7,7 +7,13 @@ import { type OidcProvider, OidcUnreachableError, createPkcePair, randomToken } 
 import { LoginRateLimiter } from "./rate-limit";
 import { type SamlErgebnis, SamlFehler, type SamlProvider } from "./saml";
 import { type AuthService, istLesbaresAblaufdatum } from "./service";
-import { AuthError, type AuthErrorCode, type PublicUser, type Role } from "./types";
+import {
+  AuthError,
+  type AuthErrorCode,
+  type PublicUser,
+  type Role,
+  istFreigabestufe,
+} from "./types";
 
 const STATUS_BY_CODE: Record<AuthErrorCode, number> = {
   EMAIL_TAKEN: 409,
@@ -1465,13 +1471,24 @@ export function authRoutes(
 
     // Schlankes Verzeichnis (nur id + Anzeigename) für Anzeige (Autorennamen) und
     // Zuweisung — für ALLE angemeldeten Nutzer, ohne Adminrecht.
+    //
+    // Aufnahme gesamt-wissen-herkunft (K3): dahinter stehen gelöschte Konten als
+    // `{ id, geloescht: true }` — OHNE Namen. Die Autorenzeile kann so „gelöscht" von „unbekannt"
+    // unterscheiden, ohne einen Namen herauszugeben, den nur die Verwalteransicht lesen darf. Der
+    // Web-Client trennt die Marken ab, bevor eine Zuweisungsliste sie sieht (api/endpoints.ts).
     app.get("/api/directory", async (request, reply) => {
       const user = await requireUser(request, reply);
       if (!user) {
         return;
       }
       const users = await service.listUsers();
-      reply.code(200).send(users.map((u) => ({ id: u.id, name: u.name })));
+      const geloescht = await service.listDeletedUserIds();
+      reply
+        .code(200)
+        .send([
+          ...users.map((u) => ({ id: u.id, name: u.name })),
+          ...geloescht.map((id) => ({ id, geloescht: true as const })),
+        ]);
     });
 
     // Admin legt einen Nutzer direkt an (sofort freigegeben), optional mit Rolle — und seit
@@ -1761,6 +1778,9 @@ export function authRoutes(
         approve?: unknown;
         password?: unknown;
         accessExpiresAt?: unknown;
+        // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): das persönliche Freigabeniveau —
+        // eine der drei Stufen, oder `null` zum Entziehen (Übergangsregel).
+        freigabe?: unknown;
         // R-0582: der Admin berichtigt Name und E-Mail eines Kontos (ohne dessen Passwort).
         name?: unknown;
         email?: unknown;
@@ -1774,7 +1794,7 @@ export function authRoutes(
         return;
       }
       const { id } = request.params;
-      const { role, approve, password, accessExpiresAt, weisungsbefugnis } = request.body;
+      const { role, approve, password, accessExpiresAt, freigabe, weisungsbefugnis } = request.body;
       // R-0582: auch die Kontodaten gehören zur Formwache VOR jedem Schreiben.
       const kontodaten = kontodatenForm(request, reply);
       if (kontodaten === null) {
@@ -1816,11 +1836,27 @@ export function authRoutes(
         if (approve !== undefined && typeof approve !== "boolean") {
           throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
         }
+        // P05 (B-10): `{approve:false}` an einem FREIGEGEBENEN Konto sieht aus wie „Freigabe
+        // zurücknehmen / sperren" — das gibt es an diesem Endpunkt nicht, und bis hierher antwortete
+        // er 204 ohne jede Wirkung. Der Admin hielt das Konto für gesperrt. Jetzt abgelehnt, VOR jedem
+        // Schreiben; die lokale Sperre ist die Befristung (`accessExpiresAt`), die SSO/SCIM übersteht.
+        // Am noch nicht freigegebenen Konto bleibt `false` die verstandene Aussage „nicht freigeben"
+        // (K3 in tests/demo-zugang-gaeste-route/eingabeform-am-aenderungsweg.test.ts).
+        if (
+          approve === false &&
+          (await service.listUsers()).some((u) => u.id === id && u.approved)
+        ) {
+          throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+        }
         if (
           accessExpiresAt !== undefined &&
           accessExpiresAt !== null &&
           typeof accessExpiresAt !== "string"
         ) {
+          throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+        }
+        // Nacharbeit 19: nur eine bekannte Stufe oder `null` — dieselbe Form-Wache wie oben.
+        if (freigabe !== undefined && freigabe !== null && !istFreigabestufe(freigabe)) {
           throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
         }
         // Antwort 18: dieselbe Formwache — `null` entzieht, sonst eine Liste von Bereichsnamen.
@@ -1862,6 +1898,9 @@ export function authRoutes(
             accessExpiresAt === null ? undefined : accessExpiresAt,
             admin.id,
           );
+        }
+        if (freigabe !== undefined) {
+          user = await service.setFreigabe(id, freigabe === null ? undefined : freigabe, admin.id);
         }
         // Antwort 18: die Weisungsbefugnis — vergeben nur über diesen Verwaltungsweg (Vermerk
         // `user.weisungsbefugnis-set`); die Rolle allein verleiht sie nicht.

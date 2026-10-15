@@ -313,7 +313,7 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     pfad: "/api/ask",
     art: "zurueckgestellt",
     grund:
-      "Die Frage an den Bestand. Sie hat zwei Zweige (Sitzung und Add-on-Schlüssel) mit unterschiedlichem Rechteweg; eine Zeile könnte nur einen messen und verschwiege den anderen. (Gefahren wird sie in JOB 4113 sehr wohl — als Vorbereitung der Zeilen zu `POST /api/ask/helpful` und `PUT|DELETE /api/gaps/:id`; abgenommen ist damit nicht sie, sondern was aus ihr entsteht.)",
+      "Die Frage an den Bestand. Sie hat zwei Zweige (Sitzung und Add-on-Schlüssel) mit unterschiedlichem Rechteweg; eine Zeile könnte nur einen messen und verschwiege den anderen. (Gefahren wird sie in JOB 4113 sehr wohl — als Vorbereitung der Zeilen zu `POST /api/ask/helpful` und `PUT|DELETE /api/gaps/:id`; abgenommen ist damit nicht sie, sondern was aus ihr entsteht.) aufnahme:20260922:gesamt-leserechte: der SITZUNGSzweig ist mit sechs Akteuren und echtem Bestand (internes Objekt als Quelle, vertrauliches nie, keine Torlage für Unbefugte) in `tests/security/leserechte-rollenmatrix.test.ts` gemessen; der Add-on-/Dienst-Zweig (keine Sitzungsrolle, sondern ein Schlüssel) ist in `tests/security/leserechte-reasoner-frageweg.test.ts` gemessen — nie Vertrauliches, nie ein Objekt aus einem Mitglieder-Space, mit Gegenprobe — und in `f0688-schluessel-api-nur-validiert` (nur Validiertes). Als Rollenzeile bleibt die Tür zurückgestellt, weil ihr zweiter Zweig gar keine Rolle trägt.",
   },
   // JOB 4141: die sechs Urteils-Türen (`POST /api/conflicts/:id/dismiss|second-opinion`,
   // `POST /api/duplicates/:id/dismiss|keep-separate|link-related|status`) standen hier mit derselben
@@ -392,13 +392,10 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     grund:
       "Hakt einen Schritt eines Lernpfads ab. Setzt einen angelegten Pfad und eine gültige Schrittkennung voraus.",
   },
-  {
-    methode: "POST",
-    pfad: "/api/output/generate",
-    art: "zurueckgestellt",
-    grund:
-      "Erzeugt ein Ausgabedokument aus ausgewählten Quellen. Die Nutzlast ist die Quellenauswahl; der Vorgang ist ein Erzeugungslauf, kein Türtest.",
-  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543, Ben Nacharbeit 5): `POST /api/output/generate`
+  // und `POST /api/media/analyze` stehen nicht mehr hier. Ihre Tür misst jetzt je eine Zeile in
+  // `TABELLE`; die Rollenmatrix mit echtem Bestand (Quellenauswahl, angehängtes Bild, vertrauliche
+  // Stufe, sechs Akteure) steht in `tests/security/leserechte-rollenmatrix.test.ts`.
   {
     methode: "POST",
     pfad: "/api/capture/slides",
@@ -415,13 +412,6 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
   },
   {
     methode: "POST",
-    pfad: "/api/media/analyze",
-    art: "zurueckgestellt",
-    grund:
-      "Lässt einen vorhandenen Anhang durch die Medienanalyse laufen. Braucht einen echten Anhang, sonst ist die Antwort eine Existenzauskunft.",
-  },
-  {
-    methode: "POST",
     pfad: "/api/notifications/seen",
     art: "zurueckgestellt",
     grund:
@@ -434,7 +424,7 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     pfad: "/api/reasoner",
     art: "zurueckgestellt",
     grund:
-      "Der Text-Verteiler der KI-Unterstützung. Er ruft echte Modelle auf; eine Rollenzeile darüber löste bei jedem Lauf einen Modellaufruf aus.",
+      "Der Text-Verteiler der KI-Unterstützung. Er ruft echte Modelle auf; eine Rollenzeile darüber löste bei jedem Lauf einen Modellaufruf aus. aufnahme:20260922:gesamt-leserechte: die Aufgabe `ask` LIEST den Bestand — ihre Grundlage trägt seit Nacharbeit 8 die Lesepolicy des Fragenden (`sichtbarkeitsfilterFuer`), gemessen mit Space-Mitglied, Nichtmitglied, Admin ohne Mitgliedschaft und Rechteentzug in `tests/security/leserechte-reasoner-frageweg.test.ts`.",
   },
   {
     methode: "POST",
@@ -485,6 +475,22 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     grund:
       "Setzt Anbieter, Modell und Schlüssel der Instanz. Eine Verstellung veränderte den KI-Status, den `GET /api/reasoner/status` und `GET /api/ai-status` in dieser Tabelle messen.",
   },
+  // produkt:20261009:referenzki-adminauswahl (REF-03): die Rechtegegenprobe dieser beiden Türen
+  // (nicht berechtigte Rolle → 403, direkt per API) misst `tests/referenzki-adminauswahl/`.
+  {
+    methode: "PUT",
+    pfad: "/api/reasoner/referenzpruefung",
+    art: "zurueckgestellt",
+    grund:
+      "Setzt die erlaubten Referenz-KIs der Instanz über denselben Schreibweg wie `PUT /api/reasoner/config`; eine Verstellung veränderte die Quellenprüfung jeder Antwort.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/reasoner/referenzpruefung/funktionscheck",
+    art: "zurueckgestellt",
+    grund:
+      "Der bewusste Funktionscheck einer Referenz-KI — ein echter, möglicherweise kostenpflichtiger Modellaufruf mit fiktivem Inhalt.",
+  },
   {
     methode: "PUT",
     pfad: "/api/reasoner/assist-presets",
@@ -520,7 +526,22 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     pfad: "/api/admin/factory-reset",
     art: "zurueckgestellt",
     grund:
-      "Der Werksreset. Er löscht die gesamte Instanz — an einer Bühne, die vier angemeldete Prüfkonten trägt, wäre jede folgende Zeile danach bedeutungslos.",
+      "Der Werksreset. Er löscht den Bestand und beendet alle Anmeldungen (P08: Konten bleiben, ihre Sitzungen nicht) — an einer Bühne, die vier angemeldete Prüfkonten trägt, wäre jede folgende Zeile danach bedeutungslos.",
+  },
+  // PETER-20261011-P08 · AC05 (Nacharbeit 4): die zweimalige SSO-Wiederanmeldung des Firmenresets.
+  {
+    methode: "GET",
+    pfad: "/api/admin/factory-reset/sso/start",
+    art: "baulich",
+    grund:
+      "Startet eine SSO-Wiederanmeldung für den Firmenreset und existiert fachlich nur im Desktop-Journalbetrieb. Auf der Speicherbühne dieser Abnahme gibt es den Werksreset nicht — dort antwortet die Tür auch dem Admin mit 403 aus der Verfügbarkeitsprüfung, und eine Rollenzeile könnte das Rechtetor davon nicht unterscheiden. Tor (anonym 401, Controller 403), Verfügbarkeit und Ablauf misst `tests/firmenreset-p08/firmenreset-sso.test.ts` am Desktop-Journal.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/admin/factory-reset/sso",
+    art: "baulich",
+    grund:
+      "Rückruf und Abbruch der SSO-Wiederanmeldung des Firmenresets; nur im Desktop-Journalbetrieb vorhanden. Auf der Speicherbühne antwortet sie auch dem Admin mit 403 aus der Verfügbarkeitsprüfung, ein gültiger Rückruf verlangt zudem einen einmaligen Anbietercode, der sich nicht als feste Nutzlast führen lässt. Tor, Einmaligkeit, Sitzungsbindung und passende Identität misst `tests/firmenreset-p08/firmenreset-sso.test.ts`.",
   },
   {
     // Aufnahme gesamt-bestandsreset (Nacharbeit 2). Dieselbe Lage wie der Werksreset darüber, aus
@@ -540,7 +561,7 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     pfad: "/api/admin/lesevarianten/laden",
     art: "zurueckgestellt",
     grund:
-      "Lädt Übersetzungen für ein Paket und liest dafür den ganzen Bestand, um Anker zuzuordnen. Ein Ladelauf, kein Türtest.",
+      "Lädt Übersetzungen für ein Paket und liest dafür den ganzen Bestand, um Anker zuzuordnen. Ein Ladelauf, kein Türtest. Die ausgegebene Bilanz folgt der Lesepolicy des Aufrufers: tests/security/leserechte-lesevarianten-bilanz.test.ts.",
   },
   {
     methode: "POST",
@@ -637,6 +658,21 @@ export const NUR_ADMIN: Erwartungen = {
   experte: "403",
   controller: "403",
   admin: "erlaubt",
+};
+
+/**
+ * aufnahme:20260922:gesamt-leserechte (R-0543): eine Tür, die KEINE Sitzung öffnet — nur ein
+ * Dienst-Schlüssel (`x-klarwerk-service-key`). Jede Rolle bekommt deshalb dieselbe 401 wie ein
+ * Unangemeldeter; ein Durchlass für eine Sitzungsrolle wäre hier der Befund.
+ */
+const NUR_DIENST_GRUND =
+  "Der MCP-Zugang nimmt nur einen Dienst-Schlüssel an (mcp-routes.ts, `zugang`); eine Sitzung jeder Rolle ist dort unangemeldet.";
+export const NUR_DIENSTSCHLUESSEL: Erwartungen = {
+  anonym: "401",
+  viewer: { soll: "401", grund: NUR_DIENST_GRUND },
+  experte: { soll: "401", grund: NUR_DIENST_GRUND },
+  controller: { soll: "401", grund: NUR_DIENST_GRUND },
+  admin: { soll: "401", grund: NUR_DIENST_GRUND },
 };
 
 /**
@@ -760,6 +796,18 @@ export const TABELLE: Zeile[] = [
         },
       ],
     },
+    erwartet: NUR_LESEN,
+  },
+  // produkt:20261009:referenzki-pruefdienst (REF-02): die erneute Referenzprüfung trägt keinen
+  // Inhalt im Rumpf. Eine erfundene Prüfkennung ergibt nach dem Tor für jede Rolle die fachliche
+  // 404 „nicht (mehr) verfügbar" — die Tür ist registriert und gemessen, ohne Bestand vorauszusetzen.
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/ask/referenzpruefung/gibt-es-nicht/erneut",
+    route: "/api/ask/referenzpruefung/:pruefId/erneut",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1643",
+    tor: "ko.read",
     erwartet: NUR_LESEN,
   },
   // R-1663 / R-2178: hinter demselben Schalter wie `GET /api/analytics/expertise` (an dieser Bühne
@@ -899,6 +947,125 @@ export const TABELLE: Zeile[] = [
     tor: "ko.create",
     erwartet: AB_EXPERTE,
   },
+  // BPA-16 · Gesprächsaussagen mit Folien verbinden. Lesen hängt an `ko.read`, jede Wirkung an
+  // `ko.create` — kein neues Recht. Die URLs sind zustandsfrei (erfundene Meetingkennung): hinter
+  // dem Tor endet jede Tür im 404 „nicht gefunden" bzw. bei leerem Rumpf im 400 — das ist
+  // „durchgelassen" und legt nichts an.
+  {
+    gruppe: "meetingDokumentbezugRoutes",
+    methode: "GET",
+    pfad: "/api/meetings",
+    belegstelle: "services/app/src/routes/meeting-dokumentbezug-routes.ts:202",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "meetingDokumentbezugRoutes",
+    methode: "POST",
+    pfad: "/api/meetings",
+    belegstelle: "services/app/src/routes/meeting-dokumentbezug-routes.ts:210",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "meetingDokumentbezugRoutes",
+    methode: "GET",
+    pfad: "/api/meetings/gibt-es-nicht",
+    route: "/api/meetings/:id",
+    belegstelle: "services/app/src/routes/meeting-dokumentbezug-routes.ts:256",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "meetingDokumentbezugRoutes",
+    methode: "POST",
+    pfad: "/api/meetings/gibt-es-nicht/praesentationen",
+    route: "/api/meetings/:id/praesentationen",
+    belegstelle: "services/app/src/routes/meeting-dokumentbezug-routes.ts:277",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "meetingDokumentbezugRoutes",
+    methode: "POST",
+    pfad: "/api/meetings/gibt-es-nicht/mitschriften",
+    route: "/api/meetings/:id/mitschriften",
+    belegstelle: "services/app/src/routes/meeting-dokumentbezug-routes.ts:327",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "meetingDokumentbezugRoutes",
+    methode: "POST",
+    pfad: "/api/meetings/gibt-es-nicht/folienwechsel",
+    route: "/api/meetings/:id/folienwechsel",
+    belegstelle: "services/app/src/routes/meeting-dokumentbezug-routes.ts:361",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "meetingDokumentbezugRoutes",
+    methode: "POST",
+    pfad: "/api/meetings/gibt-es-nicht/rueckmeldungen",
+    route: "/api/meetings/:id/rueckmeldungen",
+    belegstelle: "services/app/src/routes/meeting-dokumentbezug-routes.ts:405",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "meetingDokumentbezugRoutes",
+    methode: "GET",
+    pfad: "/api/meetings/gibt-es-nicht/rueckmeldungen/gibt-es-nicht",
+    route: "/api/meetings/:id/rueckmeldungen/:rid",
+    belegstelle: "services/app/src/routes/meeting-dokumentbezug-routes.ts:439",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "meetingDokumentbezugRoutes",
+    methode: "POST",
+    pfad: "/api/meetings/gibt-es-nicht/rueckmeldungen/gibt-es-nicht/klaerung",
+    route: "/api/meetings/:id/rueckmeldungen/:rid/klaerung",
+    belegstelle: "services/app/src/routes/meeting-dokumentbezug-routes.ts:460",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "meetingDokumentbezugRoutes",
+    methode: "POST",
+    pfad: "/api/meetings/gibt-es-nicht/rueckmeldungen/gibt-es-nicht/verwerfen",
+    route: "/api/meetings/:id/rueckmeldungen/:rid/verwerfen",
+    belegstelle: "services/app/src/routes/meeting-dokumentbezug-routes.ts:490",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "meetingDokumentbezugRoutes",
+    methode: "GET",
+    pfad: "/api/meetings/gibt-es-nicht/folien/gibt-es-nicht/256",
+    route: "/api/meetings/:id/folien/:dateiId/:sldId",
+    belegstelle: "services/app/src/routes/meeting-dokumentbezug-routes.ts:512",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "meetingDokumentbezugRoutes",
+    methode: "GET",
+    pfad: "/api/meetings/gibt-es-nicht/zeitstellen/1000",
+    route: "/api/meetings/:id/zeitstellen/:zeitMs",
+    belegstelle: "services/app/src/routes/meeting-dokumentbezug-routes.ts:529",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "meetingDokumentbezugRoutes",
+    methode: "POST",
+    pfad: "/api/meetings/gibt-es-nicht/fassungsabgleich",
+    route: "/api/meetings/:id/fassungsabgleich",
+    belegstelle: "services/app/src/routes/meeting-dokumentbezug-routes.ts:551",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
   // produkt:20261007:artikel-gemeinsam · der gemeinsame Artikelentwurf. Jede Tür hängt an
   // `ko.create` — demselben Recht wie Bearbeiten; kein neues Recht. Die URLs sind zustandsfrei
   // (erfundene Kennung): hinter dem Tor endet jede Tür im 404 und legt nichts an.
@@ -956,7 +1123,7 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht",
     route: "/api/kos/:id/office/:anhangId",
-    belegstelle: "services/app/src/routes/office-routes.ts:402",
+    belegstelle: "services/app/src/routes/office-routes.ts:412",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
@@ -965,7 +1132,7 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/sitzung",
     route: "/api/kos/:id/office/:anhangId/sitzung",
-    belegstelle: "services/app/src/routes/office-routes.ts:439",
+    belegstelle: "services/app/src/routes/office-routes.ts:449",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
@@ -974,7 +1141,7 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/uebernahme",
     route: "/api/kos/:id/office/:anhangId/uebernahme",
-    belegstelle: "services/app/src/routes/office-routes.ts:506",
+    belegstelle: "services/app/src/routes/office-routes.ts:516",
     tor: "ko.create",
     erwartet: AB_EXPERTE,
   },
@@ -983,7 +1150,7 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/zurueckholen",
     route: "/api/kos/:id/office/:anhangId/zurueckholen",
-    belegstelle: "services/app/src/routes/office-routes.ts:616",
+    belegstelle: "services/app/src/routes/office-routes.ts:626",
     tor: "ko.create",
     payload: { ausFassung: 1, expectedVersion: 1 },
     erwartet: AB_EXPERTE,
@@ -993,9 +1160,31 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/gesichert",
     route: "/api/kos/:id/office/:anhangId/gesichert",
-    belegstelle: "services/app/src/routes/office-routes.ts:664",
+    belegstelle: "services/app/src/routes/office-routes.ts:674",
     tor: "ko.create",
     payload: { objectId: "gibt-es-nicht", expectedVersion: 1 },
+    erwartet: AB_EXPERTE,
+  },
+  // produkt:20261011:assistenz-dokumentnachbearbeitung (BPA-17) · Präsentation nachbearbeiten. Dasselbe
+  // Tor wie Zurückholen (`ko.create`, Schreibweg `direkt`); Lesen allein ändert nichts. Die erfundenen
+  // Kennungen enden hinter dem Tor im 404, BEVOR der Rumpf gelesen wird — es entsteht kein Lauf.
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/nachbearbeitung",
+    route: "/api/kos/:id/office/:anhangId/nachbearbeitung",
+    belegstelle: "services/app/src/routes/office-routes.ts:744",
+    tor: "ko.create",
+    payload: { laufId: "gibt-es-nicht", basisFassung: 1, schritte: [] },
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/nachbearbeitung/gibt-es-nicht/stopp",
+    route: "/api/kos/:id/office/:anhangId/nachbearbeitung/:laufId/stopp",
+    belegstelle: "services/app/src/routes/office-routes.ts:866",
+    tor: "ko.create",
     erwartet: AB_EXPERTE,
   },
   // Die WOPI-Türen spricht der Office-Editor SERVER-ZU-SERVER an, ohne Klarwerk-Sitzung. Ihr Tor
@@ -1006,7 +1195,7 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/wopi/files/gibt-es-nicht",
     route: "/wopi/files/:anhangId",
-    belegstelle: "services/app/src/routes/office-routes.ts:396",
+    belegstelle: "services/app/src/routes/office-routes.ts:406",
     tor: WOPI_TOR,
     erwartet: OEFFENTLICH(WOPI_GRUND),
   },
@@ -1015,7 +1204,7 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/wopi/files/gibt-es-nicht/contents",
     route: "/wopi/files/:anhangId/contents",
-    belegstelle: "services/app/src/routes/office-routes.ts:397",
+    belegstelle: "services/app/src/routes/office-routes.ts:407",
     tor: WOPI_TOR,
     erwartet: OEFFENTLICH(WOPI_GRUND),
   },
@@ -1024,7 +1213,7 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/wopi/files/gibt-es-nicht",
     route: "/wopi/files/:anhangId",
-    belegstelle: "services/app/src/routes/office-routes.ts:398",
+    belegstelle: "services/app/src/routes/office-routes.ts:408",
     tor: WOPI_TOR,
     erwartet: OEFFENTLICH(WOPI_GRUND),
   },
@@ -1033,7 +1222,7 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/wopi/files/gibt-es-nicht/contents",
     route: "/wopi/files/:anhangId/contents",
-    belegstelle: "services/app/src/routes/office-routes.ts:399",
+    belegstelle: "services/app/src/routes/office-routes.ts:409",
     tor: WOPI_TOR,
     erwartet: OEFFENTLICH(WOPI_GRUND),
   },
@@ -1581,6 +1770,41 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // Autorenübergabe-Auftrag K3: die an mich zurückgegebenen Entwürfe — Liste für die Aufgabenseite
+  // und textfreie Zahl für das Kopfband, beide nur mit `ko.read` (Experten eingeschlossen).
+  {
+    gruppe: "aufgabenZaehlerRoutes",
+    methode: "GET",
+    pfad: "/api/me/returned-tasks",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:107",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "aufgabenZaehlerRoutes",
+    methode: "GET",
+    pfad: "/api/me/returned-tasks/summary",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:116",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Übergaben — nur für Admins, die sie ausführen.
+  {
+    gruppe: "aufgabenZaehlerRoutes",
+    methode: "GET",
+    pfad: "/api/me/author-transfers",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:91",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "aufgabenZaehlerRoutes",
+    methode: "GET",
+    pfad: "/api/me/author-transfers/summary",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:99",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
   // Betroffenenrechte (R-0661, R-0663): die EIGENEN Daten und der EIGENE Löschantrag — jede
   // angemeldete Rolle, auch der Gast. Die Nutzlasten sind so gewählt, dass nichts angelegt wird: eine
   // Begründung, die kein Text ist, endet nach dem Tor mit 400; eine erfundene Antragskennung mit 404.
@@ -1683,7 +1907,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "klaraGespraechRoutes",
     methode: "GET",
     pfad: "/api/me/klara/gespraech",
-    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:84",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:86",
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
@@ -1691,7 +1915,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "klaraGespraechRoutes",
     methode: "POST",
     pfad: "/api/me/klara/gespraeche",
-    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:97",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:99",
     tor: "requireUser",
     payload: {},
     erwartet: ANGEMELDET,
@@ -1701,7 +1925,7 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/me/klara/gespraeche/gibt-es-nicht",
     route: "/api/me/klara/gespraeche/:id",
-    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:121",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:123",
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
@@ -1710,7 +1934,7 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/me/klara/gespraeche/gibt-es-nicht/nachrichten",
     route: "/api/me/klara/gespraeche/:id/nachrichten",
-    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:134",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:136",
     tor: "requireUser",
     payload: {},
     erwartet: ANGEMELDET,
@@ -1720,7 +1944,7 @@ export const TABELLE: Zeile[] = [
     methode: "PUT",
     pfad: "/api/me/klara/gespraeche/gibt-es-nicht/schritt",
     route: "/api/me/klara/gespraeche/:id/schritt",
-    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:154",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:156",
     tor: "requireUser",
     payload: {},
     erwartet: ANGEMELDET,
@@ -1730,7 +1954,7 @@ export const TABELLE: Zeile[] = [
     methode: "PUT",
     pfad: "/api/me/klara/gespraeche/gibt-es-nicht/einwilligung",
     route: "/api/me/klara/gespraeche/:id/einwilligung",
-    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:174",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:176",
     tor: "requireUser",
     payload: {},
     erwartet: ANGEMELDET,
@@ -1740,7 +1964,317 @@ export const TABELLE: Zeile[] = [
     methode: "DELETE",
     pfad: "/api/me/klara/gespraeche/gibt-es-nicht",
     route: "/api/me/klara/gespraeche/:id",
-    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:199",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:201",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261008:klara-aktionen (Klara 05) — Ausführungsaufträge im eigenen Gespräch. Dieselbe
+  // Tür und dieselbe Zustandsfreiheit: jede gefahrene URL trägt eine erfundene Gesprächskennung und
+  // endet in 404 des Dienstes (bzw. 400 an der leeren Nutzlast), bevor etwas geschrieben wird.
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/auftraege",
+    route: "/api/me/klara/gespraeche/:id/auftraege",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:239",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/auftraege",
+    route: "/api/me/klara/gespraeche/:id/auftraege",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:255",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/auftraege/gibt-es-nicht/fassungen",
+    route: "/api/me/klara/gespraeche/:id/auftraege/:auftragId/fassungen",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:285",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/auftraege/gibt-es-nicht/schritte/s1",
+    route: "/api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:312",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/auftraege/gibt-es-nicht/abbruch",
+    route: "/api/me/klara/gespraeche/:id/auftraege/:auftragId/abbruch",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:347",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  // Nacharbeit 2: die gebundene Ausführung und Rücknahme am Server — dieselbe Tür, dieselbe
+  // Zustandsfreiheit (erfundene Kennungen, 404 des Dienstes vor jedem Aufruf eines Werkzeugs).
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/auftraege/gibt-es-nicht/schritte/s1/ausfuehrung",
+    route: "/api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ausfuehrung",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:407",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/auftraege/gibt-es-nicht/schritte/s1/ruecknahme",
+    route: "/api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ruecknahme",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:445",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261010:assistenz-aktionen-verlauf-ruecknahme — die eigenen Protokolleinträge eines
+  // eigenen Auftrags. Zustandsfrei: erfundene Kennungen, 404 des Dienstes vor jedem Protokollzugriff.
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/auftraege/gibt-es-nicht/protokoll",
+    route: "/api/me/klara/gespraeche/:id/auftraege/:auftragId/protokoll",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:561",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13) — KI-Aufträge am eigenen Gespräch.
+  // ZUSTANDSFREI GEFAHREN: jede Tür mit Gesprächskennung trägt eine erfundene und endet in 404 des
+  // Dienstes oder — mit leerer Nutzlast — in 400, BEVOR etwas angelegt, gesendet oder geschrieben
+  // wird. Die Verbindungsprobe trägt einen nicht freigegebenen Anbieter und endet beim Admin in
+  // 409, ohne dass ein Modell gerufen wird. Die Wirkung misst
+  // `tests/ki-arbeitsbegleitung/bpa13-arbeitsweg-am-server.test.ts`.
+  {
+    gruppe: "kiArbeitsbegleitungRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/ki-faehigkeiten",
+    belegstelle: "services/app/src/routes/ki-arbeitsbegleitung-routes.ts:78",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kiArbeitsbegleitungRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/ki-verbindung/gibt-es-nicht/pruefen",
+    route: "/api/me/klara/ki-verbindung/:anbieter/pruefen",
+    belegstelle: "services/app/src/routes/ki-arbeitsbegleitung-routes.ts:90",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "kiArbeitsbegleitungRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/ki-auftraege",
+    route: "/api/me/klara/gespraeche/:id/ki-auftraege",
+    belegstelle: "services/app/src/routes/ki-arbeitsbegleitung-routes.ts:107",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kiArbeitsbegleitungRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/ki-auftraege",
+    route: "/api/me/klara/gespraeche/:id/ki-auftraege",
+    belegstelle: "services/app/src/routes/ki-arbeitsbegleitung-routes.ts:121",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kiArbeitsbegleitungRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/ki-auftraege/gibt-es-nicht/uebergabe",
+    route: "/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/uebergabe",
+    belegstelle: "services/app/src/routes/ki-arbeitsbegleitung-routes.ts:135",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kiArbeitsbegleitungRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/ki-auftraege/gibt-es-nicht/ergebnis",
+    route: "/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/ergebnis",
+    belegstelle: "services/app/src/routes/ki-arbeitsbegleitung-routes.ts:155",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kiArbeitsbegleitungRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/ki-auftraege/gibt-es-nicht/unterbrechen",
+    route: "/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/unterbrechen",
+    belegstelle: "services/app/src/routes/ki-arbeitsbegleitung-routes.ts:177",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kiArbeitsbegleitungRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/ki-auftraege/gibt-es-nicht/stopp",
+    route: "/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/stopp",
+    belegstelle: "services/app/src/routes/ki-arbeitsbegleitung-routes.ts:200",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kiArbeitsbegleitungRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/ki-auftraege/gibt-es-nicht/freigabe-schliessen",
+    route: "/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/freigabe-schliessen",
+    belegstelle: "services/app/src/routes/ki-arbeitsbegleitung-routes.ts:217",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kiArbeitsbegleitungRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/ki-auftraege/gibt-es-nicht/neu-binden",
+    route: "/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/neu-binden",
+    belegstelle: "services/app/src/routes/ki-arbeitsbegleitung-routes.ts:240",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kiArbeitsbegleitungRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/ki-auftraege/gibt-es-nicht/codex",
+    route: "/api/me/klara/gespraeche/:id/ki-auftraege/:jobId/codex",
+    belegstelle: "services/app/src/routes/ki-arbeitsbegleitung-routes.ts:257",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kiArbeitsbegleitungRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/ki-vergleich",
+    route: "/api/me/klara/gespraeche/:id/ki-vergleich",
+    belegstelle: "services/app/src/routes/ki-arbeitsbegleitung-routes.ts:279",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261007:klara-notizen-aufgaben (Klara 06) — die eigenen Notizen. Jede Tür prüft nur die
+  // Anmeldung; das Konto kommt aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Liste liefert auf der
+  // gemeinsamen Bühne die (leeren) eigenen Notizen; das Anlegen mit leerer Nutzlast scheitert am
+  // Pflichtfeld `vorgang` (400), BEVOR etwas angelegt wird; die Türen mit Kennung tragen eine
+  // erfundene und enden in 400 (Bearbeiten ohne Fassung) oder 404 des Dienstes. Die Wirkung (eigene
+  // Notiz, Fremdkonto 404) misst `tests/klara-notizen/notiz-am-server.test.ts`.
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/notizen",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:84",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/notizen",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:100",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/notizen/gibt-es-nicht",
+    route: "/api/me/klara/notizen/:id",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:125",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/notizen/gibt-es-nicht",
+    route: "/api/me/klara/notizen/:id",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:138",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraNotizRoutes",
+    methode: "DELETE",
+    pfad: "/api/me/klara/notizen/gibt-es-nicht",
+    route: "/api/me/klara/notizen/:id",
+    belegstelle: "services/app/src/routes/klara-notiz-routes.ts:168",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261008:klara-aufgaben (Klara 07) — die eigenen Aufgaben. Dieselbe Tür-Regel wie die
+  // Notizen: nur Anmeldung, das Konto aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Liste liefert die
+  // (leeren) eigenen Aufgaben; das Anlegen mit leerer Nutzlast scheitert am Pflichtfeld `vorgang`
+  // (400), BEVOR etwas angelegt wird; die Türen mit Kennung tragen eine erfundene und enden in 400
+  // (Ändern ohne Fassung) oder 404 des Dienstes. Die Wirkung (eigene Aufgabe, Fremdkonto 404) misst
+  // `tests/klara-aufgaben/aufgabe-am-server.test.ts`.
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/aufgaben",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:89",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/aufgaben",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:105",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:130",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:143",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraAufgabeRoutes",
+    methode: "DELETE",
+    pfad: "/api/me/klara/aufgaben/gibt-es-nicht",
+    route: "/api/me/klara/aufgaben/:id",
+    belegstelle: "services/app/src/routes/klara-aufgabe-routes.ts:176",
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
@@ -1753,7 +2287,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "assistenzProfilRoutes",
     methode: "GET",
     pfad: "/api/me/assistenz",
-    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:81",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:144",
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
@@ -1761,9 +2295,137 @@ export const TABELLE: Zeile[] = [
     gruppe: "assistenzProfilRoutes",
     methode: "PUT",
     pfad: "/api/me/assistenz",
-    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:98",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:161",
     tor: "requireUser",
     payload: { avatar: "gibt-es-nicht" },
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261008:klara-eigeninitiative — der Unterstützungsmodus im eigenen Profil.
+  // ZUSTANDSFREI GEFAHREN: die Schreibtüren tragen einen ungültigen Modus bzw. Hinweisschlüssel und
+  // enden in 400, BEVOR etwas geschrieben wird. Die Wirkung (Speichern, Fremdkonto 403) misst
+  // `tests/klara-eigeninitiative/eigeninitiative-am-server.test.ts`.
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "GET",
+    pfad: "/api/me/assistenz/eigeninitiative",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:195",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "PUT",
+    pfad: "/api/me/assistenz/eigeninitiative",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:212",
+    tor: "requireUser",
+    payload: { modus: "gibt-es-nicht" },
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "POST",
+    pfad: "/api/me/assistenz/eigeninitiative/hinweise",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:235",
+    tor: "requireUser",
+    payload: { schluessel: "", stand: "geschlossen" },
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261012:klara-setup-shortcuts-umsetzung — die Klara-Tastenkürzel im eigenen Profil.
+  // ZUSTANDSFREI GEFAHREN: die Schreibtür trägt eine unbekannte Aktion und endet in 400, BEVOR
+  // etwas geschrieben wird. Die Wirkung (Speichern, Doppelbelegung, Fremdkonto 403) misst
+  // `tests/klara-setup-shortcuts/tastenkuerzel-am-server.test.ts`.
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "GET",
+    pfad: "/api/me/assistenz/tastenkuerzel",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:261",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "PUT",
+    pfad: "/api/me/assistenz/tastenkuerzel",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:278",
+    tor: "requireUser",
+    payload: { aktion: "gibt-es-nicht", belegung: null },
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261011:assistenz-skills-werkzeuge — die Fähigkeiten der eigenen Assistenz. Übersicht,
+  // Vormerkungen und eigene Aufträge prüfen die Anmeldung, Vorschau und Ausführung `ko.read`.
+  // ZUSTANDSFREI GEFAHREN: die schreibenden Türen tragen einen unvollständigen Rumpf und enden in
+  // 400 bzw. 404, BEVOR etwas gespeichert oder ausgeführt wird. Die Wirkung misst
+  // `tests/assistenz-faehigkeiten/faehigkeiten-am-server.test.ts`.
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "GET",
+    pfad: "/api/me/faehigkeiten",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:168",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "POST",
+    pfad: "/api/me/faehigkeiten/vormerkungen",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:184",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "POST",
+    pfad: "/api/me/faehigkeiten/vormerkungen/gibt-es-nicht/deaktivieren",
+    route: "/api/me/faehigkeiten/vormerkungen/:id/deaktivieren",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:228",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "POST",
+    pfad: "/api/me/faehigkeiten/vorschau",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:258",
+    tor: "ko.read",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "POST",
+    pfad: "/api/me/faehigkeiten/auftraege",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:288",
+    tor: "ko.read",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "GET",
+    pfad: "/api/me/faehigkeiten/auftraege",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:363",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "GET",
+    pfad: "/api/me/faehigkeiten/auftraege/gibt-es-nicht",
+    route: "/api/me/faehigkeiten/auftraege/:id",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:376",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzFaehigkeitenRoutes",
+    methode: "POST",
+    pfad: "/api/me/faehigkeiten/auftraege/gibt-es-nicht/abbrechen",
+    route: "/api/me/faehigkeiten/auftraege/:id/abbrechen",
+    belegstelle: "services/app/src/routes/assistenz-faehigkeiten-routes.ts:397",
+    tor: "requireUser",
+    payload: {},
     erwartet: ANGEMELDET,
   },
   // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite
@@ -2137,7 +2799,7 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/klara/sessions/gibt-es-nicht/zuruf",
     route: "/api/klara/sessions/:sessionId/zuruf",
-    belegstelle: "services/app/src/routes/klara-session-routes.ts:208",
+    belegstelle: "services/app/src/routes/klara-session-routes.ts:251",
     tor: "ko.read",
     payload: {},
     erwartet: NUR_LESEN,
@@ -2251,6 +2913,43 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // aufnahme:20260922:gesamt-leserechte (R-0543 · jeder Zugriffspunkt × jede Rolle): die Türen der
+  // eigenen Live-Wand-Zustimmung. Jede wirkt nur auf das EIGENE Konto (`user.id`); die Nutzlasten
+  // enden in der Eingabeprüfung (400), der Widerruf löscht höchstens ein eigenes Foto.
+  {
+    gruppe: "livewallRoutes",
+    methode: "GET",
+    pfad: "/api/livewall/consent",
+    belegstelle: "services/app/src/routes/livewall-routes.ts:107",
+    tor: "angemeldet (eigener Stand)",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "livewallRoutes",
+    methode: "PUT",
+    pfad: "/api/livewall/consent",
+    belegstelle: "services/app/src/routes/livewall-routes.ts:123",
+    tor: "angemeldet (ohne Wahrheitswert, 400)",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "livewallRoutes",
+    methode: "PUT",
+    pfad: "/api/livewall/photo",
+    belegstelle: "services/app/src/routes/livewall-routes.ts:148",
+    tor: "angemeldet (ohne Bild, 400)",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "livewallRoutes",
+    methode: "DELETE",
+    pfad: "/api/livewall/photo",
+    belegstelle: "services/app/src/routes/livewall-routes.ts:171",
+    tor: "angemeldet (Widerruf des eigenen Fotos)",
+    erwartet: ANGEMELDET,
+  },
   {
     gruppe: "managementRoutes",
     methode: "GET",
@@ -2302,6 +3001,18 @@ export const TABELLE: Zeile[] = [
     pfad: "/api/media/status",
     belegstelle: "services/app/src/routes/media-routes.ts:41",
     tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543): die Tür der Medienanalyse. Erfundene Kennung —
+  // Berechtigte bekommen 404 „gibt es nicht", das Tor misst sich am 401 bzw. Durchlass. Die
+  // Matrix mit echtem Anhang und Vertraulichkeit: `tests/security/leserechte-rollenmatrix.test.ts`.
+  {
+    gruppe: "mediaRoutes",
+    methode: "POST",
+    pfad: "/api/media/analyze",
+    belegstelle: "services/app/src/routes/media-routes.ts:49",
+    tor: "ko.read, dann beurteileAnhang (erfundene Kennung, 404)",
+    payload: { objectId: "gibt-es-nicht" },
     erwartet: NUR_LESEN,
   },
   {
@@ -2371,8 +3082,43 @@ export const TABELLE: Zeile[] = [
     gruppe: "outputRoutes",
     methode: "GET",
     pfad: "/api/output/sources",
-    belegstelle: "services/app/src/routes/output-routes.ts:9",
+    belegstelle: "services/app/src/routes/output-routes.ts:14",
     tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543): der MCP-Zugang (Aufnahme gesamt-mcp). Er ist
+  // AUSSCHLIESSLICH für einen Dienst-Schlüssel mit `mcp.werkzeug` gebaut (`mcp-routes.ts`, `zugang`);
+  // eine Sitzung — gleich welcher Rolle, auch der Admin — kommt nicht herein und bekommt 401. Genau
+  // das misst diese Zeile mit fünf Akteuren. Die Bühne trägt dafür nur eine Schlüssel-PRÜFSUMME
+  // (`buehne.ts`, `KLARWERK_SERVICE_KEYS`); der Weg MIT Schlüssel gehört den Tests des MCP-Auftrags.
+  {
+    gruppe: "mcpRoutes",
+    methode: "GET",
+    pfad: "/mcp",
+    belegstelle: "services/app/src/routes/mcp-routes.ts:273",
+    tor: "Dienst-Schlüssel mit mcp.werkzeug — keine Sitzungsrolle",
+    erwartet: NUR_DIENSTSCHLUESSEL,
+  },
+  {
+    gruppe: "mcpRoutes",
+    methode: "POST",
+    pfad: "/mcp",
+    belegstelle: "services/app/src/routes/mcp-routes.ts:284",
+    tor: "Dienst-Schlüssel mit mcp.werkzeug — keine Sitzungsrolle",
+    payload: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+    erwartet: NUR_DIENSTSCHLUESSEL,
+  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543): die Tür der Ausgabeerzeugung. Die leere
+  // Quellenauswahl endet für jede Rolle in `NO_SOURCES` (400), also HINTER dem Rechtetor; es wird
+  // nichts erzeugt. Die Matrix mit echter Quellenauswahl (intern/vertraulich, sechs Akteure):
+  // `tests/security/leserechte-rollenmatrix.test.ts`.
+  {
+    gruppe: "outputRoutes",
+    methode: "POST",
+    pfad: "/api/output/generate",
+    belegstelle: "services/app/src/routes/output-routes.ts:22",
+    tor: "ko.read, dann sichtbarkeitsfilterFuer (leere Auswahl, 400)",
+    payload: { kind: "instruction", koIds: [] },
     erwartet: NUR_LESEN,
   },
   // RECHERCHE:pmo-fea-0004 — das Wissensupdate fürs Teamgespräch: lesen, auf Abruf, kein Versand.
@@ -2390,7 +3136,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "lmsExportRoutes",
     methode: "POST",
     pfad: "/api/output/scorm/pruefen",
-    belegstelle: "services/app/src/routes/lms-export-routes.ts:25",
+    belegstelle: "services/app/src/routes/lms-export-routes.ts:64",
     tor: "ko.read",
     payload: {},
     erwartet: NUR_LESEN,
@@ -2399,8 +3145,174 @@ export const TABELLE: Zeile[] = [
     gruppe: "lmsExportRoutes",
     methode: "POST",
     pfad: "/api/output/scorm/paket",
-    belegstelle: "services/app/src/routes/lms-export-routes.ts:37",
+    belegstelle: "services/app/src/routes/lms-export-routes.ts:77",
     tor: "ko.read",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543 · jeder Zugriffspunkt × jede Rolle): die drei
+  // Routengruppen, die bis hierher ohne Abnahmezeile registriert waren (Firmenwörterbuch,
+  // Ausgangsprüfung, Spaces). Die Nutzlasten sind bewusst dünn bzw. die Kennungen erfunden — gemessen
+  // wird die Tür (Rechtetor), es entsteht und ändert sich nichts.
+  {
+    gruppe: "begriffeRoutes",
+    methode: "GET",
+    pfad: "/api/begriffe",
+    belegstelle: "services/app/src/routes/begriffe-routes.ts:69",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "begriffeRoutes",
+    methode: "GET",
+    pfad: "/api/begriffe/gibt-es-nicht",
+    route: "/api/begriffe/:id",
+    belegstelle: "services/app/src/routes/begriffe-routes.ts:78",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "begriffeRoutes",
+    methode: "GET",
+    pfad: "/api/begriffe/gibt-es-nicht/fassungen/1",
+    route: "/api/begriffe/:id/fassungen/:version",
+    belegstelle: "services/app/src/routes/begriffe-routes.ts:93",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "begriffeRoutes",
+    methode: "POST",
+    pfad: "/api/begriffe",
+    belegstelle: "services/app/src/routes/begriffe-routes.ts:113",
+    tor: "ko.validate (leerer Rumpf endet in der Eingabeprüfung, 400)",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "begriffeRoutes",
+    methode: "PUT",
+    pfad: "/api/begriffe/gibt-es-nicht",
+    route: "/api/begriffe/:id",
+    belegstelle: "services/app/src/routes/begriffe-routes.ts:154",
+    tor: "ko.validate (erfundene Kennung, 404)",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "begriffeRoutes",
+    methode: "POST",
+    pfad: "/api/begriffe/pruefen",
+    belegstelle: "services/app/src/routes/begriffe-routes.ts:224",
+    tor: "ko.read (leerer Rumpf, 400)",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "ausgangspruefungRoutes",
+    methode: "GET",
+    pfad: "/api/ausgangspruefung",
+    belegstelle: "services/app/src/routes/ausgangspruefung-routes.ts:60",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "ausgangspruefungRoutes",
+    methode: "POST",
+    pfad: "/api/ausgangspruefung/gibt-es-nicht/freigeben",
+    route: "/api/ausgangspruefung/:id/freigeben",
+    belegstelle: "services/app/src/routes/ausgangspruefung-routes.ts:75",
+    tor: "ko.validate (kein wartender Aufruf, 404)",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "ausgangspruefungRoutes",
+    methode: "POST",
+    pfad: "/api/ausgangspruefung/gibt-es-nicht/ablehnen",
+    route: "/api/ausgangspruefung/:id/ablehnen",
+    belegstelle: "services/app/src/routes/ausgangspruefung-routes.ts:86",
+    tor: "ko.validate (kein wartender Aufruf, 404)",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "GET",
+    pfad: "/api/spaces",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:252",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "GET",
+    pfad: "/api/spaces/konten",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:272",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "GET",
+    pfad: "/api/spaces/gibt-es-nicht",
+    route: "/api/spaces/:id",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:284",
+    tor: "ko.read, dann Space-Sichtbarkeit (erfundene Kennung, 404)",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "POST",
+    pfad: "/api/spaces",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:308",
+    tor: "ko.validate (leerer Rumpf endet in der Eingabeprüfung, 400)",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "PUT",
+    pfad: "/api/spaces/gibt-es-nicht",
+    route: "/api/spaces/:id",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:346",
+    tor: "ko.read, dann Space-Sichtbarkeit und Spacezuständigkeit (erfundene Kennung, 404)",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "GET",
+    pfad: "/api/spaces/gibt-es-nicht/artikel",
+    route: "/api/spaces/:id/artikel",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:418",
+    tor: "ko.read, dann Space-Sichtbarkeit und darfSehen (erfundene Kennung, 404)",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "GET",
+    pfad: "/api/spaces/kontext/artikel/gibt-es-nicht",
+    route: "/api/spaces/kontext/artikel/:koId",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:459",
+    tor: "ko.read, dann darfSehen (erfundene Kennung, 404)",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "POST",
+    pfad: "/api/spaces/verschiebung/vorschau",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:508",
+    tor: "ko.read, dann darfSehen am Objekt (ohne koId, 404)",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "POST",
+    pfad: "/api/spaces/verschiebung",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:537",
+    tor: "ko.read, dann darfSehen am Objekt (ohne koId, 404)",
     payload: {},
     erwartet: NUR_LESEN,
   },
@@ -2435,6 +3347,14 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/reasoner/config",
     belegstelle: "services/app/src/routes/reasoner-routes.ts:728",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "reasonerRoutes",
+    methode: "GET",
+    pfad: "/api/reasoner/referenzpruefung",
+    belegstelle: "services/app/src/routes/reasoner-routes.ts:1497",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
@@ -2893,6 +3813,17 @@ export const TABELLE: Zeile[] = [
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
+  // aufnahme:20260922:gesamt-leserechte (R-0543): das Importergebnis EINES Wissensobjekts —
+  // `users.manage`, danach `darfSehen` je Zeile (routeGuardAudit). Erfundene Kennung, 404.
+  {
+    gruppe: "importRunRoutes",
+    methode: "GET",
+    pfad: "/api/admin/import/knowledge/gibt-es-nicht",
+    route: "/api/admin/import/knowledge/:koId",
+    belegstelle: "services/app/src/routes/import-run-routes.ts:342",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
   {
     gruppe: "klaraAiRoutes",
     methode: "GET",
@@ -2985,6 +3916,15 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/library/nulltreffer",
     belegstelle: "services/app/src/routes/library-routes.ts:735",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // produkt:20261011:peter-p14: Existenzhinweise — dasselbe Recht wie die Suche selbst.
+  {
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/library/existenzhinweise",
+    belegstelle: "services/app/src/routes/library-routes.ts:923",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
@@ -3140,5 +4080,41 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/validation-routes.ts:85",
     tor: "ko.read",
     erwartet: NUR_LESEN,
+  },
+  // R-0265: Prüfer-Vorschlag beim Einreichen — dasselbe Recht wie das Einreichen selbst.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/validation/reviewer-suggestions",
+    belegstelle: "services/app/src/routes/validation-routes.ts:304",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  // R-1655: Prüfdauer je Zuweisungsweg — dieselbe Lesehürde wie die Personenübersicht.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/validation/pruefdauer",
+    belegstelle: "services/app/src/routes/validation-routes.ts:355",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // R-1655: das eigene Opt-out aus der automatischen Zuweisung lesen.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/me/pruefrouting",
+    belegstelle: "services/app/src/routes/validation-routes.ts:367",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // R-0679: ob dieser Betrieb Geräte-Push eingerichtet hat (samt öffentlichem VAPID-Schlüssel).
+  {
+    gruppe: "pushRoutes",
+    methode: "GET",
+    pfad: "/api/push/config",
+    belegstelle: "services/app/src/routes/push-routes.ts:44",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
   },
 ];

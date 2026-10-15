@@ -1,4 +1,7 @@
 import type { Pool } from "pg";
+import type { EigeninitiativeStand } from "./assistenz-eigeninitiative";
+import type { AuftragsEintrag, FaehigkeitsVormerkung } from "./assistenz-faehigkeiten";
+import type { TastenkuerzelStand } from "./assistenz-tastenkuerzel";
 
 // ================================================================================================
 // produkt:20261010:assistenz-name-avatar — DAS PERSÖNLICHE ASSISTENZPROFIL JE KONTO.
@@ -54,6 +57,40 @@ export interface AssistenzProfil {
   eingerichtetAm: string | null;
   fassung: number;
   geaendertAm: string;
+  /**
+   * produkt:20261011:assistenz-skills-werkzeuge — persönliche Favoriten und bestätigte Routinen
+   * (`assistenz-faehigkeiten.ts`). Fehlt bei Profilen ohne Vormerkung; Änderungen an Name, Avatar
+   * oder Bewegung lassen sie unverändert.
+   */
+  faehigkeiten?: readonly FaehigkeitsVormerkung[];
+  /**
+   * produkt:20261011:assistenz-skills-werkzeuge — die eigenen Fähigkeitsaufträge (Bindung, Stand,
+   * Ergebnis; `assistenz-faehigkeiten.ts`). Gehört AUSSCHLIESSLICH `schreibeFaehigkeitsauftraege`:
+   * ein Profilschreiben (`schreibe`) übernimmt immer den gespeicherten Stand und ändert ihn nie.
+   * Ein Auftrag ändert die Profilfassung nicht — Name und Motiv bleiben ohne 409 änderbar.
+   */
+  faehigkeitsAuftraege?: readonly AuftragsEintrag[];
+  /**
+   * produkt:20261008:klara-eigeninitiative — der gewählte Unterstützungsmodus und die geschlossenen
+   * bzw. zurückgestellten Hinweise (`assistenz-eigeninitiative.ts`). Gehört AUSSCHLIESSLICH
+   * `schreibeEigeninitiative`: wie die Fähigkeitsaufträge übernimmt ein Profilschreiben immer den
+   * gespeicherten Stand, und ein Moduswechsel ändert die Profilfassung nicht.
+   */
+  eigeninitiative?: EigeninitiativeStand;
+  /**
+   * produkt:20261012:klara-setup-shortcuts-umsetzung — die eigenen Klara-Tastenkürzel
+   * (`assistenz-tastenkuerzel.ts`). Gehört AUSSCHLIESSLICH `schreibeTastenkuerzel`: ein
+   * Profilschreiben übernimmt den gespeicherten Stand, und ein Kürzelwechsel ändert die
+   * Profilfassung nicht.
+   */
+  tastenkuerzel?: TastenkuerzelStand;
+  /**
+   * produkt:20261012:klara-bildanalyse-ocr-kontext-setup (OCR-03) — Setup › Klara „Bilder
+   * automatisch analysieren und Text erkennen“. Fehlt das Feld, gilt die Voreinstellung „an“; nur
+   * eine bewusste Wahl wird gespeichert. Ein normales Profilfeld wie `bewegung`: es reist mit
+   * `schreibe` und übersteht Neuladen und Neuanmeldung.
+   */
+  bildAutomatik?: boolean;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -64,9 +101,58 @@ export interface AssistenzProfilRepo {
   hole(kontoId: string): Promise<AssistenzProfil | null>;
   /**
    * Schreibt `p`, wenn das gespeicherte Profil noch `fassung - 1` trägt (bei `fassung === 1`: wenn
-   * es noch keines gibt); sonst `false`.
+   * es noch keines oder nur eine Zeile mit Fassung 0 gibt); sonst `false`. Die gespeicherten
+   * Fähigkeitsaufträge bleiben dabei unverändert, was immer `p` trägt.
    */
   schreibe(p: AssistenzProfil): Promise<boolean>;
+  /**
+   * Ersetzt nur die Fähigkeitsaufträge — wenn sie noch `alt` sind (Vergleich auf den Inhalt), sonst
+   * `false`. Ohne Profil entsteht eine Zeile mit Fassung 0 (kein eingerichtetes Profil). Die
+   * Profilfassung bleibt unverändert.
+   */
+  schreibeFaehigkeitsauftraege(
+    kontoId: string,
+    alt: readonly AuftragsEintrag[],
+    neu: readonly AuftragsEintrag[],
+  ): Promise<boolean>;
+  /** Konten mit wartenden oder laufenden Fähigkeitsaufträgen — für den Wiederanlauf nach Neustart. */
+  kontenMitOffenenFaehigkeitsauftraegen(): Promise<readonly string[]>;
+  /**
+   * produkt:20261008:klara-eigeninitiative — ersetzt nur den Eigeninitiative-Stand, wenn er noch
+   * `alt` ist (Vergleich auf den Inhalt, `null` = keiner gespeichert), sonst `false`. Ohne Profil
+   * entsteht eine Zeile mit Fassung 0. Die Profilfassung bleibt unverändert.
+   */
+  schreibeEigeninitiative(
+    kontoId: string,
+    alt: EigeninitiativeStand | null,
+    neu: EigeninitiativeStand,
+  ): Promise<boolean>;
+  /**
+   * produkt:20261012:klara-setup-shortcuts-umsetzung — ersetzt nur die Tastenkürzel, wenn sie noch
+   * `alt` sind (Vergleich auf den Inhalt, `null` = keine gespeichert), sonst `false`. Ohne Profil
+   * entsteht eine Zeile mit Fassung 0. Die Profilfassung bleibt unverändert.
+   */
+  schreibeTastenkuerzel(
+    kontoId: string,
+    alt: TastenkuerzelStand | null,
+    neu: TastenkuerzelStand,
+  ): Promise<boolean>;
+}
+
+function leeresProfil(kontoId: string, stempel: string): AssistenzProfil {
+  return {
+    kontoId,
+    name: null,
+    avatar: null,
+    bewegung: "standard",
+    eingerichtetAm: null,
+    fassung: 0,
+    geaendertAm: stempel,
+  };
+}
+
+function offen(liste: readonly AuftragsEintrag[] | undefined): boolean {
+  return (liste ?? []).some((e) => e.zustand === "wartet" || e.zustand === "laeuft");
 }
 
 export class InMemoryAssistenzProfilRepo implements AssistenzProfilRepo {
@@ -74,7 +160,7 @@ export class InMemoryAssistenzProfilRepo implements AssistenzProfilRepo {
 
   hole(kontoId: string): Promise<AssistenzProfil | null> {
     const p = this.profile.get(kontoId);
-    return Promise.resolve(p ? { ...p } : null);
+    return Promise.resolve(p ? structuredClone(p) : null);
   }
 
   schreibe(p: AssistenzProfil): Promise<boolean> {
@@ -83,8 +169,64 @@ export class InMemoryAssistenzProfilRepo implements AssistenzProfilRepo {
     if (p.fassung !== erwartet) {
       return Promise.resolve(false);
     }
-    this.profile.set(p.kontoId, { ...p });
+    const {
+      faehigkeitsAuftraege: _ignoriert,
+      eigeninitiative: _eigen,
+      tastenkuerzel: _kuerzel,
+      ...rest
+    } = structuredClone(p);
+    this.profile.set(p.kontoId, {
+      ...rest,
+      ...(alt?.faehigkeitsAuftraege ? { faehigkeitsAuftraege: alt.faehigkeitsAuftraege } : {}),
+      ...(alt?.eigeninitiative ? { eigeninitiative: alt.eigeninitiative } : {}),
+      ...(alt?.tastenkuerzel ? { tastenkuerzel: alt.tastenkuerzel } : {}),
+    });
     return Promise.resolve(true);
+  }
+
+  schreibeTastenkuerzel(
+    kontoId: string,
+    alt: TastenkuerzelStand | null,
+    neu: TastenkuerzelStand,
+  ): Promise<boolean> {
+    const p = this.profile.get(kontoId) ?? leeresProfil(kontoId, new Date().toISOString());
+    if (JSON.stringify(p.tastenkuerzel ?? null) !== JSON.stringify(alt)) {
+      return Promise.resolve(false);
+    }
+    this.profile.set(kontoId, { ...p, tastenkuerzel: structuredClone(neu) });
+    return Promise.resolve(true);
+  }
+
+  schreibeEigeninitiative(
+    kontoId: string,
+    alt: EigeninitiativeStand | null,
+    neu: EigeninitiativeStand,
+  ): Promise<boolean> {
+    const p = this.profile.get(kontoId) ?? leeresProfil(kontoId, new Date().toISOString());
+    if (JSON.stringify(p.eigeninitiative ?? null) !== JSON.stringify(alt)) {
+      return Promise.resolve(false);
+    }
+    this.profile.set(kontoId, { ...p, eigeninitiative: structuredClone(neu) });
+    return Promise.resolve(true);
+  }
+
+  schreibeFaehigkeitsauftraege(
+    kontoId: string,
+    alt: readonly AuftragsEintrag[],
+    neu: readonly AuftragsEintrag[],
+  ): Promise<boolean> {
+    const p = this.profile.get(kontoId) ?? leeresProfil(kontoId, new Date().toISOString());
+    if (JSON.stringify(p.faehigkeitsAuftraege ?? []) !== JSON.stringify(alt)) {
+      return Promise.resolve(false);
+    }
+    this.profile.set(kontoId, { ...p, faehigkeitsAuftraege: structuredClone(neu) });
+    return Promise.resolve(true);
+  }
+
+  kontenMitOffenenFaehigkeitsauftraegen(): Promise<readonly string[]> {
+    return Promise.resolve(
+      [...this.profile.values()].filter((p) => offen(p.faehigkeitsAuftraege)).map((p) => p.kontoId),
+    );
   }
 }
 
@@ -113,20 +255,127 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
   }
 
   async schreibe(p: AssistenzProfil): Promise<boolean> {
+    // Die Fähigkeitsaufträge gehören allein `schreibeFaehigkeitsauftraege`: übernommen wird immer
+    // der GESPEICHERTE Stand, nie der mitgebrachte (sonst überschriebe ein Namenswechsel einen
+    // inzwischen abgeschlossenen Auftrag). Dasselbe gilt für den Eigeninitiative-Stand
+    // (produkt:20261008:klara-eigeninitiative): er gehört allein `schreibeEigeninitiative` — und
+    // für die Tastenkürzel (produkt:20261012:klara-setup-shortcuts-umsetzung, `schreibeTastenkuerzel`).
+    const {
+      faehigkeitsAuftraege: _ignoriert,
+      eigeninitiative: _eigen,
+      tastenkuerzel: _kuerzel,
+      ...ohneAuftraege
+    } = p;
+    const daten = JSON.stringify(ohneAuftraege);
     if (p.fassung === 1) {
       const res = await this.pool.query(
         `INSERT INTO assistenz_profile (konto_id, fassung, geaendert_am, data)
-         VALUES ($1, $2, $3, $4) ON CONFLICT (konto_id) DO NOTHING`,
-        [p.kontoId, p.fassung, p.geaendertAm, JSON.stringify(p)],
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (konto_id) DO UPDATE SET
+           fassung = EXCLUDED.fassung,
+           geaendert_am = EXCLUDED.geaendert_am,
+           data = EXCLUDED.data || CASE WHEN assistenz_profile.data ? 'faehigkeitsAuftraege'
+             THEN jsonb_build_object('faehigkeitsAuftraege', assistenz_profile.data->'faehigkeitsAuftraege')
+             ELSE '{}'::jsonb END
+             || CASE WHEN assistenz_profile.data ? 'eigeninitiative'
+             THEN jsonb_build_object('eigeninitiative', assistenz_profile.data->'eigeninitiative')
+             ELSE '{}'::jsonb END
+             || CASE WHEN assistenz_profile.data ? 'tastenkuerzel'
+             THEN jsonb_build_object('tastenkuerzel', assistenz_profile.data->'tastenkuerzel')
+             ELSE '{}'::jsonb END
+         WHERE assistenz_profile.fassung = 0`,
+        [p.kontoId, p.fassung, p.geaendertAm, daten],
       );
       return (res.rowCount ?? 0) > 0;
     }
     const res = await this.pool.query(
-      `UPDATE assistenz_profile SET fassung = $2, geaendert_am = $3, data = $4
+      `UPDATE assistenz_profile SET fassung = $2, geaendert_am = $3,
+         data = $4::jsonb || CASE WHEN data ? 'faehigkeitsAuftraege'
+           THEN jsonb_build_object('faehigkeitsAuftraege', data->'faehigkeitsAuftraege')
+           ELSE '{}'::jsonb END
+           || CASE WHEN data ? 'eigeninitiative'
+           THEN jsonb_build_object('eigeninitiative', data->'eigeninitiative')
+           ELSE '{}'::jsonb END
+           || CASE WHEN data ? 'tastenkuerzel'
+           THEN jsonb_build_object('tastenkuerzel', data->'tastenkuerzel')
+           ELSE '{}'::jsonb END
         WHERE konto_id = $1 AND fassung = $5`,
-      [p.kontoId, p.fassung, p.geaendertAm, JSON.stringify(p), p.fassung - 1],
+      [p.kontoId, p.fassung, p.geaendertAm, daten, p.fassung - 1],
     );
     return (res.rowCount ?? 0) > 0;
+  }
+
+  async schreibeTastenkuerzel(
+    kontoId: string,
+    alt: TastenkuerzelStand | null,
+    neu: TastenkuerzelStand,
+  ): Promise<boolean> {
+    const stempel = new Date().toISOString();
+    await this.pool.query(
+      `INSERT INTO assistenz_profile (konto_id, fassung, geaendert_am, data)
+       VALUES ($1, 0, $2, $3) ON CONFLICT (konto_id) DO NOTHING`,
+      [kontoId, stempel, JSON.stringify(leeresProfil(kontoId, stempel))],
+    );
+    const res = await this.pool.query(
+      `UPDATE assistenz_profile
+          SET data = jsonb_set(data, '{tastenkuerzel}', $3::jsonb, true)
+        WHERE konto_id = $1
+          AND COALESCE(data->'tastenkuerzel', 'null'::jsonb) = $2::jsonb`,
+      [kontoId, JSON.stringify(alt), JSON.stringify(neu)],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async schreibeEigeninitiative(
+    kontoId: string,
+    alt: EigeninitiativeStand | null,
+    neu: EigeninitiativeStand,
+  ): Promise<boolean> {
+    const stempel = new Date().toISOString();
+    await this.pool.query(
+      `INSERT INTO assistenz_profile (konto_id, fassung, geaendert_am, data)
+       VALUES ($1, 0, $2, $3) ON CONFLICT (konto_id) DO NOTHING`,
+      [kontoId, stempel, JSON.stringify(leeresProfil(kontoId, stempel))],
+    );
+    const res = await this.pool.query(
+      `UPDATE assistenz_profile
+          SET data = jsonb_set(data, '{eigeninitiative}', $3::jsonb, true)
+        WHERE konto_id = $1
+          AND COALESCE(data->'eigeninitiative', 'null'::jsonb) = $2::jsonb`,
+      [kontoId, JSON.stringify(alt), JSON.stringify(neu)],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async schreibeFaehigkeitsauftraege(
+    kontoId: string,
+    alt: readonly AuftragsEintrag[],
+    neu: readonly AuftragsEintrag[],
+  ): Promise<boolean> {
+    const stempel = new Date().toISOString();
+    await this.pool.query(
+      `INSERT INTO assistenz_profile (konto_id, fassung, geaendert_am, data)
+       VALUES ($1, 0, $2, $3) ON CONFLICT (konto_id) DO NOTHING`,
+      [kontoId, stempel, JSON.stringify(leeresProfil(kontoId, stempel))],
+    );
+    const res = await this.pool.query(
+      `UPDATE assistenz_profile
+          SET data = jsonb_set(data, '{faehigkeitsAuftraege}', $3::jsonb, true)
+        WHERE konto_id = $1
+          AND COALESCE(data->'faehigkeitsAuftraege', '[]'::jsonb) = $2::jsonb`,
+      [kontoId, JSON.stringify(alt), JSON.stringify(neu)],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async kontenMitOffenenFaehigkeitsauftraegen(): Promise<readonly string[]> {
+    const res = await this.pool.query<{ konto_id: string }>(
+      `SELECT konto_id FROM assistenz_profile
+        WHERE EXISTS (
+          SELECT 1 FROM jsonb_array_elements(COALESCE(data->'faehigkeitsAuftraege', '[]'::jsonb)) a
+           WHERE a->>'zustand' IN ('wartet', 'laeuft'))`,
+    );
+    return res.rows.map((r) => r.konto_id);
   }
 }
 
@@ -134,7 +383,13 @@ export class PgAssistenzProfilRepo implements AssistenzProfilRepo {
 // DER DIENST
 // ------------------------------------------------------------------------------------------------
 
-export type AssistenzProfilGrund = "name" | "avatar" | "bewegung" | "unvollstaendig" | "konflikt";
+export type AssistenzProfilGrund =
+  | "name"
+  | "avatar"
+  | "bewegung"
+  | "bildAutomatik"
+  | "unvollstaendig"
+  | "konflikt";
 
 export class AssistenzProfilFehler extends Error {
   constructor(
@@ -151,6 +406,8 @@ export interface AssistenzProfilEingabe {
   name?: unknown;
   avatar?: unknown;
   bewegung?: unknown;
+  /** OCR-03: Bilder automatisch analysieren und Text erkennen (`true`/`false`). */
+  bildAutomatik?: unknown;
   /** `true`: dieser Schreibvorgang schliesst die Ersteinrichtung ab (Name UND Avatar nötig). */
   einrichtungAbschliessen?: unknown;
   /** Die Fassung, die der Client zuletzt bestätigt gesehen hat — schützt vor stillem Überschreiben. */
@@ -223,9 +480,13 @@ export class AssistenzProfilDienst {
     this.jetzt = deps.jetzt ?? Date.now;
   }
 
-  /** Das eigene Profil — oder `null`, solange das Konto keines hat (Bestandskonto, neues Konto). */
-  hole(kontoId: string): Promise<AssistenzProfil | null> {
-    return this.repo.hole(kontoId);
+  /**
+   * Das eigene Profil — oder `null`, solange das Konto keines hat (Bestandskonto, neues Konto). Eine
+   * Zeile mit Fassung 0 trägt nur Fähigkeitsaufträge und ist noch kein Profil.
+   */
+  async hole(kontoId: string): Promise<AssistenzProfil | null> {
+    const p = await this.repo.hole(kontoId);
+    return p && p.fassung > 0 ? p : null;
   }
 
   /**
@@ -273,6 +534,17 @@ export class AssistenzProfilDienst {
       }
       bewegung = eingabe.bewegung as AssistenzBewegung;
     }
+    let bildAutomatik = alt?.bildAutomatik;
+    if (eingabe.bildAutomatik !== undefined) {
+      if (typeof eingabe.bildAutomatik !== "boolean") {
+        throw new AssistenzProfilFehler(
+          400,
+          "bildAutomatik",
+          "bildAutomatik muss true oder false sein.",
+        );
+      }
+      bildAutomatik = eingabe.bildAutomatik;
+    }
 
     const abschliessen = eingabe.einrichtungAbschliessen === true;
     if (abschliessen && (name === null || avatar === null)) {
@@ -291,6 +563,8 @@ export class AssistenzProfilDienst {
       eingerichtetAm: alt?.eingerichtetAm ?? (abschliessen ? stempel : null),
       fassung: (alt?.fassung ?? 0) + 1,
       geaendertAm: stempel,
+      ...(alt?.faehigkeiten ? { faehigkeiten: alt.faehigkeiten } : {}),
+      ...(bildAutomatik !== undefined ? { bildAutomatik } : {}),
     };
     if (!(await this.repo.schreibe(neu))) {
       throw new AssistenzProfilFehler(

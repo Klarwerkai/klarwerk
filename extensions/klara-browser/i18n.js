@@ -11,6 +11,8 @@ globalThis.KLARA_TEXT = {
       "Es liegt noch eine offene Übernahme in der Leiste. Die neue Auswahl wurde deshalb noch nicht gelesen.",
     pendingReplace: "Neue Auswahl übernehmen und ersetzen",
     pendingKeep: "Offene Übernahme behalten",
+    skippedCaptures:
+      "Gleichzeitig ausgelöste Erfassungen, die nicht gelesen wurden (bei Bedarf die Seite erneut erfassen):",
     // Die wartende Seite wird BENANNT, nicht beschrieben: Titel und Adresse kommen aus dem Tab, auf
     // den die neue Übernahme zeigte.
     pendingFrom: "Wartet:",
@@ -148,6 +150,8 @@ globalThis.KLARA_TEXT = {
       "Die Zwischenablage konnte nicht gelesen werden. Bitte erneut versuchen; hilft das nicht, den Text mit Cmd+V (Windows und Linux: Strg+V) in das Feld „Eingefügter Text“ einfügen. Es wurde nichts gelesen und nichts gesendet.",
     clipboard_empty:
       "Die Zwischenablage enthielt keinen Text. Bitte in der Quelle kopieren und erneut einfügen.",
+    clipboard_stale:
+      "Die Übernahme hat gewechselt, während Klara auf die Zwischenablage wartete. Es wurde nichts eingefügt und nichts gesendet. Bitte erneut einfügen.",
     classification_locked:
       "Eine bereits gespeicherte Einstufung kann von hier nicht auf „Offen“ zurückgenommen werden. Bitte eine Stufe wählen oder den Entwurf in Klarwerk öffnen. Es wurde nichts gesendet.",
     origin_missing:
@@ -215,6 +219,8 @@ globalThis.KLARA_TEXT = {
       "A capture is still open in the panel. The new selection has therefore not been read yet.",
     pendingReplace: "Capture the new selection and replace",
     pendingKeep: "Keep the open capture",
+    skippedCaptures:
+      "Captures triggered at the same time that were not read (capture the page again if needed):",
     pendingFrom: "Waiting:",
     refresh: "Check status again",
     unreviewed: "Browser · Unreviewed draft",
@@ -324,6 +330,8 @@ globalThis.KLARA_TEXT = {
     clipboard_failed:
       "The clipboard could not be read. Please try again; if that does not help, paste the text into the “Pasted text” field with Cmd+V (Windows and Linux: Ctrl+V). Nothing was read and nothing was sent.",
     clipboard_empty: "The clipboard held no text. Copy it in the source and paste again.",
+    clipboard_stale:
+      "The capture changed while Klara was waiting for the clipboard. Nothing was pasted and nothing was sent. Please paste again.",
     classification_locked:
       "A classification that has already been saved cannot be reset to “Open” from here. Please choose a level or open the draft in Klarwerk. Nothing was sent.",
     origin_missing: "Please state the origin of the pasted text. Without it nothing is saved.",

@@ -217,7 +217,7 @@ schreibe_protokoll() {
     # Kategorie, getrennt von Beitraegen und Anhangsbytes. Dieselbe Tabellenliste wie
     # `assistenzTabellen()` in services/app/src/sicherungsumfang.ts (gehalten von
     # tests/wiederherstellung-export/sicherungsumfang.test.ts).
-    printf '"assistenz":%s}' "$(vergleich_json "" assistenz_profile klara_gespraeche interaktions_gedaechtnis klara_sessions klara_session_consents)"
+    printf '"assistenz":%s}' "$(vergleich_json "" assistenz_profile klara_gespraeche interaktions_gedaechtnis klara_sessions klara_session_consents klara_aufgaben)"
     printf '},"wissensnachweis":%s}\n' "$(json_text_oder_null "$WISSENSNACHWEIS")"
   } > "$arbeitsname" 2>/dev/null || ! mv -f "$arbeitsname" "$PROTOKOLL" 2>/dev/null; then
     rm -f "$arbeitsname" 2>/dev/null || true
@@ -511,6 +511,7 @@ PFLICHTTABELLEN=(
   kenntnisnahme_anforderungen
   kenntnisnahme_empfaenger
   veroeffentlichung_zustellungen
+  bestandsreset_laeufe
   spaces_fassungen
   livewall_fotos
   interaktions_gedaechtnis
@@ -539,6 +540,9 @@ PFLICHTTABELLEN=(
   meldung_zustellstatus
   verstaendnis_fragensaetze
   verstaendnis_versuche
+  meeting_dokumentbezuege
+  klara_notizen
+  klara_aufgaben
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do
@@ -717,12 +721,19 @@ rm -f "$PID_FILE" "$JOBS_DATEI" "$ANHANG_DATEI" "$BELEG_DATEI"
 # genau daran erkennt der Drill unten seine eigene Nachkommenschaft, ohne eine PID zu glauben.
 # `set +m` direkt danach haelt Jobmeldungen aus dem Drillprotokoll heraus; Gruppe und Jobeintrag
 # bleiben davon unberuehrt.
+#
+# produkt:20261011:peter-p09 (P09-AC06): die Probe loest KEINE Aussenaktion aus. Der Server erbt sonst
+# die Umgebung des Aufrufers — mit eingetragenen Webhook-Zielen schickte schon der Drill die
+# Meldungen des wiederhergestellten Bestands ein zweites Mal hinaus, mit hinterlegten Modell-
+# schluesseln fuehre die Hintergrundpruefung Modellvergleiche. Beides bleibt hier aus.
 set -m
 (
   cd "$WURZEL"
   exec env \
     DATABASE_URL="postgres:///${RESTORE_DB}" \
     KLARWERK_PID_FILE="$PID_FILE" \
+    KLARWERK_WEBHOOKS= \
+    KLARWERK_REASONER_POLICY=deterministic \
     PORT="$DRILL_PORT" \
     npm_config_offline=true \
     npx tsx services/app/src/server.ts

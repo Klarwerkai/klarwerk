@@ -39,8 +39,17 @@ export interface AuditObjektZugang {
   get: (id: string) => Promise<AuditObjektFakten | undefined>;
 }
 
+/**
+ * Was die Sicht an einem Eintrag liest. aufnahme:20260922:gesamt-leserechte (Nacharbeit 20): auch
+ * ein Eintrag der Leseransicht (`routes/audit-routes.ts`, ohne Kettenfelder) geht durch dieselbe
+ * Schwärzung.
+ */
+export type AuditSichtQuelle = Pick<AuditEntry, "action" | "target" | "payload">;
+
 /** Ein ausgegebener Eintrag — bei Schwärzung mit den Namen der entfernten Felder. */
-export type AuditSichtEintrag = AuditEntry & { geschwaerzt?: string[] };
+export type AuditSichtEintrag<T extends AuditSichtQuelle = AuditEntry> = T & {
+  geschwaerzt?: string[];
+};
 
 /** Ein sichtbares Objekt, wie die Verwalteransicht es nennen darf. */
 export interface AuditObjektSicht {
@@ -62,6 +71,11 @@ const INHALT_JE_AKTION: Readonly<Record<string, readonly string[]>> = {
   // Bens Befund Nacharbeit 35: der Anlagenkontext (Bauteil, Material, Version, Standort, Schicht)
   // ist Inhalt des Beitrags — ohne Leserecht am Objekt bleibt er in Liste, Seite und Export verborgen.
   "ko.anlagenkontext-changed": ["vorher", "nachher"],
+  // produkt:20261009:referenzki-antwortstatus (REF-04, K6, Ben nacharbeit-3): die kurzen
+  // Prüfbegründungen der Referenzprüfung (`REFERENZ_BEGRUENDUNG_AKTION` in services/ask). Sie können
+  // Inhalt der zitierten Quellen wiedergeben — bezogen auf `koIds`, also nur für Leser, die jede
+  // zitierte Quelle jetzt öffnen dürfen; nach Papierkorb oder Endlöschung für niemanden.
+  "ask.referenzpruefung-begruendung": ["begruendungen"],
 };
 const TITELFELDER: readonly string[] = ["koTitle", "title", "titel"];
 
@@ -75,7 +89,7 @@ export function auditInhaltsfelder(entry: Pick<AuditEntry, "action" | "payload">
  * Die Objekte, auf die sich die Inhaltsfelder eines Eintrags beziehen: die Beteiligten eines
  * Befunds (`koIds`), sonst ein ausdrücklich genanntes `koId`, sonst das Ziel des Eintrags.
  */
-function bezugsobjekte(entry: AuditEntry): string[] {
+function bezugsobjekte(entry: AuditSichtQuelle): string[] {
   const koIds = entry.payload.koIds;
   if (Array.isArray(koIds)) {
     const ids = koIds.filter((id): id is string => typeof id === "string" && id !== "");
@@ -94,7 +108,7 @@ export interface AuditSicht {
   /** Titel des Objekts, wenn der Betrachter es jetzt öffnen darf — sonst `undefined`. */
   objekt(id: string): Promise<AuditObjektSicht | undefined>;
   /** Der Eintrag, wie ihn dieser Betrachter sehen darf. */
-  eintrag(entry: AuditEntry): Promise<AuditSichtEintrag>;
+  eintrag<T extends AuditSichtQuelle>(entry: T): Promise<AuditSichtEintrag<T>>;
 }
 
 /**
@@ -130,10 +144,10 @@ export function auditSichtFuer(
     return ergebnis;
   };
 
-  const eintrag = async (entry: AuditEntry): Promise<AuditSichtEintrag> => {
+  const eintrag = async <T extends AuditSichtQuelle>(entry: T): Promise<AuditSichtEintrag<T>> => {
     const felder = auditInhaltsfelder(entry);
     if (felder.length === 0) {
-      return entry;
+      return entry as AuditSichtEintrag<T>;
     }
     for (const id of bezugsobjekte(entry)) {
       if ((await objekt(id)) === undefined) {
@@ -143,7 +157,7 @@ export function auditSichtFuer(
         return { ...entry, payload, geschwaerzt: felder };
       }
     }
-    return entry;
+    return entry as AuditSichtEintrag<T>;
   };
 
   return { objekt, eintrag };

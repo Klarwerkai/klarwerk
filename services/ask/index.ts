@@ -79,6 +79,8 @@ export type {
 export type {
   AnswerEvidenceRef,
   AnswerEvidenceSnapshot,
+  // R-0317: die Erzeugungsart im Beleg — `services/app` und die Tests lesen sie ueber die Fassade.
+  AnswerGenerationMode,
   AnswerIntegrityContext,
   // KW-W3-22 (Auftrag 129): die geschlossene Ursache MUSS ueber die Fassade erreichbar sein — der
   // spaetere W3-C-Lesepfad in `services/app` bildet sie, und ein Typ, den die Fassade nicht
@@ -196,6 +198,7 @@ export {
   volltextDerFassung,
 } from "./src/aussage-fundstellen";
 export type {
+  AufloesbaresObjekt,
   Aussage,
   AussagenBeleg,
   BindungsQuelle,
@@ -207,6 +210,7 @@ export type {
   FundstellenZustand,
   InterneFundstelle,
   ModellAngabe,
+  ObjektFassung,
   PrueferAngabe,
   PruefPaket,
   PruefPosten,
@@ -214,6 +218,47 @@ export type {
   ZweitmeinungAussagen,
   AusgelieferteAntwort,
 } from "./src/aussage-fundstellen";
+// produkt:20261009:referenzki-pruefdienst (REF-02): der lesende Referenz-Prüfdienst.
+export {
+  REFERENZ_ANTWORT_MAX_TOKEN,
+  REFERENZ_EINGABE_MAX_ZEICHEN,
+  REFERENZ_ERNEUT_MAX,
+  REFERENZ_POSTEN_MAX,
+  // produkt:20261009:referenzki-antwortstatus (REF-04): die Fassung des Prüfprotokolls.
+  REFERENZ_BEGRUENDUNG_AKTION,
+  REFERENZ_PROTOKOLL_AUSSAGEN_MAX,
+  REFERENZ_PROTOKOLL_FASSUNG,
+  REFERENZ_PRUEF_RICHTLINIE,
+  REFERENZ_ZEITLIMIT_MS,
+  REFERENZ_ZUSTAENDE,
+  ReferenzPruefdienst,
+  aussageZustand,
+  grundAusFehler,
+  // produkt:20261009:referenzki-adminauswahl (REF-03): der bewusste Funktionscheck der Verwaltung.
+  referenzFunktionscheck,
+  referenzPruefauftrag,
+  referenzSichtFuerFragende,
+  werteReferenzAusgabeAus,
+} from "./src/referenz-pruefung";
+export type {
+  ErneutErgebnis,
+  ReferenzAntwortweg,
+  ReferenzAussageErgebnis,
+  ReferenzFundstelle,
+  ReferenzFunktionscheckErgebnis,
+  ReferenzGrund,
+  ReferenzHinweis,
+  ReferenzHinweisArt,
+  ReferenzProtokollAussage,
+  ReferenzProtokollBegruendung,
+  ReferenzProtokollEintrag,
+  ReferenzPruefEingabe,
+  ReferenzPruefErgebnis,
+  ReferenzPruefSicht,
+  ReferenzPruefdienstDeps,
+  ReferenzTeilErgebnis,
+  ReferenzZustand,
+} from "./src/referenz-pruefung";
 export { redactGapForViewer, summarizeGaps } from "./src/gap-visibility";
 // R-1630 / R-2176: der Stichtag des Antwortvergleichs — die Route liest ihn mit derselben Regel.
 export { stichtagAus } from "./src/wissensstand-vergleich";

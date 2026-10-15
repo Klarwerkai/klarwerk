@@ -50,14 +50,16 @@
 import { useTranslation } from "react-i18next";
 import { ALL_ITEMS } from "../app/navigation";
 import {
-  FILE_SOURCES,
   type GallerySource,
   SYSTEM_SOURCES,
+  acceptForFileSource,
+  fileSourcesForSurface,
   orderByState,
   systemKachelMitStatus,
 } from "../lib/importSourceGallery";
 import type { IntegrationStatus } from "../lib/integrationStatus";
 import { FileTypePicker, systemIcon } from "./FileTypePicker";
+import { MitMediendienst } from "./MediendienstZustand";
 import { BLATT_WEG_DATEI, BLATT_WEG_PARAMETER } from "./erfassen/wege";
 import { SHAREPOINT_BEREICH_ANKER } from "./sharepoint-import/anker";
 
@@ -86,9 +88,18 @@ const ERFASSEN_DATEI_ZIEL: string | null =
     ? `${ERFASSEN_ROUTE}?${BLATT_WEG_PARAMETER}=${encodeURIComponent(BLATT_WEG_DATEI)}`
     : null;
 
-/** Nur „anderswo verfügbar" führt weg von hier — jeder andere Zustand behält sein Verhalten. */
+/**
+ * Nur „anderswo verfügbar" führt weg von hier — jeder andere Zustand behält sein Verhalten.
+ *
+ * Aufnahme `gesamt-ocr` (Nacharbeit 6): und nur eine Kachel MIT Importweg. Das Ziel ist der
+ * Dateiimport des Erfassens; eine Aufnahme nimmt der nicht an (sie wird beigefügt und dort
+ * transkribiert). Die Transkript-Kachel bleibt deshalb auch bei aktivem Dienst ein Knopf, der den
+ * vorhandenen Weg beim Namen nennt — sie führt nicht auf eine Fläche, die ihre Datei ablehnt.
+ */
 function erfassenZielFuer(source: GallerySource): string | null {
-  return source.state === "elsewhere" ? ERFASSEN_DATEI_ZIEL : null;
+  return source.state === "elsewhere" && acceptForFileSource(source.id) !== null
+    ? ERFASSEN_DATEI_ZIEL
+    : null;
 }
 
 // ================================================================================================
@@ -176,13 +187,19 @@ export function ImportSourceGallery({
       >
         {t("imp.gallery.src.jira")} / {t("imp.gallery.src.confluence")} →
       </a>
-      <FileTypePicker
-        title={t("imp.gallery.filesTitle")}
-        sources={FILE_SOURCES}
-        onActivate={onActivate}
-        hrefFor={erfassenZielFuer}
-        collapsePlanned
-        plannedStorageKey={GALLERY_FILES_PLANNED_STORAGE_KEY}
+      {/* Aufnahme `gesamt-ocr` (R-0121, Nacharbeit 6): die Transkript-Kachel folgt dem gemeldeten
+          Stand des Transkriptionsdienstes; alle anderen Kacheln sind davon unberührt. */}
+      <MitMediendienst
+        darstellen={(mediendienst) => (
+          <FileTypePicker
+            title={t("imp.gallery.filesTitle")}
+            sources={fileSourcesForSurface("import", mediendienst)}
+            onActivate={onActivate}
+            hrefFor={erfassenZielFuer}
+            collapsePlanned
+            plannedStorageKey={GALLERY_FILES_PLANNED_STORAGE_KEY}
+          />
+        )}
       />
     </div>
   );

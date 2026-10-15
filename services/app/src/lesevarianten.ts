@@ -187,6 +187,42 @@ export interface Lesevariante {
  */
 export type Quellabgleich = "bestaetigt" | "unbestaetigt";
 
+// ================================================================================================
+// PETER NR. 20 (12.10.2026) · ORIGINALQUELLE UND BELEGTE FASSUNG AN JEDER VARIANTE.
+// ================================================================================================
+//
+// „Übersetzung sichtbar als maschinelle Lesehilfe mit Originalquelle und Fassung kennzeichnen;
+// Original bleibt maßgeblich." Originalsprache und Paketkennung allein sagen NICHT, zu welchem
+// Original und zu welcher Fassung eine Übersetzung gehört. Beides wird deshalb beim LESEN ermittelt
+// und mitgegeben — oder ausdrücklich als fehlend (`null`) gemeldet. Erfunden wird keins von beiden.
+
+/** Das Original, zu dem die Übersetzung gehört — über den Herkunftsanker, nie über den Titel. */
+export interface Originalquelle {
+  /** Titel des Originals, so wie er im Bestand bzw. am Kandidaten steht. */
+  titel: string;
+  /** Provider des Ankers („Confluence", „Beispielpaket"). */
+  provider: string | null;
+  /** Die Quellkennung des Ankers (Confluence-Seiten-Id bzw. `<paket>/<key>`). */
+  kennung: string | null;
+  url: string | null;
+  /** Die Quellfassung, die der Import am Anker mitschrieb — `null`, wenn die Quelle keine führt. */
+  quellfassung: number | null;
+}
+
+/**
+ * Die Fassung des Originals, zu der die Übersetzung BELEGT gehört.
+ *
+ * · `wissensobjekt`: der Abdruck des heutigen Originals ist derselbe wie beim Ablegen der
+ *   Übersetzung (`originalSha256`). Genau dann ist die heutige Version die, gegen die sie abgelegt
+ *   wurde. Hat sich das Original seitdem geändert, ist die damalige Version NICHT gespeichert — die
+ *   Fassung ist dann `null` und die Fläche sagt „Fassung nicht zugeordnet".
+ * · `quelle`: für einen Kandidaten ohne Ablagezeitpunkt trägt nur der Quellabgleich. Ist er
+ *   bestätigt, gehört die Übersetzung zu genau dem Text, den die Quelle in dieser Fassung führt.
+ */
+export type BelegteFassung =
+  | { art: "wissensobjekt"; version: number; abdruck: string }
+  | { art: "quelle"; quellfassung: number };
+
 /** Die Variante, wie sie den Leser erreicht — mit der beim Lesen ERMITTELTEN Änderungsauskunft. */
 export interface LesevarianteSicht extends Lesevariante {
   /**
@@ -195,6 +231,10 @@ export interface LesevarianteSicht extends Lesevariante {
    * SICHTBAR (sie ist die bessere Auskunft als gar keine), trägt aber diesen Vorbehalt.
    */
   originalGeaendert: boolean;
+  /** Peter Nr. 20: das zugehörige Original — `null` heisst „nicht zugeordnet", nicht „keins". */
+  originalquelle: Originalquelle | null;
+  /** Peter Nr. 20: die belegte Fassung des Originals — `null` heisst „Fassung nicht zugeordnet". */
+  fassung: BelegteFassung | null;
 }
 
 /**
@@ -314,12 +354,94 @@ export function quellabgleichFuer(
   return abdruck === record.source_body_sha256 ? "bestaetigt" : "unbestaetigt";
 }
 
-/** Ergänzt die beim LESEN ermittelte Änderungsauskunft. */
+/**
+ * Ergänzt die beim LESEN ermittelte Änderungsauskunft — und (Peter Nr. 20) Originalquelle und
+ * belegte Fassung. `version` und `sources` sind optional typisiert, weil ältere Aufrufer nur die
+ * drei Inhaltsfelder reichen; fehlen sie, lautet die Auskunft ehrlich „nicht zugeordnet".
+ */
 export function mitAenderungsauskunft(
   variante: Lesevariante,
-  ko: Pick<KnowledgeObject, "title" | "statement" | "bodyHtml">,
+  ko: Pick<KnowledgeObject, "title" | "statement" | "bodyHtml"> &
+    Partial<Pick<KnowledgeObject, "version" | "sources">>,
 ): LesevarianteSicht {
-  return { ...variante, originalGeaendert: originalAbdruck(ko) !== variante.originalSha256 };
+  const originalGeaendert = originalAbdruck(ko) !== variante.originalSha256;
+  return {
+    ...variante,
+    originalGeaendert,
+    originalquelle: originalquelleFuerKo(variante, ko),
+    fassung:
+      !originalGeaendert && typeof ko.version === "number"
+        ? {
+            art: "wissensobjekt",
+            version: ko.version,
+            abdruck: variante.originalSha256.slice(0, 12),
+          }
+        : null,
+  };
+}
+
+const LIEFERUNGS_HERKUNFT = "lokale Lieferung ";
+
+/** Merkt sich den Abdruck je (Paket, Datensatz, Sprache) — die Lieferung ist je Prozess fest. */
+const uebersetzungsAbdruecke = new Map<string, string | null>();
+
+function abdruckDerLieferung(
+  paket: LokalisierungsPaket,
+  record: LokalisierungsRecord,
+  lang: string,
+): string | null {
+  const schluessel = `${paket.package_id}\u0000${record.key}\u0000${lang}`;
+  const gemerkt = uebersetzungsAbdruecke.get(schluessel);
+  if (gemerkt !== undefined) {
+    return gemerkt;
+  }
+  const text = textFuerSprache(paket, record, lang);
+  const abdruck = text ? uebersetzungsAbdruck(text) : null;
+  uebersetzungsAbdruecke.set(schluessel, abdruck);
+  return abdruck;
+}
+
+/**
+ * Das Original, zu dem DIESE gespeicherte Übersetzung gehört.
+ *
+ * Der Datensatz wird über den ABDRUCK DER ÜBERSETZUNG gefunden (`uebersetzungSha256`), nicht über
+ * die Reihenfolge der Lieferung: trüge ein Objekt Anker zweier Datensätze, wäre „der erste" eine
+ * Behauptung. Die Quelle des Objekts muss danach denselben Anker beim selben Provider führen wie
+ * beim Laden (`ankerFuer`, `providerPasst`). Passt nichts — Lieferung inzwischen anders, Variante
+ * von Hand, Anker entfernt —, ist die Antwort `null`: Originalquelle nicht zugeordnet.
+ */
+export function originalquelleFuerKo(
+  variante: Pick<Lesevariante, "herkunft" | "lang" | "uebersetzungSha256">,
+  ko: Pick<KnowledgeObject, "title"> & Partial<Pick<KnowledgeObject, "sources">>,
+): Originalquelle | null {
+  if (!variante.herkunft.startsWith(LIEFERUNGS_HERKUNFT)) {
+    return null;
+  }
+  const paket = lokalisierungsPaket(variante.herkunft.slice(LIEFERUNGS_HERKUNFT.length).trim());
+  if (!paket) {
+    return null;
+  }
+  for (const record of paket.records) {
+    if (abdruckDerLieferung(paket, record, variante.lang) !== variante.uebersetzungSha256) {
+      continue;
+    }
+    for (const anker of ankerFuer(paket.package_id, record)) {
+      const quelle = (ko.sources ?? []).find(
+        (q) =>
+          q.externalId === anker.externalId && providerPasst(anker.provider, q.provider ?? null),
+      );
+      if (quelle) {
+        return {
+          titel: ko.title,
+          provider: quelle.provider ?? null,
+          kennung: quelle.externalId ?? null,
+          url: quelle.url ?? null,
+          quellfassung: typeof quelle.sourceVersion === "number" ? quelle.sourceVersion : null,
+        };
+      }
+    }
+  }
+  return null;
 }
 
 // ================================================================================================
@@ -687,6 +809,14 @@ export interface LesevariantenLadeDeps {
   repo: LesevariantenRepo;
   /** Der Bestand, gegen den zugeordnet wird (ungetrimmt — das Laden ist ein Admin-Vorgang). */
   kos(): Promise<KnowledgeObject[]>;
+  /**
+   * aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 10): die Lesepolicy des AUFRUFERS. Die
+   * Zuordnung und das Schreiben laufen weiter über den ganzen Bestand; die ZURÜCKGEGEBENE Bilanz
+   * zählt und nennt nur Objekte, die er sehen darf. Ein Datensatz, dessen Objekte alle unsichtbar
+   * sind, steht dort unter `nichtZugeordnet` — genau wie ein Datensatz ohne Objekt, sonst wäre der
+   * Unterschied eine Existenzauskunft. Fehlt der Filter, ist die Bilanz die bestandsweite.
+   */
+  sichtbar?(ko: KnowledgeObject): boolean;
   audit?: AuditService;
   jetzt?(): Date;
 }
@@ -720,31 +850,24 @@ export async function ladeLesevarianten(
 ): Promise<LesevariantenLadeBilanz> {
   const jetzt = (deps.jetzt?.() ?? new Date()).toISOString();
   const kos = await deps.kos();
-  const { treffer, ohneObjekt } = ordneZu(paket.package_id, paket.records, kos);
+  const { treffer } = ordneZu(paket.package_id, paket.records, kos);
   // Die Originalsprache steht je Datensatz; geladen werden alle ANDEREN Sprachen der Lieferung.
   const sprachen = [
     ...new Set(
       paket.records.flatMap((r) => paket.languages.filter((l) => l !== r.original_language)),
     ),
   ];
-  const bilanz: LesevariantenLadeBilanz = {
+  // Das Protokoll dieses Laufs — EINE Zeile je Zuordnung, in Lauf-Reihenfolge. Aus ihm entsteht die
+  // Antwort (`bilanzAusProtokoll`); es bleibt im Speicher und geht nicht ins Auditprotokoll.
+  const protokoll: LesevariantenLadeProtokoll = {
     paket: paket.package_id,
-    records: paket.records.length,
+    records: paket.records.map((r) => r.key),
     sprachen,
-    zugeordnet: new Set(treffer.map((t) => t.record.key)).size,
-    objekte: new Set(treffer.map((t) => t.ko.id)).size,
-    ueberConfluence: treffer.filter((t) => t.weg === "confluence").length,
-    ueberPaketschluessel: treffer.filter((t) => t.weg === "paketschluessel").length,
-    neu: 0,
-    aktualisiert: 0,
-    textGeaendert: [],
-    nichtZugeordnet: ohneObjekt,
-    originalGeaendert: [],
-    quellabgleichBestaetigt: 0,
-    quellabgleichUnbestaetigt: 0,
-    ohneText: [],
+    zuordnungen: [],
   };
-  for (const { record, ko } of treffer) {
+  for (const { record, ko, weg } of treffer) {
+    const zeile: LadeZuordnung = { record: record.key, koId: ko.id, weg, varianten: [] };
+    protokoll.zuordnungen.push(zeile);
     const abdruck = originalAbdruck(ko);
     for (const lang of paket.languages) {
       if (lang === record.original_language) {
@@ -756,7 +879,7 @@ export async function ladeLesevarianten(
       // Datensatz mit kaputtem Textfeld zählt jetzt als „ohne Text" statt eine Ausnahme zu werfen.
       const text = textFuerSprache(paket, record, lang);
       if (!text || text.paragraphs.length === 0) {
-        bilanz.ohneText.push(`${record.key}/${lang}`);
+        zeile.varianten.push({ lang, ohneText: true });
         continue;
       }
       const vorher = await deps.repo.get(ko.id, lang);
@@ -774,9 +897,6 @@ export async function ladeLesevarianten(
       // NEU → der Abdruck wird gesetzt und der Quellabgleich neu erhoben; die Übersetzung ist
       // frisch gegen das heutige Original.
       const gleicheUebersetzung = vorher?.uebersetzungSha256 === uebersetzungSha256;
-      if (vorher && !gleicheUebersetzung) {
-        bilanz.textGeaendert.push(ko.id);
-      }
       const originalSha256 = gleicheUebersetzung && vorher ? vorher.originalSha256 : abdruck;
       const quellabgleich =
         gleicheUebersetzung && vorher ? vorher.quellabgleich : quellabgleichFuer(record, ko);
@@ -795,39 +915,135 @@ export async function ladeLesevarianten(
         quellabgleich,
         updatedAt: gleicheUebersetzung && vorher ? vorher.updatedAt : jetzt,
       });
-      if (warVorhanden) {
-        bilanz.aktualisiert += 1;
-      } else {
-        bilanz.neu += 1;
+      // Der Bericht steht NACH dem Schreiben und beschreibt den Zustand, den der Leser gleich
+      // sieht — nicht den, der vorher galt.
+      zeile.varianten.push({
+        lang,
+        ohneText: false,
+        neu: !warVorhanden,
+        textGeaendert: Boolean(vorher) && !gleicheUebersetzung,
+        originalGeaendert: originalSha256 !== abdruck,
+        quellabgleich,
+      });
+    }
+  }
+  // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 13): der Auditeintrag trägt NUR, was die
+  // Lieferung selbst sagt — Paket (`target`), Zahl der Datensätze, Sprachen. Bis hierher stand die
+  // bestandsweite Bilanz darin (Kennungen und Zählwerte auch aus geschlossenen Spaces), und
+  // `GET /api/audit`/`/api/audit/export` gaben sie mit `ko.validate` aus. Sie in der Ausgabe je
+  // Leser umzuschreiben ginge nicht ohne den Export zu brechen: der Eintragshash deckt die ganze
+  // Nutzlast (`canonicalJson(payload)`, audit/src/chain.ts), und der Export ist für das
+  // Nachrechnen außerhalb gedacht (R-0613). Was je Objekt geschah, steht unverändert im Bestand der
+  // Lesevarianten (Zeile je Objekt × Sprache, mit `updatedAt` und Quellabgleich) und ist dort nur
+  // über die Leserouten mit `darfSehen` erreichbar. Alteinträge mit Bestandsdaten blendet
+  // `audit-routes.ts` für jeden Leser gleich aus.
+  await deps.audit?.record({
+    actor,
+    action: LESEVARIANTEN_LADE_AKTION,
+    target: paket.package_id,
+    payload: { records: protokoll.records.length, sprachen },
+  });
+  const bilanz = bilanzAusProtokoll(protokoll, () => true);
+  const sichtbar = deps.sichtbar;
+  if (!sichtbar) {
+    return bilanz;
+  }
+  const sichtbareIds = new Set(treffer.filter((t) => sichtbar(t.ko)).map((t) => t.ko.id));
+  return bilanzAusProtokoll(protokoll, (koId) => sichtbareIds.has(koId));
+}
+
+// ================================================================================================
+// aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 10) — DIE BILANZ AUS DEM PROTOKOLL.
+// ================================================================================================
+//
+// Die Ladebilanz nennt Objektkennungen und zählt Objekte. Wer sie liest, darf darin nur sehen, was
+// er nach der Lesepolicy sehen darf. Die bestandsweite und die Bilanz des Aufrufers rechnet
+// deshalb dieselbe Funktion aus demselben Protokoll: eine Zeile je Zuordnung, ein Eintrag je
+// Sprache. Eine unsichtbare Zuordnung fällt GANZ heraus; ein Datensatz ohne sichtbare Zuordnung
+// steht unter `nichtZugeordnet` — genau wie ein Datensatz ohne Objekt, sonst wäre der Unterschied
+// eine Existenzauskunft.
+
+export const LESEVARIANTEN_LADE_AKTION = "lesevarianten.load";
+
+/**
+ * Die Schlüssel, die ein Auditeintrag `lesevarianten.load` tragen darf, ohne etwas über den
+ * Bestand zu sagen (Nacharbeit 13). Alles darüber hinaus stammt aus Alteinträgen mit Bilanz.
+ */
+export const LESEVARIANTEN_LADE_PROTOKOLLFELDER: readonly string[] = ["records", "sprachen"];
+
+export type LadeVariante =
+  | { lang: string; ohneText: true }
+  | {
+      lang: string;
+      ohneText: false;
+      neu: boolean;
+      textGeaendert: boolean;
+      originalGeaendert: boolean;
+      quellabgleich: Quellabgleich;
+    };
+
+export interface LadeZuordnung {
+  record: string;
+  koId: string;
+  weg: Zuordnungsweg;
+  varianten: LadeVariante[];
+}
+
+export interface LesevariantenLadeProtokoll {
+  paket: string;
+  /** Die Datensatzschlüssel der Lieferung, in Lieferreihenfolge. */
+  records: string[];
+  sprachen: string[];
+  zuordnungen: LadeZuordnung[];
+}
+
+export function bilanzAusProtokoll(
+  protokoll: LesevariantenLadeProtokoll,
+  sichtbar: (koId: string) => boolean,
+): LesevariantenLadeBilanz {
+  const menge = protokoll.zuordnungen.filter((z) => sichtbar(z.koId));
+  const mitSichtbarem = new Set(menge.map((z) => z.record));
+  const bilanz: LesevariantenLadeBilanz = {
+    paket: protokoll.paket,
+    records: protokoll.records.length,
+    sprachen: [...protokoll.sprachen],
+    zugeordnet: mitSichtbarem.size,
+    objekte: new Set(menge.map((z) => z.koId)).size,
+    ueberConfluence: menge.filter((z) => z.weg === "confluence").length,
+    ueberPaketschluessel: menge.filter((z) => z.weg === "paketschluessel").length,
+    neu: 0,
+    aktualisiert: 0,
+    textGeaendert: [],
+    nichtZugeordnet: protokoll.records.filter((key) => !mitSichtbarem.has(key)),
+    originalGeaendert: [],
+    quellabgleichBestaetigt: 0,
+    quellabgleichUnbestaetigt: 0,
+    ohneText: [],
+  };
+  for (const zeile of menge) {
+    for (const v of zeile.varianten) {
+      if (v.ohneText) {
+        bilanz.ohneText.push(`${zeile.record}/${v.lang}`);
+        continue;
       }
-      if (quellabgleich === "bestaetigt") {
+      if (v.textGeaendert) {
+        bilanz.textGeaendert.push(zeile.koId);
+      }
+      if (v.neu) {
+        bilanz.neu += 1;
+      } else {
+        bilanz.aktualisiert += 1;
+      }
+      if (v.quellabgleich === "bestaetigt") {
         bilanz.quellabgleichBestaetigt += 1;
       } else {
         bilanz.quellabgleichUnbestaetigt += 1;
       }
-      // Der Bericht steht NACH dem Schreiben und beschreibt den Zustand, den der Leser gleich
-      // sieht — nicht den, der vorher galt.
-      if (originalSha256 !== abdruck && !bilanz.originalGeaendert.includes(ko.id)) {
-        bilanz.originalGeaendert.push(ko.id);
+      if (v.originalGeaendert && !bilanz.originalGeaendert.includes(zeile.koId)) {
+        bilanz.originalGeaendert.push(zeile.koId);
       }
     }
   }
-  await deps.audit?.record({
-    actor,
-    action: "lesevarianten.load",
-    target: paket.package_id,
-    payload: {
-      records: bilanz.records,
-      zugeordnet: bilanz.zugeordnet,
-      objekte: bilanz.objekte,
-      neu: bilanz.neu,
-      aktualisiert: bilanz.aktualisiert,
-      textGeaendert: bilanz.textGeaendert,
-      nichtZugeordnet: bilanz.nichtZugeordnet,
-      quellabgleichBestaetigt: bilanz.quellabgleichBestaetigt,
-      quellabgleichUnbestaetigt: bilanz.quellabgleichUnbestaetigt,
-    },
-  });
   return bilanz;
 }
 
@@ -863,6 +1079,11 @@ export async function ladeLesevarianten(
 export interface Kandidatenherkunft {
   provider?: string | null | undefined;
   externalId?: string | null | undefined;
+  // Peter Nr. 20: was die Kennzeichnung über das Original sagt — Titel, Adresse und Quellfassung,
+  // wie sie der Kandidat selbst führt. Sie bilden KEINEN Anker und entscheiden nichts.
+  title?: string | null | undefined;
+  url?: string | null | undefined;
+  sourceVersion?: number | null | undefined;
 }
 
 /**
@@ -893,6 +1114,10 @@ export interface KandidatenLesevariante {
   quellabgleich: Quellabgleich;
   /** Der Datensatzschlüssel der Lieferung, aus dem dieser Text stammt — Herkunft im Klartext. */
   recordKey: string;
+  /** Peter Nr. 20: der Kandidat selbst ist das Original — mit seinem Anker. */
+  originalquelle: Originalquelle;
+  /** Peter Nr. 20: nur bei bestätigtem Quellabgleich UND geführter Quellfassung belegt. */
+  fassung: BelegteFassung | null;
 }
 
 /**
@@ -939,6 +1164,13 @@ export function kandidatenLesevariante(
       if (!text || text.paragraphs.length === 0) {
         return undefined;
       }
+      // DIESELBE Prüfung wie am Wissensobjekt: der gelieferte Quellabdruck gegen den Text, der
+      // wirklich vorliegt. Bei einer importierten Confluence-Seite ist das die vom Import
+      // erzeugte Kernaussage — dort schlägt der Vergleich fehl, und das heisst dann
+      // „unbestaetigt": der Beleg fehlt, die Übersetzung ist deshalb nicht falsch.
+      const quellabgleich = quellabgleichFuer(record, original);
+      const quellfassung =
+        typeof herkunft.sourceVersion === "number" ? herkunft.sourceVersion : null;
       return {
         lang: sprache,
         originalLanguage: record.original_language,
@@ -947,12 +1179,19 @@ export function kandidatenLesevariante(
         bodyHtml: absaetzeZuHtml(text.paragraphs),
         herkunft: `lokale Lieferung ${paket.package_id}`,
         status: record.translation_status,
-        // DIESELBE Prüfung wie am Wissensobjekt: der gelieferte Quellabdruck gegen den Text, der
-        // wirklich vorliegt. Bei einer importierten Confluence-Seite ist das die vom Import
-        // erzeugte Kernaussage — dort schlägt der Vergleich fehl, und das heisst dann
-        // „unbestaetigt": der Beleg fehlt, die Übersetzung ist deshalb nicht falsch.
-        quellabgleich: quellabgleichFuer(record, original),
+        quellabgleich,
         recordKey: record.key,
+        originalquelle: {
+          titel: herkunft.title ?? "",
+          provider: herkunft.provider?.trim() || null,
+          kennung: externalId,
+          url: herkunft.url ?? null,
+          quellfassung,
+        },
+        fassung:
+          quellabgleich === "bestaetigt" && quellfassung !== null
+            ? { art: "quelle", quellfassung }
+            : null,
       };
     }
   }

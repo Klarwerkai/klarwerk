@@ -415,7 +415,14 @@ function BlattAusgangsfrage({ gapId }: { gapId: string }): JSX.Element | null {
       <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-2">
         {t("gap.ausgangsfrage")}
       </div>
-      <p className="mt-1 break-words text-[14px] leading-snug text-text">„{frage}“</p>
+      {/* REVIEW26 „Lückenbezug" (K19): eigene Kennung für den Wortlaut — die Gegenprobe
+          `review26-lueckenbezug` und Bild B7 lesen ihn hier. */}
+      <p
+        data-testid="blatt-ausgangsfrage-text"
+        className="mt-1 break-words text-[14px] leading-snug text-text"
+      >
+        „{frage}“
+      </p>
     </section>
   );
 }
@@ -545,9 +552,15 @@ export function Blatt({
     autor: string;
     imPool: boolean;
   } | null>(null);
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (nacharbeit-3): `geladenVon` wird ausdrücklich
+  // geprüft. Liefert eine Speicherantwort keine Kennung, ist `activeDraftId` zur Laufzeit
+  // `undefined`, und `geladenVon?.id === activeDraftId` wäre bei `null` wahr — der Zugriff auf
+  // `imPool` riss dann die ganze Fläche ab, statt den Entwurf schlicht nicht als fremd zu führen.
   const fremderPoolEntwurf =
     activeDraftId !== null &&
-    geladenVon?.id === activeDraftId &&
+    activeDraftId !== undefined &&
+    geladenVon !== null &&
+    geladenVon.id === activeDraftId &&
     geladenVon.imPool &&
     geladenVon.autor !== "" &&
     // Fail-closed: solange die Sitzung nicht feststeht, gilt ein Pool-Entwurf als fremd.
@@ -3835,7 +3848,7 @@ export function Blatt({
                 onClick={() => setLiveOffen((v) => !v)}
                 className="inline-flex w-fit items-center gap-1.5 rounded-[999px] border border-hairline bg-page px-2.5 py-1 text-[12px] text-muted hover:text-text"
               >
-                <span className="font-semibold uppercase text-[10.5px]">{t("vorschau.name")}</span>
+                <span className="font-semibold uppercase text-klein">{t("vorschau.name")}</span>
                 {verdict.status === "conflict"
                   ? t("erfassen.live.widerspruch")
                   : verdict.status === "similar"
@@ -3872,7 +3885,7 @@ export function Blatt({
               data-testid="blatt-ki-fehler"
               className="rounded-[10px] border border-ai/30 bg-surface p-3"
             >
-              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
+              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-klein font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
               <p className="mt-1.5 text-[13px] leading-relaxed text-trust-crit-text">
@@ -3899,7 +3912,7 @@ export function Blatt({
               // regelbasierte Rückfall behält die ruhige Karte und heisst „Empfehlung" (R-1695).
               className={`rounded-[10px] p-3 ${structureProposal.demo ? "border border-ai/30 bg-surface" : REASONER_ENTWURF_FLAECHE}`}
             >
-              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
+              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-klein font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
               <ErgebnisStufeMarke
@@ -3912,7 +3925,7 @@ export function Blatt({
                   vertraulichkeitsbedingter Cloud-Ausschluss. Vier Ursachen, vier Sätze. */}
               {structureProposal.demo ? (
                 <>
-                  <span className="ml-1.5 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                  <span className="ml-1.5 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-klein font-semibold uppercase text-trust-warn-text">
                     {t("fd.fallback")}
                   </span>
                   <p className="mt-1.5 text-[12px] leading-relaxed text-trust-warn-text">
@@ -3998,7 +4011,7 @@ export function Blatt({
               // R-1020 / R-1695: dieselbe Bindung an den Modellweg wie beim Strukturvorschlag.
               className={`rounded-[10px] p-3 ${assistProposal.demo ? "border border-ai/30 bg-surface" : REASONER_ENTWURF_FLAECHE}`}
             >
-              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
+              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-klein font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
               <ErgebnisStufeMarke
@@ -4006,7 +4019,7 @@ export function Blatt({
                 className="ml-1.5"
               />
               {assistProposal.demo ? (
-                <span className="ml-1.5 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                <span className="ml-1.5 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-klein font-semibold uppercase text-trust-warn-text">
                   {t("fd.fallback")}
                 </span>
               ) : null}

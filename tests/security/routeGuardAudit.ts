@@ -337,6 +337,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/users/:id": { protection: "admin" },
   "DELETE /api/users/:id": { protection: "admin" },
   "DELETE /api/users/:id/second-factor": { protection: "admin" },
+  // R-0961 (Peters Entscheidung 1, 12.10.2026): Status „Ausgeschieden“ setzen — Kontoverwaltung
+  // (`services/app/src/routes/ausscheiden-routes.ts`).
+  "POST /api/users/:id/ausscheiden": { protection: "users.manage" },
 
   // --- Composition-Root inline (services/app/src/build-app.ts) ---
   "GET /health": { protection: "public", reason: "Health-Probe; liefert nur { status: ok }." },
@@ -438,7 +441,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // JOB 3326: die Admin-Aktion „Übersetzungen für Paket laden" — dieselbe Tür wie das Laden eines
   // Beispielpakets. Sie liest den ganzen Bestand, um Anker zuzuordnen, und schreibt ausschliesslich
   // in `lesevarianten`; ein weicheres Recht wäre eine Bestandsauskunft durch die Hintertür.
-  "POST /api/admin/lesevarianten/laden": { protection: "users.manage" },
+  // aufnahme:20260922:gesamt-leserechte: die Ladebilanz zählt und nennt nur Sichtbares.
+  "POST /api/admin/lesevarianten/laden": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   "GET /api/analytics/impact": {
     protection: "ko.read",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
@@ -468,6 +475,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // fährt deshalb GENAU DIESELBE Entscheidung wie `GET /api/kos/:id` bzw. `GET /api/kos`.
   "GET /api/kos/:id/lesevariante/:lang": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "GET /api/lesevarianten": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // Peter Nr. 20: „Übersetzungswidersprüche melden". Wer die Übersetzung lesen darf, darf sie
+  // beanstanden — dasselbe Recht und dieselbe Sichtbarkeit wie der Abruf eine Zeile darüber. Die
+  // Meldung schreibt nur einen Protokolleintrag; sie ändert weder Objekt noch Variante.
+  "POST /api/kos/:id/lesevariante/:lang/widerspruch": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
   // WIKI-BEARBEITUNGSRESERVIERUNG: der Bearbeitungshinweis. Lesen mit `ko.read`, Beginnen/Erneuern/
   // Beenden mit `ko.create` (dasselbe Recht wie Bearbeiten) — und alle drei nur für einen Eintrag,
   // den der Aufrufer sehen darf (`darfSehen`, sonst 404 wie am Detailabruf).
@@ -479,6 +493,51 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "DELETE /api/kos/:id/bearbeitungen/:sitzung": {
     protection: "ko.create",
     zeilenrecht: ["darfSehen"],
+  },
+  // BPA-16: Gesprächsaussagen mit Folien verbinden. Lesen `ko.read`, Wirkungen `ko.create`; jede
+  // Tür mit Meetingkennung urteilt je Datei mit `beurteileAnhang` (wie `GET /api/objects/:id`).
+  "GET /api/meetings": { protection: "ko.read" },
+  "POST /api/meetings": { protection: "ko.create" },
+  "GET /api/meetings/:id": { protection: "ko.read", zeilenrecht: ["beurteileAnhang"] },
+  "POST /api/meetings/:id/praesentationen": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/mitschriften": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/folienwechsel": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/rueckmeldungen": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "GET /api/meetings/:id/rueckmeldungen/:rid": {
+    protection: "ko.read",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/rueckmeldungen/:rid/klaerung": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/rueckmeldungen/:rid/verwerfen": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "GET /api/meetings/:id/folien/:dateiId/:sldId": {
+    protection: "ko.read",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "GET /api/meetings/:id/zeitstellen/:zeitMs": {
+    protection: "ko.read",
+    zeilenrecht: ["beurteileAnhang"],
+  },
+  "POST /api/meetings/:id/fassungsabgleich": {
+    protection: "ko.create",
+    zeilenrecht: ["beurteileAnhang"],
   },
   // Kenntnisnahme einer gültigen Fassung: Anfordern, Übersicht und Erinnern mit dem vorhandenen
   // Zuweisungsrecht (`ko.assign`), die eigenen Anforderungen und das Bestätigen mit `ko.read`. Jede
@@ -578,6 +637,23 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // SCRUM-395: Standard-Prüferanzahl — lesen dürfen alle Leseberechtigten (Anzeige beim
   // Erfassen), ändern nur die Nutzerverwaltung.
   "GET /api/validation/settings": { protection: "ko.read" },
+  // R-0265: Prüfer-Vorschlag — rechnet nur über den sichtbaren Bestand.
+  "GET /api/validation/reviewer-suggestions": {
+    protection: "ko.create",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  // R-1655: Prüfdauer je Zuweisungsweg — nur über den sichtbaren Bestand.
+  "GET /api/validation/pruefdauer": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  // R-1655: eigenes Opt-out aus der automatischen Zuweisung — nur das eigene Konto.
+  "GET /api/me/pruefrouting": { protection: "auth" },
+  "PUT /api/me/pruefrouting": { protection: "auth" },
+  // R-0679: Geräte-Push — Einrichtung lesen, eigenes Gerät an- und abmelden.
+  "GET /api/push/config": { protection: "auth" },
+  "POST /api/push/abo": { protection: "auth" },
+  "POST /api/push/abo/entfernen": { protection: "auth" },
   "PUT /api/validation/settings": { protection: "users.manage" },
   // SCRUM-414: Regler „externe Wissensabfrage" — lesen alle Leseberechtigten, setzen nur Admin.
   "GET /api/external/policy": { protection: "ko.read" },
@@ -641,13 +717,21 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/duplicates/settings": { protection: "ko.read" },
   "PUT /api/duplicates/settings": { protection: "users.manage" },
   "GET /api/duplicates/:id": { protection: "ko.read", zeilenrecht: ["paarSichtbar"] },
-  "POST /api/duplicates/:id/dismiss": { protection: "ko.validate" },
-  "POST /api/duplicates/:id/keep-separate": { protection: "ko.validate" },
-  "POST /api/duplicates/:id/link-related": { protection: "ko.validate" },
+  // aufnahme:20260922:gesamt-leserechte (Variante B): ko.validate öffnet „streng vertraulich“ nur
+  // mit persönlichem Niveau — die Aktionen prüfen das Paar deshalb vorab (unsichtbar = unbekannt).
+  "POST /api/duplicates/:id/dismiss": { protection: "ko.validate", zeilenrecht: ["paarSichtbar"] },
+  "POST /api/duplicates/:id/keep-separate": {
+    protection: "ko.validate",
+    zeilenrecht: ["paarSichtbar"],
+  },
+  "POST /api/duplicates/:id/link-related": {
+    protection: "ko.validate",
+    zeilenrecht: ["paarSichtbar"],
+  },
   // JOB 3061 · H2: „Status setzen" (In Bearbeitung / Geschlossen mit Abschlussgrund). Dieselbe
   // kuratorische Schutzart wie die drei Aktionen darüber — es ist derselbe Vorgang, nur mit
   // ausdrücklich gewähltem Grund statt mit einem Grund je Knopf.
-  "POST /api/duplicates/:id/status": { protection: "ko.validate" },
+  "POST /api/duplicates/:id/status": { protection: "ko.validate", zeilenrecht: ["paarSichtbar"] },
   // R-1107 / R-0565 (Aufnahme gesamt-dublettenvergleich): Zusammenführen — dieselbe kuratorische
   // Schutzart; dass kein Autor einer der beiden Seiten zusammenführt, prüft der Dienst dahinter.
   "POST /api/duplicates/:id/merge": { protection: "ko.validate" },
@@ -703,6 +787,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // REF-01: Fundstellen einer Antwort mit aktuellen Rechten auflösen — ko.read und je Fundstelle
   // dasselbe Zeilenrecht wie GET /api/kos/:id; unbekannt und nicht berechtigt sehen gleich aus.
   "POST /api/ask/fundstellen": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
+  // REF-02: erneute Referenzprüfung eines serverseitig festgehaltenen Prüfkontexts — ko.read, nur
+  // derselbe Nutzer, und jede Fundstelle wird mit SEINER aktuellen Sicht neu aufgelöst.
+  "POST /api/ask/referenzpruefung/:pruefId/erneut": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
   // produkt:20261007:spaces: ähnliche Artikel/Widersprüche nur aus dem für den Prüfenden Sichtbaren.
   "POST /api/knowledge/check": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
@@ -774,6 +864,7 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerung. `ko.read`, weil sie Kennungen und
   // Fassungen von Wissensobjekten zeigt; die Eigentumspruefung liegt zusaetzlich im Dienst.
   // R-1175 (Nacharbeit 3): die Belege fahren zusätzlich die EINE Sichtbarkeitsentscheidung.
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): Sperre je Beleg nach Lesepolicy.
   "GET /api/klara/answers/:answerId/explanation": {
     protection: "ko.read",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
@@ -798,7 +889,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Klara-Endpunkte — die Route liest validierte, nicht vertrauliche KOs (dropConfidential im
   // Erzeuger) und erzeugt einen Vorschlag; ob sie das darf, entscheidet das Sitzungstor je
   // Sitzung und Dokument (pruefeExterneAusfuehrung), nicht RBAC. Sie schreibt nichts.
-  // R-1175 (Nacharbeit 3): die Quellen fahren zusätzlich die EINE Sichtbarkeitsentscheidung.
+  // R-1175 (Nacharbeit 3) / aufnahme:20260922:gesamt-leserechte: die Quellen fahren zusätzlich die
+  // EINE Sichtbarkeitsentscheidung des Betrachters (Stufe, Autor, führender Space).
   "POST /api/klara/sessions/:sessionId/zuruf": {
     protection: "ko.read",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
@@ -822,13 +914,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/library/search": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
   // R-0773: die eigenen Suchen ohne Treffer — gelesen nur unter der eigenen Kennung, kein Objekt.
   "GET /api/library/nulltreffer": { protection: "ko.read" },
+  // produkt:20261011:peter-p14 · Existenzrecht: nur Bereichsnamen, je Bereich über `darfSehen`
+  // mit dem auf genau diesen Space beschränkten Blick (existenzhinweis.ts).
+  "GET /api/library/existenzhinweise": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   // JOB 3095 · M5: Bildsuche — Kandidaten über `sichtbareFuer` (plus SQL-Trim), jeder geladene
   // Rumpf zusätzlich über `darfSehen` am vollen Objekt (library-routes.ts, `/api/library/images`).
   "GET /api/library/images": {
     protection: "ko.read",
     zeilenrecht: ["sichtbareFuer", "darfSehen"],
   },
-  // ADMIN-07 (K3): der Export filtert zusätzlich je Objekt über `darfSehen` (führender Space).
+  // ADMIN-07 (K3): der Export filtert zusätzlich je Objekt über `darfSehen` (führender Space);
+  // seit aufnahme:20260922:gesamt-leserechte (Nacharbeit 19) auch nach Freigaberang (Variante B).
   "GET /api/library/export": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // R-1165 (Nacharbeit 1): die drei Kandidatenwege antworten über den lokalen Helfer
   // `kandidatenDtosFuer` (library-routes.ts, „NACHARBEIT 3 (bens F3): Trefferkennungen nur für
@@ -849,6 +945,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Gemessen: `kandidatenvariante-route.test.ts` (K6) fährt beide Routen ohne Anmeldung im selben
   // Fall gegeneinander.
   "GET /api/library/import/candidates/:id/lesevariante/:lang": { protection: "ko.read" },
+  // Peter Nr. 20: die Widerspruchsmeldung an derselben Prüfkarte — dasselbe Recht wie der Abruf,
+  // nur ein Protokolleintrag mit der Kandidaten-Kennung als Ziel; der Kandidat bleibt unverändert.
+  "POST /api/library/import/candidates/:id/lesevariante/:lang/widerspruch": {
+    protection: "ko.read",
+  },
   "GET /api/analytics": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "GET /api/analytics/busfactor": {
     protection: "ko.read",
@@ -943,7 +1044,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/learning-paths/:pathId/progress": { protection: "ko.read" },
 
   // --- Output (output-routes.ts) ---
-  // R-1175 (Nacharbeit 3): Quellen und Erzeugung fahren die EINE Sichtbarkeitsentscheidung.
+  // R-1175 (Nacharbeit 3) / aufnahme:20260922:gesamt-leserechte: Quellen und Erzeugung fahren die
+  // EINE Sichtbarkeitsentscheidung; nicht sichtbar antwortet wie eine unbekannte Kennung.
   "GET /api/output/sources": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "POST /api/output/generate": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // RECHERCHE:pmo-fea-0004: Wissensupdate fürs Teamgespräch (read-only, kein Versand). R-1175
@@ -954,13 +1056,15 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   },
 
   // --- Lernplattform-Übergabe (lms-export-routes.ts) ---
+  // aufnahme:20260922:gesamt-leserechte: Objekte über `sichtbarkeitsfilterFuer`, Bilder über
+  // dieselbe Anhangsregel wie `GET /api/objects/:id` (`beurteileAnhang`).
   "POST /api/output/scorm/pruefen": {
     protection: "ko.read",
-    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+    zeilenrecht: ["beurteileAnhang", "sichtbarkeitsfilterFuer"],
   },
   "POST /api/output/scorm/paket": {
     protection: "ko.read",
-    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+    zeilenrecht: ["beurteileAnhang", "sichtbarkeitsfilterFuer"],
   },
 
   // --- Management / Model-runs / External / Audit / Reasoner / Objects ---
@@ -1017,32 +1121,107 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/me/klara/gespraeche/:id/schritt": { protection: "auth" },
   "PUT /api/me/klara/gespraeche/:id/einwilligung": { protection: "auth" },
   "DELETE /api/me/klara/gespraeche/:id": { protection: "auth" },
+  // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): KI-Aufträge am EIGENEN Gespräch —
+  // Konto aus der Sitzung, fremd und unbekannt 404, Quellen nur nach `sichtbarkeitsfilterFuer`.
+  // Die Verbindungsprobe ist ein echter Modellaufruf und trägt das Recht der vorhandenen Probe.
+  "GET /api/me/klara/ki-faehigkeiten": { protection: "auth" },
+  "POST /api/me/klara/ki-verbindung/:anbieter/pruefen": { protection: "users.manage" },
+  "GET /api/me/klara/gespraeche/:id/ki-auftraege": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/uebergabe": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/ergebnis": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/unterbrechen": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/stopp": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/freigabe-schliessen": {
+    protection: "auth",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/neu-binden": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/codex": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-vergleich": { protection: "auth" },
+  // produkt:20261008:klara-aktionen (Klara 05): Ausführungsaufträge im EIGENEN Gespräch — dieselbe
+  // Tür wie das Gespräch. Kein zusätzliches Recht: die Grenze kann nur verhindern; ob ein Schritt
+  // wirkt, entscheidet der vorhandene Produktweg (`/api/drafts`, `/api/kos/:id`) mit seinen Rechten.
+  "GET /api/me/klara/gespraeche/:id/auftraege": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/auftraege": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/fassungen": { protection: "auth" },
+  "PUT /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel": {
+    protection: "auth",
+  },
+  "PUT /api/me/klara/gespraeche/:id/auftraege/:auftragId/abbruch": { protection: "auth" },
+  // Nacharbeit 2: die gebundene Ausführung/Rücknahme ruft die vorhandenen Türen MIT der Anmeldung
+  // der Person auf (`/api/drafts`, `/api/kos/:id`, Aufgabenquellen) — deren Rechte gelten unverändert.
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ausfuehrung": {
+    protection: "auth",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ruecknahme": {
+    protection: "auth",
+  },
+  // produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: die Prüfprotokolleinträge EINES eigenen
+  // Auftrags (nur eigene Einträge, fremd/unbekannt 404) — keine zweite Auditverwaltung.
+  "GET /api/me/klara/gespraeche/:id/auftraege/:auftragId/protokoll": { protection: "auth" },
   // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil — nur das EIGENE Konto
   // (user.id aus der Sitzung); eine fremde Kontokennung in Rumpf oder Adresse ergibt 403.
   "GET /api/me/assistenz": { protection: "auth" },
   "PUT /api/me/assistenz": { protection: "auth" },
+  // produkt:20261008:klara-eigeninitiative: Unterstützungsmodus und ruhende Hinweise — derselbe
+  // eigene Weg (user.id aus der Sitzung, fremde Kennung 403).
+  "GET /api/me/assistenz/eigeninitiative": { protection: "auth" },
+  "PUT /api/me/assistenz/eigeninitiative": { protection: "auth" },
+  "POST /api/me/assistenz/eigeninitiative/hinweise": { protection: "auth" },
+  // produkt:20261012:klara-setup-shortcuts-umsetzung: die Klara-Tastenkürzel — derselbe eigene Weg
+  // (user.id aus der Sitzung, fremde Kennung 403).
+  "GET /api/me/assistenz/tastenkuerzel": { protection: "auth" },
+  "PUT /api/me/assistenz/tastenkuerzel": { protection: "auth" },
+  // produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der eigenen Assistenz — Übersicht,
+  // Vormerkungen und eigene Aufträge nur über das Konto der Sitzung; Vorschau und Ausführung
+  // zusätzlich mit `ko.read`, weil sie Arbeitsbereichskontext aus dem Bestand laden.
+  "GET /api/me/faehigkeiten": { protection: "auth" },
+  "POST /api/me/faehigkeiten/vormerkungen": { protection: "auth" },
+  "POST /api/me/faehigkeiten/vormerkungen/:id/deaktivieren": { protection: "auth" },
+  "POST /api/me/faehigkeiten/vorschau": { protection: "ko.read" },
+  "POST /api/me/faehigkeiten/auftraege": { protection: "ko.read" },
+  "GET /api/me/faehigkeiten/auftraege": { protection: "auth" },
+  "GET /api/me/faehigkeiten/auftraege/:id": { protection: "auth" },
+  "POST /api/me/faehigkeiten/auftraege/:id/abbrechen": { protection: "auth" },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },
+  // Autorenübergabe-Auftrag K3: Zahl der an MICH zurückgegebenen Entwürfe für das Kopfband —
+  // dieselbe Tür und Grundmenge wie `GET /api/kos`, nur die Zahl, kein Titel, keine Kennung.
+  "GET /api/me/returned-tasks/summary": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // Dieselbe Auswahl als Liste `[{ koId, at, verdict }]` für die Aufgabenseite — ohne
+  // `GET /api/audit` (bleibt `ko.validate`), damit auch Experten ihre Rückgaben sehen.
+  "GET /api/me/returned-tasks": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Übergaben — nur Admins, die sie ausführen.
+  // Gerechnet über dieselbe sichtbare Grundmenge wie `GET /api/kos` (Helfer `uebergaben`).
+  "GET /api/me/author-transfers": { protection: "users.manage", zeilenrecht: ["sichtbareFuer"] },
+  "GET /api/me/author-transfers/summary": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbareFuer"],
+  },
   // SCRUM-501 (nacht24 Paket 7.2): Simulationskorpus laden — nur Admin (users.manage), nie automatisch.
   "POST /api/admin/sim-corpus": { protection: "users.manage" },
   // Klara Stufe 2: KI-gestuetzte Hilfe-Antwort — jeder angemeldete Leser (viewer inkl.).
   "POST /api/help/explain": { protection: "ko.read" },
-  "GET /api/audit": { protection: "ko.validate" },
-  // produkt:20261009:admin-audit-verstaendlich: der Seitenweg der Verwalteransicht — dieselbe Tür.
-  "GET /api/audit/seite": { protection: "ko.validate" },
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 14/15): Liste, Prüfbericht, Export und
+  // Befund-Kennungen nach dem Leserecht des Lesers (`leselage` → darfSehen).
+  "GET /api/audit": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
+  // produkt:20261009:admin-audit-verstaendlich: der Seitenweg der Verwalteransicht — dieselbe Tür;
+  // seit Nacharbeit 20 (gesamt-leserechte) über dieselbe Leseransicht wie `/api/audit`.
+  "GET /api/audit/seite": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
   // SCRUM-439: aktive Integritätsprüfung der Audit-Kette — Governance-Einsicht wie /api/audit.
-  "GET /api/audit/verify": { protection: "ko.validate" },
+  "GET /api/audit/verify": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
   // Aufnahme gesamt-auditprotokoll (R-0613): Export der Kette samt Kopf — dieselbe Einsicht.
-  "GET /api/audit/export": { protection: "ko.validate" },
+  "GET /api/audit/export": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
   // Lauf 2 (R-0766): Befund-Kennungen eines Objekts für dessen Kette — dieselbe Einsicht.
-  "GET /api/audit/ko/:koId/findings": { protection: "ko.validate" },
+  "GET /api/audit/ko/:koId/findings": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
   // WP-D11: PPTX-Folien-Konvertierung — Import-Guard (ko.create) wie der Datei-/Draft-Pfad;
   // großes bodyLimit mit Auth VOR dem Body-Parsing (onRequest requireUser).
   "POST /api/capture/slides": { protection: "ko.create" },
   // WP-RETEST7 R8: leichter Verfügbarkeits-Check vor dem großen Upload (gleicher Guard).
   "GET /api/capture/slides/availability": { protection: "ko.create" },
   // R-1175 (Nacharbeit 3): die Aufgabe `ask` fährt dieselbe Grundlage wie `/api/ask`.
+  // aufnahme:20260922:gesamt-leserechte: die Aufgabe `ask` trägt die Lesepolicy des Fragenden.
   "POST /api/reasoner": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // WP-BILD-1c/1f: KI-Bildbeschreibungs-Vorschlag — eigene Route mit großem bodyLimit; gleicher
   // Guard wie der Text-Dispatcher, zusätzlich Auth VOR dem Body-Parsing (onRequest requireUser).
@@ -1058,6 +1237,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // KI-WAHL-BETRIEBSABNAHME · Antwort 13: wer je Aufgabe tatsächlich arbeitet — für Angemeldete
   // mit Leserecht, geheimnisfrei (Anbieterkennung, Verfügbarkeit, Einschränkungen).
   "GET /api/reasoner/ausfuehrung": { protection: "ko.read" },
+  // produkt:20261009:referenzki-adminauswahl (REF-03): der Einstieg „Referenzprüfung" — Lage
+  // lesen, erlaubte Liste setzen, bewusster Funktionscheck. Alles nur Admin.
+  "GET /api/reasoner/referenzpruefung": { protection: "users.manage" },
+  "PUT /api/reasoner/referenzpruefung": { protection: "users.manage" },
+  "POST /api/reasoner/referenzpruefung/funktionscheck": { protection: "users.manage" },
   // SCRUM-386: kundeneigene KI-Assist-Presets — lesen alle Rollen (Palette), pflegen nur Admin.
   "GET /api/reasoner/assist-presets": { protection: "ko.read" },
   "PUT /api/reasoner/assist-presets": { protection: "users.manage" },
@@ -1204,6 +1388,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/spaces/:id": { protection: "ko.read" },
   "POST /api/spaces/verschiebung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "POST /api/spaces/verschiebung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // aufnahme:20260922:gesamt-wissensprojekte: Löschen wie Bearbeiten (Zuständige/Kontoverwaltung,
+  // sonst 403); Titel betroffener Artikel nur, wenn `darfSehen` sie freigibt, sonst nur die Zahl.
+  "POST /api/spaces/:id/loeschung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // Firmenfilter (Frage 51): Artikel je Firmen-/Partner-/öffentlichem Kontext, je Zeile getrimmt.
+  "GET /api/spaces/artikel": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  "POST /api/spaces/:id/loeschung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   // produkt:20261009:admin-teams: wählbare Teams für die Spacepflege (ohne Mitgliedernamen).
   "GET /api/spaces/teams": { protection: "ko.read" },
   // produkt:20261007:spaces:admin-20261009 (ADMIN-07): Zugriffsherkunft lesen wie den Space;
@@ -1413,6 +1603,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit lesen + ausführen, beides nur Nutzerverwaltung.
   "GET /api/admin/factory-reset": { protection: "users.manage" },
   "POST /api/admin/factory-reset": { protection: "users.manage" },
+  // P08-AC05 (Nacharbeit 4): die zweimalige SSO-Wiederanmeldung des Firmenresets — Start (Umleitung
+  // zum Anbieter) und Rückruf/Abbruch. Dieselbe Schranke wie der Reset selbst.
+  "GET /api/admin/factory-reset/sso/start": { protection: "users.manage" },
+  "POST /api/admin/factory-reset/sso": { protection: "users.manage" },
   // Aufnahme gesamt-bestandsreset (Nacharbeit 2): Folgenvorschau lesen + Bestandsreset ausführen.
   // Dieselbe Schranke wie der Werksreset; die Ausführung verlangt zusätzlich zweimal das Passwort,
   // das Häkchen und die unveränderte Vorschaukennung (`admin-routes.ts`).

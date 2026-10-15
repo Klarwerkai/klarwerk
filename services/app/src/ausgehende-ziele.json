@@ -37,6 +37,14 @@
       "freigabe": "Zentrale Adminfreigabe (MediaAnalysisDeps.zentralFreigegeben); vertrauliche Medien nur mit der zweiten Freigabe (MediaAnalysisDeps.vertraulichFreigegeben, Chokepoint cappedTranscriber fragt dieselbe Entscheidung)"
     },
     {
+      "kennung": "transkription-lokal",
+      "zweck": "Lokaler Sprach-zu-Text-Dienst des Betreibers (OpenAI-kompatibel) fuer Video- und Audio-Erfassung ohne Cloud (R-0181)",
+      "dateien": ["services/media/src/transcriber.ts"],
+      "hosts": [],
+      "umgebung": ["KLARWERK_LOCAL_TRANSCRIBE_URL", "KLARWERK_LOCAL_TRANSCRIBE_ALLOWED_ORIGINS"],
+      "freigabe": "Nur Loopback oder ausdruecklich in KLARWERK_LOCAL_TRANSCRIBE_ALLOWED_ORIGINS genannte Origins gelten als lokal (istBestaetigtLokaleAdresse); dann ist es keine oeffentliche KI und vertrauliche Medien werden im Haus bedient. Jedes andere Ziel wird wie ein externes behandelt: zentrale Adminfreigabe und Vertraulichkeitssperre am Chokepoint cappedTranscriber"
+    },
+    {
       "kennung": "wissenssuche-wikipedia",
       "zweck": "Externe Wissenssuche (Quellen suchen und anhaengen)",
       "dateien": [
@@ -46,6 +54,14 @@
       "hosts": ["*.wikipedia.org"],
       "umgebung": ["EXTERNAL_SEARCH", "EXTERNAL_SEARCH_LANG"],
       "freigabe": "Admin-Regler der externen Wissensabfrage (ExternalKnowledgeStage, Vorgabe search_on_click, blocked sperrt serverseitig); EXTERNAL_SEARCH=off baut den Weg nicht"
+    },
+    {
+      "kennung": "faehigkeit-perplexity-suche",
+      "zweck": "Assistenzfaehigkeit Perplexity-Suche (BPA-11): begrenzte Websuche mit Originalquellen ueber den kontrollierten Adapter",
+      "dateien": ["services/app/src/assistenz-faehigkeiten.ts"],
+      "hosts": ["api.perplexity.ai"],
+      "umgebung": [],
+      "freigabe": "Nur ueber FaehigkeitsAusfuehrung mit registriertem Vertrag und installiertem Adapter gleicher Fassung; vor jedem Schritt externe Wissensabfrage nicht blocked, Anbieter perplexity ausdruecklich freigegeben, Keine KI nicht aktiv, kein geschuetzter Arbeitsbereichsinhalt in der Eingabe, Zugang PERPLEXITY_API_KEY im sicheren Credentialweg und belegte Kosten mit zugeordnetem Budget (Vertrag: Kosten unbelegt, daher ohne Klaerung kein Aufruf)"
     },
     {
       "kennung": "import-confluence",
@@ -86,6 +102,14 @@
       "hosts": [],
       "umgebung": ["SMTP_HOST"],
       "freigabe": "Nur wenn SMTP_HOST gesetzt ist"
+    },
+    {
+      "kennung": "geraete-push",
+      "zweck": "Benachrichtigung ueber eine Pruefzuweisung als Geraete-Push (ohne Nutzlast)",
+      "dateien": ["services/notifications/src/push.ts"],
+      "hosts": [],
+      "umgebung": ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"],
+      "freigabe": "Nur wenn alle drei VAPID-Werte gesetzt sind (createPushFromEnv), und nur an die Push-Dienste der Browserhersteller (PUSH_DIENSTE: fcm.googleapis.com, jmt17.google.com, updates.push.services.mozilla.com, web.push.apple.com, Unterdomaenen von push.apple.com und notify.windows.com) per https; jeder andere Abo-Endpunkt wird abgewiesen (pushEndpunktErlaubt)"
     },
     {
       "kennung": "wissensereignisse-webhooks",

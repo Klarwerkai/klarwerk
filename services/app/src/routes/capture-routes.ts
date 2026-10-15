@@ -47,7 +47,11 @@ import { type Guards, type SessionUser, sendError } from "../http";
 import { bildVerkleinerung, bildausfaelleVermerken } from "../import/bildverkleinerung";
 import type { AssignmentNotifier } from "../notify";
 import { autorenrechtAmEntwurf, entwurfSichtbarFuer } from "../sichtbarkeit";
-import type { VorlagenEinreichungPort } from "../vorlagen";
+import {
+  VORLAGE_SPACE_KONFLIKT_TEXT,
+  type VorlagenEinreichungPort,
+  VorlagenSpaceFehler,
+} from "../vorlagen";
 
 // AUFTRAG-mega19 Block B: EXPORTIERT, damit die Composition-Root den Entwurfs-Zugang der
 // Dokumentübernahme (ko-routes, `DraftPromotionSource`) aus DERSELBEN Regel bildet. Zwei
@@ -154,6 +158,12 @@ function visibleDraftsFor(user: SessionUser, drafts: Draft[]): Draft[] {
  * Codeänderung wäre eine Vertragsänderung nach aussen und braucht eine eigene Erhebung der
  * Verbraucher. Nur `message` wechselt die Quelle.
  *
+ * aufnahme:20260922:gesamt-leserechte: genau diese Vertragsänderung ist seither erfolgt, und nur
+ * für den NICHT SICHTBAREN Entwurf (403 `DRAFT_NOT_VISIBLE` → 404 `DRAFT_NOT_FOUND`, Begründung an
+ * der Stelle unten). Erhoben: die Weboberfläche reicht den Serversatz durch (`ladeFehlerMeldung`)
+ * und kennt für Entwürfe keinen eigenen 403-Zweig; das Word-Panel wertet 403 nur am Anlegen aus,
+ * nicht am Laden. Das 403 `PERMISSION_DENIED` für einen SICHTBAREN fremden Pool-Entwurf bleibt.
+ *
  * `request` KOMMT ALS PARAMETER HEREIN und wird nicht aus `reply` gezogen (`reply.request` gäbe es):
  * Fastify füllt `reply.request` zwar, aber der Weg über den ausdrücklichen Parameter macht an JEDER
  * der fünf Aufrufstellen sichtbar, dass diese Funktion den Sprachkopf der ANFRAGE liest. Ein
@@ -170,16 +180,19 @@ async function requireVisibleDraft(
   opts: { nurAutor?: boolean } = {},
 ): Promise<Draft | undefined> {
   const draft = await capture.getDraft(id);
-  if (!draft) {
+  // aufnahme:20260922:gesamt-leserechte (R-0239, Entscheidung J24 vom 13.08.2026: „Maskiert,
+  // Prueferrolle getrennt, aktive Benachrichtigung, 404"): ein Entwurf, den dieser Mensch nicht
+  // sehen darf, gibt es für ihn nicht. Bis hierher antwortete dieser Zweig 403 FORBIDDEN mit eigenem
+  // Satz („gibt es, du darfst nicht") — genau die Existenzauskunft, die die Entscheidung ausschliesst
+  // („403 verraet, dass der Entwurf existiert"). Jetzt Status, Code und Satz zeichengleich wie für
+  // eine unbekannte Kennung; dieselbe Richtung wie der Papierkorb unten und die Wissensobjekte
+  // (`ko-routes.ts`, mega80). Der Preis steht in der Entscheidung selbst: gegenüber einem
+  // Berechtigten, der sich in der Kennung irrt, ist „nicht gefunden" die ehrliche Antwort; wer einen
+  // fremden PRIVATEN Entwurf aufruft, erfährt nicht mehr, dass es ihn gibt.
+  if (!draft || !canSeeDraft(user, draft)) {
     reply
       .code(404)
       .send({ error: "NOT_FOUND", message: meldung("DRAFT_NOT_FOUND", sprache(request)) });
-    return undefined;
-  }
-  if (!canSeeDraft(user, draft)) {
-    reply
-      .code(403)
-      .send({ error: "FORBIDDEN", message: meldung("DRAFT_NOT_VISIBLE", sprache(request)) });
     return undefined;
   }
   // Pool-Auftrag (297afc57): wer einen fremden Pool-Entwurf SIEHT, darf ihn noch nicht einreichen
@@ -201,10 +214,11 @@ async function requireVisibleDraft(
  * aus zwei verschiedenen Sichten (`getDraft` gibt einen getrashten Entwurf ausdrücklich NICHT
  * heraus). Das PRÄDIKAT ist dasselbe und kein zweites — `canSeeDraft`, derselbe Aufruf.
  *
- * DIE ANTWORT IST EINE ANDERE, und zwar bewusst: 404 AUCH DANN, wenn der Entwurf existiert und nur
- * jemand anderem gehört. `requireVisibleDraft` unterscheidet an dieser Stelle 404 von 403, weil ein
- * LEBENDER fremder Entwurf ein Gegenüber hat, mit dem man reden kann („gibt es, du darfst nicht").
- * Ein GELÖSCHTER hat das nicht: Vor diesem Auftrag war seine Kennung nach dem Löschen schlicht
+ * DIE ANTWORT: 404 AUCH DANN, wenn der Entwurf existiert und nur jemand anderem gehört.
+ * (aufnahme:20260922:gesamt-leserechte: `requireVisibleDraft` unterschied hier früher 404 von 403
+ * für einen LEBENDEN fremden Entwurf; seit R-0239/J24 antwortet auch er 404 — die Begründung unten
+ * gilt für beide.) Ein GELÖSCHTER Entwurf hat kein Gegenüber: Vor diesem Auftrag war seine
+ * Kennung nach dem Löschen schlicht
  * nicht mehr auffindbar. Hielte der Papierkorb sie mit 403 am Leben, wäre über ihn erfragbar, dass
  * es einen fremden Entwurf gegeben hat — der Papierkorb hätte eine Auskunft HINZUGEFÜGT, und genau
  * das verbietet §4.5. Es ist dieselbe Richtung, in die mega80 die Wissensobjekte gebracht hat
@@ -927,6 +941,10 @@ export interface CaptureRoutesDeps {
   // SCRUM-395: Prüfer-Vorschlag beim Promote (Zuweisung + Benachrichtigung wie im Board).
   validation: ValidationService;
   notifyAssignment?: AssignmentNotifier;
+  // R-1655: ohne benannte Prüfer an die schnellsten Prüfer des Themas routen (schluckt eigene
+  // Fehler; routet nur ein Objekt, das noch gar keine Zuweisung hat — also auch bei Wiederholung
+  // desselben Vorgangs höchstens einmal).
+  routeNeuesObjekt?: (koId: string, user: SessionUser) => Promise<void>;
   // Weg 3 (Feature-Flag): semantischer Vorfilter der Duplikat-Erkennung. Nur gesetzt, wenn aktiviert.
   semanticPrefilter?: SemanticPrefilter | undefined;
   // WP-SUBMIT-ASYNC (Pedis R3): die frühere synchrone Erkennung (conflicts/overlaps/reasoner-Deps)
@@ -1058,7 +1076,15 @@ function antwortBeiVeraltetemStand(reply: FastifyReply, error: unknown): boolean
 }
 
 export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { capture, ko, validation, notifyAssignment, semanticPrefilter, aiCheckWorker } = deps;
+  const {
+    capture,
+    ko,
+    validation,
+    notifyAssignment,
+    routeNeuesObjekt,
+    semanticPrefilter,
+    aiCheckWorker,
+  } = deps;
   // R-0169 (Nacharbeit 5): die interne Dokumentakte des Word-Wegs (optional, s. Deps).
   const dokumente = deps.dokumente;
   // JOB 2671 D2: EINE Entscheidung, beim Aufbau getroffen — nicht bei jeder Anfrage neu.
@@ -1243,8 +1269,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         // JOB 4249 R7 — UND SIE SPRICHT DIE SPRACHE DER SITZUNG. In Runde 6 stand der Satz hier als
         // deutsches Literal; der Q9-Wächter (`tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts`)
         // hat ihn im Tor gefunden und damit genau das getan, wofür er gebaut ist. Er gehört in den
-        // Katalog — es ist derselbe Weg, den `DRAFT_NOT_FOUND` und `DRAFT_NOT_VISIBLE` zwölf Zeilen
-        // weiter oben schon gehen, keine zweite Auslegung und kein Sonderfall.
+        // Katalog — es ist derselbe Weg, den `DRAFT_NOT_FOUND` in `requireVisibleDraft` schon geht,
+        // keine zweite Auslegung und kein Sonderfall.
         const erwarteterEigentuemer =
           typeof rohEigentuemer === "string" && rohEigentuemer.trim().length > 0
             ? rohEigentuemer.trim()
@@ -1601,7 +1627,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       }
       // AUFTRAG-mega20 Block D: DAS FORTSETZEN LÄUFT ÜBER DIE ANKERPRÜFUNG.
       //
-      // `requireVisibleDraft` bleibt die SICHTBARKEITS-Entscheidung (404/403) und wird davon nicht
+      // `requireVisibleDraft` bleibt die SICHTBARKEITS-Entscheidung (404) und wird davon nicht
       // berührt. Was hier dazukommt, ist die INHALTS-Entscheidung: beruft sich der Entwurf auf ein
       // gesichertes Original, das es nicht mehr gibt, kommt sein Body NICHT zurück — sonst stünde
       // übernommener Dokumenttext ohne Herkunft im Editor und ließe sich von dort einreichen.
@@ -1795,7 +1821,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         return;
       }
       try {
-        // DIESELBE 404/403-UNTERSCHEIDUNG WIE `requireVisibleDraft`, nur auf dem Papierkorb: Wer
+        // DIESELBE 404-ANTWORT WIE `requireVisibleDraft`, nur auf dem Papierkorb: Wer
         // ihn nicht sehen darf, erfährt auch hier nicht, dass es ihn gibt. `requireVisibleDraft`
         // selbst ist hier NICHT brauchbar — es liest über `getDraft`, und das gibt einen
         // getrashten Entwurf bewusst nicht heraus.
@@ -1834,8 +1860,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
     // DIE BEWUSSTE HANDLUNG DES AUTORS: `{ imPool: true }` gibt genau diesen einen Entwurf in den
     // gemeinsamen Pool, `{ imPool: false }` nimmt ihn zurück. Ohne diesen Aufruf ist und bleibt jeder
     // Entwurf privat. Nur der Autor darf das (`nurAutor`, entscheidung:297afc57); ein anderer
-    // Schreibberechtigter bekommt für einen fremden Pool-Entwurf 403, für einen privaten das
-    // bisherige 403 `DRAFT_NOT_VISIBLE`. Ein Rumpf ohne Wahrheitswert ist ein Eingabefehler (400)
+    // Schreibberechtigter bekommt für einen fremden Pool-Entwurf 403, für einen privaten 404 wie
+    // für eine unbekannte Kennung (R-0239). Ein Rumpf ohne Wahrheitswert ist ein Eingabefehler (400)
     // und wird geprüft, bevor überhaupt ein Entwurf gelesen wird.
     //
     // KEIN ZWEITER SPEICHER: das Feld steht am Entwurf derselben Ablage (`Draft.imPool`); Liste,
@@ -1873,28 +1899,45 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       },
     );
 
-    app.delete<{ Params: { id: string } }>("/api/drafts/:id", async (request, reply) => {
+    type LoeschAnfrage = { Params: { id: string }; Querystring: { expectedUpdatedAt?: unknown } };
+    app.delete<LoeschAnfrage>("/api/drafts/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
         return;
       }
       try {
         // Pool-Auftrag (297afc57): Löschen bleibt beim Autor, auch bei einem Pool-Entwurf.
-        if (
-          !(await requireVisibleDraft(capture, request.params.id, user, reply, request, {
+        const sichtbar = await requireVisibleDraft(
+          capture,
+          request.params.id,
+          user,
+          reply,
+          request,
+          {
             nurAutor: true,
-          }))
-        ) {
+          },
+        );
+        if (!sichtbar) {
           return;
         }
+        // produkt:20261008:klara-aktionen (Nacharbeit 2): wahlweise derselbe Standvergleich wie beim
+        // Speichern. Wer den gesehenen Stand mitgibt (Klaras Rückgängig), löscht nichts, was
+        // inzwischen geändert wurde — 409 DRAFT_STALE, der Entwurf bleibt. Ohne Angabe wie bisher.
+        // Nacharbeit 4 (Ben): der Vergleich läuft UNTEILBAR in der Ablage (`deleteWennStand`), nicht
+        // hier vorab — eine Änderung zwischen Prüfung und Löschen kann so nicht mehr durchrutschen.
+        const erwartet = erwarteterStand(request.query?.expectedUpdatedAt);
         // JOB 3668: DERSELBE ENDPUNKT, NEUE BEDEUTUNG — er legt den Entwurf in den Papierkorb,
         // statt ihn zu vernichten. Die Antwort bleibt 204, der Aufrufer merkt keinen Unterschied:
         // der Entwurf verschwindet aus `GET /api/drafts` wie zuvor. Geprüfte Aufrufer stehen in
         // der Rückgabe dieses Jobs. `user.id` reist mit, damit der Papierkorb sagen kann, WER
         // gelöscht hat — bis hierher wusste das niemand.
-        await capture.deleteDraft(request.params.id, user.id);
+        await capture.deleteDraft(request.params.id, user.id, erwartet);
         reply.code(204).send();
       } catch (error) {
+        // Verlorener Standvergleich: 409 DRAFT_STALE mit dem gespeicherten Stand, der Entwurf bleibt.
+        if (antwortBeiVeraltetemStand(reply, error)) {
+          return;
+        }
         sendError(reply, error);
       }
     });
@@ -2036,6 +2079,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
               await notifyAssignment?.(koId, [prueferin]);
               await validation.benachrichtigungErledigt(koId, prueferin);
             }
+          } else {
+            // R-1655: niemand benannt → an die schnellsten Prüfer des Themas routen.
+            await routeNeuesObjekt?.(koId, user);
           }
           // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
           // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker
@@ -2062,6 +2108,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           aiCheckWorker.enqueue(koId, vermerkt?.aiCheck?.koVersion);
           return vermerkt;
         };
+        // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): mit gewähltem Space hält der
+        // Promote von der Vorlagenprüfung bis zur Zuordnung dieselbe Sperre wie die Spacelöschung.
+        let spaceSperreFrei: (() => void) | undefined;
         try {
           const body = request.body ?? {};
           const operationId = typeof body.operationId === "string" ? body.operationId.trim() : "";
@@ -2149,8 +2198,10 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // produkt:20261007:templates-default: dieselbe Einreichprüfung wie an `POST /api/kos`,
           // gegen den GESPEICHERTEN Vorlagenbezug (der mitgeschickte Stand ist oben schon gemischt).
           // Scheitert sie, bleibt der Entwurf mit allen Werten stehen — es entsteht nichts.
+          const rohBezug = (await capture.getDraft(request.params.id))?.payload.vorlage;
+          spaceSperreFrei = await deps.vorlagenEinreichung?.halte(rohBezug);
           const vorlagenEntscheid = await deps.vorlagenEinreichung?.pruefe(
-            (await capture.getDraft(request.params.id))?.payload.vorlage,
+            rohBezug,
             { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
             user,
           );
@@ -2183,19 +2234,31 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // Prüfung und Historie. Deshalb der eigene Weg `entwurfVerbraucht` (hart) und nicht
           // `deleteDraft` (weich). Es sind zwei verschiedene Vorgänge, die nur zufällig beide
           // dazu führen, dass der Entwurf aus der Liste verschwindet.
-          await capture.entwurfVerbraucht(request.params.id);
           // produkt:20261007:templates-default: Vorlage/Fassung vermerken, ggf. in den gewählten
           // Space legen. Eine Nacharbeit: scheitert sie, steht das Objekt trotzdem, und die Antwort
           // sagt es (`vorlagenVermerk`).
+          // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): AUSNAHME ist die Space-
+          // Zuordnung — misslingt sie, ist die Anlage zurückgenommen, die Antwort 409, und der
+          // Entwurf bleibt bestehen (deshalb steht dieser Schritt VOR dem Verbrauch des Entwurfs).
           let vorlagenVermerk: "fehlgeschlagen" | undefined;
           if (vorlagenEntscheid?.ok && vorlagenEntscheid.bezug) {
             try {
               await deps.vorlagenEinreichung?.vermerke(created.id, vorlagenEntscheid.bezug, user);
             } catch (fehlerWert) {
+              if (fehlerWert instanceof VorlagenSpaceFehler) {
+                reply.code(409).send({
+                  error: fehlerWert.code,
+                  message: VORLAGE_SPACE_KONFLIKT_TEXT,
+                });
+                return;
+              }
               request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
               vorlagenVermerk = "fehlgeschlagen";
             }
           }
+          // Der Beitrag trägt seinen Space — die übrigen Nacharbeiten brauchen die Sperre nicht.
+          spaceSperreFrei?.();
+          await capture.entwurfVerbraucht(request.params.id);
           // R-0658: ein Objekt in Schutzdaten-Quarantäne geht weder in die KI-Prüfung
           // (`nacharbeiten`) noch in die Ähnlichkeitsablage (unten). Die Warnung reist als
           // `schutzdatenQuarantaene` in der 201-Antwort an das Blatt.
@@ -2220,6 +2283,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             return;
           }
           sendError(reply, error);
+        } finally {
+          spaceSperreFrei?.();
         }
       },
     );

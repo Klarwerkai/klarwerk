@@ -55,6 +55,9 @@ import { AiModelInfo } from "../components/AiModelInfo";
 import { AiUnavailableHint } from "../components/AiUnavailableHint";
 // SCRUM-435: extrahierte Erkenntnis(se) an einen BESTEHENDEN Artikel anhängen (Artikel-Picker).
 import { AppendToArticleModal } from "../components/AppendToArticleModal";
+// OCR-02 (Klara-Bildanalyse): Befund des automatischen Bildlesens mit Fundstelle je Bild.
+import { BildBefundListe } from "../components/BildBefundListe";
+import { BildBeschreiberBruecke } from "../components/BildBeschreiberBruecke";
 // SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte anhängen (nichts ersetzen).
 import { BodyExtractPanel } from "../components/BodyExtractPanel";
 import type { BildbeschreibungsBitte } from "../components/BodyImageGallery";
@@ -74,10 +77,13 @@ import { FileFormatInfo } from "../components/FileFormatInfo";
 // R-1624: Foto-zu-Wissen — Einstieg ins geführte Interview über ein Foto.
 import { FotoInterviewStart } from "../components/FotoInterviewStart";
 import { HelpTip } from "../components/HelpTip";
+// OCR-03: Klara zu einer bereitgestellten Datei fragen — Text und erkannte Bilder mit Fundstelle.
+import { KlaraBildKontextFrage } from "../components/KlaraBildKontextFrage";
 import { KnopfUnterschied } from "../components/KnopfUnterschied";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { Modal } from "../components/Modal";
 import { PublicAiEnrichPanel } from "../components/PublicAiEnrichPanel";
+import { ReviewerSuggestions } from "../components/ReviewerSuggestions";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { RoleLink } from "../components/RoleLink";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
@@ -108,6 +114,26 @@ import { anlagenAlsEingabe, anlagenNutzlast, anlagenVon } from "../lib/anlagen";
 // (und mit ihr der dreiwertige Ausgang) bleibt der Weg für ein BESTEHENDES Wissensobjekt: KO-Detail
 // und „An Artikel anfügen" — s. lib/appendToArticle.ts.
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
+// OCR-03 (Nacharbeit 4): der Dateilauf prüft Konto und Einstellung vor jedem weiteren Bild.
+import { assistenzStand } from "../lib/assistenzProfil";
+// OCR-02 (Klara-Bildanalyse): bereitgestellte und eingebettete Bilder automatisch lesen.
+import {
+  type BildBefund,
+  type BildBeschreiber,
+  type BildQuelleEingang,
+  type BildVorkommen,
+  NEU_VERSUCHEN,
+  type QuellenBefund,
+  docxBildEingang,
+  einstellungUnbekannt,
+  einzelbildEingang,
+  leererBefund,
+  pptxBildEingang,
+  quellenBefundAus,
+} from "../lib/bildAutomatik";
+// OCR-03: Setup › Klara „Bilder automatisch analysieren und Text erkennen“, Analyse je Konto.
+import { bildAutomatikAbwarten, bildAutomatikLage } from "../lib/bildAutomatikEinstellung";
+import { useBildAnalyse } from "../lib/bildAutomatikLauf";
 import {
   applyBodyAssist,
   applyBodyAssistBlock,
@@ -243,7 +269,6 @@ import { detectFileKind } from "../lib/extract";
 // SCRUM-409 (PMO-FEA-0008-Delta): Mehrpunkt-Entwürfe + Zusammenführen im „Aus Datei"-Weg.
 import { createPointDrafts } from "../lib/fileMultiPoint";
 import {
-  PdfTooLargeError,
   fileToThumbDataUrl,
   isImage,
   readDocxFile,
@@ -253,7 +278,6 @@ import {
   readPdfFileWithOriginal,
   readPptxRich,
   readTextFile,
-  runImageOcr,
 } from "../lib/files";
 import { type FotoAnker, applyFotoAnker, applyFotoArtikel } from "../lib/fotoInterview";
 import {
@@ -270,6 +294,17 @@ import {
   interviewSourceKey,
   isInterviewDone,
 } from "../lib/interviewFlow";
+import {
+  type OcrAbschnitt,
+  type OcrErsetzt,
+  feldUebernommen,
+  gesicherteOhneRohtext,
+  interviewKontext,
+  massgeblicheAussage,
+  ocrAbschnitteFuerEntwurf,
+  ocrErsetztOhne,
+  ocrUebernahmeErsetzt,
+} from "../lib/interviewKontext";
 import { ERGEBNIS_STUFE_TEXT } from "../lib/kiHerkunft";
 import {
   EMPTY_SOURCE_FORM,
@@ -290,8 +325,9 @@ import {
   stufeWaehlbar,
 } from "../lib/negativwissen";
 // JOB 2700 D1: die Groessenkante des PDF-Weges ist die Grenze des Original-Anhangs (dieselbe
-// Ableitung wie 2676 fuer PPTX) — und die Frist des Parsers hat einen eigenen Fehler.
-import { PdfTimeoutError } from "../lib/pdf";
+// Ableitung wie 2676 fuer PPTX) — und die Frist des Parsers hat einen eigenen Fehler. Der Satz
+// dazu ist seit `gesamt-ocr` (R-0138) mit „Aus Dokument ergaenzen" geteilt.
+import { pdfLesefehlerSatz } from "../lib/pdfLesefehler";
 // WP-D5b (bens GELB-Fix 3): ehrlicher Importfehler bei Überschreitung des Archiv-/Dekompressionsbudgets.
 import { PptxTooLargeError } from "../lib/pptx";
 import { toReasonerLocale } from "../lib/reasonerLocale";
@@ -906,21 +942,8 @@ export function CaptureArbeitsraum({
   // Was nicht als Original angehaengt werden kann, wird auch nicht geparst.
   const pdfLimitBytes = maxRawAttachmentBytes(uploadLimitsData.maxAttachmentBytes);
   /** Die ehrliche Meldung zu einer PDF, die zu gross ist oder zu lange braucht — sonst null. */
-  const pdfFehlerText = (error: unknown, name: string): string | null => {
-    if (error instanceof PdfTooLargeError) {
-      // Die Grenze ABGERUNDET (14,9 statt 15,0): was angezeigt wird, muss real durchgehen — dieselbe
-      // Regel wie maxRawAttachmentMb in uploadLimits.ts.
-      return t("capture.file.pdfTooLarge", {
-        name,
-        mb: (error.size / 1_000_000).toFixed(1),
-        limitMb: (Math.floor(error.limit / 100_000) / 10).toFixed(1),
-      });
-    }
-    if (error instanceof PdfTimeoutError) {
-      return t("capture.file.pdfTimeout", { name, s: Math.round(error.timeoutMs / 1000) });
-    }
-    return null;
-  };
+  const pdfFehlerText = (error: unknown, name: string): string | null =>
+    pdfLesefehlerSatz(error, name, t);
   const reviewerChoices = (directory.data ?? []).filter((p) => p.id !== user?.id);
   // AUFTRAG-mega6 Block D (bens Ehrlichkeitskante): die Persistenzgrenze speichert höchstens
   // DRAFT_LIMITS.reviewers Prüfer. Die Auswahl war ein unbeschränktes Toggle — der Server kappte
@@ -1193,6 +1216,19 @@ export function CaptureArbeitsraum({
   // die aktuelle ist — eine SPÄTE Antwort eines vor dem Speichern gestarteten Requests kann den
   // danach geltenden Zustand damit nicht wieder einschreiben.
   const ivRunRef = useRef(0);
+  // Aufnahme `gesamt-ocr` (FR-CAP-05, Nacharbeit 4): erkannte Bildtext-Abschnitte eines fortgesetzten
+  // Entwurfs, die NICHT im Rohtext zurückkamen (strukturiert gespeichert ⇒ nur die verdichtete
+  // Aussage). Sie bleiben Interviewkontext und reisen beim nächsten Speichern wieder mit. Abschnitte
+  // im Rohtext sind weiterhin dort die Quelle (lib/interviewKontext.ts).
+  const [ocrGesichert, setOcrGesichert] = useState<readonly OcrAbschnitt[]>([]);
+  // Nacharbeit 11 (Bens Befund): die Felder, in die die Erkennung SCHREIBT (R-1688/R-1733) — Rohtext
+  // und die „Aussage" des Formulars. Interviewkontext und Entwurfssicherung lesen beide, jeweils im
+  // aktuellen Stand; ein Abschnitt in beiden zählt einmal (lib/interviewKontext.ts).
+  const sichtbareOcrFelder: readonly string[] = [raw, draft?.statement ?? ""];
+  // Nacharbeit 16 (Bens Befund): je Feld die Abschnitte, die ein Moduswechsel ins andere Feld
+  // übernommen hat. Dort ist die Kopie maßgeblich — mit Korrektur und Löschung; die stehen
+  // gebliebene Quelle zählt nicht mehr (lib/interviewKontext.ts, `ocrUebernahmeErsetzt`).
+  const [ocrErsetzt, setOcrErsetzt] = useState<OcrErsetzt>([]);
   // R-1624: der bestätigte Bildbefund des laufenden Foto-Interviews. null = normales Interview.
   // Der Befund reist mit jedem Turn als Klartext mit und wird mit dem Interviewfortschritt
   // gesichert und wiederhergestellt; das Foto selbst steht als Bild-Anker im Rumpf (beim Start
@@ -1231,8 +1267,29 @@ export function CaptureArbeitsraum({
   // für die Verlustgründe, beim Speichern (gekoppelt an den echten Anhang-Erfolg) für die Meldung, die
   // der Nutzer sieht. null = keine Datei bzw. ein Weg ohne Bildtransfer.
   const [fileImageTransfer, setFileImageTransfer] = useState<ImageTransferContract | null>(null);
-  const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
+  const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat
   const [fileBusy, setFileBusy] = useState(false);
+  // OCR-02: der Befund des automatischen Bildlesens der gerade gelesenen Datei. Der Laufzähler
+  // verwirft Ergebnisse einer Datei, die inzwischen durch eine andere ersetzt oder geräumt wurde.
+  const [fileBildBefund, setFileBildBefund] = useState<{
+    lauf: number;
+    befund: QuellenBefund;
+    // OCR-03: der Eingang dieses Laufs — nur seine Befunde kommen in Klaras Kontext.
+    eingang: BildQuelleEingang;
+  } | null>(null);
+  const fileBildLaufRef = useRef(0);
+  // OCR-02: EINE Bildanalyse für diesen Arbeitsraum (Dateiimport und Bildanhänge) — darin werden
+  // unveränderte Bilder wiedererkannt. Der Weg zur Bildbeschreibung (W02) kommt über die Brücke aus
+  // dem eigenen `ImageDescribeProvider`, also mit der Herkunft und Einstufung dieses Entwurfs.
+  // OCR-03: an das angemeldete Konto gebunden — ein Kontowechsel beginnt mit einer leeren Analyse.
+  const bildAnalyse = useBildAnalyse();
+  const bildBeschreiberRef = useRef<BildBeschreiber | undefined>(undefined);
+  // OCR-02 (Bens Befund, Nacharbeit 3): auch die über „Bilder hochladen" bzw. den Anhang gegebenen
+  // Bilder werden beim Eingang gelesen. Die TEXTÜBERNAHME in Aussage/Rohtext bleibt der ausdrückliche
+  // Klick „OCR → Text" (gesamt-ocr K3/K6). Der erste Klick übernimmt den automatischen Befund, ein
+  // weiterer Klick erkennt ausdrücklich neu.
+  const [anhangBildBefunde, setAnhangBildBefunde] = useState<Record<string, BildBefund>>({});
+  const anhangBildLaeufeRef = useRef(new Map<string, Promise<BildBefund>>());
   // ================================================================================================
   // JOB 4203 D3 · RUNDE 2 — DIE ABWEISUNG WIRD ANGESAGT, NICHT NUR ANGEZEIGT.
   // ================================================================================================
@@ -1523,6 +1580,13 @@ export function CaptureArbeitsraum({
           research: v.research,
           ...(v.recherchieren ? { recherchieren: true } : {}),
         },
+        // Aufnahme `gesamt-ocr` (FR-CAP-05): die auf Klick erkannten Abschnitte des Rohtextes, so wie
+        // sie JETZT dastehen — auch nach dem Fortsetzen eines Entwurfs (lib/interviewKontext.ts),
+        // dazu die gesicherten Abschnitte eines strukturiert gespeicherten Entwurfs. Nacharbeit 11:
+        // gelesen werden BEIDE sichtbaren Felder — Rohtext und die „Aussage" des Formulars, in die
+        // die Erkennung dort schreibt (R-1688/R-1733). Nacharbeit 16: übernommene Abschnitte zählen
+        // nur in ihrer maßgeblichen Kopie.
+        interviewKontext(sichtbareOcrFelder, ocrGesichert, ocrErsetzt),
       ),
     onSuccess: (res, v) => {
       if (v.run !== ivRunRef.current) {
@@ -2610,6 +2674,10 @@ export function CaptureArbeitsraum({
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setDraft(null);
       setRaw("");
+      // Aufnahme `gesamt-ocr` (Nacharbeit 5): die gesicherten Bildtext-Abschnitte gehörten zu DIESEM
+      // Beitrag — sonst trüge der nächste sie unsichtbar ins Interview und in seinen Entwurf.
+      setOcrGesichert([]);
+      setOcrErsetzt([]);
       setBodyHtml("");
       setTags([]);
       setImages([]);
@@ -2749,9 +2817,15 @@ export function CaptureArbeitsraum({
       });
       // AUFTRAG-mega6 Block B: „wird aktualisiert" entscheidet, ob Leerwerte als Löschmarker mitgehen.
       const isDraftUpdate = Boolean(draftId);
+      // Aufnahme `gesamt-ocr` (Nacharbeit 4): die erkannten Abschnitte reisen als eigenes Feld mit —
+      // auch wenn `statement` unten die verdichtete Aussage statt des Rohtextes trägt.
+      const ocrFuerEntwurf = ocrAbschnitteFuerEntwurf(ocrGesichert, sichtbareOcrFelder, ocrErsetzt);
       const payload: DraftPayload = {
         title: draft?.title || raw.split("\n")[0]?.slice(0, 80) || t("capture.draftFallbackTitle"),
-        statement: draft?.statement || raw,
+        // Nacharbeit 17/18 (Bens Befunde): nach einer Übernahme gilt die maßgebliche Fassung — in
+        // BEIDEN Richtungen und auch absichtlich ganz geleert. Rohtext → Aussage: die Aussage;
+        // Aussage → Rohtext: der Rohtext. Sonst käme der stehen gebliebene, ersetzte Bildtext zurück.
+        statement: massgeblicheAussage(draft?.statement, raw, ocrErsetzt),
         type,
         tags: tags.filter((x) => x.trim()),
         conditions: draft?.conditions.filter((x) => x.trim()) ?? [],
@@ -2806,6 +2880,11 @@ export function CaptureArbeitsraum({
         ...(isDraftUpdate || extQuery.trim() ? { extQuery } : {}),
         ...(isDraftUpdate || ivProgress
           ? { interview: ivProgress ?? CLEARED_DRAFT_INTERVIEW }
+          : {}),
+        // Dieselbe Leerwert-Semantik: beim Aktualisieren geht auch eine leere Liste als Löschmarker
+        // mit — wer die erkannten Abschnitte entfernt hat, bekommt sie beim Fortsetzen nicht zurück.
+        ...(isDraftUpdate || ocrFuerEntwurf.length > 0
+          ? { ocrAbschnitte: ocrFuerEntwurf.map(({ name, text }) => ({ name, text })) }
           : {}),
         // produkt:20261007:templates-default: der Vorlagenbezug übersteht Speichern/Fortsetzen;
         // beim Aktualisieren auch als `null`, damit „freie Eingabe" den alten Bezug wirklich löst.
@@ -2865,6 +2944,10 @@ export function CaptureArbeitsraum({
       // Bugfix (Pedi 04.07.): nach dem Speichern ist die Eingabe leer/neu — der Entwurf liegt in
       // „Entwürfe fortsetzen"; Weiterarbeiten läuft bewusst über „Fortsetzen".
       setRaw("");
+      // Aufnahme `gesamt-ocr` (Nacharbeit 5): die gesicherten Abschnitte liegen jetzt im Entwurf und
+      // kommen über „Fortsetzen" zurück — im geleerten Arbeitsraum haben sie nichts mehr zu suchen.
+      setOcrGesichert([]);
+      setOcrErsetzt([]);
       setDraft(null);
       setBodyHtml("");
       setTags([]);
@@ -3103,6 +3186,19 @@ export function CaptureArbeitsraum({
       conditions: p.conditions ?? [],
       measures: p.measures ?? [],
     };
+    // Aufnahme `gesamt-ocr` (Nacharbeit 4): gesicherte Bildtext-Abschnitte zurückholen — nur die,
+    // die nicht ohnehin im (beim Erzähl-Einstieg wiederhergestellten) Rohtext stehen.
+    const erzaehlRohtext = p.statement ?? p.title ?? "";
+    // Nacharbeit 11: die Felder, die NACH dem Laden sichtbar sind — beim Erzähl-Einstieg der Rohtext,
+    // sonst der unveränderte Rohtext UND die wiederhergestellte Aussage (Formular, Studio).
+    const kuenftigeFelder = target === "tell" ? [erzaehlRohtext] : [raw, p.statement ?? ""];
+    // Nacharbeit 16: die Aussage kommt neu aus dem Entwurf — ihre Übernahme-Markierung gilt nicht
+    // mehr. Ein unverändert stehen gebliebener Rohtext behält seine; beim Erzähl-Einstieg wird auch
+    // er neu gefüllt.
+    const kuenftigErsetzt: OcrErsetzt = target === "tell" ? [] : [ocrErsetzt[0]];
+    setOcrErsetzt(kuenftigErsetzt);
+    const gespeicherteOcr = p.ocrAbschnitte ?? [];
+    setOcrGesichert(gesicherteOhneRohtext(gespeicherteOcr, kuenftigeFelder, kuenftigErsetzt));
     if (target === "tell") {
       // Erzähl-Einstieg → Rohtext-Feld, sofort editier- und speicherbar.
       setMode("freitext");
@@ -3202,6 +3298,8 @@ export function CaptureArbeitsraum({
     setFileOriginal(null);
     fileOriginalRef.current = { ref: null };
     setFileImageUrl(null);
+    fileBildLaufRef.current += 1;
+    setFileBildBefund(null);
     setFileBusy(false);
     setSlidesAsImages(false);
     setSlidesProgress(null);
@@ -3262,6 +3360,9 @@ export function CaptureArbeitsraum({
   // beiden kanonischen Räum-Funktionen. Eine Quelle für den Leerzustand, geteilt von beiden Verwerfen-Wegen.
   const resetCaptureForm = (): void => {
     setRaw("");
+    // Aufnahme `gesamt-ocr`: mit dem Rohtext gehen auch die gesicherten Bildtext-Abschnitte.
+    setOcrGesichert([]);
+    setOcrErsetzt([]);
     setDraft(null);
     setBodyHtml("");
     setStudioApplied(false);
@@ -3326,11 +3427,25 @@ export function CaptureArbeitsraum({
     // Bug (Pedi 04.07.): Inhalt beim Moduswechsel NICHT verlieren. Der Rohtext (Freitext/Diktat)
     // und die Aussage des Experten-Formulars werden aneinander übergeben.
     const carried = raw.trim();
+    // Nacharbeit 18 (Bens Befund): nach einer Übernahme ist das QUELLFELD eine veraltete Kopie
+    // (`feldUebernommen`). Wer in dieses Feld zurückkehrt, bekommt die maßgebliche Fassung — auch
+    // eine korrigierte oder geleerte —, und die Richtung kehrt sich um. So ist das sichtbare Feld
+    // immer das maßgebliche, und Speichern (`statement` in der Entwurfs-Nutzlast) liest genau dieses.
+    const aussageVeraltet = Boolean(draft) && feldUebernommen(ocrErsetzt, 1);
+    const rohtextVeraltet = Boolean(draft) && feldUebernommen(ocrErsetzt, 0);
     if (m === "formular") {
-      // Freitext → Formular: Rohtext als „Aussage" ins Formular übernehmen (nur wenn dort leer).
+      // Nacharbeit 16 (Bens Befund): übernimmt der Wechsel den Rohtext, ist ab jetzt die Kopie in
+      // der Aussage die maßgebliche Fassung seiner erkannten Abschnitte — Korrektur und Löschung
+      // dort gelten, die stehen gebliebene Quelle im Rohtext zählt nicht mehr.
+      const uebernehmen = (carried && !draft?.statement.trim()) || aussageVeraltet;
+      if (uebernehmen) {
+        setOcrErsetzt((e) => ocrUebernahmeErsetzt(e, 0, raw, 1));
+      }
+      // Freitext → Formular: Rohtext als „Aussage" ins Formular übernehmen (nur wenn dort leer
+      // oder die Aussage eine veraltete Kopie ist).
       setDraft((d) => {
         const base = d ?? { ...EMPTY_DRAFT };
-        if (base.statement.trim()) {
+        if (!uebernehmen) {
           return base;
         }
         return {
@@ -3339,8 +3454,14 @@ export function CaptureArbeitsraum({
           title: base.title || carried.split("\n")[0]?.slice(0, 80) || "",
         };
       });
-    } else if ((m === "freitext" || m === "diktat") && !carried && draft?.statement.trim()) {
-      // Formular → Erzählen: Aussage zurück in den Rohtext (nur wenn der Rohtext leer ist).
+    } else if (
+      (m === "freitext" || m === "diktat") &&
+      draft &&
+      ((!carried && draft.statement.trim()) || rohtextVeraltet)
+    ) {
+      // Formular → Erzählen: Aussage zurück in den Rohtext (nur wenn der Rohtext leer ist oder eine
+      // veraltete Kopie). Nacharbeit 16: jetzt ist der Rohtext die maßgebliche Fassung.
+      setOcrErsetzt((e) => ocrUebernahmeErsetzt(e, 1, draft.statement, 0));
       setRaw(draft.statement);
     }
     setMode(m);
@@ -4728,14 +4849,61 @@ export function CaptureArbeitsraum({
     await attachFiles(files);
   };
 
+  // OCR-02 (Klara-Bildanalyse): die Bilder einer gerade eingelesenen Datei automatisch lesen — ohne
+  // Klick, solange die Automatik an ist. Der Befund steht sichtbar unter dem Import, mit Fundstelle
+  // und Zwischenstand. Gehört der Lauf nicht mehr zur aktuellen Datei (`lauf`), wird er verworfen.
+  const leseDateiBilder = async (
+    eingang: BildQuelleEingang,
+    lauf: number,
+  ): Promise<QuellenBefund | null> => {
+    // Nacharbeit 4 (Bens Befund „datei-automatik“): der Lauf gehört zu DIESER Datei UND zu dem
+    // Konto, unter dem er begonnen hat. Wechselt das Konto, werden seine Rückgaben verworfen.
+    const kontoBeiStart = assistenzStand().kontoId;
+    const aktuell = (): boolean =>
+      fileBildLaufRef.current === lauf && assistenzStand().kontoId === kontoBeiStart;
+    // OCR-03: die Einstellung des Kontos — lädt das Profil noch, wird kurz gewartet.
+    const lage = await bildAutomatikAbwarten();
+    if (!aktuell()) {
+      return null;
+    }
+    if (lage === "unbekannt") {
+      const befund = einstellungUnbekannt(eingang);
+      setFileBildBefund({ lauf, befund, eingang });
+      return befund;
+    }
+    const ergebnis = await bildAnalyse.analysiereQuelle(eingang, {
+      automatik: lage === "an",
+      beschreibe: bildBeschreiberRef.current,
+      abbrechen: () => !aktuell(),
+      // Die Einstellung wird vor JEDEM weiteren Bild neu gelesen: eine bestätigte Deaktivierung
+      // während des Laufs startet kein weiteres Bild; Fertiges bleibt, der Rest heißt „aus“.
+      automatikAus: () => bildAutomatikLage(assistenzStand()) === "aus",
+      onFortschritt: (stand) => {
+        if (aktuell()) {
+          setFileBildBefund({ lauf, befund: stand, eingang });
+        }
+      },
+    });
+    if (!aktuell()) {
+      return null;
+    }
+    setFileBildBefund({ lauf, befund: ergebnis, eingang });
+    return ergebnis;
+  };
+
   // PMO-FEA-0006: Dokument für die Wissens-Extraktion lesen — nutzt die VORHANDENEN
-  // Extraktoren (Text/Word/PDF; Bild als OCR-Kandidat, Erkennung NUR auf Klick wie SCRUM-123).
+  // Extraktoren (Text/Word/PDF; Bild als OCR-Kandidat).
+  // OCR-02: Bilder und eingebettete Bilder (PPTX, DOCX) werden seit 12.10.2026 beim Einlesen
+  // automatisch gelesen (`leseDateiBilder`); der Klick auf die Erkennung bleibt als manueller Weg.
   const onExtractFile = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) {
       return;
     }
+    fileBildLaufRef.current += 1;
+    const bildLauf = fileBildLaufRef.current;
+    setFileBildBefund(null);
     setFilePoints(null);
     setFileNote(null);
     setFileAbgeschnitten(null);
@@ -4762,8 +4930,25 @@ export function CaptureArbeitsraum({
     setNotice(t(CAPTURE_FILE_TEXT.extracting, { name: f.name }));
     try {
       if (isImage(f)) {
-        setFileImageUrl(await readFileAsDataUrl(f));
+        const bildUrl = await readFileAsDataUrl(f);
+        setFileImageUrl(bildUrl);
         setNotice(null);
+        // OCR-02: „sofort automatisch mitlesen" — der erkannte Text (mit gekennzeichneten
+        // unsicheren Stellen) wird der Text dieser Datei, wie nach dem Klick auf die Erkennung.
+        void leseDateiBilder(einzelbildEingang(f.name, bildUrl), bildLauf).then((befund) => {
+          const bild = befund?.befunde[0];
+          if (bild?.status !== "gelesen") {
+            return;
+          }
+          setFileText((vorher) => (vorher.length > 0 ? vorher : bild.textGekennzeichnet));
+          ganzdokumentGesichertRef.current = null;
+          setNotice({
+            art: "datei-eingelesen",
+            name: f.name,
+            chars: bild.textGekennzeichnet.length,
+            zusaetze: [],
+          });
+        });
         return;
       }
       let text = "";
@@ -4801,6 +4986,10 @@ export function CaptureArbeitsraum({
       // JOB 2700 D1: das Original aus DEMSELBEN Lesevorgang wie der Text (PDF) — sonst wuerde die
       // Datei unten ein zweites Mal komplett gelesen.
       let originalDataUrl: string | null = null;
+      // OCR-02: die Bilddaten des Imports für das automatische Lesen — DOCX sofort, PPTX erst mit
+      // dem endgültigen HTML (die Folienansicht kann noch Bilder anhängen).
+      let bildEingang: BildQuelleEingang | null = null;
+      let pptxBildDaten: Parameters<typeof pptxBildEingang>[2] | null = null;
       // WP-D5b (bens GELB-Fix 4): Format über die zentrale detectFileKind-Reihenfolge bestimmen
       // (image→pdf→docx→pptx→text). So gewinnt die Endung .pptx gegen einen irreführenden MIME text/plain
       // — sonst landete eine .pptx im Text-Pfad (Bug: isTextDocument stand VOR der PPTX-Erkennung).
@@ -4833,6 +5022,7 @@ export function CaptureArbeitsraum({
         };
         imageTransfer = docx.imageTransfer;
         sourceHadImages = docx.totalImages > 0;
+        bildEingang = docxBildEingang(f.name, docx.html, docx.droppedImages);
       } else if (kind === "pdf") {
         // WP-D3: zeilen-/absatztreuer PDF-Text; truncated meldet den Seiten-Cap.
         // JOB 2700 D1: Groessenkante vor dem Parser, Frist um das Parsen, Original aus demselben Puffer.
@@ -4860,6 +5050,11 @@ export function CaptureArbeitsraum({
         };
         imageTransfer = pptx.imageTransfer;
         sourceHadImages = pptx.imageCount > 0;
+        pptxBildDaten = {
+          imageCount: pptx.imageCount,
+          imageSlides: pptx.imageSlides,
+          imagesNotEmbeddedBySlide: pptx.imagesNotEmbeddedBySlide,
+        };
         // WP-D11 (Pedis Entscheid): optional JEDE Folie als Bild — Server-Konvertierung, Abschnitt
         // „Folienansicht" ANS ENDE. Die D9b/D9c-Budget-Regeln gelten unverändert: das kombinierte
         // HTML läuft erneut durch applyInlineImageBudget (Drop-to-fit GANZER figures in Dokument-
@@ -5030,6 +5225,17 @@ export function CaptureArbeitsraum({
           ...imagesOnlyNotes,
         ],
       });
+      // OCR-02: die eingebetteten Bilder sofort mitlesen — der Klartext oben bleibt unverändert, der
+      // Befund steht mit Folie bzw. Reihenfolge je Bild daneben (`BildBefundListe`).
+      if (pptxBildDaten) {
+        bildEingang = pptxBildEingang(f.name, rich.html, pptxBildDaten);
+      }
+      if (
+        bildEingang &&
+        (bildEingang.vorkommen.length > 0 || (bildEingang.nichtGelesen ?? []).length > 0)
+      ) {
+        void leseDateiBilder(bildEingang, bildLauf);
+      }
     } catch (error) {
       setFileName(null);
       setNotice(null);
@@ -5058,7 +5264,8 @@ export function CaptureArbeitsraum({
     }
   };
 
-  // PMO-FEA-0006: Bild-OCR für die Extraktion — NUR auf Klick, ehrlicher Status (SCRUM-123-Muster).
+  // PMO-FEA-0006: Bild-OCR für die Extraktion — ehrlicher Status (SCRUM-123-Muster). Seit OCR-02 der
+  // manuelle Weg neben der Automatik.
   const onExtractOcr = async (): Promise<void> => {
     if (!fileImageUrl || !fileName) {
       return;
@@ -5067,8 +5274,17 @@ export function CaptureArbeitsraum({
     setOcrBusy("extract-file");
     setNotice(t("capture.ocrRunning", { name: fileName }));
     try {
-      const res = await runImageOcr(fileImageUrl);
-      if (res.status === "success" && res.text.length > 0) {
+      // OCR-02: über dieselbe Analyse wie die Automatik — läuft sie für dieses Bild noch oder hat sie
+      // es schon gelesen, wird ihr Ergebnis übernommen statt ein zweites Mal erkannt.
+      const befund = await bildAnalyse.befundFuerBild(
+        { fundstelle: { quelle: fileName, art: "bild", bild: 1 }, src: fileImageUrl },
+        { beschreibe: bildBeschreiberRef.current },
+      );
+      const res = {
+        status: befund.status,
+        text: befund.textGekennzeichnet,
+      };
+      if (res.status === "gelesen" && res.text.length > 0) {
         setFileText(res.text);
         // entscheidung:14ce8681: ein unklarer Vorgang bleibt stehen (s. Datei-Einlesen).
         ganzdokumentGesichertRef.current = null;
@@ -5080,7 +5296,7 @@ export function CaptureArbeitsraum({
           chars: res.text.length,
           zusaetze: [],
         });
-      } else if (res.status === "unavailable") {
+      } else if (res.status === "nicht-verfuegbar") {
         setNotice(null);
         setErr(t("capture.ocrUnavailable"));
       } else {
@@ -5090,6 +5306,33 @@ export function CaptureArbeitsraum({
     } finally {
       setOcrBusy(null);
     }
+  };
+
+  // OCR-02: ein Bildanhang wird beim Eingang gelesen; sein Befund steht unter den Anhängen. Er wird
+  // gemerkt, damit der Klick „OCR → Text" ihn übernimmt statt ein zweites Mal zu erkennen.
+  // OCR-03: nur bei eingeschalteter Automatik (Setup › Klara). Ausgeschaltet bzw. nicht lesbar steht
+  // der Anhang als „nicht gelesen“ da; „OCR → Text“ erkennt dann ausdrücklich auf Klick.
+  const starteAnhangLesen = (id: string, vorkommen: BildVorkommen): void => {
+    setAnhangBildBefunde((b) => ({ ...b, [id]: leererBefund(vorkommen.fundstelle, "wartet") }));
+    const lauf = bildAutomatikAbwarten().then((lage) => {
+      if (lage !== "an") {
+        return leererBefund(
+          vorkommen.fundstelle,
+          "nicht-analysiert",
+          lage === "aus" ? { grund: "automatik-aus" } : {},
+        );
+      }
+      setAnhangBildBefunde((b) => ({ ...b, [id]: leererBefund(vorkommen.fundstelle, "laeuft") }));
+      return bildAnalyse.befundFuerBild(vorkommen, { beschreibe: bildBeschreiberRef.current });
+    });
+    anhangBildLaeufeRef.current.set(id, lauf);
+    // Nacharbeit 4: die Rückgabe eines inzwischen gewechselten Kontos wird verworfen.
+    const kontoBeiStart = assistenzStand().kontoId;
+    void lauf.then((befund) => {
+      if (assistenzStand().kontoId === kontoBeiStart) {
+        setAnhangBildBefunde((b) => ({ ...b, [id]: befund }));
+      }
+    });
   };
 
   const addImage = async (f: File): Promise<void> => {
@@ -5105,10 +5348,16 @@ export function CaptureArbeitsraum({
       } catch {
         // Vorschau optional — Original bleibt als Anzeige erhalten.
       }
+      const id = crypto.randomUUID();
       setImages((im) => [
         ...im,
-        { id: crypto.randomUUID(), name: f.name, mime: f.type || "image/jpeg", dataUrl, original },
+        { id, name: f.name, mime: f.type || "image/jpeg", dataUrl, original },
       ]);
+      // OCR-02: sofort mitlesen — aus dem Original, nicht aus der Vorschau.
+      starteAnhangLesen(id, {
+        fundstelle: { quelle: f.name, art: "bild", bild: 1 },
+        src: original,
+      });
     } catch {
       setErr(t("capture.imageError", { name: f.name }));
     }
@@ -5185,17 +5434,34 @@ export function CaptureArbeitsraum({
     }
   };
 
-  // SCRUM-123: optionale Bild-OCR, NUR auf Nutzeraktion. Status ehrlich anzeigen.
+  // SCRUM-123: Bild-OCR → Text auf Nutzeraktion. Status ehrlich anzeigen. Seit OCR-02 liest die
+  // Automatik das Bild schon beim Eingang; dieser Klick ist die ausdrückliche TEXTÜBERNAHME. Der
+  // erste Klick übernimmt den automatischen Befund (kein zweiter Lauf), ein weiterer Klick — oder
+  // einer nach einem Fehlschlag — erkennt ausdrücklich neu.
   const onOcr = async (img: { id: string; name: string; dataUrl: string }): Promise<void> => {
     setErr(null);
     setOcrBusy(img.id);
     setNotice(t("capture.ocrRunning", { name: img.name }));
     try {
-      const res = await runImageOcr(img.dataUrl);
-      if (res.status === "success" && res.text.length > 0) {
+      const automatisch = anhangBildLaeufeRef.current.get(img.id);
+      anhangBildLaeufeRef.current.delete(img.id);
+      let befund = automatisch ? await automatisch : null;
+      if (!befund || NEU_VERSUCHEN.has(befund.status)) {
+        const original = images.find((i) => i.id === img.id)?.original ?? img.dataUrl;
+        befund = await bildAnalyse.befundFuerBild(
+          { fundstelle: { quelle: img.name, art: "bild", bild: 1 }, src: original },
+          { beschreibe: bildBeschreiberRef.current, neu: true },
+        );
+        const neuer = befund;
+        setAnhangBildBefunde((b) => ({ ...b, [img.id]: neuer }));
+      }
+      const res = { status: befund.status, text: befund.textGekennzeichnet };
+      if (res.status === "gelesen" && res.text.length > 0) {
         const erkannt = res.text;
         // R-1688/R-1733 (Bens Befund 10.10., Nacharbeit 2): dasselbe Ziel wie das Transkript — im
         // Formular die sichtbare „Aussage", sonst der Rohtext. Die Meldung erst nach der Übernahme.
+        // Aufnahme `gesamt-ocr`: `mitOcrText` schreibt den abgeschlossenen Abschnitt
+        // (`ocrAbschnittText`), dessen Kopf zugleich die Zuordnung für den Interviewkontext ist.
         if (transkriptZiel(mode) === "aussage") {
           setDraft((dr) => {
             const basis = dr ?? { ...EMPTY_DRAFT };
@@ -5204,10 +5470,13 @@ export function CaptureArbeitsraum({
         } else {
           setRaw((prev) => mitOcrText(prev, img.name, erkannt));
         }
+        // Nacharbeit 16: eine NEUE Erkennung zählt, auch wenn ein gleichlautender Abschnitt früher
+        // durch eine Übernahme ersetzt wurde.
+        setOcrErsetzt((e) => ocrErsetztOhne(e, img.name, erkannt));
         setNotice(t("capture.ocrDone", { name: img.name }));
-      } else if (res.status === "success") {
+      } else if (res.status === "gelesen" || res.status === "kein-text") {
         setErr(t("capture.ocrEmpty", { name: img.name }));
-      } else if (res.status === "unavailable") {
+      } else if (res.status === "nicht-verfuegbar") {
         setErr(t("capture.ocrUnavailable"));
       } else {
         setErr(t("capture.ocrFailed", { name: img.name }));
@@ -5631,7 +5900,7 @@ export function CaptureArbeitsraum({
   // SCRUM-308 (KnowledgeDetail): neutral, kein Statussignal, dieselbe Optik wie am Wissensobjekt.
   const beispielMarkierung = (): JSX.Element | null =>
     exampleInForm ? (
-      <span className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+      <span className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
         {t("demo.badge.label")}
       </span>
     ) : null;
@@ -5987,6 +6256,15 @@ export function CaptureArbeitsraum({
   // SCRUM-384: abgeleiteter Wizard-Zustand (refine nur mit Entwurf) + sichtbare Schritt-Leiste.
   const expertView = isExpertMode(mode);
   const wizStep = resolveWizardStep(wizStepRaw, draft !== null);
+  // OCR-02: die Befunde der Bildanhänge, in der Reihenfolge der Anhänge (entfernte fallen heraus).
+  const anhangBefundListe = images.flatMap((img) => {
+    const befund = anhangBildBefunde[img.id];
+    return befund ? [befund] : [];
+  });
+  const anhangQuellenBefund =
+    anhangBefundListe.length > 0
+      ? quellenBefundAus(t("bildautomatik.quelle.anhaenge"), "bild", anhangBefundListe)
+      : null;
   return (
     // AUFTRAG-mega50 Block A: DAS EINZIGE, was diese Fläche zur Bildbeschreibung noch zu sagen hat —
     // die Herkunft ihres Inhalts. Der Weg selbst (describe-Aufruf, Sprache, Verfügbarkeit) kommt aus
@@ -5999,6 +6277,8 @@ export function CaptureArbeitsraum({
     <ImageDescribeProvider
       provenance={draftProvenance(declaredConfidentiality, undefined, draftId ?? undefined)}
     >
+      {/* OCR-02: der Weg zur Bildbeschreibung für das automatische Bildlesen dieses Arbeitsraums. */}
+      <BildBeschreiberBruecke ziel={bildBeschreiberRef} />
       <div className="mx-auto max-w-5xl">
         {/* SCRUM-296: Demo-/Pilotpfad auf der Erfassungsseite wiedererkennbar (nur bei ?demo=stage1). */}
         {isDemoContext(params) ? <DemoBanner surface="capture" /> : null}
@@ -6100,7 +6380,7 @@ export function CaptureArbeitsraum({
                 {t("capture.savedTitle")}
               </div>
               {/* SCRUM-286: ehrlicher Status — gespeichert, aber noch offen/nicht validiert. */}
-              <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+              <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                 {t(captureSavedStatus().badgeKey)}
               </span>
             </div>
@@ -6388,7 +6668,7 @@ export function CaptureArbeitsraum({
             {/* SCRUM-369 / AG-12/13: geführter Arbeitsauftrag — Frage → Erfahrung → KI strukturiert → Prüfung.
               Progressive Disclosure, gleiche Schrittfolge wie in der Ask-Lücke (eine Quelle). */}
             <div className="mt-2 border-t border-hairline pt-2">
-              <div className="mb-1 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+              <div className="mb-1 font-mono text-klein uppercase tracking-wider text-muted-2">
                 {t("capture.gapStepsTitle")}
               </div>
               <ol className="space-y-1">
@@ -6488,7 +6768,7 @@ export function CaptureArbeitsraum({
                     speechSupported ? (
                       <div className="mb-2 flex items-center gap-1">
                         <Button variant={listening ? "primary" : "ghost"} onClick={toggleDictation}>
-                          <Mic size={15} aria-hidden="true" />
+                          <Mic size={15} strokeWidth={1.8} aria-hidden="true" />
                           {listening ? t("capture.diktatStop") : t("capture.diktatStart")}
                         </Button>
                       </div>
@@ -6509,7 +6789,7 @@ export function CaptureArbeitsraum({
                     Text) fließt sofort in den Freitext, Bilder/Videos werden Anhang (PMO-FEA-0006-Anschluss). */}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-                      <FileText size={14} aria-hidden="true" />
+                      <FileText size={14} strokeWidth={1.8} aria-hidden="true" />
                       {t(CAPTURE_WIZARD_TEXT.upload)}
                       <input
                         type="file"
@@ -6626,12 +6906,12 @@ export function CaptureArbeitsraum({
                         {t("capture.ivTurn", { n: ivAnswers.length + 1 })}
                       </span>
                       {ivResult ? (
-                        <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+                        <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
                           {t(interviewSourceKey(ivResult))}
                         </span>
                       ) : null}
                       {ivBefund ? (
-                        <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                        <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                           {t("fotowissen.laeuft")}
                         </span>
                       ) : null}
@@ -6750,7 +7030,7 @@ export function CaptureArbeitsraum({
                           onClick={toggleIvDictation}
                           disabled={interview.isPending || !ivResult}
                         >
-                          <Mic size={15} aria-hidden="true" />
+                          <Mic size={15} strokeWidth={1.8} aria-hidden="true" />
                           {ivListening ? t("capture.diktatStop") : t("capture.diktatStart")}
                         </Button>
                       ) : (
@@ -6855,20 +7135,42 @@ export function CaptureArbeitsraum({
                     </Button>
                     {fileName ? (
                       <span className="inline-flex items-center gap-1.5 text-[12.5px] text-text">
-                        <FileText size={13} className="text-muted-2" aria-hidden="true" />
+                        <FileText
+                          size={13}
+                          strokeWidth={1.8}
+                          className="text-muted-2"
+                          aria-hidden="true"
+                        />
                         {fileName}
                       </span>
                     ) : null}
                   </div>
-                  {/* Bild als OCR-Kandidat: Texterkennung NUR auf Klick (SCRUM-123-Muster). */}
+                  {/* Bild als OCR-Kandidat. OCR-02: die Automatik liest es schon beim Einlesen; der
+                    Knopf bleibt als manueller Weg, solange kein Text da ist. */}
                   {fileImageUrl && !fileText ? (
                     <Button
                       variant="ghost"
-                      disabled={ocrBusy !== null}
+                      disabled={ocrBusy !== null || fileBildBefund?.befund.status === "laeuft"}
                       onClick={() => void onExtractOcr()}
                     >
-                      {ocrBusy ? t(CAPTURE_FILE_TEXT.ocrBusy) : t(CAPTURE_FILE_TEXT.ocrCta)}
+                      {ocrBusy || fileBildBefund?.befund.status === "laeuft"
+                        ? t(CAPTURE_FILE_TEXT.ocrBusy)
+                        : t(CAPTURE_FILE_TEXT.ocrCta)}
                     </Button>
+                  ) : null}
+                  {/* OCR-02: Befund des automatischen Bildlesens, mit Fundstelle je Bild. */}
+                  {fileBildBefund ? (
+                    <div data-testid="datei-bild-befunde">
+                      <BildBefundListe befund={fileBildBefund.befund} lauf={fileBildBefund.lauf} />
+                      {/* OCR-03: Klara zu dieser Datei fragen — Text der Datei UND erkannte Bilder.
+                        Bei einem Einzelbild IST der Dateitext der Bildtext; er steht nur einmal drin. */}
+                      <KlaraBildKontextFrage
+                        kontextSchluessel={`datei:${fileBildBefund.lauf}`}
+                        dokumentTextVon={() => (fileImageUrl ? "" : fileText)}
+                        quellen={[fileBildBefund.befund]}
+                        aktuell={[fileBildBefund.eingang]}
+                      />
+                    </div>
                   ) : null}
                   {fileWholeDraftSaved ? (
                     <div className="rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg px-3 py-2">
@@ -7107,7 +7409,7 @@ export function CaptureArbeitsraum({
                                   {p.summary}
                                 </span>
                                 <span className="mt-1.5 block rounded-input bg-page px-2.5 py-1.5 text-[11.5px] leading-relaxed text-muted-2">
-                                  <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider">
+                                  <span className="font-mono text-klein font-semibold uppercase tracking-wider">
                                     {t(CAPTURE_FILE_TEXT.excerptLabel)}
                                     {fileName ? ` · ${fileName}` : ""}
                                   </span>
@@ -7221,7 +7523,7 @@ export function CaptureArbeitsraum({
                     <span className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold text-text">
                       {t(ADVANCED_FIELDS_KEYS.title)}
                       {advancedSummary.filledCount > 0 ? (
-                        <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2">
+                        <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
                           {t(ADVANCED_FIELDS_KEYS.filled, { count: advancedSummary.filledCount })}
                         </span>
                       ) : null}
@@ -7365,9 +7667,18 @@ export function CaptureArbeitsraum({
 
                   {/* SCRUM-395: Prüfer direkt beim Einreichen vorschlagen (optional). */}
                   <div className="rounded-card border border-dashed border-hairline p-3">
-                    <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                    <div className="mb-2 flex items-center gap-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                       {t("capture.reviewers.title")}
                     </div>
+                    {/* R-0265: Vorschlag aus Autorenschaft, früheren Prüfungen und Netznähe. */}
+                    <ReviewerSuggestions
+                      category={category}
+                      tags={tags}
+                      choices={reviewerChoices}
+                      selected={reviewerIds}
+                      limitReached={reviewerLimitReached}
+                      onToggle={toggleReviewer}
+                    />
                     {reviewerChoices.length === 0 ? (
                       <>
                         <div className="text-[12px] text-muted-2">
@@ -7417,8 +7728,8 @@ export function CaptureArbeitsraum({
 
                   {/* Dokumente */}
                   <div className="rounded-card border border-dashed border-hairline p-3">
-                    <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                      <FileText size={13} aria-hidden="true" />
+                    <div className="mb-2 flex items-center gap-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
+                      <FileText size={13} strokeWidth={1.8} aria-hidden="true" />
                       {t("capture.documents")}
                     </div>
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
@@ -7444,14 +7755,19 @@ export function CaptureArbeitsraum({
                             key={d.id}
                             className="flex items-center gap-2 text-[12.5px] text-text"
                           >
-                            <FileText size={12} className="text-muted-2" aria-hidden="true" />
+                            <FileText
+                              size={12}
+                              strokeWidth={1.8}
+                              className="text-muted-2"
+                              aria-hidden="true"
+                            />
                             <span className="truncate">{d.name}</span>
                             {d.mime.startsWith("video/") || d.mime.startsWith("audio/") ? (
                               <button
                                 type="button"
                                 disabled={videoBusy !== null}
                                 onClick={() => void onTranscribe(d)}
-                                className="rounded-btn border border-hairline px-1.5 py-0.5 text-[10.5px] font-semibold text-muted hover:text-text disabled:opacity-50"
+                                className="rounded-btn border border-hairline px-1.5 py-0.5 text-klein font-semibold text-muted hover:text-text disabled:opacity-50"
                               >
                                 {videoBusy === d.id
                                   ? t("capture.videoBusy")
@@ -7474,7 +7790,7 @@ export function CaptureArbeitsraum({
 
                   {/* Bilder */}
                   <div className="rounded-card border border-dashed border-hairline p-3">
-                    <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                    <div className="mb-2 flex items-center gap-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                       <Paperclip size={13} aria-hidden="true" />
                       {t("capture.images")}
                     </div>
@@ -7510,17 +7826,24 @@ export function CaptureArbeitsraum({
                             >
                               <X size={12} aria-hidden="true" />
                             </button>
-                            {/* SCRUM-123: OCR nur auf Klick, mit sichtbarem Lade-/Fehlerstatus */}
+                            {/* SCRUM-123: Textübernahme auf Klick, mit sichtbarem Lade-/Fehlerstatus.
+                              OCR-02: gelesen wird schon beim Eingang (Befund unten). */}
                             <button
                               type="button"
                               disabled={ocrBusy === img.id}
                               onClick={() => void onOcr(img)}
-                              className="absolute inset-x-1 bottom-1 truncate rounded-btn bg-ink/70 px-1 py-0.5 text-center text-[9.5px] font-semibold text-white opacity-0 group-hover:opacity-100 disabled:opacity-100"
+                              className="absolute inset-x-1 bottom-1 truncate rounded-btn bg-ink/70 px-1 py-0.5 text-center text-klein font-semibold text-white opacity-0 group-hover:opacity-100 disabled:opacity-100"
                             >
                               {ocrBusy === img.id ? t("capture.ocrRunningShort") : t("capture.ocr")}
                             </button>
                           </div>
                         ))}
+                      </div>
+                    ) : null}
+                    {/* OCR-02: Befund der automatisch gelesenen Bildanhänge (Text und Bildinhalt). */}
+                    {anhangQuellenBefund ? (
+                      <div className="mt-2" data-testid="anhang-bild-befunde">
+                        <BildBefundListe befund={anhangQuellenBefund} />
                       </div>
                     ) : null}
                   </div>
@@ -7531,7 +7854,7 @@ export function CaptureArbeitsraum({
                     angehängt wird beim Einreichen. Stufe 2, nie peer-validiert, nichts automatisch. */}
                   {canSources ? (
                     <div className="rounded-card border border-dashed border-hairline p-3">
-                      <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                      <div className="mb-2 flex items-center gap-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                         <Globe size={13} aria-hidden="true" />
                         {t("capture.sourcesTitle")}
                       </div>
@@ -7551,13 +7874,13 @@ export function CaptureArbeitsraum({
                                     <span className="text-[13px] font-medium text-text">
                                       {s.label}
                                     </span>
-                                    <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+                                    <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                                       {t("ko.sourceUnvalidated")}
                                     </span>
                                     {/* R-0205: eine Warteliste-Quelle ist immer extern und ungeprüft. */}
                                     <ExterneQuelleKennung source={{ peerValidated: false }} />
                                     {s.provider ? (
-                                      <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                                      <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                                         {s.provider}
                                       </span>
                                     ) : null}
@@ -7725,7 +8048,7 @@ export function CaptureArbeitsraum({
                                         <span className="text-[13px] font-medium text-text">
                                           {r.title}
                                         </span>
-                                        <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+                                        <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                                           {r.provider}
                                         </span>
                                       </div>
@@ -7736,7 +8059,7 @@ export function CaptureArbeitsraum({
                                       ) : null}
                                       <ExternalUrlText
                                         url={r.url}
-                                        className="block truncate font-mono text-[10.5px] text-ai hover:underline"
+                                        className="block truncate font-mono text-klein text-ai hover:underline"
                                       />
                                     </div>
                                     <Button
@@ -7984,7 +8307,7 @@ export function CaptureArbeitsraum({
                           className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
                         >
                           <Sparkles size={14} aria-hidden="true" /> {t("studio.fromDraft.cta")}
-                          <span className="rounded-pill bg-white/20 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase">
+                          <span className="rounded-pill bg-white/20 px-1.5 py-0.5 font-mono text-klein font-semibold uppercase">
                             {t(CAPTURE_FLOW_TEXT.studioRecommended)}
                           </span>
                         </button>
@@ -8113,7 +8436,7 @@ export function CaptureArbeitsraum({
                           {readiness.checks.map((c) => (
                             <li key={c.key} className="flex items-center gap-2 text-[12.5px]">
                               <span
-                                className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
+                                className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-klein font-bold ${
                                   c.ok
                                     ? "bg-trust-pos-bg text-trust-pos-text"
                                     : c.required
@@ -8127,7 +8450,7 @@ export function CaptureArbeitsraum({
                                 {t(`capture.ready.${c.key}`)}
                                 {c.key === "attachments" ? ` (${images.length})` : ""}
                               </span>
-                              <span className="font-mono text-[10.5px] uppercase text-muted-2">
+                              <span className="font-mono text-klein uppercase text-muted-2">
                                 {c.ok
                                   ? t("capture.readyDone")
                                   : c.required
@@ -8226,7 +8549,7 @@ export function CaptureArbeitsraum({
                 wird einzeln geprüft/eingereicht, Überspringen ist bewusst möglich. */}
               {fileQueue ? (
                 <div className="flex flex-wrap items-center gap-2 rounded-card border border-dashed border-ai-dashed bg-ai-surface-2 px-3 py-2">
-                  <span className="font-mono text-[10.5px] font-semibold uppercase tracking-wider text-ai">
+                  <span className="font-mono text-klein font-semibold uppercase tracking-wider text-ai">
                     {t(CAPTURE_FILE_TEXT.queueBadge, {
                       current: queueProgress(fileQueue).current,
                       total: queueProgress(fileQueue).total,
@@ -8252,7 +8575,7 @@ export function CaptureArbeitsraum({
                   ← {t(CAPTURE_WIZARD_TEXT.back)}
                 </button>
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-pill border border-dashed border-ai-dashed bg-ai-surface-2 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
+                  <span className="inline-flex items-center gap-1 rounded-pill border border-dashed border-ai-dashed bg-ai-surface-2 px-2 py-0.5 font-mono text-klein font-semibold uppercase tracking-wider text-ai">
                     <span aria-hidden>✦</span>
                     {/* R-1020: Wortlaut der Quelle, aus derselben Stufentabelle wie überall. */}
                     {t(ERGEBNIS_STUFE_TEXT.entwurf)}
@@ -8270,7 +8593,7 @@ export function CaptureArbeitsraum({
                 </div>
               </div>
 
-              <h2 className="flex items-center gap-2 text-[19px] font-bold text-text">
+              <h2 className="flex items-center gap-2 text-[20px] font-bold text-text">
                 <span aria-hidden className="text-ai">
                   ✦
                 </span>
@@ -8392,7 +8715,7 @@ export function CaptureArbeitsraum({
                     >
                       <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-text">
                         {t(CAPTURE_WIZARD_TEXT.structData)}
-                        <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold text-muted-2">
+                        <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold text-muted-2">
                           {draft.conditions.length + draft.measures.length}
                         </span>
                       </span>
@@ -8469,7 +8792,7 @@ export function CaptureArbeitsraum({
                       {readiness.checks.map((c) => (
                         <li key={c.key} className="flex items-center gap-2 text-[12.5px]">
                           <span
-                            className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
+                            className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-klein font-bold ${
                               c.ok
                                 ? "bg-trust-pos-bg text-trust-pos-text"
                                 : c.required
@@ -8483,7 +8806,7 @@ export function CaptureArbeitsraum({
                             {t(`capture.ready.${c.key}`)}
                             {c.key === "attachments" ? ` (${images.length})` : ""}
                           </span>
-                          <span className="font-mono text-[10.5px] uppercase text-muted-2">
+                          <span className="font-mono text-klein uppercase text-muted-2">
                             {c.ok
                               ? t("capture.readyDone")
                               : c.required

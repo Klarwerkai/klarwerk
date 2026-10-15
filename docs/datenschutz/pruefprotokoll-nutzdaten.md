@@ -23,6 +23,7 @@ dass weder Frage- noch Antworttext im Protokoll stehen.
 | **M** Metadaten | Fassung, Kategorie, Schlagworte, Fachgebiet, Anbieter, Format, Zeitpunkte |
 | **P** Personenbezug über die Kennung hinaus | Klarnamen, Aussteller-Adresse |
 | **F** Freitext | ungebundene Eingabe eines Menschen |
+| **I** Inhaltsbezug | kurzer, maschinell erzeugter Text, der Inhalt einer Quelle wiedergeben kann — Inhaltsfeld der Audit-Sicht (`services/app/src/audit-sicht.ts`), ausgegeben nur an Leser, die jede bezogene Quelle jetzt öffnen dürfen |
 
 `actor` (Nutzer-Id oder `system`) und `target` stehen in jedem Eintrag und sind hier nicht
 wiederholt.
@@ -45,6 +46,8 @@ wiederholt.
 | `answer.reported` (R-1089; einfache Meldung) | `meldungId`, `grund` (geschlossene Auswahl), `koTitle`, `responsible`, `responsibleKind` | K, M, Z |
 | `answer.reported` als Beanstandung einer Aussage (produkt:20261010:antwort-beanstandung-korrektur) | wie oben (ohne Quelle entfallen `koTitle`, `responsible`, `responsibleKind`), zusätzlich `aussageId`, `aussageFingerabdruck`, ggf. `answerId`, `koVersion`, `fundstelleId`, `quelleFehlt` | K, M, Z — **kein Aussagetext, keine Begründung, keine Frage** (gemessen: `tests/antwort-beanstandung/beanstandung-dienst.test.ts` B1); Aussage und Begründung stehen nur am Vorgang |
 | `gap.beanstandung-zurueckgewiesen` | ggf. `koId`, `koVersion` | K, M — **keine Begründung** (gemessen: dieselbe Datei, B8); die Begründung steht nur am Vorgang |
+| `ask.referenzpruefung` (REF-02, versioniert seit REF-04: `protokoll` = `referenzprotokoll-v1`; `target` = Prüfkennung) | `protokoll`, `zeitpunkt`, `richtlinie`, `status`, `grund`, `antwortId`, `antwortweg` (`frage`/`klara`/`addon`/`reasoner`/`vergleich_heute`/`vergleich_damals`/`zweitmeinung_erste`/`zweitmeinung_zweite`), `antwortAnbieter`, `antwortModell`, `prueferAnbieter`, `prueferModell`, `antwortFingerabdruck`, `belegFingerabdruck`, `paketFingerabdruck`, `ergebnisFingerabdruck`, `quellen` (je `koId`, `koVersion`), `aussagen` (je `aussageId`, `zustand`, `grund`, `begruendungFingerabdruck`, `fundstellen` mit `fundstelleId`, `koId`, `koVersion`, `start`, `ende`; höchstens 100, sonst `aussagenGekuerzt`), `zustaende`, `ausCache`, `versuch`, `dauerMs`, `eingabeToken`, `ausgabeToken`, `begruendungEintrag` (Verweis auf die Aktion unten) | K, M, Z — **kein Frage-, Antwort-, Aussage-, Auszugs- oder Begründungstext** (gemessen: `tests/referenzki-antwortstatus/pruefprotokoll-und-wege.test.ts`); die Begründung ist über ihren Fingerabdruck gebunden und steht im eigenen Eintrag darunter |
+| `ask.referenzpruefung-begruendung` (REF-04, Ben nacharbeit-3; `target` = dieselbe Prüfkennung) | `protokoll`, `zeitpunkt`, `ergebnisFingerabdruck`, `koIds` (alle zitierten Quellobjekte), `begruendungen` (je Teilaussage `aussageId`, `teilId`, `zustand`, `grund`, `begruendung` mit höchstens 300 Zeichen, `begruendungFingerabdruck`) | K, Z, **I** — `begruendungen` ist Inhaltsfeld (`audit-sicht.ts`): geschwärzt für jeden Leser, der nicht jede Quelle aus `koIds` jetzt öffnen darf, nach Papierkorb oder Endlöschung einer Quelle für alle; ohne zitierte Quelle immer geschwärzt (fail-closed). Kein Frage-, Antwort- oder Auszugstext (gemessen: dieselbe Datei) |
 | `ask.zweitmeinung` (R-0305/R-1099, nur auf Anforderung) | `status`, und entweder `abweichend`, `abweichungen` (Merkmalsnamen, kommagetrennt), `ersteStufe`, `zweiteStufe` (`cloud`/`local`/`deterministic`) oder `grund` | Z — **kein Frage- oder Antworttext, kein Anbieter- oder Modellname**; `target` ist die tragende Quelle (gemessen: `tests/zweitmeinung/fragedienst.test.ts`, `route-und-protokoll.test.ts`) |
 
 ### Wissensobjekte (`services/knowledge-object`, `services/validation`, `services/lifecycle`)
@@ -64,6 +67,11 @@ wiederholt.
 | `ko.weisung-validated` | `koVersion`, `kontoregel`, `bereich`, `sichtung` (`verantwortlich` als Kontokennung, `frist`) | Z, M, K |
 | `ko.weisung-gesichtet` | `koVersion`, `ergebnis` | Z |
 | `user.weisungsbefugnis-set` | `bereiche` (Kategorienamen) oder `entfernt` | M |
+| `ko.weisung` (gesamt-wissen-herkunft: Weisung mit punktweiser Entscheidung) | `koVersion`, `bereich`, `sichtung` (`verantwortlich` als Kontokennung, `frist`), `bestehenGelassen`, `ueberstimmt` (Konfliktkennungen) | Z, M, K |
+| `ko.weisung-sichtung-vermerkt` | `weisungVon` (Kontokennung), `weisungAm`, `fassung` | K, M, Z |
+| `ko.weisung-abschluss-unvollstaendig` | `offen` (je Punkt `conflictId`, Stand `punkt`/`konflikt` aus geschlossener Menge) | K, Z |
+| `ko.durch-weisung-geschlossen` | `durchKoId`, `conflictId`, `von` (Kontokennung), `am`, `fassung` | K, M, Z |
+| `ko.externe-freigabe-uebernommen` | `koVersion`, `art`, `herausgeber`, `freigegebenAm`, `geltung`, `zustaendig` (Kontokennung) | Z, M, F (`herausgeber` ist eine freie Angabe, etwa ein Firmenname), K |
 | `lifecycle.handover` (Ziel: Kennung der ausscheidenden Person) | `from`, `to`, `transferred` (Anzahl je Art), `failed` (Art und Kennung, kein Inhalt) | K, Z |
 | `ko.purged` | `reason` (geschlossene Menge) + Zusatz des Aufrufers | Z |
 | `ko.restored`, `ko.deleted` | `trash` / leer + Beitrag | Z |
@@ -79,6 +87,7 @@ wiederholt.
 | `qualitaet.rueckmeldung-uebernommen` (ADMIN-10, je Meldung höchstens einmal) | `meldungId`, `vorgang` (`revalidierung:<Objekt>`); Ziel ist das Objekt der Meldung — **kein Meldegrund-Text, kein Fragetext, kein Meldender** | K, Z |
 | `ko.conflict-review` | `previousStatus`, `previousTrust`, `trust`, `reason` | Z |
 | `ko.author-transferred` | `author` | K |
+| `ko.author-transfer-requested` (R-0961, Antrag auf Autorenübergabe) | `author` | K |
 | `verantwortung.uebergabe` (Ziel: bisherige Person; `services/app/src/routes/verantwortung-routes.ts`) | `uebertragen`, `bereitsErledigt`, `abgelehnt`, `fehlgeschlagen`, `verbleibt`, `nachfolger` (je `an` + `anzahl`) | Z, K — keine Titel; je Beitrag steht zusätzlich `ko.ownership` |
 | `vermaechtnis.erzeugt` (Ziel: die Person des Buchs; `services/app/src/routes/verantwortung-routes.ts`) | `aufgenommen`, `ausgelassen` (`papierkorb`, `nichtEinsehbar`, `vertraulich`, `nichtValidiert`) | Z — keine Titel, kein Buchinhalt (nachgetragen mit `gesamt-wissensvermaechtnis`) |
 | `ko.source-removed-in-origin`, `ko.source-restored-in-origin` | `provider`, `externalId`, `at`/`removedAt` | M, K |
@@ -87,6 +96,8 @@ wiederholt.
 | `ko.rated` | `verdict`, `koVersion` | Z |
 | `ko.returned-to-owner`, `ko.returned-to-author` | `verdict`, `author`, `responsible`, `responsibleKind`, `koVersion` | Z, K |
 | `ko.assigned` | `userIds` | K |
+| `ko.auto-assigned` | `userIds` (nach Prüfgeschwindigkeit geroutet, R-1655) | K |
+| `validation.routingOptOut.set` | `optOut` (eigene Abmeldung von der automatischen Zuweisung) | Z |
 | `ko.revalidated` | `pendingCleared`, `version` | Z |
 | `ko.veroeffentlicht` | `vermerkId`, `fassung`, `art`, `meldung` (still/normal/hervorgehoben), `empfaenger` (nur Anzahl) | K, Z — Empfängerkennungen stehen weder hier noch am Wissensobjekt, sondern nur in der eigenen Zustellungstabelle `veroeffentlichung_zustellungen` |
 | `ko.create-followup-failed` | `step`, `reason` (nur Fehlerklasse) | Z |
@@ -137,7 +148,25 @@ am Konflikt, **nicht** im Protokoll.
 | `external.policy.set` | `stage` | Z |
 | `reasoner.ki-freigabe` | `vorher`, `nachher` (Freigabestand) | Z |
 | `reasoner.zweitmeinung`, `reasoner.zweitmeinung-nicht-wirksam` (R-0305/R-1099) | `vorher`, `nachher` (`openai`/`anthropic`/`local`/`aus`) | Z |
+| `reasoner.referenzpruefung`, `reasoner.referenzpruefung-nicht-wirksam` (REF-02/REF-03) | `vorher`, `nachher` (Listen aus `openai`/`anthropic`/`local`); bei Änderung zusätzlich `modelleVorher`, `modelleNachher` (je `wahl`, `anbieter` = Clientname, `modell`) | Z — kein Schlüssel, kein Quelltext |
+| `reasoner.referenzpruefung-funktionscheck` (REF-03; Ziel `reasoner.referenzpruefung:<wahl>`) | `wahl`, `zeit`, `anbieter`, `modell`, `ergebnis`, `grund`, `modellaufruf`, `dauerMs`, `verbrauch`, `kosten`, `richtlinie`, `fiktiv` | Z — der Prüfstoff ist fiktiv und steht **nicht** im Protokoll |
 | `audit.exported` | `count`, `headSeq`, `headHash` | Z |
+
+### Klara-Aufträge (`services/app/src/routes/klara-gespraech-routes.ts`)
+
+Nachtrag `produkt:20261010:assistenz-aktionen-verlauf-ruecknahme` (PV-02), Quelleninspektion und
+gemessen in `tests/assistenz-aktionen-verlauf/verlauf-am-server.test.ts` (V1, V2): kein Wortlaut,
+kein Titel, kein Inhalt, kein Personenname.
+
+| Aktion | Nutzlast | Klasse |
+| --- | --- | --- |
+| `klara.gespraech.begonnen`, `klara.gespraech.geloescht` | — | — |
+| `klara.gespraech.einwilligung` | `erteilt` | Z |
+| `klara.auftrag.angelegt` | `gespraech`, `aktionen`, `geplanteSchritte` | K, Z |
+| `klara.auftrag.korrigiert` | `fassung`, `aktionen` | Z |
+| `klara.auftrag.abgebrochen` | — | — |
+| `klara.auftrag.schritt` | `nr`, `aktion`, `stand`, ggf. `ausgefuehrt`, `ergebnis` (Kennung), `fehler` (Grundschlüssel); seit PV-02 `gespraech`, `aktionskennung`, `vertrag`, bei gespeichert/zurückgenommen `vorherStand`, `neuerStand` (Fassungszeit eines Entwurfs bzw. Art einer Aufgabenwirkung wie `prioritaet:hoch`, `zugewiesen` — ohne Namen) | K, Z, M |
+| `klara.auftrag.ruecknahme-abgelehnt` (PV-02) | `gespraech`, `grund`, ggf. `aktionskennung`, `vertrag`, `eigenerStand`, `aktuellerStand` (Fassungszeiten) | K, Z, M |
 
 ### Konten und Anmeldung (`services/auth`)
 
@@ -150,6 +179,8 @@ am Konflikt, **nicht** im Protokoll.
 | `user.oidc-linked`, `user.oidc-linked-unverified` | `aussteller` | P (Adresse des Identitätsanbieters; **kein** `sub`, **keine** Mailadresse) |
 | `user.role-claim-missing`, `user.role-synced` | `aussteller`, `rolle` bzw. `von`/`nach` | P, Z |
 | `notice.acknowledged` | `version` | Z |
+| `user.ausgeschieden` (R-0961, Status „Ausgeschieden“; Ziel: das Konto) | `vertretung` (Kontokennung) | K — kein Name |
+| `user.ausscheiden-beendet` (R-0961, Status beendet durch Wiederfreigabe; Ziel: das Konto) | `via` (`freigabe`/`verzeichnis`) | Z |
 | **`user.role-change`** | `role`, `previousRole`, **`actorName`, `targetName`** | **P** — siehe Befund 2 |
 | **`user.delete`** | **`targetName`**, **`actorName`** | **P** — siehe Befund 2 |
 

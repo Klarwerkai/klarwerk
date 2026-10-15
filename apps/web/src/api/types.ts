@@ -575,6 +575,79 @@ export interface KoFrische {
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
+/**
+ * Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 — Spiegel von `KoWeisung`
+ * (services/knowledge-object/src/types.ts): wer das Objekt als Weisung gültig gesetzt hat, für
+ * welchen Bereich und welche Fassung, welche betroffenen Punkte ausdrücklich bestehen blieben, und
+ * die nachfolgende Sichtung (Verantwortliche, Frist, ggf. erledigt).
+ */
+export interface KoWeisung {
+  von: string;
+  am: string;
+  bereich: string;
+  fassung: number;
+  bestehenGelassen: string[];
+  /** R-0573 · Nacharbeit 11: ausdrücklich überstimmte Punkte (Konfliktkennungen). */
+  ueberstimmt?: string[];
+  /** Nacharbeit 14: der Beleg dieser Weisung — bindet die Sichtung an genau sie. */
+  beleg?: { auditSeq: number; auditHash: string };
+  sichtung: {
+    verantwortlich: string;
+    frist: string;
+    gesichtetVon?: string;
+    gesichtetAm?: string;
+    vermerk?: string;
+  };
+}
+
+/** Entscheidung 27 — Spiegel von `KoExterneFreigabe` (services/knowledge-object/src/types.ts). */
+export interface KoExterneFreigabe {
+  art: "wissen" | "referenz";
+  herausgeber: string;
+  freigabeKennung?: string;
+  freigegebenAm: string;
+  freigegebenVon?: string;
+  nachweis?: string;
+  geltung: string;
+  zustaendig: string;
+  bestaetigtVon: string;
+  bestaetigtAm: string;
+  fassung: number;
+}
+
+/**
+ * Entscheidung 18 / Antwort 18 — die Weisungsbefugnis am Konto (Spiegel von
+ * services/auth/src/types.ts). `bereiche` sind Kategorien; `*` steht für das ganze Unternehmen.
+ */
+export interface Weisungsbefugnis {
+  bereiche: string[];
+  erteiltVon: string;
+  erteiltAm: string;
+}
+
+/** R-0228: Spiegel von `Verifizierung` in services/app/src/verifizierungsmarke.ts. */
+export interface KoVerifizierung {
+  mensch:
+    | { stand: "nicht_belegt" }
+    | { stand: "nicht_auffindbar" }
+    | { stand: "nicht_abrufbar" }
+    | {
+        stand: "belegt";
+        art:
+          | "bewertung"
+          | "verwalter"
+          | "rueckgabe"
+          | "weisung"
+          | "externe_freigabe"
+          | "weisung_sichtung";
+        pruefer: string;
+        zeitpunkt: string;
+        fassung: number | null;
+        aktuell: boolean;
+      };
+  validiertVon: string[];
+}
+
 /** R-1631: Bauteile, Materialien und Geltungskontext — Spiegel von `AnlagenKontext` im Dienst. */
 export interface AnlagenKontext {
   bauteile?: string[];
@@ -759,6 +832,22 @@ export interface KnowledgeObject {
   // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
   // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
+  // Aufnahme gesamt-wissen-herkunft (R-0228): die Verifizierungsmarke — Spiegel von
+  // `services/app/src/verifizierungsmarke.ts`. Nur `GET /api/kos/:id` liefert sie; fehlt das Feld,
+  // ist sie in dieser Antwort NICHT ERHOBEN (Liste, Suche, Prüfbrett) — nicht „ungeprüft".
+  verifizierung?: KoVerifizierung;
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27 — fehlen sie, ist das Objekt
+  // weder als Weisung gesetzt noch aus einer externen Freigabe übernommen.
+  weisung?: KoWeisung;
+  externeFreigabe?: KoExterneFreigabe;
+  // Nacharbeit 11 (Ben B1): nur an `GET /api/kos/:id` und nur für weisungsbefugte Lesende — die
+  // Konten, die diesen Eintrag mit ihrem eigenen Zugang lesen und deshalb sichten können.
+  sichtungsKandidaten?: string[];
+  // Nacharbeit 14 (Ben B2): nur an `GET /api/kos/:id` — überstimmte Punkte (Konfliktkennungen),
+  // deren Abschluss noch nicht vollständig ist. Fehlt das Feld, ist nichts offen.
+  weisungAbschlussOffen?: string[];
+  // Nacharbeit 11 (Ben B2): durch eine Weisung überstimmt und geschlossen (nicht gelöscht).
+  geschlossen?: { durchKoId: string; conflictId: string; von: string; am: string; fassung: number };
   /**
    * AW06-K02: die Annahme DIESER Fassung, vom Server aus genau dem referenzierten Beleg gelesen —
    * Fassung, Person, Zeitpunkt und die Kontoregel, die im Beleg steht (`null`: dort nicht
@@ -915,6 +1004,26 @@ export interface AssignmentSummary {
   open: number;
   done: number;
 }
+
+// R-0265: ein Prüfer-Vorschlag (services/validation/src/pruefer-vorschlag.ts). Nur die tragenden
+// Gründe, in fester Reihenfolge; die Punktzahl ordnet, sie wird nicht angezeigt.
+export type ReviewerSuggestionReason = "autorschaft" | "pruefungen" | "netznaehe" | "schnell";
+export interface ReviewerSuggestion {
+  userId: string;
+  punkte: number;
+  gruende: ReviewerSuggestionReason[];
+  /** R-1655: Median der Prüfdauer zum Thema in Stunden, nur wenn die Person dazu geprüft hat. */
+  medianStunden?: number;
+}
+
+// R-1655: Messgrundlage je Zuweisungsweg (`GET /api/validation/pruefdauer`).
+export interface PruefdauerJeWeg {
+  erledigt: number;
+  offen: number;
+  medianStunden: number | null;
+}
+export type ZuweisungsWeg = "automatisch" | "manuell" | "einreichen";
+export type PruefdauerAuswertung = Record<ZuweisungsWeg, PruefdauerJeWeg>;
 
 // SCRUM-395: Validierungs-Einstellungen (Standard-Prüferanzahl für neue Einreichungen).
 export interface ValidationSettings {
@@ -1521,6 +1630,9 @@ export interface DraftPayload {
     topic?: string;
     confirmed?: boolean;
   };
+  // Aufnahme `gesamt-ocr` (FR-CAP-05): die auf Klick erkannten Bildtext-Abschnitte als Kontext
+  // des Interviews — auch für strukturierte Entwürfe, die den Rohtext nicht mehr tragen.
+  ocrAbschnitte?: { name: string; text: string }[];
   // produkt:20261007:templates-default: Vorlage und Fassung, mit der der Entwurf geschrieben wird,
   // und der gewählte Space (Spiegel von services/capture/src/types.ts). `null` = freie Eingabe.
   vorlage?: { id: string; version: number; spaceId?: string | null } | null;
@@ -2098,8 +2210,9 @@ export interface PublicUser {
   accessExpiresAt?: string;
   // Aufnahme gesamt-peer-validierung (Antwort 18): die am Konto vergebene fachliche
   // Weisungsbefugnis mit Zuständigkeitsbereichen (`*` = ganzes Unternehmen). Fehlt das Feld, hat
-  // das Konto keine — unabhängig von seiner Rolle.
-  weisungsbefugnis?: { bereiche: string[]; erteiltVon: string; erteiltAm: string };
+  // das Konto keine — unabhängig von seiner Rolle. Seit der Integration (gesamt-wissen-herkunft,
+  // Nacharbeit 12) die EINE Befugnis auch für die Weisung mit punktweiser Entscheidung.
+  weisungsbefugnis?: Weisungsbefugnis;
 }
 
 // SCRUM-116/108: Import-/Source-Review-Kandidaten (JSON-Re-Import).
@@ -2380,6 +2493,15 @@ export interface AbbruchBefund {
   zeichen: number;
 }
 
+// produkt:20261010:poc-ki-ausfall-weiterarbeiten: WORTGLEICH zu `KiErsatzGrund` in
+// `services/reasoner/src/types.ts` (hier gehalten und nicht importiert, s. `REASONER_TASKS`).
+export type KiErsatzGrund =
+  | "zeitueberschreitung"
+  | "nicht_erreichbar"
+  | "verweigert"
+  | "kontingent"
+  | "fehler";
+
 export interface AnswerResult {
   answered: boolean;
   answer: string | null;
@@ -2399,6 +2521,10 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): gesetzt NUR, wenn ein Modellversuch
+  // scheiterte und danach der regelbasierte Ersatz antwortete — Spiegel von `KiErsatzGrund` in
+  // `services/reasoner/src/types.ts`. Fehlt es (alter Server, Modellantwort), sagt die Fläche nichts.
+  ersatzGrund?: KiErsatzGrund;
   // R-1643: die Argumentationskette — je Aussage die Quelle, deren Wortlaut sie belegt (Vertrag
   // am Serverfeld `AnswerResult.argumentation`, services/reasoner/src/types.ts). Optional: ein
   // älterer Server sendet sie nicht, und das Protokoll sagt dann, dass keine Kette vorliegt.
@@ -2607,6 +2733,9 @@ export interface AskResponse {
   // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
   // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
   verschlossen?: VerschlossenHinweis[];
+  // R-0293 (W3-C): die Kennung des dauerhaften Antwortbelegs. `null`, wenn kein Beleg entstand
+  // (Ablage nicht verdrahtet oder ausgefallen); ein älterer Server sendet das Feld nicht.
+  answerId?: string | null;
   // R-0284: der Rahmen der Suche; ein älterer Server sendet ihn nicht — dann steht kein Satz.
   pruefrahmen?: AskPruefrahmen;
   // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
@@ -2621,8 +2750,107 @@ export interface AskResponse {
   // nur bei beantworteter Frage. Angewandt in `lib/askResponse.ts` (`selectAnswer`).
   absaetze?: AbsatzBeleg[];
   // REF-01: je Aussage Kennung, Wortlaut und Fundstellen; nur bei beantworteter Frage. Grundlage der
-  // Beanstandung einer konkreten Aussage (produkt:20261010:antwort-beanstandung-korrektur).
+  // Beanstandung einer konkreten Aussage (produkt:20261010:antwort-beanstandung-korrektur) und der
+  // Aussagetexte der Referenzprüfungsanzeige (REF-02; `AussagenBelegKurz` ist ein Teil davon).
   aussagen?: AntwortAussagenBeleg;
+  // REF-02: das Ergebnis der Referenzprüfung (Spiegel von `ReferenzPruefSicht`,
+  // services/ask/src/referenz-pruefung.ts). Fehlt ohne Prüfdienst oder ohne beantwortete Frage.
+  referenzpruefung?: ReferenzPruefung;
+  // REF-01 (Ben nacharbeit-7): die eigenen Bindungen der beiden Zweitmeinungsantworten.
+  zweitmeinungAussagen?: { erste: AussagenBelegKurz | null; zweite: AussagenBelegKurz | null };
+  // produkt:20261009:referenzki-antwortstatus (REF-04, K1): die Referenzprüfung JEDER der beiden
+  // Zweitmeinungsantworten — nur bei einer Gegenüberstellung; `null`: diese Seite ohne Text.
+  referenzpruefungZweitmeinung?: {
+    erste: ReferenzPruefung | null;
+    zweite: ReferenzPruefung | null;
+  };
+}
+
+// ================================================================================================
+// produkt:20261009:referenzki-pruefdienst (REF-02) — Spiegel der Prüfsicht des Fragenden.
+// ================================================================================================
+// Stufen statt Anbieter- und Modellnamen: die stehen nur im Prüfprotokoll der Adminsicht.
+export interface AussagenBelegKurz {
+  aussagen: {
+    aussageId: string;
+    text: string;
+    // REF-04 (K5, Ben nacharbeit-3): die gebundenen Passagen, wie der Server sie mit den Rechten
+    // dieser Anfrage mitliefert (Zweitmeinung, Stichtagsvergleich). Ein älterer Server sendet sie nicht.
+    teile?: { fundstellen: { fundstelleId: string; auszug: string }[] }[];
+  }[];
+}
+
+export type ReferenzZustand = "belegt" | "teilweise_belegt" | "widersprochen" | "nicht_pruefbar";
+
+export interface ReferenzFundstelle {
+  fundstelleId: string;
+  koId: string;
+  koVersion: number;
+  start: number;
+  ende: number;
+}
+
+export interface ReferenzTeilErgebnis {
+  teilId: string;
+  zustand: ReferenzZustand;
+  grund?: string;
+  fundstelle: ReferenzFundstelle | null;
+  begruendung: string;
+}
+
+export interface ReferenzAussageErgebnis {
+  aussageId: string;
+  zustand: ReferenzZustand;
+  grund?: string;
+  teile: ReferenzTeilErgebnis[];
+  fundstellen: ReferenzFundstelle[];
+  begruendung: string;
+}
+
+export interface ReferenzHinweis {
+  art:
+    | "neuere_fassung"
+    | "abruf_nicht_belegt"
+    | "bekannter_konflikt"
+    | "gegenpassage"
+    | "fundstelle_verworfen"
+    | "nicht_aufgeloeste_modellangabe"
+    | "anweisungsaehnlicher_text";
+  aussageId?: string;
+  teilId?: string;
+  koId?: string;
+  fundstelleId?: string;
+  fassung?: { gebunden: number; aktuell: number; passageUnveraendert: boolean };
+  zustand?: string;
+  konfliktId?: string;
+  wert?: string;
+  hinweis: string;
+}
+
+export interface ReferenzPruefung {
+  richtlinie: string;
+  pruefId: string;
+  status: "geprueft" | "nicht_pruefbar";
+  grund?: string;
+  rollen: {
+    antwort: "cloud" | "local" | "deterministic" | null;
+    pruefer: "cloud" | "local" | "deterministic" | null;
+  };
+  aussagen: ReferenzAussageErgebnis[];
+  hinweise: ReferenzHinweis[];
+  globaleAktualitaet: "nicht_behauptet";
+  ausCache: boolean;
+  messung: { dauerMs: number; modellaufrufe: 0 | 1 };
+  versuch: { nummer: number; hoechstens: number };
+  // REF-04 (K7): die Bindung dieses Ergebnisses an GENAU eine Antwortfassung (ohne Prüfmodell —
+  // das steht nur im Prüfprotokoll). Ein älterer Server sendet sie nicht.
+  bindung?: {
+    antwortFingerabdruck: string;
+    belegFingerabdruck: string;
+    paketFingerabdruck: string | null;
+    richtlinie: string;
+    ergebnisFingerabdruck: string;
+  };
 }
 
 // R-1630 / R-2176: Spiegel von `services/ask/src/wissensstand-vergleich.ts` — dort stehen Regeln
@@ -2655,6 +2883,10 @@ export interface WissensstandVergleich {
   stichtag: string;
   heute: AnswerResult;
   damals: AnswerResult;
+  // REF-01/REF-02: die eigene Aussagebindung und Referenzprüfung je Seite (`null`: kein Text).
+  heuteAussagen?: AussagenBelegKurz | null;
+  damalsAussagen?: AussagenBelegKurz | null;
+  referenzpruefung?: { heute: ReferenzPruefung | null; damals: ReferenzPruefung | null };
   antwortGeaendert: boolean;
   quellen: VergleichsQuelle[];
 }
@@ -2719,6 +2951,60 @@ export interface AskGeltungsauskunft {
   fragekontext: Fragekontext;
   quellen: { id: string; passung: GeltungsPassung; geltung?: KoGeltung }[];
 }
+
+// R-0293 / R-0276 / R-0317 / R-0340: GET /api/klara/answers/:answerId/explanation — der Weg zur
+// Antwort aus dem gespeicherten Beleg. Spiegel des Server-Lesemodells
+// (services/ask/src/answer-explanation.ts); `apps/web` darf nicht aus `services/` importieren.
+export type AnswerPrimaryResolutionFailure =
+  | "UNKNOWN_REFERENCE"
+  | "UNRESOLVABLE_REFERENCE"
+  | "DAMAGED_REFERENCE"
+  | "ACCESS_DENIED"
+  | "REDACTION_REQUIRED";
+
+export interface AnswerExplanationEvidence {
+  knowledgeObjectId: string;
+  knowledgeObjectVersion: number | null;
+  evidenceRole: "carrying" | "consulted";
+  validationDecisionRef: { auditSeq: number; auditHash: string } | null;
+  validationReferenceAbsenceReason: string | null;
+  sourceRecordId: string | null;
+  sourceRecordIdReason: string | null;
+  locator: string | null;
+  locatorReason: string | null;
+  confidentialityAtExecution: string | null;
+  responsibleAtExecution: string | null;
+  responsibleKindAtExecution: "owner" | "author-fallback" | null;
+  // R-0293: der Prüf-Lauf zum Antwortzeitpunkt (getrennt von der Freigabe). Ein älterer Server
+  // sendet das Feld nicht — dann gilt es als unbekannt.
+  checkStateAtExecution?: "unknown" | "unchecked" | "noCoverage" | "incomplete" | "proven" | null;
+  openConflictToday: boolean | null;
+  redacted: boolean;
+}
+
+export type AnswerExplanationResponse =
+  | {
+      state: "OK";
+      answerId: string;
+      createdAt: string;
+      snapshotStatus: "PENDING_EVIDENCE" | "INCOMPLETE" | "PARTIAL" | "COMPLETE";
+      snapshotRevision: number;
+      integrity: "VALID" | "DEGRADED" | "INVALIDATED" | "REDACTED";
+      primaryResolutionFailure: AnswerPrimaryResolutionFailure | null;
+      // Freigabe der tragenden Quellen — NUR Freigabe, keine Aussage über den Prüf-Lauf.
+      carryingSourcesValidated: boolean | null;
+      // R-0293: vollständiger Prüf-Lauf aller tragenden Quellen; fehlt bei älteren Servern.
+      carryingSourcesChecked?: boolean | null;
+      openConflictToday: boolean | null;
+      generationMode: "model" | "deterministic" | null;
+      // R-0317: Referenz auf den Laufprotokoll-Datensatz (Modellfassung); kein Anbietername.
+      // Optional, weil ein älterer Server das Feld nicht sendet.
+      modelRunId?: string | null;
+      modelRunIdReason?: string | null;
+      evidence: AnswerExplanationEvidence[];
+      evidenceCount: number;
+    }
+  | { state: "NO_SNAPSHOT"; answerId: string; createdAt: string };
 
 // R-0305/R-1099: Spiegel von `ZweitmeinungErgebnis` in `services/reasoner/src/types.ts` (der
 // webbuild kopiert nur `apps/web`, ein Import von dort bräche den Produktionsbau). `stufe` statt
@@ -3372,6 +3658,9 @@ export interface LesevarianteKurz {
    */
   quellabgleich: "bestaetigt" | "unbestaetigt";
   updatedAt: string;
+  /** Peter Nr. 20 — s. `LesevarianteKennzeichnung`. Optional: ältere Antworten tragen es nicht. */
+  originalquelle?: LesevarianteOriginalquelle | null;
+  fassung?: LesevarianteFassung | null;
 }
 
 // ================================================================================================
@@ -3397,7 +3686,37 @@ export type LesevarianteKennzeichnung = Pick<
    * nichts, weder das eine noch das andere.
    */
   originalGeaendert?: boolean;
+  /**
+   * Peter Nr. 20 (12.10.2026): das Original, zu dem die Übersetzung gehört. `null` ODER fehlend
+   * heisst „nicht zugeordnet" — die Fläche sagt das ausdrücklich, statt eine Quelle zu erfinden.
+   */
+  originalquelle?: LesevarianteOriginalquelle | null;
+  /** Peter Nr. 20: die belegte Fassung des Originals. `null`/fehlend = „Fassung nicht zugeordnet". */
+  fassung?: LesevarianteFassung | null;
 };
+
+/** Spiegel von `Originalquelle` (services/app/src/lesevarianten.ts). */
+export interface LesevarianteOriginalquelle {
+  titel: string;
+  provider: string | null;
+  kennung: string | null;
+  url: string | null;
+  quellfassung: number | null;
+}
+
+/** Spiegel von `BelegteFassung` (services/app/src/lesevarianten.ts). */
+export type LesevarianteFassung =
+  | { art: "wissensobjekt"; version: number; abdruck: string }
+  | { art: "quelle"; quellfassung: number };
+
+/** Antwort der Widerspruchsmeldung — ein Protokolleintrag, keine Freigabe. */
+export interface LesevariantenWiderspruchQuittung {
+  gemeldet: true;
+  gegenstand: "wissensobjekt" | "kandidat";
+  ziel: string;
+  lang: string;
+  seq: number;
+}
 
 /**
  * JOB 3363 · Die LIVE aufgelöste Leseübersetzung eines Import-Kandidaten der Prüfkarte (Stufe 2).
@@ -3426,6 +3745,9 @@ export interface KandidatenLesevariante {
   quellabgleich: "bestaetigt" | "unbestaetigt";
   // KEIN `originalGeaendert`: die Aussage ist für eine live aufgelöste Variante nicht beantwortbar
   // (s. `LesevarianteKennzeichnung`). Sie fehlt deshalb, statt mit `false` gefüllt zu werden.
+  /** Peter Nr. 20 — s. `LesevarianteKennzeichnung`. */
+  originalquelle?: LesevarianteOriginalquelle | null;
+  fassung?: LesevarianteFassung | null;
 }
 
 /** Die volle Fassung für die Leseansicht. */
@@ -3592,6 +3914,8 @@ export const MODEL_RUN_TASKS = [
   "duplicate",
   "probe",
   "gaps",
+  // produkt:20261009:referenzki-pruefdienst (REF-02): die Referenzprüfung der Quellenbelege.
+  "referenz",
 ] as const;
 
 // JOB 3134 (KI-WAHL): die beiden externen Anbieter sind eigene Auswahlwerte. Dieselbe Liste wie
@@ -3746,6 +4070,73 @@ export interface ReasonerAusfuehrungAntwort {
 // "unknown" ist der EHRLICHE Rückfall für einen uneingeordneten Fehler und darf von der Fläche nicht
 // als Ursache ausgegeben werden (s. `apps/web/src/lib/kiTestBefund.ts`).
 export type ModelFailureClass = "timeout" | "http" | "network" | "parse" | "unknown";
+
+// produkt:20261009:referenzki-adminauswahl (REF-03): der Einstieg „Referenzprüfung" — wortgleich
+// zu `GET /api/reasoner/referenzpruefung` (`services/app/src/routes/reasoner-routes.ts`).
+export type ReferenzWahl = "openai" | "anthropic" | "local";
+export type ReferenzOptionZustand =
+  | "nicht_eingerichtet"
+  | "ausgeschaltet"
+  | "nicht_verfuegbar"
+  | "konfiguriert"
+  | "letzte_pruefung_erfolgreich"
+  | "letzte_pruefung_fehlgeschlagen";
+export type ReferenzOptionSperre =
+  | "ki_abgeschaltet"
+  | "keine_freigabe_externe_verarbeitung"
+  | "nicht_erreichbar"
+  | "kein_pruefmodell";
+
+export interface ReferenzFunktionscheck {
+  wahl: ReferenzWahl;
+  zeit: string;
+  anbieter: string;
+  modell: string | null;
+  ergebnis: "erfolgreich" | "fehlgeschlagen";
+  grund: string | null;
+  modellaufruf: boolean;
+  dauerMs: number;
+  verbrauch: { eingabe: number; ausgabe: number } | null;
+  kosten: { betrag: number; waehrung: string; preisstand: string } | null;
+  richtlinie: string;
+  fiktiv: true;
+  /** Nur in der Antwort des Checks: ob er im Audit gespeichert wurde. */
+  gespeichert?: boolean;
+}
+
+export interface ReferenzOption {
+  wahl: ReferenzWahl;
+  art: "intern" | "oeffentlich";
+  anbieter: string | null;
+  modell: string | null;
+  eingerichtet: boolean;
+  erlaubt: boolean;
+  rang: number | null;
+  sperre: ReferenzOptionSperre | null;
+  gleichWieAntwortmodell: boolean;
+  zustand: ReferenzOptionZustand;
+  letzteFunktionspruefung: ReferenzFunktionscheck | null;
+}
+
+export interface ReferenzVerwaltung {
+  liste: ReferenzWahl[];
+  optionen: ReferenzOption[];
+  antwortmodell: { anbieter: string; modell: string | null } | null;
+  freigabe: { oeffentlicheKi: boolean; vertraulicheInhalte: boolean };
+  unabhaengigVerfuegbar: boolean;
+  policySource: ReasonerConfigStatus["policySource"];
+  kiAbgeschaltet: boolean;
+  grenzen: {
+    richtlinie: string;
+    zeitlimitMs: number;
+    antwortMaxToken: number;
+    postenMax: number;
+    eingabeMaxZeichen: number;
+    erneutMax: number;
+    automatischeWiederholung: false;
+  };
+  preise: { hinterlegt: boolean; waehrung?: string; preisstand?: string; fehler?: string };
+}
 
 // Key-Test (Pedi 02.07.): Ergebnis des echten Mini-Modellaufrufs (ehrlich, kein Secret).
 export interface ReasonerProbeResult {
@@ -3975,6 +4366,8 @@ export interface AntwortBeanstandung {
 // produkt:20261009:referenzki-quellenbelege (REF-01): Spiegel des Teils von `AussagenBeleg`
 // (services/ask/src/aussage-fundstellen.ts), den die Fragenseite für die Beanstandung braucht.
 export interface AntwortAussagenBeleg {
+  // REF-04 (K7): der Fingerabdruck des ausgelieferten Antworttexts; ein älterer Server sendet ihn nicht.
+  antwortFingerabdruck?: string;
   aussagen: {
     aussageId: string;
     text: string;
@@ -4157,6 +4550,45 @@ export interface SicherungsEintrag {
    * Auslegung derselben Namensregel würde von der ersten wegdriften.
    */
   folgeNummer: number | null;
+}
+
+/**
+ * PETER-20261011-P08 — die Vorschau des Firmenresets, wie `GET /api/admin/factory-reset` sie im
+ * Desktopbetrieb mitliefert (services/app/src/routes/admin-routes.ts, `FirmenresetVorschau`).
+ */
+export interface FirmenresetVorschau {
+  /** Die Ausführung verlangt genau diese Kennung zurück; hat sich der Bestand bewegt, löscht sie nichts. */
+  kennung: string;
+  entfernt: {
+    wissensobjekte: number;
+    offeneFragen: number;
+    weitereEintraege: number;
+    ablagen: string[];
+  };
+  erhalten: { benutzerkonten: number; woerterbuch: number; protokolleintraege: number };
+}
+
+/**
+ * P08-AC05: wie sich das angemeldete Konto bestätigt. `erforderlich` = Konto ohne lokales Passwort
+ * (reines SSO): statt zweier Passwörter zwei passende SSO-Wiederanmeldungen; `bestaetigt` zählt die
+ * in dieser Sitzung gültig bestätigten Schritte (0–2). Optional, damit ältere Prüfstände gelten.
+ */
+export interface FirmenresetSsoStand {
+  erforderlich: boolean;
+  eingerichtet: boolean;
+  bestaetigt: number;
+}
+
+export type FirmenresetStatus =
+  | { available: false }
+  | { available: true; vorschau: FirmenresetVorschau; sso?: FirmenresetSsoStand };
+
+export interface FirmenresetAuftrag {
+  kennung: string;
+  bestaetigt: true;
+  /** Leer bei einem SSO-Konto — dort zählen die zwei Wiederanmeldungen dieser Sitzung. */
+  passwort1: string;
+  passwort2: string;
 }
 
 export type SicherungenAuskunft = (

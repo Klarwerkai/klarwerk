@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { type AuditEntry, AuditService, InMemoryAuditRepo } from "../../audit";
 import { InMemoryKoRepo, type KnowledgeObject, KoService } from "../../knowledge-object";
 import { OutputService } from "./service";
+import type { OutputSichtbarkeit } from "./types";
+
+// Ein Betrachter, der alles sehen darf — für die Fälle, die nicht die Lesepolicy prüfen.
+const alles: OutputSichtbarkeit = () => true;
 
 function ko(p: Partial<KnowledgeObject> & { id: string }): KnowledgeObject {
   return {
@@ -59,27 +63,27 @@ describe("OutputService (SCRUM-117 / FE-OUT)", () => {
   });
 
   it("listEligible liefert nur validierte KOs", async () => {
-    const sources = await svc.output.listEligible();
+    const sources = await svc.output.listEligible(alles);
     expect(sources.map((s) => s.id).sort()).toEqual(["K1", "K3"]);
     expect(sources.every((s) => s.status === "validiert")).toBe(true);
   });
 
   it("generate lehnt nicht-validierte Quelle ab (NOT_VALIDATED)", async () => {
-    await expect(svc.output.generate({ kind: "instruction", koIds: ["K2"] })).rejects.toMatchObject(
-      { code: "NOT_VALIDATED" },
-    );
+    await expect(
+      svc.output.generate({ kind: "instruction", koIds: ["K2"] }, alles),
+    ).rejects.toMatchObject({ code: "NOT_VALIDATED" });
   });
 
   it("generate lehnt unbekannte KO-ID + leere Auswahl + unbekannten Typ ab", async () => {
-    await expect(svc.output.generate({ kind: "instruction", koIds: ["X"] })).rejects.toMatchObject({
-      code: "UNKNOWN_KO",
-    });
-    await expect(svc.output.generate({ kind: "instruction", koIds: [] })).rejects.toMatchObject({
-      code: "NO_SOURCES",
-    });
+    await expect(
+      svc.output.generate({ kind: "instruction", koIds: ["X"] }, alles),
+    ).rejects.toMatchObject({ code: "UNKNOWN_KO" });
+    await expect(
+      svc.output.generate({ kind: "instruction", koIds: [] }, alles),
+    ).rejects.toMatchObject({ code: "NO_SOURCES" });
     await expect(
       // @ts-expect-error: ungültiger Typ wird zur Laufzeit abgewiesen
-      svc.output.generate({ kind: "marketing", koIds: ["K1"] }),
+      svc.output.generate({ kind: "marketing", koIds: ["K1"] }, alles),
     ).rejects.toMatchObject({ code: "UNKNOWN_KIND" });
   });
 
@@ -91,7 +95,10 @@ describe("OutputService (SCRUM-117 / FE-OUT)", () => {
       "training",
       "management_summary",
     ] as const) {
-      const doc = await svc.output.generate({ kind, koIds: ["K1"], audienceRole: "experte" });
+      const doc = await svc.output.generate(
+        { kind, koIds: ["K1"], audienceRole: "experte" },
+        alles,
+      );
       expect(doc.markdown).toContain("Ventil schließen");
       expect(doc.markdown.length).toBeGreaterThan(40);
       expect(doc.kind).toBe(kind);
@@ -101,12 +108,12 @@ describe("OutputService (SCRUM-117 / FE-OUT)", () => {
   });
 
   it("checklist nutzt abhakbare Punkte aus measures", async () => {
-    const doc = await svc.output.generate({ kind: "checklist", koIds: ["K1"] });
+    const doc = await svc.output.generate({ kind: "checklist", koIds: ["K1"] }, alles);
     expect(doc.markdown).toContain("- [ ] Hauptventil zudrehen");
   });
 
   it("Provenance je Quelle: KO-ID, Status, Trust, Version, Autor, abgeleitete Gültigkeit", async () => {
-    const doc = await svc.output.generate({ kind: "instruction", koIds: ["K1"] });
+    const doc = await svc.output.generate({ kind: "instruction", koIds: ["K1"] }, alles);
     const p = doc.provenance[0];
     expect(p).toMatchObject({
       koId: "K1",
@@ -123,7 +130,7 @@ describe("OutputService (SCRUM-117 / FE-OUT)", () => {
   });
 
   it("markiert niedrigen Trust als Unsicherheit", async () => {
-    const doc = await svc.output.generate({ kind: "instruction", koIds: ["K3"] });
+    const doc = await svc.output.generate({ kind: "instruction", koIds: ["K3"] }, alles);
     expect(doc.provenance[0]?.uncertain).toBe(true);
     expect(doc.markdown).toContain("niedriger Trust");
   });
@@ -187,7 +194,7 @@ describe("OutputService · Pflichtangaben je Quelle (R-0337/R-1739)", () => {
         ],
       }),
     ]);
-    const doc = await output.generate({ kind: "instruction", koIds: ["G1"] });
+    const doc = await output.generate({ kind: "instruction", koIds: ["G1"] }, alles);
     expect(doc.provenance[0]).toMatchObject({
       marke: "Q1",
       geltungsbereich: "Werks-Praxis (Werk Nord), Rolle Instandhaltung",
@@ -213,7 +220,7 @@ describe("OutputService · Pflichtangaben je Quelle (R-0337/R-1739)", () => {
         validationDecisionRef: { auditSeq: alt.seq, auditHash: alt.hash },
       }),
     ]);
-    const doc = await output.generate({ kind: "instruction", koIds: ["G2"] });
+    const doc = await output.generate({ kind: "instruction", koIds: ["G2"] }, alles);
     expect(doc.provenance[0]?.letztePruefungAm).toBeNull();
     expect(doc.provenance[0]?.unsicherheiten).toContain("pruefnachweis_fremde_fassung");
     expect(doc.markdown).toContain("Prüfnachweis gilt einer früheren Fassung");
@@ -228,14 +235,14 @@ describe("OutputService · Pflichtangaben je Quelle (R-0337/R-1739)", () => {
         validationDecisionRef: { auditSeq: frei.seq, auditHash: "0".repeat(64) },
       }),
     ]);
-    const doc = await output.generate({ kind: "instruction", koIds: ["G1"] });
+    const doc = await output.generate({ kind: "instruction", koIds: ["G1"] }, alles);
     expect(doc.provenance[0]?.letztePruefungAm).toBeNull();
     expect(doc.provenance[0]?.unsicherheiten).toContain("pruefnachweis_ungueltig");
   });
 
   it("fehlende Angaben werden benannt, nicht abgeleitet — Verantwortung fällt NICHT auf den Autor", async () => {
     const { output } = await setup([ko({ id: "L1", title: "Lückenhaft", trust: 30, version: 2 })]);
-    const doc = await output.generate({ kind: "instruction", koIds: ["L1"] });
+    const doc = await output.generate({ kind: "instruction", koIds: ["L1"] }, alles);
     const p = doc.provenance[0];
     expect(p?.geltungsbereich).toBeNull();
     expect(p?.verantwortlich).toBeNull();
@@ -269,7 +276,7 @@ describe("OutputService · Quellenmarke je tragender Passage (R-0349/R-0414)", (
       "faq",
       "betriebsmitteilung",
     ] as const) {
-      const doc = await output.generate({ kind, koIds: ["D1", "D2"] });
+      const doc = await output.generate({ kind, koIds: ["D1", "D2"] }, alles);
       // Im Rumpf: Kennung UND Fassung je Quelle …
       const rumpf = doc.markdown.slice(0, doc.markdown.indexOf("## Herkunft & Nachweis"));
       expect(rumpf, kind).toContain("[Q1: D1 · v1]");
@@ -282,9 +289,9 @@ describe("OutputService · Quellenmarke je tragender Passage (R-0349/R-0414)", (
 
   it("die Marke steht an der Passage selbst: Überschrift des Blocks bzw. die Zeile", async () => {
     const { output } = await setup([ko({ id: "D1", title: "Ventil prüfen", measures: ["A"] })]);
-    const anweisung = await output.generate({ kind: "instruction", koIds: ["D1"] });
+    const anweisung = await output.generate({ kind: "instruction", koIds: ["D1"] }, alles);
     expect(anweisung.markdown).toContain("## 1. Ventil prüfen [Q1: D1 · v1]");
-    const summary = await output.generate({ kind: "management_summary", koIds: ["D1"] });
+    const summary = await output.generate({ kind: "management_summary", koIds: ["D1"] }, alles);
     expect(summary.markdown).toMatch(/^- Ventil prüfen — Aussage .* \[Q1: D1 · v1\]$/m);
   });
 });
@@ -301,12 +308,15 @@ describe("OutputService · Betriebsmitteilung (R-0350)", () => {
         ownership: { ownerRole: "Personalabteilung", reviewers: [], validators: [] },
       }),
     ]);
-    const doc = await output.generate({
-      kind: "betriebsmitteilung",
-      koIds: ["U1"],
-      audienceRole: "Produktion",
-      anlass: "Urlaubstage 2027",
-    });
+    const doc = await output.generate(
+      {
+        kind: "betriebsmitteilung",
+        koIds: ["U1"],
+        audienceRole: "Produktion",
+        anlass: "Urlaubstage 2027",
+      },
+      alles,
+    );
     expect(doc.title).toBe("Betriebsmitteilung");
     const zeilen = doc.markdown.split("\n");
     expect(zeilen[2]).toMatch(
@@ -338,7 +348,7 @@ describe("OutputService · Betriebsmitteilung (R-0350)", () => {
 
   it("ohne benannte Rolle steht ein sichtbarer Platzhalter statt eines erfundenen Ansprechpartners", async () => {
     const { output } = await setup([ko({ id: "U2", title: "Gleitzeit" })]);
-    const doc = await output.generate({ kind: "betriebsmitteilung", koIds: ["U2"] });
+    const doc = await output.generate({ kind: "betriebsmitteilung", koIds: ["U2"] }, alles);
     expect(doc.markdown).toContain("**Betreff:** Gleitzeit");
     expect(doc.markdown).toContain("Liebe Kolleginnen und Kollegen,");
     expect(doc.markdown).toContain(
@@ -358,7 +368,7 @@ describe("OutputService · FAQ", () => {
         measures: ["Absperrhahn schließen", "Manometer prüfen"],
       }),
     ]);
-    const doc = await output.generate({ kind: "faq", koIds: ["F1"] });
+    const doc = await output.generate({ kind: "faq", koIds: ["F1"] }, alles);
     expect(doc.title).toBe("FAQ");
     expect(doc.markdown).toContain("### Wie wird das Ventil entlastet? [Q1: F1 · v1]");
     expect(doc.markdown).toContain("**Gilt, wenn:** Wartung am Druckventil");

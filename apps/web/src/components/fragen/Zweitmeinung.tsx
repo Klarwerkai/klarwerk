@@ -19,12 +19,18 @@
 // er auch, dass Antwort A neu gestellt wurde und im Wortlaut von der Antwort oben abweichen kann.
 //
 // Modell- und Anbieternamen erscheinen nicht — der Server liefert nur die Stufe (WP-VIP2-GATE-2).
+//
+// produkt:20261009:referenzki-antwortstatus (REF-04, K1): jede der beiden Antworten trägt ihre
+// EIGENE Referenzprüfung (`referenzpruefungZweitmeinung`) samt Quellenkennzeichnung — eine
+// Gegenüberstellung ist keine Quellenbestätigung.
 import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
 import type {
+  AussagenBelegKurz,
   Fragekontext,
+  ReferenzPruefung,
   ZweitmeinungAntwort,
   ZweitmeinungErgebnis,
   ZweitmeinungStufe,
@@ -34,6 +40,16 @@ import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { AiCostHint } from "../AiCostHint";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
 import { AntwortText } from "../start/AntwortText";
+import {
+  QuellenStatusMarke,
+  Referenzpruefung,
+  auszuegeAus,
+  referenzGesamt,
+} from "./Referenzpruefung";
+
+/** REF-04: der Rückweg zur Quelle in ihrer Fassung, wenn die Seite keinen eigenen nennt. */
+const WISSEN_HREF = (koId: string, fassung: number): string =>
+  `/wissen/${encodeURIComponent(koId)}?fassung=${fassung}`;
 
 type Gegenueberstellung = Extract<ZweitmeinungErgebnis, { status: "verglichen" }>;
 
@@ -49,11 +65,18 @@ function Spalte({
   kopf,
   antwort,
   titelVon,
+  referenz,
+  aussagen,
+  wissenHref,
 }: {
   testId: string;
   kopf: string;
   antwort: ZweitmeinungAntwort;
   titelVon: (id: string) => string | undefined;
+  /** REF-04: die Referenzprüfung GENAU dieser Antwort; abwesend bei einem älteren Server. */
+  referenz?: ReferenzPruefung | null | undefined;
+  aussagen?: AussagenBelegKurz | null | undefined;
+  wissenHref: (koId: string, fassung: number) => string;
 }): JSX.Element {
   const { t } = useTranslation();
   const titel = antwort.citedSources.flatMap((id) => {
@@ -85,6 +108,32 @@ function Spalte({
       {/* Ben (Nacharbeit 17): dieselbe Regel wie die Antwortkarte (`kiHerkunftAus`, R-0604) —
         die Kennzeichnung nur bei belegter Modellherkunft, nie für den deterministischen Rückfall. */}
       {kiHerkunftAus(antwort) === "ki" ? <AiGeneratedNotice className="mt-2 block" /> : null}
+      {/* REF-04 (K1/K3): die Quellenkennzeichnung und Prüfung DIESER Antwort. Ohne Prüfergebnis
+        steht sie als offener Entwurf, nie als bestätigt. */}
+      {antwort.answered && antwort.answer ? (
+        <div className="mt-2 space-y-2">
+          <QuellenStatusMarke
+            gesamt={referenzGesamt(referenz)}
+            testId={`${testId}-quellenstatus`}
+          />
+          {referenz ? (
+            <Referenzpruefung
+              ergebnis={referenz}
+              aussageTexte={
+                new Map(
+                  (aussagen?.aussagen ?? []).map((a): [string, string] => [a.aussageId, a.text]),
+                )
+              }
+              // REF-04 (K5, Ben nacharbeit-3): die gebundene Passage GENAU dieser Antwort.
+              auszugVon={(id) => auszuegeAus(aussagen).get(id)}
+              titelVon={titelVon}
+              wissenHref={wissenHref}
+              testId={`${testId}-referenz`}
+              ueberschrift={t("referenzpruefung.zweitmeinung.titel")}
+            />
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -97,6 +146,7 @@ export function Zweitmeinung({
   onNeuFragen,
   billable,
   titelVon,
+  wissenHref = WISSEN_HREF,
 }: {
   /** Die Frage, zu der die stehende Antwort gehört. */
   frage: string;
@@ -116,6 +166,8 @@ export function Zweitmeinung({
   billable: boolean | undefined;
   /** Der Titel einer Quelle, soweit die Seite ihn kennt — sonst bleibt sie ungenannt. */
   titelVon: (id: string) => string | undefined;
+  /** REF-04: Rückweg zur Quelle in der geprüften Fassung. */
+  wissenHref?: (koId: string, fassung: number) => string;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const anfrage = useMutation({
@@ -188,6 +240,9 @@ export function Zweitmeinung({
           ergaenzt={antwort.result.answer !== ergebnis.erste.answer}
           stufe={stufe}
           titelVon={titelVon}
+          referenz={antwort.referenzpruefungZweitmeinung}
+          aussagen={antwort.zweitmeinungAussagen}
+          wissenHref={wissenHref}
         />
       ) : null}
     </section>
@@ -199,11 +254,17 @@ function Gegenueberstellen({
   ergaenzt,
   stufe,
   titelVon,
+  referenz,
+  aussagen,
+  wissenHref,
 }: {
   ergebnis: Gegenueberstellung;
   ergaenzt: boolean;
   stufe: (wert: ZweitmeinungStufe) => string;
   titelVon: (id: string) => string | undefined;
+  referenz: { erste: ReferenzPruefung | null; zweite: ReferenzPruefung | null } | undefined;
+  aussagen: { erste: AussagenBelegKurz | null; zweite: AussagenBelegKurz | null } | undefined;
+  wissenHref: (koId: string, fassung: number) => string;
 }): JSX.Element {
   const { t } = useTranslation();
   return (
@@ -236,12 +297,18 @@ function Gegenueberstellen({
           kopf={t("zweitmeinung.ersteAntwort", { stufe: stufe(ergebnis.ersteStufe) })}
           antwort={ergebnis.erste}
           titelVon={titelVon}
+          referenz={referenz?.erste}
+          aussagen={aussagen?.erste}
+          wissenHref={wissenHref}
         />
         <Spalte
           testId="ask-zweitmeinung-b"
           kopf={t("zweitmeinung.zweiteAntwort", { stufe: stufe(ergebnis.zweiteStufe) })}
           antwort={ergebnis.zweite}
           titelVon={titelVon}
+          referenz={referenz?.zweite}
+          aussagen={aussagen?.zweite}
+          wissenHref={wissenHref}
         />
       </div>
       {ergaenzt ? (

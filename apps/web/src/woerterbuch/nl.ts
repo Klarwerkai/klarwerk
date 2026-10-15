@@ -19,7 +19,7 @@ const nl: typeof de = {
   "extpage.help.scope.body":
     "Externe treffers zijn onderzoekshulp, geen geverifieerde kennis: niets wordt automatisch geïmporteerd of door collega’s gevalideerd. Heeft de beheerder externe opvraging uitgeschakeld, dan blijft het gebied leeg.",
   "app.name": "KLARWERK",
-  "app.subtitle": "Reasoning System",
+  "app.subtitle": "Knowledge OS",
   "app.staleBundle":
     "Er is een nieuwe versie van de app beschikbaar — laad de pagina opnieuw (Cmd+R of Ctrl+R).",
   "version.neu.hinweis": "Nieuwe versie beschikbaar",
@@ -361,6 +361,7 @@ const nl: typeof de = {
   "audit.action.user_role_change": "Rol gewijzigd",
   "audit.action.user_approve": "Account vrijgegeven",
   "audit.action.user_account_corrected": "Accountgegevens gecorrigeerd",
+  "audit.action.user_freigabe_set": "Vrijgaveniveau gewijzigd",
   "audit.action.auth_login": "Aangemeld",
   "audit.action.auth_logout": "Afgemeld",
   "audit.action.notice_acknowledged": "Kennisgeving bevestigd",
@@ -694,6 +695,14 @@ const nl: typeof de = {
   "task.filter.conflict": "Conflicten",
   "task.filter.gap": "Kennishiaten",
   "task.filter.revalidation": "Hervalidatie",
+  "task.filter.authorTransfer": "Auteursoverdracht",
+  "task.authorTransfer": "Auteursoverdracht",
+  "task.authorTransfer.grund.konto-geloescht": "Auteursaccount verwijderd",
+  "task.authorTransfer.grund.ausgeschieden": "Auteur uit dienst",
+  "task.authorTransfer.grund.angefordert": "Overdracht aangevraagd",
+  "task.action.authorTransfer": "Nieuwe auteur bepalen",
+  "task.explain.authorTransfer":
+    "Deze kennis heeft een bereikbare auteur nodig. Open het item, kies onder „Meer” → „Herkomst” de nieuwe auteur en draag over. Daarna is de taak afgerond; de oorspronkelijke auteur blijft vermeld.",
   "task.conflict": "Conflict",
   "task.validation": "Validatie",
   "task.revalidation": "Hervalidatie",
@@ -801,22 +810,42 @@ const nl: typeof de = {
     "Deze wachtwoorden zijn net willekeurig gegenereerd en worden ALLEEN HIER weergegeven. De server bewaart ze niet en kan ze niet herhalen. Noteer ze of geef ze nu door — bij het opnieuw laden van deze pagina zijn ze weg en hebben de accounts een wachtwoordreset nodig.",
   "adm.factory.title": "Fabrieksinstellingen",
   "adm.factory.help":
-    "Zet de lokale instantie volledig terug: alle kennisobjecten, gebruikers, conflicten, hiaten en instellingen worden verwijderd. Daarna sluit het programma zich af; bij de volgende start begint de eerste installatie en wordt de eerste gebruiker weer admin. Alleen beschikbaar in de lokale desktopversie.",
+    "Zet de inhoud van de lokale instantie terug: kennisobjecten, open vragen, conflicten, concepten en instellingen worden verwijderd, alle aanmeldingen eindigen. Gebruikersaccounts, het bedrijfswoordenboek en het auditlog blijven behouden. Daarna sluit het programma zich af; na de herstart meld je je aan met je bestaande account. Alleen beschikbaar in de lokale desktopversie.",
   "adm.factory.hint":
-    "Voor herhaalde tests: alles verwijderen en het programma afsluiten. Na de herstart is alles weer zoals bij de eerste installatie.",
+    "Voor herhaalde tests: de inhoud verwijderen en het programma afsluiten. Accounts en het bedrijfswoordenboek blijven.",
   "adm.factory.button": "Terugzetten naar fabrieksinstellingen",
-  "adm.factory.confirm1":
-    "Weet je zeker dat je ALLE gegevens wilt verwijderen en het programma wilt afsluiten?",
+  "adm.factory.confirm1": "Controleer wat wordt verwijderd en wat behouden blijft.",
+  "adm.factory.vorschau.entfernt": "Wordt verwijderd",
+  "adm.factory.vorschau.erhalten": "Blijft behouden",
+  "adm.factory.vorschau.kos": "{{anzahl}} kennisobjecten (ook in de prullenbak)",
+  "adm.factory.vorschau.fragen": "{{anzahl}} open vragen",
+  "adm.factory.vorschau.weitere": "{{anzahl}} overige opgeslagen items uit: {{ablagen}}",
+  "adm.factory.vorschau.anmeldungen":
+    "Alle aanmeldingen eindigen; instellingen gaan terug naar de standaard",
+  "adm.factory.vorschau.konten": "{{anzahl}} gebruikersaccounts (met tweede factor)",
+  "adm.factory.vorschau.woerterbuch": "{{anzahl}} items in het bedrijfswoordenboek",
+  "adm.factory.vorschau.protokoll": "{{anzahl}} items in het auditlog",
+  "adm.factory.checkbox":
+    "Ik heb het overzicht gelezen en wil precies deze inhoud onherroepelijk verwijderen.",
   "adm.factory.passwordLabel": "Ter bevestiging je admin-wachtwoord",
+  "adm.factory.password2Label": "Admin-wachtwoord een tweede keer",
   "adm.factory.confirm2": "Laatste waarschuwing: deze stap is onomkeerbaar.",
   "adm.factory.warnBody":
-    "ALLE kennisobjecten, accounts en instellingen worden verwijderd en het programma wordt afgesloten. Dit kan niet ongedaan worden gemaakt.",
+    "De inhoud uit het overzicht wordt verwijderd en het programma wordt afgesloten. Gebruikersaccounts, het bedrijfswoordenboek en het auditlog blijven. Dit kan niet ongedaan worden gemaakt.",
   "adm.factory.wrongPassword": "Onjuist wachtwoord — de fabrieksreset is niet uitgevoerd.",
+  "adm.factory.sso.stand":
+    "Je account meldt zich aan via SSO: bevestig twee keer met een nieuwe SSO-aanmelding ({{anzahl}} van 2 bevestigd).",
+  "adm.factory.sso.schritt1": "1. Opnieuw aanmelden via SSO",
+  "adm.factory.sso.schritt2": "2. Een tweede keer aanmelden via SSO",
+  "adm.factory.sso.nichtEingerichtet":
+    "In deze installatie is geen SSO-aanmelding ingericht — de bedrijfsreset is voor dit account niet mogelijk.",
+  "adm.factory.sso.fehler":
+    "De SSO-heraanmelding is afgebroken of mislukt — niets bevestigd, niets verwijderd.",
   "adm.factory.cancel": "Annuleren",
   "adm.factory.continue": "Verder",
   "adm.factory.execute": "Terugzetten & afsluiten",
   "adm.factory.restartHint":
-    "Teruggezet. Het programma wordt afgesloten — start de KLARWERK-app opnieuw. De eerste gebruiker wordt dan weer admin.",
+    "Teruggezet. Het programma wordt afgesloten — start de KLARWERK-app opnieuw en meld je aan met je bestaande account.",
   "adm.factoryDone": "Fabrieksreset gestart — het programma wordt afgesloten.",
   "capture.tellResetQ": "Wil je de tekst en bijlagen echt verwerpen?",
   "capture.diktatListening": "Opname loopt — praat gewoon, de tekst verschijnt onderin het veld.",
@@ -2893,10 +2922,15 @@ const nl: typeof de = {
   "ko.authorUnknown": "Onbekende persoon ({{ref}})",
   "ko.authorLoading": "Auteursnaam wordt geladen …",
   "ko.authorUnavailable": "Auteursnaam niet beschikbaar",
+  "ko.authorDeleted": "Verwijderd account ({{ref}})",
   "ko.originalAuthor": "Origineel",
   "ko.transferPick": "Nieuwe auteur kiezen …",
   "ko.transfer": "Overdragen",
   "ko.transferDone": "Auteur overgedragen. Oorspronkelijke auteur blijft zichtbaar.",
+  "ko.transferRequest": "Overdracht aanvragen",
+  "ko.transferRequestHint":
+    "Het beheer krijgt een openstaande taak „Auteursoverdracht” en bepaalt een nieuwe auteur.",
+  "ko.transferRequestDone": "Overdracht aangevraagd. Het beheer ziet die onder „Open taken”.",
   "ko.history": "Versies",
   "ko.evidenceTitle": "Bewijs",
   // JOB 3384 · UX-26 — s. die Begründung im deutschen Block.
@@ -3796,6 +3830,8 @@ const nl: typeof de = {
   "imp.gallery.unconfigured": "niet geconfigureerd",
   "imp.gallery.hintUnconfigured":
     "Aanwezig, maar niet bruikbaar: er is geen dienst ingesteld voor transcriptie. Een beheerder kan die in het beheer inrichten.",
+  "imp.gallery.hintAvtranscriptActive":
+    "De transcriptiedienst is ingericht. Voeg in Vastleggen de opname toe via „Bestand of afbeelding bijvoegen” en klik onder „Documenten (context / bijlage)” op „Transcriberen”. Deze tegel uploadt zelf niets.",
   "imp.gallery.elsewhere": "in Vastleggen",
   "imp.gallery.hintElsewhere":
     "Dit formaat wordt al ingelezen — niet op deze pagina, maar in Kennis vastleggen. Deze pagina zelf importeert alleen JSON.",
@@ -6064,7 +6100,7 @@ const nl: typeof de = {
     "Twee knoppen, twee verschillende voorraden: „Demogegevens laden“ maakt de algemene demovoorraad aan, de pakketknop eronder laadt precies het genoemde demopakket. Maakt de algemene run nieuwe accounts aan, dan staan hun eenmalige wachtwoorden hier precies één keer — een herlaadbeurt verliest ze, de server noemt ze geen tweede keer. „Alle demogegevens verwijderen“ ruimt beide tegelijk op, ook de bouwstenen van het pakket. Het demo-uiterlijk onderaan wisselt alleen logo en kleuren, voor alle gebruikers van deze installatie; het laadt en verwijdert geen gegevens.",
   "seitenhilfe.admin.werk.titel": "Fabrieksinstellingen",
   "seitenhilfe.admin.werk.text":
-    "De fabrieksreset verwijdert alle gegevens en sluit daarna de server af; de toepassing moet met de hand opnieuw worden gestart. Vandaar twee trappen: eerst je eigen wachtwoord, dan de uitdrukkelijke waarschuwing. Hij bestaat niet in elke installatie — staat hier „In deze installatie niet beschikbaar“, dan is de weg op deze server niet ingebouwd, en geen enkele schakelaar verandert daar iets aan. Alleen de demogegevens raak je in plaats daarvan kwijt onder demogegevens.",
+    "De fabrieksreset verwijdert de inhoud en sluit daarna de server af; de toepassing moet met de hand opnieuw worden gestart. Gebruikersaccounts, het bedrijfswoordenboek en het auditlog blijven behouden. Vandaar twee trappen: eerst het overzicht met bevestigingsvinkje en twee keer je eigen wachtwoord, dan de uitdrukkelijke waarschuwing. Hij bestaat niet in elke installatie — staat hier „In deze installatie niet beschikbaar“, dan is de weg op deze server niet ingebouwd, en geen enkele schakelaar verandert daar iets aan. Alleen de demogegevens raak je in plaats daarvan kwijt onder demogegevens.",
   "seitenhilfe.admin.papierkorb.titel": "Prullenbak",
   "seitenhilfe.admin.papierkorb.text":
     "Verwijderde kennisobjecten liggen hier tussen. Per regel staan de mens die verwijderde, de datum en het aantal resterende dagen. „Herstellen“ haalt het object terug in de bibliotheek; „Definitief verwijderen“ vraagt één keer na en is daarna niet meer terug te draaien. Doe je niets, dan verwijdert de server de regel na afloop van de termijn vanzelf — bij de volgende opruimronde, niet op de minuut precies.",

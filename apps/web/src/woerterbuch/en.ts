@@ -19,7 +19,7 @@ const en: typeof de = {
   "extpage.help.scope.body":
     "External hits are research support, not verified knowledge: nothing is imported automatically or validated by colleagues. If the admin has disabled external lookup, the area stays empty.",
   "app.name": "KLARWERK",
-  "app.subtitle": "Reasoning System",
+  "app.subtitle": "Knowledge OS",
   "app.staleBundle":
     "A new version of the app is available — please reload the page (Cmd+R or Ctrl+R).",
   "version.neu.hinweis": "New version available",
@@ -365,6 +365,7 @@ const en: typeof de = {
   "audit.action.user_role_change": "Role changed",
   "audit.action.user_approve": "Account approved",
   "audit.action.user_account_corrected": "Account details corrected",
+  "audit.action.user_freigabe_set": "Clearance level changed",
   "audit.action.auth_login": "Signed in",
   "audit.action.auth_logout": "Signed out",
   "audit.action.notice_acknowledged": "Notice acknowledged",
@@ -709,6 +710,14 @@ const en: typeof de = {
   "task.filter.conflict": "Conflicts",
   "task.filter.gap": "Knowledge gaps",
   "task.filter.revalidation": "Revalidation",
+  "task.filter.authorTransfer": "Author handover",
+  "task.authorTransfer": "Author handover",
+  "task.authorTransfer.grund.konto-geloescht": "Author account deleted",
+  "task.authorTransfer.grund.ausgeschieden": "Author has left",
+  "task.authorTransfer.grund.angefordert": "Handover requested",
+  "task.action.authorTransfer": "Choose new author",
+  "task.explain.authorTransfer":
+    "This knowledge needs a reachable author. Open the entry, choose the new author under “More” → “Provenance” and transfer. The task is then done; the original author stays on record.",
   "task.conflict": "Conflict",
   "task.validation": "Validation",
   "task.revalidation": "Re-validation",
@@ -817,21 +826,41 @@ const en: typeof de = {
     "These passwords were just generated at random and are shown HERE ONLY. The server does not keep them and cannot repeat them. Write them down or pass them on now — reloading this page loses them, and the accounts will then need a password reset.",
   "adm.factory.title": "Factory settings",
   "adm.factory.help":
-    "Fully resets the local instance: all knowledge objects, users, conflicts, gaps and settings are deleted. The program then quits; on the next start the initial setup runs and the first user becomes admin again. Only available in the local desktop version.",
+    "Resets the content of the local instance: knowledge objects, open questions, conflicts, drafts and settings are deleted, all sign-ins end. User accounts, the company dictionary and the audit trail are kept. The program then quits; after the restart you sign in with your existing account. Only available in the local desktop version.",
   "adm.factory.hint":
-    "For repeated testing: wipe everything and quit the program. After a restart it's all fresh, just like first setup.",
+    "For repeated testing: delete the content and quit the program. Accounts and the company dictionary are kept.",
   "adm.factory.button": "Reset to factory settings",
-  "adm.factory.confirm1": "Really delete ALL data and quit the program?",
+  "adm.factory.confirm1": "Check what will be removed and what will be kept.",
+  "adm.factory.vorschau.entfernt": "Will be removed",
+  "adm.factory.vorschau.erhalten": "Will be kept",
+  "adm.factory.vorschau.kos": "{{anzahl}} knowledge objects (including the trash)",
+  "adm.factory.vorschau.fragen": "{{anzahl}} open questions",
+  "adm.factory.vorschau.weitere": "{{anzahl}} further stored entries from: {{ablagen}}",
+  "adm.factory.vorschau.anmeldungen": "All sign-ins end; settings return to their defaults",
+  "adm.factory.vorschau.konten": "{{anzahl}} user accounts (including second factor)",
+  "adm.factory.vorschau.woerterbuch": "{{anzahl}} company dictionary entries",
+  "adm.factory.vorschau.protokoll": "{{anzahl}} audit trail entries",
+  "adm.factory.checkbox":
+    "I have read the preview and want to irreversibly remove exactly this content.",
   "adm.factory.passwordLabel": "Confirm with your admin password",
+  "adm.factory.password2Label": "Admin password a second time",
   "adm.factory.confirm2": "Final warning: this step cannot be undone.",
   "adm.factory.warnBody":
-    "ALL knowledge objects, accounts and settings will be deleted and the program will quit. This cannot be undone.",
+    "The content shown in the preview will be deleted and the program will quit. User accounts, the company dictionary and the audit trail are kept. This cannot be undone.",
   "adm.factory.wrongPassword": "Wrong password — the factory reset was not performed.",
+  "adm.factory.sso.stand":
+    "Your account signs in via SSO: confirm twice with a fresh SSO sign-in ({{anzahl}} of 2 confirmed).",
+  "adm.factory.sso.schritt1": "1. Sign in again via SSO",
+  "adm.factory.sso.schritt2": "2. Sign in via SSO a second time",
+  "adm.factory.sso.nichtEingerichtet":
+    "No SSO sign-in is configured in this installation — the company reset is not possible for this account.",
+  "adm.factory.sso.fehler":
+    "The SSO re-sign-in was cancelled or failed — nothing confirmed, nothing deleted.",
   "adm.factory.cancel": "Cancel",
   "adm.factory.continue": "Continue",
   "adm.factory.execute": "Reset & quit",
   "adm.factory.restartHint":
-    "Reset done. The program is quitting — please restart the KLARWERK app. The first user will become admin again.",
+    "Reset done. The program is quitting — please restart the KLARWERK app and sign in with your existing account.",
   "adm.factoryDone": "Factory reset triggered — the program is quitting.",
   "capture.tellResetQ": "Really discard text and attachments?",
   "capture.diktatListening": "Recording — just speak; the text appears in the field below.",
@@ -2897,10 +2926,15 @@ const en: typeof de = {
   "ko.authorUnknown": "Unknown person ({{ref}})",
   "ko.authorLoading": "Loading author name …",
   "ko.authorUnavailable": "Author name unavailable",
+  "ko.authorDeleted": "Deleted account ({{ref}})",
   "ko.originalAuthor": "Original",
   "ko.transferPick": "Choose new author …",
   "ko.transfer": "Transfer",
   "ko.transferDone": "Author transferred. Original author stays visible.",
+  "ko.transferRequest": "Request handover",
+  "ko.transferRequestHint":
+    "Administration gets a pending “Author handover” task and chooses a new author.",
+  "ko.transferRequestDone": "Handover requested. Administration sees it under “Open tasks”.",
   "ko.history": "Versions",
   "ko.evidenceTitle": "Evidence",
   // JOB 3384 · UX-26 — s. die Begründung im deutschen Block: der Belegdatensatz und die Sache,
@@ -3804,6 +3838,8 @@ const en: typeof de = {
   "imp.gallery.unconfigured": "not configured",
   "imp.gallery.hintUnconfigured":
     "Present, but not usable: no service is configured for transcription. An administrator can set one up in the admin area.",
+  "imp.gallery.hintAvtranscriptActive":
+    "The transcription service is set up. In Capture, add the recording via “Attach file or image” and click “Transcribe” under “Documents (context / attachment)”. This tile does not upload anything itself.",
   "imp.gallery.elsewhere": "in Capture",
   "imp.gallery.hintElsewhere":
     "This format is already being read in — not on this page, but in Capture Knowledge. This page itself imports JSON only.",
@@ -6056,7 +6092,7 @@ const en: typeof de = {
     "Two buttons, two different stocks: “Load demo data” creates the general demo stock, the package button below it loads exactly the named demo package. If the general run creates new accounts, their one-time passwords appear here exactly once — a reload loses them, the server will not name them a second time. “Remove all demo data” clears both at once, including the package's building blocks. The demo appearance at the very bottom only switches logo and colours, for every user of this installation; it loads and deletes no data.",
   "seitenhilfe.admin.werk.titel": "Factory reset",
   "seitenhilfe.admin.werk.text":
-    "The factory reset deletes all data and then shuts the server down; the application has to be restarted by hand. Hence two stages: first your own password, then the explicit warning. It does not exist in every installation — if this card says “Not available in this installation”, the path is not built into this server, and no switch changes that. Demo data alone is what you remove under demo and sample data instead.",
+    "The factory reset deletes the content and then shuts the server down; the application has to be restarted by hand. User accounts, the company dictionary and the audit trail are kept. Hence two stages: first the preview with a confirmation tick and your own password twice, then the explicit warning. It does not exist in every installation — if this card says “Not available in this installation”, the path is not built into this server, and no switch changes that. Demo data alone is what you remove under demo and sample data instead.",
   "seitenhilfe.admin.papierkorb.titel": "Recycle bin",
   "seitenhilfe.admin.papierkorb.text":
     "Deleted knowledge objects rest here. Each entry names the person who deleted it, the date and the number of days left. “Restore” brings the object back into the library; “Delete permanently” asks once and cannot be undone afterwards. If you do nothing, the server removes the entry by itself once the deadline passes — at the next cleanup run, not to the minute.",

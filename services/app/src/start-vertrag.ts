@@ -550,6 +550,27 @@ const GRUNDWERTE: readonly Startwert[] = [
     ohneIhn: "Keine PID-Datei. Der Restore-Drill findet den Prozess nicht.",
   },
   {
+    name: "KLARWERK_DOCKER_LOG_MAX_SIZE",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "nicht gesetzt; Ein-Befehl-Weg: 1m (docker-compose.prod.yml)",
+    wofuer:
+      "Dockers max-size für diesen Container. Die App schreibt damit täglich einen inhaltsfreien Füllblock, und Docker rotiert die aktive Protokolldatei selbst.",
+    ohneIhn:
+      "Kein interner Rotationsimpuls — dann muss ein Host-Connector den Impuls setzen (Coolify: externer Connector, 10m/3), sonst bleibt die aktive Docker-Protokolldatei bei wenig Ausgabe länger als 14 Tage stehen.",
+  },
+  {
+    name: "KLARWERK_LOG_DATEI",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Die Datei, in die die Standardausgabe dieses Servers geht (Insel: setzt start.command). Sie wird täglich rotiert; Protokolle in ihrem Ordner werden nach 14 Tagen gelöscht.",
+    ohneIhn:
+      "Keine Protokollpflege durch die App — die Aufbewahrung liegt dann beim Docker-Dienst bzw. der Protokollsammlung des Betreibers.",
+  },
+  {
     name: "KLARWERK_TRASH_SWEEP_INTERVAL_MS",
     bereich: "Betrieb",
     pflicht: { art: "nie" },
@@ -930,6 +951,37 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer: "Modellname des Transkriptionsdienstes.",
     ohneIhn: "Es gilt der eingebaute Name.",
   },
+  // Aufnahme gesamt-ocr · R-0181: Verschriftlichung auf dem eigenen Rechner, ohne Cloud
+  // (`services/media/src/transcriber.ts`, lokalerTranskriber). Ist er eingerichtet, gewinnt er
+  // vor einem Cloudschlüssel.
+  {
+    name: "KLARWERK_LOCAL_TRANSCRIBE_URL",
+    bereich: "Medien",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Adresse eines lokal betriebenen Transkriptionsdienstes (OpenAI-kompatibel, z. B. http://127.0.0.1:8000/v1).",
+    ohneIhn:
+      "Keine lokale Transkription — es bleibt der Cloud-Weg, sofern ein Schlüssel hinterlegt ist.",
+  },
+  {
+    name: "KLARWERK_LOCAL_TRANSCRIBE_MODEL",
+    bereich: "Medien",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer: "Modellname am lokalen Transkriptionsdienst.",
+    ohneIhn: "Es gilt der eingebaute Name.",
+  },
+  {
+    name: "KLARWERK_LOCAL_TRANSCRIBE_ALLOWED_ORIGINS",
+    bereich: "Medien",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Private Adressen außerhalb dieses Rechners, die als lokaler Transkriptionsdienst gelten dürfen.",
+    ohneIhn:
+      "Nur dieser Rechner (Loopback) gilt als lokal; jede andere Adresse wird wie ein externer Dienst behandelt.",
+  },
   // --------------------------------------------------------------------------------------- E-Mail
   {
     name: "SMTP_HOST",
@@ -982,6 +1034,35 @@ const GRUNDWERTE: readonly Startwert[] = [
     vorgabe: "false",
     wofuer: "TLS von der ersten Verbindung an (statt STARTTLS).",
     ohneIhn: "Es gilt false — die Verbindung beginnt unverschluesselt und wechselt per STARTTLS.",
+  },
+  // ------------------------------------------------------------------------------ Geräte-Push
+  // R-0679 / FR-VAL-07: Push-Anstoß bei einer Prüfzuweisung. Alle drei oder keiner.
+  {
+    name: "VAPID_PUBLIC_KEY",
+    bereich: "E-Mail",
+    pflicht: { art: "nie" },
+    // Fachlich öffentlich (der Browser bekommt ihn über GET /api/push/config). Als geheim geführt,
+    // weil er als Paar mit dem privaten Schlüssel erzeugt und verwaltet wird — und kein `_KEY`
+    // als harmlos durchrutschen soll (D4).
+    geheim: true,
+    wofuer: "Öffentlicher VAPID-Schlüssel (base64url) für Geräte-Push.",
+    ohneIhn: "Kein Geräte-Push; Zuweisungen erreichen Zugewiesene nur per E-Mail.",
+  },
+  {
+    name: "VAPID_PRIVATE_KEY",
+    bereich: "E-Mail",
+    pflicht: { art: "nie" },
+    geheim: true,
+    wofuer: "Privater VAPID-Schlüssel (base64url), signiert jeden Push-Anstoß.",
+    ohneIhn: "Kein Geräte-Push; Zuweisungen erreichen Zugewiesene nur per E-Mail.",
+  },
+  {
+    name: "VAPID_SUBJECT",
+    bereich: "E-Mail",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer: "Kontakt des Betreibers für die Push-Dienste (mailto: oder https:).",
+    ohneIhn: "Kein Geräte-Push; Zuweisungen erreichen Zugewiesene nur per E-Mail.",
   },
   // ------------------------------------------------------------------------------------------ SSO
   ...(
@@ -1192,6 +1273,28 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer:
       "Welche Verzeichnisgruppe für die Prüfung in welchem Space zuständig ist: Gruppe=space-a,space-b;Gruppe2=space-c.",
     ohneIhn: "Prüfende werden wie bisher von Hand benannt.",
+  },
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 28): die ausdrücklich erteilte Ketteneinsicht.
+  {
+    name: "KLARWERK_AUDIT_KETTENEINSICHT",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Kontokennungen (durch Komma getrennt), die im Prüfprotokoll die vollständige, nachrechenbare Kette samt Export erhalten — auch Einträge zu Objekten, die sie sonst nicht lesen dürfen.",
+    ohneIhn:
+      "Jedes Konto bekommt das Prüfprotokoll als Leseansicht nach seinem Leserecht; eine vollständige Kette gibt es über die Oberfläche nicht.",
+  },
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 32; Entscheidung 25): ausdrückliches Existenzrecht.
+  {
+    name: "KLARWERK_EXISTENZRECHT",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Kontokennungen oder E-Mail-Adressen (durch Komma getrennt) mit ausdrücklichem Existenzrecht: sie dürfen erfahren, dass es Objekte gibt, die sie nicht lesen dürfen — heute beim Löschen eines Space, dessen sichtbarer Bestand leer ist.",
+    ohneIhn:
+      "Ein Space, dessen für den Löschenden sichtbarer Bestand leer ist, lässt sich nicht löschen — sonst verriete der Ausgang verborgene Artikel.",
   },
   // ------------------------------------------------------------------------------- Externe Quellen
   {
