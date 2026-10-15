@@ -90,7 +90,15 @@ Prüfkosten.
   (0 ist eine Angabe). Es gibt keine Vorgabewerte.
 - Negative Zeitdifferenz bleibt negativ; das Netto darf negativ sein.
 - Ein Fall ohne vergleichbare Ergebnisqualität verhindert den Wert für alle (kein Aussortieren).
-- Dieselbe Fallkennung zählt einmal; Agenten- und Menschenmessung werden nie zusammengerechnet.
+- Jeder Betrag gilt für einen angegebenen Messrahmen: Messzeitraum (gilt für Fälle UND
+  Zusatzkosten), Arbeitskontext und Messquelle mit Stand. Fehlt eine Angabe, gibt es keinen Betrag,
+  und die fehlenden Angaben werden genannt. Der Zeitraum darf nicht in der Zukunft enden; der
+  Quellenstand muss ihn abdecken (nicht vor seinem Ende) und darf nicht in der Zukunft liegen. Das
+  Ergebnis nennt Zeitraum, Kontext und Quelle mit Stand.
+- Nur fachlich identische Wiederholungen derselben Fallkennung zählen einmal. Weichen Einträge
+  derselben Kennung ab (Minuten, Qualität, Messart), ist das Klärbedarf mit Nennung der Kennungen —
+  kein Betrag, unabhängig von der Reihenfolge der Eingabe.
+- Agenten- und Menschenmessung werden nie zusammengerechnet.
 - Eine Agentenmessung ist als Simulation gekennzeichnet — kein realer Kapitalwert.
 - Ersparnis ist kein Umsatz und keine Liquidität; keine Hochrechnung.
 

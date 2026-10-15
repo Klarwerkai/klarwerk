@@ -8,11 +8,13 @@
 //
 // Der Geldwert rechnet NUR mit eingetragenen, gemessenen Fällen. Es gibt keine Vorgabewerte, nichts
 // wird gespeichert, und ohne vollständige Angaben steht „Kein Geldwert" mit dem Grund da.
-import { useRef, useState } from "react";
+import { type ChangeEvent, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   BERECHNUNGSVERSION,
   type GemessenerFall,
+  MESS_ANGABEN,
+  type MessAngabe,
   REIFESTUFEN,
   formatEur,
   geldwert,
@@ -62,6 +64,16 @@ export function LagebildGeldwert(): JSX.Element {
   const [messart, setMessart] = useState<"" | GemessenerFall["messart"]>("");
   const [kostensatz, setKostensatz] = useState("");
   const [zusatz, setZusatz] = useState("");
+  // P13-AC03: wofür die Messung gilt — ein Zeitraum für Fälle und Zusatzkosten, Kontext, Quelle.
+  const [rahmen, setRahmen] = useState<Record<MessAngabe, string>>({
+    von: "",
+    bis: "",
+    kontext: "",
+    quelle: "",
+    quellenStand: "",
+  });
+  const setzeRahmen = (k: MessAngabe) => (e: ChangeEvent<HTMLInputElement>) =>
+    setRahmen((alt) => ({ ...alt, [k]: e.target.value }));
   const [zeilen, setZeilen] = useState<FallZeile[]>([leereZeile(0)]);
   const naechsteNr = useRef(1);
 
@@ -90,7 +102,15 @@ export function LagebildGeldwert(): JSX.Element {
     faelle,
     kostensatzEurProStunde: zahlOderNull(kostensatz),
     zusatzkostenEur: zahlOderNull(zusatz),
+    rahmen: {
+      von: rahmen.von || null,
+      bis: rahmen.bis || null,
+      kontext: rahmen.kontext || null,
+      quelle: rahmen.quelle || null,
+      quellenStand: rahmen.quellenStand || null,
+    },
   });
+  const zeitraum = { von: rahmen.von || "…", bis: rahmen.bis || "…" };
   const eur = (n: number): string => formatEur(n, i18n.language);
 
   return (
@@ -133,8 +153,31 @@ export function LagebildGeldwert(): JSX.Element {
             onChange={(e) => setZusatz(e.target.value)}
             className={FELD_KLASSE}
           />
+          <span data-testid="p13-zusatz-zeitraum" className="mt-1 block text-[11px] text-muted-2">
+            {t("lagebild.geld.zusatzImZeitraum", zeitraum)}
+          </span>
         </label>
       </div>
+
+      <fieldset data-testid="p13-rahmen" className="mt-3">
+        <legend className="text-[12px] font-semibold text-muted-2">
+          {t("lagebild.geld.rahmenTitel")}
+        </legend>
+        <div className="grid gap-2 sm:grid-cols-5">
+          {MESS_ANGABEN.map((k) => (
+            <label key={k} className="text-[12px] text-muted">
+              {t(`lagebild.geld.rahmen.${k}`)}
+              <input
+                data-testid={`p13-rahmen-${k}`}
+                type={k === "kontext" || k === "quelle" ? "text" : "date"}
+                value={rahmen[k]}
+                onChange={setzeRahmen(k)}
+                className={FELD_KLASSE}
+              />
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       <fieldset className="mt-3">
         <legend className="text-[12px] font-semibold text-muted-2">
@@ -214,9 +257,27 @@ export function LagebildGeldwert(): JSX.Element {
                 ? t("lagebild.geld.messartFehlt")
                 : t(`lagebild.geld.grund.${ergebnis.grund}`)}
             </span>
+            {messart !== "" && ergebnis.widersprueche ? (
+              <span
+                data-testid="p13-klaerbedarf"
+                className="block text-[12px] text-trust-warn-text"
+              >
+                {t("lagebild.geld.klaerbedarf", { kennungen: ergebnis.widersprueche.join(", ") })}
+              </span>
+            ) : null}
+            {messart !== "" && ergebnis.fehlend ? (
+              <span data-testid="p13-fehlend" className="block text-[12px] text-trust-warn-text">
+                {t("lagebild.geld.fehlend", {
+                  angaben: ergebnis.fehlend.map((k) => t(`lagebild.geld.rahmen.${k}`)).join(", "),
+                })}
+              </span>
+            ) : null}
           </>
         ) : (
           <>
+            <span data-testid="p13-rahmen-ergebnis" className="block text-[12px] text-muted">
+              {t("lagebild.geld.gilt", ergebnis.rahmen)}
+            </span>
             <span
               data-testid="p13-netto"
               className={`block text-2xl font-semibold ${ergebnis.nettoEur < 0 ? NEGATIV : "text-ink"}`}
@@ -230,6 +291,8 @@ export function LagebildGeldwert(): JSX.Element {
                 satz: eur(ergebnis.kostensatzEurProStunde),
                 brutto: eur(ergebnis.bruttoEur),
                 zusatz: eur(ergebnis.zusatzkostenEur),
+                von: ergebnis.rahmen.von,
+                bis: ergebnis.rahmen.bis,
               })}
             </span>
             {ergebnis.faelleMitMehraufwand > 0 ? (

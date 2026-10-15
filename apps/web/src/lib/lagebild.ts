@@ -145,7 +145,10 @@ export function quote(zaehler: number, nenner: number | null): Quote {
 // ── Geldwert aus gemessenen Fällen ──────────────────────────────────────────────────────────────
 
 export interface GemessenerFall {
-  /** Kennung des tatsächlichen Falls; dieselbe Kennung zählt nur einmal. */
+  /**
+   * Kennung des tatsächlichen Falls. Eine fachlich identische Wiederholung zählt einmal; weichen
+   * Einträge derselben Kennung ab, ist das Klärbedarf und es gibt keinen Betrag.
+   */
   id: string;
   messart: Exclude<Messart, "system">;
   /** Gemessener vollständiger Aufwand ohne Klarwerk (Baseline), Minuten. */
@@ -155,30 +158,68 @@ export interface GemessenerFall {
   qualitaetVergleichbar: boolean;
 }
 
+/**
+ * Wofür die Messung gilt (P13-AC03): EIN Messzeitraum für alle Fälle UND die Zusatzkosten, der
+ * Arbeitskontext und die Messquelle mit ihrem Stand. Tage als `JJJJ-MM-TT`; `null` = nicht angegeben.
+ */
+export interface Messrahmen {
+  von: string | null;
+  bis: string | null;
+  /** Arbeitsweg bzw. Bereich, in dem gemessen wurde. */
+  kontext: string | null;
+  /** Woher die Messwerte stammen (Protokoll, Prüfbericht …). */
+  quelle: string | null;
+  /** Stand der Quelle; er muss den ganzen Zeitraum abdecken (nicht vor `bis`). */
+  quellenStand: string | null;
+}
+
+export const MESS_ANGABEN = ["von", "bis", "kontext", "quelle", "quellenStand"] as const;
+export type MessAngabe = (typeof MESS_ANGABEN)[number];
+
 export interface GeldwertEingabe {
   faelle: readonly GemessenerFall[];
   /** Vereinbarter Kostensatz €/Stunde; `null` = nicht vereinbart. */
   kostensatzEurProStunde: number | null;
-  /** Zusätzliche Pflege-, Betriebs- und Prüfkosten im Zeitraum, €; `null` = nicht erhoben. */
+  /**
+   * Zusätzliche Pflege-, Betriebs- und Prüfkosten, €, im Messzeitraum des Rahmens — derselbe
+   * Zeitraum wie die Fälle; `null` = nicht erhoben.
+   */
   zusatzkostenEur: number | null;
+  rahmen: Messrahmen;
+  /** Heutiger Tag (`JJJJ-MM-TT`) für die Prüfung „nicht in der Zukunft“; Vorgabe: Systemuhr. */
+  heute?: string;
 }
 
 export type GeldwertGrund =
   | "keine_faelle"
+  | "widerspruch_fallkennung"
   | "messart_gemischt"
   | "ungueltige_messung"
   | "qualitaet_nicht_vergleichbar"
   | "kostensatz_fehlt"
-  | "zusatzkosten_fehlt";
+  | "zusatzkosten_fehlt"
+  | "angaben_fehlen"
+  | "messzeitraum_ungueltig"
+  | "quellenstand_ungueltig";
 
 export type Geldwert =
-  | { lage: "nicht_berechenbar"; grund: GeldwertGrund; version: typeof BERECHNUNGSVERSION }
+  | {
+      lage: "nicht_berechenbar";
+      grund: GeldwertGrund;
+      /** Nur bei `widerspruch_fallkennung`: die Kennungen mit abweichenden Einträgen (Klärbedarf). */
+      widersprueche?: string[];
+      /** Nur bei `angaben_fehlen`: welche Angaben des Messrahmens fehlen. */
+      fehlend?: MessAngabe[];
+      version: typeof BERECHNUNGSVERSION;
+    }
   | {
       lage: "berechnet";
+      /** Zeitraum, Kontext und Quelle mit Stand, für die dieser Betrag gilt. */
+      rahmen: { [K in MessAngabe]: string };
       messart: GemessenerFall["messart"];
-      /** Gezählte Fälle nach Entfernen doppelter Kennungen. */
+      /** Gezählte Fälle nach Zusammenfassen fachlich identischer Wiederholungen. */
       fallzahl: number;
-      /** Wie viele Einträge eine bereits gezählte Kennung wiederholten. */
+      /** Wie viele Einträge einen bereits gezählten Fall identisch wiederholten. */
       doppelt: number;
       /** Summe (ohne − mit) über die Fälle; negativ heißt Mehraufwand. */
       minutenDifferenz: number;
@@ -194,24 +235,55 @@ export type Geldwert =
 
 const endlich = (n: number): boolean => typeof n === "number" && Number.isFinite(n);
 
+/** Ein Kalendertag `JJJJ-MM-TT`, der tatsächlich existiert. */
+function istTag(text: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return false;
+  }
+  const d = new Date(`${text}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === text;
+}
+
+/** Zwei Einträge derselben Kennung beschreiben fachlich denselben Fall. */
+function gleicherFall(a: GemessenerFall, b: GemessenerFall): boolean {
+  return (
+    a.messart === b.messart &&
+    Object.is(a.minutenOhne, b.minutenOhne) &&
+    Object.is(a.minutenMit, b.minutenMit) &&
+    a.qualitaetVergleichbar === b.qualitaetVergleichbar
+  );
+}
+
 export function geldwert(e: GeldwertEingabe): Geldwert {
   const nicht = (grund: GeldwertGrund): Geldwert => ({
     lage: "nicht_berechenbar",
     grund,
     version: BERECHNUNGSVERSION,
   });
-  const gesehen = new Set<string>();
-  const faelle: GemessenerFall[] = [];
+  // P13-AC05: erst alle Einträge je Kennung sammeln, dann vergleichen. Nur identische
+  // Wiederholungen werden zusammengefasst; ein Widerspruch wird nie durch die Reihenfolge entschieden.
+  const jeKennung = new Map<string, GemessenerFall[]>();
   for (const f of e.faelle) {
     const id = f.id.trim();
-    if (id !== "" && !gesehen.has(id)) {
-      gesehen.add(id);
-      faelle.push(f);
+    if (id !== "") {
+      jeKennung.set(id, [...(jeKennung.get(id) ?? []), f]);
     }
   }
-  if (faelle.length === 0) {
+  if (jeKennung.size === 0) {
     return nicht("keine_faelle");
   }
+  const widersprueche = [...jeKennung]
+    .filter(([, eintraege]) => eintraege.some((x) => !gleicherFall(x, eintraege[0] ?? x)))
+    .map(([id]) => id);
+  if (widersprueche.length > 0) {
+    return {
+      lage: "nicht_berechenbar",
+      grund: "widerspruch_fallkennung",
+      widersprueche,
+      version: BERECHNUNGSVERSION,
+    };
+  }
+  const faelle = [...jeKennung.values()].flatMap((eintraege) => eintraege.slice(0, 1));
   const messarten = new Set(faelle.map((f) => f.messart));
   if (messarten.size > 1) {
     return nicht("messart_gemischt");
@@ -233,10 +305,31 @@ export function geldwert(e: GeldwertEingabe): Geldwert {
   if (zusatz === null || !endlich(zusatz) || zusatz < 0) {
     return nicht("zusatzkosten_fehlt");
   }
+  // P13-AC03/AC06: ohne Zeitraum, Kontext und Quelle mit Stand ist ein Betrag nicht belegt.
+  const r = e.rahmen;
+  const text = (v: string | null): string => (v ?? "").trim();
+  const fehlend = MESS_ANGABEN.filter((k) => text(r[k]) === "");
+  if (fehlend.length > 0) {
+    return {
+      lage: "nicht_berechenbar",
+      grund: "angaben_fehlen",
+      fehlend,
+      version: BERECHNUNGSVERSION,
+    };
+  }
+  const heute = e.heute ?? new Date().toISOString().slice(0, 10);
+  const [von, bis, stand] = [text(r.von), text(r.bis), text(r.quellenStand)];
+  if (!istTag(von) || !istTag(bis) || von > bis || bis > heute) {
+    return nicht("messzeitraum_ungueltig");
+  }
+  if (!istTag(stand) || stand < bis || stand > heute) {
+    return nicht("quellenstand_ungueltig");
+  }
   const minutenDifferenz = faelle.reduce((s, f) => s + (f.minutenOhne - f.minutenMit), 0);
   const bruttoEur = Math.round((minutenDifferenz / 60) * satz * 100) / 100;
   return {
     lage: "berechnet",
+    rahmen: { von, bis, kontext: text(r.kontext), quelle: text(r.quelle), quellenStand: stand },
     messart: faelle[0]?.messart ?? "agent",
     fallzahl: faelle.length,
     doppelt: e.faelle.filter((f) => f.id.trim() !== "").length - faelle.length,

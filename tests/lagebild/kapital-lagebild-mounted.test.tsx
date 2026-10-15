@@ -201,6 +201,21 @@ function fallEintragen(
   }
 }
 
+/** Ein fiktiver, vergangener Messrahmen (P13-AC03): Zeitraum, Kontext, Quelle mit Stand. */
+const RAHMEN = {
+  von: "2026-09-01",
+  bis: "2026-09-14",
+  kontext: "Fiktiv Arbeitsweg Wartung",
+  quelle: "Fiktiv Messprotokoll A",
+  quellenStand: "2026-09-15",
+} as const;
+
+function rahmenEintragen(geld: HTMLElement): void {
+  for (const [k, wert] of Object.entries(RAHMEN)) {
+    tippe(element(geld, `p13-rahmen-${k}`), wert);
+  }
+}
+
 describe("P13 · Kapitalsicht: Geldwert nur aus gemessenen Fällen", () => {
   it("G1 · K6: kein Euro aus dem Bestand, keine Vorgabewerte — „Kein Geldwert“ mit Grund", async () => {
     const container = await mounten();
@@ -245,8 +260,20 @@ describe("P13 · Kapitalsicht: Geldwert nur aus gemessenen Fällen", () => {
     );
     tippe(element(geld, "p13-zusatzkosten"), "15");
 
+    // P13-AC03: ohne Messzeitraum, Kontext und Quelle mit Stand kein Betrag — die Lücke ist benannt.
+    expect(element(geld, "p13-ergebnis").dataset.lage).toBe("nicht_berechenbar");
+    expect(element(geld, "p13-grund").textContent).toBe(de("lagebild.geld.grund.angaben_fehlen"));
+    expect(element(geld, "p13-fehlend").textContent).toContain(de("lagebild.geld.rahmen.quelle"));
+    expect(geld.querySelector('[data-testid="p13-netto"]')).toBeNull();
+    rahmenEintragen(geld);
+    // Die Zusatzkosten gehören zum selben Zeitraum wie die Fälle.
+    expect(element(geld, "p13-zusatz-zeitraum").textContent).toBe(
+      de("lagebild.geld.zusatzImZeitraum", { von: RAHMEN.von, bis: RAHMEN.bis }),
+    );
+
     // (20 − 50) + (40 − 20) = −10 Minuten → −10 € brutto, −25 € netto.
     expect(element(geld, "p13-ergebnis").dataset.lage).toBe("berechnet");
+    expect(element(geld, "p13-rahmen-ergebnis").textContent).toBe(de("lagebild.geld.gilt", RAHMEN));
     const netto = element(geld, "p13-netto").textContent ?? "";
     expect(netto).toContain("25");
     expect(netto).toMatch(/[-−]\s?25/);
@@ -254,6 +281,7 @@ describe("P13 · Kapitalsicht: Geldwert nur aus gemessenen Fällen", () => {
     expect(formel).toContain("2 Fälle");
     expect(formel).toContain("-10 Minuten");
     expect(formel).toMatch(/15/);
+    expect(formel).toContain(`${RAHMEN.von} bis ${RAHMEN.bis}`);
     expect(element(geld, "p13-mehraufwand").textContent).toBe(
       de("lagebild.geld.mehraufwand", { count: 1 }),
     );
@@ -268,6 +296,29 @@ describe("P13 · Kapitalsicht: Geldwert nur aus gemessenen Fällen", () => {
     );
   });
 
+  it("G2b · K5/K7: widersprüchliche Einträge derselben Fallkennung sind Klärbedarf", async () => {
+    const container = await mounten();
+    const geld = element(container, "p13-geldwert");
+    tippe(element(geld, "p13-messart"), "mensch");
+    rahmenEintragen(geld);
+    tippe(element(geld, "p13-kostensatz"), "60");
+    tippe(element(geld, "p13-zusatzkosten"), "0");
+    fallEintragen(geld, 0, { id: "F-1", ohne: "30", mit: "10", vergleichbar: true });
+    klick(element(geld, "p13-fall-hinzufuegen"));
+    fallEintragen(geld, 1, { id: "F-1", ohne: "30", mit: "50", vergleichbar: true });
+    expect(element(geld, "p13-ergebnis").dataset.lage).toBe("nicht_berechenbar");
+    expect(element(geld, "p13-grund").textContent).toBe(
+      de("lagebild.geld.grund.widerspruch_fallkennung"),
+    );
+    expect(element(geld, "p13-klaerbedarf").textContent).toBe(
+      de("lagebild.geld.klaerbedarf", { kennungen: "F-1" }),
+    );
+    expect(geld.querySelector('[data-testid="p13-netto"]')).toBeNull();
+    // Eine identische Wiederholung ist kein Widerspruch: dann entsteht der Betrag.
+    fallEintragen(geld, 1, { id: "F-1", ohne: "30", mit: "10", vergleichbar: true });
+    expect(element(geld, "p13-ergebnis").dataset.lage).toBe("berechnet");
+  });
+
   it("G3 · K2: eine Agentenprüfung ist als Simulation gekennzeichnet", async () => {
     const container = await mounten();
     const geld = element(container, "p13-geldwert");
@@ -275,6 +326,7 @@ describe("P13 · Kapitalsicht: Geldwert nur aus gemessenen Fällen", () => {
     fallEintragen(geld, 0, { id: "RF-fiktiv-1", ohne: "30", mit: "10", vergleichbar: true });
     tippe(element(geld, "p13-kostensatz"), "60");
     tippe(element(geld, "p13-zusatzkosten"), "0");
+    rahmenEintragen(geld);
     const hinweis = element(geld, "p13-messart-hinweis");
     expect(hinweis.dataset.messart).toBe("agent");
     expect(hinweis.textContent).toBe(de("lagebild.geld.simulation"));

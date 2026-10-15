@@ -15,7 +15,9 @@ import { describe, expect, it } from "vitest";
 import {
   BERECHNUNGSVERSION,
   type Beleg,
+  type GeldwertEingabe,
   type GemessenerFall,
+  type Messrahmen,
   type Nachweis,
   REIFESTUFEN,
   type Reifestufe,
@@ -46,6 +48,20 @@ function belegeBis(arbeitsweg: string, bis: Reifestufe): Beleg[] {
     belegeFuer(arbeitsweg, s, s === "technisch_geprueft" ? "agent" : "system"),
   );
 }
+
+/** Der fiktive Messrahmen der Regelproben (P13-AC03): Zeitraum, Kontext, Quelle mit Stand. */
+const HEUTE = "2026-10-20";
+const RAHMEN: Messrahmen = {
+  von: "2026-10-01",
+  bis: "2026-10-14",
+  kontext: "aw-wartung",
+  quelle: "fiktiv:messprotokoll-1",
+  quellenStand: "2026-10-15",
+};
+
+/** `geldwert` mit dem festen Rahmen — der Rahmen selbst wird in K3/K6 unten eigens geprüft. */
+const gw = (e: Omit<GeldwertEingabe, "rahmen" | "heute">, rahmen: Messrahmen = RAHMEN) =>
+  geldwert({ ...e, rahmen, heute: HEUTE });
 
 /** Ein gemessener Fall; Vorgabe: echte Anwender, vergleichbare Qualität. */
 const fall = (id: string, ohne: number, mit: number, teil: Partial<GemessenerFall> = {}) => ({
@@ -139,7 +155,7 @@ describe("K2 · Agentenprüfung getrennt von echter Nutzung", () => {
   });
 
   it("Agenten- und Menschenmessung werden im Geldwert nie zusammengerechnet", () => {
-    const g = geldwert({
+    const g = gw({
       faelle: [fall("F-1", 30, 10, { messart: "agent" }), fall("F-2", 30, 10)],
       kostensatzEurProStunde: 60,
       zusatzkostenEur: 0,
@@ -148,7 +164,7 @@ describe("K2 · Agentenprüfung getrennt von echter Nutzung", () => {
   });
 
   it("das Ergebnis trägt seine Messart — eine Agentenmessung bleibt als solche erkennbar", () => {
-    const g = geldwert({
+    const g = gw({
       faelle: [fall("F-1", 30, 10, { messart: "agent" })],
       kostensatzEurProStunde: 60,
       zusatzkostenEur: 0,
@@ -179,7 +195,7 @@ describe("K4 · keine Prozentzahl ohne bekannte Grundgesamtheit", () => {
 
 describe("K6 · Geldwert nur aus tatsächlichen Fällen mit offengelegten Annahmen", () => {
   it("ohne gemessenen Fall gibt es keinen Geldwert — auch nicht aus einem Bestand", () => {
-    expect(geldwert({ faelle: [], kostensatzEurProStunde: 60, zusatzkostenEur: 0 })).toEqual({
+    expect(gw({ faelle: [], kostensatzEurProStunde: 60, zusatzkostenEur: 0 })).toEqual({
       lage: "nicht_berechenbar",
       grund: "keine_faelle",
       version: BERECHNUNGSVERSION,
@@ -187,7 +203,7 @@ describe("K6 · Geldwert nur aus tatsächlichen Fällen mit offengelegten Annahm
   });
 
   it("es gibt keine Vorgabewerte: ohne vereinbarten Kostensatz kein Wert", () => {
-    const g = geldwert({
+    const g = gw({
       faelle: [fall("F-1", 30, 10)],
       kostensatzEurProStunde: null,
       zusatzkostenEur: 0,
@@ -196,13 +212,15 @@ describe("K6 · Geldwert nur aus tatsächlichen Fällen mit offengelegten Annahm
   });
 
   it("Fallzahl × gemessene Zeitdifferenz × Kostensatz, Annahmen stehen am Ergebnis", () => {
-    const g = geldwert({
+    const g = gw({
       faelle: [fall("F-1", 30, 10), fall("F-2", 45, 15)],
       kostensatzEurProStunde: 60,
       zusatzkostenEur: 0,
     });
     expect(g).toEqual({
       lage: "berechnet",
+      // P13-AC03: der Betrag trägt Zeitraum, Kontext und Quelle mit Stand.
+      rahmen: RAHMEN,
       messart: "mensch",
       fallzahl: 2,
       doppelt: 0,
@@ -216,8 +234,53 @@ describe("K6 · Geldwert nur aus tatsächlichen Fällen mit offengelegten Annahm
     });
   });
 
+  it("ohne Messzeitraum, Arbeitskontext oder Messquelle mit Stand kein Betrag (AC03/AC06)", () => {
+    const g = gw(
+      { faelle: [fall("F-1", 30, 10)], kostensatzEurProStunde: 60, zusatzkostenEur: 0 },
+      {
+        von: "2026-10-01",
+        bis: null,
+        kontext: " ",
+        quelle: "fiktiv:protokoll",
+        quellenStand: null,
+      },
+    );
+    expect(g).toEqual({
+      lage: "nicht_berechenbar",
+      grund: "angaben_fehlen",
+      fehlend: ["bis", "kontext", "quellenStand"],
+      version: BERECHNUNGSVERSION,
+    });
+  });
+
+  it("ungültiger Zeitraum oder Quellenstand ergibt keinen Betrag", () => {
+    const basis = {
+      faelle: [fall("F-1", 30, 10)],
+      kostensatzEurProStunde: 60,
+      zusatzkostenEur: 0,
+    };
+    // Beginn nach dem Ende, Ende in der Zukunft, kein echter Tag.
+    for (const z of [
+      { von: "2026-10-14", bis: "2026-10-01" },
+      { von: "2026-10-01", bis: "2026-10-30" },
+      { von: "2026-02-30", bis: "2026-10-01" },
+    ]) {
+      expect(gw(basis, { ...RAHMEN, ...z, quellenStand: "2026-10-20" })).toMatchObject({
+        lage: "nicht_berechenbar",
+        grund: "messzeitraum_ungueltig",
+      });
+    }
+    // Quellenstand vor dem Ende des Zeitraums deckt ihn nicht ab; in der Zukunft gibt es ihn nicht.
+    for (const quellenStand of ["2026-10-13", "2026-10-21"]) {
+      expect(gw(basis, { ...RAHMEN, quellenStand })).toMatchObject({
+        lage: "nicht_berechenbar",
+        grund: "quellenstand_ungueltig",
+      });
+    }
+  });
+
   it("derselbe Fall zählt einmal; Einträge ohne Kennung sind keine Fälle", () => {
-    const g = geldwert({
+    const g = gw({
       faelle: [fall("F-1", 30, 10), fall("F-1", 30, 10), fall(" ", 600, 0)],
       kostensatzEurProStunde: 60,
       zusatzkostenEur: 0,
@@ -225,8 +288,36 @@ describe("K6 · Geldwert nur aus tatsächlichen Fällen mit offengelegten Annahm
     expect(g).toMatchObject({ lage: "berechnet", fallzahl: 1, doppelt: 1, minutenDifferenz: 20 });
   });
 
+  it("AC05/AC07: widersprüchliche Einträge derselben Kennung sind Klärbedarf — kein Betrag", () => {
+    // Bens Gegenprobe: F-1 mit 30/10 und 30/50 Minuten ergab je nach Reihenfolge +20 € oder −20 €.
+    const a = fall("F-1", 30, 10);
+    const b = fall("F-1", 30, 50);
+    for (const faelle of [
+      [a, b],
+      [b, a],
+    ]) {
+      expect(gw({ faelle, kostensatzEurProStunde: 60, zusatzkostenEur: 0 })).toEqual({
+        lage: "nicht_berechenbar",
+        grund: "widerspruch_fallkennung",
+        widersprueche: ["F-1"],
+        version: BERECHNUNGSVERSION,
+      });
+    }
+    // Abweichende Qualität oder Messart eines späteren Eintrags ist ebenso ein Widerspruch.
+    for (const spaeter of [
+      fall("F-1", 30, 10, { qualitaetVergleichbar: false }),
+      fall("F-1", 30, 10, { messart: "agent" }),
+    ]) {
+      const faelle = [a, fall("F-2", 40, 20), spaeter];
+      expect(gw({ faelle, kostensatzEurProStunde: 60, zusatzkostenEur: 0 })).toMatchObject({
+        lage: "nicht_berechenbar",
+        widersprueche: ["F-1"],
+      });
+    }
+  });
+
   it("ein Fall ohne vergleichbare Qualität verhindert den Wert — kein Aussortieren", () => {
-    const g = geldwert({
+    const g = gw({
       faelle: [fall("F-1", 30, 10), fall("F-2", 30, 50, { qualitaetVergleichbar: false })],
       kostensatzEurProStunde: 60,
       zusatzkostenEur: 0,
@@ -236,7 +327,7 @@ describe("K6 · Geldwert nur aus tatsächlichen Fällen mit offengelegten Annahm
 
   it("eine fehlende oder unsinnige Messung ist keine Null", () => {
     for (const kaputt of [fall("F-1", Number.NaN, 10), fall("F-1", -5, 10)]) {
-      const g = geldwert({ faelle: [kaputt], kostensatzEurProStunde: 60, zusatzkostenEur: 0 });
+      const g = gw({ faelle: [kaputt], kostensatzEurProStunde: 60, zusatzkostenEur: 0 });
       expect(g).toMatchObject({ lage: "nicht_berechenbar", grund: "ungueltige_messung" });
     }
   });
@@ -244,7 +335,7 @@ describe("K6 · Geldwert nur aus tatsächlichen Fällen mit offengelegten Annahm
 
 describe("K7 · Zusatzaufwand und negative Entlastung bleiben in Rechnung", () => {
   it("Mehraufwand mit Klarwerk bleibt negativ und wird nicht auf 0 gekappt", () => {
-    const g = geldwert({
+    const g = gw({
       faelle: [fall("F-1", 20, 50), fall("F-2", 30, 20)],
       kostensatzEurProStunde: 60,
       zusatzkostenEur: 0,
@@ -259,7 +350,7 @@ describe("K7 · Zusatzaufwand und negative Entlastung bleiben in Rechnung", () =
   });
 
   it("Pflege-, Betriebs- und Prüfkosten werden abgezogen — auch bis unter null", () => {
-    const g = geldwert({
+    const g = gw({
       faelle: [fall("F-1", 90, 30)],
       kostensatzEurProStunde: 60,
       zusatzkostenEur: 75,
@@ -273,7 +364,7 @@ describe("K7 · Zusatzaufwand und negative Entlastung bleiben in Rechnung", () =
   });
 
   it("ohne Angabe der Zusatzkosten gibt es keinen Wert — sie fallen nicht still weg", () => {
-    const g = geldwert({
+    const g = gw({
       faelle: [fall("F-1", 90, 30)],
       kostensatzEurProStunde: 60,
       zusatzkostenEur: null,

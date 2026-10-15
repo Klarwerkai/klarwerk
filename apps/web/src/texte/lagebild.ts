@@ -41,12 +41,32 @@ export default {
       "Die zusätzlichen Kosten fehlen. Tragen Sie 0 ein, wenn keine angefallen sind.",
     "lagebild.geld.netto": "Netto",
     "lagebild.geld.formel":
-      "{{fallzahl}} Fälle · {{minuten}} Minuten Differenz × {{satz}} pro Stunde = {{brutto}} − Zusatzkosten {{zusatz}}",
+      "{{fallzahl}} Fälle · {{minuten}} Minuten Differenz × {{satz}} pro Stunde = {{brutto}} − Zusatzkosten {{zusatz}} (beides im Zeitraum {{von}} bis {{bis}})",
+    "lagebild.geld.zusatzImZeitraum":
+      "Im Messzeitraum {{von}} bis {{bis}} — derselbe wie die Fälle.",
+    "lagebild.geld.rahmenTitel": "Wofür die Messung gilt",
+    "lagebild.geld.rahmen.von": "Messzeitraum von",
+    "lagebild.geld.rahmen.bis": "Messzeitraum bis",
+    "lagebild.geld.rahmen.kontext": "Arbeitskontext (Arbeitsweg oder Bereich)",
+    "lagebild.geld.rahmen.quelle": "Messquelle",
+    "lagebild.geld.rahmen.quellenStand": "Stand der Messquelle",
+    "lagebild.geld.gilt":
+      "Gilt für {{kontext}} im Zeitraum {{von}} bis {{bis}} · Quelle: {{quelle}}, Stand {{quellenStand}}",
+    "lagebild.geld.grund.widerspruch_fallkennung":
+      "Klärbedarf: Einträge mit derselben Fallkennung widersprechen sich. Bis zur eindeutigen Zuordnung entsteht kein Betrag.",
+    "lagebild.geld.klaerbedarf": "Betroffene Fallkennungen: {{kennungen}}",
+    "lagebild.geld.grund.angaben_fehlen":
+      "Ohne Messzeitraum, Arbeitskontext und Messquelle mit Stand ist kein Betrag belegt.",
+    "lagebild.geld.fehlend": "Es fehlt: {{angaben}}",
+    "lagebild.geld.grund.messzeitraum_ungueltig":
+      "Der Messzeitraum ist ungültig: Beginn nach dem Ende oder Ende in der Zukunft.",
+    "lagebild.geld.grund.quellenstand_ungueltig":
+      "Der Stand der Messquelle muss den ganzen Zeitraum abdecken (nicht vor dessen Ende) und darf nicht in der Zukunft liegen.",
     "lagebild.geld.mehraufwand_one":
       "{{count}} Fall kostete mit Klarwerk mehr Zeit — er bleibt negativ in der Rechnung.",
     "lagebild.geld.mehraufwand_other":
       "{{count}} Fälle kosteten mit Klarwerk mehr Zeit — sie bleiben negativ in der Rechnung.",
-    "lagebild.geld.doppelt": "{{anzahl}} wiederholte Fallkennung(en) nicht doppelt gezählt.",
+    "lagebild.geld.doppelt": "{{anzahl}} identisch wiederholte Einträge nicht doppelt gezählt.",
     "lagebild.geld.simulation":
       "Agentenprüfung mit fiktiven Testdaten: eine Simulation — kein realer Kapitalwert und kein Nachweis von Alltagsnutzen.",
     "lagebild.geld.echt":
@@ -122,12 +142,32 @@ export default {
       "The additional costs are missing. Enter 0 if there were none.",
     "lagebild.geld.netto": "Net",
     "lagebild.geld.formel":
-      "{{fallzahl}} cases · {{minuten}} minutes difference × {{satz}} per hour = {{brutto}} − additional costs {{zusatz}}",
+      "{{fallzahl}} cases · {{minuten}} minutes difference × {{satz}} per hour = {{brutto}} − additional costs {{zusatz}} (both for {{von}} to {{bis}})",
+    "lagebild.geld.zusatzImZeitraum":
+      "For the measurement period {{von}} to {{bis}} — the same as the cases.",
+    "lagebild.geld.rahmenTitel": "What the measurement applies to",
+    "lagebild.geld.rahmen.von": "Measurement period from",
+    "lagebild.geld.rahmen.bis": "Measurement period to",
+    "lagebild.geld.rahmen.kontext": "Work context (work path or area)",
+    "lagebild.geld.rahmen.quelle": "Measurement source",
+    "lagebild.geld.rahmen.quellenStand": "Status date of the source",
+    "lagebild.geld.gilt":
+      "Applies to {{kontext}} for {{von}} to {{bis}} · Source: {{quelle}}, as of {{quellenStand}}",
+    "lagebild.geld.grund.widerspruch_fallkennung":
+      "Needs clarification: entries with the same case ID contradict each other. No amount until they are resolved.",
+    "lagebild.geld.klaerbedarf": "Affected case IDs: {{kennungen}}",
+    "lagebild.geld.grund.angaben_fehlen":
+      "Without measurement period, work context and measurement source with status, no amount is evidenced.",
+    "lagebild.geld.fehlend": "Missing: {{angaben}}",
+    "lagebild.geld.grund.messzeitraum_ungueltig":
+      "The measurement period is invalid: start after end, or end in the future.",
+    "lagebild.geld.grund.quellenstand_ungueltig":
+      "The source status must cover the whole period (not before its end) and must not be in the future.",
     "lagebild.geld.mehraufwand_one":
       "{{count}} case took longer with Klarwerk — it stays negative in the calculation.",
     "lagebild.geld.mehraufwand_other":
       "{{count}} cases took longer with Klarwerk — they stay negative in the calculation.",
-    "lagebild.geld.doppelt": "{{anzahl}} repeated case ID(s) not counted twice.",
+    "lagebild.geld.doppelt": "{{anzahl}} identically repeated entries not counted twice.",
     "lagebild.geld.simulation":
       "Agent test with fictitious test data: a simulation — not a real capital value and no proof of everyday benefit.",
     "lagebild.geld.echt":
@@ -204,12 +244,32 @@ export default {
       "De extra kosten ontbreken. Vul 0 in als er geen waren.",
     "lagebild.geld.netto": "Netto",
     "lagebild.geld.formel":
-      "{{fallzahl}} gevallen · {{minuten}} minuten verschil × {{satz}} per uur = {{brutto}} − extra kosten {{zusatz}}",
+      "{{fallzahl}} gevallen · {{minuten}} minuten verschil × {{satz}} per uur = {{brutto}} − extra kosten {{zusatz}} (beide in de periode {{von}} tot {{bis}})",
+    "lagebild.geld.zusatzImZeitraum":
+      "In de meetperiode {{von}} tot {{bis}} — dezelfde als die van de gevallen.",
+    "lagebild.geld.rahmenTitel": "Waarvoor de meting geldt",
+    "lagebild.geld.rahmen.von": "Meetperiode vanaf",
+    "lagebild.geld.rahmen.bis": "Meetperiode tot",
+    "lagebild.geld.rahmen.kontext": "Werkcontext (werkwijze of gebied)",
+    "lagebild.geld.rahmen.quelle": "Meetbron",
+    "lagebild.geld.rahmen.quellenStand": "Stand van de meetbron",
+    "lagebild.geld.gilt":
+      "Geldt voor {{kontext}} in de periode {{von}} tot {{bis}} · Bron: {{quelle}}, stand {{quellenStand}}",
+    "lagebild.geld.grund.widerspruch_fallkennung":
+      "Verduidelijking nodig: invoer met hetzelfde kenmerk spreekt elkaar tegen. Tot de toewijzing eenduidig is, ontstaat er geen bedrag.",
+    "lagebild.geld.klaerbedarf": "Betrokken kenmerken: {{kennungen}}",
+    "lagebild.geld.grund.angaben_fehlen":
+      "Zonder meetperiode, werkcontext en meetbron met stand is geen bedrag onderbouwd.",
+    "lagebild.geld.fehlend": "Ontbreekt: {{angaben}}",
+    "lagebild.geld.grund.messzeitraum_ungueltig":
+      "De meetperiode is ongeldig: begin na het einde of einde in de toekomst.",
+    "lagebild.geld.grund.quellenstand_ungueltig":
+      "De stand van de meetbron moet de hele periode dekken (niet vóór het einde) en mag niet in de toekomst liggen.",
     "lagebild.geld.mehraufwand_one":
       "{{count}} geval kostte met Klarwerk meer tijd — het blijft negatief in de berekening.",
     "lagebild.geld.mehraufwand_other":
       "{{count}} gevallen kostten met Klarwerk meer tijd — ze blijven negatief in de berekening.",
-    "lagebild.geld.doppelt": "{{anzahl}} herhaald(e) kenmerk(en) niet dubbel geteld.",
+    "lagebild.geld.doppelt": "{{anzahl}} identiek herhaalde invoer niet dubbel geteld.",
     "lagebild.geld.simulation":
       "Agenttest met fictieve testgegevens: een simulatie — geen echte kapitaalwaarde en geen bewijs van dagelijks nut.",
     "lagebild.geld.echt":
