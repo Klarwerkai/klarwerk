@@ -75,6 +75,17 @@ export function antwortKontext(
   return `${kontoId ?? "-"}::${kontextSchluessel}::${bilder.join(",")}`;
 }
 
+/** Kopf eines Belegs: Fundstelle; eine Beschreibung vor der Berichtigung sagt das dazu. */
+function belegKopf(b: Belegstelle, t: Uebersetze): string {
+  if (b.art === "dokument") {
+    return t("klarabildkontext.belege.dokument");
+  }
+  const ort = `${b.quelle} · ${b.ort}`;
+  return b.art === "bild-vor-berichtigung"
+    ? `${ort} · ${t("bildfundstelle.beleg.vorBerichtigung")}`
+    : ort;
+}
+
 const KNOPF =
   "inline-flex h-8 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-text hover:border-ink/30 disabled:opacity-40";
 
@@ -349,11 +360,7 @@ export function KlaraBildKontextFrage({
                       data-testid="klara-bild-kontext-beleg"
                       data-art={b.art}
                     >
-                      <span className="font-semibold text-text">
-                        {b.art === "bild"
-                          ? `${b.quelle} · ${b.ort}`
-                          : t("klarabildkontext.belege.dokument")}
-                      </span>
+                      <span className="font-semibold text-text">{belegKopf(b, ue)}</span>
                       {": "}
                       <span className="text-muted">{b.auszug}</span>
                     </li>

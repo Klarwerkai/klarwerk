@@ -45,7 +45,12 @@ aktive, abschaltbare Automatik ist unverändert.
   Beschreibung genau einmal vorkommt. Sonst (etwa Rohtext „10 10“, Berichtigung „10 11“,
   Beschreibung „Links 10, rechts 10“) bleibt die Beschreibung unverändert, wird sichtbar als „vor
   der Berichtigung“ gekennzeichnet und geht so gekennzeichnet an Klara — maßgeblich ist der
-  berichtigte Bildtext.
+  berichtigte Bildtext. **Entfernte Angaben (Nacharbeit 6):** ebenso, wenn ein Wort des Rohtexts,
+  das die Beschreibung nennt, in der Berichtigung keine Entsprechung mehr hat — gelöscht
+  („Termin 15.11.2026“ → „Termin“), ganz geleert oder durch etwas Unähnliches ersetzt („Abholung
+  morgen“). Die Fundstellen einer Frage führen eine solche Beschreibung getrennt vom aktuellen
+  Bildbeleg, als „Beschreibung vor der Berichtigung, nicht aktuell“; nach dem Zurücksetzen gilt
+  sie wieder als aktueller Inhalt.
 - **Zuordnung berichtigter Wörter:** ein berichtigtes Wort übernimmt die Position des erkannten nur,
   wenn beide ähnlich sind (Lesefehler wie „Mül1er“/„Müller“, „1.5OO“/„1.500“) oder das erkannte
   `[unleserlich]` war; ein ganz anderes Wort hat keine Position (ehrlicher Rückfall).
@@ -71,9 +76,9 @@ aktive, abschaltbare Automatik ist unverändert.
 | K2 | mehrere Bilder/Folien ohne Verwechslung | `fundstellen-original.test.ts` F2 (echte PPTX-Kette), Mount E1, Browser (dieselbe Zahl auf zwei Folien) |
 | K3 | gedrehte und skalierte Bilder | `fundstellen-original.test.ts` F3 (EXIF 6/8, Ansichtsmaße), Mount E2, Browser (Bildschirmlage nach Drehen und Vergrößern) |
 | K4 | ehrlicher, bedienbarer Rückfall | `fundstellen-original.test.ts` F4, Mount E3, Browser (ergänztes Wort) |
-| K5 | berichtigtes Wort in Klara-Antwort und Zusammenfassung | `korrektur-klara.test.ts` B1, Mount E4 (Inhalt der Anfrage an den assist-Weg für Frage UND Zusammenfassung), Mount E7 (keine Anfrage vor bestätigtem Korrekturstand), Browser (Fundstellen der Frage), Browser `@modell` (tatsächliche Antwort und Zusammenfassung mit „LAGER“, ohne „LAGFR“) |
+| K5 | berichtigtes Wort in Klara-Antwort und Zusammenfassung | `korrektur-klara.test.ts` B1, B5–B7 (Beschreibung: eindeutig angeglichen oder als Stand vor der Berichtigung in Kontext und Belegen), Mount E4, Mount E8 (gelöscht/geleert/unähnlich bis zur Beleganzeige) (Inhalt der Anfrage an den assist-Weg für Frage UND Zusammenfassung), Mount E7 (keine Anfrage vor bestätigtem Korrekturstand), Browser (Fundstellen der Frage), Browser `@modell` (tatsächliche Antwort und Zusammenfassung mit „LAGER“, ohne „LAGFR“) |
 | K6 | Korrektur, Neuladen, erneutes Einlesen | `korrekturen-am-server.test.ts` S1, `korrekturen-pg.integration.test.ts`, `korrektur-klara.test.ts` B2, Mount E4 und E7, `datei-quelle-mounted.test.tsx` Q1, Browser |
-| K7 | Rücksetzen → Rohbefund, Original unverändert | `korrekturen-am-server.test.ts` S2, `korrektur-klara.test.ts` B3, Mount E4, Browser |
+| K7 | Rücksetzen → Rohbefund, Original unverändert | `korrekturen-am-server.test.ts` S2, `korrektur-klara.test.ts` B3 und B7, Mount E4 und E8, Browser |
 | K8 | keine Übertragung auf fremdes/verändertes Bild | `korrekturen-am-server.test.ts` S3, `korrektur-klara.test.ts` B4, Mount E5, `datei-quelle-mounted.test.tsx` Q1 (gleichnamige verschiedene Dokumente), Browser |
 | K9 | Nutzer-/Rollenregeln | `korrekturen-am-server.test.ts` S4, Mount E6 und E7 (Kontowechsel während des Ladens), Browser (zweites Konto, Betrachter 403) |
 

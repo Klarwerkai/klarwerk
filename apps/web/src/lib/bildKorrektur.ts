@@ -184,6 +184,12 @@ function vorkommen(text: string, wort: string): { index: number; laenge: number 
  * Vorkommen gemeint ist: dann bleibt die Beschreibung unverändert und `uneindeutig` ist gesetzt —
  * maßgeblich ist der berichtigte Bildtext, und die Beschreibung wird als „vor der Berichtigung“
  * gekennzeichnet. Alle Ersetzungen beziehen sich auf die ursprüngliche Beschreibung (keine Kette).
+ *
+ * Nacharbeit 6 (Bens Befund): ebenso, wenn ein Rohwort, das in der Beschreibung vorkommt, in der
+ * Berichtigung KEINE Entsprechung mehr hat — gelöscht („Termin 15.11.2026“ → „Termin“), der ganze
+ * Text geleert, oder durch etwas Unähnliches ersetzt („Abholung morgen“). Dann ist die Beschreibung
+ * nicht sicher angleichbar: sie bleibt als Rohbefund unverändert und gilt als Stand VOR der
+ * Berichtigung (`uneindeutig`), statt die entfernte Angabe als aktuell weiterzutragen.
  */
 export function beschreibungAngleichen(
   roh: string,
@@ -195,7 +201,11 @@ export function beschreibungAngleichen(
   const klein = (w: string): string => w.toLocaleLowerCase();
   const zuordnung = ausrichten(neuWoerter.map(klein), rohWoerter.map(klein));
   const ersetzungen: { index: number; laenge: number; neu: string }[] = [];
-  let uneindeutig = false;
+  // Entfernte bzw. nicht zuordenbare Rohwörter, die die Beschreibung noch nennt.
+  const zugeordnet = new Set(zuordnung.flatMap((z) => (z.wort === null ? [] : [z.wort])));
+  let uneindeutig = rohWoerter.some(
+    (w, j) => !zugeordnet.has(j) && vorkommen(beschreibung, w).length > 0,
+  );
   for (const [i, z] of zuordnung.entries()) {
     const alt = z.wort === null ? undefined : rohWoerter[z.wort];
     const neu = neuWoerter[i];

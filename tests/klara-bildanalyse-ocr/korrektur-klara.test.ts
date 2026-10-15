@@ -56,6 +56,8 @@ const ROH: Record<string, string> = {
   N: "LAGFR 30",
   // Nacharbeit 4: wiederholte Zahl im Bildtext.
   Z: "10 10",
+  // Nacharbeit 6: ein Termin, den die Beschreibung wiederholt.
+  T: "Termin 15.11.2026",
 };
 const engine = async (src: string): Promise<OcrResult> => ({
   status: "success",
@@ -320,5 +322,112 @@ describe("B6 · K5/K8 — wiederholte Wörter und Zahlen: Angleichung nur bei ei
     expect(klaraAnweisung("zusammenfassung", "", k, t)).toContain(
       "bildfundstelle.anweisung.berichtigt",
     );
+    // Nacharbeit 6: bis zu den deterministischen Belegen — der aktuelle Bildbeleg trägt nur den
+    // berichtigten Bildtext; die Beschreibung steht getrennt als Stand vor der Berichtigung.
+    const belege = belegstellen("Was steht links und rechts?", "", k);
+    expect(belege.map((x) => [x.art, x.quelle, x.ort, x.auszug])).toEqual([
+      ["bild-vor-berichtigung", "seiten.png", "Bild 1", "Links 10, rechts 10"],
+    ]);
+  });
+});
+
+// Nacharbeit 6 (Bens Befund): gelöschter, geleerter oder unähnlich ersetzter Bildtext blieb in der
+// Beschreibung als aktuelle Angabe stehen, ohne Kennzeichnung — auch in den Belegen einer Frage.
+describe("B7 · K5/K7/K8 — entfernte oder nicht zuordenbare Wörter in der Beschreibung", () => {
+  const ROH_T = "Termin 15.11.2026";
+  const BESCHREIBUNG = "Ein Schild mit Termin 15.11.2026";
+  const FAELLE = [
+    ["Löschen", "Termin"],
+    ["Leeren", ""],
+    ["unähnlich ersetzen", "Abholung morgen"],
+  ] as const;
+
+  it("Bens Probe: alle drei Fälle bleiben unverändert und sind als nicht angeglichen gesetzt", () => {
+    for (const [art, berichtigt] of FAELLE) {
+      expect(beschreibungAngleichen(ROH_T, berichtigt, BESCHREIBUNG), art).toEqual({
+        text: BESCHREIBUNG,
+        uneindeutig: true,
+      });
+    }
+    // Gegenproben: ein entferntes Wort, das die Beschreibung NICHT nennt, ändert nichts; eine
+    // eindeutige ähnliche Ersetzung wird weiter angeglichen.
+    expect(beschreibungAngleichen(`${ROH_T} Raum`, ROH_T, BESCHREIBUNG)).toEqual({
+      text: BESCHREIBUNG,
+      uneindeutig: false,
+    });
+    expect(beschreibungAngleichen(ROH_T, "Termin 16.11.2026", BESCHREIBUNG)).toEqual({
+      text: "Ein Schild mit Termin 16.11.2026",
+      uneindeutig: false,
+    });
+  });
+
+  it("am Befund, in Klaras Kontext und den Belegen gekennzeichnet; Rücksetzen; Original", async () => {
+    const src = dataUrl(bildMitMassen("T", 600, 200));
+    const vorher = src.slice();
+    const eingang = einzelbildEingang("aushang.png", src);
+    const beschreibe = async () => ({ status: "beschrieben" as const, text: BESCHREIBUNG });
+    const roh = await createBildAnalyse({ erkenne: engine }).analysiereQuelle(eingang, {
+      automatik: true,
+      beschreibe,
+    });
+    const bild = roh.befunde[0];
+    if (!bild) {
+      throw new Error("kein Befund");
+    }
+    const praefix = "anhang";
+    const quelle = korrekturQuelleFuer(praefix, bild.fundstelle);
+    const frage = "Wann ist der Termin?";
+    const alt = `bildfundstelle.kontext.inhaltVorBerichtigung: ${BESCHREIBUNG}`;
+    const aktuell = `klarabildkontext.kontext.inhalt: ${BESCHREIBUNG}`;
+    const historisch = {
+      art: "bild-vor-berichtigung",
+      quelle: "aushang.png",
+      ort: "Bild 1",
+      auszug: BESCHREIBUNG,
+      treffer: 1,
+    };
+
+    for (const [art, text] of FAELLE) {
+      const [wirksam] = quellenMitKorrekturen([roh], praefix, [korrektur(quelle, bild, text)]);
+      const b = wirksam?.befunde[0];
+      expect(b?.status, art).toBe(text ? "gelesen" : "kein-text");
+      expect(b?.bildinhalt.text, art).toBe(BESCHREIBUNG);
+      expect(b?.korrektur?.beschreibungNichtAngeglichen, art).toBe(true);
+      expect(b?.korrektur?.rohBildinhalt, art).toBe(BESCHREIBUNG);
+
+      const k = klaraBildKontext("", [wirksam as QuellenBefund], t, ortVon);
+      expect(k.eintraege[0]?.bildinhaltVorBerichtigung, art).toBe(true);
+      expect(k.kontext, art).toContain(alt);
+      expect(k.kontext, art).not.toContain(aktuell);
+      for (const auftrag of ["frage", "zusammenfassung"] as const) {
+        expect(klaraAnweisung(auftrag, frage, k, t), art).toContain(
+          "bildfundstelle.anweisung.berichtigt",
+        );
+      }
+
+      // Die Frage nach dem Datum: kein aktueller Beleg mit dem alten Termin.
+      const belege = belegstellen(frage, "", k);
+      for (const x of belege.filter((y) => y.art === "bild")) {
+        expect(x.auszug, art).not.toContain("15.11.2026");
+      }
+      const vorBerichtigung = belege.filter((y) => y.art === "bild-vor-berichtigung");
+      expect(vorBerichtigung, art).toEqual([historisch]);
+    }
+
+    // Rücksetzen: es gilt der Rohbefund samt Beschreibung — aktuell, ohne Kennzeichnung.
+    const [zurueck] = quellenMitKorrekturen([roh], praefix, []);
+    expect(zurueck?.befunde[0]).toBe(bild);
+    const k = klaraBildKontext("", [zurueck as QuellenBefund], t, ortVon);
+    expect(k.kontext).toContain(aktuell);
+    expect(belegstellen(frage, "", k).map((x) => [x.art, x.auszug])).toEqual([
+      ["bild", `${ROH_T} — ${BESCHREIBUNG}`],
+    ]);
+    // Bindung an die Quelle bleibt: in einer anderen Quelle gilt die Berichtigung nicht.
+    const liste = [korrektur(quelle, bild, "")];
+    const [fremd] = quellenMitKorrekturen([roh], "datei:anderes.png", liste);
+    expect(fremd?.befunde[0]?.korrektur).toBeUndefined();
+    expect(fremd?.befunde[0]?.textGekennzeichnet).toBe(ROH_T);
+    // Die Bilddaten sind unverändert.
+    expect(eingang.vorkommen[0]?.src).toBe(vorher);
   });
 });

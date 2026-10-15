@@ -24,6 +24,9 @@
 //   E5  K8 — verändertes Bild und andere Quelle: keine Übertragung, sichtbar benannt.
 //   E6  K9 — Rolle ohne Schreibrecht: keine Bearbeitung; Kontowechsel: nichts vom anderen Konto;
 //       ohne gespeicherte Quelle: keine Berichtigung, und das steht da.
+//   E7  K5/K6 — verzögertes und fehlgeschlagenes Laden: kein Rohtext an Klara.
+//   E8  K5/K7 — gelöscht, geleert, unähnlich ersetzt: die Beschreibung bleibt Rohbefund und steht
+//       in Anzeige, Klaras Kontext und den Belegen als Stand vor der Berichtigung; Rücksetzen.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OcrResult, OcrWort } from "../../apps/web/src/lib/ocr";
 
@@ -102,12 +105,19 @@ const ERKANNT: Record<string, { text: string; woerter?: OcrWort[] }> = {
   },
   // Ein Bild ohne Wortrahmen (die Erkennung liefert nur Text).
   X: { text: "OHNE POSITION" },
+  // Nacharbeit 6: ein Termin, den die Beschreibung desselben Bildes wiederholt.
+  T: {
+    text: "Termin 15.11.2026",
+    woerter: [wort("Termin", 20, 50, 240, 150), wort("15.11.2026", 280, 50, 580, 150)],
+  },
 };
 
 const BILD_R = dataUrl(bildMitMassen("R", 1000, 500));
 const BILD_L = dataUrl(bildMitMassen("L", 600, 200));
 const BILD_N = dataUrl(bildMitMassen("N", 600, 200));
 const BILD_X = dataUrl(bildMit("X"));
+const BILD_T = dataUrl(bildMitMassen("T", 600, 200));
+const BESCHREIBUNG_T = "Ein Schild mit Termin 15.11.2026";
 
 function rumpf(zweites = BILD_L, zusatz = ""): string {
   return [
@@ -185,7 +195,10 @@ const lesenSteuerung = {
 };
 
 const describeBild = vi.fn(
-  async (_src: string): Promise<DescribeImageResult> => ({ text: "Ein Dokument", demo: false }),
+  async (src: string): Promise<DescribeImageResult> => ({
+    text: markeAus(src) === "T" ? BESCHREIBUNG_T : "Ein Dokument",
+    demo: false,
+  }),
 );
 
 function weg(quelle: string | undefined, frage?: ImageDescribeValue["frage"]): ImageDescribeValue {
@@ -769,5 +782,107 @@ describe("E7 · K5/K6 — verzögertes und fehlgeschlagenes Laden: kein Rohtext 
     await profilLaden("konto-a");
     await zeige(rumpf(), weg("ko:fiktiv-1", frage));
     expect(bildText(0)).toBe(BERICHTIGT_R);
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 6 (Bens Befund): gelöschter, geleerter oder unähnlich ersetzter Bildtext blieb in der
+// Beschreibung als aktuelle Angabe stehen — auch in Klaras Kontext und den Belegen einer Frage.
+// ================================================================================================
+
+function belege(): { art: string | null; text: string }[] {
+  const auswahl = "[data-testid=klara-bild-kontext-beleg]";
+  return [...container.querySelectorAll<HTMLElement>(auswahl)].map((el) => ({
+    art: el.getAttribute("data-art"),
+    text: el.textContent ?? "",
+  }));
+}
+
+const inhaltT = (): string =>
+  bildZeile(1).querySelector("[data-testid=bild-befund-inhalt]")?.textContent ?? "";
+const vorBerichtigungT = (): Element | null =>
+  bildZeile(1).querySelector("[data-testid=bild-befund-inhalt-vor-berichtigung]");
+
+describe("E8 · K5/K7 — entfernte Angaben gelten nicht weiter als aktuell", () => {
+  it("Löschen, Leeren, unähnlich Ersetzen: gekennzeichnet bis zu den Belegen; Rücksetzen", async () => {
+    await profilLaden("konto-a");
+    const frage = vi.fn(
+      async (_text: string, _anweisung: string): Promise<AssistResult> => ({
+        text: "Antwort",
+        demo: false,
+      }),
+    );
+    const html = rumpf(BILD_T);
+    await zeige(html, weg("ko:fiktiv-1", frage));
+    expect(bildText(1)).toBe("Termin 15.11.2026");
+    expect(inhaltT()).toContain(BESCHREIBUNG_T);
+    expect(vorBerichtigungT()).toBeNull();
+
+    const alt = `${i18n.t("bildfundstelle.kontext.inhaltVorBerichtigung")}: ${BESCHREIBUNG_T}`;
+    const aktuell = `${i18n.t("klarabildkontext.kontext.inhalt")}: ${BESCHREIBUNG_T}`;
+    const vorBerichtigung = i18n.t("bildfundstelle.beleg.vorBerichtigung");
+
+    for (const [art, text, bildBeleg] of [
+      ["Löschen", "Termin", true],
+      ["Leeren", "", false],
+      ["unähnlich", "Abholung morgen", false],
+    ] as const) {
+      await klick(bildZeile(1).querySelector("[data-testid=bild-berichtigung-bearbeiten]"));
+      await tippe(q("bild-berichtigung-feld"), text);
+      await klick(q("bild-berichtigung-speichern"));
+      expect(berichtigt(1), art).toBe("true");
+
+      // Anzeige: die Beschreibung bleibt unverändert (Rohbefund) und ist gekennzeichnet.
+      expect(inhaltT(), art).toContain(BESCHREIBUNG_T);
+      expect(vorBerichtigungT()?.textContent, art).toBe(
+        i18n.t("bildfundstelle.korrektur.beschreibungVorBerichtigung"),
+      );
+
+      // Klara: Frage mit Datumsbezug — der Kontext nennt die Beschreibung als Stand VOR der
+      // Berichtigung, nie als aktuelle Angabe.
+      frage.mockClear();
+      await tippe(q("klara-bild-kontext-frage"), "Wann ist der Termin?");
+      await klick(q("klara-bild-kontext-fragen"));
+      expect(frage, art).toHaveBeenCalledTimes(1);
+      const kontext = frage.mock.calls[0]?.[0] ?? "";
+      expect(kontext, art).toContain(alt);
+      expect(kontext, art).not.toContain(aktuell);
+
+      // Deterministische Belege: der aktuelle Bildbeleg trägt den alten Termin nicht; die
+      // Beschreibung steht getrennt und als „vor der Berichtigung, nicht aktuell“.
+      const b = belege();
+      const bild = b.filter((x) => x.art === "bild");
+      for (const x of bild) {
+        expect(x.text, art).not.toContain("15.11.2026");
+      }
+      expect(bild.length > 0, art).toBe(bildBeleg);
+      const historisch = b.filter((x) => x.art === "bild-vor-berichtigung");
+      expect(historisch, art).toHaveLength(1);
+      expect(historisch[0]?.text, art).toContain(vorBerichtigung);
+      expect(historisch[0]?.text, art).toContain(BESCHREIBUNG_T);
+
+      // Die Zusammenfassung bekommt denselben gekennzeichneten Kontext.
+      frage.mockClear();
+      await klick(q("klara-bild-kontext-zusammenfassen"));
+      expect(frage.mock.calls[0]?.[0] ?? "", art).toContain(alt);
+    }
+
+    // Rücksetzen: der Rohbefund mit seiner Beschreibung gilt wieder — ohne Kennzeichnung, als ein
+    // aktueller Beleg; das Original ist unverändert.
+    await klick(bildZeile(1).querySelector("[data-testid=bild-berichtigung-zuruecksetzen]"));
+    expect(bildText(1)).toBe("Termin 15.11.2026");
+    expect(berichtigt(1)).toBe("false");
+    expect(vorBerichtigungT()).toBeNull();
+    expect(korrekturServer.konten.get("konto-a")).toEqual([]);
+    frage.mockClear();
+    await tippe(q("klara-bild-kontext-frage"), "Wann ist der Termin?");
+    await klick(q("klara-bild-kontext-fragen"));
+    expect(frage.mock.calls[0]?.[0]).toContain(aktuell);
+    const nachher = belege();
+    expect(nachher.filter((x) => x.art === "bild-vor-berichtigung")).toEqual([]);
+    expect(nachher.find((x) => x.art === "bild")?.text).toContain("15.11.2026");
+    await klick(stelle(1, "15.11.2026"));
+    expect(ansichtBild()).toBe(BILD_T);
+    expect(html).toContain(BILD_T);
   });
 });

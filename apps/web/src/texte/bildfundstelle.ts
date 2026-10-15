@@ -69,7 +69,8 @@ export default {
     "bildfundstelle.kontext.inhaltVorBerichtigung":
       "Bildinhalt (Beschreibung vor der Berichtigung; abweichende Angaben gelten nicht, maßgeblich ist der berichtigte Bildtext)",
     "bildfundstelle.korrektur.beschreibungVorBerichtigung":
-      "Diese Beschreibung stammt von vor der Berichtigung und ließ sich nicht eindeutig angleichen. Maßgeblich ist der berichtigte Bildtext.",
+      "Diese Beschreibung stammt von vor der Berichtigung und ließ sich nicht sicher angleichen; entfernte oder ersetzte Angaben gelten nicht mehr. Maßgeblich ist der berichtigte Bildtext.",
+    "bildfundstelle.beleg.vorBerichtigung": "Beschreibung vor der Berichtigung, nicht aktuell",
     "bildfundstelle.anweisung.berichtigt":
       "Für Bilder mit „Bildtext (berichtigt)“ gilt allein dieser berichtigte Text. Gib keine davon abweichende Schreibweise oder Lesung wieder.",
     "bildfundstelle.klara.wartet":
@@ -135,7 +136,8 @@ export default {
     "bildfundstelle.kontext.inhaltVorBerichtigung":
       "Image content (description from before the correction; differing details do not apply, the corrected image text is authoritative)",
     "bildfundstelle.korrektur.beschreibungVorBerichtigung":
-      "This description dates from before the correction and could not be aligned unambiguously. The corrected image text is authoritative.",
+      "This description dates from before the correction and could not be aligned reliably; removed or replaced details no longer apply. The corrected image text is authoritative.",
+    "bildfundstelle.beleg.vorBerichtigung": "description from before the correction, not current",
     "bildfundstelle.anweisung.berichtigt":
       "For images with “Image text (corrected)” only this corrected text applies. Do not repeat any differing spelling or reading.",
     "bildfundstelle.klara.wartet":
@@ -202,7 +204,8 @@ export default {
     "bildfundstelle.kontext.inhaltVorBerichtigung":
       "Beeldinhoud (beschrijving van vóór de correctie; afwijkende gegevens gelden niet, de gecorrigeerde afbeeldingstekst is bepalend)",
     "bildfundstelle.korrektur.beschreibungVorBerichtigung":
-      "Deze beschrijving dateert van vóór de correctie en kon niet eenduidig worden aangepast. De gecorrigeerde afbeeldingstekst is bepalend.",
+      "Deze beschrijving dateert van vóór de correctie en kon niet betrouwbaar worden aangepast; verwijderde of vervangen gegevens gelden niet meer. De gecorrigeerde afbeeldingstekst is bepalend.",
+    "bildfundstelle.beleg.vorBerichtigung": "beschrijving van vóór de correctie, niet actueel",
     "bildfundstelle.anweisung.berichtigt":
       "Voor afbeeldingen met „Afbeeldingstekst (gecorrigeerd)” geldt alleen deze gecorrigeerde tekst. Geef geen afwijkende spelling of lezing weer.",
     "bildfundstelle.klara.wartet":

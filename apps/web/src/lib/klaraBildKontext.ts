@@ -49,6 +49,11 @@ export interface BildKontextEintrag {
   status: BildBefund["status"];
   /** OCR-E02: der Bildtext ist eine Berichtigung (sie hat Vorrang vor jeder anderen Lesung). */
   berichtigt?: boolean;
+  /**
+   * OCR-E02 (Nacharbeit 6): `bildinhalt` ist die unveränderte Beschreibung VOR der Berichtigung
+   * (nicht sicher angleichbar) — ein historischer Rohbefund, keine aktuelle Angabe.
+   */
+  bildinhaltVorBerichtigung?: boolean;
 }
 
 export interface KlaraBildKontext {
@@ -130,6 +135,7 @@ export function klaraBildKontext(
       const textGelesen = b.status === "gelesen" || b.status === "kein-text";
       const bildinhalt = b.bildinhalt.status === "beschrieben" ? b.bildinhalt.text.trim() : "";
       const text = b.status === "gelesen" ? b.textGekennzeichnet.trim() : "";
+      const vorBerichtigung = b.korrektur?.beschreibungNichtAngeglichen === true;
       eintraege.push({
         quelle: q.quelle,
         ort,
@@ -140,6 +146,7 @@ export function klaraBildKontext(
         laeuft: b.status === "laeuft" || b.status === "wartet",
         status: b.status,
         ...(b.korrektur ? { berichtigt: true } : {}),
+        ...(vorBerichtigung && bildinhalt ? { bildinhaltVorBerichtigung: true } : {}),
       });
       if (text) {
         // OCR-E02: ein berichtigter Bildtext steht als solcher da (der Rohbefund geht nicht ein).
@@ -156,7 +163,7 @@ export function klaraBildKontext(
       if (bildinhalt) {
         // Nacharbeit 4: eine nicht eindeutig angeglichene Beschreibung steht als Stand VOR der
         // Berichtigung da — maßgeblich ist der berichtigte Bildtext.
-        const inhalt = b.korrektur?.beschreibungNichtAngeglichen
+        const inhalt = vorBerichtigung
           ? "bildfundstelle.kontext.inhaltVorBerichtigung"
           : "klarabildkontext.kontext.inhalt";
         zeilen.push(`${marke} ${t(inhalt)}: ${bildinhalt}`);
@@ -229,7 +236,12 @@ export function klaraAnweisung(
 // ------------------------------------------------------------------------------------------------
 
 export interface Belegstelle {
-  art: "bild" | "dokument";
+  /**
+   * `bild-vor-berichtigung` (OCR-E02, Nacharbeit 6): die Beschreibung eines berichtigten Bildes,
+   * die nicht sicher angeglichen werden konnte — getrennt vom aktuellen Bildtext und als Stand vor
+   * der Berichtigung ausgewiesen.
+   */
+  art: "bild" | "bild-vor-berichtigung" | "dokument";
   quelle: string;
   /** Fundstelle im Wortlaut der Oberfläche; bei `dokument` leer. */
   ort: string;
@@ -328,11 +340,24 @@ export function belegstellen(
     return [];
   }
   const kandidaten: Belegstelle[] = [];
+  const historisch: Belegstelle[] = [];
   for (const e of k.eintraege) {
-    const text = [e.text, e.bildinhalt].filter((x) => x.length > 0).join(" — ");
+    // Eine Beschreibung vor der Berichtigung geht NICHT in den aktuellen Bildbeleg ein.
+    const aktuell = e.bildinhaltVorBerichtigung ? [e.text] : [e.text, e.bildinhalt];
+    const text = aktuell.filter((x) => x.length > 0).join(" — ");
     const treffer = text ? trefferIn(text, begriffe) : 0;
     if (treffer > 0) {
       kandidaten.push({ art: "bild", quelle: e.quelle, ort: e.ort, auszug: auszug(text), treffer });
+    }
+    const alt = e.bildinhaltVorBerichtigung ? trefferIn(e.bildinhalt, begriffe) : 0;
+    if (alt > 0) {
+      historisch.push({
+        art: "bild-vor-berichtigung",
+        quelle: e.quelle,
+        ort: e.ort,
+        auszug: auszug(e.bildinhalt),
+        treffer: alt,
+      });
     }
   }
   // Absätze bzw. Sätze — der Klartext eines Editors ist eine einzige Zeile.
@@ -342,8 +367,9 @@ export function belegstellen(
       kandidaten.push({ art: "dokument", quelle: "", ort: "", auszug: auszug(absatz), treffer });
     }
   }
-  // Stabil nach Trefferzahl: bei Gleichstand bleibt die Reihenfolge (Bilder vor Dokumenttext).
-  return kandidaten
+  // Stabil nach Trefferzahl: bei Gleichstand bleibt die Reihenfolge (Bilder vor Dokumenttext,
+  // Beschreibungen vor der Berichtigung zuletzt).
+  return [...kandidaten, ...historisch]
     .map((b, i) => ({ b, i }))
     .sort((x, y) => y.b.treffer - x.b.treffer || x.i - y.i)
     .slice(0, max)
