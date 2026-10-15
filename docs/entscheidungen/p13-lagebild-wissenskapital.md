@@ -15,7 +15,10 @@ Wissenskennzahlen oben auf `/analytics` (ADMIN-11). Die Regeln stehen rein und D
 |---|---|---|
 | Wissensbewertung | validierte Objekte × 60 €/h × 2 h × 3 × Ø-Vertrauen | Euro aus Objektzahl mit Vorgabewerten |
 | Reifegrad-Pfad | „Stufe n/5“ firmenweit aus der Validierungsquote | kein Beleg, kein Arbeitsweg |
-| Kapitalwert bei leerem Bestand | „0 / 100 · kritisch“, Anteile 0 % bzw. 100 % | Prozent über leere Grundmenge |
+
+Bei leerem Bestand zeigt `Capital` schon im Bestand nur den Hinweis „mgmt.empty“ statt der
+Kapitalsicht — der vom Server gerechnete Wert 0/100 und die Anteile erscheinen dort nicht. Das
+bleibt so und ist mit einer Gegenprobe belegt.
 
 `lib/knowledgeValuation.ts` ist nicht mehr eingebunden. Die Datei und ihr Test
 `tests/management/knowledge-valuation.test.ts` bleiben vorerst stehen (Entfernen war in der
@@ -54,8 +57,8 @@ Datenstand. Ergänzt unter „So gezählt“:
   Alltagsnutzen.
 
 `quote(zaehler, nenner)` liefert ohne festgelegte Grundgesamtheit (`nenner: null`) keinen Wert
-(`grundgesamtheit_unbekannt`), bei Nenner 0 `nenner_null`. Die Kapitalsicht zeigt bei leerem
-Bestand keinen Kapitalwert und keine Anteilswerte („—“), nur die Gewichte der Formel.
+(`grundgesamtheit_unbekannt`), bei Nenner 0 `nenner_null`. Ohne Bestand zeigt die Kapitalseite
+keinen Kapitalwert und keine Anteile, sondern den vorhandenen Leerhinweis.
 
 ## Klärbedarf und nächste Handlung (K5, K8)
 

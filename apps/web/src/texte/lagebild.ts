@@ -72,9 +72,6 @@ export default {
       "Reale Anwender und Aufgaben, Gesamtaufwand und Ergebnis gemessen — nur mit echten Anwendern",
     "lagebild.reife.keineBelege":
       "Für keinen Arbeitsweg sind hier Belege hinterlegt. Deshalb steht kein Reifegrad da — auch kein firmenweiter.",
-    "lagebild.kapital.leer":
-      "Kein Bestand — ohne Grundmenge gibt es keinen Wert und keine Anteile.",
-    "lagebild.kapital.anteilLeer": "—",
     "lagebild.wkz.kontext": "Kontext",
     "lagebild.wkz.kontext.alle": "Alle Spaces, deren Inhalte Sie lesen dürfen",
     "lagebild.wkz.kontext.space": "Space {{name}}",
@@ -156,8 +153,6 @@ export default {
       "Real users and tasks, total effort and result measured — real users only",
     "lagebild.reife.keineBelege":
       "No evidence is recorded here for any work path. That is why no maturity level is shown — not even a company-wide one.",
-    "lagebild.kapital.leer": "No knowledge base — without a base there is no value and no shares.",
-    "lagebild.kapital.anteilLeer": "—",
     "lagebild.wkz.kontext": "Context",
     "lagebild.wkz.kontext.alle": "All spaces whose content you may read",
     "lagebild.wkz.kontext.space": "Space {{name}}",
@@ -241,9 +236,6 @@ export default {
       "Echte gebruikers en taken, totale inspanning en resultaat gemeten — alleen met echte gebruikers",
     "lagebild.reife.keineBelege":
       "Voor geen enkele werkwijze is hier bewijs vastgelegd. Daarom staat er geen volwassenheidsniveau — ook geen bedrijfsbreed.",
-    "lagebild.kapital.leer":
-      "Geen kennisbestand — zonder basis is er geen waarde en zijn er geen aandelen.",
-    "lagebild.kapital.anteilLeer": "—",
     "lagebild.wkz.kontext": "Context",
     "lagebild.wkz.kontext.alle": "Alle spaces waarvan u de inhoud mag lezen",
     "lagebild.wkz.kontext.space": "Space {{name}}",

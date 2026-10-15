@@ -318,22 +318,19 @@ describe("P13 · Kapitalsicht: Reifegrad und leerer Bestand", () => {
       },
     });
     const container = await mounten();
-    expect(element(container, "kapital-ohne-bestand").textContent).toBe(
-      de("lagebild.kapital.leer"),
-    );
-    const anteile = [...container.querySelectorAll<HTMLElement>('[data-testid="kapital-anteil"]')];
-    expect(anteile).toHaveLength(2);
-    for (const a of anteile) {
-      // Gewicht bleibt sichtbar (es ist eine Regel), der Anteilswert nicht.
-      expect(a.textContent).toContain(de("lagebild.kapital.anteilLeer"));
-      expect(a.textContent).not.toMatch(/\b(0|100) ·/);
-    }
+    // Ohne Bestand zeigt die Seite den Leerhinweis statt der Kapitalsicht (`Capital`) — der vom
+    // Server gerechnete Wert 0/100 und die Anteile 0 % bzw. 100 % erscheinen nicht.
+    expect(container.textContent).toContain(de("mgmt.empty"));
+    expect(container.querySelectorAll('[data-testid="kapital-anteil"]')).toHaveLength(0);
+    expect(container.querySelector('[data-testid="kapital-index-hinweis"]')).toBeNull();
+    expect(container.querySelector('[data-testid="lagebild-geldwert"]')).toBeNull();
     expect(container.textContent).not.toContain(`/ 100 · ${de("mgmt.band.kritisch")}`);
+    expect(container.textContent).not.toMatch(/\b(0|100) · (30|15)%/);
   });
 
   it("mit Bestand bleiben Kapitalwert und Anteile wie bisher", async () => {
     const container = await mounten();
-    expect(container.querySelector('[data-testid="kapital-ohne-bestand"]')).toBeNull();
+    expect(container.querySelector('[data-testid="kapital-index-hinweis"]')).not.toBeNull();
     const anteile = [...container.querySelectorAll<HTMLElement>('[data-testid="kapital-anteil"]')];
     expect(anteile[0]?.textContent).toContain("75 · 30%");
   });

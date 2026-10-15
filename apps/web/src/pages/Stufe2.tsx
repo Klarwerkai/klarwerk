@@ -1532,13 +1532,11 @@ function MgmtKpi({ label, value }: { label: string; value: string | number }): J
 
 // SCRUM-120/114 / FE-MGMT: echte, datenbasierte Management-/Wissenskapital-Sichten.
 // Alle Zahlen aus dem Live-Snapshot. PETER-20261011-P13: kein Geldwert aus dem Bestand und kein
-// firmenweiter Reifegrad (components/LagebildKapital); ohne Bestand kein Kapitalwert und keine Anteile.
+// firmenweiter Reifegrad (components/LagebildKapital). Ohne Bestand wird diese Sicht gar nicht
+// gezeigt (`Capital`: Hinweis „mgmt.empty“) — also auch kein Kapitalwert und keine Anteile.
 function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
   const { t } = useTranslation();
   const o = snap.overview;
-  // Über eine leere Grundmenge gibt es keinen Wert: der Server rechnet dann 0 bzw. 100 % für die
-  // invertierten Anteile — beides wäre eine erfundene Aussage.
-  const ohneBestand = o.totalKos === 0;
   return (
     <div className="space-y-4">
       {/* SCRUM-227: Sprungmarken zu den konsolidierten Alt-App-Management-Sektionen. */}
@@ -1593,20 +1591,12 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       <Card id={sectionAnchor("capital")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.capital")}</SectionLabel>
         <HelpTip title={t("mgmt.capital")} body={t("shelp.mgmt.capital")} />
-        {ohneBestand ? (
-          <p data-testid="kapital-ohne-bestand" className="mt-2 text-[12.5px] text-muted">
-            {t("lagebild.kapital.leer")}
-          </p>
-        ) : (
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className={`text-4xl font-bold ${BAND_TEXT[snap.capital.band] ?? "text-ink"}`}>
-              {snap.capital.score}
-            </span>
-            <span className="text-sm text-muted">
-              / 100 · {t(`mgmt.band.${snap.capital.band}`)}
-            </span>
-          </div>
-        )}
+        <div className="mt-2 flex items-baseline gap-2">
+          <span className={`text-4xl font-bold ${BAND_TEXT[snap.capital.band] ?? "text-ink"}`}>
+            {snap.capital.score}
+          </span>
+          <span className="text-sm text-muted">/ 100 · {t(`mgmt.band.${snap.capital.band}`)}</span>
+        </div>
         {/* R-0755: der Wert ist eine gewichtete Formel über die Anteile darunter, kein Messwert. */}
         <p data-testid="kapital-index-hinweis" className="mt-1 text-[11px] text-muted-2">
           {t("kennzahlen.kapital.index")}
@@ -1618,13 +1608,10 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
                 {t(`mgmt.part.${p.key}`)}
               </span>
               <div className="h-2 flex-1 rounded-pill bg-page">
-                {ohneBestand ? null : (
-                  <div className="h-2 rounded-pill bg-ink" style={{ width: `${p.value}%` }} />
-                )}
+                <div className="h-2 rounded-pill bg-ink" style={{ width: `${p.value}%` }} />
               </div>
               <span className="w-14 shrink-0 text-right font-mono text-[11px] text-muted-2">
-                {ohneBestand ? t("lagebild.kapital.anteilLeer") : p.value} ·{" "}
-                {Math.round(p.weight * 100)}%
+                {p.value} · {Math.round(p.weight * 100)}%
               </span>
             </div>
           ))}
