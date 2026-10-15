@@ -4,6 +4,14 @@
   "quelle": "20261015-direktauftrag-v1 · PRODUKTPAKET.txt Version 1.0 · PP-01",
   "basis": "e3b86aec88feacb92a046abf6fa1af2400207ca0",
   "erhoben_am": "2026-10-15",
+  "auftragsabgleich": {
+    "quelle": "QUELLEN-FUEHRUNG-PP01-ANSCHLUSSBESTAND-20261015.json (Zulieferung der Führung im Auftragsordner)",
+    "sha256": "db56f8dd8c3edd7873334ae796588ab3960da6182ce2ee3b2723a49d4365054a",
+    "sha256_herkunft": "QUELLEN-HILFE-CLAUDE-FORTSETZUNG-0e8b243c.json; in dieser Sitzung nicht nachgerechnet",
+    "erhoben_am": "2026-10-15T10:12:07Z",
+    "gebunden_an": "f9f470d44dd58177dede6a21591d0fc6d07c4f23",
+    "art": "rein lesend, root_mutations 0; zentraler Auftragsstand, eingerichteter Job, Auftragsordner und Lieferung je Auftrag"
+  },
   "hinweis": "Quelleninspektion der Arbeitsbasis, keine Host- oder Bedienabnahme. Jeder Eintrag mit fundstellen ist per Datei und wörtlichem Anker belegt (tests/klara-powerpoint/fundstellen.test.ts). stand=geliefert: im Hauptstand vorhanden. stand=fehlt: im Hauptstand nicht vorhanden; die Fundstellen belegen dann die Grenze. Einträge art=auftrag geben den Auftragsstand nur so wieder, wie er in der Auftragsquelle bzw. im Repository steht.",
   "eintraege": [
     {
@@ -443,6 +451,11 @@
       "revision": 4,
       "auftragsstand": "offen",
       "herkunft": "QUELLEN.json, linked_originals",
+      "abgleich": {
+        "job_eingerichtet": false,
+        "auftragsordner": "auftrag-c0b296aed8b96278e17b",
+        "ordner_vorhanden": false
+      },
       "pp_bezug": ["H01", "H02"]
     },
     {
@@ -453,6 +466,11 @@
       "revision": 1,
       "auftragsstand": "offen",
       "herkunft": "QUELLEN.json, linked_originals",
+      "abgleich": {
+        "job_eingerichtet": true,
+        "auftragsordner": "auftrag-ae98566ac0b1b4c7d2b2",
+        "ordner_vorhanden": true
+      },
       "pp_bezug": ["PP-04"]
     },
     {
@@ -463,6 +481,11 @@
       "revision": 1,
       "auftragsstand": "offen",
       "herkunft": "QUELLEN.json, linked_originals",
+      "abgleich": {
+        "job_eingerichtet": false,
+        "auftragsordner": "auftrag-1fbf36bf64cd31389769",
+        "ordner_vorhanden": false
+      },
       "pp_bezug": ["PP-04", "PP-05"]
     },
     {
@@ -473,6 +496,11 @@
       "revision": 1,
       "auftragsstand": "offen",
       "herkunft": "QUELLEN.json, linked_originals",
+      "abgleich": {
+        "job_eingerichtet": false,
+        "auftragsordner": "auftrag-00953a8791b24fc7aa54",
+        "ordner_vorhanden": false
+      },
       "pp_bezug": ["PP-04"]
     },
     {
@@ -483,6 +511,11 @@
       "revision": 1,
       "auftragsstand": "offen",
       "herkunft": "QUELLEN.json, linked_originals",
+      "abgleich": {
+        "job_eingerichtet": false,
+        "auftragsordner": "auftrag-92d34d612bb390b0c816",
+        "ordner_vorhanden": false
+      },
       "pp_bezug": ["PP-03", "PP-04"]
     },
     {
@@ -493,6 +526,11 @@
       "revision": 1,
       "auftragsstand": "offen",
       "herkunft": "QUELLEN.json, linked_originals",
+      "abgleich": {
+        "job_eingerichtet": false,
+        "auftragsordner": "auftrag-66fba55a9a3aeed38a7c",
+        "ordner_vorhanden": false
+      },
       "pp_bezug": ["PP-04"]
     },
     {
@@ -500,8 +538,19 @@
       "art": "auftrag",
       "name": "OCR-02 · Bilder automatisch analysieren",
       "auftrag_id": "produkt:20261012:klara-bildanalyse-ocr-automatik",
-      "auftragsstand": "Code im Hauptstand; Auftragsstand hier nicht erhoben",
+      "revision": 3,
+      "auftragsstand": "abgeschlossen",
       "herkunft": "docs/klara-bildanalyse-ocr/OCR-02-AUTOMATIK.md",
+      "abgleich": {
+        "job_eingerichtet": true,
+        "auftragsordner": "auftrag-c7b3fdd2ffc973ac358e",
+        "ordner_vorhanden": true,
+        "lieferung": {
+          "commit": "3fd423dbb47150cf480a46fe3459f66b86242f8b",
+          "version": "1.0.0-beta.1.949",
+          "abgeschlossen_am": "2026-10-12T21:06:50Z"
+        }
+      },
       "pp_bezug": ["PP-04"]
     },
     {
@@ -509,8 +558,19 @@
       "art": "auftrag",
       "name": "OCR-03 · Kontext für Klara und Setup-Schalter",
       "auftrag_id": "produkt:20261012:klara-bildanalyse-ocr-kontext-setup",
-      "auftragsstand": "Code im Hauptstand; Auftragsstand hier nicht erhoben",
+      "revision": 3,
+      "auftragsstand": "abgeschlossen",
       "herkunft": "docs/klara-bildanalyse-ocr/OCR-03-KONTEXT-SETUP.md",
+      "abgleich": {
+        "job_eingerichtet": true,
+        "auftragsordner": "auftrag-cde2f5885de8434de6ee",
+        "ordner_vorhanden": true,
+        "lieferung": {
+          "commit": "1424244ecb12624cbd1f250c5e2e54cd6050cbcf",
+          "version": "1.0.0-beta.1.950",
+          "abgeschlossen_am": "2026-10-12T23:30:32Z"
+        }
+      },
       "pp_bezug": ["PP-04", "Setup"]
     },
     {
@@ -518,9 +578,19 @@
       "art": "auftrag",
       "name": "AA-02 bis AA-04 · Bereich Klara im Setup und Tastenkürzel",
       "auftrag_id": "produkt:20261012:klara-setup-shortcuts-umsetzung",
-      "revision": 2,
-      "auftragsstand": "Code im Hauptstand; Auftragsstand hier nicht erhoben",
+      "revision": 4,
+      "auftragsstand": "abgeschlossen",
       "herkunft": "docs/klara-setup-shortcuts/UMSETZUNG.md",
+      "abgleich": {
+        "job_eingerichtet": true,
+        "auftragsordner": "auftrag-d2756a6915813116f67b",
+        "ordner_vorhanden": true,
+        "lieferung": {
+          "commit": "78eb5667943414ccd57a5acf6233928d93469e9c",
+          "version": "1.0.0-beta.1.948",
+          "abgeschlossen_am": "2026-10-12T19:51:49Z"
+        }
+      },
       "pp_bezug": ["Setup"]
     },
     {
@@ -528,8 +598,19 @@
       "art": "auftrag",
       "name": "Office im Artikel (WOPI-Editor) und Machbarkeit",
       "auftrag_id": "produkt:20261007:office-artikel-editor",
-      "auftragsstand": "Code im Hauptstand; Auftragsstand hier nicht erhoben",
+      "revision": 3,
+      "auftragsstand": "abgeschlossen",
       "herkunft": "apps/web/src/lib/officeEditor.ts",
+      "abgleich": {
+        "job_eingerichtet": true,
+        "auftragsordner": "auftrag-7ba33ac6c79efdd08267",
+        "ordner_vorhanden": true,
+        "lieferung": {
+          "commit": "e6d2cf9a0d6b7cac74509a4103669ae610f863bb",
+          "version": "1.0.0-beta.1.854",
+          "abgeschlossen_am": "2026-10-10T01:59:41Z"
+        }
+      },
       "pp_bezug": ["H04"]
     },
     {
@@ -537,8 +618,19 @@
       "art": "auftrag",
       "name": "BPA-17 · Präsentation nach der Besprechung nachbearbeiten",
       "auftrag_id": "produkt:20261011:assistenz-dokumentnachbearbeitung",
-      "auftragsstand": "Code im Hauptstand; Auftragsstand hier nicht erhoben",
+      "revision": 3,
+      "auftragsstand": "abgeschlossen",
       "herkunft": "docs/operations/klara/praesentation-nachbearbeitung.md",
+      "abgleich": {
+        "job_eingerichtet": true,
+        "auftragsordner": "auftrag-2463c7081c607ea620ed",
+        "ordner_vorhanden": true,
+        "lieferung": {
+          "commit": "674c37a2d223cd212878750695e1d8be05dad80c",
+          "version": "1.0.0-beta.1.931",
+          "abgeschlossen_am": "2026-10-11T20:44:04Z"
+        }
+      },
       "pp_bezug": ["PP-05", "PP-07", "PP-08"]
     },
     {
@@ -546,8 +638,19 @@
       "art": "auftrag",
       "name": "BPA-16 · Gesprächsaussagen mit Folien und Dokumentstellen verbinden",
       "auftrag_id": "produkt:20261011:assistenz-meeting-dokumentbezug",
-      "auftragsstand": "Code im Hauptstand; Auftragsstand hier nicht erhoben",
+      "revision": 3,
+      "auftragsstand": "abgeschlossen",
       "herkunft": "docs/operations/klara/meeting-dokumentbezug.md",
+      "abgleich": {
+        "job_eingerichtet": true,
+        "auftragsordner": "auftrag-617ee901dad796bab624",
+        "ordner_vorhanden": true,
+        "lieferung": {
+          "commit": "aa4016b5fa7404e40586944f6c55de72c4a1e1a3",
+          "version": "1.0.0-beta.1.929",
+          "abgeschlossen_am": "2026-10-11T19:55:53Z"
+        }
+      },
       "pp_bezug": ["PP-07", "PP-08"]
     }
   ],

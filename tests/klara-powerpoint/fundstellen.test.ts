@@ -18,8 +18,11 @@
 //       Rest; PP-02 bis PP-09 sind nicht als geliefert ausgegeben (K3, K4).
 //   F6  Nacharbeit 1 (Bens Befunde): native Folientabellen sind ein vorhandener Leseweg (W12) am
 //       echten Leser, getrennt von fehlenden Diagrammdaten (L03) und fehlender Datenbindung (L17);
-//       der Auftragsabgleich nennt Überschneidungen und Zuständigkeiten und führt den nicht
-//       erhobenen Sitzungs-/Arbeitsbaumstand fremder Aufträge offen statt als erledigt (K1, K2).
+//       der Auftragsabgleich nennt Überschneidungen und Zuständigkeiten je Datei (K1, K2).
+//   F7  Nacharbeit 4: der Abgleich A01–A12 folgt der kandidatgebundenen Zulieferung der Führung:
+//       Zentralstand, Revision, eingerichteter Job, Auftragsordner und Lieferung je Auftrag stehen
+//       gleich in fundstellen.json und BESTAND.md 7.2; nur A02 ist offen mit Job und wird
+//       geschützt; nicht Belegtes (Sitzungsstatus A02) bleibt als Grenze benannt (K1, K3).
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { type EditorNachricht, auswahlVomEditor } from "../../apps/web/src/lib/officeEditor";
@@ -42,6 +45,12 @@ interface Eintrag {
   revision?: number;
   auftragsstand?: string;
   herkunft?: string;
+  abgleich?: {
+    job_eingerichtet: boolean;
+    auftragsordner: string;
+    ordner_vorhanden: boolean;
+    lieferung?: { commit: string; version: string; abgeschlossen_am: string };
+  };
 }
 
 const ORDNER = "docs/klara-powerpoint";
@@ -53,6 +62,7 @@ const liste = JSON.parse(lies("fundstellen.json")) as {
   revision: number;
   eintraege: Eintrag[];
   luecken: { id: string; name: string }[];
+  auftragsabgleich?: { quelle?: string; gebunden_an?: string; erhoben_am?: string };
 };
 const eintraege = liste.eintraege;
 const ids = new Set(eintraege.map((e) => e.id));
@@ -319,13 +329,75 @@ describe("F6 · Nacharbeit 1: Folientabellen und Auftragsabgleich", () => {
       expect(z, datei).toMatch(/\bA\d{2}\b/);
     }
   });
+});
 
-  it("der nicht erhobene Sitzungs-/Arbeitsbaumstand bleibt offen, nicht als erledigt", () => {
-    expect(bestand).toContain("### 7.2 Erhebungsstand zu Sitzungen und Arbeitsbäumen");
-    expect(bestand).toContain("**Nicht erhoben:** die laufenden Sitzungen");
-    expect(bestand).toContain("eine **offene Beleglücke**, keine fehlende Implementierung");
-    for (const a of eintraege.filter((x) => x.art === "auftrag" && x.auftragsstand !== "offen")) {
-      expect(a.auftragsstand, a.id).toContain("nicht erhoben");
+describe("F7 · Nacharbeit 4: Abgleich A01–A12 aus der Zulieferung der Führung", () => {
+  const bestand = lies("BESTAND.md");
+  const ab72 = bestand.slice(bestand.indexOf("### 7.2 Sitzungen, Kandidaten und Arbeitsbäume"));
+  const zeile72 = (id: string): string => zeile(ab72, id);
+  const auftraege = eintraege.filter((e) => e.art === "auftrag");
+  const quelleDerZulieferung = liste.auftragsabgleich;
+
+  it("die Zulieferung ist benannt und an einen Kandidaten gebunden", () => {
+    expect(quelleDerZulieferung?.quelle ?? "").toContain(
+      "QUELLEN-FUEHRUNG-PP01-ANSCHLUSSBESTAND-20261015.json",
+    );
+    expect(quelleDerZulieferung?.gebunden_an ?? "").toMatch(/^[0-9a-f]{40}$/);
+    expect(quelleDerZulieferung?.erhoben_am ?? "").toMatch(/^2026-10-15T/);
+    expect(bestand).toContain("`QUELLEN-FUEHRUNG-PP01-ANSCHLUSSBESTAND-20261015.json`");
+    // Die frühere offene Lücke ist geschlossen, nicht still gelöscht: 7.2 trägt jetzt die Werte.
+    expect(bestand).not.toContain("**Nicht erhoben:**");
+  });
+
+  it("je Auftrag Job, Ordner und Zentralstand; 7.2 gibt genau diese Werte wieder", () => {
+    expect(auftraege.map((a) => a.id)).toEqual(
+      Array.from({ length: 12 }, (_, i) => `A${String(i + 1).padStart(2, "0")}`),
+    );
+    for (const a of auftraege) {
+      const g = a.abgleich;
+      expect(g, a.id).toBeDefined();
+      expect(g?.auftragsordner ?? "", a.id).toMatch(/^auftrag-[0-9a-f]{20}$/);
+      expect(typeof a.revision, a.id).toBe("number");
+      const z = zeile72(a.id);
+      expect(z, `${a.id} fehlt in 7.2`).not.toBe("");
+      const s = spalten(z);
+      expect(s.length, a.id).toBe(6);
+      expect(s[1], a.id).toBe(`${a.auftragsstand}, Rev. ${a.revision}`);
+      expect(s[2], a.id).toMatch(g?.job_eingerichtet ? /^\*\*ja\*\*$|^ja$/ : /^nein$/);
+      const ordner = `\`${g?.auftragsordner}\` ${g?.ordner_vorhanden ? "vorhanden" : "fehlt"}`;
+      expect(s[3], a.id).toBe(ordner);
+      if (a.auftragsstand === "abgeschlossen") {
+        const l = g?.lieferung;
+        expect(l?.commit ?? "", a.id).toMatch(/^[0-9a-f]{40}$/);
+        expect(l?.version ?? "", a.id).toMatch(/^1\.0\.0-beta\.1\.\d+$/);
+        expect(s[4], a.id).toContain(`\`${l?.commit.slice(0, 8)}\` · ${l?.version}`);
+      } else {
+        expect(a.auftragsstand, a.id).toBe("offen");
+        expect(g?.lieferung, a.id).toBeUndefined();
+        expect(s[4], a.id).toBe("—");
+      }
     }
+  });
+
+  it("A07–A12 sind abgeschlossen, A01–A06 offen; A09 trägt die zentrale Revision 4", () => {
+    for (const id of ["A07", "A08", "A09", "A10", "A11", "A12"]) {
+      expect(eintrag(id).auftragsstand, id).toBe("abgeschlossen");
+      expect(zeile(bestand, id), id).toContain("| abgeschlossen |");
+    }
+    for (const id of ["A01", "A02", "A03", "A04", "A05", "A06"]) {
+      expect(eintrag(id).auftragsstand, id).toBe("offen");
+    }
+    expect(eintrag("A09").revision).toBe(4);
+  });
+
+  it("nur A02 ist ein offener Auftrag mit eingerichtetem Job und wird geschützt", () => {
+    const offenMitJob = auftraege
+      .filter((a) => a.auftragsstand === "offen" && a.abgleich?.job_eingerichtet)
+      .map((a) => a.id);
+    expect(offenMitJob).toEqual(["A02"]);
+    expect(zeile72("A02")).toContain("**einziger eingerichteter offener Fremdauftrag**");
+    expect(ab72).toContain("Damit entsteht kein Doppelstart.");
+    // Was die Zulieferung nicht trägt, bleibt als Grenze benannt.
+    expect(ab72).toContain("Ob dort gerade eine Sitzung läuft, ist nicht belegt");
   });
 });

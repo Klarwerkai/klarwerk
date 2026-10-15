@@ -108,9 +108,11 @@ zweiten Setup-Ort.
 
 ## 7. Abgleich laufender Aufträge (keine Doppelstarts)
 
-Stand der verknüpften Originale laut Auftragsquelle (`QUELLEN.json`, `linked_originals`, erfasst
-15.10.2026 09:04 UTC). Bei A07 bis A12 ist nur belegt, dass ihr Code im Hauptstand `e3b86aec` liegt
-(Fundstelle je Eintrag in `fundstellen.json`); ihr Lieferstand ist damit nicht erhoben (7.2).
+Stand je Auftrag laut der rein lesenden Zulieferung der Führung
+`QUELLEN-FUEHRUNG-PP01-ANSCHLUSSBESTAND-20261015.json` (erhoben 15.10.2026 10:12 UTC, gebunden an
+Kandidat `f9f470d4`, ohne Änderungen am Bestand). Für A01 bis A06 stimmt er mit der Auftragsquelle
+(`QUELLEN.json`, `linked_originals`, 09:04 UTC) überein. Die Einzelwerte stehen je Eintrag unter
+`abgleich` in `fundstellen.json`.
 
 | ID | Auftrag | Revision | Stand | Bezug | Folge für das PowerPoint-Paket |
 | --- | --- | --- | --- | --- | --- |
@@ -120,12 +122,12 @@ Stand der verknüpften Originale laut Auftragsquelle (`QUELLEN.json`, `linked_or
 | A04 | `produkt:20261012:klara-ocr-mehrseitige-scans` | 1 | offen | PP-04 | mehrseitige Scans nur dort |
 | A05 | `produkt:20261012:klara-ocr-widersprueche` | 1 | offen | PP-03, PP-04 | Bild-/Textwiderspruch nur dort; PP-03 nutzt das Ergebnis |
 | A06 | `produkt:20261012:klara-ocr-bereichsfrage` | 1 | offen | PP-04 | „Was steht hier?“ nur dort |
-| A07 | `produkt:20261012:klara-bildanalyse-ocr-automatik` | — | Code im Hauptstand | PP-04 | W03 wiederverwenden |
-| A08 | `produkt:20261012:klara-bildanalyse-ocr-kontext-setup` | — | Code im Hauptstand | PP-04, Setup | W04, S02 wiederverwenden |
-| A09 | `produkt:20261012:klara-setup-shortcuts-umsetzung` | 2 | Code im Hauptstand | Setup | S01, S03 erweitern, nicht ersetzen |
-| A10 | `produkt:20261007:office-artikel-editor` | — | Code im Hauptstand | H04 | W07, W08, W09 wiederverwenden |
-| A11 | `produkt:20261011:assistenz-dokumentnachbearbeitung` | — | Code im Hauptstand | PP-05, PP-07, PP-08 | W06, V06 wiederverwenden |
-| A12 | `produkt:20261011:assistenz-meeting-dokumentbezug` | — | Code im Hauptstand | PP-07, PP-08 | W10 wiederverwenden |
+| A07 | `produkt:20261012:klara-bildanalyse-ocr-automatik` | 3 | abgeschlossen | PP-04 | W03 wiederverwenden |
+| A08 | `produkt:20261012:klara-bildanalyse-ocr-kontext-setup` | 3 | abgeschlossen | PP-04, Setup | W04, S02 wiederverwenden |
+| A09 | `produkt:20261012:klara-setup-shortcuts-umsetzung` | 4 | abgeschlossen | Setup | S01, S03 erweitern, nicht ersetzen |
+| A10 | `produkt:20261007:office-artikel-editor` | 3 | abgeschlossen | H04 | W07, W08, W09 wiederverwenden |
+| A11 | `produkt:20261011:assistenz-dokumentnachbearbeitung` | 3 | abgeschlossen | PP-05, PP-07, PP-08 | W06, V06 wiederverwenden |
+| A12 | `produkt:20261011:assistenz-meeting-dokumentbezug` | 3 | abgeschlossen | PP-07, PP-08 | W10 wiederverwenden |
 
 PP-01 hat keinen dieser Aufträge gestartet, geändert oder übernommen. Ihre Kriterien, Arbeitsbäume
 und Sitzungen bleiben unverändert.
@@ -147,19 +149,46 @@ das PowerPoint-Paket nicht nebenher. PP-02 bis PP-08 nutzen dort nur das Ergebni
 | `services/app/src/meeting-dokumentbezug.ts` | W10 | Code aus A12 | Folienbindung (PP-02, PP-07, PP-08) | Identität `p:sldId` + Fassung übernehmen |
 | `docs/klara-bildanalyse-ocr/` | — | A02 bis A06 (Pfad laut Quelle) | — | das PowerPoint-Paket schreibt dort nicht |
 
-### 7.2 Erhebungsstand zu Sitzungen und Arbeitsbäumen
+### 7.2 Sitzungen, Kandidaten und Arbeitsbäume
 
-**Erhoben:** der eigene Auftrag. `auftragsstand.json` dieses Auftrags (Revision 11) nennt einen
-Betrieb mit Status `running` für genau `produkt:20261015:klara-powerpoint-bestand` auf Zweig
-`codex/auftrag-f263c73ba0d8a175c378`, Kandidat `08de39f3`. Diese Nacharbeit läuft in derselben
-Sitzung und demselben Arbeitsbaum weiter; ein zweiter Lauf ist nicht entstanden.
+**Eigener Auftrag.** `auftragsstand.json` (Revision 11) nennt einen Betrieb mit Status `running` für
+genau `produkt:20261015:klara-powerpoint-bestand`, Zweig `codex/auftrag-f263c73ba0d8a175c378`. Die
+Nacharbeiten laufen in derselben Sitzung und demselben Arbeitsbaum; ein zweiter Lauf ist nicht
+entstanden. Aktueller Kandidat ist `f9f470d4`.
 
-**Nicht erhoben:** die laufenden Sitzungen, Kandidaten und Arbeitsbäume von A01 bis A12. Ihre Belege
-(`auftraege/<kennung>/auftragsstand.json`, die Zweige `codex/auftrag-…`) liegen außerhalb des
-eigenen Auftragsordners. In dieser Sitzung sind Lesezugriffe dorthin und Git-Befehle gesperrt. Das ist
-eine **offene Beleglücke**, keine fehlende Implementierung. Die Kandidatenlisten im Repository
-(`docs/klara-setup-shortcuts/BESTAND.md` Abschnitt 6, `docs/klara-bildanalyse-ocr/ABGLEICH-OCR-AUFTRAG.md`)
-stammen vom 12.10.2026 und belegen keinen heutigen Stand.
+**A01 bis A12** laut Zulieferung (Auftragsordner unter `auftraege/`):
 
-Bis der Abgleich nachgeholt ist, gilt die Regel aus 7.1: Das PowerPoint-Paket startet keinen dieser
-Aufträge und ändert keine Datei, die dort einem offenen Auftrag zugeordnet ist.
+| ID | Zentralstand | Job eingerichtet | Auftragsordner | Lieferung (Commit · Version · abgeschlossen) | Bewertung für Doppelstarts |
+| --- | --- | --- | --- | --- | --- |
+| A01 | offen, Rev. 4 | nein | `auftrag-c0b296aed8b96278e17b` fehlt | — | kein laufender Arbeitsbaum; der Host-Bau ist offener Vertrag von A01 und wird nicht von PP gestartet |
+| A02 | offen, Rev. 1 | **ja** | `auftrag-ae98566ac0b1b4c7d2b2` vorhanden | — | **einziger eingerichteter offener Fremdauftrag**; Arbeitsbaum und Sitzung als möglicherweise laufend schützen, W03/W04-Dateien (7.1) nicht ändern |
+| A03 | offen, Rev. 1 | nein | `auftrag-1fbf36bf64cd31389769` fehlt | — | kein laufender Arbeitsbaum; Start nur über A03 selbst |
+| A04 | offen, Rev. 1 | nein | `auftrag-00953a8791b24fc7aa54` fehlt | — | kein laufender Arbeitsbaum; Start nur über A04 selbst |
+| A05 | offen, Rev. 1 | nein | `auftrag-92d34d612bb390b0c816` fehlt | — | kein laufender Arbeitsbaum; Start nur über A05 selbst |
+| A06 | offen, Rev. 1 | nein | `auftrag-66fba55a9a3aeed38a7c` fehlt | — | kein laufender Arbeitsbaum; Start nur über A06 selbst |
+| A07 | abgeschlossen, Rev. 3 | ja | `auftrag-c7b3fdd2ffc973ac358e` vorhanden | `3fd423db` · 1.0.0-beta.1.949 · 12.10.2026 | geliefert; Original und Kandidat erhalten, nicht neu öffnen |
+| A08 | abgeschlossen, Rev. 3 | ja | `auftrag-cde2f5885de8434de6ee` vorhanden | `1424244e` · 1.0.0-beta.1.950 · 12.10.2026 | geliefert; nicht neu öffnen |
+| A09 | abgeschlossen, Rev. 4 | ja | `auftrag-d2756a6915813116f67b` vorhanden | `78eb5667` · 1.0.0-beta.1.948 · 12.10.2026 | geliefert; nicht neu öffnen |
+| A10 | abgeschlossen, Rev. 3 | ja | `auftrag-7ba33ac6c79efdd08267` vorhanden | `e6d2cf9a` · 1.0.0-beta.1.854 · 10.10.2026 | geliefert; nicht neu öffnen |
+| A11 | abgeschlossen, Rev. 3 | ja | `auftrag-2463c7081c607ea620ed` vorhanden | `674c37a2` · 1.0.0-beta.1.931 · 11.10.2026 | geliefert; nicht neu öffnen |
+| A12 | abgeschlossen, Rev. 3 | ja | `auftrag-617ee901dad796bab624` vorhanden | `aa4016b5` · 1.0.0-beta.1.929 · 11.10.2026 | geliefert; nicht neu öffnen |
+
+**Ergebnis.** Laufende Fremdarbeit mit eigenem Arbeitsbaum kann nur bei A02 bestehen. A07 bis A12
+sind zentral abgeschlossen; ihr Code ist Basis der Wege in Abschnitt 2. Eine Erweiterung läuft über
+einen neuen regulären Auftrag (PP-02 ff.), nicht über ein Wiederöffnen. A01 und A03 bis A06 sind
+offene Verträge ohne eingerichteten Job; sie werden über ihren eigenen Auftrag gestartet, nie durch
+das PowerPoint-Paket. Damit entsteht kein Doppelstart.
+
+**Grenzen.**
+- Die Zulieferung nennt keinen Prozess- oder Sitzungsstatus und keinen Kandidaten-Commit des offenen
+  Auftrags A02. Ob dort gerade eine Sitzung läuft, ist nicht belegt; deshalb gilt A02 als geschützt.
+- Dass die Liefercommits von A07 bis A12 Vorfahren der Arbeitsbasis `e3b86aec` (1.0.0-beta.1.982)
+  sind, ist nicht mit Git geprüft. Die Versionsfolge spricht dafür; die Codefundstellen in
+  `fundstellen.json` belegen die Wege im Hauptstand.
+- Der Hash der Zulieferung ist aus `QUELLEN-HILFE-CLAUDE-FORTSETZUNG-0e8b243c.json` übernommen; nachgerechnet
+  wurde er in dieser Sitzung nicht.
+- Die Kandidatenlisten im Repository (`docs/klara-setup-shortcuts/BESTAND.md` Abschnitt 6,
+  `docs/klara-bildanalyse-ocr/ABGLEICH-OCR-AUFTRAG.md`) stammen vom 12.10.2026 und sind historisch.
+
+Vor jedem Bau von PP-02 ff. ist dieser Abgleich frisch zu wiederholen (Auftrag, Abschnitt
+„Vor jedem Bau frische … Fremdarbeitsprüfung“).
