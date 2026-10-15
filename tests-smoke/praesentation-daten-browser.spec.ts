@@ -149,6 +149,13 @@ async function oeffneDatenflaeche(page: Page, koId: string, anhangId: string): P
   await page.goto(`/wissen/${koId}`);
   await expect(page.getByTestId("bib-titel")).toBeVisible({ timeout: 15_000 });
   await nutzungshinweisQuittieren(page);
+  // Das Einrichtungsband der Assistenz liegt im schmalen Fenster über dem Inhalt — wie ein Mensch
+  // es mit „Später“ wegschiebt, ohne etwas einzurichten.
+  const einrichtung = page.getByRole("region", { name: "Wie soll deine Assistenz heißen?" });
+  if (await einrichtung.isVisible()) {
+    await einrichtung.getByRole("button", { name: "Später" }).click();
+    await expect(einrichtung).toBeHidden({ timeout: 15_000 });
+  }
   await page.getByTestId("bib-mehr").click();
   await page.locator('[data-bib-abschnitt="anhaenge"] > summary').click();
   await page.locator(`[data-office-oeffnen="${anhangId}"]`).click();
@@ -340,30 +347,36 @@ test.describe("PP-02 · Datenherkunft am PowerPoint-Anhang", () => {
     expect(breitListe && breitDetail && breitDetail.x > breitListe.x + breitListe.width - 1).toBe(
       true,
     );
-    const ueberlauf = () =>
-      flaeche.evaluate((el) => {
+    const ueberlauf = (bereich: Locator) =>
+      bereich.evaluate((el) => {
         const zuBreit = [el, ...Array.from(el.querySelectorAll<HTMLElement>("[data-herkunft], li"))]
           .filter((x) => x.scrollWidth > x.clientWidth + 1)
           .map((x) => x.getAttribute("data-herkunft") ?? x.tagName);
         return zuBreit;
       });
-    expect(await ueberlauf()).toEqual([]);
+    expect(await ueberlauf(flaeche)).toEqual([]);
     await beleg(page, "b2-breit");
 
     // Schmales Fenster: Detailbereich UNTER der Folie, nichts abgeschnitten, Bedienung erreichbar.
+    // Nacharbeit 3: der Wechsel über die Layoutgrenze baut die Artikelseite neu auf und klappt
+    // „Mehr“ zu (vorhandenes Verhalten der Artikelseite, nicht dieser Fläche). Gemessen wird deshalb,
+    // wie ein Mensch im schmalen Fenster arbeitet: dort öffnen, dort die Zahl wählen.
     await page.setViewportSize({ width: 390, height: 844 });
-    const schmalListe = await liste.boundingBox();
-    const schmalDetail = await flaeche.locator(`[data-herkunft="${id}"]`).boundingBox();
+    const schmal = await oeffneDatenflaeche(page, koId, anhangId);
+    await schmal.locator(`[data-datenpunkt="${id}"]`).click();
+    await expect(schmal.locator(`[data-herkunft="${id}"]`)).toBeVisible();
+    const schmalListe = await schmal.locator("[data-folien-liste]").boundingBox();
+    const schmalDetail = await schmal.locator(`[data-herkunft="${id}"]`).boundingBox();
     expect(
       schmalListe && schmalDetail && schmalDetail.y >= schmalListe.y + schmalListe.height - 1,
     ).toBe(true);
-    expect(await ueberlauf()).toEqual([]);
-    await flaeche.locator("[data-herkunft-schliessen]").scrollIntoViewIfNeeded();
-    await expect(flaeche.locator("[data-herkunft-schliessen]")).toBeVisible();
+    expect(await ueberlauf(schmal)).toEqual([]);
+    await schmal.locator("[data-herkunft-schliessen]").scrollIntoViewIfNeeded();
+    await expect(schmal.locator("[data-herkunft-schliessen]")).toBeVisible();
     await beleg(page, "b2-schmal");
 
-    // Dunkel-Präferenz: die Fläche bleibt lesbar (Schrift- und Hintergrundfarbe verschieden).
-    await page.setViewportSize({ width: 1440, height: 900 });
+    // Dunkel-Präferenz: die Fläche bleibt lesbar (Schrift- und Hintergrundfarbe verschieden). Ohne
+    // erneuten Breitenwechsel — die Fläche des schmalen Fensters bleibt offen.
     for (const schema of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme: schema });
       const farben = await zahl.evaluate((el) => {
