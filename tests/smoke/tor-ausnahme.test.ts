@@ -130,6 +130,19 @@ const ERLAUBTE_AUSNAHMEN = [
     file: "klara-ocr-fundstelle-korrektur-browser.spec.ts",
     title: "OCR-E02 · Klara antwortet und fasst zusammen mit dem berichtigten Bildtext @modell",
   },
+  // OCR-03: der vorhandene Fall verlangt eine echte Antwort und Zusammenfassung über assist.
+  // Er ist bereits mit @modell markiert; der Eintrag bildet die bestehende Torauswahl ab.
+  {
+    file: "klara-bild-kontext-browser.spec.ts",
+    title:
+      "OCR-03 · Klara antwortet mit dem Modell auf Bildtext und fasst Text und Bilder zusammen @modell",
+  },
+  // REF-02: die vorhandene Beobachtung verlangt mindestens fünf echte Prüfmodellläufe;
+  // Fixture-Antworten genügen ausdrücklich nicht. Der volle Smoke behält diesen Fall.
+  {
+    file: "referenzki-modellbeobachtung.spec.ts",
+    title: "REF-02 · K10 — sieben fiktive Fälle gegen das echte Prüfmodell @modell",
+  },
 ] as const;
 
 /** Das npm-Skript, dessen Aufrufzeile das Tor in `tools/check` fährt. */
