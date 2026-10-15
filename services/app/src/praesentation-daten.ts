@@ -531,7 +531,106 @@ export interface DatenUmgebung {
 }
 
 async function lesbar(dp: Datenpunkt, u: DatenUmgebung): Promise<boolean> {
-  return (await u.artikel(dp.heimatKoId)) !== undefined;
+  return vollLesbar(dp, u);
+}
+
+/** Die Tiefe, bis zu der Eingabeketten verfolgt werden (Rechte, Sicht, Schutzstufe). */
+const KETTENTIEFE = 8;
+
+/**
+ * Nacharbeit 2 (Bens Befund 1) — LESEN HEISST: DIE GANZE HERKUNFT LESEN DÜRFEN.
+ *
+ * Ein Datenpunkt trägt Inhalte seiner Quelle (Wert, Fundstelle mit Zitat, OCR-Text) und seiner
+ * Eingaben (Formel mit deren Werten, Prüfgründe, Korrekturen). Wer die Quelle oder eine Eingabe
+ * nicht lesen darf, erhielte sie sonst über den Datenpunkt. Deshalb ist ein Datenpunkt nur lesbar,
+ * wenn der Handelnde den Heimatartikel UND jede Quelle UND — rekursiv — jede Eingabe lesen darf,
+ * jeweils auch die, die in der Korrekturhistorie stehen (frühere Quellfassung, früherer Rechenweg).
+ * Sonst gibt es ihn für diesen Nutzer nicht: weder einzeln noch in Listen noch als Eingabe noch als
+ * Ziel einer Wirkung. Damit ist auch die berechnete Schutzstufe durchgesetzt, nicht nur angezeigt.
+ */
+export async function vollLesbar(
+  dp: Datenpunkt,
+  u: DatenUmgebung,
+  tiefe = KETTENTIEFE,
+): Promise<boolean> {
+  if (!(await u.artikel(dp.heimatKoId))) {
+    return false;
+  }
+  const quellen = new Set<string>();
+  const eingaben = new Set<string>();
+  const quelleVon = (q: unknown) => {
+    if (istObjekt(q) && typeof q.koId === "string") {
+      quellen.add(q.koId);
+    }
+  };
+  const eingabenVon = (r: unknown) => {
+    if (istObjekt(r) && Array.isArray(r.eingaben)) {
+      for (const e of r.eingaben) {
+        if (istObjekt(e) && typeof e.datenpunktId === "string") {
+          eingaben.add(e.datenpunktId);
+        }
+      }
+    }
+  };
+  quelleVon(dp.quelle);
+  eingabenVon(dp.rechenweg);
+  for (const k of dp.korrekturen) {
+    quelleVon(k.vorher.quelle);
+    eingabenVon(k.vorher.rechenweg);
+  }
+  for (const koId of quellen) {
+    if (!(await u.artikel(koId))) {
+      return false;
+    }
+  }
+  if (eingaben.size > 0 && tiefe <= 0) {
+    return false; // Nicht bis zum Ende prüfbar: fail-closed.
+  }
+  for (const id of eingaben) {
+    const ein = await u.datenpunkt(id);
+    if (ein && !(await vollLesbar(ein, u, tiefe - 1))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Nacharbeit 2 (Bens Befund 2) — EINE FRÜHERE DATENFASSUNG, aus der Korrekturhistorie zurückgerechnet.
+ * Jede Korrektur hält den Stand VOR ihr fest (`vorher`, `null` = Angabe fehlte); rückwärts angewandt
+ * ergibt das den Inhalt der Fassung, mit der z. B. eine Berechnung tatsächlich gerechnet hat —
+ * samt ihrer damaligen Quelle (Fassung, Fundstelle) und ihrem damaligen Rechenweg. Prüfungen,
+ * Korrekturen und Bindungen dieser Fassung bleiben, spätere nicht. `undefined` für eine Fassung, die
+ * es nicht gibt.
+ */
+export function inFassung(dp: Datenpunkt, fassung: number): Datenpunkt | undefined {
+  if (!Number.isInteger(fassung) || fassung < 1 || fassung > dp.fassung) {
+    return undefined;
+  }
+  if (fassung === dp.fassung) {
+    return dp;
+  }
+  const stand = new Map<string, unknown>(Object.entries(dp));
+  for (const k of [...dp.korrekturen].sort((a, b) => b.fassung - a.fassung)) {
+    if (k.fassung <= fassung) {
+      break;
+    }
+    for (const [feld, wert] of Object.entries(k.vorher)) {
+      if (wert === null || wert === undefined) {
+        stand.delete(feld);
+      } else {
+        stand.set(feld, wert);
+      }
+    }
+  }
+  const alt = Object.fromEntries(stand) as unknown as Datenpunkt;
+  return {
+    ...alt,
+    fassung,
+    korrekturen: dp.korrekturen.filter((k) => k.fassung <= fassung),
+    pruefungen: dp.pruefungen.filter((p) => p.datenFassung <= fassung),
+    bindungen: dp.bindungen.filter((b) => b.datenFassung <= fassung),
+  };
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1715,8 +1814,13 @@ export type EingabeSicht =
       readonly lesbar: true;
       /** Mit genau diesen Werten wurde gerechnet. */
       readonly verwendet: RechenwegEingabe;
-      /** Der Datenpunkt heute — mit eigener Herkunft. */
+      /**
+       * Der Datenpunkt IN DER VERWENDETEN FASSUNG — mit der damaligen Quelle, Fundstelle und den
+       * damals verwendeten Eingaben (Nacharbeit 2, Bens Befund 2).
+       */
       readonly datenpunkt: DatenpunktSicht;
+      /** Der heutige Stand der Eingabe, wenn sie sich seitdem geändert hat, sonst dieselbe Fassung. */
+      readonly aktuell: { readonly fassung: number; readonly wert: string };
     };
 
 export interface DatenpunktSicht {
@@ -1744,6 +1848,8 @@ export interface DatenpunktSicht {
   readonly bindungen: readonly BindungsSicht[];
   /** Die strengste Schutzstufe aus Heimat, Quelle und allen Eingaben (V07). */
   readonly schutzstufe: Schutzstufe;
+  /** Gesetzt, wenn diese Sicht eine frühere Datenfassung zeigt; Wirkungen gelten nur der aktuellen. */
+  readonly historisch?: { readonly aktuelleFassung: number };
 }
 
 function strenger(a: Schutzstufe, b: Schutzstufe | undefined): Schutzstufe {
@@ -1770,7 +1876,7 @@ async function schutzstufeVon(
   return stufe;
 }
 
-const MAX_TIEFE = 8;
+const MAX_TIEFE = KETTENTIEFE;
 
 async function mitNamen<T extends { von: string }>(
   liste: readonly T[],
@@ -1785,15 +1891,19 @@ async function mitNamen<T extends { von: string }>(
 }
 
 /**
- * Die Herkunft eines Datenpunkts für den handelnden Nutzer. `undefined` ohne Leserecht am
- * Heimatartikel (an der Route 404). Quelle, Eingaben und Bindungen erscheinen nur mit eigenem
- * Leserecht; sonst steht dort „nicht lesbar“ — die Herkunft ist dann für diesen Nutzer unvollständig,
- * und das wird gesagt, statt Inhalte zu zeigen.
+ * Die Herkunft eines Datenpunkts für den handelnden Nutzer. `undefined`, wenn er nicht die ganze
+ * Herkunft lesen darf (`vollLesbar`: Heimat, Quellen, Eingaben, Historie) — an der Route 404, in
+ * Listen fehlt der Datenpunkt. Es gibt keine teilweise geschwärzte Sicht: Formel, Fundstelle,
+ * Prüfgründe und Korrekturen tragen Werte der Quellen und Eingaben.
+ *
+ * `aktuelleFassung` ist gesetzt, wenn `dp` eine frühere Fassung ist (`inFassung`); Eingaben
+ * erscheinen immer in der Fassung, mit der gerechnet wurde.
  */
 export async function sicht(
   dp: Datenpunkt,
   u: DatenUmgebung,
   tiefe = MAX_TIEFE,
+  aktuelleFassung: number = dp.fassung,
 ): Promise<DatenpunktSicht | undefined> {
   if (!(await lesbar(dp, u))) {
     return undefined;
@@ -1825,10 +1935,18 @@ export async function sicht(
     const eingaben: EingabeSicht[] = [];
     for (const e of dp.rechenweg.eingaben) {
       const ein = await u.datenpunkt(e.datenpunktId);
-      const s = ein && tiefe > 0 ? await sicht(ein, u, tiefe - 1) : undefined;
+      // Die Eingabe in der Fassung, mit der gerechnet wurde — nicht ihr heutiger Stand.
+      const damals = ein ? inFassung(ein, e.fassung) : undefined;
+      const s =
+        ein && damals && tiefe > 0 ? await sicht(damals, u, tiefe - 1, ein.fassung) : undefined;
       eingaben.push(
-        s
-          ? { lesbar: true, verwendet: e, datenpunkt: s }
+        ein && s
+          ? {
+              lesbar: true,
+              verwendet: e,
+              datenpunkt: s,
+              aktuell: { fassung: ein.fassung, wert: ein.wert },
+            }
           : { lesbar: false, verwendet: { fassung: e.fassung } },
       );
     }
@@ -1875,5 +1993,6 @@ export async function sicht(
     },
     bindungen,
     schutzstufe: await schutzstufeVon(dp, u, MAX_TIEFE),
+    ...(aktuelleFassung !== dp.fassung ? { historisch: { aktuelleFassung } } : {}),
   };
 }

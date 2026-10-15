@@ -158,7 +158,10 @@ export type EingabeSicht =
   | {
       lesbar: true;
       verwendet: { datenpunktId: string; fassung: number; wert: string; zahl: number };
+      /** Die Eingabe in der verwendeten Fassung (damalige Quelle und Eingaben). */
       datenpunkt: DatenpunktSicht;
+      /** Ihr heutiger Stand. */
+      aktuell: { fassung: number; wert: string };
     };
 
 export interface Korrektur {
@@ -202,6 +205,8 @@ export interface DatenpunktSicht {
   pruefstand: Pruefstand;
   bindungen: BindungsSicht[];
   schutzstufe: "intern" | "vertraulich" | "streng_vertraulich";
+  /** Gesetzt, wenn eine frühere Datenfassung gezeigt wird. */
+  historisch?: { aktuelleFassung: number };
 }
 
 export interface FolienDatenLage {
@@ -257,7 +262,11 @@ const enc = encodeURIComponent;
 export const praesentationDaten = {
   lage: (koId: string, anhangId: string) =>
     api.get<FolienDatenLage>(`/kos/${enc(koId)}/office/${enc(anhangId)}/folien-daten`),
-  datenpunkt: (id: string) => api.get<DatenpunktSicht>(`/datenpunkte/${enc(id)}`),
+  /** Ohne `fassung` der aktuelle Stand, sonst die Herkunft genau dieser Datenfassung. */
+  datenpunkt: (id: string, fassung?: number) =>
+    api.get<DatenpunktSicht>(
+      `/datenpunkte/${enc(id)}${fassung === undefined ? "" : `?fassung=${fassung}`}`,
+    ),
   erfassen: (koId: string, auftrag: Erfassungsauftrag) =>
     api.post<DatenpunktSicht>(`/kos/${enc(koId)}/datenpunkte`, auftrag),
   binden: (id: string, koId: string, ort: Ort) =>

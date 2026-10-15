@@ -119,6 +119,17 @@ const UMSATZ: DatenpunktSicht = {
   bindungen: [bindung("b-1", "4", 2, 3)],
 };
 
+// Nacharbeit 2: Umsatz wurde inzwischen neu gelesen (Fassung 2). Die Berechnung rechnete mit
+// Fassung 1 — so liefert der Server sie für `?fassung=1` (`historisch` gesetzt).
+const UMSATZ_DAMALS: DatenpunktSicht = { ...UMSATZ, historisch: { aktuelleFassung: 2 } };
+const UMSATZ_HEUTE: DatenpunktSicht = {
+  ...UMSATZ,
+  fassung: 2,
+  wert: "1.550 T€",
+  zahl: 1550,
+  fundstelle: { ...UMSATZ.fundstelle, zitat: "1.550 T€" } as DatenpunktSicht["fundstelle"],
+};
+
 const ERGEBNIS: DatenpunktSicht = {
   ...basis,
   id: "dp-ergebnis",
@@ -138,7 +149,8 @@ const ERGEBNIS: DatenpunktSicht = {
       {
         lesbar: true,
         verwendet: { datenpunktId: "dp-umsatz", fassung: 1, wert: "1.500 T€", zahl: 1500 },
-        datenpunkt: UMSATZ,
+        datenpunkt: UMSATZ_DAMALS,
+        aktuell: { fassung: 2, wert: "1.550 T€" },
       },
       { lesbar: false, verwendet: { fassung: 1 } },
     ],
@@ -212,7 +224,7 @@ const LAGE: FolienDatenLage = {
           shapeId: "4",
           name: "Tabelle Kennzahlen",
           art: "tabelle",
-          text: "Kennzahl | Q4\nUmsatz | 1.500 T€",
+          text: "Kennzahl | Q4\nUmsatz | 1.550 T€",
         },
         { shapeId: "6", name: "Ergebnis", art: "text", text: "Ergebnis Q4: 300 T€" },
         { shapeId: "7", name: "Marktanteil", art: "text", text: "Marktanteil: 12 %" },
@@ -226,15 +238,17 @@ const LAGE: FolienDatenLage = {
       ],
     },
   ],
-  datenpunkte: [UMSATZ, ERGEBNIS, MANUELL, OCR],
+  datenpunkte: [UMSATZ_HEUTE, ERGEBNIS, MANUELL, OCR],
   darfErfassen: false,
   darfFreigeben: false,
 };
 
-const ALLE = new Map([UMSATZ, ERGEBNIS, MANUELL, OCR].map((d) => [d.id, d] as const));
+const ALLE = new Map([UMSATZ_HEUTE, ERGEBNIS, MANUELL, OCR].map((d) => [d.id, d] as const));
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
+/** Die Aufrufe des Herkunftsabrufs — mit Kennung UND Fassung. */
+let abruf: { mock: { calls: unknown[][] } } | undefined;
 
 afterEach(async () => {
   act(() => root.unmount());
@@ -253,7 +267,12 @@ async function warte(): Promise<void> {
 
 async function montiere(): Promise<void> {
   vi.spyOn(praesentationDaten, "lage").mockResolvedValue(LAGE);
-  vi.spyOn(praesentationDaten, "datenpunkt").mockImplementation(async (id: string) => {
+  const spion = vi.spyOn(praesentationDaten, "datenpunkt");
+  abruf = spion;
+  spion.mockImplementation(async (id: string, fassung?: number) => {
+    if (id === "dp-umsatz" && fassung === 1) {
+      return UMSATZ_DAMALS;
+    }
     const dp = ALLE.get(id);
     if (!dp) {
       throw new Error(`unbekannt: ${id}`);
@@ -340,6 +359,10 @@ describe("PP-02 · Herkunft direkt an der Zahl", () => {
     );
     // Die Folie bleibt daneben sichtbar.
     expect(container.querySelector('[data-folie="256"]')).not.toBeNull();
+    // Nacharbeit 2: der heutige Stand der Eingabe steht als Änderung daneben.
+    expect(detail?.querySelector("[data-eingabe-geaendert]")?.textContent).toBe(
+      i18n.t("praesentationdaten.eingabeGeaendert", { wert: "1.550 T€", fassung: 2 }),
+    );
 
     await act(async () => {
       detail?.querySelector<HTMLButtonElement>('[data-eingabe="dp-umsatz"]')?.click();
@@ -347,6 +370,13 @@ describe("PP-02 · Herkunft direkt an der Zahl", () => {
     await warte();
     const eingabe = aside();
     expect(eingabe?.dataset.herkunft).toBe("dp-umsatz");
+    // Geöffnet wird die VERWENDETE Fassung 1 — abgerufen mit Kennung UND Fassung.
+    expect(abruf?.mock.calls).toContainEqual(["dp-umsatz", 1]);
+    expect(eingabe?.dataset.herkunftFassung).toBe("1");
+    expect(eingabe?.querySelector("[data-herkunft-historisch]")?.textContent).toContain(
+      i18n.t("praesentationdaten.historisch", { fassung: 1, aktuell: 2 }),
+    );
+    expect(eingabe?.querySelector("h6")?.textContent).toBe("1.500 T€");
     const quelle = eingabe?.querySelector<HTMLElement>("[data-herkunft-quelle]");
     expect(quelle?.dataset.herkunftQuelle).toBe(KO);
     const fund = eingabe?.querySelector('[data-herkunft-fundstelle="tabellenzelle"]')?.textContent;
@@ -401,6 +431,33 @@ describe("PP-02 · Herkunft direkt an der Zahl", () => {
       "Anna Beispiel",
     );
     expect(manuell?.textContent).toContain(i18n.t("praesentationdaten.keineQuelle"));
+  });
+
+  it("H5 · aus der verwendeten Fassung zur aktuellen — ausdrücklich, nicht still", async () => {
+    await montiere();
+    await act(async () => {
+      zahl("dp-ergebnis").click();
+    });
+    await warte();
+    await act(async () => {
+      aside()?.querySelector<HTMLButtonElement>('[data-eingabe="dp-umsatz"]')?.click();
+    });
+    await warte();
+    expect(aside()?.dataset.herkunftFassung).toBe("1");
+    await act(async () => {
+      aside()?.querySelector<HTMLButtonElement>("[data-herkunft-aktuell-oeffnen]")?.click();
+    });
+    await warte();
+    const heute = aside();
+    expect(heute?.dataset.herkunftFassung).toBe("2");
+    expect(heute?.querySelector("h6")?.textContent).toBe("1.550 T€");
+    expect(heute?.querySelector("[data-herkunft-historisch]")).toBeNull();
+    // „Zurück“ führt wieder zur verwendeten Fassung.
+    await act(async () => {
+      heute?.querySelector<HTMLButtonElement>("[data-herkunft-zurueck]")?.click();
+    });
+    await warte();
+    expect(aside()?.dataset.herkunftFassung).toBe("1");
   });
 
   it("H4 · Englisch", async () => {

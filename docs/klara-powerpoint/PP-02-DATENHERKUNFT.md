@@ -70,10 +70,23 @@ PP-03 schließt hier die vorhandenen Klarwerk-Regeln (V01 bis V03, V08) und Wide
 
 - Lesen: `ko.read` und Sichtbarkeit (`darfSehen`) am Heimatartikel; ohne beides 404, keine
   Existenzauskunft.
-- Quelle, Eingaben und Zielpräsentationen erscheinen nur mit eigenem Leserecht. Sonst steht dort
-  „nicht einsehbar“ — die Herkunft ist für diesen Nutzer ausdrücklich unvollständig.
-- Eine nicht lesbare Quelle oder Eingabe lässt sich weder nennen noch verwenden.
-- Schutzstufe: die strengste aus Heimat, Quelle und allen Eingaben (V07).
+- Nacharbeit 2: Ein Datenpunkt ist nur lesbar, wenn der Nutzer die **ganze Herkunft** lesen darf —
+  Heimatartikel, jede Quelle und rekursiv jede Eingabe, auch die in der Korrekturhistorie
+  (`vollLesbar`). Sonst gibt es ihn für diesen Nutzer nicht: kein Abruf (404), kein Eintrag in Listen,
+  keine Verwendung als Eingabe, keine Prüfung, Korrektur oder Bindung. So gelangen vertrauliche Werte
+  weder über den Wert noch über Formel, Fundstelle samt Zitat, Prüfgrund oder Korrekturhistorie zu
+  Unberechtigten; das gilt sofort auch nach einem Rechteentzug an der Quelle.
+- Zielpräsentationen einer Bindung erscheinen nur mit eigenem Leserecht.
+- Schutzstufe: die strengste aus Heimat, Quelle und allen Eingaben (V07); durch die Regel oben
+  durchgesetzt, nicht nur angezeigt.
+
+## 4a. Frühere Datenfassungen (Nacharbeit 2)
+
+Eine Berechnung verweist auf die Fassung jeder Eingabe, mit der gerechnet wurde. Die Herkunft einer
+Eingabe öffnet genau diese Fassung (`GET /api/datenpunkte/:id?fassung=n`), aus der Korrekturhistorie
+zurückgerechnet: damaliger Wert, damalige Quelle samt Dateifassung und Fundstelle, damals verwendete
+Eingaben (rekursiv). Die Fläche kennzeichnet die frühere Fassung, nennt die aktuelle und öffnet sie
+auf Wunsch; Prüfen und Korrigieren gelten nur der aktuellen Fassung.
 - Schreiben (erfassen, binden, prüfen, korrigieren): `ko.create`; fachliche Freigabe: `ko.validate`.
 
 ## 5. Oberfläche: Herkunft an der Zahl (UI-01 bis UI-08)
@@ -110,10 +123,18 @@ Belege dieses Kandidaten (Ausführung durch die Kandidatenprüfung):
 - `tests/klara-powerpoint/pp02-herkunft-an-der-zahl.test.tsx` — montierte Fläche: Zahl am Element,
   Herkunft im Detailbereich, Eingabekette, verborgene Quelle, Englisch.
 
+- `tests-smoke/praesentation-daten-browser.spec.ts` (Nacharbeit 2) — die echte Anwendung im Browser
+  ohne ersetzte Routen: direkt übernommene, manuelle, OCR- (echte Erkennung, fiktives Bild) und
+  berechnete Zahl am PPTX-Anhang, Herkunft bis zur Quellzelle, Korrektur, Neuladen und Wiederöffnen;
+  Tastatur (Enter/Tab/Escape, Fokus), Namen im Barrierebaum, breites und schmales Fenster ohne
+  Überlauf, Hell- und Dunkel-Präferenz mit Bildschirmbelegen.
+
 Offen und ausdrücklich nicht behauptet:
 
-- Keine echte Host-, Bedien-, Tastatur-/Screenreader-, Hell/Dunkel- oder Fensterbreitenprüfung
-  (UI-04 bis UI-08, L15). Ein montierter Test ist keine Bedienabnahme.
+- Kein echter Screenreader (VoiceOver/NVDA): belegt ist der Barrierebaum des Browsers, nicht das
+  Vorlesen. Die Anwendung hat kein eigenes Dunkelschema; geprüft ist die Lesbarkeit unter
+  Dunkel-Präferenz, nicht ein Dunkeldesign. PowerPoint selbst (native App, Web) ist nicht geprüft
+  (A01, L15).
 - Diagrammdaten, SmartArt und Sprechernotizen sind nicht lesbar und daher nicht bindbar (L03).
 - „Bildtext lesen“ liest genau das gewählte Bild mit der vorhandenen Texterkennung erneut; die
   automatischen Befunde der Fläche `OfficeBildBefunde` (A02 bis A06) werden nicht übernommen.

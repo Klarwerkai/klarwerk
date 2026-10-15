@@ -112,7 +112,9 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
     queryFn: () => praesentationDaten.lage(koId, anhangId),
   });
   // Der Detailbereich führt einen Pfad: Zahl → Eingabe → Eingabe … mit „Zurück“.
-  const [pfad, setPfad] = useState<string[]>([]);
+  // Nacharbeit 2: ein Schritt nennt auch die Datenfassung — eine Eingabe öffnet sich in der Fassung,
+  // mit der gerechnet wurde, nicht in ihrem heutigen Stand.
+  const [pfad, setPfad] = useState<{ id: string; fassung?: number }[]>([]);
   const [erfassenAn, setErfassenAn] = useState<string | null>(null);
 
   const neuLaden = () => {
@@ -146,26 +148,29 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
                 key={f.sldId}
                 lage={d}
                 folie={f}
-                aktiv={aktiv}
-                oeffne={(id) => setPfad([id])}
+                aktiv={pfad.length === 1 ? (aktiv?.id ?? null) : null}
+                oeffne={(id) => setPfad([{ id }])}
                 erfassenAn={erfassenAn}
                 setErfassenAn={setErfassenAn}
                 nachErfassen={(neu) => {
                   setErfassenAn(null);
                   neuLaden();
-                  setPfad([neu.id]);
+                  setPfad([{ id: neu.id }]);
                 }}
               />
             ))}
           </ol>
           {aktiv ? (
             <Herkunft
-              key={aktiv}
-              id={aktiv}
+              key={`${aktiv.id}@${aktiv.fassung ?? "aktuell"}`}
+              id={aktiv.id}
+              {...(aktiv.fassung === undefined ? {} : { fassung: aktiv.fassung })}
               tiefe={pfad.length}
               darfErfassen={d.darfErfassen}
               darfFreigeben={d.darfFreigeben}
-              oeffne={(id) => setPfad((p) => [...p, id])}
+              oeffne={(id, fassung) =>
+                setPfad((p) => [...p, fassung === undefined ? { id } : { id, fassung }])
+              }
               zurueck={() => setPfad((p) => p.slice(0, -1))}
               schliessen={() => setPfad([])}
               geaendert={neuLaden}
@@ -291,8 +296,9 @@ function Zahl({
 
 function Herkunft({
   id,
+  fassung,
   tiefe,
-  darfErfassen,
+  darfErfassen: darfErfassenRecht,
   darfFreigeben,
   oeffne,
   zurueck,
@@ -300,10 +306,12 @@ function Herkunft({
   geaendert,
 }: {
   id: string;
+  /** Eine bestimmte Datenfassung (Eingabe einer Berechnung); ohne Angabe der aktuelle Stand. */
+  fassung?: number;
   tiefe: number;
   darfErfassen: boolean;
   darfFreigeben: boolean;
-  oeffne: (id: string) => void;
+  oeffne: (id: string, fassung?: number) => void;
   zurueck: () => void;
   schliessen: () => void;
   geaendert: () => void;
@@ -312,12 +320,16 @@ function Herkunft({
   const fehlerText = useFehlerText();
   const qc = useQueryClient();
   const kopf = useRef<HTMLHeadingElement>(null);
+  const schluessel = ["datenpunkt", id, fassung ?? "aktuell"] as const;
   const abfrage = useQuery({
-    queryKey: ["datenpunkt", id],
-    queryFn: () => praesentationDaten.datenpunkt(id),
+    queryKey: schluessel,
+    queryFn: () => praesentationDaten.datenpunkt(id, fassung),
   });
   const dp = abfrage.data;
   const datum = (iso: string) => formatKoTimestamp(iso, i18n.language) ?? "—";
+  // Eine frühere Fassung ist Herkunft, kein Arbeitsstand: Prüfen und Korrigieren gelten nur dem
+  // aktuellen Datenpunkt.
+  const darfErfassen = darfErfassenRecht && dp?.historisch === undefined;
 
   useEffect(() => {
     if (dp) {
@@ -326,13 +338,14 @@ function Herkunft({
   }, [dp]);
 
   const uebernehmen = (neu: DatenpunktSicht) => {
-    qc.setQueryData(["datenpunkt", id], neu);
+    qc.setQueryData(schluessel, neu);
     geaendert();
   };
 
   return (
     <aside
       data-herkunft={id}
+      data-herkunft-fassung={dp?.fassung}
       aria-label={t("praesentationdaten.herkunft")}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
@@ -371,6 +384,22 @@ function Herkunft({
           <h6 ref={kopf} tabIndex={-1} className="mt-2 text-[13px] font-semibold text-text">
             {dp.wert}
           </h6>
+          {dp.historisch ? (
+            <p data-herkunft-historisch="" className="mt-1 text-danger">
+              {t("praesentationdaten.historisch", {
+                fassung: dp.fassung,
+                aktuell: dp.historisch.aktuelleFassung,
+              })}{" "}
+              <button
+                type="button"
+                data-herkunft-aktuell-oeffnen=""
+                onClick={() => oeffne(id)}
+                className="underline"
+              >
+                {t("praesentationdaten.aktuelleOeffnen")}
+              </button>
+            </p>
+          ) : null}
           <p data-herkunft-erfassung={dp.erfassung} className="mt-0.5 font-semibold">
             {t(`praesentationdaten.erfassung.${dp.erfassung}`)}
           </p>
@@ -442,7 +471,8 @@ function Herkunft({
                 })}
               </p>
               <ol data-herkunft-eingaben="" className="mt-1 space-y-1">
-                {/* Dieselbe Eingabe darf mehrfach vorkommen; die Stelle im Rechenweg ist ihr Schlüssel. */}
+                {/* Dieselbe Eingabe darf mehrfach vorkommen; die Stelle im Rechenweg ist ihr Schlüssel.
+                    Ein Klick öffnet die VERWENDETE Fassung der Eingabe, nicht ihren heutigen Stand. */}
                 {dp.rechenweg.eingaben
                   .map((e, stelle) => ({ e, stelle }))
                   .map(({ e, stelle }) =>
@@ -451,7 +481,8 @@ function Herkunft({
                         <button
                           type="button"
                           data-eingabe={e.verwendet.datenpunktId}
-                          onClick={() => oeffne(e.verwendet.datenpunktId)}
+                          data-eingabe-fassung={e.verwendet.fassung}
+                          onClick={() => oeffne(e.verwendet.datenpunktId, e.verwendet.fassung)}
                           className="rounded-btn border border-hairline px-2 py-0.5 text-left"
                         >
                           <span className="font-semibold text-text">{e.verwendet.wert}</span>{" "}
@@ -462,11 +493,11 @@ function Herkunft({
                             })}
                           </span>
                         </button>
-                        {e.datenpunkt.fassung !== e.verwendet.fassung ? (
-                          <span className="ml-1 text-danger">
+                        {e.aktuell.fassung !== e.verwendet.fassung ? (
+                          <span data-eingabe-geaendert="" className="ml-1 text-danger">
                             {t("praesentationdaten.eingabeGeaendert", {
-                              wert: e.datenpunkt.wert,
-                              fassung: e.datenpunkt.fassung,
+                              wert: e.aktuell.wert,
+                              fassung: e.aktuell.fassung,
                             })}
                           </span>
                         ) : null}

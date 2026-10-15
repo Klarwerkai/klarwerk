@@ -158,6 +158,9 @@ export default {
     "praesentationdaten.stellen": "Nachkommastellen der Rundung",
     "praesentationdaten.annahmenEingeben": "Annahmen (eine je Zeile, Pflicht)",
     "praesentationdaten.erfassenSpeichern": "Erfassen",
+    "praesentationdaten.historisch":
+      "Datenfassung {{fassung}}, so wie damit gerechnet wurde. Aktuell ist Fassung {{aktuell}}.",
+    "praesentationdaten.aktuelleOeffnen": "Aktuelle Fassung öffnen",
   },
   en: {
     "praesentationdaten.titel": "Data on the slides",
@@ -306,6 +309,9 @@ export default {
     "praesentationdaten.stellen": "Decimal places for rounding",
     "praesentationdaten.annahmenEingeben": "Assumptions (one per line, required)",
     "praesentationdaten.erfassenSpeichern": "Record",
+    "praesentationdaten.historisch":
+      "Data version {{fassung}}, as used in the calculation. The current version is {{aktuell}}.",
+    "praesentationdaten.aktuelleOeffnen": "Open current version",
   },
   nl: {
     "praesentationdaten.titel": "Gegevens op de dia's",
@@ -455,5 +461,8 @@ export default {
     "praesentationdaten.stellen": "Decimalen voor afronding",
     "praesentationdaten.annahmenEingeben": "Aannames (één per regel, verplicht)",
     "praesentationdaten.erfassenSpeichern": "Vastleggen",
+    "praesentationdaten.historisch":
+      "Gegevensversie {{fassung}}, zoals ermee is gerekend. De actuele versie is {{aktuell}}.",
+    "praesentationdaten.aktuelleOeffnen": "Actuele versie openen",
   },
 } satisfies Textmodul;

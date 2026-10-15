@@ -16,6 +16,7 @@ import {
   type Handelnder,
   binde,
   erfasse,
+  inFassung,
   korrigiere,
   leseErfassung,
   leseFolienDaten,
@@ -23,6 +24,7 @@ import {
   leseOrt,
   pruefe,
   sicht,
+  vollLesbar,
 } from "../praesentation-daten";
 import type { DatenpunktAblage } from "../praesentation-daten-ablage";
 import { darfSehen } from "../sichtbarkeit";
@@ -164,7 +166,9 @@ export function praesentationDatenRoutes(
     reply: FastifyReply,
   ): Promise<Datenpunkt | undefined> {
     const dp = await deps.ablage.lesen(id);
-    if (!dp || !(await u.artikel(dp.heimatKoId))) {
+    // Nacharbeit 2: die GANZE Herkunft (Heimat, Quellen, Eingaben, Historie) — sonst 404, auch für
+    // Prüfen, Binden und Korrigieren.
+    if (!dp || !(await vollLesbar(dp, u))) {
       nichtGefunden(reply);
       return undefined;
     }
@@ -294,19 +298,39 @@ export function praesentationDatenRoutes(
       }
     });
 
-    app.get<{ Params: { dpId: string } }>("/api/datenpunkte/:dpId", async (request, reply) => {
-      const user = await guards.requirePermission("ko.read", request, reply);
-      if (!user) {
-        return;
-      }
-      const u = umgebung(user);
-      const dp = await lesbarerDatenpunkt(request.params.dpId, u, reply);
-      if (!dp) {
-        return;
-      }
-      reply.header("Cache-Control", "no-store");
-      reply.code(200).send(await sicht(dp, u));
-    });
+    app.get<{ Params: { dpId: string }; Querystring: { fassung?: string } }>(
+      "/api/datenpunkte/:dpId",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const u = umgebung(user);
+        const dp = await lesbarerDatenpunkt(request.params.dpId, u, reply);
+        if (!dp) {
+          return;
+        }
+        // Nacharbeit 2 (Bens Befund 2): `?fassung=n` zeigt die Herkunft der Datenfassung n — so,
+        // wie eine Berechnung sie verwendet hat (damalige Quelle, Fundstelle, Eingaben).
+        const roh = request.query?.fassung;
+        const fassung = roh === undefined ? dp.fassung : Number(roh);
+        const gezeigt = inFassung(dp, fassung);
+        if (!gezeigt) {
+          reply.code(400).send({
+            error: "INVALID",
+            message: `Fassung ${roh ?? ""} gibt es nicht; der Datenpunkt steht bei Fassung ${dp.fassung}.`,
+          });
+          return;
+        }
+        const s = await sicht(gezeigt, u, undefined, dp.fassung);
+        if (!s) {
+          nichtGefunden(reply);
+          return;
+        }
+        reply.header("Cache-Control", "no-store");
+        reply.code(200).send(s);
+      },
+    );
 
     app.post<{ Params: { dpId: string }; Body: { koId?: unknown; ort?: unknown } }>(
       "/api/datenpunkte/:dpId/bindungen",

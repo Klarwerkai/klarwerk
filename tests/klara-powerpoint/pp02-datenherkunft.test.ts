@@ -659,8 +659,14 @@ describe("PP-02 · Datenherkunft und Bindung an Folien", () => {
     expect(dimension(ergebnis, "berechnung").stand).toBe("ueberholt");
     expect(dimension(ergebnis, "berechnung").grund).toContain("gerechnet mit 1");
     expect(ergebnis.pruefstand.zustand).toBe("ueberpruefung_noetig");
-    expect(ergebnis.rechenweg.eingaben[1].datenpunkt.fassung).toBe(2);
-    expect(ergebnis.rechenweg.eingaben[1].verwendet.fassung).toBe(1);
+    // Nacharbeit 2 (Bens Befund 2): die Eingabe erscheint in der VERWENDETEN Fassung (damaliger
+    // Zeitraum), der heutige Stand steht daneben.
+    const kostenEingabe = ergebnis.rechenweg.eingaben[1];
+    expect(kostenEingabe.verwendet.fassung).toBe(1);
+    expect(kostenEingabe.datenpunkt.fassung).toBe(1);
+    expect(kostenEingabe.datenpunkt.zeitraum).toBe("Q4 2025");
+    expect(kostenEingabe.datenpunkt.historisch).toEqual({ aktuelleFassung: 2 });
+    expect(kostenEingabe.aktuell).toEqual({ fassung: 2, wert: "1.200 T€" });
 
     const neu = await rufe(w, "anna", "POST", `/api/datenpunkte/${ids.ergebnis}/korrektur`, {
       fassung: 1,
@@ -771,11 +777,10 @@ describe("PP-02 · Datenherkunft und Bindung an Folien", () => {
     });
     expect(studie.body.schutzstufe).toBe("vertraulich");
 
+    // Nacharbeit 2 (Bens Befund 1): ohne Leserecht an der Quelle gibt es den Datenpunkt für Anna
+    // nicht — sein Wert, die Fundstelle mit Zitat und alles Abgeleitete stammen aus der Quelle.
     const fuerAnna = await rufe(w, "anna", "GET", `/api/datenpunkte/${studie.body.id}`);
-    expect(fuerAnna.status).toBe(200);
-    expect(fuerAnna.body.quelle).toEqual({ lesbar: false });
-    expect(JSON.stringify(fuerAnna.body.quelle)).not.toContain("Marktstudie");
-    expect(fuerAnna.body.schutzstufe).toBe("vertraulich");
+    expect(fuerAnna.status).toBe(404);
 
     // Anna kann die vertrauliche Quelle nicht als Fundstelle nennen …
     const annaDirekt = await rufe(w, "anna", "POST", `/api/kos/${koId}/datenpunkte`, {
@@ -807,7 +812,8 @@ describe("PP-02 · Datenherkunft und Bindung an Folien", () => {
     });
     expect(annaRechnet.status).toBe(404);
 
-    // Die Chefin rechnet damit; Anna sieht den Rechenweg, die verborgene Eingabe nur als solche.
+    // Die Chefin rechnet damit. Die Formel trüge den vertraulichen Wert („… + 40 Mio. €“), das
+    // Ergebnis ist aus ihm abgeleitet: für Anna gibt es den berechneten Datenpunkt nicht.
     // Umsatz steht nach D7 bei 1.550; 1.550 + 40 = 1.590 (nur als Rechteprobe, fiktiv).
     const anteil = await rufe(w, "chef", "POST", `/api/kos/${koId}/datenpunkte`, {
       art: "zahl",
@@ -816,10 +822,141 @@ describe("PP-02 · Datenherkunft und Bindung an Folien", () => {
       rechenweg: { art: "summe", eingaben: [ids.umsatz, amGeheimen.body.id], stellen: 0 },
     });
     expect(anteil.status).toBe(201);
-    const anteilAnna = (await rufe(w, "anna", "GET", `/api/datenpunkte/${anteil.body.id}`)).body;
-    expect(anteilAnna.rechenweg.eingaben[0].lesbar).toBe(true);
-    expect(anteilAnna.rechenweg.eingaben[1]).toEqual({ lesbar: false, verwendet: { fassung: 1 } });
-    expect(anteilAnna.schutzstufe).toBe("vertraulich");
+    expect(anteil.body.rechenweg.formel).toContain("40 Mio. €");
+    expect(anteil.body.schutzstufe).toBe("vertraulich");
+    const anteilAnna = await rufe(w, "anna", "GET", `/api/datenpunkte/${anteil.body.id}`);
+    expect(anteilAnna.status).toBe(404);
+    // Die Chefin sieht weiter alles, Fundstelle samt Zitat.
+    const fuerChef = await rufe(w, "chef", "GET", `/api/datenpunkte/${studie.body.id}`);
+    expect(fuerChef.status).toBe(200);
+    expect(fuerChef.body.fundstelle.zitat).toBe("Marktvolumen 2025: 40 Mio. €");
+
+    // Die vollständigen Antwortkörper, die Anna erreicht, tragen nichts davon — weder in Listen noch
+    // als Eingabe, Formel, Fundstelle, Prüfgrund oder Korrektur.
+    const geheimnisse = [
+      "40 Mio",
+      "Marktvolumen",
+      "Marktstudie",
+      "1.590",
+      studie.body.id,
+      amGeheimen.body.id,
+      anteil.body.id,
+    ];
+    const fuerAnnaKoerper = [
+      JSON.stringify(fuerAnna.body),
+      JSON.stringify(anteilAnna.body),
+      JSON.stringify((await rufe(w, "anna", "GET", `/api/kos/${koId}/datenpunkte`)).body),
+      JSON.stringify(
+        (await rufe(w, "anna", "GET", `/api/kos/${koId}/office/${anhangId}/folien-daten`)).body,
+      ),
+    ];
+    for (const koerper of fuerAnnaKoerper) {
+      for (const geheimnis of geheimnisse) {
+        expect(koerper, geheimnis).not.toContain(geheimnis);
+      }
+    }
+
+    // RECHTEENTZUG: eine zuerst interne Quelle wird vertraulich. Danach erreicht Anna weder den
+    // direkt übernommenen Wert noch die Berechnung daraus — samt Prüfgrund und Korrekturhistorie.
+    const lager = await w.ko.create({
+      title: "Lagerbericht 2025 (fiktiv)",
+      statement: "Lagerbestand 2025: 7.300 Stück im Zentrallager.",
+      type: "best_practice",
+      category: "Testbestand",
+      author: "chef",
+      confidentiality: "intern",
+    });
+    const bestand = await rufe(w, "anna", "POST", `/api/kos/${koId}/datenpunkte`, {
+      art: "zahl",
+      wert: "7.300 Stück",
+      einheit: "Stück",
+      zeitraum: "2025",
+      erfassung: "direkt",
+      quelleKoId: lager.id,
+      zitat: "Lagerbestand 2025: 7.300 Stück",
+    });
+    expect(bestand.status).toBe(201);
+    const pruefung = await rufe(
+      w,
+      "anna",
+      "POST",
+      `/api/datenpunkte/${bestand.body.id}/pruefungen`,
+      {
+        dimension: "struktur",
+        ergebnis: "klaerung",
+        grund: "Lagerbericht nennt 7.300 Stück ohne Stichtag",
+        fassung: 1,
+      },
+    );
+    expect(pruefung.status).toBe(200);
+    const korrektur = await rufe(
+      w,
+      "anna",
+      "POST",
+      `/api/datenpunkte/${bestand.body.id}/korrektur`,
+      {
+        fassung: 1,
+        zeitraum: "Stichtag 31.12.2025",
+        grund: "Stichtag aus dem Lagerbericht ergänzt",
+      },
+    );
+    expect(korrektur.status).toBe(200);
+    // 7.300 + 85 (OCR-Zahl aus D2/D4) = 7.385 — nur als Rechteprobe, fiktiv.
+    const summe = await rufe(w, "anna", "POST", `/api/kos/${koId}/datenpunkte`, {
+      art: "zahl",
+      wert: "7.385",
+      erfassung: "berechnet",
+      rechenweg: { art: "summe", eingaben: [bestand.body.id, ids.ocr], stellen: 0 },
+    });
+    expect(summe.status).toBe(201);
+    expect((await rufe(w, "anna", "GET", `/api/datenpunkte/${summe.body.id}`)).status).toBe(200);
+
+    await w.ko.setConfidentiality(lager.id, "vertraulich", "chef");
+
+    for (const pfad of [
+      `/api/datenpunkte/${bestand.body.id}`,
+      `/api/datenpunkte/${bestand.body.id}?fassung=1`,
+      `/api/datenpunkte/${summe.body.id}`,
+    ]) {
+      expect((await rufe(w, "anna", "GET", pfad)).status, pfad).toBe(404);
+    }
+    for (const [pfad, rumpf] of [
+      [
+        `/api/datenpunkte/${bestand.body.id}/pruefungen`,
+        { dimension: "struktur", ergebnis: "bestanden", fassung: 2 },
+      ],
+      [`/api/datenpunkte/${bestand.body.id}/korrektur`, { fassung: 2, grund: "Probe" }],
+      [`/api/datenpunkte/${bestand.body.id}/bindungen`, { koId, ort: ort(anhangId, "256", "9") }],
+      [
+        `/api/datenpunkte/${summe.body.id}/korrektur`,
+        { fassung: 1, neuBerechnen: true, grund: "x" },
+      ],
+    ] as const) {
+      expect((await rufe(w, "anna", "POST", pfad, rumpf)).status, pfad).toBe(404);
+    }
+    const nachEntzug = [
+      JSON.stringify((await rufe(w, "anna", "GET", `/api/kos/${koId}/datenpunkte`)).body),
+      JSON.stringify(
+        (await rufe(w, "anna", "GET", `/api/kos/${koId}/office/${anhangId}/folien-daten`)).body,
+      ),
+    ];
+    for (const koerper of nachEntzug) {
+      for (const geheimnis of [
+        "7.300",
+        "7.385",
+        "Lagerbestand",
+        "Lagerbericht",
+        "Stichtag",
+        bestand.body.id,
+        summe.body.id,
+      ]) {
+        expect(koerper, geheimnis).not.toContain(geheimnis);
+      }
+    }
+    // Die Berechtigte sieht weiter die ganze Historie.
+    const chefBestand = await rufe(w, "chef", "GET", `/api/datenpunkte/${bestand.body.id}`);
+    expect(chefBestand.status).toBe(200);
+    expect(chefBestand.body.korrekturen[0].vorher).toEqual({ zeitraum: "2025" });
 
     // Unbekannt und unsichtbar sehen gleich aus.
     expect((await rufe(w, "anna", "GET", "/api/datenpunkte/gibt-es-nicht")).status).toBe(404);
@@ -856,5 +993,49 @@ describe("PP-02 · Datenherkunft und Bindung an Folien", () => {
     expect(amElement("6")).toEqual([["300 T€", "berechnet"]]);
     expect(amElement("9")).toEqual([["300 T€", "berechnet"]]);
     expect(amElement("4").map((x: string[]) => x[1])).toEqual(["direkt", "direkt"]);
+  });
+
+  it("D10 · eine Berechnung führt zur tatsächlich verwendeten Fassung ihrer Eingaben samt damaliger Quelle", async () => {
+    // Stand nach D6/D7: Umsatz und Ergebnis haben Fassung 2; die Marge rechnete mit Fassung 1.
+    const marge = (await rufe(w, "vera", "GET", `/api/datenpunkte/${ids.marge}`)).body;
+    const [ergebnis, umsatz] = marge.rechenweg.eingaben;
+    expect(umsatz.verwendet).toMatchObject({ fassung: 1, wert: "1.500 T€" });
+    expect(umsatz.aktuell).toEqual({ fassung: 2, wert: "1.550 T€" });
+    expect(umsatz.datenpunkt).toMatchObject({
+      fassung: 1,
+      wert: "1.500 T€",
+      historisch: { aktuelleFassung: 2 },
+    });
+    // Die damalige Quelle: die erste Dateifassung, die damalige Zelle mit ihrem damaligen Text.
+    expect(umsatz.datenpunkt.quelle).toMatchObject({ lesbar: true, objectId });
+    expect(umsatz.datenpunkt.fundstelle).toMatchObject({ zeile: 2, spalte: 3, zitat: "1.500 T€" });
+    // Rekursiv: das Ergebnis in Fassung 1 mit SEINEN damals verwendeten Eingaben.
+    expect(ergebnis.aktuell.fassung).toBe(2);
+    expect(ergebnis.datenpunkt.fassung).toBe(1);
+    expect(
+      ergebnis.datenpunkt.rechenweg.eingaben.map((e: Koerper) => [
+        e.verwendet.fassung,
+        e.datenpunkt.fassung,
+        e.datenpunkt.wert,
+        e.datenpunkt.zeitraum,
+      ]),
+    ).toEqual([
+      [1, 1, "1.500 T€", "Q4 2025"],
+      [1, 1, "1.200 T€", "Q4 2025"],
+    ]);
+
+    // Direkt abrufbar: `?fassung=n`; die aktuelle Fassung trägt keine Markierung.
+    const damals = await rufe(w, "vera", "GET", `/api/datenpunkte/${ids.umsatz}?fassung=1`);
+    expect(damals.status).toBe(200);
+    expect(damals.body).toMatchObject({ fassung: 1, wert: "1.500 T€" });
+    expect(damals.body.quelle.objectId).toBe(objectId);
+    expect(damals.body.korrekturen).toEqual([]);
+    const heute = await rufe(w, "vera", "GET", `/api/datenpunkte/${ids.umsatz}?fassung=2`);
+    expect(heute.body.wert).toBe("1.550 T€");
+    expect(heute.body.historisch).toBeUndefined();
+    for (const falsch of ["0", "3", "zwei"]) {
+      const r = await rufe(w, "vera", "GET", `/api/datenpunkte/${ids.umsatz}?fassung=${falsch}`);
+      expect(r.status, falsch).toBe(400);
+    }
   });
 });
