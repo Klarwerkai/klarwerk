@@ -23,6 +23,7 @@ import {
   PgAnswerSnapshotRepo,
   PgGapRepo,
   PgNulltrefferRepo,
+  REFERENZ_BEGRUENDUNG_AKTION,
   ReferenzPruefdienst,
   parseConfiguredReceiptSecret,
 } from "../../ask";
@@ -426,7 +427,7 @@ import {
   nurGelisteteLogfelder,
   stapelRahmen,
 } from "./log-positivliste";
-import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
+import { entferneGeheimeEnvWerte, istPersonenFeld, sanitizeLogText } from "./log-sanitize";
 // BPA-16: Meeting-/Folienbezüge — im Postgres-Betrieb haltbar (`PgMeetingBezugAblage`).
 import {
   type MeetingBezugAblage,
@@ -441,6 +442,13 @@ import {
   createPaarpflichtAusfuehrung,
   paarpflichtPrueferFuer,
 } from "./paarpflicht-ausfuehrung";
+// produkt:20261013:produktbudget-anwender-admin: die Produktbudgets — das persistente Kostenbuch.
+import {
+  InMemoryProduktbudgetRepo,
+  PgProduktbudgetRepo,
+  Produktbudget,
+  type ProduktbudgetRepo,
+} from "./produktbudget";
 import {
   InMemoryQuellabgleichRepo,
   PgQuellabgleichRepo,
@@ -507,7 +515,7 @@ import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { livewallRoutes } from "./routes/livewall-routes";
 import { lmsExportRoutes } from "./routes/lms-export-routes";
-import { managementRoutes } from "./routes/management-routes";
+import { lagebildBereicheFuer, managementRoutes } from "./routes/management-routes";
 import { mcpRoutes } from "./routes/mcp-routes";
 import { mediaRoutes } from "./routes/media-routes";
 import { meetingDokumentbezugRoutes } from "./routes/meeting-dokumentbezug-routes";
@@ -518,6 +526,7 @@ import { officeRoutes } from "./routes/office-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
+import { produktbudgetRoutes } from "./routes/produktbudget-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
 import { pushRoutes } from "./routes/push-routes";
 // ADMIN-10: gemeinsame Ansicht auf Prüfung, Revalidierung, Konflikt, Duplikat, Lücke, Rückmeldung.
@@ -806,6 +815,11 @@ export interface AppServices {
    * (`PgAssistenzProfilRepo`), sonst die In-Memory-Ablage.
    */
   assistenzProfile: AssistenzProfilRepo;
+  /**
+   * produkt:20261013:produktbudget-anwender-admin: Einstellungen, Buchungen und Provenienz der
+   * Produktbudgets (`produktbudget.ts`) — im Postgres-Betrieb haltbar (`PgProduktbudgetRepo`).
+   */
+  produktbudget: ProduktbudgetRepo;
   /**
    * R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters (`PgEmbeddingStore`), gesetzt
    * von `buildPgServices`. Fehlt er (Speicherbetrieb), legt `buildApp` den In-Memory-Speicher an —
@@ -1409,6 +1423,8 @@ export function assembleServices(
     klaraAufgaben?: KlaraAufgabeRepo;
     // produkt:20261010:assistenz-name-avatar: gesetzt von `buildPgServices`; sonst im Speicher.
     assistenzProfile?: AssistenzProfilRepo;
+    // produkt:20261013:produktbudget-anwender-admin: gesetzt von `buildPgServices`; sonst im Speicher.
+    produktbudget?: ProduktbudgetRepo;
     // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
     // In-Memory-Speicher an.
     vektorSpeicher?: EmbeddingStore;
@@ -1551,7 +1567,13 @@ export function assembleServices(
     cappedCloud.openai || cappedCloud.anthropic
       ? {
           complete(system, user, confidential, maxTokens) {
-            const anbieter = reasoner.configStatus().effectiveAnbieter.answer;
+            // KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Wahl DES LAUFS, mit der Regel je
+            // Schutzstufe. Ohne Stufenregel ist das dieselbe Auflösung wie bisher: ein benannter
+            // Anbieter bleibt er selbst, „auto" folgt der wirksamen Aufgabenauflösung, und „lokal"
+            // bzw. „Keine KI" (deterministic) haben hier keinen Client — dann geht nichts hinaus.
+            const laufWahl = reasoner.laufWahlFuer("answer", confidential);
+            const anbieter =
+              laufWahl === "auto" ? reasoner.configStatus().effectiveAnbieter.answer : laufWahl;
             const client =
               anbieter === "openai"
                 ? cappedCloud.openai
@@ -1877,6 +1899,8 @@ export function assembleServices(
     klaraAufgaben: opts.klaraAufgaben ?? new InMemoryKlaraAufgabeRepo(),
     // produkt:20261010:assistenz-name-avatar: die Assistenzprofile — Postgres, wenn injiziert.
     assistenzProfile: opts.assistenzProfile ?? new InMemoryAssistenzProfilRepo(),
+    // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets — Postgres, wenn injiziert.
+    produktbudget: opts.produktbudget ?? new InMemoryProduktbudgetRepo(),
     // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
     ...(opts.vektorSpeicher ? { vektorSpeicher: opts.vektorSpeicher } : {}),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
@@ -2421,6 +2445,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261010:assistenz-name-avatar: Name, Avatar und Ersteinrichtung überleben Neuladen,
       // erneute Anmeldung, zweites Gerät und Deploy (`ASSISTENZ_PROFIL_SCHEMA`, von `migrate()`).
       assistenzProfile: new PgAssistenzProfilRepo(pool),
+      // produkt:20261013:produktbudget-anwender-admin: Einstellung, Buchungen und Provenienz der
+      // Produktbudgets überleben Neustart und Deploy (`PRODUKTBUDGET_SCHEMA`, von `migrate()`).
+      produktbudget: new PgProduktbudgetRepo(pool),
       // R-0470: die Vektoren des Textprüfungs-Vorfilters überleben Neustart und Deploy
       // (`EMBEDDING_SCHEMA`, angelegt von `migrate()`); die Endlöschung entfernt die Zeile.
       vektorSpeicher: new PgEmbeddingStore(pool),
@@ -2823,6 +2850,20 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   // jetzt allein, und der zweite Weg ist entfernt (Prüfpunkt 7). Der Eintrag ist deshalb mit ihr
   // gegangen: ein Name in dieser Liste, zu dem keine Klasse mehr gehört, ist eine Leiche.
   "StartvertragError",
+  // R-1372 (Aufnahme gesamt-fehlerprotokoll): der LMS-Export (`services/output/src/scorm.ts`) kam
+  // mit main ohne Eintrag hierher — der Wächter in build-app.test.ts wurde rot, wie vorgesehen.
+  // ENTSCHEIDUNG: der Name darf ins Protokoll. Er ist ein fester Klassenname ohne Nutzerdaten; die
+  // Lage steht im Code (`LmsExportCode`, ein geschlossener Literaltyp), die Meldung unterdrückt
+  // der Serializer ohnehin.
+  "LmsExportError",
+  // R-1372 (Nacharbeit 9): mit main ohne Eintrag gekommen, vom Wächter gemeldet. ENTSCHEIDUNG: die
+  // Namen dürfen ins Protokoll — feste Klassennamen ohne Nutzerdaten; die Meldung unterdrückt der
+  // Serializer. Herkunft: app/src/bestandsreset-dienst.ts, lifecycle/src/service.ts,
+  // db-tx/src/begrenzte-pruefung.ts, app/src/transport-tls.ts.
+  "BestandsresetVorschauVeraltetError",
+  "FolgepruefungStandError",
+  "HaengendeSitzungError",
+  "TransportTlsError",
   "TranscriberConfidentialError",
   "ValidationError",
   "ZurufError",
@@ -3000,6 +3041,44 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   // richtige Auskunft ist: der Aufrufer hat etwas falsch gemacht und kann es besser machen).
   "VALIDATION",
   "WEAK_PASSWORD",
+  // R-1372 (Aufnahme gesamt-fehlerprotokoll): Codes, die mit main ohne Eintrag kamen — der Wächter
+  // in build-app.test.ts meldete sie. ENTSCHEIDUNG: alle dürfen ins Protokoll. Jeder ist ein Wert
+  // eines geschlossenen Literaltyps und trägt weder Nutzertext noch Kennung; er sagt nur, WELCHER
+  // Zweig lief.
+  // LMS-Export (`LmsExportCode`, services/output/src/scorm.ts):
+  "ATTACHMENTS_NOT_INCLUDED",
+  "EXTERNAL_LINK",
+  "LINK_INTERNAL_REMOVED",
+  "MEDIA_FOREIGN",
+  "MEDIA_UNSUPPORTED",
+  "RECIPIENTS_NOT_CONFIGURED",
+  "RECIPIENT_NOT_ALLOWED",
+  "SCHUTZDATEN",
+  "SOURCE_RESTRICTED",
+  "TOO_MANY_SOURCES",
+  // Erfassung (services/capture/src/types.ts): Herabstufung der Vertraulichkeit abgewiesen.
+  "CONFIDENTIALITY_DOWNGRADE",
+  // Spaces (services/knowledge-object/src/types.ts): veralteter Space-Stand beim Schreiben.
+  "SPACE_STAND_VERALTET",
+  // R-1372 (Nacharbeit 9): mit main ohne Eintrag gekommen, vom Wächter gemeldet. ENTSCHEIDUNG: alle
+  // dürfen ins Protokoll — feste Literale ohne Nutzertext und Kennung.
+  // Chat (app/src/routes/chat-routes.ts):
+  "ANHANG_UNBEKANNT",
+  "ERWAEHNUNG_OHNE_ZUGANG",
+  "VERWEIS_UNBEKANNT",
+  // Paarpflichten (conflicts/src/paarpflichten.ts):
+  "AUSSAGE_DOPPELT",
+  // Firmenbereich und Firmenreset (app/src/firmenbereich.ts, dev-persist.ts, bestandsreset-dienst.ts):
+  "FIRMENFILTER_UNGUELTIG",
+  "FIRMENRESET_LAEUFT",
+  "VORSCHAU_VERALTET",
+  // Verantwortung (app/src/verantwortung.ts):
+  "NACHFOLGE_FEHLT",
+  "NACHFOLGE_SIEHT_BEITRAG_NICHT",
+  // Validierung und Wissensobjekte (validation/src/types.ts, knowledge-object/src/types.ts):
+  "NOT_OWNER",
+  // Vorlagen (app/src/vorlagen.ts):
+  "VORLAGE_SPACE_KONFLIKT",
   // --- Fremdcodes, namentlich ---
   // PostgreSQL: die beiden, an denen im Betrieb wirklich etwas hängt.
   "23505", // unique_violation — die Sequenz-Kollision aus JOB 2677
@@ -3066,6 +3145,33 @@ export function pfadOhneAbfrage(url: string): string {
 }
 
 /**
+ * R-0664 (Ben, Nacharbeit 6): der Pfad, wie er ins Protokoll darf — ohne Abfrageteil und JE
+ * SEGMENT durch `sanitizeLogText`.
+ *
+ * WARUM JE SEGMENT: Regel 4 von `sanitizeLogText` zählt `/` zum Token-Alphabet. Über den ganzen
+ * Pfad angewandt, würde schon `/api/knowledge-objects/<kennung>` als EIN langes Wort komplett zu
+ * `[redacted]` — die Route wäre nicht mehr lesbar. Je Segment fällt nur das Segment, das selbst
+ * verdächtig ist (Adresse, Token, lange Kennung); die Route bleibt erkennbar.
+ *
+ * Kodierte Segmente (`anna.meier%40example.org`) werden vorher dekodiert, sonst sähe die
+ * Adressregel das `@` nie. Ein nicht dekodierbares Segment wird roh bereinigt.
+ */
+export function pfadFuerProtokoll(url: string): string {
+  return pfadOhneAbfrage(String(url))
+    .split("/")
+    .map((segment) => sanitizeLogText(dekodiertOderRoh(segment)).split("/").join("%2F"))
+    .join("/");
+}
+
+function dekodiertOderRoh(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+/**
  * JOB 2661 D2 — DER ORT IM CODE, AN DEM DER FEHLER ENTSTAND. OHNE SEINEN TEXT.
  *
  * Das ist die Antwort auf „ein Fehlercode ohne Text macht die Fehlersuche schwerer". Aus dem Stack
@@ -3092,6 +3198,48 @@ export function herkunftAusStack(stack: unknown): string {
 const SENKE_MAX_TIEFE = 6;
 
 /**
+ * Was an der Tiefengrenze anstelle eines Objekts oder Arrays steht.
+ *
+ * R-0664 (Ben, Nacharbeit 3): Bis hierher gab die Senke den Teilbaum an der Grenze UNGEFILTERT
+ * zurück — ein `name` in sechster Verschachtelung kam unverändert ins Protokoll. Fail-closed: was
+ * nicht mehr geprüft wird, wird auch nicht geschrieben.
+ */
+export const SENKE_ZU_TIEF = "[unterdrueckt: zu tief verschachtelt]";
+
+/**
+ * Was anstelle eines nicht einfachen Objekts (Klasseninstanz, Map, Set, Buffer …) steht.
+ *
+ * R-0664 (Ben, Nacharbeit 4): Solche Objekte gab die Senke ungeprüft weiter. Ihre Felder lassen
+ * sich nicht zuverlässig durchsuchen — ein `toJSON` kann beliebigen Text liefern. Fail-closed.
+ */
+export const SENKE_NICHT_EINFACH = "[unterdrueckt: kein einfaches Objekt]";
+
+/** Die Felder, für die pino einen eigenen Serializer (die Erlaubnisliste) anwendet. */
+const SERIALISIERTE_FELDER: ReadonlySet<string> = new Set(["req", "res", "err"]);
+
+/**
+ * Der `err`-Serializer: vier Felder aus geschlossenen Mengen, kein freier Wert.
+ *
+ * Herausgelöst aus `baueLoggerOptionen`, damit die Senke einen Fehler, der NICHT unter `err` steht,
+ * in dieselbe Form bringt (R-0664, Ben Nacharbeit 4) — statt ihn zu verwerfen oder roh zu lassen.
+ */
+export function serialisiereFehler(fehler: Error & { code?: unknown }): {
+  type: string;
+  code: string;
+  herkunft: string;
+  message: string;
+  stack: string;
+} {
+  return {
+    type: erlaubterTyp(fehler.name),
+    code: erlaubterCode(fehler.code),
+    herkunft: herkunftAusStack(fehler.stack),
+    message: ERR_TEXT_UNTERDRUECKT,
+    stack: ERR_TEXT_UNTERDRUECKT,
+  };
+}
+
+/**
  * Domänen-Fehlercodes sind GROSSBUCHSTABEN_MIT_UNTERSTRICH — dieselbe Form, über die `http.ts:136`
  * sie als öffentliche Codes erkennt und an Clients sendet.
  *
@@ -3115,8 +3263,9 @@ function istEinfachesObjekt(wert: object): boolean {
  * vorbei. `server.ts` baut vier solche Zeilen per Textbaustein.
  *
  * WAS SIE AUSDRÜCKLICH NICHT IST: ein Schutz für Inhalte. Sie ist eine SPERRLISTE und erkennt
- * Secret-Formen — einen Namen erkennt sie nicht. Der Inhaltsschutz ruht auf der Erlaubnisliste der
- * Serializer; diese Senke ergänzt sie und ersetzt sie nicht. Genau diese Verwechslung war der
+ * Secret-Formen, E-Mail-Adressen, ausgewiesene Namen (`Name: …`) und Personenfelder (R-0664) —
+ * einen Namen OHNE Kennzeichnung erkennt sie nicht. Der Inhaltsschutz ruht auf der Erlaubnisliste
+ * der Serializer; diese Senke ergänzt sie und ersetzt sie nicht. Genau diese Verwechslung war der
  * Fehler von D1.
  */
 export function senkeUeberWert(
@@ -3127,17 +3276,46 @@ export function senkeUeberWert(
   if (typeof wert === "string") {
     return DOMAENEN_CODE.test(wert) ? wert : sanitizeLogText(wert, env);
   }
-  if (wert === null || typeof wert !== "object" || tiefe >= SENKE_MAX_TIEFE) {
+  if (wert === null || typeof wert !== "object") {
     return wert;
+  }
+  if (tiefe >= SENKE_MAX_TIEFE) {
+    return SENKE_ZU_TIEF;
   }
   if (Array.isArray(wert)) {
     return wert.map((eintrag) => senkeUeberWert(eintrag, env, tiefe + 1));
   }
+  // R-0664 (Ben, Nacharbeit 4): Bis hierher gab die Senke JEDES nicht einfache Objekt unverändert
+  // zurück — eine Klasseninstanz mit eigenen Feldern `name`/`email` lief an der Personenfeldprüfung
+  // vorbei, und pino schrieb ihre aufzählbaren Felder ins Protokoll. Jetzt gilt:
+  //   · ein Fehler als ganzes Logargument (`log.error(fehler)`) bleibt — pino reicht ihn an den
+  //     `err`-Serializer, und der gibt nur Felder aus geschlossenen Mengen aus;
+  //   · ein Fehler an jeder anderen Stelle bekommt hier dieselbe strukturierte Form;
+  //   · ein Datum wird zu seiner ISO-Angabe;
+  //   · alles andere (Klasseninstanzen, Map, Set, Buffer …) wird durch einen festen Wert ersetzt.
+  // Die Werte unter `req`/`res`/`err` reicht die Schleife unten unberührt an ihre Serializer.
+  if (wert instanceof Error) {
+    return tiefe === 0 ? wert : serialisiereFehler(wert);
+  }
+  if (wert instanceof Date) {
+    return Number.isNaN(wert.getTime()) ? SENKE_NICHT_EINFACH : wert.toISOString();
+  }
   if (!istEinfachesObjekt(wert)) {
-    return wert;
+    return SENKE_NICHT_EINFACH;
   }
   const ergebnis: Record<string, unknown> = {};
   for (const [schluessel, inhalt] of Object.entries(wert)) {
+    // R-0664 (DS20): ein Feld, das eine Person benennt (`name`, `email`, `autor` …), fällt ganz weg.
+    if (istPersonenFeld(schluessel)) {
+      continue;
+    }
+    // Die drei Felder mit eigenem Serializer: dort ist die Erlaubnisliste. Nur auf der obersten
+    // Ebene — nur dort wendet pino sie an. `FastifyRequest`/`FastifyReply` sind Klasseninstanzen
+    // und würden sonst oben durch den festen Wert ersetzt, bevor ihr Serializer sie sieht.
+    if (tiefe === 0 && SERIALISIERTE_FELDER.has(schluessel)) {
+      ergebnis[schluessel] = inhalt;
+      continue;
+    }
     // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
     // secret-benannten Env-Variablen wird auch unter einem Trace-Feldnamen entfernt.
     // arbeit:kos-anlage-500-pg: dieselbe Bauform für die Stapelrahmen des Auffangzweigs (`sendError`,
@@ -3234,9 +3412,12 @@ export function baueLoggerOptionen(vorgabe?: {
       //
       // Die Parametertypen sind bewusst die schmalstmöglichen: der Serializer darf nur sehen, was
       // er verarbeitet. Bei `FastifyRequest` läge der ganze Request offen.
+      // R-0664 (Ben, Nacharbeit 6): `req` läuft unberührt an der Senke vorbei (sonst würde die
+      // `FastifyRequest`-Instanz ersetzt) — die beiden ausgewählten Textwerte werden deshalb HIER
+      // bereinigt. Eine Adresse im Pfad (`/nutzer/anna.meier@…`) stand sonst im Protokoll.
       req: (request: { method: string; url: string }) => ({
-        methode: request.method,
-        pfad: pfadOhneAbfrage(request.url),
+        methode: sanitizeLogText(String(request.method)),
+        pfad: pfadFuerProtokoll(request.url),
       }),
       res: (reply: { statusCode: number }) => ({ status: reply.statusCode }),
       // ==========================================================================================
@@ -3253,13 +3434,7 @@ export function baueLoggerOptionen(vorgabe?: {
       // Quelltext, ohne Nutzerdaten. `code` und `type` sagen, welcher Zweig lief. `reqId` bindet
       // alle Zeilen eines Vorgangs zusammen. Und `herkunft`+`code`+`type` gruppieren gleiche
       // Ursachen zuverlässig — auch dann, wenn in der Meldung verschiedene Werte standen.
-      err: (fehler: Error & { code?: unknown }) => ({
-        type: erlaubterTyp(fehler.name),
-        code: erlaubterCode(fehler.code),
-        herkunft: herkunftAusStack(fehler.stack),
-        message: ERR_TEXT_UNTERDRUECKT,
-        stack: ERR_TEXT_UNTERDRUECKT,
-      }),
+      err: serialisiereFehler,
     },
     // Dritte Linie. Mit den Serializern oben erreichen diese Felder den Logger gar nicht erst; die
     // Liste steht für den Fall, dass eine künftige Logzeile sie selbst mitgibt. `remove` löscht das
@@ -5013,28 +5188,60 @@ export function buildApp(
         isConfidential(ko.confidentiality as KnowledgeObject["confidentiality"]),
       // Das Prüfprotokoll: Kennungen, Zustandszahlen, Rollen mit tatsächlichem Anbieter und Modell,
       // Fingerabdrücke und Messung — kein Antwort-, Aussage- oder Quellentext.
+      // REF-04 (K6): versioniert (`protokoll`), mit Zeitpunkt, Antwortkennung und -weg, gebundenen
+      // Quellenfassungen und je Aussage Zustand, Grund, Belegverweisen und Begründungsfingerabdruck.
       protokolliere: async (e) => {
         await services.audit.record({
           actor: e.akteur,
           action: "ask.referenzpruefung",
           target: e.pruefId,
           payload: {
+            protokoll: e.protokoll,
+            zeitpunkt: e.zeitpunkt,
             richtlinie: e.richtlinie,
             status: e.status,
             grund: e.grund ?? null,
+            antwortId: e.antwortId,
+            antwortweg: e.antwortweg,
             antwortAnbieter: e.antwort?.anbieter ?? null,
             antwortModell: e.antwort?.modell ?? null,
             prueferAnbieter: e.pruefer?.anbieter ?? null,
             prueferModell: e.pruefer?.modell ?? null,
             antwortFingerabdruck: e.antwortFingerabdruck,
+            belegFingerabdruck: e.belegFingerabdruck,
             paketFingerabdruck: e.paketFingerabdruck,
             ergebnisFingerabdruck: e.ergebnisFingerabdruck,
+            quellen: e.quellen,
+            aussagen: e.aussagen,
+            aussagenGekuerzt: e.aussagenGekuerzt,
             zustaende: e.zustaende,
             ausCache: e.ausCache,
             versuch: e.versuch,
             dauerMs: e.dauerMs,
             eingabeToken: e.verbrauch?.eingabe ?? null,
             ausgabeToken: e.verbrauch?.ausgabe ?? null,
+            // REF-04 (K6, Ben nacharbeit-3): Verweis auf die Begründungen dieses Laufs.
+            begruendungEintrag: REFERENZ_BEGRUENDUNG_AKTION,
+          },
+        });
+        // REF-04 (K6, Ben nacharbeit-3): die kurzen Prüfbegründungen dauerhaft an DENSELBEN Lauf
+        // (Ziel = Prüfkennung) gebunden. `begruendungen` ist ein Inhaltsfeld der Audit-Sicht
+        // (`audit-sicht.ts`): geschwärzt für jeden Leser, der nicht jede zitierte Quelle (`koIds`)
+        // jetzt öffnen darf, und nach Papierkorb/Endlöschung einer Quelle für alle. Abruf über die
+        // bestehende Protokollansicht (`GET /api/audit?action=…&target=<pruefId>`).
+        await services.audit.record({
+          actor: e.akteur,
+          action: REFERENZ_BEGRUENDUNG_AKTION,
+          target: e.pruefId,
+          payload: {
+            protokoll: e.protokoll,
+            zeitpunkt: e.zeitpunkt,
+            // Ohne Zahl (auch ohne `versuch`): die Leseransicht verbirgt Nutzlasten mit Zahlen ohne
+            // bekanntes Bezugsziel als Bestandsbilanz (`audit-routes.ts`). Den Lauf samt Versuch
+            // bindet `ergebnisFingerabdruck` an den Haupteintrag.
+            ergebnisFingerabdruck: e.ergebnisFingerabdruck,
+            koIds: e.koIds,
+            begruendungen: e.begruendungen,
           },
         });
       },
@@ -5180,7 +5387,13 @@ export function buildApp(
   // R-2183 (Nacharbeit 3): Ruhestandshorizonte nur an echten internen Konten.
   const kontoGibtEs = async (id: string) =>
     (await services.auth.listUsers()).some((u) => u.id === id);
-  app.register(managementRoutes(services.management, guards, kontoGibtEs));
+  // produkt:20261013:lagebild-reale-werte-eingabe: die Bereiche der Lagebild-Werte je Anfrage frisch
+  // aus der Space-Ablage — ein entzogenes Lese- oder Schreibrecht wirkt beim nächsten Abruf.
+  app.register(
+    managementRoutes(services.management, guards, kontoGibtEs, async (user) =>
+      lagebildBereicheFuer(await services.spaces.aktuelle(), user),
+    ),
+  );
   app.register(modelRunRoutes(services.modelRuns, guards));
   app.register(
     externalRoutes(
@@ -5554,6 +5767,12 @@ export function buildApp(
   };
   const faehigkeitenLesbareSpaces = async (nutzerId: string) =>
     lesbareSpaces(await services.spaces.aktuelle(), nutzerId);
+  // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets sind das Kostenbuch der
+  // Fähigkeiten (G18) — ein Stand, ein Deckel, gelesen und geschrieben über dieselbe Ablage.
+  const produktbudget = new Produktbudget({
+    repo: services.produktbudget,
+    mandant: FAEHIGKEITEN_MANDANT,
+  });
   const faehigkeiten = baueFaehigkeiten({
     reasoner: services.reasoner,
     externeWissensabfrage: services.externalKnowledge,
@@ -5562,7 +5781,19 @@ export function buildApp(
     konten: () => services.auth.listUsers(),
     wissen: faehigkeitenWissen,
     lesbareSpaces: faehigkeitenLesbareSpaces,
+    kostenbuch: produktbudget.kostenbuch(),
   });
+  app.register(
+    produktbudgetRoutes(
+      {
+        dienst: produktbudget,
+        audit: services.audit,
+        kontoBekannt: async (konto) =>
+          (await services.auth.listUsers()).some((u) => u.id === konto),
+      },
+      guards,
+    ),
+  );
   services.faehigkeiten = faehigkeiten.ausfuehrung;
   app.register(
     assistenzFaehigkeitenRoutes(
@@ -5602,7 +5833,11 @@ export function buildApp(
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
   // (Entwurfs-Backstop: die gespeicherte Stufe eines Entwurfs hebt, senkt nie).
-  app.register(reasonerRoutes({ ...services, ka4: klaraSessions }, guards));
+  // REF-04 (K1): auch `task: "ask"` ist ein wissensbezogener Antwortweg — DERSELBE Prüfdienst wie
+  // an Fragekonsole und Klara, keine zweite Instanz.
+  app.register(
+    reasonerRoutes({ ...services, ka4: klaraSessions, referenz: antwortDeps.referenz }, guards),
+  );
   // Klara Stufe 2 (Pedi 05.07.): KI-gestuetzte Hilfe-Antwort aus Hilfe-Schnipseln (help-routes).
   app.register(helpRoutes({ reasoner: services.reasoner }, guards));
   // R-1064: der vom Betreiber festgelegte Supportweg dieser Installation (optional, kein

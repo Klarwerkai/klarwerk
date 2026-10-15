@@ -93,6 +93,68 @@ export default {
     "referenzpruefung.erneut.fehler": "Die erneute Prüfung ist nicht möglich.",
     "referenzpruefung.vergleich.heute": "Quellenprüfung der heutigen Antwort",
     "referenzpruefung.vergleich.damals": "Quellenprüfung der Antwort zum Stichtag",
+    // REF-04: Gesamtkennzeichnung, Bedeutung, Fundstellenwechsel und nächster Schritt.
+    "referenzpruefung.gesamt.quellen_geprueft": "Quellen geprüft",
+    "referenzpruefung.gesamt.gemischt": "Entwurf · Quellen nur teilweise bestätigt",
+    "referenzpruefung.gesamt.nicht_pruefbar": "Entwurf · Quellen nicht prüfbar",
+    "referenzpruefung.gesamt.nicht_abgeschlossen": "Entwurf · Prüfung nicht abgeschlossen",
+    "referenzpruefung.gesamt.laeuft": "Entwurf · Prüfung läuft",
+    "referenzpruefung.gesamt.offen": "Entwurf · Quellenprüfung offen",
+    "referenzpruefung.gesamt.fremde_fassung":
+      "Entwurf · Prüfung gehört zu einer anderen Antwortfassung",
+    "referenzpruefung.gesamt.keine_aussage": "Keine prüfpflichtige Aussage",
+    "referenzpruefung.entwurfHinweis":
+      "Diese Antwort ist nicht als Ganzes durch Quellen bestätigt. Sie bleibt sichtbar, ist aber keine Quellenfreigabe.",
+    "referenzpruefung.bedeutung":
+      "„Belegt“ heißt: Die genannte Fundstelle trägt die Aussage. Es heißt nicht: garantiert wahr oder aktuell.",
+    "referenzpruefung.detail.oeffnen": "Fundstelle und Begründung zeigen",
+    "referenzpruefung.detail.schliessen": "Fundstelle und Begründung schließen",
+    "referenzpruefung.detail.titel": "Fundstelle und Prüfbegründung",
+    "referenzpruefung.detail.passageOhne":
+      "Die Passage liegt dieser Ansicht nicht vor. Öffnen Sie die Quelle in der geprüften Fassung.",
+    "referenzpruefung.detail.keineFundstelle":
+      "Zu dieser Aussage gibt es keine zugängliche Fundstelle.",
+    "referenzpruefung.detail.begruendung": "Begründung:",
+    "referenzpruefung.detail.zurueck": "Zurück zur Aussage",
+    "referenzpruefung.naechster.label": "Nächster Schritt:",
+    "referenzpruefung.naechster.erneut": "Sie können die Prüfung einmal erneut anstoßen.",
+    "referenzpruefung.naechster.unbekannt":
+      "Stellen Sie die Frage erneut. Bleibt der Zustand, melden Sie ihn der Verwaltung.",
+    "referenzpruefung.naechster.keine_aussage":
+      "Nichts zu tun. Die Antwort enthält keine Tatsachenaussage, die eine Quelle bräuchte.",
+    "referenzpruefung.naechster.keine_fundstelle":
+      "Prüfen Sie die Aussage selbst an einer Quelle oder melden Sie die fehlende Quelle über die Meldefunktion der Antwort.",
+    "referenzpruefung.naechster.fundstelle_nicht_aufgeloest":
+      "Die Quelle ist für Sie nicht (mehr) zugänglich oder wurde geändert. Stellen Sie die Frage erneut.",
+    "referenzpruefung.naechster.keine_freigabe_externe_verarbeitung":
+      "Die Verwaltung kann die Freigabe für externe Verarbeitung erteilen oder eine interne Referenz-KI erlauben (Verwaltung → KI → Referenzprüfung).",
+    "referenzpruefung.naechster.pruefer_nicht_eingerichtet":
+      "Die Verwaltung erlaubt eine Referenz-KI unter Verwaltung → KI → Referenzprüfung. Stellen Sie die Frage danach erneut.",
+    "referenzpruefung.naechster.pruefer_nicht_verfuegbar":
+      "Die Verwaltung richtet eine erlaubte Referenz-KI unter KI-Zugänge ein. Stellen Sie die Frage danach erneut.",
+    "referenzpruefung.naechster.pruefer_nicht_freigegeben":
+      "Die Verwaltung erteilt die Freigabe oder hebt die KI-Abschaltung auf (Verwaltung → KI).",
+    "referenzpruefung.naechster.pruefer_nicht_unabhaengig":
+      "Die Verwaltung erlaubt zusätzlich eine Referenz-KI mit einem anderen Modell als die Antwort-KI.",
+    "referenzpruefung.naechster.antwortmodell_unbekannt":
+      "Stellen Sie die Frage erneut. Erst mit festgehaltenem Antwortmodell ist eine unabhängige Prüfung möglich.",
+    "referenzpruefung.naechster.zeitlimit": "Versuchen Sie es in einem Moment noch einmal.",
+    "referenzpruefung.naechster.abgebrochen":
+      "Stellen Sie die Frage erneut, um sie prüfen zu lassen.",
+    "referenzpruefung.naechster.budget_erschoepft":
+      "Stellen Sie eine engere Frage. Bleibt das Budget erschöpft, wenden Sie sich an die Verwaltung.",
+    "referenzpruefung.naechster.ki_abgeschaltet":
+      "Die Verwaltung hebt die KI-Abschaltung auf. Bis dahin bleibt die Antwort ungeprüft.",
+    "referenzpruefung.naechster.ungueltige_pruefausgabe":
+      "Versuchen Sie es noch einmal. Bleibt die Ausgabe ungültig, prüft die Verwaltung die Referenz-KI mit dem Funktionscheck.",
+    "referenzpruefung.naechster.pruefer_fehler":
+      "Versuchen Sie es noch einmal. Fällt die Referenz-KI weiter aus, prüft die Verwaltung den Zugang.",
+    "referenzpruefung.naechster.modellaufruf_ausgeschlossen":
+      "Auf diesem Weg ist das so vorgesehen. Für eine geprüfte Antwort stellen Sie die Frage auf der Fragenseite.",
+    "referenzpruefung.naechster.bestaetigung_abgelaufen":
+      "Stellen Sie die Frage erneut, damit die aktuelle Fassung mit den aktuellen Rechten geprüft wird.",
+    "referenzpruefung.naechster.kein_urteil": "Prüfen Sie die Aussage selbst an der Fundstelle.",
+    "referenzpruefung.zweitmeinung.titel": "Quellenprüfung dieser Antwort",
     "referenzpruefung.admin.titel": "Referenz-KI für die Quellenprüfung",
     "referenzpruefung.admin.text":
       "Die Referenz-KI prüft ausschließlich, ob die Fundstellen einer Antwort deren Aussagen tragen. Je Frage wird die erste erlaubte Option gewählt, die ein anderes Modell nutzt als die Antwort.",
@@ -102,6 +164,91 @@ export default {
     "referenzpruefung.admin.vorziehen": "{{name}} nach vorn",
     "referenzpruefung.admin.rang": "Vorrang {{rang}}",
     "referenzpruefung.admin.gespeichert": "Referenz-KI gespeichert.",
+    // REF-03: der Einstieg „Referenzprüfung" unter Verwaltung → KI.
+    "referenzpruefung.einstieg.titel": "Referenzprüfung",
+    "referenzpruefung.einstieg.wert": "{{anzahl}} erlaubt",
+    "referenzpruefung.einstieg.aus": "aus",
+    "referenzpruefung.admin.verweis":
+      "Die Referenz-KI für die Quellenprüfung wählen Sie unter Verwaltung → KI → Referenzprüfung.",
+    "referenzpruefung.admin.rolle":
+      "Die Referenz-KI ist eine eigene, nur lesende Prüfrolle. Sie prüft ausschließlich, ob die Fundstellen einer Antwort deren Aussagen tragen. Sie muss ein anderes Modell nutzen als die Antwort-KI. Das ist eine zweite KI-Prüfung, keine menschliche Freigabe.",
+    "referenzpruefung.admin.quelle":
+      "Zur Wahl stehen die KI-Zugänge, die in der Providerverwaltung registriert sind (siehe KI-Zugänge). Schlüssel werden hier weder abgelegt noch angezeigt.",
+    "referenzpruefung.admin.art.intern": "intern",
+    "referenzpruefung.admin.art.oeffentlich": "öffentlich",
+    "referenzpruefung.admin.modell": "Modell: {{modell}}",
+    "referenzpruefung.admin.modellUnbekannt": "Modell: nicht genannt",
+    "referenzpruefung.admin.zustandLabel": "Zustand: {{zustand}}",
+    "referenzpruefung.admin.zustand.nicht_eingerichtet": "nicht eingerichtet",
+    "referenzpruefung.admin.zustand.ausgeschaltet": "ausgeschaltet",
+    "referenzpruefung.admin.zustand.nicht_verfuegbar": "nicht verfügbar",
+    "referenzpruefung.admin.zustand.konfiguriert": "konfiguriert, noch nicht geprüft",
+    "referenzpruefung.admin.zustand.letzte_pruefung_erfolgreich": "letzte Prüfung erfolgreich",
+    "referenzpruefung.admin.zustand.letzte_pruefung_fehlgeschlagen":
+      "letzte Prüfung fehlgeschlagen",
+    "referenzpruefung.admin.hilfe.nicht_eingerichtet":
+      "Dieser Zugang ist nicht eingerichtet. Der Betreiber richtet ihn in der Providerverwaltung ein (KI-Zugänge).",
+    "referenzpruefung.admin.hilfe.konfiguriert":
+      "Konfiguriert ist noch kein Nachweis. Erst ein Funktionscheck oder eine echte Prüfung zeigt, ob die Quellenprüfung gelingt.",
+    "referenzpruefung.admin.sperre.ki_abgeschaltet":
+      "Die KI ist administrativ abgeschaltet. Nächster Schritt: die Abschaltung in der KI-Verwaltung aufheben.",
+    "referenzpruefung.admin.sperre.keine_freigabe_externe_verarbeitung":
+      "Gesperrt: Für öffentliche KI fehlt die Freigabe für externe Verarbeitung. Nächster Schritt: die Freigabe unter Verwaltung → KI → KI-Verwaltung erteilen oder eine interne KI wählen.",
+    "referenzpruefung.admin.sperre.nicht_erreichbar":
+      "Der Zugang ist eingerichtet, aber gerade nicht erreichbar. Nächster Schritt: Verbindung unter KI-Zugänge testen oder eine weitere Referenz-KI erlauben.",
+    "referenzpruefung.admin.sperre.kein_pruefmodell":
+      "Der Zugang nennt kein Modell oder bietet keine Prüfung an. Ohne Modellangabe ist die Unabhängigkeit nicht nachweisbar.",
+    "referenzpruefung.admin.gleichesModell":
+      "Gleiches Modell wie die Antwort-KI — diese Option prüft nie Antworten dieses Modells.",
+    "referenzpruefung.admin.antwortmodell": "Antwort-KI heute: {{name}}",
+    "referenzpruefung.admin.antwortmodellOhne": "Antwort-KI heute: kein Modell (Ersatzmodus)",
+    "referenzpruefung.admin.konflikt":
+      "Kein unabhängiger Prüfer: Jede einsatzbereite erlaubte Referenz-KI nutzt dasselbe Modell wie die Antwort-KI. Erlauben Sie zusätzlich eine KI mit anderem Modell. Bis dahin bleibt der Prüfstatus offen, und es gibt kein Vier-Augen-Ergebnis.",
+    "referenzpruefung.admin.keineEinsatzbereit":
+      "Keine erlaubte Referenz-KI ist einsatzbereit. Wissensbezogene Antworten bleiben mit offenem Prüfstatus „nicht prüfbar“. Erlauben Sie eine eingerichtete KI oder beheben Sie die genannte Sperre.",
+    "referenzpruefung.admin.keineBestaetigung":
+      "Eine ungeprüfte Antwort kann hier nicht als bestätigt erklärt werden. Bestätigen kann nur eine tatsächliche Prüfung.",
+    "referenzpruefung.admin.freigabe.titel": "Freigaben",
+    "referenzpruefung.admin.freigabe.text":
+      "Öffentliche Referenz-KIs erhalten Inhalte nur mit der Freigabe für externe Verarbeitung, vertrauliche Inhalte zusätzlich nur mit der zweiten Freigabe. Die Auswahl hier hebt keine Space-, Nutzer-, Mandanten- oder Datenfreigabe auf. Fehlt eine Freigabe, steht die Prüfung sichtbar als „nicht prüfbar“.",
+    "referenzpruefung.admin.freigabe.stand":
+      "Öffentliche KI: {{oeffentlich}} · Vertrauliches: {{vertraulich}}",
+    "referenzpruefung.admin.freigabe.an": "freigegeben",
+    "referenzpruefung.admin.freigabe.aus": "gesperrt",
+    "referenzpruefung.admin.envGesperrt":
+      "Die KI-Zuordnung ist per Betreibereinstellung festgelegt. Änderungen sind hier gesperrt.",
+    "referenzpruefung.admin.grenzen.titel": "Grenzen",
+    "referenzpruefung.admin.grenzen.text":
+      "Je Prüfung ein Modellaufruf mit höchstens {{sekunden}} s, {{token}} Antwort-Token, {{posten}} Prüfposten und {{zeichen}} Zeichen Prüfstoff. Höchstens {{erneut}} ausdrücklich angestoßene erneute Prüfung, keine automatische Wiederholung. Prüfrichtlinie {{richtlinie}}.",
+    "referenzpruefung.admin.preise.hinterlegt":
+      "Kosten nach der Preisliste des Betreibers ({{waehrung}}, Stand {{stand}}). Jeder Prüfaufruf steht im KI-Laufprotokoll.",
+    "referenzpruefung.admin.preise.fehlt":
+      "Keine Preisliste hinterlegt: Kosten werden nicht berechnet. Der Tokenverbrauch steht im KI-Laufprotokoll.",
+    "referenzpruefung.admin.check.titel": "Funktionscheck",
+    "referenzpruefung.admin.check.text":
+      "Sendet einmal fiktiven Prüfstoff an die gewählte KI. Das ist ein echter Modellaufruf und kann Kosten verursachen. Er läuft nur auf Klick, nie beim Öffnen dieser Seite.",
+    "referenzpruefung.admin.check.knopf": "Funktionscheck",
+    "referenzpruefung.admin.check.knopfLabel": "Funktionscheck für {{name}} starten",
+    "referenzpruefung.admin.check.laeuft": "Prüft …",
+    "referenzpruefung.admin.check.ergebnis.erfolgreich": "erfolgreich",
+    "referenzpruefung.admin.check.ergebnis.fehlgeschlagen": "fehlgeschlagen",
+    "referenzpruefung.admin.check.zeile":
+      "Letzter Funktionscheck: {{ergebnis}} · {{zeit}} · Modell {{modell}} · {{dauer}} ms",
+    "referenzpruefung.admin.check.andereModell":
+      "Der letzte Funktionscheck lief mit einem anderen Modell ({{modell}}) und gilt nicht für das heutige.",
+    "referenzpruefung.admin.check.verbrauch":
+      "Tatsächlicher Modellaufruf · {{eingabe}} Eingabe- und {{ausgabe}} Ausgabe-Token",
+    "referenzpruefung.admin.check.keinVerbrauch":
+      "Tatsächlicher Modellaufruf · Verbrauch nicht gemeldet",
+    "referenzpruefung.admin.check.keinAufruf": "Kein Modellaufruf — es wurde nichts gesendet.",
+    "referenzpruefung.admin.check.kosten": "Kosten: {{betrag}} {{waehrung}}",
+    "referenzpruefung.admin.check.keineKosten": "Kosten: nicht berechenbar",
+    "referenzpruefung.admin.check.grund.falsches_urteil":
+      "Die Prüfausgabe war gültig, aber das Urteil über den fiktiven Prüfstoff war falsch.",
+    "referenzpruefung.admin.check.nichtGespeichert":
+      "Das Ergebnis konnte nicht im Protokoll gespeichert werden.",
+    "referenzpruefung.admin.check.fehler": "Der Funktionscheck ist nicht möglich: {{meldung}}",
+    "referenzpruefung.admin.check.keinModell": "nicht genannt",
   },
   en: {
     "mrun.task.referenz": "Reference check of sources",
@@ -177,6 +324,64 @@ export default {
     "referenzpruefung.erneut.fehler": "Checking again is not possible.",
     "referenzpruefung.vergleich.heute": "Source check of today's answer",
     "referenzpruefung.vergleich.damals": "Source check of the answer at the reference date",
+    "referenzpruefung.gesamt.quellen_geprueft": "Sources checked",
+    "referenzpruefung.gesamt.gemischt": "Draft · sources only partly confirmed",
+    "referenzpruefung.gesamt.nicht_pruefbar": "Draft · sources not checkable",
+    "referenzpruefung.gesamt.nicht_abgeschlossen": "Draft · check not completed",
+    "referenzpruefung.gesamt.laeuft": "Draft · check running",
+    "referenzpruefung.gesamt.offen": "Draft · source check open",
+    "referenzpruefung.gesamt.fremde_fassung": "Draft · check belongs to another answer version",
+    "referenzpruefung.gesamt.keine_aussage": "No statement to check",
+    "referenzpruefung.entwurfHinweis":
+      "This answer is not confirmed by sources as a whole. It stays visible but is not a source approval.",
+    "referenzpruefung.bedeutung":
+      "“Supported” means: the cited passage supports the statement. It does not mean: guaranteed true or current.",
+    "referenzpruefung.detail.oeffnen": "Show passage and reasoning",
+    "referenzpruefung.detail.schliessen": "Close passage and reasoning",
+    "referenzpruefung.detail.titel": "Passage and check reasoning",
+    "referenzpruefung.detail.passageOhne":
+      "The passage is not available in this view. Open the source in the checked version.",
+    "referenzpruefung.detail.keineFundstelle": "There is no accessible passage for this statement.",
+    "referenzpruefung.detail.begruendung": "Reasoning:",
+    "referenzpruefung.detail.zurueck": "Back to the statement",
+    "referenzpruefung.naechster.label": "Next step:",
+    "referenzpruefung.naechster.erneut": "You can trigger the check once more.",
+    "referenzpruefung.naechster.unbekannt":
+      "Ask the question again. If the state remains, report it to the administration.",
+    "referenzpruefung.naechster.keine_aussage":
+      "Nothing to do. The answer contains no factual statement that needs a source.",
+    "referenzpruefung.naechster.keine_fundstelle":
+      "Check the statement yourself against a source or report the missing source via the answer's report function.",
+    "referenzpruefung.naechster.fundstelle_nicht_aufgeloest":
+      "The source is not (or no longer) accessible to you or has changed. Ask the question again.",
+    "referenzpruefung.naechster.keine_freigabe_externe_verarbeitung":
+      "The administration can grant approval for external processing or allow an internal reference AI (Administration → AI → Reference check).",
+    "referenzpruefung.naechster.pruefer_nicht_eingerichtet":
+      "The administration allows a reference AI under Administration → AI → Reference check. Then ask the question again.",
+    "referenzpruefung.naechster.pruefer_nicht_verfuegbar":
+      "The administration sets up an allowed reference AI under AI accesses. Then ask the question again.",
+    "referenzpruefung.naechster.pruefer_nicht_freigegeben":
+      "The administration grants approval or lifts the AI switch-off (Administration → AI).",
+    "referenzpruefung.naechster.pruefer_nicht_unabhaengig":
+      "The administration also allows a reference AI with a different model than the answering AI.",
+    "referenzpruefung.naechster.antwortmodell_unbekannt":
+      "Ask the question again. An independent check needs the answer model to be recorded.",
+    "referenzpruefung.naechster.zeitlimit": "Try again in a moment.",
+    "referenzpruefung.naechster.abgebrochen": "Ask the question again to have it checked.",
+    "referenzpruefung.naechster.budget_erschoepft":
+      "Ask a narrower question. If the budget stays exhausted, contact the administration.",
+    "referenzpruefung.naechster.ki_abgeschaltet":
+      "The administration lifts the AI switch-off. Until then the answer stays unchecked.",
+    "referenzpruefung.naechster.ungueltige_pruefausgabe":
+      "Try again. If the output stays invalid, the administration checks the reference AI with the function check.",
+    "referenzpruefung.naechster.pruefer_fehler":
+      "Try again. If the reference AI keeps failing, the administration checks the access.",
+    "referenzpruefung.naechster.modellaufruf_ausgeschlossen":
+      "This is intended on this path. For a checked answer, ask on the questions page.",
+    "referenzpruefung.naechster.bestaetigung_abgelaufen":
+      "Ask the question again so that the current version is checked with your current rights.",
+    "referenzpruefung.naechster.kein_urteil": "Check the statement yourself against the passage.",
+    "referenzpruefung.zweitmeinung.titel": "Source check of this answer",
     "referenzpruefung.admin.titel": "Reference AI for the source check",
     "referenzpruefung.admin.text":
       "The reference AI only checks whether an answer's passages support its statements. For each question the first allowed option using a different model than the answer is chosen.",
@@ -185,6 +390,87 @@ export default {
     "referenzpruefung.admin.vorziehen": "Move {{name}} up",
     "referenzpruefung.admin.rang": "Priority {{rang}}",
     "referenzpruefung.admin.gespeichert": "Reference AI saved.",
+    "referenzpruefung.einstieg.titel": "Reference check",
+    "referenzpruefung.einstieg.wert": "{{anzahl}} allowed",
+    "referenzpruefung.einstieg.aus": "off",
+    "referenzpruefung.admin.verweis":
+      "Choose the reference AI for the source check under Administration → AI → Reference check.",
+    "referenzpruefung.admin.rolle":
+      "The reference AI is a separate, read-only checking role. It only checks whether an answer's passages support its statements. It must use a different model than the answering AI. This is a second AI check, not a human approval.",
+    "referenzpruefung.admin.quelle":
+      "You can choose from the AI accesses registered in provider administration (see AI accesses). No keys are stored or shown here.",
+    "referenzpruefung.admin.art.intern": "internal",
+    "referenzpruefung.admin.art.oeffentlich": "public",
+    "referenzpruefung.admin.modell": "Model: {{modell}}",
+    "referenzpruefung.admin.modellUnbekannt": "Model: not named",
+    "referenzpruefung.admin.zustandLabel": "Status: {{zustand}}",
+    "referenzpruefung.admin.zustand.nicht_eingerichtet": "not set up",
+    "referenzpruefung.admin.zustand.ausgeschaltet": "switched off",
+    "referenzpruefung.admin.zustand.nicht_verfuegbar": "not available",
+    "referenzpruefung.admin.zustand.konfiguriert": "configured, not yet checked",
+    "referenzpruefung.admin.zustand.letzte_pruefung_erfolgreich": "last check successful",
+    "referenzpruefung.admin.zustand.letzte_pruefung_fehlgeschlagen": "last check failed",
+    "referenzpruefung.admin.hilfe.nicht_eingerichtet":
+      "This access is not set up. The operator sets it up in provider administration (AI accesses).",
+    "referenzpruefung.admin.hilfe.konfiguriert":
+      "Configured is not proof yet. Only a function check or a real check shows whether the source check works.",
+    "referenzpruefung.admin.sperre.ki_abgeschaltet":
+      "AI has been switched off by the administrator. Next step: lift the switch-off in AI administration.",
+    "referenzpruefung.admin.sperre.keine_freigabe_externe_verarbeitung":
+      "Blocked: approval for external processing is missing for public AI. Next step: grant it under Administration → AI → AI administration, or choose an internal AI.",
+    "referenzpruefung.admin.sperre.nicht_erreichbar":
+      "The access is set up but not reachable right now. Next step: test the connection under AI accesses or allow another reference AI.",
+    "referenzpruefung.admin.sperre.kein_pruefmodell":
+      "The access names no model or offers no check. Without a model name, independence cannot be shown.",
+    "referenzpruefung.admin.gleichesModell":
+      "Same model as the answering AI — this option never checks answers from this model.",
+    "referenzpruefung.admin.antwortmodell": "Answering AI today: {{name}}",
+    "referenzpruefung.admin.antwortmodellOhne": "Answering AI today: no model (fallback mode)",
+    "referenzpruefung.admin.konflikt":
+      "No independent checker: every usable allowed reference AI uses the same model as the answering AI. Also allow an AI with a different model. Until then the check status stays open and there is no four-eyes result.",
+    "referenzpruefung.admin.keineEinsatzbereit":
+      "No allowed reference AI is usable. Knowledge answers stay with an open check status “not checkable”. Allow a set-up AI or fix the named block.",
+    "referenzpruefung.admin.keineBestaetigung":
+      "An unchecked answer cannot be declared confirmed here. Only an actual check can confirm it.",
+    "referenzpruefung.admin.freigabe.titel": "Approvals",
+    "referenzpruefung.admin.freigabe.text":
+      "Public reference AIs only receive content with approval for external processing, and confidential content only with the second approval as well. The choice here does not lift any space, user, tenant or data approval. If an approval is missing, the check visibly shows “not checkable”.",
+    "referenzpruefung.admin.freigabe.stand":
+      "Public AI: {{oeffentlich}} · Confidential: {{vertraulich}}",
+    "referenzpruefung.admin.freigabe.an": "cleared",
+    "referenzpruefung.admin.freigabe.aus": "blocked",
+    "referenzpruefung.admin.envGesperrt":
+      "The AI assignment is fixed by an operator setting. Changes are blocked here.",
+    "referenzpruefung.admin.grenzen.titel": "Limits",
+    "referenzpruefung.admin.grenzen.text":
+      "One model call per check with at most {{sekunden}} s, {{token}} answer tokens, {{posten}} check items and {{zeichen}} characters of material. At most {{erneut}} explicitly triggered repeat check, no automatic retry. Check policy {{richtlinie}}.",
+    "referenzpruefung.admin.preise.hinterlegt":
+      "Costs according to the operator's price list ({{waehrung}}, as of {{stand}}). Every check call is listed in the AI run log.",
+    "referenzpruefung.admin.preise.fehlt":
+      "No price list stored: costs are not calculated. Token usage is listed in the AI run log.",
+    "referenzpruefung.admin.check.titel": "Function check",
+    "referenzpruefung.admin.check.text":
+      "Sends fictional check material to the chosen AI once. This is a real model call and may incur costs. It only runs on click, never when this page opens.",
+    "referenzpruefung.admin.check.knopf": "Function check",
+    "referenzpruefung.admin.check.knopfLabel": "Start function check for {{name}}",
+    "referenzpruefung.admin.check.laeuft": "Checking …",
+    "referenzpruefung.admin.check.ergebnis.erfolgreich": "successful",
+    "referenzpruefung.admin.check.ergebnis.fehlgeschlagen": "failed",
+    "referenzpruefung.admin.check.zeile":
+      "Last function check: {{ergebnis}} · {{zeit}} · model {{modell}} · {{dauer}} ms",
+    "referenzpruefung.admin.check.andereModell":
+      "The last function check ran with a different model ({{modell}}) and does not apply to today's.",
+    "referenzpruefung.admin.check.verbrauch":
+      "Actual model call · {{eingabe}} input and {{ausgabe}} output tokens",
+    "referenzpruefung.admin.check.keinVerbrauch": "Actual model call · usage not reported",
+    "referenzpruefung.admin.check.keinAufruf": "No model call — nothing was sent.",
+    "referenzpruefung.admin.check.kosten": "Costs: {{betrag}} {{waehrung}}",
+    "referenzpruefung.admin.check.keineKosten": "Costs: not calculable",
+    "referenzpruefung.admin.check.grund.falsches_urteil":
+      "The check output was valid, but the verdict on the fictional material was wrong.",
+    "referenzpruefung.admin.check.nichtGespeichert": "The result could not be saved in the log.",
+    "referenzpruefung.admin.check.fehler": "The function check is not possible: {{meldung}}",
+    "referenzpruefung.admin.check.keinModell": "not named",
   },
   nl: {
     "mrun.task.referenz": "Referentiecontrole van bronnen",
@@ -263,6 +549,66 @@ export default {
     "referenzpruefung.erneut.fehler": "Opnieuw controleren is niet mogelijk.",
     "referenzpruefung.vergleich.heute": "Broncontrole van het antwoord van vandaag",
     "referenzpruefung.vergleich.damals": "Broncontrole van het antwoord op de peildatum",
+    "referenzpruefung.gesamt.quellen_geprueft": "Bronnen gecontroleerd",
+    "referenzpruefung.gesamt.gemischt": "Concept · bronnen slechts deels bevestigd",
+    "referenzpruefung.gesamt.nicht_pruefbar": "Concept · bronnen niet controleerbaar",
+    "referenzpruefung.gesamt.nicht_abgeschlossen": "Concept · controle niet afgerond",
+    "referenzpruefung.gesamt.laeuft": "Concept · controle loopt",
+    "referenzpruefung.gesamt.offen": "Concept · broncontrole open",
+    "referenzpruefung.gesamt.fremde_fassung":
+      "Concept · controle hoort bij een andere antwoordversie",
+    "referenzpruefung.gesamt.keine_aussage": "Geen uitspraak om te controleren",
+    "referenzpruefung.entwurfHinweis":
+      "Dit antwoord is niet als geheel door bronnen bevestigd. Het blijft zichtbaar, maar is geen bronvrijgave.",
+    "referenzpruefung.bedeutung":
+      "„Onderbouwd” betekent: de genoemde vindplaats draagt de uitspraak. Het betekent niet: gegarandeerd waar of actueel.",
+    "referenzpruefung.detail.oeffnen": "Vindplaats en onderbouwing tonen",
+    "referenzpruefung.detail.schliessen": "Vindplaats en onderbouwing sluiten",
+    "referenzpruefung.detail.titel": "Vindplaats en controle-onderbouwing",
+    "referenzpruefung.detail.passageOhne":
+      "De passage is in deze weergave niet beschikbaar. Open de bron in de gecontroleerde versie.",
+    "referenzpruefung.detail.keineFundstelle":
+      "Voor deze uitspraak is er geen toegankelijke vindplaats.",
+    "referenzpruefung.detail.begruendung": "Onderbouwing:",
+    "referenzpruefung.detail.zurueck": "Terug naar de uitspraak",
+    "referenzpruefung.naechster.label": "Volgende stap:",
+    "referenzpruefung.naechster.erneut": "U kunt de controle nog één keer starten.",
+    "referenzpruefung.naechster.unbekannt":
+      "Stel de vraag opnieuw. Blijft de toestand, meld die dan aan het beheer.",
+    "referenzpruefung.naechster.keine_aussage":
+      "Niets te doen. Het antwoord bevat geen feitelijke uitspraak die een bron nodig heeft.",
+    "referenzpruefung.naechster.keine_fundstelle":
+      "Controleer de uitspraak zelf aan een bron of meld de ontbrekende bron via de meldfunctie van het antwoord.",
+    "referenzpruefung.naechster.fundstelle_nicht_aufgeloest":
+      "De bron is voor u niet (meer) toegankelijk of is gewijzigd. Stel de vraag opnieuw.",
+    "referenzpruefung.naechster.keine_freigabe_externe_verarbeitung":
+      "Het beheer kan de vrijgave voor externe verwerking verlenen of een interne referentie-AI toestaan (Beheer → AI → Referentiecontrole).",
+    "referenzpruefung.naechster.pruefer_nicht_eingerichtet":
+      "Het beheer staat een referentie-AI toe onder Beheer → AI → Referentiecontrole. Stel de vraag daarna opnieuw.",
+    "referenzpruefung.naechster.pruefer_nicht_verfuegbar":
+      "Het beheer richt een toegestane referentie-AI in onder AI-toegangen. Stel de vraag daarna opnieuw.",
+    "referenzpruefung.naechster.pruefer_nicht_freigegeben":
+      "Het beheer verleent de vrijgave of heft de AI-uitschakeling op (Beheer → AI).",
+    "referenzpruefung.naechster.pruefer_nicht_unabhaengig":
+      "Het beheer staat daarnaast een referentie-AI toe met een ander model dan de antwoord-AI.",
+    "referenzpruefung.naechster.antwortmodell_unbekannt":
+      "Stel de vraag opnieuw. Een onafhankelijke controle vraagt een vastgelegd antwoordmodel.",
+    "referenzpruefung.naechster.zeitlimit": "Probeer het zo meteen nog eens.",
+    "referenzpruefung.naechster.abgebrochen": "Stel de vraag opnieuw om haar te laten controleren.",
+    "referenzpruefung.naechster.budget_erschoepft":
+      "Stel een engere vraag. Blijft het budget op, neem dan contact op met het beheer.",
+    "referenzpruefung.naechster.ki_abgeschaltet":
+      "Het beheer heft de AI-uitschakeling op. Tot dan blijft het antwoord ongecontroleerd.",
+    "referenzpruefung.naechster.ungueltige_pruefausgabe":
+      "Probeer het nog eens. Blijft de uitvoer ongeldig, dan controleert het beheer de referentie-AI met de functiecheck.",
+    "referenzpruefung.naechster.pruefer_fehler":
+      "Probeer het nog eens. Valt de referentie-AI blijvend uit, dan controleert het beheer de toegang.",
+    "referenzpruefung.naechster.modellaufruf_ausgeschlossen":
+      "Op deze weg is dat zo bedoeld. Voor een gecontroleerd antwoord stelt u de vraag op de vragenpagina.",
+    "referenzpruefung.naechster.bestaetigung_abgelaufen":
+      "Stel de vraag opnieuw, zodat de huidige versie met uw huidige rechten wordt gecontroleerd.",
+    "referenzpruefung.naechster.kein_urteil": "Controleer de uitspraak zelf aan de vindplaats.",
+    "referenzpruefung.zweitmeinung.titel": "Broncontrole van dit antwoord",
     "referenzpruefung.admin.titel": "Referentie-AI voor de broncontrole",
     "referenzpruefung.admin.text":
       "De referentie-AI controleert uitsluitend of de vindplaatsen van een antwoord de uitspraken dragen. Per vraag wordt de eerste toegestane optie gekozen die een ander model gebruikt dan het antwoord.",
@@ -272,5 +618,87 @@ export default {
     "referenzpruefung.admin.vorziehen": "{{name}} naar voren",
     "referenzpruefung.admin.rang": "Voorrang {{rang}}",
     "referenzpruefung.admin.gespeichert": "Referentie-AI opgeslagen.",
+    "referenzpruefung.einstieg.titel": "Referentiecontrole",
+    "referenzpruefung.einstieg.wert": "{{anzahl}} toegestaan",
+    "referenzpruefung.einstieg.aus": "uit",
+    "referenzpruefung.admin.verweis":
+      "Kies de referentie-AI voor de broncontrole onder Beheer → AI → Referentiecontrole.",
+    "referenzpruefung.admin.rolle":
+      "De referentie-AI is een eigen, alleen lezende controlerol. Zij controleert uitsluitend of de vindplaatsen van een antwoord de uitspraken dragen. Zij moet een ander model gebruiken dan de antwoord-AI. Dit is een tweede AI-controle, geen menselijke vrijgave.",
+    "referenzpruefung.admin.quelle":
+      "U kiest uit de AI-toegangen die in het providerbeheer zijn geregistreerd (zie AI-toegangen). Sleutels worden hier niet opgeslagen of getoond.",
+    "referenzpruefung.admin.art.intern": "intern",
+    "referenzpruefung.admin.art.oeffentlich": "openbaar",
+    "referenzpruefung.admin.modell": "Model: {{modell}}",
+    "referenzpruefung.admin.modellUnbekannt": "Model: niet genoemd",
+    "referenzpruefung.admin.zustandLabel": "Status: {{zustand}}",
+    "referenzpruefung.admin.zustand.nicht_eingerichtet": "niet ingericht",
+    "referenzpruefung.admin.zustand.ausgeschaltet": "uitgeschakeld",
+    "referenzpruefung.admin.zustand.nicht_verfuegbar": "niet beschikbaar",
+    "referenzpruefung.admin.zustand.konfiguriert": "geconfigureerd, nog niet gecontroleerd",
+    "referenzpruefung.admin.zustand.letzte_pruefung_erfolgreich": "laatste controle geslaagd",
+    "referenzpruefung.admin.zustand.letzte_pruefung_fehlgeschlagen": "laatste controle mislukt",
+    "referenzpruefung.admin.hilfe.nicht_eingerichtet":
+      "Deze toegang is niet ingericht. De beheerder van het platform richt hem in via het providerbeheer (AI-toegangen).",
+    "referenzpruefung.admin.hilfe.konfiguriert":
+      "Geconfigureerd is nog geen bewijs. Pas een functiecheck of een echte controle laat zien of de broncontrole lukt.",
+    "referenzpruefung.admin.sperre.ki_abgeschaltet":
+      "AI is door de beheerder uitgeschakeld. Volgende stap: de uitschakeling in het AI-beheer opheffen.",
+    "referenzpruefung.admin.sperre.keine_freigabe_externe_verarbeitung":
+      "Geblokkeerd: voor openbare AI ontbreekt de vrijgave voor externe verwerking. Volgende stap: de vrijgave verlenen onder Beheer → AI → AI-beheer, of een interne AI kiezen.",
+    "referenzpruefung.admin.sperre.nicht_erreichbar":
+      "De toegang is ingericht, maar nu niet bereikbaar. Volgende stap: de verbinding testen onder AI-toegangen of een andere referentie-AI toestaan.",
+    "referenzpruefung.admin.sperre.kein_pruefmodell":
+      "De toegang noemt geen model of biedt geen controle. Zonder modelnaam is onafhankelijkheid niet aantoonbaar.",
+    "referenzpruefung.admin.gleichesModell":
+      "Hetzelfde model als de antwoord-AI — deze optie controleert nooit antwoorden van dit model.",
+    "referenzpruefung.admin.antwortmodell": "Antwoord-AI vandaag: {{name}}",
+    "referenzpruefung.admin.antwortmodellOhne": "Antwoord-AI vandaag: geen model (vervangmodus)",
+    "referenzpruefung.admin.konflikt":
+      "Geen onafhankelijke controleur: elke inzetbare toegestane referentie-AI gebruikt hetzelfde model als de antwoord-AI. Sta daarnaast een AI met een ander model toe. Tot dan blijft de controlestatus open en is er geen vier-ogen-resultaat.",
+    "referenzpruefung.admin.keineEinsatzbereit":
+      "Geen toegestane referentie-AI is inzetbaar. Kennisantwoorden blijven met een open controlestatus „niet controleerbaar”. Sta een ingerichte AI toe of hef de genoemde blokkade op.",
+    "referenzpruefung.admin.keineBestaetigung":
+      "Een niet-gecontroleerd antwoord kan hier niet als bevestigd worden verklaard. Alleen een echte controle kan het bevestigen.",
+    "referenzpruefung.admin.freigabe.titel": "Vrijgaven",
+    "referenzpruefung.admin.freigabe.text":
+      "Openbare referentie-AI's krijgen inhoud alleen met de vrijgave voor externe verwerking, vertrouwelijke inhoud bovendien alleen met de tweede vrijgave. De keuze hier heft geen space-, gebruikers-, tenant- of gegevensvrijgave op. Ontbreekt een vrijgave, dan staat de controle zichtbaar als „niet controleerbaar”.",
+    "referenzpruefung.admin.freigabe.stand":
+      "Openbare AI: {{oeffentlich}} · Vertrouwelijk: {{vertraulich}}",
+    "referenzpruefung.admin.freigabe.an": "vrijgegeven",
+    "referenzpruefung.admin.freigabe.aus": "geblokkeerd",
+    "referenzpruefung.admin.envGesperrt":
+      "De AI-toewijzing is vastgelegd door een platforminstelling. Wijzigingen zijn hier geblokkeerd.",
+    "referenzpruefung.admin.grenzen.titel": "Grenzen",
+    "referenzpruefung.admin.grenzen.text":
+      "Per controle één modelaanroep met hoogstens {{sekunden}} s, {{token}} antwoordtokens, {{posten}} controleposten en {{zeichen}} tekens materiaal. Hoogstens {{erneut}} uitdrukkelijk gestarte herhaalde controle, geen automatische herhaling. Controlerichtlijn {{richtlinie}}.",
+    "referenzpruefung.admin.preise.hinterlegt":
+      "Kosten volgens de prijslijst van de beheerder van het platform ({{waehrung}}, stand {{stand}}). Elke controleaanroep staat in het AI-runlogboek.",
+    "referenzpruefung.admin.preise.fehlt":
+      "Geen prijslijst opgeslagen: kosten worden niet berekend. Het tokenverbruik staat in het AI-runlogboek.",
+    "referenzpruefung.admin.check.titel": "Functiecheck",
+    "referenzpruefung.admin.check.text":
+      "Stuurt eenmaal fictief controlemateriaal naar de gekozen AI. Dit is een echte modelaanroep en kan kosten veroorzaken. Hij draait alleen na een klik, nooit bij het openen van deze pagina.",
+    "referenzpruefung.admin.check.knopf": "Functiecheck",
+    "referenzpruefung.admin.check.knopfLabel": "Functiecheck voor {{name}} starten",
+    "referenzpruefung.admin.check.laeuft": "Controleert …",
+    "referenzpruefung.admin.check.ergebnis.erfolgreich": "geslaagd",
+    "referenzpruefung.admin.check.ergebnis.fehlgeschlagen": "mislukt",
+    "referenzpruefung.admin.check.zeile":
+      "Laatste functiecheck: {{ergebnis}} · {{zeit}} · model {{modell}} · {{dauer}} ms",
+    "referenzpruefung.admin.check.andereModell":
+      "De laatste functiecheck draaide met een ander model ({{modell}}) en geldt niet voor het huidige.",
+    "referenzpruefung.admin.check.verbrauch":
+      "Echte modelaanroep · {{eingabe}} invoer- en {{ausgabe}} uitvoertokens",
+    "referenzpruefung.admin.check.keinVerbrauch": "Echte modelaanroep · verbruik niet gemeld",
+    "referenzpruefung.admin.check.keinAufruf": "Geen modelaanroep — er is niets verzonden.",
+    "referenzpruefung.admin.check.kosten": "Kosten: {{betrag}} {{waehrung}}",
+    "referenzpruefung.admin.check.keineKosten": "Kosten: niet te berekenen",
+    "referenzpruefung.admin.check.grund.falsches_urteil":
+      "De controle-uitvoer was geldig, maar het oordeel over het fictieve materiaal was onjuist.",
+    "referenzpruefung.admin.check.nichtGespeichert":
+      "Het resultaat kon niet in het logboek worden opgeslagen.",
+    "referenzpruefung.admin.check.fehler": "De functiecheck is niet mogelijk: {{meldung}}",
+    "referenzpruefung.admin.check.keinModell": "niet genoemd",
   },
 } satisfies Textmodul;

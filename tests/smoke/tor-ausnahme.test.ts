@@ -104,6 +104,22 @@ const ERLAUBTE_AUSNAHMEN = [
     title:
       "AW10-K01 S06: tatsächliche Modellzusammenfassung, kein Versand, keine neue Befugnis @modell",
   },
+  // produkt:20261009:referenzki-adminauswahl (REF-03) — derselbe Grund: der Lieferbeleg verlangt
+  // einen TATSÄCHLICHEN Modellaufruf des Funktionschecks. Ohne Modell kann der Fall im Tor nicht
+  // laufen; alles ohne Modell Nachweisbare misst `tests/referenzki-adminauswahl/`.
+  {
+    file: "referenzki-funktionscheck-modell.spec.ts",
+    title:
+      "REF-03 · Referenzprüfung: Auswahl nach Neuladen und Funktionscheck mit echtem Modell @modell",
+  },
+  // produkt:20261009:referenzki-antwortstatus (REF-04) — derselbe Grund: der Lieferbeleg verlangt
+  // eine durchgängige Antwort mit TATSÄCHLICHEM Prüfmodell. Ohne Modell kann der Fall im Tor nicht
+  // laufen; alles ohne Modell Nachweisbare misst `tests/referenzki-antwortstatus/`.
+  {
+    file: "referenzki-antwortstatus-modell.spec.ts",
+    title:
+      "REF-04 · Antwort → Prüfmodell → Aussagezustand → Fundstelle → Rückweg mit echtem Prüfmodell @modell",
+  },
 ] as const;
 
 /** Das npm-Skript, dessen Aufrufzeile das Tor in `tools/check` fährt. */

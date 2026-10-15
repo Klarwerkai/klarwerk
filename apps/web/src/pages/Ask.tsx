@@ -63,7 +63,11 @@ import {
   chipPunkt,
 } from "../components/fragen/Quellenplaketten";
 // REF-02 (Ben nacharbeit-3): das Ergebnis der Referenzprüfung an der stehenden Antwort.
-import { Referenzpruefung } from "../components/fragen/Referenzpruefung";
+import {
+  QuellenStatusMarke,
+  Referenzpruefung,
+  referenzGesamt,
+} from "../components/fragen/Referenzpruefung";
 import { WissensstandVergleichBereich } from "../components/fragen/WissensstandVergleich";
 // R-0305/R-1099: die Zweitmeinung zur stehenden Antwort.
 import { Zweitmeinung } from "../components/fragen/Zweitmeinung";
@@ -149,6 +153,15 @@ import {
 import { fadenFuerAnfrage, fadenNachAntwort } from "../lib/gespraechsfaden";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 // R-0625 / R-1020 / R-1695: Herkunft und Stufe der Antwort aus EINER Ableitung.
+// produkt:20261010:poc-ki-ausfall-weiterarbeiten: Ursache, Hilfe und Speicherort beim KI-Ausfall.
+import {
+  entwurfSpeicherort,
+  erneutVersuchenSinnvoll,
+  ersatzGrundKey,
+  kiFehlerUrsache,
+  kiStoerungHinweisKey,
+  statusErneutPruefbar,
+} from "../lib/kiAusfall";
 import { ergebnisStufeFuerAntwort, kiHerkunftAus } from "../lib/kiHerkunft";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
@@ -762,6 +775,11 @@ export function Ask(): JSX.Element {
   const [aussageTexte, setAussageTexte] = useState<ReadonlyMap<string, string>>(
     () => new Map(anfang?.antwort?.aussageTexte ?? []),
   );
+  // REF-04 (K5, Befund nacharbeit-2): die Passage je Fundstelle — mit der Prüfung im Arbeitsstand,
+  // damit sie nach einem Neuaufbau der Seite (Rückweg, Ansichtswechsel) nicht fehlt.
+  const [fundstellenAuszuege, setFundstellenAuszuege] = useState<ReadonlyMap<string, string>>(
+    () => new Map(anfang?.antwort?.fundstellenAuszuege ?? []),
+  );
   // Ben nacharbeit-4 (K8): eine aus dem Arbeitsstand WIEDERHERGESTELLTE Prüfung ist UNBESTÄTIGT, bis
   // der Server sie mit den aktuellen Rechten, dem aktuell gewählten Prüfmodell und der aktuellen
   // Richtlinie bestätigt hat (`referenzBestaetigen`). Bis dahin wird kein Urteil gezeigt.
@@ -781,6 +799,10 @@ export function Ask(): JSX.Element {
   // eine Beanstandung gebunden wird. Nicht im Arbeitsstand: nach dem Neuladen bleibt nur die
   // einfache Meldung — der Server prüft die Aussage ohnehin gegen den signierten Beleg.
   const [aussagen, setAussagen] = useState<AntwortAussagenBeleg["aussagen"]>([]);
+  // REF-04 (K7): der Fingerabdruck DIESER Antwortfassung, wie der Server sie gebunden hat. Eine
+  // Prüfung mit anderer Bindung erbt hier keine Bestätigung. Wie `aussagen` nicht im Arbeitsstand —
+  // dort bestätigt der Server die Prüfung ohnehin neu.
+  const [antwortFingerabdruck, setAntwortFingerabdruck] = useState<string | null>(null);
   // SCRUM-264: zuletzt gestellte Frage festhalten → für die Anzeige des Rescue-Blocks.
   const [asked, setAsked] = useState(anfang?.antwort?.frage ?? "");
   // R-0348: der Gesprächsfaden — die zuletzt beantworteten Fragen dieser Fragestrecke. Eine
@@ -835,7 +857,9 @@ export function Ask(): JSX.Element {
   // PAKET 1 (D-AISTATE, Pedi 23.07.): die KI-Antwort (Reasoner-Task „answer") ohne nutzbares Modell
   // HART ausgrauen — kein stiller deterministischer Fallback, der „KI antwortet" vortäuscht.
   const answerAi = useAiAvailable("answer");
-  const aiHintKey = answerAi.statusUnknown ? "ai.statusUnknown.hint" : "ai.unavailable.hint";
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): „eingerichtet, aber zuletzt nicht
+  // erreichbar" ist eine Störung und liest sich anders als „kein Modell eingerichtet".
+  const aiHintKey = kiStoerungHinweisKey(reasonerStatus.data, answerAi.statusUnknown);
   // D5: hat der ADMINISTRATOR die KI abgeschaltet, sagt die Fläche das so — und nicht „nicht
   // verfügbar", was eine Störung meint. Die Absendesperre selbst bleibt `answerAi.available`: eine
   // abgeschaltete Aufgabe `answer` hat keinen nutzbaren Modellweg, der Server meldet sie `false`.
@@ -1026,6 +1050,8 @@ export function Ask(): JSX.Element {
       setPruefrahmen(null);
       setReferenzpruefung(null);
       setAussageTexte(new Map());
+      setFundstellenAuszuege(new Map());
+      setAntwortFingerabdruck(null);
       setBestaetigtFuer(null);
       setReferenzAbgelaufen(false);
       // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
@@ -1060,6 +1086,7 @@ export function Ask(): JSX.Element {
       setReceipt(r.receipt);
       setAnswerId(r.answerId ?? null);
       setAussagen(r.aussagen?.aussagen ?? []);
+      setAntwortFingerabdruck(r.aussagen?.antwortFingerabdruck ?? null);
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
       setVerschlossen(r.verschlossen ?? []);
@@ -1067,6 +1094,15 @@ export function Ask(): JSX.Element {
       // REF-02: abwesend heißt „kein Prüfdienst oder keine beantwortete Frage" — dann steht nichts.
       setReferenzpruefung(r.referenzpruefung ?? null);
       setAussageTexte(new Map((r.aussagen?.aussagen ?? []).map((a) => [a.aussageId, a.text])));
+      setFundstellenAuszuege(
+        new Map(
+          (r.aussagen?.aussagen ?? []).flatMap((a) =>
+            a.teile.flatMap((teil) =>
+              teil.fundstellen.map((f): [string, string] => [f.fundstelleId, f.auszug]),
+            ),
+          ),
+        ),
+      );
       // Frisch vom Server zu GENAU dieser Antwort — keine Wiederherstellung, also bestätigt.
       setBestaetigtFuer(r.referenzpruefung?.pruefId ?? null);
       setReferenzAbgelaufen(false);
@@ -1118,6 +1154,26 @@ export function Ask(): JSX.Element {
       setReferenzAbgelaufen(true);
     },
   });
+  // REF-04 (K2–K4/K7): die Quellenkennzeichnung an der Antwort. Läuft eine Bestätigung oder erneute
+  // Prüfung, heißt es „Prüfung läuft"; scheiterte die erneute Prüfung, „nicht abgeschlossen"; ist
+  // die gespeicherte Prüfung nicht mehr bestätigbar, ebenso. Nur ein vom Server zu GENAU dieser
+  // Antwortfassung gelieferter, vollständig belegter Stand heißt „Quellen geprüft".
+  const referenzLaeuft =
+    referenzErneut.isPending ||
+    referenzBestaetigen.isPending ||
+    (referenzpruefung !== null && bestaetigtFuer !== referenzpruefung.pruefId);
+  const quellenGesamt = referenzGesamt(referenzpruefung, {
+    laeuft: referenzLaeuft,
+    // Der Fehlschlag gilt nur für die Prüfung, zu der er gehört — eine neue Antwort beginnt frisch.
+    fehler:
+      (referenzErneut.isError && referenzErneut.variables === referenzpruefung?.pruefId) ||
+      (referenzpruefung === null && referenzAbgelaufen),
+    antwortFingerabdruck,
+  });
+  // REF-04 (K5): die Passage je Fundstelle, wie diese Antwort sie mitgeliefert hat (REF-01) —
+  // aus dem Stand, der auch einen Neuaufbau der Seite übersteht (Befund nacharbeit-2).
+  const auszugVon = (fundstelleId: string): string | undefined =>
+    fundstellenAuszuege.get(fundstelleId);
   const bestaetigungAngefragt = useRef<string | null>(null);
   useEffect(() => {
     const id = referenzpruefung?.pruefId;
@@ -1203,7 +1259,13 @@ export function Ask(): JSX.Element {
               ...(antwortKontext === undefined ? {} : { fragekontext: antwortKontext }),
               // REF-02: die Prüfung dieser Antwort reist mit (Rückweg von der Fundstelle).
               ...(referenzpruefung
-                ? { referenzpruefung, aussageTexte: [...aussageTexte.entries()] }
+                ? {
+                    referenzpruefung,
+                    aussageTexte: [...aussageTexte.entries()],
+                    // REF-04 (K5, nacharbeit-2): die Passagen reisen mit — sonst fehlten sie nach
+                    // jedem Neuaufbau der Seite am Wechsel Aussage → Fundstelle.
+                    fundstellenAuszuege: [...fundstellenAuszuege.entries()],
+                  }
                 : {}),
             }
           : null,
@@ -1228,6 +1290,7 @@ export function Ask(): JSX.Element {
     antwortKontext,
     referenzpruefung,
     aussageTexte,
+    fundstellenAuszuege,
     gemerkteStartadressen,
     fragekontext,
     szenario,
@@ -1302,11 +1365,13 @@ export function Ask(): JSX.Element {
       // R-0293: die Kennung gehört zur aufgenommenen Antwort desselben Kontos (Altbestand: undefined).
       setAnswerId(antwort === null ? null : antwort.answerId);
       setAussagen([]);
+      setAntwortFingerabdruck(null);
       setVerschlossen(antwort?.verschlossen ?? []);
       setPruefrahmen(null);
       // REF-02: die Prüfung des neuen Kontos ersetzt die alte vollständig.
       setReferenzpruefung(antwort?.referenzpruefung ?? null);
       setAussageTexte(new Map(antwort?.aussageTexte ?? []));
+      setFundstellenAuszuege(new Map(antwort?.fundstellenAuszuege ?? []));
       // Ben nacharbeit-4 (K8): wiederhergestellt heißt unbestätigt — erst der Server bestätigt.
       setBestaetigtFuer(null);
       setReferenzAbgelaufen(false);
@@ -1445,6 +1510,10 @@ export function Ask(): JSX.Element {
       ? ask.error.message
       : null;
   const gebremstAbgewiesen = gebremstSatz !== null;
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten: die belegte Ursache der gescheiterten Frage
+  // (PV-03-01) und wo die Frage jetzt gesichert ist (PV-03-03) — nachgelesen, nicht angenommen.
+  const fehlerUrsache = ask.isError ? kiFehlerUrsache(ask.error) : null;
+  const entwurfOrt = ask.isError ? entwurfSpeicherort(fragenSpeicher(), konto, q) : "nurSeite";
 
   const resultRef = useRef<HTMLDivElement | null>(null);
   // ==============================================================================================
@@ -2210,7 +2279,17 @@ export function Ask(): JSX.Element {
                 hinweisTestId="ask-ki-abgeschaltet-hinweis"
               />
             ) : (
-              <KiNichtVerfuegbar hinweisKey={aiHintKey} />
+              <KiNichtVerfuegbar
+                hinweisKey={aiHintKey}
+                // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-07): Erholung ohne
+                // Neuladen — bei einer Störung wird der Status auf Wunsch neu gelesen.
+                {...(statusErneutPruefbar(aiHintKey)
+                  ? {
+                      onErneutPruefen: () => void reasonerStatus.refetch(),
+                      pruefLaeuft: reasonerStatus.isFetching,
+                    }
+                  : {})}
+              />
             )
           ) : null}
         </span>
@@ -2378,6 +2457,23 @@ export function Ask(): JSX.Element {
                   {gebremstSatz}
                 </p>
               </div>
+            ) : fehlerUrsache === "kapazitaet" || fehlerUrsache === "verweigert" ? (
+              // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): die belegte Ursache
+              // statt „steckengeblieben". Nur bei Kapazität lohnt derselbe Versuch erneut.
+              <div data-testid={`ask-ki-${fehlerUrsache}`}>
+                <p className="text-[13px] font-semibold text-trust-crit-text">
+                  {t(`kiausfall.fehler.${fehlerUrsache}.titel`)}
+                </p>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-trust-crit-text">
+                  {t(`kiausfall.fehler.${fehlerUrsache}.text`)}
+                </p>
+                {erneutVersuchenSinnvoll(fehlerUrsache) ? (
+                  <Button className="mt-3" variant="ghost" onClick={() => submitAsk(asked || q)}>
+                    {t("ask.error.retry")}
+                    <ArrowRight size={14} />
+                  </Button>
+                ) : null}
+              </div>
             ) : (
               <>
                 <p className="text-[13px] font-semibold text-trust-crit-text">
@@ -2392,6 +2488,28 @@ export function Ask(): JSX.Element {
                 </Button>
               </>
             )}
+            {/* PV-03-03: wo die Frage jetzt liegt — „im Browser" nur, wenn dort nachgelesen. */}
+            <p
+              data-testid="ask-entwurf-speicherort"
+              data-ort={entwurfOrt}
+              className="mt-3 text-[12px] leading-relaxed text-muted"
+            >
+              {t(`kiausfall.entwurf.${entwurfOrt}`)}
+            </p>
+            {/* PV-03-02: bei belegter KI-Ursache stehen die Wege ohne KI auch hier, nicht nur bei
+                gesperrtem Knopf. Ein unbelegter Fehler wird nicht zum KI-Ausfall erklärt. */}
+            {fehlerUrsache !== null ? (
+              <p data-testid="ask-fehler-manuell" className="mt-1.5 text-[12px] text-muted">
+                {t("kiausfall.hilfe.manuell")}{" "}
+                <RoleLink to="/bibliothek" className="font-semibold text-brand-text">
+                  {() => t("ask.aiUnavailable.toLibrary")}
+                </RoleLink>
+                {" · "}
+                <RoleLink to="/erfassen" className="font-semibold text-brand-text">
+                  {() => t("ask.aiUnavailable.toCapture")}
+                </RoleLink>
+              </p>
+            ) : null}
           </div>
         ) : null}
         {/* R-0330 (Ben R1, F5): die Störung sieht nie wie Leere aus — und nie wie eine Antwort. */}
@@ -2442,6 +2560,34 @@ export function Ask(): JSX.Element {
               <ArrowRight size={14} />
             </Button>
           </output>
+        ) : null}
+        {/* produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): ist das Modell in DIESEM Lauf
+            gescheitert und hat der regelbasierte Ersatz geantwortet, steht die Ursache vor der
+            Karte — bei Antwort wie bei Lücke. Vor und nicht in der Karte: dort zählt das
+            Zeichenbudget bis zur KI-Kennzeichnung (mega62 E1), und die Antwort steht vorn (D-047).
+            Ben (nacharbeit-2): der Satz folgt dem TATSÄCHLICHEN Antwortstatus — ohne Antwort sagt
+            er „keine Antwort" und nennt den offenen Weg, nie „beantwortet". */}
+        {karteSichtbar && result && ersatzGrundKey(result.ersatzGrund, result.answered) ? (
+          <div
+            data-testid="ask-ersatz-grund"
+            data-grund={result.ersatzGrund}
+            data-beantwortet={result.answered ? "1" : "0"}
+            className="mb-3 mt-5 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] leading-relaxed text-trust-warn-text"
+          >
+            <p className="m-0">{t(ersatzGrundKey(result.ersatzGrund, result.answered) ?? "")}</p>
+            {result.answered ? null : (
+              <p data-testid="ask-ersatz-weiterweg" className="m-0 mt-1.5">
+                {t("kiausfall.hilfe.manuell")}{" "}
+                <RoleLink to="/bibliothek" className="font-semibold text-brand-text">
+                  {() => t("ask.aiUnavailable.toLibrary")}
+                </RoleLink>
+                {" · "}
+                <RoleLink to="/erfassen" className="font-semibold text-brand-text">
+                  {() => t("ask.aiUnavailable.toCapture")}
+                </RoleLink>
+              </p>
+            )}
+          </div>
         ) : null}
         {/* Eine ANDERE Frage räumt die alte Antwort ab (`onMutate`) — sie gehört zu einer anderen
             Frage, und stehenzubleiben hieße, sie als Antwort auf die neue auszugeben. DIESELBE
@@ -2519,6 +2665,9 @@ export function Ask(): JSX.Element {
                   <p className="m-0 flex flex-wrap items-center gap-1.5">
                     <ErgebnisStufeMarke stufe={antwortStufe} />
                     {antwortHerkunft === "ki" ? <AiGeneratedNotice /> : null}
+                    {/* REF-04 (K3/K4): die Quellenkennzeichnung — „Quellen geprüft" nur bei voller
+                      Bestätigung, sonst sichtbar Entwurf mit dem Prüfstand. */}
+                    <QuellenStatusMarke gesamt={quellenGesamt} />
                   </p>
                   {/* ==========================================================================
                     R-0287 / R-0286 — DIE WARNUNG STEHT VOLLSTÄNDIG DIREKT HINTER DER ANTWORT.
@@ -2664,6 +2813,13 @@ export function Ask(): JSX.Element {
                       }
                       onErneut={() => referenzErneut.mutate(referenzpruefung.pruefId)}
                       erneutLaeuft={referenzErneut.isPending}
+                      laeuft={referenzLaeuft}
+                      fehler={
+                        referenzErneut.isError &&
+                        referenzErneut.variables === referenzpruefung.pruefId
+                      }
+                      antwortFingerabdruck={antwortFingerabdruck}
+                      auszugVon={auszugVon}
                     />
                   ) : null}
                   {/* ==========================================================================
@@ -3151,6 +3307,9 @@ export function Ask(): JSX.Element {
                   onNeuFragen={() => submitAsk(asked)}
                   billable={deriveZweitmeinungBillable(reasonerStatus.data)}
                   titelVon={(id) => (kos.data ?? []).find((k) => k.id === id)?.title}
+                  wissenHref={(id, fassung) =>
+                    demoHref(`/wissen/${encodeURIComponent(id)}?fassung=${fassung}`, params)
+                  }
                 />
               </div>
             ) : (

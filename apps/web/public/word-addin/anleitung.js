@@ -170,6 +170,9 @@
         standGeaendert: "Der Baustein hat sich gerade geändert – nichts eingefügt. Bitte erneut wählen.",
         keineAuswahl: "Bitte zuerst einen Baustein wählen.",
         keinWord: "Word hat nicht geantwortet – nichts geändert.",
+        keinWordGrund: "Word hat abgelehnt, bevor etwas eingefügt wurde – nichts geändert. Word meldet: {grund}.",
+        wordAbgebrochen: "Word hat das Einfügen abgebrochen – bitte das Dokument ansehen, Teile können bereits darin stehen. Word meldet: {grund}.",
+        hinterAbsatz: "Hinter den Absatz am Cursor gesetzt – Word konnte den Absatz nicht teilen ({grund}).",
         verschoben: "Das Dokument hat sich seit der Prüfung geändert. Bitte erneut prüfen.",
         fehler: "Das ging nicht. Bitte erneut versuchen.",
         anmeldung: "Bitte erneut anmelden.",
@@ -283,6 +286,9 @@
         standGeaendert: "The building block has just changed – nothing inserted. Please choose again.",
         keineAuswahl: "Please choose a building block first.",
         keinWord: "Word did not respond – nothing changed.",
+        keinWordGrund: "Word refused before anything was inserted – nothing changed. Word reports: {grund}.",
+        wordAbgebrochen: "Word aborted the insertion – please look at the document, parts may already be in it. Word reports: {grund}.",
+        hinterAbsatz: "Placed after the paragraph at the cursor – Word could not split the paragraph ({grund}).",
         verschoben: "The document has changed since the check. Please check again.",
         fehler: "That did not work. Please try again.",
         anmeldung: "Please sign in again.",
@@ -396,6 +402,9 @@
         standGeaendert: "De bouwsteen is net gewijzigd – niets ingevoegd. Kies opnieuw.",
         keineAuswahl: "Kies eerst een bouwsteen.",
         keinWord: "Word heeft niet gereageerd – niets gewijzigd.",
+        keinWordGrund: "Word weigerde voordat er iets werd ingevoegd – niets gewijzigd. Word meldt: {grund}.",
+        wordAbgebrochen: "Word heeft het invoegen afgebroken – bekijk het document, delen kunnen er al in staan. Word meldt: {grund}.",
+        hinterAbsatz: "Na de alinea bij de cursor geplaatst – Word kon de alinea niet splitsen ({grund}).",
         verschoben: "Het document is sinds de controle gewijzigd. Controleer opnieuw.",
         fehler: "Dat lukte niet. Probeer het opnieuw.",
         anmeldung: "Meld je opnieuw aan.",
@@ -862,15 +871,30 @@
      * mit allen Läufen, gemischter Formatierung, Hyperlinks, Feldern und den Absatzeigenschaften
      * (Nacharbeit 7). Nichts wird überschrieben. Das Teilen braucht `Range.getRange`/
      * `expandTo` (WordApi 1.3); meldet der Host 1.3 nicht, bleibt es beim Einfügen hinter dem Absatz.
-     * `done(true|false)`.
+     *
+     * Auftrag Nutzerverwaltung, Nacharbeit 16 (Bens Befund): der echte Rückgabeversuch in Word für
+     * Mac endete mit „Word hat nicht geantwortet – nichts geändert", ohne dass sichtbar war, WO Word
+     * abbrach. Deshalb jetzt:
+     *   · jeder `sync` gehört zu einem benannten Schritt; scheitert er, kommt der Office-Fehlercode
+     *     samt Fehlerort (`code`, `debugInfo.errorLocation` — Namen der Schnittstelle, kein
+     *     Dokumentinhalt) mit dem Schritt in die Meldung;
+     *   · „nichts geändert" steht nur noch da, wo es stimmt — vor dem ersten Einfügeschritt. Bricht Word
+     *     beim Einfügen selbst ab, heißt die Meldung so und bittet, das Dokument anzusehen;
+     *   · scheitert nur die (nichts ändernde) Vorbereitung des Teilens, kommen die Zeilen in einem
+     *     zweiten Lauf hinter den Absatz am Cursor — derselbe Weg wie ohne WordApi 1.3 —, und die
+     *     Meldung sagt dazu, dass Word den Absatz nicht teilen konnte und warum.
+     * Geladen werden nur die Absatzverweise (`items/text`), nicht alle Absatzeigenschaften.
+     * `done(ok, befund)`: bei Erfolg ist `befund` null oder `{ ausweich: grund }`, sonst
+     * `{ teilweise: bool, grund }`.
      */
     function anleitungEinfuegen(zeilen, done) {
-      if (!anleitungOffice()) { done(false); return; }
+      if (!anleitungOffice()) { done(false, null); return; }
       var stile = anleitungStileMoeglich();
+      var schritt = "auswahl";
       Word.run(function (context) {
         var auswahl = context.document.getSelection();
         var absaetze = auswahl.paragraphs;
-        absaetze.load("items");
+        absaetze.load("items/text");
         var setzen = function (nach) {
           var letzter = nach;
           for (var i = 0; i < zeilen.length; i += 1) {
@@ -887,9 +911,11 @@
           if (items.length === 0) { throw new Error("keine Einfuegestelle"); }
           var absatz = items[items.length - 1];
           if (!stile) {
+            schritt = "einfuegen";
             setzen(absatz);
             return context.sync();
           }
+          schritt = "teilen";
           // Der Bereich vom Cursor bis zum Absatzende — er muss HINTER die eingefügten Zeilen.
           var rest = auswahl.getRange("End").expandTo(absatz.getRange("End"));
           rest.load("text");
@@ -899,6 +925,7 @@
           var restOoxml = rest.getOoxml();
           return context.sync().then(function () {
             var restText = String(rest.text || "").replace(/[\r\n]+$/, "");
+            schritt = "einfuegen";
             if (restText.length === 0) {
               setzen(absatz);
               return context.sync();
@@ -908,12 +935,68 @@
             var nachher = setzen(absatz).insertParagraph("", "After");
             nachher.insertOoxml(restOoxml.value, "Replace");
             return context.sync().then(function () {
+              schritt = "rest";
               rest.delete();
               return context.sync();
             });
           });
         });
-      }).then(function () { done(true); }, function () { done(false); });
+      }).then(function () { done(true, null); }, function (err) {
+        var grund = anleitungWordGrund(err, schritt);
+        if (schritt === "teilen") {
+          // Bis hier hat Word nur gelesen — das Dokument ist unverändert. Ohne Teilen weiter.
+          anleitungHinterAbsatz(zeilen, stile, function (ok, zweiter) {
+            done(ok, ok ? { ausweich: grund } : { teilweise: zweiter.teilweise, grund: grund + "; " + zweiter.grund });
+          });
+          return;
+        }
+        done(false, { teilweise: schritt !== "auswahl", grund: grund });
+      });
+    }
+
+    /** Der Ausweichweg: die Zeilen hinter den Absatz am Cursor, ohne ihn zu teilen. */
+    function anleitungHinterAbsatz(zeilen, stile, done) {
+      var schritt = "auswahl";
+      Word.run(function (context) {
+        var absaetze = context.document.getSelection().paragraphs;
+        absaetze.load("items/text");
+        return context.sync().then(function () {
+          var items = absaetze.items || [];
+          if (items.length === 0) { throw new Error("keine Einfuegestelle"); }
+          schritt = "einfuegen";
+          var letzter = items[items.length - 1];
+          for (var i = 0; i < zeilen.length; i += 1) {
+            letzter = letzter.insertParagraph(zeilen[i].text, "After");
+            var stufe = zeilen[i].ueberschrift === true ? 2 : typeof zeilen[i].ueberschrift === "number" ? zeilen[i].ueberschrift : 0;
+            if (stile) { letzter.styleBuiltIn = stufe > 0 ? "Heading" + stufe : "Normal"; }
+          }
+          return context.sync();
+        });
+      }).then(function () { done(true, null); }, function (err) {
+        done(false, { teilweise: schritt !== "auswahl", grund: anleitungWordGrund(err, schritt) });
+      });
+    }
+
+    /**
+     * Was Word beim Abbruch sagt — Fehlercode und Fehlerort (`OfficeExtension.Error`) mit dem Schritt
+     * des Panels. Nur Bezeichner der Schnittstelle; Dokumenttext kommt nicht hinein.
+     */
+    function anleitungWordGrund(err, schritt) {
+      var sauber = function (wert) {
+        return String(wert || "").replace(/[^A-Za-z0-9_.]/g, "").slice(0, 60);
+      };
+      var code = sauber(err && (err.code || err.name)) || "ohneCode";
+      var ort = sauber(err && err.debugInfo ? err.debugInfo.errorLocation : "");
+      return code + (ort ? " @ " + ort : "") + " [" + schritt + "]";
+    }
+
+    /** Die Meldung nach einem Einfügen: Schlüssel und Werte — Erfolg trägt ggf. den Ausweichhinweis. */
+    function anleitungWordMeldung(ok, befund, erfolg, werte) {
+      if (ok) {
+        return { text: anleitungT(erfolg, werte) + (befund && befund.ausweich ? " " + anleitungT("hinterAbsatz", { grund: befund.ausweich }) : ""), warn: false };
+      }
+      if (!befund) { return { text: anleitungT("keinWord"), warn: true }; }
+      return { text: anleitungT(befund.teilweise ? "wordAbgebrochen" : "keinWordGrund", { grund: befund.grund }), warn: true };
     }
 
     function anleitungVorlageZeilen() {
@@ -930,11 +1013,12 @@
       if (anleitungLage === "laden") { return; }
       anleitungLage = "laden";
       anleitungZeichnen();
-      anleitungEinfuegen(anleitungVorlageZeilen(), function (ok) {
+      anleitungEinfuegen(anleitungVorlageZeilen(), function (ok, befund) {
         anleitungLage = "ruhe";
         // Das Dokument hat sich geändert — ein früheres Prüfergebnis gilt nicht mehr.
         anleitungErgebnis = null;
-        anleitungMelden(anleitungT(ok ? "vorlageEingefuegt" : "keinWord"), !ok);
+        var meldung = anleitungWordMeldung(ok, befund, "vorlageEingefuegt", null);
+        anleitungMelden(meldung.text, meldung.warn);
         anleitungZeichnen();
       });
     }
@@ -1155,7 +1239,10 @@
       anleitungErzeugenMit(ids, null);
     }
 
-    /** Laufklammer: Lage „laden", und eine `ende`-Funktion, die nur für DIESEN Lauf meldet. */
+    /**
+     * Laufklammer: Lage „laden", und eine `ende`-Funktion, die nur für DIESEN Lauf meldet. `ende`
+     * nimmt einen Textschlüssel — oder eine fertige Meldung `{ text, warn }` (`anleitungWordMeldung`).
+     */
     function anleitungLaufStarten() {
       anleitungLauf += 1;
       var lauf = anleitungLauf;
@@ -1164,7 +1251,11 @@
       return function (schluessel, werte, warn) {
         if (lauf !== anleitungLauf) { return; }
         anleitungLage = "ruhe";
-        anleitungMelden(anleitungT(schluessel, werte), warn);
+        if (schluessel && typeof schluessel === "object") {
+          anleitungMelden(schluessel.text, schluessel.warn);
+        } else {
+          anleitungMelden(anleitungT(schluessel, werte), warn);
+        }
         anleitungZeichnen();
       };
     }
@@ -1196,14 +1287,13 @@
             ende("fehler", null, true);
             return null;
           }
-          anleitungEinfuegen(anleitungMarkdownZeilen(dokument.markdown), function (ok) {
-            if (!ok) { ende("keinWord", null, true); return; }
-            anleitungErgebnis = null;
-            ende("dokumentEingefuegt", {
+          anleitungEinfuegen(anleitungMarkdownZeilen(dokument.markdown), function (ok, befund) {
+            if (ok || (befund && befund.teilweise)) { anleitungErgebnis = null; }
+            ende(anleitungWordMeldung(ok, befund, "dokumentEingefuegt", {
               titel: dokument.title,
               rolle: dokument.audienceRole ? dokument.audienceRole : anleitungT("ohneRolle"),
               n: ids.length
-            }, false);
+            }));
           });
           return null;
         });
@@ -1226,7 +1316,11 @@
       var ende = function (schluessel, werte, warn) {
         if (lauf !== anleitungLauf) { return; }
         anleitungLage = "ruhe";
-        anleitungMelden(anleitungT(schluessel, werte), warn);
+        if (schluessel && typeof schluessel === "object") {
+          anleitungMelden(schluessel.text, schluessel.warn);
+        } else {
+          anleitungMelden(anleitungT(schluessel, werte), warn);
+        }
         anleitungZeichnen();
       };
       var herkunft = null;
@@ -1254,13 +1348,9 @@
                 ende("standGeaendert", null, true);
                 return null;
               }
-              anleitungEinfuegen(anleitungBausteinZeilen(ko, herkunft), function (ok) {
-                if (ok) { anleitungErgebnis = null; }
-                if (ok) {
-                  ende("bausteinEingefuegt", { titel: herkunft.title, version: herkunft.version }, false);
-                } else {
-                  ende("keinWord", null, true);
-                }
+              anleitungEinfuegen(anleitungBausteinZeilen(ko, herkunft), function (ok, befund) {
+                if (ok || (befund && befund.teilweise)) { anleitungErgebnis = null; }
+                ende(anleitungWordMeldung(ok, befund, "bausteinEingefuegt", { titel: herkunft.title, version: herkunft.version }));
               });
               return null;
             });
@@ -1740,10 +1830,9 @@
       ).then(function (body) {
         var zeilen = anleitungKiZeilen(body);
         if (!zeilen) { ende("kiUnbrauchbar", null, true); return; }
-        anleitungEinfuegen(zeilen, function (ok) {
-          if (!ok) { ende("keinWord", null, true); return; }
-          anleitungErgebnis = null;
-          ende("kiEingefuegt", null, false);
+        anleitungEinfuegen(zeilen, function (ok, befund) {
+          if (ok || (befund && befund.teilweise)) { anleitungErgebnis = null; }
+          ende(anleitungWordMeldung(ok, befund, "kiEingefuegt", null));
         });
       }, function (err) {
         var treffer = /^HTTP (\d{3})$/.exec(err && err.message ? err.message : "");

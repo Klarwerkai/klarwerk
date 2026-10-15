@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import {
@@ -6,6 +7,7 @@ import {
   registerSecurityHeaders,
   withUpgradeInsecureRequests,
 } from "../../services/app/src/security-headers";
+import { repoPfad } from "../support/repoPfad";
 
 // AUFTRAG-mega15 Block C (bens SB-3) — `upgrade-insecure-requests` NUR auf echten HTTPS-Antworten.
 //
@@ -38,14 +40,18 @@ afterEach(() => {
 
 // `resolveTrustProxy()` liest die Umgebung, wenn `buildApp` die Fastify-Instanz erzeugt
 // (build-app.ts:573) — die Variable muss deshalb VOR dem Bau stehen.
-async function appWithTrustProxy(trustProxy: string | undefined): Promise<App> {
+// `env` geht nur an `registerSecurityHeaders` (R-0837: dieselbe Registrierung mit NODE_ENV=production).
+async function appWithTrustProxy(
+  trustProxy: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<App> {
   if (trustProxy === undefined) {
     delete process.env.KLARWERK_TRUST_PROXY;
   } else {
     process.env.KLARWERK_TRUST_PROXY = trustProxy;
   }
   const app = buildApp(buildServices());
-  await registerSecurityHeaders(app);
+  await registerSecurityHeaders(app, env);
   app.get("/word-addin/taskpane.html", async (_request, reply) =>
     reply.type("text/html").send("ok"),
   );
@@ -83,6 +89,57 @@ describe("Block C: die Direktive FEHLT auf jeder HTTP-Antwort", () => {
     expect(res.headers["x-frame-options"]).toBeDefined();
     expect(res.headers["strict-transport-security"]).toContain("max-age=31536000");
     expect(res.headers["x-content-type-options"]).toBe("nosniff");
+  });
+});
+
+// Aufnahme `gesamt-tls-betrieb` · R-0837: „Die erzwungene Verschlüsselung darf im lokalen Betrieb
+// ohne Zertifikat nicht greifen, in der Produktion aber schon" — aus EINEM Quellstand, ohne Patch im
+// Paket. Lokal greift nichts, weil die Direktive fehlt und HSTS auf plain HTTP vom Browser verworfen
+// wird (RFC 6797 §8.1). In Produktion greift beides auf der HTTPS-Antwort; HSTS auch dann, wenn der
+// Proxy der Anwendung kein HTTPS meldet — sonst hinge die Zusage an einer unbelegten Einstellung.
+describe("R-0837: erzwungene Verschlüsselung je Betriebsweg", () => {
+  const HSTS = "max-age=31536000; includeSubDomains; preload";
+
+  it("Insel ohne Zertifikat (NODE_ENV=production, plain HTTP): keine Direktive, HSTS nur als Kopf", async () => {
+    const app = await appWithTrustProxy(undefined, { NODE_ENV: "production" });
+    for (const url of ["/", "/api/auth/me", "/word-addin/taskpane.html"]) {
+      const res = await app.inject({ method: "GET", url });
+      expect(csp(res), url).not.toContain(UPGRADE_INSECURE_REQUESTS);
+      expect(res.headers["strict-transport-security"], url).toBe(HSTS);
+    }
+  });
+
+  it("Produktion hinter vertrautem Proxy (X-Forwarded-Proto: https): Direktive und HSTS", async () => {
+    const app = await appWithTrustProxy("127.0.0.1", { NODE_ENV: "production" });
+    for (const url of ["/", "/api/auth/me", "/word-addin/taskpane.html"]) {
+      const res = await app.inject({
+        method: "GET",
+        url,
+        headers: { "x-forwarded-proto": "https" },
+        remoteAddress: "127.0.0.1",
+      });
+      expect(csp(res), url).toContain(UPGRADE_INSECURE_REQUESTS);
+      expect(res.headers["strict-transport-security"], url).toBe(HSTS);
+    }
+  });
+
+  it("Produktion ohne Proxy-Vertrauen: HSTS bleibt, damit die HTTPS-Antwort des Proxys ihn trägt", async () => {
+    const app = await appWithTrustProxy(undefined, { NODE_ENV: "production" });
+    const res = await app.inject({
+      method: "GET",
+      url: "/",
+      headers: { "x-forwarded-proto": "https" },
+    });
+    expect(res.headers["strict-transport-security"]).toBe(HSTS);
+  });
+});
+
+describe("R-0837: das ausgelieferte Paket weicht nicht mehr vom Quellstand ab", () => {
+  it("der Inselbauer schreibt keine Sicherheits-Kopfzeilen in den kopierten Serverquelltext", () => {
+    const bauer = readFileSync(repoPfad("scripts/insel/build-current-release.mjs"), "utf8");
+    expect(bauer).not.toMatch(/hsts:\s*false/);
+    expect(bauer).not.toMatch(/upgradeInsecureRequests:\s*null/);
+    expect(bauer).not.toContain('join(releaseDir, "services", "app", "src", "server.ts")');
   });
 });
 

@@ -22,6 +22,9 @@ function clone(config: ReasonerTaskConfig): ReasonerTaskConfig {
     global: config.global,
     perTask: { ...config.perTask },
     ...(config.kiFreigabe ? { kiFreigabe: { ...config.kiFreigabe } } : {}),
+    // KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Wahl je Schutzstufe reist ebenso in die Zeile und
+    // zurück — sonst wäre sie nach jedem Neustart fort.
+    ...(config.proSchutzstufe ? { proSchutzstufe: { ...config.proSchutzstufe } } : {}),
     // R-0305/R-1099: die Wahl der Zweitmeinung muss den Neustart ebenso überleben wie die Freigabe.
     ...(config.zweitmeinung ? { zweitmeinung: config.zweitmeinung } : {}),
     // REF-02: ebenso die erlaubten Referenz-Prüfer — als Kopie, nicht als geteilte Liste.

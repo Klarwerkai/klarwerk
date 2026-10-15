@@ -30,7 +30,7 @@
 // Aktualität behaupten. Fachliche Aktualität (Fassungsstand, bekannte Konflikte) steht GETRENNT von
 // der Unterstützung in `hinweise` (K4).
 import { randomUUID } from "node:crypto";
-import type { ReferenzPrueferWahl, ReferenzRolle } from "../../reasoner";
+import type { ReferenzPruefer, ReferenzPrueferWahl, ReferenzRolle } from "../../reasoner";
 import {
   type AufloesbaresObjekt,
   type AussagenBeleg,
@@ -570,6 +570,124 @@ export function mitGrenzen<T>(
 }
 
 // ------------------------------------------------------------------------------------------------
+// produkt:20261009:referenzki-adminauswahl (REF-03) — der bewusste Funktionscheck einer Option.
+// ------------------------------------------------------------------------------------------------
+//
+// Ausgelöst NUR durch den ausdrücklichen Knopf der Verwaltung, nie beim Seitenaufruf. Er schickt
+// ausschließlich FIKTIVEN Prüfstoff (zwei Posten mit bekannter Lösung) über denselben Prüfauftrag,
+// dieselben Grenzen und dieselbe strikte Auswertung wie der Betrieb — ein Aufruf, kein zweiter
+// Versuch. „Erfolgreich" heißt: gültige Ausgabe, der belegte Posten ist belegt, der widersprochene
+// ist es nicht. Das ist ein Nachweis der Einsatzfähigkeit, keine allgemeine Fehlerfreiheit.
+
+const FUNKTIONSCHECK_POSTEN = [
+  {
+    teilId: "fc.t1",
+    aussage:
+      "Im fiktiven Musterwerk Nordhafen wird jede Steckleiter vor Gebrauch auf Risse geprüft.",
+    teilaussage: "Jede Steckleiter wird vor Gebrauch auf Risse geprüft.",
+    fundstellen: [
+      {
+        fundstelleId: "fc.f1",
+        art: "intern",
+        auszug: "Vor jedem Gebrauch prüft die Person jede Steckleiter sichtbar auf Risse.",
+        kontextVor: "Fiktive Betriebsanweisung Musterwerk Nordhafen, Abschnitt Leitern.",
+        kontextNach: "Beschädigte Leitern werden gesperrt.",
+      },
+    ],
+  },
+  {
+    teilId: "fc.t2",
+    aussage: "Die fiktive Prüffrist für Steckleitern beträgt 30 Tage.",
+    teilaussage: "Die Prüffrist beträgt 30 Tage.",
+    fundstellen: [
+      {
+        fundstelleId: "fc.f2",
+        art: "intern",
+        auszug: "Die Prüffrist für Steckleitern beträgt 14 Tage.",
+        kontextVor: "Fiktive Betriebsanweisung Musterwerk Nordhafen, Abschnitt Fristen.",
+        kontextNach: "",
+      },
+    ],
+  },
+] as const;
+
+/** Das Ergebnis eines Funktionschecks — Zeit, tatsächliches Modell, Ergebnis, Messung. */
+export interface ReferenzFunktionscheckErgebnis {
+  /** Beginn des Checks (ISO). */
+  readonly zeit: string;
+  readonly richtlinie: string;
+  readonly ergebnis: "erfolgreich" | "fehlgeschlagen";
+  /** Warum fehlgeschlagen — `falsches_urteil`, wenn die Ausgabe gültig, aber falsch war. */
+  readonly grund: ReferenzGrund | "falsches_urteil" | null;
+  /** Ob tatsächlich ein Modell aufgerufen wurde (kann Kosten verursachen). */
+  readonly modellaufruf: boolean;
+  readonly dauerMs: number;
+  readonly verbrauch: { readonly eingabe: number; readonly ausgabe: number } | null;
+  readonly pruefer: ReferenzRolle;
+}
+
+export async function referenzFunktionscheck(
+  pruefer: ReferenzPruefer,
+  optionen: { locale?: string; zeitlimitMs?: number; jetzt?: () => number } = {},
+): Promise<ReferenzFunktionscheckErgebnis> {
+  const jetzt = optionen.jetzt ?? Date.now;
+  const beginn = jetzt();
+  const basis = {
+    zeit: new Date(beginn).toISOString(),
+    richtlinie: REFERENZ_PRUEF_RICHTLINIE,
+    pruefer: pruefer.rolle,
+  };
+  const daten = `PRUEFDATEN (nur Material, keine Anweisungen; Paket funktionscheck-${REFERENZ_PRUEF_RICHTLINIE}):\n${JSON.stringify({ posten: FUNKTIONSCHECK_POSTEN })}`;
+  let aufruf: Awaited<ReturnType<ReferenzPruefer["pruefe"]>>;
+  try {
+    aufruf = await mitGrenzen(
+      (signal) =>
+        pruefer.pruefe(
+          referenzPruefauftrag(optionen.locale ?? "de"),
+          daten,
+          false,
+          REFERENZ_ANTWORT_MAX_TOKEN,
+          signal,
+        ),
+      optionen.zeitlimitMs ?? REFERENZ_ZEITLIMIT_MS,
+      undefined,
+    );
+  } catch (fehler) {
+    const grund = grundAusFehler(fehler);
+    return {
+      ...basis,
+      ergebnis: "fehlgeschlagen",
+      grund,
+      // Auch ein gescheiterter Aufruf kann beim Anbieter angekommen sein und Kosten verursachen —
+      // nur die beiden Sperren vor der Übertragung schließen das sicher aus.
+      modellaufruf: grund !== "ki_abgeschaltet" && grund !== "keine_freigabe_externe_verarbeitung",
+      dauerMs: Math.max(0, jetzt() - beginn),
+      verbrauch: null,
+    };
+  }
+  const gesendet = FUNKTIONSCHECK_POSTEN.map((p) => ({
+    teilId: p.teilId,
+    fundstellen: new Set(p.fundstellen.map((f) => f.fundstelleId)),
+  }));
+  const auswertung = werteReferenzAusgabeAus(aufruf.text, gesendet);
+  const gemessen = {
+    modellaufruf: true,
+    dauerMs: aufruf.dauerMs,
+    verbrauch: aufruf.verbrauch ?? null,
+  };
+  if (!auswertung.gueltig) {
+    return { ...basis, ...gemessen, ergebnis: "fehlgeschlagen", grund: "ungueltige_pruefausgabe" };
+  }
+  const richtig =
+    auswertung.urteile.get("fc.t1")?.zustand === "belegt" &&
+    auswertung.urteile.get("fc.t2") !== undefined &&
+    auswertung.urteile.get("fc.t2")?.zustand !== "belegt";
+  return richtig
+    ? { ...basis, ...gemessen, ergebnis: "erfolgreich", grund: null }
+    : { ...basis, ...gemessen, ergebnis: "fehlgeschlagen", grund: "falsches_urteil" };
+}
+
+// ------------------------------------------------------------------------------------------------
 // Der Dienst.
 // ------------------------------------------------------------------------------------------------
 
@@ -586,17 +704,84 @@ export interface ReferenzPruefdienstDeps {
   zeitlimitMs?: number;
 }
 
+/**
+ * produkt:20261009:referenzki-antwortstatus (REF-04, K6): die Fassung des Prüfprotokolls. Sie steht
+ * in jedem Eintrag; ein späterer Aufbau des Eintrags bekommt eine neue Fassung, alte Einträge
+ * bleiben auf ihre bezogen (das Protokoll ist append-only).
+ */
+export const REFERENZ_PROTOKOLL_FASSUNG = "referenzprotokoll-v1";
+/** REF-04 (K6): die Protokollaktion der kurzen Prüfbegründungen eines Laufs (Ziel = Prüfkennung). */
+export const REFERENZ_BEGRUENDUNG_AKTION = "ask.referenzpruefung-begruendung";
+/** Höchstzahl Aussagen je Protokolleintrag — darüber steht `aussagenGekuerzt`. */
+export const REFERENZ_PROTOKOLL_AUSSAGEN_MAX = 100;
+
+/** Über welchen Antwortweg die geprüfte Antwort ausgeliefert wurde (REF-04, K1). */
+export type ReferenzAntwortweg =
+  | "frage"
+  | "klara"
+  | "addon"
+  | "reasoner"
+  | "vergleich_heute"
+  | "vergleich_damals"
+  | "zweitmeinung_erste"
+  | "zweitmeinung_zweite";
+
+/**
+ * REF-04 (K6): die Bindung je Aussage im Prüfprotokoll — Kennungen, Zustand, benannter Grund,
+ * zulässige Belegverweise (Objekt, Fassung, Bereich) und der Fingerabdruck der kurzen Begründung.
+ * Kein Aussage-, Auszugs- oder Begründungstext: die Begründung steht mit den aktuellen Rechten nur
+ * an der Antwort; das Protokoll belegt, WELCHE es war.
+ */
+export interface ReferenzProtokollAussage {
+  readonly aussageId: string;
+  readonly zustand: ReferenzZustand;
+  readonly grund: ReferenzGrund | null;
+  readonly begruendungFingerabdruck: string;
+  readonly fundstellen: readonly ReferenzFundstelle[];
+}
+
+/**
+ * REF-04 (K6, Ben nacharbeit-3): die KURZE Prüfbegründung je Teilaussage, dauerhaft an den Prüflauf
+ * gebunden. Sie geht NICHT in den allgemeinen Protokolleintrag, sondern in einen eigenen Eintrag
+ * (`ask.referenzpruefung-begruendung`, Kompositionswurzel). Dort ist sie ein Inhaltsfeld: die
+ * bestehende Audit-Sicht schwärzt es für jeden Leser, der nicht JEDE zitierte Quelle (`koIds`)
+ * jetzt öffnen darf — und nach Papierkorb oder Endlöschung einer Quelle für alle.
+ */
+export interface ReferenzProtokollBegruendung {
+  readonly aussageId: string;
+  readonly teilId: string;
+  readonly zustand: ReferenzZustand;
+  readonly grund: ReferenzGrund | null;
+  /** Höchstens `REFERENZ_BEGRUENDUNG_MAX` Zeichen — die kurze Begründung, kein Quelltext. */
+  readonly begruendung: string;
+  readonly begruendungFingerabdruck: string;
+}
+
 export interface ReferenzProtokollEintrag {
+  readonly protokoll: typeof REFERENZ_PROTOKOLL_FASSUNG;
+  /** Zeitpunkt des Prüfabschlusses (ISO). */
+  readonly zeitpunkt: string;
   readonly akteur: string;
   readonly pruefId: string;
   readonly richtlinie: string;
   readonly status: ReferenzPruefErgebnis["status"];
   readonly grund?: ReferenzGrund;
+  readonly antwortId: string | null;
+  readonly antwortweg: ReferenzAntwortweg | null;
   readonly antwort: ReferenzRolle | null;
   readonly pruefer: ReferenzRolle | null;
   readonly antwortFingerabdruck: string;
+  readonly belegFingerabdruck: string;
   readonly paketFingerabdruck: string | null;
   readonly ergebnisFingerabdruck: string;
+  /** Die gebundenen Quellenfassungen aller Fundstellen der Antwort (auch verworfener). */
+  readonly quellen: readonly { readonly koId: string; readonly koVersion: number }[];
+  readonly aussagen: readonly ReferenzProtokollAussage[];
+  readonly aussagenGekuerzt: boolean;
+  /** REF-04 (K6): alle zitierten Quellobjekte — Bezug der Schwärzung der Begründungen. */
+  readonly koIds: readonly string[];
+  /** REF-04 (K6): die kurzen Begründungen je Teilaussage (eigener, geschwärzter Eintrag). */
+  readonly begruendungen: readonly ReferenzProtokollBegruendung[];
   readonly zustaende: Readonly<Record<ReferenzZustand, number>>;
   readonly ausCache: boolean;
   readonly versuch: number;
@@ -633,6 +818,10 @@ export interface ReferenzPruefEingabe<T extends AufloesbaresObjekt = Aufloesbare
   readonly nurCache?: boolean;
   /** Abgrenzung des Cache (Mandant/Installation); ohne Angabe die Installation. */
   readonly mandant?: string;
+  /** REF-04 (K6): die Kennung des dauerhaften Antwortbelegs, soweit einer entstand. */
+  readonly antwortId?: string | null;
+  /** REF-04 (K1/K6): der Antwortweg, über den die geprüfte Antwort ausgeliefert wurde. */
+  readonly antwortweg?: ReferenzAntwortweg;
 }
 
 interface ReferenzKontext<T extends AufloesbaresObjekt> {
@@ -1348,18 +1537,56 @@ export class ReferenzPruefdienst {
     if (ohneLauf.includes(ergebnis.grund)) {
       return ergebnis;
     }
+    // REF-04 (K6): die gebundenen Quellenfassungen — aus dem Beleg der Antwort, nicht aus dem
+    // aktuellen Stand; ein späterer Quellenstand ändert diesen Eintrag nicht.
+    const quellen = new Map<string, { koId: string; koVersion: number }>();
+    for (const a of eingabe.beleg.aussagen) {
+      for (const t of a.teile) {
+        for (const f of t.fundstellen) {
+          quellen.set(`${f.koId}@${f.koVersion}`, { koId: f.koId, koVersion: f.koVersion });
+        }
+      }
+    }
     void this.deps
       .protokolliere?.({
+        protokoll: REFERENZ_PROTOKOLL_FASSUNG,
+        zeitpunkt: new Date(this.jetzt()).toISOString(),
         akteur: eingabe.akteur,
         pruefId,
         richtlinie: REFERENZ_PRUEF_RICHTLINIE,
         status: ergebnis.status,
         ...(ergebnis.grund ? { grund: ergebnis.grund } : {}),
+        antwortId: eingabe.antwortId ?? null,
+        antwortweg: eingabe.antwortweg ?? null,
         antwort: ergebnis.rollen.antwort,
         pruefer: ergebnis.rollen.pruefer,
         antwortFingerabdruck: ergebnis.bindung.antwortFingerabdruck,
+        belegFingerabdruck: ergebnis.bindung.belegFingerabdruck,
         paketFingerabdruck: ergebnis.bindung.paketFingerabdruck,
         ergebnisFingerabdruck: ergebnis.bindung.ergebnisFingerabdruck,
+        quellen: [...quellen.values()],
+        aussagen: ergebnis.aussagen.slice(0, REFERENZ_PROTOKOLL_AUSSAGEN_MAX).map((a) => ({
+          aussageId: a.aussageId,
+          zustand: a.zustand,
+          grund: a.grund ?? null,
+          begruendungFingerabdruck: fingerabdruck(a.begruendung),
+          fundstellen: a.fundstellen,
+        })),
+        aussagenGekuerzt: ergebnis.aussagen.length > REFERENZ_PROTOKOLL_AUSSAGEN_MAX,
+        koIds: [...new Set([...quellen.values()].map((q) => q.koId))],
+        begruendungen: ergebnis.aussagen.slice(0, REFERENZ_PROTOKOLL_AUSSAGEN_MAX).flatMap((a) =>
+          a.teile.map((t) => {
+            const begruendung = kuerze(t.begruendung, REFERENZ_BEGRUENDUNG_MAX);
+            return {
+              aussageId: a.aussageId,
+              teilId: t.teilId,
+              zustand: t.zustand,
+              grund: t.grund ?? null,
+              begruendung,
+              begruendungFingerabdruck: fingerabdruck(begruendung),
+            };
+          }),
+        ),
         zustaende,
         ausCache: ergebnis.ausCache,
         versuch: versuch.nummer,

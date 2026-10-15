@@ -338,7 +338,11 @@ describe("REF-02 · Adminliste über PUT /api/reasoner/config", () => {
     const gesetzt = await setzen({ global: "auto", perTask: {}, referenzpruefung: ["local"] });
     expect(gesetzt.statusCode, gesetzt.body.slice(0, 300)).toBe(200);
     expect(gesetzt.json().taskConfig.referenzpruefung).toEqual(["local"]);
-    expect((await eintraege()).map((e) => e.payload)).toEqual([{ vorher: [], nachher: ["local"] }]);
+    // REF-03 ergänzt die Modelle vorher/nachher (`modelleVorher`/`modelleNachher`) — hier zählt
+    // weiter der Stand der Wahlen; die Modellfelder belegt `tests/referenzki-adminauswahl/`.
+    expect((await eintraege()).map((e) => e.payload)).toMatchObject([
+      { vorher: [], nachher: ["local"] },
+    ]);
 
     const ohne = await setzen({ global: "auto", perTask: {} });
     expect(ohne.json().taskConfig.referenzpruefung).toEqual(["local"]);
@@ -355,7 +359,7 @@ describe("REF-02 · Adminliste über PUT /api/reasoner/config", () => {
     const aus = await setzen({ global: "auto", perTask: {}, referenzpruefung: null });
     expect(aus.statusCode).toBe(200);
     expect(aus.json().taskConfig.referenzpruefung).toBeUndefined();
-    expect((await eintraege()).map((e) => e.payload)).toEqual([
+    expect((await eintraege()).map((e) => e.payload)).toMatchObject([
       { vorher: [], nachher: ["local"] },
       { vorher: ["local"], nachher: [] },
     ]);

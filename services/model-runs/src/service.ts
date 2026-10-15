@@ -1,8 +1,8 @@
 import { MAX_AUSWERTUNG_LAEUFE, type ModelRunAuswertung, werteLaeufeAus } from "./auswertung";
-import type { Preisliste } from "./preisliste";
+import { type Preisliste, kostenEinesAufrufs } from "./preisliste";
 import type { KiLaufLogzeile, ProtokollModelRunRepo } from "./protokoll-repo";
 import type { ModelRunRepo } from "./repo";
-import type { ModelRunRecord } from "./types";
+import type { ModelRunKosten, ModelRunRecord } from "./types";
 
 // SCRUM-165: read-only Service über das ModelRun-Protokoll. Nur Lesen (recent) — kein
 // Write/Delete/Replay. Limit defensiv normalisiert.
@@ -63,6 +63,14 @@ export class ModelRunService {
       hinterlegt: false,
       ...(this.deps.preislisteFehler ? { fehler: this.deps.preislisteFehler } : {}),
     };
+  }
+
+  /** REF-03: Kosten eines einzelnen Aufrufs nach der hinterlegten Preisliste — oder keine. */
+  kostenEinesAufrufs(
+    modell: string,
+    verbrauch: { eingabe: number; ausgabe: number },
+  ): ModelRunKosten | undefined {
+    return kostenEinesAufrufs(this.deps.preisliste ?? null, modell, verbrauch);
   }
 
   // Betroffenenrechte (R-0663): alle Läufe, die diese Person angefragt hat — ohne Kappung, denn

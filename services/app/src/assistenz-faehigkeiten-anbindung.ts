@@ -1,4 +1,4 @@
-import type { Role } from "../../auth";
+import type { Freigabestufe, Role } from "../../auth";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
   type ExternalKnowledgePolicyRepo,
@@ -15,6 +15,7 @@ import {
   type GeheimnisQuelle,
   type KontextPruefung,
   type KontextTeil,
+  type Kostenbuch,
   type LageQuelle,
   PERPLEXITY_SUCHE,
   ProfilFaehigkeitsAblage,
@@ -57,13 +58,29 @@ export interface FaehigkeitenAnbindungDeps {
   /** Der vorhandene externe Suchweg (`createExternalSearchFromEnv`); fehlt er, kein Adapter. */
   readonly externeSuche: ExternalSearchService | undefined;
   readonly profile: AssistenzProfilRepo;
+  /**
+   * Die Konten, je Schritt frisch gelesen. `freigabe` ist das persönliche Freigabeniveau
+   * (Variante B, `sichtbarkeit.ts` `freigaberang`) — rechteentzug-gespraeche-belege (Nacharbeit 43):
+   * es reist in den Betrachter mit, sonst gälte für ein ausdrücklich begrenztes Konto der Rollenstandard.
+   */
   readonly konten: () => Promise<
-    readonly { readonly id: string; readonly role: Role; readonly approved: boolean }[]
+    readonly {
+      readonly id: string;
+      readonly role: Role;
+      readonly approved: boolean;
+      readonly freigabe?: Freigabestufe | undefined;
+    }[]
   >;
   readonly wissen: {
     get(id: string): Promise<(SichtbarkeitsFakten & { version: number }) | undefined>;
   };
   readonly lesbareSpaces: (nutzerId: string) => Promise<ReadonlySet<string>>;
+  /**
+   * produkt:20261013:produktbudget-anwender-admin: das persistente Kostenbuch der Produktbudgets
+   * (`produktbudget.ts`). Es gibt nur frei, was eine Fähigkeit mit belegtem Tarif, passender
+   * Zuordnung, Anbieter und Währung anfragt — die heutigen Verträge tragen keine Zuordnung.
+   */
+  readonly kostenbuch?: Kostenbuch;
   readonly protokoll?: (zeile: string) => void;
 }
 
@@ -81,7 +98,11 @@ export function produktFaehigkeitsLage(
   };
 }
 
-/** Der Betrachter eines Kontos, wie `makeGuards` ihn je Anfrage erhebt — oder `null`. */
+/**
+ * Der Betrachter eines Kontos, wie `makeGuards` ihn je Anfrage erhebt — oder `null`. Wie dort
+ * (`http.ts`) reist das persönliche Freigabeniveau aus dem eben gelesenen Konto mit (Nacharbeit 43):
+ * eine Begrenzung oder ihr Entzug wirkt bei der nächsten Prüfung, auch im Hintergrund.
+ */
 async function betrachter(
   deps: Pick<FaehigkeitenAnbindungDeps, "konten" | "lesbareSpaces">,
   nutzer: string,
@@ -90,7 +111,12 @@ async function betrachter(
   if (!konto || !konto.approved || !can(konto.role, "ko.read")) {
     return null;
   }
-  return { id: konto.id, role: konto.role, spaceLesbar: await deps.lesbareSpaces(konto.id) };
+  return {
+    id: konto.id,
+    role: konto.role,
+    ...(konto.freigabe ? { freigabe: konto.freigabe } : {}),
+    spaceLesbar: await deps.lesbareSpaces(konto.id),
+  };
 }
 
 const KEIN_RECHT =
@@ -201,6 +227,7 @@ export function baueFaehigkeiten(deps: FaehigkeitenAnbindungDeps): Faehigkeiten 
     ablage: new ProfilFaehigkeitsAblage(deps.profile),
     vormerkungen,
     kontext: produktKontextPruefung(deps),
+    ...(deps.kostenbuch ? { kostenbuch: deps.kostenbuch } : {}),
     ...(deps.protokoll ? { protokoll: deps.protokoll } : {}),
   });
   return { registry, vormerkungen, ausfuehrung };

@@ -47,6 +47,7 @@ gemeinsamem Entwurfs-Pool und Metadaten.
 
 ## Nicht-Ziele (v1)
 Echtzeit-Kollaboration am selben Entwurf (gleichzeitiges Editieren).
+Einordnung von R-0109 offen; Stand und Alternativen: `docs/entscheidungen/aufnahme-20260922-gesamt-gleichzeitiges-bearbeiten.md`.
 
 ## Offene Fragen
 Umfang Offline-Queue (Pflichtenheft §7) · OCR-Provider lokal vs. Cloud (Datenschutz NFR-PRV).

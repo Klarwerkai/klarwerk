@@ -103,6 +103,9 @@ import type {
   KoVersionSnapshot,
   KuratierteKanteAnsicht,
   KuratierteKanten,
+  LagebildBereich,
+  LagebildWerte,
+  LagebildWerteEingabe,
   LearningPath,
   Lesevariante,
   LesevariantenLadeBilanz,
@@ -129,11 +132,15 @@ import type {
   OverlapSettings,
   PruefdauerAuswertung,
   PublicUser,
+  ReasonerAusfuehrungAntwort,
   ReasonerConfigStatus,
   ReasonerKiLage,
   ReasonerProbeResult,
   ReasonerStatus,
+  ReferenzFunktionscheck,
   ReferenzPruefung,
+  ReferenzVerwaltung,
+  ReferenzWahl,
   RetirementEntry,
   RetirementHorizon,
   RevalidierungBestaetigt,
@@ -1307,9 +1314,24 @@ export const endpoints = {
     kiLage: () => api.get<ReasonerKiLage>("/ki-lage"),
     // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten).
     config: () => api.get<ReasonerConfigStatus>("/reasoner/config"),
+    // KI-WAHL-BETRIEBSABNAHME · Antwort 13: wer je Aufgabe tatsächlich arbeitet (alle Angemeldeten).
+    ausfuehrung: () => api.get<ReasonerAusfuehrungAntwort>("/reasoner/ausfuehrung"),
     // KI-Verwaltung v1: Zuordnung setzen (nur Admin; Antwort = frischer configStatus).
-    updateConfig: (cfg: { global: string; perTask: Record<string, string> }) =>
-      api.put<ReasonerConfigStatus>("/reasoner/config", cfg),
+    // Antwort 29: optional die Wahl je Schutzstufe — weglassen lässt sie unverändert, `null` löscht.
+    updateConfig: (cfg: {
+      global: string;
+      perTask: Record<string, string>;
+      proSchutzstufe?: ReasonerConfigStatus["taskConfig"]["proSchutzstufe"] | null;
+    }) => api.put<ReasonerConfigStatus>("/reasoner/config", cfg),
+    // produkt:20261009:referenzki-adminauswahl (REF-03): der Einstieg „Referenzprüfung" (nur
+    // Admin). Lesen ruft kein Modell; der Funktionscheck nur auf ausdrücklichen Klick.
+    referenzpruefung: () => api.get<ReferenzVerwaltung>("/reasoner/referenzpruefung"),
+    setzeReferenzpruefung: (liste: readonly ReferenzWahl[]) =>
+      api.put<ReferenzVerwaltung>("/reasoner/referenzpruefung", {
+        liste: liste.length > 0 ? [...liste] : null,
+      }),
+    referenzFunktionscheck: (wahl: ReferenzWahl) =>
+      api.post<ReferenzFunktionscheck>("/reasoner/referenzpruefung/funktionscheck", { wahl }),
     // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf (nur Admin, ehrliches Ergebnis).
     test: () => api.post<ReasonerProbeResult>("/reasoner/test"),
     // SCRUM-428: Key-Test für den eigenen lokalen LLM (echter Mini-Aufruf über den Tunnel).
@@ -1512,6 +1534,13 @@ export const endpoints = {
       api.put<{ entry: RetirementEntry | null }>(
         `/management/profiles/retirement/${encodeURIComponent(userId)}`,
         { horizonMonths },
+      ),
+    // produkt:20261013:lagebild-reale-werte-eingabe: reale Eingangswerte je sichtbarem Bereich.
+    lagebildWerte: () => api.get<{ bereiche: LagebildBereich[] }>("/management/lagebild-werte"),
+    setLagebildWerte: (bereich: string, body: LagebildWerteEingabe) =>
+      api.put<{ eintrag: LagebildWerte; wiederholt: boolean }>(
+        `/management/lagebild-werte/${encodeURIComponent(bereich)}`,
+        body,
       ),
   },
   // SCRUM-165: read-only Einsicht in jüngste ModelRuns (nur Metadaten).

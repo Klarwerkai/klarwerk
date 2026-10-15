@@ -1,6 +1,27 @@
 // Öffentliche API des Moduls management (SCRUM-120 / FE-MGMT).
 export { ManagementService, MAX_SICHTEN, WISSENSSPRINT_TAKT_MS } from "./src/service";
-export type { ManagementDeps } from "./src/service";
+export type {
+  LagebildBereichRecht,
+  LagebildBereichSicht,
+  LagebildSpeicherErgebnis,
+  ManagementDeps,
+} from "./src/service";
+// produkt:20261013:lagebild-reale-werte-eingabe: reale Eingangswerte der Wissensbewertung je Bereich.
+export {
+  LAGEBILD_FELDER,
+  LAGEBILD_GESAMT,
+  LAGEBILD_WERTE_SCHEMA,
+  LagebildKonflikt,
+  LagebildWerteFehler,
+  normalizeLagebildEingabe,
+} from "./src/lagebild-werte";
+export type {
+  LagebildFeld,
+  LagebildHerkunft,
+  LagebildWert,
+  LagebildWerte,
+  LagebildWerteRepo,
+} from "./src/lagebild-werte";
 export { computeSnapshot, bandForScore } from "./src/metrics";
 // R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte.
 export {

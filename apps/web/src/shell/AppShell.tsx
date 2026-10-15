@@ -51,6 +51,16 @@ const KlaraVorschau = lazy(() =>
   })),
 );
 
+// produkt:20261011:assistenz-aktive-beobachtung (BPA-05): die aktive Begleitung. Ihre Statusleiste
+// steht NEBEN der Figur, nicht in deren Gespräch — Pause und Stopp bleiben so erreichbar, auch wenn
+// das Gespräch geschlossen ist. Ohne eingerichteten Vorgang und ohne laufende Begleitung zeigt sie
+// nichts.
+const KlaraBegleitung = lazy(() =>
+  import("../components/klara-begleitung/KlaraBegleitung").then((m) => ({
+    default: m.KlaraBegleitungImProdukt,
+  })),
+);
+
 /**
  * Die Assistenz: im normalen Produkt die persönliche Assistenz (Produktbetrieb) UND der Hilfeknopf —
  * offen ist immer nur eine der beiden Flächen (`components/assistenzFlaechen.ts`). Bei
@@ -66,6 +76,9 @@ function KlaraEbene(): JSX.Element {
         <Suspense fallback={null}>
           <KlaraVorschau betriebsart="produkt" />
         </Suspense>
+        <Suspense fallback={null}>
+          <KlaraBegleitung />
+        </Suspense>
       </>
     );
   }
@@ -74,6 +87,9 @@ function KlaraEbene(): JSX.Element {
       <KlaraKuerzelAusfuehrung />
       <Suspense fallback={null}>
         <KlaraVorschau betriebsart="vorschau" />
+      </Suspense>
+      <Suspense fallback={null}>
+        <KlaraBegleitung />
       </Suspense>
     </>
   );

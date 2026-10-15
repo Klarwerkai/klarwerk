@@ -8,7 +8,6 @@ describe("JOB 3220 · bestehender Sperrvertrag", () => {
   it.each([
     ["active:false", OHNE_MODELL],
     ["tasks.answer:false", { ...MODELL, tasks: { answer: false } }],
-    ["reachable:unreachable", { ...MODELL, reachable: "unreachable" }],
   ])("F4 · %s: alter Satz und Knopf gesperrt", async (_name, status) => {
     const seite = await fragenSeite(() => json(status));
     await seite.fertig();
@@ -16,6 +15,20 @@ describe("JOB 3220 · bestehender Sperrvertrag", () => {
     expect(seite.container.textContent).not.toContain(UNBEKANNT.de);
     expect(seite.knopf.title).toBe(i18n.t("ai.unavailable.hint"));
     expect(seite.knopf.disabled).toBe(true);
+  });
+
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): die Sperre bleibt unverändert —
+  // nur der Satz nennt jetzt die tatsächliche Lage „eingerichtet, aber nicht erreichbar" statt
+  // „kein Modell aktiv", und ein Weg zum erneuten Prüfen steht daneben.
+  it("F4b · reachable:unreachable: Störungssatz und Knopf gesperrt", async () => {
+    const seite = await fragenSeite(() => json({ ...MODELL, reachable: "unreachable" }));
+    await seite.fertig();
+    expect(seite.container.textContent).toContain(i18n.t("kiausfall.status.nichtErreichbar"));
+    expect(seite.container.textContent).not.toContain(i18n.t("ai.unavailable.hint"));
+    expect(seite.container.textContent).not.toContain(UNBEKANNT.de);
+    expect(seite.knopf.title).toBe(i18n.t("kiausfall.status.nichtErreichbar"));
+    expect(seite.knopf.disabled).toBe(true);
+    expect(seite.container.querySelector('[data-testid="ask-ki-status-erneut"]')).not.toBeNull();
   });
 
   it("F5 · nutzbares Modell: kein Sperrsatz und Knopf bedienbar", async () => {

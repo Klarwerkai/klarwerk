@@ -143,7 +143,9 @@ import {
   KiFunktionenDetail,
   KiGrenzenDetail,
   KiZugaengeDetail,
+  referenzAus,
 } from "./AdminKiDetails";
+import { KiReferenzDetail } from "./AdminKiReferenz";
 import {
   AnsichtAlsRolleDetail,
   NutzerAnlegenDetail,
@@ -152,6 +154,7 @@ import {
   lesbarerAblauf,
 } from "./AdminKontenDetails";
 import { Sammelbearbeitung } from "./AdminKontenSammel";
+import { ProduktbudgetDetail } from "./AdminProduktbudget";
 import {
   BereitschaftDetail,
   DatenschutzDetail,
@@ -655,6 +658,8 @@ export function Admin(): JSX.Element {
         return <AnsichtAlsRolleDetail onZurueck={zurueck} />;
       case "ki":
         return <KiDetail onZurueck={zurueck} />;
+      case "kiReferenz":
+        return <KiReferenzDetail onZurueck={zurueck} />;
       case "kiZugaenge":
         return <KiZugaengeDetail onZurueck={zurueck} />;
       case "kiFunktionen":
@@ -665,6 +670,9 @@ export function Admin(): JSX.Element {
         return <KiExternDetail onZurueck={zurueck} />;
       case "kiDup":
         return <KiDupDetail onZurueck={zurueck} />;
+      // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets.
+      case "produktbudget":
+        return <ProduktbudgetDetail onZurueck={zurueck} />;
       case "demo":
         return <DemodatenDetail onZurueck={zurueck} />;
       // ADMIN-16: bis hierher Kästen auf der Importseite — jetzt eigene Karten unter Vorführdaten.
@@ -938,6 +946,7 @@ export function Admin(): JSX.Element {
                     key={u.id}
                     label={u.name}
                     wert={nutzerWert(u)}
+                    schmalUntereinander
                     onOeffnen={() => geheZu("konten", `nutzer:${u.id}`)}
                   />
                 ))}
@@ -1046,6 +1055,24 @@ export function Admin(): JSX.Element {
                 onOeffnen={() => geheZu("ki", "ki")}
                 testId="zeile-ki"
               />
+              {/* REF-03: die Referenz-KI als eigene Prüfrolle. Der Wert kommt aus derselben
+                  Konfiguration wie die KI-Zeile — „erlaubt" ist kein Prüfnachweis; den Zustand je
+                  Option nennt erst die Karte. */}
+              <Zeile
+                label={t("referenzpruefung.einstieg.titel")}
+                wert={wert(
+                  aiConfig,
+                  aiConfig.data
+                    ? referenzAus(aiConfig.data).length > 0
+                      ? t("referenzpruefung.einstieg.wert", {
+                          anzahl: referenzAus(aiConfig.data).length,
+                        })
+                      : t("referenzpruefung.einstieg.aus")
+                    : null,
+                )}
+                onOeffnen={() => geheZu("ki", "kiReferenz")}
+                testId="zeile-ki-referenz"
+              />
               <Zeile
                 label={t("adm.ai.accessTitle")}
                 wert={wert(
@@ -1104,6 +1131,13 @@ export function Admin(): JSX.Element {
                 )}
                 onOeffnen={() => geheZu("ki", "kiDup")}
                 testId="zeile-ki-dup"
+              />
+              {/* produkt:20261013:produktbudget-anwender-admin: ohne eigenen Zeilenwert — Beträge,
+                  Verbrauch und Stand stehen erst in der Karte, aus genau einer Abfrage. */}
+              <Zeile
+                label={t("produktbudget.titel")}
+                onOeffnen={() => geheZu("ki", "produktbudget")}
+                testId="zeile-ki-produktbudget"
               />
             </Zeilenkarte>
           ) : null}

@@ -15,6 +15,7 @@ import type {
   ReasonerCloudAnbieter,
   ReasonerConfigStatus,
   ReasonerProbeResult,
+  ReasonerSchutzstufe,
 } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { BetreiberKarte } from "../components/BetreiberKarte";
@@ -134,103 +135,19 @@ function ZweitmeinungOptionen({ konfig }: { konfig: ReasonerConfigStatus }): JSX
 }
 
 /**
- * REF-02 (Ben nacharbeit-3): die Auswahl der erlaubten Referenz-KIs — Kontrollkästchen je Option
- * (dieselben drei wie bei der Zweitmeinung), die erlaubten zuerst in ihrer Vorzugsreihenfolge, mit
- * „nach vorn". Nicht eingerichtete Optionen bleiben sichtbar und gesperrt — wie in der Zuordnung.
- * Geschrieben wird nur über `onSetzen` (der eine Kanal der Karte).
+ * KI-WAHL-BETRIEBSABNAHME · Antwort 29 (BEN, Nacharbeit 10): die Optionen der Wahl JE
+ * SCHUTZSTUFE. Leer heißt „keine eigene Regel — es gilt die Aufgabenwahl"; dazu die echten Modelle
+ * aus DERSELBEN Liste wie bei der Zuordnung und „Keine KI" (`deterministic`). Kein „Auto": eine
+ * Stufenregel soll den Empfänger ausdrücklich nennen.
  */
-function ReferenzAuswahl({
-  konfig,
-  liste,
-  gesperrt,
-  onSetzen,
-}: {
-  konfig: ReasonerConfigStatus;
-  liste: readonly string[];
-  gesperrt: boolean;
-  onSetzen: (liste: readonly string[]) => void;
-}): JSX.Element {
+function SchutzstufeOptionen({ konfig }: { konfig: ReasonerConfigStatus }): JSX.Element {
   const { t } = useTranslation();
-  const genannt = konfig.cloudConfigured
-    ? anbieterAusClientName(konfig.model ?? konfig.provider)
-    : undefined;
-  const eingerichtet = (wahl: string): boolean => {
-    if (wahl === "local") {
-      return konfig.localConfigured === true;
-    }
-    const status = konfig.cloudProviders?.[wahl as (typeof ANBIETER_WAHL)[number]];
-    return status ? status.configured : genannt === wahl;
-  };
-  const name = (wahl: string): string => {
-    if (wahl === "local") {
-      return t("adm.ai.choice.local");
-    }
-    const anbieter = wahl as (typeof ANBIETER_WAHL)[number];
-    const clientName = konfig.cloudProviders?.[anbieter]?.name;
-    return clientName ? anbieterUndModell(clientName) : anbieterName(anbieter);
-  };
-  const reihe = [...liste, ...ZWEITMEINUNG_WAHLEN.filter((w) => !liste.includes(w))];
   return (
-    <fieldset data-testid="ki-referenzpruefung" className="space-y-1.5">
-      <legend className="text-[11.5px] font-semibold text-muted">
-        {t("referenzpruefung.admin.legende")}
-      </legend>
-      {liste.length === 0 ? (
-        <p data-testid="ki-referenzpruefung-leer" className="text-[12px] text-muted-2">
-          {t("referenzpruefung.admin.leer")}
-        </p>
-      ) : null}
-      <ul className="space-y-1">
-        {reihe.map((wahl) => {
-          const rang = liste.indexOf(wahl);
-          const aktiv = rang >= 0;
-          const verfuegbar = eingerichtet(wahl);
-          return (
-            <li
-              key={wahl}
-              data-testid={`ki-referenz-${wahl}`}
-              className="flex flex-wrap items-center gap-2"
-            >
-              <label className="flex min-h-[36px] min-w-0 flex-1 items-center gap-2 text-[13px] text-text">
-                <input
-                  type="checkbox"
-                  data-testid={`ki-referenz-${wahl}-erlaubt`}
-                  checked={aktiv}
-                  // Eine schon erlaubte, inzwischen nicht eingerichtete Option bleibt abwählbar.
-                  disabled={gesperrt || (!aktiv && !verfuegbar)}
-                  onChange={() => onSetzen(referenzUmschalten(liste, wahl))}
-                  className="h-4 w-4"
-                />
-                <span className="min-w-0 break-words">
-                  {verfuegbar
-                    ? name(wahl)
-                    : wahl === "local"
-                      ? t("adm.ai.choice.localUnavailable")
-                      : t("adm.ai.choice.anbieterUnavailable", { name: name(wahl) })}
-                </span>
-                {aktiv ? (
-                  <span className="shrink-0 text-[11.5px] text-muted-2">
-                    {t("referenzpruefung.admin.rang", { rang: rang + 1 })}
-                  </span>
-                ) : null}
-              </label>
-              {aktiv && rang > 0 ? (
-                <button
-                  type="button"
-                  data-testid={`ki-referenz-${wahl}-vorziehen`}
-                  disabled={gesperrt}
-                  onClick={() => onSetzen(referenzVorziehen(liste, wahl))}
-                  aria-label={t("referenzpruefung.admin.vorziehen", { name: name(wahl) })}
-                  className="min-h-[32px] rounded-btn border border-hairline px-2 text-[12px] text-text focus-visible:outline focus-visible:outline-2 disabled:opacity-60"
-                >
-                  ↑
-                </button>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
-    </fieldset>
+    <>
+      <option value="">{t("adm.ai.stufe.wieAufgabe")}</option>
+      <ModellOptionen konfig={konfig} />
+      <option value="deterministic">{t("adm.ai.stufe.keineKi")}</option>
+    </>
   );
 }
 
@@ -522,8 +439,46 @@ interface KiStand {
   // R-0305/R-1099: das Modell der Zweitmeinung — oder „aus". Gehört aus demselben Grund zum Stand
   // wie die Freigabe: es wird über denselben Schreibweg gesetzt.
   readonly zweitmeinung: string;
+  // Antwort 29: die Wahl je Schutzstufe — nur die belegten Stufen; eine fehlende Stufe folgt der
+  // Aufgabenwahl. Gehört zum Stand aus demselben Grund wie die Zweitmeinung.
+  readonly schutzstufen: Partial<Record<ReasonerSchutzstufe, string>>;
   // REF-02 (Ben nacharbeit-3): die erlaubten Referenz-KIs in Vorzugsreihenfolge — leer heißt „aus".
   readonly referenzpruefung: readonly string[];
+}
+
+/** Antwort 29: die Stufen in Anzeige-Reihenfolge und die Werte, die eine Stufenregel tragen kann. */
+const SCHUTZSTUFEN: readonly ReasonerSchutzstufe[] = [
+  "intern",
+  "vertraulich",
+  "streng_vertraulich",
+];
+const SCHUTZSTUFEN_WAHLEN = ["openai", "anthropic", "local", "deterministic", "auto"] as const;
+
+/**
+ * Antwort 29: die Wahl je Schutzstufe aus einer Serverantwort — gelesen aus `unknown` wie Freigabe
+ * und Zweitmeinung; ein älterer Server schickt das Feld nicht, und das heißt „keine Stufenregel".
+ */
+function schutzstufenAus(
+  konfig: ReasonerConfigStatus | undefined,
+): Partial<Record<ReasonerSchutzstufe, string>> {
+  const taskConfig: Record<string, unknown> | undefined = konfig?.taskConfig;
+  const roh = taskConfig?.proSchutzstufe;
+  const feld = typeof roh === "object" && roh !== null ? (roh as Record<string, unknown>) : {};
+  const wahl: Partial<Record<ReasonerSchutzstufe, string>> = {};
+  for (const stufe of SCHUTZSTUFEN) {
+    const wert = SCHUTZSTUFEN_WAHLEN.find((w) => w === feld[stufe]);
+    if (wert) {
+      wahl[stufe] = wert;
+    }
+  }
+  return wahl;
+}
+
+function gleicheSchutzstufen(
+  a: Partial<Record<ReasonerSchutzstufe, string>>,
+  b: Partial<Record<ReasonerSchutzstufe, string>>,
+): boolean {
+  return SCHUTZSTUFEN.every((s) => a[s] === b[s]);
 }
 
 /** R-0305/R-1099: die gültigen Wahlen der Zweitmeinung — alles andere liest die Karte als „aus". */
@@ -614,6 +569,7 @@ function standAus(konfig: ReasonerConfigStatus | undefined): KiStand {
     perTask: konfig?.taskConfig.perTask ?? KEINE_AUFGABEN,
     freigabe: freigabeAus(konfig),
     zweitmeinung: zweitmeinungAus(konfig),
+    schutzstufen: schutzstufenAus(konfig),
     referenzpruefung: referenzAus(konfig),
   };
 }
@@ -644,6 +600,7 @@ function gleicherStand(a: KiStand, b: KiStand): boolean {
     gleichePerTask(a.perTask, b.perTask) &&
     gleicheFreigabe(a.freigabe, b.freigabe) &&
     a.zweitmeinung === b.zweitmeinung &&
+    gleicheSchutzstufen(a.schutzstufen, b.schutzstufen) &&
     a.referenzpruefung.join(",") === b.referenzpruefung.join(",")
   );
 }
@@ -922,36 +879,51 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
     }
     zweitmeinungSpeichern.mutate({ wahl, nummer });
   };
-  // REF-02 (Ben nacharbeit-3): die erlaubten Referenz-KIs — DERSELBE Adminweg, derselbe Kanal,
-  // dieselbe Nummernfolge (kein weiterer Schreiber). Mit geht die BESTÄTIGTE Zuordnung; Freigabe und
-  // Zweitmeinung bleiben weg und damit unverändert. Eine leere Liste wird als `null` („aus") gesendet.
-  const referenzSpeichern = useMutation({
-    mutationFn: (auftrag: { liste: readonly string[]; nummer: number }) =>
-      konfigSchreiben({
+  // KI-WAHL-BETRIEBSABNAHME · Antwort 29 (BEN, Nacharbeit 10): die Wahl JE SCHUTZSTUFE — derselbe
+  // Adminweg, derselbe Kanal, dieselbe Nummernfolge wie Zuordnung, Freigabe und Zweitmeinung. Mit
+  // geht die BESTÄTIGTE Zuordnung und die vollständige Stufenregel (eine Stufe geändert, die übrigen
+  // wie bestätigt); ohne belegte Stufe wird `null` geschrieben — Weglassen hieße „unverändert".
+  const schutzstufeSpeichern = useMutation({
+    mutationFn: (auftrag: { stufe: ReasonerSchutzstufe; wahl: string; nummer: number }) => {
+      const naechste: Partial<Record<ReasonerSchutzstufe, string>> = {};
+      for (const stufe of SCHUTZSTUFEN) {
+        const wert = stufe === auftrag.stufe ? auftrag.wahl : basis.schutzstufen[stufe];
+        if (wert) {
+          naechste[stufe] = wert;
+        }
+      }
+      return konfigSchreiben({
         global: basis.global,
         perTask: basis.perTask,
-        referenzpruefung: auftrag.liste.length > 0 ? [...auftrag.liste] : null,
-      }),
+        proSchutzstufe: Object.keys(naechste).length > 0 ? naechste : null,
+      });
+    },
     onSuccess: (antwort, auftrag) => {
       kanalFreigeben(auftrag.nummer);
       uebernehmen(antwort, auftrag.nummer);
       void qc.invalidateQueries({ queryKey: ["reasonerConfig"] });
+      // Die Ausführungsauskunft hängt an der Stufenregel (`/reasoner/ausfuehrung`).
+      void qc.invalidateQueries({ queryKey: ["reasoner", "ausfuehrung"] });
       invalidateAiState(qc);
-      push("success", t("referenzpruefung.admin.gespeichert"));
+      push("success", t("adm.ai.stufe.gespeichert"));
     },
-    // 409 (ENV-Sperre), 503 (nicht protokollierbar), 400: die Liste hat NICHT gewechselt.
+    // 409 (ENV-Sperre), 400 (ungültige Stufe/Wahl): die Stufenregel hat NICHT gewechselt.
     onError: (e, auftrag) => {
       kanalFreigeben(auftrag.nummer);
       push("error", e instanceof ApiError ? e.message : t("state.error"));
     },
   });
-  const referenzSetzen = (liste: readonly string[]): void => {
+  const schutzstufeWaehlen = (stufe: ReasonerSchutzstufe, wahl: string): void => {
     const nummer = schreibnummer();
     if (nummer === null) {
       return;
     }
-    referenzSpeichern.mutate({ liste, nummer });
+    schutzstufeSpeichern.mutate({ stufe, wahl, nummer });
   };
+  // REF-03: die erlaubten Referenz-KIs werden seit dem Einstieg „Referenzprüfung"
+  // (`pages/AdminKiReferenz.tsx`) dort gesetzt — über denselben Schreibweg am Server. Diese Karte
+  // liest die Liste weiter in ihren bestätigten Stand (`KiStand.referenzpruefung`), schreibt sie
+  // aber nicht mehr.
   // Gescheitertes Nachladen heißt: die Karte kennt den geltenden Stand nicht mehr sicher. Dann wird
   // nicht geraten, sondern gesperrt (Auftrag §7c) — die Hülle hält die Daten daneben sichtbar.
   const nachladenGescheitert = aiConfig.isError;
@@ -962,7 +934,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
     aiSave.isPending ||
     freigabeSpeichern.isPending ||
     zweitmeinungSpeichern.isPending ||
-    referenzSpeichern.isPending;
+    schutzstufeSpeichern.isPending;
   const schalterGesperrt = gesperrt || schreibenLaeuft || nachladenGescheitert;
   /** Der lesbare Name eines Auswahlwerts — für Hinweise neben dem Feld. */
   const wahlName = (wahl: string): string => {
@@ -1334,30 +1306,52 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 </p>
               ) : null}
             </div>
-            {/* REF-02 (Ben nacharbeit-3): DIE ERLAUBTEN REFERENZ-KIs. Gespeist aus `basis` (dem
-              bestätigten Stand), geschrieben über denselben Kanal wie Zuordnung, Freigabe und
-              Zweitmeinung. Ohne erlaubte Option steht jede Prüfung sichtbar als „nicht prüfbar". */}
+            {/* KI-WAHL-BETRIEBSABNAHME · Antwort 29: DIE WAHL JE SCHUTZSTUFE, einschliesslich
+              „Keine KI". Gespeist aus `basis` (bestätigter Stand), geschrieben über denselben Kanal.
+              Eine Stufenregel kann sperren oder umlenken, aber nichts freigeben, was Grundfreigabe
+              oder Vertraulichkeitsfreigabe sperren — das sagt der Text darüber. */}
+            <div
+              data-testid="ki-schutzstufen"
+              className="space-y-1.5 border-t border-hairline pt-2.5"
+            >
+              <p className="text-[12.5px] font-semibold text-text">{t("adm.ai.stufe.titel")}</p>
+              <p className="text-[12px] text-muted-2">{t("adm.ai.stufe.text")}</p>
+              {SCHUTZSTUFEN.map((stufe) => (
+                <label key={stufe} className="block text-[11.5px] font-semibold text-muted">
+                  {t(`conf.level.${stufe}`)}
+                  <select
+                    data-testid={`ki-schutzstufe-${stufe}`}
+                    value={basis.schutzstufen[stufe] ?? ""}
+                    disabled={schalterGesperrt}
+                    onChange={(e) => schutzstufeWaehlen(stufe, e.target.value)}
+                    className="mt-1 h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] font-normal text-text disabled:opacity-60"
+                  >
+                    <SchutzstufeOptionen konfig={konfig} />
+                  </select>
+                </label>
+              ))}
+              {schutzstufeSpeichern.isError ? (
+                <p
+                  data-testid="ki-schutzstufe-fehler"
+                  className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text"
+                >
+                  {schutzstufeSpeichern.error instanceof ApiError
+                    ? schutzstufeSpeichern.error.message
+                    : t("state.error")}
+                </p>
+              ) : null}
+            </div>
+            {/* REF-03: DIE REFERENZ-KI hat ihren eigenen Einstieg (Verwaltung → KI →
+              Referenzprüfung). Hier steht nur noch, wo sie zu finden ist — eine zweite Auswahl
+              neben der dortigen wäre ein zweiter Bedienort für dieselbe Entscheidung. */}
             <div className="space-y-1.5 border-t border-hairline pt-2.5">
               <p className="text-[12.5px] font-semibold text-text">
                 {t("referenzpruefung.admin.titel")}
               </p>
               <p className="text-[12px] text-muted-2">{t("referenzpruefung.admin.text")}</p>
-              <ReferenzAuswahl
-                konfig={konfig}
-                liste={basis.referenzpruefung}
-                gesperrt={schalterGesperrt}
-                onSetzen={referenzSetzen}
-              />
-              {referenzSpeichern.isError ? (
-                <p
-                  data-testid="ki-referenzpruefung-fehler"
-                  className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text"
-                >
-                  {referenzSpeichern.error instanceof ApiError
-                    ? referenzSpeichern.error.message
-                    : t("state.error")}
-                </p>
-              ) : null}
+              <p data-testid="ki-referenzpruefung-verweis" className="text-[12px] text-muted">
+                {t("referenzpruefung.admin.verweis")}
+              </p>
             </div>
             {/* JOB 3134: ein abgelöster Wert (`cloud`/`model`) aus dem Bestand wurde beim Laden auf
               einen Anbieter überführt — sichtbar, nicht still; „übernehmen" schreibt den neuen Wert. */}

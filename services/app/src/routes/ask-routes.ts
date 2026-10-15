@@ -1005,7 +1005,8 @@ async function evidenceFor(
 // Wissensdienstes. Eine Fassung ist die aktuelle oder ihr unveränderlicher Versionsschnappschuss;
 // der Volltext kommt aus der Suchprojektion GENAU dieser Fassung, aus der auch die Antwort las.
 // Was sich nicht lesen lässt, ist `undefined` — der Auflöser sagt dann „Stand nicht verfügbar".
-function fundstellenLeser(ko: KoService): FundstellenLeser<KnowledgeObject> {
+// REF-04: exportiert, damit `/api/reasoner` (task `ask`) dieselben Lesewege nutzt.
+export function fundstellenLeser(ko: KoService): FundstellenLeser<KnowledgeObject> {
   return {
     aktuell: (id) => ko.get(id),
     imPapierkorb: (id) => ko.papierkorbFassungVon(id),
@@ -1073,6 +1074,8 @@ async function antwortLauf(
     readonly nachpruefung?: () => Promise<SessionUser | undefined>;
     /** P14: der Firmenfilter dieser Frage — tritt als UND hinter die Grundlage, nie an ihre Stelle. */
     readonly bereich?: Sichtbarkeitsfilter;
+    /** REF-04 (K1/K6): welcher Zugang — fürs Prüfprotokoll. Ohne Angabe der allgemeine Frageweg. */
+    readonly antwortweg?: "frage" | "klara";
   },
 ): Promise<void> {
   const ask = deps.ask;
@@ -1101,7 +1104,13 @@ async function antwortLauf(
   let out: Awaited<ReturnType<AskService["ask"]>>;
   let evidence: ReturnType<typeof answerEvidence>;
   let belastbarkeit: AntwortBelastbarkeit;
-  let referenzFeld: { referenzpruefung?: ReturnType<typeof referenzSichtFuerFragende> } = {};
+  let referenzFeld: {
+    referenzpruefung?: ReturnType<typeof referenzSichtFuerFragende>;
+    referenzpruefungZweitmeinung?: {
+      erste: ReturnType<typeof referenzSichtFuerFragende> | null;
+      zweite: ReturnType<typeof referenzSichtFuerFragende> | null;
+    };
+  } = {};
   // Die Sicht folgt dem Anmeldeweg dieser Anfrage — der Add-on-Principal hat keinen
   // `SessionUser` und bekommt die enge Sicht (Begründung an `belastbarkeitsSicht`).
   const sicht = belastbarkeitsSicht(
@@ -1154,21 +1163,63 @@ async function antwortLauf(
         ? aufKernaussagenBeschraenkt(out.aussagen)
         : out.aussagen;
     if (deps.referenz && pruefBeleg) {
-      const ergebnis = await deps.referenz.pruefe({
+      const dienst = deps.referenz;
+      const abbruch = anfrageAbbruch(reply);
+      const bekannteKonflikte = belastbarkeit.konflikte.map((k) => ({
+        konfliktId: k.konfliktId,
+        koIds: k.seiten.flatMap((s) => (s.einsehbar ? [s.koId] : [])),
+      }));
+      // REF-04 (K6): der Zugang dieser Antwort fürs Prüfprotokoll.
+      const weg =
+        request.authContext?.authKind === "addon" ? "addon" : (lauf.antwortweg ?? "frage");
+      const ergebnis = await dienst.pruefe({
         beleg: pruefBeleg,
         antwortRolle: ask.antwortRolleVon(out),
         akteur: lauf.actorId,
         leser: fundstellenLeser(deps.ko),
         darfSehen: grundlage,
-        bekannteKonflikte: belastbarkeit.konflikte.map((k) => ({
-          konfliktId: k.konfliktId,
-          koIds: k.seiten.flatMap((s) => (s.einsehbar ? [s.koId] : [])),
-        })),
+        bekannteKonflikte,
         locale: lauf.locale,
-        signal: anfrageAbbruch(reply),
+        signal: abbruch,
         modellaufrufAusgeschlossen: optionen?.retrievalOnly === true,
+        antwortId: out.answerId,
+        antwortweg: weg,
       });
       referenzFeld = { referenzpruefung: referenzSichtFuerFragende(ergebnis) };
+      // produkt:20261009:referenzki-antwortstatus (REF-04, K1): die beiden Antworten einer
+      // angeforderten Zweitmeinung werden ebenfalls ausgeliefert und angezeigt — jede geht mit
+      // IHRER eigenen Bindung (REF-01) und IHREM tatsächlichen Antwortmodell an denselben
+      // Prüfdienst. Ein Aufruf je Antwort, mit denselben Grenzen; keine Bindung, kein Lauf (`null`).
+      const zweit = out.zweitmeinungAussagen;
+      if (zweit && out.zweitmeinung?.status === "verglichen") {
+        const rollen = ask.antwortRollenDerZweitmeinung(out);
+        const pruefeSeite = async (
+          beleg: typeof zweit.erste,
+          rolle: typeof rollen.erste,
+          seite: "zweitmeinung_erste" | "zweitmeinung_zweite",
+        ) =>
+          beleg
+            ? referenzSichtFuerFragende(
+                await dienst.pruefe({
+                  beleg,
+                  antwortRolle: rolle,
+                  akteur: lauf.actorId,
+                  leser: fundstellenLeser(deps.ko),
+                  darfSehen: grundlage,
+                  bekannteKonflikte,
+                  locale: lauf.locale,
+                  signal: abbruch,
+                  antwortId: out.answerId,
+                  antwortweg: seite,
+                }),
+              )
+            : null;
+        const [erste, zweite] = await Promise.all([
+          pruefeSeite(zweit.erste, rollen.erste, "zweitmeinung_erste"),
+          pruefeSeite(zweit.zweite, rollen.zweite, "zweitmeinung_zweite"),
+        ]);
+        referenzFeld = { ...referenzFeld, referenzpruefungZweitmeinung: { erste, zweite } };
+      }
       pruefen();
     }
   } catch (fehler) {
@@ -1246,7 +1297,7 @@ async function antwortLauf(
  * vollständig geschrieben ist (Nutzer bricht ab, Netz reißt). `writableFinished` unterscheidet das
  * vom regulären Ende — das `close` nach einer fertigen Antwort ist kein Abbruch.
  */
-function anfrageAbbruch(reply: FastifyReply): AbortSignal {
+export function anfrageAbbruch(reply: FastifyReply): AbortSignal {
   const steuerung = new AbortController();
   const roh = reply.raw;
   if (roh && typeof roh.once === "function") {
@@ -1645,6 +1696,8 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             const pruefeSeite = async (
               beleg: typeof vergleich.heuteAussagen,
               rolle: typeof rollen.heute,
+              // REF-04 (K6): welche Seite des Vergleichs — fürs Prüfprotokoll.
+              seite: "vergleich_heute" | "vergleich_damals",
             ) =>
               beleg
                 ? referenzSichtFuerFragende(
@@ -1656,12 +1709,13 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
                       darfSehen: sichtbarkeitsfilterFuer(user),
                       locale,
                       signal: abbruch,
+                      antwortweg: seite,
                     }),
                   )
                 : null;
             const [heute, damals] = await Promise.all([
-              pruefeSeite(vergleich.heuteAussagen, rollen.heute),
-              pruefeSeite(vergleich.damalsAussagen, rollen.damals),
+              pruefeSeite(vergleich.heuteAussagen, rollen.heute, "vergleich_heute"),
+              pruefeSeite(vergleich.damalsAussagen, rollen.damals, "vergleich_damals"),
             ]);
             referenzFeld = { referenzpruefung: { heute, damals } };
             ask.kiSperreVorAuslieferung(kiBeginn);
@@ -2389,6 +2443,8 @@ export function klaraAusfuehrungRoutes(
             actorId,
             ...(opts ? { opts } : {}),
             ...(zusatz ? { zusatz } : {}),
+            // REF-04 (K6): der Zugang im Prüfprotokoll.
+            antwortweg: "klara",
             // R-0346: Klaras Zugang ist immer an ein Word-Dokument gebunden.
             anlass: "dokument",
             // P05 (B-10): Klaras Zugang ist immer ein Sitzungsweg.

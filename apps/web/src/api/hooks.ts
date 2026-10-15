@@ -139,6 +139,14 @@ export const useManagementProfiles = (enabled: boolean) =>
     queryFn: () => endpoints.management.profiles(),
     enabled,
   });
+// produkt:20261013:lagebild-reale-werte-eingabe: reale Eingangswerte der Wissensbewertung je
+// sichtbarem Bereich. `enabled` lässt die Spaceseite erst beim Aufklappen fragen.
+export const useLagebildWerte = (enabled = true) =>
+  useQuery({
+    queryKey: ["management", "lagebild-werte"],
+    queryFn: () => endpoints.management.lagebildWerte(),
+    enabled,
+  });
 // SCRUM-165: read-only Einsicht in jüngste ModelRuns.
 export const useModelRuns = (limit?: number) =>
   useQuery({
@@ -531,6 +539,18 @@ export const useKiLage = () =>
 // abstrahierten Status (/api/reasoner/status: active+mode) zurueck — kein 403-Rauschen.
 export const useReasonerConfig = (enabled = true) =>
   useQuery({ queryKey: ["reasoner", "config"], queryFn: endpoints.reasoner.config, enabled });
+// KI-WAHL-BETRIEBSABNAHME · Antwort 13: wer je Aufgabe tatsächlich arbeitet — für jeden
+// Angemeldeten (ko.read), geheimnisfrei. `enabled` erlaubt der Fläche, die Abfrage zu sparen, wo
+// die Adminsicht ohnehin mehr weiss.
+export const useReasonerAusfuehrung = (enabled = true) =>
+  useQuery({
+    queryKey: ["reasoner", "ausfuehrung"],
+    // Zur Laufzeit gerufen, nicht beim Rendern gegriffen: eine Fläche ohne diesen Endpunkt landet
+    // im Fehlerzustand (dann steht „hier nicht bekannt"), statt an einer fehlenden Funktion.
+    queryFn: () => endpoints.reasoner.ausfuehrung(),
+    enabled,
+    retry: false,
+  });
 // SCRUM-386: kundeneigene KI-Assist-Presets für die Palette (lesen: alle Rollen).
 export const useAssistPresets = () =>
   useQuery({ queryKey: ["reasoner", "assistPresets"], queryFn: endpoints.reasoner.assistPresets });

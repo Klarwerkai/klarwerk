@@ -953,6 +953,21 @@ export class AskService {
     return FRAGE_ROLLEN.get(ergebnis);
   }
 
+  /**
+   * produkt:20261009:referenzki-antwortstatus (REF-04, K1): die tatsächlichen Modelle der beiden
+   * ausgelieferten Zweitmeinungsantworten — die Rolle hängt der Reasoner an genau diese Objekte
+   * (`answerMitZweitmeinung`). Nicht festgehalten heißt `undefined`, nie geraten.
+   */
+  antwortRollenDerZweitmeinung(ergebnis: AskResult): {
+    erste: ReferenzRolle | undefined;
+    zweite: ReferenzRolle | undefined;
+  } {
+    const z = ergebnis.zweitmeinung;
+    return z?.status === "verglichen"
+      ? { erste: antwortRolleVon(z.erste), zweite: antwortRolleVon(z.zweite) }
+      : { erste: undefined, zweite: undefined };
+  }
+
   private readonly reasoner: Reasoner;
   private readonly koService: KoService;
   private readonly gaps: GapRepo;
