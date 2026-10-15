@@ -42,13 +42,19 @@
 > sagt der Ordnername nicht: Bei „Schreibtisch & Dokumente“ führt macOS `~/Documents` weiter
 > unter seinem alten Pfad, und eine Prüfung auf den iCloud-Ordner oder auf `.icloud`-Platzhalter
 > antwortet dann fälschlich mit Nein (in JOB 914 gemessen). **Der Pfadname allein beweist
-> nichts.** Nachsehen kannst du es auf zwei Wegen:
+> nichts.** Nachsehen kannst du es auf drei Wegen:
 >
 > 1. **Systemeinstellungen → [dein Name] → iCloud → iCloud Drive → Optionen** — steht dort
 >    „Ordner ‚Schreibtisch‘ & ‚Dokumente‘“ auf ein, ist sie aktiv.
 > 2. **An der Wirkung:** Liegt in einem Ordner neben `X.ext` eine Datei `X 2.ext` und sind beide
 >    **byteweise gleich**, ist das ein Synchronisationsduplikat. Ein bloß ähnlicher Name genügt
 >    nicht — in JOB 914 waren 20 Treffer NICHT byte-identisch und zählten zu Recht nicht.
+> 3. **Mit dem Diagnosewächter:** `./tools/arbeitsordner-diagnose.sh` sucht genau diese
+>    Duplikate im ganzen Arbeitsbaum, auch in `.git`, und zählt Dateien, die nur noch in der
+>    Wolke liegen — ohne sie zu öffnen, denn Öffnen löst den Download aus. Zugriffsfehler und
+>    freien Plattenplatz hält er mit fest. `./tools/check` fährt ihn mit; er meldet, sperrt
+>    aber nicht. „Keine Wirkung gefunden“ heißt nicht „keine Synchronisation“ — ein frischer
+>    Klon hat noch keine Duplikate.
 >
 > **Migration eines bestehenden Ordners — du entscheidest, nichts geschieht von selbst.** Der
 > sichere Weg ist **neu klonen statt verschieben**: erst alles pushen (`git status` muss leer
@@ -57,7 +63,9 @@
 > und kann einen halb synchronisierten Zustand mitschleppen.
 >
 > *Herkunft: JOB 914 D1 (`RUECKGABE-PRO3-JOB-914-D1-ICLOUD-REPO-SETUP.md`), gebaut in JOB 1114 D1.
-> Wächter: `tests/app/icloud-onboarding-warnung.test.ts`.*
+> Wächter: `tests/app/icloud-onboarding-warnung.test.ts`. Diagnosewächter (Aufnahme 20260922,
+> R-1303/R-2190): `tools/arbeitsordner-diagnose.ts`, geprüft in
+> `tests/structure/arbeitsordner-diagnose.test.ts`.*
 
 - [ ] **Claude-Mac-App** installieren und anmelden (Cowork-Modus verfügbar).
 - [ ] Ordner anlegen (im Finder): `~/Projekte/Klarwerk` — mehr nicht; den Rest macht Claude.

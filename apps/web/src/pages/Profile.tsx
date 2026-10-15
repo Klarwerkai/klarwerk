@@ -19,6 +19,7 @@ import { istAktiv } from "../components/SprachSchalter";
 // produkt:20261010:assistenz-name-avatar: „Meine Assistenz" — Name und Motiv der eigenen Assistenz.
 import { AssistenzFormular } from "../components/assistenz/AssistenzFormular";
 import { AvatarBild } from "../components/assistenz/AvatarBild";
+import { EigenesProduktbudget } from "../components/assistenz/EigenesProduktbudget";
 import { FaehigkeitenBereich } from "../components/assistenz/FaehigkeitenBereich";
 // Betroffenenrechte (R-0663, R-0661): „Meine Daten" und der eigene Löschantrag.
 import { LoeschantragDetail, MeineDatenDetail } from "../components/datenschutz/MeineDaten";
@@ -597,6 +598,8 @@ function MeineAssistenzDetail({ onZurueck }: { onZurueck: () => void }): JSX.Ele
       <KlaraGruppe titel={t("klarasetup.gruppe.faehigkeiten")} testId="klara-setup-faehigkeiten">
         {/* produkt:20261011:assistenz-skills-werkzeuge: Favoriten, Routinen und Aufrufe. */}
         <FaehigkeitenBereich />
+        {/* produkt:20261013:produktbudget-anwender-admin (PBE-12): das eigene Unterlimit. */}
+        <EigenesProduktbudget />
       </KlaraGruppe>
       <KlaraSprachausgabeGruppe />
       {/* AA-03/AA-04: der Unterbereich „Tastenkürzel“. */}

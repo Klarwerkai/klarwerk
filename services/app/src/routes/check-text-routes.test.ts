@@ -59,7 +59,8 @@ afterEach(() => {
 });
 
 async function loggedInApp() {
-  const app = buildApp(buildServices());
+  const services = buildServices();
+  const app = buildApp(services);
   await app.inject({
     method: "POST",
     url: "/api/auth/register",
@@ -71,7 +72,84 @@ async function loggedInApp() {
     payload: { email: "a@x.de", password: "secret123" },
   });
   const headers = { authorization: `Bearer ${login.json().token}` };
-  return { app, headers };
+  return { app, headers, services };
+}
+
+// ================================================================================================
+// R-1333 · B5 (JOB 2536 D2) — „NULL PERSISTENZ" HEISST: DERSELBE BESTAND, NICHT NUR GLEICH VIELE.
+// ================================================================================================
+//
+// `toHaveLength(1)` bleibt grün, wenn das Seed-KO gelöscht und durch ein anderes Objekt ersetzt
+// wird (D2: gleichzahliger Austausch, gemessen am 27.08.2026). Deshalb vergleicht der Fall unten
+// den gespeicherten Bestand vor und nach `/api/check-text` nach Identität UND Inhalt und verlangt
+// null Aufrufe der Schreibwege des echten KoService. Die Gegenprobe darunter setzt genau den
+// D2-Austausch und belegt, dass beide Zusicherungen ihn fachlich melden.
+
+// Die Schreibwege des KoService, über die ein Objekt entsteht, verschwindet oder seinen Inhalt
+// ändert. Jede andere Inhaltsänderung fängt zusätzlich der Bestandsvergleich.
+const KO_SCHREIBWEGE = [
+  "create",
+  "createWithDocuments",
+  "revise",
+  "reviseUndFreigeben",
+  "appendDocumentExtract",
+  "addProposal",
+  "decideProposal",
+  "updateCategory",
+  "updateTags",
+  "setValidationState",
+  "setValidationStateMitBeleg",
+  "markMergedInto",
+  "delete",
+  "restore",
+  "purgeTrashed",
+] as const satisfies readonly (keyof KoService)[];
+
+type Schreibspione = ReadonlyArray<readonly [string, { mock: { calls: unknown[][] } }]>;
+
+function beobachteSchreibwege(ko: KoService): Schreibspione {
+  const ziel = ko as unknown as Record<string, (...args: unknown[]) => unknown>;
+  return KO_SCHREIBWEGE.map((name) => [name, vi.spyOn(ziel, name)] as const);
+}
+
+function schreibaufrufe(spione: Schreibspione): string[] {
+  return spione
+    .filter(([, spion]) => spion.mock.calls.length > 0)
+    .map(([name, spion]) => `ko.${name} wurde ${spion.mock.calls.length}× aufgerufen`);
+}
+
+/** Der gespeicherte Bestand als unabhängige Kopie — eine Referenz würde Änderungen mitmachen. */
+async function bestandVon(ko: KoService): Promise<KnowledgeObject[]> {
+  return structuredClone(await ko.list());
+}
+
+/** Jede Abweichung des Bestands als Satz, den ein Mensch versteht. */
+function bestandsabweichungen(vorher: KnowledgeObject[], nachher: KnowledgeObject[]): string[] {
+  const nennung = (k: KnowledgeObject): string => `${k.id} („${k.title}“)`;
+  const nachherNachId = new Map(nachher.map((k) => [k.id, k]));
+  const vorherIds = new Set(vorher.map((k) => k.id));
+  const aus: string[] = [];
+  for (const alt of vorher) {
+    const neu = nachherNachId.get(alt.id);
+    if (neu === undefined) {
+      aus.push(`Das gespeicherte KO ${nennung(alt)} fehlt nach dem Aufruf.`);
+      continue;
+    }
+    const felder = [...new Set([...Object.keys(alt), ...Object.keys(neu)])].filter(
+      (feld) =>
+        JSON.stringify((alt as unknown as Record<string, unknown>)[feld]) !==
+        JSON.stringify((neu as unknown as Record<string, unknown>)[feld]),
+    );
+    if (felder.length > 0) {
+      aus.push(`Das gespeicherte KO ${nennung(alt)} ist verändert: ${felder.join(", ")}.`);
+    }
+  }
+  for (const neu of nachher) {
+    if (!vorherIds.has(neu.id)) {
+      aus.push(`Ein anderes Objekt ${nennung(neu)} steht jetzt im Bestand.`);
+    }
+  }
+  return aus;
 }
 
 // Legt ein VALIDIERTES KO an (POST + rate up → status "validiert").
@@ -128,8 +206,12 @@ describe("SCRUM-491 Slice 5: POST /api/check-text (Flag AN)", () => {
   });
 
   it("Session, Text in range → deterministische duplicates, persisted:false, NULL Persistenz", async () => {
-    const { app, headers } = await loggedInApp();
+    const { app, headers, services } = await loggedInApp();
     const seedId = await seedValidated(app, headers, SEED_STMT);
+    // B5: Bestand und Schreibwege ERST nach der Seed-Vorbereitung festhalten.
+    const vorher = await bestandVon(services.ko);
+    expect(vorher.map((k) => k.id)).toEqual([seedId]);
+    const spione = beobachteSchreibwege(services.ko);
     const res = await app.inject({
       method: "POST",
       url: "/api/check-text",
@@ -137,6 +219,18 @@ describe("SCRUM-491 Slice 5: POST /api/check-text (Flag AN)", () => {
       payload: { text: CHECK_STMT, title: "Pumpe entlüften" },
     });
     expect(res.statusCode).toBe(200);
+    // B5: derselbe Bestand nach Identität und Inhalt — die Länge allein übersieht einen Austausch.
+    // Gemessen direkt nach dem Aufruf, bevor die Lesezugriffe unten etwas anstoßen könnten.
+    const nachher = await bestandVon(services.ko);
+    expect(
+      bestandsabweichungen(vorher, nachher),
+      "NULL Persistenz verletzt: /api/check-text hat den gespeicherten Bestand verändert.",
+    ).toEqual([]);
+    expect(nachher).toEqual(vorher);
+    expect(
+      schreibaufrufe(spione),
+      "NULL Persistenz verletzt: /api/check-text hat einen Schreibweg des KoService benutzt.",
+    ).toEqual([]);
     const body = res.json();
     expect(body.persisted).toBe(false);
     expect(body.answer).toBeNull();
@@ -151,6 +245,51 @@ describe("SCRUM-491 Slice 5: POST /api/check-text (Flag AN)", () => {
     expect(gaps.json()).toHaveLength(0);
     const kos = await app.inject({ method: "GET", url: "/api/kos", headers });
     expect(kos.json()).toHaveLength(1); // nur das Seed-KO, kein transientes angelegt
+  });
+
+  it("B5-Gegenprobe: ein gleichzahliger Austausch des Seed-KO wird fachlich gemeldet", async () => {
+    // Genau die D2-Mutation (JOB 2536, 27.08.2026): das Seed-KO hart löschen und ein anderes Objekt
+    // anlegen. Hier direkt am Dienst statt in der Route — gemessen wird, ob die Zusicherungen des
+    // Falls oben einen solchen Austausch sehen.
+    const { app, headers, services } = await loggedInApp();
+    const seedId = await seedValidated(app, headers, SEED_STMT);
+    const vorher = await bestandVon(services.ko);
+    const spione = beobachteSchreibwege(services.ko);
+
+    await services.ko.delete(seedId, "b5-gegenprobe", { hard: true });
+    const ersatz = await services.ko.create({
+      title: "AUSGETAUSCHT-2536",
+      statement: "Der gleichzahlige Austausch: dieses Objekt ersetzt das Seed-KO.",
+      type: "best_practice",
+      category: "Wartung",
+      author: "b5-gegenprobe",
+    });
+
+    // Die alte Zusicherung bleibt blind: die Liste hat weiterhin genau ein Objekt.
+    const kos = await app.inject({ method: "GET", url: "/api/kos", headers });
+    expect(kos.json()).toHaveLength(1);
+
+    // Die neuen Zusicherungen melden den Austausch — mit Namen, nicht mit einer Zahl.
+    const abweichungen = bestandsabweichungen(vorher, await bestandVon(services.ko));
+    expect(abweichungen).toEqual([
+      `Das gespeicherte KO ${seedId} („Pumpe entlüften“) fehlt nach dem Aufruf.`,
+      `Ein anderes Objekt ${ersatz.id} („AUSGETAUSCHT-2536“) steht jetzt im Bestand.`,
+    ]);
+    const aufrufe = schreibaufrufe(spione);
+    expect(aufrufe.some((a) => a.startsWith("ko.delete "))).toBe(true);
+    expect(aufrufe.some((a) => a.startsWith("ko.create "))).toBe(true);
+  });
+
+  it("B5-Gegenprobe: eine Inhaltsänderung am Seed-KO nennt die geänderten Felder", async () => {
+    const { app, headers, services } = await loggedInApp();
+    const seedId = await seedValidated(app, headers, SEED_STMT);
+    const vorher = await bestandVon(services.ko);
+    const veraendert = vorher.map((k) =>
+      k.id === seedId ? { ...k, title: "Pumpe nicht entlüften" } : k,
+    );
+    expect(bestandsabweichungen(vorher, veraendert)).toEqual([
+      `Das gespeicherte KO ${seedId} („Pumpe entlüften“) ist verändert: title.`,
+    ]);
   });
 
   // ================================================================================================

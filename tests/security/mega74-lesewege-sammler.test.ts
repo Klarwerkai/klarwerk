@@ -907,6 +907,32 @@ const REGISTER: Record<string, Eintrag> = {
     grund:
       "Admin; Dateinamen, Prüfsummen, Lauf-/Drillprotokoll, Export- und Papierkorbzähler — kein KO-Inhalt.",
   },
+  // produkt:20261013:produktbudget-anwender-admin: Beträge, Buchungssummen und Änderungsvermerke
+  // (Kontokennung, Zeitpunkt) der Produktbudgets — nur mit `users.manage`, kein KO-Inhalt.
+  "GET /api/admin/produktbudget": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Admin; Budgetbeträge, Buchungssummen und Änderungsvermerke — kein KO-Inhalt.",
+  },
+  "PUT /api/admin/produktbudget/:bereich": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Admin; ändert Betrag, Währung oder Zeitraum eines Budgetbereichs — kein KO-Inhalt.",
+  },
+  "PUT /api/admin/produktbudget/:bereich/konten/:konto": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Admin; Zuweisung eines Kontos (Betrag, Kontokennung) — kein KO-Inhalt.",
+  },
+  "GET /api/me/produktbudget": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur die eigenen Grenzen und die eigene Belegung (user.id) — kein KO-Inhalt.",
+  },
+  "PUT /api/me/produktbudget/:bereich": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "setzt nur das eigene Unterlimit (Konto aus user.id); fremde Angabe 403, kein KO-Inhalt.",
+  },
   "GET /api/import/confluence/zugang": {
     urteil: "KURATORENTOR",
     recht: "users.manage",
@@ -926,6 +952,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KURATORENTOR",
     recht: "users.manage",
     grund: "Zugangszustand, Admin.",
+  },
+  // Frage 6: nur `{ zugeordnet, benutzbar }` des EIGENEN Kontos — keine Laufwerkskennung, kein
+  // Dateiname, kein Inhalt eines Wissensobjekts.
+  "GET /api/import/sharepoint/testbibliothek": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Zwei Ja/Nein über die eigene Testbibliothek (sharepoint-import-routes.ts).",
   },
   // ADMIN-02: der Verbindungstest. Antwortet mit Zeitpunkt, Umfang, Ergebniswort und Dauer — keine
   // Dateinamen, kein Inhalt, kein Wissensobjekt.
@@ -1969,6 +2001,17 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Nacharbeit 3 — Pflege eines Ruhestandshorizonts, nur mit users.manage.",
   },
+  // produkt:20261013:lagebild-reale-werte-eingabe: die Fakten je Bereich (Zähler, Ø-Vertrauen)
+  // rechnen über der Grundmenge nach `sichtbarkeitsfilterFuer`; Bereiche nur mit Leserecht.
+  "GET /api/management/lagebild-werte": {
+    urteil: "PRAEDIKAT",
+    grund: "Lagebild-Werte — Fakten je Bereich erst nach dem Trimm der Grundmenge.",
+  },
+  "PUT /api/management/lagebild-werte/:bereich": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Lagebild-Werte — die Antwort trägt nur den gespeicherten Stand der drei Eingangswerte des Bereichs (management-routes.ts, `setLagebildWerte`), keinen Inhalt eines Wissensobjekts; unlesbare Bereiche antworten 404.",
+  },
   "GET /api/ai-check/coverage-summary": { urteil: "PRAEDIKAT", grund: "Block D — vier Zähler." },
   // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): Antworten nur mit Kennungen und Zählwerten;
   // jede Aussage des Laufs geht vorher durch `darfSehen` (lokale Helfer, über ihren Rumpf erhoben).
@@ -2127,11 +2170,16 @@ const REGISTER: Record<string, Eintrag> = {
     // POST-Wege mit `users.manage`; `files` liest dabei nur (Dateiliste der Bibliothek), `apply`
     // stellt Kandidaten in die Prüf-Warteschlange. Beide geben keinen Inhalt eines
     // Wissensobjekts aus — sie geben Namen, Adressen und Stände von QUELLDATEIEN aus.
-    "POST /api/admin/import/sharepoint/files": "users.manage.",
-    "POST /api/admin/import/sharepoint/apply": "users.manage.",
+    // Frage 6 (11.10.2026): dazu ein Fachkonto mit `ko.create`, aber NUR gegen seine eigene,
+    // vom Betreiber zugeordnete Testbibliothek; die Ausgabe bleibt dieselbe Art Quelldatei-Angabe.
+    "POST /api/admin/import/sharepoint/files":
+      "users.manage, oder ko.create mit eigener Testbibliothek.",
+    "POST /api/admin/import/sharepoint/apply":
+      "users.manage, oder ko.create mit eigener Testbibliothek.",
     // R-0145/R-0190: `folder-apply` ist derselbe Übernahmeweg für ein Los eines Ordners — er gibt
     // dieselben Quelldatei-Angaben aus wie `apply`, dazu die Kennungen des Loses.
-    "POST /api/admin/import/sharepoint/folder-apply": "users.manage.",
+    "POST /api/admin/import/sharepoint/folder-apply":
+      "users.manage, oder ko.create mit eigener Testbibliothek.",
     // R-0170: die drei Türen des Jira-Imports, dieselbe Bauform wie SharePoint. `issues` liest nur
     // (Vorgangsliste des Projekts); `apply` und `project-apply` stellen Kandidaten in die
     // Prüf-Warteschlange. Keine gibt den Inhalt eines Wissensobjekts aus — sie geben Schlüssel,

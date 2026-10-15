@@ -196,7 +196,24 @@ export interface AnswerResult {
   // daneben die Liste der herangezogenen Fundstellen und ist KEINE Begründung. Fehlt das Feld, gibt
   // es keine belegte Kette (keine Antwort, älterer Weg) — weggelassen, nie leer erfunden.
   argumentation?: ArgumentationsGlied[];
+  // produkt:20261010:poc-ki-ausfall-weiterarbeiten (PV-03-01): WARUM der regelbasierte Ersatz diese
+  // Antwort geliefert hat. Gesetzt NUR, wenn in diesem Lauf ein Modell versucht wurde, scheiterte
+  // und danach der deterministische Ersatz antwortete (`Reasoner.answer`). Ohne Modellversuch (keins
+  // eingerichtet) oder bei einer Modellantwort fehlt das Feld. Nur die Klasse — kein Anbietername,
+  // kein Status, keine Meldung, kein Schlüssel.
+  ersatzGrund?: KiErsatzGrund;
 }
+
+/**
+ * PV-03-01: die nutzerverständliche Ursache eines gescheiterten Modellversuchs, aus dem Fehler
+ * ABGELEITET (`ersatzGrundAus`, model-errors.ts) — nie aus Meldungstext an die Fläche gereicht.
+ */
+export type KiErsatzGrund =
+  | "zeitueberschreitung"
+  | "nicht_erreichbar"
+  | "verweigert"
+  | "kontingent"
+  | "fehler";
 
 /** R-1643: ein Glied der Argumentationskette. */
 export interface ArgumentationsGlied {

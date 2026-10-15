@@ -34,6 +34,7 @@ KO-Inhalt als sanitisiertes HTML (XSS-Schutz, NFR-SEC-04). Bild-Refs im HTML zei
 
 ## Nicht-Ziele (v1)
 Versionsdiff im Editor, kollaboratives Live-Editing.
+Einordnung von R-0109 offen; Stand und Alternativen: `docs/entscheidungen/aufnahme-20260922-gesamt-gleichzeitiges-bearbeiten.md`.
 
 ## Offene Fragen
 HTML-Sanitizing-Policy (erlaubte Tags) · Editor-Bibliothek.

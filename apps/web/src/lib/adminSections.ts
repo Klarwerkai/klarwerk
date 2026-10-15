@@ -94,6 +94,14 @@ export const ADMIN_DETAILS: readonly AdminDetailZiel[] = [
   { id: "kiGrenzen", section: "ki", labelKey: "einst.ki.grenzen" },
   { id: "kiExtern", section: "ki", labelKey: "adm.ext.title" },
   { id: "kiDup", section: "ki", labelKey: "adm.dup.title" },
+  // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets für Claude, ChatGPT und
+  // Perplexity. Unter „KI", weil sie die Kostenwege dieser Anbieter begrenzen.
+  {
+    id: "produktbudget",
+    section: "ki",
+    labelKey: "produktbudget.titel",
+    synonymKeys: ["produktbudget.syn"],
+  },
   {
     id: "papierkorb",
     section: "quellen",
