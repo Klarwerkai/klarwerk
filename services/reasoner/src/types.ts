@@ -279,6 +279,9 @@ export interface InterviewResult {
   done: boolean; // Abschluss erreicht
   draft: StructureResult; // nachvollziehbar aus den Antworten verdichtet
   demo: boolean; // deterministischer Fallback klar markiert
+  // KI-WAHL-BETRIEBSABNAHME · N-0087: NUR bei `demo: true` — warum feste Ersatzfragen kamen
+  // (dieselben Ursachen wie `StructureResult.fallbackReason`). PII-frei.
+  fallbackReason?: "no-model" | "model-timeout" | "model-error" | "confidential";
   // AUFTRAG-mega61 Block F: die maschinenlesbare Kennzeichnung nach Artikel 50 Absatz 2 der
   // KI-Verordnung. Sie wird ZENTRAL an der Dienstgrenze gesetzt (ReasonerService), damit sie
   // nicht an jedem Provider einzeln vergessen werden kann; die Provider bauen ihr Ergebnis
@@ -626,6 +629,50 @@ export interface ReasonerKiFreigabe {
   vertraulicheInhalte?: boolean;
 }
 
+// KI-WAHL-BETRIEBSABNAHME · Antwort 29 (BEN, Nacharbeit 7): die Vertraulichkeitsstufen, für die der
+// Administrator eine EIGENE Anbieterwahl treffen kann — dieselben drei Werte wie
+// `knowledge-object`s `Confidentiality` (hier gespiegelt, weil der Reasoner über seine Modulgrenze
+// nicht in `knowledge-object` greift).
+export const REASONER_SCHUTZSTUFEN = ["intern", "vertraulich", "streng_vertraulich"] as const;
+export type ReasonerSchutzstufe = (typeof REASONER_SCHUTZSTUFEN)[number];
+
+// Die Wahl JE SCHUTZSTUFE. Sie geht der Aufgabenwahl vor, sobald ein Lauf eine Stufe trägt.
+// „Keine KI" ist der Wert `deterministic`: in der Kette steht dann kein Modell — auch nicht für
+// Hintergrundwege dieser Stufe (Konflikt-/Dublettenurteil, Anreicherung).
+export type ReasonerSchutzstufenWahl = Partial<Record<ReasonerSchutzstufe, ReasonerAktiveWahl>>;
+
+// KI-WAHL-BETRIEBSABNAHME · Antwort 13 (BEN, Nacharbeit 7): was ein ANGEMELDETER Nutzer über den
+// Ausführer EINER Aufgabe erfährt — den tatsächlich arbeitenden Dienst, seine Verfügbarkeit und seine
+// Einschränkungen. Geheimnisfrei: Anbieterkennung, nie Schlüssel, Adresse oder Modellkennung.
+export type ReasonerAusfuehrer = ReasonerCloudAnbieter | "local" | "deterministic";
+export type ReasonerAusfuehrungsEinschraenkung =
+  // Ein Cloud-Anbieter ist gewählt, die Grundfreigabe für öffentliche KI fehlt — es arbeitet keine KI.
+  | "freigabe_fehlt"
+  // Es arbeitet ein Cloud-Anbieter; vertraulich eingestufte Texte gehen ohne zweite Freigabe NICHT dorthin.
+  | "vertraulich_ohne_cloud"
+  // Der Administrator hat die KI abgeschaltet.
+  | "ki_abgeschaltet"
+  // Der Ausführer war zuletzt nicht erreichbar.
+  | "nicht_erreichbar";
+export interface ReasonerAusfuehrung {
+  // Wer bei einem nicht vertraulichen Text TATSÄCHLICH arbeitet (die gegatete Kette DIESER Aufgabe).
+  ausfuehrer: ReasonerAusfuehrer;
+  // Was für DIESE Aufgabe gewählt ist (ohne Freigaberiegel) — weicht ab, wenn die Freigabe fehlt.
+  gewaehlt: ReasonerAusfuehrer;
+  verfuegbar: boolean;
+  einschraenkungen: ReasonerAusfuehrungsEinschraenkung[];
+  // Antwort 29: Schutzstufen, für die der Administrator „Keine KI" gewählt hat.
+  keineKiFuer: ReasonerSchutzstufe[];
+  // BEN, Nacharbeit 10: wer bei einem Text JEDER Stufe tatsächlich arbeitet — dieselbe Auflösung
+  // wie der Lauf (Stufenregel, Freigabe, Vertraulichkeit). `ausfuehrer` ist `jeStufe.intern`.
+  jeStufe: Record<ReasonerSchutzstufe, ReasonerAusfuehrer>;
+  // BEN, Nacharbeit 11: die Verfügbarkeit JE STUFE aus derselben Stufenkette; `verfuegbar` ist
+  // `verfuegbarJeStufe.intern`.
+  verfuegbarJeStufe: Record<ReasonerSchutzstufe, boolean>;
+  // `true`, wenn mindestens eine Stufe einen anderen Ausführer hat als „intern".
+  stufenAbweichend: boolean;
+}
+
 // ================================================================================================
 // AUFNAHME 20260922 (R-0305, R-1099) · DAS MODELL DER ZWEITMEINUNG — AUSDRÜCKLICH GEWÄHLT.
 // ================================================================================================
@@ -662,6 +709,8 @@ export interface ReasonerTaskConfig {
   // Normalisierung nur da, wenn wenigstens ein Schalter `true` ist (kein `{}`, kein `false`-Rest).
   // Ein fehlendes Feld ist damit dasselbe wie „gesperrt" und kein „noch nicht gefragt".
   kiFreigabe?: ReasonerKiFreigabe;
+  // Antwort 29: die Wahl je Schutzstufe. Steht nur da, wenn wenigstens eine Stufe belegt ist.
+  proSchutzstufe?: ReasonerSchutzstufenWahl;
   // R-0305/R-1099: das Modell der Zweitmeinung. Fehlt es, ist die Zweitmeinung aus.
   zweitmeinung?: ReasonerZweitmeinungWahl;
   // REF-02: die erlaubten Referenz-Prüfer in Vorzugsreihenfolge, ohne Doppelungen. Fehlt das Feld,
@@ -838,6 +887,9 @@ export interface ReasonerTaskConfigEingabe {
   // der ZUORDNUNG darf eine erteilte Freigabe nicht beiläufig löschen — und eine fehlende nicht
   // beiläufig erteilen. Wer die Freigabe ändern will, nennt sie.
   kiFreigabe?: ReasonerKiFreigabe;
+  // Antwort 29: wie `kiFreigabe` — WEGLASSEN lässt die Wahl je Schutzstufe unverändert, `null` oder
+  // `{}` löscht sie. Unbekannte Stufen oder Werte werfen (nichts wird still verworfen).
+  proSchutzstufe?: Partial<Record<string, unknown>> | null;
   // R-0305/R-1099: dieselbe Regel wie bei `kiFreigabe` — WEGLASSEN lässt die Wahl unverändert,
   // `null` schaltet die Zweitmeinung aus. So kann ein Speichern der Zuordnung, das von diesem Feld
   // nichts weiß, keinen zweiten Empfänger beiläufig löschen oder hinzufügen.

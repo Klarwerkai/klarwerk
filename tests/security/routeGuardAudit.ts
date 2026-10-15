@@ -1241,6 +1241,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // normale Nutzer sehen nur den abstrahierten Status (/api/reasoner/status).
   "GET /api/reasoner/config": { protection: "users.manage" },
   "PUT /api/reasoner/config": { protection: "users.manage" },
+  // KI-WAHL-BETRIEBSABNAHME · Antwort 13: wer je Aufgabe tatsächlich arbeitet — für Angemeldete
+  // mit Leserecht, geheimnisfrei (Anbieterkennung, Verfügbarkeit, Einschränkungen).
+  "GET /api/reasoner/ausfuehrung": { protection: "ko.read" },
   // produkt:20261009:referenzki-adminauswahl (REF-03): der Einstieg „Referenzprüfung" — Lage
   // lesen, erlaubte Liste setzen, bewusster Funktionscheck. Alles nur Admin.
   "GET /api/reasoner/referenzpruefung": { protection: "users.manage" },

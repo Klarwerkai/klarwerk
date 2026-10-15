@@ -4035,7 +4035,13 @@ export interface ReasonerConfigStatus {
   supportsLocales: ("de" | "en" | "nl")[];
   tasks: ReasonerTask[];
   // KI-Verwaltung v1 (02.07.2026): Zuordnung + effektiver Modus je Aufgabe.
-  taskConfig: { global: string; perTask: Record<string, string> };
+  taskConfig: {
+    global: string;
+    perTask: Record<string, string>;
+    // KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Wahl je Schutzstufe („deterministic" = Keine KI).
+    // Fehlt sie, gilt für jede Stufe die Aufgabenwahl.
+    proSchutzstufe?: Partial<Record<ReasonerSchutzstufe, string>>;
+  };
   effective: Record<string, "model" | "deterministic">;
   // SCRUM-424: eigener lokaler LLM + welche KI je Aufgabe zuerst arbeitet.
   cloudConfigured: boolean;
@@ -4065,6 +4071,33 @@ export interface ReasonerConfigStatus {
   // (KLARWERK_REASONER_POLICY) festgelegt — die Karte sperrt dann die Auswahl und sagt es, statt ein
   // PUT zu erlauben, das der Server ohnehin mit 409 beantwortet. Optional für ältere Antworten.
   policySource?: "env" | "db" | "default";
+}
+
+// KI-WAHL-BETRIEBSABNAHME · Antwort 13: wer je Aufgabe tatsächlich arbeitet — die Antwort von
+// `GET /api/reasoner/ausfuehrung` (jeder Angemeldete mit Leserecht). Wortgleich zu
+// `ReasonerAusfuehrung` in `services/reasoner/src/types.ts`; geheimnisfrei.
+export type ReasonerSchutzstufe = "intern" | "vertraulich" | "streng_vertraulich";
+export type ReasonerAusfuehrer = ReasonerCloudAnbieter | "local" | "deterministic";
+export type ReasonerAusfuehrungsEinschraenkung =
+  | "freigabe_fehlt"
+  | "vertraulich_ohne_cloud"
+  | "ki_abgeschaltet"
+  | "nicht_erreichbar";
+export interface ReasonerAusfuehrung {
+  ausfuehrer: ReasonerAusfuehrer;
+  gewaehlt: ReasonerAusfuehrer;
+  verfuegbar: boolean;
+  einschraenkungen: ReasonerAusfuehrungsEinschraenkung[];
+  keineKiFuer: ReasonerSchutzstufe[];
+  // BEN, Nacharbeit 10: der tatsächliche Ausführer je Stufe (dieselbe Auflösung wie der Lauf).
+  // Optional nur für Antworten älterer Server; fehlt es, bleibt die Anzeige bei `ausfuehrer`.
+  jeStufe?: Record<ReasonerSchutzstufe, ReasonerAusfuehrer>;
+  // BEN, Nacharbeit 11: Verfügbarkeit je Stufe aus derselben Stufenkette.
+  verfuegbarJeStufe?: Record<ReasonerSchutzstufe, boolean>;
+  stufenAbweichend?: boolean;
+}
+export interface ReasonerAusfuehrungAntwort {
+  aufgaben: Partial<Record<ReasonerTask, ReasonerAusfuehrung>>;
 }
 
 // JOB 3420 (UX-10b): die Fehlerklassen, die der Server misst — WORTGLEICH zu `ModelFailureClass` in
@@ -4234,6 +4267,8 @@ export interface InterviewResult {
   done: boolean;
   draft: StructureResult;
   demo: boolean;
+  // KI-WAHL-BETRIEBSABNAHME · N-0087: nur bei `demo: true` — warum feste Ersatzfragen kamen.
+  fallbackReason?: "no-model" | "model-timeout" | "model-error" | "confidential";
   // AUFNAHME 20260922 · WISSEN-INTERVIEW: nur im Fragebaum gesetzt — Spiegel von
   // `services/reasoner/src/types.ts` (InterviewResult).
   node?: InterviewNodeId | null;
