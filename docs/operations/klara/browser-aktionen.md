@@ -57,7 +57,14 @@ Schritt.
 
 - Anbindung im Worker (`chrome.scripting.executeScript` in die isolierte Welt, Host-Rechte je
   freigegebener Seite) und Verbindung mit BPA-01-Kontext — wartet auf die reguläre Integration der
-  Elternlieferung.
+  Elternlieferung. Stand 16.10.2026, Kandidat `e83d47f5e`: `extensions/klara-browser/kontext.js`,
+  die Kontextanbindung in `worker.js`/`panel.js` und `apps/desktop/klara-begleiter` (native
+  Brücke) fehlen im Arbeitsbaum. Die historische Codegrundlage `207bc6488` ist keine einzelne
+  BPA-01-Lieferung: gegenüber der gemeinsamen Basis `1424244ec` umfasst sie 83 Dateien mehrerer
+  Aufträge (Begleiter-App, Programmadapter, Word-Begleiter, Webseiten, Tests). Ihre Übernahme ist
+  die zentrale Integration der Führung, nicht Teil dieses Deltas. Ohne sie gibt es keinen
+  Transportweg zwischen dem Aktionskern am Server und der Seite; ein eigener zweiter Kanal würde
+  der Brücke aus BPA-01 widersprechen.
 - Bestätigungs- und Statusoberfläche in der Leiste/im Begleiter; HTTP-Weg in den vorhandenen
   Auftragsverlauf.
 - Reale Chrome-Hostprobe mit genauer Version (O01), echte Website-Profile, echte Spracheingabe.
