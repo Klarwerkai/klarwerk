@@ -431,12 +431,22 @@ export type SeitenFehler =
   | "feld_gesperrt"
   | "knopf_fehlt"
   | "eintrag_fehlt"
+  /** Ein erwarteter Feldwert stand unmittelbar vor der Wirkung nicht mehr auf der Seite. */
+  | "wert_geaendert"
+  /** Die Übertragung hat belastbar NICHTS auf der Seite ausgeführt (z. B. Skript nie injiziert). */
+  | "nicht_ausgefuehrt"
+  /** Ausgang unbekannt: die Wirkung kann eingetreten sein. */
   | "zeitueberschreitung"
   | "verbindung";
 
 export type SeitenAntwort<T> =
   | { readonly ok: true; readonly wert: T }
   | { readonly ok: false; readonly grund: SeitenFehler };
+
+export interface BrowserFeldwert {
+  readonly label: string;
+  readonly wert: string;
+}
 
 /** Die Brücke zum Seitenausführer. Jede Antwort ist unvertrauter Seiteninhalt. */
 export interface BrowserSeitenadapter {
@@ -448,13 +458,20 @@ export interface BrowserSeitenadapter {
     formular: string,
     liste: BrowserEntwurfsliste | null,
   ): Promise<SeitenLage | null>;
+  /** `erwartet`: nur eintragen, wenn das Feld unmittelbar vorher genau diesen Wert zeigt. */
   fuelle(
     tabId: number,
-    a: { formular: string; fingerabdruck: string; label: string; wert: string },
+    a: { formular: string; fingerabdruck: string; label: string; wert: string; erwartet?: string },
   ): Promise<SeitenAntwort<{ wert: string }>>;
+  /** `werte`: nur klicken, wenn diese Felder unmittelbar vorher genau diese Werte zeigen. */
   klicke(
     tabId: number,
-    a: { formular: string; fingerabdruck: string; knopf: string },
+    a: {
+      formular: string;
+      fingerabdruck: string;
+      knopf: string;
+      werte?: readonly BrowserFeldwert[];
+    },
   ): Promise<SeitenAntwort<null>>;
   loesche(
     tabId: number,
@@ -1029,6 +1046,19 @@ export class BrowserAusfuehrung {
     if (grund === "zeitueberschreitung" || grund === "verbindung") {
       return this.unklar(s, grund);
     }
+    if (grund === "nicht_ausgefuehrt") {
+      // Belastbar nichts geschehen: der Schritt bleibt offen und darf beim Fortsetzen laufen.
+      this.setze(s, "offen", "nicht ausgeführt");
+      this.halteAn("Die Seite war nicht erreichbar; nichts wurde ausgeführt.", s.nr);
+      return "halt";
+    }
+    if (grund === "wert_geaendert") {
+      this.halteAn(
+        `Ein Feld zeigt auf der Seite nicht mehr den beauftragten Wert. Klara löst „${s.knopf ?? s.feld}" nicht aus und überschreibt nichts; prüfe das Formular.`,
+        s.nr,
+      );
+      return "halt";
+    }
     if (grund === "feld_gesperrt" || grund === "knopf_fehlt") {
       const was = `„${s.feld ?? s.knopf ?? ""}"`;
       this.gibAb(uebergabe("gesperrte_handlung", this.ort(), was), s.nr);
@@ -1119,7 +1149,13 @@ export class BrowserAusfuehrung {
         this.merke("abgeglichen", s.nr);
         return "weiter";
       }
-      this.setze(s, "offen", "abgeglichen: nicht gespeichert");
+      // „Nicht sichtbar" ist kein Beleg für „nicht gespeichert": eine Speicherung kann verzögert
+      // erscheinen. Ohne belastbare Nichtausführung wird NICHT erneut gespeichert.
+      return this.unklar(
+        s,
+        "abgeglichen: noch nicht sichtbar",
+        "Noch ist kein passender Entwurf zu sehen. Klara speichert nicht erneut, solange offen ist, ob die erste Speicherung gewirkt hat. Prüfe die Entwurfsliste oder setze später fort.",
+      );
     }
     const antwort = await this.deps.adapter.klicke(this.auftrag.ziel.tabId, {
       formular: this.auftrag.ziel.formular,
@@ -1167,10 +1203,25 @@ export class BrowserAusfuehrung {
       this.merke("bestaetigung_noetig", s.nr);
       return "halt";
     }
+    // Die Bestätigung gilt den Werten des Auftrags. Wirksam ist aber, was JETZT auf der Seite
+    // steht: weicht ein Feld ab (etwa ein geänderter Empfänger), wird nicht ausgelöst.
+    const abweichung = this.auftrag.felder.find((f) => {
+      const ist = lage.formular?.felder.filter((x) => x.label === f.label) ?? [];
+      return ist.length !== 1 || ist[0]?.wert !== f.wert;
+    });
+    if (abweichung) {
+      this.halteAn(
+        `„${abweichung.label}" zeigt auf der Seite nicht mehr den bestätigten Wert. Klara löst „${s.knopf}" nicht aus und überschreibt nichts; prüfe das Formular und bestätige danach neu.`,
+        s.nr,
+      );
+      return "halt";
+    }
     const antwort = await this.deps.adapter.klicke(this.auftrag.ziel.tabId, {
       formular: this.auftrag.ziel.formular,
       fingerabdruck: this.fingerabdruck(),
       knopf: s.knopf ?? "",
+      // Derselbe Abgleich noch einmal im Seitenausführer, unmittelbar vor dem Klick.
+      werte: this.auftrag.felder,
     });
     if (!antwort.ok && antwort.grund !== "zeitueberschreitung" && antwort.grund !== "verbindung") {
       return this.seitenfehler(s, antwort.grund);
@@ -1235,7 +1286,7 @@ export class BrowserAusfuehrung {
         text: `Diese Seite bietet Klara kein Löschen an. Der Entwurf ${id} bleibt gespeichert; lösche ihn bei Bedarf selbst.`,
       };
     }
-    if (!(await this.deps.rechte(this.auftrag, "speichern"))) {
+    if (!(await this.deps.rechte(this.auftrag, "speichern").catch(() => false))) {
       return { art: "ziel_fehlt", text: "Dir fehlt jetzt das Recht dafür. Nichts geändert." };
     }
     const z = this.auftrag.ziel;
@@ -1270,26 +1321,66 @@ export class BrowserAusfuehrung {
     return { art: "zurueckgenommen", beleg: `Entwurf ${id} gelöscht; ${andere.length} andere da` };
   }
 
+  /**
+   * Setzt eigene, ungespeicherte Feldwerte zurück — je Feld erst nach erneuter Prüfung von Recht,
+   * Tab, Seitenadresse, Formularaufbau und EIGENEM Feldwert. Hat jemand das Feld seither geändert,
+   * bleibt es stehen; bei Zielwechsel oder Rechteentzug hält die Rücknahme an und sagt, wie weit
+   * sie kam.
+   */
   private async setzeFelderZurueck(gefuellt: Schritt[]): Promise<BrowserRuecknahme> {
-    if (!this.bindung || !(await this.deps.rechte(this.auftrag, "fuellen"))) {
-      return { art: "ziel_fehlt", text: "Dir fehlt jetzt das Recht dafür. Nichts geändert." };
+    const z = this.auftrag.ziel;
+    const bindung = this.bindung;
+    let zurueck = 0;
+    const halt = (art: "ziel_fehlt" | "unklar", grund: string): BrowserRuecknahme => {
+      if (zurueck > 0) {
+        this.merke("zurueckgenommen");
+      }
+      const stand = `${zurueck} von ${gefuellt.length} Feldern zurückgesetzt.`;
+      return { art, text: `${grund} Nichts weiter geändert; ${stand}` };
+    };
+    if (!bindung) {
+      return halt("ziel_fehlt", "Das Ziel des Auftrags ist nicht gebunden.");
     }
     for (const s of gefuellt) {
+      const recht = await this.deps.rechte(this.auftrag, "fuellen").catch(() => false);
+      if (!recht) {
+        return halt("ziel_fehlt", "Dir fehlt jetzt das Recht dafür.");
+      }
+      const lage = await this.leseLage();
+      if (!lage || lage.tabId !== z.tabId || lage.origin !== z.origin || lage.pfad !== z.pfad) {
+        return halt("ziel_fehlt", `Im Tab des Auftrags ist nicht mehr ${this.ort()} geöffnet.`);
+      }
+      const f = lage.formular;
+      if (
+        lage.hindernisse.length > 0 ||
+        lage.formularTreffer !== 1 ||
+        !f ||
+        f.fingerabdruck !== bindung.fingerabdruck
+      ) {
+        return halt("ziel_fehlt", `Das Formular „${z.formular}" hat sich geändert.`);
+      }
       const label = s.feld ?? "";
+      const eigen = this.wert(label);
+      const ist = f.felder.filter((x) => x.label === label);
+      if (ist.length !== 1 || ist[0]?.wert !== eigen) {
+        return halt(
+          "unklar",
+          `„${label}" wurde seit Klaras Eintrag geändert; Klara überschreibt das nicht.`,
+        );
+      }
       const alt = this.vorherWerte.get(label) ?? "";
-      const antwort = await this.deps.adapter.fuelle(this.auftrag.ziel.tabId, {
-        formular: this.auftrag.ziel.formular,
-        fingerabdruck: this.fingerabdruck(),
+      const antwort = await this.deps.adapter.fuelle(z.tabId, {
+        formular: z.formular,
+        fingerabdruck: bindung.fingerabdruck,
         label,
         wert: alt,
+        erwartet: eigen,
       });
       if (!antwort.ok || antwort.wert.wert !== alt) {
-        return {
-          art: "unklar",
-          text: `„${label}" ließ sich nicht zurücksetzen; das Formular hat sich geändert. Prüfe es selbst.`,
-        };
+        return halt("unklar", `„${label}" ließ sich nicht zurücksetzen.`);
       }
       this.setze(s, "zurueckgenommen", "vorheriger Wert nachgelesen");
+      zurueck++;
     }
     this.merke("zurueckgenommen");
     return { art: "zurueckgenommen", beleg: `${gefuellt.length} Felder auf den vorherigen Wert` };

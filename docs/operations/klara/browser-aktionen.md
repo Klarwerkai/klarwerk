@@ -40,11 +40,18 @@ Schritt.
    Formularaufbau. Geänderter Aufbau wird nur neu gebunden, wenn jede beauftragte Beschriftung
    genau einmal vorkommt; sonst Klärung.
 3. Speichern gilt erst nach Nachlesen in der Entwurfsliste. Unklarer Ausgang wird vor Wiederholung
-   abgeglichen; unklares Auslösen wird nie wiederholt (Übergabe „prüfen").
+   abgeglichen. Ist der Entwurf (noch) nicht sichtbar, bleibt der Schritt unklar — erneut
+   gespeichert wird nur, wenn die Übertragung belastbar meldet, dass nichts ausgeführt wurde
+   (`nicht_ausgefuehrt`). Unklares Auslösen wird nie wiederholt (Übergabe „prüfen").
 4. Auslösen nur mit Bestätigung, die an Auftrag, Nutzer, Knopf, Formularaufbau und Werte gebunden
-   ist und genau einmal gilt.
+   ist und genau einmal gilt. Unmittelbar davor werden die tatsächlichen Feldwerte der Seite mit den
+   bestätigten Werten verglichen — am Server und noch einmal im Seitenausführer direkt vor dem
+   Klick (`werte`). Bei Abweichung: Klärung, kein Klick.
 5. Rücknahme löscht genau den nachgelesenen eigenen Entwurf (Kennung) bzw. setzt ungespeicherte
-   Felder zurück und liest nach. Ausgelöstes wird als nicht rücknehmbar benannt.
+   Felder zurück und liest nach. Vor JEDER Feldrücksetzung: aktuelle Rechte, Tab und
+   Seitenadresse, Formularaufbau und der eigene Feldwert (auch im Seitenausführer, `erwartet`). Bei
+   Zielwechsel, Rechteentzug oder fremder Änderung hält sie an und nennt, wie viele Felder
+   zurückgesetzt sind. Ausgelöstes wird als nicht rücknehmbar benannt.
 
 ## Offen (nicht durch diese Lieferung belegt)
 

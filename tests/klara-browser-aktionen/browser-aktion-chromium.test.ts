@@ -28,6 +28,7 @@ import {
   BrowserAusfuehrung,
   type BrowserEntwurfsliste,
   BrowserFaehigkeitsregister,
+  type BrowserFeldwert,
   type BrowserSchrittArt,
   type BrowserSeitenadapter,
   type SeitenAntwort,
@@ -123,7 +124,7 @@ class ChromiumSeitenadapter implements BrowserSeitenadapter {
 
   async fuelle(
     tabId: number,
-    a: { formular: string; fingerabdruck: string; label: string; wert: string },
+    a: { formular: string; fingerabdruck: string; label: string; wert: string; erwartet?: string },
   ): Promise<SeitenAntwort<{ wert: string }>> {
     this.aufrufe.push("fuelle");
     const antwort = await this.rufe<SeitenAntwort<{ wert: string }>>(tabId, "fuelle", a);
@@ -132,7 +133,12 @@ class ChromiumSeitenadapter implements BrowserSeitenadapter {
 
   async klicke(
     tabId: number,
-    a: { formular: string; fingerabdruck: string; knopf: string },
+    a: {
+      formular: string;
+      fingerabdruck: string;
+      knopf: string;
+      werte?: readonly BrowserFeldwert[];
+    },
   ): Promise<SeitenAntwort<null>> {
     this.aufrufe.push(`klicke:${a.knopf}`);
     const st = this.stoerung;
@@ -478,6 +484,47 @@ describe("BPA-03 · berechtigte Browseraktionen auf der synthetischen Seite (Chr
     expect((await zustand(s)).versand).toBe(0);
   });
 
+  it("K4 · AC04 · Empfänger nach der Bestätigung geändert, Aufbau gleich: kein Versand, Klärung; auch erneute Bestätigung sendet nicht an den falschen Empfänger", async () => {
+    const s = await oeffne(1);
+    const a = auftrag({ speichern: false, ausloesen: "Endgültig senden" });
+    const senden = lauf(a);
+    await senden.ausfuehren();
+    const bestaetige = () =>
+      senden.bestaetige({
+        auftragId: a.id,
+        knopf: "Endgültig senden",
+        fingerabdruck: senden.bestaetigungsBedarf()?.fingerabdruck ?? "",
+        nutzer: a.nutzer,
+        bestaetigtAm: new Date().toISOString(),
+      });
+    expect(bestaetige()).toBe(true);
+    await aendere(s, `document.getElementById('a-empfaenger').value = '${ANGREIFER}';`);
+    const nach = await senden.fortsetzen();
+    expect(nach.stand).toBe("klaerung");
+    expect(nach.klaerung).toContain(
+      '„Empfänger" zeigt auf der Seite nicht mehr den bestätigten Wert',
+    );
+    expect((await zustand(s)).versand).toBe(0);
+    expect((await werte(s, "angebot"))["a-empfaenger"]).toBe(ANGREIFER);
+    // Fortsetzen verlangt eine neue Bestätigung; auch sie löst bei abweichendem Wert nicht aus.
+    expect((await senden.fortsetzen()).stand).toBe("bestaetigung_noetig");
+    expect(bestaetige()).toBe(true);
+    expect((await senden.fortsetzen()).stand).toBe("klaerung");
+    expect((await zustand(s)).versand).toBe(0);
+    expect(adapter.zaehle("klicke:")).toBe(0);
+    // Die zweite Sicherung im Seitenausführer: ein Klick mit erwarteten Werten prüft unmittelbar
+    // davor die tatsächlichen Feldwerte und klickt bei Abweichung nicht.
+    const lage = await adapter.lage(1, "Angebotsentwurf", null);
+    const direkt = await adapter.klicke(1, {
+      formular: "Angebotsentwurf",
+      fingerabdruck: lage?.formular?.fingerabdruck ?? "",
+      knopf: "Endgültig senden",
+      werte: [{ label: "Empfänger", wert: EMPFAENGER }],
+    });
+    expect(direkt).toEqual({ ok: false, grund: "wert_geaendert" });
+    expect((await zustand(s)).versand).toBe(0);
+  });
+
   it("K5 · AC05 · Injection in Seitentext, Tooltip und Download bleibt Inhalt: kein fremdes Ziel, keine zusätzliche Handlung", async () => {
     const s = await oeffne(1);
     const seite = await lies(s, "document.getElementById('hinweis').textContent");
@@ -570,14 +617,51 @@ describe("BPA-03 · berechtigte Browseraktionen auf der synthetischen Seite (Chr
     expect(adapter.zaehle("klicke:")).toBe(1);
   });
 
-  it("K7 · AC07 · Verbindung bricht VOR der Speicherung ab: Abgleich findet nichts, dann genau eine Speicherung", async () => {
+  it("K7 · AC07 · belastbar NICHT ausgeführtes Speichern: Klärung, Fortsetzen speichert genau einmal", async () => {
+    const s = await oeffne(1);
+    const l = lauf(auftrag());
+    adapter.stoerung = { wann: "vor", grund: "nicht_ausgefuehrt" };
+    const erst = await l.ausfuehren();
+    expect(erst.stand).toBe("klaerung");
+    expect(erst.erfolg).toBe(false);
+    expect((await zustand(s)).speicherungen).toBe(0);
+    expect((await l.fortsetzen()).erfolg).toBe(true);
+    expect((await zustand(s)).speicherungen).toBe(1);
+  });
+
+  it("K7 · AC07 · unklarer Ausgang ohne sichtbaren Entwurf: kein zweiter Speicherklick, auch nicht beim erneuten Fortsetzen", async () => {
     const s = await oeffne(1);
     const l = lauf(auftrag());
     adapter.stoerung = { wann: "vor", grund: "verbindung" };
     expect((await l.ausfuehren()).stand).toBe("unklar");
+    for (let i = 0; i < 2; i++) {
+      const weiter = await l.fortsetzen();
+      expect(weiter.stand).toBe("unklar");
+      expect(weiter.erfolg).toBe(false);
+      expect(weiter.klaerung).toContain("speichert nicht erneut");
+    }
+    // Ein Klickversuch (der gestörte), kein zweiter.
+    expect(adapter.zaehle("klicke:")).toBe(1);
     expect((await zustand(s)).speicherungen).toBe(0);
-    expect((await l.fortsetzen()).erfolg).toBe(true);
+  });
+
+  it("K7 · AC07 · Speicherung wirkt, erscheint aber verzögert: kein zweiter Klick, nach dem Erscheinen genau eine Speicherung nachgelesen", async () => {
+    const s = await oeffne(1);
+    await aendere(s, "window.__bpa03.verzoegert = true;");
+    const l = lauf(auftrag());
+    adapter.stoerung = { wann: "nach", grund: "zeitueberschreitung" };
+    expect((await l.ausfuehren()).stand).toBe("unklar");
     expect((await zustand(s)).speicherungen).toBe(1);
+    // Mehrere Leseversuche sehen noch nichts: das bleibt unklar, statt erneut zu speichern.
+    const unsichtbar = await l.fortsetzen();
+    expect(unsichtbar.stand).toBe("unklar");
+    expect((await zustand(s)).speicherungen).toBe(1);
+    await aendere(s, "window.__bpa03zeige();");
+    const sichtbar = await l.fortsetzen();
+    expect(sichtbar.erfolg).toBe(true);
+    expect(sichtbar.schritte.find((x) => x.art === "speichern")?.beleg).toContain("abgeglichen");
+    expect(eigene(await zustand(s))).toHaveLength(1);
+    expect(adapter.zaehle("klicke:")).toBe(1);
   });
 
   it("K7 · AC07 · unklares Senden wird nie wiederholt, sondern zur Prüfung übergeben", async () => {
@@ -713,6 +797,73 @@ describe("BPA-03 · berechtigte Browseraktionen auf der synthetischen Seite (Chr
       "a-empfaenger": "",
       "a-nachricht": "",
     });
+  });
+
+  it("K9/K2 · AC09 · Feldrücknahme nach Seitenwechsel im Tab: die gleich aufgebaute andere Seite bleibt unverändert", async () => {
+    const s = await oeffne(1);
+    const l = lauf(auftrag({ speichern: false }));
+    expect((await l.ausfuehren()).erfolg).toBe(true);
+    await s.goto(`${ORIGIN}/andere`);
+    // Dieselben Werte wie Klaras Eintrag: nur die Adresse unterscheidet die Seiten.
+    await aendere(
+      s,
+      `document.getElementById('a-betreff').value = ${JSON.stringify(BETREFF)}; document.getElementById('a-empfaenger').value = ${JSON.stringify(EMPFAENGER)}; document.getElementById('a-nachricht').value = ${JSON.stringify(NACHRICHT)};`,
+    );
+    const r = await l.ruecknahme();
+    expect(r.art).toBe("ziel_fehlt");
+    expect("text" in r && r.text).toContain("0 von 3 Feldern zurückgesetzt");
+    expect(await werte(s, "angebot")).toEqual({
+      "a-betreff": BETREFF,
+      "a-empfaenger": EMPFAENGER,
+      "a-nachricht": NACHRICHT,
+    });
+    expect(adapter.zaehle("fuelle")).toBe(3);
+  });
+
+  it("K6/K9 · AC06/AC09 · Rechteentzug zwischen zwei Rücksetzungen hält an; nur das erlaubte Teilergebnis ist zurückgesetzt", async () => {
+    const s = await oeffne(1);
+    let ruecknahme = false;
+    let erlaubt = 0;
+    const l = lauf(auftrag({ speichern: false }), async () => !ruecknahme || ++erlaubt < 2);
+    expect((await l.ausfuehren()).erfolg).toBe(true);
+    ruecknahme = true;
+    const r = await l.ruecknahme();
+    expect(r.art).toBe("ziel_fehlt");
+    expect("text" in r && r.text).toContain("Dir fehlt jetzt das Recht dafür.");
+    expect("text" in r && r.text).toContain("1 von 3 Feldern zurückgesetzt");
+    expect(await werte(s, "angebot")).toEqual({
+      "a-betreff": "",
+      "a-empfaenger": EMPFAENGER,
+      "a-nachricht": NACHRICHT,
+    });
+    const schritte = l.ansicht().schritte.filter((x) => x.art === "fuellen");
+    expect(schritte.map((x) => x.stand)).toEqual(["zurueckgenommen", "erfolgt", "erfolgt"]);
+  });
+
+  it("K9/K8 · AC09 · fremde Feldänderung nach Klaras Eintrag wird bei der Rücknahme nicht überschrieben", async () => {
+    const s = await oeffne(1);
+    const l = lauf(auftrag({ speichern: false }));
+    expect((await l.ausfuehren()).erfolg).toBe(true);
+    await aendere(s, "document.getElementById('a-empfaenger').value = 'neu@kunde.invalid';");
+    const r = await l.ruecknahme();
+    expect(r.art).toBe("unklar");
+    expect("text" in r && r.text).toContain('„Empfänger" wurde seit Klaras Eintrag geändert');
+    expect(await werte(s, "angebot")).toEqual({
+      "a-betreff": "",
+      "a-empfaenger": "neu@kunde.invalid",
+      "a-nachricht": NACHRICHT,
+    });
+    // Auch der Seitenausführer selbst trägt mit `erwartet` nicht über einen fremden Wert ein.
+    const lage = await adapter.lage(1, "Angebotsentwurf", null);
+    const direkt = await adapter.fuelle(1, {
+      formular: "Angebotsentwurf",
+      fingerabdruck: lage?.formular?.fingerabdruck ?? "",
+      label: "Empfänger",
+      wert: "",
+      erwartet: EMPFAENGER,
+    });
+    expect(direkt).toEqual({ ok: false, grund: "wert_geaendert" });
+    expect((await werte(s, "angebot"))["a-empfaenger"]).toBe("neu@kunde.invalid");
   });
 
   it("K10 · AC10 · CAPTCHA und MFA führen zur konkreten Übergabe; nichts eingetragen, kein gemeldeter Erfolg", async () => {

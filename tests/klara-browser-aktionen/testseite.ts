@@ -135,6 +135,8 @@ ${hindernis}
       { id: "E-alt-2", formular: "Angebotsentwurf", betreff: "${LECKZEICHEN} Gehaltsliste Q3", empfaenger: "", nachricht: "" },
     ],
     naechste: 1, speicherungen: 0, versand: 0, bestellungen: 0, loeschungen: 0,
+    // true: eine Speicherung wirkt sofort, erscheint aber erst nach window.__bpa03zeige().
+    verzoegert: false,
   };
   window.__bpa03 = z;
   const liste = document.getElementById("liste");
@@ -166,8 +168,9 @@ ${hindernis}
       empfaenger: p === "a" ? wert("a-empfaenger") : "",
       nachricht: wert(p + "-nachricht"),
     });
-    zeige();
+    if (!z.verzoegert) zeige();
   }
+  window.__bpa03zeige = zeige;
   document.getElementById("a-speichern").addEventListener("click", () => speichere("Angebotsentwurf", "a"));
   document.getElementById("r-speichern").addEventListener("click", () => speichere("Rückmeldung", "r"));
   document.getElementById("a-senden").addEventListener("click", () => { z.versand++; });

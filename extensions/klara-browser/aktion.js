@@ -248,7 +248,10 @@
       };
     },
 
-    /** @param {{ formular: string, fingerabdruck: string, label: string, wert: string }} a */
+    /**
+     * `erwartet`: nur eintragen, wenn das Feld jetzt genau diesen Wert zeigt (Rücknahme).
+     * @param {{ formular: string, fingerabdruck: string, label: string, wert: string, erwartet?: string }} a
+     */
     fuelle(a) {
       const f = gebunden(a.formular, a.fingerabdruck);
       if (!f) return { ok: false, grund: "ziel_geaendert" };
@@ -257,16 +260,29 @@
       if (passend.length > 1) return { ok: false, grund: "feld_mehrdeutig" };
       const el = passend[0];
       if (gesperrt(el) || inaktiv(el)) return { ok: false, grund: "feld_gesperrt" };
+      if (typeof a.erwartet === "string" && String(el.value) !== a.erwartet) {
+        return { ok: false, grund: "wert_geaendert" };
+      }
       setze(el, String(a.wert).slice(0, MAX_WERT));
       return { ok: true, wert: { wert: String(el.value) } };
     },
 
-    /** @param {{ formular: string, fingerabdruck: string, knopf: string }} a */
+    /**
+     * `werte`: nur klicken, wenn jedes genannte Feld jetzt genau einmal da ist und genau diesen
+     * Wert zeigt — der letzte Abgleich unmittelbar vor einer Wirkung.
+     * @param {{ formular: string, fingerabdruck: string, knopf: string, werte?: { label: string, wert: string }[] }} a
+     */
     klicke(a) {
       const f = gebunden(a.formular, a.fingerabdruck);
       if (!f) return { ok: false, grund: "ziel_geaendert" };
       const passend = knoepfe(f).filter((k) => name(k) === a.knopf);
       if (passend.length !== 1 || inaktiv(passend[0])) return { ok: false, grund: "knopf_fehlt" };
+      for (const soll of a.werte ?? []) {
+        const ist = felder(f).filter((el) => name(el) === soll.label);
+        if (ist.length !== 1 || String(ist[0].value) !== soll.wert) {
+          return { ok: false, grund: "wert_geaendert" };
+        }
+      }
       passend[0].click();
       return { ok: true, wert: null };
     },
