@@ -298,6 +298,12 @@ const INVENTAR: readonly string[] = [
   // die Zusicherung, dass es für die Höhe des Inhaltsfeldes nur EINE Wahrheit gibt. Keine Geometrie:
   // die Datei sagt selbst, dass sie den Vertrag zwischen `panel.html` und `panel.css` misst.
   "tests/klara-browser-bedienung/kompakte-flaeche.test.ts",
+  // produkt:20261011:assistenz-browser-aktionen (BPA-03): Register, Auftrag und Bestätigung des
+  // Browseradapters ohne Browser, dazu der Seitenausführer `aktion.js` in Chromium auf einer
+  // synthetischen Seite. Beide tragen „klara" im PFAD und kommen über die NAMENSachse herein; K5
+  // bleibt unverändert. Aus der Achsenregel abgeleitet, kein eigener Testlauf in dieser Lieferung.
+  "tests/klara-browser-aktionen/register-auftrag.test.ts",
+  "tests/klara-browser-aktionen/browser-aktion-chromium.test.ts",
   // JOB 3366 KI-FRAGMENT-SICHTBAR: der Fragment-Hinweis am geladenen Aufgabenfenster — eine am
   // Token-Limit abgeschnittene Antwort wird im Panel als unvollständig gekennzeichnet. K2 meldete
   // den Pfad (Achse `name`, `flaeche-klara-panel`); die zwei Geschwisterdateien desselben Jobs
