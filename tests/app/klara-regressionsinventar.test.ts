@@ -1389,6 +1389,101 @@ const INVENTAR: readonly string[] = [
   // K5 bleibt unverändert. ABGELEITET AUS DEN ACHSENMUSTERN, NICHT GEMESSEN: in dieser Bahn startet
   // kein Testlauf; der Prüflauf des Kandidaten fährt diese Datei mit.
   "tests/security/tls-oeffentlich-nachweis.test.ts",
+  // Technischer Bestandsabgleich 16.10.2026, Kandidat 14340c07cd5c:
+  // 93 weitere Treffer der unveränderten acht Suchachsen; alle bisherigen Einträge bleiben.
+  "apps/web/src/legal/kontrast-dom-paarungen.test.tsx",
+  "services/app/src/routes/check-text-routes.test.ts",
+  "tests/antwort-erklaerung/word-lage-konfliktseiten.test.tsx",
+  "tests/app/einwilligung-je-klara-sitzung.test.ts",
+  "tests/app/mega47-modale-flaechen-sammler.test.tsx",
+  "tests/assistenz-profil/assistenz-mounted.test.tsx",
+  "tests/assistenz-profil/ausdruck.test.ts",
+  "tests/barrierefreiheit/tastenkuerzel-plattform.test.tsx",
+  "tests/dialog-bedienung/palette-und-studio-dialog-mounted.test.tsx",
+  "tests/dialog-bedienung/tab-bleibt-im-dialog-chromium.test.ts",
+  "tests/dialog-bedienung/tab-bleibt-im-dialog-mounted.test.tsx",
+  "tests/eigene-ki-funktionen/verwalter-legt-an-palette-erklaert-mounted.test.tsx",
+  "tests/firmenwoerterbuch/word-begriffe.test.tsx",
+  "tests/funktionsschalter/klara-ki-abgeschaltet.test.tsx",
+  "tests/integrations-api/dienst-schluessel-am-draht.test.ts",
+  "tests/integrations-api/klara-hilfe-zeigt-wartesatz.test.tsx",
+  "tests/k2b-restabgleich/leertextfarbe-abgleich.test.ts",
+  "tests/ki-wahl-betriebsabnahme/ausfuehrer-vor-dem-klick.test.tsx",
+  "tests/klara-aufgaben/aufgabe-am-server.test.ts",
+  "tests/klara-aufgaben/aufgabe-pg.integration.test.ts",
+  "tests/klara-aufgaben/aufgaben-am-server.test.tsx",
+  "tests/klara-aufgaben/erkennung-aufgabe.test.ts",
+  "tests/klara-basis/gespraech-am-server.test.ts",
+  "tests/klara-basis/gespraech-pg.integration.test.ts",
+  "tests/klara-basis/klara-echt-am-server.test.tsx",
+  "tests/klara-begleitung/agentenvergleich-ausgefuehrt.test.tsx",
+  "tests/klara-begleitung/agentenvergleich.test.ts",
+  "tests/klara-begleitung/begleitleiste-deckend-chromium.test.ts",
+  "tests/klara-begleitung/in-der-huelle.test.tsx",
+  "tests/klara-begleitung/kern.test.ts",
+  "tests/klara-begleitung/oberflaeche.test.tsx",
+  "tests/klara-begleitung/platz.test.ts",
+  "tests/klara-begleitung/pruefformular-im-produkt.test.tsx",
+  "tests/klara-begleitung/quellenaenderung-getrennt.test.ts",
+  "tests/klara-bildanalyse-ocr/automatik-dateiimport-mounted.test.tsx",
+  "tests/klara-bildanalyse-ocr/bildautomatik.test.ts",
+  "tests/klara-bildanalyse-ocr/datei-automatik-lauf-mounted.test.tsx",
+  "tests/klara-bildanalyse-ocr/fundstellen.test.ts",
+  "tests/klara-bildanalyse-ocr/kontext-klara.test.ts",
+  "tests/klara-bildanalyse-ocr/kontext-rumpf-mounted.test.tsx",
+  "tests/klara-bildanalyse-ocr/ocr-basis-genauigkeit.test.ts",
+  "tests/klara-bildanalyse-ocr/office-anhang.test.tsx",
+  "tests/klara-bildanalyse-ocr/rumpf-bilder-mounted.test.tsx",
+  "tests/klara-bildanalyse-ocr/setup-automatik-am-server.test.ts",
+  "tests/klara-bildanalyse-ocr/setup-automatik-pg.integration.test.ts",
+  "tests/klara-bildanalyse-ocr/setup-schalter-mounted.test.tsx",
+  "tests/klara-eigeninitiative/eigeninitiative-am-server.test.ts",
+  "tests/klara-eigeninitiative/eigeninitiative-mounted.test.tsx",
+  "tests/klara-eigeninitiative/eigeninitiative-pg.integration.test.ts",
+  "tests/klara-eigeninitiative/hinweis-logik.test.ts",
+  "tests/klara-eigeninitiative/routeninventar-eigenanteil.test.ts",
+  "tests/klara-kontext/gespraech-kontext-am-server.test.ts",
+  "tests/klara-kontext/kontext-am-server.test.tsx",
+  "tests/klara-kontext/kontext-logik.test.tsx",
+  "tests/klara-kontext/seitenbezug-am-frageweg.test.ts",
+  "tests/klara-notizen/notiz-am-server.test.ts",
+  "tests/klara-notizen/notiz-pg.integration.test.ts",
+  "tests/klara-notizen/notizen-am-server.test.tsx",
+  "tests/klara-powerpoint/fundstellen.test.ts",
+  "tests/klara-produkt/produkteinstieg-am-server.test.tsx",
+  "tests/klara-qualitaet/befunde-erklaeren.test.tsx",
+  "tests/klara-setup-shortcuts/fundstellen.test.ts",
+  "tests/klara-setup-shortcuts/kuerzel-regeln.test.ts",
+  "tests/klara-setup-shortcuts/kuerzel-speicher.test.ts",
+  "tests/klara-setup-shortcuts/setup-klara-mounted.test.tsx",
+  "tests/klara-setup-shortcuts/tastenkuerzel-am-server.test.ts",
+  "tests/klara-setup-shortcuts/tastenkuerzel-pg.integration.test.ts",
+  "tests/klara-setup-shortcuts/umsetzung-doku.test.ts",
+  "tests/klara-sprache/klaerung.test.ts",
+  "tests/klara-sprache/klara-sprache-am-server.test.tsx",
+  "tests/klara-vorschau/avatar.test.ts",
+  "tests/klara-vorschau/erfassungskontext-mounted.test.tsx",
+  "tests/klara-vorschau/huelle-mounted.test.tsx",
+  "tests/klara-vorschau/logik.test.tsx",
+  "tests/klara-vorschlaege/uebernahme-logik.test.ts",
+  "tests/klara-vorschlaege/vorschlag-am-server.test.tsx",
+  "tests/kundenbetrieb-betriebsmodelle/laufende-version.test.ts",
+  "tests/legal/r0703-ki-dateien-und-stufen.test.tsx",
+  "tests/lernplattform-scorm/paket.test.ts",
+  "tests/lernplattform-scorm/routen.test.ts",
+  "tests/pruefarchiv/sammel26-44-verankert.test.ts",
+  "tests/r0326-belegstelle/belegstelle-im-lesetext-chromium.test.ts",
+  "tests/security/anhang-browsercache-entzug-chromium.test.ts",
+  "tests/security/leserechte-ausgabewege.test.ts",
+  "tests/security/mega74-lesewege-sammler.test.ts",
+  "tests/security/route-guard-audit.test.ts",
+  "tests/security/w-anhang-cachevertrag.test.ts",
+  "tests/sprache-begriffe/word-sprachumschaltung.test.ts",
+  "tests/suchindex-aktualitaet/klara-auffrischen-mounted.test.tsx",
+  "tests/suchindex-aktualitaet/klara-auffrischen-regeln.test.ts",
+  "tests/suchindex-aktualitaet/klara-quellenstand-server.test.ts",
+  "tests/vorlagen/klara-vorlagen-kontext.test.tsx",
+  "tests/web/r0604-klara-herkunft.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -1524,14 +1619,10 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
       eigen.get("erweiterung"),
       "die Achse `erweiterung` holt keine Datei allein herein — sie ist wirkungslos",
     ).toBeGreaterThan(0);
-    // UND DIE AUSNAHME WIRD BENANNT STATT VERSCHWIEGEN: `manifest` ist auf diesem Stand
-    // vollstaendig von anderen Achsen ueberdeckt. Ihr Wegfall verkleinerte die Menge also NICHT —
-    // die Achse bleibt trotzdem gebunden, weil sie ein eigenes Risiko traegt (Word findet die
-    // Flaeche ueber SourceLocation) und morgen die einzige sein kann, die eine Datei einfaengt.
-    // Genau deshalb haengt ihre Wirksamkeit an K3, nicht an dieser Zahl.
-    expect(eigen.get("manifest"), "manifest traegt jetzt allein bei — Kommentar nachfuehren").toBe(
-      0,
-    );
+    // Bestandsabgleich 16.10.2026: manifest trägt jetzt zwei Dateien allein bei:
+    // tests/lernplattform-scorm/{paket,routen}.test.ts nennen manifest.xml.
+    // K3 bindet weiterhin Positivdatei und Gegenprobe der unveränderten Achse.
+    expect(eigen.get("manifest"), "Eigenbeitrag der Manifestachse hat sich geändert").toBe(2);
   });
 
   it("K5 · die Dateinamenssuche allein verfehlt den groesseren Teil der Menge", () => {
@@ -1734,7 +1825,9 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // NICHT GEMESSEN, sondern aus der Pfadregel abgeleitet (in dieser Nacharbeit wurde kein Testlauf
     // gestartet; der Cloud-Lauf ist der Beleg). Die beiden `klara-aufraeumen`-Dateien fehlten im
     // eigenen Zweig auch im Inventar (K2) — mit dieser Nacharbeit nachgeführt.
-    expect(nurName.length).toBe(74);
+    // Bestandsabgleich 16.10.2026 am Kandidaten 14340c07cd5c: 147 Pfadtreffer,
+    // insgesamt 366 Dateien; 219 werden nur durch Inhaltsachsen erreicht.
+    expect(nurName.length).toBe(147);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
