@@ -58,7 +58,13 @@ export interface DatenkontrolleSicht {
     readonly stand: KontrollStand;
     readonly grund: string;
     readonly herkunft: "pruefung" | "kontrolle" | "keine";
-    readonly pruefung?: { readonly von: string; readonly am: string };
+    /** Die Prüfung, auf der der Stand beruht: Person bzw. Weg (`klarwerk:<weg>`) und Zeitpunkt. */
+    readonly pruefung?: {
+      readonly von: string;
+      readonly am: string;
+      readonly name?: string;
+      readonly datenFassung?: number;
+    };
     readonly befunde: readonly KontrollbefundSicht[];
   }[];
   readonly prognose: boolean;
@@ -123,6 +129,30 @@ function Befund({ b }: { b: KontrollbefundSicht }): JSX.Element {
   );
 }
 
+type Pruefung = NonNullable<DatenkontrolleSicht["dimensionen"][number]["pruefung"]>;
+
+/**
+ * Wer bzw. welcher Weg geprüft hat und wann — die tatsächliche Prüfung, getrennt vom Zeitpunkt, zu
+ * dem Klarwerk die Kontrollen berechnet hat (`gepruefAm`).
+ */
+function Pruefvermerk({ pruefung }: { pruefung: Pruefung }): JSX.Element {
+  const { t, i18n } = useTranslation();
+  const zeit = new Date(pruefung.am).toLocaleString(i18n.language);
+  const weg = pruefung.von.startsWith("klarwerk:") ? pruefung.von.slice(9) : undefined;
+  const text =
+    weg !== undefined
+      ? t("datenkontrolle.pruefung.weg", { weg, zeit })
+      : t("datenkontrolle.pruefung.person", { wer: pruefung.name ?? pruefung.von, zeit });
+  return (
+    <p data-pruefvermerk={pruefung.von} className="text-[11.5px] text-muted">
+      <time dateTime={pruefung.am}>{text}</time>
+      {pruefung.datenFassung === undefined
+        ? null
+        : ` (${t("datenkontrolle.fassung", { fassung: pruefung.datenFassung })})`}
+    </p>
+  );
+}
+
 export function DatenKontrolle({ kontrolle }: { kontrolle: DatenkontrolleSicht }): JSX.Element {
   const { t, i18n } = useTranslation();
   const titelId = useId();
@@ -181,6 +211,7 @@ export function DatenKontrolle({ kontrolle }: { kontrolle: DatenkontrolleSicht }
             {d.stand === "nicht_zutreffend" ? null : (
               <p className="text-[12px] text-muted">{d.grund}</p>
             )}
+            {d.pruefung ? <Pruefvermerk pruefung={d.pruefung} /> : null}
             {d.befunde.length > 0 ? (
               <ul className="pl-3">
                 {d.befunde.map((b) => (
@@ -200,11 +231,15 @@ export function DatenKontrolle({ kontrolle }: { kontrolle: DatenkontrolleSicht }
 export interface DatenlageSicht {
   readonly anzahl: number;
   readonly jeZustand: Readonly<Record<KontrollZustand, number>>;
+  /** Je Datenpunkt jede nicht bestandene erforderliche Dimension mit Grund und Arbeit. */
   readonly offenePunkte: readonly {
     readonly datenpunktId: string;
     readonly zustand: KontrollZustand;
+    readonly dimension: KontrollDimensionName;
+    readonly stand: "klaerung" | "offen" | "ueberholt";
     readonly titel: string;
-    readonly naechsteArbeit?: string;
+    readonly grund: string;
+    readonly naechsteArbeit: string;
   }[];
 }
 
@@ -247,24 +282,29 @@ export function DatenLage({
         <ul className="space-y-0.5">
           {lage.offenePunkte.map((p) => (
             <li
-              key={`${p.datenpunktId}:${p.titel}`}
+              key={`${p.datenpunktId}:${p.naechsteArbeit}`}
               data-offener-punkt={p.datenpunktId}
+              data-dimension={p.dimension}
+              data-stand={p.stand}
               className="text-[12px] text-text"
             >
-              {oeffne ? (
-                <button
-                  type="button"
-                  className="text-left underline decoration-dotted"
-                  onClick={() => oeffne(p.datenpunktId)}
-                >
-                  {p.titel}
-                </button>
-              ) : (
-                p.titel
-              )}
-              {p.naechsteArbeit ? (
+              <p data-aufgabe="">
+                {oeffne ? (
+                  <button
+                    type="button"
+                    className="text-left underline decoration-dotted"
+                    onClick={() => oeffne(p.datenpunktId)}
+                  >
+                    {p.titel}
+                  </button>
+                ) : (
+                  p.titel
+                )}
                 <span className="text-muted">{` — ${p.naechsteArbeit}`}</span>
-              ) : null}
+              </p>
+              <p className="text-muted">
+                {`${t(`datenkontrolle.dimension.${p.dimension}`)}: ${t(`datenkontrolle.stand.${p.stand}`)} · ${p.grund}`}
+              </p>
             </li>
           ))}
         </ul>

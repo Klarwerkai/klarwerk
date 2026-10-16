@@ -12,6 +12,9 @@
 //   F3 · validierter Wert: „Validiert“ ohne offene Arbeit
 //   F4 · Datenlage: Zustände gezählt, offene Klärungen mit Arbeit; ein Klick öffnet die Herkunft
 //   F5 · Englisch: Beschriftungen übersetzt (die Begründungen des Servers bleiben deutsch, wie PP-02)
+//   F6 · Prüfvermerk: Person bzw. Prüfweg und tatsächlicher Prüfzeitpunkt, getrennt von der
+//        Kontrollberechnung (Nacharbeit 1)
+//   F7 · Prüfvermerk ohne Namen: Kontokennung, übersetzt
 //
 // GRENZE: Die Einbindung in den PP-02-Detailbereich (`FolienDaten` › `Herkunft`) ist im Basisstand
 // nicht möglich, weil PP-02 dort noch nicht geliefert ist. Belegt ist hier der Baustein selbst.
@@ -117,11 +120,46 @@ const LAGE: DatenlageSicht = {
     {
       datenpunktId: "dp-ohne",
       zustand: "klaerung",
+      dimension: "struktur",
+      stand: "klaerung",
       titel: "Bezugszeitraum fehlt",
+      grund: "Für „1.800“ fehlt der Bezugszeitraum.",
       naechsteArbeit: "Bezugszeitraum ergänzen (Korrektur am Datenpunkt).",
+    },
+    {
+      datenpunktId: "dp-summe",
+      zustand: "in_pruefung",
+      dimension: "fachliche_freigabe",
+      stand: "offen",
+      titel: "Fachliche Freigabe offen",
+      grund: "Keine fachliche Freigabe für diese Datenfassung.",
+      naechsteArbeit: "Fachliche Freigabe prüfen.",
     },
   ],
 };
+
+/** Dieselbe Klärung, mit einer menschlichen Prüfung der Konsistenz (Name aus der PP-02-Sicht). */
+const MIT_PERSON: DatenkontrolleSicht = {
+  ...KLAERUNG,
+  dimensionen: [
+    ...KLAERUNG.dimensionen,
+    {
+      dimension: "struktur",
+      stand: "bestanden",
+      grund: "Geprüft.",
+      herkunft: "pruefung",
+      pruefung: {
+        von: "u-7",
+        name: "Erika Prüfer",
+        am: "2026-10-14T08:30:00.000Z",
+        datenFassung: 2,
+      },
+      befunde: [],
+    },
+  ],
+};
+
+const lokal = (iso: string, sprache: string) => new Date(iso).toLocaleString(sprache);
 
 let aufraeumen: (() => void) | null = null;
 
@@ -210,13 +248,70 @@ describe("PP-03 · Prüfstand und Kontrollen im Detailbereich", () => {
     );
     expect(c.querySelector("[data-lage-zustand='erfasst']")).toBeNull();
     const punkt = c.querySelector("[data-offener-punkt='dp-ohne']");
-    expect(punkt?.textContent).toBe(
+    expect(punkt?.querySelector("[data-aufgabe]")?.textContent).toBe(
       "Bezugszeitraum fehlt — Bezugszeitraum ergänzen (Korrektur am Datenpunkt).",
+    );
+    expect(punkt?.textContent).toContain(
+      "Struktur: Klärungsbedarf · Für „1.800“ fehlt der Bezugszeitraum.",
+    );
+    // Nacharbeit 1 (Ben): auch eine offene erforderliche Prüfung steht in der Datenlage.
+    const offen = c.querySelector(
+      "[data-offener-punkt='dp-summe'][data-dimension='fachliche_freigabe']",
+    );
+    expect(offen?.getAttribute("data-stand")).toBe("offen");
+    expect(offen?.textContent).toContain("Fachliche Freigabe offen — Fachliche Freigabe prüfen.");
+    expect(c.querySelector("[data-datenlage]")?.textContent).toContain(
+      "Offene Prüfungen und Klärungen",
     );
     await act(async () => {
       punkt?.querySelector("button")?.click();
+      offen?.querySelector("button")?.click();
     });
-    expect(geoeffnet).toEqual(["dp-ohne"]);
+    expect(geoeffnet).toEqual(["dp-ohne", "dp-summe"]);
+  });
+
+  // Nacharbeit 1 (Ben): wer bzw. welcher Weg wann geprüft hat — getrennt von der Kontrollberechnung.
+  it("F6 · Prüfvermerk: Person bzw. Prüfweg und tatsächlicher Prüfzeitpunkt", async () => {
+    const c = await montieren(createElement(DatenKontrolle, { kontrolle: MIT_PERSON }));
+    const person = c.querySelector("[data-dimension='struktur'] [data-pruefvermerk]");
+    expect(person?.textContent).toBe(
+      `Geprüft von Erika Prüfer am ${lokal("2026-10-14T08:30:00.000Z", "de")} (Datenfassung 2)`,
+    );
+    expect(person?.querySelector("time")?.getAttribute("datetime")).toBe(
+      "2026-10-14T08:30:00.000Z",
+    );
+    const weg = c.querySelector("[data-dimension='erkennung'] [data-pruefvermerk]");
+    expect(weg?.textContent).toBe(
+      `Maschinell geprüft über pptx-leser am ${lokal("2026-10-15T09:00:00.000Z", "de")}`,
+    );
+    // Der Zeitpunkt der Kontrollberechnung steht davon getrennt und anders beschriftet.
+    expect(c.textContent).toContain(
+      `Kontrollen von Klarwerk berechnet am ${lokal("2026-10-16T10:00:00.000Z", "de")}`,
+    );
+    // Ohne Prüfung kein Vermerk.
+    const ohne = c.querySelector("[data-dimension='fachliche_freigabe'] [data-pruefvermerk]");
+    expect(ohne).toBeNull();
+  });
+
+  it("F7 · Prüfvermerk ohne Namen nennt die Kontokennung, auf Englisch übersetzt", async () => {
+    const ohneName: DatenkontrolleSicht = {
+      ...KLAERUNG,
+      dimensionen: [
+        {
+          dimension: "konsistenz",
+          stand: "bestanden",
+          grund: "Geprüft.",
+          herkunft: "pruefung",
+          pruefung: { von: "u-7", am: "2026-10-14T08:30:00.000Z" },
+          befunde: [],
+        },
+      ],
+    };
+    const c = await montieren(createElement(DatenKontrolle, { kontrolle: ohneName }), "en");
+    expect(c.querySelector("[data-pruefvermerk]")?.textContent).toBe(
+      `Checked by u-7 on ${lokal("2026-10-14T08:30:00.000Z", "en")}`,
+    );
+    await i18n.changeLanguage("de");
   });
 
   it("F5 · Englisch: die Beschriftungen sind übersetzt", async () => {

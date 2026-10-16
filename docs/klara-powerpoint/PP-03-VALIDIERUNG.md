@@ -58,8 +58,16 @@ geprüft, nicht geliefert, nicht an PP-02 angeschlossen.
    (`ko.validate`, PP-02) eingeschlossen. OCR, eine verlässliche Quelle oder ein grüner Teiltest
    validieren nie allein.
 
+5. (Nacharbeit 1) Ein offener Befund, dessen Anlass außerhalb des Datenpunkts liegt (eine neue
+   bzw. korrigierte, unsicher erkannte Gegenangabe), öffnet eine bestandene Dimension wieder, wenn die
+   Prüfung älter ist als der Anlass oder dessen Zeitpunkt unbekannt ist. Eine spätere passende
+   Prüfung bleibt gültig; die frühere Prüfung bleibt sichtbar.
+
 Jeder Zustand nennt seinen Grund und die konkrete Arbeit, die ihn ändert. `datenlage` fasst die
-Kontrollen einer Präsentation zusammen (Zustände gezählt, offene Klärungen mit Arbeit).
+Kontrollen einer Präsentation zusammen: Zustände gezählt und je Datenpunkt jede erforderliche
+Dimension, die nicht bestanden ist (Klärung, offen, überholt), mit Grund und nächster Arbeit;
+dieselbe Arbeit an demselben Datenpunkt erscheint einmal. Der Detailbereich zeigt je Dimension, wer
+bzw. welcher Prüfweg wann geprüft hat, getrennt vom Zeitpunkt der Kontrollberechnung.
 
 `apps/web/src/components/bibliothek/DatenKontrolle.tsx` — `DatenKontrolle` (Prüfstand und
 Kontrollen der gewählten Zahl für den Detailbereich, UI-03) und `DatenLage` (offene Punkte; ein Klick

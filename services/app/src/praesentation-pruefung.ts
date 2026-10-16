@@ -26,6 +26,9 @@
 //      Frage vollständig beantwortet (Summe nachgerechnet, Quelle aktuell und frisch). Struktur,
 //      Konsistenz und fachliche Freigabe bleiben sonst menschliche Prüfungen.
 //   4. OCR, eine verlässliche Quelle oder ein grüner Teiltest validieren nie allein.
+//   5. Ein offener Befund, dessen Anlass außerhalb des Datenpunkts liegt (neue Gegenangabe), öffnet
+//      eine bestandene Dimension wieder, wenn die Prüfung älter ist als der Anlass oder dessen Zeit
+//      unbekannt ist. Eine passende spätere Prüfung bleibt gültig.
 //
 // RECHTE. Die Umgebung (`KontrollUmgebung`) liefert nur, was der Handelnde lesen darf — dieselbe Regel
 // wie PP-02 (`vollLesbar`). Gegenstellen eines Widerspruchs erscheinen nur, wenn sie lesbar sind.
@@ -113,9 +116,13 @@ export interface KontrollDatenpunkt {
       readonly wert: string;
     }[];
   };
+  /** Wann der Datenpunkt erfasst wurde (PP-02 `erfasstAm`). */
+  readonly erfasstAm?: string;
+  /** Seine Korrekturen (PP-02 `korrekturen`), hier nur ihr Zeitpunkt. */
+  readonly korrekturen?: readonly { readonly am: string }[];
 }
 
-/** Eine Prüfung, wie PP-02 sie führt (`Pruefung`). */
+/** Eine Prüfung, wie PP-02 sie führt (`Pruefung`); `name` ergänzt die PP-02-Sicht. */
 export interface KontrollPruefung {
   readonly id: string;
   readonly dimension: Dimension;
@@ -124,6 +131,7 @@ export interface KontrollPruefung {
   readonly von: string;
   readonly am: string;
   readonly datenFassung: number;
+  readonly name?: string;
 }
 
 /** Der Prüfstand einer Dimension, wie PP-02 ihn liefert (`DimensionsBefund`). */
@@ -230,6 +238,34 @@ export interface Kontrollbefund {
   readonly hier?: string;
   /** Lesbare Gegenstellen (bei Widersprüchen). */
   readonly gegenstellen?: readonly Gegenstelle[];
+  /**
+   * Der Anlass liegt AUSSERHALB dieses Datenpunkts (z. B. eine neue Gegenangabe) und damit nicht in
+   * seinem PP-02-Fingerabdruck. Eine frühere bestandene Prüfung deckt einen offenen Befund dann nur,
+   * wenn sie nicht vor `seit` liegt; ohne `seit` (Zeitpunkt unbekannt) deckt sie ihn nie.
+   */
+  readonly anlass?: { readonly seit?: string };
+}
+
+/** Der letzte Stand eines Datenpunkts: Erfassung oder jüngste Korrektur — `undefined`, wenn unbekannt. */
+function letzterStand(dp: KontrollDatenpunkt): number | undefined {
+  const zeiten = [dp.erfasstAm, ...(dp.korrekturen ?? []).map((k) => k.am)]
+    .map((z) => (z === undefined ? Number.NaN : Date.parse(z)))
+    .filter((z) => Number.isFinite(z));
+  return zeiten.length > 0 && dp.erfasstAm !== undefined ? Math.max(...zeiten) : undefined;
+}
+
+/** Deckt die bestandene Prüfung `p` den offenen Befund `b`? (Regel 5 im Kopf der Datei) */
+function gedeckt(b: Kontrollbefund, p: KontrollPruefung | undefined): boolean {
+  if (!p) {
+    return false;
+  }
+  if (!b.anlass) {
+    // Der Anlass liegt im Datenpunkt selbst: PP-02 bindet die Prüfung an dessen Fingerabdruck.
+    return true;
+  }
+  const seit = b.anlass.seit === undefined ? Number.NaN : Date.parse(b.anlass.seit);
+  const am = Date.parse(p.am);
+  return Number.isFinite(seit) && Number.isFinite(am) && am >= seit;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -635,7 +671,14 @@ function konsistenzBefunde(
     });
   }
   if (unsicherAbweichend.length > 0) {
+    // Seit wann die abweichende Gegenangabe so dasteht: ihr jüngster Stand. Ist er bei einer
+    // Gegenangabe unbekannt, deckt keine frühere Konsistenzprüfung den Befund (fail-closed).
+    const staende = unsicherAbweichend.map(letzterStand);
+    const seit = staende.every((z) => z !== undefined)
+      ? new Date(Math.max(...(staende as number[]))).toISOString()
+      : undefined;
     befunde.push({
+      anlass: seit === undefined ? {} : { seit },
       id: "konsistenz.abweichung_unsicher",
       dimension: "konsistenz",
       ergebnis: "offen",
@@ -892,6 +935,17 @@ export function mitKontrollen(
       grund = offeneBefunde.map((b) => b.grund).join(" ");
       herkunft = "kontrolle";
       erforderlich.add(dimension);
+    } else if (ein.stand === "bestanden" && offeneBefunde.some((b) => !gedeckt(b, ein.pruefung))) {
+      // Regel 5: ein neuer offener Befund, den die bestandene Prüfung nicht abdeckt (z. B. eine
+      // später erfasste, unsicher erkannte Gegenangabe), öffnet die Dimension wieder. Die frühere
+      // Prüfung bleibt sichtbar; gedeckte Befunde lassen sie gelten.
+      s = "offen";
+      grund = offeneBefunde
+        .filter((b) => !gedeckt(b, ein.pruefung))
+        .map((b) => b.grund)
+        .join(" ");
+      herkunft = "kontrolle";
+      erforderlich.add(dimension);
     }
     return {
       dimension,
@@ -973,16 +1027,78 @@ export async function datenkontrolle(
 // DATENLAGE EINER PRÄSENTATION — erforderliche Prüfungen und offene Punkte auf einen Blick
 // ------------------------------------------------------------------------------------------------
 
+/** Eine noch zu erledigende Arbeit an einem Datenpunkt — Einstieg zu seinen Prüfdetails. */
+export interface OffenerPunkt {
+  readonly datenpunktId: string;
+  readonly zustand: Zustand;
+  readonly dimension: Dimension;
+  readonly stand: "klaerung" | "offen" | "ueberholt";
+  readonly titel: string;
+  readonly grund: string;
+  readonly naechsteArbeit: string;
+}
+
 export interface Datenlage {
   readonly anzahl: number;
   readonly jeZustand: Readonly<Record<Zustand, number>>;
-  /** Je offener bzw. klärungsbedürftiger Befund: welcher Wert, was zu tun ist. */
-  readonly offenePunkte: readonly {
-    readonly datenpunktId: string;
-    readonly zustand: Zustand;
-    readonly titel: string;
-    readonly naechsteArbeit?: string;
-  }[];
+  /**
+   * Je Datenpunkt jede erforderliche Dimension, die nicht bestanden ist (Klärung, offen, überholt),
+   * mit Grund und nächster Arbeit. Dieselbe Arbeit an demselben Datenpunkt erscheint einmal.
+   */
+  readonly offenePunkte: readonly OffenerPunkt[];
+}
+
+/** Die offenen Punkte einer Datenkontrolle — dieselben Arbeiten wie `naechsteArbeit`. */
+function offenePunkteVon(k: Datenkontrolle): OffenerPunkt[] {
+  const punkte: OffenerPunkt[] = [];
+  for (const d of k.dimensionen) {
+    if (d.stand !== "klaerung" && d.stand !== "offen" && d.stand !== "ueberholt") {
+      continue;
+    }
+    const kopf = { datenpunktId: k.datenpunktId, zustand: k.zustand, dimension: d.dimension };
+    if (d.stand === "ueberholt") {
+      punkte.push({
+        ...kopf,
+        stand: d.stand,
+        titel: `${d.name} überholt`,
+        grund: d.grund,
+        naechsteArbeit: `${d.name} für Fassung ${k.datenFassung} erneut prüfen.`,
+      });
+      continue;
+    }
+    const befunde = d.befunde.filter((b) => b.ergebnis === d.stand);
+    if (befunde.length === 0) {
+      punkte.push({
+        ...kopf,
+        stand: d.stand,
+        titel: d.stand === "klaerung" ? `Klärung zu ${d.name}` : `${d.name} offen`,
+        grund: d.grund,
+        naechsteArbeit:
+          d.stand === "klaerung" ? `Klärung zu ${d.name}: ${d.grund}` : `${d.name} prüfen.`,
+      });
+      continue;
+    }
+    for (const b of befunde) {
+      punkte.push({
+        ...kopf,
+        stand: d.stand,
+        titel: b.titel,
+        grund: b.grund,
+        naechsteArbeit: b.naechsteArbeit ?? `${d.name} prüfen.`,
+      });
+    }
+  }
+  // Dieselbe Arbeit an demselben Datenpunkt einmal — mit allen Anlässen.
+  const zusammen = new Map<string, OffenerPunkt>();
+  for (const p of punkte) {
+    const schluessel = `${p.datenpunktId}\u0000${p.naechsteArbeit}`;
+    const da = zusammen.get(schluessel);
+    zusammen.set(
+      schluessel,
+      da ? { ...da, titel: `${da.titel} · ${p.titel}`, grund: `${da.grund} ${p.grund}` } : p,
+    );
+  }
+  return [...zusammen.values()];
 }
 
 export function datenlage(liste: readonly Datenkontrolle[]): Datenlage {
@@ -993,19 +1109,10 @@ export function datenlage(liste: readonly Datenkontrolle[]): Datenlage {
     validiert: 0,
     ueberpruefung_noetig: 0,
   };
-  const offenePunkte: Datenlage["offenePunkte"][number][] = [];
+  const offenePunkte: OffenerPunkt[] = [];
   for (const k of liste) {
     jeZustand[k.zustand] += 1;
-    for (const b of k.befunde) {
-      if (b.ergebnis === "klaerung") {
-        offenePunkte.push({
-          datenpunktId: k.datenpunktId,
-          zustand: k.zustand,
-          titel: b.titel,
-          ...(b.naechsteArbeit ? { naechsteArbeit: b.naechsteArbeit } : {}),
-        });
-      }
-    }
+    offenePunkte.push(...offenePunkteVon(k));
   }
   return { anzahl: liste.length, jeZustand, offenePunkte };
 }

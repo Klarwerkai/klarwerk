@@ -34,6 +34,7 @@ import {
   datenkontrolle,
   datenlage,
   eineZahl,
+  mitKontrollen,
 } from "../../services/app/src/praesentation-pruefung";
 import type { KnowledgeObject } from "../../services/knowledge-object";
 
@@ -550,6 +551,86 @@ describe("PP-03 · G — Widersprüche kontextgerecht prüfen", () => {
     expect(dimension(k, "konsistenz").stand).toBe("offen");
   });
 
+  // Nacharbeit 1 (Ben): eine NEUE unsichere Gegenangabe darf eine früher bestandene Konsistenz nicht
+  // stehen lassen — sonst bliebe der Wert „validiert“, ohne dass jemand die Abweichung angesehen hat.
+  describe("eine neue unsichere Gegenangabe gegenüber einer bestandenen Konsistenz", () => {
+    const STUNDE = 60 * 60 * 1000;
+    const validiertStand = (dp: KontrollDatenpunkt) =>
+      stand02(dp, {
+        erkennung: geprueft("erkennung", "klarwerk:pptx-leser"),
+        struktur: geprueft("struktur"),
+        konsistenz: geprueft("konsistenz"),
+        fachliche_freigabe: geprueft("fachliche_freigabe"),
+      });
+    const unsicherSeit = (teil: Partial<KontrollDatenpunkt>) =>
+      bild({ fundstelle: { ...bild().fundstelle, unsicher: true }, ...teil });
+
+    it("Gegenproben-Ausgang: ohne Gegenangabe ist derselbe Wert validiert", async () => {
+      const dp = summenwert();
+      const k = await datenkontrolle(dp, validiertStand(dp), umgebung());
+      expect(k.zustand).toBe("validiert");
+    });
+
+    it("nach der Prüfung erfasst: Konsistenz wieder offen, nicht validiert, mit nächster Arbeit", async () => {
+      const dp = summenwert();
+      const neu = unsicherSeit({ erfasstAm: new Date(JETZT - STUNDE).toISOString() });
+      const k = await datenkontrolle(
+        dp,
+        validiertStand(dp),
+        umgebung({ vergleichbare: async () => [neu] }),
+      );
+      expect(dimension(k, "konsistenz").stand).toBe("offen");
+      expect(dimension(k, "konsistenz").herkunft).toBe("kontrolle");
+      expect(dimension(k, "konsistenz").grund).toContain("unsicher erkannt");
+      // Die frühere Prüfung bleibt sichtbar.
+      expect(dimension(k, "konsistenz").pruefung?.von).toBe("pruefer");
+      expect(k.zustand).toBe("in_pruefung");
+      expect(k.naechsteArbeit).toContain(
+        "Die unsicher erkannte Angabe am Bild bestätigen oder korrigieren.",
+      );
+    });
+
+    it("nach der Prüfung korrigiert: ebenfalls wieder offen", async () => {
+      const dp = summenwert();
+      const korrigiert = unsicherSeit({
+        erfasstAm: new Date(JETZT - 3 * TAG).toISOString(),
+        korrekturen: [{ am: new Date(JETZT - STUNDE).toISOString() }],
+      });
+      const k = await datenkontrolle(
+        dp,
+        validiertStand(dp),
+        umgebung({ vergleichbare: async () => [korrigiert] }),
+      );
+      expect(dimension(k, "konsistenz").stand).toBe("offen");
+      expect(k.zustand).not.toBe("validiert");
+    });
+
+    it("Zeitpunkt der Gegenangabe unbekannt: die Prüfung deckt sie nicht (fail-closed)", async () => {
+      const dp = summenwert();
+      const k = await datenkontrolle(
+        dp,
+        validiertStand(dp),
+        umgebung({ vergleichbare: async () => [unsicherSeit({})] }),
+      );
+      expect(dimension(k, "konsistenz").stand).toBe("offen");
+      expect(k.zustand).not.toBe("validiert");
+    });
+
+    it("vor der Prüfung bereits vorhanden: der passende gültige Nachweis bleibt erhalten", async () => {
+      const dp = summenwert();
+      const alt = unsicherSeit({ erfasstAm: new Date(JETZT - 2 * TAG).toISOString() });
+      const k = await datenkontrolle(
+        dp,
+        validiertStand(dp),
+        umgebung({ vergleichbare: async () => [alt] }),
+      );
+      expect(befund(k, "konsistenz.abweichung_unsicher")?.ergebnis).toBe("offen");
+      expect(dimension(k, "konsistenz").stand).toBe("bestanden");
+      expect(dimension(k, "konsistenz").herkunft).toBe("pruefung");
+      expect(k.zustand).toBe("validiert");
+    });
+  });
+
   it("gleichlautende Werte: Übereinstimmung statt Abweichungshinweis", async () => {
     const dp = summenwert();
     const k = await datenkontrolle(
@@ -664,8 +745,83 @@ describe("PP-03 · Datenlage einer Präsentation", () => {
     expect(lage.offenePunkte).toContainEqual({
       datenpunktId: "dp-ohne",
       zustand: "klaerung",
+      dimension: "struktur",
+      stand: "klaerung",
       titel: "Bezugszeitraum fehlt",
+      grund:
+        "Für „1.800“ fehlt der Bezugszeitraum (z. B. „Q3 2026“). Ohne Zeitraum ist der Wert weder vergleichbar noch validierbar.",
       naechsteArbeit: "Bezugszeitraum ergänzen (Korrektur am Datenpunkt).",
     });
+  });
+
+  // Nacharbeit 1 (Ben): nicht nur Klärungen — auch offene erforderliche Prüfungen gehören dazu.
+  it("nennt offene erforderliche Prüfungen mit Grund und Arbeit", async () => {
+    const gut = summenwert();
+    const lage = datenlage([await datenkontrolle(gut, stand02(gut), umgebung())]);
+    expect(lage.offenePunkte).toContainEqual({
+      datenpunktId: "dp-summe",
+      zustand: "in_pruefung",
+      dimension: "fachliche_freigabe",
+      stand: "offen",
+      titel: "Fachliche Freigabe offen",
+      grund: "PP-02",
+      naechsteArbeit: "Fachliche Freigabe prüfen.",
+    });
+    expect(lage.offenePunkte.map((p) => p.dimension).sort()).toEqual([
+      "erkennung",
+      "fachliche_freigabe",
+      "konsistenz",
+      "struktur",
+    ]);
+    // Bestandene Dimensionen (Berechnung, Aktualität) erscheinen nicht.
+    expect(lage.offenePunkte.some((p) => p.dimension === "berechnung")).toBe(false);
+  });
+
+  it("nennt überholte Dimensionen mit dem Grund der Aufhebung", async () => {
+    const dp = summenwert({ fassung: 3 });
+    const k = await datenkontrolle(dp, stand02(dp, { struktur: UEBERHOLT }), umgebung());
+    expect(datenlage([k]).offenePunkte).toContainEqual({
+      datenpunktId: "dp-summe",
+      zustand: "ueberpruefung_noetig",
+      dimension: "struktur",
+      stand: "ueberholt",
+      titel: "Struktur überholt",
+      grund: UEBERHOLT.grund,
+      naechsteArbeit: "Struktur für Fassung 3 erneut prüfen.",
+    });
+  });
+
+  it("führt dieselbe Arbeit an demselben Datenpunkt zu einem Punkt zusammen", () => {
+    const dp = summenwert();
+    const gemeinsam = "Quelle beim Vertrieb erfragen.";
+    const k = mitKontrollen(
+      dp,
+      stand02(dp),
+      [
+        {
+          id: "test.struktur",
+          dimension: "struktur",
+          ergebnis: "klaerung",
+          titel: "Zuordnung unklar",
+          grund: "Region fehlt.",
+          naechsteArbeit: gemeinsam,
+          regel: "Test",
+        },
+        {
+          id: "test.konsistenz",
+          dimension: "konsistenz",
+          ergebnis: "klaerung",
+          titel: "Abweichung",
+          grund: "Zwei Werte.",
+          naechsteArbeit: gemeinsam,
+          regel: "Test",
+        },
+      ],
+      JETZT,
+    );
+    const punkte = datenlage([k]).offenePunkte.filter((p) => p.naechsteArbeit === gemeinsam);
+    expect(punkte).toHaveLength(1);
+    expect(punkte[0]?.titel).toBe("Zuordnung unklar · Abweichung");
+    expect(punkte[0]?.grund).toBe("Region fehlt. Zwei Werte.");
   });
 });
