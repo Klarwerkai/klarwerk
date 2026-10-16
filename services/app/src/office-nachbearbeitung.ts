@@ -295,7 +295,7 @@ const HERKUNFTSARTEN: readonly HerkunftArt[] = [
   "nutzerauftrag",
   "ki_empfehlung",
 ];
-const BERECHNUNGSARTEN = ["summe", "differenz", "anteil_prozent"] as const;
+export const BERECHNUNGSARTEN = ["summe", "differenz", "anteil_prozent"] as const;
 
 function istObjekt(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
@@ -486,7 +486,7 @@ function zahlen(t: string): string[] {
   );
 }
 
-function rechne(b: NonNullable<Zahlenbeleg["berechnung"]>): number {
+export function rechne(b: NonNullable<Zahlenbeleg["berechnung"]>): number {
   const [erste = 0, ...rest] = b.eingaben;
   switch (b.art) {
     case "summe":
