@@ -1142,6 +1142,12 @@ const nl: typeof de = {
   "adm.ai.choice.local": "Intern · eigen LLM (on-prem)",
   "adm.ai.choice.localUnavailable": "Intern · eigen LLM (niet verbonden)",
   "adm.ai.choice.deterministic": "Deterministisch (zonder model)",
+  "adm.ai.stufe.titel": "AI per vertrouwelijkheidsniveau",
+  "adm.ai.stufe.text":
+    "Voor teksten van een niveau geldt deze keuze in plaats van de taakkeuze. „Geen AI” houdt elke tekst van dat niveau weg van elk model — ook op de achtergrond. Een niveauregel geeft niets vrij wat de vrijgaven hierboven blokkeren.",
+  "adm.ai.stufe.wieAufgabe": "Zoals de taakkeuze",
+  "adm.ai.stufe.keineKi": "Geen AI",
+  "adm.ai.stufe.gespeichert": "AI per vertrouwelijkheidsniveau opgeslagen.",
   "adm.ai.envLocked":
     "De AI-toewijzing is vastgelegd via de deploy-configuratie (KLARWERK_REASONER_POLICY) en kan hier niet worden gewijzigd.",
   "adm.ai.migrated":
@@ -2162,6 +2168,15 @@ const nl: typeof de = {
   "capture.ivModel": "AI-model",
   // JOB 3276: s. die deutsche Fassung — Alltagssprache statt „Deterministische fallback".
   "capture.ivFallback": "Vaste reservevragen, geen antwoord van de AI",
+  "capture.ivErsatzGrundKeinModell":
+    "De AI is voor deze taak nu niet ingericht, uitgeschakeld of niet vrijgegeven.",
+  "capture.ivErsatzGrundZeit": "De AI heeft niet op tijd geantwoord.",
+  "capture.ivErsatzGrundFehler": "De AI meldde een fout of was niet bereikbaar.",
+  "capture.ivErsatzGrundVertraulich":
+    "De tekst is als vertrouwelijk aangemerkt — de cloud-AI is daarvoor uitgesloten en er staat geen intern model klaar.",
+  "capture.ivErsatzGrundUnbekannt": "Waarom de AI deze keer niet antwoordde, is hier niet bekend.",
+  "capture.ivErsatzWeiter":
+    "Je kunt gewoon verder antwoorden — daaruit ontstaat je concept. Bij elk antwoord wordt de AI opnieuw gevraagd. Beheerders controleren de AI-toegang onder AI-beheer (‘Sleutel testen’).",
   "capture.ivQ.title": "Waar gaat het over? Formuleer een korte kernuitspraak.",
   "capture.ivQ.statement": "Beschrijf de ervaring/uitspraak nauwkeuriger.",
   "capture.ivQ.conditions": "Onder welke voorwaarden geldt dit? Eén per regel.",
@@ -5657,6 +5672,17 @@ const nl: typeof de = {
   "erfassen.weg.interview": "Interview voeren",
   "erfassen.weg.formular": "Formulier (experts)",
   "erfassen.ki.struktur": "Structuur voorstellen",
+  "erfassen.ki.ausfuehrer": "Uitgevoerd door: {{wer}}",
+  "erfassen.ki.ausfuehrerUnbekannt": "hier niet bekend (zichtbaar in AI-beheer)",
+  "erfassen.ki.verfuegbar": "beschikbaar",
+  "erfassen.ki.nichtVerfuegbar": "momenteel niet beschikbaar",
+  "erfassen.ki.einschraenkung.freigabe_fehlt": "openbare AI niet vrijgegeven",
+  "erfassen.ki.einschraenkung.vertraulich_ohne_cloud": "vertrouwelijke teksten zonder cloud-AI",
+  "erfassen.ki.einschraenkung.ki_abgeschaltet": "AI door de beheerder uitgeschakeld",
+  "erfassen.ki.einschraenkung.nicht_erreichbar": "recent niet bereikbaar",
+  "erfassen.ki.keineKiFuer": "geen AI voor",
+  "erfassen.ki.jeStufe": "per vertrouwelijkheidsniveau:",
+  "erfassen.ki.wirksam": "voert feitelijk uit:",
   "erfassen.ki.pille": "AI",
   "erfassen.mehr.entwuerfe": "Concepten",
   "erfassen.mehr.anhaenge": "Bijlagen",

@@ -1382,6 +1382,13 @@ const INVENTAR: readonly string[] = [
   "tests/klara-aktionen/erkennung.test.ts",
   // Nacharbeit 9: die Zitatdeckung des Rahmens „Zusammenfassen“ (S06), nach derselben Pfadregel.
   "tests/klara-aktionen/zusammenfassen-zitatdeckung.test.ts",
+  // AUFNAHME 20260922 · GESAMT-TLS-BETRIEB (13.10.2026), R-0822: die Probe des öffentlichen
+  // Betriebswegs prüft, dass das Manifest des Word-Zusatzes ausschliesslich https://-Adressen nennt
+  // und das Aufgabenfenster nicht im Klartext ausgeliefert wird — sachlich Klara-Regression. Gefunden
+  // über die Achsen `manifest` und `taskpane`; „klara" steht nicht im Pfad, sie fällt in `verfehlt`,
+  // K5 bleibt unverändert. ABGELEITET AUS DEN ACHSENMUSTERN, NICHT GEMESSEN: in dieser Bahn startet
+  // kein Testlauf; der Prüflauf des Kandidaten fährt diese Datei mit.
+  "tests/security/tls-oeffentlich-nachweis.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

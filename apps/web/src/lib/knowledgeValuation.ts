@@ -1,3 +1,7 @@
+// Eingebunden von der als „Beispiel (geschätzt)“ gekennzeichneten Rechnung und von den realen Werten
+// je Bereich (produkt:20261013:lagebild-reale-werte-eingabe). Der Geldwert aus gemessenen Fällen
+// (PETER-20261011-P13) rechnet getrennt davon in `lib/lagebild.ts`.
+//
 // Reine, DOM-freie Wissens-Valuation (FE-MGMT-04). KEINE Bilanzbewertung —
 // ein transparentes Schätzmodell aus echten Fakten × offengelegten Annahmen.
 // Der Nutzer sieht/ändert die Annahmen im UI; die Formel ist sichtbar.

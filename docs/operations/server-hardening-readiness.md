@@ -20,7 +20,7 @@
 
 ## 2. App-seitige Sicherheitsmaßnahmen (real, im Code)
 
-- **Security-Header** (`services/app/src/server.ts`, `@fastify/helmet`): **HSTS** (`maxAge=1J, includeSubDomains, preload`), **CSP** (`default-src 'self'`, `frame-ancestors 'none'`, `object-src 'none'`, …), Standard-Header.
+- **Security-Header** (`services/app/src/security-headers.ts`, `@fastify/helmet`): **HSTS** (`maxAge=1J, includeSubDomains, preload`), **CSP** (`default-src 'self'`, `frame-ancestors 'none'`, `object-src 'none'`, …), Standard-Header.
 - **HTTPS-Kanonik-Redirect** (`app.<domain>` → `https://<domain>`), **`X-Robots-Tag: noindex`**.
 - **Auth/RBAC:** Session-Bearer + OIDC, `requireUser`→401 / `requirePermission`→403 (`api-auth-readiness.md`).
 - **Cookies:** `COOKIE_SECURE=true` in Prod.
