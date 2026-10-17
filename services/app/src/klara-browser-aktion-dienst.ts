@@ -33,6 +33,7 @@ import type { AuthService } from "../../auth";
 import { can } from "../../rbac";
 import { KLARA_QUELLEN_DES_AUFTRAGS, type KlaraAuftragsQuelle } from "./klara-auftrag";
 import {
+  BROWSER_ADRESSBINDUNG_OHNE,
   type BrowserAnsicht,
   BrowserAusfuehrung,
   type BrowserErgebnis,
@@ -336,18 +337,6 @@ export class BrowserAktionDienst {
     const r = objekt(roh, "Auftrag");
     const vorgang = text(r.vorgang, 64, "vorgang");
     if (!VORGANG.test(vorgang)) throw eingabe("vorgang ist eine Kennung.");
-    // Ein zweiter Klick auf „Ausführen" (derselbe Vorgang) ist DERSELBE Auftrag (AC07).
-    const schon = this.vorgaenge.get(`${nutzer.id}:${vorgang}`);
-    const frueher = schon ? this.laeufe.get(schon) : undefined;
-    if (frueher && frueher.marke === browserSitzungsmarke(token)) {
-      return { art: "auftrag", ...(await this.antwort(frueher)) };
-    }
-    // Auch nach einem Neustart: derselbe Vorgang im Verlauf ist derselbe Auftrag — kein zweiter.
-    const g = await this.deps.gespraeche.aktuelles(nutzer.id);
-    const imVerlauf = (g?.browserAuftraege ?? []).find((e) => e.vorgang === vorgang);
-    if (imVerlauf && !frueher) {
-      return { art: "auftrag", auftrag: this.sichtAus(imVerlauf, g?.id ?? null), befehl: null };
-    }
     const quelle = r.quelle as KlaraAuftragsQuelle;
     if (!(KLARA_QUELLEN_DES_AUFTRAGS as readonly string[]).includes(quelle)) {
       throw eingabe("quelle ist getippt oder gesprochen.");
@@ -366,9 +355,34 @@ export class BrowserAktionDienst {
       version: kurz(h.version, "host.version"),
       erweiterung: kurz(h.erweiterung, "host.erweiterung"),
     };
-    this.raeumeAuf(nutzer.id);
     const ort = ortAus(url);
     const ortText = ort ? `${ort.origin}${ort.pfad}` : "diese Seite";
+    const marke = browserSitzungsmarke(token);
+    // Ein zweiter Klick auf „Ausführen" (derselbe Vorgang, dasselbe Ziel) ist DERSELBE Auftrag
+    // (AC07) — auch nach einem Neustart, dann aus dem Verlauf. Neu geprüft wird dagegen derselbe
+    // Text für ein ANDERES Ziel (anderer Tab, andere Seite) und nach einer Übergabe: sie bewirkte auf
+    // der Seite nichts, und ihr nächster Schritt lautet gerade, Klara erneut zu beauftragen.
+    const schon = this.vorgaenge.get(`${nutzer.id}:${vorgang}`);
+    const frueher = schon ? this.laeufe.get(schon) : undefined;
+    if (frueher) {
+      if (
+        frueher.marke === marke &&
+        frueher.basis.ort === ortText &&
+        frueher.ausfuehrung.auftrag.ziel.tabId === tabId &&
+        frueher.ausfuehrung.ansicht().stand !== "uebergabe"
+      ) {
+        return { art: "auftrag", ...(await this.antwort(frueher)) };
+      }
+    } else {
+      const g = await this.deps.gespraeche.aktuelles(nutzer.id);
+      const imVerlauf = [...(g?.browserAuftraege ?? [])]
+        .reverse()
+        .find((e) => e.vorgang === vorgang);
+      if (imVerlauf && imVerlauf.ort === ortText && imVerlauf.stand !== "uebergabe") {
+        return { art: "auftrag", auftrag: this.sichtAus(imVerlauf, g?.id ?? null), befehl: null };
+      }
+    }
+    this.raeumeAuf(nutzer.id);
     const angelegtAm = this.jetzt().toISOString();
     const basis = {
       id: randomUUID(),
@@ -411,7 +425,6 @@ export class BrowserAktionDienst {
         befehl: null,
       };
     }
-    const marke = browserSitzungsmarke(token);
     const anlage = neuerBrowserAuftrag(
       this.deps.register,
       {
@@ -453,10 +466,11 @@ export class BrowserAktionDienst {
         "Es laufen schon mehrere Browseraufträge. Bitte erst einen beenden.",
       );
     }
-    const relais = new BrowserBefehlsrelais(`Erweiterung ${host.erweiterung || "?"} · aktion.js`, {
-      abholMs: this.abholMs,
-      antwortMs: this.antwortMs,
-    });
+    const relais = new BrowserBefehlsrelais(
+      `Erweiterung ${host.erweiterung || "?"} · aktion.js`,
+      { abholMs: this.abholMs, antwortMs: this.antwortMs },
+      profil.adressbindung ?? BROWSER_ADRESSBINDUNG_OHNE,
+    );
     // Die Rechteprüfung braucht den Lauf; sie wird erst beim ersten Schritt gerufen.
     const bezug: { lauf?: Lauf } = {};
     const ausfuehrung = new BrowserAusfuehrung(anlage.auftrag, {

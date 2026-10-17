@@ -408,6 +408,10 @@ export type AktionBefehl = {
   art: "lage" | "fuelle" | "klicke" | "loesche";
   tabId: number;
   args: Record<string, unknown>;
+  /** Welche Teile der Adresse das Ziel binden (Seitenprofil): Abfrageparameter, Anker. */
+  adresse?: { parameter: string[]; anker: boolean };
+  /** Schon einmal abgeholt: ohne gemerkte Antwort wird er nicht ausgeführt. */
+  wiederholt?: boolean;
 };
 export type AktionSchritt = {
   nr: number;

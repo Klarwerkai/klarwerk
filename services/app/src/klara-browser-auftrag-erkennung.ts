@@ -13,7 +13,8 @@
 // ihren Wert ein; der Wert reicht bis zur nächsten Beschriftung, bis zum Befehlsteil („und
 // speichere …") oder ist in Anführungszeichen eingeschlossen. Gesprochen fehlen die Anführungs-
 // zeichen meist — dann trennen die Beschriftungen selbst. Eine Beschriftung direkt nach einem
-// Artikel oder einer Präposition („auf Ihre Nachricht", „die Nachricht") gehört zum Wert davor.
+// Artikel oder einer Präposition („auf Ihre Nachricht", „an Empfänger") beginnt nur dann ein Feld,
+// wenn es eindeutig ist; mitten in einem ungeklammerten Wert wird sie geklärt.
 //
 // NICHT RATEN, NICHTS VERSCHLUCKEN (Ben-Prüfung Chat 62): Ausserhalb der Werte darf nur stehen, was
 // zum Auftragswortschatz gehört — Füllen, Speichern, Formular-, Feld- und Knopfnamen und wenige
@@ -61,10 +62,11 @@ const EINSCHRAENKUNG =
 /**
  * Wo ein ungeklammerter Wert endet: am Befehlsteil, der nach ihm kommt — „und speichere …",
  * „und dann endgültig senden", „speichere ihn …" (nur die Du-Form; „speichern Sie" in einer
- * Nachricht ist Text). Zwischen Bindewort und Befehlswort dürfen Füllwörter stehen.
+ * Nachricht ist Text) oder ein abschliessendes „…, speichern.". Zwischen Bindewort und
+ * Befehlswort dürfen Füllwörter stehen.
  */
 const BEFEHLSANFANG =
-  /[,;]?\s+(und|dann|danach|anschließend)(\s+(dann|danach|anschließend|bitte|noch|gleich|sofort|direkt|endgültig|ihn|es|sie|den|das|die|entwurf|nachricht|formular))*\s+(speicher|sicher|send|schick|übermittel|leit|bestell|kauf|bezahl|lösch|klick|drück|lös|auslös)\w*|[,;]?\s+(speichere|sichere)\s+(ihn|es|sie|den|das|die|als)\b/iu;
+  /[,;]?\s+(und|dann|danach|anschließend)(\s+(dann|danach|anschließend|bitte|noch|gleich|sofort|direkt|endgültig|ihn|es|sie|den|das|die|entwurf|nachricht|formular))*\s+(speicher|sicher|send|schick|übermittel|leit|bestell|kauf|bezahl|lösch|klick|drück|lös|auslös)\w*|[,;]?\s+(speichere|sichere)\s+(ihn|es|sie|den|das|die|als)\b|[,;]\s+(speichern|sichern|abspeichern)(?=\s*[.!]?\s*$)/iu;
 /** Vor einer Beschriftung: dann ist sie Teil eines Werts („auf Ihre Nachricht"), kein neues Feld. */
 const BEZUGSWORT =
   /(^|[^\p{L}\p{N}])(der|die|das|den|dem|des|ein|eine|einen|einem|einer|eines|ihr|ihre|ihren|ihrem|ihrer|sein|seine|seinen|seinem|seiner|mein|meine|meinen|meinem|meiner|dein|deine|deinen|deinem|deiner|unser|unsere|unseren|unserem|unserer|euer|eure|kein|keine|keinen|jede|jeder|jedes|jeden|diese|dieser|dieses|diesen|auf|zur|zum|vom|von|im|in|mit|für|ohne|über|unter|aus|bei|nach|vor|per|the|your|my|our|a|an|of|to|for|with|in|on)\s+$/iu;
@@ -158,6 +160,33 @@ interface Zitat extends Bereich {
   readonly innen: string;
 }
 
+/** Ein Feldbeginn: die Beschriftung an ihrer Stelle im Wortlaut. */
+interface Marke {
+  readonly label: string;
+  readonly stelle: Bereich;
+}
+
+/** Ein erkannter Wert — der Bereich reicht von seiner Beschriftung bis zu seinem Ende. */
+interface Wertstelle extends Bereich {
+  readonly label: string;
+  readonly wert: string;
+  readonly zitiert: boolean;
+}
+
+/** Ein Klick ohne genannten Knopf („klicke auf den Knopf", „löse aus") — welcher, wäre geraten. */
+const KLICKWORT =
+  /(^|[^\p{L}\p{N}])(klick\w*|drück\w*|betätig\w*|lös(e|en|t)|auslös\w*|click\w*|press\w*|trigger\w*)(?=$|[^\p{L}\p{N}])/iu;
+/**
+ * Trennbare Verben des Auftrags: „Fülle … Empfänger x aus". Fehlt die Partikel im Befehlsteil und
+ * endet ein ungeklammerter Wert auf sie, ist offen, wohin sie gehört.
+ */
+const TRENNBAR: readonly (readonly [RegExp, string])[] = [
+  [/^(fülle|füll|fuelle|fuell)$/u, "aus"],
+  [/^(trage|trag)$/u, "ein"],
+];
+
+const woerter = (t: string) => t.toLowerCase().split(/[^\p{L}\p{N}]+/u);
+
 /**
  * Bereiche in Anführungszeichen — Beschriftungen und Befehlswörter darin zählen nicht. Öffnet ein
  * Zeichen mehrere Paare („ schliesst mit “ oder mit "), gilt das NÄCHSTE schliessende Zeichen.
@@ -213,6 +242,68 @@ function ohneBereiche(text: string, weg: readonly Bereich[]): string {
 
 const liste = (namen: readonly string[]) => namen.map((n) => `„${n}"`).join(" oder ");
 const klaerung = (text: string): BrowserErkennung => ({ ok: false, art: "klaerung", text });
+const mehrfach = (label: string) =>
+  klaerung(
+    `„${label}" steht mehrfach im Auftrag. Welcher Wert ist gemeint? Setze ihn in Anführungszeichen.`,
+  );
+
+/** Die Werte zu den Feldbeginnen: jeder bis zur nächsten Beschriftung, zum Befehlsteil oder zum Zitatende. */
+function werteAus(
+  text: string,
+  zit: readonly Zitat[],
+  marken: readonly Marke[],
+): Wertstelle[] | BrowserErkennung {
+  const sortiert = [...marken].sort((a, b) => a.stelle.von - b.stelle.von);
+  const werte: Wertstelle[] = [];
+  for (const [i, m] of sortiert.entries()) {
+    const ende = sortiert[i + 1]?.stelle.von ?? text.length;
+    let von = m.stelle.bis;
+    // Einleitung: Doppelpunkt oder Gleichheitszeichen. Ohne sie leitet ein kleingeschriebenes „ist"
+    // oder „lautet" den Wert ein („Betreff ist …"); „mit", „auf", „als" nur vor Anführungszeichen —
+    // sonst gehört es zum Wert („Nachricht: Mit freundlichen Grüßen", „Nachricht: Ist das …?").
+    const zeichen = /^\s*([:=–-])?\s*/u.exec(text.slice(von, ende));
+    von += zeichen?.[0].length ?? 0;
+    const kopula = zeichen?.[1] ? null : /^(ist|lautet)\s+/u.exec(text.slice(von, ende));
+    von += kopula?.[0].length ?? 0;
+    const vorZitat = /^(mit|auf|als|lautet|ist)\s+(?=[„“"»«‚])/iu.exec(text.slice(von, ende));
+    von += vorZitat?.[0].length ?? 0;
+    const zitat = zit.find((z) => z.von === von && z.bis <= ende);
+    let wert: string;
+    let bis: number;
+    if (zitat) {
+      if (ANFUEHRUNGSZEICHEN.test(zitat.innen)) {
+        return klaerung(
+          `Im Wert von „${m.label}" stehen weitere Anführungszeichen. Welcher Text ist gemeint? Setze ihn einmal in Anführungszeichen.`,
+        );
+      }
+      wert = zitat.innen;
+      bis = zitat.bis;
+    } else {
+      const abschnitt = text.slice(von, ende);
+      const befehl = BEFEHLSANFANG.exec(abschnitt);
+      const roh = befehl ? abschnitt.slice(0, befehl.index) : abschnitt;
+      wert = roh
+        .replace(/[\s,;]+(und)?\s*$/iu, "")
+        .replace(/[.!]\s*$/u, "")
+        .trim();
+      bis = von + roh.length;
+      // Steht in einem ungeklammerten Wert noch ein Befehls- oder Außenwort, ist offen, ob es zum
+      // Wert gehört oder ein Auftrag ist. Nicht raten: weder still einen Auftrag schlucken noch
+      // ihn in ein Feld schreiben.
+      const fraglich = AUSSENWORT.exec(wert) ?? SPEICHERWORT.exec(wert);
+      if (fraglich) {
+        return klaerung(
+          `Gehört „${fraglich[2]}" zum Wert von „${m.label}" oder ist es ein Auftrag? Setze den Wert in Anführungszeichen.`,
+        );
+      }
+    }
+    if (!wert.trim()) {
+      return klaerung(`Für „${m.label}" fehlt der Wert. Nenne ihn direkt nach der Beschriftung.`);
+    }
+    werte.push({ label: m.label, wert, von: m.stelle.von, bis, zitiert: Boolean(zitat) });
+  }
+  return werte;
+}
 
 /**
  * Erkennt Formular, Felder mit Werten, Speichern und ein ausdrücklich genanntes Auslösen — allein
@@ -247,72 +338,71 @@ export function erkenneBrowserAuftrag(
     );
   }
   // 2 · DIE FELDER: jede Beschriftung höchstens einmal als Feldbeginn, ihr Wert bis zur nächsten.
-  // Steht sie direkt nach einem Bezugswort, ist sie Teil des Werts davor.
-  const marken: { label: string; stelle: Bereich }[] = [];
+  // Direkt nach einem Bezugswort („auf Ihre Nachricht", „Wartung an Empfänger", „aus Betreff") ist
+  // offen, ob sie ein Feld beginnt oder zum Wert davor gehört. Sie beginnt eines nur, wenn es
+  // eindeutig ist: ausserhalb jedes Werts UND eingeleitet (Doppelpunkt, Anführungszeichen) oder als
+  // erste Beschriftung nach reinen Auftragswörtern („Fülle den Angebotsentwurf aus Betreff …").
+  // Steht sie dagegen in einem ungeklammerten Wert, wird geklärt — nie still in ein Feld gefaltet.
+  const stark: Marke[] = [];
+  const schwach: Marke[] = [];
   for (const label of formular.felder) {
-    const stellen = fundstellen(text, label, zit).filter(
+    const stellen = fundstellen(text, label, zit);
+    const sicher = stellen.filter(
       (s) => !BEZUGSWORT.test(text.slice(Math.max(0, s.von - 24), s.von)),
     );
-    if (stellen.length > 1) {
+    if (sicher.length > 1) return mehrfach(label);
+    const stelle = sicher[0];
+    if (stelle) {
+      stark.push({ label, stelle });
+    } else {
+      schwach.push(...stellen.map((s) => ({ label, stelle: s })));
+    }
+  }
+  const auftragswort = new Set(
+    [...AUFTRAGSWORTE, ...profil.formulare.map((f) => f.name)].flatMap(woerter),
+  );
+  const eingeleitet = (s: Bereich) => /^\s*([:=]|[„“"»«‚])/u.test(text.slice(s.bis));
+  const nurAuftragDavor = (s: Bereich) =>
+    woerter(text.slice(0, s.von)).every((w) => !w || auftragswort.has(w));
+  let marken: readonly Marke[] = stark;
+  let werte: Wertstelle[];
+  for (;;) {
+    const w = werteAus(text, zit, marken);
+    if (!Array.isArray(w)) return w;
+    werte = w;
+    const imWert = (s: Bereich) => w.find((b) => s.von > b.von && s.von < b.bis);
+    const offen = schwach.filter((s) => !marken.some((m) => m.label === s.label));
+    const neu = offen.filter(
+      (s) => !imWert(s.stelle) && (eingeleitet(s.stelle) || nurAuftragDavor(s.stelle)),
+    );
+    if (neu.length === 0) {
+      for (const s of offen) {
+        const b = imWert(s.stelle);
+        if (b && !b.zitiert) {
+          return klaerung(
+            `„${s.label}" steht im Wert von „${b.label}". Gehört es zum Wert, oder beginnt dort das Feld „${s.label}"? Setze den Wert von „${b.label}" in Anführungszeichen.`,
+          );
+        }
+      }
+      break;
+    }
+    const doppelt = neu.find((s) => neu.filter((x) => x.label === s.label).length > 1);
+    if (doppelt) return mehrfach(doppelt.label);
+    marken = [...marken, ...neu];
+  }
+  const felder: BrowserFeldwert[] = werte.map((w) => ({ label: w.label, wert: w.wert }));
+  // 3 · DIE HANDLUNGEN stehen im Befehlsteil — nie in einem Wert.
+  const befehlsteil = ohneBereiche(text, werte);
+  const befehlswoerter = woerter(befehlsteil);
+  for (const [verb, partikel] of TRENNBAR) {
+    if (!befehlswoerter.some((w) => verb.test(w)) || befehlswoerter.includes(partikel)) continue;
+    const endet = werte.find((w) => !w.zitiert && woerter(w.wert).filter(Boolean).at(-1) === partikel);
+    if (endet) {
       return klaerung(
-        `„${label}" steht mehrfach im Auftrag. Welcher Wert ist gemeint? Setze ihn in Anführungszeichen.`,
+        `Gehört „${partikel}" zum Wert von „${endet.label}" oder zum Auftrag? Setze den Wert in Anführungszeichen.`,
       );
     }
-    const stelle = stellen[0];
-    if (stelle) {
-      marken.push({ label, stelle });
-    }
   }
-  marken.sort((a, b) => a.stelle.von - b.stelle.von);
-  const felder: BrowserFeldwert[] = [];
-  const wertbereiche: Bereich[] = [];
-  for (const [i, m] of marken.entries()) {
-    const ende = marken[i + 1]?.stelle.von ?? text.length;
-    let von = m.stelle.bis;
-    // Einleitung: Doppelpunkt oder Gleichheitszeichen; ein Wort wie „mit" nur vor Anführungszeichen
-    // — sonst gehört es zum Wert („Nachricht: Mit freundlichen Grüßen").
-    const vorspann = /^\s*(:|=|–|-)?\s*(((mit|auf|als|lautet|ist)\s+)(?=[„“"»«‚]))?/iu.exec(
-      text.slice(von, ende),
-    );
-    von += vorspann?.[0].length ?? 0;
-    const zitat = zit.find((z) => z.von === von && z.bis <= ende);
-    let wert: string;
-    let bis: number;
-    if (zitat) {
-      if (ANFUEHRUNGSZEICHEN.test(zitat.innen)) {
-        return klaerung(
-          `Im Wert von „${m.label}" stehen weitere Anführungszeichen. Welcher Text ist gemeint? Setze ihn einmal in Anführungszeichen.`,
-        );
-      }
-      wert = zitat.innen;
-      bis = zitat.bis;
-    } else {
-      const abschnitt = text.slice(von, ende);
-      const befehl = BEFEHLSANFANG.exec(abschnitt);
-      const roh = befehl ? abschnitt.slice(0, befehl.index) : abschnitt;
-      wert = roh
-        .replace(/[\s,;]+(und)?\s*$/iu, "")
-        .replace(/[.!]\s*$/u, "")
-        .trim();
-      bis = von + roh.length;
-      // Steht in einem ungeklammerten Wert noch ein Befehls- oder Außenwort, ist offen, ob es zum
-      // Wert gehört oder ein Auftrag ist. Nicht raten: weder still einen Auftrag schlucken noch
-      // ihn in ein Feld schreiben.
-      const fraglich = AUSSENWORT.exec(wert) ?? SPEICHERWORT.exec(wert);
-      if (fraglich) {
-        return klaerung(
-          `Gehört „${fraglich[2]}" zum Wert von „${m.label}" oder ist es ein Auftrag? Setze den Wert in Anführungszeichen.`,
-        );
-      }
-    }
-    if (!wert.trim()) {
-      return klaerung(`Für „${m.label}" fehlt der Wert. Nenne ihn direkt nach der Beschriftung.`);
-    }
-    felder.push({ label: m.label, wert });
-    wertbereiche.push({ von: m.stelle.von, bis });
-  }
-  // 3 · DIE HANDLUNGEN stehen im Befehlsteil — nie in einem Wert.
-  const befehlsteil = ohneBereiche(text, wertbereiche);
   const einschraenkung = EINSCHRAENKUNG.exec(befehlsteil);
   if (einschraenkung) {
     return klaerung(
@@ -358,6 +448,18 @@ export function erkenneBrowserAuftrag(
         .join(
           ", ",
         )}. Nenne Werte direkt nach der Feldbeschriftung oder in Anführungszeichen; sonst nur Formular, Felder, Speichern oder den Knopf.`,
+    );
+  }
+  // Ein Klick ohne genannten Knopf und ohne Speichern („… und klicke auf den Knopf", „… und löse
+  // aus"): welcher Knopf, wäre geraten — und still weglassen hiesse, einen Auftragsteil zu verschlucken.
+  if (knopf === null && !speichern && KLICKWORT.test(ohneKnopf)) {
+    const knoepfe = formular.handlungen.flatMap((h) =>
+      h.knopf && (h.art === "entwurf_speichern" || h.art === "ausloesen") ? [h.knopf] : [],
+    );
+    return klaerung(
+      knoepfe.length > 0
+        ? `Welchen Knopf soll Klara drücken? Nenne ihn mit seinem Namen: ${liste(knoepfe)}.`
+        : `Im Formular „${formular.name}" gibt es keinen Knopf, den Klara drücken darf.`,
     );
   }
   if (felder.length === 0 && !speichern && knopf === null) {

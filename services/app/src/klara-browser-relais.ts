@@ -19,15 +19,17 @@
 //
 // JEDE ANTWORT IST SEITENINHALT: Form und Grenzen werden hier geprüft; was nicht passt, gilt als
 // unbekannter Ausgang (`verbindung`) — nie als Erfolg.
-import type {
-  BrowserEntwurfsliste,
-  BrowserFeldwert,
-  BrowserSeitenadapter,
-  SeitenAntwort,
-  SeitenFehler,
-  SeitenFormular,
-  SeitenHindernis,
-  SeitenLage,
+import {
+  BROWSER_ADRESSBINDUNG_OHNE,
+  type BrowserAdressbindung,
+  type BrowserEntwurfsliste,
+  type BrowserFeldwert,
+  type BrowserSeitenadapter,
+  type SeitenAntwort,
+  type SeitenFehler,
+  type SeitenFormular,
+  type SeitenHindernis,
+  type SeitenLage,
 } from "./klara-browser-aktion";
 
 export const BROWSER_ABHOLFRIST_MS = 15_000;
@@ -40,6 +42,14 @@ export interface BrowserBefehl {
   readonly art: BrowserBefehlArt;
   readonly tabId: number;
   readonly args: Readonly<Record<string, unknown>>;
+  /** Welche Teile der Adresse das Ziel binden (aus dem Seitenprofil) — die Erweiterung prüft sie. */
+  readonly adresse: BrowserAdressbindung;
+  /**
+   * Derselbe Befehl wurde schon einmal abgeholt (die Antwort ging verloren, oder ein zweiter Klick
+   * auf „Ausführen" holt ihn erneut). Eine Erweiterung, die ihn nicht als erledigt gemerkt hat,
+   * führt ihn NICHT aus — sein Ausgang ist offen, der Kern gleicht an der Seite ab.
+   */
+  readonly wiederholt: boolean;
 }
 
 /** Der Lesebefehl kam nicht zurück. Lesen wirkt nicht; der Kern hält den Schritt offen an. */
@@ -187,6 +197,7 @@ export class BrowserBefehlsrelais implements BrowserSeitenadapter {
       abholMs: BROWSER_ABHOLFRIST_MS,
       antwortMs: BROWSER_ANTWORTFRIST_MS,
     },
+    private readonly bindung: BrowserAdressbindung = BROWSER_ADRESSBINDUNG_OHNE,
   ) {
     this.stand = fassung;
   }
@@ -258,18 +269,14 @@ export class BrowserBefehlsrelais implements BrowserSeitenadapter {
 
   // ------------------------------------------------------------- die Seite der Erweiterung
 
-  /** Der offene Befehl — beim ersten Abholen beginnt die Antwortfrist. */
+  /** Der offene Befehl — beim ersten Abholen beginnt die Antwortfrist; jedes weitere ist `wiederholt`. */
   abholen(): BrowserBefehl | null {
     const o = this.offen;
     if (!o) return null;
-    if (!o.abgeholt) {
-      o.abgeholt = true;
-      clearTimeout(o.timer);
-      o.timer = setTimeout(
-        () => o.ende({ ausfall: "zeitueberschreitung" }),
-        this.fristen.antwortMs,
-      );
-    }
+    if (o.abgeholt) return { ...o.befehl, wiederholt: true };
+    o.abgeholt = true;
+    clearTimeout(o.timer);
+    o.timer = setTimeout(() => o.ende({ ausfall: "zeitueberschreitung" }), this.fristen.antwortMs);
     return o.befehl;
   }
 
@@ -312,7 +319,14 @@ export class BrowserBefehlsrelais implements BrowserSeitenadapter {
       // Der Aktionskern stellt nie zwei Befehle zugleich; geschähe es, wäre es ein Programmfehler.
       return Promise.resolve<unknown>({ ausfall: "nicht_ausgefuehrt" });
     }
-    const befehl: BrowserBefehl = { nr: ++this.nr, art, tabId, args: structuredClone(args) };
+    const befehl: BrowserBefehl = {
+      nr: ++this.nr,
+      art,
+      tabId,
+      args: structuredClone(args),
+      adresse: { parameter: [...this.bindung.parameter], anker: this.bindung.anker },
+      wiederholt: false,
+    };
     return new Promise<unknown>((erledigt) => {
       const ende = (wert: unknown) => {
         if (this.offen?.befehl.nr !== befehl.nr) return;

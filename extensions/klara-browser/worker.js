@@ -2912,15 +2912,56 @@
   /**
    * Läuft in der isolierten Welt der Seite, NACH `aktion.js`. Ruft genau eine Handlung des
    * Seitenausführers; alles andere gibt es dort nicht.
+   *
+   * VORHER, IN DER SEITE, OHNE LÜCKE: Ist es noch dasselbe Ziel wie bei der Freigabe? Es binden
+   * Herkunft und Pfad (wie beim Kern) und nur die Adressteile, die das Seitenprofil als Kennung des
+   * Datensatzes nennt (`?id=…`, Ankerroute). Ändert die Seite anderes selbst (`?entwurf=…`,
+   * `#gespeichert`), bleibt es dasselbe Ziel. Ein anderer Datensatz: geschrieben wird nichts; das
+   * Lesen meldet die neue Adresse, damit der Kern gezielt klärt. Ohne Bindungsangabe gilt streng
+   * die ganze Adresse.
    * @param {string} art @param {unknown} args
+   * @param {{url: string, parameter: string[], anker: boolean, streng: boolean}} ziel
    */
-  function aktionAufruf(art, args) {
+  function aktionAufruf(art, args, ziel) {
+    let abweichend = true;
+    let adresse = "";
+    try {
+      const jetzt = new URL(location.href);
+      const frei = new URL(ziel.url);
+      adresse = `${jetzt.pathname}${jetzt.search}${jetzt.hash}`;
+      abweichend = ziel.streng
+        ? jetzt.href !== frei.href
+        : jetzt.origin !== frei.origin ||
+          jetzt.pathname !== frei.pathname ||
+          ziel.parameter.some((n) => jetzt.searchParams.get(n) !== frei.searchParams.get(n)) ||
+          (ziel.anker && jetzt.hash !== frei.hash);
+    } catch {
+      abweichend = true;
+    }
+    if (abweichend && art !== "lage") return { abweichend: true };
     const api = /** @type {Record<string, unknown> | undefined} */ (
       /** @type {Record<string, unknown>} */ (globalThis).KlaraBrowserAktion
     );
     const f = api?.[art];
     if (!api || typeof f !== "function") return { fehlt: true };
-    return { wert: f.call(api, args), fassung: api.fassung };
+    return { wert: f.call(api, args), fassung: api.fassung, abweichend, adresse };
+  }
+
+  /**
+   * Die Adressbindung des Befehls — nur in ihrer genauen Form; sonst streng die ganze Adresse.
+   * @param {import("./types").AktionBefehl} b @param {AktionZustand} aktion
+   */
+  function aktionZiel(b, aktion) {
+    const a = b.adresse;
+    const gueltig =
+      a !== undefined &&
+      Array.isArray(a.parameter) &&
+      a.parameter.length <= 10 &&
+      a.parameter.every((n) => typeof n === "string" && /^[\w.-]{1,40}$/.test(n)) &&
+      typeof a.anker === "boolean";
+    return gueltig
+      ? { url: aktion.url, parameter: [...a.parameter], anker: a.anker, streng: false }
+      : { url: aktion.url, parameter: [], anker: false, streng: true };
   }
 
   /**
@@ -2939,18 +2980,6 @@
       };
     }
     if (b.tabId !== aktion.tabId) return { ergebnis: { fehler: "nicht_ausgefuehrt" } };
-    // Dieselbe Adresse wie bei der Freigabe? Ein anderer Datensatz auf demselben Pfad (Abfrage,
-    // Anker) ist ein anderes Ziel: geschrieben wird dort nichts; das Lesen meldet die neue Adresse,
-    // damit der Kern gezielt klärt.
-    /** @type {string} */
-    let adresse = "";
-    try {
-      adresse = (await chrome.tabs.get(b.tabId)).url ?? "";
-    } catch {
-      adresse = "";
-    }
-    const abweichend = adresse !== aktion.url;
-    if (abweichend && b.art !== "lage") return { ergebnis: { fehler: "nicht_ausgefuehrt" } };
     try {
       await chrome.scripting.executeScript({ target: { tabId: b.tabId }, files: ["aktion.js"] });
     } catch {
@@ -2961,20 +2990,22 @@
       const [r] = await chrome.scripting.executeScript({
         target: { tabId: b.tabId },
         func: aktionAufruf,
-        args: [b.art, b.args],
+        args: [b.art, b.args, aktionZiel(b, aktion)],
       });
-      const aus = /** @type {{wert?: unknown, fassung?: unknown, fehlt?: boolean} | undefined} */ (
-        r?.result
-      );
-      if (!aus || aus.fehlt) return { ergebnis: { fehler: "nicht_ausgefuehrt" } };
+      const aus =
+        /** @type {{wert?: unknown, fassung?: unknown, fehlt?: boolean, abweichend?: boolean, adresse?: unknown} | undefined} */ (
+          r?.result
+        );
+      // Anderes Ziel oder kein Seitenausführer: in der Seite geschah nichts.
+      if (!aus || aus.fehlt || (aus.abweichend && b.art !== "lage"))
+        return { ergebnis: { fehler: "nicht_ausgefuehrt" } };
       const fassung = typeof aus.fassung === "string" ? aus.fassung : "";
       if (b.art === "lage") {
         /** @type {Record<string, unknown> | null} */
         let lage =
           aus.wert && typeof aus.wert === "object" ? { ...aus.wert, tabId: b.tabId } : null;
-        if (lage && abweichend && adresse) {
-          const u = new URL(adresse);
-          lage = { ...lage, pfad: `${u.pathname}${u.search}${u.hash}` };
+        if (lage && aus.abweichend && typeof aus.adresse === "string" && aus.adresse) {
+          lage = { ...lage, pfad: aus.adresse };
         }
         return { ergebnis: lage ?? { fehler: "verbindung" }, seite: { adapter: fassung } };
       }
@@ -3070,8 +3101,10 @@
         if (befehl) {
           // Dieselbe Nummer noch einmal (die Antwort ging verloren): nicht erneut ausführen, die
           // gemerkte Antwort geht noch einmal hinaus. Eine Nummer, die schon begonnen hatte, aber
-          // ohne gemerkte Antwort ist (Worker unterbrochen), oder eine kleinere als die höchste
-          // ausgeführte, wird NIE ausgeführt: ihr Ausgang ist offen — der Kern gleicht ab.
+          // ohne gemerkte Antwort ist (Worker unterbrochen), eine kleinere als die höchste
+          // ausgeführte und ein Befehl, den der Kern als schon abgeholt kennzeichnet (`wiederholt`),
+          // werden NIE ausgeführt: ihr Ausgang ist offen — der Kern gleicht an der Seite ab. Nur
+          // Lesen darf wiederholt werden; es wirkt nicht.
           const gemerkt =
             aktion.erledigt && aktion.erledigt.nr === befehl.nr ? aktion.erledigt : null;
           const hoechste = Math.max(aktion.erledigt?.nr ?? 0, aktion.ausfuehrend ?? 0);
@@ -3082,7 +3115,7 @@
               ergebnis: gemerkt.ergebnis,
               ...(gemerkt.seite ? { seite: gemerkt.seite } : {}),
             };
-          } else if (befehl.nr <= hoechste) {
+          } else if (befehl.nr <= hoechste || (befehl.wiederholt === true && befehl.art !== "lage")) {
             aus = { ergebnis: { fehler: "verbindung" } };
           } else {
             await aktionMerken({ ausfuehrend: befehl.nr });
@@ -3166,19 +3199,24 @@
       return aktionSicht(state, "invalid_message");
     const ziel = aktionsZiel(state);
     if (!ziel) return aktionSicht(state, "keine_freigabe");
+    // Derselbe Vorgang noch einmal (zweiter Klick nach einem Verbindungsabbruch): gibt der Kern
+    // DENSELBEN Lauf zurück, gilt weiter, was dieser Worker dort schon ausgeführt hat — sonst
+    // käme ein abgeholter Klick als neu an und würde ein zweites Mal geklickt.
+    const vorher = state.aktion?.vorgang === vorgang && state.aktion.id ? state.aktion : null;
     /** @type {AktionZustand} */
     const aktion = {
-      id: null,
+      id: vorher?.id ?? null,
       vorgang,
       tabId: ziel.tabId,
       url: ziel.url,
       epoche: epocheVon(state),
       nutzer: state.auth.id,
-      folge: 0,
+      folge: vorher?.folge ?? 0,
       sicht: null,
       klaerung: null,
       fehler: null,
-      erledigt: null,
+      ausfuehrend: vorher?.ausfuehrend ?? null,
+      erledigt: vorher?.erledigt ?? null,
       laeuft: true,
     };
     const sperre = await aktionSperre(state, aktion);
@@ -3209,16 +3247,24 @@
       await merke({ auth: null, aktion: null });
       return aktionSicht(/** @type {Zustand} */ (await read()), "anmelden");
     }
+    // Klärung oder Ablehnung: es gibt keinen (neuen) Lauf — nichts vom früheren gilt weiter.
+    const ohneLauf = { id: null, ausfuehrend: null, erledigt: null };
     if (r.status === 200 && r.body.art === "klaerung") {
-      await aktionMerken({ laeuft: false, klaerung: String(r.body.text ?? "") });
+      await aktionMerken({ ...ohneLauf, laeuft: false, klaerung: String(r.body.text ?? "") });
       return aktionSicht(/** @type {Zustand} */ (await read()), "klaerung");
     }
     const auftrag = /** @type {{id?: unknown} | undefined} */ (r.body.auftrag);
     if (r.status !== 201 || typeof auftrag?.id !== "string") {
-      await aktionMerken({ laeuft: false, fehler: String(r.body.grund ?? "fehler") });
+      await aktionMerken({ ...ohneLauf, laeuft: false, fehler: String(r.body.grund ?? "fehler") });
       return aktionSicht(/** @type {Zustand} */ (await read()), "fehler");
     }
-    await aktionMerken({ id: auftrag.id, sicht: alsSicht(auftrag) });
+    // Ein ANDERER Lauf zählt seine Befehle neu: dann gilt nichts vom früheren.
+    const derselbe = vorher !== null && vorher.id === auftrag.id;
+    await aktionMerken({
+      id: auftrag.id,
+      sicht: alsSicht(auftrag),
+      ...(derselbe ? {} : { ausfuehrend: null, erledigt: null }),
+    });
     void aktionAntreiben(r.body);
     return aktionSicht(/** @type {Zustand} */ (await read()), "gestartet");
   }

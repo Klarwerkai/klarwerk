@@ -77,9 +77,13 @@ describe("BPA-03 · Erkennung · Gegenproben zu den Prüfbefunden", () => {
   });
 
   it("M3 · eine Beschriftung im Wert schreibt nichts in ein anderes Feld", () => {
+    // Ungeklammert ist offen, ob „Nachricht" ein Feld beginnt: Klärung (zweite Prüfung, N1).
+    expect(
+      art("Angebotsentwurf Betreff Antwort auf Ihre Nachricht vom Montag Empfänger a@b.invalid"),
+    ).toBe("klaerung");
     expect(
       erkenne(
-        "Angebotsentwurf Betreff Antwort auf Ihre Nachricht vom Montag Empfänger a@b.invalid",
+        'Angebotsentwurf Betreff „Antwort auf Ihre Nachricht vom Montag" Empfänger a@b.invalid',
       ),
     ).toMatchObject({
       ok: true,
@@ -126,6 +130,66 @@ describe("BPA-03 · Erkennung · Gegenproben zu den Prüfbefunden", () => {
         `Fülle den Angebotsentwurf aus: Betreff „${BETREFF}", Endgültig senden erst morgen, heute nur speichern.`,
       ),
     ).toBe("klaerung");
+  });
+
+  it("N1 · eine Beschriftung nach Satzpartikel im ungeklammerten Wert wird geklärt, nie in den Wert gefaltet; „ist/lautet“ leiten ein", () => {
+    for (const w of [
+      `Angebotsentwurf Betreff ${BETREFF} Nachricht Wir bieten die jährliche Wartung an Empfänger ${EMPFAENGER} und speichere den Entwurf`,
+      "Rückmeldung Nachricht Wir rufen Sie morgen an Betreff Rückruf und speichere sie",
+      "Rückmeldung Nachricht Bitte füllen Sie das Formular aus Betreff Antrag und speichere sie",
+    ]) {
+      expect(art(w), w).toBe("klaerung");
+    }
+    expect(erkenne(`Angebotsentwurf Betreff ist ${BETREFF} und speichere ihn`)).toMatchObject({
+      ok: true,
+      felder: [{ label: "Betreff", wert: BETREFF }],
+      speichern: true,
+    });
+    expect(erkenne(`Angebotsentwurf Betreff lautet ${BETREFF}`)).toMatchObject({
+      ok: true,
+      felder: [{ label: "Betreff", wert: BETREFF }],
+    });
+    // Mit Doppelpunkt ist „Ist" Teil des Werts.
+    expect(erkenne("Angebotsentwurf Nachricht: Ist das Angebot noch gültig")).toMatchObject({
+      ok: true,
+      felder: [{ label: "Nachricht", wert: "Ist das Angebot noch gültig" }],
+    });
+  });
+
+  it("N5 · übliche Formen werden erkannt; ein offenes „aus“ wird gezielt geklärt", () => {
+    expect(
+      erkenne(
+        `Fülle den Angebotsentwurf aus Betreff ${BETREFF} Empfänger ${EMPFAENGER} und speichere ihn`,
+      ),
+    ).toMatchObject({
+      ok: true,
+      felder: [
+        { label: "Betreff", wert: BETREFF },
+        { label: "Empfänger", wert: EMPFAENGER },
+      ],
+      speichern: true,
+    });
+    expect(erkenne(`Trage im Angebotsentwurf den Betreff „${BETREFF}" ein.`)).toMatchObject({
+      ok: true,
+      felder: [{ label: "Betreff", wert: BETREFF }],
+    });
+    expect(
+      erkenne(`Angebotsentwurf: Betreff ist ${BETREFF}, Empfänger ist ${EMPFAENGER}, speichern.`),
+    ).toMatchObject({ ok: true, speichern: true });
+    const r = erkenne(
+      `Bitte fülle den Angebotsentwurf mit Betreff „${BETREFF}" und Empfänger ${EMPFAENGER} aus und speichere ihn.`,
+    );
+    expect(r.ok ? "" : r.art === "klaerung" && r.text).toContain('„aus"');
+  });
+
+  it("M4 · ein Klick ohne genannten Knopf fällt nicht still weg — Klärung nennt die Knöpfe", () => {
+    for (const w of [
+      `Fülle den Angebotsentwurf aus: Betreff „${BETREFF}" und klicke auf den Knopf.`,
+      `Fülle den Angebotsentwurf aus: Betreff „${BETREFF}" und löse aus.`,
+    ]) {
+      const r = erkenne(w);
+      expect(r.ok ? "" : r.art === "klaerung" && r.text, w).toContain("Welchen Knopf");
+    }
   });
 
   it("m9 · ein Wert darf mit „Mit“ beginnen; verschachtelte Anführungszeichen werden geklärt", () => {

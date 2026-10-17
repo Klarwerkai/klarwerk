@@ -17,6 +17,7 @@ import {
   BrowserAusfuehrung,
   BrowserFaehigkeitsregister,
   type BrowserSchritt,
+  BrowserVertragFehler,
   neuerBrowserAuftrag,
 } from "../../services/app/src/klara-browser-aktion";
 import {
@@ -346,6 +347,9 @@ describe("BPA-03 · Befehlsrelais: Fristen und Antwortprüfung", () => {
       art: "lage",
       tabId: 3,
       args: { formular: "Angebotsentwurf", liste: LISTE },
+      // Ohne Angabe im Profil binden nur Herkunft und Pfad.
+      adresse: { parameter: [], anker: false },
+      wiederholt: false,
     });
     expect(relais.antworte(1, lageRoh(3))).toBe(true);
     const lage = await p;
@@ -411,7 +415,10 @@ describe("BPA-03 · Befehlsrelais: Fristen und Antwortprüfung", () => {
     expect(relais.antworte(befehl.nr + 1, { ok: true, wert: null })).toBe(false);
     expect(relais.antworte(befehl.nr - 1, { ok: true, wert: null })).toBe(false);
     expect(relais.hatOffenes()).toBe(true);
-    expect(relais.abholen()).toEqual(befehl);
+    // Erneut abgeholt: derselbe Befehl, als WIEDERHOLT gekennzeichnet — eine Erweiterung ohne
+    // gemerkte Antwort führt ihn nicht aus (Befund N2 der zweiten Prüfung).
+    expect(befehl.wiederholt).toBe(false);
+    expect(relais.abholen()).toEqual({ ...befehl, wiederholt: true });
     expect(relais.antworte(befehl.nr, { ok: true, wert: null })).toBe(true);
     expect(await p).toEqual({ ok: true, wert: null });
     // Ein zweites Mal dieselbe Nummer: schon beantwortet.
@@ -485,6 +492,31 @@ describe("BPA-03 · Befehlsrelais: Fristen und Antwortprüfung", () => {
     expect((relais.abholen() as BrowserBefehl).art).toBe("fuelle");
     relais.antworte(1, { ok: true, wert: { wert: BETREFF } });
     expect(await erster).toEqual({ ok: true, wert: { wert: BETREFF } });
+  });
+
+  it("R10 · jeder Befehl trägt die Adressbindung des Seitenprofils; ein ungültiges Profil wird abgewiesen (N4)", async () => {
+    const relais = new BrowserBefehlsrelais(
+      "test",
+      { abholMs: 500, antwortMs: 500 },
+      { parameter: ["id"], anker: true },
+    );
+    const p = relais.klicke(3, { ...KLICKE });
+    expect(relais.abholen()).toMatchObject({
+      art: "klicke",
+      adresse: { parameter: ["id"], anker: true },
+      wiederholt: false,
+    });
+    relais.antworte(1, { ok: true, wert: null });
+    await p;
+    for (const adressbindung of [
+      { parameter: ["id", "id"], anker: false },
+      { parameter: ["a b"], anker: false },
+      { parameter: Array.from({ length: 11 }, (_, i) => `p${i}`), anker: false },
+    ]) {
+      expect(() => new BrowserFaehigkeitsregister([{ ...TESTSEITE, adressbindung }])).toThrow(
+        BrowserVertragFehler,
+      );
+    }
   });
 });
 

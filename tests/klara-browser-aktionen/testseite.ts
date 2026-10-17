@@ -38,6 +38,9 @@ export const TESTSEITE: BrowserSeitenprofil = {
   fassung: "1.0.0",
   origin: ORIGIN,
   pfad: PFAD,
+  // Wie eine Anwendung: `?id=…` wählt den Datensatz. Was die Seite sonst an ihrer Adresse ändert
+  // (`?entwurf=…`, `#gespeichert`), bindet nicht.
+  adressbindung: { parameter: ["id"], anker: false },
   formulare: [
     {
       name: "Angebotsentwurf",

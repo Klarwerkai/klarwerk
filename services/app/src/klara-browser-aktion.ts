@@ -133,11 +133,29 @@ export interface BrowserEntwurfsliste {
   readonly kennung: string;
 }
 
+/**
+ * Was in der Adresse ausser Herkunft und Pfad DIESEN Datensatz bestimmt (etwa `?id=…` oder eine
+ * Ankerroute `#/kunde/7`). Ändert sich ein solcher Teil, ist es ein anderes Ziel: die Erweiterung
+ * schreibt dort nichts und meldet die neue Adresse. Alles andere darf die Seite selbst ändern
+ * (`?entwurf=…`, `#gespeichert`, aufgeräumte Abfrage) — es bindet nicht, wie beim Kern.
+ */
+export interface BrowserAdressbindung {
+  readonly parameter: readonly string[];
+  readonly anker: boolean;
+}
+
+/** Ohne Angabe im Profil binden nur Herkunft und Pfad. */
+export const BROWSER_ADRESSBINDUNG_OHNE: BrowserAdressbindung = { parameter: [], anker: false };
+
+const ADRESSPARAMETER = /^[\w.-]{1,40}$/;
+
 export interface BrowserSeitenprofil {
   readonly id: string;
   readonly fassung: string;
   readonly origin: string;
   readonly pfad: string;
+  /** Siehe `BrowserAdressbindung`; fehlt sie, binden nur Herkunft und Pfad. */
+  readonly adressbindung?: BrowserAdressbindung;
   readonly formulare: readonly BrowserFormularProfil[];
   readonly entwurfsliste: BrowserEntwurfsliste | null;
   /** Adapter-/Sicherheitsverantwortung (Rolle, keine erfundene Person). */
@@ -199,6 +217,18 @@ export function pruefeSeitenprofil(p: BrowserSeitenprofil): void {
   }
   if (p.entwurfsliste && !KENNUNGSATTRIBUT.test(p.entwurfsliste.kennung)) {
     throw new BrowserVertragFehler(`Profil ${p.id}: die Entwurfskennung ist ein data-Attribut.`);
+  }
+  const bindung = p.adressbindung;
+  if (
+    bindung &&
+    (bindung.parameter.length > 10 ||
+      new Set(bindung.parameter).size !== bindung.parameter.length ||
+      !bindung.parameter.every((n) => ADRESSPARAMETER.test(n)) ||
+      typeof bindung.anker !== "boolean")
+  ) {
+    throw new BrowserVertragFehler(
+      `Profil ${p.id}: die Adressbindung nennt höchstens zehn eindeutige Parameternamen.`,
+    );
   }
   const namen = new Set<string>();
   for (const f of p.formulare) {
