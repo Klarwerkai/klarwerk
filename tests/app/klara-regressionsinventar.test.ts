@@ -320,6 +320,12 @@ const INVENTAR: readonly string[] = [
   // bleibt unverändert. Aus der Achsenregel abgeleitet, kein eigener Testlauf in dieser Lieferung.
   "tests/klara-browser-aktionen/register-auftrag.test.ts",
   "tests/klara-browser-aktionen/browser-aktion-chromium.test.ts",
+  // BPA-03 Produktanschluss (Chat 62, 17.10.2026): Erkennung und Befehlsweg ohne Server, die Türen
+  // am Server und der Produktweg mit der echten Erweiterung in Chromium. K2 meldete genau diese drei
+  // Pfade (Achse `name`, `tests/klara-browser-aktionen/`).
+  "tests/klara-browser-aktionen/erkennung-relais.test.ts",
+  "tests/klara-browser-aktionen/produktweg-routen.test.ts",
+  "tests/klara-browser-aktionen/produktweg-chromium.test.ts",
   // JOB 3366 KI-FRAGMENT-SICHTBAR: der Fragment-Hinweis am geladenen Aufgabenfenster — eine am
   // Token-Limit abgeschnittene Antwort wird im Panel als unvollständig gekennzeichnet. K2 meldete
   // den Pfad (Achse `name`, `flaeche-klara-panel`); die zwei Geschwisterdateien desselben Jobs
@@ -1852,7 +1858,8 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Integration BPA-01 auf den Hauptstand (Chat 62, 17.10.2026, gemessen): 156 Pfadtreffer —
     // +9 gegenüber dem Hauptstand (dort 147, gemessen), alle durch die mit BPA-01 hinzugekommenen
     // Dateien mit „klara" im Pfad, darunter die sieben oben nachgeführten Prüfungen.
-    expect(nurName.length).toBe(156);
+    // BPA-03 Produktanschluss (Chat 62, gemessen): +3 durch die drei neuen Prüfdateien oben — 159.
+    expect(nurName.length).toBe(159);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
