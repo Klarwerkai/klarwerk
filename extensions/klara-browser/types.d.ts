@@ -139,6 +139,248 @@ export type TechnikSicht = {
   wissenLink?: string;
   imWissenFreigegeben?: boolean;
 };
+// ================================================================================================
+// BPA-01 · DIE KONTEXTKARTE (`kontext.js`) — eine Seite und ihre Markierung, gebunden an Konto,
+// Tab und Fassung. Der Vertrag selbst ist rein; der Worker hält seinen Zustand im Sitzungsspeicher.
+// ================================================================================================
+export type Konto = { mandant: string; nutzer: string; sitzung: string };
+/**
+ * `einmalig` ist das, was Chrome mit `activeTab` gewährt: dieser Tab, diese Herkunft, bis der Tab
+ * eine andere Herkunft lädt oder geschlossen wird. `bereich` ist die eingerichtete Freigabe einer
+ * Herkunft und die einzige, die fortgesetzte Beobachtung erlaubt.
+ */
+export type Freigabe =
+  | { art: "einmalig"; tabId: number; url: string; erteiltAm: string }
+  | { art: "bereich"; herkunft: string; erteiltAm: string };
+export type Sperre = { grund: string; text: string; naechsterSchritt: string };
+export type KartenTabelle = { zeilen: { kopf: boolean; zellen: string[] }[] };
+export type Faehigkeit = { art: string; status: string; text: string; adresse?: string };
+export type Erfassung = {
+  quelle: "seite" | "assistenzfenster";
+  tabId: number;
+  url: string;
+  titel: string;
+  text: string;
+  nodes?: Piece[];
+  gaps?: Gap[];
+  incognito?: boolean;
+  frameId?: number;
+  pdfUrl?: string;
+  browser: { name: string; version: string };
+  erweiterung: string;
+};
+export type Karte = {
+  schema: string;
+  folge: number;
+  konto: Konto;
+  host: { browser: string; version: string; erweiterung: string };
+  tabId: number;
+  url: string;
+  titel: string;
+  auswahl: { text: string; tabelle: KartenTabelle | null };
+  fassung: string;
+  erfasstAm: string;
+  freigabe: "einmalig" | "bereich";
+  faehigkeiten: Faehigkeit[];
+  hinweise: string[];
+  aktionen: string[];
+  veraltet: boolean;
+};
+export type KontextImport = {
+  draftId: string;
+  url: string;
+  herkunft: string;
+  fassung: string;
+  folge: number;
+  verbindung: "aktiv" | "widerrufen";
+};
+export type KontextZustand = {
+  konto: Konto;
+  folge: number;
+  karte: Karte | null;
+  verlauf: { folge: number; url: string; titel: string; fassung: string }[];
+  freigaben: Freigabe[];
+  widerrufen: string[];
+  importe: KontextImport[];
+};
+export type KontextZiel = { url: string; tabId: number; incognito?: boolean; frameId?: number };
+export type KontextZugang =
+  | { erlaubt: true; freigabe: Freigabe; sperre?: undefined }
+  | { erlaubt: false; sperre: Sperre; freigabe?: undefined };
+/**
+ * `dokument`: der Tab lädt ein neues Dokument, dessen Adresse die Erweiterung nicht sieht. Die
+ * Karte endet; über die Freigabe entscheidet Chrome beim nächsten Lesen selbst.
+ */
+export type KontextWechsel =
+  | { art: "tab" | "geschlossen" | "dokument"; tabId: number }
+  | { art: "navigation"; tabId: number; url: string };
+export type KontextAntwort = { folge: number; tabId: number; konto: Konto; fassung: string };
+export type KontextFrisch = { tabId: number; url: string; text: string; nodes?: Piece[] };
+export type KontextAnzeige = {
+  browser: string;
+  seite: string;
+  domain: string;
+  auswahl: string;
+  tabelle: boolean;
+  erfasstAm: string;
+  fassung: string;
+  veraltet: boolean;
+  nichtGeliefert: string[];
+};
+export type KontextApi = {
+  SCHEMA: string;
+  fassung(text: string): string;
+  auswahlFassung(text: string, tabelle: KartenTabelle | null): string;
+  tabelle(nodes: Piece[]): KartenTabelle | null;
+  sperrText(grund: string, sprache: string): { text: string; naechsterSchritt: string } | null;
+  sitzung(konto: Konto, folge?: number): KontextZustand;
+  zugang(zustand: KontextZustand, ziel: KontextZiel): KontextZugang;
+  beobachtenErlaubt(zustand: KontextZustand, url: string): boolean;
+  freigeben(zustand: KontextZustand, freigabe: Freigabe): KontextZustand;
+  binden(
+    zustand: KontextZustand,
+    erfassung: Erfassung,
+    jetzt: string,
+  ): { zustand: KontextZustand; karte: Karte | null; sperre: Sperre | null };
+  wechseln(zustand: KontextZustand, ereignis: KontextWechsel): KontextZustand;
+  kontoWechseln(zustand: KontextZustand, konto: Konto): KontextZustand;
+  kontoZuordnen(zustand: KontextZustand, konto: Konto): KontextZustand;
+  antwortPruefen(
+    zustand: KontextZustand,
+    antwort: KontextAntwort,
+  ): { zustellen: boolean; grund: string; einfuegeziel: { tabId: number; url: string } | null };
+  abgleichen(
+    zustand: KontextZustand,
+    frisch: KontextFrisch,
+  ): { zustand: KontextZustand; aktuell: boolean; sperre: Sperre | null; neueFassung: string };
+  uebermittlung(zustand: KontextZustand): {
+    erlaubt: boolean;
+    sperre: Sperre | null;
+    daten: {
+      schema: string;
+      folge: number;
+      konto: Konto;
+      host: Karte["host"];
+      url: string;
+      titel: string;
+      fassung: string;
+      erfasstAm: string;
+      inhaltsrolle: string;
+      auswahl: { text: string; tabelle: KartenTabelle | null };
+    } | null;
+  };
+  auswahlFuerFrage(auswahl: { text: string; tabelle: KartenTabelle | null }): string | null;
+  erklaerungAus(roh: unknown): Erklaerungsinhalt;
+  quellenAdresse(koId: string): string | null;
+  erklaerungsText(schluessel: string, sprache: string): string;
+  begleiterHallo(angaben: { nonce: string; erweiterung: string; nutzer: string }): object;
+  begleiterAntwort(
+    roh: unknown,
+    nonce: string,
+  ): { ok: true; version: string; macos: string; protokoll: number } | { ok: false; grund: string };
+  begleiterKarte(karte: Karte): object;
+  begleiterQuittung(roh: unknown, karte: Karte): boolean;
+  anzeige(karte: Karte): KontextAnzeige;
+  importMerken(zustand: KontextZustand, draftId: string): KontextZustand;
+  widerrufen(zustand: KontextZustand, domain: string): KontextZustand;
+};
+/**
+ * Die Bindung an den vorhandenen Klara-Kern (`POST /api/klara/sessions`). `folge`/`fassung` sagen,
+ * zu WELCHER Karte die Kernsitzung zuletzt bestätigt wurde; passt keine, gilt sie nicht als
+ * verbunden. Die Kennungen sind opak und kommen vom Server.
+ */
+export type Kern = {
+  instanz: string;
+  sessionId: string;
+  documentContextId: string;
+  folge: number;
+  fassung: string;
+  url: string;
+};
+/**
+ * Klaras Antwort auf „Erkläre mir diese Angaben" — gebunden an Folge, Fassung und Tab der Karte,
+ * zu der sie gestellt wurde. `text: null` heisst: der Kern hat keine Antwort geliefert.
+ */
+export type KontextErklaerung = {
+  folge: number;
+  fassung: string;
+  tabId: number;
+  url: string;
+} & Erklaerungsinhalt;
+/** Eine Quelle der Antwort — tragend (mit Titel, Fassung, Prüfstand) oder nur herangezogen. */
+export type ErklaerungsQuelle = {
+  koId: string;
+  titel: string | null;
+  version: number | null;
+  validiert: boolean | null;
+  tragend: boolean;
+};
+/**
+ * Der gemeinsame Quellen- und Belegvertrag des Ausführungswegs, so wie die Leiste ihn zeigt:
+ * Antwort, Lage und Gründe der Belastbarkeit, Einschränkungen, Quellen und die Zuordnung der
+ * Absätze zu ihren Quellen.
+ */
+export type Erklaerungsinhalt = {
+  text: string | null;
+  answerId: string | null;
+  beantwortet: boolean;
+  lage: string | null;
+  gruende: string[];
+  vorbehalt: boolean;
+  konflikt: boolean;
+  konfliktUnbekannt: boolean;
+  quellen: ErklaerungsQuelle[];
+  absaetze: { text: string; quellen: string[] }[];
+};
+/** Die Antwort des Workers an die Leiste zum Kontext — nie eine `View` der Übernahme. */
+export type KontextSicht = {
+  kontext: true;
+  status: string;
+  angemeldet: boolean;
+  karte: KontextAnzeige | null;
+  sperre: string | null;
+  verbunden: boolean;
+  beobachtung: boolean;
+  importe: { herkunft: string; verbindung: string }[];
+  /** Gibt es etwas zu stoppen (Karte, Freigabe, Kernsitzung, laufender Schritt)? */
+  widerrufbar: boolean;
+  /** Läuft gerade Verbinden oder Erklären? */
+  laeuft: boolean;
+  /** Nur die Antwort, die zur AKTUELLEN Karte und Fassung gehört. */
+  antwort: (Erklaerungsinhalt & { fassung: string }) | null;
+  /** AC10: der Begleiter auf diesem Mac — verbunden (mit Fassungen) oder der letzte Fehler. */
+  begleiter: {
+    verbunden: boolean;
+    version: string;
+    macos: string;
+    uebergeben: boolean;
+    fehler: string;
+  } | null;
+};
+/** AC10: was der Worker über die Begleiter-Verbindung festhält. */
+export type BegleiterStand = {
+  version: string;
+  macos: string;
+  protokoll: number;
+  verbundenAm: string;
+  /** Folge der Karte, die der Begleiter angenommen hat; `-1` = keine. */
+  folge: number;
+  fassung: string;
+  fehler: string;
+};
+/** Der Native-Messaging-Kanal zu Chromes Host (`chrome.runtime.connectNative`). */
+export type NativePort = {
+  postMessage(nachricht: object): void;
+  disconnect(): void;
+  onMessage: {
+    addListener(fn: (nachricht: unknown) => void): void;
+    removeListener(fn: (nachricht: unknown) => void): void;
+  };
+  onDisconnect: {
+    addListener(fn: () => void): void;
+    removeListener(fn: () => void): void;
+  };
+};
 export type State = {
   auth?: Auth | null;
   work?: Work | null;
@@ -147,6 +389,13 @@ export type State = {
   pendingCapture?: boolean;
   technik?: Technik | null;
   technikSammlung?: TechnikSammlung | null;
+  kontext?: KontextZustand | null;
+  kontextSperre?: Sperre | null;
+  kern?: Kern | null;
+  /** Steigt mit jedem Widerruf; ein Schritt, der unter einer älteren Epoche begann, wirkt nicht. */
+  kontextEpoche?: number;
+  kontextAntwort?: KontextErklaerung | null;
+  begleiter?: BegleiterStand | null;
 };
 export type View = {
   status: string;
@@ -184,6 +433,8 @@ export type Message = {
   schutzklasse?: string;
   /** BPA-02 (Nacharbeit 5): die Art des aktuellen Belegs — `html` oder `datenblatt`. */
   art?: string;
+  /** BPA-01: die Sprache der Leiste für Klaras Antwort (`de`/`en`). */
+  sprache?: string;
 };
 export type Payload = {
   title: string;
@@ -218,7 +469,7 @@ export type CaptureResult = {
   tabellen?: unknown[];
   tabelleGewaehlt?: unknown;
 };
-type Tab = { id?: number; url?: string; title?: string };
+type Tab = { id?: number; url?: string; title?: string; incognito?: boolean };
 type Click = {
   menuItemId: string | number;
   pageUrl?: string;
@@ -229,10 +480,18 @@ type Click = {
 type Event<Callback> = { addListener(callback: Callback): void };
 declare global {
   var KLARA_TEXT: Record<string, Record<string, string>>;
+  /** BPA-01: der Kontextvertrag aus `kontext.js`; fehlt er, bindet die Erweiterung keinen Kontext. */
+  var KlaraKontext: KontextApi | undefined;
   const chrome: {
     runtime: {
       id: string;
       getURL(path: string): string;
+      getManifest?(): { version: string };
+      /**
+       * AC10: nur vorhanden, wenn das optionale Recht `nativeMessaging` erteilt ist. Chrome startet
+       * dann den registrierten Host, wenn dessen Manifest diese Erweiterung zulässt.
+       */
+      connectNative?(host: string): NativePort;
       onInstalled: Event<() => void>;
       onMessage: Event<
         (
@@ -267,6 +526,12 @@ declare global {
             /** JOB 3279 R2: das Erfassungsergebnis und die wartende Übernahme melden sich mit. */
             captureStatus?: { newValue?: string | null };
             pendingCapture?: { newValue?: boolean };
+            /** BPA-01: Karte, Sperre und Kernbindung melden sich; die Leiste liest sie neu. */
+            kontext?: { newValue?: unknown };
+            kontextSperre?: { newValue?: unknown };
+            kern?: { newValue?: unknown };
+            kontextAntwort?: { newValue?: unknown };
+            begleiter?: { newValue?: unknown };
           },
           area: string,
         ) => void
@@ -297,7 +562,9 @@ declare global {
     };
     tabs: {
       onActivated: Event<(info: { tabId: number }) => void>;
-      onUpdated: Event<(tabId: number, info: { url?: string }) => void>;
+      onUpdated: Event<(tabId: number, info: { url?: string; status?: string }) => void>;
+      /** Optional, weil ältere Prüfstände ihn nicht stellen; Chrome liefert ihn immer. */
+      onRemoved?: Event<(tabId: number) => void>;
     };
     i18n: { getMessage(key: string): string };
   };

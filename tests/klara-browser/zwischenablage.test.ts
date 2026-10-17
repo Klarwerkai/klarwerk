@@ -195,7 +195,12 @@ describe("JOB 3280 · CHR-06 — die Zwischenablage wird nur auf Klick gelesen",
     // wird dadurch nicht schwächer, sondern genauer: `permissions` bleibt frei davon, und dass es
     // genau ein optionales ist, misst `tests/browser-extension/einfuegen-ehrlich.test.tsx` (F5).
     expect(JSON.parse(read("manifest.json")).permissions).not.toContain("clipboardRead");
-    expect(JSON.parse(read("manifest.json")).optional_permissions).toEqual(["clipboardRead"]);
+    // BPA-01 AC10: `nativeMessaging` kam als ZWEITES optionales Recht hinzu (Begleiter, nur auf
+    // Klick). Bewusst nachgeführt; `clipboardRead` bleibt ausschliesslich optional.
+    expect(JSON.parse(read("manifest.json")).optional_permissions).toEqual([
+      "clipboardRead",
+      "nativeMessaging",
+    ]);
   });
 
   it("B · der Text ist bearbeitbar, und bei einem ChatGPT-Tab ist die Herkunft vorbelegt", async () => {

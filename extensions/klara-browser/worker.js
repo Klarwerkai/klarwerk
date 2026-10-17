@@ -1,6 +1,15 @@
 // Classic MV3 worker; all listeners are registered synchronously. Session storage is
 // the only durable state across worker suspension. No automatic POST on startup.
 (() => {
+  // BPA-01: der Kontextvertrag (`kontext.js`), synchron beim Start geladen. `importScripts` gibt es
+  // nur im Worker; ohne ihn (und ohne vorgeladenen Vertrag) bindet die Erweiterung keinen Kontext
+  // und sagt das — die Übernahme selbst bleibt davon unberührt.
+  /** @typedef {{ importScripts?: (...urls: string[]) => void }} Arbeiter */
+  const roh = /** @type {unknown} */ (globalThis);
+  const arbeiter = /** @type {Arbeiter} */ (roh);
+  if (!globalThis.KlaraKontext && typeof arbeiter.importScripts === "function")
+    arbeiter.importScripts("kontext.js");
+  const K = globalThis.KlaraKontext;
   const HOST = "https://app.klarwerk.ai";
   const MAX_BYTES = 5 * 1024 * 1024;
   // Deliberately smaller than the transport ceiling: also bounds session quota and preview cost.
@@ -1453,6 +1462,8 @@
   async function mutate(message, state) {
     try {
       if (message.type === "logout") {
+        // BPA-01 AC03/AC10: eine dem Begleiter übergebene Karte gehört dem abgemeldeten Konto.
+        begleiterTrennen(true);
         await chrome.storage.session.clear();
         try {
           if (state.auth) await api("logout", state.auth, {});
@@ -1484,6 +1495,7 @@
         const accountChanged = state.work?.owner && state.work.owner !== result.user.id;
         const auth = { token: result.token, id: result.user.id, email: result.user.email };
         if (accountChanged) {
+          begleiterTrennen(true);
           await chrome.storage.session.clear();
           await chrome.storage.session.set({ auth });
           return view(await read(), "account_changed");
@@ -1853,6 +1865,977 @@
     }
   }
   // KW-MARKE-END
+  // ================================================================================================
+  // KW-KONTEXT · BPA-01 — SEITE UND MARKIERUNG AN KLARA BINDEN.
+  // ================================================================================================
+  //
+  // DER WEG: Klickgeste (Symbol/Kontextmenü) → `capture()` liest die Seite → `kontextErfassen`
+  // erteilt die einmalige Freigabe dieser Geste und bindet die Karte (`kontext.js`) → die Leiste
+  // zeigt sie (`kontext`) → „Mit Klara verbinden" liest die Seite FRISCH, gleicht die Fassung ab und
+  // bindet den Kontext an eine Sitzung des vorhandenen Klara-Kerns (`POST /api/klara/sessions` bzw.
+  // `…/document-context`, angemeldet wie jeder andere Abruf). Gesendet wird dabei nur die Adresse
+  // als Dokumentmerkmal; der Server leitet daraus eine opake Kontextkennung ab. Die Markierung
+  // selbst verlässt die Erweiterung auf diesem Weg nicht.
+  //
+  // KEIN ZWEITER KERN: Sitzung, Anmeldung und Rechteprüfung sind die des Servers. Ein nativer
+  // Begleiter ist nicht angeschlossen — im Arbeitsbaum gibt es keinen.
+  //
+  // SPÄTE ANTWORT (AC02): die Bestätigung des Kerns gilt nur, wenn sie beim Eintreffen noch zu
+  // derselben Karte (Folge, Tab, Konto, Fassung) gehört; sonst wird sie nicht gebunden.
+  const KERN_ID = /^[\w-]{1,128}$/;
+  const KONTEXT_NACHRICHTEN = [
+    "kontext",
+    "kontextVerbinden",
+    "kontextErklaeren",
+    "kontextWiderrufen",
+    "kontextBegleiter",
+  ];
+  /** @type {import("./types").KontextSicht} */
+  const KONTEXT_FEHLER = {
+    kontext: true,
+    status: "storage_error",
+    angemeldet: false,
+    karte: null,
+    sperre: null,
+    verbunden: false,
+    beobachtung: false,
+    importe: [],
+    // Auch ohne lesbaren Zustand bleibt der Stopp erreichbar.
+    widerrufbar: true,
+    laeuft: false,
+    antwort: null,
+    begleiter: null,
+  };
+  let kontextBusy = false;
+
+  // ================================================================================================
+  // DER STOPP (BPA-01 · AC08, G10/G12). Ein Widerruf wartet auf nichts: er läuft auch, während
+  // Verbinden oder Erklären unterwegs sind, und auch ohne sichtbare Karte. Jeder Widerruf erhöht die
+  // Epoche; ein Schritt, der unter einer älteren Epoche begann, wirkt danach nicht mehr — eine
+  // verspätet bestätigte Kernsitzung wird geschlossen, eine verspätete Antwort verworfen.
+  // ================================================================================================
+  /** @param {Zustand} state */
+  const epocheVon = (state) => state.kontextEpoche ?? 0;
+  /** @param {number} epoche */
+  async function widerrufenSeit(epoche) {
+    return epocheVon(/** @type {Zustand} */ (await read())) !== epoche;
+  }
+
+  /** @param {Zustand} state @returns {import("./types").Konto} */
+  const kontoVon = (state) => ({
+    mandant: HOST,
+    nutzer: state.auth?.id ?? "",
+    sitzung: state.kern?.sessionId ?? "",
+  });
+
+  /**
+   * Der Kontextzustand unter dem Konto von JETZT. Gehört der gespeicherte zu einem anderen Nutzer,
+   * entsteht eine leere Sitzung — ohne Karte, Verlauf, Freigaben und Importe (AC03).
+   * @param {Zustand} state @returns {import("./types").KontextZustand | null}
+   */
+  function kontextVon(state) {
+    if (!K) return null;
+    const konto = kontoVon(state);
+    return K.kontoZuordnen(state.kontext ?? K.sitzung(konto), konto);
+  }
+
+  /** @param {string} grund @returns {import("./types").Sperre} */
+  function sperreAus(grund) {
+    const text = K?.sperrText(grund, "de");
+    return { grund, text: text?.text ?? "", naechsterSchritt: text?.naechsterSchritt ?? "" };
+  }
+
+  /**
+   * Die Chrome-Fassung, soweit der Browser sie ohne Zusatzabfrage nennt. Seit der Kürzung der
+   * Kennung ist das die Hauptversion (`141.0.0.0`); die genaue Fassung bindet erst die Hostprobe.
+   */
+  function browserFassung() {
+    const kennung = globalThis.navigator?.userAgent ?? "";
+    return { name: "Chrome", version: /Chrome\/([\d.]+)/.exec(kennung)?.[1] ?? "" };
+  }
+
+  /**
+   * @param {{id?: number, incognito?: boolean} | undefined} tab
+   * @param {{frameId?: number} | undefined} info
+   * @param {string | undefined} source
+   * @param {string} status
+   * @param {{text: string, url: string, title: string, variants: import("./types").Variants} | null} gelesen
+   */
+  async function kontextErfassen(tab, info, source, status, gelesen) {
+    if (!K || tab?.id === undefined) return;
+    try {
+      const state = /** @type {Zustand} */ (await read());
+      let zustand = kontextVon(state);
+      if (!zustand) return;
+      const jetzt = new Date().toISOString();
+      // Die Klickgeste auf Symbol oder Kontextmenü IST die einmalige Freigabe (`activeTab`) — für
+      // genau diesen Tab und diese Herkunft. Interne Seiten nimmt `freigeben` gar nicht an.
+      if (source)
+        zustand = K.freigeben(zustand, {
+          art: "einmalig",
+          tabId: tab.id,
+          url: gelesen?.url ?? source,
+          erteiltAm: jetzt,
+        });
+      /** @type {import("./types").Sperre | null} */
+      let sperre = null;
+      if (gelesen) {
+        const ergebnis = K.binden(
+          zustand,
+          {
+            quelle: "seite",
+            tabId: tab.id,
+            url: gelesen.url,
+            titel: gelesen.title,
+            text: gelesen.text,
+            nodes: gelesen.variants.selection.nodes,
+            gaps: gelesen.variants.page.gaps,
+            browser: browserFassung(),
+            erweiterung: chrome.runtime.getManifest?.().version ?? "",
+          },
+          jetzt,
+        );
+        zustand = ergebnis.zustand;
+        sperre = ergebnis.sperre;
+      } else {
+        const pruefung = K.zugang(zustand, {
+          url: source ?? "",
+          tabId: tab.id,
+          incognito: tab.incognito === true,
+          frameId: info?.frameId ?? 0,
+        });
+        if (!pruefung.erlaubt) sperre = pruefung.sperre;
+        else if (status === "source_changed") sperre = sperreAus("quelle_geaendert");
+        else if (status === "empty") sperre = sperreAus("keine_auswahl");
+        else sperre = sperreAus("zugriff_beendet");
+      }
+      await merke({ kontext: zustand, kontextSperre: sperre });
+      await begleiterNachziehen();
+    } catch {
+      // Die Übernahme darf an der Kontextkarte nie scheitern; ohne Karte bleibt nur ihre Anzeige leer.
+    }
+  }
+
+  /** @param {import("./types").KontextWechsel} ereignis */
+  async function kontextWechsel(ereignis) {
+    if (!K) return;
+    try {
+      const state = /** @type {Zustand} */ (await read());
+      if (!state.kontext) return;
+      const zustand = K.wechseln(state.kontext, ereignis);
+      if (JSON.stringify(zustand) !== JSON.stringify(state.kontext))
+        await merke({ kontext: zustand });
+      // AC02/AC10: eine dem Begleiter übergebene Karte wird mit der Karte der Erweiterung ungültig.
+      await begleiterNachziehen();
+    } catch {
+      // Ein verpasster Wechsel wird spätestens beim Verbinden sichtbar: dort wird frisch gelesen.
+    }
+  }
+
+  /** @param {Zustand} state @param {string} status @returns {import("./types").KontextSicht} */
+  function kontextSicht(state, status) {
+    const zustand = kontextVon(state);
+    const karte = zustand?.karte ?? null;
+    const kern = state.kern ?? null;
+    const verbunden =
+      karte !== null &&
+      !karte.veraltet &&
+      kern !== null &&
+      kern.sessionId !== "" &&
+      kern.folge === karte.folge &&
+      kern.fassung === karte.fassung;
+    // Die Antwort gilt nur für die Karte, zu der sie gestellt wurde — derselben Folge, derselben
+    // Fassung, demselben Tab. Nach Tabwechsel, Navigation oder Quelländerung steht sie nicht mehr da.
+    const gestellt = state.kontextAntwort ?? null;
+    const antwort =
+      karte !== null &&
+      gestellt !== null &&
+      !karte.veraltet &&
+      gestellt.folge === karte.folge &&
+      gestellt.fassung === karte.fassung &&
+      gestellt.tabId === karte.tabId
+        ? {
+            text: gestellt.text,
+            answerId: gestellt.answerId,
+            beantwortet: gestellt.beantwortet,
+            lage: gestellt.lage,
+            gruende: gestellt.gruende,
+            vorbehalt: gestellt.vorbehalt,
+            konflikt: gestellt.konflikt,
+            konfliktUnbekannt: gestellt.konfliktUnbekannt,
+            quellen: gestellt.quellen,
+            absaetze: gestellt.absaetze,
+            fassung: gestellt.fassung,
+          }
+        : null;
+    // Zu stoppen gibt es etwas, solange eine Karte, eine Freigabe, eine Kernsitzung oder ein
+    // laufender Schritt besteht — sichtbar oder nicht.
+    const widerrufbar =
+      kontextBusy ||
+      karte !== null ||
+      (zustand?.freigaben.length ?? 0) > 0 ||
+      Boolean(kern?.sessionId);
+    return {
+      kontext: true,
+      status,
+      angemeldet: Boolean(state.auth),
+      karte: karte && K ? K.anzeige(karte) : null,
+      sperre: state.kontextSperre?.grund ?? null,
+      verbunden,
+      beobachtung: zustand && karte && K ? K.beobachtenErlaubt(zustand, karte.url) : false,
+      importe: (zustand?.importe ?? []).map((i) => ({
+        herkunft: i.herkunft,
+        verbindung: i.verbindung,
+      })),
+      widerrufbar,
+      laeuft: kontextBusy,
+      antwort,
+      begleiter: begleiterSicht(state, karte),
+    };
+  }
+
+  /**
+   * Der Begleiter, wie die Leiste ihn sieht. „Verbunden" heisst: in DIESEM Worker steht ein
+   * geprüfter Kanal offen — ein gespeicherter Stand nach einem Neustart des Workers ist es nicht.
+   * @param {Zustand} state @param {import("./types").Karte | null} karte
+   * @returns {import("./types").KontextSicht["begleiter"]}
+   */
+  function begleiterSicht(state, karte) {
+    const stand = state.begleiter ?? null;
+    if (!stand) return null;
+    return {
+      verbunden: begleiterPort !== null && !stand.fehler,
+      version: stand.version,
+      macos: stand.macos,
+      uebergeben: karte !== null && stand.folge === karte.folge && stand.fassung === karte.fassung,
+      fehler: stand.fehler,
+    };
+  }
+
+  /**
+   * Zustand und Sperre schreiben — aber nur, wenn seit dem Lesen weder eine neue Karte entstanden
+   * noch widerrufen worden ist. Sonst gewänne ein langsamer Vorgang gegen eine frischere Erfassung
+   * oder gegen den Stopp.
+   * @param {Zustand} vorher @param {import("./types").KontextZustand} zustand @param {string} grund
+   */
+  async function kontextSperren(vorher, zustand, grund) {
+    const jetzt = /** @type {Zustand} */ (await read());
+    const unveraendert =
+      (jetzt.kontext?.folge ?? -1) === (vorher.kontext?.folge ?? -1) &&
+      epocheVon(jetzt) === epocheVon(vorher);
+    if (unveraendert) await merke({ kontext: zustand, kontextSperre: sperreAus(grund) });
+    // AC09/AC10: eine veraltete oder weggefallene Karte gilt auch beim Begleiter nicht mehr.
+    await begleiterNachziehen();
+    return kontextSicht(await read(), unveraendert ? grund : "widerrufen");
+  }
+
+  /**
+   * Eine Kernsitzung schliessen — bestmöglich. Ein Fehlschlag ändert nichts am örtlichen Zustand:
+   * ohne gespeicherte Kennung benutzt die Erweiterung diese Sitzung ohnehin nicht mehr.
+   * @param {import("./types").Auth} auth
+   * @param {{instanz: string, sessionId: string, documentContextId: string}} kern
+   */
+  async function kernSchliessen(auth, kern) {
+    if (!KERN_ID.test(kern.sessionId) || !KERN_ID.test(kern.documentContextId)) return;
+    try {
+      await fetch(`${HOST}/api/klara/sessions/${encodeURIComponent(kern.sessionId)}/close`, {
+        method: "POST",
+        credentials: "omit",
+        redirect: "error",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${auth.token}`,
+          "x-klara-instance": kern.instanz,
+          "x-klara-session": kern.sessionId,
+          "x-klara-document": kern.documentContextId,
+        },
+        body: "{}",
+        signal: AbortSignal.timeout(20000),
+      });
+    } catch {
+      // s. o.
+    }
+  }
+
+  /**
+   * Die Seite der Karte FRISCH lesen und die Fassung abgleichen — Text UND Tabellenstruktur (AC09).
+   * Chrome entscheidet dabei selbst, ob die Freigabe noch trägt.
+   * @param {import("./types").KontextZustand} zustand @param {import("./types").Karte} karte
+   * @returns {Promise<{zustand: import("./types").KontextZustand, grund: string}>}
+   */
+  async function frischAbgleichen(zustand, karte) {
+    if (!K) return { zustand, grund: "kontext_fehlt" };
+    /** @type {import("./types").CaptureResult | undefined} */
+    let frisch;
+    try {
+      frisch = await leseSeite(karte.tabId);
+    } catch {
+      frisch = undefined;
+    }
+    if (!frisch || typeof frisch.text !== "string" || typeof frisch.url !== "string")
+      return { zustand, grund: "zugriff_beendet" };
+    const abgleich = K.abgleichen(zustand, {
+      tabId: karte.tabId,
+      url: frisch.url,
+      text: frisch.text,
+      nodes: cleanVariants(frisch.variants).selection.nodes,
+    });
+    return { zustand: abgleich.zustand, grund: abgleich.aktuell ? "" : "quelle_geaendert" };
+  }
+
+  /**
+   * Eine abgelaufene Anmeldung löschen — aber NUR, wenn noch genau die Anmeldung besteht, unter der
+   * der Abruf begann (Nutzerkennung UND Sitzungsschlüssel). Ein verspätetes 401 darf eine
+   * inzwischen erfolgte neue Anmeldung nicht löschen, auch nicht eine neue Sitzung derselben
+   * Person (nacharbeit-6).
+   * @param {import("./types").Auth} start @returns {Promise<boolean>} `true`, wenn gelöscht wurde.
+   */
+  async function abgelaufeneAnmeldungLoeschen(start) {
+    const jetzt = /** @type {Zustand} */ (await read());
+    if (jetzt.auth?.id !== start.id || jetzt.auth?.token !== start.token) return false;
+    await chrome.storage.session.set({ auth: null });
+    return true;
+  }
+
+  /** Ein Vorgang, der vor einer Übermittlung seine Grundlage verloren hat. */
+  class VorgangUngueltig extends Error {
+    /** @param {string} grund */
+    constructor(grund) {
+      super(grund);
+      this.grund = grund;
+    }
+  }
+
+  /**
+   * GILT DER BEGONNENE VORGANG NOCH? Unmittelbar vor JEDER Übermittlung wird der aktuelle Zustand
+   * gegen den Zustand beim Beginn geprüft: Widerruf (Epoche), dieselbe Anmeldung (Kennung UND
+   * Sitzungsschlüssel), dasselbe Konto, dieselbe Kernsitzung, dieselbe Karte (Folge, Tab, Fassung,
+   * nicht veraltet) und eine noch tragende Freigabe. Ein Tab-, Konto- oder Kontextwechsel während
+   * des Neulesens führt so nie dazu, dass die alte Auswahl unter der alten Anmeldung hinausgeht.
+   * @param {Zustand} start @param {import("./types").Karte} karte @param {Zustand} jetzt
+   * @returns {string} `""`, wenn der Vorgang weiterlaufen darf; sonst der Sperrgrund.
+   */
+  function vorgangGilt(start, karte, jetzt) {
+    if (!K) return "kontext_fehlt";
+    if (epocheVon(jetzt) !== epocheVon(start)) return "verbindung_widerrufen";
+    const anmeldung =
+      Boolean(start.auth) &&
+      jetzt.auth?.id === start.auth?.id &&
+      jetzt.auth?.token === start.auth?.token;
+    if (!anmeldung) return "kontext_gewechselt";
+    if ((jetzt.kern?.sessionId ?? "") !== (start.kern?.sessionId ?? ""))
+      return "kontext_gewechselt";
+    const zustand = kontextVon(jetzt);
+    const aktuell = zustand?.karte ?? null;
+    const kontoStart = kontoVon(start);
+    const gleicheKarte =
+      zustand !== null &&
+      aktuell !== null &&
+      !aktuell.veraltet &&
+      aktuell.folge === karte.folge &&
+      aktuell.tabId === karte.tabId &&
+      aktuell.fassung === karte.fassung &&
+      zustand.konto.nutzer === kontoStart.nutzer &&
+      zustand.konto.mandant === kontoStart.mandant;
+    if (!zustand || !gleicheKarte) return "kontext_gewechselt";
+    if (!K.uebermittlung(zustand).erlaubt) return "kontext_gewechselt";
+    return "";
+  }
+
+  /**
+   * Abbruch OHNE Schreiben: der neuere Zustand (anderer Tab, anderes Konto, Widerruf) bleibt
+   * unangetastet. Der Grund reist nur in der Antwort an die Leiste.
+   * @param {string} grund
+   */
+  async function kontextAbbruch(grund) {
+    // Der Stopp meldet sich überall mit demselben Status `widerrufen` (wie `kontextWiderrufen` und
+    // `kontextSperren`); der Grund steht in `sperre`.
+    const status = grund === "verbindung_widerrufen" ? "widerrufen" : grund;
+    const sicht = kontextSicht(/** @type {Zustand} */ (await read()), status);
+    return { ...sicht, sperre: grund };
+  }
+
+  /**
+   * Der eine Abruf an den Klara-Kern. Feste Pfade, keine Adresse aus Nachricht oder Seite. Gibt
+   * es schon eine Sitzung, wird ihr Dokumentkontext neu gebunden; scheitert das (abgelaufen,
+   * geschlossen), entsteht eine neue Sitzung. Vor JEDEM einzelnen Abruf fragt `pruefe`, ob der
+   * Vorgang noch gilt; sonst geht nichts hinaus (Fehler mit dem Sperrgrund).
+   * @param {import("./types").Auth} auth @param {string} url @param {string} instanz
+   * @param {import("./types").Kern | null} kern @param {() => Promise<string>} pruefe
+   * @returns {Promise<{sessionId?: unknown, documentContextId?: unknown}>}
+   */
+  async function kernBinden(auth, url, instanz, kern, pruefe) {
+    const documentDescriptor = { kind: "saved", canonicalUrl: url };
+    const alt =
+      kern && KERN_ID.test(kern.sessionId) && KERN_ID.test(kern.documentContextId) ? kern : null;
+    /** @param {string} pfad @param {object} body @param {Record<string, string>} kopf */
+    async function senden(pfad, body, kopf) {
+      const grund = await pruefe();
+      if (grund) throw new VorgangUngueltig(grund);
+      return fetch(HOST + pfad, {
+        method: "POST",
+        credentials: "omit",
+        redirect: "error",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${auth.token}`,
+          "x-klara-instance": instanz,
+          ...kopf,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20000),
+      });
+    }
+    if (alt) {
+      const neu = await senden(
+        `/api/klara/sessions/${encodeURIComponent(alt.sessionId)}/document-context`,
+        { documentDescriptor },
+        { "x-klara-session": alt.sessionId, "x-klara-document": alt.documentContextId },
+      );
+      if (neu.status === 401) throw new Error("expired");
+      if (neu.ok) return neu.json();
+    }
+    const response = await senden(
+      "/api/klara/sessions",
+      { addinInstanceId: instanz, documentDescriptor },
+      {},
+    );
+    if (response.status === 401) throw new Error("expired");
+    if (!response.ok) throw new Error("kern_nicht_erreichbar");
+    return response.json();
+  }
+
+  async function kontextVerbinden() {
+    const state = /** @type {Zustand} */ (await read());
+    const epoche = epocheVon(state);
+    let zustand = kontextVon(state);
+    if (!K || !zustand) return kontextSicht(state, "kontext_fehlt");
+    const karte = zustand.karte;
+    if (!karte) return kontextSperren(state, zustand, "kein_kontext");
+    if (!state.auth) return kontextSperren(state, zustand, "anmeldung_fehlt");
+    // 1/2 · Die Seite FRISCH lesen und die Fassung abgleichen.
+    const abgleich = await frischAbgleichen(zustand, karte);
+    zustand = abgleich.zustand;
+    if (abgleich.grund) return kontextSperren(state, zustand, abgleich.grund);
+    if (await widerrufenSeit(epoche)) return kontextSicht(await read(), "widerrufen");
+    // 3 · Nur was die Freigabe deckt.
+    const ausgang = K.uebermittlung(zustand);
+    if (!ausgang.erlaubt || !ausgang.daten)
+      return kontextSperren(state, zustand, ausgang.sperre?.grund ?? "kein_kontext");
+    const antwort = {
+      folge: karte.folge,
+      tabId: karte.tabId,
+      konto: zustand.konto,
+      fassung: karte.fassung,
+    };
+    const instanz = state.kern?.instanz || `klara-browser-${crypto.randomUUID()}`;
+    // Unmittelbar vor jedem Kernabruf: gilt der Vorgang noch? (Befund nacharbeit-4)
+    const pruefe = async () => vorgangGilt(state, karte, /** @type {Zustand} */ (await read()));
+    /** @type {{sessionId?: unknown, documentContextId?: unknown}} */
+    let bestaetigt;
+    try {
+      bestaetigt = await kernBinden(
+        state.auth,
+        ausgang.daten.url,
+        instanz,
+        state.kern ?? null,
+        pruefe,
+      );
+    } catch (error) {
+      if (error instanceof VorgangUngueltig) return kontextAbbruch(error.grund);
+      // Ein 401 löscht nur die Anmeldung, unter der dieser Abruf begann. Ist inzwischen eine andere
+      // (oder eine neue derselben Person) da, wird abgebrochen, ohne irgendetwas zu ändern.
+      const abgelaufen = error instanceof Error && error.message === "expired";
+      if (abgelaufen && !(await abgelaufeneAnmeldungLoeschen(state.auth)))
+        return kontextAbbruch("kontext_gewechselt");
+      return kontextSperren(state, zustand, "kern_nicht_erreichbar");
+    }
+    const sessionId = typeof bestaetigt?.sessionId === "string" ? bestaetigt.sessionId : "";
+    const documentContextId =
+      typeof bestaetigt?.documentContextId === "string" ? bestaetigt.documentContextId : "";
+    if (!KERN_ID.test(sessionId) || !KERN_ID.test(documentContextId))
+      return kontextSperren(state, zustand, "kern_nicht_erreichbar");
+    // 4 · Inzwischen widerrufen oder abgemeldet/umgemeldet? Dann wird die eben bestätigte Sitzung
+    // geschlossen und NICHTS geschrieben — der neuere Zustand gehört womöglich einem anderen Konto.
+    const nachher = /** @type {Zustand} */ (await read());
+    const gleicheAnmeldung =
+      nachher.auth?.id === state.auth.id && nachher.auth?.token === state.auth.token;
+    if (epocheVon(nachher) !== epoche || !gleicheAnmeldung) {
+      await kernSchliessen(state.auth, { instanz, sessionId, documentContextId });
+      return kontextAbbruch(gleicheAnmeldung ? "verbindung_widerrufen" : "kontext_gewechselt");
+    }
+    // 5 · Gehört die Bestätigung noch zu DIESER Karte? Erst jetzt wird gebunden.
+    const aktuell = kontextVon(nachher);
+    if (!aktuell || !K.antwortPruefen(aktuell, antwort).zustellen) {
+      await merke({
+        kern: { instanz, sessionId, documentContextId, folge: -1, fassung: "", url: "" },
+        kontextSperre: sperreAus("antwort_veraltet"),
+      });
+      return kontextSicht(await read(), "antwort_veraltet");
+    }
+    await merke({
+      kontext: K.kontoZuordnen(aktuell, { ...aktuell.konto, sitzung: sessionId }),
+      kontextSperre: null,
+      kern: {
+        instanz,
+        sessionId,
+        documentContextId,
+        folge: karte.folge,
+        fassung: karte.fassung,
+        url: karte.url,
+      },
+    });
+    return kontextSicht(await read(), "verbunden");
+  }
+
+  /**
+   * „Erkläre mir diese Angaben" — der bestellte Arbeitsfall, über den VORHANDENEN Ausführungsweg
+   * des Klara-Kerns (`POST /api/klara/sessions/{id}/execute`). Dort gelten unverändert:
+   * Anmeldung und `ko.read`, die Bindung an Sitzung/Instanz/Dokumentkontext, die Einwilligung je
+   * Dokument (KA4) und die Dokumenttext-Freigabe. Ohne Einwilligung antwortet der Kern aus
+   * geprüftem Wissen ohne Modell; die Markierung schärft dann nur die Suche.
+   *
+   * Gesendet wird genau die gebundene Auswahl (Text und Tabellenzeilen). Ihre Schutzklasse kennt
+   * die Erweiterung nicht — sie geht deshalb als NICHT `intern` hinaus (G05: unbekannt bleibt
+   * geschützt), sodass der Kern sie nur mit der zweiten zentralen Freigabe ans Modell gibt.
+   * Die Antwort wird nur gebunden, wenn sie beim Eintreffen noch zu derselben Folge, demselben Tab,
+   * demselben Konto und derselben Fassung gehört und nicht widerrufen wurde.
+   * @param {string} sprache
+   */
+  async function kontextErklaeren(sprache) {
+    const state = /** @type {Zustand} */ (await read());
+    const epoche = epocheVon(state);
+    let zustand = kontextVon(state);
+    if (!K || !zustand) return kontextSicht(state, "kontext_fehlt");
+    const karte = zustand.karte;
+    if (!karte) return kontextSperren(state, zustand, "kein_kontext");
+    if (!state.auth) return kontextSperren(state, zustand, "anmeldung_fehlt");
+    const kern = state.kern ?? null;
+    const gebunden =
+      kern !== null &&
+      KERN_ID.test(kern.sessionId) &&
+      KERN_ID.test(kern.documentContextId) &&
+      kern.folge === karte.folge &&
+      kern.fassung === karte.fassung;
+    if (!kern || !gebunden) return kontextSperren(state, zustand, "nicht_verbunden");
+    const abgleich = await frischAbgleichen(zustand, karte);
+    zustand = abgleich.zustand;
+    if (abgleich.grund) return kontextSperren(state, zustand, abgleich.grund);
+    if (await widerrufenSeit(epoche)) return kontextSicht(await read(), "widerrufen");
+    const ausgang = K.uebermittlung(zustand);
+    if (!ausgang.erlaubt || !ausgang.daten)
+      return kontextSperren(state, zustand, ausgang.sperre?.grund ?? "kein_kontext");
+    const selection = K.auswahlFuerFrage(ausgang.daten.auswahl);
+    if (selection === null) return kontextSperren(state, zustand, "auswahl_zu_lang");
+    const antwort = {
+      folge: karte.folge,
+      tabId: karte.tabId,
+      konto: zustand.konto,
+      fassung: karte.fassung,
+    };
+    const locale = sprache === "en" ? "en" : "de";
+    // Unmittelbar vor der Übermittlung: gilt der Vorgang noch? Sonst geht nichts hinaus, und der
+    // neuere Zustand bleibt unangetastet (Befund nacharbeit-4).
+    const grund = vorgangGilt(state, karte, /** @type {Zustand} */ (await read()));
+    if (grund) return kontextAbbruch(grund);
+    /** @type {unknown} */
+    let roh = null;
+    try {
+      const response = await fetch(
+        `${HOST}/api/klara/sessions/${encodeURIComponent(kern.sessionId)}/execute`,
+        {
+          method: "POST",
+          credentials: "omit",
+          redirect: "error",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${state.auth.token}`,
+            "x-klara-instance": kern.instanz,
+            "x-klara-session": kern.sessionId,
+            "x-klara-document": kern.documentContextId,
+          },
+          // DIE FRAGE SIND DIE MARKIERTEN ANGABEN SELBST (nacharbeit-5). Der Kern bindet jeden
+          // Sachbegriff der Frage an jede Quelle (R-0473, `decktAlleFragebegriffe`) und verlangt
+          // zwei gemeinsame Begriffe (`MIN_ANSWER_SUBSTANCE`). Eine vom Produkt formulierte
+          // Anweisung („Erkläre …") bände Wörter, die keine Quelle führt — der Weg fände nie
+          // geprüftes Wissen. Weil die Frage damit Dokumenttext IST, wird sie als solcher gemeldet
+          // (`questionSource: "selection"`): mit Einwilligung gilt dann zusätzlich die
+          // Dokumenttext-Freigabe des Kerns, ohne sie bleibt der Weg in der Enge.
+          body: JSON.stringify({
+            question: ausgang.daten.auswahl.text.trim(),
+            locale,
+            selection,
+            selectionConfidentiality: "unbekannt",
+            questionSource: "selection",
+          }),
+          signal: AbortSignal.timeout(60000),
+        },
+      );
+      // Ein 401 löscht nur die Anmeldung, unter der diese Frage begann (s. o.).
+      if (response.status === 401 && !(await abgelaufeneAnmeldungLoeschen(state.auth)))
+        return kontextAbbruch("kontext_gewechselt");
+      if (!response.ok) return kontextSperren(state, zustand, "erklaerung_fehlgeschlagen");
+      roh = await response.json();
+    } catch {
+      return kontextSperren(state, zustand, "erklaerung_fehlgeschlagen");
+    }
+    // Erst jetzt, mit der Antwort in der Hand: gilt sie noch? Widerruf oder eine andere Anmeldung
+    // ⇒ verwerfen, NICHTS schreiben (der neuere Zustand gehört womöglich einem anderen Konto).
+    const nachher = /** @type {Zustand} */ (await read());
+    const gleicheAnmeldung =
+      nachher.auth?.id === state.auth.id && nachher.auth?.token === state.auth.token;
+    if (epocheVon(nachher) !== epoche) return kontextAbbruch("verbindung_widerrufen");
+    if (!gleicheAnmeldung) return kontextAbbruch("kontext_gewechselt");
+    const aktuell = kontextVon(nachher);
+    if (!aktuell || !K.antwortPruefen(aktuell, antwort).zustellen) {
+      await merke({ kontextSperre: sperreAus("antwort_veraltet") });
+      return kontextSicht(await read(), "antwort_veraltet");
+    }
+    // Der gemeinsame Quellen-/Belegvertrag bleibt erhalten: Quellen, Aussagezuordnung, Lage,
+    // Gründe und Einschränkungen reisen bis in die Leiste.
+    await merke({
+      kontextAntwort: {
+        folge: karte.folge,
+        fassung: karte.fassung,
+        tabId: karte.tabId,
+        url: karte.url,
+        ...K.erklaerungAus(roh),
+      },
+      kontextSperre: null,
+    });
+    return kontextSicht(await read(), "erklaert");
+  }
+
+  /**
+   * Der Stopp. Er entwertet SOFORT jede Freigabe und Karte, die besteht — auch ohne sichtbare Karte
+   * (etwa nach einem Tabwechsel) —, erhöht die Epoche (laufende Schritte wirken danach nicht mehr),
+   * verwirft eine gestellte Antwort und schliesst die Kernsitzung.
+   */
+  async function kontextWiderrufen() {
+    const state = /** @type {Zustand} */ (await read());
+    let zustand = kontextVon(state);
+    if (!K || !zustand) return kontextSicht(state, "kontext_fehlt");
+    const kern = state.kern ?? null;
+    /** @type {Set<string>} */
+    const ziele = new Set();
+    if (zustand.karte) ziele.add(zustand.karte.url);
+    if (kern?.url) ziele.add(kern.url);
+    for (const f of zustand.freigaben) ziele.add(f.art === "bereich" ? f.herkunft : f.url);
+    // Ein bereits bewusst gespeicherter Entwurf von dieser Seite bleibt auf dem Server unberührt;
+    // er wird mit Herkunft als widerrufen geführt (G05) — gelöscht wird nichts.
+    const work = state.work;
+    if (zustand.karte && work?.draftId && work.selection.url === zustand.karte.url)
+      zustand = K.importMerken(zustand, work.draftId);
+    for (const ziel of ziele) zustand = K.widerrufen(zustand, ziel);
+    /** @type {import("./types").Kern | null} */
+    let ohneSitzung = null;
+    if (kern) ohneSitzung = { ...kern, sessionId: "", documentContextId: "", folge: -1, url: "" };
+    // Der Begleiter erfährt den Widerruf sofort und verwirft die übergebene Karte (AC08/AC10).
+    begleiterTrennen(true);
+    await merke({
+      kontext: zustand,
+      kontextSperre: sperreAus("verbindung_widerrufen"),
+      kern: ohneSitzung,
+      kontextAntwort: null,
+      kontextEpoche: epocheVon(state) + 1,
+      begleiter: null,
+    });
+    if (kern && state.auth) await kernSchliessen(state.auth, kern);
+    return kontextSicht(await read(), "widerrufen");
+  }
+
+  /**
+   * @param {string} art @param {string} sprache
+   * @returns {Promise<import("./types").KontextSicht>}
+   */
+  async function kontextNachricht(art, sprache) {
+    if (art === "kontext") return kontextSicht(/** @type {Zustand} */ (await read()), "bereit");
+    // Der Stopp wartet auf nichts und ist nie „busy".
+    if (art === "kontextWiderrufen") return kontextWiderrufen();
+    if (art === "kontextBegleiter") return begleiterVerbinden();
+    if (kontextBusy) return kontextSicht(/** @type {Zustand} */ (await read()), "busy");
+    kontextBusy = true;
+    try {
+      return art === "kontextVerbinden"
+        ? await kontextVerbinden()
+        : await kontextErklaeren(sprache);
+    } finally {
+      kontextBusy = false;
+    }
+  }
+  // ================================================================================================
+  // KW-BEGLEITER · BPA-01 AC10 — DIE ERWEITERUNG UND DER KLARA-BEGLEITER AUF DIESEM MAC.
+  // ================================================================================================
+  //
+  // DER KANAL ist Chrome Native Messaging: `connectNative` startet den Host
+  // `ai.klarwerk.klara_begleiter` (apps/desktop/klara-begleiter/BrowserBruecke). Chrome lässt das
+  // nur zu, wenn (a) die Erweiterung das OPTIONALE Recht `nativeMessaging` erteilt bekommen hat —
+  // angefragt auf Klick in der Leiste — und (b) das Host-Manifest genau diese Erweiterung unter
+  // `allowed_origins` nennt. Es gibt keinen offenen Port, keinen lokalen Webserver und keine
+  // allgemeine Steuerschnittstelle; der Host liest und schreibt nur über stdin/stdout dieser einen
+  // Verbindung.
+  //
+  // DIE ECHTHEIT DER ANTWORT: jede Verbindung beginnt mit `hallo` und einem frischen Einmalwert; nur
+  // eine Antwort mit genau diesem Wert, dem Protokoll und einer Fassung gilt (`begleiterAntwort`).
+  // Die Fassungen von Begleiter und macOS hält die Leiste sichtbar fest — sie sind die Hostfassungen
+  // des Belegs.
+  //
+  // WAS HINÜBERGEHT: nur auf Klick, nur die gebundene Karte (`begleiterKarte`), nur solange sie
+  // gilt. Widerruf und Abmelden schicken `widerrufen` und trennen; der Host verwirft die Karte.
+  const BEGLEITER_HOST = "ai.klarwerk.klara_begleiter";
+  /** @type {import("./types").NativePort | null} */
+  let begleiterPort = null;
+
+  /**
+   * Die nächste Nachricht des Hosts — oder `null` nach Ablauf bzw. Trennung.
+   * @param {import("./types").NativePort} port @param {number} ms @returns {Promise<unknown>}
+   */
+  function naechsteNachricht(port, ms) {
+    return new Promise((fertig) => {
+      /** @param {unknown} nachricht */
+      const auf = (nachricht) => abschliessen(nachricht);
+      const weg = () => abschliessen(null);
+      const frist = setTimeout(() => abschliessen(null), ms);
+      /** @param {unknown} ergebnis */
+      function abschliessen(ergebnis) {
+        clearTimeout(frist);
+        port.onMessage.removeListener(auf);
+        port.onDisconnect.removeListener(weg);
+        fertig(ergebnis);
+      }
+      port.onMessage.addListener(auf);
+      port.onDisconnect.addListener(weg);
+    });
+  }
+
+  /**
+   * Der Verbindungsaufbau, der noch läuft (nacharbeit-8). Er ist von Anfang an registriert, damit
+   * Widerruf und Abmelden ihn schliessen können — nicht erst nach dem Handshake.
+   * @type {import("./types").NativePort | null}
+   */
+  let begleiterAusstehend = null;
+  /** Jeder Aufbau und jedes Trennen zählt hoch; ein älterer Aufbau wirkt danach nicht mehr. */
+  let begleiterGeneration = 0;
+  /**
+   * Die Karte, die GERADE zum Begleiter unterwegs ist und noch nicht quittiert wurde
+   * (nacharbeit-10) — gebunden an Port, Folge und Fassung, BEVOR sie gesendet wird. Ein
+   * Kontextwechsel währenddessen verwirft sie sofort; die spätere Quittung zählt dann nicht.
+   * @type {{port: import("./types").NativePort, folge: number, fassung: string} | null}
+   */
+  let begleiterUnterwegs = null;
+
+  /** @param {import("./types").NativePort} port @param {boolean} melden */
+  function portSchliessen(port, melden) {
+    try {
+      if (melden) port.postMessage({ typ: "widerrufen" });
+      port.disconnect();
+    } catch {
+      // Ein schon getrennter Kanal ist das Ziel, kein Fehler.
+    }
+  }
+
+  /**
+   * Den Kanal schliessen — den verbundenen UND einen noch laufenden Aufbau. Mit `melden` erfährt
+   * der Host vorher, dass die Karte nicht mehr gilt. Die Generation steigt: ein Aufbau, der danach
+   * noch eine Antwort bekommt, setzt weder Port noch Zustand.
+   */
+  function begleiterTrennen(melden = false) {
+    begleiterGeneration += 1;
+    const ports = [begleiterPort, begleiterAusstehend];
+    begleiterPort = null;
+    begleiterAusstehend = null;
+    begleiterUnterwegs = null;
+    for (const port of ports) if (port) portSchliessen(port, melden);
+  }
+
+  /**
+   * Die native Karte nachziehen: gilt die übergebene Karte nicht mehr — anderer Tab, Navigation,
+   * neue Erfassung, Quelländerung, Kontowechsel —, erfährt der Begleiter es SOFORT (`verwerfen`), und
+   * der Zustand vermerkt „keine Karte übergeben". Der Kanal selbst bleibt offen.
+   */
+  async function begleiterNachziehen() {
+    if (!K) return;
+    // Zuerst die UNQUITTIERTE Karte: sie kann beim Begleiter schon abgelegt sein, obwohl der
+    // Zustand der Erweiterung noch nichts von ihr weiss. Passt sie nicht mehr, sofort `verwerfen`.
+    const unterwegs = begleiterUnterwegs;
+    if (unterwegs) {
+      const aktuell = kontextVon(/** @type {Zustand} */ (await read()))?.karte ?? null;
+      const passt =
+        aktuell !== null &&
+        !aktuell.veraltet &&
+        aktuell.folge === unterwegs.folge &&
+        aktuell.fassung === unterwegs.fassung;
+      if (!passt && begleiterUnterwegs === unterwegs) {
+        begleiterUnterwegs = null;
+        try {
+          unterwegs.port.postMessage({ typ: "verwerfen", folge: unterwegs.folge });
+        } catch {
+          // Ein schon getrennter Kanal hat die Karte ohnehin verworfen.
+        }
+      }
+    }
+    const port = begleiterPort;
+    if (!port) return;
+    const state = /** @type {Zustand} */ (await read());
+    const stand = state.begleiter ?? null;
+    if (!stand || stand.folge === -1) return;
+    const karte = kontextVon(state)?.karte ?? null;
+    const gilt =
+      karte !== null &&
+      !karte.veraltet &&
+      karte.folge === stand.folge &&
+      karte.fassung === stand.fassung;
+    if (gilt) return;
+    try {
+      port.postMessage({ typ: "verwerfen", folge: stand.folge });
+    } catch {
+      begleiterTrennen();
+    }
+    await merke({ begleiter: { ...stand, folge: -1, fassung: "" } });
+  }
+
+  /** @param {string} grund */
+  async function begleiterFehler(grund) {
+    await merke({
+      begleiter: {
+        version: "",
+        macos: "",
+        protokoll: 0,
+        verbundenAm: "",
+        folge: -1,
+        fassung: "",
+        fehler: grund,
+      },
+    });
+    return kontextAbbruch(grund);
+  }
+
+  /**
+   * „Mit Begleiter verbinden": Kanal öffnen, Begleiter prüfen, dann die gültige Karte übergeben.
+   * @returns {Promise<import("./types").KontextSicht>}
+   */
+  async function begleiterVerbinden() {
+    const state = /** @type {Zustand} */ (await read());
+    if (!K) return kontextSicht(state, "kontext_fehlt");
+    if (!state.auth) return kontextAbbruch("anmeldung_fehlt");
+    const verbinde = chrome.runtime.connectNative;
+    // Ohne erteiltes `nativeMessaging` gibt es die Schnittstelle gar nicht.
+    if (typeof verbinde !== "function") return begleiterFehler("begleiter_recht_fehlt");
+    begleiterTrennen();
+    // Ab hier gehört der Aufbau GENAU dieser Generation; jeder Wartepunkt prüft sie neu.
+    const generation = begleiterGeneration;
+    const anmeldung = state.auth;
+    /** @param {Zustand} jetzt */
+    const giltNoch = (jetzt) =>
+      generation === begleiterGeneration &&
+      jetzt.auth?.id === anmeldung.id &&
+      jetzt.auth?.token === anmeldung.token;
+    /** @type {import("./types").NativePort} */
+    let port;
+    try {
+      port = verbinde.call(chrome.runtime, BEGLEITER_HOST);
+    } catch {
+      return begleiterFehler("begleiter_nicht_erreichbar");
+    }
+    // Sofort registriert: Widerruf und Abmelden schliessen auch einen Aufbau, der noch wartet.
+    begleiterAusstehend = port;
+    /** Überholter Aufbau: Port schliessen, NICHTS schreiben. */
+    const ueberholt = () => {
+      if (begleiterAusstehend === port) begleiterAusstehend = null;
+      if (begleiterPort === port) begleiterPort = null;
+      portSchliessen(port, true);
+      return kontextAbbruch("kontext_gewechselt");
+    };
+    const nonce = crypto.randomUUID();
+    const erste = naechsteNachricht(port, 5000);
+    try {
+      port.postMessage(
+        K.begleiterHallo({
+          nonce,
+          erweiterung: chrome.runtime.getManifest?.().version ?? "",
+          nutzer: anmeldung.id,
+        }),
+      );
+    } catch {
+      if (begleiterAusstehend === port) begleiterAusstehend = null;
+      return begleiterFehler("begleiter_nicht_erreichbar");
+    }
+    const hallo = K.begleiterAntwort(await erste, nonce);
+    if (!giltNoch(/** @type {Zustand} */ (await read()))) return ueberholt();
+    if (!hallo.ok) {
+      begleiterAusstehend = null;
+      portSchliessen(port, false);
+      return begleiterFehler(hallo.grund);
+    }
+    begleiterAusstehend = null;
+    begleiterPort = port;
+    port.onDisconnect.addListener(() => {
+      if (begleiterPort !== port) return;
+      begleiterPort = null;
+      void merke({ begleiter: null });
+    });
+    // Die Karte nur, wenn sie unter DIESER Anmeldung gilt und übermittelt werden darf — und erst
+    // nach dem FRISCHEN Quellenabgleich (Text und Tabellenstruktur) samt Vorgangsprüfung direkt vor
+    // der Übertragung, wie bei Verbinden und Erklären (AC02/AC09).
+    const jetzt = /** @type {Zustand} */ (await read());
+    const zustand = kontextVon(jetzt);
+    const karte = zustand?.karte ?? null;
+    let folge = -1;
+    let fassung = "";
+    if (zustand && karte && giltNoch(jetzt) && K.uebermittlung(zustand).erlaubt) {
+      const abgleich = await frischAbgleichen(zustand, karte);
+      if (!giltNoch(/** @type {Zustand} */ (await read()))) return ueberholt();
+      if (abgleich.grund) {
+        // Die Seite hat sich geändert: die Karte wird veraltet vermerkt, NICHT übertragen.
+        await kontextSperren(jetzt, abgleich.zustand, abgleich.grund);
+      } else {
+        const grund = vorgangGilt(jetzt, karte, /** @type {Zustand} */ (await read()));
+        if (!grund && begleiterPort === port) {
+          // VOR dem Senden binden: ab jetzt kann ein Kontextwechsel die Karte verwerfen lassen.
+          const unterwegs = { port, folge: karte.folge, fassung: karte.fassung };
+          begleiterUnterwegs = unterwegs;
+          const quittung = naechsteNachricht(port, 5000);
+          port.postMessage(K.begleiterKarte(karte));
+          const angenommen = K.begleiterQuittung(await quittung, karte);
+          // Noch dieselbe Übertragung? Hat ein Wechsel sie inzwischen verworfen, zählt die Quittung
+          // nicht — auch eine gültige nicht.
+          const nochUnterwegs = begleiterUnterwegs === unterwegs;
+          if (nochUnterwegs) begleiterUnterwegs = null;
+          const nachher = /** @type {Zustand} */ (await read());
+          if (!giltNoch(nachher) || begleiterPort !== port) return ueberholt();
+          if (angenommen && nochUnterwegs && vorgangGilt(jetzt, karte, nachher) === "") {
+            folge = karte.folge;
+            fassung = karte.fassung;
+          } else if (nochUnterwegs) {
+            // Keine, eine ungültige oder eine überholte Quittung: die Karte kann trotzdem schon
+            // abgelegt sein — der Begleiter verwirft sie sofort.
+            port.postMessage({ typ: "verwerfen", folge: karte.folge });
+          }
+        }
+      }
+    }
+    if (!giltNoch(/** @type {Zustand} */ (await read())) || begleiterPort !== port)
+      return ueberholt();
+    await merke({
+      begleiter: {
+        version: hallo.version,
+        macos: hallo.macos,
+        protokoll: hallo.protokoll,
+        verbundenAm: new Date().toISOString(),
+        folge,
+        fassung,
+        fehler: "",
+      },
+    });
+    // Ein Wechsel zwischen letzter Prüfung und diesem Schreiben darf die übergebene Karte nicht
+    // gültig stehen lassen: einmal nachziehen.
+    await begleiterNachziehen();
+    return kontextSicht(/** @type {Zustand} */ (await read()), "begleiter_verbunden");
+  }
+  // KW-KONTEXT-END
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("panel.html")) {
       respond({ status: "forbidden_sender" });
@@ -1869,6 +2852,16 @@
         /** @type {unknown} */ (respond)
       );
       markeLesen().then(antworte, () => antworte({ ok: false }));
+      return true;
+    }
+    // BPA-01: die Kontextkarte ist keine Übernahme — eigene Fragen, eigene Antwort (`KontextSicht`),
+    // außerhalb von `dispatch` und seiner Sperre.
+    if (message && typeof message === "object" && KONTEXT_NACHRICHTEN.includes(message.type)) {
+      const antworte = /** @type {(antwort: import("./types").KontextSicht) => void} */ (
+        /** @type {unknown} */ (respond)
+      );
+      const sprache = message.sprache ?? "de";
+      kontextNachricht(message.type, sprache).then(antworte, () => antworte(KONTEXT_FEHLER));
       return true;
     }
     dispatch(message).then(respond, () => respond({ status: "storage_error" }));
@@ -1900,7 +2893,10 @@
   // so verdrängte Erfassung GEZÄHLT und sofort im Sitzungszustand festgehalten
   // (`skippedCaptures`). Die Leiste zeigt die Zahl als Warnung, bis der Mensch die Lage beantwortet
   // (behalten, ersetzen oder verwerfen) — dann ist sie gesehen und wird zurückgesetzt.
-  /** @typedef {{tab: {id?: number, url?: string, title?: string} | undefined, info: {frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string} | undefined}} Wunsch */
+  //
+  // BPA-01 (AC05): der gemerkte Tab trägt `incognito` mit — auch ein nachgeholter Wunsch aus einem
+  // privaten Fenster wird nicht gelesen.
+  /** @typedef {{tab: {id?: number, url?: string, title?: string, incognito?: boolean} | undefined, info: {frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string} | undefined}} Wunsch */
   /** @type {Wunsch[]} */
   let gemerkt = [];
   let uebergangen = 0;
@@ -1910,7 +2906,19 @@
     gemerkt = rest;
     if (wartend) await capture(wartend.tab, wartend.info);
   }
-  /** @param {{id?: number, url?: string, title?: string} | undefined} tab @param {{frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string}} [info] */
+  /**
+   * Der EINE Skripteinsatz in eine Seite: der Auswahl-Leser. Erfassung und das frische Nachlesen
+   * vor dem Verbinden (BPA-01) gehen beide hier durch; Chrome prüft dabei selbst den Zugriff.
+   * @param {number} tabId
+   */
+  async function leseSeite(tabId) {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["selection.js"],
+    });
+    return results[0]?.result;
+  }
+  /** @param {{id?: number, url?: string, title?: string, incognito?: boolean} | undefined} tab @param {{frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string}} [info] */
   async function capture(tab, info) {
     if (captureBusy || busy) {
       // Der Merker wird SYNCHRON gesetzt, erst danach wird gespeichert — sonst könnte `nachholen()`
@@ -1983,13 +2991,19 @@
         return;
       }
       let status = "unsupported";
-      if (tab?.id !== undefined && supported(source) && (!info?.frameId || info.frameId === 0)) {
+      // BPA-01: was die Seite geliefert hat, für die Kontextkarte. Bleibt `null`, wenn nichts
+      // gelesen wurde oder werden durfte.
+      /** @type {{text: string, url: string, title: string, variants: import("./types").Variants} | null} */
+      let gelesen = null;
+      // BPA-01 · AC05: im privaten Fenster wird die Seite gar nicht erst gelesen.
+      if (
+        tab?.id !== undefined &&
+        supported(source) &&
+        (!info?.frameId || info.frameId === 0) &&
+        tab.incognito !== true
+      ) {
         try {
-          const results = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            files: ["selection.js"],
-          });
-          const s = results[0]?.result;
+          const s = await leseSeite(tab.id);
           if (
             s &&
             supported(s.url) &&
@@ -2086,12 +3100,15 @@
                 activeTabId: tab.id,
               };
               await merke(merken);
+              gelesen = { text: s.text, url: s.url, title: s.title, variants };
             }
           } else status = "source_changed";
         } catch {
           status = "capture_failed";
         }
       }
+      // BPA-01: dieselbe Geste bindet die Kontextkarte — oder hält fest, warum nicht.
+      await kontextErfassen(tab, info, source, status, gelesen);
       // JOB 3606: die Nachfrage ist beantwortet — sie und der Tab, auf den sie zeigte, gehen weg.
       await merke({
         captureStatus: status,
@@ -2158,8 +3175,19 @@
       await chrome.storage.session.set({ sourceChangedId: state.work.id });
     }
   }
-  chrome.tabs.onActivated.addListener(({ tabId }) => changed(tabId));
+  chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+    await changed(tabId);
+    // BPA-01 · AC02: ein anderer aktiver Tab entwertet die Kontextkarte.
+    await kontextWechsel({ art: "tab", tabId });
+  });
   chrome.tabs.onUpdated.addListener(async (tabId, info) => {
     if (info.url && (await read()).work?.selection.tabId === tabId) await changed(tabId, info.url);
+    // BPA-01 · AC04/AC09: Navigation. Mit Adresse entscheidet die Herkunft über die Freigabe und
+    // das Dokument über die Karte. Ohne Adresse (Chrome nennt sie nur mit Zugriff) beginnt ein neues
+    // Dokument unbekannter Lage: die Karte wird ungültig, die Freigabe prüft Chrome beim nächsten
+    // Lesen selbst.
+    if (info.url) await kontextWechsel({ art: "navigation", tabId, url: info.url });
+    else if (info.status === "loading") await kontextWechsel({ art: "dokument", tabId });
   });
+  chrome.tabs.onRemoved?.addListener((tabId) => kontextWechsel({ art: "geschlossen", tabId }));
 })();

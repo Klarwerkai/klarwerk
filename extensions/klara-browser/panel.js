@@ -677,19 +677,27 @@
    *
    * Ein fehlender Zweig ist KEIN Fehler, sondern der Fall „dieser Browser kennt die Anfrage nicht";
    * er führt in denselben ehrlichen Satz wie eine Ablehnung.
+   *
+   * BPA-01 AC10: dieselbe EINE Anfragestelle fragt auch `nativeMessaging` an — auf Klick „Mit
+   * Begleiter verbinden". Es gibt weiterhin genau einen `request` in dieser Datei.
+   * @param {"clipboardRead" | "nativeMessaging"} recht
    * @returns {Promise<boolean>}
    */
-  async function darfLesen() {
+  async function rechtAnfragen(recht) {
     const rechte =
       /** @type {{ permissions?: { request(anfrage: { permissions: string[] }): Promise<boolean> } }} */ (
         /** @type {unknown} */ (chrome)
       ).permissions;
     if (!rechte) return false;
     try {
-      return (await rechte.request({ permissions: ["clipboardRead"] })) === true;
+      return (await rechte.request({ permissions: [recht] })) === true;
     } catch {
       return false;
     }
+  }
+  /** Die Zwischenablage: das optionale Recht, angefragt in der Klickgeste. */
+  function darfLesen() {
+    return rechtAnfragen("clipboardRead");
   }
   // ================================================================================================
   // CHROME-ERFASSEN-EINFUEGEN — DER KLICK GEHÖRT DEM VORGANG, AN DEM ER GESCHAH.
@@ -1249,4 +1257,205 @@
     () => markeHolen(true),
   );
   // KW-MARKE-END
+  // ================================================================================================
+  // KW-KONTEXT · BPA-01 — DIE KONTEXTKARTE IN DER LEISTE.
+  // ================================================================================================
+  //
+  // Sie zeigt, welche Seite und welche Markierung Klara gerade kennt (Browser, Seite, Markierung,
+  // Erfassungszeit), ob sie mit dem Klara-Kern verbunden ist, was NICHT gelesen wurde — und bei
+  // einer Sperre den Grund samt zulässigem nächsten Schritt. Die Antworten kommen vom Worker
+  // (`KontextSicht`); die Leiste rechnet nichts selbst und sendet nichts ins Netz.
+  //
+  // KEINE ABFRAGESCHLEIFE: gefragt wird nach dem Aufbau, auf Knopfdruck und wenn sich Karte, Sperre,
+  // Kernbindung oder Anmeldung im Sitzungsspeicher ändern. Die Frage selbst schreibt nichts.
+  /** @type {import("./types").KontextSicht | null} */
+  let kontextStand = null;
+  let kontextLaeuft = false;
+  /** @param {unknown} antwort @returns {antwort is import("./types").KontextSicht} */
+  const istKontext = (antwort) =>
+    typeof antwort === "object" &&
+    antwort !== null &&
+    /** @type {{kontext?: unknown}} */ (antwort).kontext === true;
+  function kontextZeigen() {
+    const stand = kontextStand;
+    const karte = stand?.karte ?? null;
+    const grund = stand?.sperre ?? null;
+    // Der Stopp bleibt erreichbar, solange etwas besteht — auch ohne sichtbare Karte.
+    $("kontext").hidden = !karte && !grund && !stand?.widerrufbar && !kontextLaeuft;
+    $("kontext-karte").hidden = !karte;
+    $("kontext-browser").textContent = karte?.browser ?? "";
+    $("kontext-seite").textContent = karte ? `${karte.seite} · ${karte.domain}` : "";
+    $("kontext-auswahl").textContent = karte?.auswahl ?? "";
+    $("kontext-zeit").textContent = karte?.erfasstAm ?? "";
+    $("kontext-tabelle").hidden = !karte?.tabelle;
+    $("kontext-luecken").hidden = !karte;
+    $("kontext-rahmen").hidden = !karte?.nichtGeliefert.includes("eingebetteter_rahmen");
+    $("kontext-verbunden").hidden = !stand?.verbunden;
+    $("kontext-veraltet").hidden = !karte?.veraltet;
+    $("kontext-import").hidden = !stand?.importe.some((i) => i.verbindung === "widerrufen");
+    const text = grund ? globalThis.KlaraKontext?.sperrText(grund, language) : null;
+    $("kontext-sperre").hidden = !text;
+    $("kontext-sperre").textContent = text?.text ?? "";
+    $("kontext-schritt").hidden = !text;
+    $("kontext-schritt").textContent = text?.naechsterSchritt ?? "";
+    $("kontext-verbinden").disabled =
+      kontextLaeuft || !karte || karte.veraltet || stand?.verbunden === true;
+    $("kontext-erklaeren").disabled = kontextLaeuft || stand?.verbunden !== true;
+    $("kontext-begleiter").disabled = kontextLaeuft || stand?.angemeldet !== true;
+    // Der Begleiter mit seinen Fassungen — die Hostfassungen, die ein Beleg festhält.
+    const begleiter = stand?.begleiter ?? null;
+    const begleiterZeile =
+      begleiter?.verbunden === true
+        ? [
+            belegText("begleiterVerbunden"),
+            begleiter.version,
+            begleiter.macos,
+            belegText(begleiter.uebergeben ? "begleiterUebergeben" : "begleiterOhneKarte"),
+          ]
+            .filter((teil) => teil.length > 0)
+            .join(" · ")
+        : "";
+    $("kontext-begleiter-stand").hidden = !begleiterZeile;
+    $("kontext-begleiter-stand").textContent = begleiterZeile;
+    // Der Widerruf wartet NICHT auf einen laufenden Schritt: er ist gerade dann der Stopp.
+    $("kontext-widerrufen").disabled = !kontextLaeuft && stand?.widerrufbar !== true;
+    const antwort = stand?.antwort ?? null;
+    $("kontext-antwort-box").hidden = !antwort;
+    $("kontext-antwort").textContent = antwort?.text ?? "";
+    $("kontext-antwort-leer").hidden = !antwort || Boolean(antwort.text);
+    kontextBelegeZeigen(antwort);
+  }
+  /** @param {string} schluessel */
+  function belegText(schluessel) {
+    return globalThis.KlaraKontext?.erklaerungsText(schluessel, language) ?? "";
+  }
+  /**
+   * Die Belege der Antwort: Lage und Einschränkungen, jeder Absatz mit den Quellen, die ihn
+   * tragen, und die Quellen selbst mit dem Öffnungsweg zum Originalbeleg in Klarwerk. Alles als
+   * Text und mit `createElement` — nichts aus der Antwort wird als Markup gedeutet.
+   * @param {import("./types").KontextSicht["antwort"]} antwort
+   */
+  function kontextBelegeZeigen(antwort) {
+    const lage = antwort?.lage ? belegText(`lage_${antwort.lage}`) : "";
+    $("kontext-lage").hidden = !lage;
+    $("kontext-lage").textContent = lage;
+
+    const punkte = antwort
+      ? [
+          ...antwort.gruende
+            .filter((g) => g !== "alle_tragenden_quellen_validiert")
+            .map((g) => belegText(`grund_${g}`)),
+          antwort.vorbehalt ? belegText("vorbehalt") : "",
+          antwort.konflikt ? belegText("konflikt") : "",
+          antwort.konfliktUnbekannt ? belegText("konfliktUnbekannt") : "",
+        ].filter((p) => p.length > 0)
+      : [];
+    const einschraenkungen = $("kontext-einschraenkungen");
+    clear(einschraenkungen);
+    for (const punkt of punkte) {
+      const li = document.createElement("li");
+      li.textContent = punkt;
+      einschraenkungen.appendChild(li);
+    }
+    einschraenkungen.hidden = punkte.length === 0;
+
+    const quellen = antwort?.quellen ?? [];
+    /** @param {string} koId */
+    const titelVon = (koId) =>
+      quellen.find((q) => q.koId === koId)?.titel ?? belegText("unbenannt");
+    const absaetze = $("kontext-absaetze");
+    clear(absaetze);
+    for (const absatz of antwort?.absaetze ?? []) {
+      const text = document.createElement("p");
+      text.textContent = absatz.text;
+      const beleg = document.createElement("p");
+      beleg.className = "hint";
+      beleg.textContent =
+        absatz.quellen.length > 0
+          ? `${belegText("belegtDurch")} ${absatz.quellen.map(titelVon).join(", ")}`
+          : belegText("ohneBeleg");
+      absaetze.append(text, beleg);
+    }
+    absaetze.hidden = (antwort?.absaetze.length ?? 0) === 0;
+    // Mit Absatzzuordnung steht der Text dort; ohne sie als ein Block.
+    $("kontext-antwort").hidden = !antwort?.text || !absaetze.hidden;
+
+    const liste = $("kontext-quellen");
+    clear(liste);
+    for (const quelle of quellen) {
+      const li = document.createElement("li");
+      const titel = quelle.titel ?? belegText("unbenannt");
+      const adresse = globalThis.KlaraKontext?.quellenAdresse(quelle.koId) ?? null;
+      if (adresse) {
+        const link = document.createElement("a");
+        link.href = adresse;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = titel;
+        li.appendChild(link);
+      } else {
+        li.textContent = titel;
+      }
+      const angaben = [
+        quelle.version !== null ? `${belegText("fassung")} ${quelle.version}` : "",
+        quelle.validiert === true ? belegText("geprueft") : "",
+        quelle.validiert === false ? belegText("ungeprueft") : "",
+        quelle.tragend ? "" : belegText("herangezogen"),
+      ].filter((a) => a.length > 0);
+      if (angaben.length > 0) li.append(` · ${angaben.join(" · ")}`);
+      liste.appendChild(li);
+    }
+    $("kontext-quellen-box").hidden = quellen.length === 0;
+  }
+  /**
+   * @param {"kontext" | "kontextVerbinden" | "kontextErklaeren" | "kontextWiderrufen" | "kontextBegleiter"} art
+   */
+  async function kontextFragen(art) {
+    // Verbinden, Erklären und der Begleiter laufen; Widerruf und Lesen setzen keinen Laufzustand —
+    // der Stopp darf einen laufenden Schritt nicht als „fertig" ausgeben.
+    const handlung =
+      art === "kontextVerbinden" || art === "kontextErklaeren" || art === "kontextBegleiter";
+    if (handlung) {
+      kontextLaeuft = true;
+      kontextZeigen();
+    }
+    try {
+      const antwort = await chrome.runtime.sendMessage({ type: art, sprache: language });
+      if (istKontext(antwort)) kontextStand = antwort;
+    } catch {
+      // Ohne Antwort bleibt die letzte Karte stehen; der nächste Anlass fragt erneut.
+    } finally {
+      if (handlung) kontextLaeuft = false;
+      kontextZeigen();
+    }
+  }
+  $("kontext-verbinden").addEventListener("click", () => void kontextFragen("kontextVerbinden"));
+  $("kontext-erklaeren").addEventListener("click", () => void kontextFragen("kontextErklaeren"));
+  // AC10: das optionale Recht wird IN der Klickgeste angefragt; ob Chrome es erteilt hat, prüft der
+  // Worker selbst (ohne Recht gibt es `connectNative` nicht) und meldet den Grund.
+  $("kontext-begleiter").addEventListener("click", async () => {
+    if (kontextLaeuft) return;
+    await rechtAnfragen("nativeMessaging");
+    await kontextFragen("kontextBegleiter");
+  });
+  $("kontext-widerrufen").addEventListener("click", () => void kontextFragen("kontextWiderrufen"));
+  $("language").addEventListener("change", kontextZeigen);
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "session") return;
+    if (
+      "kontext" in changes ||
+      "kontextSperre" in changes ||
+      "kern" in changes ||
+      "kontextAntwort" in changes ||
+      "begleiter" in changes ||
+      "auth" in changes
+    )
+      void kontextFragen("kontext");
+  });
+  // Wie die Marke: erst nach dem Aufbau, nie als erste Nachricht der Leiste.
+  void aufbau.then(
+    () => kontextFragen("kontext"),
+    () => kontextFragen("kontext"),
+  );
+  // KW-KONTEXT-END
 })();

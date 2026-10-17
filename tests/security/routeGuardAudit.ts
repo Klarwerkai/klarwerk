@@ -1136,6 +1136,32 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/me/klara/gespraeche/:id/schritt": { protection: "auth" },
   "PUT /api/me/klara/gespraeche/:id/einwilligung": { protection: "auth" },
   "DELETE /api/me/klara/gespraeche/:id": { protection: "auth" },
+  // produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal zwischen Word-Fenster und
+  // Begleitapp — nur Fenster und Aktionen des EIGENEN Kontos (user.id aus der Sitzung), fremd und
+  // unbekannt 404. Wie die Gespräche: kein zusätzliches Recht. (BPA-01 nacharbeit-19: aus ff96149e.)
+  "POST /api/me/klara/begleiter/adapter": { protection: "auth" },
+  "PUT /api/me/klara/begleiter/adapter/:instanz": { protection: "auth" },
+  "DELETE /api/me/klara/begleiter/adapter/:instanz": { protection: "auth" },
+  "GET /api/me/klara/begleiter/kontext": { protection: "auth" },
+  "POST /api/me/klara/begleiter/adapter/:instanz/aktionen": { protection: "auth" },
+  // BPA-01 AC10 (gesamt-browser-kontextkarten): Nutzer + Sitzungsfingerabdruck der EIGENEN
+  // Anmeldung, nie das Merkmal selbst.
+  "GET /api/me/klara/begleiter/sitzung": { protection: "auth" },
+  // produkt:20261011:assistenz-programmadapter: Fähigkeitsübersicht je Programm — rein lesend, dazu
+  // Name/Avatar aus dem EIGENEN Assistenzprofil (user.id); kein Wissensobjekt, kein Dateipfad.
+  // (BPA-01 nacharbeit-19: aus 345b4467.)
+  "GET /api/klara/programme": { protection: "auth" },
+  // Die Hostwege: Bindung ausstellen und Ziel prüfen (Mandant/Nutzer aus der Sitzung), die
+  // Markierung über die Bedienungshilfe lesen (nur passender Kontext zurück) — angemeldet genügt.
+  // Die Dateiaufnahme legt ein Objekt an: dasselbe Recht wie `POST /api/objects`, Anmeldung vor dem
+  // Parsen des großen Rumpfs.
+  "POST /api/klara/programme/verbinden": { protection: "auth" },
+  "POST /api/klara/programme/wirkung": { protection: "auth" },
+  "POST /api/klara/programme/finder": { protection: "ko.create" },
+  "POST /api/klara/programme/bedienungshilfe": { protection: "auth" },
+  // Herkunft einer Finder-Aufnahme: angemeldet, und nur der Eigentümer am Objekt bekommt sie (sonst
+  // 404 ohne Existenzauskunft).
+  "GET /api/klara/programme/finder/:objektId": { protection: "auth" },
   // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): KI-Aufträge am EIGENEN Gespräch —
   // Konto aus der Sitzung, fremd und unbekannt 404, Quellen nur nach `sichtbarkeitsfilterFuer`.
   // Die Verbindungsprobe ist ein echter Modellaufruf und trägt das Recht der vorhandenen Probe.
