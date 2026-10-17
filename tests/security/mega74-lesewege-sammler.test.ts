@@ -1414,6 +1414,29 @@ const REGISTER: Record<string, Eintrag> = {
   },
   // produkt:20261008:klara-aktionen (Klara 05): die Aufträge liegen IM eigenen Gespräch. Titel und
   // Kennungen darin hat die Person selbst auf ihrem Bildschirm gewählt; kein Weg liest ein Objekt.
+  // produkt:20261011:assistenz-browser-aktionen (BPA-03): Browseraufträge liegen IM eigenen
+  // Gespräch (Konto aus der Anmeldung, fremd und unbekannt 404). Sie lesen kein Wissensobjekt; die
+  // Antwort ist der eigene Auftrag (Beschriftungen aus dem Seitenprofil, Stände, Kennungen).
+  "POST /api/me/klara/browser-auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt einen eigenen Browserauftrag an; Antwort ist dieser Auftrag, kein Objektinhalt.",
+  },
+  "GET /api/me/klara/browser-auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur die Browseraufträge des eigenen aktuellen Gesprächs (user.id).",
+  },
+  "GET /api/me/klara/browser-auftraege/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ein eigener Browserauftrag; fremd und unbekannt 404.",
+  },
+  "POST /api/me/klara/browser-auftraege/:id/takt": {
+    urteil: "EIGENER_BESTAND",
+    grund: "eigener Lauf derselben Anmeldung; Antwort eigener Auftrag und nächster Befehl.",
+  },
+  "POST /api/me/klara/browser-auftraege/:id/steuerung": {
+    urteil: "EIGENER_BESTAND",
+    grund: "steuert einen eigenen Lauf derselben Anmeldung; Antwort eigener Auftrag.",
+  },
   "GET /api/me/klara/gespraeche/:id/auftraege": {
     urteil: "EIGENER_BESTAND",
     grund: "nur die Aufträge eines eigenen Gesprächs (user.id), fremd und unbekannt 404.",

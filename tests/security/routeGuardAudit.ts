@@ -1182,6 +1182,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // produkt:20261008:klara-aktionen (Klara 05): Ausführungsaufträge im EIGENEN Gespräch — dieselbe
   // Tür wie das Gespräch. Kein zusätzliches Recht: die Grenze kann nur verhindern; ob ein Schritt
   // wirkt, entscheidet der vorhandene Produktweg (`/api/drafts`, `/api/kos/:id`) mit seinen Rechten.
+  // produkt:20261011:assistenz-browser-aktionen (BPA-03): Browseraufträge im EIGENEN Gespräch
+  // (klara-browser-aktion-routes.ts). Die Tür verlangt `ko.read` wie alle Klara-Wege; jede Wirkung
+  // prüft der Dienst vor ihrem Schritt frisch zusätzlich mit `ko.create` (Anmeldung + Rolle).
+  "POST /api/me/klara/browser-auftraege": { protection: "ko.read" },
+  "GET /api/me/klara/browser-auftraege": { protection: "ko.read" },
+  "GET /api/me/klara/browser-auftraege/:id": { protection: "ko.read" },
+  "POST /api/me/klara/browser-auftraege/:id/takt": { protection: "ko.read" },
+  "POST /api/me/klara/browser-auftraege/:id/steuerung": { protection: "ko.read" },
   "GET /api/me/klara/gespraeche/:id/auftraege": { protection: "auth" },
   "POST /api/me/klara/gespraeche/:id/auftraege": { protection: "auth" },
   "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/fassungen": { protection: "auth" },
