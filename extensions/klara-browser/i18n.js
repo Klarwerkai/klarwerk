@@ -597,6 +597,8 @@ globalThis.KLARA_AKTION_TEXT = {
     aktion_zu_viele: "Es laufen schon mehrere Aufträge. Bitte erst einen beenden.",
     aktion_nur_sitzung: "Nur mit eigener Anmeldung möglich.",
     aktion_veraltet: "Eine Meldung an Klarwerk kam doppelt an. Bitte fortsetzen.",
+    aktion_ziel_nicht_vorn:
+      "Freigegeben ist ein anderer Tab als der, in dem du zuletzt warst. Wechsle zu ihm oder gib diesen Tab mit dem Klara-Symbol frei.",
     aktionKeinLoeschen:
       "Diese Seite bietet Klara kein Löschen an. Der Entwurf bleibt gespeichert; lösche ihn bei Bedarf selbst.",
     aktion_invalid_message: "Bitte einen Auftrag eingeben.",
@@ -640,6 +642,8 @@ globalThis.KLARA_AKTION_TEXT = {
     aktion_zu_viele: "Several tasks are already running. Please finish one first.",
     aktion_nur_sitzung: "Only possible with your own sign-in.",
     aktion_veraltet: "A message to Klarwerk arrived twice. Please continue.",
+    aktion_ziel_nicht_vorn:
+      "The released tab is not the one you were last in. Switch to it or release this tab with the Klara icon.",
     aktionKeinLoeschen:
       "This page offers Klara no delete. The draft stays saved; delete it yourself if needed.",
     aktion_invalid_message: "Please enter a task.",

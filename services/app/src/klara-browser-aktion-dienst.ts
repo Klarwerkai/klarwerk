@@ -276,6 +276,23 @@ function ortAus(url: string): { origin: string; pfad: string } | null {
   }
 }
 
+/**
+ * Darf derselbe Vorgang neu geprüft werden? Nach einer Übergabe, einem Abbruch oder einem
+ * Rechteentzug — solange dabei nichts Bleibendes geschah (kein Speichern, kein Auslösen, auch kein
+ * unklares). Sonst wäre ein zweiter Klick eine zweite Speicherung.
+ */
+function neuPruefbar(a: {
+  readonly stand: string;
+  readonly schritte: readonly { readonly art: string; readonly stand: string }[];
+}): boolean {
+  if (!["uebergabe", "abgebrochen", "gestoppt_recht"].includes(a.stand)) return false;
+  return !a.schritte.some(
+    (s) =>
+      (s.art === "speichern" || s.art === "ausloesen") &&
+      (s.stand === "erfolgt" || s.stand === "unklar"),
+  );
+}
+
 function angebot(
   a: BrowserAnsicht,
   loeschenErlaubt: boolean,
@@ -360,8 +377,9 @@ export class BrowserAktionDienst {
     const marke = browserSitzungsmarke(token);
     // Ein zweiter Klick auf „Ausführen" (derselbe Vorgang, dasselbe Ziel) ist DERSELBE Auftrag
     // (AC07) — auch nach einem Neustart, dann aus dem Verlauf. Neu geprüft wird dagegen derselbe
-    // Text für ein ANDERES Ziel (anderer Tab, andere Seite) und nach einer Übergabe: sie bewirkte auf
-    // der Seite nichts, und ihr nächster Schritt lautet gerade, Klara erneut zu beauftragen.
+    // Text für ein ANDERES Ziel (anderer Tab, andere Seite) und nach einer Übergabe, einem Abbruch
+    // oder einem Rechteentzug, bei dem nichts Bleibendes geschah: ihr nächster Schritt lautet
+    // gerade, Klara erneut zu beauftragen.
     const schon = this.vorgaenge.get(`${nutzer.id}:${vorgang}`);
     const frueher = schon ? this.laeufe.get(schon) : undefined;
     if (frueher) {
@@ -369,7 +387,7 @@ export class BrowserAktionDienst {
         frueher.marke === marke &&
         frueher.basis.ort === ortText &&
         frueher.ausfuehrung.auftrag.ziel.tabId === tabId &&
-        frueher.ausfuehrung.ansicht().stand !== "uebergabe"
+        !neuPruefbar(frueher.ausfuehrung.ansicht())
       ) {
         return { art: "auftrag", ...(await this.antwort(frueher)) };
       }
@@ -378,7 +396,7 @@ export class BrowserAktionDienst {
       const imVerlauf = [...(g?.browserAuftraege ?? [])]
         .reverse()
         .find((e) => e.vorgang === vorgang);
-      if (imVerlauf && imVerlauf.ort === ortText && imVerlauf.stand !== "uebergabe") {
+      if (imVerlauf && imVerlauf.ort === ortText && !neuPruefbar(imVerlauf)) {
         return { art: "auftrag", auftrag: this.sichtAus(imVerlauf, g?.id ?? null), befehl: null };
       }
     }

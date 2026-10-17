@@ -32,6 +32,7 @@ import {
   inMemoryRepos,
 } from "../../services/app/src/build-app";
 import type { PublicUser, Role } from "../../services/auth";
+import { ORIGIN, PFAD, TESTSEITE } from "../klara-browser-aktionen/testseite";
 import { type Routenmitschrift, schreibeRouterentscheidungMit } from "./registrierte-routen";
 
 /** Die vier Rollen des Rollenmodells (`services/auth/src/types.ts:1`), in ihrer Reihenfolge. */
@@ -114,6 +115,12 @@ export interface Buehne {
    * es eine Auskunft des Routers.
    */
   mitschrift: Routenmitschrift;
+  /**
+   * BPA-03 (`klaraBrowserAktionRoutes`): die Adresse der synthetischen Seite, für die diese Bühne
+   * ein Seitenprofil trägt. Ohne Profil endete jeder Browserauftrag als Übergabe, und die Türen
+   * `…/takt` und `…/steuerung` hätten nie einen Lauf, an dem sich ihre Wirkung nachlesen liesse.
+   */
+  browserSeite: string;
 }
 
 interface OffeneInstanz {
@@ -222,7 +229,14 @@ async function baueInstanz(): Promise<{ buehne: Buehne; eintrag: OffeneInstanz }
   }
   const repos = inMemoryRepos();
   const services = assembleServices(repos);
-  const app = buildApp(services);
+  // Das synthetische Seitenprofil von BPA-03 wirkt nur auf `klaraBrowserAktionRoutes`; kurze Fristen,
+  // damit ein Takt in der Messung nicht 20 s auf einen Schritt wartet.
+  const app = buildApp(services, {
+    browserAktion: {
+      seitenprofile: [TESTSEITE],
+      fristen: { abholMs: 3000, antwortMs: 3000, taktMs: 300 },
+    },
+  });
   // VOR `ready()`: Fastify nimmt danach keinen Hook mehr an. Der Mitschreiber liest ausschliesslich
   // `request.routeOptions.url` mit, reicht die Nutzlast unverändert weiter und läuft synchron —
   // Begründung im Kopf von `registrierte-routen.ts`.
@@ -254,7 +268,10 @@ async function baueInstanz(): Promise<{ buehne: Buehne; eintrag: OffeneInstanz }
   for (const rolle of ROLLEN) {
     sitzung[rolle] = await anmelden(app, konto[rolle].email);
   }
-  return { buehne: { app, services, repos, konto, sitzung, mitschrift }, eintrag };
+  return {
+    buehne: { app, services, repos, konto, sitzung, mitschrift, browserSeite: `${ORIGIN}${PFAD}` },
+    eintrag,
+  };
 }
 
 /** Die Kopfzeilen eines Akteurs: ein Bearer-Token — oder gar nichts. */

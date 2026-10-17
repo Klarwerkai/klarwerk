@@ -186,6 +186,56 @@ const TRENNBAR: readonly (readonly [RegExp, string])[] = [
 ];
 
 const woerter = (t: string) => t.toLowerCase().split(/[^\p{L}\p{N}]+/u);
+/** Häufige Beiwörter, die vor einem Hauptwort gebeugt stehen („Neuer Empfänger", „Erste Nachricht"). */
+const BEIWORTSTAMM = new Set([
+  "neu",
+  "neuest",
+  "alt",
+  "erst",
+  "letzt",
+  "nächst",
+  "zweit",
+  "dritt",
+  "ander",
+  "weiter",
+  "gleich",
+  "richtig",
+  "falsch",
+  "dringend",
+  "folgend",
+  "eigen",
+  "offen",
+  "gesamt",
+  "frei",
+  "voll",
+  "leer",
+  "privat",
+  "intern",
+  "extern",
+  "kurz",
+  "lang",
+  "gut",
+  "schlecht",
+  "aktuell",
+]);
+
+/**
+ * Steht direkt vor einer Beschriftung ein gebeugtes Beiwort? Kleingeschrieben ist jedes Wort mit
+ * Beugungsendung verdächtig (Hauptwörter schreibt man gross); grossgeschrieben (am Wertanfang) nur
+ * ein bekannter Beiwortstamm, ein Partizip („Geänderter") oder -ig/-lich/-isch („Wichtige").
+ */
+function beiwortVor(wort: string): boolean {
+  if (!/^\p{L}+$/u.test(wort)) return false;
+  const k = wort.toLowerCase();
+  const m = /^(\p{L}+?)(e|er|es|en|em)$/u.exec(k);
+  if (!m) return false;
+  if (wort === k) return true;
+  const stamm = m[1] ?? "";
+  return BEIWORTSTAMM.has(stamm) || /^ge\p{L}+t$/u.test(stamm) || /(ig|lich|isch)$/u.test(stamm);
+}
+
+/** Der Infinitiv im Befehlsteil — nach einem ungeklammerten Wert mehrdeutig. */
+const INFINITIV_SPEICHERN = /(?:^|[^\p{L}])(speichern|sichern|abspeichern)(?=$|[^\p{L}])/iu;
 
 /**
  * Bereiche in Anführungszeichen — Beschriftungen und Befehlswörter darin zählen nicht. Öffnet ein
@@ -294,6 +344,24 @@ function werteAus(
       if (fraglich) {
         return klaerung(
           `Gehört „${fraglich[2]}" zum Wert von „${m.label}" oder ist es ein Auftrag? Setze den Wert in Anführungszeichen.`,
+        );
+      }
+      // Ein Infinitiv nach einem ungeklammerten Wert („… prüfen und sichern", „…, speichern.") kann
+      // Teil des Werts sein. Eindeutig ist nur die Du-Form („und speichere ihn").
+      const infinitiv = befehl ? INFINITIV_SPEICHERN.exec(befehl[0]) : null;
+      if (infinitiv) {
+        return klaerung(
+          `Gehört „${infinitiv[1]}" zum Wert von „${m.label}", oder soll Klara speichern? Sage dann „und speichere ihn" oder setze den Wert in Anführungszeichen.`,
+        );
+      }
+      // Reicht der Wert bis zur nächsten Beschriftung, ohne Satzzeichen dazwischen, und endet er
+      // auf ein gebeugtes Beiwort („Neuer Empfänger …", „… neue Nachricht"), ist offen, ob die
+      // Beschriftung ein Feld beginnt oder ein Wort des Werts ist. Nicht still aufteilen.
+      const naechste = sortiert[i + 1];
+      const letztes = wert.split(/\s+/u).at(-1) ?? "";
+      if (naechste && !befehl && !/[,;:.!?]\s*$/u.test(abschnitt) && beiwortVor(letztes)) {
+        return klaerung(
+          `„${naechste.label}" folgt direkt auf „${letztes}". Gehört es zum Wert von „${m.label}", oder beginnt dort das Feld „${naechste.label}"? Setze den Wert von „${m.label}" in Anführungszeichen oder ein Komma dahinter.`,
         );
       }
     }

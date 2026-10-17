@@ -541,6 +541,25 @@ die gelesene Version.
 | `GET` | `/api/meetings/:id/zeitstellen/:zeitMs` | `ko.read`, Meetingrecht | — | 200 `{ rueckmeldungen }` | 400 `VALIDATION`; 404 `NOT_FOUND` |
 | `POST` | `/api/meetings/:id/fassungsabgleich` | `ko.create`, Meetingrecht, Leserecht am aktuellen Quellobjekt des Originals und an der neuen Fassung (ein abgelöstes Objekt zählt nicht) | Rumpf `{ originalObjectId, neueFassungObjectId }` | 200 `{ dateiId, quelleId, fassung, eintraege: [{ rueckmeldungId, sldId, stand }] }` — `dateiId` logisches Original, `quelleId` das Objekt der neuen Fassung (Rechte und Öffnen dort); Einträge nur aus lesbaren Mitschriften | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` |
 
+### 3.12 Klara im Browser: berechtigte Funktionen auf einer freigegebenen Seite (`klaraBrowserAktionRoutes`, BPA-03)
+
+Die Erweiterung (`extensions/klara-browser/worker.js`) legt den Auftrag an, holt jeden Schritt im
+Takt ab und führt ihn nur im freigegebenen Tab aus. Jede Route verlangt `ko.read` und danach eine
+eigene Anmeldesitzung (Bearer oder Sitzungskeks; sonst 403 `FORBIDDEN`, `grund` `nur_sitzung`). Jede
+Wirkung (Eintragen, Speichern, Auslösen, Löschen bei der Rücknahme) prüft der Dienst
+(`klara-browser-aktion-dienst.ts`, `rechte`) unmittelbar vor ihrem Schritt frisch mit `ko.create`
+— ohne das Recht endet der Lauf `gestoppt_recht`, kein HTTP-Fehler. Ein Lauf gehört der Anmeldung,
+die ihn anlegte; ohne Seitenprofil (`buildApp`-Option `browserAktion.seitenprofile`) wird jede
+Seite zur Übergabe „nicht unterstützt".
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/me/klara/browser-auftraege` | `ko.read`; eigene Anmeldesitzung | Rumpf `{ vorgang, quelle: "getippt" \| "gesprochen", wortlaut, ziel: { tabId, url }, host: { browser, version, erweiterung } }` | 201 `{ art: "auftrag", auftrag, befehl }` — neuer Lauf oder Übergabe im eigenen Klara-Gespräch; derselbe Vorgang für dasselbe Ziel ist derselbe Auftrag; 200 `{ art: "klaerung", text }` — nichts angelegt | 400 `VALIDATION`; 403 `FORBIDDEN` (`nur_sitzung`); 409 `CONFLICT` (`zu_viele`); 404/409 aus dem Gespräch; Dienstfehler |
+| `GET` | `/api/me/klara/browser-auftraege` | `ko.read`; eigene Anmeldesitzung | — | 200 `{ auftraege }` — die Browseraufträge des eigenen aktuellen Gesprächs, neueste zuerst | 403 `FORBIDDEN` (`nur_sitzung`); Dienstfehler |
+| `GET` | `/api/me/klara/browser-auftraege/:id` | `ko.read`; eigene Anmeldesitzung | — | 200 `{ auftrag }` — der lebende Lauf dieser Anmeldung oder der Eintrag im eigenen Gespräch | 403 `FORBIDDEN` (`nur_sitzung`); 404 `NOT_FOUND` (`unbekannt`, auch fremd); Dienstfehler |
+| `POST` | `/api/me/klara/browser-auftraege/:id/takt` | `ko.read`; eigene Anmeldesitzung, Lauf derselben Anmeldung | Rumpf `{ folge, antwort?: { nr, ergebnis }, seite?: { adapter?, recht? } }` — `folge` streng steigend | 200 `{ auftrag, befehl }` — wartet bis zum nächsten Befehl oder zur Ruhe des Laufs (höchstens 20 s) | 400 `VALIDATION`; 403 `FORBIDDEN` (`nur_sitzung`); 404 `NOT_FOUND` (`unbekannt`, auch fremd); 409 `CONFLICT` (`andere_sitzung`, `veraltet`); Dienstfehler |
+| `POST` | `/api/me/klara/browser-auftraege/:id/steuerung` | `ko.read`; eigene Anmeldesitzung, Lauf derselben Anmeldung | Rumpf `{ art: "pause" \| "fortsetzen" \| "abbruch" \| "bestaetigen" \| "ruecknahme" \| "widerruf", fingerabdruck? }` | 200 `{ auftrag, befehl }` | 400 `VALIDATION`; 403 `FORBIDDEN` (`nur_sitzung`); 404 `NOT_FOUND` (`unbekannt`); 409 `CONFLICT` (`andere_sitzung`, `keine_bestaetigung`, `bestaetigung_passt_nicht`, `laeuft`); Dienstfehler |
+
 ## 4 Testabdeckung und Abdeckungsziel
 
 Das Abdeckungsziel ist das vorhandene und wird hier nicht neu gesetzt: `vitest.config.ts`,

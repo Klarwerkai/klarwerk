@@ -173,13 +173,63 @@ describe("BPA-03 · Erkennung · Gegenproben zu den Prüfbefunden", () => {
       ok: true,
       felder: [{ label: "Betreff", wert: BETREFF }],
     });
+    // Der Infinitiv nach einem ungeklammerten Wert ist mehrdeutig (dritte Prüfung, D3); die Du-Form nicht.
     expect(
-      erkenne(`Angebotsentwurf: Betreff ist ${BETREFF}, Empfänger ist ${EMPFAENGER}, speichern.`),
+      art(`Angebotsentwurf: Betreff ist ${BETREFF}, Empfänger ist ${EMPFAENGER}, speichern.`),
+    ).toBe("klaerung");
+    expect(
+      erkenne(
+        `Angebotsentwurf: Betreff ist ${BETREFF}, Empfänger ist ${EMPFAENGER} und speichere ihn.`,
+      ),
     ).toMatchObject({ ok: true, speichern: true });
     const r = erkenne(
       `Bitte fülle den Angebotsentwurf mit Betreff „${BETREFF}" und Empfänger ${EMPFAENGER} aus und speichere ihn.`,
     );
     expect(r.ok ? "" : r.art === "klaerung" && r.text).toContain('„aus"');
+  });
+
+  it("D1 · eine Beschriftung direkt nach einem gebeugten Beiwort teilt keinen Wert still auf", () => {
+    for (const w of [
+      "Angebotsentwurf Betreff Wechsel Nachricht Neuer Empfänger ab Montag ist Herr Kurz und speichere den Entwurf",
+      "Angebotsentwurf Betreff Hinweis Nachricht Bitte begrüßt neue Empfänger herzlich",
+      "Angebotsentwurf Betreff Korrektur Nachricht Geänderter Empfänger folgt",
+    ]) {
+      const r = erkenne(w);
+      expect(r.ok ? "" : r.art === "klaerung" && r.text, w).toContain("folgt direkt auf");
+    }
+    // Hauptwörter mit derselben Endung bleiben Werte; ein Komma trennt eindeutig.
+    expect(
+      erkenne("Rückmeldung Betreff Daten Nachricht Bitte um Rückruf und speichere sie"),
+    ).toMatchObject({
+      ok: true,
+      felder: [
+        { label: "Betreff", wert: "Daten" },
+        { label: "Nachricht", wert: "Bitte um Rückruf" },
+      ],
+    });
+    expect(
+      erkenne("Angebotsentwurf Betreff Wechsel Nachricht Neuer, Empfänger a@b.invalid"),
+    ).toMatchObject({
+      ok: true,
+      felder: [
+        { label: "Betreff", wert: "Wechsel" },
+        { label: "Nachricht", wert: "Neuer" },
+        { label: "Empfänger", wert: "a@b.invalid" },
+      ],
+    });
+  });
+
+  it("D3 · ein Infinitiv am Ende eines ungeklammerten Werts ist kein stiller Speicherauftrag", () => {
+    for (const w of [
+      "Rückmeldung Betreff Daten Nachricht Bitte alle Dateien prüfen, sichern.",
+      "Rückmeldung Betreff Daten Nachricht Bitte alle Dateien prüfen und sichern",
+    ]) {
+      const r = erkenne(w);
+      expect(r.ok ? "" : r.art === "klaerung" && r.text, w).toContain('„sichern"');
+    }
+    expect(
+      erkenne(`Fülle den Angebotsentwurf aus: Betreff „${BETREFF}" und speichern.`),
+    ).toMatchObject({ ok: true, speichern: true });
   });
 
   it("M4 · ein Klick ohne genannten Knopf fällt nicht still weg — Klärung nennt die Knöpfe", () => {

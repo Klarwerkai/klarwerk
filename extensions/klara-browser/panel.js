@@ -1631,11 +1631,20 @@
     aktionStartet = true;
     aktionZeigen();
     try {
+      // Läuft die Leiste als Tab (nicht im Seitenfenster), ist dieser Tab keine Seite für Klara.
+      /** @type {number | undefined} */
+      let leisteTab;
+      try {
+        leisteTab = (await chrome.tabs.getCurrent())?.id;
+      } catch {
+        leisteTab = undefined;
+      }
       await aktionFragen({
         type: "aktionStarten",
         wortlaut,
         quelle: aktionQuelle,
         vorgang: aktionVorgang,
+        ...(leisteTab === undefined ? {} : { leisteTab }),
       });
     } finally {
       aktionStartet = false;

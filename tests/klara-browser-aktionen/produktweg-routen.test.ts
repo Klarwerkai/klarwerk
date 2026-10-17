@@ -1200,6 +1200,31 @@ describe("BPA-03 · Produktweg: Einordnung für die Prüftorregister (Chat 57)",
     expect(seite.z.speicherungen).toBe(0);
   });
 
+  it("N3 · nach einem Abbruch ohne bleibende Wirkung wird derselbe Vorgang neu geprüft; nach einer Speicherung bleibt er derselbe Auftrag", async () => {
+    const { app, person, lege } = await aufbau();
+    const seite = seitenmodell();
+    const vorgang = `vorgang-${randomUUID()}`;
+    const r1 = await lege(ENTWURF, { vorgang });
+    const eins = r1.json() as Antwort;
+    const leiste = new Leiste(app, person.token, eins.auftrag.id, seite);
+    await bisZu(leiste, seite, eins, "fuelle");
+    const ab = await leiste.steuere("abbruch");
+    expect(ab.statusCode, ab.body).toBe(200);
+    const beendet = await leiste.treibe(ab.json() as Antwort);
+    expect(beendet.stand).toBe("abgebrochen");
+    expect(seite.z.speicherungen).toBe(0);
+    const r2 = await lege(ENTWURF, { vorgang });
+    const zwei = r2.json() as Antwort;
+    expect(zwei.auftrag.id).not.toBe(eins.auftrag.id);
+    const ende = await new Leiste(app, person.token, zwei.auftrag.id, seite).treibe(zwei);
+    expect(ende.stand).toBe("fertig");
+    expect(seite.z.speicherungen).toBe(1);
+    // Danach ist derselbe Vorgang wieder derselbe Auftrag: keine zweite Speicherung.
+    const r3 = await lege(ENTWURF, { vorgang });
+    expect((r3.json() as Antwort).auftrag.id).toBe(zwei.auftrag.id);
+    expect(seite.z.speicherungen).toBe(1);
+  });
+
   it("N3 · derselbe Vorgang erst auf einer nicht unterstützten Seite, dann auf der richtigen: neu geprüft (neuer Lauf); nach dem fertigen Lauf bleibt er derselbe", async () => {
     const { app, person, lege } = await aufbau();
     const seite = seitenmodell();

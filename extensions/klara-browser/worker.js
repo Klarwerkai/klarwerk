@@ -3102,12 +3102,18 @@
           // Dieselbe Nummer noch einmal (die Antwort ging verloren): nicht erneut ausführen, die
           // gemerkte Antwort geht noch einmal hinaus. Eine Nummer, die schon begonnen hatte, aber
           // ohne gemerkte Antwort ist (Worker unterbrochen), eine kleinere als die höchste
-          // ausgeführte und ein Befehl, den der Kern als schon abgeholt kennzeichnet (`wiederholt`),
-          // werden NIE ausgeführt: ihr Ausgang ist offen — der Kern gleicht an der Seite ab. Nur
-          // Lesen darf wiederholt werden; es wirkt nicht.
+          // ausgeführte und ein schon abgeholter Befehl (`wiederholt`), den dieser Worker nicht
+          // lückenlos einordnen kann, werden NIE ausgeführt: ihr Ausgang ist offen — der Kern gleicht
+          // an der Seite ab. Lesen wirkt nicht und darf immer wiederholt werden.
           const gemerkt =
             aktion.erledigt && aktion.erledigt.nr === befehl.nr ? aktion.erledigt : null;
           const hoechste = Math.max(aktion.erledigt?.nr ?? 0, aktion.ausfuehrend ?? 0);
+          // Ein als `wiederholt` gekennzeichneter Befehl ist nur dann sicher neu, wenn dieser Worker
+          // den Lauf LÜCKENLOS kennt: die Nummer davor ist die höchste, die er begonnen oder
+          // beantwortet hat — dann ging nur die Antwort verloren, die ihn brachte, und er hat ihn nie
+          // gesehen. Fehlt dieser Zusammenhang (Zustand verloren), wird er nie ausgeführt.
+          const unbekannt =
+            befehl.wiederholt === true && befehl.art !== "lage" && hoechste !== befehl.nr - 1;
           /** @type {{ergebnis: unknown, seite?: {recht?: string, grund?: string, adapter?: string}}} */
           let aus;
           if (gemerkt) {
@@ -3115,10 +3121,7 @@
               ergebnis: gemerkt.ergebnis,
               ...(gemerkt.seite ? { seite: gemerkt.seite } : {}),
             };
-          } else if (
-            befehl.nr <= hoechste ||
-            (befehl.wiederholt === true && befehl.art !== "lage")
-          ) {
+          } else if (befehl.nr <= hoechste || unbekannt) {
             aus = { ergebnis: { fehler: "verbindung" } };
           } else {
             await aktionMerken({ ausfuehrend: befehl.nr });
@@ -3190,7 +3193,24 @@
     };
   }
 
-  /** @param {{wortlaut?: unknown, quelle?: unknown, vorgang?: unknown}} m @returns {Promise<AktionSicht>} */
+  /**
+   * Ist der freigegebene Tab der Webseiten-Tab, in dem die Person zuletzt war? Die Leiste selbst
+   * zählt nicht, wenn sie als Tab läuft. Ohne Auskunft des Browsers: nein (nichts beginnen).
+   * @param {{tabId: number}} ziel @param {number | null} leisteTab @returns {Promise<boolean>}
+   */
+  async function aktionZielVorn(ziel, leisteTab) {
+    try {
+      const tabs = /** @type {{id?: number, lastAccessed?: number}[]} */ (
+        await chrome.tabs.query({})
+      ).filter((t) => typeof t.id === "number" && t.id !== leisteTab);
+      const vorn = tabs.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0))[0];
+      return vorn !== undefined && vorn.id === ziel.tabId;
+    } catch {
+      return false;
+    }
+  }
+
+  /** @param {{wortlaut?: unknown, quelle?: unknown, vorgang?: unknown, leisteTab?: unknown}} m @returns {Promise<AktionSicht>} */
   async function aktionStarten(m) {
     const state = /** @type {Zustand} */ (await read());
     if (!state.auth) return aktionSicht(state, "anmelden");
@@ -3202,6 +3222,30 @@
       return aktionSicht(state, "invalid_message");
     const ziel = aktionsZiel(state);
     if (!ziel) return aktionSicht(state, "keine_freigabe");
+    // Freigegeben ist, was die Person zuletzt mit der Klickgeste freigab. Ist der Tab, in dem sie
+    // zuletzt war, ein anderer (etwa weil eine Geste dort keine Freigabe erteilte), wäre das Ziel
+    // für sie nicht das, was sie vor sich sieht: erst klären, nichts beginnen (AC02).
+    if (!(await aktionZielVorn(ziel, typeof m.leisteTab === "number" ? m.leisteTab : null))) {
+      await merke({
+        aktion: {
+          ...(state.aktion ?? {
+            id: null,
+            vorgang,
+            tabId: ziel.tabId,
+            url: ziel.url,
+            epoche: epocheVon(state),
+            nutzer: state.auth.id,
+            folge: 0,
+            sicht: null,
+            klaerung: null,
+            erledigt: null,
+          }),
+          laeuft: false,
+          fehler: "ziel_nicht_vorn",
+        },
+      });
+      return aktionSicht(/** @type {Zustand} */ (await read()), "gesperrt");
+    }
     // Derselbe Vorgang noch einmal (zweiter Klick nach einem Verbindungsabbruch): gibt der Kern
     // DENSELBEN Lauf zurück, gilt weiter, was dieser Worker dort schon ausgeführt hat — sonst
     // käme ein abgeholter Klick als neu an und würde ein zweites Mal geklickt.

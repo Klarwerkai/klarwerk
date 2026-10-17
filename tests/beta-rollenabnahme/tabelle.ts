@@ -2053,6 +2053,28 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // produkt:20261011:assistenz-browser-aktionen (BPA-03) — Browseraufträge im eigenen Gespräch, die
+  // zwei LESENDEN Türen. Zustandsfrei: die Liste des eigenen Gesprächs und eine erfundene Kennung
+  // (404 des Dienstes). Die drei schreibenden Türen (anlegen, Takt, Steuerung) stehen mit echtem
+  // Vorgang und Nachlesen in `schreibende-tueren.ts`; die frische `ko.create`-Prüfung je Wirkung
+  // misst `tests/klara-browser-aktionen/produktweg-routen.test.ts` (P7, Q2–Q4).
+  {
+    gruppe: "klaraBrowserAktionRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/browser-auftraege",
+    belegstelle: "services/app/src/routes/klara-browser-aktion-routes.ts:90",
+    tor: "ko.read; eigene Anmeldesitzung",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "klaraBrowserAktionRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/browser-auftraege/gibt-es-nicht",
+    route: "/api/me/klara/browser-auftraege/:id",
+    belegstelle: "services/app/src/routes/klara-browser-aktion-routes.ts:103",
+    tor: "ko.read; eigene Anmeldesitzung",
+    erwartet: NUR_LESEN,
+  },
   // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13) — KI-Aufträge am eigenen Gespräch.
   // ZUSTANDSFREI GEFAHREN: jede Tür mit Gesprächskennung trägt eine erfundene und endet in 404 des
   // Dienstes oder — mit leerer Nutzlast — in 400, BEVOR etwas angelegt, gesendet oder geschrieben

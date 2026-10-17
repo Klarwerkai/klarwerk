@@ -523,6 +523,8 @@ export type Message = {
   wortlaut?: string;
   quelle?: string;
   vorgang?: string;
+  /** Der Tab, in dem die Leiste selbst offen ist (nur wenn sie als Tab läuft) — zählt nicht als Seite. */
+  leisteTab?: number;
   /** BPA-03: woran die Außenaktionsbestätigung gebunden ist. */
   fingerabdruck?: string;
 };
@@ -665,6 +667,9 @@ declare global {
       onRemoved?: Event<(tabId: number) => void>;
       /** BPA-03: ob der Tab des Auftrags noch da ist (wirft, wenn nicht). */
       get(tabId: number): Promise<{ id?: number; url?: string; incognito?: boolean }>;
+      /** BPA-03: ohne `tabs`-Recht nur Kennung und letzter Zugriff — keine Adressen fremder Tabs. */
+      query(info: Record<string, never>): Promise<{ id?: number; lastAccessed?: number }[]>;
+      getCurrent(): Promise<{ id?: number } | undefined>;
     };
     i18n: { getMessage(key: string): string };
   };

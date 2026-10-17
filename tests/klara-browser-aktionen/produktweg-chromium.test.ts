@@ -180,6 +180,11 @@ interface Bahn {
     aus(): void;
     verloren(): number;
   };
+  /**
+   * Lässt die ANTWORT des Servers verloren gehen, deren Befehl `passt`: der Server hat den Befehl
+   * ausgegeben, die Erweiterung erhält ihn nie (einmal, dann wieder durchgelassen).
+   */
+  verliereAntwort(passt: (befehl: Record<string, unknown>) => boolean): { verloren(): number };
   token(email: string): Promise<string>;
   adminToken: string;
   idVon: Record<string, string>;
@@ -258,6 +263,7 @@ async function bahn(o: { sprache?: string; fristen?: Record<string, number> } = 
     erreicht: () => void;
   } | null = null;
   let verlieren: { passt: (b: Record<string, unknown>) => boolean; n: number } | null = null;
+  let antwortWeg: { passt: (b: Record<string, unknown>) => boolean; n: number } | null = null;
   await ctx.route("https://app.klarwerk.ai/**", async (route) => {
     const r = route.request();
     const url = new URL(r.url());
@@ -293,6 +299,13 @@ async function bahn(o: { sprache?: string; fristen?: Record<string, number> } = 
       gelesen = null;
     }
     aufrufe.push({ pfad: url.pathname, status: antwort.statusCode, body: gelesen, anfrage: body });
+    const befehl = (gelesen as { befehl?: Record<string, unknown> } | null)?.befehl;
+    if (antwortWeg && befehl && antwortWeg.passt(befehl)) {
+      antwortWeg.n++;
+      antwortWeg = null;
+      await route.abort("connectionreset");
+      return;
+    }
     await route.fulfill({
       status: antwort.statusCode,
       headers: { "content-type": String(antwort.headers["content-type"] ?? "application/json") },
@@ -385,6 +398,11 @@ async function bahn(o: { sprache?: string; fristen?: Record<string, number> } = 
         },
         verloren: () => zaehlung.n,
       };
+    },
+    verliereAntwort(passt) {
+      const zaehlung = { passt, n: 0 };
+      antwortWeg = zaehlung;
+      return { verloren: () => zaehlung.n };
     },
     async gesteuert(art) {
       await expect
@@ -588,12 +606,23 @@ describe("BPA-03 · Produktweg: Leiste → Worker → Aktionskern → aktion.js 
     expect(s.erfolg).toBe(false);
   }, 90_000);
 
-  it("K2 · AC02 · zweiter ähnlicher Tab im Vordergrund: geschrieben wird nur in den freigegebenen Tab des Auftrags", async () => {
+  it("K2 · AC02 · zweiter ähnlicher Tab im Vordergrund: gezielte Klärung; geschrieben wird nur in den freigegebenen Tab, wenn die Person dort ist (D4)", async () => {
     const b = await bereit();
     const zweiter = await b.ctx.newPage();
     await zweiter.goto(`${ORIGIN}${PFAD}`);
     await zweiter.bringToFront();
     await b.leiste.fill("#aktion-wortlaut", ENTWURF);
+    // Die Person ist im ZWEITEN Tab (nicht freigegeben): Klara klärt, bevor irgendetwas geschieht
+    // (zweite Prüfung, D4) — weder hier noch dort wird geschrieben.
+    await b.leiste.click("#aktion-ausfuehren");
+    await expect
+      .poll(() => b.leiste.textContent("#aktion-hinweis"), { timeout: 10000 })
+      .toContain("anderer Tab");
+    expect(await b.verlauf()).toHaveLength(0);
+    expect(await zweiter.evaluate<string>("document.getElementById('a-betreff').value")).toBe("");
+    expect((await b.felder("angebot"))["a-betreff"]).toBe("");
+    // Zurück im freigegebenen Tab: der Auftrag läuft dort — und nur dort.
+    await b.seite.bringToFront();
     await b.leiste.click("#aktion-ausfuehren");
     const s = await b.warte(ruht);
     expect(s.stand).toBe("fertig");
@@ -925,6 +954,18 @@ describe("BPA-03 · Produktweg: Leiste → Worker → Aktionskern → aktion.js 
     expect(eigene(await b.zaehler())).toHaveLength(1);
     expect(await b.verlauf()).toHaveLength(1);
   }, 120_000);
+
+  it("K7 · AC07 · die ANTWORT, die den Speicherklick brachte, geht verloren: der Worker kennt den Lauf lückenlos und klickt genau einmal — kein falsches „unklar“ (D2)", async () => {
+    const b = await bereit();
+    const weg = b.verliereAntwort((befehl) => befehl.art === "klicke");
+    await b.auftrag(ENTWURF);
+    const s = await b.warte((x) => x.stand === "fertig" && ruht(x));
+    expect(weg.verloren()).toBe(1);
+    expect(s.erfolg).toBe(true);
+    expect(s.schritte.find((x) => x.art === "speichern")?.stand).toBe("erfolgt");
+    expect((await b.zaehler()).speicherungen).toBe(1);
+    expect(eigene(await b.zaehler())).toHaveLength(1);
+  }, 90_000);
 
   it("K7 · AC07 · derselbe Fall, aber der Worker hat seinen Zustand verloren: der erneut ausgelieferte Klick wird NICHT ausgeführt, Fortsetzen gleicht ab (N2)", async () => {
     const b = await bereit({ fristen: { antwortMs: 15000 } });
