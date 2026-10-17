@@ -1,11 +1,10 @@
 # Klara im Browser · Berechtigte Funktionen ausführen (BPA-03)
 
 Auftrag `produkt:20261011:assistenz-browser-aktionen`, Revision 1 (BPA-Gesamtpaket r2). Stand:
-16.10.2026, Basis `ef7766dc3` (`1.0.0-beta.1.989`). Frühe Vorbereitung laut
-`QUELLEN-FRUEHE-VORBEREITUNG.json`; die Elternlieferung BPA-01
-(`aufnahme:20260922:gesamt-browser-kontextkarten`, `extensions/klara-browser/kontext.js`) ist in
-diesem Stand **nicht** integriert. Dieses Dokument beschreibt Code und Prüfungen, keine Host- oder
-Lieferabnahme.
+17.10.2026 (Produktanschluss, Chat 62). Basis: Hauptstand `dcd5a0413` (`1.0.0-beta.1.990`) mit der
+**noch nicht gelieferten** Elternvorleistung BPA-01 (`aufnahme:20260922:gesamt-browser-kontextkarten`,
+Kandidat `207bc6488`, integriert für diesen Stand). Dieses Dokument beschreibt Code und Prüfungen,
+keine Host- oder Lieferabnahme.
 
 ## Was es gibt
 
@@ -53,19 +52,64 @@ Schritt.
    Zielwechsel, Rechteentzug oder fremder Änderung hält sie an und nennt, wie viele Felder
    zurückgesetzt sind. Ausgelöstes wird als nicht rücknehmbar benannt.
 
+## Der Produktweg
+
+```
+Leiste (panel.html/panel.js, Abschnitt „Auf dieser Seite ausführen")
+  │  Auftrag getippt oder gesprochen (Spracherkennung des Browsers), Vorgangsschlüssel je Klick
+  ▼
+Worker (worker.js, KW-AKTION)  ── prüft vor JEDEM Befehl die Seitenfreigabe aus BPA-01
+  │  POST /api/me/klara/browser-auftraege            (kontext.js `zugang`, Widerrufsepoche,
+  │  POST …/:id/takt  (Antwort melden, nächsten Befehl holen)   Anmeldung, Tab noch da)
+  │  POST …/:id/steuerung (Pause, Fortsetzen, Abbruch, Bestätigen, Rücknahme, Widerruf)
+  ▼
+Aktionskern am Server (klara-browser-aktion-dienst.ts)
+  │  Erkennung gegen das Seitenprofil (klara-browser-auftrag-erkennung.ts, feste Satzformen, ohne KI)
+  │  BrowserAusfuehrung (Vertrag, unverändert in seinen Regeln) mit
+  │    · Rechten je Schritt: AuthService.authenticate(Sitzung) + Rolle (ko.read lesen, ko.create wirken)
+  │    · Seitenadapter = BrowserBefehlsrelais (klara-browser-relais.ts)
+  │    · Außenaktionsbestätigung: Nutzer aus der Anmeldung, an Auftrag/Knopf/Aufbau/Werte gebunden
+  │  Verlauf: KlaraGespraech.browserAuftraege im eigenen Klara-Gespräch (Standvergleich, JSONB)
+  ▼
+aktion.js in Chromes isolierter Welt der freigegebenen Seite (chrome.scripting, activeTab)
+```
+
+- **Kein zweiter Kanal.** Die Erweiterung erreicht den Server über denselben HTTPS-Weg mit derselben
+  Anmeldung wie Entwürfe, technische Daten (BPA-02) und die Klara-Sitzung der Kontextkarte (BPA-01).
+  Der Server stellt keine Befehle zu; die Erweiterung holt sie ab (`takt`, streng steigende Folge).
+- **Zwei Fristen** tragen den Vertrag: nicht abgeholt = belastbar nicht ausgeführt
+  (`nicht_ausgefuehrt`); abgeholt ohne Antwort = Ausgang offen (`zeitueberschreitung`, Abgleich vor
+  jeder Wiederholung, Auslösen nie wiederholt). Jede Befehlsnummer führt der Worker höchstens
+  einmal aus; kommt dieselbe Nummer erneut, geht die gemerkte Antwort hinaus.
+- **Lesefehler vor einem Schritt** heisst „nichts ausgeführt": der Schritt bleibt offen (keine
+  dauerhafte Sperre eines Speicherns, das nie geklickt wurde). Ist dabei das Recht weg, endet der
+  Lauf als „Recht entzogen".
+- **Widerruf** der Seitenfreigabe in der Leiste (BPA-01, „Verbindung widerrufen") beendet einen
+  laufenden Auftrag sofort beim Kern; ein gerade laufender Schritt meldet noch sein Ergebnis.
+- **Seitenprofile** kommen über `buildApp(…, { browserAktion: { seitenprofile } })`. Ohne Angabe
+  gibt es keines: jede Seite endet in der Übergabe „nicht unterstützt". Profile für echte Websites
+  sind eine eigene Entscheidung (O01).
+- **Nach einem Serverneustart** zeigt der Verlauf einen nicht beendeten Lauf als „unterbrochen" —
+  nie als Erfolg; was auf der Seite geschah, prüft die Person dort.
+
+## Geprüft (Chat 62, 17.10.2026)
+
+| Prüfung | Datei | Was echt ist |
+| --- | --- | --- |
+| Produktweg AC01–AC10, 17 Fälle | `tests/klara-browser-aktionen/produktweg-chromium.test.ts` | ausgelieferte Erweiterung (byte-gleich geladen), Klickgeste über Chromes Symbolaktion, Anmeldung in der Leiste, Worker, `chrome.scripting`, `aktion.js` in der isolierten Welt, `buildApp` mit Rechten und Gespräch, synthetische Seite |
+| Türen, Rechte, Fremdzugriff, Folge, Bestätigung, Rücknahme, Ausfall | `tests/klara-browser-aktionen/produktweg-routen.test.ts` | `buildApp`, `app.inject`, Seitenmodell nach `aktion.js` |
+| Erkennung und Befehlsweg | `tests/klara-browser-aktionen/erkennung-relais.test.ts` | rein |
+
+Gestellt sind ausdrücklich: Chromium 149 headless statt Google Chrome auf dem Mac, die Geste aus dem
+DevTools-Protokoll, die Leiste als Tab statt im Seitenfenster und die Spracherkennung selbst
+(Chromium hat ohne Google-Dienst keine; ab ihrem Ergebnis läuft der Produktweg).
+
 ## Offen (nicht durch diese Lieferung belegt)
 
-- Anbindung im Worker (`chrome.scripting.executeScript` in die isolierte Welt, Host-Rechte je
-  freigegebener Seite) und Verbindung mit BPA-01-Kontext — wartet auf die reguläre Integration der
-  Elternlieferung. Stand 16.10.2026, Kandidat `e83d47f5e`: `extensions/klara-browser/kontext.js`,
-  die Kontextanbindung in `worker.js`/`panel.js` und `apps/desktop/klara-begleiter` (native
-  Brücke) fehlen im Arbeitsbaum. Die historische Codegrundlage `207bc6488` ist keine einzelne
-  BPA-01-Lieferung: gegenüber der gemeinsamen Basis `1424244ec` umfasst sie 83 Dateien mehrerer
-  Aufträge (Begleiter-App, Programmadapter, Word-Begleiter, Webseiten, Tests). Ihre Übernahme ist
-  die zentrale Integration der Führung, nicht Teil dieses Deltas. Ohne sie gibt es keinen
-  Transportweg zwischen dem Aktionskern am Server und der Seite; ein eigener zweiter Kanal würde
-  der Brücke aus BPA-01 widersprechen.
-- Bestätigungs- und Statusoberfläche in der Leiste/im Begleiter; HTTP-Weg in den vorhandenen
-  Auftragsverlauf.
-- Reale Chrome-Hostprobe mit genauer Version (O01), echte Website-Profile, echte Spracheingabe.
+- **Elternlieferung BPA-01** ist nicht geliefert (Ben: offen nur für AC10, reale Chrome-/Begleiter-
+  Hostprobe). Dieser Stand integriert ihren Kandidaten `207bc6488`; seine Lieferung bleibt eigener Weg.
+- Reale Chrome-Hostprobe auf diesem Mac mit genauer Version (O01), echtem Seitenfenster, echter
+  Geste und echter Spracherkennung (Mikrofonrecht der Erweiterung im Seitenfenster).
+- Echte Website-Profile; reale Außenwirkung.
 - Szenario BPA-S06 (Lernen/Routine) gehört zu BPA-06.
+- Die Texte des Kerns (Stand, Klärung, Übergabe) sind deutsch; die Leiste übersetzt nur ihre eigenen.

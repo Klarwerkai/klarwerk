@@ -55,10 +55,12 @@ export function klaraBrowserAktionRoutes(
 ): FastifyPluginAsync {
   const { dienst } = deps;
 
-  /** Angemeldet mit `ko.read` und mit einer Sitzung (Bearer oder Sitzungskeks). */
-  async function wer(request: FastifyRequest, reply: FastifyReply) {
-    const user = await guards.requirePermission("ko.read", request, reply);
-    if (!user) return undefined;
+  /**
+   * Die Anmeldesitzung der Anfrage (Bearer oder Sitzungskeks) — ohne sie kein Browserauftrag. Das
+   * Recht `ko.read` prüft JEDE Route selbst mit `guards.requirePermission` (sichtbar für die
+   * Routenmatrix), danach diese Zeile.
+   */
+  function sitzung(request: FastifyRequest, reply: FastifyReply): string | undefined {
     const token = tokenFromRequest(request);
     if (!token) {
       reply.code(403).send({
@@ -66,15 +68,17 @@ export function klaraBrowserAktionRoutes(
         grund: "nur_sitzung",
         message: "Nur mit eigener Anmeldung möglich.",
       });
-      return undefined;
     }
-    return { user, token };
+    return token;
   }
 
   return async (app) => {
     app.post("/api/me/klara/browser-auftraege", async (request, reply) => {
-      const w = await wer(request, reply);
-      if (!w) return;
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) return;
+      const token = sitzung(request, reply);
+      if (!token) return;
+      const w = { user, token };
       try {
         const antwort = await dienst.lege(w.user, w.token, request.body);
         reply.code(antwort.art === "auftrag" ? 201 : 200).send(antwort);
@@ -84,8 +88,11 @@ export function klaraBrowserAktionRoutes(
     });
 
     app.get("/api/me/klara/browser-auftraege", async (request, reply) => {
-      const w = await wer(request, reply);
-      if (!w) return;
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) return;
+      const token = sitzung(request, reply);
+      if (!token) return;
+      const w = { user, token };
       try {
         reply.code(200).send({ auftraege: await dienst.liste(w.user) });
       } catch (fehler) {
@@ -96,8 +103,11 @@ export function klaraBrowserAktionRoutes(
     app.get<{ Params: { id: string } }>(
       "/api/me/klara/browser-auftraege/:id",
       async (request, reply) => {
-        const w = await wer(request, reply);
-        if (!w) return;
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) return;
+        const token = sitzung(request, reply);
+        if (!token) return;
+        const w = { user, token };
         try {
           reply.code(200).send({ auftrag: await dienst.sicht(w.user, w.token, request.params.id) });
         } catch (fehler) {
@@ -109,8 +119,11 @@ export function klaraBrowserAktionRoutes(
     app.post<{ Params: { id: string } }>(
       "/api/me/klara/browser-auftraege/:id/takt",
       async (request, reply) => {
-        const w = await wer(request, reply);
-        if (!w) return;
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) return;
+        const token = sitzung(request, reply);
+        if (!token) return;
+        const w = { user, token };
         try {
           reply.code(200).send(await dienst.takt(w.user, w.token, request.params.id, request.body));
         } catch (fehler) {
@@ -122,8 +135,11 @@ export function klaraBrowserAktionRoutes(
     app.post<{ Params: { id: string } }>(
       "/api/me/klara/browser-auftraege/:id/steuerung",
       async (request, reply) => {
-        const w = await wer(request, reply);
-        if (!w) return;
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) return;
+        const token = sitzung(request, reply);
+        if (!token) return;
+        const w = { user, token };
         try {
           reply
             .code(200)
