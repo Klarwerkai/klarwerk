@@ -32,6 +32,7 @@ describe("BPA-03 · Erkennung · Gegenproben zu den Prüfbefunden", () => {
       ],
       speichern: true,
       ausloesen: null,
+      zuordnungPruefen: false,
     });
     expect(
       erkenne(
@@ -188,35 +189,33 @@ describe("BPA-03 · Erkennung · Gegenproben zu den Prüfbefunden", () => {
     expect(r.ok ? "" : r.art === "klaerung" && r.text).toContain('„aus"');
   });
 
-  it("D1 · eine Beschriftung direkt nach einem gebeugten Beiwort teilt keinen Wert still auf", () => {
+  it("D1/E1 · trennt allein ein Feldname die Werte, wird die Zuordnung zur Bestätigung gezeigt — nie still verteilt", () => {
     for (const w of [
       "Angebotsentwurf Betreff Wechsel Nachricht Neuer Empfänger ab Montag ist Herr Kurz und speichere den Entwurf",
-      "Angebotsentwurf Betreff Hinweis Nachricht Bitte begrüßt neue Empfänger herzlich",
-      "Angebotsentwurf Betreff Korrektur Nachricht Geänderter Empfänger folgt",
+      "Angebotsentwurf Betreff Hinweis Nachricht Bitte Empfänger prüfen und speichere den Entwurf",
+      "Angebotsentwurf Betreff Hinweis Nachricht Schöner Empfänger als gedacht und speichere den Entwurf",
+      "Rückmeldung Betreff Rückruf Wartung Nachricht Bitte um Rückruf zur Wartung und speichere sie",
+      "Fülle den Angebotsentwurf aus Betreff Angebot Kühlanlage Empfänger einkauf@kunde.invalid und speichere ihn",
     ]) {
-      const r = erkenne(w);
-      expect(r.ok ? "" : r.art === "klaerung" && r.text, w).toContain("folgt direkt auf");
+      expect(erkenne(w), w).toMatchObject({ ok: true, zuordnungPruefen: true });
     }
-    // Hauptwörter mit derselben Endung bleiben Werte; ein Komma trennt eindeutig.
+    // Ein Bindestrich gehört zum Wort: „Empfänger-Wechsel" ist kein Feldname.
     expect(
-      erkenne("Rückmeldung Betreff Daten Nachricht Bitte um Rückruf und speichere sie"),
+      erkenne(
+        "Angebotsentwurf Nachricht Ab Montag gilt Empfänger-Wechsel und speichere den Entwurf",
+      ),
     ).toMatchObject({
       ok: true,
-      felder: [
-        { label: "Betreff", wert: "Daten" },
-        { label: "Nachricht", wert: "Bitte um Rückruf" },
-      ],
+      felder: [{ label: "Nachricht", wert: "Ab Montag gilt Empfänger-Wechsel" }],
+      zuordnungPruefen: false,
     });
-    expect(
-      erkenne("Angebotsentwurf Betreff Wechsel Nachricht Neuer, Empfänger a@b.invalid"),
-    ).toMatchObject({
-      ok: true,
-      felder: [
-        { label: "Betreff", wert: "Wechsel" },
-        { label: "Nachricht", wert: "Neuer" },
-        { label: "Empfänger", wert: "a@b.invalid" },
-      ],
-    });
+    // Eindeutig getrennt (Anführungszeichen oder Komma): keine Rückfrage.
+    for (const w of [
+      `Fülle den Angebotsentwurf aus: Betreff „${BETREFF}", Empfänger ${EMPFAENGER}, Nachricht „${NACHRICHT}" und speichere ihn als Entwurf.`,
+      "Angebotsentwurf Betreff Wechsel, Nachricht Neuer, Empfänger a@b.invalid",
+    ]) {
+      expect(erkenne(w), w).toMatchObject({ ok: true, zuordnungPruefen: false });
+    }
   });
 
   it("D3 · ein Infinitiv am Ende eines ungeklammerten Werts ist kein stiller Speicherauftrag", () => {

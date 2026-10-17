@@ -544,17 +544,21 @@ die gelesene Version.
 ### 3.12 Klara im Browser: berechtigte Funktionen auf einer freigegebenen Seite (`klaraBrowserAktionRoutes`, BPA-03)
 
 Die Erweiterung (`extensions/klara-browser/worker.js`) legt den Auftrag an, holt jeden Schritt im
-Takt ab und führt ihn nur im freigegebenen Tab aus. Jede Route verlangt `ko.read` und danach eine
-eigene Anmeldesitzung (Bearer oder Sitzungskeks; sonst 403 `FORBIDDEN`, `grund` `nur_sitzung`). Jede
-Wirkung (Eintragen, Speichern, Auslösen, Löschen bei der Rücknahme) prüft der Dienst
-(`klara-browser-aktion-dienst.ts`, `rechte`) unmittelbar vor ihrem Schritt frisch mit `ko.create`
-— ohne das Recht endet der Lauf `gestoppt_recht`, kein HTTP-Fehler. Ein Lauf gehört der Anmeldung,
-die ihn anlegte; ohne Seitenprofil (`buildApp`-Option `browserAktion.seitenprofile`) wird jede
-Seite zur Übergabe „nicht unterstützt".
+Takt ab und führt ihn nur im freigegebenen Tab aus. Jede Route verlangt `ko.read` (ohne Anmeldung
+401 nach Abschnitt 2) und danach eine eigene Anmeldesitzung (Bearer oder Sitzungskeks); wer ohne
+Sitzung zugelassen ist, etwa mit einem Dienstschlüssel, erhält 403 `FORBIDDEN` (`grund`
+`nur_sitzung`). Jede Wirkung (Eintragen, Speichern, Auslösen, Löschen bei der Rücknahme) prüft der
+Dienst (`klara-browser-aktion-dienst.ts`, `rechte`) unmittelbar vor ihrem Schritt frisch mit
+`ko.create` — kein HTTP-Fehler: ein Lauf endet dann `gestoppt_recht`, eine Rücknahme unterbleibt mit
+Begründung und der Lauf behält seinen Stand. Trennt allein ein Feldname die Werte (ohne
+Anführungszeichen oder Komma), antwortet die Anlage mit einer Klärung samt `zuordnung` (Felder und
+Abdruck); ausgeführt wird erst ein erneuter Auftrag mit genau diesem Abdruck. Ein Lauf gehört der
+Anmeldung, die ihn anlegte; ohne Seitenprofil (`buildApp`-Option `browserAktion.seitenprofile`)
+wird jede Seite zur Übergabe „nicht unterstützt".
 
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
-| `POST` | `/api/me/klara/browser-auftraege` | `ko.read`; eigene Anmeldesitzung | Rumpf `{ vorgang, quelle: "getippt" \| "gesprochen", wortlaut, ziel: { tabId, url }, host: { browser, version, erweiterung } }` | 201 `{ art: "auftrag", auftrag, befehl }` — neuer Lauf oder Übergabe im eigenen Klara-Gespräch; derselbe Vorgang für dasselbe Ziel ist derselbe Auftrag; 200 `{ art: "klaerung", text }` — nichts angelegt | 400 `VALIDATION`; 403 `FORBIDDEN` (`nur_sitzung`); 409 `CONFLICT` (`zu_viele`); 404/409 aus dem Gespräch; Dienstfehler |
+| `POST` | `/api/me/klara/browser-auftraege` | `ko.read`; eigene Anmeldesitzung | Rumpf `{ vorgang, quelle: "getippt" \| "gesprochen", wortlaut, ziel: { tabId, url }, host: { browser, version, erweiterung }, zuordnung? }` | 201 `{ art: "auftrag", auftrag, befehl }` — neuer Lauf oder Übergabe im eigenen Klara-Gespräch; derselbe Vorgang für dasselbe Ziel ist derselbe Auftrag; 200 `{ art: "klaerung", text, zuordnung? }` — nichts angelegt | 400 `VALIDATION`; 403 `FORBIDDEN` (`nur_sitzung`); 409 `CONFLICT` (`zu_viele`); 404/409 aus dem Gespräch; Dienstfehler |
 | `GET` | `/api/me/klara/browser-auftraege` | `ko.read`; eigene Anmeldesitzung | — | 200 `{ auftraege }` — die Browseraufträge des eigenen aktuellen Gesprächs, neueste zuerst | 403 `FORBIDDEN` (`nur_sitzung`); Dienstfehler |
 | `GET` | `/api/me/klara/browser-auftraege/:id` | `ko.read`; eigene Anmeldesitzung | — | 200 `{ auftrag }` — der lebende Lauf dieser Anmeldung oder der Eintrag im eigenen Gespräch | 403 `FORBIDDEN` (`nur_sitzung`); 404 `NOT_FOUND` (`unbekannt`, auch fremd); Dienstfehler |
 | `POST` | `/api/me/klara/browser-auftraege/:id/takt` | `ko.read`; eigene Anmeldesitzung, Lauf derselben Anmeldung | Rumpf `{ folge, antwort?: { nr, ergebnis }, seite?: { adapter?, recht? } }` — `folge` streng steigend | 200 `{ auftrag, befehl }` — wartet bis zum nächsten Befehl oder zur Ruhe des Laufs (höchstens 20 s) | 400 `VALIDATION`; 403 `FORBIDDEN` (`nur_sitzung`); 404 `NOT_FOUND` (`unbekannt`, auch fremd); 409 `CONFLICT` (`andere_sitzung`, `veraltet`); Dienstfehler |

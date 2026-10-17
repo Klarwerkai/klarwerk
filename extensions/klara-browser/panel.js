@@ -1534,6 +1534,20 @@
     // Hinweis des Workers (nicht angemeldet, keine Freigabe, Verbindung …) oder eine Klärung.
     const meldung = aktionMeldung(s);
     zeile("aktion-hinweis", Boolean(meldung), meldung);
+    // Die erkannte Zuordnung (Feld = Wert), bevor etwas geschieht — nur als Text.
+    const zuordnung = s?.zuordnung ?? null;
+    $("aktion-zuordnung").hidden = !zuordnung;
+    $("aktion-zuordnung-werte").replaceChildren(
+      ...(zuordnung?.felder ?? []).flatMap((w) => {
+        const dt = document.createElement("dt");
+        dt.textContent = w.label;
+        const dd = document.createElement("dd");
+        dd.textContent = w.wert;
+        return [dt, dd];
+      }),
+    );
+    $("aktion-zuordnung-ok").textContent = zuordnung ? aktionText("aktionZuordnungOk") : "";
+    /** @type {HTMLButtonElement} */ ($("aktion-zuordnung-ok")).disabled = laeuft;
     $("aktion-stand-box").hidden = !a;
     if (!a) return;
     // „Läuft" nur, solange der Worker den Lauf tatsächlich antreibt — nach einem Verbindungsabbruch
@@ -1624,7 +1638,8 @@
     aktionVorgang = "";
     aktionZeigen();
   });
-  $("aktion-ausfuehren").addEventListener("click", async () => {
+  /** @param {string | null} zuordnung Abdruck einer gezeigten und bestätigten Zuordnung. */
+  async function aktionStarte(zuordnung) {
     if (aktionStartet) return;
     const wortlaut = $("aktion-wortlaut").value.trim();
     if (!aktionVorgang) aktionVorgang = crypto.randomUUID();
@@ -1645,11 +1660,17 @@
         quelle: aktionQuelle,
         vorgang: aktionVorgang,
         ...(leisteTab === undefined ? {} : { leisteTab }),
+        ...(zuordnung ? { zuordnung } : {}),
       });
     } finally {
       aktionStartet = false;
       aktionZeigen();
     }
+  }
+  $("aktion-ausfuehren").addEventListener("click", () => void aktionStarte(null));
+  $("aktion-zuordnung-ok").addEventListener("click", () => {
+    const abdruck = aktionStand?.zuordnung?.abdruck;
+    if (abdruck) void aktionStarte(abdruck);
   });
   $("aktion-sprechen").addEventListener("click", () => {
     if (aktionHoert) {

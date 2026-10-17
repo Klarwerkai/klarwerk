@@ -1005,12 +1005,18 @@ async function legeBrowserlaufAn(buehne: Buehne, besitzer: Rolle): Promise<Brows
   return lauf;
 }
 
-/** Die Zahl der Browseraufträge im eigenen Gespräch je Rolle — über deren eigene Lesetür. */
-async function browserauftragsStand(buehne: Buehne): Promise<Record<Rolle, number>> {
-  const stand = {} as Record<Rolle, number>;
+/**
+ * Die Browseraufträge im eigenen Gespräch je Rolle — Zahl und Stand des neuesten, über deren eigene
+ * Lesetür. Ein blosser Übergabe-Eintrag ist kein angelegter Lauf.
+ */
+async function browserauftragsStand(
+  buehne: Buehne,
+): Promise<Record<Rolle, { zahl: number; neuester: string | null }>> {
+  const stand = {} as Record<Rolle, { zahl: number; neuester: string | null }>;
   for (const rolle of ROLLEN) {
     const r = await musterhaft(buehne.app, kopf(buehne, rolle), "GET", BROWSER_API);
-    stand[rolle] = (r.json() as { auftraege: unknown[] }).auftraege.length;
+    const auftraege = (r.json() as { auftraege: { stand: string }[] }).auftraege;
+    stand[rolle] = { zahl: auftraege.length, neuester: auftraege[0]?.stand ?? null };
   }
   return stand;
 }
@@ -2331,8 +2337,13 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
         payload: browserAuftrag(buehne),
         bestand: () => browserauftragsStand(buehne),
         wirkung: {
-          beschreibung: `das Gespräch von ${besitzer} trägt danach genau einen Browserauftrag`,
-          eingetreten: (stand) => eigeneZahl(stand, besitzer) === 1,
+          beschreibung: `das Gespräch von ${besitzer} trägt danach genau einen Browserauftrag mit einem Lauf (keine Übergabe)`,
+          eingetreten: (stand) => {
+            const eigen = (
+              stand as Partial<Record<Rolle, { zahl: number; neuester: string | null }>>
+            )[besitzer];
+            return eigen?.zahl === 1 && eigen.neuester !== null && eigen.neuester !== "uebergabe";
+          },
         },
       };
     },

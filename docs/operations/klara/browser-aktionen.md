@@ -102,9 +102,13 @@ aktion.js in Chromes isolierter Welt der freigegebenen Seite (chrome.scripting, 
   wenn es eindeutig ist (Doppelpunkt/Anführungszeichen dahinter oder erste Beschriftung nach reinen
   Auftragswörtern); mitten in einem ungeklammerten Wert wird geklärt. „ist"/„lautet" leiten einen
   Wert ein. Ein Klick ohne genannten Knopf („klicke auf den Knopf"), ein offenes „aus"/„ein" am
-  Wertende, eine Beschriftung direkt nach einem gebeugten Beiwort („Neuer Empfänger …") und ein
-  Infinitiv nach einem ungeklammerten Wert („… prüfen und sichern") werden geklärt; eindeutig ist
-  „und speichere ihn".
+  Wertende und ein Infinitiv nach einem ungeklammerten Wert („… prüfen und sichern") werden
+  geklärt; eindeutig ist „und speichere ihn". Ein Bindestrich gehört zum Wort („Empfänger-Wechsel"
+  ist kein Feldname).
+- **Zuordnung bestätigen:** Trennt allein ein Feldname die Werte (gesprochen meist: ohne
+  Anführungszeichen oder Komma), zeigt die Leiste die erkannte Zuordnung „Feld = Wert" und startet
+  erst nach „Zuordnung stimmt – ausführen" — gebunden an Konto, Klick und genau diese Werte. Bis
+  dahin geschieht auf der Seite nichts, und nichts steht im Verlauf.
 - **Speichern** gleicht unmittelbar vorher die Feldwerte ab (Server und `aktion.js`); weicht ein Feld
   ab, wird nicht gespeichert. Der Stand sagt ehrlich „Speichern ausgelöst, noch nicht nachgelesen"
   bzw. „möglicherweise gespeichert", nie „nichts gespeichert" nach einem Klick.
@@ -121,9 +125,10 @@ aktion.js in Chromes isolierter Welt der freigegebenen Seite (chrome.scripting, 
   Übergabe, einem Abbruch oder einem Rechteentzug ohne bleibende Wirkung und für ein anderes Ziel
   wird neu geprüft — „beauftrage Klara danach erneut" wirkt ohne den Text zu ändern.
 - **Ziel vorn:** Ein Auftrag beginnt nur, wenn der freigegebene Tab auch der Webseiten-Tab ist, in
-  dem die Person zuletzt war; sonst klärt die Leiste, bevor etwas geschieht (etwa wenn eine
-  Klickgeste in einem zweiten Tab keine Freigabe erteilt hat, weil dort noch eine Übernahme offen
-  war).
+  dem die Person zuletzt war (aktiver Tab des Fensters; bei geteilter Ansicht einer davon); sonst
+  klärt die Leiste, bevor etwas geschieht. Ist in der Leiste noch eine Übernahme offen, erteilt die
+  Klickgeste keine neue Freigabe (Erfassungsweg von BPA-01) — die Leiste nennt das als Ursache und
+  sagt, erst die Übernahme zu beantworten.
 - **Verlauf in der Web-App:** `KlaraBrowserAuftraege` zeigt die Browseraufträge des Gesprächs
   lesend im Klara-Verlauf (neben den KI-Aufträgen von BPA-13). Gelöschte Gespräche werden nicht neu
   angelegt; derselbe Vorgangsschlüssel ist auch nach einem Neustart derselbe Auftrag.
@@ -132,10 +137,10 @@ aktion.js in Chromes isolierter Welt der freigegebenen Seite (chrome.scripting, 
 
 | Prüfung | Datei | Was echt ist |
 | --- | --- | --- |
-| Produktweg AC01–AC10, 26 Fälle | `tests/klara-browser-aktionen/produktweg-chromium.test.ts` | ausgelieferte Erweiterung (byte-gleich geladen), Klickgeste über Chromes Symbolaktion, Anmeldung in der Leiste, Worker, `chrome.scripting`, `aktion.js` in der isolierten Welt, `buildApp` mit Rechten und Gespräch, synthetische Seite |
+| Produktweg AC01–AC10, 25 Fälle | `tests/klara-browser-aktionen/produktweg-chromium.test.ts` | ausgelieferte Erweiterung (byte-gleich geladen), Klickgeste über Chromes Symbolaktion, Anmeldung in der Leiste, Worker, `chrome.scripting`, `aktion.js` in der isolierten Welt, `buildApp` mit Rechten und Gespräch, synthetische Seite |
 | Türen, Rechte, Fremdzugriff, Folge, Bestätigung, Rücknahme, Ausfall | `tests/klara-browser-aktionen/produktweg-routen.test.ts` | `buildApp`, `app.inject`, Seitenmodell nach `aktion.js` |
 | Erkennung und Befehlsweg | `tests/klara-browser-aktionen/erkennung-relais.test.ts` | rein |
-| Gegenproben der unabhängigen Prüfung (drei Runden) | `erkennung-befunde.test.ts`, `produktweg-routen.test.ts` (M6–m7, N2, N3), `produktweg-chromium.test.ts` (N2–N4, D2, D4) | rein, `buildApp` bzw. Chromium |
+| Gegenproben der unabhängigen Prüfung (vier Runden) | `erkennung-befunde.test.ts`, `produktweg-routen.test.ts` (M6–m7, N2, N3), `produktweg-chromium.test.ts` (N2–N4, D2, D4) | rein, `buildApp` bzw. Chromium |
 | Rollenabnahme der fünf Türen | `tests/beta-rollenabnahme/tabelle.ts` (2 lesende), `schreibende-tueren.ts` (3 schreibende mit echtem Vorgang und Nachlesen) | volle Bühne mit synthetischem Seitenprofil |
 | Einordnung für die Prüftorregister: Datenfluss ohne Wissensobjekt-Inhalt (Q1), frische `ko.create`-Prüfung vor jeder Wirkung (Q2, Q3) | `produktweg-routen.test.ts` | `buildApp`, echter Rollenwechsel über `PUT /api/users/:id` |
 | Verlauf in der Web-App | `tests/klara-browser-aktionen/verlauf-im-web.test.tsx` | `buildApp`, Klara-Fläche gemountet, eigener Abrufweg der Web-App |

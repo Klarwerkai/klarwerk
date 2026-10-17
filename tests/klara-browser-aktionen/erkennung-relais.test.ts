@@ -61,6 +61,7 @@ describe("BPA-03 · Erkennung des Auftrags aus dem Wortlaut", () => {
       felder: WERTE,
       speichern: true,
       ausloesen: null,
+      zuordnungPruefen: false,
     });
   });
 
@@ -76,6 +77,7 @@ describe("BPA-03 · Erkennung des Auftrags aus dem Wortlaut", () => {
       felder: WERTE,
       speichern: true,
       ausloesen: null,
+      zuordnungPruefen: false,
     });
   });
 
@@ -95,6 +97,7 @@ describe("BPA-03 · Erkennung des Auftrags aus dem Wortlaut", () => {
       ],
       speichern: true,
       ausloesen: null,
+      zuordnungPruefen: true,
     });
   });
 
@@ -107,6 +110,7 @@ describe("BPA-03 · Erkennung des Auftrags aus dem Wortlaut", () => {
         felder: WERTE,
         speichern: false,
         ausloesen: "Endgültig senden",
+        zuordnungPruefen: false,
       });
     }
   });
@@ -155,6 +159,7 @@ describe("BPA-03 · Erkennung des Auftrags aus dem Wortlaut", () => {
       ],
       speichern: true,
       ausloesen: null,
+      zuordnungPruefen: false,
     });
   });
 
@@ -198,6 +203,7 @@ describe("BPA-03 · Erkennung des Auftrags aus dem Wortlaut", () => {
       felder: [{ label: "Betreff", wert: "x" }],
       speichern: false,
       ausloesen: null,
+      zuordnungPruefen: false,
     });
   });
 

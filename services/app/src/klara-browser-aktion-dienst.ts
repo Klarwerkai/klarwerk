@@ -169,7 +169,18 @@ export type BrowserAnlageAntwort =
       readonly auftrag: BrowserAuftragSicht;
       readonly befehl: BrowserBefehl | null;
     }
-  | { readonly art: "klaerung"; readonly text: string };
+  | {
+      readonly art: "klaerung";
+      readonly text: string;
+      /**
+       * Nur wenn allein die Feldnamen die Werte getrennt haben: die erkannte Zuordnung und ihr
+       * Abdruck. Erst ein erneuter Auftrag mit genau diesem Abdruck (`zuordnung`) wird ausgeführt.
+       */
+      readonly zuordnung?: {
+        readonly felder: readonly BrowserFeldwert[];
+        readonly abdruck: string;
+      };
+    };
 
 export interface BrowserTaktAntwort {
   readonly auftrag: BrowserAuftragSicht;
@@ -430,6 +441,29 @@ export class BrowserAktionDienst {
     if (!erkannt.ok && erkannt.art === "klaerung") {
       // Rückfrage, bevor irgendetwas auf der Seite geschieht — wie die Klärung in Klara 05.
       return { art: "klaerung", text: erkannt.text };
+    }
+    if (erkannt.ok && erkannt.zuordnungPruefen) {
+      // Ohne Anführungszeichen hat allein der Feldname getrennt („Nachricht Bitte Empfänger prüfen").
+      // Nicht raten: die Person sieht die Zuordnung und bestätigt sie — gebunden an Konto, Klick
+      // (Vorgang) und genau diese Werte. Bis dahin geschieht nichts, nichts steht im Verlauf.
+      const abdruck = createHash("sha256")
+        .update(
+          `klara-browser-zuordnung\0${nutzer.id}\0${vorgang}\0${JSON.stringify([
+            erkannt.formular,
+            erkannt.felder,
+            erkannt.speichern,
+            erkannt.ausloesen,
+          ])}`,
+        )
+        .digest("hex")
+        .slice(0, 32);
+      if (text(r.zuordnung ?? "", 64, "zuordnung") !== abdruck) {
+        return {
+          art: "klaerung",
+          text: "Ohne Anführungszeichen hat Klara die Werte an den Feldnamen getrennt. Stimmt diese Zuordnung? Dann bestätige sie — sonst setze die Werte in Anführungszeichen.",
+          zuordnung: { felder: erkannt.felder, abdruck },
+        };
+      }
     }
     if (!erkannt.ok) {
       const u = uebergabe("gesperrte_handlung", ortText, erkannt.was);

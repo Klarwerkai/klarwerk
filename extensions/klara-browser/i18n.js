@@ -572,6 +572,7 @@ globalThis.KLARA_AKTION_TEXT = {
     aktionZiel: "Freigegebene Seite:",
     aktionSprechenStopp: "Zuhören beenden",
     aktionBestaetigen: "Jetzt auslösen:",
+    aktionZuordnungOk: "Zuordnung stimmt – ausführen",
     aktionBestaetigt: "Bestätigt und angewandt:",
     aktionEntwurfLoeschen: "Gespeicherten Entwurf zurücknehmen",
     aktionFelderZurueck: "Eingetragene Werte zurücknehmen",
@@ -599,6 +600,8 @@ globalThis.KLARA_AKTION_TEXT = {
     aktion_veraltet: "Eine Meldung an Klarwerk kam doppelt an. Bitte fortsetzen.",
     aktion_ziel_nicht_vorn:
       "Freigegeben ist ein anderer Tab als der, in dem du zuletzt warst. Wechsle zu ihm oder gib diesen Tab mit dem Klara-Symbol frei.",
+    aktion_ziel_nicht_vorn_uebernahme:
+      "Freigegeben ist ein anderer Tab. Solange in der Leiste eine Übernahme offen ist, gibt das Klara-Symbol keinen neuen Tab frei: beantworte erst die Übernahme (sichern, verwerfen oder ersetzen), dann gib diesen Tab mit dem Klara-Symbol frei.",
     aktionKeinLoeschen:
       "Diese Seite bietet Klara kein Löschen an. Der Entwurf bleibt gespeichert; lösche ihn bei Bedarf selbst.",
     aktion_invalid_message: "Bitte einen Auftrag eingeben.",
@@ -618,6 +621,7 @@ globalThis.KLARA_AKTION_TEXT = {
     aktionZiel: "Released page:",
     aktionSprechenStopp: "Stop listening",
     aktionBestaetigen: "Trigger now:",
+    aktionZuordnungOk: "Assignment is right – run",
     aktionBestaetigt: "Confirmed and applied:",
     aktionEntwurfLoeschen: "Undo the saved draft",
     aktionFelderZurueck: "Undo the entered values",
@@ -644,6 +648,8 @@ globalThis.KLARA_AKTION_TEXT = {
     aktion_veraltet: "A message to Klarwerk arrived twice. Please continue.",
     aktion_ziel_nicht_vorn:
       "The released tab is not the one you were last in. Switch to it or release this tab with the Klara icon.",
+    aktion_ziel_nicht_vorn_uebernahme:
+      "Another tab is released. While a capture is open in the panel, the Klara icon releases no new tab: settle the capture first (save, discard or replace), then release this tab with the Klara icon.",
     aktionKeinLoeschen:
       "This page offers Klara no delete. The draft stays saved; delete it yourself if needed.",
     aktion_invalid_message: "Please enter a task.",

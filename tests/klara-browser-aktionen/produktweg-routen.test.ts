@@ -1182,6 +1182,43 @@ describe("BPA-03 · Produktweg: Einordnung für die Prüftorregister (Chat 57)",
     expect(nach.ruecknahme?.text).toContain("Recht");
   });
 
+  it("E1 · trennt allein ein Feldname die Werte: erst die gezeigte Zuordnung, dann der Lauf — vorher nichts im Verlauf, ein fremder Abdruck wirkt nicht", async () => {
+    const { app, person, lege, liste } = await aufbau();
+    const vorgang = `vorgang-${randomUUID()}`;
+    const gesprochen =
+      "Angebotsentwurf Betreff Rückruf Wartung Nachricht Bitte um Rückruf und speichere den Entwurf";
+    const r1 = await lege(gesprochen, { vorgang });
+    expect(r1.statusCode, r1.body).toBe(200);
+    const k = r1.json() as {
+      art: string;
+      zuordnung?: { felder: { label: string; wert: string }[]; abdruck: string };
+    };
+    expect(k.art).toBe("klaerung");
+    expect(k.zuordnung?.felder).toEqual([
+      { label: "Betreff", wert: "Rückruf Wartung" },
+      { label: "Nachricht", wert: "Bitte um Rückruf" },
+    ]);
+    expect(k.zuordnung?.abdruck).toMatch(/^[0-9a-f]{32}$/);
+    expect(await liste()).toEqual([]);
+    const falsch = await lege(gesprochen, { vorgang, zuordnung: "0".repeat(32) });
+    expect([falsch.statusCode, falsch.json().art]).toEqual([200, "klaerung"]);
+    // Der Abdruck gehört zu genau diesem Klick: ein anderer Vorgang trägt ihn nicht.
+    const fremd = await lege(gesprochen, {
+      vorgang: `vorgang-${randomUUID()}`,
+      zuordnung: k.zuordnung?.abdruck,
+    });
+    expect([fremd.statusCode, fremd.json().art]).toEqual([200, "klaerung"]);
+    expect(await liste()).toEqual([]);
+    const r2 = await lege(gesprochen, { vorgang, zuordnung: k.zuordnung?.abdruck });
+    expect(r2.statusCode, r2.body).toBe(201);
+    const start = r2.json() as Antwort;
+    const seite = seitenmodell();
+    const ende = await new Leiste(app, person.token, start.auftrag.id, seite).treibe(start);
+    expect(ende.stand).toBe("fertig");
+    expect([...seite.z.felder.values()]).toEqual(["Rückruf Wartung", "", "Bitte um Rückruf"]);
+    expect(seite.z.speicherungen).toBe(1);
+  });
+
   it("N2 · derselbe Vorgang erneut, während der Speicherklick abgeholt und unbeantwortet ist: derselbe Lauf, der Klick kommt als „wiederholt“ (die Erweiterung führt ihn ohne gemerkte Antwort nicht aus)", async () => {
     const { app, person, lege } = await aufbau();
     const seite = seitenmodell();

@@ -3053,6 +3053,27 @@
   const alsSicht = (roh) =>
     roh && typeof roh === "object" ? /** @type {import("./types").AuftragSicht} */ (roh) : null;
 
+  /**
+   * Die Zuordnung (Feld = Wert), die der Kern zur Bestätigung zeigt — nur in ihrer genauen Form.
+   * @param {unknown} roh @returns {import("./types").AktionZuordnung | null}
+   */
+  function alsZuordnung(roh) {
+    const z = /** @type {{felder?: unknown, abdruck?: unknown} | null} */ (
+      roh && typeof roh === "object" ? roh : null
+    );
+    if (!z || typeof z.abdruck !== "string" || !/^[0-9a-f]{32}$/.test(z.abdruck)) return null;
+    if (!Array.isArray(z.felder) || z.felder.length === 0 || z.felder.length > 20) return null;
+    /** @type {{label: string, wert: string}[]} */
+    const felder = [];
+    for (const f of z.felder) {
+      const x = /** @type {{label?: unknown, wert?: unknown}} */ (f ?? {});
+      if (typeof x.label !== "string" || typeof x.wert !== "string") return null;
+      if (x.label.length > 300 || x.wert.length > 4000) return null;
+      felder.push({ label: x.label, wert: x.wert });
+    }
+    return { felder, abdruck: z.abdruck };
+  }
+
   /** Schreibvorgänge am Auftragszustand nacheinander — keiner überschreibt einen späteren. */
   let merkKette = Promise.resolve();
   /** @param {Partial<AktionZustand>} teil */
@@ -3188,6 +3209,7 @@
       ziel: ziel ? { url: ziel.url } : null,
       laeuft: Boolean(a?.laeuft) || aktionAntrieb !== null,
       klaerung: a?.klaerung ?? null,
+      zuordnung: a?.zuordnung ?? null,
       fehler: a?.fehler ?? null,
       auftrag: a?.sicht ?? null,
     };
@@ -3200,15 +3222,18 @@
    */
   async function aktionZielVorn(ziel, leisteTab) {
     try {
-      // Der aktive Tab des Fensters, in dem die Person zuletzt war — im Seitenfenster ist das die
-      // Seite. Läuft die Leiste selbst als Tab und ist sie vorn, zählt der zuletzt benutzte andere.
-      const vorn = (await chrome.tabs.query({ active: true, lastFocusedWindow: true })).find(
+      // Die aktiven Tabs des Fensters, in dem die Person zuletzt war (bei geteilter Ansicht mehr als
+      // einer) — im Seitenfenster ist das die Seite. Läuft die Leiste selbst als Tab und ist sie
+      // vorn, zählt der zuletzt benutzte andere; ohne verlässliche Zeitangabe: nein.
+      const aktive = (await chrome.tabs.query({ active: true, lastFocusedWindow: true })).filter(
         (t) => typeof t.id === "number" && t.id !== leisteTab,
       );
-      if (vorn) return vorn.id === ziel.tabId;
+      if (aktive.length > 0) return aktive.some((t) => t.id === ziel.tabId);
       const andere = (await chrome.tabs.query({})).filter(
         (t) => typeof t.id === "number" && t.id !== leisteTab,
       );
+      if (andere.length === 0 || andere.some((t) => typeof t.lastAccessed !== "number"))
+        return false;
       const zuletzt = andere.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0))[0];
       return zuletzt !== undefined && zuletzt.id === ziel.tabId;
     } catch {
@@ -3216,7 +3241,7 @@
     }
   }
 
-  /** @param {{wortlaut?: unknown, quelle?: unknown, vorgang?: unknown, leisteTab?: unknown}} m @returns {Promise<AktionSicht>} */
+  /** @param {{wortlaut?: unknown, quelle?: unknown, vorgang?: unknown, leisteTab?: unknown, zuordnung?: unknown}} m @returns {Promise<AktionSicht>} */
   async function aktionStarten(m) {
     const state = /** @type {Zustand} */ (await read());
     if (!state.auth) return aktionSicht(state, "anmelden");
@@ -3224,6 +3249,8 @@
     const wortlaut = typeof m.wortlaut === "string" ? m.wortlaut.trim() : "";
     const quelle = m.quelle === "gesprochen" ? "gesprochen" : "getippt";
     const vorgang = typeof m.vorgang === "string" ? m.vorgang : "";
+    const zuordnung =
+      typeof m.zuordnung === "string" && /^[0-9a-f]{32}$/.test(m.zuordnung) ? m.zuordnung : null;
     if (!wortlaut || wortlaut.length > 2000 || !AKTION_VORGANG.test(vorgang))
       return aktionSicht(state, "invalid_message");
     const ziel = aktionsZiel(state);
@@ -3247,7 +3274,10 @@
             erledigt: null,
           }),
           laeuft: false,
-          fehler: "ziel_nicht_vorn",
+          // Wartet eine ungesicherte Übernahme, erteilt die Klickgeste keine neue Freigabe (BPA-01,
+          // `capture`): das ist dann die Ursache, und die Leiste sagt, was zuerst zu tun ist.
+          fehler:
+            state.work && !fertig(state.work) ? "ziel_nicht_vorn_uebernahme" : "ziel_nicht_vorn",
         },
       });
       return aktionSicht(/** @type {Zustand} */ (await read()), "gesperrt");
@@ -3286,6 +3316,7 @@
         quelle,
         wortlaut,
         ziel: { tabId: ziel.tabId, url: ziel.url },
+        ...(zuordnung ? { zuordnung } : {}),
         host: {
           browser: browserFassung().name,
           version: browserFassung().version,
@@ -3303,7 +3334,12 @@
     // Klärung oder Ablehnung: es gibt keinen (neuen) Lauf — nichts vom früheren gilt weiter.
     const ohneLauf = { id: null, ausfuehrend: null, erledigt: null };
     if (r.status === 200 && r.body.art === "klaerung") {
-      await aktionMerken({ ...ohneLauf, laeuft: false, klaerung: String(r.body.text ?? "") });
+      await aktionMerken({
+        ...ohneLauf,
+        laeuft: false,
+        klaerung: String(r.body.text ?? ""),
+        zuordnung: alsZuordnung(r.body.zuordnung),
+      });
       return aktionSicht(/** @type {Zustand} */ (await read()), "klaerung");
     }
     const auftrag = /** @type {{id?: unknown} | undefined} */ (r.body.auftrag);

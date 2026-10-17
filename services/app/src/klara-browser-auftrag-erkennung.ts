@@ -12,7 +12,8 @@
 // einkauf@kunde.invalid, Nachricht „…" und speichere ihn als Entwurf." Eine Beschriftung leitet
 // ihren Wert ein; der Wert reicht bis zur nächsten Beschriftung, bis zum Befehlsteil („und
 // speichere …") oder ist in Anführungszeichen eingeschlossen. Gesprochen fehlen die Anführungs-
-// zeichen meist — dann trennen die Beschriftungen selbst. Eine Beschriftung direkt nach einem
+// zeichen meist — dann trennen die Beschriftungen selbst; diese Trennung zeigt der Kern der Person
+// als Zuordnung (Feld = Wert) und führt erst nach ihrer Bestätigung aus. Eine Beschriftung direkt nach einem
 // Artikel oder einer Präposition („auf Ihre Nachricht", „an Empfänger") beginnt nur dann ein Feld,
 // wenn es eindeutig ist; mitten in einem ungeklammerten Wert wird sie geklärt.
 //
@@ -35,6 +36,12 @@ export type BrowserErkennung =
       readonly felder: readonly BrowserFeldwert[];
       readonly speichern: boolean;
       readonly ausloesen: string | null;
+      /**
+       * Mindestens ein Wert endet nur, weil die nächste Beschriftung beginnt — ohne Anführungszeichen
+       * oder Satzzeichen dazwischen. Ob die Trennung stimmt, kann nur die Person sagen: der Kern
+       * zeigt ihr die Zuordnung, bevor auf der Seite etwas geschieht.
+       */
+      readonly zuordnungPruefen: boolean;
     }
   | { readonly ok: false; readonly art: "klaerung"; readonly text: string }
   /** Eine Außenhandlung, die das Profil hier nicht freigibt: `was` in Worten der Person. */
@@ -147,7 +154,8 @@ const AUFTRAGSWORTE = new Set([
 
 function grenze(muster: string): RegExp {
   const sicher = muster.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
-  return new RegExp(`(^|[^\\p{L}\\p{N}])(${sicher})(?=$|[^\\p{L}\\p{N}])`, "giu");
+  // Bindestrich und Schrägstrich gehören zum Wort: „Empfänger-Wechsel" ist keine Beschriftung.
+  return new RegExp(`(^|[^\\p{L}\\p{N}/-])(${sicher})(?=$|[^\\p{L}\\p{N}/-])`, "giu");
 }
 
 interface Bereich {
@@ -171,6 +179,8 @@ interface Wertstelle extends Bereich {
   readonly label: string;
   readonly wert: string;
   readonly zitiert: boolean;
+  /** Endet nur an der nächsten Beschriftung (kein Zitat, kein Satzzeichen, kein Befehlsteil). */
+  readonly anBeschriftung: boolean;
 }
 
 /** Ein Klick ohne genannten Knopf („klicke auf den Knopf", „löse aus") — welcher, wäre geraten. */
@@ -186,54 +196,6 @@ const TRENNBAR: readonly (readonly [RegExp, string])[] = [
 ];
 
 const woerter = (t: string) => t.toLowerCase().split(/[^\p{L}\p{N}]+/u);
-/** Häufige Beiwörter, die vor einem Hauptwort gebeugt stehen („Neuer Empfänger", „Erste Nachricht"). */
-const BEIWORTSTAMM = new Set([
-  "neu",
-  "neuest",
-  "alt",
-  "erst",
-  "letzt",
-  "nächst",
-  "zweit",
-  "dritt",
-  "ander",
-  "weiter",
-  "gleich",
-  "richtig",
-  "falsch",
-  "dringend",
-  "folgend",
-  "eigen",
-  "offen",
-  "gesamt",
-  "frei",
-  "voll",
-  "leer",
-  "privat",
-  "intern",
-  "extern",
-  "kurz",
-  "lang",
-  "gut",
-  "schlecht",
-  "aktuell",
-]);
-
-/**
- * Steht direkt vor einer Beschriftung ein gebeugtes Beiwort? Kleingeschrieben ist jedes Wort mit
- * Beugungsendung verdächtig (Hauptwörter schreibt man gross); grossgeschrieben (am Wertanfang) nur
- * ein bekannter Beiwortstamm, ein Partizip („Geänderter") oder -ig/-lich/-isch („Wichtige").
- */
-function beiwortVor(wort: string): boolean {
-  if (!/^\p{L}+$/u.test(wort)) return false;
-  const k = wort.toLowerCase();
-  const m = /^(\p{L}+?)(e|er|es|en|em)$/u.exec(k);
-  if (!m) return false;
-  if (wort === k) return true;
-  const stamm = m[1] ?? "";
-  return BEIWORTSTAMM.has(stamm) || /^ge\p{L}+t$/u.test(stamm) || /(ig|lich|isch)$/u.test(stamm);
-}
-
 /** Der Infinitiv im Befehlsteil — nach einem ungeklammerten Wert mehrdeutig. */
 const INFINITIV_SPEICHERN = /(?:^|[^\p{L}])(speichern|sichern|abspeichern)(?=$|[^\p{L}])/iu;
 
@@ -320,6 +282,7 @@ function werteAus(
     const zitat = zit.find((z) => z.von === von && z.bis <= ende);
     let wert: string;
     let bis: number;
+    let anBeschriftung = false;
     if (zitat) {
       if (ANFUEHRUNGSZEICHEN.test(zitat.innen)) {
         return klaerung(
@@ -354,21 +317,22 @@ function werteAus(
           `Gehört „${infinitiv[1]}" zum Wert von „${m.label}", oder soll Klara speichern? Sage dann „und speichere ihn" oder setze den Wert in Anführungszeichen.`,
         );
       }
-      // Reicht der Wert bis zur nächsten Beschriftung, ohne Satzzeichen dazwischen, und endet er
-      // auf ein gebeugtes Beiwort („Neuer Empfänger …", „… neue Nachricht"), ist offen, ob die
-      // Beschriftung ein Feld beginnt oder ein Wort des Werts ist. Nicht still aufteilen.
-      const naechste = sortiert[i + 1];
-      const letztes = wert.split(/\s+/u).at(-1) ?? "";
-      if (naechste && !befehl && !/[,;:.!?]\s*$/u.test(abschnitt) && beiwortVor(letztes)) {
-        return klaerung(
-          `„${naechste.label}" folgt direkt auf „${letztes}". Gehört es zum Wert von „${m.label}", oder beginnt dort das Feld „${naechste.label}"? Setze den Wert von „${m.label}" in Anführungszeichen oder ein Komma dahinter.`,
-        );
-      }
+      // Reicht der Wert bis zur nächsten Beschriftung, ohne Satzzeichen dazwischen, hat allein der
+      // Feldname getrennt („Nachricht Bitte Empfänger prüfen …"). Das wird nicht geraten, sondern
+      // der Person als Zuordnung gezeigt (`zuordnungPruefen`).
+      anBeschriftung = Boolean(sortiert[i + 1]) && !befehl && !/[,;:.!?]\s*$/u.test(abschnitt);
     }
     if (!wert.trim()) {
       return klaerung(`Für „${m.label}" fehlt der Wert. Nenne ihn direkt nach der Beschriftung.`);
     }
-    werte.push({ label: m.label, wert, von: m.stelle.von, bis, zitiert: Boolean(zitat) });
+    werte.push({
+      label: m.label,
+      wert,
+      von: m.stelle.von,
+      bis,
+      zitiert: Boolean(zitat),
+      anBeschriftung,
+    });
   }
   return werte;
 }
@@ -537,5 +501,12 @@ export function erkenneBrowserAuftrag(
       `Was soll Klara im Formular „${formular.name}" tun? Nenne Felder mit Werten, etwa ${liste(formular.felder.slice(0, 2))}.`,
     );
   }
-  return { ok: true, formular: formular.name, felder, speichern, ausloesen: knopf };
+  return {
+    ok: true,
+    formular: formular.name,
+    felder,
+    speichern,
+    ausloesen: knopf,
+    zuordnungPruefen: werte.some((w) => w.anBeschriftung),
+  };
 }

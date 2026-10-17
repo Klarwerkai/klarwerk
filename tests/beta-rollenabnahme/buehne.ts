@@ -229,12 +229,14 @@ async function baueInstanz(): Promise<{ buehne: Buehne; eintrag: OffeneInstanz }
   }
   const repos = inMemoryRepos();
   const services = assembleServices(repos);
-  // Das synthetische Seitenprofil von BPA-03 wirkt nur auf `klaraBrowserAktionRoutes`; kurze Fristen,
-  // damit ein Takt in der Messung nicht 20 s auf einen Schritt wartet.
+  // Das synthetische Seitenprofil von BPA-03 wirkt nur auf `klaraBrowserAktionRoutes`. Ein kurzer
+  // Takt, damit eine Messung nicht 20 s auf einen Schritt wartet; Abhol- und Antwortfrist lang genug,
+  // dass ein hergestellter Lauf zwischen Herstellen, Nachlesen und Messen auch unter Last nicht von
+  // selbst weiterspringt.
   const app = buildApp(services, {
     browserAktion: {
       seitenprofile: [TESTSEITE],
-      fristen: { abholMs: 3000, antwortMs: 3000, taktMs: 300 },
+      fristen: { abholMs: 15000, antwortMs: 15000, taktMs: 300 },
     },
   });
   // VOR `ready()`: Fastify nimmt danach keinen Hook mehr an. Der Mitschreiber liest ausschliesslich

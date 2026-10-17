@@ -461,6 +461,7 @@ export type AktionZustand = {
   sicht: AuftragSicht | null;
   klaerung: string | null;
   fehler: string | null;
+  zuordnung?: AktionZuordnung | null;
   /** Die Nummer, deren Ausführung begonnen hat (vor der Ausführung gemerkt). */
   ausfuehrend?: number | null;
   /** Der zuletzt ausgeführte Befehl und seine Antwort — dieselbe Nummer wird nie zweimal ausgeführt. */
@@ -471,6 +472,8 @@ export type AktionZustand = {
   } | null;
   laeuft: boolean;
 };
+/** Die vom Kern erkannte Zuordnung, die die Person bestätigt, bevor etwas geschieht. */
+export type AktionZuordnung = { felder: { label: string; wert: string }[]; abdruck: string };
 export type AktionSicht = {
   aktion: true;
   status: string;
@@ -478,6 +481,7 @@ export type AktionSicht = {
   ziel: { url: string } | null;
   laeuft: boolean;
   klaerung: string | null;
+  zuordnung: AktionZuordnung | null;
   fehler: string | null;
   auftrag: AuftragSicht | null;
 };
@@ -525,6 +529,8 @@ export type Message = {
   vorgang?: string;
   /** Der Tab, in dem die Leiste selbst offen ist (nur wenn sie als Tab läuft) — zählt nicht als Seite. */
   leisteTab?: number;
+  /** Abdruck einer gezeigten und bestätigten Zuordnung (Feld = Wert). */
+  zuordnung?: string;
   /** BPA-03: woran die Außenaktionsbestätigung gebunden ist. */
   fingerabdruck?: string;
 };

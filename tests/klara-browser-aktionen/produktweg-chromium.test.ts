@@ -557,7 +557,15 @@ describe("BPA-03 · Produktweg: Leiste → Worker → Aktionskern → aktion.js 
       .toBe(GESPROCHEN);
     expect(await sichtbar(b.leiste, "#aktion-quelle")).toBe(true);
     await b.leiste.click("#aktion-ausfuehren");
+    // Ohne Anführungszeichen trennen allein die Feldnamen: Klara zeigt die Zuordnung, bevor auf der
+    // Seite etwas geschieht (vierte Prüfung, E1); erst die Bestätigung startet den Lauf.
+    await expect.poll(() => sichtbar(b.leiste, "#aktion-zuordnung"), { timeout: 10000 }).toBe(true);
+    expect(await b.leiste.textContent("#aktion-zuordnung-werte")).toContain("Rückruf Wartung");
+    expect(await b.felder("rueckmeldung")).toEqual({ "r-betreff": "", "r-nachricht": "" });
+    expect((await b.zaehler()).speicherungen).toBe(1);
+    await b.leiste.click("#aktion-zuordnung-ok");
     const g = await b.warte((x) => x.id !== s.id && ruht(x));
+    expect(await sichtbar(b.leiste, "#aktion-zuordnung")).toBe(false);
     expect(g.stand).toBe("fertig");
     expect(g.quelle).toBe("gesprochen");
     expect(g.formular).toBe("Rückmeldung");
