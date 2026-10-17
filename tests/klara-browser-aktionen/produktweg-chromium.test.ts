@@ -244,6 +244,9 @@ async function bahn(o: { sprache?: string; fristen?: Record<string, number> } = 
       `--disable-extensions-except=${erweiterungKopie}`,
       `--load-extension=${erweiterungKopie}`,
       "--enable-unsafe-extension-debugging",
+      // Wie der bestehende Chromium-Test: auf dem Linux-Prüfserver ohne Sandbox und GPU.
+      "--no-sandbox",
+      "--disable-gpu",
     ],
   });
   const aufrufe: Bahn["aufrufe"] = [];
@@ -746,6 +749,37 @@ describe("BPA-03 · Produktweg: Leiste → Worker → Aktionskern → aktion.js 
     expect((await b.zaehler()).speicherungen).toBe(1);
     expect(eigene(await b.zaehler())).toHaveLength(1);
   }, 120_000);
+
+  it("K7 · AC07 · Antwort auf den Speicherklick verloren, Fortsetzen VOR Ablauf der Frist: derselbe Befehl kommt erneut, der Worker klickt nicht ein zweites Mal", async () => {
+    const b = await bereit({ fristen: { antwortMs: 15000 } });
+    const netz = b.verliereTakt(nachKlick);
+    await b.auftrag(ENTWURF);
+    // Drei Versuche des Workers gehen verloren; er ruht mit „Verbindung".
+    await expect.poll(() => netz.verloren(), { timeout: 20000 }).toBeGreaterThanOrEqual(3);
+    await expect
+      .poll(() => sichtbar(b.leiste, "#aktion-fortsetzen"), { timeout: 10000 })
+      .toBe(true);
+    expect((await b.zaehler()).speicherungen).toBe(1);
+    netz.aus();
+    // Der Server wartet noch auf die Antwort zu genau diesem Klick und liefert ihn erneut aus.
+    await b.leiste.click("#aktion-fortsetzen");
+    const s = await b.warte((x) => x.stand === "fertig" && ruht(x));
+    expect(s.erfolg).toBe(true);
+    expect((await b.zaehler()).speicherungen).toBe(1);
+    expect(eigene(await b.zaehler())).toHaveLength(1);
+    expect(s.schritte.find((x) => x.art === "speichern")?.stand).toBe("erfolgt");
+  }, 120_000);
+
+  it("K4/K7 · AC04/AC07 · Doppelklick auf die Bestätigung: genau ein Versand", async () => {
+    const b = await bereit();
+    await b.auftrag(SENDEN);
+    await b.warte((x) => x.stand === "bestaetigung_noetig" && ruht(x));
+    await b.leiste.dblclick("#aktion-bestaetigen");
+    await b.warte((x) => x.stand === "fertig" && ruht(x));
+    // Kurz nachwarten, ob ein zweiter Versand nachkommt.
+    await b.leiste.evaluate("new Promise((r) => setTimeout(r, 1500))");
+    expect((await b.zaehler()).versand).toBe(1);
+  }, 90_000);
 
   it("K8 · AC08 · Pause hält vor dem nächsten Schritt und zeigt Erfolgtes; Fortsetzen prüft das Ziel und speichert genau einmal", async () => {
     const b = await bereit();

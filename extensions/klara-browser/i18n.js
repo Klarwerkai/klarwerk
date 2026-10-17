@@ -591,6 +591,11 @@ globalThis.KLARA_AKTION_TEXT = {
     aktion_andere_sitzung: "Dieser Auftrag gehört zu einer früheren Anmeldung.",
     aktion_fehler: "Der Auftrag wurde nicht angenommen.",
     aktion_abgelehnt: "Die Steuerung wurde nicht angenommen.",
+    aktion_keine_bestaetigung: "Gerade ist nichts zu bestätigen.",
+    aktion_bestaetigung_passt_nicht:
+      "Die Bestätigung gilt nicht mehr für diesen Stand. Bitte neu ansehen und bestätigen.",
+    aktion_zu_viele: "Es laufen schon mehrere Aufträge. Bitte erst einen beenden.",
+    aktion_nur_sitzung: "Nur mit eigener Anmeldung möglich.",
     aktion_invalid_message: "Bitte einen Auftrag eingeben.",
     aktionSchrittArt_lesen: "Seite lesen",
     aktionSchrittArt_fuellen: "Eintragen",
@@ -626,6 +631,11 @@ globalThis.KLARA_AKTION_TEXT = {
     aktion_andere_sitzung: "This task belongs to an earlier sign-in.",
     aktion_fehler: "The task was not accepted.",
     aktion_abgelehnt: "The control request was not accepted.",
+    aktion_keine_bestaetigung: "There is nothing to confirm right now.",
+    aktion_bestaetigung_passt_nicht:
+      "The confirmation no longer matches this state. Please review and confirm again.",
+    aktion_zu_viele: "Several tasks are already running. Please finish one first.",
+    aktion_nur_sitzung: "Only possible with your own sign-in.",
     aktion_invalid_message: "Please enter a task.",
     aktionSchrittArt_lesen: "Read page",
     aktionSchrittArt_fuellen: "Enter",
