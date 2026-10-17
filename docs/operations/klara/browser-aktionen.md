@@ -28,7 +28,10 @@ Fünf getrennte Handlungsarten mit festem Vertrag:
 
 Ein Seitenprofil nennt je Website/Pfad/Formular, welche Arten dort tatsächlich unterstützt sind,
 mit Knopfnamen. Ein Knopf ist genau eine Handlung. Ohne Profil: „nicht unterstützt" mit manuellem
-Schritt.
+Schritt. Wählt eine Seite ihren Datensatz über die Adresse (`?id=…`, Ankerroute), nennt das Profil
+diese Teile in `adressbindung`; nur sie binden das Ziel zusätzlich zu Herkunft und Pfad. Fehlt die
+Angabe, binden nur Herkunft und Pfad (wie im Kern) — wer ein Profil für eine solche Seite schreibt,
+muss sie setzen.
 
 ### Ablauf
 
@@ -95,15 +98,26 @@ aktion.js in Chromes isolierter Welt der freigegebenen Seite (chrome.scripting, 
   stehen (Füllen, Speichern, Formular-, Feld- und Knopfnamen). Ein anderes Wort, eine Verneinung
   oder Aufschiebung („nicht", „erst morgen") ergibt eine Klärung; ein nicht freigegebenes Außenwort
   (senden, übermitteln, bestellen …) eine Übergabe des ganzen Auftrags. Eine Beschriftung direkt nach
-  einem Artikel/einer Präposition („auf Ihre Nachricht") gehört zum Wert davor.
+  einem Artikel/einer Präposition („auf Ihre Nachricht", „an Empfänger") beginnt nur dann ein Feld,
+  wenn es eindeutig ist (Doppelpunkt/Anführungszeichen dahinter oder erste Beschriftung nach reinen
+  Auftragswörtern); mitten in einem ungeklammerten Wert wird geklärt. „ist"/„lautet" leiten einen
+  Wert ein. Ein Klick ohne genannten Knopf („klicke auf den Knopf") und ein offenes „aus"/„ein" am
+  Wertende werden geklärt.
 - **Speichern** gleicht unmittelbar vorher die Feldwerte ab (Server und `aktion.js`); weicht ein Feld
   ab, wird nicht gespeichert. Der Stand sagt ehrlich „Speichern ausgelöst, noch nicht nachgelesen"
   bzw. „möglicherweise gespeichert", nie „nichts gespeichert" nach einem Klick.
 - **Rücknahme** ohne Antwort der Seite ist „unklar" (kein neues Angebot); eine Seite ohne Löschen
   heisst „kein Löschen", nicht Außenwirkung.
-- **Worker:** Vor jedem Befehl wird die Adresse des Tabs mit der freigegebenen verglichen (anderer
-  Datensatz auf demselben Pfad = anderes Ziel). Eine begonnene Befehlsnummer wird nie erneut
-  ausgeführt; ihr Ausgang ist dann offen und wird abgeglichen.
+- **Worker:** Unmittelbar vor jeder Handlung prüft die Seite selbst (im eingesetzten Aufruf, ohne
+  Lücke), ob ihre Adresse noch das freigegebene Ziel ist — Herkunft, Pfad und die Teile aus
+  `adressbindung`. Ändert die Seite anderes selbst (`?entwurf=…`, `#gespeichert`), läuft der Auftrag
+  weiter. Eine begonnene Befehlsnummer wird nie erneut ausgeführt; einen Befehl, den der Kern als
+  schon abgeholt kennzeichnet (`wiederholt`), führt der Worker ohne gemerkte Antwort nie aus — der
+  Ausgang ist offen und wird an der Seite abgeglichen. Ein erneuter Klick auf „Ausführen" mit
+  demselben Vorgang behält, was der Worker in diesem Lauf schon ausgeführt hat.
+- **Derselbe Vorgang** ist derselbe Auftrag nur für dasselbe Ziel (Tab, Herkunft, Pfad). Nach einer
+  Übergabe (nichts geschah) und für ein anderes Ziel wird neu geprüft — „beauftrage Klara danach
+  erneut" wirkt ohne den Text zu ändern.
 - **Verlauf in der Web-App:** `KlaraBrowserAuftraege` zeigt die Browseraufträge des Gesprächs
   lesend im Klara-Verlauf (neben den KI-Aufträgen von BPA-13). Gelöschte Gespräche werden nicht neu
   angelegt; derselbe Vorgangsschlüssel ist auch nach einem Neustart derselbe Auftrag.
@@ -112,10 +126,11 @@ aktion.js in Chromes isolierter Welt der freigegebenen Seite (chrome.scripting, 
 
 | Prüfung | Datei | Was echt ist |
 | --- | --- | --- |
-| Produktweg AC01–AC10, 20 Fälle | `tests/klara-browser-aktionen/produktweg-chromium.test.ts` | ausgelieferte Erweiterung (byte-gleich geladen), Klickgeste über Chromes Symbolaktion, Anmeldung in der Leiste, Worker, `chrome.scripting`, `aktion.js` in der isolierten Welt, `buildApp` mit Rechten und Gespräch, synthetische Seite |
+| Produktweg AC01–AC10, 25 Fälle | `tests/klara-browser-aktionen/produktweg-chromium.test.ts` | ausgelieferte Erweiterung (byte-gleich geladen), Klickgeste über Chromes Symbolaktion, Anmeldung in der Leiste, Worker, `chrome.scripting`, `aktion.js` in der isolierten Welt, `buildApp` mit Rechten und Gespräch, synthetische Seite |
 | Türen, Rechte, Fremdzugriff, Folge, Bestätigung, Rücknahme, Ausfall | `tests/klara-browser-aktionen/produktweg-routen.test.ts` | `buildApp`, `app.inject`, Seitenmodell nach `aktion.js` |
 | Erkennung und Befehlsweg | `tests/klara-browser-aktionen/erkennung-relais.test.ts` | rein |
-| Gegenproben der unabhängigen Prüfung | `erkennung-befunde.test.ts`, `produktweg-routen.test.ts` (M6–m7) | rein bzw. `buildApp` |
+| Gegenproben der unabhängigen Prüfung (zwei Runden) | `erkennung-befunde.test.ts`, `produktweg-routen.test.ts` (M6–m7, N2, N3), `produktweg-chromium.test.ts` (N2, N3, N4) | rein, `buildApp` bzw. Chromium |
+| Einordnung für die Prüftorregister: Datenfluss ohne Wissensobjekt-Inhalt (Q1), frische `ko.create`-Prüfung vor jeder Wirkung (Q2, Q3) | `produktweg-routen.test.ts` | `buildApp`, echter Rollenwechsel über `PUT /api/users/:id` |
 | Verlauf in der Web-App | `tests/klara-browser-aktionen/verlauf-im-web.test.tsx` | `buildApp`, Klara-Fläche gemountet, eigener Abrufweg der Web-App |
 
 Gestellt sind ausdrücklich: Chromium 149 headless statt Google Chrome auf dem Mac, die Geste aus dem

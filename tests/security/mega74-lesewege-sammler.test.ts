@@ -1412,8 +1412,6 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "BPA-13 — Vergleich nur über eigene Aufträge; Sicht mit sichtbarkeitsfilterFuer.",
   },
-  // produkt:20261008:klara-aktionen (Klara 05): die Aufträge liegen IM eigenen Gespräch. Titel und
-  // Kennungen darin hat die Person selbst auf ihrem Bildschirm gewählt; kein Weg liest ein Objekt.
   // produkt:20261011:assistenz-browser-aktionen (BPA-03): Browseraufträge liegen IM eigenen
   // Gespräch (Konto aus der Anmeldung, fremd und unbekannt 404). Sie lesen kein Wissensobjekt; die
   // Antwort ist der eigene Auftrag (Beschriftungen aus dem Seitenprofil, Stände, Kennungen).
@@ -1431,12 +1429,17 @@ const REGISTER: Record<string, Eintrag> = {
   },
   "POST /api/me/klara/browser-auftraege/:id/takt": {
     urteil: "EIGENER_BESTAND",
-    grund: "eigener Lauf derselben Anmeldung; Antwort eigener Auftrag und nächster Befehl.",
+    // Datenfluss am Draht belegt (produktweg-routen Q1): der nächste Befehl trägt nur Werte aus dem
+    // Wortlaut der Person, Namen aus dem Seitenprofil und vorher Gelesenes derselben Seite.
+    grund:
+      "eigener Lauf derselben Anmeldung; Antwort eigener Auftrag und nächster Befehl, kein Objektinhalt.",
   },
   "POST /api/me/klara/browser-auftraege/:id/steuerung": {
     urteil: "EIGENER_BESTAND",
     grund: "steuert einen eigenen Lauf derselben Anmeldung; Antwort eigener Auftrag.",
   },
+  // produkt:20261008:klara-aktionen (Klara 05): die Aufträge liegen IM eigenen Gespräch. Titel und
+  // Kennungen darin hat die Person selbst auf ihrem Bildschirm gewählt; kein Weg liest ein Objekt.
   "GET /api/me/klara/gespraeche/:id/auftraege": {
     urteil: "EIGENER_BESTAND",
     grund: "nur die Aufträge eines eigenen Gesprächs (user.id), fremd und unbekannt 404.",

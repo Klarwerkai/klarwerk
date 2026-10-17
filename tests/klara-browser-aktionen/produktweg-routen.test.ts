@@ -1157,6 +1157,31 @@ describe("BPA-03 · Produktweg: Einordnung für die Prüftorregister (Chat 57)",
     expect(ja.statusCode === 200 ? ende.stand : "gestoppt_recht").toBe("gestoppt_recht");
   });
 
+  it("Q4 · Rücknahme ist eine Wirkung: Rolle vor der Rücknahme entzogen — kein Löschbefehl, nichts gelöscht", async () => {
+    const { app, admin, person, starte } = await aufbau();
+    const seite = seitenmodell();
+    const { start, leiste } = await starte(ENTWURF, seite);
+    const fertig = await leiste.treibe(start);
+    expect(fertig.ruecknahmeAngebot).toBe("entwurf_loeschen");
+    const r = await app.inject({
+      method: "PUT",
+      url: `/api/users/${person.id}`,
+      headers: kopf(admin.token),
+      payload: { role: "viewer" },
+    });
+    expect(r.statusCode, r.body).toBeLessThan(300);
+    const rueck = await leiste.steuere("ruecknahme");
+    expect(rueck.statusCode, rueck.body).toBe(200);
+    const arten: string[] = [];
+    const nach = await leiste.treibe(rueck.json() as Antwort, (b): Verhalten => {
+      arten.push(b.art);
+      return "antworten";
+    });
+    expect(arten).not.toContain("loesche");
+    expect(seite.z.loeschungen).toBe(0);
+    expect(nach.ruecknahme?.text).toContain("Recht");
+  });
+
   it("N2 · derselbe Vorgang erneut, während der Speicherklick abgeholt und unbeantwortet ist: derselbe Lauf, der Klick kommt als „wiederholt“ (die Erweiterung führt ihn ohne gemerkte Antwort nicht aus)", async () => {
     const { app, person, lege } = await aufbau();
     const seite = seitenmodell();
