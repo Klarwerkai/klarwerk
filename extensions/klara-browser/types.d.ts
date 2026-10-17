@@ -76,12 +76,77 @@ export type Work = {
   savedLevel: string;
   receipt: string | null;
 };
+/** BPA-02: eine Tabelle der Seite — Abschnitt, optionaler Anker, Kopf und Zeilen als Text. */
+export type Tabelle = { abschnitt: string; anker: string; kopf: string[]; zeilen: string[][] };
+/** BPA-02: der Beleg, den `POST /api/technische-daten/*` verlangt. */
+export type Beleg = {
+  art: "html" | "datenblatt";
+  url: string;
+  abschnitt: string;
+  anker?: string;
+  titel: string;
+  abgerufenAm: string;
+  kopf: string[];
+  zeilen: string[][];
+};
+/** BPA-02: was die Leiste von einer Serverauswertung zeigt — nur Texte. */
+export type TechnikErgebnis = { werte: string[]; klaerungen: string[]; abweichungen: string[] };
+/**
+ * BPA-02 (Nacharbeit 5): eine Quelle einer Übernahme — der Tab, in dem sie erfasst wurde, ihre
+ * Adresse, die gewählte Art (Webseite oder ausdrücklich gewähltes Datenblatt) und die Tabelle.
+ */
+export type TechnikQuelle = {
+  tabId: number;
+  url: string;
+  titel: string;
+  art: "html" | "datenblatt";
+  tabelle: Tabelle;
+  erfasstAm: string;
+};
+/** BPA-02: die markierte Tabelle einer Übernahme und ihr Prüfstand. */
+export type Technik = {
+  captureId: string;
+  tabelle: Tabelle;
+  ziel: { objekt: string; variante: string };
+  /** Die Quellen der letzten Prüfung, in der Reihenfolge ihrer Belege. */
+  quellen: TechnikQuelle[] | null;
+  belege: Beleg[] | null;
+  vorschaubeleg: string | null;
+  ergebnis: TechnikErgebnis | null;
+  /** Ergebnis des letzten Quellenabgleichs, als Textzeilen. */
+  abgleich: string[] | null;
+  /** Nacharbeit 7: der Abschnitt fehlte bei der letzten frischen Lesung (Zeitpunkt). */
+  klaerung?: { am: string; unlesbar?: boolean } | null;
+  entwurfId: string | null;
+  /** Die erneute Übernahme fand dieselbe Fassung schon als Wissensobjekt. */
+  wissensobjektId: string | null;
+  imWissenFreigegeben: boolean;
+};
+/** BPA-02 (Nacharbeit 5): bewusst gemerkte weitere Belege, gebunden an das angemeldete Konto. */
+export type TechnikSammlung = { owner: string; quellen: TechnikQuelle[] };
+export type TechnikSicht = {
+  abschnitt: string;
+  ziel: { objekt: string; variante: string };
+  geprueft: boolean;
+  belege: string[];
+  sammlung: string[];
+  ergebnis?: TechnikErgebnis;
+  abgleich?: string[];
+  klaerung?: boolean;
+  /** Nacharbeit 8: die Quelle war gar nicht lesbar (nicht nur der Abschnitt fehlte). */
+  klaerungUnlesbar?: boolean;
+  link?: string;
+  wissenLink?: string;
+  imWissenFreigegeben?: boolean;
+};
 export type State = {
   auth?: Auth | null;
   work?: Work | null;
   captureStatus?: string | null;
   sourceChangedId?: string;
   pendingCapture?: boolean;
+  technik?: Technik | null;
+  technikSammlung?: TechnikSammlung | null;
 };
 export type View = {
   status: string;
@@ -102,6 +167,8 @@ export type View = {
   draftId?: string;
   /** JOB 3280 R3: DASS eine Anlage unklar ist — und der Inhalt deshalb bis zur Klärung still steht. */
   unresolvedCreate?: boolean;
+  /** BPA-02: die markierte Tabelle dieser Übernahme, ihr Prüfergebnis und der Entwurfslink. */
+  technik?: TechnikSicht;
 };
 export type Message = {
   type: string;
@@ -112,6 +179,11 @@ export type Message = {
   text?: string;
   email?: string;
   password?: string;
+  /** BPA-02: Erfassungsziel und Schutzklasse der technischen Daten (leer = unbekannt). */
+  ziel?: { objekt?: string; variante?: string };
+  schutzklasse?: string;
+  /** BPA-02 (Nacharbeit 5): die Art des aktuellen Belegs — `html` oder `datenblatt`. */
+  art?: string;
 };
 export type Payload = {
   title: string;
@@ -142,6 +214,9 @@ export type CaptureResult = {
   title: string;
   url: string;
   variants?: Partial<Record<string, unknown>>;
+  /** BPA-02: die sichtbaren Tabellen und die Stelle der markierten (−1 = keine). */
+  tabellen?: unknown[];
+  tabelleGewaehlt?: unknown;
 };
 type Tab = { id?: number; url?: string; title?: string };
 type Click = {

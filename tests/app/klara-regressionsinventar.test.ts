@@ -1368,6 +1368,12 @@ const INVENTAR: readonly string[] = [
   // Vorlesen — Achse `komponente`. Kein „klara" im Pfad: K5 bleibt unverändert. NICHT GEMESSEN,
   // SONDERN AUS DER QUELLE ABGELEITET (die Bahn startet keine Tests).
   "tests/hilfe-elementbeispiel/elementbeispiel-mounted.test.tsx",
+  // BPA-02 (produkt:20261011:assistenz-browser-wissenserfassung, Nacharbeit 3): der Browseradapter
+  // der technischen Daten — `selection.js` im Dokument, der Worker im Prüfstand, die gemountete
+  // Leiste vor der echten App. Achse `erweiterung` (die Datei nennt die Bauteile), „klara" steht
+  // nicht im Pfad: K5 bleibt unverändert. NICHT GEMESSEN, SONDERN AUS DEN ACHSEN ABGELEITET (die
+  // Bahn startet keine Tests).
+  "tests/technische-daten-uebernahme/browser-adapter.test.ts",
   // produkt:20261008:klara-aktionen (Klara 05): drei neue Testdateien unter `tests/klara-aktionen/`
   // tragen „klara" im PFAD (Achse `name`). Nachgeführt für genau diese drei Dateien — NICHT
   // GEMESSEN, sondern aus der Pfadregel abgeleitet (in dieser Lieferung wurde kein Testlauf

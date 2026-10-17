@@ -212,6 +212,67 @@ globalThis.KLARA_TEXT = {
       "Flüchtiger Zustand nicht erreichbar. Bitte Erweiterung erneut öffnen; keine Anlage bestätigt.",
     invalid_message: "Unzulässiger Erweiterungsauftrag.",
     forbidden_sender: "Unzulässiger Absender.",
+    // BPA-02 · technische Daten aus der markierten Tabelle.
+    technikTitle: "Technische Daten übernehmen",
+    technikAbschnitt: "Abschnitt",
+    technikObjekt: "Modell / Objekt (leer = alle Geräte der Tabelle)",
+    technikVariante: "Variante (optional)",
+    technikPruefen: "Technische Daten prüfen",
+    technikWerte: "Werte mit Herkunft",
+    technikKlaerungen: "Offene Klärungen",
+    technikAbweichungen: "Abweichende Belege",
+    technikSchutz: "Schutzklasse",
+    technikSchutzUnbekannt: "Unbekannt — geschützt klären",
+    technikHinweis:
+      "Vor dem Speichern liest Klara die Seite erneut. Hat sich die Tabelle geändert, wird nichts gespeichert und die neue Fassung zur Prüfung gezeigt.",
+    technikUebernehmen: "Als ungeprüften Entwurf übernehmen",
+    technik_none:
+      "An der Markierung steht keine Tabelle. Bitte eine Zelle der Tabelle markieren und erneut übernehmen.",
+    technik_preview: "Technische Daten geprüft. Werte, Klärungen und Belege kontrollieren.",
+    technik_saved: "Technische Daten als ungeprüfter Entwurf gesichert.",
+    technik_changed:
+      "Die Tabelle hat sich seit der Prüfung geändert. Es wurde nichts gespeichert; die neue Fassung steht zur Prüfung bereit.",
+    technik_blocked: "Für diese Quelle ist das Leserecht entzogen. Es wurde nichts übernommen.",
+    technik_failed: "Technische Daten konnten nicht übernommen werden.",
+    // Nacharbeit 5: weitere Belege, Quellenabgleich und die Wiederholung nach dem Einreichen.
+    technikArt: "Art dieses Belegs",
+    technikArtHtml: "Webseite",
+    technikArtDatenblatt: "Datenblatt (ausdrücklich gewählt)",
+    technikMerken: "Als weiteren Beleg merken",
+    technikAbgleichen: "Mit vorhandenem Wissen abgleichen",
+    technikSammlung: "Gemerkte weitere Belege",
+    technikLeeren: "Gemerkte Belege verwerfen",
+    technikBelege: "Geprüfte Belege",
+    technikAbgleich: "Betroffene Entwürfe und Wissen",
+    technikWissenOeffnen: "Vorhandenes Wissen öffnen",
+    technik_gemerkt:
+      "Beleg gemerkt. Jetzt die Tabelle des nächsten Belegs markieren und übernehmen; die Prüfung nimmt beide.",
+    technik_geleert: "Gemerkte Belege verworfen.",
+    technik_abgeglichen: "Quelle mit dem vorhandenen Wissen abgeglichen.",
+    technik_im_wissen:
+      "Diese Fassung ist bereits als Wissen übernommen, aber noch nicht fachlich freigegeben. Es wurde kein neuer Entwurf angelegt.",
+    technik_im_wissen_freigegeben:
+      "Diese Fassung ist bereits als fachlich freigegebenes Wissen übernommen. Es wurde kein neuer Entwurf angelegt.",
+    // Nacharbeit 7: Klärung, wenn der Abschnitt bei der frischen Lesung fehlt.
+    technikKlaerungFrage:
+      "Der Abschnitt steht nicht mehr auf der Seite. Was ist mit der Quelle passiert?",
+    technikGeloescht: "Abschnitt wurde gelöscht",
+    technikVerschoben: "Abschnitt steht an anderer Stelle",
+    technikEntzogen: "Zugriff auf die Quelle wurde entzogen",
+    technikKlaerungHinweis:
+      "Gelöscht: Übernahmen bleiben mit Herkunft erhalten und werden als nicht mehr erreichbar gekennzeichnet. Verschoben: nichts wird gekennzeichnet; bitte die neue Stelle markieren und übernehmen. Entzogen: sperrt Quelle und Ableitungen; das darf nur die Fachprüfung.",
+    technik_abschnitt_fehlt:
+      "Der Abschnitt wurde auf der Seite nicht mehr gefunden. Es wurde nichts gesendet; bitte den Grund wählen.",
+    technik_verschoben:
+      "Nichts gekennzeichnet. Bitte die Tabelle an ihrer neuen Stelle markieren und übernehmen.",
+    // Nacharbeit 8: die gebundene Quelle ist gar nicht lesbar — etwas anderes als eine Navigation.
+    technikUnlesbarFrage:
+      "Die Quelle lässt sich nicht mehr lesen — der Tab ist geschlossen, die Seite fehlt oder der Zugriff ist weg. Was ist mit der Quelle passiert?",
+    technik_quelle_unlesbar:
+      "Die Quelle konnte nicht gelesen werden. Es wurde nichts gesendet; bitte den Grund wählen.",
+    technik_rechte_entzogen: "Leserecht der Quelle entzogen. Quelle und Ableitungen sind gesperrt.",
+    technik_rechte_nur_pruefung:
+      "Nur die Fachprüfung kann das Leserecht einer Quelle entziehen. Bitte dort melden; es wurde nichts geändert.",
   },
   en: {
     language: "Language",
@@ -386,5 +447,60 @@ globalThis.KLARA_TEXT = {
     storage_error: "Temporary state is unavailable. Reopen the extension; no creation confirmed.",
     invalid_message: "Invalid extension operation.",
     forbidden_sender: "Unauthorized sender.",
+    technikTitle: "Capture technical data",
+    technikAbschnitt: "Section",
+    technikObjekt: "Model / object (empty = all devices in the table)",
+    technikVariante: "Variant (optional)",
+    technikPruefen: "Check technical data",
+    technikWerte: "Values with origin",
+    technikKlaerungen: "Open clarifications",
+    technikAbweichungen: "Diverging evidence",
+    technikSchutz: "Protection class",
+    technikSchutzUnbekannt: "Unknown — clarify protected",
+    technikHinweis:
+      "Before saving, Klara reads the page again. If the table changed, nothing is saved and the new version is shown for review.",
+    technikUebernehmen: "Save as unreviewed draft",
+    technik_none: "No table at the selection. Select a cell of the table and capture again.",
+    technik_preview: "Technical data checked. Review values, clarifications and evidence.",
+    technik_saved: "Technical data saved as an unreviewed draft.",
+    technik_changed:
+      "The table changed since the check. Nothing was saved; the new version is ready for review.",
+    technik_blocked: "Read access to this source has been revoked. Nothing was captured.",
+    technik_failed: "Technical data could not be saved.",
+    technikArt: "Type of this evidence",
+    technikArtHtml: "Web page",
+    technikArtDatenblatt: "Data sheet (explicitly chosen)",
+    technikMerken: "Keep as additional evidence",
+    technikAbgleichen: "Compare with existing knowledge",
+    technikSammlung: "Additional evidence kept",
+    technikLeeren: "Discard kept evidence",
+    technikBelege: "Checked evidence",
+    technikAbgleich: "Affected drafts and knowledge",
+    technikWissenOeffnen: "Open existing knowledge",
+    technik_gemerkt:
+      "Evidence kept. Now select and capture the table of the next evidence; the check takes both.",
+    technik_geleert: "Kept evidence discarded.",
+    technik_abgeglichen: "Source compared with existing knowledge.",
+    technik_im_wissen:
+      "This version is already in knowledge but not yet reviewed. No new draft was created.",
+    technik_im_wissen_freigegeben:
+      "This version is already in reviewed knowledge. No new draft was created.",
+    technikKlaerungFrage: "The section is no longer on the page. What happened to the source?",
+    technikGeloescht: "Section was deleted",
+    technikVerschoben: "Section is somewhere else",
+    technikEntzogen: "Access to the source was revoked",
+    technikKlaerungHinweis:
+      "Deleted: captures keep their origin and are marked as no longer reachable. Moved: nothing is marked; select and capture the new location. Revoked: locks the source and its derivatives; only reviewers may do this.",
+    technik_abschnitt_fehlt:
+      "The section was no longer found on the page. Nothing was sent; please choose the reason.",
+    technik_verschoben: "Nothing marked. Select the table at its new location and capture it.",
+    technikUnlesbarFrage:
+      "The source can no longer be read — the tab is closed, the page is gone or access was lost. What happened to the source?",
+    technik_quelle_unlesbar:
+      "The source could not be read. Nothing was sent; please choose the reason.",
+    technik_rechte_entzogen:
+      "Read access to the source revoked. Source and derivatives are locked.",
+    technik_rechte_nur_pruefung:
+      "Only reviewers can revoke read access to a source. Please report it there; nothing was changed.",
   },
 };

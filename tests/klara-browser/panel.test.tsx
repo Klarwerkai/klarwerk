@@ -34,7 +34,20 @@ describe("Klara · echte HTML- und Skript-Einstiege im DOM", () => {
     // JOB 3279: das Skript liefert jetzt zusätzlich die drei wählbaren Umfänge. Die Enge des
     // alten `toEqual` bleibt: der Schlüsselsatz ist gepinnt, und die MARKIERUNG trägt weiterhin
     // ausschließlich das Markierte — nicht die Nachbarschaft und nicht das Passwortfeld.
-    expect(Object.keys(result).sort()).toEqual(["text", "title", "url", "variants"]);
+    // BPA-02 (produkt:20261011:assistenz-browser-wissenserfassung): dazu kommen GENAU zwei Felder —
+    // die sichtbaren Tabellen und die Stelle der markierten. Der Satz bleibt abschliessend gepinnt.
+    expect(Object.keys(result).sort()).toEqual([
+      "tabelleGewaehlt",
+      "tabellen",
+      "text",
+      "title",
+      "url",
+      "variants",
+    ]);
+    // Ohne Tabelle im Dokument tragen die neuen Felder nichts — weder Nachbartext noch Passwortfeld.
+    const roh = result as CaptureResult & { tabellen?: unknown; tabelleGewaehlt?: unknown };
+    expect(roh.tabellen).toEqual([]);
+    expect(roh.tabelleGewaehlt).toBe(-1);
     expect({ text: result.text, title: result.title, url: result.url }).toEqual({
       text,
       title: "Quelle",

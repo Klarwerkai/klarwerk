@@ -47,6 +47,7 @@ import { type Guards, type SessionUser, sendError } from "../http";
 import { bildVerkleinerung, bildausfaelleVermerken } from "../import/bildverkleinerung";
 import type { AssignmentNotifier } from "../notify";
 import { autorenrechtAmEntwurf, entwurfSichtbarFuer } from "../sichtbarkeit";
+import { type Quellsperre, sendeQuellsperre } from "../technische-daten-quellen";
 import {
   VORLAGE_SPACE_KONFLIKT_TEXT,
   type VorlagenEinreichungPort,
@@ -985,6 +986,13 @@ export interface CaptureRoutesDeps {
    * Vorlage und Fassung. Speichern bleibt frei; geprüft wird erst beim Promote.
    */
   vorlagenEinreichung?: VorlagenEinreichungPort | undefined;
+  /**
+   * BPA-02 (Nacharbeit 5, Ben): die Quellsperre der technischen Daten. Ist das Leserecht einer
+   * Quelle entzogen, bleibt ein Entwurf aus ihr gesperrt — auch im Papierkorb (kein Inhalt), beim
+   * Wiederherstellen und beim Einreichen. Endgültiges Löschen bleibt erlaubt: es gibt nichts heraus.
+   * Optional wie die übrigen Deps; ohne Verdrahtung bleibt jeder Weg exakt wie vorher.
+   */
+  quellsperre?: Quellsperre | undefined;
 }
 
 // ================================================================================================
@@ -1087,6 +1095,12 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
   } = deps;
   // R-0169 (Nacharbeit 5): die interne Dokumentakte des Word-Wegs (optional, s. Deps).
   const dokumente = deps.dokumente;
+  // BPA-02: trägt dieser Entwurf eine Quelle, deren Leserecht entzogen ist? (s. Deps)
+  const quellsperre = deps.quellsperre;
+  const entwurfGesperrt = async (draft: Draft | undefined): Promise<boolean> =>
+    draft !== undefined &&
+    quellsperre !== undefined &&
+    (await quellsperre.gesperrt(draft.payload.pendingSources ?? []));
   // JOB 2671 D2: EINE Entscheidung, beim Aufbau getroffen — nicht bei jeder Anfrage neu.
   const docxUmwandeln = deps.docxUmwandlung ?? extractDocxRich;
   const docxUmwandlungTimeoutMs = deps.docxUmwandlungTimeoutMs ?? DOCX_UMWANDLUNG_TIMEOUT_MS;
@@ -1809,7 +1823,27 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         );
         // Pool-Auftrag (297afc57): der Papierkorb zeigt, was dieser Mensch löschen durfte — nur
         // eigene Entwürfe (und dem Admin herrenlosen Altbestand), nie fremde Pool-Entwürfe.
-        reply.code(200).send(geloescht.filter((draft) => canManageDraft(user, draft)));
+        // BPA-02: ein Entwurf aus einer Quelle mit entzogenem Leserecht steht ohne Inhalt da —
+        // Kennung und Zeitpunkte, damit er endgültig gelöscht werden kann, und `quellsperre`.
+        const eigene = geloescht.filter((draft) => canManageDraft(user, draft));
+        const antwort = [];
+        for (const draft of eigene) {
+          antwort.push(
+            (await entwurfGesperrt(draft))
+              ? {
+                  id: draft.id,
+                  originalAuthor: draft.originalAuthor,
+                  lastEditor: draft.lastEditor,
+                  createdAt: draft.createdAt,
+                  updatedAt: draft.updatedAt,
+                  deletedAt: draft.deletedAt,
+                  payload: {},
+                  quellsperre: true,
+                }
+              : draft,
+          );
+        }
+        reply.code(200).send(antwort);
       } catch (error) {
         sendError(reply, error);
       }
@@ -1825,7 +1859,18 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         // ihn nicht sehen darf, erfährt auch hier nicht, dass es ihn gibt. `requireVisibleDraft`
         // selbst ist hier NICHT brauchbar — es liest über `getDraft`, und das gibt einen
         // getrashten Entwurf bewusst nicht heraus.
-        if (!(await requireVisibleTrashedDraft(capture, request.params.id, user, reply))) {
+        const imPapierkorb = await requireVisibleTrashedDraft(
+          capture,
+          request.params.id,
+          user,
+          reply,
+        );
+        if (!imPapierkorb) {
+          return;
+        }
+        // BPA-02: Wiederherstellen gäbe den gesperrten Inhalt zurück — erst nach Wiedererteilung.
+        if (await entwurfGesperrt(imPapierkorb)) {
+          sendeQuellsperre(reply);
           return;
         }
         reply.code(200).send(await capture.restoreDraft(request.params.id));
@@ -2193,6 +2238,11 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             );
           } else if (expectedUpdatedAt !== undefined) {
             await capture.requireFresh(request.params.id, expectedUpdatedAt);
+          }
+          // BPA-02: kein Wissensobjekt aus einer Quelle mit entzogenem Leserecht — vor jeder Anlage.
+          if (await entwurfGesperrt(await capture.getDraft(request.params.id))) {
+            sendeQuellsperre(reply);
+            return;
           }
           const input = await capture.toKoInput(request.params.id);
           // produkt:20261007:templates-default: dieselbe Einreichprüfung wie an `POST /api/kos`,

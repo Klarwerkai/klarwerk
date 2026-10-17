@@ -39,6 +39,23 @@ Noch **nicht** enthalten und in eigenen Aufträgen unterwegs: ganzen Artikel bzw
 Bilder und Struktur übernehmen, Einfügen aus der Zwischenablage sowie der große
 Weiterbearbeiten-Weg (CHR-04 bis CHR-08). Was die Leiste nicht erfassen kann, behauptet sie nicht.
 
+**Technische Daten (BPA-02).** Steht die Markierung in einer Tabelle, zeigt die Leiste den Abschnitt
+„Technische Daten übernehmen": Modell/Variante eintragen, **Technische Daten prüfen** (Klarwerk wertet
+die Tabelle regelbasiert aus, ohne KI) und danach **Als ungeprüften Entwurf übernehmen**. Vor dem
+Speichern liest die Leiste denselben Tab neu; hat sich die Tabelle geändert, wird nichts gespeichert
+und die neue Fassung erscheint zur Prüfung. Der gespeicherte Entwurf öffnet sich über denselben Link.
+Ein ausdrücklich gewähltes Datenblatt (oder eine zweite Seite) wird in seinem Tab erfasst, als
+**Datenblatt** gewählt und mit **Als weiteren Beleg merken** vorgemerkt; die nächste Prüfung führt
+beide als getrennte Belege samt Abweichung und Empfehlung. **Mit vorhandenem Wissen abgleichen**
+nennt eigene Entwürfe und sichtbares Wissen aus demselben Abschnitt und vermerkt Änderungen dort;
+die Leiste liest dafür jedes Mal denselben Tab neu. Zeigt der Tab eine andere Adresse, ist das ein
+Kontextwechsel und es wird nichts gesendet. Fehlt der Abschnitt oder ist die Quelle gar nicht mehr
+lesbar (Tab geschlossen, Seite weg, kein Zugriff), fragt sie: gelöscht
+(Kennzeichnung „nicht mehr erreichbar"), verschoben (keine Kennzeichnung) oder Zugriff entzogen
+(Rechteweg, nur mit Prüfrecht).
+Ist dieselbe Fassung schon als Wissen eingereicht, legt die Übernahme nichts Neues an und bietet
+**Vorhandenes Wissen öffnen** an.
+
 Gespeichert wird **nur auf Knopfdruck**. Bis zur Bestätigung liegt die Auswahl flüchtig in der
 Browsersitzung; Browserneustart, Neuladen der Erweiterung oder Abmelden löschen sie. Es gibt keine
 automatische Speicherung und keinen KI-Aufruf. Die Erweiterung spricht ausschließlich mit
