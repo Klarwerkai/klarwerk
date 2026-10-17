@@ -21,7 +21,11 @@ nicht als in Office benutzt.
 Übergabecode `/api/auth/office-handover/redeem`), der Klara-Sitzungsweg (`/api/klara/sessions`,
 Zustimmung je Sitzung und Dokument, `/execute`), der Entwurfsweg (`/api/drafts`), die Einbettungsregel
 (`office-host.ts`, samt `KLARWERK_M365_MANDANTEN`). Das Word-Manifest und das Word-Fenster sind
-unverändert; das Word-Manifest bleibt Word-only (`<Host Name="Document" />`).
+unverändert; das Word-Manifest bleibt Word-only (`<Host Name="Document" />`). Die gemeinsame
+Dialogseite nennt den aufrufenden Host (`?host=excel|powerpoint` bzw. Offices `_host_Info`); ist er
+nicht erkennbar (etwa nach dem SSO-Rückweg oder im Rückfallfenster), spricht sie neutral von
+„Office“. Meldet Office den Host Word, bleiben die Sätze wörtlich; der Anmeldeweg selbst ist
+unverändert.
 
 ## 2. Erster Arbeitsweg (Vorschlag — wartet auf Pedis Bestätigung)
 

@@ -157,7 +157,10 @@ describe("KO-04-03 · Summe: Ziel prüfen, Excel rechnen lassen, gegen Nachrechn
     expect(textVon("plan-satz")).toContain("Ziel: Tabelle1!B5");
     expect(textVon("plan-satz")).toContain("=SUM(B2:B4)");
     expect(zellen(stand).B5).toBeUndefined();
-    await fenster.ausfuehren();
+    // Ben-Befund C: der zweite Klick ist sofort bedienbar — gemessen am echten Knopf.
+    expect(knoten("plan-ausfuehren").disabled).toBe(false);
+    knoten("plan-ausfuehren").click();
+    await warte();
     expect(zellen(stand).B5).toMatchObject({ formel: "=SUM(B2:B4)", wert: 1325.5 });
     expect(textVon("rueckgabe-meldung")).toContain("Excel hat 1325.5 berechnet");
     expect(textVon("rueckgabe-meldung")).toContain("stimmt überein");

@@ -1,4 +1,10 @@
 /* Klara für Excel und PowerPoint — schlichtes Aufgabenfenster (aufnahme:20260922:excel-erster-weg). */
+
+/* Ben-Befund A: `hidden` gewinnt immer. Ohne diese Regel überstimmte `button { display: block }`
+   das Attribut, und „Anmelden" bzw. „Letzte Änderung zurücknehmen" blieben sichtbar. */
+[hidden] {
+  display: none !important;
+}
 body {
   font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
   font-size: 14px;

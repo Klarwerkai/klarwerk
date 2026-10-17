@@ -82,6 +82,8 @@ interface Hostkern {
   excelAuswahlBewerten(bereiche: Bereich[]): Bewertung;
   excelKontextText(kontext: Daten): string;
   excelTabelleHtml(kontext: Daten): string;
+  entwurfTitel(mappe: string, ort: string): string;
+  TITEL_MAX: number;
   zahlenNachrechnen(bereiche: Bereich[]): Daten;
   summenPlan(kontext: Daten): Summenplan;
   zielVorschlag(kontext: Daten): string;
@@ -266,6 +268,22 @@ describe("K2 · KO-04-02 · Excel: Bereich, Wert, Formel und Anzeige getrennt; G
     expect(K.GRENZEN.maxKontextZeichen).toBeLessThan(8000);
     expect(text.length).toBeLessThan(8000);
     expect(text).toMatch(/weitere Zellen passen nicht in den Kontext/);
+  });
+
+  it("Ben-Befund D · der Entwurfstitel behält den vollständigen Bereich", () => {
+    expect(K.entwurfTitel("Haushalt-fiktiv.xlsx", "Tabelle1!B2:B4")).toBe(
+      "Tabelle aus Excel: Haushalt-fiktiv.xlsx · Tabelle1!B2:B4",
+    );
+    const langeMappe = "Haushaltsplanung-2026-fiktiv-Abteilung-Nord-Fassung-final.xlsx";
+    const kurz = K.entwurfTitel(langeMappe, "Tabelle1!B2:B4");
+    expect(kurz.length).toBeLessThanOrEqual(K.TITEL_MAX);
+    expect(kurz.endsWith(" · Tabelle1!B2:B4")).toBe(true);
+    expect(kurz.startsWith("Tabelle aus Excel: Haushaltsplanung")).toBe(true);
+    // Längster Blattname (31 Zeichen) mit dem längsten Bereich: der Bereich bleibt ganz.
+    const ort = `${"B".repeat(31)}!XFD1048570:XFD1048576`;
+    const eng = K.entwurfTitel(langeMappe, ort);
+    expect(eng.length).toBeLessThanOrEqual(K.TITEL_MAX);
+    expect(eng.endsWith(ort)).toBe(true);
   });
 
   it("R-0187 · der Entwurf trägt Herkunft, angezeigte Werte und Formeln — escaped", () => {

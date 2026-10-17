@@ -137,7 +137,10 @@ describe("KO-04-05 · Frage und gezielte Textrückgabe in das markierte Textfeld
     await fenster.formtextVorbereiten();
     expect(textVon("plan-satz")).toContain("Ziel: Folie 1 · Textfeld „Textfeld 2“");
     expect(formVon(stand, "11")?.text).toBe("Umsatz Q3: 1,2 Mio. € (fiktiv)");
-    await fenster.ausfuehren();
+    // Ben-Befund C: der zweite Klick ist sofort bedienbar — gemessen am echten Knopf.
+    expect(knoten("plan-ausfuehren").disabled).toBe(false);
+    knoten("plan-ausfuehren").click();
+    await warte();
     expect(formVon(stand, "11")?.text).toBe(ANTWORT);
     expect(formVon(stand, "10")?.text).toBe("Quartalsbericht (fiktiv)");
     expect(formVon(stand, "20")?.text).toBe("Ausblick (fiktiv)");

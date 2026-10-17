@@ -183,9 +183,33 @@
     var oidcErlaubt = false;
     var laeuft = false;
 
+    // aufnahme:20260922:excel-erster-weg (Ben-Befund B): dieselbe Dialogseite meldet auch Excel und
+    // PowerPoint an. Der Host kommt aus dem Aufruf (`?host=excel|powerpoint`, gesetzt vom
+    // Excel-/PowerPoint-Fenster) oder aus Office selbst (`_host_Info`, an jeden Dialog gehängt).
+    // Ist er nicht erkennbar — etwa nach dem SSO-Rückweg —, spricht der Text neutral von „Office"
+    // statt einen falschen Host zu nennen. Für Word bleiben die Sätze wörtlich, wie sie waren.
+    var HOSTNAMEN = { word: "Word", excel: "Excel", powerpoint: "PowerPoint" };
+
+    function abfrageWert(name) {
+      var suche = "";
+      try { suche = String(window.location.search || ""); } catch (e) { suche = ""; }
+      var treffer = new RegExp("[?&]" + name + "=([^&#]*)").exec(suche);
+      if (!treffer) { return ""; }
+      try { return decodeURIComponent(treffer[1]); } catch (e) { return treffer[1]; }
+    }
+
+    var DIALOG_HOST = (function () {
+      var host = abfrageWert("host").toLowerCase();
+      if (HOSTNAMEN[host]) { return HOSTNAMEN[host]; }
+      var info = abfrageWert("_host_Info").split(/[$|]/)[0].toLowerCase();
+      if (HOSTNAMEN[info]) { return HOSTNAMEN[info]; }
+      return "Office";
+    })();
+
     function t(key) {
       var tabelle = TEXTE[lang] || TEXTE.de;
-      return tabelle[key] !== undefined ? tabelle[key] : TEXTE.de[key];
+      var satz = tabelle[key] !== undefined ? tabelle[key] : TEXTE.de[key];
+      return DIALOG_HOST !== "Word" && typeof satz === "string" ? satz.split("Word").join(DIALOG_HOST) : satz;
     }
 
     function el(id) { return document.getElementById(id); }

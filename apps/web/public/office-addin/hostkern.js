@@ -419,6 +419,29 @@
     return [kopf].concat(rumpf, schluss).join("\n");
   }
 
+  /** Die Titelgrenze des Entwurfswegs (dieselbe wie im Word-Fenster). */
+  var TITEL_MAX = 60;
+
+  /**
+   * Ben-Befund D: der Titel eines Entwurfs aus Excel. Die Quelle — Blatt und Bereich — bleibt
+   * VOLLSTÄNDIG; passt der Titel nicht, wird zuerst der Dateiname gekürzt, dann der Vorsatz. Nur ein
+   * Blatt-und-Bereich-Text, der allein länger ist als die Grenze, wird selbst gekürzt (Excel erlaubt
+   * Blattnamen bis 31 Zeichen; mit dem längsten Bereich bleibt das unter 60).
+   */
+  function entwurfTitel(mappe, ort) {
+    var trenner = " · ";
+    var quelle = String(ort || "");
+    var name = String(mappe || "Arbeitsmappe");
+    var vorsaetze = ["Tabelle aus Excel: ", "Excel: "];
+    for (var i = 0; i < vorsaetze.length; i += 1) {
+      var voll = vorsaetze[i] + name + trenner + quelle;
+      if (voll.length <= TITEL_MAX) { return voll; }
+      var platz = TITEL_MAX - vorsaetze[i].length - trenner.length - quelle.length;
+      if (platz >= 6) { return vorsaetze[i] + kuerzen(name, platz) + trenner + quelle; }
+    }
+    return kuerzen(quelle, TITEL_MAX);
+  }
+
   function html(text) {
     return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
@@ -836,6 +859,8 @@
     excelAuswahlBewerten: excelAuswahlBewerten,
     excelKontextText: excelKontextText,
     excelTabelleHtml: excelTabelleHtml,
+    entwurfTitel: entwurfTitel,
+    TITEL_MAX: TITEL_MAX,
     zahlenNachrechnen: zahlenNachrechnen,
     summenPlan: summenPlan,
     zielVorschlag: zielVorschlag,

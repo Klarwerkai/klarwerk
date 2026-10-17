@@ -260,7 +260,8 @@
     var dialog = null;
     text("anmeldung-zeile", "Anmeldung läuft im eigenen Fenster …");
     aktiv("anmelden-knopf", false);
-    var url = window.location.origin + "/word-addin/anmeldung.html";
+    // Ben-Befund B: die gemeinsame Dialogseite erfährt, für welchen Host sie anmeldet.
+    var url = window.location.origin + "/word-addin/anmeldung.html" + "?host=" + encodeURIComponent(z.host || "");
     var fertig = function (satz) {
       if (lauf !== anmeldeLauf) { return; }
       anmeldeLauf += 1;
@@ -682,6 +683,8 @@
     text("plan-satz", satz);
     zeigen("plan", true);
     meldung("rueckgabe-meldung", "");
+    // Ben-Befund C: „Jetzt schreiben" ist der zweite Klick — er muss sofort bedienbar sein.
+    kontrollen();
   }
 
   function excelZielLesen(adresse) {
@@ -959,7 +962,8 @@
       return Promise.resolve();
     }
     var b0 = z.kontext.bereiche[0];
-    var titel = ("Tabelle aus Excel: " + (z.kontext.mappe || "Arbeitsmappe") + " · " + z.kontext.blatt + "!" + K.lokaleAdresse(b0.zerlegt)).slice(0, 60);
+    // Ben-Befund D: der Bereich bleibt vollständig; gekürzt wird nur der beschreibende Teil.
+    var titel = K.entwurfTitel(z.kontext.mappe, z.kontext.blatt + "!" + K.lokaleAdresse(b0.zerlegt));
     z.beschaeftigt = true;
     kontrollen();
     return abruf("/api/drafts", {

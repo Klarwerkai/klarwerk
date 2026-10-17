@@ -50,6 +50,17 @@ describe("F1 · die einzige fremde Quelle ist office.js", () => {
   });
 });
 
+describe("F1b · Ben-Befund A · ausgeblendete Elemente bleiben ausgeblendet", () => {
+  it("das Stilblatt lässt `hidden` vor jeder display-Regel gewinnen", () => {
+    const stil = lies("taskpane.css");
+    expect(stil).toMatch(/\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
+    // Genau die Knöpfe aus dem Hostbeleg starten ausgeblendet und tragen eine display-Regel.
+    expect(stil).toMatch(/\bbutton\s*\{[^}]*display:\s*block/);
+    expect(SEITE).toContain('<button id="anmelden-knopf" type="button" hidden>');
+    expect(SEITE).toContain('<button id="ruecknahme" type="button" hidden>');
+  });
+});
+
 describe("F2 · KO-06-05 · Anleitung und Verdrahtung zeigen auf tatsächliche Bedienelemente", () => {
   const ids = new Set(alle(SEITE, /\sid="([^"]+)"/g));
 
