@@ -21,3 +21,7 @@ Setup-Schalter in [`OCR-03-KONTEXT-SETUP.md`](./OCR-03-KONTEXT-SETUP.md).
 **OCR-E01/E02** (`produkt:20261012:klara-ocr-fundstellen-korrekturen`): Fundstellen am Original und
 dauerhafte Textkorrekturen in
 [`OCR-E01-E02-FUNDSTELLEN-KORREKTUREN.md`](./OCR-E01-E02-FUNDSTELLEN-KORREKTUREN.md).
+
+**Basisreparatur 58→53** (`produkt:20261015:ocr-basis-erkannter-genauigkeitsfehler`): Ursache,
+Korrektur im gemeinsamen Engineweg und Prüfstand in
+[`OCR-BASIS-GENAUIGKEIT.md`](./OCR-BASIS-GENAUIGKEIT.md).

@@ -441,6 +441,84 @@
     return score >= MIN_ARTICLE ? best : null;
   }
 
+  // ==============================================================================================
+  // BPA-02 · TECHNISCHE DATEN: DIE SICHTBAREN TABELLEN UND DIE MARKIERTE.
+  // ==============================================================================================
+  //
+  // Gelesen werden nur Zellen, die das Dokument bereits zeigt — als Text, Zeile für Zeile. Jede
+  // Tabelle trägt ihren GENAUEN Abschnitt: die nächste vorausgehende Überschrift, ihre Beschriftung
+  // und ihre Stelle im Dokument („Tabelle 2"). Daran findet der Worker vor der Übernahme genau
+  // diese Tabelle wieder und liest sie neu; eine Markierung ist dafür nicht mehr nötig.
+  const MAX_TABELLEN = 20;
+  const MAX_ZEILEN = 200;
+  const MAX_SPALTEN = 30;
+  const MAX_ZELLE = 500;
+  const MAX_TABELLENTEXT = 300000;
+  const ANKER = /^[\w.:-]{1,128}$/;
+
+  /** @param {Element | null | undefined} element */
+  const zellText = (element) =>
+    (element?.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_ZELLE);
+
+  /** @param {HTMLTableElement} tabelle @param {number} stelle */
+  function tabellenAbschnitt(tabelle, stelle) {
+    /** @type {Element | null} */
+    let ueberschrift = null;
+    for (const h of document.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
+      if (h.compareDocumentPosition(tabelle) & Node.DOCUMENT_POSITION_FOLLOWING) ueberschrift = h;
+    }
+    const teile = [zellText(ueberschrift), zellText(tabelle.caption), `Tabelle ${stelle}`];
+    return teile.filter(Boolean).join(" · ").slice(0, 300);
+  }
+
+  /** @param {HTMLTableElement} tabelle @param {number} stelle */
+  function tabellenInhalt(tabelle, stelle) {
+    const reihen = [...tabelle.rows].filter((r) => sichtbar(r)).slice(0, MAX_ZEILEN + 1);
+    if (reihen.length < 2) return null;
+    const kopfReihe = tabelle.tHead?.rows[tabelle.tHead.rows.length - 1] ?? reihen[0];
+    if (!kopfReihe) return null;
+    const kopf = [...kopfReihe.cells].slice(0, MAX_SPALTEN).map(zellText);
+    const zeilen = reihen
+      .filter((r) => r !== kopfReihe && !tabelle.tHead?.contains(r))
+      .map((r) => [...r.cells].slice(0, MAX_SPALTEN).map(zellText))
+      .slice(0, MAX_ZEILEN);
+    if (zeilen.length === 0) return null;
+    const eigen = tabelle.id || tabelle.closest("[id]")?.id || "";
+    return {
+      abschnitt: tabellenAbschnitt(tabelle, stelle),
+      anker: ANKER.test(eigen) ? eigen : "",
+      kopf,
+      zeilen,
+    };
+  }
+
+  /** @param {Range | null} bereich */
+  function tabellen(bereich) {
+    /** @type {{abschnitt: string, anker: string, kopf: string[], zeilen: string[][]}[]} */
+    const liste = [];
+    let gewaehlt = -1;
+    let umfang = 0;
+    try {
+      const alle = [...document.querySelectorAll("table")];
+      for (let i = 0; i < alle.length && liste.length < MAX_TABELLEN; i += 1) {
+        const tabelle = /** @type {HTMLTableElement} */ (alle[i]);
+        if (!sichtbar(tabelle)) continue;
+        const inhalt = tabellenInhalt(tabelle, i + 1);
+        if (!inhalt) continue;
+        umfang += JSON.stringify(inhalt).length;
+        if (umfang > MAX_TABELLENTEXT) break;
+        const markiert =
+          bereich !== null &&
+          (tabelle.contains(bereich.commonAncestorContainer) || bereich.intersectsNode(tabelle));
+        if (markiert && gewaehlt < 0) gewaehlt = liste.length;
+        liste.push(inhalt);
+      }
+    } catch {
+      // Eine Tabelle, die sich nicht lesen lässt, wird nicht geraten — die Liste endet hier.
+    }
+    return { liste, gewaehlt };
+  }
+
   const selection = window.getSelection();
   const chosen = selection?.toString() ?? "";
   /** @type {Map<string, {data?: string, gap?: string}>} */
@@ -451,6 +529,7 @@
   const written = found
     ? variant(found, cache)
     : { available: false, text: "", nodes: [], gaps: [], images: 0 };
+  const gefunden = tabellen(chosen.trim() ? range : null);
   return {
     text: chosen,
     title: document.title,
@@ -460,5 +539,7 @@
       article: written,
       page: variant(document.body, cache),
     },
+    tabellen: gefunden.liste,
+    tabelleGewaehlt: gefunden.gewaehlt,
   };
 })();

@@ -386,12 +386,16 @@ export async function bildInhaltskennung(bytes: Uint8Array): Promise<string | nu
   return `sha256:${Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
-/** Ein Wort, wie es im Befund steht: sicher wie gelesen, unsicher `[?wort]`, sonst `[unleserlich]`. */
-function gekennzeichnet(wort: string, sicherheit: number): string {
+/**
+ * Ein Wort, wie es im Befund steht: sicher wie gelesen, unsicher `[?wort]`, sonst `[unleserlich]`.
+ * Basisreparatur 58→53: las die Gegenlesung der Engine dort etwas anderes (`abweichend`), ist das
+ * Wort unsicher — auch wenn die Engine es selbst hoch bewertet.
+ */
+function gekennzeichnet(wort: string, sicherheit: number, abweichend = false): string {
   if (sicherheit < UNLESERLICH_UNTER) {
     return "[unleserlich]";
   }
-  if (sicherheit < UNSICHER_UNTER) {
+  if (sicherheit < UNSICHER_UNTER || abweichend) {
     return `[?${wort}]`;
   }
   return wort;
@@ -423,10 +427,11 @@ export function kennzeichneUnsicheres(
     }
     zeiger = treffer + 1;
     const sicherheit = woerter[treffer]?.confidence ?? 100;
-    if (sicherheit < UNSICHER_UNTER) {
+    const abweichend = woerter[treffer]?.abweichend === true;
+    if (sicherheit < UNSICHER_UNTER || abweichend) {
       unsicher.push({ wort: token, sicherheit, unleserlich: sicherheit < UNLESERLICH_UNTER });
     }
-    return gekennzeichnet(token, sicherheit);
+    return gekennzeichnet(token, sicherheit, abweichend);
   });
   return { textGekennzeichnet, unsicher };
 }
@@ -478,7 +483,7 @@ export function tabelleAusWoertern(woerter: readonly OcrWort[] | undefined): str
     const z = [...zeile].sort((a, b) => a.bbox.x0 - b.bbox.x0);
     const zellen: Zelle[] = [];
     for (const w of z) {
-      const text = gekennzeichnet(w.text, w.confidence);
+      const text = gekennzeichnet(w.text, w.confidence, w.abweichend === true);
       const vorige = zellen[zellen.length - 1];
       if (vorige && w.bbox.x0 - vorige.x1 <= hoehe * 1.2) {
         vorige.text = `${vorige.text} ${text}`;

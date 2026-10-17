@@ -71,6 +71,10 @@ const INHALT_JE_AKTION: Readonly<Record<string, readonly string[]>> = {
   // Bens Befund Nacharbeit 35: der Anlagenkontext (Bauteil, Material, Version, Standort, Schicht)
   // ist Inhalt des Beitrags — ohne Leserecht am Objekt bleibt er in Liste, Seite und Export verborgen.
   "ko.anlagenkontext-changed": ["vorher", "nachher"],
+  // BPA-02: der Leserkreis eines Wissensobjekts VOR einer Quellsperre (Kontokennungen) — er wird für
+  // die Wiedererteilung gebraucht und bleibt ohne Leserecht am Objekt verborgen; während der Sperre
+  // also für jeden Betrachter.
+  "technische-daten.quellrechte-vorher": ["vorher"],
   // produkt:20261009:referenzki-antwortstatus (REF-04, K6, Ben nacharbeit-3): die kurzen
   // Prüfbegründungen der Referenzprüfung (`REFERENZ_BEGRUENDUNG_AKTION` in services/ask). Sie können
   // Inhalt der zitierten Quellen wiedergeben — bezogen auf `koIds`, also nur für Leser, die jede
