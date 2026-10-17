@@ -25,6 +25,7 @@ import { useAiAvailable } from "../../lib/useAiAvailable";
 import { type ExternStand, externStand } from "../../shell/ExternStatus";
 import { AnswerMarkdown } from "../AnswerMarkdown";
 import { KiArbeitsweg } from "./KiArbeitsweg";
+import { KlaraBrowserAuftraege } from "./KlaraBrowserAuftraege";
 import { VorlesenKnopf } from "./KlaraSprache";
 import {
   type EchtNachricht,
@@ -546,6 +547,9 @@ export function KlaraEchtGespraech({
 
       {/* BPA-13: mit einer ausgewählten KI arbeiten — am eigenen, gespeicherten Gespräch. */}
       {g ? <KiArbeitsweg gespraechId={g.id} kontext={kontext} /> : null}
+
+      {/* BPA-03: was Klara im Browser auf einer freigegebenen Seite getan hat — der Ergebnisbeleg. */}
+      {g ? <KlaraBrowserAuftraege gespraechId={g.id} /> : null}
 
       {g ? (
         <div className="flex flex-wrap gap-1.5">
