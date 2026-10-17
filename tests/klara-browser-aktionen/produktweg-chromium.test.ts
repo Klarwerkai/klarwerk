@@ -869,6 +869,21 @@ describe("BPA-03 · Produktweg: Leiste → Worker → Aktionskern → aktion.js 
     expect((await b.zaehler()).speicherungen).toBe(0);
   }, 90_000);
 
+  it("K2 · AC02 · anderer Datensatz auf demselben Pfad (Adresse geändert) zwischen zwei Schritten: Klärung, nichts weiter geschrieben", async () => {
+    const b = await bereit();
+    const halt = b.halteTakt(nachEintrag("Betreff"));
+    await b.auftrag(ENTWURF);
+    const los = await halt;
+    // Die Seite wechselt ohne Neuladen auf einen anderen Datensatz (wie eine Anwendung mit ?id=…).
+    await b.seite.evaluate("history.pushState({}, '', '?id=18')");
+    los();
+    const s = await b.warte(ruht);
+    expect(s.stand).toBe("klaerung");
+    expect(s.klaerung).toContain("nicht mehr");
+    expect((await b.felder("angebot"))["a-empfaenger"]).toBe("");
+    expect((await b.zaehler()).speicherungen).toBe(0);
+  }, 90_000);
+
   it("K10 · AC10 · nicht unterstützte Website: konkrete Übergabe, kein simulierter Erfolg, Seite unberührt", async () => {
     const b = await bahn();
     await b.seite.goto(FREMDE_SEITE);

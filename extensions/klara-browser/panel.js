@@ -1583,7 +1583,9 @@
         ? aktionText("aktionNichtRuecknehmbar")
         : angebot === "unklar"
           ? aktionText("aktionUnklarRuecknahme")
-          : "";
+          : angebot === "kein_loeschen"
+            ? aktionText("aktionKeinLoeschen")
+            : "";
     zeile("aktion-ruecknahme-text", Boolean(ruecknahmeText), ruecknahmeText);
     const steuerbar = a.steuerbar;
     const ende = ["fertig", "abgebrochen", "gestoppt_recht", "uebergabe", "unterbrochen"].includes(

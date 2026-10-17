@@ -73,6 +73,7 @@ const SEITEN_FEHLER: readonly SeitenFehler[] = [
 ];
 const HINDERNISSE: readonly SeitenHindernis[] = ["captcha", "mfa", "anmeldung"];
 const ABDRUCK = /^[0-9a-f]{16}$/;
+const KENNUNG = /^[\w.:-]{1,64}$/;
 
 const istText = (w: unknown, max: number): w is string => typeof w === "string" && w.length <= max;
 const istZahl = (w: unknown): w is number => Number.isInteger(w) && (w as number) >= 0;
@@ -130,6 +131,10 @@ export function seitenLageAus(roh: unknown, tabId: number): SeitenLage | null | 
   for (const x of l.entwuerfe as unknown[]) {
     const e = x as Record<string, unknown> | undefined;
     if (!e || !istText(e.id, 200) || !istText(e.text, 500)) return undefined;
+    // Eine Entwurfskennung ist Seiteninhalt und reist in Beleg, Sicht und Verlauf: nur eine schlichte
+    // Kennung wird übernommen. Ein Eintrag mit anderer Kennung kann Klara nicht belegen — er zählt
+    // nicht (ist er der eigene, bleibt das Nachlesen ehrlich „unklar").
+    if (!KENNUNG.test(e.id)) continue;
     entwuerfe.push({ id: e.id, text: e.text });
   }
   const formular = formularAus(l.formular);

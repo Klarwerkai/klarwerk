@@ -596,6 +596,9 @@ globalThis.KLARA_AKTION_TEXT = {
       "Die Bestätigung gilt nicht mehr für diesen Stand. Bitte neu ansehen und bestätigen.",
     aktion_zu_viele: "Es laufen schon mehrere Aufträge. Bitte erst einen beenden.",
     aktion_nur_sitzung: "Nur mit eigener Anmeldung möglich.",
+    aktion_veraltet: "Eine Meldung an Klarwerk kam doppelt an. Bitte fortsetzen.",
+    aktionKeinLoeschen:
+      "Diese Seite bietet Klara kein Löschen an. Der Entwurf bleibt gespeichert; lösche ihn bei Bedarf selbst.",
     aktion_invalid_message: "Bitte einen Auftrag eingeben.",
     aktionSchrittArt_lesen: "Seite lesen",
     aktionSchrittArt_fuellen: "Eintragen",
@@ -636,6 +639,9 @@ globalThis.KLARA_AKTION_TEXT = {
       "The confirmation no longer matches this state. Please review and confirm again.",
     aktion_zu_viele: "Several tasks are already running. Please finish one first.",
     aktion_nur_sitzung: "Only possible with your own sign-in.",
+    aktion_veraltet: "A message to Klarwerk arrived twice. Please continue.",
+    aktionKeinLoeschen:
+      "This page offers Klara no delete. The draft stays saved; delete it yourself if needed.",
     aktion_invalid_message: "Please enter a task.",
     aktionSchrittArt_lesen: "Read page",
     aktionSchrittArt_fuellen: "Enter",

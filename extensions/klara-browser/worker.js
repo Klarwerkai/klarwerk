@@ -2939,6 +2939,18 @@
       };
     }
     if (b.tabId !== aktion.tabId) return { ergebnis: { fehler: "nicht_ausgefuehrt" } };
+    // Dieselbe Adresse wie bei der Freigabe? Ein anderer Datensatz auf demselben Pfad (Abfrage,
+    // Anker) ist ein anderes Ziel: geschrieben wird dort nichts; das Lesen meldet die neue Adresse,
+    // damit der Kern gezielt klärt.
+    /** @type {string} */
+    let adresse = "";
+    try {
+      adresse = (await chrome.tabs.get(b.tabId)).url ?? "";
+    } catch {
+      adresse = "";
+    }
+    const abweichend = adresse !== aktion.url;
+    if (abweichend && b.art !== "lage") return { ergebnis: { fehler: "nicht_ausgefuehrt" } };
     try {
       await chrome.scripting.executeScript({ target: { tabId: b.tabId }, files: ["aktion.js"] });
     } catch {
@@ -2957,8 +2969,13 @@
       if (!aus || aus.fehlt) return { ergebnis: { fehler: "nicht_ausgefuehrt" } };
       const fassung = typeof aus.fassung === "string" ? aus.fassung : "";
       if (b.art === "lage") {
-        const lage =
+        /** @type {Record<string, unknown> | null} */
+        let lage =
           aus.wert && typeof aus.wert === "object" ? { ...aus.wert, tabId: b.tabId } : null;
+        if (lage && abweichend && adresse) {
+          const u = new URL(adresse);
+          lage = { ...lage, pfad: `${u.pathname}${u.search}${u.hash}` };
+        }
         return { ergebnis: lage ?? { fehler: "verbindung" }, seite: { adapter: fassung } };
       }
       return { ergebnis: aus.wert ?? { fehler: "verbindung" }, seite: { adapter: fassung } };
@@ -3005,11 +3022,20 @@
   const alsSicht = (roh) =>
     roh && typeof roh === "object" ? /** @type {import("./types").AuftragSicht} */ (roh) : null;
 
+  /** Schreibvorgänge am Auftragszustand nacheinander — keiner überschreibt einen späteren. */
+  let merkKette = Promise.resolve();
   /** @param {Partial<AktionZustand>} teil */
-  async function aktionMerken(teil) {
-    const state = /** @type {Zustand} */ (await read());
-    if (!state.aktion) return;
-    await merke({ aktion: { ...state.aktion, ...teil } });
+  function aktionMerken(teil) {
+    const schreiben = merkKette.then(async () => {
+      const state = /** @type {Zustand} */ (await read());
+      if (!state.aktion) return;
+      await merke({ aktion: { ...state.aktion, ...teil } });
+    });
+    merkKette = schreiben.then(
+      () => undefined,
+      () => undefined,
+    );
+    return schreiben;
   }
 
   /** Streng steigend, auch über einen Neustart des Workers hinweg. @param {AktionZustand} a */
@@ -3042,13 +3068,25 @@
         /** @type {Record<string, unknown>} */
         let body = {};
         if (befehl) {
-          // Dieselbe Nummer noch einmal (die Antwort ging verloren): nicht erneut ausführen.
+          // Dieselbe Nummer noch einmal (die Antwort ging verloren): nicht erneut ausführen, die
+          // gemerkte Antwort geht noch einmal hinaus. Eine Nummer, die schon begonnen hatte, aber
+          // ohne gemerkte Antwort ist (Worker unterbrochen), oder eine kleinere als die höchste
+          // ausgeführte, wird NIE ausgeführt: ihr Ausgang ist offen — der Kern gleicht ab.
           const gemerkt =
             aktion.erledigt && aktion.erledigt.nr === befehl.nr ? aktion.erledigt : null;
-          const aus = gemerkt
-            ? { ergebnis: gemerkt.ergebnis, seite: gemerkt.seite ?? undefined }
-            : await aktionBefehl(befehl, aktion);
-          if (!gemerkt) {
+          const hoechste = Math.max(aktion.erledigt?.nr ?? 0, aktion.ausfuehrend ?? 0);
+          /** @type {{ergebnis: unknown, seite?: {recht?: string, grund?: string, adapter?: string}}} */
+          let aus;
+          if (gemerkt) {
+            aus = {
+              ergebnis: gemerkt.ergebnis,
+              ...(gemerkt.seite ? { seite: gemerkt.seite } : {}),
+            };
+          } else if (befehl.nr <= hoechste) {
+            aus = { ergebnis: { fehler: "verbindung" } };
+          } else {
+            await aktionMerken({ ausfuehrend: befehl.nr });
+            aus = await aktionBefehl(befehl, aktion);
             await aktionMerken({
               erledigt: { nr: befehl.nr, ergebnis: aus.ergebnis, seite: aus.seite ?? null },
             });
@@ -3083,9 +3121,11 @@
             fehler:
               r?.status === 404
                 ? "lauf_beendet"
-                : r?.status === 409
-                  ? "andere_sitzung"
-                  : "verbindung",
+                : r?.status === 401
+                  ? "anmelden"
+                  : r?.status === 409
+                    ? String(r.body.grund ?? "andere_sitzung")
+                    : "verbindung",
           });
           return;
         }
@@ -3201,7 +3241,9 @@
       return aktionSicht(state, "verbindung");
     }
     if (r.status !== 200) {
-      await aktionMerken({ fehler: String(r.body.grund ?? "fehler") });
+      await aktionMerken({
+        fehler: r.status === 401 ? "anmelden" : String(r.body.grund ?? "fehler"),
+      });
       return aktionSicht(/** @type {Zustand} */ (await read()), "abgelehnt");
     }
     await aktionMerken({ sicht: alsSicht(r.body.auftrag), fehler: null, laeuft: true });
@@ -3217,7 +3259,8 @@
   async function aktionNachWiderruf() {
     const state = /** @type {Zustand} */ (await read());
     const aktion = state.aktion;
-    if (!state.auth || !aktion?.id || !aktion.laeuft) return;
+    // Auch ein pausierter oder ruhender Lauf erfährt es — er darf danach nicht fortgesetzt werden.
+    if (!state.auth || !aktion?.id) return;
     try {
       const r = await aktionApi(
         state.auth,

@@ -662,6 +662,8 @@ export class BrowserAusfuehrung {
   private entzogen = false;
   private laufend: Promise<BrowserAnsicht> | null = null;
   private ruecknahmeLaeuft = false;
+  /** Eine Rücknahme blieb ohne Antwort der Seite: ob sie gewirkt hat, ist offen. */
+  private ruecknahmeUnklar = false;
   private readonly inhalte: BrowserInhaltBefund[] = [];
   private readonly verlauf: BrowserVerlaufseintrag[] = [];
   private readonly profil: BrowserSeitenprofil;
@@ -1059,7 +1061,7 @@ export class BrowserAusfuehrung {
       case "fuellen":
         return this.fuellen(s, lage);
       case "speichern":
-        return this.speichern(s);
+        return this.speichern(s, lage);
       case "nachlesen":
         return this.nachlesen(s);
       case "ausloesen":
@@ -1196,7 +1198,7 @@ export class BrowserAusfuehrung {
     return [];
   }
 
-  private async speichern(s: Schritt): Promise<Folge> {
+  private async speichern(s: Schritt, lage: SeitenLage): Promise<Folge> {
     if (s.stand === "unklar") {
       // Der Ausgang des letzten Speicherns ist unbekannt: erst an der Seite abgleichen.
       const neu = await this.leseNach();
@@ -1217,10 +1219,25 @@ export class BrowserAusfuehrung {
         "Noch ist kein passender Entwurf zu sehen. Klara speichert nicht erneut, solange offen ist, ob die erste Speicherung gewirkt hat. Prüfe die Entwurfsliste oder setze später fort.",
       );
     }
+    // Gespeichert wird, was JETZT auf der Seite steht. Hat die Seite (oder jemand) ein beauftragtes
+    // Feld seit dem Eintragen geändert, wäre das ein anderer Entwurf als der beauftragte: Klärung.
+    const abweichung = this.auftrag.felder.find((f) => {
+      const ist = lage.formular?.felder.filter((x) => x.label === f.label) ?? [];
+      return ist.length !== 1 || ist[0]?.wert !== f.wert;
+    });
+    if (abweichung) {
+      this.halteAn(
+        `„${abweichung.label}" zeigt auf der Seite nicht mehr den beauftragten Wert. Klara speichert nicht und überschreibt nichts; prüfe das Formular und gib den Auftrag neu.`,
+        s.nr,
+      );
+      return "halt";
+    }
     const antwort = await this.deps.adapter.klicke(this.auftrag.ziel.tabId, {
       formular: this.auftrag.ziel.formular,
       fingerabdruck: this.fingerabdruck(),
       knopf: s.knopf ?? "",
+      // Derselbe Abgleich noch einmal im Seitenausführer, unmittelbar vor dem Klick.
+      werte: this.auftrag.felder,
     });
     if (!antwort.ok) {
       return this.seitenfehler(s, antwort.grund);
@@ -1314,27 +1331,49 @@ export class BrowserAusfuehrung {
     }
     this.ruecknahmeLaeuft = true;
     try {
-      if (this.ergebnis && !this.ergebnis.zurueckgenommen) {
-        return await this.loescheEntwurf(this.ergebnis.entwurfId);
+      const r = await this.nimmZurueck();
+      if (r.art === "zurueckgenommen") {
+        this.ruecknahmeUnklar = false;
       }
-      const speichern = this.schritte.find((s) => s.art === "speichern");
-      if (speichern?.stand === "zurueckgenommen") {
-        return { art: "nichts", text: "Der Entwurf ist bereits zurückgenommen." };
-      }
-      if (speichern && speichern.stand !== "offen" && speichern.stand !== "uebersprungen") {
-        return {
-          art: "unklar",
-          text: "Ob gespeichert wurde, ist unklar. Prüfe die Seite selbst.",
-        };
-      }
-      const gefuellt = this.schritte.filter((s) => s.art === "fuellen" && s.stand === "erfolgt");
-      if (gefuellt.length > 0) {
-        return await this.setzeFelderZurueck(gefuellt);
-      }
-      return { art: "nichts", text: "Es gibt keine rücknehmbare Änderung von Klara." };
+      return r;
+    } catch {
+      // Die Seite antwortete während der Rücknahme nicht mehr (Lesen oder Wirkung). Ein Löschen
+      // oder Zurücksetzen kann schon gewirkt haben — das bleibt ehrlich offen, nie still.
+      this.ruecknahmeUnklar = true;
+      this.merke("unklar");
+      return {
+        art: "unklar",
+        text: "Die Seite hat während der Rücknahme nicht geantwortet. Ob zurückgenommen wurde, ist unklar; prüfe die Seite selbst.",
+      };
     } finally {
       this.ruecknahmeLaeuft = false;
     }
+  }
+
+  private async nimmZurueck(): Promise<BrowserRuecknahme> {
+    if (this.ergebnis && !this.ergebnis.zurueckgenommen) {
+      return await this.loescheEntwurf(this.ergebnis.entwurfId);
+    }
+    const speichern = this.schritte.find((s) => s.art === "speichern");
+    if (speichern?.stand === "zurueckgenommen") {
+      return { art: "nichts", text: "Der Entwurf ist bereits zurückgenommen." };
+    }
+    if (speichern && speichern.stand !== "offen" && speichern.stand !== "uebersprungen") {
+      return {
+        art: "unklar",
+        text: "Ob gespeichert wurde, ist unklar. Prüfe die Seite selbst.",
+      };
+    }
+    const gefuellt = this.schritte.filter((s) => s.art === "fuellen" && s.stand === "erfolgt");
+    if (gefuellt.length > 0) {
+      return await this.setzeFelderZurueck(gefuellt);
+    }
+    return { art: "nichts", text: "Es gibt keine rücknehmbare Änderung von Klara." };
+  }
+
+  /** Ob eine Rücknahme ohne Antwort der Seite blieb (für die Sicht des Produktwegs). */
+  ruecknahmeOffen(): boolean {
+    return this.ruecknahmeUnklar;
   }
 
   private async loescheEntwurf(id: string): Promise<BrowserRuecknahme> {
@@ -1459,10 +1498,20 @@ export class BrowserAusfuehrung {
   private textFuer(): string {
     const felder = this.schritte.filter((s) => s.art === "fuellen");
     const eingetragen = felder.filter((s) => s.stand === "erfolgt").length;
-    const gespeichert =
-      this.ergebnis && !this.ergebnis.zurueckgenommen
+    const speichern = this.schritte.find((s) => s.art === "speichern");
+    // Was über das Speichern gesagt wird, folgt dem tatsächlichen Stand — „nichts gespeichert" nur,
+    // wenn kein Speicherklick ausgelöst wurde oder er belastbar zurückgenommen ist.
+    const gespeichert = this.ruecknahmeUnklar
+      ? "Ob die Rücknahme gewirkt hat, ist unklar — prüfe die Entwurfsliste der Seite selbst."
+      : this.ergebnis && !this.ergebnis.zurueckgenommen
         ? `Entwurf ${this.ergebnis.entwurfId} ist gespeichert.`
-        : "Nichts gespeichert.";
+        : this.ergebnis?.zurueckgenommen
+          ? `Entwurf ${this.ergebnis.entwurfId} ist zurückgenommen.`
+          : speichern?.stand === "erfolgt"
+            ? "Speichern ausgelöst, noch nicht nachgelesen."
+            : speichern?.stand === "unklar"
+              ? "Möglicherweise gespeichert — noch nicht abgeglichen."
+              : "Nichts gespeichert.";
     const teil = `${eingetragen} von ${felder.length} Feldern eingetragen. ${gespeichert}`;
     switch (this.stand) {
       case "bereit":

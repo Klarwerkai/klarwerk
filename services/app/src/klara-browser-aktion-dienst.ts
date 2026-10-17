@@ -99,6 +99,8 @@ const eingabe = (text: string) => new BrowserAktionFehler(400, "eingabe", text);
 /** Ein Browserauftrag im Verlauf des Gesprächs — sein Ergebnisbeleg. */
 export interface BrowserAuftragEintrag {
   readonly id: string;
+  /** Der Vorgangsschlüssel des Klicks in der Leiste — derselbe ist derselbe Auftrag (AC07). */
+  readonly vorgang?: string;
   readonly quelle: KlaraAuftragsQuelle;
   readonly wortlaut: string;
   /** Herkunft und Pfad der Seite, ohne Abfrage und Anker. */
@@ -138,6 +140,8 @@ export type BrowserRuecknahmeAngebot =
   | "entwurf_loeschen"
   | "felder_zuruecksetzen"
   | "nicht_ruecknehmbar"
+  /** Gespeichert, aber die Seite bietet Klara kein Löschen: der Entwurf bleibt, die Person löscht. */
+  | "kein_loeschen"
   | "unklar"
   | null;
 
@@ -211,8 +215,13 @@ interface Lauf {
     | "speichern"
     | "ausloesen"
     | "angelegtAm"
-  > & { readonly host: { browser: string; version: string; erweiterung: string } };
+  > & {
+    readonly host: { browser: string; version: string; erweiterung: string };
+    readonly vorgang: string;
+  };
   gespraechId: string | null;
+  /** Die Person hat das Gespräch gelöscht: dieser Lauf schreibt nicht weiter (kein neues an seiner Stelle). */
+  gespraechGeloescht: boolean;
   operation: Promise<void> | null;
   ruecknahme: BrowserAuftragEintrag["ruecknahme"];
   folge: number;
@@ -266,13 +275,19 @@ function ortAus(url: string): { origin: string; pfad: string } | null {
   }
 }
 
-function angebot(a: BrowserAnsicht, loeschenErlaubt: boolean): BrowserRuecknahmeAngebot {
+function angebot(
+  a: BrowserAnsicht,
+  loeschenErlaubt: boolean,
+  ruecknahmeOffen: boolean,
+): BrowserRuecknahmeAngebot {
   const aussen = a.schritte.some(
     (s) => s.art === "ausloesen" && (s.stand === "erfolgt" || s.stand === "unklar"),
   );
   if (aussen) return "nicht_ruecknehmbar";
+  // Eine Rücknahme blieb ohne Antwort der Seite: ob sie gewirkt hat, ist offen — kein neues Angebot.
+  if (ruecknahmeOffen) return "unklar";
   if (a.ergebnis && !a.ergebnis.zurueckgenommen) {
-    return loeschenErlaubt ? "entwurf_loeschen" : "nicht_ruecknehmbar";
+    return loeschenErlaubt ? "entwurf_loeschen" : "kein_loeschen";
   }
   const speichern = a.schritte.find((s) => s.art === "speichern");
   // Schon zurückgenommen: ein zweites Angebot könnte nichts mehr bewirken (der Kern meldet dann
@@ -327,6 +342,12 @@ export class BrowserAktionDienst {
     if (frueher && frueher.marke === browserSitzungsmarke(token)) {
       return { art: "auftrag", ...(await this.antwort(frueher)) };
     }
+    // Auch nach einem Neustart: derselbe Vorgang im Verlauf ist derselbe Auftrag — kein zweiter.
+    const g = await this.deps.gespraeche.aktuelles(nutzer.id);
+    const imVerlauf = (g?.browserAuftraege ?? []).find((e) => e.vorgang === vorgang);
+    if (imVerlauf && !frueher) {
+      return { art: "auftrag", auftrag: this.sichtAus(imVerlauf, g?.id ?? null), befehl: null };
+    }
     const quelle = r.quelle as KlaraAuftragsQuelle;
     if (!(KLARA_QUELLEN_DES_AUFTRAGS as readonly string[]).includes(quelle)) {
       throw eingabe("quelle ist getippt oder gesprochen.");
@@ -351,6 +372,7 @@ export class BrowserAktionDienst {
     const angelegtAm = this.jetzt().toISOString();
     const basis = {
       id: randomUUID(),
+      vorgang,
       quelle,
       wortlaut,
       ort: ortText,
@@ -424,10 +446,7 @@ export class BrowserAktionDienst {
       }
       throw eingabe(anlage.fehler);
     }
-    if (
-      [...this.laeufe.values()].filter((l) => l.kontoId === nutzer.id).length >=
-      BROWSER_LAEUFE_JE_KONTO
-    ) {
+    if (!this.platzFuer(nutzer.id)) {
       throw new BrowserAktionFehler(
         409,
         "zu_viele",
@@ -457,6 +476,7 @@ export class BrowserAktionDienst {
       ausfuehrung,
       basis: mitZiel,
       gespraechId: null,
+      gespraechGeloescht: false,
       operation: null,
       ruecknahme: null,
       folge: 0,
@@ -570,7 +590,16 @@ export class BrowserAktionDienst {
           );
         }
         this.betreibe(lauf, async () => {
-          const ergebnis = await a.ruecknahme();
+          let ergebnis: BrowserRuecknahme;
+          try {
+            ergebnis = await a.ruecknahme();
+          } catch {
+            // Darf nicht still verschwinden: ein Löschen kann schon gewirkt haben.
+            ergebnis = {
+              art: "unklar",
+              text: "Die Rücknahme kam nicht zu Ende. Ob sie gewirkt hat, ist unklar; prüfe die Seite selbst.",
+            };
+          }
           lauf.ruecknahme = {
             art: ergebnis.art,
             text: "beleg" in ergebnis ? ergebnis.beleg : ergebnis.text,
@@ -694,7 +723,11 @@ export class BrowserAktionDienst {
       bedarf: lauf.ausfuehrung.bestaetigungsBedarf(),
       ruecknahmeAngebot: laeuft
         ? null
-        : angebot(a, lauf.ausfuehrung.auftrag.erlaubt.includes("entwurf_loeschen")),
+        : angebot(
+            a,
+            lauf.ausfuehrung.auftrag.erlaubt.includes("entwurf_loeschen"),
+            lauf.ausfuehrung.ruecknahmeOffen() || lauf.ruecknahme?.art === "unklar",
+          ),
       steuerbar: true,
       laeuft,
     };
@@ -780,7 +813,15 @@ export class BrowserAktionDienst {
     lauf.geschrieben = stand;
     lauf.schreibkette = lauf.schreibkette
       .then(async () => {
-        lauf.gespraechId = await this.trageEin(lauf.kontoId, lauf.gespraechId, e);
+        if (lauf.gespraechGeloescht) return;
+        const id = await this.trageEin(lauf.kontoId, lauf.gespraechId, e);
+        if (id === null && lauf.gespraechId !== null) {
+          // Das Gespräch des Laufs gibt es nicht mehr (die Person hat es gelöscht): hier endet die
+          // Aufzeichnung; es wird kein anderes oder neues Gespräch dafür genommen.
+          lauf.gespraechGeloescht = true;
+          return;
+        }
+        lauf.gespraechId = id;
       })
       .catch(() => {});
     return lauf.schreibkette;
@@ -816,6 +857,26 @@ export class BrowserAktionDienst {
       }
     }
     return id;
+  }
+
+  /**
+   * Ob für das Konto noch ein Lauf Platz hat. Gezählt werden nur Läufe, die noch etwas tun können
+   * (laufend, pausiert, in Klärung, wartend auf Bestätigung, unklar). Ein beendeter, ruhender Lauf
+   * wird dafür verdrängt — sein Ergebnis steht im Verlauf (AC08: ein Abbruch belegt keinen Platz).
+   */
+  private platzFuer(kontoId: string): boolean {
+    const eigene = [...this.laeufe.values()].filter((l) => l.kontoId === kontoId);
+    const tot = (l: Lauf) => !l.operation && ENDE.includes(l.ausfuehrung.ansicht().stand);
+    if (eigene.filter((l) => !tot(l)).length >= BROWSER_LAEUFE_JE_KONTO) return false;
+    const ruhend = eigene.filter(tot).sort((a, b) => a.zuletzt - b.zuletzt);
+    let anzahl = eigene.length;
+    for (const alt of ruhend) {
+      if (anzahl < BROWSER_LAEUFE_JE_KONTO) break;
+      this.laeufe.delete(alt.id);
+      this.vorgaenge.delete(`${alt.kontoId}:${alt.vorgang}`);
+      anzahl--;
+    }
+    return anzahl < BROWSER_LAEUFE_JE_KONTO;
   }
 
   /** Vergisst ruhende Läufe nach ihrer Frist. Ein Lauf mit laufendem Schritt bleibt. */

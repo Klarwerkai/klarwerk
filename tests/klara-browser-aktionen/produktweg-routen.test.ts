@@ -776,3 +776,210 @@ describe("BPA-03 · Produktweg: Bestätigung, Rücknahme, Pause, unklarer Ausgan
     expect(seite.z.entwuerfe.map((e) => e.id)).toEqual(["E-alt-1", "E-alt-2", "E-1"]);
   });
 });
+
+// ================================================================================================
+// Gegenproben zu den Befunden der unabhängigen Prüfung (Chat 62, 17.10.2026) — am Produktweg.
+// ================================================================================================
+describe("BPA-03 · Produktweg: Gegenproben zu den Prüfbefunden", () => {
+  it("M6 · ein Feld ändert sich nach dem Eintragen: kein Speichern, Klärung statt Erfolg", async () => {
+    const { starte } = await aufbau();
+    const seite = seitenmodell();
+    const { start, leiste } = await starte(ENTWURF, seite);
+    let geaendert = false;
+    const ende = await leiste.treibe(start, (b) => {
+      if (b.art === "lage" && seite.z.eintragungen === 3 && !geaendert) {
+        geaendert = true;
+        seite.z.felder.set("Empfänger", "angreifer@beispiel.invalid");
+      }
+      return "antworten";
+    });
+    expect(ende.stand).toBe("klaerung");
+    expect(ende.erfolg).toBe(false);
+    expect(ende.klaerung).toContain("Empfänger");
+    expect(seite.z.speicherungen).toBe(0);
+  });
+
+  it("M7 · Pause direkt nach dem Speicherklick: der Text sagt „ausgelöst, noch nicht nachgelesen“, nie „nichts gespeichert“", async () => {
+    const { starte } = await aufbau();
+    const seite = seitenmodell();
+    const { start, leiste } = await starte(ENTWURF, seite);
+    const ende = await leiste.treibe(start, async (b) => {
+      if (b.art === "klicke") {
+        const r = await leiste.steuere("pause");
+        expect(r.statusCode, r.body).toBe(200);
+      }
+      return "antworten";
+    });
+    expect(ende.stand).toBe("pausiert");
+    expect(seite.z.speicherungen).toBe(1);
+    expect(ende.text).toContain("Speichern ausgelöst, noch nicht nachgelesen");
+    expect(ende.text).not.toContain("Nichts gespeichert");
+  });
+
+  it("M8 · Rücknahme: Löschen wirkt, das Nachlesen bleibt ohne Antwort — „unklar“, kein falsches „gespeichert“, kein neues Angebot", async () => {
+    const { starte } = await aufbau();
+    const seite = seitenmodell();
+    const { start, leiste } = await starte(ENTWURF, seite);
+    const fertig = await leiste.treibe(start);
+    expect(fertig.ruecknahmeAngebot).toBe("entwurf_loeschen");
+    const r = await leiste.steuere("ruecknahme");
+    expect(r.statusCode, r.body).toBe(200);
+    let geloescht = false;
+    const ende = await leiste.treibe(r.json() as Antwort, (b) => {
+      if (b.art === "loesche") geloescht = true;
+      return geloescht && b.art === "lage" ? "schweigen" : "antworten";
+    });
+    expect(seite.z.loeschungen).toBe(1);
+    expect(ende.ruecknahme?.art).toBe("unklar");
+    expect(ende.ruecknahmeAngebot).toBe("unklar");
+    expect(ende.text).not.toContain("ist gespeichert");
+    expect(ende.text).toContain("unklar");
+  });
+
+  it("M9 · fünf beendete Läufe sperren das Konto nicht: der sechste Auftrag läuft", async () => {
+    const { starte } = await aufbau();
+    for (let i = 0; i < 5; i++) {
+      const seite = seitenmodell();
+      const { start, leiste } = await starte(ENTWURF, seite);
+      const ab = await leiste.steuere("abbruch");
+      expect(ab.statusCode, ab.body).toBe(200);
+      const ende = await leiste.treibe(ab.json() as Antwort);
+      expect(ende.stand).toBe("abgebrochen");
+      expect(start.auftrag.id).toBeTruthy();
+    }
+    const seite = seitenmodell();
+    const { start, leiste } = await starte(ENTWURF, seite);
+    const ende = await leiste.treibe(start);
+    expect(ende.stand).toBe("fertig");
+    expect(seite.z.speicherungen).toBe(1);
+  });
+
+  it("m1 · das Gespräch wird während des Laufs gelöscht: es entsteht kein neues mit dem Auftrag", async () => {
+    const { app, person, starte } = await aufbau();
+    const seite = seitenmodell();
+    const { start, leiste } = await starte(ENTWURF, seite);
+    const gid = start.auftrag.gespraechId;
+    expect(gid).toBeTruthy();
+    const weg = await app.inject({
+      method: "DELETE",
+      url: `/api/me/klara/gespraeche/${gid}`,
+      headers: kopf(person.token),
+    });
+    expect(weg.statusCode, weg.body).toBeLessThan(300);
+    const ende = await leiste.treibe(start);
+    expect(ende.stand).toBe("fertig");
+    const aktuell = await app.inject({
+      method: "GET",
+      url: "/api/me/klara/gespraech",
+      headers: kopf(person.token),
+    });
+    expect(aktuell.statusCode).toBe(200);
+    expect(aktuell.json().gespraech).toBeNull();
+  });
+
+  it("m3 · eine fremd geformte Entwurfskennung der Seite wird nicht übernommen: unklar statt Beleg", async () => {
+    const { starte, liste } = await aufbau();
+    const seite = seitenmodell();
+    const { start, leiste } = await starte(ENTWURF, seite);
+    const ende = await leiste.treibe(start, (b) => {
+      const neu = seite.z.entwuerfe.find((e) => e.id === "E-1");
+      if (neu) neu.id = "E-1 <b>Angriff</b>";
+      return b.art === "lage" ? "antworten" : "antworten";
+    });
+    expect(ende.stand).toBe("unklar");
+    expect(ende.ergebnis).toBeNull();
+    expect(JSON.stringify(await liste())).not.toContain("<b>");
+  });
+
+  it("m6 · derselbe Vorgang nach einem Neustart des Servers: derselbe Auftrag, keine zweite Speicherung", async () => {
+    const { services, person, app } = await aufbau();
+    const seite = seitenmodell();
+    const vorgang = `vorgang-${randomUUID()}`;
+    const anlage = (a: FastifyInstance) =>
+      a.inject({
+        method: "POST",
+        url: API,
+        headers: kopf(person.token),
+        payload: {
+          vorgang,
+          quelle: "getippt",
+          wortlaut: ENTWURF,
+          ziel: { tabId: TAB, url: `${ORIGIN}${PFAD}` },
+          host: { browser: "Chromium", version: "130.0", erweiterung: "1.0.0" },
+        },
+      });
+    const r1 = await anlage(app);
+    expect(r1.statusCode, r1.body).toBe(201);
+    const erste = r1.json() as Antwort;
+    await new Leiste(app, person.token, erste.auftrag.id, seite).treibe(erste);
+    expect(seite.z.speicherungen).toBe(1);
+    // Neustart: dieselbe Ablage (Konten, Sitzungen, Gespräche), neuer Prozesszustand.
+    const neu = buildApp(services, {
+      browserAktion: {
+        seitenprofile: [TESTSEITE],
+        fristen: { abholMs: 300, antwortMs: 300, taktMs: 200 },
+      },
+    });
+    try {
+      const r2 = await anlage(neu);
+      expect(r2.statusCode, r2.body).toBe(201);
+      const zweite = r2.json() as Antwort;
+      expect(zweite.auftrag.id).toBe(erste.auftrag.id);
+      expect(zweite.befehl).toBeNull();
+      expect(zweite.auftrag.steuerbar).toBe(false);
+      expect(zweite.auftrag.stand).toBe("fertig");
+      expect(seite.z.speicherungen).toBe(1);
+    } finally {
+      await neu.close();
+    }
+  });
+
+  it("m7 · eine Seite ohne Löschen: der gespeicherte Entwurf wird ehrlich „kein Löschen“ genannt, nicht „Außenwirkung“", async () => {
+    const ohneLoeschen = {
+      ...TESTSEITE,
+      id: "bpa03-synthetisch-ohne-loeschen",
+      formulare: TESTSEITE.formulare.map((f) => ({
+        ...f,
+        handlungen: f.handlungen.filter((h) => h.art !== "entwurf_loeschen"),
+      })),
+    };
+    const services = buildServices();
+    const app = buildApp(services, {
+      browserAktion: {
+        seitenprofile: [ohneLoeschen],
+        fristen: { abholMs: 300, antwortMs: 300, taktMs: 200 },
+      },
+    });
+    offen = app;
+    const r = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Erste Person", email: "erste-bpa03@example.test", password: PASSWORT },
+    });
+    expect(r.statusCode, r.body).toBe(201);
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "erste-bpa03@example.test", password: PASSWORT },
+    });
+    const token = login.json().token as string;
+    const seite = seitenmodell();
+    const a = await app.inject({
+      method: "POST",
+      url: API,
+      headers: kopf(token),
+      payload: {
+        vorgang: `vorgang-${randomUUID()}`,
+        quelle: "getippt",
+        wortlaut: ENTWURF,
+        ziel: { tabId: TAB, url: `${ORIGIN}${PFAD}` },
+        host: { browser: "Chromium", version: "130.0", erweiterung: "1.0.0" },
+      },
+    });
+    expect(a.statusCode, a.body).toBe(201);
+    const start = a.json() as Antwort;
+    const ende = await new Leiste(app, token, start.auftrag.id, seite).treibe(start);
+    expect(ende.stand).toBe("fertig");
+    expect(ende.ruecknahmeAngebot).toBe("kein_loeschen");
+  });
+});

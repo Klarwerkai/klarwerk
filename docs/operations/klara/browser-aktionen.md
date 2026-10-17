@@ -91,14 +91,32 @@ aktion.js in Chromes isolierter Welt der freigegebenen Seite (chrome.scripting, 
   sind eine eigene Entscheidung (O01).
 - **Nach einem Serverneustart** zeigt der Verlauf einen nicht beendeten Lauf als „unterbrochen" —
   nie als Erfolg; was auf der Seite geschah, prüft die Person dort.
+- **Erkennung: nicht raten, nichts verschlucken.** Ausserhalb der Werte darf nur Auftragswortschatz
+  stehen (Füllen, Speichern, Formular-, Feld- und Knopfnamen). Ein anderes Wort, eine Verneinung
+  oder Aufschiebung („nicht", „erst morgen") ergibt eine Klärung; ein nicht freigegebenes Außenwort
+  (senden, übermitteln, bestellen …) eine Übergabe des ganzen Auftrags. Eine Beschriftung direkt nach
+  einem Artikel/einer Präposition („auf Ihre Nachricht") gehört zum Wert davor.
+- **Speichern** gleicht unmittelbar vorher die Feldwerte ab (Server und `aktion.js`); weicht ein Feld
+  ab, wird nicht gespeichert. Der Stand sagt ehrlich „Speichern ausgelöst, noch nicht nachgelesen"
+  bzw. „möglicherweise gespeichert", nie „nichts gespeichert" nach einem Klick.
+- **Rücknahme** ohne Antwort der Seite ist „unklar" (kein neues Angebot); eine Seite ohne Löschen
+  heisst „kein Löschen", nicht Außenwirkung.
+- **Worker:** Vor jedem Befehl wird die Adresse des Tabs mit der freigegebenen verglichen (anderer
+  Datensatz auf demselben Pfad = anderes Ziel). Eine begonnene Befehlsnummer wird nie erneut
+  ausgeführt; ihr Ausgang ist dann offen und wird abgeglichen.
+- **Verlauf in der Web-App:** `KlaraBrowserAuftraege` zeigt die Browseraufträge des Gesprächs
+  lesend im Klara-Verlauf (neben den KI-Aufträgen von BPA-13). Gelöschte Gespräche werden nicht neu
+  angelegt; derselbe Vorgangsschlüssel ist auch nach einem Neustart derselbe Auftrag.
 
 ## Geprüft (Chat 62, 17.10.2026)
 
 | Prüfung | Datei | Was echt ist |
 | --- | --- | --- |
-| Produktweg AC01–AC10, 17 Fälle | `tests/klara-browser-aktionen/produktweg-chromium.test.ts` | ausgelieferte Erweiterung (byte-gleich geladen), Klickgeste über Chromes Symbolaktion, Anmeldung in der Leiste, Worker, `chrome.scripting`, `aktion.js` in der isolierten Welt, `buildApp` mit Rechten und Gespräch, synthetische Seite |
+| Produktweg AC01–AC10, 20 Fälle | `tests/klara-browser-aktionen/produktweg-chromium.test.ts` | ausgelieferte Erweiterung (byte-gleich geladen), Klickgeste über Chromes Symbolaktion, Anmeldung in der Leiste, Worker, `chrome.scripting`, `aktion.js` in der isolierten Welt, `buildApp` mit Rechten und Gespräch, synthetische Seite |
 | Türen, Rechte, Fremdzugriff, Folge, Bestätigung, Rücknahme, Ausfall | `tests/klara-browser-aktionen/produktweg-routen.test.ts` | `buildApp`, `app.inject`, Seitenmodell nach `aktion.js` |
 | Erkennung und Befehlsweg | `tests/klara-browser-aktionen/erkennung-relais.test.ts` | rein |
+| Gegenproben der unabhängigen Prüfung | `erkennung-befunde.test.ts`, `produktweg-routen.test.ts` (M6–m7) | rein bzw. `buildApp` |
+| Verlauf in der Web-App | `tests/klara-browser-aktionen/verlauf-im-web.test.tsx` | `buildApp`, Klara-Fläche gemountet, eigener Abrufweg der Web-App |
 
 Gestellt sind ausdrücklich: Chromium 149 headless statt Google Chrome auf dem Mac, die Geste aus dem
 DevTools-Protokoll, die Leiste als Tab statt im Seitenfenster und die Spracherkennung selbst

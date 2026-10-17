@@ -457,6 +457,8 @@ export type AktionZustand = {
   sicht: AuftragSicht | null;
   klaerung: string | null;
   fehler: string | null;
+  /** Die Nummer, deren Ausführung begonnen hat (vor der Ausführung gemerkt). */
+  ausfuehrend?: number | null;
   /** Der zuletzt ausgeführte Befehl und seine Antwort — dieselbe Nummer wird nie zweimal ausgeführt. */
   erledigt: {
     nr: number;
