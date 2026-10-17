@@ -3115,7 +3115,10 @@
               ergebnis: gemerkt.ergebnis,
               ...(gemerkt.seite ? { seite: gemerkt.seite } : {}),
             };
-          } else if (befehl.nr <= hoechste || (befehl.wiederholt === true && befehl.art !== "lage")) {
+          } else if (
+            befehl.nr <= hoechste ||
+            (befehl.wiederholt === true && befehl.art !== "lage")
+          ) {
             aus = { ergebnis: { fehler: "verbindung" } };
           } else {
             await aktionMerken({ ausfuehrend: befehl.nr });

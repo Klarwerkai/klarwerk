@@ -396,7 +396,9 @@ export function erkenneBrowserAuftrag(
   const befehlswoerter = woerter(befehlsteil);
   for (const [verb, partikel] of TRENNBAR) {
     if (!befehlswoerter.some((w) => verb.test(w)) || befehlswoerter.includes(partikel)) continue;
-    const endet = werte.find((w) => !w.zitiert && woerter(w.wert).filter(Boolean).at(-1) === partikel);
+    const endet = werte.find(
+      (w) => !w.zitiert && woerter(w.wert).filter(Boolean).at(-1) === partikel,
+    );
     if (endet) {
       return klaerung(
         `Gehört „${partikel}" zum Wert von „${endet.label}" oder zum Auftrag? Setze den Wert in Anführungszeichen.`,

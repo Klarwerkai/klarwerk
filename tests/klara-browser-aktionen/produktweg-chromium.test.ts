@@ -58,6 +58,7 @@ interface Seite {
   fill(sel: string, wert: string): Promise<void>;
   textContent(sel: string): Promise<string | null>;
   isHidden(sel: string): Promise<boolean>;
+  isEnabled(sel: string): Promise<boolean>;
   waitForFunction(f: string, arg?: unknown, o?: Record<string, unknown>): Promise<unknown>;
   addInitScript(s: string): Promise<void>;
   close(): Promise<void>;
@@ -123,6 +124,7 @@ interface Sicht {
   bedarf: { knopf: string; fingerabdruck: string; werte: { label: string; wert: string }[] } | null;
   ruecknahme: { art: string; text: string } | null;
   ruecknahmeAngebot: string | null;
+  verlauf: { ereignis: string; am: string }[];
   host: { browser: string; version: string; erweiterung: string; adapter: string };
   laeuft: boolean;
   gespraechId: string | null;
@@ -884,6 +886,72 @@ describe("BPA-03 · Produktweg: Leiste → Worker → Aktionskern → aktion.js 
     expect((await b.zaehler()).speicherungen).toBe(0);
   }, 90_000);
 
+  it("K1/K9 · AC01/AC09 · die Seite ändert nach dem Speichern selbst ihre Adresse (?entwurf=…#gespeichert): kein Fehlstopp — nachgelesen, Rücknahme trifft (N4)", async () => {
+    const b = await bereit();
+    const halt = b.halteTakt(nachKlick);
+    await b.auftrag(ENTWURF);
+    const los = await halt;
+    // Wie viele Anwendungen nach dem Speichern: Abfrage und Anker ändern sich ohne Neuladen.
+    // Gebunden ist laut Seitenprofil nur `?id` — dieser Teil bleibt gleich.
+    await b.seite.evaluate("history.replaceState({}, '', '?entwurf=neu#gespeichert')");
+    los();
+    const s = await b.warte((x) => x.stand === "fertig" && ruht(x));
+    expect(s.erfolg).toBe(true);
+    expect(s.schritte.find((x) => x.art === "speichern")?.stand).toBe("erfolgt");
+    expect((await b.zaehler()).speicherungen).toBe(1);
+    expect(s.ruecknahmeAngebot).toBe("entwurf_loeschen");
+    await b.leiste.click("#aktion-ruecknahme");
+    const r = await b.warte((x) => x.ruecknahme !== null && ruht(x));
+    expect(r.ruecknahme?.art).toBe("zurueckgenommen");
+    expect(eigene(await b.zaehler())).toHaveLength(0);
+  }, 90_000);
+
+  it("K7 · AC07 · Antwort auf den Speicherklick verloren, dann ERNEUT „Ausführen“ (derselbe Text): derselbe Lauf, keine zweite Speicherung (N2)", async () => {
+    const b = await bereit({ fristen: { antwortMs: 15000 } });
+    const netz = b.verliereTakt(nachKlick);
+    await b.auftrag(ENTWURF);
+    await expect.poll(() => netz.verloren(), { timeout: 20000 }).toBeGreaterThanOrEqual(3);
+    await expect
+      .poll(() => b.leiste.isEnabled("#aktion-ausfuehren"), { timeout: 10000 })
+      .toBe(true);
+    expect((await b.zaehler()).speicherungen).toBe(1);
+    netz.aus();
+    // Derselbe Vorgangsschlüssel: der Kern gibt DENSELBEN Lauf mit dem schon abgeholten Klick
+    // zurück; der Worker kennt ihn als erledigt und meldet nur seine gemerkte Antwort.
+    await b.leiste.click("#aktion-ausfuehren");
+    const s = await b.warte((x) => x.stand === "fertig" && ruht(x));
+    expect(s.erfolg).toBe(true);
+    expect((await b.zaehler()).speicherungen).toBe(1);
+    expect(eigene(await b.zaehler())).toHaveLength(1);
+    expect(await b.verlauf()).toHaveLength(1);
+  }, 120_000);
+
+  it("K7 · AC07 · derselbe Fall, aber der Worker hat seinen Zustand verloren: der erneut ausgelieferte Klick wird NICHT ausgeführt, Fortsetzen gleicht ab (N2)", async () => {
+    const b = await bereit({ fristen: { antwortMs: 15000 } });
+    const netz = b.verliereTakt(nachKlick);
+    await b.auftrag(ENTWURF);
+    await expect.poll(() => netz.verloren(), { timeout: 20000 }).toBeGreaterThanOrEqual(3);
+    await expect
+      .poll(() => b.leiste.isEnabled("#aktion-ausfuehren"), { timeout: 10000 })
+      .toBe(true);
+    netz.aus();
+    // Was der Worker über den Lauf wusste, ist weg (etwa geleerter Sitzungsspeicher).
+    await b.sw.evaluate("chrome.storage.session.set({ aktion: null })");
+    await b.leiste.click("#aktion-ausfuehren");
+    const u = await b.warte((x) => x.stand === "unklar" && ruht(x));
+    expect(u.schritte.find((x) => x.art === "speichern")?.stand).toBe("unklar");
+    expect((await b.zaehler()).speicherungen).toBe(1);
+    await expect
+      .poll(() => sichtbar(b.leiste, "#aktion-fortsetzen"), { timeout: 10000 })
+      .toBe(true);
+    await b.leiste.click("#aktion-fortsetzen");
+    const s = await b.warte((x) => x.stand === "fertig" && ruht(x));
+    expect(s.schritte.find((x) => x.art === "speichern")?.beleg).toContain("abgeglichen");
+    expect((await b.zaehler()).speicherungen).toBe(1);
+    expect(eigene(await b.zaehler())).toHaveLength(1);
+    expect(await b.verlauf()).toHaveLength(1);
+  }, 120_000);
+
   it("K10 · AC10 · nicht unterstützte Website: konkrete Übergabe, kein simulierter Erfolg, Seite unberührt", async () => {
     const b = await bahn();
     await b.seite.goto(FREMDE_SEITE);
@@ -913,4 +981,18 @@ describe("BPA-03 · Produktweg: Leiste → Worker → Aktionskern → aktion.js 
       expect((await b.zaehler()).speicherungen).toBe(0);
     }, 90_000);
   }
+
+  it("K7/K10 · AC07/AC10 · nach einer Übergabe wirkt „beauftrage Klara danach erneut“ mit DEMSELBEN Text: CAPTCHA gelöst → neuer Lauf, genau eine Speicherung (N3)", async () => {
+    const b = await bereit({}, `${PFAD}?variante=captcha`);
+    await b.auftrag(ENTWURF);
+    const s = await b.warte(ruht);
+    expect(s.stand).toBe("uebergabe");
+    // Die Person löst das Hindernis auf der Seite selbst und klickt erneut — Text unverändert.
+    await b.seite.evaluate("document.querySelector('.g-recaptcha')?.remove()");
+    await b.leiste.click("#aktion-ausfuehren");
+    const n = await b.warte((x) => x.id !== s.id && x.stand === "fertig" && ruht(x));
+    expect(n.erfolg).toBe(true);
+    expect((await b.zaehler()).speicherungen).toBe(1);
+    expect((await b.verlauf()).map((x) => x.stand)).toEqual(["fertig", "uebergabe"]);
+  }, 90_000);
 });

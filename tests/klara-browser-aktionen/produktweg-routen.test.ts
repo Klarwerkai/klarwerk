@@ -420,7 +420,7 @@ describe("BPA-03 · Produktweg: Rechte je Schritt", () => {
     const seite = seitenmodell();
     const { start, leiste } = await starte(ENTWURF, seite);
     let herabgestuft = false;
-    const ende = await leiste.treibe(start, async (b) => {
+    const ende = await leiste.treibe(start, async (b): Promise<Verhalten> => {
       if (b.art === "fuelle" && !herabgestuft) {
         herabgestuft = true;
         // Der vorhandene Verwaltungsweg; die Person bleibt angemeldet und behält `ko.read`.
@@ -460,7 +460,7 @@ describe("BPA-03 · Produktweg: Rechte je Schritt", () => {
     const seite = seitenmodell();
     const { start, leiste } = await starte(ENTWURF, seite);
     let widerrufen = false;
-    const ende = await leiste.treibe(start, async (b) => {
+    const ende = await leiste.treibe(start, async (b): Promise<Verhalten> => {
       if (b.art === "fuelle" && !widerrufen) {
         widerrufen = true;
         const r = await leiste.steuere("widerruf");
@@ -716,7 +716,7 @@ describe("BPA-03 · Produktweg: Bestätigung, Rücknahme, Pause, unklarer Ausgan
     const seite = seitenmodell();
     const { start, leiste } = await starte(ENTWURF, seite);
     let pausiert = false;
-    const halt = await leiste.treibe(start, async (b) => {
+    const halt = await leiste.treibe(start, async (b): Promise<Verhalten> => {
       if (b.art === "fuelle" && !pausiert) {
         pausiert = true;
         const r = await leiste.steuere("pause");
@@ -803,7 +803,7 @@ describe("BPA-03 · Produktweg: Gegenproben zu den Prüfbefunden", () => {
     const { starte } = await aufbau();
     const seite = seitenmodell();
     const { start, leiste } = await starte(ENTWURF, seite);
-    const ende = await leiste.treibe(start, async (b) => {
+    const ende = await leiste.treibe(start, async (b): Promise<Verhalten> => {
       if (b.art === "klicke") {
         const r = await leiste.steuere("pause");
         expect(r.statusCode, r.body).toBe(200);
@@ -981,5 +981,220 @@ describe("BPA-03 · Produktweg: Gegenproben zu den Prüfbefunden", () => {
     const ende = await new Leiste(app, token, start.auftrag.id, seite).treibe(start);
     expect(ende.stand).toBe("fertig");
     expect(ende.ruecknahmeAngebot).toBe("kein_loeschen");
+  });
+});
+
+/** Die Erweiterung im Takt, die zusätzlich jeden Antwortkörper des Servers mitschreibt. */
+class Mitschnitt extends Leiste {
+  readonly koerper: string[] = [];
+
+  override async takt(body: Record<string, unknown> = {}) {
+    const r = await super.takt(body);
+    this.koerper.push(r.body);
+    return r;
+  }
+
+  override async steuere(art: string, extra: Record<string, unknown> = {}) {
+    const r = await super.steuere(art, extra);
+    this.koerper.push(r.body);
+    return r;
+  }
+}
+
+/** Beantwortet Befehle, bis ein Befehl der Art `art` kommt — der wird NICHT beantwortet. */
+async function bisZu(leiste: Leiste, seite: Seite, start: Antwort, art: BrowserBefehl["art"]) {
+  let { befehl } = start;
+  for (let i = 0; i < 200; i++) {
+    if (befehl?.art === art) return befehl;
+    const body = befehl
+      ? {
+          antwort: { nr: befehl.nr, ergebnis: seite.fuehreAus(befehl) },
+          seite: { adapter: FASSUNG },
+        }
+      : {};
+    const r = await leiste.takt(body);
+    expect(r.statusCode, r.body).toBe(200);
+    ({ befehl } = r.json() as Antwort);
+  }
+  throw new Error(`Kein Befehl ${art}.`);
+}
+
+const WIRKUNGEN: readonly string[] = ["fuelle", "klicke", "loesche"];
+
+describe("BPA-03 · Produktweg: Einordnung für die Prüftorregister (Chat 57)", () => {
+  it("Q1 · Datenfluss: kein Inhalt eines Wissensobjekts reist zur Erweiterung — Befehle tragen nur Werte aus dem Wortlaut, Namen aus dem Profil und Gelesenes derselben Seite", async () => {
+    const { app, person, lege, liste } = await aufbau();
+    // Ein Wissensobjekt DERSELBEN Person mit eindeutiger Marke (auch als Adresse geformt).
+    const MARKE = `KOMARKE${randomUUID().replace(/-/g, "")}`;
+    const ko = await app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers: kopf(person.token),
+      payload: {
+        confidentiality: "intern",
+        title: `${MARKE} Angebot Kühlanlage`,
+        statement: `${MARKE} Empfänger ${MARKE}@ko.invalid`,
+        type: "best_practice",
+        category: "K",
+      },
+    });
+    expect(ko.statusCode, ko.body).toBe(201);
+    const koerper: string[] = [];
+    const befehle: BrowserBefehl[] = [];
+    const merke = (b: BrowserBefehl): "antworten" => {
+      befehle.push(b);
+      return "antworten";
+    };
+    for (const wortlaut of [ENTWURF, SENDEN]) {
+      const seite = seitenmodell();
+      const r = await lege(wortlaut);
+      expect(r.statusCode, r.body).toBe(201);
+      koerper.push(r.body);
+      const start = r.json() as Antwort;
+      const leiste = new Mitschnitt(app, person.token, start.auftrag.id, seite);
+      let ende = await leiste.treibe(start, merke);
+      if (ende.bedarf) {
+        const ja = await leiste.steuere("bestaetigen", {
+          fingerabdruck: ende.bedarf.fingerabdruck,
+        });
+        ende = await leiste.treibe(ja.json() as Antwort, merke);
+        expect(seite.z.versand).toBe(1);
+      } else {
+        const rueck = await leiste.steuere("ruecknahme");
+        ende = await leiste.treibe(rueck.json() as Antwort, merke);
+        expect(ende.ruecknahme?.art).toBe("zurueckgenommen");
+      }
+      expect(ende.stand).toBe("fertig");
+      koerper.push(...leiste.koerper);
+      const einzeln = await app.inject({
+        method: "GET",
+        url: `${API}/${start.auftrag.id}`,
+        headers: kopf(person.token),
+      });
+      expect(einzeln.statusCode, einzeln.body).toBe(200);
+      koerper.push(einzeln.body);
+    }
+    koerper.push(JSON.stringify(await liste()));
+    // Keine Antwort einer der fünf Türen trägt etwas aus dem Wissensobjekt.
+    expect(koerper.join("\n")).not.toContain(MARKE);
+    expect(new Set(befehle.map((b) => b.art))).toEqual(
+      new Set(["lage", "fuelle", "klicke", "loesche"]),
+    );
+    // Jeder geschriebene oder beim Klick verglichene Wert stammt aus dem Wortlaut der Person; ein
+    // erwarteter Altwert ist das, was dieselbe Seite vorher meldete (hier: leer).
+    const auftragswerte = new Set([BETREFF, EMPFAENGER, NACHRICHT]);
+    for (const b of befehle) {
+      const a = b.args as Record<string, unknown>;
+      if (b.art === "fuelle") {
+        expect(auftragswerte.has(String(a.wert)), String(a.wert)).toBe(true);
+        if (a.erwartet !== undefined) expect(a.erwartet).toBe("");
+      }
+      if (b.art === "klicke") {
+        for (const w of (a.werte ?? []) as { wert: string }[]) {
+          expect(auftragswerte.has(w.wert), w.wert).toBe(true);
+        }
+      }
+    }
+  });
+
+  for (const k of [1, 2, 3, 4]) {
+    it(`Q2 · frische ko.create-Prüfung je Wirkung am Draht: Rolle unmittelbar vor der ${k}. Wirkung entzogen → genau ${k - 1} Wirkung(en), kein weiterer Wirkbefehl, gestoppt_recht`, async () => {
+      const { app, admin, person, starte } = await aufbau();
+      const seite = seitenmodell();
+      const { start, leiste } = await starte(ENTWURF, seite);
+      let gesehen = 0;
+      let wirkungen = 0;
+      let entzogen = false;
+      const ende = await leiste.treibe(start, async (b): Promise<Verhalten> => {
+        gesehen++;
+        if (WIRKUNGEN.includes(b.art)) wirkungen++;
+        // Entzogen wird, sobald der Befehl VOR der k-ten Wirkung ausgegeben ist (vor seiner Antwort).
+        const jetzt = k === 1 ? gesehen === 1 : WIRKUNGEN.includes(b.art) && wirkungen === k - 1;
+        if (jetzt && !entzogen) {
+          entzogen = true;
+          const r = await app.inject({
+            method: "PUT",
+            url: `/api/users/${person.id}`,
+            headers: kopf(admin.token),
+            payload: { role: "viewer" },
+          });
+          expect(r.statusCode, r.body).toBeLessThan(300);
+        }
+        return "antworten";
+      });
+      expect(entzogen).toBe(true);
+      expect(wirkungen).toBe(k - 1);
+      expect(seite.z.eintragungen + seite.z.speicherungen).toBe(k - 1);
+      expect(ende.stand).toBe("gestoppt_recht");
+      expect(ende.erfolg).toBe(false);
+    });
+  }
+
+  it("Q3 · Sendeauftrag: Rolle nach der Bestätigungsfrage entzogen — die Bestätigung allein löst nichts aus, der Sendeklick wird nie ausgegeben", async () => {
+    const { app, admin, person, starte } = await aufbau();
+    const seite = seitenmodell();
+    const { start, leiste } = await starte(SENDEN, seite);
+    const halt = await leiste.treibe(start);
+    expect(halt.stand).toBe("bestaetigung_noetig");
+    const r = await app.inject({
+      method: "PUT",
+      url: `/api/users/${person.id}`,
+      headers: kopf(admin.token),
+      payload: { role: "viewer" },
+    });
+    expect(r.statusCode, r.body).toBeLessThan(300);
+    const ja = await leiste.steuere("bestaetigen", { fingerabdruck: halt.bedarf?.fingerabdruck });
+    const klicks: string[] = [];
+    const ende =
+      ja.statusCode === 200
+        ? await leiste.treibe(ja.json() as Antwort, (b) => {
+            if (b.art === "klicke") klicks.push(String((b.args as { knopf?: unknown }).knopf));
+            return "antworten";
+          })
+        : halt;
+    expect(klicks).toEqual([]);
+    expect(seite.z.versand).toBe(0);
+    expect(ja.statusCode === 200 ? ende.stand : "gestoppt_recht").toBe("gestoppt_recht");
+  });
+
+  it("N2 · derselbe Vorgang erneut, während der Speicherklick abgeholt und unbeantwortet ist: derselbe Lauf, der Klick kommt als „wiederholt“ (die Erweiterung führt ihn ohne gemerkte Antwort nicht aus)", async () => {
+    const { app, person, lege } = await aufbau();
+    const seite = seitenmodell();
+    const vorgang = `vorgang-${randomUUID()}`;
+    const r1 = await lege(ENTWURF, { vorgang });
+    expect(r1.statusCode, r1.body).toBe(201);
+    const erste = r1.json() as Antwort;
+    const leiste = new Leiste(app, person.token, erste.auftrag.id, seite);
+    const klick = await bisZu(leiste, seite, erste, "klicke");
+    expect(klick.wiederholt).toBe(false);
+    const r2 = await lege(ENTWURF, { vorgang });
+    expect(r2.statusCode, r2.body).toBe(201);
+    const zweite = r2.json() as Antwort;
+    expect(zweite.auftrag.id).toBe(erste.auftrag.id);
+    expect(zweite.befehl).toMatchObject({ nr: klick.nr, art: "klicke", wiederholt: true });
+    expect(seite.z.speicherungen).toBe(0);
+  });
+
+  it("N3 · derselbe Vorgang erst auf einer nicht unterstützten Seite, dann auf der richtigen: neu geprüft (neuer Lauf); nach dem fertigen Lauf bleibt er derselbe", async () => {
+    const { app, person, lege } = await aufbau();
+    const seite = seitenmodell();
+    const vorgang = `vorgang-${randomUUID()}`;
+    const r1 = await lege(ENTWURF, {
+      vorgang,
+      ziel: { tabId: TAB, url: "https://fremd.test/formular" },
+    });
+    const eins = r1.json() as Antwort;
+    expect(eins.auftrag.stand).toBe("uebergabe");
+    const r2 = await lege(ENTWURF, { vorgang });
+    expect(r2.statusCode, r2.body).toBe(201);
+    const zwei = r2.json() as Antwort;
+    expect(zwei.auftrag.id).not.toBe(eins.auftrag.id);
+    expect(zwei.befehl).not.toBeNull();
+    const ende = await new Leiste(app, person.token, zwei.auftrag.id, seite).treibe(zwei);
+    expect(ende.stand).toBe("fertig");
+    const r3 = await lege(ENTWURF, { vorgang });
+    expect((r3.json() as Antwort).auftrag.id).toBe(zwei.auftrag.id);
+    expect((r3.json() as Antwort).befehl).toBeNull();
+    expect(seite.z.speicherungen).toBe(1);
   });
 });
