@@ -129,6 +129,34 @@
             <p class="hint" data-i18n="kontextAntwortHinweis"></p>
           </div>
         </section>
+        <!-- BPA-03: AUF DIESER SEITE AUSFÜHREN. Der Auftrag (getippt oder gesprochen) für die Seite,
+             die mit der Klickgeste freigegeben ist; darunter der tatsächliche Stand jedes Schritts,
+             Klärung oder Übergabe, die Bestätigung vor einer Außenwirkung und — nur wo sie wirklich
+             möglich ist — die Rücknahme. Alles kommt vom Kern; `panel.js` setzt es nur als Text. -->
+        <section id="aktion" aria-labelledby="aktion-title" hidden>
+          <h2 id="aktion-title" data-i18n="aktionTitel"></h2>
+          <p id="aktion-ziel" class="hint" hidden></p>
+          <label for="aktion-wortlaut" data-i18n="aktionAuftrag"></label>
+          <textarea id="aktion-wortlaut" rows="4" maxlength="2000"></textarea>
+          <p id="aktion-quelle" class="hint" data-i18n="aktionGesprochen" hidden></p>
+          <p id="aktion-hoeren" class="hint" role="status" data-i18n="aktionHoert" hidden></p>
+          <div class="actions"><button type="button" id="aktion-ausfuehren" data-i18n="aktionAusfuehren"></button><button type="button" id="aktion-sprechen" data-i18n="aktionSprechen" hidden></button></div>
+          <p id="aktion-hinweis" class="hint warn" hidden></p>
+          <div id="aktion-stand-box" hidden>
+            <p id="aktion-stand" role="status" aria-live="polite"></p>
+            <ol id="aktion-schritte"></ol>
+            <p id="aktion-klaerung" class="hint warn" hidden></p>
+            <p id="aktion-uebergabe" class="hint warn" role="alert" hidden></p>
+            <div id="aktion-bestaetigung" role="alertdialog" aria-labelledby="aktion-bestaetigung-text" hidden>
+              <p id="aktion-bestaetigung-text"></p>
+              <dl id="aktion-bestaetigung-werte"></dl>
+              <div class="actions"><button type="button" id="aktion-bestaetigen"></button><button type="button" id="aktion-nicht-ausloesen" data-i18n="aktionNichtAusloesen"></button></div>
+            </div>
+            <p id="aktion-bestaetigt" class="hint" hidden></p>
+            <p id="aktion-ruecknahme-text" class="hint" hidden></p>
+            <div class="actions"><button type="button" id="aktion-pause" data-i18n="aktionPause" hidden></button><button type="button" id="aktion-fortsetzen" data-i18n="aktionFortsetzen" hidden></button><button type="button" id="aktion-abbrechen" data-i18n="aktionAbbrechen" hidden></button><button type="button" id="aktion-ruecknahme" hidden></button></div>
+          </div>
+        </section>
         <!-- JOB 3524 · Lieferung 5: DIE REIHENFOLGE DER FLÄCHE.
              Inhaltsquelle wählen · Inhalt des GEWÄHLTEN Umfangs · Titel, Vertraulichkeit, kurze
              Quellenangabe · Details (zugeklappt) · Speichern und Verwerfen. Die langen Anleitungs-

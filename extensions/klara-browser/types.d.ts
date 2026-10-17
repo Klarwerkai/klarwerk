@@ -396,6 +396,84 @@ export type State = {
   kontextEpoche?: number;
   kontextAntwort?: KontextErklaerung | null;
   begleiter?: BegleiterStand | null;
+  /** BPA-03: der laufende oder zuletzt gegebene Browserauftrag dieser Leiste. */
+  aktion?: AktionZustand | null;
+};
+// ================================================================================================
+// BPA-03 · BERECHTIGTE FUNKTIONEN AUF DER SEITE — was Worker und Leiste vom Aktionskern kennen.
+// ================================================================================================
+/** Ein Schritt des Kerns für die Seite: genau eine Handlung von `aktion.js`. */
+export type AktionBefehl = {
+  nr: number;
+  art: "lage" | "fuelle" | "klicke" | "loesche";
+  tabId: number;
+  args: Record<string, unknown>;
+};
+export type AktionSchritt = {
+  nr: number;
+  aktionskennung: string;
+  art: string;
+  feld: string | null;
+  knopf: string | null;
+  stand: string;
+  beleg: string | null;
+};
+/** Die Sicht des Kerns auf einen Browserauftrag (`BrowserAuftragSicht` am Server), nur gelesen. */
+export type AuftragSicht = {
+  id: string;
+  quelle: string;
+  wortlaut: string;
+  ort: string;
+  formular: string | null;
+  stand: string;
+  erfolg: boolean;
+  text: string;
+  schritte: AktionSchritt[];
+  ergebnis: { entwurfId: string; nachgelesen: boolean; zurueckgenommen: boolean } | null;
+  klaerung: string | null;
+  uebergabe: { grund: string; schritt: string } | null;
+  bestaetigung: { knopf: string; bestaetigtAm: string } | null;
+  bedarf: {
+    knopf: string;
+    text: string;
+    fingerabdruck: string;
+    werte: { label: string; wert: string }[];
+  } | null;
+  ruecknahme: { art: string; text: string; am: string } | null;
+  ruecknahmeAngebot: string | null;
+  host: { browser: string; version: string; erweiterung: string; adapter: string };
+  laeuft: boolean;
+  steuerbar: boolean;
+};
+export type AktionZustand = {
+  id: string | null;
+  vorgang: string;
+  tabId: number;
+  url: string;
+  /** Die Widerrufsepoche (BPA-01) beim Start: ändert sie sich, trägt die Freigabe nicht mehr. */
+  epoche: number;
+  nutzer: string;
+  folge: number;
+  sicht: AuftragSicht | null;
+  klaerung: string | null;
+  fehler: string | null;
+  /** Der zuletzt ausgeführte Befehl und seine Antwort — dieselbe Nummer wird nie zweimal ausgeführt. */
+  erledigt: {
+    nr: number;
+    ergebnis: unknown;
+    seite: { recht?: string; grund?: string; adapter?: string } | null;
+  } | null;
+  laeuft: boolean;
+};
+export type AktionSicht = {
+  aktion: true;
+  status: string;
+  angemeldet: boolean;
+  ziel: { url: string } | null;
+  laeuft: boolean;
+  klaerung: string | null;
+  fehler: string | null;
+  auftrag: AuftragSicht | null;
 };
 export type View = {
   status: string;
@@ -435,6 +513,12 @@ export type Message = {
   art?: string;
   /** BPA-01: die Sprache der Leiste für Klaras Antwort (`de`/`en`). */
   sprache?: string;
+  /** BPA-03: der Auftrag in den Worten der Person, seine Quelle und sein Vorgangsschlüssel. */
+  wortlaut?: string;
+  quelle?: string;
+  vorgang?: string;
+  /** BPA-03: woran die Außenaktionsbestätigung gebunden ist. */
+  fingerabdruck?: string;
 };
 export type Payload = {
   title: string;
@@ -480,6 +564,8 @@ type Click = {
 type Event<Callback> = { addListener(callback: Callback): void };
 declare global {
   var KLARA_TEXT: Record<string, Record<string, string>>;
+  /** BPA-03: die Texte des Abschnitts „Auf dieser Seite ausführen“ (i18n.js). */
+  var KLARA_AKTION_TEXT: Record<string, Record<string, string>>;
   /** BPA-01: der Kontextvertrag aus `kontext.js`; fehlt er, bindet die Erweiterung keinen Kontext. */
   var KlaraKontext: KontextApi | undefined;
   const chrome: {
@@ -552,6 +638,12 @@ declare global {
       executeScript(options: { target: { tabId: number }; files: string[] }): Promise<
         { result?: CaptureResult }[]
       >;
+      /** BPA-03: genau eine Handlung des Seitenausführers in derselben isolierten Welt. */
+      executeScript<A extends unknown[], R>(options: {
+        target: { tabId: number };
+        func: (...args: A) => R;
+        args: A;
+      }): Promise<{ result?: R }[]>;
     };
     // JOB 3278 · CHR-02: the panel is a side panel, so the worker no longer creates tabs. Only
     // `open` and `setPanelBehavior` are declared — `setOptions` is deliberately absent, because a
@@ -565,6 +657,8 @@ declare global {
       onUpdated: Event<(tabId: number, info: { url?: string; status?: string }) => void>;
       /** Optional, weil ältere Prüfstände ihn nicht stellen; Chrome liefert ihn immer. */
       onRemoved?: Event<(tabId: number) => void>;
+      /** BPA-03: ob der Tab des Auftrags noch da ist (wirft, wenn nicht). */
+      get(tabId: number): Promise<{ id?: number; url?: string; incognito?: boolean }>;
     };
     i18n: { getMessage(key: string): string };
   };

@@ -2554,7 +2554,12 @@
   async function kontextNachricht(art, sprache) {
     if (art === "kontext") return kontextSicht(/** @type {Zustand} */ (await read()), "bereit");
     // Der Stopp wartet auf nichts und ist nie „busy".
-    if (art === "kontextWiderrufen") return kontextWiderrufen();
+    if (art === "kontextWiderrufen") {
+      const sicht = await kontextWiderrufen();
+      // BPA-03: ein laufender Browserauftrag auf dieser Freigabe endet sofort beim Kern.
+      await aktionNachWiderruf();
+      return sicht;
+    }
     if (art === "kontextBegleiter") return begleiterVerbinden();
     if (kontextBusy) return kontextSicht(/** @type {Zustand} */ (await read()), "busy");
     kontextBusy = true;
@@ -2836,6 +2841,412 @@
     return kontextSicht(/** @type {Zustand} */ (await read()), "begleiter_verbunden");
   }
   // KW-KONTEXT-END
+  // ================================================================================================
+  // KW-AKTION · BPA-03 — BERECHTIGTE FUNKTIONEN AUF DER FREIGEGEBENEN SEITE AUSFÜHREN.
+  // ================================================================================================
+  //
+  // DER WEG (produkt:20261011:assistenz-browser-aktionen): Die Person gibt in der Leiste einen
+  // Auftrag — getippt oder gesprochen — für die Seite, die sie mit der Klickgeste freigegeben hat
+  // (BPA-01, einmalige Freigabe = `activeTab`). Der Worker schickt ihn an den Aktionskern am Server
+  // (`POST /api/me/klara/browser-auftraege`). Dort wird er gegen das Seitenprofil erkannt, gebunden,
+  // je Schritt mit den aktuellen Rechten geprüft und im eigenen Klara-Gespräch verzeichnet. Jeden
+  // Schritt holt der Worker mit seiner Anmeldung ab (`…/takt`) und führt ihn mit `chrome.scripting`
+  // über `aktion.js` in Chromes isolierter Welt aus — und nur dort, nur in diesem Tab.
+  //
+  // DER WORKER ENTSCHEIDET NICHTS ÜBER DEN AUFTRAG. Er prüft vor JEDEM Befehl nur, ob die Freigabe
+  // der Seite noch trägt (BPA-01-Vertrag `zugang`, Widerrufsepoche, gleiche Anmeldung). Trägt sie
+  // nicht, führt er nichts aus und meldet den Entzug; der Kern beendet den Lauf. Jede Befehlsnummer
+  // wird höchstens EINMAL ausgeführt: kommt dieselbe Nummer erneut (Antwort unterwegs verloren),
+  // geht die gemerkte Antwort noch einmal hinaus — kein zweiter Klick.
+  //
+  // SEITENINHALT BLEIBT DATEN: Was `aktion.js` liest, geht als Antwort an den Kern, der es nach
+  // Vertrag prüft. Die Leiste zeigt nur, was der Kern zurückgibt.
+  /** @typedef {import("./types").AktionZustand} AktionZustand */
+  /** @typedef {import("./types").AktionSicht} AktionSicht */
+  const AKTION_NACHRICHTEN = ["aktion", "aktionStarten", "aktionSteuern"];
+  const AKTION_STEUERUNG = ["pause", "fortsetzen", "abbruch", "bestaetigen", "ruecknahme"];
+  const AKTION_VORGANG = /^[\w-]{8,64}$/;
+  const AKTION_PFAD = "/api/me/klara/browser-auftraege";
+  /** Höchstens so viele Takte je Antrieb — danach übernimmt der nächste Anlass (kein Endlosbetrieb). */
+  const AKTION_TAKTE = 400;
+  /** @type {Promise<void> | null} */
+  let aktionAntrieb = null;
+  let aktionKette = Promise.resolve();
+
+  /** Die zuletzt mit der Klickgeste erteilte einmalige Freigabe — das Ziel eines Auftrags. */
+  /** @param {Zustand} state @returns {{tabId: number, url: string} | null} */
+  function aktionsZiel(state) {
+    const zustand = kontextVon(state);
+    const einmalig = (zustand?.freigaben ?? []).filter((f) => f.art === "einmalig");
+    const f = einmalig.sort((a, b) => (a.erteiltAm < b.erteiltAm ? 1 : -1))[0];
+    return f && f.art === "einmalig" ? { tabId: f.tabId, url: f.url } : null;
+  }
+
+  /**
+   * Trägt die Freigabe der Seite noch? Vertrag (`zugang`), Widerruf (Epoche), Anmeldung und ob der
+   * Tab noch da ist. `null` heisst: ja.
+   * @param {Zustand} state @param {AktionZustand} aktion @returns {Promise<string | null>}
+   */
+  async function aktionSperre(state, aktion) {
+    if (!K) return "kontext_fehlt";
+    if (!state.auth || state.auth.id !== aktion.nutzer) return "abgemeldet";
+    if (epocheVon(state) !== aktion.epoche) return "verbindung_widerrufen";
+    const zustand = kontextVon(state);
+    if (!zustand) return "kontext_fehlt";
+    /** @type {{incognito?: boolean} | undefined} */
+    let tab;
+    try {
+      tab = await chrome.tabs.get(aktion.tabId);
+    } catch {
+      return "tab_geschlossen";
+    }
+    const zugang = K.zugang(zustand, {
+      url: aktion.url,
+      tabId: aktion.tabId,
+      incognito: tab?.incognito === true,
+      frameId: 0,
+    });
+    return zugang.erlaubt ? null : zugang.sperre.grund;
+  }
+
+  /**
+   * Läuft in der isolierten Welt der Seite, NACH `aktion.js`. Ruft genau eine Handlung des
+   * Seitenausführers; alles andere gibt es dort nicht.
+   * @param {string} art @param {unknown} args
+   */
+  function aktionAufruf(art, args) {
+    const api = /** @type {Record<string, unknown> | undefined} */ (
+      /** @type {Record<string, unknown>} */ (globalThis).KlaraBrowserAktion
+    );
+    const f = api?.[art];
+    if (!api || typeof f !== "function") return { fehlt: true };
+    return { wert: f.call(api, args), fassung: api.fassung };
+  }
+
+  /**
+   * Führt einen Befehl des Kerns in der Seite aus — oder sagt belastbar, dass nichts geschah.
+   * @param {import("./types").AktionBefehl} b @param {AktionZustand} aktion
+   * @returns {Promise<{ergebnis: unknown, seite?: {recht?: string, grund?: string, adapter?: string}}>}
+   */
+  async function aktionBefehl(b, aktion) {
+    const state = /** @type {Zustand} */ (await read());
+    const sperre = await aktionSperre(state, aktion);
+    if (sperre === "tab_geschlossen" && b.art === "lage") return { ergebnis: null };
+    if (sperre) {
+      return {
+        ergebnis: { fehler: "nicht_ausgefuehrt" },
+        seite: { recht: "entzogen", grund: sperre },
+      };
+    }
+    if (b.tabId !== aktion.tabId) return { ergebnis: { fehler: "nicht_ausgefuehrt" } };
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: b.tabId }, files: ["aktion.js"] });
+    } catch {
+      // Chrome hat das Skript gar nicht eingesetzt (kein Zugriff mehr, Seite weg): nichts geschah.
+      return { ergebnis: { fehler: "nicht_ausgefuehrt" } };
+    }
+    try {
+      const [r] = await chrome.scripting.executeScript({
+        target: { tabId: b.tabId },
+        func: aktionAufruf,
+        args: [b.art, b.args],
+      });
+      const aus = /** @type {{wert?: unknown, fassung?: unknown, fehlt?: boolean} | undefined} */ (
+        r?.result
+      );
+      if (!aus || aus.fehlt) return { ergebnis: { fehler: "nicht_ausgefuehrt" } };
+      const fassung = typeof aus.fassung === "string" ? aus.fassung : "";
+      if (b.art === "lage") {
+        const lage =
+          aus.wert && typeof aus.wert === "object" ? { ...aus.wert, tabId: b.tabId } : null;
+        return { ergebnis: lage ?? { fehler: "verbindung" }, seite: { adapter: fassung } };
+      }
+      return { ergebnis: aus.wert ?? { fehler: "verbindung" }, seite: { adapter: fassung } };
+    } catch {
+      // Eingesetzt, aber ohne Antwort zurück (Seite lud neu, Rahmen weg): die Wirkung ist offen.
+      return { ergebnis: { fehler: "verbindung" } };
+    }
+  }
+
+  /**
+   * @param {import("./types").Auth} auth @param {string} pfad @param {unknown} body
+   * @returns {Promise<{status: number, body: Record<string, unknown>}>}
+   */
+  async function aktionApi(auth, pfad, body) {
+    const response = await fetch(HOST + pfad, {
+      method: body === undefined ? "GET" : "POST",
+      credentials: "omit",
+      redirect: "error",
+      cache: "no-store",
+      headers: {
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        Authorization: `Bearer ${auth.token}`,
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      // Der Takt wartet am Server bis zu 20 s auf den nächsten Schritt.
+      signal: AbortSignal.timeout(30000),
+    });
+    /** @type {Record<string, unknown>} */
+    let inhalt = {};
+    try {
+      const gelesen = await response.json();
+      if (gelesen && typeof gelesen === "object") inhalt = gelesen;
+    } catch {
+      inhalt = {};
+    }
+    return { status: response.status, body: inhalt };
+  }
+
+  /**
+   * Die Sicht des Kerns, so wie sie kam. Die Leiste setzt jede Angabe nur als Text; was fehlt,
+   * bleibt leer — gerechnet wird mit ihr nichts.
+   * @param {unknown} roh @returns {import("./types").AuftragSicht | null}
+   */
+  const alsSicht = (roh) =>
+    roh && typeof roh === "object" ? /** @type {import("./types").AuftragSicht} */ (roh) : null;
+
+  /** @param {Partial<AktionZustand>} teil */
+  async function aktionMerken(teil) {
+    const state = /** @type {Zustand} */ (await read());
+    if (!state.aktion) return;
+    await merke({ aktion: { ...state.aktion, ...teil } });
+  }
+
+  /** Streng steigend, auch über einen Neustart des Workers hinweg. @param {AktionZustand} a */
+  const naechsteFolge = (a) => Math.max(Date.now(), (a.folge ?? 0) + 1);
+
+  /**
+   * Der Antrieb: meldet die Antwort des letzten Befehls, holt den nächsten und führt ihn aus —
+   * bis der Kern nichts mehr hat und der Lauf ruht. Läuft höchstens einmal zugleich.
+   * @param {{auftrag?: unknown, befehl?: unknown} | null} start
+   */
+  function aktionAntreiben(start) {
+    if (aktionAntrieb) return aktionAntrieb;
+    aktionAntrieb = (async () => {
+      let antwort = start;
+      for (let takt = 0; takt < AKTION_TAKTE; takt++) {
+        const state = /** @type {Zustand} */ (await read());
+        const aktion = state.aktion;
+        if (!aktion?.id || !state.auth) return;
+        if (antwort?.auftrag) {
+          await aktionMerken({ sicht: alsSicht(antwort.auftrag), fehler: null });
+        }
+        const befehl = /** @type {import("./types").AktionBefehl | null} */ (
+          antwort?.befehl ?? null
+        );
+        const auftrag = /** @type {{laeuft?: boolean} | undefined} */ (antwort?.auftrag);
+        if (antwort && !befehl && auftrag && !auftrag.laeuft) {
+          await aktionMerken({ laeuft: false });
+          return;
+        }
+        /** @type {Record<string, unknown>} */
+        let body = {};
+        if (befehl) {
+          // Dieselbe Nummer noch einmal (die Antwort ging verloren): nicht erneut ausführen.
+          const gemerkt =
+            aktion.erledigt && aktion.erledigt.nr === befehl.nr ? aktion.erledigt : null;
+          const aus = gemerkt
+            ? { ergebnis: gemerkt.ergebnis, seite: gemerkt.seite ?? undefined }
+            : await aktionBefehl(befehl, aktion);
+          if (!gemerkt) {
+            await aktionMerken({
+              erledigt: { nr: befehl.nr, ergebnis: aus.ergebnis, seite: aus.seite ?? null },
+            });
+          }
+          body = { antwort: { nr: befehl.nr, ergebnis: aus.ergebnis } };
+          if (aus.seite) body.seite = aus.seite;
+        }
+        const jetzt = /** @type {AktionZustand} */ ((await read()).aktion ?? aktion);
+        const folge = naechsteFolge(jetzt);
+        await aktionMerken({ folge });
+        /** @type {{status: number, body: Record<string, unknown>} | null} */
+        let r = null;
+        for (let versuch = 0; versuch < 3 && !r; versuch++) {
+          try {
+            r = await aktionApi(
+              state.auth,
+              `${AKTION_PFAD}/${encodeURIComponent(aktion.id)}/takt`,
+              {
+                ...body,
+                folge: versuch === 0 ? folge : naechsteFolge({ ...jetzt, folge: folge + versuch }),
+              },
+            );
+          } catch {
+            r = null;
+          }
+        }
+        if (!r || r.status !== 200) {
+          // Ohne Verbindung ruht der Antrieb. Am Server läuft die Frist; was unklar ist, gleicht der
+          // Kern beim Fortsetzen an der Seite ab.
+          await aktionMerken({
+            laeuft: false,
+            fehler:
+              r?.status === 404
+                ? "lauf_beendet"
+                : r?.status === 409
+                  ? "andere_sitzung"
+                  : "verbindung",
+          });
+          return;
+        }
+        antwort = r.body;
+      }
+      await aktionMerken({ laeuft: false });
+    })().finally(() => {
+      aktionAntrieb = null;
+    });
+    return aktionAntrieb;
+  }
+
+  /** @param {Zustand} state @param {string} status @returns {AktionSicht} */
+  function aktionSicht(state, status) {
+    const a = state.aktion ?? null;
+    const ziel = aktionsZiel(state);
+    return {
+      aktion: true,
+      status,
+      angemeldet: Boolean(state.auth),
+      ziel: ziel ? { url: ziel.url } : null,
+      laeuft: Boolean(a?.laeuft) || aktionAntrieb !== null,
+      klaerung: a?.klaerung ?? null,
+      fehler: a?.fehler ?? null,
+      auftrag: a?.sicht ?? null,
+    };
+  }
+
+  /** @param {{wortlaut?: unknown, quelle?: unknown, vorgang?: unknown}} m @returns {Promise<AktionSicht>} */
+  async function aktionStarten(m) {
+    const state = /** @type {Zustand} */ (await read());
+    if (!state.auth) return aktionSicht(state, "anmelden");
+    if (aktionAntrieb || state.aktion?.laeuft) return aktionSicht(state, "laeuft");
+    const wortlaut = typeof m.wortlaut === "string" ? m.wortlaut.trim() : "";
+    const quelle = m.quelle === "gesprochen" ? "gesprochen" : "getippt";
+    const vorgang = typeof m.vorgang === "string" ? m.vorgang : "";
+    if (!wortlaut || wortlaut.length > 2000 || !AKTION_VORGANG.test(vorgang))
+      return aktionSicht(state, "invalid_message");
+    const ziel = aktionsZiel(state);
+    if (!ziel) return aktionSicht(state, "keine_freigabe");
+    /** @type {AktionZustand} */
+    const aktion = {
+      id: null,
+      vorgang,
+      tabId: ziel.tabId,
+      url: ziel.url,
+      epoche: epocheVon(state),
+      nutzer: state.auth.id,
+      folge: 0,
+      sicht: null,
+      klaerung: null,
+      fehler: null,
+      erledigt: null,
+      laeuft: true,
+    };
+    const sperre = await aktionSperre(state, aktion);
+    if (sperre) {
+      await merke({ aktion: { ...aktion, laeuft: false, fehler: sperre } });
+      return aktionSicht(/** @type {Zustand} */ (await read()), "gesperrt");
+    }
+    await merke({ aktion });
+    /** @type {{status: number, body: Record<string, unknown>}} */
+    let r;
+    try {
+      r = await aktionApi(state.auth, AKTION_PFAD, {
+        vorgang,
+        quelle,
+        wortlaut,
+        ziel: { tabId: ziel.tabId, url: ziel.url },
+        host: {
+          browser: browserFassung().name,
+          version: browserFassung().version,
+          erweiterung: chrome.runtime.getManifest?.().version ?? "",
+        },
+      });
+    } catch {
+      await aktionMerken({ laeuft: false, fehler: "verbindung" });
+      return aktionSicht(/** @type {Zustand} */ (await read()), "verbindung");
+    }
+    if (r.status === 401) {
+      await merke({ auth: null, aktion: null });
+      return aktionSicht(/** @type {Zustand} */ (await read()), "anmelden");
+    }
+    if (r.status === 200 && r.body.art === "klaerung") {
+      await aktionMerken({ laeuft: false, klaerung: String(r.body.text ?? "") });
+      return aktionSicht(/** @type {Zustand} */ (await read()), "klaerung");
+    }
+    const auftrag = /** @type {{id?: unknown} | undefined} */ (r.body.auftrag);
+    if (r.status !== 201 || typeof auftrag?.id !== "string") {
+      await aktionMerken({ laeuft: false, fehler: String(r.body.grund ?? "fehler") });
+      return aktionSicht(/** @type {Zustand} */ (await read()), "fehler");
+    }
+    await aktionMerken({ id: auftrag.id, sicht: alsSicht(auftrag) });
+    void aktionAntreiben(r.body);
+    return aktionSicht(/** @type {Zustand} */ (await read()), "gestartet");
+  }
+
+  /** @param {{art?: unknown, fingerabdruck?: unknown}} m @returns {Promise<AktionSicht>} */
+  async function aktionSteuern(m) {
+    const state = /** @type {Zustand} */ (await read());
+    const aktion = state.aktion;
+    if (!state.auth || !aktion?.id) return aktionSicht(state, "kein_auftrag");
+    const art = typeof m.art === "string" ? m.art : "";
+    if (!AKTION_STEUERUNG.includes(art)) return aktionSicht(state, "invalid_message");
+    /** @type {{status: number, body: Record<string, unknown>}} */
+    let r;
+    try {
+      r = await aktionApi(state.auth, `${AKTION_PFAD}/${encodeURIComponent(aktion.id)}/steuerung`, {
+        art,
+        ...(art === "bestaetigen" ? { fingerabdruck: String(m.fingerabdruck ?? "") } : {}),
+      });
+    } catch {
+      return aktionSicht(state, "verbindung");
+    }
+    if (r.status !== 200) {
+      await aktionMerken({ fehler: String(r.body.grund ?? "fehler") });
+      return aktionSicht(/** @type {Zustand} */ (await read()), "abgelehnt");
+    }
+    await aktionMerken({ sicht: alsSicht(r.body.auftrag), fehler: null, laeuft: true });
+    // Läuft der Antrieb schon, holt ER den nächsten Befehl; sonst beginnt er mit dieser Antwort.
+    void aktionAntreiben(aktionAntrieb ? null : r.body);
+    return aktionSicht(/** @type {Zustand} */ (await read()), "gesteuert");
+  }
+
+  /**
+   * Nach einem Widerruf der Seitenfreigabe (BPA-01) erfährt der Kern es sofort — nicht erst beim
+   * nächsten Befehl.
+   */
+  async function aktionNachWiderruf() {
+    const state = /** @type {Zustand} */ (await read());
+    const aktion = state.aktion;
+    if (!state.auth || !aktion?.id || !aktion.laeuft) return;
+    try {
+      const r = await aktionApi(
+        state.auth,
+        `${AKTION_PFAD}/${encodeURIComponent(aktion.id)}/steuerung`,
+        { art: "widerruf" },
+      );
+      if (r.status === 200) await aktionMerken({ sicht: alsSicht(r.body.auftrag) });
+    } catch {
+      // Ohne Verbindung wirkt der Widerruf beim nächsten Befehl: er wird nicht mehr ausgeführt.
+    }
+  }
+
+  /** @param {import("./types").Message} m @returns {Promise<AktionSicht>} */
+  function aktionNachricht(m) {
+    const lauf = aktionKette.then(async () => {
+      if (m.type === "aktionStarten") return aktionStarten(m);
+      if (m.type === "aktionSteuern") return aktionSteuern(m);
+      const state = /** @type {Zustand} */ (await read());
+      // Nach einem Neustart des Workers: ein unterbrochener Antrieb setzt am Server fort.
+      if (state.aktion?.id && state.aktion.laeuft && !aktionAntrieb) void aktionAntreiben(null);
+      return aktionSicht(state, "bereit");
+    });
+    aktionKette = lauf.then(
+      () => undefined,
+      () => undefined,
+    );
+    return lauf;
+  }
+  // KW-AKTION-END
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("panel.html")) {
       respond({ status: "forbidden_sender" });
@@ -2862,6 +3273,14 @@
       );
       const sprache = message.sprache ?? "de";
       kontextNachricht(message.type, sprache).then(antworte, () => antworte(KONTEXT_FEHLER));
+      return true;
+    }
+    // BPA-03: Browseraufträge sind keine Übernahme — eigene Fragen, eigene Antwort (`AktionSicht`).
+    if (message && typeof message === "object" && AKTION_NACHRICHTEN.includes(message.type)) {
+      const antworte = /** @type {(antwort: AktionSicht | {status: string}) => void} */ (
+        /** @type {unknown} */ (respond)
+      );
+      aktionNachricht(message).then(antworte, () => antworte({ status: "storage_error" }));
       return true;
     }
     dispatch(message).then(respond, () => respond({ status: "storage_error" }));

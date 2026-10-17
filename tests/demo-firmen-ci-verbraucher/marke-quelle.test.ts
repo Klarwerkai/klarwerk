@@ -259,13 +259,17 @@ describe("JOB 3512 Q3 · Chrome bleibt buildlos, CSP-treu und ohne neue Rechte",
       ["worker.js", WORKER],
       ["panel.js", PANEL_JS],
       ["selection.js", lies("extensions/klara-browser/selection.js")],
+      ["aktion.js", lies("extensions/klara-browser/aktion.js")],
     ] as const) {
       expect(quelle, `${name} spritzt CSS in eine fremde Seite`).not.toMatch(/insertCSS/);
     }
-    // Und der einzige Skripteinsatz in eine Seite bleibt der bestehende Auswahl-Leser.
-    expect([...WORKER.matchAll(/files:\s*\[([^\]]*)\]/g)].map((m) => m[1]?.trim())).toEqual([
-      '"selection.js"',
-    ]);
+    // Und in eine Seite kommen nur die zwei Skripte des Pakets: der Auswahl-Leser und — seit BPA-03
+    // (produkt:20261011:assistenz-browser-aktionen) — der Seitenausführer `aktion.js`, der nur auf
+    // Befehl des Aktionskerns liest, einträgt und klickt. Gezählt wird die MENGE der Dateien, nicht
+    // die Aufrufstellen: BPA-02 liest denselben Auswahl-Leser an zwei weiteren Stellen neu (am
+    // Hauptstand dcd5a0413 war dieser Test deshalb schon rot, gemessen 17.10.2026, Chat 62).
+    const eingesetzt = [...WORKER.matchAll(/files:\s*\[([^\]]*)\]/g)].map((m) => m[1]?.trim());
+    expect([...new Set(eingesetzt)].sort()).toEqual(['"aktion.js"', '"selection.js"']);
   });
 });
 
