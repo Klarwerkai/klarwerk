@@ -286,6 +286,16 @@ const INVENTAR: readonly string[] = [
   // Meldungen desselben Laufs stammen aus fremden Aufträgen und sind hier NICHT aufgenommen.
   "tests/klara-browser/kontext-weg.test.ts",
   "tests/klara-browser/kontext.test.ts",
+  // BPA-01, Integration auf den Hauptstand (Chat 62, 17.10.2026): die Sitzungsbindung der
+  // Begleiterbrücke und die sechs Begleiter-Prüfungen des mitgeführten Begleiter-Kandidaten. K2
+  // meldete genau diese sieben Pfade (Achse `name`), erst nachdem BPA-01 auf den Hauptstand kam.
+  "tests/klara-browser/begleiter-sitzung.test.ts",
+  "tests/klara-office/begleiter-adapter.test.tsx",
+  "tests/klara-office/begleiter-app-quellen.test.ts",
+  "tests/klara-office/begleiter-figur.test.tsx",
+  "tests/klara-office/begleiter-kanal-am-server.test.ts",
+  "tests/klara-office/begleiter-kanal-uhr.test.ts",
+  "tests/klara-office/begleiter-seite-am-server.test.tsx",
   // JOB 3606: die drei Befunde vom 11.09. an der Leiste im Browser — die neue Übernahme, die auf
   // einen offenen Vorgang trifft (sie verschwand stumm, Befunde a und b), der Tabwechsel, der
   // während eines Vorgangs verlorenging, und der Grund, den der Server seiner Abweisung mitgibt.
@@ -1839,7 +1849,10 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // eigenen Zweig auch im Inventar (K2) — mit dieser Nacharbeit nachgeführt.
     // Bestandsabgleich 16.10.2026 am Kandidaten 14340c07cd5c: 147 Pfadtreffer,
     // insgesamt 366 Dateien; 219 werden nur durch Inhaltsachsen erreicht.
-    expect(nurName.length).toBe(147);
+    // Integration BPA-01 auf den Hauptstand (Chat 62, 17.10.2026, gemessen): 156 Pfadtreffer —
+    // +9 gegenüber dem Hauptstand (dort 147, gemessen), alle durch die mit BPA-01 hinzugekommenen
+    // Dateien mit „klara" im Pfad, darunter die sieben oben nachgeführten Prüfungen.
+    expect(nurName.length).toBe(156);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
