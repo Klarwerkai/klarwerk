@@ -668,7 +668,10 @@ declare global {
       /** BPA-03: ob der Tab des Auftrags noch da ist (wirft, wenn nicht). */
       get(tabId: number): Promise<{ id?: number; url?: string; incognito?: boolean }>;
       /** BPA-03: ohne `tabs`-Recht nur Kennung und letzter Zugriff — keine Adressen fremder Tabs. */
-      query(info: Record<string, never>): Promise<{ id?: number; lastAccessed?: number }[]>;
+      query(info: {
+        active?: boolean;
+        lastFocusedWindow?: boolean;
+      }): Promise<{ id?: number; lastAccessed?: number }[]>;
       getCurrent(): Promise<{ id?: number } | undefined>;
     };
     i18n: { getMessage(key: string): string };

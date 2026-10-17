@@ -3200,11 +3200,17 @@
    */
   async function aktionZielVorn(ziel, leisteTab) {
     try {
-      const tabs = /** @type {{id?: number, lastAccessed?: number}[]} */ (
-        await chrome.tabs.query({})
-      ).filter((t) => typeof t.id === "number" && t.id !== leisteTab);
-      const vorn = tabs.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0))[0];
-      return vorn !== undefined && vorn.id === ziel.tabId;
+      // Der aktive Tab des Fensters, in dem die Person zuletzt war — im Seitenfenster ist das die
+      // Seite. Läuft die Leiste selbst als Tab und ist sie vorn, zählt der zuletzt benutzte andere.
+      const vorn = (await chrome.tabs.query({ active: true, lastFocusedWindow: true })).find(
+        (t) => typeof t.id === "number" && t.id !== leisteTab,
+      );
+      if (vorn) return vorn.id === ziel.tabId;
+      const andere = (await chrome.tabs.query({})).filter(
+        (t) => typeof t.id === "number" && t.id !== leisteTab,
+      );
+      const zuletzt = andere.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0))[0];
+      return zuletzt !== undefined && zuletzt.id === ziel.tabId;
     } catch {
       return false;
     }
