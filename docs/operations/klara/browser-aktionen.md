@@ -105,8 +105,10 @@ aktion.js in Chromes isolierter Welt der freigegebenen Seite (chrome.scripting, 
   Wertende und ein Infinitiv nach einem ungeklammerten Wert („… prüfen und sichern") werden
   geklärt; eindeutig ist „und speichere ihn". Ein Bindestrich gehört zum Wort („Empfänger-Wechsel"
   ist kein Feldname).
-- **Zuordnung bestätigen:** Trennt allein ein Feldname die Werte (gesprochen meist: ohne
-  Anführungszeichen oder Komma), zeigt die Leiste die erkannte Zuordnung „Feld = Wert" und startet
+- **Zuordnung bestätigen:** Trennt allein ein Feldname die Werte — eindeutig ist nur ein Wert in
+  Anführungszeichen oder einer, der auf ein Satzzeichen endet, vor einer mit Doppelpunkt, `=` oder
+  Anführungszeichen eingeleiteten Beschriftung (die dokumentierte Form); gesprochen trennt fast immer
+  nur der Feldname —, zeigt die Leiste die erkannte Zuordnung „Feld = Wert" und startet
   erst nach „Zuordnung stimmt – ausführen" — gebunden an Konto, Klick und genau diese Werte. Bis
   dahin geschieht auf der Seite nichts, und nichts steht im Verlauf.
 - **Speichern** gleicht unmittelbar vorher die Feldwerte ab (Server und `aktion.js`); weicht ein Feld

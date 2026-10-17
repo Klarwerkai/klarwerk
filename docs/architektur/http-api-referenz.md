@@ -550,9 +550,10 @@ zugelassene Anfrage ohne eigene Sitzung erhält 403 `FORBIDDEN` (`grund` `nur_si
 Dienstschlüssel erreicht diese Routen nicht (sie stehen nicht in `DIENST_ROUTEN`, also 401). Jede Wirkung (Eintragen, Speichern, Auslösen, Löschen bei der Rücknahme) prüft der
 Dienst (`klara-browser-aktion-dienst.ts`, `rechte`) unmittelbar vor ihrem Schritt frisch mit
 `ko.create` — kein HTTP-Fehler: ein Lauf endet dann `gestoppt_recht`, eine Rücknahme unterbleibt mit
-Begründung und der Lauf behält seinen Stand. Trennt allein ein Feldname die Werte (ohne
-Anführungszeichen oder Komma), antwortet die Anlage mit einer Klärung samt `zuordnung` (Felder und
-Abdruck); ausgeführt wird erst ein erneuter Auftrag mit genau diesem Abdruck. Ein Lauf gehört der
+Begründung und der Lauf behält seinen Stand. Trennt allein ein Feldname die Werte (eindeutig ist nur
+ein Wert in Anführungszeichen oder einer, der auf ein Satzzeichen endet, vor einer mit Doppelpunkt,
+`=` oder Anführungszeichen eingeleiteten Beschriftung), antwortet die Anlage mit einer Klärung samt
+`zuordnung` (Felder und Abdruck); ausgeführt wird erst ein erneuter Auftrag mit genau diesem Abdruck. Ein Lauf gehört der
 Anmeldung, die ihn anlegte; ohne Seitenprofil (`buildApp`-Option `browserAktion.seitenprofile`)
 wird jede Seite zur Übergabe „nicht unterstützt".
 
