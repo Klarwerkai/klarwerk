@@ -33,8 +33,12 @@
 //     vorliegen, kein Bild verloren ging und keine bekannte Erfassungsgrenze greift.
 //   · Das Original wird nicht verändert: gelesen wird aus der data-URL, geschrieben wird nur der
 //     Befund.
+//   · OCR-E01 (produkt:20261012:klara-ocr-fundstellen-korrekturen): der Befund trägt zusätzlich die
+//     Wortrahmen der Erkennung und die Maße der gelesenen Bytes — Grundlage der Markierung am
+//     Original (`lib/bildFundstelle.ts`). Beides kommt aus derselben Erkennung, nichts wird geraten.
 
 import type { DescribeImageResult } from "../api/types";
+import { type BildRahmen, type WortPosition, bildRahmenAus } from "./bildRahmen";
 import type { OcrResult, OcrWort } from "./ocr";
 import type { PptxRichResult } from "./pptx";
 
@@ -131,6 +135,30 @@ export interface BildBefund {
   /** Warum nicht analysiert wurde. */
   grund?: "automatik-aus" | "grenze";
   fehler?: string;
+  /** OCR-E01: die Wörter der Erkennung mit ihrem Rahmen (Pixel der gelesenen Bytes). */
+  woerter?: WortPosition[];
+  /** OCR-E01: Breite, Höhe und Drehangabe der gelesenen Bytes (fehlt, wenn nicht lesbar). */
+  rahmen?: BildRahmen;
+  /** OCR-E02: Text und Kennzeichnung zeigen eine Berichtigung; hier steht der Rohbefund. */
+  korrektur?: BildKorrekturAnzeige;
+}
+
+/** OCR-E02: der Rohbefund neben einer wirksamen Berichtigung (`lib/bildKorrektur.ts`). */
+export interface BildKorrekturAnzeige {
+  rohText: string;
+  rohGekennzeichnet: string;
+  rohUnsicher: UnsichereStelle[];
+  rohTabelle: string[][] | null;
+  /** Nacharbeit 3: die Bildbeschreibung (W02) vor der Angleichung an die Berichtigung. */
+  rohBildinhalt?: string;
+  /**
+   * Nacharbeit 4: die Beschreibung ließ sich nicht eindeutig angleichen (ein berichtigtes Wort kommt
+   * mehrfach vor) — sie steht unverändert da und gilt als Stand VOR der Berichtigung.
+   */
+  beschreibungNichtAngeglichen?: boolean;
+  geaendertAm: string;
+  /** Wie oft „Rückgängig“ eine frühere Berichtigung zurückholt (danach gilt der Rohbefund). */
+  schritte: number;
 }
 
 export type QuellenStatus =
@@ -642,7 +670,20 @@ interface Erkennung {
   textGekennzeichnet: string;
   unsicher: UnsichereStelle[];
   tabelle: string[][] | null;
+  /** OCR-E01: die Wörter mit Rahmen, wie die Engine sie geliefert hat. */
+  woerter: WortPosition[];
   fehler?: string;
+}
+
+/** OCR-E01: nur Wörter mit Rahmen tragen eine Position. */
+function wortPositionen(woerter: readonly OcrWort[] | undefined): WortPosition[] {
+  const aus: WortPosition[] = [];
+  for (const w of woerter ?? []) {
+    if (w.bbox && w.text.trim().length > 0) {
+      aus.push({ text: w.text, x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 });
+    }
+  }
+  return aus;
 }
 
 const NICHT_ANALYSIERT: Bildinhalt = { status: "nicht-analysiert", text: "" };
@@ -734,12 +775,14 @@ export function createBildAnalyse(optionen: {
   // OCR-03: welche Inhaltskennung ein geladenes Objektspeicher-Bild hatte — damit eine ausgeschaltete
   // Automatik vorhandene Ergebnisse wiederfindet, ohne das Bild erneut zu laden.
   const kennungJeAdresse = new Map<string, string>();
+  // OCR-E01: die Maße je Inhaltskennung — auch für vorhandene Ergebnisse ohne erneutes Laden.
+  const rahmenJeKennung = new Map<string, BildRahmen>();
   let analysen = 0;
   let beschreibungen = 0;
 
   const erkenneMitFrist = async (src: string): Promise<Erkennung> => {
     analysen += 1;
-    const leer = { text: "", textGekennzeichnet: "", unsicher: [], tabelle: null };
+    const leer = { text: "", textGekennzeichnet: "", unsicher: [], tabelle: null, woerter: [] };
     try {
       const ergebnis = await mitFrist(optionen.erkenne(src), zeitlimit);
       if (ergebnis === "frist") {
@@ -755,6 +798,7 @@ export function createBildAnalyse(optionen: {
           text,
           ...kennzeichneUnsicheres(text, ergebnis.woerter),
           tabelle: tabelleAusWoertern(ergebnis.woerter),
+          woerter: wortPositionen(ergebnis.woerter),
         };
       }
       return {
@@ -825,6 +869,10 @@ export function createBildAnalyse(optionen: {
     if (kennung && vorkommen.src && !istBildDatenUrl(vorkommen.src)) {
       kennungJeAdresse.set(vorkommen.src.trim(), kennung);
     }
+    const rahmen = bildRahmenAus(bytes);
+    if (kennung && rahmen) {
+      rahmenJeKennung.set(kennung, rahmen);
+    }
     const vorhanden = kennung && !bildOptionen.neu ? gemerkt.get(kennung) : undefined;
     let erkennung: Erkennung;
     let wiederverwendet = false;
@@ -880,6 +928,8 @@ export function createBildAnalyse(optionen: {
       bildinhalt,
       wiederverwendet,
       ...(erkennung.fehler ? { fehler: erkennung.fehler } : {}),
+      ...(erkennung.woerter.length > 0 ? { woerter: erkennung.woerter } : {}),
+      ...(rahmen ? { rahmen } : {}),
     };
   };
 
@@ -907,6 +957,7 @@ export function createBildAnalyse(optionen: {
       return null;
     }
     const inhalt = inhalteGemerkt.get(kennung);
+    const rahmen = rahmenJeKennung.get(kennung);
     return {
       fundstelle: vorkommen.fundstelle,
       status: erkennung.status,
@@ -917,6 +968,8 @@ export function createBildAnalyse(optionen: {
       tabelle: erkennung.tabelle,
       bildinhalt: inhalt ? await inhalt : NICHT_ANALYSIERT,
       wiederverwendet: true,
+      ...(erkennung.woerter.length > 0 ? { woerter: erkennung.woerter } : {}),
+      ...(rahmen ? { rahmen } : {}),
     };
   };
 

@@ -26,7 +26,9 @@ const gescannt = scanRouteFile(readFileSync(join(WURZEL, DATEI), "utf8"), DATEI)
 describe("Routeninventare · eigener Anteil des Unterstützungsmodus", () => {
   // produkt:20261012:klara-setup-shortcuts-umsetzung: dieselbe Datei trägt seither auch die zwei Wege
   // der Klara-Tastenkürzel; R1–R3 gelten für sie unverändert.
-  it("die Erhebung findet alle sieben Wege der Datei", () => {
+  // produkt:20261012:klara-ocr-fundstellen-korrekturen: dazu die zwei Wege des berichtigten
+  // Bildtexts (Schreiben mit `ko.create`); R1–R3 gelten ebenso.
+  it("die Erhebung findet alle neun Wege der Datei", () => {
     expect(gescannt.map((r) => routeKey(r.method, r.url)).sort()).toEqual(
       [
         "GET /api/me/assistenz",
@@ -36,6 +38,8 @@ describe("Routeninventare · eigener Anteil des Unterstützungsmodus", () => {
         "POST /api/me/assistenz/eigeninitiative/hinweise",
         "GET /api/me/assistenz/tastenkuerzel",
         "PUT /api/me/assistenz/tastenkuerzel",
+        "GET /api/me/assistenz/bildkorrekturen",
+        "PUT /api/me/assistenz/bildkorrekturen",
       ].sort(),
     );
   });

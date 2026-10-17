@@ -16,6 +16,21 @@ export function bildMit(marke: string): Uint8Array {
   return Uint8Array.from([...PNG_SIGNATUR, 0, 0, 0, 13, ...marken]);
 }
 
+function u32(n: number): number[] {
+  return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+}
+
+/**
+ * OCR-E01 (produkt:20261012:klara-ocr-fundstellen-korrekturen): dieselbe Bauart, aber mit einem
+ * echten PNG-Kopf (`IHDR`, Breite × Höhe) — die Bildmaße sind damit aus den Bytes lesbar.
+ */
+export function bildMitMassen(marke: string, breite: number, hoehe: number): Uint8Array {
+  const typ = new TextEncoder().encode("IHDR");
+  const ihdr = [...typ, ...u32(breite), ...u32(hoehe), 8, 2, 0, 0, 0];
+  const marken = new TextEncoder().encode(`#${marke}#`);
+  return Uint8Array.from([...PNG_SIGNATUR, 0, 0, 0, 13, ...ihdr, 0, 0, 0, 0, ...marken]);
+}
+
 export const TEXT_JE_MARKE: Record<string, string> = {
   A: "PRUEFKARTE 47",
   B: "VENTIL 83 SCHLIESSEN",
@@ -70,8 +85,14 @@ function rels(ziele: Record<string, string>): string {
 /** Der editierbare Folientext des Decks — die Bildtexte stehen NICHT darin. */
 export const FOLIENTEXT = ["Wartungsplan", "Siehe Bild", "Anlage", "Zwei Bilder"];
 
-/** Folie 1: Text + Bild A; Folie 2: Text + Bild B + Bild C + ein BMP (wird nicht übernommen). */
-export function deck(bildB: Uint8Array = bildMit("B")): Uint8Array {
+/**
+ * Folie 1: Text + Bild A; Folie 2: Text + Bild B + Bild C + ein BMP (wird nicht übernommen).
+ * OCR-E01: Bild A und C lassen sich ersetzen (z. B. durch Bilder mit echten Maßen).
+ */
+export function deck(
+  bildB: Uint8Array = bildMit("B"),
+  weitere: { a?: Uint8Array; c?: Uint8Array } = {},
+): Uint8Array {
   return zipSync({
     "[Content_Types].xml": enc(
       `${KOPF}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/></Types>`,
@@ -91,9 +112,9 @@ export function deck(bildB: Uint8Array = bildMit("B")): Uint8Array {
     "ppt/slides/_rels/slide2.xml.rels": enc(
       rels({ rId9: "b.png", rId10: "c.png", rId11: "d.bmp" }),
     ),
-    "ppt/media/a.png": bildMit("A"),
+    "ppt/media/a.png": weitere.a ?? bildMit("A"),
     "ppt/media/b.png": bildB,
-    "ppt/media/c.png": bildMit("C"),
+    "ppt/media/c.png": weitere.c ?? bildMit("C"),
     "ppt/media/d.bmp": Uint8Array.from([0x42, 0x4d, 1, 2, 3, 4]),
   });
 }

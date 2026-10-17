@@ -16,6 +16,10 @@
 //     Wechselt er, verschwindet die alte Antwort; eine verspätete Rückgabe (Erfolg, Fehler,
 //     Abschluss) einer überholten Anfrage wird verworfen. Ändert sich nur der Text derselben Quelle,
 //     bleibt die Antwort stehen, ist aber sichtbar als „vor der Änderung“ gekennzeichnet.
+//   · OCR-E02 (produkt:20261012:klara-ocr-fundstellen-korrekturen): mit `korrekturQuelle` bekommt
+//     Klara den BERICHTIGTEN Bildtext (dieselbe Bindung an Quelle und Bildfassung wie die Anzeige,
+//     `lib/bildKorrektur.ts`), gekennzeichnet als berichtigt. Ändert sich eine Berichtigung, gilt
+//     eine frühere Antwort nicht mehr (sie beruhte auf dem anderen Text).
 import { Sparkles } from "lucide-react";
 import { useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,6 +27,12 @@ import { ApiError } from "../api/client";
 import { useImageDescribeWennVorhanden } from "../app/ImageDescribeContext";
 import { useAssistenzStand } from "../lib/assistenzProfil";
 import type { BildFundstelle, BildQuelleEingang, QuellenBefund } from "../lib/bildAutomatik";
+import { korrekturFingerabdruck, quellenMitKorrekturen } from "../lib/bildKorrektur";
+import {
+  korrekturStandBestaetigt,
+  useBildKorrekturen,
+  wiederholeBildKorrekturen,
+} from "../lib/bildKorrekturenStand";
 import {
   type Belegstelle,
   type KlaraAuftrag,
@@ -65,14 +75,26 @@ export function antwortKontext(
   return `${kontoId ?? "-"}::${kontextSchluessel}::${bilder.join(",")}`;
 }
 
+/** Kopf eines Belegs: Fundstelle; eine Beschreibung vor der Berichtigung sagt das dazu. */
+function belegKopf(b: Belegstelle, t: Uebersetze): string {
+  if (b.art === "dokument") {
+    return t("klarabildkontext.belege.dokument");
+  }
+  const ort = `${b.quelle} · ${b.ort}`;
+  return b.art === "bild-vor-berichtigung"
+    ? `${ort} · ${t("bildfundstelle.beleg.vorBerichtigung")}`
+    : ort;
+}
+
 const KNOPF =
   "inline-flex h-8 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-text hover:border-ink/30 disabled:opacity-40";
 
 export function KlaraBildKontextFrage({
   kontextSchluessel,
   dokumentTextVon,
-  quellen,
+  quellen: rohQuellen,
   aktuell,
+  korrekturQuelle,
 }: {
   /** Die Quelle und ihr Lauf beim Aufrufer (z. B. `datei:3`, `office:<anhang>:<fassung>`). */
   kontextSchluessel: string;
@@ -81,16 +103,27 @@ export function KlaraBildKontextFrage({
   quellen: readonly QuellenBefund[];
   /** Der Eingang, aus dem die Befunde stammen müssen (andere fallen aus dem Kontext). */
   aktuell?: readonly BildQuelleEingang[] | undefined;
+  /** OCR-E02: die Quelle der Berichtigungen (wie an `BildBefundListe`); sonst gilt der Rohbefund. */
+  korrekturQuelle?: string | null | undefined;
 }): JSX.Element | null {
   const { t } = useTranslation();
   const weg = useImageDescribeWennVorhanden();
   const kontoId = useAssistenzStand().kontoId;
+  const korrekturen = useBildKorrekturen(typeof korrekturQuelle === "string");
+  const quellen = useMemo(
+    () => quellenMitKorrekturen(rohQuellen, korrekturQuelle, korrekturen.korrekturen),
+    [rohQuellen, korrekturQuelle, korrekturen.korrekturen],
+  );
   const feldId = useId();
   const [frage, setFrage] = useState("");
   // Für welchen Kontext gerade eine Anfrage läuft — `null`: keine.
   const [laeuftFuer, setLaeuftFuer] = useState<string | null>(null);
   const [ergebnisRoh, setErgebnis] = useState<Ergebnis | null>(null);
-  const schluessel = antwortKontext(kontoId, kontextSchluessel, quellen);
+  const schluessel = antwortKontext(
+    kontoId,
+    `${kontextSchluessel}::${korrekturFingerabdruck(quellen)}`,
+    quellen,
+  );
   const schluesselRef = useRef(schluessel);
   schluesselRef.current = schluessel;
   const anfrageRef = useRef(0);
@@ -117,10 +150,15 @@ export function KlaraBildKontextFrage({
     return null;
   }
   const modell = Boolean(weg?.frage) && weg?.frageVerfuegbar !== false;
+  // Nacharbeit 2 (Bens Befund „Ladestatus“): mit Korrekturquelle wird erst mit BESTÄTIGTEM
+  // Korrekturstand gefragt. Lädt er noch oder ist er fehlgeschlagen, sind Frage und Zusammenfassung
+  // gesperrt — sonst ginge unbemerkt der Rohbefund an Klara.
+  const korrekturAktiv = typeof korrekturQuelle === "string";
+  const korrekturGesperrt = korrekturAktiv && !korrekturStandBestaetigt(korrekturen);
 
   const stelle = async (auftrag: KlaraAuftrag): Promise<void> => {
     const f = frage.trim();
-    if (auftrag === "frage" && f.length === 0) {
+    if ((auftrag === "frage" && f.length === 0) || korrekturGesperrt) {
       return;
     }
     // Der Stand JETZT — die Antwort wird mit genau ihm gekennzeichnet.
@@ -220,7 +258,7 @@ export function KlaraBildKontextFrage({
         <button
           type="button"
           data-testid="klara-bild-kontext-fragen"
-          disabled={laeuft || frage.trim().length === 0}
+          disabled={laeuft || korrekturGesperrt || frage.trim().length === 0}
           onClick={() => void stelle("frage")}
           className={KNOPF}
         >
@@ -229,13 +267,37 @@ export function KlaraBildKontextFrage({
         <button
           type="button"
           data-testid="klara-bild-kontext-zusammenfassen"
-          disabled={laeuft}
+          disabled={laeuft || korrekturGesperrt}
           onClick={() => void stelle("zusammenfassung")}
           className={KNOPF}
         >
           {t("klarabildkontext.frage.zusammenfassen")}
         </button>
       </div>
+      {korrekturAktiv && korrekturen.status === "laedt" ? (
+        <output data-testid="klara-bild-kontext-korrektur-wartet" className="mt-2 block text-muted">
+          {t("bildfundstelle.klara.wartet")}
+        </output>
+      ) : null}
+      {korrekturAktiv && korrekturen.status === "fehler" ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <p
+            data-testid="klara-bild-kontext-korrektur-fehler"
+            role="alert"
+            className="text-trust-crit-text"
+          >
+            {t("bildfundstelle.klara.ladeFehler")}
+          </p>
+          <button
+            type="button"
+            data-testid="klara-bild-kontext-korrektur-erneut"
+            onClick={() => wiederholeBildKorrekturen()}
+            className={KNOPF}
+          >
+            {t("bildfundstelle.korrektur.erneutLaden")}
+          </button>
+        </div>
+      ) : null}
       {laeuft ? (
         <output className="mt-2 block text-muted">{t("klarabildkontext.frage.laeuft")}</output>
       ) : null}
@@ -298,11 +360,7 @@ export function KlaraBildKontextFrage({
                       data-testid="klara-bild-kontext-beleg"
                       data-art={b.art}
                     >
-                      <span className="font-semibold text-text">
-                        {b.art === "bild"
-                          ? `${b.quelle} · ${b.ort}`
-                          : t("klarabildkontext.belege.dokument")}
-                      </span>
+                      <span className="font-semibold text-text">{belegKopf(b, ue)}</span>
                       {": "}
                       <span className="text-muted">{b.auszug}</span>
                     </li>

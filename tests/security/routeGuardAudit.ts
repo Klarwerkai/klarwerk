@@ -766,6 +766,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // den gemeinsamen Pool oder nimmt ihn zurück. Dasselbe Routenrecht wie alle Entwurfsrouten; das
   // Zeilenrecht ist `canManageDraft` — nur der Autor (entscheidung:297afc57), sonst 403.
   "PUT /api/drafts/:id/pool": { protection: "ko.create" },
+  // BPA-02 (technische-daten-routes.ts): Vorschau, Übernahme als eigener Entwurf und Abgleich der
+  // eigenen Übernahmen — dasselbe Recht wie jede Entwurfsroute.
+  "POST /api/technische-daten/vorschau": { protection: "ko.create" },
+  "POST /api/technische-daten/uebernahme": { protection: "ko.create" },
+  "POST /api/technische-daten/quellenabgleich": { protection: "ko.create" },
+  // Rechteentzug/-erteilung einer Quelle wirkt auf fremde Wissensobjekte und Entwürfe — nur die
+  // Fachprüfung, wie der Import-Accept, der denselben Quellrechte-Weg schreibt.
+  "POST /api/technische-daten/quellenrechte": { protection: "ko.validate" },
   // JOB 3668 (Entwurfs-Papierkorb): DIESELBE Berechtigung und DERSELBE Torwächter wie die übrigen
   // Entwurfsrouten — `canSeeDraft`, nur auf der Papierkorb-Sicht (`requireVisibleTrashedDraft`).
   // BEWUSST NICHT `users.manage` wie beim Papierkorb der Wissensobjekte (`POST /api/kos/:id/restore`):
@@ -1187,6 +1195,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // (user.id aus der Sitzung, fremde Kennung 403).
   "GET /api/me/assistenz/tastenkuerzel": { protection: "auth" },
   "PUT /api/me/assistenz/tastenkuerzel": { protection: "auth" },
+  // produkt:20261012:klara-ocr-fundstellen-korrekturen: berichtigter Bildtext — lesen nur das eigene
+  // Konto; schreiben zusätzlich mit `ko.create` (Bearbeiten wie bei Entwürfen, `viewer` → 403).
+  "GET /api/me/assistenz/bildkorrekturen": { protection: "auth" },
+  "PUT /api/me/assistenz/bildkorrekturen": { protection: "ko.create" },
   // produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der eigenen Assistenz — Übersicht,
   // Vormerkungen und eigene Aufträge nur über das Konto der Sitzung; Vorschau und Ausführung
   // zusätzlich mit `ko.read`, weil sie Arbeitsbereichskontext aus dem Bestand laden.

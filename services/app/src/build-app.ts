@@ -261,6 +261,8 @@ import {
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
 import { Anfragebremse, bremsSatz } from "./anfragebremse";
+// produkt:20261012:klara-ocr-fundstellen-korrekturen: berichtigter Bildtext im Assistenzprofil.
+import { BildKorrekturDienst } from "./assistenz-bildkorrekturen";
 // produkt:20261008:klara-eigeninitiative: der persönliche Unterstützungsmodus im Assistenzprofil.
 import { EigeninitiativeDienst } from "./assistenz-eigeninitiative";
 // produkt:20261011:assistenz-skills-werkzeuge: Fähigkeiten der Assistenz über die vorhandenen Dienste.
@@ -536,6 +538,7 @@ import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { teamsRoutes } from "./routes/teams-routes";
+import { technischeDatenRoutes } from "./routes/technische-daten-routes";
 // ADMIN-15: Unternehmensprofil und interne Richtlinien.
 import { unternehmenRoutes } from "./routes/unternehmen-routes";
 import { validationRoutes } from "./routes/validation-routes";
@@ -581,6 +584,7 @@ import { speicherVorgang } from "./speicher-vorgang";
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
 // produkt:20261009:admin-teams — Teams als Mitgliedschaftsweg; im Postgres-Betrieb haltbar.
 import { InMemoryTeamsRepo, PgTeamsRepo, TeamAufloesendeSpaces, type TeamsRepo } from "./teams";
+import { quellenlageAus, quellsperreAus } from "./technische-daten-quellen";
 import { type TransportTls, tlsServerFabrik } from "./transport-tls";
 // R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte — im Postgres-Betrieb haltbar.
 import {
@@ -4636,6 +4640,8 @@ export function buildApp(
         // die Lesevarianten-Routen benutzen, keine zweite. Das Original selbst bleibt unberührt:
         // die Variante tritt als eigenes Feld daneben, nie an die Stelle eines KO-Feldes.
         lesevarianten: services.lesevarianten,
+        // BPA-02: die beobachtete Lage der Webquellen aus demselben Prüfprotokoll (Nacharbeit 5).
+        quellenlage: quellenlageAus(services.audit),
         // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27: Befugnis und Konto kommen
         // aus DEMSELBEN Kontodienst wie die Anmeldung — kein zweiter Kontobestand. Die Befugnis ist
         // seit der Integration (Nacharbeit 12) DIESELBE wie an `weisungskonto` unten
@@ -5135,6 +5141,23 @@ export function buildApp(
         aiCheckWorker,
         // produkt:20261007:templates-default: dieselbe Einreichprüfung am Promote.
         vorlagenEinreichung: vorlagenPort,
+        // BPA-02 (Nacharbeit 5): die Quellsperre gilt auch für Papierkorb, Wiederherstellen und
+        // Einreichen — dieselbe Regel wie an den Übernahmerouten.
+        quellsperre: quellsperreAus(services.audit),
+      },
+      guards,
+    ),
+  );
+  // BPA-02 (produkt:20261011:assistenz-browser-wissenserfassung): technische Daten aus einem
+  // erfassten Seiten-/Datenblattabschnitt — regelbasiert, über denselben Entwurfsdienst.
+  // Pflege und Rechte über die vorhandenen Wege: Revalidierungsmerker, Quellrechte, Prüfprotokoll.
+  app.register(
+    technischeDatenRoutes(
+      {
+        capture: services.capture,
+        ko: services.ko,
+        lifecycle: services.lifecycle,
+        audit: services.audit,
       },
       guards,
     ),
@@ -5749,6 +5772,8 @@ export function buildApp(
         eigeninitiative: new EigeninitiativeDienst({ repo: services.assistenzProfile }),
         // produkt:20261012:klara-setup-shortcuts-umsetzung: die Klara-Kürzel im selben Profil.
         tastenkuerzel: new TastenkuerzelDienst({ repo: services.assistenzProfile }),
+        // produkt:20261012:klara-ocr-fundstellen-korrekturen: berichtigter Bildtext im selben Profil.
+        bildKorrekturen: new BildKorrekturDienst({ repo: services.assistenzProfile }),
         audit: services.audit,
       },
       guards,
