@@ -545,9 +545,9 @@ die gelesene Version.
 
 Die Erweiterung (`extensions/klara-browser/worker.js`) legt den Auftrag an, holt jeden Schritt im
 Takt ab und führt ihn nur im freigegebenen Tab aus. Jede Route verlangt `ko.read` (ohne Anmeldung
-401 nach Abschnitt 2) und danach eine eigene Anmeldesitzung (Bearer oder Sitzungskeks); wer ohne
-Sitzung zugelassen ist, etwa mit einem Dienstschlüssel, erhält 403 `FORBIDDEN` (`grund`
-`nur_sitzung`). Jede Wirkung (Eintragen, Speichern, Auslösen, Löschen bei der Rücknahme) prüft der
+401 nach Abschnitt 2) und danach eine eigene Anmeldesitzung (Bearer oder Sitzungskeks); eine
+zugelassene Anfrage ohne eigene Sitzung erhält 403 `FORBIDDEN` (`grund` `nur_sitzung`) — ein
+Dienstschlüssel erreicht diese Routen nicht (sie stehen nicht in `DIENST_ROUTEN`, also 401). Jede Wirkung (Eintragen, Speichern, Auslösen, Löschen bei der Rücknahme) prüft der
 Dienst (`klara-browser-aktion-dienst.ts`, `rechte`) unmittelbar vor ihrem Schritt frisch mit
 `ko.create` — kein HTTP-Fehler: ein Lauf endet dann `gestoppt_recht`, eine Rücknahme unterbleibt mit
 Begründung und der Lauf behält seinen Stand. Trennt allein ein Feldname die Werte (ohne

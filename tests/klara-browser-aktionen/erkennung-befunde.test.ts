@@ -209,10 +209,19 @@ describe("BPA-03 · Erkennung · Gegenproben zu den Prüfbefunden", () => {
       felder: [{ label: "Nachricht", wert: "Ab Montag gilt Empfänger-Wechsel" }],
       zuordnungPruefen: false,
     });
-    // Eindeutig getrennt (Anführungszeichen oder Komma): keine Rückfrage.
+    // Auch ein Satzzeichen vor dem Feldnamen trennt nicht eindeutig (fünfte Prüfung).
+    for (const w of [
+      `Fülle den Angebotsentwurf aus: Betreff „Rückfrage", Nachricht Guten Tag, Empfänger der Rechnung ist Frau Kurz und speichere ihn`,
+      "Angebotsentwurf Betreff Hinweis Nachricht Danke für Ihre Anfrage. Empfänger unseres Angebots ist die Einkaufsabteilung",
+      "Angebotsentwurf Betreff Wechsel, Nachricht Neuer, Empfänger a@b.invalid",
+    ]) {
+      expect(erkenne(w), w).toMatchObject({ ok: true, zuordnungPruefen: true });
+    }
+    // Eindeutig: jeder ungeklammerte Wert endet vor einer EINGELEITETEN Beschriftung (Doppelpunkt
+    // oder Anführungszeichen) oder am Befehlsteil — keine Rückfrage.
     for (const w of [
       `Fülle den Angebotsentwurf aus: Betreff „${BETREFF}", Empfänger ${EMPFAENGER}, Nachricht „${NACHRICHT}" und speichere ihn als Entwurf.`,
-      "Angebotsentwurf Betreff Wechsel, Nachricht Neuer, Empfänger a@b.invalid",
+      "Angebotsentwurf Betreff: Wechsel Nachricht: Ab Montag gilt der neue Ansprechpartner Empfänger: a@b.invalid",
     ]) {
       expect(erkenne(w), w).toMatchObject({ ok: true, zuordnungPruefen: false });
     }

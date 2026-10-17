@@ -1534,8 +1534,9 @@
     // Hinweis des Workers (nicht angemeldet, keine Freigabe, Verbindung …) oder eine Klärung.
     const meldung = aktionMeldung(s);
     zeile("aktion-hinweis", Boolean(meldung), meldung);
-    // Die erkannte Zuordnung (Feld = Wert), bevor etwas geschieht — nur als Text.
-    const zuordnung = s?.zuordnung ?? null;
+    // Die erkannte Zuordnung (Feld = Wert), bevor etwas geschieht — nur als Text und nur, solange
+    // der Text im Feld derselbe ist (ein geänderter Text ist ein neuer Vorgang).
+    const zuordnung = aktionVorgang ? (s?.zuordnung ?? null) : null;
     $("aktion-zuordnung").hidden = !zuordnung;
     $("aktion-zuordnung-werte").replaceChildren(
       ...(zuordnung?.felder ?? []).flatMap((w) => {
