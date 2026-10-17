@@ -275,8 +275,11 @@ function angebot(a: BrowserAnsicht, loeschenErlaubt: boolean): BrowserRuecknahme
     return loeschenErlaubt ? "entwurf_loeschen" : "nicht_ruecknehmbar";
   }
   const speichern = a.schritte.find((s) => s.art === "speichern");
+  // Schon zurückgenommen: ein zweites Angebot könnte nichts mehr bewirken (der Kern meldet dann
+  // „nichts") — es wird nicht gemacht.
+  if (a.ergebnis?.zurueckgenommen || speichern?.stand === "zurueckgenommen") return null;
   if (speichern && (speichern.stand === "erfolgt" || speichern.stand === "unklar")) {
-    return a.ergebnis?.zurueckgenommen ? null : "unklar";
+    return "unklar";
   }
   if (a.schritte.some((s) => s.art === "fuellen" && s.stand === "erfolgt")) {
     return "felder_zuruecksetzen";
@@ -514,8 +517,9 @@ export class BrowserAktionDienst {
     roh: unknown,
   ): Promise<BrowserTaktAntwort> {
     const lauf = this.steuerbar(nutzer, token, id);
+    // Ohne Folgenummer: eine Steuerung kann neben einem wartenden Takt unterwegs sein, und jede
+    // ist für sich unschädlich wiederholbar (eine zweite Bestätigung findet keinen Bedarf mehr).
     const r = objekt(roh, "Steuerung");
-    this.zaehle(lauf, r.folge);
     const a = lauf.ausfuehrung;
     switch (r.art) {
       case "pause":

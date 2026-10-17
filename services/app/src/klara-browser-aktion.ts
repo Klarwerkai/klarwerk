@@ -899,7 +899,14 @@ export class BrowserAusfuehrung {
       } catch {
         // Das LESEN vor dem Schritt kam nicht zurück. Lesen wirkt nicht — der Schritt selbst hat
         // noch nicht begonnen. Er bleibt offen (kein „unklar", das ein späteres Speichern für
-        // immer sperren würde); Fortsetzen prüft Recht und Ziel neu.
+        // immer sperren würde); Fortsetzen prüft Recht und Ziel neu. Ist inzwischen das Recht weg
+        // (etwa abgemeldet, darum kam nichts zurück), heisst der Stand ehrlich so.
+        const nochRecht =
+          !this.entzogen && (await this.deps.rechte(this.auftrag, s.art).catch(() => false));
+        if (!nochRecht) {
+          this.beende("gestoppt_recht");
+          return this.ansicht();
+        }
         this.halteAn(
           "Die Seite hat nicht geantwortet. Für diesen Schritt wurde nichts ausgeführt; setze fort, sobald sie wieder offen ist.",
           s.nr,

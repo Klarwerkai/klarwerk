@@ -50,9 +50,13 @@ const ANFUEHRUNG: readonly (readonly [string, string])[] = [
 const AUSSENWORT =
   /(^|[^\p{L}\p{N}])((ab|ver|weiter|zu)?(send|schick)\w*|bestell\w*|kauf\w*|bezahl\w*|zahl(e|en|t)\b|buch(e|en|t)\b|kündig\w*|unterschreib\w*|unterzeichn\w*|akzeptier\w*|zustimm\w*|veröffentlich\w*|lösch\w*)/iu;
 const SPEICHERWORT = /(^|[^\p{L}\p{N}])(speicher\w*|sicher(e|n|t)\b|als entwurf)/iu;
-/** Wo ein ungeklammerter Wert endet: am Befehlsteil, der nach ihm kommt. */
+/**
+ * Wo ein ungeklammerter Wert endet: am Befehlsteil, der nach ihm kommt — „und speichere …",
+ * „und dann endgültig senden", „speichere ihn …". Zwischen Bindewort und Befehlswort dürfen
+ * Füllwörter stehen.
+ */
 const BEFEHLSANFANG =
-  /[,;]?\s+(und|dann|danach|anschließend)\s+(speicher|sicher|send|schick|bestell|kauf|bezahl|lösch|klick|drück|lös)\w*|[,;]?\s+(speicher|sicher)\w*\s+(ihn|es|sie|den|das|die|als)\b/iu;
+  /[,;]?\s+(und|dann|danach|anschließend)(\s+(dann|danach|anschließend|bitte|noch|gleich|sofort|direkt|endgültig|ihn|es|sie|den|das|die|entwurf|nachricht|formular))*\s+(speicher|sicher|send|schick|bestell|kauf|bezahl|lösch|klick|drück|lös|auslös)\w*|[,;]?\s+(speicher|sicher)\w*\s+(ihn|es|sie|den|das|die|als)\b/iu;
 
 function grenze(muster: string): RegExp {
   const sicher = muster.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
@@ -64,19 +68,32 @@ interface Bereich {
   readonly bis: number;
 }
 
-/** Bereiche in Anführungszeichen — Beschriftungen und Befehlswörter darin zählen nicht. */
-function zitate(text: string): Bereich[] {
-  const bereiche: Bereich[] = [];
+interface Zitat extends Bereich {
+  /** Der Text zwischen den Anführungszeichen. */
+  readonly innen: string;
+}
+
+/**
+ * Bereiche in Anführungszeichen — Beschriftungen und Befehlswörter darin zählen nicht. Öffnet ein
+ * Zeichen mehrere Paare („ schliesst mit “ oder mit "), gilt das NÄCHSTE schliessende Zeichen.
+ */
+function zitate(text: string): Zitat[] {
+  const bereiche: Zitat[] = [];
   let i = 0;
   while (i < text.length) {
-    const paar = ANFUEHRUNG.find(([auf]) => text.startsWith(auf, i));
-    if (paar) {
-      const ende = text.indexOf(paar[1], i + paar[0].length);
-      if (ende > i) {
-        bereiche.push({ von: i, bis: ende + paar[1].length });
-        i = ende + paar[1].length;
-        continue;
-      }
+    const passend = ANFUEHRUNG.filter(([auf]) => text.startsWith(auf, i))
+      .map(([auf, zu]) => ({ auf, zu, ende: text.indexOf(zu, i + auf.length) }))
+      .filter((p) => p.ende > i)
+      .sort((a, b) => a.ende - b.ende);
+    const p = passend[0];
+    if (p) {
+      bereiche.push({
+        von: i,
+        bis: p.ende + p.zu.length,
+        innen: text.slice(i + p.auf.length, p.ende),
+      });
+      i = p.ende + p.zu.length;
+      continue;
     }
     i++;
   }
@@ -176,9 +193,7 @@ export function erkenneBrowserAuftrag(
     let wert: string;
     let bis: number;
     if (zitat) {
-      const auf = ANFUEHRUNG.find(([a]) => text.startsWith(a, zitat.von))?.[0] ?? "";
-      const zu = ANFUEHRUNG.find(([a, z]) => a === auf && text.slice(0, zitat.bis).endsWith(z));
-      wert = text.slice(zitat.von + auf.length, zitat.bis - (zu?.[1].length ?? 1));
+      wert = zitat.innen;
       bis = zitat.bis;
     } else {
       const abschnitt = text.slice(von, ende);
@@ -189,6 +204,17 @@ export function erkenneBrowserAuftrag(
         .replace(/[.!]\s*$/u, "")
         .trim();
       bis = von + roh.length;
+      // Steht in einem ungeklammerten Wert noch ein Befehls- oder Außenwort, ist offen, ob es zum
+      // Wert gehört oder ein Auftrag ist. Nicht raten: weder still einen Auftrag schlucken noch
+      // ihn in ein Feld schreiben.
+      const fraglich = AUSSENWORT.exec(wert) ?? SPEICHERWORT.exec(wert);
+      if (fraglich) {
+        return {
+          ok: false,
+          art: "klaerung",
+          text: `Gehört „${fraglich[2]}" zum Wert von „${m.label}" oder ist es ein Auftrag? Setze den Wert in Anführungszeichen.`,
+        };
+      }
     }
     if (!wert.trim()) {
       return {

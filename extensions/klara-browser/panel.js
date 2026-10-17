@@ -1536,7 +1536,10 @@
     zeile("aktion-hinweis", Boolean(meldung), meldung);
     $("aktion-stand-box").hidden = !a;
     if (!a) return;
-    $("aktion-stand").textContent = a.laeuft ? `${aktionText("aktionLaeuft")} ${a.text}` : a.text;
+    // „Läuft" nur, solange der Worker den Lauf tatsächlich antreibt — nach einem Verbindungsabbruch
+    // zeigt die Leiste den letzten Stand des Kerns ohne diesen Zusatz und bietet Fortsetzen an.
+    const treibt = Boolean(s?.laeuft);
+    $("aktion-stand").textContent = treibt ? `${aktionText("aktionLaeuft")} ${a.text}` : a.text;
     const liste = $("aktion-schritte");
     liste.replaceChildren(
       ...a.schritte.map((x) => {
@@ -1586,13 +1589,13 @@
     const ende = ["fertig", "abgebrochen", "gestoppt_recht", "uebergabe", "unterbrochen"].includes(
       a.stand,
     );
-    $("aktion-pause").hidden = !steuerbar || !a.laeuft;
+    $("aktion-pause").hidden = !steuerbar || !treibt;
     $("aktion-fortsetzen").hidden =
-      !steuerbar || a.laeuft || ende || a.stand === "bestaetigung_noetig";
+      !steuerbar || treibt || ende || a.stand === "bestaetigung_noetig";
     $("aktion-abbrechen").hidden = !steuerbar || ende;
     const ruecknahme =
       steuerbar &&
-      !a.laeuft &&
+      !treibt &&
       (angebot === "entwurf_loeschen" || angebot === "felder_zuruecksetzen");
     $("aktion-ruecknahme").hidden = !ruecknahme;
     $("aktion-ruecknahme").textContent = ruecknahme
