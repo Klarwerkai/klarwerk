@@ -250,7 +250,12 @@ export interface BrowserUebergabe {
   readonly schritt: string;
 }
 
-function uebergabe(grund: BrowserUebergabeGrund, ort: string, was: string): BrowserUebergabe {
+/** Die manuelle Übergabe mit ihrem konkreten nächsten Schritt (auch für den Produktweg). */
+export function uebergabe(
+  grund: BrowserUebergabeGrund,
+  ort: string,
+  was: string,
+): BrowserUebergabe {
   const schritt: Record<BrowserUebergabeGrund, string> = {
     nicht_unterstuetzt: `Klara unterstützt ${ort} nicht. Trage ${was} bitte selbst ein; Klara hat dort nichts verändert.`,
     captcha: `${ort} verlangt eine Sicherheitsprüfung (CAPTCHA). Löse sie selbst und beauftrage Klara danach erneut; bis dahin hat Klara nichts eingetragen.`,
@@ -653,6 +658,8 @@ export class BrowserAusfuehrung {
   private bestaetigung: BrowserAussenbestaetigung | null = null;
   private angewandt: BrowserAussenbestaetigung | null = null;
   private halt: "pausiert" | "abgebrochen" | null = null;
+  /** Von aussen gemeldeter Rechteentzug (Widerruf der Seitenfreigabe, Abmelden): endgültig. */
+  private entzogen = false;
   private laufend: Promise<BrowserAnsicht> | null = null;
   private ruecknahmeLaeuft = false;
   private readonly inhalte: BrowserInhaltBefund[] = [];
@@ -767,6 +774,19 @@ export class BrowserAusfuehrung {
     }
   }
 
+  /**
+   * Das Recht ist entzogen (die Person hat die Freigabe der Seite widerrufen oder sich abgemeldet).
+   * Kein weiterer Schritt; ein gerade laufender Schritt meldet noch sein tatsächliches Ergebnis,
+   * danach endet der Lauf mit `gestoppt_recht`. Die Rechteprüfung vor jedem Schritt bleibt davon
+   * unberührt — dies macht den Entzug nur sofort wirksam, statt erst beim nächsten Schritt.
+   */
+  rechtEntzogen(): void {
+    this.entzogen = true;
+    if (!this.laeuftGerade() && !ENDSTAENDE.includes(this.stand)) {
+      this.beende("gestoppt_recht");
+    }
+  }
+
   private beende(stand: "abgebrochen" | "gestoppt_recht"): void {
     for (const s of this.schritte) {
       if (s.stand === "offen") {
@@ -788,8 +808,16 @@ export class BrowserAusfuehrung {
     return befund;
   }
 
-  /** Was die vorhandene Bestätigung zeigen muss — genau eine Wirkung, an diese Werte gebunden. */
-  bestaetigungsBedarf(): { knopf: string; fingerabdruck: string; text: string } | null {
+  /**
+   * Was die vorhandene Bestätigung zeigen muss — genau eine Wirkung, an diese Werte gebunden. Die
+   * Werte sind die des Auftrags (die Eingabe der Person), nicht was die Seite gerade zeigt.
+   */
+  bestaetigungsBedarf(): {
+    knopf: string;
+    fingerabdruck: string;
+    text: string;
+    werte: readonly BrowserFeldwert[];
+  } | null {
     const knopf = this.auftrag.ausloesen;
     if (this.stand !== "bestaetigung_noetig" || !this.bindung || knopf === null) {
       return null;
@@ -798,6 +826,7 @@ export class BrowserAusfuehrung {
       knopf,
       fingerabdruck: aussenFingerabdruck(this.auftrag, this.bindung.fingerabdruck),
       text: `„${knopf}" auf ${this.ort()} wirkt nach außen und ist nicht rücknehmbar.`,
+      werte: this.auftrag.felder.map((f) => ({ label: f.label, wert: f.wert })),
     };
   }
 
@@ -857,21 +886,45 @@ export class BrowserAusfuehrung {
         this.merke("pausiert", s.nr);
         return this.ansicht();
       }
-      const recht = await this.deps.rechte(this.auftrag, s.art).catch(() => false);
-      if (!recht) {
+      const recht =
+        !this.entzogen && (await this.deps.rechte(this.auftrag, s.art).catch(() => false));
+      if (!recht || this.entzogen) {
         // Nach dem Entzug (oder ohne Antwort der Rechteprüfung) liest Klara nichts mehr von der Seite.
         this.beende("gestoppt_recht");
         return this.ansicht();
       }
+      let lage: SeitenLage | null;
+      try {
+        lage = await this.leseLage();
+      } catch {
+        // Das LESEN vor dem Schritt kam nicht zurück. Lesen wirkt nicht — der Schritt selbst hat
+        // noch nicht begonnen. Er bleibt offen (kein „unklar", das ein späteres Speichern für
+        // immer sperren würde); Fortsetzen prüft Recht und Ziel neu.
+        this.halteAn(
+          "Die Seite hat nicht geantwortet. Für diesen Schritt wurde nichts ausgeführt; setze fort, sobald sie wieder offen ist.",
+          s.nr,
+        );
+        return this.ansicht();
+      }
       let folge: Folge;
       try {
-        const lage = await this.leseLage();
         const pruefung = this.pruefeLage(lage, s);
         folge = pruefung === "weiter" ? await this.schritt(s, lage as SeitenLage) : pruefung;
       } catch {
-        // Die Verbindung zur Seite brach ab: die Wirkung ist unbekannt und wird vor jeder
-        // Wiederholung abgeglichen (ein Auslösen wird nie wiederholt).
+        // Die Verbindung zur Seite brach WÄHREND des Schritts ab: die Wirkung ist unbekannt und wird
+        // vor jeder Wiederholung abgeglichen (ein Auslösen wird nie wiederholt).
         folge = this.unklar(s, "verbindung");
+      }
+      if (this.entzogen) {
+        // Während des Schritts entzogen: sein tatsächliches Ergebnis steht (oben), weiter geht nichts.
+        if (
+          this.stand === "laeuft" ||
+          this.stand === "klaerung" ||
+          this.stand === "bestaetigung_noetig"
+        ) {
+          this.beende("gestoppt_recht");
+        }
+        return this.ansicht();
       }
       if (folge === "weiter") {
         continue;

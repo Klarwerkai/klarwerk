@@ -23,6 +23,7 @@ import {
   neuerAuftrag,
   setzeSchritt as setzeAuftragSchritt,
 } from "./klara-auftrag";
+import type { BrowserAuftragEintrag } from "./klara-browser-aktion-dienst";
 
 // ================================================================================================
 // produkt:20261008:klara-basis — DAS PERSÖNLICHE KLARA-GESPRÄCH, SERVERSEITIG UNTER DER EIGENEN PERSON.
@@ -194,11 +195,21 @@ export interface KlaraGespraech {
    * mit ihrer Grenze und ihren Schritten (`klara-auftrag.ts`). Fehlt bei Gesprächen von davor.
    */
   readonly auftraege?: readonly KlaraAuftrag[];
+  /**
+   * BPA-03 (produkt:20261011:assistenz-browser-aktionen): die Browseraufträge dieses Gesprächs —
+   * Wortlaut, Ziel, Schritte mit Aktionskennung, Ergebnis, Bestätigung und Rücknahme als
+   * Ergebnisbeleg im BESTEHENDEN Verlauf, kein eigener Datenraum (wie `kiAuftraege`). Optional und
+   * ohne Migration (Voll-JSONB). Keine Seiteninhalte; Werte nur im Wortlaut der Person selbst.
+   * Gelesen und geschrieben ausschliesslich über `BrowserAktionDienst`.
+   */
+  readonly browserAuftraege?: readonly BrowserAuftragEintrag[];
 }
 
 export const KLARA_GESPRAECH_MAX_NACHRICHTEN = 400;
 /** BPA-13: höchstens so viele KI-Aufträge je Gespräch. */
 export const KLARA_GESPRAECH_MAX_KI_AUFTRAEGE = 50;
+/** BPA-03: höchstens so viele Browseraufträge je Gespräch. */
+export const KLARA_GESPRAECH_MAX_BROWSER_AUFTRAEGE = 50;
 export const KLARA_GESPRAECH_MAX_JE_KONTO = 100;
 export const KLARA_FRAGE_MAX = 8_000;
 export const KLARA_ANTWORT_MAX = 20_000;
@@ -795,6 +806,28 @@ export class KlaraGespraechDienst {
         );
       }
       return { ...g, kiAuftraege: neu };
+    });
+  }
+
+  /**
+   * BPA-03: die Browseraufträge dieses Gesprächs mit demselben Standvergleich ändern wie jede andere
+   * Änderung. `f` darf werfen — dann wird nichts geschrieben.
+   */
+  aendereBrowserAuftraege(
+    kontoId: string,
+    id: string,
+    f: (liste: readonly BrowserAuftragEintrag[], jetzt: string) => readonly BrowserAuftragEintrag[],
+  ): Promise<KlaraGespraech> {
+    return this.aendere(kontoId, id, (g, jetzt) => {
+      const neu = f(g.browserAuftraege ?? [], jetzt);
+      if (neu.length > KLARA_GESPRAECH_MAX_BROWSER_AUFTRAEGE) {
+        throw new KlaraGespraechFehler(
+          409,
+          "voll",
+          `Ein Gespräch hält höchstens ${KLARA_GESPRAECH_MAX_BROWSER_AUFTRAEGE} Browseraufträge. Bitte ein neues beginnen.`,
+        );
+      }
+      return { ...g, browserAuftraege: neu };
     });
   }
 
