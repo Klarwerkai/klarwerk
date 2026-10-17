@@ -214,14 +214,17 @@ describe("BPA-03 · Erkennung · Gegenproben zu den Prüfbefunden", () => {
       `Fülle den Angebotsentwurf aus: Betreff „Rückfrage", Nachricht Guten Tag, Empfänger der Rechnung ist Frau Kurz und speichere ihn`,
       "Angebotsentwurf Betreff Hinweis Nachricht Danke für Ihre Anfrage. Empfänger unseres Angebots ist die Einkaufsabteilung",
       "Angebotsentwurf Betreff Wechsel, Nachricht Neuer, Empfänger a@b.invalid",
+      // Ein Doppelpunkt nach einem Feldnamen mitten im Fliesstext (sechste Prüfung).
+      `Fülle den Angebotsentwurf aus: Betreff „Info", Nachricht Hinweis an alle Empfänger: bitte prüfen und speichere ihn`,
+      "Angebotsentwurf Betreff Info Nachricht Bitte Feld Empfänger = leer lassen und speichere ihn",
     ]) {
       expect(erkenne(w), w).toMatchObject({ ok: true, zuordnungPruefen: true });
     }
-    // Eindeutig: jeder ungeklammerte Wert endet vor einer EINGELEITETEN Beschriftung (Doppelpunkt
-    // oder Anführungszeichen) oder am Befehlsteil — keine Rückfrage.
+    // Eindeutig: jeder ungeklammerte Wert endet auf ein Satzzeichen vor einer EINGELEITETEN
+    // Beschriftung (Doppelpunkt oder Anführungszeichen) oder am Befehlsteil — keine Rückfrage.
     for (const w of [
       `Fülle den Angebotsentwurf aus: Betreff „${BETREFF}", Empfänger ${EMPFAENGER}, Nachricht „${NACHRICHT}" und speichere ihn als Entwurf.`,
-      "Angebotsentwurf Betreff: Wechsel Nachricht: Ab Montag gilt der neue Ansprechpartner Empfänger: a@b.invalid",
+      "Angebotsentwurf Betreff: Wechsel, Nachricht: Ab Montag gilt der neue Ansprechpartner, Empfänger: a@b.invalid",
     ]) {
       expect(erkenne(w), w).toMatchObject({ ok: true, zuordnungPruefen: false });
     }

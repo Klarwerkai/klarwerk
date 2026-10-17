@@ -317,16 +317,18 @@ function werteAus(
           `Gehört „${infinitiv[1]}" zum Wert von „${m.label}", oder soll Klara speichern? Sage dann „und speichere ihn" oder setze den Wert in Anführungszeichen.`,
         );
       }
-      // Reicht der Wert bis zur nächsten Beschriftung, hat allein der Feldname getrennt — auch mit
-      // einem Satzzeichen davor („Nachricht Bitte Empfänger prüfen …", „Nachricht Guten Tag,
-      // Empfänger der Rechnung ist …"). Eindeutig ist nur eine EINGELEITETE nächste Beschriftung
-      // (Doppelpunkt oder Anführungszeichen dahinter). Sonst wird nicht geraten, sondern der Person
-      // die Zuordnung gezeigt (`zuordnungPruefen`).
+      // Reicht der Wert bis zur nächsten Beschriftung, hat allein der Feldname getrennt („Nachricht
+      // Bitte Empfänger prüfen …", „… Guten Tag, Empfänger der Rechnung …", „… an alle Empfänger:
+      // bitte prüfen"). Eindeutig ist das nur, wenn der Wert auf ein Satzzeichen endet UND die
+      // nächste Beschriftung eingeleitet ist (Doppelpunkt, Gleichheitszeichen, Anführungszeichen) —
+      // die dokumentierte Form „…, Nachricht „…"". Sonst wird nicht geraten, sondern der Person die
+      // Zuordnung gezeigt (`zuordnungPruefen`).
       const naechste = sortiert[i + 1];
-      anBeschriftung =
+      const eindeutig =
         naechste !== undefined &&
-        !befehl &&
-        !/^\s*([:=]|[„“"»«‚])/u.test(text.slice(naechste.stelle.bis));
+        /[,;.!?]\s*$/u.test(abschnitt) &&
+        /^\s*([:=]|[„“"»«‚])/u.test(text.slice(naechste.stelle.bis));
+      anBeschriftung = naechste !== undefined && !befehl && !eindeutig;
     }
     if (!wert.trim()) {
       return klaerung(`Für „${m.label}" fehlt der Wert. Nenne ihn direkt nach der Beschriftung.`);
