@@ -2433,6 +2433,7 @@ export class KoService {
     extras?: {
       attachments?: KoAttachment[];
       sources?: KoSource[];
+      initialSpaceId?: string;
       // AUFTRAG-mega20 Block A: der Erzeugungs-Anker. Er steht bewusst in `extras` und NICHT in
       // `CreateKoInput` — sonst könnte ihn die öffentliche Schreibroute durchreichen, und ein
       // Client könnte sich mit einer erratenen Kennung an einen fremden Vorgang hängen. So kann
@@ -2596,6 +2597,7 @@ export class KoService {
       // AUFTRAG-mega21 Block A: Eigentümer, Inhaltsabdruck und Zustand — s. document-create.ts.
       ...(extras?.createOperation ? { createOperation: extras.createOperation } : {}),
       ...(extras?.quellrechte ? { quellrechte: extras.quellrechte } : {}),
+      ...(extras?.initialSpaceId ? { spaceId: extras.initialSpaceId } : {}),
       createdAt: at,
       history: [{ version: 1, at, author: input.author, note: "erstellt" }],
       comments: [],
@@ -2661,6 +2663,9 @@ export class KoService {
     // öffentlichen Schreibrouten reichen ihren Rumpf als `CreateKoInput` durch und könnten sich sonst
     // selbst Leserechte schreiben. Nur der Import-Accept (library-analytics) übergibt ihn.
     quellrechte?: KoQuellrechte,
+    // Nur serverseitig nach aktueller Zielprüfung: Space und Inhalt entstehen im selben Insert.
+    // Kein Feld in CreateKoInput; öffentliche Rümpfe können diese Bindung nicht setzen.
+    initialSpaceId?: string,
   ): Promise<KnowledgeObject> {
     const rechte = quellrechte === undefined ? undefined : normalizeQuellrechte(quellrechte);
     if (quellrechte !== undefined && rechte === undefined) {
@@ -2686,11 +2691,12 @@ export class KoService {
               fingerprint: operation.fingerprint,
             },
             rechte,
+            initialSpaceId,
           ),
         ),
       );
     }
-    return this.createPlain(input, rechte);
+    return this.createPlain(input, rechte, initialSpaceId);
   }
 
   /**
@@ -2702,6 +2708,7 @@ export class KoService {
     createOperationId: string,
     requester: CreateOperationRequester,
     quellrechte?: KoQuellrechte,
+    initialSpaceId?: string,
   ): Promise<KnowledgeObject> {
     // DER NACHSCHLAG VOR ALLEM VERÄNDERLICHEN — er SCHREIBT NICHTS. Eine unbekannte Kennung liefert
     // `undefined`, und der volle, ungekürzte Weg läuft weiter.
@@ -2718,6 +2725,7 @@ export class KoService {
         at: new Date(this.now()).toISOString(),
       },
       ...(quellrechte ? { quellrechte } : {}),
+      ...(initialSpaceId ? { initialSpaceId } : {}),
     });
     try {
       await this.schreibeErstanlage(ko, input.author, (tx, melde) =>
@@ -2742,9 +2750,13 @@ export class KoService {
   private async createPlain(
     input: CreateKoInput,
     quellrechte?: KoQuellrechte,
+    initialSpaceId?: string,
   ): Promise<KnowledgeObject> {
     // confluence-import-rechte: die Quellrechte gehen im SELBEN Insert mit wie das Objekt.
-    const ko = await this.buildCreatedKo(input, quellrechte ? { quellrechte } : undefined);
+    const ko = await this.buildCreatedKo(input, {
+      ...(quellrechte ? { quellrechte } : {}),
+      ...(initialSpaceId ? { initialSpaceId } : {}),
+    });
     await this.schreibeErstanlage(ko, input.author, (tx, melde) =>
       this.finishCreated(ko, input.author, tx, melde),
     );

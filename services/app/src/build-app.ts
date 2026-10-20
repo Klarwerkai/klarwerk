@@ -450,6 +450,8 @@ import {
   type KlaraNotizRepo,
   PgKlaraNotizRepo,
 } from "./klara-notiz";
+import { QuellgeschuetzteKlaraNotizen } from "./klara-wissen-quellschutz";
+import { KlaraWissensDienst } from "./klara-wissensuebernahme";
 // ADMIN-12: Kommunikationsregeln, persönliche Abwahl und Zustellstatus — haltbar im Postgres-
 // Betrieb, im Speicher ohne Datenbank.
 import {
@@ -582,6 +584,7 @@ import { klaraNotizRoutes } from "./routes/klara-notiz-routes";
 // JOB 3110 (M2b): der Memo-Weg des Word-Panels. Die Route ist seit JOB 3091 gebaut und gemessen;
 // hier — und nur hier — bekommt sie ihren Aufrufer.
 import { type ZurufModell, klaraZurufRoutes } from "./routes/klara-session-routes";
+import { klaraWissenRoutes } from "./routes/klara-wissen-routes";
 import { knowledgeCheckRoutes } from "./routes/knowledge-check-routes";
 import { koRoutes } from "./routes/ko-routes";
 import { kommunikationRoutes } from "./routes/kommunikation-routes";
@@ -2032,7 +2035,24 @@ export function assembleServices(
     eigenerKalender: opts.eigenerKalender ?? new InMemoryEigenerKalenderRepo(),
     klaraFristen: opts.klaraFristen ?? new InMemoryKlaraFristenRepo(),
     // produkt:20261007:klara-notizen-aufgaben: die Notizen — Postgres, wenn injiziert, sonst im Speicher.
-    klaraNotizen: opts.klaraNotizen ?? new InMemoryKlaraNotizRepo(),
+    klaraNotizen: new QuellgeschuetzteKlaraNotizen(
+      opts.klaraNotizen ?? new InMemoryKlaraNotizRepo(),
+      async (n) => {
+        const konto = await repos.users.findById(n.kontoId);
+        if (!konto?.approved) return false;
+        const user = {
+          id: konto.id,
+          role: konto.role,
+          ...(konto.freigabe ? { freigabe: konto.freigabe } : {}),
+          spaceLesbar: lesbareSpaces(await spaces.aktuelle(), konto.id),
+        };
+        for (const q of n.wissensHerkunft?.aussagen.flatMap((a) => a.quellen) ?? []) {
+          const quelle = await ko.get(q.id);
+          if (!quelle || !darfSehen(user, quelle)) return false;
+        }
+        return true;
+      },
+    ),
     // produkt:20261008:klara-aufgaben: die Aufgaben — Postgres, wenn injiziert, sonst im Speicher.
     klaraAufgaben: opts.klaraAufgaben ?? new InMemoryKlaraAufgabeRepo(),
     // produkt:20261007:klara-erinnerungen-kalender: die Erinnerungen — Postgres, wenn injiziert.
@@ -6039,6 +6059,15 @@ export function buildApp(
       guards,
     ),
   );
+  const klaraWissen = new KlaraWissensDienst({
+    notizen: services.klaraNotizen,
+    ko: services.ko,
+    spaces: services.spaces,
+    vorlagen: vorlagenPort,
+    referenz: antwortDeps.referenz,
+    audit: services.audit,
+  });
+  app.register(klaraWissenRoutes(klaraWissen, services.spaces, guards));
   // produkt:20261007:klara-notizen-aufgaben (Klara 06): die eigenen Notizen. Eine Notiz aus dem
   // Gespräch liest Wortlaut und Bezug aus DEMSELBEN eigenen Gespräch.
   app.register(
@@ -6049,6 +6078,15 @@ export function buildApp(
           gespraeche: services.klaraGespraeche,
         }),
         audit: services.audit,
+        lesbar: async (user, n) => {
+          if (!n.wissensHerkunft) return true;
+          try {
+            await klaraWissen.original(user, n.id);
+            return true;
+          } catch {
+            return false;
+          }
+        },
       },
       guards,
     ),
