@@ -297,6 +297,14 @@ function hole(lokalId: string): Ausfuehrung | undefined {
   return zustand.liste.find((a) => a.lokalId === lokalId);
 }
 
+/** Eine verspätete Rückfrageantwort darf einen endgültigen lokalen Stopp nicht aufheben. */
+function aktiverVorgang(lokalId: string, gen: number, phase?: Phase): Ausfuehrung | null {
+  const a = hole(lokalId);
+  return gen === generation && a && !a.abbruch && (phase === undefined || a.phase === phase)
+    ? a
+    : null;
+}
+
 export function leseAusfuehrungen(): Ausfuehrung[] {
   return zustand.liste;
 }
@@ -662,6 +670,7 @@ async function klaere(lokalId: string, u: AuftragsUmgebung): Promise<void> {
     }));
     return;
   }
+  if (!aktiverVorgang(lokalId, gen, "pruefen")) return;
   const offen = geplant.some(brauchtKlaerung);
   setze(lokalId, (x) => ({
     ...x,
@@ -681,11 +690,12 @@ async function weiterNachRueckfrage(
   u: AuftragsUmgebung,
 ): Promise<void> {
   const gen = generation;
+  if (!aktiverVorgang(lokalId, gen, "rueckfrage")) return;
   const geplant = [...geplantNeu];
   for (let i = 0; i < geplant.length; i++) {
     try {
       const r = await klaereAufgabe(geplant[i] as GeplanterSchritt, u.t);
-      if (gen !== generation) {
+      if (!aktiverVorgang(lokalId, gen, "rueckfrage")) {
         return;
       }
       if ("fehler" in r) {
@@ -702,6 +712,7 @@ async function weiterNachRueckfrage(
       return;
     }
   }
+  if (!aktiverVorgang(lokalId, gen, "rueckfrage")) return;
   const offen = geplant.some(brauchtKlaerung);
   setze(lokalId, (x) => ({
     ...x,
@@ -724,16 +735,17 @@ export async function waehleErinnerungszeit(
 ): Promise<void> {
   const gen = generation;
   const a = hole(lokalId);
-  if (!a || a.phase !== "rueckfrage") return;
+  if (!a || a.abbruch || a.phase !== "rueckfrage") return;
   try {
     const v = await klaraErinnerungApi.vorschau({
       zeitplan: { art: "einmalig", datum: erinnerung.datum, uhrzeit: erinnerung.uhrzeit },
       zeitzone: erinnerung.zeitzone,
     });
-    if (gen !== generation || !v.zeitplan) return;
+    const aktuell = aktiverVorgang(lokalId, gen, "rueckfrage");
+    if (!aktuell || !v.zeitplan) return;
     await weiterNachRueckfrage(
       lokalId,
-      a.geplant.map((s) =>
+      aktuell.geplant.map((s) =>
         s.nr === nr && s.erkannt.aktion === "erinnerung_anlegen"
           ? { ...s, zeitFehler: false, erkannt: { ...s.erkannt, erinnerung } }
           : s,
@@ -741,7 +753,8 @@ export async function waehleErinnerungszeit(
       u,
     );
   } catch (fehler) {
-    if (gen === generation) setze(lokalId, (x) => ({ ...x, meldung: fehlerGrund(fehler, u.t) }));
+    if (aktiverVorgang(lokalId, gen, "rueckfrage"))
+      setze(lokalId, (x) => ({ ...x, meldung: fehlerGrund(fehler, u.t) }));
   }
 }
 
@@ -861,7 +874,7 @@ function kuerzen(s: string, max: number): string {
 async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise<void> {
   const gen = generation;
   const a = hole(lokalId);
-  if (!a) {
+  if (!a || a.abbruch || a.phase !== "pruefen") {
     return;
   }
   const { t } = u;
@@ -876,7 +889,7 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
   try {
     const hatteGespraech = Boolean(leseEcht().gespraech?.id);
     const gespraechId = await gespraechFuerAuftrag(objektbezugAus(a.herkunft));
-    if (gen !== generation) {
+    if (!aktiverVorgang(lokalId, gen, "pruefen")) {
       return;
     }
     // Ein eben begonnenes Gespräch hat keine früheren Aufträge, die noch zu laden wären.
@@ -908,6 +921,24 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
       })),
     });
     if (gen !== generation) {
+      return;
+    }
+    // Stopp während der Serveranlage: erst den tatsächlich angelegten Auftrag dauerhaft stoppen.
+    if (!hole(lokalId) || hole(lokalId)?.abbruch) {
+      setze(lokalId, (x) => ({ ...x, auftrag, gespraechId, abbruch: true, phase: "angehalten" }));
+      try {
+        const gestoppt = await klaraAuftragApi.abbrechen(gespraechId, auftrag.id);
+        if (gen !== generation) return;
+        uebernimmAuftrag(lokalId, gestoppt.auftrag);
+        setze(lokalId, (x) => ({ ...x, phase: "fertig" }));
+      } catch (fehler) {
+        if (gen === generation)
+          setze(lokalId, (x) => ({
+            ...x,
+            phase: "angehalten",
+            meldung: t("klaraauftrag.fehler.abbrechen", { grund: fehlerGrund(fehler, t) }),
+          }));
+      }
       return;
     }
     setze(lokalId, (x) => ({ ...x, auftrag, gespraechId, phase: "laeuft" }));
