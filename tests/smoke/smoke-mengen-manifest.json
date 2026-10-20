@@ -859,6 +859,8 @@
         "klara-erinnerungen-browser.spec.ts › Klara 10 · E3 bestellte Zusammenfassung: tatsächliche Modellantwort kommt mit der Erinnerung in die Glocke @modell",
         "klara-erinnerungen-browser.spec.ts › Klara 10 · E4 Einrichtungsassistent mit Zauberhut und bewusste Übergabe — nur Titel und Termine bei der Zuständigen",
         "klara-finder-ocr-browser.spec.ts › OCR · bewusste Finder-Einzeldatei erreicht über bestätigte Herkunft denselben Dateiweg",
+        "klara-fristen-browser.spec.ts › AW19 · fehlgeschlagener Abruf wird vom echten leeren Fristenbestand unterschieden",
+        "klara-fristen-browser.spec.ts › AW19 · konfigurierte Quellen: Vorschau ohne Wirkung, automatische eigene Fristen und manuelle Korrektur am selben Vorgang",
         "klara-kontext-artikel-browser.spec.ts › Klara 03 · Artikel: Kontext, Markierung über Fokus- und Seitenwechsel, Bezug, Erklären mit Quelle und Fassung, Rechte",
         "klara-ocr-fundstelle-korrektur-browser.spec.ts › OCR-E01/E02 · Fundstellen am Original markieren, Text berichtigen, Neuladen, Rücksetzen",
         "klara-ocr-fundstelle-korrektur-browser.spec.ts › OCR-E01/E02 · H02-Übernahmeweg (Word-Add-in-Route) · Fundstelle und Berichtigung im Entwurf",
@@ -870,9 +872,7 @@
         "luecken-vorgang-browser.spec.ts › Wissenskreislauf: Frage bis geprüfte Antwort und Rückmeldung mit getrennten Rollen",
         "produktbudget-browser.spec.ts › Produktbudgets · Anzeige, Speichern, Neuladen, unklarer Ausgang, Konflikt, Rolle",
         "veroeffentlichung-browser.spec.ts › K1/K3/K4: die Wahl erklärt ihre Wirkung, „hervorgehoben“ erreicht die Leserin oben in der Glocke",
-        "verstaendnisfragen-browser.spec.ts › Fragensatz anlegen, bearbeiten, annehmen; beantworten; Rückmeldung nach Neuladen",
-        "klara-fristen-browser.spec.ts › AW19 · konfigurierte Quellen: Vorschau ohne Wirkung, automatische eigene Fristen und manuelle Korrektur am selben Vorgang",
-        "klara-fristen-browser.spec.ts › AW19 · fehlgeschlagener Abruf wird vom echten leeren Fristenbestand unterschieden"
+        "verstaendnisfragen-browser.spec.ts › Fragensatz anlegen, bearbeiten, annehmen; beantworten; Rückmeldung nach Neuladen"
       ]
     }
   },

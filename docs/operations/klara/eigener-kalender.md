@@ -149,7 +149,7 @@ angeschlossen und liefert keine vorgetäuschten Fristbelege.
 Der kostenfreie deutsche Erkenner verlangt eine konkrete Objektkennung und einen Fristanlass mit
 Datum in derselben Aussage. Numerische Kennungen wie L-17 oder Z-8 und ausdrücklich bezeichnete
 Großbuchstabencodes werden erkannt. Andere Sprachformen sind damit nicht allgemein abgenommen.
-Satz- und Aussagegrenzen bleiben erhalten; ein Nachbarsatz liefert kein Objekt oder Datum hinzu.
+Diese erste Form übernimmt nur vollständig verstandene Fristaussagen und minutengenaue Uhrzeiten; weitere Geltungszusätze oder höhere Zeitauflösung bleiben zur Klärung offen. Satz- und Aussagegrenzen bleiben erhalten; ein Nachbarsatz liefert kein Objekt oder Datum hinzu.
 Unklare Daten, fehlende Zeitzonen bei Uhrzeiten, Sommerzeitlücken/-doppelungen, widersprüchliche
 Belege und unklare Geltung bleiben zur Klärung offen. Ein erstes unklar belegtes Datum erzeugt keinen
 verbindlichen Kalendertermin. Ein schon vorher übernommener Termin zeigt einen späteren Konflikt

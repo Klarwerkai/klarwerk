@@ -114,10 +114,13 @@ function datumAus(text: string): { datum: FristDatum | null; gruende: FristKlaer
   if (!datum) {
     return { datum: null, gruende: ["datum_fehlt"] };
   }
-  const zeiten = [...text.matchAll(/(?<!\d)(\d{1,2}:\d{2})(?!\d)/g)];
+  // Diese Erfassungsform verarbeitet Minuten. Sekunden oder Bruchteile werden nicht abgeschnitten.
+  if (/\d{1,2}:\d{2}(?::\d|[.,]\d)/u.test(text))
+    return { datum: null, gruende: ["zeitangabe_unklar"] };
+  const zeiten = [...text.matchAll(/(?<![\d:])(\d{1,2}:\d{2})(?![\d:])/g)];
   if (zeiten.length === 0) {
     // „um 9“ und „gegen Mittag“ sind keine ganztägigen Fristen.
-    if (/\b(?:um\s+\d|Uhr|Mittag|Mitternacht|morgens|abends)\b/iu.test(text)) {
+    if (/\bum\b|\b(?:Uhr|Mittag|Mitternacht|morgens|abends)\b|\d{1,2}:\d{2}/iu.test(text)) {
       return { datum: null, gruende: ["zeitangabe_unklar"] };
     }
     return { datum: { art: "datum", datum }, gruende: [] };
@@ -139,6 +142,23 @@ function datumAus(text: string): { datum: FristDatum | null; gruende: FristKlaer
     datum: { art: "zeitpunkt", datum, uhrzeit, zeitzone, utc: new Date(lage.ms).toISOString() },
     gruende: [],
   };
+}
+
+/** Unverstandene Geltungszusätze werden nicht still zu eindeutigen Fristbehauptungen erklärt. */
+function bekannteAussage(
+  text: string,
+  objekt: RegExpMatchArray,
+  anlass: RegExp,
+  datum: FristDatum,
+): boolean {
+  const start = objekt.index ?? 0;
+  let rest = `${text.slice(0, start)} ${text.slice(start + objekt[0].length)}`
+    .replace(anlass, " ")
+    .replace(DATUM, " ");
+  if (datum.art === "zeitpunkt")
+    rest = rest.replace(/\b\d{1,2}:\d{2}\b/gu, " ").replaceAll(datum.zeitzone, " ");
+  rest = rest.replace(/\b(?:ist|am|bis|für|zum|ab|der|die|das|Frist|um)\b/giu, " ");
+  return /^[\s:;,.()"'„“«»]*$/u.test(rest);
 }
 
 /** Satz-/Aussagegrenzen mit Originalpositionen; Punkte innerhalb eines Datums bleiben erhalten. */
@@ -214,6 +234,14 @@ export function erkenneFristen(q: FristenQuelle): FristBeleg[] {
       gruende.push("geltung_unklar");
     }
     if (/\b(?:widerrufen|zurückgezogen)\b/iu.test(wortlaut)) gruende.push("widerruf");
+    const anlass = anlaesse[0];
+    if (
+      zeit.datum &&
+      anlaesse.length === 1 &&
+      anlass &&
+      !bekannteAussage(wortlaut, objekt, anlass[1], zeit.datum)
+    )
+      gruende.push("geltung_unklar");
     for (const [art] of anlaesse) {
       const von = aussage.von;
       belege.push({
