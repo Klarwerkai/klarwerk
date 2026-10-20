@@ -6,9 +6,12 @@ import { PPTX, vorlage } from "./pp05-welt";
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 
 /** Vollständiger produktiver Router, reguläre fiktive Anmeldung, kein Port/Browser/PG/Modell. */
-export async function dateiwelt() {
+export async function dateiwelt(
+  vorErsterAnfrage?: (app: ReturnType<typeof buildApp>) => Promise<void>,
+) {
   const services = buildServices();
   const app = buildApp(services, { log: { stufe: "silent" } });
+  await vorErsterAnfrage?.(app);
   const registriert = await app.inject({
     method: "POST",
     url: "/api/auth/register",

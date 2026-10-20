@@ -13,7 +13,9 @@ it("PP07 · H04 bewusst aktualisieren, Herkunft, zwei echte Dateien und Rücknah
   const out = process.env.PP07_BELEGE ?? join(process.cwd(), ".local/run/pp07-browser");
   await mkdir(out, { recursive: true });
   const begin = new Date().toISOString();
-  const w = await dateiwelt();
+  const w = await dateiwelt(async (app) =>
+    registerWebStatic(app, join(process.cwd(), "apps/web/dist")),
+  );
   let browser: Browser | undefined;
   let origin = "";
   let fehler: unknown;
@@ -22,7 +24,6 @@ it("PP07 · H04 bewusst aktualisieren, Herkunft, zwei echte Dateien und Rücknah
   let appGeschlossen = false;
   try {
     const vorher = await w.datei();
-    await registerWebStatic(w.app, join(process.cwd(), "apps/web/dist"));
     origin = await w.app.listen({ host: "127.0.0.1", port: 0 });
     browser = await chromium.launch({ headless: true });
     browserGestartet = true;
