@@ -68,7 +68,7 @@ export const ARBEITEN: readonly SeitenEintrag[] = [
   {
     id: "gemeinsam",
     pfade: ["/wissen/:id/gemeinsam"],
-    titelKey: "nav.capture",
+    titelKey: "gemeinsam.seite.titel",
     ziel: '[data-testid="gemeinsam-editor"]',
   },
   {

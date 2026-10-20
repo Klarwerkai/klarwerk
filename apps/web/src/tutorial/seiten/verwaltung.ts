@@ -45,7 +45,7 @@ export const VERWALTUNG: readonly SeitenEintrag[] = [
   {
     id: "ausgang",
     pfade: ["/ausgangspruefung"],
-    titelKey: "kopfband.pruefen",
+    titelKey: "ausgangspruefung.seite.titel",
     minRole: "controller",
     ziel: "main h1",
   },
@@ -58,33 +58,33 @@ export const VERWALTUNG: readonly SeitenEintrag[] = [
   {
     id: "unternehmen",
     pfade: ["/unternehmen"],
-    titelKey: "menue.einstellungen",
+    titelKey: "unternehmen.seite.titel",
     minRole: "admin",
     ziel: '[data-testid="unternehmen-profil"]',
   },
   {
     id: "richtlinien",
     pfade: ["/richtlinien"],
-    titelKey: "nav.profile",
+    titelKey: "unternehmen.richtlinien.titel",
     ziel: '[data-testid="richtlinie"], main h1',
   },
   {
     id: "kommunikation",
     pfade: ["/kommunikation"],
-    titelKey: "nav.profile",
+    titelKey: "kommunikation.titel",
     ziel: '[data-testid="kommunikation-meine"]',
   },
   {
     id: "anbindung",
     pfade: ["/kalender-anbindung"],
-    titelKey: "nav.profile",
+    titelKey: "klarakalender.titel",
     ziel: '[data-testid="kalender-anbindung"], [data-testid="kalender-verbinden"], main h1',
     hilfeKeys: ["klarakalender.bedienhilfe.verbinden"],
   },
   {
     id: "qualitaet",
     pfade: ["/qualitaetsaufgaben"],
-    titelKey: "menue.einstellungen",
+    titelKey: "qualitaetsaufgaben.titel",
     minRole: "admin",
     ziel: '[data-testid="qa-bilanz"]',
   },
@@ -97,7 +97,7 @@ export const VERWALTUNG: readonly SeitenEintrag[] = [
   {
     id: "mobile",
     pfade: ["/mobile"],
-    titelKey: "nav.capture",
+    titelKey: "seitenhilfe.mobil.titel",
     ziel: '[data-testid="mob-erfassung"]',
   },
 ];

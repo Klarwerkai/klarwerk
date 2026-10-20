@@ -15,7 +15,7 @@ export const LESEN: readonly SeitenEintrag[] = [
   {
     id: "artikel",
     pfade: ["/wissen/:id"],
-    titelKey: "nav.library",
+    titelKey: "seitenhilfe.wissen.title",
     ziel: '[data-testid="bib-lesen"][data-objekt="wissen"]',
   },
   {
@@ -33,7 +33,7 @@ export const LESEN: readonly SeitenEintrag[] = [
   {
     id: "dokumentfragen",
     pfade: ["/fragen/dokument"],
-    titelKey: "nav.ask",
+    titelKey: "dokumentfragen.titel",
     ziel: '[data-testid="dokumentfragen-datei"]',
   },
   {
