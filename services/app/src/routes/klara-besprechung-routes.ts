@@ -23,7 +23,7 @@ export function klaraBesprechungRoutes(
         sendError(reply, e);
       }
     });
-    for (const weg of ["lesen", "korrektur", "uebernehmen"] as const)
+    for (const weg of ["lesen", "korrektur", "uebernehmen", "fristquelle"] as const)
       app.post<{ Params: { id: string } }>(
         `/api/me/klara/besprechungen/:id/${weg}`,
         async (req, reply) => {
@@ -34,7 +34,9 @@ export function klaraBesprechungRoutes(
               ? await d.sicht(u.id, req.params.id)
               : weg === "korrektur"
                 ? await d.korrektur(u.id, req.params.id, req.body)
-                : await d.uebernehmen(u.id, req.params.id, req.body);
+                : weg === "fristquelle"
+                  ? await d.fristquelle(u.id, req.params.id, req.body)
+                  : await d.uebernehmen(u.id, req.params.id, req.body);
           } catch (e) {
             if (e instanceof WissensFehler) {
               reply.code(e.status).send({

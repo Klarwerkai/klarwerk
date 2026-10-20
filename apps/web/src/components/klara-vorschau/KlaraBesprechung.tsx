@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { alsDatenUrl } from "../../api/besprechungen";
 import { api } from "../../api/client";
+import { klaraFristenApi, type FristenStand } from "../../api/klaraFristen";
 import { useAssistenzT } from "../../lib/assistenzProfil";
+import { ladeAufgaben } from "./aufgaben";
 import { ladeNotizen, oeffneNotiz } from "./notizen";
 const feld = "block w-full rounded-input border border-hairline bg-surface px-2 py-1 text-sm";
 const knopf = "rounded-btn border border-hairline px-3 py-1 text-sm disabled:opacity-40";
@@ -181,6 +183,8 @@ export function KlaraBesprechungsAuswertung({ id, fassung }: { id: string; fassu
   const [audioVorhanden, setAudioVorhanden] = useState(false);
   const [laeuft, setLaeuft] = useState(false);
   const audio = useRef<HTMLAudioElement>(null);
+  const [fristquelle, setFristquelle] = useState<string | null>(null);
+  const [fristen, setFristen] = useState<FristenStand | null>(null);
   useEffect(() => {
     let aktiv = true;
     void api
@@ -299,6 +303,78 @@ export function KlaraBesprechungsAuswertung({ id, fassung }: { id: string; fassu
       </label>
       <p>{t("klarabesprechung.fristen")}</p>
       <button
+        className={knopf}
+        type="button"
+        data-testid="besprechung-fristquelle"
+        disabled={!auswahl.length || laeuft}
+        onClick={() =>
+          void tun(async () => {
+            const q = await api.post<{ notizId: string }>(
+              `${basis}/${encodeURIComponent(id)}/fristquelle`,
+              { fassung, auswahl, bewusst: true },
+            );
+            setFristquelle(q.notizId);
+            await ladeNotizen(t);
+            const stand = await klaraFristenApi.lesen();
+            if (!stand.regel?.aktiv) {
+              setFristen(stand);
+              return;
+            }
+            const vorhanden = stand.regel.quellen.some(
+              (s) => s.art === "notiz" && s.id === q.notizId,
+            );
+            setFristen(
+              vorhanden
+                ? await klaraFristenApi.aktualisieren()
+                : await klaraFristenApi.speichern(
+                    {
+                      ...stand.regel,
+                      quellen: [...stand.regel.quellen, { art: "notiz", id: q.notizId }],
+                    },
+                    stand.fassung,
+                  ),
+            );
+          })
+        }
+      >
+        {t("klarabesprechung.fristquelle")}
+      </button>
+      {fristquelle ? (
+        <div data-testid="besprechung-friststand">
+          <p>
+            {t(
+              !fristen
+                ? "klarabesprechung.fristNurQuelle"
+                : fristen.regel?.aktiv
+                  ? "klarabesprechung.fristGespeichert"
+                  : "klarabesprechung.fristRegelNoetig",
+            )}
+          </p>
+          <button type="button" className={knopf} onClick={() => void oeffneNotiz(fristquelle, t)}>
+            {t("klarafristen.original")}
+          </button>
+          <a className="underline" href="/kalender#fristen-aus-informationen">
+            {t("klarabesprechung.fristenOeffnen")}
+          </a>
+          <ul>
+            {fristen?.fristen
+              .filter((f) =>
+                f.herkunft.some(
+                  (h) => h.beleg.quelle.art === "notiz" && h.beleg.quelle.id === fristquelle,
+                ),
+              )
+              .map((f) => (
+                <li key={f.id}>
+                  <a href={`/kalender#frist-${f.id}`}>
+                    {f.objekt.art} {f.objekt.kennung} · {t(`klarafristen.art.${f.art}`)} ·{" "}
+                    {t(`klarafristen.stand.${f.stand}`)} {f.datum?.datum ?? ""}
+                  </a>
+                </li>
+              ))}
+          </ul>
+        </div>
+      ) : null}
+      <button
         data-testid="besprechung-uebernehmen"
         type="button"
         className={knopf}
@@ -310,6 +386,7 @@ export function KlaraBesprechungsAuswertung({ id, fassung }: { id: string; fassu
               { fassung, auswahl, eigeneAufgaben: eigene, bewusst: true },
             );
             await ladeNotizen(t);
+            await ladeAufgaben(t);
             await oeffneNotiz(r.notizId, t);
           })
         }

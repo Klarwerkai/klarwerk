@@ -146,10 +146,15 @@ it("F08 · echter PG-Neustart, parallele Übernahme, pg_dump/Restore und private
 
 it("F15 · Besprechungsfassung, private Übergabe und Folgeaufgabe überstehen PG-Neustart und echten Dump/Restore", async () => {
   const a = appFuer();
+  await a.inject({
+    method: "POST",
+    url: "/api/auth/register",
+    payload: { name: "F Meeting PG", email: "f15@wissen.test", password: "synthetisch123" },
+  });
   const login = await a.inject({
     method: "POST",
     url: "/api/auth/login",
-    payload: { email: "f@wissen.test", password: "synthetisch123" },
+    payload: { email: "f15@wissen.test", password: "synthetisch123" },
   });
   expect(login.statusCode, login.body).toBe(200);
   const token = login.json().token;
@@ -161,7 +166,7 @@ it("F15 · Besprechungsfassung, private Übergabe und Folgeaufgabe überstehen P
     payload: {
       titel: "F PG Meeting",
       berechtigt: true,
-      text: "Beschluss: Prüflauf starten.\nOffen: Wer bestätigt?\nAufgabe: Lizenz prüfen.",
+      text: "Beschluss: Prüflauf starten.\nOffen: Wer bestätigt?\nAufgabe: Lizenz prüfen.\nLizenz L-93: Ablaufdatum 2027-04-30.",
     },
   });
   expect(r.statusCode, r.body).toBe(200);
@@ -179,6 +184,36 @@ it("F15 · Besprechungsfassung, private Übergabe und Folgeaufgabe überstehen P
     payload,
   });
   expect(u.statusCode, u.body).toBe(200);
+  const q = await a.inject({
+    method: "POST",
+    url: `/api/me/klara/besprechungen/${n.id}/fristquelle`,
+    headers,
+    payload: { fassung: n.fassung, bewusst: true, auswahl: ["zeile-4"] },
+  });
+  expect(q.statusCode, q.body).toBe(200);
+  const regel = {
+    aktiv: true,
+    quellen: [{ art: "notiz", id: q.json().notizId }],
+    arten: ["ablauf"],
+    bereich: "persoenlich",
+    zeitzone: "Europe/Berlin",
+    aenderung: "klaeren",
+    widerruf: "unzuverlaessig_ohne_vorlauf",
+    wiederpruefung: "relevante_aenderung_klaeren",
+    pruefstand: "aw19-sollbestand-1",
+  };
+  const f = await a.inject({
+    method: "PUT",
+    url: "/api/me/klara/fristen/regel",
+    headers,
+    payload: { regel, fassung: 0 },
+  });
+  expect(f.statusCode, f.body).toBe(200);
+  const k = await a.inject({ method: "GET", url: "/api/me/kalender", headers });
+  expect(k.statusCode, k.body).toBe(200);
+  const eventId = k.json().eintraege.find((e: { art: string }) => e.art === "frist")?.id;
+  expect(eventId).toBeTruthy();
+  expect(k.json().eintraege.filter((e: { art: string }) => e.art === "frist")).toHaveLength(1);
   const b = appFuer();
   const erneut = await b.inject({
     method: "POST",
@@ -216,6 +251,22 @@ it("F15 · Besprechungsfassung, private Übergabe und Folgeaufgabe überstehen P
   });
   expect(re.statusCode, re.body).toBe(200);
   expect(re.json().aufgaben[0].id).toBe(u.json().aufgaben[0].id);
+  const refreshed = await restore.inject({
+    method: "POST",
+    url: "/api/me/klara/fristen/aktualisieren",
+    headers,
+    payload: {},
+  });
+  expect(refreshed.statusCode, refreshed.body).toBe(200);
+  expect(refreshed.json().fristen).toHaveLength(1);
+  const restoredCalendar = await restore.inject({
+    method: "GET",
+    url: "/api/me/kalender",
+    headers,
+  });
+  expect(restoredCalendar.json().eintraege.some((e: { id: string }) => e.id === eventId)).toBe(
+    true,
+  );
   const del = await restore.inject({
     method: "DELETE",
     url: `/api/me/klara/notizen/${n.id}`,

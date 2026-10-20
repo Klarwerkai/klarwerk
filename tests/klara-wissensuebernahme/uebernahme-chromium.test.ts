@@ -145,6 +145,38 @@ it("F08 · echter Browser: gewählter Chat → privates Original → Vorschau �
 }, 60000);
 
 it("F15 · Browser importiert private Besprechungsnotiz und speichert bewusst Aufgabe/Übergabe über echte Produktwege", async () => {
+  const headers = { authorization: `Bearer ${token}` };
+  const basisquelle = await app.inject({
+    method: "POST",
+    url: "/api/me/klara/notizen",
+    headers,
+    payload: {
+      vorgang: "f-browser-fristenregel",
+      weg: "geschrieben",
+      titel: "Fristenregel Browser",
+      inhalt: "Keine Termine in dieser Notiz.",
+      objektbezug: { pfad: "/kalender", seitenName: "Mein Kalender", objekt: "Fristenregel" },
+    },
+  });
+  expect(basisquelle.statusCode, basisquelle.body).toBe(201);
+  const regel = {
+    aktiv: true,
+    quellen: [{ art: "notiz", id: basisquelle.json().notiz.id }],
+    arten: ["ablauf"],
+    bereich: "persoenlich",
+    zeitzone: "Europe/Berlin",
+    aenderung: "klaeren",
+    widerruf: "unzuverlaessig_ohne_vorlauf",
+    wiederpruefung: "relevante_aenderung_klaeren",
+    pruefstand: "aw19-sollbestand-1",
+  };
+  const konfig = await app.inject({
+    method: "PUT",
+    url: "/api/me/klara/fristen/regel",
+    headers,
+    payload: { regel, fassung: 0 },
+  });
+  expect(konfig.statusCode, konfig.body).toBe(200);
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
   page.setDefaultTimeout(10000);
   await page.goto(`${origin}/start`);
@@ -156,21 +188,42 @@ it("F15 · Browser importiert private Besprechungsnotiz und speichert bewusst Au
   await page
     .locator('[data-testid="besprechung-import-text"]')
     .fill(
-      "Beschluss: Testlauf durchführen.\nOffen: Vertragsstand klären.\nAufgabe: Lizenz prüfen.",
+      "Beschluss: Testlauf durchführen.\nOffen: Vertragsstand klären.\nAufgabe: Lizenz prüfen.\nLizenz L-94: Ablaufdatum 2027-04-30.",
     );
   await page.locator('[data-testid="besprechung-berechtigt"]').check();
   await page.locator('[data-testid="besprechung-import-speichern"]').click();
   await page.locator('[data-testid="besprechung-auswertung"]').waitFor();
+  await page.locator('[data-testid="besprechung-auswahl-zeile-4"]').check();
+  await page.locator('[data-testid="besprechung-fristquelle"]').click();
+  await page.getByText("Quelle gespeichert; aktive Regel angewendet.", { exact: false }).waitFor();
+  expect(await page.locator('[data-testid="besprechung-friststand"]').innerText()).toContain(
+    "2027-04-30",
+  );
+  const friststand = (
+    await app.inject({ method: "GET", url: "/api/me/klara/fristen", headers })
+  ).json();
+  expect(friststand.regel).toMatchObject({
+    ...regel,
+    quellen: expect.arrayContaining(regel.quellen),
+  });
+  expect(friststand.regel.quellen).toHaveLength(2);
+  expect(friststand.fristen).toHaveLength(1);
+  await page.locator('[data-testid="besprechung-fristquelle"]').click();
+  await page.locator('[data-testid="besprechung-fristquelle"]').waitFor({ state: "visible" });
+  expect(
+    (await app.inject({ method: "GET", url: "/api/me/kalender", headers }))
+      .json()
+      .eintraege.filter((e: { art: string }) => e.art === "frist"),
+  ).toHaveLength(1);
+  await page.screenshot({ path: ".local/run/klara-f/f15-fristen-browser.png", fullPage: true });
+  await page.locator('[data-testid="besprechung-auswahl-zeile-4"]').uncheck();
   for (const id of ["zeile-1", "zeile-2", "zeile-3"])
     await page.locator(`[data-testid="besprechung-auswahl-${id}"]`).check();
   await page.locator('[data-testid="besprechung-eigene"]').check();
   await page.locator('[data-testid="besprechung-uebernehmen"]').click();
-  await page.waitForFunction(() => {
-    const f = document.querySelector(
-      '[data-testid="klara-notiz-titel"]',
-    ) as HTMLInputElement | null;
-    return f?.value.startsWith("Übergabe:");
-  });
+  await page.waitForFunction(
+    `() => document.querySelector('[data-testid="klara-notiz-titel"]')?.value.startsWith("Übergabe:")`,
+  );
   expect(await page.locator('[data-testid="klara-notiz-inhalt"]').inputValue()).toContain(
     "Transkriptfassung 1",
   );

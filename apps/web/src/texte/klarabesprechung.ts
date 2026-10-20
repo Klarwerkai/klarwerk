@@ -3,6 +3,14 @@ export default {
   praefix: "klarabesprechung.",
   legacySchluessel: [],
   de: {
+    "klarabesprechung.fristquelle": "Gewählte Originalstellen für Fristen berücksichtigen",
+    "klarabesprechung.fristGespeichert":
+      "Quelle gespeichert; aktive Regel angewendet. Der tatsächliche Stand steht unten und in Mein Kalender.",
+    "klarabesprechung.fristRegelNoetig":
+      "Quelle gespeichert. Wähle sie in Mein Kalender aus und richte dort deine Fristenregel ein.",
+    "klarabesprechung.fristNurQuelle":
+      "Quelle gespeichert; Regelanbindung noch nicht abgeschlossen. Bei Fehler über diesen Weg nachholen.",
+    "klarabesprechung.fristenOeffnen": "Fristen in Mein Kalender öffnen",
     "klarabesprechung.transkription":
       "Die Audiodatei mit dem eingerichteten, freigegebenen Transkriptionsdienst verarbeiten.",
     "klarabesprechung.zeit": "{{von}}–{{bis}} ms",
@@ -28,7 +36,7 @@ export default {
     "klarabesprechung.eigene":
       "Gewählte Folgeaufgaben bewusst selbst übernehmen (keine aus dem Meeting erfundene Zuweisung).",
     "klarabesprechung.fristen":
-      "Fristen- und Normenabgleich noch offen. Hier werden keine Termine oder Außenaktionen ausgelöst.",
+      "Gewählte Originalstellen als private Fristquelle speichern und einer vorhandenen aktiven Fristenregel hinzufügen. Deren Arten, Zeitzone und Änderungsregel bleiben gültig. Ohne aktive Regel richtet Mein Kalender sie ein. Relative Termine und Normphasen bleiben Klärung.",
     "klarabesprechung.uebernehmen": "Auswahl privat als Übergabe und Aufgaben übernehmen",
     "klarabesprechung.art.entscheidung": "Entscheidung",
     "klarabesprechung.art.vorschlag": "Vorschlag",
@@ -39,6 +47,14 @@ export default {
     "klarabesprechung.art.klaerung": "Klärung / unbestätigter Inhalt",
   },
   en: {
+    "klarabesprechung.fristquelle": "Consider selected original passages for deadlines",
+    "klarabesprechung.fristGespeichert":
+      "Source saved; active rule applied. See the actual results below and in My Calendar.",
+    "klarabesprechung.fristRegelNoetig":
+      "Source saved. Select it in My Calendar and configure your deadline rule there.",
+    "klarabesprechung.fristNurQuelle":
+      "Source saved; rule connection is not complete. Retry this action after an error.",
+    "klarabesprechung.fristenOeffnen": "Open deadlines in My Calendar",
     "klarabesprechung.transkription":
       "Process the audio file with the configured and authorised transcription service.",
     "klarabesprechung.zeit": "{{von}}–{{bis}} ms",
@@ -64,7 +80,7 @@ export default {
     "klarabesprechung.eigene":
       "Consciously take selected follow-up tasks yourself (no inferred meeting assignment).",
     "klarabesprechung.fristen":
-      "Deadline and standards review remains open. No calendar entries or external actions are triggered here.",
+      "Save selected original passages as a private deadline source and add it to an existing active deadline rule. Its types, time zone and change policy remain in effect. Set up a missing rule in My Calendar. Relative dates and standards phases still need clarification.",
     "klarabesprechung.uebernehmen": "Save selected results privately as handover and tasks",
     "klarabesprechung.art.entscheidung": "Decision",
     "klarabesprechung.art.vorschlag": "Proposal",
@@ -75,6 +91,14 @@ export default {
     "klarabesprechung.art.klaerung": "Clarification / unconfirmed content",
   },
   nl: {
+    "klarabesprechung.fristquelle": "Gekozen originele passages voor termijnen gebruiken",
+    "klarabesprechung.fristGespeichert":
+      "Bron opgeslagen; actieve regel toegepast. Bekijk de werkelijke resultaten hieronder en in Mijn agenda.",
+    "klarabesprechung.fristRegelNoetig":
+      "Bron opgeslagen. Selecteer deze in Mijn agenda en stel daar je termijnregel in.",
+    "klarabesprechung.fristNurQuelle":
+      "Bron opgeslagen; regelkoppeling is nog niet voltooid. Herhaal deze actie na een fout.",
+    "klarabesprechung.fristenOeffnen": "Termijnen in Mijn agenda openen",
     "klarabesprechung.transkription":
       "Het audiobestand met de ingestelde en toegestane transcriptiedienst verwerken.",
     "klarabesprechung.zeit": "{{von}}–{{bis}} ms",
@@ -100,7 +124,7 @@ export default {
     "klarabesprechung.eigene":
       "Gekozen vervolgtaken bewust zelf overnemen (geen afgeleide vergadertoewijzing).",
     "klarabesprechung.fristen":
-      "Termijn- en normencontrole blijft open. Hier worden geen afspraken of externe acties gestart.",
+      "Gekozen originele passages als privétermijnbron opslaan en aan een bestaande actieve termijnregel toevoegen. Soorten, tijdzone en wijzigingsregel blijven gelden. Stel een ontbrekende regel in Mijn agenda in. Relatieve datums en normfasen blijven onduidelijk.",
     "klarabesprechung.uebernehmen": "Gekozen resultaten privé als overdracht en taken opslaan",
     "klarabesprechung.art.entscheidung": "Besluit",
     "klarabesprechung.art.vorschlag": "Voorstel",

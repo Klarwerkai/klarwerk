@@ -3,6 +3,7 @@ import type { MediaAnalysisService } from "../../media";
 import { type ObjectStore, decodeDataUrl } from "../../object-store";
 import { KlaraAufgabeDienst, type KlaraAufgabeRepo } from "./klara-aufgabe";
 import { type KlaraNotiz, KlaraNotizDienst, type KlaraNotizRepo } from "./klara-notiz";
+import { istDatum, istUhrzeit } from "./klara-erinnerung-zeit";
 import { type KlaraWissensHerkunft, WissensFehler } from "./klara-wissensuebernahme";
 import { webvttLesen } from "./meeting-dokumentbezug";
 export interface BesprechungsSegment {
@@ -49,6 +50,8 @@ function datum(x: unknown): string | null {
   const s = str(x, 40);
   if (
     !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})$/.test(s) ||
+    !istDatum(s.slice(0, 10)) ||
+    !istUhrzeit(s.slice(11, 16)) ||
     !Number.isFinite(Date.parse(s))
   )
     throw new WissensFehler(400, "Meetingzeit mit tatsächlichem Offset erwartet.");
@@ -259,13 +262,14 @@ export class KlaraBesprechungsDienst {
       segmente,
       ...(asr?.engine ? { asrEngine: asr.engine } : {}),
     };
-    return this.speichere(kontoId, titel, b, vorher?.id ?? null);
+    return this.speichere(kontoId, titel, b, vorher?.id ?? null, asr ? 1 : 0);
   }
   private async speichere(
     kontoId: string,
     titel: string,
     b: PrivateBesprechung,
     vorherigeNotiz: string | null,
+    modellaufrufe = 0,
   ) {
     const inhalt = b.segmente
       .map(
@@ -304,13 +308,14 @@ export class KlaraBesprechungsDienst {
       verarbeitung: {
         stand: "importiert",
         segmente: b.segmente.length,
-        modellaufrufe: b.asrEngine ? 1 : 0,
-        asr: b.asrEngine ? "zeitgebunden_abgeschlossen" : "nicht_ausgefuehrt",
+        modellaufrufe,
+        asr: modellaufrufe ? "zeitgebunden_abgeschlossen" : "nicht_ausgefuehrt",
       },
       ergebnisse: besprechungsErgebnisse(b),
       fristenNormen: {
-        stand: "offen",
-        grund: "D-Schnittstelle noch nicht fest gebunden; kein automatischer Frist-/Normtermin.",
+        stand: "quellenauswahl_erforderlich",
+        grund:
+          "Gewählte Originalpassagen können über die bestehende persönliche Fristenregel berücksichtigt werden. Relative Termine und Normphasen bleiben Klärung.",
       },
     };
   }
@@ -332,7 +337,7 @@ export class KlaraBesprechungsDienst {
     return {
       notiz: n,
       ergebnisse: besprechungsErgebnisse(n.wissensHerkunft.besprechung),
-      fristenNormen: { stand: "offen", grund: "D-Schnittstelle nicht gebunden." },
+      fristenNormen: { stand: "quellenauswahl_erforderlich" },
     };
   }
   async korrektur(kontoId: string, id: string, roh: unknown) {
@@ -370,7 +375,7 @@ export class KlaraBesprechungsDienst {
       x.bewusst !== true ||
       x.fassung !== n.fassung ||
       !Array.isArray(x.auswahl) ||
-      x.auswahl.length > 100
+      x.auswahl.length > 50
     )
       throw new WissensFehler(409, "Bewusste Auswahl und aktuelle Fassung erforderlich.");
     const b = n.wissensHerkunft.besprechung;
@@ -403,12 +408,17 @@ export class KlaraBesprechungsDienst {
       );
       aufgaben.push({ id: r.aufgabe.id, wiederholt: r.wiederholt, abweichung: false });
     }
-    const text = auswahl
-      .map(
-        (a) =>
-          `${a.art}: ${a.text}\nQuelle: Transkriptfassung ${b.transkriptFassung}, Segment ${a.id}, ${a.quelle.startMs === null ? `Zeile ${a.quelle.zeile}` : `${a.quelle.startMs}–${a.quelle.endMs} ms`}`,
-      )
-      .join("\n\n");
+    const abweichung = aufgaben.some((a) => a.abweichung);
+    const text =
+      auswahl
+        .map(
+          (a) =>
+            `${a.art}: ${a.text}\nQuelle: Transkriptfassung ${b.transkriptFassung}, Segment ${a.id}, ${a.quelle.startMs === null ? `Zeile ${a.quelle.zeile}` : `${a.quelle.startMs}–${a.quelle.endMs} ms`}`,
+        )
+        .join("\n\n") +
+      (abweichung
+        ? "\n\nVorhandene Aufgaben weichen von dieser Transkriptfassung ab. In Meine Aufgaben prüfen; vorhandener Inhalt wurde erhalten."
+        : "");
     const h: KlaraWissensHerkunft = {
       ...n.wissensHerkunft,
       textAbdruck: hash(text),
@@ -419,7 +429,7 @@ export class KlaraBesprechungsDienst {
       kontoId,
       {
         vorgang: `meeting-summary-${hash(
-          `${b.meetingId}:${b.transkriptFassung}:${auswahl
+          `${b.meetingId}:${b.transkriptFassung}:${hash(text)}:${auswahl
             .map((a) => a.id)
             .sort()
             .join()}`,
@@ -444,8 +454,54 @@ export class KlaraBesprechungsDienst {
       aufgaben,
       privat: true,
       gemeinsam: "Erst über die bewusste Wissensübernahme an der privaten Übergabenotiz.",
-      fristenNormen: "offen_D_anschluss",
+      fristenNormen: "separate_bewusste_quellenauswahl",
     };
+  }
+  /** Ausgewählter Originalwortlaut als eigene Quelle für den unveränderten AW19-Leser.
+   * Keine generierte Zusammenfassung und keine fingierte Gesprächsnachricht. */
+  async fristquelle(kontoId: string, id: string, roh: unknown) {
+    const x = obj(roh);
+    const n = await this.hole(kontoId, id);
+    const b = n.wissensHerkunft.besprechung;
+    if (
+      x.bewusst !== true ||
+      x.fassung !== n.fassung ||
+      !Array.isArray(x.auswahl) ||
+      !x.auswahl.length ||
+      x.auswahl.length > 50
+    )
+      throw new WissensFehler(409, "Bewusste Quellenauswahl und aktuelle Fassung erforderlich.");
+    const ids = new Set(x.auswahl.map((v) => str(v, 200)));
+    const segmente = b.segmente.filter((s) => ids.has(s.id));
+    if (segmente.length !== ids.size || b.quelleNotizId)
+      throw new WissensFehler(400, "Originalsegmente dieser Quellfassung auswählen.");
+    if (segmente.some((s) => s.unsicher || s.ueberlappend))
+      throw new WissensFehler(409, "Unsichere oder überlappende Originalpassagen zuerst klären.");
+    const inhalt = segmente.map((s) => s.text).join("\n");
+    const h: KlaraWissensHerkunft = {
+      ...n.wissensHerkunft,
+      textAbdruck: hash(inhalt),
+      vorherigeNotiz: id,
+      besprechung: { ...b, quelleNotizId: id, segmente },
+    };
+    const r = await new KlaraNotizDienst({ repo: this.notizen }).lege(
+      kontoId,
+      {
+        vorgang: `meeting-fristquelle-${hash(`${id}:${b.transkriptFassung}:${segmente.map((s) => s.id).join()}`)}`,
+        weg: "geschrieben",
+        titel: `Fristquelle: ${n.titel}`.slice(0, 200),
+        inhalt,
+        offeneFragen: [],
+        objektbezug: {
+          pfad: `/start?notiz=${id}`,
+          seitenName: "Private Besprechung",
+          objekt: n.titel,
+        },
+      },
+      undefined,
+      h,
+    );
+    return { notizId: r.notiz.id, fassung: r.notiz.fassung, wiederholt: r.wiederholt };
   }
   async loesche(kontoId: string, id: string) {
     const n = await this.rohNotizen.hole(kontoId, id);

@@ -90,7 +90,7 @@ it("Text bleibt privat; trennt belegte Kennzeichnungen, offene Zuständigkeit un
     headers: { authorization: `Bearer ${token}` },
   });
   expect(auf.body).toContain("Transkriptfassung 1");
-  expect(a.json().fristenNormen).toBe("offen_D_anschluss");
+  expect(a.json().fristenNormen).toBe("separate_bewusste_quellenauswahl");
 });
 it("VTT-Fassung erhält Zeiten, Importsprecher, Überlappung und Rauschen; Korrektur versioniert ohne Aufgabendublette", async () => {
   const vtt =
@@ -130,6 +130,16 @@ it("VTT-Fassung erhält Zeiten, Importsprecher, Überlappung und Rauschen; Korre
     wiederholt: true,
     abweichung: true,
   });
+  expect(k.json().verarbeitung.modellaufrufe).toBe(0);
+  expect(
+    (
+      await app.inject({
+        method: "GET",
+        url: `/api/me/klara/notizen/${a2.json().notizId}`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).body,
+  ).toContain("Vorhandene Aufgaben weichen");
   expect((await call(`/${n.id}/lesen`)).json().notiz.inhalt).toContain("Aufgabe: Lizenz prüfen.");
 });
 it("berechtigter Audio/VTT-Import ohne Recorder; Rohquelle privat, Löschung entfernt private Ableitungen", async () => {
@@ -270,4 +280,102 @@ it("Keine KI sperrt auch zeitgebundene lokale Transkription; Quellentzug währen
     headers: { authorization: `Bearer ${token}` },
   });
   expect(n.body).not.toContain("Entzug");
+});
+it("D .995 · gewählte Originalstellen bleiben private Quelle; gleiche Lizenz einmal im Kalender, relative/unbelegte Datumsangaben offen", async () => {
+  const original =
+    "Lizenz L-91: Ablaufdatum 2027-04-30.\nLizenz L-92: Ablaufdatum morgen.\nEin beliebiger Termin am 2027-05-02.";
+  const r = await call("/import", {
+    titel: "Lizenzrunde",
+    berechtigt: true,
+    text: original,
+    meetingDatum: "2026-10-01T10:00:00+02:00",
+    zeitzone: "Europe/Berlin",
+  });
+  expect(r.statusCode, r.body).toBe(200);
+  const n = r.json().notiz;
+  const auswahl = { fassung: n.fassung, bewusst: true, auswahl: ["zeile-1", "zeile-2"] };
+  expect((await call(`/${n.id}/fristquelle`, auswahl, fremd)).statusCode).toBe(404);
+  expect(
+    (await call(`/${n.id}/fristquelle`, { ...auswahl, fassung: n.fassung + 1 })).statusCode,
+  ).toBe(409);
+  const q = await call(`/${n.id}/fristquelle`, auswahl);
+  expect(q.statusCode, q.body).toBe(200);
+  expect((await call(`/${n.id}/fristquelle`, auswahl)).json().notizId).toBe(q.json().notizId);
+  const headers = { authorization: `Bearer ${token}` };
+  const quelle = (
+    await app.inject({ method: "GET", url: `/api/me/klara/notizen/${q.json().notizId}`, headers })
+  ).json().notiz;
+  expect(quelle.inhalt).toBe(original.split("\n").slice(0, 2).join("\n"));
+  expect(quelle.wissensHerkunft.besprechung).toMatchObject({
+    quelleNotizId: n.id,
+    transkriptFassung: 1,
+    meetingDatum: "2026-10-01T10:00:00+02:00",
+  });
+  expect(quelle.wissensHerkunft.besprechung.segmente.map((s: { id: string }) => s.id)).toEqual([
+    "zeile-1",
+    "zeile-2",
+  ]);
+  const regel = {
+    aktiv: true,
+    quellen: [{ art: "notiz", id: q.json().notizId }],
+    arten: ["ablauf"],
+    bereich: "persoenlich",
+    zeitzone: "Europe/Berlin",
+    aenderung: "klaeren",
+    widerruf: "unzuverlaessig_ohne_vorlauf",
+    wiederpruefung: "relevante_aenderung_klaeren",
+    pruefstand: "aw19-sollbestand-1",
+  };
+  const s = await app.inject({
+    method: "PUT",
+    url: "/api/me/klara/fristen/regel",
+    headers,
+    payload: { regel, fassung: 0 },
+  });
+  expect(s.statusCode, s.body).toBe(200);
+  expect(s.json().fristen).toHaveLength(2);
+  expect(
+    s.json().fristen.find((f: { objekt: { kennung: string } }) => f.objekt.kennung === "L-92"),
+  ).toMatchObject({ stand: "klaerung", datum: null });
+  const f = s
+    .json()
+    .fristen.find((f: { objekt: { kennung: string } }) => f.objekt.kennung === "L-91");
+  expect(f).toMatchObject({
+    stand: "erkannt",
+    datum: { art: "datum", datum: "2027-04-30" },
+    verantwortlich: null,
+  });
+  expect(f.herkunft[0].beleg).toMatchObject({
+    quelle: { art: "notiz", id: q.json().notizId, fassung: String(quelle.fassung) },
+    abschnitt: { wortlaut: original.split("\n")[0] },
+  });
+  const kalender = () => app.inject({ method: "GET", url: "/api/me/kalender", headers });
+  const k = await kalender();
+  expect(k.statusCode, k.body).toBe(200);
+  expect(k.json().eintraege).toHaveLength(1);
+  const eventId = k.json().eintraege[0].id;
+  for (let i = 0; i < 2; i++)
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/me/klara/fristen/aktualisieren",
+          headers,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+  expect((await kalender()).json().eintraege.map((e: { id: string }) => e.id)).toEqual([eventId]);
+  const fremdKalender = await app.inject({
+    method: "GET",
+    url: "/api/me/kalender",
+    headers: { authorization: `Bearer ${fremd}` },
+  });
+  expect(fremdKalender.body).not.toContain("L-91");
+  expect(await services.ko.list()).toHaveLength(0);
+  expect(
+    (await app.inject({ method: "DELETE", url: `/api/me/klara/notizen/${n.id}`, headers }))
+      .statusCode,
+  ).toBe(200);
+  expect((await kalender()).json().eintraege).toHaveLength(0);
 });
