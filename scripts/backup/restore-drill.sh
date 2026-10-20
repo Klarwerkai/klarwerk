@@ -217,7 +217,7 @@ schreibe_protokoll() {
     # Kategorie, getrennt von Beitraegen und Anhangsbytes. Dieselbe Tabellenliste wie
     # `assistenzTabellen()` in services/app/src/sicherungsumfang.ts (gehalten von
     # tests/wiederherstellung-export/sicherungsumfang.test.ts).
-    printf '"assistenz":%s}' "$(vergleich_json "" assistenz_profile klara_gespraeche interaktions_gedaechtnis klara_sessions klara_session_consents klara_aufgaben klara_erinnerungen klara_erinnerung_laeufe klara_erinnerung_meldungen klara_erinnerung_einstellungen klara_fristen)"
+    printf '"assistenz":%s}' "$(vergleich_json "" assistenz_profile klara_gespraeche interaktions_gedaechtnis interaktions_gedaechtnis_loeschungen klara_sessions klara_session_consents klara_aufgaben klara_erinnerungen klara_erinnerung_laeufe klara_erinnerung_meldungen klara_erinnerung_einstellungen klara_fristen persoenliche_routinen)"
     printf '},"wissensnachweis":%s}\n' "$(json_text_oder_null "$WISSENSNACHWEIS")"
   } > "$arbeitsname" 2>/dev/null || ! mv -f "$arbeitsname" "$PROTOKOLL" 2>/dev/null; then
     rm -f "$arbeitsname" 2>/dev/null || true
@@ -515,6 +515,7 @@ PFLICHTTABELLEN=(
   spaces_fassungen
   livewall_fotos
   interaktions_gedaechtnis
+  interaktions_gedaechtnis_loeschungen
   ko_embeddings
   loeschantraege
   teams_fassungen
@@ -551,6 +552,7 @@ PFLICHTTABELLEN=(
   klara_erinnerung_laeufe
   klara_erinnerung_meldungen
   klara_erinnerung_einstellungen
+  persoenliche_routinen
   kalender_eintraege
   kalender_einstellungen
   klara_fristen

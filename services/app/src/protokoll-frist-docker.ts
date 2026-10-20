@@ -51,9 +51,10 @@ import {
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  PROTOKOLL_FRIST_TAGE,
+  PROTOKOLL_FRIST_ENV,
   type ProtokollPflegeErgebnis,
   aeltesterInhalt,
+  leseProtokollFristTage,
   pflegeDiagnoseordner,
 } from "./protokoll-frist";
 
@@ -357,6 +358,7 @@ export function berichteDockerProtokolle(opts: {
   ordner?: string;
   auswahl: ContainerAuswahl | null;
   diagnoseordner?: string;
+  fristTage?: number;
   jetzt?: number;
 }): {
   container: (ContainerBericht & { aktiveDatei: InhaltsAlter; rotationen: InhaltsAlter })[];
@@ -364,6 +366,7 @@ export function berichteDockerProtokolle(opts: {
 } {
   const ordner = opts.ordner ?? DOCKER_CONTAINER_ORDNER;
   const jetzt = opts.jetzt ?? Date.now();
+  const fristTage = opts.fristTage ?? leseProtokollFristTage(process.env[PROTOKOLL_FRIST_ENV]);
   const tage = (zeit: number) => Math.round(((jetzt - zeit) / 86_400_000) * 10) / 10;
   const aeltestes = (pfade: string[]): InhaltsAlter => {
     const zeilen: number[] = [];
@@ -393,7 +396,7 @@ export function berichteDockerProtokolle(opts: {
       ohneZeitangabeDateidatumTage: daten.length === 0 ? null : tage(Math.min(...daten)),
       ungeklaerteReste,
       fristBestaetigt:
-        (aeltesteZeileTage === null || aeltesteZeileTage < PROTOKOLL_FRIST_TAGE) &&
+        (aeltesteZeileTage === null || aeltesteZeileTage < fristTage) &&
         daten.length === 0 &&
         ungeklaerteReste === 0,
     };
@@ -444,6 +447,7 @@ export function pflegeDockerProtokolle(opts: {
   /** Ohne Auswahl wird KEIN Container bearbeitet. */
   auswahl: ContainerAuswahl | null;
   diagnoseordner?: string;
+  fristTage?: number;
   jetzt?: number;
 }): {
   container: Record<string, DockerPflegeErgebnis>;
@@ -452,7 +456,8 @@ export function pflegeDockerProtokolle(opts: {
   const ordner = opts.ordner ?? DOCKER_CONTAINER_ORDNER;
   const zeit = opts.jetzt === undefined ? {} : { jetzt: opts.jetzt };
   const jetzt = opts.jetzt ?? Date.now();
-  const fristMs = PROTOKOLL_FRIST_TAGE * 86_400_000;
+  const fristTage = opts.fristTage ?? leseProtokollFristTage(process.env[PROTOKOLL_FRIST_ENV]);
+  const fristMs = fristTage * 86_400_000;
   const container: Record<string, DockerPflegeErgebnis> = {};
   const auswahl = opts.auswahl;
   if (auswahl && existsSync(ordner)) {
@@ -497,7 +502,7 @@ export function pflegeDockerProtokolle(opts: {
     }
   }
   const diagnose = opts.diagnoseordner
-    ? pflegeDiagnoseordner({ ordner: opts.diagnoseordner, ...zeit })
+    ? pflegeDiagnoseordner({ ordner: opts.diagnoseordner, fristMs, ...zeit })
     : [];
   return { container, diagnose };
 }

@@ -17,6 +17,7 @@ import type { KnowledgeClass } from "../../api/types";
 import { HOME_ROUTE } from "../../app/navigation";
 // produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
 import { useAssistenzT } from "../../lib/assistenzProfil";
+import { useKurzeAntworten } from "../../lib/gedaechtnis";
 import { internerPfad } from "../../lib/internerPfad";
 import { KNOWLEDGE_CLASS_META } from "../../lib/knowledgeClass";
 import { formatKoTimestamp } from "../../lib/koDates";
@@ -241,6 +242,7 @@ function NachrichtEcht({
     n.wissensklasse && n.wissensklasse in KNOWLEDGE_CLASS_META
       ? KNOWLEDGE_CLASS_META[n.wissensklasse as KnowledgeClass]
       : null;
+  const kurz = useKurzeAntworten();
   const istAntwort = n.modus === "ki" || n.modus === "ohne_ki";
   // Klara 03 · K3: eine Antwort ohne jede Quelle hat keine Grundlage — das steht als Kennzeichen da.
   const ohneGrundlage = n.modus === "ohne_ki" && n.quellen.length === 0;
@@ -327,7 +329,16 @@ function NachrichtEcht({
         ) : null}
       </div>
       {istAntwort ? (
-        <AnswerMarkdown text={n.text} className="text-[12px] leading-relaxed text-text" />
+        kurz ? (
+          <details data-testid="klara-antwort-kurz">
+            <summary className="cursor-pointer font-semibold">
+              {t("klaragedaechtnis.vollstaendig")}
+            </summary>
+            <AnswerMarkdown text={n.text} className="text-[12px] leading-relaxed text-text" />
+          </details>
+        ) : (
+          <AnswerMarkdown text={n.text} className="text-[12px] leading-relaxed text-text" />
+        )
       ) : (
         <p className="whitespace-pre-line">{n.text}</p>
       )}

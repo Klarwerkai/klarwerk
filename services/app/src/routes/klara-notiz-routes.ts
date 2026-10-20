@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
-import { type Guards, sendError } from "../http";
+import { type Guards, type SessionUser, sendError } from "../http";
 import {
   type KlaraNotiz,
   type KlaraNotizAenderung,
@@ -35,6 +35,7 @@ export const KLARA_NOTIZ_GELOESCHT = "klara.notiz.geloescht";
 export interface KlaraNotizRoutenDeps {
   dienst: KlaraNotizDienst;
   audit: AuditService;
+  lesbar?: (user: SessionUser, notiz: KlaraNotiz) => Promise<boolean>;
 }
 
 const FEHLERCODE: Record<KlaraNotizFehler["status"], string> = {
@@ -58,6 +59,7 @@ function antworteMitFehler(reply: FastifyReply, fehler: unknown): void {
 /** Die Sicht nach außen — ohne Kontokennung, die der Fragende ohnehin selbst ist. */
 function sicht(n: KlaraNotiz) {
   return {
+    wissensHerkunft: n.wissensHerkunft,
     id: n.id,
     vorgang: n.vorgang,
     art: n.art,
@@ -90,7 +92,8 @@ export function klaraNotizRoutes(deps: KlaraNotizRoutenDeps, guards: Guards): Fa
         }
         try {
           const notizen = await dienst.liste(user.id, request.query.q, request.query.art);
-          reply.code(200).send({ notizen: notizen.map(sicht) });
+          const erlaubt = await Promise.all(notizen.map((n) => deps.lesbar?.(user, n) ?? true));
+          reply.code(200).send({ notizen: notizen.filter((_, i) => erlaubt[i]).map(sicht) });
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }
@@ -129,6 +132,10 @@ export function klaraNotizRoutes(deps: KlaraNotizRoutenDeps, guards: Guards): Fa
       }
       try {
         const notiz = await dienst.hole(user.id, request.params.id);
+        if (deps.lesbar && !(await deps.lesbar(user, notiz))) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Notiz nicht gefunden." });
+          return;
+        }
         reply.code(200).send({ notiz: sicht(notiz) });
       } catch (fehler) {
         antworteMitFehler(reply, fehler);

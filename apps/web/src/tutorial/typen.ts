@@ -78,7 +78,7 @@ export interface TutorialModul {
 
 export interface TutorialDefinition {
   id: string;
-  /** Genau die Route, auf der das Tutorial angeboten wird. */
+  /** Die vorhandene Route oder deren Routermuster, auf der das Tutorial angeboten wird. */
   pfad: string;
   titelKey: string;
   lernzielKey: string;
@@ -90,6 +90,15 @@ export interface TutorialDefinition {
   textWerte: (t: (schluessel: string) => string) => Record<string, string>;
   /** Das echte Bedienelement, zu dem „Eigene Frage stellen“ o. ä. führt. */
   uebergabeZiel: string;
+  /** Optionale echte, sichtbare Seitenziele; der Rahmen löst niemals eine Handlung aus. */
+  echteZiele?: Readonly<Record<string, string>>;
   /** Die Demo wird erst beim Öffnen geladen — die Hülle trägt sie nicht auf jeder Seite mit. */
   laden: () => Promise<TutorialModul>;
+}
+
+/** Flüchtige Übergabe desselben Rahmenzustands bei einer Unterbrechung; keine zweite Speicherung. */
+export interface TutorialSchrittstand {
+  schrittIndex: number;
+  teilIndex: number;
+  teilZeit: number;
 }

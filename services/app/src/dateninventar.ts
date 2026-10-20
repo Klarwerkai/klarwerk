@@ -1,3 +1,4 @@
+import type { Aufbewahrungsangabe } from "./aufbewahrungsangaben";
 // ================================================================================================
 // BETROFFENENRECHTE · DAS DATENINVENTAR UND DAS VERARBEITUNGSVERZEICHNIS AUS DEM SYSTEM SELBST.
 // ================================================================================================
@@ -65,6 +66,26 @@ const PAPIERKORB =
   "Löschen legt in den Papierkorb; Endlöschung nach 30 Tagen (TRASH_RETENTION_DAYS) oder vorher durch Verwalter.";
 
 export const DATENINVENTAR: readonly Datenart[] = [
+  {
+    id: "persoenliche_funktionen",
+    name: "Persönliche Lern- und Beschaffungsfunktionen",
+    inhalt:
+      "Bestätigte Funktionsdefinitionen, Fassungen, Quellenregeln, erlaubter Umfang, Zeitplan, Pause, Laufkennungen und Ergebnisse. Rohbeobachtungen liegen nur flüchtig im Lerndienst.",
+    personenbezug: "ja",
+    personenbezugGrund: "Eigentum, Zweck und Verlauf sind einem Konto zugeordnet.",
+    ablage: { ort: DATENBANK, tabellen: ["persoenliche_routinen"] },
+    taetigkeit: "management",
+    loeschung:
+      "Eigene Privatlöschung im Funktionsbereich entfernt die gemeinsamen Funktionszeilen. Getrennt freigegebenes Firmenwissen bleibt erhalten. Externe Löschmarkierungen müssen nach einem Restore verfügbar sein.",
+    frist: "Bestätigte Funktionen bis zur Privatlöschung; keine automatische Frist.",
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Im eigenen Funktionsbereich lesbar; der allgemeine Selbstauskunftsexport ist noch nicht angeschlossen.",
+    },
+    befund:
+      "Ein Datenbank-Restore ohne dauerhaft eingerichtete Löschmarkierungsablage kann ältere private Funktionen zurückbringen.",
+  },
   {
     id: "konten",
     name: "Benutzerkonten",
@@ -844,15 +865,19 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "interaktionsgedaechtnis",
     name: "Interaktionsgedächtnis",
     inhalt:
-      "Je Konto gemerkte frühere Fragen mit der damaligen Antwort im Wortlaut und Vorlieben; Herkunft (eigene Eingabe oder geprüfte eigene Antwortkennung), Vertraulichkeit, Aufbewahrungsfrist.",
+      "Je Konto gemerkte frühere Fragen mit der damaligen Antwort im Wortlaut und Vorlieben; Herkunft (eigene Eingabe oder geprüfte eigene Antwortkennung), Vertraulichkeit, Aufbewahrungsfrist; optional eine begründete befristete Ausnahme mit Ende und verantwortlicher Kontokennung.",
     personenbezug: "ja",
     personenbezugGrund:
       "Gehört genau einem Konto; Frage- und Antworttext sind Freitext und können sensible Angaben enthalten.",
-    ablage: { ort: DATENBANK, tabellen: ["interaktions_gedaechtnis"] },
+    ablage: {
+      ort: DATENBANK,
+      tabellen: ["interaktions_gedaechtnis", "interaktions_gedaechtnis_loeschungen"],
+    },
     taetigkeit: "fragen",
     loeschung:
       "Einzeln und vollständig durch das Konto selbst löschbar; abgelaufene Einträge löscht ein Aufräumlauf endgültig.",
-    frist: "Je Eintrag gewählt: 30, 90 oder 365 Tage (Vorgabe 90).",
+    frist:
+      "Je Eintrag gewählt: 30, 90 oder 365 Tage (Vorgabe 90). Bewusste begründete Ausnahme mit ausdrücklichem Ende innerhalb der vorhandenen Höchstspanne; danach vorhandener Löschlauf.",
     selbstauskunft: {
       enthalten: false,
       grund:
@@ -1171,6 +1196,7 @@ const TAETIGKEITEN: readonly TaetigkeitStamm[] = [
 
 /** Die Betriebslage, aus der die Empfängerangaben entstehen — gelesen zur Erzeugungszeit. */
 export interface Betriebslage {
+  aufbewahrung?: readonly Aufbewahrungsangabe[];
   /** Externe Modellanbieter, an die mindestens eine KI-Aufgabe heute EFFEKTIV geht. */
   modellAnbieter: readonly string[];
   /** Ein eigenes, lokal betriebenes Modell ist effektiv zugeordnet. */
@@ -1213,6 +1239,7 @@ export interface Verarbeitungsverzeichnis {
   offenBeimBetreiber: string[];
   /** Das vollständige Inventar, auch die Datenarten ohne Personenbezug. */
   datenarten: readonly Datenart[];
+  aufbewahrung?: readonly Aufbewahrungsangabe[];
 }
 
 const VOM_BETREIBER = "Vom Betreiber einzutragen.";
@@ -1318,6 +1345,7 @@ export function erzeugeVerarbeitungsverzeichnis(
     verantwortlicher: VOM_BETREIBER,
     datenschutzbeauftragter: VOM_BETREIBER,
     betriebslage: lage,
+    ...(lage.aufbewahrung ? { aufbewahrung: lage.aufbewahrung } : {}),
     taetigkeiten,
     tom: [...TOM],
     offenBeimBetreiber: [...OFFEN_BEIM_BETREIBER],
@@ -1350,6 +1378,19 @@ export function verzeichnisAlsMarkdown(v: Verarbeitungsverzeichnis): string {
   z.push(`- Lokales Modell: ${v.betriebslage.lokalesModell ? "ja" : "nein"}`);
   z.push(`- Externe Recherche: ${v.betriebslage.externeSuche ? "ja" : "nein"}`);
   z.push(`- E-Mail-Versand: ${v.betriebslage.mailVersand ? "ja" : "nein"}`);
+  if (v.aufbewahrung) {
+    z.push(
+      "",
+      "## Getrennte Aufbewahrungszwecke",
+      "",
+      "| Zweck | Verantwortlich | Frist / Regel | Begründung / offener Punkt |",
+      "| --- | --- | --- | --- |",
+    );
+    for (const a of v.aufbewahrung)
+      z.push(
+        `| ${zelle(a.zweck)} | ${zelle(a.verantwortlich ?? "Vom Betreiber einzutragen")} | ${zelle((a.fristTage === null ? "Keine Zahlenfrist festgelegt. " : `${a.fristTage} Tage. `) + a.regel)} | ${zelle((a.begruendung ?? "Keine zusätzliche Begründung eingetragen.") + (a.fachlicheFestlegungOffen ? " Fachliche Festlegung offen." : ""))} |`,
+      );
+  }
   for (const t of v.taetigkeiten) {
     z.push("");
     z.push(`## ${t.name}`);

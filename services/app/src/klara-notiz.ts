@@ -6,6 +6,7 @@ import {
   type KlaraObjektbezug,
   pruefeObjektbezug,
 } from "./klara-gespraech";
+import type { KlaraWissensHerkunft } from "./klara-wissensuebernahme";
 
 // ================================================================================================
 // produkt:20261007:klara-notizen-aufgaben (Klara 06) — PRIVATE NOTIZEN UNTER DER EIGENEN PERSON.
@@ -51,6 +52,7 @@ export interface KlaraNotizQuelle {
 }
 
 export interface KlaraNotiz {
+  readonly wissensHerkunft?: KlaraWissensHerkunft;
   readonly id: string;
   readonly kontoId: string;
   /** Der Vorgangsschlüssel des Anlegens — eine Wiederholung mit ihm legt nichts Zweites an. */
@@ -513,6 +515,7 @@ export class KlaraNotizDienst {
     eingabe: KlaraNotizEingabe,
     // Nur für Notizen, die eine andere Steuerung als Wirkung anlegt (Routinenbericht).
     bedingung?: NotizSchreibbedingung,
+    herkunft?: KlaraWissensHerkunft,
   ): Promise<{ notiz: KlaraNotiz; wiederholt: boolean }> {
     if (typeof eingabe.vorgang !== "string" || !VORGANG_RE.test(eingabe.vorgang)) {
       throw eingabeFehler("vorgang ist Pflicht (8–100 Zeichen aus Buchstaben, Ziffern, - und _).");
@@ -593,6 +596,7 @@ export class KlaraNotizDienst {
       angelegtAm: jetzt,
       geaendertAm: jetzt,
       fassung: 1,
+      ...(herkunft ? { wissensHerkunft: herkunft } : {}),
     };
     if (await this.repo.lege(notiz, bedingung)) {
       return { notiz, wiederholt: false };

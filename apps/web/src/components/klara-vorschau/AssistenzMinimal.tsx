@@ -412,6 +412,7 @@ export function FunktionenSeite({
   aufgaben = null,
   erinnerungen = null,
   arbeitsueberblick = null,
+  lernfunktionen = null,
 }: {
   sprachMoeglich: boolean;
   onAuftragSprechen: () => void;
@@ -436,6 +437,7 @@ export function FunktionenSeite({
   erinnerungen?: ReactNode;
   /** Dieselben berechtigten Originalobjekte im persönlichen Überblick. */
   arbeitsueberblick?: ReactNode;
+  lernfunktionen?: ReactNode;
 }): JSX.Element {
   const { t } = useAssistenzT();
   const geliefert = [
@@ -486,6 +488,7 @@ export function FunktionenSeite({
           ) : null}
         </ul>
       </section>
+      {lernfunktionen}
       {notizen ? <section data-testid="klara-funktion-notizen">{notizen}</section> : null}
       {aufgaben ? <section data-testid="klara-funktion-aufgaben">{aufgaben}</section> : null}
       {kiArbeitsweg ? (

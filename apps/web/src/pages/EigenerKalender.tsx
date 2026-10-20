@@ -34,10 +34,8 @@ import {
 import { useSession } from "../app/AuthContext";
 import { KlaraFristen } from "../components/klara-vorschau/KlaraFristen";
 import { Button, Card, Field, PageHeader, TextInput } from "../components/ui";
+import { isoZuProfilzeit, profilzeitProblem, profilzeitZuIso } from "../lib/kalenderProfilzeit";
 import {
-  isoZuOrtszeit,
-  ortsZone,
-  ortszeitZuIso,
   tagLesbar,
   tagVon,
   tageVon,
@@ -46,6 +44,7 @@ import {
   wocheVon,
   zoneLesbar,
 } from "../lib/kalenderZeit";
+import { usePersoenlicheZeitzone } from "../lib/persoenlicheZeitzone";
 
 type Ansicht = "tag" | "woche" | "agenda";
 const ANSICHTEN: readonly Ansicht[] = ["tag", "woche", "agenda"];
@@ -626,17 +625,20 @@ function Formular({
 }): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const profilZone = usePersoenlicheZeitzone();
+  // Die Zone gehört wie Beginn/Ende zum offenen Entwurf. Spätes Profilladen deutet ihn nicht um.
+  const [zone] = useState(() => vorlage?.zeitzone ?? profilZone);
   const [f, setF] = useState<FormStand>(() =>
     vorlage
       ? {
           titel: vorlage.titel ?? "",
           art: vorlage.art,
           ganztaegig: vorlage.ganztaegig,
-          beginn: vorlage.ganztaegig ? vorlage.beginn : isoZuOrtszeit(vorlage.beginn),
+          beginn: vorlage.ganztaegig ? vorlage.beginn : isoZuProfilzeit(vorlage.beginn, zone),
           ende: vorlage.ende
             ? vorlage.ganztaegig
               ? vorlage.ende
-              : isoZuOrtszeit(vorlage.ende)
+              : isoZuProfilzeit(vorlage.ende, zone)
             : "",
           notiz: vorlage.notiz ?? "",
           status: vorlage.status,
@@ -657,16 +659,20 @@ function Formular({
   );
   const setze = <K extends keyof FormStand>(k: K, v: FormStand[K]): void =>
     setF((alt) => ({ ...alt, [k]: v }));
+  const zeitProblem = f.ganztaegig
+    ? null
+    : (profilzeitProblem(f.beginn, zone) ?? profilzeitProblem(f.ende, zone));
   const speichern = useMutation({
     mutationFn: async () => {
+      if (zeitProblem) throw new ApiError(400, "ZEIT_KLAEREN", "Zeit muss geklärt werden.");
       const eingabe: KalenderEingabe = {
         art: f.art,
         titel: f.titel,
         notiz: f.notiz.trim() ? f.notiz : null,
         ganztaegig: f.ganztaegig,
-        beginn: f.ganztaegig ? f.beginn : (ortszeitZuIso(f.beginn) ?? ""),
-        ende: f.ganztaegig ? f.ende || null : ortszeitZuIso(f.ende),
-        zeitzone: ortsZone(),
+        beginn: f.ganztaegig ? f.beginn : (profilzeitZuIso(f.beginn, zone) ?? ""),
+        ende: f.ganztaegig ? f.ende || null : profilzeitZuIso(f.ende, zone),
+        zeitzone: zone,
         status: f.status,
       };
       const team = vorlage ? vorlage.bereich === "team" : bereich === "team";
@@ -757,7 +763,7 @@ function Formular({
           />
         </Field>
         <p className="text-[12px] text-muted-2" data-testid="kalender-form-zone">
-          {t("kalender.form.zone", { zone: ortsZone() })}
+          {t("kalender.form.zone", { zone })}
         </p>
         <Field label={t("kalender.form.notiz")}>
           <textarea
@@ -821,7 +827,7 @@ function Formular({
             type="submit"
             variant="primary"
             data-testid="kalender-form-speichern"
-            disabled={speichern.isPending}
+            disabled={speichern.isPending || zeitProblem !== null}
           >
             {t("kalender.form.speichern")}
           </Button>
@@ -829,6 +835,11 @@ function Formular({
             {t("kalender.form.abbrechen")}
           </Button>
         </div>
+        {zeitProblem ? (
+          <p role="alert" data-testid="kalender-profilzeit-klaeren">
+            {t(`klaraeinfuehrung.zeit${zeitProblem === "luecke" ? "Luecke" : "Doppelt"}`)}
+          </p>
+        ) : null}
         {speichern.isError ? (
           <p role="alert" data-testid="kalender-form-fehler" className="text-trust-crit-text">
             {t(fehlerSchluessel(speichern.error))}
@@ -843,7 +854,7 @@ export function EigenerKalender(): JSX.Element {
   const { t, i18n } = useTranslation();
   const { user } = useSession();
   const qc = useQueryClient();
-  const zone = ortsZone();
+  const zone = usePersoenlicheZeitzone();
   const heute = tagVon(new Date(), zone);
   const [bereich, setBereich] = useState<KalenderBereich>("persoenlich");
   const [ansicht, setAnsicht] = useState<Ansicht>("woche");

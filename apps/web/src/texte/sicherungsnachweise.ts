@@ -207,6 +207,9 @@ export default {
     "sicherungsnachweise.bereiche.fristen.titel": "Persönliche erkannte Fristen",
     "sicherungsnachweise.bereiche.fristen.text":
       "Quellenauswahl, Fristvorgänge, Belegverlauf und Ablehnungsmarken liegen in derselben Datenbank. Ob sie wiederhergestellt wurden, zeigt erst der tatsächliche Tabellenvergleich.",
+    "sicherungsnachweise.bereiche.funktionen.titel": "Persönliche Lernfunktionen",
+    "sicherungsnachweise.bereiche.funktionen.text":
+      "Bestätigte Lern- und Beschaffungsfunktionen einschließlich Fassungen, Zeitplan und Laufständen liegen in der Datenbank. Flüchtige Rohbeobachtungen fehlen im Dump. Nach einem Restore müssen private Löschmarkierungen verfügbar sein.",
     "sicherungsnachweise.bereiche.erinnerungen.titel": "Persönliche Erinnerungen",
     "sicherungsnachweise.bereiche.erinnerungen.text":
       "Erinnerungen je Konto mit Zeitplan, Zeitzone und Regeln, dazu jeder Lauf und jede zugestellte Meldung. Nach einer Wiederherstellung verhindern die festen Meldungskennungen eine zweite Zustellung.",
@@ -391,6 +394,9 @@ export default {
     "sicherungsnachweise.bereiche.fristen.titel": "Personal detected deadlines",
     "sicherungsnachweise.bereiche.fristen.text":
       "Source selection, deadline records, evidence history and rejection markers reside in the same database. Only an actual table comparison confirms their restoration.",
+    "sicherungsnachweise.bereiche.funktionen.titel": "Personal learned functions",
+    "sicherungsnachweise.bereiche.funktionen.text":
+      "Confirmed learned and procurement functions, including versions, schedules and run states, are stored in the database. Temporary raw observations are absent from the dump. Private deletion markers must remain available after a restore.",
     "sicherungsnachweise.bereiche.erinnerungen.titel": "Personal reminders",
     "sicherungsnachweise.bereiche.erinnerungen.text":
       "Reminders per account with schedule, time zone and rules, plus every run and every delivered notification. After a restore, the fixed notification IDs prevent a second delivery.",
@@ -577,6 +583,9 @@ export default {
     "sicherungsnachweise.bereiche.fristen.titel": "Persoonlijke herkende termijnen",
     "sicherungsnachweise.bereiche.fristen.text":
       "Bronselectie, termijnregistraties, bewijsgeschiedenis en afwijzingsmarkeringen staan in dezelfde database. Alleen een daadwerkelijke tabelvergelijking bevestigt het herstel.",
+    "sicherungsnachweise.bereiche.funktionen.titel": "Persoonlijke geleerde functies",
+    "sicherungsnachweise.bereiche.funktionen.text":
+      "Bevestigde leer- en inkoopfuncties met versies, planning en uitvoeringsstatus staan in de database. Tijdelijke ruwe waarnemingen ontbreken in de dump. Privéverwijdermarkeringen moeten na herstel beschikbaar blijven.",
     "sicherungsnachweise.bereiche.erinnerungen.titel": "Persoonlijke herinneringen",
     "sicherungsnachweise.bereiche.erinnerungen.text":
       "Herinneringen per account met planning, tijdzone en regels, plus elke uitvoering en elke afgeleverde melding. Na een herstel voorkomen de vaste meldingskenmerken een tweede aflevering.",

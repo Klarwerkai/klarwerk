@@ -294,6 +294,7 @@ export function Output(): JSX.Element {
           {OUTPUT_KIND_OPTIONS.map((o) => (
             <button
               key={o.kind}
+              data-testid="output-art"
               type="button"
               onClick={() => setKind(o.kind)}
               className={`rounded-card border p-2.5 text-left ${

@@ -9,7 +9,7 @@ import {
 } from "../klara-aktionsverlauf";
 import type { KlaraAuftrag, KlaraAuftragSchritt } from "../klara-auftrag";
 import { bindeAuftragsnotizen } from "../klara-auftragsnotiz";
-import { KlaraAusfuehrung, type KlaraRufe } from "../klara-ausfuehrung";
+import { KlaraAusfuehrung, type KlaraRufe, type KlaraVorWirkung } from "../klara-ausfuehrung";
 import {
   type KlaraGespraech,
   type KlaraGespraechDienst,
@@ -46,6 +46,8 @@ export const KLARA_GESPRAECH_GELOESCHT = "klara.gespraech.geloescht";
 export interface KlaraGespraechRoutenDeps {
   dienst: KlaraGespraechDienst;
   audit: AuditService;
+  /** BPA-06: Prüfung eines Auftrags aus einem Routinenlauf vor der Wirkung. */
+  vorWirkung?: KlaraVorWirkung;
 }
 
 const FEHLERCODE: Record<KlaraGespraechFehler["status"], string> = {
@@ -131,7 +133,7 @@ export function klaraGespraechRoutes(
   guards: Guards,
 ): FastifyPluginAsync {
   const { dienst, audit } = deps;
-  const ausfuehrung = new KlaraAusfuehrung(dienst);
+  const ausfuehrung = new KlaraAusfuehrung(dienst, deps.vorWirkung);
 
   return async (app) => {
     app.get("/api/me/klara/gespraech", async (request, reply) => {

@@ -394,13 +394,15 @@ body.klara-inspect * {
    `data-tutorial-aktiv`. Die Markierung ist ruhig und statisch — Bewegung (ein kurzes, zweimaliges
    Aufleuchten) gibt es nur ohne `prefers-reduced-motion: reduce`. Welches Element gemeint ist, sagt
    zusätzlich der Text „Gerade gezeigt: …“ — die Farbe ist nicht der einzige Träger. */
-.tutorial-demo [data-tutorial-aktiv="true"] {
+.tutorial-demo [data-tutorial-aktiv="true"],
+[data-tutorial-aktiv="true"] {
   outline: 3px solid rgb(var(--kw-brand));
   outline-offset: 3px;
   border-radius: 6px;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .tutorial-demo [data-tutorial-aktiv="true"] {
+  .tutorial-demo [data-tutorial-aktiv="true"],
+  [data-tutorial-aktiv="true"] {
     animation: kw-tutorial-aufleuchten 1.2s ease-in-out 2;
   }
 }

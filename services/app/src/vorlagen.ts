@@ -1728,12 +1728,18 @@ export interface VorlagenEinreichungPort {
     bezug: unknown,
     inhalt: EinreichInhalt,
     nutzer: VorlagenNutzer,
+    zielSpaceId?: string,
   ): Promise<EinreichEntscheid>;
   /**
    * Nach der Anlage: bei einem gewählten Space ZUERST dort ablegen, dann den Bezug vermerken.
    * Scheitert die Ablage, nimmt der Port die Anlage zurück und wirft `VorlagenSpaceFehler`.
    */
-  vermerke(koId: string, bezug: VorlagenBezug | null, nutzer: VorlagenNutzer): Promise<void>;
+  vermerke(
+    koId: string,
+    bezug: VorlagenBezug | null,
+    nutzer: VorlagenNutzer,
+    zielSpaceId?: string,
+  ): Promise<void>;
   /**
    * aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8, Bens Befund) — nennt der rohe Bezug
    * einen Space, läuft `arbeit` (Prüfung, Anlage, `vermerke`) unter derselben Sperre wie
@@ -1741,7 +1747,7 @@ export interface VorlagenEinreichungPort {
    * `SPACE_GELOESCHT`, nichts entsteht) oder wartet bis nach der Zuordnung (der Space trägt den
    * Beitrag, die Löschung wird abgelehnt). Ohne Space läuft `arbeit` unverändert.
    */
-  sperre<T>(bezug: unknown, arbeit: () => Promise<T>): Promise<T>;
+  sperre<T>(bezug: unknown, arbeit: () => Promise<T>, zielSpaceId?: string): Promise<T>;
   /**
    * Dieselbe Sperre für lange Anlagewege (`from-document`, Promote): sie gilt ab der Rückkehr bis
    * zum Aufruf der zurückgegebenen Freigabe — im `finally` des Aufrufers. Ohne Space: sofort frei.
@@ -1812,8 +1818,10 @@ export function vorlagenEinreichung(deps: VorlagenDienstDeps): VorlagenEinreichu
   }
 
   return {
-    sperre<T>(roh: unknown, arbeit: () => Promise<T>): Promise<T> {
-      return mitSpace(roh) && deps.exklusiv ? deps.exklusiv(arbeit) : arbeit();
+    sperre<T>(roh: unknown, arbeit: () => Promise<T>, zielSpaceId?: string): Promise<T> {
+      return (mitSpace(roh) || Boolean(zielSpaceId)) && deps.exklusiv
+        ? deps.exklusiv(arbeit)
+        : arbeit();
     },
 
     async halte(roh) {
@@ -1836,7 +1844,7 @@ export function vorlagenEinreichung(deps: VorlagenDienstDeps): VorlagenEinreichu
       return freigeben;
     },
 
-    async pruefe(roh, inhalt, nutzer) {
+    async pruefe(roh, inhalt, nutzer, zielSpaceId) {
       const bezug = bezugAus(roh);
       if (bezug === "ungueltig") {
         return {
@@ -1864,11 +1872,12 @@ export function vorlagenEinreichung(deps: VorlagenDienstDeps): VorlagenEinreichu
         }
       }
       let space: SpaceFassung | undefined;
-      if (bezug?.spaceId) {
-        space = spaces.find((s) => s.id === bezug.spaceId);
+      const spaceId = bezug?.spaceId ?? zielSpaceId;
+      if (spaceId) {
+        space = spaces.find((s) => s.id === spaceId);
         // aufnahme:20260922:gesamt-wissensprojekte: ein inzwischen GELÖSCHTER Space ist für den,
         // der ihn sehen durfte, ein erkennbarer Konflikt — kein stiller Rückfall auf „ohne Space“.
-        if (!space && (await geloeschtUndSichtbar(bezug.spaceId, nutzer))) {
+        if (!space && (await geloeschtUndSichtbar(spaceId, nutzer))) {
           return {
             ok: false,
             status: 409,
@@ -1928,21 +1937,23 @@ export function vorlagenEinreichung(deps: VorlagenDienstDeps): VorlagenEinreichu
       return { ok: true, bezug };
     },
 
-    async vermerke(koId, bezug, nutzer) {
-      if (!bezug) {
+    async vermerke(koId, bezug, nutzer, zielSpaceId) {
+      const spaceId = bezug?.spaceId ?? zielSpaceId;
+      if (!bezug && !spaceId) {
         return;
       }
       // Erst der Space, dann der Beleg: ein Beitrag mit gewähltem Space darf nie ohne ihn — also
       // breiter sichtbar als gewählt — stehen bleiben. Scheitert die Ablage, wird die Anlage
       // zurückgenommen, und es entsteht auch kein Nutzungsbeleg.
-      if (bezug.spaceId && deps.inSpaceLegen) {
+      if (spaceId && deps.inSpaceLegen) {
         try {
-          await deps.inSpaceLegen(koId, bezug.spaceId, nutzer.id);
+          await deps.inSpaceLegen(koId, spaceId, nutzer.id);
         } catch (ursache) {
           await deps.anlageZuruecknehmen?.(koId, nutzer.id);
           throw new VorlagenSpaceFehler(ursache);
         }
       }
+      if (!bezug) return;
       const vorlage = (await vorlagenFassungen(deps.ablage, bezug.id)).find(
         (f) => f.version === bezug.version,
       );

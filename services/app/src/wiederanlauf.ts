@@ -35,6 +35,7 @@ import type { AuthService } from "../../auth";
 import { can } from "../../rbac";
 import { HINTERGRUNDLAUF_AUDIT } from "./hintergrundpruefung";
 import { makeGuards, tokenFromRequest } from "./http";
+import type { LoeschmarkierungsNachfuehrung } from "./loeschmarkierungen";
 import {
   type WiederanlaufGrenze,
   type WissensereignisQuellen,
@@ -46,6 +47,8 @@ export const AKTION_WIEDERANLAUF_BEGONNEN = "wiederanlauf.begonnen";
 export const AKTION_WIEDERANLAUF_FREIGEGEBEN = "wiederanlauf.freigegeben";
 /** Nachtrag des Sicherungsstands, wenn der erste Start ihn nicht kannte. */
 export const AKTION_WIEDERANLAUF_SICHERUNGSSTAND = "wiederanlauf.sicherungsstand";
+/** P06 · RF-17: die Löschmarkierungen persönlicher Routinen sind nachgeführt (nur Zahlen). */
+export const AKTION_WIEDERANLAUF_LOESCHMARKIERUNGEN = "wiederanlauf.loeschmarkierungen";
 export const WIEDERANLAUF_AKTEUR = "system:wiederanlauf";
 export const WIEDERANLAUF_PFAD = "/api/admin/wiederanlauf";
 
@@ -170,6 +173,12 @@ export interface WiederanlaufDeps {
   auth: AuthService;
   quellen: WissensereignisQuellen;
   log?: { info: (text: string) => void };
+  /**
+   * produkt:20261011:peter-p06 · RF-17: führt die Löschmarkierungen der Privatlöschung nach
+   * (`loeschmarkierungen.ts`) — im `onReady`, also bevor eine Anfrage angenommen wird und damit vor
+   * der Freigabe. Ein Fehler lässt die App nicht bereit werden (fail-closed). Ohne Angabe wie bisher.
+   */
+  loeschmarkierungen?: () => Promise<LoeschmarkierungsNachfuehrung>;
 }
 
 export interface WiederanlaufLage {
@@ -194,8 +203,26 @@ export function registriereWiederanlauf(
   // Die Nachführungsgrenze: AUSSCHLIESSLICH der Sicherungsstand (s. `SICHERUNGSSTAND_ENV`). Kein
   // Auditzeitpunkt ersetzt ihn — unbekannt bleibt unbekannt, und dann gibt es keine Freigabe.
   let sicherungsstand: string | null = deps.wiederanlauf.sicherungsstand ?? null;
+  // P06 · RF-17: Ergebnis der Nachführung persönlicher Löschmarkierungen; `null` ohne Anschluss.
+  let loeschmarkierungen: LoeschmarkierungsNachfuehrung | null = null;
 
   app.addHook("onReady", async () => {
+    // ZUERST die Löschmarkierungen: was die Person nach dem Sicherungsstand privat gelöscht hat, ist
+    // weg, bevor irgendjemand — auch die Verwaltung — eine Anfrage stellen kann.
+    if (deps.loeschmarkierungen) {
+      loeschmarkierungen = await deps.loeschmarkierungen();
+      await deps.audit.recordOnce(`${AKTION_WIEDERANLAUF_LOESCHMARKIERUNGEN}:${kennung}`, {
+        actor: WIEDERANLAUF_AKTEUR,
+        action: AKTION_WIEDERANLAUF_LOESCHMARKIERUNGEN,
+        target: "wiederanlauf",
+        payload: {
+          kennung,
+          eingerichtet: loeschmarkierungen.ort !== null,
+          markierungen: loeschmarkierungen.markierungen,
+          entfernt: loeschmarkierungen.entfernt,
+        },
+      });
+    }
     // DAUERHAFT: steht der Stand schon im Beginn-Eintrag dieses Wiederanlaufs, gilt er — auch nach
     // einem Neustart mit anderer oder fehlender Angabe. Erst ein unbekannter Stand nimmt die Angabe
     // dieses Starts an (und hält sie im Nachtrag fest).
@@ -353,6 +380,9 @@ export function registriereWiederanlauf(
         letzterBestaetigterPunkt: punkt[a.id] ?? null,
       })),
       weiterlaufend: WEITERLAUFENDE_FRISTLAEUFE,
+      // P06 · RF-17: vor der Annahme der ersten Anfrage angewendet; `ort: null` = keine Ablage
+      // eingerichtet (`KLARWERK_LOESCHMARKIERUNGEN`), dann ist nichts nachgeführt.
+      persoenlicheLoeschmarkierungen: loeschmarkierungen,
       replayGrenze: grenze
         ? {
             unterdrueckt: grenze.unterdrueckt,

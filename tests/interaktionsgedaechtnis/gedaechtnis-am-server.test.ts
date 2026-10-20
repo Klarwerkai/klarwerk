@@ -271,7 +271,7 @@ describe("G5 · Tür, Haltbarkeit und Aufräumlauf", () => {
       new URL("../../services/app/src/build-app.ts", import.meta.url),
       "utf8",
     );
-    expect(wurzel).toMatch(/gedaechtnis: new PgGedaechtnisRepo\(pool\)/);
+    expect(wurzel).toMatch(/gedaechtnis: new PgGedaechtnisRepo\(\s*pool,/);
     const server = readFileSync(
       new URL("../../services/app/src/server.ts", import.meta.url),
       "utf8",

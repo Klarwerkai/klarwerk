@@ -26,6 +26,7 @@ import {
 // produkt:20261012:klara-setup-shortcuts-umsetzung (AA-04): der eine Ausführungsweg der Klara-Kürzel.
 import { KlaraKuerzelAusfuehrung } from "../components/klara-setup/KlaraKuerzelAusfuehrung";
 import { useKlaraVorschauAktiv } from "../components/klara-vorschau/aktiv";
+import { VormachenAnzeige } from "../components/vormachen/VormachenAnzeige";
 // AUFTRAG-mega61 Block A/B: Hinweisbanner auf derselben Ebene wie Kopfband und Meldungsfläche —
 // bewusst NICHT im Torwächter, damit der Anmeldeweg unberührt bleibt. Der Fußbereich (LegalFooter)
 // steht seit JOB 3060 in der Hülle als Zeile „Rechtliches" im Zahnrad-Menü (shell/ZahnradMenue.tsx);
@@ -181,17 +182,21 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   // B1b: /mobile OHNE Shell — volle schmale Breite, kein Kopfband-Chrome drumherum.
   if (location.pathname === "/mobile") {
     return (
-      <div className="h-full">
-        {children}
-        {/* AUFTRAG-mega61 Block A/B: auch die shell-lose Route trägt Hinweis und Fußbereich —
+      <TutorialProvider>
+        <div className="h-full">
+          <TutorialEinstieg />
+          <TutorialFlaeche />
+          {children}
+          {/* AUFTRAG-mega61 Block A/B: auch die shell-lose Route trägt Hinweis und Fußbereich —
             „auf jeder Seite" heißt jede, sonst wäre die Zusage an genau einer Stelle unwahr.
             Hier gibt es kein Zahnrad-Menü, deshalb bleibt der Fußbereich im Fluss. */}
-        <NoticeBanner />
-        <div className="px-4">
-          <LegalFooter />
+          <NoticeBanner />
+          <div className="px-4">
+            <LegalFooter />
+          </div>
+          <ToastViewport />
         </div>
-        <ToastViewport />
-      </div>
+      </TutorialProvider>
     );
   }
 
@@ -236,6 +241,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
                   <CommandPalette />
                   <ToastViewport />
                   <KlaraEbene />
+                  <VormachenAnzeige />
                 </ModalRegion>
               </div>
               <MobileNavDrawer
@@ -310,6 +316,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
               <CommandPalette />
               <ToastViewport />
               <KlaraEbene />
+              <VormachenAnzeige />
             </ModalRegion>
           </ModalBoundaryProvider>
         </div>
