@@ -59,7 +59,12 @@ describe("AW21 · tatsächlicher bestehender D-Laufguard vor Norm-Fristen-CAS",(
       }
     };faellig();await lauf();expect(sqlErgebnisse.length).toBeGreaterThan(0);expect(sqlErgebnisse.every(r=>r===false)).toBe(true);
     expect(await andere.klaraFristen.hole(f.kontoId)).toBeNull();expect(await andere.klaraNotizen.liste(f.kontoId,{woerter:[],art:null,limit:100})).toEqual([]);
-    expect(await andere.klaraErinnerungen.meldungen.fuerKonto(f.kontoId,20)).toEqual([]);
+    if(art==="quellentzug")expect((await andere.klaraErinnerungen.erinnerungen.hole(f.kontoId,f.e.id))?.erinnerung.status).toBe("pausiert");
+    const meldungen=await andere.klaraErinnerungen.meldungen.fuerKonto(f.kontoId,20);
+    if(art==="quellentzug") {
+      expect(meldungen).toEqual([expect.objectContaining({art:"handlung",laufStatus:"fehlgeschlagen",grund:"quelle_geaendert"})]);
+      expect(JSON.stringify(meldungen)).not.toContain(TEXT);
+    } else expect(meldungen).toEqual([]);
   });
   it("neuer Pool/App/Anmeldung führt denselben ausdrücklich gespeicherten Watchauftrag mit späterem Publikationsbeleg in derselben Geschichte fort",async()=>{
     const f=await fall();faellig();await lauf();const vorher=await andere.klaraFristen.hole(f.kontoId);
