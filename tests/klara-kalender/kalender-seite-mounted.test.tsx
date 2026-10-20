@@ -463,3 +463,16 @@ describe("U4 · DE/EN", () => {
     expect(finde("kalender-zauberhut-start")?.textContent).toContain("Set up with the magic hat");
   });
 });
+
+it("Arbeitsüberblick: der Rücklink fokussiert nach dem Laden dieselbe wartende Kalenderzuordnung, ohne sie zu entscheiden", async () => {
+  anbindungen = [ANBINDUNG];
+  window.history.replaceState(null, "", "#kalender-zuordnung-kk-pausiert");
+  try {
+    await oeffne();
+    expect(document.activeElement?.id).toBe("kalender-zuordnung-kk-pausiert");
+    expect(rufe.filter((r) => r.methode !== "GET")).toEqual([]);
+    expect(finde("kalender-entscheidung")).toBeNull();
+  } finally {
+    window.history.replaceState(null, "", window.location.pathname);
+  }
+});

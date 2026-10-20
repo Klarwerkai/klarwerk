@@ -14,7 +14,7 @@
 //   · S09: ein Eintrag des EIGENEN Kalenders wird ausgewählt und mit SEINER Auftrags- und
 //     Ereigniskennung eingetragen (`eigenerEintragId`) — nichts wird doppelt erfasst.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import {
@@ -837,6 +837,24 @@ function AnbindungKarte({ a }: { a: KalenderAnbindung }): JSX.Element {
     queryKey: ["klara-kalender", "zuordnungen", a.id],
     queryFn: () => klaraKalenderApi.zuordnungen(a.id),
   });
+  useEffect(() => {
+    const oeffneVerweis = () => {
+      let ziel: string;
+      try {
+        ziel = decodeURIComponent(window.location.hash.slice(1));
+      } catch {
+        return;
+      }
+      if (!zuordnungen.data?.zuordnungen.some((z) => ziel === `kalender-zuordnung-${z.schluessel}`))
+        return;
+      const original = document.getElementById(ziel);
+      original?.focus();
+      original?.scrollIntoView?.({ block: "center" });
+    };
+    oeffneVerweis();
+    window.addEventListener("hashchange", oeffneVerweis);
+    return () => window.removeEventListener("hashchange", oeffneVerweis);
+  }, [zuordnungen.data]);
   const von = new Date();
   const bis = new Date(von.getTime() + 14 * 24 * 3_600_000);
   const termine = useQuery({
@@ -907,7 +925,13 @@ function AnbindungKarte({ a }: { a: KalenderAnbindung }): JSX.Element {
           ) : null}
           <ul className="space-y-2" data-testid="kalender-zuordnungen">
             {(zuordnungen.data?.zuordnungen ?? []).map((z) => (
-              <li key={z.schluessel} data-stand={z.stand} className="text-[13px]">
+              <li
+                key={z.schluessel}
+                id={`kalender-zuordnung-${z.schluessel}`}
+                tabIndex={-1}
+                data-stand={z.stand}
+                className="text-[13px]"
+              >
                 <span className="font-medium">{z.intern.inhalt.titel}</span> ·{" "}
                 {z.intern.inhalt.beginn} ({z.intern.inhalt.zeitzone}) ·{" "}
                 {t(`klarakalender.serienart.${z.serienart}`)} ·{" "}

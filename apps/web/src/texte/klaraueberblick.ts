@@ -1,0 +1,72 @@
+import type { Textmodul } from "./intern/pruefung";
+export default {
+  praefix: "klaraueberblick.",
+  legacySchluessel: [],
+  de: {
+    "klaraueberblick.titel": "Mein Arbeitsüberblick",
+    "klaraueberblick.hilfe":
+      "Eigene Aufgaben, Erinnerungen, Notizen und wartende Erinnerungs- oder Kalenderentscheidungen. Öffnen führt zum Original; Aktualisieren liest den heutigen Stand mit deinen Rechten.",
+    "klaraueberblick.aktualisieren": "Aktualisieren",
+    "klaraueberblick.aufgaben": "Offene persönliche Aufgaben",
+    "klaraueberblick.erinnerungen": "Anstehende Erinnerungen",
+    "klaraueberblick.entscheidungen": "Wartende Entscheidungen",
+    "klaraueberblick.notizen": "Meine Notizen",
+    "klaraueberblick.fehler":
+      "Dieser Bestand konnte nicht gelesen werden. Bitte erneut aktualisieren.",
+    "klaraueberblick.entscheidungenFehler":
+      "Mindestens eine Entscheidungsquelle konnte nicht gelesen werden. Der angezeigte Bestand ist unvollständig.",
+    "klaraueberblick.laden": "Wird geladen …",
+    "klaraueberblick.leer": "Hier liegt derzeit nichts vor.",
+    "klaraueberblick.zeitOffen": "Kein nächster Zeitpunkt festgelegt",
+    "klaraueberblick.offen": "offen",
+    "klaraueberblick.aktiv": "aktiv",
+    "klaraueberblick.pausiert": "pausiert",
+    "klaraueberblick.klaerung": "Öffnen und klären",
+    "klaraueberblick.kalenderEntscheidung": "Kalenderabgleich benötigt eine Entscheidung",
+    "klaraueberblick.fassung": "Fassung {{fassung}}",
+  },
+  en: {
+    "klaraueberblick.titel": "My work overview",
+    "klaraueberblick.hilfe":
+      "Your tasks, reminders, notes and pending reminder or calendar decisions. Open the original to continue; refresh reads the current state with your permissions.",
+    "klaraueberblick.aktualisieren": "Refresh",
+    "klaraueberblick.aufgaben": "Open personal tasks",
+    "klaraueberblick.erinnerungen": "Upcoming reminders",
+    "klaraueberblick.entscheidungen": "Pending decisions",
+    "klaraueberblick.notizen": "My notes",
+    "klaraueberblick.fehler": "This source could not be read. Please refresh again.",
+    "klaraueberblick.entscheidungenFehler":
+      "At least one decision source could not be read. The displayed list is incomplete.",
+    "klaraueberblick.laden": "Loading …",
+    "klaraueberblick.leer": "There are currently no items here.",
+    "klaraueberblick.zeitOffen": "No next time set",
+    "klaraueberblick.offen": "open",
+    "klaraueberblick.aktiv": "active",
+    "klaraueberblick.pausiert": "paused",
+    "klaraueberblick.klaerung": "Open and resolve",
+    "klaraueberblick.kalenderEntscheidung": "Calendar sync needs a decision",
+    "klaraueberblick.fassung": "Version {{fassung}}",
+  },
+  nl: {
+    "klaraueberblick.titel": "Mijn werkoverzicht",
+    "klaraueberblick.hilfe":
+      "Eigen taken, herinneringen, notities en wachtende beslissingen over herinneringen of agenda's. Open het origineel om verder te werken; vernieuwen leest de huidige stand met je rechten.",
+    "klaraueberblick.aktualisieren": "Vernieuwen",
+    "klaraueberblick.aufgaben": "Open persoonlijke taken",
+    "klaraueberblick.erinnerungen": "Komende herinneringen",
+    "klaraueberblick.entscheidungen": "Wachtende beslissingen",
+    "klaraueberblick.notizen": "Mijn notities",
+    "klaraueberblick.fehler": "Deze bron kon niet worden gelezen. Vernieuw opnieuw.",
+    "klaraueberblick.entscheidungenFehler":
+      "Minstens één beslissingsbron kon niet worden gelezen. De getoonde lijst is onvolledig.",
+    "klaraueberblick.laden": "Wordt geladen …",
+    "klaraueberblick.leer": "Hier zijn momenteel geen items.",
+    "klaraueberblick.zeitOffen": "Geen volgend tijdstip ingesteld",
+    "klaraueberblick.offen": "open",
+    "klaraueberblick.aktiv": "actief",
+    "klaraueberblick.pausiert": "gepauzeerd",
+    "klaraueberblick.klaerung": "Openen en oplossen",
+    "klaraueberblick.kalenderEntscheidung": "Agenda-afstemming vereist een beslissing",
+    "klaraueberblick.fassung": "Versie {{fassung}}",
+  },
+} satisfies Textmodul;

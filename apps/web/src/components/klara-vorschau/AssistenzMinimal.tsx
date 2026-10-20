@@ -411,6 +411,7 @@ export function FunktionenSeite({
   notizen = null,
   aufgaben = null,
   erinnerungen = null,
+  arbeitsueberblick = null,
 }: {
   sprachMoeglich: boolean;
   onAuftragSprechen: () => void;
@@ -433,6 +434,8 @@ export function FunktionenSeite({
   aufgaben?: ReactNode;
   /** Vorhandene Erinnerungsentwürfe und ihre Bedienung bleiben über „Meine Funktionen“ erreichbar. */
   erinnerungen?: ReactNode;
+  /** Dieselben berechtigten Originalobjekte im persönlichen Überblick. */
+  arbeitsueberblick?: ReactNode;
 }): JSX.Element {
   const { t } = useAssistenzT();
   const geliefert = [
@@ -446,6 +449,9 @@ export function FunktionenSeite({
   ] as const;
   return (
     <div className="space-y-3">
+      {arbeitsueberblick ? (
+        <section data-testid="klara-funktion-arbeitsueberblick">{arbeitsueberblick}</section>
+      ) : null}
       {erinnerungen ? (
         <section data-testid="klara-funktion-erinnerungen">{erinnerungen}</section>
       ) : null}

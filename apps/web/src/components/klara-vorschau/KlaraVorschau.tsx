@@ -109,6 +109,7 @@ import {
   VorgangsLeiste,
 } from "./AssistenzMinimal";
 import { KiArbeitsweg } from "./KiArbeitsweg";
+import { KlaraArbeitsueberblick } from "./KlaraArbeitsueberblick";
 import { KlaraAufgaben } from "./KlaraAufgaben";
 import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
@@ -2695,6 +2696,11 @@ export function KlaraVorschau({
                 // Integration main (Klara 07): die eigenen Aufgaben wiederfinden — dieselbe Liste
                 // wie im bisherigen Panel; angelegt wird über den Ausführungsweg im Gespräch.
                 aufgaben={istEcht && kontoId ? <KlaraAufgaben /> : null}
+                arbeitsueberblick={
+                  istEcht && kontoId ? (
+                    <KlaraArbeitsueberblick key={kontoId} kontoId={kontoId} />
+                  ) : null
+                }
                 erinnerungen={istEcht && kontoId ? <KlaraErinnerungen /> : null}
                 // Integration main (BPA-13): derselbe KI-Arbeitsweg am eigenen gespeicherten
                 // Gespräch wie im bisherigen Panel — erreichbar über „Meine Funktionen“.
@@ -4195,6 +4201,7 @@ export function KlaraVorschau({
             {/* Klara 05: Ausführungsaufträge — Grenze, Schritte, Abbrechen, Rückgängig. */}
             {istEcht ? <KlaraAusfuehrungen umgebung={auftragsUmgebung} /> : null}
             {/* Klara 06: die privaten Notizen — anlegen, wiederfinden, öffnen, ändern. */}
+            {istEcht && kontoId ? <KlaraArbeitsueberblick key={kontoId} kontoId={kontoId} /> : null}
             {istEcht && kontoId ? <KlaraNotizen /> : null}
             {/* Klara 07: die persönlichen Aufgaben — öffnen, ändern, priorisieren, erledigen. */}
             {istEcht && kontoId ? <KlaraAufgaben /> : null}
