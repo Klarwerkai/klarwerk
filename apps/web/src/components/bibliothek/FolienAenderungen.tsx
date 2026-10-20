@@ -108,6 +108,7 @@ export function FolienAenderungen({
             <label>
               {t("folienaenderungen.datenpunkt")}
               <select
+                aria-label={t("folienaenderungen.datenpunkt")}
                 value={wahl}
                 onChange={(e) => {
                   verwerfe();
