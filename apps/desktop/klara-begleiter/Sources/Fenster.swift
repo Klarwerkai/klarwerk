@@ -32,7 +32,7 @@ final class BegleitInhalt: NSView {
         kopf.blendingMode = .withinWindow
         kopf.state = .active
         titel.font = .systemFont(ofSize: 13, weight: .semibold)
-        titel.frame = NSRect(x: 12, y: 9, width: 90, height: 18)
+        titel.lineBreakMode = .byTruncatingTail
         kopf.addSubview(titel)
         beenden.bezelStyle = .rounded
         beenden.font = .systemFont(ofSize: 12)
@@ -67,6 +67,7 @@ final class BegleitInhalt: NSView {
         webView.isHidden = ersatz
         kopf.isHidden = figur
         kopf.frame = NSRect(x: 0, y: bounds.height - hoehe, width: bounds.width, height: hoehe)
+        titel.frame = NSRect(x: 12, y: 9, width: max(0, bounds.width - 152), height: 18)
         beenden.frame = NSRect(x: max(0, bounds.width - 124), y: 4, width: 116, height: 28)
         webView.frame = NSRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - hoehe))
     }
