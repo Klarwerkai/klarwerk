@@ -186,3 +186,27 @@ den alten Shell-Baum und besteht mit der Korrektur; fünf bestehende Shell-/Moda
 bestehen ebenfalls. Das sind Komponentenbelege. Der unveränderte PP-05-Browserfall mit
 Übernahme/Herkunft/Rücknahme und die visuelle Prüfung bei 320 px warten auf eine neue feste
 Ressourcenzuteilung. Vorige PP-05-/Downloadbelege werden dadurch nicht zu neuen Browserbelegen.
+
+## Getrennter Nachtrag: lokal deklarierte Beziehungs-Namensräume
+
+Der ursprüngliche PP-05-Browserfall bestand auf dem reinen Textfixture-Nachfolger `8fcb7acac`
+vollständig einschließlich Rücknahme auf das ursprüngliche Dateiobjekt. Die danach tatsächlich
+in PowerPoint 16.111 geprüften ursprünglichen 6463-Byte-Vorlage und 35409-Byte-Ausgabe boten
+beide nur eine Reparatur an; diese alten negativen Ergebnisse bleiben erhalten.
+
+Eine neue kontrollierte R1-Eingabe (19682 Byte, SHA256
+`fe18644a17d0fd415795aa32dad4e060b7292b1576f4de4b06938556dabe9a11`) öffnete dagegen tatsächlich
+warnungsfrei in PowerPoint. Der einmalige unveränderte PP-05-Weg speicherte daraus eine
+50892-Byte-Ausgabe mit geschlossenen Herkunftsbindungen; diese bot beim nativen Öffnen wiederum
+eine Reparatur an. Keiner dieser Versuche nutzte Repair, eine private Datei oder einen neuen Host.
+
+Die konkrete Ursache liegt in `ppt/presentation.xml`: R1 deklariert `r` nur an einzelnen
+vorhandenen Verweisen. Die neu angehängten Geschwister mit `r:id` hatten keine Deklaration und
+damit einen ungebundenen XML-Präfix. Der Schreiber deklariert den Beziehungs-Namensraum jetzt an
+jedem neuen Verweis selbst. Keine Änderung an Daten, Bindungen, Folienkennungen oder Deckvertrag.
+
+`pp05-native-paket.test.ts` verwendet genau die tatsächlich nativ geöffnete R1-Datei als Fixture
+und die eingefrorene fehlerhafte Folienliste. Ein strikter XML-Parser weist den alten Fehler zurück
+und prüft das geänderte Paket bei lokalen und globalen Namespace-Deklarationen, auflösbare
+Folienverweise und erhaltene Vorlagenteile. Die native Öffnung/Bearbeitung/Speicherung/Wiederöffnung
+der geänderten Ausgabe ist ein separater noch ausstehender Nachweis; XML-Prüfung ersetzt ihn nicht.

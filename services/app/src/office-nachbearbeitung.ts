@@ -616,7 +616,7 @@ function pruefeSchritt(s: Schritt, folie: Folie | undefined, folienXml: string):
   };
 }
 
-function ersetzeImLauf(folienXml: string, alt: string, neu: string): string {
+export function ersetzeImLauf(folienXml: string, alt: string, neu: string): string {
   return folienXml.replace(TEXTLAUF, (ganz, attr: string | undefined, roh: string) => {
     const t = xmlText(roh);
     return vorkommen(t, alt) === 1

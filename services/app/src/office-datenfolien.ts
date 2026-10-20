@@ -108,7 +108,12 @@ export async function schreibeDatenfolien(
     while (zip.file(part)) part = part.replace(".xml", "_.xml");
     let rid = `klaraPP05_${sldId}`;
     while (pr?.includes(`Id="${rid}"`)) rid += "_";
-    praes = praes?.replace("</p:sldIdLst>", `<p:sldId id="${sldId}" r:id="${rid}"/></p:sldIdLst>`);
+    // Gültige Vorlagen können r nur an ihren einzelnen Verweisen deklarieren. Die neuen
+    // Geschwister brauchen daher ihre eigene Bindung, statt einen Root-Namespace vorauszusetzen.
+    praes = praes?.replace(
+      "</p:sldIdLst>",
+      `<p:sldId xmlns:r="${R}" id="${sldId}" r:id="${rid}"/></p:sldIdLst>`,
+    );
     pr = pr?.replace("</Relationships>", `${rel(rid, "slide", part.slice(4))}</Relationships>`);
     zip.file(
       part,
