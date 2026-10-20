@@ -5337,6 +5337,7 @@ export function buildApp(
         konten: () => services.auth.listUsers(),
         spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
         ablage: services.officeAblage,
+        datenpunkte: services.datenpunkte,
       },
       guards,
     ),

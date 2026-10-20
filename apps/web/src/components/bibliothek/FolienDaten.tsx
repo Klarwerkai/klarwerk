@@ -47,6 +47,7 @@ import { objectRawHref } from "../../lib/bodyFileLink";
 import { useOffenePunkteWahl } from "../../lib/datenkontrolleEinstellung";
 import { readPptxRich } from "../../lib/files";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { DatenErgaenzung } from "./DatenErgaenzung";
 import { DatenKontrolle, DatenLage } from "./DatenKontrolle";
 
 const ZUSTANDSFARBE: Record<DatenpunktSicht["pruefstand"]["zustand"], string> = {
@@ -209,6 +210,12 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
                   neuLaden();
                   setPfad([{ id: neu.id }]);
                 }}
+                nachErgaenzen={() => {
+                  neuLaden();
+                  void qc.invalidateQueries({ queryKey: ["ko", koId] });
+                  void qc.invalidateQueries({ queryKey: ["kos"] });
+                  void qc.invalidateQueries({ queryKey: ["library"] });
+                }}
                 herkunftId={herkunftId}
                 schliesse={schliesseHerkunft}
                 merkeOeffner={(zahl) => {
@@ -249,6 +256,7 @@ function Folie({
   erfassenAn,
   setErfassenAn,
   nachErfassen,
+  nachErgaenzen,
   herkunftId,
   schliesse,
   merkeOeffner,
@@ -256,10 +264,11 @@ function Folie({
   lage: FolienDatenLage;
   folie: FolieMitElementen;
   aktiv: string | null;
-  oeffne: (id: string) => void;
+  oeffne: (id: string, ausloeser?: HTMLButtonElement) => void;
   erfassenAn: string | null;
   setErfassenAn: (schluessel: string | null) => void;
   nachErfassen: (neu: DatenpunktSicht) => void;
+  nachErgaenzen: () => void;
   herkunftId: string;
   schliesse: () => void;
   merkeOeffner: (zahl: HTMLButtonElement) => void;
@@ -322,6 +331,14 @@ function Folie({
                         : t("praesentationdaten.erfassen")}
                     </button>
                   )
+                ) : null}
+                {lage.darfErfassen && e.art === "text" ? (
+                  <DatenErgaenzung
+                    lage={lage}
+                    ort={{ anhangId: lage.anhangId, sldId: folie.sldId, shapeId: e.shapeId }}
+                    herkunft={oeffne}
+                    fertig={nachErgaenzen}
+                  />
                 ) : null}
               </li>
             );

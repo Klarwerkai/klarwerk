@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { KnowledgeObject } from "../../../knowledge-object";
-import { type ObjectStore, decodeDataUrl } from "../../../object-store";
+import type { ObjectStore } from "../../../object-store";
 import { can } from "../../../rbac";
 import {
   FOLIEN_ABGLEICH_GRENZEN,
@@ -17,7 +17,6 @@ import {
   type DatenUmgebung,
   type Datenpunkt,
   type Dimension,
-  type FoliensatzDaten,
   type Handelnder,
   binde,
   elementBefund,
@@ -33,13 +32,14 @@ import {
   vollLesbar,
 } from "../praesentation-daten";
 import type { DatenpunktAblage } from "../praesentation-daten-ablage";
+import { praesentationDatenUmgebung } from "../praesentation-daten-umgebung";
+import { ergaenzungsVorschau, leseErgaenzungsSuche } from "../praesentation-ergaenzung";
 import { datenlage } from "../praesentation-pruefung";
 import {
   type KontrollAnschluss,
   type KontrollierteSicht,
   kontrollAnschluss,
 } from "../praesentation-pruefung-anschluss";
-import { darfSehen } from "../sichtbarkeit";
 
 // ================================================================================================
 // KLARA POWERPOINT · PP-02 — DIE ROUTEN DER DATENHERKUNFT (Logik in praesentation-daten.ts).
@@ -92,58 +92,7 @@ export function praesentationDatenRoutes(
   const jetzt = deps.jetzt ?? Date.now;
   const kennung = deps.kennung ?? (() => randomUUID());
 
-  /** Die Umgebung EINER Anfrage: Rechte des Handelnden, Dateien je Fassung nur einmal gelesen. */
-  function umgebung(user: SessionUser): DatenUmgebung {
-    const gelesen = new Map<string, Promise<FoliensatzDaten | undefined>>();
-    let konten: Promise<readonly PraesentationDatenKonto[]> | undefined;
-    const artikel = async (koId: string) => {
-      const ko = await deps.ko.get(koId);
-      return ko && can(user.role, "ko.read") && darfSehen(user, ko) ? ko : undefined;
-    };
-    const satzVon = (objectId: string) => {
-      const vorhanden = gelesen.get(objectId);
-      if (vorhanden) {
-        return vorhanden;
-      }
-      const lauf = (async () => {
-        const gespeichert = await deps.objekte.read(objectId);
-        const bytes = gespeichert ? decodeDataUrl(gespeichert.data)?.bytes : undefined;
-        return bytes ? await leseFolienDaten(bytes).catch(() => undefined) : undefined;
-      })();
-      gelesen.set(objectId, lauf);
-      return lauf;
-    };
-    return {
-      artikel,
-      async meta(koId) {
-        const ko = await deps.ko.get(koId);
-        return ko
-          ? {
-              version: ko.version,
-              ...(ko.confidentiality ? { confidentiality: ko.confidentiality } : {}),
-              anhaenge: (ko.attachments ?? []).map((a) => ({
-                id: a.id,
-                ...(a.objectId ? { objectId: a.objectId } : {}),
-              })),
-            }
-          : undefined;
-      },
-      async folien(koId, anhangId) {
-        const ko = await artikel(koId);
-        const anhang = ko?.attachments?.find((a) => a.id === anhangId);
-        if (!anhang?.objectId || officeFormatFuer(anhang.name, anhang.mime)?.endung !== "pptx") {
-          return undefined;
-        }
-        const satz = await satzVon(anhang.objectId);
-        return satz ? { objectId: anhang.objectId, name: anhang.name, satz } : undefined;
-      },
-      datenpunkt: (id) => deps.ablage.lesen(id),
-      async name(nutzerId) {
-        konten ??= deps.konten();
-        return (await konten).find((k) => k.id === nutzerId)?.name;
-      },
-    };
-  }
+  const umgebung = (user: SessionUser) => praesentationDatenUmgebung(deps, user);
 
   // Der große Körper des Hostabgleichs wird erst gelesen, wenn das Leserecht feststeht (Muster
   // `requireKoCreateBeforeParse`, ko-routes.ts). Benannter Helfer, damit der Routenscanner im
@@ -289,6 +238,30 @@ export function praesentationDatenRoutes(
   }
 
   return async (app) => {
+    // PP-06: nur vorhandene, vollständig lesbare Datenpunkte. Die Vorschau schreibt nichts.
+    app.post<{ Params: { id: string; anhangId: string } }>(
+      "/api/kos/:id/office/:anhangId/ergaenzung/vorschau",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) return;
+        try {
+          const suche = leseErgaenzungsSuche(request.body);
+          if (suche.ort.anhangId !== request.params.anhangId) {
+            throw new DatenFehler("ungueltig", "Der gewählte Anhang passt nicht zur Anfrage.");
+          }
+          reply.header("Cache-Control", "no-store");
+          return await ergaenzungsVorschau(
+            request.params.id,
+            suche,
+            umgebung(user),
+            deps.ablage,
+            jetzt,
+          );
+        } catch (f) {
+          fehler(reply, f);
+        }
+      },
+    );
     app.get<{ Params: { id: string; anhangId: string } }>(
       "/api/kos/:id/office/:anhangId/folien-daten",
       async (request, reply) => {

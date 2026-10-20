@@ -34,6 +34,14 @@ import {
   stelleZugangsmarkeAus,
 } from "../office-wopi";
 import { type WopiSitzungsablage, erstelleWopiHost } from "../office-wopi-host";
+import { DatenFehler, binde } from "../praesentation-daten";
+import type { DatenpunktAblage } from "../praesentation-daten-ablage";
+import { praesentationDatenUmgebung } from "../praesentation-daten-umgebung";
+import {
+  ergaenzungsAuftrag,
+  ergaenzungsVorschau,
+  leseErgaenzungsSuche,
+} from "../praesentation-ergaenzung";
 import { darfSehen } from "../sichtbarkeit";
 
 // ================================================================================================
@@ -100,6 +108,8 @@ export interface OfficeRoutesDeps {
   readonly jetzt?: () => number;
   /** Sitzungen und gesicherte Stände; ohne Angabe die Speicherfassung (ohne Neustartschutz). */
   readonly ablage?: OfficeAblage;
+  /** PP-06 verwendet ausschließlich die vorhandene PP-02-Ablage. */
+  readonly datenpunkte?: DatenpunktAblage;
 }
 
 async function standardDiscovery(url: string): Promise<string> {
@@ -619,6 +629,109 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
     function erwartet(roh: unknown): number | undefined {
       return Number.isInteger(roh) && (roh as number) >= 1 ? (roh as number) : undefined;
     }
+
+    app.post<{
+      Params: { id: string; anhangId: string };
+      Body: { kandidatId?: unknown; token?: unknown };
+    }>("/api/kos/:id/office/:anhangId/ergaenzung/uebernehmen", async (request, reply) => {
+      const user = await guards.requirePermission("ko.create", request, reply);
+      if (!user) return;
+      const datenpunkte = deps.datenpunkte;
+      if (!datenpunkte) return reply.code(503).send({ error: "PP06_NICHT_ANGEBUNDEN" });
+      // Derselbe Anhangsriegeltakt wie WOPI und Rücknahme, keine zweite Schreibverwaltung.
+      return nacheinander(request.params.anhangId, async () => {
+        const vorher = await vorFassungsschritt(request, reply);
+        if (!vorher) return;
+        let dokument: NachbearbeitungsErgebnis | undefined;
+        const wirkungen: Wirkung[] = [];
+        try {
+          const suche = leseErgaenzungsSuche(request.body);
+          if (suche.ort.anhangId !== request.params.anhangId)
+            throw new DatenFehler("ungueltig", "Anhang passt nicht.");
+          const umgebung = () => praesentationDatenUmgebung({ ...deps, ablage: datenpunkte }, user);
+          const v = await ergaenzungsVorschau(
+            request.params.id,
+            suche,
+            umgebung(),
+            datenpunkte,
+            jetzt,
+          );
+          const k = v.kandidaten.find((k) => k.datenpunkt.id === request.body?.kandidatId);
+          if (!k || !k.passend || k.token !== request.body?.token) {
+            return reply.code(409).send({
+              error: "PP06_VORSCHAU_GEAENDERT",
+              message:
+                "Die Ergänzung passt nicht mehr zur Vorschau. Quelle, Rechte und Datenlage neu prüfen; nichts geändert.",
+            });
+          }
+          const dp = await datenpunkte.lesen(k.datenpunkt.id);
+          if (!dp) throw new DatenFehler("kein_zugriff", "Datenpunkt nicht verfügbar.");
+          dokument = await fuehreNachbearbeitungAus(
+            { ko: deps.ko, objekte: deps.objekte, verlauf: verlaufVon, jetzt },
+            {
+              artikel: vorher.lage.artikel,
+              anhang: vorher.lage.anhang,
+              nutzerId: user.id,
+              gestoppt: () => false,
+              melde: (wirkung) => wirkungen.push(wirkung),
+            },
+            ergaenzungsAuftrag(v, k, suche, `pp06:${k.token}`),
+          );
+          if (dokument.zustand !== "gespeichert" || !dokument.pruefung?.ok) {
+            return reply.code(409).send({
+              error: "PP06_NICHT_UEBERNOMMEN",
+              message:
+                "Der Office-Fassungsweg hat die Ergänzung nicht vollständig bestätigt. Den konkreten Bericht prüfen.",
+              dokument,
+            });
+          }
+          // Nach tatsächlichem Wiederöffnen dieselbe Zahl binden; Herkunft/Prüfungen nie kopieren.
+          const u = umgebung();
+          const ziel = await u.artikel(request.params.id);
+          if (!ziel) throw new DatenFehler("kein_zugriff", "Artikel nicht verfügbar.");
+          const neu = await binde(dp, ziel, suche.ort, u, {
+            nutzerId: user.id,
+            jetzt: new Date(jetzt()).toISOString(),
+            kennung: () => `pp06:${k.token}`,
+          });
+          if (!(await datenpunkte.ersetzen({ ...neu, stand: dp.stand + 1 }, dp.stand))) {
+            return reply.code(409).send({
+              error: "PP06_BINDUNG_OFFEN",
+              message:
+                "Dokument gespeichert, aber der Datenpunkt wurde gleichzeitig geändert. Herkunftsbindung ist offen; keine zweite Dateiübernahme starten. Rücknahme steht im Bericht.",
+              dokument,
+            });
+          }
+          reply.header("Cache-Control", "no-store");
+          return { datenpunktId: dp.id, dokument, bindung: "gespeichert" };
+        } catch (fehler) {
+          if (dokument?.zustand === "gespeichert") {
+            return reply.code(409).send({
+              error: "PP06_BINDUNG_OFFEN",
+              message:
+                "Dokument gespeichert; Herkunftsbindung konnte nicht bestätigt werden. Rücknahme steht im Bericht.",
+              dokument,
+            });
+          }
+          if (wirkungen.length > 0) {
+            return reply.code(500).send({
+              error: "PP06_TEILFEHLER",
+              message:
+                "Der Vorgang endete nach einer Wirkung. Aktuelle Dokumentfassung und Verlauf prüfen; die Ergänzung ist nicht vollständig bestätigt.",
+              wirkungen,
+            });
+          }
+          if (fehler instanceof DatenFehler) {
+            return reply
+              .code(fehler.art === "kein_zugriff" ? 404 : 400)
+              .send({ error: "INVALID", message: fehler.message });
+          }
+          if (fehler instanceof NachbearbeitungsFehler)
+            return reply.code(400).send({ error: fehler.code, message: fehler.message });
+          fassungsfehler(fehler, reply);
+        }
+      });
+    });
 
     app.post<{
       Params: { id: string; anhangId: string };
