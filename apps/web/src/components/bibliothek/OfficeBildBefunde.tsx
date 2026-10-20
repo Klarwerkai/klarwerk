@@ -34,6 +34,7 @@ import { readDocxRich, readPptxRich } from "../../lib/files";
 import { BildBefundListe } from "../BildBefundListe";
 import { KlaraBereichsfrage } from "../KlaraBereichsfrage";
 import { KlaraBildKontextFrage } from "../KlaraBildKontextFrage";
+import { usePowerPointBildmeldung } from "./PowerPointBildquellen";
 
 export interface OfficeBildAnhang {
   id: string;
@@ -135,6 +136,7 @@ export function OfficeBildBefunde({
   anhaenge: OfficeBildAnhang[];
 }): JSX.Element | null {
   const weg = useImageDescribeWennVorhanden();
+  const meldeBildquelle = usePowerPointBildmeldung();
   // OCR-03: eine Analyse je Fläche UND Konto; dazu die Einstellung Setup › Klara.
   const analyse = useBildAnalyse();
   const lage = useBildAutomatikLage();
@@ -155,8 +157,12 @@ export function OfficeBildBefunde({
       if (!art) {
         continue;
       }
+      const setzeStand = (stand: OfficeStand) => {
+        setBefunde((b) => ({ ...b, [anhang.objectId]: stand }));
+        if (art === "pptx") meldeBildquelle(anhang, stand.befund);
+      };
       // Sofort sichtbar: der Anhang wird geladen — schon vor dem ersten Byte.
-      setBefunde((b) => ({ ...b, [anhang.objectId]: { befund: wirdGeladen(anhang.name, art) } }));
+      setzeStand({ befund: wirdGeladen(anhang.name, art) });
       void (async () => {
         let quelle: { eingang: BildQuelleEingang; text: string } | null | "frist" = null;
         try {
@@ -169,13 +175,13 @@ export function OfficeBildBefunde({
         }
         if (!quelle || quelle === "frist") {
           const befund = ohneZugriff(anhang.name, art, quelle === "frist");
-          setBefunde((b) => ({ ...b, [anhang.objectId]: { befund } }));
+          setzeStand({ befund });
           return;
         }
         const { eingang, text } = quelle;
         if (lage === "unbekannt") {
           const befund = einstellungUnbekannt(eingang);
-          setBefunde((b) => ({ ...b, [anhang.objectId]: { befund, eingang, text } }));
+          setzeStand({ befund, eingang, text });
           return;
         }
         await analyse.analysiereQuelle(eingang, {
@@ -184,7 +190,7 @@ export function OfficeBildBefunde({
           abbrechen: () => !aktiv,
           onFortschritt: (stand) => {
             if (aktiv) {
-              setBefunde((b) => ({ ...b, [anhang.objectId]: { befund: stand, eingang, text } }));
+              setzeStand({ befund: stand, eingang, text });
             }
           },
         });
@@ -193,7 +199,7 @@ export function OfficeBildBefunde({
     return () => {
       aktiv = false;
     };
-  }, [schluessel, analyse, beschreibe, lage]);
+  }, [schluessel, analyse, beschreibe, lage, meldeBildquelle]);
 
   const sichtbar = lesbar.flatMap((a) => {
     const stand = befunde[a.objectId];

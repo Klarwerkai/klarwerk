@@ -37,6 +37,7 @@ import {
   praesentationDaten,
 } from "../../api/praesentationDaten";
 import {
+  type BildBefund,
   type BildVorkommen,
   bildBytes,
   bildInhaltskennung,
@@ -48,6 +49,7 @@ import { useOffenePunkteWahl } from "../../lib/datenkontrolleEinstellung";
 import { readPptxRich } from "../../lib/files";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { DatenKontrolle, DatenLage } from "./DatenKontrolle";
+import { usePowerPointBildtext } from "./PowerPointBildquellen";
 
 const ZUSTANDSFARBE: Record<DatenpunktSicht["pruefstand"]["zustand"], string> = {
   erfasst: "text-muted",
@@ -304,6 +306,7 @@ function Folie({
                 {lage.darfErfassen ? (
                   erfassenAn === s ? (
                     <Erfassen
+                      key={`${lage.objectId}:${s}`}
                       lage={lage}
                       folie={folie}
                       element={e}
@@ -832,6 +835,18 @@ function FundstelleText({ dp }: { dp: DatenpunktSicht }): JSX.Element {
             {t("praesentationdaten.erkannterText")}{" "}
             <span className="whitespace-pre-line text-muted">„{f.ocrText}“</span>
           </span>
+          {f.uebernahme ? (
+            <span data-bildtext-uebernahme="" className="block text-muted">
+              {t("praesentationdaten.bildtextRoh")} „{f.uebernahme.rohText}“
+              {f.uebernahme.korrektur ? (
+                <span className="block">
+                  {t("praesentationdaten.bildtextKorrektur", {
+                    am: f.uebernahme.korrektur.geaendertAm,
+                  })}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
           {f.unsicher ? (
             <span className="block text-trust-crit-text">
               {t("praesentationdaten.ocrUnsicher")}
@@ -1175,8 +1190,12 @@ function Erfassen({
   const [stellen, setStellen] = useState(0);
   const [annahmen, setAnnahmen] = useState("");
   const [modellbezug, setModellbezug] = useState("");
-  const [ocr, setOcr] = useState<{ text: string; bildKennung: string; unsicher: boolean } | null>(
-    null,
+  const [bildbefund, setBildbefund] = useState<BildBefund | null>(null);
+  const { ocr, wartet: bildWartet } = usePowerPointBildtext(
+    lage,
+    folie.position,
+    element,
+    bildbefund,
   );
   const [fehler, setFehler] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
@@ -1213,7 +1232,7 @@ function Erfassen({
         setFehler(t("praesentationdaten.bildNichtGelesen", { status: befund.status }));
         return;
       }
-      setOcr({ text: befund.text, bildKennung: kennung, unsicher: befund.unsicher.length > 0 });
+      setBildbefund(befund);
     } catch {
       setFehler(t("praesentationdaten.bildNichtGelesen", { status: "fehlgeschlagen" }));
     } finally {
@@ -1230,7 +1249,7 @@ function Erfassen({
       .map((a) => a.trim())
       .filter(Boolean);
     const auftrag: Erfassungsauftrag = {
-      art: mitRechenweg || erfassung === "ocr" ? "zahl" : art,
+      art: mitRechenweg ? "zahl" : art,
       wert: wert.trim(),
       erfassung,
       ort: {
@@ -1325,21 +1344,28 @@ function Erfassen({
           <button
             type="button"
             data-bildtext-lesen=""
-            disabled={laeuft}
+            disabled={laeuft || bildWartet || !!ocr}
             onClick={() => void bildLesen()}
             className="rounded-btn border border-hairline px-2 py-0.5 font-semibold"
           >
-            {t("praesentationdaten.bildtextLesen")}
+            {t(
+              ocr
+                ? "praesentationdaten.bildtextVorhanden"
+                : bildWartet
+                  ? "praesentationdaten.bildtextWartet"
+                  : "praesentationdaten.bildtextLesen",
+            )}
           </button>
           {ocr ? (
             <p data-ocr-text="" className="whitespace-pre-line text-muted">
               {t("praesentationdaten.erkannterText")} „{ocr.text}“
+              <span className="block">{t("praesentationdaten.erfassungsweg.ocr")}</span>
             </p>
           ) : null}
         </div>
       ) : null}
 
-      {!bild && !mitRechenweg ? (
+      {!mitRechenweg ? (
         <fieldset className="flex gap-3">
           <legend className="sr-only">{t("praesentationdaten.art")}</legend>
           {(["zahl", "aussage"] as const).map((x) => (

@@ -3,6 +3,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { KnowledgeObject } from "../../../knowledge-object";
 import { type ObjectStore, decodeDataUrl } from "../../../object-store";
 import { can } from "../../../rbac";
+import type { BildKorrekturDienst } from "../assistenz-bildkorrekturen";
 import {
   FOLIEN_ABGLEICH_GRENZEN,
   type FolienAbgleichGrenzen,
@@ -11,6 +12,7 @@ import {
 } from "../folien-abgleich-grenzen";
 import type { Guards, SessionUser } from "../http";
 import { officeFormatFuer } from "../office-wopi";
+import { mitPowerPointBildquelle } from "../praesentation-bildquellen";
 import {
   DIMENSIONEN,
   DatenFehler,
@@ -78,6 +80,7 @@ export interface PraesentationDatenRoutesDeps {
   readonly ko: { get(id: string): Promise<KnowledgeObject | undefined> };
   readonly objekte: ObjectStore;
   readonly ablage: DatenpunktAblage;
+  readonly bildKorrekturen?: Pick<BildKorrekturDienst, "lies">;
   readonly konten: () => Promise<readonly PraesentationDatenKonto[]>;
   readonly jetzt?: () => number;
   readonly kennung?: () => string;
@@ -361,7 +364,12 @@ export function praesentationDatenRoutes(
         return;
       }
       try {
-        const dp = await erfasse(leseErfassung(request.body), heimat, u, handelnder(user));
+        const auftrag = await mitPowerPointBildquelle(
+          leseErfassung(request.body),
+          user.id,
+          deps.bildKorrekturen,
+        );
+        const dp = await erfasse(auftrag, heimat, u, handelnder(user));
         if (!(await deps.ablage.anlegen(dp))) {
           reply.code(409).send({ error: "DATENPUNKT_VORHANDEN", message: "Kennung vergeben." });
           return;

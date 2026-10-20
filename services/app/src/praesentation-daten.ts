@@ -1,3 +1,4 @@
+import type { BildtextUebernahme } from "./praesentation-bildquellen";
 // ================================================================================================
 // KLARA POWERPOINT · PP-02 — DATENHERKUNFT UND BINDUNG AN FOLIEN
 // (Auftrag produkt:20261015:klara-powerpoint-datenherkunft, Integrationsplan Abschnitt 2).
@@ -747,6 +748,7 @@ export type Fundstelle =
       readonly bildKennung: string;
       /** Der erkannte Text, wie die Texterkennung ihn geliefert hat. */
       readonly ocrText: string;
+      readonly uebernahme?: BildtextUebernahme;
       /** Die Erkennung meldete unsichere Stellen. */
       readonly unsicher: boolean;
     }
@@ -1108,6 +1110,9 @@ export interface Erfassungsauftrag {
     readonly text: string;
     readonly bildKennung: string;
     readonly unsicher: boolean;
+    readonly wiederverwendung?: { readonly rohText: string; readonly korrekturAm: string | null };
+    /** Ausschließlich durch den PP-04-Serveradapter erzeugt. */
+    readonly uebernahme?: BildtextUebernahme;
   };
   /** `manuell`: worauf sich die Eingabe stützt (frei, optional). */
   readonly beleg?: string;
@@ -1206,7 +1211,25 @@ export function leseErfassung(roh: unknown): Erfassungsauftrag {
     if (!/^sha256:[0-9a-f]{64}$/.test(bildKennung)) {
       throw new DatenFehler("ungueltig", "ocr.bildKennung ist keine Inhaltskennung (sha256:…).");
     }
+    let wiederverwendung: NonNullable<Erfassungsauftrag["ocr"]>["wiederverwendung"];
+    if (roh.ocr.wiederverwendung !== undefined) {
+      const w = roh.ocr.wiederverwendung;
+      if (!istObjekt(w) || (w.korrekturAm !== null && typeof w.korrekturAm !== "string")) {
+        throw new DatenFehler("ungueltig", "Der erwartete Bildkorrekturstand fehlt.");
+      }
+      if (typeof w.rohText !== "string" || w.rohText.length > 20_000) {
+        throw new DatenFehler("ungueltig", "Der ursprüngliche Bildtext fehlt oder ist zu lang.");
+      }
+      wiederverwendung = {
+        rohText: w.rohText,
+        korrekturAm:
+          w.korrekturAm === null
+            ? null
+            : (text(w.korrekturAm, 80, "ocr.wiederverwendung.korrekturAm", true) as string),
+      };
+    }
     ocr = {
+      ...(wiederverwendung ? { wiederverwendung } : {}),
       text: text(roh.ocr.text, 20_000, "ocr.text", true) as string,
       bildKennung,
       unsicher: roh.ocr.unsicher === true,
@@ -1610,6 +1633,7 @@ export async function erfasse(
         elementName: ortName(ortLage),
         bildKennung: auftrag.ocr.bildKennung,
         ocrText: auftrag.ocr.text,
+        ...(auftrag.ocr.uebernahme ? { uebernahme: auftrag.ocr.uebernahme } : {}),
         unsicher: auftrag.ocr.unsicher,
       };
       // Keine maschinelle Erkennungsprüfung: OCR allein bestätigt nichts.

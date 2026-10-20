@@ -225,9 +225,9 @@ test.describe("PP-02 · Datenherkunft am PowerPoint-Anhang", () => {
     await fb.getByLabel("Wert (wie geschrieben)").fill("300 T€");
     ids.berechnet = await speichern(flaeche, fb);
 
-    // OCR-Zahl aus dem Folienbild — die echte Erkennung im Browser, ausdrücklich gestartet.
+    // PP-04: OCR-Zahl aus der automatischen Erkennung; kein zweiter Leseauftrag.
     const fo = await erfassenAm(flaeche, "8");
-    await fo.locator("[data-bildtext-lesen]").click();
+    await expect(fo.locator("[data-bildtext-lesen]")).toBeDisabled();
     const ocrText = fo.locator("[data-ocr-text]");
     const ocrFehler = fo.locator('[role="alert"]');
     await expect(ocrText.or(ocrFehler)).toBeVisible({ timeout: 180_000 });

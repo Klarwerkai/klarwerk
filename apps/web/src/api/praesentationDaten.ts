@@ -57,6 +57,11 @@ export interface FolieMitElementen {
   elemente: FolienElement[];
 }
 
+export interface BildtextUebernahme {
+  rohText: string;
+  korrektur?: { quelle: string; geaendertAm: string; text: string };
+}
+
 export type Fundstelle =
   | {
       art: "folienelement";
@@ -89,6 +94,7 @@ export type Fundstelle =
       elementName: string;
       bildKennung: string;
       ocrText: string;
+      uebernahme?: BildtextUebernahme;
       unsicher: boolean;
     }
   | { art: "artikel"; zitat: string }
@@ -248,7 +254,12 @@ export interface Erfassungsauftrag {
   bezugsgroesse?: string;
   erfassung: Erfassung;
   ort?: Ort;
-  ocr?: { text: string; bildKennung: string; unsicher: boolean };
+  ocr?: {
+    text: string;
+    bildKennung: string;
+    unsicher: boolean;
+    wiederverwendung?: { rohText: string; korrekturAm: string | null };
+  };
   beleg?: string;
   rechenweg?: { art: Berechnungsart; eingaben: string[]; stellen: number };
   annahmen?: string[];

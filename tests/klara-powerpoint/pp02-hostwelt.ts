@@ -13,6 +13,7 @@
 import { createHash } from "node:crypto";
 import Fastify, { type FastifyInstance } from "fastify";
 import JSZip from "jszip";
+import type { BildKorrekturDienst } from "../../services/app/src/assistenz-bildkorrekturen";
 import type { FolienAbgleichGrenzen } from "../../services/app/src/folien-abgleich-grenzen";
 import type { Guards, SessionUser } from "../../services/app/src/http";
 import { SpeicherDatenpunktAblage } from "../../services/app/src/praesentation-daten-ablage";
@@ -56,7 +57,7 @@ export interface DeckFassung {
 }
 
 /** Folie 256: Titel 2, Tabelle 4, Ergebnis 6, Marktanteil 7, Bild 8 · Folie 257: Titel 2, Ergebnis 6. */
-export async function deck(f: DeckFassung = {}): Promise<Buffer> {
+export async function deck(f: DeckFassung = {}, bildBytes = BILD): Promise<Buffer> {
   const roh = new JSZip();
   const datum = new Date("2026-10-01T08:00:00Z");
   const datei = (name: string, inhalt: string | Buffer) => roh.file(name, inhalt, { date: datum });
@@ -93,7 +94,7 @@ export async function deck(f: DeckFassung = {}): Promise<Buffer> {
     "ppt/slides/_rels/slide1.xml.rels",
     `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId5" Type="${REL}/image" Target="../media/image1.png"/></Relationships>`,
   );
-  datei("ppt/media/image1.png", BILD);
+  datei("ppt/media/image1.png", bildBytes);
   // Folie 257 trägt dieselbe Elementkennung 6 wie Folie 256 — ohne gebundene Zahl.
   datei(
     "ppt/slides/slide2.xml",
@@ -128,7 +129,10 @@ export interface Welt {
 
 /** `abgleichGrenzen`: niedrige Grenzen des Hostabgleichs für die Grenzproben (Prüfbefund B1). */
 export async function baueWelt(
-  optionen: { abgleichGrenzen?: Partial<FolienAbgleichGrenzen> } = {},
+  optionen: {
+    abgleichGrenzen?: Partial<FolienAbgleichGrenzen>;
+    bildKorrekturen?: Pick<BildKorrekturDienst, "lies">;
+  } = {},
 ): Promise<Welt> {
   const objekte = new ObjectStore({ repo: new InMemoryObjectRepo() });
   const ko = new KoService({
@@ -166,6 +170,7 @@ export async function baueWelt(
         objekte,
         ablage: new SpeicherDatenpunktAblage(),
         konten: async () => KONTEN,
+        ...(optionen.bildKorrekturen ? { bildKorrekturen: optionen.bildKorrekturen } : {}),
         jetzt: () => {
           uhr += 1000;
           return uhr;

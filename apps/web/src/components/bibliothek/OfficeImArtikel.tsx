@@ -37,6 +37,7 @@ import {
 import { ExterneQuelleKennung } from "../ko/ExterneQuelleKennung";
 import { FolienDaten } from "./FolienDaten";
 import { OfficeBildBefunde } from "./OfficeBildBefunde";
+import { PowerPointBildquellen } from "./PowerPointBildquellen";
 
 interface Meldung {
   art: "erfolg" | "fehler" | "hinweis";
@@ -77,57 +78,63 @@ export function OfficeImArtikel({ ko }: { ko: KnowledgeObject }): JSX.Element | 
   }
 
   return (
-    <section data-office-im-artikel="" className="mt-4 space-y-3">
-      <h4 className="text-[13px] font-semibold text-text">{t("officeartikel.titel")}</h4>
-      <ul className="space-y-1.5">
-        {anhaenge.map((a) => (
-          <li key={a.id} className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-[12.5px] text-text" title={a.name}>
-              {a.name}
-            </span>
-            <button
-              type="button"
-              data-office-oeffnen={a.id}
-              aria-expanded={offen === a.id}
-              aria-disabled={wunsch !== null}
-              onClick={() => waehle(offen === a.id ? null : a.id)}
-              className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
-            >
-              {offen === a.id ? t("officeartikel.zuklappen") : t("officeartikel.oeffnen")}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {/* OCR-02 (L17): die eingebetteten Bilder der aktuellen Fassung werden ohne Klick gelesen. */}
-      <OfficeBildBefunde
-        anhaenge={anhaenge.map((a) => ({ id: a.id, name: a.name, objectId: a.objectId as string }))}
-      />
-      {letzteMeldung ? (
-        <output data-office-letzte-meldung={letzteMeldung.art} className="block text-[12.5px]">
-          {letzteMeldung.text}
-        </output>
-      ) : null}
-      {offen ? (
-        <OfficeAnhangFlaeche
-          key={offen}
-          ko={ko}
-          anhangId={offen}
-          name={anhaenge.find((a) => a.id === offen)?.name ?? ""}
-          schliessen={() => setOffen(null)}
-          meldeEditorAktiv={setEditorAktiv}
-          schliessAnfrage={wunsch?.nonce ?? 0}
-          angefragtGeschlossen={(ok, meldung) => {
-            const ziel = wunsch?.ziel ?? null;
-            setWunsch(null);
-            if (ok) {
-              setEditorAktiv(false);
-              setLetzteMeldung(meldung);
-              setOffen(ziel);
-            }
-          }}
+    <PowerPointBildquellen key={ko.id}>
+      <section data-office-im-artikel="" className="mt-4 space-y-3">
+        <h4 className="text-[13px] font-semibold text-text">{t("officeartikel.titel")}</h4>
+        <ul className="space-y-1.5">
+          {anhaenge.map((a) => (
+            <li key={a.id} className="flex flex-wrap items-center gap-2">
+              <span className="truncate text-[12.5px] text-text" title={a.name}>
+                {a.name}
+              </span>
+              <button
+                type="button"
+                data-office-oeffnen={a.id}
+                aria-expanded={offen === a.id}
+                aria-disabled={wunsch !== null}
+                onClick={() => waehle(offen === a.id ? null : a.id)}
+                className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+              >
+                {offen === a.id ? t("officeartikel.zuklappen") : t("officeartikel.oeffnen")}
+              </button>
+            </li>
+          ))}
+        </ul>
+        {/* OCR-02 (L17): die eingebetteten Bilder der aktuellen Fassung werden ohne Klick gelesen. */}
+        <OfficeBildBefunde
+          anhaenge={anhaenge.map((a) => ({
+            id: a.id,
+            name: a.name,
+            objectId: a.objectId as string,
+          }))}
         />
-      ) : null}
-    </section>
+        {letzteMeldung ? (
+          <output data-office-letzte-meldung={letzteMeldung.art} className="block text-[12.5px]">
+            {letzteMeldung.text}
+          </output>
+        ) : null}
+        {offen ? (
+          <OfficeAnhangFlaeche
+            key={offen}
+            ko={ko}
+            anhangId={offen}
+            name={anhaenge.find((a) => a.id === offen)?.name ?? ""}
+            schliessen={() => setOffen(null)}
+            meldeEditorAktiv={setEditorAktiv}
+            schliessAnfrage={wunsch?.nonce ?? 0}
+            angefragtGeschlossen={(ok, meldung) => {
+              const ziel = wunsch?.ziel ?? null;
+              setWunsch(null);
+              if (ok) {
+                setEditorAktiv(false);
+                setLetzteMeldung(meldung);
+                setOffen(ziel);
+              }
+            }}
+          />
+        ) : null}
+      </section>
+    </PowerPointBildquellen>
   );
 }
 
