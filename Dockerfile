@@ -36,6 +36,7 @@ WORKDIR /build
 COPY apps/web/package.json apps/web/package-lock.json apps/web/
 RUN cd apps/web && npm ci
 COPY apps/web apps/web
+COPY services/app/src/klara-erinnerung-zeit.ts services/app/src/
 RUN cd apps/web && npx vite build
 
 # ---- Stufe 2: Laufzeit ---------------------------------------------------------------------
