@@ -215,6 +215,10 @@ function NotizOffen({ n }: { n: KlaraNotiz }): JSX.Element {
         <button
           type="button"
           data-testid="klara-notiz-als-aufgabe"
+          disabled={
+            !!n.wissensHerkunft?.besprechung?.verarbeitung &&
+            n.wissensHerkunft.besprechung.verarbeitung.stand !== "abgeschlossen"
+          }
           title={t("klaraaufgabe.alsAufgabeHilfe")}
           onClick={() => void legeAufgabeAusNotiz(n, t)}
           className={KNOPF}
