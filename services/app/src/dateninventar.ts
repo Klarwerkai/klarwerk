@@ -505,6 +505,35 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    // produkt:20261007:klara-erinnerungen-kalender (Klara 10) — die persönlichen Erinnerungen
+    // (`services/app/src/klara-erinnerung.ts`): Auftrag, Läufe je Termin, zugestellte Meldungen.
+    id: "klaraerinnerungen",
+    name: "Persönliche Klara-Erinnerungen",
+    inhalt:
+      "Je Konto die eigenen Erinnerungen: Titel, Notiz, Zeitplan (Datum, Uhrzeit, Serie oder Fristvorlauf), IANA-Zeitzone, Sommerzeit- und Verpasst-Regel, Status, Einzeländerungen je Termin, Bezug (Kennung und Titel der Notiz bzw. Aufgabe oder Kennungen und Auszug der Gesprächsnachricht), Objektbezug als Rücklink, Vorgangsschlüssel und eine bewusste Übergabe (Kennung der zuständigen Person, Zeitpunkt); je Termin der Lauf (Zeitpunkt, Status, Versuch, Prozesskennung, Ergebnis samt bestellter Zusammenfassung) und die zugestellte Meldung mit Titel (bei Übergabe an die zuständige Person); dazu je Konto die Vorgaben des Einrichtungsassistenten (Zeitzone, Sommerzeit- und Verpasst-Regel).",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; nur nach bewusster Übergabe erhält eine zweite Person Titel und Termine. Titel, Notiz, Auszug und Zusammenfassung sind Freitext und können sensible Angaben enthalten.",
+    ablage: {
+      ort: DATENBANK,
+      tabellen: [
+        "klara_erinnerungen",
+        "klara_erinnerung_laeufe",
+        "klara_erinnerung_meldungen",
+        "klara_erinnerung_einstellungen",
+      ],
+    },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto löscht eine Erinnerung selbst (DELETE /api/me/klara/erinnerungen/:id) — mit ihren Läufen und zugestellten Meldungen; auch Administratoren lesen fremde Erinnerungen nicht.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht seine Erinnerungen (eigene Fläche und eigene Glocke); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
     id: "lernpfade",
     name: "Lernpfade und Fortschritt",
     inhalt:

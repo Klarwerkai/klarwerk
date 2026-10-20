@@ -4362,7 +4362,9 @@ export type NotificationKind =
   | "reklamation"
   | "veroeffentlichung"
   // produkt:20261010:wissenskreislauf-schliessen: Vorgang einer Wissenslücke (Unterart `lueckenArt`).
-  | "luecke";
+  | "luecke"
+  // produkt:20261007:klara-erinnerungen-kalender: zugestellte persönliche Erinnerung (`erinnerungArt`).
+  | "erinnerung";
 
 // R-1089: der Meldeweg „Antwort falsch / Quelle passt nicht". Eigenständig getippt wie der Rest
 // dieser Datei — apps/web importiert nicht über die Modulgrenze nach services.
@@ -4443,6 +4445,21 @@ export interface Notification {
   // produkt:20261010:wissenskreislauf-schliessen: Unterart und Lücke einer `luecke`-Meldung.
   lueckenArt?: "geloest" | "rueckfrage" | "rueckfrage_beantwortet" | "zurueckgewiesen";
   gapId?: string;
+  // produkt:20261007:klara-erinnerungen-kalender: Unterart, Erinnerung, erfasste Termine, nachgeholt
+  // und das Ergebnis einer Aufgabenprüfung (nur bei `kind: "erinnerung"`).
+  erinnerungArt?: "erinnerung" | "verpasst" | "zusammenfassung" | "uebersprungen" | "handlung";
+  // EQF-07-K09: bei `handlung` der Grund (Schlüssel `klaraerinnerung.grund.*`).
+  erinnerungGrund?: string;
+  erinnerungId?: string;
+  termine?: string[];
+  nachgeholt?: boolean;
+  pruefung?: { art: "aufgabe"; status: string } | null;
+  // AW-18: die bestellte Zusammenfassung der eigenen Quelle (nur `inhalt_zusammenfassen`).
+  erinnerungZusammenfassung?:
+    | { status: "erstellt"; text: string; ki: boolean }
+    | { status: "nicht_verfuegbar" };
+  // EQF-07: das tatsächliche Ergebnis einer Routine (Bericht in „Meine Notizen“).
+  erinnerungRoutine?: { status: "erstellt" | "teilweise"; notizId: string; offen: number };
   // ADMIN-12: die tägliche Zusammenfassung gewöhnlicher Veröffentlichungen eines Tages (ohne `koId`).
   zusammenfassung?: {
     tag: string;

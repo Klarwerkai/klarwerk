@@ -13,6 +13,7 @@ import type { ValidationService } from "../../../validation";
 import type { Guards, SessionUser } from "../http";
 import type { LoeschantragMeldung } from "../loeschantraege";
 import {
+  type ErinnerungNotice,
   type FrischeNotice,
   type ImpactNotice,
   type KenntnisnahmeNotice,
@@ -68,6 +69,9 @@ export interface NotificationRoutesDeps {
   kommunikation?: {
     glocke(nutzerId: string, feed: readonly Notification[]): Promise<Notification[]>;
   };
+  // produkt:20261007:klara-erinnerungen-kalender (Klara 10): die von der Erinnerungssteuerung
+  // dauerhaft zugestellten Meldungen DIESES Kontos. Optional wie die Kenntnisnahme.
+  erinnerungen?: { meldungenFuer(nutzerId: string): Promise<readonly ErinnerungNotice[]> };
 }
 
 // PMO-FEA-0002: „Hat geholfen"-Ereignisse für den Originalautor. Bewusst ehrlich:
@@ -220,7 +224,13 @@ async function loadFeed(
   const lueckenMeldungen = await Promise.resolve()
     .then(() => deps.ask.gapMeldungenFuer(user.id, lueckenSicht))
     .catch(() => []);
+  // Klara 10: persönliche Erinnerungen — nur die eigenen. Scheitert das Lesen, fehlen nur diese
+  // Meldungen; zugestellt bleiben sie trotzdem (die Ablage ist der Beleg, nicht dieser Abruf).
+  const erinnerungen = await Promise.resolve()
+    .then(() => deps.erinnerungen?.meldungenFuer(user.id) ?? [])
+    .catch(() => []);
   const gesamt = buildNotifications({
+    erinnerungen,
     luecken: lueckenMeldungen,
     conflicts: sichtbareKonflikte,
     overlaps: sichtbareUeberschneidungen,

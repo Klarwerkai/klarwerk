@@ -18,6 +18,7 @@ import { HelpTip } from "../components/HelpTip";
 import { PausedMarker, StaleMarker } from "../components/LoadState";
 import { MeineEinzelquellen } from "../components/MeineEinzelquellen";
 import { KlaraAufgaben } from "../components/klara-vorschau/KlaraAufgaben";
+import { KlaraErinnerungen } from "../components/klara-vorschau/KlaraErinnerungen";
 import { KoAuthorLine } from "../components/trust";
 import { PageHeader } from "../components/ui";
 import { fallHref } from "../lib/fallAbsprung";
@@ -635,6 +636,12 @@ export function MyTasks(): JSX.Element {
             Ergebnisweg eines Klara-Auftrags) öffnet genau diese Aufgabe. */}
         <div data-testid="aufgaben-persoenlich">
           <KlaraAufgaben offenId={params.get("persoenlich")} />
+        </div>
+        {/* produkt:20261007:klara-erinnerungen-kalender (Klara 10): die persönlichen Erinnerungen —
+            dieselbe Fläche wie in Klara. `?erinnerung=<id>` (das Ziel einer Erinnerung in der
+            Glocke) öffnet genau diese Erinnerung. */}
+        <div data-testid="aufgaben-erinnerungen">
+          <KlaraErinnerungen offenId={params.get("erinnerung")} />
         </div>
         {/* R-1626 (ROADMAP 1.4): die kurze persönliche Liste „Wissen, das nur bei dir liegt" —
             nur in der ungefilterten Ansicht, nur mit geladenem Bestand, und nichts, wenn es kein

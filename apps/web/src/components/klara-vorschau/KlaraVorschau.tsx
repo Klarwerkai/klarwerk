@@ -98,6 +98,7 @@ import {
   KlaraUebertrageneAufgaben,
   istOffen,
 } from "./KlaraEigeninitiative";
+import { KlaraErinnerungen } from "./KlaraErinnerungen";
 import { KlaraNotizen } from "./KlaraNotizen";
 import { KlaraQualitaet } from "./KlaraQualitaet";
 import {
@@ -2654,6 +2655,24 @@ export function KlaraVorschau({
                 <li>{t("klaraaufgabe.bedienhilfe.bearbeiten")}</li>
                 <li>{t("klaraaufgabe.bedienhilfe.privat")}</li>
                 <li>{t("klaraaufgabe.bedienhilfe.fehler")}</li>
+                {/* Klara 10: Erinnerungen — Zeit klären, Zustellung, Regeln, Bedienung, Grenzen. */}
+                <li data-testid="klara-bedienhilfe-erinnerung">
+                  {t("klaraerinnerung.bedienhilfe.anlegen")}
+                </li>
+                <li>{t("klaraerinnerung.bedienhilfe.klaeren")}</li>
+                <li>{t("klaraerinnerung.bedienhilfe.zustellung")}</li>
+                <li>{t("klaraerinnerung.bedienhilfe.sommerzeit")}</li>
+                <li>{t("klaraerinnerung.bedienhilfe.verpasst")}</li>
+                <li>{t("klaraerinnerung.bedienhilfe.bedienen")}</li>
+                <li data-testid="klara-bedienhilfe-erinnerung-assistent">
+                  {t("klaraerinnerung.bedienhilfe.assistent")}
+                </li>
+                <li>{t("klaraerinnerung.bedienhilfe.uebergabe")}</li>
+                <li>{t("klaraerinnerung.bedienhilfe.zusammenfassung")}</li>
+                <li data-testid="klara-bedienhilfe-erinnerung-routine">
+                  {t("klaraerinnerung.bedienhilfe.routine")}
+                </li>
+                <li>{t("klaraerinnerung.bedienhilfe.privat")}</li>
                 {/* Klara 12: Modi, Hinweise und übertragene Aufgaben. */}
                 <li data-testid="klara-bedienhilfe-eigeninitiative">
                   {t("klarainitiative.bedienhilfe.modi")}
@@ -2715,6 +2734,8 @@ export function KlaraVorschau({
             {istEcht && kontoId ? <KlaraNotizen /> : null}
             {/* Klara 07: die persönlichen Aufgaben — öffnen, ändern, priorisieren, erledigen. */}
             {istEcht && kontoId ? <KlaraAufgaben /> : null}
+            {/* Klara 10: persönliche Erinnerungen — anlegen, klären, ändern, pausieren, erledigen. */}
+            {istEcht && kontoId ? <KlaraErinnerungen /> : null}
             {/* Klara 02: der gesprochene Auftrag — erkannter Text, Ziel, Rückfragen, Ergebnis. */}
             <KlaraAuftragKarte
               s={sprechen}

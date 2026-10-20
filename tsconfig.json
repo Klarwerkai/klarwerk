@@ -42,6 +42,7 @@
     "tests/klara-vorschlaege/uebernahme-logik.test.ts",
     "tests/klara-aktionen/zusammenfassen-zitatdeckung.test.ts",
     "tests/capture/ocr-engine-gleiche-herkunft.test.ts",
-    "tests/klara-bildanalyse-ocr/kontext-klara.test.ts"
+    "tests/klara-bildanalyse-ocr/kontext-klara.test.ts",
+    "tests/klara-erinnerungen/entwurf-kontoerkennung.test.ts"
   ]
 }

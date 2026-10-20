@@ -1,5 +1,5 @@
 {
-  "version": 64,
+  "version": 65,
   "nachgefuehrt_von_poc_ki_ausfall_v59": "produkt:20261010:poc-ki-ausfall-weiterarbeiten (Ben nacharbeit-2, Version 59): ki-ausfall-weiterarbeiten-browser.spec.ts mit zwei Fällen im isolierten Projekt chromium-zustand (legt ein fiktives Konto und über den echten Frageweg eine Lücke an, deshalb in ZUSTAND_SPEC). Die Datei stand seit ihrer Einführung in chromium/firefox/webkit, ohne hier eingetragen zu sein; diese Drift ist mit dem Umzug behoben, je Projekt unverändert 223. chromium-zustand 36 → 38, gesamt 707 → 709. Von Hand nachgetragen, nicht mit --list erhoben; kein Nachweis bestandener Browserfälle.",
   "nachgefuehrt_von_referenzki_antwortstatus_v58": "produkt:20261009:referenzki-antwortstatus (REF-04, Version 58): ein Fall mehr je Projekt chromium, firefox und webkit — referenzki-antwortstatus-modell.spec.ts (@modell, nur im vollen Smoke und nur in Chromium ausgeführt; legt eine fiktive Quelle an, setzt Antwortzuordnung, Grundfreigabe und Referenzliste und stellt sie wieder her). Soll je Projekt 222 → 223, chromium-zustand unverändert 36, gesamt 704 → 707. Von Hand nachgetragen, nicht mit --list erhoben; kein Nachweis bestandener Browserfälle.",
   "nachgefuehrt_von_klara_bildkontext_v57": "produkt:20261012:klara-bildanalyse-ocr-kontext-setup (OCR-03, Nacharbeit 4, Version 57): ein zweiter Fall in klara-bild-kontext-browser.spec.ts je Projekt chromium, firefox und webkit — die tatsächliche Modellantwort und -zusammenfassung (@modell, nur im vollen Smoke; legt einen fiktiven Entwurf an und entfernt ihn, setzt die Grundfreigabe und stellt sie wieder her, wie klara-basis-browser @modell). Soll je Projekt 221 → 222, chromium-zustand unverändert 36, gesamt 701 → 704. Von Hand nachgetragen, nicht mit --list erhoben; kein Nachweis bestandener Browserfälle.",
@@ -756,7 +756,7 @@
       ]
     },
     "chromium-zustand": {
-      "soll": 43,
+      "soll": 47,
       "titel": [
         "antwort-beanstandung-browser.spec.ts › Beanstandung: melden, zuordnen, adressierte Rückfrage, begründete Zurückweisung, Rückmeldung",
         "arbeitswege-objekt-browser.spec.ts › K1 · Einreichen öffnet die Prüfung genau dieses Beitrags — auch nach Neuladen",
@@ -800,7 +800,11 @@
         "luecken-vorgang-browser.spec.ts › Wissenskreislauf: Frage bis geprüfte Antwort und Rückmeldung mit getrennten Rollen",
         "produktbudget-browser.spec.ts › Produktbudgets · Anzeige, Speichern, Neuladen, unklarer Ausgang, Konflikt, Rolle",
         "veroeffentlichung-browser.spec.ts › K1/K3/K4: die Wahl erklärt ihre Wirkung, „hervorgehoben“ erreicht die Leserin oben in der Glocke",
-        "verstaendnisfragen-browser.spec.ts › Fragensatz anlegen, bearbeiten, annehmen; beantworten; Rückmeldung nach Neuladen"
+        "verstaendnisfragen-browser.spec.ts › Fragensatz anlegen, bearbeiten, annehmen; beantworten; Rückmeldung nach Neuladen",
+        "klara-erinnerungen-browser.spec.ts › Klara 10 · E1 „Morgen um neun“: Klärung, Vorschau mit Zone und Ziel, Abbrechen speichert nichts",
+        "klara-erinnerungen-browser.spec.ts › Klara 10 · E2 Gespräch nie geöffnet: der Server stellt in die Glocke zu — genau einmal",
+        "klara-erinnerungen-browser.spec.ts › Klara 10 · E3 bestellte Zusammenfassung: tatsächliche Modellantwort kommt mit der Erinnerung in die Glocke @modell",
+        "klara-erinnerungen-browser.spec.ts › Klara 10 · E4 Einrichtungsassistent mit Zauberhut und bewusste Übergabe — nur Titel und Termine bei der Zuständigen"
       ]
     }
   },
@@ -861,5 +865,8 @@
   "nachgefuehrt_von_integration_6931bc32": "Technische Dreiwege-Zusammenführung: OCR-Fundstellen/Korrekturen, KI-Ausfall, Produktbudget-Isolation und Hauptstand erhalten; Titel und Mengen zusammengeführt, ersetzten Eigeninitiative-Titel nicht wieder eingeführt. Browserlose Konsistenzprüfung separat belegt; keine Browser- oder Modellabnahme. Vorhandenen Produktbudget-Fall aus main ergänzt, der in dessen Manifest fehlte; Ist-Liste bestätigt 735 Fallinstanzen.",
   "nachgefuehrt_von_ocr_basis_genauigkeit_v62": "produkt:20261015:ocr-basis-erkannter-genauigkeitsfehler (Basisreparatur 58→53, Version 62): ein dritter Fall in klara-bildautomatik-browser.spec.ts je Projekt chromium, firefox und webkit — die unveränderten OCR-04-Vorlagen (Textbild, Screenshot, gedreht, schwacher Kontrast, PowerPoint mit vier Bildern) über den Dateiimport; nicht zustandsanlegend, speichert nichts. Soll je Projekt 230 → 231, chromium-zustand unverändert 38, gesamt 730 → 733. Von Hand nachgetragen, nicht mit --list erhoben; kein Nachweis bestandener Browserfälle.",
   "nachgefuehrt_von_technischer_hilfe_v63": "Technische Integration am OCR-Basiskandidaten: vorhandenen Produktbudget-Fall in chromium-zustand ergänzt (38 → 39, gesamt 733 → 734). Alle bisherigen Titel und Herkunftsangaben erhalten. Mengenprüfung via Playwright --list; kein Nachweis ausgeführter Browserfälle.",
-  "nachgefuehrt_von_integration_be85d425": "Technische Zusammenführung der Versionen 62 und 63: alle Titel und Herkunftsangaben beider Seiten erhalten, gemeinsame Titel einmal je Projekt. OCR-E01/E02 und OCR-Basisreparatur gemeinsam: je Browserprojekt 231, chromium-zustand 43, beide Setups je 1, gesamt 738. Konsistenzprüfung über bestehenden browserlosen Prüfweg; kein Nachweis bestandener Browserfälle."
+  "nachgefuehrt_von_integration_be85d425": "Technische Zusammenführung der Versionen 62 und 63: alle Titel und Herkunftsangaben beider Seiten erhalten, gemeinsame Titel einmal je Projekt. OCR-E01/E02 und OCR-Basisreparatur gemeinsam: je Browserprojekt 231, chromium-zustand 43, beide Setups je 1, gesamt 738. Konsistenzprüfung über bestehenden browserlosen Prüfweg; kein Nachweis bestandener Browserfälle.",
+  "nachgefuehrt_von_klara_erinnerungen_v54": "produkt:20261007:klara-erinnerungen-kalender (Klara 10), Nacharbeit 2, Version 54: zwei Fälle mehr in chromium-zustand (klara-erinnerungen-browser.spec.ts: E3 bestellte Zusammenfassung @modell — im Tor ausgenommen und in tests/smoke/tor-ausnahme.test.ts benannt — und E4 Einrichtungsassistent/Übergabe); chromium-zustand 37 → 39, gesamt 687 → 689. Von Hand nachgetragen auf Version 53, nicht mit --list erhoben; kein Nachweis bestandener Browserfälle.",
+  "nachgefuehrt_von_klara_erinnerungen_v53": "produkt:20261007:klara-erinnerungen-kalender (Klara 10), Version 53: zwei Fälle mehr in chromium-zustand (klara-erinnerungen-browser.spec.ts, zustandsanlegend, in ZUSTAND_SPEC eingetragen); chromium-zustand 35 → 37, gesamt 685 → 687. Von Hand nachgetragen auf Version 52, nicht mit --list erhoben; kein Nachweis bestandener Browserfälle.",
+  "nachgefuehrt_von_d_integration_v65": "Gezielte Übernahme des Erinnerungsdienstes 107e2bfd in .992: vorhandene Titel erhalten, Erinnerungsfälle ergänzt; Sollinventar, keine Ausführungsbehauptung."
 }

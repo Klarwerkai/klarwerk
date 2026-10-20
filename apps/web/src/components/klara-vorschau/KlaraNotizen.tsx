@@ -17,6 +17,7 @@ import type { KlaraNotiz } from "../../api/klaraNotiz";
 import { useAssistenzT } from "../../lib/assistenzProfil";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { legeAufgabeAusNotiz } from "./aufgaben";
+import { kurzText, starteEntwurf } from "./erinnerungen";
 import {
   fragenAusText,
   ladeNotizen,
@@ -205,6 +206,22 @@ function NotizOffen({ n }: { n: KlaraNotiz }): JSX.Element {
           className={KNOPF}
         >
           {t("klaraaufgabe.alsAufgabe")}
+        </button>
+        {/* Klara 10: aus dieser Notiz eine Erinnerung anfangen — der Server liest den Bezug selbst. */}
+        <button
+          type="button"
+          data-testid="klara-notiz-erinnern"
+          title={t("klaraerinnerung.erinnernHilfe")}
+          onClick={() =>
+            starteEntwurf(
+              { art: "notiz", notizId: n.id },
+              t("klaraerinnerung.bezug.notiz", { titel: n.titel }),
+              kurzText(n.titel || n.inhalt),
+            )
+          }
+          className={KNOPF}
+        >
+          {t("klaraerinnerung.erinnern")}
         </button>
         <button
           type="button"

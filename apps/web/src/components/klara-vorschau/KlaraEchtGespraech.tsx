@@ -36,6 +36,7 @@ import {
   schrittUnterbrochen,
   useEchtGespraech,
 } from "./echt";
+import { kurzText, starteEntwurf } from "./erinnerungen";
 import { legeNotiz } from "./notizen";
 
 const KNOPF =
@@ -280,6 +281,25 @@ function NachrichtEcht({
               className={KNOPF}
             >
               {t("klaranotiz.nachrichtAlsNotiz")}
+            </button>
+          ) : null}
+          {/* Klara 10: aus einer gespeicherten Nachricht eine Erinnerung anfangen — gespeichert
+              wird erst nach geklärter Zeit im Entwurf unter „Meine Erinnerungen“. */}
+          {notizFaehig && gespraechId ? (
+            <button
+              type="button"
+              data-testid="klara-nachricht-erinnern"
+              title={t("klaraerinnerung.erinnernHilfe")}
+              onClick={() =>
+                starteEntwurf(
+                  { art: "gespraech", gespraechId, nachrichtId: n.id },
+                  t("klaraerinnerung.bezug.gespraech", { auszug: kurzText(n.text) }),
+                  kurzText(n.text),
+                )
+              }
+              className={KNOPF}
+            >
+              {t("klaraerinnerung.erinnern")}
             </button>
           ) : null}
         </div>

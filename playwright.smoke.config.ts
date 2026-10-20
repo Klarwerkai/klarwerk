@@ -109,6 +109,8 @@ const PORT_ZUSTAND = 3124;
 // und Versuch an — aus demselben Grund im isolierten Kontext.
 // produkt:20261008:klara-eigeninitiative: die Eigeninitiative-Sonde legt zwei Konten, einen Entwurf
 // und einen Klara-Auftrag an — aus demselben Grund im isolierten Kontext.
+// produkt:20261007:klara-erinnerungen-kalender: die Erinnerungssonde legt ein Konto und Erinnerungen
+// an, die der Serverprozess zustellt — aus demselben Grund im isolierten Kontext.
 // produkt:20261012:klara-bildanalyse-ocr-kontext-setup (OCR-03): die Setup-Sonde legt ein fiktives
 // Konto an und speichert dessen Einstellung „Bilder automatisch analysieren und Text erkennen“.
 // produkt:20261012:klara-ocr-fundstellen-korrekturen (OCR-E01/E02): die Fundstellen-Sonde speichert
@@ -119,7 +121,7 @@ const PORT_ZUSTAND = 3124;
 // produkt:20261013:produktbudget-anwender-admin: die Budgetsonde ändert Produktbudgets und legt ein
 // fiktives Konto an — aus demselben Grund im isolierten Kontext.
 const ZUSTAND_SPEC =
-  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser|luecken-vorgang-browser|assistenz-produkteinstieg-browser|fragen-pruefen-einstieg-browser|kommunikation-browser|antwort-beanstandung-browser|branchen-poc-arbeitswege-browser|verstaendnisfragen-browser|klara-eigeninitiative-browser|klara-bildautomatik-setup-browser|klara-ocr-fundstelle-korrektur-browser|ki-ausfall-weiterarbeiten-browser|produktbudget-browser)\.spec\.ts/;
+  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser|luecken-vorgang-browser|assistenz-produkteinstieg-browser|fragen-pruefen-einstieg-browser|kommunikation-browser|antwort-beanstandung-browser|branchen-poc-arbeitswege-browser|verstaendnisfragen-browser|klara-eigeninitiative-browser|klara-erinnerungen-browser|klara-bildautomatik-setup-browser|klara-ocr-fundstelle-korrektur-browser|ki-ausfall-weiterarbeiten-browser|produktbudget-browser)\.spec\.ts/;
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 // AUFTRAG-mega25 Blöcke A + C — DIE UMGEBUNG DES SMOKE-SERVERS WIRD HIER DEKLARIERT, NIRGENDWO SONST.

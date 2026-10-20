@@ -66,6 +66,7 @@ export const WEITERLAUFENDE_FRISTLAEUFE = [
   "Papierkorb-Endlöschung (Wissensobjekte und Entwürfe)",
   "Gedächtnis-Aufräumlauf",
   "Klara-Aufräumlauf",
+  "Persönliche Erinnerungen (interne Meldung in der Glocke)",
 ] as const;
 
 /** Die vier Bestätigungen der Freigabe — in dieser Reihenfolge nach Peters Entscheidung 45. */
