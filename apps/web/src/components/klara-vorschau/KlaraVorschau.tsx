@@ -1966,6 +1966,17 @@ export function KlaraVorschau({
       setKiAusGezeigt(false);
     }
   }, [panelSichtbar]);
+  // F08: der berechtigte Rücklink öffnet die eigenen Notizen; der Server prüft das Original frisch.
+  const notizRuecklink = new URLSearchParams(location.search).get("notiz");
+  useEffect(() => {
+    if (notizRuecklink && istEcht && kontoId) oeffnen();
+  }, [notizRuecklink, istEcht, kontoId, oeffnen]);
+  useEffect(() => {
+    if (notizRuecklink && istEcht && kontoId && panelSichtbar) {
+      setMenueOffen(false);
+      setMenueSeite("funktionen");
+    }
+  }, [notizRuecklink, istEcht, kontoId, panelSichtbar]);
   // Ein bewusster „Erinnern“-Klick an der Nachricht öffnet den bestehenden Entwurfsweg.
   // Keine dauernde Erinnerungskarte in der Grundansicht und kein erneutes Öffnen beim Tippen.
   useEffect(() => {

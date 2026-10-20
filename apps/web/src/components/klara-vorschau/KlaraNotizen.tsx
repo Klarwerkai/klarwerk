@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 import type { KlaraNotiz } from "../../api/klaraNotiz";
 import { useAssistenzT } from "../../lib/assistenzProfil";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { KlaraWissen, KlaraWissensImport } from "./KlaraWissen";
 import { legeAufgabeAusNotiz } from "./aufgaben";
 import { kurzText, starteEntwurf } from "./erinnerungen";
 import {
@@ -111,6 +112,12 @@ function NotizOffen({ n }: { n: KlaraNotiz }): JSX.Element {
         <p className="mt-0.5 text-[11px] italic text-muted">„{n.objektbezug.auswahl}“</p>
       ) : null}
 
+      <KlaraWissen
+        key={`${n.id}-${n.fassung}`}
+        id={n.id}
+        fassung={n.fassung}
+        geaendert={geaendert}
+      />
       <label htmlFor={`${id}-titel`} className={`${KLEINTITEL} mt-2 block`}>
         {t("klaranotiz.feld.titel")}
       </label>
@@ -280,6 +287,10 @@ export function KlaraNotizen(): JSX.Element {
       void ladeNotizen(t, undefined, generation);
     }
   }, [laden, generation, t]);
+  useEffect(() => {
+    const notiz = new URLSearchParams(window.location.search).get("notiz");
+    if (notiz) void oeffneNotiz(notiz, t);
+  }, [t]);
 
   return (
     <section
@@ -340,6 +351,7 @@ export function KlaraNotizen(): JSX.Element {
         </ul>
       ) : null}
 
+      <KlaraWissensImport />
       {s.offen ? <NotizOffen n={s.offen} /> : null}
 
       <form
