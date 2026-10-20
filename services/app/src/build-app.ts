@@ -405,6 +405,14 @@ import {
   inMemoryErinnerungAblage,
   pgErinnerungAblage,
 } from "./klara-erinnerung";
+import {
+  InMemoryKlaraFristenRepo,
+  type KlaraFristenRepo,
+  PgKlaraFristenRepo,
+} from "./klara-fristen-ablage";
+import { KlaraFristenDienst } from "./klara-fristen-dienst";
+import { FristenKalenderRepo } from "./klara-fristen-kalender";
+import { KlaraFristenQuellen } from "./klara-fristen-quellen";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche — haltbar im Postgres-Betrieb, im
 // Speicher ohne Datenbank.
 import {
@@ -563,6 +571,7 @@ import { klaraBegleiterRoutes } from "./routes/klara-begleiter-routes";
 import { klaraBrowserAktionRoutes } from "./routes/klara-browser-aktion-routes";
 // produkt:20261007:klara-erinnerungen-kalender (Klara 10): die eigenen Erinnerungen.
 import { klaraErinnerungRoutes } from "./routes/klara-erinnerung-routes";
+import { klaraFristenRoutes } from "./routes/klara-fristen-routes";
 // produkt:20261008:klara-basis: die eigenen, serverseitig gespeicherten Klara-Gespräche.
 import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
 // produkt:20261008:klara-kalender (Klara 11): die eigene Kalenderanbindung.
@@ -878,6 +887,7 @@ export interface AppServices {
    * haltbar (`PgEigenerKalenderRepo`), sonst die In-Memory-Ablage.
    */
   eigenerKalender: EigenerKalenderRepo;
+  klaraFristen: KlaraFristenRepo;
   /**
    * AW-16 (Ben nacharbeit-2): der maßgebliche Ausführungsnachweis für Auftrag, Lauf, Ergebnis und
    * Serie und der Zugang zum vorhandenen Kalender. Ohne Angabe schließt `buildApp` seit Klara 11
@@ -1534,6 +1544,7 @@ export function assembleServices(
     klaraGespraeche?: KlaraGespraechRepo;
     // produkt:20261010:klara-eigener-kalender: gesetzt von `buildPgServices`; sonst im Speicher.
     eigenerKalender?: EigenerKalenderRepo;
+    klaraFristen?: KlaraFristenRepo;
     // produkt:20261007:klara-notizen-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
     klaraNotizen?: KlaraNotizRepo;
     // produkt:20261008:klara-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
@@ -2018,6 +2029,7 @@ export function assembleServices(
     klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
     // produkt:20261010:klara-eigener-kalender — Postgres, wenn injiziert, sonst im Speicher.
     eigenerKalender: opts.eigenerKalender ?? new InMemoryEigenerKalenderRepo(),
+    klaraFristen: opts.klaraFristen ?? new InMemoryKlaraFristenRepo(),
     // produkt:20261007:klara-notizen-aufgaben: die Notizen — Postgres, wenn injiziert, sonst im Speicher.
     klaraNotizen: opts.klaraNotizen ?? new InMemoryKlaraNotizRepo(),
     // produkt:20261008:klara-aufgaben: die Aufgaben — Postgres, wenn injiziert, sonst im Speicher.
@@ -2570,6 +2582,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261010:klara-eigener-kalender: ein interner Termin und die Sichtwahl überleben
       // Neuladen, Neustart und Deploy (`EIGENER_KALENDER_SCHEMA`, angelegt von `migrate()`).
       eigenerKalender: new PgEigenerKalenderRepo(pool),
+      klaraFristen: new PgKlaraFristenRepo(pool),
       // produkt:20261007:klara-notizen-aufgaben: eine Notiz überlebt erneute Anmeldung, Neustart und
       // Deploy (`KLARA_NOTIZ_SCHEMA`, angelegt von `migrate()`).
       klaraNotizen: new PgKlaraNotizRepo(pool),
@@ -6053,8 +6066,24 @@ export function buildApp(
   // (`erinnerungsAusfuehrung`) und DIESELBE Kalenderanbindung (`vorhandenerKalenderAus`, ohne
   // Klaras eigene Projektionen) — gesetzte `services.kalenderAusfuehrung`/`vorhandenerKalender`
   // ersetzen sie.
+  const fristenQuellen = new KlaraFristenQuellen({
+    auth: services.auth,
+    ko: services.ko,
+    notizen: services.klaraNotizen,
+    gespraeche: services.klaraGespraeche,
+    spaces: services.spaces,
+  });
+  const fristenDienst = new KlaraFristenDienst({
+    repo: services.klaraFristen,
+    lies: (user, art, id) => fristenQuellen.lies(user, art, id),
+  });
+  app.register(klaraFristenRoutes({ dienst: fristenDienst, audit: services.audit }, guards));
   const eigenerKalenderDienst = new EigenerKalenderDienst({
-    repo: services.eigenerKalender,
+    repo: new FristenKalenderRepo(services.eigenerKalender, services.klaraFristen),
+    informationLesbar: async (user, id) => {
+      const f = (await services.klaraFristen.hole(user.id))?.fristen.find((f) => f.id === id);
+      return f !== undefined && (await fristenDienst.lesbar(user, f));
+    },
     teams: services.teams,
     quelleLesbar: async (user, koId) => {
       const ko = await services.ko.get(koId);

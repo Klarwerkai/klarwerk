@@ -89,7 +89,10 @@ export const KALENDER_AKTIONEN = [
 ] as const;
 export type KalenderAktion = (typeof KALENDER_AKTIONEN)[number];
 
-export type KalenderHerkunft = { art: "eigen" } | { art: "wissensobjekt"; koId: string };
+export type KalenderHerkunft =
+  | { art: "eigen" }
+  | { art: "wissensobjekt"; koId: string }
+  | { art: "information"; fristId: string };
 
 /** Verweise — der Kalender speichert nur die Kennungen, nie Stand oder Ergebnis. */
 export interface KalenderAuftragVerweis {
@@ -136,6 +139,7 @@ export interface KalenderEintrag {
   angelegtAm: string;
   geaendertAm: string;
   fassung: number;
+  erkennung?: { art: string; stand: string; manuell?: boolean };
 }
 
 export interface KalenderEinstellungen {
@@ -631,6 +635,7 @@ export interface KalenderSicht {
   angelegtAm: string;
   geaendertAm: string;
   fassung: number;
+  erkennung?: { art: string; stand: string; manuell?: boolean };
 }
 
 export interface KalenderFolgen {
@@ -671,6 +676,7 @@ export interface EigenerKalenderDeps {
   readonly teams: { aktuelle(): Promise<TeamFassung[]> };
   /** Darf diese Person das Wissensobjekt HEUTE sehen? Unbekannt heisst nein (fail-closed). */
   readonly quelleLesbar: (user: SessionUser, koId: string) => Promise<boolean>;
+  readonly informationLesbar?: (user: SessionUser, fristId: string) => Promise<boolean>;
   /** Der maßgebliche Ausführungsnachweis. Ohne Angabe: keine Verknüpfung, keine Ausführungsaktion. */
   readonly ausfuehrung?: AusfuehrungsNachweis;
   /** Die Aufgabenablage. Ohne Angabe (und ohne Ausführungsnachweis): keine Auftragsverknüpfung. */
@@ -716,6 +722,7 @@ export class EigenerKalenderDienst {
   private readonly repo: EigenerKalenderRepo;
   private readonly teams: EigenerKalenderDeps["teams"];
   private readonly quelleLesbar: EigenerKalenderDeps["quelleLesbar"];
+  private readonly informationLesbar: EigenerKalenderDeps["informationLesbar"];
   private readonly ausfuehrung: AusfuehrungsNachweis | undefined;
   private readonly aufgaben: AufgabenNachweis | undefined;
   private readonly vorhanden: VorhandenerKalender | undefined;
@@ -726,6 +733,7 @@ export class EigenerKalenderDienst {
     this.repo = deps.repo;
     this.teams = deps.teams;
     this.quelleLesbar = deps.quelleLesbar;
+    this.informationLesbar = deps.informationLesbar;
     this.ausfuehrung = deps.ausfuehrung;
     this.aufgaben = deps.aufgaben;
     this.vorhanden = deps.vorhandenerKalender;
@@ -782,13 +790,19 @@ export class EigenerKalenderDienst {
     return auftrag ? { titel: auftrag.titel, persoenlich: false } : null;
   }
 
+  private async inhaltLesbar(user: SessionUser, e: KalenderEintrag): Promise<boolean> {
+    if (e.herkunft.art === "wissensobjekt") return this.quelleLesbar(user, e.herkunft.koId);
+    if (e.herkunft.art === "information")
+      return (await this.informationLesbar?.(user, e.herkunft.fristId)) === true;
+    return true;
+  }
+
   private async sicht(
     user: SessionUser,
     e: KalenderEintrag,
     team: TeamFassung | null,
   ): Promise<KalenderSicht> {
-    const geschuetzt =
-      e.herkunft.art === "wissensobjekt" && !(await this.quelleLesbar(user, e.herkunft.koId));
+    const geschuetzt = !(await this.inhaltLesbar(user, e));
     const a = this.ausfuehrung;
     const auftrag = e.auftrag ? await this.auftragLesen(user, e.auftrag.taskId) : null;
     const lauf =
@@ -815,6 +829,7 @@ export class EigenerKalenderDienst {
       geschuetzt,
       status: e.status,
       fristId: e.fristId,
+      ...(!geschuetzt && e.erkennung ? { erkennung: e.erkennung } : {}),
       auftrag: e.auftrag
         ? {
             taskId: e.auftrag.taskId,
@@ -1084,10 +1099,7 @@ export class EigenerKalenderDienst {
     }
     const z = await this.zugriff(user, id);
     const alt = z.eintrag;
-    if (
-      alt.herkunft.art === "wissensobjekt" &&
-      !(await this.quelleLesbar(user, alt.herkunft.koId))
-    ) {
+    if (!(await this.inhaltLesbar(user, alt))) {
       throw new KalenderFehler(
         409,
         "quelle_geschuetzt",

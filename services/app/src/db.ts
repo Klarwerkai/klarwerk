@@ -77,6 +77,7 @@ import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 import { KLARA_AUFGABE_SCHEMA } from "./klara-aufgabe";
 // produkt:20261007:klara-erinnerungen-kalender: Erinnerungen, ihre Läufe und zugestellten Meldungen.
 import { KLARA_ERINNERUNG_SCHEMA } from "./klara-erinnerung";
+import { KLARA_FRISTEN_SCHEMA } from "./klara-fristen-ablage";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (eine Zeile je Gespräch und Konto).
 import { KLARA_GESPRAECH_SCHEMA } from "./klara-gespraech";
 import { KLARA_KALENDER_SCHEMA } from "./klara-kalender-anbindung";
@@ -431,6 +432,7 @@ export const schemas = [
   // je Konto. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne
   // Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   EIGENER_KALENDER_SCHEMA,
+  KLARA_FRISTEN_SCHEMA,
 ];
 
 // ================================================================================================

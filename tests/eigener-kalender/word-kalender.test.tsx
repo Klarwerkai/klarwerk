@@ -266,6 +266,91 @@ describe("AW-16 · Office-Begleitung: dieselbe berechtigte Kalendersicht im Word
     expect(kennungen()).toEqual([]);
   });
 
+  it("AW19 · zeigt denselben erkannten Fristvorgang mit Anlass; Quellenentzug schützt auch die Word-Kalendersicht", async () => {
+    const { app, erik } = await buehne();
+    try {
+      const datum = new Date(Date.now() + 5 * 86_400_000).toISOString().slice(0, 10);
+      const n = await app.inject({
+        method: "POST",
+        url: "/api/me/klara/notizen",
+        headers: erik,
+        payload: {
+          vorgang: `word-fristen-${crypto.randomUUID()}`,
+          weg: "geschrieben",
+          titel: "Synthetische Lizenz",
+          inhalt: `Lizenz L-17: Ablaufdatum ${datum}.`,
+          objektbezug: { pfad: "/kalender", seitenName: "Mein Kalender", objekt: "Fristenprüfung" },
+        },
+      });
+      expect(n.statusCode, n.body).toBe(201);
+      const regel = await app.inject({
+        method: "PUT",
+        url: "/api/me/klara/fristen/regel",
+        headers: erik,
+        payload: {
+          fassung: 0,
+          regel: {
+            aktiv: true,
+            bereich: "persoenlich",
+            zeitzone: "Europe/Berlin",
+            quellen: [{ art: "notiz", id: n.json().notiz.id }],
+            arten: ["ablauf"],
+            aenderung: "klaeren",
+            widerruf: "unzuverlaessig_ohne_vorlauf",
+            wiederpruefung: "relevante_aenderung_klaeren",
+            pruefstand: "aw19-sollbestand-1",
+          },
+        },
+      });
+      expect(regel.statusCode, regel.body).toBe(200);
+      const kalender = await app.inject({ url: "/api/me/kalender", headers: erik });
+      const id: string = kalender.json().eintraege[0].id;
+      fensterStarten(app, { kopf: erik, kennung: "id:erik" });
+      await aufklappen();
+      expect(kennungen()).toEqual([id]);
+      expect(inhaltText()).toContain("Lizenz L-17");
+      expect(inhaltText()).toContain("Aus Information erkannt");
+      expect(inhaltText()).toContain("Ablauf");
+      expect(inhaltText()).toContain("Eindeutig erkannt");
+      const frist = regel.json().fristen[0];
+      const korrektur = await app.inject({
+        method: "POST",
+        url: `/api/me/klara/fristen/${frist.id}/aktion`,
+        headers: erik,
+        payload: {
+          fassung: frist.fassung,
+          aktion: "korrigieren",
+          datum: {
+            art: "datum",
+            datum: new Date(Date.now() + 6 * 86_400_000).toISOString().slice(0, 10),
+          },
+        },
+      });
+      expect(korrektur.statusCode, korrektur.body).toBe(200);
+      await zuklappen();
+      await aufklappen();
+      expect(kennungen()).toEqual([id]);
+      expect(inhaltText()).toContain("Manuell festgelegt");
+      expect(inhaltText()).not.toContain("Eindeutig erkannt");
+      expect(
+        (
+          await app.inject({
+            method: "DELETE",
+            url: `/api/me/klara/notizen/${n.json().notiz.id}`,
+            headers: erik,
+          })
+        ).statusCode,
+      ).toBe(200);
+      await zuklappen();
+      await aufklappen();
+      expect(inhaltText()).not.toContain("Lizenz L-17");
+      expect(inhaltText()).not.toContain("Eindeutig erkannt");
+      expect(inhaltText()).not.toContain("Manuell festgelegt");
+    } finally {
+      await app.close();
+    }
+  });
+
   it("K7 · erneutes Aufklappen fragt mit heutigen Rechten neu — nach Quellrechteentzug und Teamaustritt erscheint nichts Altes", async () => {
     const { services, app, erik, lea, ids, team } = await buehne();
     const jetzt = new Date().toISOString();
