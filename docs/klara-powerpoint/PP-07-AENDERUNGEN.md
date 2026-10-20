@@ -105,3 +105,34 @@ Die alten PP-02/03-Host-/Browserbelege bleiben unverändert mit ihrer ursprüngl
 erhalten. Sie sind keine neue PP-07-Hostabnahme. UI-06/08, echte Tastatur-/Fenster-/Screenreader-
 Bedienung, echte persistente Gesamtübernahme, unabhängiger Ben, Integration/Version/Push/Deploy,
 Provider-/Livebeleg und zentraler Originalabschluss sind weiterhin offen und Sache der Führung.
+
+## Späterer fester PP-05-Anschluss am 20.10.2026
+
+Nach dem getrennt erhaltenen, regulär gebauten Vorschaukern `33b9545840ed2b772a38f5fffe8f537eb0d6e8b4`
+hat die Führung den tatsächlichen PP-05-Port von N an
+`fbc1ef39dff20253dacc4c03b86cf4b58bbed9c2` gebunden. Er wurde regulär ohne Konflikte in den
+eigenen Branch vereinigt (`1814364a4f1a1ab7eeff61717109c2ff70166b25`). Die früheren Aussagen
+zum noch fehlenden festen Port beschreiben den Stand vor dieser konkreten Zustellung. Eine
+unabhängige Gesamtannahme von PP-05 ist auch damit nicht behauptet.
+
+`praesentation-fassungen.ts` verwendet die tatsächlichen Typen `GebundenerDeckVertrag` und
+`DeckVertrag` aus Ns `office-datenfolien.ts`. `verknuepfeDeckFassungen` nimmt ausschließlich einen
+echten serverseitigen PP-05-Übernahmerücklauf mit dessen gelesenen Dateidaten entgegen; ein
+ungeprüftes Importmanifest oder ein HTTP-Rumpf ist kein solcher Rücklauf. Der Adapter erzeugt
+kurze/ausführliche **Folienauswahlen**, die auf genau eine gemeinsame Daten-/Quellfassungsbasis
+verweisen. Er prüft Dateibindung, tatsächliche Folien, widersprüchliche Datenfassungen, lesbare
+historische Herkunft sowie die tatsächlich gespeicherten PP-02-Bindungen. Fehlende Teilbindungen
+und manuell abweichende Elemente werden als Konflikte geführt. Eine PP-07-Änderungsprojektion
+erreicht über Ns Vertrag auch Diagramm- und Belegfolien.
+
+Dieser Port ist noch kein eigener Produktendpunkt, keine gespeicherte kurze/lange Datei und kein
+Deckaktualisierungsschreiber. Die gemeinsame Übernahme und der Anschluss an die Produktfläche
+bleiben offen. Diagrammbytes und eingebettete Arbeitsmappen werden durch ihn nicht neu geprüft
+oder verändert. Der erste PP-05-Vertrag hat keine Notizbindungen. `belegOffen` und
+`bindungenOffen` des Elternrücklaufs bleiben eigene offene Lieferbedingungen.
+
+`pp07-pp05-deckanschluss.test.ts` prüft genau diese Zusammensetzung: echte PP-05-Vorschau und
+Übernahme über die Routen, gespeicherte PPTX-Bytes, gemeinsame Fassungsbasis, Folienauswahlen,
+Diagramm-/Belegwirkungen sowie negative Datei-/Fassungs-/Rechtefälle. Die manuelle Abweichung
+ist ein gezielter Objektgegenfall am bereits gelesenen Foliensatz, keine Host- oder Dateiänderungs-
+abnahme. Die übrigen ursprünglichen Abnahmegrenzen bleiben erhalten.
