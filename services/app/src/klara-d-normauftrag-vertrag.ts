@@ -62,6 +62,11 @@ export interface KlaraDNormAuftragsAntwort {
 
 /** Optionaler Dep in D: fehlt er, wird keine Prüfaufgabe angelegt und der alte Watch bleibt gültig. */
 export interface KlaraDNormAuftragsPort {
+  /** Einmaliger eigener G-Eingang je Sachereignis; D bindet ihn im anlegen-Guard vor dem Schreiben. */
+  eingang(
+    eingabe: Omit<KlaraDNormAuftragsEingabe, "gespraechId">,
+    kontext: KlaraDNormAuftragsKontext,
+  ): Promise<KlaraDNormAuftragsEingabe>;
   /** Tatsächlichen gebundenen Vorgang lesen; null ist kein Beweis einer fehlenden Fachwirkung. */
   original(
     eingabe: KlaraDNormAuftragsEingabe,
