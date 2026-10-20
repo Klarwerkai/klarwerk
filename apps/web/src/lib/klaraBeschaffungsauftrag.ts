@@ -20,7 +20,7 @@ function eindeutigeAngabe(
 ): string {
   const werte = new Map<string, string>();
   for (const treffer of text.matchAll(muster)) {
-    const wert = treffer[1]?.trim();
+    const wert = (treffer[1] ?? treffer[2])?.trim();
     if (wert) werte.set(schluessel(wert), wert);
   }
   return werte.size === 1 ? (werte.values().next().value ?? "") : "";
@@ -34,10 +34,11 @@ export function erkenneBeschaffung(s: string): ErkannterAuftrag | null {
     );
   if (!m) return null;
   const rest = m[1] ?? "";
-  const produkt =
-    /(?:produkt|product)\s+[„“"«]([^“”"»]+)[“”"»]/iu.exec(rest)?.[1]?.trim() ??
-    /(?:produkt|product)\s+([\p{L}\p{N}][\p{L}\p{N}._/-]*)(?=\s|[,;.]|$)/iu.exec(rest)?.[1] ??
-    "";
+  const produkt = eindeutigeAngabe(
+    rest,
+    // Ganze zitierte Namen überspringen; nur ausdrücklich außerhalb genannte Produkte vergleichen.
+    /(?:produkt|product)\s+(?:[„“"«]([^“”"»]+)[“”"»]|([\p{L}\p{N}][\p{L}\p{N}._/-]*)(?=\s|[,;.]|$))|[„“"«][^“”"»]*[“”"»]/giu,
+  );
   // Zitierte Produkt-, Quellen- und Empfängernamen sind Daten, keine Mengen-/Terminangaben.
   const angaben = rest.replace(/[„“"«][^“”"»]*[“”"»]/gu, " ");
   const menge = eindeutigeAngabe(

@@ -84,3 +84,52 @@ it.each([
   )?.beschaffung;
   expect(b && fehlendeBeschaffungsangaben(b)).toEqual(fehlt);
 });
+
+it("BES-E8 · konkreter BES-1-Satz mit zwei expliziten Produkten lässt ausschließlich die Produktwahl offen", () => {
+  const b = erkenneAuftrag(
+    "Besorge neue Angebote für die Verpackung von Produkt „PX-17“ oder Produkt „PX-18“ für 500 Stück bis 2035-11-30",
+  )?.beschaffung;
+  expect(b).toMatchObject({
+    produkt: "",
+    bedarf: "Verpackung",
+    menge: "500 Stück",
+    termin: "2035-11-30",
+  });
+  expect(b && fehlendeBeschaffungsangaben(b)).toEqual(["produkt"]);
+});
+
+it.each(["Produkt PX-17 oder Produkt PX-18", "Produkt „PX-17“ oder Produkt PX-18"])(
+  "BES-E9 · unzitierte und gemischte explizite Produktalternativen werden ebenfalls geklärt: %s",
+  (produkte) => {
+    const b = erkenneAuftrag(
+      `Besorge neue Angebote für die Verpackung von ${produkte} für 500 Stück bis 2035-11-30`,
+    )?.beschaffung;
+    expect(b?.produkt).toBe("");
+    expect(b && fehlendeBeschaffungsangaben(b)).toEqual(["produkt"]);
+  },
+);
+
+it.each([
+  "Besorge neue Angebote für die Verpackung von Produkt „PX-17“ oder Produkt PX-17 für 500 Stück bis 2035-11-30",
+  'Prepare new offers for the packaging of product "PX-17" or product PX-17 for 500 pieces by 2035-11-30',
+  'Vraag nieuwe offertes voor de verpakking van product "PX-17" of product PX-17 voor 500 stuks voor 2035-11-30',
+  "Besorge neue Angebote für die Verpackung von Produkt PX-17 für 500 Stück bis 2035-11-30",
+  'Prepare new offers for the packaging of product "PX-17" for 500 pieces by 2035-11-30',
+  "Vraag nieuwe offertes voor de verpakking van product PX-17 voor 500 stuks voor 2035-11-30",
+])(
+  "BES-E10 · gleiche Wiederholung oder eindeutiges Produkt DE/EN/NL bleibt bekannt: %s",
+  (text) => {
+    const b = erkenneAuftrag(text)?.beschaffung;
+    expect(b?.produkt).toBe("PX-17");
+    expect(b && fehlendeBeschaffungsangaben(b)).toEqual([]);
+  },
+);
+
+it("BES-E11 · Produkttext innerhalb eines zitierten Quellnamens ist keine zweite Produktwahl", () => {
+  const e = erkenneAuftrag(
+    "Besorge neue Angebote für die Verpackung von Produkt PX-17 für 500 Stück bis 2035-11-30; Quelle „Produkt PX-18“",
+  );
+  expect(e?.beschaffung?.produkt).toBe("PX-17");
+  expect(e?.beschaffung && fehlendeBeschaffungsangaben(e.beschaffung)).toEqual([]);
+  expect(e?.beschaffungsQuelle).toBe("Produkt PX-18");
+});
