@@ -25,6 +25,7 @@
 // Text mit markierter Stelle; berichtigt wird gebunden an die gespeicherte Quelle dieser Fläche
 // (`ko:<id>`/`entwurf:<id>` aus der Provenienz) und die Bildfassung — Klara fragt mit dem
 // berichtigten Text.
+//   · OCR-E06: darunter „Klara, was steht hier?“ — ein Bild oder einen Bereich darin auswählen.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useImageDescribe } from "../app/ImageDescribeContext";
@@ -43,6 +44,7 @@ import { useBildAnalyse } from "../lib/bildAutomatikLauf";
 import { originalAusEingang } from "../lib/bildFundstelle";
 import { htmlToPlainText } from "../lib/richText";
 import { BildBefundListe } from "./BildBefundListe";
+import { KlaraBereichsfrage } from "./KlaraBereichsfrage";
 import { KlaraBildKontextFrage } from "./KlaraBildKontextFrage";
 
 interface Gestartet {
@@ -137,6 +139,13 @@ export function BildBefundeImRumpf({ html }: { html: string }): JSX.Element | nu
         quellen={quellen}
         aktuell={aktuell}
         korrekturQuelle={quelle ?? null}
+      />
+      <KlaraBereichsfrage
+        analyse={analyse}
+        korrekturQuelle={quelle ?? null}
+        kontextSchluessel={`rumpf:${befund.lauf}`}
+        quellen={quellen}
+        aktuell={aktuell}
       />
     </div>
   );

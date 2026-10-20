@@ -42,5 +42,17 @@
   {
     "file": "referenzki-modellbeobachtung.spec.ts",
     "title": "REF-02 · K10 — sieben fiktive Fälle gegen das echte Prüfmodell @modell"
+  },
+  {
+    "file": "klara-bereichsfrage-browser.spec.ts",
+    "title": "OCR-E06 · Klara erklärt den ausgewählten Bereich mit dem Modell; Nachfrage bleibt dort @modell"
+  },
+  {
+    "file": "klara-bild-ocr04-abnahme-browser.spec.ts",
+    "title": "OCR-04 · direktes Bild: Klara antwortet mit dem Modell auf den automatisch gelesenen Text @modell"
+  },
+  {
+    "file": "klara-bild-ocr04-abnahme-browser.spec.ts",
+    "title": "OCR-04 · PowerPoint im Artikel: Klara antwortet mit dem Modell auf Text aus eingebetteten Bildern @modell"
   }
 ]

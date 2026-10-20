@@ -283,6 +283,8 @@ export interface PdfSeitenOptionen {
   /** Die Einstellung des Kontos (Setup › Klara): an, aus oder nicht lesbar. */
   lage: "an" | "aus" | "unbekannt";
   onFortschritt?: (stand: QuellenBefund) => void;
+  /** Flüchtige Vorschau derselben gerenderten Seite für Fundstellen, Tabellen und Auswahl. */
+  onBild?: (fundstelle: BildFundstelle, src: string) => void;
   /** Der Lauf ist überholt (andere Datei, anderes Konto) — vor der nächsten Seite geprüft. */
   abbrechen?: () => boolean;
   /** Die Automatik wurde während des Laufs ausgeschaltet — vor der nächsten Seite geprüft. */
@@ -381,6 +383,8 @@ async function leseSeite(
   if (!src) {
     return leererBefund(fundstelle, "fehlgeschlagen", { fehler: "seite-nicht-gezeichnet" });
   }
+  if (optionen.abbrechen?.()) return leererBefund(fundstelle, "nicht-analysiert");
+  optionen.onBild?.(fundstelle, src);
   const befund = await optionen.analyse.befundFuerBild({ fundstelle, src });
   const textebene = textebeneJeSeite.get(seite) ?? "";
   if (befund.status !== "gelesen" || textebene.length === 0) {

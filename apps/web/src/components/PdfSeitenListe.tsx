@@ -1,8 +1,11 @@
 // OCR-E04 · Der Lesestand einer PDF Seite für Seite — Textebene und gescannte Seite, mit
 // Seitenzahl und ehrlichem Gesamtstatus (Logik in `lib/pdfScanSeiten.ts`). Laufende, fehlerhafte,
 // nicht gelesene und fehlende Seiten stehen als solche da; die gelesenen bleiben daneben sichtbar.
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { BildBefund, QuellenBefund, QuellenStatus } from "../lib/bildAutomatik";
+import { quellenMitKorrekturen } from "../lib/bildKorrektur";
+import { useBildKorrekturen } from "../lib/bildKorrekturenStand";
 import { MAX_PDF_PAGES } from "../lib/pdf";
 import { bildStatusSchluessel } from "./BildBefundListe";
 
@@ -30,7 +33,17 @@ export function seitenZaehlung(befund: QuellenBefund): { fertig: number; gesamt:
   return { fertig, gesamt: jeSeite.size + (befund.fehlendeSeiten ?? 0) };
 }
 
-export function PdfSeitenListe({ befund, lauf }: { befund: QuellenBefund; lauf?: number }) {
+export function PdfSeitenListe({
+  befund: rohBefund,
+  lauf,
+  korrekturQuelle,
+}: { befund: QuellenBefund; lauf?: number; korrekturQuelle?: string | null }) {
+  const korrekturen = useBildKorrekturen(typeof korrekturQuelle === "string");
+  const befund = useMemo(
+    () =>
+      quellenMitKorrekturen([rohBefund], korrekturQuelle, korrekturen.korrekturen)[0] ?? rohBefund,
+    [rohBefund, korrekturQuelle, korrekturen.korrekturen],
+  );
   const { t } = useTranslation();
   if (befund.status === "ohne-bilder") {
     return null;

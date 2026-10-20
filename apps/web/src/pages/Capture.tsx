@@ -77,6 +77,8 @@ import { FileFormatInfo } from "../components/FileFormatInfo";
 // R-1624: Foto-zu-Wissen — Einstieg ins geführte Interview über ein Foto.
 import { FotoInterviewStart } from "../components/FotoInterviewStart";
 import { HelpTip } from "../components/HelpTip";
+// OCR-E06: „Klara, was steht hier?“ — ein Bild der Datei oder einen Bereich darin erklären.
+import { KlaraBereichsfrage } from "../components/KlaraBereichsfrage";
 // OCR-03: Klara zu einer bereitgestellten Datei fragen — Text und erkannte Bilder mit Fundstelle.
 import { KlaraBildKontextFrage } from "../components/KlaraBildKontextFrage";
 import { KnopfUnterschied } from "../components/KnopfUnterschied";
@@ -117,8 +119,7 @@ import { anlagenAlsEingabe, anlagenNutzlast, anlagenVon } from "../lib/anlagen";
 // (und mit ihr der dreiwertige Ausgang) bleibt der Weg für ein BESTEHENDES Wissensobjekt: KO-Detail
 // und „An Artikel anfügen" — s. lib/appendToArticle.ts.
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
-// OCR-03 (Nacharbeit 4): der Dateilauf prüft Konto und Einstellung vor jedem weiteren Bild.
-import { assistenzStand } from "../lib/assistenzProfil";
+import { assistenzStand, useAssistenzStand } from "../lib/assistenzProfil";
 // OCR-02 (Klara-Bildanalyse): bereitgestellte und eingebettete Bilder automatisch lesen.
 import {
   type BildBefund,
@@ -288,6 +289,8 @@ import {
   readPptxRich,
   readTextFile,
 } from "../lib/files";
+// OCR-03 (Nacharbeit 4): der Dateilauf prüft Konto und Einstellung vor jedem weiteren Bild.
+import { ladeFinderOcrDatei } from "../lib/finderOcrEingang";
 import { type FotoAnker, applyFotoAnker, applyFotoArtikel } from "../lib/fotoInterview";
 import {
   CLEARED_DRAFT_INTERVIEW,
@@ -5020,11 +5023,23 @@ export function CaptureArbeitsraum({
     if (!aktuell()) {
       return null;
     }
+    let vorschauEingang: BildQuelleEingang = { ...eingang, vorkommen: [...eingang.vorkommen] };
     const offen: { zeichner: PdfSeitenZeichner | null } = { zeichner: null };
     try {
       const ergebnis = await lesePdfSeiten(eingang, {
         analyse: bildAnalyse,
         lage,
+        onBild: (fundstelle, src) => {
+          if (!aktuell()) return;
+          vorschauEingang = {
+            ...vorschauEingang,
+            vorkommen: vorschauEingang.vorkommen.map((v) =>
+              v.fundstelle.bild === fundstelle.bild && v.fundstelle.seite === fundstelle.seite
+                ? { ...v, src }
+                : v,
+            ),
+          };
+        },
         // Geöffnet wird die Datei zum Zeichnen erst, wenn wirklich eine Seite gelesen wird.
         zeichne: async (seite) => {
           offen.zeichner ??= await pdfSeitenZeichner(f);
@@ -5034,14 +5049,14 @@ export function CaptureArbeitsraum({
         automatikAus: () => bildAutomatikLage(assistenzStand()) === "aus",
         onFortschritt: (stand) => {
           if (aktuell()) {
-            setFileBildBefund({ lauf, befund: stand, eingang, korrekturQuelle });
+            setFileBildBefund({ lauf, befund: stand, eingang: vorschauEingang, korrekturQuelle });
           }
         },
       });
       if (!aktuell()) {
         return null;
       }
-      setFileBildBefund({ lauf, befund: ergebnis, eingang, korrekturQuelle });
+      setFileBildBefund({ lauf, befund: ergebnis, eingang: vorschauEingang, korrekturQuelle });
       return ergebnis;
     } finally {
       await offen.zeichner?.schliessen();
@@ -5052,12 +5067,7 @@ export function CaptureArbeitsraum({
   // Extraktoren (Text/Word/PDF; Bild als OCR-Kandidat).
   // OCR-02: Bilder und eingebettete Bilder (PPTX, DOCX) werden seit 12.10.2026 beim Einlesen
   // automatisch gelesen (`leseDateiBilder`); der Klick auf die Erkennung bleibt als manueller Weg.
-  const onExtractFile = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) {
-      return;
-    }
+  const verarbeiteDatei = async (f: File): Promise<void> => {
     fileBildLaufRef.current += 1;
     const bildLauf = fileBildLaufRef.current;
     // OCR-E02 (Nacharbeit 2): die stabile Identität DIESES Dokuments für Berichtigungen — sein
@@ -5444,6 +5454,51 @@ export function CaptureArbeitsraum({
       setFileBusy(false);
     }
   };
+
+  const onExtractFile = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (f) await verarbeiteDatei(f);
+  };
+
+  const finderObjekt = params.get("finder");
+  const finderKonto = useAssistenzStand().kontoId;
+  const finderGestartet = useRef<string | null>(null);
+  const finderImportRef = useRef(verarbeiteDatei);
+  finderImportRef.current = verarbeiteDatei;
+  useEffect(() => {
+    if (!finderObjekt || !finderKonto) return;
+    const schluessel = `${finderKonto}|${finderObjekt}`;
+    if (finderGestartet.current === schluessel) return;
+    finderGestartet.current = schluessel;
+    let verworfen = false;
+    let abgeschlossen = false;
+    const laufBeiStart = fileBildLaufRef.current;
+    void ladeFinderOcrDatei(finderObjekt)
+      .then(async (datei) => {
+        if (
+          !verworfen &&
+          assistenzStand().kontoId === finderKonto &&
+          fileBildLaufRef.current === laufBeiStart
+        ) {
+          abgeschlossen = true;
+          await finderImportRef.current(datei);
+        }
+      })
+      .catch((fehler: unknown) => {
+        if (
+          !verworfen &&
+          assistenzStand().kontoId === finderKonto &&
+          fileBildLaufRef.current === laufBeiStart
+        ) {
+          setErr(fehler instanceof Error ? fehler.message : String(t("state.error")));
+        }
+      });
+    return () => {
+      verworfen = true;
+      if (!abgeschlossen && finderGestartet.current === schluessel) finderGestartet.current = null;
+    };
+  }, [finderObjekt, finderKonto, t]);
 
   // OCR-03: der übrige Text der Datei für Klaras Kontext. Bei einem Einzelbild IST der Dateitext der
   // Bildtext; OCR-E04: bei einer PDF stehen Textebene und erkannte Seiten schon je Seite im Befund.
@@ -7380,7 +7435,26 @@ export function CaptureArbeitsraum({
                         (ihr Inhalt, nicht ihr Name) und je Bildfassung. Bei einem Einzelbild folgt
                         der Dateitext der Berichtigung, solange er nicht von Hand geändert wurde. */}
                       {fileBildBefund.befund.art === "pdf" ? (
-                        <PdfSeitenListe befund={fileBildBefund.befund} lauf={fileBildBefund.lauf} />
+                        <>
+                          <PdfSeitenListe
+                            befund={fileBildBefund.befund}
+                            lauf={fileBildBefund.lauf}
+                            korrekturQuelle={fileBildBefund.korrekturQuelle}
+                          />
+                          <BildBefundListe
+                            befund={{
+                              ...fileBildBefund.befund,
+                              befunde: fileBildBefund.befund.befunde.filter(
+                                (b) => b.fundstelle.seitenteil === "bild",
+                              ),
+                            }}
+                            lauf={fileBildBefund.lauf}
+                            originalVon={(b) =>
+                              originalAusEingang(fileBildBefund.eingang, b.fundstelle)
+                            }
+                            korrekturQuelle={fileBildBefund.korrekturQuelle}
+                          />
+                        </>
                       ) : (
                         <BildBefundListe
                           befund={fileBildBefund.befund}
@@ -7406,6 +7480,14 @@ export function CaptureArbeitsraum({
                         quellen={[fileBildBefund.befund]}
                         aktuell={[fileBildBefund.eingang]}
                         korrekturQuelle={fileBildBefund.korrekturQuelle}
+                      />
+                      {/* OCR-E06: ein Bild der Datei oder einen Bereich darin gezielt erklären. */}
+                      <KlaraBereichsfrage
+                        analyse={bildAnalyse}
+                        korrekturQuelle={fileBildBefund.korrekturQuelle}
+                        kontextSchluessel={`datei:${fileBildBefund.lauf}`}
+                        quellen={[fileBildBefund.befund]}
+                        aktuell={[fileBildBefund.eingang]}
                       />
                     </div>
                   ) : null}

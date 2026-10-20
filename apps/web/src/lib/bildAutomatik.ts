@@ -412,7 +412,7 @@ export async function bildInhaltskennung(bytes: Uint8Array): Promise<string | nu
  * Basisreparatur 58→53: las die Gegenlesung der Engine dort etwas anderes (`abweichend`), ist das
  * Wort unsicher — auch wenn die Engine es selbst hoch bewertet.
  */
-function gekennzeichnet(wort: string, sicherheit: number, abweichend = false): string {
+export function gekennzeichnet(wort: string, sicherheit: number, abweichend = false): string {
   if (sicherheit < UNLESERLICH_UNTER) {
     return "[unleserlich]";
   }
@@ -1166,6 +1166,25 @@ interface Erkennung {
   bildTabelle: BildTabelle | null;
   /** OCR-E01: die Wörter mit Rahmen, wie die Engine sie geliefert hat. */
   woerter: WortPosition[];
+  /** Vollständige Enginewörter für gezielte Auswahl; Positionen im Befund bleiben unverändert. */
+  engineWoerter: OcrWort[];
+  fehler?: string;
+}
+
+/**
+ * OCR-E06 · Die Lesung EINES Bildes mit den Wortrahmen der Engine — Grundlage der Bereichsfrage
+ * („Klara, was steht hier?“, `lib/klaraBereich.ts`). Dieselbe Lesung wie der automatische Befund.
+ */
+export interface BildLesung {
+  rahmen?: BildRahmen | undefined;
+  status: BildBefundStatus;
+  inhaltskennung: string | null;
+  text: string;
+  textGekennzeichnet: string;
+  /** Die Wörter mit Sicherheit und, soweit die Engine sie liefert, Rahmen (Pixel im Original). */
+  woerter: OcrWort[];
+  /** Die Lesung stammt aus einer früheren Analyse derselben Bildbytes (z. B. der Automatik). */
+  wiederverwendet: boolean;
   fehler?: string;
 }
 
@@ -1233,6 +1252,13 @@ export interface BildAnalyse {
       automatikAus?: () => boolean;
     },
   ): Promise<QuellenBefund>;
+  /**
+   * OCR-E06: die Lesung eines einzelnen, ausdrücklich ausgewählten Bildes samt Wortrahmen. Liegt
+   * für dieselben Bildbytes schon eine Lesung vor (Automatik oder frühere Auswahl), wird sie
+   * wiederverwendet; sonst wird GENAU DIESES Bild gelesen — nie die ganze Quelle. Das Ergebnis
+   * steht danach auch der Automatik zur Verfügung (gleiche Bytes, gleicher Befund).
+   */
+  lesungFuerBild(vorkommen: BildVorkommen): Promise<BildLesung>;
   /** Wie oft die Texterkennung tatsächlich gelaufen ist (für die Wiederverwendungsprüfung). */
   anzahlAnalysen(): number;
   /** Wie oft die Bildbeschreibung tatsächlich angefragt wurde. */
@@ -1285,6 +1311,7 @@ export function createBildAnalyse(optionen: {
       tabelle: null,
       bildTabelle: null,
       woerter: [],
+      engineWoerter: [],
     };
     try {
       const ergebnis = await mitFrist(optionen.erkenne(src), zeitlimit);
@@ -1305,6 +1332,7 @@ export function createBildAnalyse(optionen: {
           // OCR-E03 Nacharbeit 4: Zellen ohne Wörter am Bild prüfen, bevor sie „leer“ heißen.
           bildTabelle: raster ? await pruefeLeereZellen(raster, src, optionen.messeTinte) : raster,
           woerter: wortPositionen(ergebnis.woerter),
+          engineWoerter: ergebnis.woerter ?? [],
         };
       }
       return {
@@ -1362,14 +1390,40 @@ export function createBildAnalyse(optionen: {
     }
   };
 
-  const befundFuerBild: BildAnalyse["befundFuerBild"] = async (vorkommen, bildOptionen = {}) => {
+  // Die Erkennung derselben Bildbytes — gemerkt oder neu. Gemeinsam für Befund und Bereichsfrage.
+  const erkennungFuer = async (
+    daten: string,
+    kennung: string | null,
+    neu: boolean,
+  ): Promise<{ erkennung: Erkennung; wiederverwendet: boolean }> => {
+    const vorhanden = kennung && !neu ? gemerkt.get(kennung) : undefined;
+    if (vorhanden) {
+      return { erkennung: await vorhanden, wiederverwendet: true };
+    }
+    const lauf = erkenneMitFrist(daten);
+    if (kennung) {
+      gemerkt.set(kennung, lauf);
+    }
+    const erkennung = await lauf;
+    // Nur ein abgeschlossener Befund wird gemerkt; ein Fehlschlag darf beim nächsten Eingang
+    // erneut versucht werden.
+    if (kennung && !ERFOLG.has(erkennung.status) && gemerkt.get(kennung) === lauf) {
+      gemerkt.delete(kennung);
+    }
+    return { erkennung, wiederverwendet: false };
+  };
+
+  // Laden und Inhaltskennung eines Vorkommens; Objektspeicher-Adressen merken ihre Kennung.
+  const datenUndKennung = async (
+    vorkommen: BildVorkommen,
+  ): Promise<{ daten: string; kennung: string | null } | "frist" | null> => {
     const daten = await ladeDaten(vorkommen.src);
     if (daten === "frist") {
-      return leererBefund(vorkommen.fundstelle, "zeitueberschreitung", { fehler: "ladefrist" });
+      return "frist";
     }
     const bytes = bildBytes(daten);
     if (!bytes || !daten) {
-      return leererBefund(vorkommen.fundstelle, "kein-zugriff");
+      return null;
     }
     const kennung = await bildInhaltskennung(bytes);
     if (kennung && vorkommen.src && !istBildDatenUrl(vorkommen.src)) {
@@ -1379,24 +1433,24 @@ export function createBildAnalyse(optionen: {
     if (kennung && rahmen) {
       rahmenJeKennung.set(kennung, rahmen);
     }
-    const vorhanden = kennung && !bildOptionen.neu ? gemerkt.get(kennung) : undefined;
-    let erkennung: Erkennung;
-    let wiederverwendet = false;
-    if (vorhanden) {
-      erkennung = await vorhanden;
-      wiederverwendet = true;
-    } else {
-      const lauf = erkenneMitFrist(daten);
-      if (kennung) {
-        gemerkt.set(kennung, lauf);
-      }
-      erkennung = await lauf;
-      // Nur ein abgeschlossener Befund wird gemerkt; ein Fehlschlag darf beim nächsten Eingang
-      // erneut versucht werden.
-      if (kennung && !ERFOLG.has(erkennung.status) && gemerkt.get(kennung) === lauf) {
-        gemerkt.delete(kennung);
-      }
+    return { daten, kennung };
+  };
+
+  const befundFuerBild: BildAnalyse["befundFuerBild"] = async (vorkommen, bildOptionen = {}) => {
+    const geladen = await datenUndKennung(vorkommen);
+    if (geladen === "frist") {
+      return leererBefund(vorkommen.fundstelle, "zeitueberschreitung", { fehler: "ladefrist" });
     }
+    if (!geladen) {
+      return leererBefund(vorkommen.fundstelle, "kein-zugriff");
+    }
+    const { daten, kennung } = geladen;
+    const rahmen = kennung ? rahmenJeKennung.get(kennung) : undefined;
+    const { erkennung, wiederverwendet } = await erkennungFuer(
+      daten,
+      kennung,
+      bildOptionen.neu === true,
+    );
     // Bildinhalt nach dem Text (Text hat Vorrang). Gemerkt wird nur eine gelungene Beschreibung;
     // „nicht zulässig" oder „nicht verfügbar" wird beim nächsten Eingang neu gefragt, denn
     // Einstufung und Modelllage können sich ändern.
@@ -1481,6 +1535,41 @@ export function createBildAnalyse(optionen: {
     };
   };
 
+  // OCR-E06: nur dieses eine Bild — vorhandene Lesung derselben Bytes zuerst, sonst gezielt ergänzt.
+  const lesungFuerBild: BildAnalyse["lesungFuerBild"] = async (vorkommen) => {
+    const leer = (status: BildBefundStatus, fehler?: string): BildLesung => ({
+      status,
+      inhaltskennung: null,
+      text: "",
+      textGekennzeichnet: "",
+      woerter: [],
+      wiederverwendet: false,
+      ...(fehler ? { fehler } : {}),
+    });
+    const geladen = await datenUndKennung(vorkommen);
+    if (geladen === "frist") {
+      return leer("zeitueberschreitung", "ladefrist");
+    }
+    if (!geladen) {
+      return leer("kein-zugriff");
+    }
+    const { erkennung, wiederverwendet } = await erkennungFuer(
+      geladen.daten,
+      geladen.kennung,
+      false,
+    );
+    return {
+      status: erkennung.status,
+      inhaltskennung: geladen.kennung,
+      text: erkennung.text,
+      textGekennzeichnet: erkennung.textGekennzeichnet,
+      woerter: erkennung.engineWoerter,
+      rahmen: geladen.kennung ? rahmenJeKennung.get(geladen.kennung) : undefined,
+      wiederverwendet,
+      ...(erkennung.fehler ? { fehler: erkennung.fehler } : {}),
+    };
+  };
+
   const analysiereQuelle: BildAnalyse["analysiereQuelle"] = async (
     eingang,
     { automatik, beschreibe, onFortschritt, abbrechen, automatikAus },
@@ -1555,6 +1644,7 @@ export function createBildAnalyse(optionen: {
   return {
     befundFuerBild,
     analysiereQuelle,
+    lesungFuerBild,
     anzahlAnalysen: () => analysen,
     anzahlBeschreibungen: () => beschreibungen,
   };

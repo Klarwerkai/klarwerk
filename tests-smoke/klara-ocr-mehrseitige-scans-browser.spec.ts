@@ -138,6 +138,14 @@ test("OCR-E04 · gescannte, gemischte PDF wird ohne Klick gelesen; Klara nennt d
       : null;
   protokoll.klara = { vollstaendig, erste, letzte, modellAntwort };
 
+  // Derselbe gerenderte Scan ist für E01/E03/E06 verfügbar, ohne ein zweites Lesen.
+  const auswahl = page.locator(`${DATEI} [data-testid=klara-bereich]`);
+  await auswahl.getByTestId("klara-bereich-bild").first().click();
+  await auswahl.getByTestId("klara-bereich-was-steht-hier").click();
+  await expect(auswahl.getByTestId("klara-bereich-text")).toContainText("PRUEFKARTE 47");
+  await expect(auswahl.getByTestId("klara-bereich-auswahl")).toContainText("Seite 1");
+  await expect(auswahl.getByTestId("klara-bereich-herkunft")).toContainText("vorhandenen");
+
   await test.info().attach("ocr-e04-mehrseitiger-scan.json", {
     contentType: "application/json",
     body: JSON.stringify(protokoll, null, 2),

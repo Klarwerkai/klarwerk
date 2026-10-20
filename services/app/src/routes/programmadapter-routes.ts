@@ -275,7 +275,14 @@ export function programmadapterRoutes(
             },
           });
           reply.header("cache-control", "no-store");
-          reply.code(201).send({ ok: true, objektId: ref.id, herkunft: aufnahme.herkunft });
+          reply
+            .code(201)
+            .send({
+              ok: true,
+              objektId: ref.id,
+              herkunft: aufnahme.herkunft,
+              ocrUrl: `/erfassen?weg=datei&finder=${encodeURIComponent(ref.id)}`,
+            });
         } catch (fehler) {
           if (fehler instanceof DateiAufnahmeFehler) {
             reply.code(409).send({ ok: false, grund: fehler.grund, text: fehler.message });

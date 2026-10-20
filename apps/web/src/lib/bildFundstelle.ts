@@ -38,7 +38,9 @@ export function originalAusEingang(
     (x) =>
       x.fundstelle.quelle === f.quelle &&
       x.fundstelle.bild === f.bild &&
-      (x.fundstelle.imageId ?? "") === (f.imageId ?? ""),
+      (x.fundstelle.imageId ?? "") === (f.imageId ?? "") &&
+      x.fundstelle.seite === f.seite &&
+      x.fundstelle.folie === f.folie,
   );
   return v?.src ?? null;
 }

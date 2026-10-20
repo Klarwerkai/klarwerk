@@ -34,6 +34,8 @@
   // OCR-03 (produkt:20261012:klara-bildanalyse-ocr-kontext-setup): `kontext-klara.test.ts` importiert
   // `components/BildBefundListe.tsx` (jsx) und über `lib/bildAutomatikEinstellung.ts` den Browser-
   // stand `lib/assistenzProfil.ts` (window) — aus demselben Grund dort geprüft, nicht hier.
+  // OCR-E05 (produkt:20261012:klara-ocr-widersprueche): `widersprueche.test.ts` montiert
+  // `components/KlaraBildKontextFrage.tsx` mit react-dom (jsx, document) — ebenfalls dort geprüft.
   "exclude": [
     "node_modules",
     "dist",
@@ -42,6 +44,8 @@
     "tests/klara-vorschlaege/uebernahme-logik.test.ts",
     "tests/klara-aktionen/zusammenfassen-zitatdeckung.test.ts",
     "tests/capture/ocr-engine-gleiche-herkunft.test.ts",
-    "tests/klara-bildanalyse-ocr/kontext-klara.test.ts"
+    "tests/klara-bildanalyse-ocr/kontext-klara.test.ts",
+    "tests/klara-bildanalyse-ocr/widersprueche.test.ts",
+    "tests/klara-bildanalyse-ocr/ocr04-abnahme.test.ts"
   ]
 }
