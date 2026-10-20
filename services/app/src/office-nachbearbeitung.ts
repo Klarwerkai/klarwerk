@@ -32,6 +32,7 @@
 // KEIN MODELL LÄUFT HIER. Die Texte (neue Folientexte, Notizen) kommen aus dem Auftrag; ob sie von
 // einem Menschen oder vorher von Klara formuliert wurden, sagt die Herkunft des Schritts.
 
+import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import type { KnowledgeObject } from "../../knowledge-object";
 import { type ObjectStore, decodeDataUrl } from "../../object-store";
@@ -806,6 +807,8 @@ export interface NachbearbeitungsDeps {
   /** Der Verlauf des Anhangs (`anhangVerlauf`), für den Stand der Basisfassung. */
   readonly verlauf: (artikel: KnowledgeObject, anhangId: string) => Promise<AnhangFassung[]>;
   readonly jetzt: () => number;
+  /** PP06, nur vom internen Übernahmeweg: kein Bestandteil des öffentlichen Änderungsauftrags. */
+  readonly datenbeleg?: { readonly pfad: string; readonly text: string };
 }
 
 export interface Laufkontext {
@@ -1070,6 +1073,25 @@ export async function fuehreNachbearbeitungAus(
       // Ben-Befund AC08/AC09: die Zugriffsregel am Objekt — nur der Eigentümer, und nur solange er
       // die Quelle sehen darf (`privatesFolgeprodukt`, sichtbarkeit.ts). Keine Rolle öffnet es.
       privatQuelle: ctx.artikel.id,
+      // Auch die Änderungsübersicht enthält kopierte Quellwerte. Ihr wirklicher Inhalt bleibt
+      // an die wirkliche PPTX gebunden; ohne abgeschlossene PP06-Bindung ist sie gesperrt.
+      ...(deps.datenbeleg || basisBytes.includes(Buffer.from("ppt/klara/pp06-"))
+        ? {
+            praesentationAbleitung: gespeichert
+              ? {
+                  objectId: gespeichert.objectId,
+                  dateiFassung: createHash("sha256")
+                    .update(neueBytes as Buffer)
+                    .digest("hex"),
+                }
+              : deps.datenbeleg
+                ? {}
+                : {
+                    objectId: basisObjectId,
+                    dateiFassung: createHash("sha256").update(basisBytes).digest("hex"),
+                  },
+          }
+        : {}),
     });
     const produkt: Folgeprodukt = {
       art,
@@ -1088,6 +1110,30 @@ export async function fuehreNachbearbeitungAus(
   };
 
   // 3 · VOR DEM SPEICHERN: HEUTIGEN STAND ABGLEICHEN. Nichts wird überschrieben.
+  if (deps.datenbeleg && geaendert.size > 0) {
+    if (
+      !/^ppt\/klara\/pp06-[0-9a-f]{64}\.json$/.test(deps.datenbeleg.pfad) ||
+      deps.datenbeleg.text.length > 1024 * 1024
+    )
+      throw new NachbearbeitungsFehler("INVALID", "Ungültiger interner PP06-Dateibeleg.");
+    arbeit.file(deps.datenbeleg.pfad, deps.datenbeleg.text);
+    geaendert.add(deps.datenbeleg.pfad);
+    // Wie beim PP05-Schreiber: der zusätzliche JSON-Part erhält einen OPC-Inhaltstyp.
+    const ctPfad = "[Content_Types].xml";
+    const ct = await arbeit.file(ctPfad)?.async("string");
+    if (ct && !/\bExtension\s*=\s*["']json["']/.test(ct)) {
+      if (!ct.includes("</Types>"))
+        throw new NachbearbeitungsFehler("INVALID", "Die OPC-Inhaltstypen sind nicht lesbar.");
+      arbeit.file(
+        ctPfad,
+        ct.replace(
+          "</Types>",
+          '<Default Extension="json" ContentType="application/json"/></Types>',
+        ),
+      );
+      geaendert.add(ctPfad);
+    }
+  }
   const neueBytes =
     geaendert.size > 0
       ? await arbeit.generateAsync({ type: "nodebuffer", compression: "DEFLATE" })

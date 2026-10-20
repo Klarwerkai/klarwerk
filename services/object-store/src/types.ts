@@ -76,6 +76,16 @@ export interface ObjectLifecycle {
    * services/app/src/sichtbarkeit.ts). Keine Rolle öffnet es. Optional; Altbestand hat es nicht.
    */
   privatQuelle?: string;
+  /**
+   * Interne Ableitung einer gebundenen Präsentation (PP06). Der Store bindet die eigenen
+   * tatsächlichen Bytes an ihren SHA; fehlender Dateianker bleibt am Downloadtor gesperrt.
+   * Der öffentliche Upload übernimmt dieses Feld nie aus dem Request.
+   */
+  praesentationAbleitung?: {
+    objectId?: string;
+    dateiFassung?: string;
+    inhaltSha256: string;
+  };
 }
 
 // Konservative Schutzfrist ab Upload. Bewusst großzügig: sie ist kein Aufbewahrungs-, sondern ein
