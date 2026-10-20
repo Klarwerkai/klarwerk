@@ -1688,12 +1688,13 @@ export async function binde(
   ort: Ort,
   u: DatenUmgebung,
   h: Handelnder,
+  ausgabe?: "datenwert",
 ): Promise<Datenpunkt> {
   const l = await ortLesen(u, ziel.id, ort);
   const fehler = passtAmOrt(
     l,
     dp.wert,
-    dp.fundstelle.art === "bild" ? dp.fundstelle.bildKennung : undefined,
+    ausgabe !== "datenwert" && dp.fundstelle.art === "bild" ? dp.fundstelle.bildKennung : undefined,
   );
   if (fehler) {
     throw new DatenFehler("ungueltig", fehler);
