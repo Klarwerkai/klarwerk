@@ -37,7 +37,7 @@ import { useTranslation } from "react-i18next";
 import { ZIEL_ATTRIBUT } from "../components/fragen/ziele";
 import { cleanForSpeech, pickVoice, vorlesenMoeglich } from "../lib/vorlesen";
 import { useMediaQuery } from "../shell/useMediaQuery";
-import { TutorialMeldungCtx } from "./fernsteuerung";
+import { type TutorialFernLage, TutorialMeldungCtx } from "./fernsteuerung";
 import { echtesZiel, markiereEchtesZiel } from "./seiten/ziele";
 import type { TutorialDefinition, TutorialModul, TutorialSchrittstand } from "./typen";
 
@@ -367,6 +367,7 @@ export function TutorialBereich({
   // Fassung ruft. Ohne Klara (kein Meldeweg) passiert hier nichts.
   // ---------------------------------------------------------------------------------------------
   const melden = useContext(TutorialMeldungCtx);
+  const letzteMeldung = useRef<TutorialFernLage | null>(null);
   const befehle = useRef({
     pause: () => {},
     fortsetzen: () => {},
@@ -396,7 +397,7 @@ export function TutorialBereich({
   const fernSchrittText = text(schritt.textKey);
   const fernTeilText = teil ? text(teil.textKey) : null;
   useEffect(() => {
-    melden?.({
+    const lage: TutorialFernLage = {
       definitionId: definition.id,
       schrittIndex,
       schrittAnzahl: schritte.length,
@@ -409,9 +410,12 @@ export function TutorialBereich({
       spielt,
       interaktiv: Boolean(schritt.interaktiv),
       ...fernbefehle,
-    });
+    };
+    letzteMeldung.current = lage;
+    melden?.(lage, id);
   }, [
     melden,
+    id,
     definition.id,
     schrittIndex,
     schritte.length,
@@ -425,7 +429,7 @@ export function TutorialBereich({
     spielt,
     fernbefehle,
   ]);
-  useEffect(() => () => melden?.(null), [melden]);
+  useEffect(() => () => melden?.(null, id), [melden, id]);
 
   const verweisAbfangen = (e: MouseEvent<HTMLElement>): void => {
     // Über den React-Baum kommen hier auch Klicks aus dem Blatt „Mehr“ der Demo an (Portal).
@@ -516,6 +520,9 @@ export function TutorialBereich({
       data-tutorial={definition.id}
       aria-labelledby={titelId}
       onKeyDown={beiTaste}
+      onFocusCapture={() => {
+        if (letzteMeldung.current) melden?.(letzteMeldung.current, id, true);
+      }}
       className="print-hide mb-6 rounded-card border-2 border-brand/60 bg-surface p-4 shadow-tile sm:p-5"
     >
       {/* Kopf: Titel, Lernziel, Vorlesen, Schliessen. Die Textspalte hat eine Grundbreite: reicht

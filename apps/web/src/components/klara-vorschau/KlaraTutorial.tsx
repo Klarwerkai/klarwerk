@@ -27,17 +27,31 @@ function sichtbar(el: HTMLElement): boolean {
 }
 
 /** Sucht das Bedienelement: erst auf der echten Seite, dann in der Tutorial-Demo. */
-export function findeZiel(zielName: string | null, doc: Document = document): ZielTreffer | null {
+export function findeZiel(
+  zielName: string | null,
+  doc: Document = document,
+  definitionId: string | null = null,
+): ZielTreffer | null {
   if (!zielName) {
-    const demo = doc.querySelector<HTMLElement>("[data-tutorial-demo]");
-    return demo && sichtbar(demo) ? { el: demo, ort: "demo" } : null;
+    const demo = Array.from(doc.querySelectorAll<HTMLElement>("[data-tutorial-demo]")).find(
+      (el) =>
+        (!definitionId || el.getAttribute("data-tutorial-demo") === definitionId) && sichtbar(el),
+    );
+    return demo ? { el: demo, ort: "demo" } : null;
   }
   const alle = Array.from(doc.querySelectorAll<HTMLElement>(`[${ZIEL_ATTRIBUT}="${zielName}"]`));
   const echt = alle.find((el) => !el.closest("[data-tutorial-demo]") && sichtbar(el));
   if (echt) {
     return { el: echt, ort: "echt" };
   }
-  const demo = alle.find((el) => Boolean(el.closest("[data-tutorial-demo]")) && sichtbar(el));
+  const demo = alle.find((el) => {
+    const bereich = el.closest("[data-tutorial-demo]");
+    return (
+      bereich &&
+      (!definitionId || bereich.getAttribute("data-tutorial-demo") === definitionId) &&
+      sichtbar(el)
+    );
+  });
   return demo ? { el: demo, ort: "demo" } : null;
 }
 
