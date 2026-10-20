@@ -1,3 +1,6 @@
+import { canonicalJson } from "../../audit";
+import type { KlaraAuftragsnotiz } from "./klara-auftragsnotiz";
+import { istDatum, istUhrzeit, istZeitzone } from "./klara-erinnerung-zeit";
 // ================================================================================================
 // produkt:20261008:klara-aktionen (Klara 05, AW-10) — DIE AUFTRAGSGRENZE AUSSERHALB DES SPRACHMODELLS.
 // ================================================================================================
@@ -38,6 +41,7 @@ export const KLARA_AKTIONEN = [
   "entwurf_bearbeiten",
   "aufgabe_bearbeiten",
   "persoenliche_aufgabe_anlegen",
+  "erinnerung_anlegen",
 ] as const;
 export type KlaraAktion = (typeof KLARA_AKTIONEN)[number];
 
@@ -47,13 +51,20 @@ export const KLARA_ZIELARTEN = [
   "aufgabe",
   "neuer_entwurf",
   "neue_persoenliche_aufgabe",
+  "persoenliche_aufgabe",
 ] as const;
 export type KlaraZielArt = (typeof KLARA_ZIELARTEN)[number];
 
 /** Ziele, die der Schritt erst anlegt — sie haben noch keine Kennung. */
 const NEUE_ZIELARTEN: readonly KlaraZielArt[] = ["neuer_entwurf", "neue_persoenliche_aufgabe"];
 
-const ERGEBNISARTEN = ["wissensobjekt", "entwurf", "aufgabe", "persoenliche_aufgabe"] as const;
+const ERGEBNISARTEN = [
+  "wissensobjekt",
+  "entwurf",
+  "aufgabe",
+  "persoenliche_aufgabe",
+  "erinnerung",
+] as const;
 type KlaraErgebnisArt = (typeof ERGEBNISARTEN)[number];
 
 export const KLARA_QUELLEN_DES_AUFTRAGS = ["getippt", "gesprochen"] as const;
@@ -126,6 +137,7 @@ export interface KlaraAuftragSchritt {
    * gilt als ungeklärt; eine Wiederholung liest nur nach und schreibt nicht erneut.
    */
   readonly schreibwirkung?: KlaraSchreibwirkung | null;
+  readonly ausgangUnklar?: boolean;
   /**
    * produkt:20261010:assistenz-aktionen-verlauf-ruecknahme: der Stand des Ziels VOR der Wirkung, vom
    * Server gelesen (Fassungszeit eines Entwurfs, Priorität/Zuweisung/Status einer Aufgabe). Fehlt er
@@ -150,7 +162,7 @@ export interface KlaraAuftragSchritt {
  * oder Wirkung ohne Antwort des Schreibwegs).
  */
 export interface KlaraSchreibwirkung {
-  readonly art: "entwurf" | "aufgabe" | "persoenliche_aufgabe";
+  readonly art: "entwurf" | "aufgabe" | "persoenliche_aufgabe" | "erinnerung";
   readonly id: string;
   readonly pfad: string;
   readonly stand: string | null;
@@ -208,6 +220,7 @@ export function erlaubteAufgabenaktionen(
  * `ausSchritt`: dieser Schritt öffnet das Ergebnis des Schritts mit dieser Nummer.
  */
 export interface KlaraPlanSchritt {
+  readonly notizQuelle?: KlaraAuftragsnotiz;
   readonly nr: number;
   readonly aktion: KlaraAktion;
   readonly ziel: KlaraAuftragZiel | null;
@@ -216,10 +229,16 @@ export interface KlaraPlanSchritt {
   readonly aenderung: KlaraAenderung | null;
   /** Nacharbeit 4: nur bei `aufgabe_bearbeiten` — die geklärte Aktion an der Aufgabe. */
   readonly aufgabenaktion?: KlaraAufgabenaktion | null;
+  readonly erinnerung?: {
+    readonly datum: string;
+    readonly uhrzeit: string;
+    readonly zeitzone: string;
+  };
 }
 
 /** Eine Fassung der Grenze. Die aktuelle steht am Auftrag selbst, frühere in `fassungen`. */
 export interface KlaraAuftragGrenze {
+  readonly plan?: readonly KlaraPlanSchritt[];
   readonly fassung: number;
   readonly erlaubteAktionen: readonly KlaraAktion[];
   readonly erlaubteZiele: readonly KlaraAuftragZiel[];
@@ -240,7 +259,9 @@ export type KlaraAuftragEreignis =
   | "zurueckgenommen"
   | "abgebrochen"
   | "korrigiert"
-  | "auftrag_abgeschlossen";
+  | "auftrag_abgeschlossen"
+  | "unterbrochen"
+  | "fortgesetzt";
 
 export interface KlaraAuftragVerlaufseintrag {
   readonly ereignis: KlaraAuftragEreignis;
@@ -260,6 +281,8 @@ export interface KlaraAuftrag extends KlaraAuftragGrenze {
   readonly verantwortlich: string;
   readonly stand: KlaraAuftragStand;
   readonly abgebrochenAm: string | null;
+  /** Fortsetzbare Pause im vorhandenen Auftrag; keine neue Jobverwaltung. */
+  readonly unterbrochenAm?: string | null;
   readonly schritte: readonly KlaraAuftragSchritt[];
   /** Nacharbeit 2: der gebundene Plan (leer bei Aufträgen ohne serverseitige Ausführung). */
   readonly plan?: readonly KlaraPlanSchritt[];
@@ -292,7 +315,10 @@ export type KlaraAuftragGrund =
   | "ohne_plan"
   | "geaendert"
   | "nicht_ruecknehmbar"
-  | "ziel_fehlt";
+  | "ziel_fehlt"
+  | "unterbrochen"
+  | "quelle_geaendert"
+  | "quelle_unbekannt";
 
 export class KlaraAuftragFehler extends Error {
   constructor(
@@ -434,7 +460,7 @@ function gleichesZiel(a: KlaraAuftragZiel, b: KlaraAuftragZiel): boolean {
  * Ergebnis eines früheren Schritts DESSELBEN Auftrags (der eben angelegte Entwurf darf geöffnet
  * werden) — eine Teilaufgabe erbt die Grenze, sie erweitert sie nicht.
  */
-function zielErlaubt(a: KlaraAuftrag, ziel: KlaraAuftragZiel): boolean {
+export function zielErlaubt(a: KlaraAuftrag, ziel: KlaraAuftragZiel): boolean {
   if (a.erlaubteZiele.some((z) => gleichesZiel(z, ziel))) {
     return true;
   }
@@ -492,7 +518,14 @@ function mitVerlauf(
 /** Stand neu ableiten; wird der Auftrag dabei abgeschlossen, steht das im Verlauf. */
 function abgeleitet(a: KlaraAuftrag, jetzt: string): KlaraAuftrag {
   const stand = auftragsStand(a);
-  const neu: KlaraAuftrag = { ...a, stand, geaendertAm: jetzt };
+  const neu: KlaraAuftrag = {
+    ...a,
+    stand,
+    geaendertAm: jetzt,
+    ...(a.unterbrochenAm && ["abgeschlossen", "teilweise", "fehlgeschlagen"].includes(stand)
+      ? { unterbrochenAm: null }
+      : {}),
+  };
   return stand === "abgeschlossen" && a.stand !== "abgeschlossen"
     ? mitVerlauf(neu, "auftrag_abgeschlossen", jetzt, null)
     : neu;
@@ -500,6 +533,7 @@ function abgeleitet(a: KlaraAuftrag, jetzt: string): KlaraAuftrag {
 
 function grenzeAus(a: KlaraAuftrag): KlaraAuftragGrenze {
   return {
+    ...(a.plan?.length ? { plan: a.plan } : {}),
     fassung: a.fassung,
     erlaubteAktionen: a.erlaubteAktionen,
     erlaubteZiele: a.erlaubteZiele,
@@ -543,6 +577,7 @@ function pruefePlan(
   roh: unknown,
   erlaubteAktionen: readonly KlaraAktion[],
   erlaubteZiele: readonly KlaraAuftragZiel[],
+  erlaubteQuellen: readonly string[],
 ): KlaraPlanSchritt[] {
   if (roh === undefined || roh === null) {
     return [];
@@ -561,7 +596,7 @@ function pruefePlan(
         ? null
         : ganzzahl(o.ausSchritt, 1, nr - 1, `${feld}.ausSchritt`);
     const ziel = ausSchritt === null ? pruefeZiel(o.ziel, `${feld}.ziel`) : null;
-    if (ausSchritt !== null && aktion !== "oeffnen") {
+    if (ausSchritt !== null && aktion !== "oeffnen" && aktion !== "erinnerung_anlegen") {
       throw eingabeFehler(`${feld}: nur „öffnen“ darf das Ergebnis eines Vorschritts nehmen.`);
     }
     if (ziel && !erlaubteZiele.some((z) => gleichesZiel(z, ziel))) {
@@ -582,6 +617,52 @@ function pruefePlan(
         `${feld}: eine persönliche Aufgabe braucht ein Ziel der Art neue_persoenliche_aufgabe.`,
       );
     }
+    let erinnerung: KlaraPlanSchritt["erinnerung"];
+    if (aktion === "erinnerung_anlegen") {
+      const vor = ausSchritt === null ? null : objekt(eintraege[ausSchritt - 1], "Vorschritt");
+      if (!vor || vor.aktion !== "persoenliche_aufgabe_anlegen")
+        throw eingabeFehler(
+          `${feld}: Erinnerung braucht eine persönliche Aufgabe aus diesem Plan.`,
+        );
+      const e = objekt(o.erinnerung, `${feld}.erinnerung`);
+      if (!istDatum(e.datum) || !istUhrzeit(e.uhrzeit) || !istZeitzone(e.zeitzone))
+        throw eingabeFehler(`${feld}: Datum, Uhrzeit und Zeitzone gezielt klären.`);
+      erinnerung = { datum: e.datum, uhrzeit: e.uhrzeit, zeitzone: e.zeitzone };
+    }
+    let notizQuelle: KlaraAuftragsnotiz | undefined;
+    if (o.notizQuelle !== undefined && o.notizQuelle !== null) {
+      if (aktion !== "persoenliche_aufgabe_anlegen" || o.inhalt != null)
+        throw eingabeFehler(
+          `${feld}: Notizinhalt wird ausschließlich vom vorhandenen Notizweg gelesen.`,
+        );
+      const q = objekt(o.notizQuelle, `${feld}.notizQuelle`);
+      const id = text(q.id, 200, "notizQuelle.id");
+      if (!erlaubteQuellen.includes(`notiz:${id}`))
+        throw eingabeFehler(
+          `${feld}: Die Notiz gehört nicht zu den ausdrücklich erlaubten Quellen.`,
+        );
+      const bindung = {
+        id,
+        fassung: ganzzahl(q.fassung, 1, Number.MAX_SAFE_INTEGER, "notizQuelle.fassung"),
+        titel: text(q.titel, 200, "notizQuelle.titel"),
+      };
+      if (q.weg === "geschrieben") {
+        if (q.gespraechId !== undefined || q.nachrichtId !== undefined)
+          throw eingabeFehler(`${feld}: Geschriebene Notizen haben keine Gesprächsherkunft.`);
+        notizQuelle = { ...bindung, weg: "geschrieben" };
+      } else {
+        if (q.weg !== undefined && q.weg !== "gespraech")
+          throw eingabeFehler(
+            `${feld}: Nur Gesprächsnotizen oder ausdrücklich geschriebene Notizen sind gebunden.`,
+          );
+        notizQuelle = {
+          ...bindung,
+          ...(q.weg === "gespraech" ? { weg: "gespraech" as const } : {}),
+          gespraechId: text(q.gespraechId, 200, "notizQuelle.gespraechId"),
+          nachrichtId: text(q.nachrichtId, 200, "notizQuelle.nachrichtId"),
+        };
+      }
+    }
     const inhalt =
       aktion === "entwurf_erstellen" || aktion === "persoenliche_aufgabe_anlegen"
         ? wahlweiseText(o.inhalt, 2_000, `${feld}.inhalt`)
@@ -592,7 +673,17 @@ function pruefePlan(
       aktion === "aufgabe_bearbeiten"
         ? pruefeAufgabenaktion(o.aufgabenaktion, ziel?.pfad ?? null, `${feld}.aufgabenaktion`)
         : null;
-    return { nr, aktion, ziel, ausSchritt, inhalt, aenderung, aufgabenaktion };
+    return {
+      nr,
+      aktion,
+      ziel,
+      ausSchritt,
+      inhalt,
+      aenderung,
+      aufgabenaktion,
+      ...(erinnerung ? { erinnerung } : {}),
+      ...(notizQuelle ? { notizQuelle } : {}),
+    };
   });
 }
 
@@ -632,7 +723,8 @@ export function neuerAuftrag(
 ): KlaraAuftrag {
   const erlaubteAktionen = aktionen(eingabe.erlaubteAktionen);
   const erlaubteZiele = ziele(eingabe.erlaubteZiele);
-  const plan = pruefePlan(eingabe.plan, erlaubteAktionen, erlaubteZiele);
+  const erlaubteQuellen = quellen(eingabe.erlaubteQuellen);
+  const plan = pruefePlan(eingabe.plan, erlaubteAktionen, erlaubteZiele, erlaubteQuellen);
   const geplanteSchritte = ganzzahl(
     eingabe.geplanteSchritte,
     1,
@@ -651,7 +743,7 @@ export function neuerAuftrag(
     fassung: 1,
     erlaubteAktionen,
     erlaubteZiele,
-    erlaubteQuellen: quellen(eingabe.erlaubteQuellen),
+    erlaubteQuellen,
     ergebnis: text(eingabe.ergebnis, 600, "ergebnis"),
     geplanteSchritte,
     plan,
@@ -692,12 +784,14 @@ export function mitNeuemAuftrag(
 }
 
 export interface KlaraKorrekturEingabe {
+  plan?: unknown;
   erlaubteAktionen?: unknown;
   erlaubteZiele?: unknown;
   erlaubteQuellen?: unknown;
   ergebnis?: unknown;
   geplanteSchritte?: unknown;
   grund?: unknown;
+  auftragFassung?: unknown;
 }
 
 /**
@@ -710,6 +804,13 @@ export function korrigiere(
   eingabe: KlaraKorrekturEingabe,
   jetzt: string,
 ): KlaraAuftrag {
+  if (eingabe.auftragFassung !== undefined && eingabe.auftragFassung !== a.fassung) {
+    throw new KlaraAuftragFehler(
+      409,
+      "fassung_veraltet",
+      "Der Auftrag wurde inzwischen korrigiert. Bitte die aktuelle Fassung lesen.",
+    );
+  }
   if (a.abgebrochenAm) {
     throw new KlaraAuftragFehler(
       409,
@@ -761,6 +862,29 @@ export function korrigiere(
     if (begonnen.has(p.nr) || drin) {
       behalten.push(p);
     }
+  }
+  if (eingabe.plan !== undefined) {
+    const neu = pruefePlan(eingabe.plan, neueAktionen, neueZiele, neueQuellen);
+    if (
+      neu.length !== (a.plan ?? []).length ||
+      neu.some((p) => {
+        const alt = a.plan?.find((x) => x.nr === p.nr);
+        return (
+          !alt ||
+          p.aktion !== alt.aktion ||
+          canonicalJson(p.notizQuelle ?? null) !== canonicalJson(alt.notizQuelle ?? null) ||
+          p.ausSchritt !== alt.ausSchritt ||
+          (p.ziel && alt.ziel && !gleichesZiel(p.ziel, alt.ziel)) ||
+          (begonnen.has(p.nr) && canonicalJson(p) !== canonicalJson(alt))
+        );
+      })
+    )
+      throw new KlaraAuftragFehler(
+        409,
+        "erweiterung",
+        "Nur künftige Inhalte oder Zeiten desselben Plans dürfen korrigiert werden. Begonnene Ergebnisse und Grenzen bleiben erhalten.",
+      );
+    behalten.splice(0, behalten.length, ...neu);
   }
   const mitPlan = (a.plan ?? []).length > 0;
   const korrigiert: KlaraAuftrag = {
@@ -854,6 +978,13 @@ export function setzeSchritt(
         409,
         "abgebrochen",
         "Der Auftrag wurde abgebrochen – es beginnt kein weiterer Schritt.",
+      );
+    }
+    if (a.unterbrochenAm) {
+      throw new KlaraAuftragFehler(
+        409,
+        "unterbrochen",
+        "Der Auftrag ist unterbrochen. Bitte ausdrücklich fortsetzen.",
       );
     }
     if (a.stand === "abgeschlossen") {
@@ -1070,6 +1201,7 @@ export function merkeSchreibwirkung(
 
 /** Was `merkeStaende` am Schritt festhalten darf. */
 export interface KlaraStaende {
+  ausgangUnklar?: boolean;
   vorherStand?: string | null;
   ruecknahmeStand?: string | null;
   nachher?: { title: string; statement: string } | null;
@@ -1107,4 +1239,37 @@ export function brecheAb(a: KlaraAuftrag, jetzt: string): KlaraAuftrag {
     );
   }
   return abgeleitet(mitVerlauf({ ...a, abgebrochenAm: jetzt }, "abgebrochen", jetzt, null), jetzt);
+}
+
+/** Pause und bewusste Wiederaufnahme unter der heutigen Auftragsfassung. Resultate bleiben erhalten. */
+export function unterbrechung(
+  a: KlaraAuftrag,
+  fortsetzen: boolean,
+  fassung: unknown,
+  jetzt: string,
+): KlaraAuftrag {
+  if (fassung !== a.fassung) {
+    throw new KlaraAuftragFehler(
+      409,
+      "fassung_veraltet",
+      "Bitte die aktuelle Auftragsfassung lesen.",
+    );
+  }
+  if (a.abgebrochenAm || ["abgeschlossen", "teilweise", "fehlgeschlagen"].includes(a.stand)) {
+    throw new KlaraAuftragFehler(
+      409,
+      a.abgebrochenAm ? "abgebrochen" : "abgeschlossen",
+      "Dieser Auftrag ist beendet. Seine Ergebnisse bleiben sichtbar.",
+    );
+  }
+  if (fortsetzen ? !a.unterbrochenAm : Boolean(a.unterbrochenAm)) return a;
+  return abgeleitet(
+    mitVerlauf(
+      { ...a, unterbrochenAm: fortsetzen ? null : jetzt },
+      fortsetzen ? "fortgesetzt" : "unterbrochen",
+      jetzt,
+      null,
+    ),
+    jetzt,
+  );
 }

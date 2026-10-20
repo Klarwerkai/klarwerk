@@ -31,6 +31,8 @@ import {
   KlaraRuecknahmeKonflikt,
   KlaraSchrittNachweis,
 } from "./KlaraAktionsnachweis";
+import { KlaraAuftragsnotizNachweis } from "./KlaraAuftragsnotizNachweis";
+import { KlaraErinnerungszeitRueckfrage } from "./KlaraErinnerungszeitRueckfrage";
 import {
   type AuftragsUmgebung,
   type Ausfuehrung,
@@ -43,8 +45,10 @@ import {
   offeneSchritte,
   schliesseAusfuehrung,
   serverSchritt,
+  unterbrichAuftrag,
   useAusfuehrungen,
   waehleAufgabenaktion,
+  waehleNotizQuelle,
   waehlePerson,
   waehleZiel,
   wiederhole,
@@ -98,7 +102,7 @@ function zeilenStand(z: Zeile): string {
     return "unklar";
   }
   // Nacharbeit 4: gespeichert, Nachlesen ausstehend — ungeklärt, auch nach dem Neuladen.
-  if (z.server?.stand === "begonnen" && z.server.schreibwirkung && !z.server.geprueft) {
+  if (z.server?.stand === "begonnen" && !z.server.geprueft) {
     return "unklar";
   }
   if (z.server) {
@@ -170,10 +174,9 @@ function AusfuehrungKarte({
     (z) => z.server || z.lokal?.lage === "laeuft" || z.lokal?.lage === "unklar",
   ).length;
   const unklar = zeilen.some((z) => zeilenStand(z) === "unklar");
+  const quelleGesperrt = zeilen.some((z) => z.lokal?.lage === "quelle_gesperrt");
   // Gespeichert, Nachlesen ausstehend: nachlesen bleibt auch nach Abbrechen möglich (kein neuer Schritt).
-  const wirkungOffen = zeilen.some(
-    (z) => z.server?.stand === "begonnen" && z.server.schreibwirkung && !z.server.geprueft,
-  );
+  const wirkungOffen = zeilen.some((z) => z.server?.stand === "begonnen" && !z.server.geprueft);
   const zeit = (iso: string): string =>
     new Date(iso).toLocaleTimeString(i18n.language, {
       hour: "2-digit",
@@ -188,13 +191,17 @@ function AusfuehrungKarte({
   const fehlerPhase = a.phase === "unbekannt" || a.phase === "fehler";
   // PV-02-02: der Ergebnisstand aus den festgehaltenen Schritten — unklar geht vor; ohne Auftrag am
   // Server ist der Plan noch ein Entwurf (Prüfen, Rückfrage), nichts ist ausgeführt.
-  const ergebnis: KlaraErgebnisstand | null = unklar
-    ? "unklar"
-    : auftrag
-      ? (auftrag.ergebnisstand ?? null)
-      : a.phase === "pruefen" || a.phase === "rueckfrage"
-        ? "entwurf"
-        : null;
+  const ergebnis: KlaraErgebnisstand | null = quelleGesperrt
+    ? null
+    : unklar
+      ? "unklar"
+      : auftrag
+        ? auftrag.unterbrochenAm
+          ? null
+          : (auftrag.ergebnisstand ?? null)
+        : a.phase === "pruefen" || a.phase === "rueckfrage"
+          ? "entwurf"
+          : null;
 
   return (
     <section
@@ -215,83 +222,124 @@ function AusfuehrungKarte({
       </p>
 
       {auftrag ? (
-        <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11.5px]">
-          <dt className={KLEINTITEL}>{t("klaraauftrag.feld.ziel")}</dt>
-          <dd data-testid="klara-ausfuehrung-ziel" className="text-text">
-            {auftrag.ziel}
-          </dd>
-          <dt className={KLEINTITEL}>{t("klaraauftrag.feld.aktionen")}</dt>
-          <dd data-testid="klara-ausfuehrung-aktionen" className="text-text">
-            {auftrag.erlaubteAktionen.map((x) => t(`klaraauftrag.aktion.${x}`)).join(", ")}
-          </dd>
-          <dt className={KLEINTITEL}>{t("klaraauftrag.feld.ziele")}</dt>
-          <dd data-testid="klara-ausfuehrung-ziele" className="text-text">
-            {auftrag.erlaubteZiele
-              .map((z) =>
-                t("klaraauftrag.zielEintrag", {
-                  titel: z.titel,
-                  art: t(`klaraauftrag.zielArt.${z.art}`),
-                }),
-              )
-              .join(" · ")}
-          </dd>
-          <dt className={KLEINTITEL}>{t("klaraauftrag.feld.quellen")}</dt>
-          <dd data-testid="klara-ausfuehrung-quellen" className="text-text">
-            {auftrag.erlaubteQuellen.join(" · ")}
-          </dd>
-          <dt className={KLEINTITEL}>{t("klaraauftrag.feld.verantwortlich")}</dt>
-          <dd data-testid="klara-ausfuehrung-verantwortlich" className="text-text">
-            {verantwortlich}
-          </dd>
-          <dt className={KLEINTITEL}>{t("klaraauftrag.feld.ergebnis")}</dt>
-          <dd data-testid="klara-ausfuehrung-ergebnisanforderung" className="text-text">
-            {auftrag.ergebnis}
-          </dd>
-          <dt className={KLEINTITEL}>{t("klaraauftrag.feld.fassung")}</dt>
-          <dd
-            data-testid="klara-ausfuehrung-fassung"
-            data-fassung={auftrag.fassung}
-            className="text-text"
-          >
-            {t("klaraauftrag.fassungWert", { fassung: auftrag.fassung })}
-            {auftrag.fassungen.length > 0 ? (
-              <ul
-                data-testid="klara-ausfuehrung-fassungen"
-                className="mt-0.5 text-[11px] text-muted"
-              >
-                {auftrag.fassungen.map((f, i) => (
-                  <li key={f.fassung}>
-                    {t("klaraauftrag.fassungAenderung", {
-                      von: f.fassung,
-                      nach: auftrag.fassungen[i + 1]?.fassung ?? auftrag.fassung,
-                      grund: (auftrag.fassungen[i + 1] ?? auftrag).grund ?? "",
-                      aktionen: f.erlaubteAktionen
-                        .map((x) => t(`klaraauftrag.aktion.${x}`))
-                        .join(", "),
-                      schritte: f.geplanteSchritte,
-                    })}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </dd>
-          <dt className={KLEINTITEL}>{t("klaraauftrag.feld.stand")}</dt>
-          <dd
-            data-testid="klara-ausfuehrung-stand"
-            data-stand={stand ?? ""}
-            className="font-semibold text-text"
-          >
-            {/* Nacharbeit 2: ist eine Antwort verloren, kennt dieser Browser den Stand nicht — dann
+        <p data-testid="klara-ausfuehrung-fortschritt" className="mt-1 text-[11.5px] text-text">
+          {t("klaraauftrag.fortschritt", {
+            fertig: auftrag.schritte.filter(
+              (s) => s.stand === "gespeichert" || s.stand === "abgeschlossen",
+            ).length,
+            gesamt: auftrag.geplanteSchritte,
+          })}{" "}
+          {quelleGesperrt
+            ? t("klaraauftrag.schrittStand.quelle_gesperrt")
+            : auftrag.unterbrochenAm
+              ? t("klaraauftrag.ereignis.unterbrochen")
+              : t(`klaraauftrag.stand.${auftrag.stand}`)}
+        </p>
+      ) : null}
+      {auftrag ? (
+        <details data-testid="klara-ausfuehrung-details">
+          <summary className={`${KLEINTITEL} cursor-pointer`}>{t("klaraauftrag.details")}</summary>
+          <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11.5px]">
+            <dt className={KLEINTITEL}>{t("klaraauftrag.feld.ziel")}</dt>
+            <dd data-testid="klara-ausfuehrung-ziel" className="text-text">
+              {auftrag.ziel}
+            </dd>
+            <dt className={KLEINTITEL}>{t("klaraauftrag.feld.aktionen")}</dt>
+            <dd data-testid="klara-ausfuehrung-aktionen" className="text-text">
+              {auftrag.erlaubteAktionen.map((x) => t(`klaraauftrag.aktion.${x}`)).join(", ")}
+            </dd>
+            <dt className={KLEINTITEL}>{t("klaraauftrag.feld.ziele")}</dt>
+            <dd data-testid="klara-ausfuehrung-ziele" className="text-text">
+              {auftrag.erlaubteZiele
+                .map((z) =>
+                  t("klaraauftrag.zielEintrag", {
+                    titel: z.titel,
+                    art: t(`klaraauftrag.zielArt.${z.art}`),
+                  }),
+                )
+                .join(" · ")}
+            </dd>
+            <dt className={KLEINTITEL}>{t("klaraauftrag.feld.quellen")}</dt>
+            <dd data-testid="klara-ausfuehrung-quellen" className="text-text">
+              {auftrag.erlaubteQuellen
+                .map((q) => {
+                  const n = auftrag.plan?.find(
+                    (p) => p.notizQuelle && q === `notiz:${p.notizQuelle.id}`,
+                  )?.notizQuelle;
+                  return n
+                    ? t(
+                        n.weg === "geschrieben"
+                          ? "klaraauftrag.notizquelle.geschrieben"
+                          : "klaraauftrag.notizquelle.gebunden",
+                        { titel: n.titel, fassung: n.fassung },
+                      )
+                    : q;
+                })
+                .join(" · ")}
+            </dd>
+            <dt className={KLEINTITEL}>{t("klaraauftrag.feld.verantwortlich")}</dt>
+            <dd data-testid="klara-ausfuehrung-verantwortlich" className="text-text">
+              {verantwortlich}
+            </dd>
+            <dt className={KLEINTITEL}>{t("klaraauftrag.feld.ergebnis")}</dt>
+            <dd data-testid="klara-ausfuehrung-ergebnisanforderung" className="text-text">
+              {auftrag.ergebnis}
+            </dd>
+            <dt className={KLEINTITEL}>{t("klaraauftrag.feld.fassung")}</dt>
+            <dd
+              data-testid="klara-ausfuehrung-fassung"
+              data-fassung={auftrag.fassung}
+              className="text-text"
+            >
+              {t("klaraauftrag.fassungWert", { fassung: auftrag.fassung })}
+              {auftrag.fassungen.length > 0 ? (
+                <ul
+                  data-testid="klara-ausfuehrung-fassungen"
+                  className="mt-0.5 text-[11px] text-muted"
+                >
+                  {auftrag.fassungen.map((f, i) => (
+                    <li key={f.fassung}>
+                      {t("klaraauftrag.fassungAenderung", {
+                        von: f.fassung,
+                        nach: auftrag.fassungen[i + 1]?.fassung ?? auftrag.fassung,
+                        grund: (auftrag.fassungen[i + 1] ?? auftrag).grund ?? "",
+                        aktionen: f.erlaubteAktionen
+                          .map((x) => t(`klaraauftrag.aktion.${x}`))
+                          .join(", "),
+                        schritte: f.geplanteSchritte,
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </dd>
+            <dt className={KLEINTITEL}>{t("klaraauftrag.feld.stand")}</dt>
+            <dd
+              data-testid="klara-ausfuehrung-stand"
+              data-stand={stand ?? ""}
+              className="font-semibold text-text"
+            >
+              {/* Nacharbeit 2: ist eine Antwort verloren, kennt dieser Browser den Stand nicht — dann
                 steht genau das da, nicht ein veralteter Stand. */}
-            {unklar
-              ? t("klaraauftrag.stand.unklar")
-              : stand
-                ? t(`klaraauftrag.stand.${stand}`)
-                : ""}
-          </dd>
-        </dl>
+              {unklar
+                ? t("klaraauftrag.stand.unklar")
+                : stand
+                  ? t(`klaraauftrag.stand.${stand}`)
+                  : ""}
+            </dd>
+          </dl>
+        </details>
       ) : null}
 
+      {auftrag
+        ? (auftrag.plan ?? [])
+            .filter((p) => p.notizQuelle)
+            .map((p) =>
+              p.notizQuelle ? (
+                <KlaraAuftragsnotizNachweis key={p.nr} quelle={p.notizQuelle} />
+              ) : null,
+            )
+        : null}
       <KlaraErgebnisstandZeile stand={ergebnis} />
       {a.phase === "pruefen" && !auftrag ? (
         <p data-testid="klara-ausfuehrung-pruefen" className="mt-1 text-[11.5px] text-ai">
@@ -313,6 +361,57 @@ function AusfuehrungKarte({
         </p>
       ) : null}
 
+      {a.phase === "rueckfrage"
+        ? a.geplant
+            .filter(
+              (s) =>
+                s.erkannt.aktion === "erinnerung_anlegen" &&
+                (s.zeitFehler ||
+                  !s.erkannt.erinnerung?.datum ||
+                  !s.erkannt.erinnerung?.uhrzeit ||
+                  !s.erkannt.erinnerung?.zeitzone),
+            )
+            .map((s) => (
+              <KlaraErinnerungszeitRueckfrage
+                key={s.nr}
+                lokalId={a.lokalId}
+                schritt={s}
+                umgebung={umgebung}
+              />
+            ))
+        : null}
+      {a.phase === "rueckfrage"
+        ? a.geplant
+            .filter((s) => s.erkannt.notizName && !s.notizQuelle)
+            .map((s) => (
+              <fieldset
+                key={`notiz-${s.nr}`}
+                data-testid="klara-auftrag-notizwahl"
+                className="mt-1.5 rounded-btn border border-hairline px-2 py-1.5"
+              >
+                <legend className="px-1 text-[11.5px] text-text">
+                  {t("klaraauftrag.notizquelle.frage", { titel: s.erkannt.notizName })}
+                </legend>
+                {(s.notizKandidaten ?? []).length === 0 ? (
+                  <p className="text-[11.5px] text-muted">{t("klaraauftrag.notizquelle.fehlt")}</p>
+                ) : (
+                  (s.notizKandidaten ?? []).map((q) => (
+                    <button
+                      type="button"
+                      key={q.id}
+                      data-testid="klara-auftrag-notizoption"
+                      data-id={q.id}
+                      onClick={() => waehleNotizQuelle(a.lokalId, s.nr, q.id, umgebung())}
+                      className={KNOPF}
+                    >
+                      {q.titel} · {t("klaraauftrag.fassungWert", { fassung: q.fassung })}
+                      <span className="block text-left text-[11px] font-normal">{q.auszug}</span>
+                    </button>
+                  ))
+                )}
+              </fieldset>
+            ))
+        : null}
       {/* Rückfrage: mehrere Ziele passen — gewählt wird, BEVOR etwas geschieht. */}
       {a.phase === "rueckfrage"
         ? a.geplant
@@ -523,6 +622,14 @@ function AusfuehrungKarte({
                     {t("klaraauftrag.nichtRuecknehmbar.persoenlicheAufgabe")}
                   </p>
                 ) : null}
+                {s?.stand === "gespeichert" && s.aktion === "erinnerung_anlegen" ? (
+                  <p
+                    data-testid="klara-ausfuehrung-schritt-nicht-ruecknehmbar"
+                    className="mt-0.5 text-[11px] text-muted-2"
+                  >
+                    {t("klaraauftrag.nichtRuecknehmbar.erinnerung")}
+                  </p>
+                ) : null}
                 {s?.stand === "zurueckgenommen" ? (
                   <p
                     data-testid="klara-ausfuehrung-schritt-zurueckgenommen"
@@ -668,14 +775,26 @@ function AusfuehrungKarte({
             {t("klaraauftrag.knopf.abbrechen")}
           </button>
         ) : null}
-        {a.phase === "angehalten" && unklar && (!a.abbruch || wirkungOffen) ? (
+        {auftrag && laeuft && !a.abbruch && !auftrag.unterbrochenAm ? (
+          <button
+            type="button"
+            data-testid="klara-ausfuehrung-unterbrechen"
+            onClick={() => void unterbrichAuftrag(a.lokalId, umgebung())}
+            className={KNOPF}
+          >
+            {t("klaraauftrag.knopf.unterbrechen")}
+          </button>
+        ) : null}
+        {a.phase === "angehalten" &&
+        (unklar || a.geplant.length > 0) &&
+        (!a.abbruch || wirkungOffen) ? (
           <button
             type="button"
             data-testid="klara-ausfuehrung-erneut"
             onClick={() => wiederhole(a.lokalId, umgebung())}
             className={KNOPF_KI}
           >
-            {t("klaraauftrag.knopf.erneut")}
+            {t(unklar ? "klaraauftrag.knopf.erneut" : "klaraauftrag.knopf.fortsetzen")}
           </button>
         ) : null}
         {auftrag &&

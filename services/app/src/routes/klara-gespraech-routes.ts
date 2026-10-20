@@ -8,6 +8,7 @@ import {
   schrittVerlauf,
 } from "../klara-aktionsverlauf";
 import type { KlaraAuftrag, KlaraAuftragSchritt } from "../klara-auftrag";
+import { bindeAuftragsnotizen } from "../klara-auftragsnotiz";
 import { KlaraAusfuehrung, type KlaraRufe } from "../klara-ausfuehrung";
 import {
   type KlaraGespraech,
@@ -311,11 +312,14 @@ export function klaraGespraechRoutes(
           return;
         }
         try {
-          const auftrag = await dienst.legeAuftragAn(
-            user.id,
-            request.params.id,
-            rumpf<Record<string, unknown>>(request.body),
-          );
+          const eingabe = rumpf<Record<string, unknown>>(request.body);
+          if (
+            Array.isArray(eingabe.plan) &&
+            eingabe.plan.some((p) => p && typeof p === "object" && "notizQuelle" in p)
+          )
+            await dienst.hole(user.id, request.params.id);
+          const gebunden = await bindeAuftragsnotizen(eingabe, rufeFuer(request));
+          const auftrag = await dienst.legeAuftragAn(user.id, request.params.id, gebunden);
           await audit.record({
             actor: user.id,
             action: "klara.auftrag.angelegt",
@@ -395,6 +399,33 @@ export function klaraGespraechRoutes(
         }
       },
     );
+
+    for (const weg of ["unterbrechen", "fortsetzen"] as const) {
+      app.post<{ Params: { id: string; auftragId: string }; Body: { auftragFassung?: unknown } }>(
+        `/api/me/klara/gespraeche/:id/auftraege/:auftragId/${weg}`,
+        async (request, reply) => {
+          const user = await guards.requireUser(request, reply);
+          if (!user) return;
+          try {
+            const auftrag = await dienst.unterbrecheAuftrag(
+              user.id,
+              request.params.id,
+              request.params.auftragId,
+              weg === "fortsetzen",
+              request.body?.auftragFassung,
+            );
+            await audit.record({
+              actor: user.id,
+              action: `klara.auftrag.${weg}`,
+              target: `klara-auftrag:${auftrag.id}`,
+            });
+            reply.code(200).send({ auftrag: auftragMitVerlauf(auftrag) });
+          } catch (fehler) {
+            antworteMitFehler(reply, fehler);
+          }
+        },
+      );
+    }
 
     app.put<{ Params: { id: string; auftragId: string }; Body: unknown }>(
       "/api/me/klara/gespraeche/:id/auftraege/:auftragId/abbruch",

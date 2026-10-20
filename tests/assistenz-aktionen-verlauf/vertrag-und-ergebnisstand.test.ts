@@ -126,6 +126,7 @@ describe("R1 · K1 — Wirkung, Berechtigung und Rücknahme je gelieferter Aktio
       "aufgabe_zuweisen",
       "entwurf_bearbeiten",
       "entwurf_erstellen",
+      "erinnerung_anlegen",
       // produkt:20261008:klara-aufgaben (Klara 07): seitdem gelieferte, datenverändernde Aktion.
       "persoenliche_aufgabe_anlegen",
     ]);
