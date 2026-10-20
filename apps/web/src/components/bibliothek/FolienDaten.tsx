@@ -51,6 +51,7 @@ import { formatKoTimestamp } from "../../lib/koDates";
 import { DatenErgaenzung } from "./DatenErgaenzung";
 import { DatenKontrolle, DatenLage } from "./DatenKontrolle";
 import { usePowerPointBildtext } from "./PowerPointBildquellen";
+import { VortragVorbereitung } from "./VortragVorbereitung";
 
 const ZUSTANDSFARBE: Record<DatenpunktSicht["pruefstand"]["zustand"], string> = {
   erfasst: "text-muted",
@@ -174,6 +175,13 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
     einstieg?.focus();
   };
 
+  const oeffneFolie = (sldId: string) => {
+    const ziel = [...(bereich.current?.querySelectorAll<HTMLElement>("li[data-folie]") ?? [])].find(
+      (e) => e.dataset.folie === sldId,
+    );
+    ziel?.focus();
+    ziel?.scrollIntoView({ block: "nearest" });
+  };
   const d = lage.data;
   const aktiv = pfad.at(-1) ?? null;
   return (
@@ -191,6 +199,14 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
         <p role="alert" className="mt-1 text-[12.5px] text-trust-crit-text">
           {fehlerText(lage.error)}
         </p>
+      ) : null}
+      {d ? (
+        <VortragVorbereitung
+          key={`${koId}:${anhangId}`}
+          lage={d}
+          oeffne={oeffneVonListe}
+          oeffneFolie={oeffneFolie}
+        />
       ) : null}
       {d?.datenlage ? (
         <DatenLage lage={d.datenlage} wahl={offenePunkte} oeffne={oeffneVonListe} />
@@ -277,7 +293,7 @@ function Folie({
 }): JSX.Element {
   const { t } = useTranslation();
   return (
-    <li data-folie={folie.sldId} className="rounded-card border border-hairline p-2">
+    <li tabIndex={-1} data-folie={folie.sldId} className="rounded-card border border-hairline p-2">
       <p className="text-[12.5px] font-semibold text-text">
         {t("praesentationdaten.folie", { nummer: folie.position })}
         {folie.titel ? ` · ${folie.titel}` : ""}
