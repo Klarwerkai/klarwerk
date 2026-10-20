@@ -46,6 +46,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { setzeKlaraEntwurf } from "../../api/chat";
 import { kiArbeitswegApi } from "../../api/kiArbeitsweg";
 import type { KlaraObjektbezug } from "../../api/klaraGespraech";
+import { type VormachenHost, lernauftragKlaerung, vormachenApi } from "../../api/vormachen";
 import { useSession } from "../../app/AuthContext";
 import { HOME_ROUTE } from "../../app/navigation";
 // produkt:20261010:assistenz-name-avatar: Name, Motiv und Bewegung aus dem persönlichen Profil.
@@ -66,9 +67,11 @@ import {
   warSchonGezeigt,
   wirksamerModus,
 } from "../../lib/klaraEigeninitiative";
+import { istLernauftrag } from "../../lib/lernauftrag";
 import { leseobjektJetzt, useLeseobjekt } from "../../lib/leseobjekt";
 import { leserHref } from "../../lib/objektbezug";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
+import { meldeVormachen } from "../../lib/vormachenAnzeige";
 import { useTutorialFuerKlara } from "../../tutorial/TutorialRahmen";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
 import { AvatarBild } from "../assistenz/AvatarBild";
@@ -88,8 +91,10 @@ import {
   useAndereFlaecheOffen,
   useAndereFlaecheSchliesst,
 } from "../assistenzFlaechen";
+import { MeineFunktionen } from "../funktionen/MeineFunktionen";
 // produkt:20261012:klara-setup-shortcuts-umsetzung: konfigurierte Kürzel führen vorhandene Wege aus.
 import { useKlaraAktion } from "../klara-setup/KlaraKuerzelAusfuehrung";
+import { VormachenFlaeche } from "../vormachen/VormachenFlaeche";
 // produkt:20261011:assistenz-minimalistische-oberflaeche: Menü, Unterseiten, Vorgangsleiste.
 import {
   DUNKEL_ABFRAGE,
@@ -120,6 +125,7 @@ import {
   istOffen,
 } from "./KlaraEigeninitiative";
 import { KlaraErinnerungen } from "./KlaraErinnerungen";
+import { KlaraLernauftrag, type LernauftragLage } from "./KlaraLernauftrag";
 import { KlaraNotizen } from "./KlaraNotizen";
 import { KlaraQualitaet } from "./KlaraQualitaet";
 import {
@@ -1663,10 +1669,37 @@ export function KlaraVorschau({
     }
     return fragenSenden(text, ziel.herkunft);
   };
+  const [lernauftrag, setLernauftrag] = useState<LernauftragLage | null>(null);
+  const lerneAus = async (
+    text: string,
+    wahl?: { host: VormachenHost; vorgaenge: string[] },
+  ): Promise<void> => {
+    try {
+      const { sitzung } = await vormachenApi.starteAusLernauftrag(text, wahl);
+      meldeVormachen(true, kontoId);
+      setLernauftrag({ stand: "gestartet", host: sitzung.host, vorgaenge: sitzung.vorgaenge });
+      setAnsage(t("vormachen.lernauftrag.ansage"));
+    } catch (fehler) {
+      const klaerung = lernauftragKlaerung(fehler);
+      if (klaerung) {
+        setLernauftrag({ stand: "klaerung", text, klaerung });
+        setAnsage(klaerung.frage);
+        return;
+      }
+      const grund = fehler instanceof Error ? fehler.message : String(fehler);
+      setLernauftrag({ stand: "fehler", grund });
+    }
+  };
+
   const senden = (e: FormEvent): void => {
     e.preventDefault();
     const frage = eingabe.trim();
     if (!frage) {
+      return;
+    }
+    if (istEcht && istLernauftrag(frage)) {
+      setEingabe("");
+      void lerneAus(frage);
       return;
     }
     const r = ausfuehren(frage, "getippt");
@@ -1830,7 +1863,6 @@ export function KlaraVorschau({
   const hinweisKandidatRef = useRef<Hinweis | null>(hinweisKandidat);
   hinweisKandidatRef.current = hinweisKandidat;
   const [hinweis, setHinweis] = useState<Hinweis | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: der erlaubte Schlüssel ist der Auslöser.
   useEffect(() => {
     if (!hinweisSchluessel) {
       setHinweis(null);
@@ -2143,6 +2175,11 @@ export function KlaraVorschau({
     e.preventDefault();
     const frage = eingabe.trim();
     if (!frage) {
+      return;
+    }
+    if (istEcht && istLernauftrag(frage)) {
+      setEingabe("");
+      void lerneAus(frage);
       return;
     }
     // Integration main (Klara 05): ein erkannter Ausführungsauftrag geht — wie im bisherigen
@@ -2691,6 +2728,14 @@ export function KlaraVorschau({
               onZurueck={zurueckZumGespraech}
             >
               <FunktionenSeite
+                lernfunktionen={
+                  istEcht && kontoId ? (
+                    <>
+                      <VormachenFlaeche />
+                      <MeineFunktionen />
+                    </>
+                  ) : null
+                }
                 sprachMoeglich={sprechen.moeglich}
                 onAuftragSprechen={() => {
                   setMenueSeite(null);
@@ -3259,6 +3304,13 @@ export function KlaraVorschau({
                   />
                 ) : tutorialHinweis ? (
                   <output className="block text-[11.5px] text-muted-2">{tutorialHinweis}</output>
+                ) : null}
+                {lernauftrag ? (
+                  <KlaraLernauftrag
+                    lage={lernauftrag}
+                    waehle={(text, host, vorgaenge) => void lerneAus(text, { host, vorgaenge })}
+                    schliesse={() => setLernauftrag(null)}
+                  />
                 ) : null}
                 <KlaraAuftragKarte
                   s={sprechen}
@@ -4219,6 +4271,13 @@ export function KlaraVorschau({
             {/* Klara 10: persönliche Erinnerungen — anlegen, klären, ändern, pausieren, erledigen. */}
             {istEcht && kontoId ? <KlaraErinnerungen /> : null}
             {/* Klara 02: der gesprochene Auftrag — erkannter Text, Ziel, Rückfragen, Ergebnis. */}
+            {lernauftrag ? (
+              <KlaraLernauftrag
+                lage={lernauftrag}
+                waehle={(text, host, vorgaenge) => void lerneAus(text, { host, vorgaenge })}
+                schliesse={() => setLernauftrag(null)}
+              />
+            ) : null}
             <KlaraAuftragKarte
               s={sprechen}
               sendebereit={sprachSendebereit}

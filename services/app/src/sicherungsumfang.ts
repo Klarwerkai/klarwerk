@@ -98,6 +98,7 @@ export const SICHERUNGSUMFANG: readonly UmfangBereich[] = [
     ],
   },
   { id: "fristen", art: "assistenz", zustand: "im_dump", tabellen: ["klara_fristen"] },
+  { id: "funktionen", art: "assistenz", zustand: "im_dump", tabellen: ["persoenliche_routinen"] },
   // Browser-Speicher der Person (Sitzungscookie, lokale Einstellungen).
   { id: "endgeraet", art: "assistenz", zustand: "ausgeschlossen", tabellen: [] },
 ];

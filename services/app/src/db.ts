@@ -119,6 +119,7 @@ import { VERSTAENDNISFRAGEN_SCHEMA } from "./verstaendnisfragen";
 // produkt:20261007:templates-default: Vorlagen, persönliche Standards, Space-Vorgaben, Nutzung und
 // Begriffspflege als unveränderliche Fassungen.
 import { VORLAGEN_SCHEMA } from "./vorlagen";
+import { PERSOENLICHE_ROUTINEN_SCHEMA } from "./vormachen";
 // R-1656: der Co-Reading-Zähler der Empfehlung „Du solltest auch wissen…" — je Paar nur eine Zahl.
 import { MITGELESEN_SCHEMA } from "./wissensempfehlung";
 
@@ -359,6 +360,7 @@ export const schemas = [
   // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die
   // lesbare Ordnung ist.
   KLARA_GESPRAECH_SCHEMA,
+  PERSOENLICHE_ROUTINEN_SCHEMA,
   // R-1656: der Co-Reading-Zähler. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS),
   // ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   MITGELESEN_SCHEMA,

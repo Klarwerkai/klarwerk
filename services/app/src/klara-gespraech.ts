@@ -7,6 +7,7 @@ import {
   type KlaraAuftragEingabe,
   KlaraAuftragFehler,
   type KlaraAuftragGrund,
+  type KlaraAuftragHerkunft,
   type KlaraAuftragSchritt,
   type KlaraSchrittEingabe as KlaraAuftragSchrittEingabe,
   type KlaraKorrekturEingabe,
@@ -870,19 +871,52 @@ export class KlaraGespraechDienst {
     return (await this.hole(kontoId, id)).auftraege ?? [];
   }
 
-  legeAuftragAn(kontoId: string, id: string, eingabe: KlaraAuftragEingabe): Promise<KlaraAuftrag> {
+  legeAuftragAn(
+    kontoId: string,
+    id: string,
+    eingabe: KlaraAuftragEingabe,
+    herkunft?: KlaraAuftragHerkunft,
+  ): Promise<KlaraAuftrag> {
     return this.mitGrenze(async () => {
       const auftragId = this.neueId();
       // Zuerst prüfen, dann schreiben: eine ungültige Eingabe berührt das Gespräch nicht.
       neuerAuftrag(eingabe, kontoId, auftragId, this.jetztIso());
-      const g = await this.aendere(kontoId, id, (alt, jetzt) => ({
-        ...alt,
-        auftraege: mitNeuemAuftrag(
-          alt.auftraege ?? [],
-          neuerAuftrag(eingabe, kontoId, auftragId, jetzt),
-        ),
-      }));
-      return KlaraGespraechDienst.auftragIn(g, auftragId);
+      const g = await this.aendere(kontoId, id, (alt, jetzt) => {
+        const vorhanden =
+          herkunft &&
+          (alt.auftraege ?? []).find(
+            (a) =>
+              a.herkunft?.art === "routine" &&
+              a.herkunft.eigentuemer === herkunft.eigentuemer &&
+              a.herkunft.routineId === herkunft.routineId &&
+              a.herkunft.lauf === herkunft.lauf,
+          );
+        if (vorhanden) {
+          if (vorhanden.herkunft?.abdruck !== herkunft?.abdruck)
+            throw new KlaraGespraechFehler(
+              409,
+              "konflikt",
+              "Diese Laufkennung gehört zu anderen Eingaben.",
+            );
+          return alt;
+        }
+        const neu = neuerAuftrag(eingabe, kontoId, auftragId, jetzt);
+        return {
+          ...alt,
+          auftraege: mitNeuemAuftrag(alt.auftraege ?? [], herkunft ? { ...neu, herkunft } : neu),
+        };
+      });
+      const gefunden =
+        herkunft &&
+        (g.auftraege ?? []).find(
+          (a) =>
+            a.herkunft?.art === "routine" &&
+            a.herkunft.eigentuemer === herkunft.eigentuemer &&
+            a.herkunft.routineId === herkunft.routineId &&
+            a.herkunft.lauf === herkunft.lauf &&
+            a.herkunft.abdruck === herkunft.abdruck,
+        );
+      return gefunden || KlaraGespraechDienst.auftragIn(g, auftragId);
     });
   }
 

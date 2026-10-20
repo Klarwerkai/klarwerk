@@ -216,7 +216,35 @@ export interface KlaraPlanSchritt {
   readonly aenderung: KlaraAenderung | null;
   /** Nacharbeit 4: nur bei `aufgabe_bearbeiten` — die geklärte Aktion an der Aufgabe. */
   readonly aufgabenaktion?: KlaraAufgabenaktion | null;
+  /**
+   * BPA-06: nur bei `entwurf_erstellen` — Ordnungsfelder, die der neue Entwurf STRUKTURIERT
+   * bekommt (nicht als Text). Nach dem Anlegen wird jedes Feld einzeln nachgelesen.
+   */
+  readonly felder?: KlaraEntwurfsfelder;
+  /**
+   * BPA-06 Nacharbeit 45: nur bei `entwurf_erstellen` — der VOLLTEXT des neuen Entwurfs (Klartext,
+   * Absätze durch Zeilenumbruch). Er wird wie beim Word-Ganzdokumentweg als Körper (`bodyHtml`)
+   * gespeichert, die Kernaussage bleibt ein Satz (`kernaussageAusKlartext`). Nachgelesen wird er.
+   */
+  readonly koerper?: string;
+  /**
+   * EQF-06-K02: nur bei `entwurf_erstellen` — Wissensobjekte, aus denen der Entwurf entsteht, in
+   * ihrer Reihenfolge. Die Ausführung liest jedes JETZT über den vorhandenen Leseweg (Rechte der
+   * Person, aktuelle Fassung) und übernimmt Titel, Fassung, Ort und Kernaussage in den Körper.
+   */
+  readonly quellen?: readonly string[];
 }
+
+/** BPA-06 Nacharbeit 45: höchstens so viel Volltext trägt ein neuer Entwurf aus dem Aktionskern. */
+export const KLARA_KOERPER_MAX = 20_000;
+/** EQF-06-K02: höchstens so viele Quellen je neuem Entwurf. */
+export const KLARA_QUELLEN_MAX = 5;
+
+/** BPA-06: die Ordnungsfelder eines neuen Entwurfs, die der Aktionskern setzen kann. */
+export const KLARA_ENTWURFSFELDER = ["type", "category", "confidentiality", "domain"] as const;
+export type KlaraEntwurfsfeld = (typeof KLARA_ENTWURFSFELDER)[number];
+export type KlaraEntwurfsfelder = Readonly<Partial<Record<KlaraEntwurfsfeld, string>>>;
+const ENTWURFSFELD_MAX = 200;
 
 /** Eine Fassung der Grenze. Die aktuelle steht am Auftrag selbst, frühere in `fassungen`. */
 export interface KlaraAuftragGrenze {
@@ -249,8 +277,26 @@ export interface KlaraAuftragVerlaufseintrag {
   readonly fassung: number;
 }
 
+/**
+ * produkt:20261011:assistenz-lernen-hostfortsetzung (BPA-06): woher ein Auftrag stammt, wenn ihn der
+ * Lauf einer persönlichen Routine angelegt hat — strukturiert, nicht aus dem Wortlaut gelesen. Nur
+ * der Server setzt sie (`KlaraGespraechDienst.legeAuftragAn`, vierter Parameter); aus dem Netz
+ * kommt sie nie. Vor jeder Wirkung prüft die Ausführung damit den AKTUELLEN Stand der Routine.
+ */
+export interface KlaraAuftragHerkunft {
+  readonly art: "routine";
+  readonly eigentuemer: string;
+  readonly routineId: string;
+  readonly fassung: number;
+  readonly lauf: string;
+  /** Abdruck aus Routine, Fassung, Gespräch und Eingaben des Laufs. */
+  readonly abdruck: string;
+}
+
 export interface KlaraAuftrag extends KlaraAuftragGrenze {
   readonly id: string;
+  /** BPA-06: gesetzt, wenn ein Routinenlauf den Auftrag angelegt hat. */
+  readonly herkunft?: KlaraAuftragHerkunft;
   readonly quelle: KlaraAuftragsQuelle;
   /** Der Auftrag in den Worten der Person (getippt oder gesprochen und korrigiert). */
   readonly wortlaut: string;
@@ -292,7 +338,8 @@ export type KlaraAuftragGrund =
   | "ohne_plan"
   | "geaendert"
   | "nicht_ruecknehmbar"
-  | "ziel_fehlt";
+  | "ziel_fehlt"
+  | "herkunft_gesperrt";
 
 export class KlaraAuftragFehler extends Error {
   constructor(
@@ -592,8 +639,52 @@ function pruefePlan(
       aktion === "aufgabe_bearbeiten"
         ? pruefeAufgabenaktion(o.aufgabenaktion, ziel?.pfad ?? null, `${feld}.aufgabenaktion`)
         : null;
-    return { nr, aktion, ziel, ausSchritt, inhalt, aenderung, aufgabenaktion };
+    const felder =
+      aktion === "entwurf_erstellen" ? pruefeEntwurfsfelder(o.felder, `${feld}.felder`) : null;
+    const koerper =
+      aktion === "entwurf_erstellen"
+        ? wahlweiseText(o.koerper, KLARA_KOERPER_MAX, `${feld}.koerper`)
+        : null;
+    const quellen =
+      aktion === "entwurf_erstellen" && o.quellen !== undefined && o.quellen !== null
+        ? [
+            ...new Set(
+              liste(o.quellen, KLARA_QUELLEN_MAX, `${feld}.quellen`, (x, k) =>
+                text(x, 200, `${feld}.quellen[${k}]`),
+              ),
+            ),
+          ]
+        : null;
+    return {
+      nr,
+      aktion,
+      ziel,
+      ausSchritt,
+      inhalt,
+      aenderung,
+      aufgabenaktion,
+      ...(felder ? { felder } : {}),
+      ...(koerper ? { koerper } : {}),
+      ...(quellen ? { quellen } : {}),
+    };
   });
+}
+
+/** BPA-06: nur die bekannten Ordnungsfelder, je ein kurzer Text; sonst abgewiesen. */
+function pruefeEntwurfsfelder(roh: unknown, feld: string): KlaraEntwurfsfelder | null {
+  if (roh === undefined || roh === null) {
+    return null;
+  }
+  const o = objekt(roh, feld);
+  const felder: Partial<Record<KlaraEntwurfsfeld, string>> = {};
+  for (const [name, wert] of Object.entries(o)) {
+    const bekannt = KLARA_ENTWURFSFELDER.find((x) => x === name);
+    if (bekannt === undefined) {
+      throw eingabeFehler(`${feld}.${name} ist kein Feld, das ein neuer Entwurf setzen kann.`);
+    }
+    felder[bekannt] = text(wert, ENTWURFSFELD_MAX, `${feld}.${name}`);
+  }
+  return Object.keys(felder).length > 0 ? felder : null;
 }
 
 /** Nacharbeit 4: die Aktion muss angegeben sein und zur Aufgabenart passen. */
@@ -800,7 +891,15 @@ export interface KlaraSchrittEingabe {
 export interface KlaraServerZusatz {
   geprueft?: KlaraAuftragErgebnis;
   fehlerCode?: string;
+  /** BPA-06: einen vorübergehend gescheiterten Serverschritt unter demselben Schlüssel neu beginnen. */
+  wiederholen?: boolean;
 }
+
+/**
+ * BPA-06 (Nacharbeit 36): Fehlerschlüssel der Serverausführung, nach denen derselbe Schritt erneut
+ * beginnen darf — Server nicht erreichbar, Laufsitzung abgelaufen. Alles andere bleibt endgültig.
+ */
+export const KLARA_WIEDERHOLBARE_FEHLER: readonly string[] = ["server", "anmeldung"];
 
 /**
  * Wer einen Übergang meldet. `browser`: die Tür `PUT …/schritte/:schluessel` — sie darf einen
@@ -929,6 +1028,42 @@ export function setzeSchritt(
       "schluessel_belegt",
       "Dieser Schrittschlüssel gehört zu einem anderen Schritt.",
     );
+  }
+  // BPA-06 (Nacharbeit 36): ein VORÜBERGEHEND gescheiterter Serverschritt beginnt unter DEMSELBEN
+  // Schlüssel neu — nur auf ausdrücklichen Wunsch der Serverausführung, nie nach einem Abbruch oder
+  // einer Korrektur der Grenze. Derselbe Schritt heißt derselbe Vorgangsschlüssel am Entwurfsweg:
+  // eine zweite Wirkung entsteht nicht. Ohne `wiederholen` bleibt „gescheitert“ endgültig.
+  if (
+    zusatz.wiederholen === true &&
+    melder === "server" &&
+    stand === "begonnen" &&
+    vorhanden.stand === "fehlgeschlagen" &&
+    KLARA_WIEDERHOLBARE_FEHLER.includes(vorhanden.fehlerCode ?? "")
+  ) {
+    if (a.abgebrochenAm) {
+      throw new KlaraAuftragFehler(409, "abgebrochen", "Der Auftrag wurde abgebrochen.");
+    }
+    if (vorhanden.auftragFassung !== a.fassung) {
+      throw new KlaraAuftragFehler(
+        409,
+        "fassung_veraltet",
+        `Der Auftrag wurde inzwischen korrigiert (jetzt Fassung ${a.fassung}).`,
+      );
+    }
+    const erneut: KlaraAuftragSchritt = {
+      ...vorhanden,
+      stand: "begonnen",
+      grund: null,
+      fehlerCode: null,
+      geaendertAm: jetzt,
+    };
+    const neu = mitVerlauf(
+      { ...a, schritte: a.schritte.map((s) => (s.schluessel === schluessel ? erneut : s)) },
+      "begonnen",
+      jetzt,
+      erneut.nr,
+    );
+    return { auftrag: abgeleitet(neu, jetzt), schritt: erneut, wiederholt: false };
   }
   if (vorhanden.stand === stand && zusatz.geprueft === undefined) {
     return { auftrag: a, schritt: vorhanden, wiederholt: true };

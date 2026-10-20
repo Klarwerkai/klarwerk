@@ -37,6 +37,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import type { KlaraObjektbezug } from "../api/klaraGespraech";
 import { useSession } from "../app/AuthContext";
+import { MeineFunktionen } from "../components/funktionen/MeineFunktionen";
 import {
   DUNKEL_ABFRAGE,
   DUNKLE_TOKEN,
@@ -81,6 +82,7 @@ import {
   vorlesen,
 } from "../components/klara-vorschau/vorlesen";
 import type { Herkunft } from "../components/klara-vorschau/zustand";
+import { VormachenFlaeche } from "../components/vormachen/VormachenFlaeche";
 import { LegalFooter } from "../legal/LegalPages";
 import {
   BEGLEITER_ABRUF_MS,
@@ -1438,6 +1440,8 @@ export function Begleiter(): JSX.Element {
             <VerlaufSeite pfad="/begleiter" onZumGespraech={zurueck} />
           ) : menueSeite === "funktionen" ? (
             <div className="space-y-3">
+              <VormachenFlaeche />
+              <MeineFunktionen />
               <section data-testid="begleiter-funktionen">
                 <h4 className={ABSCHNITT}>{t("assistenzminimal.funktionen.verfuegbar")}</h4>
                 <ul className="mt-1 list-disc space-y-1 pl-5 text-[12px] leading-relaxed text-text">

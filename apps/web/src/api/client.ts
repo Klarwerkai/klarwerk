@@ -33,6 +33,9 @@ const BASE = "/api";
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("Accept-Language", i18n.language || gespeicherteSprache());
+  // Der Server unterdrückt Referer. Der Lernkern braucht deshalb den ausdrücklichen
+  // Anwendungskanal; Sichtbarkeit, Anmeldung und gewählter Umfang werden separat geprüft.
+  headers.set("X-Klarwerk-Host", "klarwerk_web");
   if (init?.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }

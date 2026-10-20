@@ -19,6 +19,7 @@ import {
   resolveKlaraErinnerungTaktMs,
   starteKlaraErinnerungen,
 } from "./klara-erinnerung-start";
+import { fuehreLoeschmarkierungenNach, leseLoeschmarkierungsAblage } from "./loeschmarkierungen";
 import { registerNoindexHook } from "./noindex-hook";
 import { LOG_DATEI_ENV, PROTOKOLL_FRIST_TAGE, starteProtokollPflege } from "./protokoll-frist";
 import {
@@ -200,7 +201,10 @@ async function start(): Promise<void> {
   // Instanz — gestartet unten nach `app.listen`, neben den übrigen Fristläufen.
   let erinnerungLauf: (() => Promise<KlaraErinnerungLaufbericht>) | undefined;
   const erinnerungTakt = resolveKlaraErinnerungTaktMs(process.env[KLARA_ERINNERUNG_TAKT_ENV]);
+  const loeschmarkierungen = leseLoeschmarkierungsAblage();
+  await fuehreLoeschmarkierungenNach(loeschmarkierungen, services.vormachenRoutinen);
   const app = buildApp(services, {
+    loeschmarkierungen,
     klaraErinnerungen: (lauf) => {
       erinnerungLauf = lauf;
       return erinnerungTakt;
