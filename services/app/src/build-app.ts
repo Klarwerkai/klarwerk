@@ -5355,6 +5355,7 @@ export function buildApp(
         ko: services.ko,
         objekte: services.objects,
         ablage: services.datenpunkte,
+        bildKorrekturen: new BildKorrekturDienst({ repo: services.assistenzProfile }),
         konten: () => services.auth.listUsers(),
       },
       guards,

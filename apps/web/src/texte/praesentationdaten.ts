@@ -11,6 +11,11 @@ export default {
   praefix: "praesentationdaten.",
   legacySchluessel: [],
   de: {
+    "praesentationdaten.bildtextVorhanden": "Bildtext vorhanden",
+    "praesentationdaten.bildtextWartet": "Bildtext oder Berichtigungen werden geladen …",
+    "praesentationdaten.bildtextRoh": "Ursprünglicher OCR-Text:",
+    "praesentationdaten.bildtextKorrektur":
+      "Berichtigung vom {{am}} bei der Übernahme. Spätere Änderungen erneut übernehmen.",
     "praesentationdaten.titel": "Daten auf den Folien",
     "praesentationdaten.hinweis":
       "Zahl oder Aussage anklicken, um Quelle, Fundstelle, Rechenweg und Prüfstand zu sehen.",
@@ -163,6 +168,11 @@ export default {
     "praesentationdaten.aktuelleOeffnen": "Aktuelle Fassung öffnen",
   },
   en: {
+    "praesentationdaten.bildtextVorhanden": "Image text available",
+    "praesentationdaten.bildtextWartet": "Loading image text or corrections …",
+    "praesentationdaten.bildtextRoh": "Original OCR text:",
+    "praesentationdaten.bildtextKorrektur":
+      "Correction from {{am}} at capture. Capture later changes again.",
     "praesentationdaten.titel": "Data on the slides",
     "praesentationdaten.hinweis":
       "Click a number or statement to see its source, location, calculation and review status.",
@@ -314,6 +324,11 @@ export default {
     "praesentationdaten.aktuelleOeffnen": "Open current version",
   },
   nl: {
+    "praesentationdaten.bildtextVorhanden": "Afbeeldingstekst beschikbaar",
+    "praesentationdaten.bildtextWartet": "Afbeeldingstekst of correcties laden …",
+    "praesentationdaten.bildtextRoh": "Oorspronkelijke OCR-tekst:",
+    "praesentationdaten.bildtextKorrektur":
+      "Correctie van {{am}} bij vastlegging. Latere wijzigingen opnieuw vastleggen.",
     "praesentationdaten.titel": "Gegevens op de dia's",
     "praesentationdaten.hinweis":
       "Klik op een getal of bewering om bron, vindplaats, berekening en controlestatus te zien.",
