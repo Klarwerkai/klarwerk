@@ -44,13 +44,11 @@ const FEHLERCODE: Record<KlaraAufgabeFehler["status"], string> = {
 
 function antworteMitFehler(reply: FastifyReply, fehler: unknown): void {
   if (fehler instanceof KlaraGespraechFehler) {
-    reply
-      .code(fehler.status)
-      .send({
-        error: fehler.status === 409 ? "CONFLICT" : "VALIDATION",
-        grund: fehler.grund,
-        message: fehler.message,
-      });
+    reply.code(fehler.status).send({
+      error: fehler.status === 409 ? "CONFLICT" : "VALIDATION",
+      grund: fehler.grund,
+      message: fehler.message,
+    });
     return;
   }
   if (fehler instanceof KlaraAufgabeFehler) {
