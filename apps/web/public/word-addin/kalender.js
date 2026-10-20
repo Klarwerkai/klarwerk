@@ -412,7 +412,7 @@
         kalenderZeitText(e, zone) + " · " + (e.geschuetzt ? kalenderT("geschuetzt") : e.titel)));
       var meta = [kalenderT("art_" + e.art), kalenderT("status_" + e.status),
         kalenderT("herkunft_" + e.herkunft.art)];
-      if (e.erkennung && !e.geschuetzt) { meta.push(kalenderT("fristart_" + e.erkennung.art), kalenderT(e.erkennung.manuell && e.erkennung.stand === "erkannt" ? "friststand_manuell" : "friststand_" + e.erkennung.stand)); }
+      if (e.erkennung && !e.geschuetzt) { meta.push(kalenderT("fristart_".concat(e.erkennung.art)), kalenderT(e.erkennung.manuell && e.erkennung.stand === "erkannt" ? "friststand_manuell" : "friststand_".concat(e.erkennung.stand))); }
       if (!e.zugeordnet) { meta.push(kalenderT("unzugeordnet")); }
       var metaZeile = kalenderKnoten("span", "muted", meta.join(" · "));
       metaZeile.style.display = "block";
