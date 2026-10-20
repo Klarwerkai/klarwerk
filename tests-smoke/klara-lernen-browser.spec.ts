@@ -88,7 +88,11 @@ test("H · zwei echte Vorführungen, geänderte Wiederholung, Pause und Beschaff
     .fill("Dezember: 47 Einheiten im eigenen Folgeprojekt.");
   const eingaben = page.locator('[data-testid^="routine-lauf-eingabe-"]');
   for (let i = 0; i < (await eingaben.count()); i++) {
-    await eingaben.nth(i).fill(quellen[i % quellen.length]);
+    const quelle = quellen[i % quellen.length];
+    if (quelle === undefined) {
+      throw new Error("Für das Routineeingabefeld fehlt eine zuvor angelegte Testquelle.");
+    }
+    await eingaben.nth(i).fill(quelle);
   }
   await page.getByTestId("routine-lauf-ausfuehren").click();
   await expect(page.getByTestId("routine-lauf-ergebnis-link")).toBeVisible();
