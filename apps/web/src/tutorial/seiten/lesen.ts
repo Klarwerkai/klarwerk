@@ -16,7 +16,7 @@ export const LESEN: readonly SeitenEintrag[] = [
     id: "artikel",
     pfade: ["/wissen/:id"],
     titelKey: "nav.library",
-    ziel: '[data-testid="bib-lesen"]',
+    ziel: '[data-testid="bib-lesen"][data-objekt="wissen"]',
   },
   {
     id: "wissensnetz",

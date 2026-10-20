@@ -127,6 +127,17 @@ it("bedient Lesen, Arbeiten, Verwaltung und erhaltenes Fragen-Tutorial mit echte
       });
     }
   }
+  await kontext.close();
+});
+
+it("fehlendes echtes Artikelziel wird als Grenze erklärt und nicht als Erfolg markiert", async () => {
+  const kontext = await browser.newContext({
+    baseURL: kandidat.url,
+    viewport: { width: 390, height: 900 },
+    reducedMotion: "reduce",
+  });
+  const page = await kontext.newPage();
+  await ensureLoggedIn(page);
   // Echter fehlender Artikel: kein erfundenes Kernziel und kein Erfolg.
   await page.goto("/wissen/fiktiv-nicht-vorhanden");
   await page.getByTestId("tutorial-knopf").click();
