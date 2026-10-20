@@ -362,6 +362,15 @@ export function verarbeiteFristenQuelle(
       b.quelle.importbeleg.sourceVersion >= neuesteImportversion;
     const herkunft: FristHerkunft[] = basis.herkunft.map((h) =>
       (h.beleg.quelle.art === quelle.art && h.beleg.quelle.id === quelle.id) ||
+      (erster?.quelle.importbeleg &&
+        !h.beleg.quelle.importbeleg &&
+        bekannteQuellen.some(
+          (q) =>
+            q.art === h.beleg.quelle.art &&
+            q.id === h.beleg.quelle.id &&
+            q.importbeleg &&
+            fristBelegIdentitaet(q) === erster.quelle.belegId,
+        )) ||
       !nochAktuelleVersion(h.beleg)
         ? { ...h, aktuell: false }
         : h,

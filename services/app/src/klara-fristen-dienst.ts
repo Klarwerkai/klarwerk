@@ -109,7 +109,55 @@ export class KlaraFristenDienst {
     return quellen;
   }
 
-  private auswerten(stand: FristenStand, quellen: readonly GeleseneFristenQuelle[]): FristenStand {
+  /** Nur passende gespeicherte Altherkunft zur Identität lesen, nicht erneut als Regelquelle auswerten. */
+  private async identitaetsLesungen(
+    user: SessionUser,
+    stand: FristenStand,
+    quellen: readonly GeleseneFristenQuelle[],
+  ): Promise<GeleseneFristenQuelle[]> {
+    const importe = quellen
+      .flatMap((q) => erkenneFristen(q.quelle))
+      .filter((b) => b.quelle.importbeleg);
+    const gelesen = new Map(quellen.map((q) => [`${q.quelle.art}:${q.quelle.id}`, q]));
+    for (const f of stand.fristen) {
+      if (
+        !importe.some(
+          (b) =>
+            b.art === f.art &&
+            b.objekt.kennung === f.objekt.kennung &&
+            b.objekt.art.toLocaleLowerCase("de") === f.objekt.art.toLocaleLowerCase("de"),
+        )
+      )
+        continue;
+      for (const h of f.herkunft) {
+        const q = h.beleg.quelle;
+        if (q.art !== "wissensobjekt" || q.importbeleg) continue;
+        const key = `${q.art}:${q.id}`;
+        let aktuell = gelesen.get(key);
+        if (!aktuell) {
+          if (gelesen.size >= FRISTEN_GRENZEN.quellen)
+            throw new FristenFehler(
+              409,
+              "Zu viele bisherige Herkunftsquellen für eine eindeutige Importzuordnung. Originale zuerst klären.",
+            );
+          aktuell = (await this.deps.lies(user, q.art, q.id)) ?? undefined;
+        }
+        if (!aktuell?.quelle.importbeleg)
+          throw new FristenFehler(
+            409,
+            "Eine bisherige Fristherkunft ist heute nicht rechtmäßig und eindeutig einer Importquelle zuzuordnen. Keine neue Frist angelegt.",
+          );
+        gelesen.set(key, aktuell);
+      }
+    }
+    return [...gelesen.values()];
+  }
+
+  private auswerten(
+    stand: FristenStand,
+    quellen: readonly GeleseneFristenQuelle[],
+    identitaetsQuellen = quellen,
+  ): FristenStand {
     let s = stand;
     for (const q of quellen)
       s = verarbeiteFristenQuelle(
@@ -117,7 +165,7 @@ export class KlaraFristenDienst {
         q.quelle,
         erkenneFristen(q.quelle),
         this.am(),
-        quellen.map((q) => q.quelle),
+        identitaetsQuellen.map((q) => q.quelle),
       );
     const fristen = s.fristen.map((f) =>
       f.datum &&
@@ -133,9 +181,10 @@ export class KlaraFristenDienst {
     const regel = fristenRegelAus(roh);
     const alt = (await this.deps.repo.hole(user.id)) ?? leer(user.id);
     const quellen = await this.quellen(user, regel.quellen);
+    const identitaeten = await this.identitaetsLesungen(user, alt, quellen);
     return this.filterSicht(
       user,
-      this.auswerten({ ...alt, regel: { ...regel, aktiv: true } }, quellen),
+      this.auswerten({ ...alt, regel: { ...regel, aktiv: true } }, quellen, identitaeten),
     );
   }
 
@@ -145,14 +194,17 @@ export class KlaraFristenDienst {
     if (alt.fassung !== fassung)
       throw new FristenFehler(409, "Die Fristenregel wurde inzwischen geändert. Bitte neu laden.");
     const quellen = regel.aktiv ? await this.quellen(user, regel.quellen) : [];
-    const neu = regel.aktiv ? this.auswerten({ ...alt, regel }, quellen) : { ...alt, regel };
-    if (!(await Promise.all(quellen.map((q) => q.nochAktuell()))).every(Boolean))
+    const identitaeten = await this.identitaetsLesungen(user, alt, quellen);
+    const neu = regel.aktiv
+      ? this.auswerten({ ...alt, regel }, quellen, identitaeten)
+      : { ...alt, regel };
+    if (!(await Promise.all(identitaeten.map((q) => q.nochAktuell()))).every(Boolean))
       throw new FristenFehler(
         409,
         "Eine Quelle hat sich beim Verarbeiten geändert. Bitte neu lesen.",
       );
     const gespeichert = { ...neu, fassung: alt.fassung + 1 };
-    if (!(await this.deps.repo.speichere(gespeichert, alt.fassung, bedingungen(quellen))))
+    if (!(await this.deps.repo.speichere(gespeichert, alt.fassung, bedingungen(identitaeten))))
       throw new FristenFehler(409, "Regel oder Quellenstand hat sich geändert. Nichts übernommen.");
     return this.sicht(user);
   }
@@ -163,14 +215,15 @@ export class KlaraFristenDienst {
       const alt = (await this.deps.repo.hole(user.id)) ?? leer(user.id);
       if (!alt.regel?.aktiv) throw new FristenFehler(409, "Die Fristenerfassung ist nicht aktiv.");
       const quellen = await this.quellen(user, alt.regel.quellen);
-      const neu = this.auswerten(alt, quellen);
-      if (!(await Promise.all(quellen.map((q) => q.nochAktuell()))).every(Boolean)) continue;
+      const identitaeten = await this.identitaetsLesungen(user, alt, quellen);
+      const neu = this.auswerten(alt, quellen, identitaeten);
+      if (!(await Promise.all(identitaeten.map((q) => q.nochAktuell()))).every(Boolean)) continue;
       if (
         neu === alt ||
         (await this.deps.repo.speichere(
           { ...neu, fassung: alt.fassung + 1 },
           alt.fassung,
-          bedingungen(quellen),
+          bedingungen(identitaeten),
         ))
       )
         return this.sicht(user);

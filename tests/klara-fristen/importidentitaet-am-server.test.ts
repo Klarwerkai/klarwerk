@@ -236,3 +236,115 @@ it("AW19-K05 Import · vorhandene alte KO-Frist behält Original-ID/Ablehnung be
   expect(stand.fristen[0].herkunft.length).toBeGreaterThan(1);
   expect(await kalender()).toEqual([]);
 });
+
+async function legacyOriginal(a: { id: string; version: number }) {
+  const q: FristenQuelle = {
+    art: "wissensobjekt",
+    id: a.id,
+    fassung: String(a.version),
+    belegId: `ko:${a.id}`,
+    text: TEXT,
+    verantwortlich: null,
+  };
+  const sAlt = verarbeiteFristenQuelle(
+    { kontoId: kid, fassung: 0, fristen: [], regel: regel([a.id]) },
+    q,
+    erkenneFristen(q),
+    AM,
+  );
+  // Der schon gelieferte Dienst setzt beim Übernehmen zusätzlich das tatsächliche Kalenderdatum.
+  const gespeichert = {
+    ...sAlt,
+    fristen: sAlt.fristen.map((f) => (f.datum ? { ...f, kalenderDatum: f.datum } : f)),
+  };
+  expect(await s.klaraFristen.speichere(gespeichert, 0)).toBe(true);
+  const f = gespeichert.fristen[0];
+  if (!f) throw new Error("Legacy-Original fehlt");
+  return f;
+}
+
+it.each(["verworfen", "manuell"] as const)(
+  "AW19-K05-1 · ausschließlich Kopie B wahrt %s des lesbaren Legacy-Originals A ohne A neu zu aktivieren",
+  async (aktion) => {
+    const a = await ko();
+    const b = await ko();
+    const f = await legacyOriginal(a);
+    const eventId = (await kalender())[0].id;
+    const entscheid = await api("POST", `/${f.id}/aktion`, {
+      fassung: f.fassung,
+      aktion: aktion === "verworfen" ? "verwerfen" : "korrigieren",
+      datum: { art: "datum", datum: "2027-06-30" },
+    });
+    expect(entscheid.statusCode, entscheid.body).toBe(200);
+    const vorher = await s.klaraFristen.hole(kid);
+    const altesOriginal = vorher?.fristen[0];
+    if (!altesOriginal) throw new Error("Originalentscheidung fehlt");
+    const v = await api("POST", "/vorschau", { regel: regel([b.id]) });
+    expect(v.statusCode, v.body).toBe(200);
+    expect(v.json().fristen).toHaveLength(1);
+    expect(v.json().fristen[0].id).toBe(f.id);
+    expect(await s.klaraFristen.hole(kid)).toEqual(vorher);
+    const stand = await setzen([b.id]);
+    expect(stand.regel.quellen).toEqual([{ art: "wissensobjekt", id: b.id }]);
+    expect(stand.fristen).toHaveLength(1);
+    const neu = stand.fristen[0];
+    expect(neu.id).toBe(f.id);
+    expect(neu.angelegtAm).toBe(f.angelegtAm);
+    expect(neu.ablehnungen).toEqual(altesOriginal.ablehnungen);
+    expect(neu.verlauf.slice(0, altesOriginal.verlauf.length)).toEqual(altesOriginal.verlauf);
+    expect(
+      neu.herkunft.find((h: { beleg: { quelle: { id: string } } }) => h.beleg.quelle.id === a.id),
+    ).toMatchObject({ aktuell: false, beleg: { quelle: { belegId: `ko:${a.id}` } } });
+    expect(
+      neu.herkunft
+        .filter((h: { aktuell: boolean }) => h.aktuell)
+        .map((h: { beleg: { quelle: { id: string } } }) => h.beleg.quelle.id),
+    ).toEqual([b.id]);
+    if (aktion === "verworfen") {
+      expect(neu.stand).toBe("verworfen");
+      expect(await kalender()).toEqual([]);
+    } else {
+      expect(neu).toMatchObject({ manuell: true, datum: { datum: "2027-06-30" } });
+      expect((await kalender())[0]).toMatchObject({ id: eventId, beginn: "2027-06-30" });
+    }
+    expect((await api("POST", "/aktualisieren")).json()).toEqual(stand);
+  },
+);
+
+it.each(["entzogen", "unklar"] as const)(
+  "AW19-K05-1 · nicht rechtmäßig/eindeutig aufklärbare Legacy-Herkunft A (%s) sperrt neue B-Frist vor dem Schreiben",
+  async (zustand) => {
+    const a = await ko([anker(zustand === "unklar" ? { provider: null } : {})]);
+    const b = await ko();
+    const f = await legacyOriginal(a);
+    expect(
+      (await api("POST", `/${f.id}/aktion`, { fassung: f.fassung, aktion: "verwerfen" }))
+        .statusCode,
+    ).toBe(200);
+    if (zustand === "entzogen")
+      await s.ko.setQuellrechte(a.id, { stufe: "intern", leser: [] }, kid);
+    const vorher = await s.klaraFristen.hole(kid);
+    const r = await api("PUT", "/regel", { fassung: vorher?.fassung, regel: regel([b.id]) });
+    expect(r.statusCode, r.body).toBe(409);
+    expect(r.body).not.toContain(a.id);
+    expect(await s.klaraFristen.hole(kid)).toEqual(vorher);
+    expect(await kalender()).toEqual([]);
+  },
+);
+
+it("AW19-K05-1 · rechtmäßig belegte andere Importidentität von A bleibt verschieden von B trotz gleicher Aussage", async () => {
+  const a = await ko();
+  const b = await ko([anker({ externalId: "anderer-vertrag" })]);
+  const f = await legacyOriginal(a);
+  expect(
+    (await api("POST", `/${f.id}/aktion`, { fassung: f.fassung, aktion: "verwerfen" })).statusCode,
+  ).toBe(200);
+  const stand = await setzen([b.id]);
+  expect(stand.regel.quellen).toEqual([{ art: "wissensobjekt", id: b.id }]);
+  expect(stand.fristen).toHaveLength(2);
+  expect(stand.fristen.find((x: { id: string }) => x.id === f.id)).toMatchObject({
+    stand: "verworfen",
+  });
+  expect(stand.fristen.filter((x: { stand: string }) => x.stand === "erkannt")).toHaveLength(1);
+  expect(await kalender()).toHaveLength(1);
+});
