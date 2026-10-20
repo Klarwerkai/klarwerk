@@ -162,6 +162,7 @@ it("behält denselben Schritt bei Zwischenfrage, Schließen, Zurück und Fortset
   expect(q("klara-stand")?.textContent).toBe("seite-bibliothek/2/false");
   await klick(q("tutorial-zurueck"));
   expect(q("klara-stand")?.textContent).toBe("seite-bibliothek/1/false");
+  for (let i = 0; i < 100 && !q("seitentutorial-zeigen"); i++) await ruhe();
   await klick(q("seitentutorial-zeigen"));
   expect(document.activeElement).toBe(q("bib-suchfeld"));
   expect((q("bib-suchfeld") as HTMLInputElement).value).toBe("unveränderte Eingabe");
