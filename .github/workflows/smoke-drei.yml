@@ -1,0 +1,28 @@
+# JOB 2357 D1 §5: volle hermetische Rauchprobe in Chromium, Firefox und WebKit.
+# Auftrag 57: der vorhandene Workflow ist hier wirksam abgelegt, ohne zweite Vorlage unter docs.
+# Das PR-Tor bleibt ./tools/check; dieser ergänzende Vollumfang läuft nach Zeitplan oder von Hand.
+# Node 24 entspricht ci.yml; tools/build stellt das von smoke:ui:frisch verlangte Webpaket her.
+name: Smoke drei Engines
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  drei-engines:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - run: npm ci --prefix apps/web
+      - name: browser (Chromium, Firefox, WebKit mit Systembibliotheken)
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: bau (frisches apps/web/dist für smoke:ui:frisch)
+        run: ./tools/build
+      - name: volle hermetische Suite in drei Engines
+        run: npm run smoke:ui:gate:drei

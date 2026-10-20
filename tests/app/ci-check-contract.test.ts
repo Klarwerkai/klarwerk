@@ -1,4 +1,7 @@
-import { readFileSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // ================================================================================================
@@ -130,6 +133,49 @@ describe("I51 · der Check-Job fährt dasselbe Gesamttor wie die Hand", () => {
 });
 
 describe("I51 · das aufgerufene Tor ist wirklich das Gesamttor", () => {
+  it("npm run check erreicht dasselbe Tor, reicht Argumente weiter und erhält seinen Exitcode", () => {
+    const ziel = mkdtempSync(join(tmpdir(), "klarwerk-npm-check-"));
+    try {
+      const paket = JSON.parse(readFileSync("package.json", "utf8")) as {
+        scripts: { check: string };
+      };
+      mkdirSync(join(ziel, "tools"));
+      writeFileSync(
+        join(ziel, "package.json"),
+        JSON.stringify({ private: true, scripts: { check: paket.scripts.check } }),
+      );
+      // Nur die schwere Prüfung wird ersetzt: der echte npm-Aufruf muss unser Tor erreichen,
+      // dessen Fehler zurückgeben und die ausgewählte Testdatei unverändert durchreichen.
+      const protokoll = join(ziel, "aufruf.txt");
+      writeFileSync(
+        join(ziel, "tools/check"),
+        '#!/bin/sh\nprintf "%s\\n" "$@" > "$TOR_PROBE"\nexit 23\n',
+        {
+          mode: 0o755,
+        },
+      );
+      const lauf = spawnSync(
+        "npm",
+        [
+          "--prefix",
+          ziel,
+          "run",
+          "--silent",
+          "check",
+          "--",
+          "tests/fall.test.ts",
+          "-t",
+          "ein Fall",
+        ],
+        { cwd: tmpdir(), encoding: "utf8", env: { ...process.env, TOR_PROBE: protokoll } },
+      );
+      expect(lauf.status, `${lauf.stdout}${lauf.stderr}`).toBe(23);
+      expect(readFileSync(protokoll, "utf8")).toBe("tests/fall.test.ts\n-t\nein Fall\n");
+    } finally {
+      rmSync(ziel, { recursive: true, force: true });
+    }
+  });
+
   it("tools/check existiert, ist ausführbar und enthält den Chromium-Smoke", () => {
     const modus = statSync("tools/check").mode;
     expect(

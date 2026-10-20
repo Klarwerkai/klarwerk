@@ -62,88 +62,9 @@ import { beforeAll, describe, expect, it } from "vitest";
  * dort ROT statt übersprungen, wenn kein Modell steht. Alles ohne Modell Nachweisbare an Klara läuft
  * weiter im Tor (`klara-basis-browser.spec.ts`, übrige Fälle).
  */
-const ERLAUBTE_AUSNAHMEN = [
-  {
-    file: "ui-smoke.spec.ts",
-    title: "Kernfluss: Erzählen → Wissensseite → Einreichen @modell",
-  },
-  {
-    file: "ui-smoke.spec.ts",
-    title: "Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
-  },
-  // AUFTRAG gesamt-dokumenterzeugung, Nacharbeit 10 — eine weitere Ausnahme, mit Grund: Bens offener
-  // Beleg verlangt eine TATSÄCHLICHE Modellantwort samt wirksamer Einwilligung. Das hermetische Tor
-  // hat kein Modell (s. `smoke-umgebung.spec.ts`); der Fall kann dort im Prinzip nicht laufen —
-  // dieselbe Lage wie die Einträge darüber. Er läuft im vollen Smoke (`npm run smoke:ui`).
-  // INTEGRATION mit produkt:20261008:klara-basis (Nacharbeit 93): beide Aufträge haben je eine
-  // dritte Ausnahme begründet; zusammen sind es VIER benannte Fälle.
-  {
-    file: "anleitung-recherche-ki-modell.spec.ts",
-    title:
-      "Anleitung: Recherche und KI-Entwurf mit Einwilligung, echter Modellantwort und Herkunft @modell",
-  },
-  {
-    file: "klara-basis-browser.spec.ts",
-    title: "Klara 01 · tatsächliche Modellantwort in der beweglichen Klara @modell",
-  },
-  // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13, Ben Nacharbeit 5): AC10 verlangt einen
-  // REALEN Anbieterlauf mit gemeldetem Verbrauch. Ohne Modell kann der Fall im Tor im Prinzip
-  // nicht laufen — dieselbe Lage wie die Einträge darüber. Er läuft im vollen Smoke.
-  // INTEGRATION mit main 7e5c549e (klara-aktionen): beide Aufträge haben je eine weitere Ausnahme
-  // begründet; zusammen sind es SECHS benannte Fälle.
-  {
-    file: "ki-arbeitsweg-modell.spec.ts",
-    title: "KI-Arbeitsweg: realer gebundener Anbieterlauf mit Verbrauchsbeleg @modell",
-  },
-  // produkt:20261008:klara-aktionen (Nacharbeit 6) — FÜNFTE Ausnahme, derselbe Grund: AW10-K01 (S06)
-  // verlangt eine TATSÄCHLICHE Modellzusammenfassung; ohne Modell kann der Fall im Tor nicht laufen.
-  // Alles ohne Modell Nachweisbare (kein Versand, kein Auftrag, keine Befugnis; die Absicht erreicht
-  // den Frageweg) misst `tests/klara-aktionen/auftrag-am-server.test.tsx` (U10).
-  {
-    file: "klara-aktionen-s06-modell.spec.ts",
-    title:
-      "AW10-K01 S06: tatsächliche Modellzusammenfassung, kein Versand, keine neue Befugnis @modell",
-  },
-  // produkt:20261009:referenzki-adminauswahl (REF-03) — derselbe Grund: der Lieferbeleg verlangt
-  // einen TATSÄCHLICHEN Modellaufruf des Funktionschecks. Ohne Modell kann der Fall im Tor nicht
-  // laufen; alles ohne Modell Nachweisbare misst `tests/referenzki-adminauswahl/`.
-  {
-    file: "referenzki-funktionscheck-modell.spec.ts",
-    title:
-      "REF-03 · Referenzprüfung: Auswahl nach Neuladen und Funktionscheck mit echtem Modell @modell",
-  },
-  // produkt:20261009:referenzki-antwortstatus (REF-04) — derselbe Grund: der Lieferbeleg verlangt
-  // eine durchgängige Antwort mit TATSÄCHLICHEM Prüfmodell. Ohne Modell kann der Fall im Tor nicht
-  // laufen; alles ohne Modell Nachweisbare misst `tests/referenzki-antwortstatus/`.
-  {
-    file: "referenzki-antwortstatus-modell.spec.ts",
-    title:
-      "REF-04 · Antwort → Prüfmodell → Aussagezustand → Fundstelle → Rückweg mit echtem Prüfmodell @modell",
-  },
-  // produkt:20261012:klara-ocr-fundstellen-korrekturen (OCR-E02, K5) — derselbe Grund: das Kriterium
-  // verlangt, dass eine TATSÄCHLICHE Klara-Antwort und Zusammenfassung die berichtigte Fassung
-  // verwenden. Ohne Modell kann der Fall im Tor nicht laufen; er läuft im vollen Smoke. Alles ohne
-  // Modell Nachweisbare (Kontext, Anweisung und Belege mit der Berichtigung) messen
-  // `tests/klara-bildanalyse-ocr/korrektur-klara.test.ts` und `fundstelle-korrektur-mounted.test.tsx`
-  // sowie die übrigen Fälle derselben Spec im Tor.
-  {
-    file: "klara-ocr-fundstelle-korrektur-browser.spec.ts",
-    title: "OCR-E02 · Klara antwortet und fasst zusammen mit dem berichtigten Bildtext @modell",
-  },
-  // OCR-03: der vorhandene Fall verlangt eine echte Antwort und Zusammenfassung über assist.
-  // Er ist bereits mit @modell markiert; der Eintrag bildet die bestehende Torauswahl ab.
-  {
-    file: "klara-bild-kontext-browser.spec.ts",
-    title:
-      "OCR-03 · Klara antwortet mit dem Modell auf Bildtext und fasst Text und Bilder zusammen @modell",
-  },
-  // REF-02: die vorhandene Beobachtung verlangt mindestens fünf echte Prüfmodellläufe;
-  // Fixture-Antworten genügen ausdrücklich nicht. Der volle Smoke behält diesen Fall.
-  {
-    file: "referenzki-modellbeobachtung.spec.ts",
-    title: "REF-02 · K10 — sieben fiktive Fälle gegen das echte Prüfmodell @modell",
-  },
-] as const;
+const ERLAUBTE_AUSNAHMEN = JSON.parse(
+  readFileSync(new URL("./tor-ausnahmen.json", import.meta.url), "utf8"),
+) as ReadonlyArray<{ file: string; title: string }>;
 
 /** Das npm-Skript, dessen Aufrufzeile das Tor in `tools/check` fährt. */
 // Aufnahme 20260922: das Tor fährt zusätzlich je einen Firefox- und WebKit-Lauf über die

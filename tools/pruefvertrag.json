@@ -1,0 +1,147 @@
+{
+  "_zweck": "Der eine Prüfvertrag des Gesamttors (aufnahme:20260922:gesamt-prueftor-einheitlich). tools/check fährt GENAU diese Stufen in dieser Reihenfolge (tools/pruefstufen.sh bricht bei einer unbekannten oder ausgelassenen Stufe ab); der CI-Job `check` ruft ./tools/check. Was das Tor NICHT fährt, steht unter `ausserhalb` und in `nicht_im_tor` und wird am Ende jedes Torlaufs ausgedruckt. Gepinnt in tests/tor-vertrag/pruefvertrag.test.ts.",
+  "tor": "tools/check",
+  "stufen": [
+    {
+      "name": "cwd-vertrag",
+      "zweck": "Wurzelmarker und verankerte relative Pfade (tools/check-cwd-contract.mjs)"
+    },
+    {
+      "name": "build",
+      "zweck": "Typprüfung Wurzel, Tests, Web und Smoke-Sonden; Produktionsbau der Oberfläche (tools/build)"
+    },
+    {
+      "name": "lint",
+      "zweck": "Stilprüfung (tools/lint)"
+    },
+    {
+      "name": "architecture",
+      "zweck": "Architekturregeln (depcruise)"
+    },
+    {
+      "name": "modalgrenze",
+      "zweck": "Modalgrenzen-Erhebung (tools/modalgrenze.sh)"
+    },
+    {
+      "name": "zentrale-drift",
+      "zweck": "Zentralen-Wächter; sperrt nur bei Code 1"
+    },
+    {
+      "name": "arbeitsordner-diagnose",
+      "zweck": "Dateisync-Befund; meldet, sperrt nie",
+      "art": "meldend"
+    },
+    {
+      "name": "geheimnis-scan",
+      "zweck": "Zugangsdaten im Quellbestand"
+    },
+    {
+      "name": "test",
+      "zweck": "Vitest über tools/test (Browsergruppe und Rest)"
+    },
+    {
+      "name": "ui-smoke-chromium",
+      "zweck": "Playwright, volle Suite, hermetisch ohne @modell"
+    },
+    {
+      "name": "ui-smoke-firefox",
+      "zweck": "Playwright, Kern-Rauchproben, hermetisch ohne @modell"
+    },
+    {
+      "name": "ui-smoke-webkit",
+      "zweck": "Playwright, Kern-Rauchproben, hermetisch ohne @modell"
+    },
+    {
+      "name": "ui-smoke-geseedet",
+      "zweck": "Playwright Chromium, nur UX-20b mit Demo-Bestand"
+    }
+  ],
+  "ausserhalb": [
+    {
+      "weg": "CI-Job integration",
+      "befehl": "npm run test:integration",
+      "grund": "braucht PostgreSQL über Testcontainers (Docker); das hermetische Tor hat keine Datenbank"
+    },
+    {
+      "weg": "CI-Job abbild",
+      "befehl": "node scripts/deploy/abbild-bauen.mjs --ziel dist/abbild",
+      "grund": "baut das Containerabbild nach grünem check-Job; kein Prüfschritt"
+    },
+    {
+      "weg": "CI-Workflow smoke-drei",
+      "befehl": "npm run smoke:ui:gate:drei",
+      "grund": "Volle hermetische Suite in Chromium, Firefox und WebKit über .github/workflows/smoke-drei.yml; Zeitplan oder Handauslösung, zusätzlich zu den Kern-Rauchproben des PR-Tors."
+    },
+    {
+      "weg": "Ship-Vorbedingung",
+      "befehl": "npm run smoke:ui",
+      "grund": "drei Engines MIT Modell; braucht ein Zugangsdatum über die Betreiber-Einspeisung, das das Tor bewusst nicht hat"
+    }
+  ],
+  "nicht_im_tor": "tests/smoke/tor-ausnahmen.json",
+  "einbau": {
+    "_zweck": "Der heutige Einbau-/Auslieferungsweg fährt je Auftrag eine Prüfauswahl statt des Gesamttors. `node tools/tor-bericht.mjs --einbau <checks.json|PLAN.json>` ordnet jeden tatsächlich gefahrenen Befehl über diese Regeln einer Vertragsstufe oder einem Weg ausserhalb zu und weist jede nicht ausgeführte Stufe aus. Nur ein Eintrag mit Exitcode ist ein Laufnachweis; ein bloss geplanter Eintrag und ein zusammengesetzter Weg (tools/check) ohne Stufenbericht im Protokoll `<name>.log` gelten als unbekannt, und tools/check deckt nur die Stufen, die sein Stufenbericht als erreicht ausweist. Ein Befehl ohne Regel ist ein Befund (Code 1), keine stille dritte Pipeline.",
+    "abweichung": "Der Einbauweg prüft je Auftrag gezielt (Prüfauswahl des Auftrags) statt des Gesamttors; eine Stufe ohne Lauf ist nicht ausgeführt und damit nicht bestanden. Das volle Gesamttor fährt der CI-Job check bei jedem Push und Pull Request.",
+    "regeln": [
+      {
+        "befehl": "tools/check",
+        "stufen": ["*"],
+        "umfang": "voll"
+      },
+      {
+        "befehl": "npm run check",
+        "stufen": ["*"],
+        "umfang": "voll"
+      },
+      {
+        "befehl": "tools/build",
+        "stufen": ["build"],
+        "umfang": "voll"
+      },
+      {
+        "befehl": "vitest",
+        "config": "vitest.integration.config.ts",
+        "ausserhalb": "CI-Job integration",
+        "umfang": "auswahl"
+      },
+      {
+        "befehl": "vitest",
+        "stufen": ["test"],
+        "umfang": "auswahl"
+      },
+      {
+        "befehl": "tools/test",
+        "stufen": ["test"],
+        "umfang": "auswahl"
+      },
+      {
+        "befehl": "biome",
+        "stufen": ["lint"],
+        "umfang": "auswahl"
+      },
+      {
+        "befehl": "npm run smoke:ui:gate:drei",
+        "stufen": ["ui-smoke-chromium", "ui-smoke-firefox", "ui-smoke-webkit"],
+        "engines": {
+          "ui-smoke-chromium": ["chromium", "chromium-zustand"],
+          "ui-smoke-firefox": ["firefox"],
+          "ui-smoke-webkit": ["webkit"]
+        },
+        "umfang": "auswahl"
+      },
+      {
+        "befehl": "npm run smoke:ui:gate",
+        "stufen": ["ui-smoke-chromium"],
+        "engines": {
+          "ui-smoke-chromium": ["chromium", "chromium-zustand"]
+        },
+        "umfang": "auswahl"
+      },
+      {
+        "befehl": "npm run smoke:ui",
+        "ausserhalb": "Ship-Vorbedingung",
+        "umfang": "auswahl"
+      }
+    ]
+  }
+}

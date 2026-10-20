@@ -1,0 +1,46 @@
+[
+  {
+    "file": "ui-smoke.spec.ts",
+    "title": "Kernfluss: Erzählen → Wissensseite → Einreichen @modell"
+  },
+  {
+    "file": "ui-smoke.spec.ts",
+    "title": "Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell"
+  },
+  {
+    "file": "anleitung-recherche-ki-modell.spec.ts",
+    "title": "Anleitung: Recherche und KI-Entwurf mit Einwilligung, echter Modellantwort und Herkunft @modell"
+  },
+  {
+    "file": "klara-basis-browser.spec.ts",
+    "title": "Klara 01 · tatsächliche Modellantwort in der beweglichen Klara @modell"
+  },
+  {
+    "file": "ki-arbeitsweg-modell.spec.ts",
+    "title": "KI-Arbeitsweg: realer gebundener Anbieterlauf mit Verbrauchsbeleg @modell"
+  },
+  {
+    "file": "klara-aktionen-s06-modell.spec.ts",
+    "title": "AW10-K01 S06: tatsächliche Modellzusammenfassung, kein Versand, keine neue Befugnis @modell"
+  },
+  {
+    "file": "referenzki-funktionscheck-modell.spec.ts",
+    "title": "REF-03 · Referenzprüfung: Auswahl nach Neuladen und Funktionscheck mit echtem Modell @modell"
+  },
+  {
+    "file": "referenzki-antwortstatus-modell.spec.ts",
+    "title": "REF-04 · Antwort → Prüfmodell → Aussagezustand → Fundstelle → Rückweg mit echtem Prüfmodell @modell"
+  },
+  {
+    "file": "klara-ocr-fundstelle-korrektur-browser.spec.ts",
+    "title": "OCR-E02 · Klara antwortet und fasst zusammen mit dem berichtigten Bildtext @modell"
+  },
+  {
+    "file": "klara-bild-kontext-browser.spec.ts",
+    "title": "OCR-03 · Klara antwortet mit dem Modell auf Bildtext und fasst Text und Bilder zusammen @modell"
+  },
+  {
+    "file": "referenzki-modellbeobachtung.spec.ts",
+    "title": "REF-02 · K10 — sieben fiktive Fälle gegen das echte Prüfmodell @modell"
+  }
+]

@@ -34,6 +34,13 @@ npm run --silent build
 # diesen Lauf; npm run build war ihr früherer Weg (siehe JOB 1080 in tools/check).
 npx tsc --noEmit -p tsconfig.tests-smoke.json
 
+# aufnahme:20260922:gesamt-prueftor-einheitlich · R-1405: grün allein sagt nicht, WAS geprüft wurde
+# (s. mega59 Block G unten: 45 Web-Dateien lagen ausserhalb jedes Typprogramms). Nach den
+# Typprüfungen weist dieser Schritt je Lauf den tatsächlich abgedeckten Umfang aus — Dateien je
+# Bereich, an Commit und Baumabweichung gebunden; die Läufe liest er aus genau dieser Datei und aus
+# `npm run build`. Ein Lauf ohne eigene Datei macht den Bau rot.
+node tools/typpruefung-umfang.mjs
+
 # AUFTRAG-mega8 Block B: echter Produktions-Build der Oberfläche — derselbe Befehl, den der
 # webbuild-Stage im Dockerfile fährt. Vorher lief im Gate NUR tsc; ein Bündel-Fehler von rollup
 # (fehlendes Modul, kaputtes Plugin, Syntax, die tsc passieren lässt) fiel erst im Coolify-Deploy

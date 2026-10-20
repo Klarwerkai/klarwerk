@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
 # tools/check — Gesamtgate: Build + Lint + Architektur + Tests. Nur grün = lieferbar.
 set -euo pipefail
+# aufnahme:20260922:gesamt-prueftor-einheitlich: das Startverzeichnis des Aufrufers wird festgehalten,
+# BEVOR das Tor sich an seiner Wurzel verankert — der Bericht am Ende nennt beide.
+PRUEF_START="$PWD"
 cd "$(dirname "$0")/.."
+# Stufenbuch und Bericht (tools/pruefstufen.sh): jede Stufe unten beginnt mit `stufe <name>`, und
+# die Namen stehen in tools/pruefvertrag.json — demselben Vertrag, den der CI-Job `check` über
+# diesen Aufruf fährt. Fällt das Tor, nennt der Bericht die Stufe, das Bestandene, das nicht mehr
+# Erreichte, den geprüften Quellstand und was dieses Tor gar nicht fährt.
+source tools/pruefstufen.sh
 # JOB 943 (Register I14): der cwd-Vertrag steht VOR allem anderen — er kostet Millisekunden und
 # beantwortet die Frage, ob die folgenden Schritte überhaupt am richtigen Bestand arbeiten. Er ist
 # fail-closed: eine markerlose oder gleichnamige falsche Wurzel bricht hier ab, statt sie zu raten.
-echo "▶ cwd-vertrag";  node tools/check-cwd-contract.mjs || { echo "✖ cwd-Vertrag verletzt"; exit 1; }
-echo "▶ build";        ./tools/build
-echo "▶ lint";         ./tools/lint
-echo "▶ architecture"; npx depcruise --config .dependency-cruiser.cjs services || { echo "✖ Architekturregeln verletzt"; exit 1; }
+stufe cwd-vertrag;  node tools/check-cwd-contract.mjs || { echo "✖ cwd-Vertrag verletzt"; exit 1; }
+stufe build;        ./tools/build
+stufe lint;         ./tools/lint
+stufe architecture; npx depcruise --config .dependency-cruiser.cjs services || { echo "✖ Architekturregeln verletzt"; exit 1; }
 # JOB 2008 D2 (Register A17): die Modalgrenzen-Erhebung lief bis hierher NUR im Test.
 # Sie steht jetzt in tools/modalgrenze.ts und wird HIER gerufen — ein Aufrufer im Produkt.
-echo "▶ modalgrenze";  ./tools/modalgrenze.sh || { echo "✖ Modalgrenze verletzt"; exit 1; }
+stufe modalgrenze;  ./tools/modalgrenze.sh || { echo "✖ Modalgrenze verletzt"; exit 1; }
 # JOB 2065 D4/D5 (Register I39): der Zentralen-Waechter hat HIER seinen Aufrufer. Bis D3 gab es ein
 # lauffaehiges Werkzeug, das niemand rief — derselbe Fall wie `wissensnetzLuecken` und
 # `erhebeVerweise`: gebaut, richtig, und wirkungslos.
@@ -25,8 +33,11 @@ echo "▶ modalgrenze";  ./tools/modalgrenze.sh || { echo "✖ Modalgrenze verle
 # `istUnantastbar`): was unter `_relay/` liegt, wird GEMELDET (Code 0, mit Adresse „Board — bei
 # Pedi"); ein Fund an einer aenderbaren Stelle SPERRT (Code 1). Code 2 heisst „Lesefläche nicht
 # da, nichts gemessen" — der Normalfall in jedem Clone, denn `_relay/` steht in `.gitignore:25`.
-echo "▶ zentrale-drift"; zentrale_rc=0; ./tools/zentrale-drift.sh || zentrale_rc=$?
+stufe zentrale-drift; zentrale_rc=0; ./tools/zentrale-drift.sh || zentrale_rc=$?
 if [ "$zentrale_rc" = "1" ]; then echo "✖ Drift an einer aenderbaren Lesefläche"; exit 1; fi
+# R-1405 (Bens Befund zu nacharbeit-2): Code 2 läuft weiter, ist aber KEINE Messung — das Stufenbuch
+# führt die Stufe dann als „nicht gemessen“ statt als bestanden. Jeder andere unerwartete Code ebenso.
+case "$zentrale_rc" in 0) ;; 2) stufe_status nicht-gemessen "Lesefläche nicht da, Code 2" ;; *) stufe_status nicht-gemessen "unerwarteter Code $zentrale_rc" ;; esac
 # Aufnahme 20260922 · R-1303/R-1982 (N6)/R-2190: liegt dieser Arbeitsbaum unter einer Dateisync?
 # Erkannt an der WIRKUNG (byte-identische ` 2`-Duplikate, auch in `.git`; ausgelagerte Dateien),
 # nie am Pfad — s. tools/arbeitsordner-diagnose.ts. Zugriffsfehler und freier Platz stehen mit da.
@@ -35,12 +46,15 @@ if [ "$zentrale_rc" = "1" ]; then echo "✖ Drift an einer aenderbaren Lesefläc
 # Mensch („nichts geschieht von selbst“, Onboarding). Ein Tor, das deswegen rot wird, hielte jede
 # Bahn auf dem betroffenen Rechner an, ohne dass sie es beheben darf — derselbe Fehler wie
 # zentrale-drift D4. Der Befund steht deshalb laut in der Torausgabe, der Rueckgabewert nicht im Tor.
-echo "▶ arbeitsordner-diagnose"; bash tools/arbeitsordner-diagnose.sh || echo "  ⓘ gemeldet, nicht gesperrt"
+stufe arbeitsordner-diagnose; bash tools/arbeitsordner-diagnose.sh || echo "  ⓘ gemeldet, nicht gesperrt"
 # R-1420 (F-1420, secrets-management.md §10): Zugangsdaten gelangen nicht unbemerkt in den
 # Quellcode. Gelesen wird alles, was uebernommen werden kann (versioniert UND neu, nicht ignoriert).
 # Jeder Fund sperrt; ausgegeben wird er nur maskiert. Eng gefasste Formate — s. tools/geheimnis-scan.ts.
-echo "▶ geheimnis-scan"; bash tools/geheimnis-scan.sh ||{ echo "✖ Geheimnis-Scan rot"; exit 1; }
-echo "▶ test";         ./tools/test "$@"
+stufe geheimnis-scan; bash tools/geheimnis-scan.sh ||{ echo "✖ Geheimnis-Scan rot"; exit 1; }
+stufe test
+# Mit Argumenten (Dateifilter, `-t`) misst die Stufe nur einen Teil des Bestands — sichtbar machen.
+if [ "$#" -gt 0 ]; then stufe_status auswahl "Argumente an tools/test: $*"; fi
+./tools/test "$@"
 
 # AUFTRAG-mega24 Block A: der UI-Smoke gehört INS TOR — seit Aufnahme 20260922 in DREI Engines
 # (Chromium, Firefox, WebKit); bis dahin Chromium-only, s. „WARUM NUR CHROMIUM" unten.
@@ -138,7 +152,7 @@ echo "▶ test";         ./tools/test "$@"
 # NICHTS DAVON GESCHIEHT STILL — genau das war ja die Krankheit. Die Ausnahme wird unten
 # ausgedruckt, sie ist auf EINEN benannten Test begrenzt, und fehlende Browser machen das Tor ROT
 # mit Handlungsanweisung (kein „skip, wenn Chromium fehlt").
-echo "▶ ui-smoke (Chromium, volle Suite — hermetisch, ohne @modell)"
+stufe ui-smoke-chromium "volle Suite — hermetisch, ohne @modell"
 npm run --silent smoke:ui:gate || {
   echo "✖ UI-Smoke rot."
   echo "  Fehlt der Browser? → npx playwright install chromium"
@@ -146,14 +160,14 @@ npm run --silent smoke:ui:gate || {
   exit 1
 }
 # Bewusst ausgeschrieben statt als Schleife: die Kettenwächter lösen die Aufrufe statisch auf.
-echo "▶ ui-smoke (Firefox, Kern-Rauchproben — hermetisch, ohne @modell)"
+stufe ui-smoke-firefox "Kern-Rauchproben — hermetisch, ohne @modell"
 npm run --silent smoke:ui:gate:kern:firefox || {
   echo "✖ UI-Smoke Firefox rot."
   echo "  Fehlt der Browser? → npx playwright install chromium firefox"
   echo "  Ob Firefox überhaupt startete, steht im Engine-Bericht oben (Startfehler)."
   exit 1
 }
-echo "▶ ui-smoke (WebKit, Kern-Rauchproben — hermetisch, ohne @modell)"
+stufe ui-smoke-webkit "Kern-Rauchproben — hermetisch, ohne @modell"
 npm run --silent smoke:ui:gate:kern:webkit || {
   echo "✖ UI-Smoke WebKit rot."
   echo "  Fehlt der Browser? → npx playwright install chromium webkit"
@@ -170,19 +184,17 @@ npm run --silent smoke:ui:gate:kern:webkit || {
 # geseedeten Lauf ins Tor zu nehmen hiesse, jede fremde Sonde auf eine Datenlage zu verpflichten, für
 # die sie nicht gebaut ist. Das Setup-Projekt (Ersteinrichtung + „Demodaten laden") läuft als
 # Abhängigkeit mit. Hermetisch wie oben: kein Modell, kein Zugangsdatum, kein Egress.
-echo "▶ ui-smoke geseedet (Chromium, nur UX-20b: L1–L3, L3-T, G1–G4)"
+stufe ui-smoke-geseedet "Chromium, nur UX-20b: L1–L3, L3-T, G1–G4"
 KLARWERK_SMOKE_MODE=gate KLARWERK_SMOKE_SEED=1 ANTHROPIC_API_KEY= ./tools/browserdeckel.sh smoke \
   npx playwright test --config playwright.smoke.config.ts --project=chromium --grep "UX-20b" || {
   echo "✖ Geseedeter UX-20b-Smoke rot (JSON-Rundlauf mit Inhalt)."
   echo "  Einzeln: npm run smoke:ui:gate:daten -- --grep \"UX-20b\""
   exit 1
 }
-echo "  ⓘ NICHT im Tor gelaufen: ui-smoke.spec.ts „Kernfluss … @modell\" und „Fragen antwortet"
-echo "    ehrlich … @modell\", anleitung-recherche-ki-modell.spec.ts „Anleitung: Recherche und"
-echo "    KI-Entwurf … @modell\" sowie klara-basis-browser.spec.ts „Klara 01 · tatsächliche"
-echo "    Modellantwort … @modell\" — alle vier brauchen ein aktives"
-echo "    Modell (Zugangsdatum + Egress), das dieses hermetische Tor bewusst nicht hat."
-echo "    Dass es bei GENAU DIESEN VIER bleibt, hält tests/smoke/tor-ausnahme.test.ts fest;"
-echo "    dass der Tor-Lauf wirklich ohne Modell lief, hält tests-smoke/smoke-umgebung.spec.ts fest."
-echo "    Abgedeckt durch die Ship-Vorbedingung: npm run smoke:ui (drei Engines, mit Modell)."
-echo "✓ check grün"
+# aufnahme:20260922:gesamt-prueftor-einheitlich — HIER STAND DIE AUSNAHMELISTE VON HAND: „alle
+# vier", während tests/smoke/tor-ausnahme.test.ts längst acht Fälle führte. Die Liste druckt jetzt
+# der Bericht der EXIT-Falle aus tests/smoke/tor-ausnahmen.json — derselben Datei, deren Menge der
+# Pin gegen Playwright prüft —, zusammen mit den Wegen ausserhalb dieses Tors (CI-Job integration,
+# Ship-Vorbedingung) und auch dann, wenn das Tor vorher rot endet. Dass der Tor-Lauf wirklich ohne
+# Modell lief, hält tests-smoke/smoke-umgebung.spec.ts fest. „✓ check grün" druckt der Bericht erst,
+# wenn alle Stufen des Vertrags gelaufen sind.

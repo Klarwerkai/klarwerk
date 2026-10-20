@@ -162,15 +162,24 @@ describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeor
   });
 
   it("das Tor führt sechs benannte Stufen — darauf stützt sich `IST_DAS_TOR`", () => {
+    // aufnahme:20260922:gesamt-prueftor-einheitlich: die Stufen beginnen mit `stufe <name>` (das
+    // Stufenbuch druckt „▶ <name>") und stehen in tools/pruefvertrag.json. Die Vollständigkeit
+    // gegen den Vertrag pinnt tests/tor-vertrag/pruefvertrag.test.ts; hier bleiben die sechs.
+    const vertrag = JSON.parse(readFileSync("tools/pruefvertrag.json", "utf8")) as {
+      stufen: { name: string }[];
+    };
+    const imVertrag = vertrag.stufen.map((s) => s.name);
     for (const stufe of [
-      "▶ cwd-vertrag",
-      "▶ build",
-      "▶ lint",
-      "▶ architecture",
-      "▶ test",
-      "▶ ui-smoke",
+      "cwd-vertrag",
+      "build",
+      "lint",
+      "architecture",
+      "test",
+      "ui-smoke-chromium",
     ]) {
-      expect(tor, `Stufe „${stufe}" fehlt im Tor`).toContain(stufe);
+      const aufruf = new RegExp(`^stufe ${stufe}(\\s|;|$)`, "m");
+      expect(tor, `Stufe „${stufe}" fehlt im Tor`).toMatch(aufruf);
+      expect(imVertrag, `Stufe „${stufe}" fehlt im Prüfvertrag`).toContain(stufe);
     }
   });
 
