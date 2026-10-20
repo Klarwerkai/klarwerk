@@ -4,22 +4,30 @@ import type { AuthService } from "../../auth";
 import { type KoService, anlagenVon, normalizeAsset } from "../../knowledge-object";
 import { can } from "../../rbac";
 import type { SessionUser } from "./http";
+import type { KlaraAufgabeRepo } from "./klara-aufgabe";
+import type { KlaraAuftrag } from "./klara-auftrag";
 import { FRISTEN_GRENZEN, FristenFehler, type FristenStand } from "./klara-fristen";
 import type { KlaraFristenRepo } from "./klara-fristen-ablage";
 import type { GeleseneFristenQuelle } from "./klara-fristen-dienst";
 import type { KlaraFristenQuellen } from "./klara-fristen-quellen";
-import type { KlaraAuftrag } from "./klara-auftrag";
 import type { KlaraGespraechRepo } from "./klara-gespraech";
-import type { KlaraAufgabeRepo } from "./klara-aufgabe";
 import {
+  NORM_EREIGNISARTEN,
   type NormAbloesung,
   type NormEreignis,
-  type Normgeschichte,
+  type NormKonfliktauswahl,
+  type NormKonfliktklaerung,
   type NormPruefauftragRef,
+  type Normgeschichte,
   erkenneNormBekanntmachung,
   normAbloesungsbeleg,
+  normAktuelleKonfliktklaerung,
+  normFachereignisse,
   normHatWiderspruch,
   normKlaerung,
+  normKonfliktarten,
+  normKonfliktauswahlGueltig,
+  normKonfliktbeleg,
   normQuellstand,
   vereinigeNormgeschichten,
 } from "./klara-normereignisse";
@@ -424,7 +432,12 @@ export class KlaraNormereignisDienst {
 
   async stand(kontoId: string): Promise<{
     fassung: number;
-    normen: readonly (Normgeschichte & { widerspruch: boolean; annahmeUngeprueft: boolean })[];
+    normen: readonly (Normgeschichte & {
+      widerspruch: boolean;
+      annahmeUngeprueft: boolean;
+      konfliktarten: readonly (typeof NORM_EREIGNISARTEN)[number][];
+      klaerungAktuell: string | null;
+    })[];
     fachannahmeErlaubt: boolean;
   }> {
     const user = await this.deps.quellen.nutzer(kontoId);
@@ -465,7 +478,12 @@ export class KlaraNormereignisDienst {
     }
     return {
       fassung: s?.fassung ?? 0,
-      normen: lesbar.map((n) => ({ ...n, widerspruch: normHatWiderspruch(n) })),
+      normen: lesbar.map((n) => ({
+        ...n,
+        widerspruch: normHatWiderspruch(n),
+        konfliktarten: normKonfliktarten(n),
+        klaerungAktuell: normAktuelleKonfliktklaerung(n)?.id ?? null,
+      })),
       fachannahmeErlaubt: can(user.role, "ko.validate"),
     };
   }
@@ -583,6 +601,144 @@ export class KlaraNormereignisDienst {
     };
   }
 
+  /** Eine begründete Auswahl zwischen echten Belegen, keine neue Bekanntmachung oder Fachannahme. */
+  async klaereKonflikt(
+    kontoId: string,
+    normId: string,
+    roh: unknown,
+  ): Promise<{ fassung: number; klaerung: NormKonfliktklaerung; wiederholt: boolean }> {
+    const user = await this.deps.quellen.nutzer(kontoId);
+    if (!user || !can(user.role, "ko.validate"))
+      throw new NormereignisFehler(403, "Die heutige fachliche Freigabeberechtigung fehlt.");
+    if (!roh || typeof roh !== "object" || Array.isArray(roh))
+      throw new NormereignisFehler(400, "Eine ausdrückliche Konfliktklärung ist erforderlich.");
+    const r = roh as Record<string, unknown>;
+    if (
+      Object.keys(r).some(
+        (k) => !["fassung", "auswahl", "begruendung", "bestaetigt"].includes(k),
+      ) ||
+      r.bestaetigt !== true ||
+      !Number.isInteger(r.fassung) ||
+      typeof r.begruendung !== "string" ||
+      !r.begruendung.trim() ||
+      r.begruendung.length > 2000 ||
+      !Array.isArray(r.auswahl) ||
+      r.auswahl.length < 1 ||
+      r.auswahl.length > NORM_EREIGNISARTEN.length
+    )
+      throw new NormereignisFehler(
+        400,
+        "Vorhandene Ereignisbelege, Begründung und ausdrückliche Bestätigung wählen; Person und Zeitpunkt setzt der Server.",
+      );
+    const auswahl: NormKonfliktauswahl[] = r.auswahl
+      .map((x: unknown) => {
+        if (!x || typeof x !== "object" || Array.isArray(x))
+          throw new NormereignisFehler(400, "Konkreter Ereignisbeleg fehlt.");
+        const w = x as Record<string, unknown>;
+        if (
+          Object.keys(w).some((k) => k !== "art" && k !== "ereignisId") ||
+          !NORM_EREIGNISARTEN.some((art) => art === w.art) ||
+          typeof w.ereignisId !== "string" ||
+          !/^ne-[a-f0-9]{64}$/.test(w.ereignisId)
+        )
+          throw new NormereignisFehler(
+            400,
+            "Nur vorhandene Ereigniskennungen wählen; kein Datum oder Geltungsbereich wird erfunden.",
+          );
+        return { art: w.art as NormKonfliktauswahl["art"], ereignisId: w.ereignisId };
+      })
+      .sort((a, b) => NORM_EREIGNISARTEN.indexOf(a.art) - NORM_EREIGNISARTEN.indexOf(b.art));
+    const s = await this.deps.repo.hole(kontoId);
+    const n = (await this.sicht(kontoId)).find((n) => n.id === normId);
+    if (!s || !n) throw new NormereignisFehler(404, "Normgeschichte nicht gefunden.");
+    if (!normKonfliktauswahlGueltig(n, auswahl))
+      throw new NormereignisFehler(
+        409,
+        "Für jede widersprüchliche Ereignisart genau einen heute belegten eindeutigen Termin samt Geltung wählen. Fehlende Angaben brauchen zuerst einen neuen Beleg.",
+      );
+    const gelesen = await this.fachQuellen(user, n);
+    const person = await this.deps.auth.kontoLesen(user.id);
+    if (!person?.approved || person.role !== user.role || !can(person.role, "ko.validate"))
+      throw new NormereignisFehler(
+        403,
+        "Die fachliche Freigabeberechtigung wurde inzwischen geändert.",
+      );
+    if (!(await Promise.all(gelesen.map((q) => q.nochAktuell()))).every(Boolean))
+      throw new NormereignisFehler(
+        409,
+        "Belege wurden während der Konfliktklärung geändert. Bitte neu lesen.",
+      );
+    const aktuell = normAktuelleKonfliktklaerung(n);
+    if (
+      aktuell &&
+      isDeepStrictEqual(aktuell.auswahl, auswahl) &&
+      aktuell.begruendung === r.begruendung.trim()
+    )
+      return { fassung: s.fassung, klaerung: aktuell, wiederholt: true };
+    if (s.fassung !== r.fassung)
+      throw new NormereignisFehler(
+        409,
+        "Die Normgeschichte wurde inzwischen geändert. Bitte neu lesen.",
+      );
+    const klaerung = normKonfliktbeleg(n, {
+      auswahl,
+      begruendung: r.begruendung.trim(),
+      entschiedenVon: user.id,
+      entschiedenName: person.name,
+      entschiedenAm: new Date(this.jetzt()).toISOString(),
+    });
+    const normereignisse =
+      s.normereignisse?.map((alt) =>
+        alt.id === n.id ? { ...alt, klaerungen: [...(alt.klaerungen ?? []), klaerung] } : alt,
+      ) ?? [];
+    if (
+      !(await this.deps.repo.speichere(
+        { ...s, fassung: s.fassung + 1, normereignisse },
+        s.fassung,
+        gemeinsam(gelesen.map((q) => q.bedingung)),
+      ))
+    )
+      throw new NormereignisFehler(
+        409,
+        "Berechtigung, Belege oder Konfliktklärung wurden inzwischen geändert. Nichts geklärt.",
+      );
+    return { fassung: s.fassung + 1, klaerung, wiederholt: false };
+  }
+
+  private async fachQuellen(user: SessionUser, n: Normgeschichte) {
+    const quellen = new Map(
+      n.ereignisse.flatMap((e) =>
+        e.belege.map((b) => [`${b.quelle.art}:${b.quelle.id}`, b.quelle] as const),
+      ),
+    );
+    const gelesen: GeleseneFristenQuelle[] = [];
+    for (const q of quellen.values()) {
+      const l = await this.deps.quellen.lies(user, q.art, q.id);
+      if (!l) throw new NormereignisFehler(404, "Normbeleg nicht mehr lesbar.");
+      const neu = erkenneNormBekanntmachung(
+        l.quelle,
+        true,
+        new Date(this.jetzt()).toISOString(),
+      ).geschichten.find((x) => x.id === n.id);
+      const aktuellBekannt = n.ereignisse
+        .flatMap((e) =>
+          e.belege
+            .filter((b) => b.aktuell && b.quelle.art === q.art && b.quelle.id === q.id)
+            .map((b) => `${e.id}:${b.id}`),
+        )
+        .sort();
+      const aktuellGelesen =
+        neu?.ereignisse.flatMap((e) => e.belege.map((b) => `${e.id}:${b.id}`)).sort() ?? [];
+      if (!isDeepStrictEqual(aktuellBekannt, aktuellGelesen))
+        throw new NormereignisFehler(
+          409,
+          "Der aktuelle Bekanntmachungsstand ist noch nicht in den Ereignisbelegen berücksichtigt. Bitte zuerst erneut prüfen.",
+        );
+      gelesen.push(l);
+    }
+    return gelesen;
+  }
+
   /** Kalenderdatum oder Veröffentlichung erreichen diesen Fachweg nie. */
   async nehmeAbloesungAn(
     kontoId: string,
@@ -640,12 +796,14 @@ export class KlaraNormereignisDienst {
     const s = await this.deps.repo.hole(kontoId);
     const n = (await this.sicht(kontoId)).find((n) => n.id === normId);
     if (!s || !n) throw new NormereignisFehler(404, "Normgeschichte nicht gefunden.");
+    const klaerung = normAktuelleKonfliktklaerung(n);
     const gewaehlteGeltung = geltungsSchluessel(r.geltung);
     const schon = n.annahmen.find(
       (a) =>
         isDeepStrictEqual(a.bisher, bisher) &&
         isDeepStrictEqual(a.nachfolger, nachfolger) &&
-        geltungsSchluessel(a.geltung) === gewaehlteGeltung,
+        geltungsSchluessel(a.geltung) === gewaehlteGeltung &&
+        a.klaerungId === klaerung?.id,
     );
     if (schon) return { fassung: s.fassung, annahme: schon, wiederholt: true };
     if (s.fassung !== r.fassung)
@@ -653,7 +811,7 @@ export class KlaraNormereignisDienst {
         409,
         "Die Normgeschichte wurde inzwischen geändert. Bitte neu lesen.",
       );
-    const aktuelle = n.ereignisse.filter((e) => e.belege.some((b) => b.aktuell));
+    const aktuelle = normFachereignisse(n);
     const geltung = gewaehlteGeltung;
     if (
       !aktuelle.some((e) => e.geltung && geltungsSchluessel(e.geltung) === geltung) ||
@@ -663,36 +821,7 @@ export class KlaraNormereignisDienst {
         409,
         "Ereignisgeltung oder widersprüchliche Termine sind zuerst fachlich zu klären.",
       );
-    const quellen = new Map(
-      n.ereignisse.flatMap((e) =>
-        e.belege.map((b) => [`${b.quelle.art}:${b.quelle.id}`, b.quelle] as const),
-      ),
-    );
-    const gelesen: GeleseneFristenQuelle[] = [];
-    for (const q of quellen.values()) {
-      const l = await this.deps.quellen.lies(user, q.art, q.id);
-      if (!l) throw new NormereignisFehler(404, "Normbeleg nicht mehr lesbar.");
-      const neu = erkenneNormBekanntmachung(
-        l.quelle,
-        true,
-        new Date(this.jetzt()).toISOString(),
-      ).geschichten.find((x) => x.id === n.id);
-      const aktuellBekannt = n.ereignisse
-        .flatMap((e) =>
-          e.belege
-            .filter((b) => b.aktuell && b.quelle.art === q.art && b.quelle.id === q.id)
-            .map((b) => `${e.id}:${b.id}`),
-        )
-        .sort();
-      const aktuellGelesen =
-        neu?.ereignisse.flatMap((e) => e.belege.map((b) => `${e.id}:${b.id}`)).sort() ?? [];
-      if (!isDeepStrictEqual(aktuellBekannt, aktuellGelesen))
-        throw new NormereignisFehler(
-          409,
-          "Der aktuelle Bekanntmachungsstand ist noch nicht in den Ereignisbelegen berücksichtigt. Bitte zuerst erneut prüfen.",
-        );
-      gelesen.push(l);
-    }
+    const gelesen = await this.fachQuellen(user, n);
     const schnappschuesse: NotizSchreibbedingung[] = [];
     const fachfreigaben: Partial<NormAbloesung["fachfreigabe"]> = {};
     const referenz = normalizeAsset(`Norm ${n.kennung}`);
@@ -776,6 +905,7 @@ export class KlaraNormereignisDienst {
     if (!fachfreigaben.bisher || !fachfreigaben.nachfolger)
       throw new NormereignisFehler(409, "Die fachlichen Fassungsbelege sind nicht vollständig.");
     const entscheidung = normAbloesungsbeleg(n.id, {
+      ...(klaerung ? { klaerungId: klaerung.id } : {}),
       bisher,
       nachfolger,
       fachfreigabe: { bisher: fachfreigaben.bisher, nachfolger: fachfreigaben.nachfolger },

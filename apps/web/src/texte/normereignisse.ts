@@ -3,6 +3,17 @@ export default {
   praefix: "normereignisse.",
   legacySchluessel: [],
   de: {
+    "normereignisse.konfliktKlaeren": "Konflikt fachlich klären",
+    "normereignisse.konfliktHilfe":
+      "Wähle je widersprüchlicher Ereignisart einen heute eindeutig belegten Termin mit Geltungsbereich und begründe deine Entscheidung. Alle anderen Originalbelege bleiben erhalten. Neue widersprüchliche Fakten öffnen die Klärung erneut. Fehlende Angaben brauchen einen neuen Beleg. Dies ist noch keine fachliche Annahme einer Anleitung.",
+    "normereignisse.ereignisWaehlen": "Eindeutigen Ereignisbeleg auswählen",
+    "normereignisse.konfliktGrund": "Begründung der Konfliktklärung",
+    "normereignisse.konfliktBestaetigt":
+      "Diese belegten Termine und Geltungsbereiche nach Prüfung der widersprechenden Originale ausdrücklich bestätigen.",
+    "normereignisse.konfliktGeklaert":
+      "Konflikt fachlich geklärt durch {{person}} am {{zeit}} · Auswahl für den aktuellen Sachstand",
+    "normereignisse.konfliktHistorisch":
+      "Frühere Konfliktklärung durch {{person}} am {{zeit}} · für den aktuellen Sachstand nicht bestätigt",
     "normereignisse.annahmeUngeprueft":
       "Ein fachlicher Annahmebeleg lässt sich mit den heutigen Anleitungsrechten nicht prüfen.",
     "normereignisse.pruefauftrag": "Prüfauftrag am Original",
@@ -82,6 +93,17 @@ export default {
       "Angezeigt werden nur heute lesbare, ausdrücklich zugeordnete Einträge. Ähnlichkeit wurde nicht als Abhängigkeit übernommen.",
   },
   en: {
+    "normereignisse.konfliktKlaeren": "Resolve the evidence conflict",
+    "normereignisse.konfliktHilfe":
+      "Choose one currently unambiguous date and scope for each conflicting event type and explain your decision. All other original evidence is preserved. New conflicting facts reopen the review. Missing details require new evidence. This does not accept an instruction as a professional successor.",
+    "normereignisse.ereignisWaehlen": "Choose unambiguous event evidence",
+    "normereignisse.konfliktGrund": "Reason for resolving the conflict",
+    "normereignisse.konfliktBestaetigt":
+      "Explicitly confirm these evidenced dates and scopes after reviewing the conflicting originals.",
+    "normereignisse.konfliktGeklaert":
+      "Conflict resolved by {{person}} on {{zeit}} · selection for the current facts",
+    "normereignisse.konfliktHistorisch":
+      "Earlier conflict decision by {{person}} on {{zeit}} · not confirmed for the current facts",
     "normereignisse.annahmeUngeprueft":
       "An acceptance record cannot be checked under current instruction access rights.",
     "normereignisse.pruefauftrag": "Review at the original task",
@@ -161,6 +183,17 @@ export default {
       "Only currently readable, explicitly assigned entries are shown. Similarity was not treated as a dependency.",
   },
   nl: {
+    "normereignisse.konfliktKlaeren": "Tegenstrijdig bewijs inhoudelijk beoordelen",
+    "normereignisse.konfliktHilfe":
+      "Kies per tegenstrijdig gebeurtenistype één nu eenduidig bewezen datum met toepassingsgebied en motiveer je keuze. Alle andere oorspronkelijke bewijzen blijven bewaard. Nieuwe tegenstrijdige feiten openen de beoordeling opnieuw. Ontbrekende gegevens vragen om nieuw bewijs. Dit is nog geen inhoudelijke acceptatie van een instructie.",
+    "normereignisse.ereignisWaehlen": "Eenduidig gebeurtenisbewijs kiezen",
+    "normereignisse.konfliktGrund": "Motivering van de conflictbeoordeling",
+    "normereignisse.konfliktBestaetigt":
+      "Deze bewezen datums en toepassingsgebieden na beoordeling van de tegenstrijdige originelen uitdrukkelijk bevestigen.",
+    "normereignisse.konfliktGeklaert":
+      "Conflict beoordeeld door {{person}} op {{zeit}} · keuze voor de huidige feiten",
+    "normereignisse.konfliktHistorisch":
+      "Eerdere conflictbeoordeling door {{person}} op {{zeit}} · niet bevestigd voor de huidige feiten",
     "normereignisse.annahmeUngeprueft":
       "Een inhoudelijke acceptatie kan met de huidige toegangsrechten niet worden gecontroleerd.",
     "normereignisse.pruefauftrag": "Controle bij de oorspronkelijke taak",
