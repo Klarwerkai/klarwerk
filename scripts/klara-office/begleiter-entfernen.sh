@@ -12,8 +12,21 @@ set -euo pipefail
 ZIEL="$HOME/Applications/Klara Begleiter.app"
 KENNUNG="ai.klarwerk.klara-begleiter"
 
-osascript -e "tell application id \"$KENNUNG\" to quit" >/dev/null 2>&1 || true
-sleep 1
+swift - "$ZIEL" <<'SWIFT'
+import AppKit
+let ziel = URL(fileURLWithPath: CommandLine.arguments[1]).standardizedFileURL
+let laufend = NSWorkspace.shared.runningApplications
+if laufend.contains(where: { $0.bundleIdentifier == "ai.klarwerk.klara-begleiter" && $0.bundleURL?.standardizedFileURL != ziel }) {
+    fputs("Eine andere Klara-Prüffassung läuft; ihre gemeinsamen Daten bleiben geschützt.\n", stderr)
+    exit(1)
+}
+for app in laufend where app.bundleURL?.standardizedFileURL == ziel {
+    guard app.terminate() else { exit(1) }
+    let ende = Date().addingTimeInterval(5)
+    while !app.isTerminated && Date() < ende { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
+    guard app.isTerminated else { exit(1) }
+}
+SWIFT
 rm -rf "$ZIEL"
 defaults delete "$KENNUNG" >/dev/null 2>&1 || true
 

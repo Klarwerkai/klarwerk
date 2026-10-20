@@ -14,6 +14,7 @@ import { type BegleiterAktion, BegleiterFehler, type BegleiterKanal } from "../k
 //   POST   /api/me/klara/begleiter/adapter/:instanz/aktionen   — die Begleitapp beauftragt Word
 //   GET    /api/me/klara/begleiter/sitzung                     — Nutzer + Sitzungsfingerabdruck
 //                                                                 (BPA-01 AC10, Browserkarte)
+//   POST   /api/me/klara/begleiter/auftraege/:schluessel/klaeren — Klärung bei verlorener Antwort
 //
 // Die ersten drei ruft der Office-Adapter (`apps/web/public/word-addin/begleiter.js`), die letzten
 // zwei die Begleitapp (`apps/web/src/pages/Begleiter.tsx` in `apps/desktop/klara-begleiter`). Alle
@@ -46,7 +47,13 @@ function antworteMitFehler(reply: FastifyReply, fehler: unknown): void {
 
 /** Die Sicht einer Aktion nach außen — ohne interne Zeitstempel. */
 function aktionSicht(a: BegleiterAktion) {
-  return { id: a.id, art: a.art, stand: a.stand, auswahlStand: a.auswahlStand };
+  return {
+    id: a.id,
+    art: a.art,
+    stand: a.stand,
+    auswahlStand: a.auswahlStand,
+    ...(a.abbruchAngefordert ? { abbruchAngefordert: true } : {}),
+  };
 }
 
 export function klaraBegleiterRoutes(
@@ -146,6 +153,59 @@ export function klaraBegleiterRoutes(
       reply.header("cache-control", "no-store");
       reply.code(200).send({ nutzer: user.id, sitzung: begleiterSitzung(token) });
     });
+
+    // Nacharbeit 58 (Ben, MACG57-POST-GET-01): auftragsbezogene Klärung einer Beauftragung, deren
+    // Antwort verloren ging. 200 `angenommen` mit genau der Aktion zu diesem Schlüssel — oder 200
+    // `nicht_angelegt`: der Schlüssel ist ab jetzt gesperrt, ein verspäteter POST legt nichts an.
+    // Nacharbeit 63: Rumpf `{ ausgestelltAm }`; ist der Auftrag älter als die Frist und nicht mehr
+    // vermerkt, 200 `unbekannt` (nicht mehr sicher klärbar; angenommen werden kann er nicht mehr).
+    app.post<{ Params: { schluessel: string } }>(
+      "/api/me/klara/begleiter/auftraege/:schluessel/klaeren",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const k = kanal.klaeren(user.id, request.params.schluessel, request.body);
+          const antwort =
+            k.stand === "angenommen"
+              ? {
+                  stand: k.stand,
+                  instanz: k.instanz,
+                  aktion: aktionSicht(k.aktion),
+                  // Nacharbeit 65: die Kanalinstanz, die das belegt (Herkunft der Annahme).
+                  kanal: kanal.epoche,
+                }
+              : { stand: k.stand };
+          reply.header("cache-control", "no-store");
+          reply.code(200).send(antwort);
+        } catch (fehler) {
+          antworteMitFehler(reply, fehler);
+        }
+      },
+    );
+
+    // produkt:20261011:assistenz-minimalistische-oberflaeche (UI-MIN-06/14): eine eigene Aktion
+    // stoppen. Offen ⇒ 200 gestoppt; übergeben ⇒ 202, Abbruch an Word weitergereicht (Nacharbeit 7);
+    // fremd, unbekannt ⇒ 404 — dieselbe Antwort wie überall im Kanal.
+    app.post<{ Params: { instanz: string; aktion: string } }>(
+      "/api/me/klara/begleiter/adapter/:instanz/aktionen/:aktion/stopp",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const aktion = kanal.stoppen(user.id, request.params.instanz, request.params.aktion);
+          // 202: Abbruch an das ausführende Word-Fenster weitergereicht, Ende noch unbestätigt.
+          const status = aktion.stand === "uebergeben" ? 202 : 200;
+          reply.code(status).send({ aktion: aktionSicht(aktion) });
+        } catch (fehler) {
+          antworteMitFehler(reply, fehler);
+        }
+      },
+    );
   };
 }
 

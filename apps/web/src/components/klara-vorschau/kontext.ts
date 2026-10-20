@@ -100,6 +100,26 @@ function wissensbezug(pfad: string, suche: string, lese: Leseobjekt | null): Wis
   };
 }
 
+/**
+ * MACOS-20261014 · UI-01 (Nacharbeit 46): welche Daten die Seite gerade zeigt — die Lagebild-Karte
+ * (`components/LagebildWerte.tsx`) mit ihrem gewählten Bereich und dem angezeigten Stand. Gelesen
+ * wird nur, was auf der Seite steht (Bereichsname, Standnummer), keine Werte und keine Belege.
+ */
+export function lagebildObjekt(doc: Document | null, t: Uebersetzer): string | null {
+  const karte = doc?.querySelector<HTMLElement>('[data-testid="lagebild-werte"]');
+  if (!karte?.dataset.bereich) {
+    return null;
+  }
+  const wahl = karte.querySelector<HTMLSelectElement>('[data-testid="lagebild-bereich-wahl"]');
+  const gewaehlt = wahl?.selectedOptions[0]?.textContent?.trim();
+  const bereich = kuerze(gewaehlt || t("lagebildwerte.bereich.gesamt"));
+  const anzeige = karte.querySelector<HTMLElement>('[data-testid="lagebild-anzeige"]');
+  const stand = anzeige?.dataset.version;
+  return stand
+    ? t("klarakontext.objekt.lagebild", { bereich, stand })
+    : t("klarakontext.objekt.lagebildLeer", { bereich });
+}
+
 export function ermittleKontext(
   pfad: string,
   t: Uebersetzer,
@@ -182,7 +202,7 @@ export function ermittleKontext(
         pfad,
         seite,
         seitenName: eintrag ? t(eintrag.titleKey) : t("klaravorschau.seite.andere"),
-        objekt: t("klaravorschau.objekt.keins"),
+        objekt: lagebildObjekt(doc, t) ?? t("klaravorschau.objekt.keins"),
       };
     }
   }

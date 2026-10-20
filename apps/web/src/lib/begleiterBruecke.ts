@@ -11,7 +11,11 @@
 // Was die App über sich selbst sagt (Fassung, Bau), legt sie VOR dem Laden der Seite unter
 // `window.__KLARA_BEGLEITER__` ab — die Webfläche liest es nur und erfindet nichts dazu.
 
-export type ModusFenster = "figur" | "gespraech";
+/**
+ * `figur-vorgang` (produkt:20261011:assistenz-minimalistische-oberflaeche, UI-MIN-06/14): eingeklappt,
+ * aber mit laufenden Vorgängen — das Fenster wächst um je einen Stopp pro Vorgang.
+ */
+export type ModusFenster = "figur" | "figur-vorgang" | "gespraech";
 
 export type AnNative =
   | { art: "bereit"; webFassung: string }
@@ -23,8 +27,12 @@ export type AnNative =
   | { art: "andocken"; seite: "links" | "rechts" }
   | { art: "ausblenden" }
   | { art: "reduziert"; an: boolean }
-  // BPA-01 AC10: die Anmeldung der Fläche hat gewechselt (an, ab, anderes Konto). Kein Inhalt —
-  // die App entwertet daraufhin sofort die Browserkarte und prüft selbst beim Server nach.
+  // UI-MIN-15 (Nacharbeit 46): der persönliche Name bzw. „Deine Assistenz“ für die Titelleiste.
+  | { art: "name"; name: string }
+  // UI-MIN-06/14 (Nacharbeit 47): Anzahl laufender Vorgänge — als Antwort auf `vorgaenge-melden`
+  // (`anfrage` = dessen Nummer) und bei jeder Änderung. Die App blendet erst nach bestätigter 0 aus.
+  | { art: "vorgaenge"; anzahl: number; anfrage?: number }
+  // BPA-01: Sitzungswechsel entwertet die bisherige Browserkarte.
   | { art: "anmeldung" };
 
 export type VonNative =
@@ -32,7 +40,10 @@ export type VonNative =
   | "gespraech-oeffnen"
   | "gespraech-schliessen"
   | "reduziert-an"
-  | "reduziert-aus";
+  | "reduziert-aus"
+  | "vorgaenge-melden"
+  // MAC-04/UI-05 (Nacharbeit 54): „Einstellungen …“ (⌘,) der App öffnet den vorhandenen Bereich.
+  | "einstellungen-oeffnen";
 
 const BEFEHLE: readonly VonNative[] = [
   "figur-klick",
@@ -40,6 +51,8 @@ const BEFEHLE: readonly VonNative[] = [
   "gespraech-schliessen",
   "reduziert-an",
   "reduziert-aus",
+  "vorgaenge-melden",
+  "einstellungen-oeffnen",
 ];
 
 export const BRUECKEN_EREIGNIS = "klara-begleiter";
@@ -83,13 +96,20 @@ export function appFassung(w: Window = window): string | null {
   return /^[0-9A-Za-z.+_-]{1,40}$/.test(bau) ? `${fassung} (${bau})` : fassung;
 }
 
-/** Hört auf Befehle der App; unbekannte Befehle bleiben wirkungslos. Gibt das Abmelden zurück. */
-export function hoereAufNative(f: (befehl: VonNative) => void, w: Window = window): () => void {
+/**
+ * Hört auf Befehle der App; unbekannte Befehle bleiben wirkungslos. `wert` nur als ganze Zahl
+ * (z. B. die Anfragenummer von `vorgaenge-melden`). Gibt das Abmelden zurück.
+ */
+export function hoereAufNative(
+  f: (befehl: VonNative, wert?: number) => void,
+  w: Window = window,
+): () => void {
   const hoerer = (e: Event): void => {
-    const detail = (e as CustomEvent<{ befehl?: unknown }>).detail;
+    const detail = (e as CustomEvent<{ befehl?: unknown; wert?: unknown }>).detail;
     const befehl = detail?.befehl;
     if (typeof befehl === "string" && (BEFEHLE as readonly string[]).includes(befehl)) {
-      f(befehl as VonNative);
+      const wert = Number.isSafeInteger(detail?.wert) ? (detail?.wert as number) : undefined;
+      f(befehl as VonNative, wert);
     }
   };
   w.addEventListener(BRUECKEN_EREIGNIS, hoerer);

@@ -102,9 +102,79 @@ function BezugVonDamals({ b }: { b: KlaraObjektbezug }): JSX.Element | null {
 }
 
 /** Klara 03 · K3: jede Quelle mit Titel, Fassung und Prüfstatus — oder ehrlich ohne Angabe. */
-function QuellenZeile({ n }: { n: EchtNachricht }): JSX.Element {
+function QuellenZeile({
+  n,
+  kompakt = false,
+}: {
+  n: EchtNachricht;
+  /**
+   * produkt:20261011:assistenz-minimalistische-oberflaeche (UI-MIN-09): Titel bleiben sichtbar und
+   * eine Ungewissheit (nicht geprüft, Prüfstand unbekannt) ebenso; Fassung und Prüfstand jeder
+   * Quelle stehen auf Wunsch in „Fassung und Prüfstand“.
+   */
+  kompakt?: boolean;
+}): JSX.Element {
   const { t } = useAssistenzT();
   const angaben = new Map((n.quellenAngaben ?? []).map((a) => [a.koId, a]));
+  if (kompakt) {
+    return (
+      <ul className="mt-1 space-y-0.5 text-[11px]" data-testid="klara-quellen">
+        <li className={KLEINTITEL}>{t("klaragespraech.quellen")}</li>
+        {n.quellen.map((q, i) => {
+          const a = angaben.get(q);
+          const geprueft =
+            a?.geprueft === true ? "ja" : a?.geprueft === false ? "nein" : "unbekannt";
+          return (
+            <li
+              key={q}
+              data-testid="klara-quelle"
+              data-ko={q}
+              data-fassung={a?.fassung ?? ""}
+              data-geprueft={geprueft}
+              className="flex flex-wrap items-center gap-1"
+            >
+              <Link
+                to={leserHref({ koId: q, fassung: a?.fassung ?? null })}
+                className="rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-semibold text-text hover:border-ink/30"
+              >
+                [{i + 1}] {a ? a.titel : t("klarakontext.quelle.ohneTitel")}
+              </Link>
+              {a && geprueft !== "ja" ? (
+                <span className="font-semibold text-trust-warn-text">
+                  {t(`klarakontext.quelle.geprueft.${geprueft}`)}
+                </span>
+              ) : null}
+            </li>
+          );
+        })}
+        <li>
+          <details data-testid="klara-quellen-details">
+            <summary className="cursor-pointer text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+              {t("assistenzminimal.quellen.details")}
+            </summary>
+            <ul className="mt-0.5 space-y-0.5 pl-2 text-muted">
+              {n.quellen.map((q, i) => {
+                const a = angaben.get(q);
+                const geprueft =
+                  a?.geprueft === true ? "ja" : a?.geprueft === false ? "nein" : "unbekannt";
+                const fassung = a?.fassung
+                  ? t("klarakontext.fassung", { nr: a.fassung })
+                  : t("klarakontext.quelle.fassungUnbekannt");
+                const angabe = a
+                  ? `${fassung} · ${t(`klarakontext.quelle.geprueft.${geprueft}`)}`
+                  : t("klarakontext.quelle.ohneAngaben");
+                return (
+                  <li key={q} data-testid="klara-quelle-detail" data-ko={q}>
+                    [{i + 1}] {angabe}
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
+        </li>
+      </ul>
+    );
+  }
   return (
     <ul className="mt-1 space-y-0.5 text-[11px]" data-testid="klara-quellen">
       <li className={KLEINTITEL}>{t("klaragespraech.quellen")}</li>
@@ -156,11 +226,13 @@ function NachrichtEcht({
   n,
   sprecher,
   gespraechId,
+  kompakt = false,
 }: {
   n: EchtNachricht;
   sprecher?: string | undefined;
   /** Klara 06: das gespeicherte Gespräch, aus dem eine Nachricht zur Notiz werden kann. */
   gespraechId: string | null;
+  kompakt?: boolean;
 }): JSX.Element {
   // produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
   const { t } = useAssistenzT();
@@ -259,7 +331,7 @@ function NachrichtEcht({
         <p className="whitespace-pre-line">{n.text}</p>
       )}
       {/* Klara 03: Quellen mit Titel, Fassung und Prüfstatus (ersetzt die blossen [n]-Verweise). */}
-      {istAntwort && n.quellen.length > 0 ? <QuellenZeile n={n} /> : null}
+      {istAntwort && n.quellen.length > 0 ? <QuellenZeile n={n} kompakt={kompakt} /> : null}
       {/* Klara 02: jede Antwort und jeder Hilfetext kann vorgelesen werden — nur auf Klick.
           Klara 06: eine GESPEICHERTE Nachricht kann zur privaten Notiz werden; der Server übernimmt
           Wortlaut und Ort aus dem eigenen Gespräch. Derselbe Vorgang je Nachricht: keine Doppelnotiz. */}
@@ -319,10 +391,18 @@ export function KlaraEchtGespraech({
   onErneutFragen,
   onNeuLaden,
   sprecher,
+  minimal = false,
 }: {
   kontext: KlaraObjektbezug;
   pfad: string;
   ki: KiLage;
+  /**
+   * produkt:20261011:assistenz-minimalistische-oberflaeche: im Gesprächsbereich der Grundansicht
+   * nur, was zum Gespräch gehört — Ladezustand, Fehler, ein unbeantworteter letzter Schritt und der
+   * ungekürzte Verlauf. KI-Lage, Datenweg, Beginn, Einwilligung und Verwaltung stehen in
+   * Kontextdetails und Menü (`AssistenzMinimal.tsx`).
+   */
+  minimal?: boolean;
   /** Klara 03: der gespeicherte Wortlaut UND der Bezug von damals — nichts wird neu zusammengesetzt. */
   onErneutFragen: (frage: string, bezug: KlaraObjektbezug) => void;
   onNeuLaden: () => void;
@@ -339,6 +419,109 @@ export function KlaraEchtGespraech({
   const schritt = g?.letzterSchritt ?? null;
   const unterbrochen = schrittUnterbrochen(schritt, e.laeuftSeit);
   const schrittStand = unterbrochen ? "unterbrochen" : (schritt?.stand ?? null);
+
+  if (minimal) {
+    const offenerSchritt =
+      schritt?.art === "frage" &&
+      schrittStand !== null &&
+      schrittStand !== "beantwortet" &&
+      schrittStand !== "laeuft";
+    return (
+      <>
+        {/* Der Ladezustand als Merkmal (Tests, Hilfstechnik) — sichtbar nur, solange er etwas sagt. */}
+        <p
+          data-testid="klara-echt-hinweis"
+          data-laden={e.laden}
+          aria-live="polite"
+          className={e.laden === "laedt" ? "text-[11.5px] text-muted-2" : "sr-only"}
+        >
+          {e.laden === "laedt" ? t("klaragespraech.laden") : ""}
+        </p>
+        {e.laden === "fehler" ? (
+          <div
+            data-testid="klara-echt-ladefehler"
+            className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[11.5px] text-trust-crit-text"
+          >
+            <p>{t("klaragespraech.ladeFehler", { grund: e.ladeFehler ?? "" })}</p>
+            <button
+              type="button"
+              data-testid="klara-echt-nochmal-laden"
+              onClick={onNeuLaden}
+              className={`${KNOPF} mt-1`}
+            >
+              {t("klaragespraech.ladenNochmal")}
+            </button>
+          </div>
+        ) : null}
+        {e.hinweis ? (
+          <p
+            role="alert"
+            data-testid="klara-echt-fehlerhinweis"
+            className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[11.5px] text-trust-crit-text"
+          >
+            {e.hinweis}
+          </p>
+        ) : null}
+        {/* Der ganze gespeicherte Verlauf — keine Kürzung zugunsten der Optik. */}
+        <section data-testid="klara-verlauf" aria-label={t("klaravorschau.verlauf.titel")}>
+          {e.nachrichten.length === 0 && e.laden === "bereit" ? (
+            <p data-testid="klara-echt-leer" className="py-6 text-center text-[15px] text-muted">
+              {t("assistenzminimal.leer")}
+            </p>
+          ) : (
+            <ol className="space-y-2">
+              {e.nachrichten.map((n) => (
+                <NachrichtEcht
+                  key={n.id}
+                  n={n}
+                  sprecher={sprecher}
+                  gespraechId={g?.id ?? null}
+                  kompakt
+                />
+              ))}
+            </ol>
+          )}
+        </section>
+        {/* Vorhandene Browseraktionsbelege bleiben auch in der kompakten Gesprächsansicht erreichbar. */}
+        {g ? <KlaraBrowserAuftraege gespraechId={g.id} /> : null}
+        {/* Ein unbeantworteter letzter Schritt (unterbrochen, gestoppt, fehlgeschlagen) mit dem
+            Weg, ihn mit Wortlaut und Bezug von damals erneut zu stellen. */}
+        {offenerSchritt && schritt ? (
+          <div
+            data-testid="klara-letzter-schritt"
+            data-stand={schrittStand ?? ""}
+            className="rounded-card border border-hairline bg-page px-2.5 py-2 text-[12px] text-text"
+          >
+            <p>
+              {t("klaragespraech.schritt.frage", { text: schritt.text })}
+              {" · "}
+              <span data-testid="klara-letzter-schritt-stand" className="font-semibold">
+                {t(`klaragespraech.schritt.stand.${schrittStand}`)}
+              </span>
+            </p>
+            {g?.einwilligungAm && !ki.abgeschaltet && e.laeuftSeit === null ? (
+              <button
+                type="button"
+                data-testid="klara-schritt-nochmal"
+                onClick={() => onErneutFragen(schritt.text, schritt.objektbezug)}
+                className={`${KNOPF_KI} mt-1`}
+              >
+                {t("klaragespraech.schritt.nochmal")}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {!e.schrittGespeichert ? (
+          <p
+            data-testid="klara-schritt-nicht-gespeichert"
+            className="text-[11px] font-semibold text-trust-crit-text"
+          >
+            {t("klaragespraech.schritt.nichtGespeichert")}
+          </p>
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <>

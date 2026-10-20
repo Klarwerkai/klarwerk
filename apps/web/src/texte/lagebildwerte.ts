@@ -40,6 +40,18 @@ export default {
     "lagebildwerte.herkunft.eigene_eingabe": "Eigene Eingabe (Annahme)",
     "lagebildwerte.herkunft.gemessen": "Gemessen (laut Angabe, nicht unabhängig geprüft)",
     "lagebildwerte.beleg": "Beleg: {{beleg}}",
+    // MACOS-20261014 · UI-03 (Nacharbeit 47): der Prüfstatus jeder Zahl — eine fachliche Prüfung der
+    // Lagebild-Werte gibt es nicht; das steht offen da statt eines stillschweigenden „gilt“.
+    "lagebildwerte.pruefstatus.nichtGeprueft": "Prüfstatus: offen – nicht fachlich geprüft",
+    // MACOS-20261014 · MAC-03/UI-03 (Nacharbeit 54 · MAC5-05): Details zur Zahl auf Abruf.
+    "lagebildwerte.details.knopf": "Details",
+    "lagebildwerte.details.label": "Details zu {{feld}}",
+    "lagebildwerte.details.keinBeleg": "Kein Beleg angegeben.",
+    "lagebildwerte.standKurz": "Stand {{version}}",
+    "lagebildwerte.rechenweg.knopf": "Rechenweg",
+    "lagebildwerte.rechenweg.label": "Rechenweg und Grundlage",
+    "lagebildwerte.pruefstatus.ergebnis":
+      "Prüfstatus: offen – das Ergebnis beruht auf nicht fachlich geprüften Werten.",
     "lagebildwerte.zeitraum": "Gilt für {{von}} bis {{bis}}",
     "lagebildwerte.stand": "Stand {{version}} vom {{zeit}}, geändert {{wer}}",
     "lagebildwerte.wer.selbst": "von Ihnen",
@@ -133,6 +145,15 @@ export default {
     "lagebildwerte.herkunft.eigene_eingabe": "Own entry (assumption)",
     "lagebildwerte.herkunft.gemessen": "Measured (as stated, not independently checked)",
     "lagebildwerte.beleg": "Evidence: {{beleg}}",
+    "lagebildwerte.pruefstatus.nichtGeprueft": "Review status: open – not reviewed by a specialist",
+    "lagebildwerte.details.knopf": "Details",
+    "lagebildwerte.details.label": "Details on {{feld}}",
+    "lagebildwerte.details.keinBeleg": "No evidence given.",
+    "lagebildwerte.standKurz": "Version {{version}}",
+    "lagebildwerte.rechenweg.knopf": "Calculation",
+    "lagebildwerte.rechenweg.label": "Calculation and basis",
+    "lagebildwerte.pruefstatus.ergebnis":
+      "Review status: open – the result is based on values not reviewed by a specialist.",
     "lagebildwerte.zeitraum": "Applies from {{von}} to {{bis}}",
     "lagebildwerte.stand": "Version {{version}} of {{zeit}}, changed {{wer}}",
     "lagebildwerte.wer.selbst": "by you",
@@ -226,6 +247,16 @@ export default {
     "lagebildwerte.herkunft.eigene_eingabe": "Eigen invoer (aanname)",
     "lagebildwerte.herkunft.gemessen": "Gemeten (volgens opgave, niet onafhankelijk gecontroleerd)",
     "lagebildwerte.beleg": "Bewijs: {{beleg}}",
+    "lagebildwerte.pruefstatus.nichtGeprueft":
+      "Controlestatus: open – niet inhoudelijk gecontroleerd",
+    "lagebildwerte.details.knopf": "Details",
+    "lagebildwerte.details.label": "Details over {{feld}}",
+    "lagebildwerte.details.keinBeleg": "Geen bewijs opgegeven.",
+    "lagebildwerte.standKurz": "Versie {{version}}",
+    "lagebildwerte.rechenweg.knopf": "Berekening",
+    "lagebildwerte.rechenweg.label": "Berekening en basis",
+    "lagebildwerte.pruefstatus.ergebnis":
+      "Controlestatus: open – het resultaat berust op niet inhoudelijk gecontroleerde waarden.",
     "lagebildwerte.zeitraum": "Geldt van {{von}} tot {{bis}}",
     "lagebildwerte.stand": "Versie {{version}} van {{zeit}}, gewijzigd {{wer}}",
     "lagebildwerte.wer.selbst": "door u",

@@ -58,6 +58,28 @@ struct Herkunft: Codable {
 struct FinderErgebnis: Codable {
   var objektId: String
   var herkunft: Herkunft
+  /// Additive C→B-Brücke: alte Server antworten weiterhin ohne diesen Einstieg.
+  var ocrUrl: String?
+
+  /// Nur der relative Capture-Einstieg für genau das soeben übernommene Objekt.
+  /// Keine Tokens, fremden Ursprünge, Protokolle oder zusätzlichen Parameter öffnen.
+  func ocrZiel(basis: URL) -> URL? {
+    guard let roh = ocrUrl, roh.hasPrefix("/erfassen?"),
+          let pfad = URLComponents(string: roh),
+          pfad.scheme == nil, pfad.host == nil, pfad.user == nil, pfad.password == nil,
+          pfad.fragment == nil, pfad.path == "/erfassen",
+          let parameter = pfad.queryItems, parameter.count == 2,
+          parameter.filter({ $0.name == "weg" && $0.value == "datei" }).count == 1,
+          parameter.filter({ $0.name == "finder" && $0.value == objektId }).count == 1,
+          var ziel = URLComponents(url: basis, resolvingAgainstBaseURL: false),
+          ziel.user == nil, ziel.password == nil, ziel.host != nil,
+          ziel.scheme == "https" || (ziel.scheme == "http" && ["localhost", "127.0.0.1"].contains(ziel.host ?? ""))
+    else { return nil }
+    ziel.path = "/erfassen"
+    ziel.queryItems = parameter
+    ziel.fragment = nil
+    return ziel.url
+  }
 }
 
 struct LeseErgebnis: Codable {

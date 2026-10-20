@@ -168,6 +168,11 @@ final class BegleiterZustand: ObservableObject {
       guard gen == generation else { return }
       meldung = "Aufgenommen: \(ergebnis.herkunft.name) · Fassung "
         + "\(ergebnis.herkunft.sha256.prefix(12))… · Objekt \(ergebnis.objektId)"
+      // Erst nach erfolgreicher Übernahme und derselben noch gültigen Verbindung.
+      // Der Browser nutzt seine bestehende Anmeldung; kein Sitzungstoken geht in die URL.
+      if let ziel = ergebnis.ocrZiel(basis: server.basis) {
+        NSWorkspace.shared.open(ziel)
+      }
     } catch {
       guard gen == generation else { return }
       meldung = error.localizedDescription

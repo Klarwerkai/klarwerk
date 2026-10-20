@@ -35,6 +35,12 @@ import { NoticeBanner } from "../legal/NoticeBanner";
 // FE-003: das Seitentutorial — Knopf unter dem Kopfband, Bereich oben in `<main>`. Beide rendern
 // nur auf Seiten mit ausgearbeitetem Tutorial (heute allein /fragen), sonst nichts.
 import { TutorialEinstieg, TutorialFlaeche, TutorialProvider } from "../tutorial/TutorialRahmen";
+// MACOS-20261014 · MAC-03: die ausblendbare Arbeitsbereichsleiste links (löst JOB 3060 H1 ab).
+import {
+  Arbeitsbereichsleiste,
+  SeitenleisteEinblenden,
+  useSeitenleiste,
+} from "./Arbeitsbereichsleiste";
 import { CommandPalette } from "./CommandPalette";
 import { Kopfband } from "./Kopfband";
 import { MobileNavDrawer } from "./MobileNavDrawer";
@@ -106,6 +112,12 @@ function KlaraEbene(): JSX.Element {
 // 380 + 720 px, das Wissensnetz 880 px neben seiner Leiste — Runde 8). Die Seitenleiste ist als ORT entfernt (kein
 // `<aside>` im DOM), nicht versteckt; ihre Punkte stehen im Kopfband und im Zahnrad-Menü.
 //
+// ABGELÖST DURCH MACOS-20261014 · MAC-03 (Oktober, Führung, Nacharbeit 52): breit steht links eine
+// AUSBLENDBARE Arbeitsbereichsleiste (`Arbeitsbereichsleiste.tsx`) mit denselben Zielen wie Kopfband
+// und Menü. Ausgeblendet ist sie nicht im Baum, und `<main>` erhält die ganze Breite; ohne eigene Wahl
+// ist sie erst ab 1440 px eingeblendet, damit die breiten Seiten oben ihren Platz behalten. Kopfband,
+// Drawer (schmal) und `/mobile` bleiben wie beschrieben.
+//
 // E2E-017: unter ≤899px trägt das Kopfband einen Hamburger, der die Punkte und Menüeinträge als
 // Drawer öffnet; der Inhalt nutzt dann die volle schmale Breite. `/mobile` rendert bewusst OHNE
 // diese Hülle (volle schmale Breite) — sonst bliebe die Desktop-Shell darum stehen.
@@ -130,6 +142,23 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   // eine modale Fläche hängt sich als Geschwister des Seiteninhalts ein und liegt damit außerhalb
   // jeder Sperre — und trotzdem innerhalb der Shell, nicht am `<body>`.
   const mainRef = useRef<HTMLElement | null>(null);
+  // MACOS-20261014 · MAC-03: Arbeitsbereichsleiste. Nach eigenem Umschalten wandert der Fokus auf
+  // den Knopf, der jetzt da ist (der gedrückte ist verschwunden) — die Tastatur verliert sich nicht.
+  const leiste = useSeitenleiste();
+  const ausblendenRef = useRef<HTMLButtonElement>(null);
+  const einblendenRef = useRef<HTMLButtonElement>(null);
+  const leisteUmgeschaltet = useRef(false);
+  const leisteUmschalten = (): void => {
+    leisteUmgeschaltet.current = true;
+    leiste.umschalten();
+  };
+  useEffect(() => {
+    if (!leisteUmgeschaltet.current) {
+      return;
+    }
+    leisteUmgeschaltet.current = false;
+    (leiste.offen ? ausblendenRef : einblendenRef).current?.focus();
+  }, [leiste.offen]);
 
   // Bei jedem Routenwechsel (Nav-Klick) schließt der Drawer — kein hängendes Overlay.
   // biome-ignore lint/correctness/useExhaustiveDependencies: bewusst nur auf Pfadwechsel schließen.
@@ -231,20 +260,46 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
             <NavGuardModalBoundaryBridge />
             <div className="flex min-h-0 flex-1 flex-col">
               <ModalRegion>
-                <Kopfband />
+                {/* MAC-03 (Nacharbeit 54): bei eingeblendeter Leiste ohne die doppelten Bereiche. */}
+                <Kopfband leisteSichtbar={leiste.offen} />
                 <TutorialEinstieg />
               </ModalRegion>
-              {/* `<main>` nimmt die volle Breite, der Inhaltskasten ebenso — die Mockup-Seiten setzen
-                ihre Breiten selbst (Bibliothek 380 + 720, Wissensnetz 880 + Leiste); ein Deckel von
-                1040 px nahm ihnen 60 px (Runde 8). `h-full` am Kasten, damit Seiten mit `min-h-full`
-                (Start: die Konsole füllt den ersten Bildschirm) ihre Bezugshöhe behalten. */}
-              <main ref={mainRef} className="flex-1 overflow-y-auto px-9 py-7">
+              {/* MACOS-20261014 · MAC-03: links die ausblendbare Arbeitsbereichsleiste, rechts `<main>`.
+                Ausgeblendet ist die Leiste NICHT im Baum, und `<main>` nimmt die ganze Breite. Die
+                Leiste liegt in einer eigenen Modalregion: ein offener Dialog sperrt sie wie das
+                Kopfband. `<main>` steht in beiden Lagen an derselben Stelle — Umschalten montiert den
+                Seiteninhalt nicht neu (Eingaben, Kontext, Arbeitsstand bleiben). */}
+              <div className="relative flex min-h-0 flex-1">
                 <ModalRegion>
-                  <TutorialFlaeche />
-                  <VorschauHinweis flaeche="seite" />
-                  <div className="kw-inhalt h-full w-full">{children}</div>
+                  {leiste.offen ? (
+                    <Arbeitsbereichsleiste
+                      onAusblenden={leisteUmschalten}
+                      knopfRef={ausblendenRef}
+                    />
+                  ) : (
+                    <SeitenleisteEinblenden
+                      onEinblenden={leisteUmschalten}
+                      knopfRef={einblendenRef}
+                    />
+                  )}
                 </ModalRegion>
-              </main>
+                {/* `<main>` nimmt die übrige Breite, der Inhaltskasten ebenso — die Mockup-Seiten
+                  setzen ihre Breiten selbst (Bibliothek 380 + 720, Wissensnetz 880 + Leiste); ein
+                  Deckel von 1040 px nahm ihnen 60 px (Runde 8). `h-full` am Kasten, damit Seiten mit
+                  `min-h-full` (Start: die Konsole füllt den ersten Bildschirm) ihre Bezugshöhe
+                  behalten. */}
+                <main
+                  ref={mainRef}
+                  data-seitenleiste={leiste.offen ? "an" : "aus"}
+                  className="min-w-0 flex-1 overflow-y-auto px-9 py-7"
+                >
+                  <ModalRegion>
+                    <TutorialFlaeche />
+                    <VorschauHinweis flaeche="seite" />
+                    <div className="kw-inhalt h-full w-full">{children}</div>
+                  </ModalRegion>
+                </main>
+              </div>
               <ModalRegion>
                 <NoticeBanner />
                 <AssistenzProfilLader />

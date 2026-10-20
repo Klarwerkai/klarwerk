@@ -1,5 +1,19 @@
 # Klara Begleiter (macOS, Apple Silicon)
 
+Stand 20.10.2026: Version 0.1.2 führt den erhaltenen gemeinsamen Host, die native
+Fensterkorrektur aus 74cd8d154 und den ausdrücklichen Beenden-Button aus 61ce2c7e zusammen.
+Gespräch: native Schließen-/Minimieren-/Größenbedienung; Beenden: Button oder ⌘Q.
+Vor Anmeldung oder bei fehlender Verbindung bleibt beim Einklappen ein nativer Öffnen-Einstieg.
+Der gemeinsame Web-/Office-/Figurenkern bleibt erhalten.
+
+Der reguläre Ursprung ist `https://app.klarwerk.ai`, derselbe wie bei der Browserbrücke.
+Es wird kein systemweites Kürzel automatisch registriert: Peters Option 1 und VoiceOver
+bleiben erhalten. Interne Kürzel stehen im bestehenden Klara-Setup; Wiederöffnen ist über
+Menü oder erneuten App-Aufruf möglich. Details und Einbau:
+`docs/operations/klara-office/mac-kandidat-20261020.md`.
+
+Die Herkunftstabelle und älteren Prüfgrenzen unten beschreiben den übernommenen Ausgangsstand.
+
 Der gemeinsame Begleiter laut O06 ist **eine** Menüleisten-App. Sie setzt sich aus drei Teilen
 zusammen:
 

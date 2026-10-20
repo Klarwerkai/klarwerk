@@ -20,6 +20,15 @@ import {
 } from "../../api/kiArbeitsweg";
 import type { KlaraObjektbezug } from "../../api/klaraGespraech";
 import { useAssistenzT } from "../../lib/assistenzProfil";
+import {
+  beendeKiUebergabe,
+  beginneKiUebergabe,
+  kiAuftraegeVon,
+  ladeKiAuftraege,
+  leseKiAuftraege,
+  meldeKiAuftraege,
+  useKiAuftraege,
+} from "./kiAuftraege";
 
 const KNOPF =
   "inline-flex h-8 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-text hover:border-ink/30 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
@@ -54,6 +63,9 @@ function AuftragKarte({
   const [erneut, setErneut] = useState(false);
   const [ergebnis, setErgebnis] = useState("");
   const [laeuft, setLaeuft] = useState(false);
+  // Nacharbeit 38 (UI-MIN-06/14): eine ausstehende Übergabe ist ein EIGENER Zustand. Sie sperrt
+  // nur ein zweites Übergeben — Unterbrechen und Stoppen bleiben währenddessen bedienbar.
+  const [uebergabeLaeuft, setUebergabeLaeuft] = useState(false);
   const job = a.job;
 
   const tue = async (schritt: () => Promise<KiAuftragSicht>) => {
@@ -64,6 +76,24 @@ function AuftragKarte({
       onHinweis(meldung(fehler));
     } finally {
       setLaeuft(false);
+    }
+  };
+  const uebergeben = async () => {
+    setUebergabeLaeuft(true);
+    // Die Assistenz liest während der Übergabe den Serverstand nach (Sendestand steht dort zuerst).
+    beginneKiUebergabe(gespraechId);
+    try {
+      const r = await kiArbeitswegApi.uebergib(gespraechId, job.jobId, erneut);
+      onHinweis(r.text);
+      onNeu(r.sicht);
+    } catch (fehler) {
+      onHinweis(meldung(fehler));
+    } finally {
+      beendeKiUebergabe(gespraechId);
+      setUebergabeLaeuft(false);
+      // Wurde während der Übergabe gestoppt oder unterbrochen, ist ihre Antwort schon veraltet: der
+      // Stand kommt deshalb danach noch einmal vom Server.
+      void ladeKiAuftraege(gespraechId);
     }
   };
 
@@ -139,14 +169,8 @@ function AuftragKarte({
           <button
             type="button"
             data-testid="ki-auftrag-uebergeben"
-            disabled={laeuft || !a.paketAktuell || a.wegGesperrt !== null}
-            onClick={() =>
-              void tue(async () => {
-                const r = await kiArbeitswegApi.uebergib(gespraechId, job.jobId, erneut);
-                onHinweis(r.text);
-                return r.sicht;
-              })
-            }
+            disabled={laeuft || uebergabeLaeuft || !a.paketAktuell || a.wegGesperrt !== null}
+            onClick={() => void uebergeben()}
             className={KNOPF_KI}
           >
             {job.status === "vorbereitet"
@@ -307,7 +331,11 @@ export function KiArbeitsweg({
 }): JSX.Element {
   const { t } = useAssistenzT();
   const [lage, setLage] = useState<KiFaehigkeiten | null>(null);
-  const [auftraege, setAuftraege] = useState<KiAuftragSicht[]>([]);
+  // Beim Öffnen mit dem gemeinsamen Stand dieses Gesprächs beginnen — nie mit einer leeren Liste, die
+  // den gemeinsamen Bestand bis zur Antwort des Servers überschriebe.
+  const [auftraege, setAuftraege] = useState<KiAuftragSicht[]>(() => {
+    return kiAuftraegeVon(leseKiAuftraege(), gespraechId);
+  });
   const [ladefehler, setLadefehler] = useState<string | null>(null);
   const [hinweis, setHinweis] = useState<string | null>(null);
   const [ziel, setZiel] = useState("");
@@ -338,6 +366,21 @@ export function KiArbeitsweg({
   useEffect(() => {
     void lade();
   }, [lade]);
+
+  // produkt:20261011:assistenz-minimalistische-oberflaeche (UI-MIN-06/14): der Bestand gilt für die
+  // ganze Assistenz — die Fläche meldet ihn, und ein Stand von außen (Stopp aus der Vorgangsleiste
+  // oder an der eingeklappten Figur) wird hier übernommen, statt einen veralteten zu zeigen.
+  const gemeinsam = useKiAuftraege();
+  useEffect(() => {
+    meldeKiAuftraege(gespraechId, auftraege);
+  }, [gespraechId, auftraege]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: nur ein Stand von außen löst aus.
+  useEffect(() => {
+    const vonAussen = gemeinsam.proGespraech[gespraechId];
+    if (vonAussen && vonAussen !== auftraege) {
+      setAuftraege(vonAussen);
+    }
+  }, [gemeinsam]);
 
   const ersetze = (neu: KiAuftragSicht) =>
     setAuftraege((alt) => {

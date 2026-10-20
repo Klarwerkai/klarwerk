@@ -64,10 +64,22 @@ function LagebildAnzeige({
   vonMir: boolean;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
+  // MACOS-20261014 · MAC-03/UI-03 (Ben, Nacharbeit 54 · MAC5-05): Beleg, Fassung (Stand mit Zeit und
+  // Person) und Zeitraum stehen nicht mehr dauerhaft ausgeschrieben, sondern in einem Detailbereich
+  // AN DER ZAHL, den „Details“ öffnet. Am Wert sichtbar bleiben Angabe, Herkunft und der knappe
+  // offene Prüfstatus. Der Bereich bleibt im Baum (`hidden`), damit nichts gelöscht wird.
+  const [offenFeld, setOffenFeld] = useState<LagebildFeld | null>(null);
+  const detailId = useId();
+  const standVoll = t("lagebildwerte.stand", {
+    version: werte.version,
+    zeit: formatKoTimestamp(werte.geaendertAm, i18n.language) ?? werte.geaendertAm,
+    wer: t(vonMir ? "lagebildwerte.wer.selbst" : "lagebildwerte.wer.andere"),
+  });
+  const zeitraum = t("lagebildwerte.zeitraum", { von: werte.zeitraumVon, bis: werte.zeitraumBis });
   return (
     <div data-testid="lagebild-anzeige" data-version={werte.version} className="mt-2 space-y-1.5">
       <p data-testid="lagebild-zeitraum" className="text-[12px] text-muted">
-        {t("lagebildwerte.zeitraum", { von: werte.zeitraumVon, bis: werte.zeitraumBis })}
+        {zeitraum}
       </p>
       <table className="w-full text-[12.5px]">
         <thead>
@@ -100,10 +112,49 @@ function LagebildAnzeige({
                 </td>
                 <td className="py-1.5" data-testid="lagebild-herkunft">
                   {w ? t(`lagebildwerte.herkunft.${w.herkunft}`) : null}
-                  {w?.beleg ? (
-                    <span className="block text-[11.5px] text-muted-2">
-                      {t("lagebildwerte.beleg", { beleg: w.beleg })}
+                  {/* MACOS-20261014 · UI-03: der tatsächliche Prüfstatus der Zahl — eine fachliche
+                      Prüfung führen die Lagebild-Werte nicht, also offen. Bleibt AM WERT sichtbar. */}
+                  {w ? (
+                    <span
+                      data-testid="lagebild-pruefstatus"
+                      data-pruefstatus="nicht_geprueft"
+                      className="block text-[11.5px] text-trust-warn-text"
+                    >
+                      {t("lagebildwerte.pruefstatus.nichtGeprueft")}
                     </span>
+                  ) : null}
+                  {w ? (
+                    <>
+                      <button
+                        type="button"
+                        data-testid="lagebild-details-knopf"
+                        data-feld={feld}
+                        aria-expanded={offenFeld === feld}
+                        aria-controls={`${detailId}-${feld}`}
+                        aria-label={t("lagebildwerte.details.label", {
+                          feld: t(`lagebildwerte.feld.${feld}`),
+                        })}
+                        onClick={() => setOffenFeld((alt) => (alt === feld ? null : feld))}
+                        className="mt-0.5 text-[11.5px] text-text underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+                      >
+                        {t("lagebildwerte.details.knopf")}
+                      </button>
+                      <div
+                        id={`${detailId}-${feld}`}
+                        data-testid="lagebild-details"
+                        data-feld={feld}
+                        hidden={offenFeld !== feld}
+                        className="mt-1 space-y-0.5 rounded-card border border-hairline bg-page px-2 py-1.5 text-[11.5px] text-muted"
+                      >
+                        <p data-testid="lagebild-beleg">
+                          {w.beleg
+                            ? t("lagebildwerte.beleg", { beleg: w.beleg })
+                            : t("lagebildwerte.details.keinBeleg")}
+                        </p>
+                        <p>{zeitraum}</p>
+                        <p>{standVoll}</p>
+                      </div>
+                    </>
                   ) : null}
                 </td>
               </tr>
@@ -111,12 +162,9 @@ function LagebildAnzeige({
           })}
         </tbody>
       </table>
-      <p data-testid="lagebild-stand" className="text-[11.5px] text-muted-2">
-        {t("lagebildwerte.stand", {
-          version: werte.version,
-          zeit: formatKoTimestamp(werte.geaendertAm, i18n.language) ?? werte.geaendertAm,
-          wer: t(vonMir ? "lagebildwerte.wer.selbst" : "lagebildwerte.wer.andere"),
-        })}
+      {/* Knapp die Fassung; Zeit und Person stehen in den Details an der Zahl. */}
+      <p data-testid="lagebild-stand" title={standVoll} className="text-[11.5px] text-muted-2">
+        {t("lagebildwerte.standKurz", { version: werte.version })}
       </p>
     </div>
   );
@@ -127,6 +175,10 @@ function LagebildErgebnis({ bereich }: { bereich: LagebildBereich }): JSX.Elemen
   const { t } = useTranslation();
   const r = lagebildRechnung(bereich.fakten, bereich.werte);
   const f = bereich.fakten;
+  // MAC5-05: Rechenweg und Grundlage auf Abruf am Ergebnis; Geldwert, Art, offener Prüfstatus,
+  // Gründe und der Demo-Hinweis bleiben sichtbar.
+  const [rechenwegOffen, setRechenwegOffen] = useState(false);
+  const rechenwegId = useId();
   return (
     <div data-testid="lagebild-ergebnis" data-zustand={r.zustand} className="mt-3">
       <SectionLabel>{t("lagebildwerte.ergebnis.titel")}</SectionLabel>
@@ -142,12 +194,18 @@ function LagebildErgebnis({ bereich }: { bereich: LagebildBereich }): JSX.Elemen
           >
             {t(`lagebildwerte.art.${r.art}`)}
           </p>
+          <p
+            data-testid="lagebild-ergebnis-pruefstatus"
+            data-pruefstatus="nicht_geprueft"
+            className="mt-1 text-[12px] text-trust-warn-text"
+          >
+            {t("lagebildwerte.pruefstatus.ergebnis")}
+          </p>
           {r.negativ ? (
             <p data-testid="lagebild-negativ" className="mt-1 text-[12px] text-trust-crit-text">
               {t("lagebildwerte.negativ")}
             </p>
           ) : null}
-          <div className="mt-1 font-mono text-[11px] text-muted-2">{r.formula}</div>
         </>
       ) : (
         <div data-testid="lagebild-nicht-berechenbar" className="text-[12.5px] text-text">
@@ -161,9 +219,32 @@ function LagebildErgebnis({ bereich }: { bereich: LagebildBereich }): JSX.Elemen
           </ul>
         </div>
       )}
-      <p data-testid="lagebild-basis" className="mt-1 text-[11px] text-muted-2">
-        {t("lagebildwerte.basis", { n: f.validatedKos, total: f.totalKos, trust: f.avgTrust })}
-      </p>
+      <button
+        type="button"
+        data-testid="lagebild-rechenweg-knopf"
+        aria-expanded={rechenwegOffen}
+        aria-controls={rechenwegId}
+        onClick={() => setRechenwegOffen((v) => !v)}
+        className="mt-1 text-[11.5px] text-text underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+      >
+        {t("lagebildwerte.rechenweg.knopf")}
+      </button>
+      <section
+        id={rechenwegId}
+        data-testid="lagebild-rechenweg"
+        aria-label={t("lagebildwerte.rechenweg.label")}
+        hidden={!rechenwegOffen}
+        className="mt-1 space-y-0.5 rounded-card border border-hairline bg-page px-2 py-1.5"
+      >
+        {r.zustand === "berechnet" ? (
+          <div data-testid="lagebild-formel" className="font-mono text-[11px] text-muted-2">
+            {r.formula}
+          </div>
+        ) : null}
+        <p data-testid="lagebild-basis" className="text-[11px] text-muted-2">
+          {t("lagebildwerte.basis", { n: f.validatedKos, total: f.totalKos, trust: f.avgTrust })}
+        </p>
+      </section>
       {f.demoKos > 0 ? (
         <p data-testid="lagebild-demo" className="text-[11px] text-trust-warn-text">
           {t("lagebildwerte.demo", { demo: f.demoKos })}

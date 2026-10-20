@@ -279,6 +279,62 @@ export function KopfbandPunkteListe(): JSX.Element {
   );
 }
 
+const LEISTEN_ZEILE =
+  "flex w-full items-center gap-2 rounded-[6px] px-2.5 py-1.5 text-[13px] leading-tight text-text no-underline outline-none hover:bg-hairline-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand";
+
+/**
+ * MACOS-20261014 · MAC-03 (produkt:20261011:assistenz-minimalistische-oberflaeche r2): dieselben
+ * Ziele als ruhige Liste der linken Arbeitsbereichsleiste (`Arbeitsbereichsleiste.tsx`) — erst die
+ * Hauptpunkte, dann die weiteren Bereiche in ihren Obergruppen. EINE Quelle wie Kopfband, Drawer und
+ * „Arbeitsbereiche“-Menü: `canSee` (Rolle, Stufe 2), dieselben Ziele, dieselbe Aktivregel und
+ * dieselben Zähler; Navigation nur über den Ungespeichert-Wächter (`GuardedLink`). Die Leiste ist
+ * kein Menü: gewöhnliche Links in Listen, keine Menürollen, eigene Kennungen (`data-seitenleiste-*`).
+ */
+export function SeitenleistenPunkte(): JSX.Element {
+  const { t } = useTranslation();
+  const { pathname } = useLocation();
+  const punkte = useSichtbareKopfbandPunkte();
+  const bereiche = useSichtbareWeitereBereiche();
+  const badges = useKopfbandZaehler();
+  const online = useOnline();
+  const zeile = (item: NavItem): JSX.Element => {
+    const aktiv = istAktiverEintrag(item, pathname);
+    return (
+      <li key={item.id}>
+        <GuardedLink
+          to={item.path}
+          aria-current={aktiv ? "page" : undefined}
+          data-seitenleiste-punkt={item.id}
+          className={`${LEISTEN_ZEILE} ${aktiv ? "bg-hairline-soft font-semibold" : ""}`}
+        >
+          <span className="min-w-0 flex-1 truncate">{t(anzeigeNameKey(item))}</span>
+          {zaehlerWert(
+            item,
+            badges,
+            online,
+            item.badgeTone === "crit"
+              ? "rounded-full bg-trust-crit-bg px-1.5 py-px text-zaehler font-bold text-trust-crit-text"
+              : "rounded-full bg-hairline px-1.5 py-px text-zaehler font-bold text-ink",
+          )}
+        </GuardedLink>
+      </li>
+    );
+  };
+  return (
+    <>
+      <ul className="space-y-0.5">{punkte.map(zeile)}</ul>
+      {nachObergruppen(bereiche).map(({ gruppe, items }) => (
+        <div key={gruppe.id} data-seitenleiste-gruppe={gruppe.id} className="mt-3">
+          <p className="px-2.5 pb-1 text-[11px] font-semibold tracking-[0.02em] text-muted-2">
+            {t(gruppe.titleKey)}
+          </p>
+          <ul className="space-y-0.5">{items.map(zeile)}</ul>
+        </div>
+      ))}
+    </>
+  );
+}
+
 /**
  * Die Zeilen des Untermenüs „Bereiche", mit ihren Zählern (dieselbe Regel wie oben).
  *

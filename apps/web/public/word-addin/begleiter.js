@@ -51,7 +51,8 @@
         verbunden: "Verbunden · Begleitapp sieht dieses Fenster.",
         getrennt: "Verbindung unterbrochen — wird erneut versucht.",
         anmeldung: "Bitte zuerst bei Klarwerk anmelden.",
-        keinOffice: "Ohne Word-Dokument gibt es nichts zu teilen."
+        keinOffice: "Ohne Word-Dokument gibt es nichts zu teilen.",
+        frageAbgebrochen: "In der Begleitapp gestoppt."
       },
       en: {
         titel: "Connect companion app",
@@ -61,7 +62,8 @@
         verbunden: "Connected · the companion app sees this window.",
         getrennt: "Connection interrupted — retrying.",
         anmeldung: "Please sign in to Klarwerk first.",
-        keinOffice: "Without a Word document there is nothing to share."
+        keinOffice: "Without a Word document there is nothing to share.",
+        frageAbgebrochen: "Stopped in the companion app."
       },
       nl: {
         titel: "Verbinden met begeleider-app",
@@ -71,7 +73,8 @@
         verbunden: "Verbonden · de begeleider-app ziet dit venster.",
         getrennt: "Verbinding onderbroken — opnieuw proberen.",
         anmeldung: "Meld je eerst aan bij Klarwerk.",
-        keinOffice: "Zonder Word-document valt er niets te delen."
+        keinOffice: "Zonder Word-document valt er niets te delen.",
+        frageAbgebrochen: "Gestopt in de begeleider-app."
       }
     };
     var BEGLEITER_BASIS = "/api/me/klara/begleiter";
@@ -90,6 +93,12 @@
     var begleiterTimer = null;
     var begleiterUnterwegs = false;
     var begleiterErledigt = [];
+    // produkt:20261011:assistenz-minimalistische-oberflaeche (UI-MIN-06/14): die Aufträge, die
+    // DIESES Fenster gerade ausführt — je Kennung ihr Abbruch. Fordert die Begleitapp den Abbruch an
+    // (`abbrechen` in der Meldeantwort), endet die weitere Arbeit hier und das Ende wird bestätigt.
+    var begleiterLaufend = {};
+    // Der eine Haken im Abruf des Fragefelds (siehe `begleiterFrageAbfangen`) — oder `null`.
+    var begleiterFrageHaken = null;
     var begleiterDokument = null;
     var begleiterNonce = null;
     var begleiterAuswahlHandler = false;
@@ -270,6 +279,21 @@
       begleiterZeichnen();
     }
 
+    /** Nacharbeit 64: die laufenden Aufträge dieses Fensters für die Anmeldung (höchstens zehn). */
+    function begleiterLaufendMelden() {
+      var liste = [];
+      for (var id in begleiterLaufend) {
+        if (Object.prototype.hasOwnProperty.call(begleiterLaufend, id) && liste.length < 10) {
+          var eintrag = { id: id, art: begleiterLaufend[id].art };
+          if (begleiterLaufend[id].schluessel) { eintrag.schluessel = begleiterLaufend[id].schluessel; }
+          // Nacharbeit 65: ein hier schon angenommener Abbruch geht mit.
+          if (begleiterLaufend[id].abgebrochen) { eintrag.abbruch = true; }
+          liste.push(eintrag);
+        }
+      }
+      return liste;
+    }
+
     function begleiterAnmelden() {
       var runde = begleiterRunde;
       begleiterDokumentLesen(function (dokument) {
@@ -281,7 +305,10 @@
           instanz: begleiterInstanz,
           host: host.host,
           hostFassung: host.fassung,
-          dokument: dokument
+          dokument: dokument,
+          // Nacharbeit 64: vollständig, was dieses Fenster noch ausführt (auch leer) — nach einem
+          // Serverneustart übernimmt der Kanal es samt Stopp und klärt danach auftragsbezogen.
+          laufend: begleiterLaufendMelden()
         }).then(function (antwort) {
           begleiterUnterwegs = false;
           if (runde !== begleiterRunde || !begleiterAn) { return; }
@@ -324,11 +351,21 @@
         begleiterUnterwegs = false;
         if (runde !== begleiterRunde || !begleiterAn) { return; }
         if (antwort.status === 200) {
-          begleiterErledigt = begleiterErledigt.slice(ergebnisse.length);
+          // Nacharbeit 65 (Ben): entfernt wird nur, was der Kanal ausdrücklich quittiert hat; ein
+          // abgewiesenes Endergebnis bleibt und geht mit dem nächsten Takt erneut hinaus.
+          var liste = antwort.body && antwort.body.quittiert;
+          var quittiert = Array.isArray(liste) ? liste : [];
+          begleiterErledigt = begleiterErledigt.filter(function (e, i) {
+            return i >= ergebnisse.length || quittiert.indexOf(e.id) < 0;
+          });
           if (begleiterLage !== "verbunden") { begleiterLageSetzen("verbunden"); }
           var auftraege = antwort.body && antwort.body.aktionen;
           if (auftraege && auftraege.length) {
             for (var i = 0; i < auftraege.length; i += 1) { begleiterAusfuehren(auftraege[i]); }
+          }
+          var abbrechen = antwort.body && antwort.body.abbrechen;
+          if (abbrechen && abbrechen.length) {
+            for (var j = 0; j < abbrechen.length; j += 1) { begleiterAbbrechen(abbrechen[j]); }
           }
         } else if (antwort.status === 404 || antwort.status === 409) {
           // Vergessen (Neustart, Frist) oder aus dem Takt: neu anmelden — die Wiederverbindung.
@@ -344,6 +381,7 @@
     }
 
     function begleiterErgebnis(id, stand, ergebnis, grund) {
+      delete begleiterLaufend[id];
       begleiterErledigt.push({
         id: id,
         stand: stand,
@@ -370,11 +408,19 @@
         begleiterErgebnis(auftrag.id, "fehler", null, "word_api_fehlt");
         return;
       }
+      // Abbruch vor dem Schreiben: es wird nichts eingefügt. Danach ist die Einfügung geschehen und
+      // wird als `erledigt` gemeldet — zurücknehmen kann sie nur Word selbst (Rückgängig).
+      var laufend = { abgebrochen: false, abbrechen: function () { laufend.abgebrochen = true; } };
+      // Nacharbeit 64: für die Bestandsmeldung bei einer Neuanmeldung.
+      laufend.art = "einfuegen";
+      laufend.schluessel = typeof auftrag.schluessel === "string" ? auftrag.schluessel : null;
+      begleiterLaufend[auftrag.id] = laufend;
       Word.run(b.bereich, function (context) {
         var jetzt = context.document.getSelection();
         var lage = typeof jetzt.compareLocationWith === "function" ? jetzt.compareLocationWith(b.bereich) : null;
         b.bereich.load("text");
         return context.sync().then(function () {
+          if (laufend.abgebrochen) { return "abgebrochen"; }
           var unveraendert = auftrag.auswahlStand === begleiterAuswahlStand && begleiterBereich === b
             && (lage === null || lage.value === "Equal") && b.bereich.text === b.text;
           if (!unveraendert) { return "auswahl_geaendert"; }
@@ -382,7 +428,9 @@
           return context.sync().then(function () { return null; });
         });
       }).then(function (grund) {
-        if (grund) {
+        if (grund === "abgebrochen") {
+          begleiterErgebnis(auftrag.id, "gestoppt", null, grund);
+        } else if (grund) {
           begleiterErgebnis(auftrag.id, "abgelehnt", null, grund);
         } else {
           begleiterErgebnis(auftrag.id, "erledigt", null, null);
@@ -419,23 +467,170 @@
       var antwortVorher = begleiterTextVon("ask-answer-text");
       var statusVorher = begleiterTextVon("ask-status");
       var beginn = Date.now();
+      var fertig = false;
+      // produkt:20261011:assistenz-minimalistische-oberflaeche (UI-MIN-06/14, Nacharbeit 8): der
+      // Abbruch erreicht den FRAGEVORGANG selbst. Für genau diese eine Frage hängt sich der Block in
+      // den Abruf, den das Fragefeld gleich absetzt (`/api/ask` bzw. `/api/klara/sessions/:id/execute`
+      // — keine neue Adresse), und gibt ihm ein eigenes Abbruchsignal. Ein Abbruch vor dem Senden
+      // lässt die Frage gar nicht hinausgehen; danach bricht er den laufenden Abruf (auch das Lesen der
+      // Antwort) ab, sodass das Fragefeld KEINE Antwort übernimmt. `gestoppt` wird erst gemeldet, wenn
+      // genau das eingetreten ist — vorher bleibt der Auftrag laufend und in der Begleitapp stoppbar.
+      // Grenze: was der Server mit einer schon empfangenen Anfrage tut, endet dort; ihr Ergebnis wird
+      // verworfen.
+      var frage = begleiterFrageAbfangen(function (grund) { beenden("gestoppt", null, grund); });
+      // Nacharbeit 10 (UI-MIN-14): der Haken wird erst abgebaut, wenn der Fragevorgang des Fensters
+      // SICHER zu Ende ist. Solange das Fragefeld gesperrt ist (`askLaeuft` in taskpane.js setzt genau
+      // dann `#ask-input.disabled`), kann ein verspäteter Auswahlrückruf noch einen Abruf auslösen —
+      // ein abgebrochener Vorgang muss ihn dann weiterhin abweisen. Erst danach ist nichts mehr offen.
+      function aufraeumenWennSicher() {
+        if (feld.disabled) { return; }
+        clearInterval(pruefen);
+        frage.freigeben();
+      }
+      function beenden(stand, ergebnis, grund) {
+        if (fertig) { return; }
+        fertig = true;
+        begleiterErgebnis(auftrag.id, stand, ergebnis, grund);
+        aufraeumenWennSicher();
+      }
       knopf.click();
       var pruefen = setInterval(function () {
+        // Gemeldet (oder getrennt): nur noch warten, bis der Fragevorgang sicher zu Ende ist.
+        if (fertig) { aufraeumenWennSicher(); return; }
         var antwort = begleiterTextVon("ask-answer-text");
         var status = begleiterTextVon("ask-status");
         var block = document.getElementById("ask-answer-block");
         var sichtbar = !block || block.className.indexOf("hidden") < 0;
         if (antwort && antwort !== antwortVorher && sichtbar) {
-          clearInterval(pruefen);
-          begleiterErgebnis(auftrag.id, "erledigt", antwort, null);
+          beenden("erledigt", antwort, null);
         } else if (!knopf.disabled && status && status !== statusVorher && Date.now() - beginn > 500) {
-          clearInterval(pruefen);
-          begleiterErgebnis(auftrag.id, "fehler", null, status);
+          beenden("fehler", null, status);
         } else if (Date.now() - beginn > BEGLEITER_FRAGE_FRIST_MS) {
-          clearInterval(pruefen);
-          begleiterErgebnis(auftrag.id, "fehler", null, "zeitueberschreitung");
+          beenden("fehler", null, "zeitueberschreitung");
         }
       }, 400);
+      // Abbruch: das Signal geht an den Fragevorgang; `gestoppt` meldet erst dessen bestätigte Wirkung
+      // (siehe `begleiterFrageAbfangen`). Erscheint die Antwort trotzdem (sie war schon übernommen),
+      // gilt sie als `erledigt` — es wird kein Stopp behauptet, der nicht galt.
+      if (!fertig) {
+        var fragEintrag = {
+          // Nacharbeit 64: für die Bestandsmeldung bei einer Neuanmeldung.
+          art: "frage",
+          schluessel: typeof auftrag.schluessel === "string" ? auftrag.schluessel : null,
+          // Nacharbeit 65: ein angenommener Abbruch wird für die Bestandsmeldung festgehalten.
+          abgebrochen: false,
+          abbrechen: function () { fragEintrag.abgebrochen = true; frage.abbrechen(); },
+          // Getrennt: nichts mehr melden. Der Vorgang ist DAUERHAFT entwertet — ein noch ausstehender
+          // Abruf (etwa nach einem verspäteten Auswahlrückruf von Word) wird abgewiesen, ein laufender
+          // abgebrochen; der Haken bleibt, bis der Fragevorgang des Fensters sicher beendet ist.
+          aufgeben: function () {
+            fragEintrag.abgebrochen = true;
+            frage.abbrechen();
+            fertig = true;
+            aufraeumenWennSicher();
+          }
+        };
+        begleiterLaufend[auftrag.id] = fragEintrag;
+      }
+    }
+
+    /** Die Abrufziele des Fragefelds — dieselben, die `performAsk` in taskpane.js anspricht. */
+    function begleiterIstFrageziel(ziel) {
+      return ziel === "/api/ask" || /^\/api\/klara\/sessions\/[^\/?#]+\/execute$/.test(ziel);
+    }
+
+    /**
+     * Hängt sich für GENAU EINE Frage in den nächsten Abruf des Fragefelds. Andere Abrufe gehen
+     * unverändert durch; nach dieser einen Frage (oder mit `freigeben`) ist der Haken wieder weg.
+     * `bestaetigt(grund)` wird nur gerufen, wenn der Abbruch nachweislich gewirkt hat:
+     *   · `vor_dem_senden` — die Frage ging nicht hinaus;
+     *   · `abgebrochen`    — der laufende Abruf bzw. das Lesen der Antwort wurde abgebrochen, das
+     *                        Fragefeld erhält einen Fehler statt einer Antwort.
+     */
+    function begleiterFrageAbfangen(bestaetigt) {
+      // Höchstens EIN Haken: ein noch nicht abgebauter Haken einer früheren Frage gehört zu einem
+      // beendeten Fragevorgang (aufgerufen wird nur bei freiem Fragefeld-Knopf, also ohne `askLaeuft`)
+      // und darf die neue Frage nicht abweisen.
+      if (begleiterFrageHaken) { begleiterFrageHaken.freigeben(); }
+      var vorher = window.fetch;
+      var steuerung = typeof AbortController === "function" ? new AbortController() : null;
+      var zustand = { abgebrochen: false, gesendet: false };
+      function abbruchFehler(grund) {
+        bestaetigt(grund);
+        return new Error(begleiterT("frageAbgebrochen"));
+      }
+      var haken = null;
+      function freigeben() {
+        if (window.fetch === umleitung) { window.fetch = vorher; }
+        if (begleiterFrageHaken === haken) { begleiterFrageHaken = null; }
+      }
+      function umleitung(eingabe, init) {
+        var ziel = String(eingabe && typeof eingabe === "object" && eingabe.url ? eingabe.url : eingabe);
+        if (!begleiterIstFrageziel(ziel)) { return vorher.apply(this, arguments); }
+        freigeben();
+        if (zustand.abgebrochen) { return Promise.reject(abbruchFehler("vor_dem_senden")); }
+        zustand.gesendet = true;
+        var eigen = {};
+        for (var k in (init || {})) {
+          if (Object.prototype.hasOwnProperty.call(init, k)) { eigen[k] = init[k]; }
+        }
+        if (steuerung) {
+          // Die eigene Frist des Fragefelds wirkt weiter: ihr Signal bricht auch unseres ab.
+          var fremd = init && init.signal;
+          if (fremd && fremd.aborted) { steuerung.abort(); }
+          else if (fremd && typeof fremd.addEventListener === "function") {
+            fremd.addEventListener("abort", function () { steuerung.abort(); });
+          }
+          eigen.signal = steuerung.signal;
+        }
+        return vorher.call(window, eingabe, eigen).then(function (res) {
+          if (zustand.abgebrochen) { throw abbruchFehler("abgebrochen"); }
+          var lesen = res && res.json;
+          if (typeof lesen === "function") {
+            try {
+              res.json = function () {
+                return lesen.call(res).then(function (koerper) {
+                  if (zustand.abgebrochen) { throw abbruchFehler("abgebrochen"); }
+                  return koerper;
+                }, function (fehler) {
+                  if (zustand.abgebrochen) { throw abbruchFehler("abgebrochen"); }
+                  throw fehler;
+                });
+              };
+            } catch (e) { /* nicht überschreibbar: dann gilt nur der Abbruch des Abrufs */ }
+          }
+          return res;
+        }, function (fehler) {
+          if (zustand.abgebrochen) { throw abbruchFehler("abgebrochen"); }
+          throw fehler;
+        });
+      }
+      window.fetch = umleitung;
+      haken = {
+        abbrechen: function () {
+          if (zustand.abgebrochen) { return; }
+          zustand.abgebrochen = true;
+          if (steuerung) { try { steuerung.abort(); } catch (e) { /* schon beendet */ } }
+        },
+        freigeben: freigeben
+      };
+      begleiterFrageHaken = haken;
+      return haken;
+    }
+
+    /**
+     * Die Begleitapp fordert den Abbruch eines übergebenen Auftrags an. Läuft er hier noch, endet er
+     * und wird als `gestoppt` bestätigt. Ist sein Ergebnis schon unterwegs, gilt dieses. Sonst läuft
+     * in diesem Fenster nichts mehr dazu (etwa nach Neuladen) — auch das ist ein bestätigtes Ende.
+     */
+    function begleiterAbbrechen(id) {
+      if (typeof id !== "string") { return; }
+      var laufend = begleiterLaufend[id];
+      if (laufend) { laufend.abbrechen(); return; }
+      for (var i = 0; i < begleiterErledigt.length; i += 1) {
+        if (begleiterErledigt[i].id === id) { return; }
+      }
+      begleiterErgebnis(id, "gestoppt", null, "nicht_in_arbeit");
     }
 
     function begleiterAusfuehren(auftrag) {
@@ -454,6 +649,7 @@
       begleiterAuswahlStand = 0;
       begleiterBereichFreigeben();
       begleiterErledigt = [];
+      begleiterLaufend = {};
       begleiterLageSetzen("verbindet");
       begleiterAuswahlBeobachten();
       begleiterAnmelden();
@@ -468,6 +664,14 @@
       begleiterAn = false;
       begleiterAngemeldet = false;
       begleiterUnterwegs = false;
+      // Getrennt: kein Auftrag dieses Fensters arbeitet für die Begleitapp weiter.
+      for (var laufendId in begleiterLaufend) {
+        if (Object.prototype.hasOwnProperty.call(begleiterLaufend, laufendId)) {
+          var eintrag = begleiterLaufend[laufendId];
+          if (typeof eintrag.aufgeben === "function") { eintrag.aufgeben(); } else { eintrag.abbrechen(); }
+        }
+      }
+      begleiterLaufend = {};
       begleiterAuswahl = null;
       begleiterBereichFreigeben();
       clearInterval(begleiterTimer);

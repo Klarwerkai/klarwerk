@@ -44,6 +44,7 @@ import {
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { setzeKlaraEntwurf } from "../../api/chat";
+import { kiArbeitswegApi } from "../../api/kiArbeitsweg";
 import type { KlaraObjektbezug } from "../../api/klaraGespraech";
 import { useSession } from "../../app/AuthContext";
 import { HOME_ROUTE } from "../../app/navigation";
@@ -89,6 +90,25 @@ import {
 } from "../assistenzFlaechen";
 // produkt:20261012:klara-setup-shortcuts-umsetzung: konfigurierte Kürzel führen vorhandene Wege aus.
 import { useKlaraAktion } from "../klara-setup/KlaraKuerzelAusfuehrung";
+// produkt:20261011:assistenz-minimalistische-oberflaeche: Menü, Unterseiten, Vorgangsleiste.
+import {
+  DUNKEL_ABFRAGE,
+  DUNKLE_TOKEN,
+  EinklappenSymbol,
+  EinstellungenSeite,
+  FunktionenSeite,
+  HilfeSeite,
+  MenueListe,
+  type MenueSeite,
+  MenueSymbol,
+  MikrofonSymbol,
+  NeuSeite,
+  Unterseite,
+  VerlaufSeite,
+  type Vorgang,
+  VorgangsLeiste,
+} from "./AssistenzMinimal";
+import { KiArbeitsweg } from "./KiArbeitsweg";
 import { KlaraAufgaben } from "./KlaraAufgaben";
 import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
@@ -113,7 +133,13 @@ import { KlaraTutorialKarte, KlaraZeiger, type ZielTreffer, findeZiel } from "./
 import { setzeKlaraVorschauAktiv } from "./aktiv";
 import { antwortAufAuswahl, antwortAufFrage, entwurfsInhalt, kuerze } from "./antworten";
 import { VORSCHAU_PFAD, artikelPfad, demoArtikel } from "./artikel";
-import { type AuftragsUmgebung, ladeAuftraege, starteAuftrag, useAusfuehrungen } from "./auftrag";
+import {
+  type AuftragsUmgebung,
+  brecheAuftragAb,
+  ladeAuftraege,
+  starteAuftrag,
+  useAusfuehrungen,
+} from "./auftrag";
 import {
   type KontextAktion,
   ZIELSPRACHEN,
@@ -136,12 +162,30 @@ import {
   hilfe as echtHilfe,
   stoppen as echtStoppen,
   vergiss as echtVergessen,
+  einwilligen,
   ladeEcht,
   leseEcht,
   objektbezugAus,
   useEchtGespraech,
 } from "./echt";
-import { eingabeAnKontoBinden, leseEingabe, setzeEingabe, useEingabe } from "./eingabe";
+import {
+  eingabeAnKontoBinden,
+  entferneAbgewiesen,
+  fuegeAbgewiesenHinzu,
+  leseEingabe,
+  leseEingabeHerkunft,
+  setzeEingabe,
+  useAbgewiesen,
+  useEingabe,
+} from "./eingabe";
+import {
+  type LaufenderKiAuftrag,
+  ersetzeKiAuftrag,
+  ladeKiAuftraege,
+  laufendeKiAuftraege,
+  nachzulesendeGespraeche,
+  useKiAuftraege,
+} from "./kiAuftraege";
 import {
   type Uebersetzer,
   ermittleKontext,
@@ -226,6 +270,9 @@ const KNOPF =
   "inline-flex h-8 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-text hover:border-ink/30 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 const KNOPF_KI =
   "inline-flex h-8 items-center rounded-btn border border-ai bg-ai-surface-2 px-2.5 text-[12px] font-semibold text-ai hover:bg-ai-surface-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
+/** Assistenz minimal: ein Knopf, der nur ein Symbol zeigt (Name über aria-label/title). */
+const SYMBOL_KNOPF =
+  "inline-flex shrink-0 items-center justify-center rounded-btn border border-hairline bg-surface text-text hover:border-ink/30 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 const KLEINTITEL = "font-mono text-klein font-semibold uppercase tracking-wider text-muted-2";
 const DEMO_SCHILD =
   "rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text";
@@ -308,6 +355,33 @@ function herkunftZiel(h: Herkunft): string {
     : internerPfad(h.pfad, HOME_ROUTE);
 }
 
+/** UI-MIN-10/UI-S12: der Sitzungsschalter der Vergleichsbasis (nur für die Vergleichssonde). */
+const VERGLEICH_SCHLUESSEL = "klarwerk.assistenz.vergleich";
+/** So oft liest die Assistenz einen laufenden KI-Auftrag nach (nur solange einer läuft). */
+const KI_NACHLESEN_MS = 4000;
+
+function vergleichFrueher(): boolean {
+  try {
+    return sessionStorage.getItem(VERGLEICH_SCHLUESSEL) === "frueher";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * produkt:20261011:assistenz-minimalistische-oberflaeche (UI-MIN-05/12): derselbe Ort — dieselbe
+ * Seite und dasselbe Objekt (Wissensobjekt, Entwurf, Artikel). Der angezeigte Objekttext zählt
+ * nicht: auf „Fragen“ wandert er mit jedem Tastendruck im Fragefeld.
+ */
+function gleicherOrt(a: Herkunft, b: Herkunft): boolean {
+  return (
+    a.pfad === b.pfad &&
+    (a.koId ?? "") === (b.koId ?? "") &&
+    (a.entwurfId ?? "") === (b.entwurfId ?? "") &&
+    (a.artikelId ?? "") === (b.artikelId ?? "")
+  );
+}
+
 const BEZUG_KNOEPFE: readonly Bezug[] = ["seite", "markierung", "frei"];
 
 interface AuswahlKnopf {
@@ -327,6 +401,13 @@ export function KlaraVorschau({
   const { t, i18n } = useAssistenzT();
   const assistenz = useAssistenzAnzeige();
   const produkt = betriebsart === "produkt";
+  // UI-MIN-10/UI-S12 (Nacharbeit 3, Bens Befund): die BISHERIGE Produktfläche als Vergleichsbasis.
+  // Sie ist der unveränderte zweite Zweig unten (mit allen `produkt`-Bedingungen von
+  // produkt:20261010:assistenz-produkteinstieg). Erreichbar nur über den Sitzungsschalter
+  // `VERGLEICH_SCHLUESSEL` — kein Bedienelement, keine andere Datenquelle; die Vorher-Nachher-Sonde
+  // (`tests-smoke/assistenz-minimal-vergleich-browser.spec.ts`) setzt ihn in ihrem eigenen Kontext.
+  const [frueher] = useState(() => produkt && vergleichFrueher());
+  const minimal = produkt && !frueher;
   // produkt:20261010:assistenz-produkteinstieg: der Leseeinstieg `profil.ts` bleibt angeschlossen.
   // Der am Konto gespeicherte Name (dieser Auftrag) hat Vorrang; ohne ihn gilt ein über
   // `setzeAssistenzProfil` gesetzter Name, sonst die neutrale Bezeichnung.
@@ -340,6 +421,9 @@ export function KlaraVorschau({
   const navigate = useNavigate();
   const tutorial = useTutorialFuerKlara();
   const schmal = useMedien(SCHMAL);
+  // UI-MIN-16: im Produktbetrieb folgt die Assistenz der Systemdarstellung (Vorschau unverändert).
+  const dunkel = useMedien(DUNKEL_ABFRAGE) && minimal;
+  const farbStil: CSSProperties = dunkel ? DUNKLE_TOKEN : {};
   // Reduzierte Bewegung: Systemeinstellung ODER die eigene Wahl unter „Meine Assistenz".
   const reduziert = useMedien(REDUZIERT) || assistenz.bewegungReduziert;
   const fenster = useFenster();
@@ -455,8 +539,12 @@ export function KlaraVorschau({
     // Seiten werden nachgeladen — ihr Objekt steht erst kurz nach dem Seitenwechsel da.
     const spaet = window.setTimeout(neu, 400);
     const seite = seiteAusPfad(location.pathname).seite;
+    // MACOS-20261014 · UI-01: auf der Kapital-Sicht wechseln Bereich und Stand der Lagebild-Werte
+    // ohne Seitenwechsel (Auswahl, Speichern) — die Kontextzeile folgt dem Angezeigten.
     const nachlesen =
-      seite === "erfassung" || seite === "fragen" ? window.setInterval(neu, 300) : 0;
+      seite === "erfassung" || seite === "fragen" || location.pathname === "/kapital"
+        ? window.setInterval(neu, 300)
+        : 0;
     let eingabeUhr = 0;
     const beiEingabe = (): void => {
       window.clearTimeout(eingabeUhr);
@@ -1172,8 +1260,14 @@ export function KlaraVorschau({
   // Die angefangene Eingabe liegt ausserhalb der Figur (`eingabe.ts`): Schliessen, Verkleinern,
   // Breitenwechsel und Neuladen verlieren sie nicht.
   const eingabe = useEingabe();
+  // produkt:20261011:assistenz-minimalistische-oberflaeche: ein NEUER Entwurf merkt sich den Ort,
+  // an dem er beginnt (getippt oder diktiert) — `eingabe.ts` hält beides zusammen.
   const setEingabe = useCallback((neu: string | ((alt: string) => string)): void => {
-    setzeEingabe(kontoIdRef.current, typeof neu === "function" ? neu(leseEingabe()) : neu);
+    setzeEingabe(
+      kontoIdRef.current,
+      typeof neu === "function" ? neu(leseEingabe()) : neu,
+      kontextRef.current,
+    );
   }, []);
   // Klara 01: eine Frage im echten Betrieb geht nur mit gelesenem Gespräch und gespeicherter
   // Einwilligung, nicht bei abgeschalteter KI und nicht, solange eine andere läuft.
@@ -1211,9 +1305,15 @@ export function KlaraVorschau({
       art?: KontextAktion | "frage";
       fest?: { text: string; bezug: KlaraObjektbezug };
       ziel?: Herkunft;
+      /**
+       * produkt:20261011:assistenz-minimalistische-oberflaeche (UI-MIN-03/12): gerufen GENAU dann,
+       * wenn die Frage alle Prüfungen bestanden hat und an den Frageweg übergeben wird — erst ab hier
+       * darf der Entwurf das Eingabefeld verlassen.
+       */
+      beiUebergabe?: () => void;
     } = {},
   ): Promise<Absendeergebnis> => {
-    const { art = "frage", fest, ziel } = optionen;
+    const { art = "frage", fest, ziel, beiUebergabe } = optionen;
     if (!echtSendebereit || pruefungLaeuft.current) {
       return Promise.resolve({ stand: "nicht_gesendet", antwort: null });
     }
@@ -1260,6 +1360,7 @@ export function KlaraVorschau({
           fest?.bezug ??
           mitSeitenbezug(objektbezugFuer(gewaehlt, kontextJetzt, auswahlJetzt), seitenbezug);
         pruefungLaeuft.current = false;
+        beiUebergabe?.();
         const stand = await echtFragen(text, bezug, sprache, t, seitenbezug);
         if (stand !== "veraltet" && !istAktuelleAktion(aktion)) {
           // assistenz-avatarzustaende (K4): eine neuere Aktion hat inzwischen begonnen — das späte
@@ -1493,6 +1594,49 @@ export function KlaraVorschau({
       void ladeAuftraege(gespraechId, kontextRef.current);
     }
   }, [istEcht, gespraechId]);
+  // Nacharbeit 35/38 (Ben, UI-MIN-06/14) × BPA-13: die KI-Aufträge der eigenen Gespräche gelten für
+  // die ganze Assistenz — unabhängig von der geöffneten Unterseite UND vom aktuellen Gespräch. Ein
+  // laufender Auftrag eines früheren Gesprächs bleibt sichtbar und an SEIN Gespräch gebunden.
+  // Gelesen wird vom Server; nachgelesen nur, solange dort etwas läuft oder eine Übergabe aussteht.
+  const kiStand = useKiAuftraege();
+  const kiAktiv = minimal && istEcht;
+  const kiLaufend = kiAktiv ? laufendeKiAuftraege(kiStand) : [];
+  const kiNachlesen = kiAktiv ? nachzulesendeGespraeche(kiStand).join(",") : "";
+  useEffect(() => {
+    if (kiAktiv && gespraechId) {
+      void ladeKiAuftraege(gespraechId);
+    }
+  }, [kiAktiv, gespraechId]);
+  useEffect(() => {
+    if (!kiNachlesen) {
+      return;
+    }
+    const ids = kiNachlesen.split(",");
+    const uhr = window.setInterval(() => {
+      for (const id of ids) {
+        void ladeKiAuftraege(id);
+      }
+    }, KI_NACHLESEN_MS);
+    return () => window.clearInterval(uhr);
+  }, [kiNachlesen]);
+  /**
+   * Unterbrechen oder Stoppen eines laufenden KI-Auftrags — derselbe Serverweg wie in der Fläche,
+   * gebunden an das Gespräch, aus dem der Auftrag stammt (nicht an das gerade geöffnete).
+   */
+  const kiSchritt = async (l: LaufenderKiAuftrag, was: "unterbrechen" | "stoppen") => {
+    try {
+      if (was === "stoppen") {
+        const r = await kiArbeitswegApi.stoppe(l.gespraechId, l.auftrag.job.jobId);
+        ersetzeKiAuftrag(l.gespraechId, r.auftrag);
+        setAnsage(r.text);
+      } else {
+        const r = await kiArbeitswegApi.unterbrich(l.gespraechId, l.auftrag.job.jobId);
+        ersetzeKiAuftrag(l.gespraechId, r.auftrag);
+      }
+    } catch (fehler) {
+      setAnsage(fehler instanceof Error ? fehler.message : String(fehler));
+    }
+  };
   const eingabeAuftrag = istEcht ? erkenneAuftrag(eingabe) : null;
   // Klara 14: ein Verbesserungsschritt wird nur VORBEREITET — der Satz steht danach im Eingabefeld
   // und geht erst mit „Senden“ über denselben Ausführungsweg wie ein getippter Auftrag.
@@ -1775,6 +1919,390 @@ export function KlaraVorschau({
     }
   };
 
+  // ---------------------------------------------------------------------------------------------
+  // produkt:20261011:assistenz-minimalistische-oberflaeche — die Grundansicht im Produktbetrieb.
+  // Menü und Unterseiten verändern weder Eingabe noch Gespräch: beide liegen ausserhalb der Fläche
+  // (`eingabe.ts`, `echt.ts`). Die Einwilligung wird gefragt, wenn sie gebraucht wird — beim ersten
+  // Senden —, und danach geht genau das ab, was die Person gewählt hatte.
+  // ---------------------------------------------------------------------------------------------
+  type Ausstehend = "frage" | KontextAktion | "umformulieren";
+  const [menueOffen, setMenueOffen] = useState(false);
+  const [menueSeite, setMenueSeite] = useState<MenueSeite | null>(null);
+  const [einwilligungFuer, setEinwilligungFuer] = useState<Ausstehend | null>(null);
+  const [nachEinwilligung, setNachEinwilligung] = useState<Ausstehend | null>(null);
+  // UI-MIN-12: ein Entwurf, begonnen an einem anderen Ort als dem jetzigen — wohin soll er?
+  const [zielFrage, setZielFrage] = useState<{ ursprung: Herkunft; jetzt: Herkunft } | null>(null);
+  // UI-MIN-07: die ausführliche Erklärung der KI-Sperre erscheint am betroffenen Auftrag.
+  const [kiAusGezeigt, setKiAusGezeigt] = useState(false);
+  // UI-MIN-03/12: abgewiesene Entwürfe, während im Feld schon neuer Text stand — kontogebunden in
+  // der Sitzung (`eingabe.ts`), bis die Person sie zurückholt oder verwirft (Nacharbeit 5).
+  const abgewiesen = useAbgewiesen();
+  const menueId = useId();
+  const menueKnopfRef = useRef<HTMLButtonElement>(null);
+  const menueErsterRef = useRef<HTMLButtonElement>(null);
+  const unterseiteZurueckRef = useRef<HTMLButtonElement>(null);
+  const eingabeRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (menueOffen) {
+      menueErsterRef.current?.focus({ preventScroll: true });
+    }
+  }, [menueOffen]);
+  useEffect(() => {
+    if (menueSeite) {
+      unterseiteZurueckRef.current?.focus({ preventScroll: true });
+    }
+  }, [menueSeite]);
+  // Eingeklappt: beim nächsten Öffnen steht wieder die Grundansicht da (Eingabe und Gespräch bleiben).
+  useEffect(() => {
+    if (!panelSichtbar) {
+      setMenueOffen(false);
+      setMenueSeite(null);
+      setEinwilligungFuer(null);
+      setZielFrage(null);
+      setKiAusGezeigt(false);
+    }
+  }, [panelSichtbar]);
+  useEffect(() => {
+    if (!ki.abgeschaltet) {
+      setKiAusGezeigt(false);
+    }
+  }, [ki.abgeschaltet]);
+  const eingabeFokussieren = (): void => {
+    window.setTimeout(() => eingabeRef.current?.focus({ preventScroll: true }), 0);
+  };
+  const zurueckZumGespraech = (): void => {
+    setMenueSeite(null);
+    eingabeFokussieren();
+  };
+  /**
+   * Sendet den Entwurf mit GENAU diesem Ziel. Nacharbeit 3 (Bens Befund): der Entwurf bleibt im
+   * Feld, bis die Frage tatsächlich an den Frageweg übergeben ist (`beiUebergabe`) — erst dann wird
+   * das Feld geleert, und nur, wenn es noch genau diesen Entwurf trägt. Wird die Frage vorher
+   * abgewiesen (`nicht_gesendet`, etwa eine Markierung ohne Leserecht), ist nichts geleert. Hat die
+   * Person in der Zwischenzeit selbst etwas anderes ins Feld geschrieben, bleibt ihr neuer Text
+   * unberührt, und der abgewiesene Entwurf steht SEPARAT zum Zurückholen bereit — und bleibt dort,
+   * auch über weitere Sendeversuche und ein Neuladen hinweg, bis zur bewussten Entscheidung.
+   */
+  const entwurfSenden = (ziel: Herkunft): void => {
+    const roh = leseEingabe();
+    const frage = roh.trim();
+    if (!frage) {
+      return;
+    }
+    const ursprung = leseEingabeHerkunft();
+    const konto = kontoIdRef.current;
+    setZielFrage(null);
+    void echtFrage(frage, {
+      ziel,
+      beiUebergabe: () => {
+        if (kontoIdRef.current === konto && leseEingabe() === roh) {
+          setEingabe("");
+        }
+      },
+    }).then((r) => {
+      if (r.stand !== "nicht_gesendet" || kontoIdRef.current !== konto) {
+        return;
+      }
+      if (leseEingabe() === roh) {
+        return; // der Entwurf steht unverändert im Feld — nichts verloren
+      }
+      if (!leseEingabe().trim()) {
+        setzeEingabe(konto, roh, ursprung);
+        return;
+      }
+      fuegeAbgewiesenHinzu(konto, roh, ursprung);
+    });
+  };
+  /**
+   * Nacharbeit 24 (Ben, UI-MIN-12): ein erkannter Ausführungsauftrag geht mit GENAU dem gewählten
+   * Ziel an den Ausführungsweg (Klara 05) — nie still mit dem Ort, an dem man gerade steht. Das Feld
+   * leert sich erst mit dem Start, und nur, wenn es noch genau diesen Entwurf trägt.
+   */
+  const auftragAbschicken = (ziel: Herkunft): void => {
+    const roh = leseEingabe();
+    const text = roh.trim();
+    if (!text) {
+      return;
+    }
+    setZielFrage(null);
+    const r = ausfuehren(text, "getippt", ziel);
+    if (r === "gestartet" && leseEingabe() === roh) {
+      setEingabe("");
+    }
+  };
+  /** Ist der aktuelle Entwurf ein Ausführungsauftrag (dann gilt der Ausführungsweg)? */
+  const entwurfIstAuftrag = (): boolean => istEcht && erkenneAuftrag(leseEingabe()) !== null;
+  /** Das in der Zielklärung gewählte Ziel: Auftrag an den Ausführungsweg, sonst der Frageweg. */
+  const zielGewaehlt = (ziel: Herkunft): void => {
+    if (entwurfIstAuftrag()) {
+      auftragAbschicken(ziel);
+    } else {
+      entwurfSenden(ziel);
+    }
+  };
+  const abgewiesenZurueckholen = (id: string): void => {
+    const a = entferneAbgewiesen(kontoIdRef.current, id);
+    if (!a) {
+      return;
+    }
+    const jetzt = leseEingabe();
+    // Leeres Feld: der Entwurf samt Ursprung zurück. Sonst angehängt — der neue Text bleibt.
+    if (!jetzt.trim()) {
+      setzeEingabe(kontoIdRef.current, a.text, a.herkunft);
+    } else {
+      setEingabe(`${jetzt.trimEnd()} ${a.text.trim()}`);
+    }
+    eingabeFokussieren();
+  };
+  // Integration main (Klara 05): `ausfuehren` ist dort der Ausführungsweg für Aufträge — dieser
+  // Schritt führt das Ausstehende des minimalen Gesprächs aus und heisst deshalb anders.
+  const ausstehendAusfuehren = (was: Ausstehend): void => {
+    if (was === "frage") {
+      if (!leseEingabe().trim()) {
+        return;
+      }
+      const jetzt = kontextRef.current;
+      const ursprung = leseEingabeHerkunft();
+      const z0 = leseZustand();
+      // Nur der Seitenbezug hängt am Ort; Markierung und freie Frage tragen ihr Ziel selbst.
+      if (
+        ursprung &&
+        wirksamerBezug(z0.bezug, z0.auswahl) === "seite" &&
+        !gleicherOrt(ursprung, jetzt)
+      ) {
+        setZielFrage({ ursprung, jetzt });
+        return;
+      }
+      entwurfSenden(jetzt);
+    } else if (was === "umformulieren") {
+      umformulierenEcht();
+    } else {
+      void echtFrage("", { art: was });
+    }
+  };
+  /** Senden und Vorschläge: ohne gespeicherte Einwilligung erst fragen, dann ausführen. */
+  const mitEinwilligung = (was: Ausstehend): void => {
+    if (ki.abgeschaltet) {
+      // Die Sperre bleibt wirksam; erklärt wird sie genau an diesem Auftrag.
+      setKiAusGezeigt(true);
+      return;
+    }
+    if (echt.laden !== "bereit" || echt.laeuftSeit !== null) {
+      return;
+    }
+    if (!echt.gespraech?.einwilligungAm) {
+      setEinwilligungFuer(was);
+      return;
+    }
+    ausstehendAusfuehren(was);
+  };
+  const einwilligenUndAusfuehren = (): void => {
+    const was = einwilligungFuer;
+    if (!was) {
+      return;
+    }
+    void einwilligen(true, objektbezugAus(kontextRef.current), t).then((ok) => {
+      if (ok) {
+        setEinwilligungFuer(null);
+        setNachEinwilligung(was);
+      }
+    });
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: nur die erreichte Sendebereitschaft löst aus.
+  useEffect(() => {
+    if (nachEinwilligung && echtSendebereit) {
+      const was = nachEinwilligung;
+      setNachEinwilligung(null);
+      ausstehendAusfuehren(was);
+    }
+  }, [nachEinwilligung, echtSendebereit]);
+  const sendenMinimal = (e: FormEvent): void => {
+    e.preventDefault();
+    const frage = eingabe.trim();
+    if (!frage) {
+      return;
+    }
+    // Integration main (Klara 05): ein erkannter Ausführungsauftrag geht — wie im bisherigen
+    // Gespräch — an den EINEN Ausführungsweg; alles andere ist eine Frage an den Frageweg.
+    // Nacharbeit 24 (UI-MIN-12): der Auftrag trägt die Herkunft seines Entwurfs. Wurde er an einem
+    // anderen Ort begonnen, wird das Ziel zuerst geklärt — nie still auf den neuen Ort gesendet.
+    if (entwurfIstAuftrag()) {
+      const jetzt = kontextRef.current;
+      const ursprung = leseEingabeHerkunft();
+      if (ursprung && !gleicherOrt(ursprung, jetzt)) {
+        setZielFrage({ ursprung, jetzt });
+        return;
+      }
+      auftragAbschicken(ursprung ?? jetzt);
+      return;
+    }
+    mitEinwilligung("frage");
+  };
+  const menueWahl = (seite: MenueSeite): void => {
+    setMenueOffen(false);
+    if (seite === "neu" && echt.nachrichten.length === 0) {
+      // Es gibt nichts, was unerreichbar würde: das leere Gespräch ist schon das neue.
+      eingabeFokussieren();
+      return;
+    }
+    setMenueSeite(seite);
+  };
+  const zurEntscheidung = (): void => {
+    setMenueOffen(false);
+    setMenueSeite(null);
+    if (!panelSichtbar) {
+      oeffnen();
+    }
+    window.setTimeout(() => {
+      document
+        .querySelector<HTMLElement>('[data-testid="klara-textvorschlag"]')
+        ?.scrollIntoView?.({ block: "nearest" });
+    }, 0);
+  };
+  // Jeder tatsächlich laufende Vorgang einzeln, mit der Wirkung, die er wirklich hat.
+  const vorgaenge: Vorgang[] = [];
+  if (sprechen.laeuft) {
+    vorgaenge.push({
+      art: "aufnahme",
+      text: t(`klarasprache.laeuft.${sprechen.laeuft}`),
+      // Dieselbe Kennung wie die Aufnahmeanzeige des vorhandenen Sprachwegs (KlaraSprache.tsx):
+      // Diktat und gesprochener Auftrag bleiben unterscheidbar.
+      textTestId: "klara-aufnahme-laeuft",
+      textArt: sprechen.laeuft,
+      aktionen: [
+        {
+          testId: "klara-aufnahme-stoppen",
+          label: t("klarasprache.stoppen"),
+          onClick: sprechen.stoppen,
+        },
+      ],
+    });
+  }
+  if (istEcht && echt.laeuftSeit !== null) {
+    vorgaenge.push({
+      art: "anfrage",
+      text: t("klaragespraech.laeuftSeit", {
+        s: Math.max(0, Math.floor((Date.now() - echt.laeuftSeit) / 1000)),
+      }),
+      textTestId: "klara-laeuft-seit",
+      aktionen: [
+        { testId: "klara-stoppen", label: t("klaragespraech.stoppen"), onClick: echtStoppen },
+      ],
+    });
+  } else if (z.status === "laeuft") {
+    vorgaenge.push({ art: "arbeit", text: t("assistenzminimal.vorgang.arbeit"), aktionen: [] });
+  }
+  // Integration main (Klara 05): jeder laufende Ausführungsauftrag einzeln, mit dessen eigenem
+  // Abbruch (`brecheAuftragAb`: keine weiteren Schritte; schon Gespeichertes bleibt, Rückgängig nur
+  // über den Auftrag selbst) — auch bei offenem Menü und eingeklappter Figur.
+  // Nacharbeit 35 (Ben): jeder laufende KI-Auftrag (BPA-13) einzeln, mit der vorhandenen Wirkung —
+  // Unterbrechen (fortsetzbar) und Stoppen (keine weitere Arbeit) — auch eingeklappt.
+  // Nacharbeit 38: aus ALLEN eigenen Gesprächen, jeder an sein Gespräch gebunden.
+  for (const l of kiLaufend) {
+    vorgaenge.push({
+      art: `ki-${l.auftrag.job.jobId}`,
+      text: t("assistenzminimal.vorgang.ki", { ziel: kuerze(l.auftrag.auftrag.ziel, 60) }),
+      aktionen: [
+        {
+          testId: "klara-ki-unterbrechen",
+          label: t("kiarbeitsweg.unterbrechen"),
+          onClick: () => void kiSchritt(l, "unterbrechen"),
+        },
+        {
+          testId: "klara-ki-stoppen",
+          label: t("kiarbeitsweg.stoppen"),
+          onClick: () => void kiSchritt(l, "stoppen"),
+        },
+      ],
+    });
+  }
+  for (const a of ausfuehrungen) {
+    if (a.phase === "pruefen" || a.phase === "laeuft") {
+      vorgaenge.push({
+        art: `ausfuehrung-${a.lokalId}`,
+        text: t("assistenzminimal.vorgang.ausfuehrung", { wortlaut: kuerze(a.wortlaut, 60) }),
+        aktionen: [
+          {
+            testId: "klara-ausfuehrung-stoppen",
+            label: t("klaraauftrag.knopf.abbrechen"),
+            onClick: () => void brecheAuftragAb(a.lokalId, auftragsUmgebung()),
+          },
+        ],
+      });
+    }
+  }
+  if (vorleseLage.liest !== null) {
+    vorgaenge.push({
+      art: "vorlesen",
+      text: t("assistenzminimal.vorgang.vorlesen"),
+      aktionen: [
+        {
+          testId: "klara-vorlesen-stoppen",
+          label: t("klarasprache.vorlesenStop"),
+          onClick: stoppeVorlesen,
+        },
+      ],
+    });
+  }
+  if (z.begleiten && lage) {
+    vorgaenge.push({
+      art: "begleitung",
+      text: t(
+        lage.spielt
+          ? "assistenzminimal.vorgang.begleitung"
+          : "assistenzminimal.vorgang.begleitungPausiert",
+        { nr: lage.schrittIndex + 1, gesamt: lage.schrittAnzahl },
+      ),
+      aktionen: [
+        lage.spielt
+          ? {
+              testId: "klara-vorgang-pause",
+              label: t("assistenzminimal.vorgang.pause"),
+              onClick: pausieren,
+            }
+          : {
+              testId: "klara-vorgang-fortsetzen",
+              label: t("assistenzminimal.vorgang.fortsetzen"),
+              onClick: fortsetzen,
+            },
+        {
+          testId: "klara-vorgang-beenden",
+          label: t("assistenzminimal.vorgang.beenden"),
+          onClick: begleitungBeenden,
+        },
+      ],
+    });
+  }
+  if (istEcht && tv && (tv.stand === "offen" || tv.stand === "rueckfrage")) {
+    vorgaenge.push({
+      art: "entscheidung",
+      text: t("assistenzminimal.vorgang.entscheidung"),
+      aktionen: [
+        {
+          testId: "klara-vorgang-entscheidung",
+          label: t("assistenzminimal.vorgang.ansehen"),
+          onClick: zurEntscheidung,
+        },
+      ],
+    });
+  }
+  const kiText = ki.abgeschaltet
+    ? t("d5kiaus.hinweis")
+    : ki.ohneModell
+      ? t("klaragespraech.ki.ohneModell")
+      : ki.unbekannt
+        ? t("klaragespraech.ki.unbekannt")
+        : null;
+  const kiKurz = ki.abgeschaltet
+    ? t("assistenzminimal.ki.aus")
+    : ki.ohneModell
+      ? t("assistenzminimal.ki.ohneModell")
+      : null;
+  // Bei abgeschalteter KI bleiben die Vorschläge bedienbar: der Klick erklärt die Sperre am
+  // Auftrag (`mitEinwilligung`), statt dauerhaft einen Hinweisblock zu zeigen.
+  const aktionGesperrt =
+    echt.laden !== "bereit" || echt.laeuftSeit !== null || z.status === "laeuft";
+
   // Verlauf: das Neueste ins Bild.
   const endeRef = useRef<HTMLDivElement | null>(null);
   const anzahlNachrichten = istEcht ? echt.nachrichten.length : z.verlauf.length;
@@ -1837,7 +2365,8 @@ export function KlaraVorschau({
         data-testid="klara-figur-huelle"
         data-zurueckgetreten={hilfeOffen ? "true" : "false"}
         className={`fixed z-[60] flex-col items-center ${hilfeOffen ? "hidden" : "flex"}`}
-        style={{ left: position.x, top: position.y, width: FIGUR_GROESSE }}
+        data-darstellung={dunkel ? "dunkel" : "hell"}
+        style={{ ...farbStil, left: position.x, top: position.y, width: FIGUR_GROESSE }}
       >
         <button
           ref={figurRef}
@@ -1901,6 +2430,17 @@ export function KlaraVorschau({
           >
             {anzeigeName}
           </span>
+        ) : null}
+        {/* produkt:20261011:assistenz-minimalistische-oberflaeche: eingeklappt bleibt jeder laufende
+            Vorgang an der Figur stoppbar. Eine Aufnahme endet beim Einklappen ohnehin (siehe
+            `aufnahmeAbbrechen`) — es gibt kein Mikrofon ohne sichtbaren Stopp. */}
+        {minimal && !panelSichtbar ? (
+          <VorgangsLeiste
+            kompakt
+            vorgaenge={vorgaenge.filter((v) => v.aktionen.length > 0)}
+            testId="klara-figur-vorgaenge"
+            label={t("assistenzminimal.figur.vorgaenge")}
+          />
         ) : null}
         {z.status !== "ruhe" ? (
           <span
@@ -2015,7 +2555,903 @@ export function KlaraVorschau({
       {zeigeBegleitung && panelSichtbar ? <KlaraZeiger treffer={treffer} /> : null}
 
       {/* ------------------------------------------------------------------ das Gespräch */}
-      {panelSichtbar ? (
+      {/* produkt:20261011:assistenz-minimalistische-oberflaeche: im Produktbetrieb vier Bereiche —
+          Kopf, Kontextzeile, Gespräch, Eingabe. Ein laufender Vorgang ergänzt den Steuerbereich;
+          alles Weitere steht im Menü oder erscheint, wenn der nächste Schritt es braucht. Die
+          Vorschau (`betriebsart="vorschau"`) bleibt darunter unverändert. */}
+      {panelSichtbar && minimal ? (
+        <section
+          data-klara="1"
+          data-testid="klara-gespraech"
+          data-ansicht={z.ansicht}
+          data-oberflaeche="minimal"
+          data-seite={menueSeite ?? "gespraech"}
+          data-einwilligung={echt.gespraech?.einwilligungAm ? "ja" : "nein"}
+          aria-labelledby={`${hinweisId}-titel`}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") {
+              return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            // Escape geht genau einen Schritt zurück: Unterseite → Gespräch, Menü → zu, sonst
+            // einklappen.
+            if (menueSeite) {
+              setMenueSeite(null);
+              menueKnopfRef.current?.focus({ preventScroll: true });
+            } else if (menueOffen) {
+              setMenueOffen(false);
+              menueKnopfRef.current?.focus({ preventScroll: true });
+            } else {
+              schliessen();
+            }
+          }}
+          data-darstellung={dunkel ? "dunkel" : "hell"}
+          className={`fixed z-[59] flex flex-col overflow-hidden border border-hairline bg-surface text-text shadow-popover ${panelForm}`}
+          style={{ ...panelStil, ...farbStil }}
+        >
+          {/* 1 · Kopf: Avatar, persönlicher Name, Menü, Einklappen. */}
+          <div className="flex items-center gap-2 border-b border-hairline px-3 py-2">
+            <AvatarBild
+              motiv={assistenz.motiv}
+              alt=""
+              ersatzBeschriftung=""
+              testId="klara-gespraech-avatar"
+              className="h-7 w-7 shrink-0 rounded-full"
+            />
+            <h2
+              id={`${hinweisId}-titel`}
+              ref={panelTitelRef}
+              tabIndex={-1}
+              data-testid="klara-panel-titel"
+              className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink outline-none focus-visible:underline"
+            >
+              {anzeigeName}
+            </h2>
+            <button
+              ref={menueKnopfRef}
+              type="button"
+              data-testid="klara-menue-knopf"
+              aria-expanded={menueOffen}
+              aria-controls={menueOffen ? menueId : undefined}
+              aria-label={t("assistenzminimal.menue.knopf")}
+              title={t("assistenzminimal.menue.knopf")}
+              onClick={() => {
+                if (menueSeite) {
+                  setMenueSeite(null);
+                  setMenueOffen(true);
+                } else {
+                  setMenueOffen((o) => !o);
+                }
+              }}
+              className={`${SYMBOL_KNOPF} h-8 w-8`}
+            >
+              <MenueSymbol />
+            </button>
+            <button
+              type="button"
+              data-testid="klara-schliessen"
+              aria-label={t("assistenzminimal.einklappen")}
+              title={t("assistenzminimal.einklappen.hinweis")}
+              onClick={schliessen}
+              className={`${SYMBOL_KNOPF} h-8 w-8`}
+            >
+              <EinklappenSymbol />
+            </button>
+          </div>
+          {assistenz.avatarFehlt ? (
+            <p
+              data-testid="klara-avatar-fehlt"
+              className="border-b border-hairline px-3 py-1 text-[11.5px] text-text"
+            >
+              {t("assistenz.avatar.fehlt")}
+            </p>
+          ) : null}
+          {menueOffen ? (
+            <MenueListe id={menueId} ersterRef={menueErsterRef} onWahl={menueWahl} />
+          ) : null}
+
+          {/* Steuerbereich — nur solange etwas läuft; auch über Menü und Unterseiten. */}
+          <VorgangsLeiste
+            vorgaenge={vorgaenge}
+            testId="klara-vorgaenge"
+            label={t("assistenzminimal.vorgang.label")}
+          />
+
+          {menueSeite ? (
+            <Unterseite
+              seite={menueSeite}
+              zurueckRef={unterseiteZurueckRef}
+              onZurueck={zurueckZumGespraech}
+            >
+              {menueSeite === "neu" ? (
+                <NeuSeite
+                  kontext={objektbezugAus(kontext)}
+                  onFertig={(erledigt) => {
+                    if (erledigt) {
+                      setAnsage(t("assistenzminimal.neu.erledigt"));
+                    }
+                    zurueckZumGespraech();
+                  }}
+                />
+              ) : menueSeite === "verlauf" ? (
+                <VerlaufSeite pfad={location.pathname} onZumGespraech={zurueckZumGespraech} />
+              ) : menueSeite === "funktionen" ? (
+                <FunktionenSeite
+                  sprachMoeglich={sprechen.moeglich}
+                  onAuftragSprechen={() => {
+                    setMenueSeite(null);
+                    sprechen.starten("auftrag");
+                  }}
+                  vorschauLink={
+                    <Link to={VORSCHAU_PFAD} data-testid="klara-zur-vorschau" className={KNOPF}>
+                      {t("klaraprodukt.vorschau.link")}
+                    </Link>
+                  }
+                  // Integration main (Klara 06): die eigenen Notizen wiederfinden — dieselbe Liste
+                  // wie im bisherigen Panel; angelegt wird an der Nachricht im Gespräch.
+                  notizen={istEcht && kontoId ? <KlaraNotizen /> : null}
+                  // Integration main (Klara 07): die eigenen Aufgaben wiederfinden — dieselbe Liste
+                  // wie im bisherigen Panel; angelegt wird über den Ausführungsweg im Gespräch.
+                  aufgaben={istEcht && kontoId ? <KlaraAufgaben /> : null}
+                  // Integration main (BPA-13): derselbe KI-Arbeitsweg am eigenen gespeicherten
+                  // Gespräch wie im bisherigen Panel — erreichbar über „Meine Funktionen“.
+                  kiArbeitsweg={
+                    istEcht && echt.gespraech ? (
+                      <KiArbeitsweg
+                        gespraechId={echt.gespraech.id}
+                        kontext={objektbezugAus(kontext)}
+                      />
+                    ) : null
+                  }
+                />
+              ) : menueSeite === "einstellungen" ? (
+                <EinstellungenSeite
+                  kontext={objektbezugAus(kontext)}
+                  seitenName={kontext.seitenName}
+                  ki={ki}
+                  kiText={kiText}
+                  // Nacharbeit 33 (Ben, UI-MIN-08/15): Klara 12 — wann sich Klara meldet. Dieselbe
+                  // persönlich gespeicherte Wahl wie im bisherigen Panel, nur in den Einstellungen.
+                  unterstuetzung={
+                    kontoId ? (
+                      <KlaraModusWahl
+                        kontoId={kontoId}
+                        t={t}
+                        onGewaehlt={(m, ok) =>
+                          setAnsage(
+                            ok
+                              ? t(`klarainitiative.ansage.${m}`)
+                              : t("klarainitiative.ansage.fehler"),
+                          )
+                        }
+                      />
+                    ) : null
+                  }
+                  darstellung={
+                    <>
+                      <button
+                        type="button"
+                        data-testid="klara-ansicht"
+                        onClick={() =>
+                          aendere((alt) => ({
+                            ...alt,
+                            ansicht: alt.ansicht === "seitlich" ? "kompakt" : "seitlich",
+                          }))
+                        }
+                        className={KNOPF}
+                      >
+                        {z.ansicht === "seitlich"
+                          ? t("klaravorschau.knopf.kompakt")
+                          : t("klaravorschau.knopf.seitlich")}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="klara-minimieren"
+                        onClick={minimieren}
+                        className={KNOPF}
+                      >
+                        {t("klaravorschau.knopf.minimieren")}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="klara-andocken"
+                        onClick={andocken}
+                        className={KNOPF}
+                      >
+                        {t("klaravorschau.knopf.andocken")}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="klara-zuruecksetzen"
+                        onClick={positionZuruecksetzen}
+                        className={KNOPF}
+                      >
+                        {t("klaravorschau.knopf.zuruecksetzen")}
+                      </button>
+                      {z.geparkt ? (
+                        <button
+                          type="button"
+                          data-testid="klara-parken-loesen"
+                          onClick={() => aendere((alt) => ({ ...alt, geparkt: null }))}
+                          className={KNOPF}
+                        >
+                          {t("klaravorschau.knopf.parkenLoesen")}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        data-testid="klara-vollbild"
+                        aria-pressed={Boolean(vollbildEl)}
+                        onClick={vollbildUmschalten}
+                        className={KNOPF}
+                      >
+                        {vollbildEl
+                          ? t("klaravorschau.knopf.vollbildAus")
+                          : t("klaravorschau.knopf.vollbild")}
+                      </button>
+                    </>
+                  }
+                />
+              ) : (
+                <HilfeSeite
+                  seitenHilfe={
+                    <section data-testid="klara-modi" aria-label={t("klaravorschau.modus.label")}>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(
+                          [
+                            ["erklaere", erklaere],
+                            ["zeige", zeige],
+                            ["begleite", begleite],
+                          ] as const
+                        ).map(([modus, ausloesen]) => (
+                          <button
+                            key={modus}
+                            type="button"
+                            data-testid={`klara-modus-${modus}`}
+                            disabled={hilfeGesperrt}
+                            onClick={() => {
+                              // Das Ergebnis steht im Gespräch — dorthin zurück.
+                              setMenueSeite(null);
+                              ausloesen();
+                            }}
+                            className={KNOPF}
+                          >
+                            {t(`klaravorschau.modus.${modus}`)}
+                          </button>
+                        ))}
+                      </div>
+                      {!tutorial.vorhanden ? (
+                        <p className="mt-1 text-[11.5px] text-muted-2">
+                          {t("klaravorschau.modus.keinTutorial")}{" "}
+                          <Link
+                            to="/fragen"
+                            data-testid="klara-zu-fragen"
+                            className="font-semibold text-brand-text hover:underline"
+                          >
+                            {t("klaravorschau.modus.zuFragen")}
+                          </Link>
+                        </p>
+                      ) : null}
+                    </section>
+                  }
+                />
+              )}
+            </Unterseite>
+          ) : (
+            <>
+              {/* 2 · Kontext: eine Zeile; ein Klick zeigt Ort, Fassung, Bezug, Datenweg, KI. */}
+              <details data-testid="klara-kontext" className="border-b border-hairline">
+                <summary
+                  data-testid="klara-kontext-zeile"
+                  title={t("assistenzminimal.kontext.label")}
+                  className="flex cursor-pointer items-center gap-1.5 px-3 py-1.5 text-[12px] text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+                >
+                  <span data-testid="klara-bezug-zeile" className="min-w-0 flex-1 truncate">
+                    {bezugZeile(z.bezug, kontext, auswahl, t)}
+                  </span>
+                  {kiKurz ? (
+                    <span
+                      data-testid="klara-verfuegbarkeit"
+                      data-ki={ki.abgeschaltet ? "aus" : "ohne_modell"}
+                      className="shrink-0 rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted"
+                    >
+                      {kiKurz}
+                    </span>
+                  ) : null}
+                </summary>
+                <div className="space-y-2 px-3 pb-2.5">
+                  <dl
+                    data-testid="klara-ort"
+                    className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5"
+                  >
+                    <dt className={KLEINTITEL}>{t("klaravorschau.ort.label")}</dt>
+                    <dd data-testid="klara-ort-seite" className="text-[12px] text-text">
+                      {kontext.seitenName}
+                    </dd>
+                    <dt className={KLEINTITEL}>{t("klaravorschau.ort.objekt")}</dt>
+                    <dd data-testid="klara-ort-objekt" className="text-[12px] text-text">
+                      {kontext.objekt}
+                    </dd>
+                    {kontext.fassung ? (
+                      <>
+                        <dt className={KLEINTITEL}>{t("klarakontext.ort.fassung")}</dt>
+                        <dd data-testid="klara-ort-fassung" className="text-[12px] text-text">
+                          {t("klarakontext.fassung", { nr: kontext.fassung })}
+                        </dd>
+                      </>
+                    ) : null}
+                    {kontext.pruefstatus ? (
+                      <>
+                        <dt className={KLEINTITEL}>{t("klarakontext.ort.pruefstatus")}</dt>
+                        <dd
+                          data-testid="klara-ort-pruefstatus"
+                          data-pruefstatus={kontext.pruefstatus}
+                          className="text-[12px] text-text"
+                        >
+                          {t(`klarakontext.pruefstatus.${kontext.pruefstatus}`)}
+                        </dd>
+                      </>
+                    ) : null}
+                    {kontext.modus ? (
+                      <>
+                        <dt className={KLEINTITEL}>{t("klarakontext.ort.modus")}</dt>
+                        <dd
+                          data-testid="klara-ort-modus"
+                          data-modus={kontext.modus}
+                          className="text-[12px] text-text"
+                        >
+                          {t(`klarakontext.modus.${kontext.modus}`)}
+                          {kontext.lesart === "uebersetzung"
+                            ? ` · ${t("klarakontext.lesart.uebersetzung")}`
+                            : ""}
+                        </dd>
+                      </>
+                    ) : null}
+                  </dl>
+                  <section
+                    data-testid="klara-bezug"
+                    data-bezug={wirksamerBezug(z.bezug, auswahl)}
+                    aria-label={t("assistenzminimal.kontext.bezug")}
+                  >
+                    <p className={KLEINTITEL}>{t("assistenzminimal.kontext.bezug")}</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {BEZUG_KNOEPFE.map((b) => (
+                        <button
+                          key={b}
+                          type="button"
+                          data-testid={`klara-bezug-${b}`}
+                          aria-pressed={wirksamerBezug(z.bezug, auswahl) === b}
+                          disabled={b === "markierung" && !auswahl}
+                          onClick={() => {
+                            aendere((alt) => ({ ...alt, bezug: b }));
+                            setAnsage(
+                              t("klarakontext.bezug.gewechselt", {
+                                bezug: bezugZeile(b, kontext, auswahl, t),
+                              }),
+                            );
+                          }}
+                          className={KNOPF}
+                        >
+                          {t(`klarakontext.bezug.knopf.${b}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                  <div>
+                    <p className={KLEINTITEL}>{t("assistenzminimal.kontext.datenweg")}</p>
+                    <p
+                      data-testid="klara-datenweg"
+                      className="text-[11.5px] leading-relaxed text-text"
+                    >
+                      {t("klaragespraech.hinweis")}
+                    </p>
+                  </div>
+                  {kiText || ki.extern ? (
+                    <div>
+                      <p className={KLEINTITEL}>{t("assistenzminimal.kontext.ki")}</p>
+                      {kiText ? (
+                        <p
+                          data-testid={
+                            ki.abgeschaltet
+                              ? "klara-ki-aus"
+                              : ki.ohneModell
+                                ? "klara-ki-ohne-modell"
+                                : "klara-ki-unbekannt"
+                          }
+                          className="text-[11.5px] leading-relaxed text-text"
+                        >
+                          {kiText}
+                        </p>
+                      ) : null}
+                      {ki.extern ? (
+                        <p
+                          data-testid="klara-extern"
+                          data-extern={ki.extern}
+                          className="text-[11px] text-muted"
+                        >
+                          {ki.extern === "blockiert"
+                            ? t("topbar.extern.blockiert")
+                            : ki.extern === "frei"
+                              ? t("topbar.extern.frei")
+                              : t("topbar.extern.freiVertraulich")}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </details>
+
+              {/* 3 · Gespräch: der ungekürzte Verlauf; scrollt, die Eingabe bleibt stehen. */}
+              <div
+                data-testid="klara-gespraechsbereich"
+                className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-3"
+              >
+                {auswahl ? (
+                  <section
+                    data-testid="klara-auswahl"
+                    data-seite={auswahl.herkunft.seite}
+                    className="rounded-card border border-hairline bg-page px-3 py-2"
+                  >
+                    <h3
+                      data-testid="klara-auswahl-titel"
+                      tabIndex={-1}
+                      className={`${KLEINTITEL} outline-none focus-visible:underline`}
+                    >
+                      {t("klaravorschau.auswahl.titel")}
+                    </h3>
+                    <blockquote
+                      data-testid="klara-auswahl-text"
+                      className="mt-1 max-h-16 overflow-y-auto border-l-2 border-brand pl-2 text-[12px] italic leading-relaxed text-text"
+                    >
+                      {auswahl.text}
+                    </blockquote>
+                    <p data-testid="klara-auswahl-herkunft" className="mt-1 text-[11px] text-muted">
+                      {herkunftZeile(auswahl.herkunft, t)}
+                    </p>
+                    {auswahlAndereSeite ? (
+                      <p
+                        data-testid="klara-auswahl-andere-seite"
+                        className="mt-1 text-[11px] text-muted-2"
+                      >
+                        {t("klaravorschau.auswahl.andereSeite", {
+                          seite: auswahl.herkunft.seitenName,
+                          objekt: auswahl.herkunft.objekt,
+                        })}{" "}
+                        <Link
+                          to={herkunftZiel(auswahl.herkunft)}
+                          className="font-semibold text-brand-text hover:underline"
+                        >
+                          {t("klaravorschau.auswahl.zurHerkunft")}
+                        </Link>
+                      </p>
+                    ) : null}
+                    {auswahlSperre && auswahlSperre.id === auswahl.id ? (
+                      <p
+                        role="alert"
+                        data-testid="klara-auswahl-gesperrt"
+                        className="mt-1 rounded-btn bg-trust-warn-bg px-2 py-1 text-[11.5px] leading-relaxed text-trust-warn-text"
+                      >
+                        {auswahlSperre.text}
+                      </p>
+                    ) : null}
+                    {/* Höchstens zwei Vorschläge — aus der Markierung und dem gelieferten Frageweg. */}
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {(["erklaeren", "zusammenfassen"] as const).map((a) => (
+                        <button
+                          key={a}
+                          type="button"
+                          data-testid={`klara-aktion-${a}`}
+                          disabled={aktionGesperrt}
+                          onClick={() => mitEinwilligung(a)}
+                          className={KNOPF_KI}
+                        >
+                          {t(`klaravorschau.aktion.${a}`)}
+                        </button>
+                      ))}
+                    </div>
+                    <details data-testid="klara-auswahl-mehr" className="mt-1.5">
+                      <summary className="cursor-pointer text-[11.5px] font-semibold text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+                        {t("assistenzminimal.markierung.mehr")}
+                      </summary>
+                      <p
+                        data-testid="klara-aktion-nur-demo"
+                        className="mt-1 text-[11px] leading-relaxed text-muted-2"
+                      >
+                        {t("klaraprodukt.auswahl.offen")}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        <span className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            data-testid="klara-aktion-uebersetzen"
+                            disabled={hilfeGesperrt || z.status === "laeuft"}
+                            onClick={() => mitAuswahlEcht("uebersetzen")}
+                            className={KNOPF}
+                          >
+                            {t("klarakontext.aktion.uebersetzen")}
+                          </button>
+                          <label className="sr-only" htmlFor={`${eingabeId}-sprache`}>
+                            {t("klarakontext.uebersetzen.zielsprache")}
+                          </label>
+                          <select
+                            id={`${eingabeId}-sprache`}
+                            data-testid="klara-uebersetzen-sprache"
+                            value={zielsprache}
+                            onChange={(e) => setZielsprache(e.target.value as Zielsprache)}
+                            className="h-8 rounded-input border border-hairline bg-surface px-1.5 text-[12px] text-text"
+                          >
+                            {ZIELSPRACHEN.map((s) => (
+                              <option key={s} value={s}>
+                                {t(`klarakontext.sprache.${s}`)}
+                              </option>
+                            ))}
+                          </select>
+                        </span>
+                        <button
+                          type="button"
+                          data-testid="klara-aktion-umformulieren"
+                          disabled={aktionGesperrt}
+                          onClick={() => mitEinwilligung("umformulieren")}
+                          className={KNOPF_KI}
+                        >
+                          {t("klaravorschau.aktion.umformulieren")}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="klara-aktion-notiz"
+                          onClick={notizEcht}
+                          className={KNOPF}
+                        >
+                          {t("klaravorschau.aktion.notiz")}
+                        </button>
+                        {/* produkt:20261007:interner-chat: nur ein ENTWURF im Chat. */}
+                        <button
+                          type="button"
+                          data-testid="klara-aktion-nachricht"
+                          onClick={() => {
+                            const h = auswahl.herkunft;
+                            const text = auswahl.text.slice(0, 1200);
+                            const quelle = (h.titel || h.objekt || h.seitenName).slice(0, 200);
+                            setzeKlaraEntwurf({
+                              ausschnitt: h.koId
+                                ? {
+                                    text,
+                                    quelle,
+                                    fiktiv: false,
+                                    koId: h.koId,
+                                    ...(h.fassung ? { fassung: h.fassung } : {}),
+                                  }
+                                : { text, quelle, fiktiv: true, pfad: h.pfad },
+                            });
+                            navigate("/chat?klara=1");
+                          }}
+                          className={KNOPF}
+                        >
+                          {t("chat.klara.ausKlara")}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="klara-auswahl-entfernen"
+                          onClick={() => {
+                            setAuswahlSperre(null);
+                            aendere((alt) => ({
+                              ...alt,
+                              auswahl: null,
+                              bezug: alt.bezug === "markierung" ? "seite" : alt.bezug,
+                            }));
+                          }}
+                          className={KNOPF}
+                        >
+                          {t("klaravorschau.auswahl.entfernen")}
+                        </button>
+                      </div>
+                    </details>
+                  </section>
+                ) : null}
+
+                {/* Die beim Fokuswechsel aufgehobene Markierung — nur, wenn es sie gibt. */}
+                {vorgemerkt && vorgemerkt.text !== auswahl?.text ? (
+                  <section
+                    data-testid="klara-vorgemerkt"
+                    className="rounded-card border border-dashed border-hairline px-3 py-2"
+                  >
+                    <p className={KLEINTITEL}>{t("klarakontext.vorgemerkt.titel")}</p>
+                    <blockquote className="mt-1 max-h-16 overflow-y-auto border-l-2 border-brand/50 pl-2 text-[12px] italic text-text">
+                      {kuerze(vorgemerkt.text, 160)}
+                    </blockquote>
+                    <p
+                      data-testid="klara-vorgemerkt-herkunft"
+                      className="mt-1 text-[11px] text-muted"
+                    >
+                      {herkunftZeile(vorgemerkt.herkunft, t)}
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        data-testid="klara-vorgemerkt-uebernehmen"
+                        onClick={() => uebernehmeAuswahl(vorgemerkt.text, vorgemerkt.herkunft)}
+                        className={KNOPF_KI}
+                      >
+                        {t("klarakontext.vorgemerkt.uebernehmen")}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="klara-vorgemerkt-verwerfen"
+                        onClick={() => setVorgemerkt(null)}
+                        className={KNOPF}
+                      >
+                        {t("klarakontext.vorgemerkt.verwerfen")}
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
+
+                <KlaraEchtGespraech
+                  minimal
+                  kontext={objektbezugAus(kontext)}
+                  pfad={location.pathname}
+                  ki={ki}
+                  onErneutFragen={(text, bezugDamals) => {
+                    void echtFrage(text, { fest: { text, bezug: bezugDamals } });
+                  }}
+                  onNeuLaden={() => {
+                    if (kontoId) {
+                      void ladeEcht(kontoId, t);
+                    }
+                  }}
+                  sprecher={anzeigeName}
+                />
+                {/* Integration main (Klara 05): Ausführungsaufträge — Grenze, Schritte, Abbrechen,
+                    Rückgängig — auch im minimalen Gespräch, als Ergebnis im Gesprächsbereich. */}
+                {istEcht ? <KlaraAusfuehrungen umgebung={auftragsUmgebung} /> : null}
+                {z.textvorschlag ? (
+                  <TextvorschlagKarte v={z.textvorschlag} onUebernehmen={vorschlagUebernehmen} />
+                ) : null}
+                {z.entwurf?.echt ? <EntwurfKarte entwurf={z.entwurf} /> : null}
+                {zeigeBegleitung && lage ? (
+                  <KlaraTutorialKarte
+                    lage={lage}
+                    treffer={treffer}
+                    hinweis={tutorialHinweis}
+                    onPause={pausieren}
+                    onFortsetzen={fortsetzen}
+                    onBeenden={begleitungBeenden}
+                  />
+                ) : tutorialHinweis ? (
+                  <output className="block text-[11.5px] text-muted-2">{tutorialHinweis}</output>
+                ) : null}
+                <KlaraAuftragKarte
+                  s={sprechen}
+                  sendebereit={sprachSendebereit}
+                  absenden={auftragSenden}
+                  {...(istEcht ? { ausfuehrbar: istAusfuehrungsauftrag } : {})}
+                  ausfuehrungBereit={ausfuehrungBereit}
+                />
+                <div ref={endeRef} />
+              </div>
+
+              {/* 4 · Eingabe: ein Feld, ein Mikrofon, Senden. Nötige Rückfragen erscheinen hier. */}
+              <form
+                data-testid="klara-eingabe-form"
+                onSubmit={sendenMinimal}
+                className="space-y-1.5 border-t border-hairline px-3 py-2"
+              >
+                {einwilligungFuer ? (
+                  <section
+                    data-testid="klara-einwilligung"
+                    aria-label={t("klaragespraech.einwilligung.titel")}
+                    className="rounded-card border border-ai/40 bg-surface px-3 py-2"
+                  >
+                    <p className="text-[12px] font-semibold text-ink">
+                      {t("assistenzminimal.einwilligung.frage")}
+                    </p>
+                    <p className="mt-0.5 max-h-20 overflow-y-auto text-[11.5px] leading-relaxed text-text">
+                      {t("klaragespraech.einwilligung.text")}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        data-testid="klara-einwilligung-erteilen"
+                        onClick={einwilligenUndAusfuehren}
+                        className={KNOPF_KI}
+                      >
+                        {t("assistenzminimal.einwilligung.senden")}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="klara-einwilligung-abbrechen"
+                        onClick={() => {
+                          setEinwilligungFuer(null);
+                          eingabeFokussieren();
+                        }}
+                        className={KNOPF}
+                      >
+                        {t("assistenzminimal.einwilligung.nichtJetzt")}
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
+                {zielFrage ? (
+                  <section
+                    data-testid="klara-ziel-klaeren"
+                    aria-label={t("assistenzminimal.ziel.titel")}
+                    className="rounded-card border border-ai/40 bg-surface px-3 py-2"
+                  >
+                    <p className="text-[12px] leading-relaxed text-text">
+                      {t("assistenzminimal.ziel.frage", {
+                        ursprung: `${zielFrage.ursprung.seitenName} · ${zielFrage.ursprung.objekt}`,
+                        jetzt: `${zielFrage.jetzt.seitenName} · ${zielFrage.jetzt.objekt}`,
+                      })}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        data-testid="klara-ziel-ursprung"
+                        onClick={() => zielGewaehlt(zielFrage.ursprung)}
+                        className={KNOPF_KI}
+                      >
+                        {t("assistenzminimal.ziel.ursprung", {
+                          ort: zielFrage.ursprung.seitenName,
+                        })}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="klara-ziel-jetzt"
+                        onClick={() => zielGewaehlt(kontextRef.current)}
+                        className={KNOPF}
+                      >
+                        {t("assistenzminimal.ziel.jetzt", { ort: kontext.seitenName })}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="klara-ziel-abbrechen"
+                        onClick={() => {
+                          setZielFrage(null);
+                          eingabeFokussieren();
+                        }}
+                        className={KNOPF}
+                      >
+                        {t("assistenzminimal.neu.nein")}
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
+                {ki.abgeschaltet && kiAusGezeigt ? (
+                  <p
+                    data-testid="klara-ki-aus-hinweis"
+                    className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[11.5px] leading-relaxed text-trust-crit-text"
+                  >
+                    {t("d5kiaus.hinweis")}
+                  </p>
+                ) : null}
+                {abgewiesen.map((a) => (
+                  <div
+                    key={a.id}
+                    data-testid="klara-abgewiesen"
+                    className="rounded-btn bg-trust-warn-bg px-2.5 py-1.5 text-[11.5px] leading-relaxed text-trust-warn-text"
+                  >
+                    <p>{t("assistenzminimal.abgewiesen.text", { text: kuerze(a.text, 80) })}</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        data-testid="klara-abgewiesen-zurueckholen"
+                        onClick={() => abgewiesenZurueckholen(a.id)}
+                        className={KNOPF}
+                      >
+                        {t("assistenzminimal.abgewiesen.zurueck")}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="klara-abgewiesen-verwerfen"
+                        onClick={() => entferneAbgewiesen(kontoIdRef.current, a.id)}
+                        className={KNOPF}
+                      >
+                        {t("assistenzminimal.abgewiesen.verwerfen")}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {sprechen.zwischen ? (
+                  <p
+                    data-testid="klara-aufnahme-zwischen"
+                    aria-live="polite"
+                    className="text-[11.5px] italic text-muted"
+                  >
+                    {sprechen.zwischen}
+                  </p>
+                ) : null}
+                {sprechen.hinweis ? (
+                  <output
+                    data-testid="klara-sprache-hinweis"
+                    className="block rounded-btn bg-trust-warn-bg px-2 py-1 text-[11px] leading-relaxed text-trust-warn-text"
+                  >
+                    {sprechen.hinweis}
+                  </output>
+                ) : null}
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor={eingabeId} className="sr-only">
+                    {t("assistenzminimal.eingabe.label", { name: anzeigeName })}
+                  </label>
+                  <input
+                    ref={eingabeRef}
+                    id={eingabeId}
+                    data-testid="klara-eingabe"
+                    value={eingabe}
+                    enterKeyHint="send"
+                    onChange={(e) => setEingabe(e.target.value)}
+                    placeholder={t("assistenzminimal.eingabe.platzhalter")}
+                    className="h-9 min-w-0 flex-1 rounded-input border border-hairline bg-surface px-2.5 text-[13px] text-text outline-none placeholder:text-muted-2 focus:border-ink/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+                  />
+                  {sprechen.moeglich ? (
+                    <button
+                      type="button"
+                      data-testid="klara-mikrofon"
+                      data-aufnahme={sprechen.laeuft ?? ""}
+                      aria-pressed={sprechen.laeuft !== null}
+                      aria-label={
+                        sprechen.laeuft
+                          ? t("assistenzminimal.mikrofon.stopp")
+                          : t("assistenzminimal.mikrofon.start")
+                      }
+                      title={
+                        sprechen.laeuft
+                          ? t("assistenzminimal.mikrofon.stopp")
+                          : t("assistenzminimal.mikrofon.start")
+                      }
+                      onClick={() => {
+                        if (sprechen.laeuft) {
+                          sprechen.stoppen();
+                        } else {
+                          // EIN Spracheinstieg: Diktat ins Eingabefeld — gesendet wird nur mit
+                          // „Senden“. Der gesprochene Auftrag mit Rückfragen steht unter
+                          // „Meine Funktionen“.
+                          sprechen.starten("diktat");
+                        }
+                      }}
+                      className={`${SYMBOL_KNOPF} h-9 w-9 ${
+                        sprechen.laeuft ? "border-ai bg-ai-surface-1 text-ai" : ""
+                      }`}
+                    >
+                      <MikrofonSymbol />
+                    </button>
+                  ) : null}
+                  <button
+                    type="submit"
+                    data-testid="klara-senden"
+                    disabled={
+                      !eingabe.trim() || echt.laden !== "bereit" || echt.laeuftSeit !== null
+                    }
+                    className={`${KNOPF_KI} h-9`}
+                  >
+                    {t("assistenzminimal.senden")}
+                  </button>
+                </div>
+                {/* Integration main (Klara 05): nur wenn der Text ein Ausführungsauftrag ist, steht
+                    vor dem Senden, welche Schritte er auslöst — situationsbezogen, kein Dauerblock. */}
+                {eingabeAuftrag ? (
+                  <p
+                    data-testid="klara-eingabe-auftrag"
+                    className="text-[11px] leading-relaxed text-ai"
+                  >
+                    {t("klaraauftrag.eingabeHinweis", {
+                      schritte: eingabeAuftrag.schritte
+                        .map((s, i) =>
+                          t("klaraauftrag.schritt", {
+                            nr: i + 1,
+                            aktion: t(`klaraauftrag.aktion.${s.aktion}`),
+                            titel: s.name,
+                          }),
+                        )
+                        .join(" · "),
+                    })}
+                  </p>
+                ) : null}
+              </form>
+            </>
+          )}
+        </section>
+      ) : panelSichtbar ? (
         <section
           data-klara="1"
           data-testid="klara-gespraech"

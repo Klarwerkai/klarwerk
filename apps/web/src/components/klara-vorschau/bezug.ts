@@ -101,6 +101,11 @@ export function bezugZeile(
     }
     return t("klarakontext.bezug.markierungAus", { objekt: auswahl.herkunft.objekt });
   }
+  // MACOS-20261014 · UI-01 (Nacharbeit 46): zeigt eine sonstige Seite erkennbare Daten (z. B. die
+  // Lagebild-Werte mit Bereich und Stand), steht deren Name gleich in der Zeile — ohne Aufklappen.
+  if (kontext.seite === "andere" && kontext.objekt !== t("klaravorschau.objekt.keins")) {
+    return `${kontextName(kontext, t)} · ${kontext.objekt}`;
+  }
   return kontextName(kontext, t);
 }
 

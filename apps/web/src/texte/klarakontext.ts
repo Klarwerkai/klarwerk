@@ -31,6 +31,9 @@ export default {
   de: {
     "klarakontext.seite.wissen": "Wissen",
     "klarakontext.objekt.wissenLaedt": "Beitrag wird geladen …",
+    // MACOS-20261014 · UI-01 (Nacharbeit 46): welche Daten auf der Seite geöffnet sind.
+    "klarakontext.objekt.lagebild": "Lagebild-Werte {{bereich}}, Stand {{stand}}",
+    "klarakontext.objekt.lagebildLeer": "Lagebild-Werte {{bereich}}, noch kein Stand",
     "klarakontext.ort.fassung": "Fassung",
     "klarakontext.ort.pruefstatus": "Prüfstatus",
     "klarakontext.ort.modus": "Modus",
@@ -131,6 +134,8 @@ export default {
   en: {
     "klarakontext.seite.wissen": "Knowledge",
     "klarakontext.objekt.wissenLaedt": "Loading the entry …",
+    "klarakontext.objekt.lagebild": "Situation values {{bereich}}, version {{stand}}",
+    "klarakontext.objekt.lagebildLeer": "Situation values {{bereich}}, no version yet",
     "klarakontext.ort.fassung": "Version",
     "klarakontext.ort.pruefstatus": "Review status",
     "klarakontext.ort.modus": "Mode",
@@ -230,6 +235,8 @@ export default {
   nl: {
     "klarakontext.seite.wissen": "Kennis",
     "klarakontext.objekt.wissenLaedt": "Bijdrage wordt geladen …",
+    "klarakontext.objekt.lagebild": "Situatiewaarden {{bereich}}, versie {{stand}}",
+    "klarakontext.objekt.lagebildLeer": "Situatiewaarden {{bereich}}, nog geen versie",
     "klarakontext.ort.fassung": "Versie",
     "klarakontext.ort.pruefstatus": "Controlestatus",
     "klarakontext.ort.modus": "Modus",

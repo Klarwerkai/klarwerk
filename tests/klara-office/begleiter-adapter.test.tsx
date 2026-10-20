@@ -21,6 +21,10 @@
 //       als Ergebnis zurück.
 //   A6  KO-02-07 · Wiederverbindung nach 404 (Server vergessen) und ehrlicher Anmeldehinweis bei 401.
 //   A7  Aus und Schliessen: abmelden, danach keine Meldung mehr.
+//   A8  UI-MIN-06/14 (produkt:20261011:assistenz-minimalistische-oberflaeche, Nacharbeit 7) · Abbruch
+//       einer übergebenen, LAUFENDEN Aktion: die Frage wartet nicht weiter und gibt keine Antwort
+//       zurück (`gestoppt`); ein Einfügen schreibt nach dem Abbruch nichts; war Word schon fertig,
+//       bleibt es beim ehrlichen Ergebnis.
 import { webcrypto } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,8 +50,16 @@ interface Ergebnis {
 
 let aufrufe: Aufruf[] = [];
 /** Was der aufgezeichnete Server auf die NÄCHSTEN Meldungen antwortet (Status, Aufträge). */
-let naechsteMeldung: Array<{ status: number; aktionen?: unknown[] }> = [];
+let naechsteMeldung: Array<{
+  status: number;
+  aktionen?: unknown[];
+  abbrechen?: string[];
+  /** Nacharbeit 65: Ergebnis-Kennungen, die diese Antwort NICHT quittiert. */
+  abweisen?: string[];
+}> = [];
 let anmeldeStatus = 201;
+/** Der laufende Abruf des Fragefelds (A8): sein Signal und die Freigabe der Serverantwort. */
+let frageAbruf: { signal: AbortSignal | null; freigeben: () => void } | null = null;
 /**
  * Die Markierung in der Attrappe: POSITION (`ort`) und Text. Zwei Markierungen mit gleichem Text an
  * verschiedenen Stellen sind verschiedene Bereiche — genau das, was Ben am Einfügen geprüft hat.
@@ -100,9 +112,33 @@ async function serverAttrappe(pfad: string, init?: RequestInit): Promise<Respons
   if (methode === "POST" && pfad === "/api/me/klara/begleiter/adapter") {
     return antwort(anmeldeStatus, anmeldeStatus === 201 ? { aktivMs: 12000 } : { error: "x" });
   }
+  // Der Frageweg des Aufgabenfensters (`performAsk`): die Antwort kommt erst, wenn der Fall sie
+  // freigibt; ein Abbruchsignal bricht den Abruf ab — wie `fetch` es tut.
+  if (methode === "POST" && pfad === "/api/ask") {
+    const signal = init?.signal ?? null;
+    frageAbruf = { signal, freigeben: () => {} };
+    return new Promise<Response>((weiter, abbruch) => {
+      const offen = frageAbruf as { freigeben: () => void };
+      offen.freigeben = () => weiter(antwort(200, { result: { answer: "Späte Antwort." } }));
+      if (signal?.aborted) {
+        abbruch(new DOMException("aborted", "AbortError"));
+      }
+      signal?.addEventListener("abort", () => abbruch(new DOMException("aborted", "AbortError")));
+    });
+  }
   if (methode === "PUT") {
     const naechste = naechsteMeldung.shift() ?? { status: 200 };
-    return antwort(naechste.status, { aktionen: naechste.aktionen ?? [] });
+    // Nacharbeit 65: wie der Kanal quittiert die Attrappe die mitgesendeten Ergebnisse — außer den
+    // ausdrücklich abgewiesenen (`abweisen`), die der Adapter dann behalten muss.
+    const erledigt = (rumpf?.erledigt as Array<{ id: string }> | undefined) ?? [];
+    const abweisen = naechste.abweisen ?? [];
+    return antwort(naechste.status, {
+      aktionen: naechste.aktionen ?? [],
+      ...(naechste.abbrechen ? { abbrechen: naechste.abbrechen } : {}),
+      ...(erledigt.length > 0
+        ? { quittiert: erledigt.map((e) => e.id).filter((id) => !abweisen.includes(id)) }
+        : {}),
+    });
   }
   return antwort(200, { abgemeldet: true });
 }
@@ -266,6 +302,7 @@ beforeEach(() => {
   aufrufe = [];
   naechsteMeldung = [];
   anmeldeStatus = 201;
+  frageAbruf = null;
   markierung = { ort: "absatz-0", text: "" };
   auswahlHandler = null;
   eingefuegt.length = 0;
@@ -537,6 +574,236 @@ describe("A5 · KO-02-05 — eine Frage läuft über das Fragefeld dieses Fenste
     await bis(() => ergebnisse().length > 0);
     expect(ergebnisse()).toEqual([
       { id: "f2", stand: "abgelehnt", ergebnis: null, grund: "Bitte zuerst anmelden." },
+    ]);
+  });
+});
+
+describe("A8 · UI-MIN-06/14 — Abbruch einer laufenden Aktion bis ins Word-Fenster", () => {
+  /**
+   * Das Fragefeld des Aufgabenfensters, nachgebildet nach `askKlara`/`performAsk`: der Knopf setzt
+   * — sofort oder nach dem (asynchronen) Lesen der Markierung — den Abruf über die Globale `fetch`
+   * mit EIGENEM Fristsignal ab, zeigt die Antwort an oder bei einem Fehler dessen Meldung im Status.
+   */
+  function fragefeldNachbilden(mitWartezustand = false): {
+    senden: () => Promise<void>;
+    selbstBeenden: () => void;
+  } {
+    const knopf = document.getElementById("ask-btn") as HTMLButtonElement;
+    const feld = document.getElementById("ask-input") as HTMLTextAreaElement;
+    const eigeneFrist = new AbortController();
+    let senden = (): Promise<void> => Promise.resolve();
+    // Wie `askWartezustand` in taskpane.js: das Eingabefeld ist genau während des Vorgangs gesperrt.
+    const wartezustand = (an: boolean): void => {
+      if (mitWartezustand) {
+        feld.disabled = an;
+      }
+    };
+    knopf.addEventListener("click", () => {
+      wartezustand(true);
+      senden = () => {
+        return window
+          .fetch("/api/ask", {
+            method: "POST",
+            credentials: "include",
+            body: JSON.stringify({ question: "x", mode: "retrieval-only" }),
+            signal: eigeneFrist.signal,
+          })
+          .then((r) => r.json())
+          .then(
+            (b: { result: { answer: string } }) => {
+              (document.getElementById("ask-answer-text") as HTMLElement).textContent =
+                b.result.answer;
+              (document.getElementById("ask-answer-block") as HTMLElement).className = "";
+            },
+            (e: Error) => {
+              (document.getElementById("ask-status") as HTMLElement).textContent = e.message;
+            },
+          )
+          .then(() => wartezustand(false));
+      };
+    });
+    return {
+      senden: () => senden(),
+      // Der Vorgang endet ohne Abruf — wie bei der eigenen Auswahlfrist des Fensters.
+      selbstBeenden: () => wartezustand(false),
+    };
+  }
+
+  it("laufende Frage: der Abbruch bricht den Abruf des Fragefelds selbst ab; gestoppt erst danach", async () => {
+    const fragefeld = fragefeldNachbilden();
+    const echterAbruf = window.fetch;
+    await einschalten();
+    naechsteMeldung.push({
+      status: 200,
+      aktionen: [{ id: "f3", art: "frage", text: "Synthetische lange Frage", auswahlStand: 0 }],
+    });
+    const feld = document.getElementById("ask-input") as HTMLTextAreaElement;
+    await bis(() => feld.value === "Synthetische lange Frage");
+    // Das Fragefeld schickt die Frage ab — sie läuft (nicht abwarten: sie endet erst mit dem Abbruch).
+    void fragefeld.senden();
+    await takt();
+    expect(frageAbruf?.signal?.aborted).toBe(false);
+    expect(ergebnisse()).toEqual([]);
+
+    naechsteMeldung.push({ status: 200, abbrechen: ["f3"] });
+    await bis(() => ergebnisse().length > 0);
+    // Der Fragevorgang selbst ist abgebrochen: sein Abruf trägt ein abgebrochenes Signal, das
+    // Fragefeld zeigt den Stopp statt einer Antwort — und erst DANACH heisst es „gestoppt“.
+    expect(frageAbruf?.signal?.aborted).toBe(true);
+    expect((document.getElementById("ask-status") as HTMLElement).textContent).toBe(
+      "In der Begleitapp gestoppt.",
+    );
+    expect(ergebnisse()).toEqual([
+      { id: "f3", stand: "gestoppt", ergebnis: null, grund: "abgebrochen" },
+    ]);
+    // Der Haken ist wieder weg — andere Abrufe gehen unverändert.
+    expect(window.fetch).toBe(echterAbruf);
+
+    // Antwortet der Server trotzdem noch, übernimmt das Fragefeld nichts.
+    frageAbruf?.freigeben();
+    for (let i = 0; i < 3; i += 1) {
+      await takt();
+    }
+    expect((document.getElementById("ask-answer-text") as HTMLElement).textContent).toBe("");
+    expect(ergebnisse().filter((e) => e.id === "f3")).toHaveLength(1);
+    expect(JSON.stringify(aufrufe)).not.toContain("Späte Antwort.");
+  });
+
+  // Nacharbeit 65 (Ben): ein Ergebnis verschwindet erst nach ausdrücklicher Quittierung.
+  it("abgewiesenes Endergebnis bleibt erhalten und geht mit dem nächsten Takt erneut hinaus", async () => {
+    const fragefeld = fragefeldNachbilden();
+    await einschalten();
+    naechsteMeldung.push({
+      status: 200,
+      aktionen: [{ id: "f5", art: "frage", text: "Synthetische Frage fünf", auswahlStand: 0 }],
+    });
+    const feld = document.getElementById("ask-input") as HTMLTextAreaElement;
+    await bis(() => feld.value === "Synthetische Frage fünf");
+    void fragefeld.senden();
+    await takt();
+    // Abbruch angefordert; die erste Zustellung des Endergebnisses weist der Kanal ab.
+    naechsteMeldung.push({ status: 200, abbrechen: ["f5"] }, { status: 200, abweisen: ["f5"] });
+    await bis(() => ergebnisse().some((e) => e.id === "f5"));
+    for (let i = 0; i < 4; i += 1) {
+      await takt();
+    }
+    // Genau zweimal: abgewiesen, dann erneut gesendet und quittiert — danach nicht mehr.
+    const f5 = ergebnisse().filter((e) => e.id === "f5");
+    expect(f5).toHaveLength(2);
+    expect(f5.every((e) => e.stand === "gestoppt")).toBe(true);
+  });
+
+  it("Abbruch vor dem Senden: kein „gestoppt“, solange nichts gewirkt hat; dann geht die Frage nicht hinaus", async () => {
+    const fragefeld = fragefeldNachbilden();
+    await einschalten();
+    naechsteMeldung.push({
+      status: 200,
+      aktionen: [{ id: "f4", art: "frage", text: "Synthetische Frage", auswahlStand: 0 }],
+    });
+    const feld = document.getElementById("ask-input") as HTMLTextAreaElement;
+    await bis(() => feld.value === "Synthetische Frage");
+    // Das Fragefeld liest noch die Markierung; der Abbruch kommt vorher.
+    naechsteMeldung.push({ status: 200, abbrechen: ["f4"] });
+    for (let i = 0; i < 3; i += 1) {
+      await takt();
+    }
+    // Noch nichts bestätigt: der Auftrag gilt weiter als laufend (die Begleitapp hält den Stopp).
+    expect(ergebnisse()).toEqual([]);
+
+    // Die Bestätigung kommt synchron, der Status erst im Promise-Fehlerhandler des Fragefelds.
+    await fragefeld.senden();
+    await bis(() => ergebnisse().length > 0);
+    expect(ergebnisse()).toEqual([
+      { id: "f4", stand: "gestoppt", ergebnis: null, grund: "vor_dem_senden" },
+    ]);
+    expect(aufrufe.some((a) => a.pfad === "/api/ask")).toBe(false);
+    expect((document.getElementById("ask-status") as HTMLElement).textContent).toBe(
+      "In der Begleitapp gestoppt.",
+    );
+  });
+
+  // Nacharbeit 10 (Ben): Trennen, während das Fragefeld noch auf Words Auswahlrückruf wartet. Der
+  // Vorgang ist danach dauerhaft entwertet; der Haken bleibt, bis das Fragefeld sicher zu Ende ist.
+  it("Trennen während der Auswahlabfrage: ein verspäteter Rückruf sendet die Frage NICHT", async () => {
+    const fragefeld = fragefeldNachbilden(true);
+    const echterAbruf = window.fetch;
+    await einschalten();
+    naechsteMeldung.push({
+      status: 200,
+      aktionen: [{ id: "f5", art: "frage", text: "Synthetische Trennfrage", auswahlStand: 0 }],
+    });
+    const feld = document.getElementById("ask-input") as HTMLTextAreaElement;
+    await bis(() => feld.value === "Synthetische Trennfrage");
+    expect(feld.disabled).toBe(true); // das Fragefeld wartet noch auf die Auswahl
+    const meldungenVorher = meldungen().length;
+
+    schalter().click(); // Trennen
+    for (let i = 0; i < 3; i += 1) {
+      await takt();
+    }
+    // Der Haken ist NICHT abgebaut, solange der Fragevorgang offen ist.
+    expect(window.fetch).not.toBe(echterAbruf);
+
+    // Words verspäteter Auswahlrückruf: das Fragefeld versucht zu senden — abgewiesen.
+    await fragefeld.senden();
+    expect(aufrufe.some((a) => a.pfad === "/api/ask")).toBe(false);
+    expect((document.getElementById("ask-status") as HTMLElement).textContent).toBe(
+      "In der Begleitapp gestoppt.",
+    );
+    // Getrennt meldet das Fenster nichts mehr.
+    expect(meldungen().length).toBe(meldungenVorher);
+    expect(ergebnisse().some((e) => e.id === "f5")).toBe(false);
+
+    // Erst jetzt ist der Vorgang sicher zu Ende — der Haken verschwindet mit dem nächsten Blick.
+    expect(feld.disabled).toBe(false);
+    await takt();
+    expect(window.fetch).toBe(echterAbruf);
+  });
+
+  it("Trennen, dann endet das Fragefeld ohne Abruf: Haken weg, eine spätere eigene Frage geht normal", async () => {
+    const fragefeld = fragefeldNachbilden(true);
+    const echterAbruf = window.fetch;
+    await einschalten();
+    naechsteMeldung.push({
+      status: 200,
+      aktionen: [{ id: "f6", art: "frage", text: "Synthetische Frage sechs", auswahlStand: 0 }],
+    });
+    const feld = document.getElementById("ask-input") as HTMLTextAreaElement;
+    await bis(() => feld.value === "Synthetische Frage sechs");
+    schalter().click(); // Trennen
+    await takt();
+    expect(window.fetch).not.toBe(echterAbruf);
+
+    // Die eigene Auswahlfrist des Fensters beendet den Vorgang, ohne dass ein Abruf abging.
+    fragefeld.selbstBeenden();
+    await takt();
+    expect(window.fetch).toBe(echterAbruf);
+
+    // Eine spätere, eigene Frage der Person geht unverändert hinaus.
+    void window.fetch("/api/ask", { method: "POST", body: "{}" });
+    await kurz();
+    expect(aufrufe.some((a) => a.pfad === "/api/ask")).toBe(true);
+    expect(frageAbruf?.signal ?? null).toBeNull();
+  });
+
+  it("Einfügen: Abbruch, während Word noch liest — es wird nichts geschrieben, Ende bestätigt", async () => {
+    await einschalten();
+    const stand = await markieren("Satz.", "absatz-1");
+    const loesen = sperren(); // Word.run hängt in sync(), bevor geschrieben wird
+    naechsteMeldung.push({
+      status: 200,
+      aktionen: [{ id: "e1", art: "einfuegen", text: " Nicht schreiben.", auswahlStand: stand }],
+    });
+    await takt();
+    await takt();
+    naechsteMeldung.push({ status: 200, abbrechen: ["e1"] });
+    await takt();
+    await takt();
+    loesen();
+    await bis(() => ergebnisse().some((e) => e.id === "e1"));
+    expect(eingefuegt).toEqual([]);
+    expect(ergebnisse().filter((e) => e.id === "e1")).toEqual([
+      { id: "e1", stand: "gestoppt", ergebnis: null, grund: "abgebrochen" },
     ]);
   });
 });

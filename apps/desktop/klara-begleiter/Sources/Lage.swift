@@ -13,6 +13,16 @@ enum Lage {
     /// Abstand zum Rand beim Andocken und Zurücksetzen.
     static let rand: CGFloat = 12
 
+    /// Übernommen aus BUG-KLARA-WINDOW-02 (Original 90314201): eine Fenstergrösse, die auf die
+    /// Fläche passt (mit Rand) — auf kleinen Bildschirmen, nach Skalierung oder Monitorwechsel liegen
+    /// Titelleiste und Bedienelemente nie ausserhalb.
+    static func begrenzt(_ groesse: CGSize, auf flaeche: CGRect) -> CGSize {
+        CGSize(
+            width: max(1, min(groesse.width, flaeche.width - rand * 2)),
+            height: max(1, min(groesse.height, flaeche.height - rand * 2))
+        )
+    }
+
     /// Der Bildschirm, dessen Fläche die Mitte des Rahmens enthält — sonst der nächstgelegene.
     static func bildschirm(fuer rahmen: CGRect, in sichtbar: [CGRect]) -> CGRect? {
         let mitte = CGPoint(x: rahmen.midX, y: rahmen.midY)
@@ -29,12 +39,44 @@ enum Lage {
         return dx * dx + dy * dy
     }
 
+    /// Der Bildschirm, auf dem ein PUNKT liegt (z. B. der Mauszeiger) — sonst der nächstgelegene.
+    static func bildschirm(am punkt: CGPoint, in sichtbar: [CGRect]) -> CGRect? {
+        if let treffer = sichtbar.first(where: { $0.contains(punkt) }) {
+            return treffer
+        }
+        return sichtbar.min(by: { abstand(punkt, $0) < abstand(punkt, $1) })
+    }
+
     /// Schiebt den Rahmen VOLLSTÄNDIG auf die Fläche seines Bildschirms. Ist er grösser als die
     /// Fläche, bleibt die obere linke Ecke sichtbar (dort sitzt die Figur).
     static func eingepasst(_ rahmen: CGRect, in sichtbar: [CGRect]) -> CGRect {
         guard let flaeche = bildschirm(fuer: rahmen, in: sichtbar) else {
             return rahmen
         }
+        return eingepasst(rahmen, auf: flaeche)
+    }
+
+    /// BUG-KLARA-WINDOW-02 · Grösse UND Lage auf die Fläche seines Bildschirms: ein gross gezogenes
+    /// Gespräch, das auf einen kleineren Bildschirm kommt (Ziehen, Monitorwechsel, Skalierung),
+    /// wird auf dessen Fläche verkleinert — Titelleiste und Knöpfe liegen nie ausserhalb.
+    static func vollstaendigSichtbar(_ rahmen: CGRect, in sichtbar: [CGRect]) -> CGRect {
+        guard let flaeche = bildschirm(fuer: rahmen, in: sichtbar) else {
+            return rahmen
+        }
+        return aufFlaeche(rahmen, flaeche)
+    }
+
+    /// Verkleinert (nie vergrössert) auf die Fläche — die obere linke Ecke bleibt — und schiebt
+    /// den Rahmen dann vollständig hinein. Zweimal angewandt ändert sich nichts mehr.
+    static func aufFlaeche(_ rahmen: CGRect, _ flaeche: CGRect) -> CGRect {
+        let breite = max(1, min(rahmen.width, flaeche.width))
+        let hoehe = max(1, min(rahmen.height, flaeche.height))
+        let r = CGRect(x: rahmen.minX, y: rahmen.maxY - hoehe, width: breite, height: hoehe)
+        return eingepasst(r, auf: flaeche)
+    }
+
+    /// Schiebt den Rahmen auf genau diese Fläche (ohne Grössenänderung).
+    static func eingepasst(_ rahmen: CGRect, auf flaeche: CGRect) -> CGRect {
         var r = rahmen
         if r.maxX > flaeche.maxX { r.origin.x = flaeche.maxX - r.width }
         if r.minX < flaeche.minX { r.origin.x = flaeche.minX }
@@ -77,7 +119,9 @@ enum Lage {
         return eingepasst(r, in: sichtbar)
     }
 
-    /// Wiederfinden: auf den Bildschirm des Mauszeigers, neben den Zeiger.
+    /// Wiederfinden: auf den Bildschirm des Mauszeigers, neben den Zeiger. Massgeblich ist der
+    /// ZIELbildschirm am Zeiger — Grösse und Lage werden auf dessen Fläche begrenzt, nicht auf
+    /// die des bisherigen (BUG-KLARA-WINDOW-02, Original 90314201).
     static func beimZeiger(_ zeiger: CGPoint, groesse: CGSize, in sichtbar: [CGRect]) -> CGRect {
         let r = CGRect(
             x: zeiger.x + 16,
@@ -85,6 +129,9 @@ enum Lage {
             width: groesse.width,
             height: groesse.height
         )
-        return eingepasst(r, in: sichtbar)
+        guard let ziel = bildschirm(am: zeiger, in: sichtbar) else {
+            return r
+        }
+        return aufFlaeche(r, ziel)
     }
 }

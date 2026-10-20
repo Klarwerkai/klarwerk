@@ -181,12 +181,19 @@ export function Kopfband({
   narrow = false,
   onOpenMenu,
   menuButtonRef,
+  leisteSichtbar = false,
 }: {
   narrow?: boolean;
   onOpenMenu?: () => void;
   // E2E-017 (bens Block F/Drawer): Referenz auf den Hamburger, damit der Drawer den Fokus beim
   // Schließen genau hierher zurückgibt.
   menuButtonRef?: Ref<HTMLButtonElement>;
+  /**
+   * MACOS-20261014 · MAC-03 (Ben/Führung Nacharbeit 54 · MAC5-03): die Arbeitsbereichsleiste links ist
+   * eingeblendet. Dann stehen die Arbeitsbereiche DORT — das Kopfband zeigt sie nicht ein zweites
+   * Mal (redundante Einstiege zusammengeführt). Ausgeblendet trägt das Kopfband sie wie bisher.
+   */
+  leisteSichtbar?: boolean;
 } = {}): JSX.Element {
   const { t } = useTranslation();
   const kuerzel = useKuerzel("K");
@@ -348,7 +355,10 @@ export function Kopfband({
           760–899 px „Meine Entwürfe" allein neben das Logo; Pedi hat am 11.09. genau das als
           Sonderstellung beanstandet. Die Navigation wohnt schmal vollständig hinter dem
           beschrifteten Menü-Knopf. Breit ändert sich nichts. */}
-        {narrow ? null : <KopfbandPunkte nachsatz={<ArbeitsbereicheMenue />} />}
+        {/* MAC-03 (Nacharbeit 54): bei eingeblendeter Arbeitsbereichsleiste stehen dieselben
+            Bereiche links — hier dann nicht ein zweites Mal. Suche, „Seite finden“ (⌘K), Meldungen,
+            Zahnrad und Konto bleiben im Kopfband. */}
+        {narrow || leisteSichtbar ? null : <KopfbandPunkte nachsatz={<ArbeitsbereicheMenue />} />}
         {/* FE-002: `flex-1` — die Gruppe nimmt den RESTPLATZ der Zeile. Ob ihre Griffe darin passen,
             misst `useKopfbandStufe` im Browser und setzt `data-stufe` (0–3); was eine Stufe
             ausblendet, steht in index.css. `justify-end` hält die Gruppe rechts. */}

@@ -12,7 +12,7 @@
 #
 #   Fassung   aus apps/desktop/klara-begleiter/VERSION
 #   Bau       Kurzkennung des Git-Stands (KLARA_BEGLEITER_BAU überschreibt), sonst „lokal"
-#   Server    https://klarwerk.ai (KLARWERK_SERVER überschreibt, nur https oder http://localhost)
+#   Server    https://app.klarwerk.ai (KLARWERK_SERVER überschreibt, nur https oder http://localhost)
 #
 # Aufruf aus der Werkswurzel:  scripts/klara-office/begleiter-bauen.sh
 set -euo pipefail
@@ -24,7 +24,7 @@ BUENDEL="$ZIEL/Klara Begleiter.app"
 
 FASSUNG="$(tr -d '[:space:]' < "$QUELLE/VERSION")"
 BAU="${KLARA_BEGLEITER_BAU:-$(git -C "$WURZEL" rev-parse --short=8 HEAD 2>/dev/null || echo lokal)}"
-SERVER="${KLARWERK_SERVER:-https://klarwerk.ai}"
+SERVER="${KLARWERK_SERVER:-https://app.klarwerk.ai}"
 
 if ! [[ "$FASSUNG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "VERSION ist keine Fassung der Form 1.2.3: '$FASSUNG'" >&2
