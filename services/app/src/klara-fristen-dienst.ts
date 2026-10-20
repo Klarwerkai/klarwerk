@@ -8,6 +8,7 @@ import {
   type FristenStand,
   fristManuell,
   fristVerwerfen,
+  fristZeitstand,
   fristenRegelAus,
   verarbeiteFristenQuelle,
 } from "./klara-fristen";
@@ -187,7 +188,8 @@ export class KlaraFristenDienst {
 
   private async filterSicht(user: SessionUser, s: FristenStand): Promise<FristenStand> {
     const fristen: ErkannteFrist[] = [];
-    for (const f of s.fristen) if (await this.lesbar(user, f)) fristen.push(f);
+    for (const f of s.fristen)
+      if (await this.lesbar(user, f)) fristen.push(fristZeitstand(f, this.am(), s.regel?.zeitzone));
     return { ...s, fristen };
   }
 

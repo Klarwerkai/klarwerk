@@ -39,6 +39,7 @@ export interface FristVerlauf {
     | "beleg_ergaenzt"
     | "quelle_geaendert"
     | "quelle_zurueckgezogen"
+    | "zeitgrenze"
     | "verworfen"
     | "manuell";
   stand: FristStand;
@@ -187,6 +188,13 @@ function zeitstand(datum: FristDatum, jetzt: string, zone = "UTC"): "historisch"
   return vergangen ? "historisch" : "erkannt";
 }
 
+/** Aktuelle Lesesicht ohne Schreibwirkung oder erfundene neue Fassung. */
+export function fristZeitstand(f: ErkannteFrist, am: string, zone = "UTC"): ErkannteFrist {
+  if (!f.datum || (f.stand !== "erkannt" && f.stand !== "historisch")) return f;
+  const stand = zeitstand(f.datum, am, zone);
+  return stand === f.stand ? f : { ...f, stand };
+}
+
 function mitVerlauf(
   alt: ErkannteFrist,
   neu: ErkannteFrist,
@@ -299,7 +307,11 @@ export function verarbeiteFristenQuelle(
       if (i >= 0) herkunft[i] = { beleg: b, aktuell: true };
       else herkunft.push({ beleg: b, aktuell: true });
     }
-    if (alt && isDeepStrictEqual(herkunft, alt.herkunft)) continue;
+    if (alt && isDeepStrictEqual(herkunft, alt.herkunft)) {
+      const zeitlich = fristZeitstand(alt, am, regel.zeitzone);
+      if (zeitlich !== alt) fristen.set(id, mitVerlauf(alt, zeitlich, am, "zeitgrenze"));
+      continue;
+    }
     const aktuell = herkunft.filter((h) => h.aktuell).map((h) => h.beleg);
     const daten = new Map<string, FristDatum>();
     for (const b of aktuell) if (b.datum) daten.set(datumSchluessel(b.datum), b.datum);

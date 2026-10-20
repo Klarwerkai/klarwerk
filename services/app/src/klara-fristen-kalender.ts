@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { type EigenerKalenderRepo, type KalenderEintrag, KalenderFehler } from "./eigener-kalender";
 import type { ErkannteFrist } from "./klara-fristen";
-import { fristVerwerfen } from "./klara-fristen";
+import { fristVerwerfen, fristZeitstand } from "./klara-fristen";
 import type { KlaraFristenRepo } from "./klara-fristen-ablage";
 
 export function fristKalenderId(f: Pick<ErkannteFrist, "kontoId" | "id">): string {
@@ -22,7 +22,8 @@ function ausId(id: string): { kontoId: string; fristId: string } | null {
 }
 
 /** Eine Sicht desselben Fristvorgangs, kein zweiter Kalender-Schreibspeicher. */
-function eintrag(f: ErkannteFrist): KalenderEintrag | null {
+function eintrag(ursprung: ErkannteFrist, am: string, zone?: string): KalenderEintrag | null {
+  const f = fristZeitstand(ursprung, am, zone);
   const d = f.kalenderDatum;
   if (!d || f.stand === "verworfen") return null;
   return {
@@ -56,6 +57,7 @@ export class FristenKalenderRepo implements EigenerKalenderRepo {
   constructor(
     private readonly kalender: EigenerKalenderRepo,
     private readonly fristen: KlaraFristenRepo,
+    private readonly jetzt: () => number = Date.now,
   ) {}
 
   async persoenliche(kontoId: string): Promise<KalenderEintrag[]> {
@@ -66,7 +68,7 @@ export class FristenKalenderRepo implements EigenerKalenderRepo {
     return [
       ...kalender,
       ...(stand?.fristen.flatMap((f) => {
-        const e = eintrag(f);
+        const e = eintrag(f, new Date(this.jetzt()).toISOString(), stand.regel?.zeitzone);
         return e ? [e] : [];
       }) ?? []),
     ];
@@ -93,8 +95,9 @@ export class FristenKalenderRepo implements EigenerKalenderRepo {
   async hole(id: string): Promise<KalenderEintrag | null> {
     const bezug = ausId(id);
     if (!bezug) return this.kalender.hole(id);
-    const f = (await this.fristen.hole(bezug.kontoId))?.fristen.find((f) => f.id === bezug.fristId);
-    return f ? eintrag(f) : null;
+    const s = await this.fristen.hole(bezug.kontoId);
+    const f = s?.fristen.find((f) => f.id === bezug.fristId);
+    return f ? eintrag(f, new Date(this.jetzt()).toISOString(), s?.regel?.zeitzone) : null;
   }
 
   async ersetze(e: KalenderEintrag): Promise<boolean> {
@@ -102,7 +105,7 @@ export class FristenKalenderRepo implements EigenerKalenderRepo {
     if (!bezug) return this.kalender.ersetze(e);
     const s = await this.fristen.hole(bezug.kontoId);
     const f = s?.fristen.find((f) => f.id === bezug.fristId);
-    const alt = f ? eintrag(f) : null;
+    const alt = f ? eintrag(f, new Date(this.jetzt()).toISOString(), s?.regel?.zeitzone) : null;
     if (!s || !f || !alt || f.fassung !== e.fassung - 1) return false;
     // Hier ändert die bestehende Kalenderaktion ausschließlich die eigene Sichtwahl. Inhalt,
     // Datum und fachlicher Stand werden am ursprünglichen Fristvorgang mit Belegverlauf korrigiert.
