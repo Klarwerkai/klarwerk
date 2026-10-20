@@ -344,6 +344,29 @@ describe("AW21 · tatsächliche bestehende Quellen-/Fristenablage", () => {
     await expect(dienst.beobachten(kontoId, [q.id], lauf)).rejects.toMatchObject({ status: 404 });
     expect(await services.klaraFristen.hole(kontoId)).toEqual(alt);
   });
+  it("Vorschau und Erfassungsantwort einer sichtbaren Kopie verraten keinen früheren inzwischen entzogenen Beleg", async () => {
+    const a = await wissen();
+    const b = await wissen(
+      BEKANNTMACHUNG.replace("; Geltung", "; PRIVATER_BEGLEITWORTLAUT; Geltung"),
+    );
+    await dienst.beobachten(kontoId, [a.id, b.id], lauf);
+    await services.ko.setQuellrechte(b.id, { stufe: "intern", leser: [] }, kontoId);
+    const v = await dienst.vorschau(kontoId, [a.id]);
+    expect(JSON.stringify(v)).not.toContain("PRIVATER_BEGLEITWORTLAUT");
+    expect(JSON.stringify(v)).not.toContain(b.id);
+    expect(v.ereignisse).toEqual([]);
+    expect(v.ungeprueft).toHaveLength(1);
+    const r = await app.inject({
+      method: "POST",
+      url: "/api/me/klara/normereignisse/erfassen",
+      headers: ich.kopf,
+      payload: { quellen: [a.id], bekanntmachungErlaubt: true },
+    });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.body).not.toContain("PRIVATER_BEGLEITWORTLAUT");
+    expect(r.body).not.toContain(b.id);
+    expect(r.json().ungeprueft).toHaveLength(1);
+  });
   it("ein inzwischen gestoppter Auftrag schreibt keinen Normbeleg", async () => {
     const q = await wissen();
     await expect(

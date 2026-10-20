@@ -143,8 +143,36 @@ export class KlaraNormereignisDienst {
   ): Promise<NormVorbereitung> {
     const bestand = await this.deps.ko.list({});
     const ereignisse: NormVorbereitung["ereignisse"][number][] = [];
+    const ungeprueft = [...auswertung.ungeprueft];
+    const unlesbar = () => {
+      const hinweis = "Normgeschichte mit den heutigen Quellenrechten nicht vollständig prüfbar.";
+      for (const quelleId of auswertung.quellIds)
+        if (!ungeprueft.some((q) => q.quelleId === quelleId && q.hinweis === hinweis))
+          ungeprueft.push({ quelleId, hinweis });
+    };
     for (const n of auswertung.geschichten) {
       if (!n.ereignisse.some((e) => auswertung.aktuelleIds.has(e.id))) continue;
+      // Auch Vorschau und Erfassungsantwort enthalten alte Belege. Eine lesbare Kopie
+      // erteilt kein heutiges Leserecht für andere historische Quellen derselben Geschichte.
+      const quellen = new Map(
+        n.ereignisse.flatMap((e) =>
+          e.belege.map((b) => [`${b.quelle.art}:${b.quelle.id}`, b.quelle] as const),
+        ),
+      );
+      const gelesen: GeleseneFristenQuelle[] = [];
+      let sichtbar = true;
+      for (const q of quellen.values()) {
+        const l = await this.deps.quellen.lies(user, q.art, q.id);
+        if (!l) {
+          sichtbar = false;
+          break;
+        }
+        gelesen.push(l);
+      }
+      if (!sichtbar) {
+        unlesbar();
+        continue;
+      }
       // Nur die ausdrücklich gespeicherte kanonische Zuordnung „Norm N-17“ belegt diesen Bezug.
       const referenz = normalizeAsset(`Norm ${n.kennung}`);
       const betroffen: NormBetroffenheit[] = [];
@@ -166,6 +194,11 @@ export class KlaraNormereignisDienst {
           fassung: aktuell.version,
           grund: { art: "gespeicherte_normzuordnung", referenz },
         });
+        gelesen.push(q);
+      }
+      if (!(await Promise.all(gelesen.map((q) => q.nochAktuell()))).every(Boolean)) {
+        unlesbar();
+        continue;
       }
       for (const e of n.ereignisse)
         if (auswertung.aktuelleIds.has(e.id))
@@ -178,7 +211,7 @@ export class KlaraNormereignisDienst {
             betroffen,
           });
     }
-    return { ereignisse, ungeprueft: auswertung.ungeprueft };
+    return { ereignisse, ungeprueft };
   }
 
   /** Dieselben aktuellen Quellen, aber weder Normbeleg noch Prüfaufgabe gespeichert. */
