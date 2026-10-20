@@ -122,6 +122,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
     private var fensterInhalt: BegleitInhalt!
     private var tastatur: Any?
     private let suchkuerzel = Suchkuerzel()
+    private var suchstatusEintrag: NSMenuItem?
     private var sucheAusstehend = false
     private var statusItem: NSStatusItem!
     private var modus = "gespraech"
@@ -854,7 +855,9 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         menu.addItem(eintrag("Zur Figur einklappen", sichtbar && modus == "gespraech" ? #selector(einklappen) : nil))
         let finden = eintrag("Figur wiederfinden", #selector(wiederfindenAusMenue))
         menu.addItem(finden)
-        menu.addItem(eintrag(kuerzelText, nil))
+        let suchstatus = eintrag(kuerzelText, nil)
+        suchstatusEintrag = suchstatus
+        menu.addItem(suchstatus)
         if schliessvorgang.wartet {
             let grund =
                 schliessvorgang.bestaetigt
@@ -982,6 +985,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
                 }
                 self.anmeldungSetzen(nutzer: stand.nutzer, sitzung: stand.sitzung)
                 self.suchkuerzel.setzen(self.kartenQuelle.anmeldung != nil ? stand.suchbelegung : nil)
+                self.suchstatusEintrag?.title = self.kuerzelText
                 beiErfolg?()
             }
         }
@@ -993,6 +997,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
     private func anmeldungSetzen(nutzer: String?, sitzung: String?) {
         if nutzer == nil {
             suchkuerzel.entfernen()
+            suchstatusEintrag?.title = kuerzelText
             // Entwerten macht jede noch laufende Nachfrage ungültig.
             anmeldeAbfrage += 1
             anmeldeFolge.entwerten()
