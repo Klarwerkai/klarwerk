@@ -44,6 +44,7 @@ import {
 } from "../praesentation-ergaenzung";
 import { ergaenzungsDatenbeleg } from "../praesentation-ergaenzung-snapshot";
 import { darfSehen } from "../sichtbarkeit";
+import { registriereDatenAenderungsRouten } from "./praesentation-aenderungs-routes";
 import { registriereAufbauRouten } from "./praesentation-aufbau-routes";
 
 // ================================================================================================
@@ -611,6 +612,13 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
     }
 
     if (deps.datenpunkte) {
+      registriereDatenAenderungsRouten(
+        app,
+        { ...deps, datenpunkte: deps.datenpunkte },
+        guards,
+        vorFassungsschritt,
+        nacheinander,
+      );
       registriereAufbauRouten(
         app,
         { ...deps, datenpunkte: deps.datenpunkte },
