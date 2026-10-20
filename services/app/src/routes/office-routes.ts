@@ -34,7 +34,9 @@ import {
   stelleZugangsmarkeAus,
 } from "../office-wopi";
 import { type WopiSitzungsablage, erstelleWopiHost } from "../office-wopi-host";
+import type { DatenpunktAblage } from "../praesentation-daten-ablage";
 import { darfSehen } from "../sichtbarkeit";
+import { registriereAufbauRouten } from "./praesentation-aufbau-routes";
 
 // ================================================================================================
 // OFFICE IM ARTIKEL · DIE ROUTEN (Auftrag produkt:20261007:office-artikel-editor, Plan U2/U3).
@@ -87,6 +89,7 @@ export interface OfficeKonto {
 }
 
 export interface OfficeRoutesDeps {
+  readonly datenpunkte?: DatenpunktAblage;
   readonly ko: OfficeKoDienst & {
     versionsOf(id: string): Promise<KoVersionSnapshot[]>;
     evidenceOf(id: string): Promise<EvidenceRecord[]>;
@@ -597,6 +600,16 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
         return undefined;
       }
       return { user, lage };
+    }
+
+    if (deps.datenpunkte) {
+      registriereAufbauRouten(
+        app,
+        { ...deps, datenpunkte: deps.datenpunkte },
+        guards,
+        vorFassungsschritt,
+        nacheinander,
+      );
     }
 
     function fassungsfehler(fehler: unknown, reply: FastifyReply) {

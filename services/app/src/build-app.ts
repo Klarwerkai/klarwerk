@@ -465,8 +465,8 @@ import {
   PgKlaraNotizRepo,
 } from "./klara-notiz";
 import { QuellgeschuetzteKlaraNotizen } from "./klara-wissen-quellschutz";
-import { KlaraWissensDienst } from "./klara-wissensuebernahme";
 import { KlaraWissenspflegeQuellen } from "./klara-wissenspflege-quellen";
+import { KlaraWissensDienst } from "./klara-wissensuebernahme";
 // ADMIN-12: Kommunikationsregeln, persönliche Abwahl und Zustellstatus — haltbar im Postgres-
 // Betrieb, im Speicher ohne Datenbank.
 import {
@@ -5337,6 +5337,7 @@ export function buildApp(
         konten: () => services.auth.listUsers(),
         spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
         ablage: services.officeAblage,
+        datenpunkte: services.datenpunkte,
       },
       guards,
     ),

@@ -85,6 +85,62 @@ export interface PraesentationDatenRoutesDeps {
   readonly abgleichGrenzen?: Partial<FolienAbgleichGrenzen>;
 }
 
+/** Die Umgebung EINER Anfrage: Rechte des Handelnden, Dateien je Fassung nur einmal gelesen. */
+export function datenUmgebung(
+  deps: PraesentationDatenRoutesDeps,
+  user: SessionUser,
+): DatenUmgebung {
+  const gelesen = new Map<string, Promise<FoliensatzDaten | undefined>>();
+  let konten: Promise<readonly PraesentationDatenKonto[]> | undefined;
+  const artikel = async (koId: string) => {
+    const ko = await deps.ko.get(koId);
+    return ko && can(user.role, "ko.read") && darfSehen(user, ko) ? ko : undefined;
+  };
+  const satzVon = (objectId: string) => {
+    const vorhanden = gelesen.get(objectId);
+    if (vorhanden) {
+      return vorhanden;
+    }
+    const lauf = (async () => {
+      const gespeichert = await deps.objekte.read(objectId);
+      const bytes = gespeichert ? decodeDataUrl(gespeichert.data)?.bytes : undefined;
+      return bytes ? await leseFolienDaten(bytes).catch(() => undefined) : undefined;
+    })();
+    gelesen.set(objectId, lauf);
+    return lauf;
+  };
+  return {
+    artikel,
+    async meta(koId) {
+      const ko = await deps.ko.get(koId);
+      return ko
+        ? {
+            version: ko.version,
+            ...(ko.confidentiality ? { confidentiality: ko.confidentiality } : {}),
+            anhaenge: (ko.attachments ?? []).map((a) => ({
+              id: a.id,
+              ...(a.objectId ? { objectId: a.objectId } : {}),
+            })),
+          }
+        : undefined;
+    },
+    async folien(koId, anhangId) {
+      const ko = await artikel(koId);
+      const anhang = ko?.attachments?.find((a) => a.id === anhangId);
+      if (!anhang?.objectId || officeFormatFuer(anhang.name, anhang.mime)?.endung !== "pptx") {
+        return undefined;
+      }
+      const satz = await satzVon(anhang.objectId);
+      return satz ? { objectId: anhang.objectId, name: anhang.name, satz } : undefined;
+    },
+    datenpunkt: (id) => deps.ablage.lesen(id),
+    async name(nutzerId) {
+      konten ??= deps.konten();
+      return (await konten).find((k) => k.id === nutzerId)?.name;
+    },
+  };
+}
+
 export function praesentationDatenRoutes(
   deps: PraesentationDatenRoutesDeps,
   guards: Guards,
@@ -92,58 +148,7 @@ export function praesentationDatenRoutes(
   const jetzt = deps.jetzt ?? Date.now;
   const kennung = deps.kennung ?? (() => randomUUID());
 
-  /** Die Umgebung EINER Anfrage: Rechte des Handelnden, Dateien je Fassung nur einmal gelesen. */
-  function umgebung(user: SessionUser): DatenUmgebung {
-    const gelesen = new Map<string, Promise<FoliensatzDaten | undefined>>();
-    let konten: Promise<readonly PraesentationDatenKonto[]> | undefined;
-    const artikel = async (koId: string) => {
-      const ko = await deps.ko.get(koId);
-      return ko && can(user.role, "ko.read") && darfSehen(user, ko) ? ko : undefined;
-    };
-    const satzVon = (objectId: string) => {
-      const vorhanden = gelesen.get(objectId);
-      if (vorhanden) {
-        return vorhanden;
-      }
-      const lauf = (async () => {
-        const gespeichert = await deps.objekte.read(objectId);
-        const bytes = gespeichert ? decodeDataUrl(gespeichert.data)?.bytes : undefined;
-        return bytes ? await leseFolienDaten(bytes).catch(() => undefined) : undefined;
-      })();
-      gelesen.set(objectId, lauf);
-      return lauf;
-    };
-    return {
-      artikel,
-      async meta(koId) {
-        const ko = await deps.ko.get(koId);
-        return ko
-          ? {
-              version: ko.version,
-              ...(ko.confidentiality ? { confidentiality: ko.confidentiality } : {}),
-              anhaenge: (ko.attachments ?? []).map((a) => ({
-                id: a.id,
-                ...(a.objectId ? { objectId: a.objectId } : {}),
-              })),
-            }
-          : undefined;
-      },
-      async folien(koId, anhangId) {
-        const ko = await artikel(koId);
-        const anhang = ko?.attachments?.find((a) => a.id === anhangId);
-        if (!anhang?.objectId || officeFormatFuer(anhang.name, anhang.mime)?.endung !== "pptx") {
-          return undefined;
-        }
-        const satz = await satzVon(anhang.objectId);
-        return satz ? { objectId: anhang.objectId, name: anhang.name, satz } : undefined;
-      },
-      datenpunkt: (id) => deps.ablage.lesen(id),
-      async name(nutzerId) {
-        konten ??= deps.konten();
-        return (await konten).find((k) => k.id === nutzerId)?.name;
-      },
-    };
-  }
+  const umgebung = (user: SessionUser) => datenUmgebung(deps, user);
 
   // Der große Körper des Hostabgleichs wird erst gelesen, wenn das Leserecht feststeht (Muster
   // `requireKoCreateBeforeParse`, ko-routes.ts). Benannter Helfer, damit der Routenscanner im
