@@ -256,6 +256,7 @@ export function VortragVorbereitung({
               {" "}
               {t("vortrag.text6")}{" "}
               <textarea
+                aria-label={t("vortrag.text6")}
                 maxLength={6000}
                 value={notiz?.text ?? ""}
                 onChange={(e) => aendereNotiz({ text: e.target.value })}
@@ -474,6 +475,7 @@ export function VortragVorbereitung({
             {" "}
             {t("vortrag.text29")}{" "}
             <textarea
+              aria-label={t("vortrag.text29")}
               maxLength={6000}
               value={nachText}
               onChange={(e) => {
