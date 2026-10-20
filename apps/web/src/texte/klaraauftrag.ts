@@ -13,6 +13,37 @@ export default {
   de: {
     "klaraauftrag.quelleArt.d_routine": "aus deiner gespeicherten Routine",
     "klaraauftrag.routineWortlaut": "Routinebeschreibung: {{text}}",
+    "klaraauftrag.bes.bedarf": "Bedarf",
+    "klaraauftrag.bes.umfang": "Anforderungs- und Anfrageentwurf vorbereiten",
+    "klaraauftrag.bes.aussenwirkung":
+      "Interne Vorbereitung · keine erlaubten Außenempfänger · kein Versand oder Kauf",
+    "klaraauftrag.bes.empfaenger":
+      "Empfängervorschläge: {{namen}} · noch keine Datenweitergabe erlaubt",
+    "klaraauftrag.bes.offen": "Weitere Schritte bleiben offen",
+    "klaraauftrag.bes.rest.fachlich": "Fachliche Anforderungen und Freigabe (BES-01)",
+    "klaraauftrag.bes.rest.lieferanten": "Lieferantenkreis und zulässige Empfänger wählen",
+    "klaraauftrag.bes.rest.versand": "Berechtigter Anfrageversand und echte Antworten",
+    "klaraauftrag.bes.rest.vergleich": "Vollständige Angebote und Vergleich",
+    "klaraauftrag.bes.quelle":
+      "Gebundene Quelle · Fassung {{fassung}} · Status {{status}} · keine Freigabe abgeleitet",
+    "klaraauftrag.bes.quelleOffen":
+      "Welche lesbare Quelle „{{name}}“ meinst du? Ohne eindeutige Quelle entsteht nichts.",
+    "klaraauftrag.bes.anforderung": "Anforderung für {{produkt}}",
+    "klaraauftrag.bes.anfrage": "Anfrage für {{produkt}}",
+    "klaraauftrag.bes.produkt": "Produkt",
+    "klaraauftrag.bes.menge": "Menge mit Einheit",
+    "klaraauftrag.bes.termin": "Gewünschter Termin",
+    "klaraauftrag.bes.frage": "Für die internen Entwürfe fehlen noch diese Angaben:",
+    "klaraauftrag.bes.vorbereiten": "Angaben übernehmen und Entwürfe vorbereiten",
+    "klaraauftrag.bes.korrigieren": "Menge oder Termin korrigieren",
+    "klaraauftrag.bes.korrekturHinweis":
+      "Die Korrektur gilt für offene Schritte. Gespeicherte Entwürfe und ihre ursprünglichen Angaben bleiben erhalten. Danach ausdrücklich fortsetzen.",
+    "klaraauftrag.bes.speichern": "Korrektur speichern",
+    "klaraauftrag.bes.korrekturGrund": "Menge/Termin ausdrücklich für offene Schritte korrigiert",
+    "klaraauftrag.bes.korrigiert":
+      "Neue Fassung gespeichert. Vorhandene Entwürfe bleiben erhalten; Fortsetzen verwendet die korrigierten Angaben im offenen Schritt.",
+    "klaraauftrag.bes.vorbereitet":
+      "Interne Entwürfe vorbereitet; weitere Beschaffungsschritte offen",
     "klaraauftrag.wissen.bindung": "Private Notiz · Fassung {{fassung}} · {{ziel}} · {{stufe}}",
     "klaraauftrag.aktion.wissen_uebernehmen": "Bewusst als Wissen übernehmen",
     "klaraauftrag.zielArt.neuer_wissensbeitrag": "gewählter neuer Wissensbeitrag",
@@ -286,6 +317,37 @@ export default {
   en: {
     "klaraauftrag.quelleArt.d_routine": "from your saved routine",
     "klaraauftrag.routineWortlaut": "Routine description: {{text}}",
+    "klaraauftrag.bes.bedarf": "Need",
+    "klaraauftrag.bes.umfang": "Prepare requirement and inquiry drafts",
+    "klaraauftrag.bes.aussenwirkung":
+      "Internal preparation · no authorised external recipients · no sending or purchase",
+    "klaraauftrag.bes.empfaenger":
+      "Proposed recipients: {{namen}} · no data sharing authorised yet",
+    "klaraauftrag.bes.offen": "Further steps remain open",
+    "klaraauftrag.bes.rest.fachlich": "Subject matter requirements and approval (BES-01)",
+    "klaraauftrag.bes.rest.lieferanten": "Choose suppliers and authorised recipients",
+    "klaraauftrag.bes.rest.versand": "Authorised inquiry sending and actual replies",
+    "klaraauftrag.bes.rest.vergleich": "Complete offers and comparison",
+    "klaraauftrag.bes.quelle":
+      "Bound source · version {{fassung}} · status {{status}} · no approval inferred",
+    "klaraauftrag.bes.quelleOffen":
+      "Which readable source “{{name}}” do you mean? Nothing is created without a clear source.",
+    "klaraauftrag.bes.anforderung": "Requirements for {{produkt}}",
+    "klaraauftrag.bes.anfrage": "Inquiry for {{produkt}}",
+    "klaraauftrag.bes.produkt": "Product",
+    "klaraauftrag.bes.menge": "Quantity with unit",
+    "klaraauftrag.bes.termin": "Desired date",
+    "klaraauftrag.bes.frage": "These details are still needed for the internal drafts:",
+    "klaraauftrag.bes.vorbereiten": "Use details and prepare drafts",
+    "klaraauftrag.bes.korrigieren": "Correct quantity or date",
+    "klaraauftrag.bes.korrekturHinweis":
+      "The correction applies to open steps. Saved drafts and their original details remain. Resume explicitly afterwards.",
+    "klaraauftrag.bes.speichern": "Save correction",
+    "klaraauftrag.bes.korrekturGrund": "Quantity/date explicitly corrected for open steps",
+    "klaraauftrag.bes.korrigiert":
+      "New version saved. Existing drafts remain; Resume uses the corrected details in the open step.",
+    "klaraauftrag.bes.vorbereitet":
+      "Internal drafts prepared; further procurement steps remain open",
     "klaraauftrag.wissen.bindung": "Private note · version {{fassung}} · {{ziel}} · {{stufe}}",
     "klaraauftrag.aktion.wissen_uebernehmen": "Consciously adopt as knowledge",
     "klaraauftrag.zielArt.neuer_wissensbeitrag": "selected new knowledge contribution",
@@ -551,6 +613,38 @@ export default {
   nl: {
     "klaraauftrag.quelleArt.d_routine": "uit je opgeslagen routine",
     "klaraauftrag.routineWortlaut": "Routinebeschrijving: {{text}}",
+    "klaraauftrag.bes.bedarf": "Behoefte",
+    "klaraauftrag.bes.umfang": "Eisen- en aanvraagconcept voorbereiden",
+    "klaraauftrag.bes.aussenwirkung":
+      "Interne voorbereiding · geen toegestane externe ontvangers · geen verzending of aankoop",
+    "klaraauftrag.bes.empfaenger":
+      "Voorgestelde ontvangers: {{namen}} · nog geen gegevensdeling toegestaan",
+    "klaraauftrag.bes.offen": "Vervolgstappen blijven open",
+    "klaraauftrag.bes.rest.fachlich": "Inhoudelijke eisen en goedkeuring (BES-01)",
+    "klaraauftrag.bes.rest.lieferanten": "Leveranciers en toegestane ontvangers kiezen",
+    "klaraauftrag.bes.rest.versand": "Bevoegde verzending van aanvragen en echte antwoorden",
+    "klaraauftrag.bes.rest.vergleich": "Volledige offertes en vergelijking",
+    "klaraauftrag.bes.quelle":
+      "Gebonden bron · versie {{fassung}} · status {{status}} · geen goedkeuring afgeleid",
+    "klaraauftrag.bes.quelleOffen":
+      "Welke leesbare bron “{{name}}” bedoel je? Zonder duidelijke bron wordt niets aangemaakt.",
+    "klaraauftrag.bes.anforderung": "Eisen voor {{produkt}}",
+    "klaraauftrag.bes.anfrage": "Aanvraag voor {{produkt}}",
+    "klaraauftrag.bes.produkt": "Product",
+    "klaraauftrag.bes.menge": "Hoeveelheid met eenheid",
+    "klaraauftrag.bes.termin": "Gewenste datum",
+    "klaraauftrag.bes.frage": "Deze gegevens ontbreken nog voor de interne concepten:",
+    "klaraauftrag.bes.vorbereiten": "Gegevens gebruiken en concepten voorbereiden",
+    "klaraauftrag.bes.korrigieren": "Hoeveelheid of datum corrigeren",
+    "klaraauftrag.bes.korrekturHinweis":
+      "De correctie geldt voor open stappen. Opgeslagen concepten en hun oorspronkelijke gegevens blijven behouden. Hervat daarna uitdrukkelijk.",
+    "klaraauftrag.bes.speichern": "Correctie opslaan",
+    "klaraauftrag.bes.korrekturGrund":
+      "Hoeveelheid/datum uitdrukkelijk voor open stappen gecorrigeerd",
+    "klaraauftrag.bes.korrigiert":
+      "Nieuwe versie opgeslagen. Bestaande concepten blijven behouden; Hervatten gebruikt de gecorrigeerde gegevens in de open stap.",
+    "klaraauftrag.bes.vorbereitet":
+      "Interne concepten voorbereid; verdere inkoopstappen blijven open",
     "klaraauftrag.wissen.bindung": "Privénotitie · versie {{fassung}} · {{ziel}} · {{stufe}}",
     "klaraauftrag.aktion.wissen_uebernehmen": "Bewust als kennis overnemen",
     "klaraauftrag.zielArt.neuer_wissensbeitrag": "gekozen nieuwe kennisbijdrage",
