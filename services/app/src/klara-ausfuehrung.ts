@@ -51,7 +51,9 @@ import {
   zielErlaubt,
 } from "./klara-auftrag";
 import { liesAuftragsnotiz } from "./klara-auftragsnotiz";
+import { pruefeAuftragswissen } from "./klara-auftragswissen";
 import { type KlaraGespraechDienst, KlaraGespraechFehler } from "./klara-gespraech";
+import { wissensUebernahmeVorgang } from "./klara-wissensuebernahme";
 
 /** Ein Aufruf einer vorhandenen Tür der Anwendung — mit der Anmeldung der Person. */
 export type KlaraRufe = (
@@ -487,6 +489,7 @@ export class KlaraAusfuehrung {
     const rufe: KlaraRufe = async (methode, url, rumpf) => {
       if (methode !== "GET") {
         if (notizQuelle) await liesAuftragsnotiz(notizQuelle, produktRufe);
+        if (p.wissen) await pruefeAuftragswissen(p.wissen, produktRufe);
         // Nach asynchronem Quellenlesen muss auch die Routine noch gelten. Der Stop-/Grenzreadback
         // folgt nach dieser Prüfung, unmittelbar vor dem bestehenden Produktaufruf.
         await pruefeHerkunft();
@@ -501,7 +504,8 @@ export class KlaraAusfuehrung {
         if (
           !aktuell.erlaubteAktionen.includes(p.aktion) ||
           !zielErlaubt(aktuell, zielZumBeginn) ||
-          (notizQuelle && !aktuell.erlaubteQuellen.includes(`notiz:${notizQuelle.id}`))
+          (notizQuelle && !aktuell.erlaubteQuellen.includes(`notiz:${notizQuelle.id}`)) ||
+          (p.wissen && !aktuell.erlaubteQuellen.includes(`notiz:${p.wissen.notizId}`))
         ) {
           throw new KlaraGespraechFehler(
             409,
@@ -580,6 +584,81 @@ export class KlaraAusfuehrung {
 
     if (!ziel) {
       return scheitert("vorschritt");
+    }
+
+    if (p.aktion === "wissen_uebernehmen" && p.wissen) {
+      const w = p.wissen;
+      const operationId = wissensUebernahmeVorgang(w.notizId, w.fassung);
+      type Beitrag = {
+        id: string;
+        title: string;
+        version: number;
+        status: string;
+        author: string;
+        spaceId?: string;
+        createOperationId?: string;
+        createOperation?: { actor?: string; fingerprint?: string };
+      };
+      const passt = (x: unknown): x is Beitrag => {
+        const k = x as Beitrag | null;
+        return (
+          !!k &&
+          typeof k.id === "string" &&
+          typeof k.title === "string" &&
+          typeof k.version === "number" &&
+          typeof k.status === "string" &&
+          k.createOperationId === operationId &&
+          k.createOperation?.actor === kontoId &&
+          k.createOperation.fingerprint === w.stempel &&
+          (k.spaceId ?? null) === (w.ziel.art === "space" ? w.ziel.spaceId : null)
+        );
+      };
+      const nachVorgang = async (): Promise<Beitrag | null> => {
+        const r = await rufe("GET", "/api/kos");
+        return r.status === 200 && Array.isArray(r.daten) ? (r.daten.find(passt) ?? null) : null;
+      };
+      let beitrag: Beitrag | null = null;
+      if (bekannt?.art === "wissensobjekt") {
+        const r = await rufe("GET", `/api/kos/${encodeURIComponent(bekannt.id)}`);
+        beitrag = r.status === 200 && passt(r.daten) ? r.daten : null;
+        if (!beitrag) return ungeklaert();
+      } else {
+        beitrag = await nachVorgang();
+        if (!beitrag && vorhanden) return ungeklaert();
+        if (!beitrag) {
+          const r = await rufe(
+            "POST",
+            `/api/me/klara/notizen/${encodeURIComponent(w.notizId)}/wissen/uebernehmen`,
+            { fassung: w.fassung, ziel: w.ziel, stempel: w.stempel, bewusst: true },
+          );
+          const e = (r.daten as { beitrag?: { id?: unknown } } | null)?.beitrag;
+          if (r.status !== 200 && r.status !== 201) {
+            // Auch eine fachliche Fehlerantwort nach dem tatsächlichen Erstinsert beweist
+            // keine Nichtanlage. Nur das wirkliche Original klärt den Ausgang.
+            beitrag = await nachVorgang();
+            if (!beitrag) return ungeklaert();
+          } else if (typeof e?.id === "string") {
+            await merke({
+              art: "wissensobjekt",
+              id: e.id,
+              pfad: `/wissen/${encodeURIComponent(e.id)}`,
+              stand: null,
+            });
+            const gelesen = await rufe("GET", `/api/kos/${encodeURIComponent(e.id)}`);
+            beitrag = gelesen.status === 200 && passt(gelesen.daten) ? gelesen.daten : null;
+          }
+          if (!beitrag) return ungeklaert();
+        }
+      }
+      return melde("gespeichert", {
+        ergebnis: {
+          art: "wissensobjekt",
+          id: beitrag.id,
+          titel: beitrag.title,
+          stand: `fassung:${beitrag.version} status:${beitrag.status}`,
+          pfad: `/wissen/${encodeURIComponent(beitrag.id)}`,
+        },
+      });
     }
 
     if (p.aktion === "entwurf_erstellen") {

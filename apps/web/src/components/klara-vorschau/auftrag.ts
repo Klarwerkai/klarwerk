@@ -40,8 +40,10 @@ import {
   type KlaraSchrittStand,
   klaraAuftragApi,
 } from "../../api/klaraAuftrag";
+import type { KlaraWissensAuftragsbindung } from "../../api/klaraAuftrag";
 import { klaraErinnerungApi } from "../../api/klaraErinnerung";
 import { klaraNotizApi } from "../../api/klaraNotiz";
+import type { WissensVorschau, WissensZiel } from "../../api/klaraWissen";
 import type { DraftPayload } from "../../api/types";
 import { fallHref } from "../../lib/fallAbsprung";
 import { type ErkannterSchritt, erkenneAuftrag } from "../../lib/klaraAuftragErkennung";
@@ -82,6 +84,7 @@ export interface GeplanterSchritt {
   personen?: { id: string; name: string }[];
   zeitFehler?: boolean;
   notizQuelle?: KlaraAuftragsnotiz;
+  wissen?: KlaraWissensAuftragsbindung;
   notizKandidaten?: (KlaraAuftragsnotiz & { auszug: string })[];
 }
 
@@ -585,6 +588,50 @@ export function starteAuftrag(
   return "gestartet";
 }
 
+/** Der bewusste vorhandene F08-Endknopf übergibt seine gesehene Bindung, ohne erneut zu raten. */
+export function starteWissensauftrag(
+  v: WissensVorschau,
+  ziel: WissensZiel,
+  herkunft: Herkunft,
+  u: AuftragsUmgebung,
+): string {
+  if (auftragLaeuft()) throw new Error(u.t("klaraauftrag.belegt"));
+  const lokalId = `wissen-${Date.now().toString(36)}-${++zaehler}`;
+  const name = v.input?.title ?? u.t("klaraauftrag.wissen.original");
+  const wissen: KlaraWissensAuftragsbindung = {
+    notizId: v.notizId,
+    fassung: v.fassung,
+    ziel,
+    stempel: v.stempel,
+    bewusst: true,
+  };
+  const a: Ausfuehrung = {
+    lokalId,
+    quelle: "getippt",
+    wortlaut: u.t("klaraauftrag.wissen.auftrag", { titel: name }),
+    herkunft,
+    phase: "pruefen",
+    meldung: null,
+    geplant: [
+      {
+        nr: 1,
+        schluessel: neuerSchluessel(1),
+        erkannt: { aktion: "wissen_uebernehmen", suche: "beliebig", name },
+        ziel: { art: "neuer_wissensbeitrag", id: null, titel: name, stand: null, pfad: null },
+        kandidaten: [],
+        wissen,
+      },
+    ],
+    auftrag: null,
+    gespraechId: null,
+    lokal: {},
+    abbruch: false,
+  };
+  setzeZustand((z) => ({ ...z, liste: [a, ...z.liste].slice(0, 5) }));
+  void legeAnUndFuehreAus(lokalId, u);
+  return lokalId;
+}
+
 async function klaere(lokalId: string, u: AuftragsUmgebung): Promise<void> {
   const gen = generation;
   const a = hole(lokalId);
@@ -928,7 +975,9 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
   const aktionen = [...new Set(a.geplant.map((s) => s.erkannt.aktion))];
   const quellen = [
     t("klaraauftrag.quelle.eingabe", { quelle: t(`klaraauftrag.quelleArt.${a.quelle}`) }),
-    ...a.geplant.flatMap((s) => (s.notizQuelle ? [`notiz:${s.notizQuelle.id}`] : [])),
+    ...a.geplant.flatMap((s) =>
+      s.notizQuelle ? [`notiz:${s.notizQuelle.id}`] : s.wissen ? [`notiz:${s.wissen.notizId}`] : [],
+    ),
     ...ziele
       .filter((z) => z.id !== null)
       .map((z) => kuerzen(t("klaraauftrag.quelle.ziel", { titel: z.titel }), 200)),
@@ -962,6 +1011,7 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
         ausSchritt: s.erkannt.ausSchritt === undefined ? null : s.erkannt.ausSchritt + 1,
         ...(!s.notizQuelle && s.erkannt.inhalt ? { inhalt: s.erkannt.inhalt } : {}),
         ...(s.notizQuelle ? { notizQuelle: s.notizQuelle } : {}),
+        ...(s.wissen ? { wissen: s.wissen } : {}),
         ...(s.erkannt.aenderung ? { aenderung: s.erkannt.aenderung } : {}),
         // Nacharbeit 4: die geklärte Aktion an der Aufgabe — Teil der Grenze, nicht der Ausführung.
         ...(s.aufgabenaktion ? { aufgabenaktion: s.aufgabenaktion } : {}),
@@ -1594,6 +1644,7 @@ function ausGeladenem(x: KlaraAuftrag, herkunft: Herkunft, gespraechId: string):
         kandidaten: [],
         aufgabenaktion: p.aufgabenaktion ?? null,
         ...(p.notizQuelle ? { notizQuelle: p.notizQuelle } : {}),
+        ...(p.wissen ? { wissen: p.wissen } : {}),
       };
     }),
     auftrag: x,

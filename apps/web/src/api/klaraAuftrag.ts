@@ -1,8 +1,9 @@
+import { api } from "./client";
 // produkt:20261008:klara-aktionen (Klara 05) — der Drahtvertrag der Ausführungsaufträge im eigenen
 // Klara-Gespräch (Spiegel von `services/app/src/klara-auftrag.ts` und der Auftragstüren in
 // `routes/klara-gespraech-routes.ts`). Die Grenze steht am Server; ausgeführt wird über die
 // vorhandenen Produktwege (`endpoints.drafts`, `endpoints.ko`), die ihre Rechte selbst prüfen.
-import { api } from "./client";
+import type { WissensZiel } from "./klaraWissen";
 
 // produkt:20261008:klara-aufgaben (Klara 07): `persoenliche_aufgabe_anlegen` mit dem Ziel
 // `neue_persoenliche_aufgabe` und dem Ergebnis `persoenliche_aufgabe` (`/api/me/klara/aufgaben`).
@@ -12,12 +13,14 @@ export type KlaraAktion =
   | "entwurf_bearbeiten"
   | "aufgabe_bearbeiten"
   | "persoenliche_aufgabe_anlegen"
-  | "erinnerung_anlegen";
+  | "erinnerung_anlegen"
+  | "wissen_uebernehmen";
 export type KlaraZielArt =
   | "wissensobjekt"
   | "entwurf"
   | "aufgabe"
   | "neuer_entwurf"
+  | "neuer_wissensbeitrag"
   | "neue_persoenliche_aufgabe"
   | "persoenliche_aufgabe";
 export type KlaraAuftragsQuelle = "getippt" | "gesprochen";
@@ -70,7 +73,7 @@ export interface KlaraAuftragSchritt {
   ausgangUnklar?: boolean;
   /** Nacharbeit 4: bestätigte Schreibwirkung, deren Nachlesen noch aussteht (Schritt ungeklärt). */
   schreibwirkung?: {
-    art: "entwurf" | "aufgabe" | "persoenliche_aufgabe" | "erinnerung";
+    art: "entwurf" | "aufgabe" | "persoenliche_aufgabe" | "erinnerung" | "wissensobjekt";
     id: string;
     pfad: string;
     /** Nacharbeit 5: der vom Schreibweg bestätigte eigene Stand (`null`: keiner bestätigt). */
@@ -106,7 +109,8 @@ export type KlaraVertragsSchluessel =
   | "aufgabe_zuweisen"
   | "aufgabe_eskalieren"
   | "persoenliche_aufgabe_anlegen"
-  | "erinnerung_anlegen";
+  | "erinnerung_anlegen"
+  | "wissen_uebernehmen";
 
 /** PV-02-02: Spiegel von `KlaraErgebnisstand` — dazu `entwurf`, solange der Plan nur hier steht. */
 export type KlaraErgebnisstand =
@@ -140,7 +144,15 @@ export interface KlaraAuftragsnotiz {
   nachrichtId?: string;
 }
 
+export interface KlaraWissensAuftragsbindung {
+  notizId: string;
+  fassung: number;
+  ziel: WissensZiel;
+  stempel: string;
+  bewusst: true;
+}
 export interface KlaraPlanSchritt {
+  wissen?: KlaraWissensAuftragsbindung;
   notizQuelle?: KlaraAuftragsnotiz;
   aktion: KlaraAktion;
   ziel: KlaraAuftragZiel | null;
