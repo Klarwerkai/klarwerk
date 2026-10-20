@@ -28,6 +28,14 @@ export const WORD_ADDIN_CSP_PATHS: readonly string[] = [
   "/word-addin/anmeldung.html",
 ];
 
+// aufnahme:20260922:excel-erster-weg (KO-04-01): DAS AUFGABENFENSTER FÜR EXCEL UND POWERPOINT.
+// Es ist ein zweites Taskpane mit demselben Bedarf wie das Word-Taskpane: office.js von der
+// Microsoft-CDN, Einbettung durch Excel bzw. PowerPoint im Browser (dieselben Office-Herkünfte,
+// `office-host.ts`) samt der eingetragenen SharePoint-Mandanten. Eine EIGENE Liste, damit die
+// Word-Menge (oben, am Draht gepinnt) unverändert bleibt; dieselbe exakte, fail-closed Prüfung.
+// Die Anmeldung nutzt die vorhandene Dialogseite `/word-addin/anmeldung.html` — kein zweiter Dialog.
+export const OFFICE_ADDIN_CSP_PATHS: readonly string[] = ["/office-addin/taskpane.html"];
+
 // K2: die Einbettungs-Erlaubnis (`frame-ancestors`) steht seit JOB 4016 NICHT mehr hier. Sie ist
 // eine Kenntnis über Microsofts Office-Runtime und keine Eigenschaft dieser CSP-Konstante; ihr Ort
 // ist `office-host.ts` — dort stehen die belegten Hosts, ihre Herkunft, die bewusst NICHT
@@ -116,13 +124,19 @@ export function isWordAddinCspPath(rawUrl: string | undefined): boolean {
   return WORD_ADDIN_CSP_PATHS.includes(pfadOhneQuery(rawUrl));
 }
 
+/** Dasselbe für das Excel-/PowerPoint-Fenster — exakter Vergleich, keine Präfixe. */
+export function isOfficeAddinCspPath(rawUrl: string | undefined): boolean {
+  return OFFICE_ADDIN_CSP_PATHS.includes(pfadOhneQuery(rawUrl));
+}
+
 function pfadOhneQuery(rawUrl: string | undefined): string {
   return (rawUrl ?? "").split("?")[0]?.split("#")[0] ?? "";
 }
 
-// Die Mandanten-Herkünfte gelten NUR für das Taskpane — die Seite, die Word im Browser wirklich
-// einbettet. Die Dialogseite ist top-level und behält die Ersatz-CSP ohne Mandanten.
+// Die Mandanten-Herkünfte gelten NUR für die Taskpanes — die Seiten, die Word, Excel und PowerPoint
+// im Browser wirklich einbetten. Die Dialogseite ist top-level und behält die Ersatz-CSP ohne Mandanten.
 const TASKPANE_PATH = "/word-addin/taskpane.html";
+const TASKPANE_PATHS: readonly string[] = [TASKPANE_PATH, ...OFFICE_ADDIN_CSP_PATHS];
 
 // ================================================================================================
 // WORD-HOST-GESAMTWEG (Realhostbeleg 05.10.2026) — DIE DIALOGSEITE DARF DEN OFFICE-OPENER NICHT KAPPEN.
@@ -177,7 +191,7 @@ export async function registerSecurityHeaders(
   }
   const taskpaneCsp = wordAddinCsp(mandanten);
   const ersatzCsp = (rawUrl: string): string =>
-    pfadOhneQuery(rawUrl) === TASKPANE_PATH ? taskpaneCsp : WORD_ADDIN_CSP;
+    TASKPANE_PATHS.includes(pfadOhneQuery(rawUrl)) ? taskpaneCsp : WORD_ADDIN_CSP;
   // produkt:20261007:office-artikel-editor (Plan 3.1): die Artikelseite bettet den Office-Editor
   // per Formular-POST in ein iframe. Dafür bekommen `frame-src` und `form-action` GENAU die eine
   // Editor-Herkunft aus KLARWERK_OFFICE_EDITOR_URL — keine Platzhalterfamilie. Ohne vollständige
@@ -220,7 +234,7 @@ export async function registerSecurityHeaders(
   // WP-E-Regel: app-globale onSend-Hooks IMMER synchron im Callback-Stil (kein async — s.
   // sync-onsend-hooks.test.ts; ein async-Hook öffnete das Doppel-Send-Fenster ERR_HTTP_HEADERS_SENT).
   app.addHook("onSend", (request, reply, payload, done) => {
-    const wordAddin = isWordAddinCspPath(request.url);
+    const wordAddin = isWordAddinCspPath(request.url) || isOfficeAddinCspPath(request.url);
     if (wordAddin) {
       reply.header("Content-Security-Policy", ersatzCsp(request.url));
       // X-Frame-Options kennt keine Domain-Liste — für diese exakten Pfade entfernen; die

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xsi:type="TaskPaneApp">
+  <!-- aufnahme:20260922:excel-erster-weg (KO-04-01): Klara als Seitenfenster in EXCEL (Mac, Web).
+       Eigenes Manifest neben dem Word-Manifest (docs/word-addin/klara-manifest.xml, unverändert):
+       ein Manifest je Host, eigene Id, eigene Version. Kommentare stehen wie im Word-Manifest NACH
+       dem Start des Wurzelelements (Sideload-Befund WP-KLARA-1c).
+       Die Mindeststufe ist bewusst die kleinste (ExcelApi 1.1: Bereich lesen und schreiben). Alles
+       darüber (Blattschutz 1.2, Mappenname 1.7, Mehrfachauswahl 1.9) prüft das Fenster zur LAUFZEIT
+       und sagt, was fehlt. -->
+  <Id>3c9e2b71-5d4a-4f6e-8a1b-7e2d4c6f9a03</Id>
+  <!-- Dieselbe Zahl wie KLARA_OFFICE_TASKPANE_FASSUNG (services/app/src/web-static.ts) und wie die
+       Kennung in SourceLocation unten; gemeinsam geprüft in tests/office-addin/manifeste.test.ts. -->
+  <Version>1.0.0.0</Version>
+  <ProviderName>KLARWERK</ProviderName>
+  <DefaultLocale>de-DE</DefaultLocale>
+  <DisplayName DefaultValue="Klara" />
+  <Description DefaultValue="Klara in Excel: markierte Zellen lesen, Fragen dazu stellen und gezielt zurückgeben – nur nach Ihrer Bestätigung." />
+  <IconUrl DefaultValue="https://app.klarwerk.ai/word-addin/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://app.klarwerk.ai/word-addin/icon-80.png" />
+  <SupportUrl DefaultValue="https://app.klarwerk.ai/" />
+  <AppDomains>
+    <AppDomain>https://app.klarwerk.ai</AppDomain>
+    <AppDomain>https://klarwerk.ai</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Workbook" />
+  </Hosts>
+  <Requirements>
+    <Sets DefaultMinVersion="1.1">
+      <Set Name="ExcelApi" MinVersion="1.1" />
+    </Sets>
+  </Requirements>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://app.klarwerk.ai/office-addin/taskpane.html?v=1.0.0.0" />
+  </DefaultSettings>
+  <!-- Schreiben ist eine bewusste Rückgabe nach zweitem Klick (Summenformel, Text in eine Zelle);
+       Office kennt keine feinere Schreibstufe für ein Aufgabenfenster. -->
+  <Permissions>ReadWriteDocument</Permissions>
+</OfficeApp>

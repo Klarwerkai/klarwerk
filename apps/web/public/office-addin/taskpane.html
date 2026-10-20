@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="kw-office-fassung" content="__KW_FASSUNG__" />
+  <title>Klara für Excel und PowerPoint</title>
+  <!-- aufnahme:20260922:excel-erster-weg (KO-04-01): EIN Aufgabenfenster für Excel und PowerPoint.
+       Welcher Host es geöffnet hat, sagt Office selbst (`Office.onReady` → info.host); die beiden
+       Manifeste unter docs/office-addin/ zeigen auf diese Seite. Word hat sein eigenes Fenster
+       (/word-addin/taskpane.html) und bleibt davon unberührt. Keine Inline-Skripte; die einzige
+       fremde Quelle ist office.js von Microsoft (CSP-Ausnahme in services/app/src/security-headers.ts). -->
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link rel="stylesheet" href="taskpane.css?v=__KW_FASSUNG__" />
+</head>
+<body>
+  <header id="klara-figur" class="figur" data-host="" aria-live="polite">
+    <span class="figur-name">Klara</span>
+    <span id="kontext-zeile" class="figur-kontext">Office wird geprüft …</span>
+  </header>
+
+  <section id="host-block" class="block">
+    <h2>Umgebung</h2>
+    <p id="host-zeile" class="muted">Noch nicht geprüft.</p>
+    <p id="api-zeile" class="muted"></p>
+    <p id="api-fehlt" class="hinweis" hidden></p>
+  </section>
+
+  <section id="anmeldung-block" class="block">
+    <h2>Anmeldung</h2>
+    <p id="anmeldung-zeile" class="muted">Anmeldung wird geprüft …</p>
+    <button id="anmelden-knopf" type="button" hidden>Bei KLARWERK anmelden</button>
+  </section>
+
+  <section id="kontext-block" class="block">
+    <h2>Was Klara liest</h2>
+    <p id="kontext-zustand" class="muted">Noch nichts gelesen.</p>
+    <p id="kontext-ausweg" class="hinweis" hidden></p>
+    <button id="kontext-lesen" type="button" disabled>Auswahl lesen</button>
+    <details id="kontext-details">
+      <summary>Gelesener Kontext (Wert, Formel und Anzeige getrennt)</summary>
+      <pre id="kontext-text" class="kontext"></pre>
+    </details>
+    <p id="nachrechnung" class="muted" hidden></p>
+  </section>
+
+  <section id="frage-block" class="block">
+    <h2>Frage an Klara</h2>
+    <p id="ki-zeile" class="muted"></p>
+    <div id="zustimmung" hidden>
+      <p id="zustimmung-satz"></p>
+      <button id="zustimmung-geben" type="button">Inhalt dieser Datei für diese Sitzung freigeben</button>
+      <button id="zustimmung-widerrufen" type="button" hidden>Freigabe widerrufen</button>
+    </div>
+    <label for="frage-text">Deine Frage zur Auswahl</label>
+    <textarea id="frage-text" rows="3" placeholder="Zum Beispiel: Welche Position ist am höchsten?"></textarea>
+    <button id="frage-senden" type="button" disabled>Klara fragen</button>
+    <div id="antwort" class="antwort" hidden>
+      <p id="antwort-text"></p>
+      <p id="antwort-quellen" class="muted"></p>
+      <p id="antwort-grenze" class="muted">Die Antwort ist ein Vorschlag. Zahlen darin hat Klara nicht nachgerechnet – die Nachrechnung oben stammt aus den Zellwerten selbst.</p>
+    </div>
+    <p id="frage-meldung" class="hinweis" hidden></p>
+  </section>
+
+  <section id="rueckgabe-block" class="block">
+    <h2>Zurück ins Dokument</h2>
+    <p class="muted">Klara schreibt nur nach deinem zweiten Klick und nur an das angezeigte Ziel. Bilder oder Figuren fügt sie nie ein.</p>
+    <div id="rueckgabe-excel" hidden>
+      <button id="summe-vorbereiten" type="button" disabled>Summe unter die Spalte setzen</button>
+      <label for="ziel-zelle">Antwort in Zelle</label>
+      <input id="ziel-zelle" type="text" maxlength="10" placeholder="D7" />
+      <label class="haken"><input id="ziel-ueberschreiben" type="checkbox" /> Zielzelle darf überschrieben werden</label>
+      <button id="zelltext-vorbereiten" type="button" disabled>Antwort in diese Zelle schreiben</button>
+      <button id="entwurf-senden" type="button" disabled>Auswahl als Wissens-Entwurf übernehmen</button>
+    </div>
+    <div id="rueckgabe-powerpoint" hidden>
+      <button id="formtext-vorbereiten" type="button" disabled>Antwort in das markierte Textfeld schreiben</button>
+    </div>
+    <div id="plan" class="plan" hidden>
+      <p id="plan-satz"></p>
+      <button id="plan-ausfuehren" type="button">Jetzt schreiben</button>
+      <button id="plan-verwerfen" type="button">Abbrechen</button>
+    </div>
+    <p id="rueckgabe-meldung" class="hinweis" hidden></p>
+    <button id="ruecknahme" type="button" hidden>Letzte Änderung zurücknehmen</button>
+    <p id="speichern-hinweis" class="muted" hidden>Gespeichert wird wie sonst auch: im Web und bei OneDrive automatisch, sonst mit ⌘S. Klara speichert nicht selbst.</p>
+  </section>
+
+  <section id="anleitung" class="block">
+    <h2>So geht’s</h2>
+    <!-- KO-06-05: jeder Schritt zeigt auf ein Bedienelement dieser Seite (data-ziel = seine id);
+         tests/office-addin/panel.test.ts prüft, dass es jedes Ziel wirklich gibt. -->
+    <ol>
+      <li><button type="button" class="schritt" data-ziel="anmelden-knopf">Anmelden</button> – einmal je Fenster, mit deinem KLARWERK-Zugang.</li>
+      <li><button type="button" class="schritt" data-ziel="kontext-lesen">Auswahl lesen</button> – Zellen bzw. Folie oder Textfeld markieren, dann lesen.</li>
+      <li><button type="button" class="schritt" data-ziel="frage-text">Fragen</button> – Frage schreiben und „Klara fragen“ drücken.</li>
+      <li><button type="button" class="schritt" data-ziel="rueckgabe-block">Zurückgeben</button> – Ziel wählen, prüfen, „Jetzt schreiben“.</li>
+      <li><button type="button" class="schritt" data-ziel="ruecknahme">Zurücknehmen</button> – solange das Ziel unverändert ist.</li>
+    </ol>
+  </section>
+
+  <script src="hostkern.js?v=__KW_FASSUNG__"></script>
+  <script src="taskpane.js?v=__KW_FASSUNG__"></script>
+</body>
+</html>
