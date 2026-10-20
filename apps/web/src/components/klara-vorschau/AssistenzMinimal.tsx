@@ -407,6 +407,7 @@ export function FunktionenSeite({
   kiArbeitsweg = null,
   notizen = null,
   aufgaben = null,
+  erinnerungen = null,
 }: {
   sprachMoeglich: boolean;
   onAuftragSprechen: () => void;
@@ -427,6 +428,8 @@ export function FunktionenSeite({
    * (`KlaraAufgaben`) — angelegt über den Ausführungsweg im Gespräch, wiedergefunden hier.
    */
   aufgaben?: ReactNode;
+  /** Vorhandene Erinnerungsentwürfe und ihre Bedienung bleiben über „Meine Funktionen“ erreichbar. */
+  erinnerungen?: ReactNode;
 }): JSX.Element {
   const { t } = useAssistenzT();
   const geliefert = [
@@ -440,6 +443,9 @@ export function FunktionenSeite({
   ] as const;
   return (
     <div className="space-y-3">
+      {erinnerungen ? (
+        <section data-testid="klara-funktion-erinnerungen">{erinnerungen}</section>
+      ) : null}
       <section
         data-testid="klara-funktionen"
         aria-label={t("assistenzminimal.funktionen.verfuegbar")}

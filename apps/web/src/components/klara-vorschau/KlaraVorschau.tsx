@@ -179,6 +179,7 @@ import {
   useAbgewiesen,
   useEingabe,
 } from "./eingabe";
+import { useErinnerungen } from "./erinnerungen";
 import {
   type LaufenderKiAuftrag,
   ersetzeKiAuftrag,
@@ -1929,6 +1930,7 @@ export function KlaraVorschau({
   type Ausstehend = "frage" | KontextAktion | "umformulieren";
   const [menueOffen, setMenueOffen] = useState(false);
   const [menueSeite, setMenueSeite] = useState<MenueSeite | null>(null);
+  const erinnerungsVorgang = useErinnerungen().entwurf?.vorgang ?? null;
   const [einwilligungFuer, setEinwilligungFuer] = useState<Ausstehend | null>(null);
   const [nachEinwilligung, setNachEinwilligung] = useState<Ausstehend | null>(null);
   // UI-MIN-12: ein Entwurf, begonnen an einem anderen Ort als dem jetzigen — wohin soll er?
@@ -1963,6 +1965,14 @@ export function KlaraVorschau({
       setKiAusGezeigt(false);
     }
   }, [panelSichtbar]);
+  // Ein bewusster „Erinnern“-Klick an der Nachricht öffnet den bestehenden Entwurfsweg.
+  // Keine dauernde Erinnerungskarte in der Grundansicht und kein erneutes Öffnen beim Tippen.
+  useEffect(() => {
+    if (minimal && istEcht && kontoId && panelSichtbar && erinnerungsVorgang) {
+      setMenueOffen(false);
+      setMenueSeite("funktionen");
+    }
+  }, [minimal, istEcht, kontoId, panelSichtbar, erinnerungsVorgang]);
   useEffect(() => {
     if (!ki.abgeschaltet) {
       setKiAusGezeigt(false);
@@ -2695,6 +2705,7 @@ export function KlaraVorschau({
                   // Integration main (Klara 07): die eigenen Aufgaben wiederfinden — dieselbe Liste
                   // wie im bisherigen Panel; angelegt wird über den Ausführungsweg im Gespräch.
                   aufgaben={istEcht && kontoId ? <KlaraAufgaben /> : null}
+                  erinnerungen={istEcht && kontoId ? <KlaraErinnerungen /> : null}
                   // Integration main (BPA-13): derselbe KI-Arbeitsweg am eigenen gespeicherten
                   // Gespräch wie im bisherigen Panel — erreichbar über „Meine Funktionen“.
                   kiArbeitsweg={
