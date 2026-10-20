@@ -205,7 +205,6 @@ export class KlaraWissensDienst {
       citedSources: [...quellen.keys()],
       quellen,
     });
-    const h = herkunftGueltig ? n.wissensHerkunft : undefined;
     // Manuelle Exportangaben sind keine nachgewiesene tatsächliche Modellidentität.
     // Ohne einen gebundenen Adapterbeleg darf sich ein unbekanntes Modell nicht selbst bestätigen.
     const ergebnis = await this.d.referenz.pruefe({
@@ -230,7 +229,7 @@ export class KlaraWissensDienst {
       fassung: n.fassung,
       beleg,
       ergebnis,
-      herkunftUnveraendert: !h || h.textAbdruck === abdruck(n.inhalt),
+      herkunftUnveraendert: herkunftGueltig,
     };
   }
 

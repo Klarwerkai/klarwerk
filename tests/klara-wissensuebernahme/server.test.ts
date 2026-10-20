@@ -307,4 +307,52 @@ describe("F08 · bewusste Übernahme", () => {
     expect(r.statusCode, r.body).toBe(201);
     expect(r.json().notiz.inhalt).toBe(inhalt);
   });
+  it("bearbeitete Importfassung erhält keine alte Herkunftsbestätigung", async () => {
+    const r = await auf("POST", `${basis}/wissen/import`, {
+      titel: "Import",
+      inhalt: "Original.",
+      projekt: "Projekt",
+      abschnitt: "Antwort geändert",
+      antwortFassung: "1",
+      anbieter: "angegeben",
+      modell: "nur-manifest",
+      aussagen: [{ text: "Original.", art: "behauptung", quellen: [] }],
+    });
+    expect(r.statusCode, r.body).toBe(201);
+    const n = r.json().notiz;
+    const geändert = await auf("PUT", `${basis}/notizen/${n.id}`, {
+      fassung: n.fassung,
+      inhalt: "Korrigierter Text.",
+    });
+    expect(geändert.statusCode).toBe(200);
+    const p = await auf("POST", `${basis}/notizen/${n.id}/wissen/pruefen`, {});
+    expect(p.json().herkunftUnveraendert).toBe(false);
+    expect(p.json().ergebnis.status).toBe("nicht_pruefbar");
+    expect(p.json().ergebnis.rollen.antwort).toBeNull();
+    const v = await auf("POST", `${basis}/notizen/${n.id}/wissen/vorschau`, {
+      fassung: geändert.json().notiz.fassung,
+      ziel,
+    });
+    expect(v.statusCode).toBe(409);
+  });
+  it("verlorene Antwort nach tatsächlichem Insert wird ohne zweiten Beitrag wiederaufgenommen", async () => {
+    const n = await notiz();
+    const v = await vorschau(n);
+    const create = s.ko.create.bind(s.ko);
+    let verloren = true;
+    s.ko.create = async (...args) => {
+      const ko = await create(...args);
+      if (verloren) {
+        verloren = false;
+        throw new Error("Antwort nach Commit verloren");
+      }
+      return ko;
+    };
+    expect((await uebernehmen(n, v)).statusCode).not.toBe(200);
+    expect(await s.ko.list()).toHaveLength(1);
+    const wieder = await uebernehmen(n, v);
+    expect(wieder.statusCode, wieder.body).toBe(200);
+    expect(wieder.json().wiederholt).toBe(true);
+    expect(await s.ko.list()).toHaveLength(1);
+  });
 });
