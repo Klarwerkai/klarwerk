@@ -377,5 +377,17 @@ it("D .995 · gewählte Originalstellen bleiben private Quelle; gleiche Lizenz e
     (await app.inject({ method: "DELETE", url: `/api/me/klara/notizen/${n.id}`, headers }))
       .statusCode,
   ).toBe(200);
-  expect((await kalender()).json().eintraege).toHaveLength(0);
+  // D's bestehende Regel behält eine eigene geschützte Kalenderkarte; der Quellinhalt ist gesperrt.
+  const nachLoeschung = await kalender();
+  expect(nachLoeschung.json().eintraege).toMatchObject([
+    { id: eventId, geschuetzt: true, titel: null, notiz: null },
+  ]);
+  expect(nachLoeschung.body).not.toContain("L-91");
+  expect(
+    (await app.inject({ method: "GET", url: `/api/me/klara/notizen/${q.json().notizId}`, headers }))
+      .statusCode,
+  ).toBe(404);
+  expect(
+    (await app.inject({ method: "GET", url: "/api/me/klara/fristen", headers })).json().fristen,
+  ).toHaveLength(0);
 });

@@ -172,13 +172,19 @@ export class KlaraBesprechungsDienst {
         if (this.keineKi())
           throw new WissensFehler(403, "Keine KI: Transkription ist abgeschaltet.");
         asr = await this.media.analyze(audioId, "de", undefined, true);
+        if (this.keineKi())
+          throw new WissensFehler(403, "Keine KI: inzwischen abgeschaltet; Ergebnis verworfen.");
         if (!asr.zeittranskript)
           throw new WissensFehler(
             409,
             "Zeitgebundene Transkription nicht verfügbar oder nicht freigegeben. VTT-Fassung bereitstellen; keine Zeitstellen erfinden.",
           );
         const aktuell = await this.objects.metadata(audioId);
-        if (!aktuell || aktuell.lifecycle?.owner !== kontoId)
+        if (
+          !aktuell ||
+          aktuell.lifecycle?.owner !== kontoId ||
+          aktuell.lifecycle.purpose !== "klara_audio"
+        )
           throw new WissensFehler(404, "Audioquelle inzwischen entzogen.");
       }
     }

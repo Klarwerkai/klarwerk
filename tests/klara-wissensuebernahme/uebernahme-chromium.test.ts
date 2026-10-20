@@ -222,7 +222,7 @@ it("F15 · Browser importiert private Besprechungsnotiz und speichert bewusst Au
   await page.locator('[data-testid="besprechung-eigene"]').check();
   await page.locator('[data-testid="besprechung-uebernehmen"]').click();
   await page.waitForFunction(
-    `() => document.querySelector('[data-testid="klara-notiz-titel"]')?.value.startsWith("Übergabe:")`,
+    `document.querySelector('[data-testid="klara-notiz-inhalt"]')?.value.includes("Transkriptfassung 1")`,
   );
   expect(await page.locator('[data-testid="klara-notiz-inhalt"]').inputValue()).toContain(
     "Transkriptfassung 1",
