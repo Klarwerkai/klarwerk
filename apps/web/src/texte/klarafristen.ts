@@ -3,6 +3,8 @@ export default {
   praefix: "klarafristen.",
   legacySchluessel: [],
   de: {
+    "klarafristen.profil":
+      "Erkennungsprofil: eindeutige deutschsprachige Fristaussagen mit konkreter Objektkennung, zum Beispiel „Lizenz L-17: Ablaufdatum 2027-04-30.“ Die Vorschau zeigt die erkannten Vorgänge; sie ist keine vollständige Fristenprüfung eines Dokuments.",
     "klarafristen.manuell": "Manuell festgelegt",
     "klarafristen.grund.widerruf": "Der Beleg wurde ausdrücklich widerrufen oder zurückgezogen.",
     "klarafristen.grund.zustaendigkeit_unklar":
@@ -96,6 +98,8 @@ export default {
     "klarafristen.verlauf.manuell": "Manuell bearbeitet",
   },
   en: {
+    "klarafristen.profil":
+      "Recognition profile: clear German deadline statements with a specific object identifier, for example ‘Lizenz L-17: Ablaufdatum 2027-04-30.’ The preview shows detected records; it is not a complete deadline audit of a document.",
     "klarafristen.manuell": "Set manually",
     "klarafristen.grund.widerruf": "The evidence was explicitly revoked or withdrawn.",
     "klarafristen.grund.zustaendigkeit_unklar": "The sources name different responsible persons.",
@@ -189,6 +193,8 @@ export default {
     "klarafristen.verlauf.manuell": "Manually edited",
   },
   nl: {
+    "klarafristen.profil":
+      "Herkenningsprofiel: duidelijke Duitse termijnuitspraken met een concrete objectcode, bijvoorbeeld ‘Lizenz L-17: Ablaufdatum 2027-04-30.’ Het voorbeeld toont de herkende registraties; het is geen volledige termijncontrole van een document.",
     "klarafristen.manuell": "Handmatig vastgesteld",
     "klarafristen.grund.widerruf": "Het bewijs is uitdrukkelijk ingetrokken.",
     "klarafristen.grund.zustaendigkeit_unklar":

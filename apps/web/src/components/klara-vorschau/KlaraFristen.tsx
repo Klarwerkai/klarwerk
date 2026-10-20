@@ -53,6 +53,7 @@ function FristenOeffner({ kontoId, epoche }: { kontoId: string; epoche: number }
       {offen ? (
         <>
           <p className="my-2 text-sm text-muted">{t("klarafristen.hilfe")}</p>
+          <p className="my-2 text-sm text-muted">{t("klarafristen.profil")}</p>
           {daten.isPending ? <output>{t("klarafristen.laden")}</output> : null}
           {daten.isError ? (
             <p role="alert">
