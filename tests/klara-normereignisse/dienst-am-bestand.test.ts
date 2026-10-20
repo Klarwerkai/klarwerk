@@ -124,6 +124,54 @@ const notizauftrag = (inhalt = BEKANNTMACHUNG, konto = ich) =>
   echterNotizauftrag(app, konto.kopf, inhalt);
 
 describe("AW21 · tatsächliche bestehende Quellen-/Fristenablage", () => {
+  it("Norm/Geltung-Präfixe v20 und Werk AB sind kein v2/Werk-A-Originalplan; derselbe richtige tatsächliche Plan bleibt bindbar", async () => {
+    const q = await wissen();
+    await dienst.beobachten(kontoId, [q.id], lauf);
+    const n = (await dienst.sicht(kontoId))[0];
+    const e = n?.ereignisse[0];
+    if (!n || !e) throw new Error("Ereignis fehlt");
+    const url = `/api/me/klara/normereignisse/${n.id}/ereignisse/${e.id}/pruefauftrag`;
+    const vor = await services.klaraFristen.hole(kontoId);
+    const falsch = await notizauftrag(
+      BEKANNTMACHUNG.replace("v2:", "v20:").replace("Werk A.", "Werk AB."),
+    );
+    const abgewiesen = await app.inject({
+      method: "POST",
+      url,
+      headers: ich.kopf,
+      payload: {
+        fassung: vor?.fassung,
+        gespraechId: falsch.gespraechId,
+        auftragId: falsch.auftragId,
+        bestaetigt: true,
+      },
+    });
+    expect(abgewiesen.statusCode, abgewiesen.body).toBe(404);
+    expect(await services.klaraFristen.hole(kontoId)).toEqual(vor);
+    const richtig = await notizauftrag();
+    const angenommen = await app.inject({
+      method: "POST",
+      url,
+      headers: ich.kopf,
+      payload: {
+        fassung: vor?.fassung,
+        gespraechId: richtig.gespraechId,
+        auftragId: richtig.auftragId,
+        bestaetigt: true,
+      },
+    });
+    expect(angenommen.statusCode, angenommen.body).toBe(200);
+    expect(angenommen.json().pruefauftrag).toMatchObject({
+      gespraechId: richtig.gespraechId,
+      auftragId: richtig.auftragId,
+    });
+    const original = await app.inject({ url, headers: ich.kopf });
+    expect(original.json().auftraege).toHaveLength(1);
+    expect(original.json().auftraege[0]).toMatchObject({
+      auftragId: richtig.auftragId,
+      quelleAktuell: true,
+    });
+  });
   it("bewusster vorhandener Originalnotizauftrag bleibt über Kopie/Reload dieselbe echte G-Aufgabe; Entfernen erzeugt keinen Ersatz", async () => {
     const q = await wissen();
     await dienst.beobachten(kontoId, [q.id], lauf);
