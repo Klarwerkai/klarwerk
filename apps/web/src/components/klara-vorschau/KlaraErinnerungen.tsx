@@ -160,10 +160,12 @@ function Zeitanzeige({
   anzeige,
   zone,
   plan,
+  quellWatch = false,
 }: {
   anzeige: ErinnerungAnzeige;
   zone: string;
   plan: ErinnerungZeitplan;
+  quellWatch?: boolean;
 }): JSX.Element {
   const { t, i18n } = useAssistenzT();
   const sprache = i18n.language;
@@ -210,7 +212,11 @@ function Zeitanzeige({
       <div className="flex flex-wrap gap-1">
         <dt className="text-muted">{t("klaraerinnerung.anzeige.ergebnis")}</dt>
         <dd data-testid="klara-erinnerung-ergebnis">
-          {t(`klaraerinnerung.ergebnis.${anzeige.erwartetesErgebnis}`)}
+          {t(
+            quellWatch
+              ? "wissenspflege.watchErgebnis"
+              : `klaraerinnerung.ergebnis.${anzeige.erwartetesErgebnis}`,
+          )}
         </dd>
       </div>
       {anzeige.kommende.length > 1 ? (
@@ -816,7 +822,12 @@ function EntwurfFormular(): JSX.Element | null {
       {vorschau?.anzeige && plan ? (
         <div data-testid="klara-erinnerung-vorschau" className="rounded-btn bg-surface px-2 py-1">
           <p className={KLEINTITEL}>{t("klaraerinnerung.vorschau.titel")}</p>
-          <Zeitanzeige anzeige={vorschau.anzeige} zone={zone} plan={plan} />
+          <Zeitanzeige
+            anzeige={vorschau.anzeige}
+            zone={zone}
+            plan={plan}
+            quellWatch={routine && pflegeVorlage === "quellaenderung"}
+          />
         </div>
       ) : null}
       {vorschauFehler ? (
@@ -1080,7 +1091,7 @@ function RoutineBereich({ e }: { e: KlaraErinnerung }): JSX.Element | null {
         {t("klaraerinnerung.routine.ziel")} {t("klaraerinnerung.routine.zielNotizen")}
       </p>
       <p data-testid="klara-erinnerung-routine-wirkung" className="text-[11.5px]">
-        {t("klaraerinnerung.routine.wirkung")}
+        {t(r.wissenspflege ? "wissenspflege.wirkung" : "klaraerinnerung.routine.wirkung")}
       </p>
       <p className="text-[11.5px]">{t("klaraerinnerung.routine.modus", { fassung: r.fassung })}</p>
       {r.wissenspflege && (e.status === "aktiv" || e.status === "pausiert") ? (
@@ -1730,7 +1741,12 @@ function ErinnerungZeile({ e, istZiel }: { e: KlaraErinnerung; istZiel: boolean 
       <p data-testid="klara-erinnerung-bezug" className="mt-0.5 text-[11px] text-muted">
         {t("klaraerinnerung.persoenlich")} · {bezugAnzeige(e.bezug, t)}
       </p>
-      <Zeitanzeige anzeige={e.anzeige} zone={e.zeitzone} plan={e.zeitplan} />
+      <Zeitanzeige
+        anzeige={e.anzeige}
+        zone={e.zeitzone}
+        plan={e.zeitplan}
+        quellWatch={e.routine?.wissenspflege?.vorlage === "quellaenderung"}
+      />
       <p className="mt-0.5 text-[11px] text-muted">
         {t("klaraerinnerung.regeln.kurz", {
           verpasst: t(`klaraerinnerung.verpasst.${e.verpasst.regel}`),

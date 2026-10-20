@@ -32,6 +32,10 @@ export default {
     "wissenspflege.aendern": "Wissenspflegevorlage oder Quellen ändern",
     "wissenspflege.speichern": "Geprüfte Änderung übernehmen",
     "wissenspflege.berichtOeffnen": "Originalbericht öffnen",
+    "wissenspflege.watchErgebnis":
+      "Nur bei neuer Quellfassung: Prüfunterlagen in den eigenen Notizen und ein interner Hinweis. Derselbe Quellenstand erzeugt keine zweite Kopie.",
+    "wissenspflege.wirkung":
+      "Erlaubte Wirkung: vorbereitende Notiz und interner Hinweis; keine fachliche Freigabe.",
     "wissenspflege.stand.vorbereitet": "Prüfunterlagen vorbereitet",
     "wissenspflege.stand.ohne_quellaenderung": "Quellen geprüft · keine neue Quellfassung",
     "wissenspflege.stand.ungeprueft": "Quelle ungeprüft",
@@ -70,6 +74,10 @@ export default {
     "wissenspflege.aendern": "Change knowledge care template or sources",
     "wissenspflege.speichern": "Apply checked change",
     "wissenspflege.berichtOeffnen": "Open original report",
+    "wissenspflege.watchErgebnis":
+      "Only for a new source version: review materials in your own notes and an internal notice. The same source state creates no second copy.",
+    "wissenspflege.wirkung":
+      "Allowed effect: a preparatory note and an internal notice; no professional approval.",
     "wissenspflege.stand.vorbereitet": "Review materials prepared",
     "wissenspflege.stand.ohne_quellaenderung": "Sources checked · no new source version",
     "wissenspflege.stand.ungeprueft": "Source unchecked",
@@ -109,6 +117,10 @@ export default {
     "wissenspflege.aendern": "Sjabloon of bronnen voor kennisonderhoud wijzigen",
     "wissenspflege.speichern": "Gecontroleerde wijziging toepassen",
     "wissenspflege.berichtOeffnen": "Origineel verslag openen",
+    "wissenspflege.watchErgebnis":
+      "Alleen bij een nieuwe bronversie: controlemateriaal in je eigen notities en een interne melding. Dezelfde bronstand maakt geen tweede kopie.",
+    "wissenspflege.wirkung":
+      "Toegestaan effect: een voorbereidende notitie en een interne melding; geen vakinhoudelijke goedkeuring.",
     "wissenspflege.stand.vorbereitet": "Controlemateriaal voorbereid",
     "wissenspflege.stand.ohne_quellaenderung": "Bronnen gecontroleerd · geen nieuwe bronversie",
     "wissenspflege.stand.ungeprueft": "Bron niet gecontroleerd",

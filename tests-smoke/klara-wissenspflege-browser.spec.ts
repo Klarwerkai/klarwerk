@@ -114,6 +114,10 @@ test("AW20 · drei Vorlagen ohne Vorschauwirkung aktivieren, pausieren, ändern,
       ).toHaveLength(0);
       expect((await (await p.request.get("/api/me/klara/notizen")).json()).notizen).toHaveLength(0);
       const { e, zeile } = await speichern(p, f);
+      if (vorlage === "quellaenderung")
+        await expect(zeile.getByTestId("klara-erinnerung-ergebnis")).toContainText(
+          "Nur bei neuer Quellfassung",
+        );
       await expect(zeile.getByTestId("klara-erinnerung-zone")).toContainText("Europe/Berlin");
       await zeile.getByTestId("klara-erinnerung-pausieren").click();
       await expect(zeile).toHaveAttribute("data-status", "pausiert");
