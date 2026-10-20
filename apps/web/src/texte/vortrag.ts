@@ -3,6 +3,8 @@ export default {
   praefix: "vortrag.",
   legacySchluessel: [],
   de: {
+    "vortrag.kontextGeaendert":
+      "Daten oder Quellenzugriff geändert. Ergebnis erneut prüfen. Eigene Eingaben bleiben erhalten.",
     "vortrag.sprechhilfe": "Sprechhilfe als Vorschlag",
     "vortrag.sprechzeit": "Textschätzung bei 120 Wörtern/Minute: {{sekunden}} s",
     "vortrag.sprechhilfeNutzen": "Vorschlag für leere Notiz verwenden",
@@ -63,6 +65,8 @@ export default {
     "vortrag.text59": "Als eigene Notiz und persönliche Aufgabe speichern",
   },
   en: {
+    "vortrag.kontextGeaendert":
+      "Data or source access changed. Check the results again. Your own inputs are retained.",
     "vortrag.sprechhilfe": "Suggested speaker prompt",
     "vortrag.sprechzeit": "Text estimate at 120 words/minute: {{sekunden}} s",
     "vortrag.sprechhilfeNutzen": "Use suggestion for an empty note",
@@ -123,6 +127,8 @@ export default {
     "vortrag.text59": "Save as your own note and personal task",
   },
   nl: {
+    "vortrag.kontextGeaendert":
+      "Gegevens of brontoegang gewijzigd. Controleer het resultaat opnieuw. Je eigen invoer blijft bewaard.",
     "vortrag.sprechhilfe": "Voorgestelde spreekhulp",
     "vortrag.sprechzeit": "Tekstschatting bij 120 woorden/minuut: {{sekunden}} s",
     "vortrag.sprechhilfeNutzen": "Voorstel voor lege notitie gebruiken",

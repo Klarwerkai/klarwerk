@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import type { FolienDatenLage } from "../../apps/web/src/api/praesentationDaten";
+import type { VortragsAuftrag } from "../../apps/web/src/api/praesentationVortrag";
 import { VortragVorbereitung } from "../../apps/web/src/components/bibliothek/VortragVorbereitung";
 import i18n from "../../apps/web/src/i18n";
 import { vortragsWelt } from "./pp08-welt";
@@ -13,6 +14,7 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 let vorher: typeof fetch;
 let verliertAntwort = false;
+let vortragsAnfragen: VortragsAuftrag[] = [];
 async function warten() {
   await act(async () => {
     await new Promise((r) => setTimeout(r, 35));
@@ -28,7 +30,8 @@ function label(name: string) {
   const f =
     l?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
       "input,textarea,select",
-    ) ?? host.querySelector<HTMLInputElement | HTMLTextAreaElement>(`#${l?.htmlFor}`);
+    ) ??
+    (document.getElementById(l?.htmlFor ?? "") as HTMLInputElement | HTMLTextAreaElement | null);
   expect(f, name).toBeTruthy();
   if (!f) throw new Error(`Feld fehlt: ${name}`);
   return f;
@@ -65,6 +68,8 @@ beforeEach(async () => {
   root = createRoot(host);
   vorher = globalThis.fetch;
   globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    if (String(url).endsWith("/vortrag"))
+      vortragsAnfragen.push(JSON.parse(String(init?.body)) as VortragsAuftrag);
     const r = await w.app.inject({
       method: (init?.method ?? "GET") as "GET",
       url: String(url),
@@ -84,7 +89,147 @@ afterEach(async () => {
   host.remove();
   globalThis.fetch = vorher;
   verliertAntwort = false;
+  vortragsAnfragen = [];
   await w?.app.close();
+});
+
+function ergebnis() {
+  return host.querySelector('[aria-label="Vortragsergebnis"]');
+}
+function halteAntwort() {
+  const transport = globalThis.fetch;
+  let freigeben!: () => void;
+  let angekommen!: () => void;
+  const bereit = new Promise<void>((r) => {
+    angekommen = r;
+  });
+  const sperre = new Promise<void>((r) => {
+    freigeben = r;
+  });
+  let erste = true;
+  globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+    const r = await transport(...args);
+    if (erste && String(args[0]).endsWith("/vortrag")) {
+      erste = false;
+      angekommen();
+      await sperre;
+    }
+    return r;
+  }) as typeof fetch;
+  return { bereit, freigeben };
+}
+
+it.each(["Datenfassung", "Datenpunkt entfernt", "Bindung", "Quelllesbarkeit"])(
+  "Q-1 · leerer Plan: %s schließt alte Ergebnisse bei gleicher Datei und erhält Eingaben",
+  async (aenderung) => {
+    await eingabe("Rückfrage", "Wo belegen wir 1500?");
+    await eingabe("Probetext für die gewählte Folie", "Mein bereitgestellter Probetext.");
+    await eingabe("Bereitgestellte Rückfrage oder Notiz", "Meine noch nicht zugeordnete Notiz.");
+    await knopf("Passenden Beleg suchen");
+    expect(vortragsAnfragen.at(-1)?.notizen).toEqual([]);
+    expect(vortragsAnfragen.at(-1)?.nachbereitung).toEqual([]);
+    expect(ergebnis()?.textContent).toContain("1.500 T€");
+    const alt = ergebnis();
+    const feld = label("Rückfrage");
+    const neu = structuredClone(w.lage) as FolienDatenLage;
+    const d = neu.datenpunkte[0];
+    if (!d) throw new Error("Datenpunkt fehlt");
+    if (aenderung === "Datenfassung") {
+      d.fassung = 2;
+      d.wert = "2.000 T€";
+    }
+    if (aenderung === "Datenpunkt entfernt") neu.datenpunkte = [];
+    if (aenderung === "Bindung") d.bindungen = [];
+    if (aenderung === "Quelllesbarkeit") d.quelle = { lesbar: false };
+    expect(neu.dateiFassung).toBe(w.lage.dateiFassung);
+    await zeichne(neu);
+    expect(ergebnis()).toBeNull();
+    expect(alt?.isConnected).toBe(false);
+    expect(label("Rückfrage")).toBe(feld);
+    expect(feld.value).toBe("Wo belegen wir 1500?");
+    expect(label("Probetext für die gewählte Folie").value).toBe(
+      "Mein bereitgestellter Probetext.",
+    );
+    expect(label("Bereitgestellte Rückfrage oder Notiz").value).toBe(
+      "Meine noch nicht zugeordnete Notiz.",
+    );
+    expect(vortragsAnfragen).toHaveLength(1);
+    // Auch eine Rückkehr zum vorigen Kontext darf das verworfene Ergebnis nicht wieder öffnen.
+    await zeichne();
+    expect(ergebnis()).toBeNull();
+    await knopf("Passenden Beleg suchen");
+    expect(vortragsAnfragen).toHaveLength(2);
+    expect(ergebnis()?.textContent).toContain("1.500 T€");
+  },
+);
+
+it("Q-1 · verspätete alte Antwort bleibt nach Datenwechsel geschlossen und stört keine neue Prüfung", async () => {
+  await eingabe("Rückfrage", "Wo belegen wir 1500?");
+  const alt = halteAntwort();
+  try {
+    await knopf("Passenden Beleg suchen");
+    await alt.bereit;
+    const neu = structuredClone(w.lage) as FolienDatenLage;
+    neu.datenpunkte = [];
+    await zeichne(neu);
+    expect(host.querySelector("fieldset")?.disabled).toBe(false);
+    await zeichne();
+    const aktuell = halteAntwort();
+    try {
+      await knopf("Passenden Beleg suchen");
+      await aktuell.bereit;
+      await act(async () => alt.freigeben());
+      await warten();
+      expect(ergebnis()).toBeNull();
+      expect(host.querySelector("fieldset")?.disabled).toBe(true);
+      await act(async () => aktuell.freigeben());
+      await warten();
+      expect(ergebnis()?.textContent).toContain("1.500 T€");
+      expect(host.querySelector("fieldset")?.disabled).toBe(false);
+    } finally {
+      aktuell.freigeben();
+    }
+  } finally {
+    alt.freigeben();
+  }
+});
+
+it("Q-1 · inhaltlich gleicher Neuabruf mit neuer Kontrolluhrzeit erhält das aktuelle Ergebnis", async () => {
+  await knopf("Plan prüfen und Rückfragen vorbereiten");
+  expect(ergebnis()).toBeTruthy();
+  const neu = structuredClone(w.lage) as FolienDatenLage;
+  const d = neu.datenpunkte[0];
+  if (!d?.kontrolle) throw new Error("Aktuelle PP03-Kontrolle fehlt");
+  d.kontrolle = { ...d.kontrolle, gepruefAm: "2099-01-01T00:00:00.000Z" };
+  await zeichne(neu);
+  expect(ergebnis()).toBeTruthy();
+  expect(vortragsAnfragen).toHaveLength(1);
+});
+
+it("Q-1 · Kontextwechsel während frischer Speicherprüfung verhindert die alte Übernahme und erhält Nachbereitung", async () => {
+  await eingabe("Sprechernotiz", "Meine eigene Erklärung.");
+  await eingabe("Aussage auswählen", w.dp.id);
+  await eingabe("Bereitgestellte Rückfrage oder Notiz", "Regionale Ursache erklären.");
+  await eingabe("Herkunft, etwa eigene Notiz mit Datum", "Eigene Notiz 20.10.2026, Punkt 3");
+  await knopf("Notiz der Aussage zuordnen");
+  await knopf("Nachbereitung prüfen und Aufgaben vorschlagen");
+  const alt = halteAntwort();
+  try {
+    await knopf("Als eigene Notiz und persönliche Aufgabe speichern");
+    await alt.bereit;
+    const neu = structuredClone(w.lage) as FolienDatenLage;
+    neu.datenpunkte = [];
+    await zeichne(neu);
+    await act(async () => alt.freigeben());
+    await warten();
+    expect(ergebnis()).toBeNull();
+    expect(label("Sprechernotiz").value).toBe("Meine eigene Erklärung.");
+    expect(host.textContent).toContain("Regionale Ursache erklären.");
+    expect((await w.ruf("GET", "/api/me/klara/notizen")).body.notizen).toHaveLength(0);
+    expect((await w.ruf("GET", "/api/me/klara/aufgaben")).body.aufgaben).toHaveLength(0);
+  } finally {
+    alt.freigeben();
+  }
 });
 
 it("PP08 · Zuordnen, tatsächliches Notiz-/Aufgabenspeichern und idempotenter Wiederanlauf nach Antwortverlust", async () => {

@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { klaraAufgabeApi } from "../../api/klaraAufgabe";
 import { klaraNotizApi } from "../../api/klaraNotiz";
@@ -26,6 +26,13 @@ export function VortragVorbereitung({
 }): JSX.Element {
   const { t } = useTranslation();
   const id = useId();
+  // Auch ohne eigene Zuordnungen hängt der Servervorschlag von der ganzen lesbaren Lage ab.
+  // Nur die Uhrzeit eines ansonsten gleichen PP03-Neuabrufs ist kein neuer Evidenzstand.
+  const lageSchluessel = JSON.stringify(lage, (key, value) =>
+    key === "gepruefAm" ? undefined : value,
+  );
+  const [kontext, setKontext] = useState({ schluessel: lageSchluessel });
+  const aktuellerKontext = useRef(kontext);
   const [basis, setBasis] = useState(lage.dateiFassung);
   const [ziel, setZiel] = useState(720);
   const [notizen, setNotizen] = useState<VortragsNotiz[]>([]);
@@ -44,14 +51,30 @@ export function VortragVorbereitung({
   } | null>(null);
   const [fehler, setFehler] = useState("");
   const [laeuft, setLaeuft] = useState(false);
+  const [erneutPruefen, setErneutPruefen] = useState(false);
   const [gespeichert, setGespeichert] = useState<Record<string, string>>({});
   // Stabile Vorgänge pro expliziter Übernahme: auch Antwortverlust erzeugt keine zweite Notiz/Aufgabe.
   const vorgaenge = useRef(new Map<string, { notiz: string; aufgabe: string }>());
   const epoche = useRef(0);
+  // Vor dem Commit schließen: kein Render alter Werte mit neuer Lage, kein Remount der Eingaben.
+  // Eine Rückkehr zur früheren Lage erhält eine neue Identität und öffnet alte Antworten nicht.
+  if (kontext.schluessel !== lageSchluessel) {
+    setKontext({ schluessel: lageSchluessel });
+    setErgebnis(null);
+    setBelegPort(null);
+    setFehler("");
+    setLaeuft(false);
+    setErneutPruefen(true);
+  }
+  useLayoutEffect(() => {
+    aktuellerKontext.current = kontext;
+    epoche.current++;
+  }, [kontext]);
   const edit = () => {
     epoche.current++;
     setErgebnis(null);
     setFehler("");
+    setLaeuft(false);
   };
   const folie = lage.folien.find((f) => f.sldId === folieId);
   const notiz = notizen.find((n) => n.sldId === folieId);
@@ -133,24 +156,28 @@ export function VortragVorbereitung({
   });
   async function auswerten(modus: VortragsAuftrag["modus"]) {
     const e = ++epoche.current;
+    const istAktuell = () => e === epoche.current && kontext === aktuellerKontext.current;
     setLaeuft(true);
     setFehler("");
     setErgebnis(null);
     try {
       const r = await praesentationVortrag.auswerten(lage.koId, lage.anhangId, auftrag(modus));
-      if (e === epoche.current) {
+      if (istAktuell()) {
         setErgebnis(r);
         setBelegPort({ basis: r.basis, belege: r.belegfolien });
+        setErneutPruefen(false);
       }
     } catch (f) {
-      if (e === epoche.current)
+      if (istAktuell())
         setFehler(f instanceof Error ? f.message : "Vortrag konnte nicht geprüft werden.");
     } finally {
-      setLaeuft(false);
+      if (istAktuell()) setLaeuft(false);
     }
   }
   async function speichern(a: VortragsAufgabe) {
     if (a.herkunft.art !== "nachbereitung" || !a.aussage) return;
+    const e = ++epoche.current;
+    const istAktuell = () => e === epoche.current && kontext === aktuellerKontext.current;
     setLaeuft(true);
     setFehler("");
     try {
@@ -160,6 +187,7 @@ export function VortragVorbereitung({
         lage.anhangId,
         auftrag("nachbereitung"),
       );
+      if (!istAktuell()) return;
       if (
         !frisch.aufgaben.some(
           (x) =>
@@ -195,11 +223,12 @@ export function VortragVorbereitung({
       });
       setGespeichert((alt) => ({ ...alt, [schluessel]: gespeichert.id }));
     } catch (f) {
-      setFehler(
-        f instanceof Error ? f.message : "Persönliche Aufgabe konnte nicht gespeichert werden.",
-      );
+      if (istAktuell())
+        setFehler(
+          f instanceof Error ? f.message : "Persönliche Aufgabe konnte nicht gespeichert werden.",
+        );
     } finally {
-      setLaeuft(false);
+      if (istAktuell()) setLaeuft(false);
     }
   }
   const aufgabenKey = (a: VortragsAufgabe) =>
@@ -608,6 +637,7 @@ export function VortragVorbereitung({
           </button>
         </fieldset>
         <div aria-live="polite">
+          {erneutPruefen ? <p>{t("vortrag.kontextGeaendert")}</p> : null}
           {laeuft ? <p> {t("vortrag.text43")} </p> : null}
           {fehler ? <p role="alert">{fehler}</p> : null}
         </div>

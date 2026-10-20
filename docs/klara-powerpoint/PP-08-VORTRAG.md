@@ -108,3 +108,28 @@ liest das entstandene Deck über PP-08, ordnet eine Hauptfrage der echten Belegf
 und prüft fehlendes Quellrecht, veränderten Detailtext, zu große Metadaten und mehrere
 Manifeste negativ. Die PP-05-Anmeldung ist dabei die bestehende lokale Fachfixture;
 PP-08-API-/Flächenfälle verwenden zusätzlich normale fiktive Anmeldung an `buildApp`.
+
+## Q-1: Ergebnis bei bekanntem Kontextwechsel schließen
+
+Ein serverabgeleitetes Ergebnis und sein Belegport gelten nur für die lesbare Lage,
+unter der die Prüfung gestartet wurde. Ein neuer Datei-, Datenfassungs-, Bindungs-,
+Quellen- oder Lesbarkeitsstand verwirft beide vor dem nächsten sichtbaren Commit,
+auch bei leerem Notizplan und gleicher PPTX. Die reine Berechnungsuhrzeit `gepruefAm`
+eines sonst identischen PP-03-Neuabrufs ändert diesen Kontext nicht. Eigene Texte,
+Notizen und Nachbereitung bleiben in derselben Komponenteninstanz erhalten; die
+Oberfläche fordert eine erneute bewusste Prüfung an. Eine Rückkehr zum vorherigen
+Kontext öffnet keine verworfenen Ergebnisse wieder.
+
+Noch laufende Antworten dürfen nur unter ihrer Kontextidentität und Anfrageepoche
+Ergebnisse, Belegport, Fehler oder Laufstatus ändern. Auch die frische Prüfung vor
+einer persönlichen Übernahme bricht vor dem ersten Schreibschritt ab, wenn ihr
+Kontext inzwischen bekannt geändert wurde. Bereits begonnene persönliche Schreib-
+vorgänge behalten ihre bisherigen stabilen Kennungen und Dienste.
+
+Die sieben gezielten montierten `Q-1`-Fälle prüfen vier reine Kontextwechsel bei
+leerem Plan, spätes Antworten während einer neuen Prüfung, den gleichen Neuabruf
+mit neuer Kontrolluhrzeit und die verspätete Speicherprüfung. Ihre Datenlagewechsel
+werden gezielt als neue Parent-Props geliefert; Auswertungen und persönliche
+Speicherdienste verwenden die tatsächlichen App-Routen der fiktiven Testwelt.
+Das ist keine neue Browser-, Host-, Rechteendpunkt- oder Gesamtprüfung. Die früheren
+positiven und negativen Belege bleiben mit ihrer jeweiligen Reichweite erhalten.
