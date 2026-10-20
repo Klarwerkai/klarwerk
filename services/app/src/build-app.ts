@@ -398,6 +398,7 @@ import {
   InMemoryKlaraAufgabeRepo,
   KlaraAufgabeDienst,
   type KlaraAufgabeRepo,
+  type KlaraAufgabeSchreibfreigabe,
   PgKlaraAufgabeRepo,
 } from "./klara-aufgabe";
 import { KlaraAusfuehrung, type KlaraRufe, type KlaraVorWirkung } from "./klara-ausfuehrung";
@@ -408,6 +409,8 @@ import { KlaraBesprechungsDienst } from "./klara-besprechung";
 // Produktweg (Auftrag aus dem Wortlaut, Rechte je Schritt, Verlauf im eigenen Gespräch).
 import { BrowserFaehigkeitsregister, type BrowserSeitenprofil } from "./klara-browser-aktion";
 import { BrowserAktionDienst } from "./klara-browser-aktion-dienst";
+import { type KlaraLaufsitzung, dNormAuftragsPort } from "./klara-d-normauftrag";
+import type { KlaraDNormAuftragsPort } from "./klara-d-normauftrag-vertrag";
 // produkt:20261007:klara-erinnerungen-kalender (Klara 10): persönliche Erinnerungen samt Läufen und
 // zugestellten Meldungen — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank — und die EINE
 // Steuerung dieser Instanz.
@@ -432,6 +435,7 @@ import { KlaraFristenQuellen } from "./klara-fristen-quellen";
 import {
   InMemoryKlaraGespraechRepo,
   KlaraGespraechDienst,
+  KlaraGespraechFehler,
   type KlaraGespraechRepo,
   PgKlaraGespraechRepo,
 } from "./klara-gespraech";
@@ -465,8 +469,8 @@ import {
   PgKlaraNotizRepo,
 } from "./klara-notiz";
 import { QuellgeschuetzteKlaraNotizen } from "./klara-wissen-quellschutz";
-import { KlaraWissensDienst } from "./klara-wissensuebernahme";
 import { KlaraWissenspflegeQuellen } from "./klara-wissenspflege-quellen";
+import { KlaraWissensDienst } from "./klara-wissensuebernahme";
 // ADMIN-12: Kommunikationsregeln, persönliche Abwahl und Zustellstatus — haltbar im Postgres-
 // Betrieb, im Speicher ohne Datenbank.
 import {
@@ -3735,6 +3739,8 @@ export function buildApp(
     // Erinnerungssteuerung dieser App; `server.ts` startet ihn und meldet den Takt in ms zurück.
     // Ohne Option läuft nichts von selbst (Tests rufen den Lauf gezielt).
     klaraErinnerungen?: (lauf: () => Promise<KlaraErinnerungLaufbericht>) => number;
+    /** Nur Dep-Einspeisung für beauftragte Adapterprüfungen, kein automatischer Lauf. */
+    dNormAuftragsPort?: (port: KlaraDNormAuftragsPort) => void;
     /** R-0571: Wartezeit bis zur Wiederholung eines unvollständigen Verzeichnisabgleichs. */
     verzeichnisAbgleichWiederholungMs?: number;
     /**
@@ -4295,7 +4301,14 @@ export function buildApp(
     gespraeche: services.klaraGespraeche,
     spaces: services.spaces,
   });
+  const dNormAnschluss: { port?: KlaraDNormAuftragsPort } = {};
+  const dNormDeps = {
+    normPruefauftrag: () => dNormAnschluss.port,
+    pruefNotizen: new KlaraNotizDienst({ repo: services.klaraNotizen }),
+  };
+  const dNormSchreibfreigaben = new Map<string, KlaraAufgabeSchreibfreigabe>();
   const normereignisse = new KlaraNormereignisDienst({
+    ...dNormDeps,
     aufgaben: services.klaraAufgaben,
     gespraeche: services.klaraGespraeche,
     repo: services.klaraFristen,
@@ -4347,13 +4360,15 @@ export function buildApp(
       erinnerungsLaufAnschluss(services.klaraErinnerungen, erinnerungDienst),
   });
   const erinnerungSteuerung = new KlaraErinnerungSteuerung({
+    ...dNormDeps,
     ablage: services.klaraErinnerungen,
     konto: (id) => services.auth.kontoLesen(id),
     notizen: services.klaraNotizen,
     aufgaben: services.klaraAufgaben,
     gespraeche: services.klaraGespraeche,
     wissenspflege: wissenspflegeQuellen,
-    normereignisse: (kontoId, ids, bedingung) => normereignisse.beobachten(kontoId, ids, bedingung),
+    normereignisse: (...args: Parameters<KlaraNormereignisDienst["beobachten"]>) =>
+      normereignisse.beobachten(...args),
     // EQF-07 · Ergebnisablage einer Routine: „Meine Notizen“ über den VORHANDENEN Notizdienst
     // (Vorgangsschlüssel je Termin → höchstens ein Bericht, Readback über `zuVorgang`).
     // Nacharbeit 9: Anlegen und Fortschreiben NUR unter der Bedingung der Wirkung (Routine aktiv,
@@ -6213,6 +6228,10 @@ export function buildApp(
     klaraAufgabeRoutes(
       {
         dienst: klaraAufgabeDienst,
+        schreibfreigabe: (request) => {
+          const token = tokenFromRequest(request);
+          return token ? dNormSchreibfreigaben.get(hashTokenAtRest(token)) : undefined;
+        },
         audit: services.audit,
       },
       guards,
@@ -6460,7 +6479,10 @@ export function buildApp(
   // produkt:20261011:assistenz-lernen-hostfortsetzung (BPA-06): der LAUF einer in P06 bestätigten
   // Routine — geprüft mit `planeLauf`, ausgeführt als gebundener Auftrag des Aktionskerns (Klara 05)
   // im eigenen Gespräch. Dieselben Dienste wie oben; kein zweiter Speicher oder Ausführungsweg.
-  routinenPruefung = (kontoId, herkunft) => routineSperre(vormachen, kontoId, herkunft);
+  routinenPruefung = (kontoId, herkunft) =>
+    herkunft.art === "routine"
+      ? routineSperre(vormachen, kontoId, herkunft)
+      : Promise.resolve("D-Aufträge brauchen ihren tatsächlichen aktuellen D-Laufnachweis.");
   // BPA-06 AC04/AC05 (Nacharbeit 33): ein fälliger Auftrag wird über DENSELBEN Aktionskern
   // ausgeführt wie von Hand — `KlaraAusfuehrung` mit der Prüfung vor der Wirkung (`vorWirkung`:
   // Pause, Löschung, Fassung) und den vorhandenen Türen der Anwendung. Weil hinter einem Takt kein
@@ -6469,15 +6491,14 @@ export function buildApp(
   // dem Lauf sofort gelöscht. Jede Tür prüft sie wie jede Sitzung (`authenticate`: Freigabe,
   // Befristung, Rolle JETZT) — kein Umweg an den Wächtern vorbei, kein zusätzliches Recht.
   const routinenAusfuehrung = new KlaraAusfuehrung(klaraGespraechDienst, vorWirkung);
-  const fuehreRoutinenauftragAus: RoutinenAusfuehren = async (a) => {
+  const mitLaufsitzung: KlaraLaufsitzung = async (kontoId, arbeit) => {
     const ablage = services.sitzungsablage;
-    if (!ablage) {
-      return { stand: "nicht_ausgefuehrt", fehlerCode: "ohne_laufsitzung", entwurf: null };
-    }
+    if (!ablage)
+      throw new KlaraGespraechFehler(409, "herkunft_gesperrt", "Die normale Laufsitzung fehlt.");
     const token = randomBytes(32).toString("hex");
     const schluessel = hashTokenAtRest(token);
-    await ablage.create({ token: schluessel, userId: a.kontoId, expiresAt: Date.now() + 120_000 });
     try {
+      await ablage.create({ token: schluessel, userId: kontoId, expiresAt: Date.now() + 120_000 });
       const rufe: KlaraRufe = async (methode, url, rumpf) => {
         const r = await app.inject({
           method: methode,
@@ -6493,6 +6514,21 @@ export function buildApp(
         }
         return { status: r.statusCode, daten };
       };
+      return await arbeit(rufe, (freigabe) => dNormSchreibfreigaben.set(schluessel, freigabe));
+    } finally {
+      dNormSchreibfreigaben.delete(schluessel);
+      await ablage.delete(schluessel);
+    }
+  };
+  dNormAnschluss.port = dNormAuftragsPort({
+    gespraeche: klaraGespraechDienst,
+    mitSitzung: mitLaufsitzung,
+  });
+  opts.dNormAuftragsPort?.(dNormAnschluss.port);
+  const fuehreRoutinenauftragAus: RoutinenAusfuehren = async (a) => {
+    if (!services.sitzungsablage)
+      return { stand: "nicht_ausgefuehrt", fehlerCode: "ohne_laufsitzung", entwurf: null };
+    return mitLaufsitzung(a.kontoId, async (rufe) => {
       const auftrag = await klaraGespraechDienst.auftrag(a.kontoId, a.gespraech, a.auftragId);
       const r = await routinenAusfuehrung.fuehreAus(
         a.kontoId,
@@ -6501,7 +6537,6 @@ export function buildApp(
         a.schluessel,
         { nr: 1, auftragFassung: auftrag.fassung },
         rufe,
-        // Nur dieser Weg: ein vorübergehend gescheiterter Schritt beginnt unter seinem Schlüssel neu.
         { wiederholeVoruebergehend: true },
       );
       const id = r.schritt.ergebnis?.id;
@@ -6509,9 +6544,7 @@ export function buildApp(
       const entwurf =
         gelesen?.status === 200 ? (gelesen.daten as RoutinenAusfuehrung["entwurf"]) : null;
       return { stand: r.schritt.stand, fehlerCode: r.schritt.fehlerCode ?? null, entwurf };
-    } finally {
-      await ablage.delete(schluessel);
-    }
+    });
   };
   // BPA-06 AC05: fällige Zeitplanläufe — dieselben Dienste, derselbe Laufweg; die Rolle wird bei
   // jedem Termin JETZT gelesen (gesperrt, abgelaufen oder gelöscht: kein Lauf).

@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync, FastifyReply } from "fastify";
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { AuditService } from "../../../audit";
 import { type Guards, sendError } from "../http";
 import {
@@ -7,7 +7,9 @@ import {
   type KlaraAufgabeDienst,
   type KlaraAufgabeEingabe,
   KlaraAufgabeFehler,
+  type KlaraAufgabeSchreibfreigabe,
 } from "../klara-aufgabe";
+import { KlaraGespraechFehler } from "../klara-gespraech";
 
 // ================================================================================================
 // produkt:20261008:klara-aufgaben (Klara 07) — DIE EIGENEN AUFGABEN, NUR FÜR DAS EIGENE KONTO.
@@ -30,6 +32,7 @@ export const KLARA_AUFGABE_GELOESCHT = "klara.aufgabe.geloescht";
 
 export interface KlaraAufgabeRoutenDeps {
   dienst: KlaraAufgabeDienst;
+  schreibfreigabe?: (request: FastifyRequest) => KlaraAufgabeSchreibfreigabe | undefined;
   audit: AuditService;
 }
 
@@ -40,6 +43,16 @@ const FEHLERCODE: Record<KlaraAufgabeFehler["status"], string> = {
 };
 
 function antworteMitFehler(reply: FastifyReply, fehler: unknown): void {
+  if (fehler instanceof KlaraGespraechFehler) {
+    reply
+      .code(fehler.status)
+      .send({
+        error: fehler.status === 409 ? "CONFLICT" : "VALIDATION",
+        grund: fehler.grund,
+        message: fehler.message,
+      });
+    return;
+  }
   if (fehler instanceof KlaraAufgabeFehler) {
     reply.code(fehler.status).send({
       error: FEHLERCODE[fehler.status],
@@ -108,9 +121,12 @@ export function klaraAufgabeRoutes(
         return;
       }
       try {
+        const freigabe = deps.schreibfreigabe?.(request);
         const { aufgabe, wiederholt } = await dienst.lege(
           user.id,
           rumpf<KlaraAufgabeEingabe>(request.body),
+          freigabe ? true : undefined,
+          freigabe,
         );
         if (!wiederholt) {
           await audit.record({

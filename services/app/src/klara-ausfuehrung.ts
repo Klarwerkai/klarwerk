@@ -42,12 +42,12 @@ import {
   type KlaraAufgabenaktion,
   type KlaraAuftrag,
   type KlaraAuftragErgebnis,
-  type KlaraAuftragHerkunft,
   type KlaraAuftragSchritt,
   type KlaraAuftragZiel,
   type KlaraEntwurfsfeld,
   type KlaraPlanSchritt,
   type KlaraSchreibwirkung,
+  type KlaraServerAuftragHerkunft,
   zielErlaubt,
 } from "./klara-auftrag";
 import { liesAuftragsnotiz } from "./klara-auftragsnotiz";
@@ -67,7 +67,7 @@ type Ergebnis = { auftrag: KlaraAuftrag; schritt: KlaraAuftragSchritt; wiederhol
 /** BPA-06: `null` = darf wirken; sonst der Grund, warum nicht. */
 export type KlaraVorWirkung = (
   kontoId: string,
-  herkunft: KlaraAuftragHerkunft,
+  herkunft: KlaraServerAuftragHerkunft,
 ) => Promise<string | null>;
 
 interface Entwurf {
@@ -373,7 +373,7 @@ export class KlaraAusfuehrung {
      * — ein mit `server`/`anmeldung` gescheiterter Schritt beginnt dann unter demselben Schlüssel
      * neu. Ohne Angabe gilt unverändert: gescheitert ist endgültig.
      */
-    optionen: { wiederholeVoruebergehend?: boolean } = {},
+    optionen: { wiederholeVoruebergehend?: boolean; vorWirkung?: KlaraVorWirkung } = {},
   ): Promise<Ergebnis> {
     return this.nacheinander(`${kontoId}|${gespraechId}|${auftragId}|${schluessel}`, () =>
       this.fuehreAusAllein(kontoId, gespraechId, auftragId, schluessel, eingabe, rufe, optionen),
@@ -387,7 +387,7 @@ export class KlaraAusfuehrung {
     schluessel: string,
     eingabe: { nr?: unknown; auftragFassung?: unknown },
     produktRufe: KlaraRufe,
-    optionen: { wiederholeVoruebergehend?: boolean },
+    optionen: { wiederholeVoruebergehend?: boolean; vorWirkung?: KlaraVorWirkung },
   ): Promise<Ergebnis> {
     const a = await this.dienst.auftrag(kontoId, gespraechId, auftragId);
     const plan = a.plan ?? [];
@@ -432,8 +432,9 @@ export class KlaraAusfuehrung {
     // unbekannter Ausgang darf sein tatsächliches Original weiterhin rein lesend klären.
     const pruefeHerkunft = async () => {
       if (a.herkunft) {
-        const grund = this.vorWirkung
-          ? await this.vorWirkung(kontoId, a.herkunft)
+        const pruefung = optionen.vorWirkung ?? this.vorWirkung;
+        const grund = pruefung
+          ? await pruefung(kontoId, a.herkunft)
           : "Die Herkunft dieses Auftrags lässt sich nicht prüfen. Nichts geändert.";
         if (grund) throw new KlaraGespraechFehler(409, "herkunft_gesperrt", grund);
       }

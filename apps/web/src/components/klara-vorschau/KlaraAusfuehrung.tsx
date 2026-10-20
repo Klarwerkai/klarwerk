@@ -217,7 +217,9 @@ function AusfuehrungKarte({
         {t("klaraauftrag.titel", { quelle: t(`klaraauftrag.quelleArt.${a.quelle}`) })}
       </h3>
       <p data-testid="klara-ausfuehrung-wortlaut" className="mt-0.5 text-[11.5px] text-muted">
-        {t("klaraauftrag.wortlaut", { text: a.wortlaut })}
+        {t(a.quelle === "d_routine" ? "klaraauftrag.routineWortlaut" : "klaraauftrag.wortlaut", {
+          text: a.wortlaut,
+        })}
       </p>
       <p data-testid="klara-ausfuehrung-ohne-ki" className="mt-0.5 text-[10.5px] text-muted-2">
         {t("klaraauftrag.ohneKi")}

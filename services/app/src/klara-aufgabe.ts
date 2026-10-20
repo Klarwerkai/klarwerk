@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { KlaraGespraechRepo, KlaraObjektbezug } from "./klara-gespraech";
-import type { KlaraNotizRepo } from "./klara-notiz";
+import type { KlaraNotizRepo, NotizSchreibbedingung } from "./klara-notiz";
 
 // ================================================================================================
 // produkt:20261008:klara-aufgaben (Klara 07) — PERSÖNLICHE AUFGABEN UNTER DER EIGENEN PERSON.
@@ -62,7 +62,7 @@ export type KlaraAufgabeBezug =
       readonly gespraechId: string;
       readonly auftragId: string;
       readonly wortlaut: string;
-      readonly quelle: "getippt" | "gesprochen";
+      readonly quelle: "getippt" | "gesprochen" | "d_routine";
     };
 
 export interface KlaraAufgabe {
@@ -129,7 +129,7 @@ export interface KlaraAufgabeRepo {
   liste(kontoId: string, status: KlaraAufgabeStatus | null, limit: number): Promise<KlaraAufgabe[]>;
   anzahl(kontoId: string): Promise<number>;
   /** Legt `a` an — oder `false`, wenn das Konto diesen Vorgang schon hat (nichts geschrieben). */
-  lege(a: KlaraAufgabe): Promise<boolean>;
+  lege(a: KlaraAufgabe, bedingung?: NotizSchreibbedingung): Promise<boolean>;
   /** Schreibt `a`, wenn die gespeicherte Aufgabe noch `fassung - 1` trägt; sonst `false`. */
   ersetze(a: KlaraAufgabe): Promise<boolean>;
   entferne(kontoId: string, id: string): Promise<boolean>;
@@ -166,7 +166,8 @@ export class InMemoryKlaraAufgabeRepo implements KlaraAufgabeRepo {
     return Promise.resolve(this.eigene(kontoId).length);
   }
 
-  lege(a: KlaraAufgabe): Promise<boolean> {
+  lege(a: KlaraAufgabe, bedingung?: NotizSchreibbedingung): Promise<boolean> {
+    if (bedingung && bedingung.gilt?.() !== true) return Promise.resolve(false);
     if (this.eigene(a.kontoId).some((x) => x.vorgang === a.vorgang)) {
       return Promise.resolve(false);
     }
@@ -259,12 +260,23 @@ export class PgKlaraAufgabeRepo implements KlaraAufgabeRepo {
     return res.rows[0]?.n ?? 0;
   }
 
-  async lege(a: KlaraAufgabe): Promise<boolean> {
+  async lege(a: KlaraAufgabe, bedingung?: NotizSchreibbedingung): Promise<boolean> {
+    const werte: unknown[] = [
+      a.id,
+      a.kontoId,
+      a.vorgang,
+      a.fassung,
+      a.status,
+      a.geaendertAm,
+      JSON.stringify(a),
+    ];
+    const zusatz = bedingung?.sql?.(werte.length + 1);
+    if (bedingung && (!zusatz || !zusatz.und.length || bedingung.gilt?.() === false)) return false;
     const res = await this.pool.query(
       `INSERT INTO klara_aufgaben (id, konto_id, vorgang, fassung, status, geaendert_am, data)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ${zusatz ? `SELECT $1::text,$2::text,$3::text,$4::int,$5::text,$6::timestamptz,$7::jsonb WHERE ${zusatz.und.join(" AND ")}` : "VALUES ($1,$2,$3,$4,$5,$6,$7)"}
        ON CONFLICT (konto_id, vorgang) DO NOTHING`,
-      [a.id, a.kontoId, a.vorgang, a.fassung, a.status, a.geaendertAm, JSON.stringify(a)],
+      [...werte, ...(zusatz?.params ?? [])],
     );
     return (res.rowCount ?? 0) > 0;
   }
@@ -409,6 +421,12 @@ function quelleAus(roh: unknown, felder: readonly string[]): Record<string, stri
   return aus;
 }
 
+/** Nur eine serverinterne Laufsitzung kann diese aktuelle Schreibbindung liefern. */
+export interface KlaraAufgabeSchreibfreigabe {
+  readonly bedingung: NotizSchreibbedingung;
+  pruefe(eingabe: KlaraAufgabeEingabe): Promise<void>;
+}
+
 export class KlaraAufgabeDienst {
   private readonly repo: KlaraAufgabeRepo;
   private readonly notizen: KlaraAufgabeDienstDeps["notizen"];
@@ -464,6 +482,7 @@ export class KlaraAufgabeDienst {
     kontoId: string,
     eingabe: KlaraAufgabeEingabe,
     privatNotizGebunden?: true,
+    freigabe?: KlaraAufgabeSchreibfreigabe,
   ): Promise<{ aufgabe: KlaraAufgabe; wiederholt: boolean }> {
     if (typeof eingabe.vorgang !== "string" || !VORGANG_RE.test(eingabe.vorgang)) {
       throw eingabeFehler("vorgang ist Pflicht (8–100 Zeichen aus Buchstaben, Ziffern, - und _).");
@@ -578,7 +597,8 @@ export class KlaraAufgabeDienst {
       fassung: 1,
       ...(quellengebunden ? { privatNotizGebunden: true as const } : {}),
     };
-    if (await this.repo.lege(aufgabe)) {
+    if (freigabe) await freigabe.pruefe(eingabe);
+    if (await this.repo.lege(aufgabe, freigabe?.bedingung)) {
       return { aufgabe, wiederholt: false };
     }
     // Ein gleichzeitiger zweiter Versuch desselben Vorgangs war schneller: dessen Aufgabe gilt.

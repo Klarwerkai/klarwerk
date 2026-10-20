@@ -237,7 +237,10 @@ export async function legeRoutinenLaufAn(
   // die strukturierte Herkunft (Eigentümer, Routine, Fassung, Lauf, Abdruck).
   const finde = async (): Promise<string | null> => {
     const auftraege = await klara.auftraege(kontoId, gespraech);
-    return auftraege.find((x) => gleicheHerkunft(x.herkunft, herkunft))?.id ?? null;
+    return (
+      auftraege.find((x) => x.herkunft?.art === "routine" && gleicheHerkunft(x.herkunft, herkunft))
+        ?.id ?? null
+    );
   };
 
   const ergebnis = await vormachen.einmalJeLauf(
