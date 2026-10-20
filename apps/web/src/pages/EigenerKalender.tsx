@@ -606,7 +606,8 @@ function Formular({
   const { t } = useTranslation();
   const qc = useQueryClient();
   const profilZone = usePersoenlicheZeitzone();
-  const zone = vorlage?.zeitzone ?? profilZone;
+  // Die Zone gehört wie Beginn/Ende zum offenen Entwurf. Spätes Profilladen deutet ihn nicht um.
+  const [zone] = useState(() => vorlage?.zeitzone ?? profilZone);
   const [f, setF] = useState<FormStand>(() =>
     vorlage
       ? {
