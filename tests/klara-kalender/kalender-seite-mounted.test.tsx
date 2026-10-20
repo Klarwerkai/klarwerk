@@ -191,6 +191,11 @@ function netz(): void {
       if (methode === "GET" && pfad.startsWith(`${basis}/anbindungen/a1/termine`)) {
         return antwort(200, { ok: true, termine: [] });
       }
+      if (methode === "POST" && pfad.endsWith("/entfernen")) {
+        if (entfernenBlockiert) return antwort(409, { error: "CONFLICT", grund: "pausiert" });
+        anbindungen = [];
+        return antwort(200, { entfernt: true });
+      }
       if (methode === "POST" && pfad.endsWith("/entscheidung")) {
         return antwort(200, {
           laufWirkung: "pausiert",
@@ -257,8 +262,10 @@ function knopfMitText(text: string): HTMLButtonElement | undefined {
   );
 }
 
+let entfernenBlockiert = false;
 beforeEach(async () => {
   rufe = [];
+  entfernenBlockiert = false;
   anbindungen = [];
   loeschAntworten = [];
   eintragAntworten = [];
@@ -475,4 +482,30 @@ it("Arbeitsüberblick: der Rücklink fokussiert nach dem Laden dieselbe wartende
   } finally {
     window.history.replaceState(null, "", window.location.pathname);
   }
+});
+
+it("Anbindung entfernen: Folgen vor Bestätigung, Abbrechen schreibt nichts, offene Entscheidung bleibt sichtbar und Erfolg liest den Bestand neu", async () => {
+  anbindungen = [ANBINDUNG];
+  await oeffne();
+  await klicke(finde("kalender-anbindung-entfernen"));
+  expect(finde("kalender-anbindung-entfernen-dialog")?.textContent).toContain(
+    "Externe Termine bleiben",
+  );
+  await klicke(finde("kalender-anbindung-entfernen-abbrechen"));
+  expect(rufe.filter((r) => r.methode === "POST")).toEqual([]);
+  expect(finde("kalender-anbindung")).not.toBeNull();
+  entfernenBlockiert = true;
+  await klicke(finde("kalender-anbindung-entfernen"));
+  await klicke(finde("kalender-anbindung-entfernen-ja"));
+  expect(finde("kalender-anbindung-entfernen-dialog")?.textContent).toContain(
+    "offene Laufentscheidung",
+  );
+  expect(finde("kalender-anbindung")).not.toBeNull();
+  entfernenBlockiert = false;
+  await klicke(finde("kalender-anbindung-entfernen-ja"));
+  await beruhige();
+  expect(finde("kalender-anbindung")).toBeNull();
+  const r = rufe.filter((r) => r.pfad.endsWith("/entfernen"));
+  expect(r).toHaveLength(2);
+  expect(r[0]?.rumpf).toEqual({ bestaetigt: true });
 });

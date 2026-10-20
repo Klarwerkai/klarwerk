@@ -1067,24 +1067,62 @@ export function sperre(
 
 export const KALENDER_ZUORDNUNGEN_JE_ANBINDUNG_MAX = 2_000;
 
+/** Nach Entfernen der Anbindung bleiben ausschließlich bereits ausdrücklich beendete Läufe gesperrt. */
+export interface KalenderSperrbeleg {
+  readonly entfernt: true;
+  readonly schluessel: string;
+  readonly kontoId: string;
+  readonly anbindungId: string;
+  readonly auftragId: string;
+  readonly ereignisId: string;
+  readonly sperrmarke: Sperrmarke;
+  readonly entscheidung: null;
+  readonly geaendertAm: string;
+}
+export type KalenderLaufmarke = Pick<KalenderZuordnung, "sperrmarke" | "entscheidung">;
+function istZuordnung(z: KalenderZuordnung | KalenderSperrbeleg): z is KalenderZuordnung {
+  return !("entfernt" in z);
+}
+function sperrbeleg(z: KalenderZuordnung, jetzt: string): KalenderSperrbeleg {
+  if (z.sperrmarke?.grund !== "beendet") throw new Error("Kein beendeter Lauf");
+  return {
+    entfernt: true,
+    schluessel: z.schluessel,
+    kontoId: z.kontoId,
+    anbindungId: z.anbindungId,
+    auftragId: z.auftragId,
+    ereignisId: z.ereignisId,
+    sperrmarke: {
+      grund: "beendet",
+      umfang: z.sperrmarke.umfang,
+      am: z.sperrmarke.am,
+      version: null,
+    },
+    entscheidung: null,
+    geaendertAm: jetzt,
+  };
+}
+
 export interface KalenderZuordnungRepo {
   anbindung(kontoId: string, id: string): Promise<KalenderAnbindung | null>;
   anbindungen(kontoId: string): Promise<KalenderAnbindung[]>;
   legeAnbindung(a: KalenderAnbindung): Promise<void>;
+  /** Atomar mit Zuordnungen; offene Entscheidungen verhindern Entfernung, Endmarken bleiben minimal. */
+  entferneAnbindung(kontoId: string, id: string, jetzt: string): Promise<boolean>;
   zuordnung(kontoId: string, schluessel: string): Promise<KalenderZuordnung | null>;
   /** Die Zuordnungen EINER eigenen Anbindung, zuletzt geänderte zuerst. */
   zuordnungen(kontoId: string, anbindungId: string, limit: number): Promise<KalenderZuordnung[]>;
   /** Alle eigenen Zuordnungen zu EINEM internen Lauf (Auftrag + Ereignis), über alle Anbindungen. */
-  zuLauf(kontoId: string, auftragId: string, ereignisId: string): Promise<KalenderZuordnung[]>;
+  zuLauf(kontoId: string, auftragId: string, ereignisId: string): Promise<KalenderLaufmarke[]>;
   /** Alle eigenen Zuordnungen EINES internen Auftrags (jedes Vorkommen), über alle Anbindungen. */
-  zuAuftrag(kontoId: string, auftragId: string): Promise<KalenderZuordnung[]>;
+  zuAuftrag(kontoId: string, auftragId: string): Promise<KalenderLaufmarke[]>;
   /** Schreibt die Zuordnung; wirft, wenn die Ablage ausfällt. */
   speichere(z: KalenderZuordnung): Promise<void>;
 }
 
 export class InMemoryKalenderZuordnungRepo implements KalenderZuordnungRepo {
   private readonly anbindungenMap = new Map<string, KalenderAnbindung>();
-  private readonly zuordnungenMap = new Map<string, KalenderZuordnung>();
+  private readonly zuordnungenMap = new Map<string, KalenderZuordnung | KalenderSperrbeleg>();
 
   anbindung(kontoId: string, id: string): Promise<KalenderAnbindung | null> {
     const a = this.anbindungenMap.get(id);
@@ -1102,17 +1140,18 @@ export class InMemoryKalenderZuordnungRepo implements KalenderZuordnungRepo {
 
   zuordnung(kontoId: string, schluessel: string): Promise<KalenderZuordnung | null> {
     const z = this.zuordnungenMap.get(schluessel);
-    return Promise.resolve(z?.kontoId === kontoId ? z : null);
+    return Promise.resolve(z?.kontoId === kontoId && istZuordnung(z) ? z : null);
   }
 
   zuordnungen(kontoId: string, anbindungId: string, limit: number): Promise<KalenderZuordnung[]> {
     const treffer = [...this.zuordnungenMap.values()]
+      .filter(istZuordnung)
       .filter((z) => z.kontoId === kontoId && z.anbindungId === anbindungId)
       .sort((x, y) => y.geaendertAm.localeCompare(x.geaendertAm));
     return Promise.resolve(treffer.slice(0, limit));
   }
 
-  zuLauf(kontoId: string, auftragId: string, ereignisId: string): Promise<KalenderZuordnung[]> {
+  zuLauf(kontoId: string, auftragId: string, ereignisId: string): Promise<KalenderLaufmarke[]> {
     return Promise.resolve(
       [...this.zuordnungenMap.values()].filter(
         (z) => z.kontoId === kontoId && z.auftragId === auftragId && z.ereignisId === ereignisId,
@@ -1120,7 +1159,7 @@ export class InMemoryKalenderZuordnungRepo implements KalenderZuordnungRepo {
     );
   }
 
-  zuAuftrag(kontoId: string, auftragId: string): Promise<KalenderZuordnung[]> {
+  zuAuftrag(kontoId: string, auftragId: string): Promise<KalenderLaufmarke[]> {
     return Promise.resolve(
       [...this.zuordnungenMap.values()].filter(
         (z) => z.kontoId === kontoId && z.auftragId === auftragId,
@@ -1128,7 +1167,29 @@ export class InMemoryKalenderZuordnungRepo implements KalenderZuordnungRepo {
     );
   }
 
+  entferneAnbindung(kontoId: string, id: string, jetzt: string): Promise<boolean> {
+    if (this.anbindungenMap.get(id)?.kontoId !== kontoId) return Promise.resolve(false);
+    const zuordnungen = [...this.zuordnungenMap.values()].filter(
+      (z) => z.kontoId === kontoId && z.anbindungId === id,
+    );
+    if (zuordnungen.some((z) => z.entscheidung !== null))
+      throw new KalenderAnbindungFehler(
+        409,
+        "pausiert",
+        "Bitte zuerst die offenen Laufentscheidungen ausdrücklich klären. Entfernen darf keinen Lauf still freigeben.",
+      );
+    // Kein await: Entfernung und Reduktion vorhandener Endmarken sind ein Speicherschritt.
+    for (const z of zuordnungen) {
+      if (z.sperrmarke?.grund === "beendet" && istZuordnung(z))
+        this.zuordnungenMap.set(z.schluessel, sperrbeleg(z, jetzt));
+      else if (istZuordnung(z)) this.zuordnungenMap.delete(z.schluessel);
+    }
+    this.anbindungenMap.delete(id);
+    return Promise.resolve(true);
+  }
   speichere(z: KalenderZuordnung): Promise<void> {
+    if (this.anbindungenMap.get(z.anbindungId)?.kontoId !== z.kontoId)
+      throw new KalenderAnbindungFehler(404, "eingabe", "Kalenderanbindung nicht gefunden.");
     this.zuordnungenMap.set(z.schluessel, z);
     return Promise.resolve();
   }
@@ -1193,7 +1254,7 @@ export class PgKalenderZuordnungRepo implements KalenderZuordnungRepo {
 
   async zuordnung(kontoId: string, schluessel: string): Promise<KalenderZuordnung | null> {
     const res = await this.pool.query<{ data: KalenderZuordnung }>(
-      "SELECT data FROM klara_kalender_zuordnungen WHERE schluessel = $1 AND konto_id = $2",
+      "SELECT data FROM klara_kalender_zuordnungen WHERE schluessel = $1 AND konto_id = $2 AND data->>'entfernt' IS DISTINCT FROM 'true'",
       [schluessel, kontoId],
     );
     return res.rows[0]?.data ?? null;
@@ -1206,7 +1267,7 @@ export class PgKalenderZuordnungRepo implements KalenderZuordnungRepo {
   ): Promise<KalenderZuordnung[]> {
     const res = await this.pool.query<{ data: KalenderZuordnung }>(
       `SELECT data FROM klara_kalender_zuordnungen
-        WHERE konto_id = $1 AND anbindung_id = $2
+        WHERE konto_id = $1 AND anbindung_id = $2 AND data->>'entfernt' IS DISTINCT FROM 'true'
         ORDER BY geaendert_am DESC, schluessel
         LIMIT $3`,
       [kontoId, anbindungId, limit],
@@ -1218,8 +1279,8 @@ export class PgKalenderZuordnungRepo implements KalenderZuordnungRepo {
     kontoId: string,
     auftragId: string,
     ereignisId: string,
-  ): Promise<KalenderZuordnung[]> {
-    const res = await this.pool.query<{ data: KalenderZuordnung }>(
+  ): Promise<KalenderLaufmarke[]> {
+    const res = await this.pool.query<{ data: KalenderLaufmarke }>(
       `SELECT data FROM klara_kalender_zuordnungen
         WHERE konto_id = $1 AND auftrag_id = $2 AND ereignis_id = $3`,
       [kontoId, auftragId, ereignisId],
@@ -1227,8 +1288,8 @@ export class PgKalenderZuordnungRepo implements KalenderZuordnungRepo {
     return res.rows.map((r) => r.data);
   }
 
-  async zuAuftrag(kontoId: string, auftragId: string): Promise<KalenderZuordnung[]> {
-    const res = await this.pool.query<{ data: KalenderZuordnung }>(
+  async zuAuftrag(kontoId: string, auftragId: string): Promise<KalenderLaufmarke[]> {
+    const res = await this.pool.query<{ data: KalenderLaufmarke }>(
       `SELECT data FROM klara_kalender_zuordnungen
         WHERE konto_id = $1 AND auftrag_id = $2`,
       [kontoId, auftragId],
@@ -1236,11 +1297,62 @@ export class PgKalenderZuordnungRepo implements KalenderZuordnungRepo {
     return res.rows.map((r) => r.data);
   }
 
+  async entferneAnbindung(kontoId: string, id: string, jetzt: string): Promise<boolean> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const a = await client.query(
+        "SELECT id FROM klara_kalender_anbindungen WHERE id = $1 AND konto_id = $2 FOR UPDATE",
+        [id, kontoId],
+      );
+      if (a.rowCount !== 1) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+      // Frischer Snapshot nach der Elternsperre: auch ein unmittelbar vorher abgeschlossener
+      // Abgleich muss mit seiner offenen Entscheidung hier berücksichtigt werden.
+      const zuordnungen = (
+        await client.query<{ data: KalenderZuordnung }>(
+          "SELECT data FROM klara_kalender_zuordnungen WHERE konto_id = $1 AND anbindung_id = $2 AND data->>'entfernt' IS DISTINCT FROM 'true' FOR UPDATE",
+          [kontoId, id],
+        )
+      ).rows.map((r) => r.data);
+      if (zuordnungen.some((z) => z.entscheidung !== null))
+        throw new KalenderAnbindungFehler(
+          409,
+          "pausiert",
+          "Bitte zuerst die offenen Laufentscheidungen ausdrücklich klären. Entfernen darf keinen Lauf still freigeben.",
+        );
+      for (const z of zuordnungen.filter((z) => z.sperrmarke?.grund === "beendet")) {
+        await client.query(
+          "UPDATE klara_kalender_zuordnungen SET data = $2, geaendert_am = $3 WHERE schluessel = $1",
+          [z.schluessel, JSON.stringify(sperrbeleg(z, jetzt)), jetzt],
+        );
+      }
+      await client.query(
+        "DELETE FROM klara_kalender_zuordnungen WHERE konto_id = $1 AND anbindung_id = $2 AND data->>'entfernt' IS DISTINCT FROM 'true'",
+        [kontoId, id],
+      );
+      await client.query("DELETE FROM klara_kalender_anbindungen WHERE id = $1 AND konto_id = $2", [
+        id,
+        kontoId,
+      ]);
+      await client.query("COMMIT");
+      return true;
+    } catch (fehler) {
+      await client.query("ROLLBACK");
+      throw fehler;
+    } finally {
+      client.release();
+    }
+  }
+
   async speichere(z: KalenderZuordnung): Promise<void> {
-    await this.pool.query(
+    const r = await this.pool.query(
       `INSERT INTO klara_kalender_zuordnungen
          (schluessel, konto_id, anbindung_id, auftrag_id, ereignis_id, geaendert_am, data)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       SELECT $1::text, $2::text, $3::text, $4::text, $5::text, $6::timestamptz, $7::jsonb
+       WHERE EXISTS (SELECT 1 FROM klara_kalender_anbindungen WHERE id = $3 AND konto_id = $2 FOR SHARE)
        ON CONFLICT (schluessel) DO UPDATE
          SET geaendert_am = EXCLUDED.geaendert_am, data = EXCLUDED.data
          WHERE klara_kalender_zuordnungen.konto_id = EXCLUDED.konto_id`,
@@ -1254,6 +1366,8 @@ export class PgKalenderZuordnungRepo implements KalenderZuordnungRepo {
         JSON.stringify(z),
       ],
     );
+    if (r.rowCount !== 1)
+      throw new KalenderAnbindungFehler(404, "eingabe", "Kalenderanbindung nicht gefunden.");
   }
 }
 
@@ -1285,7 +1399,7 @@ export interface KalenderLaufSteuerung {
 export type VorkommenSperre = "frei" | "pausiert" | "beendet";
 
 /** Der Laufstand aus den gespeicherten Zuordnungen: beendet vor pausiert vor läuft. */
-export function laufStandAus(zuordnungen: readonly KalenderZuordnung[]): LaufStand {
+export function laufStandAus(zuordnungen: readonly KalenderLaufmarke[]): LaufStand {
   if (zuordnungen.some((z) => z.sperrmarke?.grund === "beendet")) {
     return "beendet";
   }
@@ -1428,6 +1542,13 @@ export class KalenderAnbindungDienst {
     };
     await this.repo.legeAnbindung(a);
     return a;
+  }
+
+  async entferneAnbindung(kontoId: string, id: string, bestaetigt: unknown): Promise<void> {
+    if (bestaetigt !== true)
+      throw eingabeFehler("Bitte das Entfernen der Anbindung ausdrücklich bestätigen.");
+    if (!(await this.repo.entferneAnbindung(kontoId, id, this.jetztIso())))
+      throw new KalenderAnbindungFehler(404, "eingabe", "Kalenderanbindung nicht gefunden.");
   }
 
   private async anbindungUndAnbieter(
@@ -2020,7 +2141,8 @@ export class KalenderAnbindungDienst {
 
   /** Die Zuordnungen einer eigenen Anbindung — für Anzeige von Stand, Sperre und Entscheidung. */
   async zuordnungen(kontoId: string, anbindungId: string): Promise<KalenderZuordnung[]> {
-    await this.anbindungUndAnbieter(kontoId, anbindungId);
+    if (!(await this.repo.anbindung(kontoId, anbindungId)))
+      throw new KalenderAnbindungFehler(404, "eingabe", "Kalenderanbindung nicht gefunden.");
     return this.repo.zuordnungen(kontoId, anbindungId, KALENDER_ZUORDNUNGEN_JE_ANBINDUNG_MAX);
   }
 

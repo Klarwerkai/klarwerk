@@ -168,7 +168,8 @@ Kalenders; das Löschen am Serienmaster richtet sich weiter nur nach ihr.
 `vorkommen_id` (`<erinnerungId>@<nominaler Termin>`). Der eigene Kalender verweist mit
 `auftrag.taskId`/`lauf.runId` auf genau diese Kennungen; sein Ausführungsnachweis ist dieselbe
 Erinnerungsablage (`erinnerungsAusfuehrung`: Lauf, Ergebnis, Serie, Absagen, Serie schalten;
-einen LAUFENDEN Einzellauf abbrechen kann die Steuerung nicht — keine Wirkung gemeldet).
+aktiver Einzelabbruch nutzt inzwischen ebenfalls denselben persistenten Lauf mit Wirkungssperre,
+Readback und Erhalt bereits gespeicherter Ergebnisse).
 `POST …/anbindungen/:id/termine` nimmt statt `termin` auch `eigenerEintragId`: der Server liest den
 eigenen Eintrag mit heutigen Rechten und trägt ihn mit SEINER Kennung ein (`kalenderIdentitaet`;
 ohne Ende 400, geschützte Quelle 403, fremd 404). Der vorhandene Kalender in der gemeinsamen Sicht
@@ -199,5 +200,34 @@ Beide fiktiv, kein Microsoft 365. Der eigene Kalender zeigt einen wartenden Lauf
 4. **Anbieter-Benachrichtigungen (Webhooks/Delta)** sind nicht gebaut; externe Änderungen werden über
    „Abgleichen“ (`POST …/abgleich`) aus dem gespeicherten Stand verarbeitet.
 5. **Browserlauf, Host, Restore** dieser Fassung: nicht ausgeführt; die gemountete Probe ersetzt keinen
-   Browser- oder Hostnachweis. Anbindungen haben noch keinen eigenen Löschweg in der Oberfläche.
+   Browser- oder Hostnachweis. Der lokale Anbindungs-Löschweg ist jetzt vorhanden (unten); seine technischen App/PG/UI-Belege
+   ersetzen weiterhin keine echte Provider-/Officeprobe.
 6. RTL für den Zauberhut ist ausdrücklich „später“ (P07).
+
+## Lokale Anbindung entfernen
+
+Jede eigene Anbindung hat **Anbindung entfernen**. Der vorhandene Bestätigungsdialog beschreibt
+vorher die konkrete Wirkung: lokale Kontoverbindungsdaten und Terminzuordnungen entfernen;
+externe Termine, interne Aufträge und tatsächliche Ergebnisse erhalten. Bereits begonnene
+externe Vorgänge können noch enden. Kein Provideraufruf und kein Zugriffstoken wird zum lokalen
+Entfernen benötigt. Abbrechen oder Dialogschließen entfernt nichts.
+
+Offene Laufentscheidungen werden zuerst an der bestehenden Originalzuordnung ausdrücklich
+geklärt. Das Entfernen kann einen pausierten Lauf weder still fortsetzen noch ungefragt beenden.
+Bereits ausdrücklich beendete Läufe behalten nur eine technische Endmarke mit Konto-, Anbindungs-,
+Auftrags- und Ereigniskennung, Zeitpunkt und Umfang; keine Termintexte, Kalender-/Kontoadressen,
+Teilnehmer, externe Kennung oder Anbieterfassung. Diese Marke ist über die ursprüngliche
+Zuordnungstür nicht mehr als Termin lesbar, hält aber denselben Schedulerlauf weiter beendet.
+Alle übrigen Zuordnungen und die Anbindungszeile werden tatsächlich gelöscht.
+
+Der authentifizierte Weg ist `POST /api/me/klara/kalender/anbindungen/:id/entfernen` mit
+`bestaetigt:true`. Fremd und unbekannt antworten404. Die atomare Entfernung sperrt die Elternzeile,
+liest danach die heutigen Entscheidungen und entfernt/reduziert die Zuordnungen in derselben
+Transaktion, auch am gated-pool. Zuordnungsschreiben hält dieselbe Elternsperre: ein verspäteter
+Abgleich kann nach Entfernen keine privaten Zuordnungsdaten neu speichern.
+
+Nachweise: echte App/API in `kalender-am-server.test.ts`, vorhandene montierte Seite mit
+kontrolliertem Transport in `kalender-seite-mounted.test.tsx`, echte PostgreSQL-Transaktionen in
+`kalender-pg.integration.test.ts` (Sperrwartung mit pg_blocking_pids, neuer Pool, Fehlerrollback,
+Wiederholung und Schreibversuch nach Löschung). Der Anbieter dieser Proben bleibt ausdrücklich
+das Vertragsdouble. Keine neuen Tabellen, Zugänge, Scheduler oder externen Löschaktionen.

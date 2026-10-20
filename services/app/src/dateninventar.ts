@@ -520,7 +520,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
     taetigkeit: "fragen",
     loeschung:
-      "Termine löscht das Konto selbst über die Anbindung (Löschvorschau, dann Löschung mit Fassung); die Zuordnung bleibt danach als Sperrmarke stehen, damit ein verspäteter Abgleich nichts wiederherstellt. Anbindungen selbst haben noch keinen Löschweg in der Oberfläche; sie enden mit der Kontolöschung bzw. durch den Betreiber.",
+      "Termine löscht das Konto selbst über die Anbindung (Löschvorschau, dann Löschung mit Fassung); die Zuordnung bleibt danach als Sperrmarke stehen, damit ein verspäteter Abgleich nichts wiederherstellt. Das Konto entfernt die lokale Anbindung und Terminzuordnungen ausdrücklich über die Kalenderfläche; externe Termine bleiben. Offene Laufentscheidungen sind vorher ausdrücklich zu klären. Bereits beendete Läufe behalten nur technische Kennungen und ihre Endmarke ohne Termintexte, Kontoadressen, Teilnehmer oder Anbieterfassung, damit Löschen keine Arbeit wiederbelebt.",
     frist: BETREIBERFRIST,
     selbstauskunft: {
       enthalten: false,

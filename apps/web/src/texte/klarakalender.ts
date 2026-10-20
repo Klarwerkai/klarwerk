@@ -12,6 +12,16 @@ export default {
   praefix: "klarakalender.",
   legacySchluessel: [],
   de: {
+    "klarakalender.entfernen.start": "Anbindung entfernen",
+    "klarakalender.entfernen.titel": "Kalenderanbindung entfernen",
+    "klarakalender.entfernen.folgen":
+      "Die lokalen Verbindungsdaten und Terminzuordnungen werden entfernt. Externe Termine bleiben im Kalender; bereits begonnene externe Vorgänge können noch enden. Interne Aufträge und Ergebnisse bleiben erhalten. Technische Endmarken bereits ausdrücklich beendeter Läufe bleiben ohne Termintexte gespeichert.",
+    "klarakalender.entfernen.entscheidungen":
+      "Offene Laufentscheidungen bitte zuerst bei den Zuordnungen klären. Entfernen setzt keinen pausierten Lauf still fort.",
+    "klarakalender.entfernen.offen":
+      "Die Anbindung hat noch eine offene Laufentscheidung. Schließe diesen Dialog und kläre sie ausdrücklich an der ursprünglichen Zuordnung.",
+    "klarakalender.entfernen.bestaetigen": "Lokale Anbindung entfernen",
+    "klarakalender.entfernen.abbrechen": "Abbrechen",
     "klarakalender.titel": "Mein vorhandener Kalender",
     "klarakalender.lead":
       "Klara trägt Termine in deinen verbundenen Kalender ein, liest sie nach und fragt bei Abweichungen. Deine Erinnerungen laufen unabhängig davon weiter.",
@@ -155,6 +165,16 @@ export default {
       "Private Termine erscheinen in geteilten Kalendern nur als „Beschäftigt“, solange du nichts anderes einstellst. Ohne Verbindung laufen deine Erinnerungen weiter.",
   },
   en: {
+    "klarakalender.entfernen.start": "Remove connection",
+    "klarakalender.entfernen.titel": "Remove calendar connection",
+    "klarakalender.entfernen.folgen":
+      "Local connection data and event mappings will be removed. External events remain in the calendar; external operations already started may still finish. Internal orders and results remain. Technical stop markers for explicitly ended runs remain without event text.",
+    "klarakalender.entfernen.entscheidungen":
+      "Resolve pending run decisions in their mappings first. Removing a connection does not silently resume a paused run.",
+    "klarakalender.entfernen.offen":
+      "This connection still has a pending run decision. Close this dialog and resolve it explicitly in the original mapping.",
+    "klarakalender.entfernen.bestaetigen": "Remove local connection",
+    "klarakalender.entfernen.abbrechen": "Cancel",
     "klarakalender.titel": "My existing calendar",
     "klarakalender.lead":
       "Klara adds appointments to your connected calendar, reads them back and asks when something differs. Your reminders keep running independently.",
@@ -295,6 +315,16 @@ export default {
       "Private appointments show only as “Busy” in shared calendars unless you choose otherwise. Without a connection your reminders keep running.",
   },
   nl: {
+    "klarakalender.entfernen.start": "Verbinding verwijderen",
+    "klarakalender.entfernen.titel": "Agendaverbinding verwijderen",
+    "klarakalender.entfernen.folgen":
+      "Lokale verbindingsgegevens en afspraakkoppelingen worden verwijderd. Externe afspraken blijven in de agenda; al gestarte externe bewerkingen kunnen nog eindigen. Interne opdrachten en resultaten blijven behouden. Technische stopmarkeringen van uitdrukkelijk beëindigde uitvoeringen blijven zonder afspraaktekst bewaard.",
+    "klarakalender.entfernen.entscheidungen":
+      "Los open beslissingen eerst bij hun koppelingen op. Verwijderen hervat een gepauzeerde uitvoering niet stilzwijgend.",
+    "klarakalender.entfernen.offen":
+      "Deze verbinding heeft nog een open uitvoeringsbeslissing. Sluit dit venster en los deze uitdrukkelijk op bij de oorspronkelijke koppeling.",
+    "klarakalender.entfernen.bestaetigen": "Lokale verbinding verwijderen",
+    "klarakalender.entfernen.abbrechen": "Annuleren",
     "klarakalender.titel": "Mijn bestaande agenda",
     "klarakalender.lead":
       "Klara zet afspraken in je gekoppelde agenda, leest ze terug en vraagt bij afwijkingen. Je herinneringen lopen onafhankelijk door.",

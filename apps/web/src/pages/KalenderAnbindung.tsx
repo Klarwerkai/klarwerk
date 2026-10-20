@@ -870,6 +870,19 @@ function AnbindungKarte({ a }: { a: KalenderAnbindung }): JSX.Element {
   });
   const [entscheidung, setEntscheidung] = useState<KalenderZuordnung | null>(null);
   const [loeschen, setLoeschen] = useState<KalenderZuordnung | null>(null);
+  const [entfernenOffen, setEntfernenOffen] = useState(false);
+  const entfernen = useMutation({
+    mutationFn: () => klaraKalenderApi.entferneAnbindung(a.id),
+    onSuccess: async () => {
+      for (const art of ["zuordnungen", "termine"]) {
+        const queryKey = ["klara-kalender", art, a.id];
+        await qc.cancelQueries({ queryKey });
+        qc.removeQueries({ queryKey });
+      }
+      neuLaden();
+      await qc.resetQueries({ queryKey: ["kalender"] });
+    },
+  });
   const schreibt = a.umfang === "lesen_schreiben";
 
   return (
@@ -890,6 +903,16 @@ function AnbindungKarte({ a }: { a: KalenderAnbindung }): JSX.Element {
             · {t(`klarakalender.umfang.${a.umfang}`)}
           </p>
           <RechteZeile rechte={a.rechte} />
+          <Button
+            data-testid="kalender-anbindung-entfernen"
+            variant="ghost"
+            onClick={() => {
+              entfernen.reset();
+              setEntfernenOffen(true);
+            }}
+          >
+            {t("klarakalender.entfernen.start")}
+          </Button>
           <ul className="mt-1 text-[12px] text-muted" data-testid="kalender-feldrichtungen">
             {KALENDER_FELDER.map((f) => (
               <li key={f}>
@@ -996,6 +1019,41 @@ function AnbindungKarte({ a }: { a: KalenderAnbindung }): JSX.Element {
         {schreibt ? <AusEigenemKalender a={a} onFertig={neuLaden} /> : null}
         {schreibt ? <Eintragen a={a} onFertig={neuLaden} /> : null}
       </div>
+      {entfernenOffen ? (
+        <Modal
+          open
+          title={t("klarakalender.entfernen.titel")}
+          onClose={() => setEntfernenOffen(false)}
+        >
+          <div data-testid="kalender-anbindung-entfernen-dialog" className="space-y-3">
+            <p>{t("klarakalender.entfernen.folgen")}</p>
+            <p>{t("klarakalender.entfernen.entscheidungen")}</p>
+            {entfernen.isError ? (
+              <p role="alert">
+                {entfernen.error instanceof ApiError && entfernen.error.details.grund === "pausiert"
+                  ? t("klarakalender.entfernen.offen")
+                  : t("klarakalender.fehler.allgemein", { meldung: fehlertext(entfernen.error) })}
+              </p>
+            ) : null}
+            <div className="flex gap-2">
+              <Button
+                data-testid="kalender-anbindung-entfernen-ja"
+                disabled={entfernen.isPending}
+                onClick={() => entfernen.mutate()}
+              >
+                {t("klarakalender.entfernen.bestaetigen")}
+              </Button>
+              <Button
+                data-testid="kalender-anbindung-entfernen-abbrechen"
+                variant="ghost"
+                onClick={() => setEntfernenOffen(false)}
+              >
+                {t("klarakalender.entfernen.abbrechen")}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
       {entscheidung ? (
         <EntscheidungsDialog
           z={entscheidung}

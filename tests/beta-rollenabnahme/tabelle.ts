@@ -2409,6 +2409,16 @@ export const TABELLE: Zeile[] = [
   },
   {
     gruppe: "klaraKalenderRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/kalender/anbindungen/gibt-es-nicht/entfernen",
+    route: "/api/me/klara/kalender/anbindungen/:id/entfernen",
+    belegstelle: "services/app/src/routes/klara-kalender-routes.ts:178",
+    tor: "requireUser",
+    payload: { bestaetigt: true },
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraKalenderRoutes",
     methode: "GET",
     pfad: "/api/me/klara/kalender/anbindungen/gibt-es-nicht/termine",
     route: "/api/me/klara/kalender/anbindungen/:id/termine",

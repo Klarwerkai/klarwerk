@@ -19,6 +19,7 @@ import {
 //
 //   GET  /api/me/klara/kalender                                   Konto, Kalender, eigene Anbindungen
 //   POST /api/me/klara/kalender/anbindungen                       Kalender wählen (Umfang, Feldregeln)
+//   POST /api/me/klara/kalender/anbindungen/:id/entfernen            lokale Anbindung bewusst entfernen
 //   GET  /api/me/klara/kalender/anbindungen/:id/termine?von&bis   Termine im Zielkalender lesen
 //   POST /api/me/klara/kalender/anbindungen/:id/termine           Termin eintragen bzw. ändern
 //   GET  /api/me/klara/kalender/anbindungen/:id/zuordnungen       Zuordnungen samt Stand und Sperre
@@ -33,6 +34,7 @@ import {
 // (404) — auch für Administratoren. Ins Prüfprotokoll gehen nur Kennungen, Stände und Umfänge, nie
 // Termininhalte, Teilnehmeradressen oder Zugangsmerkmale.
 
+export const KLARA_KALENDER_ANBINDUNG_ENTFERNT = "klara.kalender.anbindung_entfernt";
 export const KLARA_KALENDER_VERBUNDEN = "klara.kalender.verbunden";
 export const KLARA_KALENDER_EINGETRAGEN = "klara.kalender.eingetragen";
 export const KLARA_KALENDER_GELOESCHT = "klara.kalender.geloescht";
@@ -171,6 +173,30 @@ export function klaraKalenderRoutes(
         antworteMitFehler(reply, fehler);
       }
     });
+
+    app.post<{ Params: { id: string } }>(
+      "/api/me/klara/kalender/anbindungen/:id/entfernen",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) return;
+        try {
+          await dienst.entferneAnbindung(
+            user.id,
+            request.params.id,
+            rumpf(request.body).bestaetigt,
+          );
+          await audit.record({
+            actor: user.id,
+            action: KLARA_KALENDER_ANBINDUNG_ENTFERNT,
+            target: `klara-kalender:${request.params.id}`,
+            payload: {},
+          });
+          reply.code(200).send({ entfernt: true });
+        } catch (fehler) {
+          antworteMitFehler(reply, fehler);
+        }
+      },
+    );
 
     app.get<{ Params: { id: string }; Querystring: { von?: string; bis?: string } }>(
       "/api/me/klara/kalender/anbindungen/:id/termine",

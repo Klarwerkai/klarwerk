@@ -198,6 +198,10 @@ export const klaraKalenderApi = {
     api.post<KalenderErgebnis>(`${BASIS}/anbindungen/${enc(anbindungId)}/termine`, {
       eigenerEintragId,
     }),
+  entferneAnbindung: (anbindungId: string) =>
+    api.post<{ entfernt: true }>(`${BASIS}/anbindungen/${enc(anbindungId)}/entfernen`, {
+      bestaetigt: true,
+    }),
   zuordnungen: (anbindungId: string) =>
     api.get<{ zuordnungen: KalenderZuordnung[] }>(
       `${BASIS}/anbindungen/${enc(anbindungId)}/zuordnungen`,

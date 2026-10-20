@@ -15,6 +15,7 @@
 //                 Dialogschließen ändert nichts; Beenden nur mit Umfang.
 import { beforeEach, describe, expect, it } from "vitest";
 import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
+import { zuordnungsSchluessel } from "../../services/app/src/klara-kalender-anbindung";
 import { DOUBLE_KALENDER, StrengerTestkalender, testTermin } from "./vertragsdouble";
 
 type App = ReturnType<typeof buildApp>;
@@ -23,6 +24,7 @@ const BASIS = "/api/me/klara/kalender";
 const KENNWORT = "secret123";
 
 let app: App;
+let services: ReturnType<typeof assembleServices>;
 let kalender: StrengerTestkalender;
 const eingespeist = new Set<string>();
 let ada = { id: "", token: "" };
@@ -45,7 +47,8 @@ async function anmelden(email: string): Promise<string> {
 beforeEach(async () => {
   kalender = new StrengerTestkalender();
   eingespeist.clear();
-  app = buildApp(assembleServices(inMemoryRepos()), {
+  services = assembleServices(inMemoryRepos());
+  app = buildApp(services, {
     klaraKalenderAnbieter: async (kontoId) => (eingespeist.has(kontoId) ? kalender : null),
   });
   await auf("", "POST", "/api/auth/register", {
@@ -263,4 +266,100 @@ describe("S5 · K3/AW17-K01 · Nacharbeit 4 — Wiederholung mit derselben Ident
     expect(kalender.termine.size).toBe(1);
     expect(kalender.aufrufe.filter((x) => x === "lege")).toHaveLength(1);
   });
+});
+
+describe("Anbindung entfernen · eigene lokale Daten, keine externe Löschung oder stille Laufentscheidung", () => {
+  it("Entfernen braucht Bestätigung/eigenes Konto; arbeitet auch ohne Anbieterzugang und entfernt keine externen Termine", async () => {
+    const id = await verbinde();
+    const z = await eintragen(id);
+    const pfad = `${BASIS}/anbindungen/${id}/entfernen`;
+    expect((await auf("", "POST", pfad, { bestaetigt: true })).statusCode).toBe(401);
+    expect((await auf(erik.token, "POST", pfad, { bestaetigt: true })).statusCode).toBe(404);
+    expect((await auf(ada.token, "POST", pfad, { bestaetigt: false })).statusCode).toBe(400);
+    eingespeist.delete(ada.id);
+    const vorher = [...kalender.aufrufe];
+    const r = await auf(ada.token, "POST", pfad, { bestaetigt: true });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(kalender.aufrufe).toEqual(vorher);
+    expect(kalender.termine.has(z.externeId ?? "")).toBe(true);
+    expect((await auf(ada.token, "GET", BASIS)).json().anbindungen).toEqual([]);
+    expect((await auf(ada.token, "GET", `${BASIS}/anbindungen/${id}/zuordnungen`)).statusCode).toBe(
+      404,
+    );
+    expect(
+      (
+        await tuer(z.schluessel, "entscheidung", {
+          wahl: "fortfuehren_ohne_kalender",
+          umfang: "einzeltermin",
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect((await auf(ada.token, "POST", pfad, { bestaetigt: true })).statusCode).toBe(404);
+  });
+
+  it("offene externe Löschung bleibt pausiert; nach ausdrücklichem Beenden bleibt nur dessen technische Endmarke wirksam", async () => {
+    const id = await verbinde();
+    const z = await eintragen(id);
+    kalender.termine.delete(z.externeId ?? "");
+    expect(
+      (await auf(ada.token, "POST", `${BASIS}/anbindungen/${id}/abgleich`, {})).statusCode,
+    ).toBe(200);
+    expect(await laufStand()).toBe("pausiert");
+    const pfad = `${BASIS}/anbindungen/${id}/entfernen`;
+    const offen = await auf(ada.token, "POST", pfad, { bestaetigt: true });
+    expect(offen.statusCode, offen.body).toBe(409);
+    expect(await laufStand()).toBe("pausiert");
+    expect((await auf(ada.token, "GET", BASIS)).json().anbindungen).toHaveLength(1);
+    const entscheidung = await tuer(z.schluessel, "entscheidung", {
+      wahl: "beenden",
+      umfang: "einzeltermin",
+    });
+    expect(entscheidung.statusCode, entscheidung.body).toBe(200);
+    expect((await auf(ada.token, "POST", pfad, { bestaetigt: true })).statusCode).toBe(200);
+    expect(await laufStand()).toBe("beendet");
+    expect((await auf(ada.token, "GET", `${BASIS}/anbindungen/${id}/zuordnungen`)).statusCode).toBe(
+      404,
+    );
+  });
+});
+
+it("Entfernen während eines bereits begonnenen externen Eintrags: externe Wirkung bleibt, alter Antwortweg speichert keine privaten Zuordnungen erneut", async () => {
+  const id = await verbinde();
+  const original = kalender.lege.bind(kalender);
+  let weiter!: () => void;
+  let begonnen!: () => void;
+  const warten = new Promise<void>((r) => {
+    weiter = r;
+  });
+  const start = new Promise<void>((r) => {
+    begonnen = r;
+  });
+  kalender.lege = async (...args) => {
+    const r = await original(...args);
+    begonnen();
+    await warten;
+    return r;
+  };
+  const termin = testTermin("entfernen-waehrend-schreiben", "Nur fiktiv: Rückkehr nach Entfernen");
+  const projektion = auf(ada.token, "POST", `${BASIS}/anbindungen/${id}/termine`, { termin }).then(
+    (r) => r,
+  );
+  await start;
+  try {
+    expect(
+      (await auf(ada.token, "POST", `${BASIS}/anbindungen/${id}/entfernen`, { bestaetigt: true }))
+        .statusCode,
+    ).toBe(200);
+  } finally {
+    weiter();
+  }
+  const antwort = await projektion;
+  expect(antwort.json().ok).toBe(false);
+  expect(kalender.termine.size).toBe(1);
+  expect(
+    await services.klaraKalender.zuordnung(
+      ada.id,
+      zuordnungsSchluessel(ada.id, id, termin.auftragId, termin.ereignisId),
+    ),
+  ).toBeNull();
 });

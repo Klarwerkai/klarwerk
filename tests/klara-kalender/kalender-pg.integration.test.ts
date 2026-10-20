@@ -20,7 +20,7 @@ import {
   PgKalenderZuordnungRepo,
   pruefeInternenTermin,
 } from "../../services/app/src/klara-kalender-anbindung";
-import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { gatedPool, guardedLocalPgTestUrl } from "../../services/db-tx";
 import { DOUBLE_KALENDER, StrengerTestkalender, testTermin } from "./vertragsdouble";
 
 const ANNA = "u-pg-kalender-anna";
@@ -158,5 +158,157 @@ describe("Klara 11 · Kalenderanbindung gegen echtes PostgreSQL", () => {
       status: 404,
     });
     expect(await fremd.laufStand(BERT, "auftrag-zertifikat-3", "ereignis-1")).toBe("laeuft");
+  });
+  it("Entfernen: offene Entscheidung verhindert Löschung; bestätigtes Ende bleibt nach frischem Pool nur als inhaltsfreier Sperrbeleg", async () => {
+    const d = neuerDienst();
+    const a = await d.verbinde(ANNA, { kalenderId: DOUBLE_KALENDER.id, umfang: "lesen_schreiben" });
+    const t = pruefeInternenTermin(
+      testTermin("entfernen-1", "Privater Termintext nur bis Entfernen"),
+    );
+    const r = await d.projiziere(ANNA, a.id, t);
+    if (!r.ok) throw new Error("Projektion fehlt");
+    kalender.termine.delete(r.zuordnung.externeId ?? "");
+    await d.gleicheAlleAb(ANNA, a.id);
+    await expect(d.entferneAnbindung(ANNA, a.id, true)).rejects.toMatchObject({
+      status: 409,
+      grund: "pausiert",
+    });
+    expect(await d.vorkommenSperre(ANNA, t.auftragId, t.ereignisId)).toBe("pausiert");
+    await d.entscheide(ANNA, a.id, t, { wahl: "beenden", umfang: "einzeltermin" });
+    const vorher = [...kalender.aufrufe];
+    await d.entferneAnbindung(ANNA, a.id, true);
+    expect(kalender.aufrufe).toEqual(vorher);
+    const neu = neuerDienst();
+    await expect(neu.zuordnung(ANNA, r.zuordnung.schluessel)).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(await neu.vorkommenSperre(ANNA, t.auftragId, t.ereignisId)).toBe("beendet");
+    const pool = createPool(url);
+    pools.push(pool);
+    const raw = (
+      await pool.query<{ data: Record<string, unknown> }>(
+        "SELECT data FROM klara_kalender_zuordnungen WHERE schluessel = $1",
+        [r.zuordnung.schluessel],
+      )
+    ).rows[0]?.data;
+    expect(raw).toMatchObject({
+      entfernt: true,
+      entscheidung: null,
+      sperrmarke: { grund: "beendet", version: null },
+    });
+    expect(Object.keys(raw ?? {}).sort()).toEqual(
+      [
+        "entfernt",
+        "schluessel",
+        "kontoId",
+        "anbindungId",
+        "auftragId",
+        "ereignisId",
+        "sperrmarke",
+        "entscheidung",
+        "geaendertAm",
+      ].sort(),
+    );
+    expect(JSON.stringify(raw)).not.toContain(t.inhalt.titel);
+    expect(await new PgKalenderZuordnungRepo(pool).anbindung(ANNA, a.id)).toBeNull();
+  });
+
+  it("Entfernen wartet auf laufenden Zuordnungsschreibschritt und berücksichtigt dessen neue Entscheidung; nach Entfernen kann ein alter Schreiber nichts wieder anlegen", async () => {
+    const d = neuerDienst();
+    const a = await d.verbinde(ANNA, { kalenderId: DOUBLE_KALENDER.id, umfang: "lesen_schreiben" });
+    const t = pruefeInternenTermin(testTermin("entfernen-race", "Race nur fiktiv"));
+    const r = await d.projiziere(ANNA, a.id, t);
+    if (!r.ok) throw new Error("Projektion fehlt");
+    const pool = createPool(url);
+    pools.push(pool);
+    const andererPool = createPool(url);
+    pools.push(andererPool);
+    const repo = new PgKalenderZuordnungRepo(gatedPool(andererPool));
+    const client = await pool.connect();
+    let entfernen: Promise<unknown> | undefined;
+    try {
+      await client.query("BEGIN");
+      const pid = (await client.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0]
+        ?.pid;
+      const schreiber = new PgKalenderZuordnungRepo({
+        query: client.query.bind(client),
+      } as unknown as Pool);
+      await schreiber.speichere({
+        ...r.zuordnung,
+        stand: "pausiert",
+        entscheidung: {
+          anlass: "extern_geloescht",
+          umfaenge: ["einzeltermin"],
+          konflikte: [],
+          seit: new Date(uhr).toISOString(),
+          serienart: "einzel",
+          externVersion: r.zuordnung.anbieterVersion,
+        },
+      });
+      entfernen = repo.entferneAnbindung(ANNA, a.id, new Date(uhr).toISOString()).then(
+        () => "unerwarteter Erfolg",
+        (e) => e,
+      );
+      await expect
+        .poll(
+          async () =>
+            (
+              await andererPool.query<{ n: number }>(
+                "SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))",
+                [pid],
+              )
+            ).rows[0]?.n ?? 0,
+          { timeout: 5000 },
+        )
+        .toBeGreaterThan(0);
+      await client.query("COMMIT");
+      expect(await entfernen).toMatchObject({ status: 409, grund: "pausiert" });
+      expect(await repo.anbindung(ANNA, a.id)).not.toBeNull();
+      await d.entscheide(ANNA, a.id, t, {
+        wahl: "fortfuehren_ohne_kalender",
+        umfang: "einzeltermin",
+      });
+      expect(await repo.entferneAnbindung(ANNA, a.id, new Date(uhr).toISOString())).toBe(true);
+      await expect(repo.speichere(r.zuordnung)).rejects.toMatchObject({ status: 404 });
+      expect(await repo.zuordnung(ANNA, r.zuordnung.schluessel)).toBeNull();
+    } finally {
+      await client.query("ROLLBACK");
+      client.release();
+      if (entfernen) await entfernen;
+    }
+  });
+
+  it("Entfernen am gated-pool: Fehler beim Elternlöschen rollt entfernte Zuordnungen zurück; fremdes Konto löscht nichts, Wiederholung gelingt", async () => {
+    const d = neuerDienst();
+    const a = await d.verbinde(ANNA, { kalenderId: DOUBLE_KALENDER.id, umfang: "lesen_schreiben" });
+    const r = await d.projiziere(
+      ANNA,
+      a.id,
+      pruefeInternenTermin(testTermin("entfernen-rollback")),
+    );
+    if (!r.ok) throw new Error("Projektion fehlt");
+    const pool = createPool(url);
+    pools.push(pool);
+    const repo = new PgKalenderZuordnungRepo(gatedPool(pool));
+    expect(await repo.entferneAnbindung(BERT, a.id, new Date(uhr).toISOString())).toBe(false);
+    await pool.query(
+      "CREATE FUNCTION d_anbindung_delete_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'D injected removal fault'; END $$",
+    );
+    await pool.query(
+      "CREATE TRIGGER d_anbindung_delete_fault BEFORE DELETE ON klara_kalender_anbindungen FOR EACH ROW EXECUTE FUNCTION d_anbindung_delete_fault()",
+    );
+    try {
+      await expect(repo.entferneAnbindung(ANNA, a.id, new Date(uhr).toISOString())).rejects.toThrow(
+        "D injected removal fault",
+      );
+      expect(await repo.anbindung(ANNA, a.id)).toEqual(a);
+      expect(await repo.zuordnung(ANNA, r.zuordnung.schluessel)).toEqual(r.zuordnung);
+    } finally {
+      await pool.query("DROP TRIGGER d_anbindung_delete_fault ON klara_kalender_anbindungen");
+      await pool.query("DROP FUNCTION d_anbindung_delete_fault()");
+    }
+    expect(await repo.entferneAnbindung(ANNA, a.id, new Date(uhr).toISOString())).toBe(true);
+    expect(await repo.zuordnung(ANNA, r.zuordnung.schluessel)).toBeNull();
+    expect(await repo.entferneAnbindung(ANNA, a.id, new Date(uhr).toISOString())).toBe(false);
   });
 });
