@@ -311,7 +311,10 @@ export async function aktualisiereDatenDatei(args: {
     zip.file(`ppt/slides/_rels/klaraPP07_${sldId}.xml.rels`, rels);
     zip.file(
       "ppt/presentation.xml",
-      p.replace("</p:sldIdLst>", `<p:sldId id="${sldId}" r:id="${rid}"/></p:sldIdLst>`),
+      p.replace(
+        "</p:sldIdLst>",
+        `<p:sldId xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" id="${sldId}" r:id="${rid}"/></p:sldIdLst>`,
+      ),
     );
     zip.file(
       "ppt/_rels/presentation.xml.rels",
