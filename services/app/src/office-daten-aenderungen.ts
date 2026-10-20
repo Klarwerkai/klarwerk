@@ -629,9 +629,7 @@ export async function aktualisiereDatenDatei(args: {
       ok =
         ok &&
         !!sheet &&
-        alt.every((p, i) =>
-          new RegExp(`<c r="B${i + 2}"><v>${p?.zahl}</v></c>`).test(pflicht(sheet)),
-        ) &&
+        alt.every((p, i) => pflicht(sheet).includes(`<c r="B${i + 2}"><v>${p?.zahl}</v></c>`)) &&
         labels.every((l, i) =>
           pflicht(sheet).includes(
             `<c r="A${i + 2}" t="inlineStr"><is><t>${encode(pflicht(l))}</t></is></c>`,
