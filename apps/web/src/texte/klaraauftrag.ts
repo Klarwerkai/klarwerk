@@ -11,6 +11,8 @@ export default {
   praefix: "klaraauftrag.",
   legacySchluessel: [],
   de: {
+    "klaraauftrag.quelleArt.d_routine": "aus deiner gespeicherten Routine",
+    "klaraauftrag.routineWortlaut": "Routinebeschreibung: {{text}}",
     "klaraauftrag.wissen.bindung": "Private Notiz · Fassung {{fassung}} · {{ziel}} · {{stufe}}",
     "klaraauftrag.aktion.wissen_uebernehmen": "Bewusst als Wissen übernehmen",
     "klaraauftrag.zielArt.neuer_wissensbeitrag": "gewählter neuer Wissensbeitrag",
@@ -282,6 +284,8 @@ export default {
       "„Diktieren“ schreibt nur ins Eingabefeld. „Auftrag sprechen“ zeigt den Auftrag als Karte – erst „Senden“ führt ihn aus.",
   },
   en: {
+    "klaraauftrag.quelleArt.d_routine": "from your saved routine",
+    "klaraauftrag.routineWortlaut": "Routine description: {{text}}",
     "klaraauftrag.wissen.bindung": "Private note · version {{fassung}} · {{ziel}} · {{stufe}}",
     "klaraauftrag.aktion.wissen_uebernehmen": "Consciously adopt as knowledge",
     "klaraauftrag.zielArt.neuer_wissensbeitrag": "selected new knowledge contribution",
@@ -545,6 +549,8 @@ export default {
       "“Dictate” only writes into the input field. “Speak a task” shows the task as a card – only “Send” carries it out.",
   },
   nl: {
+    "klaraauftrag.quelleArt.d_routine": "uit je opgeslagen routine",
+    "klaraauftrag.routineWortlaut": "Routinebeschrijving: {{text}}",
     "klaraauftrag.wissen.bindung": "Privénotitie · versie {{fassung}} · {{ziel}} · {{stufe}}",
     "klaraauftrag.aktion.wissen_uebernehmen": "Bewust als kennis overnemen",
     "klaraauftrag.zielArt.neuer_wissensbeitrag": "gekozen nieuwe kennisbijdrage",

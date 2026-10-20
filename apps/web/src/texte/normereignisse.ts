@@ -3,6 +3,10 @@ export default {
   praefix: "normereignisse.",
   legacySchluessel: [],
   de: {
+    "normereignisse.automatischerAuftragHilfe":
+      "Dieser Prüfauftrag stammt aus deinem ausdrücklich bestellten Quellenwatch. Aufgabe und Bearbeitungsstand bleiben am Original. Neue Schritte erfolgen im gültigen bestellten Lauf.",
+    "normereignisse.automatischerAuftragUnklar":
+      "Der bestellte Originalprüfauftrag ist noch nicht eindeutig bestätigt. Nur den Originalstand nachlesen; keinen Ersatzauftrag anlegen.",
     "normereignisse.konfliktKlaeren": "Konflikt fachlich klären",
     "normereignisse.konfliktHilfe":
       "Wähle je widersprüchlicher Ereignisart einen heute eindeutig belegten Termin mit Geltungsbereich und begründe deine Entscheidung. Alle anderen Originalbelege bleiben erhalten. Neue widersprüchliche Fakten öffnen die Klärung erneut. Fehlende Angaben brauchen einen neuen Beleg. Dies ist noch keine fachliche Annahme einer Anleitung.",
@@ -93,6 +97,10 @@ export default {
       "Angezeigt werden nur heute lesbare, ausdrücklich zugeordnete Einträge. Ähnlichkeit wurde nicht als Abhängigkeit übernommen.",
   },
   en: {
+    "normereignisse.automatischerAuftragHilfe":
+      "This review order comes from your explicitly commissioned source watch. The task and its progress remain at the original. New steps run through the valid commissioned occurrence.",
+    "normereignisse.automatischerAuftragUnklar":
+      "The commissioned original review order is not yet unambiguously confirmed. Read only its original state; do not create a replacement order.",
     "normereignisse.konfliktKlaeren": "Resolve the evidence conflict",
     "normereignisse.konfliktHilfe":
       "Choose one currently unambiguous date and scope for each conflicting event type and explain your decision. All other original evidence is preserved. New conflicting facts reopen the review. Missing details require new evidence. This does not accept an instruction as a professional successor.",
@@ -183,6 +191,10 @@ export default {
       "Only currently readable, explicitly assigned entries are shown. Similarity was not treated as a dependency.",
   },
   nl: {
+    "normereignisse.automatischerAuftragHilfe":
+      "Deze controleopdracht komt uit je uitdrukkelijk bestelde broncontrole. De taak en voortgang blijven bij het origineel. Nieuwe stappen verlopen via de geldige bestelde uitvoering.",
+    "normereignisse.automatischerAuftragUnklar":
+      "De oorspronkelijke bestelde controleopdracht is nog niet eenduidig bevestigd. Lees alleen de oorspronkelijke stand; maak geen vervangende opdracht.",
     "normereignisse.konfliktKlaeren": "Tegenstrijdig bewijs inhoudelijk beoordelen",
     "normereignisse.konfliktHilfe":
       "Kies per tegenstrijdig gebeurtenistype één nu eenduidig bewezen datum met toepassingsgebied en motiveer je keuze. Alle andere oorspronkelijke bewijzen blijven bewaard. Nieuwe tegenstrijdige feiten openen de beoordeling opnieuw. Ontbrekende gegevens vragen om nieuw bewijs. Dit is nog geen inhoudelijke acceptatie van een instructie.",

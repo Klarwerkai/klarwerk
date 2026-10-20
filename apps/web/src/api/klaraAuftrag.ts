@@ -23,7 +23,7 @@ export type KlaraZielArt =
   | "neuer_wissensbeitrag"
   | "neue_persoenliche_aufgabe"
   | "persoenliche_aufgabe";
-export type KlaraAuftragsQuelle = "getippt" | "gesprochen";
+export type KlaraAuftragsQuelle = "getippt" | "gesprochen" | "d_routine";
 
 export type KlaraAuftragStand =
   | "vorgeschlagen"

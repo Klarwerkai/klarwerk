@@ -50,6 +50,7 @@ export interface NormPruefauftrag extends NormPruefauftragRef {
   schritt: { stand: string; ausgangUnklar: boolean; ergebnis: KlaraAuftragErgebnis | null } | null;
 }
 export interface NormPruefauftraege {
+  automatisch?: boolean;
   gebunden: NormPruefauftragRef | null;
   auftraege: NormPruefauftrag[];
 }

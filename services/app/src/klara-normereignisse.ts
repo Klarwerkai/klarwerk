@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { KlaraDNormAuftragsEingabe } from "./klara-d-normauftrag-vertrag";
 import { istDatum } from "./klara-erinnerung-zeit";
 import type { FristenQuelle } from "./klara-fristen-erkennung";
 
@@ -38,6 +39,12 @@ export interface NormEreignis {
   pruefVorgang: string;
   /** Nur der Verweis auf das vorhandene Auftragsjournal, kein zweiter Ausführungsstand. */
   pruefauftrag?: NormPruefauftragRef;
+  /** Unveränderlicher eigener G-Eingang vor jeder Anlage; kein zweites Ausführungsjournal. */
+  pruefeingang?: {
+    eingabe: KlaraDNormAuftragsEingabe;
+    abdruck: string;
+    abhaengigkeiten: readonly { koId: string; fassung: number }[];
+  };
 }
 export interface NormPruefauftragRef {
   gespraechId: string;

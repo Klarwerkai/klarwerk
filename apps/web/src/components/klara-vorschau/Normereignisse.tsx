@@ -639,7 +639,7 @@ function Pruefauftrag({
     (a) => a.auftragId === (gebunden?.auftragId ?? auswahl),
   );
   const wirke = async () => {
-    if (!auftrag || laeuft || !aktuell()) return;
+    if (!auftrag || laeuft || !aktuell() || daten.data?.automatisch) return;
     setLaeuft(true);
     setFehler(false);
     try {
@@ -662,8 +662,14 @@ function Pruefauftrag({
     <details data-testid="norm-pruefauftrag" onToggle={(ev) => setOffen(ev.currentTarget.open)}>
       <summary>{t("normereignisse.pruefauftrag")}</summary>
       <div className="my-2 space-y-2">
-        <p>{t("normereignisse.pruefauftragHilfe")}</p>
-        {daten.data && !gebunden ? (
+        <p>
+          {t(
+            daten.data?.automatisch
+              ? "normereignisse.automatischerAuftragHilfe"
+              : "normereignisse.pruefauftragHilfe",
+          )}
+        </p>
+        {daten.data && !gebunden && !daten.data.automatisch ? (
           <Field label={t("normereignisse.pruefauftragAuswahl")}>
             <select
               aria-label={t("normereignisse.pruefauftragAuswahl")}
@@ -682,7 +688,15 @@ function Pruefauftrag({
           </Field>
         ) : null}
         {daten.data && !auftrag ? (
-          <p>{t(gebunden ? "normereignisse.auftragFehlt" : "normereignisse.keinAuftrag")}</p>
+          <p>
+            {t(
+              daten.data.automatisch && !gebunden
+                ? "normereignisse.automatischerAuftragUnklar"
+                : gebunden
+                  ? "normereignisse.auftragFehlt"
+                  : "normereignisse.keinAuftrag",
+            )}
+          </p>
         ) : null}
         {auftrag ? (
           <>
@@ -697,7 +711,7 @@ function Pruefauftrag({
                 {t("normereignisse.aufgabeOeffnen")}
               </Link>
             ) : null}
-            {auftrag.ergebnisVorhanden !== false ? (
+            {auftrag.ergebnisVorhanden !== false && !daten.data?.automatisch ? (
               <Button disabled={laeuft} onClick={() => void wirke()}>
                 {t(gebunden ? "normereignisse.pruefschritt" : "normereignisse.auftragVerknuepfen")}
               </Button>

@@ -52,7 +52,7 @@ function auftrag(id: string, norm = true) {
     ...(norm ? { normbekanntmachungen: "belege_vorbereiten" } : {}),
   };
 }
-async function einrichten(id: string, norm = true) {
+async function einrichten(id: string, norm = true, folge = false) {
   const r = await app.inject({
     method: "POST",
     url: "/api/me/klara/erinnerungen",
@@ -62,7 +62,12 @@ async function einrichten(id: string, norm = true) {
       titel: "Fiktiver bestellter Normwatch",
       aktion: "routine_bericht",
       zeitzone: "Europe/Berlin",
-      routine: { wissenspflege: auftrag(id, norm) },
+      routine: {
+        wissenspflege: {
+          ...auftrag(id, norm),
+          ...(folge ? { folgepruefung: "persoenliche_normpruefaufgabe" } : {}),
+        },
+      },
       zeitplan: {
         art: "serie",
         datum: "2026-10-20",
@@ -216,5 +221,59 @@ describe("AW21 · ausdrücklich bestellter Normbeleg-Zusatz am vorhandenen D-Que
     await lauf();
     expect(await services.klaraFristen.hole(kontoId)).toBeNull();
     expect(await notizen()).toEqual([]);
+  });
+});
+
+describe("AW21 · gesonderte Bestellung persönlicher Normfolgeprüfungen", () => {
+  it("reine Belegvorbereitung und gewöhnliche Pflege bestellen keine Aufgabe; nur das eigene genaue Literal mit erlaubtem Normwatch gilt", () => {
+    expect(pflegeAus(auftrag("ko1"))).not.toHaveProperty("folgepruefung");
+    expect(pflegeAus(auftrag("ko1", false))).not.toHaveProperty("folgepruefung");
+    const richtig = { ...auftrag("ko1"), folgepruefung: "persoenliche_normpruefaufgabe" };
+    expect(pflegeAus(richtig)).toMatchObject({
+      folgepruefung: "persoenliche_normpruefaufgabe",
+      verantwortlich: "auftraggeber",
+      empfaenger: "auftraggeber",
+      ende: "zeitplan",
+    });
+    for (const folgepruefung of [
+      true,
+      false,
+      null,
+      "fachlich_annehmen",
+      "fremde_aufgabe",
+      { art: "persoenliche_normpruefaufgabe" },
+    ])
+      expect(() => pflegeAus({ ...richtig, folgepruefung })).toThrow();
+    for (const vorlage of ["offene_pruefungen", "aktualitaet"])
+      expect(() => pflegeAus({ ...richtig, vorlage })).toThrow();
+    expect(() =>
+      pflegeAus({ ...auftrag("ko1", false), folgepruefung: "persoenliche_normpruefaufgabe" }),
+    ).toThrow();
+  });
+  it("tatsächliche Vorschau und Aktivierung bestätigen den gesonderten Zweck ohne neue Aufgabe, Notiz, Normereignis oder G-Auftrag", async () => {
+    const q = await wissen();
+    const vor = await services.klaraGespraeche.aktuelles(kontoId);
+    const r = await app.inject({
+      method: "POST",
+      url: "/api/me/klara/erinnerungen/wissenspflege/vorschau",
+      headers: ich.kopf,
+      payload: {
+        wissenspflege: { ...auftrag(q.id), folgepruefung: "persoenliche_normpruefaufgabe" },
+      },
+    });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json()).toMatchObject({
+      wirkung: "keine",
+      auftrag: { folgepruefung: "persoenliche_normpruefaufgabe" },
+    });
+    const e = await einrichten(q.id, true, true);
+    expect(e.routine.wissenspflege.folgepruefung).toBe("persoenliche_normpruefaufgabe");
+
+    expect((await normen()).normen).toEqual([]);
+    expect(await notizen()).toEqual([]);
+    expect(
+      (await app.inject({ url: "/api/me/klara/aufgaben", headers: ich.kopf })).json().aufgaben,
+    ).toEqual([]);
+    expect(await services.klaraGespraeche.aktuelles(kontoId)).toEqual(vor);
   });
 });

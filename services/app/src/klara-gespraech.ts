@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { type AnswerSnapshotRepo, gehoertNutzer } from "../../ask";
 import type { KiAuftragEintrag } from "./ki-arbeitsbegleitung";
@@ -7,12 +7,12 @@ import {
   type KlaraAuftragEingabe,
   KlaraAuftragFehler,
   type KlaraAuftragGrund,
-  type KlaraAuftragHerkunft,
   type KlaraAuftragSchritt,
   type KlaraSchrittEingabe as KlaraAuftragSchrittEingabe,
   type KlaraKorrekturEingabe,
   type KlaraMelder,
   type KlaraSchreibwirkung,
+  type KlaraServerAuftragHerkunft,
   type KlaraServerZusatz,
   type KlaraStaende,
   brecheAb,
@@ -26,6 +26,7 @@ import {
   unterbrechung,
 } from "./klara-auftrag";
 import type { BrowserAuftragEintrag } from "./klara-browser-aktion-dienst";
+import type { NotizSchreibbedingung } from "./klara-notiz";
 
 // ================================================================================================
 // produkt:20261008:klara-basis — DAS PERSÖNLICHE KLARA-GESPRÄCH, SERVERSEITIG UNTER DER EIGENEN PERSON.
@@ -174,6 +175,7 @@ export interface KlaraSchritt {
 }
 
 export interface KlaraGespraech {
+  readonly automatisch?: { readonly art: "d_normereignis"; readonly pruefVorgang: string };
   readonly id: string;
   readonly kontoId: string;
   /** Der Objektbezug beim BEGINN des Gesprächs — er ändert sich nie. */
@@ -227,8 +229,9 @@ export interface KlaraGespraechRepo {
   hole(kontoId: string, id: string): Promise<KlaraGespraech | null>;
   anzahl(kontoId: string): Promise<number>;
   lege(g: KlaraGespraech): Promise<void>;
+  legeEinmal?(g: KlaraGespraech, bedingung: NotizSchreibbedingung): Promise<boolean>;
   /** Schreibt `g`, wenn das gespeicherte Gespräch noch `fassung - 1` trägt; sonst `false`. */
-  ersetze(g: KlaraGespraech): Promise<boolean>;
+  ersetze(g: KlaraGespraech, bedingung?: NotizSchreibbedingung): Promise<boolean>;
   entferne(kontoId: string, id: string): Promise<boolean>;
 }
 
@@ -243,11 +246,13 @@ export class InMemoryKlaraGespraechRepo implements KlaraGespraechRepo {
   }
 
   aktuelles(kontoId: string): Promise<KlaraGespraech | null> {
-    const sortiert = this.eigene(kontoId).sort(
-      (a, b) =>
-        b.geaendertAm.localeCompare(a.geaendertAm) ||
-        (this.geschrieben.get(b.id) ?? 0) - (this.geschrieben.get(a.id) ?? 0),
-    );
+    const sortiert = this.eigene(kontoId)
+      .filter((g) => !g.automatisch)
+      .sort(
+        (a, b) =>
+          b.geaendertAm.localeCompare(a.geaendertAm) ||
+          (this.geschrieben.get(b.id) ?? 0) - (this.geschrieben.get(a.id) ?? 0),
+      );
     return Promise.resolve(sortiert[0] ?? null);
   }
 
@@ -267,7 +272,16 @@ export class InMemoryKlaraGespraechRepo implements KlaraGespraechRepo {
     return Promise.resolve();
   }
 
-  ersetze(g: KlaraGespraech): Promise<boolean> {
+  legeEinmal(g: KlaraGespraech, bedingung: NotizSchreibbedingung): Promise<boolean> {
+    if (bedingung.gilt?.() !== true || this.gespraeche.has(g.id)) return Promise.resolve(false);
+    this.gespraeche.set(g.id, g);
+    this.takt += 1;
+    this.geschrieben.set(g.id, this.takt);
+    return Promise.resolve(true);
+  }
+
+  ersetze(g: KlaraGespraech, bedingung?: NotizSchreibbedingung): Promise<boolean> {
+    if (bedingung && bedingung.gilt?.() !== true) return Promise.resolve(false);
     const alt = this.gespraeche.get(g.id);
     if (!alt || alt.kontoId !== g.kontoId || alt.fassung !== g.fassung - 1) {
       return Promise.resolve(false);
@@ -310,7 +324,7 @@ export class PgKlaraGespraechRepo implements KlaraGespraechRepo {
 
   async aktuelles(kontoId: string): Promise<KlaraGespraech | null> {
     const res = await this.pool.query<{ data: KlaraGespraech }>(
-      `SELECT data FROM klara_gespraeche WHERE konto_id = $1
+      `SELECT data FROM klara_gespraeche WHERE konto_id = $1 AND NOT (data ? 'automatisch')
         ORDER BY geaendert_am DESC, id DESC LIMIT 1`,
       [kontoId],
     );
@@ -341,11 +355,34 @@ export class PgKlaraGespraechRepo implements KlaraGespraechRepo {
     );
   }
 
-  async ersetze(g: KlaraGespraech): Promise<boolean> {
+  async legeEinmal(g: KlaraGespraech, bedingung: NotizSchreibbedingung): Promise<boolean> {
+    const werte: unknown[] = [g.id, g.kontoId, g.fassung, g.geaendertAm, JSON.stringify(g)];
+    const b = bedingung.sql?.(werte.length + 1);
+    if (bedingung.gilt?.() === false || !b || !b.und.length) return false;
+    const r = await this.pool.query(
+      `INSERT INTO klara_gespraeche(id,konto_id,fassung,geaendert_am,data)
+      SELECT $1::text,$2::text,$3::int,$4::timestamptz,$5::jsonb WHERE ${b.und.join(" AND ")}
+      ON CONFLICT(id) DO NOTHING`,
+      [...werte, ...b.params],
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  async ersetze(g: KlaraGespraech, bedingung?: NotizSchreibbedingung): Promise<boolean> {
+    const werte: unknown[] = [
+      g.id,
+      g.kontoId,
+      g.fassung,
+      g.geaendertAm,
+      JSON.stringify(g),
+      g.fassung - 1,
+    ];
+    const zusatz = bedingung?.sql?.(werte.length + 1);
+    if (bedingung && (!zusatz || !zusatz.und.length || bedingung.gilt?.() === false)) return false;
     const res = await this.pool.query(
       `UPDATE klara_gespraeche SET fassung = $3, geaendert_am = $4, data = $5
-        WHERE id = $1 AND konto_id = $2 AND fassung = $6`,
-      [g.id, g.kontoId, g.fassung, g.geaendertAm, JSON.stringify(g), g.fassung - 1],
+        WHERE id = $1 AND konto_id = $2 AND fassung = $6 ${zusatz ? `AND ${zusatz.und.join(" AND ")}` : ""}`,
+      [...werte, ...(zusatz?.params ?? [])],
     );
     return (res.rowCount ?? 0) > 0;
   }
@@ -644,6 +681,52 @@ export class KlaraGespraechDienst {
     return g;
   }
 
+  /** Ein tatsächlicher D-Journaleingang, ohne den zuletzt von der Person geöffneten Chat zu ersetzen. */
+  async dNormEingang(
+    kontoId: string,
+    pruefVorgang: string,
+    bedingung: NotizSchreibbedingung,
+  ): Promise<KlaraGespraech> {
+    const id = `d-norm-${createHash("sha256")
+      .update(JSON.stringify([kontoId, pruefVorgang]))
+      .digest("hex")}`;
+    const alt = await this.repo.hole(kontoId, id);
+    if (alt) return alt;
+    if (!this.repo.legeEinmal || !bedingung.sql)
+      throw new KlaraGespraechFehler(409, "herkunft_gesperrt", "Der bedingte D-Eingang fehlt.");
+    if ((await this.repo.anzahl(kontoId)) >= KLARA_GESPRAECH_MAX_JE_KONTO)
+      throw new KlaraGespraechFehler(
+        409,
+        "voll",
+        "Der eigene Gesprächsbestand ist voll. Keine Ersatzablage.",
+      );
+    const jetzt = this.jetztIso();
+    const g: KlaraGespraech = {
+      id,
+      kontoId,
+      automatisch: { art: "d_normereignis", pruefVorgang },
+      objektbezug: {
+        pfad: "/aufgaben",
+        seitenName: "Persönliche Normprüfung",
+        objekt: pruefVorgang,
+      },
+      nachrichten: [],
+      letzterSchritt: null,
+      einwilligungAm: null,
+      angelegtAm: jetzt,
+      geaendertAm: jetzt,
+      fassung: 1,
+    };
+    if (await this.repo.legeEinmal(g, bedingung)) return g;
+    const gefunden = await this.repo.hole(kontoId, id);
+    if (gefunden) return gefunden;
+    throw new KlaraGespraechFehler(
+      409,
+      "herkunft_gesperrt",
+      "Die aktuelle D-Bedingung lässt keinen Eingang zu.",
+    );
+  }
+
   /**
    * Liest, ändert und schreibt mit Standvergleich. Ein paralleles Schreiben (zweiter Tab) wird
    * erkannt und bis zu dreimal neu angewandt — nie still überschrieben.
@@ -652,12 +735,13 @@ export class KlaraGespraechDienst {
     kontoId: string,
     id: string,
     f: (g: KlaraGespraech, jetzt: string) => Promise<KlaraGespraech> | KlaraGespraech,
+    bedingung?: NotizSchreibbedingung,
   ): Promise<KlaraGespraech> {
     for (let versuch = 0; versuch < 3; versuch++) {
       const alt = await this.hole(kontoId, id);
       const jetzt = this.jetztIso();
       const neu = { ...(await f(alt, jetzt)), geaendertAm: jetzt, fassung: alt.fassung + 1 };
-      if (await this.repo.ersetze(neu)) {
+      if (await this.repo.ersetze(neu, bedingung)) {
         return neu;
       }
     }
@@ -876,47 +960,60 @@ export class KlaraGespraechDienst {
     kontoId: string,
     id: string,
     eingabe: KlaraAuftragEingabe,
-    herkunft?: KlaraAuftragHerkunft,
+    herkunft?: KlaraServerAuftragHerkunft,
+    bedingung?: NotizSchreibbedingung,
   ): Promise<KlaraAuftrag> {
     return this.mitGrenze(async () => {
+      if ((eingabe.quelle === "d_routine") !== (herkunft?.art === "d_normereignis"))
+        throw new KlaraGespraechFehler(
+          400,
+          "eingabe",
+          "D-Herkunft wird ausschließlich am internen D-Port gesetzt.",
+        );
+      if (herkunft?.art === "d_normereignis" && !bedingung?.sql)
+        throw new KlaraGespraechFehler(
+          409,
+          "herkunft_gesperrt",
+          "Die echte D-Schreibbedingung fehlt.",
+        );
+      const gleich = (a: KlaraAuftrag) => {
+        const h = a.herkunft;
+        if (!h || !herkunft || h.art !== herkunft.art || h.eigentuemer !== herkunft.eigentuemer)
+          return false;
+        return h.art === "routine" && herkunft.art === "routine"
+          ? h.routineId === herkunft.routineId && h.lauf === herkunft.lauf
+          : h.art === "d_normereignis" &&
+              herkunft.art === "d_normereignis" &&
+              h.pruefVorgang === herkunft.pruefVorgang;
+      };
       const auftragId = this.neueId();
       // Zuerst prüfen, dann schreiben: eine ungültige Eingabe berührt das Gespräch nicht.
       neuerAuftrag(eingabe, kontoId, auftragId, this.jetztIso());
-      const g = await this.aendere(kontoId, id, (alt, jetzt) => {
-        const vorhanden =
-          herkunft &&
-          (alt.auftraege ?? []).find(
-            (a) =>
-              a.herkunft?.art === "routine" &&
-              a.herkunft.eigentuemer === herkunft.eigentuemer &&
-              a.herkunft.routineId === herkunft.routineId &&
-              a.herkunft.lauf === herkunft.lauf,
-          );
-        if (vorhanden) {
-          if (vorhanden.herkunft?.abdruck !== herkunft?.abdruck)
-            throw new KlaraGespraechFehler(
-              409,
-              "konflikt",
-              "Diese Laufkennung gehört zu anderen Eingaben.",
-            );
-          return alt;
-        }
-        const neu = neuerAuftrag(eingabe, kontoId, auftragId, jetzt);
-        return {
-          ...alt,
-          auftraege: mitNeuemAuftrag(alt.auftraege ?? [], herkunft ? { ...neu, herkunft } : neu),
-        };
-      });
+      const g = await this.aendere(
+        kontoId,
+        id,
+        (alt, jetzt) => {
+          const vorhanden = herkunft && (alt.auftraege ?? []).find(gleich);
+          if (vorhanden) {
+            if (vorhanden.herkunft?.abdruck !== herkunft?.abdruck)
+              throw new KlaraGespraechFehler(
+                409,
+                "konflikt",
+                "Diese Laufkennung gehört zu anderen Eingaben.",
+              );
+            return alt;
+          }
+          const neu = neuerAuftrag(eingabe, kontoId, auftragId, jetzt);
+          return {
+            ...alt,
+            auftraege: mitNeuemAuftrag(alt.auftraege ?? [], herkunft ? { ...neu, herkunft } : neu),
+          };
+        },
+        bedingung,
+      );
       const gefunden =
         herkunft &&
-        (g.auftraege ?? []).find(
-          (a) =>
-            a.herkunft?.art === "routine" &&
-            a.herkunft.eigentuemer === herkunft.eigentuemer &&
-            a.herkunft.routineId === herkunft.routineId &&
-            a.herkunft.lauf === herkunft.lauf &&
-            a.herkunft.abdruck === herkunft.abdruck,
-        );
+        (g.auftraege ?? []).find((a) => gleich(a) && a.herkunft?.abdruck === herkunft.abdruck);
       return gefunden || KlaraGespraechDienst.auftragIn(g, auftragId);
     });
   }

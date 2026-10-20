@@ -74,7 +74,7 @@ const ERGEBNISARTEN = [
 ] as const;
 type KlaraErgebnisArt = (typeof ERGEBNISARTEN)[number];
 
-export const KLARA_QUELLEN_DES_AUFTRAGS = ["getippt", "gesprochen"] as const;
+export const KLARA_QUELLEN_DES_AUFTRAGS = ["getippt", "gesprochen", "d_routine"] as const;
 export type KlaraAuftragsQuelle = (typeof KLARA_QUELLEN_DES_AUFTRAGS)[number];
 
 export type KlaraAuftragStand =
@@ -338,10 +338,24 @@ export interface KlaraAuftragHerkunft {
   readonly abdruck: string;
 }
 
+/** Echte D-Bestellung; der aktuelle Lauf ist Versuchsnachweis, nicht Vorgangsidentität. */
+export interface KlaraDNormAuftragHerkunft {
+  readonly art: "d_normereignis";
+  readonly eigentuemer: string;
+  readonly erinnerungId: string;
+  readonly erinnerungFassung: number;
+  readonly routineFassung: number;
+  readonly normId: string;
+  readonly ereignisId: string;
+  readonly pruefVorgang: string;
+  readonly abdruck: string;
+}
+export type KlaraServerAuftragHerkunft = KlaraAuftragHerkunft | KlaraDNormAuftragHerkunft;
+
 export interface KlaraAuftrag extends KlaraAuftragGrenze {
   readonly id: string;
   /** BPA-06: gesetzt, wenn ein Routinenlauf den Auftrag angelegt hat. */
-  readonly herkunft?: KlaraAuftragHerkunft;
+  readonly herkunft?: KlaraServerAuftragHerkunft;
   readonly quelle: KlaraAuftragsQuelle;
   /** Der Auftrag in den Worten der Person (getippt oder gesprochen und korrigiert). */
   readonly wortlaut: string;
@@ -904,7 +918,10 @@ export function mitNeuemAuftrag(
 ): KlaraAuftrag[] {
   const alle = [...vorhanden];
   while (alle.length >= KLARA_AUFTRAEGE_JE_GESPRAECH) {
-    const i = alle.findIndex((a) => a.stand !== "laeuft" && a.stand !== "vorgeschlagen");
+    const i = alle.findIndex(
+      (a) =>
+        a.herkunft?.art !== "d_normereignis" && a.stand !== "laeuft" && a.stand !== "vorgeschlagen",
+    );
     if (i < 0) {
       throw new KlaraAuftragFehler(
         409,

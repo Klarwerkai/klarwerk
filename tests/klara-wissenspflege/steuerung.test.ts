@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   KlaraErinnerungDienst,
   KlaraErinnerungSteuerung,
+  type KlaraErinnerungSteuerungDeps,
   inMemoryErinnerungAblage,
 } from "../../services/app/src/klara-erinnerung";
 import { InMemoryKlaraNotizRepo, KlaraNotizDienst } from "../../services/app/src/klara-notiz";
@@ -13,7 +14,7 @@ import type {
 
 const ICH = "pflege-anna";
 const um = (tag: number) => Date.parse(`2026-10-${String(tag).padStart(2, "0")}T07:00:05.000Z`);
-function system() {
+function system(normBeobachter?: KlaraErinnerungSteuerungDeps["normereignisse"]) {
   let jetzt = um(20) - 10_000;
   let sichtbar = true;
   let zugang = true;
@@ -51,6 +52,7 @@ function system() {
       ablage,
       jetzt: () => jetzt,
       wissenspflege: leser,
+      ...(normBeobachter ? { normereignisse: normBeobachter } : {}),
       konto: async () => ({ approved: zugang }),
       zusammenfassen: async () => {
         modelle += 1;
@@ -110,7 +112,7 @@ function system() {
     modelle: () => modelle,
     berichte: () => notizen.liste(ICH, { woerter: [], art: null, limit: 100 }),
     meldungen: () => ablage.meldungen.fuerKonto(ICH, 100),
-    lege: async (vorlage: PflegeVorlage) =>
+    lege: async (vorlage: PflegeVorlage, norm?: "belege" | "folge") =>
       (
         await dienst.lege(ICH, {
           vorgang: `pflege-${crypto.randomUUID()}`,
@@ -123,7 +125,14 @@ function system() {
             uhrzeit: "09:00",
             wiederholung: { takt: "taeglich", intervall: 1, bis: "2026-10-23", anzahl: null },
           },
-          routine: { wissenspflege: { vorlage, quellen: ["anleitung-a4"] } },
+          routine: {
+            wissenspflege: {
+              vorlage,
+              quellen: ["anleitung-a4"],
+              ...(norm ? { normbekanntmachungen: "belege_vorbereiten" } : {}),
+              ...(norm === "folge" ? { folgepruefung: "persoenliche_normpruefaufgabe" } : {}),
+            },
+          },
           verpasst: { regel: "nachholen", grenzeMinuten: 30 },
         })
       ).eintrag.erinnerung,
@@ -336,5 +345,54 @@ describe("AW20 · Wissenspflege in der vorhandenen Erinnerungssteuerung", () => 
       status: "fehlgeschlagen",
       ergebnis: { grund: "quelle_geaendert", routine: { notizId: (await s.berichte())[0]?.id } },
     });
+  });
+  it("Normfolgeprüfung erhält den wirklichen gehaltenen D-Lauf und denselben Memoryguard; Pause sperrt die Folge vor Wirkung", async () => {
+    let s: ReturnType<typeof system>;
+    let aufrufe = 0;
+    s = system(async (konto, quellen, bedingung, folge) => {
+      aufrufe++;
+      expect(konto).toBe(ICH);
+      expect(quellen).toEqual(["anleitung-a4"]);
+      if (!folge) throw new Error("Wirklicher D-Folgekontext fehlt");
+      const e = (await s.ablage.erinnerungen.hole(ICH, folge.erinnerungId))?.erinnerung;
+      const l = await s.ablage.laeufe.hole(folge.vorkommenId);
+      expect(folge.erinnerungFassung).toBe(e?.fassung);
+      expect(folge.routineFassung).toBe(e?.routine?.fassung);
+      expect(l).toMatchObject({
+        kontoId: ICH,
+        erinnerungId: e?.id,
+        status: "laeuft",
+        besitzer: folge.besitzer,
+      });
+      await folge.pruefeAktuell();
+      expect(bedingung.gilt?.()).toBe(true);
+      await s.dienst.status(ICH, folge.erinnerungId, {
+        fassung: folge.erinnerungFassung,
+        aktion: "pausieren",
+      });
+      expect(bedingung.gilt?.()).toBe(false);
+      await expect(folge.pruefeAktuell()).rejects.toThrow();
+      return { ereignisse: [], ungeprueft: [], folgepruefung: { stand: "nicht_verfuegbar" } };
+    });
+    await s.lege("quellaenderung", "folge");
+    s.zeit(20);
+    await s.steuerung().lauf();
+    expect(aufrufe).toBe(1);
+    expect(await s.berichte()).toEqual([]);
+    expect(s.modelle()).toBe(0);
+  });
+  it("Normbelegwatch ohne Folge-Zusatz gibt keinen Folgeausführungskontext weiter", async () => {
+    let aufrufe = 0;
+    const s = system(async (_konto, _quellen, _bedingung, folge) => {
+      aufrufe++;
+      expect(folge).toBeUndefined();
+      return { ereignisse: [], ungeprueft: [] };
+    });
+    await s.lege("quellaenderung", "belege");
+    s.zeit(20);
+    await s.steuerung().lauf();
+    expect(aufrufe).toBe(1);
+    expect(await s.berichte()).toEqual([]);
+    expect(s.modelle()).toBe(0);
   });
 });

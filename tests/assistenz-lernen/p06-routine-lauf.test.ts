@@ -382,8 +382,12 @@ describe("BPA-06 · bestätigte P06-Routine läuft über den vorhandenen Aktions
     const auftragA = (a.json() as { auftrag: KlaraAuftrag }).auftrag;
     const auftragB = (b.json() as { auftrag: KlaraAuftrag }).auftrag;
     expect(auftragA.id).not.toBe(auftragB.id);
-    expect(auftragA.herkunft?.routineId).toBe(erste.id);
-    expect(auftragB.herkunft?.routineId).toBe(zweite.id);
+    expect(auftragA.herkunft?.art).toBe("routine");
+    expect(auftragB.herkunft?.art).toBe("routine");
+    if (auftragA.herkunft?.art !== "routine" || auftragB.herkunft?.art !== "routine")
+      throw new Error("Echte H-Routinenherkunft fehlt.");
+    expect(auftragA.herkunft.routineId).toBe(erste.id);
+    expect(auftragB.herkunft.routineId).toBe(zweite.id);
     // Wiederholungen bleiben je Routine bei ihrem eigenen Auftrag.
     const wiederA = await lauf(erik, erste.id, rumpf(erste.fassung));
     expect((wiederA.json() as { auftrag: { id: string } }).auftrag.id).toBe(auftragA.id);
