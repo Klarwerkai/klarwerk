@@ -101,8 +101,10 @@ async function aufgabe(
   return { id: a.id as string, fassung: a.fassung as number };
 }
 
-async function buehne() {
-  const app = buildApp(buildServices());
+async function buehne(ohneAusfuehrung = false) {
+  const services = buildServices();
+  if (ohneAusfuehrung) services.kalenderAusfuehrung = null;
+  const app = buildApp(services);
   await app.inject({
     method: "POST",
     url: "/api/auth/register",
@@ -204,7 +206,7 @@ describe("AW-16 · Auftragsverknüpfung über die gelieferten persönlichen Aufg
   it("K3 · eine eigene Aufgabe wird verknüpft, nach Neuladen mit heutigen Rechten aufgelöst; Eintrag, Auftrag und Ergebnis bleiben getrennt", async () => {
     const { app, k } = await buehne();
     const vorher = await ansicht(app, k.erik);
-    expect(vorher).toMatchObject({ aufgabenAngebunden: true, ausfuehrungAngebunden: false });
+    expect(vorher).toMatchObject({ aufgabenAngebunden: true, ausfuehrungAngebunden: true });
     const pumpe = await aufgabe(app, k.erik, "Prüfbericht Pumpe P-7 schreiben");
 
     const res = await lege(app, k.erik, { ...TERMIN, auftrag: { taskId: pumpe.id } });
@@ -352,7 +354,7 @@ describe("AW-16 · Auftragsverknüpfung über die gelieferten persönlichen Aufg
   });
 
   it("K3/K6 · ohne Ausführungsdienst bleiben Lauf, Serie, Ergebnis und Ausführungsaktionen gesperrt", async () => {
-    const { app, k } = await buehne();
+    const { app, k } = await buehne(true);
     const pumpe = await aufgabe(app, k.erik, "Prüfbericht Pumpe P-7 schreiben");
     for (const verweise of [
       { auftrag: { taskId: pumpe.id }, lauf: { runId: "lauf-1" } },

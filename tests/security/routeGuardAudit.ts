@@ -1199,6 +1199,37 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "DELETE /api/me/kalender/eintraege/:id": { protection: "auth" },
   "POST /api/me/kalender/eintraege/:id/folgen": { protection: "auth" },
   "POST /api/me/kalender/eintraege/:id/aktionen": { protection: "auth" },
+  // produkt:20261008:klara-kalender (Klara 11): die eigene Kalenderanbindung. Jede Tür nur mit
+  // Anmeldung; das Konto kommt aus der Sitzung, fremde Anbindungen und Zuordnungen antworten 404.
+  "GET /api/me/klara/kalender": { protection: "auth" },
+  "POST /api/me/klara/kalender/anbindungen": { protection: "auth" },
+  "GET /api/me/klara/kalender/anbindungen/:id/termine": { protection: "auth" },
+  "POST /api/me/klara/kalender/anbindungen/:id/termine": { protection: "auth" },
+  "GET /api/me/klara/kalender/anbindungen/:id/zuordnungen": { protection: "auth" },
+  "POST /api/me/klara/kalender/anbindungen/:id/abgleich": { protection: "auth" },
+  "POST /api/me/klara/kalender/zuordnungen/:schluessel/loeschvorschau": { protection: "auth" },
+  "POST /api/me/klara/kalender/zuordnungen/:schluessel/loeschen": { protection: "auth" },
+  "POST /api/me/klara/kalender/zuordnungen/:schluessel/entscheidung": { protection: "auth" },
+  "GET /api/me/klara/kalender/lauf": { protection: "auth" },
+  // produkt:20261007:klara-erinnerungen-kalender (Klara 10): die eigenen Erinnerungen. Jede Tür nur
+  // mit Anmeldung; das Konto kommt aus der Sitzung, fremd und unbekannt antworten gleich (404).
+  "GET /api/me/klara/erinnerungen": { protection: "auth" },
+  "GET /api/me/klara/erinnerungen/einstellungen": { protection: "auth" },
+  "PUT /api/me/klara/erinnerungen/einstellungen": { protection: "auth" },
+  "POST /api/me/klara/erinnerungen/vorschau": { protection: "auth" },
+  "POST /api/me/klara/erinnerungen": { protection: "auth" },
+  "GET /api/me/klara/erinnerungen/ueberwachung": { protection: "auth" },
+  "GET /api/me/klara/erinnerungen/:id": { protection: "auth" },
+  "PUT /api/me/klara/erinnerungen/:id": { protection: "auth" },
+  "POST /api/me/klara/erinnerungen/:id/uebergabe": { protection: "auth" },
+  "POST /api/me/klara/erinnerungen/:id/uebergabe/zurueckgeben": { protection: "auth" },
+  "POST /api/me/klara/erinnerungen/:id/routine": { protection: "auth" },
+  "POST /api/me/klara/erinnerungen/:id/laeufe/:lauf/ergebnis-zuruecknehmen": { protection: "auth" },
+  "POST /api/me/klara/erinnerungen/:id/status": { protection: "auth" },
+  "POST /api/me/klara/erinnerungen/:id/vorkommen/:termin": { protection: "auth" },
+  "POST /api/me/klara/erinnerungen/:id/ab/:termin": { protection: "auth" },
+  "POST /api/me/klara/erinnerungen/:id/laeufe/:lauf/klaeren": { protection: "auth" },
+  "DELETE /api/me/klara/erinnerungen/:id": { protection: "auth" },
   // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): KI-Aufträge am EIGENEN Gespräch —
   // Konto aus der Sitzung, fremd und unbekannt 404, Quellen nur nach `sichtbarkeitsfilterFuer`.
   // Die Verbindungsprobe ist ein echter Modellaufruf und trägt das Recht der vorhandenen Probe.

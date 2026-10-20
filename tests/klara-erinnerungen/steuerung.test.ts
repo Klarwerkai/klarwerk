@@ -319,6 +319,12 @@ beforeEach(() => {
     laeufe: laufAblage,
     meldungen: meldungsAblage,
     einstellungen: new InMemoryKlaraErinnerungEinstellungRepo(),
+    async entferneKomplett(kontoId, id) {
+      if (!(await erinnerungen.entferne(kontoId, id))) return false;
+      await laufAblage.entferneFuerErinnerung(id);
+      await meldungsAblage.entferneFuerErinnerung(id);
+      return true;
+    },
   };
   notizen = new InMemoryKlaraNotizRepo();
   aufgaben = new AusfallendeAufgaben();
@@ -1312,6 +1318,7 @@ describe("S12 · AW-18 — bestellte einmalige Zusammenfassung über den vorhand
       status: "erstellt",
       text: "Kurzfassung: Angebot bis Freitag prüfen.",
       ki: true,
+      quelleStand: { art: "notiz", kontoId: ANNA, id: notizId, fassung: 1 },
     };
     expect((await meldungenVon(e.id))[0]?.zusammenfassung).toEqual(erstellt);
     expect((await laeufe(e.id))[0]).toMatchObject({
@@ -1442,6 +1449,39 @@ describe("S14 · AW18-K08 / K5 — Sperre oder Quellenlöschung WÄHREND der abh
       ergebnis: { grund: "quelle_geloescht" },
     });
     expect(await lage(id)).toBe("wartet_auf_klaerung");
+  });
+
+  it("F3 · Änderung derselben bestehenden Quelle während KI: alte Antwort bleibt unzugestellt, Wiederaufnahme bindet neue Fassung", async () => {
+    const ki = angehalteneKi();
+    const { id, notizId } = await zusammenfassungsErinnerung("Quelle wird überarbeitet");
+    uhr = um("2026-10-13", "09:00") + 10_000;
+    const lauf = steuerung().lauf();
+    await ki.gerufen;
+    const alt = await notizen.hole(ANNA, notizId);
+    if (!alt) throw new Error("Quelle fehlt");
+    expect(
+      await notizen.ersetze({ ...alt, inhalt: "Neue Quelle Fassung 2", fassung: alt.fassung + 1 }),
+    ).toBe(true);
+    ki.freigeben();
+    expect((await lauf).unklar).toBe(1);
+    expect(await meldungenVon(id)).toEqual([]);
+    expect((await laeufe(id))[0]).toMatchObject({
+      status: "unklar",
+      ergebnis: { grund: "quelle_geaendert" },
+    });
+    await dienst.klaere(ANNA, id, (await laeufe(id))[0]!.vorkommenId, {
+      entscheidung: "fortfuehren",
+      fassung: 1,
+    });
+    zusammenfassen = async (text) => ({ text: `Aktuelle Antwort: ${text}`, ki: true });
+    uhr += 121_000;
+    await steuerung("F3-neustart").lauf();
+    expect((await meldungenVon(id))[0]?.zusammenfassung).toMatchObject({
+      status: "erstellt",
+      quelleStand: { art: "notiz", id: notizId, fassung: 2 },
+    });
+    expect(JSON.stringify(await meldungenVon(id))).toContain("Neue Quelle Fassung 2");
+    expect(JSON.stringify(await meldungenVon(id))).not.toContain("Kurzfassung, erst nach");
   });
 
   it("ohne Änderung währenddessen: dieselbe angehaltene Antwort wird zugestellt (Gegenprobe)", async () => {

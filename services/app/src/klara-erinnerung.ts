@@ -99,6 +99,14 @@ import {
 // Erinnerung trotzdem — der Lauf ist dann `teilweise` (AW18-K07).
 //
 // BEWUSST NICHT HIER: Kalenderprojektion (eigene folgende Lieferung), E-Mail/Push als Ziel.
+//
+// KALENDERSPERRE JE VORKOMMEN (produkt:20261008:klara-kalender, P07-AC05/AC06, AW17-K05): Die
+// Kalenderanbindung führt je Vorkommen (`vorkommen_id` = Auftrag + nominale Zeit) eine dauerhafte
+// Sperre — etwa nach externer Löschung bis zur ausdrücklichen Entscheidung. Die Steuerung fragt sie
+// (`vorkommenSperre`) unmittelbar vor JEDER Wirkung ab, in derselben Prüfung wie Konto und Quelle.
+// `pausiert`: NUR dieser Lauf wartet („unklar“, Grund `kalender_pausiert`) — andere Vorkommen und
+// der Status der Erinnerung bleiben unberührt. `beendet`: dieser Lauf endet ohne Wirkung. Nicht
+// lesbar: keine Wirkung, der Lauf scheitert sichtbar und wird begrenzt wieder aufgenommen.
 
 export const KLARA_ERINNERUNG_BEREICH = "persoenlich" as const;
 /** Der einzige Benachrichtigungsweg dieser Lieferung: die vorhandene Glocke (`/api/notifications`). */
@@ -140,9 +148,17 @@ export interface KlaraErinnerungZustaendig {
 }
 
 /** Das Ergebnis einer bestellten Zusammenfassung — dauerhaft an Meldung und Lauf. */
-export type KlaraErinnerungZusammenfassung =
+export interface ErinnerungQuellenStand {
+  readonly art: "notiz" | "aufgabe" | "gespraech";
+  readonly kontoId: string;
+  readonly id: string;
+  readonly fassung: number;
+}
+
+export type KlaraErinnerungZusammenfassung = (
   | { readonly status: "erstellt"; readonly text: string; readonly ki: boolean }
-  | { readonly status: "nicht_verfuegbar" };
+  | { readonly status: "nicht_verfuegbar" }
+) & { readonly quelleStand?: ErinnerungQuellenStand };
 
 export type KlaraErinnerungBezug =
   | { readonly art: "frei" }
@@ -275,7 +291,16 @@ export type KlaraErinnerungLaufGrund =
   /** EQF-07: eine gelesene Routinenquelle wurde vor dem Schreiben geändert oder gelöscht. */
   | "quelle_geaendert"
   /** EQF-07: der Bericht wurde inzwischen von der Person bearbeitet — er wird nicht überschrieben. */
-  | "bericht_geaendert";
+  | "bericht_geaendert"
+  /** Klara 11: dieses Vorkommen ist in der Kalenderanbindung bis zur Entscheidung pausiert. */
+  | "kalender_pausiert"
+  /** Klara 11: dieses Vorkommen wurde in der Kalenderanbindung ausdrücklich beendet. */
+  | "kalender_beendet"
+  /** Klara 11: die Sperre der Kalenderanbindung war nicht lesbar — keine Wirkung. */
+  | "kalender_unlesbar";
+
+/** Klara 11: die Sperre eines Vorkommens aus der Kalenderanbindung (`vorkommenSperre`). */
+export type KlaraErinnerungVorkommenSperre = "frei" | "pausiert" | "beendet";
 
 export type KlaraErinnerungPruefung =
   | { readonly art: "aufgabe"; readonly status: "offen" | "erledigt" | "nicht_gefunden" }
@@ -309,6 +334,16 @@ export interface KlaraErinnerungMeldung {
   readonly grund?: KlaraErinnerungLaufGrund;
   /** Der Laufstatus, mit dem ein Readback den Lauf abschließt. */
   readonly laufStatus: KlaraErinnerungLaufStatus;
+}
+
+/** Ein vorhandener Sammelbeleg gilt nur für die tatsächlich darin gespeicherten Vorkommen. */
+function umfasstMeldung(beleg: KlaraErinnerungMeldung, neu: KlaraErinnerungMeldung): boolean {
+  return (
+    beleg.kontoId === neu.kontoId &&
+    beleg.erinnerungId === neu.erinnerungId &&
+    beleg.art === neu.art &&
+    neu.vorkommen.every((v) => beleg.vorkommen.includes(v))
+  );
 }
 
 /** Ergebnis eines bedingten Schreibens der Meldung. */
@@ -733,12 +768,7 @@ export interface MeldungBedingung {
    * EQF-07 (Nacharbeit 9): die Quellen eines Routinenberichts in GENAU der gelesenen Fassung. Ändert
    * oder löscht jemand eine davon vor dem Schreiben, entsteht nichts — die Steuerung entscheidet neu.
    */
-  readonly quellenStand?: readonly {
-    readonly art: "notiz" | "aufgabe";
-    readonly kontoId: string;
-    readonly id: string;
-    readonly fassung: number;
-  }[];
+  readonly quellenStand?: readonly ErinnerungQuellenStand[];
 }
 
 /**
@@ -806,7 +836,12 @@ export function bedingungSql(
     const i = p() - 2;
     const k = p() - 1;
     const f = p();
-    const tabelle = s.art === "notiz" ? "klara_notizen" : "klara_aufgaben";
+    const tabelle =
+      s.art === "notiz"
+        ? "klara_notizen"
+        : s.art === "aufgabe"
+          ? "klara_aufgaben"
+          : "klara_gespraeche";
     und.push(
       `EXISTS (SELECT 1 FROM ${tabelle}
                 WHERE id = $${i}::text AND konto_id = $${k}::text AND fassung = $${f}::int
@@ -865,6 +900,8 @@ export interface KlaraErinnerungAblage {
   readonly laeufe: KlaraErinnerungLaufRepo;
   readonly meldungen: KlaraErinnerungMeldungRepo;
   readonly einstellungen: KlaraErinnerungEinstellungRepo;
+  /** Produktablagen löschen Auftrag, Läufe und Meldungen als eine atomare Wirkung. */
+  readonly entferneKomplett?: (kontoId: string, id: string) => Promise<boolean>;
 }
 
 function leereZaehlung(): Record<KlaraErinnerungLaufStatus | "haengend", number> {
@@ -1266,7 +1303,8 @@ export class InMemoryKlaraErinnerungMeldungRepo implements KlaraErinnerungMeldun
     m: KlaraErinnerungMeldung,
     bedingung?: MeldungBedingung,
   ): Promise<MeldungSchreibergebnis> {
-    if (this.meldungen.has(m.id)) {
+    const alt = this.meldungen.get(m.id);
+    if (alt && umfasstMeldung(alt, m)) {
       return Promise.resolve("vorhanden");
     }
     if (
@@ -1276,7 +1314,22 @@ export class InMemoryKlaraErinnerungMeldungRepo implements KlaraErinnerungMeldun
     ) {
       return Promise.resolve("veraltet");
     }
-    this.meldungen.set(m.id, m);
+    if (alt) {
+      if (
+        alt.kontoId !== m.kontoId ||
+        alt.erinnerungId !== m.erinnerungId ||
+        alt.art !== m.art ||
+        !["zusammenfassung", "uebersprungen"].includes(m.art)
+      ) {
+        return Promise.resolve("veraltet");
+      }
+      this.meldungen.set(m.id, {
+        ...alt,
+        vorkommen: [...new Set([...alt.vorkommen, ...m.vorkommen])].sort(),
+      });
+    } else {
+      this.meldungen.set(m.id, m);
+    }
     return Promise.resolve("geschrieben");
   }
 
@@ -1325,11 +1378,18 @@ export function inMemoryErinnerungAblage(): KlaraErinnerungAblage {
   const laeufe = new InMemoryKlaraErinnerungLaufRepo();
   erinnerungen.verbindeLaeufe(laeufe);
   laeufe.verbindeErinnerungen(erinnerungen);
+  const meldungen = new InMemoryKlaraErinnerungMeldungRepo(erinnerungen);
   return {
     erinnerungen,
     laeufe,
-    meldungen: new InMemoryKlaraErinnerungMeldungRepo(erinnerungen),
+    meldungen,
     einstellungen: new InMemoryKlaraErinnerungEinstellungRepo(),
+    async entferneKomplett(kontoId, id) {
+      if (!(await erinnerungen.entferne(kontoId, id))) return false;
+      await laeufe.entferneFuerErinnerung(id);
+      await meldungen.entferneFuerErinnerung(id);
+      return true;
+    },
   };
 }
 
@@ -1803,6 +1863,20 @@ export class PgKlaraErinnerungMeldungRepo implements KlaraErinnerungMeldungRepo 
     bedingung?: MeldungBedingung,
   ): Promise<MeldungSchreibergebnis> {
     const werte = [m.id, m.kontoId, m.erinnerungId, m.zugestelltAm, JSON.stringify(m)];
+    // Verschiedene Ausführer können disjunkte Teile desselben Stapels halten. Der gemeinsame
+    // dauerhafte Sammelbeleg vereinigt diese Mengen unter der Konfliktsperre der Meldungszeile.
+    const konflikt = ["zusammenfassung", "uebersprungen"].includes(m.art)
+      ? `ON CONFLICT (id) DO UPDATE SET data = jsonb_set(
+           klara_erinnerung_meldungen.data, '{vorkommen}',
+           (SELECT jsonb_agg(v ORDER BY v) FROM (
+             SELECT DISTINCT v FROM jsonb_array_elements(
+               (klara_erinnerung_meldungen.data->'vorkommen') || (EXCLUDED.data->'vorkommen')) AS x(v)
+           ) AS alle))
+         WHERE klara_erinnerung_meldungen.konto_id = EXCLUDED.konto_id
+           AND klara_erinnerung_meldungen.erinnerung_id = EXCLUDED.erinnerung_id
+           AND klara_erinnerung_meldungen.data->>'art' = EXCLUDED.data->>'art'
+           AND NOT ((klara_erinnerung_meldungen.data->'vorkommen') @> (EXCLUDED.data->'vorkommen'))`
+      : "ON CONFLICT (id) DO NOTHING";
     // Mit Bedingung EIN Befehl: die Erinnerungszeile wird mit FOR SHARE gelesen. Eine gleichzeitige
     // Bearbeitung (Pause, Absage, Terminänderung — `UPDATE … WHERE fassung`) wartet bis hierher oder
     // war vorher fertig; im zweiten Fall sieht die Prüfung die neue Fassung und schreibt nichts.
@@ -1813,10 +1887,10 @@ export class PgKlaraErinnerungMeldungRepo implements KlaraErinnerungMeldungRepo 
       return this.ergebnis(
         await this.pool.query(
           `INSERT INTO klara_erinnerung_meldungen (id, konto_id, erinnerung_id, zugestellt_am, data)
-           VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING`,
+           VALUES ($1, $2, $3, $4, $5) ${konflikt}`,
           werte,
         ),
-        m.id,
+        m,
       );
     }
     // Dieselbe Bedingung wie für den Routinenbericht (`bedingungSql`), in DIESEM Befehl.
@@ -1825,20 +1899,21 @@ export class PgKlaraErinnerungMeldungRepo implements KlaraErinnerungMeldungRepo 
       `INSERT INTO klara_erinnerung_meldungen (id, konto_id, erinnerung_id, zugestellt_am, data)
        SELECT $1::text, $2::text, $3::text, $4::timestamptz, $5::jsonb
         WHERE ${und.join("\n          AND ")}
-       ON CONFLICT (id) DO NOTHING`,
+       ${konflikt}`,
       [...werte, ...params],
     );
-    return this.ergebnis(res, m.id);
+    return this.ergebnis(res, m);
   }
 
   private async ergebnis(
     res: { rowCount: number | null },
-    id: string,
+    m: KlaraErinnerungMeldung,
   ): Promise<MeldungSchreibergebnis> {
     if ((res.rowCount ?? 0) > 0) {
       return "geschrieben";
     }
-    return (await this.hole(id)) ? "vorhanden" : "veraltet";
+    const beleg = await this.hole(m.id);
+    return beleg && umfasstMeldung(beleg, m) ? "vorhanden" : "veraltet";
   }
 
   async hole(id: string): Promise<KlaraErinnerungMeldung | null> {
@@ -1899,6 +1974,21 @@ export function pgErinnerungAblage(pool: Pool): KlaraErinnerungAblage {
     laeufe: new PgKlaraErinnerungLaufRepo(pool),
     meldungen: new PgKlaraErinnerungMeldungRepo(pool),
     einstellungen: new PgKlaraErinnerungEinstellungRepo(pool),
+    async entferneKomplett(kontoId, id) {
+      // Ein Statement bleibt auch am gated-pool eine Transaktion. Die Elternzeile sperrt
+      // gleichzeitig Übernahmen und bedingte Meldungen; ein Fehler in einem DELETE rollt alles zurück.
+      const r = await pool.query<{ geloescht: boolean }>(
+        `WITH auftrag AS (
+           DELETE FROM klara_erinnerungen WHERE id = $1 AND konto_id = $2 RETURNING id
+         ), laeufe AS (
+           DELETE FROM klara_erinnerung_laeufe WHERE erinnerung_id IN (SELECT id FROM auftrag)
+         ), meldungen AS (
+           DELETE FROM klara_erinnerung_meldungen WHERE erinnerung_id IN (SELECT id FROM auftrag)
+         ) SELECT EXISTS (SELECT 1 FROM auftrag) AS geloescht`,
+        [id, kontoId],
+      );
+      return r.rows[0]?.geloescht ?? false;
+    },
   };
 }
 
@@ -3424,12 +3514,9 @@ export class KlaraErinnerungDienst {
 
   /** Löschen wirkt auf Erinnerung, Läufe UND die zugestellten Meldungen dieser Erinnerung. */
   async loesche(kontoId: string, id: string): Promise<boolean> {
-    if (!(await this.ablage.erinnerungen.entferne(kontoId, id))) {
-      return false;
-    }
-    await this.ablage.laeufe.entferneFuerErinnerung(id);
-    await this.ablage.meldungen.entferneFuerErinnerung(id);
-    return true;
+    if (!this.ablage.entferneKomplett)
+      throw new Error("Atomare Erinnerungslöschung nicht angebunden.");
+    return this.ablage.entferneKomplett(kontoId, id);
   }
 
   /** Die eigenen Meldungen für die Glocke (nur dieses Konto). */
@@ -3522,6 +3609,15 @@ export interface KlaraErinnerungSteuerungDeps {
    * scheitert er, ist die Zusammenfassung `nicht_verfuegbar` — die Erinnerung kommt trotzdem.
    */
   readonly zusammenfassen?: (text: string) => Promise<{ text: string; ki: boolean }>;
+  /**
+   * Klara 11 (P07-AC05): die dauerhafte Sperre GENAU EINES Vorkommens aus der Kalenderanbindung —
+   * gelesen unmittelbar vor jeder Wirkung. Fehlt sie, gibt es keine Kalendersperre.
+   */
+  readonly vorkommenSperre?: (
+    kontoId: string,
+    erinnerungId: string,
+    vorkommenId: string,
+  ) => Promise<KlaraErinnerungVorkommenSperre>;
 }
 
 export interface KlaraErinnerungLaufbericht {
@@ -3870,7 +3966,7 @@ export class KlaraErinnerungSteuerung {
       z.unklar += 1;
       return true;
     }
-    if (!vorhanden) {
+    if (!vorhanden || !vorhanden.vorkommen.includes(lauf.geplantFuer)) {
       return false;
     }
     await this.deps.ablage.laeufe.schliesse(
@@ -3944,20 +4040,35 @@ export class KlaraErinnerungSteuerung {
   }
 
   /** Der Text der EIGENEN Quelle für eine bestellte Zusammenfassung — `null`: nicht lesbar. */
-  private async quelltext(e: KlaraErinnerung): Promise<string | null> {
+  private async quelltext(
+    e: KlaraErinnerung,
+  ): Promise<{ text: string; stand: ErinnerungQuellenStand } | null> {
     const b = e.bezug;
     try {
       if (b.art === "notiz" && this.deps.notizen) {
         const n = await this.deps.notizen.hole(e.kontoId, b.notizId);
-        return n ? `${n.titel}\n\n${n.inhalt}` : null;
+        return n
+          ? {
+              text: `${n.titel}\n\n${n.inhalt}`,
+              stand: { art: "notiz", kontoId: e.kontoId, id: n.id, fassung: n.fassung },
+            }
+          : null;
       }
       if (b.art === "aufgabe" && this.deps.aufgaben) {
         const a = await this.deps.aufgaben.hole(e.kontoId, b.aufgabeId);
-        return a ? `${a.titel}\n\n${a.inhalt}` : null;
+        return a
+          ? {
+              text: `${a.titel}\n\n${a.inhalt}`,
+              stand: { art: "aufgabe", kontoId: e.kontoId, id: a.id, fassung: a.fassung },
+            }
+          : null;
       }
       if (b.art === "gespraech" && this.deps.gespraeche) {
         const g = await this.deps.gespraeche.hole(e.kontoId, b.gespraechId);
-        return g?.nachrichten.find((n) => n.id === b.nachrichtId)?.text ?? null;
+        const text = g?.nachrichten.find((n) => n.id === b.nachrichtId)?.text;
+        return g && text !== undefined
+          ? { text, stand: { art: "gespraech", kontoId: e.kontoId, id: g.id, fassung: g.fassung } }
+          : null;
       }
       return null;
     } catch {
@@ -3980,13 +4091,13 @@ export class KlaraErinnerungSteuerung {
     if (!this.deps.zusammenfassen) {
       return nichtVerfuegbar;
     }
-    const text = await this.quelltext(e);
-    if (text === null || text.trim().length === 0) {
+    const quelle = await this.quelltext(e);
+    if (quelle === null || quelle.text.trim().length === 0) {
       return nichtVerfuegbar;
     }
     try {
       const r = await this.deps.zusammenfassen(
-        text.slice(0, KLARA_ERINNERUNG_ZUSAMMENFASSUNG_QUELLE_MAX),
+        quelle.text.slice(0, KLARA_ERINNERUNG_ZUSAMMENFASSUNG_QUELLE_MAX),
       );
       const ergebnis = r.text.trim();
       if (ergebnis.length === 0) {
@@ -3996,24 +4107,83 @@ export class KlaraErinnerungSteuerung {
         status: "erstellt",
         text: ergebnis.slice(0, KLARA_ERINNERUNG_ZUSAMMENFASSUNG_MAX),
         ki: r.ki,
+        quelleStand: quelle.stand,
       };
     } catch {
       return nichtVerfuegbar;
     }
   }
 
+  private async zusammenfassungsQuelleAktuell(
+    e: KlaraErinnerung,
+    stand: ErinnerungQuellenStand,
+  ): Promise<boolean> {
+    const jetzt = await this.quelltext(e);
+    return (
+      jetzt !== null &&
+      jetzt.stand.art === stand.art &&
+      jetzt.stand.id === stand.id &&
+      jetzt.stand.fassung === stand.fassung
+    );
+  }
+
+  /**
+   * Klara 11 (P07-AC05/AC06): die Kalendersperre JEDES Vorkommens, so wie sie JETZT gespeichert ist.
+   * `pausiert` → NUR dieser Lauf wartet („unklar“, `kalender_pausiert`); `beendet` → dieser Lauf
+   * endet ohne Wirkung („abgebrochen“, `kalender_beendet`); nicht lesbar → keine Wirkung
+   * („fehlgeschlagen“, `kalender_unlesbar`, begrenzt wieder aufgenommen). Gesperrte Läufe werden aus
+   * `gueltig` entfernt; die übrigen wirken wie bisher. `true`: kein Lauf ist mehr frei.
+   */
+  private async kalenderGesperrt(
+    e: KlaraErinnerung,
+    gueltig: { lauf: KlaraErinnerungLauf; hinweis: ZeitHinweis | null }[],
+    z: Zaehler,
+    extra: KlaraErinnerungLauf["ergebnis"],
+  ): Promise<boolean> {
+    const sperre = this.deps.vorkommenSperre;
+    if (!sperre) {
+      return false;
+    }
+    const frei: typeof gueltig = [];
+    for (const x of gueltig) {
+      let stand: KlaraErinnerungVorkommenSperre;
+      try {
+        stand = await sperre(e.kontoId, e.id, x.lauf.vorkommenId);
+      } catch {
+        await this.schliesseAlle([x], "fehlgeschlagen", "kalender_unlesbar", extra);
+        z.fehlgeschlagen += 1;
+        continue;
+      }
+      if (stand === "pausiert") {
+        await this.schliesseAlle([x], "unklar", "kalender_pausiert", extra);
+        z.unklar += 1;
+      } else if (stand === "beendet") {
+        await this.schliesseAlle([x], "abgebrochen", "kalender_beendet", extra);
+        z.abgebrochen += 1;
+      } else {
+        frei.push(x);
+      }
+    }
+    gueltig.splice(0, gueltig.length, ...frei);
+    return frei.length === 0;
+  }
+
   /**
    * Konto der Empfängerin und eigene Quelle, so wie sie JETZT sind. Gesperrt/abgelaufen → Läufe
    * „gestoppt“; Quelle gelöscht → „unklar“ (wartet auf die Entscheidung der Person); Quelle nicht
    * lesbar → „fehlgeschlagen“. `true`: es darf nichts geschrieben werden, die Läufe sind geschlossen.
+   * Klara 11: zuerst die Kalendersperre je Vorkommen — gesperrte Läufe verlassen `gueltig`.
    */
   private async gesperrt(
     e: KlaraErinnerung,
     empfaenger: string,
-    gueltig: readonly { lauf: KlaraErinnerungLauf; hinweis: ZeitHinweis | null }[],
+    gueltig: { lauf: KlaraErinnerungLauf; hinweis: ZeitHinweis | null }[],
     z: Zaehler,
     extra: KlaraErinnerungLauf["ergebnis"] = {},
   ): Promise<boolean> {
+    if (await this.kalenderGesperrt(e, gueltig, z, extra)) {
+      return true;
+    }
     if (!(await this.kontoAktiv(empfaenger))) {
       await this.schliesseAlle(gueltig, "gestoppt", "konto_gesperrt", extra);
       z.gestoppt += gueltig.length;
@@ -4827,6 +4997,16 @@ export class KlaraErinnerungSteuerung {
       if (await this.gesperrt(e, empfaenger, gueltig, z, mitRoutine())) {
         return;
       }
+      if (
+        zusammenfassung?.quelleStand &&
+        !(await this.zusammenfassungsQuelleAktuell(e, zusammenfassung.quelleStand))
+      ) {
+        // Die existierende Quelle wurde während der Modellantwort geändert. Kein alter Text
+        // als aktuelles Ergebnis; die bestehende begrenzte Wiederaufnahme liest die neue Fassung.
+        await this.schliesseAlle(gueltig, "unklar", "quelle_geaendert");
+        z.unklar += gueltig.length;
+        return;
+      }
       if (routineEntwurf) {
         // Nacharbeit 9 (Ben, EQF-07-K07): die gelesenen Quellen müssen JETZT noch in der gelesenen
         // Fassung bestehen — sonst wird neu gelesen und neu entschieden (nächste Runde).
@@ -4895,6 +5075,7 @@ export class KlaraErinnerungSteuerung {
           fassung: e.fassung,
           empfaenger: { kontoId: empfaenger, jetzt: this.jetzt() },
           quelle: quelleFuerBedingung(e),
+          ...(zusammenfassung?.quelleStand ? { quellenStand: [zusammenfassung.quelleStand] } : {}),
         });
       } catch {
         // Ob die Meldung trotzdem angekommen ist, klärt der nächste Versuch per Readback.

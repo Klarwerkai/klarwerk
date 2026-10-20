@@ -1425,6 +1425,48 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/klara/programme/bedienungshilfe": {
     urteil: "EIGENER_BESTAND",
     grund: "Gibt nur die eingereichte Markierung und eigenen, gesiegelten Kontext zurück.",
+  },
+  // Klara 11: eigener berechtigter Kalenderanschluss.
+  "GET /api/me/klara/kalender": {
+    urteil: "EIGENER_BESTAND",
+    grund: "eigene Anbindungen (user.id) und der eigene verbundene Kalender, kein Wissensobjekt.",
+  },
+  "POST /api/me/klara/kalender/anbindungen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt eine eigene Anbindung an (user.id); Antwort ist die Anbindung selbst.",
+  },
+  "GET /api/me/klara/kalender/anbindungen/:id/termine": {
+    urteil: "EIGENER_BESTAND",
+    grund: "liest nur den Zielkalender einer eigenen Anbindung, fremd und unbekannt 404.",
+  },
+  "POST /api/me/klara/kalender/anbindungen/:id/termine": {
+    urteil: "EIGENER_BESTAND",
+    grund: "trägt einen eigenen Termin ein; ein eigener Kalendereintrag nur mit heutigen Rechten.",
+  },
+  "GET /api/me/klara/kalender/anbindungen/:id/zuordnungen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Zuordnungen einer eigenen Anbindung (user.id), fremd und unbekannt 404.",
+  },
+  "POST /api/me/klara/kalender/anbindungen/:id/abgleich": {
+    urteil: "EIGENER_BESTAND",
+    grund: "gleicht nur Zuordnungen einer eigenen Anbindung ab; Antwort Stände und Schlüssel.",
+  },
+  "POST /api/me/klara/kalender/zuordnungen/:schluessel/loeschvorschau": {
+    urteil: "EIGENER_BESTAND",
+    grund: "liest Ziel und Fassung einer eigenen Zuordnung, fremd und unbekannt 404.",
+  },
+  "POST /api/me/klara/kalender/zuordnungen/:schluessel/loeschen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur über eine eigene Zuordnung mit gesehener Fassung, fremd und unbekannt 404.",
+  },
+  "POST /api/me/klara/kalender/zuordnungen/:schluessel/entscheidung": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Entscheidung an einer eigenen Zuordnung, fremd und unbekannt 404.",
+  },
+  "GET /api/me/klara/kalender/lauf": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Laufstand aus den eigenen Zuordnungen (user.id); nur ein Zustandswort.",
+  },
   // produkt:20261010:klara-eigener-kalender (AW-16). LESEURTEIL: persönliche Einträge nur des eigenen
   // Kontos, Teameinträge nur der HEUTIGEN Teams (eigener-kalender.ts, `zugriff`/`ansicht`). Der Text
   // eines aus einem Wissensobjekt abgeleiteten Eintrags steht nur unter `quelleLesbar` — in der App

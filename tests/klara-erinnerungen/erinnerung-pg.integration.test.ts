@@ -64,7 +64,7 @@ import {
 import { loeseMitRegel } from "../../services/app/src/klara-erinnerung-zeit";
 import { KlaraNotizDienst, PgKlaraNotizRepo } from "../../services/app/src/klara-notiz";
 import { ergebnisVorgang } from "../../services/app/src/klara-routine";
-import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { gatedPool, guardedLocalPgTestUrl } from "../../services/db-tx";
 
 const ANNA = "u-pg-erinnerung-anna";
 const BERT = "u-pg-erinnerung-bert";
@@ -1013,5 +1013,142 @@ describe("Klara 10 · Erinnerungen gegen echtes PostgreSQL", () => {
     uhr += 60_000;
     await echterProzess("p15-noch", new PgKlaraErinnerungMeldungRepo(neuePool())).steuerung.lauf();
     expect((await neu.notizen.zuVorgang(MIA, r.vorgang19))?.fassung).toBe(2);
+  });
+  for (const regel of ["zusammenfassen", "ueberspringen"] as const) {
+    it(`F2 · zwei echte Pools halten disjunkte Stapelteile (${regel}); Sammelbeleg verliert kein geschlossenes Vorkommen`, async () => {
+      uhr = um("2026-10-12", "09:00");
+      const a = pgErinnerungAblage(neuePool());
+      const b = pgErinnerungAblage(neuePool());
+      const dienst = new KlaraErinnerungDienst({ ablage: a, jetzt });
+      const e = (
+        await dienst.lege(ANNA, {
+          vorgang: vorgang(),
+          titel: `F2 ${regel}`,
+          zeitzone: BERLIN,
+          zeitplan: {
+            art: "serie",
+            datum: "2026-10-13",
+            uhrzeit: "09:00",
+            wiederholung: { takt: "taeglich", intervall: 1, anzahl: 4 },
+          },
+          verpasst: { regel, grenzeMinuten: 0 },
+        })
+      ).eintrag.erinnerung;
+      let aBereit = () => {};
+      let bBereit = () => {};
+      const aHat = new Promise<void>((r) => {
+        aBereit = r;
+      });
+      const bHat = new Promise<void>((r) => {
+        bBereit = r;
+      });
+      const originalA = a.laeufe.uebernimm.bind(a.laeufe);
+      const originalB = b.laeufe.uebernimm.bind(b.laeufe);
+      a.laeufe.uebernimm = async (u) => {
+        if (u.erinnerungId !== e.id || !u.vorkommenId.endsWith("2026-10-13T09:00")) return null;
+        const l = await originalA(u);
+        aBereit();
+        await bHat;
+        return l;
+      };
+      let ersterB = true;
+      b.laeufe.uebernimm = async (u) => {
+        if (u.erinnerungId !== e.id || u.vorkommenId.endsWith("2026-10-13T09:00")) return null;
+        const l = await originalB(u);
+        if (ersterB) {
+          ersterB = false;
+          bBereit();
+          await aHat;
+        }
+        return l;
+      };
+      uhr = um("2026-10-16", "12:00");
+      await Promise.all([prozess("F2-A", a).steuerung.lauf(), prozess("F2-B", b).steuerung.lauf()]);
+      const laeufe = await a.laeufe.fuerErinnerung(e.id, 20);
+      expect(laeufe).toHaveLength(4);
+      expect(
+        laeufe.every(
+          (l) => l.status === (regel === "zusammenfassen" ? "zusammengefasst" : "uebersprungen"),
+        ),
+      ).toBe(true);
+      const belege = (await a.meldungen.fuerKonto(ANNA, 100)).filter(
+        (m) => m.erinnerungId === e.id,
+      );
+      expect(belege).toHaveLength(1);
+      expect([...belege[0]!.vorkommen].sort()).toEqual(laeufe.map((l) => l.geplantFuer).sort());
+      await prozess("F2-neustart").steuerung.lauf();
+      expect((await a.meldungen.hole(belege[0]!.id))?.vorkommen).toHaveLength(4);
+    });
+  }
+
+  it("F4 · gated-pool: DB-Fehler beim Meldungslöschen rollt alle drei Löschungen zurück; Wiederholung und Feed bleiben korrekt", async () => {
+    uhr = um("2026-10-12", "09:00");
+    const pool = gatedPool(neuePool());
+    const ablage = pgErinnerungAblage(pool);
+    const dienst = new KlaraErinnerungDienst({ ablage, jetzt });
+    const e = (
+      await dienst.lege(ANNA, {
+        vorgang: vorgang(),
+        titel: "F4 privat",
+        zeitzone: BERLIN,
+        zeitplan: { art: "einmalig", datum: "2026-10-13", uhrzeit: "09:00" },
+      })
+    ).eintrag.erinnerung;
+    uhr = um("2026-10-13", "09:00") + 1000;
+    await prozess("F4-ausfuehrer", ablage).steuerung.lauf();
+    expect(await ablage.laeufe.fuerErinnerung(e.id, 10)).toHaveLength(1);
+    const db = neuePool();
+    await db.query(
+      `CREATE FUNCTION d_delete_probe() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.erinnerung_id = '${e.id}' THEN RAISE EXCEPTION 'F4 injected DB fault'; END IF; RETURN OLD; END $$`,
+    );
+    await db.query(
+      "CREATE TRIGGER d_delete_probe BEFORE DELETE ON klara_erinnerung_meldungen FOR EACH ROW EXECUTE FUNCTION d_delete_probe()",
+    );
+    try {
+      await expect(dienst.loesche(ANNA, e.id)).rejects.toThrow("F4 injected DB fault");
+      expect(await ablage.erinnerungen.hole(ANNA, e.id)).not.toBeNull();
+      expect(await ablage.laeufe.fuerErinnerung(e.id, 10)).toHaveLength(1);
+      expect((await dienst.meldungenFuer(ANNA)).some((m) => m.erinnerungId === e.id)).toBe(true);
+      expect(await dienst.loesche(BERT, e.id)).toBe(false);
+    } finally {
+      await db.query("DROP TRIGGER d_delete_probe ON klara_erinnerung_meldungen");
+      await db.query("DROP FUNCTION d_delete_probe()");
+    }
+    expect(await dienst.loesche(ANNA, e.id)).toBe(true);
+    expect(await dienst.loesche(ANNA, e.id)).toBe(false);
+    expect(await ablage.laeufe.fuerErinnerung(e.id, 10)).toEqual([]);
+    expect((await dienst.meldungenFuer(ANNA)).some((m) => m.erinnerungId === e.id)).toBe(false);
+  });
+  it("F3 · Quellenfassung ändert sich unmittelbar vor dem echten INSERT: alte Zusammenfassung wird abgewiesen, neue Fassung bleibt nachvollziehbar", async () => {
+    uhr = um("2026-10-12", "09:00");
+    const m = new EinschubMeldungen(neuePool());
+    const p = echterProzess("F3-PG", m, async (text) => ({
+      text: `Zusammenfassung: ${text}`,
+      ki: true,
+    }));
+    const { id, notizId } = await notizErinnerung(
+      p,
+      ANNA,
+      "F3 alte Quelle",
+      "inhalt_zusammenfassen",
+    );
+    m.einschub = async () => {
+      const n = await p.notizen.hole(ANNA, notizId);
+      if (!n) throw new Error("F3 Quelle fehlt");
+      expect(
+        await p.notizen.ersetze({ ...n, inhalt: "F3 neue Quellfassung", fassung: n.fassung + 1 }),
+      ).toBe(true);
+    };
+    uhr = um("2026-10-13", "09:00") + 1000;
+    await p.steuerung.lauf();
+    expect(m.ergebnisse[0]).toBe("veraltet");
+    const belege = (await m.fuerKonto(ANNA, 100)).filter((x) => x.erinnerungId === id);
+    expect(belege).toHaveLength(1);
+    expect(belege[0]?.zusammenfassung).toMatchObject({
+      status: "erstellt",
+      quelleStand: { art: "notiz", id: notizId, fassung: 2 },
+    });
+    expect(JSON.stringify(belege)).toContain("F3 neue Quellfassung");
+    expect(JSON.stringify(belege)).not.toContain("F3 alte Quelle – Inhalt");
   });
 });

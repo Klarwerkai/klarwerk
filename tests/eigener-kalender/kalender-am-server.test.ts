@@ -73,10 +73,10 @@ function team(version: number, mitglieder: string[], verantwortlich: string): Te
 }
 
 async function buehne(
-  zugang: { ausfuehrung?: AusfuehrungsNachweis; vorhanden?: VorhandenerKalender } = {},
+  zugang: { ausfuehrung?: AusfuehrungsNachweis | null; vorhanden?: VorhandenerKalender } = {},
 ) {
   const services = buildServices();
-  if (zugang.ausfuehrung) {
+  if (zugang.ausfuehrung !== undefined) {
     services.kalenderAusfuehrung = zugang.ausfuehrung;
   }
   if (zugang.vorhanden) {
@@ -206,7 +206,7 @@ describe("AW-16 · eigener Kalender am echten Server", () => {
     const leer = await ansicht(app, k.erik);
     expect(leer.eintraege).toEqual([]);
     expect(leer.vorhandenerKalender).toEqual({ verbunden: false, termine: [] });
-    expect(leer.ausfuehrungAngebunden).toBe(false);
+    expect(leer.ausfuehrungAngebunden).toBe(true);
 
     const angelegt = await lege(app, k.erik, TERMIN);
     expect(angelegt.statusCode, angelegt.body).toBe(201);
@@ -379,7 +379,7 @@ describe("AW-16 · eigener Kalender am echten Server", () => {
   });
 
   it("K3 · ohne angebundenen Ausführungsdienst gibt es keine Lauf-/Serienverknüpfung und keine Ausführungsaktion", async () => {
-    const { app, k } = await buehne();
+    const { app, k } = await buehne({ ausfuehrung: null });
     // Nacharbeit 8: die gelieferten persönlichen Aufgaben sind angeschlossen — eine Kennung, die
     // dort für Erik nicht existiert, ist unbekannt (404), nicht „nicht angebunden". Lauf und Serie
     // brauchen weiter den Ausführungsdienst (409).

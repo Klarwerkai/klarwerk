@@ -33,7 +33,7 @@
 // INFRASTRUKTUR: echte PostgreSQL (`KLARWERK_PG_TEST_URL` mit `test` im Namen oder Wegwerf-
 // Container) und `pg_dump`/`pg_restore`/`psql`/`createdb`/`ps`/`curl` auf dem PATH. Fehlt etwas,
 // SCHEITERT die Suite mit dem Namen der fehlenden Voraussetzung — kein stiller Skip.
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
@@ -794,4 +794,118 @@ describe("Klara 10 · Erinnerungen über echten Dienstneustart und echten Restor
       `${NACHWEIS} R4 BELEGE: Routinen=${Object.values(r4).join(",")} Termine=${termine.join(",")}\n`,
     );
   }, 1_200_000);
+  it("F1 · echter Wiederanlauf startet weder Modell noch Routine, auch nach Freigabe erst beim regulären Neustart", async () => {
+    expect(noraToken).not.toBe("");
+    const vor = await starte(quellDb, "F1 vorbereiten");
+    const ids: string[] = [];
+    const morgen = new Date(Date.now() + TAG).toISOString().slice(0, 10);
+    try {
+      const n = await sende(vor.basis, "POST", "/api/me/klara/notizen", noraToken, {
+        vorgang: `f1-notiz-${kennung}`,
+        weg: "geschrieben",
+        titel: "F1 private Testquelle",
+        inhalt: "Nur fiktiver Inhalt.",
+        objektbezug: { pfad: "/aufgaben", seitenName: "Aufgaben", objekt: "F1" },
+      });
+      expect(n.status, n.text).toBe(201);
+      const notizId = (n.json as { notiz: { id: string } }).notiz.id;
+      for (const aktion of ["inhalt_zusammenfassen", "routine_bericht"]) {
+        const r = await sende(vor.basis, "POST", BASIS, noraToken, {
+          vorgang: `f1-${aktion}-${kennung}`,
+          titel: `F1 ${aktion}`,
+          zeitzone: "UTC",
+          zeitplan: { art: "einmalig", datum: morgen, uhrzeit: "09:00" },
+          aktion,
+          ...(aktion === "inhalt_zusammenfassen"
+            ? { bezug: { art: "notiz", notizId } }
+            : { routine: { abschnitte: ["offene_aufgaben"], notizIds: [notizId] } }),
+        });
+        expect(r.status, r.text).toBe(201);
+        ids.push((r.json as { erinnerung: { id: string } }).erinnerung.id);
+      }
+    } finally {
+      await beende(vor);
+    }
+    const faellig = aufMinute(Date.now() - 120_000);
+    const k = schluessel(faellig);
+    for (const id of ids)
+      await sql(
+        quellDb,
+        `UPDATE klara_erinnerungen SET data = jsonb_set(jsonb_set(data, '{zeitplan,datum}', to_jsonb($2::text)), '{zeitplan,uhrzeit}', to_jsonb($3::text)), bearbeitet_bis = $4::timestamptz, naechste_faelligkeit = $5::timestamptz WHERE id = $1`,
+        [id, k.slice(0, 10), k.slice(11, 16), new Date(faellig - 3_600_000), new Date(faellig)],
+      );
+    const probe = join(arbeitsordner, "F1-modellaufrufe.txt");
+    const probeEnv = { KLARWERK_TEST_ERINNERUNG_MODELL_BELEG: probe };
+    const importPfad = join(process.cwd(), "tests/klara-erinnerungen/modell-probe.ts");
+    const r = await starteKlarwerk({
+      datenbankUrl: pgUrl(v(), quellDb),
+      was: "F1 gesperrter Wiederanlauf",
+      zusatz: {
+        importe: [importPfad],
+        env: {
+          ...probeEnv,
+          KLARWERK_WIEDERANLAUF: `d-f1-${kennung}`,
+          KLARWERK_WIEDERANLAUF_SICHERUNG: new Date(faellig).toISOString(),
+        },
+      },
+    });
+    instanz = r;
+    pids.push(r.pid);
+    try {
+      const ohneWirkung = async () => {
+        const m = await sende(r.basis, "GET", `${BASIS}/ueberwachung`, adminToken);
+        expect(m.status, m.text).toBe(200);
+        expect(
+          (m.json as { steuerung: { letzterLauf: unknown } }).steuerung.letzterLauf,
+        ).toBeNull();
+        expect(existsSync(probe)).toBe(false);
+        expect(
+          (
+            await sql<{ n: number }>(
+              quellDb,
+              "SELECT count(*)::int AS n FROM klara_erinnerung_laeufe WHERE erinnerung_id = ANY($1)",
+              [ids],
+            )
+          )[0]?.n,
+        ).toBe(0);
+      };
+      await ohneWirkung();
+      // Eine echte weitere Taktgrenze, keine vorgetäuschte Uhr.
+      await new Promise((fertig) => setTimeout(fertig, 65_000));
+      await ohneWirkung();
+      const frei = await sende(r.basis, "POST", "/api/admin/wiederanlauf/freigabe", adminToken, {
+        integritaet: true,
+        rechteentzuege: true,
+        loeschmarkierungen: true,
+        aussenaktionen: true,
+      });
+      expect(frei.status, frei.text).toBe(200);
+      await ohneWirkung();
+    } finally {
+      await beende(r);
+    }
+    const normal = await starteKlarwerk({
+      datenbankUrl: pgUrl(v(), quellDb),
+      was: "F1 regulär freigegebener Neustart",
+      zusatz: { importe: [importPfad], env: probeEnv },
+    });
+    instanz = normal;
+    pids.push(normal.pid);
+    try {
+      await ersterTakt(normal);
+      expect(readFileSync(probe, "utf8").trim()).toBe("assistText");
+      const summary = await sicht(normal, ids[0]!);
+      expect(summary.laeufe[0]).toMatchObject({
+        status: "zugestellt",
+        ergebnis: { zusammenfassung: { status: "erstellt" } },
+      });
+      const routine = await sicht(normal, ids[1]!);
+      expect(routine.laeufe[0]).toMatchObject({
+        status: "zugestellt",
+        ergebnis: { routine: { status: "erstellt" } },
+      });
+    } finally {
+      await beende(normal);
+    }
+  }, 300_000);
 });

@@ -79,6 +79,7 @@ import { KLARA_AUFGABE_SCHEMA } from "./klara-aufgabe";
 import { KLARA_ERINNERUNG_SCHEMA } from "./klara-erinnerung";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (eine Zeile je Gespräch und Konto).
 import { KLARA_GESPRAECH_SCHEMA } from "./klara-gespraech";
+import { KLARA_KALENDER_SCHEMA } from "./klara-kalender-anbindung";
 import { KLARA_NOTIZ_SCHEMA } from "./klara-notiz";
 // ADMIN-12: Fassungen der Kommunikationsregeln, persönliche Abwahlen und Zustellstatus.
 import { KOMMUNIKATION_SCHEMA } from "./kommunikationsregeln";
@@ -406,6 +407,10 @@ export const schemas = [
   // wiederholbar (CREATE TABLE/UNIQUE INDEX/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne
   // Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   KLARA_AUFGABE_SCHEMA,
+  // produkt:20261008:klara-kalender (Klara 11): Kalenderanbindungen und Zuordnungen je Konto. Additiv
+  // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne
+  // Seed; am Ende, weil das die lesbare Ordnung ist.
+  KLARA_KALENDER_SCHEMA,
   // R-0679 / FR-VAL-07: die Geräteabos für Push. Additiv und wiederholbar (CREATE TABLE/INDEX IF
   // NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
   // Ordnung ist.

@@ -390,18 +390,6 @@ async function start(): Promise<void> {
     });
     app.log.info(`Klara-Aufräumlauf aktiv — Intervall ${Math.round(klaraInterval / 60000)} min.`);
   }
-  // produkt:20261007:klara-erinnerungen-kalender (Klara 10): persönliche Erinnerungen zustellen —
-  // beim Start (verpasste Termine nach Regel) und danach im Takt. Die Wirkung ist eine interne
-  // Meldung in der Glocke; sie läuft deshalb wie die Fristläufe auch im Wiederanlauf, und die feste
-  // Meldungskennung samt Readback verhindert eine zweite Zustellung nach einem Restore.
-  if (erinnerungLauf) {
-    starteKlaraErinnerungen({
-      lauf: erinnerungLauf,
-      intervalMs: erinnerungTakt,
-      log: { info: (t) => app.log.info(t), warn: (felder, t) => app.log.warn(felder, t) },
-    });
-    app.log.info(`Erinnerungssteuerung aktiv — Takt ${Math.round(erinnerungTakt / 1000)} s.`);
-  }
   // AUFNAHME 20260922 · gesamt-pruefung-hintergrund (R-1111/R-1125): gescheiterte und überholte
   // Prüfungen nachholen — beim Start (verlorene Warteschlange) und danach periodisch, gedeckelt.
   // Im Wiederanlauf gestoppt (Modellvergleiche; ihr Tagesverbrauch nach der Sicherung fehlt der Kette).
@@ -441,6 +429,18 @@ async function start(): Promise<void> {
       `Wiederanlauf ${wiederanlauf.kennung}: Außenaktionen gestoppt (${GESTOPPTE_AUSSENAKTIONEN.map((a) => a.id).join(", ")}). Nach der Freigabe ohne ${WIEDERANLAUF_ENV} neu starten.`,
     );
     return;
+  }
+  // produkt:20261007:klara-erinnerungen-kalender (Klara 10): persönliche Erinnerungen zustellen —
+  // erst nach der bestehenden Wiederanlaufsperre: der Takt kann auch Quellen lesen, Modelle
+  // aufrufen und Routinenberichte erstellen. Vor Nachführung/Freigabe wird weder der Startlauf
+  // ausgeführt noch ein späterer Takt eingerichtet. Danach gelten Readback und Nachholregel.
+  if (erinnerungLauf) {
+    starteKlaraErinnerungen({
+      lauf: erinnerungLauf,
+      intervalMs: erinnerungTakt,
+      log: { info: (t) => app.log.info(t), warn: (felder, t) => app.log.warn(felder, t) },
+    });
+    app.log.info(`Erinnerungssteuerung aktiv — Takt ${Math.round(erinnerungTakt / 1000)} s.`);
   }
   // produkt:20261011:assistenz-skills-werkzeuge: wartende und durch einen Neustart unterbrochene
   // Fähigkeitsaufträge aus dem Assistenzprofil wieder aufnehmen — unter derselben Auftragskennung,

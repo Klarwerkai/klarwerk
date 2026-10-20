@@ -224,6 +224,8 @@ export interface ExternerTermin {
 
 /** Der Zugang zum vorhandenen Kalender der Person (Kalendervertrag `klara-kalender`). */
 export interface VorhandenerKalender {
+  /** Prüft nur die vorhandene Konfiguration, ohne externe Termine zu lesen. */
+  istVerbunden?(user: SessionUser): Promise<boolean>;
   lies(
     user: SessionUser,
     von: string,
@@ -843,7 +845,7 @@ export class EigenerKalenderDienst {
     }
     if (sichtmodus === "eigen") {
       // Die Verbindung wird erst gelesen, wenn die Person den vorhandenen Kalender sehen will.
-      return { verbunden: true, termine: [] };
+      return { verbunden: (await this.vorhanden.istVerbunden?.(user)) ?? true, termine: [] };
     }
     const t = this.jetzt();
     const von = new Date(t - VORHANDEN_ZURUECK_MS).toISOString();

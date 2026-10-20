@@ -545,13 +545,15 @@ PFLICHTTABELLEN=(
   praesentation_datenpunkte
   klara_notizen
   klara_aufgaben
+  klara_kalender_anbindungen
+  klara_kalender_zuordnungen
   klara_erinnerungen
   klara_erinnerung_laeufe
   klara_erinnerung_meldungen
   klara_erinnerung_einstellungen
-  produktbudget
   kalender_eintraege
   kalender_einstellungen
+  produktbudget
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

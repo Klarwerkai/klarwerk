@@ -114,7 +114,8 @@ KLARWERK_WIEDERANLAUF_SICHERUNG=klarwerk-20261011T031500Z.dump \
 (`2026-10-11T03:15:00Z`). Ein ungültiger Wert bricht den Start ab.
 
 1. **Außenaktionen gestoppt.** Mit dem Schalter starten Wissensereignis-Meldungen
-   (`KLARWERK_WEBHOOKS`), Hintergrundprüfung (Modellvergleiche) und Lückenerkennung **nicht**. Die
+   (`KLARWERK_WEBHOOKS`), Hintergrundprüfung (Modellvergleiche), Lückenerkennung und die persönliche
+   Erinnerungssteuerung einschließlich Zusammenfassungen/Routineberichten **nicht**. Die
    Fristläufe (Papierkorb-Endlöschung, Gedächtnis- und Klara-Aufräumlauf) laufen weiter: sie führen
    Löschfristen nach und wirken nicht nach außen. Auch der Restore-Drill startet seinen Probeserver
    ohne Webhook-Ziele und mit deterministischer KI-Zuordnung (`restore-drill.sh`).

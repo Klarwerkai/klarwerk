@@ -145,6 +145,7 @@ describe("P09-AC05 · Wiederanlauf: Sperre, Nachführung, Freigabe", () => {
         { id: "wissensereignisse" },
         { id: "hintergrundpruefung" },
         { id: "lueckenerkennung" },
+        { id: "klara-erinnerungen" },
       ],
     });
     // Die Nachführungsgrenze ist der angegebene Sicherungsstand, festgehalten im Beginn-Eintrag.

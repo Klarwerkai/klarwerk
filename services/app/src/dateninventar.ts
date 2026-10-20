@@ -505,6 +505,30 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    // produkt:20261008:klara-kalender (Klara 11) — die Anbindung an einen vorhandenen Kalender
+    // (`services/app/src/klara-kalender-anbindung.ts`): Anbindungen und Zuordnungen je Konto.
+    id: "klarakalender",
+    name: "Kalenderanbindung (Klara)",
+    inhalt:
+      "Je Konto die gewählten Kalenderanbindungen (Anbieter, Name und Anmeldename des Kalenderkontos, Kalendername und Besitzer, Umfang, Rechte, Feldregeln, Privatprojektion) und je eingetragenem Termin die Zuordnung: Auftrags- und Ereigniskennung, externe Kennung und Fassung beim Anbieter, zuletzt eingetragener Termin (Titel, Zeit, Zeitzone, Ort, Beschreibung, Teilnehmeradressen), Stand, Sperrmarke, offene Entscheidung und Verlauf. Kein Zugangsmerkmal.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; Termintexte sind Freitext, Teilnehmeradressen nennen weitere Personen.",
+    ablage: {
+      ort: DATENBANK,
+      tabellen: ["klara_kalender_anbindungen", "klara_kalender_zuordnungen"],
+    },
+    taetigkeit: "fragen",
+    loeschung:
+      "Termine löscht das Konto selbst über die Anbindung (Löschvorschau, dann Löschung mit Fassung); die Zuordnung bleibt danach als Sperrmarke stehen, damit ein verspäteter Abgleich nichts wiederherstellt. Anbindungen selbst haben noch keinen Löschweg in der Oberfläche; sie enden mit der Kontolöschung bzw. durch den Betreiber.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht seine Kalenderanbindung (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb steht sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
     // produkt:20261010:klara-eigener-kalender (AW-16) — der eigene Kalender
     // (`services/app/src/eigener-kalender.ts`): eine Zeile je Eintrag, eine je Konto für die Sichtwahl.
     id: "eigenerkalender",

@@ -230,6 +230,10 @@ const Validation = lazy(() =>
 const Wissensnetz = lazy(() =>
   import("./pages/Wissensnetz").then((m) => ({ default: m.Wissensnetz })),
 );
+// produkt:20261008:klara-kalender (Klara 11): den vorhandenen Kalender bewusst bedienen.
+const KalenderAnbindungSeite = lazy(() =>
+  import("./pages/KalenderAnbindung").then((m) => ({ default: m.KalenderAnbindungSeite })),
+);
 
 function DuplicateComparePage(): JSX.Element {
   return <DuplicateCompare kind="duplicate" />;
@@ -484,6 +488,11 @@ export function AppRoutes(): JSX.Element {
             kommunikation-routes.ts`). Erreichbar über das Profil und die Verwaltung
             („Kommunikation"). */}
         <Route path="/kommunikation" element={<Kommunikation />} />
+        {/* produkt:20261008:klara-kalender (Klara 11): die eigene Kalenderanbindung — jedes
+            angemeldete Konto; was es sieht und darf, entscheidet der Server je Konto. */}
+        {/* Derselbe Pfad wie `KALENDER_ANBINDUNG_PFAD` (`api/klaraKalender.ts`) — als Literal, damit
+            der Eintritt den Drahtvertrag nicht mitlädt. */}
+        <Route path="/kalender-anbindung" element={<KalenderAnbindungSeite />} />
         {/* ADMIN-10: Qualitätsaufgaben und Rückmeldungen. Ohne `Guarded`, wie `/unternehmen`: die
             Türen dahinter fordern `users.manage` am Server und filtern jede Zeile über den
             Sichtbarkeitsfilter (`services/app/src/routes/qualitaetsaufgaben-routes.ts`). Ohne

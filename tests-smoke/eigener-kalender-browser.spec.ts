@@ -21,8 +21,7 @@
 //
 // WAS DIESE SONDE NICHT ERSETZT: einen Neustart des Servers (das belegt
 // `tests/eigener-kalender/kalender-pg.integration.test.ts` an PostgreSQL), die Office-Begleitung im
-// echten Word-Host, einen angebundenen externen Kalender und einen echten Ausführungsdienst — die
-// letzten beiden gibt es im Produkt noch nicht.
+// echten Word-Host, einen angebundenen externen Kalender und die tatsächliche externe Providerwirkung. Der interne Erinnerungsdienst ist angeschlossen.
 import { type Browser, type Page, expect, test } from "@playwright/test";
 import { ensureLoggedIn } from "./support/auth";
 
@@ -258,8 +257,8 @@ test("AW-16 · K3/K5/K6: Auftrag und Ergebnis getrennt, Folgen vor jeder Aktion,
       serie: { seriesId: "serie-z8" },
     },
   });
-  expect(mitSerie.status()).toBe(409);
-  expect((await mitSerie.json()).grund).toBe("ausfuehrung_nicht_angebunden");
+  expect(mitSerie.status()).toBe(404);
+  expect((await mitSerie.json()).grund).toBe("verweis_unbekannt");
   const behauptet = await p.request.post("/api/me/kalender/eintraege", {
     data: {
       zeitzone: ZONE,

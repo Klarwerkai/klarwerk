@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 
 const WURZEL = join(__dirname, "..", "..");
 const GESTOPPT =
-  "Außenaktionen gestoppt (wissensereignisse, hintergrundpruefung, lueckenerkennung)";
+  "Außenaktionen gestoppt (wissensereignisse, hintergrundpruefung, lueckenerkennung, klara-erinnerungen)";
 const LUECKEN_AKTIV = "Lückenerkennung über den Reasoner aktiv";
 // Die Startmeldung lautet „Wissensereignis-Meldungen aktiv — 1 Ziel(e), Takt 60 s." — die bestehende
 // Log-Schwärzung ersetzt das erste Wort im Prozessprotokoll durch „[redacted]" (gemessen im Lauf

@@ -2673,6 +2673,13 @@ export function KlaraVorschau({
                   {t("klaraerinnerung.bedienhilfe.routine")}
                 </li>
                 <li>{t("klaraerinnerung.bedienhilfe.privat")}</li>
+                {/* Klara 11: den vorhandenen Kalender verbinden, eintragen, entscheiden. */}
+                <li data-testid="klara-bedienhilfe-kalender">
+                  {t("klarakalender.bedienhilfe.verbinden")}
+                </li>
+                <li>{t("klarakalender.bedienhilfe.eintragen")}</li>
+                <li>{t("klarakalender.bedienhilfe.konflikt")}</li>
+                <li>{t("klarakalender.bedienhilfe.privat")}</li>
                 {/* Klara 12: Modi, Hinweise und übertragene Aufgaben. */}
                 <li data-testid="klara-bedienhilfe-eigeninitiative">
                   {t("klarainitiative.bedienhilfe.modi")}

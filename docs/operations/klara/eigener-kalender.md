@@ -1,3 +1,10 @@
+Stand der Integration 20.10.2026: Der eigene Kalender verwendet jetzt denselben persistenten
+Erinnerungsdienst und denselben vorhandenen Kalenderadapter. Ausführungsstände, Absagen und
+Serienpause kommen aus dem echten internen Dienst. Ein aktiver Lauf ist derzeit nicht einzeln
+abbrechbar; die Oberfläche bietet dafür keine bestätigte Wirkung an. Externe Termine erfordern
+weiterhin einen konkreten autorisierten Kalenderzugang. Eine vorhandene Adapterfunktion allein
+wird ohne konfigurierte Anbindung nicht als verbundener Kalender angezeigt.
+
 # Eigener Kalender ohne externen Dienst (AW-16)
 
 Auftrag `produkt:20261010:klara-eigener-kalender`. Stand: Nacharbeit 8 (Integration mit main

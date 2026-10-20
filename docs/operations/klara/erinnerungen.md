@@ -150,3 +150,25 @@ keinen isolierten Testkalender, keine Projektion und keine externe Löschung ein
 eine reale Kalenderprobe setzt die Kalenderlieferung und einen isolierten Prüfkalenderzugang voraus.
 Keine E-Mail-/Push-Zustellung; Prüf- und Zusammenfassungsaufträge sind nicht übergebbar. Ein echter
 Kundenhost ist mit dieser Lieferung nicht belegt.
+
+
+## Integration 20.10.2026: Wiederanlauf und konkurrierende Wirkungen
+
+Im gesperrten Wiederanlauf startet der gesamte Erinnerungstakt erst nach der vorhandenen
+Außenaktionsgrenze: weder Startlauf noch periodischer Lauf werden eingerichtet. Erst die vorhandene
+Freigabe und ein regulärer Neustart ohne `KLARWERK_WIEDERANLAUF` erlauben Quellenverarbeitung,
+Modellzusammenfassungen und Routineberichte. Es gibt keinen zusätzlichen Freigabeschalter.
+
+Parallele Ausführer können verschiedene Vorkommen desselben verpassten Stapels halten. Der
+Sammelbeleg vereinigt ihre tatsächlich übernommenen Vorkommen atomar unter derselben Meldungs-ID.
+Ein Readback gilt ausschließlich, wenn er den konkreten geplanten Zeitpunkt enthält. So verschwindet
+kein als zusammengefasst oder übersprungen geschlossener Lauf aus dem dauerhaften Beleg.
+
+Zusammenfassungen führen die gelesene Notiz-, Aufgaben- oder Gesprächsfassung mit. Wechselt sie
+während der Modellantwort, wartet der Lauf mit Grund `quelle_geaendert` auf bewusste Fortführung;
+die alte Antwort wird nicht zugestellt. Beim Schreiben hält zusätzlich dieselbe SQL-Bedingung wie
+bei Routinenberichten die gelesene Fassung. Ergebnis und Lauf machen den Quellenstand nachlesbar.
+
+Die PostgreSQL-Löschung von Erinnerung, Läufen und Meldungen ist ein einziges SQL-Statement und damit
+auch am vorhandenen gated-pool atomar. Ein Fehler beim Löschen einer Meldung rollt alle drei Teile
+zurück; eine Wiederholung kann den vollständigen Vorgang entfernen. Fremde Konten löschen nichts.

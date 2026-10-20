@@ -260,6 +260,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter
   // Lauf ist folgenlos.
   { stufe: "KLARA_AUFGABE_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261008:klara-kalender (Klara 11): Kalenderanbindungen und Zuordnungen. ADDITIV,
+  // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS` und drei `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "KLARA_KALENDER_SCHEMA", risiko: "ADDITIV" },
   // R-0679 / FR-VAL-07: die Geräteabos für Push. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT
   // EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel,
   // keine Extension. Ein zweiter Lauf ist folgenlos.
