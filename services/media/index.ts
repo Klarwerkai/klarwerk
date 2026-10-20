@@ -9,5 +9,5 @@ export {
 // createTranscriberFromEnv (Credential-Zugriff) bleiben modul-intern (Tests greifen white-box relativ
 // auf ./src/transcriber zu). cappedTranscriber bleibt für Tests/On-prem-Wrapping exportiert.
 export { cappedTranscriber, createCappedTranscriberFromEnv } from "./src/transcriber";
-export type { MediaAnalysis, MediaError, Transcriber } from "./src/types";
+export type { MediaAnalysis, MediaError, Transcriber, ZeitTranskript } from "./src/types";
 export { MediaAnalysisError, TranscriberConfidentialError } from "./src/types";

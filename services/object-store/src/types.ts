@@ -35,6 +35,7 @@ export type ObjectKind = "image" | "document" | "video" | "binary";
  * keiner — er sähe aus wie Wissen.
  */
 export type ObjectPurpose =
+  | "klara_audio"
   // Das Original, aus dem Inhalt übernommen wurde. Es wird ANKER eines Wissensobjekts und ist
   // damit Teil der Belegkette — das am strengsten aufzubewahrende Objekt, das es hier gibt.
   | "anchor"

@@ -143,3 +143,44 @@ it("F08 · echter Browser: gewählter Chat → privates Original → Vorschau �
   );
   await page.close();
 }, 60000);
+
+it("F15 · Browser importiert private Besprechungsnotiz und speichert bewusst Aufgabe/Übergabe über echte Produktwege", async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+  page.setDefaultTimeout(10000);
+  await page.goto(`${origin}/start`);
+  await page.locator('[data-testid="klara-figur"]').click();
+  await page.locator('[data-testid="klara-menue-knopf"]').click();
+  await page.locator('[data-testid="klara-menue-funktionen"]').click();
+  await page.locator('[data-testid="besprechung-import"] summary').click();
+  await page.locator('[data-testid="besprechung-import-titel"]').fill("F Browsermeeting");
+  await page
+    .locator('[data-testid="besprechung-import-text"]')
+    .fill(
+      "Beschluss: Testlauf durchführen.\nOffen: Vertragsstand klären.\nAufgabe: Lizenz prüfen.",
+    );
+  await page.locator('[data-testid="besprechung-berechtigt"]').check();
+  await page.locator('[data-testid="besprechung-import-speichern"]').click();
+  await page.locator('[data-testid="besprechung-auswertung"]').waitFor();
+  for (const id of ["zeile-1", "zeile-2", "zeile-3"])
+    await page.locator(`[data-testid="besprechung-auswahl-${id}"]`).check();
+  await page.locator('[data-testid="besprechung-eigene"]').check();
+  await page.locator('[data-testid="besprechung-uebernehmen"]').click();
+  await page.waitForFunction(() => {
+    const f = document.querySelector(
+      '[data-testid="klara-notiz-titel"]',
+    ) as HTMLInputElement | null;
+    return f?.value.startsWith("Übergabe:");
+  });
+  expect(await page.locator('[data-testid="klara-notiz-inhalt"]').inputValue()).toContain(
+    "Transkriptfassung 1",
+  );
+  const p = await app.inject({
+    method: "GET",
+    url: "/api/me/klara/aufgaben",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  expect(p.body).toContain("Lizenz prüfen.");
+  await page.locator('[data-testid="klara-notiz-offen"]').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: ".local/run/klara-f/f15-browser.png", fullPage: true });
+  await page.close();
+}, 60000);

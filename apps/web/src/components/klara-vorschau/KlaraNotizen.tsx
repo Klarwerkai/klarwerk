@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 import type { KlaraNotiz } from "../../api/klaraNotiz";
 import { useAssistenzT } from "../../lib/assistenzProfil";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { KlaraBesprechungsAuswertung, KlaraBesprechungsImport } from "./KlaraBesprechung";
 import { KlaraWissen, KlaraWissensImport } from "./KlaraWissen";
 import { legeAufgabeAusNotiz } from "./aufgaben";
 import { kurzText, starteEntwurf } from "./erinnerungen";
@@ -112,6 +113,9 @@ function NotizOffen({ n }: { n: KlaraNotiz }): JSX.Element {
         <p className="mt-0.5 text-[11px] italic text-muted">„{n.objektbezug.auswahl}“</p>
       ) : null}
 
+      {n.wissensHerkunft?.besprechung && !n.wissensHerkunft.besprechung.quelleNotizId ? (
+        <KlaraBesprechungsAuswertung key={n.id} id={n.id} fassung={n.fassung} />
+      ) : null}
       <KlaraWissen
         key={`${n.id}-${n.fassung}`}
         id={n.id}
@@ -352,6 +356,7 @@ export function KlaraNotizen(): JSX.Element {
       ) : null}
 
       <KlaraWissensImport />
+      <KlaraBesprechungsImport />
       {s.offen ? <NotizOffen n={s.offen} /> : null}
 
       <form

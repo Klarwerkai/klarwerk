@@ -1,0 +1,113 @@
+import type { Textmodul } from "./intern/pruefung";
+export default {
+  praefix: "klarabesprechung.",
+  legacySchluessel: [],
+  de: {
+    "klarabesprechung.transkription":
+      "Die Audiodatei mit dem eingerichteten, freigegebenen Transkriptionsdienst verarbeiten.",
+    "klarabesprechung.zeit": "{{von}}–{{bis}} ms",
+    "klarabesprechung.import": "Berechtigte Besprechung privat importieren",
+    "klarabesprechung.hilfe":
+      "Notiz oder berechtigte VTT-Fassung, optional mit Originalaudio. Keine Aufnahme. Audio kann auf deinen Verarbeitungsauftrag über den vorhandenen freigegebenen Dienst zeitgebunden transkribiert werden. Fehlende Zeitsegmente bleiben offen. Kennzeichne Beschluss:, Vorschlag:, Abgelehnt:, Widerspruch:, Offen: oder Aufgabe: ausdrücklich.",
+    "klarabesprechung.text": "Bereitgestellte Notiz",
+    "klarabesprechung.vtt": "Berechtigte VTT-Datei",
+    "klarabesprechung.audio": "Berechtigte Audiodatei (optional)",
+    "klarabesprechung.datum": "Tatsächliche Meetingzeit mit Offset (optional)",
+    "klarabesprechung.zone": "Tatsächliche Zeitzone (optional)",
+    "klarabesprechung.berechtigt": "Ich darf genau diesen Inhalt importieren.",
+    "klarabesprechung.auswertung": "Besprechungsergebnisse",
+    "klarabesprechung.kennzeichnung":
+      "Manuelle Quellbindung: keine KI-Auswertung oder fachliche Bestätigung. Ungeklärte Zuständigkeiten bleiben offen.",
+    "klarabesprechung.quelle": "Transkriptfassung {{fassung}}",
+    "klarabesprechung.zeile": "Quellzeile {{nr}}",
+    "klarabesprechung.unsicher": "Unsicher / überlappend – Klärung nötig",
+    "klarabesprechung.anhoeren": "An dieser Stelle anhören",
+    "klarabesprechung.wiedergabeFehler": "Audio konnte nicht wiedergegeben werden.",
+    "klarabesprechung.korrektur": "Hörfehler korrigieren",
+    "klarabesprechung.korrekturSpeichern": "Neue Transkriptfassung speichern",
+    "klarabesprechung.eigene":
+      "Gewählte Folgeaufgaben bewusst selbst übernehmen (keine aus dem Meeting erfundene Zuweisung).",
+    "klarabesprechung.fristen":
+      "Fristen- und Normenabgleich noch offen. Hier werden keine Termine oder Außenaktionen ausgelöst.",
+    "klarabesprechung.uebernehmen": "Auswahl privat als Übergabe und Aufgaben übernehmen",
+    "klarabesprechung.art.entscheidung": "Entscheidung",
+    "klarabesprechung.art.vorschlag": "Vorschlag",
+    "klarabesprechung.art.abgelehnt": "Abgelehnter Vorschlag",
+    "klarabesprechung.art.widerspruch": "Ungelöster Widerspruch",
+    "klarabesprechung.art.offen": "Offener Punkt",
+    "klarabesprechung.art.aufgabe": "Folgeaufgabe – Zuständigkeit klären",
+    "klarabesprechung.art.klaerung": "Klärung / unbestätigter Inhalt",
+  },
+  en: {
+    "klarabesprechung.transkription":
+      "Process the audio file with the configured and authorised transcription service.",
+    "klarabesprechung.zeit": "{{von}}–{{bis}} ms",
+    "klarabesprechung.import": "Import an authorised meeting privately",
+    "klarabesprechung.hilfe":
+      "Note or authorised VTT transcript, optionally with original audio. No recording. Audio can be transcribed with timestamps by the configured authorised service on your instruction. Missing time segments remain open. Use explicit labels: Beschluss:, Vorschlag:, Abgelehnt:, Widerspruch:, Offen: or Aufgabe:.",
+    "klarabesprechung.text": "Provided note",
+    "klarabesprechung.vtt": "Authorised VTT file",
+    "klarabesprechung.audio": "Authorised audio file (optional)",
+    "klarabesprechung.datum": "Actual meeting time with offset (optional)",
+    "klarabesprechung.zone": "Actual time zone (optional)",
+    "klarabesprechung.berechtigt": "I am authorised to import this content.",
+    "klarabesprechung.auswertung": "Meeting results",
+    "klarabesprechung.kennzeichnung":
+      "Manual source binding: no AI analysis or subject validation. Unclear responsibilities stay open.",
+    "klarabesprechung.quelle": "Transcript version {{fassung}}",
+    "klarabesprechung.zeile": "Source line {{nr}}",
+    "klarabesprechung.unsicher": "Uncertain / overlapping – clarification needed",
+    "klarabesprechung.anhoeren": "Listen at this point",
+    "klarabesprechung.wiedergabeFehler": "Audio could not be played.",
+    "klarabesprechung.korrektur": "Correct a transcription error",
+    "klarabesprechung.korrekturSpeichern": "Save a new transcript version",
+    "klarabesprechung.eigene":
+      "Consciously take selected follow-up tasks yourself (no inferred meeting assignment).",
+    "klarabesprechung.fristen":
+      "Deadline and standards review remains open. No calendar entries or external actions are triggered here.",
+    "klarabesprechung.uebernehmen": "Save selected results privately as handover and tasks",
+    "klarabesprechung.art.entscheidung": "Decision",
+    "klarabesprechung.art.vorschlag": "Proposal",
+    "klarabesprechung.art.abgelehnt": "Rejected proposal",
+    "klarabesprechung.art.widerspruch": "Unresolved conflict",
+    "klarabesprechung.art.offen": "Open point",
+    "klarabesprechung.art.aufgabe": "Follow-up task – clarify responsibility",
+    "klarabesprechung.art.klaerung": "Clarification / unconfirmed content",
+  },
+  nl: {
+    "klarabesprechung.transkription":
+      "Het audiobestand met de ingestelde en toegestane transcriptiedienst verwerken.",
+    "klarabesprechung.zeit": "{{von}}–{{bis}} ms",
+    "klarabesprechung.import": "Een bevoegd gesprek privé importeren",
+    "klarabesprechung.hilfe":
+      "Notitie of bevoegd VTT-transcript, eventueel met originele audio. Geen opname. Audio kan in jouw opdracht met tijdstempels door de ingestelde toegestane dienst worden getranscribeerd. Ontbrekende tijdsegmenten blijven open. Gebruik expliciete labels: Beschluss:, Vorschlag:, Abgelehnt:, Widerspruch:, Offen: of Aufgabe:.",
+    "klarabesprechung.text": "Aangeleverde notitie",
+    "klarabesprechung.vtt": "Bevoegd VTT-bestand",
+    "klarabesprechung.audio": "Bevoegd audiobestand (optioneel)",
+    "klarabesprechung.datum": "Werkelijke vergadertijd met offset (optioneel)",
+    "klarabesprechung.zone": "Werkelijke tijdzone (optioneel)",
+    "klarabesprechung.berechtigt": "Ik mag deze inhoud importeren.",
+    "klarabesprechung.auswertung": "Vergaderresultaten",
+    "klarabesprechung.kennzeichnung":
+      "Handmatige bronbinding: geen AI-analyse of inhoudelijke bevestiging. Onduidelijke verantwoordelijkheden blijven open.",
+    "klarabesprechung.quelle": "Transcriptversie {{fassung}}",
+    "klarabesprechung.zeile": "Bronregel {{nr}}",
+    "klarabesprechung.unsicher": "Onzeker / overlappend – verduidelijking nodig",
+    "klarabesprechung.anhoeren": "Op deze plek beluisteren",
+    "klarabesprechung.wiedergabeFehler": "Audio kon niet worden afgespeeld.",
+    "klarabesprechung.korrektur": "Een transcriptiefout corrigeren",
+    "klarabesprechung.korrekturSpeichern": "Nieuwe transcriptversie opslaan",
+    "klarabesprechung.eigene":
+      "Gekozen vervolgtaken bewust zelf overnemen (geen afgeleide vergadertoewijzing).",
+    "klarabesprechung.fristen":
+      "Termijn- en normencontrole blijft open. Hier worden geen afspraken of externe acties gestart.",
+    "klarabesprechung.uebernehmen": "Gekozen resultaten privé als overdracht en taken opslaan",
+    "klarabesprechung.art.entscheidung": "Besluit",
+    "klarabesprechung.art.vorschlag": "Voorstel",
+    "klarabesprechung.art.abgelehnt": "Afgewezen voorstel",
+    "klarabesprechung.art.widerspruch": "Onopgeloste tegenspraak",
+    "klarabesprechung.art.offen": "Open punt",
+    "klarabesprechung.art.aufgabe": "Vervolgtaak – verantwoordelijkheid verduidelijken",
+    "klarabesprechung.art.klaerung": "Verduidelijking / onbevestigde inhoud",
+  },
+} satisfies Textmodul;

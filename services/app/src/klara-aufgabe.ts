@@ -66,6 +66,7 @@ export type KlaraAufgabeBezug =
     };
 
 export interface KlaraAufgabe {
+  readonly privatNotizGebunden?: true;
   readonly id: string;
   /** Eigentümer UND zuständige Person — eine persönliche Aufgabe hat keine zweite. */
   readonly kontoId: string;
@@ -426,7 +427,12 @@ export class KlaraAufgabeDienst {
 
   async hole(kontoId: string, id: string): Promise<KlaraAufgabe> {
     const a = await this.repo.hole(kontoId, id);
-    if (!a) {
+    if (
+      !a ||
+      (a.privatNotizGebunden &&
+        a.bezug.art === "notiz" &&
+        !(await this.notizen?.hole(kontoId, a.bezug.notizId)))
+    ) {
       // Fremd und unbekannt antworten gleich — die Kennung verrät nichts über fremde Aufgaben.
       throw new KlaraAufgabeFehler(404, "unbekannt", "Aufgabe nicht gefunden.");
     }
@@ -436,7 +442,15 @@ export class KlaraAufgabeDienst {
   async liste(kontoId: string, status: unknown): Promise<KlaraAufgabe[]> {
     const s = wahl(status === "" ? undefined : status, KLARA_AUFGABE_STATUS, "status");
     const roh = await this.repo.liste(kontoId, s, KLARA_AUFGABE_LISTE_MAX);
-    return [...roh].sort(aufgabenOrdnung);
+    const erlaubt = await Promise.all(
+      roh.map(
+        async (a) =>
+          !a.privatNotizGebunden ||
+          a.bezug.art !== "notiz" ||
+          !!(await this.notizen?.hole(kontoId, a.bezug.notizId)),
+      ),
+    );
+    return roh.filter((_, i) => erlaubt[i]).sort(aufgabenOrdnung);
   }
 
   /**
@@ -446,6 +460,7 @@ export class KlaraAufgabeDienst {
   async lege(
     kontoId: string,
     eingabe: KlaraAufgabeEingabe,
+    privatNotizGebunden?: true,
   ): Promise<{ aufgabe: KlaraAufgabe; wiederholt: boolean }> {
     if (typeof eingabe.vorgang !== "string" || !VORGANG_RE.test(eingabe.vorgang)) {
       throw eingabeFehler("vorgang ist Pflicht (8–100 Zeichen aus Buchstaben, Ziffern, - und _).");
@@ -533,6 +548,7 @@ export class KlaraAufgabeDienst {
       geaendertAm: jetzt,
       erledigtAm: null,
       fassung: 1,
+      ...(privatNotizGebunden ? { privatNotizGebunden } : {}),
     };
     if (await this.repo.lege(aufgabe)) {
       return { aufgabe, wiederholt: false };

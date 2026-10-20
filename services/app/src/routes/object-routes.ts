@@ -29,6 +29,7 @@ export interface AnhangTraegerVerweis {
 // HTTP-Grenze nichts — dort kommt eine beliebige Zeichenkette an, und sie in den Vertrag zu casten
 // hieße, dem Client den Lebenszyklus schreiben zu lassen.
 const OBJECT_PURPOSES: ReadonlySet<string> = new Set<ObjectPurpose>([
+  "klara_audio",
   "anchor",
   "attachment",
   "media",

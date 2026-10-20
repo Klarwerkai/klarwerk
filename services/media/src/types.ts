@@ -2,7 +2,13 @@
 // Grundsatz G-2/G-3: Ohne aktiven Transkriptions-Dienst wird NICHTS erfunden — der Zustand
 // wird ehrlich als "inactive" ausgewiesen; die Analyse ist dann bewusst nicht verfügbar.
 
+export interface ZeitTranskript {
+  text: string;
+  segmente: { id: string; startMs: number; endMs: number; text: string }[];
+}
+
 export interface MediaAnalysis {
+  zeittranskript?: ZeitTranskript;
   objectId: string;
   // Der gewonnene Rohtext (Transkript). Nur vorhanden, wenn engineActive.
   transcript: string | null;
@@ -19,6 +25,12 @@ export interface MediaAnalysis {
 // true, sodass vertrauliche Medien-Rohbytes NIE an eine externe Transkriptions-API gehen.
 export interface Transcriber {
   name: string;
+  transcribeTimed?(
+    bytes: Buffer,
+    mime: string,
+    locale: "de" | "en",
+    confidential: boolean,
+  ): Promise<ZeitTranskript>;
   /**
    * Aufnahme `gesamt-ocr` · R-0181: `true` NUR für einen Dienst auf dem eigenen Rechner, dessen
    * Adresse als lokal bestätigt ist (Loopback oder ausdrücklich freigegebene Origin,
