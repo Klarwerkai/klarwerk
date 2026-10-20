@@ -131,6 +131,28 @@ it("PP08 · Browser: Tastaturöffnung, Beleg, explizite Probe und gespeicherte p
     ).toContain("Eigene Notiz 20.10.2026, Punkt 3");
   } catch (f) {
     if (seite && process.env.KLARWERK_PP08_BELEGE) {
+      // Erst den tatsächlichen DOM-/URL-Zustand sichern. Nicht neu öffnen oder Fokus setzen.
+      const zustand = await seite
+        .evaluate(() => ({
+          url: location.href,
+          mehrExpanded:
+            document.querySelector('[data-testid="bib-mehr"]')?.getAttribute("aria-expanded") ??
+            null,
+          mehrMounted: !!document.querySelector('[data-testid="bib-mehr-abschnitte"]'),
+          anhaengeOpen:
+            (document.querySelector('[data-bib-abschnitt="anhaenge"]') as HTMLDetailsElement | null)
+              ?.open ?? null,
+          officeMounted: !!document.querySelector("[data-office-flaeche]"),
+          vortragMounted: !!document.querySelector("[data-vortrag]"),
+          herkunftId:
+            document.querySelector("[data-herkunft]")?.getAttribute("data-herkunft") ?? null,
+          herkunftFassung:
+            document.querySelector("[data-herkunft]")?.getAttribute("data-herkunft-fassung") ??
+            null,
+          fokusTag: document.activeElement?.tagName ?? null,
+        }))
+        .catch(() => ({ unreachable: true }));
+      process.stderr.write(`PP08_FAILURE_MOUNT_STATE ${JSON.stringify(zustand)}\n`);
       await seite
         .screenshot({ path: `${process.env.KLARWERK_PP08_BELEGE}/pp08-fehler.png`, fullPage: true })
         .catch(() => undefined);
