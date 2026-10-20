@@ -235,6 +235,9 @@ describe("AUFTRAG-JOB507-D4: CSP und Panelverhalten sind konsistent", () => {
       // AUFTRAG klara-office-mac-maskottchen: dieselbe Regel — `begleiter.js` (KW-BEGLEITER),
       // relativ und gleichherkünftig, im Kopf direkt hinter `anleitung.js`.
       "begleiter.js?v=__KW_FASSUNG__",
+      // AUFTRAG klara-eigener-kalender (AW-16): nach derselben Regel `kalender.js` (KW-KALENDER),
+      // relativ und gleichherkünftig, im Kopf direkt hinter `anleitung.js`.
+      "kalender.js?v=__KW_FASSUNG__",
       "rueckweg.js?v=__KW_FASSUNG__",
       "taskpane.js?v=__KW_FASSUNG__",
       // R-0336/R-0708: eine SECHSTE nach derselben Regel — `wortvergleich.js` (KW-WORDVERGLEICH),

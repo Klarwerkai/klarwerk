@@ -60,6 +60,8 @@ import { BRANDING_SETTINGS_SCHEMA } from "./branding-settings";
 import { CHAT_SCHEMA } from "./chat";
 // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports (umlegbar über die Oberfläche).
 import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter";
+// produkt:20261010:klara-eigener-kalender (AW-16): interne Kalendereinträge und Sichtwahl je Konto.
+import { EIGENER_KALENDER_SCHEMA } from "./eigener-kalender";
 // Firmenwörterbuch: die Fassungen des Begriffskatalogs. Im App-Wurzelverzeichnis wie die
 // Markenwahl: Editor und Word-Panel lesen ihn, kein Fachmodul besitzt ihn.
 import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
@@ -420,6 +422,10 @@ export const schemas = [
   // Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne
   // Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   PRAESENTATION_DATEN_SCHEMA,
+  // produkt:20261010:klara-eigener-kalender (AW-16): die internen Kalendereinträge und die Sichtwahl
+  // je Konto. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne
+  // Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  EIGENER_KALENDER_SCHEMA,
 ];
 
 // ================================================================================================

@@ -1188,6 +1188,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Herkunft einer Finder-Aufnahme: angemeldet, und nur der Eigentümer am Objekt bekommt sie (sonst
   // 404 ohne Existenzauskunft).
   "GET /api/klara/programme/finder/:objektId": { protection: "auth" },
+  // produkt:20261010:klara-eigener-kalender (AW-16): der eigene Kalender. Jede Tür nur mit Anmeldung;
+  // welche Einträge jemand sieht und steuert, entscheidet der Dienst mit HEUTIGEN Rechten (eigenes
+  // Konto, aktuelle Teammitgliedschaft, Sichtbarkeit der Quelle) — fremd und unbekannt 404.
+  "GET /api/me/kalender": { protection: "auth" },
+  "PUT /api/me/kalender/einstellungen": { protection: "auth" },
+  "POST /api/me/kalender/eintraege": { protection: "auth" },
+  "GET /api/me/kalender/eintraege/:id": { protection: "auth" },
+  "PUT /api/me/kalender/eintraege/:id": { protection: "auth" },
+  "DELETE /api/me/kalender/eintraege/:id": { protection: "auth" },
+  "POST /api/me/kalender/eintraege/:id/folgen": { protection: "auth" },
+  "POST /api/me/kalender/eintraege/:id/aktionen": { protection: "auth" },
   // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): KI-Aufträge am EIGENEN Gespräch —
   // Konto aus der Sitzung, fremd und unbekannt 404, Quellen nur nach `sichtbarkeitsfilterFuer`.
   // Die Verbindungsprobe ist ein echter Modellaufruf und trägt das Recht der vorhandenen Probe.

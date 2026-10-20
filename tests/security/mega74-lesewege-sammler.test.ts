@@ -1425,6 +1425,43 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/klara/programme/bedienungshilfe": {
     urteil: "EIGENER_BESTAND",
     grund: "Gibt nur die eingereichte Markierung und eigenen, gesiegelten Kontext zurück.",
+  // produkt:20261010:klara-eigener-kalender (AW-16). LESEURTEIL: persönliche Einträge nur des eigenen
+  // Kontos, Teameinträge nur der HEUTIGEN Teams (eigener-kalender.ts, `zugriff`/`ansicht`). Der Text
+  // eines aus einem Wissensobjekt abgeleiteten Eintrags steht nur unter `quelleLesbar` — in der App
+  // `darfSehen` (build-app.ts, Registrierung `eigenerKalenderRoutes`); sonst Titel/Notiz `null`.
+  "GET /api/me/kalender": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "eigene und heutige Teameinträge (eigener-kalender.ts `ansicht`); Quelltext nur unter darfSehen.",
+  },
+  "PUT /api/me/kalender/einstellungen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "setzt nur die eigene Sichtwahl (user.id); Antwort ist die Wahl selbst.",
+  },
+  "POST /api/me/kalender/eintraege": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt einen eigenen Eintrag an; eine Wissensquelle nur, wenn darfSehen sie zulässt.",
+  },
+  "GET /api/me/kalender/eintraege/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "eigener/heutiger Teameintrag (`zugriff`), fremd und unbekannt 404; Quelltext geschützt.",
+  },
+  "PUT /api/me/kalender/eintraege/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ändert nur einen erreichbaren Eintrag; bei entzogener Quelle 409 statt Text.",
+  },
+  "DELETE /api/me/kalender/eintraege/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur einen erreichbaren Eintrag mit heutigem Steuerrecht, Antwort nur die Zahl.",
+  },
+  "POST /api/me/kalender/eintraege/:id/folgen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur Zahlen und Schlüssel zu einem erreichbaren Eintrag; schreibt nichts.",
+  },
+  "POST /api/me/kalender/eintraege/:id/aktionen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Aktion an einem erreichbaren Eintrag mit heutigen Rechten; Antwort wie GET.",
   },
   // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): die KI-Aufträge lesen Titel und
   // Inhalt von Wissensobjekten in Paket und Prompt. Jede Registrierung bildet dafür die EINE

@@ -550,6 +550,8 @@ PFLICHTTABELLEN=(
   klara_erinnerung_meldungen
   klara_erinnerung_einstellungen
   produktbudget
+  kalender_eintraege
+  kalender_einstellungen
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

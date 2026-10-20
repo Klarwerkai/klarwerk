@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
+import { KALENDER_PFAD } from "../api/eigenerKalender";
 import { RICHTLINIEN_PFAD } from "../api/unternehmen";
 import { useSession } from "../app/AuthContext";
 import { useGuardedNavigate } from "../app/NavGuardContext";
@@ -78,6 +79,15 @@ export function KontoEintraege({
       <SprachSchalter />
       <MenueZeile to="/profil" aktiv={location.pathname === "/profil"} testid="konto-profil">
         {t("nav.profile")}
+      </MenueZeile>
+      {/* produkt:20261010:klara-eigener-kalender (AW-16): der eigene Kalender — persönlich und
+          ohne externen Dienst, deshalb beim Konto und nicht in der fachlichen Navigation. */}
+      <MenueZeile
+        to={KALENDER_PFAD}
+        aktiv={location.pathname === KALENDER_PFAD}
+        testid="konto-kalender"
+      >
+        {t("kalender.konto.menue")}
       </MenueZeile>
       {/* ADMIN-15: die internen Richtlinien des Unternehmens — getrennt vom persönlichen Profil
           darüber und von den Rechtsseiten im Fußbereich. */}

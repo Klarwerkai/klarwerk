@@ -2679,6 +2679,85 @@ export const TABELLE: Zeile[] = [
     payload: {},
     erwartet: ANGEMELDET,
   },
+  // produkt:20261010:klara-eigener-kalender (AW-16) — der eigene Kalender. Jede Tür prüft nur die
+  // Anmeldung; das Konto kommt aus der Sitzung. DIE GEFAHRENEN URLs SIND ZUSTANDSFREI: die Lesetür
+  // liefert die (leere) eigene Ansicht; Anlegen und Sichtwahl mit leerer Nutzlast scheitern an
+  // Pflichtangaben (400), BEVOR etwas geschrieben wird; alle Türen mit Kennung tragen eine
+  // erfundene und enden in 404 des Dienstes.
+  {
+    gruppe: "eigenerKalenderRoutes",
+    methode: "GET",
+    pfad: "/api/me/kalender",
+    belegstelle: "services/app/src/routes/eigener-kalender-routes.ts:74",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "eigenerKalenderRoutes",
+    methode: "PUT",
+    pfad: "/api/me/kalender/einstellungen",
+    belegstelle: "services/app/src/routes/eigener-kalender-routes.ts:94",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "eigenerKalenderRoutes",
+    methode: "POST",
+    pfad: "/api/me/kalender/eintraege",
+    belegstelle: "services/app/src/routes/eigener-kalender-routes.ts:113",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "eigenerKalenderRoutes",
+    methode: "GET",
+    pfad: "/api/me/kalender/eintraege/gibt-es-nicht",
+    route: "/api/me/kalender/eintraege/:id",
+    belegstelle: "services/app/src/routes/eigener-kalender-routes.ts:132",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "eigenerKalenderRoutes",
+    methode: "PUT",
+    pfad: "/api/me/kalender/eintraege/gibt-es-nicht",
+    route: "/api/me/kalender/eintraege/:id",
+    belegstelle: "services/app/src/routes/eigener-kalender-routes.ts:147",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "eigenerKalenderRoutes",
+    methode: "DELETE",
+    pfad: "/api/me/kalender/eintraege/gibt-es-nicht",
+    route: "/api/me/kalender/eintraege/:id",
+    belegstelle: "services/app/src/routes/eigener-kalender-routes.ts:170",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "eigenerKalenderRoutes",
+    methode: "POST",
+    pfad: "/api/me/kalender/eintraege/gibt-es-nicht/folgen",
+    route: "/api/me/kalender/eintraege/:id/folgen",
+    belegstelle: "services/app/src/routes/eigener-kalender-routes.ts:193",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "eigenerKalenderRoutes",
+    methode: "POST",
+    pfad: "/api/me/kalender/eintraege/gibt-es-nicht/aktionen",
+    route: "/api/me/kalender/eintraege/:id/aktionen",
+    belegstelle: "services/app/src/routes/eigener-kalender-routes.ts:209",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
   // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite
   // `minRole: "viewer"`), deshalb bewusst kein Recht über die Anmeldung hinaus.
   {

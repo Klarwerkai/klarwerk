@@ -505,6 +505,27 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    // produkt:20261010:klara-eigener-kalender (AW-16) — der eigene Kalender
+    // (`services/app/src/eigener-kalender.ts`): eine Zeile je Eintrag, eine je Konto für die Sichtwahl.
+    id: "eigenerkalender",
+    name: "Eigener Kalender",
+    inhalt:
+      "Je Eintrag Bereich (persönlich oder Team) mit Konto, Team und verantwortlicher Person, Art (Termin, Frist, Aufgabe), Titel, Notiz, Zeit mit Zeitzone, Herkunft (eigen oder Kennung eines Wissensobjekts), Status, nur die Kennungen verknüpfter Frist, Aufgabe, Serie und Lauf sowie die Konten, die den Eintrag aus ihrer Ansicht entfernt haben; je Konto die Sichtwahl (eigen, vorhanden, beide).",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Persönliche Einträge gehören genau einem Konto, Teameinträge nennen Konto und verantwortliche Person; Titel und Notiz sind Freitext und können sensible Angaben enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["kalender_eintraege", "kalender_einstellungen"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto löscht einen persönlichen Eintrag selbst, einen Teameintrag die Verantwortlichen oder Teamzuständigen (DELETE /api/me/kalender/eintraege/:id); die Sichtwahl ändert das Konto selbst (PUT /api/me/kalender/einstellungen), einen eigenen Löschweg dafür gibt es nicht. Auch Administratoren lesen fremde persönliche Einträge nicht.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Persönliche Einträge sieht nur das Konto selbst, Teameinträge nur das heutige Team (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
     // produkt:20261007:klara-erinnerungen-kalender (Klara 10) — die persönlichen Erinnerungen
     // (`services/app/src/klara-erinnerung.ts`): Auftrag, Läufe je Termin, zugestellte Meldungen.
     id: "klaraerinnerungen",

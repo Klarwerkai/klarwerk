@@ -318,6 +318,18 @@ import {
   removeKoFromDuplicatePrefilter,
   vektorBleibtFuer,
 } from "./duplicate-detection";
+// produkt:20261010:klara-eigener-kalender (AW-16): der eigene Kalender ohne externen Dienst —
+// haltbar im Postgres-Betrieb, im Speicher ohne Datenbank.
+import {
+  type AufgabenNachweis,
+  type AusfuehrungsNachweis,
+  EigenerKalenderDienst,
+  type EigenerKalenderRepo,
+  InMemoryEigenerKalenderRepo,
+  PgEigenerKalenderRepo,
+  type VorhandenerKalender,
+  aufgabenNachweisAus,
+} from "./eigener-kalender";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
@@ -501,6 +513,7 @@ import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
 import { datenschutzRoutes } from "./routes/datenschutz-routes";
+import { eigenerKalenderRoutes } from "./routes/eigener-kalender-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { featuresRoutes } from "./routes/features-routes";
 import { freigaberegelnRoutes } from "./routes/freigaberegeln-routes";
@@ -597,7 +610,12 @@ import { AnswerExplanationService } from "./services/answer-explanation";
 import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
 import { tabellenDerStufen } from "./sicherungsumfang";
-import { type AnhangQuellen, entwurfSichtbarFuer, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
+import {
+  type AnhangQuellen,
+  darfSehen,
+  entwurfSichtbarFuer,
+  sichtbarkeitsfilterFuer,
+} from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 // produkt:20261007:spaces — die versionierten Arbeitsräume; im Postgres-Betrieb haltbar.
 import {
@@ -830,6 +848,27 @@ export interface AppServices {
    * (`PgKlaraGespraechRepo`), sonst die In-Memory-Ablage.
    */
   klaraGespraeche: KlaraGespraechRepo;
+  /**
+   * produkt:20261010:klara-eigener-kalender (AW-16): die internen Kalendereinträge und die Sichtwahl
+   * je Konto (`eigener-kalender.ts`). Wie `klaraGespraeche` NICHT in `AppRepos`; im Postgres-Betrieb
+   * haltbar (`PgEigenerKalenderRepo`), sonst die In-Memory-Ablage.
+   */
+  eigenerKalender: EigenerKalenderRepo;
+  /**
+   * AW-16 (Ben nacharbeit-2): der maßgebliche Ausführungsnachweis für Auftrag, Lauf, Ergebnis und
+   * Serie und der Zugang zum vorhandenen Kalender. Beide gehören zu eigenen Aufträgen
+   * (Aufgaben-/Erinnerungssteuerung, `klara-kalender`) und sind in diesem Stand NICHT gebaut — die
+   * Felder bleiben deshalb leer, und der Kalender verknüpft, steuert und behauptet dann nichts.
+   */
+  kalenderAusfuehrung?: AusfuehrungsNachweis;
+  vorhandenerKalender?: VorhandenerKalender;
+  /**
+   * AW-16 (Ben nacharbeit-7): die Aufgabenablage für die reine Auftragsverknüpfung `task_id`. Ohne
+   * Angabe nimmt `buildApp` die gelieferten persönlichen Aufgaben (`produkt:20261008:klara-aufgaben`)
+   * über ihren berechtigten Leseweg: `aufgabenNachweisAus(KlaraAufgabeDienst)` auf `klaraAufgaben`.
+   * Sie ersetzt `kalenderAusfuehrung` nicht: Lauf und Serie bleiben ohne ihn gesperrt.
+   */
+  kalenderAufgaben?: AufgabenNachweis;
   /**
    * produkt:20261007:klara-notizen-aufgaben (Klara 06): die privaten Notizen (`klara-notiz.ts`) je
    * Konto. Aus demselben Grund wie `klaraGespraeche` NICHT in `AppRepos` und nicht im
@@ -1462,6 +1501,8 @@ export function assembleServices(
     mitgelesen?: MitgelesenRepo;
     // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     klaraGespraeche?: KlaraGespraechRepo;
+    // produkt:20261010:klara-eigener-kalender: gesetzt von `buildPgServices`; sonst im Speicher.
+    eigenerKalender?: EigenerKalenderRepo;
     // produkt:20261007:klara-notizen-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
     klaraNotizen?: KlaraNotizRepo;
     // produkt:20261008:klara-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
@@ -1942,6 +1983,8 @@ export function assembleServices(
     mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
     // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
     klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
+    // produkt:20261010:klara-eigener-kalender — Postgres, wenn injiziert, sonst im Speicher.
+    eigenerKalender: opts.eigenerKalender ?? new InMemoryEigenerKalenderRepo(),
     // produkt:20261007:klara-notizen-aufgaben: die Notizen — Postgres, wenn injiziert, sonst im Speicher.
     klaraNotizen: opts.klaraNotizen ?? new InMemoryKlaraNotizRepo(),
     // produkt:20261008:klara-aufgaben: die Aufgaben — Postgres, wenn injiziert, sonst im Speicher.
@@ -2489,6 +2532,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
       // Neustart und Deploy (`KLARA_GESPRAECH_SCHEMA`, angelegt von `migrate()`).
       klaraGespraeche: new PgKlaraGespraechRepo(pool),
+      // produkt:20261010:klara-eigener-kalender: ein interner Termin und die Sichtwahl überleben
+      // Neuladen, Neustart und Deploy (`EIGENER_KALENDER_SCHEMA`, angelegt von `migrate()`).
+      eigenerKalender: new PgEigenerKalenderRepo(pool),
       // produkt:20261007:klara-notizen-aufgaben: eine Notiz überlebt erneute Anmeldung, Neustart und
       // Deploy (`KLARA_NOTIZ_SCHEMA`, angelegt von `migrate()`).
       klaraNotizen: new PgKlaraNotizRepo(pool),
@@ -5900,13 +5946,43 @@ export function buildApp(
   );
   // produkt:20261008:klara-aufgaben (Klara 07): die eigenen Aufgaben. Der Bezug kommt aus der
   // EIGENEN Notiz bzw. aus einem Auftrag im EIGENEN Gespräch — der Server liest beides selbst.
+  // Derselbe Dienst ist der berechtigte Leseweg des eigenen Kalenders (AW-16, unten).
+  const klaraAufgabeDienst = new KlaraAufgabeDienst({
+    repo: services.klaraAufgaben,
+    notizen: services.klaraNotizen,
+    gespraeche: services.klaraGespraeche,
+  });
   app.register(
     klaraAufgabeRoutes(
       {
-        dienst: new KlaraAufgabeDienst({
-          repo: services.klaraAufgaben,
-          notizen: services.klaraNotizen,
-          gespraeche: services.klaraGespraeche,
+        dienst: klaraAufgabeDienst,
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261010:klara-eigener-kalender (AW-16): der eigene Kalender ohne externen Dienst.
+  // Teamrechte aus dem HEUTIGEN Teamstand, der Text einer Wissensquelle nur unter der heutigen
+  // Sichtbarkeit (`darfSehen`). Die Auftragsverknüpfung `task_id` liest die persönlichen Aufgaben
+  // über `klaraAufgabeDienst.hole` (nur das eigene Konto; fremd und unbekannt = nicht sichtbar).
+  // Ausführungsnachweis und vorhandener Kalender kommen nur, wenn sie gesetzt sind
+  // (`services.kalenderAusfuehrung`, `services.vorhandenerKalender`); ohne sie meldet die Sicht
+  // beides ehrlich als nicht angebunden, und Lauf/Serie bleiben gesperrt.
+  app.register(
+    eigenerKalenderRoutes(
+      {
+        dienst: new EigenerKalenderDienst({
+          repo: services.eigenerKalender,
+          teams: services.teams,
+          quelleLesbar: async (user, koId) => {
+            const ko = await services.ko.get(koId);
+            return ko !== undefined && darfSehen(user, ko);
+          },
+          aufgaben: services.kalenderAufgaben ?? aufgabenNachweisAus(klaraAufgabeDienst),
+          ...(services.kalenderAusfuehrung ? { ausfuehrung: services.kalenderAusfuehrung } : {}),
+          ...(services.vorhandenerKalender
+            ? { vorhandenerKalender: services.vorhandenerKalender }
+            : {}),
         }),
         audit: services.audit,
       },

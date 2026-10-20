@@ -277,6 +277,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "PRAESENTATION_DATEN_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261010:klara-eigener-kalender (AW-16): Kalendereinträge und Sichtwahl. ADDITIV,
+  // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS` und drei `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "EIGENER_KALENDER_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

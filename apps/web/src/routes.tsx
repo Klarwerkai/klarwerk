@@ -120,6 +120,10 @@ const DuplicateMerge = lazy(() =>
 const Duplicates = lazy(() =>
   import("./pages/Duplicates").then((m) => ({ default: m.Duplicates })),
 );
+// produkt:20261010:klara-eigener-kalender (AW-16): „Mein Kalender" — nachgeladen wie jede andere Seite.
+const EigenerKalender = lazy(() =>
+  import("./pages/EigenerKalender").then((m) => ({ default: m.EigenerKalender })),
+);
 const Einstieg = lazy(() => import("./pages/Einstieg").then((m) => ({ default: m.Einstieg })));
 const ExternalKnowledge = lazy(() =>
   import("./pages/ExternalKnowledge").then((m) => ({ default: m.ExternalKnowledge })),
@@ -469,6 +473,11 @@ export function AppRoutes(): JSX.Element {
             (`/richtlinien`) und die Verwaltung unter „System" (`/unternehmen`). */}
         <Route path="/richtlinien" element={<Richtlinien />} />
         <Route path="/unternehmen" element={<Unternehmen />} />
+        {/* produkt:20261010:klara-eigener-kalender (AW-16): der eigene Kalender ohne externen
+            Dienst. Ohne `Guarded`, wie `/richtlinien`: jede Tür dahinter verlangt die Anmeldung, und
+            welche Einträge jemand sieht, entscheidet der Server mit heutigen Rechten
+            (`services/app/src/routes/eigener-kalender-routes.ts`). Erreichbar über das Konto-Menü. */}
+        <Route path="/kalender" element={<EigenerKalender />} />
         {/* ADMIN-12: Meldungen und Kanäle. Ohne `Guarded`, wie `/richtlinien`: die Türen dahinter
             fordern ihr Recht am Server (`requireUser` für Übersicht und eigene Einstellungen,
             `users.manage` für die Unternehmensvorgaben, `services/app/src/routes/

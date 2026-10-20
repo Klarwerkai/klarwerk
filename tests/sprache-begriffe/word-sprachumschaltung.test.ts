@@ -194,6 +194,12 @@ const QUELLEN: ReadonlyArray<{ datei: string; text: string; erwartet: readonly s
     text: lies(`${ADDIN}/begriffe.js`),
     erwartet: ["BEGRIFFE_TEXTE"],
   },
+  // AUFTRAG klara-eigener-kalender (AW-16): der Block KW-KALENDER in `kalender.js` — dieselbe Parität.
+  {
+    datei: `${ADDIN}/kalender.js`,
+    text: lies(`${ADDIN}/kalender.js`),
+    erwartet: ["KALENDER_TEXTE"],
+  },
   // AUFTRAG klara-office-mac-maskottchen: der Block KW-BEGLEITER (Schalter „Mit Begleitapp
   // verbinden") trägt sein eigenes Wörterbuch — dieselbe Parität gilt dort.
   {
