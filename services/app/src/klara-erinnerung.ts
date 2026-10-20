@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { NormVorbereitung } from "./klara-normereignisse-dienst";
 import type { Pool } from "pg";
 import type { KlaraAufgabeRepo } from "./klara-aufgabe";
 import {
@@ -3842,6 +3843,12 @@ export interface KlaraErinnerungSteuerungDeps {
   readonly wissenspflege?: PflegeLeser & {
     unterQuellschutz<T>(arbeit: () => Promise<T>): Promise<T>;
   };
+  /** Enger ausdrücklich bestellter Normbeleg-Zusatz am selben gehaltenen D-Lauf. */
+  readonly normereignisse?: (
+    kontoId: string,
+    quellen: readonly string[],
+    bedingung: NotizSchreibbedingung,
+  ) => Promise<NormVorbereitung>;
   /**
    * EQF-07: die Ergebnisablage einer Routine — „Meine Notizen“ (`KlaraNotizDienst` samt Readback
    * über den Vorgangsschlüssel). Fehlt sie, schlägt der Routinenlauf sichtbar fehl.
@@ -4625,7 +4632,7 @@ export class KlaraErinnerungSteuerung {
         l.vorkommenId !== lauf.vorkommenId &&
         (l.ergebnis.wissenspflege || l.ergebnis.routine?.wissenspflege),
     );
-    const entwurf = await bereiteWissenspflegeVor(
+    let entwurf = await bereiteWissenspflegeVor(
       routine.wissenspflege,
       e.kontoId,
       leser,
@@ -4635,6 +4642,30 @@ export class KlaraErinnerungSteuerung {
         vorher?.ergebnis.routine?.wissenspflege ??
         null,
     );
+    if (routine.wissenspflege.normbekanntmachungen === "belege_vorbereiten") {
+      let stand: NonNullable<PflegeErgebnis["normbekanntmachungen"]>["stand"] = "ungeprueft";
+      if (entwurf.ergebnis.stand !== "ungeprueft") {
+        const vorbereiten = this.deps.normereignisse;
+        if (!vorbereiten) return { art: "fehlgeschlagen", grund: "quelle_unlesbar" };
+        if (!(await Promise.all(entwurf.gelesen.map((q) => q.nochAktuell()))).every(Boolean))
+          return { art: "fehlgeschlagen", grund: "quelle_geaendert" };
+        try {
+          const n = await vorbereiten(
+            e.kontoId,
+            routine.wissenspflege.quellen,
+            this.notizBedingung(e, [], lauf, entwurf.gelesen),
+          );
+          stand = n.ungeprueft.length
+            ? "ungeprueft"
+            : n.ereignisse.length
+              ? "belege_vorbereitet"
+              : "keine_erkannten_belege";
+        } catch {
+          return { art: "fehlgeschlagen", grund: "quelle_geaendert" };
+        }
+      }
+      entwurf = { ...entwurf, ergebnis: { ...entwurf.ergebnis, normbekanntmachungen: { stand } } };
+    }
     if (entwurf.ergebnis.stand !== "vorbereitet") {
       if (entwurf.ergebnis.stand === "ungeprueft") {
         // Keine frühere Quellberechtigung fortschreiben. Nur diesen Auftrag über seine normale CAS pausieren.

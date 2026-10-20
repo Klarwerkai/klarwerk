@@ -16,6 +16,8 @@ export interface PflegeAuftrag {
   readonly empfaenger: "auftraggeber";
   /** Das tatsächliche Ende steht im vorhandenen Zeitplan; kein zweites Serienende. */
   readonly ende: "zeitplan";
+  /** Ausdrücklicher enger Zusatzauftrag am vorhandenen Quellenpolling; keine Fachannahme. */
+  readonly normbekanntmachungen?: "belege_vorbereiten";
   /** Nur vom Server aus den tatsächlich gelesenen Fassungen gesetzt. */
   readonly ausgangsstand: readonly { id: string; fassung: number }[];
 }
@@ -37,6 +39,7 @@ export function pflegeAus(roh: unknown): PflegeAuftrag {
     "empfaenger",
     "ende",
     "ausgangsstand",
+    "normbekanntmachungen",
   ]);
   if (Object.keys(o).some((k) => !erlaubt.has(k)))
     throw new PflegeEingabeFehler("Unbekannte Wissenspflege-Wirkung oder Einstellung.");
@@ -52,6 +55,13 @@ export function pflegeAus(roh: unknown): PflegeAuftrag {
       "Wissenspflege braucht 1 bis 20 ausdrücklich ausgewählte Wissensobjekte.",
     );
   const vorlage = o.vorlage as PflegeVorlage;
+  if (
+    o.normbekanntmachungen !== undefined &&
+    (o.normbekanntmachungen !== "belege_vorbereiten" || vorlage !== "quellaenderung")
+  )
+    throw new PflegeEingabeFehler(
+      "Normereignisbelege brauchen den ausdrücklich bestellten begrenzten Quellenwatch.",
+    );
   const ausloeser = vorlage === "quellaenderung" ? "quellstand_polling" : "zeitplan";
   const fest = {
     bereich: "ausgewaehlte_wissensobjekte",
@@ -64,7 +74,15 @@ export function pflegeAus(roh: unknown): PflegeAuftrag {
   for (const [k, wert] of Object.entries(fest))
     if (o[k] !== undefined && o[k] !== wert)
       throw new PflegeEingabeFehler(`${k}: Dieser persönliche Auftrag erlaubt nur ${wert}.`);
-  return { ...fest, vorlage, quellen: [...new Set(o.quellen as string[])], ausgangsstand: [] };
+  return {
+    ...fest,
+    vorlage,
+    quellen: [...new Set(o.quellen as string[])],
+    ausgangsstand: [],
+    ...(o.normbekanntmachungen === "belege_vorbereiten"
+      ? { normbekanntmachungen: "belege_vorbereiten" as const }
+      : {}),
+  };
 }
 
 export interface PflegeQuelle {
@@ -105,6 +123,9 @@ export interface PflegeErgebnis {
   }[];
   /** Eindeutiger belegter Stand, ohne Zeitablauf als Änderungssignal auszugeben. */
   readonly aenderung: string | null;
+  readonly normbekanntmachungen?: {
+    readonly stand: "belege_vorbereitet" | "ungeprueft" | "keine_erkannten_belege";
+  };
 }
 
 export interface PflegeEntwurf {
