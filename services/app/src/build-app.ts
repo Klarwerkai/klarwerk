@@ -587,8 +587,8 @@ import { meetingDokumentbezugRoutes } from "./routes/meeting-dokumentbezug-route
 import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
-import { officeRoutes } from "./routes/office-routes";
 import { officeKontextRoutes } from "./routes/office-kontext-routes";
+import { officeRoutes } from "./routes/office-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
@@ -4272,7 +4272,10 @@ export function buildApp(
   // Erhaltener Office-Kontextanschluss aus 8fcd735fe (KLARA-OFFICE-01/02), derselbe Sitzungskern.
   app.register(
     officeKontextRoutes(
-      { sessions: klaraSessions, erlaubteHerkuenfte: eingetrageneHerkuenfte(process.env.APP_BASE_URL) },
+      {
+        sessions: klaraSessions,
+        erlaubteHerkuenfte: eingetrageneHerkuenfte(process.env.APP_BASE_URL),
+      },
       guards,
     ),
   );
