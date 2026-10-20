@@ -1097,13 +1097,18 @@ export const endpoints = {
       locale?: ReasonerLocale,
       thread?: readonly string[],
       fragekontext?: Fragekontext,
-    ) =>
-      api.post<AskResponse>("/ask", {
+      signal?: AbortSignal,
+    ) => {
+      const body = {
         question,
         ...(locale ? { locale } : {}),
         ...(thread && thread.length > 0 ? { thread } : {}),
         ...(fragekontext ? { fragekontext } : {}),
-      }),
+      };
+      return signal
+        ? api.postAbbrechbar<AskResponse>("/ask", body, signal)
+        : api.post<AskResponse>("/ask", body);
+    },
     // R-0305/R-1099: dieselbe Frage samt Faden, zusätzlich vom Zweitmodell beantwortet. Derselbe
     // Endpunkt — Auth, Schema, Filter und Egress-Regeln bleiben die der Frage.
     // Ben (Nacharbeit 9): auch derselbe Fragekontext (R-1633) wie bei der stehenden Antwort — sonst

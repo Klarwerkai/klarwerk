@@ -2811,6 +2811,11 @@ const de = {
   "ask.diktatUnsupported":
     "Spracheingabe ist in diesem Browser nicht verfügbar. Nutze Chrome/Edge oder tippe die Frage.",
   // AUFTRAG-mega38 BLOCK A: Warten und Fehlschlag stehen DORT, wo die Antwort erscheint.
+  "ask.wartestand.dauer": "Wartezeit: {{sekunden}} s",
+  "ask.wartestand.langsam": "Die Antwort braucht länger. Du kannst das Warten beenden.",
+  "ask.wartestand.abbrechen": "Warten abbrechen",
+  "ask.wartestand.abgebrochen":
+    "Das Warten ist beendet. Eine verspätete Antwort wird hier nicht übernommen. Der Server kann noch weiterarbeiten.",
   "ask.pending.title": "Die Frage läuft gegen das Werkswissen.",
   "ask.pending.body":
     "Es wird nach passenden Quellen gesucht. Gibt es keine belastbare Grundlage, sagt Klarwerk das offen — es wird nichts erfunden.",

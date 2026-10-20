@@ -117,6 +117,7 @@ import {
 import { selectAnswer } from "../lib/askResponse";
 import { stepsBeyondSources, stepsWorthShowing } from "../lib/askSteps";
 import { answerReviewGuard, evidenzWiederholtStatus } from "../lib/askView";
+import { AskAbgebrochen, abbrechbar, askWartestand } from "../lib/askWartezustand";
 import { belegstelleHref } from "../lib/belegstelle";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
@@ -176,6 +177,7 @@ import {
 } from "../lib/problemloesungsweg";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { anfrageEpoche, aufRechtekontextwechsel } from "../lib/rechtekontext";
 import { istIosGeraet } from "../lib/speechSupport";
 import { useAiAvailable } from "../lib/useAiAvailable";
 import { useAiBillable } from "../lib/useAiBillable";
@@ -584,6 +586,7 @@ function MehrLueckenInfo({
 interface AskAnfrage {
   frage: string;
   generation: number;
+  lauf: { steuerung: AbortController; rechteEpoche: number };
   // R-0348: die vorangegangenen Fragen, zu denen diese eine Nachfrage ist (ohne sie selbst).
   faden: string[];
   // Ben, Nacharbeit 2: die Fadengeneration beim Absenden — „Neues Thema" zählt sie hoch.
@@ -987,24 +990,45 @@ export function Ask(): JSX.Element {
   // verworfen, bevor sie irgendeinen Zustand berührt. Das erste Bekanntwerden der Kennung ist
   // kein Wechsel: dieselbe Person, keine neue Generation.
   const kontoGeneration = useRef(0);
+  const askLauf = useRef<AskAnfrage["lauf"] | null>(null);
+  const [warteBeginn, setWarteBeginn] = useState<number | null>(null);
+  const [warteMs, setWarteMs] = useState(0);
+  useEffect(() => {
+    if (warteBeginn === null) return;
+    const timer = setInterval(() => setWarteMs(Date.now() - warteBeginn), 1000);
+    return () => clearInterval(timer);
+  }, [warteBeginn]);
+  useEffect(() => {
+    const abmelden = aufRechtekontextwechsel(() => askLauf.current?.steuerung.abort());
+    return () => {
+      abmelden();
+      const lauf = askLauf.current;
+      askLauf.current = null;
+      lauf?.steuerung.abort();
+    };
+  }, []);
   const ask = useMutation({
-    mutationFn: (anfrage: AskAnfrage) =>
-      // R-1633: mit Fragekontext reist er mit; ohne bleibt es bei den bisherigen Aufrufen.
-      anfrage.kontext
-        ? endpoints.ask.ask(
-            anfrage.frage,
-            toReasonerLocale(i18n.language),
-            anfrage.faden,
-            anfrage.kontext,
-          )
-        : // R-0348: ohne Faden genau der bisherige Aufruf.
-          anfrage.faden.length > 0
-          ? endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language), anfrage.faden)
-          : endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language)),
+    mutationFn: (anfrage: AskAnfrage) => {
+      const { lauf } = anfrage;
+      if (askLauf.current !== lauf || lauf.steuerung.signal.aborted)
+        return Promise.reject(new AskAbgebrochen());
+      return abbrechbar(
+        endpoints.ask.ask(
+          anfrage.frage,
+          toReasonerLocale(i18n.language),
+          anfrage.faden,
+          anfrage.kontext,
+          lauf.steuerung.signal,
+        ),
+        lauf.steuerung.signal,
+      );
+    },
     // D5: eine schon offene Fläche kennt die Abschaltung noch nicht — der Server hat sie eben
     // gemeldet. Der Status wird neu gelesen, damit der Absendeknopf danach gesperrt ist und der
     // Hinweis dasteht, statt dass der Mensch dieselbe Absage ein zweites Mal abholt.
-    onError: (fehler: unknown) => {
+    onError: (fehler: unknown, anfrage) => {
+      if (askLauf.current !== anfrage.lauf || anfrage.generation !== kontoGeneration.current)
+        return;
       if (fehler instanceof ApiError && fehler.code === "KI_ABGESCHALTET") {
         void qc.invalidateQueries({ queryKey: ["reasoner", "status"] });
       }
@@ -1060,9 +1084,14 @@ export function Ask(): JSX.Element {
       setAntwortKontext(null);
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
-    onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand, kontext }) => {
+    onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand, kontext, lauf }) => {
       // Ben R1, F1: die Antwort eines anderen (früheren) Kontos berührt nichts.
-      if (generation !== kontoGeneration.current) {
+      if (
+        generation !== kontoGeneration.current ||
+        askLauf.current !== lauf ||
+        lauf.steuerung.signal.aborted ||
+        lauf.rechteEpoche !== anfrageEpoche()
+      ) {
         return;
       }
       // Der Beleg für „zu welcher Frage gehört das, was da steht" — s. `onMutate`.
@@ -1117,6 +1146,12 @@ export function Ask(): JSX.Element {
       setGeloesteLuecke(r.geloesteLuecke ?? null);
       if (r.gap) {
         void qc.invalidateQueries({ queryKey: ["gaps"] });
+      }
+    },
+    onSettled: (_r, _fehler, anfrage) => {
+      if (askLauf.current === anfrage.lauf) {
+        askLauf.current = null;
+        setWarteBeginn(null);
       }
     },
   });
@@ -1334,6 +1369,9 @@ export function Ask(): JSX.Element {
     const wechsel = standFuer !== null;
     const jetzt = flaecheJetzt.current;
     if (wechsel) {
+      askLauf.current?.steuerung.abort();
+      askLauf.current = null;
+      setWarteBeginn(null);
       kontoGeneration.current += 1;
       askZuruecksetzen();
     }
@@ -1496,7 +1534,9 @@ export function Ask(): JSX.Element {
   const auffrischungLaeuft = ask.isPending && Boolean(result);
   // Ist eine Auffrischung GESCHEITERT, während die alte Antwort steht? §9: „ein Satz unter der
   // Karte" — nicht der Fehlerkasten, der „es gibt kein Ergebnis" bedeutet.
-  const auffrischungGescheitert = ask.isError && Boolean(result);
+  const wartenAbgebrochen = ask.isError && ask.error instanceof AskAbgebrochen;
+  const wartestand = askWartestand(warteMs);
+  const auffrischungGescheitert = ask.isError && !wartenAbgebrochen && Boolean(result);
   // D5: die Absage kam, weil der Administrator die KI abgeschaltet hat — nicht, weil etwas hakte.
   // Sie bekommt ihren eigenen Wortlaut und keinen „Erneut versuchen"-Knopf.
   const abgeschaltetAbgewiesen =
@@ -1577,7 +1617,7 @@ export function Ask(): JSX.Element {
   const submitAsk = useCallback(
     (question: string): void => {
       const trimmed = question.trim();
-      if (!trimmed || !answerAi.available || ask.isPending) {
+      if (!trimmed || !answerAi.available || ask.isPending || askLauf.current !== null) {
         return;
       }
       setAsked(trimmed);
@@ -1593,8 +1633,13 @@ export function Ask(): JSX.Element {
       setNichtHilfreich(null);
       setNichtHilfreichErledigt(null);
       const kontext = fragekontextZumSenden(fragekontext);
+      const lauf = { steuerung: new AbortController(), rechteEpoche: anfrageEpoche() };
+      askLauf.current = lauf;
+      setWarteMs(0);
+      setWarteBeginn(Date.now());
       ask.mutate({
         frage: trimmed,
+        lauf,
         generation: kontoGeneration.current,
         faden: fadenFuerAnfrage(faden, trimmed),
         fadenGeneration: fadenGeneration.current,
@@ -2107,7 +2152,7 @@ export function Ask(): JSX.Element {
         {zeigeFragenEinstieg({
           hatErgebnis: result !== null,
           wartet: ask.isPending,
-          fehler: ask.isError,
+          fehler: ask.isError && !wartenAbgebrochen,
           fadenLaenge: faden.length,
           wiederaufnahme: Boolean(wiederaufnahme),
         }) ? (
@@ -2433,7 +2478,34 @@ export function Ask(): JSX.Element {
             ist steckengeblieben, es gibt kein Ergebnis" — über einer sichtbaren Antwort wäre das
             unwahr. Für den Fall „Antwort steht, Auffrischung gescheitert" steht der Satz unter der
             Karte (§9), nicht dieser Kasten. */}
-        {ask.isError && !auffrischungGescheitert ? (
+        {ask.isPending && !ask.isPaused ? (
+          <div
+            data-testid="ask-wartestand"
+            aria-live="off"
+            className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted"
+          >
+            <span data-testid="ask-wartestand-dauer">
+              {t("ask.wartestand.dauer", { sekunden: wartestand.sekunden })}
+            </span>
+            {wartestand.langsam ? (
+              <span data-testid="ask-wartestand-langsam">{t("ask.wartestand.langsam")}</span>
+            ) : null}
+            <button
+              type="button"
+              data-testid="ask-abbrechen"
+              onClick={() => askLauf.current?.steuerung.abort()}
+              className="font-semibold text-brand-text underline-offset-2 hover:underline"
+            >
+              {t("ask.wartestand.abbrechen")}
+            </button>
+          </div>
+        ) : null}
+        {wartenAbgebrochen ? (
+          <output data-testid="ask-warteabbruch" className="mt-2 block text-[12.5px] text-muted">
+            {t("ask.wartestand.abgebrochen")}
+          </output>
+        ) : null}
+        {ask.isError && !wartenAbgebrochen && !auffrischungGescheitert ? (
           <div
             data-testid="ask-error"
             role="alert"

@@ -2200,6 +2200,11 @@ const nl: typeof de = {
   "ask.diktatUnsupported":
     "Spraakinvoer is in deze browser niet beschikbaar. Gebruik Chrome/Edge of typ je vraag.",
   // AUFTRAG-mega38 BLOCK A: wachten en mislukken staan DAAR waar het antwoord verschijnt.
+  "ask.wartestand.dauer": "Wachttijd: {{sekunden}} s",
+  "ask.wartestand.langsam": "Het antwoord duurt langer. Je kunt stoppen met wachten.",
+  "ask.wartestand.abbrechen": "Stoppen met wachten",
+  "ask.wartestand.abgebrochen":
+    "Je bent gestopt met wachten. Een later antwoord wordt hier niet overgenomen. De server kan nog verder werken.",
   "ask.pending.title": "De vraag loopt tegen de fabriekskennis.",
   "ask.pending.body":
     "Er wordt naar passende bronnen gezocht. Is er geen draagkrachtige basis, dan zegt Klarwerk dat open — er wordt niets verzonnen.",

@@ -2199,6 +2199,11 @@ const en: typeof de = {
   "ask.placeholder": "e.g. When must valve X be closed on overpressure?",
   "ask.emptyHint": "Please enter a question first.",
   // AUFTRAG-mega38 BLOCK A: waiting and failure appear WHERE the answer will appear.
+  "ask.wartestand.dauer": "Waiting: {{sekunden}} s",
+  "ask.wartestand.langsam": "The answer is taking longer. You can stop waiting.",
+  "ask.wartestand.abbrechen": "Stop waiting",
+  "ask.wartestand.abgebrochen":
+    "You have stopped waiting. A late answer will not be used here. The server may still be processing the request.",
   "ask.pending.title": "The question is running against the plant knowledge.",
   "ask.pending.body":
     "Matching sources are being looked up. If there is no solid basis, Klarwerk says so openly — nothing is invented.",
