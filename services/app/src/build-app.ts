@@ -442,6 +442,7 @@ import {
   type KlaraGespraechRepo,
   PgKlaraGespraechRepo,
 } from "./klara-gespraech";
+import { KlaraGespraechAusgabe } from "./klara-gespraech-ausgabe";
 // produkt:20261008:klara-kalender (Klara 11, AW-17): Anbindungen und Zuordnungen des vorhandenen
 // Kalenders — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank. Der Zugang kommt nur aus der
 // Betreiber-Einspeisung (`kalenderAnbieterAusEnv`).
@@ -6024,7 +6025,16 @@ export function buildApp(
       : Promise.resolve("Die Routine lässt sich gerade nicht prüfen. Nichts geändert.");
   app.register(
     klaraGespraechRoutes(
-      { dienst: klaraGespraechDienst, audit: services.audit, vorWirkung },
+      {
+        dienst: klaraGespraechDienst,
+        ausgabe: new KlaraGespraechAusgabe({
+          antworten: services.answerSnapshots,
+          rechte: fristenQuellen,
+          ko: services.ko,
+        }),
+        audit: services.audit,
+        vorWirkung,
+      },
       guards,
     ),
   );

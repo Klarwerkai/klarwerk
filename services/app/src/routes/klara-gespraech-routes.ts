@@ -13,12 +13,13 @@ import { bindeAuftragswissen } from "../klara-auftragswissen";
 import { KlaraAusfuehrung, type KlaraRufe, type KlaraVorWirkung } from "../klara-ausfuehrung";
 import { bindeBeschaffungsquellen } from "../klara-beschaffungsquellen";
 import {
-  type KlaraGespraech,
   type KlaraGespraechDienst,
   KlaraGespraechFehler,
   type KlaraNachrichtEingabe,
   type KlaraSchrittEingabe,
 } from "../klara-gespraech";
+
+import type { KlaraGespraechAusgabe } from "../klara-gespraech-ausgabe";
 
 // ================================================================================================
 // produkt:20261008:klara-basis — DAS EIGENE KLARA-GESPRÄCH, NUR FÜR DAS EIGENE KONTO.
@@ -47,6 +48,7 @@ export const KLARA_GESPRAECH_GELOESCHT = "klara.gespraech.geloescht";
 
 export interface KlaraGespraechRoutenDeps {
   dienst: KlaraGespraechDienst;
+  ausgabe: KlaraGespraechAusgabe;
   audit: AuditService;
   /** BPA-06: Prüfung eines Auftrags aus einem Routinenlauf vor der Wirkung. */
   vorWirkung?: KlaraVorWirkung;
@@ -113,19 +115,6 @@ function schrittBezug(gespraechId: string, r: SchrittAntwort): Record<string, un
   return bezug;
 }
 
-/** Die Sicht nach außen — ohne Kontokennung, die der Fragende ohnehin selbst ist. */
-function sicht(g: KlaraGespraech) {
-  return {
-    id: g.id,
-    objektbezug: g.objektbezug,
-    nachrichten: g.nachrichten,
-    letzterSchritt: g.letzterSchritt,
-    einwilligungAm: g.einwilligungAm,
-    angelegtAm: g.angelegtAm,
-    geaendertAm: g.geaendertAm,
-  };
-}
-
 function rumpf<T>(body: unknown): T {
   return (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as T;
 }
@@ -134,7 +123,7 @@ export function klaraGespraechRoutes(
   deps: KlaraGespraechRoutenDeps,
   guards: Guards,
 ): FastifyPluginAsync {
-  const { dienst, audit } = deps;
+  const { dienst, audit, ausgabe } = deps;
   const ausfuehrung = new KlaraAusfuehrung(dienst, deps.vorWirkung);
 
   return async (app) => {
@@ -145,7 +134,7 @@ export function klaraGespraechRoutes(
       }
       try {
         const g = await dienst.aktuelles(user.id);
-        reply.code(200).send({ gespraech: g ? sicht(g) : null });
+        reply.code(200).send({ gespraech: g ? await ausgabe.sicht(g) : null });
       } catch (fehler) {
         antworteMitFehler(reply, fehler);
       }
@@ -168,7 +157,7 @@ export function klaraGespraechRoutes(
             action: KLARA_GESPRAECH_BEGONNEN,
             target: `klara-gespraech:${g.id}`,
           });
-          reply.code(201).send({ gespraech: sicht(g) });
+          reply.code(201).send({ gespraech: await ausgabe.sicht(g) });
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }
@@ -182,7 +171,7 @@ export function klaraGespraechRoutes(
       }
       try {
         const g = await dienst.hole(user.id, request.params.id);
-        reply.code(200).send({ gespraech: sicht(g) });
+        reply.code(200).send({ gespraech: await ausgabe.sicht(g) });
       } catch (fehler) {
         antworteMitFehler(reply, fehler);
       }
@@ -201,7 +190,11 @@ export function klaraGespraechRoutes(
             request.params.id,
             rumpf<KlaraNachrichtEingabe>(request.body),
           );
-          reply.code(201).send({ nachricht, gespraech: sicht(gespraech) });
+          const sicht = await ausgabe.sicht(gespraech);
+          reply.code(201).send({
+            nachricht: sicht.nachrichten.find((n) => n.id === nachricht.id),
+            gespraech: sicht,
+          });
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }
@@ -221,7 +214,7 @@ export function klaraGespraechRoutes(
             request.params.id,
             rumpf<KlaraSchrittEingabe>(request.body),
           );
-          reply.code(200).send({ gespraech: sicht(g) });
+          reply.code(200).send({ gespraech: await ausgabe.sicht(g) });
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }
@@ -244,7 +237,7 @@ export function klaraGespraechRoutes(
             target: `klara-gespraech:${g.id}`,
             payload: { erteilt: g.einwilligungAm !== null },
           });
-          reply.code(200).send({ gespraech: sicht(g) });
+          reply.code(200).send({ gespraech: await ausgabe.sicht(g) });
         } catch (fehler) {
           antworteMitFehler(reply, fehler);
         }
