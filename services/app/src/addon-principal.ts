@@ -45,6 +45,7 @@ export type AddonCapability =
   | typeof CHECKTEXT_CAPABILITY
   | "export.validated"
   | "import.kandidaten"
+  | "mail.entwurf"
   | "status.read"
   | "mcp.werkzeug";
 

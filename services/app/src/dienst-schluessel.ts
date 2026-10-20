@@ -42,6 +42,7 @@ export const DIENST_RECHTE = [
   "checktext.validated",
   "export.validated",
   "import.kandidaten",
+  "mail.entwurf",
   "status.read",
   "mcp.werkzeug",
 ] as const satisfies readonly AddonCapability[];
@@ -85,6 +86,7 @@ export interface DienstRoute {
 }
 
 export const DIENST_ROUTEN: readonly DienstRoute[] = [
+  { methode: "POST", pfad: "/api/eingang/email", recht: "mail.entwurf" },
   { methode: "POST", pfad: "/api/ask", recht: "ask.validated" },
   { methode: "POST", pfad: "/api/check-text", recht: "checktext.validated" },
   {

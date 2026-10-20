@@ -341,6 +341,7 @@ import {
   type VorhandenerKalender,
   aufgabenNachweisAus,
 } from "./eigener-kalender";
+import { pruefeEmailVerbrauch } from "./email-eingang";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
@@ -565,6 +566,7 @@ import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
 import { datenschutzRoutes } from "./routes/datenschutz-routes";
 import { eigenerKalenderRoutes } from "./routes/eigener-kalender-routes";
+import { emailEingangRoutes } from "./routes/email-eingang-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { featuresRoutes } from "./routes/features-routes";
 import { freigaberegelnRoutes } from "./routes/freigaberegeln-routes";
@@ -2177,6 +2179,7 @@ export function assembleServices(
     // Bewegung wie bei `koConfidentiality` für die Medien-Analyse.
     capture: new CaptureService({
       repo: repos.drafts,
+      pruefeVerbrauch: (draft) => pruefeEmailVerbrauch(draft, audit),
       objectExists: async (objectId) => (await objects.metadata(objectId)) !== undefined,
       // ==========================================================================================
       // JOB 3934 RUNDE 3 — DIE QUELLENSPERRE GILT AUCH FÜR DEN PROMOTE.
@@ -5526,6 +5529,7 @@ export function buildApp(
       guards,
     ),
   );
+  app.register(emailEingangRoutes(services));
   app.register(
     captureRoutes(
       {
