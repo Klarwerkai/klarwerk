@@ -195,10 +195,15 @@ test("AW21 · ausdrücklich bestellte Normfolgeprüfung erzeugt im normalen Serv
     expect(original.status(), await original.text()).toBe(200);
     const journal = (await original.json()).gespraech;
     expect(journal.nachrichten).toEqual([]);
-    expect(journal.auftraege).toHaveLength(1);
-    expect(journal.auftraege[0].id).toBe(ref.auftragId);
-    expect(journal.auftraege[0].quelle).toBe("d_routine");
-    expect(journal.auftraege[0].schritte[0].ergebnis.id).toBe(task.id);
+    const auftragsAntwort = await p.request.get(
+      `/api/me/klara/gespraeche/${ref.gespraechId}/auftraege`,
+    );
+    expect(auftragsAntwort.status(), await auftragsAntwort.text()).toBe(200);
+    const auftraege = (await auftragsAntwort.json()).auftraege;
+    expect(auftraege).toHaveLength(1);
+    expect(auftraege[0].id).toBe(ref.auftragId);
+    expect(auftraege[0].quelle).toBe("d_routine");
+    expect(auftraege[0].schritte[0].ergebnis.id).toBe(task.id);
     const aktiv = (await (await p.request.get("/api/me/klara/gespraech")).json()).gespraech;
     expect(aktiv.id).toBe(menschlicherEingang.id);
     expect(aktiv.nachrichten).toEqual([]);
