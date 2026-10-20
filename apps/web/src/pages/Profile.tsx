@@ -30,6 +30,7 @@ import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
 import { Zeile, Zeilenkarte } from "../components/einstellungen/Zeilenkarte";
 import { MeineFunktionenDetail } from "../components/funktionen/MeineFunktionen";
+import { KlaraEinfuehrung } from "../components/klara-setup/KlaraEinfuehrung";
 import { KlaraGedaechtnis } from "../components/klara-setup/KlaraGedaechtnis";
 // produkt:20261012:klara-setup-shortcuts-umsetzung: der Bereich „Klara“ mit Tastenkürzeln.
 import {
@@ -599,6 +600,7 @@ function MeineAssistenzDetail({ onZurueck }: { onZurueck: () => void }): JSX.Ele
       </KlaraGruppe>
       <KlaraUnterstuetzung />
       <KlaraGedaechtnis />
+      <KlaraEinfuehrung />
       {/* OCR-03: „Bilder automatisch analysieren und Text erkennen“ (Voreinstellung an). */}
       <KlaraBildAutomatikGruppe />
       {/* PP-03: offene Datenpunkte in der Datenlage (Voreinstellung „alle“). */}

@@ -180,6 +180,7 @@ function Inhalt({ kontoId }: { kontoId: string }): JSX.Element {
               {t("klaragedaechtnis.inhalt")}
               <textarea
                 data-testid="gedaechtnis-neu"
+                data-tutorial-ziel="gedaechtnis-neu"
                 className={FELD}
                 value={text}
                 maxLength={2000}

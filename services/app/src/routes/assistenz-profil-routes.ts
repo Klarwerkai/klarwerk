@@ -143,6 +143,7 @@ function sicht(p: AssistenzProfil | null) {
   return {
     profil: p
       ? {
+          ...(p.einfuehrung ? { einfuehrung: p.einfuehrung } : {}),
           name: p.name,
           avatar: p.avatar,
           bewegung: p.bewegung,

@@ -22,6 +22,7 @@ import { useLocation } from "react-router-dom";
 import { authApi } from "../../api/auth";
 import { useFeatures } from "../../api/hooks";
 import { useSession } from "../../app/AuthContext";
+import { GuardedLink } from "../../app/NavGuardContext";
 import {
   einrichtungSpaeter,
   ladeAssistenzProfil,
@@ -144,6 +145,12 @@ export function AssistenzEinrichtung(): JSX.Element | null {
               >
                 {t("assistenz.einrichtung.starten")}
               </Button>
+              <GuardedLink
+                className="text-[12px] font-semibold text-brand-text underline"
+                to="/profil?bereich=klara&einfuehrung=1"
+              >
+                {t("klaraeinfuehrung.titel")}
+              </GuardedLink>
               <Button
                 variant="ghost"
                 data-testid="assistenz-einrichtung-spaeter"

@@ -35,6 +35,7 @@ import {
   klaraErinnerungApi,
 } from "../../api/klaraErinnerung";
 import { useAssistenzT } from "../../lib/assistenzProfil";
+import { vorgabeZeitzone } from "../../lib/persoenlicheZeitzone";
 import {
   bediene,
   bezugAnzeige,
@@ -303,7 +304,7 @@ function EntwurfFormular(): JSX.Element | null {
   const [anzahl, setAnzahl] = useState(10);
   const [fristDatum, setFristDatum] = useState("");
   const [vorlaufTage, setVorlaufTage] = useState(1);
-  const [zone, setZone] = useState(geraeteZeitzone());
+  const [zone, setZone] = useState(vorgabeZeitzone());
   const [luecke, setLuecke] = useState<"verschieben" | "auslassen">("verschieben");
   const [doppelt, setDoppelt] = useState<"erste" | "zweite">("erste");
   const [regel, setRegel] = useState<VerpasstRegel>("nachholen");
@@ -328,7 +329,7 @@ function EntwurfFormular(): JSX.Element | null {
     setAktion("erinnern");
     const v = s.einstellungen;
     if (v) {
-      setZone(v.zeitzone ?? geraeteZeitzone());
+      setZone(v.zeitzone ?? vorgabeZeitzone());
       setLuecke(v.sommerzeit.luecke);
       setDoppelt(v.sommerzeit.doppelt);
       setRegel(v.verpasst.regel);
@@ -1360,7 +1361,7 @@ function AssistentSchritte({
   const { t, i18n } = useAssistenzT();
   const id = useId();
   const [schritt, setSchritt] = useState(1);
-  const [zone, setZone] = useState(vorgabe?.zeitzone ?? geraeteZeitzone());
+  const [zone, setZone] = useState(vorgabe?.zeitzone ?? vorgabeZeitzone());
   const [luecke, setLuecke] = useState<"verschieben" | "auslassen">(
     vorgabe?.sommerzeit.luecke ?? "verschieben",
   );
