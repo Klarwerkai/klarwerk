@@ -12,6 +12,20 @@ export interface KlaraBeschaffungsziel {
 
 import type { ErkannterAuftrag } from "./klaraAuftragErkennung";
 
+/** Widersprüchliche Angaben bleiben offen, damit die vorhandene gezielte Rückfrage entscheidet. */
+function eindeutigeAngabe(
+  text: string,
+  muster: RegExp,
+  schluessel: (wert: string) => string = (wert) => wert,
+): string {
+  const werte = new Map<string, string>();
+  for (const treffer of text.matchAll(muster)) {
+    const wert = treffer[1]?.trim();
+    if (wert) werte.set(schluessel(wert), wert);
+  }
+  return werte.size === 1 ? (werte.values().next().value ?? "") : "";
+}
+
 /** Nur eine ausdrückliche Angebote-Vorbereitung aus dem Auftragseingang, nie aus Quellen. */
 export function erkenneBeschaffung(s: string): ErkannterAuftrag | null {
   const m =
@@ -20,13 +34,21 @@ export function erkenneBeschaffung(s: string): ErkannterAuftrag | null {
     );
   if (!m) return null;
   const rest = m[1] ?? "";
-  const produkt = /(?:produkt|product)\s+[„“"«]([^“”"»]+)[“”"»]/iu.exec(rest)?.[1]?.trim() ?? "";
-  const menge =
-    /(?:für|fuer|for|voor|menge[: ]+)\s*(\d+(?:[.,]\d+)?\s+(?:stück|stueck|pieces|units|stuks|kg|tonnen|t|liter|l|m²|m2|meter|m))(?=\s|[,;.]|$)/iu.exec(
-      rest,
-    )?.[1] ?? "";
-  const termin =
-    /(?:bis|by|voor|termin[: ]+)\s*(\d{4}-\d{2}-\d{2})(?=\s|[,;.]|$)/iu.exec(rest)?.[1] ?? "";
+  const produkt =
+    /(?:produkt|product)\s+[„“"«]([^“”"»]+)[“”"»]/iu.exec(rest)?.[1]?.trim() ??
+    /(?:produkt|product)\s+([\p{L}\p{N}][\p{L}\p{N}._/-]*)(?=\s|[,;.]|$)/iu.exec(rest)?.[1] ??
+    "";
+  // Zitierte Produkt-, Quellen- und Empfängernamen sind Daten, keine Mengen-/Terminangaben.
+  const angaben = rest.replace(/[„“"«][^“”"»]*[“”"»]/gu, " ");
+  const menge = eindeutigeAngabe(
+    angaben,
+    /(?:^|[\s:;,])(\d+(?:[.,]\d+)?\s+(?:stück|stueck|pieces|units|stuks|kg|tonnen|t|liter|l|m²|m2|meter|m))(?=\s|[,;.]|$)/giu,
+    (wert) => {
+      const [zahl, einheit] = wert.split(/\s+/);
+      return `${Number(zahl?.replace(",", "."))} ${einheit?.toLocaleLowerCase()}`;
+    },
+  );
+  const termin = eindeutigeAngabe(angaben, /(?:^|[\s:;,])(\d{4}-\d{2}-\d{2})(?=\s|[,;.]|$)/gu);
   const quelle = /(?:quelle|source|bron)\s+[„“"«]([^“”"»]+)[“”"»]/iu.exec(rest)?.[1]?.trim();
   const empfaenger =
     /(?:empfängervorschlag|empfaengervorschlag|recipient proposal|ontvangervoorstel)\s+[„“"«]([^“”"»]+)[“”"»]/iu

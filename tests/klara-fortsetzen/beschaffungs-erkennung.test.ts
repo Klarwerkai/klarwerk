@@ -35,3 +35,52 @@ it("BES-E3 · Quellen-/Empfängernamen bleiben Daten; Anfrage/Bestellung wird ke
   expect(e?.schritte).toHaveLength(2);
   expect(erkenneAuftrag("Versende eine Anfrage an alle Lieferanten")).toBeNull();
 });
+
+it.each([
+  "Besorge neue Angebote für die Verpackung von Produkt PX-17 für 500 Stück bis 2035-11-30",
+  "Prepare new offers for the packaging of product PX-17 for 500 pieces by 2035-11-30",
+  "Vraag nieuwe offertes voor de verpakking van product PX-17 voor 500 stuks voor 2035-11-30",
+])("BES-E4 · bekanntes unzitiertes Produkt braucht keine erneute Rückfrage: %s", (text) => {
+  const b = erkenneAuftrag(text)?.beschaffung;
+  expect(b?.produkt).toBe("PX-17");
+  expect(b?.bedarf).toMatch(/^(Verpackung|packaging|verpakking)$/i);
+  expect(b && fehlendeBeschaffungsangaben(b)).toEqual([]);
+});
+
+it.each([
+  ["für 500 Stück oder 750 Stück bis 2035-11-30", ["menge"]],
+  ["für 500 Stück; Menge: 750 Stück bis 2035-11-30", ["menge"]],
+  ["für 500 Stück bis 2035-11-30 oder 2035-12-02", ["termin"]],
+  ["für 500 Stück bis 2035-11-30; Termin: 2035-12-02", ["termin"]],
+  ["für 500 Stück oder 750 Stück bis 2035-11-30 oder 2035-12-02", ["menge", "termin"]],
+])("BES-E5 · widersprüchliche Angaben werden gezielt rückgefragt: %s", (angaben, fehlt) => {
+  const b = erkenneAuftrag(
+    `Besorge neue Angebote für die Verpackung von Produkt PX-17 ${angaben}`,
+  )?.beschaffung;
+  expect(b?.produkt).toBe("PX-17");
+  expect(b?.bedarf).toBe("Verpackung");
+  expect(b && fehlendeBeschaffungsangaben(b)).toEqual(fehlt);
+  if (!fehlt.includes("menge")) expect(b?.menge).toBe("500 Stück");
+  if (!fehlt.includes("termin")) expect(b?.termin).toBe("2035-11-30");
+});
+
+it("BES-E6 · gleiche Angaben sind eindeutig, Zahlen in zitierten Namen bleiben Daten", () => {
+  const e = erkenneAuftrag(
+    "Besorge neue Angebote für die Verpackung von Produkt PX-17 für 500 Stück; Menge: 500,0 stück bis 2035-11-30; Termin: 2035-11-30; Quelle „750 Stück bis 2035-12-02“; Empfängervorschlag „900 Stück bis 2035-12-03“",
+  );
+  expect(e?.beschaffung && fehlendeBeschaffungsangaben(e.beschaffung)).toEqual([]);
+  expect(e?.beschaffungsQuelle).toBe("750 Stück bis 2035-12-02");
+  expect(e?.beschaffung?.empfaengerVorschlaege).toEqual(["900 Stück bis 2035-12-03"]);
+  expect(e?.beschaffung?.erlaubteEmpfaenger).toEqual([]);
+  expect(e?.schritte).toHaveLength(2);
+});
+
+it.each([
+  ["für 500 Stück,750 Stück bis 2035-11-30", ["menge"]],
+  ["für 500 Stück bis 2035-11-30,2035-12-02", ["termin"]],
+])("BES-E7 · Aufzählung ohne Leerzeichen wählt keine erste Alternative: %s", (angaben, fehlt) => {
+  const b = erkenneAuftrag(
+    `Besorge neue Angebote für die Verpackung von Produkt PX-17 ${angaben}`,
+  )?.beschaffung;
+  expect(b && fehlendeBeschaffungsangaben(b)).toEqual(fehlt);
+});
