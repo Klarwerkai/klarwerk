@@ -84,6 +84,10 @@ unveränderlichen Create-Operation im für den Adapter reservierten Namespace `e
 Wiederzustellung sichert den Beleg für denselben Entwurf; erst dann ist normaler Verbrauch möglich.
 Andere Inhalte derselben Mailoperation bleiben 409, auch während der ausstehenden Annahme.
 Die allgemeine Capture-Neuanlagesemantik wurde nicht verändert.
+Die Annahmeprüfung der fachlichen Übernahme erfolgt vor der Wissensanlage in `toKoInput`.
+Der danach folgende Verbrauch lädt den dauerhaften Beleg nicht erneut: eine neue fehlerfähige
+Auditabfrage nach erfolgreicher Wissensanlage könnte sonst einen erneut einreichbaren Entwurf
+zurücklassen. Separate Endlöschung und Papierkorbbereinigung prüfen weiterhin vor ihrer Wirkung.
 Wiederholung vervollständigt fehlende Schritte. Bei ungewissem Schreibausgang bleiben
 Originalobjekte erhalten; mögliche unreferenzierte Uploads folgen dem vorhandenen Aufräumweg.
 Fehlende Originale blockiert weiterhin die bestehende Ankerprüfung.

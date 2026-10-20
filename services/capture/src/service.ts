@@ -1397,7 +1397,9 @@ export class CaptureService {
    * genau der Mangel, den mega22 Block H für diesen Weg geschlossen hat.
    */
   async entwurfVerbraucht(id: string): Promise<void> {
-    await this.pruefeEndgueltigeEntfernung(id);
+    // Die Fachcaller haben toKoInput VOR ko.create geprüft oder übernehmen dessen KO-Replay.
+    // Den dauerhaften Annahmebeleg hier nicht erneut fehlerfähig lesen: das KO steht bereits.
+    // Separate Endlöschung und Sweep prüfen weiterhin vor ihrer eigenen Wirkung.
     // `auchLebende` — DAS IST DIE EINZIGE STELLE IM PRODUKT, DIE DIESES WORT SETZT, und sie sagt
     // damit genau das, was hier gilt: Dieser Entwurf lebt, er lag nie im Papierkorb, und er fällt
     // trotzdem. Den Verbrauch an den Papierkorbstatus zu binden hiesse, einen übernommenen Entwurf
