@@ -64,6 +64,13 @@ describe("PP-08 · echter Anhang-/Herkunfts-/Prüfweg, keine Hostsimulation", ()
     });
     expect(dp).toHaveProperty("kontrolle.dimensionen");
   });
+  it("explizit unpassende Einheit oder Periode wird bei der Zahlensuche nicht unterschlagen", async () => {
+    for (const text of ["Woher stammen 1.500 %?", "Warum 1.500 EUR?", "Warum 1.500 im Q3 2025?"]) {
+      const r = await w.auswerten(w.auftrag({ modus: "frage", frage: { text, sldId: "256" } }));
+      expect(r.status).toBe(200);
+      expect(r.body.antwort.stand, text).toBe("kein_beleg");
+    }
+  });
   it("gleiche Zahl in zwei Aussagen verlangt Auswahl; falsche Folie wird abgewiesen", async () => {
     const zweit = await w.erfasse({
       art: "zahl",

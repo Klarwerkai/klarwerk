@@ -79,3 +79,32 @@ Gezielte Belege: `pp08-vortrag.test.ts`, `pp08-vortrag-flaeche.test.tsx`,
 Inspektor/Fokus-/Setup-Weg. Vollständige tatsächliche Logs, Negativa und Grenzen stehen im
 Q/ARBEIT-Übergabebündel. Historische PP-01/02/03-Belege bleiben erhalten und werden nicht
 als neue Gesamtprüfung ausgegeben.
+
+## Konkreter PP-05-Elternanschluss
+
+Führungsbindung vom 20.10.2026: N `fbc1ef39dff20253dacc4c03b86cf4b58bbed9c2`
+(Tree `e79a1670cf8a61acb73e0847451e2961178c2ef1`) auf .1002 wurde im eigenen
+Q-Checkout regulär vereinigt; der Originalcommit bleibt im Graph erhalten. Das ist ein
+implementierter Elternport und keine unabhängige PP-05-Gesamtannahme.
+
+`praesentation-vortrag-deck.ts` liest ausschließlich dessen vorhandenen
+`klara-pp05-v1`-Transportvertrag aus der tatsächlichen Anhangsfassung. Es nutzt N-Typen,
+stabile `sldId`, Datenpunktfassungen, Haupt-/Detailrollen und `belegfolien`. Kein Deck wird
+neu erzeugt oder gespeichert. Der vollständige Plan mit Quelltexten wird niemals als
+zweite PP-08-Antwortkopie ausgegeben. Rechtegeprüfte aktuelle PP-02/03-Datenpunkte bleiben
+Voraussetzung jedes Belegverweises. Die tatsächlichen Belegfolientexte müssen außerdem
+zum gebundenen PP-05-Belegtext passen; manuell geänderte/fehlende Detailtexte werden
+nicht als passende Belege ausgegeben. PP-03 bleibt für Aktualität und fachliche Freigabe
+zuständig. Ein Manifest ersetzt diese Kontrollen nicht.
+
+Die vorhandene gestreamte Entpackgrenze (`zaehleEchteExpansion`) begrenzt den PP-05-
+Metadatenbereich auf 1 MiB. Beschädigte, zu große oder mehrere Elternmanifeste werden
+nicht als eindeutige Deckbindung genutzt; der normale Herkunftsweg bleibt erreichbar.
+Eine Mehrfachfassungsentscheidung braucht den konkreten PP-07-Port. Diese Grenze ist
+kein PP-07-Abschluss und keine Fassungsauswahl nach Dateinamen/Uhrzeit.
+
+`pp08-deck-anschluss.test.ts` führt tatsächliche PP-05-Vorschau und -Übernahme aus,
+liest das entstandene Deck über PP-08, ordnet eine Hauptfrage der echten Belegfolie zu
+und prüft fehlendes Quellrecht, veränderten Detailtext, zu große Metadaten und mehrere
+Manifeste negativ. Die PP-05-Anmeldung ist dabei die bestehende lokale Fachfixture;
+PP-08-API-/Flächenfälle verwenden zusätzlich normale fiktive Anmeldung an `buildApp`.

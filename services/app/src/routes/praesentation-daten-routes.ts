@@ -40,6 +40,7 @@ import {
   kontrollAnschluss,
 } from "../praesentation-pruefung-anschluss";
 import { VortragsKonflikt, leseVortragsAuftrag, vortragAuswerten } from "../praesentation-vortrag";
+import { leseVortragsDeck } from "../praesentation-vortrag-deck";
 import { darfSehen } from "../sichtbarkeit";
 
 // ================================================================================================
@@ -310,20 +311,22 @@ export function praesentationDatenRoutes(
         }
         reply.header("Cache-Control", "no-store");
         try {
+          const auftrag = leseVortragsAuftrag(request.body);
           const gebunden = await deps.ablage.gebundenAn(ko.id, request.params.anhangId);
           const sichten = await sichtenVon(gebunden, u);
-          reply.send(
-            vortragAuswerten(
-              {
-                koId: ko.id,
-                anhangId: request.params.anhangId,
-                dateiFassung: datei.satz.fassung,
-                folien: datei.satz.folien,
-                datenpunkte: sichten,
-              },
-              leseVortragsAuftrag(request.body),
-            ),
-          );
+          const kontext = {
+            koId: ko.id,
+            anhangId: request.params.anhangId,
+            dateiFassung: datei.satz.fassung,
+            folien: datei.satz.folien,
+            datenpunkte: sichten,
+          };
+          const objekt = await deps.objekte.read(datei.objectId);
+          const bytes = objekt ? decodeDataUrl(objekt.data)?.bytes : undefined;
+          const deck = bytes
+            ? await leseVortragsDeck(bytes, kontext).catch(() => undefined)
+            : undefined;
+          reply.send(vortragAuswerten({ ...kontext, ...(deck ? { deck } : {}) }, auftrag));
         } catch (f) {
           if (f instanceof VortragsKonflikt)
             reply.code(409).send({ error: "CONFLICT", message: f.message });

@@ -8,6 +8,7 @@ import {
   zahlStehtImText,
 } from "./praesentation-daten";
 import type { KontrollierteSicht } from "./praesentation-pruefung-anschluss";
+import type { VortragsDeck } from "./praesentation-vortrag-deck";
 
 export class VortragsKonflikt extends Error {}
 
@@ -17,6 +18,7 @@ export interface VortragsKontext {
   dateiFassung: string;
   folien: readonly FolieMitElementen[];
   datenpunkte: readonly KontrollierteSicht[];
+  deck?: VortragsDeck;
 }
 export interface AussageBezug {
   id: string;
@@ -59,6 +61,7 @@ export interface VortragsErgebnis {
   modus: VortragsAuftrag["modus"];
   notizen: VortragsNotiz[];
   sprechhilfen: VortragsNotiz[];
+  belegfolien: { aussage: AussageBezug; sldIds: string[] }[];
   zeit: { geplant: number; ziel: number; abweichung: number };
   leitfragen: { sldId: string; aussage: AussageBezug; text: string }[];
   aufgaben: VortragsAufgabe[];
@@ -158,6 +161,35 @@ export function leseVortragsAuftrag(roh: unknown): VortragsAuftrag {
   return a;
 }
 
+/** Eine ausdrücklich genannte Einheit/Periode darf die Zahlensuche nicht still verlieren. */
+function fragePasst(d: KontrollierteSicht, frage: string): boolean {
+  const quartal = frage.match(/\bQ[1-4]\b/iu)?.[0];
+  const jahr = frage.match(/\b(?:19|20)\d{2}\b/u)?.[0];
+  if (quartal && !d.zeitraum?.toLowerCase().includes(quartal.toLowerCase())) return false;
+  if (jahr && !d.zeitraum?.includes(jahr)) return false;
+  const einheiten = [
+    ...frage.matchAll(/[-−+]?\d+(?:[.,]\d+)*\s*(T€|Mio\.?\s*€|EUR|Euro|€|%|USD|\$)/giu),
+  ];
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/\s|\./gu, "")
+      .replace(/euro|eur/gu, "€");
+  for (const m of einheiten) {
+    if (zahlAusWert(m[0]) !== d.zahl) continue;
+    const einheit = m[1] ?? "";
+    const erlaubt = [d.einheit, d.wert.match(/T€|Mio\.?\s*€|EUR|Euro|€|%|USD|\$/iu)?.[0]]
+      .filter((x): x is string => !!x)
+      .map(norm);
+    if (!erlaubt.includes(norm(einheit))) return false;
+  }
+  return (
+    zahlStehtImText(frage, d.wert) ||
+    (d.zahl !== undefined &&
+      [...frage.matchAll(/[-−+]?\d+(?:[.,]\d+)*/g)].some((m) => zahlAusWert(m[0]) === d.zahl))
+  );
+}
+
 export function vortragAuswerten(k: VortragsKontext, a: VortragsAuftrag): VortragsErgebnis {
   if (k.dateiFassung !== a.basis)
     throw new VortragsKonflikt(
@@ -176,9 +208,20 @@ export function vortragAuswerten(k: VortragsKontext, a: VortragsAuftrag): Vortra
         (b.lage === "aktuell" || b.lage === "bestaetigt_in_neuer_fassung") &&
         folien.has(b.sldId),
     );
+  const belegfolien =
+    k.deck?.dateiFassung === k.dateiFassung
+      ? k.deck.belegfolien.map((b) => ({
+          aussage: { id: b.datenpunktId, fassung: b.datenFassung },
+          sldIds: b.sldIds,
+        }))
+      : [];
+  const belegAmOrt = (b: AussageBezug, id: string) =>
+    belegfolien.some(
+      (p) => p.aussage.id === b.id && p.aussage.fassung === b.fassung && p.sldIds.includes(id),
+    );
   const aussage = (b: AussageBezug, id?: string) => {
     const d = punkte.get(b.id);
-    if (!d || !amOrt(d, id))
+    if (!d || (!amOrt(d, id) && !(id && belegAmOrt(b, id))))
       return ungueltig(
         "Die Aussage ist an dieser Folie nicht aktuell lesbar gebunden. Herkunft und Bindung prüfen.",
       );
@@ -213,7 +256,7 @@ export function vortragAuswerten(k: VortragsKontext, a: VortragsAuftrag): Vortra
     for (const b of n.aussagen) aussage(b, n.sldId);
     for (const id of n.detailSldIds) {
       folie(id);
-      if (!n.aussagen.some((b) => amOrt(aussage(b, n.sldId), id)))
+      if (!n.aussagen.some((b) => amOrt(aussage(b, n.sldId), id) || belegAmOrt(b, id)))
         return ungueltig(
           "Eine Detailfolie muss dieselbe Aussage aktuell belegen. Nur ihre Position genügt nicht.",
         );
@@ -306,14 +349,7 @@ export function vortragAuswerten(k: VortragsKontext, a: VortragsAuftrag): Vortra
     const kandidaten = f.aussage
       ? [aussage(f.aussage, f.sldId)]
       : relevant.filter(
-          (d) =>
-            (!f.sldId || amOrt(d, f.sldId)) &&
-            d.art === "zahl" &&
-            (zahlStehtImText(f.text, d.wert) ||
-              (d.zahl !== undefined &&
-                [...f.text.matchAll(/[-−+]?\d+(?:[.,]\d+)*/g)].some(
-                  (m) => zahlAusWert(m[0]) === d.zahl,
-                ))),
+          (d) => (!f.sldId || amOrt(d, f.sldId)) && d.art === "zahl" && fragePasst(d, f.text),
         );
     const stand =
       kandidaten.length === 1 ? "beleg" : kandidaten.length ? "auswahl_noetig" : "kein_beleg";
@@ -367,12 +403,25 @@ export function vortragAuswerten(k: VortragsKontext, a: VortragsAuftrag): Vortra
         detailSldIds: [],
       };
     });
+  if (antwort?.stand === "beleg") {
+    const b = antwort.kandidaten[0];
+    if (b)
+      antwort.sldIds = [
+        ...new Set([
+          ...antwort.sldIds,
+          ...belegfolien
+            .filter((x) => x.aussage.id === b.id && x.aussage.fassung === b.fassung)
+            .flatMap((x) => x.sldIds),
+        ]),
+      ];
+  }
   const geplant = a.notizen.reduce((s, n) => s + n.sekunden, 0);
   return {
     basis: k.dateiFassung,
     modus: a.modus,
     notizen: a.notizen,
     sprechhilfen,
+    belegfolien,
     zeit: { geplant, ziel: a.zielSekunden, abweichung: geplant - a.zielSekunden },
     leitfragen,
     aufgaben,

@@ -41,6 +41,7 @@ export interface VortragsErgebnis {
   modus: VortragsAuftrag["modus"];
   notizen: VortragsNotiz[];
   sprechhilfen: VortragsNotiz[];
+  belegfolien: { aussage: AussageBezug; sldIds: string[] }[];
   zeit: { geplant: number; ziel: number; abweichung: number };
   leitfragen: { sldId: string; aussage: AussageBezug; text: string }[];
   aufgaben: VortragsAufgabe[];

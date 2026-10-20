@@ -36,6 +36,10 @@ export function VortragVorbereitung({
   const [nachArt, setNachArt] = useState<NachbereitungsEintrag["art"]>("rueckfrage");
   const [nachbereitung, setNachbereitung] = useState<NachbereitungsEintrag[]>([]);
   const [ergebnis, setErgebnis] = useState<VortragsErgebnis | null>(null);
+  const [belegPort, setBelegPort] = useState<{
+    basis: string;
+    belege: VortragsErgebnis["belegfolien"];
+  } | null>(null);
   const [fehler, setFehler] = useState("");
   const [laeuft, setLaeuft] = useState(false);
   const [gespeichert, setGespeichert] = useState<Record<string, string>>({});
@@ -57,7 +61,14 @@ export function VortragVorbereitung({
         b.sldId === sldId &&
         (b.lage === "aktuell" || b.lage === "bestaetigt_in_neuer_fassung"),
     );
-  const punkte = lage.datenpunkte.filter((d) => aktuelleBindung(d, folieId));
+  const belegBindung = (d: FolienDatenLage["datenpunkte"][number], sldId: string) =>
+    belegPort?.basis === lage.dateiFassung &&
+    belegPort.belege.some(
+      (b) => b.aussage.id === d.id && b.aussage.fassung === d.fassung && b.sldIds.includes(sldId),
+    );
+  const punkte = lage.datenpunkte.filter(
+    (d) => aktuelleBindung(d, folieId) || belegBindung(d, folieId),
+  );
   const punkt = punkte.find((d) => d.id === auswahl);
   const veraltet =
     basis !== lage.dateiFassung ||
@@ -67,7 +78,10 @@ export function VortragVorbereitung({
         n.aussagen.some(
           (b) =>
             !lage.datenpunkte.some(
-              (d) => d.id === b.id && d.fassung === b.fassung && aktuelleBindung(d, n.sldId),
+              (d) =>
+                d.id === b.id &&
+                d.fassung === b.fassung &&
+                (aktuelleBindung(d, n.sldId) || belegBindung(d, n.sldId)),
             ),
         ),
     ) ||
@@ -75,7 +89,9 @@ export function VortragVorbereitung({
       (n) =>
         !lage.datenpunkte.some(
           (d) =>
-            d.id === n.aussage.id && d.fassung === n.aussage.fassung && aktuelleBindung(d, n.sldId),
+            d.id === n.aussage.id &&
+            d.fassung === n.aussage.fassung &&
+            (aktuelleBindung(d, n.sldId) || belegBindung(d, n.sldId)),
         ),
     );
   function aendereNotiz(patch: Partial<VortragsNotiz>) {
@@ -120,7 +136,10 @@ export function VortragVorbereitung({
     setErgebnis(null);
     try {
       const r = await praesentationVortrag.auswerten(lage.koId, lage.anhangId, auftrag(modus));
-      if (e === epoche.current) setErgebnis(r);
+      if (e === epoche.current) {
+        setErgebnis(r);
+        setBelegPort({ basis: r.basis, belege: r.belegfolien });
+      }
     } catch (f) {
       if (e === epoche.current)
         setFehler(f instanceof Error ? f.message : "Vortrag konnte nicht geprüft werden.");
@@ -291,7 +310,8 @@ export function VortragVorbereitung({
                     f.sldId !== folieId &&
                     punkte.some(
                       (d) =>
-                        notiz?.aussagen.some((b) => b.id === d.id) && aktuelleBindung(d, f.sldId),
+                        notiz?.aussagen.some((b) => b.id === d.id) &&
+                        (aktuelleBindung(d, f.sldId) || belegBindung(d, f.sldId)),
                     ),
                 )
                 .map((f) => (
@@ -525,7 +545,7 @@ export function VortragVorbereitung({
                       (d) =>
                         d.id === n.aussage.id &&
                         d.fassung === n.aussage.fassung &&
-                        aktuelleBindung(d, n.sldId),
+                        (aktuelleBindung(d, n.sldId) || belegBindung(d, n.sldId)),
                     )
                       ? n.aussage.id
                       : ""
