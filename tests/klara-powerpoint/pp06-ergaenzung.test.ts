@@ -334,6 +334,9 @@ describe("PP-06 · Datenlücken passend ergänzen", () => {
   });
 
   it("diagnostiziert ungültige und nicht unterstützte Auswahl ohne Dateiwirkung", async () => {
+    expect(
+      (await w.vorschau({ ...w.suche, ort: { ...w.suche.ort, zeile: 1, spalte: 1 } })).status,
+    ).toBe(400);
     expect((await w.vorschau({ ...w.suche, ort: { ...w.suche.ort, shapeId: "9" } })).status).toBe(
       400,
     );

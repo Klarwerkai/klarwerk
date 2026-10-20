@@ -164,7 +164,14 @@ export async function ergaenzungsVorschau(
   if (!ziel || !folien) throw new DatenFehler("kein_zugriff", "Präsentation nicht verfügbar.");
   const folie = folien.satz.folien.find((f) => f.sldId === suche.ort.sldId);
   const element = folie?.elemente.find((e) => e.shapeId === suche.ort.shapeId);
-  if (!element || element.art !== "text" || !element.text.trim() || element.text.length > 2000) {
+  if (
+    !element ||
+    element.art !== "text" ||
+    !element.text.trim() ||
+    element.text.length > 2000 ||
+    suche.ort.zeile !== undefined ||
+    suche.ort.spalte !== undefined
+  ) {
     throw new DatenFehler(
       "ungueltig",
       "Ein lesbares Textfeld als Platzhalter wählen (höchstens 2000 Zeichen).",
