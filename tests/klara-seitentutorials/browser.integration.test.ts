@@ -28,7 +28,13 @@ afterAll(async () => {
   writeFileSync(
     join(belege, "ergebnisse.json"),
     JSON.stringify(
-      { commit: aktuellerCommit(), ergebnisse, browserUndServerBeendet: beendet },
+      {
+        commit: aktuellerCommit(),
+        ergebnisse,
+        browserBeendet: true,
+        eigenerServerVomTestBeendet: kandidat?.selbstGestartet ? beendet : false,
+        externerAutorenserverNochSeparatZuBeenden: kandidat ? !kandidat.selbstGestartet : false,
+      },
       null,
       2,
     ),
@@ -98,7 +104,9 @@ it("bedient Lesen, Arbeiten, Verwaltung und erhaltenes Fragen-Tutorial mit echte
       await page.getByTestId("tutorial-schliessen").focus();
       await page.keyboard.press("Escape");
       expect(await page.getByTestId("tutorial-bereich").count()).toBe(0);
-      expect(await knopf.evaluate("el => el === document.activeElement")).toBe(true);
+      expect(await page.evaluate("document.activeElement?.getAttribute('data-testid')")).toBe(
+        "tutorial-knopf",
+      );
       if (route === "/erfassen")
         expect(await page.getByTestId("blatt-titel").inputValue()).toBe(
           "Fiktiver ungespeicherter Tutorialentwurf",
