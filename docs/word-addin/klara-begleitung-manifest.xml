@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xsi:type="TaskPaneApp">
+  <!-- KLARA-OFFICE-01: die Begleitapp in Word — EIGENES Manifest mit eigener Id neben
+       klara-manifest.xml. Das Klara-Aufgabenfenster und sein Rückgabevertrag bleiben unverändert.
+       Die Seite liegt auf derselben App-Domain (public/word-addin/begleitung.html) und nutzt
+       dieselbe Anmeldung, dieselbe Klara-Sitzung und denselben Ausführungszugang.
+       Kommentare bewusst NACH dem Root-Element-Start (WP-KLARA-1c, Sideload-Befund Word Mac). -->
+  <Id>3e9d2a71-5c4b-4f60-8a1e-9b7c2d4f6e18</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>KLARWERK</ProviderName>
+  <DefaultLocale>de-DE</DefaultLocale>
+  <DisplayName DefaultValue="Klara Begleitung" />
+  <Description DefaultValue="Persönliche Assistenz mit dem aktuellen Word-Kontext: sehen, fragen, bewusst verwenden." />
+  <IconUrl DefaultValue="https://app.klarwerk.ai/word-addin/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://app.klarwerk.ai/word-addin/icon-80.png" />
+  <SupportUrl DefaultValue="https://app.klarwerk.ai/" />
+  <AppDomains>
+    <AppDomain>https://app.klarwerk.ai</AppDomain>
+    <AppDomain>https://klarwerk.ai</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Document" />
+  </Hosts>
+  <Requirements>
+    <Sets DefaultMinVersion="1.1">
+      <Set Name="WordApi" MinVersion="1.1" />
+    </Sets>
+  </Requirements>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://app.klarwerk.ai/word-addin/begleitung.html?v=1.0.0.0" />
+  </DefaultSettings>
+  <!-- Einfügen an der Markierung (nach zweitem Klick) ist eine Dokumentänderung. -->
+  <Permissions>ReadWriteDocument</Permissions>
+</OfficeApp>

@@ -443,6 +443,7 @@ import {
 import { makeAssignmentNotifier } from "./notify";
 import { type OfficeAblage, PgOfficeAblage, SpeicherOfficeAblage } from "./office-ablage";
 import { leseOfficeEditorUmgebung } from "./office-artikel";
+import { eingetrageneHerkuenfte } from "./office-kontext";
 import {
   type PaarpflichtAusfuehrung,
   createPaarpflichtAusfuehrung,
@@ -539,6 +540,7 @@ import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
 import { officeRoutes } from "./routes/office-routes";
+import { officeKontextRoutes } from "./routes/office-kontext-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
@@ -4071,6 +4073,13 @@ export function buildApp(
   // R-0609 · Bens B13: der Aufräumlauf GENAU DIESER Instanz geht an den Auslöser in `server.ts`.
   opts.klaraAufraeumen?.(() => klaraSessions.raeumeAbgelaufeneAuf());
   app.register(klaraAiRoutes({ sessions: klaraSessions }, guards));
+  // Erhaltener Office-Kontextanschluss aus 8fcd735fe (KLARA-OFFICE-01/02), derselbe Sitzungskern.
+  app.register(
+    officeKontextRoutes(
+      { sessions: klaraSessions, erlaubteHerkuenfte: eingetrageneHerkuenfte(process.env.APP_BASE_URL) },
+      guards,
+    ),
+  );
   // JOB 3326: die Lesevarianten — Übersicht, Einzelabruf und die Admin-Ladeaktion. Sie bekommen
   // DIESELBE Ablage-Instanz, die auch `koRoutes` oben durchgereicht wird; eine zweite wäre ein
   // zweiter Wahrheitsort über dieselbe Übersetzung.

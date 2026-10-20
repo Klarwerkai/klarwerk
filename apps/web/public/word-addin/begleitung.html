@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Klara · Begleitung</title>
+    <!-- KLARA-OFFICE-01: der gemeinsame Einstieg der Begleitapp in Word. Eigene Seite neben
+         taskpane.html — der alte Word-Rückgabevertrag bleibt unberührt. Logik in begleitung.js,
+         Office-Kontext im Word-Adapter office-host-word.js. -->
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <style>
+      body { font-family: -apple-system, "Segoe UI", sans-serif; font-size: 13px; margin: 12px; color: #1d1d1f; }
+      header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+      header img { width: 32px; height: 32px; border-radius: 50%; }
+      section { border: 1px solid #e3e3e6; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+      .klein { color: #6e6e73; font-size: 12px; }
+      textarea { width: 100%; box-sizing: border-box; min-height: 60px; }
+      button { margin-top: 6px; }
+      #kw-antwort { white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img src="/klara/klara-avatar-v1.png" alt="" />
+      <div>
+        <strong>Deine Assistenz</strong>
+        <div id="kw-konto" class="klein">Anmeldung wird geprüft …</div>
+      </div>
+    </header>
+    <div id="kw-anmelden" hidden class="klein">
+      Für die Begleitung bitte in KLARWERK anmelden.
+      <button id="kw-anmelden-knopf" type="button">Anmelden</button>
+    </div>
+
+    <section aria-label="Arbeitskontext">
+      <div id="kw-verbindung">Keine aktive Verbindung</div>
+      <div id="kw-dokument"><strong>Kein Dokument gebunden</strong></div>
+      <div id="kw-dokumentstand" class="klein">—</div>
+      <div id="kw-auswahl" class="klein">—</div>
+      <div id="kw-kontext" class="klein">—</div>
+      <div id="kw-meldung" class="klein">—</div>
+      <div id="kw-zustimmung" class="klein"></div>
+      <button id="kw-zustimmen-knopf" type="button">Externe KI für dieses Dokument erlauben</button>
+      <button id="kw-widerrufen-knopf" type="button">Zustimmung widerrufen</button>
+    </section>
+
+    <section aria-label="Begleitfigur">
+      <button id="kw-begleiter-knopf" type="button" role="switch" aria-checked="false">
+        Mit Begleitfigur verbinden
+      </button>
+      <div class="klein">
+        Teilt Dateiname, Host und — bei gültigem Bezug — die Markierung dieses Dokuments
+        (höchstens 4.000 Zeichen) mit deiner Klara-Begleitfigur auf diesem Konto, nur solange
+        eingeschaltet.
+      </div>
+      <div id="kw-begleiter" class="klein" role="status">Begleitfigur nicht verbunden.</div>
+    </section>
+
+    <section aria-label="Frage">
+      <label for="kw-frage">Frage an Klara</label>
+      <textarea id="kw-frage"></textarea>
+      <label><input id="kw-markierung" type="checkbox" /> Markierung mitsenden</label>
+      <label>
+        Einstufung der Markierung
+        <select id="kw-vertraulichkeit">
+          <option value="vertraulich" selected>vertraulich</option>
+          <option value="intern">intern</option>
+        </select>
+      </label>
+      <div><button id="kw-frage-knopf" type="button">Fragen</button></div>
+    </section>
+
+    <section aria-label="Antwort">
+      <div id="kw-hinweis" class="klein" role="status"></div>
+      <div id="kw-antwort"></div>
+      <div id="kw-belege" class="klein"></div>
+      <div id="kw-verwenden" hidden>
+        <button id="kw-verwenden-knopf" type="button">An der Markierung verwenden …</button>
+      </div>
+      <div id="kw-bestaetigung" hidden>
+        <div class="klein">Ersetzt die aktuelle Markierung im Dokument durch die Antwort.</div>
+        <button id="kw-bestaetigen-knopf" type="button">Jetzt einfügen</button>
+      </div>
+    </section>
+
+    <!-- Ohne Cachekennung: /word-addin/* wird ohnehin mit no-cache ausgeliefert (web-static.ts). -->
+    <script src="office-host-word.js"></script>
+    <script src="begleitung.js"></script>
+  </body>
+</html>
