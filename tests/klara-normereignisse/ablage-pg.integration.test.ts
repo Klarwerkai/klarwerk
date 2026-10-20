@@ -414,7 +414,7 @@ describe("AW21 · Normbelege im echten vorhandenen PG-Fristen-CAS", () => {
     async (art) => {
       const f = await konfliktfall();
       const vorher = await services.klaraFristen.hole(f.id);
-      let gegner: Awaited<ReturnType<KlaraNormereignisDienst["klaereKonflikt"]>> | null = null;
+      const gegner: Awaited<ReturnType<KlaraNormereignisDienst["klaereKonflikt"]>>[] = [];
       vorSchreiben = async () => {
         if (art === "Rollenentzug")
           await zweiterPool.query("UPDATE users SET role='viewer' WHERE id=$1", [f.id]);
@@ -427,7 +427,7 @@ describe("AW21 · Normbelege im echten vorhandenen PG-Fristen-CAS", () => {
         else {
           const e = f.n.ereignisse.find((e) => e.datum === "2027-02-01");
           if (!e) throw new Error("Gegenbeleg fehlt");
-          gegner = await dienst(buildPgServices(zweiterPool)).klaereKonflikt(f.id, f.n.id, {
+          gegner.push(await dienst(buildPgServices(zweiterPool)).klaereKonflikt(f.id, f.n.id, {
             ...f.eingabe,
             auswahl: [{ art: e.art, ereignisId: e.id }],
             begruendung: "Tatsächliche zweite Entscheidung gewinnt nur ihren eigenen CAS.",
@@ -440,8 +440,8 @@ describe("AW21 · Normbelege im echten vorhandenen PG-Fristen-CAS", () => {
       const nachher = await services.klaraFristen.hole(f.id);
       if (art !== "Gegenentscheidung") expect(nachher).toEqual(vorher);
       else {
-        expect(gegner).not.toBeNull();
-        expect(nachher?.normereignisse?.[0]?.klaerungen).toEqual([gegner?.klaerung]);
+        expect(gegner).toHaveLength(1);
+        expect(nachher?.normereignisse?.[0]?.klaerungen).toEqual(gegner.map((g) => g.klaerung));
         expect(nachher?.normereignisse?.[0]?.annahmen).toEqual([]);
       }
     },
