@@ -1,27 +1,25 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import fastifyStatic from "@fastify/static";
+import Fastify from "fastify";
 import { chromium } from "playwright";
 import { expect, it } from "vitest";
-import { createServer } from "../../apps/web/node_modules/vite";
 
 // Echte Chromium-Bedienung, synthetische API/Speech-Daten. Keine Mikrofon-/Tabletprobe.
 it("R-1648 · gesperrter Einstieg, Sprach-Leseablauf, Quellen, Tastatur und schmale Ansicht", async () => {
   const out = resolve(process.env.KIOSK_BELEGE ?? ".local/kiosk-browser");
   await mkdir(out, { recursive: true });
-  const server = await createServer({
-    root: resolve("apps/web"),
-    configFile: resolve("apps/web/vite.config.ts"),
-    server: { host: "127.0.0.1", port: 0, strictPort: true, hmr: false },
-    logLevel: "error",
-  });
+  const server = Fastify();
+  await server.register(fastifyStatic, { root: resolve("apps/web/dist") });
+  server.setNotFoundHandler((_request, reply) => reply.sendFile("index.html"));
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   const begin = new Date().toISOString();
   let browserEnde = false;
   let erfolgreich = false;
   let port = 0;
   try {
-    await server.listen();
-    const adresse = server.httpServer?.address();
+    await server.listen({ host: "127.0.0.1", port: 0 });
+    const adresse = server.server.address();
     if (!adresse || typeof adresse === "string") throw new Error("Eigener Listener fehlt");
     port = adresse.port;
     browser = await chromium.launch({ headless: true });
@@ -124,7 +122,7 @@ it("R-1648 · gesperrter Einstieg, Sprach-Leseablauf, Quellen, Tastatur und schm
           port,
           erfolgreich,
           browserEnde,
-          serverEnde: !server.httpServer?.listening,
+          serverEnde: !server.server.listening,
           echteChromiumBedienung: true,
           apiUndSpeech: "synthetische Adapter",
           echteAudioTabletProbe: false,
