@@ -8,6 +8,7 @@ import { act, createElement as h, useState } from "../../apps/web/node_modules/r
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import "../../apps/web/src/i18n";
+import { findeZiel } from "../../apps/web/src/components/klara-vorschau/KlaraTutorial";
 import { TutorialBereich } from "../../apps/web/src/tutorial/TutorialBereich";
 import {
   TutorialEinstieg,
@@ -158,4 +159,20 @@ it("löscht beim Verlassen einer inaktiven E16-Übung nicht die aktive Seitenmel
   expect(q("klara-lage")?.textContent).toBe("seite-profil/2");
   await klick(q("e16-ausblenden"));
   expect(q("klara-lage")?.textContent).toBe("seite-profil/2");
+});
+
+it("zeigt bei zwei offenen Bereichen die Demo der gemeldeten E16-Definition statt der ersten Demo", async () => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    new DOMRect(0, 0, 120, 50),
+  );
+  await montiere();
+  await klick(q("tutorial-knopf"));
+  const bereich = document.getElementById("e16-uebung");
+  await act(async () => {
+    bereich?.querySelector<HTMLElement>("h2")?.focus();
+  });
+  await ruhe();
+  expect(q("klara-lage")?.textContent).toBe("persoenliche-einfuehrung/0");
+  const ziel = findeZiel(null, document, EINFUEHRUNG_UEBUNG.id);
+  expect(ziel?.el.closest("[data-tutorial]")?.id).toBe("e16-uebung");
 });

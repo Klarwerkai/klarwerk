@@ -1019,6 +1019,7 @@ export function KlaraVorschau({
   const zeigerAn = lage !== null && (z.begleiten || einmalZeigen);
   const zielName = lage?.zielName ?? null;
   const schrittId = lage?.schrittId ?? null;
+  const zeigerDefinitionId = lage?.definitionId ?? null;
   // biome-ignore lint/correctness/useExhaustiveDependencies: `schrittId` ist der Auslöser bei Schrittwechsel.
   useEffect(() => {
     if (!zeigerAn) {
@@ -1026,13 +1027,13 @@ export function KlaraVorschau({
       return;
     }
     const suchen = (): void => {
-      const neu = findeZiel(zielName);
+      const neu = findeZiel(zielName, document, zeigerDefinitionId);
       setTreffer((alt) => (alt?.el === neu?.el && alt?.ort === neu?.ort ? alt : neu));
     };
     suchen();
     const uhr = window.setInterval(suchen, 400);
     return () => window.clearInterval(uhr);
-  }, [zeigerAn, zielName, schrittId]);
+  }, [zeigerAn, zielName, schrittId, zeigerDefinitionId]);
   // Das gezeigte Element ins Bild holen, sobald es feststeht.
   useEffect(() => {
     if (treffer && typeof treffer.el.scrollIntoView === "function") {
@@ -1174,7 +1175,7 @@ export function KlaraVorschau({
     if (!l) {
       return t("klaravorschau.modus.keinTutorial");
     }
-    const gefunden = findeZiel(l.zielName);
+    const gefunden = findeZiel(l.zielName, document, l.definitionId);
     const teil = l.teilText ?? t("klaravorschau.tutorial.flaeche");
     const schritt = t("klaravorschau.tutorial.schritt", {
       nr: l.schrittIndex + 1,
