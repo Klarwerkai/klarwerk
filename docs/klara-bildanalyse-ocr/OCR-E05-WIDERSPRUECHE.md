@@ -1,5 +1,12 @@
 # OCR-E05 · Sachliche Widersprüche zwischen Bildtext und Dokumenttext
 
+> Aktueller Stand 20.10.2026: Die erhaltene Erweiterung ist auf `a5023125` mit der
+> tatsächlich gelieferten E01/E02-Basis `01378570` integriert. Für den gemeinsamen
+> direkten Kandidaten gelten [Integration und Nachweise](OCR-C-INTEGRATION-20261020.md).
+> Die folgenden Nacharbeitsangaben dokumentieren den erhaltenen historischen Stand;
+> frühere Aussagen zur fehlenden Elternlieferung sind überholt. Keine Veröffentlichung
+> und keine Gesamt-Hostabnahme werden damit behauptet.
+
 Auftrag `produkt:20261012:klara-ocr-widersprueche`, Revision 2, ausschließlich OCR-E05. Die
 Originalkriterien sind gegenüber Revision 1 unverändert.
 Abhängigkeit: `produkt:20261012:klara-ocr-fundstellen-korrekturen` (OCR-E01/E02).

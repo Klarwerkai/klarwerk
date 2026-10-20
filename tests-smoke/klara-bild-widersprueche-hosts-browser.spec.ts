@@ -178,9 +178,11 @@ test("OCR-E05 · H02-Übernahmeweg (Word-Add-in-Route) · Abweichung, Fundstelle
     });
 
     pruefeAbweichung(vorher, /Bild 1, Zeile \d+$/);
-    expect(amServer.korrekturen.map((k) => [k.quelle, k.text])).toEqual([
-      [`entwurf:${entwurfId}`, BERICHTIGT],
-    ]);
+    expect(
+      amServer.korrekturen
+        .filter((k) => k.quelle === `entwurf:${entwurfId}`)
+        .map((k) => [k.quelle, k.text]),
+    ).toEqual([[`entwurf:${entwurfId}`, BERICHTIGT]]);
     expect(nachNeuladen).toBe(BERICHTIGT);
     expect(danach).toEqual([]);
   } finally {

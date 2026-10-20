@@ -1,5 +1,12 @@
 # OCR-E03 · Bildhafte Tabellen als bearbeitbare Tabellen
 
+> Aktueller Stand 20.10.2026: Die erhaltene Erweiterung ist auf `a5023125` mit der
+> tatsächlich gelieferten E01/E02-Basis `01378570` integriert. Für den gemeinsamen
+> direkten Kandidaten gelten [Integration und Nachweise](OCR-C-INTEGRATION-20261020.md).
+> Die folgenden Nacharbeitsangaben dokumentieren den erhaltenen historischen Stand;
+> frühere Aussagen zur fehlenden Elternlieferung sind überholt. Keine Veröffentlichung
+> und keine Gesamt-Hostabnahme werden damit behauptet.
+
 Auftrag `produkt:20261012:klara-ocr-tabellen`, Revision 2, ausschließlich OCR-E03. Abhängigkeit:
 `produkt:20261012:klara-ocr-fundstellen-korrekturen` (OCR-E01/E02), geliefert als `01378570`
 (1.0.0-beta.1.991). **Stand: Nacharbeit 6 — auf den gelieferten E01/E02-Stand aufgesetzt; keine

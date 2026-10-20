@@ -1,5 +1,12 @@
 # OCR-04 · Echte Dokument-/Bildwege prüfen und Lieferung belegen
 
+> Aktueller Stand 20.10.2026: Die erhaltene Erweiterung ist auf `a5023125` mit der
+> tatsächlich gelieferten E01/E02-Basis `01378570` integriert. Für den gemeinsamen
+> direkten Kandidaten gelten [Integration und Nachweise](OCR-C-INTEGRATION-20261020.md).
+> Die folgenden Nacharbeitsangaben dokumentieren den erhaltenen historischen Stand;
+> frühere Aussagen zur fehlenden Elternlieferung sind überholt. Keine Veröffentlichung
+> und keine Gesamt-Hostabnahme werden damit behauptet.
+
 Auftrag `produkt:20261012:klara-bildanalyse-ocr-hostpruefung`, Revision 1, Paket OCR-04. Prüft die
 Lieferungen von OCR-02 ([`OCR-02-AUTOMATIK.md`](./OCR-02-AUTOMATIK.md)) und OCR-03
 ([`OCR-03-KONTEXT-SETUP.md`](./OCR-03-KONTEXT-SETUP.md)) auf den tatsächlich vorhandenen Wegen. Keine

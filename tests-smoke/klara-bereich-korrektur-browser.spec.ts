@@ -16,7 +16,15 @@ test("OCR-E06 · gespeicherte Berichtigung gilt nach Neuladen auch im ausgewähl
   ]);
   const datei = { name: "bereich-speicher-e06.png", mimeType: "image/png", buffer: bild.png };
   const wurzel = page.getByTestId("datei-bild-befunde");
-  const importiere = async () => {
+  const importiere = async (neuOeffnen = false) => {
+    if (neuOeffnen) {
+      const profil = page.waitForResponse(
+        (r) => new URL(r.url()).pathname === "/api/me/assistenz" && r.request().method() === "GET",
+      );
+      await page.goto("/erfassen?weg=datei");
+      expect((await profil).ok()).toBe(true);
+    }
+    await expect(page.getByTestId("capture-file-pick")).toBeVisible();
     await page
       .locator('input[type="file"][accept*=".pptx"][accept*="image/*"]')
       .first()
@@ -48,7 +56,7 @@ test("OCR-E06 · gespeicherte Berichtigung gilt nach Neuladen auch im ausgewähl
   await wurzel.getByTestId("bild-berichtigung-speichern").first().click();
   expect((await gespeichert).ok()).toBe(true);
   await page.reload();
-  await importiere();
+  await importiere(true);
   await expect(wurzel.getByTestId("bild-befund-text").first()).toContainText("1500");
   const panel = wurzel.getByTestId("klara-bereich");
   await panel.getByTestId("klara-bereich-bild").first().click();
@@ -65,12 +73,10 @@ test("OCR-E06 · gespeicherte Berichtigung gilt nach Neuladen auch im ausgewähl
   await panel.getByTestId("klara-bereich-was-steht-hier").click();
   await expect(panel.getByTestId("klara-bereich-text")).toHaveText("SUMME 1500");
   await expect(panel.getByTestId("klara-bereich-herkunft")).toContainText("vorhandenen");
-  await test
-    .info()
-    .attach("e06-gespeicherter-bereich.png", {
-      body: await panel.screenshot(),
-      contentType: "image/png",
-    });
+  await test.info().attach("e06-gespeicherter-bereich.png", {
+    body: await panel.screenshot(),
+    contentType: "image/png",
+  });
   await wurzel.getByTestId("bild-berichtigung-zuruecksetzen").first().click();
   await expect(panel.getByTestId("klara-bereich-ergebnis")).toHaveCount(0);
   await panel.getByTestId("klara-bereich-was-steht-hier").click();

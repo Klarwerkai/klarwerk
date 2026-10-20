@@ -1,5 +1,12 @@
 # OCR-E04 · Vollständig gescannte, mehrseitige Dokumente automatisch lesen
 
+> Aktueller Stand 20.10.2026: Die erhaltene Erweiterung ist auf `a5023125` mit der
+> tatsächlich gelieferten E01/E02-Basis `01378570` integriert. Für den gemeinsamen
+> direkten Kandidaten gelten [Integration und Nachweise](OCR-C-INTEGRATION-20261020.md).
+> Die folgenden Nacharbeitsangaben dokumentieren den erhaltenen historischen Stand;
+> frühere Aussagen zur fehlenden Elternlieferung sind überholt. Keine Veröffentlichung
+> und keine Gesamt-Hostabnahme werden damit behauptet.
+
 Auftrag `produkt:20261012:klara-ocr-mehrseitige-scans`, Revision 1, ausschließlich OCR-E04. Quelle
 `20261012-peter-sechs-ergaenzungen-v1`. Basis `ef7766dc` (1.0.0-beta.1.989, enthält die
 Basisreparatur 58→53 in `lib/ocr.ts`).

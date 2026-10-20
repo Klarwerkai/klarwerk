@@ -1,5 +1,12 @@
 # OCR-E06 · „Klara, was steht hier?“ — ausgewähltes Bild oder Bereich gezielt erklären
 
+> Aktueller Stand 20.10.2026: Die erhaltene Erweiterung ist auf `a5023125` mit der
+> tatsächlich gelieferten E01/E02-Basis `01378570` integriert. Für den gemeinsamen
+> direkten Kandidaten gelten [Integration und Nachweise](OCR-C-INTEGRATION-20261020.md).
+> Die folgenden Nacharbeitsangaben dokumentieren den erhaltenen historischen Stand;
+> frühere Aussagen zur fehlenden Elternlieferung sind überholt. Keine Veröffentlichung
+> und keine Gesamt-Hostabnahme werden damit behauptet.
+
 Auftrag `produkt:20261012:klara-ocr-bereichsfrage`, Revision 1. Quelle:
 `PO-KLARA-OCR-ERGAENZUNGEN-20261012/ARBEITSAUFTRAEGE.txt: OCR-E06`. Elternauftrag
 `produkt:20261012:klara-ocr-fundstellen-korrekturen` (OCR-E01/E02).

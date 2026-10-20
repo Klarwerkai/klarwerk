@@ -52,12 +52,10 @@ test("OCR · bewusste Finder-Einzeldatei erreicht über bestätigte Herkunft den
   await bereich.getByTestId("klara-bereich-bild").first().click();
   await bereich.getByTestId("klara-bereich-was-steht-hier").click();
   await expect(bereich.getByTestId("klara-bereich-text")).toContainText("LAGER 29");
-  await test
-    .info()
-    .attach("finder-ocr-webanschluss.png", {
-      body: await bereich.screenshot(),
-      contentType: "image/png",
-    });
+  await test.info().attach("finder-ocr-webanschluss.png", {
+    body: await bereich.screenshot(),
+    contentType: "image/png",
+  });
   // Regulär abgelegtes Browserobjekt ohne Finder-Aufnahme ist keine native Auswahl.
   const anderes = await page.request.post("/api/objects", {
     data: {
@@ -69,6 +67,11 @@ test("OCR · bewusste Finder-Einzeldatei erreicht über bestätigte Herkunft den
   });
   expect(anderes.ok()).toBe(true);
   const id = ((await anderes.json()) as { id: string }).id;
+  const abgewiesen = page.waitForResponse((r) =>
+    r.url().includes(`/api/klara/programme/finder/${encodeURIComponent(id)}`),
+  );
   await page.goto(`/erfassen?weg=datei&finder=${encodeURIComponent(id)}`);
+  expect((await abgewiesen).status()).toBe(404);
+  await expect(page.getByText("Keine Aufnahme gefunden.", { exact: true })).toBeVisible();
   await expect(page.getByTestId("datei-bild-befunde")).toHaveCount(0);
 });
