@@ -220,6 +220,11 @@ export function WissenspflegePruefstand({
       {p.normbekanntmachungen ? (
         <span className="block">
           {t(`wissenspflege.normbelege.${p.normbekanntmachungen.stand}`)}
+          {p.normbekanntmachungen.folgepruefung ? (
+            <span className="block">
+              {t(`wissenspflege.normFolgepruefung.${p.normbekanntmachungen.folgepruefung.stand}`)}
+            </span>
+          ) : null}
           {" · "}
           <Link to="/kalender#normereignisse" className="underline">
             {t("wissenspflege.normbelegeOeffnen")}

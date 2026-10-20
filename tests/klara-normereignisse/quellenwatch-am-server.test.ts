@@ -52,7 +52,7 @@ function auftrag(id: string, norm = true) {
     ...(norm ? { normbekanntmachungen: "belege_vorbereiten" } : {}),
   };
 }
-async function einrichten(id: string, norm = true) {
+async function einrichten(id: string, norm = true, folge = false) {
   const r = await app.inject({
     method: "POST",
     url: "/api/me/klara/erinnerungen",
@@ -62,7 +62,12 @@ async function einrichten(id: string, norm = true) {
       titel: "Fiktiver bestellter Normwatch",
       aktion: "routine_bericht",
       zeitzone: "Europe/Berlin",
-      routine: { wissenspflege: auftrag(id, norm) },
+      routine: {
+        wissenspflege: {
+          ...auftrag(id, norm),
+          ...(folge ? { folgepruefung: "persoenliche_normpruefaufgabe" } : {}),
+        },
+      },
       zeitplan: {
         art: "serie",
         datum: "2026-10-20",
@@ -245,7 +250,7 @@ describe("AW21 · gesonderte Bestellung persönlicher Normfolgeprüfungen", () =
       pflegeAus({ ...auftrag("ko1", false), folgepruefung: "persoenliche_normpruefaufgabe" }),
     ).toThrow();
   });
-  it("tatsächliche Vorschau bestätigt den gesonderten Zweck ohne neue Aufgabe, Notiz, Normereignis oder G-Auftrag", async () => {
+  it("tatsächliche Vorschau und Aktivierung bestätigen den gesonderten Zweck ohne neue Aufgabe, Notiz, Normereignis oder G-Auftrag", async () => {
     const q = await wissen();
     const vor = await services.klaraGespraeche.aktuelles(kontoId);
     const r = await app.inject({
@@ -261,6 +266,9 @@ describe("AW21 · gesonderte Bestellung persönlicher Normfolgeprüfungen", () =
       wirkung: "keine",
       auftrag: { folgepruefung: "persoenliche_normpruefaufgabe" },
     });
+    const e = await einrichten(q.id, true, true);
+    expect(e.routine.wissenspflege.folgepruefung).toBe("persoenliche_normpruefaufgabe");
+
     expect((await normen()).normen).toEqual([]);
     expect(await notizen()).toEqual([]);
     expect(

@@ -4,18 +4,24 @@ import type { AuthService } from "../../auth";
 import { type KoService, anlagenVon, normalizeAsset } from "../../knowledge-object";
 import { can } from "../../rbac";
 import type { SessionUser } from "./http";
+import type { KlaraAufgabeRepo } from "./klara-aufgabe";
+import type { KlaraAuftrag } from "./klara-auftrag";
+import type {
+  KlaraDNormAuftragsEingabe,
+  KlaraDNormAuftragsPort,
+  KlaraDNormAuftragsPruefung,
+} from "./klara-d-normauftrag-vertrag";
 import { FRISTEN_GRENZEN, FristenFehler, type FristenStand } from "./klara-fristen";
 import type { KlaraFristenRepo } from "./klara-fristen-ablage";
 import type { GeleseneFristenQuelle } from "./klara-fristen-dienst";
 import type { KlaraFristenQuellen } from "./klara-fristen-quellen";
-import type { KlaraAuftrag } from "./klara-auftrag";
 import type { KlaraGespraechRepo } from "./klara-gespraech";
-import type { KlaraAufgabeRepo } from "./klara-aufgabe";
 import {
   type NormAbloesung,
+  type NormBeleg,
   type NormEreignis,
-  type Normgeschichte,
   type NormPruefauftragRef,
+  type Normgeschichte,
   erkenneNormBekanntmachung,
   normAbloesungsbeleg,
   normHatWiderspruch,
@@ -23,7 +29,7 @@ import {
   normQuellstand,
   vereinigeNormgeschichten,
 } from "./klara-normereignisse";
-import type { NotizSchreibbedingung } from "./klara-notiz";
+import type { KlaraNotizDienst, NotizSchreibbedingung } from "./klara-notiz";
 
 export interface NormBetroffenheit {
   koId: string;
@@ -31,7 +37,17 @@ export interface NormBetroffenheit {
   fassung: number;
   grund: { art: "gespeicherte_normzuordnung"; referenz: string };
 }
+export interface NormFolgeversuch {
+  readonly erinnerungId: string;
+  readonly erinnerungFassung: number;
+  readonly routineFassung: number;
+  readonly vorkommenId: string;
+  readonly besitzer: string;
+  /** Heutige eigene gespeicherte Zusatzbestellung und wirklich gehaltener Lauf. */
+  pruefeAktuell(): Promise<void>;
+}
 export interface NormVorbereitung {
+  folgepruefung?: { stand: "nicht_verfuegbar" | "am_original" | "klaerung_noetig" };
   ereignisse: readonly {
     normId: string;
     kennung: string;
@@ -50,6 +66,8 @@ export interface NormDienstDeps {
   auth: Pick<AuthService, "kontoLesen">;
   gespraeche: Pick<KlaraGespraechRepo, "hole" | "aktuelles">;
   aufgaben: Pick<KlaraAufgabeRepo, "hole">;
+  readonly normPruefauftrag?: () => KlaraDNormAuftragsPort | undefined;
+  readonly pruefNotizen?: Pick<KlaraNotizDienst, "lege">;
   jetzt?: () => number;
 }
 
@@ -78,6 +96,46 @@ function gemeinsam(bedingungen: readonly NotizSchreibbedingung[]): NotizSchreibb
       return { und, params };
     },
   };
+}
+
+/** Der echte D-Repo-Pfad bleibt maßgeblich: kein künstliches PG-gilt und kein Memory-SQL-Ersatz. */
+function folgeBedingung(
+  lauf: NotizSchreibbedingung,
+  weitere: readonly NotizSchreibbedingung[],
+): NotizSchreibbedingung {
+  return {
+    ...(lauf.gilt
+      ? { gilt: () => lauf.gilt?.() === true && weitere.every((b) => !b.gilt || b.gilt()) }
+      : {}),
+    ...(lauf.sql
+      ? {
+          sql: (start: number) => {
+            const b = gemeinsam([lauf, ...weitere]).sql?.(start);
+            if (!b?.und.length)
+              throw new NormereignisFehler(409, "Echter D-Norm-SQL-Schreibschutz fehlt.");
+            return b;
+          },
+        }
+      : {}),
+  };
+}
+
+/** Auch gespeicherte Anleitungsreferenzen sind beim heutigen Lesen geschützte Herkunft. */
+function normQuellen(n: Normgeschichte) {
+  const quellen = new Map<string, NormBeleg["quelle"]>(
+    n.ereignisse.flatMap((e) =>
+      e.belege.map((b) => [`${b.quelle.art}:${b.quelle.id}`, b.quelle] as const),
+    ),
+  );
+  for (const e of n.ereignisse)
+    for (const a of e.pruefeingang?.abhaengigkeiten ?? [])
+      quellen.set(`wissensobjekt:${a.koId}`, {
+        art: "wissensobjekt",
+        id: a.koId,
+        fassung: String(a.fassung),
+        belegId: `ko:${a.koId}`,
+      });
+  return quellen;
 }
 
 const geltungsSchluessel = (s: string) =>
@@ -154,11 +212,7 @@ export class KlaraNormereignisDienst {
       if (!n.ereignisse.some((e) => auswertung.aktuelleIds.has(e.id))) continue;
       // Auch Vorschau und Erfassungsantwort enthalten alte Belege. Eine lesbare Kopie
       // erteilt kein heutiges Leserecht für andere historische Quellen derselben Geschichte.
-      const quellen = new Map(
-        n.ereignisse.flatMap((e) =>
-          e.belege.map((b) => [`${b.quelle.art}:${b.quelle.id}`, b.quelle] as const),
-        ),
-      );
+      const quellen = normQuellen(n);
       const gelesen: GeleseneFristenQuelle[] = [];
       let sichtbar = true;
       for (const q of quellen.values()) {
@@ -226,6 +280,7 @@ export class KlaraNormereignisDienst {
     kontoId: string,
     ids: readonly string[],
     lauf: NotizSchreibbedingung,
+    folge?: NormFolgeversuch,
   ): Promise<NormVorbereitung> {
     for (let versuch = 0; versuch < 3; versuch++) {
       const { user, gelesen } = await this.lesungen(kontoId, ids);
@@ -248,13 +303,369 @@ export class KlaraNormereignisDienst {
           alt.fassung,
           gemeinsam([lauf, ...gelesen.map((q) => q.bedingung)]),
         ))
-      )
-        return this.vorbereiten(user, r);
+      ) {
+        const v = await this.vorbereiten(user, r);
+        if (folge) v.folgepruefung = await this.folgepruefen(kontoId, ids, lauf, folge, v);
+        return v;
+      }
     }
     throw new FristenFehler(
       409,
       "Normauftrag, Quellen oder Fristenbestand haben sich inzwischen geändert.",
     );
+  }
+
+  /** Jeder heutige Originalbeleg und gespeicherte Anleitungsbezug bleibt im tatsächlichen Schreibschutz. */
+  private async folgeStand(
+    kontoId: string,
+    ids: readonly string[],
+    normId: string,
+    ereignisId: string,
+    abhaengigkeiten: readonly { koId: string; fassung: number }[],
+  ) {
+    const { user, gelesen } = await this.lesungen(kontoId, ids);
+    const s = await this.deps.repo.hole(kontoId);
+    const n = s?.normereignisse?.find((n) => n.id === normId);
+    const e = n?.ereignisse.find((e) => e.id === ereignisId);
+    if (!s || !n || !e) throw new NormereignisFehler(404, "Eigener Normvorgang fehlt.");
+    const bekannt = new Set(gelesen.map((q) => `${q.quelle.art}:${q.quelle.id}`));
+    for (const b of n.ereignisse.flatMap((e) => e.belege)) {
+      const key = `${b.quelle.art}:${b.quelle.id}`;
+      if (bekannt.has(key)) continue;
+      const q = await this.deps.quellen.lies(user, b.quelle.art, b.quelle.id);
+      if (!q)
+        throw new NormereignisFehler(404, "Historischer Normbeleg ist heute nicht mehr lesbar.");
+      bekannt.add(key);
+      gelesen.push(q);
+    }
+    if (
+      !isDeepStrictEqual(n, this.auswerten([n], gelesen).geschichten[0]) ||
+      !e.belege.some((b) => b.aktuell && ids.includes(b.quelle.id))
+    )
+      throw new NormereignisFehler(
+        409,
+        "Aktuelle Normquellen sind noch nicht vollständig im Ereignisstand berücksichtigt.",
+      );
+    const bedingungen = gelesen.map((q) => q.bedingung);
+    const referenz = normalizeAsset(`Norm ${n.kennung}`);
+    for (const ziel of abhaengigkeiten) {
+      const q = await this.deps.quellen.lies(user, "wissensobjekt", ziel.koId);
+      const ko = q ? await this.deps.ko.get(ziel.koId) : null;
+      if (
+        !q ||
+        !ko ||
+        ko.version !== ziel.fassung ||
+        q.quelle.fassung !== String(ziel.fassung) ||
+        !referenz ||
+        !anlagenVon(ko).includes(referenz)
+      )
+        throw new NormereignisFehler(
+          409,
+          "Belegte Anleitungsfassung, Normzuordnung oder heutige Leseberechtigung wurde geändert.",
+        );
+      gelesen.push(q);
+      bedingungen.push(q.bedingung, {
+        sql: (start) => ({
+          und: [
+            `EXISTS(SELECT 1 FROM kos WHERE id=$${start}::text AND data=$${start + 1}::jsonb FOR SHARE)`,
+          ],
+          params: [ko.id, JSON.stringify(ko)],
+        }),
+      });
+    }
+    if (!(await Promise.all(gelesen.map((q) => q.nochAktuell()))).every(Boolean))
+      throw new NormereignisFehler(
+        409,
+        "Quellenrechte oder Fassungen wurden während der Normvorbereitung geändert.",
+      );
+    return { s, n, e, user, bedingungen };
+  }
+
+  private async folgepruefen(
+    kontoId: string,
+    ids: readonly string[],
+    lauf: NotizSchreibbedingung,
+    versuch: NormFolgeversuch,
+    v: NormVorbereitung,
+  ): Promise<NonNullable<NormVorbereitung["folgepruefung"]>> {
+    const port = this.deps.normPruefauftrag?.();
+    const notizen = this.deps.pruefNotizen;
+    if (!port || !notizen) return { stand: "nicht_verfuegbar" };
+    await versuch.pruefeAktuell();
+    let offen = v.ungeprueft.length > 0 || v.ereignisse.length === 0;
+    for (const kandidat of v.ereignisse) {
+      const bezug = await this.pruefbezug(kontoId, kandidat.normId, kandidat.ereignis.id);
+      if (bezug.e.pruefauftrag && !bezug.e.pruefeingang) continue;
+      if (
+        !bezug.e.datum ||
+        !bezug.e.geltung ||
+        !bezug.e.belege.some((b) => b.aktuell && !b.widerspruch && b.klaerung.length === 0) ||
+        kandidat.betroffen.length > 20
+      ) {
+        offen = true;
+        continue;
+      }
+      const abhaengigkeiten =
+        bezug.e.pruefeingang?.abhaengigkeiten ??
+        kandidat.betroffen.map((b) => ({ koId: b.koId, fassung: b.fassung }));
+      let eingabe = bezug.e.pruefeingang?.eingabe;
+      let entwurf: Omit<KlaraDNormAuftragsEingabe, "gespraechId">;
+      if (!eingabe) {
+        const grund = await this.folgeStand(kontoId, ids, bezug.n.id, bezug.e.id, abhaengigkeiten);
+        const titel = `Normprüfung ${bezug.n.kennung} v${bezug.n.ausgabe} · ${bezug.e.art}`.slice(
+          0,
+          120,
+        );
+        const art = {
+          angekuendigt: "Ankündigung",
+          veroeffentlicht: "Veröffentlichung",
+          inkrafttreten: "Inkrafttreten",
+          uebergangsfrist: "Übergangsfrist",
+        }[bezug.e.art];
+        const inhalt = [
+          "Automatisch vorbereitete persönliche Normprüfung aus dem ausdrücklich bestellten Quellenwatch.",
+          `Norm ${bezug.n.kennung} v${bezug.n.ausgabe}: ${art} am ${bezug.e.datum}; Geltung: ${bezug.e.geltung}.`,
+          "Bekanntmachung und Kalenderdatum sind keine fachliche Annahme einer Anleitung.",
+          ...bezug.e.belege
+            .filter((b) => b.aktuell)
+            .slice(0, 1)
+            .map(
+              (b) =>
+                `Begrenzter Originalbeleg (${b.quelle.id}, Fassung ${b.quelle.fassung}):\n${b.norm.wortlaut}\n${b.ereignis.wortlaut}\n${b.geltung?.wortlaut ?? ""}`,
+            ),
+          ...kandidat.betroffen.map(
+            (b) =>
+              `Gespeicherte Normzuordnung: ${b.titel.slice(0, 200)} (KO ${b.koId}, Fassung ${b.fassung}).`,
+          ),
+        ].join("\n");
+        await versuch.pruefeAktuell();
+        const notiz = (
+          await notizen.lege(
+            kontoId,
+            {
+              vorgang: bezug.e.pruefVorgang,
+              art: "notiz",
+              weg: "geschrieben",
+              titel,
+              inhalt,
+              objektbezug: {
+                pfad: "/kalender#normereignisse",
+                seitenName: "Mein Kalender",
+                objekt: titel,
+              },
+            },
+            folgeBedingung(lauf, grund.bedingungen),
+          )
+        ).notiz;
+        if (notiz.titel !== titel || notiz.inhalt !== inhalt)
+          throw new NormereignisFehler(
+            409,
+            "Die eigene ursprüngliche Prüfungsnotiz wurde geändert; kein Ersatzoriginal.",
+          );
+        entwurf = {
+          kontoId,
+          erinnerungId: versuch.erinnerungId,
+          erinnerungFassung: versuch.erinnerungFassung,
+          routineFassung: versuch.routineFassung,
+          normId: bezug.n.id,
+          ereignisId: bezug.e.id,
+          pruefVorgang: bezug.e.pruefVorgang,
+          notiz: { id: notiz.id, fassung: notiz.fassung },
+          titel,
+        };
+      } else {
+        const { gespraechId: _g, ...rest } = eingabe;
+        entwurf = rest;
+      }
+      let frisch: NotizSchreibbedingung | null = null;
+      let ersteAnlage = false;
+      const pruefe = async (p: KlaraDNormAuftragsPruefung): Promise<void> => {
+        const { gespraechId: _g, ...ohneGespraech } = p.eingabe;
+        if (
+          !isDeepStrictEqual(ohneGespraech, entwurf) ||
+          (eingabe && !isDeepStrictEqual(p.eingabe, eingabe)) ||
+          !p.abdruck ||
+          p.abdruck.length > 200
+        )
+          throw new NormereignisFehler(
+            409,
+            "G-Eingabe oder Inhaltsbindung stimmt nicht mit dem Original überein.",
+          );
+        const { s, n, e, user, bedingungen } = await this.folgeStand(
+          kontoId,
+          ids,
+          entwurf.normId,
+          entwurf.ereignisId,
+          abhaengigkeiten,
+        );
+        const notiz = await this.deps.quellen.lies(user, "notiz", p.eingabe.notiz.id);
+        if (!notiz || notiz.quelle.fassung !== String(p.eingabe.notiz.fassung))
+          throw new NormereignisFehler(
+            404,
+            "Eigene gebundene Prüfungsnotiz fehlt oder wurde geändert.",
+          );
+        if (
+          e.pruefeingang &&
+          (!isDeepStrictEqual(e.pruefeingang.eingabe, p.eingabe) ||
+            e.pruefeingang.abdruck !== p.abdruck ||
+            !isDeepStrictEqual(e.pruefeingang.abhaengigkeiten, abhaengigkeiten))
+        )
+          throw new NormereignisFehler(
+            409,
+            "Der kanonische Normeingang oder sein Inhalt wurde geändert.",
+          );
+        if (e.pruefauftrag && (!p.original || p.original.id !== e.pruefauftrag.auftragId))
+          throw new NormereignisFehler(409, "Das gebundene G-Original fehlt; kein Ersatzauftrag.");
+        if (p.phase !== "lesen") {
+          await versuch.pruefeAktuell();
+          if (p.eingabe.erinnerungId !== versuch.erinnerungId)
+            throw new NormereignisFehler(
+              409,
+              "Ein anderer Auftrag hat dieses Original bereits bestellt; keine zweite Aufgabe.",
+            );
+          if (p.phase === "anlegen" && !p.original && e.pruefeingang && !ersteAnlage)
+            throw new NormereignisFehler(
+              409,
+              "Früherer Anlageausgang unklar; nur das Original nachlesen.",
+            );
+          if (p.phase === "wirken" && (!e.pruefeingang || !p.original))
+            throw new NormereignisFehler(409, "Aktuelle kanonische Originalbindung fehlt.");
+          if (p.phase === "anlegen" && !e.pruefeingang) {
+            const normereignisse = (s.normereignisse ?? []).map((x) =>
+              x.id === n.id
+                ? {
+                    ...x,
+                    ereignisse: x.ereignisse.map((x) =>
+                      x.id === e.id
+                        ? {
+                            ...x,
+                            pruefeingang: {
+                              eingabe: p.eingabe,
+                              abdruck: p.abdruck,
+                              abhaengigkeiten,
+                            },
+                          }
+                        : x,
+                    ),
+                  }
+                : x,
+            );
+            if (
+              !(await this.deps.repo.speichere(
+                { ...s, fassung: s.fassung + 1, normereignisse },
+                s.fassung,
+                folgeBedingung(lauf, [notiz.bedingung, ...bedingungen]),
+              ))
+            )
+              throw new NormereignisFehler(
+                409,
+                "Der ursprüngliche Normeingang wurde gleichzeitig beansprucht.",
+              );
+            ersteAnlage = true;
+            eingabe = p.eingabe;
+          }
+        }
+        const guard: NotizSchreibbedingung = {
+          sql: (start) => ({
+            und: [
+              `EXISTS(SELECT 1 FROM klara_fristen WHERE konto_id=$${start}::text AND data->'normereignisse' @> $${start + 1}::jsonb FOR SHARE)`,
+            ],
+            params: [
+              kontoId,
+              JSON.stringify([
+                {
+                  id: entwurf.normId,
+                  ereignisse: [
+                    {
+                      id: entwurf.ereignisId,
+                      pruefeingang: { eingabe: p.eingabe, abdruck: p.abdruck, abhaengigkeiten },
+                    },
+                  ],
+                },
+              ]),
+            ],
+          }),
+        };
+        frisch = folgeBedingung(lauf, [guard, notiz.bedingung, ...bedingungen]);
+      };
+      const kontext = {
+        vorkommenId: versuch.vorkommenId,
+        besitzer: versuch.besitzer,
+        pruefe,
+        bedingung: {
+          ...(lauf.gilt ? { gilt: () => frisch?.gilt?.() === true } : {}),
+          ...(lauf.sql
+            ? {
+                sql: (start: number) => {
+                  if (!frisch?.sql)
+                    throw new NormereignisFehler(409, "Aktueller Norm-SQL-Schreibschutz fehlt.");
+                  return frisch.sql(start);
+                },
+              }
+            : {}),
+        },
+      };
+      // Diese einzige G-Setupnaht beansprucht ihren echten kanonischen Eingang vor der Anlage.
+      const fest = eingabe ?? (await port.eingang(entwurf, kontext));
+      if (!isDeepStrictEqual(fest, eingabe))
+        throw new NormereignisFehler(409, "G-Eingang wurde nicht im Norm-CAS bestätigt.");
+      const alt = await port.original(fest, kontext);
+      const antwort =
+        alt &&
+        (alt.auftrag.stand === "abgebrochen" ||
+          alt.auftrag.stand === "abgeschlossen" ||
+          fest.erinnerungId !== versuch.erinnerungId)
+          ? alt
+          : await port.ausfuehren(fest, kontext);
+      if (
+        antwort.referenz.gespraechId !== fest.gespraechId ||
+        antwort.auftrag.id !== antwort.referenz.auftragId ||
+        antwort.referenz.nr !== 1 ||
+        !antwort.auftrag.schritte.some(
+          (s) => s.nr === 1 && s.schluessel === antwort.referenz.schluessel,
+        )
+      )
+        throw new NormereignisFehler(409, "G hat kein passendes Original bestätigt.");
+      for (let anlauf = 0; anlauf < 3; anlauf++) {
+        const s = await this.deps.repo.hole(kontoId);
+        const n = s?.normereignisse?.find((n) => n.id === fest.normId);
+        const e = n?.ereignisse.find((e) => e.id === fest.ereignisId);
+        if (!s || !n || !e?.pruefeingang || !isDeepStrictEqual(e.pruefeingang.eingabe, fest))
+          throw new NormereignisFehler(
+            409,
+            "Der kanonische Vorgang wurde nach G-Readback geändert.",
+          );
+        if (e.pruefauftrag) {
+          if (!isDeepStrictEqual(e.pruefauftrag, antwort.referenz))
+            throw new NormereignisFehler(409, "Abweichende Originalreferenz.");
+          break;
+        }
+        const normereignisse = (s.normereignisse ?? []).map((x) =>
+          x.id === n.id
+            ? {
+                ...x,
+                ereignisse: x.ereignisse.map((x) =>
+                  x.id === e.id ? { ...x, pruefauftrag: antwort.referenz } : x,
+                ),
+              }
+            : x,
+        );
+        if (
+          await this.deps.repo.speichere(
+            { ...s, fassung: s.fassung + 1, normereignisse },
+            s.fassung,
+            lauf,
+          )
+        )
+          break;
+        if (anlauf === 2)
+          throw new NormereignisFehler(
+            409,
+            "G-Original vorhanden, D-Referenz noch unklar. Nur nachlesen.",
+          );
+      }
+    }
+    return { stand: offen ? "klaerung_noetig" : "am_original" };
   }
 
   /** Historische Auszüge bleiben hinter heutigen Quellenrechten; GET verändert keine Fassung. */
@@ -432,11 +843,7 @@ export class KlaraNormereignisDienst {
     const s = await this.deps.repo.hole(kontoId);
     const lesbar: (Normgeschichte & { annahmeUngeprueft: boolean })[] = [];
     for (const n of s?.normereignisse ?? []) {
-      const quellen = new Map(
-        n.ereignisse.flatMap((e) =>
-          e.belege.map((b) => [`${b.quelle.art}:${b.quelle.id}`, b.quelle] as const),
-        ),
-      );
+      const quellen = normQuellen(n);
       let aktuell: readonly Normgeschichte[] = [n];
       let sichtbar = quellen.size > 0;
       for (const q of quellen.values()) {

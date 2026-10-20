@@ -3,6 +3,11 @@ export default {
   praefix: "wissenspflege.",
   legacySchluessel: [],
   de: {
+    "wissenspflege.normFolgepruefung.nicht_verfuegbar":
+      "Der Anschluss für persönliche Prüfaufgaben ist derzeit nicht verfügbar. Die Belegvorbereitung bleibt erhalten.",
+    "wissenspflege.normFolgepruefung.am_original": "Prüfaufträge im Originalverlauf nachlesen.",
+    "wissenspflege.normFolgepruefung.klaerung_noetig":
+      "Für mindestens ein Ereignis sind die Belege oder der erlaubte Umfang zuerst zu klären.",
     "wissenspflege.normFolgepruefungErlaubt":
       "Bei neuen belegten Normereignissen persönliche Prüfaufgaben für mich anlegen. Gleiche Meldungen und Kopien behalten dieselbe Aufgabe. Keine fachliche Annahme einer Anleitung.",
     "wissenspflege.normbelegeErlaubt":
@@ -56,6 +61,11 @@ export default {
     "wissenspflege.nie": "Bisher kein erfolgreicher Prüfzeitpunkt belegt",
   },
   en: {
+    "wissenspflege.normFolgepruefung.nicht_verfuegbar":
+      "The personal review task connection is currently unavailable. Evidence preparation is preserved.",
+    "wissenspflege.normFolgepruefung.am_original": "Read review tasks in their original history.",
+    "wissenspflege.normFolgepruefung.klaerung_noetig":
+      "Evidence or the permitted scope must first be clarified for at least one event.",
     "wissenspflege.normFolgepruefungErlaubt":
       "Create personal review tasks for me when new standards events are evidenced. Identical notices and copies keep the same task. This does not professionally accept an instruction.",
     "wissenspflege.normbelegeErlaubt":
@@ -108,6 +118,12 @@ export default {
     "wissenspflege.nie": "No successful check time recorded yet",
   },
   nl: {
+    "wissenspflege.normFolgepruefung.nicht_verfuegbar":
+      "De koppeling voor persoonlijke controletaken is momenteel niet beschikbaar. De voorbereiding van bewijzen blijft behouden.",
+    "wissenspflege.normFolgepruefung.am_original":
+      "Lees controleopdrachten in hun oorspronkelijke verloop.",
+    "wissenspflege.normFolgepruefung.klaerung_noetig":
+      "Voor ten minste één gebeurtenis moeten bewijs of toegestane omvang eerst worden verduidelijkt.",
     "wissenspflege.normFolgepruefungErlaubt":
       "Maak persoonlijke controletaken voor mij bij nieuw bewezen normgebeurtenissen. Dezelfde meldingen en kopieën behouden dezelfde taak. Dit is geen inhoudelijke acceptatie van een instructie.",
     "wissenspflege.normbelegeErlaubt":

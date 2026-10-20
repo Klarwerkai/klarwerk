@@ -140,6 +140,9 @@ export interface PflegeErgebnis {
   readonly aenderung: string | null;
   readonly normbekanntmachungen?: {
     readonly stand: "belege_vorbereitet" | "ungeprueft" | "keine_erkannten_belege";
+    readonly folgepruefung?: {
+      readonly stand: "nicht_verfuegbar" | "am_original" | "klaerung_noetig";
+    };
   };
 }
 

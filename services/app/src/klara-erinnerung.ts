@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { NormVorbereitung } from "./klara-normereignisse-dienst";
 import type { Pool } from "pg";
 import type { KlaraAufgabeRepo } from "./klara-aufgabe";
 import {
@@ -23,6 +22,7 @@ import {
   wochentagVon,
 } from "./klara-erinnerung-zeit";
 import type { KlaraGespraechRepo, KlaraObjektbezug } from "./klara-gespraech";
+import type { NormFolgeversuch, NormVorbereitung } from "./klara-normereignisse-dienst";
 import {
   type KlaraNotiz,
   type KlaraNotizAenderung,
@@ -3848,6 +3848,7 @@ export interface KlaraErinnerungSteuerungDeps {
     kontoId: string,
     quellen: readonly string[],
     bedingung: NotizSchreibbedingung,
+    folge?: NormFolgeversuch,
   ) => Promise<NormVorbereitung>;
   /**
    * EQF-07: die Ergebnisablage einer Routine — „Meine Notizen“ (`KlaraNotizDienst` samt Readback
@@ -4644,6 +4645,40 @@ export class KlaraErinnerungSteuerung {
     );
     if (routine.wissenspflege.normbekanntmachungen === "belege_vorbereiten") {
       let stand: NonNullable<PflegeErgebnis["normbekanntmachungen"]>["stand"] = "ungeprueft";
+      let folgepruefung: NonNullable<PflegeErgebnis["normbekanntmachungen"]>["folgepruefung"];
+      const folge: NormFolgeversuch | undefined =
+        routine.wissenspflege.folgepruefung === "persoenliche_normpruefaufgabe"
+          ? {
+              erinnerungId: e.id,
+              erinnerungFassung: e.fassung,
+              routineFassung: routine.fassung,
+              vorkommenId: lauf.vorkommenId,
+              besitzer: this.besitzer,
+              pruefeAktuell: async () => {
+                const jetzt = await this.deps.ablage.erinnerungen.hole(e.kontoId, e.id);
+                const l = await this.deps.ablage.laeufe.hole(lauf.vorkommenId);
+                const r = jetzt?.erinnerung;
+                if (
+                  !r ||
+                  r.status !== "aktiv" ||
+                  r.fassung !== e.fassung ||
+                  r.routine?.fassung !== routine.fassung ||
+                  r.routine.wissenspflege?.normbekanntmachungen !== "belege_vorbereiten" ||
+                  r.routine.wissenspflege?.folgepruefung !== "persoenliche_normpruefaufgabe" ||
+                  this.empfaengerVon(r) !== e.kontoId ||
+                  !l ||
+                  l.erinnerungId !== e.id ||
+                  l.kontoId !== e.kontoId ||
+                  l.vorkommenId !== lauf.vorkommenId ||
+                  l.besitzer !== this.besitzer ||
+                  l.status !== "laeuft"
+                )
+                  throw new Error(
+                    "Die aktuelle eigene Normfolgeprüfbestellung oder der gehaltene Lauf gilt nicht mehr.",
+                  );
+              },
+            }
+          : undefined;
       if (entwurf.ergebnis.stand !== "ungeprueft") {
         const vorbereiten = this.deps.normereignisse;
         if (!vorbereiten) return { art: "fehlgeschlagen", grund: "quelle_unlesbar" };
@@ -4654,7 +4689,9 @@ export class KlaraErinnerungSteuerung {
             e.kontoId,
             routine.wissenspflege.quellen,
             this.notizBedingung(e, [], lauf, entwurf.gelesen),
+            folge,
           );
+          if (folge) folgepruefung = n.folgepruefung ?? { stand: "nicht_verfuegbar" };
           stand = n.ungeprueft.length
             ? "ungeprueft"
             : n.ereignisse.length
@@ -4664,7 +4701,16 @@ export class KlaraErinnerungSteuerung {
           return { art: "fehlgeschlagen", grund: "quelle_geaendert" };
         }
       }
-      entwurf = { ...entwurf, ergebnis: { ...entwurf.ergebnis, normbekanntmachungen: { stand } } };
+      entwurf = {
+        ...entwurf,
+        ergebnis: {
+          ...entwurf.ergebnis,
+          normbekanntmachungen: {
+            stand,
+            ...(folge ? { folgepruefung: folgepruefung ?? { stand: "nicht_verfuegbar" } } : {}),
+          },
+        },
+      };
     }
     if (entwurf.ergebnis.stand !== "vorbereitet") {
       if (entwurf.ergebnis.stand === "ungeprueft") {
