@@ -54,5 +54,9 @@
   {
     "file": "klara-bild-ocr04-abnahme-browser.spec.ts",
     "title": "OCR-04 · PowerPoint im Artikel: Klara antwortet mit dem Modell auf Text aus eingebetteten Bildern @modell"
+  },
+  {
+    "file": "klara-erinnerungen-browser.spec.ts",
+    "title": "Klara 10 · E3 bestellte Zusammenfassung: tatsächliche Modellantwort kommt mit der Erinnerung in die Glocke @modell"
   }
 ]
