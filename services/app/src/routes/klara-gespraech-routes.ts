@@ -9,6 +9,7 @@ import {
 } from "../klara-aktionsverlauf";
 import type { KlaraAuftrag, KlaraAuftragSchritt } from "../klara-auftrag";
 import { bindeAuftragsnotizen } from "../klara-auftragsnotiz";
+import { bindeAuftragswissen } from "../klara-auftragswissen";
 import { KlaraAusfuehrung, type KlaraRufe, type KlaraVorWirkung } from "../klara-ausfuehrung";
 import {
   type KlaraGespraech,
@@ -317,10 +318,18 @@ export function klaraGespraechRoutes(
           const eingabe = rumpf<Record<string, unknown>>(request.body);
           if (
             Array.isArray(eingabe.plan) &&
-            eingabe.plan.some((p) => p && typeof p === "object" && "notizQuelle" in p)
+            eingabe.plan.some(
+              (p) =>
+                p &&
+                typeof p === "object" &&
+                ("notizQuelle" in p || p.aktion === "wissen_uebernehmen"),
+            )
           )
             await dienst.hole(user.id, request.params.id);
-          const gebunden = await bindeAuftragsnotizen(eingabe, rufeFuer(request));
+          const gebunden = await bindeAuftragswissen(
+            await bindeAuftragsnotizen(eingabe, rufeFuer(request)),
+            rufeFuer(request),
+          );
           const auftrag = await dienst.legeAuftragAn(user.id, request.params.id, gebunden);
           await audit.record({
             actor: user.id,

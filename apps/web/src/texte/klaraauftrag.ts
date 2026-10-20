@@ -11,6 +11,18 @@ export default {
   praefix: "klaraauftrag.",
   legacySchluessel: [],
   de: {
+    "klaraauftrag.wissen.bindung": "Private Notiz · Fassung {{fassung}} · {{ziel}} · {{stufe}}",
+    "klaraauftrag.aktion.wissen_uebernehmen": "Bewusst als Wissen übernehmen",
+    "klaraauftrag.zielArt.neuer_wissensbeitrag": "gewählter neuer Wissensbeitrag",
+    "klaraauftrag.zielText.wissen_uebernehmen": "„{{titel}}“ bewusst als Wissen übernehmen",
+    "klaraauftrag.ergebnisAnforderung.wissen_uebernehmen":
+      "Tatsächlicher fachlich offener Artikel mit Originalrücklink",
+    "klaraauftrag.wissen.original": "Eigene private Notiz",
+    "klaraauftrag.wissen.auftrag":
+      "„{{titel}}“ mit dem gesehenen Ziel bewusst als Wissen übernehmen",
+    "klaraauftrag.wissen.keineRuecknahme":
+      "Dieser eigenständige Beitrag bleibt erhalten. Änderungen und Löschung folgen dem bestehenden Wissensweg.",
+    "klaraauftrag.wissen.neuPruefen": "Neue Vorschau wählen",
     "klaraauftrag.notizquelle.geschrieben":
       "Eigene gespeicherte Notiz „{{titel}}“ · Fassung {{fassung}}",
     "klaraauftrag.notizquelle.ruecklinkGeschrieben": "Zum ursprünglichen Notizkontext",
@@ -270,6 +282,18 @@ export default {
       "„Diktieren“ schreibt nur ins Eingabefeld. „Auftrag sprechen“ zeigt den Auftrag als Karte – erst „Senden“ führt ihn aus.",
   },
   en: {
+    "klaraauftrag.wissen.bindung": "Private note · version {{fassung}} · {{ziel}} · {{stufe}}",
+    "klaraauftrag.aktion.wissen_uebernehmen": "Consciously adopt as knowledge",
+    "klaraauftrag.zielArt.neuer_wissensbeitrag": "selected new knowledge contribution",
+    "klaraauftrag.zielText.wissen_uebernehmen": "Consciously adopt “{{titel}}” as knowledge",
+    "klaraauftrag.ergebnisAnforderung.wissen_uebernehmen":
+      "Actual contribution with open review status with an original link",
+    "klaraauftrag.wissen.original": "Own private note",
+    "klaraauftrag.wissen.auftrag":
+      "Consciously adopt “{{titel}}” as knowledge with the viewed target",
+    "klaraauftrag.wissen.keineRuecknahme":
+      "This independent contribution remains. Changes and deletion follow the existing knowledge workflow.",
+    "klaraauftrag.wissen.neuPruefen": "Choose a new preview",
     "klaraauftrag.notizquelle.geschrieben": "Own saved note “{{titel}}” · version {{fassung}}",
     "klaraauftrag.notizquelle.ruecklinkGeschrieben": "Go to the original note context",
     "klaraauftrag.notizquelle.frage": "Which saved conversation note “{{titel}}” do you mean?",
@@ -521,6 +545,17 @@ export default {
       "“Dictate” only writes into the input field. “Speak a task” shows the task as a card – only “Send” carries it out.",
   },
   nl: {
+    "klaraauftrag.wissen.bindung": "Privénotitie · versie {{fassung}} · {{ziel}} · {{stufe}}",
+    "klaraauftrag.aktion.wissen_uebernehmen": "Bewust als kennis overnemen",
+    "klaraauftrag.zielArt.neuer_wissensbeitrag": "gekozen nieuwe kennisbijdrage",
+    "klaraauftrag.zielText.wissen_uebernehmen": "“{{titel}}” bewust als kennis overnemen",
+    "klaraauftrag.ergebnisAnforderung.wissen_uebernehmen":
+      "Werkelijke bijdrage met open beoordeling met een oorspronkelijke link",
+    "klaraauftrag.wissen.original": "Eigen privénotitie",
+    "klaraauftrag.wissen.auftrag": "“{{titel}}” bewust als kennis overnemen met het bekeken doel",
+    "klaraauftrag.wissen.keineRuecknahme":
+      "Deze zelfstandige bijdrage blijft bestaan. Wijzigingen en verwijdering volgen de bestaande kennisweg.",
+    "klaraauftrag.wissen.neuPruefen": "Nieuwe voorvertoning kiezen",
     "klaraauftrag.notizquelle.geschrieben":
       "Eigen opgeslagen notitie “{{titel}}” · versie {{fassung}}",
     "klaraauftrag.notizquelle.ruecklinkGeschrieben": "Naar de oorspronkelijke notitiecontext",

@@ -12,6 +12,13 @@ export default {
   praefix: "assistenzverlauf.",
   legacySchluessel: [],
   de: {
+    "assistenzverlauf.korrigieren.wissen": "Zum Wissensbeitrag",
+    "assistenzverlauf.vertrag.wissen_uebernehmen.wirkung":
+      "Tatsächlicher fachlich offener Artikel über F08 mit Originalrücklink",
+    "assistenzverlauf.vertrag.wissen_uebernehmen.recht":
+      "Heutiges Quell- und Zielrecht, gesehene F08-Vorschau und bewusste Übernahme.",
+    "assistenzverlauf.vertrag.wissen_uebernehmen.ruecknahme":
+      "Dieser eigenständige Beitrag bleibt erhalten. Änderungen und Löschung folgen dem bestehenden Wissensweg.",
     "assistenzverlauf.vertrag.erinnerung_anlegen.wirkung":
       "Persönliche Erinnerung über den vorhandenen Erinnerungsdienst anlegen.",
     "assistenzverlauf.vertrag.erinnerung_anlegen.recht":
@@ -129,6 +136,13 @@ export default {
       "Rückgängig nicht möglich: der Entwurf ist für dich nicht (mehr) erreichbar. Nichts geändert.",
   },
   en: {
+    "assistenzverlauf.korrigieren.wissen": "Open contribution",
+    "assistenzverlauf.vertrag.wissen_uebernehmen.wirkung":
+      "Actual contribution with open review status through F08 and an original link",
+    "assistenzverlauf.vertrag.wissen_uebernehmen.recht":
+      "Current source and target rights, viewed F08 preview and conscious adoption.",
+    "assistenzverlauf.vertrag.wissen_uebernehmen.ruecknahme":
+      "This independent contribution remains. Changes and deletion follow the existing knowledge workflow.",
     "assistenzverlauf.vertrag.erinnerung_anlegen.wirkung":
       "Create a personal reminder through the existing reminder service.",
     "assistenzverlauf.vertrag.erinnerung_anlegen.recht":
@@ -245,6 +259,13 @@ export default {
       "Cannot undo: the draft is not (or no longer) available to you. Nothing changed.",
   },
   nl: {
+    "assistenzverlauf.korrigieren.wissen": "Naar de kennisbijdrage",
+    "assistenzverlauf.vertrag.wissen_uebernehmen.wirkung":
+      "Werkelijke bijdrage met open beoordeling via F08 en een oorspronkelijke link",
+    "assistenzverlauf.vertrag.wissen_uebernehmen.recht":
+      "Actuele bron- en doelrechten, bekeken F08-voorvertoning en bewuste overname.",
+    "assistenzverlauf.vertrag.wissen_uebernehmen.ruecknahme":
+      "Deze zelfstandige bijdrage blijft bestaan. Wijzigingen en verwijdering volgen de bestaande kennisweg.",
     "assistenzverlauf.vertrag.erinnerung_anlegen.wirkung":
       "Persoonlijke herinnering maken via de bestaande herinneringsdienst.",
     "assistenzverlauf.vertrag.erinnerung_anlegen.recht":
