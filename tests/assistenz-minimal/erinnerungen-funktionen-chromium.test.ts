@@ -123,10 +123,44 @@ it("reaches reminders through functions and opens a message draft there without 
   expect(
     await seite().getByTestId("klara-erinnerung-speichern").getAttribute("disabled"),
   ).toBeNull();
+  const titel = "Bearbeiteter Titel vor Unterseitenwechsel";
+  await seite().getByTestId("klara-erinnerung-titel").click();
+  await seite().evaluate(SETZEN, ["klara-erinnerung-titel", titel]);
+  const vorschau = await seite().getByTestId("klara-erinnerung-vorschau").textContent();
+  for (const rueckweg of ["zurueck", "escape"] as const) {
+    if (rueckweg === "zurueck") {
+      await seite().getByTestId("klara-unterseite-zurueck").click();
+    } else {
+      await seite().keyboard.press("Escape");
+    }
+    expect(await seite().getByTestId("klara-gespraech").getAttribute("data-seite")).toBe(
+      "gespraech",
+    );
+    expect(await seite().getByTestId("klara-erinnerungen").isVisible()).toBe(false);
+    await seite().getByTestId("klara-menue-knopf").click();
+    await seite().getByTestId("klara-menue-funktionen").click();
+    await sichtbar("klara-erinnerung-entwurf");
+    for (const [id, wert] of [
+      ["klara-erinnerung-titel", titel],
+      ["klara-erinnerung-datum", datum],
+      ["klara-erinnerung-uhrzeit", "09:00"],
+    ]) {
+      expect(
+        await seite().evaluate(
+          fn(`(id) => document.querySelector('[data-testid="' + id + '"]').value`),
+          id,
+        ),
+      ).toBe(wert);
+    }
+    expect(await seite().getByTestId("klara-erinnerung-vorschau").textContent()).toBe(vorschau);
+    expect(
+      await seite().getByTestId("klara-erinnerung-speichern").getAttribute("disabled"),
+    ).toBeNull();
+  }
   const bilder = process.env.KLARA_I1_BELEGORDNER;
   if (bilder) {
     mkdirSync(bilder, { recursive: true });
-    await seite().screenshot({ path: join(bilder, "I1-ERINNERUNGSENTWURF.png") });
+    await seite().screenshot({ path: join(bilder, "I1-FOLGE1-ERINNERUNGSENTWURF.png") });
   }
   await seite().getByTestId("klara-erinnerung-abbrechen").click();
   await seite().getByTestId("klara-unterseite-zurueck").click();

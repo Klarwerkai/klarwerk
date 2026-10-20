@@ -2669,7 +2669,47 @@ export function KlaraVorschau({
             label={t("assistenzminimal.vorgang.label")}
           />
 
-          {menueSeite ? (
+          {/* Ein laufender Erinnerungsentwurf bleibt beim Unterseitenwechsel montiert:
+              Zurück/Escape blendet ihn aus, nur Abbrechen verwirft ihn. */}
+          {menueSeite === "funktionen" || erinnerungsVorgang ? (
+            <Unterseite
+              seite="funktionen"
+              verborgen={menueSeite !== "funktionen"}
+              zurueckRef={menueSeite === "funktionen" ? unterseiteZurueckRef : null}
+              onZurueck={zurueckZumGespraech}
+            >
+              <FunktionenSeite
+                sprachMoeglich={sprechen.moeglich}
+                onAuftragSprechen={() => {
+                  setMenueSeite(null);
+                  sprechen.starten("auftrag");
+                }}
+                vorschauLink={
+                  <Link to={VORSCHAU_PFAD} data-testid="klara-zur-vorschau" className={KNOPF}>
+                    {t("klaraprodukt.vorschau.link")}
+                  </Link>
+                }
+                // Integration main (Klara 06): die eigenen Notizen wiederfinden — dieselbe Liste
+                // wie im bisherigen Panel; angelegt wird an der Nachricht im Gespräch.
+                notizen={istEcht && kontoId ? <KlaraNotizen /> : null}
+                // Integration main (Klara 07): die eigenen Aufgaben wiederfinden — dieselbe Liste
+                // wie im bisherigen Panel; angelegt wird über den Ausführungsweg im Gespräch.
+                aufgaben={istEcht && kontoId ? <KlaraAufgaben /> : null}
+                erinnerungen={istEcht && kontoId ? <KlaraErinnerungen /> : null}
+                // Integration main (BPA-13): derselbe KI-Arbeitsweg am eigenen gespeicherten
+                // Gespräch wie im bisherigen Panel — erreichbar über „Meine Funktionen“.
+                kiArbeitsweg={
+                  istEcht && echt.gespraech ? (
+                    <KiArbeitsweg
+                      gespraechId={echt.gespraech.id}
+                      kontext={objektbezugAus(kontext)}
+                    />
+                  ) : null
+                }
+              />
+            </Unterseite>
+          ) : null}
+          {menueSeite && menueSeite !== "funktionen" ? (
             <Unterseite
               seite={menueSeite}
               zurueckRef={unterseiteZurueckRef}
@@ -2687,36 +2727,6 @@ export function KlaraVorschau({
                 />
               ) : menueSeite === "verlauf" ? (
                 <VerlaufSeite pfad={location.pathname} onZumGespraech={zurueckZumGespraech} />
-              ) : menueSeite === "funktionen" ? (
-                <FunktionenSeite
-                  sprachMoeglich={sprechen.moeglich}
-                  onAuftragSprechen={() => {
-                    setMenueSeite(null);
-                    sprechen.starten("auftrag");
-                  }}
-                  vorschauLink={
-                    <Link to={VORSCHAU_PFAD} data-testid="klara-zur-vorschau" className={KNOPF}>
-                      {t("klaraprodukt.vorschau.link")}
-                    </Link>
-                  }
-                  // Integration main (Klara 06): die eigenen Notizen wiederfinden — dieselbe Liste
-                  // wie im bisherigen Panel; angelegt wird an der Nachricht im Gespräch.
-                  notizen={istEcht && kontoId ? <KlaraNotizen /> : null}
-                  // Integration main (Klara 07): die eigenen Aufgaben wiederfinden — dieselbe Liste
-                  // wie im bisherigen Panel; angelegt wird über den Ausführungsweg im Gespräch.
-                  aufgaben={istEcht && kontoId ? <KlaraAufgaben /> : null}
-                  erinnerungen={istEcht && kontoId ? <KlaraErinnerungen /> : null}
-                  // Integration main (BPA-13): derselbe KI-Arbeitsweg am eigenen gespeicherten
-                  // Gespräch wie im bisherigen Panel — erreichbar über „Meine Funktionen“.
-                  kiArbeitsweg={
-                    istEcht && echt.gespraech ? (
-                      <KiArbeitsweg
-                        gespraechId={echt.gespraech.id}
-                        kontext={objektbezugAus(kontext)}
-                      />
-                    ) : null
-                  }
-                />
               ) : menueSeite === "einstellungen" ? (
                 <EinstellungenSeite
                   kontext={objektbezugAus(kontext)}
@@ -2850,7 +2860,7 @@ export function KlaraVorschau({
                 />
               )}
             </Unterseite>
-          ) : (
+          ) : !menueSeite ? (
             <>
               {/* 2 · Kontext: eine Zeile; ein Klick zeigt Ort, Fassung, Bezug, Datenweg, KI. */}
               <details data-testid="klara-kontext" className="border-b border-hairline">
@@ -3461,7 +3471,7 @@ export function KlaraVorschau({
                 ) : null}
               </form>
             </>
-          )}
+          ) : null}
         </section>
       ) : panelSichtbar ? (
         <section

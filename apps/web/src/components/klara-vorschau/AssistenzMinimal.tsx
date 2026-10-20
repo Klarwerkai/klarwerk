@@ -159,17 +159,20 @@ export function Unterseite({
   zurueckRef,
   onZurueck,
   children,
+  verborgen = false,
 }: {
   seite: MenueSeite;
-  zurueckRef: RefObject<HTMLButtonElement>;
+  zurueckRef: RefObject<HTMLButtonElement> | null;
   onZurueck: () => void;
   children: ReactNode;
+  verborgen?: boolean;
 }): JSX.Element {
   const { t } = useAssistenzT();
   return (
     <div
       data-testid="klara-unterseite"
       data-seite={seite}
+      hidden={verborgen}
       className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
