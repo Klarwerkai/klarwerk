@@ -50,6 +50,9 @@ export class WissensFehler extends Error {
   }
 }
 const abdruck = (text: string) => createHash("sha256").update(text).digest("hex");
+/** Gemeinsame bestehende F08-Identität für Anlage und rein lesenden Journalreadback. */
+export const wissensUebernahmeVorgang = (id: string, fassung: number) =>
+  `klara-wissen-${abdruck(`${id}:${fassung}`)}`;
 const html = (text: string) =>
   text
     .replaceAll("&", "&amp;")
@@ -359,7 +362,7 @@ export class KlaraWissensDienst {
         if (v.stempel !== x.stempel)
           throw new WissensFehler(409, "Vorschau geändert; erneut prüfen.");
         const operation = {
-          id: `klara-wissen-${abdruck(`${id}:${v.fassung}`)}`,
+          id: wissensUebernahmeVorgang(id, v.fassung),
           actor: user.id,
           fingerprint: v.stempel,
         };

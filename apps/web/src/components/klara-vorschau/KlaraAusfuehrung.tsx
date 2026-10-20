@@ -138,10 +138,12 @@ function nachgelesenText(stand: string | null, t: TFunction): string {
 
 export function KlaraAusfuehrungen({
   umgebung,
+  nur,
 }: {
   umgebung: () => AuftragsUmgebung;
+  nur?: string;
 }): JSX.Element | null {
-  const liste = useAusfuehrungen();
+  const liste = useAusfuehrungen().filter((a) => !nur || a.lokalId === nur);
   if (liste.length === 0) {
     return null;
   }
@@ -628,6 +630,11 @@ function AusfuehrungKarte({
                     className="mt-0.5 text-[11px] text-muted-2"
                   >
                     {t("klaraauftrag.nichtRuecknehmbar.erinnerung")}
+                  </p>
+                ) : null}
+                {s?.stand === "gespeichert" && s.aktion === "wissen_uebernehmen" ? (
+                  <p className="mt-0.5 text-[11px] text-muted-2">
+                    {t("klaraauftrag.wissen.keineRuecknahme")}
                   </p>
                 ) : null}
                 {s?.stand === "zurueckgenommen" ? (

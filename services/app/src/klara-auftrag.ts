@@ -1,6 +1,7 @@
 import { canonicalJson } from "../../audit";
 import type { KlaraAuftragsnotiz } from "./klara-auftragsnotiz";
 import { istDatum, istUhrzeit, istZeitzone } from "./klara-erinnerung-zeit";
+import { type WissensZiel, wissensZiel as f08Ziel } from "./klara-wissensuebernahme";
 // ================================================================================================
 // produkt:20261008:klara-aktionen (Klara 05, AW-10) — DIE AUFTRAGSGRENZE AUSSERHALB DES SPRACHMODELLS.
 // ================================================================================================
@@ -42,6 +43,7 @@ export const KLARA_AKTIONEN = [
   "aufgabe_bearbeiten",
   "persoenliche_aufgabe_anlegen",
   "erinnerung_anlegen",
+  "wissen_uebernehmen",
 ] as const;
 export type KlaraAktion = (typeof KLARA_AKTIONEN)[number];
 
@@ -50,13 +52,18 @@ export const KLARA_ZIELARTEN = [
   "entwurf",
   "aufgabe",
   "neuer_entwurf",
+  "neuer_wissensbeitrag",
   "neue_persoenliche_aufgabe",
   "persoenliche_aufgabe",
 ] as const;
 export type KlaraZielArt = (typeof KLARA_ZIELARTEN)[number];
 
 /** Ziele, die der Schritt erst anlegt — sie haben noch keine Kennung. */
-const NEUE_ZIELARTEN: readonly KlaraZielArt[] = ["neuer_entwurf", "neue_persoenliche_aufgabe"];
+const NEUE_ZIELARTEN: readonly KlaraZielArt[] = [
+  "neuer_entwurf",
+  "neue_persoenliche_aufgabe",
+  "neuer_wissensbeitrag",
+];
 
 const ERGEBNISARTEN = [
   "wissensobjekt",
@@ -162,7 +169,7 @@ export interface KlaraAuftragSchritt {
  * oder Wirkung ohne Antwort des Schreibwegs).
  */
 export interface KlaraSchreibwirkung {
-  readonly art: "entwurf" | "aufgabe" | "persoenliche_aufgabe" | "erinnerung";
+  readonly art: "entwurf" | "aufgabe" | "persoenliche_aufgabe" | "erinnerung" | "wissensobjekt";
   readonly id: string;
   readonly pfad: string;
   readonly stand: string | null;
@@ -219,7 +226,24 @@ export function erlaubteAufgabenaktionen(
  * nur aus, was hier steht; was der Browser beim Ausführen mitschickt, ist nur die Schrittnummer.
  * `ausSchritt`: dieser Schritt öffnet das Ergebnis des Schritts mit dieser Nummer.
  */
+export function wissensZielFuerAuftrag(roh: unknown): WissensZiel {
+  try {
+    return f08Ziel(roh);
+  } catch (e) {
+    throw eingabeFehler(e instanceof Error ? e.message : "Ungültiges Wissensziel.");
+  }
+}
+
+export interface KlaraWissensAuftragsbindung {
+  readonly notizId: string;
+  readonly fassung: number;
+  readonly ziel: WissensZiel;
+  readonly stempel: string;
+  readonly bewusst: true;
+}
+
 export interface KlaraPlanSchritt {
+  readonly wissen?: KlaraWissensAuftragsbindung;
   readonly notizQuelle?: KlaraAuftragsnotiz;
   readonly nr: number;
   readonly aktion: KlaraAktion;
@@ -710,6 +734,32 @@ function pruefePlan(
         };
       }
     }
+    let wissen: KlaraWissensAuftragsbindung | undefined;
+    if (aktion === "wissen_uebernehmen") {
+      if (
+        ziel?.art !== "neuer_wissensbeitrag" ||
+        ausSchritt !== null ||
+        o.inhalt != null ||
+        o.notizQuelle != null
+      )
+        throw eingabeFehler(
+          `${feld}: Bewusste Wissensübernahme braucht ihr eigenes gewähltes Ziel ohne kopierten Inhalt.`,
+        );
+      const w = objekt(o.wissen, `${feld}.wissen`);
+      const notizId = text(w.notizId, 200, "wissen.notizId");
+      if (!erlaubteQuellen.includes(`notiz:${notizId}`) || w.bewusst !== true)
+        throw eingabeFehler(
+          `${feld}: Tatsächlich gewählte eigene Quelle und bewusste Übernahme fehlen.`,
+        );
+      wissen = {
+        notizId,
+        fassung: ganzzahl(w.fassung, 1, Number.MAX_SAFE_INTEGER, "wissen.fassung"),
+        ziel: wissensZielFuerAuftrag(w.ziel),
+        stempel: text(w.stempel, 200, "wissen.stempel"),
+        bewusst: true,
+      };
+    } else if (o.wissen != null)
+      throw eingabeFehler(`${feld}: Wissensbindung gehört nur zur bewussten Wissensübernahme.`);
     const inhalt =
       aktion === "entwurf_erstellen" || aktion === "persoenliche_aufgabe_anlegen"
         ? wahlweiseText(o.inhalt, 2_000, `${feld}.inhalt`)
@@ -749,6 +799,7 @@ function pruefePlan(
       ...(quellen ? { quellen } : {}),
       ...(erinnerung ? { erinnerung } : {}),
       ...(notizQuelle ? { notizQuelle } : {}),
+      ...(wissen ? { wissen } : {}),
     };
   });
 }
@@ -956,6 +1007,7 @@ export function korrigiere(
           !alt ||
           p.aktion !== alt.aktion ||
           canonicalJson(p.notizQuelle ?? null) !== canonicalJson(alt.notizQuelle ?? null) ||
+          canonicalJson(p.wissen ?? null) !== canonicalJson(alt.wissen ?? null) ||
           p.ausSchritt !== alt.ausSchritt ||
           (p.ziel && alt.ziel && !gleichesZiel(p.ziel, alt.ziel)) ||
           (begonnen.has(p.nr) && canonicalJson(p) !== canonicalJson(alt))

@@ -2748,7 +2748,7 @@ export function KlaraVorschau({
                 }
                 // Integration main (Klara 06): die eigenen Notizen wiederfinden — dieselbe Liste
                 // wie im bisherigen Panel; angelegt wird an der Nachricht im Gespräch.
-                notizen={istEcht && kontoId ? <KlaraNotizen /> : null}
+                notizen={istEcht && kontoId ? <KlaraNotizen auftragskarte /> : null}
                 // Integration main (Klara 07): die eigenen Aufgaben wiederfinden — dieselbe Liste
                 // wie im bisherigen Panel; angelegt wird über den Ausführungsweg im Gespräch.
                 aufgaben={istEcht && kontoId ? <KlaraAufgaben /> : null}

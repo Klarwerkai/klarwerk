@@ -32,7 +32,8 @@ export type KlaraAktion =
   | "entwurf_bearbeiten"
   | "aufgabe_bearbeiten"
   | "persoenliche_aufgabe_anlegen"
-  | "erinnerung_anlegen";
+  | "erinnerung_anlegen"
+  | "wissen_uebernehmen";
 
 /**
  * Wonach Klara das Ziel sucht. `neu`: ein Entwurf, den der Schritt erst anlegt; `neue_aufgabe`: eine

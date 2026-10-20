@@ -1,14 +1,11 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
-import {
-  type WissensErgebnis,
-  type WissensVorschau,
-  type WissensZiel,
-  klaraWissenApi,
-} from "../../api/klaraWissen";
+import { type WissensVorschau, type WissensZiel, klaraWissenApi } from "../../api/klaraWissen";
 import { useSession } from "../../app/AuthContext";
 import { useAssistenzT } from "../../lib/assistenzProfil";
+import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
+import { starteWissensauftrag, useAusfuehrungen } from "./auftrag";
 import { ladeNotizen, oeffneNotiz } from "./notizen";
 const feld = "block w-full rounded-input border border-hairline bg-surface px-2 py-1 text-sm";
 const knopf = "rounded-btn border border-hairline px-3 py-1 text-sm disabled:opacity-40";
@@ -16,7 +13,8 @@ export function KlaraWissen({
   id,
   fassung,
   geaendert,
-}: { id: string; fassung: number; geaendert: boolean }) {
+  auftragskarte = false,
+}: { id: string; fassung: number; geaendert: boolean; auftragskarte?: boolean }) {
   const { t } = useAssistenzT();
   const { user } = useSession();
   const [offen, setOffen] = useState(false);
@@ -29,14 +27,21 @@ export function KlaraWissen({
   const [vorlagen, setVorlagen] = useState<{ id: string; version: number; name: string }[]>([]);
   const [vorlageId, setVorlage] = useState("");
   const [v, setV] = useState<WissensVorschau | null>(null);
-  const [ergebnis, setErgebnis] = useState<WissensErgebnis | null>(null);
+  const [auftragId, setAuftragId] = useState<string | null>(null);
+  const auftrag = useAusfuehrungen().find((a) => a.lokalId === auftragId);
+  const ergebnis = auftrag?.auftrag?.schritte.find(
+    (s) => s.aktion === "wissen_uebernehmen",
+  )?.ergebnis;
+  const navigation = useNavigate();
+  const ort = useLocation();
+  const umgebung = () => ({ t, navigiere: navigation, ort: () => ort.pathname + ort.search });
   const [fehler, setFehler] = useState("");
   const [pruefung, setPruefung] = useState("");
   const [laeuft, setLaeuft] = useState(false);
   const aendern = (fn: () => void) => {
     fn();
     setV(null);
-    setErgebnis(null);
+    setAuftragId(null);
     setPruefung("");
   };
   useEffect(() => {
@@ -97,148 +102,193 @@ export function KlaraWissen({
       {offen ? (
         <div className="mt-2 space-y-2">
           <p>{t("klarawissen.hilfe")}</p>
-          <label>
-            {t("klarawissen.ziel")}
-            <select
-              data-testid="wissen-art"
-              className={feld}
-              value={art}
-              onChange={(e) => aendern(() => setArt(e.target.value as "artikel" | "space"))}
-            >
-              <option value="artikel">{t("klarawissen.artikel")}</option>
-              <option value="space">{t("klarawissen.space")}</option>
-            </select>
-          </label>
-          {art === "space" ? (
-            <label>
-              {t("klarawissen.space")}
-              <select
-                data-testid="wissen-space"
-                className={feld}
-                value={spaceId}
-                onChange={(e) => aendern(() => setSpace(e.target.value))}
-              >
-                <option value="">{t("klarawissen.waehlen")}</option>
-                {spaces.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ·{" "}
-                    {s.zugang === "alle" ? t("klarawissen.alle") : t("klarawissen.mitglieder")}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <label>
-            {t("klarawissen.sichtbarkeit")}
-            <select
-              data-testid="wissen-stufe"
-              className={feld}
-              value={stufe}
-              onChange={(e) => aendern(() => setStufe(e.target.value))}
-            >
-              <option value="">{t("klarawissen.waehlen")}</option>
-              {["intern", "vertraulich", "streng_vertraulich"].map((s) => (
-                <option key={s} value={s}>
-                  {t(`klarawissen.${s}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {t("klarawissen.kategorie")}
-            <input
-              data-testid="wissen-kategorie"
-              className={feld}
-              value={kategorie}
-              onChange={(e) => aendern(() => setKategorie(e.target.value))}
-            />
-          </label>
-          <label>
-            {t("klarawissen.bedingungen")}
-            <textarea
-              data-testid="wissen-bedingungen"
-              className={feld}
-              value={bedingungen}
-              onChange={(e) => aendern(() => setBedingungen(e.target.value))}
-            />
-          </label>
-          <label>
-            {t("klarawissen.vorlage")}
-            <select
-              className={feld}
-              value={vorlageId}
-              onChange={(e) => aendern(() => setVorlage(e.target.value))}
-            >
-              <option value="">{t("klarawissen.frei")}</option>
-              {vorlagen.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            data-testid="wissen-vorschau"
-            className={knopf}
-            type="button"
-            disabled={laeuft || !stufe || !kategorie || (art === "space" && !spaceId) || geaendert}
-            onClick={() =>
-              void handeln(async () => setV(await klaraWissenApi.vorschau(id, fassung, ziel())))
-            }
-          >
-            {t("klarawissen.vorschau")}
-          </button>
-          <button
-            data-testid="wissen-pruefen"
-            type="button"
-            className={knopf}
-            disabled={laeuft}
-            onClick={() =>
-              void handeln(async () => {
-                const p = await klaraWissenApi.pruefen(id);
-                setPruefung(
-                  p.ergebnis.status === "geprueft"
-                    ? p.ergebnis.aussagen
-                        .map((a) => t(`klarawissen.pruef.${a.zustand}`))
-                        .join(" · ")
-                    : t("klarawissen.offen"),
-                );
-              })
-            }
-          >
-            {t("klarawissen.pruefen")}
-          </button>
-          {pruefung ? <output>{pruefung}</output> : null}
-          {v ? (
-            <div data-testid="wissen-vorschau-inhalt">
-              <p className="whitespace-pre-wrap">{v.original}</p>
-              <p>
-                {t("klarawissen.verantwortlich")} {user?.name ?? t("klarawissen.du")} ·{" "}
-                {v.space?.name ?? t("klarawissen.artikel")} · {t(`klarawissen.${stufe}`)}
-              </p>
-              <p>{t("klarawissen.kontoregel")}</p>
-              {v.offeneFragen.map((q) => (
-                <p key={q}>
-                  {t("klarawissen.frage")} {q}
-                </p>
-              ))}
+          {!auftragId ? (
+            <fieldset className="space-y-2">
+              <label>
+                {t("klarawissen.ziel")}
+                <select
+                  data-testid="wissen-art"
+                  className={feld}
+                  value={art}
+                  onChange={(e) => aendern(() => setArt(e.target.value as "artikel" | "space"))}
+                >
+                  <option value="artikel">{t("klarawissen.artikel")}</option>
+                  <option value="space">{t("klarawissen.space")}</option>
+                </select>
+              </label>
+              {art === "space" ? (
+                <label>
+                  {t("klarawissen.space")}
+                  <select
+                    data-testid="wissen-space"
+                    className={feld}
+                    value={spaceId}
+                    onChange={(e) => aendern(() => setSpace(e.target.value))}
+                  >
+                    <option value="">{t("klarawissen.waehlen")}</option>
+                    {spaces.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ·{" "}
+                        {s.zugang === "alle" ? t("klarawissen.alle") : t("klarawissen.mitglieder")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <label>
+                {t("klarawissen.sichtbarkeit")}
+                <select
+                  data-testid="wissen-stufe"
+                  className={feld}
+                  value={stufe}
+                  onChange={(e) => aendern(() => setStufe(e.target.value))}
+                >
+                  <option value="">{t("klarawissen.waehlen")}</option>
+                  {["intern", "vertraulich", "streng_vertraulich"].map((s) => (
+                    <option key={s} value={s}>
+                      {t(`klarawissen.${s}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t("klarawissen.kategorie")}
+                <input
+                  data-testid="wissen-kategorie"
+                  className={feld}
+                  value={kategorie}
+                  onChange={(e) => aendern(() => setKategorie(e.target.value))}
+                />
+              </label>
+              <label>
+                {t("klarawissen.bedingungen")}
+                <textarea
+                  data-testid="wissen-bedingungen"
+                  className={feld}
+                  value={bedingungen}
+                  onChange={(e) => aendern(() => setBedingungen(e.target.value))}
+                />
+              </label>
+              <label>
+                {t("klarawissen.vorlage")}
+                <select
+                  className={feld}
+                  value={vorlageId}
+                  onChange={(e) => aendern(() => setVorlage(e.target.value))}
+                >
+                  <option value="">{t("klarawissen.frei")}</option>
+                  {vorlagen.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button
-                data-testid="wissen-uebernehmen"
-                type="button"
+                data-testid="wissen-vorschau"
                 className={knopf}
-                disabled={laeuft || geaendert}
+                type="button"
+                disabled={
+                  laeuft || !stufe || !kategorie || (art === "space" && !spaceId) || geaendert
+                }
                 onClick={() =>
-                  void handeln(async () => setErgebnis(await klaraWissenApi.uebernehmen(v, ziel())))
+                  void handeln(async () => setV(await klaraWissenApi.vorschau(id, fassung, ziel())))
                 }
               >
-                {t("klarawissen.uebernehmen")}
+                {t("klarawissen.vorschau")}
               </button>
-            </div>
+              <button
+                data-testid="wissen-pruefen"
+                type="button"
+                className={knopf}
+                disabled={laeuft}
+                onClick={() =>
+                  void handeln(async () => {
+                    const p = await klaraWissenApi.pruefen(id);
+                    setPruefung(
+                      p.ergebnis.status === "geprueft"
+                        ? p.ergebnis.aussagen
+                            .map((a) => t(`klarawissen.pruef.${a.zustand}`))
+                            .join(" · ")
+                        : t("klarawissen.offen"),
+                    );
+                  })
+                }
+              >
+                {t("klarawissen.pruefen")}
+              </button>
+              {pruefung ? <output>{pruefung}</output> : null}
+              {v ? (
+                <div data-testid="wissen-vorschau-inhalt">
+                  <p className="whitespace-pre-wrap">{v.original}</p>
+                  <p>
+                    {t("klarawissen.verantwortlich")} {user?.name ?? t("klarawissen.du")} ·{" "}
+                    {v.space?.name ?? t("klarawissen.artikel")} · {t(`klarawissen.${stufe}`)}
+                  </p>
+                  <p>{t("klarawissen.kontoregel")}</p>
+                  {v.offeneFragen.map((q) => (
+                    <p key={q}>
+                      {t("klarawissen.frage")} {q}
+                    </p>
+                  ))}
+                  <button
+                    data-testid="wissen-uebernehmen"
+                    type="button"
+                    className={knopf}
+                    disabled={laeuft || geaendert || Boolean(auftragId)}
+                    onClick={() => {
+                      try {
+                        setAuftragId(
+                          starteWissensauftrag(
+                            v,
+                            ziel(),
+                            {
+                              pfad: ort.pathname + ort.search,
+                              seite: "andere",
+                              seitenName: t("klaraauftrag.wissen.original"),
+                              objekt: t("klaraauftrag.wissen.original"),
+                            },
+                            umgebung(),
+                          ),
+                        );
+                      } catch (e) {
+                        setFehler(e instanceof Error ? e.message : String(e));
+                      }
+                    }}
+                  >
+                    {t("klarawissen.uebernehmen")}
+                  </button>
+                </div>
+              ) : null}
+            </fieldset>
+          ) : (
+            <p data-testid="wissen-auftrag-bindung" className="text-xs text-muted">
+              {t("klaraauftrag.wissen.bindung", {
+                fassung: v?.fassung ?? fassung,
+                ziel: v?.space?.name ?? t("klarawissen.artikel"),
+                stufe: t(`klarawissen.${stufe}`),
+              })}
+            </p>
+          )}
+          {auftragId && auftragskarte ? (
+            <KlaraAusfuehrungen nur={auftragId} umgebung={umgebung} />
+          ) : null}
+          {auftragId && (!auftrag || ["fertig", "fehler"].includes(auftrag.phase)) ? (
+            <button
+              type="button"
+              className={knopf}
+              onClick={() => {
+                setAuftragId(null);
+                setV(null);
+              }}
+            >
+              {t("klaraauftrag.wissen.neuPruefen")}
+            </button>
           ) : null}
           {ergebnis ? (
             <output data-testid="wissen-ergebnis">
-              <Link to={`/wissen/${ergebnis.beitrag.id}`}>{t("klarawissen.gespeichert")}</Link> ·{" "}
-              {t(`klarawissen.status.${ergebnis.beitrag.status}`)}
+              <Link to={`/wissen/${ergebnis.id}`}>{t("klarawissen.gespeichert")}</Link> ·{" "}
+              {ergebnis.stand}
             </output>
           ) : null}
           {fehler ? <p role="alert">{fehler}</p> : null}
