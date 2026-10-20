@@ -425,6 +425,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/datenpunkte/:dpId/bindungen": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
   "POST /api/datenpunkte/:dpId/pruefungen": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
   "POST /api/datenpunkte/:dpId/korrektur": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "POST /api/kos/:id/office/:anhangId/folienaufbau/vorschau": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/kos/:id/office/:anhangId/folienaufbau/uebernehmen": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
   // PP-02-Hostanschluss über A01: nur lesend; ko.read schon vor dem Lesen des Körpers (onRequest).
   "POST /api/kos/:id/office/:anhangId/folien-abgleich": {
     protection: "ko.read",
