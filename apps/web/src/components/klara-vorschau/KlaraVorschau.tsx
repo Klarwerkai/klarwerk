@@ -40,6 +40,7 @@ import {
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -71,6 +72,7 @@ import { istLernauftrag } from "../../lib/lernauftrag";
 import { leseobjektJetzt, useLeseobjekt } from "../../lib/leseobjekt";
 import { leserHref } from "../../lib/objektbezug";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
+import { anfrageEpoche, aufRechtekontextwechsel } from "../../lib/rechtekontext";
 import { meldeVormachen } from "../../lib/vormachenAnzeige";
 import { useTutorialFuerKlara } from "../../tutorial/TutorialRahmen";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
@@ -171,9 +173,9 @@ import {
   stoppen as echtStoppen,
   vergiss as echtVergessen,
   einwilligen,
-  ladeEcht,
   leseEcht,
   objektbezugAus,
+  pruefeEcht,
   useEchtGespraech,
 } from "./echt";
 import {
@@ -446,6 +448,7 @@ export function KlaraVorschau({
   const sitzung = useSession();
   const kontoId = sitzung.user?.id ?? null;
   const echt = useEchtGespraech();
+  const rechteEpoche = useSyncExternalStore(aufRechtekontextwechsel, anfrageEpoche, anfrageEpoche);
   const ki = useKlaraKiLage();
   // Im Produktbetrieb gibt es nur den echten Betrieb — auch wenn die Sitzung noch einen in der
   // Vorschau gewählten Demo-Betrieb trägt.
@@ -477,6 +480,7 @@ export function KlaraVorschau({
       verwerfeEigeninitiative();
     }
   }, [sitzungBeantwortet, kontoId]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Rechteepoche und erfolgreiche Sessionantwort sind Wiederprüfanlässe auch bei gleicher Konto-ID.
   useEffect(() => {
     if (!kontoId) {
       // Abgemeldet: nichts vom Gespräch bleibt im Browser stehen — und nichts wird mehr vorgelesen.
@@ -485,9 +489,10 @@ export function KlaraVorschau({
       return;
     }
     if (istEcht) {
-      void ladeEcht(kontoId, t);
+      void pruefeEcht(kontoId, t);
     }
-  }, [kontoId, istEcht, t]);
+    // Vorhandener Sessiontakt/Fokus prüft auch bei gleichem Rechteheader erneut. Kein zweiter Timer.
+  }, [kontoId, istEcht, t, rechteEpoche, sitzung.sitzungGeprueftAm]);
   // „Anfrage läuft seit … s“ — einmal je Sekunde neu gezeichnet, nur solange eine läuft.
   const [, setTakt] = useState(0);
   useEffect(() => {
@@ -3282,7 +3287,7 @@ export function KlaraVorschau({
                   }}
                   onNeuLaden={() => {
                     if (kontoId) {
-                      void ladeEcht(kontoId, t);
+                      void pruefeEcht(kontoId, t);
                     }
                   }}
                   sprecher={anzeigeName}
@@ -4254,7 +4259,7 @@ export function KlaraVorschau({
                 }}
                 onNeuLaden={() => {
                   if (kontoId) {
-                    void ladeEcht(kontoId, t);
+                    void pruefeEcht(kontoId, t);
                   }
                 }}
                 {...(produkt ? { sprecher: anzeigeName } : {})}

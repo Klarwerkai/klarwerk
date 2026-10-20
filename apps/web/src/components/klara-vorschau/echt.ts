@@ -44,6 +44,9 @@ export interface EchtNachricht extends KlaraGespraechNachricht {
   nochmal?: KlaraNachrichtEingabe;
   /** Bei „nein" ohne `nochmal`: warum diese Nachricht gar nicht ablegbar war. */
   ohneBeleg?: boolean;
+  /** Ausgeblendete Quellprojektion ist weder Anzeige noch Gesprächsfaden. */
+  rechteUngeprueft?: boolean;
+  nichtImFaden?: boolean;
 }
 
 export type Ladestand = "aus" | "laedt" | "bereit" | "fehler";
@@ -95,6 +98,9 @@ let lokalZaehler = 0;
 // verspätete Antwort den Gesprächskopf des alten Kontos wieder ein, oder eine Fortsetzung von
 // `fragen()` schickte die alte Frage unter der Sitzung des neuen Kontos weiter.
 let generation = 0;
+// Lesungen derselben Person sind zusätzlich an ihren heutigen Inhaltsstand gebunden.
+let inhaltsGeneration = 0;
+let leseFolge = 0;
 
 /** Ein Ablauf, dessen Konto inzwischen vergessen wurde. Wird nie angezeigt, nur beendet. */
 class Veraltet extends Error {
@@ -153,6 +159,8 @@ export function beimVergessen(f: () => void): void {
 /** Abmelden, Kontowechsel, Tests: alles Gelesene vergessen, eine laufende Anfrage stoppen. */
 export function vergiss(): void {
   generation += 1;
+  inhaltsGeneration += 1;
+  leseFolge += 1;
   laufend?.abort();
   laufend = null;
   zustand = LEER;
@@ -227,7 +235,7 @@ export function antwortModus(demo: boolean): "ki" | "ohne_ki" {
 /** Der Gesprächsfaden: die vorigen getippten Fragen, älteste zuerst, höchstens drei. */
 export function fadenAus(nachrichten: readonly EchtNachricht[]): string[] {
   return nachrichten
-    .filter((n) => n.von === "du" && n.modus === "frage")
+    .filter((n) => n.von === "du" && n.modus === "frage" && !n.rechteUngeprueft && !n.nichtImFaden)
     .map((n) => n.text)
     .slice(-3);
 }
@@ -261,44 +269,145 @@ function istGespraech(roh: unknown): roh is KlaraGespraech {
   );
 }
 
-/** Liest das eigene Gespräch — einmal je Konto, erneut nach einem Ladefehler. */
-export async function ladeEcht(kontoId: string, t: TFunction): Promise<void> {
-  if (zustand.kontoId === kontoId && (zustand.laden === "bereit" || zustand.laden === "laedt")) {
+/** Abgeleitete Altprojektionen während einer heutigen Prüfung nicht als Inhalt verwenden. */
+function quellprojektionenVerwerfen(): void {
+  const neutral: KlaraObjektbezug = { pfad: "/fragen", seitenName: "Fragen", objekt: "Gespräch" };
+  setze((z) => ({
+    ...z,
+    gespraech: z.gespraech
+      ? {
+          ...z.gespraech,
+          objektbezug: z.gespraech.objektbezug.koId ? neutral : z.gespraech.objektbezug,
+          letzterSchritt: z.gespraech.letzterSchritt?.objektbezug.koId
+            ? null
+            : z.gespraech.letzterSchritt,
+        }
+      : null,
+    nachrichten: z.nachrichten.map((n) =>
+      n.rechteUngeprueft ||
+      n.antwortId ||
+      n.modus === "ki" ||
+      n.modus === "ohne_ki" ||
+      n.objektbezug.koId ||
+      n.quellen.length > 0
+        ? {
+            id: n.id,
+            von: n.von,
+            modus: n.von === "du" ? n.modus : "fehler",
+            text: "",
+            objektbezug: neutral,
+            antwortId: null,
+            quellen: [],
+            wissensklasse: null,
+            grund: null,
+            angelegtAm: n.angelegtAm,
+            gespeichert: n.gespeichert,
+            rechteUngeprueft: true,
+            ...(n.von === "du" ? { nichtImFaden: true } : {}),
+          }
+        : n,
+    ),
+  }));
+}
+
+/** Eine Serverprojektion ersetzt gespeicherte Zeilen; noch lokale eigene Arbeit bleibt daneben. */
+function uebernimmGespraech(g: KlaraGespraech, lokalId?: string): void {
+  setze((z) => {
+    const ids = new Set(g.nachrichten.map((n) => n.id));
+    const nachrichten = g.nachrichten.map((n): EchtNachricht => {
+      const alt = z.nachrichten.find((m) => m.id === n.id);
+      return {
+        ...n,
+        gespeichert: "ja",
+        ...(n.von === "du" && alt?.nichtImFaden && !n.objektbezug.koId
+          ? { nichtImFaden: true }
+          : {}),
+      };
+    });
+    return {
+      ...z,
+      gespraech: ohneNachrichten(g),
+      nachrichten: [
+        ...nachrichten,
+        ...z.nachrichten.filter(
+          (n) => n.gespeichert !== "ja" && n.id !== lokalId && !ids.has(n.id),
+        ),
+      ],
+    };
+  });
+}
+
+/** Kein älterer Echo-/Lesezustand darf neu bestätigte Zeilen oder Rechte zurücksetzen. */
+async function uebernimmAntwort(
+  g: KlaraGespraech,
+  gen: number,
+  inhalt: number,
+  lokalId?: string,
+): Promise<void> {
+  pruefe(gen);
+  let aktuell = g;
+  if (zustand.gespraech && zustand.gespraech.id !== g.id) throw new Veraltet();
+  const fehlend = zustand.nachrichten.some(
+    (n) => n.gespeichert === "ja" && !g.nachrichten.some((m) => m.id === n.id),
+  );
+  if (inhalt !== inhaltsGeneration || fehlend) {
+    const folge = leseFolge;
+    const stand = inhaltsGeneration;
+    const { gespraech } = await klaraGespraechApi.hole(g.id);
+    pruefe(gen);
+    if (stand !== inhaltsGeneration || folge !== leseFolge) throw new Veraltet();
+    aktuell = gespraech;
+    if (
+      zustand.nachrichten.some(
+        (n) => n.gespeichert === "ja" && !aktuell.nachrichten.some((m) => m.id === n.id),
+      )
+    )
+      throw new Veraltet();
+  }
+  uebernimmGespraech(aktuell, lokalId);
+}
+
+/** Initial einmal je Konto; explizite Wiederprüfung hat denselben heutigen Serverleser. */
+export function ladeEcht(kontoId: string, t: TFunction): Promise<void> {
+  return ladeGespraech(kontoId, t, false);
+}
+
+export function pruefeEcht(kontoId: string, t: TFunction): Promise<void> {
+  return ladeGespraech(kontoId, t, true);
+}
+
+async function ladeGespraech(kontoId: string, t: TFunction, erneut: boolean): Promise<void> {
+  if (
+    !erneut &&
+    zustand.kontoId === kontoId &&
+    (zustand.laden === "bereit" || zustand.laden === "laedt")
+  )
     return;
-  }
-  // Nur ein ECHTER Kontowechsel (ein anderes, schon bekanntes Konto) verwirft alles. Wird das Konto
-  // erst jetzt bekannt (Sitzung antwortet nach dem Seitenaufbau), gehört alles bisher Gelesene
-  // schon diesem Konto (derselbe Sitzungs-Cookie) — ein offener Entwurf, etwa eine neue Erinnerung,
-  // darf dabei nicht verloren gehen. Abmelden verwirft weiterhin über `vergiss()` (Konto leer).
-  if (zustand.kontoId !== null && zustand.kontoId !== kontoId) {
-    vergiss();
-  }
+  if (zustand.kontoId !== null && zustand.kontoId !== kontoId) vergiss();
   const gen = generation;
+  const id = zustand.gespraech?.id;
+  const folge = ++leseFolge;
+  if (erneut) {
+    inhaltsGeneration += 1;
+    quellprojektionenVerwerfen();
+  }
+  const inhalt = inhaltsGeneration;
   setze((z) => ({ ...z, kontoId, laden: "laedt", ladeFehler: null }));
   try {
-    const roh: unknown = await klaraGespraechApi.aktuelles();
+    const roh: unknown = id
+      ? await klaraGespraechApi.hole(id)
+      : await klaraGespraechApi.aktuelles();
     const kandidat =
       typeof roh === "object" && roh !== null ? (roh as { gespraech?: unknown }).gespraech : null;
     const g = istGespraech(kandidat) ? kandidat : null;
-    if (!gueltig(gen) || zustand.kontoId !== kontoId) {
-      return; // inzwischen abgemeldet oder anderes Konto
-    }
-    setze((z) => ({
-      ...z,
-      laden: "bereit",
-      gespraech: g ? ohneNachrichten(g) : null,
-      nachrichten: g ? g.nachrichten.map((n) => ({ ...n, gespeichert: "ja" as const })) : [],
-    }));
+    if (!gueltig(gen) || folge !== leseFolge || zustand.kontoId !== kontoId) return;
+    if (g) await uebernimmAntwort(g, gen, inhalt);
+    else if (!zustand.gespraech) setze((z) => ({ ...z, gespraech: null }));
+    if (gueltig(gen) && folge === leseFolge) setze((z) => ({ ...z, laden: "bereit" }));
   } catch (fehler) {
-    if (!gueltig(gen) || zustand.kontoId !== kontoId) {
-      return;
-    }
+    if (!gueltig(gen) || folge !== leseFolge || zustand.kontoId !== kontoId) return;
     setze((z) => ({ ...z, laden: "fehler", ladeFehler: fehlerBild(fehler, t).text }));
   }
-}
-
-function uebernimmKopf(g: KlaraGespraech): void {
-  setze((z) => ({ ...z, gespraech: ohneNachrichten(g) }));
 }
 
 async function sichereGespraech(bezug: KlaraObjektbezug, gen: number): Promise<string> {
@@ -352,12 +461,15 @@ export type Ablage = "ja" | "nein" | "einwilligung_fehlt" | "veraltet";
 async function legeAb(lokalId: string, e: KlaraNachrichtEingabe, gen: number): Promise<Ablage> {
   try {
     const id = await sichereGespraech(e.objektbezug, gen);
+    const inhalt = inhaltsGeneration;
     const { nachricht, gespraech } = await klaraGespraechApi.nachricht(id, e);
     if (!gueltig(gen)) {
       return "veraltet";
     }
-    ersetzeNachricht(lokalId, { ...nachricht, gespeichert: "ja" });
-    uebernimmKopf(gespraech);
+    await uebernimmAntwort(gespraech, gen, inhalt, lokalId);
+    // Das vollständige Echo enthält auch die gerade angelegte Nachricht.
+    if (!gespraech.nachrichten.some((n) => n.id === nachricht.id))
+      throw new Error("Unvollständiges Gesprächsecho.");
     return "ja";
   } catch (fehler) {
     if (fehler instanceof Veraltet || !gueltig(gen)) {
@@ -388,6 +500,7 @@ async function speichere(e: KlaraNachrichtEingabe, gen: number): Promise<Ablage>
   }
   const lokal = lokaleNachricht(e, "laeuft");
   setze((z) => ({ ...z, nachrichten: [...z.nachrichten, lokal] }));
+  if (e.modus === "ki" || e.modus === "ohne_ki") quellprojektionenVerwerfen();
   return legeAb(lokal.id, e, gen);
 }
 
@@ -411,6 +524,7 @@ async function setzeSchritt(
 ): Promise<void> {
   try {
     const id = await sichereGespraech(bezug, gen);
+    const inhalt = inhaltsGeneration;
     const { gespraech } = await klaraGespraechApi.schritt(id, {
       art,
       text: text.slice(0, 8_000),
@@ -420,7 +534,7 @@ async function setzeSchritt(
     if (!gueltig(gen)) {
       return;
     }
-    uebernimmKopf(gespraech);
+    await uebernimmAntwort(gespraech, gen, inhalt);
     setze((z) => ({ ...z, schrittGespeichert: true }));
   } catch {
     if (gueltig(gen)) {
@@ -442,11 +556,12 @@ export async function einwilligen(
   setze((z) => ({ ...z, hinweis: null }));
   try {
     const id = await sichereGespraech(bezug, gen);
+    const inhalt = inhaltsGeneration;
     const { gespraech } = await klaraGespraechApi.einwilligung(id, erteilt);
     if (!gueltig(gen)) {
       return false;
     }
-    uebernimmKopf(gespraech);
+    await uebernimmAntwort(gespraech, gen, inhalt);
     return true;
   } catch (fehler) {
     if (fehler instanceof Veraltet || !gueltig(gen)) {
@@ -463,7 +578,11 @@ export async function einwilligen(
 }
 
 export async function neuesGespraech(bezug: KlaraObjektbezug, t: TFunction): Promise<void> {
-  const gen = generation;
+  const gen = ++generation;
+  leseFolge += 1;
+  laufend?.abort();
+  laufend = null;
+  setze((z) => ({ ...z, laeuftSeit: null, verarbeitetSeit: null }));
   setze((z) => ({ ...z, hinweis: null }));
   try {
     const { gespraech } = await klaraGespraechApi.beginne(bezug);
@@ -474,6 +593,8 @@ export async function neuesGespraech(bezug: KlaraObjektbezug, t: TFunction): Pro
       ...z,
       gespraech: ohneNachrichten(gespraech),
       nachrichten: [],
+      laden: "bereit",
+      ladeFehler: null,
       schrittGespeichert: true,
     }));
   } catch (fehler) {
@@ -488,14 +609,24 @@ export async function loescheGespraech(t: TFunction): Promise<void> {
   if (!id) {
     return;
   }
-  const gen = generation;
-  setze((z) => ({ ...z, hinweis: null }));
+  const gen = ++generation;
+  leseFolge += 1;
+  laufend?.abort();
+  laufend = null;
+  setze((z) => ({ ...z, hinweis: null, laeuftSeit: null, verarbeitetSeit: null }));
   try {
     await klaraGespraechApi.loesche(id);
     if (!gueltig(gen)) {
       return;
     }
-    setze((z) => ({ ...z, gespraech: null, nachrichten: [], schrittGespeichert: true }));
+    setze((z) => ({
+      ...z,
+      gespraech: null,
+      nachrichten: [],
+      laden: "bereit",
+      ladeFehler: null,
+      schrittGespeichert: true,
+    }));
   } catch (fehler) {
     if (gueltig(gen)) {
       setze((z) => ({ ...z, hinweis: fehlerBild(fehler, t).text }));
@@ -543,7 +674,7 @@ export async function fragen(
   const steuerung = new AbortController();
   laufend = steuerung;
   setze((z) => ({ ...z, laeuftSeit: Date.now() }));
-  const faden = fadenAus(zustand.nachrichten);
+  const faden = zustand.nachrichten.map((n) => n.id);
   let stand: Fragestand;
   try {
     await setzeSchritt("frage", frage, bezug, "laeuft", gen);
@@ -609,7 +740,13 @@ async function frageStellen(
   try {
     let antwort: Awaited<ReturnType<typeof klaraGespraechApi.frage>>;
     try {
-      antwort = await klaraGespraechApi.frage(frage, locale, faden, steuerung.signal, seitenbezug);
+      antwort = await klaraGespraechApi.frage(
+        frage,
+        locale,
+        fadenAus(zustand.nachrichten.filter((n) => faden.includes(n.id))),
+        steuerung.signal,
+        seitenbezug,
+      );
     } finally {
       // Antwort, Fehler oder Abbruch: die Verarbeitung ist zu Ende (das Ablegen ist Warten).
       verarbeitungEnde();

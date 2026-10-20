@@ -134,6 +134,8 @@ const BASIS = "/me/klara";
 
 export const klaraGespraechApi = {
   aktuelles: () => api.get<{ gespraech: KlaraGespraech | null }>(`${BASIS}/gespraech`),
+  hole: (id: string) =>
+    api.get<{ gespraech: KlaraGespraech }>(`${BASIS}/gespraeche/${encodeURIComponent(id)}`),
   beginne: (objektbezug: KlaraObjektbezug) =>
     api.post<{ gespraech: KlaraGespraech }>(`${BASIS}/gespraeche`, { objektbezug }),
   nachricht: (id: string, eingabe: KlaraNachrichtEingabe) =>
