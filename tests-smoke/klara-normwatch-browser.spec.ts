@@ -173,6 +173,10 @@ test("AW21 · ausdrücklich bestellter Quellenwatch ergänzt Normgeschichte im n
     expect(n.id).toBe(normId);
     expect(n.annahmen).toEqual([]);
     await p.reload();
+    await p
+      .getByTestId("aufgaben-erinnerungen")
+      .getByRole("button", { name: "Fiktiver Normwatch im normalen Takt", exact: true })
+      .click();
     await expect(p.getByTestId("wissenspflege-pruefstand").first()).toContainText(
       "Normereignisbelege im bestellten Umfang vorbereitet",
     );
