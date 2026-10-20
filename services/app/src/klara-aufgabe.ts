@@ -66,6 +66,7 @@ export type KlaraAufgabeBezug =
     };
 
 export interface KlaraAufgabe {
+  readonly privatNotizGebunden?: true;
   readonly id: string;
   /** Eigentümer UND zuständige Person — eine persönliche Aufgabe hat keine zweite. */
   readonly kontoId: string;
@@ -294,6 +295,7 @@ export type KlaraAufgabeGrund =
   | "eingabe"
   | "unbekannt"
   | "quelle_unbekannt"
+  | "quelle_unvollstaendig"
   | "vorgang_belegt"
   | "voll"
   | "konflikt";
@@ -428,7 +430,12 @@ export class KlaraAufgabeDienst {
 
   async hole(kontoId: string, id: string): Promise<KlaraAufgabe> {
     const a = await this.repo.hole(kontoId, id);
-    if (!a) {
+    if (
+      !a ||
+      (a.privatNotizGebunden &&
+        a.bezug.art === "notiz" &&
+        !(await this.notizen?.hole(kontoId, a.bezug.notizId)))
+    ) {
       // Fremd und unbekannt antworten gleich — die Kennung verrät nichts über fremde Aufgaben.
       throw new KlaraAufgabeFehler(404, "unbekannt", "Aufgabe nicht gefunden.");
     }
@@ -438,7 +445,15 @@ export class KlaraAufgabeDienst {
   async liste(kontoId: string, status: unknown): Promise<KlaraAufgabe[]> {
     const s = wahl(status === "" ? undefined : status, KLARA_AUFGABE_STATUS, "status");
     const roh = await this.repo.liste(kontoId, s, KLARA_AUFGABE_LISTE_MAX);
-    return [...roh].sort(aufgabenOrdnung);
+    const erlaubt = await Promise.all(
+      roh.map(
+        async (a) =>
+          !a.privatNotizGebunden ||
+          a.bezug.art !== "notiz" ||
+          !!(await this.notizen?.hole(kontoId, a.bezug.notizId)),
+      ),
+    );
+    return roh.filter((_, i) => erlaubt[i]).sort(aufgabenOrdnung);
   }
 
   /**
@@ -448,6 +463,7 @@ export class KlaraAufgabeDienst {
   async lege(
     kontoId: string,
     eingabe: KlaraAufgabeEingabe,
+    privatNotizGebunden?: true,
   ): Promise<{ aufgabe: KlaraAufgabe; wiederholt: boolean }> {
     if (typeof eingabe.vorgang !== "string" || !VORGANG_RE.test(eingabe.vorgang)) {
       throw eingabeFehler("vorgang ist Pflicht (8–100 Zeichen aus Buchstaben, Ziffern, - und _).");
@@ -470,6 +486,7 @@ export class KlaraAufgabeDienst {
     let inhalt: string;
     let bezug: KlaraAufgabeBezug;
     let objektbezug: KlaraObjektbezug;
+    let quellengebunden = privatNotizGebunden === true;
     if (weg === "notiz") {
       const q = quelleAus(eingabe.quelle, ["notizId"]);
       const notiz = this.notizen ? await this.notizen.hole(kontoId, q.notizId as string) : null;
@@ -488,6 +505,17 @@ export class KlaraAufgabeDienst {
           "Die Notiz wurde seit dem Auftrag geändert. Keine Aufgabe aus einer anderen Fassung angelegt.",
         );
       }
+      // Auch der normale Als-Aufgabe-Caller erbt den Schutz der tatsächlich gelesenen Quelle.
+      // Clientfelder und ein fehlender interner Parameter dürfen Besprechungsherkunft nicht lösen.
+      const besprechung = notiz.wissensHerkunft?.besprechung;
+      if (besprechung?.verarbeitung && besprechung.verarbeitung.stand !== "abgeschlossen") {
+        throw new KlaraAufgabeFehler(
+          409,
+          "quelle_unvollstaendig",
+          "Teiltranskript vor der Aufgabenübernahme vollständig verarbeiten.",
+        );
+      }
+      quellengebunden ||= !!besprechung;
       titel =
         eingabe.titel === undefined ? kurz(notiz.titel || notiz.inhalt) : titelAus(eingabe.titel);
       if (titel.length === 0) {
@@ -521,10 +549,11 @@ export class KlaraAufgabeDienst {
       objektbezug = g.objektbezug;
     }
     const gewollt: Felder = { titel, inhalt, prioritaet, status: "offen" };
+    const gebundeneNotiz = quellengebunden && bezug.art === "notiz" ? bezug.notizId : undefined;
 
     const vorher = await this.repo.zuVorgang(kontoId, vorgang);
     if (vorher) {
-      return this.wiederholung(vorher, gewollt);
+      return this.wiederholung(vorher, gewollt, gebundeneNotiz);
     }
     if ((await this.repo.anzahl(kontoId)) >= KLARA_AUFGABE_MAX_JE_KONTO) {
       throw new KlaraAufgabeFehler(
@@ -547,6 +576,7 @@ export class KlaraAufgabeDienst {
       geaendertAm: jetzt,
       erledigtAm: null,
       fassung: 1,
+      ...(quellengebunden ? { privatNotizGebunden: true as const } : {}),
     };
     if (await this.repo.lege(aufgabe)) {
       return { aufgabe, wiederholt: false };
@@ -556,13 +586,27 @@ export class KlaraAufgabeDienst {
     if (!parallel) {
       throw new KlaraAufgabeFehler(409, "konflikt", "Die Aufgabe konnte nicht angelegt werden.");
     }
-    return this.wiederholung(parallel, gewollt);
+    return this.wiederholung(parallel, gewollt, gebundeneNotiz);
   }
 
   private wiederholung(
     gespeichert: KlaraAufgabe,
     gewollt: Felder,
+    gebundeneNotiz?: string,
   ): { aufgabe: KlaraAufgabe; wiederholt: boolean } {
+    if (
+      (gebundeneNotiz || gespeichert.privatNotizGebunden) &&
+      (!gebundeneNotiz ||
+        !gespeichert.privatNotizGebunden ||
+        gespeichert.bezug.art !== "notiz" ||
+        gespeichert.bezug.notizId !== gebundeneNotiz)
+    ) {
+      throw new KlaraAufgabeFehler(
+        409,
+        "vorgang_belegt",
+        "Dieser Vorgang gehört nicht zur selben geschützten Notizquelle.",
+      );
+    }
     // Derselbe Vorgang mit ANDEREM Inhalt ist kein Wiederholen, sondern ein Fehler des Aufrufers.
     // Nach einer Bearbeitung zählt die Aufgabe, wie sie jetzt ist.
     if (gespeichert.fassung === 1 && !gleicherInhalt(gespeichert, gewollt)) {

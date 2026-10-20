@@ -1,4 +1,4 @@
-import { type Transcriber, TranscriberConfidentialError } from "./types";
+import { type Transcriber, TranscriberConfidentialError, type ZeitTranskript } from "./types";
 
 // SCRUM-502 R7/R8: der Transkriptions-Chokepoint. `rejectsConfidential` ist PFLICHT (kein Default) —
 // der Aufrufer MUSS die Egress-Politik explizit setzen und kann den Wächter nicht durch Weglassen
@@ -21,11 +21,27 @@ export function cappedTranscriber(
       return false;
     }
   };
+  const zeitgebunden = inner.transcribeTimed?.bind(inner);
   return {
     name: inner.name,
     // R-0181: die Auskunft „bestätigt lokal" reist durch den Wächter — der Dienst entscheidet daran,
     // ob eine Freigabe für ÖFFENTLICHE KI überhaupt gefragt ist.
     ...(inner.lokal === true ? { lokal: true } : {}),
+    ...(zeitgebunden
+      ? {
+          transcribeTimed: (
+            bytes: Buffer,
+            mime: string,
+            locale: "de" | "en",
+            confidential: boolean,
+            signal?: AbortSignal,
+          ) => {
+            if (opts.rejectsConfidential && confidential && !freigegeben())
+              return Promise.reject(new TranscriberConfidentialError());
+            return zeitgebunden(bytes, mime, locale, confidential, signal);
+          },
+        }
+      : {}),
     transcribe: (bytes, mime, locale, confidential) => {
       if (opts.rejectsConfidential && confidential && !freigegeben()) {
         return Promise.reject(new TranscriberConfidentialError());
@@ -83,12 +99,80 @@ export interface WhisperConfig {
   fetchFn?: typeof fetch | undefined;
 }
 
+async function zeitAnfrage(
+  fetchFn: typeof fetch,
+  url: string,
+  model: string,
+  bytes: Buffer,
+  mime: string,
+  locale: "de" | "en",
+  headers?: Record<string, string>,
+  signal?: AbortSignal,
+): Promise<ZeitTranskript> {
+  const form = new FormData();
+  form.append("model", model);
+  form.append("language", locale);
+  form.append("response_format", "verbose_json");
+  form.append("timestamp_granularities[]", "segment");
+  form.append("file", new Blob([new Uint8Array(bytes)], { type: mime }), uploadDateiname(mime));
+  const r = await fetchFn(url, {
+    method: "POST",
+    body: form,
+    ...(headers ? { headers } : {}),
+    ...(signal ? { signal } : {}),
+  });
+  if (!r.ok) throw new Error(`Zeitgebundene Transkription antwortete mit ${r.status}`);
+  const data = (await r.json()) as { text?: unknown; segments?: unknown };
+  if (
+    typeof data.text !== "string" ||
+    !Array.isArray(data.segments) ||
+    !data.segments.length ||
+    data.segments.length > 300
+  )
+    throw new Error("Keine belegten Zeitsegmente geliefert.");
+  const segmente = data.segments.map((s: unknown, i: number) => {
+    if (!s || typeof s !== "object") throw new Error("Ungültiges Zeitsegment.");
+    const x = s as Record<string, unknown>;
+    if (
+      typeof x.start !== "number" ||
+      typeof x.end !== "number" ||
+      !Number.isFinite(x.start) ||
+      !Number.isFinite(x.end) ||
+      x.start < 0 ||
+      x.end <= x.start ||
+      typeof x.text !== "string"
+    )
+      throw new Error("Ungültige Zeitstelle.");
+    return {
+      id: `asr-${typeof x.id === "number" || typeof x.id === "string" ? x.id : i}`,
+      startMs: Math.round(x.start * 1000),
+      endMs: Math.round(x.end * 1000),
+      text: x.text,
+    };
+  });
+  if (new Set(segmente.map((s) => s.id)).size !== segmente.length)
+    throw new Error("Doppelte Zeitsegmente.");
+  return { text: data.text, segmente };
+}
 export function whisperClient(config: WhisperConfig): Transcriber {
   const fetchFn = config.fetchFn ?? fetch;
   const baseUrl = config.baseUrl ?? "https://api.openai.com";
   const model = config.model ?? "whisper-1";
   return {
     name: `openai:${model}`,
+    transcribeTimed: (bytes, mime, locale, _confidential, signal) =>
+      zeitAnfrage(
+        fetchFn,
+        `${baseUrl}/v1/audio/transcriptions`,
+        model,
+        bytes,
+        mime,
+        locale,
+        {
+          authorization: `Bearer ${config.apiKey}`,
+        },
+        signal,
+      ),
     // SCRUM-502 R7: `confidential` ist Interface-Pflicht; der Egress-Wächter sitzt im Cloud-Wrapper
     // (cappedTranscriber). Der rohe Client reicht den Aufruf nur durch (kein externer Egress bei
     // confidential, weil der Wrapper vorher wirft).
@@ -187,6 +271,17 @@ export function lokalerTranskriber(config: LokalerTranskriberConfig): Transcribe
   const model = config.model?.trim() || "whisper-1";
   return {
     name: `local:${model}`,
+    transcribeTimed: (bytes, mime, locale, _confidential, signal) =>
+      zeitAnfrage(
+        fetchFn,
+        `${basis}/audio/transcriptions`,
+        model,
+        bytes,
+        mime,
+        locale,
+        undefined,
+        signal,
+      ),
     ...(config.lokal ? { lokal: true } : {}),
     async transcribe(
       bytes: Buffer,

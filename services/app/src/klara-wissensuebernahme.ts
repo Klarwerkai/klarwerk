@@ -10,6 +10,7 @@ import {
 import { can } from "../../rbac";
 import { kernaussageAusKlartext } from "../../structure";
 import type { SessionUser } from "./http";
+import type { PrivateBesprechung } from "./klara-besprechung";
 import { type KlaraNotiz, KlaraNotizDienst, type KlaraNotizRepo } from "./klara-notiz";
 import { darfSehen } from "./sichtbarkeit";
 import { type SpacesRepo, darfInSpaceSchreiben, darfSpaceInhalteLesen } from "./spaces";
@@ -17,6 +18,7 @@ import type { VorlagenEinreichungPort } from "./vorlagen";
 
 /** Serverseitige Herkunft am privaten Original. Keine Übernahme eines fremden Chatverlaufs. */
 export interface KlaraWissensHerkunft {
+  besprechung?: PrivateBesprechung;
   projekt: string;
   abschnitt: string;
   antwortFassung: string;
@@ -186,6 +188,12 @@ export class KlaraWissensDienst {
   }
   async pruefe(user: SessionUser, id: string) {
     const n = await this.original(user, id);
+    const teil = n.wissensHerkunft?.besprechung?.verarbeitung;
+    if (teil && teil.stand !== "abgeschlossen")
+      throw new WissensFehler(
+        409,
+        "Teiltranskript vor gemeinsamer Übernahme vollständig verarbeiten.",
+      );
     const quellen = new Map();
     for (const q of this.quellen(n)) {
       const ko = await this.d.ko.get(q.id);
@@ -236,6 +244,12 @@ export class KlaraWissensDienst {
   async vorschau(user: SessionUser, id: string, fassung: unknown, ziel: WissensZiel) {
     if (!can(user.role, "ko.create")) throw new WissensFehler(403, "Kein Beitragsrecht.");
     const n = await this.original(user, id);
+    const teil = n.wissensHerkunft?.besprechung?.verarbeitung;
+    if (teil && teil.stand !== "abgeschlossen")
+      throw new WissensFehler(
+        409,
+        "Teiltranskript vor gemeinsamer Übernahme vollständig verarbeiten.",
+      );
     if (!Number.isInteger(fassung) || n.fassung !== fassung)
       throw new WissensFehler(409, "Notizfassung geändert; neu öffnen.");
     if (n.wissensHerkunft && n.wissensHerkunft.textAbdruck !== abdruck(n.inhalt))
