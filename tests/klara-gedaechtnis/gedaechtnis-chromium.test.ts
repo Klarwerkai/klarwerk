@@ -171,9 +171,9 @@ describe("Klara09 · eigene HTTP-Anwendung in echtem Chromium, fiktive Konten", 
     await e.getByTestId("einfuehrung-start").click();
     await e.getByRole("img", { name: "Avatar mit Zauberhut" }).waitFor();
     expect(
-      await e
-        .getByRole("img", { name: "Avatar mit Zauberhut" })
-        .evaluate((el) => getComputedStyle(el).animationName),
+      await page.evaluate<string>(
+        'getComputedStyle(document.querySelector("[data-testid=klara-setup-einfuehrung] svg")).animationName',
+      ),
     ).toBe("none");
     await e.getByTestId("einfuehrung-weiter").focus();
     await page.keyboard.press("Enter");
