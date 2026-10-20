@@ -1,0 +1,343 @@
+import type { SeitenEintrag } from "./typen";
+export const VERWALTUNG: readonly SeitenEintrag[] = [
+  {
+    id: "verwaltung",
+    pfade: ["/admin"],
+    titelKey: "menue.einstellungen",
+    ziel: '[data-testid="nutzer-suche"], [data-testid="zeile-ki"], [data-testid="verwaltung-uebersicht"], main h1',
+    aktion: [
+      "Benutzer und Rollen: Suche ein Konto und prüfe Rolle sowie Zugang. KI: Öffne Anbieter und Modelle, Zugänge, Funktionen oder Grenzen; prüfe die Zuordnung und den Ein-/Auszustand vor Speichern. Sicherheit und Nachweise, Berichte, System und Vorführdaten haben eigene Bereiche.",
+      "Users and roles: find an account and check role and access. AI: open providers and models, access, functions or limits; review assignments and enabled status before saving. Security and evidence, reports, system and demo data have their own sections.",
+      "Gebruikers en rollen: zoek een account en controleer rol en toegang. AI: open aanbieders en modellen, toegang, functies of grenzen; controleer toewijzing en aan/uitstatus vóór opslaan. Beveiliging en bewijs, rapporten, systeem en demogegevens hebben eigen onderdelen.",
+    ],
+    ergebnis: [
+      "Kontorolle, persönliche Ansicht und Unternehmensvorgabe haben unterschiedliche Wirkung. Das Tutorial speichert keine Änderung.",
+      "Account role, personal view and company default have different effects. The tutorial saves no changes.",
+      "Accountrol, persoonlijke weergave en bedrijfsstandaard hebben verschillende effecten. De tutorial slaat niets op.",
+    ],
+    sonderfall: [
+      "Ohne Verwaltungsrecht wird diese Begleitung nicht angeboten. Bei Fehlermeldung die tatsächliche Entscheidung abwarten.",
+      "This tutorial is unavailable without administration permission. For errors, wait for the actual result.",
+      "Deze tutorial is zonder beheerrecht niet beschikbaar. Wacht bij fouten op het echte resultaat.",
+    ],
+  },
+  {
+    id: "profil",
+    pfade: ["/profil"],
+    titelKey: "nav.profile",
+    ziel: "main h1",
+    aktion: [
+      "Prüfe deine persönlichen Einstellungen, Sprache und Sicherheit. Änderungen betreffen das angezeigte eigene Konto.",
+      "Review your personal settings, language and security. Changes apply to the displayed personal account.",
+      "Controleer persoonlijke instellingen, taal en beveiliging. Wijzigingen gelden voor het getoonde eigen account.",
+    ],
+    ergebnis: [
+      "Erst die sichtbare Speicherbestätigung belegt eine Änderung. Eine Rollenansicht vergibt keine neuen Kontorechte.",
+      "Only the displayed save confirmation proves a change. A role preview grants no new account permissions.",
+      "Alleen de opslagbevestiging bewijst een wijziging. Een rolweergave geeft geen nieuwe accountrechten.",
+    ],
+    sonderfall: [
+      "Bei Sicherheitsänderungen den vorgesehenen eigenen Bestätigungsweg verwenden; Klara liest keine geheimen Felder vor.",
+      "Use the designated personal confirmation flow for security changes; Klara does not read secret fields aloud.",
+      "Gebruik voor beveiligingswijzigingen de eigen bevestigingsroute; Klara leest geen geheime velden voor.",
+    ],
+  },
+  {
+    id: "import",
+    pfade: ["/import"],
+    titelKey: "nav.import",
+    ziel: "main h1",
+    aktion: [
+      "Wähle die vorgesehene Importquelle und prüfe Zuordnung, Rechte und Vorschau vor dem tatsächlichen Importstart.",
+      "Select the intended import source and review mapping, permissions and preview before starting the import.",
+      "Kies de importbron en controleer toewijzing, rechten en voorbeeld vóór het starten.",
+    ],
+    ergebnis: [
+      "Ein Importlauf erhält eine eigene Ergebnisansicht. Vorschau und tatsächlich übernommene Inhalte sind getrennt.",
+      "An import run has its own results view. Preview and imported content are separate.",
+      "Een importuitvoering heeft een eigen resultaatweergave. Voorbeeld en geïmporteerde inhoud zijn verschillend.",
+    ],
+    sonderfall: [
+      "Bei Fehler den Laufstatus prüfen, bevor du neu startest. Verwaltungsrecht und Stufe 2 bleiben erforderlich.",
+      "After an error, check run status before restarting. Administration permission and stage 2 are required.",
+      "Controleer na een fout de uitvoeringsstatus vóór opnieuw starten. Beheerrecht en fase 2 blijven vereist.",
+    ],
+  },
+  {
+    id: "importlauf",
+    pfade: ["/import/lauf/:importId"],
+    titelKey: "nav.import",
+    ziel: '[data-testid="imp-lauf-zaehler"]',
+    aktion: [
+      "Lies Kennung, Ausgang und Zähler des konkreten Importlaufs; der Rückweg führt zum Importbereich.",
+      "Read the identifier, outcome and counters of this import run; Back returns to imports.",
+      "Lees kenmerk, uitkomst en aantallen van deze importuitvoering; Terug opent het importonderdeel.",
+    ],
+    ergebnis: [
+      "Beendet bedeutet nicht automatisch vollständig übernommen. Prüfe Ausgang und Lücken dieses Laufs.",
+      "Finished does not automatically mean fully imported. Check the outcome and gaps for this run.",
+      "Beëindigd betekent niet automatisch volledig geïmporteerd. Controleer uitkomst en ontbrekende delen.",
+    ],
+    sonderfall: [
+      "Nicht gefunden ist kein erfolgreicher Lauf. Bei Fehler über den Rückweg den aktuellen Importstand lesen.",
+      "Not found is not a successful run. On error, return to inspect current import status.",
+      "Niet gevonden is geen geslaagde uitvoering. Ga bij fouten terug om de importstatus te controleren.",
+    ],
+  },
+  {
+    id: "analytics",
+    pfade: ["/analytics"],
+    titelKey: "nav.analytics",
+    ziel: '[data-testid="analytics-kernzahlen"]',
+    aktion: [
+      "Lies Kennzahlen, Kategorien und Wochenverlauf mit dem angezeigten Berechnungsstand.",
+      "Read metrics, categories and weekly trends with their calculation status.",
+      "Lees kengetallen, categorieën en weekverloop met hun berekeningsstatus.",
+    ],
+    ergebnis: [
+      "Unbekannt, unbelegt und berechnet sind unterschiedliche Aussagen; eine Kennzahl ist keine Freigabe einzelner Artikel.",
+      "Unknown, unproven and calculated are different claims; a metric does not approve individual articles.",
+      "Onbekend, onbewezen en berekend zijn verschillende uitspraken; een kengetal keurt geen artikelen goed.",
+    ],
+    sonderfall: [
+      "Fehlende Prüfzeitpunkte und Demo-Hinweise bei der Auswertung berücksichtigen.",
+      "Account for missing review timestamps and demo labels when interpreting results.",
+      "Houd bij interpretatie rekening met ontbrekende beoordelingstijden en demolabels.",
+    ],
+  },
+  {
+    id: "lebenszyklus",
+    pfade: ["/lebenszyklus"],
+    titelKey: "nav.lifecycle",
+    ziel: '[data-testid="pruefen-warteschlange"]',
+    aktion: [
+      "Wähle einen Pflegevorgang, prüfe Anlass, Zuständigkeit und Termin und bearbeite ihn mit deiner Prüfrolle.",
+      "Choose a maintenance case, review reason, owner and due date and handle it with your reviewer role.",
+      "Kies een onderhoudszaak, controleer aanleiding, verantwoordelijke en termijn en werk met je beoordelaarsrol.",
+    ],
+    ergebnis: [
+      "Vorlage, angelegte Folgeprüfung und quittierter Abschluss sind verschiedene Zustände.",
+      "Template, created follow-up review and acknowledged completion are different states.",
+      "Sjabloon, aangemaakte vervolgbeoordeling en bevestigde afronding zijn verschillende statussen.",
+    ],
+    sonderfall: [
+      "Bei Ladefehler erneut lesen; eine Vorlage erledigt keine offene Prüfung.",
+      "Reload after a loading error; a template does not complete an open review.",
+      "Laad opnieuw na een laadfout; een sjabloon voltooit geen open beoordeling.",
+    ],
+  },
+  {
+    id: "risiko",
+    pfade: ["/risiko", "/luecke/:id"],
+    titelKey: "nav.risk",
+    ziel: '[data-testid="luecke-zeile"], [data-testid="luecke-vorgang"]',
+    aktion: [
+      "Öffne eine sichtbare Lücke oder Risikomeldung und prüfe Belegbedarf, Zuständigkeit und vorgesehenen Abschlussweg.",
+      "Open a visible gap or risk and review evidence requirements, owner and completion route.",
+      "Open een zichtbaar kennishiaat of risico en controleer bewijsbehoefte, verantwoordelijke en afrondingsroute.",
+    ],
+    ergebnis: [
+      "Priorisierung, Beitrag und tatsächlich geschlossene Lücke sind verschiedene Ergebnisse; Beteiligungsrechte gelten am Vorgang.",
+      "Priority, contribution and a closed gap are different results; access is checked for the case.",
+      "Prioriteit, bijdrage en gesloten kennishiaat zijn verschillende resultaten; toegang geldt per zaak.",
+    ],
+    sonderfall: [
+      "Bei fehlendem Vorgang keine Beteiligung unterstellen; die angezeigte Sperre bleibt bestehen.",
+      "Do not assume participation in a missing case; displayed restrictions remain in force.",
+      "Veronderstel geen deelname aan een ontbrekende zaak; getoonde beperkingen blijven gelden.",
+    ],
+  },
+  {
+    id: "ausgang",
+    pfade: ["/ausgangspruefung"],
+    titelKey: "kopfband.pruefen",
+    minRole: "controller",
+    ziel: "main h1",
+    aktion: [
+      "Prüfe den ausgehenden Text und seine Belege vor der vorgesehenen Freigabe.",
+      "Review outgoing text and its evidence before approval.",
+      "Controleer uitgaande tekst en bewijs vóór goedkeuring.",
+    ],
+    ergebnis: [
+      "Geprüfte Vorschau und tatsächlich freigegebenes Ergebnis bleiben getrennt.",
+      "Reviewed preview and approved result remain separate.",
+      "Beoordeeld voorbeeld en goedgekeurd resultaat blijven verschillend.",
+    ],
+    sonderfall: [
+      "Ohne Prüfberechtigung gibt es hier keine bedienbare Freigabe. Bei fehlenden Belegen zuerst klären.",
+      "Approval requires review permission. Clarify missing evidence first.",
+      "Goedkeuring vereist beoordelingsrecht. Verduidelijk eerst ontbrekend bewijs.",
+    ],
+  },
+  {
+    id: "vorlagen",
+    pfade: ["/vorlagen"],
+    titelKey: "vorlagen.seite.titel",
+    ziel: '[data-testid="vorlage-karte"], main h1',
+    aktion: [
+      "Lies die Vorlage samt Geltung. Bearbeiten oder Standardwahl benötigt das jeweils angezeigte Verwaltungs- oder Spacerecht.",
+      "Read the template and its scope. Editing or setting defaults requires the displayed administration or Space permission.",
+      "Lees sjabloon en bereik. Bewerken of als standaard instellen vereist het getoonde beheer- of Spacerecht.",
+    ],
+    ergebnis: [
+      "Eine geänderte Vorlage verändert bestehende Artikel nicht rückwirkend; die Wirkungsanzeige erklärt Nutzung und Bestand.",
+      "Changing a template does not retroactively alter articles; the impact display explains usage and existing content.",
+      "Een sjabloonwijziging verandert bestaande artikelen niet achteraf; de effectweergave verklaart gebruik en bestaande inhoud.",
+    ],
+    sonderfall: [
+      "Vor Ausmustern oder verbindlichen Vorgaben Folgen und Begründung prüfen; das Tutorial setzt keinen Standard.",
+      "Before retiring a template or enforcing defaults, review consequences and reason; the tutorial sets no defaults.",
+      "Controleer vóór buiten gebruik stellen of verplichtingen de gevolgen en reden; de tutorial stelt geen standaard in.",
+    ],
+  },
+  {
+    id: "unternehmen",
+    pfade: ["/unternehmen"],
+    titelKey: "menue.einstellungen",
+    minRole: "admin",
+    ziel: '[data-testid="unternehmen-profil"]',
+    aktion: [
+      "Prüfe Unternehmensprofil oder Richtlinie, ihre Geltung und den Änderungsgrund; lies die Wirkung vor Speichern oder Veröffentlichen.",
+      "Review the company profile or policy, scope and reason; inspect the impact before saving or publishing.",
+      "Controleer bedrijfsprofiel of richtlijn, bereik en wijzigingsreden; lees gevolgen vóór opslaan of publiceren.",
+    ],
+    ergebnis: [
+      "Profiländerung und veröffentlichte Richtlinienfassung haben unterschiedliche Reichweite und einen eigenen Verlauf.",
+      "Profile changes and published policy versions have different scopes and their own histories.",
+      "Profielwijzigingen en gepubliceerde richtlijnversies hebben verschillend bereik en eigen geschiedenis.",
+    ],
+    sonderfall: [
+      "Eine Entwurfsansicht veröffentlicht nichts. Fehler und Wirkungshinweise vor erneutem Speichern prüfen.",
+      "A draft view publishes nothing. Check errors and impact notices before saving again.",
+      "Een conceptweergave publiceert niets. Controleer fouten en effectmeldingen vóór opnieuw opslaan.",
+    ],
+  },
+  {
+    id: "richtlinien",
+    pfade: ["/richtlinien"],
+    titelKey: "nav.profile",
+    ziel: '[data-testid="richtlinie"], main h1',
+    aktion: [
+      "Lies die gültige Richtlinienfassung und ihre Reichweite. Kenntnisnahme oder Zustimmung gibst du bewusst selbst ab.",
+      "Read the applicable policy version and scope. Acknowledge or consent deliberately yourself.",
+      "Lees de geldende richtlijnversie en het bereik. Bevestig kennisname of toestemming bewust zelf.",
+    ],
+    ergebnis: [
+      "Gelesen, Kenntnis genommen und zugestimmt sind unterschiedliche Zustände.",
+      "Read, acknowledged and consented are different states.",
+      "Gelezen, kennisgenomen en ingestemd zijn verschillende statussen.",
+    ],
+    sonderfall: [
+      "Bei fehlender Richtlinie oder Fehler dem sichtbaren Hinweis folgen; das Tutorial bestätigt nichts für dich.",
+      "Follow the displayed notice for a missing policy or error; the tutorial acknowledges nothing for you.",
+      "Volg de melding bij een ontbrekende richtlijn of fout; de tutorial bevestigt niets voor jou.",
+    ],
+  },
+  {
+    id: "kommunikation",
+    pfade: ["/kommunikation"],
+    titelKey: "nav.profile",
+    ziel: '[data-testid="kommunikation-meine"]',
+    aktion: [
+      "Prüfe Ereignis, Kanal und Häufigkeit deiner Meldungen. Unternehmensvorgaben sind nur mit Verwaltungsrecht änderbar.",
+      "Review event, channel and frequency of your notifications. Company defaults require administration permission to change.",
+      "Controleer gebeurtenis, kanaal en frequentie van je meldingen. Bedrijfsstandaarden wijzigen vereist beheerrecht.",
+    ],
+    ergebnis: [
+      "Eigene Wahl und Unternehmensvorgabe sind getrennt; die Wirkungsanzeige zeigt, welche Einstellung tatsächlich gilt.",
+      "Personal choices and company defaults are separate; the impact view shows which setting applies.",
+      "Eigen keuze en bedrijfsstandaard zijn verschillend; de effectweergave toont welke instelling geldt.",
+    ],
+    sonderfall: [
+      "Nicht abwählbare Meldungen beachten. Bei fehlgeschlagenem Speichern gilt nicht automatisch der Entwurf.",
+      "Respect mandatory notifications. A failed save does not apply the draft automatically.",
+      "Respecteer verplichte meldingen. Een mislukte opslag past het concept niet automatisch toe.",
+    ],
+  },
+  {
+    id: "anbindung",
+    pfade: ["/kalender-anbindung"],
+    titelKey: "nav.profile",
+    ziel: '[data-testid="kalender-anbindung"], [data-testid="kalender-verbinden"], main h1',
+    aktion: [
+      "Prüfe die eigene Anbindung, Zeitzone und Feldrichtungen. Abgleichen und jede wartende Entscheidung bleiben bewusste Handlungen.",
+      "Review your connection, time zone and field directions. Synchronizing and pending decisions are deliberate actions.",
+      "Controleer je koppeling, tijdzone en veldrichtingen. Synchroniseren en open beslissingen blijven bewuste acties.",
+    ],
+    ergebnis: [
+      "Lokales Entfernen einer Anbindung löscht keine externen Termine. Vorschlag, bestätigte Entscheidung und ausgeführter Abgleich bleiben getrennt.",
+      "Removing a local connection does not delete external events. Proposal, confirmed decision and completed sync remain distinct.",
+      "Een lokale koppeling verwijderen wist geen externe afspraken. Voorstel, bevestigde beslissing en uitgevoerde synchronisatie blijven apart.",
+    ],
+    sonderfall: [
+      "Bei Konflikt die angezeigte Feldentscheidung prüfen; fehlende Anbieterrechte nicht umgehen.",
+      "For a conflict, review the displayed field decision; do not bypass provider permissions.",
+      "Controleer bij een conflict de getoonde veldkeuze; omzeil geen providerrechten.",
+    ],
+    hilfeKeys: ["klarakalender.bedienhilfe.verbinden"],
+  },
+  {
+    id: "qualitaet",
+    pfade: ["/qualitaetsaufgaben"],
+    titelKey: "menue.einstellungen",
+    minRole: "admin",
+    ziel: '[data-testid="qa-bilanz"]',
+    aktion: [
+      "Aktualisiere den Stand, filtere Qualitätsaufgaben und öffne den Originalvorgang zur Bearbeitung.",
+      "Refresh status, filter quality tasks and open the original case to act.",
+      "Vernieuw de status, filter kwaliteitstaken en open de oorspronkelijke zaak om te handelen.",
+    ],
+    ergebnis: [
+      "Bilanz, Übernahme und Ergebnis sind getrennt; jede Zeile bleibt auf die heutigen Sichtrechte begrenzt.",
+      "Totals, takeover and result are separate; each row remains limited to current permissions.",
+      "Totaal, overname en resultaat zijn apart; elke rij blijft beperkt tot huidige rechten.",
+    ],
+    sonderfall: [
+      "Veralteter Stand oder fehlende Quelle zuerst klären. Eine leere Liste belegt nicht die Abwesenheit aller Aufgaben.",
+      "Clarify stale status or missing sources first. An empty list does not prove that no tasks exist.",
+      "Verduidelijk eerst verouderde status of ontbrekende bronnen. Een lege lijst bewijst niet dat er geen taken zijn.",
+    ],
+  },
+  {
+    id: "hilfe",
+    pfade: ["/hilfe", "/so-arbeitet-klarwerk", "/einstieg/:thema"],
+    titelKey: "nav.help",
+    ziel: '[data-testid="hilfe-suche"], [data-testid="einstieg-erster-schritt"], [data-testid="arbeitsweise-netz"]',
+    aktion: [
+      "Suche eine Hilfe oder öffne einen thematischen Einstieg. Die erklärten Weiterwege beachten deine aktuelle Rolle.",
+      "Search help or open a topic introduction. Suggested routes respect your current role.",
+      "Zoek hulp of open een onderwerpintroductie. Vervolgroutes respecteren je huidige rol.",
+    ],
+    ergebnis: [
+      "Erklärung und Vorführung sind keine tatsächliche Arbeit. Zum Anwenden öffnest du bewusst die echte Seite.",
+      "Explanation and demonstration are not actual work. Open the real page deliberately to apply them.",
+      "Uitleg en demonstratie zijn geen echt werk. Open bewust de echte pagina om toe te passen.",
+    ],
+    sonderfall: [
+      "Bei keinem Treffer die Suche vereinfachen oder als Frage formulieren.",
+      "With no results, simplify the search or phrase it as a question.",
+      "Vereenvoudig bij geen resultaten de zoekopdracht of stel een vraag.",
+    ],
+  },
+  {
+    id: "mobile",
+    pfade: ["/mobile"],
+    titelKey: "nav.capture",
+    ziel: '[data-testid="mob-erfassung"]',
+    aktion: [
+      "Wähle Text, Interview oder Foto; prüfe deinen Entwurf und die Warteschlange vor dem Senden.",
+      "Choose text, interview or photo; inspect your draft and queue before sending.",
+      "Kies tekst, interview of foto; controleer concept en wachtrij vóór verzenden.",
+    ],
+    ergebnis: [
+      "Lokale Warteschlange, Serverentwurf und eingereichter Beitrag sind unterschiedliche Zustände.",
+      "Local queue, server draft and submitted contribution are different states.",
+      "Lokale wachtrij, serverconcept en ingediende bijdrage zijn verschillende statussen.",
+    ],
+    sonderfall: [
+      "Offline- und Kontohinweise beachten; fremde oder ungebundene Vorgänge nicht als eigene fortsetzen.",
+      "Respect offline and account notices; do not resume other users' or unbound work as your own.",
+      "Respecteer offline- en accountmeldingen; hervat werk van anderen of zonder accountbinding niet als eigen werk.",
+    ],
+  },
+];

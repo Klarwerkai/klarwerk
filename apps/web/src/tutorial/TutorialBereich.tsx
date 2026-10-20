@@ -38,7 +38,8 @@ import { ZIEL_ATTRIBUT } from "../components/fragen/ziele";
 import { cleanForSpeech, pickVoice, vorlesenMoeglich } from "../lib/vorlesen";
 import { useMediaQuery } from "../shell/useMediaQuery";
 import { TutorialMeldungCtx } from "./fernsteuerung";
-import type { TutorialDefinition, TutorialModul } from "./typen";
+import { echtesZiel, markiereEchtesZiel } from "./seiten/ziele";
+import type { TutorialDefinition, TutorialModul, TutorialSchrittstand } from "./typen";
 
 /** Takt der Vorführuhr (ms). */
 const TAKT_MS = 100;
@@ -64,10 +65,14 @@ export function TutorialBereich({
   definition,
   id,
   onSchliessen,
+  startstand,
+  beiStand,
 }: {
   definition: TutorialDefinition;
   id: string;
   onSchliessen: (mitFokus: boolean) => void;
+  startstand?: TutorialSchrittstand | undefined;
+  beiStand?: ((stand: TutorialSchrittstand) => void) | undefined;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const titelId = useId();
@@ -102,10 +107,20 @@ export function TutorialBereich({
   }, [definition, ladeversuch]);
 
   const schritte = definition.schritte;
-  const [schrittIndex, setSchrittIndex] = useState(0);
-  const [teilIndex, setTeilIndex] = useState(0);
-  const [teilZeit, setTeilZeit] = useState(0);
-  const [spielt, setSpielt] = useState(() => !schritte[0]?.interaktiv);
+  const [schrittIndex, setSchrittIndex] = useState(() =>
+    Math.min(startstand?.schrittIndex ?? 0, schritte.length - 1),
+  );
+  const [teilIndex, setTeilIndex] = useState(() =>
+    Math.min(
+      startstand?.teilIndex ?? 0,
+      (schritte[startstand?.schrittIndex ?? 0]?.teile.length ?? 1) - 1,
+    ),
+  );
+  const [teilZeit, setTeilZeit] = useState(startstand?.teilZeit ?? 0);
+  const [spielt, setSpielt] = useState(() => (startstand ? false : !schritte[0]?.interaktiv));
+  useEffect(() => {
+    beiStand?.({ schrittIndex, teilIndex, teilZeit });
+  }, [schrittIndex, teilIndex, teilZeit, beiStand]);
   const [lauf, setLauf] = useState(0);
   const [zielFehlt, setZielFehlt] = useState<string | null>(null);
   const [demoVerweis, setDemoVerweis] = useState<string | null>(null);
@@ -285,6 +300,32 @@ export function TutorialBereich({
   const zielName = teil?.ziel ?? null;
   // biome-ignore lint/correctness/useExhaustiveDependencies: Schritt/Lauf/Modul erneuern die Demo.
   useLayoutEffect(() => {
+    if (definition.echteZiele && zielName) {
+      let entfernen = () => {};
+      let aktuell: HTMLElement | null = null;
+      const anwenden = (): void => {
+        const selector = definition.echteZiele?.[zielName];
+        const el = selector ? echtesZiel(selector) : null;
+        if (el !== aktuell) {
+          entfernen();
+          aktuell = el;
+          entfernen = el ? markiereEchtesZiel(el, zielName) : () => {};
+        }
+        setZielFehlt(el ? null : zielName);
+      };
+      anwenden();
+      const beobachter = new MutationObserver(anwenden);
+      beobachter.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["hidden", "disabled", "aria-hidden", "aria-disabled", "class", "style"],
+      });
+      return () => {
+        beobachter.disconnect();
+        entfernen();
+      };
+    }
     if (!demoRef.current) {
       setZielFehlt(null);
       return;
@@ -318,7 +359,7 @@ export function TutorialBereich({
     const beobachter = new MutationObserver(anwenden);
     beobachter.observe(document.body, { childList: true, subtree: true });
     return () => beobachter.disconnect();
-  }, [zielName, modul, schrittIndex, lauf, definition.id]);
+  }, [zielName, modul, schrittIndex, lauf, definition.id, definition.echteZiele]);
 
   // ---------------------------------------------------------------------------------------------
   // KLARA-VORSCHAU: die Lage an den Rahmen melden (`fernsteuerung.ts`). Die Befehle sind dieselben
@@ -487,7 +528,7 @@ export function TutorialBereich({
             tabIndex={-1}
             className="text-[17px] font-semibold text-ink outline-none focus-visible:underline"
           >
-            {t(definition.titelKey)}
+            {t(definition.titelKey, werte)}
           </h2>
           <p
             data-testid="tutorial-lernziel"
@@ -671,9 +712,11 @@ export function TutorialBereich({
         <div className="min-w-0">
           <div className="mb-1.5 flex flex-wrap items-center gap-2">
             <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase tracking-wider text-ai">
-              {t("tutorial.demo.kennzeichen")}
+              {t(definition.echteZiele ? "seitentutorial.demo" : "tutorial.demo.kennzeichen")}
             </span>
-            <span className="text-[11.5px] text-muted-2">{t("tutorial.demo.hinweis")}</span>
+            <span className="text-[11.5px] text-muted-2">
+              {t(definition.echteZiele ? "seitentutorial.grenze" : "tutorial.demo.hinweis")}
+            </span>
           </div>
           <p
             data-testid="tutorial-gerade"
@@ -690,7 +733,9 @@ export function TutorialBereich({
               data-tutorial-ziel-fehlt={zielFehlt}
               className="mb-2 block rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text"
             >
-              {t("tutorial.ziel.fehlt", { ziel: zielFehlt })}
+              {definition.echteZiele
+                ? t("seitentutorial.fehlend")
+                : t("tutorial.ziel.fehlt", { ziel: zielFehlt })}
             </output>
           ) : null}
           <section

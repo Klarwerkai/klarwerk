@@ -181,17 +181,21 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   // B1b: /mobile OHNE Shell — volle schmale Breite, kein Kopfband-Chrome drumherum.
   if (location.pathname === "/mobile") {
     return (
-      <div className="h-full">
-        {children}
-        {/* AUFTRAG-mega61 Block A/B: auch die shell-lose Route trägt Hinweis und Fußbereich —
+      <TutorialProvider>
+        <div className="h-full">
+          <TutorialEinstieg />
+          <TutorialFlaeche />
+          {children}
+          {/* AUFTRAG-mega61 Block A/B: auch die shell-lose Route trägt Hinweis und Fußbereich —
             „auf jeder Seite" heißt jede, sonst wäre die Zusage an genau einer Stelle unwahr.
             Hier gibt es kein Zahnrad-Menü, deshalb bleibt der Fußbereich im Fluss. */}
-        <NoticeBanner />
-        <div className="px-4">
-          <LegalFooter />
+          <NoticeBanner />
+          <div className="px-4">
+            <LegalFooter />
+          </div>
+          <ToastViewport />
         </div>
-        <ToastViewport />
-      </div>
+      </TutorialProvider>
     );
   }
 
