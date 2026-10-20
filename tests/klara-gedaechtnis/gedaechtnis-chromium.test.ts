@@ -149,9 +149,9 @@ describe("Klara09 · eigene HTTP-Anwendung in echtem Chromium, fiktive Konten", 
     await login("bert@e-browser.test");
     await g.getByText("Noch keine Einträge gespeichert.").waitFor();
     expect(await entry.count()).toBe(0);
-    expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(
-      true,
-    );
+    expect(
+      await page.evaluate<boolean>('matchMedia("(prefers-reduced-motion: reduce)").matches'),
+    ).toBe(true);
     expect(fehler).toEqual([]);
   }, 90000);
 });
