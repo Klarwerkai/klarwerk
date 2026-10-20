@@ -90,6 +90,14 @@ beforeAll(async () => {
     .withExposedPorts(5432)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .start();
+  console.log(
+    JSON.stringify({
+      ressource: "F15-Segment-PG",
+      ereignis: "begonnen",
+      at: new Date().toISOString(),
+      containerId: container.getId(),
+    }),
+  );
   url = `postgresql://postgres:f15-synthetic@${container.getHost()}:${container.getMappedPort(5432)}/klara_f15_seg`;
   const p = createPool(url);
   await migrate(p);
@@ -116,6 +124,13 @@ afterAll(async () => {
   for (const a of apps) await a.close();
   for (const p of pools) await p.end();
   await container?.stop();
+  console.log(
+    JSON.stringify({
+      ressource: "F15-Segment-PG",
+      ereignis: "beendet",
+      at: new Date().toISOString(),
+    }),
+  );
 });
 it("echte PG-Teilfassung überlebt Fehler und neue App/Pools: nur offener Rest, gleiche Quelle/Fassung und keine doppelte Passage", async () => {
   const calls: number[] = [];

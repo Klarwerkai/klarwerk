@@ -17,6 +17,7 @@ const calls: number[] = [];
 let ersterFehler = true;
 const dist = resolve("apps/web/dist");
 beforeAll(async () => {
+  mkdirSync(".local/run/klara-f", { recursive: true });
   const services = buildServices();
   services.media = new MediaAnalysisService({
     objects: services.objects,
@@ -95,9 +96,23 @@ beforeAll(async () => {
   if (!addr || typeof addr === "string") throw new Error("Adresse fehlt");
   origin = `http://127.0.0.1:${addr.port}`;
   browser = await chromium.launch({ headless: true });
+  console.log(
+    JSON.stringify({
+      ressource: "F15-Segment-Chromium",
+      ereignis: "begonnen",
+      at: new Date().toISOString(),
+    }),
+  );
 }, 60000);
 afterAll(async () => {
   await browser?.close();
+  console.log(
+    JSON.stringify({
+      ressource: "F15-Segment-Chromium",
+      ereignis: "beendet",
+      at: new Date().toISOString(),
+    }),
+  );
   await new Promise<void>((r) => server?.close(() => r()));
   await app?.close();
 });
