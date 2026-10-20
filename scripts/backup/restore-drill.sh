@@ -515,6 +515,7 @@ PFLICHTTABELLEN=(
   spaces_fassungen
   livewall_fotos
   interaktions_gedaechtnis
+  interaktions_gedaechtnis_loeschungen
   ko_embeddings
   loeschantraege
   teams_fassungen

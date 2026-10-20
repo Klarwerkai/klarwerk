@@ -340,6 +340,7 @@ import { FirmenresetSso } from "./firmenreset-sso";
 import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
 import { FreigabeRegelDienst } from "./freigaberegel-dienst";
 import { frischeMeldungen } from "./frische-meldungen";
+import { GedaechtnisLoeschjournal } from "./gedaechtnis-loeschjournal";
 import {
   GemeinsamerEntwurfDienst,
   type GemeinsamerEntwurfRepo,
@@ -2561,7 +2562,12 @@ export function buildPgServices(rohPool: Pool): AppServices {
       uebersetzungen: new PgUebersetzungRepo(pool),
       // R-0466: Gedächtniseinträge überleben Neustart und Deploy bis zu ihrer Frist; Löschen und
       // Fristablauf entfernen die Zeile in derselben Datenbank (`GEDAECHTNIS_SCHEMA`).
-      gedaechtnis: new PgGedaechtnisRepo(pool),
+      gedaechtnis: new PgGedaechtnisRepo(
+        pool,
+        process.env.KLARWERK_GEDAECHTNIS_LOESCHJOURNAL
+          ? new GedaechtnisLoeschjournal(process.env.KLARWERK_GEDAECHTNIS_LOESCHJOURNAL)
+          : undefined,
+      ),
       // R-1656: die Paarzahlen überleben Neustart und Deploy (`MITGELESEN_SCHEMA`).
       mitgelesen: new PgMitgelesenRepo(pool),
       // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
@@ -5820,6 +5826,12 @@ export function buildApp(
   app.register(
     ausscheidenRoutes({ auth: services.auth, vorgaenge: services.wissensuebergabe }, guards),
   );
+  if (services.gedaechtnis instanceof PgGedaechtnisRepo) {
+    const repo = services.gedaechtnis;
+    app.addHook("onReady", async () => {
+      await repo.wendeLoeschmarkenAn();
+    });
+  }
   // R-0466: das eigene Interaktionsgedächtnis. Die Herkunft „antwort" wird gegen DIESELBE
   // Antwortablage geprüft, die auch die Erklärroute liest.
   app.register(
