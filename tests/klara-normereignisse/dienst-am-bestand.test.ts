@@ -132,23 +132,34 @@ describe("AW21 · tatsächliche bestehende Quellen-/Fristenablage", () => {
     if (!n || !e) throw new Error("Ereignis fehlt");
     const url = `/api/me/klara/normereignisse/${n.id}/ereignisse/${e.id}/pruefauftrag`;
     const vor = await services.klaraFristen.hole(kontoId);
-    const falsch = await notizauftrag(
+    for (const inhalt of [
       BEKANNTMACHUNG.replace("v2:", "v20:").replace("Werk A.", "Werk AB."),
-    );
-    const abgewiesen = await app.inject({
-      method: "POST",
-      url,
-      headers: ich.kopf,
-      payload: {
-        fassung: vor?.fassung,
-        gespraechId: falsch.gespraechId,
-        auftragId: falsch.auftragId,
-        bestaetigt: true,
-      },
-    });
-    expect(abgewiesen.statusCode, abgewiesen.body).toBe(404);
-    expect(await services.klaraFristen.hole(kontoId)).toEqual(vor);
+      BEKANNTMACHUNG.replace("v2:", "v20:"),
+      BEKANNTMACHUNG.replace("Werk A.", "Werk AB."),
+    ]) {
+      const falsch = await notizauftrag(inhalt);
+      const angebot = await app.inject({ url, headers: ich.kopf });
+      expect(angebot.statusCode, angebot.body).toBe(200);
+      expect(angebot.json().auftraege).toEqual([]);
+      const abgewiesen = await app.inject({
+        method: "POST",
+        url,
+        headers: ich.kopf,
+        payload: {
+          fassung: vor?.fassung,
+          gespraechId: falsch.gespraechId,
+          auftragId: falsch.auftragId,
+          bestaetigt: true,
+        },
+      });
+      expect(abgewiesen.statusCode, abgewiesen.body).toBe(404);
+      expect(await services.klaraFristen.hole(kontoId)).toEqual(vor);
+    }
     const richtig = await notizauftrag();
+    const angebot = await app.inject({ url, headers: ich.kopf });
+    expect(angebot.statusCode, angebot.body).toBe(200);
+    expect(angebot.json().auftraege).toHaveLength(1);
+    expect(angebot.json().auftraege[0].auftragId).toBe(richtig.auftragId);
     const angenommen = await app.inject({
       method: "POST",
       url,
