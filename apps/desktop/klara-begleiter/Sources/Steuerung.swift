@@ -146,7 +146,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
     // BPA-01: Kartenverbraucher, Anmeldefolge und BPA-04-Fenster.
     private let kartenQuelle = BrowserKartenQuelle()
     private lazy var anmeldeFolge = HostAnmeldungsFolge(mandant: klarwerkHerkunft(einst.server) ?? "")
-    private var anmeldeAbfrage = 0
+    private var suchoeffnung = Suchoeffnung<BegleiterAnmeldung, Suchbelegung>()
     private var anmeldeTakt: Timer?
     private lazy var programme = ProgrammeFenster()
     // nacharbeit-21: der Menüabschnitt der Browserkarte — ersetzt seine Einträge bei jeder
@@ -165,13 +165,12 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         // Option 1: keine automatische systemweite Registrierung; ⌃⌥ bleibt für VoiceOver frei.
         registriereFigurtasten()
         suchkuerzel.beiSuche = { [weak self] in
-            guard let self, let vorher = self.suchkuerzel.belegung else { return }
+            guard let self, let belegung = self.suchkuerzel.belegung,
+                  let sitzung = self.kartenQuelle.anmeldung else { return }
             // Eine inzwischen entfernte/geänderte Belegung darf auch vor dem 30s-Abgleich
             // nichts mehr öffnen. Keine erneute Registrierung/Anmeldung auf Verdacht.
-            self.anmeldungPruefen { [weak self] in
-                guard let self, self.suchkuerzel.belegung == vorher else { return }
-                self.sucheOeffnen()
-            }
+            self.suchoeffnung.anfordern(sitzung: sitzung, belegung: belegung)
+            self.anmeldungPruefen()
         }
         NotificationCenter.default.addObserver(
             self,
@@ -959,9 +958,8 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
 
     /// Fragt beim Server nach (Takt, Menü, nach einem Wechsel). Ohne Antwort, mit Fehler, offline
     /// oder auf fremder Herkunft: keine Anmeldung.
-    private func anmeldungPruefen(beiErfolg: (() -> Void)? = nil) {
-        anmeldeAbfrage += 1
-        let abfrage = anmeldeAbfrage
+    private func anmeldungPruefen() {
+        let abfrage = suchoeffnung.abgleichBeginnen()
         guard offline == nil, aufServer(webView?.url) else {
             anmeldungSetzen(nutzer: nil, sitzung: nil)
             return
@@ -971,7 +969,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
             Task { @MainActor in
                 // Nur die jüngste Abfrage zählt; eine verspätete Antwort — auch eine, die vor einem
                 // gemeldeten Wechsel losging — ändert nichts mehr.
-                guard let self, abfrage == self.anmeldeAbfrage else { return }
+                guard let self, abfrage == self.suchoeffnung.abfrage else { return }
                 guard self.offline == nil, self.aufServer(self.webView.url),
                       case .success(let wert) = ergebnis, let text = wert as? String
                 else {
@@ -986,7 +984,10 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
                 self.anmeldungSetzen(nutzer: stand.nutzer, sitzung: stand.sitzung)
                 self.suchkuerzel.setzen(self.kartenQuelle.anmeldung != nil ? stand.suchbelegung : nil)
                 self.suchstatusEintrag?.title = self.kuerzelText
-                beiErfolg?()
+                if self.suchoeffnung.bestaetigen(auf: abfrage,
+                    sitzung: self.kartenQuelle.anmeldung, belegung: self.suchkuerzel.belegung) {
+                    self.sucheOeffnen()
+                }
             }
         }
     }
@@ -999,7 +1000,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
             suchkuerzel.entfernen()
             suchstatusEintrag?.title = kuerzelText
             // Entwerten macht jede noch laufende Nachfrage ungültig.
-            anmeldeAbfrage += 1
+            suchoeffnung.entwerten()
             anmeldeFolge.entwerten()
             kartenQuelle.anmelden(nil)
             return
