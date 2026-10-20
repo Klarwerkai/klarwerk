@@ -1,7 +1,18 @@
 import { isDeepStrictEqual } from "node:util";
 import { istZeitzone, lokalVon } from "./klara-erinnerung-zeit";
-import type { FristArt, FristBeleg, FristDatum, FristQuellart } from "./klara-fristen-erkennung";
-import { FRIST_ARTEN, fristHash, fristIdentitaet } from "./klara-fristen-erkennung";
+import type {
+  FristArt,
+  FristBeleg,
+  FristDatum,
+  FristQuellart,
+  FristenQuelle,
+} from "./klara-fristen-erkennung";
+import {
+  FRIST_ARTEN,
+  fristHash,
+  fristIdentitaet,
+  fristBelegIdentitaet,
+} from "./klara-fristen-erkennung";
 import type { Normgeschichte } from "./klara-normereignisse";
 
 export interface FristenRegel {
@@ -221,6 +232,52 @@ function mitVerlauf(
   };
 }
 
+/** Bereits gespeicherte Original-ID nur aus heutiger belegter Quellzuordnung fortführen. */
+function importVorgang(
+  stand: FristenStand,
+  b: FristBeleg,
+  quellen: readonly FristenQuelle[],
+): string {
+  const neu = fristIdentitaet(stand.kontoId, b);
+  if (!b.quelle.importbeleg && !b.quelle.importIdentitaetUnklar) return neu;
+  const kopien = new Set(
+    quellen
+      .filter(
+        (q) =>
+          (q.importbeleg || q.importIdentitaetUnklar) &&
+          fristBelegIdentitaet(q) === b.quelle.belegId,
+      )
+      .map((q) => `${q.art}:${q.id}`),
+  );
+  const alte = stand.fristen.filter(
+    (f) =>
+      f.objekt.art.toLocaleLowerCase("de") === b.objekt.art.toLocaleLowerCase("de") &&
+      f.objekt.kennung === b.objekt.kennung &&
+      f.art === b.art &&
+      f.herkunft.some(
+        (h) =>
+          h.beleg.quelle.belegId === b.quelle.belegId ||
+          kopien.has(`${h.beleg.quelle.art}:${h.beleg.quelle.id}`),
+      ),
+  );
+  if (alte.length === 0) return neu;
+  const alt = alte[0];
+  if (
+    alte.length !== 1 ||
+    !alt ||
+    alt.herkunft.some((h) =>
+      h.beleg.quelle.importbeleg || h.beleg.quelle.importIdentitaetUnklar
+        ? h.beleg.quelle.belegId !== b.quelle.belegId
+        : !kopien.has(`${h.beleg.quelle.art}:${h.beleg.quelle.id}`),
+    )
+  )
+    throw new FristenFehler(
+      409,
+      "Die bisherige gemischte Fristherkunft ist nicht eindeutig derselben Importquelle zugeordnet. Originale zuerst klären.",
+    );
+  return alt.id;
+}
+
 /**
  * Faltet eine vollständig gelesene aktuelle Quelle in den Bestand. Wiederholung ist wirkungslos;
  * verschwundene Belege werden zurückgezogen. Die Quelle muss vor dem Aufruf autoritativ lesbar sein.
@@ -231,6 +288,7 @@ export function verarbeiteFristenQuelle(
   quelle: { art: FristQuellart; id: string; fassung: string },
   belege: readonly FristBeleg[],
   am: string,
+  bekannteQuellen: readonly FristenQuelle[] = [],
 ): FristenStand {
   const regel = stand.regel;
   if (!regel?.aktiv || !regel.quellen.some((q) => q.art === quelle.art && q.id === quelle.id)) {
@@ -252,7 +310,7 @@ export function verarbeiteFristenQuelle(
   const gruppen = new Map<string, FristBeleg[]>();
   for (const b of belege) {
     if (!regel.arten.includes(b.art)) continue;
-    const id = fristIdentitaet(stand.kontoId, b);
+    const id = importVorgang(stand, b, bekannteQuellen);
     const gruppe = gruppen.get(id) ?? [];
     if (!gruppe.some((x) => x.fingerabdruck === b.fingerabdruck)) gruppe.push(b);
     gruppen.set(id, gruppe);
@@ -294,8 +352,26 @@ export function verarbeiteFristenQuelle(
         geaendertAm: am,
       };
     }
+    const importVersionen = [...basis.herkunft.map((h) => h.beleg), ...neueBelege].flatMap((b) =>
+      b.quelle.importbeleg ? [b.quelle.importbeleg.sourceVersion] : [],
+    );
+    const neuesteImportversion = importVersionen.length ? Math.max(...importVersionen) : null;
+    const nochAktuelleVersion = (b: FristBeleg) =>
+      !b.quelle.importbeleg ||
+      neuesteImportversion === null ||
+      b.quelle.importbeleg.sourceVersion >= neuesteImportversion;
     const herkunft: FristHerkunft[] = basis.herkunft.map((h) =>
-      h.beleg.quelle.art === quelle.art && h.beleg.quelle.id === quelle.id
+      (h.beleg.quelle.art === quelle.art && h.beleg.quelle.id === quelle.id) ||
+      (erster?.quelle.importbeleg &&
+        !h.beleg.quelle.importbeleg &&
+        bekannteQuellen.some(
+          (q) =>
+            q.art === h.beleg.quelle.art &&
+            q.id === h.beleg.quelle.id &&
+            q.importbeleg &&
+            fristBelegIdentitaet(q) === erster.quelle.belegId,
+        )) ||
+      !nochAktuelleVersion(h.beleg)
         ? { ...h, aktuell: false }
         : h,
     );
@@ -307,8 +383,8 @@ export function verarbeiteFristenQuelle(
           h.beleg.quelle.fassung === b.quelle.fassung &&
           h.beleg.fingerabdruck === b.fingerabdruck,
       );
-      if (i >= 0) herkunft[i] = { beleg: b, aktuell: true };
-      else herkunft.push({ beleg: b, aktuell: true });
+      if (i >= 0) herkunft[i] = { beleg: b, aktuell: nochAktuelleVersion(b) };
+      else herkunft.push({ beleg: b, aktuell: nochAktuelleVersion(b) });
     }
     if (alt && isDeepStrictEqual(herkunft, alt.herkunft)) {
       const zeitlich = fristZeitstand(alt, am, regel.zeitzone);
@@ -322,12 +398,14 @@ export function verarbeiteFristenQuelle(
     const abgelehnt =
       aktuell.length > 0 &&
       aktuell.every((b) => basis.ablehnungen.includes(ablehnungsSignatur(id, b)));
+    const neueAktuelleBelege = neueBelege.filter(nochAktuelleVersion);
     const geaendert = Boolean(
-      alt?.herkunft.some(
-        (h) =>
-          h.beleg.quelle.belegId === erster?.quelle.belegId &&
-          !neueBelege.some((b) => b.fingerabdruck === h.beleg.fingerabdruck),
-      ),
+      neueAktuelleBelege.length &&
+        alt?.herkunft.some(
+          (h) =>
+            h.beleg.quelle.belegId === erster?.quelle.belegId &&
+            !neueAktuelleBelege.some((b) => b.fingerabdruck === h.beleg.fingerabdruck),
+        ),
     );
     const klaerung = [...new Set(aktuell.flatMap((b) => b.klaerung))] as string[];
     const verantwortliche = new Set(
@@ -337,6 +415,9 @@ export function verarbeiteFristenQuelle(
     if (daten.size > 1) klaerung.push("widerspruch");
     if (
       (geaendert && (basis.manuell || regel.aenderung === "klaeren")) ||
+      (neuesteImportversion !== null &&
+        basis.manuell &&
+        basis.klaerung.includes("relevante_quellaenderung")) ||
       (!abgelehnt && basis.ablehnungen.length > 0)
     )
       klaerung.push("relevante_quellaenderung");
