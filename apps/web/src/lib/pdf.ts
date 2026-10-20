@@ -17,6 +17,9 @@ export interface PdfTextContent {
 }
 export interface PdfPageProxy {
   getTextContent(): Promise<PdfTextContent>;
+  // OCR-E04: die Zeichenbefehle der Seite — gelesen wird nur, OB sie ein Bild zeichnet. Optional,
+  // damit Stubs und ältere Fixtures ohne es weiterlaufen.
+  getOperatorList?(): Promise<{ fnArray: ArrayLike<number> }>;
 }
 export interface PdfDocumentProxy {
   numPages: number;
@@ -33,6 +36,11 @@ export interface PdfLoadingTask {
 }
 export interface PdfEngine {
   getDocument(src: { data: Uint8Array }): PdfLoadingTask;
+  /**
+   * OCR-E04: die Befehlsnummern der Engine, mit denen eine Seite ein Bild zeichnet (bei pdfjs
+   * `OPS.paintImageXObject` u. a.). Fehlen sie, wird nicht nach Bildern gefragt.
+   */
+  bildBefehle?: readonly number[];
 }
 
 // WP-D3: Seiten-Cap als Sicherheitsnetz gegen Riesen-PDFs (Browser-Freeze, 1-MiB-extract-Body). Über
@@ -80,6 +88,31 @@ export interface PdfDocumentText {
   // R-0347: der Klartext JE gelesener Seite, in Seitenreihenfolge (leere Seiten als ""). Die
   // Dokumentfragen brauchen ihn für die Fundstelle „Seite N"; `text` bleibt zeichengleich.
   pages?: string[];
+  // OCR-E04: die Seiten des Dokuments insgesamt — auch die über dem Seiten-Cap, die fehlen.
+  totalPages?: number;
+  // OCR-E04: je gelesener Seite, ob sie ein Bild zeichnet (`null`: nicht bestimmbar). Fehlt, wenn
+  // die Engine keine Bildbefehle kennt.
+  pageImages?: (boolean | null)[];
+}
+
+async function zeichnetBild(
+  page: PdfPageProxy,
+  befehle: ReadonlySet<number>,
+): Promise<boolean | null> {
+  if (!page.getOperatorList) {
+    return null;
+  }
+  try {
+    const { fnArray } = await page.getOperatorList();
+    for (let i = 0; i < fnArray.length; i += 1) {
+      if (befehle.has(fnArray[i] ?? -1)) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return null;
+  }
 }
 
 // pdfjs-Fragment → positioniertes Item für die Rekonstruktion. Ohne transform (z. B. Stub) fällt das
@@ -142,16 +175,25 @@ export async function extractPdfDocument(
     const total = doc.numPages;
     const readCount = Math.min(total, maxPages);
     const pages: string[][] = [];
+    const befehle = engine.bildBefehle ? new Set(engine.bildBefehle) : null;
+    const bilder: (boolean | null)[] = [];
     for (let i = 1; i <= readCount; i += 1) {
       const page = await doc.getPage(i);
       const content = await page.getTextContent();
       pages.push(reconstructPageLines(content.items.map(toPositioned)));
+      if (befehle) {
+        // Nacharbeit 2 (Ben): ohne einen einzigen bekannten Bildbefehl ist „kein Bild“ nicht
+        // bestimmbar — dann `null` (unbekannt), nie `false` (nachweislich bildfrei).
+        bilder.push(befehle.size > 0 ? await zeichnetBild(page, befehle) : null);
+      }
     }
     return {
       text: joinPdfPages(pages),
       truncated: total > readCount,
       pageCount: readCount,
       pages: pages.map((zeilen) => joinPdfPages([zeilen])),
+      totalPages: total,
+      ...(befehle ? { pageImages: bilder } : {}),
     };
   })();
   // Laeuft die Frist ab, darf die weiterlaufende Arbeit spaeter nicht als unbehandelte Ablehnung

@@ -240,7 +240,39 @@ export function isPdfDocument(file: File): boolean {
 // pdfjs/tesseract-Typen im Typecheck; echte Auflösung beim Vite-Build).
 type PdfjsModule = PdfEngine & {
   GlobalWorkerOptions: { workerSrc: string };
+  OPS?: Record<string, number>;
 };
+
+// OCR-E04: die pdfjs-Befehle, mit denen eine Seite ein Bild zeichnet. Eine reine Farbmaske
+// (`paintSolidColorImageMask`) ist kein Bild mit Inhalt und zählt nicht.
+const PDFJS_BILDBEFEHLE = [
+  "paintImageXObject",
+  "paintImageXObjectRepeat",
+  "paintInlineImageXObject",
+  "paintInlineImageXObjectGroup",
+  "paintImageMaskXObject",
+  "paintImageMaskXObjectGroup",
+  "paintImageMaskXObjectRepeat",
+] as const;
+
+/**
+ * Die Bildbefehle der geladenen pdfjs-Fassung. Nacharbeit 9: der Zugriff auf `OPS` darf das Laden
+ * der Engine NIE scheitern lassen — fehlt die Tabelle (oder wirft der Zugriff, wie bei einem Modul
+ * ohne diesen Export), heißt das nur „Bildanteil nicht bestimmbar“ (`pdf.ts`: dann `null` je Seite),
+ * und der Textweg bleibt unverändert.
+ */
+function pdfjsBildBefehle(pdfjs: PdfjsModule): number[] {
+  let ops: Record<string, number> | undefined;
+  try {
+    ops = pdfjs.OPS;
+  } catch {
+    ops = undefined;
+  }
+  return PDFJS_BILDBEFEHLE.flatMap((name) => {
+    const nummer = ops?.[name];
+    return typeof nummer === "number" ? [nummer] : [];
+  });
+}
 type TesseractModule = {
   recognize(
     input: unknown,
@@ -271,10 +303,74 @@ export async function pdfEngine(): Promise<PdfEngine> {
         "pdfjs-dist/legacy/build/pdf.worker.mjs",
         import.meta.url,
       ).href;
-      return { getDocument: (src) => pdfjs.getDocument(src) };
+      const bildBefehle = pdfjsBildBefehle(pdfjs);
+      return { getDocument: (src) => pdfjs.getDocument(src), bildBefehle };
     })();
   }
   return pdfEnginePromise;
+}
+
+// ================================================================================================
+// OCR-E04 · DIE SEITEN EINER GESCANNTEN PDF ALS BILD — für die vorhandene Texterkennung.
+// ================================================================================================
+//
+// Dieselbe Engine (pdfjs) und dieselbe Zeichenweise wie die Zeichnungsansicht
+// (`lib/zeichnungsanhang.ts`); das Bild entsteht nur im Speicher für die eine Lesung. Die Datei und
+// ihr Original-Anhang bleiben unverändert. Das Dokument wird EINMAL geöffnet und nach dem letzten
+// Bild mit `schliessen` freigegeben.
+
+/** Zielbreite der gezeichneten Seite — etwa 240 dpi bei A4, genug für gewöhnliche Schrift. */
+const PDF_SEITE_ZIELBREITE = 2000;
+
+interface PdfSeiteZeichenbar {
+  getViewport(o: { scale: number }): { width: number; height: number };
+  render(o: { canvasContext: CanvasRenderingContext2D; viewport: unknown }): {
+    promise: Promise<void>;
+  };
+}
+
+export interface PdfSeitenZeichner {
+  /** Die Seite (ab 1) als PNG-data-URL — `null`, wenn sie sich nicht zeichnen lässt. */
+  zeichne(seite: number): Promise<string | null>;
+  schliessen(): Promise<void>;
+}
+
+export async function pdfSeitenZeichner(file: File): Promise<PdfSeitenZeichner> {
+  const engine = await pdfEngine();
+  const task = engine.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+  const doc = await task.promise;
+  return {
+    zeichne: async (seite) => {
+      const page = (await doc.getPage(seite)) as unknown as PdfSeiteZeichenbar;
+      const eins = page.getViewport({ scale: 1 });
+      const massstab = Math.min(3, PDF_SEITE_ZIELBREITE / eins.width);
+      const viewport = page.getViewport({ scale: massstab });
+      const leinwand = document.createElement("canvas");
+      leinwand.width = Math.ceil(viewport.width);
+      leinwand.height = Math.ceil(viewport.height);
+      const kontext = leinwand.getContext("2d");
+      if (!kontext) {
+        return null;
+      }
+      // Weißer Grund: eine transparente Seite läse die Erkennung als schwarze Fläche.
+      kontext.fillStyle = "#ffffff";
+      kontext.fillRect(0, 0, leinwand.width, leinwand.height);
+      await page.render({ canvasContext: kontext, viewport }).promise;
+      return leinwand.toDataURL("image/png");
+    },
+    schliessen: async () => {
+      try {
+        await doc.destroy?.();
+      } catch {
+        // Aufräumen darf das Ergebnis nicht verdecken.
+      }
+      try {
+        await task.destroy?.();
+      } catch {
+        // dito
+      }
+    },
+  };
 }
 
 // ================================================================================================

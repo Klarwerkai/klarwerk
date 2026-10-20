@@ -7,6 +7,9 @@
 // Die Logik steht im DOM-freien Kern `lib/dokumentFragen.ts`; diese Datei liest die Datei mit den
 // vorhandenen Lesern der Erfassung (`lib/files.ts`, `lib/docx.ts`) und zeigt an.
 //
+// OCR-E04 (Nacharbeit 8): gescannte und gemischte PDF-Seiten werden mit der Texterkennung IM
+// BROWSER gelesen (`lib/pdfSeitenLauf.ts`) — auch das verlässt den Browser nicht.
+//
 // WAS DIESE FLÄCHE BEWUSST NICHT TUT: nichts speichern, nichts an den Server oder ein Modell
 // senden, nichts in den Wissensbestand übernehmen. Das Dokument ist Arbeitsmaterial (EF-6,
 // „Grenze zum Bestand"); wer daraus Wissen machen will, geht den normalen Erfassungsweg.
@@ -14,7 +17,10 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { BESPRECHUNGEN_PFAD } from "../api/besprechungen";
+import { PdfSeitenListe } from "../components/PdfSeitenListe";
 import { Button, Card, PageHeader, SectionLabel, cx } from "../components/ui";
+import type { BildAnalyse, QuellenBefund } from "../lib/bildAutomatik";
+import { useBildAnalyse } from "../lib/bildAutomatikLauf";
 import { extractDocxRich } from "../lib/docx";
 import {
   type DokumentAntwort,
@@ -28,6 +34,7 @@ import {
 } from "../lib/dokumentFragen";
 import { detectFileKind } from "../lib/extract";
 import { readPdfFile, readTextFile } from "../lib/files";
+import { LAUF_VERWORFEN, lesePdfDateiSeiten } from "../lib/pdfSeitenLauf";
 
 /** Größte lesbare Datei. Dieselbe Größenordnung wie die PPTX-Kante der Erfassung (`files.ts`). */
 const MAX_DATEI_MB = 50;
@@ -52,23 +59,54 @@ type Lage =
   | { readonly art: "fehler"; readonly text: string }
   | { readonly art: "bereit"; readonly dokument: GelesenesDokument };
 
+/**
+ * OCR-E04 (Nacharbeit 8): wie eine PDF gelesen wird — die Bildanalyse dieser Fläche, der
+ * Zwischenstand der Seiten und ob der Lauf noch gilt.
+ */
+interface SeitenLesen {
+  analyse: Pick<BildAnalyse, "befundFuerBild">;
+  onFortschritt: (stand: QuellenBefund) => void;
+  abbrechen: () => boolean;
+}
+
+interface Gelesen {
+  bausteine: DokumentBaustein[];
+  seitenGekuerzt: number | null;
+  /** Der Lesestand der Seiten, wenn Seiten gelesen werden mussten (sonst `null`). */
+  seiten: QuellenBefund | null;
+}
+
 async function liesDokument(
   datei: File,
-): Promise<{ bausteine: DokumentBaustein[]; seitenGekuerzt: number | null } | "format"> {
+  seitenLesen: SeitenLesen,
+): Promise<Gelesen | "format" | typeof LAUF_VERWORFEN> {
   switch (detectFileKind({ name: datei.name, type: datei.type })) {
     case "pdf": {
       const pdf = await readPdfFile(datei, { maxBytes: MAX_DATEI_BYTES });
+      // OCR-E04: Bild- und gemischte Seiten werden gelesen; jede Seite behält ihre Seitenzahl —
+      // Textebene und erkannter Rest derselben Seite stehen zusammen, ohne Doppel.
+      const seiten = await lesePdfDateiSeiten(datei, pdf, seitenLesen);
+      // Nacharbeit 10: Kontowechsel während des Lesens — nichts davon gilt.
+      if (seiten === LAUF_VERWORFEN) {
+        return LAUF_VERWORFEN;
+      }
+      const jeSeite = seiten ? seiten.seiten : pdf.pages;
       return {
-        bausteine: pdf.pages ? bausteineAusSeiten(pdf.pages) : bausteineAusText(pdf.text),
+        bausteine: jeSeite ? bausteineAusSeiten(jeSeite) : bausteineAusText(pdf.text),
         seitenGekuerzt: pdf.truncated ? pdf.pageCount : null,
+        seiten: seiten ? seiten.befund : null,
       };
     }
     case "docx": {
       const word = await extractDocxRich(await datei.arrayBuffer());
-      return { bausteine: bausteineAusHtml(word.html), seitenGekuerzt: null };
+      return { bausteine: bausteineAusHtml(word.html), seitenGekuerzt: null, seiten: null };
     }
     case "text":
-      return { bausteine: bausteineAusText(await readTextFile(datei)), seitenGekuerzt: null };
+      return {
+        bausteine: bausteineAusText(await readTextFile(datei)),
+        seitenGekuerzt: null,
+        seiten: null,
+      };
     default:
       return "format";
   }
@@ -86,6 +124,11 @@ export function Dokumentfragen(): JSX.Element {
   const [markiert, setMarkiert] = useState<number | null>(null);
   const dateiRef = useRef<HTMLInputElement>(null);
   const frageRef = useRef<HTMLInputElement>(null);
+  // OCR-E04 (Nacharbeit 8): der Lesestand der Seiten einer gescannten bzw. gemischten PDF — beim
+  // Lesen und danach sichtbar. Der Laufzähler verwirft Rückgaben eines ersetzten Dokuments.
+  const [seiten, setSeiten] = useState<{ lauf: number; befund: QuellenBefund } | null>(null);
+  const laufRef = useRef(0);
+  const bildAnalyse = useBildAnalyse();
 
   // Ist das Dokument gelesen, steht das Fragefeld erst NACH diesem Rendern — deshalb hier.
   useEffect(() => {
@@ -107,6 +150,10 @@ export function Dokumentfragen(): JSX.Element {
     }
     setAntwort(null);
     setMarkiert(null);
+    laufRef.current += 1;
+    const lauf = laufRef.current;
+    const aktuell = (): boolean => laufRef.current === lauf;
+    setSeiten(null);
     if (datei.size > MAX_DATEI_BYTES) {
       setLage({
         art: "fehler",
@@ -120,11 +167,29 @@ export function Dokumentfragen(): JSX.Element {
     }
     setLage({ art: "liest", name: datei.name });
     try {
-      const gelesen = await liesDokument(datei);
+      const gelesen = await liesDokument(datei, {
+        analyse: bildAnalyse,
+        abbrechen: () => !aktuell(),
+        onFortschritt: (stand) => {
+          if (aktuell()) {
+            setSeiten({ lauf, befund: stand });
+          }
+        },
+      });
+      if (!aktuell()) {
+        return;
+      }
+      if (gelesen === LAUF_VERWORFEN) {
+        // Nacharbeit 10: Kontowechsel während des Lesens — weder Stand noch Fundstellen bleiben.
+        setSeiten(null);
+        setLage({ art: "leer" });
+        return;
+      }
       if (gelesen === "format") {
         setLage({ art: "fehler", text: t("dokumentfragen.fehlerFormat") });
         return;
       }
+      setSeiten(gelesen.seiten ? { lauf, befund: gelesen.seiten } : null);
       const stellen = gliedere(gelesen.bausteine);
       if (stellen.length === 0) {
         setLage({ art: "fehler", text: t("dokumentfragen.fehlerLeer", { name: datei.name }) });
@@ -135,7 +200,9 @@ export function Dokumentfragen(): JSX.Element {
         dokument: { name: datei.name, stellen, seitenGekuerzt: gelesen.seitenGekuerzt },
       });
     } catch {
-      setLage({ art: "fehler", text: t("dokumentfragen.fehlerLesen", { name: datei.name }) });
+      if (aktuell()) {
+        setLage({ art: "fehler", text: t("dokumentfragen.fehlerLesen", { name: datei.name }) });
+      }
     }
   };
 
@@ -156,6 +223,8 @@ export function Dokumentfragen(): JSX.Element {
   };
 
   const anderesDokument = (): void => {
+    laufRef.current += 1;
+    setSeiten(null);
     setLage({ art: "leer" });
     setAntwort(null);
     setMarkiert(null);
@@ -251,6 +320,13 @@ export function Dokumentfragen(): JSX.Element {
             </p>
           ) : null}
         </div>
+        {/* OCR-E04: Lesestand einer gescannten bzw. gemischten PDF — laufende, fehlerhafte und
+            fehlende Seiten stehen als solche da, auch neben einer Antwort. */}
+        {seiten ? (
+          <div data-testid="dokumentfragen-seiten" className="mt-3">
+            <PdfSeitenListe befund={seiten.befund} lauf={seiten.lauf} />
+          </div>
+        ) : null}
       </Card>
 
       {dokument ? (

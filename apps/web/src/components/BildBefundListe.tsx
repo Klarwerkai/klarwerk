@@ -26,6 +26,7 @@ import {
 import { markierung } from "../lib/bildFundstelle";
 import { berichtigbar, korrekturQuelleFuer, quellenMitKorrekturen } from "../lib/bildKorrektur";
 import { useBildKorrekturen, wiederholeBildKorrekturen } from "../lib/bildKorrekturenStand";
+import { MAX_PDF_PAGES } from "../lib/pdf";
 import { BildFundstelleAnsicht, type FundstellenZiel } from "./BildFundstelleAnsicht";
 import { BildTextBerichtigung } from "./BildTextBerichtigung";
 import { BildTextStellen } from "./BildTextStellen";
@@ -57,6 +58,8 @@ const HINWEIS_SCHLUESSEL: Record<QuellenHinweis, string> = {
   ladefrist: "bildautomatik.hinweis.ladefrist",
   // OCR-03: das Profil des Kontos war nicht lesbar — nicht automatisch gelesen.
   "einstellung-unbekannt": "klarabildkontext.hinweis.einstellungUnbekannt",
+  // OCR-E04: PDF über der Seitengrenze — die übrigen Seiten fehlen.
+  "pdf-seiten-fehlen": "pdfscan.hinweis.seitenFehlen",
 };
 
 /** Warum der Bildinhalt fehlt — je Zustand ein eigener Satz. */
@@ -80,6 +83,13 @@ export function fundstelleBaustein(
   key: string;
   params: Record<string, number | string>;
 } {
+  // OCR-E04: eine PDF-Seite — Textebene („Seite 2“) bzw. die gelesene Seite („Seite 2, erkannt“).
+  if (f.seite !== undefined) {
+    return {
+      key: f.seitenteil === "bild" ? "pdfscan.fundstelle.seiteErkannt" : "pdfscan.fundstelle.seite",
+      params: { seite: f.seite },
+    };
+  }
   if (f.folie !== undefined && f.folienansicht) {
     return { key: "bildautomatik.fundstelle.folienansicht", params: { folie: f.folie } };
   }
@@ -249,7 +259,11 @@ export function BildBefundListe({
           ))}
           {befund.hinweise.map((h) => (
             <li key={h} data-testid="bild-befund-hinweis" data-hinweis={h}>
-              {t(HINWEIS_SCHLUESSEL[h], { max: BILD_HOECHSTZAHL_JE_QUELLE })}
+              {t(HINWEIS_SCHLUESSEL[h], {
+                max: BILD_HOECHSTZAHL_JE_QUELLE,
+                seiten: MAX_PDF_PAGES,
+                fehlend: befund.fehlendeSeiten ?? 0,
+              })}
             </li>
           ))}
           {ohneInhalt > 0 ? (

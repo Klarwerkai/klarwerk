@@ -55,8 +55,11 @@ export const UNSICHER_UNTER = 60;
 /** Unter dieser Sicherheit gilt ein Wort als unleserlich und wird nicht als Text ausgegeben. */
 export const UNLESERLICH_UNTER = 30;
 
-/** `rumpf`: Bilder im Text eines Entwurfs oder Wissensobjekts (Editor, auch aus Word/Browser). */
-export type BildQuellenArt = "bild" | "pptx" | "docx" | "rumpf";
+/**
+ * `rumpf`: Bilder im Text eines Entwurfs oder Wissensobjekts (Editor, auch aus Word/Browser).
+ * `pdf`: OCR-E04 — die Seiten einer PDF (Textebene und gezeichnete Seite, `lib/pdfScanSeiten.ts`).
+ */
+export type BildQuellenArt = "bild" | "pptx" | "docx" | "rumpf" | "pdf";
 
 export interface BildFundstelle {
   /** Name der Quelle (Dateiname). */
@@ -72,6 +75,10 @@ export interface BildFundstelle {
   folienansicht?: boolean;
   /** Der Vorkommensanker im Rumpf (`data-image-id`), sofern vorhanden. */
   imageId?: string;
+  /** OCR-E04 · PDF: die Seite (ab 1). */
+  seite?: number;
+  /** OCR-E04 · PDF: der Text stammt aus der Textebene der Seite oder aus der gelesenen Seite. */
+  seitenteil?: "textebene" | "bild";
 }
 
 export interface BildVorkommen {
@@ -135,6 +142,11 @@ export interface BildBefund {
   /** Warum nicht analysiert wurde. */
   grund?: "automatik-aus" | "grenze";
   fehler?: string;
+  /**
+   * OCR-E04 · PDF: so viele erkannte Zeilen standen schon wörtlich in der Textebene derselben Seite
+   * und sind deshalb nicht ein zweites Mal im Text.
+   */
+  doppelt?: number;
   /** OCR-E01: die Wörter der Erkennung mit ihrem Rahmen (Pixel der gelesenen Bytes). */
   woerter?: WortPosition[];
   /** OCR-E01: Breite, Höhe und Drehangabe der gelesenen Bytes (fehlt, wenn nicht lesbar). */
@@ -184,7 +196,9 @@ export type QuellenHinweis =
   /** Die Quelle selbst kam nicht innerhalb der Ladefrist an (Office-Anhang). */
   | "ladefrist"
   /** OCR-03: die Einstellung des Kontos konnte nicht gelesen werden — nichts automatisch gelesen. */
-  | "einstellung-unbekannt";
+  | "einstellung-unbekannt"
+  /** OCR-E04: die PDF hat mehr Seiten als die Seitengrenze (`MAX_PDF_PAGES`) — der Rest fehlt. */
+  | "pdf-seiten-fehlen";
 
 export interface BildQuelleEingang {
   quelle: string;
@@ -201,6 +215,8 @@ export interface QuellenBefund {
   befunde: BildBefund[];
   nichtGelesen: NichtGelesen[];
   hinweise: QuellenHinweis[];
+  /** OCR-E04 · PDF: Seiten über der Seitengrenze — weder Textebene noch Seite gelesen. */
+  fehlendeSeiten?: number;
 }
 
 export type BildErkenner = (src: string) => Promise<OcrResult>;
