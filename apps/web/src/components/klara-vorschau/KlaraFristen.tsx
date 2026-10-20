@@ -16,11 +16,17 @@ import { klaraNotizApi } from "../../api/klaraNotiz";
 import { ortsZone } from "../../lib/kalenderZeit";
 import { anfrageEpoche, aufRechtekontextwechsel } from "../../lib/rechtekontext";
 import { Button, Field, TextInput } from "../ui";
+import { Normereignisse } from "./Normereignisse";
 import { oeffneNotiz } from "./notizen";
 
 export function KlaraFristen({ kontoId }: { kontoId: string }): JSX.Element {
   const epoche = useSyncExternalStore(aufRechtekontextwechsel, anfrageEpoche, anfrageEpoche);
-  return <FristenOeffner key={`${kontoId}:${epoche}`} kontoId={kontoId} epoche={epoche} />;
+  return (
+    <>
+      <FristenOeffner key={`${kontoId}:${epoche}`} kontoId={kontoId} epoche={epoche} />
+      <Normereignisse key={`norm:${kontoId}:${epoche}`} kontoId={kontoId} epoche={epoche} />
+    </>
+  );
 }
 
 function FristenOeffner({ kontoId, epoche }: { kontoId: string; epoche: number }): JSX.Element {
