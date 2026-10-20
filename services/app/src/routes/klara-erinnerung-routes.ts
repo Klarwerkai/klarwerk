@@ -260,6 +260,20 @@ export function klaraErinnerungRoutes(
       },
     );
 
+    app.post<{ Body: { wissenspflege?: unknown } }>(
+      "/api/me/klara/erinnerungen/wissenspflege/vorschau",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) return;
+        try {
+          const body = rumpf<{ wissenspflege?: unknown }>(request.body);
+          reply.code(200).send(await dienst.wissenspflegeVorschau(user.id, body.wissenspflege));
+        } catch (fehler) {
+          antworteMitFehler(reply, fehler);
+        }
+      },
+    );
+
     app.post<{ Body: KlaraErinnerungEingabe }>(
       "/api/me/klara/erinnerungen",
       async (request, reply) => {

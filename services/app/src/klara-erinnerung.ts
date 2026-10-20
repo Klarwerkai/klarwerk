@@ -49,6 +49,14 @@ import {
   notizEintrag,
   routineAus,
 } from "./klara-routine";
+import {
+  type GelesenePflegeQuelle,
+  type PflegeErgebnis,
+  type PflegeLeser,
+  bereiteWissenspflegeVor,
+  pflegeAusgangsstand,
+  pflegeVorgang,
+} from "./klara-wissenspflege";
 
 // ================================================================================================
 // produkt:20261007:klara-erinnerungen-kalender (Klara 10 · AW-18) — PERSÖNLICHE ERINNERUNGEN, DIE
@@ -273,6 +281,11 @@ export interface KlaraErinnerungLauf {
     readonly empfaenger?: string;
     /** EQF-07: das tatsächliche Ergebnis der Routine (Bericht, Fassungen, offener Rest). */
     readonly routine?: KlaraRoutineErgebnis;
+    readonly wissenspflege?: PflegeErgebnis;
+    /** Vor einer Pflegewirkung festgehaltene echte Readback-Schlüssel, kein Erfolgssiegel. */
+    readonly pflegeNotizVorgang?: string;
+    readonly pflegeMeldungId?: string;
+    readonly pflegeRoutineFassung?: number;
   };
 }
 
@@ -777,6 +790,8 @@ export interface MeldungBedingung {
   readonly quellenStand?: readonly ErinnerungQuellenStand[];
   /** Genau die gehaltenen Läufe: Abbruch oder Übernahme durch einen anderen Prozess sperrt die Wirkung. */
   readonly laeufe?: readonly LaufBedingung[];
+  /** Nur ausdrücklich beauftragte Pflege: aktuelle zusätzliche Quellenfakten im selben INSERT. */
+  readonly pflegeQuelle?: NotizSchreibbedingung;
 }
 
 /**
@@ -861,6 +876,11 @@ export function bedingungSql(
     und.push(`EXISTS (SELECT 1 FROM klara_erinnerung_laeufe
       WHERE vorkommen_id = $${p() - 3}::text AND erinnerung_id = $${p() - 2}::text
         AND besitzer = $${p() - 1}::text AND status = ANY($${p()}::text[]) FOR SHARE)`);
+  }
+  const pflege = b.pflegeQuelle?.sql?.(start + params.length);
+  if (pflege) {
+    und.push(...pflege.und);
+    params.push(...pflege.params);
   }
   return { und, params };
 }
@@ -1372,6 +1392,7 @@ export class InMemoryKlaraErinnerungMeldungRepo implements KlaraErinnerungMeldun
       bedingung &&
       this.erinnerungen &&
       (!this.erinnerungen.aktivInFassung(bedingung.erinnerungId, bedingung.fassung) ||
+        bedingung.pflegeQuelle?.gilt?.() === false ||
         (bedingung.laeufe !== undefined &&
           this.erinnerungen.laufBedingungen?.(bedingung.laeufe) !== true))
     ) {
@@ -1442,7 +1463,17 @@ function abbruchErgebnis(
   notiz: KlaraNotiz | null,
 ): KlaraErinnerungLauf["ergebnis"] {
   const beleg = meldung?.vorkommen.includes(lauf.geplantFuer) ? meldung : null;
-  const routine = notiz ? ergebnisAusBericht(notiz) : lauf.ergebnis.routine;
+  const routine = notiz
+    ? {
+        ...ergebnisAusBericht(notiz),
+        ...(lauf.ergebnis.wissenspflege
+          ? {
+              wissenspflege: lauf.ergebnis.wissenspflege,
+              routineFassung: lauf.ergebnis.pflegeRoutineFassung ?? 0,
+            }
+          : {}),
+      }
+    : lauf.ergebnis.routine;
   return {
     ...lauf.ergebnis,
     ...(beleg
@@ -1475,9 +1506,12 @@ export function inMemoryErinnerungAblage(): KlaraErinnerungAblage {
       if (!lauf) return false;
       // Ab hier verhindern dieselben Laufbedingungen neue Meldungen/Berichte. Vorherige Wirkungen nachlesen.
       try {
-        const meldung = await meldungen.hole(lauf.meldungId);
+        const meldung = await meldungen.hole(lauf.ergebnis.pflegeMeldungId ?? lauf.meldungId);
         const notiz = notizen
-          ? await notizen.zuVorgang(kontoId, ergebnisVorgang(vorkommenId))
+          ? await notizen.zuVorgang(
+              kontoId,
+              lauf.ergebnis.pflegeNotizVorgang ?? ergebnisVorgang(vorkommenId),
+            )
           : null;
         await laeufe.setze(
           vorkommenId,
@@ -2116,11 +2150,11 @@ export function pgErinnerungAblage(pool: Pool): KlaraErinnerungAblage {
         // Befehl nach dem Sperren sieht deren echten Ausgang; neue Wirkungen warten und scheitern.
         const m = await client.query<{ data: KlaraErinnerungMeldung }>(
           "SELECT data FROM klara_erinnerung_meldungen WHERE id = $1",
-          [lauf.meldungId],
+          [lauf.ergebnis.pflegeMeldungId ?? lauf.meldungId],
         );
         const n = await client.query<{ data: KlaraNotiz }>(
           "SELECT data FROM klara_notizen WHERE konto_id = $1 AND vorgang = $2",
-          [kontoId, ergebnisVorgang(vorkommenId)],
+          [kontoId, lauf.ergebnis.pflegeNotizVorgang ?? ergebnisVorgang(vorkommenId)],
         );
         await client.query(
           `UPDATE klara_erinnerung_laeufe SET status = 'abgebrochen', lease_bis = NULL,
@@ -2600,6 +2634,7 @@ export interface KlaraErinnerungDienstDeps {
     Partial<Pick<KlaraNotizRepo, "entferne" | "zuVorgang">>;
   readonly aufgaben?: Pick<KlaraAufgabeRepo, "hole">;
   readonly gespraeche?: Pick<KlaraGespraechRepo, "hole">;
+  readonly wissenspflege?: PflegeLeser;
   /**
    * Die vorhandenen Konten — für die bewusste Übergabe (Empfängerin per Adresse, ihr Zugang HEUTE).
    * In `buildApp` ist das `AuthService`; ohne sie ist keine Übergabe möglich (409).
@@ -2872,7 +2907,40 @@ export class KlaraErinnerungDienst {
         );
       }
     }
+    if (routine.wissenspflege) {
+      if (!this.deps.wissenspflege)
+        throw new KlaraErinnerungFehler(
+          409,
+          "zustand",
+          "Wissenspflege ist hier nicht angeschlossen.",
+        );
+      try {
+        return {
+          ...routine,
+          wissenspflege: await pflegeAusgangsstand(
+            routine.wissenspflege,
+            kontoId,
+            this.deps.wissenspflege,
+          ),
+        };
+      } catch {
+        throw new KlaraErinnerungFehler(
+          404,
+          "quelle_unbekannt",
+          "Eine ausgewählte Wissensquelle ist aktuell nicht lesbar.",
+        );
+      }
+    }
     return routine;
+  }
+
+  async wissenspflegeVorschau(kontoId: string, roh: unknown) {
+    const routine = await this.routineGeprueft(kontoId, { wissenspflege: roh }, 1);
+    return {
+      auftrag: routine.wissenspflege,
+      ergebnis: "pruefunterlagen_in_eigenen_notizen",
+      wirkung: "keine",
+    } as const;
   }
 
   /**
@@ -2926,6 +2994,12 @@ export class KlaraErinnerungDienst {
         };
       case "abschnitt_dazu":
       case "abschnitt_weg": {
+        if (e.routine.wissenspflege)
+          throw new KlaraErinnerungFehler(
+            409,
+            "zustand",
+            "Die Wissenspflegevorlage wird mit ihren ausdrücklich gewählten Quellen geändert.",
+          );
         const abschnitte =
           deutung.art === "abschnitt_dazu"
             ? [...new Set([...e.routine.abschnitte, deutung.abschnitt])]
@@ -3538,6 +3612,7 @@ export class KlaraErinnerungDienst {
                 abschnitte: e.routine.abschnitte,
                 notizIds: e.routine.notizIds,
                 wirkungen: e.routine.wirkungen,
+                ...(e.routine.wissenspflege ? { wissenspflege: e.routine.wissenspflege } : {}),
               },
             }
           : {}),
@@ -3764,6 +3839,9 @@ export interface KlaraErinnerungSteuerungDeps {
   /** `liste` lesen die Routinenabschnitte „offene/erledigte Aufgaben“ (EQF-07). */
   readonly aufgaben?: Pick<KlaraAufgabeRepo, "hole"> & Partial<Pick<KlaraAufgabeRepo, "liste">>;
   readonly gespraeche?: Pick<KlaraGespraechRepo, "hole">;
+  readonly wissenspflege?: PflegeLeser & {
+    unterQuellschutz<T>(arbeit: () => Promise<T>): Promise<T>;
+  };
   /**
    * EQF-07: die Ergebnisablage einer Routine — „Meine Notizen“ (`KlaraNotizDienst` samt Readback
    * über den Vorgangsschlüssel). Fehlt sie, schlägt der Routinenlauf sichtbar fehl.
@@ -3856,6 +3934,8 @@ interface RoutineEntwurf {
   readonly offen: KlaraRoutineErgebnis["offen"];
   readonly teile: readonly BerichtTeil[];
   readonly termin: string;
+  readonly wissenspflege?: PflegeErgebnis;
+  readonly pflegeQuellen?: readonly GelesenePflegeQuelle[];
 }
 
 export class KlaraErinnerungSteuerung {
@@ -4041,6 +4121,7 @@ export class KlaraErinnerungSteuerung {
     // Vorprüfung für den ganzen Stapel (spart Arbeit). Verbindlich ist die Prüfung in `wirke`
     // unmittelbar vor JEDER Meldung — sie sieht, was sich zwischen zwei Zustellungen ändert.
     if (!(await this.kontoAktiv(this.empfaengerVon(e)))) {
+      await this.pausiereWissenspflege(e);
       for (const v of faellig) {
         await this.ohneWirkung(e, v, "erinnerung", "gestoppt", { grund: "konto_gesperrt" }, z);
       }
@@ -4144,7 +4225,9 @@ export class KlaraErinnerungSteuerung {
     }
     let vorhanden: KlaraErinnerungMeldung | null;
     try {
-      vorhanden = await this.deps.ablage.meldungen.hole(lauf.meldungId);
+      vorhanden = await this.deps.ablage.meldungen.hole(
+        lauf.ergebnis.pflegeMeldungId ?? lauf.meldungId,
+      );
     } catch {
       await this.deps.ablage.laeufe.schliesse(
         lauf.vorkommenId,
@@ -4375,6 +4458,7 @@ export class KlaraErinnerungSteuerung {
       return true;
     }
     if (!(await this.kontoAktiv(empfaenger))) {
+      await this.pausiereWissenspflege(e);
       await this.schliesseAlle(gueltig, "gestoppt", "konto_gesperrt", extra);
       z.gestoppt += gueltig.length;
       return true;
@@ -4431,16 +4515,22 @@ export class KlaraErinnerungSteuerung {
     e: KlaraErinnerung,
     lauf: KlaraErinnerungLauf,
   ): Promise<
-    | { art: "vorhanden"; ergebnis: KlaraRoutineErgebnis }
+    | {
+        art: "vorhanden";
+        ergebnis: KlaraRoutineErgebnis;
+        pflegeQuellen?: readonly GelesenePflegeQuelle[];
+      }
     | RoutineEntwurf
     | { art: "fehlgeschlagen"; grund: KlaraErinnerungLaufGrund }
     | { art: "unklar" }
+    | { art: "pflege_ohne_wirkung"; ergebnis: PflegeErgebnis }
   > {
     const ablage = this.deps.ergebnisablage;
     const routine = e.routine;
     if (!ablage || !routine) {
       return { art: "fehlgeschlagen", grund: "zustellung_gescheitert" };
     }
+    if (routine.wissenspflege) return this.pflegeVorbereiten(e, lauf);
     const vorgang = ergebnisVorgang(lauf.vorkommenId);
     let vorhanden: KlaraNotiz | null;
     try {
@@ -4510,6 +4600,155 @@ export class KlaraErinnerungSteuerung {
     };
   }
 
+  private async pflegeVorbereiten(
+    e: KlaraErinnerung,
+    lauf: KlaraErinnerungLauf,
+  ): Promise<
+    | RoutineEntwurf
+    | {
+        art: "vorhanden";
+        ergebnis: KlaraRoutineErgebnis;
+        pflegeQuellen?: readonly GelesenePflegeQuelle[];
+      }
+    | { art: "fehlgeschlagen"; grund: KlaraErinnerungLaufGrund }
+    | { art: "pflege_ohne_wirkung"; ergebnis: PflegeErgebnis }
+    | { art: "unklar" }
+  > {
+    const routine = e.routine;
+    const leser = this.deps.wissenspflege;
+    const ablage = this.deps.ergebnisablage;
+    if (!routine?.wissenspflege || !leser || !ablage || this.empfaengerVon(e) !== e.kontoId)
+      return { art: "fehlgeschlagen", grund: "quelle_unlesbar" };
+    const laeufe = await this.deps.ablage.laeufe.fuerErinnerung(e.id, 30);
+    const vorher = laeufe.find(
+      (l) =>
+        l.vorkommenId !== lauf.vorkommenId &&
+        (l.ergebnis.wissenspflege || l.ergebnis.routine?.wissenspflege),
+    );
+    const entwurf = await bereiteWissenspflegeVor(
+      routine.wissenspflege,
+      e.kontoId,
+      leser,
+      new Date(this.jetzt()).toISOString(),
+      lauf.ergebnis.wissenspflege ??
+        vorher?.ergebnis.wissenspflege ??
+        vorher?.ergebnis.routine?.wissenspflege ??
+        null,
+    );
+    if (entwurf.ergebnis.stand !== "vorbereitet") {
+      if (entwurf.ergebnis.stand === "ungeprueft") {
+        // Keine frühere Quellberechtigung fortschreiben. Nur diesen Auftrag über seine normale CAS pausieren.
+        await this.pausiereWissenspflege(e);
+      }
+      return { art: "pflege_ohne_wirkung", ergebnis: entwurf.ergebnis };
+    }
+    const vorgang = pflegeVorgang(e.id, routine.fassung, lauf.vorkommenId, entwurf.ergebnis);
+    if (
+      !(await this.deps.ablage.laeufe.vermerke(
+        lauf.vorkommenId,
+        this.besitzer,
+        {
+          ...lauf.ergebnis,
+          wissenspflege: entwurf.ergebnis,
+          pflegeNotizVorgang: vorgang,
+          pflegeMeldungId: entwurf.ergebnis.aenderung ? `ke-${vorgang}` : lauf.meldungId,
+          pflegeRoutineFassung: routine.fassung,
+        },
+        this.jetzt(),
+      ))
+    )
+      return { art: "fehlgeschlagen", grund: "abbruch" };
+    let vorhanden: KlaraNotiz | null;
+    try {
+      vorhanden = await ablage.zuVorgang(e.kontoId, vorgang);
+    } catch {
+      return { art: "unklar" };
+    }
+    if (!vorhanden && entwurf.ergebnis.aenderung) {
+      const frueherEntfernt = laeufe.some(
+        (l) =>
+          l.ergebnis.wissenspflege?.aenderung === entwurf.ergebnis.aenderung &&
+          l.ergebnis.wissenspflege.stand === "ergebnis_entfernt",
+      );
+      const fruehererBericht = laeufe.some(
+        (l) => l.ergebnis.routine?.wissenspflege?.aenderung === entwurf.ergebnis.aenderung,
+      );
+      const fruehereMeldung = await this.deps.ablage.meldungen.hole(`ke-${vorgang}`);
+      if (
+        frueherEntfernt ||
+        fruehererBericht ||
+        fruehereMeldung?.routine?.wissenspflege?.aenderung === entwurf.ergebnis.aenderung
+      )
+        return {
+          art: "pflege_ohne_wirkung",
+          ergebnis: { ...entwurf.ergebnis, stand: "ergebnis_entfernt" },
+        };
+    }
+    if (vorhanden) {
+      if (vorhanden.inhalt !== entwurf.inhalt)
+        return {
+          art: "fehlgeschlagen",
+          grund: vorhanden.fassung > 1 ? "bericht_geaendert" : "quelle_geaendert",
+        };
+      return {
+        art: "vorhanden",
+        pflegeQuellen: entwurf.gelesen,
+        ergebnis: {
+          ...ergebnisAusBericht(vorhanden),
+          routineFassung: routine.fassung,
+          wissenspflege: entwurf.ergebnis,
+          wiederholt: true,
+        },
+      };
+    }
+    const l = lokalVon(Date.parse(lauf.geplantFuer), e.zeitzone);
+    return {
+      art: "neu",
+      vorgang,
+      titel: entwurf.titel,
+      inhalt: entwurf.inhalt,
+      quellen: [],
+      offen: [],
+      teile: [],
+      termin: `${l.datum} ${l.uhrzeit} (${e.zeitzone})`,
+      wissenspflege: entwurf.ergebnis,
+      pflegeQuellen: entwurf.gelesen,
+    };
+  }
+
+  private async pausiereWissenspflege(e: KlaraErinnerung): Promise<void> {
+    if (!e.routine?.wissenspflege) return;
+    const heute = await this.deps.ablage.erinnerungen.holeSystem(e.id);
+    if (heute?.erinnerung.fassung !== e.fassung || heute.erinnerung.status !== "aktiv") return;
+    const pausiert: KlaraErinnerung = {
+      ...heute.erinnerung,
+      status: "pausiert",
+      fassung: e.fassung + 1,
+      geaendertAm: new Date(this.jetzt()).toISOString(),
+    };
+    await this.deps.ablage.erinnerungen.ersetze(
+      pausiert,
+      steuerNach(pausiert, heute.steuer.bearbeitetBis),
+    );
+  }
+
+  private pflegeBedingung(quellen: readonly GelesenePflegeQuelle[]): NotizSchreibbedingung {
+    return {
+      gilt: () => quellen.every((q) => q.bedingung.gilt?.() !== false),
+      sql: (start) => {
+        const und: string[] = [];
+        const params: unknown[] = [];
+        for (const q of quellen) {
+          const b = q.bedingung.sql?.(start + params.length);
+          if (!b) throw new Error("Wissenspflegequelle ohne Schreibbedingung");
+          und.push(...b.und);
+          params.push(...b.params);
+        }
+        return { und, params };
+      },
+    };
+  }
+
   /**
    * Nacharbeit 9 (Ben, EQF-07-K07): Sind die gelesenen Quellen JETZT noch in genau der gelesenen
    * Fassung vorhanden? Nein (geändert, gelöscht, nicht lesbar) → die Steuerung liest neu und
@@ -4552,6 +4791,7 @@ export class KlaraErinnerungSteuerung {
     e: KlaraErinnerung,
     quellen: KlaraRoutineErgebnis["quellen"],
     lauf: KlaraErinnerungLauf,
+    pflegeQuellen?: readonly GelesenePflegeQuelle[],
   ): NotizSchreibbedingung {
     const b: MeldungBedingung = {
       erinnerungId: e.id,
@@ -4559,6 +4799,7 @@ export class KlaraErinnerungSteuerung {
       empfaenger: { kontoId: e.kontoId, jetzt: this.jetzt() },
       quellenStand: quellen.map((q) => ({ ...q, kontoId: e.kontoId })),
       laeufe: this.laufBedingungen([lauf]),
+      ...(pflegeQuellen ? { pflegeQuelle: this.pflegeBedingung(pflegeQuellen) } : {}),
     };
     const er = this.deps.ablage.erinnerungen as Partial<AktivPruefer>;
     const pruefer = typeof er.aktivInFassung === "function" ? er : null;
@@ -4567,7 +4808,8 @@ export class KlaraErinnerungSteuerung {
         ? {
             gilt: () =>
               pruefer.aktivInFassung?.(b.erinnerungId, b.fassung) === true &&
-              pruefer.laufBedingungen?.(b.laeufe ?? []) === true,
+              pruefer.laufBedingungen?.(b.laeufe ?? []) === true &&
+              b.pflegeQuelle?.gilt?.() !== false,
           }
         : {}),
       sql: (start) => bedingungSql(b, start),
@@ -4690,24 +4932,48 @@ export class KlaraErinnerungSteuerung {
       return { art: "fehler" };
     }
     try {
-      const { notiz, wiederholt } = await ablage.lege(
-        e.kontoId,
-        {
-          vorgang: v.vorgang,
-          weg: "geschrieben",
-          art: "notiz",
-          titel: v.titel,
-          inhalt: v.inhalt,
-          objektbezug: {
-            pfad: `/aufgaben?erinnerung=${encodeURIComponent(e.id)}`,
-            seitenName: "Meine Erinnerungen",
-            objekt: e.titel.slice(0, 300),
+      const lege = async () => {
+        if (
+          v.pflegeQuellen &&
+          !(await Promise.all(v.pflegeQuellen.map((q) => q.nochAktuell()))).every(Boolean)
+        )
+          throw new KlaraNotizFehler(
+            409,
+            "bedingung",
+            "Die Pflegequelle wurde vor dem Schreiben geändert.",
+          );
+        return ablage.lege(
+          e.kontoId,
+          {
+            vorgang: v.vorgang,
+            weg: "geschrieben",
+            art: "notiz",
+            titel: v.titel,
+            inhalt: v.inhalt,
+            objektbezug: {
+              pfad: `/aufgaben?erinnerung=${encodeURIComponent(e.id)}`,
+              seitenName: "Meine Erinnerungen",
+              objekt: e.titel.slice(0, 300),
+            },
           },
-        },
-        this.notizBedingung(e, v.quellen, lauf),
-      );
+          this.notizBedingung(e, v.quellen, lauf, v.pflegeQuellen),
+        );
+      };
+      const { notiz, wiederholt } =
+        v.pflegeQuellen && this.deps.wissenspflege
+          ? await this.deps.wissenspflege.unterQuellschutz(lege)
+          : await lege();
       if (wiederholt) {
-        return { art: "ok", ergebnis: { ...ergebnisAusBericht(notiz), wiederholt: true } };
+        return {
+          art: "ok",
+          ergebnis: {
+            ...ergebnisAusBericht(notiz),
+            wiederholt: true,
+            ...(v.wissenspflege
+              ? { wissenspflege: v.wissenspflege, routineFassung: routine.fassung }
+              : {}),
+          },
+        };
       }
       return {
         art: "ok",
@@ -4722,6 +4988,7 @@ export class KlaraErinnerungSteuerung {
           teile: v.teile,
           termin: v.termin,
           fortsetzbar: v.offen.some((o) => o.grund === "quelle_unlesbar"),
+          ...(v.wissenspflege ? { wissenspflege: v.wissenspflege } : {}),
         },
       };
     } catch (fehler) {
@@ -4730,6 +4997,54 @@ export class KlaraErinnerungSteuerung {
       }
       return { art: "fehler" };
     }
+  }
+
+  private async pflegeMeldung(
+    m: KlaraErinnerungMeldung,
+    b: MeldungBedingung,
+    e: KlaraErinnerung,
+    ergebnis: KlaraRoutineErgebnis,
+    urspruenglicheQuellen?: readonly GelesenePflegeQuelle[],
+  ): Promise<MeldungSchreibergebnis> {
+    const leser = this.deps.wissenspflege;
+    if (!leser || !ergebnis.wissenspflege) return "veraltet";
+    return leser.unterQuellschutz(async () => {
+      if (
+        urspruenglicheQuellen &&
+        !(await Promise.all(urspruenglicheQuellen.map((q) => q.nochAktuell()))).every(Boolean)
+      )
+        return "veraltet";
+      const quellen: GelesenePflegeQuelle[] = [];
+      for (const stand of ergebnis.wissenspflege?.quellen ?? []) {
+        const q = await leser.lies(e.kontoId, stand.id);
+        if (!q || q.quelle.fassung !== stand.fassung) return "veraltet";
+        quellen.push(q);
+      }
+      if (!(await Promise.all(quellen.map((q) => q.nochAktuell()))).every(Boolean))
+        return "veraltet";
+      const schonDa = (alt: KlaraErinnerungMeldung | null): boolean =>
+        Boolean(
+          alt &&
+            alt.kontoId === m.kontoId &&
+            alt.erinnerungId === m.erinnerungId &&
+            alt.routine?.notizId === ergebnis.notizId &&
+            alt.routine.wissenspflege?.aenderung === ergebnis.wissenspflege?.aenderung,
+        );
+      // Ein weiteres Polling desselben belegten Quellstands ist keine zweite Zustellung.
+      if (ergebnis.wissenspflege?.aenderung && schonDa(await this.deps.ablage.meldungen.hole(m.id)))
+        return "vorhanden";
+      const geschrieben = await this.deps.ablage.meldungen.schreibe(m, {
+        ...b,
+        pflegeQuelle: this.pflegeBedingung(quellen),
+      });
+      if (
+        geschrieben === "veraltet" &&
+        ergebnis.wissenspflege?.aenderung &&
+        schonDa(await this.deps.ablage.meldungen.hole(m.id))
+      )
+        return "vorhanden";
+      return geschrieben;
+    });
   }
 
   /**
@@ -5133,8 +5448,14 @@ export class KlaraErinnerungSteuerung {
     let offen = [...eintraege];
     // EQF-07: ein in diesem Lauf schon angelegter Routinenbericht — jeder Abschluss trägt ihn mit.
     let routineStand: KlaraRoutineErgebnis | null = null;
-    const mitRoutine = (): KlaraErinnerungLauf["ergebnis"] =>
-      routineStand ? { routine: routineStand } : {};
+    let letztePflegeNotiz: KlaraRoutineErgebnis | null =
+      eintraege.map((x) => x.lauf.ergebnis.routine).find((r) => r?.wissenspflege !== undefined) ??
+      null;
+    let pflegeQuellenOriginal: readonly GelesenePflegeQuelle[] | undefined;
+    const mitRoutine = (): KlaraErinnerungLauf["ergebnis"] => {
+      const gespeichert = routineStand ?? letztePflegeNotiz;
+      return gespeichert ? { routine: gespeichert } : {};
+    };
     // Warum nach drei Runden nichts geschrieben wurde (Nacharbeit 9: auch geänderte Quellen).
     let letzterGrund: KlaraErinnerungLaufGrund = "status_geaendert";
     let letzteErinnerung: KlaraErinnerung | null = null;
@@ -5185,16 +5506,35 @@ export class KlaraErinnerungSteuerung {
         const v = await this.routineVorbereiten(e, kopf.lauf);
         if (v.art === "vorhanden") {
           routineStand = v.ergebnis;
+          if (v.ergebnis.wissenspflege) letztePflegeNotiz = v.ergebnis;
+          pflegeQuellenOriginal = v.pflegeQuellen;
         } else if (v.art === "neu") {
           routineEntwurf = v;
+          pflegeQuellenOriginal = v.pflegeQuellen;
+        } else if (v.art === "pflege_ohne_wirkung") {
+          const status = v.ergebnis.stand === "ungeprueft" ? "gestoppt" : "uebersprungen";
+          for (const x of gueltig)
+            await this.deps.ablage.laeufe.schliesse(
+              x.lauf.vorkommenId,
+              this.besitzer,
+              status,
+              {
+                wissenspflege: v.ergebnis,
+                ...(status === "gestoppt" ? { grund: "quelle_unlesbar" as const } : {}),
+              },
+              this.jetzt(),
+            );
+          if (status === "gestoppt") z.gestoppt += gueltig.length;
+          else z.uebersprungen += gueltig.length;
+          return;
         } else if (v.art === "unklar") {
           // Ob der Bericht schon angelegt ist, lässt sich nicht feststellen: kein blinder zweiter.
-          await this.schliesseAlle(gueltig, "unklar", "readback_unmoeglich");
+          await this.schliesseAlle(gueltig, "unklar", "readback_unmoeglich", mitRoutine());
           z.unklar += gueltig.length;
           await this.meldeHandlung(e, gueltig, "unklar", "readback_unmoeglich");
           return;
         } else {
-          await this.schliesseAlle(gueltig, "fehlgeschlagen", v.grund);
+          await this.schliesseAlle(gueltig, "fehlgeschlagen", v.grund, mitRoutine());
           z.fehlgeschlagen += 1;
           await this.meldeHandlung(e, gueltig, "fehlgeschlagen", v.grund);
           return;
@@ -5241,7 +5581,12 @@ export class KlaraErinnerungSteuerung {
         }
         if (r.art === "fehler") {
           // Ob er doch ankam, klärt die Wiederaufnahme per Readback über den Vorgangsschlüssel.
-          await this.schliesseAlle(gueltig, "fehlgeschlagen", "zustellung_gescheitert");
+          await this.schliesseAlle(
+            gueltig,
+            "fehlgeschlagen",
+            "zustellung_gescheitert",
+            mitRoutine(),
+          );
           z.fehlgeschlagen += 1;
           // Der Bericht kann trotzdem angekommen sein — gemeldet wird erst, wenn auch der letzte
           // automatische Versuch scheitert (sonst klärt der Readback, ohne falschen Alarm).
@@ -5254,6 +5599,7 @@ export class KlaraErinnerungSteuerung {
           return;
         }
         routineStand = r.ergebnis;
+        if (r.ergebnis.wissenspflege) letztePflegeNotiz = r.ergebnis;
       }
       const teilweise =
         pruefung?.status === "nicht_verfuegbar" ||
@@ -5271,7 +5617,9 @@ export class KlaraErinnerungSteuerung {
                 : "zugestellt";
       const zugestelltAm = new Date(this.jetzt()).toISOString();
       const meldung: KlaraErinnerungMeldung = {
-        id: kopf.lauf.meldungId,
+        id: routineStand?.wissenspflege?.aenderung
+          ? `ke-${pflegeVorgang(e.id, routineStand.routineFassung, kopf.lauf.vorkommenId, routineStand.wissenspflege)}`
+          : kopf.lauf.meldungId,
         kontoId: empfaenger,
         erinnerungId: e.id,
         art,
@@ -5286,14 +5634,17 @@ export class KlaraErinnerungSteuerung {
       };
       let ergebnisSchreiben: MeldungSchreibergebnis;
       try {
-        ergebnisSchreiben = await this.deps.ablage.meldungen.schreibe(meldung, {
+        const bedingung: MeldungBedingung = {
           erinnerungId: e.id,
           fassung: e.fassung,
           empfaenger: { kontoId: empfaenger, jetzt: this.jetzt() },
           quelle: quelleFuerBedingung(e),
           laeufe: this.laufBedingungen(gueltig.map((x) => x.lauf)),
           ...(zusammenfassung?.quelleStand ? { quellenStand: [zusammenfassung.quelleStand] } : {}),
-        });
+        };
+        ergebnisSchreiben = routineStand?.wissenspflege
+          ? await this.pflegeMeldung(meldung, bedingung, e, routineStand, pflegeQuellenOriginal)
+          : await this.deps.ablage.meldungen.schreibe(meldung, bedingung);
       } catch {
         // Ob die Meldung trotzdem angekommen ist, klärt der nächste Versuch per Readback.
         await this.schliesseAlle(gueltig, "fehlgeschlagen", "zustellung_gescheitert", mitRoutine());
@@ -5303,6 +5654,11 @@ export class KlaraErinnerungSteuerung {
       if (ergebnisSchreiben === "veraltet") {
         // Zwischen Lesen und Schreiben wurde die Erinnerung geändert: neu lesen, neu entscheiden.
         offen = gueltig;
+        if (routineStand?.wissenspflege) {
+          routineStand = null;
+          pflegeQuellenOriginal = undefined;
+          letzterGrund = "quelle_geaendert";
+        }
         continue;
       }
       const neuGeschrieben = ergebnisSchreiben === "geschrieben";

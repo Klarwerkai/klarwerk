@@ -3,6 +3,7 @@
 // `routes/klara-erinnerung-routes.ts`). Das Konto kommt am Server aus der Sitzung.
 import { api } from "./client";
 import type { KlaraObjektbezug } from "./klaraGespraech";
+import type { PflegeAuftrag, PflegeEingabe, PflegeErgebnis } from "./klaraWissenspflege";
 
 export type ErinnerungStatus = "aktiv" | "pausiert" | "erledigt" | "abgesagt" | "beendet";
 export type ErinnerungLage =
@@ -95,6 +96,7 @@ export type RoutineAbschnitt = "offene_aufgaben" | "erledigte_aufgaben" | "neue_
 
 /** EQF-07: die versionierte Routinendefinition (Spiegel von `klara-routine.ts`). */
 export interface ErinnerungRoutine {
+  wissenspflege?: PflegeAuftrag;
   fassung: number;
   abschnitte: RoutineAbschnitt[];
   notizIds: string[];
@@ -105,6 +107,7 @@ export interface ErinnerungRoutine {
 
 /** EQF-07: das tatsächliche Ergebnis eines Routinenlaufs. */
 export interface RoutineErgebnis {
+  wissenspflege?: PflegeErgebnis;
   status: "erstellt" | "teilweise";
   notizId: string;
   notizFassung: number;
@@ -156,6 +159,7 @@ export interface ErinnerungLauf {
     zusammenfassung?: ErinnerungZusammenfassung;
     empfaenger?: string;
     routine?: RoutineErgebnis;
+    wissenspflege?: PflegeErgebnis;
   };
   aktualisiertAm: string;
 }
@@ -220,7 +224,7 @@ export interface ErinnerungEingabe {
   sommerzeit?: KlaraErinnerung["sommerzeit"];
   verpasst?: KlaraErinnerung["verpasst"];
   aktion?: KlaraErinnerung["aktion"];
-  routine?: { abschnitte: RoutineAbschnitt[]; notizIds?: string[] };
+  routine?: { abschnitte?: RoutineAbschnitt[]; notizIds?: string[]; wissenspflege?: PflegeEingabe };
 }
 
 /** Eine mir bewusst übergebene Erinnerung — nur Titel, Termine und Lage, kein persönlicher Inhalt. */
@@ -324,6 +328,12 @@ export const klaraErinnerungApi = {
       { fassung, text, anwenden },
     ),
   /** EQF-07: den Bericht eines Termins zurücknehmen — nur, solange er unverändert ist. */
+  definiereRoutine: (id: string, fassung: number, wissenspflege: PflegeEingabe) =>
+    api.post<{ angewendet: boolean; erinnerung: KlaraErinnerung }>(`${pfad(id)}/routine`, {
+      fassung,
+      routine: { wissenspflege },
+      anwenden: true,
+    }),
   nimmErgebnisZurueck: (id: string, vorkommenId: string) =>
     api.post<{ erinnerung: KlaraErinnerung }>(
       `${pfad(id)}/laeufe/${encodeURIComponent(vorkommenId)}/ergebnis-zuruecknehmen`,

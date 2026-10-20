@@ -172,3 +172,41 @@ bei Routinenberichten die gelesene Fassung. Ergebnis und Lauf machen den Quellen
 Die PostgreSQL-Löschung von Erinnerung, Läufen und Meldungen ist ein einziges SQL-Statement und damit
 auch am vorhandenen gated-pool atomar. Ein Fehler beim Löschen einer Meldung rollt alle drei Teile
 zurück; eine Wiederholung kann den vollständigen Vorgang entfernen. Fremde Konten löschen nichts.
+
+## Persönliche Wissenspflegevorlagen (AW20)
+
+Unter „Erinnerungen“ auf `/aufgaben` bietet „Bericht in den eigenen Notizen“ drei
+Pflegevorlagen: offene Prüfungen erinnern, geänderte Quellen melden und regelmäßige
+Aktualitätsprüfung. Die Person wählt ausdrücklich ein bis zwanzig lesbare Wissensobjekte,
+Zeitpunkt, IANA-Zeitzone, Wiederholung und Ende. Zuständig und Empfänger bleibt die
+beauftragende Person. Die Quellenvorschau liest nur; beim Speichern wird der tatsächliche
+Ausgangsstand erneut gelesen. Vorlage oder Quellen lassen sich nach erneuter Vorschau
+fassungsgebunden ändern. Pause, Fortsetzen, Beenden und Einzelabbruch verwenden die
+bestehende Erinnerungssteuerung.
+
+Es gibt keinen zusätzlichen Zeitgeber. Der vorhandene Minutentakt liest zum Termin die
+heutigen Konto-, Space- und Quellrechte, die gespeicherte KO-Fassung, tatsächliche offene
+Folgeprüfungen und die zentrale Klarwerk-Frische. Er erstellt begrenzte Prüfunterlagen in
+den eigenen Notizen und einen internen Hinweis. Titel und Kernaussagen sind ausdrücklich
+als Auszüge begrenzt; Originalverweise und tatsächliche Prüfzeitpunkte bleiben sichtbar.
+Das bestätigt keine fachliche Gültigkeit, erledigte Wartung, Einarbeitung oder Übergabe.
+
+Die Änderungsvorlage vergleicht gespeicherte Quellfassungen mit dem gelesenen Ausgangsstand.
+Zeitablauf allein erzeugt keinen Änderungshinweis. Derselbe geänderte Quellenstand erhält
+auch nach Wiederanlauf nur denselben Originalbericht und Hinweis. Wird dieser Bericht
+bewusst zurückgenommen, erzeugt derselbe Stand keine Ersatzkopie. Eine neue Quellfassung
+kann wieder Prüfunterlagen ergeben. Unlesbare Quellen bleiben „ungeprüft“, bewahren nur
+den letzten tatsächlich belegten erfolgreichen Prüfzeitpunkt und pausieren den Auftrag.
+
+Vor Notiz und Meldung gelten der aktuelle Auftrag und der tatsächlich vorbereitete
+Quellenstand erneut. Ein später geänderter Prüfstand darf einen alten Bericht nicht als
+aktuelles Ergebnis zustellen; eine bereits gespeicherte Originalnotiz bleibt am Lauf
+belegt. Fehlgeschlagene, gestoppte und ungeklärte Läufe sind keine erfolgreiche Pflege.
+Die bestehenden PostgreSQL-Tabellen, Notiz-Idempotenz, Sperren und Backupwege werden
+verwendet. Es werden keine externen Empfänger, Modelle, Kalender oder Webhooks beauftragt.
+
+Dieser persönliche Vorlagenweg erfüllt noch keinen allgemeinen Team- oder Quellenwatch:
+Er legt insbesondere keine Lebenszyklus-Folgeaufgabe aus nachgewiesenen Abhängigkeiten an.
+Vollständige Dokumenttexte, Konfliktbewertung und fachliche Entscheidungen gehören weiter
+an das Original und in die vorhandenen Fachabläufe. Eine Browserprobe am lokalen Kandidaten
+ist kein Nachweis für eine veröffentlichte Version oder einen tatsächlichen Office-Host.
