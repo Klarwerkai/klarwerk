@@ -51,7 +51,7 @@ export default {
     "klarasetup.kuerzel.beschreibung":
       "Lege fest, mit welcher Tastenkombination du Klara-Funktionen direkt auslöst. Die Kürzel gelten für dein Konto.",
     "klarasetup.kuerzel.geltung":
-      "Geltungsbereich: in Klarwerk, solange das Klarwerk-Fenster aktiv ist. In anderen Programmen wie Word, Mail oder Finder wirken sie nicht – das ist für später vorgemerkt.",
+      "Geltungsbereich: in Klarwerk, solange das Klarwerk-Fenster aktiv ist. Die zusätzliche Mac-Suche ist bei „Suche öffnen“ beschrieben.",
     "klarasetup.kuerzel.keineGarantie":
       "Klarwerk prüft bekannte Browser-, macOS- und VoiceOver-Kürzel. Belegungen anderer Programme kann der Browser nicht erkennen.",
     "klarasetup.kuerzel.liste": "Klara-Aktionen und ihre Tastenkürzel",
@@ -69,6 +69,9 @@ export default {
       "Öffnet das Gespräch und nimmt einen gesprochenen Auftrag auf; du prüfst ihn vor dem Senden.",
     "klarasetup.aktion.aufnahmeStoppen.name": "Aufnahme stoppen",
     "klarasetup.aktion.aufnahmeStoppen.text": "Beendet ein laufendes Diktat oder eine Aufnahme.",
+    "klarasetup.aktion.suchen.name": "Suche öffnen",
+    "klarasetup.aktion.suchen.text":
+      "Findet Seiten und Wissenseinträge. Mit dem verbundenen Klara Begleiter wirkt nur dieses bewusst gesetzte Kürzel auch über anderen Mac-Programmen. Der Status steht im Klara-Menü; Änderungen werden spätestens beim nächsten Abgleich nach 30 Sekunden wirksam.",
     "klarasetup.aktion.vorlesenStoppen.name": "Vorlesen stoppen",
     "klarasetup.aktion.vorlesenStoppen.text": "Beendet das Vorlesen einer Antwort.",
     "klarasetup.voraussetzung.sprache":
@@ -180,7 +183,7 @@ export default {
     "klarasetup.kuerzel.beschreibung":
       "Choose the key combination that triggers a Klara function directly. Shortcuts are saved for your account.",
     "klarasetup.kuerzel.geltung":
-      "Scope: in Klarwerk, while the Klarwerk window is active. They do not work in other programs such as Word, Mail or Finder – that is planned for later.",
+      "Scope: in Klarwerk, while the Klarwerk window is active. The additional Mac search is described under “Open search”.",
     "klarasetup.kuerzel.keineGarantie":
       "Klarwerk checks known browser, macOS and VoiceOver shortcuts. The browser cannot detect shortcuts of other programs.",
     "klarasetup.kuerzel.liste": "Klara actions and their shortcuts",
@@ -198,6 +201,9 @@ export default {
       "Opens the conversation and records a spoken request; you check it before sending.",
     "klarasetup.aktion.aufnahmeStoppen.name": "Stop recording",
     "klarasetup.aktion.aufnahmeStoppen.text": "Ends a running dictation or recording.",
+    "klarasetup.aktion.suchen.name": "Open search",
+    "klarasetup.aktion.suchen.text":
+      "Finds pages and knowledge entries. With Klara Companion connected, only this deliberately assigned shortcut also works over other Mac apps. Check the Klara menu for its status; changes take effect at the next check within 30 seconds.",
     "klarasetup.aktion.vorlesenStoppen.name": "Stop reading aloud",
     "klarasetup.aktion.vorlesenStoppen.text": "Stops reading an answer aloud.",
     "klarasetup.voraussetzung.sprache":
@@ -310,7 +316,7 @@ export default {
     "klarasetup.kuerzel.beschreibung":
       "Leg vast met welke toetscombinatie je Klara-functies direct start. De sneltoetsen gelden voor je account.",
     "klarasetup.kuerzel.geltung":
-      "Bereik: in Klarwerk, zolang het Klarwerk-venster actief is. In andere programma’s zoals Word, Mail of Finder werken ze niet – dat staat gepland voor later.",
+      "Bereik: in Klarwerk, zolang het Klarwerk-venster actief is. De extra Mac-zoekfunctie staat beschreven bij ‘Zoeken openen’.",
     "klarasetup.kuerzel.keineGarantie":
       "Klarwerk controleert bekende browser-, macOS- en VoiceOver-sneltoetsen. Toewijzingen van andere programma’s kan de browser niet herkennen.",
     "klarasetup.kuerzel.liste": "Klara-acties en hun sneltoetsen",
@@ -328,6 +334,9 @@ export default {
       "Opent het gesprek en neemt een gesproken opdracht op; je controleert die voor het verzenden.",
     "klarasetup.aktion.aufnahmeStoppen.name": "Opname stoppen",
     "klarasetup.aktion.aufnahmeStoppen.text": "Beëindigt lopend dicteren of een opname.",
+    "klarasetup.aktion.suchen.name": "Zoeken openen",
+    "klarasetup.aktion.suchen.text":
+      "Vindt pagina’s en kennisitems. Met de verbonden Klara Begleiter werkt alleen deze bewust ingestelde sneltoets ook boven andere Mac-programma’s. De status staat in het Klara-menu; wijzigingen werken bij de volgende controle binnen 30 seconden.",
     "klarasetup.aktion.vorlesenStoppen.name": "Voorlezen stoppen",
     "klarasetup.aktion.vorlesenStoppen.text": "Stopt het voorlezen van een antwoord.",
     "klarasetup.voraussetzung.sprache":

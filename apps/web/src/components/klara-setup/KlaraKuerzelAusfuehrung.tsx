@@ -36,7 +36,9 @@ import {
   wirksameEintraege,
 } from "../../lib/klaraTastenkuerzel";
 
-export function KlaraKuerzelAusfuehrung(): null {
+export function KlaraKuerzelAusfuehrung({
+  nurAktion,
+}: { nurAktion?: KlaraKuerzelAktion } = {}): null {
   const sitzung = useSession();
   const kontoId = sitzung.user?.id ?? null;
   const beantwortet = !sitzung.isLoading && sitzung.sitzungslage !== "unbeantwortet";
@@ -55,7 +57,9 @@ export function KlaraKuerzelAusfuehrung(): null {
   const eintraege = wirksameEintraege(lage);
   const modalOffen = useModalLocked();
   useEffect(() => {
-    const belegt = eintraege.filter((e) => e.belegung !== null);
+    const belegt = eintraege.filter(
+      (e) => e.belegung !== null && (!nurAktion || e.aktion === nurAktion),
+    );
     if (belegt.length === 0) {
       return;
     }
@@ -76,7 +80,7 @@ export function KlaraKuerzelAusfuehrung(): null {
     };
     window.addEventListener("keydown", beiTaste);
     return () => window.removeEventListener("keydown", beiTaste);
-  }, [eintraege, modalOffen]);
+  }, [eintraege, modalOffen, nurAktion]);
   return null;
 }
 

@@ -33,7 +33,8 @@ export type AnNative =
   // (`anfrage` = dessen Nummer) und bei jeder Änderung. Die App blendet erst nach bestätigter 0 aus.
   | { art: "vorgaenge"; anzahl: number; anfrage?: number }
   // BPA-01: Sitzungswechsel entwertet die bisherige Browserkarte.
-  | { art: "anmeldung" };
+  | { art: "anmeldung" }
+  | { art: "suchziel"; pfad: string };
 
 export type VonNative =
   | "figur-klick"
@@ -43,7 +44,8 @@ export type VonNative =
   | "reduziert-aus"
   | "vorgaenge-melden"
   // MAC-04/UI-05 (Nacharbeit 54): „Einstellungen …“ (⌘,) der App öffnet den vorhandenen Bereich.
-  | "einstellungen-oeffnen";
+  | "einstellungen-oeffnen"
+  | "suche-oeffnen";
 
 const BEFEHLE: readonly VonNative[] = [
   "figur-klick",
@@ -53,6 +55,7 @@ const BEFEHLE: readonly VonNative[] = [
   "reduziert-aus",
   "vorgaenge-melden",
   "einstellungen-oeffnen",
+  "suche-oeffnen",
 ];
 
 export const BRUECKEN_EREIGNIS = "klara-begleiter";

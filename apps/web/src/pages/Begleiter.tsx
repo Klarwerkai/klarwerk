@@ -37,7 +37,9 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import type { KlaraObjektbezug } from "../api/klaraGespraech";
 import { useSession } from "../app/AuthContext";
+import { ModalBoundaryProvider, ModalRegion } from "../app/ModalBoundaryContext";
 import { MeineFunktionen } from "../components/funktionen/MeineFunktionen";
+import { BegleiterSuche } from "../components/klara-begleitung/BegleiterSuche";
 import {
   DUNKEL_ABFRAGE,
   DUNKLE_TOKEN,
@@ -197,6 +199,21 @@ function useDunkel(): boolean {
 type Ausstehend = "frage";
 
 export function Begleiter(): JSX.Element {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const dunkel = useDunkel();
+  return (
+    <div ref={hostRef} style={dunkel ? DUNKLE_TOKEN : {}}>
+      <ModalBoundaryProvider hostRef={hostRef}>
+        <BegleiterSuche />
+        <ModalRegion>
+          <BegleiterInhalt />
+        </ModalRegion>
+      </ModalBoundaryProvider>
+    </div>
+  );
+}
+
+function BegleiterInhalt(): JSX.Element {
   const { t, i18n } = useTranslation();
   const sitzung = useSession();
   const kontoId = sitzung.user?.id ?? null;
@@ -691,7 +708,7 @@ export function Begleiter(): JSX.Element {
           setMenueSeite("einstellungen");
         } else if (befehl === "figur-klick") {
           setOffen((o) => !o);
-        } else if (befehl === "gespraech-oeffnen") {
+        } else if (befehl === "gespraech-oeffnen" || befehl === "suche-oeffnen") {
           setOffen(true);
         } else if (befehl === "gespraech-schliessen") {
           setOffen(false);
@@ -706,6 +723,7 @@ export function Begleiter(): JSX.Element {
   // bleibt dagegen stehen, bis verbunden oder „Ohne Dokument fragen“ gewählt ist (Nacharbeit 5).
   useEffect(() => {
     if (!offen) {
+      window.dispatchEvent(new Event("close-command-palette"));
       setMenueOffen(false);
       setMenueSeite(null);
       setEinwilligungFuer(null);

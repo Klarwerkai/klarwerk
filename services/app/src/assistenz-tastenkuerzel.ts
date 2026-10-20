@@ -14,7 +14,8 @@ import type { AssistenzProfilRepo } from "./assistenz-profil";
 // die die Person bei der Aufnahme gesehen hat.
 //
 // Geltungsbereich (Peters Wahl „Option 1“, 12.10.2026): innerhalb des aktiven Klarwerk-Fensters.
-// Eine systemweite Registrierung gibt es hier nicht.
+// J ergänzt nur die bewusst belegte Aktion „suchen“ im vorhandenen Mac-Begleiter; der Server
+// verwaltet weiterhin dieselbe Kontoablage und registriert selbst keine systemweiten Kürzel.
 //
 // STANDARD: jede Aktion ist ab Werk UNBELEGT. Control+Command+K ist nur ein ungeprüfter Kandidat und
 // kollidiert in der Web-App mit der Befehlspalette (⌘K/Strg+K, `CommandPalette.tsx`); eine als frei
@@ -31,6 +32,7 @@ export const KLARA_KUERZEL_AKTIONEN = [
   "auftragSprechen",
   "aufnahmeStoppen",
   "vorlesenStoppen",
+  "suchen",
 ] as const;
 
 export type KlaraKuerzelAktion = (typeof KLARA_KUERZEL_AKTIONEN)[number];
@@ -60,6 +62,7 @@ export const STANDARD_BELEGUNG: Readonly<Record<KlaraKuerzelAktion, KuerzelKombi
   auftragSprechen: null,
   aufnahmeStoppen: null,
   vorlesenStoppen: null,
+  suchen: null,
 };
 
 const CODE = /^(Key[A-Z]|Digit[0-9]|F([1-9]|1[0-2]))$/;

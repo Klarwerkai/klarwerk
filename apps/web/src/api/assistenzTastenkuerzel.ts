@@ -9,7 +9,8 @@ export type KlaraKuerzelAktion =
   | "diktieren"
   | "auftragSprechen"
   | "aufnahmeStoppen"
-  | "vorlesenStoppen";
+  | "vorlesenStoppen"
+  | "suchen";
 
 /** Dieselbe Reihenfolge wie am Server (`KLARA_KUERZEL_AKTIONEN`). */
 export const KLARA_KUERZEL_AKTIONEN: readonly KlaraKuerzelAktion[] = [
@@ -19,6 +20,7 @@ export const KLARA_KUERZEL_AKTIONEN: readonly KlaraKuerzelAktion[] = [
   "auftragSprechen",
   "aufnahmeStoppen",
   "vorlesenStoppen",
+  "suchen",
 ];
 
 export interface KuerzelKombination {

@@ -12,6 +12,9 @@ bleiben erhalten. Interne Kürzel stehen im bestehenden Klara-Setup; Wiederöffn
 Menü oder erneuten App-Aufruf möglich. Details und Einbau:
 `docs/operations/klara-office/mac-kandidat-20261020.md`.
 
+J ergänzt die bewusst belegbare Desktop-Suche im selben Host. Standard bleibt unbelegt;
+Einbau- und Prüfgrenzen: `docs/operations/klara/desktop-schnellsuche.md`.
+
 Die Herkunftstabelle und älteren Prüfgrenzen unten beschreiben den übernommenen Ausgangsstand.
 
 Der gemeinsame Begleiter laut O06 ist **eine** Menüleisten-App. Sie setzt sich aus drei Teilen

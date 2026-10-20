@@ -11,6 +11,7 @@ import {
   trefferFuer,
   trefferNachGruppen,
 } from "../app/navigationGliederung";
+import { useKlaraAktion } from "../components/klara-setup/KlaraKuerzelAusfuehrung";
 import { useKuerzel } from "../lib/tastenkuerzel";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 
@@ -92,7 +93,13 @@ export const WISSEN_HOECHSTENS = 5;
 /** Was eine Zeile der Palette braucht — ein Seitenziel ebenso wie ein Wissenseintrag. */
 type Zeilenziel = Pick<Direktziel, "id" | "label" | "path" | "kontext">;
 
-export function CommandPalette(): JSX.Element | null {
+export function CommandPalette({
+  beiZiel,
+  beiOeffnen,
+}: {
+  beiZiel?: (pfad: string) => void;
+  beiOeffnen?: () => void;
+} = {}): JSX.Element | null {
   const { t } = useTranslation();
   // R-0987: der Platzhalter nennt das Kürzel der eigenen Plattform (`lib/tastenkuerzel.ts`).
   const kuerzel = useKuerzel("K");
@@ -109,6 +116,13 @@ export function CommandPalette(): JSX.Element | null {
   // den Portal-Anker der Grenze gehoben. Sonst sperrte ihre eigene Anmeldung sie mit.
   const grenze = useModalBoundaryOptional();
   const [open, setOpen] = useState(false);
+  useKlaraAktion((aktion) => {
+    if (aktion === "suchen") {
+      window.dispatchEvent(new CustomEvent("open-command-palette"));
+    }
+  });
+  const beiOeffnenRef = useRef(beiOeffnen);
+  beiOeffnenRef.current = beiOeffnen;
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -231,6 +245,7 @@ export function CommandPalette(): JSX.Element | null {
     } else {
       merkeAusloeser();
     }
+    beiOeffnenRef.current?.();
     setOpen(true);
   }, [merkeAusloeser]);
 
@@ -246,6 +261,7 @@ export function CommandPalette(): JSX.Element | null {
         e.preventDefault();
         if (!offenRef.current) {
           merkeAusloeser();
+          beiOeffnenRef.current?.();
         }
         setOpen((v) => !v);
       } else if (e.key === "Escape") {
@@ -274,13 +290,18 @@ export function CommandPalette(): JSX.Element | null {
         return;
       }
       merkeAusloeser();
+      beiOeffnenRef.current?.();
       setOpen(true);
+      inputRef.current?.focus();
     };
+    const onClose = (): void => setOpen(false);
     window.addEventListener("keydown", onKey);
     window.addEventListener("open-command-palette", onCustom);
+    window.addEventListener("close-command-palette", onClose);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("open-command-palette", onCustom);
+      window.removeEventListener("close-command-palette", onClose);
     };
   }, [modalOffen, merkeAusloeser, loeseVormerkungEin]);
 
@@ -336,7 +357,8 @@ export function CommandPalette(): JSX.Element | null {
     // Liste. Die Marke wird deshalb vor dem Schließen gelöscht.
     ausloeserRef.current = null;
     setOpen(false);
-    navigate(path);
+    if (beiZiel) beiZiel(path);
+    else navigate(path);
   };
 
   const springe = (richtung: 1 | -1): void => {

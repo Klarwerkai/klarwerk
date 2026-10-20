@@ -113,6 +113,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
     static let befehle: Set<String> = [
         "figur-klick", "gespraech-oeffnen", "gespraech-schliessen", "reduziert-an", "reduziert-aus",
         "vorgaenge-melden", "einstellungen-oeffnen",
+        "suche-oeffnen",
     ]
 
     let einst = Einstellungen.ausBundle()
@@ -120,6 +121,8 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
     private var webView: GriffWebView!
     private var fensterInhalt: BegleitInhalt!
     private var tastatur: Any?
+    private let suchkuerzel = Suchkuerzel()
+    private var sucheAusstehend = false
     private var statusItem: NSStatusItem!
     private var modus = "gespraech"
     /// BUG-KLARA-WINDOW-02: „geschlossen“ ist eine bewusste Entscheidung und gilt auch nach Neustart.
@@ -160,6 +163,15 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         baueHauptmenue()
         // Option 1: keine automatische systemweite Registrierung; ⌃⌥ bleibt für VoiceOver frei.
         registriereFigurtasten()
+        suchkuerzel.beiSuche = { [weak self] in
+            guard let self, let vorher = self.suchkuerzel.belegung else { return }
+            // Eine inzwischen entfernte/geänderte Belegung darf auch vor dem 30s-Abgleich
+            // nichts mehr öffnen. Keine erneute Registrierung/Anmeldung auf Verdacht.
+            self.anmeldungPruefen { [weak self] in
+                guard let self, self.suchkuerzel.belegung == vorher else { return }
+                self.sucheOeffnen()
+            }
+        }
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(bildschirmeGeaendert),
@@ -171,6 +183,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         if sichtbar {
             panel.orderFrontRegardless()
         }
+        if sucheAusstehend { sucheOeffnen() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -178,6 +191,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
     // BPA-01: Beim Beenden gilt keine Sitzung mehr — die Brücke nimmt danach keine Karte an.
     func applicationWillTerminate(_ notification: Notification) {
         if let tastatur { NSEvent.removeMonitor(tastatur) }
+        suchkuerzel.entfernen()
         wiederholung?.invalidate()
         einpassTakt?.invalidate()
         anmeldeTakt?.invalidate()
@@ -193,6 +207,14 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         fensterProtokoll.notice("Wiederöffnen über App-Start; sichtbar vorher: \(self.sichtbar, privacy: .public)")
         gespraechOeffnen()
         return false
+    }
+
+    /// Ein bewusster Aufruf aus macOS (z. B. Kurzbefehle); kein Inhalt und kein fremdes Ziel im URL.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard urls.contains(where: { $0.scheme == "klara-begleiter" && $0.host == "suche"
+            && ($0.path.isEmpty || $0.path == "/") && $0.query == nil && $0.fragment == nil
+            && $0.user == nil && $0.password == nil && $0.port == nil }) else { return }
+        sucheOeffnen()
     }
 
     private func registriereFigurtasten() {
@@ -430,6 +452,16 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         befehl("gespraech-oeffnen")
     }
 
+    @objc func sucheOeffnen() {
+        sucheAusstehend = true
+        guard panel != nil else { return }
+        gespraechOeffnen()
+        if verbunden && offline == nil {
+            befehl("suche-oeffnen")
+            sucheAusstehend = false
+        }
+    }
+
     // MARK: MAC-02 — Systemknöpfe und Fenstermenü des Gesprächs
 
     /// Gelber Knopf / ⌘M: zur Figur einklappen. Das Gespräch und seine Eingabe bleiben erhalten.
@@ -441,6 +473,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
     /// stehen. Nur ohne eigene Webfläche (keine Verbindung, Fehlerseite) — dort läuft kein Vorgang —
     /// klappt die App selbst zur Figur ein (BUG-KLARA-WINDOW-02: Einklappen auch ohne Antwort).
     @objc func einklappen() {
+        sucheAusstehend = false
         // Bewusst eingeklappt: kein Seiten-/Kontextwechsel öffnet wieder (setzeModus prüft das).
         nutzerEingeklappt = true
         guard verbunden, offline == nil else {
@@ -462,6 +495,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
     /// kein Vorgang mehr läuft (`Schliessvorgang`). Ohne Antwort bleibt die Figur stehen; ein erneutes
     /// Schließen fragt neu. Entwurf und Gespräch bleiben in der geladenen Webfläche erhalten.
     @objc func schliessen() {
+        sucheAusstehend = false
         switch schliessvorgang.anfordern(webflaecheBereit: verbunden && offline == nil) {
         case .ausblenden:
             // Keine eigene Webfläche geladen (keine Verbindung, Fehlerseite): dort läuft nichts.
@@ -587,6 +621,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
             wiederholung?.invalidate()
             anmeldungPruefen()
             karteAnWebflaeche(kartenQuelle.aktuell())
+            if sucheAusstehend { sucheOeffnen() }
             if schliessvorgang.wartet {
                 // Die Webfläche wurde neu geladen: die offene Anfrage noch einmal stellen.
                 befehl("vorgaenge-melden", wert: schliessvorgang.anfrage)
@@ -622,6 +657,13 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
             // BPA-01: Die Webfläche meldet einen An-/Abmelde- oder Kontowechsel. Ihr Inhalt zählt
             // nicht: SOFORT entwerten, dann selbst beim Server nachfragen.
             anmeldungGewechselt()
+        case "suchziel":
+            // Nur reguläre Ziele desselben Servers, niemals ein frei übergebener Fremdlink.
+            guard let pfad = n["pfad"] as? String, pfad.hasPrefix("/"), !pfad.hasPrefix("//"),
+                  !pfad.contains("\\"), !pfad.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
+                  let ziel = URL(string: pfad, relativeTo: einst.server)?.absoluteURL, aufServer(ziel)
+            else { return }
+            NSWorkspace.shared.open(ziel)
         default:
             break
         }
@@ -784,6 +826,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         fenster.addItem(eintrag("Schließen", #selector(schliessenAusMenue), taste: "w"))
         fenster.addItem(.separator())
         fenster.addItem(eintrag("Gespräch öffnen", #selector(gespraechOeffnen)))
+        fenster.addItem(eintrag("Suche öffnen", #selector(sucheOeffnen)))
         let fensterEintrag = NSMenuItem()
         fensterEintrag.submenu = fenster
         haupt.addItem(fensterEintrag)
@@ -806,6 +849,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         let name = panel.anzeigeName
         menu.addItem(eintrag(sichtbar ? "\(name) schließen" : "\(name) öffnen", #selector(sichtbarUmschalten)))
         menu.addItem(eintrag("Gespräch öffnen", #selector(gespraechOeffnen)))
+        menu.addItem(eintrag("Suche öffnen", #selector(sucheOeffnen)))
         menu.addItem(eintrag("Einstellungen …", #selector(einstellungenOeffnen), taste: ","))
         menu.addItem(eintrag("Zur Figur einklappen", sichtbar && modus == "gespraech" ? #selector(einklappen) : nil))
         let finden = eintrag("Figur wiederfinden", #selector(wiederfindenAusMenue))
@@ -848,16 +892,38 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
     /// WELCHER Sitzung (`/api/me/klara/begleiter/sitzung`: Nutzerkennung und Fingerabdruck des
     /// Sitzungsmerkmals — nie das Merkmal selbst; es bleibt in WebKit). Nichts sonst kommt zurück.
     private static let anmeldeSkript = """
+    const abbruch = new AbortController();
+    const frist = setTimeout(() => abbruch.abort(), 8000);
     try {
       const antwort = await fetch("/api/me/klara/begleiter/sitzung", {
-        credentials: "same-origin", cache: "no-store", headers: { accept: "application/json" }
+        credentials: "same-origin", cache: "no-store", signal: abbruch.signal, headers: { accept: "application/json" }
       });
       if (antwort.status !== 200) return "";
       const s = await antwort.json();
       if (!s || typeof s.nutzer !== "string" || typeof s.sitzung !== "string") return "";
-      return s.nutzer + "\\n" + s.sitzung;
+      // Dieselbe bestehende Kontoablage. Eine fehlerhafte Kürzelantwort entzieht nur das Kürzel,
+      // nicht die separat bestätigte Browserkarte. Nachlesen unter derselben Serversitzung.
+      let suchbelegung = null;
+      try {
+        const k = await fetch("/api/me/assistenz/tastenkuerzel", {
+          credentials: "same-origin", cache: "no-store", signal: abbruch.signal, headers: { accept: "application/json" }
+        });
+        if (k.ok) {
+          const belegungen = await k.json();
+          suchbelegung = belegungen?.aktionen?.find(e => e.aktion === "suchen")?.belegung ?? null;
+        }
+        const erneut = await fetch("/api/me/klara/begleiter/sitzung", {
+          credentials: "same-origin", cache: "no-store", signal: abbruch.signal, headers: { accept: "application/json" }
+        });
+        if (!erneut.ok) return "";
+        const jetzt = await erneut.json();
+        if (jetzt.nutzer !== s.nutzer || jetzt.sitzung !== s.sitzung) return "";
+      } catch (_) { suchbelegung = null; }
+      return JSON.stringify({ nutzer: s.nutzer, sitzung: s.sitzung, suchbelegung });
     } catch (fehler) {
       return "";
+    } finally {
+      clearTimeout(frist);
     }
     """
 
@@ -890,7 +956,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
 
     /// Fragt beim Server nach (Takt, Menü, nach einem Wechsel). Ohne Antwort, mit Fehler, offline
     /// oder auf fremder Herkunft: keine Anmeldung.
-    private func anmeldungPruefen() {
+    private func anmeldungPruefen(beiErfolg: (() -> Void)? = nil) {
         anmeldeAbfrage += 1
         let abfrage = anmeldeAbfrage
         guard offline == nil, aufServer(webView?.url) else {
@@ -909,12 +975,14 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
                     self.anmeldungSetzen(nutzer: nil, sitzung: nil)
                     return
                 }
-                let teile = text.split(separator: "\n", omittingEmptySubsequences: false)
-                guard teile.count == 2 else {
+                guard let daten = text.data(using: .utf8),
+                      let stand = try? JSONDecoder().decode(Suchanmeldung.self, from: daten) else {
                     self.anmeldungSetzen(nutzer: nil, sitzung: nil)
                     return
                 }
-                self.anmeldungSetzen(nutzer: String(teile[0]), sitzung: String(teile[1]))
+                self.anmeldungSetzen(nutzer: stand.nutzer, sitzung: stand.sitzung)
+                self.suchkuerzel.setzen(self.kartenQuelle.anmeldung != nil ? stand.suchbelegung : nil)
+                beiErfolg?()
             }
         }
     }
@@ -924,6 +992,7 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
     /// verspätete Übergaben bleiben gesperrt (`BrowserKartenQuelle`).
     private func anmeldungSetzen(nutzer: String?, sitzung: String?) {
         if nutzer == nil {
+            suchkuerzel.entfernen()
             // Entwerten macht jede noch laufende Nachfrage ungültig.
             anmeldeAbfrage += 1
             anmeldeFolge.entwerten()
@@ -967,7 +1036,20 @@ final class Begleitsteuerung: NSObject, NSApplicationDelegate, NSMenuDelegate, W
         NSWorkspace.shared.open(seite)
     }
 
-    // Systemweite Auslösung ist gemäß Peters Option 1 für später vorgemerkt.
-    // Konfigurierbare interne Kürzel liegen unverändert im gemeinsamen Klara-Setup.
-    private var kuerzelText: String { "Systemweiter Aufruf: nicht eingerichtet" }
+    private var kuerzelText: String { suchkuerzel.status }
+}
+
+private struct Suchanmeldung: Decodable {
+    let nutzer: String
+    let sitzung: String
+    let suchbelegung: Suchbelegung?
+
+    private enum CodingKeys: String, CodingKey { case nutzer, sitzung, suchbelegung }
+    init(from decoder: Decoder) throws {
+        let werte = try decoder.container(keyedBy: CodingKeys.self)
+        nutzer = try werte.decode(String.self, forKey: .nutzer)
+        sitzung = try werte.decode(String.self, forKey: .sitzung)
+        // Eine unlesbare Belegung sperrt nur den zusätzlichen Suchaufruf.
+        suchbelegung = try? werte.decode(Suchbelegung.self, forKey: .suchbelegung)
+    }
 }

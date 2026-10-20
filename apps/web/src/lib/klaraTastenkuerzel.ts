@@ -19,7 +19,7 @@
 //      dauerhaft nur am Server (`/api/me/assistenz/tastenkuerzel`).
 //
 // GELTUNGSBEREICH (Peters Wahl „Option 1“): innerhalb des aktiven Klarwerk-Fensters. Eine
-// systemweite Auslösung ist vorgemerkt, nicht gebaut — die Oberfläche verspricht sie nicht.
+// systemweite Auslösung ergänzt nur J für die bewusst belegte Aktion „suchen“ im Mac-Begleiter.
 import { useSyncExternalStore } from "react";
 import {
   KLARA_KUERZEL_AKTIONEN,
