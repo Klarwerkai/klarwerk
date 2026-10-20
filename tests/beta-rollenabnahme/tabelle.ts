@@ -2391,6 +2391,15 @@ export const TABELLE: Zeile[] = [
   // Anbindung, Fremdkonto 404, Löschung nur mit Fassung) misst
   // `tests/klara-kalender/kalender-am-server.test.ts`.
   {
+    gruppe: "klaraErinnerungRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/erinnerungen/wissenspflege/vorschau",
+    belegstelle: "services/app/src/routes/klara-erinnerung-routes.ts:264",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
     gruppe: "klaraFristenRoutes",
     methode: "GET",
     pfad: "/api/me/klara/fristen",

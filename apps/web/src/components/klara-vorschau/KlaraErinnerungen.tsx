@@ -23,6 +23,7 @@ import { Link } from "react-router-dom";
 import {
   type ErinnerungAktion,
   type ErinnerungAnzeige,
+  type ErinnerungEingabe,
   type ErinnerungLauf,
   type ErinnerungVorschau,
   type ErinnerungZeitplan,
@@ -34,8 +35,15 @@ import {
   type VerpasstRegel,
   klaraErinnerungApi,
 } from "../../api/klaraErinnerung";
+import type { PflegeAuftrag, PflegeVorlage } from "../../api/klaraWissenspflege";
 import { useAssistenzT } from "../../lib/assistenzProfil";
 import { vorgabeZeitzone } from "../../lib/persoenlicheZeitzone";
+import { anfrageEpoche } from "../../lib/rechtekontext";
+import {
+  type GeprueftePflegeAuswahl,
+  WissenspflegeAuswahl,
+  WissenspflegePruefstand,
+} from "./WissenspflegeAuswahl";
 import {
   bediene,
   bezugAnzeige,
@@ -57,7 +65,7 @@ import {
   useErinnerungen,
   verwirfEntwurf,
 } from "./erinnerungen";
-import { ruecklinkZiel } from "./notizen";
+import { oeffneNotiz, ruecklinkZiel } from "./notizen";
 
 const KNOPF =
   "inline-flex h-8 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-text hover:border-ink/30 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
@@ -153,10 +161,12 @@ function Zeitanzeige({
   anzeige,
   zone,
   plan,
+  quellWatch = false,
 }: {
   anzeige: ErinnerungAnzeige;
   zone: string;
   plan: ErinnerungZeitplan;
+  quellWatch?: boolean;
 }): JSX.Element {
   const { t, i18n } = useAssistenzT();
   const sprache = i18n.language;
@@ -203,7 +213,11 @@ function Zeitanzeige({
       <div className="flex flex-wrap gap-1">
         <dt className="text-muted">{t("klaraerinnerung.anzeige.ergebnis")}</dt>
         <dd data-testid="klara-erinnerung-ergebnis">
-          {t(`klaraerinnerung.ergebnis.${anzeige.erwartetesErgebnis}`)}
+          {t(
+            quellWatch
+              ? "wissenspflege.watchErgebnis"
+              : `klaraerinnerung.ergebnis.${anzeige.erwartetesErgebnis}`,
+          )}
         </dd>
       </div>
       {anzeige.kommende.length > 1 ? (
@@ -315,6 +329,8 @@ function EntwurfFormular(): JSX.Element | null {
     "offene_aufgaben",
     "erledigte_aufgaben",
   ]);
+  const [pflegeVorlage, setPflegeVorlage] = useState<PflegeVorlage | "bericht">("bericht");
+  const [pflege, setPflege] = useState<GeprueftePflegeAuswahl | null>(null);
   const [deutung, setDeutung] = useState<ErinnerungVorschau["deutung"]>(null);
   const [vorschau, setVorschau] = useState<ErinnerungVorschau | null>(null);
   const [vorschauFehler, setVorschauFehler] = useState<string | null>(null);
@@ -327,6 +343,8 @@ function EntwurfFormular(): JSX.Element | null {
     setTitel(entwurf?.titel ?? "");
     setDeutung(null);
     setAktion("erinnern");
+    setPflegeVorlage("bericht");
+    setPflege(null);
     const v = s.einstellungen;
     if (v) {
       setZone(v.zeitzone ?? vorgabeZeitzone());
@@ -406,10 +424,21 @@ function EntwurfFormular(): JSX.Element | null {
     plan !== null &&
     vorschau?.anzeige?.naechste != null &&
     titel.trim().length > 0 &&
-    (!routine || abschnitte.length > 0);
+    (!routine ||
+      (pflegeVorlage === "bericht"
+        ? abschnitte.length > 0
+        : pflege !== null && pflege.epoche === anfrageEpoche()));
   const speichern = (): void => {
-    if (!plan) {
+    if (!plan || !bereit) {
       return;
+    }
+    let definition: ErinnerungEingabe["routine"];
+    if (routine) {
+      if (pflegeVorlage === "bericht") definition = { abschnitte };
+      else {
+        if (!pflege || pflege.epoche !== anfrageEpoche()) return;
+        definition = { wissenspflege: pflege.auftrag };
+      }
     }
     void speichereEntwurf(
       {
@@ -419,7 +448,7 @@ function EntwurfFormular(): JSX.Element | null {
         sommerzeit: { luecke, doppelt },
         verpasst: { regel, grenzeMinuten: grenze },
         aktion,
-        ...(routine ? { routine: { abschnitte } } : {}),
+        ...(definition ? { routine: definition } : {}),
       },
       t,
     );
@@ -736,36 +765,70 @@ function EntwurfFormular(): JSX.Element | null {
         ) : null}
       </label>
       {routine ? (
-        <fieldset
-          data-testid="klara-erinnerung-routine-abschnitte"
-          className="space-y-0.5 rounded-btn border border-hairline px-2 py-1"
-        >
-          <legend className={KLEINTITEL}>{t("klaraerinnerung.routine.abschnitte")}</legend>
-          {ROUTINE_ABSCHNITTE.map((a) => (
-            <label key={a} className="flex items-center gap-1.5 text-[11.5px] normal-case">
-              <input
-                type="checkbox"
-                data-testid={`klara-erinnerung-routine-abschnitt-${a}`}
-                checked={abschnitte.includes(a)}
-                onChange={(ev) =>
-                  setAbschnitte((alt) =>
-                    ev.target.checked ? [...alt, a] : alt.filter((x) => x !== a),
-                  )
-                }
-              />
-              {t(`klaraerinnerung.routine.abschnitt.${a}`)}
-            </label>
-          ))}
-          <p className="text-[11px] text-muted">
-            {t("klaraerinnerung.routine.einrichtungHinweis")}
-          </p>
-        </fieldset>
+        <div className="space-y-2" data-testid="wissenspflege-vorlagen">
+          <label className="block text-[12px]">
+            {t("wissenspflege.vorlage")}
+            <select
+              className={FELD}
+              value={pflegeVorlage}
+              onChange={(ev) => {
+                const vorlage = ev.target.value as PflegeVorlage | "bericht";
+                setPflegeVorlage(vorlage);
+                setPflege(null);
+                if (vorlage !== "bericht") setArt("serie");
+              }}
+            >
+              {["bericht", "offene_pruefungen", "quellaenderung", "aktualitaet"].map((v) => (
+                <option key={v} value={v}>
+                  {t(`wissenspflege.${v}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {pflegeVorlage === "bericht" ? (
+            <fieldset
+              data-testid="klara-erinnerung-routine-abschnitte"
+              className="space-y-0.5 rounded-btn border border-hairline px-2 py-1"
+            >
+              <legend className={KLEINTITEL}>{t("klaraerinnerung.routine.abschnitte")}</legend>
+              {ROUTINE_ABSCHNITTE.map((a) => (
+                <label key={a} className="flex items-center gap-1.5 text-[11.5px] normal-case">
+                  <input
+                    type="checkbox"
+                    data-testid={`klara-erinnerung-routine-abschnitt-${a}`}
+                    checked={abschnitte.includes(a)}
+                    onChange={(ev) =>
+                      setAbschnitte((alt) =>
+                        ev.target.checked ? [...alt, a] : alt.filter((x) => x !== a),
+                      )
+                    }
+                  />
+                  {t(`klaraerinnerung.routine.abschnitt.${a}`)}
+                </label>
+              ))}
+              <p className="text-[11px] text-muted">
+                {t("klaraerinnerung.routine.einrichtungHinweis")}
+              </p>
+            </fieldset>
+          ) : (
+            <WissenspflegeAuswahl
+              key={`${vorgang}:${s.generation}:${pflegeVorlage}`}
+              vorlage={pflegeVorlage}
+              onChange={setPflege}
+            />
+          )}
+        </div>
       ) : null}
 
       {vorschau?.anzeige && plan ? (
         <div data-testid="klara-erinnerung-vorschau" className="rounded-btn bg-surface px-2 py-1">
           <p className={KLEINTITEL}>{t("klaraerinnerung.vorschau.titel")}</p>
-          <Zeitanzeige anzeige={vorschau.anzeige} zone={zone} plan={plan} />
+          <Zeitanzeige
+            anzeige={vorschau.anzeige}
+            zone={zone}
+            plan={plan}
+            quellWatch={routine && pflegeVorlage === "quellaenderung"}
+          />
         </div>
       ) : null}
       {vorschauFehler ? (
@@ -855,7 +918,9 @@ function RoutineLaufErgebnis({
         ? t("klaraerinnerung.routine.ergebnisZurueckgenommen")
         : t(`klaraerinnerung.routine.ergebnis.${r.status}`, {
             fassung: r.routineFassung,
-            quellen: r.quellen.length,
+            quellen:
+              r.wissenspflege?.quellen.filter((q) => q.stand === "gelesen").length ??
+              r.quellen.length,
           })}
       {r.offen.length > 0 ? (
         <span data-testid="klara-erinnerung-routine-offen" className="block text-trust-warn-text">
@@ -864,15 +929,29 @@ function RoutineLaufErgebnis({
         </span>
       ) : null}
       {r.zurueckgenommenAm ? null : (
-        <button
-          type="button"
-          data-testid="klara-erinnerung-routine-zuruecknehmen"
-          disabled={s.laufend[e.id] === true}
-          onClick={() => void nimmRoutineErgebnisZurueck(e.id, l.vorkommenId, t)}
-          className={`${KNOPF} mt-1`}
-        >
-          {t("klaraerinnerung.routine.zuruecknehmen")}
-        </button>
+        <>
+          {r.wissenspflege ? (
+            <WissenspflegePruefstand p={r.wissenspflege} zone={e.zeitzone} />
+          ) : null}
+          {r.wissenspflege ? (
+            <button
+              type="button"
+              className={`${KNOPF} mt-1`}
+              onClick={() => void oeffneNotiz(r.notizId, t)}
+            >
+              {t("wissenspflege.berichtOeffnen")}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            data-testid="klara-erinnerung-routine-zuruecknehmen"
+            disabled={s.laufend[e.id] === true}
+            onClick={() => void nimmRoutineErgebnisZurueck(e.id, l.vorkommenId, t)}
+            className={`${KNOPF} mt-1`}
+          >
+            {t("klaraerinnerung.routine.zuruecknehmen")}
+          </button>
+        </>
       )}
     </span>
   );
@@ -883,6 +962,71 @@ function RoutineLaufErgebnis({
  * `Zeitanzeige`), dazu Quellen, Ziel, erlaubte Wirkung, Ausführungsmodus und Funktionsfassung. Eine
  * Änderung in Worten wird erst gedeutet und gezeigt, dann bewusst übernommen.
  */
+function PflegeAenderung({
+  e,
+  auftrag,
+}: { e: KlaraErinnerung; auftrag: PflegeAuftrag }): JSX.Element {
+  const { t } = useAssistenzT();
+  const [vorlage, setVorlage] = useState(auftrag.vorlage);
+  const [auswahl, setAuswahl] = useState<GeprueftePflegeAuswahl | null>(null);
+  const [laeuft, setLaeuft] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+  const speichern = async () => {
+    if (!auswahl || auswahl.epoche !== anfrageEpoche() || laeuft) return;
+    setLaeuft(true);
+    setFehler(null);
+    try {
+      await klaraErinnerungApi.definiereRoutine(e.id, e.fassung, auswahl.auftrag);
+      if (auswahl.epoche === anfrageEpoche()) await holeErinnerung(e.id, t);
+    } catch (error) {
+      setFehler(erinnerungFehler(error, t));
+    } finally {
+      setLaeuft(false);
+    }
+  };
+  return (
+    <details
+      className="my-2 rounded-btn border border-hairline p-2"
+      data-testid="wissenspflege-aendern"
+    >
+      <summary>{t("wissenspflege.aendern")}</summary>
+      <fieldset disabled={laeuft} className="space-y-2 py-2">
+        <label className="block text-[12px]">
+          {t("wissenspflege.vorlage")}
+          <select
+            value={vorlage}
+            className={FELD}
+            onChange={(ev) => {
+              setVorlage(ev.target.value as PflegeVorlage);
+              setAuswahl(null);
+            }}
+          >
+            {["offene_pruefungen", "quellaenderung", "aktualitaet"].map((v) => (
+              <option key={v} value={v}>
+                {t(`wissenspflege.${v}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <WissenspflegeAuswahl
+          vorlage={vorlage}
+          initial={{ vorlage, quellen: auftrag.quellen }}
+          onChange={setAuswahl}
+        />
+        <button
+          type="button"
+          className={KNOPF_HAUPT}
+          disabled={!auswahl || auswahl.epoche !== anfrageEpoche()}
+          onClick={() => void speichern()}
+        >
+          {t("wissenspflege.speichern")}
+        </button>
+        {fehler ? <p role="alert">{fehler}</p> : null}
+      </fieldset>
+    </details>
+  );
+}
+
 function RoutineBereich({ e }: { e: KlaraErinnerung }): JSX.Element | null {
   const { t } = useAssistenzT();
   const s = useErinnerungen();
@@ -915,15 +1059,45 @@ function RoutineBereich({ e }: { e: KlaraErinnerung }): JSX.Element | null {
     <div data-testid="klara-erinnerung-routine" data-fassung={r.fassung} className="space-y-0.5">
       <p className={KLEINTITEL}>{t("klaraerinnerung.routine.titel")}</p>
       <p className="text-[11.5px]">
-        {t("klaraerinnerung.routine.quellen")} {quellen}
+        {t("klaraerinnerung.routine.quellen")}{" "}
+        {r.wissenspflege
+          ? t("wissenspflege.auswahl", { anzahl: r.wissenspflege.quellen.length })
+          : quellen}
       </p>
+      {r.wissenspflege ? (
+        <>
+          <p className="text-[12px] font-semibold">
+            {t(`wissenspflege.${r.wissenspflege.vorlage}`)}
+          </p>
+          <p className="text-[11.5px]">{t("wissenspflege.zweck")}</p>
+          <p className="text-[11.5px]">
+            {t(
+              r.wissenspflege.ausloeser === "quellstand_polling"
+                ? "wissenspflege.polling"
+                : "wissenspflege.zeitplan",
+            )}
+          </p>
+          <ul>
+            {r.wissenspflege.quellen.map((q, i) => (
+              <li key={q}>
+                <Link to={`/wissen/${encodeURIComponent(q)}`} className="text-[11.5px] underline">
+                  {t("wissenspflege.quelle", { nummer: i + 1 })}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
       <p className="text-[11.5px]">
         {t("klaraerinnerung.routine.ziel")} {t("klaraerinnerung.routine.zielNotizen")}
       </p>
       <p data-testid="klara-erinnerung-routine-wirkung" className="text-[11.5px]">
-        {t("klaraerinnerung.routine.wirkung")}
+        {t(r.wissenspflege ? "wissenspflege.wirkung" : "klaraerinnerung.routine.wirkung")}
       </p>
       <p className="text-[11.5px]">{t("klaraerinnerung.routine.modus", { fassung: r.fassung })}</p>
+      {r.wissenspflege && (e.status === "aktiv" || e.status === "pausiert") ? (
+        <PflegeAenderung key={`${e.id}:${e.fassung}`} e={e} auftrag={r.wissenspflege} />
+      ) : null}
       {e.status === "aktiv" || e.status === "pausiert" ? (
         <form
           className="flex flex-wrap items-center gap-1.5"
@@ -1032,6 +1206,9 @@ function LaufZeile({ e, l }: { e: KlaraErinnerung; l: ErinnerungLauf }): JSX.Ele
       ) : null}
       {/* EQF-07: das tatsächliche Routinenergebnis — Bericht, Fassungen, offener Rest. */}
       {l.ergebnis.routine ? <RoutineLaufErgebnis e={e} l={l} r={l.ergebnis.routine} /> : null}
+      {!l.ergebnis.routine && l.ergebnis.wissenspflege ? (
+        <WissenspflegePruefstand p={l.ergebnis.wissenspflege} zone={e.zeitzone} />
+      ) : null}
       {/* EQF-07-K06: offener Rest eines Teilberichts — im selben Bericht fortsetzen oder bewusst
           nicht mehr nachholen. Fortgesetzt wird vom Dienst, nicht von dieser Ansicht. */}
       {l.status === "teilweise" &&
@@ -1565,7 +1742,12 @@ function ErinnerungZeile({ e, istZiel }: { e: KlaraErinnerung; istZiel: boolean 
       <p data-testid="klara-erinnerung-bezug" className="mt-0.5 text-[11px] text-muted">
         {t("klaraerinnerung.persoenlich")} · {bezugAnzeige(e.bezug, t)}
       </p>
-      <Zeitanzeige anzeige={e.anzeige} zone={e.zeitzone} plan={e.zeitplan} />
+      <Zeitanzeige
+        anzeige={e.anzeige}
+        zone={e.zeitzone}
+        plan={e.zeitplan}
+        quellWatch={e.routine?.wissenspflege?.vorlage === "quellaenderung"}
+      />
       <p className="mt-0.5 text-[11px] text-muted">
         {t("klaraerinnerung.regeln.kurz", {
           verpasst: t(`klaraerinnerung.verpasst.${e.verpasst.regel}`),

@@ -21,6 +21,7 @@
 // Berichtstexts aus tatsächlich gelesenen Quellen.
 import type { Wochentag } from "./klara-erinnerung-zeit";
 import type { KlaraNotiz } from "./klara-notiz";
+import { type PflegeAuftrag, type PflegeErgebnis, pflegeAus } from "./klara-wissenspflege";
 
 export const ROUTINE_ABSCHNITTE = [
   "offene_aufgaben",
@@ -49,10 +50,13 @@ export interface KlaraRoutine {
   readonly wirkungen: readonly RoutineWirkung[];
   /** Eindeutige erlaubte Schritte laufen ohne erneute Einzelbestätigung. */
   readonly modus: "automatisch";
+  /** Ausdrücklich bestellte Wissenspflege auf demselben Zeit-/Lauf-/Ergebnisweg. */
+  readonly wissenspflege?: PflegeAuftrag;
 }
 
 /** Das tatsächliche Ergebnis eines Laufs — am Lauf gespeichert, in der Meldung gezeigt. */
 export interface KlaraRoutineErgebnis {
+  readonly wissenspflege?: PflegeErgebnis;
   readonly status: "erstellt" | "teilweise";
   readonly notizId: string;
   readonly notizFassung: number;
@@ -126,8 +130,20 @@ export function routineAus(roh: unknown, fassung = 1): KlaraRoutine {
     throw new RoutineEingabeFehler("eingabe", "routine ist ein Objekt.");
   }
   const r = o as Record<string, unknown>;
-  const abschnitteRoh = r.abschnitte ?? ["offene_aufgaben", "erledigte_aufgaben"];
-  if (!Array.isArray(abschnitteRoh) || abschnitteRoh.length === 0) {
+  let wissenspflege: PflegeAuftrag | undefined;
+  if (r.wissenspflege !== undefined) {
+    try {
+      wissenspflege = pflegeAus(r.wissenspflege);
+    } catch (fehler) {
+      throw new RoutineEingabeFehler(
+        "eingabe",
+        fehler instanceof Error ? fehler.message : "Ungültiger Pflegeauftrag.",
+      );
+    }
+  }
+  const abschnitteRoh =
+    r.abschnitte ?? (wissenspflege ? [] : ["offene_aufgaben", "erledigte_aufgaben"]);
+  if (!Array.isArray(abschnitteRoh) || (abschnitteRoh.length === 0 && !wissenspflege)) {
     throw new RoutineEingabeFehler(
       "eingabe",
       "routine.abschnitte braucht mindestens einen Abschnitt.",
@@ -157,6 +173,11 @@ export function routineAus(roh: unknown, fassung = 1): KlaraRoutine {
     );
   }
   const wirkungRoh = r.wirkungen ?? ["bericht_erstellen"];
+  if (wissenspflege && (abschnitte.length > 0 || notizRoh.length > 0))
+    throw new RoutineEingabeFehler(
+      "eingabe",
+      "Eine Wissenspflegevorlage liest ausschließlich ihre ausdrücklich ausgewählten Wissensobjekte.",
+    );
   if (!Array.isArray(wirkungRoh) || wirkungRoh.length === 0) {
     throw new RoutineEingabeFehler("eingabe", "routine.wirkungen ist eine Liste.");
   }
@@ -178,6 +199,7 @@ export function routineAus(roh: unknown, fassung = 1): KlaraRoutine {
     ziel: "meine_notizen",
     wirkungen: ["bericht_erstellen"],
     modus: "automatisch",
+    ...(wissenspflege ? { wissenspflege } : {}),
   };
 }
 

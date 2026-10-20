@@ -465,6 +465,7 @@ import {
 } from "./klara-notiz";
 import { QuellgeschuetzteKlaraNotizen } from "./klara-wissen-quellschutz";
 import { KlaraWissensDienst } from "./klara-wissensuebernahme";
+import { KlaraWissenspflegeQuellen } from "./klara-wissenspflege-quellen";
 // ADMIN-12: Kommunikationsregeln, persönliche Abwahl und Zustellstatus — haltbar im Postgres-
 // Betrieb, im Speicher ohne Datenbank.
 import {
@@ -4284,6 +4285,14 @@ export function buildApp(
   // produkt:20261007:klara-erinnerungen-kalender (Klara 10): Dienst und EINE Steuerung über
   // DIESELBE Ablage. Die Steuerung liest vor jeder Zustellung das Konto heute (`kontoLesen`) und die
   // eigene Quelle; ihr Takt läuft in `server.ts` (kein Chat-Wecker, keine zweite Instanz).
+  const wissenspflegeQuellen = new KlaraWissenspflegeQuellen({
+    auth: services.auth,
+    ko: services.ko,
+    lifecycle: services.lifecycle,
+    notizen: services.klaraNotizen,
+    gespraeche: services.klaraGespraeche,
+    spaces: services.spaces,
+  });
   const erinnerungDienst = new KlaraErinnerungDienst({
     ablage: services.klaraErinnerungen,
     notizen: services.klaraNotizen,
@@ -4291,6 +4300,7 @@ export function buildApp(
     gespraeche: services.klaraGespraeche,
     // AW18-K08: die bewusste Übergabe liest die Empfängerin über die vorhandenen Konten — HEUTE.
     personen: services.auth,
+    wissenspflege: wissenspflegeQuellen,
   });
   // produkt:20261008:klara-kalender (Klara 11, AW-17): die EINE Kalenderanbindung dieser App. Der
   // Zugang kommt ausschließlich aus der Betreiber-Einspeisung und gilt nur für dort genannte
@@ -4323,6 +4333,7 @@ export function buildApp(
     notizen: services.klaraNotizen,
     aufgaben: services.klaraAufgaben,
     gespraeche: services.klaraGespraeche,
+    wissenspflege: wissenspflegeQuellen,
     // EQF-07 · Ergebnisablage einer Routine: „Meine Notizen“ über den VORHANDENEN Notizdienst
     // (Vorgangsschlüssel je Termin → höchstens ein Bericht, Readback über `zuVorgang`).
     // Nacharbeit 9: Anlegen und Fortschreiben NUR unter der Bedingung der Wirkung (Routine aktiv,
