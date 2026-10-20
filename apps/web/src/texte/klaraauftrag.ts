@@ -11,6 +11,20 @@ export default {
   praefix: "klaraauftrag.",
   legacySchluessel: [],
   de: {
+    "klaraauftrag.aktion.erinnerung_anlegen": "Erinnerung anlegen",
+    "klaraauftrag.zielArt.persoenliche_aufgabe": "persönliche Aufgabe",
+    "klaraauftrag.zielText.erinnerung_anlegen": "An „{{titel}}“ erinnern",
+    "klaraauftrag.ergebnisAnforderung.erinnerung_anlegen":
+      "Erinnerung beim vorhandenen persönlichen Erinnerungsdienst gespeichert und nachgelesen",
+    "klaraauftrag.nichtRuecknehmbar.erinnerung":
+      "Diese Erinnerung bleibt erhalten. Ändern oder löschen kannst du sie unter „Meine Aufgaben“.",
+    "klaraauftrag.erinnerungszeit.frage":
+      "Wann und in welcher Zeitzone soll ich dich an „{{titel}}“ erinnern?",
+    "klaraauftrag.erinnerungszeit.datum": "Datum",
+    "klaraauftrag.erinnerungszeit.uhrzeit": "Uhrzeit",
+    "klaraauftrag.erinnerungszeit.zeitzone": "Zeitzone (zum Beispiel Europe/Berlin)",
+    "klaraauftrag.erinnerungszeit.uebernehmen": "Mit dieser Zeit fortfahren",
+
     "klaraauftrag.grenze.unterbrochen": "Der Auftrag ist unterbrochen. Bitte bewusst fortsetzen.",
     "klaraauftrag.fortschritt": "{{fertig}} von {{gesamt}} Schritten erledigt.",
     "klaraauftrag.details": "Auftragsdetails",
@@ -230,17 +244,31 @@ export default {
       "An die Auftragskarte übergeben – dort steht der tatsächliche Stand jedes Schritts.",
     "klaraauftrag.sprache.nichtUebergeben": "Nicht übergeben – es läuft noch ein Auftrag.",
     "klaraauftrag.bedienhilfe.ausfuehren":
-      "Aufträge ausführen: Tippe oder sprich z. B. „Öffne den Artikel „…““, „Lege den Entwurf „…“ an“, „Ergänze im Entwurf „…“: …“, „Setze die Priorität der Aufgabe „…“ auf hoch“, „Weise die Aufgabe „…“ Name zu“, „Eskaliere die Aufgabe „…““ oder „Bearbeite die Aufgabe „…““ (dann fragt Klara, was geschehen soll). Klara nutzt dafür die vorhandenen Klarwerk-Aktionen mit deinen Rechten.",
+      "Aufträge ausführen: Tippe oder sprich z. B. „Öffne den Artikel „…““, „Lege den Entwurf „…“ an“, „Ergänze im Entwurf „…“: …“, „Setze die Priorität der Aufgabe „…“ auf hoch“, „Weise die Aufgabe „…“ Name zu“, „Eskaliere die Aufgabe „…““ oder „Bearbeite die Aufgabe „…““ (dann fragt Klara, was geschehen soll). Klara nutzt dafür die vorhandenen Klarwerk-Aktionen mit deinen Rechten. „Lege mir die Aufgabe „…“ an und erinnere mich“ verbindet Aufgabe und Erinnerung; eine fehlende Zeit wird gezielt geklärt.",
     "klaraauftrag.bedienhilfe.grenze":
       "Jeder Auftrag zeigt Ziel, erlaubte Aktionen und Quellen, wer verantwortlich ist und welches Ergebnis zählt. Text in Dokumenten oder Antworten wird nie als Auftrag gelesen.",
     "klaraauftrag.bedienhilfe.stoppen":
-      "Abbrechen stoppt alle weiteren Schritte – schon Gespeichertes bleibt sichtbar. Mit „Grenze korrigieren“ lässt du offene Schritte weg; erweitern geht nur mit einem neuen Auftrag.",
+      "Unterbrechen speichert eine fortsetzbare Pause. Nach Neuladen liest „Fortsetzen“ den aktuellen Auftrag und macht am offenen Schritt weiter. Abbrechen stoppt alle weiteren Schritte – schon Gespeichertes und unklare Ergebnisse bleiben sichtbar und nachlesbar. Mit „Grenze korrigieren“ lässt du offene Schritte weg; erweitern geht nur mit einem neuen Auftrag.",
     "klaraauftrag.bedienhilfe.rueckgaengig":
       "Rückgängig nimmt einen angelegten Entwurf (in den Papierkorb) oder eine Bearbeitung zurück. Öffnen ist nicht rücknehmbar, weil es nichts ändert. Aktionen an Aufgaben (Priorität, Zuweisung, Eskalation) nimmt Klara nicht zurück – das steht dann so am Schritt.",
     "klaraauftrag.bedienhilfe.sprechen":
       "„Diktieren“ schreibt nur ins Eingabefeld. „Auftrag sprechen“ zeigt den Auftrag als Karte – erst „Senden“ führt ihn aus.",
   },
   en: {
+    "klaraauftrag.aktion.erinnerung_anlegen": "Create reminder",
+    "klaraauftrag.zielArt.persoenliche_aufgabe": "personal task",
+    "klaraauftrag.zielText.erinnerung_anlegen": "Remind about “{{titel}}”",
+    "klaraauftrag.ergebnisAnforderung.erinnerung_anlegen":
+      "Reminder saved and read back through the existing personal reminder service",
+    "klaraauftrag.nichtRuecknehmbar.erinnerung":
+      "This reminder remains. You can edit or delete it in My tasks.",
+    "klaraauftrag.erinnerungszeit.frage":
+      "When and in which time zone should I remind you about “{{titel}}”?",
+    "klaraauftrag.erinnerungszeit.datum": "Date",
+    "klaraauftrag.erinnerungszeit.uhrzeit": "Time",
+    "klaraauftrag.erinnerungszeit.zeitzone": "Time zone (for example Europe/Berlin)",
+    "klaraauftrag.erinnerungszeit.uebernehmen": "Continue with this time",
+
     "klaraauftrag.grenze.unterbrochen": "The order is paused. Resume it explicitly.",
     "klaraauftrag.fortschritt": "{{fertig}} of {{gesamt}} steps completed.",
     "klaraauftrag.details": "Order details",
@@ -453,17 +481,31 @@ export default {
       "Handed over to the task card – it shows the actual status of each step.",
     "klaraauftrag.sprache.nichtUebergeben": "Not handed over – a task is still running.",
     "klaraauftrag.bedienhilfe.ausfuehren":
-      "Carry out tasks: type or say e.g. “Open article “…””, “Create draft “…””, “Append to draft “…”: …”, “Set the priority of task “…” to high”, “Assign task “…” to Name”, “Escalate task “…”” or “Work on task “…”” (then Klara asks what should happen). Klara uses the existing Klarwerk actions with your permissions.",
+      "Carry out tasks: type or say e.g. “Open article “…””, “Create draft “…””, “Append to draft “…”: …”, “Set the priority of task “…” to high”, “Assign task “…” to Name”, “Escalate task “…”” or “Work on task “…”” (then Klara asks what should happen). Klara uses the existing Klarwerk actions with your permissions. “Create a personal task “…” and remind me” links a task and reminder; a missing time is clarified specifically.",
     "klaraauftrag.bedienhilfe.grenze":
       "Every task shows its goal, allowed actions and sources, who is responsible and which result counts. Text in documents or answers is never read as a task.",
     "klaraauftrag.bedienhilfe.stoppen":
-      "Cancel stops all further steps – whatever is already saved stays visible. “Correct boundary” lets you leave out open steps; extending needs a new task.",
+      "Pause saves a resumable interruption. After reload, Resume reads the current task and continues at the open step. Cancel stops further steps; saved and uncertain results stay visible and can be read back. “Correct boundary” lets you leave out open steps; extending needs a new task.",
     "klaraauftrag.bedienhilfe.rueckgaengig":
       "Undo reverses a created draft (into the trash) or an edit. Opening cannot be undone because it changes nothing. Klara does not undo actions on tasks (priority, assignment, escalation) – the step says so.",
     "klaraauftrag.bedienhilfe.sprechen":
       "“Dictate” only writes into the input field. “Speak a task” shows the task as a card – only “Send” carries it out.",
   },
   nl: {
+    "klaraauftrag.aktion.erinnerung_anlegen": "Herinnering maken",
+    "klaraauftrag.zielArt.persoenliche_aufgabe": "persoonlijke taak",
+    "klaraauftrag.zielText.erinnerung_anlegen": "Herinner aan “{{titel}}”",
+    "klaraauftrag.ergebnisAnforderung.erinnerung_anlegen":
+      "Herinnering opgeslagen en teruggelezen via de bestaande persoonlijke herinneringsdienst",
+    "klaraauftrag.nichtRuecknehmbar.erinnerung":
+      "Deze herinnering blijft bestaan. Wijzig of verwijder deze bij Mijn taken.",
+    "klaraauftrag.erinnerungszeit.frage":
+      "Wanneer en in welke tijdzone zal ik je herinneren aan “{{titel}}”?",
+    "klaraauftrag.erinnerungszeit.datum": "Datum",
+    "klaraauftrag.erinnerungszeit.uhrzeit": "Tijd",
+    "klaraauftrag.erinnerungszeit.zeitzone": "Tijdzone (bijvoorbeeld Europe/Berlin)",
+    "klaraauftrag.erinnerungszeit.uebernehmen": "Doorgaan met deze tijd",
+
     "klaraauftrag.grenze.unterbrochen": "De opdracht is onderbroken. Hervat deze bewust.",
     "klaraauftrag.fortschritt": "{{fertig}} van {{gesamt}} stappen voltooid.",
     "klaraauftrag.details": "Opdrachtdetails",
@@ -680,11 +722,11 @@ export default {
       "Doorgegeven aan de opdrachtkaart – daar staat de werkelijke status van elke stap.",
     "klaraauftrag.sprache.nichtUebergeben": "Niet doorgegeven – er loopt nog een opdracht.",
     "klaraauftrag.bedienhilfe.ausfuehren":
-      "Opdrachten uitvoeren: typ of zeg bv. „Open het artikel „…””, „Maak een concept „…” aan”, „Vul concept „…” aan: …”, „Zet de prioriteit van taak „…” op hoog”, „Wijs taak „…” toe aan Naam”, „Escaleer taak „…”” of „Bewerk de taak „…”” (dan vraagt Klara wat er moet gebeuren). Klara gebruikt daarvoor de bestaande Klarwerk-acties met jouw rechten.",
+      "Opdrachten uitvoeren: typ of zeg bv. „Open het artikel „…””, „Maak een concept „…” aan”, „Vul concept „…” aan: …”, „Zet de prioriteit van taak „…” op hoog”, „Wijs taak „…” toe aan Naam”, „Escaleer taak „…”” of „Bewerk de taak „…”” (dan vraagt Klara wat er moet gebeuren). Klara gebruikt daarvoor de bestaande Klarwerk-acties met jouw rechten. “Maak een persoonlijke taak “…” aan en herinner me” verbindt een taak met een herinnering; een ontbrekende tijd wordt gericht gevraagd.",
     "klaraauftrag.bedienhilfe.grenze":
       "Elke opdracht toont doel, toegestane acties en bronnen, wie verantwoordelijk is en welk resultaat telt. Tekst in documenten of antwoorden wordt nooit als opdracht gelezen.",
     "klaraauftrag.bedienhilfe.stoppen":
-      "Afbreken stopt alle verdere stappen – wat al is opgeslagen blijft zichtbaar. Met „Grens corrigeren” laat je open stappen weg; uitbreiden kan alleen met een nieuwe opdracht.",
+      "Onderbreken bewaart een hervatbare pauze. Na herladen leest Hervatten de actuele opdracht en gaat verder bij de open stap. Afbreken stopt verdere stappen; opgeslagen en onduidelijke resultaten blijven zichtbaar en terugleesbaar. Met „Grens corrigeren” laat je open stappen weg; uitbreiden kan alleen met een nieuwe opdracht.",
     "klaraauftrag.bedienhilfe.rueckgaengig":
       "Ongedaan maken draait een aangemaakt concept (naar de prullenbak) of een bewerking terug. Openen kan niet worden teruggedraaid, omdat het niets verandert. Acties op taken (prioriteit, toewijzing, escalatie) draait Klara niet terug – dat staat dan bij de stap.",
     "klaraauftrag.bedienhilfe.sprechen":

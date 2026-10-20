@@ -286,3 +286,66 @@ it("G9 · Antwort und erster Readback verloren → Stopp → tatsächlichen Vorg
   expect(posts).toBe(1);
   expect((await auf("GET", "/api/drafts")).json()).toHaveLength(1);
 });
+
+it("R-G1 · tatsächliche Fachanlage vor jedem Ergebnismarker, danach endgültiger Stopp: nur Originalreadback, keine neue Anlage", async () => {
+  const v = await vorgang(app, token);
+  const auf = draht(app, token);
+  let posts = 0;
+  const rufe: KlaraRufe = async (m, url, body) => {
+    const r = await auf(m, url, body);
+    if (m === "POST" && url === "/api/drafts") {
+      posts++;
+      expect(r.statusCode).toBe(201);
+      throw new Error(
+        "Gezielter Laufabbruch unmittelbar nach tatsächlichem Fachcommit, vor Ergebnismarker",
+      );
+    }
+    return { status: r.statusCode, daten: r.json() };
+  };
+  const vor = new KlaraAusfuehrung(new KlaraGespraechDienst({ repo: services.klaraGespraeche }));
+  await expect(
+    vor.fuehreAus(v.a.verantwortlich, v.gid, v.a.id, "g-1", { nr: 1, auftragFassung: 1 }, rufe),
+  ).rejects.toThrow("vor Ergebnismarker");
+  const luecke = (await v.lese()).schritte[0];
+  expect(luecke).toMatchObject({ stand: "begonnen", ergebnis: null });
+  expect(luecke?.schreibwirkung).toBeUndefined();
+  expect(luecke?.ausgangUnklar).toBeUndefined();
+  const original = (await auf("GET", "/api/drafts")).json()[0];
+  expect(original.createOperation.id).toBe(`klara-auftrag-${v.a.id}-1`);
+  expect((await auf("PUT", `${v.pfad}/abbruch`, {})).statusCode).toBe(200);
+  const neu = new KlaraAusfuehrung(new KlaraGespraechDienst({ repo: services.klaraGespraeche }));
+  const nach = await neu.fuehreAus(
+    v.a.verantwortlich,
+    v.gid,
+    v.a.id,
+    "g-1",
+    { nr: 1, auftragFassung: 1 },
+    rufe,
+  );
+  expect(nach.schritt.ergebnis?.id).toBe(original.id);
+  expect(nach.schritt.stand).toBe("gespeichert");
+  expect(nach.auftrag.stand).toBe("abgebrochen");
+  expect(posts).toBe(1);
+  // Dieselbe markerlose Lücke OHNE tatsächliches Original darf nach Stopp keine Anlage auslösen.
+  const leer = await vorgang(app, token);
+  const begin = await auf("PUT", `${leer.pfad}/schritte/g-1`, {
+    nr: 1,
+    aktion: "entwurf_erstellen",
+    ziel: leer.ziele[0],
+    auftragFassung: 1,
+    stand: "begonnen",
+  });
+  expect(begin.statusCode).toBe(200);
+  expect((await auf("PUT", `${leer.pfad}/abbruch`, {})).statusCode).toBe(200);
+  await expect(
+    neu.fuehreAus(
+      leer.a.verantwortlich,
+      leer.gid,
+      leer.a.id,
+      "g-1",
+      { nr: 1, auftragFassung: 1 },
+      rufe,
+    ),
+  ).rejects.toMatchObject({ grund: "abgebrochen" });
+  expect(posts).toBe(1);
+});

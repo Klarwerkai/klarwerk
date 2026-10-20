@@ -31,7 +31,8 @@ export type KlaraAktion =
   | "entwurf_erstellen"
   | "entwurf_bearbeiten"
   | "aufgabe_bearbeiten"
-  | "persoenliche_aufgabe_anlegen";
+  | "persoenliche_aufgabe_anlegen"
+  | "erinnerung_anlegen";
 
 /**
  * Wonach Klara das Ziel sucht. `neu`: ein Entwurf, den der Schritt erst anlegt; `neue_aufgabe`: eine
@@ -69,6 +70,7 @@ export interface ErkannterSchritt {
   ausSchritt?: number;
   /** Nacharbeit 4: nur bei `aufgabe_bearbeiten` — die genannte Aktion; fehlt sie, fragt Klara. */
   aufgabenaktion?: ErkannteAufgabenaktion;
+  erinnerung?: { datum: string; uhrzeit: string; zeitzone: string };
 }
 
 export interface ErkannterAuftrag {
@@ -404,6 +406,38 @@ function oeffnen(s: string): ErkannterAuftrag | null {
  * Der klare Ausführungsauftrag in diesem Text — oder `null`, wenn der Text keiner ist (eine Frage,
  * ein Diktat, eine nicht angebotene Handlung). Eine Frage („…?“) ist nie ein Auftrag.
  */
+/** G: ausdrücklich beauftragte persönliche Aufgabe und ihre Erinnerung, eine gemeinsame Grenze. */
+function aufgabeMitErinnerung(s: string): ErkannterAuftrag | null {
+  const zitatbereiche = [...s.matchAll(ZITAT)].map(
+    (m) => [m.index, m.index + m[0].length] as const,
+  );
+  const trennung = [
+    ...s.matchAll(
+      /\s+(?:und\s+erinnere\s+mich|and\s+remind\s+me|en\s+herinner\s+(?:me|mij))(?:\s+|$)/giu,
+    ),
+  ].find((m) => !zitatbereiche.some(([von, bis]) => m.index >= von && m.index < bis));
+  if (!trennung) return null;
+  const a = aufgabeAnlegen(s.slice(0, trennung.index));
+  if (!a || a.schritte.length !== 1) return null;
+  const zeit = s.slice(trennung.index + trennung[0].length).trim();
+  const datum = /(?:^|\s)(\d{4}-\d{2}-\d{2})(?:\s|$)/u.exec(zeit)?.[1] ?? "";
+  const uhrzeit = /(?:^|\s)(\d{2}:\d{2})(?:\s|$)/u.exec(zeit)?.[1] ?? "";
+  const zeitzone =
+    /(?:^|\s)([A-Za-z_]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?|UTC)(?:\s|$)/u.exec(zeit)?.[1] ?? "";
+  return {
+    schritte: [
+      ...a.schritte,
+      {
+        aktion: "erinnerung_anlegen",
+        suche: "neue_aufgabe",
+        name: a.schritte[0]?.name ?? "",
+        ausSchritt: 0,
+        erinnerung: { datum, uhrzeit, zeitzone },
+      },
+    ],
+  };
+}
+
 export function erkenneAuftrag(text: string): ErkannterAuftrag | null {
   const roh = text.trim();
   if (roh.length === 0 || roh.length > 2_000 || roh.endsWith("?")) {
@@ -411,6 +445,7 @@ export function erkenneAuftrag(text: string): ErkannterAuftrag | null {
   }
   const s = bereinige(roh);
   return (
+    aufgabeMitErinnerung(s) ??
     anlegen(s) ??
     aufgabeAnlegen(s) ??
     bearbeiten(s) ??

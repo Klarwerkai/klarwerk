@@ -35,6 +35,7 @@
 //     gleichzeitiger Versuch sieht danach den festgehaltenen Stand und antwortet `wiederholt` — er
 //     wirkt nicht doppelt und meldet eine geschehene Wirkung nicht als gescheitert.
 import { aktionskennung, vertragFuer } from "./klara-aktionsverlauf";
+import { zielErlaubt } from "./klara-auftrag";
 import type {
   KlaraAufgabenaktion,
   KlaraAuftrag,
@@ -256,7 +257,10 @@ export class KlaraAusfuehrung {
       // Wissensobjekt, Entwurf und gemeinsame Aufgabe) — sie wird an ihrem Ort geöffnet.
       ziel =
         e &&
-        e.art !== "persoenliche_aufgabe" &&
+        e.art !== "erinnerung" &&
+        (p.aktion === "erinnerung_anlegen"
+          ? e.art === "persoenliche_aufgabe"
+          : e.art !== "persoenliche_aufgabe") &&
         (quelle?.stand === "gespeichert" || quelle?.stand === "abgeschlossen")
           ? { art: e.art, id: e.id, titel: e.titel, stand: e.stand, pfad: e.pfad }
           : null;
@@ -293,10 +297,7 @@ export class KlaraAusfuehrung {
             "Der Auftrag wurde angehalten. Keine weitere Änderung begonnen; bereits ausgelöste Wirkungen bleiben erhalten.",
           );
         }
-        if (
-          !aktuell.erlaubteAktionen.includes(p.aktion) ||
-          !aktuell.erlaubteZiele.some((z) => gleich(z, zielZumBeginn))
-        ) {
+        if (!aktuell.erlaubteAktionen.includes(p.aktion) || !zielErlaubt(aktuell, zielZumBeginn)) {
           throw new KlaraGespraechFehler(
             409,
             "ausserhalb_auftrag",
@@ -516,6 +517,74 @@ export class KlaraAusfuehrung {
       });
     }
 
+    // G: derselbe gespeicherte Plan nutzt den freigegebenen D-Dienst; keine zweite Zeitsteuerung.
+    if (p.aktion === "erinnerung_anlegen") {
+      if (ziel.art !== "persoenliche_aufgabe" || !ziel.id || !p.erinnerung)
+        return scheitert("vorschritt");
+      const vorgang = aktionskennung(auftragId, p.nr);
+      const pfad = (id: string) => `/aufgaben?erinnerung=${encodeURIComponent(id)}`;
+      type Erinnerung = {
+        id: string;
+        titel: string;
+        fassung: number;
+        vorgang: string;
+        bezug: { art: string; aufgabeId?: string };
+      };
+      const aus = (roh: unknown): Erinnerung | null => {
+        const e = (roh as { erinnerung?: Erinnerung } | null)?.erinnerung;
+        return e &&
+          typeof e.id === "string" &&
+          typeof e.titel === "string" &&
+          typeof e.fassung === "number" &&
+          e.vorgang === vorgang &&
+          e.bezug?.art === "aufgabe" &&
+          e.bezug.aufgabeId === ziel.id
+          ? e
+          : null;
+      };
+      const nachVorgang = async (): Promise<Erinnerung | null> => {
+        const r = await rufe("GET", "/api/me/klara/erinnerungen");
+        const liste = (r.daten as { erinnerungen?: unknown[] } | null)?.erinnerungen;
+        if (r.status !== 200 || !Array.isArray(liste)) return null;
+        return liste.map((e) => aus({ erinnerung: e })).find((e) => e !== null) ?? null;
+      };
+      let e: Erinnerung | null = null;
+      if (bekannt?.art === "erinnerung") {
+        const r = await rufe("GET", `/api/me/klara/erinnerungen/${encodeURIComponent(bekannt.id)}`);
+        e = r.status === 200 ? aus(r.daten) : null;
+        if (!e) return ungeklaert();
+      } else {
+        e = vorhanden ? await nachVorgang() : null;
+        if (!e) {
+          const r = await rufe("POST", "/api/me/klara/erinnerungen", {
+            vorgang,
+            titel: ziel.titel,
+            bezug: { art: "aufgabe", aufgabeId: ziel.id },
+            zeitzone: p.erinnerung.zeitzone,
+            zeitplan: { art: "einmalig", datum: p.erinnerung.datum, uhrzeit: p.erinnerung.uhrzeit },
+            aktion: "erinnern",
+          });
+          if (r.status >= 500) e = await nachVorgang();
+          else if (r.status !== 201 && r.status !== 200) return scheitert(codeAus(r.status));
+          else e = aus(r.daten);
+          if (!e) return ungeklaert();
+        }
+        await merke({ art: "erinnerung", id: e.id, pfad: pfad(e.id), stand: String(e.fassung) });
+        const r = await rufe("GET", `/api/me/klara/erinnerungen/${encodeURIComponent(e.id)}`);
+        e = r.status === 200 ? aus(r.daten) : null;
+        if (!e) return ungeklaert();
+      }
+      return melde("gespeichert", {
+        ergebnis: {
+          art: "erinnerung",
+          id: e.id,
+          titel: e.titel,
+          stand: String(e.fassung),
+          pfad: pfad(e.id),
+        },
+      });
+    }
+
     // produkt:20261008:klara-aufgaben (Klara 07): eine persönliche Aufgabe aus diesem Auftrag — über
     // die eigene Ablage (`/api/me/klara/aufgaben`) mit der Anmeldung der Person. Der Vorgangsschlüssel
     // ist die Aktionskennung (Auftrag + Planschritt): eine Wiederholung legt keine zweite Aufgabe an.
@@ -524,20 +593,31 @@ export class KlaraAusfuehrung {
     if (p.aktion === "persoenliche_aufgabe_anlegen") {
       let aufgabeId = bekannt?.id ?? null;
       if (!aufgabeId) {
-        const lege = () =>
-          rufe("POST", "/api/me/klara/aufgaben", {
-            vorgang: aktionskennung(auftragId, p.nr),
+        const vorgang = aktionskennung(auftragId, p.nr);
+        const nachVorgang = async () => {
+          const gelesen = await rufe("GET", "/api/me/klara/aufgaben");
+          const liste = (gelesen.daten as { aufgaben?: { vorgang?: unknown }[] } | null)?.aufgaben;
+          const bekannt =
+            gelesen.status === 200 && Array.isArray(liste)
+              ? liste.find((a) => a.vorgang === vorgang)
+              : null;
+          return bekannt ? { status: 200, daten: { aufgabe: bekannt } } : null;
+        };
+        let angelegt: Awaited<ReturnType<KlaraRufe>> | null = vorhanden
+          ? await nachVorgang()
+          : null;
+        if (!angelegt)
+          angelegt = await rufe("POST", "/api/me/klara/aufgaben", {
+            vorgang,
             weg: "auftrag",
             quelle: { gespraechId, auftragId },
             titel: ziel.titel,
             ...(p.inhalt ? { inhalt: p.inhalt } : {}),
           });
-        let angelegt = await lege();
         if (angelegt.status >= 500) {
-          // Ob die Ablage trotz Fehlerantwort schon geschrieben hat, ist offen. Derselbe
-          // Vorgangsschlüssel klärt es ohne Doppelung: stand sie schon da, antwortet die Ablage mit
-          // GENAU dieser Aufgabe — sonst wird jetzt angelegt oder der Fehler bleibt bestehen.
-          angelegt = await lege();
+          const gelesen = await nachVorgang();
+          if (!gelesen) return ungeklaert();
+          angelegt = gelesen;
         }
         const neu = persoenlicheAufgabeAus(angelegt.daten);
         if ((angelegt.status !== 201 && angelegt.status !== 200) || !neu) {

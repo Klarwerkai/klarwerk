@@ -31,6 +31,7 @@ import {
   KlaraRuecknahmeKonflikt,
   KlaraSchrittNachweis,
 } from "./KlaraAktionsnachweis";
+import { KlaraErinnerungszeitRueckfrage } from "./KlaraErinnerungszeitRueckfrage";
 import {
   type AuftragsUmgebung,
   type Ausfuehrung,
@@ -99,11 +100,7 @@ function zeilenStand(z: Zeile): string {
     return "unklar";
   }
   // Nacharbeit 4: gespeichert, Nachlesen ausstehend — ungeklärt, auch nach dem Neuladen.
-  if (
-    z.server?.stand === "begonnen" &&
-    (z.server.schreibwirkung || z.server.ausgangUnklar) &&
-    !z.server.geprueft
-  ) {
+  if (z.server?.stand === "begonnen" && !z.server.geprueft) {
     return "unklar";
   }
   if (z.server) {
@@ -176,12 +173,7 @@ function AusfuehrungKarte({
   ).length;
   const unklar = zeilen.some((z) => zeilenStand(z) === "unklar");
   // Gespeichert, Nachlesen ausstehend: nachlesen bleibt auch nach Abbrechen möglich (kein neuer Schritt).
-  const wirkungOffen = zeilen.some(
-    (z) =>
-      z.server?.stand === "begonnen" &&
-      (z.server.schreibwirkung || z.server.ausgangUnklar) &&
-      !z.server.geprueft,
-  );
+  const wirkungOffen = zeilen.some((z) => z.server?.stand === "begonnen" && !z.server.geprueft);
   const zeit = (iso: string): string =>
     new Date(iso).toLocaleTimeString(i18n.language, {
       hour: "2-digit",
@@ -339,6 +331,25 @@ function AusfuehrungKarte({
         </p>
       ) : null}
 
+      {a.phase === "rueckfrage"
+        ? a.geplant
+            .filter(
+              (s) =>
+                s.erkannt.aktion === "erinnerung_anlegen" &&
+                (s.zeitFehler ||
+                  !s.erkannt.erinnerung?.datum ||
+                  !s.erkannt.erinnerung?.uhrzeit ||
+                  !s.erkannt.erinnerung?.zeitzone),
+            )
+            .map((s) => (
+              <KlaraErinnerungszeitRueckfrage
+                key={s.nr}
+                lokalId={a.lokalId}
+                schritt={s}
+                umgebung={umgebung}
+              />
+            ))
+        : null}
       {/* Rückfrage: mehrere Ziele passen — gewählt wird, BEVOR etwas geschieht. */}
       {a.phase === "rueckfrage"
         ? a.geplant
@@ -547,6 +558,14 @@ function AusfuehrungKarte({
                     className="mt-0.5 text-[11px] text-muted-2"
                   >
                     {t("klaraauftrag.nichtRuecknehmbar.persoenlicheAufgabe")}
+                  </p>
+                ) : null}
+                {s?.stand === "gespeichert" && s.aktion === "erinnerung_anlegen" ? (
+                  <p
+                    data-testid="klara-ausfuehrung-schritt-nicht-ruecknehmbar"
+                    className="mt-0.5 text-[11px] text-muted-2"
+                  >
+                    {t("klaraauftrag.nichtRuecknehmbar.erinnerung")}
                   </p>
                 ) : null}
                 {s?.stand === "zurueckgenommen" ? (

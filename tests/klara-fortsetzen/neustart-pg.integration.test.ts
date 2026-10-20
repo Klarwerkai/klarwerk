@@ -121,3 +121,92 @@ it("G-PG1 · echte Speicherung → Dienstneustart/Neuanmeldung → Dump/Restore 
   ).toBe(409);
   await stop(a4);
 }, 120_000);
+
+it("G-PG2 · persönliche Aufgabe bleibt nach Neustart erhalten; offene D-Erinnerung wird korrigiert und nur einmal angelegt", async () => {
+  const app1 = await start();
+  const token1 = await anmelden(app1);
+  const auf1 = draht(app1, token1);
+  const v = await vorgang(app1, token1);
+  const ziel = {
+    art: "neue_persoenliche_aufgabe",
+    id: null,
+    titel: "Fiktive G-PG-Aufgabe",
+    stand: null,
+    pfad: null,
+  };
+  const plan = [
+    { aktion: "persoenliche_aufgabe_anlegen", ziel, ausSchritt: null },
+    {
+      aktion: "erinnerung_anlegen",
+      ziel: null,
+      ausSchritt: 1,
+      erinnerung: { datum: "2035-10-22", uhrzeit: "09:00", zeitzone: "Europe/Berlin" },
+    },
+  ];
+  const neu = await auf1("POST", v.basis, {
+    quelle: "gesprochen",
+    wortlaut: "Fiktive persönliche Aufgabe und Erinnerung",
+    ziel: "Persönliche Aufgabe mit Erinnerung",
+    erlaubteAktionen: ["persoenliche_aufgabe_anlegen", "erinnerung_anlegen"],
+    erlaubteZiele: [ziel],
+    erlaubteQuellen: ["Eigener ausdrücklicher Auftrag"],
+    ergebnis: "Aufgabe und gebundene Erinnerung",
+    geplanteSchritte: 2,
+    plan,
+  });
+  expect(neu.statusCode, neu.body).toBe(201);
+  const id = neu.json().auftrag.id;
+  const pfad = `${v.basis}/${id}`;
+  const task = await auf1("POST", `${pfad}/schritte/pg-d-1/ausfuehrung`, {
+    nr: 1,
+    auftragFassung: 1,
+  });
+  expect(task.statusCode, task.body).toBe(200);
+  const taskId = task.json().schritt.ergebnis.id;
+  expect((await auf1("POST", `${pfad}/unterbrechen`, { auftragFassung: 1 })).statusCode).toBe(200);
+  await stop(app1);
+  const app2 = await start();
+  const token2 = await anmelden(app2);
+  const auf2 = draht(app2, token2);
+  const fort = (await auf2("GET", v.basis))
+    .json()
+    .auftraege.find((a: KlaraAuftrag) => a.id === id) as KlaraAuftrag;
+  expect(fort.schritte[0]?.ergebnis?.id).toBe(taskId);
+  expect(fort.unterbrochenAm).toBeTruthy();
+  expect((await auf2("GET", `/api/me/klara/aufgaben/${taskId}`)).statusCode).toBe(200);
+  const kor = await auf2("POST", `${pfad}/fassungen`, {
+    auftragFassung: 1,
+    erlaubteAktionen: fort.erlaubteAktionen,
+    erlaubteZiele: fort.erlaubteZiele,
+    plan: [
+      plan[0],
+      {
+        ...plan[1],
+        erinnerung: { datum: "2035-10-23", uhrzeit: "10:30", zeitzone: "Europe/Berlin" },
+      },
+    ],
+    grund: "Offene Erinnerungszeit berichtigt",
+  });
+  expect(kor.statusCode, kor.body).toBe(200);
+  expect((await auf2("POST", `${pfad}/fortsetzen`, { auftragFassung: 2 })).statusCode).toBe(200);
+  const ergebnis = await auf2("POST", `${pfad}/schritte/pg-d-2/ausfuehrung`, {
+    nr: 2,
+    auftragFassung: 2,
+  });
+  expect(ergebnis.statusCode, ergebnis.body).toBe(200);
+  const eid = ergebnis.json().schritt.ergebnis.id;
+  await stop(app2);
+  const app3 = await start();
+  const token3 = await anmelden(app3);
+  const auf3 = draht(app3, token3);
+  const wieder = await auf3("POST", `${pfad}/schritte/pg-d-2/ausfuehrung`, {
+    nr: 2,
+    auftragFassung: 2,
+  });
+  expect(wieder.json()).toMatchObject({ wiederholt: true, schritt: { ergebnis: { id: eid } } });
+  const d = (await auf3("GET", `/api/me/klara/erinnerungen/${eid}`)).json().erinnerung;
+  expect(d.bezug.aufgabeId).toBe(taskId);
+  expect(d.zeitplan).toMatchObject({ datum: "2035-10-23", uhrzeit: "10:30" });
+  expect((await auf3("GET", "/api/me/klara/erinnerungen")).json().erinnerungen).toHaveLength(1);
+  await stop(app3);
+}, 120_000);

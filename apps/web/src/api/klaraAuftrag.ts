@@ -11,13 +11,15 @@ export type KlaraAktion =
   | "entwurf_erstellen"
   | "entwurf_bearbeiten"
   | "aufgabe_bearbeiten"
-  | "persoenliche_aufgabe_anlegen";
+  | "persoenliche_aufgabe_anlegen"
+  | "erinnerung_anlegen";
 export type KlaraZielArt =
   | "wissensobjekt"
   | "entwurf"
   | "aufgabe"
   | "neuer_entwurf"
-  | "neue_persoenliche_aufgabe";
+  | "neue_persoenliche_aufgabe"
+  | "persoenliche_aufgabe";
 export type KlaraAuftragsQuelle = "getippt" | "gesprochen";
 
 export type KlaraAuftragStand =
@@ -44,7 +46,7 @@ export interface KlaraAuftragZiel {
 }
 
 export interface KlaraAuftragErgebnis {
-  art: "wissensobjekt" | "entwurf" | "aufgabe" | "persoenliche_aufgabe";
+  art: "wissensobjekt" | "entwurf" | "aufgabe" | "persoenliche_aufgabe" | "erinnerung";
   id: string;
   titel: string;
   stand: string | null;
@@ -68,7 +70,7 @@ export interface KlaraAuftragSchritt {
   ausgangUnklar?: boolean;
   /** Nacharbeit 4: bestätigte Schreibwirkung, deren Nachlesen noch aussteht (Schritt ungeklärt). */
   schreibwirkung?: {
-    art: "entwurf" | "aufgabe" | "persoenliche_aufgabe";
+    art: "entwurf" | "aufgabe" | "persoenliche_aufgabe" | "erinnerung";
     id: string;
     pfad: string;
     /** Nacharbeit 5: der vom Schreibweg bestätigte eigene Stand (`null`: keiner bestätigt). */
@@ -103,7 +105,8 @@ export type KlaraVertragsSchluessel =
   | "aufgabe_prioritaet"
   | "aufgabe_zuweisen"
   | "aufgabe_eskalieren"
-  | "persoenliche_aufgabe_anlegen";
+  | "persoenliche_aufgabe_anlegen"
+  | "erinnerung_anlegen";
 
 /** PV-02-02: Spiegel von `KlaraErgebnisstand` — dazu `entwurf`, solange der Plan nur hier steht. */
 export type KlaraErgebnisstand =
@@ -136,6 +139,7 @@ export interface KlaraPlanSchritt {
   aenderung?: { art: "ergaenzen"; text: string } | { art: "umbenennen"; titel: string } | null;
   /** Nacharbeit 4: bei `aufgabe_bearbeiten` die geklärte Aktion (Pflicht). */
   aufgabenaktion?: KlaraAufgabenaktion | null;
+  erinnerung?: { datum: string; uhrzeit: string; zeitzone: string };
 }
 
 /** Nacharbeit 4: Spiegel von `KlaraAufgabenaktion` in `services/app/src/klara-auftrag.ts`. */
@@ -146,6 +150,7 @@ export type KlaraAufgabenaktion =
   | { art: "eskalieren" };
 
 export interface KlaraAuftragGrenze {
+  plan?: KlaraPlanSchritt[];
   fassung: number;
   erlaubteAktionen: KlaraAktion[];
   erlaubteZiele: KlaraAuftragZiel[];
@@ -201,6 +206,7 @@ export interface KlaraAuftragEingabe {
 }
 
 export interface KlaraKorrekturEingabe {
+  plan?: KlaraPlanSchritt[];
   auftragFassung?: number;
   erlaubteAktionen: KlaraAktion[];
   erlaubteZiele: KlaraAuftragZiel[];

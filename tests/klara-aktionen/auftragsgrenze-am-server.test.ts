@@ -637,7 +637,7 @@ describe("A5 · K5 — keine Doppelaktion, kein falscher Erfolg", () => {
 });
 
 describe("A6 · K6 — Versand ist keine Aktion; aus Inhalten entsteht keine Befugnis", () => {
-  it("die Grenze kennt genau die vier Produktaktionen; „versenden“ wird abgewiesen", async () => {
+  it("die Grenze kennt nur die gelieferten Produktaktionen; „versenden“ wird abgewiesen", async () => {
     expect([...KLARA_AKTIONEN]).toEqual([
       "oeffnen",
       "entwurf_erstellen",
@@ -646,6 +646,8 @@ describe("A6 · K6 — Versand ist keine Aktion; aus Inhalten entsteht keine Bef
       // produkt:20261008:klara-aufgaben (Klara 07): die fünfte gelieferte Produktaktion — eine
       // persönliche Aufgabe der Person selbst über `/api/me/klara/aufgaben`. Versand bleibt keine.
       "persoenliche_aufgabe_anlegen",
+      // G: derselbe Auftrag verbindet die eigene Aufgabe mit dem freigegebenen D-Dienst.
+      "erinnerung_anlegen",
     ]);
     const gid = await gespraech(erik.token);
     for (const aktion of ["versenden", "einladen", "veroeffentlichen", "senden"]) {

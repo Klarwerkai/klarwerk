@@ -39,6 +39,7 @@ import {
   type KlaraSchrittStand,
   klaraAuftragApi,
 } from "../../api/klaraAuftrag";
+import { klaraErinnerungApi } from "../../api/klaraErinnerung";
 import type { DraftPayload } from "../../api/types";
 import { fallHref } from "../../lib/fallAbsprung";
 import { type ErkannterSchritt, erkenneAuftrag } from "../../lib/klaraAuftragErkennung";
@@ -77,6 +78,7 @@ export interface GeplanterSchritt {
   aufgabenaktion?: KlaraAufgabenaktion | null;
   aktionsoptionen?: KlaraAufgabenaktion[];
   personen?: { id: string; name: string }[];
+  zeitFehler?: boolean;
 }
 
 /** Welche Aufgabenart ein Arbeitsort meint — dieselbe Zuordnung wie am Server und in „Meine Aufgaben“. */
@@ -111,6 +113,13 @@ function aktionenFuer(art: ReturnType<typeof aufgabenart>): KlaraAufgabenaktion[
 
 /** Braucht dieser Schritt noch eine Angabe der Person, bevor etwas geschieht? */
 function brauchtKlaerung(s: GeplanterSchritt): boolean {
+  if (s.erkannt.aktion === "erinnerung_anlegen")
+    return (
+      s.zeitFehler === true ||
+      !s.erkannt.erinnerung?.datum ||
+      !s.erkannt.erinnerung?.uhrzeit ||
+      !s.erkannt.erinnerung?.zeitzone
+    );
   if (s.erkannt.ausSchritt === undefined && !s.ziel) {
     return true;
   }
@@ -572,6 +581,26 @@ async function klaere(lokalId: string, u: AuftragsUmgebung): Promise<void> {
   const geplant: GeplanterSchritt[] = [];
   for (const s of a.geplant) {
     if (s.erkannt.ausSchritt !== undefined) {
+      if (
+        s.erkannt.aktion === "erinnerung_anlegen" &&
+        s.erkannt.erinnerung &&
+        !brauchtKlaerung(s)
+      ) {
+        try {
+          const e = s.erkannt.erinnerung;
+          await klaraErinnerungApi.vorschau({
+            zeitplan: { art: "einmalig", datum: e.datum, uhrzeit: e.uhrzeit },
+            zeitzone: e.zeitzone,
+          });
+        } catch {
+          // Keine Anlage mit ungeklärter Zeit; die vorhandenen Werte bleiben im gezielten Formular.
+          geplant.push({
+            ...s,
+            zeitFehler: true,
+          });
+          continue;
+        }
+      }
       geplant.push(s);
       continue;
     }
@@ -686,6 +715,36 @@ async function weiterNachRueckfrage(
 }
 
 /** Rückfrage beantwortet: genau dieses Ziel. Erst wenn alles geklärt ist, geschieht etwas. */
+/** Eine fehlende Zeit gezielt klären, ohne den bekannten Auftrag oder Titel erneut abzufragen. */
+export async function waehleErinnerungszeit(
+  lokalId: string,
+  nr: number,
+  erinnerung: { datum: string; uhrzeit: string; zeitzone: string },
+  u: AuftragsUmgebung,
+): Promise<void> {
+  const gen = generation;
+  const a = hole(lokalId);
+  if (!a || a.phase !== "rueckfrage") return;
+  try {
+    const v = await klaraErinnerungApi.vorschau({
+      zeitplan: { art: "einmalig", datum: erinnerung.datum, uhrzeit: erinnerung.uhrzeit },
+      zeitzone: erinnerung.zeitzone,
+    });
+    if (gen !== generation || !v.zeitplan) return;
+    await weiterNachRueckfrage(
+      lokalId,
+      a.geplant.map((s) =>
+        s.nr === nr && s.erkannt.aktion === "erinnerung_anlegen"
+          ? { ...s, zeitFehler: false, erkannt: { ...s.erkannt, erinnerung } }
+          : s,
+      ),
+      u,
+    );
+  } catch (fehler) {
+    if (gen === generation) setze(lokalId, (x) => ({ ...x, meldung: fehlerGrund(fehler, u.t) }));
+  }
+}
+
 export function waehleZiel(lokalId: string, nr: number, index: number, u: AuftragsUmgebung): void {
   const a = hole(lokalId);
   if (!a || a.phase !== "rueckfrage") {
@@ -845,6 +904,7 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
         ...(s.erkannt.aenderung ? { aenderung: s.erkannt.aenderung } : {}),
         // Nacharbeit 4: die geklärte Aktion an der Aufgabe — Teil der Grenze, nicht der Ausführung.
         ...(s.aufgabenaktion ? { aufgabenaktion: s.aufgabenaktion } : {}),
+        ...(s.erkannt.erinnerung ? { erinnerung: s.erkannt.erinnerung } : {}),
       })),
     });
     if (gen !== generation) {
@@ -922,7 +982,8 @@ function zielDes(a: Ausfuehrung, s: GeplanterSchritt): KlaraAuftragZiel | null {
   // Klara 07: eine persönliche Aufgabe ist kein Ziel des Öffnen-Wegs — dieselbe Regel wie am Server.
   if (
     !e ||
-    e.art === "persoenliche_aufgabe" ||
+    (e.art === "persoenliche_aufgabe" && s.erkannt.aktion !== "erinnerung_anlegen") ||
+    e.art === "erinnerung" ||
     (vorher?.stand !== "gespeichert" && vorher?.stand !== "abgeschlossen")
   ) {
     return null;
@@ -1101,10 +1162,7 @@ async function fuehreAus(lokalId: string, u: AuftragsUmgebung, gen: number): Pro
     // Abbrechen verhindert jeden WEITEREN Schritt — geprüft vor jedem Beginn, hier und am Server.
     if (a.abbruch || a.auftrag?.abgebrochenAm) {
       // Schon gespeichert, nur das Nachlesen fehlt: das ist kein weiterer Schritt — nachlesen.
-      if (
-        vorhanden?.stand === "begonnen" &&
-        (vorhanden.schreibwirkung || vorhanden.ausgangUnklar)
-      ) {
+      if (vorhanden?.stand === "begonnen" && !vorhanden.geprueft) {
         await fuehreSchrittAus(lokalId, s.nr, u, gen);
         continue;
       }
@@ -1212,7 +1270,7 @@ async function liesUngeklaerteNach(lokalId: string, u: AuftragsUmgebung): Promis
     return;
   }
   for (const s of a.auftrag.schritte) {
-    if (s.stand !== "begonnen" || (!s.schreibwirkung && !s.ausgangUnklar) || s.geprueft) {
+    if (s.stand !== "begonnen" || s.geprueft) {
       continue;
     }
     try {
@@ -1238,7 +1296,7 @@ async function liesUngeklaerteNach(lokalId: string, u: AuftragsUmgebung): Promis
     const nochOffen =
       (auftrag?.stand === "laeuft" || auftrag?.stand === "vorgeschlagen") && !auftrag.abgebrochenAm;
     const wirkungOffen = (auftrag?.schritte ?? []).some(
-      (s) => s.stand === "begonnen" && (s.schreibwirkung || s.ausgangUnklar) && !s.geprueft,
+      (s) => s.stand === "begonnen" && !s.geprueft,
     );
     return { ...x, phase: nochOffen || wirkungOffen ? "angehalten" : "fertig" };
   });
@@ -1278,7 +1336,7 @@ export async function brecheAuftragAb(lokalId: string, u: AuftragsUmgebung): Pro
       }
       // Nacharbeit 4: ein gespeicherter Schritt, dessen Nachlesen aussteht, bleibt nachlesbar.
       const wirkungOffen = (x.auftrag?.schritte ?? []).some(
-        (s) => s.stand === "begonnen" && (s.schreibwirkung || s.ausgangUnklar) && !s.geprueft,
+        (s) => s.stand === "begonnen" && !s.geprueft,
       );
       return { ...x, lokal, phase: wirkungOffen ? "angehalten" : "fertig" };
     });
@@ -1410,9 +1468,7 @@ function ausGeladenem(x: KlaraAuftrag, herkunft: Herkunft, gespraechId: string):
   // Nacharbeit 5 (Ben): eine gespeicherte, noch nicht nachgelesene Wirkung bleibt nachlesbar —
   // unabhängig davon, ob der Auftrag abgebrochen wurde. Ohne Plan in diesem Browser holt
   // „Erneut versuchen“ dann NUR das Nachlesen nach (`liesUngeklaerteNach`); kein weiterer Schritt.
-  const wirkungOffen = x.schritte.some(
-    (s) => s.stand === "begonnen" && (s.schreibwirkung || s.ausgangUnklar) && !s.geprueft,
-  );
+  const wirkungOffen = x.schritte.some((s) => s.stand === "begonnen" && !s.geprueft);
   return {
     lokalId: `geladen-${x.id}`,
     quelle: x.quelle,
@@ -1439,6 +1495,7 @@ function ausGeladenem(x: KlaraAuftrag, herkunft: Herkunft, gespraechId: string):
         ...(ausSchritt >= 0 ? { ausSchritt } : {}),
         ...(p.inhalt ? { inhalt: p.inhalt } : {}),
         ...(p.aenderung ? { aenderung: p.aenderung } : {}),
+        ...(p.erinnerung ? { erinnerung: p.erinnerung } : {}),
       };
       return {
         nr,

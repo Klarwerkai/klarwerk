@@ -1,3 +1,5 @@
+import { canonicalJson } from "../../audit";
+import { istDatum, istUhrzeit, istZeitzone } from "./klara-erinnerung-zeit";
 // ================================================================================================
 // produkt:20261008:klara-aktionen (Klara 05, AW-10) — DIE AUFTRAGSGRENZE AUSSERHALB DES SPRACHMODELLS.
 // ================================================================================================
@@ -38,6 +40,7 @@ export const KLARA_AKTIONEN = [
   "entwurf_bearbeiten",
   "aufgabe_bearbeiten",
   "persoenliche_aufgabe_anlegen",
+  "erinnerung_anlegen",
 ] as const;
 export type KlaraAktion = (typeof KLARA_AKTIONEN)[number];
 
@@ -47,13 +50,20 @@ export const KLARA_ZIELARTEN = [
   "aufgabe",
   "neuer_entwurf",
   "neue_persoenliche_aufgabe",
+  "persoenliche_aufgabe",
 ] as const;
 export type KlaraZielArt = (typeof KLARA_ZIELARTEN)[number];
 
 /** Ziele, die der Schritt erst anlegt — sie haben noch keine Kennung. */
 const NEUE_ZIELARTEN: readonly KlaraZielArt[] = ["neuer_entwurf", "neue_persoenliche_aufgabe"];
 
-const ERGEBNISARTEN = ["wissensobjekt", "entwurf", "aufgabe", "persoenliche_aufgabe"] as const;
+const ERGEBNISARTEN = [
+  "wissensobjekt",
+  "entwurf",
+  "aufgabe",
+  "persoenliche_aufgabe",
+  "erinnerung",
+] as const;
 type KlaraErgebnisArt = (typeof ERGEBNISARTEN)[number];
 
 export const KLARA_QUELLEN_DES_AUFTRAGS = ["getippt", "gesprochen"] as const;
@@ -151,7 +161,7 @@ export interface KlaraAuftragSchritt {
  * oder Wirkung ohne Antwort des Schreibwegs).
  */
 export interface KlaraSchreibwirkung {
-  readonly art: "entwurf" | "aufgabe" | "persoenliche_aufgabe";
+  readonly art: "entwurf" | "aufgabe" | "persoenliche_aufgabe" | "erinnerung";
   readonly id: string;
   readonly pfad: string;
   readonly stand: string | null;
@@ -217,10 +227,16 @@ export interface KlaraPlanSchritt {
   readonly aenderung: KlaraAenderung | null;
   /** Nacharbeit 4: nur bei `aufgabe_bearbeiten` — die geklärte Aktion an der Aufgabe. */
   readonly aufgabenaktion?: KlaraAufgabenaktion | null;
+  readonly erinnerung?: {
+    readonly datum: string;
+    readonly uhrzeit: string;
+    readonly zeitzone: string;
+  };
 }
 
 /** Eine Fassung der Grenze. Die aktuelle steht am Auftrag selbst, frühere in `fassungen`. */
 export interface KlaraAuftragGrenze {
+  readonly plan?: readonly KlaraPlanSchritt[];
   readonly fassung: number;
   readonly erlaubteAktionen: readonly KlaraAktion[];
   readonly erlaubteZiele: readonly KlaraAuftragZiel[];
@@ -440,7 +456,7 @@ function gleichesZiel(a: KlaraAuftragZiel, b: KlaraAuftragZiel): boolean {
  * Ergebnis eines früheren Schritts DESSELBEN Auftrags (der eben angelegte Entwurf darf geöffnet
  * werden) — eine Teilaufgabe erbt die Grenze, sie erweitert sie nicht.
  */
-function zielErlaubt(a: KlaraAuftrag, ziel: KlaraAuftragZiel): boolean {
+export function zielErlaubt(a: KlaraAuftrag, ziel: KlaraAuftragZiel): boolean {
   if (a.erlaubteZiele.some((z) => gleichesZiel(z, ziel))) {
     return true;
   }
@@ -513,6 +529,7 @@ function abgeleitet(a: KlaraAuftrag, jetzt: string): KlaraAuftrag {
 
 function grenzeAus(a: KlaraAuftrag): KlaraAuftragGrenze {
   return {
+    ...(a.plan?.length ? { plan: a.plan } : {}),
     fassung: a.fassung,
     erlaubteAktionen: a.erlaubteAktionen,
     erlaubteZiele: a.erlaubteZiele,
@@ -574,7 +591,7 @@ function pruefePlan(
         ? null
         : ganzzahl(o.ausSchritt, 1, nr - 1, `${feld}.ausSchritt`);
     const ziel = ausSchritt === null ? pruefeZiel(o.ziel, `${feld}.ziel`) : null;
-    if (ausSchritt !== null && aktion !== "oeffnen") {
+    if (ausSchritt !== null && aktion !== "oeffnen" && aktion !== "erinnerung_anlegen") {
       throw eingabeFehler(`${feld}: nur „öffnen“ darf das Ergebnis eines Vorschritts nehmen.`);
     }
     if (ziel && !erlaubteZiele.some((z) => gleichesZiel(z, ziel))) {
@@ -595,6 +612,18 @@ function pruefePlan(
         `${feld}: eine persönliche Aufgabe braucht ein Ziel der Art neue_persoenliche_aufgabe.`,
       );
     }
+    let erinnerung: KlaraPlanSchritt["erinnerung"];
+    if (aktion === "erinnerung_anlegen") {
+      const vor = ausSchritt === null ? null : objekt(eintraege[ausSchritt - 1], "Vorschritt");
+      if (!vor || vor.aktion !== "persoenliche_aufgabe_anlegen")
+        throw eingabeFehler(
+          `${feld}: Erinnerung braucht eine persönliche Aufgabe aus diesem Plan.`,
+        );
+      const e = objekt(o.erinnerung, `${feld}.erinnerung`);
+      if (!istDatum(e.datum) || !istUhrzeit(e.uhrzeit) || !istZeitzone(e.zeitzone))
+        throw eingabeFehler(`${feld}: Datum, Uhrzeit und Zeitzone gezielt klären.`);
+      erinnerung = { datum: e.datum, uhrzeit: e.uhrzeit, zeitzone: e.zeitzone };
+    }
     const inhalt =
       aktion === "entwurf_erstellen" || aktion === "persoenliche_aufgabe_anlegen"
         ? wahlweiseText(o.inhalt, 2_000, `${feld}.inhalt`)
@@ -605,7 +634,16 @@ function pruefePlan(
       aktion === "aufgabe_bearbeiten"
         ? pruefeAufgabenaktion(o.aufgabenaktion, ziel?.pfad ?? null, `${feld}.aufgabenaktion`)
         : null;
-    return { nr, aktion, ziel, ausSchritt, inhalt, aenderung, aufgabenaktion };
+    return {
+      nr,
+      aktion,
+      ziel,
+      ausSchritt,
+      inhalt,
+      aenderung,
+      aufgabenaktion,
+      ...(erinnerung ? { erinnerung } : {}),
+    };
   });
 }
 
@@ -705,6 +743,7 @@ export function mitNeuemAuftrag(
 }
 
 export interface KlaraKorrekturEingabe {
+  plan?: unknown;
   erlaubteAktionen?: unknown;
   erlaubteZiele?: unknown;
   erlaubteQuellen?: unknown;
@@ -782,6 +821,28 @@ export function korrigiere(
     if (begonnen.has(p.nr) || drin) {
       behalten.push(p);
     }
+  }
+  if (eingabe.plan !== undefined) {
+    const neu = pruefePlan(eingabe.plan, neueAktionen, neueZiele);
+    if (
+      neu.length !== (a.plan ?? []).length ||
+      neu.some((p) => {
+        const alt = a.plan?.find((x) => x.nr === p.nr);
+        return (
+          !alt ||
+          p.aktion !== alt.aktion ||
+          p.ausSchritt !== alt.ausSchritt ||
+          (p.ziel && alt.ziel && !gleichesZiel(p.ziel, alt.ziel)) ||
+          (begonnen.has(p.nr) && canonicalJson(p) !== canonicalJson(alt))
+        );
+      })
+    )
+      throw new KlaraAuftragFehler(
+        409,
+        "erweiterung",
+        "Nur künftige Inhalte oder Zeiten desselben Plans dürfen korrigiert werden. Begonnene Ergebnisse und Grenzen bleiben erhalten.",
+      );
+    behalten.splice(0, behalten.length, ...neu);
   }
   const mitPlan = (a.plan ?? []).length > 0;
   const korrigiert: KlaraAuftrag = {
