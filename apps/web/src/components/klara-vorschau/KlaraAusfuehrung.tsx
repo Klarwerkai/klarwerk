@@ -267,7 +267,12 @@ function AusfuehrungKarte({
                     (p) => p.notizQuelle && q === `notiz:${p.notizQuelle.id}`,
                   )?.notizQuelle;
                   return n
-                    ? t("klaraauftrag.notizquelle.gebunden", { titel: n.titel, fassung: n.fassung })
+                    ? t(
+                        n.weg === "geschrieben"
+                          ? "klaraauftrag.notizquelle.geschrieben"
+                          : "klaraauftrag.notizquelle.gebunden",
+                        { titel: n.titel, fassung: n.fassung },
+                      )
                     : q;
                 })
                 .join(" · ")}

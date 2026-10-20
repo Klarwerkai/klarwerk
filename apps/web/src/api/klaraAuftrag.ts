@@ -131,6 +131,8 @@ export interface KlaraProtokollEintrag {
 
 /** Nacharbeit 2: ein Schritt des gebundenen Plans — der Server führt nur aus, was hier steht. */
 export interface KlaraAuftragsnotiz {
+  /** Ohne weg ist nur der alte strenge Gesprächsbeleg gemeint. */
+  weg?: "gespraech" | "geschrieben";
   id: string;
   fassung: number;
   titel?: string;

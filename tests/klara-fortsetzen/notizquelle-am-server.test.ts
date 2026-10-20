@@ -34,6 +34,7 @@ describe("G · gespeicherte eigene Gesprächsnotiz als begrenzte Originalquelle"
     expect(v.a.plan?.[0]?.notizQuelle).toEqual({
       id: q.notiz.id,
       fassung: q.notiz.fassung,
+      weg: "gespraech",
       titel: q.notiz.titel,
       gespraechId: q.gid,
       nachrichtId: q.nachrichtId,

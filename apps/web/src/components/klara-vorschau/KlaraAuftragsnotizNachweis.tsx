@@ -34,10 +34,15 @@ export function KlaraAuftragsnotizNachweis({
       }}
     >
       <summary className="cursor-pointer text-text">
-        {t("klaraauftrag.notizquelle.gebunden", {
-          titel: quelle.titel ?? quelle.id,
-          fassung: quelle.fassung,
-        })}
+        {t(
+          quelle.weg === "geschrieben"
+            ? "klaraauftrag.notizquelle.geschrieben"
+            : "klaraauftrag.notizquelle.gebunden",
+          {
+            titel: quelle.titel ?? quelle.id,
+            fassung: quelle.fassung,
+          },
+        )}
       </summary>
       {laden ? <p>{t("klaraauftrag.notizquelle.laedt")}</p> : null}
       {fehler ? <p role="alert">{t("klaraauftrag.notizquelle.nichtLesbar")}</p> : null}
@@ -52,7 +57,11 @@ export function KlaraAuftragsnotizNachweis({
           ) : null}
           <p className="whitespace-pre-wrap text-text">{notiz.inhalt}</p>
           <Link data-testid="klara-auftrag-notizruecklink" to={ruecklinkZiel(notiz.objektbezug)}>
-            {t("klaraauftrag.notizquelle.ruecklink")}
+            {t(
+              quelle.weg === "geschrieben"
+                ? "klaraauftrag.notizquelle.ruecklinkGeschrieben"
+                : "klaraauftrag.notizquelle.ruecklink",
+            )}
           </Link>
         </div>
       ) : null}

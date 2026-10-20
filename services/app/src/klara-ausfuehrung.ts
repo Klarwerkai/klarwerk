@@ -618,6 +618,9 @@ export class KlaraAusfuehrung {
         let angelegt: Awaited<ReturnType<KlaraRufe>> | null = vorhanden
           ? await nachVorgang()
           : null;
+        // Ein begonnener Notizversuch kann bereits geschrieben haben. Ein fehlender Readback
+        // beweist keine Nichtanlage; nur weiter lesen, nicht aus der Lücke neu anlegen.
+        if (vorhanden && p.notizQuelle && !angelegt) return ungeklaert();
         if (!angelegt)
           angelegt = await rufe("POST", "/api/me/klara/aufgaben", {
             vorgang,

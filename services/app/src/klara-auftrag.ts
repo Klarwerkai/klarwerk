@@ -641,13 +641,27 @@ function pruefePlan(
         throw eingabeFehler(
           `${feld}: Die Notiz gehört nicht zu den ausdrücklich erlaubten Quellen.`,
         );
-      notizQuelle = {
+      const bindung = {
         id,
         fassung: ganzzahl(q.fassung, 1, Number.MAX_SAFE_INTEGER, "notizQuelle.fassung"),
         titel: text(q.titel, 200, "notizQuelle.titel"),
-        gespraechId: text(q.gespraechId, 200, "notizQuelle.gespraechId"),
-        nachrichtId: text(q.nachrichtId, 200, "notizQuelle.nachrichtId"),
       };
+      if (q.weg === "geschrieben") {
+        if (q.gespraechId !== undefined || q.nachrichtId !== undefined)
+          throw eingabeFehler(`${feld}: Geschriebene Notizen haben keine Gesprächsherkunft.`);
+        notizQuelle = { ...bindung, weg: "geschrieben" };
+      } else {
+        if (q.weg !== undefined && q.weg !== "gespraech")
+          throw eingabeFehler(
+            `${feld}: Nur Gesprächsnotizen oder ausdrücklich geschriebene Notizen sind gebunden.`,
+          );
+        notizQuelle = {
+          ...bindung,
+          ...(q.weg === "gespraech" ? { weg: "gespraech" as const } : {}),
+          gespraechId: text(q.gespraechId, 200, "notizQuelle.gespraechId"),
+          nachrichtId: text(q.nachrichtId, 200, "notizQuelle.nachrichtId"),
+        };
+      }
     }
     const inhalt =
       aktion === "entwurf_erstellen" || aktion === "persoenliche_aufgabe_anlegen"

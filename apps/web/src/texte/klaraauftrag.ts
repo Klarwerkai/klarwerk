@@ -11,6 +11,9 @@ export default {
   praefix: "klaraauftrag.",
   legacySchluessel: [],
   de: {
+    "klaraauftrag.notizquelle.geschrieben":
+      "Eigene gespeicherte Notiz „{{titel}}“ · Fassung {{fassung}}",
+    "klaraauftrag.notizquelle.ruecklinkGeschrieben": "Zum ursprünglichen Notizkontext",
     "klaraauftrag.notizquelle.frage": "Welche gespeicherte Gesprächsnotiz „{{titel}}“ meinst du?",
     "klaraauftrag.notizquelle.fehlt":
       "Keine passende eigene Gesprächsnotiz gefunden. Bitte den Namen im Auftrag korrigieren. Bis dahin entsteht nichts.",
@@ -267,6 +270,8 @@ export default {
       "„Diktieren“ schreibt nur ins Eingabefeld. „Auftrag sprechen“ zeigt den Auftrag als Karte – erst „Senden“ führt ihn aus.",
   },
   en: {
+    "klaraauftrag.notizquelle.geschrieben": "Own saved note “{{titel}}” · version {{fassung}}",
+    "klaraauftrag.notizquelle.ruecklinkGeschrieben": "Go to the original note context",
     "klaraauftrag.notizquelle.frage": "Which saved conversation note “{{titel}}” do you mean?",
     "klaraauftrag.notizquelle.fehlt":
       "No matching own conversation note found. Correct its name in the request. Nothing is created meanwhile.",
@@ -516,6 +521,9 @@ export default {
       "“Dictate” only writes into the input field. “Speak a task” shows the task as a card – only “Send” carries it out.",
   },
   nl: {
+    "klaraauftrag.notizquelle.geschrieben":
+      "Eigen opgeslagen notitie “{{titel}}” · versie {{fassung}}",
+    "klaraauftrag.notizquelle.ruecklinkGeschrieben": "Naar de oorspronkelijke notitiecontext",
     "klaraauftrag.notizquelle.frage": "Welke opgeslagen gespreksnotitie “{{titel}}” bedoel je?",
     "klaraauftrag.notizquelle.fehlt":
       "Geen passende eigen gespreksnotitie gevonden. Corrigeer de naam in de opdracht. Tot dan wordt niets gemaakt.",

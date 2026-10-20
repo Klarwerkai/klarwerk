@@ -33,6 +33,16 @@ Der Plan bindet Notizkennung, Fassung und die vom Server gelesene Gesprächs-/Na
 
 Die Karte zeigt die gebundene Fassung und kann das aktuelle Original mit Rücklink zum ursprünglichen Gesprächskontext lesen. Änderungen, Löschung oder fehlendes aktuelles Leserecht stoppen künftige abhängige Schritte. Bereits fertige Ergebnisse bleiben erreichbar; ein verlorener tatsächlicher Erfolg kann auch nach Stopp oder Quellenwechsel noch über seine ursprüngliche Vorgangskennung nachgelesen werden. Eine geänderte Quelle wird nur mit einem neuen ausdrücklichen Auftrag verwendet, nicht still in den alten Plan eingesetzt.
 
+## Vorhandener Port für eigene geschriebene Originalnotizen
+
+Der serverseitige persönliche Aufgabenschritt darf zusätzlich ausdrücklich `notizQuelle: {id, fassung, weg: "geschrieben"}` binden. `id` und `fassung` müssen die tatsächlich gespeicherte eigene Notiz bezeichnen. Das authentifizierte `GET /api/me/klara/notizen/:id` liest die heutige Quelle und bestätigt genau `weg: geschrieben`. Die Bindung enthält danach nur reale Kennung, Fassung, Titel und Weg; keine Gesprächs-/Nachrichtenkennung und keine behauptete menschliche Autorenschaft. Das vorhandene Gespräch ist hier ausschließlich der Journalcontainer des Auftrags.
+
+Der Port bleibt `POST /api/me/klara/gespraeche/:id/auftraege` mit `erlaubteQuellen: ["notiz:<id>"]`, persönlicher Aufgabenaktion und vorhandenem begrenztem Plan. Die Ausführung bleibt `POST .../auftraege/:auftragId/schritte/:schluessel/ausfuehrung` mit `{nr, auftragFassung}`. Aufgabe und Ergebniskennung entstehen über dieselben bestehenden Wege wie beim Gesprächsnotizauftrag. Eine Normannahme, Bekanntmachungserkennung oder neue Workflowverwaltung ist damit nicht implementiert.
+
+Für echte Gesprächsnotizen bleiben reale Gesprächs- und Nachrichtenherkunft zwingend. Alte gespeicherte795-Bindungen ohne `weg` meinen ausschließlich diesen strengen Gesprächsfall. Neue Bindungen lesen und speichern `weg: gespraech` ausdrücklich. Andere Notizherkünfte wie `diktiert` oder `ausschnitt` werden nicht pauschal freigegeben. Die Browsererkennung „Aus der Gesprächsnotiz …“ bleibt auf Gesprächsnotizen beschränkt; der geschriebene Port ist ein expliziter Serveranschluss.
+
+Heutiges Eigentum/Leserecht, Fassung, Auftragsgrenze und Stopp werden vor weiteren Wirkungen unverändert geprüft. Ein bereits begonnener Notiz-Anlageversuch ohne lesbares Original bleibt unklar. Ein fehlender oder verweigerter Ergebnis-GET begründet keine erneute Anlage. Wird das tatsächliche Original später lesbar, darf derselbe Schritt es auch nach Stopp oder Quellenänderung nachlesen und markieren; dadurch entsteht keine neue Fachwirkung. Die bestehende Journal-Schreibmarke bleibt von einem neuen Produkt-POST getrennt.
+
 ## Nachweise und Grenzen
 
 Gezielte Server-/Oberflächenprüfungen verwenden fiktive Konten. Die PostgreSQL-Prüfung beendet die App und den Pool, meldet sich in einer neuen Instanz neu an und führt echtes `pg_dump`/`pg_restore` in einer eigenen Wegwerfdatenbank aus. Die Chromium-Probe verwendet das gebaute React-Produkt und die echte Fastify-App über die vorhandene lokale Prüfvorrichtung. Dies ist kein Nachweis eines echten Mikrofons, Office-Hosts oder einer Liveveröffentlichung.
