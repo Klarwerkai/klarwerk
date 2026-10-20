@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { istZeitzone, lokalVon } from "./klara-erinnerung-zeit";
 import type { FristArt, FristBeleg, FristDatum, FristQuellart } from "./klara-fristen-erkennung";
 import { FRIST_ARTEN, fristHash, fristIdentitaet } from "./klara-fristen-erkennung";
+import type { Normgeschichte } from "./klara-normereignisse";
 
 export interface FristenRegel {
   aktiv: boolean;
@@ -75,6 +76,8 @@ export interface FristenStand {
   fassung: number;
   regel: FristenRegel | null;
   fristen: readonly ErkannteFrist[];
+  /** Enger Normereignisvertrag derselben beauftragten Quellpflege; keine zweite Normenablage. */
+  normereignisse?: readonly Normgeschichte[];
 }
 
 export class FristenFehler extends Error {

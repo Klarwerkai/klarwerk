@@ -190,7 +190,10 @@ export class KlaraFristenDienst {
     const fristen: ErkannteFrist[] = [];
     for (const f of s.fristen)
       if (await this.lesbar(user, f)) fristen.push(fristZeitstand(f, this.am(), s.regel?.zeitzone));
-    return { ...s, fristen };
+    // Der enge Normvertrag hat seinen eigenen aktuellen Quellenrechte-Lesepfad. Seine
+    // historischen Auszüge dürfen nicht als unbekanntes JSON-Feld durch diese Fristensicht fallen.
+    const { normereignisse: _normereignisse, ...fristenstand } = s;
+    return { ...fristenstand, fristen };
   }
 
   async aendere(user: SessionUser, id: string, roh: unknown): Promise<ErkannteFrist> {

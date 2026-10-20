@@ -441,6 +441,7 @@ import {
   vorhandenerKalenderAus,
 } from "./klara-kalender-lauf";
 import { kalenderAnbieterAusEnv } from "./klara-kalender-m365";
+import { KlaraNormereignisDienst } from "./klara-normereignisse-dienst";
 // produkt:20261007:klara-notizen-aufgaben (Klara 06): die privaten Notizen — haltbar im Postgres-
 // Betrieb, im Speicher ohne Datenbank.
 import {
@@ -577,6 +578,7 @@ import { klaraFristenRoutes } from "./routes/klara-fristen-routes";
 import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
 // produkt:20261008:klara-kalender (Klara 11): die eigene Kalenderanbindung.
 import { klaraKalenderRoutes } from "./routes/klara-kalender-routes";
+import { klaraNormereignisRoutes } from "./routes/klara-normereignis-routes";
 // produkt:20261007:klara-notizen-aufgaben (Klara 06): die eigenen, serverseitig gespeicherten Notizen.
 import { klaraNotizRoutes } from "./routes/klara-notiz-routes";
 // JOB 3110 (M2b): der Memo-Weg des Word-Panels. Die Route ist seit JOB 3091 gebaut und gemessen;
@@ -6089,6 +6091,14 @@ export function buildApp(
     lies: (user, art, id) => fristenQuellen.lies(user, art, id),
   });
   app.register(klaraFristenRoutes({ dienst: fristenDienst, audit: services.audit }, guards));
+  const normereignisse = new KlaraNormereignisDienst({
+    repo: services.klaraFristen,
+    quellen: fristenQuellen,
+    ko: services.ko,
+    belege: services.audit,
+    auth: services.auth,
+  });
+  app.register(klaraNormereignisRoutes({ dienst: normereignisse, audit: services.audit }, guards));
   const eigenerKalenderDienst = new EigenerKalenderDienst({
     repo: new FristenKalenderRepo(services.eigenerKalender, services.klaraFristen),
     informationLesbar: async (user, id) => {

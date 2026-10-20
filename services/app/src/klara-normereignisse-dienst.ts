@@ -1,0 +1,601 @@
+import { isDeepStrictEqual } from "node:util";
+import type { AuditService } from "../../audit";
+import type { AuthService } from "../../auth";
+import { type KoService, anlagenVon, normalizeAsset } from "../../knowledge-object";
+import { can } from "../../rbac";
+import type { SessionUser } from "./http";
+import { FRISTEN_GRENZEN, FristenFehler, type FristenStand } from "./klara-fristen";
+import type { KlaraFristenRepo } from "./klara-fristen-ablage";
+import type { GeleseneFristenQuelle } from "./klara-fristen-dienst";
+import type { KlaraFristenQuellen } from "./klara-fristen-quellen";
+import {
+  type NormAbloesung,
+  type NormEreignis,
+  type Normgeschichte,
+  erkenneNormBekanntmachung,
+  normAbloesungsbeleg,
+  normHatWiderspruch,
+  normKlaerung,
+  normQuellstand,
+  vereinigeNormgeschichten,
+} from "./klara-normereignisse";
+import type { NotizSchreibbedingung } from "./klara-notiz";
+
+export interface NormBetroffenheit {
+  koId: string;
+  titel: string;
+  fassung: number;
+  grund: { art: "gespeicherte_normzuordnung"; referenz: string };
+}
+export interface NormVorbereitung {
+  ereignisse: readonly {
+    normId: string;
+    kennung: string;
+    ausgabe: string;
+    ereignis: NormEreignis;
+    klaerung: readonly string[];
+    betroffen: readonly NormBetroffenheit[];
+  }[];
+  ungeprueft: readonly { quelleId: string; hinweis: string }[];
+}
+export interface NormDienstDeps {
+  repo: KlaraFristenRepo;
+  quellen: Pick<KlaraFristenQuellen, "nutzer" | "lies">;
+  ko: Pick<KoService, "list" | "get" | "versionsOf">;
+  belege: Pick<AuditService, "list">;
+  auth: Pick<AuthService, "kontoLesen">;
+  jetzt?: () => number;
+}
+
+export class NormereignisFehler extends Error {
+  constructor(
+    readonly status: 400 | 403 | 404 | 409,
+    message: string,
+  ) {
+    super(message);
+    this.name = "NormereignisFehler";
+  }
+}
+
+function gemeinsam(bedingungen: readonly NotizSchreibbedingung[]): NotizSchreibbedingung {
+  return {
+    gilt: () => bedingungen.every((b) => b.gilt?.() !== false),
+    sql(start) {
+      const und: string[] = [];
+      const params: unknown[] = [];
+      for (const bedingung of bedingungen) {
+        const b = bedingung.sql?.(start + params.length);
+        if (!b) throw new Error("Normvorbereitung ohne aktuelle Schreibbedingung");
+        und.push(...b.und);
+        params.push(...b.params);
+      }
+      return { und, params };
+    },
+  };
+}
+
+/**
+ * Die bestehenden ausgewählten KO-Leser und dieselbe Fristen-CAS/Backupablage.
+ * Beobachten wird nur durch den ausdrücklich bestellten vorhandenen Routinenlauf aufgerufen.
+ * Kein URL-Abruf, Anhangsleser, Modell, eigener Zeitgeber oder Eingriff in eine gültige Anleitung.
+ */
+export class KlaraNormereignisDienst {
+  private readonly jetzt: () => number;
+  constructor(private readonly deps: NormDienstDeps) {
+    this.jetzt = deps.jetzt ?? Date.now;
+  }
+
+  private async lesungen(kontoId: string, ids: readonly string[]) {
+    const user = await this.deps.quellen.nutzer(kontoId);
+    if (!user || ids.length < 1 || ids.length > 20 || new Set(ids).size !== ids.length)
+      throw new FristenFehler(404, "Aktueller persönlicher Normauftrag nicht verfügbar.");
+    const gelesen: GeleseneFristenQuelle[] = [];
+    for (const id of ids) {
+      const q = await this.deps.quellen.lies(user, "wissensobjekt", id);
+      if (!q)
+        throw new FristenFehler(404, "Eine beauftragte Bekanntmachungsquelle ist nicht lesbar.");
+      gelesen.push(q);
+    }
+    return { user, gelesen };
+  }
+
+  private auswerten(alt: readonly Normgeschichte[], gelesen: readonly GeleseneFristenQuelle[]) {
+    let geschichten = alt;
+    const ungeprueft: NormVorbereitung["ungeprueft"][number][] = [];
+    const aktuelleIds = new Set<string>();
+    const am = new Date(this.jetzt()).toISOString();
+    for (const q of gelesen) {
+      const r = erkenneNormBekanntmachung(q.quelle, true, am);
+      geschichten = vereinigeNormgeschichten(normQuellstand(geschichten, q.quelle), r.geschichten);
+      for (const n of r.geschichten) for (const e of n.ereignisse) aktuelleIds.add(e.id);
+      for (const hinweis of r.ungeprueft) ungeprueft.push({ quelleId: q.quelle.id, hinweis });
+    }
+    if (
+      geschichten.reduce(
+        (sum, n) => sum + n.ereignisse.reduce((s, e) => s + e.belege.length, 0),
+        0,
+      ) > FRISTEN_GRENZEN.fristen
+    )
+      throw new FristenFehler(
+        409,
+        "Die bestehende Fristenablage ist für weitere Normereignisbelege voll.",
+      );
+    return {
+      geschichten,
+      ungeprueft,
+      aktuelleIds,
+      quellIds: new Set(gelesen.map((q) => q.quelle.id)),
+    };
+  }
+
+  private async vorbereiten(
+    user: SessionUser,
+    auswertung: ReturnType<KlaraNormereignisDienst["auswerten"]>,
+  ): Promise<NormVorbereitung> {
+    const bestand = await this.deps.ko.list({});
+    const ereignisse: NormVorbereitung["ereignisse"][number][] = [];
+    for (const n of auswertung.geschichten) {
+      if (!n.ereignisse.some((e) => auswertung.aktuelleIds.has(e.id))) continue;
+      // Nur die ausdrücklich gespeicherte kanonische Zuordnung „Norm N-17“ belegt diesen Bezug.
+      const referenz = normalizeAsset(`Norm ${n.kennung}`);
+      const betroffen: NormBetroffenheit[] = [];
+      for (const ko of bestand) {
+        if (auswertung.quellIds.has(ko.id) || !referenz || !anlagenVon(ko).includes(referenz))
+          continue;
+        const q = await this.deps.quellen.lies(user, "wissensobjekt", ko.id);
+        const aktuell = q ? await this.deps.ko.get(ko.id) : null;
+        if (
+          !q ||
+          !aktuell ||
+          String(aktuell.version) !== q.quelle.fassung ||
+          !anlagenVon(aktuell).includes(referenz)
+        )
+          continue;
+        betroffen.push({
+          koId: aktuell.id,
+          titel: aktuell.title,
+          fassung: aktuell.version,
+          grund: { art: "gespeicherte_normzuordnung", referenz },
+        });
+      }
+      for (const e of n.ereignisse)
+        if (auswertung.aktuelleIds.has(e.id))
+          ereignisse.push({
+            normId: n.id,
+            kennung: n.kennung,
+            ausgabe: n.ausgabe,
+            ereignis: e,
+            klaerung: normKlaerung(n),
+            betroffen,
+          });
+    }
+    return { ereignisse, ungeprueft: auswertung.ungeprueft };
+  }
+
+  /** Dieselben aktuellen Quellen, aber weder Normbeleg noch Prüfaufgabe gespeichert. */
+  async vorschau(kontoId: string, ids: readonly string[]): Promise<NormVorbereitung> {
+    const { user, gelesen } = await this.lesungen(kontoId, ids);
+    const alt = await this.deps.repo.hole(kontoId);
+    return this.vorbereiten(user, this.auswerten(alt?.normereignisse ?? [], gelesen));
+  }
+
+  /** Auftrags-/Laufbedingung gehört im selben CAS zu den heute gelesenen Quellen. */
+  async beobachten(
+    kontoId: string,
+    ids: readonly string[],
+    lauf: NotizSchreibbedingung,
+  ): Promise<NormVorbereitung> {
+    for (let versuch = 0; versuch < 3; versuch++) {
+      const { user, gelesen } = await this.lesungen(kontoId, ids);
+      const alt: FristenStand = (await this.deps.repo.hole(kontoId)) ?? {
+        kontoId,
+        fassung: 0,
+        regel: null,
+        fristen: [],
+      };
+      const r = this.auswerten(alt.normereignisse ?? [], gelesen);
+      if (
+        !(await Promise.all(gelesen.map((q) => q.nochAktuell()))).every(Boolean) ||
+        lauf.gilt?.() === false
+      )
+        continue;
+      if (
+        isDeepStrictEqual(alt.normereignisse ?? [], r.geschichten) ||
+        (await this.deps.repo.speichere(
+          { ...alt, fassung: alt.fassung + 1, normereignisse: r.geschichten },
+          alt.fassung,
+          gemeinsam([lauf, ...gelesen.map((q) => q.bedingung)]),
+        ))
+      )
+        return this.vorbereiten(user, r);
+    }
+    throw new FristenFehler(
+      409,
+      "Normauftrag, Quellen oder Fristenbestand haben sich inzwischen geändert.",
+    );
+  }
+
+  /** Historische Auszüge bleiben hinter heutigen Quellenrechten; GET verändert keine Fassung. */
+  async sicht(kontoId: string): Promise<readonly Normgeschichte[]> {
+    return (await this.stand(kontoId)).normen;
+  }
+
+  async stand(kontoId: string): Promise<{
+    fassung: number;
+    normen: readonly (Normgeschichte & { widerspruch: boolean })[];
+    fachannahmeErlaubt: boolean;
+  }> {
+    const user = await this.deps.quellen.nutzer(kontoId);
+    if (!user) return { fassung: 0, normen: [], fachannahmeErlaubt: false };
+    const s = await this.deps.repo.hole(kontoId);
+    const lesbar: Normgeschichte[] = [];
+    for (const n of s?.normereignisse ?? []) {
+      const quellen = new Map(
+        n.ereignisse.flatMap((e) =>
+          e.belege.map((b) => [`${b.quelle.art}:${b.quelle.id}`, b.quelle] as const),
+        ),
+      );
+      let aktuell: readonly Normgeschichte[] = [n];
+      let sichtbar = quellen.size > 0;
+      for (const q of quellen.values()) {
+        const gelesen = await this.deps.quellen.lies(user, q.art, q.id);
+        if (!gelesen) {
+          sichtbar = false;
+          break;
+        }
+        aktuell = normQuellstand(aktuell, gelesen.quelle);
+      }
+      if (sichtbar && aktuell[0]) {
+        const annahmen: NormAbloesung[] = [];
+        for (const annahme of aktuell[0].annahmen) {
+          const bisher = await this.deps.quellen.lies(user, "wissensobjekt", annahme.bisher.koId);
+          const nachfolger = await this.deps.quellen.lies(
+            user,
+            "wissensobjekt",
+            annahme.nachfolger.koId,
+          );
+          if (bisher && nachfolger) annahmen.push(annahme);
+        }
+        lesbar.push({ ...aktuell[0], annahmen });
+      }
+    }
+    return {
+      fassung: s?.fassung ?? 0,
+      normen: lesbar.map((n) => ({ ...n, widerspruch: normHatWiderspruch(n) })),
+      fachannahmeErlaubt: can(user.role, "ko.validate"),
+    };
+  }
+
+  /** Metadaten belegter Anleitungsfassungen; kein Volltext und keine Freigabe durch diesen GET. */
+  async fachoptionen(
+    kontoId: string,
+    normId: string,
+  ): Promise<readonly { koId: string; titel: string; fassung: number; aktuell: boolean }[]> {
+    const user = await this.deps.quellen.nutzer(kontoId);
+    if (!user || !can(user.role, "ko.validate"))
+      throw new NormereignisFehler(403, "Die fachliche Freigabeberechtigung fehlt.");
+    const norm = (await this.sicht(kontoId)).find((n) => n.id === normId);
+    if (!norm) throw new NormereignisFehler(404, "Normgeschichte nicht gefunden.");
+    const referenz = normalizeAsset(`Norm ${norm.kennung}`);
+    const optionen: { koId: string; titel: string; fassung: number; aktuell: boolean }[] = [];
+    for (const k of await this.deps.ko.list({})) {
+      if (
+        !referenz ||
+        !anlagenVon(k).includes(referenz) ||
+        !(await this.deps.quellen.lies(user, "wissensobjekt", k.id))
+      )
+        continue;
+      const aktuell = await this.deps.ko.get(k.id);
+      if (!aktuell || !anlagenVon(aktuell).includes(referenz)) continue;
+      const versionen = new Map(
+        (await this.deps.ko.versionsOf(k.id)).map((v) => [v.version, v.snapshot]),
+      );
+      versionen.set(aktuell.version, aktuell);
+      const belege = await this.deps.belege.list({ target: k.id });
+      for (const v of versionen.values()) {
+        const ref = v.annahmeRef?.koVersion === v.version ? v.annahmeRef : v.validationDecisionRef;
+        const belegt = belege.some(
+          (b) =>
+            b.payload.koVersion === v.version &&
+            (["ko.admin-validated", "ko.owner-validated", "ko.weisung-validated"].includes(
+              b.action,
+            ) ||
+              (b.action === "ko.rated" && b.payload.verdict === "up")) &&
+            (ref
+              ? b.seq === ref.auditSeq && b.hash === ref.auditHash
+              : v.version !== aktuell.version),
+        );
+        if (belegt && (v.version !== aktuell.version || aktuell.status === "validiert"))
+          optionen.push({
+            koId: k.id,
+            titel: aktuell.title,
+            fassung: v.version,
+            aktuell: v.version === aktuell.version,
+          });
+      }
+    }
+    return optionen.sort((a, b) => a.titel.localeCompare(b.titel) || a.fassung - b.fassung);
+  }
+
+  /** Eine konkret belegte Anleitungsfassung lesen, auch nach einer späteren Überarbeitung. */
+  async fachfassung(
+    kontoId: string,
+    normId: string,
+    koId: string,
+    fassung: number,
+  ): Promise<{
+    koId: string;
+    fassung: number;
+    titel: string;
+    aussage: string;
+    freigegebenAm: string;
+  }> {
+    const user = await this.deps.quellen.nutzer(kontoId);
+    const norm = user ? (await this.sicht(kontoId)).find((n) => n.id === normId) : null;
+    if (!user || !norm || !Number.isSafeInteger(fassung) || fassung < 1)
+      throw new NormereignisFehler(404, "Belegte Anleitungsfassung nicht gefunden.");
+    const bezug = norm.annahmen
+      .flatMap((a) => [
+        { ziel: a.bisher, beleg: a.fachfreigabe.bisher },
+        { ziel: a.nachfolger, beleg: a.fachfreigabe.nachfolger },
+      ])
+      .find((a) => a.ziel.koId === koId && a.ziel.fassung === fassung);
+    if (
+      !bezug &&
+      (!can(user.role, "ko.validate") ||
+        !(await this.fachoptionen(kontoId, normId)).some(
+          (o) => o.koId === koId && o.fassung === fassung,
+        ))
+    )
+      throw new NormereignisFehler(404, "Belegte Anleitungsfassung nicht gefunden.");
+    const q = await this.deps.quellen.lies(user, "wissensobjekt", koId);
+    const ko = q ? await this.deps.ko.get(koId) : null;
+    const konkret =
+      ko?.version === fassung
+        ? ko
+        : ko
+          ? (await this.deps.ko.versionsOf(koId)).find((v) => v.version === fassung)?.snapshot
+          : null;
+    if (!konkret) throw new NormereignisFehler(404, "Belegte Anleitungsfassung nicht gefunden.");
+    const ref =
+      bezug?.beleg ??
+      (konkret.annahmeRef?.koVersion === fassung
+        ? konkret.annahmeRef
+        : konkret.validationDecisionRef);
+    const beleg = (await this.deps.belege.list({ target: koId })).find(
+      (b) =>
+        b.payload.koVersion === fassung &&
+        (["ko.admin-validated", "ko.owner-validated", "ko.weisung-validated"].includes(b.action) ||
+          (b.action === "ko.rated" && b.payload.verdict === "up")) &&
+        (!ref || (b.seq === ref.auditSeq && b.hash === ref.auditHash)),
+    );
+    if (!beleg) throw new NormereignisFehler(404, "Fachlicher Fassungsbeleg nicht gefunden.");
+    return {
+      koId,
+      fassung,
+      titel: konkret.title,
+      aussage: konkret.statement,
+      freigegebenAm: beleg.at,
+    };
+  }
+
+  /** Kalenderdatum oder Veröffentlichung erreichen diesen Fachweg nie. */
+  async nehmeAbloesungAn(
+    kontoId: string,
+    normId: string,
+    roh: unknown,
+  ): Promise<{ fassung: number; annahme: NormAbloesung; wiederholt: boolean }> {
+    const user = await this.deps.quellen.nutzer(kontoId);
+    if (!user || !can(user.role, "ko.validate"))
+      throw new NormereignisFehler(403, "Die heutige fachliche Freigabeberechtigung fehlt.");
+    if (!roh || typeof roh !== "object" || Array.isArray(roh))
+      throw new NormereignisFehler(400, "Eine ausdrückliche Fachentscheidung ist erforderlich.");
+    const r = roh as Record<string, unknown>;
+    if (
+      Object.keys(r).some(
+        (k) =>
+          !["fassung", "bisher", "nachfolger", "geltung", "begruendung", "bestaetigt"].includes(k),
+      ) ||
+      r.bestaetigt !== true ||
+      !Number.isInteger(r.fassung) ||
+      typeof r.geltung !== "string" ||
+      !r.geltung.trim() ||
+      r.geltung.length > 200 ||
+      typeof r.begruendung !== "string" ||
+      !r.begruendung.trim() ||
+      r.begruendung.length > 2000
+    )
+      throw new NormereignisFehler(
+        400,
+        "Konkrete Fassungen, Geltung, Begründung und ausdrückliche Fachannahme sind erforderlich; Person und Zeitpunkt setzt der Server.",
+      );
+    const ziel = (x: unknown): { koId: string; fassung: number } => {
+      if (!x || typeof x !== "object" || Array.isArray(x))
+        throw new NormereignisFehler(400, "Beide Anleitungsfassungen sind erforderlich.");
+      const z = x as Record<string, unknown>;
+      if (
+        Object.keys(z).some((k) => k !== "koId" && k !== "fassung") ||
+        typeof z.koId !== "string" ||
+        !/^[A-Za-z0-9_-]{1,200}$/.test(z.koId) ||
+        !Number.isInteger(z.fassung) ||
+        Number(z.fassung) < 1
+      )
+        throw new NormereignisFehler(
+          400,
+          "Jede Anleitung braucht Originalkennung und konkrete Fassung.",
+        );
+      return { koId: z.koId, fassung: Number(z.fassung) };
+    };
+    const bisher = ziel(r.bisher);
+    const nachfolger = ziel(r.nachfolger);
+    if (bisher.koId === nachfolger.koId && bisher.fassung === nachfolger.fassung)
+      throw new NormereignisFehler(
+        400,
+        "Nachfolger und bisherige Fassung müssen sich unterscheiden.",
+      );
+    const s = await this.deps.repo.hole(kontoId);
+    const n = (await this.sicht(kontoId)).find((n) => n.id === normId);
+    if (!s || !n) throw new NormereignisFehler(404, "Normgeschichte nicht gefunden.");
+    const gewaehlteGeltung = r.geltung.trim().normalize("NFKC").toLocaleLowerCase("de");
+    const schon = n.annahmen.find(
+      (a) =>
+        isDeepStrictEqual(a.bisher, bisher) &&
+        isDeepStrictEqual(a.nachfolger, nachfolger) &&
+        a.geltung.normalize("NFKC").toLocaleLowerCase("de") === gewaehlteGeltung,
+    );
+    if (schon) return { fassung: s.fassung, annahme: schon, wiederholt: true };
+    if (s.fassung !== r.fassung)
+      throw new NormereignisFehler(
+        409,
+        "Die Normgeschichte wurde inzwischen geändert. Bitte neu lesen.",
+      );
+    const aktuelle = n.ereignisse.filter((e) => e.belege.some((b) => b.aktuell));
+    const geltung = r.geltung.trim().normalize("NFKC").toLocaleLowerCase("de");
+    if (
+      !aktuelle.some((e) => e.geltung?.normalize("NFKC").toLocaleLowerCase("de") === geltung) ||
+      normHatWiderspruch(n)
+    )
+      throw new NormereignisFehler(
+        409,
+        "Ereignisgeltung oder widersprüchliche Termine sind zuerst fachlich zu klären.",
+      );
+    const quellen = new Map(
+      n.ereignisse.flatMap((e) =>
+        e.belege.map((b) => [`${b.quelle.art}:${b.quelle.id}`, b.quelle] as const),
+      ),
+    );
+    const gelesen: GeleseneFristenQuelle[] = [];
+    for (const q of quellen.values()) {
+      const l = await this.deps.quellen.lies(user, q.art, q.id);
+      if (!l) throw new NormereignisFehler(404, "Normbeleg nicht mehr lesbar.");
+      const neu = erkenneNormBekanntmachung(
+        l.quelle,
+        true,
+        new Date(this.jetzt()).toISOString(),
+      ).geschichten.find((x) => x.id === n.id);
+      const aktuellBekannt = n.ereignisse
+        .flatMap((e) =>
+          e.belege
+            .filter((b) => b.aktuell && b.quelle.art === q.art && b.quelle.id === q.id)
+            .map((b) => `${e.id}:${b.id}`),
+        )
+        .sort();
+      const aktuellGelesen =
+        neu?.ereignisse.flatMap((e) => e.belege.map((b) => `${e.id}:${b.id}`)).sort() ?? [];
+      if (!isDeepStrictEqual(aktuellBekannt, aktuellGelesen))
+        throw new NormereignisFehler(
+          409,
+          "Der aktuelle Bekanntmachungsstand ist noch nicht in den Ereignisbelegen berücksichtigt. Bitte zuerst erneut prüfen.",
+        );
+      gelesen.push(l);
+    }
+    const schnappschuesse: NotizSchreibbedingung[] = [];
+    const fachfreigaben: Partial<NormAbloesung["fachfreigabe"]> = {};
+    const referenz = normalizeAsset(`Norm ${n.kennung}`);
+    for (const [art, z] of [
+      ["bisher", bisher],
+      ["nachfolger", nachfolger],
+    ] as const) {
+      const q = await this.deps.quellen.lies(user, "wissensobjekt", z.koId);
+      const ko = q ? await this.deps.ko.get(z.koId) : null;
+      if (!q || !ko) throw new NormereignisFehler(404, "Anleitungsfassung nicht lesbar.");
+      const historisch =
+        art === "bisher" && ko.version !== z.fassung
+          ? (await this.deps.ko.versionsOf(ko.id)).find((v) => v.version === z.fassung)?.snapshot
+          : null;
+      const konkret = historisch ?? ko;
+      if (
+        konkret.version !== z.fassung ||
+        String(ko.version) !== q.quelle.fassung ||
+        (art === "nachfolger" && ko.status !== "validiert") ||
+        !referenz ||
+        !anlagenVon(ko).includes(referenz)
+      )
+        throw new NormereignisFehler(
+          409,
+          "Die konkrete fachlich freigegebene Anleitungsfassung oder ihre gespeicherte Normzuordnung fehlt.",
+        );
+      gelesen.push(q);
+      const ref =
+        konkret.annahmeRef?.koVersion === z.fassung
+          ? konkret.annahmeRef
+          : konkret.validationDecisionRef;
+      const freigabe = (await this.deps.belege.list({ target: ko.id })).find((b) => {
+        const annahme =
+          ["ko.admin-validated", "ko.owner-validated", "ko.weisung-validated"].includes(b.action) ||
+          (b.action === "ko.rated" && b.payload.verdict === "up");
+        return (
+          annahme &&
+          b.payload.koVersion === z.fassung &&
+          (ref ? b.seq === ref.auditSeq && b.hash === ref.auditHash : art === "bisher")
+        );
+      });
+      if (!freigabe)
+        throw new NormereignisFehler(
+          409,
+          "Der tatsächliche fachliche Annahmebeleg genau dieser Anleitungsfassung fehlt.",
+        );
+      fachfreigaben[art] = {
+        auditSeq: freigabe.seq,
+        auditHash: freigabe.hash,
+        koVersion: z.fassung,
+      };
+      schnappschuesse.push({
+        sql: (start) => ({
+          und: [
+            `EXISTS(SELECT 1 FROM kos WHERE id=$${start}::text AND data=$${start + 1}::jsonb FOR SHARE)`,
+          ],
+          params: [ko.id, JSON.stringify(ko)],
+        }),
+      });
+      if (historisch)
+        schnappschuesse.push({
+          sql: (start) => ({
+            und: [
+              `EXISTS(SELECT 1 FROM ko_versions WHERE ko_id=$${start}::text AND version=$${start + 1}::int AND snapshot=$${start + 2}::jsonb FOR SHARE)`,
+            ],
+            params: [ko.id, historisch.version, JSON.stringify(historisch)],
+          }),
+        });
+    }
+    const person = await this.deps.auth.kontoLesen(user.id);
+    if (!person?.approved || person.role !== user.role || !can(person.role, "ko.validate"))
+      throw new NormereignisFehler(
+        403,
+        "Die fachliche Freigabeberechtigung wurde inzwischen geändert.",
+      );
+    if (!(await Promise.all(gelesen.map((q) => q.nochAktuell()))).every(Boolean))
+      throw new NormereignisFehler(
+        409,
+        "Beleg oder Anleitungsfassung hat sich während der Fachentscheidung geändert.",
+      );
+    if (!fachfreigaben.bisher || !fachfreigaben.nachfolger)
+      throw new NormereignisFehler(409, "Die fachlichen Fassungsbelege sind nicht vollständig.");
+    const entscheidung = normAbloesungsbeleg(n.id, {
+      bisher,
+      nachfolger,
+      fachfreigabe: { bisher: fachfreigaben.bisher, nachfolger: fachfreigaben.nachfolger },
+      geltung: r.geltung.trim(),
+      begruendung: r.begruendung.trim(),
+      entschiedenVon: user.id,
+      entschiedenName: person.name,
+      entschiedenAm: new Date(this.jetzt()).toISOString(),
+    });
+    const normereignisse =
+      s.normereignisse?.map((alt) =>
+        alt.id === n.id ? { ...alt, annahmen: [...alt.annahmen, entscheidung] } : alt,
+      ) ?? [];
+    if (
+      !(await this.deps.repo.speichere(
+        { ...s, fassung: s.fassung + 1, normereignisse },
+        s.fassung,
+        gemeinsam([...gelesen.map((q) => q.bedingung), ...schnappschuesse]),
+      ))
+    )
+      throw new NormereignisFehler(
+        409,
+        "Berechtigung, Belege oder Fachentscheidung wurden inzwischen geändert. Nichts angenommen.",
+      );
+    return { fassung: s.fassung + 1, annahme: entscheidung, wiederholt: false };
+  }
+}
