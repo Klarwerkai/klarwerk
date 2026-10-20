@@ -51,9 +51,17 @@ it("PP08 · Browser: Tastaturöffnung, Beleg, explizite Probe und gespeicherte p
     await bereich.getByRole("button", { name: "Passenden Beleg suchen" }).click();
     await bereich.getByRole("button", { name: "Herkunft öffnen: 1.500 T€" }).click();
     await page.locator("[data-herkunft]").waitFor({ state: "visible" });
-    const herkunft = page.locator("[data-herkunft]");
-    expect(await herkunft.innerText()).toContain("Q4 2025");
-    expect(await herkunft.innerText()).toContain("Tabelle Kennzahlen");
+    const herkunft = page.locator(`[data-herkunft="${w.dp.id}"][data-herkunft-fassung="1"]`);
+    await herkunft.waitFor({ state: "visible" });
+    await expect.poll(() => herkunft.innerText()).toContain("Q4 2025");
+    await expect.poll(() => herkunft.innerText()).toContain("Tabelle Kennzahlen");
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          document.activeElement?.closest("[data-herkunft]")?.getAttribute("data-herkunft"),
+        ),
+      )
+      .toBe(w.dp.id);
     await page.keyboard.press("Escape");
     await expect
       .poll(() => page.evaluate(() => document.activeElement?.textContent))
