@@ -35,6 +35,7 @@ import {
   speicherNachricht,
 } from "../../lib/officeEditor";
 import { ExterneQuelleKennung } from "../ko/ExterneQuelleKennung";
+import { FolienAufbau } from "./FolienAufbau";
 import { FolienDaten } from "./FolienDaten";
 import { OfficeBildBefunde } from "./OfficeBildBefunde";
 
@@ -327,6 +328,10 @@ function OfficeAnhangFlaeche({
 
       {/* PP-02: Zahlen und Aussagen dieser Präsentation mit ihrer Herkunft (nur .pptx). */}
       {d?.endung === "pptx" ? <FolienDaten koId={ko.id} anhangId={anhangId} /> : null}
+
+      {d?.endung === "pptx" && direkt && ohneSitzung ? (
+        <FolienAufbau koId={ko.id} anhangId={anhangId} fassung={d.fassung} gespeichert={neuLaden} />
+      ) : null}
 
       {d ? <Verlauf lage={d} datum={datum} /> : null}
 

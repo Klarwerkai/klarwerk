@@ -30,6 +30,8 @@ export interface AufbauFakt {
   wert: string;
   zahl?: number;
   einheit: string;
+  waehrung?: string;
+  prognose: boolean;
   zeitraum: string;
   zustand: string;
   belege: string[];
@@ -262,6 +264,8 @@ export async function planeAufbau(args: {
       wert: dp.wert,
       ...(dp.zahl !== undefined ? { zahl: dp.zahl } : {}),
       einheit: dp.einheit ?? dp.waehrung ?? "offen",
+      ...(dp.waehrung ? { waehrung: dp.waehrung } : {}),
+      prognose: dp.erfassung === "prognose",
       zeitraum: dp.zeitraum ?? "offen",
       zustand: selbstQuelle
         ? "Überprüfung nach Übernahme nötig"
@@ -286,6 +290,7 @@ export async function planeAufbau(args: {
           f.einheit !== "offen" &&
           f.zeitraum !== "offen" &&
           f.einheit === n.einheit &&
+          f.waehrung === n.waehrung &&
           f.zeitraum === n.zeitraum,
       ) &&
       (!n.einheit.includes("%") || fakten.every((f) => f.label === n.label));

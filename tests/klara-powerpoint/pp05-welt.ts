@@ -132,6 +132,7 @@ export async function welt() {
     size: ref.size,
   });
   const anhangId = mit.attachments[0]?.id;
+  if (!anhangId) throw new Error("Vorlagenanhang fehlt");
   const basis = `/api/kos/${mit.id}/office/${anhangId}`;
   async function capture(payload: Record<string, unknown>): Promise<DatenpunktSicht> {
     const r = await app.inject({ method: "POST", url: `/api/kos/${mit.id}/datenpunkte`, payload });
@@ -181,6 +182,7 @@ export async function welt() {
   };
   return {
     app,
+    nutzer,
     ko,
     repo,
     objekte,
