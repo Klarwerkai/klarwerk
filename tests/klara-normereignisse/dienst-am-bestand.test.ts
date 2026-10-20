@@ -417,6 +417,13 @@ describe("AW21 · tatsächliche bestehende Quellen-/Fristenablage", () => {
       wiederholt: true,
     });
     expect((await dienst.sicht(kontoId))[0]?.annahmen).toEqual([r.annahme]);
+    expect(
+      await neu().nehmeAbloesungAn(kontoId, n.id, { ...eingabe, geltung: "  Werk   A  " }),
+    ).toEqual({
+      fassung: r.fassung,
+      annahme: r.annahme,
+      wiederholt: true,
+    });
     await services.ko.revise(
       nachfolger.id,
       { statement: "Fiktive spätere v3, noch ohne Annahme." },

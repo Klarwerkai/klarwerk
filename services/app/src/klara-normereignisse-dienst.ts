@@ -80,6 +80,9 @@ function gemeinsam(bedingungen: readonly NotizSchreibbedingung[]): NotizSchreibb
   };
 }
 
+const geltungsSchluessel = (s: string) =>
+  s.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("de");
+
 /**
  * Die bestehenden ausgewählten KO-Leser und dieselbe Fristen-CAS/Backupablage.
  * Beobachten wird nur durch den ausdrücklich bestellten vorhandenen Routinenlauf aufgerufen.
@@ -606,12 +609,12 @@ export class KlaraNormereignisDienst {
     const s = await this.deps.repo.hole(kontoId);
     const n = (await this.sicht(kontoId)).find((n) => n.id === normId);
     if (!s || !n) throw new NormereignisFehler(404, "Normgeschichte nicht gefunden.");
-    const gewaehlteGeltung = r.geltung.trim().normalize("NFKC").toLocaleLowerCase("de");
+    const gewaehlteGeltung = geltungsSchluessel(r.geltung);
     const schon = n.annahmen.find(
       (a) =>
         isDeepStrictEqual(a.bisher, bisher) &&
         isDeepStrictEqual(a.nachfolger, nachfolger) &&
-        a.geltung.normalize("NFKC").toLocaleLowerCase("de") === gewaehlteGeltung,
+        geltungsSchluessel(a.geltung) === gewaehlteGeltung,
     );
     if (schon) return { fassung: s.fassung, annahme: schon, wiederholt: true };
     if (s.fassung !== r.fassung)
@@ -620,9 +623,9 @@ export class KlaraNormereignisDienst {
         "Die Normgeschichte wurde inzwischen geändert. Bitte neu lesen.",
       );
     const aktuelle = n.ereignisse.filter((e) => e.belege.some((b) => b.aktuell));
-    const geltung = r.geltung.trim().normalize("NFKC").toLocaleLowerCase("de");
+    const geltung = gewaehlteGeltung;
     if (
-      !aktuelle.some((e) => e.geltung?.normalize("NFKC").toLocaleLowerCase("de") === geltung) ||
+      !aktuelle.some((e) => e.geltung && geltungsSchluessel(e.geltung) === geltung) ||
       normHatWiderspruch(n)
     )
       throw new NormereignisFehler(
