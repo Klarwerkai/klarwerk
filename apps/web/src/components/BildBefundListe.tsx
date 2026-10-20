@@ -11,6 +11,11 @@
 //     Rohbefund steht daneben. `null` heißt: diese Fläche hat (noch) keine Quelle, an die eine
 //     Berichtigung gebunden werden könnte — das steht dann da. `onBerichtigt` meldet jede Änderung
 //     des wirksamen Textes eines Bildes (z. B. damit der Dateiimport seinen Text nachführt).
+//
+// produkt:20261012:klara-ocr-tabellen (OCR-E03, Nacharbeit 6 — auf die gelieferte E01/E02-Fassung
+// integriert): die bearbeitbare Tabelle zeigt die wirksame Berichtigung des Bildes
+// (`tabelleMitBerichtigung`), speichert Änderungen über DENSELBEN Berichtigungsweg (Quelle und
+// Bildfassung, `berichtigungsText`) und öffnet je Zelle ihre Stelle im Original.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -22,11 +27,25 @@ import {
   type QuellenBefund,
   type QuellenHinweis,
   type QuellenStatus,
+  type TabellenZelle,
 } from "../lib/bildAutomatik";
-import { markierung } from "../lib/bildFundstelle";
-import { berichtigbar, korrekturQuelleFuer, quellenMitKorrekturen } from "../lib/bildKorrektur";
-import { useBildKorrekturen, wiederholeBildKorrekturen } from "../lib/bildKorrekturenStand";
+import { type MarkierungsGrundlage, markierung } from "../lib/bildFundstelle";
+import {
+  berichtigbar,
+  korrekturQuelleFuer,
+  ortKennung,
+  quellenMitKorrekturen,
+} from "../lib/bildKorrektur";
+import {
+  type BildKorrekturStand,
+  aendereBildKorrektur,
+  useBildKorrekturen,
+  wiederholeBildKorrekturen,
+} from "../lib/bildKorrekturenStand";
+import { berichtigungsText, tabelleMitBerichtigung } from "../lib/bildTabelle";
+import { MAX_PDF_PAGES } from "../lib/pdf";
 import { BildFundstelleAnsicht, type FundstellenZiel } from "./BildFundstelleAnsicht";
+import { BildTabelleBearbeiten, type NurAnsichtGrund } from "./BildTabelleBearbeiten";
 import { BildTextBerichtigung } from "./BildTextBerichtigung";
 import { BildTextStellen } from "./BildTextStellen";
 
@@ -57,6 +76,8 @@ const HINWEIS_SCHLUESSEL: Record<QuellenHinweis, string> = {
   ladefrist: "bildautomatik.hinweis.ladefrist",
   // OCR-03: das Profil des Kontos war nicht lesbar — nicht automatisch gelesen.
   "einstellung-unbekannt": "klarabildkontext.hinweis.einstellungUnbekannt",
+  // OCR-E04: PDF über der Seitengrenze — die übrigen Seiten fehlen.
+  "pdf-seiten-fehlen": "pdfscan.hinweis.seitenFehlen",
 };
 
 /** Warum der Bildinhalt fehlt — je Zustand ein eigener Satz. */
@@ -80,6 +101,13 @@ export function fundstelleBaustein(
   key: string;
   params: Record<string, number | string>;
 } {
+  // OCR-E04: eine PDF-Seite — Textebene („Seite 2“) bzw. die gelesene Seite („Seite 2, erkannt“).
+  if (f.seite !== undefined) {
+    return {
+      key: f.seitenteil === "bild" ? "pdfscan.fundstelle.seiteErkannt" : "pdfscan.fundstelle.seite",
+      params: { seite: f.seite },
+    };
+  }
   if (f.folie !== undefined && f.folienansicht) {
     return { key: "bildautomatik.fundstelle.folienansicht", params: { folie: f.folie } };
   }
@@ -148,6 +176,30 @@ function BefundTabelle({ tabelle }: { tabelle: string[][] }): JSX.Element {
   );
 }
 
+/**
+ * OCR-E03: warum Tabellenänderungen eines Bildes nicht dauerhaft gespeichert werden können —
+ * `null`, wenn sie es können. Dieselben Bedingungen wie für „Text berichtigen“ (OCR-E02).
+ */
+function nurAnsichtGrund(
+  korrekturQuelle: string | null | undefined,
+  b: BildBefund,
+  stand: BildKorrekturStand,
+): NurAnsichtGrund | null {
+  if (korrekturQuelle === undefined) {
+    return "nicht-angebunden";
+  }
+  if (korrekturQuelle === null || !berichtigbar(b)) {
+    return "ohne-quelle";
+  }
+  if (stand.status === "fehler") {
+    return "fehler";
+  }
+  if (stand.status !== "bereit") {
+    return "laedt";
+  }
+  return stand.darfBearbeiten ? null : "kein-recht";
+}
+
 /** Das Originalbild eines Befunds: data-URL bzw. die berechtigte Adresse, sonst `null`. */
 export type OriginalVon = (befund: BildBefund, index: number) => string | null;
 
@@ -212,6 +264,36 @@ export function BildBefundListe({
       markierung: markierung(b, [wort]),
     });
   };
+  // OCR-E03: die Stelle einer Tabellenzelle im Original — über ihre Wörter, sonst über den Bereich,
+  // in dem sie im Bild steht (unleserlich, ungeprüft, leer). Gemessen wird im selben Rahmen.
+  const zeigeZelle = (
+    b: BildBefund,
+    index: number,
+    zelle: TabellenZelle | undefined,
+    text: string,
+  ): void => {
+    if (!zelle) {
+      return;
+    }
+    const woerter = b.woerter ?? [];
+    const eigene = zelle.woerter ?? [];
+    const bereich = eigene.length > 0 ? undefined : (zelle.rahmen ?? zelle.bereich);
+    const grundlage: MarkierungsGrundlage = bereich
+      ? { woerter: [...woerter, { text, ...bereich }], rahmen: b.rahmen }
+      : b;
+    const indizes: (number | null)[] = bereich ? [woerter.length] : eigene;
+    const roh = zelle.berichtigt?.roh ?? null;
+    const original = rohBefund.befunde[index] ?? b;
+    setZiel({
+      schluessel: `${lauf ?? ""}|${index}|${b.inhaltskennung ?? ""}|zelle:${indizes.join(",")}|${text}`,
+      src: originalVon ? originalVon(original, index) : null,
+      quelle: befund.quelle,
+      ort: ortText(b),
+      wort: text,
+      roh: roh !== null && roh !== text ? roh : null,
+      markierung: markierung(grundlage, indizes.length > 0 ? indizes : [null]),
+    });
+  };
   const mitText = befund.befunde.some((b) => b.textGekennzeichnet.length > 0);
   const einBerichtigbares = befund.befunde.some(berichtigbar);
   const fertig = befund.befunde.filter(istFertig).length;
@@ -249,7 +331,11 @@ export function BildBefundListe({
           ))}
           {befund.hinweise.map((h) => (
             <li key={h} data-testid="bild-befund-hinweis" data-hinweis={h}>
-              {t(HINWEIS_SCHLUESSEL[h], { max: BILD_HOECHSTZAHL_JE_QUELLE })}
+              {t(HINWEIS_SCHLUESSEL[h], {
+                max: BILD_HOECHSTZAHL_JE_QUELLE,
+                seiten: MAX_PDF_PAGES,
+                fehlend: befund.fehlendeSeiten ?? 0,
+              })}
             </li>
           ))}
           {ohneInhalt > 0 ? (
@@ -291,6 +377,18 @@ export function BildBefundListe({
       <ol className="mt-2 space-y-1.5">
         {befund.befunde.map((b, index) => {
           const ort = fundstelleBaustein(b.fundstelle, befund.quelle);
+          // OCR-E03: die Tabelle mit der wirksamen Berichtigung dieses Bildes (OCR-E02).
+          const abgleich =
+            b.bildTabelle && b.korrektur
+              ? tabelleMitBerichtigung(b.bildTabelle, b.text, b.woerter)
+              : null;
+          const tabelle = abgleich?.tabelle ?? b.bildTabelle ?? null;
+          const grund = nurAnsichtGrund(korrekturQuelle, b, korrekturen);
+          const kennung = b.inhaltskennung;
+          const quelleVoll =
+            typeof korrekturQuelle === "string"
+              ? korrekturQuelleFuer(korrekturQuelle, b.fundstelle)
+              : null;
           return (
             <li
               key={`${b.fundstelle.bild}-${b.fundstelle.imageId ?? ""}-${b.fundstelle.quelle}`}
@@ -324,6 +422,35 @@ export function BildBefundListe({
                 </p>
               ) : null}
               {b.tabelle ? <BefundTabelle tabelle={b.tabelle} /> : null}
+              {/* OCR-E03: dieselbe Tabelle als bearbeitbares Raster mit leeren Zellen, Kopfzeile und
+                  Kopierweg — mit der wirksamen Berichtigung und gespeichert über denselben Weg. */}
+              {tabelle ? (
+                <BildTabelleBearbeiten
+                  tabelle={tabelle}
+                  fundstelle={b.fundstelle}
+                  inhaltskennung={kennung}
+                  nichtZugeordnet={abgleich?.nichtZugeordnet}
+                  speichern={
+                    grund === null && quelleVoll !== null && kennung !== null
+                      ? (werte) =>
+                          aendereBildKorrektur({
+                            aktion: "setzen",
+                            quelle: quelleVoll,
+                            inhaltskennung: kennung,
+                            ort: ortKennung(b.fundstelle),
+                            text: berichtigungsText(
+                              b.textGekennzeichnet,
+                              b.woerter,
+                              tabelle,
+                              werte,
+                            ),
+                          })
+                      : undefined
+                  }
+                  nurAnsicht={grund}
+                  zeigeStelle={(z, s, wert) => zeigeZelle(b, index, tabelle.zeilen[z]?.[s], wert)}
+                />
+              ) : null}
               {typeof korrekturQuelle === "string" ? (
                 <BildTextBerichtigung
                   befund={b}

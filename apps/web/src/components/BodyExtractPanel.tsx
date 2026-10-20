@@ -6,13 +6,15 @@
 // SCRUM-408-Warteliste). Kein Auto-Speichern, keine stille Übernahme.
 import { useMutation } from "@tanstack/react-query";
 import { ChevronDown, FileText, Loader2, Paperclip, Sparkles, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useUploadLimits } from "../api/hooks";
 import type { Confidentiality, ExtractedPoint } from "../api/types";
+import type { QuellenBefund } from "../lib/bildAutomatik";
+import { useBildAnalyse } from "../lib/bildAutomatikLauf";
 import { BODY_EXTRACT_TEXT } from "../lib/bodyExtract";
 import type { OriginalDocument } from "../lib/captureAttachments";
 import {
@@ -38,6 +40,8 @@ import {
 // Aufnahme `gesamt-ocr` (R-0138): derselbe Satz wie im Erfassen, wenn die PDF zu gross ist oder der
 // Parser seine Frist ueberschreitet.
 import { pdfLesefehlerSatz } from "../lib/pdfLesefehler";
+// OCR-E04 (Nacharbeit 8): gescannte und gemischte PDF-Seiten auch an diesem Eingang lesen.
+import { LAUF_VERWORFEN, lesePdfDateiSeiten } from "../lib/pdfSeitenLauf";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { documentProvenance } from "../lib/reasonerProvenance";
 // WP-RETEST7 R1: ehrliche Lese-Fehler (Stale-Bundle vs. Parse-Ursache).
@@ -45,6 +49,7 @@ import { STALE_BUNDLE_KEY, honestParseErrorText } from "../lib/staleChunk";
 import { maxRawAttachmentBytes } from "../lib/uploadLimits";
 import { AiModelInfo } from "./AiModelInfo";
 import { HelpTip } from "./HelpTip";
+import { PdfSeitenListe } from "./PdfSeitenListe";
 import { UploadLimitsHint } from "./UploadLimitsHint";
 import { Button, SectionLabel, TextInput } from "./ui";
 
@@ -120,6 +125,11 @@ export function BodyExtractPanel({
   const [status, setStatus] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [appendedNote, setAppendedNote] = useState<string | null>(null);
+  // OCR-E04 (Nacharbeit 8): der Lesestand der Seiten einer gescannten bzw. gemischten PDF. Der
+  // Laufzähler verwirft Rückgaben einer Datei, die inzwischen ersetzt oder entfernt wurde.
+  const [pdfSeiten, setPdfSeiten] = useState<{ lauf: number; befund: QuellenBefund } | null>(null);
+  const seitenLaufRef = useRef(0);
+  const bildAnalyse = useBildAnalyse();
 
   const locale = toReasonerLocale(i18n.language);
   // Aufnahme `gesamt-ocr` (R-0138): die Groessenkante des PDF-Weges VOR dem Parser — dieselbe
@@ -164,6 +174,9 @@ export function BodyExtractPanel({
     setOriginal(null);
     setErr(null);
     setAppendedNote(null);
+    seitenLaufRef.current += 1;
+    const lauf = seitenLaufRef.current;
+    setPdfSeiten(null);
     // SCRUM-502 R6: JEDER Dateiwechsel setzt die Dokumentstufe fail-safe zurück (vertraulich) — eine
     // bewusst herabgesetzte Stufe der VORIGEN Datei darf nicht auf die neue Datei überschwappen.
     setDocConfidentiality("vertraulich");
@@ -181,6 +194,8 @@ export function BodyExtractPanel({
       let pdfTruncatedPages: number | null = null;
       // R-0138: bei PDFs entsteht das Original aus DEMSELBEN Lesevorgang wie der Text.
       let pdfOriginal: string | null = null;
+      // OCR-E04: wurden Seiten gelesen, sagt eine leere PDF nicht mehr „keine Textebene“.
+      let seitenGelesen = false;
       if (isTextDocument(f) || isWordDocument(f)) {
         text = isWordDocument(f) ? await readDocxFile(f) : await readTextFile(f);
       } else if (isPdfDocument(f)) {
@@ -191,6 +206,35 @@ export function BodyExtractPanel({
         text = pdf.text;
         pdfTruncatedPages = pdf.truncated ? pdf.pageCount : null;
         pdfOriginal = gelesen;
+        // OCR-E04 (Nacharbeit 8): Bild- und gemischte Seiten VOR der Leerprüfung lesen — ohne
+        // Klick, solange die Automatik an ist. Der Stand je Seite steht sichtbar daneben; eine
+        // fehlerhafte Seite hält die übrigen nicht auf. Das Original bleibt die gelesene Datei.
+        const aktuell = (): boolean => seitenLaufRef.current === lauf;
+        const seiten = await lesePdfDateiSeiten(f, pdf, {
+          analyse: bildAnalyse,
+          abbrechen: () => !aktuell(),
+          onFortschritt: (stand) => {
+            if (aktuell()) {
+              setPdfSeiten({ lauf, befund: stand });
+            }
+          },
+        });
+        if (!aktuell()) {
+          return;
+        }
+        if (seiten === LAUF_VERWORFEN) {
+          // Nacharbeit 10: das Konto hat während des Lesens gewechselt — nichts dieses Laufs gilt
+          // für das neue Konto; die Datei ist nicht übernommen.
+          setPdfSeiten(null);
+          setFileName(null);
+          setStatus(null);
+          return;
+        }
+        if (seiten) {
+          setPdfSeiten({ lauf, befund: seiten.befund });
+          text = seiten.text;
+          seitenGelesen = true;
+        }
       } else {
         setFileName(null);
         setStatus(null);
@@ -201,10 +245,16 @@ export function BodyExtractPanel({
         setStatus(null);
         // WP-D4: bei PDFs ehrlich auf die fehlende Textebene hinweisen — ohne falsche OCR-Hoffnung
         // (eine PDF-OCR existiert nicht; die Bild-OCR gilt nur für Bilddateien).
+        // OCR-E04: wurden Seiten gelesen und kam kein Text heraus, sagt das der Seitenstand.
         setErr(
-          t(isPdfDocument(f) ? CAPTURE_FILE_TEXT.emptyPdf : CAPTURE_FILE_TEXT.empty, {
-            name: f.name,
-          }),
+          t(
+            seitenGelesen
+              ? "pdfscan.leer"
+              : isPdfDocument(f)
+                ? CAPTURE_FILE_TEXT.emptyPdf
+                : CAPTURE_FILE_TEXT.empty,
+            { name: f.name },
+          ),
         );
         return;
       }
@@ -268,6 +318,9 @@ export function BodyExtractPanel({
   // nützlichen Inhalt hat), nicht nur ersetzbar. Setzt den Datei-Zustand vollständig zurück —
   // nichts wurde gespeichert oder übernommen, also bleibt kein Rest.
   const clearFile = (): void => {
+    // OCR-E04: ein noch laufender Seitenlauf der entfernten Datei startet keine weitere Seite.
+    seitenLaufRef.current += 1;
+    setPdfSeiten(null);
     setFileName(null);
     setFileText("");
     setOriginal(null);
@@ -368,6 +421,12 @@ export function BodyExtractPanel({
               </span>
             ) : null}
           </div>
+          {/* OCR-E04: Lesestand einer gescannten bzw. gemischten PDF, Seite für Seite. */}
+          {pdfSeiten ? (
+            <div data-testid="extract-pdf-seiten">
+              <PdfSeitenListe befund={pdfSeiten.befund} lauf={pdfSeiten.lauf} />
+            </div>
+          ) : null}
           {imageUrl && !fileText ? (
             <Button variant="ghost" disabled={ocrBusy} onClick={() => void onOcr()}>
               {ocrBusy ? t(CAPTURE_FILE_TEXT.ocrBusy) : t(CAPTURE_FILE_TEXT.ocrCta)}

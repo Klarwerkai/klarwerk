@@ -77,11 +77,15 @@ import { FileFormatInfo } from "../components/FileFormatInfo";
 // R-1624: Foto-zu-Wissen — Einstieg ins geführte Interview über ein Foto.
 import { FotoInterviewStart } from "../components/FotoInterviewStart";
 import { HelpTip } from "../components/HelpTip";
+// OCR-E06: „Klara, was steht hier?“ — ein Bild der Datei oder einen Bereich darin erklären.
+import { KlaraBereichsfrage } from "../components/KlaraBereichsfrage";
 // OCR-03: Klara zu einer bereitgestellten Datei fragen — Text und erkannte Bilder mit Fundstelle.
 import { KlaraBildKontextFrage } from "../components/KlaraBildKontextFrage";
 import { KnopfUnterschied } from "../components/KnopfUnterschied";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { Modal } from "../components/Modal";
+// OCR-E04: der Lesestand einer gescannten bzw. gemischten PDF, Seite für Seite.
+import { PdfSeitenListe, seitenZaehlung } from "../components/PdfSeitenListe";
 import { PublicAiEnrichPanel } from "../components/PublicAiEnrichPanel";
 import { ReviewerSuggestions } from "../components/ReviewerSuggestions";
 import { RichTextEditor } from "../components/RichTextEditor";
@@ -115,8 +119,7 @@ import { anlagenAlsEingabe, anlagenNutzlast, anlagenVon } from "../lib/anlagen";
 // (und mit ihr der dreiwertige Ausgang) bleibt der Weg für ein BESTEHENDES Wissensobjekt: KO-Detail
 // und „An Artikel anfügen" — s. lib/appendToArticle.ts.
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
-// OCR-03 (Nacharbeit 4): der Dateilauf prüft Konto und Einstellung vor jedem weiteren Bild.
-import { assistenzStand } from "../lib/assistenzProfil";
+import { assistenzStand, useAssistenzStand } from "../lib/assistenzProfil";
 // OCR-02 (Klara-Bildanalyse): bereitgestellte und eingebettete Bilder automatisch lesen.
 import {
   type BildBefund,
@@ -274,8 +277,10 @@ import { detectFileKind } from "../lib/extract";
 // SCRUM-409 (PMO-FEA-0008-Delta): Mehrpunkt-Entwürfe + Zusammenführen im „Aus Datei"-Weg.
 import { createPointDrafts } from "../lib/fileMultiPoint";
 import {
+  type PdfSeitenZeichner,
   fileToThumbDataUrl,
   isImage,
+  pdfSeitenZeichner,
   readDocxFile,
   readDocxRich,
   readFileAsDataUrl,
@@ -284,6 +289,8 @@ import {
   readPptxRich,
   readTextFile,
 } from "../lib/files";
+// OCR-03 (Nacharbeit 4): der Dateilauf prüft Konto und Einstellung vor jedem weiteren Bild.
+import { ladeFinderOcrDatei } from "../lib/finderOcrEingang";
 import { type FotoAnker, applyFotoAnker, applyFotoArtikel } from "../lib/fotoInterview";
 import {
   CLEARED_DRAFT_INTERVIEW,
@@ -333,6 +340,15 @@ import {
 // Ableitung wie 2676 fuer PPTX) — und die Frist des Parsers hat einen eigenen Fehler. Der Satz
 // dazu ist seit `gesamt-ocr` (R-0138) mit „Aus Dokument ergaenzen" geteilt.
 import { pdfLesefehlerSatz } from "../lib/pdfLesefehler";
+// OCR-E04: gescannte und gemischte PDF Seite für Seite lesen.
+import {
+  type PdfScanEingang,
+  lesePdfSeiten,
+  pdfScanEingang,
+  pdfSeitenText,
+} from "../lib/pdfScanSeiten";
+// OCR-E04 (Nacharbeit 8): derselbe Seitenlauf für „Text aus Datei einfügen“.
+import { LAUF_VERWORFEN, lesePdfDateiSeiten } from "../lib/pdfSeitenLauf";
 // WP-D5b (bens GELB-Fix 3): ehrlicher Importfehler bei Überschreitung des Archiv-/Dekompressionsbudgets.
 import { PptxTooLargeError } from "../lib/pptx";
 import { toReasonerLocale } from "../lib/reasonerLocale";
@@ -466,6 +482,14 @@ const CAPTURE_VERTRAULICHKEIT_HINWEIS_ID = "capture-vertraulichkeit-hinweis";
  * mit diesem Namen und genau diese Bildfassung (`lib/bildKorrektur.ts`, `korrekturQuelleFuer`).
  */
 const ANHANG_KORREKTUR_QUELLE = "anhang";
+
+/** OCR-E04 (Nacharbeit 10): der Seitenstand einer PDF aus „Text aus Datei einfügen“. */
+interface EinfuegenSeiten {
+  /** Nacharbeit 11: der Einfügevorgang, der den Eintrag gezeigt hat — nur er ersetzt und räumt ihn. */
+  vorgang: number;
+  name: string;
+  befund: QuellenBefund;
+}
 
 // WP-D7b (Rot-Fix 1): schlanke Dev-Instrumentierung — je Submit-Phase eine performance.now-Spanne als
 // debug-Log (im Browser standardmäßig gefiltert, kein Produktionslärm), damit Pedi/wir die ECHTEN Zeiten
@@ -1292,6 +1316,13 @@ export function CaptureArbeitsraum({
     korrekturQuelle: string | null;
   } | null>(null);
   const fileBildLaufRef = useRef(0);
+  // OCR-E04 (Nacharbeit 10): der Seitenstand der PDFs aus „Text aus Datei einfügen“ — je Datei,
+  // während und nach dem Lesen. Der Laufzähler bricht einen überholten Einfügevorgang ab.
+  const [einfuegenSeiten, setEinfuegenSeiten] = useState<EinfuegenSeiten[]>([]);
+  // Nacharbeit 11: `einfuegenLaufRef` zählt den Formularstand (Verwerfen bricht laufende Vorgänge
+  // ab), `einfuegenVorgangRef` die Einfügevorgänge (jeder räumt nur seine eigenen Einträge).
+  const einfuegenLaufRef = useRef(0);
+  const einfuegenVorgangRef = useRef(0);
   // OCR-02: EINE Bildanalyse für diesen Arbeitsraum (Dateiimport und Bildanhänge) — darin werden
   // unveränderte Bilder wiedererkannt. Der Weg zur Bildbeschreibung (W02) kommt über die Brücke aus
   // dem eigenen `ImageDescribeProvider`, also mit der Herkunft und Einstufung dieses Entwurfs.
@@ -3374,6 +3405,10 @@ export function CaptureArbeitsraum({
   // beiden kanonischen Räum-Funktionen. Eine Quelle für den Leerzustand, geteilt von beiden Verwerfen-Wegen.
   const resetCaptureForm = (): void => {
     setRaw("");
+    // OCR-E04: mit dem Rohtext geht auch der Seitenstand eingefügter PDFs; ein laufendes Lesen
+    // startet keine weitere Seite.
+    einfuegenLaufRef.current += 1;
+    setEinfuegenSeiten([]);
     // Aufnahme `gesamt-ocr`: mit dem Rohtext gehen auch die gesicherten Bildtext-Abschnitte.
     setOcrGesichert([]);
     setOcrErsetzt([]);
@@ -4762,12 +4797,26 @@ export function CaptureArbeitsraum({
   const onDocs = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const all = Array.from(e.target.files ?? []);
     e.target.value = "";
+    // OCR-E04 (Nacharbeit 11, Ben): der GANZE Vorgang — die ganze Auswahl, nicht nur eine PDF —
+    // gehört dem Konto, unter dem er begann, und dem Formularstand, auf den er zielt. Beides wird
+    // VOR dem ersten Lesen festgehalten. Wechselt das Konto oder wird das Formular verworfen, endet
+    // die Restschlange, und vor jeder Übernahme wird erneut geprüft. Eine weitere Auswahl bricht
+    // einen laufenden Vorgang NICHT ab; jeder Vorgang räumt nur seine eigenen Seitenstände.
+    einfuegenVorgangRef.current += 1;
+    const vorgang = einfuegenVorgangRef.current;
+    const formularstand = einfuegenLaufRef.current;
+    const kontoBeiStart = assistenzStand().kontoId;
+    const vorgangGilt = (): boolean =>
+      einfuegenLaufRef.current === formularstand && assistenzStand().kontoId === kontoBeiStart;
     // Nicht unterstützte Dateien ehrlich melden — sie zählen NICHT gegen die Anhang-Grenze.
     for (const f of all.filter((x) => !isDocsSupported(x))) {
       setErr(t("capture.docUnsupported", { name: f.name }));
     }
     const files = capIncomingFiles(all.filter(isDocsSupported));
     for (const f of files) {
+      if (!vorgangGilt()) {
+        break;
+      }
       // JOB 2699 D1: die Verzweigung folgt der Erkennung — nicht mehr „Text ODER Word" nach Endung.
       const kind = detectFileKind({ name: f.name, type: f.type });
       if (kind === "image") {
@@ -4775,6 +4824,9 @@ export function CaptureArbeitsraum({
       } else if (kind === "text" || kind === "docx") {
         try {
           const text = kind === "docx" ? await readDocxFile(f) : await readTextFile(f);
+          if (!vorgangGilt()) {
+            break;
+          }
           setRaw((prev) => (prev ? `${prev}\n\n[${f.name}]\n${text}` : `[${f.name}]\n${text}`));
           await pushDoc(f);
           setNotice(t("capture.docAdded", { name: f.name }));
@@ -4796,9 +4848,48 @@ export function CaptureArbeitsraum({
         try {
           // WP-D3: zeilen-/absatztreuer PDF-Text; truncated meldet den Seiten-Cap ehrlich.
           // JOB 2700 D1: mit Groessenkante — zu gross wird nicht gelesen, sondern gesagt.
-          const { text, truncated, pageCount } = await readPdfFile(f, { maxBytes: pdfLimitBytes });
+          const pdf = await readPdfFile(f, { maxBytes: pdfLimitBytes });
+          const { truncated, pageCount } = pdf;
+          // OCR-E04 (Nacharbeit 8): Bild- und gemischte Seiten VOR der Leerprüfung lesen — derselbe
+          // Seitenlauf wie im Dateiimport, ohne Klick, solange die Automatik an ist.
+          // Nacharbeit 10 (Ben): der Stand JE SEITE steht während und nach dem Lesen sichtbar da
+          // (`einfuegenSeiten`, auch wenn keine Seite gelesen wurde oder die Automatik aus ist).
+          // Nacharbeit 11: jeder Eintrag trägt seinen Vorgang — so ersetzt und räumt ein Vorgang
+          // nur, was er selbst gezeigt hat.
+          const zeige = (stand: QuellenBefund): void => {
+            if (vorgangGilt()) {
+              setEinfuegenSeiten((alt) => [
+                ...alt.filter((x) => !(x.vorgang === vorgang && x.name === f.name)),
+                { vorgang, name: f.name, befund: stand },
+              ]);
+            }
+          };
+          const seiten = await lesePdfDateiSeiten(f, pdf, {
+            analyse: bildAnalyse,
+            abbrechen: () => !vorgangGilt(),
+            onFortschritt: zeige,
+          });
+          if (seiten === LAUF_VERWORFEN || !vorgangGilt()) {
+            // Konto gewechselt oder Formular verworfen: dieser Vorgang endet ganz — keine weitere
+            // Datei, keine Übernahme. Geräumt werden nur seine eigenen Einträge; die Notiz nur, wenn
+            // seither kein neuerer Vorgang begonnen hat.
+            setEinfuegenSeiten((alt) => alt.filter((x) => x.vorgang !== vorgang));
+            if (einfuegenVorgangRef.current === vorgang) {
+              setNotice(null);
+            }
+            break;
+          }
+          if (seiten) {
+            zeige(seiten.befund);
+          }
+          const text = seiten ? seiten.text : pdf.text;
           if (text.length === 0) {
-            setErr(t("capture.docEmpty", { name: f.name }));
+            setNotice(null);
+            setErr(
+              seiten
+                ? t("pdfscan.leer", { name: f.name })
+                : t("capture.docEmpty", { name: f.name }),
+            );
             continue;
           }
           setRaw((prev) => (prev ? `${prev}\n\n[${f.name}]\n${text}` : `[${f.name}]\n${text}`));
@@ -4806,7 +4897,13 @@ export function CaptureArbeitsraum({
           const truncatedNote = truncated
             ? ` ${t(CAPTURE_FILE_TEXT.pdfTruncated, { count: pageCount })}`
             : "";
-          setNotice(`${t("capture.docAdded", { name: f.name })}${truncatedNote}`);
+          // OCR-E04: nicht gelesene Seiten (Fehler, aus, über der Grenze) werden ausdrücklich genannt.
+          const zaehlung = seiten ? seitenZaehlung(seiten.befund) : null;
+          const seitenNote =
+            seiten && seiten.befund.status !== "vollstaendig" && zaehlung
+              ? ` ${t("pdfscan.teilweise", { name: f.name, ...zaehlung })}`
+              : "";
+          setNotice(`${t("capture.docAdded", { name: f.name })}${truncatedNote}${seitenNote}`);
         } catch (error) {
           // WP-RETEST7 R1a/c: gleiche ehrliche Unterscheidung auch am PDF-Lazy-Import-Pfad.
           // JOB 2700 D1: zu gross und zu lange sind eigene Meldungen, kein „konnte nicht gelesen werden".
@@ -4908,16 +5005,69 @@ export function CaptureArbeitsraum({
     return ergebnis;
   };
 
+  // OCR-E04: die Seiten einer gescannten bzw. gemischten PDF automatisch lesen — dieselbe Lage der
+  // Automatik, dieselbe Bildanalyse und derselbe Laufzähler wie bei den Bildern einer Datei. Die
+  // Seiten werden über dieselbe pdfjs-Engine gezeichnet; die Datei selbst bleibt unverändert.
+  const leseDateiSeiten = async (
+    f: File,
+    eingang: PdfScanEingang,
+    lauf: number,
+    quelle: Promise<string | null>,
+  ): Promise<QuellenBefund | null> => {
+    const kontoBeiStart = assistenzStand().kontoId;
+    const aktuell = (): boolean =>
+      fileBildLaufRef.current === lauf && assistenzStand().kontoId === kontoBeiStart;
+    const lage = await bildAutomatikAbwarten();
+    // OCR-E02 (Integration): dieselbe Quelle der Berichtigungen wie bei den Bildern einer Datei.
+    const korrekturQuelle = await quelle;
+    if (!aktuell()) {
+      return null;
+    }
+    let vorschauEingang: BildQuelleEingang = { ...eingang, vorkommen: [...eingang.vorkommen] };
+    const offen: { zeichner: PdfSeitenZeichner | null } = { zeichner: null };
+    try {
+      const ergebnis = await lesePdfSeiten(eingang, {
+        analyse: bildAnalyse,
+        lage,
+        onBild: (fundstelle, src) => {
+          if (!aktuell()) return;
+          vorschauEingang = {
+            ...vorschauEingang,
+            vorkommen: vorschauEingang.vorkommen.map((v) =>
+              v.fundstelle.bild === fundstelle.bild && v.fundstelle.seite === fundstelle.seite
+                ? { ...v, src }
+                : v,
+            ),
+          };
+        },
+        // Geöffnet wird die Datei zum Zeichnen erst, wenn wirklich eine Seite gelesen wird.
+        zeichne: async (seite) => {
+          offen.zeichner ??= await pdfSeitenZeichner(f);
+          return offen.zeichner.zeichne(seite);
+        },
+        abbrechen: () => !aktuell(),
+        automatikAus: () => bildAutomatikLage(assistenzStand()) === "aus",
+        onFortschritt: (stand) => {
+          if (aktuell()) {
+            setFileBildBefund({ lauf, befund: stand, eingang: vorschauEingang, korrekturQuelle });
+          }
+        },
+      });
+      if (!aktuell()) {
+        return null;
+      }
+      setFileBildBefund({ lauf, befund: ergebnis, eingang: vorschauEingang, korrekturQuelle });
+      return ergebnis;
+    } finally {
+      await offen.zeichner?.schliessen();
+    }
+  };
+
   // PMO-FEA-0006: Dokument für die Wissens-Extraktion lesen — nutzt die VORHANDENEN
   // Extraktoren (Text/Word/PDF; Bild als OCR-Kandidat).
   // OCR-02: Bilder und eingebettete Bilder (PPTX, DOCX) werden seit 12.10.2026 beim Einlesen
   // automatisch gelesen (`leseDateiBilder`); der Klick auf die Erkennung bleibt als manueller Weg.
-  const onExtractFile = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) {
-      return;
-    }
+  const verarbeiteDatei = async (f: File): Promise<void> => {
     fileBildLaufRef.current += 1;
     const bildLauf = fileBildLaufRef.current;
     // OCR-E02 (Nacharbeit 2): die stabile Identität DIESES Dokuments für Berichtigungen — sein
@@ -5014,6 +5164,8 @@ export function CaptureArbeitsraum({
       // dem endgültigen HTML (die Folienansicht kann noch Bilder anhängen).
       let bildEingang: BildQuelleEingang | null = null;
       let pptxBildDaten: Parameters<typeof pptxBildEingang>[2] | null = null;
+      // OCR-E04: die Seiten einer PDF, die gelesen werden müssen (Bild- und gemischte Seiten).
+      let pdfEingang: PdfScanEingang | null = null;
       // WP-D5b (bens GELB-Fix 4): Format über die zentrale detectFileKind-Reihenfolge bestimmen
       // (image→pdf→docx→pptx→text). So gewinnt die Endung .pptx gegen einen irreführenden MIME text/plain
       // — sonst landete eine .pptx im Text-Pfad (Bug: isTextDocument stand VOR der PPTX-Erkennung).
@@ -5055,6 +5207,10 @@ export function CaptureArbeitsraum({
         text = pdf.text;
         rich = { html: null, kind: "pdf" };
         pdfTruncatedPages = pdf.truncated ? pdf.pageCount : null;
+        // OCR-E04: eine gescannte Seite ist ein Bild der Quelle — die PDF ist importierbar, auch
+        // wenn ihre Textebene leer ist; der Text kommt aus dem Lesen der Seiten.
+        pdfEingang = pdfScanEingang(f.name, pdf);
+        sourceHadImages = pdfEingang !== null;
       } else if (kind === "pptx") {
         // WP-D5/WP-D9 (Pedis Live-Befund): PowerPoint strukturerhaltend (Folie für Folie: Titel→h2,
         // Text→Absätze, Bullets→Listen, Tabellen→<table>) — und die Folien-Bilder jetzt wie beim
@@ -5234,21 +5390,32 @@ export function CaptureArbeitsraum({
       // Satz daraus wird, entscheidet `meldungText` beim Rendern — mit der Importart und der
       // Sprache, die DANN gelten. Ein Moduswechsel während dieser (langsamen) Extraktion und ein
       // Sprachwechsel danach wirken deshalb beide, ohne dass hier etwas nachgeführt wird.
-      setNotice({
-        art: "datei-eingelesen",
-        name: f.name,
-        chars: text.length,
-        zusaetze: [
-          ...formatNotes,
-          ...truncatedNotes,
-          ...imageLossNotes,
-          // JOB 3254: nach den Bildverlusten und vor den Folien — die Beschriftungsbilanz ist eine
-          // eigene Aussage, keine Ergänzung der Bild-Bilanz.
-          ...captionNotes,
-          ...slidesNotes,
-          ...imagesOnlyNotes,
-        ],
-      });
+      const zusaetze: Textbaustein[] = [
+        ...formatNotes,
+        ...truncatedNotes,
+        ...imageLossNotes,
+        // JOB 3254: nach den Bildverlusten und vor den Folien — die Beschriftungsbilanz ist eine
+        // eigene Aussage, keine Ergänzung der Bild-Bilanz.
+        ...captionNotes,
+        ...slidesNotes,
+        ...imagesOnlyNotes,
+      ];
+      setNotice({ art: "datei-eingelesen", name: f.name, chars: text.length, zusaetze });
+      // OCR-E04: die Seiten der PDF ohne Klick lesen. Danach ist der Text der Datei die ganze PDF in
+      // Seitenreihenfolge (Textebene und erkannter Rest, ohne Doppel) — solange niemand den Text
+      // inzwischen selbst geändert hat.
+      if (pdfEingang) {
+        const textebene = text;
+        void leseDateiSeiten(f, pdfEingang, bildLauf, dokumentQuelle).then((befund) => {
+          const ganz = befund ? pdfSeitenText(befund) : "";
+          if (!befund || ganz === textebene || fileBildLaufRef.current !== bildLauf) {
+            return;
+          }
+          setFileText((vorher) => (vorher === textebene ? ganz : vorher));
+          ganzdokumentGesichertRef.current = null;
+          setNotice({ art: "datei-eingelesen", name: f.name, chars: ganz.length, zusaetze });
+        });
+      }
       // OCR-02: die eingebetteten Bilder sofort mitlesen — der Klartext oben bleibt unverändert, der
       // Befund steht mit Folie bzw. Reihenfolge je Bild daneben (`BildBefundListe`).
       if (pptxBildDaten) {
@@ -5287,6 +5454,72 @@ export function CaptureArbeitsraum({
       setFileBusy(false);
     }
   };
+
+  const onExtractFile = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (f) await verarbeiteDatei(f);
+  };
+
+  const finderObjekt = params.get("finder");
+  const finderKonto = useAssistenzStand().kontoId;
+  const finderGestartet = useRef<string | null>(null);
+  const finderImportRef = useRef(verarbeiteDatei);
+  finderImportRef.current = verarbeiteDatei;
+  useEffect(() => {
+    if (!finderObjekt || !finderKonto) return;
+    const schluessel = `${finderKonto}|${finderObjekt}`;
+    if (finderGestartet.current === schluessel) return;
+    finderGestartet.current = schluessel;
+    let verworfen = false;
+    let abgeschlossen = false;
+    const laufBeiStart = fileBildLaufRef.current;
+    void ladeFinderOcrDatei(finderObjekt)
+      .then(async (datei) => {
+        if (
+          !verworfen &&
+          assistenzStand().kontoId === finderKonto &&
+          fileBildLaufRef.current === laufBeiStart
+        ) {
+          abgeschlossen = true;
+          await finderImportRef.current(datei);
+        }
+      })
+      .catch((fehler: unknown) => {
+        if (
+          !verworfen &&
+          assistenzStand().kontoId === finderKonto &&
+          fileBildLaufRef.current === laufBeiStart
+        ) {
+          setErr(fehler instanceof Error ? fehler.message : String(t("state.error")));
+        }
+      });
+    return () => {
+      verworfen = true;
+      if (!abgeschlossen && finderGestartet.current === schluessel) finderGestartet.current = null;
+    };
+  }, [finderObjekt, finderKonto, t]);
+
+  // OCR-03: der übrige Text der Datei für Klaras Kontext. Bei einem Einzelbild IST der Dateitext der
+  // Bildtext; OCR-E04: bei einer PDF stehen Textebene und erkannte Seiten schon je Seite im Befund.
+  // In beiden Fällen käme er sonst doppelt hinein.
+  const dateiKontextText = (): string => {
+    if (fileImageUrl || fileBildBefund?.befund.art === "pdf") {
+      return "";
+    }
+    return fileText;
+  };
+
+  // OCR-E04 (Nacharbeit 10): der Seitenstand der eingefügten PDFs — laufende, gelesene,
+  // fehlgeschlagene und nicht gelesene Seiten je Datei, an beiden Stellen dieses Eingangs.
+  const einfuegenSeitenListe =
+    einfuegenSeiten.length > 0 ? (
+      <div data-testid="einfuegen-pdf-seiten" className="mt-2 space-y-2">
+        {einfuegenSeiten.map((x) => (
+          <PdfSeitenListe key={`${x.vorgang}-${x.name}`} befund={x.befund} />
+        ))}
+      </div>
+    ) : null;
 
   // PMO-FEA-0006: Bild-OCR für die Extraktion — ehrlicher Status (SCRUM-123-Muster). Seit OCR-02 der
   // manuelle Weg neben der Automatik.
@@ -6849,6 +7082,7 @@ export function CaptureArbeitsraum({
                     {/* AUFTRAG-mega14 Block E: die Grenze steht AN der Auswahlstelle, nicht im Admin. */}
                     <UploadLimitsHint className="w-full text-[11px] text-muted-2" />
                   </div>
+                  {einfuegenSeitenListe}
                   {/* SCRUM-312: sichtbare KI-Nachbearbeitung mit Vorschau + bewusster Übernahme.
                   SCRUM-384: im Wizard erst auf der Wissensseite (EINE KI-Palette je Schritt);
                   im Expertenmodus wie gehabt direkt am Rohtext. */}
@@ -7196,30 +7430,64 @@ export function CaptureArbeitsraum({
                   {/* OCR-02: Befund des automatischen Bildlesens, mit Fundstelle je Bild. */}
                   {fileBildBefund ? (
                     <div data-testid="datei-bild-befunde">
-                      {/* OCR-E01/E02: Fundstelle im Original; Berichtigungen gehören zu dieser Datei
+                      {/* OCR-E04: eine PDF zeigt ihren Lesestand Seite für Seite.
+                        OCR-E01/E02: Fundstelle im Original; Berichtigungen gehören zu dieser Datei
                         (ihr Inhalt, nicht ihr Name) und je Bildfassung. Bei einem Einzelbild folgt
                         der Dateitext der Berichtigung, solange er nicht von Hand geändert wurde. */}
-                      <BildBefundListe
-                        befund={fileBildBefund.befund}
-                        lauf={fileBildBefund.lauf}
-                        originalVon={(b) =>
-                          originalAusEingang(fileBildBefund.eingang, b.fundstelle)
-                        }
-                        korrekturQuelle={fileBildBefund.korrekturQuelle}
-                        onBerichtigt={(neu, bisher) => {
-                          if (fileImageUrl) {
-                            setFileText((v) => (v === bisher ? neu : v));
+                      {fileBildBefund.befund.art === "pdf" ? (
+                        <>
+                          <PdfSeitenListe
+                            befund={fileBildBefund.befund}
+                            lauf={fileBildBefund.lauf}
+                            korrekturQuelle={fileBildBefund.korrekturQuelle}
+                          />
+                          <BildBefundListe
+                            befund={{
+                              ...fileBildBefund.befund,
+                              befunde: fileBildBefund.befund.befunde.filter(
+                                (b) => b.fundstelle.seitenteil === "bild",
+                              ),
+                            }}
+                            lauf={fileBildBefund.lauf}
+                            originalVon={(b) =>
+                              originalAusEingang(fileBildBefund.eingang, b.fundstelle)
+                            }
+                            korrekturQuelle={fileBildBefund.korrekturQuelle}
+                          />
+                        </>
+                      ) : (
+                        <BildBefundListe
+                          befund={fileBildBefund.befund}
+                          lauf={fileBildBefund.lauf}
+                          originalVon={(b) =>
+                            originalAusEingang(fileBildBefund.eingang, b.fundstelle)
                           }
-                        }}
-                      />
+                          korrekturQuelle={fileBildBefund.korrekturQuelle}
+                          onBerichtigt={(neu, bisher) => {
+                            if (fileImageUrl) {
+                              setFileText((v) => (v === bisher ? neu : v));
+                            }
+                          }}
+                        />
+                      )}
                       {/* OCR-03: Klara zu dieser Datei fragen — Text der Datei UND erkannte Bilder.
-                        Bei einem Einzelbild IST der Dateitext der Bildtext; er steht nur einmal drin. */}
+                        Bei einem Einzelbild IST der Dateitext der Bildtext; er steht nur einmal drin.
+                        OCR-E04: bei einer PDF stehen Textebene und erkannte Seiten schon je Seite
+                        im Befund (mit Seitenzahl) — der Dateitext käme sonst doppelt hinein. */}
                       <KlaraBildKontextFrage
                         kontextSchluessel={`datei:${fileBildBefund.lauf}`}
-                        dokumentTextVon={() => (fileImageUrl ? "" : fileText)}
+                        dokumentTextVon={dateiKontextText}
                         quellen={[fileBildBefund.befund]}
                         aktuell={[fileBildBefund.eingang]}
                         korrekturQuelle={fileBildBefund.korrekturQuelle}
+                      />
+                      {/* OCR-E06: ein Bild der Datei oder einen Bereich darin gezielt erklären. */}
+                      <KlaraBereichsfrage
+                        analyse={bildAnalyse}
+                        korrekturQuelle={fileBildBefund.korrekturQuelle}
+                        kontextSchluessel={`datei:${fileBildBefund.lauf}`}
+                        quellen={[fileBildBefund.befund]}
+                        aktuell={[fileBildBefund.eingang]}
                       />
                     </div>
                   ) : null}
@@ -7799,6 +8067,7 @@ export function CaptureArbeitsraum({
                     {/* SCRUM-421 / AUFTRAG-mega14 Block E: dieselbe Anzeige wie an allen anderen
                       Auswahlstellen — eine Komponente, eine Serverquelle. */}
                     <UploadLimitsHint />
+                    {einfuegenSeitenListe}
                     {docs.length > 0 ? (
                       <ul className="mt-2 space-y-1">
                         {docs.map((d) => (

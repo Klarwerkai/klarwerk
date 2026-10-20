@@ -32,6 +32,7 @@ import { originalAusEingang } from "../../lib/bildFundstelle";
 import { objectRawHref } from "../../lib/bodyFileLink";
 import { readDocxRich, readPptxRich } from "../../lib/files";
 import { BildBefundListe } from "../BildBefundListe";
+import { KlaraBereichsfrage } from "../KlaraBereichsfrage";
 import { KlaraBildKontextFrage } from "../KlaraBildKontextFrage";
 
 export interface OfficeBildAnhang {
@@ -213,13 +214,23 @@ export function OfficeBildBefunde({
             korrekturQuelle={`office:${a.id}`}
           />
           {stand.eingang ? (
-            <KlaraBildKontextFrage
-              kontextSchluessel={`office:${a.id}:${a.objectId}`}
-              dokumentTextVon={() => stand.text ?? ""}
-              quellen={[stand.befund]}
-              aktuell={[stand.eingang]}
-              korrekturQuelle={`office:${a.id}`}
-            />
+            <>
+              <KlaraBildKontextFrage
+                kontextSchluessel={`office:${a.id}:${a.objectId}`}
+                dokumentTextVon={() => stand.text ?? ""}
+                quellen={[stand.befund]}
+                aktuell={[stand.eingang]}
+                korrekturQuelle={`office:${a.id}`}
+              />
+              {/* OCR-E06: ein Bild der Datei oder einen Bereich darin gezielt erklären. */}
+              <KlaraBereichsfrage
+                analyse={analyse}
+                kontextSchluessel={`office:${a.id}:${a.objectId}`}
+                quellen={[stand.befund]}
+                aktuell={[stand.eingang]}
+                korrekturQuelle={`office:${a.id}`}
+              />
+            </>
           ) : null}
         </div>
       ))}

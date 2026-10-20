@@ -21,7 +21,9 @@
     "tests/klara-aktionen/zusammenfassen-zitatdeckung.test.ts",
     "tests/capture/ocr-engine-gleiche-herkunft.test.ts",
     "tests/klara-bildanalyse-ocr/kontext-klara.test.ts",
-    "tests/klara-erinnerungen/entwurf-kontoerkennung.test.ts"
+    "tests/klara-erinnerungen/entwurf-kontoerkennung.test.ts",
+    "tests/klara-bildanalyse-ocr/widersprueche.test.ts",
+    "tests/klara-bildanalyse-ocr/ocr04-abnahme.test.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

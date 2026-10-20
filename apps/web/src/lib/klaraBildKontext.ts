@@ -29,6 +29,7 @@ import {
   type QuellenBefund,
   type QuellenHinweis,
 } from "./bildAutomatik";
+import { MAX_PDF_PAGES } from "./pdf";
 
 export type Uebersetze = (schluessel: string, werte?: Record<string, string | number>) => string;
 export type OrtVon = (fundstelle: BildFundstelle, quelle: string) => string;
@@ -76,6 +77,7 @@ const HINWEIS_SCHLUESSEL: Record<QuellenHinweis, string> = {
   "grenze-erreicht": "bildautomatik.hinweis.grenze",
   ladefrist: "bildautomatik.hinweis.ladefrist",
   "einstellung-unbekannt": "klarabildkontext.hinweis.einstellungUnbekannt",
+  "pdf-seiten-fehlen": "pdfscan.hinweis.seitenFehlen",
 };
 
 const STATUS_SCHLUESSEL: Record<BildBefund["status"], string> = {
@@ -156,6 +158,9 @@ export function klaraBildKontext(
         zeilen.push(`${marke} ${t(art)}: ${text}`);
       } else if (b.status === "kein-text") {
         zeilen.push(`${marke} ${t("klarabildkontext.kontext.keinText")}`);
+      } else if (b.status === "gelesen" && (b.doppelt ?? 0) > 0) {
+        // OCR-E04: alles Erkannte steht schon in der Textebene derselben Seite — nicht noch einmal.
+        zeilen.push(`${marke} ${t("pdfscan.kontext.nurDoppelt", { anzahl: b.doppelt ?? 0 })}`);
       } else {
         const status = t(STATUS_SCHLUESSEL[b.status]);
         zeilen.push(`${marke} ${t("klarabildkontext.kontext.offen", { status })}`);
@@ -178,8 +183,15 @@ export function klaraBildKontext(
       const satz = t("klarabildkontext.kontext.nichtUebernommen", { anzahl: x.anzahl });
       zeilen.push(`[${wo}] ${satz}`);
     }
+    // OCR-E04: fehlende PDF-Seiten zählen wie nicht gelesene Bilder — die Quelle ist dann offen.
+    verloren += q.fehlendeSeiten ?? 0;
     for (const h of q.hinweise) {
-      zeilen.push(`[${q.quelle}] ${t(HINWEIS_SCHLUESSEL[h], { max: BILD_HOECHSTZAHL_JE_QUELLE })}`);
+      const werte = {
+        max: BILD_HOECHSTZAHL_JE_QUELLE,
+        seiten: MAX_PDF_PAGES,
+        fehlend: q.fehlendeSeiten ?? 0,
+      };
+      zeilen.push(`[${q.quelle}] ${t(HINWEIS_SCHLUESSEL[h], werte)}`);
     }
   }
   const gelesen = eintraege.filter((e) => e.textGelesen).length;

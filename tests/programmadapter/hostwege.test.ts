@@ -205,8 +205,12 @@ describe("H3/H4 · Finder: genau die gewählte Datei, in die vorhandene Objektab
     expect(r.statusCode, r.body).toBe(201);
     const antwort = r.json() as {
       objektId: string;
+      ocrUrl: string;
       herkunft: { sha256: string; dateiId: string; quelle: string; groesse: number };
     };
+    expect(antwort.ocrUrl).toBe(
+      `/erfassen?weg=datei&finder=${encodeURIComponent(antwort.objektId)}`,
+    );
     expect(antwort.herkunft).toMatchObject({
       quelle: "finder-auswahl",
       dateiId: DATEI_ID,
