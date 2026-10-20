@@ -103,7 +103,7 @@ test("AW21 · ausdrücklich bestellter Quellenwatch ergänzt Normgeschichte im n
     await f.getByTestId("klara-erinnerung-titel").fill("Fiktiver Normwatch im normalen Takt");
     await f.getByTestId("klara-erinnerung-aktion").selectOption("routine_bericht");
     await f.getByLabel("Routinenvorlage").selectOption("quellaenderung");
-    const t = termin(Date.now() + 60_000);
+    const t = termin(Date.now() + 90_000);
     await f.getByTestId("klara-erinnerung-datum").fill(t.datum);
     await f.getByTestId("klara-erinnerung-uhrzeit").fill(t.uhrzeit);
     await f.getByTestId("klara-erinnerung-zone-wahl").selectOption("Europe/Berlin");
