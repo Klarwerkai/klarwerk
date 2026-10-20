@@ -1,7 +1,28 @@
 import { createHash } from "node:crypto";
-import type { DraftPayload } from "../../capture";
+import type { AuditService } from "../../audit";
+import type { Draft, DraftPayload } from "../../capture";
 import { kernaussageAusKlartext } from "../../structure";
 import { anlageAusBasisadresse } from "./instanzbindung";
+
+export const EMAIL_ANGENOMMEN = "email.entwurf-aufgenommen";
+
+/** L-1: Die serverseitige Mailoperation bleibt bis zur dauerhaften Annahme unverbraucht. */
+export async function pruefeEmailVerbrauch(
+  draft: Draft,
+  audit: Pick<AuditService, "list">,
+): Promise<void> {
+  const vorgang = draft.createOperation?.id;
+  // Reservierter Namespace des Mailadapters, unveränderlich am Draft, nie aus seinem Payload.
+  if (!vorgang || !/^email:[0-9a-f]{64}$/.test(vorgang)) return;
+  const belege = await audit.list({ action: EMAIL_ANGENOMMEN, target: vorgang });
+  if (belege.some((b) => b.payload.entwurfId === draft.id)) return;
+  throw Object.assign(
+    new Error(
+      "Die Mail-Annahme ist noch nicht gesichert. Die Zustellung erneut übernehmen, bevor der Entwurf eingereicht oder endgültig entfernt wird.",
+    ),
+    { code: "CONFLICT" },
+  );
+}
 
 /** Ein Eingang je Firmeninstanz. Die Bindung kommt nie aus der Nachricht. */
 export interface EmailEingang {

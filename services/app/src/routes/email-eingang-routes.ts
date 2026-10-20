@@ -4,10 +4,15 @@ import type { AuthService } from "../../../auth";
 import type { CaptureService, Draft } from "../../../capture";
 import type { ObjectStore } from "../../../object-store";
 import { can } from "../../../rbac";
-import { EmailEingangFehler, emailAlsEntwurf, ladeEmailEingang } from "../email-eingang";
+import {
+  EMAIL_ANGENOMMEN,
+  EmailEingangFehler,
+  emailAlsEntwurf,
+  ladeEmailEingang,
+} from "../email-eingang";
 import { sendError } from "../http";
 
-export const EMAIL_ANGENOMMEN = "email.entwurf-aufgenommen";
+export { EMAIL_ANGENOMMEN } from "../email-eingang";
 
 /** Bestehender Original-/Ankerweg, kein aus Mailheadern geglaubter Dokumentverweis. */
 async function originalBinden(

@@ -76,7 +76,15 @@ verhindert Wiederanlage auch nach Verbrauch/Löschung des Entwurfs. Ein solcher 
 die frühere Annahme, nicht die heutige Existenz oder einen Prüfstatus des Entwurfs.
 
 Ein Speicherfehler bleibt 500/503; kein Annahmeerfolg vor gesicherter Originalbindung und
-Auditbeleg. Wiederholung vervollständigt fehlende Schritte. Bei ungewissem Schreibausgang bleiben
+Auditbeleg. Fehlt der dauerhafte Annahmebeleg, bleibt der Mailentwurf bearbeitbar, aber fachliche
+Übernahme und endgültiges Entfernen sind mit 409 `CONFLICT` gesperrt. Das gilt im gemeinsamen
+Capture-Verbrauchsweg auch für Dokumentübernahme und Papierkorbbereinigung. Die Sperre folgt der
+unveränderlichen Create-Operation im für den Adapter reservierten Namespace `email:<64 Hexzeichen>`;
+Ändern von Inhalt, Herkunftsfeldern oder Pflichtangaben hebt sie nicht auf. Eine unveränderte
+Wiederzustellung sichert den Beleg für denselben Entwurf; erst dann ist normaler Verbrauch möglich.
+Andere Inhalte derselben Mailoperation bleiben 409, auch während der ausstehenden Annahme.
+Die allgemeine Capture-Neuanlagesemantik wurde nicht verändert.
+Wiederholung vervollständigt fehlende Schritte. Bei ungewissem Schreibausgang bleiben
 Originalobjekte erhalten; mögliche unreferenzierte Uploads folgen dem vorhandenen Aufräumweg.
 Fehlende Originale blockiert weiterhin die bestehende Ankerprüfung.
 

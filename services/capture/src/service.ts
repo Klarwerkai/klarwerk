@@ -31,6 +31,9 @@ export interface CaptureServiceDeps {
   repo: DraftRepo;
   now?: () => number;
   genId?: () => string;
+  /** Vor einer fachlichen Übernahme oder endgültigen Entfernung: offene Eingangsannahme prüfen.
+   * Die Composition-Root bindet hier nur den Mailadapter; andere Entwürfe bleiben unverändert. */
+  pruefeVerbrauch?: (draft: Draft) => Promise<void>;
   /**
    * AUFTRAG-mega20 Block D: existiert dieses Objekt im Objektspeicher?
    *
@@ -664,6 +667,7 @@ export class CaptureService {
   private readonly repo: DraftRepo;
   private readonly now: () => number;
   private readonly genId: () => string;
+  private readonly pruefeVerbrauch: CaptureServiceDeps["pruefeVerbrauch"];
 
   // AUFTRAG-mega20 Block D: injizierte Existenzprüfung des Objektspeichers (s. Deps).
   private readonly objectExists: ((objectId: string) => Promise<boolean>) | undefined;
@@ -685,6 +689,7 @@ export class CaptureService {
     this.repo = deps.repo;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
+    this.pruefeVerbrauch = deps.pruefeVerbrauch;
     this.objectExists = deps.objectExists;
     this.pruefeBelegstelle = deps.pruefeBelegstelle;
   }
@@ -1392,12 +1397,20 @@ export class CaptureService {
    * genau der Mangel, den mega22 Block H für diesen Weg geschlossen hat.
    */
   async entwurfVerbraucht(id: string): Promise<void> {
+    await this.pruefeEndgueltigeEntfernung(id);
     // `auchLebende` — DAS IST DIE EINZIGE STELLE IM PRODUKT, DIE DIESES WORT SETZT, und sie sagt
     // damit genau das, was hier gilt: Dieser Entwurf lebt, er lag nie im Papierkorb, und er fällt
     // trotzdem. Den Verbrauch an den Papierkorbstatus zu binden hiesse, einen übernommenen Entwurf
     // erst „löschen" zu müssen, damit er verschwinden darf — und dazwischen wäre er
     // wiederherstellbar, also genau die Dublette, die dieser Weg verhindert.
     await this.repo.purge(id, true);
+  }
+
+  private async pruefeEndgueltigeEntfernung(id: string): Promise<void> {
+    if (!this.pruefeVerbrauch) return;
+    const draft = (await this.repo.findById(id)) ?? (await this.repo.findTrashed(id));
+    // Kein neuer NOT_FOUND: Wiederholung eines bereits erfolgten Verbrauchs bleibt zulässig.
+    if (draft) await this.pruefeVerbrauch(draft);
   }
 
   /** FALL 3 — DIE PAPIERKORB-SICHT. Ohne Autor die Admin-Sicht; die Route entscheidet, welche. */
@@ -1453,6 +1466,7 @@ export class CaptureService {
    * Wissensobjekt nachzuziehen ist nicht Teil dieses Auftrags und steht in der Rückgabe als REST.
    */
   async purgeTrashedDraft(id: string): Promise<void> {
+    await this.pruefeEndgueltigeEntfernung(id);
     if (!(await this.repo.purge(id))) {
       throw new CaptureError("NOT_FOUND", "Entwurf nicht im Papierkorb.");
     }
@@ -1488,6 +1502,7 @@ export class CaptureService {
         continue;
       }
       try {
+        await this.pruefeVerbrauch?.(entwurf);
         // Nacharbeit 2 (Bens Befund): gelöscht wird nur der Stand mit GENAU diesem Löschzeitpunkt.
         // Zurückgeholt und erneut gelöscht → neuer Zeitpunkt, neue Frist, kein Treffer.
         if (await this.repo.purge(entwurf.id, false, entwurf.deletedAt)) {
@@ -1523,6 +1538,8 @@ export class CaptureService {
   async toKoInput(id: string, opts?: { belegstellen?: boolean }): Promise<CreateKoInput> {
     const mitBelegstellen = opts?.belegstellen !== false;
     const draft = await this.require(id);
+    // Vor ko.create an BEIDEN Bestandsaufrufern; eine offene Mailannahme erzeugt kein KO.
+    await this.pruefeVerbrauch?.(draft);
     // AUFTRAG-mega20 Block D: DIE ZWEITE PRÜFSTELLE — beim EINREICHEN, nicht nur beim Fortsetzen.
     //
     // Warum beides nötig ist: zwischen Fortsetzen und Einreichen liegt eine beliebig lange

@@ -341,6 +341,7 @@ import {
   type VorhandenerKalender,
   aufgabenNachweisAus,
 } from "./eigener-kalender";
+import { pruefeEmailVerbrauch } from "./email-eingang";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
@@ -2176,6 +2177,7 @@ export function assembleServices(
     // Bewegung wie bei `koConfidentiality` für die Medien-Analyse.
     capture: new CaptureService({
       repo: repos.drafts,
+      pruefeVerbrauch: (draft) => pruefeEmailVerbrauch(draft, audit),
       objectExists: async (objectId) => (await objects.metadata(objectId)) !== undefined,
       // ==========================================================================================
       // JOB 3934 RUNDE 3 — DIE QUELLENSPERRE GILT AUCH FÜR DEN PROMOTE.
