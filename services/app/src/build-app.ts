@@ -465,8 +465,8 @@ import {
   PgKlaraNotizRepo,
 } from "./klara-notiz";
 import { QuellgeschuetzteKlaraNotizen } from "./klara-wissen-quellschutz";
-import { KlaraWissensDienst } from "./klara-wissensuebernahme";
 import { KlaraWissenspflegeQuellen } from "./klara-wissenspflege-quellen";
+import { KlaraWissensDienst } from "./klara-wissensuebernahme";
 // ADMIN-12: Kommunikationsregeln, persönliche Abwahl und Zustellstatus — haltbar im Postgres-
 // Betrieb, im Speicher ohne Datenbank.
 import {
@@ -564,6 +564,7 @@ import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
 import { datenschutzRoutes } from "./routes/datenschutz-routes";
 import { eigenerKalenderRoutes } from "./routes/eigener-kalender-routes";
+import { emailEingangRoutes } from "./routes/email-eingang-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { featuresRoutes } from "./routes/features-routes";
 import { freigaberegelnRoutes } from "./routes/freigaberegeln-routes";
@@ -5520,6 +5521,7 @@ export function buildApp(
       guards,
     ),
   );
+  app.register(emailEingangRoutes(services));
   app.register(
     captureRoutes(
       {
