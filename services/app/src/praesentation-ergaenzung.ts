@@ -148,6 +148,7 @@ async function verwendbarIn(
 function hatPrognose(s: DatenpunktSicht): boolean {
   return (
     s.erfassung === "prognose" ||
+    s.annahmen.length > 0 ||
     !!s.rechenweg?.eingaben.some((e) => e.lesbar && hatPrognose(e.datenpunkt))
   );
 }

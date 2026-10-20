@@ -289,6 +289,18 @@ describe("PP-06 · Datenlücken passend ergänzen", () => {
     expect((await w.vorschau()).body.kandidaten[0]?.passend).toBe(false);
   });
 
+  it("gibt eine ausdrücklich vermerkte Annahme auch bei manueller Erfassung nicht als beobachteten Wert aus", async () => {
+    const id = await w.erfasse({
+      erfassung: "manuell",
+      annahmen: ["Nur angenommener Umsatz bei unverändertem Umfang"],
+      modellbezug: "Fiktives Szenario",
+    });
+    const v = await w.vorschau();
+    expect(v.body.kandidaten[0]?.passend).toBe(false);
+    expect(v.body.kandidaten[0]?.gruende.join(" ")).toContain("kein beobachteter");
+    expect((await w.uebernehmen(v.body, id)).status).toBe(409);
+  });
+
   it("unterscheidet passende und unpassende Quellen und schützt die Datenfassung der Vorschau", async () => {
     const id = await w.erfasse();
     await w.erfasse({ zeitraum: "Q4 2025" });
