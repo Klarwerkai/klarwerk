@@ -53,6 +53,8 @@
       "apps/web/public/word-addin/anleitung.js",
       "apps/web/public/word-addin/begleiter.js",
       "apps/web/public/word-addin/taskpane.js",
+      "apps/web/public/word-addin/lernziel.js",
+      "apps/web/public/word-addin/vormachen.js",
       "apps/web/public/word-addin/taskpane.css",
       "apps/web/public/office-addin/hostkern.js",
       "apps/web/public/office-addin/taskpane.js",

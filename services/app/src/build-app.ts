@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -28,6 +29,7 @@ import {
   parseConfiguredReceiptSecret,
 } from "../../ask";
 import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "../../audit";
+import { hashTokenAtRest } from "../../auth";
 import {
   AuthService,
   InMemoryPasswordResetRepo,
@@ -272,6 +274,13 @@ import {
   baueFaehigkeiten,
   ladeKontext,
 } from "./assistenz-faehigkeiten-anbindung";
+import { routineSperre } from "./assistenz-lernen-p06";
+import {
+  type RoutinenAusfuehren,
+  type RoutinenAusfuehrung,
+  RoutinenZeitsteuerung,
+  type ZeitplanLaufErgebnis,
+} from "./assistenz-lernen-zeitsteuerung";
 // produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil je Konto — haltbar im
 // Postgres-Betrieb, im Speicher ohne Datenbank.
 import {
@@ -288,6 +297,7 @@ import {
   InMemoryBearbeitungsRepo,
   PgBearbeitungsRepo,
 } from "./bearbeitungshinweis";
+import { beschaffungsTermin } from "./beschaffung-lernzeit";
 import { type BestandsresetDienst, pgBestandsresetDienst } from "./bestandsreset-dienst";
 // JOB 3510/3578: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — im Postgres-Betrieb haltbar
 // (`PgBrandingSettingsRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
@@ -388,6 +398,7 @@ import {
   type KlaraAufgabeRepo,
   PgKlaraAufgabeRepo,
 } from "./klara-aufgabe";
+import { KlaraAusfuehrung, type KlaraRufe, type KlaraVorWirkung } from "./klara-ausfuehrung";
 // produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal der Begleitapp (nur Arbeitsspeicher).
 import { BegleiterKanal } from "./klara-begleiter";
 // produkt:20261011:assistenz-browser-aktionen (BPA-03): der Vertrag des Browseradapters und sein
@@ -470,6 +481,7 @@ import {
   PgLoeschantragRepo,
   offeneLoeschantragMeldungen,
 } from "./loeschantraege";
+import type { LoeschmarkierungsAblage } from "./loeschmarkierungen";
 import {
   gelisteteMeldung,
   istStapelRahmenListe,
@@ -492,6 +504,7 @@ import {
   createPaarpflichtAusfuehrung,
   paarpflichtPrueferFuer,
 } from "./paarpflicht-ausfuehrung";
+import { FunktionenDienst, RoutinenFunktionenRepo } from "./persoenliche-funktionen";
 import {
   type DatenpunktAblage,
   PgDatenpunktAblage,
@@ -518,6 +531,7 @@ import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
 // produkt:20261011:assistenz-skills-werkzeuge: Übersicht, Vormerkungen und Aufträge der Fähigkeiten.
 import { assistenzFaehigkeitenRoutes } from "./routes/assistenz-faehigkeiten-routes";
+import { assistenzLernenRoutes } from "./routes/assistenz-lernen-routes";
 // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil (Name, Avatar, Ersteinrichtung).
 import { assistenzProfilRoutes } from "./routes/assistenz-profil-routes";
 import { auditRoutes, ketteneinsichtKonten } from "./routes/audit-routes";
@@ -592,6 +606,10 @@ import { officeRoutes } from "./routes/office-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
+import {
+  persoenlicheFunktionenRoutes,
+  quellenLeser,
+} from "./routes/persoenliche-funktionen-routes";
 import { praesentationDatenRoutes } from "./routes/praesentation-daten-routes";
 import { produktbudgetRoutes } from "./routes/produktbudget-routes";
 import { programmadapterRoutes } from "./routes/programmadapter-routes";
@@ -621,6 +639,7 @@ import {
 import { vorfuehrungRoutes } from "./routes/vorfuehrung-routes";
 // produkt:20261007:templates-default — Vorlagen, Standards, Space-Vorgaben, Nutzung, Begriffe.
 import { vorlagenRoutes } from "./routes/vorlagen-routes";
+import { vormachenRoutes } from "./routes/vormachen-routes";
 import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
 import { wissensempfehlungRoutes } from "./routes/wissensempfehlung-routes";
 // ADMIN-11: Wissenskennzahlen mit Grundmenge, Datenstand und Weg in die Arbeitsliste.
@@ -701,6 +720,14 @@ import {
   type VorlagenEinreichungPort,
   vorlagenEinreichung,
 } from "./vorlagen";
+import {
+  InMemoryRoutinenRepo,
+  PgRoutinenRepo,
+  type RoutinenRepo,
+  VormachenDienst,
+  clientSchluessel,
+} from "./vormachen";
+import { arbeitswegBeobachtung } from "./vormachen-arbeitswege";
 // R-1656: „Du solltest auch wissen…" — der Co-Reading-Zähler ist im Postgres-Betrieb haltbar.
 import {
   InMemoryMitgelesenRepo,
@@ -872,6 +899,8 @@ export interface AppServices {
    * (`PgKlaraGespraechRepo`), sonst die In-Memory-Ablage.
    */
   klaraGespraeche: KlaraGespraechRepo;
+  vormachenRoutinen: RoutinenRepo;
+  sitzungsablage?: SessionRepo;
   /**
    * produkt:20261010:klara-eigener-kalender (AW-16): die internen Kalendereinträge und die Sichtwahl
    * je Konto (`eigener-kalender.ts`). Wie `klaraGespraeche` NICHT in `AppRepos`; im Postgres-Betrieb
@@ -1532,6 +1561,7 @@ export function assembleServices(
     mitgelesen?: MitgelesenRepo;
     // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     klaraGespraeche?: KlaraGespraechRepo;
+    vormachenRoutinen?: RoutinenRepo;
     // produkt:20261010:klara-eigener-kalender: gesetzt von `buildPgServices`; sonst im Speicher.
     eigenerKalender?: EigenerKalenderRepo;
     // produkt:20261007:klara-notizen-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
@@ -2016,6 +2046,8 @@ export function assembleServices(
     mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
     // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
     klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
+    vormachenRoutinen: opts.vormachenRoutinen ?? new InMemoryRoutinenRepo(),
+    sitzungsablage: repos.sessions,
     // produkt:20261010:klara-eigener-kalender — Postgres, wenn injiziert, sonst im Speicher.
     eigenerKalender: opts.eigenerKalender ?? new InMemoryEigenerKalenderRepo(),
     // produkt:20261007:klara-notizen-aufgaben: die Notizen — Postgres, wenn injiziert, sonst im Speicher.
@@ -2567,6 +2599,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
       // Neustart und Deploy (`KLARA_GESPRAECH_SCHEMA`, angelegt von `migrate()`).
       klaraGespraeche: new PgKlaraGespraechRepo(pool),
+      vormachenRoutinen: new PgRoutinenRepo(pool),
       // produkt:20261010:klara-eigener-kalender: ein interner Termin und die Sichtwahl überleben
       // Neuladen, Neustart und Deploy (`EIGENER_KALENDER_SCHEMA`, angelegt von `migrate()`).
       eigenerKalender: new PgEigenerKalenderRepo(pool),
@@ -3625,6 +3658,8 @@ export function buildApp(
   // (Nachtrag fehlender Prüfprotokoll-Enden, dann Löschen abgelaufener Sitzungen). `server.ts`
   // startet ihn (`klara-aufraeumen.ts`); ohne Option läuft nichts (Tests).
   opts: {
+    loeschmarkierungen?: LoeschmarkierungsAblage | undefined;
+    routinenZeitsteuerung?: (lauf: (jetzt?: number) => Promise<ZeitplanLaufErgebnis[]>) => void;
     factoryReset?: FactoryReset;
     // P08-AC05: der SSO-Anbieter für die zweimalige Wiederanmeldung des Firmenresets. Ohne Angabe
     // derselbe Anbieter wie für die Anmeldung (`createOidcProviderFromEnv`); Tests setzen eine
@@ -4267,7 +4302,13 @@ export function buildApp(
     vorkommenSperre: (kontoId, erinnerungId, vorkommenId) =>
       kalenderAnbindungDienst.vorkommenSperre(kontoId, erinnerungId, vorkommenId),
   });
-  const erinnerungTaktMs = opts.klaraErinnerungen?.(() => erinnerungSteuerung.lauf()) ?? null;
+  const gelernteFunktionen: { lauf?: (jetzt?: number) => Promise<ZeitplanLaufErgebnis[]> } = {};
+  const erinnerungTaktMs =
+    opts.klaraErinnerungen?.(async () => {
+      const bericht = await erinnerungSteuerung.lauf();
+      await gelernteFunktionen.lauf?.();
+      return bericht;
+    }) ?? null;
   app.register(klaraAiRoutes({ sessions: klaraSessions }, guards));
   // Erhaltener Office-Kontextanschluss aus 8fcd735fe (KLARA-OFFICE-01/02), derselbe Sitzungskern.
   app.register(
@@ -5837,13 +5878,25 @@ export function buildApp(
   // produkt:20261008:klara-basis: die eigenen Klara-Gespräche. Eine Antwort aus dem Frageweg wird
   // gegen DIESELBE Antwortablage geprüft wie die Herkunft im Gedächtnis.
   // BPA-13: DIESELBE Dienstinstanz trägt auch die KI-Aufträge des Gesprächs (kein zweiter Verlauf).
+  const programmSiegel = new BindungsSiegel();
   const klaraGespraechDienst = new KlaraGespraechDienst({
     repo: services.klaraGespraeche,
     antworten: services.answerSnapshots,
   });
+  // BPA-06: ein Auftrag aus einem Routinenlauf wirkt nur, solange die Routine es zulässt. Die
+  // Prüfung kennt den Vormachdienst erst weiter unten; bis dahin wird nichts ausgeführt.
+  let routinenPruefung: KlaraVorWirkung | null = null;
+  const vorWirkung: KlaraVorWirkung = (kontoId, herkunft) =>
+    routinenPruefung
+      ? routinenPruefung(kontoId, herkunft)
+      : Promise.resolve("Die Routine lässt sich gerade nicht prüfen. Nichts geändert.");
   app.register(
-    klaraGespraechRoutes({ dienst: klaraGespraechDienst, audit: services.audit }, guards),
+    klaraGespraechRoutes(
+      { dienst: klaraGespraechDienst, audit: services.audit, vorWirkung },
+      guards,
+    ),
   );
+
   // produkt:20261011:assistenz-browser-aktionen (BPA-03): berechtigte Funktionen auf einer
   // Browserseite. DIESELBE Gesprächsinstanz trägt den Verlauf (kein zweiter), dieselbe
   // Anmeldeprüfung die Rechte je Schritt; die Seite erreicht nur die Erweiterung.
@@ -6190,7 +6243,180 @@ export function buildApp(
         assistenzProfil: new AssistenzProfilDienst({ repo: services.assistenzProfile }),
         objekte: services.objects,
         audit: services.audit,
-        siegel: new BindungsSiegel(),
+        siegel: programmSiegel,
+      },
+      guards,
+    ),
+  );
+  const funktionenDienst = new FunktionenDienst({
+    repo: new RoutinenFunktionenRepo(services.vormachenRoutinen),
+    gespraeche: services.klaraGespraeche,
+  });
+  app.register(
+    persoenlicheFunktionenRoutes(
+      { dienst: funktionenDienst, kos: services.ko, audit: services.audit },
+      guards,
+    ),
+  );
+  // produkt:20261011:peter-p06: Vormachen und persönliche Routine — nur das Konto der Sitzung.
+  // Lernsitzungen mit Rohdaten flüchtig im Dienst, bestätigte Routinen dauerhaft
+  // (`services.vormachenRoutinen`); eine Firmenübergabe nutzt den vorhandenen Entwurfsweg.
+  const vormachen = new VormachenDienst({
+    routinen: services.vormachenRoutinen,
+    loeschmarkierungen: opts.loeschmarkierungen,
+  });
+  // Mitschreiben an den VORHANDENEN Arbeitswegen (`vormachen-arbeitswege.ts`): nur bei einer
+  // erfolgreichen Antwort und nur, wenn irgendwo eine Lernsitzung offen ist — ohne sie wird nicht
+  // einmal die Anmeldung aufgelöst. Ob DIESE Person lernt, Host/Vorgang gewählt hat und der
+  // Lernzustand in genau diesem Client sichtbar ist (`clientSchluessel` aus dem Anmeldetoken),
+  // entscheidet der Dienst. Ein Fehler hier ändert die Antwort des Arbeitswegs nicht.
+  //
+  // JE ANFRAGE GENAU EINE BEOBACHTUNG (Prüflauf zu a14c7163: als in `onSend` mitgeschrieben wurde,
+  // stand jeder Arbeitsweg doppelt in der Lernnotiz — `onSend` kann für dieselbe Antwort mehr als
+  // einmal laufen). Deshalb zwei Stufen: `onSend` MERKT sich nur den gesendeten Rumpf (für die
+  // Kennung eines NEUEN Entwurfs, Zielbezug „Entwurf aus Schritt n") und gibt ihn unverändert
+  // weiter; mitgeschrieben wird in `onResponse`, das je Anfrage einmal läuft — zusätzlich gegen
+  // Wiederholung gesperrt. Beide Merker hängen an der rohen Anfrage und verschwinden mit ihr.
+  const gesendeterRumpf = new WeakMap<object, unknown>();
+  const schonBeobachtet = new WeakSet<object>();
+  // Synchron mit `done` wie jeder onSend-Hook der App (`sync-onsend-hooks.test.ts`,
+  // `tests/app/mega71-onsend-synchron.test.ts`): kein Warten, nur der Merker, Rumpf unverändert.
+  app.addHook("onSend", (request, reply, payload, done) => {
+    if (vormachen.hatOffeneSitzungen() && reply.statusCode >= 200 && reply.statusCode < 300) {
+      gesendeterRumpf.set(request.raw, payload);
+    }
+    done(null, payload);
+  });
+  app.addHook("onResponse", async (request, reply) => {
+    if (!vormachen.hatOffeneSitzungen() || reply.statusCode < 200 || reply.statusCode >= 300) {
+      return;
+    }
+    if (schonBeobachtet.has(request.raw)) {
+      return;
+    }
+    schonBeobachtet.add(request.raw);
+    try {
+      const beobachtung = arbeitswegBeobachtung({
+        methode: request.method,
+        route: request.routeOptions.url,
+        kopf: request.headers,
+        rumpf: request.body,
+        parameter: request.params,
+        antwort: gesendeterRumpf.get(request.raw),
+      });
+      if (beobachtung) {
+        const token = tokenFromRequest(request);
+        const person = token ? await services.auth.authenticate(token) : undefined;
+        if (person) {
+          vormachen.beobachteArbeitsweg(person.id, beobachtung, clientSchluessel(token));
+        }
+      }
+    } catch {
+      // Nicht mitgeschrieben — der Arbeitsweg selbst ist davon unberührt.
+    }
+  });
+  app.register(
+    vormachenRoutes(
+      {
+        dienst: vormachen,
+        audit: services.audit,
+        entwuerfe: services.capture,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261011:assistenz-lernen-hostfortsetzung (BPA-06): der LAUF einer in P06 bestätigten
+  // Routine — geprüft mit `planeLauf`, ausgeführt als gebundener Auftrag des Aktionskerns (Klara 05)
+  // im eigenen Gespräch. Dieselben Dienste wie oben; kein zweiter Speicher oder Ausführungsweg.
+  routinenPruefung = (kontoId, herkunft) => routineSperre(vormachen, kontoId, herkunft);
+  // BPA-06 AC04/AC05 (Nacharbeit 33): ein fälliger Auftrag wird über DENSELBEN Aktionskern
+  // ausgeführt wie von Hand — `KlaraAusfuehrung` mit der Prüfung vor der Wirkung (`vorWirkung`:
+  // Pause, Löschung, Fassung) und den vorhandenen Türen der Anwendung. Weil hinter einem Takt kein
+  // Browser steht, trägt der Lauf eine KURZLEBIGE LAUFSITZUNG der Person: in derselben Ablage wie
+  // jede Anmeldung, nur als Hash gespeichert, nie ausgegeben, auf zwei Minuten befristet und nach
+  // dem Lauf sofort gelöscht. Jede Tür prüft sie wie jede Sitzung (`authenticate`: Freigabe,
+  // Befristung, Rolle JETZT) — kein Umweg an den Wächtern vorbei, kein zusätzliches Recht.
+  const routinenAusfuehrung = new KlaraAusfuehrung(klaraGespraechDienst, vorWirkung);
+  const fuehreRoutinenauftragAus: RoutinenAusfuehren = async (a) => {
+    const ablage = services.sitzungsablage;
+    if (!ablage) {
+      return { stand: "nicht_ausgefuehrt", fehlerCode: "ohne_laufsitzung", entwurf: null };
+    }
+    const token = randomBytes(32).toString("hex");
+    const schluessel = hashTokenAtRest(token);
+    await ablage.create({ token: schluessel, userId: a.kontoId, expiresAt: Date.now() + 120_000 });
+    try {
+      const rufe: KlaraRufe = async (methode, url, rumpf) => {
+        const r = await app.inject({
+          method: methode,
+          url,
+          headers: { authorization: `Bearer ${token}` },
+          ...(rumpf === undefined ? {} : { payload: rumpf as Record<string, unknown> }),
+        });
+        let daten: unknown = null;
+        try {
+          daten = r.body ? JSON.parse(r.body) : null;
+        } catch {
+          daten = null;
+        }
+        return { status: r.statusCode, daten };
+      };
+      const auftrag = await klaraGespraechDienst.auftrag(a.kontoId, a.gespraech, a.auftragId);
+      const r = await routinenAusfuehrung.fuehreAus(
+        a.kontoId,
+        a.gespraech,
+        a.auftragId,
+        a.schluessel,
+        { nr: 1, auftragFassung: auftrag.fassung },
+        rufe,
+        // Nur dieser Weg: ein vorübergehend gescheiterter Schritt beginnt unter seinem Schlüssel neu.
+        { wiederholeVoruebergehend: true },
+      );
+      const id = r.schritt.ergebnis?.id;
+      const gelesen = id ? await rufe("GET", `/api/drafts/${encodeURIComponent(id)}`) : null;
+      const entwurf =
+        gelesen?.status === 200 ? (gelesen.daten as RoutinenAusfuehrung["entwurf"]) : null;
+      return { stand: r.schritt.stand, fehlerCode: r.schritt.fehlerCode ?? null, entwurf };
+    } finally {
+      await ablage.delete(schluessel);
+    }
+  };
+  // BPA-06 AC05: fällige Zeitplanläufe — dieselben Dienste, derselbe Laufweg; die Rolle wird bei
+  // jedem Termin JETZT gelesen (gesperrt, abgelaufen oder gelöscht: kein Lauf).
+  const routinenZeitsteuerung = new RoutinenZeitsteuerung({
+    beschaffung: (r, jetzt) =>
+      beschaffungsTermin(r, jetzt, funktionenDienst, async () => {
+        const u = await services.auth.kontoLesen(r.kontoId);
+        if (!u?.approved || (u.accessExpiresAt && Date.parse(u.accessExpiresAt) <= jetzt))
+          return null;
+        return {
+          rolle: u.role,
+          quelleLesen: quellenLeser(services.ko, sichtbarkeitsfilterFuer(u)),
+        };
+      }),
+    fuehreAus: fuehreRoutinenauftragAus,
+    vormachen,
+    klara: klaraGespraechDienst,
+    audit: services.audit,
+    konto: async (id) => {
+      const u = await services.auth.kontoLesen(id);
+      const ablauf = u?.accessExpiresAt ? Date.parse(u.accessExpiresAt) : Number.NaN;
+      return u?.approved && !(ablauf <= Date.now()) ? { role: u.role } : undefined;
+    },
+  });
+  gelernteFunktionen.lauf = (jetzt) => routinenZeitsteuerung.lauf(jetzt);
+  opts.routinenZeitsteuerung?.(gelernteFunktionen.lauf);
+  // Die Routen des Laufs — nach der Zeitsteuerung, weil Word-Läufe (Nacharbeit 41) deren Laufweg
+  // nehmen, und mit DEMSELBEN Siegel wie der Programmadapter (BPA-04): eine unter
+  // `/api/klara/programme/verbinden` ausgestellte Bindung gilt auch hier.
+  app.register(
+    assistenzLernenRoutes(
+      {
+        vormachen,
+        klara: klaraGespraechDienst,
+        audit: services.audit,
+        siegel: programmSiegel,
+        zeitsteuerung: routinenZeitsteuerung,
       },
       guards,
     ),

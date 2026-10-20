@@ -34,15 +34,20 @@
 //   · Ausführung und Rücknahme DESSELBEN Schritts laufen in diesem Prozess nacheinander. Ein zweiter,
 //     gleichzeitiger Versuch sieht danach den festgehaltenen Stand und antwortet `wiederholt` — er
 //     wirkt nicht doppelt und meldet eine geschehene Wirkung nicht als gescheitert.
+import { htmlToPlainText } from "../../structure";
 import { aktionskennung, vertragFuer } from "./klara-aktionsverlauf";
-import type {
-  KlaraAufgabenaktion,
-  KlaraAuftrag,
-  KlaraAuftragErgebnis,
-  KlaraAuftragSchritt,
-  KlaraAuftragZiel,
-  KlaraPlanSchritt,
-  KlaraSchreibwirkung,
+import {
+  KLARA_KOERPER_MAX,
+  KLARA_WIEDERHOLBARE_FEHLER,
+  type KlaraAufgabenaktion,
+  type KlaraAuftrag,
+  type KlaraAuftragErgebnis,
+  type KlaraAuftragHerkunft,
+  type KlaraAuftragSchritt,
+  type KlaraAuftragZiel,
+  type KlaraEntwurfsfeld,
+  type KlaraPlanSchritt,
+  type KlaraSchreibwirkung,
 } from "./klara-auftrag";
 import { type KlaraGespraechDienst, KlaraGespraechFehler } from "./klara-gespraech";
 
@@ -55,11 +60,47 @@ export type KlaraRufe = (
 
 type Ergebnis = { auftrag: KlaraAuftrag; schritt: KlaraAuftragSchritt; wiederholt: boolean };
 
+/** BPA-06: `null` = darf wirken; sonst der Grund, warum nicht. */
+export type KlaraVorWirkung = (
+  kontoId: string,
+  herkunft: KlaraAuftragHerkunft,
+) => Promise<string | null>;
+
 interface Entwurf {
   id: string;
   createdAt?: string;
   updatedAt: string;
-  payload: { title?: string; statement?: string };
+  payload: { title?: string; statement?: string; bodyHtml?: unknown } & EntwurfsOrdnung;
+}
+
+type EntwurfsOrdnung = Partial<Record<KlaraEntwurfsfeld, unknown>>;
+
+/**
+ * BPA-06 Nacharbeit 45: der Volltext als Körper — je Zeile ein Absatz, Zeichen maskiert. Derselbe
+ * Entwurfsweg bereinigt ihn danach wie jeden Körper.
+ */
+export function koerperAlsHtml(koerper: string): string {
+  const maskiert = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return koerper
+    .split(/\r\n?|\n/)
+    .map((zeile) => zeile.trim())
+    .filter((zeile) => zeile !== "")
+    .map((zeile) => `<p>${maskiert(zeile)}</p>`)
+    .join("");
+}
+
+/** BPA-06 Nacharbeit 45: steht der Volltext (Leerraum gefaltet) im nachgelesenen Körper? */
+export function koerperSteht(bodyHtml: unknown, koerper: string): boolean {
+  const gelesen = typeof bodyHtml === "string" ? htmlToPlainText(bodyHtml) : "";
+  return gelesen.includes(koerper.replace(/\s+/g, " ").trim());
+}
+
+/** BPA-06: stehen alle strukturiert gesetzten Ordnungsfelder genau so im nachgelesenen Entwurf? */
+function felderStimmen(d: Entwurf, felder: KlaraPlanSchritt["felder"]): boolean {
+  return Object.entries(felder ?? {}).every(
+    ([name, wert]) => d.payload[name as KlaraEntwurfsfeld] === wert,
+  );
 }
 
 /** Eine Zeile der vorhandenen Aufgabenquellen (Konflikte, Lücken) — nur, was hier gelesen wird. */
@@ -139,8 +180,103 @@ const GRUND: Record<string, string> = {
   nichtNachgelesen: "Beim Nachlesen am Server stand die Änderung nicht da.",
   nichtVerfuegbar: "Die Aufgabe ist für dich nicht (mehr) verfügbar. Nichts geöffnet.",
   vorschritt: "Der vorige Schritt hat kein Ergebnis gespeichert — nichts zu öffnen.",
+  // EQF-06-K02: keine Abschwächung einer Schutzstufe durch Übernahme in einen Bericht.
+  schutzstufe:
+    "Eine Quelle ist vertraulich eingestuft. Ihr Inhalt geht nicht in den Bericht. Nichts angelegt.",
+  schutzstufeUngeklaert:
+    "Eine Quelle ist nicht eingestuft. Sie bleibt geschützt, bis sie eingestuft ist. Nichts angelegt.",
+  zuLang: "Der Bericht mit seinen Quellen ist zu lang für einen Entwurf. Nichts angelegt.",
   server: "Der Server hat abgelehnt.",
 };
+
+/** EQF-06-K02: eine jetzt gelesene Quelle — nur, was in den Bericht übernommen wird. */
+export interface GeleseneQuelle {
+  readonly id: string;
+  readonly titel: string;
+  readonly fassung: string;
+  readonly pfad: string;
+  readonly aussage: string;
+}
+
+type QuellFeld =
+  | "title"
+  | "statement"
+  | "version"
+  | "confidentiality"
+  | "confidentialityProvenance";
+type QuellDaten = Partial<Record<QuellFeld, unknown>>;
+
+const QUELLE_TITEL_MAX = 300;
+const QUELLE_AUSSAGE_MAX = 2_000;
+
+/**
+ * EQF-06-K02 / G05 (Nacharbeit 52, Ben zu c52b0e61): darf der Inhalt dieser Quelle in einen
+ * Bericht? Nur bei einer BEKANNTEN, zweckzulässigen Schutzklasse: ausdrücklich `intern`, am
+ * Wissensobjekt selbst gespeichert (`confidentialityProvenance: "ko"`, `discloseConfidentiality`).
+ *   · `vertraulich`/`streng_vertraulich` → `schutzstufe` (keine Abschwächung durch Übernahme).
+ *   · fehlend, `null`, unbekannter Wert oder unbekannte Herkunft → `schutzstufeUngeklaert`: die
+ *     bestehende geschützte Klärung (Entscheidung 16, `sichtbarkeit.ts`: ungeklärt wird wie
+ *     vertraulich geschützt, bis jemand einstuft). Es entsteht kein Bericht.
+ */
+export function quellSchutz(d: QuellDaten): "frei" | "schutzstufe" | "schutzstufeUngeklaert" {
+  if (d.confidentiality === "vertraulich" || d.confidentiality === "streng_vertraulich") {
+    return "schutzstufe";
+  }
+  return d.confidentiality === "intern" && d.confidentialityProvenance === "ko"
+    ? "frei"
+    : "schutzstufeUngeklaert";
+}
+
+/**
+ * EQF-06-K02: jede Quelle JETZT über den vorhandenen Leseweg mit der Anmeldung der Person — nicht
+ * sichtbar oder ohne Recht: der Grund wie bei jedem anderen Ziel, und es entsteht nichts. Übernommen
+ * wird nur eine Quelle mit bekannter, zweckzulässiger Schutzklasse (`quellSchutz`).
+ */
+async function liesQuellen(
+  ids: readonly string[],
+  rufe: KlaraRufe,
+): Promise<{ quellen: GeleseneQuelle[] } | { code: string }> {
+  const quellen: GeleseneQuelle[] = [];
+  for (const id of ids) {
+    const r = await rufe("GET", `/api/kos/${encodeURIComponent(id)}`);
+    if (r.status !== 200 || typeof r.daten !== "object" || r.daten === null) {
+      return { code: r.status === 200 ? "server" : codeAus(r.status) };
+    }
+    const d = r.daten as QuellDaten;
+    const schutz = quellSchutz(d);
+    if (schutz !== "frei") {
+      return { code: schutz };
+    }
+    const titel = typeof d.title === "string" && d.title.trim() ? d.title.trim() : id;
+    const aussage = typeof d.statement === "string" ? d.statement.trim() : "";
+    quellen.push({
+      id,
+      titel: titel.slice(0, QUELLE_TITEL_MAX),
+      fassung: typeof d.version === "number" ? String(d.version) : "unbekannt",
+      pfad: `/wissen/${encodeURIComponent(id)}`,
+      aussage: aussage.slice(0, QUELLE_AUSSAGE_MAX),
+    });
+  }
+  return { quellen };
+}
+
+/**
+ * EQF-06-K02: der Körper mit seinen Quellen — je Quelle eine Zeile mit Titel, Fassung und Ort, darunter
+ * ihre Kernaussage. Damit trägt das Ergebnis den Bezug auf genau die gelesenen Fassungen.
+ */
+export function mitQuellen(koerper: string, quellen: readonly GeleseneQuelle[]): string {
+  const zeilen = quellen.flatMap((q, i) => [
+    `Quelle ${i + 1}: ${q.titel} · Fassung ${q.fassung} · ${q.pfad}`,
+    ...(q.aussage ? [q.aussage] : []),
+  ]);
+  return [koerper.trim(), ...zeilen].filter((z) => z !== "").join("\n");
+}
+
+/** EQF-06-K02: die Zeile, an der der Bezug einer Quelle im Ergebnis erkennbar ist. */
+export function quellZeile(id: string, fassung?: string): string {
+  const ort = `/wissen/${encodeURIComponent(id)}`;
+  return fassung === undefined ? ort : `Fassung ${fassung} · ${ort}`;
+}
 
 function anwenden(payload: Entwurf["payload"], plan: KlaraPlanSchritt): Entwurf["payload"] {
   const a = plan.aenderung;
@@ -168,7 +304,16 @@ export class KlaraAusfuehrung {
   /** PV-02-06: je Schritt die gerade laufende Ausführung oder Rücknahme in diesem Prozess. */
   private readonly laufend = new Map<string, Promise<unknown>>();
 
-  constructor(private readonly dienst: KlaraGespraechDienst) {}
+  /**
+   * `vorWirkung` (BPA-06): für einen Auftrag mit Routinenherkunft die Prüfung des AKTUELLEN Stands
+   * der Routine unmittelbar vor der Wirkung — pausiert, gelöscht oder in anderer Fassung gibt einen
+   * Grund zurück, und es geschieht nichts. Fehlt die Prüfung, wird ein solcher Auftrag nicht
+   * ausgeführt (fail-closed). Aufträge ohne Herkunft sind davon unberührt.
+   */
+  constructor(
+    private readonly dienst: KlaraGespraechDienst,
+    private readonly vorWirkung?: KlaraVorWirkung,
+  ) {}
 
   /** Arbeiten an DEMSELBEN Schritt nacheinander — ein zweiter Versuch wartet auf den ersten. */
   private async nacheinander<T>(schluessel: string, f: () => Promise<T>): Promise<T> {
@@ -197,9 +342,15 @@ export class KlaraAusfuehrung {
     schluessel: string,
     eingabe: { nr?: unknown; auftragFassung?: unknown },
     rufe: KlaraRufe,
+    /**
+     * BPA-06 (Nacharbeit 36): nur die Zeitsteuerung der Routinen setzt `wiederholeVoruebergehend`
+     * — ein mit `server`/`anmeldung` gescheiterter Schritt beginnt dann unter demselben Schlüssel
+     * neu. Ohne Angabe gilt unverändert: gescheitert ist endgültig.
+     */
+    optionen: { wiederholeVoruebergehend?: boolean } = {},
   ): Promise<Ergebnis> {
     return this.nacheinander(`${kontoId}|${gespraechId}|${auftragId}|${schluessel}`, () =>
-      this.fuehreAusAllein(kontoId, gespraechId, auftragId, schluessel, eingabe, rufe),
+      this.fuehreAusAllein(kontoId, gespraechId, auftragId, schluessel, eingabe, rufe, optionen),
     );
   }
 
@@ -210,6 +361,7 @@ export class KlaraAusfuehrung {
     schluessel: string,
     eingabe: { nr?: unknown; auftragFassung?: unknown },
     rufe: KlaraRufe,
+    optionen: { wiederholeVoruebergehend?: boolean },
   ): Promise<Ergebnis> {
     const a = await this.dienst.auftrag(kontoId, gespraechId, auftragId);
     const plan = a.plan ?? [];
@@ -230,12 +382,26 @@ export class KlaraAusfuehrung {
       );
     }
     const vorhanden = a.schritte.find((s) => s.schluessel === schluessel);
+    const erneut =
+      optionen.wiederholeVoruebergehend === true &&
+      vorhanden?.stand === "fehlgeschlagen" &&
+      KLARA_WIEDERHOLBARE_FEHLER.includes(vorhanden.fehlerCode ?? "");
     if (
       vorhanden &&
+      !erneut &&
       (vorhanden.stand !== "begonnen" ||
         (vorhanden.geprueft && (p.aktion === "oeffnen" || p.aktion === "aufgabe_bearbeiten")))
     ) {
       return { auftrag: a, schritt: vorhanden, wiederholt: true };
+    }
+    // BPA-06: ein Auftrag aus einem Routinenlauf wirkt nur, solange die Routine es jetzt zulässt.
+    if (a.herkunft) {
+      const grund = this.vorWirkung
+        ? await this.vorWirkung(kontoId, a.herkunft)
+        : "Die Herkunft dieses Auftrags lässt sich nicht prüfen. Nichts geändert.";
+      if (grund) {
+        throw new KlaraGespraechFehler(409, "herkunft_gesperrt", grund);
+      }
     }
 
     // Das Ziel: aus dem Plan — bei „… und öffne ihn“ das NACHGELESENE Ergebnis des Vorschritts.
@@ -267,6 +433,7 @@ export class KlaraAusfuehrung {
       schluessel,
       { ...basis, auftragFassung: eingabe.auftragFassung, stand: "begonnen" },
       "server",
+      erneut ? { wiederholen: true } : {},
     );
     // PV-02-06: hat ein anderer Versuch (etwa eine zweite Instanz) den Schritt eben begonnen, wirkt
     // dieser nicht noch einmal — er antwortet mit dem festgehaltenen Stand.
@@ -343,10 +510,27 @@ export class KlaraAusfuehrung {
     if (p.aktion === "entwurf_erstellen") {
       let entwurfId = bekannt?.id ?? null;
       let eigenerStand = bekannt?.stand ?? null;
+      // Der Körper, der nachgelesen wird. EQF-06-K02: mit Quellen der beim Anlegen geschriebene —
+      // eine Wiederholung nach bekannter Wirkung liest nur nach, gegen den Text des Plans.
+      let koerper = p.koerper ?? "";
       if (!entwurfId) {
+        if (p.quellen && p.quellen.length > 0) {
+          const gelesen = await liesQuellen(p.quellen, rufe);
+          if ("code" in gelesen) {
+            return scheitert(gelesen.code);
+          }
+          koerper = mitQuellen(koerper, gelesen.quellen);
+          if (koerper.length > KLARA_KOERPER_MAX) {
+            return scheitert("zuLang");
+          }
+        }
         const angelegt = await rufe("POST", "/api/drafts", {
           title: ziel.titel,
           ...(p.inhalt ? { statement: p.inhalt } : {}),
+          // BPA-06: Ordnungsfelder strukturiert über denselben Entwurfsweg (Rechte, Prüfung dort).
+          ...(p.felder ?? {}),
+          // BPA-06 Nacharbeit 45: der Volltext als Körper — wie beim Word-Ganzdokumentweg.
+          ...(koerper ? { bodyHtml: koerperAlsHtml(koerper) } : {}),
           // Der Vorgangsschlüssel ist an Auftrag und Planschritt gebunden: eine Wiederholung legt
           // keinen zweiten Entwurf an.
           operationId: `klara-auftrag-${auftragId}-${p.nr}`,
@@ -381,6 +565,16 @@ export class KlaraAusfuehrung {
         return fremdstand(entwurfId, ziel.titel, eigenerStand);
       }
       if ((gelesen.daten.payload.title ?? "") !== ziel.titel) {
+        return scheitert("nichtNachgelesen");
+      }
+      // BPA-06: jedes gesetzte Ordnungsfeld einzeln nachgelesen — ein anders oder gar nicht
+      // übernommener Wert ist kein Erfolg.
+      if (!felderStimmen(gelesen.daten, p.felder)) {
+        return scheitert("nichtNachgelesen");
+      }
+      // Nacharbeit 45: der ganze Volltext steht im Körper — sonst kein Erfolg. EQF-06-K02: mit den
+      // übernommenen Quellen (Titel, Fassung, Ort, Kernaussage).
+      if (koerper && !koerperSteht(gelesen.daten.payload.bodyHtml, koerper)) {
         return scheitert("nichtNachgelesen");
       }
       await merkeNachher(gelesen.daten);

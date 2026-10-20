@@ -66,6 +66,26 @@ const PAPIERKORB =
 
 export const DATENINVENTAR: readonly Datenart[] = [
   {
+    id: "persoenliche_funktionen",
+    name: "Persönliche Lern- und Beschaffungsfunktionen",
+    inhalt:
+      "Bestätigte Funktionsdefinitionen, Fassungen, Quellenregeln, erlaubter Umfang, Zeitplan, Pause, Laufkennungen und Ergebnisse. Rohbeobachtungen liegen nur flüchtig im Lerndienst.",
+    personenbezug: "ja",
+    personenbezugGrund: "Eigentum, Zweck und Verlauf sind einem Konto zugeordnet.",
+    ablage: { ort: DATENBANK, tabellen: ["persoenliche_routinen"] },
+    taetigkeit: "management",
+    loeschung:
+      "Eigene Privatlöschung im Funktionsbereich entfernt die gemeinsamen Funktionszeilen. Getrennt freigegebenes Firmenwissen bleibt erhalten. Externe Löschmarkierungen müssen nach einem Restore verfügbar sein.",
+    frist: "Bestätigte Funktionen bis zur Privatlöschung; keine automatische Frist.",
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Im eigenen Funktionsbereich lesbar; der allgemeine Selbstauskunftsexport ist noch nicht angeschlossen.",
+    },
+    befund:
+      "Ein Datenbank-Restore ohne dauerhaft eingerichtete Löschmarkierungsablage kann ältere private Funktionen zurückbringen.",
+  },
+  {
     id: "konten",
     name: "Benutzerkonten",
     inhalt:

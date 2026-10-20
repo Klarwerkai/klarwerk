@@ -29,6 +29,7 @@ import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
 import { Zeile, Zeilenkarte } from "../components/einstellungen/Zeilenkarte";
+import { MeineFunktionenDetail } from "../components/funktionen/MeineFunktionen";
 // produkt:20261012:klara-setup-shortcuts-umsetzung: der Bereich „Klara“ mit Tastenkürzeln.
 import {
   KlaraBildAutomatikGruppe,
@@ -629,6 +630,7 @@ export function Profile(): JSX.Element {
   // produkt:20261012:klara-setup-shortcuts-umsetzung: dieselbe Karte heisst jetzt „Klara“; der
   // bisherige Direktweg bleibt gültig, `?bereich=klara` führt ebenso dorthin.
   const zurAssistenz = suche.get("bereich") === "assistenz" || suche.get("bereich") === "klara";
+  const zuFunktionen = ["funktionen", "routinen", "vormachen"].includes(suche.get("bereich") ?? "");
   const [detail, setDetail] = useState<
     | null
     | "passwort"
@@ -638,7 +640,8 @@ export function Profile(): JSX.Element {
     | "meineDaten"
     | "loeschantrag"
     | "assistenz"
-  >(ausSso ? "kontodaten" : zurAssistenz ? "assistenz" : null);
+    | "funktionen"
+  >(ausSso ? "kontodaten" : zurAssistenz ? "assistenz" : zuFunktionen ? "funktionen" : null);
   const assistenz = useAssistenzAnzeige();
   const assistenzStand = useAssistenzStand();
   const zweiFaktor = useQuery({ queryKey: ZWEI_FAKTOR_KEY, queryFn: authApi.secondFactorStatus });
@@ -665,6 +668,7 @@ export function Profile(): JSX.Element {
       {detail === "zweifaktor" ? <ZweiFaktorDetail onZurueck={zurueck} /> : null}
       {detail === "meineDaten" ? <MeineDatenDetail onZurueck={zurueck} /> : null}
       {detail === "loeschantrag" ? <LoeschantragDetail onZurueck={zurueck} /> : null}
+      {detail === "funktionen" ? <MeineFunktionenDetail onZurueck={zurueck} /> : null}
       {detail === "assistenz" ? <MeineAssistenzDetail onZurueck={zurueck} /> : null}
       {detail === null ? (
         <Zeilenkarte>
@@ -701,6 +705,11 @@ export function Profile(): JSX.Element {
             }
             onOeffnen={() => setDetail("assistenz")}
             testId="zeile-assistenz"
+          />
+          <Zeile
+            label={t("funktionen.titel")}
+            onOeffnen={() => setDetail("funktionen")}
+            testId="zeile-funktionen"
           />
           <Zeile
             label={t("prof.passwordTitle")}
