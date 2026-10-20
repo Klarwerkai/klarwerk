@@ -67,10 +67,10 @@ Datenpunkte. Ein fehlgeschlagener Readback antwortet mit `PP05_TEILWIRKUNG` und 
 `Cache-Control: no-store`.
 
 Die Datei ist eine Momentaufnahme mit lesbaren Belegfolien. Ein Empfänger erhält keine Klarwerkrechte.
-Spätere Quell-Rechteänderungen widerrufen bereits kopierte Belege/Dateien nicht. Eine dynamische
-Quellenrechtsprüfung jedes erneuten Downloads einer schon erzeugten Datei ist hier nicht ergänzt;
-der normale Anhangabruf prüft den Zielartikel. Dieser Export-/Abrufaspekt bleibt vor einem vollständigen
-Originalabschluss unabhängig zu beurteilen. Kein neuer Synchronisations- oder Freigabeanspruch.
+Spätere Quell-Rechteänderungen widerrufen bereits kopierte Belege/Dateien nicht. Im historischen Teilstand
+`ae10cc6b` war die dynamische Quellenrechtsprüfung erneuter Downloads noch offen. Der getrennte
+Nachtrag unten schließt diese Kante im tatsächlichen Object-Downloadcaller. Kein neuer
+Synchronisations- oder Freigabeanspruch.
 
 ## Fester Deckvertrag für PP-07 und PP-08
 
@@ -118,11 +118,50 @@ zunächst roter Testvorrichtungen und deren Korrekturen.
 
 Offen bleiben echte neue H01-PowerPoint-Mac-/H02-Web-Bearbeitung mit Speichern/Wiederöffnen,
 importierte Datei außerhalb des bestehenden Anhangwegs, visuelle Prüfung der nativen Ausgabe,
-echter Screenreader, Audio, PP-04-Bildhostintegration, globale Rechteentziehung an bereits erzeugten
-Snapshots, unabhängiger ursprünglicher Ben, reguläre Integration/Providerabschluss/Liveprüfung und
+echter Screenreader, Audio, PP-04-Bildhostintegration, Zurückrufen bereits lokal gespeicherter Kopien, unabhängiger ursprünglicher Ben, reguläre Integration/Providerabschluss/Liveprüfung und
 zentraler B1-Abschluss. Browserlauf H04 ist separat kandidatgebunden zu protokollieren. Grenzen:
 1–12 Datenpunkte, kurze native Werte/Bezugsrahmen, 80 Herkunftsknoten, höchstens 160 neue Folien,
 bestehende Layoutvorlage mit Standardformat; keine freie Generierung unbelegter Geschichten.
 
 Implementiert, eigengeprüft, unabhängig geprüft, installiert, live und Originalauftrag abgeschlossen
 sind getrennte Zustände. Hier wird ausschließlich ein implementierter Teilkern zur Prüfung geliefert.
+
+
+## Nachtrag · dynamische Rechte am erneuten Dateidownload
+
+Der tatsächliche Caller `objectRoutes.urteile` schützt `/api/objects/:id/raw`,
+`/api/objects/:id` (enthält dieselben Bytes als Daten-URL) und `/api/objects/:id/traeger`.
+`praesentation-snapshot-recht.ts` ergänzt dort ausschließlich ein UND zum vorhandenen
+`beurteileAnhang`/`privatesFolgeprodukt`. Die Kompositionswurzel reicht dieselbe PP-02-
+`datenUmgebung` der angemeldeten Person frisch je Anfrage durch. Normale Dateien erhalten
+keinen neuen ZIP-Parserlauf; erkannte PP-05-Pakete verwenden die vorhandenen Archivgrenzen.
+
+Für ein PP-05-Deck sind das unveränderte `klara-pp05-v1`-Manifest, echte PP-02-Datenfassungen
+(`inFassung`), aktuelle Quell-/Heimat-/Zielartikelrechte (`vollLesbar` über `darfSehen`),
+verwendete Eingabefassungen und die tatsächlich gespeicherten Element-/Zellen-/Dateibindungen
+nötig. Mindestens eine passende Bindung muss Objektkennung UND SHA256 der ausgelieferten
+Bytes bestätigen. Ein bloß kopiertes Manifest oder Belegtext erteilt keine Erlaubnis.
+Frühere erhaltene Deckteile folgen ihren bestehenden Dateifassungsbindungen; die Rechte
+werden dabei ebenfalls frisch gelesen. Fehlende Eingaben, ungültige Manifeste, nicht mehr
+passende native Elemente oder fehlende Dateibindung führen zur normalen 404-Antwort.
+Eine als Teilwirkung gespeicherte Datei ohne vollständige Bindung bleibt entsprechend gesperrt.
+
+Der Entzug einer auch nur transitiv verwendeten Quelle sperrt beim nächsten Abruf alle drei
+URLs. Status, Fehlerkörper und `Cache-Control: no-store` sind wie bei einer unbekannten
+Objektkennung. Berechtigte Leser können die Datei weiterhin abrufen; eine inzwischen
+vertrauliche Quelle führt auch bei ihnen zu `no-store`. Unvertrauliche gültige Ausgaben
+behalten `private, no-cache, must-revalidate`, damit der nächste Abruf erneut prüft.
+
+`pp05-snapshot-download.test.ts` prüft den echten `buildApp`-Caller, reguläre fiktive Anmeldung,
+wirkliche PP-05-Erzeugung/Übernahme und anschließenden Download: Positiv/Entzug/Wiederfreigabe,
+berechtigte Gegenprobe, historische Datenfassung/Vorgängerdeck und Zielentzug, umbenannte Kopie
+ohne Dateibindung sowie fehlende verwendete Eingabe (gezielte Fehler-Einspritzung). Die vier
+bestehenden MIME-/Disposition-Fälle in `object-raw-xss.test.ts` sichern die konkret berührte
+gewöhnliche Rohbyteausgabe. Keine Wiederholung der unveränderten 59 Original-Teilbelege.
+
+Der PP-07/08-Transportvertrag und die Erzeugung bleiben unverändert. Eine spätere
+Fassungsübernahme muss den vorhandenen Deckvertrag und echte neue PP-02-Dateibindungen erhalten;
+keine Rechte werden aus einer verloren gegangenen oder unpassenden Zuordnung erfunden.
+Die Änderung gilt ausschließlich den genannten Download-/Rückverweiscallern. Sie behauptet
+keine native Hostprüfung, keinen Rückruf bereits heruntergeladener lokaler Kopien und
+keine globale Transaktion über mehrere Quellartikel.
