@@ -9,6 +9,7 @@ import { vortragsWelt } from "./pp08-welt";
 it("PP08 · Browser: Tastaturöffnung, Beleg, explizite Probe und gespeicherte persönliche Nachbereitung", async () => {
   const w = await vortragsWelt((app) => registerWebStatic(app, resolve("apps/web/dist")));
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let seite: Awaited<ReturnType<NonNullable<typeof browser>["newPage"]>> | undefined;
   try {
     const basis = await w.app.listen({ host: "127.0.0.1", port: 0 });
     browser = await chromium.launch({ headless: true });
@@ -22,6 +23,7 @@ it("PP08 · Browser: Tastaturöffnung, Beleg, explizite Probe und gespeicherte p
       })}\n`,
     );
     const page = await browser.newPage({ viewport: { width: 1280, height: 950 } });
+    seite = page;
     const vortragAnfragen: string[] = [];
     page.on("request", (r) => {
       if (r.url().endsWith("/vortrag")) vortragAnfragen.push(r.method());
@@ -32,6 +34,7 @@ it("PP08 · Browser: Tastaturöffnung, Beleg, explizite Probe und gespeicherte p
     await page.getByRole("button", { name: "Anmelden", exact: true }).click();
     await page.waitForURL((u) => u.pathname !== "/login");
     await page.goto(`${basis}/wissen/${w.koId}`);
+    await page.getByTestId("bib-sprung-anhaenge").click();
     await page.getByRole("button", { name: "Im Artikel öffnen", exact: true }).click();
     const bereich = page.locator("[data-vortrag]");
     await bereich.locator("summary").first().focus();
@@ -110,6 +113,19 @@ it("PP08 · Browser: Tastaturöffnung, Beleg, explizite Probe und gespeicherte p
     expect(
       (await w.ruf("GET", `/api/me/klara/aufgaben/${gespeichert[0].id}`)).body.aufgabe.inhalt,
     ).toContain("Eigene Notiz 20.10.2026, Punkt 3");
+  } catch (f) {
+    if (seite && process.env.KLARWERK_PP08_BELEGE) {
+      await seite
+        .screenshot({ path: `${process.env.KLARWERK_PP08_BELEGE}/pp08-fehler.png`, fullPage: true })
+        .catch(() => undefined);
+      process.stderr.write(
+        `PP08_VISIBLE_FAILURE ${await seite
+          .locator("body")
+          .innerText()
+          .catch(() => "nicht mehr erreichbar")}\n`,
+      );
+    }
+    throw f;
   } finally {
     await browser?.close();
     await w.app.close();
