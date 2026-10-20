@@ -26,11 +26,31 @@ function Eintrag({
     text: string,
     tage: number,
     darstellung: GedaechtnisEintrag["darstellung"],
+    ausnahme: { bis: string; begruendung: string } | null,
   ) => void;
   loeschen: (e: GedaechtnisEintrag) => void;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [text, setText] = useState(e.inhalt);
+  const [mitAusnahme, setMitAusnahme] = useState(Boolean(e.aufbewahrungAusnahme));
+  const [ausnahmeBis, setAusnahmeBis] = useState(e.aufbewahrungAusnahme?.bis.slice(0, 16) ?? "");
+  const [begruendung, setBegruendung] = useState(e.aufbewahrungAusnahme?.begruendung ?? "");
+  const [ungueltig, setUngueltig] = useState(false);
+  const speichernMitAusnahme = (): void => {
+    const ende = Date.parse(`${ausnahmeBis}Z`);
+    if (mitAusnahme && (!begruendung.trim() || !Number.isFinite(ende))) {
+      setUngueltig(true);
+      return;
+    }
+    setUngueltig(false);
+    speichern(
+      e,
+      text,
+      tage,
+      darstellung,
+      mitAusnahme ? { bis: new Date(ende).toISOString(), begruendung } : null,
+    );
+  };
   const [tage, setTage] = useState(e.aufbewahrungTage);
   const [darstellung, setDarstellung] = useState(e.darstellung);
   return (
@@ -83,12 +103,58 @@ function Eintrag({
           </select>
         </label>
       ) : null}
+      <fieldset
+        className="space-y-2 rounded border border-hairline p-2"
+        data-testid="gedaechtnis-ausnahme"
+      >
+        <legend>{t("klaragedaechtnis.ausnahmeTitel")}</legend>
+        <label className="flex gap-2">
+          <input
+            type="checkbox"
+            checked={mitAusnahme}
+            onChange={(ev) => setMitAusnahme(ev.target.checked)}
+          />
+          {t("klaragedaechtnis.ausnahmeAn")}
+        </label>
+        <p className="text-[12px] text-muted">{t("klaragedaechtnis.ausnahmeHilfe")}</p>
+        {mitAusnahme ? (
+          <>
+            <label className="block">
+              {t("klaragedaechtnis.ausnahmeBis")}
+              <input
+                className={FELD}
+                type="datetime-local"
+                value={ausnahmeBis}
+                onChange={(ev) => setAusnahmeBis(ev.target.value)}
+              />
+            </label>
+            <label className="block">
+              {t("klaragedaechtnis.ausnahmeGrund")}
+              <textarea
+                className={FELD}
+                value={begruendung}
+                maxLength={500}
+                onChange={(ev) => setBegruendung(ev.target.value)}
+              />
+            </label>
+            {e.aufbewahrungAusnahme ? (
+              <p className="text-[12px]">
+                {t("klaragedaechtnis.ausnahmeVerantwortlich", {
+                  wer: e.aufbewahrungAusnahme.verantwortlich,
+                  bis: e.aufbewahrungAusnahme.bis,
+                })}
+              </p>
+            ) : null}
+          </>
+        ) : null}
+        {ungueltig ? <p role="alert">{t("klaragedaechtnis.ausnahmeFehler")}</p> : null}
+      </fieldset>
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           className={KNOPF}
           disabled={gesperrt || !text.trim()}
-          onClick={() => speichern(e, text, tage, darstellung)}
+          onClick={speichernMitAusnahme}
         >
           {t("klaragedaechtnis.speichern")}
         </button>
@@ -165,8 +231,8 @@ function Inhalt({ kontoId }: { kontoId: string }): JSX.Element {
                   e={e}
                   fristen={fristen}
                   gesperrt={busy}
-                  speichern={(e, inhalt, n, d) =>
-                    void mutiere(() => gedaechtnisApi.aendern(e, inhalt, n, d))
+                  speichern={(e, inhalt, n, d, a) =>
+                    void mutiere(() => gedaechtnisApi.aendern(e, inhalt, n, d, a))
                   }
                   loeschen={(e) => void mutiere(() => gedaechtnisApi.loeschen(e.id), true)}
                 />

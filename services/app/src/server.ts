@@ -20,7 +20,12 @@ import {
   starteKlaraErinnerungen,
 } from "./klara-erinnerung-start";
 import { registerNoindexHook } from "./noindex-hook";
-import { LOG_DATEI_ENV, PROTOKOLL_FRIST_TAGE, starteProtokollPflege } from "./protokoll-frist";
+import {
+  LOG_DATEI_ENV,
+  PROTOKOLL_FRIST_ENV,
+  leseProtokollFristTage,
+  starteProtokollPflege,
+} from "./protokoll-frist";
 import {
   DOCKER_LOG_MAX_SIZE_ENV,
   leseMaxSize,
@@ -352,7 +357,9 @@ async function start(): Promise<void> {
   // R-0664 · Peters Entscheidung 2 (12.10.2026): Serverprotokolle 14 Tage, dann automatisch gelöscht
   // — am tatsächlichen Speicherort, einschliesslich Diagnosekopien im Protokollordner. Wirkt, wo
   // `start.command` die Ausgabedatei nennt (Insel); im Docker-Betrieb ist sie nicht gesetzt.
+  const protokollFristTage = leseProtokollFristTage(process.env[PROTOKOLL_FRIST_ENV]);
   const protokollPflege = starteProtokollPflege({
+    fristTage: protokollFristTage,
     datei: process.env[LOG_DATEI_ENV],
     onGepflegt: (ergebnis) =>
       app.log.info(
@@ -365,7 +372,7 @@ async function start(): Promise<void> {
     onError: (error) => app.log.warn({ err: error }, "Protokollpflege übersprungen."),
   });
   if (protokollPflege) {
-    app.log.info(`Protokollpflege aktiv — Frist ${PROTOKOLL_FRIST_TAGE} Tage.`);
+    app.log.info(`Protokollpflege aktiv — Frist ${protokollFristTage} Tage.`);
   }
   // R-0664 (Ben, Nacharbeit 16): im Docker-Betrieb rotiert Docker die aktive Protokolldatei täglich
   // selbst — angestossen durch einen inhaltsfreien Füllblock (protokoll-rotationsimpuls.ts). Wirkt

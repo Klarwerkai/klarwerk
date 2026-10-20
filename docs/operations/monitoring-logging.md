@@ -156,3 +156,28 @@ Real geprüft (sandbox-sicher, gegen lokale In-Memory-Instanz, nach Demo-Seed + 
 ---
 
 *Read-only Ops-Runbook. Kein Produktcode geändert; kein Dashboard/Alert installiert oder vorgetäuscht. Sandbox-Evidence ausschließlich Health/Status/ModelRun/Audit (§12).*
+
+### P10 · getrennte Betriebsangaben am vorhandenen Weg
+
+`KLARWERK_DIAGNOSE_FRIST_TAGE` konfiguriert die vorhandene Diagnosepflege mit positiven ganzen
+Tagen; ohne Wert bleiben die entschiedenen 14 Tage erhalten. Server-Dateipflege, Docker-Hostlauf und
+sein Bericht verwenden denselben reinen Parameterleser. Ungültige Werte werden vor Pflegebeginn
+abgewiesen. Dies ist eine ausdrückliche technische Betreiberkonfiguration, keine neue Rechtsfrist;
+E hat keine Produktionsvariable geändert. Die bestehenden Auswahlgrenzen für fremde Container und
+Nachweise bleiben bestehen.
+
+Die vorhandene geschützte VVT-Ausgabe führt vier Zwecke getrennt: Diagnose, Sicherheit, Audit und
+Privatverlauf. Für die ersten drei können `KLARWERK_<ZWECK>_VERANTWORTLICH` und
+`KLARWERK_<ZWECK>_BEGRUENDUNG` gesetzt werden, wobei `<ZWECK>` für `DIAGNOSE`, `SICHERHEIT` oder
+`AUDIT` steht. Ohne Angabe steht die Verantwortung ehrlich als offen im Verzeichnis. Für den
+Privatverlauf gilt die authentifizierte Person des bestehenden Gedächtniseintrags mit ihrer
+vorhandenen Fristwahl; eine begründete befristete Ausnahme gehört ausschließlich zu dieser Zeile.
+Die Konfiguration erzeugt keine zweite Policy- oder Logverwaltung.
+
+Sicherheitsereignisse und Auditnachweise liegen weiterhin in der vorhandenen append-only Hashkette.
+Eine zusätzliche Zahlenfrist dafür ist nicht beschlossen und ein allgemeiner Kettenlöschweg nicht
+vorhanden. Die entsprechenden `*_FRIST_TAGE`-Werte werden ausdrücklich abgewiesen. Eine eingetragene
+Begründung ist kein erfundenes fachliches Urteil und aktiviert keine Diagnosepflege auf der Kette.
+Die neue Auditspur einer persönlichen Ausnahme enthält nur Kennung, Art, Fassung und Endzeitpunkt,
+keine Begründung, E-Mail-Adresse oder zusätzlichen Namen. Die bestehende Kontokennung bleibt als
+minimaler Akteursbeleg erhalten.

@@ -43,7 +43,20 @@ export interface GedaechtnisHerkunft {
   readonly antwortAm: string | null;
 }
 
+export interface GedaechtnisAusnahme {
+  readonly bis: string;
+  readonly begruendung: string;
+  readonly verantwortlich: string;
+}
+export function wirksamBis(
+  e: Pick<Gedaechtniseintrag, "verfallAm" | "aufbewahrungAusnahme">,
+): string {
+  return e.aufbewahrungAusnahme && e.aufbewahrungAusnahme.bis > e.verfallAm
+    ? e.aufbewahrungAusnahme.bis
+    : e.verfallAm;
+}
 export interface Gedaechtniseintrag {
+  readonly aufbewahrungAusnahme?: GedaechtnisAusnahme | null;
   readonly id: string;
   /** Alte Einträge beginnen bei Fassung 1. Korrekturen behalten Kennung und Herkunft. */
   readonly fassung?: number;
@@ -96,7 +109,7 @@ export class InMemoryGedaechtnisRepo implements GedaechtnisRepo {
 
   eigene(kontoId: string, jetzt: string): Promise<Gedaechtniseintrag[]> {
     const treffer = [...this.eintraege.values()]
-      .filter((e) => e.kontoId === kontoId && e.verfallAm > jetzt)
+      .filter((e) => e.kontoId === kontoId && wirksamBis(e) > jetzt)
       .sort((a, b) => b.angelegtAm.localeCompare(a.angelegtAm));
     return Promise.resolve(treffer);
   }
@@ -116,7 +129,7 @@ export class InMemoryGedaechtnisRepo implements GedaechtnisRepo {
       !alt ||
       alt.kontoId !== e.kontoId ||
       (alt.fassung ?? 1) !== fassung ||
-      alt.verfallAm <= jetzt
+      wirksamBis(alt) <= jetzt
     )
       return Promise.resolve(false);
     this.eintraege.set(e.id, structuredClone(e));
@@ -145,7 +158,7 @@ export class InMemoryGedaechtnisRepo implements GedaechtnisRepo {
   entferneAbgelaufene(jetzt: string): Promise<number> {
     let n = 0;
     for (const [id, e] of this.eintraege) {
-      if (e.verfallAm <= jetzt) {
+      if (wirksamBis(e) <= jetzt) {
         this.eintraege.delete(id);
         n += 1;
       }
@@ -176,6 +189,9 @@ CREATE TABLE IF NOT EXISTS interaktions_gedaechtnis (
 ALTER TABLE interaktions_gedaechtnis ADD COLUMN IF NOT EXISTS fassung integer NOT NULL DEFAULT 1;
 ALTER TABLE interaktions_gedaechtnis ADD COLUMN IF NOT EXISTS geaendert_am timestamptz;
 ALTER TABLE interaktions_gedaechtnis ADD COLUMN IF NOT EXISTS darstellung text;
+ALTER TABLE interaktions_gedaechtnis ADD COLUMN IF NOT EXISTS ausnahme_bis timestamptz;
+ALTER TABLE interaktions_gedaechtnis ADD COLUMN IF NOT EXISTS ausnahme_grund text;
+ALTER TABLE interaktions_gedaechtnis ADD COLUMN IF NOT EXISTS ausnahme_verantwortlich text;
 CREATE TABLE IF NOT EXISTS interaktions_gedaechtnis_loeschungen (
   id text PRIMARY KEY, mindest_fassung integer, am timestamptz NOT NULL
 );
@@ -186,6 +202,9 @@ CREATE INDEX IF NOT EXISTS idx_interaktions_gedaechtnis_verfall
 `;
 
 interface GedaechtnisZeile {
+  ausnahme_bis: Date | null;
+  ausnahme_grund: string | null;
+  ausnahme_verantwortlich: string | null;
   id: string;
   fassung: number;
   geaendert_am: Date | null;
@@ -206,6 +225,15 @@ interface GedaechtnisZeile {
 function ausZeile(z: GedaechtnisZeile): Gedaechtniseintrag {
   return {
     id: z.id,
+    ...(z.ausnahme_bis
+      ? {
+          aufbewahrungAusnahme: {
+            bis: z.ausnahme_bis.toISOString(),
+            begruendung: z.ausnahme_grund ?? "",
+            verantwortlich: z.ausnahme_verantwortlich ?? z.konto_id,
+          },
+        }
+      : {}),
     ...(z.fassung > 1
       ? { fassung: z.fassung, geaendertAm: (z.geaendert_am ?? z.angelegt_am).toISOString() }
       : {}),
@@ -235,7 +263,7 @@ export class PgGedaechtnisRepo implements GedaechtnisRepo {
   async eigene(kontoId: string, jetzt: string): Promise<Gedaechtniseintrag[]> {
     const res = await this.pool.query<GedaechtnisZeile>(
       `SELECT * FROM interaktions_gedaechtnis
-        WHERE konto_id = $1 AND verfall_am > $2
+        WHERE konto_id = $1 AND GREATEST(verfall_am, COALESCE(ausnahme_bis, verfall_am)) > $2
         ORDER BY angelegt_am DESC, id`,
       [kontoId, jetzt],
     );
@@ -244,7 +272,7 @@ export class PgGedaechtnisRepo implements GedaechtnisRepo {
 
   async anzahl(kontoId: string, jetzt: string): Promise<number> {
     const res = await this.pool.query<{ n: number }>(
-      "SELECT count(*)::int AS n FROM interaktions_gedaechtnis WHERE konto_id = $1 AND verfall_am > $2",
+      "SELECT count(*)::int AS n FROM interaktions_gedaechtnis WHERE konto_id = $1 AND GREATEST(verfall_am, COALESCE(ausnahme_bis, verfall_am)) > $2",
       [kontoId, jetzt],
     );
     return res.rows[0]?.n ?? 0;
@@ -254,8 +282,8 @@ export class PgGedaechtnisRepo implements GedaechtnisRepo {
     await this.pool.query(
       `INSERT INTO interaktions_gedaechtnis
          (id, konto_id, art, inhalt, antwort, herkunft_art, herkunft_antwort_id,
-          herkunft_antwort_am, vertraulichkeit, aufbewahrung_tage, angelegt_am, verfall_am, darstellung)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          herkunft_antwort_am, vertraulichkeit, aufbewahrung_tage, angelegt_am, verfall_am, darstellung, ausnahme_bis, ausnahme_grund, ausnahme_verantwortlich)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
         e.id,
         e.kontoId,
@@ -270,6 +298,9 @@ export class PgGedaechtnisRepo implements GedaechtnisRepo {
         e.angelegtAm,
         e.verfallAm,
         e.darstellung ?? null,
+        e.aufbewahrungAusnahme?.bis ?? null,
+        e.aufbewahrungAusnahme?.begruendung ?? null,
+        e.aufbewahrungAusnahme?.verantwortlich ?? null,
       ],
     );
   }
@@ -290,7 +321,7 @@ export class PgGedaechtnisRepo implements GedaechtnisRepo {
         aenderung &&
         (!alt.rows[0] ||
           alt.rows[0].fassung !== aenderung.fassung ||
-          alt.rows[0].verfall_am.toISOString() <= aenderung.jetzt)
+          wirksamBis(ausZeile(alt.rows[0])) <= aenderung.jetzt)
       ) {
         await c.query("ROLLBACK");
         return 0;
@@ -316,7 +347,7 @@ export class PgGedaechtnisRepo implements GedaechtnisRepo {
         const e = aenderung.eintrag;
         await c.query(
           `UPDATE interaktions_gedaechtnis SET inhalt=$2, antwort=$3, aufbewahrung_tage=$4,
-          verfall_am=$5, fassung=$6, geaendert_am=$7, darstellung=$8 WHERE id=$1`,
+          verfall_am=$5, fassung=$6, geaendert_am=$7, darstellung=$8, ausnahme_bis=$9, ausnahme_grund=$10, ausnahme_verantwortlich=$11 WHERE id=$1`,
           [
             e.id,
             e.inhalt,
@@ -326,6 +357,9 @@ export class PgGedaechtnisRepo implements GedaechtnisRepo {
             e.fassung,
             e.geaendertAm,
             e.darstellung ?? null,
+            e.aufbewahrungAusnahme?.bis ?? null,
+            e.aufbewahrungAusnahme?.begruendung ?? null,
+            e.aufbewahrungAusnahme?.verantwortlich ?? null,
           ],
         );
       } else if (marken.length) {
@@ -359,7 +393,7 @@ export class PgGedaechtnisRepo implements GedaechtnisRepo {
     return this.mutiere("konto_id=$1", [kontoId]);
   }
   entferneAbgelaufene(jetzt: string): Promise<number> {
-    return this.mutiere("verfall_am <= $1", [jetzt]);
+    return this.mutiere("GREATEST(verfall_am, COALESCE(ausnahme_bis, verfall_am)) <= $1", [jetzt]);
   }
 
   /** Vor Freigabe des PG-Dienstes, auch nach Restore eines älteren Dumps. */
@@ -416,6 +450,7 @@ export interface GedaechtnisEingabe {
   aufbewahrungTage?: unknown;
   darstellung?: unknown;
   fassung?: unknown;
+  aufbewahrungAusnahme?: unknown;
 }
 
 export interface GedaechtnisDienstDeps {
@@ -458,6 +493,12 @@ export class GedaechtnisDienst {
   async merken(kontoId: string, eingabe: GedaechtnisEingabe): Promise<Gedaechtniseintrag> {
     // R-1349: die zulässigen Arten kommen aus `GEDAECHTNIS_ARTEN`, statt hier ein zweites Mal als
     // Literal dazustehen — vorher war die Liste gebaut, aber von niemandem gelesen.
+    if (eingabe.aufbewahrungAusnahme !== undefined)
+      throw new GedaechtnisFehler(
+        400,
+        "eingabe",
+        "Ausnahmen werden ausdrücklich am vorhandenen Eintrag festgelegt.",
+      );
     const art = GEDAECHTNIS_ARTEN.find((a) => a === eingabe.art);
     if (art === undefined) {
       throw new GedaechtnisFehler(400, "eingabe", "art muss frage_antwort oder vorliebe sein.");
@@ -590,16 +631,48 @@ export class GedaechtnisDienst {
     )
       throw new GedaechtnisFehler(400, "eingabe", "Ungültige Darstellung.");
     const jetzt = this.jetztIso();
+    const verfallAm =
+      tage === alt.aufbewahrungTage
+        ? alt.verfallAm
+        : new Date(this.jetzt() + tage * TAG_MS).toISOString();
+    let ausnahme = alt.aufbewahrungAusnahme ?? null;
+    if (eingabe.aufbewahrungAusnahme !== undefined) {
+      if (eingabe.aufbewahrungAusnahme === null) ausnahme = null;
+      else {
+        const a = eingabe.aufbewahrungAusnahme as Record<string, unknown>;
+        const grund = a && typeof a === "object" ? text(a.begruendung) : null;
+        const bis = a && typeof a.bis === "string" ? Date.parse(a.bis) : Number.NaN;
+        // Dieselbe technische Höchstspanne wie die vorhandene Fristwahl; keine neue Rechtsfrist.
+        if (
+          !grund ||
+          grund.length > 500 ||
+          !Number.isFinite(bis) ||
+          bis <= Date.parse(verfallAm) ||
+          bis <= this.jetzt() ||
+          bis > this.jetzt() + Math.max(...GEDAECHTNIS_FRISTEN_TAGE) * TAG_MS
+        )
+          throw new GedaechtnisFehler(
+            400,
+            "eingabe",
+            "Ausnahme braucht Begründung und ein künftiges Ende nach der regulären Frist, höchstens innerhalb der vorhandenen Höchstspanne.",
+          );
+        ausnahme = {
+          bis: new Date(bis).toISOString(),
+          begruendung: grund,
+          verantwortlich: kontoId,
+        };
+      }
+    }
     const neu: Gedaechtniseintrag = {
       ...alt,
       inhalt,
       antwort,
       darstellung: darstellung ?? null,
       aufbewahrungTage: tage,
-      verfallAm:
-        tage === alt.aufbewahrungTage
-          ? alt.verfallAm
-          : new Date(this.jetzt() + tage * TAG_MS).toISOString(),
+      verfallAm,
+      ...(ausnahme || eingabe.aufbewahrungAusnahme !== undefined
+        ? { aufbewahrungAusnahme: ausnahme }
+        : {}),
       fassung: (alt.fassung ?? 1) + 1,
       geaendertAm: jetzt,
     };
