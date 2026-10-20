@@ -324,6 +324,8 @@ describe("EQF-06-K02 · ein Bericht aus zwei Quellen — Vorführung und Folgela
     expect(s.schritt.stand, JSON.stringify(s.schritt)).toBe("gespeichert");
     const id = s.schritt.ergebnis?.id ?? "";
     const text = klartext((await entwurf(id)).payload.bodyHtml);
+    expect(text).toContain("Kurzfassung der Woche");
+    expect(text).not.toContain("Lage leicht besser");
     // Ergebnisbezug: Titel, AKTUELLE Fassung, Ort und Kernaussage beider Quellen.
     expect(text).toContain(`Quelle 1: Umsatz Region Nord · Fassung 2 · /wissen/${umsatz}`);
     expect(text).toContain("Umsatz Q3: 1,2 Mio (fiktiv).");

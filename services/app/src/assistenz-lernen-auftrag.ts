@@ -165,7 +165,9 @@ export function alsKlaraAuftrag(f: PersoenlicheFunktion, plan: LaufPlan): Brueck
   // erster Satzteil — dieselbe Regel, die der Entwurfsweg ohnehin anwendet.
   const ausWord = istWordProgramm(f.bindung.host);
   const text = [...haupt, ...weitere].join("\n").trim();
-  const koerper = ausWord ? text : "";
+  // Auch im Web muss die neue Kernaussage im sichtbaren Berichtskörper stehen.
+  // Quellen ergänzen den Bericht; sie dürfen die Eingabe dieses Laufs nicht verdecken.
+  const koerper = text;
   const inhalt = ausWord ? kernaussageAusKlartext(text) : text;
   const zuLang = titel.length > TITEL_MAX || inhalt.length > INHALT_MAX;
   if (zuLang || koerper.length > KLARA_KOERPER_MAX) {

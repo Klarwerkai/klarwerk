@@ -14,6 +14,10 @@ import type { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool, migrate } from "../../services/app/src/db";
+import {
+  FunktionenDienst,
+  RoutinenFunktionenRepo,
+} from "../../services/app/src/persoenliche-funktionen";
 import { PgRoutinenRepo, VormachenDienst } from "../../services/app/src/vormachen";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 
@@ -205,5 +209,79 @@ describe("P06 · bestätigte Routinen gegen echtes PostgreSQL", () => {
     const wieder = await neuerDienst().einmalJeLauf(konto, routine.id, lauf, wege);
     expect(wieder).toMatchObject({ auftragId: "h-pg-einziger-auftrag", wiederholt: true });
     expect(wirkungen).toBe(1);
+  });
+
+  it("BES · zweiter Produktfall, neue Quellenfassung, Bearbeitung und Pause bleiben nach Neustart erhalten", async () => {
+    const konto = "u-pg-h-beschaffung";
+    const neu = () =>
+      new FunktionenDienst({ repo: new RoutinenFunktionenRepo(new PgRoutinenRepo(neuePool())) });
+    let quellfassung = 1;
+    const lesen = async () => ({ fassung: quellfassung, status: "validiert" });
+    const d = neu();
+    const { funktion } = await d.speichern(
+      konto,
+      {
+        text: "So möchte ich künftig Angebote für Verpackungen einholen.",
+        quellen: ["h-eigene-spezifikation"],
+      },
+      lesen,
+    );
+    const a = await d.laufVorbereiten(
+      konto,
+      funktion.id,
+      { parameter: { produkt: "Faltschachtel H1", menge: "50 Stück", termin: "2026-11-30" } },
+      { rolle: "experte", quelleLesen: lesen },
+    );
+    expect(a.lauf).toMatchObject({
+      fassung: 1,
+      parameterwerte: { produkt: "Faltschachtel H1", menge: "50 Stück" },
+      quellen: [{ koId: "h-eigene-spezifikation", fassung: 1 }],
+      aussenwirkung: "keine",
+    });
+    const bearbeitet = await neu().aendere(
+      konto,
+      funktion.id,
+      { rev: a.funktion.rev, name: "H Beschaffungsfunktion geändert" },
+      lesen,
+    );
+    expect(bearbeitet.fassungen).toHaveLength(2);
+    quellfassung = 4;
+    const b = await neu().laufVorbereiten(
+      konto,
+      funktion.id,
+      { parameter: { produkt: "Etikett H2", menge: "1200 Stück", termin: "2026-12-15" } },
+      { rolle: "experte", quelleLesen: lesen },
+    );
+    expect(b.lauf).toMatchObject({
+      fassung: 2,
+      parameterwerte: { produkt: "Etikett H2", menge: "1200 Stück" },
+      quellen: [{ koId: "h-eigene-spezifikation", fassung: 4 }],
+      aussenwirkung: "keine",
+    });
+    expect(b.lauf.id).not.toBe(a.lauf.id);
+    const pausiert = await neu().aendere(
+      konto,
+      funktion.id,
+      { rev: b.funktion.rev, stand: "pausiert" },
+      lesen,
+    );
+    expect(await neu().hole(konto, funktion.id)).toEqual(pausiert);
+    expect(pausiert.laeufe).toEqual([a.lauf, b.lauf]);
+    await expect(
+      neu().laufVorbereiten(
+        konto,
+        funktion.id,
+        { parameter: { produkt: "Unerlaubter dritter Fall" } },
+        { rolle: "experte", quelleLesen: lesen },
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    const aus = await neu().aendere(
+      konto,
+      funktion.id,
+      { rev: pausiert.rev, stand: "deaktiviert" },
+      lesen,
+    );
+    expect(await neu().hole(konto, funktion.id)).toEqual(aus);
+    expect(aus.laeufe).toEqual([a.lauf, b.lauf]);
   });
 });
