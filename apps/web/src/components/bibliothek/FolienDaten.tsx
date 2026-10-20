@@ -48,6 +48,7 @@ import { useOffenePunkteWahl } from "../../lib/datenkontrolleEinstellung";
 import { readPptxRich } from "../../lib/files";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { DatenKontrolle, DatenLage } from "./DatenKontrolle";
+import { VortragVorbereitung } from "./VortragVorbereitung";
 
 const ZUSTANDSFARBE: Record<DatenpunktSicht["pruefstand"]["zustand"], string> = {
   erfasst: "text-muted",
@@ -188,6 +189,9 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
         <p role="alert" className="mt-1 text-[12.5px] text-trust-crit-text">
           {fehlerText(lage.error)}
         </p>
+      ) : null}
+      {d ? (
+        <VortragVorbereitung key={`${koId}:${anhangId}`} lage={d} oeffne={oeffneVonListe} />
       ) : null}
       {d?.datenlage ? (
         <DatenLage lage={d.datenlage} wahl={offenePunkte} oeffne={oeffneVonListe} />

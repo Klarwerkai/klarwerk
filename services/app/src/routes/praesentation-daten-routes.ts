@@ -39,6 +39,7 @@ import {
   type KontrollierteSicht,
   kontrollAnschluss,
 } from "../praesentation-pruefung-anschluss";
+import { VortragsKonflikt, leseVortragsAuftrag, vortragAuswerten } from "../praesentation-vortrag";
 import { darfSehen } from "../sichtbarkeit";
 
 // ================================================================================================
@@ -289,6 +290,43 @@ export function praesentationDatenRoutes(
   }
 
   return async (app) => {
+    app.post<{ Params: { id: string; anhangId: string } }>(
+      "/api/kos/:id/office/:anhangId/vortrag",
+      { bodyLimit: 512 * 1024 },
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) return;
+        const u = umgebung(user);
+        const ko = await u.artikel(request.params.id);
+        const datei = ko ? await u.folien(ko.id, request.params.anhangId) : undefined;
+        if (!ko || !datei) {
+          nichtGefunden(reply, "Präsentation");
+          return;
+        }
+        reply.header("Cache-Control", "no-store");
+        try {
+          const gebunden = await deps.ablage.gebundenAn(ko.id, request.params.anhangId);
+          const sichten = await sichtenVon(gebunden, u);
+          reply.send(
+            vortragAuswerten(
+              {
+                koId: ko.id,
+                anhangId: request.params.anhangId,
+                dateiFassung: datei.satz.fassung,
+                folien: datei.satz.folien,
+                datenpunkte: sichten,
+              },
+              leseVortragsAuftrag(request.body),
+            ),
+          );
+        } catch (f) {
+          if (f instanceof VortragsKonflikt)
+            reply.code(409).send({ error: "CONFLICT", message: f.message });
+          else fehler(reply, f);
+        }
+      },
+    );
+
     app.get<{ Params: { id: string; anhangId: string } }>(
       "/api/kos/:id/office/:anhangId/folien-daten",
       async (request, reply) => {
