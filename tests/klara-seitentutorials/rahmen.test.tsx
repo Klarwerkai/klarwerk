@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import {
+  QueryClient,
+  QueryClientProvider,
+} from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement as h } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { Link, MemoryRouter, useLocation } from "../../apps/web/node_modules/react-router-dom";
-import { GUARDED_ITEMS } from "../../apps/web/src/app/navigation";
+import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+import { RoleProvider, useRole } from "../../apps/web/src/app/RoleContext";
+import { GUARDED_ITEMS, ROLES, canSee } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
+import { CAPTURE_FRONT_DOOR_ROUTE } from "../../apps/web/src/lib/captureFrontDoor";
 import {
   TutorialEinstieg,
   TutorialFlaeche,
@@ -75,6 +82,117 @@ it("beachtet die bestehenden Rollen- und Stufe-2-Gates einschließlich Rollenrü
   expect(tutorialFuerPfad("/ausgangspruefung", "experte")).toBeNull();
   expect(tutorialFuerPfad("/admin", "admin")).not.toBeNull();
   expect(tutorialFuerPfad("/admin", "viewer")).toBeNull();
+});
+
+const VORDERTUER_ALIAS = "/erfassen/vordertuer";
+
+it("I-ORIG-1 ordnet den tatsächlich gerouteten Vordertüralias derselben Erfassungslektion zu", () => {
+  const router = readFileSync("apps/web/src/routes.tsx", "utf8");
+  expect(router).toContain(`const VORDERTUER_ALIAS = "${VORDERTUER_ALIAS}"`);
+  expect(router).toContain("path={VORDERTUER_ALIAS} element={<Guarded item={VORDERTUER_ITEM} />");
+  expect(SEITEN.find((s) => s.id === "erfassen")?.pfade).toContain(VORDERTUER_ALIAS);
+  const kanonisch = tutorialFuerPfad(CAPTURE_FRONT_DOOR_ROUTE, "experte", false);
+  expect(kanonisch?.id).toBe("seite-erfassen");
+  for (const pfad of [VORDERTUER_ALIAS, `${VORDERTUER_ALIAS}/`, VORDERTUER_ALIAS.toUpperCase()]) {
+    const alias = tutorialFuerPfad(pfad, "experte", false);
+    expect(alias?.id, pfad).toBe(kanonisch?.id);
+    expect(alias?.schritte, pfad).toEqual(kanonisch?.schritte);
+    expect(alias?.echteZiele, pfad).toEqual(kanonisch?.echteZiele);
+  }
+  expect(tutorialFuerPfad(`${VORDERTUER_ALIAS}/kein-weg`, "admin")).toBeNull();
+});
+
+it("I-ORIG-1 übernimmt Rollen und eine Stufe-2-Bindung vom selben kanonischen Guard", () => {
+  const gate = GUARDED_ITEMS.find((g) => g.path === CAPTURE_FRONT_DOOR_ROUTE);
+  if (!gate) throw new Error("Der bestehende Vordertürguard fehlt");
+  for (const role of ROLES) {
+    for (const stufe2 of [false, true]) {
+      for (const pfad of [
+        VORDERTUER_ALIAS,
+        `${VORDERTUER_ALIAS}/`,
+        VORDERTUER_ALIAS.toUpperCase(),
+      ]) {
+        expect(Boolean(tutorialFuerPfad(pfad, role, stufe2)), `${pfad}/${role}/${stufe2}`).toBe(
+          canSee(gate, role, stufe2),
+        );
+      }
+    }
+  }
+  // Der heutige Guard hat keine Stufe-2-Pflicht. Diese begrenzte Konfigurationsprobe belegt,
+  // dass auch eine solche Pflicht vom Originaleintrag geerbt und nicht am Alias kopiert wird.
+  const vorher = gate.stufe2;
+  try {
+    gate.stufe2 = true;
+    for (const role of ROLES) {
+      expect(tutorialFuerPfad(VORDERTUER_ALIAS, role, false)).toBeNull();
+      expect(Boolean(tutorialFuerPfad(VORDERTUER_ALIAS, role, true))).toBe(
+        canSee(gate, role, true),
+      );
+    }
+  } finally {
+    if (vorher === undefined) Reflect.deleteProperty(gate, "stufe2");
+    else gate.stufe2 = vorher;
+  }
+});
+
+function AliasRollenwechsel(): JSX.Element {
+  const { setRole } = useRole();
+  return h(
+    "button",
+    { "data-testid": "alias-viewer", onClick: () => setRole("viewer") },
+    "Ansicht als Viewer",
+  );
+}
+
+it("I-ORIG-1 zeigt am Alias den echten Einstieg und entfernt ihn bei Rollenrücknahme", async () => {
+  const fetchProbe = vi.spyOn(globalThis, "fetch");
+  const query = new QueryClient({
+    defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY } },
+  });
+  query.setQueryData(["auth", "status"], { needsSetup: false, oidcEnabled: false });
+  query.setQueryData(["auth", "me"], {
+    id: "i-alias-test",
+    name: "Aliasprüfung",
+    email: "alias@example.invalid",
+    role: "admin",
+  });
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  aufraeumen.push(() => {
+    act(() => root.unmount());
+    query.clear();
+  });
+  await act(async () => {
+    root.render(
+      h(
+        QueryClientProvider,
+        { client: query },
+        h(
+          AuthProvider,
+          null,
+          h(
+            RoleProvider,
+            null,
+            h(
+              MemoryRouter,
+              { initialEntries: [`${VORDERTUER_ALIAS}?draft=i-original`] },
+              h(TutorialProvider, null, h(TutorialEinstieg), h(TestSeite), h(AliasRollenwechsel)),
+            ),
+          ),
+        ),
+      ),
+    );
+  });
+  await ruhe();
+  expect(q("tutorial-knopf")).not.toBeNull();
+  await klick(q("tutorial-knopf"));
+  expect(q("tutorial-bereich")?.getAttribute("data-tutorial")).toBe("seite-erfassen");
+  expect(q("ort")?.textContent).toBe(`${VORDERTUER_ALIAS}?draft=i-original`);
+  await klick(q("alias-viewer"));
+  expect(q("tutorial-knopf")).toBeNull();
+  expect(q("tutorial-bereich")).toBeNull();
+  expect(fetchProbe).not.toHaveBeenCalled();
 });
 
 it("liefert alle Erklärungen und wiederverwendeten Fähigkeitshilfen in DE/EN/NL ohne rohe Schlüssel", async () => {

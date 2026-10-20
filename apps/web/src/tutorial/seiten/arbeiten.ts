@@ -2,7 +2,7 @@ import type { SeitenEintrag } from "./typen";
 export const ARBEITEN: readonly SeitenEintrag[] = [
   {
     id: "erfassen",
-    pfade: ["/erfassen", "/erfassen/neu", "/capture/frontdoor"],
+    pfade: ["/erfassen", "/erfassen/neu", "/capture/frontdoor", "/erfassen/vordertuer"],
     titelKey: "nav.capture",
     ziel: 'main input:not([type="hidden"]), main [contenteditable="true"]',
   },
