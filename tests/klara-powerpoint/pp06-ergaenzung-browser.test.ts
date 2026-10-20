@@ -91,6 +91,7 @@ it("PP-06 H04 · Lücke, passende/unpassende Quelle, Übernahme, Herkunft und R�
     const seite = stand.seite;
     await seite.goto(`${ORIGIN}/wissen/${zielId}`, { waitUntil: "load" });
     await seite.click('[data-testid="bib-mehr"]');
+    await seite.click('[data-bib-abschnitt="anhaenge"] > summary');
     await seite.click(`[data-office-oeffnen="${anhangId}"]`);
     const auswahl = '[data-element="256:7"]';
     await seite.click(`${auswahl} summary`);
