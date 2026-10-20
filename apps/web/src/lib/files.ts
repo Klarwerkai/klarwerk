@@ -1,6 +1,7 @@
 // Datei-Helfer für die Erfassung — alles client-seitig, ohne Server-/Objektspeicher.
 // DOM-Modul (nutzt File/Image/document/FileReader). Der DOM-freie DOCX-Kern liegt
 // in `./docx` und wird hier nur als Browser-Wrapper umhüllt.
+import { type Bildbereich, tintenAnteil } from "./bildAutomatik";
 import {
   type DocxRichResult,
   MAX_INLINE_BODY_HTML_BYTES,
@@ -573,6 +574,49 @@ async function ocrBildVerkleinern(input: unknown, faktor: number): Promise<strin
     if (typeof ImageBitmap !== "undefined" && quelle instanceof ImageBitmap) {
       quelle.close();
     }
+  }
+}
+
+/**
+ * OCR-E03 · Nacharbeit 4: misst je Zellbereich, wie viel sichtbarer Inhalt im Bild steht
+ * (`tintenAnteil`, `lib/bildAutomatik.ts`) — damit eine Zelle ohne erkannte Wörter nur dann „leer“
+ * heißt, wenn sie es im Bild auch ist. Das Bild wird wie beim Verkleinern ohne Netz geladen und nur
+ * gelesen; das Original bleibt unverändert. Nicht messbar ⇒ `null` je Bereich.
+ */
+export async function bildTintenAnteile(
+  src: string,
+  bereiche: readonly Bildbereich[],
+): Promise<(number | null)[]> {
+  const nichts = bereiche.map(() => null);
+  if (typeof document === "undefined" || bereiche.length === 0) {
+    return nichts;
+  }
+  try {
+    const bild = new Image();
+    bild.decoding = "async";
+    bild.src = src;
+    await bild.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = bild.naturalWidth;
+    canvas.height = bild.naturalHeight;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx || canvas.width < 1 || canvas.height < 1) {
+      return nichts;
+    }
+    ctx.drawImage(bild, 0, 0);
+    return bereiche.map((b) => {
+      const x0 = Math.max(0, Math.floor(b.x0));
+      const y0 = Math.max(0, Math.floor(b.y0));
+      const x1 = Math.min(canvas.width, Math.ceil(b.x1));
+      const y1 = Math.min(canvas.height, Math.ceil(b.y1));
+      if (x1 - x0 < 1 || y1 - y0 < 1) {
+        return null;
+      }
+      const daten = ctx.getImageData(x0, y0, x1 - x0, y1 - y0);
+      return tintenAnteil(daten.data, daten.width, daten.height);
+    });
+  } catch {
+    return nichts;
   }
 }
 

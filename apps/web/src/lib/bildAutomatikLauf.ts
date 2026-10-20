@@ -6,7 +6,7 @@
 import { useRef } from "react";
 import { useAssistenzStand } from "./assistenzProfil";
 import { type BildAnalyse, createBildAnalyse } from "./bildAutomatik";
-import { runImageOcr } from "./files";
+import { bildTintenAnteile, runImageOcr } from "./files";
 
 /** Nur Bilder des eigenen Objektspeichers — derselbe berechtigte Lesezugriff wie die Anzeige. */
 const OBJEKT_BILD_RE = /^\/api\/objects\/[\w-]+\/raw$/;
@@ -39,7 +39,12 @@ export async function ladeObjektBild(src: string, signal?: AbortSignal): Promise
 }
 
 export function neueBildAnalyse(): BildAnalyse {
-  return createBildAnalyse({ erkenne: (src) => runImageOcr(src), ladeBild: ladeObjektBild });
+  // OCR-E03 Nacharbeit 4: Tabellenzellen ohne erkannte Wörter werden am Bild geprüft.
+  return createBildAnalyse({
+    erkenne: (src) => runImageOcr(src),
+    ladeBild: ladeObjektBild,
+    messeTinte: bildTintenAnteile,
+  });
 }
 
 /**

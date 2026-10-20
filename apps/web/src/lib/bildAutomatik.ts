@@ -135,6 +135,11 @@ export interface BildBefund {
   unsicher: UnsichereStelle[];
   /** Zuverlässig erkannte Tabellenstruktur (Zeilen × Zellen, Zellen gekennzeichnet) oder `null`. */
   tabelle: string[][] | null;
+  /**
+   * OCR-E03: dieselbe Tabelle als bearbeitbares Raster — mit leeren Zellen, Kopfzeile, Zustand und
+   * Rahmen je Zelle. Fehlt bei Befunden, die vor OCR-E03 entstanden sind.
+   */
+  bildTabelle?: BildTabelle | null;
   /** Der wesentliche Bildinhalt über W02. */
   bildinhalt: Bildinhalt;
   /** Der Textbefund stammt aus einer früheren Analyse derselben Bildbytes. */
@@ -545,6 +550,478 @@ export function tabelleAusWoertern(woerter: readonly OcrWort[] | undefined): str
 }
 
 // ------------------------------------------------------------------------------------------------
+// OCR-E03 · Bildhafte Tabellen als bearbeitbares Raster (Auftrag produkt:20261012:klara-ocr-tabellen)
+// ------------------------------------------------------------------------------------------------
+//
+// `tabelleAusWoertern` oben verlangt gleich viele Zellen je Zeile — eine Tabelle mit leeren Zellen
+// fällt dort heraus. Das Raster hier nimmt sie auf, ohne zu raten:
+//   · Die Spalten stehen fest, bevor eine Zeile mit Lücken zugeordnet wird: aus mindestens zwei
+//     vollständig besetzten Zeilen, deren Blöcke übereinanderstehen. Gibt es die nicht, entsteht
+//     kein Raster (`null`).
+//   · Eine Zeile mit weniger Blöcken bekommt LEERE Zellen dort, wo nichts steht. Leer heißt leer;
+//     es wird nichts ergänzt.
+//   · Ein Block, der über eine Spaltengrenze reicht, zwischen zwei Spalten steht oder sich die
+//     Spalte mit einem zweiten Block teilt, steht in der wahrscheinlichsten Spalte und ist
+//     `mehrdeutig` gekennzeichnet.
+//   · Zellinhalte sind die Wörter der Engine, wörtlich (Dezimalkomma, Vorzeichen, Einheit), mit
+//     derselben Kennzeichnung wie der Text: `[?wort]` unsicher, `[unleserlich]` statt einer Lesung.
+//   · Jede Zelle mit Inhalt trägt ihren Rahmen im Bild — die Fundstelle in der Ursprungstabelle.
+//   · Kopfzeile nur, wenn die erste Zeile vollständig aus Text ohne Ziffern besteht und darunter
+//     Ziffern stehen.
+//   · Nacharbeit 4 (Bens Befund): fehlende Wörter beweisen keine Leere. Jede Zelle ohne Wörter trägt
+//     ihren Suchbereich im Bild (Spalte × Zeile). Steht dort sichtbar etwas (`tintenAnteil`), das die
+//     Engine nicht gelesen hat, wird die Zelle `[unleserlich]` — ohne einen Wert zu erfinden
+//     (`markiereUnerkannteInhalte`). Nur eine Zelle ohne Inhalt im Bild bleibt „leer“.
+
+/** `ungeprueft`: keine Wörter, und das Bild konnte an dieser Stelle nicht geprüft werden. */
+export type ZellZustand = "sicher" | "unsicher" | "unleserlich" | "ungeprueft" | "leer";
+
+export interface Bildbereich {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+export interface TabellenZelle {
+  /** Der Inhalt wie im Befund gekennzeichnet; `""` bei einer leeren Zelle. */
+  text: string;
+  zustand: ZellZustand;
+  /** Die Zuordnung zu dieser Spalte ist nicht eindeutig. */
+  mehrdeutig: boolean;
+  /**
+   * Rahmen der Zelle im Bild (Pixel, Originalmaßstab); fehlt bei leeren Zellen. Bei einer Zelle mit
+   * Inhalt im Bild, den die Engine nicht lesen konnte, ist es der geprüfte Zellbereich.
+   */
+  rahmen?: Bildbereich;
+  /** Nur bei Zellen ohne erkannte Wörter: der Bereich, in dem das Bild auf Inhalt geprüft wird. */
+  bereich?: Bildbereich;
+  /**
+   * Die Wörter der Zelle als Positionen in `BildBefund.woerter` (OCR-E01) — Grundlage der Fundstelle
+   * am Original und der Zuordnung einer Berichtigung (OCR-E02). Fehlt bei Zellen ohne Wörter.
+   */
+  woerter?: number[];
+  /**
+   * Die Zelle zeigt eine gespeicherte Berichtigung (OCR-E02, `lib/bildTabelle.ts`); hier steht, was
+   * die Erkennung geliefert hatte.
+   */
+  berichtigt?: { roh: string; rohZustand: ZellZustand };
+}
+
+export interface BildTabelle {
+  /** 1, wenn die erste Zeile als Überschrift erkannt ist, sonst 0. */
+  kopfzeilen: number;
+  spalten: number;
+  /** Zeilen × `spalten` Zellen — jede Zeile ist vollständig, leere Zellen eingeschlossen. */
+  zeilen: TabellenZelle[][];
+}
+
+interface RasterBlock {
+  x0: number;
+  x1: number;
+  woerter: WortMitRahmen[];
+}
+
+/** Senkrechte Striche sind Gitterlinien einer gezeichneten Tabelle, kein Zellinhalt. */
+const GITTERLINIE = /^[|¦]+$/;
+/** Zwei Zeilen, die weiter als so viele Worthöhen auseinanderliegen, gehören nicht zur selben Tabelle. */
+const ZEILENABSTAND_HOECHSTENS = 4;
+
+function woerterInZeilen(woerter: readonly WortMitRahmen[], hoehe: number): WortMitRahmen[][] {
+  const mitte = (w: WortMitRahmen): number => (w.bbox.y0 + w.bbox.y1) / 2;
+  const sortiert = [...woerter].sort((a, b) => mitte(a) - mitte(b));
+  const zeilen: WortMitRahmen[][] = [];
+  for (const w of sortiert) {
+    const letzte = zeilen[zeilen.length - 1];
+    const letzteMitte = letzte
+      ? letzte.reduce((n, x) => n + mitte(x), 0) / letzte.length
+      : Number.NEGATIVE_INFINITY;
+    if (letzte && Math.abs(mitte(w) - letzteMitte) <= hoehe * 0.6) {
+      letzte.push(w);
+    } else {
+      zeilen.push([w]);
+    }
+  }
+  return zeilen;
+}
+
+function bloeckeDerZeile(zeile: readonly WortMitRahmen[], hoehe: number): RasterBlock[] {
+  const bloecke: RasterBlock[] = [];
+  for (const w of [...zeile].sort((a, b) => a.bbox.x0 - b.bbox.x0)) {
+    const vorige = bloecke[bloecke.length - 1];
+    if (vorige && w.bbox.x0 - vorige.x1 <= hoehe * 1.2) {
+      vorige.woerter.push(w);
+      vorige.x1 = Math.max(vorige.x1, w.bbox.x1);
+    } else {
+      bloecke.push({ x0: w.bbox.x0, x1: w.bbox.x1, woerter: [w] });
+    }
+  }
+  return bloecke;
+}
+
+function zeileMitte(zeile: readonly WortMitRahmen[]): number {
+  return zeile.reduce((n, w) => n + (w.bbox.y0 + w.bbox.y1) / 2, 0) / Math.max(1, zeile.length);
+}
+
+function zelleAus(
+  woerter: readonly WortMitRahmen[],
+  mehrdeutig: boolean,
+  bereich: Bildbereich,
+  position: ReadonlyMap<WortMitRahmen, number>,
+): TabellenZelle {
+  if (woerter.length === 0) {
+    return { text: "", zustand: "leer", mehrdeutig, bereich };
+  }
+  let unleserlich = 0;
+  let unsicher = 0;
+  for (const w of woerter) {
+    if (w.confidence < UNLESERLICH_UNTER) {
+      unleserlich += 1;
+    } else if (w.confidence < UNSICHER_UNTER || w.abweichend === true) {
+      unsicher += 1;
+    }
+  }
+  const zustand: ZellZustand =
+    unleserlich === woerter.length
+      ? "unleserlich"
+      : unleserlich + unsicher > 0
+        ? "unsicher"
+        : "sicher";
+  return {
+    text: woerter.map((w) => gekennzeichnet(w.text, w.confidence, w.abweichend === true)).join(" "),
+    zustand,
+    mehrdeutig,
+    rahmen: {
+      x0: Math.min(...woerter.map((w) => w.bbox.x0)),
+      y0: Math.min(...woerter.map((w) => w.bbox.y0)),
+      x1: Math.max(...woerter.map((w) => w.bbox.x1)),
+      y1: Math.max(...woerter.map((w) => w.bbox.y1)),
+    },
+    woerter: woerter.flatMap((w) => {
+      const i = position.get(w);
+      return i === undefined ? [] : [i];
+    }),
+  };
+}
+
+const HAT_ZIFFER = /\p{N}/u;
+const HAT_BUCHSTABE = /\p{L}/u;
+
+/**
+ * Das bearbeitbare Raster einer bildhaften Tabelle — oder `null`, wenn die Spalten nicht aus
+ * mindestens zwei vollständig besetzten, übereinanderstehenden Zeilen bestimmbar sind.
+ */
+export function bildTabelleAusWoertern(
+  woerter: readonly OcrWort[] | undefined,
+): BildTabelle | null {
+  // Die Position jedes Wortes in derselben Folge wie `BildBefund.woerter` (`wortPositionen`: alle
+  // Wörter mit Rahmen und Text) — auch Gitterlinien zählen dort mit.
+  const alleMitRahmen = (woerter ?? []).filter(hatRahmen);
+  const position = new Map(alleMitRahmen.map((w, i) => [w, i] as const));
+  const mitRahmen = alleMitRahmen.filter((w) => !GITTERLINIE.test(w.text.trim()));
+  if (mitRahmen.length < 4) {
+    return null;
+  }
+  const hoehe = Math.max(1, median(mitRahmen.map((w) => w.bbox.y1 - w.bbox.y0)));
+  const zeilen = woerterInZeilen(mitRahmen, hoehe);
+  const bloecke = zeilen.map((z) => bloeckeDerZeile(z, hoehe));
+  const spalten = Math.max(0, ...bloecke.map((b) => b.length));
+  if (spalten < 2) {
+    return null;
+  }
+
+  // 1 · Das Spaltenraster aus den vollständig besetzten Zeilen, die übereinanderstehen.
+  const toleranz = hoehe * 1.5;
+  const stehenUebereinander = (a: RasterBlock[], b: RasterBlock[]): boolean =>
+    a.every((ba, j) => {
+      const bb = b[j];
+      return (
+        bb !== undefined &&
+        (Math.abs(ba.x0 - bb.x0) <= toleranz ||
+          Math.abs(ba.x1 - bb.x1) <= toleranz ||
+          Math.abs((ba.x0 + ba.x1) / 2 - (bb.x0 + bb.x1) / 2) <= toleranz)
+      );
+    });
+  const volle = bloecke.map((b, i) => (b.length === spalten ? i : -1)).filter((i) => i >= 0);
+  let gruppe: number[] = [];
+  for (const i of volle) {
+    const kandidat = volle.filter((j) => stehenUebereinander(bloecke[i] ?? [], bloecke[j] ?? []));
+    if (kandidat.length > gruppe.length) {
+      gruppe = kandidat;
+    }
+  }
+  if (gruppe.length < 2) {
+    return null;
+  }
+  const raster = Array.from({ length: spalten }, (_, j) => ({
+    x0: Math.min(...gruppe.map((i) => bloecke[i]?.[j]?.x0 ?? Number.POSITIVE_INFINITY)),
+    x1: Math.max(...gruppe.map((i) => bloecke[i]?.[j]?.x1 ?? Number.NEGATIVE_INFINITY)),
+  }));
+  for (let j = 1; j < raster.length; j += 1) {
+    if ((raster[j - 1]?.x1 ?? 0) >= (raster[j]?.x0 ?? 0)) {
+      return null; // Spalten überlappen — keine verlässliche Struktur.
+    }
+  }
+
+  // 2 · Jede Zeile dem Raster zuordnen. Ein Block gehört eindeutig zu einer Spalte, wenn er genau
+  //     eine berührt; sonst steht er in der Spalte mit der größten Überdeckung (bzw. der nächsten)
+  //     und ist mehrdeutig.
+  const nah = hoehe * 0.5;
+  const zuordnen = (block: RasterBlock): { spalte: number; mehrdeutig: boolean } => {
+    const beruehrt = raster
+      .map((s, j) => ({ j, s }))
+      .filter(({ s }) => block.x0 <= s.x1 + nah && block.x1 >= s.x0 - nah);
+    if (beruehrt.length === 1) {
+      return { spalte: beruehrt[0]?.j ?? 0, mehrdeutig: false };
+    }
+    const mitteBlock = (block.x0 + block.x1) / 2;
+    let beste = 0;
+    let bestesMass = Number.NEGATIVE_INFINITY;
+    raster.forEach((s, j) => {
+      const deckung = Math.min(block.x1, s.x1) - Math.max(block.x0, s.x0);
+      const mass = beruehrt.length > 1 ? deckung : -Math.abs(mitteBlock - (s.x0 + s.x1) / 2);
+      if (mass > bestesMass) {
+        bestesMass = mass;
+        beste = j;
+      }
+    });
+    return { spalte: beste, mehrdeutig: true };
+  };
+  type Zeilenart = "tabelle" | "einzeln" | "fremd";
+  const zugeordnet = bloecke.map((zeile) => {
+    const zellen: { woerter: WortMitRahmen[]; mehrdeutig: boolean }[] = raster.map(() => ({
+      woerter: [],
+      mehrdeutig: false,
+    }));
+    let eindeutig = 0;
+    for (const block of zeile) {
+      const { spalte, mehrdeutig } = zuordnen(block);
+      const zelle = zellen[spalte];
+      if (!zelle) {
+        continue;
+      }
+      if (zelle.woerter.length > 0) {
+        zelle.mehrdeutig = true; // zwei Blöcke in einer Spalte
+      }
+      zelle.woerter.push(...block.woerter);
+      zelle.mehrdeutig = zelle.mehrdeutig || mehrdeutig;
+      eindeutig += mehrdeutig ? 0 : 1;
+    }
+    const art: Zeilenart =
+      zeile.length >= 2 && eindeutig >= 1
+        ? "tabelle"
+        : zeile.length === 1 && eindeutig === 1
+          ? "einzeln"
+          : "fremd";
+    return { zellen, art };
+  });
+
+  // 3 · Der zusammenhängende Lauf um das Raster: Zeilen mit Lücken gehören dazu, eine Zeile mit nur
+  //     einem Block nur INNERHALB der Tabelle (sonst ist sie Überschrift oder Text daneben).
+  const anker = gruppe[0] ?? 0;
+  const passt = (i: number, nachbar: number): boolean =>
+    zugeordnet[i]?.art !== "fremd" &&
+    Math.abs(zeileMitte(zeilen[i] ?? []) - zeileMitte(zeilen[nachbar] ?? [])) <=
+      hoehe * ZEILENABSTAND_HOECHSTENS;
+  let von = anker;
+  while (von > 0 && passt(von - 1, von)) {
+    von -= 1;
+  }
+  let bis = anker;
+  while (bis < zeilen.length - 1 && passt(bis + 1, bis)) {
+    bis += 1;
+  }
+  while (von < bis && zugeordnet[von]?.art === "einzeln") {
+    von += 1;
+  }
+  while (bis > von && zugeordnet[bis]?.art === "einzeln") {
+    bis -= 1;
+  }
+  if (gruppe.some((i) => i < von || i > bis)) {
+    // Die vollständigen Zeilen liegen nicht in einem Lauf — keine verlässliche Tabelle.
+    return null;
+  }
+  const tabelle = zugeordnet.slice(von, bis + 1).map((z, k) => {
+    // Der Zeilenbereich: von der Ober- bis zur Unterkante der Wörter dieser Zeile.
+    const zeile = zeilen[von + k] ?? [];
+    const y0 = Math.min(...zeile.map((w) => w.bbox.y0));
+    const y1 = Math.max(...zeile.map((w) => w.bbox.y1));
+    return z.zellen.map((zelle, s) =>
+      zelleAus(
+        zelle.woerter,
+        zelle.mehrdeutig,
+        { x0: raster[s]?.x0 ?? 0, y0, x1: raster[s]?.x1 ?? 0, y1 },
+        position,
+      ),
+    );
+  });
+  if (tabelle.length < 2) {
+    return null;
+  }
+
+  const erste = tabelle[0] ?? [];
+  const kopf =
+    erste.every(
+      (z) =>
+        z.zustand !== "leer" &&
+        z.zustand !== "unleserlich" &&
+        HAT_BUCHSTABE.test(z.text) &&
+        !HAT_ZIFFER.test(z.text),
+    ) && tabelle.slice(1).some((zeile) => zeile.some((z) => HAT_ZIFFER.test(z.text)));
+  return { kopfzeilen: kopf ? 1 : 0, spalten, zeilen: tabelle };
+}
+
+// ------------------------------------------------------------------------------------------------
+// OCR-E03 · Nacharbeit 4 — Zellen ohne erkannte Wörter am Bild prüfen
+// ------------------------------------------------------------------------------------------------
+
+/**
+ * Ab dieser Helligkeitsabweichung (0–255) vom Hintergrund der Zelle gilt ein Bildpunkt als Inhalt —
+ * über dem Rauschen von Kompression und Scan (< 10), unter blasser, unscharfer Schrift (≈ 25).
+ */
+export const TINTE_AB_ABWEICHUNG = 16;
+/** Ab diesem Anteil solcher Bildpunkte trägt ein Zellbereich sichtbaren Inhalt. */
+export const TINTE_AB_ANTEIL = 0.004;
+/** Um so viele Pixel wird der Zellbereich nach innen verkleinert (Linien, Nachbarzellen). */
+export const TINTE_RAND_PX = 2;
+
+/**
+ * Misst je Bereich den Anteil sichtbarer Bildpunkte (0–1) — `null`, wo das Bild nicht messbar ist.
+ * Im Browser `bildTintenAnteile` (`lib/files.ts`, Canvas); gelesen wird nur, nichts verändert.
+ */
+export type TintenMesser = (
+  src: string,
+  bereiche: readonly Bildbereich[],
+) => Promise<readonly (number | null)[]>;
+
+/**
+ * Der Anteil der Bildpunkte, die sich sichtbar vom Hintergrund abheben. Hintergrund ist der
+ * häufigste Helligkeitswert des Bereichs (Median); Transparenz zählt als Weiß. DOM-frei: RGBA-Bytes
+ * wie aus `getImageData`.
+ */
+export function tintenAnteil(rgba: ArrayLike<number>, breite: number, hoehe: number): number {
+  const n = Math.max(0, Math.floor(breite) * Math.floor(hoehe));
+  if (n === 0 || rgba.length < n * 4) {
+    return 0;
+  }
+  const hell = new Uint8Array(n);
+  const verteilung = new Uint32Array(256);
+  for (let i = 0; i < n; i += 1) {
+    const r = rgba[i * 4] ?? 255;
+    const g = rgba[i * 4 + 1] ?? 255;
+    const b = rgba[i * 4 + 2] ?? 255;
+    const a = (rgba[i * 4 + 3] ?? 255) / 255;
+    const l = Math.round((0.299 * r + 0.587 * g + 0.114 * b) * a + 255 * (1 - a));
+    hell[i] = l;
+    verteilung[l] = (verteilung[l] ?? 0) + 1;
+  }
+  let hintergrund = 0;
+  for (let summe = 0; hintergrund < 256; hintergrund += 1) {
+    summe += verteilung[hintergrund] ?? 0;
+    if (summe * 2 >= n) {
+      break;
+    }
+  }
+  let tinte = 0;
+  for (let i = 0; i < n; i += 1) {
+    if (Math.abs((hell[i] ?? hintergrund) - hintergrund) >= TINTE_AB_ABWEICHUNG) {
+      tinte += 1;
+    }
+  }
+  return tinte / n;
+}
+
+/** Die Prüfbereiche aller Zellen ohne erkannte Wörter, zeilenweise, nach innen verkleinert. */
+export function leereZellBereiche(tabelle: BildTabelle): Bildbereich[] {
+  const bereiche: Bildbereich[] = [];
+  for (const zeile of tabelle.zeilen) {
+    for (const zelle of zeile) {
+      if (zelle.zustand === "leer" && zelle.bereich) {
+        const b = zelle.bereich;
+        bereiche.push({
+          x0: b.x0 + TINTE_RAND_PX,
+          y0: b.y0 + TINTE_RAND_PX,
+          x1: Math.max(b.x0 + TINTE_RAND_PX, b.x1 - TINTE_RAND_PX),
+          y1: Math.max(b.y0 + TINTE_RAND_PX, b.y1 - TINTE_RAND_PX),
+        });
+      }
+    }
+  }
+  return bereiche;
+}
+
+/**
+ * Das Ergebnis der Messung je Zelle ohne erkannte Wörter (`anteile` in der Reihenfolge von
+ * `leereZellBereiche`):
+ *   · sichtbarer Inhalt  ⇒ `[unleserlich]` — die Engine hat dort etwas nicht lesen können;
+ *   · gemessen ohne Inhalt ⇒ „leer“ — NUR so entsteht eine leere Zelle;
+ *   · nicht gemessen (`null`, fehlendes Ergebnis) ⇒ `[ungeprüft]` (Nacharbeit 5, Bens Befund):
+ *     fehlende Wörter beweisen keine Leere, und eine fehlende Messung auch nicht.
+ * Kein Wert wird ergänzt; Zellen mit erkannten Wörtern bleiben, wie sie sind.
+ */
+export function markiereUnerkannteInhalte(
+  tabelle: BildTabelle,
+  anteile: readonly (number | null | undefined)[],
+): BildTabelle {
+  let n = 0;
+  const zeilen = tabelle.zeilen.map((zeile) =>
+    zeile.map((zelle): TabellenZelle => {
+      if (zelle.zustand !== "leer" || !zelle.bereich) {
+        return zelle;
+      }
+      const anteil = anteile[n];
+      n += 1;
+      if (anteil === null || anteil === undefined || !Number.isFinite(anteil)) {
+        return {
+          text: "[ungeprüft]",
+          zustand: "ungeprueft",
+          mehrdeutig: zelle.mehrdeutig,
+          rahmen: zelle.bereich,
+        };
+      }
+      if (anteil < TINTE_AB_ANTEIL) {
+        return zelle;
+      }
+      return {
+        text: "[unleserlich]",
+        zustand: "unleserlich",
+        mehrdeutig: zelle.mehrdeutig,
+        rahmen: zelle.bereich,
+      };
+    }),
+  );
+  // Eine Kopfzeile setzt volle, lesbare Zellen voraus (s. oben) — eine jetzt unleserliche oder
+  // ungeprüfte Zelle in der ersten Zeile hebt sie auf.
+  const kopf =
+    tabelle.kopfzeilen > 0 &&
+    (zeilen[0] ?? []).every((z) => z.zustand !== "unleserlich" && z.zustand !== "ungeprueft");
+  return { ...tabelle, kopfzeilen: kopf ? tabelle.kopfzeilen : 0, zeilen };
+}
+
+/**
+ * Misst die Zellen ohne Wörter am Bild und kennzeichnet das Ergebnis. Ohne Messweg oder bei einem
+ * Fehler der Messung gilt jede dieser Zellen als ungeprüft — nie still als leer.
+ */
+export async function pruefeLeereZellen(
+  tabelle: BildTabelle,
+  src: string,
+  messeTinte: TintenMesser | undefined,
+): Promise<BildTabelle> {
+  const bereiche = leereZellBereiche(tabelle);
+  if (bereiche.length === 0) {
+    return tabelle;
+  }
+  if (!messeTinte) {
+    return markiereUnerkannteInhalte(tabelle, []);
+  }
+  try {
+    return markiereUnerkannteInhalte(tabelle, await messeTinte(src, bereiche));
+  } catch {
+    return markiereUnerkannteInhalte(tabelle, []);
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
 // Bildinhalt über W02 — das Ergebnis des vorhandenen Wegs, ehrlich eingeordnet
 // ------------------------------------------------------------------------------------------------
 
@@ -686,6 +1163,7 @@ interface Erkennung {
   textGekennzeichnet: string;
   unsicher: UnsichereStelle[];
   tabelle: string[][] | null;
+  bildTabelle: BildTabelle | null;
   /** OCR-E01: die Wörter mit Rahmen, wie die Engine sie geliefert hat. */
   woerter: WortPosition[];
   fehler?: string;
@@ -779,6 +1257,8 @@ export async function mitFrist<T>(lauf: Promise<T>, ms: number): Promise<T | "fr
 export function createBildAnalyse(optionen: {
   erkenne: BildErkenner;
   ladeBild?: BildLader;
+  /** OCR-E03: misst Zellen ohne erkannte Wörter am Bild (Browser: `bildTintenAnteile`). */
+  messeTinte?: TintenMesser;
   zeitlimitMs?: number;
   ladefristMs?: number;
   hoechstzahl?: number;
@@ -798,7 +1278,14 @@ export function createBildAnalyse(optionen: {
 
   const erkenneMitFrist = async (src: string): Promise<Erkennung> => {
     analysen += 1;
-    const leer = { text: "", textGekennzeichnet: "", unsicher: [], tabelle: null, woerter: [] };
+    const leer = {
+      text: "",
+      textGekennzeichnet: "",
+      unsicher: [],
+      tabelle: null,
+      bildTabelle: null,
+      woerter: [],
+    };
     try {
       const ergebnis = await mitFrist(optionen.erkenne(src), zeitlimit);
       if (ergebnis === "frist") {
@@ -809,11 +1296,14 @@ export function createBildAnalyse(optionen: {
         if (text.length === 0) {
           return { status: "kein-text", ...leer };
         }
+        const raster = bildTabelleAusWoertern(ergebnis.woerter);
         return {
           status: "gelesen",
           text,
           ...kennzeichneUnsicheres(text, ergebnis.woerter),
           tabelle: tabelleAusWoertern(ergebnis.woerter),
+          // OCR-E03 Nacharbeit 4: Zellen ohne Wörter am Bild prüfen, bevor sie „leer“ heißen.
+          bildTabelle: raster ? await pruefeLeereZellen(raster, src, optionen.messeTinte) : raster,
           woerter: wortPositionen(ergebnis.woerter),
         };
       }
@@ -941,6 +1431,7 @@ export function createBildAnalyse(optionen: {
       textGekennzeichnet: erkennung.textGekennzeichnet,
       unsicher: erkennung.unsicher,
       tabelle: erkennung.tabelle,
+      bildTabelle: erkennung.bildTabelle,
       bildinhalt,
       wiederverwendet,
       ...(erkennung.fehler ? { fehler: erkennung.fehler } : {}),
@@ -982,6 +1473,7 @@ export function createBildAnalyse(optionen: {
       textGekennzeichnet: erkennung.textGekennzeichnet,
       unsicher: erkennung.unsicher,
       tabelle: erkennung.tabelle,
+      bildTabelle: erkennung.bildTabelle,
       bildinhalt: inhalt ? await inhalt : NICHT_ANALYSIERT,
       wiederverwendet: true,
       ...(erkennung.woerter.length > 0 ? { woerter: erkennung.woerter } : {}),
