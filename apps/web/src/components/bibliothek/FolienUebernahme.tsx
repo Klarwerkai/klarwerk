@@ -95,14 +95,17 @@ export function FolienUebernahme({
           <details>
             <summary>{t("folienuebernahme.stellen")}</summary>
             <ul>
-              {v.dateiwirkungen.map((w, i) => (
-                <li key={`${w.sldId}:${w.shapeId}:${i}`}>
-                  {t("folienaenderungen.folie", {
-                    nummer: lage.folien.find((f) => f.sldId === w.sldId)?.position ?? w.sldId,
-                  })}
-                  : {w.vorher} → {w.nachher}
-                </li>
-              ))}
+              {v.dateiwirkungen.map((w, i) => {
+                const folie = lage.folien.find((f) => f.sldId === w.sldId);
+                return (
+                  <li key={`${w.sldId}:${w.shapeId}:${i}`}>
+                    {folie
+                      ? t("folienaenderungen.folie", { nummer: folie.position })
+                      : t("folienuebernahme.neueBelegfolie")}
+                    : {w.vorher} → {w.nachher}
+                  </li>
+                );
+              })}
             </ul>
           </details>
           {v.konflikte.length ? (

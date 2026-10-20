@@ -3,6 +3,7 @@ export default {
   praefix: "folienuebernahme.",
   legacySchluessel: [],
   de: {
+    "folienuebernahme.neueBelegfolie": "Neue Belegfolie",
     "folienuebernahme.stellen": "Betroffene Stellen anzeigen",
     "folienuebernahme.titel": "Datei und gebundene Daten aktualisieren",
     "folienuebernahme.hinweis":
@@ -39,6 +40,7 @@ export default {
     "folienuebernahme.unbestaetigt": "Speicherung noch nicht vollständig bestätigt",
   },
   en: {
+    "folienuebernahme.neueBelegfolie": "New evidence slide",
     "folienuebernahme.stellen": "Show affected locations",
     "folienuebernahme.titel": "Update file and linked data",
     "folienuebernahme.hinweis":
@@ -76,6 +78,7 @@ export default {
     "folienuebernahme.unbestaetigt": "Storage not fully confirmed yet",
   },
   nl: {
+    "folienuebernahme.neueBelegfolie": "Nieuwe bewijsdia",
     "folienuebernahme.stellen": "Betrokken plaatsen tonen",
     "folienuebernahme.titel": "Bestand en gekoppelde gegevens bijwerken",
     "folienuebernahme.hinweis":
