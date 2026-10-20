@@ -294,6 +294,7 @@ test("AW21 · befugte Konfliktklärung erhält Gegenbelege und öffnet bei neuen
 }, info) => {
   const p = await eigeneSeite(browser, page);
   try {
+    await p.getByRole("button", { name: "Später", exact: true }).click();
     const a = await wissen(
       p,
       `Konfliktbeleg A ${marke()}`,
@@ -363,6 +364,7 @@ test("AW21 · befugte Konfliktklärung erhält Gegenbelege und öffnet bei neuen
     await expect(karte.getByTestId("norm-konfliktentscheid")).toContainText(
       "Auswahl für den aktuellen Sachstand",
     );
+    await karte.screenshot({ path: info.outputPath("konflikt-bewusste-auswahl.png") });
     await karte.getByTestId("norm-fachform").locator("summary").click();
     await expect(
       karte.getByTestId("norm-fachform").getByLabel("Geltungsbereich", { exact: true }),
@@ -384,12 +386,12 @@ test("AW21 · befugte Konfliktklärung erhält Gegenbelege und öffnet bei neuen
     await expect(karte).toContainText("Termine oder Geltungsbereiche widersprechen sich");
     for (const datum of ["2027-01-01", "2027-02-01", "2027-03-01"])
       await expect(karte).toContainText(datum);
-    await p.screenshot({ path: info.outputPath("konflikt-nach-neuem-beleg.png"), fullPage: true });
+    await karte.screenshot({ path: info.outputPath("konflikt-nach-neuem-beleg.png") });
     await p.setViewportSize({ width: 390, height: 844 });
     await expect
       .poll(() => p.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
       .toBe(true);
-    await p.screenshot({ path: info.outputPath("konflikt-schmal.png"), fullPage: true });
+    await karte.screenshot({ path: info.outputPath("konflikt-schmal.png") });
   } finally {
     await p.context().close();
   }
