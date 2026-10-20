@@ -72,6 +72,46 @@ Dateiabruf, Office-Verlauf und Weitergabe bleiben die vorhandenen Wege;
 es wird kein Exportdienst hinzugefügt. Eine exportierte Datei ist eine
 Momentaufnahme, nicht live synchronisiert und keine Klarwerk-Zugangsfreigabe.
 
+### O-1 · Quellenentzug nach der Übernahme
+
+Das gemeinsame N-Downloadtor `praesentation-snapshot-recht.ts` wird als
+zusätzliche UND-Bedingung am normalen Anhangs-/Privattor verwendet, frisch
+bei Daten-URL, `/raw` und `/traeger`. Fester Ursprung: N
+`8fcb7acac2d74b1d398086ab3f3845677baf04e2`; der feste öffentliche P-Port
+`9fddf9120c9fbceaa581e622452884fa523de8e8` liefert die erhaltenen PP07-Zweige.
+Der hier lokal dekodierte Minimaltyp ersetzt allein dessen Typimport des
+PP05-Schreibers. Keine fremde Fachimplementierung und kein beweglicher
+Arbeitsstand werden übernommen. Das PP06-Delta ist separat lieferbar.
+
+Der bestehende W10-Schreiber fügt der geänderten PPTX einen internen
+`ppt/klara/pp06-<token>.json`-Beleg hinzu. Er nennt tatsächlichen Datenpunkt,
+Datenfassung, Inhaltsfingerabdruck und Zielelement. Rechte stammen weiter
+aus PP02: heutige Heimat-/Quellrechte, echte historische Eingaben und ihre
+Fassungen. Ein Manifest allein reicht nicht: Die gespeicherte Bindung muss
+die interne PP06-Kennung, Zielartikel/Anhang, tatsächliche Objektkennung,
+Datei-SHA und den wirklich wieder geöffneten Folienwert bestätigen. Frühere
+unveränderte Belege nutzen die bestehende N-Dateikette. Fehlende Daten,
+Bindung, Eingaben oder Rechte sperren den Abruf mit der normalen 404-Antwort.
+Ein berechtigter Gegenleser und eine spätere Wiederfreigabe bleiben wirksam.
+
+Auch W10-Änderungsübersichten und private Folgeobjekte enthalten Quellwerte.
+Ihr serverintern gespeicherter Lifecycle-Anker bindet eigene tatsächliche
+Bytes per SHA an die erzeugte PPTX. Derselbe Guard prüft diesen Dateianker;
+das normale Eigentümertor bleibt zusätzlich nötig. Das Feld wird beim
+öffentlichen Upload nie übernommen. Ein Konfliktentwurf ohne abgeschlossene
+PP06-Dateibindung bleibt gesperrt. Eine bereits gespeicherte Datei mit
+gescheiterter Bindung bleibt als echte Teilwirkung im Bericht und wird
+ebenfalls nicht ausgeliefert. Es gibt keinen globalen Kopienbestand und
+keinen Zugriff auf bereits lokal heruntergeladene Dateien.
+
+Der neue gezielte API-/Dateigegenfall ist
+`pp06-snapshot-download.test.ts`: echte Anwendung und Anmeldung, fiktive
+In-Memory-Ablagen, echter Ergänzungs-/Speicher-/Wiederöffnungsweg. Abgedeckt
+sind nachträglicher Quellenentzug an allen drei Abrufen bei weiter lesbarem
+Ziel, Gegenleser/Wiederfreigabe, historische Eingaben, fehlende Bindungen,
+kopierte Manifeste, private Folgeobjekte und normale Uploads. Dieser enge
+Nachtrag wiederholt keine alten 19/46-Fälle und keinen Browserlauf.
+
 ## Bestand und Integrationshinweise
 
 `praesentation-daten-umgebung.ts` ist ausschließlich die unverändert

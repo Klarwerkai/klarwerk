@@ -1,6 +1,7 @@
 // PP-05: zusätzliches UND am bestehenden Object-Downloadtor. Keine eigenen Rollen/Rechte/Ablage.
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
+import type { ObjectLifecycle } from "../../object-store";
 import { FOLIEN_ABGLEICH_GRENZEN, pruefeAbgleichKoerper } from "./folien-abgleich-grenzen";
 import {
   type DatenUmgebung,
@@ -23,13 +24,14 @@ interface AusgabeBindung {
   shapeId: string;
   zeile?: number;
   spalte?: number;
+  bindungId?: string;
 }
 interface DeckVertrag {
-  vertrag: "klara-pp05-v1";
+  vertrag: "klara-pp05-v1" | "klara-pp06-v1";
   plan: {
-    vertrag: "klara-pp05-v1";
+    vertrag: "klara-pp05-v1" | "klara-pp06-v1";
     basis: { koId: string; anhangId: string; dateiFassung: string };
-    fakten: { id: string; fassung: number; wert: string }[];
+    fakten: { id: string; fassung: number; wert: string; fingerabdruck?: string }[];
   };
   bindungen: AusgabeBindung[];
 }
@@ -37,6 +39,8 @@ interface DeckVertrag {
 const NEIN: AnhangUrteil = { sichtbar: false, vertraulich: true };
 const PREFIX = "ppt/klara/pp05-";
 const MANIFEST = /^ppt\/klara\/pp05-[^/]+\.json$/;
+const PP06_PREFIX = "ppt/klara/pp06-";
+const PP06_MANIFEST = /^ppt\/klara\/pp06-([0-9a-f]{64})\.json$/;
 const PP07_VARIANTE = "ppt/klara/pp07-variante.json";
 const PP07_UEBERNAHME = "ppt/klara/pp07-uebernahme.json";
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -46,12 +50,12 @@ const kennung = (v: unknown): v is string =>
   typeof v === "string" && v.length > 0 && v.length <= 200;
 const fassung = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0;
 
-function deckVon(roh: unknown): DeckVertrag | undefined {
+function deckVon(roh: unknown, vertrag: DeckVertrag["vertrag"]): DeckVertrag | undefined {
   if (
     !objekt(roh) ||
-    roh.vertrag !== "klara-pp05-v1" ||
+    roh.vertrag !== vertrag ||
     !objekt(roh.plan) ||
-    roh.plan.vertrag !== "klara-pp05-v1" ||
+    roh.plan.vertrag !== vertrag ||
     !objekt(roh.plan.basis) ||
     !kennung(roh.plan.basis.koId) ||
     !kennung(roh.plan.basis.anhangId) ||
@@ -61,7 +65,13 @@ function deckVon(roh: unknown): DeckVertrag | undefined {
     roh.plan.fakten.length < 1 ||
     roh.plan.fakten.length > 12 ||
     !roh.plan.fakten.every(
-      (f) => objekt(f) && kennung(f.id) && fassung(f.fassung) && typeof f.wert === "string",
+      (f) =>
+        objekt(f) &&
+        kennung(f.id) &&
+        fassung(f.fassung) &&
+        typeof f.wert === "string" &&
+        (vertrag !== "klara-pp06-v1" ||
+          (typeof f.fingerabdruck === "string" && /^[0-9a-f]{64}$/.test(f.fingerabdruck))),
     ) ||
     !Array.isArray(roh.bindungen) ||
     !roh.bindungen.every(
@@ -72,7 +82,9 @@ function deckVon(roh: unknown): DeckVertrag | undefined {
         kennung(b.sldId) &&
         kennung(b.shapeId) &&
         (b.zeile === undefined || fassung(b.zeile)) &&
-        (b.spalte === undefined || fassung(b.spalte)),
+        (b.spalte === undefined || fassung(b.spalte)) &&
+        (vertrag !== "klara-pp06-v1" ||
+          (typeof b.bindungId === "string" && /^pp06:[0-9a-f]{64}$/.test(b.bindungId))),
     )
   )
     return undefined;
@@ -80,22 +92,47 @@ function deckVon(roh: unknown): DeckVertrag | undefined {
 }
 
 /**
- * undefined: kein PP05-Snapshot, bestehendes Anhangurteil unverändert.
- * AnhangUrteil: gebundener PP05-Snapshot; ausschließlich zusätzliche Einschränkung.
+ * undefined: kein erkannter Snapshot, bestehendes Anhangurteil unverändert.
+ * AnhangUrteil: gebundener Snapshot; ausschließlich zusätzliche Einschränkung.
  * Rechte und Daten werden bei JEDEM Aufruf frisch gelesen, auch für alte Dateifassungen.
  */
 export async function snapshotLesbar(
   bytes: Buffer,
   objectId: string,
   u?: DatenUmgebung,
+  ableitung?: ObjectLifecycle["praesentationAbleitung"],
+  objektBytes?: (id: string) => Promise<Buffer | undefined>,
 ): Promise<AnhangUrteil | undefined> {
+  // O-1: private W10-Folgeobjekte enthalten ebenfalls Quellwerte. Ausschließlich die intern
+  // gespeicherte Bindung ihrer eigenen Bytes an eine echte PPTX führt in dasselbe Tor.
+  if (ableitung) {
+    try {
+      if (
+        !u ||
+        !objektBytes ||
+        ableitung.inhaltSha256 !== hash(bytes) ||
+        !kennung(ableitung.objectId) ||
+        ableitung.objectId === objectId ||
+        typeof ableitung.dateiFassung !== "string" ||
+        !/^[0-9a-f]{64}$/.test(ableitung.dateiFassung)
+      )
+        return NEIN;
+      const quelle = await objektBytes(ableitung.objectId);
+      if (!quelle || hash(quelle) !== ableitung.dateiFassung) return NEIN;
+      return (await snapshotLesbar(quelle, ableitung.objectId, u)) ?? NEIN;
+    } catch {
+      return NEIN;
+    }
+  }
   // Auch ein umbenanntes ZIP wird erkannt; MIME/Dateiname sind kein Rechtebeleg.
   if (bytes.length < 4 || bytes.readUInt32LE(0) !== 0x04034b50) return undefined;
   // ZIP-Namen stehen im Zentralverzeichnis unkomprimiert. Gewöhnliche Dateien erhalten
   // keinen neuen Parser-/Entpacklauf. Für PP05 gelten die unveränderten bestehenden Grenzen.
   const pp07Marker = bytes.includes(Buffer.from(PP07_VARIANTE));
   const pp07Uebernahme = bytes.includes(Buffer.from(PP07_UEBERNAHME));
-  if (!bytes.includes(Buffer.from(PREFIX)) && !pp07Marker && !pp07Uebernahme) return undefined;
+  const pp06Marker = bytes.includes(Buffer.from(PP06_PREFIX));
+  if (!bytes.includes(Buffer.from(PREFIX)) && !pp07Marker && !pp07Uebernahme && !pp06Marker)
+    return undefined;
   if (await pruefeAbgleichKoerper(bytes, FOLIEN_ABGLEICH_GRENZEN)) return NEIN;
   let zip: JSZip;
   try {
@@ -103,9 +140,16 @@ export async function snapshotLesbar(
   } catch {
     return NEIN;
   }
-  const namen = Object.keys(zip.files).filter((n) => n.startsWith(PREFIX) && !zip.files[n]?.dir);
-  if (namen.length === 0 && !pp07Uebernahme) return pp07Marker ? NEIN : undefined;
-  if (!u || namen.length > MAX_FOLIEN || namen.some((n) => !MANIFEST.test(n))) return NEIN;
+  const namen = Object.keys(zip.files).filter(
+    (n) => (n.startsWith(PREFIX) || n.startsWith(PP06_PREFIX)) && !zip.files[n]?.dir,
+  );
+  if (namen.length === 0 && !pp07Uebernahme) return pp07Marker || pp06Marker ? NEIN : undefined;
+  if (
+    !u ||
+    namen.length > MAX_FOLIEN ||
+    namen.some((n) => !(n.startsWith(PP06_PREFIX) ? PP06_MANIFEST.test(n) : MANIFEST.test(n)))
+  )
+    return NEIN;
   let vertraulich = false;
   const quelle = u;
   const lesend: DatenUmgebung = {
@@ -122,8 +166,14 @@ export async function snapshotLesbar(
     for (const name of namen) {
       const text = await zip.file(name)?.async("string");
       if (!text || text.length > 1024 * 1024) return NEIN;
-      const deck = deckVon(JSON.parse(text));
+      const pp06 = name.startsWith(PP06_PREFIX);
+      const deck = deckVon(JSON.parse(text), pp06 ? "klara-pp06-v1" : "klara-pp05-v1");
       if (!deck) return NEIN;
+      if (
+        pp06 &&
+        deck.bindungen.some((b) => b.bindungId !== `pp06:${PP06_MANIFEST.exec(name)?.[1]}`)
+      )
+        return NEIN;
       decks.push(deck);
     }
     // PP07-Dateitiefen ändern nur Sichtbarkeit. Ihr Manifest verleiht keine Rechte:
@@ -192,6 +242,8 @@ export async function snapshotLesbar(
       for (const fakt of deck.plan.fakten) {
         const dp = await datenfassung(fakt.id, fakt.fassung);
         if (!dp || dp.wert !== fakt.wert) return NEIN;
+        if (deck.vertrag === "klara-pp06-v1" && fingerabdruck(dp) !== fakt.fingerabdruck)
+          return NEIN;
         const deklariert = deck.bindungen.filter(
           (b) => b.datenpunktId === fakt.id && b.datenFassung === fakt.fassung,
         );
@@ -205,6 +257,7 @@ export async function snapshotLesbar(
               g.anhangId === basis.anhangId &&
               g.datenFassung === fakt.fassung &&
               dateifassungen.has(g.dateiFassung) &&
+              (deck.vertrag !== "klara-pp06-v1" || g.id === b.bindungId) &&
               gleicherOrt(g, b),
           );
           const gespeichert =

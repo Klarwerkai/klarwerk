@@ -42,6 +42,7 @@ import {
   ergaenzungsVorschau,
   leseErgaenzungsSuche,
 } from "../praesentation-ergaenzung";
+import { ergaenzungsDatenbeleg } from "../praesentation-ergaenzung-snapshot";
 import { darfSehen } from "../sichtbarkeit";
 
 // ================================================================================================
@@ -667,7 +668,13 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
           const dp = await datenpunkte.lesen(k.datenpunkt.id);
           if (!dp) throw new DatenFehler("kein_zugriff", "Datenpunkt nicht verfügbar.");
           dokument = await fuehreNachbearbeitungAus(
-            { ko: deps.ko, objekte: deps.objekte, verlauf: verlaufVon, jetzt },
+            {
+              ko: deps.ko,
+              objekte: deps.objekte,
+              verlauf: verlaufVon,
+              jetzt,
+              datenbeleg: ergaenzungsDatenbeleg(request.params.id, suche, v, k, dp),
+            },
             {
               artikel: vorher.lage.artikel,
               anhang: vorher.lage.anhang,

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { ObjectRepo } from "./repo";
 import {
   MAX_OBJECT_BYTES,
@@ -45,6 +45,8 @@ export interface PutObjectInput {
   draftId?: string;
   /** BPA-17: privates Folgeprodukt dieses Wissensobjekts (s. `ObjectLifecycle.privatQuelle`). */
   privatQuelle?: string;
+  /** Nur interne Erzeuger; der eigene Inhalts-SHA wird hier aus den gespeicherten Bytes gebildet. */
+  praesentationAbleitung?: { objectId?: string; dateiFassung?: string };
 }
 
 // Leitet die Objektart aus dem MIME-Typ ab (überschreibbar via input.kind).
@@ -84,6 +86,11 @@ export class ObjectStore {
       throw new ObjectError("INVALID", "Objekt zu groß.");
     }
     const at = this.now();
+    const ableitungBytes = input.praesentationAbleitung
+      ? decodeDataUrl(input.data)?.bytes
+      : undefined;
+    if (input.praesentationAbleitung && !ableitungBytes)
+      throw new ObjectError("INVALID", "Dateiinhalt der Präsentationsableitung fehlt.");
     // AUFTRAG-mega20 Block C: die Lebenszyklus-Zuordnung entsteht im SELBEN Schreibvorgang wie das
     // Objekt. Ein zweiter Schritt könnte scheitern und ließe ein Objekt ohne Zuordnung zurück —
     // genau den Zustand, den dieser Block beseitigt.
@@ -92,6 +99,14 @@ export class ObjectStore {
       ...(input.owner?.trim() ? { owner: input.owner.trim() } : {}),
       ...(input.draftId?.trim() ? { draftId: input.draftId.trim() } : {}),
       ...(input.privatQuelle?.trim() ? { privatQuelle: input.privatQuelle.trim() } : {}),
+      ...(ableitungBytes
+        ? {
+            praesentationAbleitung: {
+              ...input.praesentationAbleitung,
+              inhaltSha256: createHash("sha256").update(ableitungBytes).digest("hex"),
+            },
+          }
+        : {}),
       retainUntil: new Date(at + OBJECT_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString(),
     };
     const ref: ObjectRef = {
