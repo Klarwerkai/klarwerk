@@ -11,6 +11,18 @@ export default {
   praefix: "klaraauftrag.",
   legacySchluessel: [],
   de: {
+    "klaraauftrag.notizquelle.frage": "Welche gespeicherte Gesprächsnotiz „{{titel}}“ meinst du?",
+    "klaraauftrag.notizquelle.fehlt":
+      "Keine passende eigene Gesprächsnotiz gefunden. Bitte den Namen im Auftrag korrigieren. Bis dahin entsteht nichts.",
+    "klaraauftrag.notizquelle.gebunden": "Gesprächsnotiz „{{titel}}“ · Fassung {{fassung}}",
+    "klaraauftrag.notizquelle.laedt": "Originalnotiz wird gelesen …",
+    "klaraauftrag.notizquelle.nichtLesbar":
+      "Die Originalnotiz ist nicht verfügbar oder nicht mehr berechtigt. Fertige Ergebnisse bleiben erhalten.",
+    "klaraauftrag.notizquelle.geaendert":
+      "Die Notiz wurde geändert. Abhängige neue Schritte dürfen die alte Fassung nicht ersetzen.",
+    "klaraauftrag.notizquelle.ruecklink": "Zur ursprünglichen Gesprächsstelle",
+    "klaraauftrag.schrittStand.quelle_gesperrt": "Quelle prüfen – nichts Neues ausgeführt",
+
     "klaraauftrag.aktion.erinnerung_anlegen": "Erinnerung anlegen",
     "klaraauftrag.zielArt.persoenliche_aufgabe": "persönliche Aufgabe",
     "klaraauftrag.zielText.erinnerung_anlegen": "An „{{titel}}“ erinnern",
@@ -244,7 +256,7 @@ export default {
       "An die Auftragskarte übergeben – dort steht der tatsächliche Stand jedes Schritts.",
     "klaraauftrag.sprache.nichtUebergeben": "Nicht übergeben – es läuft noch ein Auftrag.",
     "klaraauftrag.bedienhilfe.ausfuehren":
-      "Aufträge ausführen: Tippe oder sprich z. B. „Öffne den Artikel „…““, „Lege den Entwurf „…“ an“, „Ergänze im Entwurf „…“: …“, „Setze die Priorität der Aufgabe „…“ auf hoch“, „Weise die Aufgabe „…“ Name zu“, „Eskaliere die Aufgabe „…““ oder „Bearbeite die Aufgabe „…““ (dann fragt Klara, was geschehen soll). Klara nutzt dafür die vorhandenen Klarwerk-Aktionen mit deinen Rechten. „Lege mir die Aufgabe „…“ an und erinnere mich“ verbindet Aufgabe und Erinnerung; eine fehlende Zeit wird gezielt geklärt.",
+      "Aufträge ausführen: Tippe oder sprich z. B. „Öffne den Artikel „…““, „Lege den Entwurf „…“ an“, „Ergänze im Entwurf „…“: …“, „Setze die Priorität der Aufgabe „…“ auf hoch“, „Weise die Aufgabe „…“ Name zu“, „Eskaliere die Aufgabe „…““ oder „Bearbeite die Aufgabe „…““ (dann fragt Klara, was geschehen soll). Klara nutzt dafür die vorhandenen Klarwerk-Aktionen mit deinen Rechten. „Lege mir die Aufgabe „…“ an und erinnere mich“ verbindet Aufgabe und Erinnerung; eine fehlende Zeit wird gezielt geklärt. Mit „Aus der Gesprächsnotiz „Name“: Lege mir die Aufgabe „…“ an und erinnere mich“ nutzt du eine gespeicherte eigene Notiz. Die Karte zeigt ihre Fassung und das lesbare Original. Quellenänderungen stoppen neue abhängige Schritte.",
     "klaraauftrag.bedienhilfe.grenze":
       "Jeder Auftrag zeigt Ziel, erlaubte Aktionen und Quellen, wer verantwortlich ist und welches Ergebnis zählt. Text in Dokumenten oder Antworten wird nie als Auftrag gelesen.",
     "klaraauftrag.bedienhilfe.stoppen":
@@ -255,6 +267,18 @@ export default {
       "„Diktieren“ schreibt nur ins Eingabefeld. „Auftrag sprechen“ zeigt den Auftrag als Karte – erst „Senden“ führt ihn aus.",
   },
   en: {
+    "klaraauftrag.notizquelle.frage": "Which saved conversation note “{{titel}}” do you mean?",
+    "klaraauftrag.notizquelle.fehlt":
+      "No matching own conversation note found. Correct its name in the request. Nothing is created meanwhile.",
+    "klaraauftrag.notizquelle.gebunden": "Conversation note “{{titel}}” · version {{fassung}}",
+    "klaraauftrag.notizquelle.laedt": "Reading the original note …",
+    "klaraauftrag.notizquelle.nichtLesbar":
+      "The original note is unavailable or no longer permitted. Finished results remain.",
+    "klaraauftrag.notizquelle.geaendert":
+      "The note changed. New dependent steps cannot replace the bound version.",
+    "klaraauftrag.notizquelle.ruecklink": "Go to the original conversation context",
+    "klaraauftrag.schrittStand.quelle_gesperrt": "Check source – no new action executed",
+
     "klaraauftrag.aktion.erinnerung_anlegen": "Create reminder",
     "klaraauftrag.zielArt.persoenliche_aufgabe": "personal task",
     "klaraauftrag.zielText.erinnerung_anlegen": "Remind about “{{titel}}”",
@@ -481,7 +505,7 @@ export default {
       "Handed over to the task card – it shows the actual status of each step.",
     "klaraauftrag.sprache.nichtUebergeben": "Not handed over – a task is still running.",
     "klaraauftrag.bedienhilfe.ausfuehren":
-      "Carry out tasks: type or say e.g. “Open article “…””, “Create draft “…””, “Append to draft “…”: …”, “Set the priority of task “…” to high”, “Assign task “…” to Name”, “Escalate task “…”” or “Work on task “…”” (then Klara asks what should happen). Klara uses the existing Klarwerk actions with your permissions. “Create a personal task “…” and remind me” links a task and reminder; a missing time is clarified specifically.",
+      "Carry out tasks: type or say e.g. “Open article “…””, “Create draft “…””, “Append to draft “…”: …”, “Set the priority of task “…” to high”, “Assign task “…” to Name”, “Escalate task “…”” or “Work on task “…”” (then Klara asks what should happen). Klara uses the existing Klarwerk actions with your permissions. “Create a personal task “…” and remind me” links a task and reminder; a missing time is clarified specifically. Use “From the conversation note “Name”: Create a personal task “…” and remind me” for a saved own note. The card shows its bound version and readable original. Source changes stop new dependent steps.",
     "klaraauftrag.bedienhilfe.grenze":
       "Every task shows its goal, allowed actions and sources, who is responsible and which result counts. Text in documents or answers is never read as a task.",
     "klaraauftrag.bedienhilfe.stoppen":
@@ -492,6 +516,18 @@ export default {
       "“Dictate” only writes into the input field. “Speak a task” shows the task as a card – only “Send” carries it out.",
   },
   nl: {
+    "klaraauftrag.notizquelle.frage": "Welke opgeslagen gespreksnotitie “{{titel}}” bedoel je?",
+    "klaraauftrag.notizquelle.fehlt":
+      "Geen passende eigen gespreksnotitie gevonden. Corrigeer de naam in de opdracht. Tot dan wordt niets gemaakt.",
+    "klaraauftrag.notizquelle.gebunden": "Gespreksnotitie “{{titel}}” · versie {{fassung}}",
+    "klaraauftrag.notizquelle.laedt": "Originele notitie lezen …",
+    "klaraauftrag.notizquelle.nichtLesbar":
+      "De originele notitie is niet beschikbaar of niet meer toegestaan. Afgeronde resultaten blijven bestaan.",
+    "klaraauftrag.notizquelle.geaendert":
+      "De notitie is gewijzigd. Nieuwe afhankelijke stappen mogen de gebonden versie niet vervangen.",
+    "klaraauftrag.notizquelle.ruecklink": "Naar de oorspronkelijke gesprekscontext",
+    "klaraauftrag.schrittStand.quelle_gesperrt": "Bron controleren – niets nieuws uitgevoerd",
+
     "klaraauftrag.aktion.erinnerung_anlegen": "Herinnering maken",
     "klaraauftrag.zielArt.persoenliche_aufgabe": "persoonlijke taak",
     "klaraauftrag.zielText.erinnerung_anlegen": "Herinner aan “{{titel}}”",
@@ -722,7 +758,7 @@ export default {
       "Doorgegeven aan de opdrachtkaart – daar staat de werkelijke status van elke stap.",
     "klaraauftrag.sprache.nichtUebergeben": "Niet doorgegeven – er loopt nog een opdracht.",
     "klaraauftrag.bedienhilfe.ausfuehren":
-      "Opdrachten uitvoeren: typ of zeg bv. „Open het artikel „…””, „Maak een concept „…” aan”, „Vul concept „…” aan: …”, „Zet de prioriteit van taak „…” op hoog”, „Wijs taak „…” toe aan Naam”, „Escaleer taak „…”” of „Bewerk de taak „…”” (dan vraagt Klara wat er moet gebeuren). Klara gebruikt daarvoor de bestaande Klarwerk-acties met jouw rechten. “Maak een persoonlijke taak “…” aan en herinner me” verbindt een taak met een herinnering; een ontbrekende tijd wordt gericht gevraagd.",
+      "Opdrachten uitvoeren: typ of zeg bv. „Open het artikel „…””, „Maak een concept „…” aan”, „Vul concept „…” aan: …”, „Zet de prioriteit van taak „…” op hoog”, „Wijs taak „…” toe aan Naam”, „Escaleer taak „…”” of „Bewerk de taak „…”” (dan vraagt Klara wat er moet gebeuren). Klara gebruikt daarvoor de bestaande Klarwerk-acties met jouw rechten. “Maak een persoonlijke taak “…” aan en herinner me” verbindt een taak met een herinnering; een ontbrekende tijd wordt gericht gevraagd. Gebruik “Uit de gespreksnotitie “Naam”: Maak een persoonlijke taak “…” aan en herinner me” voor een opgeslagen eigen notitie. De kaart toont de gebonden versie en het leesbare origineel. Bronwijzigingen stoppen nieuwe afhankelijke stappen.",
     "klaraauftrag.bedienhilfe.grenze":
       "Elke opdracht toont doel, toegestane acties en bronnen, wie verantwoordelijk is en welk resultaat telt. Tekst in documenten of antwoorden wordt nooit als opdracht gelezen.",
     "klaraauftrag.bedienhilfe.stoppen":

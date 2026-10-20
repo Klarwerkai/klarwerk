@@ -31,6 +31,7 @@ import {
   KlaraRuecknahmeKonflikt,
   KlaraSchrittNachweis,
 } from "./KlaraAktionsnachweis";
+import { KlaraAuftragsnotizNachweis } from "./KlaraAuftragsnotizNachweis";
 import { KlaraErinnerungszeitRueckfrage } from "./KlaraErinnerungszeitRueckfrage";
 import {
   type AuftragsUmgebung,
@@ -47,6 +48,7 @@ import {
   unterbrichAuftrag,
   useAusfuehrungen,
   waehleAufgabenaktion,
+  waehleNotizQuelle,
   waehlePerson,
   waehleZiel,
   wiederhole,
@@ -172,6 +174,7 @@ function AusfuehrungKarte({
     (z) => z.server || z.lokal?.lage === "laeuft" || z.lokal?.lage === "unklar",
   ).length;
   const unklar = zeilen.some((z) => zeilenStand(z) === "unklar");
+  const quelleGesperrt = zeilen.some((z) => z.lokal?.lage === "quelle_gesperrt");
   // Gespeichert, Nachlesen ausstehend: nachlesen bleibt auch nach Abbrechen möglich (kein neuer Schritt).
   const wirkungOffen = zeilen.some((z) => z.server?.stand === "begonnen" && !z.server.geprueft);
   const zeit = (iso: string): string =>
@@ -188,15 +191,17 @@ function AusfuehrungKarte({
   const fehlerPhase = a.phase === "unbekannt" || a.phase === "fehler";
   // PV-02-02: der Ergebnisstand aus den festgehaltenen Schritten — unklar geht vor; ohne Auftrag am
   // Server ist der Plan noch ein Entwurf (Prüfen, Rückfrage), nichts ist ausgeführt.
-  const ergebnis: KlaraErgebnisstand | null = unklar
-    ? "unklar"
-    : auftrag
-      ? auftrag.unterbrochenAm
-        ? null
-        : (auftrag.ergebnisstand ?? null)
-      : a.phase === "pruefen" || a.phase === "rueckfrage"
-        ? "entwurf"
-        : null;
+  const ergebnis: KlaraErgebnisstand | null = quelleGesperrt
+    ? null
+    : unklar
+      ? "unklar"
+      : auftrag
+        ? auftrag.unterbrochenAm
+          ? null
+          : (auftrag.ergebnisstand ?? null)
+        : a.phase === "pruefen" || a.phase === "rueckfrage"
+          ? "entwurf"
+          : null;
 
   return (
     <section
@@ -224,9 +229,11 @@ function AusfuehrungKarte({
             ).length,
             gesamt: auftrag.geplanteSchritte,
           })}{" "}
-          {auftrag.unterbrochenAm
-            ? t("klaraauftrag.ereignis.unterbrochen")
-            : t(`klaraauftrag.stand.${auftrag.stand}`)}
+          {quelleGesperrt
+            ? t("klaraauftrag.schrittStand.quelle_gesperrt")
+            : auftrag.unterbrochenAm
+              ? t("klaraauftrag.ereignis.unterbrochen")
+              : t(`klaraauftrag.stand.${auftrag.stand}`)}
         </p>
       ) : null}
       {auftrag ? (
@@ -254,7 +261,16 @@ function AusfuehrungKarte({
             </dd>
             <dt className={KLEINTITEL}>{t("klaraauftrag.feld.quellen")}</dt>
             <dd data-testid="klara-ausfuehrung-quellen" className="text-text">
-              {auftrag.erlaubteQuellen.join(" · ")}
+              {auftrag.erlaubteQuellen
+                .map((q) => {
+                  const n = auftrag.plan?.find(
+                    (p) => p.notizQuelle && q === `notiz:${p.notizQuelle.id}`,
+                  )?.notizQuelle;
+                  return n
+                    ? t("klaraauftrag.notizquelle.gebunden", { titel: n.titel, fassung: n.fassung })
+                    : q;
+                })
+                .join(" · ")}
             </dd>
             <dt className={KLEINTITEL}>{t("klaraauftrag.feld.verantwortlich")}</dt>
             <dd data-testid="klara-ausfuehrung-verantwortlich" className="text-text">
@@ -310,6 +326,15 @@ function AusfuehrungKarte({
         </details>
       ) : null}
 
+      {auftrag
+        ? (auftrag.plan ?? [])
+            .filter((p) => p.notizQuelle)
+            .map((p) =>
+              p.notizQuelle ? (
+                <KlaraAuftragsnotizNachweis key={p.nr} quelle={p.notizQuelle} />
+              ) : null,
+            )
+        : null}
       <KlaraErgebnisstandZeile stand={ergebnis} />
       {a.phase === "pruefen" && !auftrag ? (
         <p data-testid="klara-ausfuehrung-pruefen" className="mt-1 text-[11.5px] text-ai">
@@ -348,6 +373,38 @@ function AusfuehrungKarte({
                 schritt={s}
                 umgebung={umgebung}
               />
+            ))
+        : null}
+      {a.phase === "rueckfrage"
+        ? a.geplant
+            .filter((s) => s.erkannt.notizName && !s.notizQuelle)
+            .map((s) => (
+              <fieldset
+                key={`notiz-${s.nr}`}
+                data-testid="klara-auftrag-notizwahl"
+                className="mt-1.5 rounded-btn border border-hairline px-2 py-1.5"
+              >
+                <legend className="px-1 text-[11.5px] text-text">
+                  {t("klaraauftrag.notizquelle.frage", { titel: s.erkannt.notizName })}
+                </legend>
+                {(s.notizKandidaten ?? []).length === 0 ? (
+                  <p className="text-[11.5px] text-muted">{t("klaraauftrag.notizquelle.fehlt")}</p>
+                ) : (
+                  (s.notizKandidaten ?? []).map((q) => (
+                    <button
+                      type="button"
+                      key={q.id}
+                      data-testid="klara-auftrag-notizoption"
+                      data-id={q.id}
+                      onClick={() => waehleNotizQuelle(a.lokalId, s.nr, q.id, umgebung())}
+                      className={KNOPF}
+                    >
+                      {q.titel} · {t("klaraauftrag.fassungWert", { fassung: q.fassung })}
+                      <span className="block text-left text-[11px] font-normal">{q.auszug}</span>
+                    </button>
+                  ))
+                )}
+              </fieldset>
             ))
         : null}
       {/* Rückfrage: mehrere Ziele passen — gewählt wird, BEVOR etwas geschieht. */}

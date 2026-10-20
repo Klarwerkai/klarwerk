@@ -71,6 +71,8 @@ export interface ErkannterSchritt {
   /** Nacharbeit 4: nur bei `aufgabe_bearbeiten` — die genannte Aktion; fehlt sie, fragt Klara. */
   aufgabenaktion?: ErkannteAufgabenaktion;
   erinnerung?: { datum: string; uhrzeit: string; zeitzone: string };
+  /** Nur der ausdrücklich genannte Name einer gespeicherten Gesprächsnotiz. */
+  notizName?: string;
 }
 
 export interface ErkannterAuftrag {
@@ -438,6 +440,25 @@ function aufgabeMitErinnerung(s: string): ErkannterAuftrag | null {
   };
 }
 
+/** Die Quelle ist ein gespeichertes Original; ihr Text wird nie als Handlungsanweisung geparst. */
+function ausGespraechsnotiz(s: string): ErkannterAuftrag | null {
+  const prefix =
+    /^(?:aus\s+(?:der\s+)?gespr(?:ä|ae)chsnotiz|from\s+(?:the\s+)?conversation\s+note|uit\s+(?:de\s+)?gespreksnotitie)\s+/iu.exec(
+      s,
+    );
+  if (!prefix) return null;
+  const rest = s.slice(prefix[0].length);
+  const zitat = [...rest.matchAll(ZITAT)][0];
+  if (!zitat || zitat.index !== 0) return null;
+  const notizName = zitate(zitat[0])[0];
+  const danach = /^\s*:\s*(.+)$/u.exec(rest.slice(zitat[0].length));
+  if (!notizName || !danach) return null;
+  const a = aufgabeMitErinnerung(danach[1] ?? "") ?? aufgabeAnlegen(danach[1] ?? "");
+  if (!a || a.schritte[0]?.aktion !== "persoenliche_aufgabe_anlegen" || a.schritte[0].inhalt)
+    return null;
+  return { schritte: a.schritte.map((p, i) => (i === 0 ? { ...p, notizName } : p)) };
+}
+
 export function erkenneAuftrag(text: string): ErkannterAuftrag | null {
   const roh = text.trim();
   if (roh.length === 0 || roh.length > 2_000 || roh.endsWith("?")) {
@@ -445,6 +466,7 @@ export function erkenneAuftrag(text: string): ErkannterAuftrag | null {
   }
   const s = bereinige(roh);
   return (
+    ausGespraechsnotiz(s) ??
     aufgabeMitErinnerung(s) ??
     anlegen(s) ??
     aufgabeAnlegen(s) ??

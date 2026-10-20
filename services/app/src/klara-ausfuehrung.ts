@@ -1,3 +1,14 @@
+import { aktionskennung, vertragFuer } from "./klara-aktionsverlauf";
+import { zielErlaubt } from "./klara-auftrag";
+import type {
+  KlaraAufgabenaktion,
+  KlaraAuftrag,
+  KlaraAuftragErgebnis,
+  KlaraAuftragSchritt,
+  KlaraAuftragZiel,
+  KlaraPlanSchritt,
+  KlaraSchreibwirkung,
+} from "./klara-auftrag";
 // ================================================================================================
 // produkt:20261008:klara-aktionen (Klara 05) · Nacharbeit 2 — DIE GEBUNDENE AUSFÜHRUNG AM SERVER.
 // ================================================================================================
@@ -34,17 +45,7 @@
 //   · Ausführung und Rücknahme DESSELBEN Schritts laufen in diesem Prozess nacheinander. Ein zweiter,
 //     gleichzeitiger Versuch sieht danach den festgehaltenen Stand und antwortet `wiederholt` — er
 //     wirkt nicht doppelt und meldet eine geschehene Wirkung nicht als gescheitert.
-import { aktionskennung, vertragFuer } from "./klara-aktionsverlauf";
-import { zielErlaubt } from "./klara-auftrag";
-import type {
-  KlaraAufgabenaktion,
-  KlaraAuftrag,
-  KlaraAuftragErgebnis,
-  KlaraAuftragSchritt,
-  KlaraAuftragZiel,
-  KlaraPlanSchritt,
-  KlaraSchreibwirkung,
-} from "./klara-auftrag";
+import { liesAuftragsnotiz } from "./klara-auftragsnotiz";
 import { type KlaraGespraechDienst, KlaraGespraechFehler } from "./klara-gespraech";
 
 /** Ein Aufruf einer vorhandenen Tür der Anwendung — mit der Anmeldung der Person. */
@@ -96,7 +97,7 @@ interface PersoenlicheAufgabe {
   titel: string;
   status: string;
   prioritaet: string;
-  bezug: { art?: unknown; auftragId?: unknown };
+  bezug: { art?: unknown; auftragId?: unknown; notizId?: unknown };
 }
 
 function persoenlicheAufgabeAus(roh: unknown): PersoenlicheAufgabe | null {
@@ -287,8 +288,15 @@ export class KlaraAusfuehrung {
       return { ...begonnen, wiederholt: true };
     }
     const fassung = begonnen.schritt.auftragFassung;
+    const notizQuelle =
+      p.notizQuelle ??
+      (p.aktion === "erinnerung_anlegen"
+        ? plan.find((s) => s.nr === p.ausSchritt)?.notizQuelle
+        : undefined);
+
     const rufe: KlaraRufe = async (methode, url, rumpf) => {
       if (methode !== "GET") {
+        if (notizQuelle) await liesAuftragsnotiz(notizQuelle, produktRufe);
         const aktuell = await this.dienst.auftrag(kontoId, gespraechId, auftragId);
         if (aktuell.abgebrochenAm || aktuell.unterbrochenAm) {
           throw new KlaraGespraechFehler(
@@ -297,7 +305,11 @@ export class KlaraAusfuehrung {
             "Der Auftrag wurde angehalten. Keine weitere Änderung begonnen; bereits ausgelöste Wirkungen bleiben erhalten.",
           );
         }
-        if (!aktuell.erlaubteAktionen.includes(p.aktion) || !zielErlaubt(aktuell, zielZumBeginn)) {
+        if (
+          !aktuell.erlaubteAktionen.includes(p.aktion) ||
+          !zielErlaubt(aktuell, zielZumBeginn) ||
+          (notizQuelle && !aktuell.erlaubteQuellen.includes(`notiz:${notizQuelle.id}`))
+        ) {
           throw new KlaraGespraechFehler(
             409,
             "ausserhalb_auftrag",
@@ -609,10 +621,11 @@ export class KlaraAusfuehrung {
         if (!angelegt)
           angelegt = await rufe("POST", "/api/me/klara/aufgaben", {
             vorgang,
-            weg: "auftrag",
-            quelle: { gespraechId, auftragId },
+            weg: p.notizQuelle ? "notiz" : "auftrag",
+            quelle: p.notizQuelle ? { notizId: p.notizQuelle.id } : { gespraechId, auftragId },
+            ...(p.notizQuelle ? { notizFassung: p.notizQuelle.fassung } : {}),
             titel: ziel.titel,
-            ...(p.inhalt ? { inhalt: p.inhalt } : {}),
+            ...(!p.notizQuelle && p.inhalt ? { inhalt: p.inhalt } : {}),
           });
         if (angelegt.status >= 500) {
           const gelesen = await nachVorgang();
@@ -639,7 +652,11 @@ export class KlaraAusfuehrung {
       if (gelesen.status !== 200 || !aufgabe) {
         return ungeklaert();
       }
-      if (aufgabe.bezug.art !== "auftrag" || aufgabe.bezug.auftragId !== auftragId) {
+      if (
+        p.notizQuelle
+          ? aufgabe.bezug.art !== "notiz" || aufgabe.bezug.notizId !== p.notizQuelle.id
+          : aufgabe.bezug.art !== "auftrag" || aufgabe.bezug.auftragId !== auftragId
+      ) {
         return scheitert("nichtNachgelesen");
       }
       return melde("gespeichert", {

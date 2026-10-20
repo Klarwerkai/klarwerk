@@ -1,4 +1,5 @@
 import { canonicalJson } from "../../audit";
+import type { KlaraAuftragsnotiz } from "./klara-auftragsnotiz";
 import { istDatum, istUhrzeit, istZeitzone } from "./klara-erinnerung-zeit";
 // ================================================================================================
 // produkt:20261008:klara-aktionen (Klara 05, AW-10) — DIE AUFTRAGSGRENZE AUSSERHALB DES SPRACHMODELLS.
@@ -219,6 +220,7 @@ export function erlaubteAufgabenaktionen(
  * `ausSchritt`: dieser Schritt öffnet das Ergebnis des Schritts mit dieser Nummer.
  */
 export interface KlaraPlanSchritt {
+  readonly notizQuelle?: KlaraAuftragsnotiz;
   readonly nr: number;
   readonly aktion: KlaraAktion;
   readonly ziel: KlaraAuftragZiel | null;
@@ -314,7 +316,9 @@ export type KlaraAuftragGrund =
   | "geaendert"
   | "nicht_ruecknehmbar"
   | "ziel_fehlt"
-  | "unterbrochen";
+  | "unterbrochen"
+  | "quelle_geaendert"
+  | "quelle_unbekannt";
 
 export class KlaraAuftragFehler extends Error {
   constructor(
@@ -573,6 +577,7 @@ function pruefePlan(
   roh: unknown,
   erlaubteAktionen: readonly KlaraAktion[],
   erlaubteZiele: readonly KlaraAuftragZiel[],
+  erlaubteQuellen: readonly string[],
 ): KlaraPlanSchritt[] {
   if (roh === undefined || roh === null) {
     return [];
@@ -624,6 +629,26 @@ function pruefePlan(
         throw eingabeFehler(`${feld}: Datum, Uhrzeit und Zeitzone gezielt klären.`);
       erinnerung = { datum: e.datum, uhrzeit: e.uhrzeit, zeitzone: e.zeitzone };
     }
+    let notizQuelle: KlaraAuftragsnotiz | undefined;
+    if (o.notizQuelle !== undefined && o.notizQuelle !== null) {
+      if (aktion !== "persoenliche_aufgabe_anlegen" || o.inhalt != null)
+        throw eingabeFehler(
+          `${feld}: Notizinhalt wird ausschließlich vom vorhandenen Notizweg gelesen.`,
+        );
+      const q = objekt(o.notizQuelle, `${feld}.notizQuelle`);
+      const id = text(q.id, 200, "notizQuelle.id");
+      if (!erlaubteQuellen.includes(`notiz:${id}`))
+        throw eingabeFehler(
+          `${feld}: Die Notiz gehört nicht zu den ausdrücklich erlaubten Quellen.`,
+        );
+      notizQuelle = {
+        id,
+        fassung: ganzzahl(q.fassung, 1, Number.MAX_SAFE_INTEGER, "notizQuelle.fassung"),
+        titel: text(q.titel, 200, "notizQuelle.titel"),
+        gespraechId: text(q.gespraechId, 200, "notizQuelle.gespraechId"),
+        nachrichtId: text(q.nachrichtId, 200, "notizQuelle.nachrichtId"),
+      };
+    }
     const inhalt =
       aktion === "entwurf_erstellen" || aktion === "persoenliche_aufgabe_anlegen"
         ? wahlweiseText(o.inhalt, 2_000, `${feld}.inhalt`)
@@ -643,6 +668,7 @@ function pruefePlan(
       aenderung,
       aufgabenaktion,
       ...(erinnerung ? { erinnerung } : {}),
+      ...(notizQuelle ? { notizQuelle } : {}),
     };
   });
 }
@@ -683,7 +709,8 @@ export function neuerAuftrag(
 ): KlaraAuftrag {
   const erlaubteAktionen = aktionen(eingabe.erlaubteAktionen);
   const erlaubteZiele = ziele(eingabe.erlaubteZiele);
-  const plan = pruefePlan(eingabe.plan, erlaubteAktionen, erlaubteZiele);
+  const erlaubteQuellen = quellen(eingabe.erlaubteQuellen);
+  const plan = pruefePlan(eingabe.plan, erlaubteAktionen, erlaubteZiele, erlaubteQuellen);
   const geplanteSchritte = ganzzahl(
     eingabe.geplanteSchritte,
     1,
@@ -702,7 +729,7 @@ export function neuerAuftrag(
     fassung: 1,
     erlaubteAktionen,
     erlaubteZiele,
-    erlaubteQuellen: quellen(eingabe.erlaubteQuellen),
+    erlaubteQuellen,
     ergebnis: text(eingabe.ergebnis, 600, "ergebnis"),
     geplanteSchritte,
     plan,
@@ -823,7 +850,7 @@ export function korrigiere(
     }
   }
   if (eingabe.plan !== undefined) {
-    const neu = pruefePlan(eingabe.plan, neueAktionen, neueZiele);
+    const neu = pruefePlan(eingabe.plan, neueAktionen, neueZiele, neueQuellen);
     if (
       neu.length !== (a.plan ?? []).length ||
       neu.some((p) => {
@@ -831,6 +858,7 @@ export function korrigiere(
         return (
           !alt ||
           p.aktion !== alt.aktion ||
+          canonicalJson(p.notizQuelle ?? null) !== canonicalJson(alt.notizQuelle ?? null) ||
           p.ausSchritt !== alt.ausSchritt ||
           (p.ziel && alt.ziel && !gleichesZiel(p.ziel, alt.ziel)) ||
           (begonnen.has(p.nr) && canonicalJson(p) !== canonicalJson(alt))

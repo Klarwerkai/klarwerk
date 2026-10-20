@@ -317,6 +317,8 @@ export interface KlaraAufgabeEingabe {
   titel?: unknown;
   inhalt?: unknown;
   prioritaet?: unknown;
+  /** Optionaler Quellenstand des gebundenen G-Auftrags; alte Notizanlagewege bleiben gültig. */
+  notizFassung?: unknown;
 }
 
 export interface KlaraAufgabeAenderung {
@@ -473,6 +475,18 @@ export class KlaraAufgabeDienst {
       const notiz = this.notizen ? await this.notizen.hole(kontoId, q.notizId as string) : null;
       if (!notiz) {
         throw new KlaraAufgabeFehler(404, "quelle_unbekannt", "Notiz nicht gefunden.");
+      }
+      if (
+        eingabe.notizFassung !== undefined &&
+        (typeof eingabe.notizFassung !== "number" ||
+          !Number.isSafeInteger(eingabe.notizFassung) ||
+          eingabe.notizFassung !== notiz.fassung)
+      ) {
+        throw new KlaraAufgabeFehler(
+          409,
+          "konflikt",
+          "Die Notiz wurde seit dem Auftrag geändert. Keine Aufgabe aus einer anderen Fassung angelegt.",
+        );
       }
       titel =
         eingabe.titel === undefined ? kurz(notiz.titel || notiz.inhalt) : titelAus(eingabe.titel);

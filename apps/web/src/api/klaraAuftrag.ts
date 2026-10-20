@@ -130,7 +130,16 @@ export interface KlaraProtokollEintrag {
 }
 
 /** Nacharbeit 2: ein Schritt des gebundenen Plans — der Server führt nur aus, was hier steht. */
+export interface KlaraAuftragsnotiz {
+  id: string;
+  fassung: number;
+  titel?: string;
+  gespraechId?: string;
+  nachrichtId?: string;
+}
+
 export interface KlaraPlanSchritt {
+  notizQuelle?: KlaraAuftragsnotiz;
   aktion: KlaraAktion;
   ziel: KlaraAuftragZiel | null;
   ausSchritt: number | null;

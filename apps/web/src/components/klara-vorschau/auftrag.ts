@@ -36,10 +36,12 @@ import {
   type KlaraAuftragSchritt,
   type KlaraAuftragZiel,
   type KlaraAuftragsQuelle,
+  type KlaraAuftragsnotiz,
   type KlaraSchrittStand,
   klaraAuftragApi,
 } from "../../api/klaraAuftrag";
 import { klaraErinnerungApi } from "../../api/klaraErinnerung";
+import { klaraNotizApi } from "../../api/klaraNotiz";
 import type { DraftPayload } from "../../api/types";
 import { fallHref } from "../../lib/fallAbsprung";
 import { type ErkannterSchritt, erkenneAuftrag } from "../../lib/klaraAuftragErkennung";
@@ -79,6 +81,8 @@ export interface GeplanterSchritt {
   aktionsoptionen?: KlaraAufgabenaktion[];
   personen?: { id: string; name: string }[];
   zeitFehler?: boolean;
+  notizQuelle?: KlaraAuftragsnotiz;
+  notizKandidaten?: (KlaraAuftragsnotiz & { auszug: string })[];
 }
 
 /** Welche Aufgabenart ein Arbeitsort meint — dieselbe Zuordnung wie am Server und in „Meine Aufgaben“. */
@@ -113,6 +117,7 @@ function aktionenFuer(art: ReturnType<typeof aufgabenart>): KlaraAufgabenaktion[
 
 /** Braucht dieser Schritt noch eine Angabe der Person, bevor etwas geschieht? */
 function brauchtKlaerung(s: GeplanterSchritt): boolean {
+  if (s.erkannt.notizName && !s.notizQuelle) return true;
   if (s.erkannt.aktion === "erinnerung_anlegen")
     return (
       s.zeitFehler === true ||
@@ -178,7 +183,7 @@ async function klaereAufgabe(
 /** Was nur dieser Browser über einen Schritt weiss — der Server bleibt die Wahrheit über den Stand. */
 export interface LokalerSchritt {
   /** `laeuft`: wird gerade ausgeführt; `unklar`: Verbindung weg, Ergebnis nicht bestätigt. */
-  lage?: "laeuft" | "unklar" | "entfallen" | "nicht_ausgefuehrt";
+  lage?: "laeuft" | "unklar" | "entfallen" | "nicht_ausgefuehrt" | "quelle_gesperrt";
   meldung?: string;
   /** Beim Bearbeiten: die Felder vor der Änderung — für Rückgängig. */
   vorher?: DraftPayload;
@@ -612,6 +617,29 @@ async function klaere(lokalId: string, u: AuftragsUmgebung): Promise<void> {
       geplant.push(s);
       continue;
     }
+    if (s.erkannt.notizName && !s.notizQuelle) {
+      try {
+        const { notizen } = await klaraNotizApi.liste(s.erkannt.notizName);
+        if (gen !== generation) return;
+        const treffer = passende(
+          notizen.filter((n) => n.weg === "gespraech" && n.quelle !== null),
+          (n) => n.titel,
+          s.erkannt.notizName,
+        ).slice(0, MAX_KANDIDATEN);
+        const kandidaten = treffer.map((n) => ({
+          id: n.id,
+          fassung: n.fassung,
+          titel: n.titel,
+          auszug: kuerzen(n.inhalt, 160),
+        }));
+        if (kandidaten.length === 1 && kandidaten[0]) s.notizQuelle = kandidaten[0];
+        else s.notizKandidaten = kandidaten;
+      } catch (fehler) {
+        if (gen === generation)
+          setze(lokalId, (x) => ({ ...x, phase: "fehler", meldung: fehlerGrund(fehler, u.t) }));
+        return;
+      }
+    }
     try {
       const treffer = (await kandidatenFuer(s.erkannt)).slice(0, MAX_KANDIDATEN);
       geplant.push(
@@ -758,6 +786,24 @@ export async function waehleErinnerungszeit(
   }
 }
 
+export function waehleNotizQuelle(
+  lokalId: string,
+  nr: number,
+  id: string,
+  u: AuftragsUmgebung,
+): void {
+  const a = hole(lokalId);
+  if (!a || a.phase !== "rueckfrage") return;
+  const s = a.geplant.find((x) => x.nr === nr);
+  const q = s?.notizKandidaten?.find((x) => x.id === id);
+  if (!q) return;
+  void weiterNachRueckfrage(
+    lokalId,
+    a.geplant.map((p) => (p.nr === nr ? { ...p, notizQuelle: q, notizKandidaten: [] } : p)),
+    u,
+  );
+}
+
 export function waehleZiel(lokalId: string, nr: number, index: number, u: AuftragsUmgebung): void {
   const a = hole(lokalId);
   if (!a || a.phase !== "rueckfrage") {
@@ -882,6 +928,7 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
   const aktionen = [...new Set(a.geplant.map((s) => s.erkannt.aktion))];
   const quellen = [
     t("klaraauftrag.quelle.eingabe", { quelle: t(`klaraauftrag.quelleArt.${a.quelle}`) }),
+    ...a.geplant.flatMap((s) => (s.notizQuelle ? [`notiz:${s.notizQuelle.id}`] : [])),
     ...ziele
       .filter((z) => z.id !== null)
       .map((z) => kuerzen(t("klaraauftrag.quelle.ziel", { titel: z.titel }), 200)),
@@ -913,7 +960,8 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
         aktion: s.erkannt.aktion,
         ziel: s.erkannt.ausSchritt === undefined ? s.ziel : null,
         ausSchritt: s.erkannt.ausSchritt === undefined ? null : s.erkannt.ausSchritt + 1,
-        ...(s.erkannt.inhalt ? { inhalt: s.erkannt.inhalt } : {}),
+        ...(!s.notizQuelle && s.erkannt.inhalt ? { inhalt: s.erkannt.inhalt } : {}),
+        ...(s.notizQuelle ? { notizQuelle: s.notizQuelle } : {}),
         ...(s.erkannt.aenderung ? { aenderung: s.erkannt.aenderung } : {}),
         // Nacharbeit 4: die geklärte Aktion an der Aufgabe — Teil der Grenze, nicht der Ausführung.
         ...(s.aufgabenaktion ? { aufgabenaktion: s.aufgabenaktion } : {}),
@@ -1094,6 +1142,13 @@ async function fuehreSchrittAus(
     if (gen !== generation) {
       return "stopp";
     }
+    if (
+      fehler instanceof ApiError &&
+      ["quelle_geaendert", "quelle_unbekannt"].includes(String(fehler.details.grund ?? ""))
+    ) {
+      setzeLokal(lokalId, nr, { lage: "quelle_gesperrt", meldung: fehler.message });
+      return "stopp";
+    }
     if (fehler instanceof ApiError && fehler.status === 409) {
       const grund = String(fehler.details.grund ?? "");
       const meldung = grenzGrund(grund, fehler.message, t);
@@ -1220,7 +1275,9 @@ async function fuehreAus(lokalId: string, u: AuftragsUmgebung, gen: number): Pro
     return;
   }
   const ende = hole(lokalId);
-  const unklar = Object.values(ende?.lokal ?? {}).some((l) => l.lage === "unklar");
+  const unklar = Object.values(ende?.lokal ?? {}).some(
+    (l) => l.lage === "unklar" || l.lage === "quelle_gesperrt",
+  );
   setze(lokalId, (x) => ({
     ...x,
     phase: unklar || x.auftrag?.unterbrochenAm ? "angehalten" : "fertig",
@@ -1527,6 +1584,7 @@ function ausGeladenem(x: KlaraAuftrag, herkunft: Herkunft, gespraechId: string):
         ...(p.inhalt ? { inhalt: p.inhalt } : {}),
         ...(p.aenderung ? { aenderung: p.aenderung } : {}),
         ...(p.erinnerung ? { erinnerung: p.erinnerung } : {}),
+        ...(p.notizQuelle ? { notizName: p.notizQuelle.titel ?? p.notizQuelle.id } : {}),
       };
       return {
         nr,
@@ -1535,6 +1593,7 @@ function ausGeladenem(x: KlaraAuftrag, herkunft: Herkunft, gespraechId: string):
         ziel: p.ziel,
         kandidaten: [],
         aufgabenaktion: p.aufgabenaktion ?? null,
+        ...(p.notizQuelle ? { notizQuelle: p.notizQuelle } : {}),
       };
     }),
     auftrag: x,
