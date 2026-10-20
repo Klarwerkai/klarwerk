@@ -27,6 +27,10 @@
 //   E7  K5/K6 — verzögertes und fehlgeschlagenes Laden: kein Rohtext an Klara.
 //   E8  K5/K7 — gelöscht, geleert, unähnlich ersetzt: die Beschreibung bleibt Rohbefund und steht
 //       in Anzeige, Klaras Kontext und den Belegen als Stand vor der Berichtigung; Rücksetzen.
+//   E9  OCR-E05 (produkt:20261012:klara-ocr-widersprueche, K3/K4) am integrierten Stand: ein
+//       absichtlicher Lesefehler erzeugt eine mögliche Abweichung zum Text; die über den dauerhaften
+//       Korrekturweg gespeicherte Berichtigung hebt sie auf — auch nach Neuladen, und ohne dass beim
+//       Laden kurz der Rohbefund als Abweichung erscheint; Zurücksetzen bringt sie zurück.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OcrResult, OcrWort } from "../../apps/web/src/lib/ocr";
 
@@ -110,6 +114,15 @@ const ERKANNT: Record<string, { text: string; woerter?: OcrWort[] }> = {
     text: "Termin 15.11.2026",
     woerter: [wort("Termin", 20, 50, 240, 150), wort("15.11.2026", 280, 50, 580, 150)],
   },
+  // OCR-E05: das Bild zeigt 1.500 EUR, sicher (falsch) gelesen wird 1.300 EUR.
+  S: {
+    text: "Gesamtsumme 1.300 EUR",
+    woerter: [
+      wort("Gesamtsumme", 20, 50, 300, 150),
+      wort("1.300", 320, 50, 460, 150),
+      wort("EUR", 480, 50, 580, 150),
+    ],
+  },
 };
 
 const BILD_R = dataUrl(bildMitMassen("R", 1000, 500));
@@ -118,6 +131,7 @@ const BILD_N = dataUrl(bildMitMassen("N", 600, 200));
 const BILD_X = dataUrl(bildMit("X"));
 const BILD_T = dataUrl(bildMitMassen("T", 600, 200));
 const BESCHREIBUNG_T = "Ein Schild mit Termin 15.11.2026";
+const BILD_S = dataUrl(bildMitMassen("S", 600, 200));
 
 function rumpf(zweites = BILD_L, zusatz = ""): string {
   return [
@@ -884,5 +898,69 @@ describe("E8 · K5/K7 — entfernte Angaben gelten nicht weiter als aktuell", ()
     await klick(stelle(1, "15.11.2026"));
     expect(ansichtBild()).toBe(BILD_T);
     expect(html).toContain(BILD_T);
+  });
+});
+
+/** OCR-E05: die angezeigten Abweichungen — Art, Wert im Text, Wert im Bild. */
+function abweichungen(): { art: string | null; text: string; bild: string }[] {
+  return [...container.querySelectorAll("[data-testid=bild-widerspruch]")].map((el) => ({
+    art: el.getAttribute("data-art"),
+    text: el.querySelector("[data-testid=bild-widerspruch-text-wert]")?.textContent ?? "",
+    bild: el.querySelector("[data-testid=bild-widerspruch-bild-wert]")?.textContent ?? "",
+  }));
+}
+
+describe("E9 · OCR-E05 K3/K4 — Neubewertung über den dauerhaften Korrekturweg", () => {
+  it("Lesefehler → Abweichung; gespeicherte Berichtigung → keine; Neuladen; Zurücksetzen", async () => {
+    await profilLaden("konto-a");
+    const html = [
+      "<p>Die Gesamtsumme beträgt 1.500 EUR.</p>",
+      `<figure><img data-image-id="kw-1" src="${BILD_S}"></figure>`,
+    ].join("");
+    await zeige(html, weg("ko:fiktiv-9"));
+    expect(bildText(0)).toBe("Gesamtsumme 1.300 EUR");
+    // Roh: beide Angaben als mögliche Abweichung — keine als die richtige ausgegeben.
+    expect(abweichungen()).toEqual([
+      { art: "moeglicher-widerspruch", text: "1.500 EUR", bild: "1.300 EUR" },
+    ]);
+
+    // Berichtigen über den vorhandenen Weg (gespeichert am Konto, gebunden an Quelle und Bild).
+    await klick(bildZeile(0).querySelector("[data-testid=bild-berichtigung-bearbeiten]"));
+    await tippe(q("bild-berichtigung-feld"), "Gesamtsumme 1.500 EUR");
+    await klick(q("bild-berichtigung-speichern"));
+    expect(korrekturServer.aufrufe[0]?.aenderung).toMatchObject({
+      aktion: "setzen",
+      quelle: "ko:fiktiv-9",
+      text: "Gesamtsumme 1.500 EUR",
+    });
+    expect(berichtigt(0)).toBe("true");
+    expect(abweichungen()).toEqual([]);
+
+    // Wiederöffnen: neue Fläche, neue Analyse derselben Bildbytes. Solange der Korrekturstand
+    // lädt, erscheint KEINE Abweichung des Rohbefunds; danach gilt die gespeicherte Berichtigung.
+    await neuLaden("konto-a");
+    lesenSteuerung.warten = true;
+    await zeige(html, weg("ko:fiktiv-9"));
+    expect(q("klara-bild-kontext-korrektur-wartet")).not.toBeNull();
+    expect(abweichungen()).toEqual([]);
+    lesenSteuerung.warten = false;
+    await act(async () => {
+      for (const o of lesenSteuerung.offen.splice(0)) {
+        o.ok();
+      }
+    });
+    await abwarten();
+    expect(q("klara-bild-kontext-korrektur-wartet")).toBeNull();
+    expect(bildText(0)).toBe("Gesamtsumme 1.500 EUR");
+    expect(abweichungen()).toEqual([]);
+
+    // Zurücksetzen: der Rohbefund gilt wieder — und mit ihm die Abweichung.
+    await klick(q("bild-berichtigung-zuruecksetzen"));
+    expect(bildText(0)).toBe("Gesamtsumme 1.300 EUR");
+    expect(abweichungen()).toEqual([
+      { art: "moeglicher-widerspruch", text: "1.500 EUR", bild: "1.300 EUR" },
+    ]);
+    // Das Original ist unverändert.
+    expect(html).toContain(BILD_S);
   });
 });

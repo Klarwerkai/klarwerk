@@ -20,6 +20,11 @@
 //     Klara den BERICHTIGTEN Bildtext (dieselbe Bindung an Quelle und Bildfassung wie die Anzeige,
 //     `lib/bildKorrektur.ts`), gekennzeichnet als berichtigt. Ändert sich eine Berichtigung, gilt
 //     eine frühere Antwort nicht mehr (sie beruhte auf dem anderen Text).
+//   · OCR-E05: Weichen Text und erkannter Bildtext zum selben Sachverhalt voneinander ab, stehen
+//     beide Angaben mit Fundstelle vor der Frage (`BildWidersprueche`), und die Anweisung an Klara
+//     verlangt, beide zu nennen und nicht ohne Beleg zu entscheiden, welche stimmt. Bewertet wird
+//     der Stand MIT den gespeicherten Berichtigungen (OCR-E02, `quellen` unten) — eine Berichtigung
+//     bewertet die Abweichung neu.
 import { Sparkles } from "lucide-react";
 import { useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -33,6 +38,7 @@ import {
   useBildKorrekturen,
   wiederholeBildKorrekturen,
 } from "../lib/bildKorrekturenStand";
+import { bildWidersprueche, widerspruchsAnweisung } from "../lib/bildWidersprueche";
 import {
   type Belegstelle,
   type KlaraAuftrag,
@@ -43,6 +49,7 @@ import {
   klaraBildKontext,
 } from "../lib/klaraBildKontext";
 import { fundstelleBaustein } from "./BildBefundListe";
+import { BildWidersprueche } from "./BildWidersprueche";
 
 interface Ergebnis {
   auftrag: KlaraAuftrag;
@@ -191,7 +198,13 @@ export function KlaraBildKontextFrage({
     setLaeuftFuer(fuer);
     setErgebnis(null);
     try {
-      const r = await weg.frage(k.kontext, klaraAnweisung(auftrag, f, k, ue));
+      const anweisung = [
+        klaraAnweisung(auftrag, f, k, ue),
+        widerspruchsAnweisung(bildWidersprueche(dokumentText, k), ue),
+      ]
+        .filter((x) => x.length > 0)
+        .join(" ");
+      const r = await weg.frage(k.kontext, anweisung);
       if (giltNoch()) {
         setErgebnis({ ...basis, antwort: r.demo ? null : r.text.trim() || null });
       }
@@ -210,6 +223,11 @@ export function KlaraBildKontextFrage({
   };
   // Derselbe Kontext, aber der Text der Quelle hat sich seit der Antwort geändert.
   const veraltet = ergebnis !== null && dokumentTextVon() !== ergebnis.dokumentText;
+  // OCR-E05: bei jedem Stand neu bewertet — neuer Befund, berichtigter Bildtext, geänderter Text.
+  // Mit Korrekturquelle erst auf BESTÄTIGTEM Korrekturstand (wie Frage und Zusammenfassung oben) —
+  // sonst erschiene kurz eine Abweichung des Rohbefunds, die eine gespeicherte Berichtigung längst
+  // aufhebt.
+  const abweichungen = korrekturGesperrt ? [] : bildWidersprueche(dokumentTextVon(), kontext);
 
   const standText = kontext.vollstaendig
     ? t("klarabildkontext.stand.vollstaendig", { gesamt: kontext.gesamt })
@@ -237,6 +255,7 @@ export function KlaraBildKontextFrage({
       >
         {standText}
       </p>
+      <BildWidersprueche abweichungen={abweichungen} />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <label htmlFor={feldId} className="sr-only">
           {t("klarabildkontext.frage.label")}
