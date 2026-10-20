@@ -4287,6 +4287,23 @@ export function buildApp(
   // produkt:20261007:klara-erinnerungen-kalender (Klara 10): Dienst und EINE Steuerung über
   // DIESELBE Ablage. Die Steuerung liest vor jeder Zustellung das Konto heute (`kontoLesen`) und die
   // eigene Quelle; ihr Takt läuft in `server.ts` (kein Chat-Wecker, keine zweite Instanz).
+  // Die ausdrücklich bestellte Normbelegvorbereitung teilt den vorhandenen Quellenleser/CAS.
+  const fristenQuellen = new KlaraFristenQuellen({
+    auth: services.auth,
+    ko: services.ko,
+    notizen: services.klaraNotizen,
+    gespraeche: services.klaraGespraeche,
+    spaces: services.spaces,
+  });
+  const normereignisse = new KlaraNormereignisDienst({
+    aufgaben: services.klaraAufgaben,
+    gespraeche: services.klaraGespraeche,
+    repo: services.klaraFristen,
+    quellen: fristenQuellen,
+    ko: services.ko,
+    belege: services.audit,
+    auth: services.auth,
+  });
   const wissenspflegeQuellen = new KlaraWissenspflegeQuellen({
     auth: services.auth,
     ko: services.ko,
@@ -4336,6 +4353,7 @@ export function buildApp(
     aufgaben: services.klaraAufgaben,
     gespraeche: services.klaraGespraeche,
     wissenspflege: wissenspflegeQuellen,
+    normereignisse: (kontoId, ids, bedingung) => normereignisse.beobachten(kontoId, ids, bedingung),
     // EQF-07 · Ergebnisablage einer Routine: „Meine Notizen“ über den VORHANDENEN Notizdienst
     // (Vorgangsschlüssel je Termin → höchstens ein Bericht, Readback über `zuVorgang`).
     // Nacharbeit 9: Anlegen und Fortschreiben NUR unter der Bedingung der Wirkung (Routine aktiv,
@@ -6208,27 +6226,13 @@ export function buildApp(
   // (`erinnerungsAusfuehrung`) und DIESELBE Kalenderanbindung (`vorhandenerKalenderAus`, ohne
   // Klaras eigene Projektionen) — gesetzte `services.kalenderAusfuehrung`/`vorhandenerKalender`
   // ersetzen sie.
-  const fristenQuellen = new KlaraFristenQuellen({
-    auth: services.auth,
-    ko: services.ko,
-    notizen: services.klaraNotizen,
-    gespraeche: services.klaraGespraeche,
-    spaces: services.spaces,
-  });
+
   const fristenDienst = new KlaraFristenDienst({
     repo: services.klaraFristen,
     lies: (user, art, id) => fristenQuellen.lies(user, art, id),
   });
   app.register(klaraFristenRoutes({ dienst: fristenDienst, audit: services.audit }, guards));
-  const normereignisse = new KlaraNormereignisDienst({
-    aufgaben: services.klaraAufgaben,
-    gespraeche: services.klaraGespraeche,
-    repo: services.klaraFristen,
-    quellen: fristenQuellen,
-    ko: services.ko,
-    belege: services.audit,
-    auth: services.auth,
-  });
+
   app.register(klaraNormereignisRoutes({ dienst: normereignisse, audit: services.audit }, guards));
   const eigenerKalenderDienst = new EigenerKalenderDienst({
     repo: new FristenKalenderRepo(services.eigenerKalender, services.klaraFristen),

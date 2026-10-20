@@ -4,6 +4,7 @@ export type PflegeVorlage = "offene_pruefungen" | "quellaenderung" | "aktualitae
 export interface PflegeEingabe {
   vorlage: PflegeVorlage;
   quellen: string[];
+  normbekanntmachungen?: "belege_vorbereiten";
 }
 export interface PflegeAuftrag extends PflegeEingabe {
   bereich: "ausgewaehlte_wissensobjekte";
@@ -25,6 +26,7 @@ export interface PflegeErgebnis {
     letzteErfolgreichePruefung: string | null;
   }[];
   aenderung: string | null;
+  normbekanntmachungen?: { stand: "belege_vorbereitet" | "ungeprueft" | "keine_erkannten_belege" };
 }
 export const wissenspflegeApi = {
   vorschau: (wissenspflege: PflegeEingabe) =>
