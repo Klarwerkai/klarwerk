@@ -198,7 +198,10 @@ export function KlaraSchrittNachweis({
   const vertrag = s.vertrag ?? null;
   const wirkungAm = verlaufszeit(auftrag, s.nr, WIRKUNGSEREIGNISSE);
   const zurueckAm = verlaufszeit(auftrag, s.nr, ["zurueckgenommen"]);
-  const angelegt = s.aktion === "entwurf_erstellen" || s.aktion === "persoenliche_aufgabe_anlegen";
+  const angelegt =
+    s.aktion === "entwurf_erstellen" ||
+    s.aktion === "persoenliche_aufgabe_anlegen" ||
+    s.aktion === "erinnerung_anlegen";
   const gewirkt = s.stand === "gespeichert" || s.stand === "zurueckgenommen";
   // Klara 07: eine angelegte persönliche Aufgabe wird an ihrem Ort korrigiert, nicht von Klara.
   const korrektur =
@@ -208,7 +211,9 @@ export function KlaraSchrittNachweis({
         ? "konflikt"
         : vertrag === "persoenliche_aufgabe_anlegen"
           ? "persoenliche_aufgabe"
-          : null;
+          : vertrag === "erinnerung_anlegen"
+            ? "erinnerung"
+            : null;
   const korrekturPfad = korrektur
     ? (s.ergebnis?.pfad ?? s.ziel.pfad ?? KORREKTURPFAD[korrektur] ?? null)
     : null;

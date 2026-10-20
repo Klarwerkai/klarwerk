@@ -36,7 +36,8 @@ export type KlaraVertragsSchluessel =
   | "aufgabe_prioritaet"
   | "aufgabe_zuweisen"
   | "aufgabe_eskalieren"
-  | "persoenliche_aufgabe_anlegen";
+  | "persoenliche_aufgabe_anlegen"
+  | "erinnerung_anlegen";
 
 export interface KlaraAktionsvertrag {
   readonly schluessel: KlaraVertragsSchluessel;
@@ -45,7 +46,12 @@ export interface KlaraAktionsvertrag {
    * `keine`: liest nur; `eigener_entwurf`: Entwurf der Person; `fachobjekt`: eine Aufgabe;
    * `eigene_aufgabe`: eine persönliche Aufgabe der Person (Klara 07).
    */
-  readonly wirkung: "keine" | "eigener_entwurf" | "fachobjekt" | "eigene_aufgabe";
+  readonly wirkung:
+    | "keine"
+    | "eigener_entwurf"
+    | "fachobjekt"
+    | "eigene_aufgabe"
+    | "eigene_erinnerung";
   readonly datenveraendernd: boolean;
   /** Die vorhandene Tür und das Recht, das dort entscheidet — kein zweites Rechtesystem. */
   readonly tuer: string;
@@ -57,7 +63,13 @@ export interface KlaraAktionsvertrag {
   /** Sieht jemand anderes die Wirkung (zugewiesene Person, Eskalationsempfänger)? */
   readonly fuerAndereSichtbar: boolean;
   /** Wo eine nicht rücknehmbare Wirkung korrigiert wird: der vorhandene Arbeitsort. */
-  readonly korrekturweg: "entwurf" | "luecke" | "konflikt" | "persoenliche_aufgabe" | null;
+  readonly korrekturweg:
+    | "entwurf"
+    | "luecke"
+    | "konflikt"
+    | "persoenliche_aufgabe"
+    | "erinnerung"
+    | null;
 }
 
 type Aktionsvertraege = Readonly<Record<KlaraVertragsSchluessel, KlaraAktionsvertrag>>;
@@ -148,6 +160,18 @@ export const KLARA_AKTIONSVERTRAG: Aktionsvertraege = {
     fuerAndereSichtbar: true,
     korrekturweg: "konflikt",
   },
+  erinnerung_anlegen: {
+    schluessel: "erinnerung_anlegen",
+    aktion: "erinnerung_anlegen",
+    wirkung: "eigene_erinnerung",
+    datenveraendernd: true,
+    tuer: "POST /api/me/klara/erinnerungen (Vorgangsschlüssel)",
+    recht: "Anmeldung; eigene Aufgabe und persönlicher Erinnerungsdienst",
+    bestaetigung: "vorhandene_regeln",
+    ruecknahme: "keine",
+    fuerAndereSichtbar: false,
+    korrekturweg: "erinnerung",
+  },
   // produkt:20261008:klara-aufgaben (Klara 07): eine persönliche Aufgabe nur für die Person selbst.
   // Klara nimmt die Anlage nicht zurück; geändert, erledigt oder gelöscht wird sie an ihrem Ort
   // („Meine persönlichen Aufgaben") — dort mit Fassung und ohne Wirkung auf andere.
@@ -207,7 +231,7 @@ export type KlaraErgebnisstand =
   | "abgebrochen";
 
 function ungeklaert(s: KlaraAuftragSchritt): boolean {
-  return s.stand === "begonnen" && Boolean(s.schreibwirkung) && !s.geprueft;
+  return s.stand === "begonnen" && Boolean(s.schreibwirkung || s.ausgangUnklar) && !s.geprueft;
 }
 
 /**
@@ -224,7 +248,11 @@ function ungeklaert(s: KlaraAuftragSchritt): boolean {
  */
 export function ergebnisstand(a: KlaraAuftrag): KlaraErgebnisstand {
   const s = a.schritte;
-  if (s.some(ungeklaert)) {
+  if (
+    s.some(ungeklaert) ||
+    (Boolean(a.abgebrochenAm || a.unterbrochenAm) &&
+      s.some((x) => x.stand === "begonnen" && !x.geprueft))
+  ) {
     return "unklar";
   }
   const abgebrochen = Boolean(a.abgebrochenAm);

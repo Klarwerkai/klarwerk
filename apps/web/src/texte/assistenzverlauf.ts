@@ -12,6 +12,14 @@ export default {
   praefix: "assistenzverlauf.",
   legacySchluessel: [],
   de: {
+    "assistenzverlauf.vertrag.erinnerung_anlegen.wirkung":
+      "Persönliche Erinnerung über den vorhandenen Erinnerungsdienst anlegen.",
+    "assistenzverlauf.vertrag.erinnerung_anlegen.recht":
+      "Nur eigene persönliche Aufgabe, angemeldetes Konto und dessen Erinnerungsdienst.",
+    "assistenzverlauf.vertrag.erinnerung_anlegen.ruecknahme":
+      "Die Erinnerung bleibt erhalten; Änderungen und Löschung am vorhandenen Erinnerungsort.",
+    "assistenzverlauf.korrigieren.erinnerung": "Zur Erinnerung",
+
     "assistenzverlauf.ergebnis.titel": "Ergebnis",
     "assistenzverlauf.ergebnis.entwurf": "Entwurf – noch nichts ausgeführt",
     "assistenzverlauf.ergebnis.vorschlag": "Vorschlag – noch nichts ausgeführt",
@@ -121,6 +129,14 @@ export default {
       "Rückgängig nicht möglich: der Entwurf ist für dich nicht (mehr) erreichbar. Nichts geändert.",
   },
   en: {
+    "assistenzverlauf.vertrag.erinnerung_anlegen.wirkung":
+      "Create a personal reminder through the existing reminder service.",
+    "assistenzverlauf.vertrag.erinnerung_anlegen.recht":
+      "Own personal task, signed-in account and its reminder service.",
+    "assistenzverlauf.vertrag.erinnerung_anlegen.ruecknahme":
+      "The reminder remains; edit or delete it at its existing location.",
+    "assistenzverlauf.korrigieren.erinnerung": "Go to reminder",
+
     "assistenzverlauf.ergebnis.titel": "Result",
     "assistenzverlauf.ergebnis.entwurf": "Draft – nothing carried out yet",
     "assistenzverlauf.ergebnis.vorschlag": "Proposal – nothing carried out yet",
@@ -229,6 +245,14 @@ export default {
       "Cannot undo: the draft is not (or no longer) available to you. Nothing changed.",
   },
   nl: {
+    "assistenzverlauf.vertrag.erinnerung_anlegen.wirkung":
+      "Persoonlijke herinnering maken via de bestaande herinneringsdienst.",
+    "assistenzverlauf.vertrag.erinnerung_anlegen.recht":
+      "Eigen persoonlijke taak, aangemeld account en diens herinneringsdienst.",
+    "assistenzverlauf.vertrag.erinnerung_anlegen.ruecknahme":
+      "De herinnering blijft; wijzig of verwijder deze op de bestaande locatie.",
+    "assistenzverlauf.korrigieren.erinnerung": "Naar herinnering",
+
     "assistenzverlauf.ergebnis.titel": "Resultaat",
     "assistenzverlauf.ergebnis.entwurf": "Concept – nog niets uitgevoerd",
     "assistenzverlauf.ergebnis.vorschlag": "Voorstel – nog niets uitgevoerd",

@@ -48,7 +48,9 @@ import {
   type KlaraEntwurfsfeld,
   type KlaraPlanSchritt,
   type KlaraSchreibwirkung,
+  zielErlaubt,
 } from "./klara-auftrag";
+import { liesAuftragsnotiz } from "./klara-auftragsnotiz";
 import { type KlaraGespraechDienst, KlaraGespraechFehler } from "./klara-gespraech";
 
 /** Ein Aufruf einer vorhandenen Tür der Anwendung — mit der Anmeldung der Person. */
@@ -70,6 +72,7 @@ interface Entwurf {
   id: string;
   createdAt?: string;
   updatedAt: string;
+  createOperation?: { id: string; actor: string };
   payload: { title?: string; statement?: string; bodyHtml?: unknown } & EntwurfsOrdnung;
 }
 
@@ -135,7 +138,7 @@ interface PersoenlicheAufgabe {
   titel: string;
   status: string;
   prioritaet: string;
-  bezug: { art?: unknown; auftragId?: unknown };
+  bezug: { art?: unknown; auftragId?: unknown; notizId?: unknown };
 }
 
 function persoenlicheAufgabeAus(roh: unknown): PersoenlicheAufgabe | null {
@@ -381,7 +384,7 @@ export class KlaraAusfuehrung {
     auftragId: string,
     schluessel: string,
     eingabe: { nr?: unknown; auftragFassung?: unknown },
-    rufe: KlaraRufe,
+    produktRufe: KlaraRufe,
     optionen: { wiederholeVoruebergehend?: boolean },
   ): Promise<Ergebnis> {
     const a = await this.dienst.auftrag(kontoId, gespraechId, auftragId);
@@ -407,6 +410,14 @@ export class KlaraAusfuehrung {
       optionen.wiederholeVoruebergehend === true &&
       vorhanden?.stand === "fehlgeschlagen" &&
       KLARA_WIEDERHOLBARE_FEHLER.includes(vorhanden.fehlerCode ?? "");
+    if (vorhanden && vorhanden.nr !== nr) {
+      throw new KlaraGespraechFehler(
+        409,
+        "schluessel_belegt",
+        "Dieser Schlüssel gehört zu einem anderen Planschritt.",
+      );
+    }
+
     if (
       vorhanden &&
       !erneut &&
@@ -415,15 +426,17 @@ export class KlaraAusfuehrung {
     ) {
       return { auftrag: a, schritt: vorhanden, wiederholt: true };
     }
-    // BPA-06: ein Auftrag aus einem Routinenlauf wirkt nur, solange die Routine es jetzt zulässt.
-    if (a.herkunft) {
-      const grund = this.vorWirkung
-        ? await this.vorWirkung(kontoId, a.herkunft)
-        : "Die Herkunft dieses Auftrags lässt sich nicht prüfen. Nichts geändert.";
-      if (grund) {
-        throw new KlaraGespraechFehler(409, "herkunft_gesperrt", grund);
+    // Neue Wirkungen bleiben an die heutige Routine gebunden; ein bereits begonnener
+    // unbekannter Ausgang darf sein tatsächliches Original weiterhin rein lesend klären.
+    const pruefeHerkunft = async () => {
+      if (a.herkunft) {
+        const grund = this.vorWirkung
+          ? await this.vorWirkung(kontoId, a.herkunft)
+          : "Die Herkunft dieses Auftrags lässt sich nicht prüfen. Nichts geändert.";
+        if (grund) throw new KlaraGespraechFehler(409, "herkunft_gesperrt", grund);
       }
-    }
+    };
+    if (!vorhanden || erneut) await pruefeHerkunft();
 
     // Das Ziel: aus dem Plan — bei „… und öffne ihn“ das NACHGELESENE Ergebnis des Vorschritts.
     let ziel: KlaraAuftragZiel | null = p.ziel;
@@ -434,7 +447,10 @@ export class KlaraAusfuehrung {
       // Wissensobjekt, Entwurf und gemeinsame Aufgabe) — sie wird an ihrem Ort geöffnet.
       ziel =
         e &&
-        e.art !== "persoenliche_aufgabe" &&
+        e.art !== "erinnerung" &&
+        (p.aktion === "erinnerung_anlegen"
+          ? e.art === "persoenliche_aufgabe"
+          : e.art !== "persoenliche_aufgabe") &&
         (quelle?.stand === "gespeichert" || quelle?.stand === "abgeschlossen")
           ? { art: e.art, id: e.id, titel: e.titel, stand: e.stand, pfad: e.pfad }
           : null;
@@ -462,6 +478,41 @@ export class KlaraAusfuehrung {
       return { ...begonnen, wiederholt: true };
     }
     const fassung = begonnen.schritt.auftragFassung;
+    const notizQuelle =
+      p.notizQuelle ??
+      (p.aktion === "erinnerung_anlegen"
+        ? plan.find((s) => s.nr === p.ausSchritt)?.notizQuelle
+        : undefined);
+
+    const rufe: KlaraRufe = async (methode, url, rumpf) => {
+      if (methode !== "GET") {
+        if (notizQuelle) await liesAuftragsnotiz(notizQuelle, produktRufe);
+        // Nach asynchronem Quellenlesen muss auch die Routine noch gelten. Der Stop-/Grenzreadback
+        // folgt nach dieser Prüfung, unmittelbar vor dem bestehenden Produktaufruf.
+        await pruefeHerkunft();
+        const aktuell = await this.dienst.auftrag(kontoId, gespraechId, auftragId);
+        if (aktuell.abgebrochenAm || aktuell.unterbrochenAm) {
+          throw new KlaraGespraechFehler(
+            409,
+            aktuell.abgebrochenAm ? "abgebrochen" : "unterbrochen",
+            "Der Auftrag wurde angehalten. Keine weitere Änderung begonnen; bereits ausgelöste Wirkungen bleiben erhalten.",
+          );
+        }
+        if (
+          !aktuell.erlaubteAktionen.includes(p.aktion) ||
+          !zielErlaubt(aktuell, zielZumBeginn) ||
+          (notizQuelle && !aktuell.erlaubteQuellen.includes(`notiz:${notizQuelle.id}`))
+        ) {
+          throw new KlaraGespraechFehler(
+            409,
+            "ausserhalb_auftrag",
+            "Die aktuelle Auftragsgrenze erlaubt diese Änderung nicht mehr.",
+          );
+        }
+      }
+      return produktRufe(methode, url, rumpf);
+    };
+
     const melde = (
       stand: "gespeichert" | "abgeschlossen" | "fehlgeschlagen",
       zusatz: {
@@ -509,6 +560,9 @@ export class KlaraAusfuehrung {
         hinweis: "fremdstand",
       });
     const ungeklaert = async (): Promise<Ergebnis> => {
+      await this.dienst.merkeStaende(kontoId, gespraechId, auftragId, schluessel, {
+        ausgangUnklar: true,
+      });
       const jetzt = await this.dienst.auftrag(kontoId, gespraechId, auftragId);
       const schritt = jetzt.schritte.find((s) => s.schluessel === schluessel);
       if (!schritt) {
@@ -534,29 +588,44 @@ export class KlaraAusfuehrung {
       // Der Körper, der nachgelesen wird. EQF-06-K02: mit Quellen der beim Anlegen geschriebene —
       // eine Wiederholung nach bekannter Wirkung liest nur nach, gegen den Text des Plans.
       let koerper = p.koerper ?? "";
+      const operationId = `klara-auftrag-${auftragId}-${p.nr}`;
+      const liesAnlage = async () => {
+        const liste = await rufe("GET", "/api/drafts");
+        if (liste.status !== 200 || !Array.isArray(liste.daten)) return null;
+        return (
+          liste.daten.find(
+            (d): d is Entwurf =>
+              istEntwurf(d) &&
+              d.createOperation?.id === operationId &&
+              d.createOperation.actor === kontoId,
+          ) ?? null
+        );
+      };
       if (!entwurfId) {
-        if (p.quellen && p.quellen.length > 0) {
-          const gelesen = await liesQuellen(p.quellen, rufe);
-          if ("code" in gelesen) {
-            return scheitert(gelesen.code);
-          }
-          koerper = mitQuellen(koerper, gelesen.quellen);
-          if (koerper.length > KLARA_KOERPER_MAX) {
-            return scheitert("zuLang");
-          }
+        // Der tatsächliche Vorgang wird zuerst nachgelesen. Nur eine neue Anlage kopiert Quellen.
+        const gelesen = vorhanden ? await liesAnlage() : null;
+        if (!gelesen && p.quellen && p.quellen.length > 0) {
+          const quellen = await liesQuellen(p.quellen, rufe);
+          if ("code" in quellen) return scheitert(quellen.code);
+          koerper = mitQuellen(koerper, quellen.quellen);
+          if (koerper.length > KLARA_KOERPER_MAX) return scheitert("zuLang");
         }
-        const angelegt = await rufe("POST", "/api/drafts", {
-          title: ziel.titel,
-          ...(p.inhalt ? { statement: p.inhalt } : {}),
-          // BPA-06: Ordnungsfelder strukturiert über denselben Entwurfsweg (Rechte, Prüfung dort).
-          ...(p.felder ?? {}),
-          // BPA-06 Nacharbeit 45: der Volltext als Körper — wie beim Word-Ganzdokumentweg.
-          ...(koerper ? { bodyHtml: koerperAlsHtml(koerper) } : {}),
-          // Der Vorgangsschlüssel ist an Auftrag und Planschritt gebunden: eine Wiederholung legt
-          // keinen zweiten Entwurf an.
-          operationId: `klara-auftrag-${auftragId}-${p.nr}`,
-          expectedOwner: kontoId,
-        });
+        const angelegt = gelesen
+          ? { status: 200, daten: gelesen }
+          : await rufe("POST", "/api/drafts", {
+              title: ziel.titel,
+              ...(p.inhalt ? { statement: p.inhalt } : {}),
+              ...(p.felder ?? {}),
+              ...(koerper ? { bodyHtml: koerperAlsHtml(koerper) } : {}),
+              operationId,
+              expectedOwner: kontoId,
+            });
+        if (angelegt.status >= 500) {
+          const bestaetigt = await liesAnlage();
+          if (!bestaetigt) return ungeklaert();
+          angelegt.status = 200;
+          angelegt.daten = bestaetigt;
+        }
         if ((angelegt.status !== 201 && angelegt.status !== 200) || !istEntwurf(angelegt.daten)) {
           return scheitert(codeAus(angelegt.status));
         }
@@ -674,6 +743,74 @@ export class KlaraAusfuehrung {
       });
     }
 
+    // G: derselbe gespeicherte Plan nutzt den freigegebenen D-Dienst; keine zweite Zeitsteuerung.
+    if (p.aktion === "erinnerung_anlegen") {
+      if (ziel.art !== "persoenliche_aufgabe" || !ziel.id || !p.erinnerung)
+        return scheitert("vorschritt");
+      const vorgang = aktionskennung(auftragId, p.nr);
+      const pfad = (id: string) => `/aufgaben?erinnerung=${encodeURIComponent(id)}`;
+      type Erinnerung = {
+        id: string;
+        titel: string;
+        fassung: number;
+        vorgang: string;
+        bezug: { art: string; aufgabeId?: string };
+      };
+      const aus = (roh: unknown): Erinnerung | null => {
+        const e = (roh as { erinnerung?: Erinnerung } | null)?.erinnerung;
+        return e &&
+          typeof e.id === "string" &&
+          typeof e.titel === "string" &&
+          typeof e.fassung === "number" &&
+          e.vorgang === vorgang &&
+          e.bezug?.art === "aufgabe" &&
+          e.bezug.aufgabeId === ziel.id
+          ? e
+          : null;
+      };
+      const nachVorgang = async (): Promise<Erinnerung | null> => {
+        const r = await rufe("GET", "/api/me/klara/erinnerungen");
+        const liste = (r.daten as { erinnerungen?: unknown[] } | null)?.erinnerungen;
+        if (r.status !== 200 || !Array.isArray(liste)) return null;
+        return liste.map((e) => aus({ erinnerung: e })).find((e) => e !== null) ?? null;
+      };
+      let e: Erinnerung | null = null;
+      if (bekannt?.art === "erinnerung") {
+        const r = await rufe("GET", `/api/me/klara/erinnerungen/${encodeURIComponent(bekannt.id)}`);
+        e = r.status === 200 ? aus(r.daten) : null;
+        if (!e) return ungeklaert();
+      } else {
+        e = vorhanden ? await nachVorgang() : null;
+        if (!e) {
+          const r = await rufe("POST", "/api/me/klara/erinnerungen", {
+            vorgang,
+            titel: ziel.titel,
+            bezug: { art: "aufgabe", aufgabeId: ziel.id },
+            zeitzone: p.erinnerung.zeitzone,
+            zeitplan: { art: "einmalig", datum: p.erinnerung.datum, uhrzeit: p.erinnerung.uhrzeit },
+            aktion: "erinnern",
+          });
+          if (r.status >= 500) e = await nachVorgang();
+          else if (r.status !== 201 && r.status !== 200) return scheitert(codeAus(r.status));
+          else e = aus(r.daten);
+          if (!e) return ungeklaert();
+        }
+        await merke({ art: "erinnerung", id: e.id, pfad: pfad(e.id), stand: String(e.fassung) });
+        const r = await rufe("GET", `/api/me/klara/erinnerungen/${encodeURIComponent(e.id)}`);
+        e = r.status === 200 ? aus(r.daten) : null;
+        if (!e) return ungeklaert();
+      }
+      return melde("gespeichert", {
+        ergebnis: {
+          art: "erinnerung",
+          id: e.id,
+          titel: e.titel,
+          stand: String(e.fassung),
+          pfad: pfad(e.id),
+        },
+      });
+    }
+
     // produkt:20261008:klara-aufgaben (Klara 07): eine persönliche Aufgabe aus diesem Auftrag — über
     // die eigene Ablage (`/api/me/klara/aufgaben`) mit der Anmeldung der Person. Der Vorgangsschlüssel
     // ist die Aktionskennung (Auftrag + Planschritt): eine Wiederholung legt keine zweite Aufgabe an.
@@ -682,20 +819,35 @@ export class KlaraAusfuehrung {
     if (p.aktion === "persoenliche_aufgabe_anlegen") {
       let aufgabeId = bekannt?.id ?? null;
       if (!aufgabeId) {
-        const lege = () =>
-          rufe("POST", "/api/me/klara/aufgaben", {
-            vorgang: aktionskennung(auftragId, p.nr),
-            weg: "auftrag",
-            quelle: { gespraechId, auftragId },
+        const vorgang = aktionskennung(auftragId, p.nr);
+        const nachVorgang = async () => {
+          const gelesen = await rufe("GET", "/api/me/klara/aufgaben");
+          const liste = (gelesen.daten as { aufgaben?: { vorgang?: unknown }[] } | null)?.aufgaben;
+          const bekannt =
+            gelesen.status === 200 && Array.isArray(liste)
+              ? liste.find((a) => a.vorgang === vorgang)
+              : null;
+          return bekannt ? { status: 200, daten: { aufgabe: bekannt } } : null;
+        };
+        let angelegt: Awaited<ReturnType<KlaraRufe>> | null = vorhanden
+          ? await nachVorgang()
+          : null;
+        // Ein begonnener Notizversuch kann bereits geschrieben haben. Ein fehlender Readback
+        // beweist keine Nichtanlage; nur weiter lesen, nicht aus der Lücke neu anlegen.
+        if (vorhanden && p.notizQuelle && !angelegt) return ungeklaert();
+        if (!angelegt)
+          angelegt = await rufe("POST", "/api/me/klara/aufgaben", {
+            vorgang,
+            weg: p.notizQuelle ? "notiz" : "auftrag",
+            quelle: p.notizQuelle ? { notizId: p.notizQuelle.id } : { gespraechId, auftragId },
+            ...(p.notizQuelle ? { notizFassung: p.notizQuelle.fassung } : {}),
             titel: ziel.titel,
-            ...(p.inhalt ? { inhalt: p.inhalt } : {}),
+            ...(!p.notizQuelle && p.inhalt ? { inhalt: p.inhalt } : {}),
           });
-        let angelegt = await lege();
         if (angelegt.status >= 500) {
-          // Ob die Ablage trotz Fehlerantwort schon geschrieben hat, ist offen. Derselbe
-          // Vorgangsschlüssel klärt es ohne Doppelung: stand sie schon da, antwortet die Ablage mit
-          // GENAU dieser Aufgabe — sonst wird jetzt angelegt oder der Fehler bleibt bestehen.
-          angelegt = await lege();
+          const gelesen = await nachVorgang();
+          if (!gelesen) return ungeklaert();
+          angelegt = gelesen;
         }
         const neu = persoenlicheAufgabeAus(angelegt.daten);
         if ((angelegt.status !== 201 && angelegt.status !== 200) || !neu) {
@@ -717,7 +869,11 @@ export class KlaraAusfuehrung {
       if (gelesen.status !== 200 || !aufgabe) {
         return ungeklaert();
       }
-      if (aufgabe.bezug.art !== "auftrag" || aufgabe.bezug.auftragId !== auftragId) {
+      if (
+        p.notizQuelle
+          ? aufgabe.bezug.art !== "notiz" || aufgabe.bezug.notizId !== p.notizQuelle.id
+          : aufgabe.bezug.art !== "auftrag" || aufgabe.bezug.auftragId !== auftragId
+      ) {
         return scheitert("nichtNachgelesen");
       }
       return melde("gespeichert", {

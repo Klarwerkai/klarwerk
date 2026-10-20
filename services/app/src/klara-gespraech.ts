@@ -23,6 +23,7 @@ import {
   mitNeuemAuftrag,
   neuerAuftrag,
   setzeSchritt as setzeAuftragSchritt,
+  unterbrechung,
 } from "./klara-auftrag";
 import type { BrowserAuftragEintrag } from "./klara-browser-aktion-dienst";
 
@@ -1053,6 +1054,24 @@ export class KlaraGespraechDienst {
         KlaraGespraechDienst.ersetzeAuftrag(
           alt,
           merkeStaende(KlaraGespraechDienst.auftragIn(alt, auftragId), schluessel, staende, jetzt),
+        ),
+      );
+      return KlaraGespraechDienst.auftragIn(g, auftragId);
+    });
+  }
+
+  unterbrecheAuftrag(
+    kontoId: string,
+    id: string,
+    auftragId: string,
+    fortsetzen: boolean,
+    fassung: unknown,
+  ): Promise<KlaraAuftrag> {
+    return this.mitGrenze(async () => {
+      const g = await this.aendere(kontoId, id, (alt, jetzt) =>
+        KlaraGespraechDienst.ersetzeAuftrag(
+          alt,
+          unterbrechung(KlaraGespraechDienst.auftragIn(alt, auftragId), fortsetzen, fassung, jetzt),
         ),
       );
       return KlaraGespraechDienst.auftragIn(g, auftragId);
