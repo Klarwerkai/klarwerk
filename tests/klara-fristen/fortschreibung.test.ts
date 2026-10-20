@@ -123,6 +123,20 @@ describe("AW19 · Fristvorgang, Belege und Ablehnung getrennt", () => {
     expect(erste(s).klaerung).toContain("relevante_quellaenderung");
   });
 
+  it("klassifiziert eine manuell in die Zukunft korrigierte historische Frist nach dem manuellen Datum", () => {
+    let s = lesen(start(), quelle("Lizenz L-17: Ablaufdatum 2025-04-30."));
+    s = {
+      ...s,
+      fristen: [fristManuell(erste(s), { art: "datum", datum: "2027-06-30" }, false, AM)],
+    };
+    s = lesen(s, quelle("Lizenz L-17: Ablaufdatum 2025-04-30.", "original", "2"));
+    expect(erste(s)).toMatchObject({
+      stand: "erkannt",
+      datum: { datum: "2027-06-30" },
+      manuell: true,
+    });
+  });
+
   it("behandelt widersprüchliche unabhängige Belege als Klärung, unabhängig von Lesereihenfolge", () => {
     const a = quelle();
     const b = quelle("Lizenz L-17: Ablaufdatum 2027-05-30.", "unabhaengig");

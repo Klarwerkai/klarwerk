@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { erkenneFristen } from "../../services/app/src/klara-fristen-erkennung";
 
@@ -82,4 +83,3 @@ describe("AW19-K14 · getrennte Messung am synthetischen Sollbestand", () => {
     );
   });
 });
-import { writeFileSync } from "node:fs";

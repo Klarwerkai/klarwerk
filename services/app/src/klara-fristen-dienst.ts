@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { SessionUser } from "./http";
 import { istDatum, istUhrzeit, istZeitzone, loeseLokal } from "./klara-erinnerung-zeit";
 import {
@@ -226,4 +227,3 @@ export class KlaraFristenDienst {
     return neu;
   }
 }
-import { isDeepStrictEqual } from "node:util";

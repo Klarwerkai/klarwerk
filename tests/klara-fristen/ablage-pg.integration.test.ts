@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
@@ -332,10 +333,49 @@ describe("AW19 · PostgreSQL, Quellenbindung und tatsächliche Konkurrenz", () =
       });
       expect(neuGelesen.statusCode, neuGelesen.body).toBe(200);
       expect(neuGelesen.json()).toEqual(vorher.json());
+      const kopie = await neueApp.inject({
+        method: "POST",
+        url: "/api/me/klara/notizen",
+        headers,
+        payload: {
+          vorgang: `fristen-restore-kopie-${crypto.randomUUID()}`,
+          weg: "geschrieben",
+          titel: "Synthetische Zertifikatskopie",
+          inhalt: "Zertifikat Z-8: Ablaufdatum 2027-12-31.",
+          objektbezug: {
+            pfad: "/kalender",
+            seitenName: "Mein Kalender",
+            objekt: "PG-Fristenprüfung nach Restore",
+          },
+        },
+      });
+      expect(kopie.statusCode, kopie.body).toBe(201);
+      const mitKopie = await neueApp.inject({
+        method: "PUT",
+        url: "/api/me/klara/fristen/regel",
+        headers,
+        payload: {
+          fassung: neuGelesen.json().fassung,
+          regel: {
+            ...neuGelesen.json().regel,
+            quellen: [
+              ...neuGelesen.json().regel.quellen,
+              { art: "notiz", id: kopie.json().notiz.id },
+            ],
+          },
+        },
+      });
+      expect(mitKopie.statusCode, mitKopie.body).toBe(200);
+      expect(mitKopie.json().fristen).toHaveLength(2);
+      expect(
+        mitKopie.json().fristen.find((x: { id: string }) => x.id === zertifikat.id),
+      ).toMatchObject({ id: zertifikat.id, stand: "verworfen" });
+      const kalenderMitKopie = await neueApp.inject({ url: "/api/me/kalender", headers });
+      expect(kalenderMitKopie.json().eintraege).toEqual(kalenderVorher.json().eintraege);
       if (process.env.KLARWERK_FRISTEN_RESTORE_BELEG)
         writeFileSync(
           process.env.KLARWERK_FRISTEN_RESTORE_BELEG,
-          `${JSON.stringify({ dump_sha256: summe.output.trim().split(/\s+/)[0], actual_dump_exit: dump.exitCode, actual_restore_exit: restore.exitCode, new_pool_and_app: true, same_test_process: true, fristen: 2, sichtbare_kalenderfristen: 1, regel_korrektur_ablehnung_verlauf_identisch: true, neuabruf_ohne_neue_fassung_oder_wiederbelebung: true, old_scheduler_model_host_general_runs: false }, null, 2)}\n`,
+          `${JSON.stringify({ dump_sha256: summe.output.trim().split(/\s+/)[0], actual_dump_exit: dump.exitCode, actual_restore_exit: restore.exitCode, new_pool_and_app: true, same_test_process: true, fristen: 2, sichtbare_kalenderfristen: 1, regel_korrektur_ablehnung_verlauf_identisch: true, neuabruf_ohne_neue_fassung_oder_wiederbelebung: true, kopie_nach_restore_bleibt_verworfen: true, old_scheduler_model_host_general_runs: false }, null, 2)}\n`,
         );
     } finally {
       await neueApp.close();
@@ -343,4 +383,3 @@ describe("AW19 · PostgreSQL, Quellenbindung und tatsächliche Konkurrenz", () =
     }
   });
 });
-import { writeFileSync } from "node:fs";

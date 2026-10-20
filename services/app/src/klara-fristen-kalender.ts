@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { type EigenerKalenderRepo, type KalenderEintrag, KalenderFehler } from "./eigener-kalender";
 import type { ErkannteFrist } from "./klara-fristen";
 import { fristVerwerfen } from "./klara-fristen";
@@ -142,4 +143,3 @@ export class FristenKalenderRepo implements EigenerKalenderRepo {
     );
   }
 }
-import { isDeepStrictEqual } from "node:util";

@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { istZeitzone, lokalVon } from "./klara-erinnerung-zeit";
 import type { FristArt, FristBeleg, FristDatum, FristQuellart } from "./klara-fristen-erkennung";
 import { FRIST_ARTEN, fristHash, fristIdentitaet } from "./klara-fristen-erkennung";
@@ -169,6 +170,14 @@ function datumSchluessel(d: FristDatum | null): string {
   return d === null ? "offen" : d.art === "datum" ? `datum:${d.datum}` : `zeitpunkt:${d.utc}`;
 }
 
+/** Ablehnung desselben belegten Fakts, unabhängig davon, welche Quellenkopie ihn erneut nennt. */
+function ablehnungsSignatur(id: string, b: FristBeleg): string {
+  return fristHash(
+    id,
+    b.datum ? datumSchluessel(b.datum) : b.abschnitt.wortlaut.replace(/\s+/gu, " ").trim(),
+  );
+}
+
 function zeitstand(datum: FristDatum, jetzt: string, zone = "UTC"): "historisch" | "erkannt" {
   // Vergangen ist keine Erledigung. Ein Ganztagesdatum bleibt ohne erfundene UTC-Uhrzeit.
   const vergangen =
@@ -296,7 +305,8 @@ export function verarbeiteFristenQuelle(
     for (const b of aktuell) if (b.datum) daten.set(datumSchluessel(b.datum), b.datum);
     const datum = daten.size === 1 ? ([...daten.values()][0] ?? null) : null;
     const abgelehnt =
-      aktuell.length > 0 && aktuell.every((b) => basis.ablehnungen.includes(b.fingerabdruck));
+      aktuell.length > 0 &&
+      aktuell.every((b) => basis.ablehnungen.includes(ablehnungsSignatur(id, b)));
     const geaendert = Boolean(
       alt?.herkunft.some(
         (h) =>
@@ -317,10 +327,11 @@ export function verarbeiteFristenQuelle(
       klaerung.push("relevante_quellaenderung");
     let zustand: FristStand;
     if (basis.stand === "erledigt") zustand = "erledigt";
-    else if (abgelehnt) zustand = "verworfen";
+    else if (abgelehnt && (!basis.manuell || basis.stand === "verworfen")) zustand = "verworfen";
     else if (aktuell.length === 0 || klaerung.includes("widerruf")) zustand = "nicht_verlaesslich";
     else if (klaerung.length > 0 || !datum) zustand = "klaerung";
-    else zustand = zeitstand(datum, am, regel.zeitzone);
+    else
+      zustand = zeitstand(basis.manuell && basis.datum ? basis.datum : datum, am, regel.zeitzone);
     const neu = mitVerlauf(
       basis,
       {
@@ -358,15 +369,16 @@ export function verarbeiteFristenQuelle(
 
 export function fristVerwerfen(f: ErkannteFrist, am: string): ErkannteFrist {
   if (f.stand === "verworfen") return f;
+  const { kalenderDatum: _bisherigesKalenderdatum, ...ohneKalenderdatum } = f;
   return mitVerlauf(
     f,
     {
-      ...f,
+      ...ohneKalenderdatum,
       stand: "verworfen",
       ablehnungen: [
         ...new Set([
           ...f.ablehnungen,
-          ...f.herkunft.filter((h) => h.aktuell).map((h) => h.beleg.fingerabdruck),
+          ...f.herkunft.filter((h) => h.aktuell).map((h) => ablehnungsSignatur(f.id, h.beleg)),
         ]),
       ],
     },
@@ -382,6 +394,9 @@ export function fristManuell(
   am: string,
   zone = "UTC",
 ): ErkannteFrist {
+  const bewusstGeprueft = new Set(
+    f.herkunft.filter((h) => h.aktuell).map((h) => ablehnungsSignatur(f.id, h.beleg)),
+  );
   return mitVerlauf(
     f,
     {
@@ -389,6 +404,7 @@ export function fristManuell(
       datum,
       kalenderDatum: datum,
       manuell: true,
+      ablehnungen: f.ablehnungen.filter((m) => !bewusstGeprueft.has(m)),
       stand: erledigt ? "erledigt" : zeitstand(datum, am, zone),
       klaerung: [],
     },
@@ -396,4 +412,3 @@ export function fristManuell(
     "manuell",
   );
 }
-import { isDeepStrictEqual } from "node:util";

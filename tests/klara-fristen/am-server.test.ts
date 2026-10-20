@@ -71,6 +71,48 @@ async function kalender(konto = ich) {
 }
 
 describe("AW19 · tatsächliche persönliche Ablage und derselbe Kalender", () => {
+  it("eine neue Quelle mit derselben verworfenen Frist belebt keinen Kalendertermin; neue Belege bleiben bis zur bewussten Korrektur offen", async () => {
+    const text = "Lizenz L-17: Ablaufdatum 2027-04-30.";
+    const n = await notiz(text);
+    const auswahl = regel([{ art: "notiz", id: n.id }]);
+    const anfang = await api("PUT", "/regel", { fassung: 0, regel: auswahl });
+    expect(anfang.statusCode, anfang.body).toBe(200);
+    const f = anfang.json().fristen[0];
+    const eventId = (await kalender())[0].id;
+    expect(
+      (await api("POST", `/${f.id}/aktion`, { fassung: f.fassung, aktion: "verwerfen" }))
+        .statusCode,
+    ).toBe(200);
+    expect(await kalender()).toEqual([]);
+    const kopie = await notiz(text);
+    const stand = (await api("GET")).json();
+    const erweitert = await api("PUT", "/regel", {
+      fassung: stand.fassung,
+      regel: { ...auswahl, quellen: [...auswahl.quellen, { art: "notiz", id: kopie.id }] },
+    });
+    expect(erweitert.statusCode, erweitert.body).toBe(200);
+    expect(erweitert.json().fristen).toHaveLength(1);
+    expect(erweitert.json().fristen[0]).toMatchObject({ id: f.id, stand: "verworfen" });
+    expect(await kalender()).toEqual([]);
+    const geaendert = await aufbau.app.inject({
+      method: "PUT",
+      url: `/api/me/klara/notizen/${n.id}`,
+      headers: ich.kopf,
+      payload: { fassung: 1, inhalt: "Lizenz L-17: Ablaufdatum 2027-05-30." },
+    });
+    expect(geaendert.statusCode, geaendert.body).toBe(200);
+    const klaerung = await api("POST", "/aktualisieren");
+    expect(klaerung.statusCode, klaerung.body).toBe(200);
+    expect(klaerung.json().fristen[0]).toMatchObject({ id: f.id, stand: "klaerung" });
+    expect(await kalender()).toEqual([]);
+    const korrektur = await api("POST", `/${f.id}/aktion`, {
+      fassung: klaerung.json().fristen[0].fassung,
+      aktion: "korrigieren",
+      datum: { art: "datum", datum: "2027-06-30" },
+    });
+    expect(korrektur.statusCode, korrektur.body).toBe(200);
+    expect((await kalender())[0]).toMatchObject({ id: eventId, beginn: "2027-06-30" });
+  });
   it("übernimmt nur tatsächlich bekannte Zuständigkeit und erfindet kein Konto aus einer unauflösbaren Quellkennung", async () => {
     const me = await aufbau.app.inject({ url: "/api/auth/me", headers: ich.kopf });
     const kontoId: string = me.json().id;
