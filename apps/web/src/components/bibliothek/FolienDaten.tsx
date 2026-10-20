@@ -48,6 +48,7 @@ import { useOffenePunkteWahl } from "../../lib/datenkontrolleEinstellung";
 import { readPptxRich } from "../../lib/files";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { DatenKontrolle, DatenLage } from "./DatenKontrolle";
+import { FolienAenderungen } from "./FolienAenderungen";
 
 const ZUSTANDSFARBE: Record<DatenpunktSicht["pruefstand"]["zustand"], string> = {
   erfasst: "text-muted",
@@ -191,6 +192,12 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
       ) : null}
       {d?.datenlage ? (
         <DatenLage lage={d.datenlage} wahl={offenePunkte} oeffne={oeffneVonListe} />
+      ) : null}
+      {d && d.datenpunkte.length > 0 ? (
+        <FolienAenderungen
+          lage={d}
+          key={`${koId}:${anhangId}:${d.artikelFassung}:${d.dateiFassung}:${d.datenpunkte.map((p) => `${p.id}@${p.fassung}:${p.pruefungen.length}`).join(",")}`}
+        />
       ) : null}
       {d ? (
         <div className="mt-2 grid gap-3 lg:grid-cols-[minmax(0,1fr)_24rem]">

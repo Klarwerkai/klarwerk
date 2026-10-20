@@ -12,6 +12,11 @@ import {
 import type { Guards, SessionUser } from "../http";
 import { officeFormatFuer } from "../office-wopi";
 import {
+  VorschauKonflikt,
+  aenderungsVorschau,
+  leseAenderungen,
+} from "../praesentation-aenderungen";
+import {
   DIMENSIONEN,
   DatenFehler,
   type DatenUmgebung,
@@ -289,6 +294,88 @@ export function praesentationDatenRoutes(
   }
 
   return async (app) => {
+    // PP-07: nur Vorschau am bestehenden Anhang, keine Schreib-/Speicher-/Deckengine.
+    app.post<{
+      Params: { id: string; anhangId: string };
+      Body: { dateiFassung?: unknown; artikelFassung?: unknown; aenderungen?: unknown };
+    }>(
+      "/api/kos/:id/office/:anhangId/aenderungsvorschau",
+      { bodyLimit: 64 * 1024 },
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const u = umgebung(user);
+        const ko = await u.artikel(request.params.id);
+        if (!ko || !ko.attachments?.some((a) => a.id === request.params.anhangId)) {
+          nichtGefunden(reply, "Anhang");
+          return;
+        }
+        try {
+          const auftraege = leseAenderungen(request.body?.aenderungen);
+          const datei = await u.folien(ko.id, request.params.anhangId);
+          if (!datei) {
+            nichtGefunden(reply, "Präsentation");
+            return;
+          }
+          if (
+            typeof request.body.dateiFassung !== "string" ||
+            !Number.isInteger(request.body.artikelFassung)
+          ) {
+            throw new DatenFehler(
+              "ungueltig",
+              "Artikel- und Dateifassung der gelesenen Präsentation fehlen.",
+            );
+          }
+          if (
+            request.body.dateiFassung !== datei.satz.fassung ||
+            request.body.artikelFassung !== ko.version
+          ) {
+            throw new VorschauKonflikt(
+              "Die Präsentation wurde geändert. Bitte neu laden; nichts wurde geändert.",
+            );
+          }
+          const alle = [
+            ...new Map(
+              [
+                ...(await deps.ablage.vonArtikel(ko.id)),
+                ...(await deps.ablage.gebundenAn(ko.id, request.params.anhangId)),
+              ].map((d) => [d.id, d] as const),
+            ).values(),
+          ];
+          const zeit = jetzt();
+          const vorschau = await aenderungsVorschau(
+            alle,
+            auftraege,
+            u,
+            deps.ablage,
+            {
+              nutzerId: user.id,
+              jetzt: new Date(zeit).toISOString(),
+              kennung,
+            },
+            zeit,
+          );
+          reply.header("Cache-Control", "no-store");
+          reply.code(200).send({
+            koId: ko.id,
+            anhangId: request.params.anhangId,
+            anhangName: datei.name,
+            artikelFassung: ko.version,
+            dateiFassung: datei.satz.fassung,
+            ...vorschau,
+          });
+        } catch (f) {
+          if (f instanceof VorschauKonflikt) {
+            reply.code(409).send({ error: "VORSCHAU_VERALTET", message: f.message });
+            return;
+          }
+          fehler(reply, f);
+        }
+      },
+    );
+
     app.get<{ Params: { id: string; anhangId: string } }>(
       "/api/kos/:id/office/:anhangId/folien-daten",
       async (request, reply) => {
