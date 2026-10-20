@@ -8,6 +8,8 @@ import {
   decodeDataUrl,
 } from "../../../object-store";
 import { type Guards, type SessionUser, sendError } from "../http";
+import type { DatenUmgebung } from "../praesentation-daten";
+import { snapshotLesbar } from "../praesentation-snapshot-recht";
 import {
   type AnhangQuellen,
   type AnhangUrteil,
@@ -193,6 +195,8 @@ function kennzeichneGeloeschteQuelle(reply: FastifyReply, urteil: AnhangUrteil):
 // aus. Die Reihenfolge Auth-vor-Parsen (JOB 2657) bleibt unangetastet — der Speicher sitzt hinter
 // `guards.requirePermission`, im Urteil.
 export interface ObjectRoutesOptionen {
+  /** PP05: dieselbe PP02-Umgebung der angemeldeten Person, frisch je Dateiabfrage. */
+  datenUmgebung?: (user: SessionUser) => DatenUmgebung;
   /** Uhr (Millisekunden) — injizierbar fuer Tests. */
   jetzt?: () => number;
   /** Frist des Kandidaten-Speichers in Millisekunden; `0` schaltet ihn aus. */
@@ -216,6 +220,7 @@ export function objectRoutes(
     user: SessionUser,
     objectId: string,
     ref: ObjectRef,
+    data: string,
   ): Promise<AnhangUrteil> {
     // `ObjectRef.confidentiality` ist bewusst ein roher String (object-store bleibt von
     // knowledge-object entkoppelt, types.ts:94). Hier, an der Modulgrenze, wird er EINMAL geprüft;
@@ -235,11 +240,19 @@ export function objectRoutes(
     }
     // BPA-17: ein privates Folgeprodukt liest nur sein Eigentümer, solange die Quelle sichtbar ist.
     const privat = await privatesFolgeprodukt(user, objectId, ref.lifecycle, quellen);
-    if (privat) {
-      return privat;
-    }
-    // JOB 2706 D1: dieselbe Regel, ueber den Kandidaten-Speicher (Begruendung am Kopf dieses Blocks).
-    return beurteileAnhang(user, objectId, eigen, quellen, speicher);
+    const normal = privat ?? (await beurteileAnhang(user, objectId, eigen, quellen, speicher));
+    if (!normal.sichtbar) return normal;
+    const bytes = decodeDataUrl(data)?.bytes;
+    const snapshot = bytes
+      ? await snapshotLesbar(bytes, objectId, optionen.datenUmgebung?.(user))
+      : undefined;
+    return snapshot
+      ? {
+          ...normal,
+          sichtbar: normal.sichtbar && snapshot.sichtbar,
+          vertraulich: normal.vertraulich || snapshot.vertraulich,
+        }
+      : normal;
   }
 
   // JOB 2657 D1: AUTH VOR BODY-PARSING — dasselbe Muster, das `capture-routes.ts:211-218` seit
@@ -314,7 +327,7 @@ export function objectRoutes(
       }
       const obj = await store.read(request.params.id);
       const urteil: AnhangUrteil = obj
-        ? await urteile(user, request.params.id, obj.ref)
+        ? await urteile(user, request.params.id, obj.ref, obj.data)
         : { sichtbar: false, vertraulich: true };
       // mega74 C: dieselbe Form wie am Wissensobjekt — nicht sichtbar sieht aus wie nicht
       // vorhanden. Ein 403 würde die Existenz des Anhangs bestätigen.
@@ -361,7 +374,7 @@ export function objectRoutes(
       }
       const objectId = request.params.id;
       const obj = await store.read(objectId);
-      if (!obj || !(await urteile(user, objectId, obj.ref)).sichtbar) {
+      if (!obj || !(await urteile(user, objectId, obj.ref, obj.data)).sichtbar) {
         mitVary(reply)
           .header("Cache-Control", CACHE_KEINE_ANTWORT)
           .code(404)
@@ -393,7 +406,7 @@ export function objectRoutes(
       }
       const obj = await store.read(request.params.id);
       const urteil: AnhangUrteil = obj
-        ? await urteile(user, request.params.id, obj.ref)
+        ? await urteile(user, request.params.id, obj.ref, obj.data)
         : { sichtbar: false, vertraulich: true };
       if (!obj || !urteil.sichtbar) {
         // JOB 579 D5: bytegleich zur Metadatenroute — Status, Rumpf und Cachevertrag.

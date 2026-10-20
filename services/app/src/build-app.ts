@@ -525,6 +525,7 @@ import {
   PgDatenpunktAblage,
   SpeicherDatenpunktAblage,
 } from "./praesentation-daten-ablage";
+import { praesentationDatenUmgebung } from "./praesentation-daten-umgebung";
 // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets — das persistente Kostenbuch.
 import {
   InMemoryProduktbudgetRepo,
@@ -6648,7 +6649,20 @@ export function buildApp(
         ],
       })),
   };
-  app.register(objectRoutes(services.objects, guards, anhangQuellen));
+  app.register(
+    objectRoutes(services.objects, guards, anhangQuellen, {
+      datenUmgebung: (user) =>
+        praesentationDatenUmgebung(
+          {
+            ko: services.ko,
+            objekte: services.objects,
+            ablage: services.datenpunkte,
+            konten: () => services.auth.listUsers(),
+          },
+          user,
+        ),
+    }),
+  );
   app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
   // BPA-16: Gesprächsaussagen mit Folien verbinden. Präsentationen und Mitschriften kommen aus
   // DEMSELBEN Objektspeicher und werden mit DENSELBEN Herkünften beurteilt wie `/api/objects/:id`.
