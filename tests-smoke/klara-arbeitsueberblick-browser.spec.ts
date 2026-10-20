@@ -31,7 +31,7 @@ async function ueberblick(p: Page) {
   if (!(await p.getByTestId("klara-gespraech").isVisible())) {
     await p.getByTestId("klara-figur").click();
   }
-  await expect(p.getByTestId("klara-echt-hinweis")).toHaveAttribute("data-laden", "bereit");
+  await expect(p.getByTestId("klara-gespraech")).toHaveAttribute("data-oberflaeche", "minimal");
   const sichtbar = p.getByTestId("klara-funktion-arbeitsueberblick");
   if (!(await sichtbar.isVisible())) {
     await p.getByTestId("klara-menue-knopf").click();
