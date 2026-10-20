@@ -116,12 +116,15 @@ function NotizOffen({ n }: { n: KlaraNotiz }): JSX.Element {
       {n.wissensHerkunft?.besprechung && !n.wissensHerkunft.besprechung.quelleNotizId ? (
         <KlaraBesprechungsAuswertung key={n.id} id={n.id} fassung={n.fassung} />
       ) : null}
-      <KlaraWissen
-        key={`${n.id}-${n.fassung}`}
-        id={n.id}
-        fassung={n.fassung}
-        geaendert={geaendert}
-      />
+      {!n.wissensHerkunft?.besprechung?.verarbeitung ||
+      n.wissensHerkunft.besprechung.verarbeitung.stand === "abgeschlossen" ? (
+        <KlaraWissen
+          key={`${n.id}-${n.fassung}`}
+          id={n.id}
+          fassung={n.fassung}
+          geaendert={geaendert}
+        />
+      ) : null}
       <label htmlFor={`${id}-titel`} className={`${KLEINTITEL} mt-2 block`}>
         {t("klaranotiz.feld.titel")}
       </label>

@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
-import type { MediaAnalysisService } from "../../media";
+import { createHash, randomUUID } from "node:crypto";
+import { type MediaAnalysisService, wavPlan } from "../../media";
+import type { BesprechungsFortschritt } from "./klara-besprechung-fortschritt";
 import { type ObjectStore, decodeDataUrl } from "../../object-store";
 import { KlaraAufgabeDienst, type KlaraAufgabeRepo } from "./klara-aufgabe";
 import { type KlaraNotiz, KlaraNotizDienst, type KlaraNotizRepo } from "./klara-notiz";
@@ -25,6 +26,7 @@ export interface PrivateBesprechung {
   weg: "text" | "dateiimport" | "eigene_aufnahme";
   segmente: BesprechungsSegment[];
   asrEngine?: string;
+  verarbeitung?: BesprechungsFortschritt;
 }
 export type ErgebnisArt =
   | "entscheidung"
@@ -102,6 +104,7 @@ export function besprechungsErgebnisse(b: PrivateBesprechung) {
   });
 }
 export class KlaraBesprechungsDienst {
+  private readonly aktiveTeile = new Map<string, AbortController>();
   constructor(
     private readonly notizen: KlaraNotizRepo,
     private readonly rohNotizen: KlaraNotizRepo,
@@ -109,6 +112,7 @@ export class KlaraBesprechungsDienst {
     private readonly objects: ObjectStore,
     private readonly media: MediaAnalysisService,
     private readonly keineKi: () => boolean,
+    private readonly jetzt: () => number = Date.now,
   ) {}
   async importiere(kontoId: string, roh: unknown) {
     const x = obj(roh);
@@ -151,14 +155,18 @@ export class KlaraBesprechungsDienst {
         ).find(
           (n) =>
             n.wissensHerkunft?.besprechung?.meetingId === meetingId &&
-            !n.wissensHerkunft.besprechung.quelleNotizId,
+            !n.wissensHerkunft.besprechung.quelleNotizId &&
+            (n.wissensHerkunft.besprechung.verarbeitung
+              ? n.wissensHerkunft.besprechung.verarbeitung.quellAbdruck ===
+                createHash("sha256").update(bytes).digest("hex")
+              : n.wissensHerkunft.besprechung.audioId === audioId),
         );
         if (vorher) {
           const r = await this.sicht(kontoId, vorher.id);
           return {
             ...r,
             wiederholt: true,
-            verarbeitung: {
+            verarbeitung: r.verarbeitung ?? {
               stand: "bereits_importiert",
               modellaufrufe: 0,
               asr: "bereits_gespeichert",
@@ -171,6 +179,42 @@ export class KlaraBesprechungsDienst {
           throw new WissensFehler(409, "Verarbeitungsauftrag für die Audio-Transkription fehlt.");
         if (this.keineKi())
           throw new WissensFehler(403, "Keine KI: Transkription ist abgeschaltet.");
+        if (x.segmentiert === true) {
+          if (x.vorherigeNotiz)
+            throw new WissensFehler(
+              409,
+              "Neue Teilverarbeitung beginnt an einer eigenen Quellfassung.",
+            );
+          let teile: ReturnType<typeof wavPlan>;
+          try {
+            teile = wavPlan(bytes);
+          } catch (e) {
+            throw new WissensFehler(400, e instanceof Error ? e.message : "PCM-WAV nicht lesbar.");
+          }
+          return this.speichere(
+            kontoId,
+            titel,
+            {
+              meetingId,
+              transkriptFassung: 1,
+              meetingDatum,
+              zeitzone,
+              quelleNotizId: null,
+              audioId,
+              weg: x.weg === "eigene_aufnahme" ? "eigene_aufnahme" : "dateiimport",
+              segmente: [],
+              verarbeitung: {
+                stand: "bereit",
+                quellAbdruck: createHash("sha256").update(bytes).digest("hex"),
+                teile,
+                versuche: 0,
+                lauf: null,
+                grund: null,
+              },
+            },
+            null,
+          );
+        }
         asr = await this.media.analyze(audioId, "de", undefined, true);
         if (this.keineKi())
           throw new WissensFehler(403, "Keine KI: inzwischen abgeschaltet; Ergebnis verworfen.");
@@ -270,6 +314,16 @@ export class KlaraBesprechungsDienst {
     };
     return this.speichere(kontoId, titel, b, vorher?.id ?? null, asr ? 1 : 0);
   }
+  private transkriptText(b: PrivateBesprechung) {
+    return (
+      b.segmente
+        .map(
+          (s) =>
+            `[${s.id}${s.startMs === null ? "" : ` · ${s.startMs}–${s.endMs} ms`}${s.sprecher ? ` · ${s.sprecher} (Importangabe)` : ""}] ${s.text}`,
+        )
+        .join("\n") || "Teiltranskript: noch keine abgeschlossenen Segmente."
+    );
+  }
   private async speichere(
     kontoId: string,
     titel: string,
@@ -277,12 +331,7 @@ export class KlaraBesprechungsDienst {
     vorherigeNotiz: string | null,
     modellaufrufe = 0,
   ) {
-    const inhalt = b.segmente
-      .map(
-        (s) =>
-          `[${s.id}${s.startMs === null ? "" : ` · ${s.startMs}–${s.endMs} ms`}${s.sprecher ? ` · ${s.sprecher} (Importangabe)` : ""}] ${s.text}`,
-      )
-      .join("\n");
+    const inhalt = this.transkriptText(b);
     if (inhalt.length > 20000) throw new WissensFehler(400, "Transkriptfassung zu groß.");
     const h: KlaraWissensHerkunft = {
       projekt: titel,
@@ -298,7 +347,7 @@ export class KlaraBesprechungsDienst {
     const r = await new KlaraNotizDienst({ repo: this.notizen }).lege(
       kontoId,
       {
-        vorgang: `meeting-${hash(JSON.stringify({ meetingId: b.meetingId, fassung: b.transkriptFassung, datum: b.meetingDatum, zone: b.zeitzone, inhalt }))}`,
+        vorgang: `meeting-${hash(JSON.stringify({ meetingId: b.meetingId, fassung: b.transkriptFassung, datum: b.meetingDatum, zone: b.zeitzone, quelle: b.verarbeitung?.quellAbdruck, inhalt }))}`,
         weg: "geschrieben",
         titel,
         inhalt,
@@ -311,12 +360,18 @@ export class KlaraBesprechungsDienst {
     return {
       notiz: r.notiz,
       wiederholt: r.wiederholt,
-      verarbeitung: {
-        stand: "importiert",
-        segmente: b.segmente.length,
-        modellaufrufe,
-        asr: modellaufrufe ? "zeitgebunden_abgeschlossen" : "nicht_ausgefuehrt",
-      },
+      verarbeitung: b.verarbeitung
+        ? {
+            ...b.verarbeitung,
+            fertigeTeile: b.verarbeitung.teile.filter((t) => t.fertig).length,
+            modellaufrufe,
+          }
+        : {
+            stand: "importiert",
+            segmente: b.segmente.length,
+            modellaufrufe,
+            asr: modellaufrufe ? "zeitgebunden_abgeschlossen" : "nicht_ausgefuehrt",
+          },
       ergebnisse: besprechungsErgebnisse(b),
       fristenNormen: {
         stand: "quellenauswahl_erforderlich",
@@ -343,12 +398,14 @@ export class KlaraBesprechungsDienst {
     return {
       notiz: n,
       ergebnisse: besprechungsErgebnisse(n.wissensHerkunft.besprechung),
+      verarbeitung: n.wissensHerkunft.besprechung.verarbeitung,
       fristenNormen: { stand: "quellenauswahl_erforderlich" },
     };
   }
   async korrektur(kontoId: string, id: string, roh: unknown) {
     const x = obj(roh);
     const n = await this.hole(kontoId, id);
+    this.vollstaendig(n.wissensHerkunft.besprechung);
     if (n.fassung !== x.fassung) throw new WissensFehler(409, "Transkript inzwischen geändert.");
     const b = n.wissensHerkunft.besprechung;
     const segment = b.segmente.find((s) => s.id === x.segmentId);
@@ -377,6 +434,7 @@ export class KlaraBesprechungsDienst {
   async uebernehmen(kontoId: string, id: string, roh: unknown) {
     const x = obj(roh);
     const n = await this.hole(kontoId, id);
+    this.vollstaendig(n.wissensHerkunft.besprechung);
     if (
       x.bewusst !== true ||
       x.fassung !== n.fassung ||
@@ -468,6 +526,7 @@ export class KlaraBesprechungsDienst {
   async fristquelle(kontoId: string, id: string, roh: unknown) {
     const x = obj(roh);
     const n = await this.hole(kontoId, id);
+    this.vollstaendig(n.wissensHerkunft.besprechung);
     const b = n.wissensHerkunft.besprechung;
     if (
       x.bewusst !== true ||
@@ -509,6 +568,190 @@ export class KlaraBesprechungsDienst {
     );
     return { notizId: r.notiz.id, fassung: r.notiz.fassung, wiederholt: r.wiederholt };
   }
+  private vollstaendig(b: PrivateBesprechung) {
+    if (b.verarbeitung && b.verarbeitung.stand !== "abgeschlossen")
+      throw new WissensFehler(
+        409,
+        "Teiltranskript ist nicht vollständig; erst offene Teile verarbeiten.",
+      );
+  }
+  private async teilQuelle(kontoId: string, id: string) {
+    const n = await this.hole(kontoId, id);
+    const b = n.wissensHerkunft.besprechung;
+    if (!b.verarbeitung || !b.audioId || b.quelleNotizId)
+      throw new WissensFehler(409, "Keine fortsetzbare Audioquellfassung.");
+    const quelle = await this.objects.read(b.audioId);
+    const bytes = quelle ? decodeDataUrl(quelle.data)?.bytes : null;
+    if (
+      !quelle ||
+      quelle.ref.lifecycle?.owner !== kontoId ||
+      quelle.ref.lifecycle.purpose !== "klara_audio" ||
+      !bytes
+    )
+      throw new WissensFehler(404, "Audioquelle entzogen.");
+    if (createHash("sha256").update(bytes).digest("hex") !== b.verarbeitung.quellAbdruck)
+      throw new WissensFehler(409, "Audioquelle geändert; diese Fassung wird nicht fortgesetzt.");
+    return n;
+  }
+  private async teilSpeichern(n: KlaraNotiz, b: PrivateBesprechung) {
+    const inhalt = this.transkriptText(b);
+    if (inhalt.length > 20000 || b.segmente.length > 300)
+      throw new WissensFehler(409, "Teiltranskript überschreitet die vorhandene Notizgrenze.");
+    const neu: KlaraNotiz = {
+      ...n,
+      inhalt,
+      fassung: n.fassung + 1,
+      geaendertAm: new Date(this.jetzt()).toISOString(),
+      wissensHerkunft: { ...n.wissensHerkunft!, textAbdruck: hash(inhalt), besprechung: b },
+    };
+    if (!(await this.notizen.ersetze(neu)))
+      throw new WissensFehler(409, "Teilstand inzwischen geändert; neu lesen.");
+    return this.hole(n.kontoId, n.id);
+  }
+  /** Genau EIN echter Audioabschnitt pro Aufruf; Fortschritt ist vor der Antwort dauerhaft CAS-gesichert. */
+  async teilschritt(kontoId: string, id: string, roh: unknown) {
+    const x = obj(roh);
+    const n = await this.teilQuelle(kontoId, id);
+    const b = n.wissensHerkunft.besprechung;
+    const v = b.verarbeitung!;
+    if (!["fortsetzen", "pausieren", "abbrechen"].includes(String(x.aktion)))
+      throw new WissensFehler(400, "Fortsetzen, pausieren oder abbrechen wählen.");
+    if (
+      x.fassung !== n.fassung &&
+      !(x.aktion !== "fortsetzen" && v.stand === "laeuft" && v.lauf?.ausFassung === x.fassung)
+    )
+      throw new WissensFehler(409, "Aktuelle Teilstandfassung erforderlich.");
+    if (v.stand === "abgeschlossen") return this.sicht(kontoId, id);
+    if (v.stand === "abgebrochen")
+      throw new WissensFehler(409, "Abgebrochene Verarbeitung wird nicht fortgesetzt.");
+    if (x.aktion !== "fortsetzen") {
+      await this.teilSpeichern(n, {
+        ...b,
+        verarbeitung: {
+          ...v,
+          stand: x.aktion === "abbrechen" ? "abgebrochen" : "pausiert",
+          lauf: null,
+          grund: "angefordert",
+        },
+      });
+      this.aktiveTeile.get(id)?.abort();
+      return this.sicht(kontoId, id);
+    }
+    if (v.stand === "laeuft" && (v.lauf?.bis ?? Infinity) > this.jetzt())
+      throw new WissensFehler(
+        409,
+        "Dieser Abschnitt läuft noch; Ende oder Ablauf der Laufberechtigung abwarten.",
+      );
+    if (this.keineKi()) {
+      await this.teilSpeichern(n, {
+        ...b,
+        verarbeitung: { ...v, stand: "pausiert", lauf: null, grund: "keine_ki" },
+      });
+      return this.sicht(kontoId, id);
+    }
+    const teil = v.teile.find((t) => !t.fertig);
+    if (!teil) throw new WissensFehler(409, "Unvollständiger Teilplan.");
+    const lauf = { id: randomUUID(), bis: this.jetzt() + 120000, ausFassung: n.fassung };
+    const claim = await this.teilSpeichern(n, {
+      ...b,
+      verarbeitung: { ...v, stand: "laeuft", lauf, versuche: v.versuche + 1, grund: null },
+    });
+    const controller = new AbortController();
+    this.aktiveTeile.set(id, controller);
+    const timer = setTimeout(() => controller.abort(), 90000);
+    timer.unref();
+    try {
+      const vor = await this.teilQuelle(kontoId, id);
+      if (vor.fassung !== claim.fassung) return this.sicht(kontoId, id);
+      if (this.keineKi()) throw new Error("keine_ki");
+      const r = await this.media.analyze(
+        b.audioId!,
+        "de",
+        undefined,
+        true,
+        { vonFrame: teil.vonFrame, bisFrame: teil.bisFrame },
+        controller.signal,
+      );
+      const aktuell = await this.teilQuelle(kontoId, id);
+      if (aktuell.fassung !== claim.fassung) return this.sicht(kontoId, id);
+      if (this.keineKi() || controller.signal.aborted || this.jetzt() >= lauf.bis)
+        throw new Error("nicht_mehr_aktiv");
+      if (
+        !r.zeittranskript ||
+        !r.engineActive ||
+        !r.engine ||
+        (b.asrEngine && b.asrEngine !== r.engine)
+      )
+        throw new Error("keine_passende_transkription");
+      const segmente = r.zeittranskript.segmente;
+      if (
+        !segmente.length ||
+        segmente.some(
+          (s) =>
+            typeof s.id !== "string" ||
+            !s.id ||
+            s.id.length > 160 ||
+            !s.text?.trim() ||
+            !Number.isFinite(s.startMs) ||
+            !Number.isFinite(s.endMs) ||
+            s.startMs < 0 ||
+            s.endMs <= s.startMs ||
+            s.endMs > teil.endMs - teil.startMs,
+        ) ||
+        new Set(segmente.map((s) => s.id)).size !== segmente.length
+      )
+        throw new Error("ungueltige_zeitsegmente");
+      const neu = [
+        ...b.segmente.map((s) => ({ ...s })),
+        ...segmente.map((s) => ({
+          id: `${teil.id}-${s.id}`,
+          text: s.text,
+          startMs: teil.startMs + s.startMs,
+          endMs: teil.startMs + s.endMs,
+          sprecher: null,
+          unsicher: /unverständlich|rauschen|\[lücke\]|\[unsicher\]/i.test(s.text),
+          ueberlappend: false,
+        })),
+      ];
+      for (const s of neu)
+        s.ueberlappend = neu.some(
+          (t) =>
+            t.id !== s.id && (t.startMs ?? 0) < (s.endMs ?? 0) && (s.startMs ?? 0) < (t.endMs ?? 0),
+        );
+      const teile = v.teile.map((t) => (t.id === teil.id ? { ...t, fertig: true } : t));
+      await this.teilSpeichern(claim, {
+        ...b,
+        segmente: neu,
+        asrEngine: r.engine,
+        verarbeitung: {
+          ...v,
+          teile,
+          versuche: v.versuche + 1,
+          lauf: null,
+          grund: null,
+          stand: teile.every((t) => t.fertig) ? "abgeschlossen" : "teilweise",
+        },
+      });
+    } catch (e) {
+      const aktuell = await this.hole(kontoId, id);
+      // Pause/Abbruch/neuere Übernahme gewinnt auch dann, wenn ein Adapter sein AbortSignal ignoriert.
+      if (aktuell.fassung !== claim.fassung) return this.sicht(kontoId, id);
+      await this.teilSpeichern(claim, {
+        ...b,
+        verarbeitung: {
+          ...v,
+          stand: this.keineKi() ? "pausiert" : "fehlgeschlagen",
+          grund: this.keineKi() ? "keine_ki" : "anbieterfehler",
+          lauf: null,
+          versuche: v.versuche + 1,
+        },
+      });
+    } finally {
+      clearTimeout(timer);
+      if (this.aktiveTeile.get(id) === controller) this.aktiveTeile.delete(id);
+    }
+    return this.sicht(kontoId, id);
+  }
   async loesche(kontoId: string, id: string) {
     const n = await this.rohNotizen.hole(kontoId, id);
     const b = n?.wissensHerkunft?.besprechung;
@@ -522,7 +765,10 @@ export class KlaraBesprechungsDienst {
       if (a.privatNotizGebunden && a.bezug.art === "notiz" && ids.has(a.bezug.notizId))
         await this.aufgaben.entferne(kontoId, a.id);
     }
-    for (const note of ns) await this.rohNotizen.entferne(kontoId, note.id);
+    for (const note of ns) {
+      this.aktiveTeile.get(note.id)?.abort();
+      await this.rohNotizen.entferne(kontoId, note.id);
+    }
     for (const audio of new Set(
       ns.map((n) => n.wissensHerkunft?.besprechung?.audioId).filter((s): s is string => !!s),
     ))

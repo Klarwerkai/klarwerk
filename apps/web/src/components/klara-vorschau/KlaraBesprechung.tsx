@@ -30,6 +30,7 @@ export function KlaraBesprechungsImport() {
   const [zone, setZone] = useState("");
   const [berechtigt, setBerechtigt] = useState(false);
   const [transkription, setTranskription] = useState(false);
+  const [segmentiert, setSegmentiert] = useState(false);
   const [audio, setAudio] = useState<File | null>(null);
   const [audioId, setAudioId] = useState<string | null>(null);
   const [fehler, setFehler] = useState("");
@@ -67,6 +68,7 @@ export function KlaraBesprechungsImport() {
               zeitzone: zone || null,
               berechtigt,
               transkription,
+              segmentiert: !!id && !vtt && segmentiert,
             });
             await ladeNotizen(t);
             await oeffneNotiz(r.notiz.id, t);
@@ -148,10 +150,22 @@ export function KlaraBesprechungsImport() {
           <label>
             <input
               type="checkbox"
+              data-testid="besprechung-transkription"
               checked={transkription}
               onChange={(e) => setTranskription(e.target.checked)}
             />
             {t("klarabesprechung.transkription")}
+          </label>
+        ) : null}
+        {audio && !vtt ? (
+          <label>
+            <input
+              type="checkbox"
+              data-testid="besprechung-segmentiert"
+              checked={segmentiert}
+              onChange={(e) => setSegmentiert(e.target.checked)}
+            />
+            {t("klarabesprechung.segmentiert")}
           </label>
         ) : null}
         <button
@@ -181,6 +195,12 @@ export function KlaraBesprechungsAuswertung({ id, fassung }: { id: string; fassu
   const [fehler, setFehler] = useState("");
   const [korrektur, setKorrektur] = useState<Record<string, string>>({});
   const [audioVorhanden, setAudioVorhanden] = useState(false);
+  const [fortschritt, setFortschritt] = useState<{
+    stand: string;
+    teile: { fertig: boolean }[];
+    grund: string | null;
+  } | null>(null);
+  const unvollstaendig = !!fortschritt && fortschritt.stand !== "abgeschlossen";
   const [laeuft, setLaeuft] = useState(false);
   const audio = useRef<HTMLAudioElement>(null);
   const [fristquelle, setFristquelle] = useState<string | null>(null);
@@ -190,11 +210,19 @@ export function KlaraBesprechungsAuswertung({ id, fassung }: { id: string; fassu
     void api
       .post<{
         ergebnisse: Ergebnis[];
-        notiz: { wissensHerkunft: { besprechung: { audioId: string | null } } };
+        notiz: {
+          wissensHerkunft: {
+            besprechung: {
+              audioId: string | null;
+              verarbeitung?: { stand: string; teile: { fertig: boolean }[]; grund: string | null };
+            };
+          };
+        };
       }>(`${basis}/${encodeURIComponent(id)}/lesen`, {})
       .then((r) => {
         if (aktiv) {
           setErgebnisse(r.ergebnisse);
+          setFortschritt(r.notiz.wissensHerkunft.besprechung.verarbeitung ?? null);
           setAudioVorhanden(!!r.notiz.wissensHerkunft.besprechung.audioId);
         }
       })
@@ -204,7 +232,7 @@ export function KlaraBesprechungsAuswertung({ id, fassung }: { id: string; fassu
     return () => {
       aktiv = false;
     };
-  }, [id]);
+  }, [id, fassung]);
   const tun = async (fn: () => Promise<void>) => {
     setLaeuft(true);
     setFehler("");
@@ -220,6 +248,50 @@ export function KlaraBesprechungsAuswertung({ id, fassung }: { id: string; fassu
     <section data-testid="besprechung-auswertung">
       <h5>{t("klarabesprechung.auswertung")}</h5>
       <p>{t("klarabesprechung.kennzeichnung")}</p>
+      {fortschritt ? (
+        <div data-testid="besprechung-teilstand">
+          <p>
+            {t(`klarabesprechung.stand.${fortschritt.stand}`)} ·{" "}
+            {t("klarabesprechung.fortschritt", {
+              fertig: fortschritt.teile.filter((s) => s.fertig).length,
+              gesamt: fortschritt.teile.length,
+            })}
+          </p>
+          {fortschritt.grund ? <p>{t(`klarabesprechung.grund.${fortschritt.grund}`)}</p> : null}
+          <p>{t("klarabesprechung.teilHilfe")}</p>
+          {["fortsetzen", "pausieren", "abbrechen"].map((aktion) => (
+            <button
+              key={aktion}
+              type="button"
+              className={knopf}
+              data-testid={`besprechung-teil-${aktion}`}
+              disabled={
+                fortschritt.stand === "abgeschlossen" ||
+                fortschritt.stand === "abgebrochen" ||
+                (aktion === "fortsetzen" && laeuft)
+              }
+              onClick={() => {
+                const ausfuehren = async () => {
+                  try {
+                    await api.post(`${basis}/${encodeURIComponent(id)}/teilschritt`, {
+                      fassung,
+                      aktion,
+                    });
+                  } finally {
+                    await ladeNotizen(t);
+                    await oeffneNotiz(id, t);
+                  }
+                };
+                if (aktion === "fortsetzen") void tun(ausfuehren);
+                else void ausfuehren().catch((e) => setFehler(e.message));
+              }}
+            >
+              {t(`klarabesprechung.${aktion}`)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {audioVorhanden ? (
         <audio ref={audio} controls src={`/api${basis}/${encodeURIComponent(id)}/audio`}>
           <track kind="captions" />
@@ -275,7 +347,7 @@ export function KlaraBesprechungsAuswertung({ id, fassung }: { id: string; fassu
             <button
               className={knopf}
               type="button"
-              disabled={laeuft || !korrektur[a.id] || korrektur[a.id] === a.text}
+              disabled={unvollstaendig || laeuft || !korrektur[a.id] || korrektur[a.id] === a.text}
               onClick={() =>
                 void tun(async () => {
                   const r = await api.post<{ notiz: { id: string } }>(
@@ -306,7 +378,7 @@ export function KlaraBesprechungsAuswertung({ id, fassung }: { id: string; fassu
         className={knopf}
         type="button"
         data-testid="besprechung-fristquelle"
-        disabled={!auswahl.length || laeuft}
+        disabled={unvollstaendig || !auswahl.length || laeuft}
         onClick={() =>
           void tun(async () => {
             const q = await api.post<{ notizId: string }>(
@@ -378,7 +450,7 @@ export function KlaraBesprechungsAuswertung({ id, fassung }: { id: string; fassu
         data-testid="besprechung-uebernehmen"
         type="button"
         className={knopf}
-        disabled={!auswahl.length || laeuft}
+        disabled={unvollstaendig || !auswahl.length || laeuft}
         onClick={() =>
           void tun(async () => {
             const r = await api.post<{ notizId: string }>(

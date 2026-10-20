@@ -11,3 +11,5 @@ export {
 export { cappedTranscriber, createCappedTranscriberFromEnv } from "./src/transcriber";
 export type { MediaAnalysis, MediaError, Transcriber, ZeitTranskript } from "./src/types";
 export { MediaAnalysisError, TranscriberConfidentialError } from "./src/types";
+
+export { wavPlan, type WavAbschnitt } from "./src/wav-abschnitte";

@@ -8,7 +8,9 @@ export type KlaraNotizArt = "notiz" | "arbeitszettel";
 export type KlaraNotizWeg = "geschrieben" | "diktiert" | "gespraech" | "ausschnitt";
 
 export interface KlaraNotiz {
-  wissensHerkunft?: { besprechung?: { quelleNotizId: string | null } };
+  wissensHerkunft?: {
+    besprechung?: { quelleNotizId: string | null; verarbeitung?: { stand: string } };
+  };
   id: string;
   vorgang: string;
   art: KlaraNotizArt;

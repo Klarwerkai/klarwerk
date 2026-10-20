@@ -3,6 +3,26 @@ export default {
   praefix: "klarabesprechung.",
   legacySchluessel: [],
   de: {
+    "klarabesprechung.segmentiert":
+      "PCM-WAV in fortsetzbaren Teilen verarbeiten (16 Bit, 1–2 Kanäle, 8–48 kHz).",
+    "klarabesprechung.fortschritt": "{{fertig}} von {{gesamt}} Audioteilen gespeichert",
+    "klarabesprechung.fortsetzen": "Nächsten offenen Audioteil verarbeiten",
+    "klarabesprechung.pausieren": "Verarbeitung pausieren",
+    "klarabesprechung.abbrechen": "Verarbeitung endgültig abbrechen",
+    "klarabesprechung.grund.keine_ki":
+      "Keine KI ist aktiv. Bereits gespeicherte Teile bleiben erhalten.",
+    "klarabesprechung.grund.anbieterfehler":
+      "Dieser Teil wurde nicht abgeschlossen. Nach Klärung nur den offenen Rest erneut verarbeiten.",
+    "klarabesprechung.grund.angefordert": "Verarbeitung auf deinen Auftrag gestoppt.",
+    "klarabesprechung.teilHilfe":
+      "Jeder Aufruf verarbeitet einen echten Audioabschnitt. Erst die vollständige Fassung kann als Übergabe, Aufgabe oder gemeinsames Wissen übernommen werden.",
+    "klarabesprechung.stand.bereit": "Noch nicht verarbeitet",
+    "klarabesprechung.stand.teilweise": "Teilfassung gespeichert",
+    "klarabesprechung.stand.laeuft": "Ein Audioteil wird verarbeitet",
+    "klarabesprechung.stand.pausiert": "Fortsetzbare Pause",
+    "klarabesprechung.stand.fehlgeschlagen": "Teilfehler – Rest offen",
+    "klarabesprechung.stand.abgebrochen": "Endgültig abgebrochen – unvollständig",
+    "klarabesprechung.stand.abgeschlossen": "Alle Audioteile vollständig gespeichert",
     "klarabesprechung.fristquelle": "Gewählte Originalstellen für Fristen berücksichtigen",
     "klarabesprechung.fristGespeichert":
       "Quelle gespeichert; aktive Regel angewendet. Der tatsächliche Stand steht unten und in Mein Kalender.",
@@ -47,6 +67,25 @@ export default {
     "klarabesprechung.art.klaerung": "Klärung / unbestätigter Inhalt",
   },
   en: {
+    "klarabesprechung.segmentiert":
+      "Process PCM WAV in resumable parts (16-bit, 1–2 channels, 8–48 kHz).",
+    "klarabesprechung.fortschritt": "{{fertig}} of {{gesamt}} audio parts saved",
+    "klarabesprechung.fortsetzen": "Process the next pending audio part",
+    "klarabesprechung.pausieren": "Pause processing",
+    "klarabesprechung.abbrechen": "Cancel processing permanently",
+    "klarabesprechung.grund.keine_ki": "No AI is active. Previously saved parts are retained.",
+    "klarabesprechung.grund.anbieterfehler":
+      "This part did not complete. Retry only the pending remainder after resolving the issue.",
+    "klarabesprechung.grund.angefordert": "Processing stopped on your instruction.",
+    "klarabesprechung.teilHilfe":
+      "Each request processes one actual audio section. Only a complete transcript can become a handover, task or shared knowledge.",
+    "klarabesprechung.stand.bereit": "Not yet processed",
+    "klarabesprechung.stand.teilweise": "Partial transcript saved",
+    "klarabesprechung.stand.laeuft": "An audio part is being processed",
+    "klarabesprechung.stand.pausiert": "Resumable pause",
+    "klarabesprechung.stand.fehlgeschlagen": "Part failed – remainder pending",
+    "klarabesprechung.stand.abgebrochen": "Permanently cancelled – incomplete",
+    "klarabesprechung.stand.abgeschlossen": "All audio parts saved completely",
     "klarabesprechung.fristquelle": "Consider selected original passages for deadlines",
     "klarabesprechung.fristGespeichert":
       "Source saved; active rule applied. See the actual results below and in My Calendar.",
@@ -91,6 +130,26 @@ export default {
     "klarabesprechung.art.klaerung": "Clarification / unconfirmed content",
   },
   nl: {
+    "klarabesprechung.segmentiert":
+      "PCM-WAV in hervatbare delen verwerken (16 bit, 1–2 kanalen, 8–48 kHz).",
+    "klarabesprechung.fortschritt": "{{fertig}} van {{gesamt}} audiodelen opgeslagen",
+    "klarabesprechung.fortsetzen": "Volgend open audiodeel verwerken",
+    "klarabesprechung.pausieren": "Verwerking pauzeren",
+    "klarabesprechung.abbrechen": "Verwerking definitief afbreken",
+    "klarabesprechung.grund.keine_ki":
+      "Geen AI is actief. Eerder opgeslagen delen blijven behouden.",
+    "klarabesprechung.grund.anbieterfehler":
+      "Dit deel is niet voltooid. Verwerk na oplossing alleen de open rest opnieuw.",
+    "klarabesprechung.grund.angefordert": "Verwerking op jouw verzoek gestopt.",
+    "klarabesprechung.teilHilfe":
+      "Elke aanvraag verwerkt één echt audiodeel. Alleen een volledig transcript kan als overdracht, taak of gedeelde kennis worden overgenomen.",
+    "klarabesprechung.stand.bereit": "Nog niet verwerkt",
+    "klarabesprechung.stand.teilweise": "Deeltranscript opgeslagen",
+    "klarabesprechung.stand.laeuft": "Een audiodeel wordt verwerkt",
+    "klarabesprechung.stand.pausiert": "Hervatbare pauze",
+    "klarabesprechung.stand.fehlgeschlagen": "Deelfout – rest open",
+    "klarabesprechung.stand.abgebrochen": "Definitief afgebroken – onvolledig",
+    "klarabesprechung.stand.abgeschlossen": "Alle audiodelen volledig opgeslagen",
     "klarabesprechung.fristquelle": "Gekozen originele passages voor termijnen gebruiken",
     "klarabesprechung.fristGespeichert":
       "Bron opgeslagen; actieve regel toegepast. Bekijk de werkelijke resultaten hieronder en in Mijn agenda.",

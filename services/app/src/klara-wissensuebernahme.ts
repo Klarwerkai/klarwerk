@@ -188,6 +188,12 @@ export class KlaraWissensDienst {
   }
   async pruefe(user: SessionUser, id: string) {
     const n = await this.original(user, id);
+    const teil = n.wissensHerkunft?.besprechung?.verarbeitung;
+    if (teil && teil.stand !== "abgeschlossen")
+      throw new WissensFehler(
+        409,
+        "Teiltranskript vor gemeinsamer Übernahme vollständig verarbeiten.",
+      );
     const quellen = new Map();
     for (const q of this.quellen(n)) {
       const ko = await this.d.ko.get(q.id);
@@ -238,6 +244,12 @@ export class KlaraWissensDienst {
   async vorschau(user: SessionUser, id: string, fassung: unknown, ziel: WissensZiel) {
     if (!can(user.role, "ko.create")) throw new WissensFehler(403, "Kein Beitragsrecht.");
     const n = await this.original(user, id);
+    const teil = n.wissensHerkunft?.besprechung?.verarbeitung;
+    if (teil && teil.stand !== "abgeschlossen")
+      throw new WissensFehler(
+        409,
+        "Teiltranskript vor gemeinsamer Übernahme vollständig verarbeiten.",
+      );
     if (!Number.isInteger(fassung) || n.fassung !== fassung)
       throw new WissensFehler(409, "Notizfassung geändert; neu öffnen.");
     if (n.wissensHerkunft && n.wissensHerkunft.textAbdruck !== abdruck(n.inhalt))

@@ -30,6 +30,7 @@ export interface Transcriber {
     mime: string,
     locale: "de" | "en",
     confidential: boolean,
+    signal?: AbortSignal,
   ): Promise<ZeitTranskript>;
   /**
    * Aufnahme `gesamt-ocr` · R-0181: `true` NUR für einen Dienst auf dem eigenen Rechner, dessen

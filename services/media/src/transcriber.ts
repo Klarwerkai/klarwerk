@@ -34,10 +34,11 @@ export function cappedTranscriber(
             mime: string,
             locale: "de" | "en",
             confidential: boolean,
+            signal?: AbortSignal,
           ) => {
             if (opts.rejectsConfidential && confidential && !freigegeben())
               return Promise.reject(new TranscriberConfidentialError());
-            return zeitgebunden(bytes, mime, locale, confidential);
+            return zeitgebunden(bytes, mime, locale, confidential, signal);
           },
         }
       : {}),
@@ -106,6 +107,7 @@ async function zeitAnfrage(
   mime: string,
   locale: "de" | "en",
   headers?: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<ZeitTranskript> {
   const form = new FormData();
   form.append("model", model);
@@ -113,7 +115,12 @@ async function zeitAnfrage(
   form.append("response_format", "verbose_json");
   form.append("timestamp_granularities[]", "segment");
   form.append("file", new Blob([new Uint8Array(bytes)], { type: mime }), uploadDateiname(mime));
-  const r = await fetchFn(url, { method: "POST", body: form, ...(headers ? { headers } : {}) });
+  const r = await fetchFn(url, {
+    method: "POST",
+    body: form,
+    ...(headers ? { headers } : {}),
+    ...(signal ? { signal } : {}),
+  });
   if (!r.ok) throw new Error(`Zeitgebundene Transkription antwortete mit ${r.status}`);
   const data = (await r.json()) as { text?: unknown; segments?: unknown };
   if (
@@ -153,10 +160,19 @@ export function whisperClient(config: WhisperConfig): Transcriber {
   const model = config.model ?? "whisper-1";
   return {
     name: `openai:${model}`,
-    transcribeTimed: (bytes, mime, locale) =>
-      zeitAnfrage(fetchFn, `${baseUrl}/v1/audio/transcriptions`, model, bytes, mime, locale, {
-        authorization: `Bearer ${config.apiKey}`,
-      }),
+    transcribeTimed: (bytes, mime, locale, _confidential, signal) =>
+      zeitAnfrage(
+        fetchFn,
+        `${baseUrl}/v1/audio/transcriptions`,
+        model,
+        bytes,
+        mime,
+        locale,
+        {
+          authorization: `Bearer ${config.apiKey}`,
+        },
+        signal,
+      ),
     // SCRUM-502 R7: `confidential` ist Interface-Pflicht; der Egress-Wächter sitzt im Cloud-Wrapper
     // (cappedTranscriber). Der rohe Client reicht den Aufruf nur durch (kein externer Egress bei
     // confidential, weil der Wrapper vorher wirft).
@@ -255,8 +271,17 @@ export function lokalerTranskriber(config: LokalerTranskriberConfig): Transcribe
   const model = config.model?.trim() || "whisper-1";
   return {
     name: `local:${model}`,
-    transcribeTimed: (bytes, mime, locale) =>
-      zeitAnfrage(fetchFn, `${basis}/audio/transcriptions`, model, bytes, mime, locale),
+    transcribeTimed: (bytes, mime, locale, _confidential, signal) =>
+      zeitAnfrage(
+        fetchFn,
+        `${basis}/audio/transcriptions`,
+        model,
+        bytes,
+        mime,
+        locale,
+        undefined,
+        signal,
+      ),
     ...(config.lokal ? { lokal: true } : {}),
     async transcribe(
       bytes: Buffer,
