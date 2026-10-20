@@ -185,6 +185,8 @@ const GRUND: Record<string, string> = {
     "Eine Quelle ist vertraulich eingestuft. Ihr Inhalt geht nicht in den Bericht. Nichts angelegt.",
   schutzstufeUngeklaert:
     "Eine Quelle ist nicht eingestuft. Sie bleibt geschützt, bis sie eingestuft ist. Nichts angelegt.",
+  quellbindung:
+    "Eine Quelle ist an Leser oder einen Space gebunden. Ihr Inhalt geht nicht in einen freien Berichtsentwurf. Nichts angelegt.",
   zuLang: "Der Bericht mit seinen Quellen ist zu lang für einen Entwurf. Nichts angelegt.",
   server: "Der Server hat abgelehnt.",
 };
@@ -203,7 +205,9 @@ type QuellFeld =
   | "statement"
   | "version"
   | "confidentiality"
-  | "confidentialityProvenance";
+  | "confidentialityProvenance"
+  | "quellrechte"
+  | "spaceId";
 type QuellDaten = Partial<Record<QuellFeld, unknown>>;
 
 const QUELLE_TITEL_MAX = 300;
@@ -217,8 +221,25 @@ const QUELLE_AUSSAGE_MAX = 2_000;
  *   · fehlend, `null`, unbekannter Wert oder unbekannte Herkunft → `schutzstufeUngeklaert`: die
  *     bestehende geschützte Klärung (Entscheidung 16, `sichtbarkeit.ts`: ungeklärt wird wie
  *     vertraulich geschützt, bis jemand einstuft). Es entsteht kein Bericht.
+ * H-1 / G05: Der freie Entwurf führt keine dynamischen Quellrechte fort. Deshalb schließen
+ * Leserbindung und jeder führende Space die Kopie auch bei ausdrücklich `intern` aus. Die volle
+ * vorhandene GET-Quelle trägt diese Fakten; ein aktuelles Leserecht ist keine Kopierbefugnis.
  */
-export function quellSchutz(d: QuellDaten): "frei" | "schutzstufe" | "schutzstufeUngeklaert" {
+export function quellSchutz(
+  d: QuellDaten,
+): "frei" | "schutzstufe" | "schutzstufeUngeklaert" | "quellbindung" {
+  const rechte = d.quellrechte;
+  if (
+    typeof d.spaceId === "string" ||
+    (rechte !== undefined &&
+      (rechte === null ||
+        typeof rechte !== "object" ||
+        Array.isArray(rechte) ||
+        "leser" in rechte ||
+        "leserUnvollstaendig" in rechte))
+  ) {
+    return "quellbindung";
+  }
   if (d.confidentiality === "vertraulich" || d.confidentiality === "streng_vertraulich") {
     return "schutzstufe";
   }

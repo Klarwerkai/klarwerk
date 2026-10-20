@@ -375,6 +375,131 @@ describe("EQF-06-K02 · ein Bericht aus zwei Quellen — Vorführung und Folgela
   });
 });
 
+describe("H-1 / G05 · keine freie Kopie aus gebundenen Quellen", () => {
+  it.each(["quellleser", "space"] as const)(
+    "H1 · ausdrücklich intern mit %s: vor Kopie stoppen, nach Entzug kein geschützter Inhalt im eigenen Entwurf",
+    async (bindung) => {
+      const offen = await wissensobjekt(erik, "H1 freie Quelle", "Eigene freie Testaussage.");
+      const titel = `H1 geschützte Testquelle ${bindung}`;
+      const aussage = `H1 ausschließlich fiktiver gebundener Quelltext ${bindung}.`;
+      const quelle = await wissensobjekt(erik, titel, aussage);
+      let space: { id: string; version: number } | null = null;
+      if (bindung === "quellleser") {
+        await services.ko.setQuellrechte(
+          quelle,
+          { stufe: "intern", leser: [erik.id], version: 1 },
+          admin.id,
+        );
+      } else {
+        const angelegt = await auf(admin.token, "POST", "/api/spaces", {
+          name: "H1 eigener geschlossener Testraum",
+          zweck: "Nur fiktive H1-Quellen für den Kopierschutz.",
+          verantwortlich: admin.id,
+          zugang: "mitglieder",
+          mitglieder: [{ nutzer: erik.id, recht: "schreiben" }],
+          ansichten: [],
+        });
+        expect(angelegt.statusCode, angelegt.body).toBe(201);
+        space = angelegt.json() as { id: string; version: number };
+        const v = await auf(erik.token, "POST", "/api/spaces/verschiebung/vorschau", {
+          koId: quelle,
+          zielSpaceId: space.id,
+        });
+        expect(v.statusCode, v.body).toBe(200);
+        const grundlage = v.json() as {
+          quelle: { id: string; version: number } | null;
+          ziel: { id: string; version: number } | null;
+          grundlage: string;
+        };
+        const verschoben = await auf(erik.token, "POST", "/api/spaces/verschiebung", {
+          koId: quelle,
+          zielSpaceId: space.id,
+          basis: {
+            quelleId: grundlage.quelle?.id ?? null,
+            quelleVersion: grundlage.quelle?.version ?? null,
+            zielId: grundlage.ziel?.id ?? null,
+            zielVersion: grundlage.ziel?.version ?? null,
+            grundlage: grundlage.grundlage,
+          },
+        });
+        expect(verschoben.statusCode, verschoben.body).toBe(200);
+      }
+      const davor = await auf(erik.token, "GET", `/api/kos/${quelle}`);
+      expect(davor.statusCode, davor.body).toBe(200);
+      expect(davor.json()).toMatchObject({
+        confidentiality: "intern",
+        confidentialityProvenance: "ko",
+      });
+      if (bindung === "quellleser") expect(davor.json().quellrechte.leser).toEqual([erik.id]);
+      else expect(davor.json().spaceId).toBe(space?.id);
+
+      // Die Vorführungen dürfen die Quelle lesen; diese Kenntnis gibt keine Kopierbefugnis.
+      const routine = await routineAusQuellen([offen, quelle]);
+      const bestand = await auf(erik.token, "GET", "/api/drafts");
+      expect(bestand.statusCode, bestand.body).toBe(200);
+      const alteIds = (bestand.json() as Entwurf[]).map((d) => d.id).sort();
+      const gid = await gespraech();
+      const l = await lauf(routine, gid, `h1-${bindung}`, `H1 freier Folgebericht ${bindung}`);
+      expect(l.statusCode, l.body).toBe(201);
+      const a = (l.json() as { auftrag: KlaraAuftrag }).auftrag;
+      const aus = await fuehreAus(gid, a, "bericht-1", 1);
+
+      if (bindung === "quellleser") {
+        await services.ko.setQuellrechte(
+          quelle,
+          { stufe: "intern", leser: [admin.id], version: 2 },
+          admin.id,
+        );
+      } else {
+        if (!space) throw new Error("Eigener Testraum fehlt");
+        const entzogen = await auf(admin.token, "PUT", `/api/spaces/${space.id}`, {
+          version: space.version,
+          name: "H1 eigener geschlossener Testraum",
+          zweck: "Nur fiktive H1-Quellen für den Kopierschutz.",
+          verantwortlich: admin.id,
+          zugang: "mitglieder",
+          mitglieder: [],
+          ansichten: [],
+        });
+        expect(entzogen.statusCode, entzogen.body).toBe(200);
+      }
+      const entzug = await auf(erik.token, "GET", `/api/kos/${quelle}`);
+      expect(entzug.statusCode, entzug.body).toBe(404);
+      const nachher = await auf(erik.token, "GET", "/api/drafts");
+      expect(nachher.statusCode, nachher.body).toBe(200);
+      const eigene = nachher.json() as Entwurf[];
+      const nachlesungen = await Promise.all(
+        eigene.map((d) => auf(erik.token, "GET", `/api/drafts/${d.id}`)),
+      );
+      console.info(
+        JSON.stringify({
+          fall: `H1-${bindung}`,
+          quelleVorher: davor.statusCode,
+          ausdruecklichIntern: true,
+          laufstand: aus.schritt.stand,
+          quelleNachEntzug: entzug.statusCode,
+          neueEntwuerfe: eigene.length - alteIds.length,
+          geschuetzterTextNachEntzugLesbar: nachlesungen.some(
+            (r) => r.statusCode === 200 && (r.body.includes(aussage) || r.body.includes(titel)),
+          ),
+        }),
+      );
+      expect(aus.schritt.stand).toBe("fehlgeschlagen");
+      expect(aus.schritt.fehlerCode).toBe("quellbindung");
+      expect(aus.schritt.ergebnis).toBeNull();
+      expect(eigene.map((d) => d.id).sort()).toEqual(alteIds);
+      expect(nachher.body).not.toContain(aussage);
+      expect(nachher.body).not.toContain(titel);
+      for (const r of nachlesungen) {
+        // Die eigenen neutralen Vorführentwürfe bleiben lesbar; keiner enthält eine Quellkopie.
+        expect(r.statusCode, r.body).toBe(200);
+        expect(r.body).not.toContain(aussage);
+        expect(r.body).not.toContain(titel);
+      }
+    },
+  );
+});
+
 describe("EQF-06-K02 / G05 · Schutzklasse einer Quelle (Nacharbeit 52)", () => {
   it("S1 · nur ausdrücklich intern ist frei; fehlend, null, unbekannt → Klärung", () => {
     const ko = "ko" as const;
