@@ -6,6 +6,8 @@ import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { PgKlaraFristenRepo } from "../../services/app/src/klara-fristen-ablage";
 import { KlaraFristenQuellen } from "../../services/app/src/klara-fristen-quellen";
+import { KlaraGespraechDienst } from "../../services/app/src/klara-gespraech";
+import { KlaraNotizDienst } from "../../services/app/src/klara-notiz";
 import { KlaraNormereignisDienst } from "../../services/app/src/klara-normereignisse-dienst";
 import { type Konto, neuesKonto } from "../klara-quellen-nutzerweg/kette";
 import { echterNotizauftrag } from "./pruefauftrag-vorrichtung";
@@ -223,6 +225,48 @@ describe("AW21 · Normbelege im echten vorhandenen PG-Fristen-CAS", () => {
     });
     expect(await services.klaraFristen.hole(f.id)).toEqual(vorher);
   });
+  it.each(["notiz", "auftrag"] as const)(
+    "vor Ref-CAS tatsächlich geändertes Original %s verhindert die G-Verknüpfung",
+    async (art) => {
+      const f = await fall();
+      const d = dienst();
+      await d.beobachten(f.id, [f.quelle.id], lauf);
+      const n = (await d.sicht(f.id))[0];
+      const e = n?.ereignisse[0];
+      if (!n || !e) throw new Error("Ereignis fehlt");
+      const p = await echterNotizauftrag(app, f.headers, BEKANNTMACHUNG);
+      const vorher = await services.klaraFristen.hole(f.id);
+      vorSchreiben = async () => {
+        const andere = buildPgServices(zweiterPool);
+        if (art === "auftrag")
+          await new KlaraGespraechDienst({ repo: andere.klaraGespraeche }).brecheAuftragAb(
+            f.id,
+            p.gespraechId,
+            p.auftragId,
+          );
+        else
+          await new KlaraNotizDienst({ repo: andere.klaraNotizen }).aendere(f.id, p.notiz.id, {
+            fassung: p.notiz.fassung,
+            titel: p.notiz.titel,
+            inhalt: "Inzwischen anderslautende Originalnotiz.",
+            offeneFragen: [],
+            art: "notiz",
+          });
+      };
+      await expect(
+        d.verknuepfePruefauftrag(f.id, n.id, e.id, {
+          fassung: vorher?.fassung,
+          gespraechId: p.gespraechId,
+          auftragId: p.auftragId,
+          bestaetigt: true,
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(await services.klaraFristen.hole(f.id)).toEqual(vorher);
+      expect(
+        (await app.inject({ url: "/api/me/klara/aufgaben", headers: f.headers })).json().aufgaben,
+      ).toEqual([]);
+    },
+  );
   it("echter Dump/Restore, neuer Pool/App und Anmeldung erhalten Normgeschichte/Fachannahme/Originalfassungen ohne neues Ereignis", async () => {
     const f = await fall();
     const a = await annahme(f);

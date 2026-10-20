@@ -248,7 +248,18 @@ export class KlaraNormereignisDienst {
     if (
       !q ||
       q.quelle.fassung !== String(p.notizQuelle.fassung) ||
-      !e.belege.some((b) => b.aktuell && q.quelle.text.includes(b.ereignis.wortlaut))
+      !e.belege.some(
+        (b) =>
+          b.aktuell &&
+          q.quelle.text
+            .split(/\r?\n/)
+            .some(
+              (zeile) =>
+                zeile.includes(b.norm.wortlaut) &&
+                zeile.includes(b.ereignis.wortlaut) &&
+                (!b.geltung || zeile.includes(b.geltung.wortlaut)),
+            ),
+      )
     )
       return null;
     return q;

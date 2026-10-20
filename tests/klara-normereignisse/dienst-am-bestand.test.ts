@@ -200,7 +200,7 @@ describe("AW21 · tatsächliche bestehende Quellen-/Fristenablage", () => {
     const n = (await dienst.sicht(kontoId))[0];
     const e = n?.ereignisse[0];
     if (!n || !e) throw new Error("Ereignis fehlt");
-    const unpassend = await notizauftrag("Nur ähnlich benannter Inhalt ohne Ereignisbeleg.");
+    const unpassend = await notizauftrag(BEKANNTMACHUNG.replace("N-17", "N-18"));
     const fremd = await notizauftrag(BEKANNTMACHUNG, await kontoMitRolle("controller"));
     for (const p of [unpassend, fremd])
       await expect(

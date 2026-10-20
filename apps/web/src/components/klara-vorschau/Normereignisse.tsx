@@ -342,8 +342,11 @@ function Normkarte({
           {t("normereignisse.widerspruch")}
         </p>
       ) : null}
-      {n.annahmeUngeprueft ? <p>{t("normereignisse.annahmeUngeprueft")}</p> :
-        n.annahmen.length === 0 ? <p>{t("normereignisse.pruefungOffen")}</p> : null}
+      {n.annahmeUngeprueft ? (
+        <p>{t("normereignisse.annahmeUngeprueft")}</p>
+      ) : n.annahmen.length === 0 ? (
+        <p>{t("normereignisse.pruefungOffen")}</p>
+      ) : null}
       {n.annahmen.map((a) => (
         <div
           key={a.id}

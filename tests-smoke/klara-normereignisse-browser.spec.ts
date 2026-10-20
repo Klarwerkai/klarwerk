@@ -162,7 +162,9 @@ test("AW21 · belegte Normgeschichte, bewusster Originalprüfauftrag und fachlic
     const karte = b.getByTestId("normgeschichte");
     await expect(karte).toHaveCount(1);
     await expect(karte).toContainText("Fachliche Prüfung offen");
-    await expect(karte.getByText("Eigener Ereignisbeleg fehlt", { exact: true })).toHaveCount(3);
+    await expect(karte.locator("p").filter({ hasText: "Eigener Ereignisbeleg fehlt" })).toHaveCount(
+      3,
+    );
     expect((await (await p.request.get(`/api/kos/${anleitung.id}`)).json()).statement).toBe(
       bisher.statement,
     );
@@ -194,10 +196,12 @@ test("AW21 · belegte Normgeschichte, bewusster Originalprüfauftrag und fachlic
     const qNeu = await p.request.put(`/api/kos/${q.id}`, {
       data: {
         action: "revise",
-        statement: TEXT.replace(
-          "; Geltung",
-          "; Veröffentlichung am 2026-11-02; Inkrafttreten am 2027-01-01; Übergangsfrist am 2027-06-30; Geltung",
-        ),
+        changes: {
+          statement: TEXT.replace(
+            "; Geltung",
+            "; Veröffentlichung am 2026-11-02; Inkrafttreten am 2027-01-01; Übergangsfrist am 2027-06-30; Geltung",
+          ),
+        },
       },
     });
     expect(qNeu.status(), await qNeu.text()).toBe(200);
@@ -213,14 +217,19 @@ test("AW21 · belegte Normgeschichte, bewusster Originalprüfauftrag und fachlic
       .getByRole("button", { name: "Bekanntmachungen ohne Wirkung prüfen", exact: true })
       .click();
     await erfassen();
-    await expect(karte.getByText("Eigener Ereignisbeleg fehlt", { exact: true })).toHaveCount(0);
+    await expect(karte.locator("p").filter({ hasText: "Eigener Ereignisbeleg fehlt" })).toHaveCount(
+      0,
+    );
     expect(
       (await (await p.request.get("/api/me/klara/aufgaben")).json()).aufgaben.map(
         (a: { id: string }) => a.id,
       ),
     ).toEqual([taskId]);
-    const neu = await p.request.put(`/api/kos/${anleitung.id}`, {
-      data: { action: "revise", statement: "Fiktive bewusst geprüfte Nachfolgeregel." },
+    const neu = await page.request.put(`/api/kos/${anleitung.id}`, {
+      data: {
+        action: "revise",
+        changes: { statement: "Fiktive bewusst geprüfte Nachfolgeregel." },
+      },
     });
     expect(neu.status(), await neu.text()).toBe(200);
     const nachfolger = await freigeben();
@@ -245,10 +254,10 @@ test("AW21 · belegte Normgeschichte, bewusster Originalprüfauftrag und fachlic
       .getByRole("button", { name: "Fachliche Ablösung dokumentieren", exact: true })
       .click();
     await expect(karte.getByTestId("norm-fachannahme")).toContainText("Norm Probe");
-    const v3 = await p.request.put(`/api/kos/${anleitung.id}`, {
+    const v3 = await page.request.put(`/api/kos/${anleitung.id}`, {
       data: {
         action: "revise",
-        statement: "Spätere unbestätigte v3 darf nicht als angenommene v2 erscheinen.",
+        changes: { statement: "Spätere unbestätigte v3 darf nicht als angenommene v2 erscheinen." },
       },
     });
     expect(v3.status(), await v3.text()).toBe(200);
@@ -268,6 +277,12 @@ test("AW21 · belegte Normgeschichte, bewusster Originalprüfauftrag und fachlic
       .poll(() => p.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
       .toBe(true);
     await p.screenshot({ path: info.outputPath("normgeschichte-schmal.png") });
+  } catch (err) {
+    await p.screenshot({
+      path: info.outputPath("norm-fehler-vor-kontextende.png"),
+      fullPage: true,
+    });
+    throw err;
   } finally {
     await p.context().close();
   }

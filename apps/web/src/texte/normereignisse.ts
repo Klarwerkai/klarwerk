@@ -3,7 +3,8 @@ export default {
   praefix: "normereignisse.",
   legacySchluessel: [],
   de: {
-    "normereignisse.annahmeUngeprueft": "Ein fachlicher Annahmebeleg lässt sich mit den heutigen Anleitungsrechten nicht prüfen.",
+    "normereignisse.annahmeUngeprueft":
+      "Ein fachlicher Annahmebeleg lässt sich mit den heutigen Anleitungsrechten nicht prüfen.",
     "normereignisse.pruefauftrag": "Prüfauftrag am Original",
     "normereignisse.pruefauftragHilfe":
       "Verknüpfe einen bewusst beauftragten eigenen Notizauftrag aus dem aktuellen Klara-Gespräch. Seine Originalnotiz muss den Ereignisbeleg enthalten. Ausführung und Wiederaufnahme bleiben im vorhandenen Auftrag.",
@@ -81,7 +82,8 @@ export default {
       "Angezeigt werden nur heute lesbare, ausdrücklich zugeordnete Einträge. Ähnlichkeit wurde nicht als Abhängigkeit übernommen.",
   },
   en: {
-    "normereignisse.annahmeUngeprueft": "An acceptance record cannot be checked under current instruction access rights.",
+    "normereignisse.annahmeUngeprueft":
+      "An acceptance record cannot be checked under current instruction access rights.",
     "normereignisse.pruefauftrag": "Review at the original task",
     "normereignisse.pruefauftragHilfe":
       "Link an explicitly commissioned personal note task from the current Klara conversation. Its original note must contain the event evidence. Execution and resumption remain in the existing order.",
@@ -159,7 +161,8 @@ export default {
       "Only currently readable, explicitly assigned entries are shown. Similarity was not treated as a dependency.",
   },
   nl: {
-    "normereignisse.annahmeUngeprueft": "Een inhoudelijke acceptatie kan met de huidige toegangsrechten niet worden gecontroleerd.",
+    "normereignisse.annahmeUngeprueft":
+      "Een inhoudelijke acceptatie kan met de huidige toegangsrechten niet worden gecontroleerd.",
     "normereignisse.pruefauftrag": "Controle bij de oorspronkelijke taak",
     "normereignisse.pruefauftragHilfe":
       "Koppel een bewust opgedragen eigen notitieopdracht uit het huidige Klara-gesprek. De oorspronkelijke notitie moet het gebeurtenisbewijs bevatten. Uitvoering en hervatting blijven in de bestaande opdracht.",
