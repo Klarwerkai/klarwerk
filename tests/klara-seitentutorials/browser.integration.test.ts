@@ -73,7 +73,12 @@ it("bedient Lesen, Arbeiten, Verwaltung und erhaltenes Fragen-Tutorial mit echte
           `${route}: echtes Kernziel fehlt`,
         ).toBe(0);
         await page.getByTestId("seitentutorial-zeigen").click();
-        expect(await page.locator('[data-tutorial-aktiv="true"]').count()).toBeGreaterThan(0);
+        const echtesZiel = page.locator('[data-tutorial-aktiv="true"]').first();
+        expect(await echtesZiel.count()).toBe(1);
+        const zielBox = await echtesZiel.boundingBox();
+        expect(zielBox).not.toBeNull();
+        expect(zielBox?.y).toBeGreaterThanOrEqual(0);
+        expect((zielBox?.y ?? 0) + (zielBox?.height ?? 0)).toBeLessThanOrEqual(901);
       }
       await page.getByTestId("tutorial-zurueck").click();
       const masse = await page.evaluate<{

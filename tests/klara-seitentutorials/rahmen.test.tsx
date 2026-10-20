@@ -203,3 +203,17 @@ it("zeigt fehlendes echtes Ziel statt eines erfundenen Erfolgs und erhält tasta
   expect(q("tutorial-bereich")).toBeNull();
   expect(document.activeElement).toBe(q("tutorial-knopf"));
 });
+
+it("kehrt auch nach einem zweiten geöffneten Tutorial zum ausgewählten Originalschritt zurück", async () => {
+  await montiere();
+  await klick(q("tutorial-knopf"));
+  await klick(q("tutorial-weiter"));
+  await klick(q("wechsel"));
+  await klick(q("tutorial-knopf"));
+  await klick(q("tutorial-weiter"));
+  await klick(q("tutorial-weiter"));
+  expect(q("klara-stand")?.textContent).toBe("seite-start/2/false");
+  await klick(q("tutorial-rueckkehr"));
+  await klick(q("tutorial-knopf"));
+  expect(q("klara-stand")?.textContent).toBe("seite-bibliothek/1/false");
+});

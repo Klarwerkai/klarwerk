@@ -35,6 +35,13 @@ import { type TutorialFernLage, TutorialMeldungCtx } from "./fernsteuerung";
 import { tutorialFuerPfad } from "./rahmen";
 import type { TutorialDefinition, TutorialSchrittstand } from "./typen";
 
+interface TutorialUnterbrechung {
+  ort: string;
+  definitionId: string;
+  titel: string;
+  stand?: TutorialSchrittstand | undefined;
+}
+
 interface TutorialLage {
   definition: TutorialDefinition | null;
   offen: boolean;
@@ -83,12 +90,8 @@ export function TutorialProvider({ children }: { children: ReactNode }): JSX.Ele
     offen: boolean;
     stand?: TutorialSchrittstand | undefined;
   }>({ ort: `${ort}|${rolle?.role ?? "viewer"}`, url: ort, definition, offen });
-  const [unterbrochen, setUnterbrochen] = useState<{
-    ort: string;
-    definitionId: string;
-    titel: string;
-    stand?: TutorialSchrittstand | undefined;
-  } | null>(null);
+  const [unterbrochen, setUnterbrochen] = useState<TutorialUnterbrechung | null>(null);
+  const rueckkehrRef = useRef<TutorialUnterbrechung | null>(null);
   const beiStand = useCallback((stand: TutorialSchrittstand) => {
     aktuellRef.current.stand = stand;
   }, []);
@@ -105,7 +108,18 @@ export function TutorialProvider({ children }: { children: ReactNode }): JSX.Ele
           stand: vorher.stand,
         });
       setOffen(false);
-      aktuellRef.current = { ort: rollenOrt, url: ort, definition, offen: false };
+      const rueckkehr = rueckkehrRef.current;
+      aktuellRef.current = {
+        ort: rollenOrt,
+        url: ort,
+        definition,
+        offen: false,
+        stand:
+          rueckkehr?.ort === ort && rueckkehr.definitionId === definition?.id
+            ? rueckkehr.stand
+            : undefined,
+      };
+      rueckkehrRef.current = null;
     }
   }, [rollenOrt, definition, ort]);
   useEffect(() => {
@@ -145,7 +159,10 @@ export function TutorialProvider({ children }: { children: ReactNode }): JSX.Ele
           ? {
               pfad: unterbrochen.ort,
               titel: unterbrochen.titel,
-              zurueck: () => navigate(unterbrochen.ort),
+              zurueck: () => {
+                rueckkehrRef.current = unterbrochen;
+                navigate(unterbrochen.ort);
+              },
             }
           : undefined,
     }),
