@@ -141,7 +141,7 @@ it("PP05 · echte Anwendung: Vorschau, Übernahme, Herkunft und Rücknahme per T
       .getByRole("button", { name: `Dokument aus Fassung ${mit.version} zurückholen`, exact: true })
       .click();
     await pwExpect(page.locator("[data-office-fassung]")).toContainText(
-      `Fassung ${mit.version + 2}`,
+      `Artikelfassung ${mit.version + 2}`,
     );
     expect((await services.ko.get(ko.id))?.attachments[0]?.objectId).toBe(ref.id);
     expect(errors).toEqual([]);
