@@ -1,3 +1,9 @@
+export interface KlaraEinfuehrungStand {
+  schritt: number;
+  begleitung: "kurz" | "ausfuehrlich";
+  zeitzone: string;
+  abgeschlossen: boolean;
+}
 // produkt:20261010:assistenz-name-avatar — der Drahtvertrag des eigenen Assistenzprofils
 // (Spiegel von `services/app/src/routes/assistenz-profil-routes.ts`). Das Konto bestimmt allein die
 // Sitzung; der Client schickt nie eine Kontokennung mit.
@@ -6,6 +12,7 @@ import { api } from "./client";
 export type AssistenzBewegung = "standard" | "reduziert";
 
 export interface AssistenzProfilDaten {
+  einfuehrung?: KlaraEinfuehrungStand;
   name: string | null;
   avatar: string | null;
   bewegung: AssistenzBewegung;
@@ -24,6 +31,7 @@ export interface AssistenzProfilAntwort {
 }
 
 export interface AssistenzProfilAenderung {
+  einfuehrung?: KlaraEinfuehrungStand;
   name?: string;
   avatar?: string;
   bewegung?: AssistenzBewegung;

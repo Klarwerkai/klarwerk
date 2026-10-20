@@ -16,6 +16,7 @@ const password = "fiktiv-browser-e-2026";
 const antwort =
   "Fiktive vollständige Antwort. Alle Quellen und Prüfstände bleiben beim Einklappen erhalten.";
 let kontoId = "";
+let quelleId = "";
 beforeAll(async () => {
   await mkdir(out, { recursive: true });
   await registerWebStatic(app, join(process.cwd(), "apps/web/dist"));
@@ -45,6 +46,15 @@ beforeAll(async () => {
       })
     ).statusCode,
   ).toBe(201);
+  const quelle = await services.ko.create({
+    title: "Fiktive Quelle Übungen",
+    statement: "Fiktive Quellenaussage zum Üben.",
+    type: "best_practice",
+    category: "Instandhaltung",
+    author: kontoId,
+    confidentiality: "intern",
+  });
+  quelleId = quelle.id;
   const jetzt = new Date().toISOString();
   const bezug = { pfad: "/profil", seitenName: "Persönliche Einstellungen", objekt: "Gedächtnis" };
   await services.klaraGespraeche.lege({
@@ -152,6 +162,111 @@ describe("Klara09 · eigene HTTP-Anwendung in echtem Chromium, fiktive Konten", 
     expect(
       await page.evaluate<boolean>('matchMedia("(prefers-reduced-motion: reduce)").matches'),
     ).toBe(true);
+    expect(fehler).toEqual([]);
+  }, 90000);
+  it("Klara16 · bestehendes Setup fortsetzen, echte Quellenübung, Fehler mit erhaltenen Eingaben und persönliche Kalenderzone", async () => {
+    await page.context().clearCookies();
+    await login("anna@e-browser.test");
+    const e = page.getByTestId("klara-setup-einfuehrung");
+    await e.getByTestId("einfuehrung-start").click();
+    await e.getByRole("img", { name: "Avatar mit Zauberhut" }).waitFor();
+    expect(
+      await e
+        .getByRole("img", { name: "Avatar mit Zauberhut" })
+        .evaluate((el) => getComputedStyle(el).animationName),
+    ).toBe("none");
+    await e.getByTestId("einfuehrung-weiter").focus();
+    await page.keyboard.press("Enter");
+    await e.getByTestId("einfuehrung-zone").waitFor();
+    await e.getByTestId("einfuehrung-zone").selectOption("America/New_York");
+    await e.getByTestId("einfuehrung-begleitung").selectOption("ausfuehrlich");
+    await e.getByTestId("einfuehrung-pause").click();
+    await e.getByTestId("einfuehrung-offen").waitFor({ state: "hidden" });
+    await page.reload();
+    await e.getByTestId("einfuehrung-start").click();
+    expect(await e.getByTestId("einfuehrung-zone").inputValue()).toBe("America/New_York");
+    expect(await e.getByTestId("einfuehrung-begleitung").inputValue()).toBe("ausfuehrlich");
+    await e.getByTestId("einfuehrung-zone").selectOption("Asia/Tokyo");
+    await page.route("**/api/me/assistenz", async (route) =>
+      route.request().method() === "PUT" ? route.abort("failed") : route.continue(),
+    );
+    await e.getByTestId("einfuehrung-pause").click();
+    await e.getByRole("alert").waitFor();
+    expect(await e.getByTestId("einfuehrung-zone").inputValue()).toBe("Asia/Tokyo");
+    await page.unroute("**/api/me/assistenz");
+    await e.getByRole("button", { name: "Neu laden" }).click();
+    expect(await e.getByTestId("einfuehrung-zone").inputValue()).toBe("Asia/Tokyo");
+    await e.getByTestId("einfuehrung-weiter").click();
+    const u = page.getByTestId("einfuehrung-uebung");
+    await u.waitFor();
+    await u.getByLabel("Wissensquelle suchen").fill("Fiktive Quelle Übungen");
+    await u.getByRole("button", { name: "Fiktive Quelle Übungen", exact: true }).click();
+    await u.getByLabel("Nein", { exact: true }).check();
+    await u.getByRole("button", { name: "Verständnis prüfen" }).click();
+    await u.getByTestId("einfuehrung-rueckmeldung").waitFor();
+    expect(await u.getByTestId("einfuehrung-rueckmeldung").textContent()).toContain("Richtig.");
+    await u.screenshot({ path: join(out, "16-quellenuebung.png") });
+    expect((await page.request.delete(`${origin}/api/kos/${quelleId}`)).status()).toBe(204);
+    await u.getByRole("button", { name: "Verständnis prüfen" }).click();
+    await u.getByRole("alert").waitFor();
+    await u
+      .getByText("Keine zugängliche Quelle gefunden. Ändere die Suche oder überspringe die Übung.")
+      .waitFor();
+    expect(
+      await u.getByRole("button", { name: "Fiktive Quelle Übungen", exact: true }).count(),
+    ).toBe(0);
+    expect(await u.getByTestId("einfuehrung-rueckmeldung").count()).toBe(0);
+    await e.getByTestId("einfuehrung-weiter").click();
+    await e.getByTestId("einfuehrung-weiter").click();
+    await e.getByTestId("einfuehrung-offen").waitFor({ state: "hidden" });
+    const profil = await (await page.request.get(`${origin}/api/me/assistenz`)).json();
+    expect(profil.profil.einfuehrung).toMatchObject({
+      schritt: 3,
+      abgeschlossen: true,
+      zeitzone: "Asia/Tokyo",
+      begleitung: "ausfuehrlich",
+    });
+    const r = await page.request.post(`${origin}/api/me/kalender/eintraege`, {
+      data: {
+        art: "termin",
+        titel: "Fiktiver Termin mit expliziter Zone",
+        ganztaegig: false,
+        beginn: "2026-10-26T08:00:00.000Z",
+        zeitzone: "Europe/Berlin",
+      },
+    });
+    expect(r.status()).toBe(201);
+    const termin = (await r.json()).eintrag;
+    await page.goto(`${origin}/kalender`);
+    await page.getByTestId("kalender-zone").waitFor();
+    expect(await page.getByTestId("kalender-zone").textContent()).toContain("Asia/Tokyo");
+    await page.getByTestId("kalender-neu").click();
+    expect(await page.getByTestId("kalender-form-zone").textContent()).toContain("Asia/Tokyo");
+    await page.getByTestId("kalender-form-titel").fill("Fiktiver Profilzonentermin");
+    await page.getByTestId("kalender-form-beginn").fill("2026-10-26T09:00");
+    await page.getByTestId("kalender-form-speichern").click();
+    await page.getByTestId("kalender-formular").waitFor({ state: "hidden" });
+    await page.getByTestId("kalender-ansicht-agenda").click();
+    await page.locator(`[data-event-id="${termin.id}"][data-testid="kalender-eintrag"]`).click();
+    await page.getByTestId("kalender-bearbeiten").click();
+    expect(await page.getByTestId("kalender-form-zone").textContent()).toContain("Europe/Berlin");
+    expect(await page.getByTestId("kalender-form-beginn").inputValue()).toBe("2026-10-26T09:00");
+    await page.getByTestId("kalender-form-beginn").fill("2026-10-25T02:30");
+    await page.getByTestId("kalender-profilzeit-klaeren").waitFor();
+    expect(await page.getByTestId("kalender-form-speichern").isDisabled()).toBe(true);
+    expect(await page.getByTestId("kalender-form-beginn").inputValue()).toBe("2026-10-25T02:30");
+    await page.getByTestId("kalender-form-beginn").fill("2026-03-29T02:30");
+    expect(await page.getByTestId("kalender-profilzeit-klaeren").textContent()).toContain("fehlt");
+    await page.getByTestId("kalender-form-beginn").fill("2026-10-26T09:00");
+    await page.getByTestId("kalender-form-speichern").click();
+    await page.getByTestId("kalender-formular").waitFor({ state: "hidden" });
+    const back = await (
+      await page.request.get(`${origin}/api/me/kalender/eintraege/${termin.id}`)
+    ).json();
+    expect(back.eintrag).toMatchObject({
+      zeitzone: "Europe/Berlin",
+      beginn: "2026-10-26T08:00:00.000Z",
+    });
     expect(fehler).toEqual([]);
   }, 90000);
 });

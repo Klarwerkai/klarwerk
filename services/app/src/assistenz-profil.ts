@@ -3,6 +3,7 @@ import type { BildKorrekturStand } from "./assistenz-bildkorrekturen";
 import type { EigeninitiativeStand } from "./assistenz-eigeninitiative";
 import type { AuftragsEintrag, FaehigkeitsVormerkung } from "./assistenz-faehigkeiten";
 import type { TastenkuerzelStand } from "./assistenz-tastenkuerzel";
+import { type KlaraEinfuehrungStand, pruefeEinfuehrung } from "./klara-einfuehrung";
 
 // ================================================================================================
 // produkt:20261010:assistenz-name-avatar — DAS PERSÖNLICHE ASSISTENZPROFIL JE KONTO.
@@ -46,6 +47,7 @@ export const ASSISTENZ_NAME_MAX = 40;
 
 export interface AssistenzProfil {
   kontoId: string;
+  einfuehrung?: KlaraEinfuehrungStand;
   /** Der persönliche Anzeigename — `null`, solange keiner gespeichert ist (neutral „Assistenz"). */
   name: string | null;
   /**
@@ -461,6 +463,7 @@ export type AssistenzProfilGrund =
   | "bewegung"
   | "bildAutomatik"
   | "datenkontrolleOffenePunkte"
+  | "einfuehrung"
   | "unvollstaendig"
   | "konflikt";
 
@@ -476,6 +479,7 @@ export class AssistenzProfilFehler extends Error {
 }
 
 export interface AssistenzProfilEingabe {
+  einfuehrung?: unknown;
   name?: unknown;
   avatar?: unknown;
   bewegung?: unknown;
@@ -642,6 +646,18 @@ export class AssistenzProfilDienst {
       );
     }
     const stempel = new Date(this.jetzt()).toISOString();
+    let einfuehrung = alt?.einfuehrung;
+    if (eingabe.einfuehrung !== undefined) {
+      try {
+        einfuehrung = pruefeEinfuehrung(eingabe.einfuehrung);
+      } catch {
+        throw new AssistenzProfilFehler(
+          400,
+          "einfuehrung",
+          "Ungültige Einführung oder IANA-Zeitzone.",
+        );
+      }
+    }
     const neu: AssistenzProfil = {
       kontoId,
       name,
@@ -650,6 +666,7 @@ export class AssistenzProfilDienst {
       eingerichtetAm: alt?.eingerichtetAm ?? (abschliessen ? stempel : null),
       fassung: (alt?.fassung ?? 0) + 1,
       geaendertAm: stempel,
+      ...(einfuehrung ? { einfuehrung } : {}),
       ...(alt?.faehigkeiten ? { faehigkeiten: alt.faehigkeiten } : {}),
       ...(bildAutomatik !== undefined ? { bildAutomatik } : {}),
       ...(datenkontrolleOffenePunkte !== undefined ? { datenkontrolleOffenePunkte } : {}),
