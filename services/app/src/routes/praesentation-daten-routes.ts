@@ -12,6 +12,11 @@ import {
 } from "../folien-abgleich-grenzen";
 import type { Guards, SessionUser } from "../http";
 import { officeFormatFuer } from "../office-wopi";
+import {
+  VorschauKonflikt,
+  aenderungsVorschau,
+  leseAenderungen,
+} from "../praesentation-aenderungen";
 import { mitPowerPointBildquelle } from "../praesentation-bildquellen";
 import {
   DIMENSIONEN,
@@ -42,6 +47,9 @@ import {
   type KontrollierteSicht,
   kontrollAnschluss,
 } from "../praesentation-pruefung-anschluss";
+import { snapshotLesbar } from "../praesentation-snapshot-recht";
+import { VortragsKonflikt, leseVortragsAuftrag, vortragAuswerten } from "../praesentation-vortrag";
+import { leseVortragsDeck } from "../praesentation-vortrag-deck";
 import { darfSehen } from "../sichtbarkeit";
 
 // ================================================================================================
@@ -152,7 +160,29 @@ export function praesentationDatenRoutes(
   const jetzt = deps.jetzt ?? Date.now;
   const kennung = deps.kennung ?? (() => randomUUID());
 
-  const umgebung = (user: SessionUser) => datenUmgebung(deps, user);
+  // Derselbe Snapshot-Rechteprüfer wie am Objektdownload, auch bevor Folientext oder
+  // Bindungsabweichungen die öffentliche PP02-API verlassen. Interne Office-Schreibschritte
+  // verwenden weiter datenUmgebung und ihre eigenen Rechte-/CAS-Tore (keine Vorab-Bindungsfiktion).
+  const snapshotVerweigert = new WeakSet<DatenUmgebung>();
+  const umgebung = (user: SessionUser): DatenUmgebung => {
+    const u = datenUmgebung(deps, user);
+    const geschuetzt: DatenUmgebung = {
+      ...u,
+      async folien(koId, anhangId) {
+        const f = await u.folien(koId, anhangId);
+        if (!f) return;
+        const obj = await deps.objekte.read(f.objectId);
+        const bytes = obj ? decodeDataUrl(obj.data)?.bytes : undefined;
+        const pruefung = bytes ? await snapshotLesbar(bytes, f.objectId, u) : undefined;
+        if (pruefung && !pruefung.sichtbar) {
+          snapshotVerweigert.add(geschuetzt);
+          return undefined;
+        }
+        return f;
+      },
+    };
+    return geschuetzt;
+  };
 
   // Der große Körper des Hostabgleichs wird erst gelesen, wenn das Leserecht feststeht (Muster
   // `requireKoCreateBeforeParse`, ko-routes.ts). Benannter Helfer, damit der Routenscanner im
@@ -322,6 +352,126 @@ export function praesentationDatenRoutes(
         }
       },
     );
+    app.post<{ Params: { id: string; anhangId: string } }>(
+      "/api/kos/:id/office/:anhangId/vortrag",
+      { bodyLimit: 512 * 1024 },
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) return;
+        const u = umgebung(user);
+        const ko = await u.artikel(request.params.id);
+        const datei = ko ? await u.folien(ko.id, request.params.anhangId) : undefined;
+        if (!ko || !datei) {
+          nichtGefunden(reply, "Präsentation");
+          return;
+        }
+        reply.header("Cache-Control", "no-store");
+        try {
+          const auftrag = leseVortragsAuftrag(request.body);
+          const gebunden = await deps.ablage.gebundenAn(ko.id, request.params.anhangId);
+          const sichten = await sichtenVon(gebunden, u);
+          const kontext = {
+            koId: ko.id,
+            anhangId: request.params.anhangId,
+            dateiFassung: datei.satz.fassung,
+            folien: datei.satz.folien,
+            datenpunkte: sichten,
+          };
+          const objekt = await deps.objekte.read(datei.objectId);
+          const bytes = objekt ? decodeDataUrl(objekt.data)?.bytes : undefined;
+          const deck = bytes
+            ? await leseVortragsDeck(bytes, kontext).catch(() => undefined)
+            : undefined;
+          reply.send(vortragAuswerten({ ...kontext, ...(deck ? { deck } : {}) }, auftrag));
+        } catch (f) {
+          if (f instanceof VortragsKonflikt)
+            reply.code(409).send({ error: "CONFLICT", message: f.message });
+          else fehler(reply, f);
+        }
+      },
+    );
+    // PP-07: nur Vorschau am bestehenden Anhang, keine Schreib-/Speicher-/Deckengine.
+    app.post<{
+      Params: { id: string; anhangId: string };
+      Body: { dateiFassung?: unknown; artikelFassung?: unknown; aenderungen?: unknown };
+    }>(
+      "/api/kos/:id/office/:anhangId/aenderungsvorschau",
+      { bodyLimit: 64 * 1024 },
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const u = umgebung(user);
+        const ko = await u.artikel(request.params.id);
+        if (!ko || !ko.attachments?.some((a) => a.id === request.params.anhangId)) {
+          nichtGefunden(reply, "Anhang");
+          return;
+        }
+        try {
+          const auftraege = leseAenderungen(request.body?.aenderungen);
+          const datei = await u.folien(ko.id, request.params.anhangId);
+          if (!datei) {
+            nichtGefunden(reply, "Präsentation");
+            return;
+          }
+          if (
+            typeof request.body.dateiFassung !== "string" ||
+            !Number.isInteger(request.body.artikelFassung)
+          ) {
+            throw new DatenFehler(
+              "ungueltig",
+              "Artikel- und Dateifassung der gelesenen Präsentation fehlen.",
+            );
+          }
+          if (
+            request.body.dateiFassung !== datei.satz.fassung ||
+            request.body.artikelFassung !== ko.version
+          ) {
+            throw new VorschauKonflikt(
+              "Die Präsentation wurde geändert. Bitte neu laden; nichts wurde geändert.",
+            );
+          }
+          const alle = [
+            ...new Map(
+              [
+                ...(await deps.ablage.vonArtikel(ko.id)),
+                ...(await deps.ablage.gebundenAn(ko.id, request.params.anhangId)),
+              ].map((d) => [d.id, d] as const),
+            ).values(),
+          ];
+          const zeit = jetzt();
+          const vorschau = await aenderungsVorschau(
+            alle,
+            auftraege,
+            u,
+            deps.ablage,
+            {
+              nutzerId: user.id,
+              jetzt: new Date(zeit).toISOString(),
+              kennung,
+            },
+            zeit,
+          );
+          reply.header("Cache-Control", "no-store");
+          reply.code(200).send({
+            koId: ko.id,
+            anhangId: request.params.anhangId,
+            anhangName: datei.name,
+            artikelFassung: ko.version,
+            dateiFassung: datei.satz.fassung,
+            ...vorschau,
+          });
+        } catch (f) {
+          if (f instanceof VorschauKonflikt) {
+            reply.code(409).send({ error: "VORSCHAU_VERALTET", message: f.message });
+            return;
+          }
+          fehler(reply, f);
+        }
+      },
+    );
+
     app.get<{ Params: { id: string; anhangId: string } }>(
       "/api/kos/:id/office/:anhangId/folien-daten",
       async (request, reply) => {
@@ -338,6 +488,10 @@ export function praesentationDatenRoutes(
         }
         const datei = await u.folien(ko.id, anhang.id);
         if (!datei) {
+          if (snapshotVerweigert.has(u)) {
+            nichtGefunden(reply, "Anhang");
+            return;
+          }
           reply.code(400).send({
             error: "KEINE_PRAESENTATION",
             message: "Dieser Anhang ist keine lesbare PowerPoint-Datei (.pptx).",
