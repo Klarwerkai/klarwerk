@@ -754,6 +754,12 @@ export interface KlaraErinnerungLaufRepo {
  * besteht noch. Konto- und Quellenänderungen ändern die Fassung der Erinnerung nicht; deshalb stehen
  * sie hier eigens.
  */
+export interface LaufBedingung {
+  readonly id: string;
+  readonly besitzer: string;
+  readonly status: readonly KlaraErinnerungLaufStatus[];
+}
+
 export interface MeldungBedingung {
   readonly erinnerungId: string;
   readonly fassung: number;
@@ -769,6 +775,8 @@ export interface MeldungBedingung {
    * oder löscht jemand eine davon vor dem Schreiben, entsteht nichts — die Steuerung entscheidet neu.
    */
   readonly quellenStand?: readonly ErinnerungQuellenStand[];
+  /** Genau die gehaltenen Läufe: Abbruch oder Übernahme durch einen anderen Prozess sperrt die Wirkung. */
+  readonly laeufe?: readonly LaufBedingung[];
 }
 
 /**
@@ -848,6 +856,12 @@ export function bedingungSql(
                 FOR SHARE)`,
     );
   }
+  for (const l of b.laeufe ?? []) {
+    params.push(l.id, b.erinnerungId, l.besitzer, [...l.status]);
+    und.push(`EXISTS (SELECT 1 FROM klara_erinnerung_laeufe
+      WHERE vorkommen_id = $${p() - 3}::text AND erinnerung_id = $${p() - 2}::text
+        AND besitzer = $${p() - 1}::text AND status = ANY($${p()}::text[]) FOR SHARE)`);
+  }
   return { und, params };
 }
 
@@ -902,6 +916,15 @@ export interface KlaraErinnerungAblage {
   readonly einstellungen: KlaraErinnerungEinstellungRepo;
   /** Produktablagen löschen Auftrag, Läufe und Meldungen als eine atomare Wirkung. */
   readonly entferneKomplett?: (kontoId: string, id: string) => Promise<boolean>;
+  /** Ein aktiver eigener Lauf, atomar gegen neue Wirkungen; Serie und vorhandene Ergebnisse bleiben. */
+  readonly brecheLaufAb?: (
+    kontoId: string,
+    id: string,
+    vorkommenId: string,
+    fassung: number,
+    jetzt: number,
+    notizen?: Pick<KlaraNotizRepo, "zuVorgang">,
+  ) => Promise<boolean>;
 }
 
 function leereZaehlung(): Record<KlaraErinnerungLaufStatus | "haengend", number> {
@@ -998,9 +1021,15 @@ export class InMemoryKlaraErinnerungRepo implements KlaraErinnerungRepo {
   }
 
   /** Nacharbeit 16: die Laufablage DESSELBEN Bestands — für die bedingte Löschung. */
-  private laeufe: { hatLauf(erinnerungId: string): boolean } | null = null;
+  private laeufe: {
+    hatLauf(erinnerungId: string): boolean;
+    gilt?(b: LaufBedingung): boolean;
+  } | null = null;
 
-  verbindeLaeufe(laeufe: { hatLauf(erinnerungId: string): boolean }): void {
+  verbindeLaeufe(laeufe: {
+    hatLauf(erinnerungId: string): boolean;
+    gilt?(b: LaufBedingung): boolean;
+  }): void {
     this.laeufe = laeufe;
   }
 
@@ -1070,6 +1099,13 @@ export class InMemoryKlaraErinnerungRepo implements KlaraErinnerungRepo {
   aktivInFassung(id: string, fassung: number): boolean {
     const e = this.eintraege.get(id);
     return e !== undefined && e.erinnerung.status === "aktiv" && e.erinnerung.fassung === fassung;
+  }
+  eigeneFassung(kontoId: string, id: string, fassung: number): boolean {
+    const e = this.eintraege.get(id)?.erinnerung;
+    return e?.kontoId === kontoId && e.fassung === fassung;
+  }
+  laufBedingungen(b: readonly LaufBedingung[]): boolean {
+    return b.every((l) => this.laeufe?.gilt?.(l) === true);
   }
 }
 
@@ -1153,6 +1189,30 @@ export class InMemoryKlaraErinnerungLaufRepo implements KlaraErinnerungLaufRepo 
     };
     this.laeufe.set(u.vorkommenId, neu);
     return Promise.resolve(neu);
+  }
+
+  gilt(b: LaufBedingung): boolean {
+    const l = this.laeufe.get(b.id);
+    return !!l && l.besitzer === b.besitzer && b.status.includes(l.status);
+  }
+  /** Synchroner Abbruch: den aktuellen Ergebnisstand im selben Schritt erhalten. */
+  brecheAktivAb(
+    kontoId: string,
+    erinnerungId: string,
+    id: string,
+    jetzt: number,
+  ): KlaraErinnerungLauf | null {
+    const l = this.laeufe.get(id);
+    if (!l || l.kontoId !== kontoId || l.erinnerungId !== erinnerungId || l.status !== "laeuft")
+      return null;
+    this.laeufe.set(id, {
+      ...l,
+      status: "abgebrochen",
+      leaseBis: null,
+      aktualisiertAm: new Date(jetzt).toISOString(),
+      ergebnis: { ...l.ergebnis, grund: "abbruch" },
+    });
+    return l;
   }
 
   hole(vorkommenId: string): Promise<KlaraErinnerungLauf | null> {
@@ -1287,6 +1347,7 @@ export class InMemoryKlaraErinnerungLaufRepo implements KlaraErinnerungLaufRepo 
 /** Was die Speicher-Meldungsablage für das bedingte Schreiben braucht — synchron. */
 export interface AktivPruefer {
   aktivInFassung(id: string, fassung: number): boolean;
+  laufBedingungen?(b: readonly LaufBedingung[]): boolean;
 }
 
 export class InMemoryKlaraErinnerungMeldungRepo implements KlaraErinnerungMeldungRepo {
@@ -1310,7 +1371,9 @@ export class InMemoryKlaraErinnerungMeldungRepo implements KlaraErinnerungMeldun
     if (
       bedingung &&
       this.erinnerungen &&
-      !this.erinnerungen.aktivInFassung(bedingung.erinnerungId, bedingung.fassung)
+      (!this.erinnerungen.aktivInFassung(bedingung.erinnerungId, bedingung.fassung) ||
+        (bedingung.laeufe !== undefined &&
+          this.erinnerungen.laufBedingungen?.(bedingung.laeufe) !== true))
     ) {
       return Promise.resolve("veraltet");
     }
@@ -1373,6 +1436,28 @@ export class InMemoryKlaraErinnerungEinstellungRepo implements KlaraErinnerungEi
   }
 }
 
+function abbruchErgebnis(
+  lauf: KlaraErinnerungLauf,
+  meldung: KlaraErinnerungMeldung | null,
+  notiz: KlaraNotiz | null,
+): KlaraErinnerungLauf["ergebnis"] {
+  const beleg = meldung?.vorkommen.includes(lauf.geplantFuer) ? meldung : null;
+  const routine = notiz ? ergebnisAusBericht(notiz) : lauf.ergebnis.routine;
+  return {
+    ...lauf.ergebnis,
+    ...(beleg
+      ? {
+          zugestelltAm: beleg.zugestelltAm,
+          nachgeholt: beleg.nachgeholt,
+          ...(beleg.pruefung ? { pruefung: beleg.pruefung } : {}),
+          ...(beleg.zusammenfassung ? { zusammenfassung: beleg.zusammenfassung } : {}),
+        }
+      : {}),
+    ...(routine ? { routine: { ...routine, fortsetzbar: false, meldungAusstehend: false } } : {}),
+    grund: "abbruch",
+  };
+}
+
 export function inMemoryErinnerungAblage(): KlaraErinnerungAblage {
   const erinnerungen = new InMemoryKlaraErinnerungRepo();
   const laeufe = new InMemoryKlaraErinnerungLaufRepo();
@@ -1384,6 +1469,36 @@ export function inMemoryErinnerungAblage(): KlaraErinnerungAblage {
     laeufe,
     meldungen,
     einstellungen: new InMemoryKlaraErinnerungEinstellungRepo(),
+    async brecheLaufAb(kontoId, id, vorkommenId, fassung, jetzt, notizen) {
+      if (!erinnerungen.eigeneFassung(kontoId, id, fassung)) return false;
+      const lauf = laeufe.brecheAktivAb(kontoId, id, vorkommenId, jetzt);
+      if (!lauf) return false;
+      // Ab hier verhindern dieselben Laufbedingungen neue Meldungen/Berichte. Vorherige Wirkungen nachlesen.
+      try {
+        const meldung = await meldungen.hole(lauf.meldungId);
+        const notiz = notizen
+          ? await notizen.zuVorgang(kontoId, ergebnisVorgang(vorkommenId))
+          : null;
+        await laeufe.setze(
+          vorkommenId,
+          ["abgebrochen"],
+          "abgebrochen",
+          abbruchErgebnis(lauf, meldung, notiz),
+          null,
+          jetzt,
+        );
+      } catch {
+        await laeufe.setze(
+          vorkommenId,
+          ["abgebrochen"],
+          "abgebrochen",
+          { ...lauf.ergebnis, grund: "readback_unmoeglich" },
+          null,
+          jetzt,
+        );
+      }
+      return true;
+    },
     async entferneKomplett(kontoId, id) {
       if (!(await erinnerungen.entferne(kontoId, id))) return false;
       await laeufe.entferneFuerErinnerung(id);
@@ -1974,6 +2089,58 @@ export function pgErinnerungAblage(pool: Pool): KlaraErinnerungAblage {
     laeufe: new PgKlaraErinnerungLaufRepo(pool),
     meldungen: new PgKlaraErinnerungMeldungRepo(pool),
     einstellungen: new PgKlaraErinnerungEinstellungRepo(pool),
+    async brecheLaufAb(kontoId, id, vorkommenId, fassung, jetzt) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const e = await client.query(
+          `SELECT id FROM klara_erinnerungen
+          WHERE id = $1 AND konto_id = $2 AND fassung = $3 FOR SHARE`,
+          [id, kontoId, fassung],
+        );
+        if (e.rowCount !== 1) {
+          await client.query("ROLLBACK");
+          return false;
+        }
+        const r = await client.query<LaufZeile>(
+          `SELECT ${LAUF_SPALTEN} FROM klara_erinnerung_laeufe
+          WHERE vorkommen_id = $1 AND erinnerung_id = $2 AND konto_id = $3 AND status = 'laeuft' FOR UPDATE`,
+          [vorkommenId, id, kontoId],
+        );
+        const lauf = r.rows[0] ? laufAus(r.rows[0]) : null;
+        if (!lauf) {
+          await client.query("ROLLBACK");
+          return false;
+        }
+        // Die exklusive Laufsperre wartet auf bereits begonnene bedingte Wirkungen. Ein FRISCHER
+        // Befehl nach dem Sperren sieht deren echten Ausgang; neue Wirkungen warten und scheitern.
+        const m = await client.query<{ data: KlaraErinnerungMeldung }>(
+          "SELECT data FROM klara_erinnerung_meldungen WHERE id = $1",
+          [lauf.meldungId],
+        );
+        const n = await client.query<{ data: KlaraNotiz }>(
+          "SELECT data FROM klara_notizen WHERE konto_id = $1 AND vorgang = $2",
+          [kontoId, ergebnisVorgang(vorkommenId)],
+        );
+        await client.query(
+          `UPDATE klara_erinnerung_laeufe SET status = 'abgebrochen', lease_bis = NULL,
+          aktualisiert_am = $2, data = jsonb_set(data, '{ergebnis}', $3::jsonb)
+          WHERE vorkommen_id = $1`,
+          [
+            vorkommenId,
+            new Date(jetzt),
+            JSON.stringify(abbruchErgebnis(lauf, m.rows[0]?.data ?? null, n.rows[0]?.data ?? null)),
+          ],
+        );
+        await client.query("COMMIT");
+        return true;
+      } catch (fehler) {
+        await client.query("ROLLBACK");
+        throw fehler;
+      } finally {
+        client.release();
+      }
+    },
     async entferneKomplett(kontoId, id) {
       // Ein Statement bleibt auch am gated-pool eine Transaktion. Die Elternzeile sperrt
       // gleichzeitig Übernahmen und bedingte Meldungen; ein Fehler in einem DELETE rollt alles zurück.
@@ -2429,7 +2596,8 @@ export type KlaraErinnerungEntscheidung = "fortfuehren" | "verwerfen" | "beenden
 export interface KlaraErinnerungDienstDeps {
   readonly ablage: KlaraErinnerungAblage;
   /** `entferne` braucht nur die Rücknahme eines Routinenberichts (EQF-07). */
-  readonly notizen?: Pick<KlaraNotizRepo, "hole"> & Partial<Pick<KlaraNotizRepo, "entferne">>;
+  readonly notizen?: Pick<KlaraNotizRepo, "hole"> &
+    Partial<Pick<KlaraNotizRepo, "entferne" | "zuVorgang">>;
   readonly aufgaben?: Pick<KlaraAufgabeRepo, "hole">;
   readonly gespraeche?: Pick<KlaraGespraechRepo, "hole">;
   /**
@@ -3181,6 +3349,28 @@ export class KlaraErinnerungDienst {
       }
     }
     return ergebnis;
+  }
+
+  /** Aktive Arbeit GENAU dieses eigenen Laufs stoppen; keine Pause/Beendigung der Serie. */
+  async laufAbbrechen(
+    kontoId: string,
+    id: string,
+    laufId: string,
+    fassung: unknown,
+  ): Promise<boolean> {
+    await this.mitFassung(kontoId, id, fassung);
+    if (!laufId.startsWith(`${id}@`)) return false;
+    if (!this.ablage.brecheLaufAb)
+      throw new KlaraErinnerungFehler(409, "zustand", "Einzellaufabbruch ist nicht angeschlossen.");
+    const notizen = this.deps.notizen;
+    return this.ablage.brecheLaufAb(
+      kontoId,
+      id,
+      laufId,
+      this.fassungAus(fassung),
+      this.jetzt(),
+      notizen?.zuVorgang ? { zuVorgang: notizen.zuVorgang.bind(notizen) } : undefined,
+    );
   }
 
   /**
@@ -4345,6 +4535,13 @@ export class KlaraErinnerungSteuerung {
     }
   }
 
+  private laufBedingungen(
+    laeufe: readonly KlaraErinnerungLauf[],
+    status: readonly KlaraErinnerungLaufStatus[] = ["laeuft"],
+  ): LaufBedingung[] {
+    return laeufe.map((l) => ({ id: l.vorkommenId, besitzer: this.besitzer, status }));
+  }
+
   /**
    * Die Bedingung, unter der ein Routinenbericht geschrieben werden darf — beim tatsächlichen
    * Speichern: Routine aktiv in dieser Fassung, Konto berechtigt, gelesene Quellen unverändert.
@@ -4354,18 +4551,24 @@ export class KlaraErinnerungSteuerung {
   private notizBedingung(
     e: KlaraErinnerung,
     quellen: KlaraRoutineErgebnis["quellen"],
+    lauf: KlaraErinnerungLauf,
   ): NotizSchreibbedingung {
     const b: MeldungBedingung = {
       erinnerungId: e.id,
       fassung: e.fassung,
       empfaenger: { kontoId: e.kontoId, jetzt: this.jetzt() },
       quellenStand: quellen.map((q) => ({ ...q, kontoId: e.kontoId })),
+      laeufe: this.laufBedingungen([lauf]),
     };
     const er = this.deps.ablage.erinnerungen as Partial<AktivPruefer>;
     const pruefer = typeof er.aktivInFassung === "function" ? er : null;
     return {
       ...(pruefer?.aktivInFassung
-        ? { gilt: () => pruefer.aktivInFassung?.(b.erinnerungId, b.fassung) === true }
+        ? {
+            gilt: () =>
+              pruefer.aktivInFassung?.(b.erinnerungId, b.fassung) === true &&
+              pruefer.laufBedingungen?.(b.laeufe ?? []) === true,
+          }
         : {}),
       sql: (start) => bedingungSql(b, start),
     };
@@ -4405,6 +4608,7 @@ export class KlaraErinnerungSteuerung {
             erinnerungId: e.id,
             fassung: e.fassung,
             empfaenger: { kontoId: e.kontoId, jetzt: this.jetzt() },
+            laeufe: this.laufBedingungen([x.lauf], [laufStatus]),
           },
         );
       } catch {
@@ -4476,6 +4680,7 @@ export class KlaraErinnerungSteuerung {
   private async routineSchreiben(
     e: KlaraErinnerung,
     v: RoutineEntwurf,
+    lauf: KlaraErinnerungLauf,
   ): Promise<
     { art: "ok"; ergebnis: KlaraRoutineErgebnis } | { art: "veraltet" } | { art: "fehler" }
   > {
@@ -4499,7 +4704,7 @@ export class KlaraErinnerungSteuerung {
             objekt: e.titel.slice(0, 300),
           },
         },
-        this.notizBedingung(e, v.quellen),
+        this.notizBedingung(e, v.quellen, lauf),
       );
       if (wiederholt) {
         return { art: "ok", ergebnis: { ...ergebnisAusBericht(notiz), wiederholt: true } };
@@ -4759,7 +4964,7 @@ export class KlaraErinnerungSteuerung {
         e.kontoId,
         r.notizId,
         { fassung: r.notizFassung, inhalt },
-        this.notizBedingung(e, frischeQuellen),
+        this.notizBedingung(e, frischeQuellen, lauf),
       ));
     } catch (fehler) {
       if (fehler instanceof KlaraNotizFehler && fehler.grund === "bedingung") {
@@ -4903,6 +5108,7 @@ export class KlaraErinnerungSteuerung {
           erinnerungId: e.id,
           fassung: e.fassung,
           empfaenger: { kontoId: this.empfaengerVon(e), jetzt: this.jetzt() },
+          laeufe: this.laufBedingungen([lauf]),
         },
       );
     } catch {
@@ -4937,6 +5143,9 @@ export class KlaraErinnerungSteuerung {
       const eintrag = await this.deps.ablage.erinnerungen.holeSystem(erinnerungId);
       const gueltig: typeof offen = [];
       for (const x of offen) {
+        const gehalten = await this.deps.ablage.laeufe.hole(x.lauf.vorkommenId);
+        if (!gehalten || gehalten.status !== "laeuft" || gehalten.besitzer !== this.besitzer)
+          continue;
         const grund = eintrag
           ? this.terminGrund(eintrag.erinnerung, x.lauf, jetzt)
           : "status_geaendert";
@@ -4997,6 +5206,13 @@ export class KlaraErinnerungSteuerung {
       if (await this.gesperrt(e, empfaenger, gueltig, z, mitRoutine())) {
         return;
       }
+      for (let i = gueltig.length - 1; i >= 0; i -= 1) {
+        const x = gueltig[i];
+        if (!x) continue;
+        const l = await this.deps.ablage.laeufe.hole(x.lauf.vorkommenId);
+        if (!l || l.status !== "laeuft" || l.besitzer !== this.besitzer) gueltig.splice(i, 1);
+      }
+      if (gueltig.length === 0) return;
       if (
         zusammenfassung?.quelleStand &&
         !(await this.zusammenfassungsQuelleAktuell(e, zusammenfassung.quelleStand))
@@ -5015,7 +5231,7 @@ export class KlaraErinnerungSteuerung {
           offen = gueltig;
           continue;
         }
-        const r = await this.routineSchreiben(e, routineEntwurf);
+        const r = await this.routineSchreiben(e, routineEntwurf, kopf.lauf);
         if (r.art === "veraltet") {
           // Beim tatsächlichen Speichern galt die Bedingung nicht mehr (Pause, Ende, Löschung,
           // Rechteentzug, Quellenänderung): nichts entstanden — neu lesen, neu entscheiden.
@@ -5075,6 +5291,7 @@ export class KlaraErinnerungSteuerung {
           fassung: e.fassung,
           empfaenger: { kontoId: empfaenger, jetzt: this.jetzt() },
           quelle: quelleFuerBedingung(e),
+          laeufe: this.laufBedingungen(gueltig.map((x) => x.lauf)),
           ...(zusammenfassung?.quelleStand ? { quellenStand: [zusammenfassung.quelleStand] } : {}),
         });
       } catch {

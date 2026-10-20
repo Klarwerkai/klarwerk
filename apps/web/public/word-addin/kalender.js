@@ -54,6 +54,7 @@
         keinLauf: "Kein Lauf: hier ist nichts ausgeführt worden.",
         nichtNachgewiesen: "Stand nicht nachgewiesen",
         erinnerung: "Erinnerung zugestellt. Eine Verlängerung oder Erledigung der Frist ist damit nicht belegt.",
+        berichtGespeichert: "Bericht gespeichert; vorhandene Ergebnisse bleiben erhalten.",
         laufAbgeschlossen: "Lauf abgeschlossen.",
         laufFehlgeschlagen: "Lauf fehlgeschlagen.",
         lauf_geplant: "geplant",
@@ -97,6 +98,7 @@
         keinLauf: "No run: nothing has been carried out here.",
         nichtNachgewiesen: "status not proven",
         erinnerung: "Reminder delivered. This does not show that the deadline was renewed or met.",
+        berichtGespeichert: "Report saved; existing results are retained.",
         laufAbgeschlossen: "Run completed.",
         laufFehlgeschlagen: "Run failed.",
         lauf_geplant: "planned",
@@ -140,6 +142,7 @@
         keinLauf: "Geen run: hier is niets uitgevoerd.",
         nichtNachgewiesen: "stand niet aangetoond",
         erinnerung: "Herinnering bezorgd. Een verlenging of afronding van de termijn is daarmee niet aangetoond.",
+        berichtGespeichert: "Rapport opgeslagen; bestaande resultaten blijven behouden.",
         laufAbgeschlossen: "Run afgerond.",
         laufFehlgeschlagen: "Run mislukt.",
         lauf_geplant: "gepland",
@@ -388,7 +391,8 @@
       kasten.appendChild(kalenderKnoten("div", "kalender-detail-lauf muted", ergebnis));
       if (e.ergebnis) {
         var art = e.ergebnis.art === "erinnerung_zugestellt" ? "erinnerung"
-          : (e.ergebnis.art === "lauf_abgeschlossen" ? "laufAbgeschlossen" : "laufFehlgeschlagen");
+          : (e.ergebnis.art === "bericht_gespeichert" ? "berichtGespeichert"
+            : (e.ergebnis.art === "lauf_abgeschlossen" ? "laufAbgeschlossen" : "laufFehlgeschlagen"));
         var zeile = kalenderKnoten("div", "kalender-detail-ergebnis", kalenderT(art));
         zeile.setAttribute("data-ergebnis", e.ergebnis.art);
         kasten.appendChild(zeile);

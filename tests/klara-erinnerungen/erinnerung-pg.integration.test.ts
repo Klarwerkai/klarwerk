@@ -1151,4 +1151,235 @@ describe("Klara 10 · Erinnerungen gegen echtes PostgreSQL", () => {
     expect(JSON.stringify(belege)).toContain("F3 neue Quellfassung");
     expect(JSON.stringify(belege)).not.toContain("F3 alte Quelle – Inhalt");
   });
+  it("F5 · aktiver Einzelabbruch eines anderen Pools unmittelbar vor INSERT: Laufbedingung blockiert spät und die Serie bleibt aktiv", async () => {
+    const poolsAb = pools.length;
+    try {
+      uhr = um("2026-10-12", "09:00");
+      const pool = neuePool();
+      const meldungen = new EinschubMeldungen(pool);
+      const ablage = { ...pgErinnerungAblage(pool), meldungen };
+      const a = prozess("f5-a", ablage);
+      const b = prozess("f5-abbruch", pgErinnerungAblage(gatedPool(neuePool())));
+      const e = (
+        await a.dienst.lege(ANNA, {
+          vorgang: vorgang(),
+          titel: "Einzellauf F5",
+          zeitzone: BERLIN,
+          zeitplan: {
+            art: "serie",
+            datum: "2026-10-13",
+            uhrzeit: "09:00",
+            wiederholung: { takt: "taeglich", intervall: 1, anzahl: 3 },
+          },
+        })
+      ).eintrag.erinnerung;
+      const laufId = `${e.id}@2026-10-13T09:00`;
+      meldungen.einschub = async () => {
+        await expect(b.dienst.laufAbbrechen(BERT, e.id, laufId, 1)).rejects.toMatchObject({
+          status: 404,
+        });
+        expect(await b.dienst.laufAbbrechen(ANNA, e.id, laufId, 1)).toBe(true);
+      };
+      uhr = um("2026-10-13", "09:00") + 1000;
+      await a.steuerung.lauf();
+      expect(meldungen.ergebnisse[0]).toBe("veraltet");
+      expect(await ablage.laeufe.hole(laufId)).toMatchObject({
+        status: "abgebrochen",
+        ergebnis: { grund: "abbruch" },
+      });
+      expect((await b.dienst.eintrag(ANNA, e.id)).erinnerung).toMatchObject({
+        status: "aktiv",
+        fassung: 1,
+        zeitplan: e.zeitplan,
+      });
+      expect(
+        (await ablage.meldungen.fuerKonto(ANNA, 100)).filter((m) => m.erinnerungId === e.id),
+      ).toHaveLength(0);
+      uhr += 86_400_000;
+      await prozess("f5-neustart").steuerung.lauf();
+      expect(
+        (await ablage.meldungen.fuerKonto(ANNA, 100)).filter((m) => m.erinnerungId === e.id),
+      ).toHaveLength(1);
+      expect(await b.dienst.laufAbbrechen(ANNA, e.id, laufId, 1)).toBe(false);
+    } finally {
+      for (const pool of pools.splice(poolsAb)) await pool.end();
+    }
+  });
+
+  it("F6 · Abbruch wartet auf die echte Wirkungssperre und liest Meldung sowie fertigen Bericht zurück; andere Läufe bleiben unberührt", async () => {
+    const poolsAb = pools.length;
+    try {
+      uhr = um("2026-10-12", "09:00");
+      const pool = neuePool();
+      const a = prozess("f6", pgErinnerungAblage(pool));
+      const e = (
+        await a.dienst.lege(ANNA, {
+          vorgang: vorgang(),
+          titel: "Lauf mit vorhandenen Ergebnissen",
+          zeitzone: BERLIN,
+          zeitplan: {
+            art: "serie",
+            datum: "2026-10-13",
+            uhrzeit: "09:00",
+            wiederholung: { takt: "taeglich", intervall: 1, anzahl: 3 },
+          },
+          aktion: "routine_bericht",
+          routine: { abschnitte: ["offene_aufgaben"] },
+        })
+      ).eintrag.erinnerung;
+      uhr = um("2026-10-13", "09:00") + 1000;
+      const laufId = `${e.id}@2026-10-13T09:00`;
+      const lauf = await a.ablage.laeufe.uebernimm({
+        vorkommenId: laufId,
+        erinnerungId: e.id,
+        kontoId: ANNA,
+        geplantFuer: um("2026-10-13", "09:00"),
+        besitzer: "f6-wirkung",
+        jetzt: uhr,
+        leaseMs: 120000,
+        art: "erinnerung",
+        meldungId: `ke-${laufId}`,
+      });
+      expect(lauf).not.toBeNull();
+      const zweiterId = `${e.id}@2026-10-14T09:00`;
+      await a.ablage.laeufe.uebernimm({
+        vorkommenId: zweiterId,
+        erinnerungId: e.id,
+        kontoId: ANNA,
+        geplantFuer: um("2026-10-14", "09:00"),
+        besitzer: "anderer-lauf",
+        jetzt: uhr,
+        leaseMs: 120000,
+        art: "erinnerung",
+        meldungId: `ke-${zweiterId}`,
+      });
+      const client = await pool.connect();
+      let abbrechen: Promise<boolean> | undefined;
+      try {
+        await client.query("BEGIN");
+        const backend = (await client.query<{ pid: number }>("SELECT pg_backend_pid() AS pid"))
+          .rows[0]?.pid;
+        const transaktion = { query: client.query.bind(client) } as unknown as Pool;
+        const { bedingungSql } = await import("../../services/app/src/klara-erinnerung");
+        const bedingung = {
+          erinnerungId: e.id,
+          fassung: 1,
+          laeufe: [{ id: laufId, besitzer: "f6-wirkung", status: ["laeuft" as const] }],
+        };
+        const notizDienst = new KlaraNotizDienst({
+          repo: new PgKlaraNotizRepo(transaktion),
+          jetzt,
+        });
+        const { notiz } = await notizDienst.lege(
+          ANNA,
+          {
+            vorgang: ergebnisVorgang(laufId),
+            weg: "geschrieben",
+            titel: "Gespeicherter Teilbericht",
+            inhalt: "Fiktiver bereits gespeicherter Bericht.",
+            objektbezug: { pfad: "/aufgaben", seitenName: "Aufgaben", objekt: e.titel },
+          },
+          { sql: (start) => bedingungSql(bedingung, start) },
+        );
+        const meldungen = new PgKlaraErinnerungMeldungRepo(transaktion);
+        expect(
+          await meldungen.schreibe(
+            {
+              id: `ke-${laufId}`,
+              kontoId: ANNA,
+              erinnerungId: e.id,
+              art: "erinnerung",
+              titel: e.titel,
+              zugestelltAm: new Date(uhr).toISOString(),
+              vorkommen: [new Date(um("2026-10-13", "09:00")).toISOString()],
+              nachgeholt: false,
+              pruefung: null,
+              laufStatus: "zugestellt",
+            },
+            bedingung,
+          ),
+        ).toBe("geschrieben");
+        const b = prozess("f6-abbruch", pgErinnerungAblage(gatedPool(neuePool())));
+        abbrechen = b.dienst.laufAbbrechen(ANNA, e.id, laufId, 1);
+        // pg_blocking_pids belegt das Warten auf GENAU den tatsächlichen Wirkungsprozess.
+        const beobachter = neuePool();
+        await expect
+          .poll(
+            async () =>
+              (
+                await beobachter.query<{ n: number }>(
+                  "SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))",
+                  [backend],
+                )
+              ).rows[0]?.n ?? 0,
+            { timeout: 5000 },
+          )
+          .toBeGreaterThan(0);
+        await client.query("COMMIT");
+        expect(await abbrechen).toBe(true);
+        const nachher = await b.ablage.laeufe.hole(laufId);
+        expect(nachher).toMatchObject({
+          status: "abgebrochen",
+          ergebnis: {
+            grund: "abbruch",
+            zugestelltAm: new Date(uhr).toISOString(),
+            routine: { notizId: notiz.id, notizFassung: 1, fortsetzbar: false },
+          },
+        });
+        expect(await new PgKlaraNotizRepo(neuePool()).hole(ANNA, notiz.id)).toMatchObject({
+          id: notiz.id,
+          inhalt: notiz.inhalt,
+        });
+        expect(await b.ablage.meldungen.hole(`ke-${laufId}`)).not.toBeNull();
+        expect(await b.ablage.laeufe.hole(zweiterId)).toMatchObject({
+          status: "laeuft",
+          besitzer: "anderer-lauf",
+        });
+        expect((await b.dienst.eintrag(ANNA, e.id)).erinnerung).toMatchObject({
+          status: "aktiv",
+          fassung: 1,
+        });
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+        if (abbrechen) await abbrechen;
+      }
+    } finally {
+      for (const pool of pools.splice(poolsAb)) await pool.end();
+    }
+  });
+  it("F7 · aktiver Einzelabbruch direkt vor dem echten Berichts-INSERT verhindert neue Ergebnisnotiz und Erfolgsmeldung", async () => {
+    const poolsAb = pools.length;
+    try {
+      uhr = um("2026-10-12", "09:00");
+      const a = echterProzess("f7-schreiber", new PgKlaraErinnerungMeldungRepo(neuePool()));
+      const b = prozess("f7-abbruch", pgErinnerungAblage(gatedPool(neuePool())));
+      const e = (
+        await a.dienst.lege(ANNA, {
+          vorgang: vorgang(),
+          titel: "Abbruch vor Bericht",
+          zeitzone: BERLIN,
+          zeitplan: { art: "einmalig", datum: "2026-10-13", uhrzeit: "09:00" },
+          aktion: "routine_bericht",
+          routine: { abschnitte: ["offene_aufgaben"] },
+        })
+      ).eintrag.erinnerung;
+      const laufId = `${e.id}@2026-10-13T09:00`;
+      a.vorBericht.einschub = async () => {
+        expect(await b.dienst.laufAbbrechen(ANNA, e.id, laufId, 1)).toBe(true);
+      };
+      uhr = um("2026-10-13", "09:00") + 1000;
+      await a.steuerung.lauf();
+      expect(await a.notizen.zuVorgang(ANNA, ergebnisVorgang(laufId))).toBeNull();
+      expect(await a.laeufe.hole(laufId)).toMatchObject({
+        status: "abgebrochen",
+        ergebnis: { grund: "abbruch" },
+      });
+      expect(
+        (await b.ablage.meldungen.fuerKonto(ANNA, 100)).filter((m) => m.erinnerungId === e.id),
+      ).toHaveLength(0);
+    } finally {
+      for (const pool of pools.splice(poolsAb)) await pool.end();
+    }
+  });
 });

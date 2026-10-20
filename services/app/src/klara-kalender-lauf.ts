@@ -157,19 +157,26 @@ function laufSicht(l: KlaraErinnerungLauf): {
     // Wartet auf eine Entscheidung (z. B. Kalendersperre) — es ist noch nichts geschehen.
     return { status: "geplant", ergebnis: null };
   }
-  return { status: "abgebrochen", ergebnis: null };
+  return {
+    status: "abgebrochen",
+    ergebnis: l.ergebnis.zugestelltAm
+      ? { art: "erinnerung_zugestellt", am: l.ergebnis.zugestelltAm }
+      : l.ergebnis.routine
+        ? { art: "bericht_gespeichert", am: l.ergebnis.routine.erstelltAm }
+        : null,
+  };
 }
 
 /**
  * Der `AusfuehrungsNachweis` des eigenen Kalenders über DIESELBE Erinnerungsablage und denselben
  * Dienst: nur die eigenen Erinnerungen der lesenden Person (fremd und unbekannt = `null`), Lauf und
  * Ergebnis nur so, wie sie tatsächlich gespeichert sind. Absagen und Serie schalten gehen über die
- * vorhandenen, fassungsgebundenen Wege des Dienstes; ein einzelner LAUFENDER Lauf lässt sich dort
- * nicht abbrechen — `arbeitAbbrechen` meldet deshalb ehrlich keine Wirkung.
+ * vorhandenen, fassungsgebundenen Wege des Dienstes; aktiver Einzelabbruch sperrt genau den
+ * gespeicherten Lauf gegen neue Wirkungen und erhält Serie sowie bereits vorhandene Ergebnisse.
  */
 export function erinnerungsAusfuehrung(
   ablage: KlaraErinnerungAblage,
-  dienst: Pick<KlaraErinnerungDienst, "status" | "vorkommen">,
+  dienst: Pick<KlaraErinnerungDienst, "status" | "vorkommen" | "laufAbbrechen">,
 ): AusfuehrungsNachweis {
   const erinnerung = (user: SessionUser, id: string) => ablage.erinnerungen.hole(user.id, id);
   const schluesselVon = (taskId: string, runId: string): string | null =>
@@ -223,8 +230,14 @@ export function erinnerungsAusfuehrung(
         return false;
       }
     },
-    async arbeitAbbrechen() {
-      return false;
+    async arbeitAbbrechen(user, taskId, runId) {
+      const e = await erinnerung(user, taskId);
+      if (!e) return false;
+      try {
+        return await dienst.laufAbbrechen(user.id, taskId, runId, e.erinnerung.fassung);
+      } catch {
+        return false;
+      }
     },
     async serieSchalten(user, seriesId, pausiert) {
       const e = await erinnerung(user, seriesId);

@@ -15,7 +15,11 @@ export type LaufStatus =
   | "fehlgeschlagen"
   | "abgesagt"
   | "abgebrochen";
-export type ErgebnisArt = "erinnerung_zugestellt" | "lauf_abgeschlossen" | "lauf_fehlgeschlagen";
+export type ErgebnisArt =
+  | "erinnerung_zugestellt"
+  | "bericht_gespeichert"
+  | "lauf_abgeschlossen"
+  | "lauf_fehlgeschlagen";
 export type Sichtmodus = "eigen" | "vorhanden" | "beide";
 export type KalenderAktion =
   | "anzeige_entfernen"

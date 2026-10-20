@@ -70,6 +70,7 @@ export type LaufStatus = (typeof LAUF_STATUS)[number];
  */
 export const ERGEBNIS_ARTEN = [
   "erinnerung_zugestellt",
+  "bericht_gespeichert",
   "lauf_abgeschlossen",
   "lauf_fehlgeschlagen",
 ] as const;

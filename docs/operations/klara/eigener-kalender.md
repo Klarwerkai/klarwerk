@@ -61,11 +61,18 @@ oder unbekannte Kennungen ab (`404 verweis_unbekannt`). Eine gelöschte Aufgabe 
 „nicht auflösbar“ ohne Titel da. Eine persönliche Aufgabe lässt sich nicht in den Teamkalender
 verknüpfen (`409 aufgabe_persoenlich`).
 
-**Ausführungsdienst weiter nicht angebunden**: Die Erinnerungssteuerung
-(`produkt:20261007:klara-erinnerungen-kalender`) ist ein eigener Auftrag und im Produkt nicht gebaut.
-Deshalb gibt es keine Lauf- oder Serienverknüpfung (`409 ausfuehrung_nicht_angebunden`), keine
-Ausführungsaktion und keine Behauptung über eine Ausführung oder ein Ergebnis, auch wenn die
-Aufgabenablage angeschlossen ist. Anschluss: `services.kalenderAusfuehrung` in `build-app.ts`.
+**Ausführungsdienst im integrierten Kandidaten**: Der eigene Kalender verwendet dieselbe
+persistente Erinnerungs-/Routinensteuerung wie die persönlichen Erinnerungen. Auftrag, Lauf und
+Serie werden mit ihren tatsächlichen Kennungen gelesen; die Uhrzeit allein belegt kein Ergebnis.
+`services.kalenderAusfuehrung` ist der bestehende austauschbare Anschluss für isolierte Prüfstände.
+
+**Aktive Arbeit abbrechen** zeigt zuerst die Folgen und benötigt die ausdrückliche Bestätigung.
+Der Dienst sperrt genau den eigenen aktiven Lauf gegen weitere Meldungs- und Berichtswirkungen.
+Kalendereintrag, Serie, andere Läufe und bereits gespeicherte Ergebnisse bleiben erhalten. Eine
+schon begonnene Wirkung wird vor dem Abbruch fertig gelesen; ein vorhandener Bericht steht als
+„Bericht gespeichert“ beim abgebrochenen Lauf, ohne den gesamten Lauf als abgeschlossen auszugeben.
+Eine noch laufende Modellantwort kann zurückkommen; sie darf danach keine neue Wirkung speichern.
+Der nächste reguläre Serientermin läuft weiter. Abbruch ist keine Rücknahme einer früheren Wirkung.
 
 **Stand im Kandidaten** (Nacharbeit 8, integriert mit main 25f2ea02): `buildApp` verdrahtet den
 Kalender mit DEMSELBEN `KlaraAufgabeDienst`, der auch `/api/me/klara/aufgaben` bedient
@@ -79,9 +86,10 @@ Die Sichtwahl `vorhanden`/`beide` liest die Termine des vorhandenen Kalenders ü
 `VorhandenerKalender` (nur lesend) und zeigt sie in Tag, Woche und Agenda als „aus dem vorhandenen
 Kalender". Interne Fristen und zeitgesteuerte Einträge bleiben in jedem Modus sichtbar und wirksam.
 
-**Heute ist kein vorhandener Kalender angeschlossen**: der Kalendervertrag
-`produkt:20261008:klara-kalender` (Anbieter, Konto, Lizenz, Berechtigungen) ist ein eigener Auftrag
-und im Produkt nicht gebaut. Die Sicht meldet ihn ehrlich als „nicht verbunden". Anschluss:
+**Externer Anschluss im integrierten Kandidaten**: Die technische Kalenderanbindung ist
+vorhanden; verbunden wird sie ausschließlich mit einer tatsächlich zugewiesenen bestehenden
+Betreiberkonfiguration. Ohne diese bleibt die Anzeige „nicht verbunden“. Echte externe
+Providerwirkung, Kalendergrant und Hostprobe sind getrennt zu belegen. Anschluss:
 `services.vorhandenerKalender` in `build-app.ts`.
 
 ## Rechte
@@ -102,8 +110,22 @@ Antrieb.
 
 ## Offen (getrennt von dieser Lieferung)
 
-- Echter Ausführungsdienst und echter vorhandener Kalender (eigene Aufträge, s. o.) samt
-  Anbieterzugang.
+- Reale externe Kalender-/Providerprobe mit zugewiesenem Anbieterzugang. Interner
+  Ausführungsdienst und aktiver Einzelabbruch sind am Kandidaten technisch angeschlossen;
+  unabhängige Abnahme und zentrale Bereitstellung bleiben eigene Nachweise.
 - Bedienbeleg im echten Word-Host (Menschen-/Hostprobe); belegt ist der Block am echten Server in
   jsdom (`tests/eigener-kalender/word-kalender.test.tsx`).
 - Automatische Übernahme von Fristen aus Informationen (AW-19).
+
+## Engste Nachweise zum aktiven Einzelabbruch
+
+`tests/klara-einzelabbruch/kalender-am-server.test.ts` fährt die tatsächlichen authentifizierten
+Kalender-/Erinnerungs-APIs auf derselben App-Ablage, mit kontrollierter Uhr und Modellantwort:
+Folgen lesen, Dialog abbrechen, Fremdzugriff ablehnen, aktiven Lauf abbrechen, späte Antwort
+verwerfen, Folgetermin ausführen und bereits gespeicherten Originalbericht erhalten.
+
+F5–F7 in `tests/klara-erinnerungen/erinnerung-pg.integration.test.ts` benutzen echte getrennte
+PG-Pools und den gated-pool: Abbruch unmittelbar vor Meldungs- bzw. Berichts-INSERT; echte
+Wirkungssperre mit `pg_blocking_pids`, Readback bereits gespeicherter Meldung/Notiz, Erhalt eines
+anderen aktiven Laufs. Keine zusätzlichen Tabellen oder Scheduler. Code-Rücknahme erhält bereits
+abgebrochene Läufe und ihre Ergebnisse; sie aktiviert sie nicht erneut.

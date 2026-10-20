@@ -127,6 +127,8 @@ export default {
     "kalender.ergebnis.keinLauf": "Kein Lauf: hier ist nichts ausgeführt worden.",
     "kalender.ergebnis.keins": "Noch kein Ergebnis festgehalten.",
     "kalender.ergebnis.erinnerung_zugestellt": "Erinnerung zugestellt am {{am}}.",
+    "kalender.ergebnis.bericht_gespeichert":
+      "Bericht gespeichert am {{am}}; bereits erstellte Ergebnisse bleiben erhalten.",
     "kalender.ergebnis.lauf_abgeschlossen": "Lauf abgeschlossen am {{am}}.",
     "kalender.ergebnis.lauf_fehlgeschlagen": "Lauf fehlgeschlagen am {{am}}.",
     "kalender.ergebnis.erinnerungGrenze":
@@ -328,6 +330,8 @@ export default {
     "kalender.ergebnis.keinLauf": "No run: nothing has been carried out here.",
     "kalender.ergebnis.keins": "No result recorded yet.",
     "kalender.ergebnis.erinnerung_zugestellt": "Reminder delivered on {{am}}.",
+    "kalender.ergebnis.bericht_gespeichert":
+      "Report saved on {{am}}; existing results are retained.",
     "kalender.ergebnis.lauf_abgeschlossen": "Run completed on {{am}}.",
     "kalender.ergebnis.lauf_fehlgeschlagen": "Run failed on {{am}}.",
     "kalender.ergebnis.erinnerungGrenze":
@@ -528,6 +532,8 @@ export default {
     "kalender.ergebnis.keinLauf": "Geen run: hier is niets uitgevoerd.",
     "kalender.ergebnis.keins": "Nog geen resultaat vastgelegd.",
     "kalender.ergebnis.erinnerung_zugestellt": "Herinnering bezorgd op {{am}}.",
+    "kalender.ergebnis.bericht_gespeichert":
+      "Rapport opgeslagen op {{am}}; bestaande resultaten blijven behouden.",
     "kalender.ergebnis.lauf_abgeschlossen": "Run afgerond op {{am}}.",
     "kalender.ergebnis.lauf_fehlgeschlagen": "Run mislukt op {{am}}.",
     "kalender.ergebnis.erinnerungGrenze":
