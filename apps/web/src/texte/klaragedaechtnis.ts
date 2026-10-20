@@ -3,6 +3,17 @@ export default {
   praefix: "klaragedaechtnis.",
   legacySchluessel: [],
   de: {
+    "klaragedaechtnis.ausnahmeTitel": "Befristete Aufbewahrungsausnahme",
+    "klaragedaechtnis.ausnahmeAn": "Diesen Eintrag begründet länger aufbewahren",
+    "klaragedaechtnis.ausnahmeHilfe":
+      "Nur für diesen eigenen Eintrag. Ein Ende nach der regulären Frist ist nötig, innerhalb der vorhandenen Höchstspanne von 365 Tagen ab heute. Danach gilt der vorhandene Löschlauf; manuelles Löschen bleibt jederzeit möglich.",
+    "klaragedaechtnis.ausnahmeBis": "Ende der Ausnahme (UTC)",
+    "klaragedaechtnis.ausnahmeGrund": "Begründung (privat; kein Auditvolltext)",
+    "klaragedaechtnis.ausnahmeVerantwortlich":
+      "Verantwortlich: Konto {{wer}} · ausdrückliches Ende {{bis}}",
+    "klaragedaechtnis.ausnahmeFehler":
+      "Begründung und gültiges Ende fehlen. Deine Eingabe bleibt erhalten.",
+
     "klaragedaechtnis.titel": "Mein persönliches Gedächtnis",
     "klaragedaechtnis.hilfe":
       "Hier stehen die tatsächlich gespeicherten Einträge deines Kontos. Herkunft und Frist bleiben sichtbar. Persönliche Einträge sind keine geprüfte Wissensquelle.",
@@ -40,6 +51,17 @@ export default {
     "klaragedaechtnis.vollstaendig": "Vollständige Antwort anzeigen",
   },
   en: {
+    "klaragedaechtnis.ausnahmeTitel": "Temporary retention exception",
+    "klaragedaechtnis.ausnahmeAn": "Retain this entry longer with a reason",
+    "klaragedaechtnis.ausnahmeHilfe":
+      "Only for this own entry. An end after its normal expiry is required, within the existing maximum span of 365 days from today. The existing cleanup then applies; manual deletion remains available at any time.",
+    "klaragedaechtnis.ausnahmeBis": "Exception ends (UTC)",
+    "klaragedaechtnis.ausnahmeGrund": "Reason (private; no full text in audit)",
+    "klaragedaechtnis.ausnahmeVerantwortlich":
+      "Responsible: account {{wer}} · explicit end {{bis}}",
+    "klaragedaechtnis.ausnahmeFehler":
+      "A reason and valid end are required. Your input is retained.",
+
     "klaragedaechtnis.titel": "My personal memory",
     "klaragedaechtnis.hilfe":
       "These are the entries actually saved for your account. Origin and retention remain visible. Personal entries are not verified knowledge sources.",
@@ -76,6 +98,17 @@ export default {
     "klaragedaechtnis.vollstaendig": "Show full answer",
   },
   nl: {
+    "klaragedaechtnis.ausnahmeTitel": "Tijdelijke bewaartermijnuitzondering",
+    "klaragedaechtnis.ausnahmeAn": "Deze gegevens met een reden langer bewaren",
+    "klaragedaechtnis.ausnahmeHilfe":
+      "Alleen voor dit eigen gegeven. Een einde na de normale vervaldatum is vereist, binnen de bestaande maximumperiode van 365 dagen vanaf vandaag. Daarna geldt de bestaande opruiming; handmatig verwijderen blijft altijd mogelijk.",
+    "klaragedaechtnis.ausnahmeBis": "Einde van de uitzondering (UTC)",
+    "klaragedaechtnis.ausnahmeGrund": "Reden (privé; geen volledige tekst in audit)",
+    "klaragedaechtnis.ausnahmeVerantwortlich":
+      "Verantwoordelijk: account {{wer}} · uitdrukkelijk einde {{bis}}",
+    "klaragedaechtnis.ausnahmeFehler":
+      "Reden en geldig einde ontbreken. Je invoer blijft behouden.",
+
     "klaragedaechtnis.titel": "Mijn persoonlijke geheugen",
     "klaragedaechtnis.hilfe":
       "Dit zijn de werkelijk opgeslagen gegevens van je account. Herkomst en bewaartermijn blijven zichtbaar. Persoonlijke gegevens zijn geen gecontroleerde kennisbron.",

@@ -72,3 +72,30 @@ Zwecke gemeinsam eine einzige Frist zu behaupten wäre falsch. Eine neue getrenn
 Sicherheits-/Auditfrist oder befristete Aufbewahrungsausnahme wird hier nicht als geliefert
 behauptet. P10-AC01/AC03/AC08 bleiben hinsichtlich dieser zusätzlichen Betriebskonfiguration offen.
 Schon erzeugte Antworten und externe Restkopien werden nicht rückwirkend umgeschrieben.
+
+## P10-Nachfolger nach der festen Übergabe f341
+
+Die offene technische Ausnahme ist nun am selben Gedächtniseintrag angebunden: Das eigene Konto
+setzt eine private Begründung und einen ausdrücklichen UTC-Endzeitpunkt nach der regulären Frist.
+Die vorhandene technische Höchstspanne von 365 Tagen bleibt die Grenze für den neuen Endzeitpunkt.
+Die verantwortliche Kennung kommt ausschließlich aus der Sitzung, nicht aus dem Formular.
+Regulärer Ablauf und Ausnahmeende werden getrennt gespeichert und angezeigt. Lesen, Zählen,
+Ändern und derselbe bestehende Aufräumlauf berücksichtigen das wirksame Ende. Am Ende ist der
+Eintrag nicht mehr lesbar; der nächste vorhandene Sweep löscht ihn physisch und hinterlegt die
+bestehende minimale Restore-Marke. Es entsteht weder ein neuer Scheduler noch ein Ausnahmebestand.
+Manuelles Löschen bleibt auch während einer Ausnahme möglich; die Ausnahme ist keine Löschsperre.
+
+Die bestehende Auditaktion führt zusätzlich nur das Ausnahmeende, weder Begründung noch Name
+oder Inhaltsvolltext. Die private Begründung verschwindet mit der privaten Zeile; die vorhandene
+Auditkette bleibt unverändert append-only. Ein tatsächlicher isolierter PG-/Dump-/Restorelauf
+weist das Fristende und die Unterdrückung der alten Ausnahme nach. Produktionshost- und
+veröffentlichte Sicherungsbelege bleiben getrennte offene Betriebsnachweise.
+
+Die getrennten Zweck-/Frist-/Verantwortungsangaben erscheinen im vorhandenen geschützten
+Verarbeitungsverzeichnis (JSON und Markdown). Diagnose verwendet den vorhandenen Datei-/Dockerweg;
+der 14-Tage-Standard bleibt erhalten. Sicherheit und Audit bekommen getrennte Verantwortungs- und
+Begründungsangaben, übernehmen aber keine Diagnosefrist. Für ihre zusätzliche Zahlenfrist gibt es
+weiter keine festgelegte Regel der bestehenden Nachweiskette. Ein gesetztes
+`KLARWERK_SICHERHEIT_FRIST_TAGE` oder `KLARWERK_AUDIT_FRIST_TAGE` wird deshalb ausdrücklich
+abgewiesen, statt eine nicht durchgesetzte Auditlöschung zu behaupten. Diese fachliche Grenze bleibt
+offen; ihre Auflösung erfordert eine konkrete Betreiberfestlegung, keine erfundene Zahl.

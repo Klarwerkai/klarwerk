@@ -37,13 +37,18 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { PROTOKOLL_FRIST_TAGE } from "./protokoll-frist-parameter";
 import { startTrashSweepScheduler } from "./trash-sweep-scheduler";
 
 /** Die Umgebungsvariable mit dem Pfad der Datei, in die die Standardausgabe dieses Servers geht. */
 export const LOG_DATEI_ENV = "KLARWERK_LOG_DATEI";
 
 /** Peters Entscheidung 2 vom 12.10.2026: 14 Tage als PoC-Standard. */
-export const PROTOKOLL_FRIST_TAGE = 14;
+export {
+  PROTOKOLL_FRIST_TAGE,
+  PROTOKOLL_FRIST_ENV,
+  leseProtokollFristTage,
+} from "./protokoll-frist-parameter";
 
 const TAG_MS = 24 * 60 * 60 * 1000;
 
@@ -266,6 +271,7 @@ function loescheAbgelaufene(
 export function starteProtokollPflege(deps: {
   datei: string | undefined;
   intervalMs?: number;
+  fristTage?: number;
   jetzt?: () => number;
   setIntervalFn?: Parameters<typeof startTrashSweepScheduler>[0]["setIntervalFn"];
   clearIntervalFn?: Parameters<typeof startTrashSweepScheduler>[0]["clearIntervalFn"];
@@ -278,7 +284,11 @@ export function starteProtokollPflege(deps: {
   }
   const lauf = async (): Promise<number> => {
     // `exactOptionalPropertyTypes`: ein fehlender Wert wird weggelassen, nicht als `undefined` gesetzt.
-    const ergebnis = pflegeProtokolle(deps.jetzt ? { datei, jetzt: deps.jetzt() } : { datei });
+    const ergebnis = pflegeProtokolle({
+      datei,
+      fristTage: deps.fristTage ?? PROTOKOLL_FRIST_TAGE,
+      ...(deps.jetzt ? { jetzt: deps.jetzt() } : {}),
+    });
     const anzahl = ergebnis.geloescht.length + (ergebnis.rotiertNach ? 1 : 0);
     if (anzahl > 0) {
       deps.onGepflegt?.(ergebnis);

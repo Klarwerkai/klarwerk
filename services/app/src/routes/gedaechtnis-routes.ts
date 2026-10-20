@@ -9,6 +9,7 @@ import {
   type GedaechtnisEingabe,
   GedaechtnisFehler,
   type Gedaechtniseintrag,
+  wirksamBis,
 } from "../interaktionsgedaechtnis";
 
 // ================================================================================================
@@ -69,7 +70,9 @@ function sicht(e: Gedaechtniseintrag) {
     vertraulichkeit: e.vertraulichkeit,
     aufbewahrungTage: e.aufbewahrungTage,
     angelegtAm: e.angelegtAm,
-    verfallAm: e.verfallAm,
+    verfallAm: wirksamBis(e),
+    regulaerVerfallAm: e.verfallAm,
+    aufbewahrungAusnahme: e.aufbewahrungAusnahme ?? null,
   };
 }
 
@@ -136,7 +139,11 @@ export function gedaechtnisRoutes(deps: GedaechtnisRoutenDeps, guards: Guards): 
             actor: user.id,
             action: "gedaechtnis.geaendert",
             target: `gedaechtnis:${eintrag.id}`,
-            payload: { fassung: eintrag.fassung, art: eintrag.art },
+            payload: {
+              fassung: eintrag.fassung,
+              art: eintrag.art,
+              ausnahmeBis: eintrag.aufbewahrungAusnahme?.bis ?? null,
+            },
           });
           reply.code(200).send({ eintrag: sicht(eintrag) });
         } catch (e) {

@@ -291,6 +291,7 @@ import {
 } from "./assistenz-profil";
 // produkt:20261012:klara-setup-shortcuts-umsetzung: die Klara-Tastenkürzel im Assistenzprofil.
 import { TastenkuerzelDienst } from "./assistenz-tastenkuerzel";
+import { aufbewahrungsangabenAusEnv } from "./aufbewahrungsangaben";
 import { autorenNamenAus } from "./autorennamen";
 import {
   type BearbeitungsRepo,
@@ -6694,6 +6695,7 @@ export function buildApp(
             lokalesModell: zuordnung.includes("local"),
             externeSuche: services.externalSearch !== undefined,
             mailVersand: !(services.mailer instanceof ConsoleMailer),
+            aufbewahrung: aufbewahrungsangabenAusEnv(process.env),
           };
         },
         jetzt: services.datenschutzUhr,

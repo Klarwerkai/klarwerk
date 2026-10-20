@@ -1,6 +1,8 @@
 import { api } from "./client";
 
 export interface GedaechtnisEintrag {
+  aufbewahrungAusnahme?: { bis: string; begruendung: string; verantwortlich: string } | null;
+  regulaerVerfallAm?: string;
   id: string;
   fassung: number;
   art: "vorliebe" | "frage_antwort";
@@ -37,12 +39,14 @@ export const gedaechtnisApi = {
     inhalt: string,
     aufbewahrungTage: number,
     darstellung: GedaechtnisEintrag["darstellung"],
+    aufbewahrungAusnahme?: { bis: string; begruendung: string } | null,
   ) =>
     api.put<{ eintrag: GedaechtnisEintrag }>(`/me/gedaechtnis/${encodeURIComponent(e.id)}`, {
       fassung: e.fassung,
       inhalt,
       aufbewahrungTage,
       darstellung,
+      ...(aufbewahrungAusnahme !== undefined ? { aufbewahrungAusnahme } : {}),
     }),
   loeschen: (id: string) => api.del(`/me/gedaechtnis/${encodeURIComponent(id)}`),
   allesLoeschen: () => api.del("/me/gedaechtnis"),
