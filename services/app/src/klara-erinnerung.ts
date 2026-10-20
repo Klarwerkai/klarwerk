@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { KlaraAufgabeRepo } from "./klara-aufgabe";
+import type { ErinnerungQuellfreigabe, ErinnerungQuellschutz } from "./klara-erinnerung-quellen";
 import {
   type LokaleZeit,
   SOMMERZEIT_VORGABE,
@@ -208,6 +209,8 @@ export interface KlaraErinnerung {
   readonly notiz: string;
   readonly bezug: KlaraErinnerungBezug;
   readonly objektbezug: KlaraObjektbezug | null;
+  /** Serverseitige Herkunftskennungen; keine gespeicherten Rollen oder Freigaben. */
+  readonly wissensQuellen?: readonly string[];
   readonly zeitzone: string;
   readonly zeitplan: Zeitplan;
   readonly sommerzeit: SommerzeitRegel;
@@ -675,6 +678,7 @@ export interface KlaraErinnerungRepo {
   rueckstau(
     jetzt: number,
     kontoId: string | null,
+    erinnerungIds?: readonly string[],
   ): Promise<{ anzahl: number; aelteste: number | null }>;
   /** Erinnerungen, die diesem Konto BEWUSST ÜBERGEBEN wurden (es ist zuständig, nicht Eigentümer). */
   uebernommene(kontoId: string, limit: number): Promise<KlaraErinnerungEintrag[]>;
@@ -752,6 +756,7 @@ export interface KlaraErinnerungLaufRepo {
   zaehle(
     kontoId: string | null,
     jetzt: number,
+    erinnerungIds?: readonly string[],
   ): Promise<Record<KlaraErinnerungLaufStatus | "haengend", number>>;
   entferneFuerErinnerung(erinnerungId: string): Promise<void>;
   /**
@@ -793,6 +798,8 @@ export interface MeldungBedingung {
   readonly laeufe?: readonly LaufBedingung[];
   /** Nur ausdrücklich beauftragte Pflege: aktuelle zusätzliche Quellenfakten im selben INSERT. */
   readonly pflegeQuelle?: NotizSchreibbedingung;
+  /** AW04: bestehende aktuelle Quellrechte im selben Meldungs-INSERT halten. */
+  readonly quellschutz?: ErinnerungQuellfreigabe;
 }
 
 /**
@@ -878,10 +885,12 @@ export function bedingungSql(
       WHERE vorkommen_id = $${p() - 3}::text AND erinnerung_id = $${p() - 2}::text
         AND besitzer = $${p() - 1}::text AND status = ANY($${p()}::text[]) FOR SHARE)`);
   }
-  const pflege = b.pflegeQuelle?.sql?.(start + params.length);
-  if (pflege) {
-    und.push(...pflege.und);
-    params.push(...pflege.params);
+  for (const quelle of [b.quellschutz, b.pflegeQuelle]) {
+    const bedingung = quelle?.sql?.(start + params.length);
+    if (bedingung) {
+      und.push(...bedingung.und);
+      params.push(...bedingung.params);
+    }
   }
   return { und, params };
 }
@@ -1097,9 +1106,12 @@ export class InMemoryKlaraErinnerungRepo implements KlaraErinnerungRepo {
   async rueckstau(
     jetzt: number,
     kontoId: string | null,
+    erinnerungIds?: readonly string[],
   ): Promise<{ anzahl: number; aelteste: number | null }> {
     const faellig = (await this.faellige(jetzt, Number.MAX_SAFE_INTEGER)).filter(
-      (e) => kontoId === null || e.erinnerung.kontoId === kontoId,
+      (e) =>
+        (kontoId === null || e.erinnerung.kontoId === kontoId) &&
+        (erinnerungIds === undefined || erinnerungIds.includes(e.erinnerung.id)),
     );
     return { anzahl: faellig.length, aelteste: faellig[0]?.steuer.naechste ?? null };
   }
@@ -1332,11 +1344,15 @@ export class InMemoryKlaraErinnerungLaufRepo implements KlaraErinnerungLaufRepo 
   zaehle(
     kontoId: string | null,
     jetzt: number,
+    erinnerungIds?: readonly string[],
   ): Promise<Record<KlaraErinnerungLaufStatus | "haengend", number>> {
     const z = leereZaehlung();
     const jetztIso = new Date(jetzt).toISOString();
     for (const l of this.laeufe.values()) {
-      if (kontoId !== null && l.kontoId !== kontoId) {
+      if (
+        (kontoId !== null && l.kontoId !== kontoId) ||
+        (erinnerungIds !== undefined && !erinnerungIds.includes(l.erinnerungId))
+      ) {
         continue;
       }
       z[l.status] += 1;
@@ -1375,16 +1391,18 @@ export class InMemoryKlaraErinnerungMeldungRepo implements KlaraErinnerungMeldun
   private readonly meldungen = new Map<string, KlaraErinnerungMeldung>();
 
   /**
-   * `erinnerungen`: die Erinnerungsablage DESSELBEN Bestands. Zwischen Bedingung und Schreiben liegt
-   * kein `await` — im Speicher ist der Schritt damit ebenso unteilbar wie der eine PostgreSQL-Befehl.
+   * `erinnerungen`: die Erinnerungsablage DESSELBEN Bestands. Nach der Quellrechte-Nachlese folgen
+   * die bisherigen synchronen Lauf-/Fassungsbedingungen und das Schreiben ohne weiteres `await`.
+   * PostgreSQL hält die zusätzlichen Quellbedingungen im selben INSERT.
    * Ohne sie gilt jede Bedingung als erfüllt (nur für Attrappen ohne Erinnerungsablage).
    */
   constructor(private readonly erinnerungen?: AktivPruefer) {}
 
-  schreibe(
+  async schreibe(
     m: KlaraErinnerungMeldung,
     bedingung?: MeldungBedingung,
   ): Promise<MeldungSchreibergebnis> {
+    if (bedingung?.quellschutz && !(await bedingung.quellschutz.nochAktuell())) return "veraltet";
     const alt = this.meldungen.get(m.id);
     if (alt && umfasstMeldung(alt, m)) {
       return Promise.resolve("vorhanden");
@@ -1784,12 +1802,14 @@ export class PgKlaraErinnerungRepo implements KlaraErinnerungRepo {
   async rueckstau(
     jetzt: number,
     kontoId: string | null,
+    erinnerungIds?: readonly string[],
   ): Promise<{ anzahl: number; aelteste: number | null }> {
     const res = await this.pool.query<{ n: number; aelteste: Date | null }>(
       `SELECT count(*)::int AS n, min(naechste_faelligkeit) AS aelteste FROM klara_erinnerungen
         WHERE status = 'aktiv' AND naechste_faelligkeit IS NOT NULL AND naechste_faelligkeit <= $1
-          AND ($2::text IS NULL OR konto_id = $2)`,
-      [new Date(jetzt), kontoId],
+          AND ($2::text IS NULL OR konto_id = $2)
+          AND ($3::text[] IS NULL OR id = ANY($3::text[]))`,
+      [new Date(jetzt), kontoId, erinnerungIds ?? null],
     );
     const z = res.rows[0];
     return { anzahl: z?.n ?? 0, aelteste: z?.aelteste ? z.aelteste.getTime() : null };
@@ -1974,12 +1994,14 @@ export class PgKlaraErinnerungLaufRepo implements KlaraErinnerungLaufRepo {
   async zaehle(
     kontoId: string | null,
     jetzt: number,
+    erinnerungIds?: readonly string[],
   ): Promise<Record<KlaraErinnerungLaufStatus | "haengend", number>> {
     const res = await this.pool.query<{ status: KlaraErinnerungLaufStatus; n: number; h: number }>(
       `SELECT status, count(*)::int AS n,
               count(*) FILTER (WHERE status = 'laeuft' AND lease_bis < $2)::int AS h
-         FROM klara_erinnerung_laeufe WHERE ($1::text IS NULL OR konto_id = $1) GROUP BY status`,
-      [kontoId, new Date(jetzt)],
+         FROM klara_erinnerung_laeufe WHERE ($1::text IS NULL OR konto_id = $1)
+          AND ($3::text[] IS NULL OR erinnerung_id = ANY($3::text[])) GROUP BY status`,
+      [kontoId, new Date(jetzt), erinnerungIds ?? null],
     );
     const z = leereZaehlung();
     for (const r of res.rows) {
@@ -2630,6 +2652,7 @@ export type KlaraErinnerungEntscheidung = "fortfuehren" | "verwerfen" | "beenden
 
 export interface KlaraErinnerungDienstDeps {
   readonly ablage: KlaraErinnerungAblage;
+  readonly quellschutz?: ErinnerungQuellschutz;
   /** `entferne` braucht nur die Rücknahme eines Routinenberichts (EQF-07). */
   readonly notizen?: Pick<KlaraNotizRepo, "hole"> &
     Partial<Pick<KlaraNotizRepo, "entferne" | "zuVorgang">>;
@@ -2741,19 +2764,34 @@ export class KlaraErinnerungDienst {
 
   async eintrag(kontoId: string, id: string): Promise<KlaraErinnerungEintrag> {
     const e = await this.ablage.erinnerungen.hole(kontoId, id);
-    if (!e) {
+    if (!e || !(await this.lesbar(e, kontoId))) {
       throw new KlaraErinnerungFehler(404, "unbekannt", "Erinnerung nicht gefunden.");
     }
     return e;
   }
 
   async liste(kontoId: string): Promise<KlaraErinnerungEintrag[]> {
-    return this.ablage.erinnerungen.liste(kontoId, KLARA_ERINNERUNG_MAX_JE_KONTO);
+    return this.sichtbare(
+      await this.ablage.erinnerungen.liste(kontoId, KLARA_ERINNERUNG_MAX_JE_KONTO),
+      kontoId,
+    );
+  }
+
+  private async lesbar(e: KlaraErinnerungEintrag, kontoId: string): Promise<boolean> {
+    return !this.deps.quellschutz || (await this.deps.quellschutz(e.erinnerung, kontoId)) !== null;
+  }
+
+  private async sichtbare(es: KlaraErinnerungEintrag[], kontoId: string) {
+    const erlaubt = await Promise.all(es.map((e) => this.lesbar(e, kontoId)));
+    return es.filter((_, i) => erlaubt[i]);
   }
 
   /** Erinnerungen, die diesem Konto bewusst übergeben wurden — nur reduziert sichtbar (Route). */
-  uebernommene(kontoId: string): Promise<KlaraErinnerungEintrag[]> {
-    return this.ablage.erinnerungen.uebernommene(kontoId, KLARA_ERINNERUNG_MAX_JE_KONTO);
+  async uebernommene(kontoId: string): Promise<KlaraErinnerungEintrag[]> {
+    return this.sichtbare(
+      await this.ablage.erinnerungen.uebernommene(kontoId, KLARA_ERINNERUNG_MAX_JE_KONTO),
+      kontoId,
+    );
   }
 
   // ----------------------------------------------------------------------------------------------
@@ -2867,6 +2905,16 @@ export class KlaraErinnerungDienst {
       seit: new Date(this.jetzt()).toISOString(),
       von: kontoId,
     };
+    if (
+      this.deps.quellschutz &&
+      (await this.deps.quellschutz(alt.erinnerung, person.id)) === null
+    ) {
+      throw new KlaraErinnerungFehler(
+        409,
+        "empfaenger",
+        "An diese Adresse kann die Erinnerung nicht übergeben werden.",
+      );
+    }
     return { eintrag: await this.schreibe(alt, { zustaendig }, false), an: person };
   }
 
@@ -3168,6 +3216,7 @@ export class KlaraErinnerungDienst {
     intern: {
       serieVon?: { erinnerungId: string; ab: string };
       ausnahmen?: Readonly<Record<string, KlaraErinnerungAusnahme>>;
+      wissensQuellen?: readonly string[];
     } = {},
   ): Promise<{ eintrag: KlaraErinnerungEintrag; wiederholt: boolean }> {
     if (typeof eingabe.vorgang !== "string" || !VORGANG_RE.test(eingabe.vorgang)) {
@@ -3213,6 +3262,7 @@ export class KlaraErinnerungDienst {
     }
     const vorher = await this.ablage.erinnerungen.zuVorgang(kontoId, vorgang);
     if (vorher) {
+      await this.eintrag(kontoId, vorher.erinnerung.id);
       if (vorher.erinnerung.fassung === 1 && vorher.erinnerung.titel !== titel) {
         throw new KlaraErinnerungFehler(
           409,
@@ -3231,7 +3281,7 @@ export class KlaraErinnerungDienst {
     }
     const jetzt = this.jetzt();
     const jetztIso = new Date(jetzt).toISOString();
-    const e: KlaraErinnerung = {
+    let e: KlaraErinnerung = {
       id: this.neueId(),
       kontoId,
       vorgang,
@@ -3255,7 +3305,13 @@ export class KlaraErinnerungDienst {
       angelegtAm: jetztIso,
       geaendertAm: jetztIso,
       fassung: 1,
+      ...(intern.wissensQuellen ? { wissensQuellen: intern.wissensQuellen } : {}),
     };
+    if (this.deps.quellschutz) {
+      const frei = await this.deps.quellschutz(e, kontoId);
+      if (!frei) throw new KlaraErinnerungFehler(404, "quelle_unbekannt", "Quelle nicht gefunden.");
+      if (frei.koIds.length > 0) e = { ...e, wissensQuellen: frei.koIds };
+    }
     this.pruefeZukunft(e, jetzt);
     const steuer = steuerNach(e, jetzt);
     if (await this.ablage.erinnerungen.lege(e, steuer)) {
@@ -3269,7 +3325,7 @@ export class KlaraErinnerungDienst {
         "Die Erinnerung konnte nicht angelegt werden.",
       );
     }
-    return { eintrag: parallel, wiederholt: true };
+    return { eintrag: await this.eintrag(kontoId, parallel.erinnerung.id), wiederholt: true };
   }
 
   private fassungAus(wert: unknown): number {
@@ -3620,6 +3676,7 @@ export class KlaraErinnerungDienst {
       },
       {
         serieVon: { erinnerungId: e.id, ab: schluessel },
+        ...(e.wissensQuellen ? { wissensQuellen: e.wissensQuellen } : {}),
         // Nacharbeit 13 (AW18-K09): Absagen, Erledigungen und Verschiebungen der folgenden Termine
         // gehen mit — im SELBEN Schreibvorgang, also auch nach Absturz und Wiederanlauf erhalten.
         ausnahmen: folgeAusnahmen(e, schluessel, zeitplanAus(neuerPlan)),
@@ -3786,8 +3843,17 @@ export class KlaraErinnerungDienst {
   }
 
   /** Die eigenen Meldungen für die Glocke (nur dieses Konto). */
-  meldungenFuer(kontoId: string): Promise<KlaraErinnerungMeldung[]> {
-    return this.ablage.meldungen.fuerKonto(kontoId, 100);
+  async meldungenFuer(kontoId: string): Promise<KlaraErinnerungMeldung[]> {
+    const ms = await this.ablage.meldungen.fuerKonto(kontoId, 100);
+    const quellschutz = this.deps.quellschutz;
+    if (!quellschutz) return ms;
+    const erlaubt = await Promise.all(
+      ms.map(async (m) => {
+        const e = await this.ablage.erinnerungen.holeSystem(m.erinnerungId);
+        return e && (await quellschutz(e.erinnerung, kontoId, m)) !== null;
+      }),
+    );
+    return ms.filter((_, i) => erlaubt[i]);
   }
 
   /** AW18-K11: fällige, verpasste, gescheiterte und unklare Läufe dieses Kontos, mit Rückstau. */
@@ -3796,9 +3862,12 @@ export class KlaraErinnerungDienst {
     laeufe: Record<KlaraErinnerungLaufStatus | "haengend", number>;
   }> {
     const jetzt = this.jetzt();
+    const sichtbar = this.deps.quellschutz
+      ? (await this.liste(kontoId)).map((e) => e.erinnerung.id)
+      : undefined;
     const [r, z] = await Promise.all([
-      this.ablage.erinnerungen.rueckstau(jetzt, kontoId),
-      this.ablage.laeufe.zaehle(kontoId, jetzt),
+      this.ablage.erinnerungen.rueckstau(jetzt, kontoId, sichtbar),
+      this.ablage.laeufe.zaehle(kontoId, jetzt, sichtbar),
     ]);
     return {
       rueckstau: {
@@ -3834,6 +3903,7 @@ export type KontoLage =
 
 export interface KlaraErinnerungSteuerungDeps {
   readonly ablage: KlaraErinnerungAblage;
+  readonly quellschutz?: ErinnerungQuellschutz;
   readonly konto: (kontoId: string) => Promise<KontoLage>;
   /** `liste` liest der Routinenabschnitt „neue Notizen“ (EQF-07). */
   readonly notizen?: Pick<KlaraNotizRepo, "hole"> & Partial<Pick<KlaraNotizRepo, "liste">>;
@@ -4470,6 +4540,20 @@ export class KlaraErinnerungSteuerung {
       await this.schliesseAlle(gueltig, "gestoppt", "konto_gesperrt", extra);
       z.gestoppt += gueltig.length;
       return true;
+    }
+    if (this.deps.quellschutz) {
+      try {
+        if ((await this.deps.quellschutz(e, empfaenger)) === null) {
+          await this.schliesseAlle(gueltig, "gestoppt", "quelle_unlesbar", extra);
+          z.gestoppt += gueltig.length;
+          return true;
+        }
+      } catch {
+        // Ein ausgefallener Leser ist kein positiver Entzugsbeleg und erlaubt keine Wirkung.
+        await this.schliesseAlle(gueltig, "fehlgeschlagen", "quelle_unlesbar", extra);
+        z.fehlgeschlagen += gueltig.length;
+        return true;
+      }
     }
     if (e.bezug.art === "frei" || e.quelleFehltAkzeptiert) {
       return false;
@@ -5693,6 +5777,12 @@ export class KlaraErinnerungSteuerung {
                 ? "teilweise"
                 : "zugestellt";
       const zugestelltAm = new Date(this.jetzt()).toISOString();
+      const quellschutz = await this.deps.quellschutz?.(e, empfaenger);
+      if (quellschutz === null) {
+        await this.schliesseAlle(gueltig, "gestoppt", "quelle_unlesbar", mitRoutine());
+        z.gestoppt += gueltig.length;
+        return;
+      }
       const meldung: KlaraErinnerungMeldung = {
         id: routineStand?.wissenspflege?.aenderung
           ? `ke-${pflegeVorgang(e.id, routineStand.routineFassung, kopf.lauf.vorkommenId, routineStand.wissenspflege)}`
@@ -5717,6 +5807,7 @@ export class KlaraErinnerungSteuerung {
           empfaenger: { kontoId: empfaenger, jetzt: this.jetzt() },
           quelle: quelleFuerBedingung(e),
           laeufe: this.laufBedingungen(gueltig.map((x) => x.lauf)),
+          ...(quellschutz ? { quellschutz } : {}),
           ...(zusammenfassung?.quelleStand ? { quellenStand: [zusammenfassung.quelleStand] } : {}),
         };
         ergebnisSchreiben = routineStand?.wissenspflege

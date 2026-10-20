@@ -11,6 +11,7 @@ import type { SessionUser } from "./http";
 import {
   type KlaraErinnerungAblage,
   type KlaraErinnerungDienst,
+  KlaraErinnerungFehler,
   type KlaraErinnerungLauf,
   findeVorkommen,
 } from "./klara-erinnerung";
@@ -176,9 +177,16 @@ function laufSicht(l: KlaraErinnerungLauf): {
  */
 export function erinnerungsAusfuehrung(
   ablage: KlaraErinnerungAblage,
-  dienst: Pick<KlaraErinnerungDienst, "status" | "vorkommen" | "laufAbbrechen">,
+  dienst: Pick<KlaraErinnerungDienst, "eintrag" | "status" | "vorkommen" | "laufAbbrechen">,
 ): AusfuehrungsNachweis {
-  const erinnerung = (user: SessionUser, id: string) => ablage.erinnerungen.hole(user.id, id);
+  const erinnerung = async (user: SessionUser, id: string) => {
+    try {
+      return await dienst.eintrag(user.id, id);
+    } catch (fehler) {
+      if (fehler instanceof KlaraErinnerungFehler && fehler.status === 404) return null;
+      throw fehler;
+    }
+  };
   const schluesselVon = (taskId: string, runId: string): string | null =>
     runId.startsWith(`${taskId}@`) ? runId.slice(taskId.length + 1) : null;
   return {
