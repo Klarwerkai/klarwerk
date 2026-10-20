@@ -629,7 +629,7 @@ import {
   persoenlicheFunktionenRoutes,
   quellenLeser,
 } from "./routes/persoenliche-funktionen-routes";
-import { praesentationDatenRoutes } from "./routes/praesentation-daten-routes";
+import { datenUmgebung, praesentationDatenRoutes } from "./routes/praesentation-daten-routes";
 import { produktbudgetRoutes } from "./routes/produktbudget-routes";
 import { programmadapterRoutes } from "./routes/programmadapter-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
@@ -6648,7 +6648,20 @@ export function buildApp(
         ],
       })),
   };
-  app.register(objectRoutes(services.objects, guards, anhangQuellen));
+  app.register(
+    objectRoutes(services.objects, guards, anhangQuellen, {
+      datenUmgebung: (user) =>
+        datenUmgebung(
+          {
+            ko: services.ko,
+            objekte: services.objects,
+            ablage: services.datenpunkte,
+            konten: () => services.auth.listUsers(),
+          },
+          user,
+        ),
+    }),
+  );
   app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
   // BPA-16: Gesprächsaussagen mit Folien verbinden. Präsentationen und Mitschriften kommen aus
   // DEMSELBEN Objektspeicher und werden mit DENSELBEN Herkünften beurteilt wie `/api/objects/:id`.
