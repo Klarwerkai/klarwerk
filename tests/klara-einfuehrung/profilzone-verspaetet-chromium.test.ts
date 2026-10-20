@@ -76,6 +76,9 @@ it("E16 · verspätetes Tokyo-Profil deutet einen offenen ausgefüllten Berliner
       beginn: "2026-10-26T08:00:00.000Z",
       ende: "2026-10-26T09:00:00.000Z",
     });
+    await page.getByTestId("kalender-formular").waitFor({ state: "hidden" });
+    await page.getByTestId("kalender-neu").click();
+    expect(await page.getByTestId("kalender-form-zone").textContent()).toContain("Asia/Tokyo");
   } finally {
     freigeben();
     await browser.close();
