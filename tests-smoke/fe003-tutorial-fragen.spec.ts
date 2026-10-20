@@ -12,7 +12,7 @@
 //   · Netz: nach dem Öffnen geht KEINE veraendernde Anfrage (POST/PUT/PATCH/DELETE) hinaus — weder
 //     beim Durchlaufen noch in der Übung noch beim Übergang „Eigene Frage stellen“; eine vorher
 //     eingegebene echte Frage bleibt stehen.
-//   · Andere Seiten tragen keinen Knopf.
+//   · Weitere beauftragte Seiten haben inzwischen eigene Tutorialeinstiege (Klara19).
 //
 // Im hermetischen Tor (`smoke:ui:gate`) ist KEIN Modell aktiv — genau der KI-aus-Fall, für den das
 // Tutorial gebaut ist. Die angehängten Bilder sind technische Prüfbelege der gerenderten Oberfläche,
