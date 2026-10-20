@@ -13,6 +13,12 @@ import { starteHintergrundpruefung } from "./hintergrundpruefung-start";
 import { bindeInstanzVorMigration } from "./instanzbindung";
 import { GedaechtnisDienst } from "./interaktionsgedaechtnis";
 import { resolveKlaraAufraeumIntervalMs, starteKlaraAufraeumen } from "./klara-aufraeumen";
+import type { KlaraErinnerungLaufbericht } from "./klara-erinnerung";
+import {
+  KLARA_ERINNERUNG_TAKT_ENV,
+  resolveKlaraErinnerungTaktMs,
+  starteKlaraErinnerungen,
+} from "./klara-erinnerung-start";
 import { registerNoindexHook } from "./noindex-hook";
 import { LOG_DATEI_ENV, PROTOKOLL_FRIST_TAGE, starteProtokollPflege } from "./protokoll-frist";
 import {
@@ -190,7 +196,15 @@ async function start(): Promise<void> {
   // Prüfprotokolls, dann Löschen) — gestartet unten, nach `app.listen`, neben dem Papierkorb-Sweep.
   let klaraAufraeumLauf: (() => Promise<number>) | undefined;
   let hintergrundLauf: (() => Promise<HintergrundlaufBericht | null>) | undefined;
+  // produkt:20261007:klara-erinnerungen-kalender (Klara 10): die Erinnerungssteuerung DIESER
+  // Instanz — gestartet unten nach `app.listen`, neben den übrigen Fristläufen.
+  let erinnerungLauf: (() => Promise<KlaraErinnerungLaufbericht>) | undefined;
+  const erinnerungTakt = resolveKlaraErinnerungTaktMs(process.env[KLARA_ERINNERUNG_TAKT_ENV]);
   const app = buildApp(services, {
+    klaraErinnerungen: (lauf) => {
+      erinnerungLauf = lauf;
+      return erinnerungTakt;
+    },
     factoryReset,
     klaraAufraeumen: (lauf) => {
       klaraAufraeumLauf = lauf;
@@ -415,6 +429,18 @@ async function start(): Promise<void> {
       `Wiederanlauf ${wiederanlauf.kennung}: Außenaktionen gestoppt (${GESTOPPTE_AUSSENAKTIONEN.map((a) => a.id).join(", ")}). Nach der Freigabe ohne ${WIEDERANLAUF_ENV} neu starten.`,
     );
     return;
+  }
+  // produkt:20261007:klara-erinnerungen-kalender (Klara 10): persönliche Erinnerungen zustellen —
+  // erst nach der bestehenden Wiederanlaufsperre: der Takt kann auch Quellen lesen, Modelle
+  // aufrufen und Routinenberichte erstellen. Vor Nachführung/Freigabe wird weder der Startlauf
+  // ausgeführt noch ein späterer Takt eingerichtet. Danach gelten Readback und Nachholregel.
+  if (erinnerungLauf) {
+    starteKlaraErinnerungen({
+      lauf: erinnerungLauf,
+      intervalMs: erinnerungTakt,
+      log: { info: (t) => app.log.info(t), warn: (felder, t) => app.log.warn(felder, t) },
+    });
+    app.log.info(`Erinnerungssteuerung aktiv — Takt ${Math.round(erinnerungTakt / 1000)} s.`);
   }
   // produkt:20261011:assistenz-skills-werkzeuge: wartende und durch einen Neustart unterbrochene
   // Fähigkeitsaufträge aus dem Assistenzprofil wieder aufnehmen — unter derselben Auftragskennung,

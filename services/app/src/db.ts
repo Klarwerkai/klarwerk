@@ -60,6 +60,8 @@ import { BRANDING_SETTINGS_SCHEMA } from "./branding-settings";
 import { CHAT_SCHEMA } from "./chat";
 // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports (umlegbar über die Oberfläche).
 import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter";
+// produkt:20261010:klara-eigener-kalender (AW-16): interne Kalendereinträge und Sichtwahl je Konto.
+import { EIGENER_KALENDER_SCHEMA } from "./eigener-kalender";
 // Firmenwörterbuch: die Fassungen des Begriffskatalogs. Im App-Wurzelverzeichnis wie die
 // Markenwahl: Editor und Word-Panel lesen ihn, kein Fachmodul besitzt ihn.
 import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
@@ -73,8 +75,11 @@ import { GEDAECHTNIS_SCHEMA } from "./interaktionsgedaechtnis";
 import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // produkt:20261008:klara-aufgaben: die persönlichen Aufgaben (eine Zeile je Aufgabe und Konto).
 import { KLARA_AUFGABE_SCHEMA } from "./klara-aufgabe";
+// produkt:20261007:klara-erinnerungen-kalender: Erinnerungen, ihre Läufe und zugestellten Meldungen.
+import { KLARA_ERINNERUNG_SCHEMA } from "./klara-erinnerung";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (eine Zeile je Gespräch und Konto).
 import { KLARA_GESPRAECH_SCHEMA } from "./klara-gespraech";
+import { KLARA_KALENDER_SCHEMA } from "./klara-kalender-anbindung";
 import { KLARA_NOTIZ_SCHEMA } from "./klara-notiz";
 // ADMIN-12: Fassungen der Kommunikationsregeln, persönliche Abwahlen und Zustellstatus.
 import { KOMMUNIKATION_SCHEMA } from "./kommunikationsregeln";
@@ -402,10 +407,18 @@ export const schemas = [
   // wiederholbar (CREATE TABLE/UNIQUE INDEX/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne
   // Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   KLARA_AUFGABE_SCHEMA,
+  // produkt:20261008:klara-kalender (Klara 11): Kalenderanbindungen und Zuordnungen je Konto. Additiv
+  // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne
+  // Seed; am Ende, weil das die lesbare Ordnung ist.
+  KLARA_KALENDER_SCHEMA,
   // R-0679 / FR-VAL-07: die Geräteabos für Push. Additiv und wiederholbar (CREATE TABLE/INDEX IF
   // NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
   // Ordnung ist.
   PUSH_ABO_SCHEMA,
+  // produkt:20261007:klara-erinnerungen-kalender (Klara 10): Erinnerungen, Läufe je Vorkommen und
+  // zugestellte Meldungen je Konto. Additiv und wiederholbar (CREATE TABLE/UNIQUE INDEX/INDEX IF NOT
+  // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  KLARA_ERINNERUNG_SCHEMA,
   // produkt:20261013:produktbudget-anwender-admin: Einstellungen, Buchungen und Provenienz der
   // Produktbudgets. Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel,
   // ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
@@ -414,6 +427,10 @@ export const schemas = [
   // Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne
   // Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   PRAESENTATION_DATEN_SCHEMA,
+  // produkt:20261010:klara-eigener-kalender (AW-16): die internen Kalendereinträge und die Sichtwahl
+  // je Konto. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne
+  // Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  EIGENER_KALENDER_SCHEMA,
 ];
 
 // ================================================================================================

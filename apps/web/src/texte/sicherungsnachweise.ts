@@ -204,6 +204,9 @@ export default {
     "sicherungsnachweise.bereiche.aufgaben.titel": "Persönliche Aufgabenlisten",
     "sicherungsnachweise.bereiche.aufgaben.text":
       "Persönliche Aufgaben je Konto mit Priorität, Status und Bezug zur Notiz bzw. zum Klara-Auftrag. Nur das Konto selbst sieht sie — auch nach einer Wiederherstellung.",
+    "sicherungsnachweise.bereiche.erinnerungen.titel": "Persönliche Erinnerungen",
+    "sicherungsnachweise.bereiche.erinnerungen.text":
+      "Erinnerungen je Konto mit Zeitplan, Zeitzone und Regeln, dazu jeder Lauf und jede zugestellte Meldung. Nach einer Wiederherstellung verhindern die festen Meldungskennungen eine zweite Zustellung.",
     "sicherungsnachweise.bereiche.endgeraet.titel": "Speicher im Browser",
     "sicherungsnachweise.bereiche.endgeraet.text":
       "Grund: Sitzungscookie und lokale Einstellungen liegen im Gerät der Person, nicht auf dem Server. Folge: Nach einer Wiederherstellung meldet man sich neu an; Geräteeinstellungen bleiben, wie sie im Browser waren.",
@@ -382,6 +385,9 @@ export default {
     "sicherungsnachweise.bereiche.aufgaben.titel": "Personal task lists",
     "sicherungsnachweise.bereiche.aufgaben.text":
       "Personal tasks per account with priority, status and link to the note or Klara instruction. Only the account itself sees them — also after a restore.",
+    "sicherungsnachweise.bereiche.erinnerungen.titel": "Personal reminders",
+    "sicherungsnachweise.bereiche.erinnerungen.text":
+      "Reminders per account with schedule, time zone and rules, plus every run and every delivered notification. After a restore, the fixed notification IDs prevent a second delivery.",
     "sicherungsnachweise.bereiche.endgeraet.titel": "Browser storage",
     "sicherungsnachweise.bereiche.endgeraet.text":
       "Reason: the session cookie and local settings are kept on the person's device, not on the server. Consequence: after a restore you sign in again; device settings stay as they were in the browser.",
@@ -562,6 +568,9 @@ export default {
     "sicherungsnachweise.bereiche.aufgaben.titel": "Persoonlijke takenlijsten",
     "sicherungsnachweise.bereiche.aufgaben.text":
       "Persoonlijke taken per account met prioriteit, status en verwijzing naar de notitie of de Klara-opdracht. Alleen het account zelf ziet ze — ook na een herstel.",
+    "sicherungsnachweise.bereiche.erinnerungen.titel": "Persoonlijke herinneringen",
+    "sicherungsnachweise.bereiche.erinnerungen.text":
+      "Herinneringen per account met planning, tijdzone en regels, plus elke uitvoering en elke afgeleverde melding. Na een herstel voorkomen de vaste meldingskenmerken een tweede aflevering.",
     "sicherungsnachweise.bereiche.endgeraet.titel": "Opslag in de browser",
     "sicherungsnachweise.bereiche.endgeraet.text":
       "Reden: de sessiecookie en lokale instellingen staan op het apparaat van de persoon, niet op de server. Gevolg: na een herstel meldt men zich opnieuw aan; apparaatinstellingen blijven zoals ze in de browser waren.",

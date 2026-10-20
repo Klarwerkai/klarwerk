@@ -8,8 +8,13 @@ import { validationMineHref } from "./validationFilters";
 // SCRUM-364 / AG-15 follow-up: Review-Zuweisung → fokussierte „Mir zugewiesen"-Linse der Validierung
 // (`/validierung?mine=1`), nicht mehr nur die allgemeine Liste — direkt in die persönliche Review-Arbeit.
 export function notificationTarget(
-  n: Pick<Notification, "kind" | "koId"> & Partial<Pick<Notification, "gapId">>,
+  n: Pick<Notification, "kind" | "koId"> & Partial<Pick<Notification, "gapId" | "erinnerungId">>,
 ): string | null {
+  // produkt:20261007:klara-erinnerungen-kalender: die eigene Erinnerung unter „Meine Aufgaben" —
+  // dort stehen Termin, Zeitzone, Lauf und die Bedienung (erledigen, pausieren, …).
+  if (n.kind === "erinnerung") {
+    return n.erinnerungId ? `/aufgaben?erinnerung=${encodeURIComponent(n.erinnerungId)}` : null;
+  }
   // produkt:20261010:wissenskreislauf-schliessen: jede Lückenmeldung führt in DEN Vorgang dieser
   // Lücke (`/luecke/:id`, für alle Beteiligten erreichbar — „Risiko & Lücken" erst ab Controller).
   // Dort stehen Ergebnis, Rückfrage und der nächste Schritt, frisch gegen die heutigen Rechte.

@@ -178,6 +178,40 @@ Grenzen: Keine Fälligkeit oder Erinnerung (Klara 10/11), keine Weitergabe an an
 Priorisieren und Erledigen per gesprochenem Satz sind nicht Teil dieses Schritts — „Erledige die
 Aufgabe …“ meint weiterhin die gemeinsame Aufgabe (Klara 05).
 
+## Erinnerungen verwalten und zustellen (Klara 10 · AW-18, `produkt:20261007:klara-erinnerungen-kalender`)
+
+Nur im echten Betrieb und nur für die angemeldete Person. Zeitregeln
+`services/app/src/klara-erinnerung-zeit.ts`; Ablagen, Dienst und Steuerung
+`services/app/src/klara-erinnerung.ts` (Tabellen `klara_erinnerungen`, `klara_erinnerung_laeufe`,
+`klara_erinnerung_meldungen`, `klara_erinnerung_einstellungen`); Türen `/api/me/klara/erinnerungen` in
+`routes/klara-erinnerung-routes.ts`; Takt `klara-erinnerung-start.ts` (in `server.ts`). Oberfläche
+„Meine Erinnerungen“ in Klaras Fläche und auf „Meine Aufgaben“ (`klara-vorschau/KlaraErinnerungen.tsx`,
+Abläufe `erinnerungen.ts`, Texte `texte/klaraerinnerung.ts`).
+
+| Fähigkeit | Wie es tatsächlich geht |
+| --- | --- |
+| Anlegen | „Erinnern“ an einer gespeicherten Gesprächsnachricht, einer Notiz oder einer persönlichen Aufgabe — oder „Neue Erinnerung“. Der Server liest den Bezug aus der EIGENEN Ablage. Gespeichert wird nur ein eindeutiger Zeitplan: einmalig (Datum, Uhrzeit), wiederkehrend (täglich/wöchentlich/monatlich, Intervall, Ende nach Datum oder Anzahl, sonst höchstens 2000 Termine) oder vor einer Frist (ganztägiges Datum, n Tage vorher, Uhrzeit). Ein Vorgangsschlüssel je Entwurf: „Erneut speichern“ legt nichts doppelt an. |
+| Zeit klären | Freitext („Morgen um neun“, „übermorgen um 21 Uhr“, „Montag um 08:15“, „am 30.10. um 14:30“; deutsche Formulierungen) deutet der Server relativ zur gewählten IANA-Zeitzone. Mehrdeutiges (morgens/abends, „morgen“ kurz nach Mitternacht), Fehlendes und Vergangenes führt zur Klärung mit Wahl — nie zu einer gespeicherten Erinnerung. „Abbrechen“/Schließen speichert nichts. |
+| Anzeige | Vor dem Speichern und an jeder Erinnerung: nächste Ausführung mit Wochentag, Datum und lokaler Uhrzeit, IANA-Zone mit Versatz (`UTC+02:00`), weitere Termine, Serienende, Frist als Datum, Ziel (Meldung in der eigenen Glocke) und erwartetes Ergebnis. |
+| Sommerzeit | Regel an der Erinnerung, sichtbar: fehlende Uhrzeit (29.03.) „um die fehlende Stunde später“ oder „auslassen“; doppelte Uhrzeit (25.10.) „beim ersten“ oder „beim zweiten Mal“. Je Termin höchstens EIN Zeitpunkt. |
+| Zustellung | Die Steuerung läuft im Serverprozess (Start + Takt, Vorgabe 60 s, `KLARWERK_KLARA_ERINNERUNG_TAKT_MS`), unabhängig von Gespräch und Sitzung. Je Termin übernimmt sie den Lauf atomar (Datenbankbefehl, befristete Laufberechtigung 2 min) und legt die Meldung mit fester Kennung an; die Glocke (`GET /api/notifications`, Art `erinnerung`) zeigt sie nur dem eigenen Konto. Zweite Übernahme liest zuerst zurück (Readback) — keine Doppelmeldung; nicht feststellbar → „wartet auf Klärung“. |
+| Verpasst und Neustart | Bis zur Grenzzeit (Vorgabe 30 min) gilt eine Zustellung als pünktlich. Danach je Erinnerung: nachholen, nur melden, zusammenfassen oder überspringen — in jedem Fall mit einer Meldung, ohne doppelte Aktion. |
+| Rechte | Unmittelbar vor JEDER Wirkung — auch zwischen zwei Zustellungen desselben Takts, in Sammel- und Übersprungen-Meldungen und in der Wiederaufnahme — werden neu gelesen: Status der Erinnerung, Ausnahme des einzelnen Termins, Konto der Empfängerin heute (vorhanden, freigegeben, Zugang nicht abgelaufen) und die eigene Quelle. Geschrieben wird die Meldung nur, wenn die Erinnerung in genau der geprüften Fassung noch aktiv ist (ein Datenbankbefehl, `INSERT … WHERE EXISTS … FOR SHARE`); kam eine Änderung dazwischen, wird neu entschieden. Pausiert/abgesagt/erledigt → Lauf „abgebrochen“, Konto gesperrt → „gestoppt“, Termin in die Zukunft verlegt → Lauf freigegeben. Nichts wird nachgereicht. Fehlt die eigene Quelle (gelöscht), wartet NUR dieser Lauf auf „Fortführen“, „Diesen Termin verwerfen“ oder „Erinnerung beenden“. |
+| Bewusste Übergabe | Eine reine Erinnerung („Nur erinnern“) lässt sich per E-Mail-Adresse an eine HEUTE aktive Person übergeben (`POST …/:id/uebergabe`, `an: null` nimmt zurück); die Zuständige bekommt die Meldungen und sieht unter „Mir übergeben“ nur Titel, Termine und Lage — nie Notiz, Bezug, Quelle oder Laufergebnisse — und kann zurückgeben (`…/uebergabe/zurueckgeben`). Vor jeder Zustellung gilt ihr Zugang von heute; verliert sie ihn, stoppt die Wirkung (kein stilles Umleiten, kein altes Recht). Prüf- und Zusammenfassungsaufträge lesen persönliche Quellen und sind nicht übergebbar. Unbekannte, nicht aktive und eigene Adresse antworten gleich (409 `empfaenger`). |
+| Bestellte Zusammenfassung | Aktion „Inhalt zusammenfassen“ an einer Notiz, Aufgabe oder Gesprächsnachricht: zum Termin fasst der vorhandene KI-Weg (`ReasonerService.assistText`, vertraulich — die zentrale KI-Freigabe entscheidet, ob ein externer Anbieter gefragt wird) den Text der EIGENEN Quelle zusammen. Das Ergebnis steht dauerhaft an Meldung (Glocke) und Lauf, mit Kennzeichnung Modell oder gekennzeichneter Ersatz; ein Neustart fragt nicht erneut. Fällt die KI aus, kommt die Erinnerung trotzdem — Lauf „teilweise“. |
+| Persönliche Routinen (EQF-07) | Bei „Neue Erinnerung“ ohne Bezug die Aktion „Routine: Bericht in ‚Meine Notizen‘ anlegen“ wählen und Abschnitte festlegen (offene Aufgaben, erledigte Aufgaben der 7 Tage vor dem Termin, neue/geänderte Notizen; per API zusätzlich feste eigene Notizen). Die Definition ist versioniert (Funktionsfassung) und getrennt von Zeitplan, Lauf und Ergebnis gespeichert. Zeit, Serie, Sommerzeit, Nachholregel, Pause und Läufe sind die der Erinnerung — dieselbe Steuerung, keine zweite. Einrichtung führt nichts aus. Zum Termin liest die Steuerung die eigenen Quellen JETZT, prüft Konto und Quellen erneut und legt EINEN Bericht in „Meine Notizen“ an (fester Vorgangsschlüssel je Termin, Readback bei zweitem Ausführer/verlorener Antwort; Readback unmöglich → „wartet auf Klärung“). Lauf und Meldung tragen Ergebnis-ID, Notiz-, Funktions- und Quellenfassungen, Zeitpunkt und offenen Rest. Teilfehler → „teilweise“ mit offenem Rest, nichts lesbar → fehlgeschlagen ohne Bericht und Wiederaufnahme. Einzige Wirkung: Bericht anlegen — Versand/Export wird abgelehnt (400 `wirkung_nicht_beauftragt`). Änderung in Worten (`POST …/:id/routine`: „künftig montags“, „nimm die erledigten Aufgaben dazu“, „pausieren“, „beenden“, „fortsetzen“) wird erst gedeutet, dann übernommen; Unklares ändert nichts. „Beenden“ nimmt nichts zurück; „Bericht zurücknehmen“ (`…/laeufe/:lauf/ergebnis-zuruecknehmen`) entfernt nur einen unveränderten Bericht (bearbeitet → 409 `fremd_geaendert`). Nicht übergebbar. Der Bericht entsteht nur, wenn beim Speichern Routine, Konto und jede gelesene Quelle (in ihrer Fassung) noch gelten; sonst liest Klara neu. Ein Teilbericht mit unlesbarem Rest wird nach Verfügbarkeit oder Neustart im SELBEN Bericht vervollständigt („Offenen Rest fortsetzen“ bzw. „Rest nicht mehr nachholen“); ein von der Person bearbeiteter Bericht bleibt unangetastet. Kam eine Routine zu keinem Ergebnis, sagt die Glocke es einmal je Termin mit Grund („Routine ohne Ergebnis – bitte ansehen“). |
+| Einrichtungsassistent (P07) | Zauberhut „Einrichten“ in „Meine Erinnerungen“: freiwillig und jederzeit erneut aufrufbar („Einstellungen ändern“). Schritt 1 Zeitzone (Gerät als Vorschlag, Liste wählbar), Schritt 2 Sommerzeit- und Verpasst-Regel. „Übernehmen“ speichert die Vorgaben je Person (`GET/PUT …/einstellungen`, Tabelle `klara_erinnerung_einstellungen`, mit Fassung); sie gelten für NEUE Erinnerungen, bestehende bleiben unverändert. Schließen speichert nichts. Assistent und Kalenderfelder folgen der Leserichtung der Sprache (`dir`, logische Abstände) — DE/EN/NL heute, RTL-Sprachen später ohne Umbau. |
+| Bedienung | Ganze Erinnerung: ändern, erledigen, pausieren/fortsetzen, absagen, zurücknehmen, jetzt beenden (bricht offene Läufe ab), löschen (samt Läufen und Meldungen). Einzelner Termin: absagen, verschieben. „Diesen und alle folgenden“: die Serie endet davor, eine neue beginnt. Vergangenes, Pausiertes und Abgesagtes wird nie wiederbelebt. Jede Änderung trägt die gesehene Fassung (409 bei Konflikt). |
+| Lage und Überwachung | Geplant, fällig, läuft, wartet auf Klärung, teilweise erledigt, abgeschlossen, fehlgeschlagen, gestoppt — aus Steuerstand und Läufen, nie aus der Uhr allein. `GET …/ueberwachung`: Rückstau (Anzahl, älteste Fälligkeit), Läufe je Status, Takt und letzter Lauf der Steuerung. |
+
+Grenzen: Kalenderintegration (eigene folgende Lieferung — darum gibt es in diesem Schritt keinen
+Kalenderprovider, keine Projektion in einen Testkalender und keine externe Löschung eines
+Kalendertermins; Termin-/Serienänderung und Sommerzeit gelten für die eigene Erinnerungssteuerung),
+Zustellung per E-Mail/Push, Übergabe von Prüf- und Zusammenfassungsaufträgen und Erinnerungen per
+gesprochenem Auftrag über den Klara-05-Aktionsweg sind nicht Teil dieses Schritts. Der
+Einrichtungsassistent ist in DE/EN/NL übersetzt; RTL-Sprachen folgen später. Die Deutung von
+Freitext versteht deutsche Formulierungen.
+
 ## Verlauf, Nachweis und Rücknahme je Aktion (PV-02, `produkt:20261010:assistenz-aktionen-verlauf-ruecknahme`)
 
 Baut nichts von Klara 05 oder ADMIN-03 neu. Es verbindet Gespräch, Aktionskennung, Prüfprotokoll
@@ -275,6 +309,11 @@ Person selbst sieht ihre Einträge im Nachweis.
   Aktionsweg (`aufgabe-am-server.test.ts`), Erkennung (`erkennung-aufgabe.test.ts`), PostgreSQL mit
   Neustart und gleichzeitigen Versuchen (`aufgabe-pg.integration.test.ts`), die echte Klara und
   „Meine Aufgaben“ gegen den echten Server (`aufgaben-am-server.test.tsx`)
+- `tests/klara-erinnerungen/` — Klara 10: Zeitregeln samt Sommerzeit S09 (`zeit.test.ts`),
+  Steuerung mit Mehrprozess, Neustart, Verpasst-Regeln, Readback, Rechten und Serienbedienung
+  (`steuerung.test.ts`), Türen und Glocke am echten Server (`erinnerung-am-server.test.ts`),
+  PostgreSQL mit mehreren Pools (`erinnerung-pg.integration.test.ts`) und „Meine Aufgaben“ gegen den
+  echten Server (`erinnerungen-am-server.test.tsx`)
 - `tests/klara-aktionen/` — Klara 05: Erkennung (`erkennung.test.ts`), Auftragsgrenze am Server
   (`auftragsgrenze-am-server.test.ts`), Aufgabenaktionen, ausbleibendes Nachlesen und unteilbares
   Löschen (`aufgabenaktion-und-nachlesen.test.ts`) und der ganze Weg getippt/gesprochen → Grenze → Ausführung →

@@ -59,6 +59,10 @@ export const GESTOPPTE_AUSSENAKTIONEN = [
   },
   { id: "hintergrundpruefung", name: "Hintergrundprüfung (Modellvergleiche)" },
   { id: "lueckenerkennung", name: "Lückenerkennung über den Reasoner" },
+  {
+    id: "klara-erinnerungen",
+    name: "Persönliche Erinnerungen, Zusammenfassungen und Routineberichte",
+  },
 ] as const;
 
 /** Was weiterläuft — reine Fristläufe innerhalb der Instanz. */

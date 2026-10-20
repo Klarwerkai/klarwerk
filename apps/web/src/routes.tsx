@@ -120,6 +120,10 @@ const DuplicateMerge = lazy(() =>
 const Duplicates = lazy(() =>
   import("./pages/Duplicates").then((m) => ({ default: m.Duplicates })),
 );
+// produkt:20261010:klara-eigener-kalender (AW-16): „Mein Kalender" — nachgeladen wie jede andere Seite.
+const EigenerKalender = lazy(() =>
+  import("./pages/EigenerKalender").then((m) => ({ default: m.EigenerKalender })),
+);
 const Einstieg = lazy(() => import("./pages/Einstieg").then((m) => ({ default: m.Einstieg })));
 const ExternalKnowledge = lazy(() =>
   import("./pages/ExternalKnowledge").then((m) => ({ default: m.ExternalKnowledge })),
@@ -225,6 +229,10 @@ const Validation = lazy(() =>
 );
 const Wissensnetz = lazy(() =>
   import("./pages/Wissensnetz").then((m) => ({ default: m.Wissensnetz })),
+);
+// produkt:20261008:klara-kalender (Klara 11): den vorhandenen Kalender bewusst bedienen.
+const KalenderAnbindungSeite = lazy(() =>
+  import("./pages/KalenderAnbindung").then((m) => ({ default: m.KalenderAnbindungSeite })),
 );
 
 function DuplicateComparePage(): JSX.Element {
@@ -469,12 +477,22 @@ export function AppRoutes(): JSX.Element {
             (`/richtlinien`) und die Verwaltung unter „System" (`/unternehmen`). */}
         <Route path="/richtlinien" element={<Richtlinien />} />
         <Route path="/unternehmen" element={<Unternehmen />} />
+        {/* produkt:20261010:klara-eigener-kalender (AW-16): der eigene Kalender ohne externen
+            Dienst. Ohne `Guarded`, wie `/richtlinien`: jede Tür dahinter verlangt die Anmeldung, und
+            welche Einträge jemand sieht, entscheidet der Server mit heutigen Rechten
+            (`services/app/src/routes/eigener-kalender-routes.ts`). Erreichbar über das Konto-Menü. */}
+        <Route path="/kalender" element={<EigenerKalender />} />
         {/* ADMIN-12: Meldungen und Kanäle. Ohne `Guarded`, wie `/richtlinien`: die Türen dahinter
             fordern ihr Recht am Server (`requireUser` für Übersicht und eigene Einstellungen,
             `users.manage` für die Unternehmensvorgaben, `services/app/src/routes/
             kommunikation-routes.ts`). Erreichbar über das Profil und die Verwaltung
             („Kommunikation"). */}
         <Route path="/kommunikation" element={<Kommunikation />} />
+        {/* produkt:20261008:klara-kalender (Klara 11): die eigene Kalenderanbindung — jedes
+            angemeldete Konto; was es sieht und darf, entscheidet der Server je Konto. */}
+        {/* Derselbe Pfad wie `KALENDER_ANBINDUNG_PFAD` (`api/klaraKalender.ts`) — als Literal, damit
+            der Eintritt den Drahtvertrag nicht mitlädt. */}
+        <Route path="/kalender-anbindung" element={<KalenderAnbindungSeite />} />
         {/* ADMIN-10: Qualitätsaufgaben und Rückmeldungen. Ohne `Guarded`, wie `/unternehmen`: die
             Türen dahinter fordern `users.manage` am Server und filtern jede Zeile über den
             Sichtbarkeitsfilter (`services/app/src/routes/qualitaetsaufgaben-routes.ts`). Ohne

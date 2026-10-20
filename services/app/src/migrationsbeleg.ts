@@ -260,10 +260,19 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter
   // Lauf ist folgenlos.
   { stufe: "KLARA_AUFGABE_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261008:klara-kalender (Klara 11): Kalenderanbindungen und Zuordnungen. ADDITIV,
+  // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS` und drei `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "KLARA_KALENDER_SCHEMA", risiko: "ADDITIV" },
   // R-0679 / FR-VAL-07: die Geräteabos für Push. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT
   // EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel,
   // keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "PUSH_ABO_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:klara-erinnerungen-kalender: Erinnerungen, Läufe, Meldungen und (Nacharbeit 2)
+  // die Vorgaben des Einrichtungsassistenten. ADDITIV, nachgezählt: vier `CREATE TABLE IF NOT
+  // EXISTS`, ein `CREATE UNIQUE INDEX IF NOT EXISTS` und drei `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "KLARA_ERINNERUNG_SCHEMA", risiko: "ADDITIV" },
   // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets. ADDITIV, nachgezählt: ein
   // einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
@@ -272,6 +281,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "PRAESENTATION_DATEN_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261010:klara-eigener-kalender (AW-16): Kalendereinträge und Sichtwahl. ADDITIV,
+  // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS` und drei `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "EIGENER_KALENDER_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

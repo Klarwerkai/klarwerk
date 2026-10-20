@@ -106,16 +106,32 @@ export interface KlaraNotizFilter {
   readonly limit: number;
 }
 
+/**
+ * Eine zusätzliche Bedingung, unter der eine Notiz geschrieben werden darf — für Notizen, die eine
+ * andere Steuerung als WIRKUNG anlegt (produkt:20261007:klara-erinnerungen-kalender, EQF-07: der
+ * Routinenbericht darf nur entstehen, solange Routine, Konto und gelesene Quellen gelten). Die
+ * Notizablage kennt deren Inhalt nicht: Speicher prüft `gilt` unmittelbar und synchron vor dem
+ * Schreiben, PostgreSQL hängt `sql` in DENSELBEN Befehl.
+ */
+export interface NotizSchreibbedingung {
+  readonly gilt?: () => boolean;
+  /** `start`: der nächste freie Parameterindex (`$start`). */
+  readonly sql?: (start: number) => { und: readonly string[]; params: readonly unknown[] };
+}
+
 export interface KlaraNotizRepo {
   hole(kontoId: string, id: string): Promise<KlaraNotiz | null>;
   zuVorgang(kontoId: string, vorgang: string): Promise<KlaraNotiz | null>;
   /** Die eigenen Notizen, zuletzt geänderte zuerst. */
   liste(kontoId: string, filter: KlaraNotizFilter): Promise<KlaraNotiz[]>;
   anzahl(kontoId: string): Promise<number>;
-  /** Legt `n` an — oder `false`, wenn das Konto diesen Vorgang schon hat (nichts geschrieben). */
-  lege(n: KlaraNotiz): Promise<boolean>;
-  /** Schreibt `n`, wenn die gespeicherte Notiz noch `fassung - 1` trägt; sonst `false`. */
-  ersetze(n: KlaraNotiz): Promise<boolean>;
+  /**
+   * Legt `n` an — oder `false`, wenn das Konto diesen Vorgang schon hat oder die `bedingung` nicht
+   * (mehr) gilt (nichts geschrieben).
+   */
+  lege(n: KlaraNotiz, bedingung?: NotizSchreibbedingung): Promise<boolean>;
+  /** Schreibt `n`, wenn die gespeicherte Notiz noch `fassung - 1` trägt (und die Bedingung gilt). */
+  ersetze(n: KlaraNotiz, bedingung?: NotizSchreibbedingung): Promise<boolean>;
   entferne(kontoId: string, id: string): Promise<boolean>;
 }
 
@@ -156,8 +172,12 @@ export class InMemoryKlaraNotizRepo implements KlaraNotizRepo {
     return Promise.resolve(this.eigene(kontoId).length);
   }
 
-  lege(n: KlaraNotiz): Promise<boolean> {
+  lege(n: KlaraNotiz, bedingung?: NotizSchreibbedingung): Promise<boolean> {
     if (this.eigene(n.kontoId).some((x) => x.vorgang === n.vorgang)) {
+      return Promise.resolve(false);
+    }
+    // Zwischen Prüfung und Schreiben liegt kein `await`.
+    if (bedingung?.gilt && !bedingung.gilt()) {
       return Promise.resolve(false);
     }
     this.notizen.set(n.id, n);
@@ -166,9 +186,12 @@ export class InMemoryKlaraNotizRepo implements KlaraNotizRepo {
     return Promise.resolve(true);
   }
 
-  ersetze(n: KlaraNotiz): Promise<boolean> {
+  ersetze(n: KlaraNotiz, bedingung?: NotizSchreibbedingung): Promise<boolean> {
     const alt = this.notizen.get(n.id);
     if (!alt || alt.kontoId !== n.kontoId || alt.fassung !== n.fassung - 1) {
+      return Promise.resolve(false);
+    }
+    if (bedingung?.gilt && !bedingung.gilt()) {
       return Promise.resolve(false);
     }
     this.notizen.set(n.id, n);
@@ -254,21 +277,51 @@ export class PgKlaraNotizRepo implements KlaraNotizRepo {
     return res.rows[0]?.n ?? 0;
   }
 
-  async lege(n: KlaraNotiz): Promise<boolean> {
-    const res = await this.pool.query(
-      `INSERT INTO klara_notizen (id, konto_id, vorgang, fassung, geaendert_am, suchtext, data)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (konto_id, vorgang) DO NOTHING`,
-      [n.id, n.kontoId, n.vorgang, n.fassung, n.geaendertAm, suchtextVon(n), JSON.stringify(n)],
-    );
+  async lege(n: KlaraNotiz, bedingung?: NotizSchreibbedingung): Promise<boolean> {
+    const werte = [
+      n.id,
+      n.kontoId,
+      n.vorgang,
+      n.fassung,
+      n.geaendertAm,
+      suchtextVon(n),
+      JSON.stringify(n),
+    ];
+    const zusatz = bedingung?.sql?.(werte.length + 1);
+    const res = zusatz
+      ? await this.pool.query(
+          // Mit Bedingung EIN Befehl: gilt sie beim Schreiben nicht (mehr), entsteht nichts.
+          `INSERT INTO klara_notizen (id, konto_id, vorgang, fassung, geaendert_am, suchtext, data)
+           SELECT $1::text, $2::text, $3::text, $4::int, $5::timestamptz, $6::text, $7::jsonb
+            WHERE ${zusatz.und.length > 0 ? zusatz.und.join("\n              AND ") : "true"}
+           ON CONFLICT (konto_id, vorgang) DO NOTHING`,
+          [...werte, ...zusatz.params],
+        )
+      : await this.pool.query(
+          `INSERT INTO klara_notizen (id, konto_id, vorgang, fassung, geaendert_am, suchtext, data)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (konto_id, vorgang) DO NOTHING`,
+          werte,
+        );
     return (res.rowCount ?? 0) > 0;
   }
 
-  async ersetze(n: KlaraNotiz): Promise<boolean> {
+  async ersetze(n: KlaraNotiz, bedingung?: NotizSchreibbedingung): Promise<boolean> {
+    const werte = [
+      n.id,
+      n.kontoId,
+      n.fassung,
+      n.geaendertAm,
+      suchtextVon(n),
+      JSON.stringify(n),
+      n.fassung - 1,
+    ];
+    const zusatz = bedingung?.sql?.(werte.length + 1);
+    const und = zusatz && zusatz.und.length > 0 ? ` AND ${zusatz.und.join(" AND ")}` : "";
     const res = await this.pool.query(
       `UPDATE klara_notizen SET fassung = $3, geaendert_am = $4, suchtext = $5, data = $6
-        WHERE id = $1 AND konto_id = $2 AND fassung = $7`,
-      [n.id, n.kontoId, n.fassung, n.geaendertAm, suchtextVon(n), JSON.stringify(n), n.fassung - 1],
+        WHERE id = $1 AND konto_id = $2 AND fassung = $7${und}`,
+      [...werte, ...(zusatz?.params ?? [])],
     );
     return (res.rowCount ?? 0) > 0;
   }
@@ -292,7 +345,9 @@ export type KlaraNotizGrund =
   | "quelle_unbekannt"
   | "vorgang_belegt"
   | "voll"
-  | "konflikt";
+  | "konflikt"
+  /** Die Schreibbedingung der aufrufenden Steuerung galt beim Schreiben nicht (mehr). */
+  | "bedingung";
 
 export class KlaraNotizFehler extends Error {
   constructor(
@@ -456,6 +511,8 @@ export class KlaraNotizDienst {
   async lege(
     kontoId: string,
     eingabe: KlaraNotizEingabe,
+    // Nur für Notizen, die eine andere Steuerung als Wirkung anlegt (Routinenbericht).
+    bedingung?: NotizSchreibbedingung,
   ): Promise<{ notiz: KlaraNotiz; wiederholt: boolean }> {
     if (typeof eingabe.vorgang !== "string" || !VORGANG_RE.test(eingabe.vorgang)) {
       throw eingabeFehler("vorgang ist Pflicht (8–100 Zeichen aus Buchstaben, Ziffern, - und _).");
@@ -537,12 +594,19 @@ export class KlaraNotizDienst {
       geaendertAm: jetzt,
       fassung: 1,
     };
-    if (await this.repo.lege(notiz)) {
+    if (await this.repo.lege(notiz, bedingung)) {
       return { notiz, wiederholt: false };
     }
     // Ein gleichzeitiger zweiter Versuch desselben Vorgangs war schneller: dessen Notiz gilt.
     const parallel = await this.repo.zuVorgang(kontoId, vorgang);
     if (!parallel) {
+      if (bedingung) {
+        throw new KlaraNotizFehler(
+          409,
+          "bedingung",
+          "Die Notiz wurde nicht angelegt: die Bedingung der Wirkung galt beim Schreiben nicht mehr.",
+        );
+      }
       throw new KlaraNotizFehler(409, "konflikt", "Die Notiz konnte nicht angelegt werden.");
     }
     return this.wiederholung(parallel, { art, titel, inhalt, offeneFragen });
@@ -572,6 +636,8 @@ export class KlaraNotizDienst {
     kontoId: string,
     id: string,
     eingabe: KlaraNotizAenderung,
+    // Nur für Notizen, die eine andere Steuerung als Wirkung fortschreibt (Routinenbericht).
+    bedingung?: NotizSchreibbedingung,
   ): Promise<{ notiz: KlaraNotiz; wiederholt: boolean }> {
     const fassung = eingabe.fassung;
     if (typeof fassung !== "number" || !Number.isSafeInteger(fassung) || fassung < 1) {
@@ -608,7 +674,16 @@ export class KlaraNotizDienst {
       geaendertAm: this.jetztIso(),
       fassung: alt.fassung + 1,
     };
-    if (!(await this.repo.ersetze(neu))) {
+    if (!(await this.repo.ersetze(neu, bedingung))) {
+      const jetzt = bedingung ? await this.repo.hole(kontoId, id) : null;
+      if (bedingung && jetzt?.fassung === alt.fassung) {
+        // Die Notiz ist unverändert — es war die Bedingung der Wirkung, die nicht mehr galt.
+        throw new KlaraNotizFehler(
+          409,
+          "bedingung",
+          "Die Notiz wurde nicht geändert: die Bedingung der Wirkung galt beim Schreiben nicht mehr.",
+        );
+      }
       throw new KlaraNotizFehler(
         409,
         "konflikt",

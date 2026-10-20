@@ -318,6 +318,18 @@ import {
   removeKoFromDuplicatePrefilter,
   vektorBleibtFuer,
 } from "./duplicate-detection";
+// produkt:20261010:klara-eigener-kalender (AW-16): der eigene Kalender ohne externen Dienst —
+// haltbar im Postgres-Betrieb, im Speicher ohne Datenbank.
+import {
+  type AufgabenNachweis,
+  type AusfuehrungsNachweis,
+  EigenerKalenderDienst,
+  type EigenerKalenderRepo,
+  InMemoryEigenerKalenderRepo,
+  PgEigenerKalenderRepo,
+  type VorhandenerKalender,
+  aufgabenNachweisAus,
+} from "./eigener-kalender";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
@@ -382,6 +394,17 @@ import { BegleiterKanal } from "./klara-begleiter";
 // Produktweg (Auftrag aus dem Wortlaut, Rechte je Schritt, Verlauf im eigenen Gespräch).
 import { BrowserFaehigkeitsregister, type BrowserSeitenprofil } from "./klara-browser-aktion";
 import { BrowserAktionDienst } from "./klara-browser-aktion-dienst";
+// produkt:20261007:klara-erinnerungen-kalender (Klara 10): persönliche Erinnerungen samt Läufen und
+// zugestellten Meldungen — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank — und die EINE
+// Steuerung dieser Instanz.
+import {
+  type KlaraErinnerungAblage,
+  KlaraErinnerungDienst,
+  type KlaraErinnerungLaufbericht,
+  KlaraErinnerungSteuerung,
+  inMemoryErinnerungAblage,
+  pgErinnerungAblage,
+} from "./klara-erinnerung";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche — haltbar im Postgres-Betrieb, im
 // Speicher ohne Datenbank.
 import {
@@ -390,6 +413,26 @@ import {
   type KlaraGespraechRepo,
   PgKlaraGespraechRepo,
 } from "./klara-gespraech";
+// produkt:20261008:klara-kalender (Klara 11, AW-17): Anbindungen und Zuordnungen des vorhandenen
+// Kalenders — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank. Der Zugang kommt nur aus der
+// Betreiber-Einspeisung (`kalenderAnbieterAusEnv`).
+import {
+  InMemoryKalenderZuordnungRepo,
+  type KalenderAnbieter,
+  KalenderAnbindungDienst,
+  type KalenderLaufSteuerung,
+  type KalenderZuordnungRepo,
+  PgKalenderZuordnungRepo,
+} from "./klara-kalender-anbindung";
+// produkt:20261008:klara-kalender (Klara 11): der Anschluss an DIESELBE Erinnerungssteuerung und an
+// den eigenen Kalender — eine gemeinsame Auftrags-/Vorkommensidentität, keine zweite Steuerung.
+import {
+  eigenerTerminAus,
+  erinnerungsAusfuehrung,
+  erinnerungsLaufAnschluss,
+  vorhandenerKalenderAus,
+} from "./klara-kalender-lauf";
+import { kalenderAnbieterAusEnv } from "./klara-kalender-m365";
 // produkt:20261007:klara-notizen-aufgaben (Klara 06): die privaten Notizen — haltbar im Postgres-
 // Betrieb, im Speicher ohne Datenbank.
 import {
@@ -491,6 +534,7 @@ import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
 import { datenschutzRoutes } from "./routes/datenschutz-routes";
+import { eigenerKalenderRoutes } from "./routes/eigener-kalender-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { featuresRoutes } from "./routes/features-routes";
 import { freigaberegelnRoutes } from "./routes/freigaberegeln-routes";
@@ -517,8 +561,12 @@ import { klaraAufgabeRoutes } from "./routes/klara-aufgabe-routes";
 // produkt:20261010:klara-office-mac-maskottchen: der Kontextkanal zwischen Word und Begleitapp.
 import { klaraBegleiterRoutes } from "./routes/klara-begleiter-routes";
 import { klaraBrowserAktionRoutes } from "./routes/klara-browser-aktion-routes";
+// produkt:20261007:klara-erinnerungen-kalender (Klara 10): die eigenen Erinnerungen.
+import { klaraErinnerungRoutes } from "./routes/klara-erinnerung-routes";
 // produkt:20261008:klara-basis: die eigenen, serverseitig gespeicherten Klara-Gespräche.
 import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
+// produkt:20261008:klara-kalender (Klara 11): die eigene Kalenderanbindung.
+import { klaraKalenderRoutes } from "./routes/klara-kalender-routes";
 // produkt:20261007:klara-notizen-aufgaben (Klara 06): die eigenen, serverseitig gespeicherten Notizen.
 import { klaraNotizRoutes } from "./routes/klara-notiz-routes";
 // JOB 3110 (M2b): der Memo-Weg des Word-Panels. Die Route ist seit JOB 3091 gebaut und gemessen;
@@ -586,7 +634,12 @@ import { AnswerExplanationService } from "./services/answer-explanation";
 import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
 import { tabellenDerStufen } from "./sicherungsumfang";
-import { type AnhangQuellen, entwurfSichtbarFuer, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
+import {
+  type AnhangQuellen,
+  darfSehen,
+  entwurfSichtbarFuer,
+  sichtbarkeitsfilterFuer,
+} from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 // produkt:20261007:spaces — die versionierten Arbeitsräume; im Postgres-Betrieb haltbar.
 import {
@@ -820,6 +873,28 @@ export interface AppServices {
    */
   klaraGespraeche: KlaraGespraechRepo;
   /**
+   * produkt:20261010:klara-eigener-kalender (AW-16): die internen Kalendereinträge und die Sichtwahl
+   * je Konto (`eigener-kalender.ts`). Wie `klaraGespraeche` NICHT in `AppRepos`; im Postgres-Betrieb
+   * haltbar (`PgEigenerKalenderRepo`), sonst die In-Memory-Ablage.
+   */
+  eigenerKalender: EigenerKalenderRepo;
+  /**
+   * AW-16 (Ben nacharbeit-2): der maßgebliche Ausführungsnachweis für Auftrag, Lauf, Ergebnis und
+   * Serie und der Zugang zum vorhandenen Kalender. Ohne Angabe schließt `buildApp` seit Klara 11
+   * beide an: den Ausführungsnachweis an DIESELBE Erinnerungssteuerung (`erinnerungsAusfuehrung`)
+   * und den vorhandenen Kalender an die Kalenderanbindung (`vorhandenerKalenderAus`). Gesetzte
+   * Felder ersetzen diese Anschlüsse (Tests); explizites `null` trennt den Ausführungsanschluss.
+   */
+  kalenderAusfuehrung?: AusfuehrungsNachweis | null;
+  vorhandenerKalender?: VorhandenerKalender;
+  /**
+   * AW-16 (Ben nacharbeit-7): die Aufgabenablage für die reine Auftragsverknüpfung `task_id`. Ohne
+   * Angabe nimmt `buildApp` die gelieferten persönlichen Aufgaben (`produkt:20261008:klara-aufgaben`)
+   * über ihren berechtigten Leseweg: `aufgabenNachweisAus(KlaraAufgabeDienst)` auf `klaraAufgaben`.
+   * Sie ersetzt `kalenderAusfuehrung` nicht: Lauf und Serie bleiben ohne ihn gesperrt.
+   */
+  kalenderAufgaben?: AufgabenNachweis;
+  /**
    * produkt:20261007:klara-notizen-aufgaben (Klara 06): die privaten Notizen (`klara-notiz.ts`) je
    * Konto. Aus demselben Grund wie `klaraGespraeche` NICHT in `AppRepos` und nicht im
    * Wissensbestand; im Postgres-Betrieb haltbar (`PgKlaraNotizRepo`), sonst im Speicher.
@@ -831,6 +906,18 @@ export interface AppServices {
    * Aufgabenquelle; im Postgres-Betrieb haltbar (`PgKlaraAufgabeRepo`), sonst im Speicher.
    */
   klaraAufgaben: KlaraAufgabeRepo;
+  /**
+   * produkt:20261007:klara-erinnerungen-kalender (Klara 10): Erinnerungen, Läufe und zugestellte
+   * Meldungen (`klara-erinnerung.ts`) je Konto. Aus demselben Grund wie `klaraAufgaben` NICHT in
+   * `AppRepos`; im Postgres-Betrieb haltbar (`pgErinnerungAblage`), sonst im Speicher.
+   */
+  klaraErinnerungen: KlaraErinnerungAblage;
+  /**
+   * produkt:20261008:klara-kalender (Klara 11): Kalenderanbindungen und Zuordnungen samt
+   * Anbieterfassung, Sperrmarke und offener Entscheidung je Konto; im Postgres-Betrieb haltbar
+   * (`PgKalenderZuordnungRepo`), sonst im Speicher.
+   */
+  klaraKalender: KalenderZuordnungRepo;
   /**
    * produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil (`assistenz-profil.ts`)
    * je Konto. Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
@@ -1445,10 +1532,16 @@ export function assembleServices(
     mitgelesen?: MitgelesenRepo;
     // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     klaraGespraeche?: KlaraGespraechRepo;
+    // produkt:20261010:klara-eigener-kalender: gesetzt von `buildPgServices`; sonst im Speicher.
+    eigenerKalender?: EigenerKalenderRepo;
     // produkt:20261007:klara-notizen-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
     klaraNotizen?: KlaraNotizRepo;
     // produkt:20261008:klara-aufgaben: gesetzt von `buildPgServices`; sonst im Speicher.
     klaraAufgaben?: KlaraAufgabeRepo;
+    // produkt:20261007:klara-erinnerungen-kalender: gesetzt von `buildPgServices`; sonst im Speicher.
+    klaraErinnerungen?: KlaraErinnerungAblage;
+    // produkt:20261008:klara-kalender: gesetzt von `buildPgServices`; sonst im Speicher.
+    klaraKalender?: KalenderZuordnungRepo;
     // produkt:20261010:assistenz-name-avatar: gesetzt von `buildPgServices`; sonst im Speicher.
     assistenzProfile?: AssistenzProfilRepo;
     // produkt:20261013:produktbudget-anwender-admin: gesetzt von `buildPgServices`; sonst im Speicher.
@@ -1923,10 +2016,16 @@ export function assembleServices(
     mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
     // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
     klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
+    // produkt:20261010:klara-eigener-kalender — Postgres, wenn injiziert, sonst im Speicher.
+    eigenerKalender: opts.eigenerKalender ?? new InMemoryEigenerKalenderRepo(),
     // produkt:20261007:klara-notizen-aufgaben: die Notizen — Postgres, wenn injiziert, sonst im Speicher.
     klaraNotizen: opts.klaraNotizen ?? new InMemoryKlaraNotizRepo(),
     // produkt:20261008:klara-aufgaben: die Aufgaben — Postgres, wenn injiziert, sonst im Speicher.
     klaraAufgaben: opts.klaraAufgaben ?? new InMemoryKlaraAufgabeRepo(),
+    // produkt:20261007:klara-erinnerungen-kalender: die Erinnerungen — Postgres, wenn injiziert.
+    klaraErinnerungen: opts.klaraErinnerungen ?? inMemoryErinnerungAblage(),
+    // produkt:20261008:klara-kalender: Anbindungen und Zuordnungen — Postgres, wenn injiziert.
+    klaraKalender: opts.klaraKalender ?? new InMemoryKalenderZuordnungRepo(),
     // produkt:20261010:assistenz-name-avatar: die Assistenzprofile — Postgres, wenn injiziert.
     assistenzProfile: opts.assistenzProfile ?? new InMemoryAssistenzProfilRepo(),
     // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets — Postgres, wenn injiziert.
@@ -2468,12 +2567,21 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
       // Neustart und Deploy (`KLARA_GESPRAECH_SCHEMA`, angelegt von `migrate()`).
       klaraGespraeche: new PgKlaraGespraechRepo(pool),
+      // produkt:20261010:klara-eigener-kalender: ein interner Termin und die Sichtwahl überleben
+      // Neuladen, Neustart und Deploy (`EIGENER_KALENDER_SCHEMA`, angelegt von `migrate()`).
+      eigenerKalender: new PgEigenerKalenderRepo(pool),
       // produkt:20261007:klara-notizen-aufgaben: eine Notiz überlebt erneute Anmeldung, Neustart und
       // Deploy (`KLARA_NOTIZ_SCHEMA`, angelegt von `migrate()`).
       klaraNotizen: new PgKlaraNotizRepo(pool),
       // produkt:20261008:klara-aufgaben: eine Aufgabe überlebt Neuladen, erneute Anmeldung,
       // Neustart und Deploy (`KLARA_AUFGABE_SCHEMA`, angelegt von `migrate()`).
       klaraAufgaben: new PgKlaraAufgabeRepo(pool),
+      // produkt:20261007:klara-erinnerungen-kalender: Erinnerung, Fälligkeit, Läufe und zugestellte
+      // Meldungen überleben geschlossenes Gespräch, Neustart und Deploy (`KLARA_ERINNERUNG_SCHEMA`).
+      klaraErinnerungen: pgErinnerungAblage(pool),
+      // produkt:20261008:klara-kalender: Anbindungen, Zuordnungen, Anbieterfassungen, Sperrmarken und
+      // offene Entscheidungen überleben Neustart und Deploy (`KLARA_KALENDER_SCHEMA`, von `migrate()`).
+      klaraKalender: new PgKalenderZuordnungRepo(pool),
       // produkt:20261010:assistenz-name-avatar: Name, Avatar und Ersteinrichtung überleben Neuladen,
       // erneute Anmeldung, zweites Gerät und Deploy (`ASSISTENZ_PROFIL_SCHEMA`, von `migrate()`).
       assistenzProfile: new PgAssistenzProfilRepo(pool),
@@ -3530,6 +3638,10 @@ export function buildApp(
     // AUFNAHME 20260922 · gesamt-pruefung-hintergrund: der Nachhol- und Abgleichlauf über DEN
     // Prüf-Worker dieser App (hintergrundpruefung.ts); `server.ts` startet ihn, Tests nicht.
     hintergrundpruefung?: (lauf: () => Promise<HintergrundlaufBericht | null>) => void;
+    // produkt:20261007:klara-erinnerungen-kalender (Klara 10): der Takt der EINEN
+    // Erinnerungssteuerung dieser App; `server.ts` startet ihn und meldet den Takt in ms zurück.
+    // Ohne Option läuft nichts von selbst (Tests rufen den Lauf gezielt).
+    klaraErinnerungen?: (lauf: () => Promise<KlaraErinnerungLaufbericht>) => number;
     /** R-0571: Wartezeit bis zur Wiederholung eines unvollständigen Verzeichnisabgleichs. */
     verzeichnisAbgleichWiederholungMs?: number;
     /**
@@ -3548,6 +3660,13 @@ export function buildApp(
       seitenprofile?: readonly BrowserSeitenprofil[];
       fristen?: { abholMs?: number; antwortMs?: number; taktMs?: number; ablaufMs?: number };
     };
+    /**
+     * produkt:20261008:klara-kalender: der Kalenderanbieter je Konto. Ohne Angabe die
+     * Betreiber-Einspeisung (`kalenderAnbieterAusEnv`); Tests setzen ein Vertragsdouble.
+     */
+    klaraKalenderAnbieter?: (kontoId: string) => Promise<KalenderAnbieter | null>;
+    /** produkt:20261008:klara-kalender: der Anschluss an den internen Scheduler, falls vorhanden. */
+    klaraKalenderLauf?: KalenderLaufSteuerung;
   } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
@@ -4072,6 +4191,83 @@ export function buildApp(
   });
   // R-0609 · Bens B13: der Aufräumlauf GENAU DIESER Instanz geht an den Auslöser in `server.ts`.
   opts.klaraAufraeumen?.(() => klaraSessions.raeumeAbgelaufeneAuf());
+  // produkt:20261007:klara-erinnerungen-kalender (Klara 10): Dienst und EINE Steuerung über
+  // DIESELBE Ablage. Die Steuerung liest vor jeder Zustellung das Konto heute (`kontoLesen`) und die
+  // eigene Quelle; ihr Takt läuft in `server.ts` (kein Chat-Wecker, keine zweite Instanz).
+  const erinnerungDienst = new KlaraErinnerungDienst({
+    ablage: services.klaraErinnerungen,
+    notizen: services.klaraNotizen,
+    aufgaben: services.klaraAufgaben,
+    gespraeche: services.klaraGespraeche,
+    // AW18-K08: die bewusste Übergabe liest die Empfängerin über die vorhandenen Konten — HEUTE.
+    personen: services.auth,
+  });
+  // produkt:20261008:klara-kalender (Klara 11, AW-17): die EINE Kalenderanbindung dieser App. Der
+  // Zugang kommt ausschließlich aus der Betreiber-Einspeisung und gilt nur für dort genannte
+  // Anmeldeadressen; ohne Einspeisung antwortet die Anbindung „nicht verbunden“ — persönliche
+  // Erinnerungen bleiben unberührt. Sie ist an DIESELBE Erinnerungssteuerung angeschlossen
+  // (`klara-kalender-lauf.ts`): eine ausdrückliche Entscheidung setzt genau den betroffenen Lauf fort
+  // bzw. beendet ihn im gewählten Umfang; die Sperre selbst liest die Steuerung vor jeder Wirkung.
+  const klaraKalenderEinspeisung = opts.klaraKalenderAnbieter
+    ? undefined
+    : kalenderAnbieterAusEnv();
+  const klaraKalenderAnbieterFuer =
+    opts.klaraKalenderAnbieter ??
+    (async (kontoId: string): Promise<KalenderAnbieter | null> => {
+      if (!klaraKalenderEinspeisung) {
+        return null;
+      }
+      const konto = await services.auth.kontoLesen(kontoId);
+      return klaraKalenderEinspeisung.fuer(konto?.email);
+    });
+  const kalenderAnbindungDienst = new KalenderAnbindungDienst({
+    repo: services.klaraKalender,
+    anbieterFuer: klaraKalenderAnbieterFuer,
+    laufSteuerung:
+      opts.klaraKalenderLauf ??
+      erinnerungsLaufAnschluss(services.klaraErinnerungen, erinnerungDienst),
+  });
+  const erinnerungSteuerung = new KlaraErinnerungSteuerung({
+    ablage: services.klaraErinnerungen,
+    konto: (id) => services.auth.kontoLesen(id),
+    notizen: services.klaraNotizen,
+    aufgaben: services.klaraAufgaben,
+    gespraeche: services.klaraGespraeche,
+    // EQF-07 · Ergebnisablage einer Routine: „Meine Notizen“ über den VORHANDENEN Notizdienst
+    // (Vorgangsschlüssel je Termin → höchstens ein Bericht, Readback über `zuVorgang`).
+    // Nacharbeit 9: Anlegen und Fortschreiben NUR unter der Bedingung der Wirkung (Routine aktiv,
+    // Konto berechtigt, gelesene Quellen unverändert) — beim tatsächlichen Speichern.
+    ergebnisablage: {
+      zuVorgang: (kontoId, vorgang) => services.klaraNotizen.zuVorgang(kontoId, vorgang),
+      hole: (kontoId, id) => services.klaraNotizen.hole(kontoId, id),
+      lege: (kontoId, eingabe, bedingung) =>
+        new KlaraNotizDienst({ repo: services.klaraNotizen }).lege(kontoId, eingabe, bedingung),
+      aendere: (kontoId, id, eingabe, bedingung) =>
+        new KlaraNotizDienst({ repo: services.klaraNotizen }).aendere(
+          kontoId,
+          id,
+          eingabe,
+          bedingung,
+        ),
+    },
+    // AW-18 · bestellte Zusammenfassung über den VORHANDENEN KI-Weg (FR-RSN-03 `assistText`),
+    // vertraulich eingestuft: ob ein Cloudmodell persönliche Inhalte sehen darf, entscheidet die
+    // zentrale KI-Freigabe (`kiFreigabe.vertraulicheInhalte`). `demo` = gekennzeichneter Ersatz.
+    zusammenfassen: async (text) => {
+      const r = await services.reasoner.assistText(
+        text,
+        "de",
+        "Fasse diesen persönlichen Text in höchstens fünf kurzen Sätzen sachlich zusammen. Erfinde nichts.",
+        true,
+      );
+      return { text: r.text, ki: !r.demo };
+    },
+    // Klara 11 (P07-AC05/AC06): die dauerhafte Kalendersperre GENAU EINES Vorkommens — gelesen
+    // unmittelbar vor jeder Wirkung, also auch nach Neustart und verspätetem Abgleich.
+    vorkommenSperre: (kontoId, erinnerungId, vorkommenId) =>
+      kalenderAnbindungDienst.vorkommenSperre(kontoId, erinnerungId, vorkommenId),
+  });
+  const erinnerungTaktMs = opts.klaraErinnerungen?.(() => erinnerungSteuerung.lauf()) ?? null;
   app.register(klaraAiRoutes({ sessions: klaraSessions }, guards));
   // Erhaltener Office-Kontextanschluss aus 8fcd735fe (KLARA-OFFICE-01/02), derselbe Sitzungskern.
   app.register(
@@ -5539,6 +5735,8 @@ export function buildApp(
         veroeffentlichungen: veroeffentlichungDienst,
         // ADMIN-12: persönliche Abwahl und tägliche Zusammenfassung; hält die Zustellung fest.
         kommunikation: kommunikationDienst,
+        // Klara 10: die dauerhaft zugestellten persönlichen Erinnerungen dieses Kontos.
+        erinnerungen: erinnerungDienst,
       },
       guards,
     ),
@@ -5829,15 +6027,80 @@ export function buildApp(
   );
   // produkt:20261008:klara-aufgaben (Klara 07): die eigenen Aufgaben. Der Bezug kommt aus der
   // EIGENEN Notiz bzw. aus einem Auftrag im EIGENEN Gespräch — der Server liest beides selbst.
+  // Derselbe Dienst ist der berechtigte Leseweg des eigenen Kalenders (AW-16, unten).
+  const klaraAufgabeDienst = new KlaraAufgabeDienst({
+    repo: services.klaraAufgaben,
+    notizen: services.klaraNotizen,
+    gespraeche: services.klaraGespraeche,
+  });
   app.register(
     klaraAufgabeRoutes(
       {
-        dienst: new KlaraAufgabeDienst({
-          repo: services.klaraAufgaben,
-          notizen: services.klaraNotizen,
-          gespraeche: services.klaraGespraeche,
-        }),
+        dienst: klaraAufgabeDienst,
         audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261010:klara-eigener-kalender (AW-16): der eigene Kalender ohne externen Dienst.
+  // Teamrechte aus dem HEUTIGEN Teamstand, der Text einer Wissensquelle nur unter der heutigen
+  // Sichtbarkeit (`darfSehen`). Die Auftragsverknüpfung `task_id` liest die persönlichen Aufgaben
+  // über `klaraAufgabeDienst.hole` (nur das eigene Konto; fremd und unbekannt = nicht sichtbar).
+  // Klara 11 (S09): Ausführungsnachweis und vorhandener Kalender sind DIESELBE Erinnerungssteuerung
+  // (`erinnerungsAusfuehrung`) und DIESELBE Kalenderanbindung (`vorhandenerKalenderAus`, ohne
+  // Klaras eigene Projektionen) — gesetzte `services.kalenderAusfuehrung`/`vorhandenerKalender`
+  // ersetzen sie.
+  const eigenerKalenderDienst = new EigenerKalenderDienst({
+    repo: services.eigenerKalender,
+    teams: services.teams,
+    quelleLesbar: async (user, koId) => {
+      const ko = await services.ko.get(koId);
+      return ko !== undefined && darfSehen(user, ko);
+    },
+    aufgaben: services.kalenderAufgaben ?? aufgabenNachweisAus(klaraAufgabeDienst),
+    ...(services.kalenderAusfuehrung === null
+      ? {}
+      : {
+          ausfuehrung:
+            services.kalenderAusfuehrung ??
+            erinnerungsAusfuehrung(services.klaraErinnerungen, erinnerungDienst),
+        }),
+    vorhandenerKalender:
+      services.vorhandenerKalender ?? vorhandenerKalenderAus(kalenderAnbindungDienst),
+  });
+  app.register(
+    eigenerKalenderRoutes(
+      {
+        dienst: eigenerKalenderDienst,
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261008:klara-kalender (Klara 11, AW-17): die eigene Kalenderanbindung — DIESELBE
+  // Instanz, an die die Erinnerungssteuerung angeschlossen ist (oben). S09: ein Eintrag des eigenen
+  // Kalenders wird mit SEINER Auftrags- und Ereigniskennung eingetragen (`eigenerTerminAus`).
+  app.register(
+    klaraKalenderRoutes(
+      {
+        dienst: kalenderAnbindungDienst,
+        audit: services.audit,
+        eigenerTermin: eigenerTerminAus(eigenerKalenderDienst),
+      },
+      guards,
+    ),
+  );
+  // produkt:20261007:klara-erinnerungen-kalender (Klara 10): die eigenen Erinnerungen. Der Bezug
+  // (Notiz, Aufgabe, Gesprächsnachricht) kommt aus der EIGENEN Ablage — der Server liest ihn selbst.
+  app.register(
+    klaraErinnerungRoutes(
+      {
+        dienst: erinnerungDienst,
+        audit: services.audit,
+        letzterLauf: () => erinnerungSteuerung.letzterBericht(),
+        taktSekunden: () =>
+          erinnerungTaktMs === null ? null : Math.round(erinnerungTaktMs / 1000),
+        personen: services.auth,
       },
       guards,
     ),

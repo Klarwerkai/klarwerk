@@ -217,7 +217,7 @@ schreibe_protokoll() {
     # Kategorie, getrennt von Beitraegen und Anhangsbytes. Dieselbe Tabellenliste wie
     # `assistenzTabellen()` in services/app/src/sicherungsumfang.ts (gehalten von
     # tests/wiederherstellung-export/sicherungsumfang.test.ts).
-    printf '"assistenz":%s}' "$(vergleich_json "" assistenz_profile klara_gespraeche interaktions_gedaechtnis klara_sessions klara_session_consents klara_aufgaben)"
+    printf '"assistenz":%s}' "$(vergleich_json "" assistenz_profile klara_gespraeche interaktions_gedaechtnis klara_sessions klara_session_consents klara_aufgaben klara_erinnerungen klara_erinnerung_laeufe klara_erinnerung_meldungen klara_erinnerung_einstellungen)"
     printf '},"wissensnachweis":%s}\n' "$(json_text_oder_null "$WISSENSNACHWEIS")"
   } > "$arbeitsname" 2>/dev/null || ! mv -f "$arbeitsname" "$PROTOKOLL" 2>/dev/null; then
     rm -f "$arbeitsname" 2>/dev/null || true
@@ -545,6 +545,14 @@ PFLICHTTABELLEN=(
   praesentation_datenpunkte
   klara_notizen
   klara_aufgaben
+  klara_kalender_anbindungen
+  klara_kalender_zuordnungen
+  klara_erinnerungen
+  klara_erinnerung_laeufe
+  klara_erinnerung_meldungen
+  klara_erinnerung_einstellungen
+  kalender_eintraege
+  kalender_einstellungen
   produktbudget
 )
 FEHLENDE_TABELLEN=()

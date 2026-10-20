@@ -316,7 +316,8 @@ export function MeldungenListe({
                               n.kind === "kenntnisnahme" ||
                               n.kind === "frische" ||
                               n.kind === "return" ||
-                              n.kind === "loeschantrag"
+                              n.kind === "loeschantrag" ||
+                              n.kind === "erinnerung"
                             ? "bg-ai"
                             : n.kind === "impact" ||
                                 (n.kind === "luecke" && n.lueckenArt === "geloest")
@@ -462,6 +463,26 @@ export function MeldungenListe({
                       :{" "}
                     </span>
                   ) : null}
+                  {/* produkt:20261007:klara-erinnerungen-kalender: die eigene Erinnerung — Art
+                      vorn (Erinnerung, verpasst, zusammengefasst, übersprungen), Titel dahinter. */}
+                  {n.kind === "erinnerung" ? (
+                    <span
+                      className="font-semibold text-ai"
+                      data-erinnerung-art={n.erinnerungArt ?? "erinnerung"}
+                    >
+                      {t(`klaraerinnerung.glocke.${n.erinnerungArt ?? "erinnerung"}`, {
+                        anzahl: n.termine?.length ?? 1,
+                      })}
+                      {/* EQF-07-K09: kein Ergebnis — der tatsächliche Grund, kein Erfolg. */}
+                      {n.erinnerungArt === "handlung" && n.erinnerungGrund ? (
+                        <span data-erinnerung-grund={n.erinnerungGrund}>
+                          {" "}
+                          ({t(`klaraerinnerung.grund.${n.erinnerungGrund}`)})
+                        </span>
+                      ) : null}
+                      :{" "}
+                    </span>
+                  ) : null}
                   {/* Pedi 04.07.: Duplikat-Fund klar als solcher gekennzeichnet. */}
                   {n.kind === "duplicate" ? (
                     <span className="font-semibold text-ai">{t("topbar.notifDuplicate")}: </span>
@@ -471,6 +492,34 @@ export function MeldungenListe({
                   {n.kind === "gap" && (n.redacted || !n.title)
                     ? t("topbar.notifGapRedacted")
                     : n.title}
+                  {/* AW-18: die bestellte Zusammenfassung kommt mit der Erinnerung an. */}
+                  {n.kind === "erinnerung" && n.erinnerungZusammenfassung ? (
+                    <span
+                      data-testid="glocke-erinnerung-zusammenfassung"
+                      data-status={n.erinnerungZusammenfassung.status}
+                      className="mt-0.5 block whitespace-pre-line text-[11.5px] font-normal text-muted"
+                    >
+                      {n.erinnerungZusammenfassung.status === "erstellt"
+                        ? `${t(
+                            n.erinnerungZusammenfassung.ki
+                              ? "klaraerinnerung.zusammenfassung.ki"
+                              : "klaraerinnerung.zusammenfassung.ersatz",
+                          )}: ${n.erinnerungZusammenfassung.text}`
+                        : t("klaraerinnerung.zusammenfassung.nichtVerfuegbar")}
+                    </span>
+                  ) : null}
+                  {/* EQF-07: das tatsächliche Routinenergebnis — oder die nötige Handlung. */}
+                  {n.kind === "erinnerung" && n.erinnerungRoutine ? (
+                    <span
+                      data-testid="glocke-erinnerung-routine"
+                      data-status={n.erinnerungRoutine.status}
+                      className="mt-0.5 block text-[11.5px] font-normal text-muted"
+                    >
+                      {t(`klaraerinnerung.routine.glocke.${n.erinnerungRoutine.status}`, {
+                        offen: n.erinnerungRoutine.offen,
+                      })}
+                    </span>
+                  ) : null}
                 </button>
                 {read ? null : (
                   <button

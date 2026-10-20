@@ -9,6 +9,7 @@ import { useLocation } from "react-router-dom";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
 import { useMyImpact } from "../api/hooks";
+import { KALENDER_ANBINDUNG_PFAD } from "../api/klaraKalender";
 import { KOMMUNIKATION_PFAD } from "../api/kommunikation";
 import { useSession } from "../app/AuthContext";
 import { useGuardedNavigate } from "../app/NavGuardContext";
@@ -731,6 +732,13 @@ export function Profile(): JSX.Element {
             label={t("kommunikation.profil.zeile")}
             onOeffnen={() => navigate(KOMMUNIKATION_PFAD)}
             testId="zeile-kommunikation"
+          />
+          {/* produkt:20261008:klara-kalender (Klara 11): der vorhandene Kalender — eigene Seite mit
+              dem freiwilligen, erneut aufrufbaren Zauberhut-Assistenten. */}
+          <Zeile
+            label={t("klarakalender.profil.zeile")}
+            onOeffnen={() => navigate(KALENDER_ANBINDUNG_PFAD)}
+            testId="zeile-kalender"
           />
           <Zeile
             label={t("datenschutz.meineDaten.titel")}

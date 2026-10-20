@@ -296,6 +296,7 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
     }
     const v = verbindung;
     const quellUrl = pgUrl(v, quellDb);
+    let kalenderId = "";
 
     // ---------------------------------------------------------------------------------------------
     // 1. BESTAND — über die echte Anwendung, nicht per SQL-Handstreich.
@@ -428,6 +429,31 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
         },
       });
       expect(beziehung.statusCode, beziehung.body).toBe(201);
+
+      // AW-16 (produkt:20261010:klara-eigener-kalender): ein persönlicher Kalendereintrag und die
+      // Sichtwahl gehören zum Bestand der Probe. Nach dem Wiederanlauf muss DERSELBE Eintrag mit
+      // DERSELBEN Kennung über die Anwendung lesbar sein (Abschnitt 4 unten).
+      const kalender = await app.inject({
+        method: "POST",
+        url: "/api/me/kalender/eintraege",
+        headers: kopf,
+        payload: {
+          art: "frist",
+          titel: "Wartungsvertrag W-3 endet (fiktiv)",
+          ganztaegig: true,
+          beginn: "2026-12-31",
+          zeitzone: "Europe/Berlin",
+        },
+      });
+      expect(kalender.statusCode, kalender.body).toBe(201);
+      kalenderId = kalender.json().eintrag.id as string;
+      const sicht = await app.inject({
+        method: "PUT",
+        url: "/api/me/kalender/einstellungen",
+        headers: kopf,
+        payload: { sichtmodus: "beide" },
+      });
+      expect(sicht.statusCode, sicht.body).toBe(200);
 
       // Der Bestand muss in den Tabellen stehen, die Glied 7b braucht — sonst prüfte es nichts.
       for (const tabelle of ["kos", "users", "audit", "objects", "ko_evidence"]) {
@@ -571,6 +597,23 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
     const roh = await zielApp.inject({ url: `/api/objects/${objektId}/raw`, headers: zielKopf });
     expect(roh.statusCode, roh.body).toBe(200);
     expect(Buffer.from(roh.rawPayload).equals(QUELLBYTES)).toBe(true);
+
+    // AW-16: der Kalendereintrag und die Sichtwahl sind aus der Sicherung zurück — dieselbe Kennung,
+    // derselbe Inhalt, gelesen über die Anwendung gegen die WIEDERHERGESTELLTE Datenbank.
+    expect(ausgabe).toMatch(/kalender_eintraege: Dump=1 Datenbank=1/);
+    const kalenderNachher = await zielApp.inject({
+      url: `/api/me/kalender/eintraege/${kalenderId}`,
+      headers: zielKopf,
+    });
+    expect(kalenderNachher.statusCode, kalenderNachher.body).toBe(200);
+    expect(kalenderNachher.json().eintrag).toMatchObject({
+      id: kalenderId,
+      titel: "Wartungsvertrag W-3 endet (fiktiv)",
+      ganztaegig: true,
+      beginn: "2026-12-31",
+    });
+    const ansichtNachher = await zielApp.inject({ url: "/api/me/kalender", headers: zielKopf });
+    expect(ansichtNachher.json().sichtmodus).toBe("beide");
 
     // GEGENPROBE ZUR AUSSAGEKRAFT (Auftrag §8.2 ii): Eine einzige veränderte Zeile in
     // `objects.data` — die Zeilenzahl bleibt gleich, der Drill wäre weiterhin grün. Der

@@ -75,8 +75,14 @@ describe("P09 · Unterlage Datenverlust und Wiederanlauf", () => {
       "wissensereignisse",
       "hintergrundpruefung",
       "lueckenerkennung",
+      "klara-erinnerungen",
     ]);
-    for (const name of ["Wissensereignis-Meldungen", "Hintergrundprüfung", "Lückenerkennung"]) {
+    for (const name of [
+      "Wissensereignis-Meldungen",
+      "Hintergrundprüfung",
+      "Lückenerkennung",
+      "Erinnerungssteuerung",
+    ]) {
       expect(wiederanlauf, name).toContain(name);
     }
     // Der Probeserver des Drills startet ohne Webhook-Ziele und ohne Modellzuordnung.
@@ -88,7 +94,7 @@ describe("P09 · Unterlage Datenverlust und Wiederanlauf", () => {
     expect(start).toContain("KLARWERK_REASONER_POLICY=deterministic \\");
     // Die neuen Betriebsmeldungen bleiben im Protokoll lesbar (Log-Positivliste).
     for (const satz of [
-      "Wiederanlauf restore-20261011: Außenaktionen gestoppt (wissensereignisse, hintergrundpruefung, lueckenerkennung). Nach der Freigabe ohne KLARWERK_WIEDERANLAUF neu starten.",
+      "Wiederanlauf restore-20261011: Außenaktionen gestoppt (wissensereignisse, hintergrundpruefung, lueckenerkennung, klara-erinnerungen). Nach der Freigabe ohne KLARWERK_WIEDERANLAUF neu starten.",
       "Wiederanlauf restore-20261011: Sperre aktiv bis zur Freigabe, Sicherungsstand 2026-10-11T09:00:00.000Z, Replay-Grenze: 1 Meldungen unterdrückt, 2 offene Zustellungen geschlossen.",
     ]) {
       expect(gelisteteMeldung(satz)).toBe(satz);

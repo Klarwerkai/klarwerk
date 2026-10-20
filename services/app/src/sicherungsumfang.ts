@@ -84,6 +84,19 @@ export const SICHERUNGSUMFANG: readonly UmfangBereich[] = [
   // produkt:20261008:klara-aufgaben (Klara 07) — persönliche Aufgaben je Konto. Bis dahin
   // `nicht_vorhanden`; seit der eigenen Ablage liegen sie als Tabelle im Dump.
   { id: "aufgaben", art: "assistenz", zustand: "im_dump", tabellen: ["klara_aufgaben"] },
+  // produkt:20261007:klara-erinnerungen-kalender (Klara 10) — Erinnerungen, Läufe und zugestellte
+  // Meldungen je Konto; alle drei im Dump, damit ein Restore keine Erinnerung ein zweites Mal zustellt.
+  {
+    id: "erinnerungen",
+    art: "assistenz",
+    zustand: "im_dump",
+    tabellen: [
+      "klara_erinnerungen",
+      "klara_erinnerung_laeufe",
+      "klara_erinnerung_meldungen",
+      "klara_erinnerung_einstellungen",
+    ],
+  },
   // Browser-Speicher der Person (Sitzungscookie, lokale Einstellungen).
   { id: "endgeraet", art: "assistenz", zustand: "ausgeschlossen", tabellen: [] },
 ];

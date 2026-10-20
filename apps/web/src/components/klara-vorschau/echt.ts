@@ -266,7 +266,11 @@ export async function ladeEcht(kontoId: string, t: TFunction): Promise<void> {
   if (zustand.kontoId === kontoId && (zustand.laden === "bereit" || zustand.laden === "laedt")) {
     return;
   }
-  if (zustand.kontoId !== kontoId) {
+  // Nur ein ECHTER Kontowechsel (ein anderes, schon bekanntes Konto) verwirft alles. Wird das Konto
+  // erst jetzt bekannt (Sitzung antwortet nach dem Seitenaufbau), gehört alles bisher Gelesene
+  // schon diesem Konto (derselbe Sitzungs-Cookie) — ein offener Entwurf, etwa eine neue Erinnerung,
+  // darf dabei nicht verloren gehen. Abmelden verwirft weiterhin über `vergiss()` (Konto leer).
+  if (zustand.kontoId !== null && zustand.kontoId !== kontoId) {
     vergiss();
   }
   const gen = generation;

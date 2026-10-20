@@ -29,7 +29,40 @@ export type NotificationKind =
   // produkt:20261010:wissenskreislauf-schliessen: der Vorgang einer Wissenslücke — fachlich gelöst
   // (an die Fragenden), Rückfrage (an die Fragenden), Rückfrage beantwortet (an die zuständige
   // Person). Die Unterart steht in `lueckenArt`.
-  | "luecke";
+  | "luecke"
+  // produkt:20261007:klara-erinnerungen-kalender (Klara 10): die zugestellte persönliche Erinnerung
+  // — erinnert, verpasst gemeldet, zusammengefasst oder übersprungen. Unterart in `erinnerungArt`.
+  | "erinnerung";
+
+/**
+ * Klara 10: eine von der Erinnerungssteuerung DAUERHAFT zugestellte Meldung
+ * (`klara_erinnerung_meldungen`). Nur dem eigenen Konto zugestellt; die Kennung ist je Vorkommen
+ * fest — dieselbe Erinnerung erscheint nie zweimal.
+ */
+export interface ErinnerungNotice {
+  id: string;
+  erinnerungId: string;
+  // `handlung` (EQF-07-K09): eine Routine kam nicht zum Ergebnis — Grund in `grund`.
+  art: "erinnerung" | "verpasst" | "zusammenfassung" | "uebersprungen" | "handlung";
+  grund?: string;
+  titel: string;
+  zugestelltAm: string;
+  vorkommen: readonly string[];
+  nachgeholt: boolean;
+  pruefung: { art: "aufgabe"; status: string } | null;
+  /** AW-18: die bestellte Zusammenfassung — nur bei `inhalt_zusammenfassen`. */
+  zusammenfassung?: ErinnerungZusammenfassungNotice | null;
+  /** EQF-07: das tatsächliche Ergebnis einer Routine (Bericht in „Meine Notizen“). */
+  routine?: {
+    readonly status: "erstellt" | "teilweise";
+    readonly notizId: string;
+    readonly offen: readonly { readonly was: string; readonly grund: string }[];
+  } | null;
+}
+
+export type ErinnerungZusammenfassungNotice =
+  | { status: "erstellt"; text: string; ki: boolean }
+  | { status: "nicht_verfuegbar" };
 
 // R-1089: eine Meldung „Antwort falsch / Quelle passt nicht" an die verantwortliche Person des
 // zitierten Wissensobjekts. Quelle: Audit-Einträge `answer.reported`, deren `responsible` der
@@ -122,6 +155,18 @@ export interface Notification {
   // `geloest` trägt `koId` den nutzbaren Wissenseintrag (Titel = dessen Titel).
   lueckenArt?: GapMeldung["art"];
   gapId?: string;
+  // Klara 10: Unterart, Erinnerung, erfasste Termine und das Ergebnis einer Aufgabenprüfung. Nur bei
+  // `kind: "erinnerung"` gesetzt.
+  erinnerungArt?: ErinnerungNotice["art"];
+  /** Nur bei `erinnerungArt: "handlung"`: warum kein Ergebnis entstand. */
+  erinnerungGrund?: string;
+  erinnerungId?: string;
+  termine?: readonly string[];
+  nachgeholt?: boolean;
+  pruefung?: ErinnerungNotice["pruefung"];
+  erinnerungZusammenfassung?: ErinnerungZusammenfassungNotice;
+  /** EQF-07: Routinenergebnis — Bericht (Notiz), Status und Zahl der offenen Punkte. */
+  erinnerungRoutine?: { status: "erstellt" | "teilweise"; notizId: string; offen: number };
   // ADMIN-12 (`kommunikationsregeln.ts`): die tägliche Zusammenfassung gewöhnlicher
   // Veröffentlichungen eines Tages — eine Meldung `kind: "veroeffentlichung"` ohne `koId`.
   zusammenfassung?: {
@@ -171,8 +216,35 @@ export function buildNotifications(input: {
   // `geloest` — gegen seine heutige Sichtbarkeit und den Fachprüfstand geprüft
   // (`AskService.gapMeldungenFuer`). Die Kennung ist deterministisch: je Abschluss genau eine.
   luecken?: readonly GapMeldung[];
+  // Klara 10: bereits auf den Betrachter beschränkt (`fuerKonto`) — persönliche Inhalte, kein
+  // Wissensobjekt, also kein Sichtbarkeitsfilter darüber hinaus.
+  erinnerungen?: readonly ErinnerungNotice[];
 }): Notification[] {
   const items: Notification[] = [];
+  for (const e of input.erinnerungen ?? []) {
+    items.push({
+      id: e.id,
+      kind: "erinnerung",
+      title: e.titel,
+      at: e.zugestelltAm,
+      erinnerungArt: e.art,
+      ...(e.grund ? { erinnerungGrund: e.grund } : {}),
+      erinnerungId: e.erinnerungId,
+      termine: e.vorkommen,
+      nachgeholt: e.nachgeholt,
+      pruefung: e.pruefung,
+      ...(e.zusammenfassung ? { erinnerungZusammenfassung: e.zusammenfassung } : {}),
+      ...(e.routine
+        ? {
+            erinnerungRoutine: {
+              status: e.routine.status,
+              notizId: e.routine.notizId,
+              offen: e.routine.offen.length,
+            },
+          }
+        : {}),
+    });
+  }
   for (const l of input.luecken ?? []) {
     items.push({
       id: l.id,

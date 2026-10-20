@@ -27,6 +27,7 @@ import {
   verwirfAenderung,
   verwirfAusstehend,
 } from "./aufgaben";
+import { starteEntwurf } from "./erinnerungen";
 import { ruecklinkZiel } from "./notizen";
 
 const KNOPF =
@@ -228,6 +229,22 @@ function AufgabeZeile({
               className={KNOPF_HAUPT}
             >
               {laeuft ? t("klaraaufgabe.speichertGerade") : t("klaraaufgabe.speichern")}
+            </button>
+            {/* Klara 10: an diese Aufgabe erinnern (wahlweise mit Prüfung ihres Stands). */}
+            <button
+              type="button"
+              data-testid="klara-aufgabe-erinnern"
+              title={t("klaraerinnerung.erinnernHilfe")}
+              onClick={() =>
+                starteEntwurf(
+                  { art: "aufgabe", aufgabeId: a.id },
+                  t("klaraerinnerung.bezug.aufgabe", { titel: a.titel }),
+                  a.titel,
+                )
+              }
+              className={KNOPF}
+            >
+              {t("klaraerinnerung.erinnern")}
             </button>
             {loeschenFragen ? (
               <>

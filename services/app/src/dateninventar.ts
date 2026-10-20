@@ -505,6 +505,80 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    // produkt:20261008:klara-kalender (Klara 11) — die Anbindung an einen vorhandenen Kalender
+    // (`services/app/src/klara-kalender-anbindung.ts`): Anbindungen und Zuordnungen je Konto.
+    id: "klarakalender",
+    name: "Kalenderanbindung (Klara)",
+    inhalt:
+      "Je Konto die gewählten Kalenderanbindungen (Anbieter, Name und Anmeldename des Kalenderkontos, Kalendername und Besitzer, Umfang, Rechte, Feldregeln, Privatprojektion) und je eingetragenem Termin die Zuordnung: Auftrags- und Ereigniskennung, externe Kennung und Fassung beim Anbieter, zuletzt eingetragener Termin (Titel, Zeit, Zeitzone, Ort, Beschreibung, Teilnehmeradressen), Stand, Sperrmarke, offene Entscheidung und Verlauf. Kein Zugangsmerkmal.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; Termintexte sind Freitext, Teilnehmeradressen nennen weitere Personen.",
+    ablage: {
+      ort: DATENBANK,
+      tabellen: ["klara_kalender_anbindungen", "klara_kalender_zuordnungen"],
+    },
+    taetigkeit: "fragen",
+    loeschung:
+      "Termine löscht das Konto selbst über die Anbindung (Löschvorschau, dann Löschung mit Fassung); die Zuordnung bleibt danach als Sperrmarke stehen, damit ein verspäteter Abgleich nichts wiederherstellt. Anbindungen selbst haben noch keinen Löschweg in der Oberfläche; sie enden mit der Kontolöschung bzw. durch den Betreiber.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht seine Kalenderanbindung (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb steht sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
+    // produkt:20261010:klara-eigener-kalender (AW-16) — der eigene Kalender
+    // (`services/app/src/eigener-kalender.ts`): eine Zeile je Eintrag, eine je Konto für die Sichtwahl.
+    id: "eigenerkalender",
+    name: "Eigener Kalender",
+    inhalt:
+      "Je Eintrag Bereich (persönlich oder Team) mit Konto, Team und verantwortlicher Person, Art (Termin, Frist, Aufgabe), Titel, Notiz, Zeit mit Zeitzone, Herkunft (eigen oder Kennung eines Wissensobjekts), Status, nur die Kennungen verknüpfter Frist, Aufgabe, Serie und Lauf sowie die Konten, die den Eintrag aus ihrer Ansicht entfernt haben; je Konto die Sichtwahl (eigen, vorhanden, beide).",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Persönliche Einträge gehören genau einem Konto, Teameinträge nennen Konto und verantwortliche Person; Titel und Notiz sind Freitext und können sensible Angaben enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["kalender_eintraege", "kalender_einstellungen"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto löscht einen persönlichen Eintrag selbst, einen Teameintrag die Verantwortlichen oder Teamzuständigen (DELETE /api/me/kalender/eintraege/:id); die Sichtwahl ändert das Konto selbst (PUT /api/me/kalender/einstellungen), einen eigenen Löschweg dafür gibt es nicht. Auch Administratoren lesen fremde persönliche Einträge nicht.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Persönliche Einträge sieht nur das Konto selbst, Teameinträge nur das heutige Team (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
+    // produkt:20261007:klara-erinnerungen-kalender (Klara 10) — die persönlichen Erinnerungen
+    // (`services/app/src/klara-erinnerung.ts`): Auftrag, Läufe je Termin, zugestellte Meldungen.
+    id: "klaraerinnerungen",
+    name: "Persönliche Klara-Erinnerungen",
+    inhalt:
+      "Je Konto die eigenen Erinnerungen: Titel, Notiz, Zeitplan (Datum, Uhrzeit, Serie oder Fristvorlauf), IANA-Zeitzone, Sommerzeit- und Verpasst-Regel, Status, Einzeländerungen je Termin, Bezug (Kennung und Titel der Notiz bzw. Aufgabe oder Kennungen und Auszug der Gesprächsnachricht), Objektbezug als Rücklink, Vorgangsschlüssel und eine bewusste Übergabe (Kennung der zuständigen Person, Zeitpunkt); je Termin der Lauf (Zeitpunkt, Status, Versuch, Prozesskennung, Ergebnis samt bestellter Zusammenfassung) und die zugestellte Meldung mit Titel (bei Übergabe an die zuständige Person); dazu je Konto die Vorgaben des Einrichtungsassistenten (Zeitzone, Sommerzeit- und Verpasst-Regel).",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; nur nach bewusster Übergabe erhält eine zweite Person Titel und Termine. Titel, Notiz, Auszug und Zusammenfassung sind Freitext und können sensible Angaben enthalten.",
+    ablage: {
+      ort: DATENBANK,
+      tabellen: [
+        "klara_erinnerungen",
+        "klara_erinnerung_laeufe",
+        "klara_erinnerung_meldungen",
+        "klara_erinnerung_einstellungen",
+      ],
+    },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto löscht eine Erinnerung selbst (DELETE /api/me/klara/erinnerungen/:id) — mit ihren Läufen und zugestellten Meldungen; auch Administratoren lesen fremde Erinnerungen nicht.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht seine Erinnerungen (eigene Fläche und eigene Glocke); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
     id: "lernpfade",
     name: "Lernpfade und Fortschritt",
     inhalt:
