@@ -146,6 +146,22 @@ describe("AW21 · D-Normeingang vor dem G-Port (Vertragsdouble, kein G-Ausführu
       dienst(f.port).beobachten(kontoId, [quelleId], lauf, versuch()),
     ).rejects.toMatchObject({ status: 409 });
     expect(f.anlagen()).toBe(1);
+    if (!e) throw new Error("Normereignis fehlt");
+    const n = (await s.klaraFristen.hole(kontoId))?.normereignisse?.[0];
+    if (!n) throw new Error("Normgeschichte fehlt");
+    expect(await dienst(f.port).pruefauftraege(kontoId, n.id, e.id)).toEqual({
+      automatisch: true,
+      gebunden: null,
+      auftraege: [],
+    });
+    await expect(
+      dienst(f.port).verknuepfePruefauftrag(kontoId, n.id, e.id, {
+        fassung: (await s.klaraFristen.hole(kontoId))?.fassung,
+        gespraechId,
+        auftragId: "fiktives-anderes-Original",
+        bestaetigt: true,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
     expect(
       await s.klaraNotizen.liste(kontoId, { woerter: [], art: null, limit: 100 }),
     ).toHaveLength(1);
@@ -178,4 +194,32 @@ describe("AW21 · D-Normeingang vor dem G-Port (Vertragsdouble, kein G-Ausführu
       ).toBeUndefined();
     },
   );
+  it("gespeicherte automatische Anleitungsreferenzen werden nach heutigem Entzug weder in Stand noch Vorschau preisgegeben", async () => {
+    const a = await s.ko.create({
+      title: "Fiktive später unlesbare Anleitung",
+      statement: "Fiktive unveränderte gültige Regel.",
+      type: "technik",
+      category: "Portprivacy",
+      author: kontoId,
+      confidentiality: "intern",
+    });
+    await s.lifecycle.couple("Norm N-17", a.id, kontoId);
+    const f = portDouble();
+    await expect(dienst(f.port).beobachten(kontoId, [quelleId], lauf, versuch())).rejects.toThrow(
+      "Kontrollierter Antwortverlust",
+    );
+    const vorher = await s.klaraFristen.hole(kontoId);
+    expect(vorher?.normereignisse?.[0]?.ereignisse[0]?.pruefeingang?.abhaengigkeiten).toEqual([
+      { koId: a.id, fassung: a.version },
+    ]);
+    await s.ko.setQuellrechte(a.id, { stufe: "intern", leser: [] }, kontoId);
+    const stand = await dienst(f.port).stand(kontoId);
+    const v = await dienst(f.port).vorschau(kontoId, [quelleId]);
+    expect(stand.normen).toEqual([]);
+    expect(v.ereignisse).toEqual([]);
+    expect(JSON.stringify([stand, v])).not.toContain(a.id);
+    expect(JSON.stringify([stand, v])).not.toContain(a.title);
+    expect(f.anlagen()).toBe(1);
+    expect(await s.klaraFristen.hole(kontoId)).toEqual(vorher);
+  });
 });

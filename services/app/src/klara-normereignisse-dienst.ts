@@ -516,6 +516,7 @@ export class KlaraNormereignisDienst {
           );
         if (e.pruefauftrag && (!p.original || p.original.id !== e.pruefauftrag.auftragId))
           throw new NormereignisFehler(409, "Das gebundene G-Original fehlt; kein Ersatzauftrag.");
+        let guardFassung = s.fassung;
         if (p.phase !== "lesen") {
           await versuch.pruefeAktuell();
           if (p.eingabe.erinnerungId !== versuch.erinnerungId)
@@ -563,15 +564,17 @@ export class KlaraNormereignisDienst {
               );
             ersteAnlage = true;
             eingabe = p.eingabe;
+            guardFassung = s.fassung + 1;
           }
         }
         const guard: NotizSchreibbedingung = {
           sql: (start) => ({
             und: [
-              `EXISTS(SELECT 1 FROM klara_fristen WHERE konto_id=$${start}::text AND data->'normereignisse' @> $${start + 1}::jsonb FOR SHARE)`,
+              `EXISTS(SELECT 1 FROM klara_fristen WHERE konto_id=$${start}::text AND fassung=$${start + 1}::int AND data->'normereignisse' @> $${start + 2}::jsonb FOR SHARE)`,
             ],
             params: [
               kontoId,
+              guardFassung,
               JSON.stringify([
                 {
                   id: entwurf.normId,
@@ -715,9 +718,12 @@ export class KlaraNormereignisDienst {
     const { user, e } = await this.pruefbezug(kontoId, normId, ereignisId);
     const g = e.pruefauftrag
       ? await this.deps.gespraeche.hole(kontoId, e.pruefauftrag.gespraechId)
-      : await this.deps.gespraeche.aktuelles(kontoId);
+      : e.pruefeingang
+        ? await this.deps.gespraeche.hole(kontoId, e.pruefeingang.eingabe.gespraechId)
+        : await this.deps.gespraeche.aktuelles(kontoId);
     const auftraege = [];
     for (const a of g?.auftraege ?? []) {
+      if (e.pruefeingang && !e.pruefauftrag) continue;
       if (e.pruefauftrag && a.id !== e.pruefauftrag.auftragId) continue;
       const q = await this.pruefplan(user, e, a);
       // Ein gebundener Auftrag wird nach Quellenänderung nicht durch einen anderen ersetzt.
@@ -747,7 +753,11 @@ export class KlaraNormereignisDienst {
           : null,
       });
     }
-    return { gebunden: e.pruefauftrag ?? null, auftraege };
+    return {
+      gebunden: e.pruefauftrag ?? null,
+      auftraege,
+      ...(e.pruefeingang ? { automatisch: true } : {}),
+    };
   }
 
   /** Bindet ausschließlich die gewählte bestehende Originalreferenz; führt keine Aktion aus. */
@@ -778,6 +788,11 @@ export class KlaraNormereignisDienst {
         "Dieses Ereignis hat bereits seinen Originalprüfauftrag. Keine zweite Aufgabe anlegen.",
       );
     }
+    if (e.pruefeingang)
+      throw new NormereignisFehler(
+        409,
+        "Dieser bestellte Prüfauftrag hat seinen kanonischen Eingang. Nur das Original nachlesen, keinen anderen Auftrag binden.",
+      );
     const s = await this.deps.repo.hole(kontoId);
     if (!s || s.fassung !== r.fassung)
       throw new NormereignisFehler(409, "Normgeschichte wurde inzwischen geändert.");

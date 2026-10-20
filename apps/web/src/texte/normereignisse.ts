@@ -3,6 +3,8 @@ export default {
   praefix: "normereignisse.",
   legacySchluessel: [],
   de: {
+    "normereignisse.automatischerAuftragUnklar":
+      "Der bestellte Originalprüfauftrag ist noch nicht eindeutig bestätigt. Nur den Originalstand nachlesen; keinen Ersatzauftrag anlegen.",
     "normereignisse.annahmeUngeprueft":
       "Ein fachlicher Annahmebeleg lässt sich mit den heutigen Anleitungsrechten nicht prüfen.",
     "normereignisse.pruefauftrag": "Prüfauftrag am Original",
@@ -82,6 +84,8 @@ export default {
       "Angezeigt werden nur heute lesbare, ausdrücklich zugeordnete Einträge. Ähnlichkeit wurde nicht als Abhängigkeit übernommen.",
   },
   en: {
+    "normereignisse.automatischerAuftragUnklar":
+      "The commissioned original review order is not yet unambiguously confirmed. Read only its original state; do not create a replacement order.",
     "normereignisse.annahmeUngeprueft":
       "An acceptance record cannot be checked under current instruction access rights.",
     "normereignisse.pruefauftrag": "Review at the original task",
@@ -161,6 +165,8 @@ export default {
       "Only currently readable, explicitly assigned entries are shown. Similarity was not treated as a dependency.",
   },
   nl: {
+    "normereignisse.automatischerAuftragUnklar":
+      "De oorspronkelijke bestelde controleopdracht is nog niet eenduidig bevestigd. Lees alleen de oorspronkelijke stand; maak geen vervangende opdracht.",
     "normereignisse.annahmeUngeprueft":
       "Een inhoudelijke acceptatie kan met de huidige toegangsrechten niet worden gecontroleerd.",
     "normereignisse.pruefauftrag": "Controle bij de oorspronkelijke taak",
