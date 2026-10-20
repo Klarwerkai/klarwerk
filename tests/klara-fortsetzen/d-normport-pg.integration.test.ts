@@ -56,15 +56,15 @@ async function fixture(art: string) {
     objektbezug: { pfad: "/start", seitenName: "Fiktiver PG-Adapter", objekt: art },
   });
   expect(n.statusCode, n.body).toBe(201);
-  const ko = await auf("POST", "/api/kos", {
+  const ko = await services.ko.create({
     title: `Fiktive DG-PG-Quelle ${art}`,
     statement: "Synthetischer offener Quellenstand.",
     type: "technik",
     category: "PG-Adapter",
     confidentiality: "intern",
+    author: u.id,
   });
-  expect(ko.statusCode, ko.body).toBe(201);
-  const l = lokalVon(Date.now(), "Europe/Berlin");
+  const l = lokalVon(Date.now() + 120000, "Europe/Berlin");
   const r = await auf("POST", "/api/me/klara/erinnerungen", {
     vorgang: `dg-pg-erinnerung-${art}`,
     titel: `Fiktive Quellenpflege ${art}`,
@@ -74,7 +74,7 @@ async function fixture(art: string) {
     routine: {
       wissenspflege: {
         vorlage: "quellaenderung",
-        quellen: [ko.json().id],
+        quellen: [ko.id],
         normbekanntmachungen: "belege_vorbereiten",
       },
     },
