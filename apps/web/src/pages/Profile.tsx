@@ -31,6 +31,7 @@ import { Zeile, Zeilenkarte } from "../components/einstellungen/Zeilenkarte";
 // produkt:20261012:klara-setup-shortcuts-umsetzung: der Bereich „Klara“ mit Tastenkürzeln.
 import {
   KlaraBildAutomatikGruppe,
+  KlaraDatenkontrolleGruppe,
   KlaraGruppe,
   KlaraSprachausgabeGruppe,
   KlaraTastenkuerzelBereich,
@@ -596,6 +597,8 @@ function MeineAssistenzDetail({ onZurueck }: { onZurueck: () => void }): JSX.Ele
       <KlaraUnterstuetzung />
       {/* OCR-03: „Bilder automatisch analysieren und Text erkennen“ (Voreinstellung an). */}
       <KlaraBildAutomatikGruppe />
+      {/* PP-03: offene Datenpunkte in der Datenlage (Voreinstellung „alle“). */}
+      <KlaraDatenkontrolleGruppe />
       <KlaraGruppe titel={t("klarasetup.gruppe.faehigkeiten")} testId="klara-setup-faehigkeiten">
         {/* produkt:20261011:assistenz-skills-werkzeuge: Favoriten, Routinen und Aufrufe. */}
         <FaehigkeitenBereich />

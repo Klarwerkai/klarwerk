@@ -48,6 +48,24 @@ export default {
     "datenkontrolle.lage.anzahl": "{{anzahl}} Datenpunkte",
     "datenkontrolle.lage.offen": "Offene Prüfungen und Klärungen",
     "datenkontrolle.lage.keineOffenen": "Keine offenen Prüfungen oder Klärungen.",
+    "datenkontrolle.lage.zusammengefasst":
+      "{{anzahl}} offene Prüfungen sind nicht einzeln aufgeführt (Einstellung in Setup › Klara).",
+    "datenkontrolle.lage.alleZeigen": "Alle zeigen",
+    "datenkontrolle.lage.zusammenfassen": "Wieder zusammenfassen",
+    "datenkontrolle.ansage": "Gespeichert. Zustand jetzt: {{zustand}} (Datenfassung {{fassung}}).",
+    "datenkontrolle.setup.titel": "Datenkontrolle",
+    "datenkontrolle.setup.frage": "Offene Datenpunkte in der Datenlage",
+    "datenkontrolle.setup.wahl.alle": "Alle offenen Prüfungen einzeln aufführen (Voreinstellung)",
+    "datenkontrolle.setup.wahl.nur_klaerung":
+      "Klärungsbedarf und nötige Überprüfungen einzeln, offene Prüfungen als Anzahl",
+    "datenkontrolle.setup.grenze":
+      "Das ändert nur die Anzeige. Prüfanforderungen, Zustände und Klärungen bleiben unverändert und an jeder Zahl sichtbar.",
+    "datenkontrolle.setup.ohneKonto": "Ohne Anmeldung gilt die Voreinstellung.",
+    "datenkontrolle.setup.speichert": "Wird gespeichert …",
+    "datenkontrolle.setup.gespeichert": "Für dein Konto gespeichert.",
+    "datenkontrolle.setup.konflikt":
+      "Die Einstellung wurde inzwischen an anderer Stelle geändert. Bitte erneut wählen.",
+    "datenkontrolle.setup.fehler": "Nicht gespeichert. Bitte später erneut versuchen.",
   },
   en: {
     "datenkontrolle.titel": "Check status and controls",
@@ -87,6 +105,24 @@ export default {
     "datenkontrolle.lage.anzahl": "{{anzahl}} data points",
     "datenkontrolle.lage.offen": "Open checks and clarifications",
     "datenkontrolle.lage.keineOffenen": "No open checks or clarifications.",
+    "datenkontrolle.lage.zusammengefasst":
+      "{{anzahl}} open checks are not listed individually (setting in Setup › Klara).",
+    "datenkontrolle.lage.alleZeigen": "Show all",
+    "datenkontrolle.lage.zusammenfassen": "Collapse again",
+    "datenkontrolle.ansage": "Saved. Status now: {{zustand}} (data version {{fassung}}).",
+    "datenkontrolle.setup.titel": "Data control",
+    "datenkontrolle.setup.frage": "Open data points in the data status",
+    "datenkontrolle.setup.wahl.alle": "List every open check individually (default)",
+    "datenkontrolle.setup.wahl.nur_klaerung":
+      "List clarifications and required reviews individually, open checks as a count",
+    "datenkontrolle.setup.grenze":
+      "This only changes the display. Check requirements, statuses and clarifications stay unchanged and visible at every number.",
+    "datenkontrolle.setup.ohneKonto": "Without signing in, the default applies.",
+    "datenkontrolle.setup.speichert": "Saving …",
+    "datenkontrolle.setup.gespeichert": "Saved for your account.",
+    "datenkontrolle.setup.konflikt":
+      "The setting was changed elsewhere in the meantime. Please choose again.",
+    "datenkontrolle.setup.fehler": "Not saved. Please try again later.",
   },
   nl: {
     "datenkontrolle.titel": "Controlestand en controles",
@@ -126,5 +162,22 @@ export default {
     "datenkontrolle.lage.anzahl": "{{anzahl}} gegevenspunten",
     "datenkontrolle.lage.offen": "Open controles en verduidelijkingen",
     "datenkontrolle.lage.keineOffenen": "Geen open controles of verduidelijkingen.",
+    "datenkontrolle.lage.zusammengefasst":
+      "{{anzahl}} open controles worden niet afzonderlijk vermeld (instelling in Setup › Klara).",
+    "datenkontrolle.lage.alleZeigen": "Alles tonen",
+    "datenkontrolle.lage.zusammenfassen": "Weer samenvatten",
+    "datenkontrolle.ansage": "Opgeslagen. Status nu: {{zustand}} (gegevensversie {{fassung}}).",
+    "datenkontrolle.setup.titel": "Gegevenscontrole",
+    "datenkontrolle.setup.frage": "Open gegevenspunten in de gegevensstand",
+    "datenkontrolle.setup.wahl.alle": "Elke open controle afzonderlijk vermelden (standaard)",
+    "datenkontrolle.setup.wahl.nur_klaerung":
+      "Verduidelijkingen en nodige nieuwe controles afzonderlijk, open controles als aantal",
+    "datenkontrolle.setup.grenze":
+      "Dit wijzigt alleen de weergave. Controle-eisen, statussen en verduidelijkingen blijven ongewijzigd en bij elk getal zichtbaar.",
+    "datenkontrolle.setup.ohneKonto": "Zonder aanmelding geldt de standaard.",
+    "datenkontrolle.setup.speichert": "Wordt opgeslagen …",
+    "datenkontrolle.setup.gespeichert": "Opgeslagen voor je account.",
+    "datenkontrolle.setup.konflikt": "De instelling is intussen elders gewijzigd. Kies opnieuw.",
+    "datenkontrolle.setup.fehler": "Niet opgeslagen. Probeer het later opnieuw.",
   },
 } satisfies Textmodul;

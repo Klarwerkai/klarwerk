@@ -14,6 +14,8 @@ export interface AssistenzProfilDaten {
   geaendertAm: string;
   /** OCR-03: nur nach bewusster Wahl vorhanden — sonst gilt die Voreinstellung „an“. */
   bildAutomatik?: boolean;
+  /** PP-03: nur nach bewusster Wahl vorhanden — sonst gilt „alle“. */
+  datenkontrolleOffenePunkte?: "alle" | "nur_klaerung";
 }
 
 export interface AssistenzProfilAntwort {
@@ -27,6 +29,8 @@ export interface AssistenzProfilAenderung {
   bewegung?: AssistenzBewegung;
   /** OCR-03: Setup › Klara „Bilder automatisch analysieren und Text erkennen“. */
   bildAutomatik?: boolean;
+  /** PP-03: Setup › Klara „Offene Datenpunkte in der Datenlage“. */
+  datenkontrolleOffenePunkte?: "alle" | "nur_klaerung";
   einrichtungAbschliessen?: boolean;
   /** Die zuletzt bestätigte Fassung (0 ohne Profil) — schützt vor stillem Überschreiben. */
   fassung: number;

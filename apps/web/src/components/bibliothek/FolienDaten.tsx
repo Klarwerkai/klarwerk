@@ -14,6 +14,11 @@
 // OCR: „Bildtext lesen“ nutzt die vorhandene Texterkennung (W01, `useBildAnalyse`) für GENAU das
 // gewählte Bild — erkannt über die Inhaltskennung seiner Bytes, die der Server ebenfalls nachrechnet.
 // Es entsteht keine zweite Engine; das Ergebnis bleibt „OCR-erkannt, nicht bestätigt“.
+//
+// PP-03 (produkt:20261015:klara-powerpoint-validierung): trägt die Sicht ihre `kontrolle`, gilt an
+// der Zahl und im Detailbereich deren Zustand (`DatenKontrolle`) statt des bloßen Prüfstands — nie
+// beide nebeneinander. Über der Folienliste steht die Datenlage; ihre Sichtbarkeitsregel kommt aus
+// Setup › Klara und blendet nie Klärungen oder überholte Prüfungen aus.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -27,6 +32,7 @@ import {
   type FolieMitElementen,
   type FolienDatenLage,
   type FolienElement,
+  type Zustand,
   datenFehler,
   praesentationDaten,
 } from "../../api/praesentationDaten";
@@ -38,16 +44,23 @@ import {
 } from "../../lib/bildAutomatik";
 import { useBildAnalyse } from "../../lib/bildAutomatikLauf";
 import { objectRawHref } from "../../lib/bodyFileLink";
+import { useOffenePunkteWahl } from "../../lib/datenkontrolleEinstellung";
 import { readPptxRich } from "../../lib/files";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { DatenKontrolle, DatenLage } from "./DatenKontrolle";
 
 const ZUSTANDSFARBE: Record<DatenpunktSicht["pruefstand"]["zustand"], string> = {
   erfasst: "text-muted",
   in_pruefung: "text-muted",
-  klaerung: "text-danger",
+  klaerung: "text-trust-crit-text",
   validiert: "text-text",
-  ueberpruefung_noetig: "text-danger",
+  ueberpruefung_noetig: "text-trust-crit-text",
 };
+
+/** PP-03: der Zustand der Datenfassung — mit Kontrollen deren Zustand, sonst der Prüfstand. */
+export function zustandVon(dp: DatenpunktSicht): Zustand {
+  return dp.kontrolle?.zustand ?? dp.pruefstand.zustand;
+}
 
 /** Ein Fehler als Satz: die fachliche Begründung des Servers oder ein fester Text. */
 function useFehlerText(): (fehler: unknown) => string {
@@ -107,7 +120,7 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
   const qc = useQueryClient();
   const titelId = useId();
   // UI-06 (R17, R2): die Herkunft trägt eine Kennung, auf die die offene Zahl verweist; die Fläche
-  // merkt sich die Zahl, an der die Herkunft geöffnet wurde.
+  // merkt sich die Zahl oder den Datenlage-Eintrag, an dem die Herkunft geöffnet wurde.
   const herkunftId = useId();
   const bereich = useRef<HTMLElement>(null);
   const oeffner = useRef<HTMLButtonElement | null>(null);
@@ -121,27 +134,41 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
   // mit der gerechnet wurde, nicht in ihrem heutigen Stand.
   const [pfad, setPfad] = useState<{ id: string; fassung?: number }[]>([]);
   const [erfassenAn, setErfassenAn] = useState<string | null>(null);
+  const offenePunkte = useOffenePunkteWahl();
+  // UI-06 (Risiko R13): ein Einstieg aus der Datenlage oder an der Zahl setzt den Fokus auf die
+  // Herkunft — auch wenn genau diese Zahl schon offen ist (sonst bliebe der Fokus im Schmalformat
+  // weit oben, die Herkunft weit unten).
+  const [fokusAnfrage, setFokusAnfrage] = useState(0);
+  const oeffneVonListe = (id: string, ausloeser?: HTMLButtonElement) => {
+    if (ausloeser) {
+      oeffner.current = ausloeser;
+    }
+    setPfad([{ id }]);
+    setFokusAnfrage((n) => n + 1);
+  };
 
   const neuLaden = () => {
     void qc.invalidateQueries({ queryKey: schluessel });
     void qc.invalidateQueries({ queryKey: ["datenpunkt"] });
   };
 
-  // UI-05/06 (R2): Schließen — per Knopf, Escape oder zweitem Klick auf die Zahl — gibt den Fokus an
-  // die Zahl zurück, an der die Herkunft geöffnet wurde. Ist sie nicht mehr da oder kam der Einstieg
-  // nicht von einer Zahl, erhält ihn die Zahl desselben Datenpunkts in dieser Fläche.
+  // UI-05/06 (R2, R18): Schließen gibt den Fokus an den Einstieg zurück. Ist der Datenlage-Eintrag
+  // etwa nach einer Korrektur nicht mehr da, erhält ihn die Zahl desselben Datenpunkts.
   const schliesseHerkunft = () => {
     const wurzel = pfad[0]?.id;
     setPfad([]);
     const gemerkt = oeffner.current;
-    const zahl =
-      gemerkt?.isConnected && gemerkt.dataset.datenpunkt === wurzel
+    const einstieg =
+      gemerkt?.isConnected &&
+      bereich.current?.contains(gemerkt) &&
+      (gemerkt.dataset.datenpunkt === wurzel ||
+        gemerkt.closest<HTMLElement>("li[data-offener-punkt]")?.dataset.offenerPunkt === wurzel)
         ? gemerkt
         : [
             ...(bereich.current?.querySelectorAll<HTMLButtonElement>("button[data-datenpunkt]") ??
               []),
           ].find((b) => b.dataset.datenpunkt === wurzel);
-    zahl?.focus();
+    einstieg?.focus();
   };
 
   const d = lage.data;
@@ -162,6 +189,9 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
           {fehlerText(lage.error)}
         </p>
       ) : null}
+      {d?.datenlage ? (
+        <DatenLage lage={d.datenlage} wahl={offenePunkte} oeffne={oeffneVonListe} />
+      ) : null}
       {d ? (
         <div className="mt-2 grid gap-3 lg:grid-cols-[minmax(0,1fr)_24rem]">
           <ol data-folien-liste="" className="min-w-0 space-y-2">
@@ -171,7 +201,7 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
                 lage={d}
                 folie={f}
                 aktiv={pfad.length === 1 ? (aktiv?.id ?? null) : null}
-                oeffne={(id) => setPfad([{ id }])}
+                oeffne={oeffneVonListe}
                 erfassenAn={erfassenAn}
                 setErfassenAn={setErfassenAn}
                 nachErfassen={(neu) => {
@@ -193,6 +223,7 @@ export function FolienDaten({ koId, anhangId }: { koId: string; anhangId: string
               id={aktiv.id}
               {...(aktiv.fassung === undefined ? {} : { fassung: aktiv.fassung })}
               tiefe={pfad.length}
+              fokusAnfrage={fokusAnfrage}
               darfErfassen={d.darfErfassen}
               darfFreigeben={d.darfFreigeben}
               oeffne={(id, fassung) =>
@@ -323,13 +354,14 @@ function Zahl({
 }): JSX.Element {
   const { t } = useTranslation();
   const erfassung = t(`praesentationdaten.erfassung.${dp.erfassung}`);
-  const zustand = t(`praesentationdaten.zustand.${dp.pruefstand.zustand}`);
+  const z = zustandVon(dp);
+  const zustand = t(`praesentationdaten.zustand.${z}`);
   return (
     <button
       type="button"
       data-datenpunkt={dp.id}
       data-erfassung={dp.erfassung}
-      data-zustand={dp.pruefstand.zustand}
+      data-zustand={z}
       aria-pressed={gewaehlt}
       aria-label={t("praesentationdaten.herkunftVon", { wert: dp.wert, erfassung, zustand })}
       aria-controls={gewaehlt ? herkunftId : undefined}
@@ -347,7 +379,7 @@ function Zahl({
     >
       <span className="font-semibold text-text">{dp.wert}</span>
       <span className="text-muted">{erfassung}</span>
-      <span className={ZUSTANDSFARBE[dp.pruefstand.zustand]}>· {zustand}</span>
+      <span className={ZUSTANDSFARBE[z]}>· {zustand}</span>
     </button>
   );
 }
@@ -360,6 +392,7 @@ function Herkunft({
   id,
   fassung,
   tiefe,
+  fokusAnfrage = 0,
   darfErfassen: darfErfassenRecht,
   darfFreigeben,
   oeffne,
@@ -372,6 +405,8 @@ function Herkunft({
   /** Eine bestimmte Datenfassung (Eingabe einer Berechnung); ohne Angabe der aktuelle Stand. */
   fassung?: number;
   tiefe: number;
+  /** Zähler ausdrücklicher Einstiege aus Liste/Datenlage: jede Erhöhung setzt den Fokus erneut. */
+  fokusAnfrage?: number;
   darfErfassen: boolean;
   darfFreigeben: boolean;
   oeffne: (id: string, fassung?: number) => void;
@@ -396,14 +431,27 @@ function Herkunft({
   // aktuellen Datenpunkt.
   const darfErfassen = darfErfassenRecht && dp?.historisch === undefined;
 
+  // Den Fokus nur bei einem anderen Datenpunkt bzw. einer anderen Datenfassung setzen — nicht bei
+  // jedem Neuabruf derselben Fassung (PP-03: die Kontrolle trägt je Abruf eine neue Berechnungszeit;
+  // sonst verlöre ein offenes Korrekturfeld beim Fensterfokus den Fokus).
+  const fokusSchluessel = dp ? `${dp.id}@${dp.fassung}` : null;
   useEffect(() => {
-    if (dp) {
+    if (fokusSchluessel && fokusAnfrage >= 0) {
       kopf.current?.focus();
     }
-  }, [dp]);
+  }, [fokusSchluessel, fokusAnfrage]);
 
+  // UI-06 (Risiko R15): nach Prüfen oder Korrigieren den neuen Zustand ansagen. Die Live-Region
+  // steht von Anfang an da, damit Screenreader die Änderung tatsächlich ausgeben.
+  const [ansage, setAnsage] = useState("");
   const uebernehmen = (neu: DatenpunktSicht) => {
     qc.setQueryData(schluessel, neu);
+    setAnsage(
+      t("datenkontrolle.ansage", {
+        zustand: t(`praesentationdaten.zustand.${zustandVon(neu)}`),
+        fassung: neu.fassung,
+      }),
+    );
     geaendert();
   };
 
@@ -433,6 +481,9 @@ function Herkunft({
       }}
       className="min-w-0 rounded-card border border-hairline p-3 text-[12px] lg:sticky lg:top-2 lg:self-start"
     >
+      <output aria-live="polite" data-herkunft-ansage="" className="sr-only">
+        {ansage}
+      </output>
       <div className="flex flex-wrap items-center gap-2">
         {tiefe > 1 ? (
           <button
@@ -607,37 +658,46 @@ function Herkunft({
           ) : null}
 
           <Abschnitt titel={t("praesentationdaten.pruefstand")}>
-            <p data-herkunft-zustand={dp.pruefstand.zustand} className="font-semibold">
-              {t(`praesentationdaten.zustand.${dp.pruefstand.zustand}`)}
-            </p>
-            <p className="text-muted">{dp.pruefstand.grund}</p>
-            <ul data-herkunft-dimensionen="" className="mt-1 space-y-0.5">
-              {dp.pruefstand.dimensionen.map((x) => (
-                <li key={x.dimension} data-dimension={x.dimension} data-stand={x.stand}>
-                  <span className="font-semibold text-text">
-                    {t(`praesentationdaten.dimension.${x.dimension}`)}:
-                  </span>{" "}
-                  {t(`praesentationdaten.stand.${x.stand}`)}
-                  {x.grund ? <span className="text-muted"> — {x.grund}</span> : null}
-                  {x.pruefung ? (
-                    <span className="text-muted">
-                      {" "}
-                      ({x.pruefung.name ?? x.pruefung.von}, {datum(x.pruefung.am)})
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-            {dp.pruefstand.naechsteArbeit.length > 0 ? (
+            {dp.kontrolle ? (
+              // PP-03: Prüfstand UND Kontrollen derselben Datenfassung — ersetzt die Liste unten.
+              <div data-herkunft-zustand={dp.kontrolle.zustand}>
+                <DatenKontrolle kontrolle={dp.kontrolle} eingebettet />
+              </div>
+            ) : (
               <>
-                <p className="mt-1 font-semibold">{t("praesentationdaten.naechsteArbeit")}</p>
-                <ul className="list-disc pl-4">
-                  {dp.pruefstand.naechsteArbeit.map((a) => (
-                    <li key={a}>{a}</li>
+                <p data-herkunft-zustand={dp.pruefstand.zustand} className="font-semibold">
+                  {t(`praesentationdaten.zustand.${dp.pruefstand.zustand}`)}
+                </p>
+                <p className="text-muted">{dp.pruefstand.grund}</p>
+                <ul data-herkunft-dimensionen="" className="mt-1 space-y-0.5">
+                  {dp.pruefstand.dimensionen.map((x) => (
+                    <li key={x.dimension} data-dimension={x.dimension} data-stand={x.stand}>
+                      <span className="font-semibold text-text">
+                        {t(`praesentationdaten.dimension.${x.dimension}`)}:
+                      </span>{" "}
+                      {t(`praesentationdaten.stand.${x.stand}`)}
+                      {x.grund ? <span className="text-muted"> — {x.grund}</span> : null}
+                      {x.pruefung ? (
+                        <span className="text-muted">
+                          {" "}
+                          ({x.pruefung.name ?? x.pruefung.von}, {datum(x.pruefung.am)})
+                        </span>
+                      ) : null}
+                    </li>
                   ))}
                 </ul>
+                {dp.pruefstand.naechsteArbeit.length > 0 ? (
+                  <>
+                    <p className="mt-1 font-semibold">{t("praesentationdaten.naechsteArbeit")}</p>
+                    <ul className="list-disc pl-4">
+                      {dp.pruefstand.naechsteArbeit.map((a) => (
+                        <li key={a}>{a}</li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
               </>
-            ) : null}
+            )}
             {darfErfassen ? (
               <Pruefen dp={dp} darfFreigeben={darfFreigeben} fertig={uebernehmen} />
             ) : null}

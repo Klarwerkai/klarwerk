@@ -3,6 +3,8 @@
 // Die Gestalt ist die des Servers (`services/app/src/praesentation-daten.ts`, `DatenpunktSicht`); sie
 // steht hier ein zweites Mal, weil die Web-App keine Servertypen importiert. Geändert wird beides
 // gemeinsam.
+// PP-03: die Kontrollen stehen als Gestalt bei ihrer Fläche (`DatenKontrolle.tsx`).
+import type { DatenkontrolleSicht, DatenlageSicht } from "../components/bibliothek/DatenKontrolle";
 import { ApiError, api } from "./client";
 
 export type Erfassung = "direkt" | "ocr" | "manuell" | "berechnet" | "prognose";
@@ -207,6 +209,11 @@ export interface DatenpunktSicht {
   schutzstufe: "intern" | "vertraulich" | "streng_vertraulich";
   /** Gesetzt, wenn eine frühere Datenfassung gezeigt wird. */
   historisch?: { aktuelleFassung: number };
+  /**
+   * PP-03: die Kontrollen der AKTUELLEN Datenfassung über dem Prüfstand
+   * (`services/app/src/praesentation-pruefung.ts`). Fehlt bei einer früheren Fassung.
+   */
+  kontrolle?: DatenkontrolleSicht;
 }
 
 export interface FolienDatenLage {
@@ -218,6 +225,8 @@ export interface FolienDatenLage {
   dateiFassung: string;
   folien: FolieMitElementen[];
   datenpunkte: DatenpunktSicht[];
+  /** PP-03: Zustände und offene Punkte der lesbaren Datenpunkte dieser Präsentation. */
+  datenlage?: DatenlageSicht;
   darfErfassen: boolean;
   darfFreigeben: boolean;
 }

@@ -148,6 +148,12 @@ export interface PruefstandEingang {
   readonly erforderlich: readonly Dimension[];
   readonly dimensionen: readonly DimensionsEingang[];
   readonly prognose: boolean;
+  /**
+   * Die Arbeit, die PP-02 nennt. PP-02 führt darin ZUERST je überholter Dimension (in der Reihenfolge
+   * der Dimensionen) ihre konkrete Arbeit — „Neu berechnen …“, „… neu lesen …“ oder „… erneut
+   * prüfen“. Fehlt die Liste oder ist sie kürzer, gilt der allgemeine Satz (Nacharbeit Anschluss).
+   */
+  readonly naechsteArbeit?: readonly string[];
 }
 
 /** Wie PP-02 eine Bindung heute vorfindet (`BindungsSicht`), soweit hier gelesen. */
@@ -445,6 +451,8 @@ async function summenBefunde(
         titel: "Summe nicht nachgerechnet",
         grund:
           "Die verwendete Dateifassung ist nicht mehr die aktuelle; die Summe wird erst nach dem Neulesen an der aktuellen Fassung nachgerechnet.",
+        naechsteArbeit:
+          "Wert an der aktuellen Quellfassung neu lesen; danach wird die Summe nachgerechnet.",
         regel: "V06 Rechenprüfung",
       },
     ];
@@ -818,8 +826,7 @@ async function eingabeBefunde(
       ergebnis: "klaerung",
       titel: "Eingaben nicht validiert",
       grund: `Der Rechenweg verwendet Eingaben, die selbst nicht validiert sind: ${nicht.join(", ")}. Ein berechneter Wert gilt erst als validiert, wenn seine Eingaben es sind.`,
-      naechsteArbeit:
-        "Die genannten Eingaben prüfen; danach gilt die Freigabe dieses Werts wieder.",
+      naechsteArbeit: "Die genannten Eingaben prüfen; erst danach kann dieser Wert validiert sein.",
       regel: "PP-03 Herkunft (Abschnitt 5: kein Status aus einem grünen Teiltest)",
     },
   ];
@@ -873,6 +880,8 @@ export interface KontrollDimension {
   readonly herkunft: "pruefung" | "kontrolle" | "keine";
   readonly pruefung?: KontrollPruefung;
   readonly befunde: readonly Kontrollbefund[];
+  /** Die konkrete Arbeit, die diesen Stand ändert (leer bei „bestanden“ und „trifft nicht zu“). */
+  readonly arbeit: readonly string[];
 }
 
 export interface Datenkontrolle {
@@ -901,6 +910,21 @@ export function mitKontrollen(
   jetzt: number,
 ): Datenkontrolle {
   const erforderlich = new Set(stand.erforderlich);
+  // Die konkrete PP-02-Arbeit je überholter Dimension („Neu berechnen …“, „… an ihrer aktuellen
+  // Herkunft aktualisieren …“): PP-02 nennt sie zuerst, in der Reihenfolge der Dimensionen. Ohne sie
+  // wäre „… erneut prüfen“ eine wirkungslose Arbeit (unabhängige Prüfung, Befunde B1/B2).
+  const pp02Ueberholt = stand.dimensionen.filter((d) => d.stand === "ueberholt");
+  const pp02Arbeit = new Map<Dimension, string>();
+  if (stand.naechsteArbeit && stand.naechsteArbeit.length >= pp02Ueberholt.length) {
+    pp02Ueberholt.forEach((d, i) => {
+      const a = stand.naechsteArbeit?.[i];
+      if (a) {
+        pp02Arbeit.set(d.dimension, a);
+      }
+    });
+  }
+  const befundArbeit = (liste: readonly Kontrollbefund[]) =>
+    liste.flatMap((b) => (b.naechsteArbeit ? [b.naechsteArbeit] : []));
   const dimensionen = DIMENSIONEN.map((dimension): KontrollDimension => {
     const ein: DimensionsEingang = stand.dimensionen.find((d) => d.dimension === dimension) ?? {
       dimension,
@@ -947,15 +971,32 @@ export function mitKontrollen(
       herkunft = "kontrolle";
       erforderlich.add(dimension);
     }
+    const name = DIMENSIONSNAME[dimension];
+    let arbeit: string[] = [];
+    if (s === "ueberholt") {
+      // Überholt: die konkrete PP-02-Arbeit (sonst „… erneut prüfen“) UND die Behebung konkreter
+      // Mängel dieser Dimension (Befund B4: beides nennen, nichts versprechen).
+      arbeit = [
+        pp02Arbeit.get(dimension) ?? `${name} für Fassung ${stand.datenFassung} erneut prüfen.`,
+        ...befundArbeit(klaerung),
+      ];
+    } else if (s === "klaerung" || s === "offen") {
+      const a = befundArbeit(
+        eigene.filter((b) => b.ergebnis === "klaerung" || b.ergebnis === "offen"),
+      );
+      arbeit =
+        a.length > 0 ? a : [s === "klaerung" ? `Klärung zu ${name}: ${grund}` : `${name} prüfen.`];
+    }
     return {
       dimension,
-      name: DIMENSIONSNAME[dimension],
+      name,
       stand: s,
       standName: STANDNAME[s],
       grund,
       herkunft,
       ...(ein.pruefung ? { pruefung: ein.pruefung } : {}),
       befunde: eigene,
+      arbeit: [...new Set(arbeit)],
     };
   });
   const relevant = dimensionen.filter((d) => d.stand !== "nicht_zutreffend");
@@ -983,21 +1024,7 @@ export function mitKontrollen(
     zustand = "erfasst";
     grund = `Erfasst, noch nicht geprüft. Offen: ${namen(offen)}.`;
   }
-  const arbeit = (d: KontrollDimension) =>
-    d.befunde
-      .filter((b) => b.ergebnis === "klaerung" || b.ergebnis === "offen")
-      .flatMap((b) => (b.naechsteArbeit ? [b.naechsteArbeit] : []));
-  const naechsteArbeit = [
-    ...ueberholt.map((d) => `${d.name} für Fassung ${stand.datenFassung} erneut prüfen.`),
-    ...klaerung.flatMap((d) => {
-      const a = arbeit(d);
-      return a.length > 0 ? a : [`Klärung zu ${d.name}: ${d.grund}`];
-    }),
-    ...offen.flatMap((d) => {
-      const a = arbeit(d);
-      return a.length > 0 ? a : [`${d.name} prüfen.`];
-    }),
-  ];
+  const naechsteArbeit = [...ueberholt, ...klaerung, ...offen].flatMap((d) => d.arbeit);
   return {
     datenpunktId: dp.id,
     datenFassung: stand.datenFassung,
@@ -1036,6 +1063,11 @@ export interface OffenerPunkt {
   readonly titel: string;
   readonly grund: string;
   readonly naechsteArbeit: string;
+  /**
+   * Eine früher bestandene Prüfung, die eine Kontrolle wieder geöffnet hat (Regel 5). Sie bleibt in
+   * der Datenlage auch unter „nur Klärungen einzeln“ (Setup › Klara) einzeln sichtbar.
+   */
+  readonly wiedergeoeffnet?: true;
 }
 
 export interface Datenlage {
@@ -1062,10 +1094,15 @@ function offenePunkteVon(k: Datenkontrolle): OffenerPunkt[] {
         stand: d.stand,
         titel: `${d.name} überholt`,
         grund: d.grund,
-        naechsteArbeit: `${d.name} für Fassung ${k.datenFassung} erneut prüfen.`,
+        naechsteArbeit:
+          d.arbeit.join(" ") || `${d.name} für Fassung ${k.datenFassung} erneut prüfen.`,
       });
       continue;
     }
+    const wieder =
+      d.stand === "offen" && d.pruefung !== undefined && d.herkunft === "kontrolle"
+        ? { wiedergeoeffnet: true as const }
+        : {};
     const befunde = d.befunde.filter((b) => b.ergebnis === d.stand);
     if (befunde.length === 0) {
       punkte.push({
@@ -1075,6 +1112,7 @@ function offenePunkteVon(k: Datenkontrolle): OffenerPunkt[] {
         grund: d.grund,
         naechsteArbeit:
           d.stand === "klaerung" ? `Klärung zu ${d.name}: ${d.grund}` : `${d.name} prüfen.`,
+        ...wieder,
       });
       continue;
     }
@@ -1085,6 +1123,7 @@ function offenePunkteVon(k: Datenkontrolle): OffenerPunkt[] {
         titel: b.titel,
         grund: b.grund,
         naechsteArbeit: b.naechsteArbeit ?? `${d.name} prüfen.`,
+        ...wieder,
       });
     }
   }
@@ -1095,7 +1134,14 @@ function offenePunkteVon(k: Datenkontrolle): OffenerPunkt[] {
     const da = zusammen.get(schluessel);
     zusammen.set(
       schluessel,
-      da ? { ...da, titel: `${da.titel} · ${p.titel}`, grund: `${da.grund} ${p.grund}` } : p,
+      da
+        ? {
+            ...da,
+            titel: `${da.titel} · ${p.titel}`,
+            grund: `${da.grund} ${p.grund}`,
+            ...(da.wiedergeoeffnet || p.wiedergeoeffnet ? { wiedergeoeffnet: true as const } : {}),
+          }
+        : p,
     );
   }
   return [...zusammen.values()];

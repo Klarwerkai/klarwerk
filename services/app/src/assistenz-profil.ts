@@ -99,7 +99,17 @@ export interface AssistenzProfil {
    * Berichtigung ändert die Profilfassung nicht.
    */
   bildKorrekturen?: BildKorrekturStand;
+  /**
+   * produkt:20261015:klara-powerpoint-validierung (PP-03) — Setup › Klara „Offene Datenpunkte in
+   * der Datenlage“ (Paket Abschnitt 7). Fehlt das Feld, gilt `alle`; nur eine bewusste Wahl wird
+   * gespeichert. Eine reine Anzeigeregel: sie ändert keinen Prüfstand und blendet Klärungen nie aus.
+   */
+  datenkontrolleOffenePunkte?: DatenkontrolleOffenePunkte;
 }
+
+/** PP-03: welche offenen Punkte die Datenlage einzeln aufführt (`alle` ist die Voreinstellung). */
+export const DATENKONTROLLE_OFFENE_PUNKTE = ["alle", "nur_klaerung"] as const;
+export type DatenkontrolleOffenePunkte = (typeof DATENKONTROLLE_OFFENE_PUNKTE)[number];
 
 // ------------------------------------------------------------------------------------------------
 // DIE ABLAGE
@@ -450,6 +460,7 @@ export type AssistenzProfilGrund =
   | "avatar"
   | "bewegung"
   | "bildAutomatik"
+  | "datenkontrolleOffenePunkte"
   | "unvollstaendig"
   | "konflikt";
 
@@ -470,6 +481,8 @@ export interface AssistenzProfilEingabe {
   bewegung?: unknown;
   /** OCR-03: Bilder automatisch analysieren und Text erkennen (`true`/`false`). */
   bildAutomatik?: unknown;
+  /** PP-03: offene Datenpunkte in der Datenlage (`alle` | `nur_klaerung`). */
+  datenkontrolleOffenePunkte?: unknown;
   /** `true`: dieser Schreibvorgang schliesst die Ersteinrichtung ab (Name UND Avatar nötig). */
   einrichtungAbschliessen?: unknown;
   /** Die Fassung, die der Client zuletzt bestätigt gesehen hat — schützt vor stillem Überschreiben. */
@@ -607,6 +620,18 @@ export class AssistenzProfilDienst {
       }
       bildAutomatik = eingabe.bildAutomatik;
     }
+    let datenkontrolleOffenePunkte = alt?.datenkontrolleOffenePunkte;
+    if (eingabe.datenkontrolleOffenePunkte !== undefined) {
+      const wahl = eingabe.datenkontrolleOffenePunkte;
+      if (!(DATENKONTROLLE_OFFENE_PUNKTE as readonly unknown[]).includes(wahl)) {
+        throw new AssistenzProfilFehler(
+          400,
+          "datenkontrolleOffenePunkte",
+          "datenkontrolleOffenePunkte muss alle oder nur_klaerung sein.",
+        );
+      }
+      datenkontrolleOffenePunkte = wahl as DatenkontrolleOffenePunkte;
+    }
 
     const abschliessen = eingabe.einrichtungAbschliessen === true;
     if (abschliessen && (name === null || avatar === null)) {
@@ -627,6 +652,7 @@ export class AssistenzProfilDienst {
       geaendertAm: stempel,
       ...(alt?.faehigkeiten ? { faehigkeiten: alt.faehigkeiten } : {}),
       ...(bildAutomatik !== undefined ? { bildAutomatik } : {}),
+      ...(datenkontrolleOffenePunkte !== undefined ? { datenkontrolleOffenePunkte } : {}),
     };
     if (!(await this.repo.schreibe(neu))) {
       throw new AssistenzProfilFehler(

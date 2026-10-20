@@ -11,8 +11,9 @@
 // `Herkunft`); sie bringt keine eigene Navigation, keinen eigenen Abruf und keinen Schreibweg mit.
 // Prüfen und Korrigieren bleiben die PP-02-Wege. Die Datenform ist `Datenkontrolle` aus
 // `services/app/src/praesentation-pruefung.ts`.
-import { useId } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { OffenePunkteWahl } from "../../lib/datenkontrolleEinstellung";
 
 export type KontrollZustand =
   | "erfasst"
@@ -74,21 +75,21 @@ export interface DatenkontrolleSicht {
 const ZUSTANDSFARBE: Record<KontrollZustand, string> = {
   erfasst: "text-muted",
   in_pruefung: "text-muted",
-  klaerung: "text-danger",
+  klaerung: "text-trust-crit-text",
   validiert: "text-text",
-  ueberpruefung_noetig: "text-danger",
+  ueberpruefung_noetig: "text-trust-crit-text",
 };
 
 const STANDFARBE: Record<KontrollStand, string> = {
   bestanden: "text-text",
-  klaerung: "text-danger",
+  klaerung: "text-trust-crit-text",
   offen: "text-muted",
-  ueberholt: "text-danger",
+  ueberholt: "text-trust-crit-text",
   nicht_zutreffend: "text-muted",
 };
 
 const ERGEBNISFARBE: Record<KontrollbefundSicht["ergebnis"], string> = {
-  klaerung: "text-danger",
+  klaerung: "text-trust-crit-text",
   bestanden: "text-text",
   offen: "text-muted",
   hinweis: "text-muted",
@@ -153,19 +154,35 @@ function Pruefvermerk({ pruefung }: { pruefung: Pruefung }): JSX.Element {
   );
 }
 
-export function DatenKontrolle({ kontrolle }: { kontrolle: DatenkontrolleSicht }): JSX.Element {
+/**
+ * `eingebettet` (UI-06, Risiko R14 der UI-Vorbereitung): im Detailbereich der Herkunft steht der
+ * Baustein unter dem Abschnitt „Prüfstand“ — dann ohne eigene Überschrift und ohne eigene benannte
+ * Region, sondern als benannte Gruppe. Allein gezeigt bleibt er eine Region mit Überschrift.
+ */
+export function DatenKontrolle({
+  kontrolle,
+  eingebettet = false,
+}: {
+  kontrolle: DatenkontrolleSicht;
+  eingebettet?: boolean;
+}): JSX.Element {
   const { t, i18n } = useTranslation();
   const titelId = useId();
   const zeit = new Date(kontrolle.gepruefAm).toLocaleString(i18n.language);
+  const Huelle = eingebettet ? "div" : "section";
   return (
-    <section
+    <Huelle
       data-datenkontrolle={kontrolle.datenpunktId}
-      aria-labelledby={titelId}
+      {...(eingebettet
+        ? { role: "group", "aria-label": t("datenkontrolle.titel") }
+        : { "aria-labelledby": titelId })}
       className="mt-2"
     >
-      <h6 id={titelId} className="text-[12px] font-semibold text-text">
-        {t("datenkontrolle.titel")}
-      </h6>
+      {eingebettet ? null : (
+        <h6 id={titelId} className="text-[12px] font-semibold text-text">
+          {t("datenkontrolle.titel")}
+        </h6>
+      )}
       <p
         data-zustand={kontrolle.zustand}
         className={`text-[12.5px] font-semibold ${ZUSTANDSFARBE[kontrolle.zustand]}`}
@@ -223,7 +240,7 @@ export function DatenKontrolle({ kontrolle }: { kontrolle: DatenkontrolleSicht }
         ))}
       </ul>
       <p className="mt-1 text-[11.5px] text-muted">{t("datenkontrolle.geprueftAm", { zeit })}</p>
-    </section>
+    </Huelle>
   );
 }
 
@@ -240,6 +257,8 @@ export interface DatenlageSicht {
     readonly titel: string;
     readonly grund: string;
     readonly naechsteArbeit: string;
+    /** Eine früher bestandene, von einer Kontrolle wieder geöffnete Prüfung (Regel 5). */
+    readonly wiedergeoeffnet?: true;
   }[];
 }
 
@@ -251,16 +270,36 @@ const ZUSTAENDE: readonly KontrollZustand[] = [
   "ueberpruefung_noetig",
 ];
 
+/**
+ * `wahl` — Setup › Klara „Offene Datenpunkte in der Datenlage“ (Paket Abschnitt 7): `alle`
+ * (Voreinstellung) listet jede nicht bestandene erforderliche Prüfung; `nur_klaerung` listet
+ * Klärungen, überholte und wieder geöffnete Prüfungen einzeln und fasst die übrigen offenen
+ * Prüfungen (noch nie geprüft) zu einer einblendbaren Anzahl zusammen. Eine Anzeigeregel umgeht
+ * keine Prüfung: Zustände, Zählung und Zustand an der Zahl bleiben gleich; Klärungen, überholte und
+ * wieder geöffnete Prüfungen stehen immer einzeln da.
+ */
 export function DatenLage({
   lage,
   oeffne,
+  wahl = "alle",
 }: {
   lage: DatenlageSicht;
   /** Öffnet die Herkunft des Datenpunkts im Detailbereich (PP-02). */
-  oeffne?: (datenpunktId: string) => void;
+  oeffne?: (datenpunktId: string, ausloeser: HTMLButtonElement) => void;
+  wahl?: OffenePunkteWahl;
 }): JSX.Element {
   const { t } = useTranslation();
   const titelId = useId();
+  const listeId = useId();
+  const [alleZeigen, setAlleZeigen] = useState(false);
+  const einzeln = (p: DatenlageSicht["offenePunkte"][number]) =>
+    p.stand !== "offen" || p.wiedergeoeffnet === true;
+  // Nur unter „nur Klärungen einzeln“ und nur, wenn es etwas zusammenzufassen gibt, steht der
+  // Umschalter da — mit `aria-expanded` und in beide Richtungen (UI-06, Risiko R12).
+  const umschaltbar = wahl === "nur_klaerung" && lage.offenePunkte.some((p) => !einzeln(p));
+  const verdichtet = umschaltbar && !alleZeigen;
+  const sichtbar = verdichtet ? lage.offenePunkte.filter(einzeln) : lage.offenePunkte;
+  const zusammengefasst = lage.offenePunkte.length - sichtbar.length;
   return (
     <section data-datenlage="" aria-labelledby={titelId} className="mt-2">
       <h6 id={titelId} className="text-[12px] font-semibold text-text">
@@ -279,8 +318,8 @@ export function DatenLage({
       {lage.offenePunkte.length === 0 ? (
         <p className="text-[12px] text-muted">{t("datenkontrolle.lage.keineOffenen")}</p>
       ) : (
-        <ul className="space-y-0.5">
-          {lage.offenePunkte.map((p) => (
+        <ul id={listeId} className="space-y-0.5">
+          {sichtbar.map((p) => (
             <li
               key={`${p.datenpunktId}:${p.naechsteArbeit}`}
               data-offener-punkt={p.datenpunktId}
@@ -293,7 +332,7 @@ export function DatenLage({
                   <button
                     type="button"
                     className="text-left underline decoration-dotted"
-                    onClick={() => oeffne(p.datenpunktId)}
+                    onClick={(e) => oeffne(p.datenpunktId, e.currentTarget)}
                   >
                     {p.titel}
                   </button>
@@ -309,6 +348,35 @@ export function DatenLage({
           ))}
         </ul>
       )}
+      {umschaltbar && verdichtet ? (
+        <p data-offene-zusammengefasst={zusammengefasst} className="mt-0.5 text-[12px] text-muted">
+          {t("datenkontrolle.lage.zusammengefasst", { anzahl: zusammengefasst })}{" "}
+          <button
+            type="button"
+            data-offene-einblenden=""
+            aria-expanded={false}
+            aria-controls={listeId}
+            className="underline decoration-dotted"
+            onClick={() => setAlleZeigen(true)}
+          >
+            {t("datenkontrolle.lage.alleZeigen")}
+          </button>
+        </p>
+      ) : null}
+      {umschaltbar && !verdichtet ? (
+        <p data-offene-eingeblendet="" className="mt-0.5 text-[12px] text-muted">
+          <button
+            type="button"
+            data-offene-zusammenfassen=""
+            aria-expanded={true}
+            aria-controls={listeId}
+            className="underline decoration-dotted"
+            onClick={() => setAlleZeigen(false)}
+          >
+            {t("datenkontrolle.lage.zusammenfassen")}
+          </button>
+        </p>
+      ) : null}
     </section>
   );
 }

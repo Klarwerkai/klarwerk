@@ -12,6 +12,8 @@
 //   · Sprachausgabe (E08) — dieselbe `KlaraSprachausgabe`; sie gilt nur für diesen Browser.
 //   · Tastenkürzel (AA-03) — `KlaraTastenkuerzelBereich` unten.
 //   · Bilder automatisch lesen (OCR-03) — `KlaraBildAutomatikGruppe`, im eigenen Assistenzprofil.
+//   · Datenkontrolle (PP-03) — `KlaraDatenkontrolleGruppe`: welche offenen Datenpunkte die Datenlage
+//     einzeln aufführt; ebenfalls im eigenen Assistenzprofil, ohne Wirkung auf einen Prüfstand.
 //   · Vorgaben der Organisation (O01/O02), Browser-Erweiterung (H02) und Word (H03, W01–W05) — mit
 //     klarer Zuständigkeit und direktem Zugang, weil diese Hosts technisch getrennt bleiben.
 //
@@ -32,6 +34,11 @@ import { GuardedLink } from "../../app/NavGuardContext";
 import { useRole } from "../../app/RoleContext";
 import { useAssistenzStand, useAssistenzT } from "../../lib/assistenzProfil";
 import { speichereBildAutomatik, useBildAutomatikLage } from "../../lib/bildAutomatikEinstellung";
+import {
+  type OffenePunkteWahl,
+  speichereOffenePunkte,
+  useOffenePunkteWahl,
+} from "../../lib/datenkontrolleEinstellung";
 import { ladeEigeninitiative, useEigeninitiative } from "../../lib/klaraEigeninitiative";
 import {
   KLARA_KUERZEL_AKTIONEN,
@@ -195,6 +202,82 @@ export function KlaraBildAutomatikGruppe(): JSX.Element {
       <p className={TEXT}>{t("klarabildkontext.setup.geltung")}</p>
       <p
         data-testid="klara-bildautomatik-meldung"
+        data-fehler={meldung?.fehler ? "true" : "false"}
+        role={meldung?.fehler ? "alert" : "status"}
+        className={`min-h-[1em] text-[12.5px] ${
+          meldung?.fehler ? "text-trust-crit-text" : "text-muted"
+        }`}
+      >
+        {meldung?.text ?? ""}
+      </p>
+    </KlaraGruppe>
+  );
+}
+
+// ------------------------------------------------------------------------------------------------
+// Datenkontrolle (PP-03, Paket Abschnitt 7) — Sichtbarkeit offener Datenpunkte, Konto.
+// ------------------------------------------------------------------------------------------------
+
+const OFFENE_PUNKTE: readonly OffenePunkteWahl[] = ["alle", "nur_klaerung"];
+
+export function KlaraDatenkontrolleGruppe(): JSX.Element {
+  const { t } = useTranslation();
+  const stand = useAssistenzStand();
+  const wahl = useOffenePunkteWahl();
+  const [speichert, setSpeichert] = useState(false);
+  const [meldung, setMeldung] = useState<Meldung | null>(null);
+  const name = useId();
+  const bereit = stand.kontoId !== null && stand.status === "bereit";
+  // `aria-disabled` statt `disabled` (Hausregel wie bei den Tastenkürzeln, Risiko R11): während des
+  // Speicherns bleibt die Option fokussierbar; die Wahl wird dann nur nicht ausgelöst.
+  const gesperrt = !bereit || speichert;
+
+  const waehle = async (neu: OffenePunkteWahl): Promise<void> => {
+    setSpeichert(true);
+    setMeldung({ text: t("datenkontrolle.setup.speichert"), fehler: false });
+    const r = await speichereOffenePunkte(neu);
+    setSpeichert(false);
+    setMeldung(
+      r === "gespeichert"
+        ? { text: t("datenkontrolle.setup.gespeichert"), fehler: false }
+        : r === "konflikt"
+          ? { text: t("datenkontrolle.setup.konflikt"), fehler: true }
+          : { text: t("datenkontrolle.setup.fehler"), fehler: true },
+    );
+  };
+
+  return (
+    <KlaraGruppe titel={t("datenkontrolle.setup.titel")} testId="klara-setup-datenkontrolle">
+      <fieldset className="space-y-1">
+        <legend className="text-[13px] font-semibold text-ink">
+          {t("datenkontrolle.setup.frage")}
+        </legend>
+        {OFFENE_PUNKTE.map((w) => (
+          <label key={w} className="flex items-start gap-2 text-[12.5px] text-text">
+            <input
+              type="radio"
+              name={name}
+              value={w}
+              data-testid={`klara-datenkontrolle-${w}`}
+              checked={wahl === w}
+              aria-disabled={gesperrt || undefined}
+              onChange={() => {
+                if (!gesperrt) {
+                  void waehle(w);
+                }
+              }}
+              className="mt-0.5 h-4 w-4 accent-brand"
+            />
+            <span>{t(`datenkontrolle.setup.wahl.${w}`)}</span>
+          </label>
+        ))}
+      </fieldset>
+      <p className={TEXT}>{t("datenkontrolle.setup.grenze")}</p>
+      {stand.kontoId === null ? (
+        <p className={TEXT}>{t("datenkontrolle.setup.ohneKonto")}</p>
+      ) : null}
+      <p
+        data-testid="klara-datenkontrolle-meldung"
         data-fehler={meldung?.fehler ? "true" : "false"}
         role={meldung?.fehler ? "alert" : "status"}
         className={`min-h-[1em] text-[12.5px] ${

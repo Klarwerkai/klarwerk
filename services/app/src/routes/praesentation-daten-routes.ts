@@ -16,7 +16,6 @@ import {
   DatenFehler,
   type DatenUmgebung,
   type Datenpunkt,
-  type DatenpunktSicht,
   type Dimension,
   type FoliensatzDaten,
   type Handelnder,
@@ -34,6 +33,12 @@ import {
   vollLesbar,
 } from "../praesentation-daten";
 import type { DatenpunktAblage } from "../praesentation-daten-ablage";
+import { datenlage } from "../praesentation-pruefung";
+import {
+  type KontrollAnschluss,
+  type KontrollierteSicht,
+  kontrollAnschluss,
+} from "../praesentation-pruefung-anschluss";
 import { darfSehen } from "../sichtbarkeit";
 
 // ================================================================================================
@@ -59,6 +64,10 @@ import { darfSehen } from "../sichtbarkeit";
 // GRENZE: Gelesen wird die Datei am Server mit dem vorhandenen PPTX-Weg (W06). Ins Dokument
 // geschrieben wird nichts; Diagramme, SmartArt und Notizen sind nicht lesbar (L03) und damit auch
 // nicht bindbar.
+//
+// PP-03 (produkt:20261015:klara-powerpoint-validierung): jede Sicht der aktuellen Datenfassung trägt
+// ihre `kontrolle` (`praesentation-pruefung-anschluss.ts`), die Folienliste zusätzlich die
+// `datenlage`. Dieselbe Umgebung, dieselben Rechte; Prüfen und Korrigieren bleiben diese Routen.
 
 export interface PraesentationDatenKonto {
   readonly id: string;
@@ -188,13 +197,29 @@ export function praesentationDatenRoutes(
     reply.code(404).send({ error: "NOT_FOUND", message: `${was} nicht gefunden.` });
   }
 
+  /** PP-03: die Kontrollen einer Anfrage — dieselbe Umgebung, dieselben Rechte. */
+  function kontrolle(u: DatenUmgebung): KontrollAnschluss {
+    return kontrollAnschluss(u, deps.ablage, jetzt);
+  }
+
+  /** Die Sicht samt PP-03-Kontrolle; `undefined` wie `sicht` (ohne volles Leserecht). */
+  async function kontrollierteSicht(
+    dp: Datenpunkt,
+    u: DatenUmgebung,
+    k: KontrollAnschluss,
+  ): Promise<KontrollierteSicht | undefined> {
+    const s = await sicht(dp, u);
+    return s ? k.kontrolliert(dp, s) : undefined;
+  }
+
   async function sichtenVon(
     liste: readonly Datenpunkt[],
     u: DatenUmgebung,
-  ): Promise<DatenpunktSicht[]> {
-    const ergebnis: DatenpunktSicht[] = [];
+    k: KontrollAnschluss = kontrolle(u),
+  ): Promise<KontrollierteSicht[]> {
+    const ergebnis: KontrollierteSicht[] = [];
     for (const dp of liste) {
-      const s = await sicht(dp, u);
+      const s = await kontrollierteSicht(dp, u, k);
       if (s) {
         ergebnis.push(s);
       }
@@ -248,7 +273,7 @@ export function praesentationDatenRoutes(
     reply: FastifyReply,
   ): Promise<void> {
     if (neu === vorher) {
-      reply.code(200).send(await sicht(vorher, u));
+      reply.code(200).send(await kontrollierteSicht(vorher, u, kontrolle(u)));
       return;
     }
     const geschrieben = { ...neu, stand: vorher.stand + 1 };
@@ -260,7 +285,7 @@ export function praesentationDatenRoutes(
       });
       return;
     }
-    reply.code(200).send(await sicht(geschrieben, u));
+    reply.code(200).send(await kontrollierteSicht(geschrieben, u, kontrolle(u)));
   }
 
   return async (app) => {
@@ -289,6 +314,7 @@ export function praesentationDatenRoutes(
         const gebunden = await deps.ablage.gebundenAn(ko.id, anhang.id);
         const eigene = await deps.ablage.vonArtikel(ko.id);
         const alle = [...new Map([...gebunden, ...eigene].map((d) => [d.id, d] as const)).values()];
+        const sichten = await sichtenVon(alle, u);
         reply.header("Cache-Control", "no-store");
         reply.code(200).send({
           koId: ko.id,
@@ -298,7 +324,9 @@ export function praesentationDatenRoutes(
           artikelFassung: ko.version,
           dateiFassung: datei.satz.fassung,
           folien: datei.satz.folien,
-          datenpunkte: await sichtenVon(alle, u),
+          datenpunkte: sichten,
+          // PP-03: Zustände und offene Punkte der lesbaren Datenpunkte dieser Präsentation.
+          datenlage: datenlage(sichten.flatMap((s) => (s.kontrolle ? [s.kontrolle] : []))),
           darfErfassen: can(user.role, "ko.create"),
           darfFreigeben: can(user.role, "ko.validate"),
         });
@@ -338,7 +366,7 @@ export function praesentationDatenRoutes(
           reply.code(409).send({ error: "DATENPUNKT_VORHANDEN", message: "Kennung vergeben." });
           return;
         }
-        reply.code(201).send(await sicht(dp, u));
+        reply.code(201).send(await kontrollierteSicht(dp, u, kontrolle(u)));
       } catch (f) {
         fehler(reply, f);
       }
@@ -374,7 +402,8 @@ export function praesentationDatenRoutes(
           return;
         }
         reply.header("Cache-Control", "no-store");
-        reply.code(200).send(s);
+        // PP-03: nur die aktuelle Fassung trägt Kontrollen; eine frühere bleibt Herkunft.
+        reply.code(200).send(await kontrolle(u).kontrolliert(gezeigt, s));
       },
     );
 
