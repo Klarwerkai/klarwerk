@@ -33,7 +33,11 @@ export interface TutorialFernLage {
   weiter: () => void;
 }
 
-/** Meldeweg vom Bereich an den Rahmen. `null` = kein Bereich offen. */
-export const TutorialMeldungCtx = createContext<((lage: TutorialFernLage | null) => void) | null>(
-  null,
-);
+/** Ein Bereich meldet nur seinen eigenen Stand oder sein eigenes Ende; Fokus aktiviert ihn. */
+export type TutorialMeldung = (
+  lage: TutorialFernLage | null,
+  bereichId?: string,
+  aktivieren?: boolean,
+) => void;
+
+export const TutorialMeldungCtx = createContext<TutorialMeldung | null>(null);

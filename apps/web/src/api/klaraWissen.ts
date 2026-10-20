@@ -9,6 +9,7 @@ export interface WissensZiel {
   vorlage?: { id: string; version: number };
 }
 export interface WissensVorschau {
+  input?: { title: string };
   notizId: string;
   fassung: number;
   original: string;

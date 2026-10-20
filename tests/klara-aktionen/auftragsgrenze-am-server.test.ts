@@ -648,6 +648,7 @@ describe("A6 · K6 — Versand ist keine Aktion; aus Inhalten entsteht keine Bef
       "persoenliche_aufgabe_anlegen",
       // G: derselbe Auftrag verbindet die eigene Aufgabe mit dem freigegebenen D-Dienst.
       "erinnerung_anlegen",
+      "wissen_uebernehmen",
     ]);
     const gid = await gespraech(erik.token);
     for (const aktion of ["versenden", "einladen", "veroeffentlichen", "senden"]) {

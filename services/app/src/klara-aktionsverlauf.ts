@@ -37,7 +37,8 @@ export type KlaraVertragsSchluessel =
   | "aufgabe_zuweisen"
   | "aufgabe_eskalieren"
   | "persoenliche_aufgabe_anlegen"
-  | "erinnerung_anlegen";
+  | "erinnerung_anlegen"
+  | "wissen_uebernehmen";
 
 export interface KlaraAktionsvertrag {
   readonly schluessel: KlaraVertragsSchluessel;
@@ -69,6 +70,7 @@ export interface KlaraAktionsvertrag {
     | "konflikt"
     | "persoenliche_aufgabe"
     | "erinnerung"
+    | "wissen"
     | null;
 }
 
@@ -159,6 +161,19 @@ export const KLARA_AKTIONSVERTRAG: Aktionsvertraege = {
     ruecknahme: "keine",
     fuerAndereSichtbar: true,
     korrekturweg: "konflikt",
+  },
+  wissen_uebernehmen: {
+    schluessel: "wissen_uebernehmen",
+    aktion: "wissen_uebernehmen",
+    wirkung: "fachobjekt",
+    datenveraendernd: true,
+    tuer: "POST /api/me/klara/notizen/:id/wissen/uebernehmen (F08)",
+    recht:
+      "ko.create, heutige eigene Quell- und Zielrechte, exakt gesehene Vorschau und bewusste Zielwahl",
+    bestaetigung: "vorhandene_regeln",
+    ruecknahme: "keine",
+    fuerAndereSichtbar: true,
+    korrekturweg: "wissen",
   },
   erinnerung_anlegen: {
     schluessel: "erinnerung_anlegen",

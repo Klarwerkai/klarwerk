@@ -65,8 +65,23 @@ export interface NormAnnahme {
   entschiedenVon: string;
   entschiedenName: string | null;
   entschiedenAm: string;
+  klaerungId?: string;
   bisher: NormZiel;
   nachfolger: NormZiel;
+}
+export interface NormKonfliktauswahl {
+  art: NormArt;
+  ereignisId: string;
+}
+export interface NormKonfliktklaerung {
+  id: string;
+  grundlage: string;
+  auswahl: NormKonfliktauswahl[];
+  belegstand: { ereignisId: string; aktuell: string[] }[];
+  begruendung: string;
+  entschiedenVon: string;
+  entschiedenName: string | null;
+  entschiedenAm: string;
 }
 export interface Normgeschichte {
   id: string;
@@ -74,6 +89,9 @@ export interface Normgeschichte {
   ausgabe: string;
   ereignisse: NormEreignis[];
   annahmen: NormAnnahme[];
+  klaerungen?: NormKonfliktklaerung[];
+  konfliktarten: NormArt[];
+  klaerungAktuell: string | null;
   widerspruch: boolean;
   annahmeUngeprueft: boolean;
 }
@@ -117,6 +135,19 @@ const pfad = (id: string) => `${BASIS}/${encodeURIComponent(id)}`;
 const pruefpfad = (id: string, e: string) =>
   `${pfad(id)}/ereignisse/${encodeURIComponent(e)}/pruefauftrag`;
 export const klaraNormApi = {
+  klaeren: (
+    id: string,
+    eingabe: {
+      fassung: number;
+      auswahl: NormKonfliktauswahl[];
+      begruendung: string;
+      bestaetigt: true;
+    },
+  ) =>
+    api.post<{ fassung: number; klaerung: NormKonfliktklaerung; wiederholt: boolean }>(
+      `${pfad(id)}/klaerung`,
+      eingabe,
+    ),
   pruefauftraege: (id: string, e: string) => api.get<NormPruefauftraege>(pruefpfad(id, e)),
   verknuepfen: (id: string, e: string, fassung: number, a: NormPruefauftragRef) =>
     api.post(pruefpfad(id, e), {

@@ -129,6 +129,7 @@ describe("R1 · K1 — Wirkung, Berechtigung und Rücknahme je gelieferter Aktio
       "erinnerung_anlegen",
       // produkt:20261008:klara-aufgaben (Klara 07): seitdem gelieferte, datenverändernde Aktion.
       "persoenliche_aufgabe_anlegen",
+      "wissen_uebernehmen",
     ]);
     expect(KLARA_AKTIONSVERTRAG.entwurf_erstellen.ruecknahme).toBe("papierkorb");
     expect(KLARA_AKTIONSVERTRAG.entwurf_bearbeiten.ruecknahme).toBe("vorherige_felder");

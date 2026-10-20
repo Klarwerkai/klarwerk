@@ -137,6 +137,30 @@ export function klaraNormereignisRoutes(
       },
     );
     app.post<{ Params: { id: string } }>(
+      "/api/me/klara/normereignisse/:id/klaerung",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.validate", request, reply);
+        if (!user) return;
+        try {
+          const r = await deps.dienst.klaereKonflikt(user.id, request.params.id, request.body);
+          if (!r.wiederholt)
+            await deps.audit.record({
+              actor: user.id,
+              action: "klara.normereignisse.konflikt_geklaert",
+              target: request.params.id,
+              payload: {
+                klaerungId: r.klaerung.id,
+                grundlage: r.klaerung.grundlage,
+                auswahl: r.klaerung.auswahl,
+              },
+            });
+          return reply.send(r);
+        } catch (err) {
+          return fehler(reply, err);
+        }
+      },
+    );
+    app.post<{ Params: { id: string } }>(
       "/api/me/klara/normereignisse/:id/annahme",
       async (request, reply) => {
         const user = await guards.requirePermission("ko.validate", request, reply);

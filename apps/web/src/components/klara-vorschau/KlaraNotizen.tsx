@@ -56,7 +56,7 @@ function ortZeile(n: KlaraNotiz, t: ReturnType<typeof useAssistenzT>["t"]): stri
   return teile.join(" · ");
 }
 
-function NotizOffen({ n }: { n: KlaraNotiz }): JSX.Element {
+function NotizOffen({ n, auftragskarte }: { n: KlaraNotiz; auftragskarte: boolean }): JSX.Element {
   const { t, i18n } = useAssistenzT();
   const id = useId();
   const s = useNotizen();
@@ -123,6 +123,7 @@ function NotizOffen({ n }: { n: KlaraNotiz }): JSX.Element {
           id={n.id}
           fassung={n.fassung}
           geaendert={geaendert}
+          auftragskarte={auftragskarte}
         />
       ) : null}
       <label htmlFor={`${id}-titel`} className={`${KLEINTITEL} mt-2 block`}>
@@ -283,7 +284,9 @@ function NotizOffen({ n }: { n: KlaraNotiz }): JSX.Element {
   );
 }
 
-export function KlaraNotizen(): JSX.Element {
+export function KlaraNotizen({
+  auftragskarte = false,
+}: { auftragskarte?: boolean } = {}): JSX.Element {
   const { t, i18n } = useAssistenzT();
   const id = useId();
   const s = useNotizen();
@@ -364,7 +367,7 @@ export function KlaraNotizen(): JSX.Element {
 
       <KlaraWissensImport />
       <KlaraBesprechungsImport />
-      {s.offen ? <NotizOffen n={s.offen} /> : null}
+      {s.offen ? <NotizOffen n={s.offen} auftragskarte={auftragskarte} /> : null}
 
       <form
         data-testid="klara-notizen-suchform"
