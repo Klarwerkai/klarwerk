@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { endpoints } from "../../api/endpoints";
 import {
   NORM_ARTEN,
+  type NormArt,
   type NormEreignis,
   type NormFassung,
   type NormStand,
@@ -243,10 +244,20 @@ function Normkarte({
   neuLesen: () => Promise<unknown>;
 }): JSX.Element {
   const { t, i18n } = useAssistenzT();
+  const [konfliktwahl, setKonfliktwahl] = useState<Partial<Record<NormArt, string>>>({});
+  const [konfliktgrund, setKonfliktgrund] = useState("");
+  const [konfliktBestaetigt, setKonfliktBestaetigt] = useState(false);
   const [fachoffen, setFachoffen] = useState(false);
   const [bisher, setBisher] = useState("");
   const [nachfolger, setNachfolger] = useState("");
-  const [geltung, setGeltung] = useState(n.ereignisse.find((e) => e.geltung)?.geltung ?? "");
+  const [geltung, setGeltung] = useState(
+    n.klaerungen
+      ?.find((k) => k.id === n.klaerungAktuell)
+      ?.auswahl.map((w) => n.ereignisse.find((e) => e.id === w.ereignisId))
+      .find((e) => e?.geltung)?.geltung ??
+      n.ereignisse.find((e) => e.geltung)?.geltung ??
+      "",
+  );
   const [begruendung, setBegruendung] = useState("");
   const [bestaetigt, setBestaetigt] = useState(false);
   const [laeuft, setLaeuft] = useState(false);
@@ -279,6 +290,30 @@ function Normkarte({
         nachfolger: { koId: neu.koId, fassung: neu.fassung },
         geltung,
         begruendung,
+        bestaetigt: true,
+      });
+      if (aktuell()) await neuLesen();
+    } catch {
+      if (aktuell()) setFehler(true);
+    } finally {
+      if (aktuell()) setLaeuft(false);
+    }
+  };
+  const klaeren = async () => {
+    if (
+      !konfliktBestaetigt ||
+      !aktuell() ||
+      laeuft ||
+      n.konfliktarten.some((art) => !konfliktwahl[art])
+    )
+      return;
+    setLaeuft(true);
+    setFehler(false);
+    try {
+      await klaraNormApi.klaeren(n.id, {
+        fassung: stand.fassung,
+        auswahl: n.konfliktarten.map((art) => ({ art, ereignisId: konfliktwahl[art] ?? "" })),
+        begruendung: konfliktgrund,
         bestaetigt: true,
       });
       if (aktuell()) await neuLesen();
@@ -341,6 +376,100 @@ function Normkarte({
         <p role="status" className="text-trust-warn-text">
           {t("normereignisse.widerspruch")}
         </p>
+      ) : null}
+      {(n.klaerungen ?? []).map((k) => (
+        <div
+          key={k.id}
+          data-testid="norm-konfliktentscheid"
+          className="space-y-1 border-t border-hairline pt-2"
+        >
+          <p>
+            {t(
+              k.id === n.klaerungAktuell
+                ? "normereignisse.konfliktGeklaert"
+                : "normereignisse.konfliktHistorisch",
+              {
+                person: k.entschiedenName ?? k.entschiedenVon,
+                zeit: zeit(k.entschiedenAm),
+              },
+            )}
+          </p>
+          {k.auswahl.map((w) => {
+            const e = n.ereignisse.find((e) => e.id === w.ereignisId);
+            return e ? (
+              <p key={w.art}>
+                {t(`normereignisse.${w.art}`)} · {e.datum} · {e.geltung}
+              </p>
+            ) : null;
+          })}
+          <p className="whitespace-pre-wrap break-words">{k.begruendung}</p>
+        </div>
+      ))}
+      {stand.fachannahmeErlaubt && n.konfliktarten.length > 0 ? (
+        <details data-testid="norm-konfliktform">
+          <summary>{t("normereignisse.konfliktKlaeren")}</summary>
+          <p className="my-2">{t("normereignisse.konfliktHilfe")}</p>
+          <fieldset disabled={laeuft} className="space-y-2">
+            {n.konfliktarten.map((art) => (
+              <Field key={art} label={t(`normereignisse.${art}`)}>
+                <select
+                  aria-label={t(`normereignisse.${art}`)}
+                  value={konfliktwahl[art] ?? ""}
+                  className="w-full rounded-input border border-hairline bg-surface p-2"
+                  onChange={(ev) => {
+                    setKonfliktwahl({ ...konfliktwahl, [art]: ev.target.value });
+                    setKonfliktBestaetigt(false);
+                  }}
+                >
+                  <option value="">{t("normereignisse.ereignisWaehlen")}</option>
+                  {n.ereignisse
+                    .filter(
+                      (e) =>
+                        e.art === art &&
+                        e.datum &&
+                        e.geltung &&
+                        e.belege.some(
+                          (b) => b.aktuell && !b.widerspruch && b.klaerung.length === 0,
+                        ),
+                    )
+                    .map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.datum} · {e.geltung}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+            ))}
+            <Field label={t("normereignisse.konfliktGrund")}>
+              <TextInput
+                value={konfliktgrund}
+                maxLength={2000}
+                onChange={(ev) => {
+                  setKonfliktgrund(ev.target.value);
+                  setKonfliktBestaetigt(false);
+                }}
+              />
+            </Field>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={konfliktBestaetigt}
+                onChange={(ev) => setKonfliktBestaetigt(ev.target.checked)}
+              />
+              <span>{t("normereignisse.konfliktBestaetigt")}</span>
+            </label>
+            <Button
+              onClick={() => void klaeren()}
+              disabled={
+                !konfliktBestaetigt ||
+                !konfliktgrund.trim() ||
+                n.konfliktarten.some((art) => !konfliktwahl[art])
+              }
+            >
+              {t("normereignisse.konfliktKlaeren")}
+            </Button>
+          </fieldset>
+        </details>
       ) : null}
       {n.annahmeUngeprueft ? (
         <p>{t("normereignisse.annahmeUngeprueft")}</p>

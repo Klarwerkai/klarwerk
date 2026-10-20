@@ -287,3 +287,110 @@ test("AW21 · belegte Normgeschichte, bewusster Originalprüfauftrag und fachlic
     await p.context().close();
   }
 });
+
+test("AW21 · befugte Konfliktklärung erhält Gegenbelege und öffnet bei neuen Fakten erneut", async ({
+  page,
+  browser,
+}, info) => {
+  const p = await eigeneSeite(browser, page);
+  try {
+    const a = await wissen(
+      p,
+      `Konfliktbeleg A ${marke()}`,
+      "Norm N-17 v2: Inkrafttreten am 2027-01-01; Geltung: Werk A.",
+    );
+    const b = await wissen(
+      p,
+      `Konfliktbeleg B ${marke()}`,
+      "Norm N-17 v2: Inkrafttreten am 2027-02-01; Geltung: Werk B.",
+    );
+    const erfassen = async (quellen: string[]) => {
+      const r = await p.request.post("/api/me/klara/normereignisse/erfassen", {
+        data: { quellen, bekanntmachungErlaubt: true },
+      });
+      expect(r.status(), await r.text()).toBe(200);
+      return (await r.json()) as {
+        normen: {
+          id: string;
+          widerspruch: boolean;
+          klaerungAktuell: string | null;
+          ereignisse: { id: string }[];
+          annahmen: unknown[];
+        }[];
+      };
+    };
+    await erfassen([a.id, b.id]);
+    await p.goto("/kalender#normereignisse");
+    const karte = p.getByTestId("normgeschichte");
+    await expect(karte).toHaveCount(1);
+    await expect(karte).toContainText("Termine oder Geltungsbereiche widersprechen sich");
+    const fach = karte.getByTestId("norm-fachform");
+    await fach.locator("summary").click();
+    await expect(fach.getByLabel("Geltungsbereich", { exact: true })).toBeDisabled();
+    const form = karte.getByTestId("norm-konfliktform");
+    await form.locator("summary").click();
+    const speichern = form.getByRole("button", { name: "Konflikt fachlich klären", exact: true });
+    await expect(speichern).toBeDisabled();
+    await form
+      .getByLabel("Inkrafttreten", { exact: true })
+      .selectOption({ label: "2027-01-01 · Werk A" });
+    await form
+      .getByLabel("Begründung der Konfliktklärung", { exact: true })
+      .fill(
+        "Beide Originalbekanntmachungen gelesen; für diesen Anwendungsfall ist Werk A maßgeblich.",
+      );
+    await form
+      .getByRole("checkbox", {
+        name: "Diese belegten Termine und Geltungsbereiche nach Prüfung der widersprechenden Originale ausdrücklich bestätigen.",
+        exact: true,
+      })
+      .check();
+    const response = p.waitForResponse(
+      (r) => r.url().endsWith("/klaerung") && r.request().method() === "POST",
+    );
+    await speichern.click();
+    expect((await response).status()).toBe(200);
+    await expect(karte.getByTestId("norm-konfliktentscheid")).toContainText(
+      "Konflikt fachlich geklärt durch Norm Probe",
+    );
+    await expect(karte.getByTestId("norm-fachannahme")).toHaveCount(0);
+    await expect(karte).not.toContainText("Termine oder Geltungsbereiche widersprechen sich");
+    const s1 = await (await p.request.get("/api/me/klara/normereignisse")).json();
+    const id = s1.normen[0].klaerungAktuell;
+    expect(s1.normen[0].ereignisse).toHaveLength(2);
+    expect(s1.normen[0].annahmen).toEqual([]);
+    await p.reload();
+    await expect(karte.getByTestId("norm-konfliktentscheid")).toContainText(
+      "Auswahl für den aktuellen Sachstand",
+    );
+    await karte.getByTestId("norm-fachform").locator("summary").click();
+    await expect(
+      karte.getByTestId("norm-fachform").getByLabel("Geltungsbereich", { exact: true }),
+    ).toBeEnabled();
+    const kopie = await wissen(p, `Identische Kopie ${marke()}`, a.statement);
+    expect((await erfassen([kopie.id])).normen[0]?.klaerungAktuell).toBe(id);
+    const c = await wissen(
+      p,
+      `Neuer Gegenbeleg ${marke()}`,
+      "Norm N-17 v2: Inkrafttreten am 2027-03-01; Geltung: Werk C.",
+    );
+    const neu = await erfassen([c.id]);
+    expect(neu.normen[0]).toMatchObject({ widerspruch: true, klaerungAktuell: null, annahmen: [] });
+    expect(neu.normen[0]?.ereignisse).toHaveLength(3);
+    await p.reload();
+    await expect(karte.getByTestId("norm-konfliktentscheid")).toContainText(
+      "für den aktuellen Sachstand nicht bestätigt",
+    );
+    await expect(karte).toContainText("Termine oder Geltungsbereiche widersprechen sich");
+    for (const datum of ["2027-01-01", "2027-02-01", "2027-03-01"])
+      await expect(karte).toContainText(datum);
+    await p.screenshot({ path: info.outputPath("konflikt-nach-neuem-beleg.png"), fullPage: true });
+    await p.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(() => p.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await p.screenshot({ path: info.outputPath("konflikt-schmal.png"), fullPage: true });
+  } finally {
+    await p.context().close();
+  }
+});

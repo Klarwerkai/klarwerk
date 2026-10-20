@@ -25,8 +25,26 @@ Jeder Beleg hält Originalkennung, Quellfassung, Zeichenpositionen und begrenzte
 Wortlaut getrennt für Norm, Ereignis und Geltung. Fehlende, geplante, negierte oder
 widersprüchliche Daten bleiben offen. Ein anderer Termin derselben Quelle wird
 nicht automatisch maßgeblich: Der ältere Beleg bleibt in der Geschichte erhalten.
-Bei einem Widerspruch sperrt der Fachweg und verlangt Klärung. Dieser Anschluss
-bietet noch keinen eigenen Fachentscheid zur Auflösung solcher Widersprüche.
+Bei einem Widerspruch sperrt der Fachweg und verlangt Klärung. **Konflikt fachlich
+klären** erlaubt einem Konto mit aktuellem `ko.validate`, für jede widersprüchliche
+Ereignisart genau einen heute eindeutigen belegten Termin samt Geltungsbereich
+begründet zu wählen. Freie Ersatzdaten oder vom Browser behauptete Entscheidende
+und Zeitpunkte sind unzulässig. Wenn kein vollständiger eindeutiger Beleg vorliegt,
+ist zuerst eine neue begrenzte Bekanntmachung zu erfassen.
+
+Die Entscheidung hält die tatsächliche Person, Serverzeit, Begründung, ausgewählten
+Ereigniskennungen und den strukturierten widersprüchlichen Sachstand fest. Sie
+entfernt oder korrigiert keinen ursprünglichen Beleg. Gleiche Kopien erhalten die
+Auswahl; neue gegensätzliche Fakten oder der Wegfall aktueller gewählter Belege
+öffnen die Klärung erneut. Frühere Entscheidungen bleiben als historisch sichtbar.
+Eine andere Auswahl braucht eine neue ausdrückliche Entscheidung. Quellen,
+Fachrolle, Space und persönlicher Versionsvergleich gelten gemeinsam beim echten
+Schreiben im vorhandenen Fristenbestand. Eine identische Wiederholung liest nur
+die aktuelle Originalentscheidung nach.
+
+Konfliktklärung ist noch keine fachliche Annahme einer Anleitung. Die nachfolgende
+gesonderte Fachannahme bindet die konkrete aktuelle Klärungskennung zusätzlich zu
+ihren tatsächlichen Anleitungsfassungen und Freigabebelegen.
 
 Gleiche Norm/Ausgabe und dasselbe Sachereignis behalten dieselben Kennungen. Eine
 Kopie ergänzt nur ihren Quellenbeleg; ein tatsächlicher neuer Zustand ergänzt
