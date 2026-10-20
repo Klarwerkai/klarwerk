@@ -7,8 +7,8 @@ import { createPool, migrate } from "../../services/app/src/db";
 import { PgKlaraFristenRepo } from "../../services/app/src/klara-fristen-ablage";
 import { KlaraFristenQuellen } from "../../services/app/src/klara-fristen-quellen";
 import { KlaraGespraechDienst } from "../../services/app/src/klara-gespraech";
-import { KlaraNotizDienst } from "../../services/app/src/klara-notiz";
 import { KlaraNormereignisDienst } from "../../services/app/src/klara-normereignisse-dienst";
+import { KlaraNotizDienst } from "../../services/app/src/klara-notiz";
 import { type Konto, neuesKonto } from "../klara-quellen-nutzerweg/kette";
 import { echterNotizauftrag } from "./pruefauftrag-vorrichtung";
 
@@ -370,6 +370,117 @@ describe("AW21 · Normbelege im echten vorhandenen PG-Fristen-CAS", () => {
             same_existing_G_journal_and_original_task: true,
           })}\n`,
         );
+    } finally {
+      await neueApp.close();
+      await neuerPool.end();
+    }
+  });
+  async function konfliktfall() {
+    const f = await fall();
+    await services.ko.revise(
+      f.quelle.id,
+      { statement: "Norm N-17 v2: Inkrafttreten am 2027-01-01; Geltung: Werk A." },
+      f.id,
+    );
+    const b = await services.ko.create({
+      title: "Fiktiver Gegenbeleg PG",
+      statement: "Norm N-17 v2: Inkrafttreten am 2027-02-01; Geltung: Werk B.",
+      type: "technik",
+      category: "Synthetische Normprüfung",
+      author: f.id,
+      confidentiality: "intern",
+    });
+    const d = dienst();
+    await d.beobachten(f.id, [f.quelle.id, b.id], lauf);
+    const s = await d.stand(f.id);
+    const n = s.normen[0];
+    const e = n?.ereignisse.find((e) => e.datum === "2027-01-01");
+    if (!n || !e) throw new Error("PG-Konfliktfixture fehlt");
+    return {
+      ...f,
+      b,
+      d,
+      n,
+      eingabe: {
+        fassung: s.fassung,
+        auswahl: [{ art: e.art, ereignisId: e.id }],
+        begruendung: "Fiktive belegte Auswahl für Werk A im PG-Weg.",
+        bestaetigt: true,
+      },
+    };
+  }
+  it.each(["Rollenentzug", "Quellenentzug", "Gegenentscheidung"] as const)(
+    "Konfliktklärung: %s unmittelbar vor echtem SQL verhindert den alten Entscheid",
+    async (art) => {
+      const f = await konfliktfall();
+      const vorher = await services.klaraFristen.hole(f.id);
+      const gegner: Awaited<ReturnType<KlaraNormereignisDienst["klaereKonflikt"]>>[] = [];
+      vorSchreiben = async () => {
+        if (art === "Rollenentzug")
+          await zweiterPool.query("UPDATE users SET role='viewer' WHERE id=$1", [f.id]);
+        else if (art === "Quellenentzug")
+          await buildPgServices(zweiterPool).ko.setQuellrechte(
+            f.b.id,
+            { stufe: "intern", leser: [] },
+            f.id,
+          );
+        else {
+          const e = f.n.ereignisse.find((e) => e.datum === "2027-02-01");
+          if (!e) throw new Error("Gegenbeleg fehlt");
+          gegner.push(
+            await dienst(buildPgServices(zweiterPool)).klaereKonflikt(f.id, f.n.id, {
+              ...f.eingabe,
+              auswahl: [{ art: e.art, ereignisId: e.id }],
+              begruendung: "Tatsächliche zweite Entscheidung gewinnt nur ihren eigenen CAS.",
+            }),
+          );
+        }
+      };
+      await expect(f.d.klaereKonflikt(f.id, f.n.id, f.eingabe)).rejects.toMatchObject({
+        status: 409,
+      });
+      const nachher = await services.klaraFristen.hole(f.id);
+      if (art !== "Gegenentscheidung") expect(nachher).toEqual(vorher);
+      else {
+        expect(gegner).toHaveLength(1);
+        expect(nachher?.normereignisse?.[0]?.klaerungen).toEqual(gegner.map((g) => g.klaerung));
+        expect(nachher?.normereignisse?.[0]?.annahmen).toEqual([]);
+      }
+    },
+  );
+  it("Konfliktklärung bleibt nach neuem Pool/App/Anmeldung am Original erhalten; gleiche Wiederholung bleibt Readback", async () => {
+    const f = await konfliktfall();
+    const entschieden = await f.d.klaereKonflikt(f.id, f.n.id, f.eingabe);
+    const gespeichert = await services.klaraFristen.hole(f.id);
+    const neuerPool = createPool(pool.options.connectionString as string);
+    const neueServices = buildPgServices(neuerPool);
+    const neueApp = buildApp(neueServices, { klaraErinnerungen: () => 65_000 });
+    try {
+      await neueApp.ready();
+      const login = await neueApp.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { email: f.email, password: f.password },
+      });
+      expect(login.statusCode, login.body).toBe(200);
+      const headers = { authorization: `Bearer ${login.json().token}` };
+      const read = await neueApp.inject({ url: "/api/me/klara/normereignisse", headers });
+      expect(read.statusCode, read.body).toBe(200);
+      expect(read.json().normen[0]).toMatchObject({
+        widerspruch: false,
+        klaerungAktuell: entschieden.klaerung.id,
+        klaerungen: [entschieden.klaerung],
+        annahmen: [],
+      });
+      const wieder = await neueApp.inject({
+        method: "POST",
+        url: `/api/me/klara/normereignisse/${f.n.id}/klaerung`,
+        headers,
+        payload: f.eingabe,
+      });
+      expect(wieder.statusCode, wieder.body).toBe(200);
+      expect(wieder.json()).toEqual({ ...entschieden, wiederholt: true });
+      expect(await neueServices.klaraFristen.hole(f.id)).toEqual(gespeichert);
     } finally {
       await neueApp.close();
       await neuerPool.end();

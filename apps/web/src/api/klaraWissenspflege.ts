@@ -5,6 +5,7 @@ export interface PflegeEingabe {
   vorlage: PflegeVorlage;
   quellen: string[];
   normbekanntmachungen?: "belege_vorbereiten";
+  folgepruefung?: "persoenliche_normpruefaufgabe";
 }
 export interface PflegeAuftrag extends PflegeEingabe {
   bereich: "ausgewaehlte_wissensobjekte";
@@ -26,7 +27,10 @@ export interface PflegeErgebnis {
     letzteErfolgreichePruefung: string | null;
   }[];
   aenderung: string | null;
-  normbekanntmachungen?: { stand: "belege_vorbereitet" | "ungeprueft" | "keine_erkannten_belege" };
+  normbekanntmachungen?: {
+    stand: "belege_vorbereitet" | "ungeprueft" | "keine_erkannten_belege";
+    folgepruefung?: { stand: "nicht_verfuegbar" | "am_original" | "klaerung_noetig" };
+  };
 }
 export const wissenspflegeApi = {
   vorschau: (wissenspflege: PflegeEingabe) =>

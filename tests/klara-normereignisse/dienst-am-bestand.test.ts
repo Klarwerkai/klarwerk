@@ -1,4 +1,3 @@
-import { echterNotizauftrag } from "./pruefauftrag-vorrichtung";
 import type { FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -6,6 +5,7 @@ import { FRISTEN_PRUEFSTAND } from "../../services/app/src/klara-fristen";
 import { KlaraFristenQuellen } from "../../services/app/src/klara-fristen-quellen";
 import { KlaraNormereignisDienst } from "../../services/app/src/klara-normereignisse-dienst";
 import { type Konto, neuesKonto } from "../klara-quellen-nutzerweg/kette";
+import { echterNotizauftrag } from "./pruefauftrag-vorrichtung";
 
 let app: FastifyInstance;
 let services: ReturnType<typeof buildServices>;
@@ -668,5 +668,194 @@ describe("AW21 · tatsächliche bestehende Quellen-/Fristenablage", () => {
         })
       ).statusCode,
     ).toBe(403);
+  });
+});
+
+describe("AW21 · ausdrückliche fachliche Konfliktklärung", () => {
+  async function konflikt() {
+    const a = await wissen("Norm N-17 v2: Inkrafttreten am 2027-01-01; Geltung: Werk A.");
+    const b = await wissen("Norm N-17 v2: Inkrafttreten am 2027-02-01; Geltung: Werk B.");
+    await dienst.beobachten(kontoId, [a.id, b.id], lauf);
+    const n = (await dienst.sicht(kontoId))[0];
+    const e = n?.ereignisse.find((e) => e.datum === "2027-01-01");
+    if (!n || !e) throw new Error("Konfliktfixture fehlt");
+    const eingabe = {
+      fassung: (await dienst.stand(kontoId)).fassung,
+      auswahl: [{ art: e.art, ereignisId: e.id }],
+      begruendung:
+        "Beide Originale geprüft: Werk A ist der tatsächliche Anwendungsbereich dieser Entscheidung.",
+      bestaetigt: true,
+    };
+    return { a, b, n, e, eingabe, url: `/api/me/klara/normereignisse/${n.id}/klaerung` };
+  }
+  it("befugte HTTP-Auswahl erhält beide Originale und echte Person/Zeit; Fachannahme bleibt gesondert an diese Klärung gebunden", async () => {
+    const f = await konflikt();
+    const { bisher, nachfolger } = await fachlicheFassungen();
+    const anleitung = await services.ko.get(nachfolger.id);
+    const vor = (await dienst.stand(kontoId)).normen[0];
+    expect(vor?.widerspruch).toBe(true);
+    const r = await app.inject({
+      method: "POST",
+      url: f.url,
+      headers: ich.kopf,
+      payload: f.eingabe,
+    });
+    expect(r.statusCode, r.body).toBe(200);
+    const k = r.json().klaerung;
+    expect(k).toMatchObject({
+      auswahl: f.eingabe.auswahl,
+      entschiedenVon: kontoId,
+      entschiedenName: "Fiktive Normperson",
+    });
+    expect(Number.isFinite(Date.parse(k.entschiedenAm))).toBe(true);
+    expect(k.belegstand).toEqual(
+      f.n.ereignisse.map((e) => ({
+        ereignisId: e.id,
+        aktuell: e.belege.filter((b) => b.aktuell).map((b) => b.id),
+      })),
+    );
+    const stand = await dienst.stand(kontoId);
+    expect(stand.normen[0]).toMatchObject({
+      widerspruch: false,
+      konfliktarten: ["inkrafttreten"],
+      klaerungAktuell: k.id,
+      annahmen: [],
+    });
+    expect(stand.normen[0]?.ereignisse).toEqual(vor?.ereignisse);
+    expect(await services.ko.get(nachfolger.id)).toEqual(anleitung);
+    const wieder = await app.inject({
+      method: "POST",
+      url: f.url,
+      headers: ich.kopf,
+      payload: f.eingabe,
+    });
+    expect(wieder.statusCode, wieder.body).toBe(200);
+    expect(wieder.json()).toEqual({ ...r.json(), wiederholt: true });
+    expect(
+      (await services.audit.list({ target: f.n.id })).filter(
+        (a) => a.action === "klara.normereignisse.konflikt_geklaert",
+      ),
+    ).toHaveLength(1);
+    const annahme = await annahmeEingabe(bisher, nachfolger);
+    await expect(
+      dienst.nehmeAbloesungAn(kontoId, f.n.id, { ...annahme, geltung: "Werk B" }),
+    ).rejects.toMatchObject({ status: 409 });
+    const angenommen = await dienst.nehmeAbloesungAn(kontoId, f.n.id, annahme);
+    expect(angenommen.annahme.klaerungId).toBe(k.id);
+    expect(angenommen.annahme.fachfreigabe.nachfolger.koVersion).toBe(nachfolger.version);
+  });
+  it("Kopie bleibt derselbe geklärte Sachstand; neue Gegenangabe öffnet erneut und früherer Entscheid wird nicht still wieder aktiviert", async () => {
+    const f = await konflikt();
+    const k1 = await dienst.klaereKonflikt(kontoId, f.n.id, f.eingabe);
+    const kopie = await wissen(f.a.statement);
+    await dienst.beobachten(kontoId, [kopie.id], lauf);
+    expect((await dienst.stand(kontoId)).normen[0]?.klaerungAktuell).toBe(k1.klaerung.id);
+    const neu = await wissen("Norm N-17 v2: Inkrafttreten am 2027-03-01; Geltung: Werk C.");
+    await dienst.beobachten(kontoId, [neu.id], lauf);
+    expect((await dienst.stand(kontoId)).normen[0]).toMatchObject({
+      widerspruch: true,
+      klaerungAktuell: null,
+    });
+    await expect(dienst.klaereKonflikt(kontoId, f.n.id, f.eingabe)).rejects.toMatchObject({
+      status: 409,
+    });
+    const k2 = await dienst.klaereKonflikt(kontoId, f.n.id, {
+      ...f.eingabe,
+      fassung: (await dienst.stand(kontoId)).fassung,
+    });
+    expect(k2.klaerung.id).not.toBe(k1.klaerung.id);
+    const zweites = f.n.ereignisse.find((e) => e.datum === "2027-02-01");
+    if (!zweites) throw new Error("Zweiter Beleg fehlt");
+    await dienst.klaereKonflikt(kontoId, f.n.id, {
+      ...f.eingabe,
+      fassung: k2.fassung,
+      auswahl: [{ art: zweites.art, ereignisId: zweites.id }],
+    });
+    const k4 = await dienst.klaereKonflikt(kontoId, f.n.id, {
+      ...f.eingabe,
+      fassung: (await dienst.stand(kontoId)).fassung,
+    });
+    expect(k4.wiederholt).toBe(false);
+    expect(k4.klaerung.id).not.toBe(k2.klaerung.id);
+    expect((await dienst.stand(kontoId)).normen[0]?.klaerungen).toHaveLength(4);
+  });
+  it("keine erfundenen Daten, Identitäten, unvollständigen Bestätigungen oder fremden Ereignisse im Fachweg", async () => {
+    const f = await konflikt();
+    const vorher = await services.klaraFristen.hole(kontoId);
+    for (const payload of [
+      { ...f.eingabe, entschiedenVon: "erfundene-person" },
+      { ...f.eingabe, entschiedenAm: "2020-01-01" },
+      { ...f.eingabe, bestaetigt: false },
+      { ...f.eingabe, begruendung: " " },
+      { ...f.eingabe, auswahl: [{ ...f.eingabe.auswahl[0], datum: "2027-01-01" }] },
+    ]) {
+      const r = await app.inject({ method: "POST", url: f.url, headers: ich.kopf, payload });
+      expect(r.statusCode, r.body).toBe(400);
+    }
+    for (const auswahl of [
+      [],
+      [...f.eingabe.auswahl, ...f.eingabe.auswahl],
+      [{ art: "veroeffentlicht", ereignisId: f.e.id }],
+      [{ art: f.e.art, ereignisId: `ne-${"a".repeat(64)}` }],
+    ]) {
+      const r = await app.inject({
+        method: "POST",
+        url: f.url,
+        headers: ich.kopf,
+        payload: { ...f.eingabe, auswahl },
+      });
+      expect([400, 409]).toContain(r.statusCode);
+    }
+    expect(await services.klaraFristen.hole(kontoId)).toEqual(vorher);
+  });
+  it("heutige Fachrechte, eigene Geschichte und unverarbeitete neue Quellfassung bleiben bindend", async () => {
+    const f = await konflikt();
+    const viewer = await kontoMitRolle("viewer");
+    expect(
+      (await app.inject({ method: "POST", url: f.url, headers: viewer.kopf, payload: f.eingabe }))
+        .statusCode,
+    ).toBe(403);
+    const fremd = await kontoMitRolle("controller");
+    expect(
+      (await app.inject({ method: "POST", url: f.url, headers: fremd.kopf, payload: f.eingabe }))
+        .statusCode,
+    ).toBe(404);
+    await services.ko.revise(
+      f.b.id,
+      { statement: f.b.statement.replace("2027-02-01", "2027-04-01") },
+      kontoId,
+    );
+    await expect(dienst.klaereKonflikt(kontoId, f.n.id, f.eingabe)).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining("noch nicht in den Ereignisbelegen"),
+    });
+    expect((await dienst.sicht(kontoId))[0]?.klaerungen).toBeUndefined();
+    await services.ko.setQuellrechte(f.b.id, { stufe: "intern", leser: [] }, kontoId);
+    expect(
+      (await app.inject({ method: "POST", url: f.url, headers: ich.kopf, payload: f.eingabe }))
+        .statusCode,
+    ).toBe(404);
+  });
+  it("mehrdeutiger oder fehlender Termin kann nicht allein durch freie Fachwahl erfunden werden", async () => {
+    const q = await wissen(
+      "Norm N-17 v2: Inkrafttreten am 2027-01-01 oder 2027-02-01; Geltung: Werk A.",
+    );
+    await dienst.beobachten(kontoId, [q.id], lauf);
+    const n = (await dienst.stand(kontoId)).normen[0];
+    const e = n?.ereignisse[0];
+    if (!n || !e) throw new Error("Mehrdeutiger Beleg fehlt");
+    await expect(
+      dienst.klaereKonflikt(kontoId, n.id, {
+        fassung: (await dienst.stand(kontoId)).fassung,
+        auswahl: [{ art: e.art, ereignisId: e.id }],
+        begruendung: "Ich wähle ohne neuen Beleg ein Datum.",
+        bestaetigt: true,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect((await dienst.stand(kontoId)).normen[0]).toMatchObject({
+      widerspruch: true,
+      klaerungAktuell: null,
+      annahmen: [],
+    });
   });
 });

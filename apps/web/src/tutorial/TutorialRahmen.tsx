@@ -31,7 +31,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useRoleOptional } from "../app/RoleContext";
 import { TutorialBereich } from "./TutorialBereich";
-import { type TutorialFernLage, TutorialMeldungCtx } from "./fernsteuerung";
+import { type TutorialFernLage, type TutorialMeldung, TutorialMeldungCtx } from "./fernsteuerung";
 import { tutorialFuerPfad } from "./rahmen";
 import type { TutorialDefinition, TutorialSchrittstand } from "./typen";
 
@@ -54,6 +54,7 @@ interface TutorialLage {
   schliessen: (mitFokus: boolean) => void;
   /** KLARA-VORSCHAU: die gemeldete Lage des offenen Bereichs (`fernsteuerung.ts`). */
   fernLage: TutorialFernLage | null;
+  fernBereichId: string | null;
   startstand?: TutorialSchrittstand | undefined;
   beiStand?: ((stand: TutorialSchrittstand) => void) | undefined;
   unterbrochen?: { pfad: string; titel: string; zurueck: () => void } | undefined;
@@ -69,6 +70,7 @@ const LEER: TutorialLage = {
   oeffnen: () => {},
   schliessen: () => {},
   fernLage: null,
+  fernBereichId: null,
 };
 
 const TutorialCtx = createContext<TutorialLage>(LEER);
@@ -80,7 +82,32 @@ export function TutorialProvider({ children }: { children: ReactNode }): JSX.Ele
   const rolle = useRoleOptional();
   const definition = tutorialFuerPfad(pathname, rolle?.role ?? "viewer", rolle?.stufe2 ?? false);
   const [offen, setOffen] = useState(false);
-  const [fernLage, setFernLage] = useState<TutorialFernLage | null>(null);
+  // Nur die Meldungen noch montierter Instanzen derselben Engine, keine zweite Schrittverwaltung.
+  const [meldungen, setMeldungen] = useState<{
+    aktiv: string | null;
+    bereiche: Record<string, TutorialFernLage>;
+  }>({ aktiv: null, bereiche: {} });
+  const melden = useCallback<TutorialMeldung>(
+    (lage, bereichId = "tutorial", aktivieren = false) => {
+      setMeldungen((alt) => {
+        if (!lage) {
+          if (!(bereichId in alt.bereiche)) return alt;
+          const bereiche = { ...alt.bereiche };
+          delete bereiche[bereichId];
+          return {
+            bereiche,
+            aktiv: alt.aktiv === bereichId ? (Object.keys(bereiche).at(-1) ?? null) : alt.aktiv,
+          };
+        }
+        return {
+          bereiche: { ...alt.bereiche, [bereichId]: lage },
+          aktiv: aktivieren || !alt.aktiv || !(bereichId in alt.bereiche) ? bereichId : alt.aktiv,
+        };
+      });
+    },
+    [],
+  );
+  const fernLage = meldungen.aktiv ? (meldungen.bereiche[meldungen.aktiv] ?? null) : null;
   const knopfRef = useRef<HTMLButtonElement | null>(null);
   const bereichId = useId();
   const aktuellRef = useRef<{
@@ -150,7 +177,8 @@ export function TutorialProvider({ children }: { children: ReactNode }): JSX.Ele
       umschalten,
       oeffnen,
       schliessen,
-      fernLage: offenAktuell ? fernLage : null,
+      fernLage,
+      fernBereichId: meldungen.aktiv,
       startstand: startstand ?? aktuellRef.current.stand,
       beiStand,
       ort: rollenOrt,
@@ -174,6 +202,7 @@ export function TutorialProvider({ children }: { children: ReactNode }): JSX.Ele
       oeffnen,
       schliessen,
       fernLage,
+      meldungen.aktiv,
       startstand,
       beiStand,
       rollenOrt,
@@ -184,7 +213,7 @@ export function TutorialProvider({ children }: { children: ReactNode }): JSX.Ele
   );
   return (
     <TutorialCtx.Provider value={wert}>
-      <TutorialMeldungCtx.Provider value={setFernLage}>{children}</TutorialMeldungCtx.Provider>
+      <TutorialMeldungCtx.Provider value={melden}>{children}</TutorialMeldungCtx.Provider>
     </TutorialCtx.Provider>
   );
 }
@@ -199,8 +228,20 @@ export function useTutorialFuerKlara(): {
   oeffnen: () => void;
   lage: TutorialFernLage | null;
 } {
-  const { definition, offen, oeffnen, fernLage } = useContext(TutorialCtx);
-  return { vorhanden: definition !== null, offen, oeffnen, lage: fernLage };
+  const { definition, offen, oeffnen, fernLage, fernBereichId } = useContext(TutorialCtx);
+  const aktivenBereichOeffnen = useCallback(() => {
+    if (fernBereichId) {
+      document.getElementById(fernBereichId)?.querySelector<HTMLElement>("h2")?.focus();
+      return;
+    }
+    oeffnen();
+  }, [fernBereichId, oeffnen]);
+  return {
+    vorhanden: definition !== null || fernLage !== null,
+    offen: offen || fernLage !== null,
+    oeffnen: aktivenBereichOeffnen,
+    lage: fernLage,
+  };
 }
 
 /** Die Leiste unter dem Kopfband mit dem Knopf „Tutorial“ — nur auf Seiten mit Tutorial. */

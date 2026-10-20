@@ -18,6 +18,8 @@ export interface PflegeAuftrag {
   readonly ende: "zeitplan";
   /** Ausdrücklicher enger Zusatzauftrag am vorhandenen Quellenpolling; keine Fachannahme. */
   readonly normbekanntmachungen?: "belege_vorbereiten";
+  /** Gesonderte ausdrückliche Bestellung; die reine Belegvorbereitung bestellt keine Aufgabe. */
+  readonly folgepruefung?: "persoenliche_normpruefaufgabe";
   /** Nur vom Server aus den tatsächlich gelesenen Fassungen gesetzt. */
   readonly ausgangsstand: readonly { id: string; fassung: number }[];
 }
@@ -40,6 +42,7 @@ export function pflegeAus(roh: unknown): PflegeAuftrag {
     "ende",
     "ausgangsstand",
     "normbekanntmachungen",
+    "folgepruefung",
   ]);
   if (Object.keys(o).some((k) => !erlaubt.has(k)))
     throw new PflegeEingabeFehler("Unbekannte Wissenspflege-Wirkung oder Einstellung.");
@@ -63,6 +66,15 @@ export function pflegeAus(roh: unknown): PflegeAuftrag {
       "Normereignisbelege brauchen den ausdrücklich bestellten begrenzten Quellenwatch.",
     );
   const ausloeser = vorlage === "quellaenderung" ? "quellstand_polling" : "zeitplan";
+  if (
+    o.folgepruefung !== undefined &&
+    (o.folgepruefung !== "persoenliche_normpruefaufgabe" ||
+      vorlage !== "quellaenderung" ||
+      o.normbekanntmachungen !== "belege_vorbereiten")
+  )
+    throw new PflegeEingabeFehler(
+      "Persönliche Normprüfaufgaben brauchen eine eigene ausdrückliche Zusatzbestellung am erlaubten Normbelegwatch.",
+    );
   const fest = {
     bereich: "ausgewaehlte_wissensobjekte",
     ausloeser,
@@ -81,6 +93,9 @@ export function pflegeAus(roh: unknown): PflegeAuftrag {
     ausgangsstand: [],
     ...(o.normbekanntmachungen === "belege_vorbereiten"
       ? { normbekanntmachungen: "belege_vorbereiten" as const }
+      : {}),
+    ...(o.folgepruefung === "persoenliche_normpruefaufgabe"
+      ? { folgepruefung: "persoenliche_normpruefaufgabe" as const }
       : {}),
   };
 }
@@ -125,6 +140,9 @@ export interface PflegeErgebnis {
   readonly aenderung: string | null;
   readonly normbekanntmachungen?: {
     readonly stand: "belege_vorbereitet" | "ungeprueft" | "keine_erkannten_belege";
+    readonly folgepruefung?: {
+      readonly stand: "nicht_verfuegbar" | "am_original" | "klaerung_noetig";
+    };
   };
 }
 
