@@ -50,7 +50,9 @@ function Auswahl({
   const { t } = useAssistenzT();
   const [suche, setSuche] = useState("");
   const [auswahl, setAuswahl] = useState<string[]>(initial?.quellen ?? []);
-  const [normen, setNormen] = useState(vorlage === "quellaenderung" && initial?.normbekanntmachungen === "belege_vorbereiten");
+  const [normen, setNormen] = useState(
+    vorlage === "quellaenderung" && initial?.normbekanntmachungen === "belege_vorbereiten",
+  );
   const [laeuft, setLaeuft] = useState(false);
   const [bereit, setBereit] = useState(false);
   const [fehler, setFehler] = useState(false);
@@ -80,8 +82,11 @@ function Auswahl({
     setFehler(false);
     setBereit(false);
     wechsel.current(null);
-    const auftrag: PflegeEingabe = { vorlage, quellen: auswahl,
-      ...(normen ? { normbekanntmachungen: "belege_vorbereiten" } : {}) };
+    const auftrag: PflegeEingabe = {
+      vorlage,
+      quellen: auswahl,
+      ...(normen ? { normbekanntmachungen: "belege_vorbereiten" } : {}),
+    };
     try {
       await wissenspflegeApi.vorschau(auftrag);
       if (aktiv.current && epoche === anfrageEpoche()) {
@@ -120,12 +125,19 @@ function Auswahl({
           </label>
         ))}
         <p>{t("wissenspflege.auswahl", { anzahl: auswahl.length })}</p>
-        {vorlage === "quellaenderung" ? <label className="flex items-start gap-2">
-          <input type="checkbox" checked={normen} onChange={(ev) => {
-            setNormen(ev.target.checked); aendere(auswahl);
-          }} />
-          <span>{t("wissenspflege.normbelegeErlaubt")}</span>
-        </label> : null}
+        {vorlage === "quellaenderung" ? (
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              checked={normen}
+              onChange={(ev) => {
+                setNormen(ev.target.checked);
+                aendere(auswahl);
+              }}
+            />
+            <span>{t("wissenspflege.normbelegeErlaubt")}</span>
+          </label>
+        ) : null}
         <ul className="space-y-1">
           {auswahl.map((id, i) => (
             <li key={id} className="flex flex-wrap items-center gap-2">
@@ -185,10 +197,15 @@ export function WissenspflegePruefstand({
             : t("wissenspflege.nie")}
         </span>
       ))}
-      {p.normbekanntmachungen ? <span className="block">
-        {t(`wissenspflege.normbelege.${p.normbekanntmachungen.stand}`)}{" · "}
-        <Link to="/kalender#normereignisse" className="underline">{t("wissenspflege.normbelegeOeffnen")}</Link>
-      </span> : null}
+      {p.normbekanntmachungen ? (
+        <span className="block">
+          {t(`wissenspflege.normbelege.${p.normbekanntmachungen.stand}`)}
+          {" · "}
+          <Link to="/kalender#normereignisse" className="underline">
+            {t("wissenspflege.normbelegeOeffnen")}
+          </Link>
+        </span>
+      ) : null}
     </span>
   );
 }

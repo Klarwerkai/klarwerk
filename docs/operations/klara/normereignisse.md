@@ -11,6 +11,24 @@ für die begrenzten Bekanntmachungen. Vorschau liest nur. Erst **Ereignisbelege
 erfassen** speichert die erkannten Ereignisse. Dieser erste Anschluss ist eine
 bewusste persönliche Erfassung; er aktiviert keinen Quellenwatcher.
 
+Eine zusätzliche ausdrückliche Bestellung ist in **Meine Aufgaben → Erinnerung →
+Geänderte Quellen melden** möglich. Die Person erlaubt dort die begrenzten
+Normbekanntmachungen der ausgewählten Quellen. Eine geänderte Auswahl oder diese
+Zusatzwahl macht die bisherige Vorschau ungültig. Vorschau und Aktivieren erfassen
+noch keine Normereignisse. Erst das fällige bestehende D-Vorkommen übernimmt sie
+unter seiner aktuellen Routinefassung, Laufberechtigung und den heutigen
+Quellbedingungen in denselben Fristenbestand. Auch der erste unveränderte
+Ausgangsstand kann so seinen Bekanntmachungsbeleg erhalten, ohne einen unnötigen
+Änderungsbericht zu erzeugen.
+
+Das bestellte bestehende Tages-/Wochen-/Monatsintervall bleibt maßgeblich. Der
+normale 60-Sekunden-Servertakt prüft dessen Fälligkeit; er ist kein neuer minütlicher
+Quellenwatch. Pause, Ende, Konten-/Quellenentzug und aktiver Laufabbruch gelten
+weiter. Die Pflegeanzeige unterscheidet vorbereitete Normbelege, ungeprüfte
+Bekanntmachungen und keine erkannten unterstützten Belege und führt zum
+geschützten Originalbestand. Die bestehende Handlungsfehlermeldung bei einem
+fehlgeschlagenen Lauf ist kein vorbereiteter Bericht und keine Fachannahme.
+
 Gelesen werden ausschließlich kurze Kernaussagen vorhandener Wissensobjekte:
 höchstens 4.000 Zeichen insgesamt und 1.000 Zeichen je Bekanntmachungszeile. Eine
 Zeile nennt ausdrücklich beispielsweise `Norm N-17 v2`, `Ankündigung am
@@ -62,8 +80,9 @@ entfernt sichtbar. Die private Originalnotiz wird nicht nachträglich als von ei
 Person geschriebene Gesprächsnachricht ausgegeben.
 
 Dieser Caller erzeugt keinen G-Auftrag, keine menschliche Beauftragung und keine
-Laufsitzung im Hintergrund. Der automatische D-Quellenwatch → Prüfaufgabe braucht
-noch die konkrete eigene D-Auftrags-/Fassungs-/Lauf-/Stopbindung an den vorhandenen
+Laufsitzung im Hintergrund. Auch der optionale Normbelegwatch erzeugt keinen
+automatischen G-Auftrag. Die automatische D-Quellenwatch → Prüfaufgabe braucht noch
+die konkrete eigene D-Auftrags-/Fassungs-/Lauf-/Stopbindung an den vorhandenen
 gemeinsamen Routinenport. Der H-Vormachkontext darf dafür nicht umgedeutet werden.
 
 ## Fachliche Ablösung
@@ -85,5 +104,6 @@ Kalenderfälligkeit, Erinnerung und Modellvorschlag sind keine fachliche Annahme
 
 Technische Prüfungen, unabhängige Annahme, reguläre Veröffentlichung und ein
 tatsächlicher Host-/Provider-/Office-/Modellbetrieb werden getrennt belegt. Die
-persönliche manuelle Teilfunktion erfüllt nicht bereits den vollständigen
-S10-Watchablauf, alle acht Normkriterien oder die 98 ursprünglichen D-Kriterien.
+persönliche Teilfunktion mit optionaler Normbelegvorbereitung erfüllt nicht bereits
+den vollständigen S10-Watch- und Aufgabenablauf, alle acht Normkriterien oder die
+98 ursprünglichen D-Kriterien.

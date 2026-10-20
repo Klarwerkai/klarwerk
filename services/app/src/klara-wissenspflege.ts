@@ -55,9 +55,13 @@ export function pflegeAus(roh: unknown): PflegeAuftrag {
       "Wissenspflege braucht 1 bis 20 ausdrücklich ausgewählte Wissensobjekte.",
     );
   const vorlage = o.vorlage as PflegeVorlage;
-  if (o.normbekanntmachungen !== undefined &&
-    (o.normbekanntmachungen !== "belege_vorbereiten" || vorlage !== "quellaenderung"))
-    throw new PflegeEingabeFehler("Normereignisbelege brauchen den ausdrücklich bestellten begrenzten Quellenwatch.");
+  if (
+    o.normbekanntmachungen !== undefined &&
+    (o.normbekanntmachungen !== "belege_vorbereiten" || vorlage !== "quellaenderung")
+  )
+    throw new PflegeEingabeFehler(
+      "Normereignisbelege brauchen den ausdrücklich bestellten begrenzten Quellenwatch.",
+    );
   const ausloeser = vorlage === "quellaenderung" ? "quellstand_polling" : "zeitplan";
   const fest = {
     bereich: "ausgewaehlte_wissensobjekte",
@@ -70,8 +74,14 @@ export function pflegeAus(roh: unknown): PflegeAuftrag {
   for (const [k, wert] of Object.entries(fest))
     if (o[k] !== undefined && o[k] !== wert)
       throw new PflegeEingabeFehler(`${k}: Dieser persönliche Auftrag erlaubt nur ${wert}.`);
-  return { ...fest, vorlage, quellen: [...new Set(o.quellen as string[])], ausgangsstand: [],
-    ...(o.normbekanntmachungen === "belege_vorbereiten" ? { normbekanntmachungen: "belege_vorbereiten" as const } : {}),
+  return {
+    ...fest,
+    vorlage,
+    quellen: [...new Set(o.quellen as string[])],
+    ausgangsstand: [],
+    ...(o.normbekanntmachungen === "belege_vorbereiten"
+      ? { normbekanntmachungen: "belege_vorbereiten" as const }
+      : {}),
   };
 }
 
@@ -113,7 +123,9 @@ export interface PflegeErgebnis {
   }[];
   /** Eindeutiger belegter Stand, ohne Zeitablauf als Änderungssignal auszugeben. */
   readonly aenderung: string | null;
-  readonly normbekanntmachungen?: { readonly stand: "belege_vorbereitet" | "ungeprueft" | "keine_erkannten_belege" };
+  readonly normbekanntmachungen?: {
+    readonly stand: "belege_vorbereitet" | "ungeprueft" | "keine_erkannten_belege";
+  };
 }
 
 export interface PflegeEntwurf {

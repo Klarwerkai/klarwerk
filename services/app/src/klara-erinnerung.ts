@@ -3844,7 +3844,11 @@ export interface KlaraErinnerungSteuerungDeps {
     unterQuellschutz<T>(arbeit: () => Promise<T>): Promise<T>;
   };
   /** Enger ausdrücklich bestellter Normbeleg-Zusatz am selben gehaltenen D-Lauf. */
-  readonly normereignisse?: (kontoId: string, quellen: readonly string[], bedingung: NotizSchreibbedingung) => Promise<NormVorbereitung>;
+  readonly normereignisse?: (
+    kontoId: string,
+    quellen: readonly string[],
+    bedingung: NotizSchreibbedingung,
+  ) => Promise<NormVorbereitung>;
   /**
    * EQF-07: die Ergebnisablage einer Routine — „Meine Notizen“ (`KlaraNotizDienst` samt Readback
    * über den Vorgangsschlüssel). Fehlt sie, schlägt der Routinenlauf sichtbar fehl.
@@ -4646,9 +4650,16 @@ export class KlaraErinnerungSteuerung {
         if (!(await Promise.all(entwurf.gelesen.map((q) => q.nochAktuell()))).every(Boolean))
           return { art: "fehlgeschlagen", grund: "quelle_geaendert" };
         try {
-          const n = await vorbereiten(e.kontoId, routine.wissenspflege.quellen,
-            this.notizBedingung(e, [], lauf, entwurf.gelesen));
-          stand = n.ungeprueft.length ? "ungeprueft" : n.ereignisse.length ? "belege_vorbereitet" : "keine_erkannten_belege";
+          const n = await vorbereiten(
+            e.kontoId,
+            routine.wissenspflege.quellen,
+            this.notizBedingung(e, [], lauf, entwurf.gelesen),
+          );
+          stand = n.ungeprueft.length
+            ? "ungeprueft"
+            : n.ereignisse.length
+              ? "belege_vorbereitet"
+              : "keine_erkannten_belege";
         } catch {
           return { art: "fehlgeschlagen", grund: "quelle_geaendert" };
         }
