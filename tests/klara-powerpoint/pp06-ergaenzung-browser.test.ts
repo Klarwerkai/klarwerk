@@ -130,6 +130,11 @@ it("PP-06 H04 · Lücke, passende/unpassende Quelle, Übernahme, Herkunft und R�
     );
     expect(neuerText).toContain("Q3 2025");
     await seite.setViewportSize({ width: 390, height: 844 });
+    await seite.waitForFunction(
+      fn(`() => !!document.querySelector('${auswahl} [data-pp06]')`),
+      undefined,
+      { timeout: 10_000 },
+    );
     const passt = await seite.evaluate<boolean>(
       fn(
         `() => { const r = document.querySelector('${auswahl} [data-pp06]').getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth + 1; }`,
@@ -138,6 +143,11 @@ it("PP-06 H04 · Lücke, passende/unpassende Quelle, Übernahme, Herkunft und R�
     expect(passt).toBe(true);
     await seite.screenshot({ path: resolve(ausgabe, "PP06-VORSCHAU-SCHMAL.png"), fullPage: true });
     await seite.setViewportSize({ width: 1440, height: 1000 });
+    await seite.waitForFunction(
+      fn(`() => !!document.querySelector('${auswahl} [data-pp06-uebernehmen]')`),
+      undefined,
+      { timeout: 10_000 },
+    );
     await seite.click(`${auswahl} [data-pp06-uebernehmen]`);
     await seite.waitForFunction(
       fn(
@@ -193,6 +203,20 @@ it("PP-06 H04 · Lücke, passende/unpassende Quelle, Übernahme, Herkunft und R�
         2,
       ),
     );
+  } catch (fehler) {
+    if (stand) {
+      const dom = await stand.seite.evaluate(
+        fn(
+          `() => ({ url: location.href, breite: innerWidth, titel: document.querySelector('[data-testid="bib-titel"]')?.textContent, mehr: document.querySelector('[data-testid="bib-mehr"]')?.getAttribute('aria-expanded'), anhaenge: document.querySelector('[data-bib-abschnitt="anhaenge"]')?.open, office: !!document.querySelector('[data-office-flaeche]'), folien: !!document.querySelector('[data-folien-daten]'), ergaenzungen: document.querySelectorAll('[data-pp06]').length, text: document.body.innerText })`,
+        ),
+      );
+      writeFileSync(resolve(ausgabe, "FEHLER-DOM.json"), JSON.stringify(dom, null, 2));
+      await stand.seite.screenshot({
+        path: resolve(ausgabe, "FEHLER-ANSICHT.png"),
+        fullPage: true,
+      });
+    }
+    throw fehler;
   } finally {
     await stand?.browser.close();
     await stand?.app.close();
