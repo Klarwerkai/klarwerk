@@ -104,7 +104,9 @@ describe("PP-07 · Zusammensetzung mit echtem festen PP-05-Port fbc1ef39", () =>
                     ? e
                     : {
                         ...e,
-                        zellen: e.zellen?.map((z) => ({ ...z, text: "manuell abweichend" })),
+                        ...(e.zellen
+                          ? { zellen: e.zellen.map((z) => ({ ...z, text: "manuell abweichend" })) }
+                          : {}),
                       },
                 ),
               },
