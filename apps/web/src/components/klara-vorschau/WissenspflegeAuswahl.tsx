@@ -53,6 +53,11 @@ function Auswahl({
   const [normen, setNormen] = useState(
     vorlage === "quellaenderung" && initial?.normbekanntmachungen === "belege_vorbereiten",
   );
+  const [folgepruefung, setFolgepruefung] = useState(
+    vorlage === "quellaenderung" &&
+      initial?.normbekanntmachungen === "belege_vorbereiten" &&
+      initial.folgepruefung === "persoenliche_normpruefaufgabe",
+  );
   const [laeuft, setLaeuft] = useState(false);
   const [bereit, setBereit] = useState(false);
   const [fehler, setFehler] = useState(false);
@@ -86,6 +91,7 @@ function Auswahl({
       vorlage,
       quellen: auswahl,
       ...(normen ? { normbekanntmachungen: "belege_vorbereiten" } : {}),
+      ...(normen && folgepruefung ? { folgepruefung: "persoenliche_normpruefaufgabe" } : {}),
     };
     try {
       await wissenspflegeApi.vorschau(auftrag);
@@ -132,10 +138,24 @@ function Auswahl({
               checked={normen}
               onChange={(ev) => {
                 setNormen(ev.target.checked);
+                if (!ev.target.checked) setFolgepruefung(false);
                 aendere(auswahl);
               }}
             />
             <span>{t("wissenspflege.normbelegeErlaubt")}</span>
+          </label>
+        ) : null}
+        {vorlage === "quellaenderung" && normen ? (
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              checked={folgepruefung}
+              onChange={(ev) => {
+                setFolgepruefung(ev.target.checked);
+                aendere(auswahl);
+              }}
+            />
+            <span>{t("wissenspflege.normFolgepruefungErlaubt")}</span>
           </label>
         ) : null}
         <ul className="space-y-1">

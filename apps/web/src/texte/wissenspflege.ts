@@ -3,6 +3,8 @@ export default {
   praefix: "wissenspflege.",
   legacySchluessel: [],
   de: {
+    "wissenspflege.normFolgepruefungErlaubt":
+      "Bei neuen belegten Normereignissen persönliche Prüfaufgaben für mich anlegen. Gleiche Meldungen und Kopien behalten dieselbe Aufgabe. Keine fachliche Annahme einer Anleitung.",
     "wissenspflege.normbelegeErlaubt":
       "Ich darf die begrenzten Normbekanntmachungen dieser Auswahl verarbeiten und beauftrage die Vorbereitung ihrer Ereignisbelege im Quellenwatch. Keine fachliche Annahme.",
     "wissenspflege.normbelege.belege_vorbereitet":
@@ -54,6 +56,8 @@ export default {
     "wissenspflege.nie": "Bisher kein erfolgreicher Prüfzeitpunkt belegt",
   },
   en: {
+    "wissenspflege.normFolgepruefungErlaubt":
+      "Create personal review tasks for me when new standards events are evidenced. Identical notices and copies keep the same task. This does not professionally accept an instruction.",
     "wissenspflege.normbelegeErlaubt":
       "I am permitted to process the limited standards notices in this selection and commission preparation of their event evidence in this source watch. No professional acceptance.",
     "wissenspflege.normbelege.belege_vorbereitet":
@@ -104,6 +108,8 @@ export default {
     "wissenspflege.nie": "No successful check time recorded yet",
   },
   nl: {
+    "wissenspflege.normFolgepruefungErlaubt":
+      "Maak persoonlijke controletaken voor mij bij nieuw bewezen normgebeurtenissen. Dezelfde meldingen en kopieën behouden dezelfde taak. Dit is geen inhoudelijke acceptatie van een instructie.",
     "wissenspflege.normbelegeErlaubt":
       "Ik mag de beperkte normbekendmakingen in deze selectie verwerken en geef opdracht hun gebeurtenisbewijzen in deze bronbewaking voor te bereiden. Geen inhoudelijke acceptatie.",
     "wissenspflege.normbelege.belege_vorbereitet":

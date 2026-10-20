@@ -5,6 +5,7 @@ export interface PflegeEingabe {
   vorlage: PflegeVorlage;
   quellen: string[];
   normbekanntmachungen?: "belege_vorbereiten";
+  folgepruefung?: "persoenliche_normpruefaufgabe";
 }
 export interface PflegeAuftrag extends PflegeEingabe {
   bereich: "ausgewaehlte_wissensobjekte";
