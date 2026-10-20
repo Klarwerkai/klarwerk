@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { diktatSprache } from "../../lib/speechDictation";
 import { cleanForSpeech, pickVoice, vorlesenMoeglich } from "../../lib/vorlesen";
@@ -35,9 +35,11 @@ export function antwortFuersVorlesen(text: string): string {
 export function useVorlesen(): Vorlesen {
   const { i18n } = useTranslation();
   const [liest, setLiest] = useState(false);
+  const lauf = useRef<SpeechSynthesisUtterance | null>(null);
   const moeglich = vorlesenMoeglich();
 
   const stoppen = useCallback((): void => {
+    lauf.current = null;
     if (vorlesenMoeglich()) {
       window.speechSynthesis.cancel();
     }
@@ -61,8 +63,14 @@ export function useVorlesen(): Vorlesen {
     if (stimme) {
       u.voice = stimme;
     }
-    u.onend = () => setLiest(false);
-    u.onerror = () => setLiest(false);
+    const beendet = (): void => {
+      if (lauf.current !== u) return;
+      lauf.current = null;
+      setLiest(false);
+    };
+    u.onend = beendet;
+    u.onerror = beendet;
+    lauf.current = u;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(u);
     setLiest(true);

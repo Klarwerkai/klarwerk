@@ -7,6 +7,8 @@
 // weil `main.tsx:6` `./i18n` selbst holt; wer aber `App` OHNE `main.tsx` montiert, stand ohne
 // Sprache da. Die Abhängigkeit ist real und gehört an die Wurzel der Anwendung, nicht an eine Seite.
 import "./i18n";
+import { Suspense, lazy } from "react";
+const Kiosk = lazy(() => import("./kiosk/Kiosk"));
 import { useLocation } from "react-router-dom";
 import { AuthProvider, useSession } from "./app/AuthContext";
 // R-1029 / R-1674: die geteilten Stände der Hülle im Takt nachladen — nur hinter dem Tor, also nie
@@ -107,6 +109,14 @@ function Gate(): JSX.Element {
       </AppShell>
     </>
   );
+
+  if (window.location.pathname === "/kiosk") {
+    return (
+      <Suspense fallback={<Splash />}>
+        <Kiosk />
+      </Suspense>
+    );
+  }
 
   // Passwort-Reset (E-Mail-Link) ist ohne Anmeldung erreichbar.
   if (window.location.pathname === "/reset") {

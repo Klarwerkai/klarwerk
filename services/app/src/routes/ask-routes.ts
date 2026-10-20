@@ -1047,7 +1047,7 @@ type AskOptionen = NonNullable<Parameters<AskService["ask"]>[3]>;
  * Dokumenttextfreigabe des Klara-Zugangs). Fehlt er, bleibt `opts` unangetastet, auch als
  * `undefined` — daran hängt der Vertrag von `KA4-E1`.
  */
-async function antwortLauf(
+export async function antwortLauf(
   deps: AskRouteDeps,
   request: FastifyRequest,
   reply: FastifyReply,

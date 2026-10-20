@@ -392,6 +392,7 @@ import {
   KiArbeitsbegleitungDienst,
   type KiCodexEinrichtung,
 } from "./ki-arbeitsbegleitung-dienst";
+import type { KioskProfilQuelle } from "./kiosk-profil";
 // produkt:20261008:klara-aufgaben (Klara 07): die persönlichen Aufgaben — haltbar im Postgres-
 // Betrieb, im Speicher ohne Datenbank.
 import {
@@ -465,8 +466,8 @@ import {
   PgKlaraNotizRepo,
 } from "./klara-notiz";
 import { QuellgeschuetzteKlaraNotizen } from "./klara-wissen-quellschutz";
-import { KlaraWissensDienst } from "./klara-wissensuebernahme";
 import { KlaraWissenspflegeQuellen } from "./klara-wissenspflege-quellen";
+import { KlaraWissensDienst } from "./klara-wissensuebernahme";
 // ADMIN-12: Kommunikationsregeln, persönliche Abwahl und Zustellstatus — haltbar im Postgres-
 // Betrieb, im Speicher ohne Datenbank.
 import {
@@ -582,6 +583,7 @@ import { jiraImportRoutes } from "./routes/jira-import-routes";
 import { kantenRoutes } from "./routes/kanten-routes";
 import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
 import { kiArbeitsbegleitungRoutes } from "./routes/ki-arbeitsbegleitung-routes";
+import { kioskRoutes } from "./routes/kiosk-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
@@ -3716,6 +3718,8 @@ export function buildApp(
   // (Nachtrag fehlender Prüfprotokoll-Enden, dann Löschen abgelaufener Sitzungen). `server.ts`
   // startet ihn (`klara-aufraeumen.ts`); ohne Option läuft nichts (Tests).
   opts: {
+    /** R-1648: ausdrücklich gebundene Installation, standardmäßig geschlossen. */
+    kioskProfil?: KioskProfilQuelle;
     loeschmarkierungen?: LoeschmarkierungsAblage | undefined;
     routinenZeitsteuerung?: (lauf: (jetzt?: number) => Promise<ZeitplanLaufErgebnis[]>) => void;
     factoryReset?: FactoryReset;
@@ -3912,6 +3916,7 @@ export function buildApp(
     if (
       request.method === "POST" &&
       (pfad === "/api/ask" ||
+        pfad === "/api/kiosk/fragen" ||
         pfad === "/api/reasoner" ||
         pfad === "/api/klara/sessions/:sessionId/execute")
     ) {
@@ -5687,6 +5692,7 @@ export function buildApp(
   // `POST /api/klara/sessions/{sessionId}/execute`. KW-KA4: `klaraSessions` ist das bestehende
   // Ausführungstor von oben — DIESELBE Instanz wie am Status-, Zuruf- und Reasoner-Weg.
   app.register(klaraAusfuehrungRoutes({ ...antwortDeps, klaraSessions }, guards));
+  app.register(kioskRoutes(services, guards, opts.kioskProfil));
   // W3-C (KW-W3-18, JOB 541 D3): die EINE Erklaerroute. Sie bekommt denselben Belegspeicher wie
   // der Schreibweg und denselben Wissensbestand wie der Antwortweg — kein eigener Zugang, keine
   // zweite Aufloesung.
