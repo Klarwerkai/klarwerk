@@ -50,6 +50,8 @@ für einen Host ohne Beleg.
 - **Rechte:** Lesen nur mit `ko.read` und Sichtbarkeit der Quelle; Schutzstufe V07 der strengsten
   Quelle gilt für das Datenobjekt.
 - **Hosts:** H03 und H04. Zugang zur Herkunft direkt an einer Zahl im Detailbereich (UI-03).
+- **Umsetzung (PP-02-Auftrag):** am Anhang H04 gebaut, siehe [`PP-02-DATENHERKUNFT.md`](./PP-02-DATENHERKUNFT.md).
+  Eine importierte Datei (H03) nutzt den Weg, sobald sie als Anhang am Artikel hängt.
 
 ## 3. PP-03 · Validierung und Datenkontrolle
 
@@ -133,8 +135,8 @@ Kürzel für PowerPoint-Aktionen erst, wenn A01 einen Host liefert; S03 wirkt nu
 
 | PP-ID | Original / Revision | Stand | Implementierung / Integration | Belege | Rest |
 | --- | --- | --- | --- | --- | --- |
-| PP-01 | `produkt:20261015:klara-powerpoint-bestand` · 1 | im Bau (dieser Kandidat) | `docs/klara-powerpoint/` | Quelleninspektion, `tests/klara-powerpoint/fundstellen.test.ts` | unabhängige Prüfung, Lieferung |
-| PP-02 | Paket PP-02 | vorbereitet | W12 (Tabellentext) vorhanden | — | L04, L17 |
+| PP-01 | `produkt:20261015:klara-powerpoint-bestand` · 1 | im Hauptstand integriert (1.0.0-beta.1.987, `500cb5c6`); zentraler Abschluss in diesem Arbeitsbaum nicht belegt | `docs/klara-powerpoint/` | Quelleninspektion, `tests/klara-powerpoint/fundstellen.test.ts` | zentraler Abschluss laut Auftragsstand |
+| PP-02 | `produkt:20261015:klara-powerpoint-datenherkunft` · 1 | im Bau (Kandidat dieses Auftrags) | `services/app/src/praesentation-daten.ts`, Routen `praesentation-daten-routes.ts`, Fläche `FolienDaten.tsx` am Anhang H04; Details in `PP-02-DATENHERKUNFT.md`; schließt L04 und L17 für H04 | `tests/klara-powerpoint/pp02-datenherkunft.test.ts`, `pp02-herkunft-an-der-zahl.test.tsx` (Lauf durch die Kandidatenprüfung) | unabhängige Prüfung, Lieferung; H01 und H02 erst über A01; Diagramme (L03); echte Bedienabnahme (L15) |
 | PP-03 | Paket PP-03 | vorbereitet | — | — | L05 |
 | PP-04 | Paket PP-04, mit A02 bis A06 | vorbereitet | W03, W04 vorhanden | OCR-02/OCR-03 im Hauptstand | L03, L06; A02 bis A06 offen |
 | PP-05 | Paket PP-05 | vorbereitet | W06, W08, W11 vorhanden | — | L07 |

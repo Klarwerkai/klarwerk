@@ -91,6 +91,8 @@ import { LOESCHANTRAG_SCHEMA } from "./loeschantraege";
 import { MEETING_DOKUMENTBEZUG_SCHEMA } from "./meeting-dokumentbezug-ablage";
 // Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände.
 import { OFFICE_ABLAGE_SCHEMA } from "./office-ablage";
+// PP-02 (produkt:20261015:klara-powerpoint-datenherkunft): Datenpunkte mit Herkunft und Folienbindung.
+import { PRAESENTATION_DATEN_SCHEMA } from "./praesentation-daten-ablage";
 // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets (eine Zeile je Mandant).
 import { PRODUKTBUDGET_SCHEMA } from "./produktbudget";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
@@ -408,6 +410,10 @@ export const schemas = [
   // Produktbudgets. Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel,
   // ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   PRODUKTBUDGET_SCHEMA,
+  // PP-02 (produkt:20261015:klara-powerpoint-datenherkunft): die Datenpunkte an Präsentationen.
+  // Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne
+  // Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  PRAESENTATION_DATEN_SCHEMA,
 ];
 
 // ================================================================================================

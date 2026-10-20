@@ -680,6 +680,23 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    id: "praesentation-datenpunkte",
+    name: "Datenpunkte an Präsentationen: Herkunft, Prüfungen und Folienbindung",
+    inhalt:
+      "Je Zahl oder Aussage: Wert, Einheit, Zeitraum, Bezugsgröße, Erfassungsart, Quelle mit Fassung, Fundstelle (Folie, Element, Zelle, Bildkennung samt erkanntem Bildtext), Rechenweg mit Eingaben, Annahmen, Prüfungen und Korrekturen mit Kennung der handelnden Person und Zeitpunkt, Bindungen an Folienelemente.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennungen der Personen, die erfasst, geprüft, korrigiert oder gebunden haben; erkannter Bildtext kann Angaben über Personen enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["praesentation_datenpunkte"] },
+    taetigkeit: "wissen",
+    loeschung: "Mit dem Bestandsreset; kein eigener Löschweg in dieser Fassung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Am Artikel in der Herkunft der Zahl für Leseberechtigte einsehbar.",
+    },
+  },
+  {
     id: "lesevarianten",
     name: "Lesevarianten (gekennzeichnete Übersetzungen)",
     inhalt: "Übersetzte Lesefassungen von Wissensobjekten und Import-Kandidaten.",

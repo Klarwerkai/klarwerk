@@ -295,7 +295,8 @@ const HERKUNFTSARTEN: readonly HerkunftArt[] = [
   "nutzerauftrag",
   "ki_empfehlung",
 ];
-const BERECHNUNGSARTEN = ["summe", "differenz", "anteil_prozent"] as const;
+/** Auch der Rechenweg der Datenobjekte (PP-02, `praesentation-daten.ts`) kennt nur diese Arten. */
+export const BERECHNUNGSARTEN = ["summe", "differenz", "anteil_prozent"] as const;
 
 function istObjekt(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
@@ -486,7 +487,8 @@ function zahlen(t: string): string[] {
   );
 }
 
-function rechne(b: NonNullable<Zahlenbeleg["berechnung"]>): number {
+/** Die Rechenprüfung V06 — dieselbe Rechnung für Nachbearbeitung und Datenobjekte (PP-02). */
+export function rechne(b: NonNullable<Zahlenbeleg["berechnung"]>): number {
   const [erste = 0, ...rest] = b.eingaben;
   switch (b.art) {
     case "summe":

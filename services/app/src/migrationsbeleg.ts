@@ -268,6 +268,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "PRODUKTBUDGET_SCHEMA", risiko: "ADDITIV" },
+  // PP-02: die Datenpunkte an Präsentationen. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS`
+  // und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "PRAESENTATION_DATEN_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

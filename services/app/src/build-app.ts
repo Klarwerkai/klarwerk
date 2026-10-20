@@ -448,6 +448,11 @@ import {
   createPaarpflichtAusfuehrung,
   paarpflichtPrueferFuer,
 } from "./paarpflicht-ausfuehrung";
+import {
+  type DatenpunktAblage,
+  PgDatenpunktAblage,
+  SpeicherDatenpunktAblage,
+} from "./praesentation-daten-ablage";
 // produkt:20261013:produktbudget-anwender-admin: die Produktbudgets — das persistente Kostenbuch.
 import {
   InMemoryProduktbudgetRepo,
@@ -537,6 +542,7 @@ import { officeRoutes } from "./routes/office-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
+import { praesentationDatenRoutes } from "./routes/praesentation-daten-routes";
 import { produktbudgetRoutes } from "./routes/produktbudget-routes";
 import { programmadapterRoutes } from "./routes/programmadapter-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
@@ -868,6 +874,12 @@ export interface AppServices {
    * Datenbank die Speicherfassung, die einen Neustart nicht überlebt.
    */
   meetingBezuege: MeetingBezugAblage;
+  /**
+   * PP-02 (produkt:20261015:klara-powerpoint-datenherkunft): Datenpunkte mit Herkunft, Prüfungen und
+   * Bindung an Folien. Aus demselben Grund wie `bearbeitungen` NICHT in `AppRepos`. Im Postgres-
+   * Betrieb `PgDatenpunktAblage`; ohne Datenbank die Speicherfassung, die keinen Neustart übersteht.
+   */
+  datenpunkte: DatenpunktAblage;
   /**
    * Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen. Aus demselben Grund wie
    * `bearbeitungen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgKenntnisnahmeRepo`; ohne Datenbank
@@ -1452,6 +1464,8 @@ export function assembleServices(
     officeAblage?: OfficeAblage;
     // BPA-16: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
     meetingBezuege?: MeetingBezugAblage;
+    // PP-02: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    datenpunkte?: DatenpunktAblage;
     // Kenntnisnahme: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
     kenntnisnahmen?: KenntnisnahmeRepo;
     // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
@@ -1927,6 +1941,8 @@ export function assembleServices(
     officeAblage: opts.officeAblage ?? new SpeicherOfficeAblage(),
     // BPA-16: Meetingbezüge — Postgres, wenn injiziert, sonst im Speicher.
     meetingBezuege: opts.meetingBezuege ?? new SpeicherMeetingBezugAblage(),
+    // PP-02: Datenpunkte — Postgres, wenn injiziert, sonst im Speicher.
+    datenpunkte: opts.datenpunkte ?? new SpeicherDatenpunktAblage(),
     // Kenntnisnahme: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit zu
     // (Desktop-Journal), lehnt die Speicherfassung Schreibvorgänge ab — eine angenommene und beim
     // Neustart verlorene Bestätigung wäre schlimmer als eine abgelehnte.
@@ -2477,6 +2493,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       officeAblage: new PgOfficeAblage(pool),
       // BPA-16: Meetingbezüge überleben Neustart und Deploy (`MEETING_DOKUMENTBEZUG_SCHEMA`).
       meetingBezuege: new PgMeetingBezugAblage(pool),
+      // PP-02: Datenpunkte überleben Neustart und Deploy (`PRAESENTATION_DATEN_SCHEMA`).
+      datenpunkte: new PgDatenpunktAblage(pool),
       // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
       kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
       // Veröffentlichung: die Zustellungen überleben Neuladen, Neuanmeldung und Neustart.
@@ -4984,6 +5002,20 @@ export function buildApp(
         konten: () => services.auth.listUsers(),
         spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
         ablage: services.officeAblage,
+      },
+      guards,
+    ),
+  );
+  // PP-02 (produkt:20261015:klara-powerpoint-datenherkunft): Datenherkunft und Bindung an Folien
+  // am PowerPoint-Anhang des Artikels. Dieselben Rechte wie dort (`ko.read` + `darfSehen`), Namen aus
+  // der vorhandenen Kontenliste.
+  app.register(
+    praesentationDatenRoutes(
+      {
+        ko: services.ko,
+        objekte: services.objects,
+        ablage: services.datenpunkte,
+        konten: () => services.auth.listUsers(),
       },
       guards,
     ),
