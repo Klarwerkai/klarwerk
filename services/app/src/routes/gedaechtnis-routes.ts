@@ -59,6 +59,9 @@ function antworteMitFehler(reply: FastifyReply, fehler: unknown): void {
 function sicht(e: Gedaechtniseintrag) {
   return {
     id: e.id,
+    fassung: e.fassung ?? 1,
+    geaendertAm: e.geaendertAm ?? e.angelegtAm,
+    darstellung: e.darstellung ?? null,
     art: e.art,
     inhalt: e.inhalt,
     antwort: e.antwort,
@@ -86,6 +89,10 @@ export function gedaechtnisRoutes(deps: GedaechtnisRoutenDeps, guards: Guards): 
           fristenTage: GEDAECHTNIS_FRISTEN_TAGE,
           standardFristTage: GEDAECHTNIS_STANDARD_FRIST_TAGE,
           standardVertraulichkeit: GEDAECHTNIS_STANDARD_VERTRAULICHKEIT,
+          bereich: "persoenlich",
+          restoreJournalKonfiguriert: Boolean(process.env.KLARWERK_GEDAECHTNIS_LOESCHJOURNAL),
+          restkopien:
+            "Sicherungen, frühere Antworten und externe Kopien werden nicht rückwirkend umgeschrieben. Firmenwissen hat eigene Rechte und Fristen.",
         });
       } catch (fehler) {
         antworteMitFehler(reply, fehler);
@@ -117,6 +124,26 @@ export function gedaechtnisRoutes(deps: GedaechtnisRoutenDeps, guards: Guards): 
         antworteMitFehler(reply, fehler);
       }
     });
+
+    app.put<{ Params: { id: string }; Body: GedaechtnisEingabe }>(
+      "/api/me/gedaechtnis/:id",
+      async (request, reply) => {
+        const user = await guards.requireUser(request, reply);
+        if (!user) return;
+        try {
+          const eintrag = await dienst.aendere(user.id, request.params.id, request.body ?? {});
+          await audit.record({
+            actor: user.id,
+            action: "gedaechtnis.geaendert",
+            target: `gedaechtnis:${eintrag.id}`,
+            payload: { fassung: eintrag.fassung, art: eintrag.art },
+          });
+          reply.code(200).send({ eintrag: sicht(eintrag) });
+        } catch (e) {
+          antworteMitFehler(reply, e);
+        }
+      },
+    );
 
     // Löschen wirkt ZUERST, der Nachweis folgt: ein nicht erreichbares Protokoll darf einen
     // gewünschten Löschvorgang nicht aufhalten.
